@@ -2,3 +2,4 @@
 proofs/Util.v
 proofs/Ty.v
 proofs/Term.v
+proofs/core/Term.v
