@@ -1,0 +1,4 @@
+-R . why3_sem 
+proofs/Util.v
+proofs/Ty.v
+proofs/Term.v
