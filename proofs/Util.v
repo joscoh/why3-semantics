@@ -1,6 +1,7 @@
 (* General and helpful definitions/lemmas *)
 
 Require Import Coq.Lists.List.
+Require Import Lia.
 Import ListNotations.
 
 Coercion proj_sumbool (A B: Prop) (H: {A} + {B}) : bool :=
@@ -47,6 +48,55 @@ Proof.
       subst; rewrite (IH t1); try assumption. reflexivity.
       intros x y Hin. apply Heq. right; assumption.
 Qed.
+
+Ltac contra :=
+  solve[let C := fresh in
+    intro C; inversion C].
+
+(*We can compare lists elementwise for equality*)
+Lemma list_eq_ext: forall {A: Type} (l1 l2: list A),
+  length l1 = length l2 ->
+  (forall n d, nth n l1 d = nth n l2 d) ->
+  l1 = l2.
+Proof.
+  intros A l1. induction l1 as [|h1 t1 IH]; simpl; intros l2.
+  - destruct l2;[reflexivity | contra].
+  - destruct l2; [contra | intro Heq; inversion Heq; subst].
+    simpl. intros Hnth.
+    assert (h1 = a). {
+      specialize (Hnth 0 h1); apply Hnth.
+    }
+    subst. f_equal. apply IH. assumption.
+    intros n d. specialize (Hnth (S n) d); apply Hnth.
+Qed.
+
+(*In fact, we need only to consider valid indices*)
+Lemma list_eq_ext': forall {A: Type} (l1 l2: list A),
+  length l1 = length l2 ->
+  (forall n d, n < length l1 -> nth n l1 d = nth n l2 d) ->
+  l1 = l2.
+Proof.
+  intros A l1 l2 Hlen Hall. apply list_eq_ext; auto.
+  intros n d. 
+  assert (n < length l1 \/ n >= length l1) by lia.
+  destruct H as [Hin | Hout].
+  - apply Hall. assumption.
+  - rewrite !nth_overflow; try lia. reflexivity.
+Qed.
+
+(*More general than [map_nth] from the standard library because
+  we don't require any knowledge of the default values as long
+  as n is within bounds*)
+Lemma map_nth_inbound: forall {A B: Type} (f: A -> B) (l: list A)
+  (d1 : B) (d2 : A) (n: nat),
+  n < length l ->
+  nth n (List.map f l) d1 = f (nth n l d2).
+Proof.
+  intros A B f l d1 d2. induction l as [|h t IH]; simpl; try lia.
+  intros n Hn.
+  destruct n. reflexivity.
+  apply IH. lia.
+Qed. 
 
 (* Decidable Equality *)
 
