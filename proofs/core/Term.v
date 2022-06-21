@@ -74,13 +74,6 @@ Definition lsym_eq (l1 l2: lsym) : bool :=
 (*We need more than terms - need decls as well - this way we know
   axioms, lemmas, goals, function bodies*)
 
-(*
-Definition app_one (s: sym) : option funsym :=
-  match (s_args f) with
-  | nil => None
-  | a :: args => Some (mk_sym (fs_name f) (fs_applied f ++ (a :: nil)) args (fs_val f))
-  end.
-*)
 Inductive constant : Type :=
   | ConstInt : Z -> constant
   | ConstReal : R -> constant
@@ -114,12 +107,11 @@ Inductive term : Type :=
   (*| Teps: term -> term *)
   | Tquant: quant -> term -> term
   | Tbinop: binop -> term -> term -> term
+  | Teq: term -> term -> term (*builtin to why3, but not a separate term AST node*)
   | Tnot: term -> term
   | Ttrue: term
   | Tfalse: term.
 Set Elimination Schemes.
-
-(*TODO: redo better induction principle, prove things for substitution *)
 
 Inductive prop_kind :=
   | Plemma (*prove, use as a premise*)
@@ -162,6 +154,8 @@ Variable Hquant: forall q t,
   P t -> P (Tquant q t).
 Variable Hbinop: forall b t1 t2,
   P t1 -> P t2 -> P(Tbinop b t1 t2).
+Variable Heq: forall t1 t2,
+  P t1 -> P t2 -> P(Teq t1 t2).
 Variable Hnot: forall t, P t -> P(Tnot t).
 Variable Htrue: P Ttrue.
 Variable Hfalse: P Tfalse.
@@ -182,6 +176,7 @@ Fixpoint term_ind (t: term) : P t :=
   | Tabs t => Habs t (term_ind t)
   | Tquant q t => Hquant q t (term_ind t)
   | Tbinop b t1 t2 => Hbinop b t1 t2 (term_ind t1) (term_ind t2)
+  | Teq t1 t2 => Heq t1 t2 (term_ind t1) (term_ind t2)
   | Tnot t => Hnot t (term_ind t)
   | Ttrue => Htrue
   | Tfalse => Hfalse
@@ -202,6 +197,7 @@ Fixpoint traverse_term (f: nat -> nat -> term) l t :=
   | Tabs t => Tabs (traverse_term f (1 + l) t)
   | Tquant q t => Tquant q (traverse_term f (1 + l) t) 
   | Tbinop b t1 t2 => Tbinop b (traverse_term f l t1) (traverse_term f l t2)
+  | Teq t1 t2 => Teq (traverse_term f l t1) (traverse_term f l t2)
   | Tnot t => Tnot (traverse_term f l t)
   | _ => t
   end.
@@ -264,13 +260,143 @@ Proof.
   rewrite Forall_forall in H0; apply H0. apply nth_In; auto.
 Qed.
 
-(* Third: reduction (might need evaluation also for if statements?)*)
+(* Type system *)
 
-(* Fourth: semantics for logic fragment *)
+(*We need a type system before we give the logic semantics because we need
+  to distinguish between propositions and value types (in particular, we cannot
+  quantify over propositions). We could do this by giving a separate inductive
+  type for terms and formulas, but because of "if" expressions, this would have
+  to be mutually recursive, making things more complicated (maybe) *)
 
-(* Fifth: typing relation *)
+(* Semantics for logic fragment *)
 
-(* Sixth: prove lemmas about this*)
+(* We want to give a Prop representing the truth of the logic statement.
+   But this depends on the context: for example, if we have the
+   uninterpreted predicate foo : int -> bool, then foo 3 can be true
+   or false depending on the existing axioms about foo.*)
+
+Section FOLSemantics.
+
+ (* The domain always includes ints, reals, bools, and strings. It may contain other types as well.*)
+ Inductive dom (A: Type) : Type :=
+ | DInt : Z -> dom A
+ | Dreal: R -> dom A
+ | Dstr : string -> dom A
+ | Ddom: A -> dom A.
+ 
+(*An interpretation I includes a base type A, a meaning for each variable,
+ a meaning for each function symbol, and a meaning for each predicate symbol*)
+(*TODO: need to include int, real, string - these are builtin*)
+Record interp (A: Type) :=
+ { 
+   vars: nat -> dom A;
+   funs: funsym -> (list (dom A) -> dom A);
+   preds: predsym -> (list (dom A) -> Prop)
+ }.
+
+(*Cannot use function because of if statements - the predicate we
+ branch on may not be decidable. This has to be mutually recursive
+ because of the Fif_t case: it relies on the interepretation of a formula*)
+
+(*Interpretation for binop*)
+Definition binop_interp (b: binop) (p1 p2: Prop) : Prop :=
+  match b with
+  | Tand => p1 /\ p2
+  | Tor => p1 \/ p2
+  | Timplies => p1 -> p2
+  | Tiff => p1 <-> p2
+  end.
+
+(*Here, we use term in the FOL sense, not in the why3 sense*)
+Inductive term_interp {A: Type} (i: interp A) : term -> (dom A) -> Prop :=
+  | TI_var: forall x,
+    term_interp i (Tvar x) (i.(vars _) x)
+  | TI_constInt: forall z,
+    term_interp i (Tconst (ConstInt z)) (DInt A z)
+  | TI_constReal: forall r,
+    term_interp i (Tconst (ConstReal r)) (Dreal A r)
+  | TI_constStr: forall s,
+    term_interp i (Tconst (ConstStr s)) (Dstr A s)
+  | TI_fun: forall fsym ts ds,
+    Forall (fun x => term_interp i (fst x) (snd x)) (combine ts ds) ->
+    term_interp i (Tlapp (l_func fsym) ts) ((funs _ i) fsym ds)
+  | TI_if_true: forall t1 t2 t3 p d,
+    form_interp i t1 p ->
+    p ->
+    term_interp i t2 d ->
+    term_interp i (Tif t1 t2 t3) d 
+  | TI_if_false: forall t1 t2 t3 p d,
+    form_interp i t1 p ->
+    ~ p ->
+    term_interp i t3 d ->
+    term_interp i (Tif t1 t2 t3) d
+  | TI_let: forall t1 t2 d, (*let x = t1 in t2*)
+      term_interp i (subst t1 0 t2) d ->
+      term_interp i (Tlet t1 t2) d
+with form_interp {A: Type} (i: interp A) : term -> Prop -> Prop :=
+  | FI_true:
+    form_interp i Ttrue True
+  | FI_false:
+    form_interp i Tfalse False
+  | FI_pred: forall psym ts ds,
+    Forall (fun x => term_interp i (fst x) (snd x)) (combine ts ds) ->
+    form_interp i (Tlapp (l_pred psym) ts) ((preds _ i) psym ds)
+  | FI_not: forall f p,
+    form_interp i f p ->
+    form_interp i (Tnot f) (~p)
+  | FI_binop: forall b f1 f2 p1 p2,
+    form_interp i f1 p1 ->
+    form_interp i f2 p2 ->
+    form_interp i (Tbinop b f1 f2) (binop_interp b p1 p2)
+  | FI_eq: forall t1 t2 d1 d2,
+    term_interp i t1 d1 ->
+    term_interp i t2 d2 ->
+    form_interp i (Teq t1 t2) (d1 = d2)
+  | FI_if: forall f1 f2 f3 p1 p2 p3,
+    form_interp i f1 p1 ->
+    form_interp i f2 p2 ->
+    form_interp i f3 p3 ->
+    form_interp i (Tif f1 f2 f3) ((p1 -> p2) /\ (~p1 -> p3))
+  | FI_let: forall t f d p,
+    term_interp i t d ->
+    form_interp i (subst t 0 f) p ->
+    form_interp i (Tlet t f) p
+  | FI_forall: forall f,
+    (forall x, form_interp i (subst x 0 f) True) ->
+    form_interp i (Tquant Tforall f) True
+  | FI_forall_fls: forall f,
+    (exists x, form_interp i (subst x 0 f) False) ->
+    form_interp i (Tquant Tforall f) False
+  | FI_exists: forall f,
+    (exists x, form_interp i (subst x 0 f) True) ->
+    form_interp i (Tquant Texists f) True
+  | FI_exists_fls: forall f,
+    (forall x, form_interp i (subst x 0 f) False) ->
+    form_interp i (Tquant Texists f) False
+  | FI_change_prop: forall f p1 p2,
+    p1 <-> p2 -> 
+    form_interp i f p1 ->
+    form_interp i f p2.
+(*Without the IF cases, this could be a function. That would be MUCH nicer.*)
+(*TODO: do we need false cases for quantifiers?*)
+
+(*Note: this is WRONG! This allows us to quantify over propositions, and it is
+  too strong. We will need to distinguish between values and propositions, either
+  via a type system or with the actual inductive types.*)
+
+(*Some notation:*)
+Notation "i '|=' f" := (form_interp i f True) (at level 40).
+Notation "i '|/=' f" := (form_interp i f False) (at level 40).
+
+(*Let's give an example:*)
+Lemma prove_eq_refl: forall (A: Type) (i: interp A),
+ i |= (Tquant Tforall (Teq (Tvar 0) (Tvar 0))).
+Proof.
+  intros A i. constructor. intros x.
+  simpl_subst_goal.
+  econstructor.
+  2 : constructor.
+Abort.
 
 (*Some definitions in progress/ideas/sketches: *)
 (*
