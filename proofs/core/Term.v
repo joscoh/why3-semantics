@@ -3,50 +3,57 @@ Require Import Coq.ZArith.BinInt.
 Require Import Coq.Reals.Reals.
 Require Import Coq.Lists.List.
 Require Import Lia.
-From Dblib Require Import DblibTactics DeBruijn Environments.
+(*From Dblib Require Import DblibTactics DeBruijn Environments.*)
 (* A smaller core language of types and terms *)
 
 Require Import Util.
 
+(** Types **)
+
 (*Type variable (ex: a)*)
 Definition typevar : Type := string. 
 
+Definition typevar_eq_dec : forall (t1 t2: typevar),
+  {t1 = t2} + {t1 <> t2} := string_dec.
+
 (*Type symbol (ex: list a)*)
-Record typesym : Type := {
+Record typesym : Type := mk_ts {
   ts_name : string;
-  ts_args: list typevar 
-}.
+  ts_arity: nat
+  }.
 
 (*Value types*)
 Inductive vty : Type :=
   | vty_int : vty
   | vty_real : vty
-  | vty_bool : vty
+  (*| vty_bool : vty
   | vty_func: vty -> vty -> vty
-  | vty_pred: vty -> vty
-  | vty_tuple: vty -> vty -> vty
+  | vty_pred: vty -> vty*)
+  (*| vty_tuple: vty -> vty -> vty*)
   | vty_var: typevar -> vty
-  | vty_app: typesym -> list vty -> vty. (*TODO: do we need this? Can we make it non-list?*)
+  | vty_cons: typesym -> list vty -> vty. (*TODO: do we need this? Can we make it non-list?*)
 
-(*Everything is either a value or a prop*)
-Inductive ty : Type :=
-  | ty_val : vty -> ty
-  | ty_prop : ty.
+(*Type substitution (assign meaning to a type variables)*)
+Fixpoint ty_subst (v: typevar) (t: vty) (expr: vty) : vty :=
+  match expr with
+  | vty_int => vty_int
+  | vty_real => vty_real
+  | vty_var tv => if typevar_eq_dec v tv then t else vty_var tv
+  | vty_cons ts typs =>
+      vty_cons ts (map (ty_subst v t) typs)
+  end.
 
-(* We handle function/predicate symbols specially. A function symbol
-   contains a name, a list of arguments (which must be value types),
-   and the return type, which can be a value type or a prop.
-   As far as I can tell, why3 does not allow partial application of these
-   functions, but our core language will (this is OK; we will ensure
-   through the translation and type system that no partially applied
-   terms remain in a well-typed term (TODO: IS THIS OK?))
-   We will have a funsym contain both the types which have already been
-   applied and the return type, which can be a function or a type*)
+(*Substitute a list of typevars*)
+Definition ty_subst_list (vs: list typevar) (ts: list vty) (expr: vty) : vty :=
+  fold_right (fun x acc => ty_subst (fst x) (snd x) acc) expr (combine vs ts).
 
-(* We split function and predicate symbols to help with the logic part *)
+
+(** Function and Predicate Symbols **)
+
 Record funsym :=
   {
     s_name : string;
+    s_params : list typevar;
     s_args: list vty;
     s_ret: vty
   }.
@@ -54,35 +61,16 @@ Record funsym :=
 Record predsym :=
   {
     p_name: string;
+    p_params: list typevar;
     p_args : list vty
   }.
 
-(*Generalized logic symbol*)
-Inductive lsym :=
-  | l_func : funsym -> lsym
-  | l_pred : predsym -> lsym.
-
-Definition lsym_name (l: lsym) : string :=
-  match l with
-  | l_func f => s_name f
-  | l_pred p => p_name p
-  end.
-
-Definition lsym_eq (l1 l2: lsym) : bool :=
-  string_dec (lsym_name l1) (lsym_name l2).
-
-(*We need more than terms - need decls as well - this way we know
-  axioms, lemmas, goals, function bodies*)
+(** Syntax - Terms and Formulas **)
 
 Inductive constant : Type :=
   | ConstInt : Z -> constant
   | ConstReal : R -> constant
   | ConstStr : string -> constant.
-
-(*function/predicate symbol: has arguments and return value*)
-(*Unfortunately, we do need the list (we can't just curry/uncurry)
-  because of the vty/ty distinction - we cannot have functions 
-  which take props as input*)
 
 Inductive quant : Type :=
     | Tforall
@@ -94,6 +82,121 @@ Inductive binop : Type :=
     | Timplies
     | Tiff.
 
+Unset Elimination Schemes.
+(*TODO: nats or strings for variables - substitution should not
+  be problem bc only substitute values*)
+(*No case/match at the moment*)
+Inductive term : Type :=
+  | Tconst: constant -> term
+  | Tvar : nat -> vty -> term
+  | Tfun: funsym -> list vty -> list term -> term
+  | Tlet: term -> vty -> term -> term
+  | Tif: formula -> term -> term -> term
+with formula : Type :=
+  | Fpred: predsym -> list vty -> list term -> formula
+  | Fquant: quant -> vty -> formula -> formula
+  | Fbinop: binop -> formula -> formula -> formula
+  | Fnot: formula -> formula
+  | Ftrue: formula
+  | Ffalse: formula
+  | Flet: term -> vty -> formula -> formula
+  | Fif: formula -> formula -> formula.
+  (*TODO: will need nicer (useful) induction scheme*)
+  Set Elimination Schemes.
+
+(** Typechecking **)
+
+(*Signature*)
+Record sig :=
+  {
+    sig_t : list typesym;
+    sig_f: list funsym;
+    sig_p: list predsym
+  }.
+
+(* Typing rules for types *)
+Inductive valid_type : sig -> vty -> Prop :=
+  | vt_int: forall s,
+    valid_type s vty_int
+  | vt_real: forall s,
+    valid_type s vty_real
+  | vt_tycons: forall s ts vs,
+    In ts (sig_t s) ->
+    length vs = (ts_arity ts) ->
+    Forall (fun x => valid_type s x) vs ->
+    valid_type s (vty_cons ts vs).
+Notation "s '|-' t" := (valid_type s t) (at level 40).
+
+(* Typing rules for terms *)
+Inductive term_has_type: sig -> term -> vty -> Prop :=
+  | T_int: forall s z,
+    term_has_type s (Tconst (ConstInt z)) vty_int
+  | T_real: forall s r,
+    term_has_type s (Tconst (ConstReal r)) vty_real
+  | T_Var: forall s x ty,
+    s |- ty ->
+    term_has_type s (Tvar x ty) ty
+  | T_Fun: forall s (params : list vty) (tms : list term) (f: funsym),
+    In f (sig_f s) ->
+    Forall (valid_type s) params ->
+    (* For all i, [nth i tms] has type [sigma(nth i (s_args f))], where
+      sigma is the type substitution that maps f's type vars to [params] *)
+    Forall (fun x => term_has_type s (fst x) (snd x)) (combine tms
+      (map (ty_subst_list (s_params f) params) (s_args f))) ->
+    term_has_type s (Tfun f params tms) (s_ret f)
+  | T_Let: forall s t1 ty t2 ty2,
+    term_has_type s t1 ty ->
+    term_has_type s t2 ty2 ->
+    term_has_type s (Tlet t1 ty t2) ty2
+    (*TODO: make sure this works with nats as vars*)
+  | T_If: forall s f t1 t2 ty,
+    valid_formula s f ->
+    term_has_type s t1 ty ->
+    term_has_type s t2 ty ->
+    term_has_type s (Tif f t1 t2) ty
+
+(* Typing rules for formulas *)
+with valid_formula: sig -> formula -> Prop :=
+  | F_True: forall s,
+    valid_formula s Ftrue
+  | F_False: forall s,
+    valid_formula s Ffalse
+  | F_Binop: forall s b f1 f2,
+    valid_formula s f1 ->
+    valid_formula s f2 ->
+    valid_formula s (Fbinop b f1 f2)
+  | F_Not: forall s f,
+    valid_formula s f ->
+    valid_formula s (Fnot f)
+  | F_Quant: forall s q ty f,
+    valid_type s ty ->
+    valid_formula s f ->
+    valid_formula s (Fquant q ty f)
+  | F_Pred: forall s (params: list vty) (tms: list term) (p: predsym),
+    (*Very similar to function case*)
+    In p (sig_p s) ->
+    Forall (valid_type s) params ->
+    Forall (fun x => term_has_type s (fst x) (snd x))
+      (combine tms (map (ty_subst_list (p_params p) params) (p_args p))) ->
+    valid_formula s (Fpred p params tms)
+  | F_Let: forall s t ty f,
+    term_has_type s t ty ->
+    valid_formula s f ->
+    valid_formula s (Flet t ty f)
+  | F_If: forall s f1 f2 f3,
+    valid_formula s f1 ->
+    valid_formula s f2 ->
+    valid_formula s f3.
+
+Notation "s '|-' t ':' ty" := (term_has_type s t ty) (at level 40).
+Notation "s '|-' f" := (valid_formula s f) (at level 40).
+
+
+
+
+
+
+(*
 Unset Elimination Schemes.
 (* A simplified term language using nats for binders *)
 Inductive term : Type :=
@@ -465,4 +568,5 @@ Definition upred_prop (ctx: list decl) (p: predsym) (args: list term) : Prop :=
   andl (List.map (term_prop ctx (*WRONG!*)) 
     (List.map (transform_term m) (get_axioms ctx))) ->
   (map_upred m) p args.
+*)
 *)
