@@ -5,6 +5,7 @@ Require Import Coq.Lists.List.
 Require Import Lia.
 (*From Dblib Require Import DblibTactics DeBruijn Environments.*)
 (* A smaller core language of types and terms *)
+Import ListNotations.
 
 Require Import Util.
 
@@ -34,18 +35,62 @@ Inductive vty : Type :=
   | vty_cons: typesym -> list vty -> vty. (*TODO: do we need this? Can we make it non-list?*)
 
 (*Type substitution (assign meaning to a type variables)*)
-Fixpoint ty_subst (v: typevar) (t: vty) (expr: vty) : vty :=
+Fixpoint ty_subst_single (v: typevar) (t: vty) (expr: vty) : vty :=
   match expr with
   | vty_int => vty_int
   | vty_real => vty_real
   | vty_var tv => if typevar_eq_dec v tv then t else vty_var tv
   | vty_cons ts typs =>
-      vty_cons ts (map (ty_subst v t) typs)
+      vty_cons ts (map (ty_subst_single v t) typs)
   end.
 
 (*Substitute a list of typevars*)
-Definition ty_subst_list (vs: list typevar) (ts: list vty) (expr: vty) : vty :=
-  fold_right (fun x acc => ty_subst (fst x) (snd x) acc) expr (combine vs ts).
+Definition ty_subst (vs: list typevar) (ts: list vty) (expr: vty) : vty :=
+  fold_right (fun x acc => ty_subst_single (fst x) (snd x) acc) expr (combine vs ts).
+
+Definition ty_subst_list (vs: list typevar) (ts: list vty) (exprs: list vty) : list vty :=
+  map (ty_subst vs ts) exprs.
+
+(* Sorts *)
+
+(*Get the type variables in a type. There may be duplicates, but that is fine*)
+Fixpoint type_vars (t: vty) : list typevar :=
+  match t with
+  | vty_int => nil
+  | vty_real => nil
+  | vty_var v => [v]
+  | vty_cons sym ts => fold_right (fun x acc => type_vars x ++ acc) nil ts
+  end.
+  
+Definition is_sort (t: vty) : bool :=
+  match (type_vars t) with
+  | nil => true
+  | _ => false
+  end.
+
+Definition sort : Type := {t: vty | is_true (is_sort t)}.
+(*TODO: see if we need an alternate definition*)
+
+Lemma int_is_sort: is_true (is_sort vty_int).
+Proof.
+  unfold is_sort; simpl. auto.
+Qed.
+
+Definition s_int : sort := exist _ vty_int int_is_sort.
+
+Lemma real_is_sort: is_true (is_sort vty_real).
+Proof.
+  unfold is_sort; simpl. auto.
+Qed.
+
+Definition s_real : sort := exist _ vty_real real_is_sort.
+
+Definition sublist {A: Type} (l1 l2: list A) : Prop :=
+    forall x, In x l1 -> In x l2.
+
+(*We want to know that when we substitute in sorts for type variables,
+  the result is a sort *)
+(*TODO: this - after we have better induction principle for types*)
 
 
 (** Function and Predicate Symbols **)
@@ -55,15 +100,40 @@ Record funsym :=
     s_name : string;
     s_params : list typevar;
     s_args: list vty;
-    s_ret: vty
+    s_ret: vty;
+    (*Well-formed - all type variables appear in params*)
+    s_ret_wf: sublist (type_vars s_ret) s_params;
+    s_args_wf: forall x, In x s_args -> sublist (type_vars x) s_params
   }.
 
 Record predsym :=
   {
     p_name: string;
     p_params: list typevar;
-    p_args : list vty
+    p_args : list vty;
+    p_args_wf: forall x, In x p_args -> sublist (type_vars x) p_params
   }.
+
+(*As an example, we define the polymorphic identity function*)
+Section ID.
+
+Definition id_name : string := "id".
+Definition a : string := "a".
+Definition id_params : list typevar := [a].
+Definition id_args: list vty := [vty_var a].
+Definition id_ret: vty := vty_var a.
+Lemma id_ret_wf: sublist (type_vars id_ret) id_params.
+Proof.
+  simpl. unfold id_params, sublist. auto.
+Qed.
+Lemma id_args_wf: forall x, In x id_args -> sublist (type_vars x) id_params.
+Proof.
+  intros x. simpl. intros [Hx| []]; subst. simpl. unfold id_params, sublist.
+  auto.
+Qed. Print funsym.
+Definition idsym := Build_funsym id_name id_params id_args id_ret id_ret_wf id_args_wf.
+
+End ID.
 
 (** Syntax - Terms and Formulas **)
 
@@ -139,10 +209,12 @@ Inductive term_has_type: sig -> term -> vty -> Prop :=
   | T_Fun: forall s (params : list vty) (tms : list term) (f: funsym),
     In f (sig_f s) ->
     Forall (valid_type s) params ->
+    length tms = length (s_args f) ->
+    length params = length (s_params f) ->
     (* For all i, [nth i tms] has type [sigma(nth i (s_args f))], where
       sigma is the type substitution that maps f's type vars to [params] *)
     Forall (fun x => term_has_type s (fst x) (snd x)) (combine tms
-      (map (ty_subst_list (s_params f) params) (s_args f))) ->
+      (map (ty_subst (s_params f) params) (s_args f))) ->
     term_has_type s (Tfun f params tms) (s_ret f)
   | T_Let: forall s t1 ty t2 ty2,
     term_has_type s t1 ty ->
@@ -176,8 +248,10 @@ with valid_formula: sig -> formula -> Prop :=
     (*Very similar to function case*)
     In p (sig_p s) ->
     Forall (valid_type s) params ->
+    length tms = length (p_args p) ->
+    length params = length (p_params p) ->
     Forall (fun x => term_has_type s (fst x) (snd x))
-      (combine tms (map (ty_subst_list (p_params p) params) (p_args p))) ->
+      (combine tms (map (ty_subst (p_params p) params) (p_args p))) ->
     valid_formula s (Fpred p params tms)
   | F_Let: forall s t ty f,
     term_has_type s t ty ->
@@ -190,6 +264,44 @@ with valid_formula: sig -> formula -> Prop :=
 
 Notation "s '|-' t ':' ty" := (term_has_type s t ty) (at level 40).
 Notation "s '|-' f" := (valid_formula s f) (at level 40).
+
+(** Semantics **)
+
+(*Need to prove that this gives sort*)
+
+Fixpoint curry (l: list Type) (ret: Type) : Type :=
+  match l with
+  | nil => ret
+  | x :: t => x -> (curry t ret)
+  end.
+
+  (*Using sorts gives lots of dependent proof obligations anywhere, so we give
+    a slightly different version where we give every type a Type rather than
+    just sorts. We will later prove that we are only dealing with sorts
+    TODO: is this the way to do it? Not sure *)
+
+Record pre_interp := {
+  domain: vty -> Type;
+  domain_int: domain vty_int = Z;
+  domain_real: domain vty_real = R;
+
+  (*This is quite unwieldy (and could be wrong) - need to see if works/can do better*)
+
+  funs: forall (f:funsym) (s: list vty),
+    curry (map domain (ty_subst_list (s_params f) s (s_args f)))
+      (domain (ty_subst (s_params f) s (s_ret f)));
+  preds: forall (p:predsym) (s: list vty),
+    curry (map domain (ty_subst_list (p_params p) s (p_args p)))
+      Prop
+}.
+
+(*Valuations*)
+Record valuation (i: pre_interp) := {
+  v_typevar : typevar -> vty;
+  v_vars: forall (n: nat) (v: vty), (domain i v)
+}.
+
+(*TODO: Semantics*)
 
 
 
