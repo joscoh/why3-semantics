@@ -1,9 +1,6 @@
-Require Import Util.
+Require Import Common.
 Require Import Types.
 Require Import Syntax.
-
-
-Require Export Coq.Bool.Bool.
 
 (** Typechecking **)
 
@@ -128,8 +125,23 @@ Fixpoint typecheck_type (s:sig) (v: vty) : bool :=
 Lemma typecheck_type_correct: forall (s: sig) (v: vty),
   valid_type s v <-> typecheck_type s v = true.
 Proof.
-Admitted.
-(*need better induction principle*)
+  intros s. induction v; simpl; try solve[split; auto; constructor].
+  - split; intros Hty; inversion Hty.
+  - split; intros Hty.
+    + inversion Hty; subst. repeat(apply andb_true_intro; split).
+      simpl_sumbool. apply Nat.eqb_eq. auto.
+      clear Hty H2 H4. induction vs; simpl; auto; intros.
+      inversion H; subst. inversion H5; subst.
+      apply andb_true_intro; split; auto. apply H2; auto.
+    + apply andb_true_iff in Hty; destruct Hty.
+      apply andb_true_iff in H0; destruct H0.
+      simpl_sumbool. apply Nat.eqb_eq in H2. constructor; auto.
+      clear i H2. induction vs; simpl; auto; intros.
+      apply andb_true_iff in H1; destruct H1.
+      inversion H; subst. constructor; auto.
+      apply H4; auto.
+Qed. 
+
 (*
 Fixpoint typecheck_term (t: term) : option vty :=
   match t with

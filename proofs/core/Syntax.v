@@ -61,8 +61,6 @@ Inductive binop : Type :=
     | Tiff.
 
 Unset Elimination Schemes.
-(*TODO: nats or strings for variables - substitution should not
-  be problem bc only substitute values*)
 (*No case/match at the moment*)
 Inductive term : Type :=
   | Tconst: constant -> term

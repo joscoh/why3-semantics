@@ -1,8 +1,9 @@
 -R . why3_sem 
-proofs/Util.v
+proofs/core/Common.v
 proofs/core/Types.v
 proofs/core/Syntax.v
 proofs/core/Typing.v
 proofs/core/Semantics.v
+proofs/Util.v
 proofs/Ty.v
 proofs/Term.v

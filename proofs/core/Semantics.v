@@ -1,8 +1,6 @@
 Require Import Types.
 Require Import Syntax.
 
-Require Export Coq.Bool.Bool.
-
 (** Semantics **)
 
 Fixpoint curry (l: list Type) (ret: Type) : Type :=
@@ -65,24 +63,6 @@ Record valuation (i: pre_interp) := {
   v_typevar : typevar -> sort;
   v_vars: forall (n: nat) (v: vty), (domain i (v_subst (v_typevar) v))
 }.
-
-(*TODO: use ssreflect instead?*)
-Require Import Coq.Logic.Eqdep_dec.
-
-Lemma bool_irrelevance: forall (b: bool) (p1 p2: b), p1 = p2.
-Proof.
-  intros b p1 p2. apply UIP_dec. apply bool_dec.
-Qed.
-
-(*TODO: move*)
-Lemma sort_inj: forall (s1 s2: sort),
-  sort_to_ty s1 = sort_to_ty s2 ->
-  s1 = s2.
-Proof.
-  intros s1 s2; destruct s1; destruct s2; simpl; intros Heq; subst.
-  assert (i = i0) by apply bool_irrelevance.
-  subst; reflexivity.
-Qed.
 
 Section Interp.
 

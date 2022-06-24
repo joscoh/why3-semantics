@@ -1,94 +1,9 @@
 Require Export Coq.Strings.String.
 Require Export Coq.ZArith.BinInt.
 Require Export Coq.Arith.PeanoNat.
-Require Export Coq.Lists.List.
-Require Export Coq.Bool.Bool.
 Require Export Lia.
-Export ListNotations.
 
-Coercion proj_sumbool (A B: Prop) (H: {A} + {B}) : bool :=
-    if H then true else false.
-Coercion is_true : bool >-> Sortclass.
-
-(*TODO: move*)
-
-(*Union on lists with decidable equality*)
-Section Union.
-Context {A: Type}.
-Variable eq_dec: forall (x y : A), {x = y} + {x <> y}.
-
-(*Add all elements in l1 not in l2*)
-Definition union (l1 l2: list A) :=
-    fold_right (fun x acc => if in_dec eq_dec x acc then acc else x :: acc) l2 l1.
-
-Lemma union_nodup: forall (l1 l2: list A),
-  NoDup l2 ->
-  NoDup (union l1 l2).
-Proof.
-  intros l1 l2. induction l1; simpl; auto.
-  intros Hnodup.
-  destruct (in_dec eq_dec a (union l1 l2)); auto.
-  apply NoDup_cons; auto.
-Qed.
-
-Ltac solve_or :=
-  match goal with
-  | |- ?P \/ ?Q => first[left; solve_or | right; solve_or]
-  | |- ?P => solve[auto; try reflexivity]
-  end.
-
-Lemma union_elts: forall (l1 l2: list A) (x: A),
-  In x (union l1 l2) <-> In x l1 \/ In x l2.
-Proof.
-  intros l1 l2. induction l1; simpl; auto.
-  - intros x; split; intros; auto. destruct H as [[] |]; auto.
-  - intros x; split; intros Hin; destruct (in_dec eq_dec a (union l1 l2)).
-    + apply IHl1 in Hin. destruct Hin; solve_or.
-    + destruct Hin; subst; try solve_or. apply IHl1 in H; destruct H; solve_or.
-    + apply IHl1. destruct Hin as [Hin |?]; [destruct Hin; subst |]; try solve_or.
-      apply IHl1; auto.
-    + simpl. destruct Hin as [Hin|?]; [destruct Hin; subst|]; try solve_or.
-      all: right; apply IHl1; solve_or.
-Qed.
-
-Lemma union_remove: forall (l1 l2: list A) (x: A),
-  union (remove eq_dec x l1) (remove eq_dec x l2) =
-  remove eq_dec x (union l1 l2).
-Proof.
-  intros l1 l2. induction l1; simpl; auto.
-  intros x. destruct (eq_dec x a); subst.
-  - destruct (in_dec eq_dec a (union l1 l2)); simpl.
-    + apply IHl1.
-    + destruct (eq_dec a a); auto. contradiction.
-  - simpl. destruct (in_dec eq_dec a (union l1 l2)).
-    + destruct (in_dec eq_dec a (union (remove eq_dec x l1) (remove eq_dec x l2))); auto.
-      exfalso. apply n0. rewrite IHl1. apply in_in_remove; auto.
-    + simpl. destruct (eq_dec x a); subst; try contradiction.
-      destruct (in_dec eq_dec a (union (remove eq_dec x l1) (remove eq_dec x l2))); auto;
-      [| rewrite IHl1; auto].
-      exfalso. apply n0. rewrite IHl1 in i. apply in_remove in i. destruct i; auto.
-Qed.
-
-(*Iterated union*)
-Definition big_union {B: Type} (f: B -> list A) (l: list B) :=
-  fold_right (fun x acc => union (f x) acc) nil l.
-  
-Lemma big_union_nodup: forall {B: Type} (f: B -> list A) (l: list B),
-  NoDup (big_union f l).
-Proof.
-  intros. unfold big_union.
-  remember nil as base. assert (NoDup base) by (subst; constructor).
-  clear Heqbase. generalize dependent base.
-  induction l; simpl; auto.
-  intros base Hbase. apply union_nodup. apply IHl. auto.
-Qed.
-
-
-End Union.
-
-(*TODO: move*)
-(*Lemma NoDup_remove: 
-*)
+Require Export Common.
 
 (*Type variable (ex: a)*)
 Definition typevar : Type := string. 
@@ -113,10 +28,6 @@ Unset Elimination Schemes.
 Inductive vty : Type :=
   | vty_int : vty
   | vty_real : vty
-  (*| vty_bool : vty
-  | vty_func: vty -> vty -> vty
-  | vty_pred: vty -> vty*)
-  (*| vty_tuple: vty -> vty -> vty*)
   | vty_var: typevar -> vty
   | vty_cons: typesym -> list vty -> vty.
 Set Elimination Schemes.
@@ -146,15 +57,6 @@ Fixpoint vty_ind (t: vty) : P t :=
 End TyInd.
 
 (*Decidable equality on types*)
-
-Ltac simpl_sumbool :=
-    match goal with
-    | [H: is_true (proj_sumbool ?x ?y ?z) |- _ ] => destruct z; inversion H; clear H; subst; auto
-    | [H: (proj_sumbool ?x ?y ?z) = true |- _ ] => destruct z; inversion H; clear H; subst; auto
-    | |- is_true (proj_sumbool ?x ?y ?z) => destruct z; subst; auto
-    | |- (proj_sumbool ?x ?y ?z) = true => destruct z; subst; auto
-    end.
-
 Fixpoint vty_eqb (t1 t2: vty) : bool :=
   match t1, t2 with
   | vty_int, vty_int => true
@@ -237,7 +139,6 @@ Fixpoint type_vars (t: vty) : list typevar :=
   | vty_cons sym ts => big_union typevar_eq_dec type_vars ts
   end.
 
-(*TODO: might be easier to do with ssreflect/undup*)
 Lemma type_vars_unique: forall t,
   NoDup (type_vars t).
 Proof.
@@ -253,11 +154,20 @@ Definition is_sort (t: vty) : bool :=
   end.
 
 Definition sort : Type := {t: vty | is_sort t}.
-(*TODO: see if we need an alternate definition*)
+
 Coercion sort_to_ty (s: sort) : vty := @proj1_sig _ _ s.
 
 Definition sorts_to_tys (l: list sort) : list vty :=
   map sort_to_ty l.
+
+Lemma sort_inj: forall (s1 s2: sort),
+  sort_to_ty s1 = sort_to_ty s2 ->
+  s1 = s2.
+Proof.
+  intros s1 s2; destruct s1; destruct s2; simpl; intros Heq; subst.
+  assert (i = i0) by apply bool_irrelevance.
+  subst; reflexivity.
+Qed.
 
 Lemma int_is_sort: is_sort vty_int.
 Proof.
@@ -280,9 +190,6 @@ Proof.
   destruct (type_vars x); auto. inversion i.
 Qed. 
 
-Definition sublist {A: Type} (l1 l2: list A) : Prop :=
-    forall x, In x l1 -> In x l2.
-
 (*We want to know that when we substitute in sorts for type variables,
   the result is a sort *)
 
@@ -300,12 +207,6 @@ Qed.
 
 (*Now, we lift this result to a list*)
 
-(*TODO: move*)
-(*Remove all elements of l1 from l2*)
-Definition remove_all {A: Type} (eq_dec: forall (x y : A), {x = y} + { x <> y })
-  (l1 l2: list A) :=
-  fold_right (remove eq_dec) l2 l1.
-
 Lemma ty_subst_remove_all: forall (vs: list typevar) (ss: list sort) (expr: vty),
   length vs = length ss ->
   type_vars (ty_subst vs (sorts_to_tys ss) expr) =
@@ -318,61 +219,7 @@ Proof.
   rewrite ty_subst_single_sort. f_equal. apply IHvs. assumption.
 Qed.
 
-Lemma remove_filter: forall {A: Type} (eq_dec: forall (x y : A), {x = y} + { x <> y})
-  x l1,
-  remove eq_dec x l1 = filter (fun y => if eq_dec x y then false else true) l1.
-Proof.
-  intros. induction l1; simpl; intros; auto.
-  destruct (eq_dec x a); simpl; auto. rewrite IHl1; auto.
-Qed.
-
-Lemma remove_all_filter: forall {A: Type} (eq_dec: forall (x y : A), {x = y} + { x <> y })
-(l1 l2: list A),
-  remove_all eq_dec l1 l2 = filter (fun x => if in_dec eq_dec x l1 then false else true) l2.
-Proof.
-  intros. revert l2. induction l1; simpl; intros; auto.
-  - induction l2; simpl; intros; auto. rewrite IHl2 at 1; auto.
-  - rewrite IHl1, remove_filter. clear IHl1.
-    induction l2; simpl; intros; auto.
-    destruct (eq_dec a a0); subst; simpl.
-    + destruct (in_dec eq_dec a0 l1); subst; simpl; auto.
-      destruct (eq_dec a0 a0); subst; simpl; try contradiction.
-      apply IHl2.
-    + destruct (in_dec eq_dec a0 l1); subst; simpl; auto.
-      destruct (eq_dec a a0); subst; simpl; auto; try contradiction.
-      rewrite IHl2; reflexivity.
-Qed.
-
-Lemma sublist_nil: forall {A: Type} (l: list A),
-  sublist l nil ->
-  l = nil.
-Proof.
-  intros A l. destruct l; simpl; auto; unfold sublist.
-  intros H. specialize (H a). assert (In a nil) by (apply H; left; auto).
-  inversion H0.
-Qed.
-
-Lemma filter_nil: forall {A: Type} (f: A -> bool) (l: list A),
-  (forall x, In x l -> f x = false) ->
-  filter f l = nil.
-Proof.
-  intros A f l. induction l; simpl; intros; auto.
-  rewrite H; [|left; auto]. apply IHl.
-  intros x Hinx. apply H. right; auto.
-Qed. 
-
-Lemma remove_all_sublist: forall {A: Type} (eq_dec: forall (x y : A), {x = y} + { x <> y })
-(l1 l2: list A),
-  sublist l2 l1 ->
-  remove_all eq_dec l1 l2 = nil.
-Proof.
-  intros. rewrite remove_all_filter.
-  apply filter_nil. unfold sublist in H.
-  intros x Hinx. apply H in Hinx.
-  destruct (in_dec eq_dec x l1); try contradiction. reflexivity.
-Qed.
-
-(*Finally, we get the result we want*)
+(*Finally, we get the results we want*)
 
 Lemma ty_subst_sort: forall (vs: list typevar) (ts: list sort) (expr: vty),
   length vs = length ts ->
