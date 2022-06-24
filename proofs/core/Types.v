@@ -384,3 +384,20 @@ Proof.
   rewrite ty_subst_remove_all; auto.
   apply remove_all_sublist; auto.
 Qed.
+
+(*A version that gives a sort*)
+Definition ty_subst_s (vs: list typevar) (ts: list sort) (Hlen: length vs = length ts)
+  (expr: vty) (Hsub: sublist (type_vars expr) vs) : sort :=
+  exist _ (ty_subst vs (sorts_to_tys ts) expr) (ty_subst_sort vs ts expr Hlen Hsub).
+
+(*Lift the result to lists - can't use map because of proofs *)
+Definition ty_subst_list_s (vs: list typevar) (ts: list sort) (Hlen: length vs = length ts)
+  (exprs: list vty) (Hsubs: forall x, In x exprs -> sublist (type_vars x) vs) : list sort.
+Proof.
+  induction exprs as [| e tl].
+  - apply nil.
+  - apply cons.
+    + assert (sublist (type_vars e) vs). apply Hsubs. left. reflexivity.
+      apply (ty_subst_s vs ts Hlen e H).
+    + apply IHtl. intros x Hinx. apply Hsubs. right. apply Hinx.
+Defined.

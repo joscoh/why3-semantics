@@ -5,48 +5,84 @@ Require Export Coq.Bool.Bool.
 
 (** Semantics **)
 
-(*Need to prove that this gives sort*)
-
 Fixpoint curry (l: list Type) (ret: Type) : Type :=
   match l with
   | nil => ret
   | x :: t => x -> (curry t ret)
   end.
 
-  (*Using sorts gives lots of dependent proof obligations anywhere, so we give
-    a slightly different version where we give every type a Type rather than
-    just sorts. We will later prove that we are only dealing with sorts
-    TODO: is this the way to do it? Not sure *)
+(*Here, we prove that a type substitution that replaces all of the type
+  parameters for a function/pred symbol with sorts results in a sort *)
+Definition subst_funsym_params (f: funsym) (s: list sort) 
+  (Hlen: length (s_params f) = length s): list sort :=
+  ty_subst_list_s (s_params f) s Hlen (s_args f) (s_args_wf f).
+
+Definition subst_predsym_params (p: predsym) (s: list sort)
+  (Hlen: length (p_params p) = length s) : list sort :=
+  ty_subst_list_s (p_params p) s Hlen (p_args p) (p_args_wf p).
 
 Record pre_interp := {
-  domain: vty -> Type;
-  domain_int: domain vty_int = Z;
-  domain_real: domain vty_real = R;
+  domain: sort -> Type;
+  domain_int: domain s_int = Z;
+  domain_real: domain s_real = R;
 
   (*This is quite unwieldy (and could be wrong) - need to see if works/can do better*)
 
-  funs: forall (f:funsym) (s: list vty),
-    curry (map domain (ty_subst_list (s_params f) s (s_args f)))
-      (domain (ty_subst (s_params f) s (s_ret f)));
-  preds: forall (p:predsym) (s: list vty),
-    curry (map domain (ty_subst_list (p_params p) s (p_args p)))
+  funs: forall (f:funsym) (s: list sort) (Hlen: length (s_params f) = length s),
+    curry (map domain (subst_funsym_params f s Hlen))
+      (domain (ty_subst_s (s_params f) s Hlen (s_ret f) (s_ret_wf f)));
+  preds: forall (p:predsym) (s: list sort) (Hlen: length (p_params p) = length s),
+    curry (map domain (subst_predsym_params p s Hlen))
       Prop
 }.
 
-(*Substitute according to function - TODO*)
-Fixpoint v_subst (v: typevar -> vty) (t: vty) : vty :=
+(*Substitute according to function*)
+Fixpoint v_subst_aux (v: typevar -> sort) (t: vty) : vty :=
   match t with
   | vty_int => vty_int
   | vty_real => vty_real
   | vty_var tv => v tv
-  | vty_cons ts vs => vty_cons ts (map (v_subst v) vs)
+  | vty_cons ts vs => vty_cons ts (map (v_subst_aux v) vs)
   end.
+
+Lemma v_subst_aux_sort: forall v t,
+  is_sort (v_subst_aux v t).
+Proof.
+  intros v t. unfold is_sort.
+  assert (H: type_vars (v_subst_aux v t) = nil); [|rewrite H; auto].
+  induction t; simpl; intros; auto.
+  apply sort_type_vars.
+  induction vs; simpl; intros; auto.
+  inversion H; subst.
+  rewrite H2. auto.
+Qed. 
+
+Definition v_subst (v: typevar -> sort) (t: vty) : sort :=
+  exist _ (v_subst_aux v t) (v_subst_aux_sort v t).
 
 (*Valuations*)
 Record valuation (i: pre_interp) := {
-  v_typevar : typevar -> vty;
+  v_typevar : typevar -> sort;
   v_vars: forall (n: nat) (v: vty), (domain i (v_subst (v_typevar) v))
 }.
+
+(*TODO: use ssreflect instead?*)
+Require Import Coq.Logic.Eqdep_dec.
+
+Lemma bool_irrelevance: forall (b: bool) (p1 p2: b), p1 = p2.
+Proof.
+  intros b p1 p2. apply UIP_dec. apply bool_dec.
+Qed.
+
+(*TODO: move*)
+Lemma sort_inj: forall (s1 s2: sort),
+  sort_to_ty s1 = sort_to_ty s2 ->
+  s1 = s2.
+Proof.
+  intros s1 s2; destruct s1; destruct s2; simpl; intros Heq; subst.
+  assert (i = i0) by apply bool_irrelevance.
+  subst; reflexivity.
+Qed.
 
 Section Interp.
 
@@ -54,15 +90,16 @@ Variable i: pre_interp.
 
 Definition val (v: valuation i) t : Type := domain i (v_subst (v_typevar i v) t).
 
-(*TODO: is this the right approach?*)
 Definition z_to_dom (v: valuation i) (z: Z) : val v vty_int.
 Proof.
-  unfold val. simpl. rewrite (domain_int i). apply z.
+  unfold val. erewrite sort_inj. rewrite (domain_int i). apply z.
+  reflexivity.
 Defined.
 
 Definition r_to_dom (v: valuation i) (r: R) : val v vty_real.
 Proof.
-  unfold val. simpl. rewrite (domain_real i). apply r.
+  unfold val. erewrite sort_inj. rewrite (domain_real i). apply r.
+  reflexivity.
 Defined.
 
 Definition var_to_dom (v: valuation i) (n: nat) (t: vty) : val v t.
@@ -104,6 +141,9 @@ Definition bool_of_binop (b: binop) : bool -> bool -> bool :=
   Seemingly classical in paper because formula interpretations are equal to bool.
   We can assume LEM and write a function to evaluate a term/formula instead, 
   should we do this?*)
+
+(* We use bools rather than Props to better match the intended semantics in
+   in the paper. As a bonus, we get proof irrelevance for free. *)
 
 Inductive term_interp: 
   forall (v: valuation i) (tm: term) (ty: vty) (x: domain i (v_subst (v_typevar i v) ty)), Prop :=
