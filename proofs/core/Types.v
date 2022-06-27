@@ -248,3 +248,10 @@ Proof.
       apply (ty_subst_s vs ts Hlen e H).
     + apply IHtl. intros x Hinx. apply Hsubs. right. apply Hinx.
 Defined.
+
+Lemma type_vars_cons: forall ts (vs: list vty),
+  type_vars (vty_cons ts vs) = nil ->
+  (forall x, In x vs -> type_vars x = nil).
+Proof.
+  intros. apply big_union_nil with(x:=x) in H; auto.
+Qed. 
