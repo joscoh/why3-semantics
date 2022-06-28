@@ -80,3 +80,23 @@ with formula : Type :=
   | Fif: formula -> formula -> formula -> formula.
   (*TODO: will need nicer (useful) induction scheme*)
   Set Elimination Schemes.
+
+(*Definitions: functions, predicates, algebraic data types, inductive predicates*)
+
+Inductive alg_datatype : Type :=
+  | alg_def: typesym -> list funsym -> alg_datatype.
+
+Inductive funpred_def : Type :=
+  | fun_def: funsym -> term -> funpred_def
+  | pred_def: predsym -> formula -> funpred_def.
+
+(*TODO: more restrictive than formula - we can either define a predicate that
+  it is valid, or we can define another inductive type *)
+Inductive indpred_def : Type :=
+  | ind_def: predsym -> list formula -> indpred_def.
+
+Inductive def : Type :=
+  | datatype_def : list alg_datatype -> def (*for mutual recursion*)
+  | recursive_def: list funpred_def -> def
+  | inductive_def : list indpred_def -> def.
+
