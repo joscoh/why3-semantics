@@ -1,5 +1,10 @@
 Require Import Types.
 Require Import Syntax.
+Require Import Typing.
+
+Require Import Coq.Program.Equality.
+Require Import Coq.Logic.Eqdep_dec.
+
 
 (** Semantics **)
 
@@ -26,16 +31,30 @@ Proof.
 Qed.
 
 Definition arg_nth {domain: sort -> Type} {l: list sort} (a: arg_list domain l) (i: nat)
-  (Hi: i < length l) (d: sort) : domain (nth i l d).
+ (d: sort) (d': domain d) : domain (nth i l d).
 Proof.
-  rewrite <- (arg_length_sorts domain l a) in Hi.
   generalize dependent i. induction a; simpl; intros.
-  - exfalso. apply (Nat.nlt_0_r i). apply Hi.
-    (*not using lia because it might be hard to compute*) 
+  - destruct i; apply d'. 
   - destruct i.
     + simpl. apply d0.
-    + apply IHa. apply lt_S_n, Hi.
+    + apply IHa.
 Defined.
+
+Lemma arg_list_eq_ext: forall {domain: sort -> Type} {l: list sort} (a1 a2: arg_list domain l)
+  (d: sort) (d': domain d),
+  (forall i, i < length l -> arg_nth a1 i d d' = arg_nth a2 i d d') ->
+  a1 = a2.
+Proof.
+  intros d l a1. dependent induction a1; simpl; intros a2; dependent induction a2;
+  simpl; intros; auto. clear IHa2.
+  assert (d0 = d1). {
+    assert (0 < S(length tl)) by lia.
+    specialize (H 0 H0). simpl in H. auto.
+  }
+  subst. f_equal. apply (IHa1 _ d2 d'). intros.
+  assert (S(i) < S(Datatypes.length tl)) by lia.
+  specialize (H _ H1). simpl in H. auto.
+Qed.
 
 (*Here, we prove that a type substitution that replaces all of the type
   parameters for a function/pred symbol with sorts results in a sort *)
@@ -51,10 +70,15 @@ Definition predsym_sigma_args (p: predsym) (s: list sort)
   (Hlen: length (p_params p) = length s) : list sort :=
   ty_subst_list_s (p_params p) s Hlen (p_args p) (p_args_wf p).
 
+Inductive domain_nonempty (domain: sort -> Type) (s: sort) :=
+  | DE: forall (x: domain s),
+    domain_nonempty domain s.
+
 Record pre_interp := {
   domain: sort -> Type;
   domain_int: domain s_int = Z;
   domain_real: domain s_real = R;
+  domain_ne: forall s, domain_nonempty domain s;
 
   (*This is quite unwieldy (and could be wrong) - need to see if works/can do better*)
 
@@ -100,23 +124,23 @@ Section Interp.
 
 Variable i: pre_interp.
 
-Definition val (v: valuation i) t : Type := domain i (v_subst (v_typevar i v) t).
+Notation val v t  := (domain i (v_subst (v_typevar i v) t)).
 
 Definition z_to_dom (v: valuation i) (z: Z) : val v vty_int.
 Proof.
-  unfold val. erewrite sort_inj. rewrite (domain_int i). apply z.
+  erewrite sort_inj. rewrite (domain_int i). apply z.
   reflexivity.
 Defined.
 
 Definition r_to_dom (v: valuation i) (r: R) : val v vty_real.
 Proof.
-  unfold val. erewrite sort_inj. rewrite (domain_real i). apply r.
+  erewrite sort_inj. rewrite (domain_real i). apply r.
   reflexivity.
 Defined.
 
 Definition var_to_dom (v: valuation i) (n: nat) (t: vty) : val v t.
 Proof.
-  unfold val. apply v_vars. apply n.
+  apply v_vars. apply n.
 Defined. 
 
 (*Substitution*)
@@ -170,6 +194,18 @@ Definition dom_cast (v1 v2: sort) (Hv: v1 = v2) (x: domain i v1) : domain i v2.
 subst. apply x.
 Defined.
 
+Lemma dom_cast_inj: forall (v1 v2: sort) (H: v1 = v2) (d1 d2: domain i v1),
+  dom_cast v1 v2 H d1 = dom_cast v1 v2 H d2 ->
+  d1 = d2.
+Proof.
+  intros. unfold dom_cast in H0. unfold eq_rect_r in H0.
+  unfold eq_rect in H0. destruct (eq_sym H). auto.
+Qed.
+
+Definition dom_int : domain i s_int.
+destruct i. simpl. rewrite domain_int0. apply 0%Z.
+Defined.
+
 
 (* Semantics/Interpretation *)
 
@@ -188,7 +224,7 @@ Definition bool_of_binop (b: binop) : bool -> bool -> bool :=
   | Timplies => implb
   | Tiff => eqb
   end.
-
+Unset Elimination Schemes.
 Inductive term_interp: 
   forall (v: valuation i) (tm: term) (ty: vty) (x: domain i (v_subst (v_typevar i v) ty)), Prop :=
   | TI_int: forall v z,
@@ -244,7 +280,7 @@ Inductive term_interp:
       term_interp v (nth n ts (Tconst (ConstInt 0)))
         (nth n f_arg_typs s_int) 
         (dom_cast _ _ (subst_sort_eq (nth n f_arg_typs s_int) (v_typevar i v)) 
-          (@arg_nth _ f_arg_typs xs n Hn s_int))) ->
+          (@arg_nth _ f_arg_typs xs n s_int dom_int))) ->
     
     (*Again, we must cast the return type of f, for the same reason*)
     term_interp v (Tfun f params ts) f_ret 
@@ -275,11 +311,11 @@ with formula_interp: (valuation i) -> formula -> bool -> Prop :=
   | FI_forallT: forall v ty f,
     (forall x, formula_interp (substi v ty x) f true) ->
     formula_interp v (Fquant Tforall ty f) true
-  | FI_forallF: forall v ty f, (*otherwise we cannot prove that forall is false*)
-    (exists x, formula_interp (substi v ty x) f false) ->
+  | FI_forallF: forall v ty f x, (*otherwise we cannot prove that forall is false*)
+    (formula_interp (substi v ty x) f false) ->
     formula_interp v (Fquant Tforall ty f) false
-  | FI_existsT: forall v ty f,
-    (exists x, formula_interp (substi v ty x) f true) ->
+  | FI_existsT: forall v ty f x,
+    (formula_interp (substi v ty x) f true) ->
     formula_interp v (Fquant Texists ty f) true
   | FI_existsF: forall v ty f,
     (forall x, formula_interp (substi v ty x) f false) ->
@@ -316,10 +352,14 @@ with formula_interp: (valuation i) -> formula -> bool -> Prop :=
       term_interp v (nth n ts (Tconst (ConstInt 0)))
         (nth n p_arg_typs s_int) 
         (dom_cast _ _ (subst_sort_eq (nth n p_arg_typs s_int) (v_typevar i v)) 
-          (@arg_nth _ p_arg_typs xs n Hn s_int))) ->
+          (@arg_nth _ p_arg_typs xs n s_int dom_int))) ->
 
     formula_interp v (Fpred p params ts) (p_interp xs)
     .
+Set Elimination Schemes.
+
+Scheme term_interp_ind := Minimality for term_interp Sort Prop
+with formula_interp_ind := Minimality for formula_interp Sort Prop.
 
 (* Tests/Examples *)
 
@@ -351,3 +391,238 @@ Proof.
 Qed.
 
 End Interp.
+
+(* Some results about interpretations *)
+Section InterpLemmas.
+
+(*There is always a trivial valuation (need for defaults)*)
+Definition triv_val (i: pre_interp) : valuation i.
+apply (Build_valuation i (fun _ => s_int)).
+intros.
+destruct i; simpl. specialize (domain_ne0 (v_subst (fun _ : typevar => s_int) v)).
+inversion domain_ne0. apply x.
+Defined.
+
+Ltac interp_TF :=
+  match goal with
+  | [H1: forall b: bool, formula_interp ?i ?v ?f b -> true = b,
+    H2: formula_interp ?i ?v ?f1 false |- _ ] => apply H1 in H2; inversion H2
+  | [H1: forall b:bool, formula_interp ?i ?v ?f b -> false = b,
+    H2: formula_interp ?i ?v ?f1 true |- _] => apply H1 in H2; inversion H2
+    end.
+
+Lemma nat_eq_irrel: forall {n m: nat} (H1 H2: n = m), H1 = H2.
+Proof.
+  apply UIP_dec. apply Nat.eq_dec.
+Qed.
+
+(* An important theorem: our evaluation mechanism is deterministic: each
+  term and formula evaluate to only one answer. We need to use our
+  mutually recursive induction principle for this, so we actually prove
+  both results simultaneously*)
+
+  Lemma formula_interp_det: forall i v f b1 b2,
+  formula_interp i v f b1 ->
+  formula_interp i v f b2 ->
+  b1 = b2.
+Proof.
+    intros i v f b1 b2 H C. generalize dependent b2. revert H.
+    apply (formula_interp_ind i (fun (v: valuation i) (t: term) (ty: vty)
+      (x: domain i (v_subst (v_typevar i v) ty)) =>
+      (forall x2, term_interp i v t ty x2 -> x = x2))
+      (fun (v: valuation i) (f: formula) (b: bool) =>
+        (forall b2, formula_interp i v f b2 -> b = b2))); intros;
+    try solve[dependent destruction H; reflexivity].
+    + dependent destruction H3; auto.
+      interp_TF.
+    + dependent destruction H3; auto.
+      interp_TF.
+    + dependent destruction H3; auto.
+      apply H0 in H3_; subst.
+      apply H2 in H3_0; auto.
+    + dependent destruction H1; auto.
+      subst f_interp. subst f_interp0. subst v_map. subst v_map0.
+      assert (Hlen = Hlen0) by (apply nat_eq_irrel).
+      subst. f_equal. f_equal. 
+      (*need to know that each individual elt equal, so whole is
+        need eq_ext for arg_list*)
+      apply arg_list_eq_ext with(d:=s_int)(d':=dom_int i). intros n Hn.
+      specialize (H1 n Hn). specialize (H n Hn).
+      specialize (H0 n Hn _ H1). apply dom_cast_inj in H0. auto.
+    + dependent destruction H1. rewrite (H0 _ H1). reflexivity.
+    + dependent destruction H3.
+      apply H0 in H3_; subst. apply H2 in H3_0; subst. reflexivity.
+    + dependent destruction H3; auto. interp_TF.
+    + dependent destruction H3; auto. interp_TF.
+    + dependent destruction H3; auto. apply H0 in H3; subst.
+      apply H2 in H4. auto.
+    + dependent destruction H1; auto.
+      apply H0 in H1. auto.
+    + dependent destruction H1; auto.
+    + dependent destruction H1; auto.
+    + dependent destruction H1; auto.
+      apply H0 in H1; auto.
+    + dependent destruction H4; auto; subst.
+      apply H0 in H4; subst. apply H2 in H5; subst. contradiction.
+    + dependent destruction H4; auto; subst.
+      apply H0 in H4; apply H2 in H5; subst; contradiction.
+    + dependent destruction H1; auto.
+      subst p_interp. subst p_interp0. subst v_map. subst v_map0.
+      assert (Hlen = Hlen0) by (apply nat_eq_irrel).
+      subst. f_equal. 
+      apply arg_list_eq_ext with(d:=s_int)(d':=dom_int i). intros n Hn.
+      specialize (H1 n Hn). specialize (H n Hn).
+      specialize (H0 n Hn _ H1). apply dom_cast_inj in H0. auto.
+Qed.
+
+(*TODO: how to avoid repetition, exact same proof*)
+Lemma term_interp_det: forall i v t ty x1 x2,
+  term_interp i v t ty x1 ->
+  term_interp i v t ty x2 ->
+  x1 = x2.
+Proof.
+  intros i v t ty x1 x2 H C. generalize dependent x2. revert H.
+  apply (term_interp_ind i (fun (v: valuation i) (t: term) (ty: vty)
+    (x: domain i (v_subst (v_typevar i v) ty)) =>
+    (forall x2, term_interp i v t ty x2 -> x = x2))
+    (fun (v: valuation i) (f: formula) (b: bool) =>
+      (forall b2, formula_interp i v f b2 -> b = b2))); intros;
+  try solve[dependent destruction H; reflexivity].
+  + dependent destruction H3; auto.
+    interp_TF.
+  + dependent destruction H3; auto.
+    interp_TF.
+  + dependent destruction H3; auto.
+    apply H0 in H3_; subst.
+    apply H2 in H3_0; auto.
+  + dependent destruction H1; auto.
+    subst f_interp. subst f_interp0. subst v_map. subst v_map0.
+    assert (Hlen = Hlen0) by (apply nat_eq_irrel).
+    subst. f_equal. f_equal. 
+    (*need to know that each individual elt equal, so whole is
+      need eq_ext for arg_list*)
+    apply arg_list_eq_ext with(d:=s_int)(d':=dom_int i). intros n Hn.
+    specialize (H1 n Hn). specialize (H n Hn).
+    specialize (H0 n Hn _ H1). apply dom_cast_inj in H0. auto.
+  + dependent destruction H1. rewrite (H0 _ H1). reflexivity.
+  + dependent destruction H3.
+    apply H0 in H3_; subst. apply H2 in H3_0; subst. reflexivity.
+  + dependent destruction H3; auto. interp_TF.
+  + dependent destruction H3; auto. interp_TF.
+  + dependent destruction H3; auto. apply H0 in H3; subst.
+    apply H2 in H4. auto.
+  + dependent destruction H1; auto.
+    apply H0 in H1. auto.
+  + dependent destruction H1; auto.
+  + dependent destruction H1; auto.
+  + dependent destruction H1; auto.
+    apply H0 in H1; auto.
+  + dependent destruction H4; auto; subst.
+    apply H0 in H4; subst. apply H2 in H5; subst. contradiction.
+  + dependent destruction H4; auto; subst.
+    apply H0 in H4; apply H2 in H5; subst; contradiction.
+  + dependent destruction H1; auto.
+    subst p_interp. subst p_interp0. subst v_map. subst v_map0.
+    assert (Hlen = Hlen0) by (apply nat_eq_irrel).
+    subst. f_equal. 
+    apply arg_list_eq_ext with(d:=s_int)(d':=dom_int i). intros n Hn.
+    specialize (H1 n Hn). specialize (H n Hn).
+    specialize (H0 n Hn _ H1). apply dom_cast_inj in H0. auto.
+Qed.
+
+End InterpLemmas.
+
+(* Interpretation, Satisfiability, Validity *)
+
+(*TODO: this is all without function definitions, inductive
+  types, and inductive predicates. It will be more complex when/if those
+  are added. *)
+
+
+Section Logic.
+
+Variable s : sig.
+
+(*TODO: is well-typedness enough to ensure closed? *)
+Definition closed (f: formula) : Prop := valid_formula s f.
+
+Definition interp : Type := pre_interp.
+
+Definition satisfied_f (i: interp) (f: formula) : Prop :=
+  closed f /\ forall v, formula_interp i v f true.
+
+Definition satisfied_l (i: interp) (l: list formula) : Prop :=
+  Forall (satisfied_f i) l.
+
+Definition sat_f (f: formula) :=
+  exists i, satisfied_f i f.
+    
+Definition sat_l (l: list formula) :=
+  exists i, satisfied_l i l.
+
+Definition valid_f (f: formula) :=
+  forall i, satisfied_f i f.
+
+Definition valid_l (l: list formula) :=
+  forall i, satisfied_l i l.
+
+Definition log_conseq (l: list formula) (f: formula) :=
+  forall i, satisfied_l i l -> satisfied_f i f.
+
+(*Their underlying logic is classical, so they do things a bit
+  differently*)
+Section Classical.
+
+Variable excluded_middle : forall (P: Prop), P \/ ~P.
+
+(*TODO: prove that, with LEM, well-typed term evaluates to a value
+  and well-typed formula evaluates to boolean.
+  Then can prove below.*)
+(*
+Lemma closed_
+
+Lemma formula_true_or_false: forall i v (f: formula),
+  closed f ->
+  formula_interp i v f true \/ formula_interp i v f false.
+Proof.
+  intros. 
+
+Definition valid_f' (f: formula) :=
+  ~ sat_f (Fnot f).
+
+Lemma valid_f_classical: forall f,
+  closed f ->
+  valid_f f <-> valid_f' f.
+Proof.
+  intros f Hclosed. unfold valid_f, valid_f', sat_f; split; intros.
+  - intros [i Hi]. unfold satisfied_f in *. specialize (H i).
+    destruct H; destruct Hi.
+    specialize (H0 (triv_val i)). specialize (H2 (triv_val i)).
+    inversion H2; subst. destruct b; try solve[inversion H5].
+    pose proof (formula_interp_det _ _ _ _ _ H0 H6). inversion H3.
+  - unfold satisfied_f in *. split; auto.
+    intros.  
+
+
+intros l Hl. unfold valid, valid', sat. split; intros.
+  - intros [i Hi]. destruct l as [| f tl]; auto.
+    simpl in *.  
+
+
+(*NOTE: their underlying logic is classical, so they say the following:*)
+Definition log_conseq' (l: list formula) (f: formula) :=
+  ~ sat ((Fnot f) :: l).
+
+Definition excluded_middle := forall (P: Prop), P \/ ~P.
+
+Lemma log_conseq_classical: forall l f,
+  excluded_middle ->
+  log_conseq l f <-> log_conseq' l f.
+
+(*NOTE: they use: *)
+    
+    Forall (fun x => formula_interp )
+    *)
+End Classical.
+
+End Logic.

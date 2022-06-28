@@ -23,7 +23,7 @@ Inductive valid_type : sig -> vty -> Prop :=
     length vs = (ts_arity ts) ->
     Forall (fun x => valid_type s x) vs ->
     valid_type s (vty_cons ts vs).
-Notation "s '|-' t" := (valid_type s t) (at level 40).
+(*Notation "s '|-' t" := (valid_type s t) (at level 40).*)
 
 (* Typing rules for terms *)
 Inductive term_has_type: sig -> term -> vty -> Prop :=
@@ -32,7 +32,7 @@ Inductive term_has_type: sig -> term -> vty -> Prop :=
   | T_real: forall s r,
     term_has_type s (Tconst (ConstReal r)) vty_real
   | T_Var: forall s x ty,
-    s |- ty ->
+    valid_type s ty ->
     term_has_type s (Tvar x ty) ty
   | T_Fun: forall s (params : list vty) (tms : list term) (f: funsym),
     In f (sig_f s) ->
@@ -94,9 +94,9 @@ with valid_formula: sig -> formula -> Prop :=
     term_has_type s t1 ty ->
     term_has_type s t2 ty ->
     valid_formula s (Feq ty t1 t2).
-
+(*
 Notation "s '|-' t ':' ty" := (term_has_type s t ty) (at level 40).
-Notation "s '|-' f" := (valid_formula s f) (at level 40).
+Notation "s '|-' f" := (valid_formula s f) (at level 40).*)
 
 Lemma bool_dec: forall {A: Type} (f: A -> bool),
   (forall x : A, {is_true (f x)} + {~ is_true (f x)}).
@@ -140,8 +140,8 @@ Proof.
       apply andb_true_iff in H1; destruct H1.
       inversion H; subst. constructor; auto.
       apply H4; auto.
-Qed. 
-
+      
+      Qed. 
 (*
 Fixpoint typecheck_term (t: term) : option vty :=
   match t with
