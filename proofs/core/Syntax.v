@@ -108,23 +108,27 @@ Inductive binop : Type :=
     | Timplies
     | Tiff.
 
+Definition vsymbol := string.
+
+Definition vsymbol_eq_dec : forall (x y: vsymbol), {x = y} + {x <> y} := string_dec.
+
 Unset Elimination Schemes.
 (*No case/match at the moment*)
 Inductive term : Type :=
   | Tconst: constant -> term
-  | Tvar : nat -> vty -> term
+  | Tvar : vsymbol -> vty -> term
   | Tfun: funsym -> list vty -> list term -> term
-  | Tlet: term -> vty -> term -> term
+  | Tlet: term -> vsymbol -> vty -> term -> term
   | Tif: formula -> term -> term -> term
 with formula : Type :=
   | Fpred: predsym -> list vty -> list term -> formula
-  | Fquant: quant -> vty -> formula -> formula
+  | Fquant: quant -> vsymbol -> vty -> formula -> formula
   | Feq: vty -> term -> term -> formula
   | Fbinop: binop -> formula -> formula -> formula
   | Fnot: formula -> formula
   | Ftrue: formula
   | Ffalse: formula
-  | Flet: term -> vty -> formula -> formula
+  | Flet: term -> vsymbol -> vty -> formula -> formula
   | Fif: formula -> formula -> formula -> formula.
   (*TODO: will need nicer (useful) induction scheme*)
   Set Elimination Schemes.

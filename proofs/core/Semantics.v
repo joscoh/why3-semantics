@@ -117,7 +117,7 @@ Definition v_subst (v: typevar -> sort) (t: vty) : sort :=
 (*Valuations*)
 Record valuation (i: pre_interp) := {
   v_typevar : typevar -> sort;
-  v_vars: forall (n: nat) (v: vty), (domain i (v_subst (v_typevar) v))
+  v_vars: forall (x: vsymbol) (v: vty), (domain i (v_subst (v_typevar) v))
 }.
 
 Section Interp.
@@ -138,9 +138,9 @@ Proof.
   reflexivity.
 Defined.
 
-Definition var_to_dom (v: valuation i) (n: nat) (t: vty) : val v t.
+Definition var_to_dom (v: valuation i) (x: vsymbol) (t: vty) : val v t.
 Proof.
-  apply v_vars. apply n.
+  apply v_vars. apply x.
 Defined. 
 
 (*Substitution*)
@@ -152,13 +152,13 @@ Defined.
   We will always be replacing variable 0 in a term (the innermost bound variable)
   *)
 
-Definition substi (v: valuation i) (ty: vty) (y: val v ty) : valuation i.
+Definition substi (v: valuation i) (x: vsymbol) (ty: vty) (y: val v ty) : valuation i.
 apply (Build_valuation i (v_typevar i v)).
-intros m ty'. destruct (m =? 0).
+intros m ty'. destruct (vsymbol_eq_dec m x).
 destruct (vty_eq_dec ty ty').
 - subst. apply y.
 - (*trivial case*) apply (v_vars i v m ty').
-- apply (v_vars i v (m - 1) ty').
+- apply (v_vars i v m ty').
 Defined.
 
 (* Some additional lemmas for casting/dependent type obligations *)
@@ -231,8 +231,8 @@ Inductive term_interp:
     term_interp v (Tconst (ConstInt z)) vty_int (z_to_dom v z)
   | TI_real: forall v r,
     term_interp v (Tconst (ConstReal r)) vty_real (r_to_dom v r)
-  | TI_var: forall v (n: nat) (ty: vty),
-    term_interp v (Tvar n ty) ty (var_to_dom v n ty)
+  | TI_var: forall v (x: vsymbol) (ty: vty),
+    term_interp v (Tvar x ty) ty (var_to_dom v x ty)
   | TI_iftrue: forall v f t1 t2 ty x,
     formula_interp v f true ->
     term_interp v t1 ty x ->
@@ -242,10 +242,10 @@ Inductive term_interp:
     term_interp v t2 ty x ->
     term_interp v (Tif f t1 t2) ty x
   (*substitution changes the valuation *)
-  | TI_let: forall v t1 t2 ty1 ty2 x1 x2,
+  | TI_let: forall v t1 (x: vsymbol) t2 ty1 ty2 x1 x2,
     term_interp v t1 ty1 x1 ->
-    term_interp (substi v ty1 x1) t2 ty2 x2 ->
-    term_interp v (Tlet t1 ty1 t2) ty2 x2
+    term_interp (substi v x ty1 x1) t2 ty2 x2 ->
+    term_interp v (Tlet t1 x ty1 t2) ty2 x2
   | TI_func: forall (v: valuation i) (f: funsym) (params: list vty) (ts: list term) 
     (Hlen: length (s_params f) = length params) xs,
 
@@ -304,22 +304,22 @@ with formula_interp: (valuation i) -> formula -> bool -> Prop :=
     formula_interp v f false ->
     formula_interp v f2 b ->
     formula_interp v (Fif f f1 f2) b
-  | FI_let: forall v t ty f x b,
-    term_interp v t ty x ->
-    formula_interp (substi v ty x) f b ->
-    formula_interp v (Flet t ty f) b
-  | FI_forallT: forall v ty f,
-    (forall x, formula_interp (substi v ty x) f true) ->
-    formula_interp v (Fquant Tforall ty f) true
-  | FI_forallF: forall v ty f x, (*otherwise we cannot prove that forall is false*)
-    (formula_interp (substi v ty x) f false) ->
-    formula_interp v (Fquant Tforall ty f) false
-  | FI_existsT: forall v ty f x,
-    (formula_interp (substi v ty x) f true) ->
-    formula_interp v (Fquant Texists ty f) true
-  | FI_existsF: forall v ty f,
-    (forall x, formula_interp (substi v ty x) f false) ->
-    formula_interp v (Fquant Texists ty f) false
+  | FI_let: forall v t (x: vsymbol) ty f x1 b,
+    term_interp v t ty x1 ->
+    formula_interp (substi v x ty x1) f b ->
+    formula_interp v (Flet t x ty f) b
+  | FI_forallT: forall v x ty f,
+    (forall d, formula_interp (substi v x ty d) f true) ->
+    formula_interp v (Fquant Tforall x ty f) true
+  | FI_forallF: forall v x ty f d, (*otherwise we cannot prove that forall is false*)
+    (formula_interp (substi v x ty d) f false) ->
+    formula_interp v (Fquant Tforall x ty f) false
+  | FI_existsT: forall v x ty f d,
+    (formula_interp (substi v x ty d) f true) ->
+    formula_interp v (Fquant Texists x ty f) true
+  | FI_existsF: forall v x ty f,
+    (forall d, formula_interp (substi v x ty d) f false) ->
+    formula_interp v (Fquant Texists x ty f) false
   | FI_eqT: forall v ty t1 t2 x1 x2, (*TODO: assume decidable equality?*)
     term_interp v t1 ty x1 ->
     term_interp v t2 ty x2 ->
@@ -379,16 +379,21 @@ Proof.
   intros A P [x Hx] Hall. assert (P x) by apply Hall. auto.
 Qed.
 
+Section Ex.
+
+Local Open Scope string_scope.
 (*Let's give an example: prove that equality is reflexive*)
 Lemma prove_eq_refl: forall (v: valuation i) (a: vty),
-  formula_interp v (Fquant Tforall a (Feq a (Tvar 0 a) (Tvar 0 a))) true.
+  formula_interp v (Fquant Tforall "x" a (Feq a (Tvar "x" a) (Tvar "x" a))) true.
 Proof.
-  intros v a. constructor. intros x.
+  intros v a. constructor. intros d.
   eapply FI_eqT. 
   - apply TI_var.
   - apply TI_var.
   - reflexivity. 
 Qed.
+
+End Ex.
 
 End Interp.
 
@@ -400,7 +405,7 @@ Definition triv_val (i: pre_interp) : valuation i.
 apply (Build_valuation i (fun _ => s_int)).
 intros.
 destruct i; simpl. specialize (domain_ne0 (v_subst (fun _ : typevar => s_int) v)).
-inversion domain_ne0. apply x.
+inversion domain_ne0. apply x0.
 Defined.
 
 Ltac interp_TF :=

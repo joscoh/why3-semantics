@@ -44,10 +44,10 @@ Inductive term_has_type: sig -> term -> vty -> Prop :=
     Forall (fun x => term_has_type s (fst x) (snd x)) (combine tms
       (map (ty_subst (s_params f) params) (s_args f))) ->
     term_has_type s (Tfun f params tms) (s_ret f)
-  | T_Let: forall s t1 ty t2 ty2,
+  | T_Let: forall s t1 x ty t2 ty2,
     term_has_type s t1 ty ->
     term_has_type s t2 ty2 ->
-    term_has_type s (Tlet t1 ty t2) ty2
+    term_has_type s (Tlet t1 x ty t2) ty2
     (*TODO: make sure this works with nats as vars*)
   | T_If: forall s f t1 t2 ty,
     valid_formula s f ->
@@ -68,10 +68,10 @@ with valid_formula: sig -> formula -> Prop :=
   | F_Not: forall s f,
     valid_formula s f ->
     valid_formula s (Fnot f)
-  | F_Quant: forall s q ty f,
+  | F_Quant: forall s q x ty f,
     valid_type s ty ->
     valid_formula s f ->
-    valid_formula s (Fquant q ty f)
+    valid_formula s (Fquant q x ty f)
   | F_Pred: forall s (params: list vty) (tms: list term) (p: predsym),
     (*Very similar to function case*)
     In p (sig_p s) ->
@@ -81,10 +81,10 @@ with valid_formula: sig -> formula -> Prop :=
     Forall (fun x => term_has_type s (fst x) (snd x))
       (combine tms (map (ty_subst (p_params p) params) (p_args p))) ->
     valid_formula s (Fpred p params tms)
-  | F_Let: forall s t ty f,
+  | F_Let: forall s t x ty f,
     term_has_type s t ty ->
     valid_formula s f ->
-    valid_formula s (Flet t ty f)
+    valid_formula s (Flet t x ty f)
   | F_If: forall s f1 f2 f3,
     valid_formula s f1 ->
     valid_formula s f2 ->
