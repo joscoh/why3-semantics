@@ -25,6 +25,38 @@ Inductive valid_type : sig -> vty -> Prop :=
     valid_type s (vty_cons ts vs).
 (*Notation "s '|-' t" := (valid_type s t) (at level 40).*)
 
+(*Typing rules for patterns*)
+Inductive pattern_has_type: sig -> pattern -> vty -> Prop :=
+  | P_Var: forall s x ty,
+    valid_type s ty ->
+    pattern_has_type s (Pvar x ty) ty
+  | P_Wild: forall s ty,
+    valid_type s ty ->
+    pattern_has_type s Pwild ty
+  | P_Constr: forall s (params : list vty) (ps : list pattern) (f: funsym),
+    In f (sig_f s) ->
+    Forall (valid_type s) params ->
+    length ps = length (s_args f) ->
+    length params = length (s_params f) ->
+    (* For all i, [nth i tms] has type [sigma(nth i (s_args f))], where
+      sigma is the type substitution that maps f's type vars to [params] *)
+    let sigma : vty -> vty := ty_subst (s_params f) params in
+    Forall (fun x => pattern_has_type s (fst x) (snd x)) (combine ps
+      (map sigma (s_args f))) ->
+    (* No free variables in common *)
+    (forall i j d x, i < length ps -> j < length ps -> i <> j ->
+      ~(In x (pat_fv (nth i ps d)) /\ In x (pat_fv (nth j ps d)))) ->
+        pattern_has_type s (Pconstr f params ps) (sigma (s_ret f))
+  | P_Or: forall s p1 p2 ty,
+    pattern_has_type s p1 ty ->
+    pattern_has_type s p2 ty ->
+    (forall x, In x (pat_fv p1) <-> In x (pat_fv p2)) (*TODO: change to set eq*) ->
+    pattern_has_type s (Por p1 p2) ty
+  | P_Bind: forall s x ty p,
+    ~ In x (pat_fv p) ->
+    pattern_has_type s p ty ->
+    pattern_has_type s (Pvar x ty) ty.
+
 (* Typing rules for terms *)
 Inductive term_has_type: sig -> term -> vty -> Prop :=
   | T_int: forall s z,
@@ -41,6 +73,7 @@ Inductive term_has_type: sig -> term -> vty -> Prop :=
     length params = length (s_params f) ->
     (* For all i, [nth i tms] has type [sigma(nth i (s_args f))], where
       sigma is the type substitution that maps f's type vars to [params] *)
+    let sigma : vty -> vty := ty_subst (s_params f) params in
     Forall (fun x => term_has_type s (fst x) (snd x)) (combine tms
       (map (ty_subst (s_params f) params) (s_args f))) ->
     term_has_type s (Tfun f params tms) (s_ret f)
@@ -54,6 +87,9 @@ Inductive term_has_type: sig -> term -> vty -> Prop :=
     term_has_type s t1 ty ->
     term_has_type s t2 ty ->
     term_has_type s (Tif f t1 t2) ty
+  (*TODO: add T_Match - with ADT and check to ensure all cases covered*)
+  (*Need notion of what is matched by pattern*)
+
 
 (* Typing rules for formulas *)
 with valid_formula: sig -> formula -> Prop :=
@@ -78,8 +114,9 @@ with valid_formula: sig -> formula -> Prop :=
     Forall (valid_type s) params ->
     length tms = length (p_args p) ->
     length params = length (p_params p) ->
+    let sigma : vty -> vty := ty_subst (p_params p) params in
     Forall (fun x => term_has_type s (fst x) (snd x))
-      (combine tms (map (ty_subst (p_params p) params) (p_args p))) ->
+      (combine tms (map sigma (p_args p))) ->
     valid_formula s (Fpred p params tms)
   | F_Let: forall s t x ty f,
     term_has_type s t ty ->

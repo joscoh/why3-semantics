@@ -113,6 +113,13 @@ Definition vsymbol := string.
 Definition vsymbol_eq_dec : forall (x y: vsymbol), {x = y} + {x <> y} := string_dec.
 
 Unset Elimination Schemes.
+Inductive pattern : Type :=
+  | Pvar : string -> vty -> pattern
+  | Pconstr : funsym -> list vty -> list pattern -> pattern
+  | Pwild : pattern
+  | Por: pattern -> pattern -> pattern
+  | Pbind: pattern -> string -> vty -> pattern.
+
 (*No case/match at the moment*)
 Inductive term : Type :=
   | Tconst: constant -> term
@@ -120,6 +127,7 @@ Inductive term : Type :=
   | Tfun: funsym -> list vty -> list term -> term
   | Tlet: term -> vsymbol -> vty -> term -> term
   | Tif: formula -> term -> term -> term
+  | Tmatch: term -> list (pattern * term) -> term
 with formula : Type :=
   | Fpred: predsym -> list vty -> list term -> formula
   | Fquant: quant -> vsymbol -> vty -> formula -> formula
@@ -129,9 +137,20 @@ with formula : Type :=
   | Ftrue: formula
   | Ffalse: formula
   | Flet: term -> vsymbol -> vty -> formula -> formula
-  | Fif: formula -> formula -> formula -> formula.
+  | Fif: formula -> formula -> formula -> formula
+  | Fmatch: term -> list (pattern * formula) -> formula.
   (*TODO: will need nicer (useful) induction scheme*)
-  Set Elimination Schemes.
+Set Elimination Schemes.
+
+(*Free variables of a pattern*)
+Fixpoint pat_fv (p: pattern) : list vsymbol :=
+  match p with
+  | Pvar x t => [x]
+  | Pwild => []
+  | Pconstr _ _ ps => big_union vsymbol_eq_dec pat_fv ps
+  | Por p1 p2 => union vsymbol_eq_dec (pat_fv p1) (pat_fv p2)
+  | Pbind p x t => union vsymbol_eq_dec (pat_fv p) [x]
+  end.
 
 (*Definitions: functions, predicates, algebraic data types, inductive predicates*)
 
