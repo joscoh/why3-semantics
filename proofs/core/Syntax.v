@@ -22,6 +22,60 @@ Record predsym :=
     p_args_wf: forall x, In x p_args -> sublist (type_vars x) p_params
   }.
 
+(*Check for sublist (to enable building these structures)*)
+Definition check_sublist (l1 l2: list typevar) : bool :=
+  forallb (fun x => in_dec typevar_eq_dec x l2) l1.
+
+Lemma check_sublist_correct: forall l1 l2,
+  reflect (sublist l1 l2) (check_sublist l1 l2).
+Proof.
+  intros. destruct (check_sublist l1 l2) eqn : Hsub.
+  - unfold check_sublist in Hsub. rewrite forallb_forall in Hsub.
+    apply ReflectT. unfold sublist; intros.
+    apply Hsub in H. simpl_sumbool.
+  - apply ReflectF. unfold sublist. intro.
+    assert (check_sublist l1 l2 = true). {
+      apply forallb_forall. intros. simpl_sumbool.
+    }
+    rewrite H0 in Hsub; inversion Hsub.
+Qed.
+
+Definition check_args (params: list typevar) (args: list vty) : bool :=
+  forallb (fun x => check_sublist (type_vars x) params) args.
+
+(*Would be easier with ssreflect*)
+Lemma check_args_correct: forall params args,
+  reflect (forall x, In x args -> sublist (type_vars x) params) (check_args params args).
+Proof.
+  intros. destruct (check_args params args) eqn : Hargs.
+  - unfold check_args in Hargs. rewrite forallb_forall in Hargs.
+    apply ReflectT. intros. apply Hargs in H.
+    apply (reflect_iff _  _ (check_sublist_correct (type_vars x) params)) in H. auto.
+  - apply ReflectF. intro C.
+    assert (check_args params args = true). {
+      apply forallb_forall. intros. apply C in H.
+      apply (reflect_iff _ _ (check_sublist_correct (type_vars x) params)). auto.
+    }
+    rewrite H in Hargs; inversion Hargs.
+Qed.
+
+Definition mk_funsym (name: string) (params : list typevar) (args: list vty)
+  (ret: vty) : (check_args params args = true) ->
+    (check_sublist (type_vars ret) params = true) -> funsym.
+Proof.
+  intros. econstructor.
+  apply name.
+  apply (reflect_iff _ _ (check_sublist_correct (type_vars ret) params)). assumption.
+  apply (reflect_iff _ _ (check_args_correct params args)). assumption.
+Defined.
+
+Definition mk_predsym (name: string) (params: list typevar) (args: list vty) :
+  (check_args params args = true) -> predsym.
+Proof.
+  intros. econstructor.
+  apply name. apply (reflect_iff _ _ (check_args_correct params args)). assumption.
+Defined.
+
 (*As an example, we define the polymorphic identity function*)
 Section ID.
 
@@ -30,16 +84,10 @@ Definition a : string := "a".
 Definition id_params : list typevar := [a].
 Definition id_args: list vty := [vty_var a].
 Definition id_ret: vty := vty_var a.
-Lemma id_ret_wf: sublist (type_vars id_ret) id_params.
-Proof.
-  simpl. unfold id_params, sublist. auto.
-Qed.
-Lemma id_args_wf: forall x, In x id_args -> sublist (type_vars x) id_params.
-Proof.
-  intros x. simpl. intros [Hx| []]; subst. simpl. unfold id_params, sublist.
-  auto.
-Qed. 
-Definition idsym := Build_funsym id_name id_params id_args id_ret id_ret_wf id_args_wf.
+
+Definition id_fs : funsym.
+apply (mk_funsym id_name id_params id_args id_ret); reflexivity.
+Defined.
 
 End ID.
 
@@ -99,4 +147,3 @@ Inductive def : Type :=
   | datatype_def : list alg_datatype -> def (*for mutual recursion*)
   | recursive_def: list funpred_def -> def
   | inductive_def : list indpred_def -> def.
-
