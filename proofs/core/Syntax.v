@@ -155,7 +155,7 @@ Fixpoint pat_fv (p: pattern) : list vsymbol :=
 (*Definitions: functions, predicates, algebraic data types, inductive predicates*)
 
 Inductive alg_datatype : Type :=
-  | alg_def: typesym -> list funsym -> alg_datatype.
+  | alg_def: typesym -> list typevar -> list funsym -> alg_datatype.
 
 Inductive funpred_def : Type :=
   | fun_def: funsym -> term -> funpred_def
@@ -175,7 +175,7 @@ Definition typesyms_of_def (d: def) : list typesym :=
   match d with
   | datatype_def la => map (fun a =>
       match a with
-      | alg_def ts _ => ts
+      | alg_def ts _ _ => ts
       end) la
   | recursive_def _ => nil
   | inductive_def _ => nil
@@ -185,7 +185,7 @@ Definition funsyms_of_def (d: def) : list funsym :=
   match d with
   | datatype_def la => concat ((map (fun a =>
     match a with
-    | alg_def _ fs => fs
+    | alg_def _ _ fs => fs
     end)) la)
   | recursive_def lf =>
     fold_right (fun x acc => match x with
@@ -207,4 +207,5 @@ Definition predsyms_of_def (d: def) : list predsym :=
     match a with
     | ind_def ps _ => ps
     end) is
-  end.
+    
+    end.

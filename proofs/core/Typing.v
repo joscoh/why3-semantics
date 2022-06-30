@@ -237,3 +237,48 @@ Definition wf_context (s: sig) (gamma: context) :=
   NoDup (concat (map predsyms_of_def gamma)).
 
 (** Validity of definitions *)
+
+(** Algebraic Data Types **)
+
+(*For an algebraic datatype to be valid, the following must hold:
+  1. All constructors must have the correct type and type parameters
+  2. The type must be inhabited (there must be 1 constructor with
+    only inhabited types)
+  3. Instances of the type must appear in strictly positive positions *)
+
+(*Types*)
+(*All constructors have the correct return type and the same parameters as
+  the declaration*)
+Definition adt_valid_type (a : alg_datatype) : Prop :=
+  match a with
+  | alg_def ts tvars constrs => 
+    length tvars = ts_arity ts /\
+    Forall (fun (c: funsym) => 
+      (s_params c) = tvars /\ (s_ret c) = vty_cons ts (map vty_var tvars)) constrs
+  end.
+
+(*Inhabited types*)
+
+Fixpoint vty_inhab (f: typesym -> list funsym) 
+  (ninhab_vars: list typevar) (seen_typesyms: list typesym) (t: vty) : bool :=
+  match t with
+  | vty_int => true
+  | vty_real => true
+  | vty_var v => negb (in_dec typevar_eq_dec v ninhab_vars)
+  | vty_cons ts vtys => 
+    let bad_vars : list typevar := nil (*TODO*) in
+    typesym_inhab f bad_vars seen_typesyms ts
+  end
+with typesym_inhab (f: typesym -> list funsym) (ninhab_vars: list typevar)
+  (seen_typesyms : list typesym) (ts: typesym) : bool :=
+  match (f ts) with
+  | nil => true (*TODO*)
+  | _ :: _ => existsb 
+    (fun c => constructor_inhab f ninhab_vars (ts :: seen_typesyms) c) (f ts)
+  end
+
+with constructor_inhab (f: typesym -> list funsym) (ninhab_vars: list typevar)
+  (seen_typesyms : list typesym) (c: funsym) : bool :=
+  forallb (fun t => vty_inhab f ninhab_vars seen_typesyms t) (s_args c).
+  
+(*Will prove by showing that this implies existence of a type*)
