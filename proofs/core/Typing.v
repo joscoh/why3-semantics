@@ -50,7 +50,7 @@ Inductive pattern_has_type: sig -> pattern -> vty -> Prop :=
   | P_Or: forall s p1 p2 ty,
     pattern_has_type s p1 ty ->
     pattern_has_type s p2 ty ->
-    (forall x, In x (pat_fv p1) <-> In x (pat_fv p2)) (*TODO: change to set eq*) ->
+    (forall x, In x (pat_fv p1) <-> In x (pat_fv p2)) ->
     pattern_has_type s (Por p1 p2) ty
   | P_Bind: forall s x ty p,
     ~ In x (pat_fv p) ->
@@ -87,8 +87,13 @@ Inductive term_has_type: sig -> term -> vty -> Prop :=
     term_has_type s t1 ty ->
     term_has_type s t2 ty ->
     term_has_type s (Tif f t1 t2) ty
-  (*TODO: add T_Match - with ADT and check to ensure all cases covered*)
-  (*Need notion of what is matched by pattern*)
+  | T_Match: forall s tm ty1 (ps: list (pattern * term)) ty2,
+    (*we defer the check for algebraic datatypes or exhaustiveness until
+      later, because we need an additional context*)
+    term_has_type s tm ty1 ->
+    Forall (fun x => pattern_has_type s (fst x) ty1) ps ->
+    Forall (fun x => term_has_type s (snd x) ty2) ps ->
+    term_has_type s (Tmatch tm ps) ty2
 
 
 (* Typing rules for formulas *)
@@ -130,7 +135,12 @@ with valid_formula: sig -> formula -> Prop :=
   | F_Eq: forall s ty t1 t2,
     term_has_type s t1 ty ->
     term_has_type s t2 ty ->
-    valid_formula s (Feq ty t1 t2).
+    valid_formula s (Feq ty t1 t2)
+  | F_Match: forall s tm ty (ps: list (pattern * formula)),
+    term_has_type s tm ty ->
+    Forall(fun x => pattern_has_type s (fst x) ty) ps ->
+    Forall (fun x => valid_formula s (snd x)) ps ->
+    valid_formula s (Fmatch tm ps).
 (*
 Notation "s '|-' t ':' ty" := (term_has_type s t ty) (at level 40).
 Notation "s '|-' f" := (valid_formula s f) (at level 40).*)
@@ -177,8 +187,7 @@ Proof.
       apply andb_true_iff in H1; destruct H1.
       inversion H; subst. constructor; auto.
       apply H4; auto.
-      
-      Qed. 
+Qed. 
 (*
 Fixpoint typecheck_term (t: term) : option vty :=
   match t with
@@ -188,3 +197,43 @@ Fixpoint typecheck_term (t: term) : option vty :=
   | Tvar n v => if typecheck_type v then Some v else None
   (*TODO: later*)
 *)
+
+(* Well-formed signmatures and Contexts *)
+
+(* A well-formed signature requires all types that appear in a function/predicate
+  symbol to be well-typed and for all free type variables in these types to appear
+  in the function/predicate type parameters*)
+Definition wf_sig (s: sig) : Prop :=
+  (*For function symbols:*)
+  Forall (fun (f: funsym) =>
+    Forall (fun (t: vty) => 
+      valid_type s t /\ Forall (fun (fv: typevar) => In fv (s_params f)) (type_vars t)
+    ) ((s_ret f) :: (s_args f))
+  ) (sig_f s) /\
+  (*Predicate symbols are quite similar*)
+  Forall (fun (p: predsym) =>
+    Forall (fun (t: vty) => 
+      valid_type s t /\ Forall (fun (fv: typevar) => In fv (p_params p)) (type_vars t)
+    ) (p_args p)
+  ) (sig_p s).
+
+(*A context includes definitions for some of the types/functions/predicates in
+  a signature*)
+Definition context := list def.
+
+(*A context gamma extending signature s is well-formed if all type, function, and
+  predicate symbols in gamma appear in s, and none appear more than once*)
+(*Note: we do not check the type/function/pred symbols within the terms and formulas
+  in the definition - these will be checked for the validity check for each
+  definition.*)
+Definition wf_context (s: sig) (gamma: context) :=
+  Forall (fun (d: def) => 
+    Forall (fun (t: typesym) => In t (sig_t s)) (typesyms_of_def d) /\
+    Forall (fun (f: funsym) => In f (sig_f s)) (funsyms_of_def d) /\
+    Forall (fun (p: predsym) => In p (sig_p s)) (predsyms_of_def d)
+  ) gamma /\
+  NoDup (concat (map typesyms_of_def gamma)) /\
+  NoDup (concat (map funsyms_of_def gamma)) /\
+  NoDup (concat (map predsyms_of_def gamma)).
+
+(** Validity of definitions *)

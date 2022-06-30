@@ -170,3 +170,41 @@ Inductive def : Type :=
   | datatype_def : list alg_datatype -> def (*for mutual recursion*)
   | recursive_def: list funpred_def -> def
   | inductive_def : list indpred_def -> def.
+
+Definition typesyms_of_def (d: def) : list typesym :=
+  match d with
+  | datatype_def la => map (fun a =>
+      match a with
+      | alg_def ts _ => ts
+      end) la
+  | recursive_def _ => nil
+  | inductive_def _ => nil
+  end.
+
+Definition funsyms_of_def (d: def) : list funsym :=
+  match d with
+  | datatype_def la => concat ((map (fun a =>
+    match a with
+    | alg_def _ fs => fs
+    end)) la)
+  | recursive_def lf =>
+    fold_right (fun x acc => match x with
+      | fun_def fs _ => fs :: acc
+      | _ => acc
+      end) nil lf
+  | inductive_def _ => nil
+  end.
+
+Definition predsyms_of_def (d: def) : list predsym :=
+  match d with
+  | datatype_def _ => nil
+  | recursive_def lf =>
+    fold_right (fun x acc => match x with
+    | pred_def ps _ => ps :: acc
+    | _ => acc
+    end) nil lf
+  | inductive_def is => map (fun a =>
+    match a with
+    | ind_def ps _ => ps
+    end) is
+  end.
