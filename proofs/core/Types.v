@@ -14,13 +14,14 @@ Definition typevar_eq_dec : forall (t1 t2: typevar),
 (*Type symbol (ex: list a)*)
 Record typesym : Type := mk_ts {
   ts_name : string;
-  ts_arity: nat
+  ts_args : list typevar
   }.
 
 Lemma typesym_eq_dec: forall (t1 t2: typesym),
   {t1 = t2} + {t1 <> t2}.
 Proof.
-  decide equality. apply Nat.eq_dec. apply string_dec.
+  decide equality. apply list_eq_dec. apply typevar_eq_dec.
+  apply string_dec.
 Defined.
 
 (*Value types*)

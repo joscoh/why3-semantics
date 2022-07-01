@@ -13,6 +13,7 @@ Record sig :=
   }.
 
 (* Typing rules for types *)
+
 Inductive valid_type : sig -> vty -> Prop :=
   | vt_int: forall s,
     valid_type s vty_int
@@ -20,8 +21,9 @@ Inductive valid_type : sig -> vty -> Prop :=
     valid_type s vty_real
   | vt_tycons: forall s ts vs,
     In ts (sig_t s) ->
-    length vs = (ts_arity ts) ->
-    Forall (fun x => valid_type s x) vs ->
+    length vs = length (ts_args ts) ->
+    (forall x, In x vs -> valid_type s x) ->
+    (*Forall (fun x => valid_type s x) vs ->*)
     valid_type s (vty_cons ts vs).
 (*Notation "s '|-' t" := (valid_type s t) (at level 40).*)
 
@@ -160,7 +162,7 @@ Fixpoint typecheck_type (s:sig) (v: vty) : bool :=
   | vty_var tv => false
   | vty_cons ts vs => 
       In_dec typesym_eq_dec ts (sig_t s) &&
-      Nat.eqb (length vs) (ts_arity ts) &&
+      Nat.eqb (length vs) (length (ts_args ts)) &&
       (fix check_list (l: list vty) : bool :=
       match l with
       | nil => true
@@ -178,16 +180,17 @@ Proof.
     + inversion Hty; subst. repeat(apply andb_true_intro; split).
       simpl_sumbool. apply Nat.eqb_eq. auto.
       clear Hty H2 H4. induction vs; simpl; auto; intros.
-      inversion H; subst. inversion H5; subst.
+      inversion H; subst. rewrite <- Forall_forall in H5. inversion H5; subst.
       apply andb_true_intro; split; auto. apply H2; auto.
+      apply IHvs; auto. apply Forall_forall. auto.
     + apply andb_true_iff in Hty; destruct Hty.
       apply andb_true_iff in H0; destruct H0.
       simpl_sumbool. apply Nat.eqb_eq in H2. constructor; auto.
-      clear i H2. induction vs; simpl; auto; intros.
+      clear i H2. induction vs; simpl; auto; intros. inversion H0.
       apply andb_true_iff in H1; destruct H1.
-      inversion H; subst. constructor; auto.
-      apply H4; auto.
-Qed. 
+      inversion H; subst. destruct H0; subst; auto.
+      apply H5; auto.
+Qed.
 (*
 Fixpoint typecheck_term (t: term) : option vty :=
   match t with
@@ -221,20 +224,30 @@ Definition wf_sig (s: sig) : Prop :=
   a signature*)
 Definition context := list def.
 
+Definition datatypes_of_context (c: context) : list (typesym * list funsym) :=
+  concat (map datatypes_of_def c).
+
+Definition typesyms_of_context (c: context) : list typesym :=
+  map fst (datatypes_of_context c).
+
+Definition funsyms_of_context (c: context) : list funsym :=
+  concat (map funsyms_of_def c).
+
+Definition predsyms_of_context (c: context) : list predsym :=
+  concat (map predsyms_of_def c).
+
 (*A context gamma extending signature s is well-formed if all type, function, and
   predicate symbols in gamma appear in s, and none appear more than once*)
 (*Note: we do not check the type/function/pred symbols within the terms and formulas
   in the definition - these will be checked for the validity check for each
   definition.*)
 Definition wf_context (s: sig) (gamma: context) :=
-  Forall (fun (d: def) => 
-    Forall (fun (t: typesym) => In t (sig_t s)) (typesyms_of_def d) /\
-    Forall (fun (f: funsym) => In f (sig_f s)) (funsyms_of_def d) /\
-    Forall (fun (p: predsym) => In p (sig_p s)) (predsyms_of_def d)
-  ) gamma /\
-  NoDup (concat (map typesyms_of_def gamma)) /\
-  NoDup (concat (map funsyms_of_def gamma)) /\
-  NoDup (concat (map predsyms_of_def gamma)).
+  Forall (fun t => In t (sig_t s)) (typesyms_of_context gamma) /\
+  Forall (fun f => In f (sig_f s)) (funsyms_of_context gamma) /\
+  Forall (fun p => In p (sig_p s)) (predsyms_of_context gamma) /\
+  NoDup (typesyms_of_context gamma) /\
+  NoDup (funsyms_of_context gamma) /\
+  NoDup (predsyms_of_context gamma).
 
 (** Validity of definitions *)
 
@@ -251,34 +264,33 @@ Definition wf_context (s: sig) (gamma: context) :=
   the declaration*)
 Definition adt_valid_type (a : alg_datatype) : Prop :=
   match a with
-  | alg_def ts tvars constrs => 
-    length tvars = ts_arity ts /\
+  | alg_def ts constrs => 
     Forall (fun (c: funsym) => 
-      (s_params c) = tvars /\ (s_ret c) = vty_cons ts (map vty_var tvars)) constrs
+      (s_params c) = (ts_args ts) /\ (s_ret c) = vty_cons ts (map vty_var (ts_args ts))) constrs
   end.
 
 (*Inhabited types*)
 
-Fixpoint vty_inhab (f: typesym -> list funsym) 
-  (ninhab_vars: list typevar) (seen_typesyms: list typesym) (t: vty) : bool :=
-  match t with
-  | vty_int => true
-  | vty_real => true
-  | vty_var v => negb (in_dec typevar_eq_dec v ninhab_vars)
-  | vty_cons ts vtys => 
-    let bad_vars : list typevar := nil (*TODO*) in
-    typesym_inhab f bad_vars seen_typesyms ts
-  end
-with typesym_inhab (f: typesym -> list funsym) (ninhab_vars: list typevar)
-  (seen_typesyms : list typesym) (ts: typesym) : bool :=
-  match (f ts) with
-  | nil => true (*TODO*)
-  | _ :: _ => existsb 
-    (fun c => constructor_inhab f ninhab_vars (ts :: seen_typesyms) c) (f ts)
-  end
+(*TODO*)
 
-with constructor_inhab (f: typesym -> list funsym) (ninhab_vars: list typevar)
-  (seen_typesyms : list typesym) (c: funsym) : bool :=
-  forallb (fun t => vty_inhab f ninhab_vars seen_typesyms t) (s_args c).
-  
-(*Will prove by showing that this implies existence of a type*)
+(* Recursive Functions and Predicates *)
+Section FunPredSym.
+
+Variable s: sig.
+
+(*A function/pred symbol is well-typed if the term has the correct return type of
+  the function and all free variables in t are included in the arguments vars*)
+
+Definition fundef_valid_type (f: funsym) (vars: list vsymbol) (t: term) : Prop :=
+  term_has_type s t (s_ret f) /\
+  sublist (term_fv t) vars
+  (*TODO: handle type vars? Do we need to, or is that handled by wf of f?*).
+
+Definition preddef_valid_type (p: predsym) (vars: list vsymbol) (f: formula) : Prop :=
+  valid_formula s f /\
+  sublist (form_fv f) vars.
+
+(*Termination*)
+
+(*TODO*)
+
