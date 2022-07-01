@@ -142,20 +142,59 @@ with formula : Type :=
   (*TODO: will need nicer (useful) induction scheme*)
 Set Elimination Schemes.
 
+Section FreeVars.
+
+Local Notation union' := (union vsymbol_eq_dec).
+Local Notation big_union' := (big_union vsymbol_eq_dec).
+Local Notation remove' := (remove vsymbol_eq_dec).
+Local Notation remove_all' := (remove_all vsymbol_eq_dec).
+
 (*Free variables of a pattern*)
 Fixpoint pat_fv (p: pattern) : list vsymbol :=
   match p with
   | Pvar x t => [x]
   | Pwild => []
-  | Pconstr _ _ ps => big_union vsymbol_eq_dec pat_fv ps
-  | Por p1 p2 => union vsymbol_eq_dec (pat_fv p1) (pat_fv p2)
-  | Pbind p x t => union vsymbol_eq_dec (pat_fv p) [x]
+  | Pconstr _ _ ps => big_union' pat_fv ps
+  | Por p1 p2 => union' (pat_fv p1) (pat_fv p2)
+  | Pbind p x t => union' (pat_fv p) [x]
   end.
+
+(*Free variables of a term (all variables that appear free at least once)*)
+Fixpoint term_fv (t: term) : list vsymbol :=
+  match t with
+  | Tconst _ => nil
+  | Tvar x _ => [x]
+  | Tfun f vtys tms => big_union' term_fv tms
+  | Tlet t1 v _ t2 => union' (term_fv t1) (remove' v (term_fv t2))
+  | Tif f t1 t2 => union' (form_fv f) (union' (term_fv t1) (term_fv t2))
+  | Tmatch t l => union' (term_fv t) (big_union' (fun x => remove_all' (pat_fv (fst x)) (term_fv (snd x))) l)
+  end
+
+with form_fv (f: formula) : list vsymbol :=
+  match f with
+  | Fpred p tys tms => big_union' term_fv tms
+  | Fquant q v _ f => remove' v (form_fv f)
+  | Feq _ t1 t2 => union' (term_fv t1) (term_fv t2)
+  | Fbinop b f1 f2 => union' (form_fv f1) (form_fv f2)
+  | Fnot f => form_fv f
+  | Ftrue => nil
+  | Ffalse => nil
+  | Flet t v _ f => union' (term_fv t) (remove' v (form_fv f))
+  | Fif f1 f2 f3 => union' (form_fv f1) (union' (form_fv f2) (form_fv f3))
+  | Fmatch t l => union' (term_fv t) (big_union' (fun x => remove_all' (pat_fv (fst x)) (form_fv (snd x))) l)
+  end.
+
+Definition closed_term (t: term) : bool :=
+  null (term_fv t).
+Definition closed_formula (f: formula) : bool :=
+  null (form_fv f).
+
+End FreeVars.
 
 (*Definitions: functions, predicates, algebraic data types, inductive predicates*)
 
 Inductive alg_datatype : Type :=
-  | alg_def: typesym -> list typevar -> list funsym -> alg_datatype.
+  | alg_def: typesym -> list funsym -> alg_datatype.
 
 Inductive funpred_def : Type :=
   | fun_def: funsym -> term -> funpred_def
@@ -171,21 +210,43 @@ Inductive def : Type :=
   | recursive_def: list funpred_def -> def
   | inductive_def : list indpred_def -> def.
 
-Definition typesyms_of_def (d: def) : list typesym :=
+Definition datatypes_of_def (d: def) : list (typesym * list funsym) :=
   match d with
   | datatype_def la => map (fun a =>
       match a with
-      | alg_def ts _ _ => ts
+      | alg_def ts fs => (ts, fs)
       end) la
   | recursive_def _ => nil
   | inductive_def _ => nil
   end.
 
+Definition fundefs_of_def (d: def) : list (funsym * term) :=
+  match d with
+  | recursive_def lf =>
+    fold_right (fun x acc => match x with
+      | fun_def fs t => (fs, t) :: acc
+      | _ => acc
+      end) nil lf
+  | _ => nil
+  end.
+
+Definition preddefs_of_def (d: def) : list (predsym * formula) :=
+  match d with
+  | recursive_def lf =>
+    fold_right (fun x acc => match x with
+      | pred_def ps f => (ps, f) :: acc
+      | _ => acc
+      end) nil lf
+  | _ => nil
+  end.
+
+(*TODO: may want function for indprops as well*)
+
 Definition funsyms_of_def (d: def) : list funsym :=
   match d with
   | datatype_def la => concat ((map (fun a =>
     match a with
-    | alg_def _ _ fs => fs
+    | alg_def _ fs => fs
     end)) la)
   | recursive_def lf =>
     fold_right (fun x acc => match x with
@@ -207,5 +268,4 @@ Definition predsyms_of_def (d: def) : list predsym :=
     match a with
     | ind_def ps _ => ps
     end) is
-    
-    end.
+  end.

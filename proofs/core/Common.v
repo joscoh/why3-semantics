@@ -122,6 +122,12 @@ End Union.
 Definition sublist {A: Type} (l1 l2: list A) : Prop :=
     forall x, In x l1 -> In x l2.
 
+Definition null {A: Type} (l: list A) :=
+  match l with
+  | nil => true
+  | _ => false
+  end.
+
 (** Lemmas about [remove] **)
 Section Remove.
 
