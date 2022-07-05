@@ -3,24 +3,7 @@ Require Export Coq.Reals.Reals.
 
 (** Function and Predicate Symbols **)
 
-Record funsym :=
-  {
-    s_name : string;
-    s_params : list typevar;
-    s_args: list vty;
-    s_ret: vty;
-    (*Well-formed - all type variables appear in params*)
-    s_ret_wf: sublist (type_vars s_ret) s_params;
-    s_args_wf: forall x, In x s_args -> sublist (type_vars x) s_params
-  }.
-
-Record predsym :=
-  {
-    p_name: string;
-    p_params: list typevar;
-    p_args : list vty;
-    p_args_wf: forall x, In x p_args -> sublist (type_vars x) p_params
-  }.
+(*We use bools rather than props so that we get decidable equality (like ssreflect)*)
 
 (*Check for sublist (to enable building these structures)*)
 Definition check_sublist (l1 l2: list typevar) : bool :=
@@ -59,6 +42,43 @@ Proof.
     rewrite H in Hargs; inversion Hargs.
 Qed.
 
+(*Easy corollaries, need these for arguments to other functions which don't know
+  about the decidable versions*)
+
+Lemma check_args_prop {params args} :
+  check_args params args -> forall x, In x args -> sublist (type_vars x) params.
+Proof.
+  intros Hcheck. apply (reflect_iff _ _ (check_args_correct params args)).
+  apply Hcheck.
+Qed.
+
+Lemma check_sublist_prop {l1 l2}:
+  check_sublist l1 l2 ->
+  sublist l1 l2.
+Proof.
+  intros. apply (reflect_iff _ _ (check_sublist_correct l1 l2)), H.
+Qed.
+
+Record funsym :=
+  {
+    s_name : string;
+    s_params : list typevar;
+    s_args: list vty;
+    s_ret: vty;
+    (*Well-formed - all type variables appear in params*)
+    s_ret_wf: check_sublist (type_vars s_ret) s_params;
+    s_args_wf: check_args s_params s_args
+  }.
+
+Record predsym :=
+  {
+    p_name: string;
+    p_params: list typevar;
+    p_args : list vty;
+    p_args_wf: check_args p_params p_args
+  }.
+
+(*
 Definition mk_funsym (name: string) (params : list typevar) (args: list vty)
   (ret: vty) : (check_args params args = true) ->
     (check_sublist (type_vars ret) params = true) -> funsym.
@@ -74,7 +94,7 @@ Definition mk_predsym (name: string) (params: list typevar) (args: list vty) :
 Proof.
   intros. econstructor.
   apply name. apply (reflect_iff _ _ (check_args_correct params args)). assumption.
-Defined.
+Defined.*)
 
 (*As an example, we define the polymorphic identity function*)
 Section ID.
@@ -85,11 +105,39 @@ Definition id_params : list typevar := [a].
 Definition id_args: list vty := [vty_var a].
 Definition id_ret: vty := vty_var a.
 
-Definition id_fs : funsym.
-apply (mk_funsym id_name id_params id_args id_ret); reflexivity.
-Defined.
+Definition id_fs : funsym := Build_funsym id_name id_params id_args id_ret eq_refl eq_refl.
 
 End ID.
+
+Section SymEqDec.
+
+Ltac dec H :=
+  destruct H; [subst | right; let C := fresh in intro C; inversion C; auto].
+
+(*Decidable equality on funsyms/predsyms (why we use booleans)*)
+Lemma funsym_eq_dec: forall (f1 f2: funsym), {f1 = f2} + {f1 <> f2}.
+Proof.
+  intros. destruct f1; destruct f2; simpl.
+  dec (string_dec s_name0 s_name1).
+  dec (list_eq_dec typevar_eq_dec s_params0 s_params1).
+  dec (list_eq_dec vty_eq_dec s_args0 s_args1).
+  dec (vty_eq_dec s_ret0 s_ret1).
+  assert (s_ret_wf0 = s_ret_wf1) by apply bool_irrelevance; subst.
+  assert (s_args_wf0 = s_args_wf1) by apply bool_irrelevance; subst.
+  left; reflexivity.
+Defined.
+
+Lemma predsym_eq_dec: forall (p1 p2: predsym), {p1 = p2} + {p1 <> p2}.
+Proof.
+  intros; destruct p1; destruct p2.
+  dec (string_dec p_name0 p_name1).
+  dec (list_eq_dec typevar_eq_dec p_params0 p_params1).
+  dec (list_eq_dec vty_eq_dec p_args0 p_args1).
+  assert (p_args_wf0 = p_args_wf1) by apply bool_irrelevance; subst.
+  left; reflexivity.
+Defined.
+
+End SymEqDec.
 
 (** Syntax - Terms and Formulas **)
 
@@ -141,6 +189,9 @@ with formula : Type :=
   | Fmatch: term -> list (pattern * formula) -> formula.
   (*TODO: will need nicer (useful) induction scheme*)
 Set Elimination Schemes.
+
+Scheme term_ind := Induction for term Sort Prop
+with formula_ind := Induction for formula Sort Prop.
 
 Section FreeVars.
 

@@ -281,16 +281,76 @@ Variable s: sig.
 (*A function/pred symbol is well-typed if the term has the correct return type of
   the function and all free variables in t are included in the arguments vars*)
 
-Definition fundef_valid_type (f: funsym) (vars: list vsymbol) (t: term) : Prop :=
-  term_has_type s t (s_ret f) /\
-  sublist (term_fv t) vars
-  (*TODO: handle type vars? Do we need to, or is that handled by wf of f?*).
-
-Definition preddef_valid_type (p: predsym) (vars: list vsymbol) (f: formula) : Prop :=
-  valid_formula s f /\
-  sublist (form_fv f) vars.
+Definition funpred_def_valid_type (fd: funpred_def) : Prop :=
+  match fd with
+  | fun_def f vars t =>
+    term_has_type s t (s_ret f) /\
+    sublist (term_fv t) vars
+  | pred_def p vars f =>
+    valid_formula s f /\
+    sublist (form_fv f) vars
+  end.
+  (*TODO: handle type vars? Do we need to, or is that handled by wf of f?*)
 
 (*Termination*)
 
 (*TODO*)
 
+(*Inductive Predicates*)
+
+(*Each clause must be a closed formula, well-typed, and belong to a restricted grammar, which
+  we give both as an inductive definition and a computable Fixpoint below*)
+
+Inductive valid_ind_form (p: predsym) : formula -> Prop :=
+  | VI_pred: forall (tys : list vty) tms,
+    tys = map vty_var (p_params p) -> (*TODO: is this correct? All predsyms should have same type params, right?*)
+    length (p_args p) = length tms ->
+    valid_ind_form p (Fpred p tys tms)
+  | VI_eq: forall ty t1 t2,
+    valid_ind_form p (Feq ty t1 t2)
+  | VI_impl: forall f1 f2,
+    valid_ind_form p f2 ->
+    valid_ind_form p (Fbinop Timplies f1 f2)
+  | VI_forall: forall x ty f,
+    valid_ind_form p f ->
+    valid_ind_form p (Fquant Tforall x ty f)
+  | VI_let: forall x ty t f,
+    valid_ind_form p f ->
+    valid_ind_form p (Flet t x ty f).
+     
+(*TODO: for decidable, need functional extensionality (bc predsym) or else change to bool*)
+Fixpoint valid_ind_form_dec (p: predsym) (f: formula) : bool :=
+  match f with
+  | Fpred p' tys tms => predsym_eq_dec p p' && list_eq_dec vty_eq_dec tys (map vty_var (p_params p))
+    && (length (p_args p) =? length tms)
+  | Fquant Tforall x ty f' => valid_ind_form_dec p f'
+  | Feq ty t1 t2 => true
+  | Fbinop Timplies f1 f2 => valid_ind_form_dec p f2
+  | Flet t x ty f' => valid_ind_form_dec p f'
+  | _ => false
+  end.
+
+Lemma valid_ind_form_equiv: forall p f,
+  reflect (valid_ind_form p f) (valid_ind_form_dec p f).
+Proof.
+  intros. apply iff_reflect. induction f using formula_ind with (P:=(fun _ => True)); auto; simpl;
+  (split; [intros C;inversion C; subst| intros]); auto; try solve[intuition]; try solve[constructor];
+  try match goal with | H: false = true |- _ => inversion H end.
+  - rewrite H3, Nat.eqb_refl, andb_true_r. apply andb_true_intro; split; simpl_sumbool. 
+  - repeat(apply andb_prop in H; destruct H). repeat simpl_sumbool. constructor; auto.
+    apply Nat.eqb_eq. auto.
+  - destruct q;[constructor; intuition |inversion H].
+  - destruct b; try inversion H. constructor. intuition.
+  - constructor. intuition.
+Qed.
+
+Definition indprop_valid_type (i: indpred_def) : Prop :=
+  match i with
+  | ind_def p lf => Forall (fun f => valid_formula s f /\ closed_formula f /\ valid_ind_form p f) lf
+  end.
+
+(*Strict Positivity*)
+
+(*TODO*)
+
+End FunPredSym.

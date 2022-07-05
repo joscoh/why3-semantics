@@ -60,15 +60,15 @@ Qed.
   parameters for a function/pred symbol with sorts results in a sort *)
 Definition funsym_sigma_args (f: funsym) (s: list sort) 
   (Hlen: length (s_params f) = length s): list sort :=
-  ty_subst_list_s (s_params f) s Hlen (s_args f) (s_args_wf f).
+  ty_subst_list_s (s_params f) s Hlen (s_args f) (check_args_prop (s_args_wf f)).
 
 Definition funsym_sigma_ret (f: funsym) (s: list sort)
 (Hlen: length (s_params f) = length s) : sort :=
-  ty_subst_s (s_params f) s Hlen (s_ret f) (s_ret_wf f).
+  ty_subst_s (s_params f) s Hlen (s_ret f) (check_sublist_prop (s_ret_wf f)).
 
 Definition predsym_sigma_args (p: predsym) (s: list sort)
   (Hlen: length (p_params p) = length s) : list sort :=
-  ty_subst_list_s (p_params p) s Hlen (p_args p) (p_args_wf p).
+  ty_subst_list_s (p_params p) s Hlen (p_args p) (check_args_prop (p_args_wf p)).
 
 Inductive domain_nonempty (domain: sort -> Type) (s: sort) :=
   | DE: forall (x: domain s),
