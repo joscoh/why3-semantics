@@ -60,15 +60,15 @@ Qed.
   parameters for a function/pred symbol with sorts results in a sort *)
 Definition funsym_sigma_args (f: funsym) (s: list sort) 
   (Hlen: length (s_params f) = length s): list sort :=
-  ty_subst_list_s (s_params f) s Hlen (s_args f) (check_args_prop (s_args_wf f)).
+  ty_subst_list_s (s_params f) s (s_args f).
 
 Definition funsym_sigma_ret (f: funsym) (s: list sort)
 (Hlen: length (s_params f) = length s) : sort :=
-  ty_subst_s (s_params f) s Hlen (s_ret f) (check_sublist_prop (s_ret_wf f)).
+  ty_subst_s (s_params f) s (s_ret f).
 
 Definition predsym_sigma_args (p: predsym) (s: list sort)
   (Hlen: length (p_params p) = length s) : list sort :=
-  ty_subst_list_s (p_params p) s Hlen (p_args p) (check_args_prop (p_args_wf p)).
+  ty_subst_list_s (p_params p) s (p_args p).
 
 Inductive domain_nonempty (domain: sort -> Type) (s: sort) :=
   | DE: forall (x: domain s),
@@ -87,32 +87,28 @@ Record pre_interp := {
     (domain (funsym_sigma_ret f s Hlen));
 
   preds: forall (p:predsym) (s: list sort) (Hlen: length (p_params p) = length s),
-    arg_list domain (predsym_sigma_args p s Hlen) -> bool
+    arg_list domain (predsym_sigma_args p s Hlen) -> bool;
+
+  (*ADTs - TODO (dependent type issues)*)
+  (*We don't restrict to the signature but that is OK*)
+  (*TODO: dependent type issues*)
+  (*
+  adts: forall (a: typesym) (constrs: list funsym) (s: list sort), 
+    In (a, constrs) (datatypes_of_context gamma) ->
+    (*I don't think we need the first condition bc the types are
+      different, so we already have that [[f_i(s)]](t) \neq [[f_j(s)]](u)*)
+    (forall c1 c2 (Hc1: length (s_params c1) = length s)
+      (Hc2: length (s_params c2) = length s), 
+      In c1 constrs -> In c2 constrs -> c1 <> c2 
+    (*we know constructor cannot be duplicated*) ->
+      forall t u, (funs c1 s) Hc1 t <> (funs c2 s) Hc2 u) /\
+    
+    (forall c (Hc: length (s_params c) = length s) t u, In c constrs ->
+      (funs c s Hc) t = (funs c s Hc) u -> t = u) /\
+    (forall (x: domain (typesym_to_sort a s)), 
+      exists f (H: length (s_params f) = length s) t, In f constrs /\
+      x = (funs f s H) t)*)
 }.
-
-(*Substitute according to function*)
-Fixpoint v_subst_aux (v: typevar -> sort) (t: vty) : vty :=
-  match t with
-  | vty_int => vty_int
-  | vty_real => vty_real
-  | vty_var tv => v tv
-  | vty_cons ts vs => vty_cons ts (map (v_subst_aux v) vs)
-  end.
-
-Lemma v_subst_aux_sort: forall v t,
-  is_sort (v_subst_aux v t).
-Proof.
-  intros v t. unfold is_sort.
-  assert (H: type_vars (v_subst_aux v t) = nil); [|rewrite H; auto].
-  induction t; simpl; intros; auto.
-  apply sort_type_vars.
-  induction vs; simpl; intros; auto.
-  inversion H; subst.
-  rewrite H2. auto.
-Qed. 
-
-Definition v_subst (v: typevar -> sort) (t: vty) : sort :=
-  exist _ (v_subst_aux v t) (v_subst_aux_sort v t).
 
 (*Valuations*)
 Record valuation (i: pre_interp) := {
@@ -537,21 +533,73 @@ Qed.
 
 End InterpLemmas.
 
+(*Find element of arg_list corresponding to element of l*)
+(*This is very ugly due to dependent types and proof obligations*)
+Fixpoint mk_fun_arg {A: Type} (eq_dec: forall (x y: A), {x = y} + { x <> y}) 
+  (i: pre_interp) v_var
+  (l: list A) (s: list sort) (a: arg_list (domain i) s) (x: A): 
+    forall v, domain i (v_subst v_var v) :=
+  match l, a with
+  | hd :: tl, AL_cons _ shd stl d t => 
+    fun v =>
+      (*Need to know that types are equal so we can cast the domain*)
+      match (vty_eq_dec (v_subst v_var v)) shd with
+      | left Heq => if eq_dec hd x then dom_cast _ _ _ (sort_inj _ _ (eq_sym Heq)) d
+          else mk_fun_arg eq_dec i v_var tl stl t x v
+      | _ => mk_fun_arg eq_dec i v_var tl stl t x v
+      end
+  (* Otherwise, return default element of domain *)
+  | _, _ => fun v => match domain_ne i (v_subst v_var v) with
+                      | DE _ _ y => y
+                      end
+  end.
+
+(*Build valuation from a list, ie: the valuation that sends each element of vs
+  to the corresponding sort in s and each element of syms to the
+  corresponding element of a (modulo dependent type stuff)
+  Give default values if something is not in the list*)
+Definition make_val (i: pre_interp) (vs: list typevar) (s1 s2: list sort)
+  (syms: list vsymbol) (a: arg_list (domain i) s2) : valuation i :=
+  let v_var := (ty_subst_fun_s vs s1 s_int) in
+  Build_valuation i v_var
+    (mk_fun_arg vsymbol_eq_dec i v_var syms s2 a).
+
 (* Interpretation, Satisfiability, Validity *)
-
-(*TODO: this is all without function definitions, inductive
-  types, and inductive predicates. It will be more complex when/if those
-  are added. *)
-
 
 Section Logic.
 
 Variable s : sig.
+Variable gamma: context.
 
-(*TODO: is well-typedness enough to ensure closed? *)
-Definition closed (f: formula) : Prop := valid_formula s f.
+(*A full interpretation is consistent with recursive and inductive definitions*)
+Definition full_interp (p: pre_interp) : Prop :=
+  (*For each function f(alpha)(x) = t, 
+    [[f(s)]](y) = [[t]]_v, where v maps alpha -> s and x -> y*)
+  (*Note that y_i has type [[sigma(tau_i)]], where sigma maps alpha -> s*)
+  (forall (f: funsym) (vs: list vsymbol) (t: term) (s: list sort) 
+    (Hs: length (s_params f) = length s),
+    In (f, vs, t) (fundefs_of_context gamma) ->
+   
+    forall ts,
+    let v := make_val p (s_params f) s (funsym_sigma_args f s Hs) vs ts in
+      term_interp p v t (s_ret f) ((funs p) f s Hs ts)) /\
+  (*For each predicate p(alpha)(x) = f, 
+    [[p(s)]](y) = [[f]]_v, where v maps alpha -> s and x -> y*)
+  (forall (pd: predsym) (vs: list vsymbol) (f: formula) (s: list sort)
+    (Hs: length (p_params pd) = length s),
+    In (pd, vs, f) (preddefs_of_context gamma) ->
+    
+    forall ts,
+    let v := make_val p (p_params pd) s (predsym_sigma_args pd s Hs) vs ts in
+      formula_interp p v f ((preds p) pd s Hs ts)
+  ).
+  (*TODO: inductive predicates*)
 
-Definition interp : Type := pre_interp.
+Definition closed (f: formula) : Prop := closed_formula f /\ valid_formula s f.
+
+Definition interp : Type := {i: pre_interp | full_interp i}.
+
+Coercion get_pre_interp (i: interp) : pre_interp := proj1_sig i.
 
 Definition satisfied_f (i: interp) (f: formula) : Prop :=
   closed f /\ forall v, formula_interp i v f true.
@@ -573,61 +621,5 @@ Definition valid_l (l: list formula) :=
 
 Definition log_conseq (l: list formula) (f: formula) :=
   forall i, satisfied_l i l -> satisfied_f i f.
-
-(*Their underlying logic is classical, so they do things a bit
-  differently*)
-Section Classical.
-
-Variable excluded_middle : forall (P: Prop), P \/ ~P.
-
-(*TODO: prove that, with LEM, well-typed term evaluates to a value
-  and well-typed formula evaluates to boolean.
-  Then can prove below.*)
-(*
-Lemma closed_
-
-Lemma formula_true_or_false: forall i v (f: formula),
-  closed f ->
-  formula_interp i v f true \/ formula_interp i v f false.
-Proof.
-  intros. 
-
-Definition valid_f' (f: formula) :=
-  ~ sat_f (Fnot f).
-
-Lemma valid_f_classical: forall f,
-  closed f ->
-  valid_f f <-> valid_f' f.
-Proof.
-  intros f Hclosed. unfold valid_f, valid_f', sat_f; split; intros.
-  - intros [i Hi]. unfold satisfied_f in *. specialize (H i).
-    destruct H; destruct Hi.
-    specialize (H0 (triv_val i)). specialize (H2 (triv_val i)).
-    inversion H2; subst. destruct b; try solve[inversion H5].
-    pose proof (formula_interp_det _ _ _ _ _ H0 H6). inversion H3.
-  - unfold satisfied_f in *. split; auto.
-    intros.  
-
-
-intros l Hl. unfold valid, valid', sat. split; intros.
-  - intros [i Hi]. destruct l as [| f tl]; auto.
-    simpl in *.  
-
-
-(*NOTE: their underlying logic is classical, so they say the following:*)
-Definition log_conseq' (l: list formula) (f: formula) :=
-  ~ sat ((Fnot f) :: l).
-
-Definition excluded_middle := forall (P: Prop), P \/ ~P.
-
-Lemma log_conseq_classical: forall l f,
-  excluded_middle ->
-  log_conseq l f <-> log_conseq' l f.
-
-(*NOTE: they use: *)
-    
-    Forall (fun x => formula_interp )
-    *)
-End Classical.
 
 End Logic.

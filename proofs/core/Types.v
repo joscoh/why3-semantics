@@ -112,23 +112,6 @@ Proof.
     rewrite H in Heq; inversion Heq.
 Defined.
 
-(*Type substitution (assign meaning to a type variables)*)
-Fixpoint ty_subst_single (v: typevar) (t: vty) (expr: vty) : vty :=
-  match expr with
-  | vty_int => vty_int
-  | vty_real => vty_real
-  | vty_var tv => if typevar_eq_dec v tv then t else vty_var tv
-  | vty_cons ts typs =>
-      vty_cons ts (map (ty_subst_single v t) typs)
-  end.
-
-(*Substitute a list of typevars*)
-Definition ty_subst (vs: list typevar) (ts: list vty) (expr: vty) : vty :=
-  fold_right (fun x acc => ty_subst_single (fst x) (snd x) acc) expr (combine vs ts).
-
-Definition ty_subst_list (vs: list typevar) (ts: list vty) (exprs: list vty) : list vty :=
-  map (ty_subst vs ts) exprs.
-
 (* Sorts *)
 
 (*Get the type variables in a type, with no duplicates*)
@@ -149,10 +132,7 @@ Proof.
 Qed.  
   
 Definition is_sort (t: vty) : bool :=
-  match (type_vars t) with
-  | nil => true
-  | _ => false
-  end.
+  null (type_vars t).
 
 Definition sort : Type := {t: vty | is_sort t}.
 
@@ -189,66 +169,77 @@ Lemma sort_type_vars: forall (s: sort),
 Proof.
   intros s. destruct s; simpl. unfold is_sort in i.
   destruct (type_vars x); auto. inversion i.
+Qed.
+
+Definition typesym_to_sort_proof: forall (t: typesym) (s: list sort),
+  null (type_vars (vty_cons t (map sort_to_ty s))).
+Proof.
+  intros. assert (type_vars (vty_cons t (map sort_to_ty s)) = nil).
+  2: { rewrite H; auto. } simpl. apply big_union_nil_eq. intros x Hinx.
+  rewrite in_map_iff in Hinx. destruct Hinx as [y [Hy Hiny]]; subst.
+  destruct y; simpl in *. unfold is_sort in i. clear Hiny.
+  destruct (type_vars x); auto. inversion i.
+Qed.
+
+Definition typesym_to_sort (t: typesym) (s: list sort)  : sort :=
+  exist _ (vty_cons t (map sort_to_ty s)) (typesym_to_sort_proof t s).
+
+
+(* Type substitution *)
+
+(*Substitute according to function*)
+Fixpoint v_subst_aux (v: typevar -> vty) (t: vty) : vty :=
+  match t with
+  | vty_int => vty_int
+  | vty_real => vty_real
+  | vty_var tv => v tv
+  | vty_cons ts vs => vty_cons ts (map (v_subst_aux v) vs)
+  end.
+
+Lemma v_subst_aux_sort: forall (v: typevar -> sort) t,
+  is_sort (v_subst_aux v t).
+Proof.
+  intros v t. unfold is_sort.
+  assert (H: type_vars (v_subst_aux v t) = nil); [|rewrite H; auto].
+  induction t; simpl; intros; auto.
+  apply sort_type_vars.
+  induction vs; simpl; intros; auto.
+  inversion H; subst.
+  rewrite H2. auto.
 Qed. 
 
-(*We want to know that when we substitute in sorts for type variables,
-  the result is a sort *)
+Definition v_subst (v: typevar -> sort) (t: vty) : sort :=
+  exist _ (v_subst_aux v t) (v_subst_aux_sort v t).
 
-Lemma ty_subst_single_sort: forall (v: typevar) (s: sort) (expr: vty),
-  type_vars (ty_subst_single v s expr) =
-  remove typevar_eq_dec v (type_vars expr).
+Fixpoint ty_subst_fun (vs: list typevar) (s: list vty) (d: vty) : typevar -> vty :=
+  fun v => match vs, s with
+            | v1 :: tl1, ty :: tl2 => if typevar_eq_dec v v1 then ty else
+              ty_subst_fun tl1 tl2 d v
+            | _, _ => d
+            end.
+
+Lemma ty_subst_fun_sort: forall vs (s: list sort) (d: sort) (t: typevar),
+  is_sort (ty_subst_fun vs (sorts_to_tys s) d t).
 Proof.
-  intros v s expr. induction expr; simpl; auto.
-  - destruct (typevar_eq_dec v v0); simpl; auto.
-    apply sort_type_vars.
-  - induction vs; simpl; auto.
-    inversion H; subst. rewrite H2, IHvs; auto.
-    apply union_remove.
+  intros. revert s. induction vs; simpl; intros; auto. destruct d; auto.
+  destruct s; simpl. destruct d; auto.
+  destruct (typevar_eq_dec t a); subst. destruct s; auto. apply IHvs.
 Qed.
 
-(*Now, we lift this result to a list*)
+Definition ty_subst_fun_s (vs: list typevar) (s: list sort) (d: sort) : typevar -> sort :=
+  fun t => exist _ (ty_subst_fun vs (sorts_to_tys s) d t) (ty_subst_fun_sort vs s d t).
 
-Lemma ty_subst_remove_all: forall (vs: list typevar) (ss: list sort) (expr: vty),
-  length vs = length ss ->
-  type_vars (ty_subst vs (sorts_to_tys ss) expr) =
-  remove_all typevar_eq_dec vs (type_vars expr).
-Proof.
-  intros vs ss expr. revert ss. induction vs; simpl; intros.
-  symmetry in H. apply length_zero_iff_nil in H; subst; reflexivity.
-  destruct ss as [|s ss]; inversion H; subst.
-  simpl. unfold ty_subst in *; simpl.
-  rewrite ty_subst_single_sort. f_equal. apply IHvs. assumption.
-Qed.
+Definition ty_subst (vs: list typevar) (ts: list vty) (expr: vty) : vty :=
+  v_subst_aux (ty_subst_fun vs ts vty_int) expr.
 
-(*Finally, we get the results we want*)
+Definition ty_subst_list (vs: list typevar) (ts: list vty) (exprs: list vty) : list vty :=
+  map (ty_subst vs ts) exprs.
 
-Lemma ty_subst_sort: forall (vs: list typevar) (ts: list sort) (expr: vty),
-  length vs = length ts ->
-  (sublist (type_vars expr) vs) ->
-  is_sort (ty_subst vs (sorts_to_tys ts) expr).
-Proof.
-  intros vs ts expr Hlens Hsub. unfold is_sort.
-  assert (Hvars: type_vars (ty_subst vs (sorts_to_tys ts) expr) = nil); [|rewrite Hvars; auto].
-  rewrite ty_subst_remove_all; auto.
-  apply remove_all_sublist; auto.
-Qed.
+Definition ty_subst_s (vs: list typevar) (ts: list sort) (expr: vty) : sort :=
+  v_subst (ty_subst_fun_s vs ts s_int) expr.
 
-(*A version that gives a sort*)
-Definition ty_subst_s (vs: list typevar) (ts: list sort) (Hlen: length vs = length ts)
-  (expr: vty) (Hsub: sublist (type_vars expr) vs) : sort :=
-  exist _ (ty_subst vs (sorts_to_tys ts) expr) (ty_subst_sort vs ts expr Hlen Hsub).
-
-(*Lift the result to lists - can't use map because of proofs *)
-Definition ty_subst_list_s (vs: list typevar) (ts: list sort) (Hlen: length vs = length ts)
-  (exprs: list vty) (Hsubs: forall x, In x exprs -> sublist (type_vars x) vs) : list sort.
-Proof.
-  induction exprs as [| e tl].
-  - apply nil.
-  - apply cons.
-    + assert (sublist (type_vars e) vs). apply Hsubs. left. reflexivity.
-      apply (ty_subst_s vs ts Hlen e H).
-    + apply IHtl. intros x Hinx. apply Hsubs. right. apply Hinx.
-Defined.
+Definition ty_subst_list_s (vs: list typevar) (ts: list sort) (exprs: list vty) : list sort :=
+  map (ty_subst_s vs ts) exprs.
 
 Lemma type_vars_cons: forall ts (vs: list vty),
   type_vars (vty_cons ts vs) = nil ->

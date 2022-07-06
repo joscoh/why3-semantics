@@ -117,6 +117,15 @@ Proof.
   destruct H0; subst; auto.
 Qed.
 
+Lemma big_union_nil_eq: forall {B: Type} (f: B -> list A) (l: list B),
+  (forall x, In x l -> f x = nil) ->
+  big_union f l = nil.
+Proof.
+  intros B f l Hin. induction l; simpl in *; intros; auto.
+  assert (f a = nil) by (apply Hin; left; auto). rewrite H; simpl.
+  apply IHl. intros x Hx. apply Hin. right; auto.
+Qed.
+
 End Union.
 
 Definition sublist {A: Type} (l1 l2: list A) : Prop :=

@@ -227,6 +227,12 @@ Definition context := list def.
 Definition datatypes_of_context (c: context) : list (typesym * list funsym) :=
   concat (map datatypes_of_def c).
 
+Definition fundefs_of_context (c: context) : list (funsym * list vsymbol * term) :=
+  concat (map fundefs_of_def c).
+
+Definition preddefs_of_context (c: context) : list (predsym * list vsymbol * formula) :=
+  concat (map preddefs_of_def c).
+
 Definition typesyms_of_context (c: context) : list typesym :=
   map fst (datatypes_of_context c).
 
