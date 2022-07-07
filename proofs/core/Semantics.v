@@ -229,12 +229,12 @@ Inductive term_interp:
     term_interp v (Tconst (ConstReal r)) vty_real (r_to_dom v r)
   | TI_var: forall v (x: vsymbol) (ty: vty),
     term_interp v (Tvar x ty) ty (var_to_dom v x ty)
-  | TI_iftrue: forall v f t1 t2 ty x,
-    formula_interp v f true ->
+  | TI_iftrue: forall v f t1 t2 ty x tl fl,
+    formula_interp v tl fl f true ->
     term_interp v t1 ty x ->
     term_interp v (Tif f t1 t2) ty x
-  | TI_iffalse: forall v f t1 t2 ty x,
-    formula_interp v f false ->
+  | TI_iffalse: forall v f t1 t2 ty x tl fl,
+    formula_interp v tl fl f false ->
     term_interp v t2 ty x ->
     term_interp v (Tif f t1 t2) ty x
   (*substitution changes the valuation *)
@@ -282,52 +282,54 @@ Inductive term_interp:
     term_interp v (Tfun f params ts) f_ret 
       (dom_cast _ _ (subst_sort_eq f_ret (v_typevar i v)) (f_interp xs))
 
-with formula_interp: (valuation i) -> formula -> bool -> Prop :=
-  | FI_true: forall v, formula_interp v Ftrue true
-  | FI_false: forall v, formula_interp v Ffalse false
-  | FI_not: forall v f b,
-    formula_interp v f b ->
-    formula_interp v (Fnot f) (negb b)
-  | FI_binop: forall v b f1 f2 b1 b2,
-    formula_interp v f1 b1 ->
-    formula_interp v f2 b2 ->
-    formula_interp v (Fbinop b f1 f2) (bool_of_binop b b1 b2)
-  | FI_iftrue: forall v f f1 f2 b,
-    formula_interp v f true ->
-    formula_interp v f1 b ->
-    formula_interp v (Fif f f1 f2) b
-  | FI_iffalse: forall v f f1 f2 b,
-    formula_interp v f false ->
-    formula_interp v f2 b ->
-    formula_interp v (Fif f f1 f2) b
-  | FI_let: forall v t (x: vsymbol) ty f x1 b,
+with formula_interp: (valuation i) -> list formula -> list formula -> formula -> bool -> Prop :=
+  | FI_true: forall v tl fl, formula_interp v tl fl Ftrue true
+  | FI_false: forall v tl fl, formula_interp v tl fl Ffalse false
+  | FI_not: forall v tl fl f b,
+    formula_interp v tl fl f b ->
+    formula_interp v tl fl (Fnot f) (negb b)
+  | FI_binop: forall v b f1 f2 b1 b2 tl fl,
+    formula_interp v tl fl f1 b1 ->
+    formula_interp v tl fl f2 b2 ->
+    formula_interp v tl fl (Fbinop b f1 f2) (bool_of_binop b b1 b2)
+  | FI_iftrue: forall v f f1 f2 b tl fl,
+    formula_interp v tl fl f true ->
+    formula_interp v tl fl f1 b ->
+    formula_interp v tl fl (Fif f f1 f2) b
+  | FI_iffalse: forall v f f1 f2 b tl fl,
+    formula_interp v tl fl f false ->
+    formula_interp v tl fl f2 b ->
+    formula_interp v tl fl (Fif f f1 f2) b
+  | FI_let: forall v t (x: vsymbol) ty f x1 b tl fl,
     term_interp v t ty x1 ->
-    formula_interp (substi v x ty x1) f b ->
-    formula_interp v (Flet t x ty f) b
-  | FI_forallT: forall v x ty f,
-    (forall d, formula_interp (substi v x ty d) f true) ->
-    formula_interp v (Fquant Tforall x ty f) true
-  | FI_forallF: forall v x ty f d, (*otherwise we cannot prove that forall is false*)
-    (formula_interp (substi v x ty d) f false) ->
-    formula_interp v (Fquant Tforall x ty f) false
-  | FI_existsT: forall v x ty f d,
-    (formula_interp (substi v x ty d) f true) ->
-    formula_interp v (Fquant Texists x ty f) true
-  | FI_existsF: forall v x ty f,
-    (forall d, formula_interp (substi v x ty d) f false) ->
-    formula_interp v (Fquant Texists x ty f) false
-  | FI_eqT: forall v ty t1 t2 x1 x2, (*TODO: assume decidable equality?*)
+    formula_interp (substi v x ty x1) tl fl f b ->
+    formula_interp v tl fl (Flet t x ty f) b
+  | FI_forallT: forall v x ty f tl fl,
+    (forall d, formula_interp (substi v x ty d) tl fl f true) ->
+    formula_interp v tl fl (Fquant Tforall x ty f) true
+  (*TODO: may not need this with classical part*)
+  | FI_forallF: forall v x ty f d tl fl, (*otherwise we cannot prove that forall is false*)
+    (formula_interp (substi v x ty d) tl fl f false) ->
+    formula_interp v tl fl (Fquant Tforall x ty f) false
+  | FI_existsT: forall v x ty f d tl fl,
+    (formula_interp (substi v x ty d) tl fl f true) ->
+    formula_interp v tl fl (Fquant Texists x ty f) true
+  | FI_existsF: forall v x ty f tl fl,
+    (forall d, formula_interp (substi v x ty d) tl fl f false) ->
+    formula_interp v tl fl (Fquant Texists x ty f) false
+  | FI_eqT: forall v ty t1 t2 x1 x2 tl fl, (*TODO: assume decidable equality?*)
     term_interp v t1 ty x1 ->
     term_interp v t2 ty x2 ->
     x1 = x2 ->
-    formula_interp v (Feq ty t1 t2) true
-  | FI_eqF: forall v ty t1 t2 x1 x2,
+    formula_interp v tl fl (Feq ty t1 t2) true
+  (*TODO: may not need this also (or assume decidable)*)
+  | FI_eqF: forall v ty t1 t2 x1 x2 tl fl,
     term_interp v t1 ty x1 ->
     term_interp v t2 ty x2 ->
     x1 <> x2 ->
-    formula_interp v (Feq ty t1 t2) false
+    formula_interp v tl fl (Feq ty t1 t2) false
   | FI_prop: forall (v: valuation i) (p: predsym) (params: list vty) (ts: list term) 
-    (Hlen: length (p_params p) = length params) xs,
+    (Hlen: length (p_params p) = length params) xs tl fl,
 
     (*Very similar to function*)
 
@@ -350,8 +352,29 @@ with formula_interp: (valuation i) -> formula -> bool -> Prop :=
         (dom_cast _ _ (subst_sort_eq (nth n p_arg_typs s_int) (v_typevar i v)) 
           (@arg_nth _ p_arg_typs xs n s_int dom_int))) ->
 
-    formula_interp v (Fpred p params ts) (p_interp xs)
-    .
+    formula_interp v tl fl (Fpred p params ts) (p_interp xs)
+  (* Make the logic classical *)
+  | FI_VarT: forall v f tl fl,
+    In f tl ->
+    formula_interp v tl fl f true
+  | FI_VarF: forall v f tl fl,
+    In f fl ->
+    formula_interp v tl fl f false
+  | FI_ActT: forall v f f' tl fl,
+    formula_interp v tl (f :: fl) f' true ->
+    formula_interp v tl (f :: fl) f' false ->
+    formula_interp v tl fl f true
+  | FI_ActF: forall v f f' tl fl,
+    formula_interp v (f :: tl) fl f' true ->
+    formula_interp v (f :: tl) fl f' false ->
+    formula_interp v tl fl f false.
+(*TODO: do we need some weakening rules/ways to manipulate the context?
+  For example:
+    formula_interp v tl fl f true ->
+    formula_interp v (t :: tl) fl f true
+  Also, if we have a derivation, and know that some formula is "in" the
+  list of assumptions, how do we use this info?
+  I'm not sure this definition is super usable/complete at the moment*)
 Set Elimination Schemes.
 
 Scheme term_interp_ind := Minimality for term_interp Sort Prop
@@ -379,8 +402,8 @@ Section Ex.
 
 Local Open Scope string_scope.
 (*Let's give an example: prove that equality is reflexive*)
-Lemma prove_eq_refl: forall (v: valuation i) (a: vty),
-  formula_interp v (Fquant Tforall "x" a (Feq a (Tvar "x" a) (Tvar "x" a))) true.
+Lemma prove_eq_refl: forall (v: valuation i) (a: vty) tl fl,
+  formula_interp v tl fl (Fquant Tforall "x" a (Feq a (Tvar "x" a) (Tvar "x" a))) true.
 Proof.
   intros v a. constructor. intros d.
   eapply FI_eqT. 
@@ -421,7 +444,7 @@ Qed.
   term and formula evaluate to only one answer. We need to use our
   mutually recursive induction principle for this, so we actually prove
   both results simultaneously*)
-
+(*
   Lemma formula_interp_det: forall i v f b1 b2,
   formula_interp i v f b1 ->
   formula_interp i v f b2 ->
@@ -530,7 +553,7 @@ Proof.
     specialize (H1 n Hn). specialize (H n Hn).
     specialize (H0 n Hn _ H1). apply dom_cast_inj in H0. auto.
 Qed.
-
+*)
 End InterpLemmas.
 
 (*Find element of arg_list corresponding to element of l*)
@@ -589,9 +612,10 @@ Definition full_interp (p: pre_interp) : Prop :=
     (Hs: length (p_params pd) = length s),
     In (pd, vs, f) (preddefs_of_context gamma) ->
     
-    forall ts,
+    (*TODO: all lists or nil ones?*)
+    forall ts l1 l2,
     let v := make_val p (p_params pd) s (predsym_sigma_args pd s Hs) vs ts in
-      formula_interp p v f ((preds p) pd s Hs ts)
+      formula_interp p v l1 l2 f ((preds p) pd s Hs ts)
   ).
   (*TODO: inductive predicates*)
 
@@ -601,8 +625,9 @@ Definition interp : Type := {i: pre_interp | full_interp i}.
 
 Coercion get_pre_interp (i: interp) : pre_interp := proj1_sig i.
 
+(*TODO: is this all lists of assumptions/antiassumptions - or nil ones?*)
 Definition satisfied_f (i: interp) (f: formula) : Prop :=
-  closed f /\ forall v, formula_interp i v f true.
+  closed f /\ forall v, formula_interp i v nil nil f true.
 
 Definition satisfied_l (i: interp) (l: list formula) : Prop :=
   Forall (satisfied_f i) l.
