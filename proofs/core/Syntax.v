@@ -162,11 +162,11 @@ Definition vsymbol_eq_dec : forall (x y: vsymbol), {x = y} + {x <> y} := string_
 
 Unset Elimination Schemes.
 Inductive pattern : Type :=
-  | Pvar : string -> vty -> pattern
+  | Pvar : vsymbol -> vty -> pattern
   | Pconstr : funsym -> list vty -> list pattern -> pattern
   | Pwild : pattern
   | Por: pattern -> pattern -> pattern
-  | Pbind: pattern -> string -> vty -> pattern.
+  | Pbind: pattern -> vsymbol -> vty -> pattern.
 
 (*No case/match at the moment*)
 Inductive term : Type :=
@@ -192,6 +192,36 @@ Set Elimination Schemes.
 
 Scheme term_ind := Induction for term Sort Prop
 with formula_ind := Induction for formula Sort Prop.
+
+(*Induction principles*)
+Section PatternInd.
+
+Variable P: pattern -> Prop.
+Variable Hvar: forall (v: vsymbol) (ty: vty),
+  P (Pvar v ty).
+Variable Hconstr: forall (f: funsym) (vs: list vty) (ps: list pattern),
+  Forall P ps ->
+  P (Pconstr f vs ps).
+Variable Hwild: P Pwild.
+Variable Hor: forall p1 p2, P p1 -> P p2 -> P (Por p1 p2).
+Variable Hbind: forall p v ty,
+  P p -> P (Pbind p v ty).
+
+Fixpoint pattern_ind (p: pattern) : P p :=
+  match p with
+  | Pvar x ty => Hvar x ty
+  | Pconstr f tys ps => Hconstr f tys ps
+    ((fix all_patterns (l: list pattern) : Forall P l :=
+    match l with
+    | nil => @Forall_nil _ P
+    | x :: t => @Forall_cons _ P _ _ (pattern_ind x) (all_patterns t)
+    end) ps)
+  | Pwild => Hwild
+  | Por p1 p2 => Hor p1 p2 (pattern_ind p1) (pattern_ind p2)
+  | Pbind p x ty => Hbind p x ty (pattern_ind p)
+  end.
+
+End PatternInd.
 
 Section FreeVars.
 
