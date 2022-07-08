@@ -13,6 +13,7 @@ Require Import Coq.Logic.Eqdep_dec.
 (*TODO: In the paper, isf_i(t) and similar are defined on interpretations, not
   terms, BUT they use the function on terms in the pattern matching definition.
   So I believe this function should be OK (because on terms, it is decidable)*)
+  (*
 Definition is_constr (f: funsym) (vs: list vty) (t: term) : option (list term) :=
   match t with
   | Tfun f' vs' tms => if funsym_eq_dec f f' && list_eq_dec vty_eq_dec vs vs' then
@@ -200,7 +201,7 @@ Definition formula_pattern_interp := pattern_interp Flet.
 
 Definition match_term_pattern := match_pattern Tlet.
 Definition match_formula_pattern := match_pattern Flet.
-
+*)
 (* Function/Predicate Application *)
 
 (*A custom list-like data type which holds values of types [[s_i]], where
@@ -416,12 +417,12 @@ Defined.
 
 (* Some additional lemmas for casting/dependent type obligations *)
 
-Lemma map_length_eq: forall {A B C: Type} (f: B -> C) (l1 : list A) (l2 : list B),
+(*Lemma map_length_eq: forall {A B C: Type} (f: B -> C) (l1 : list A) (l2 : list B),
   length l1 = length l2 ->
   length l1 = length (map f l2).
 Proof.
   intros. rewrite H, map_length. reflexivity.
-Qed.
+Qed.*)
 
 (* If we have a sort, then substituting a valuation does nothing *)
 Lemma subst_sort_eq: forall (s: sort) (v: typevar -> sort),
@@ -621,7 +622,7 @@ with formula_interp: (valuation i) -> list formula -> list formula -> formula ->
   | FI_ActF: forall v f f' tl fl,
     formula_interp v (f :: tl) fl f' true ->
     formula_interp v (f :: tl) fl f' false ->
-    formula_interp v tl fl f false.
+    formula_interp v tl fl f false
 (*TODO: do we need some weakening rules/ways to manipulate the context?
   For example:
     formula_interp v tl fl f true ->
@@ -629,10 +630,73 @@ with formula_interp: (valuation i) -> list formula -> list formula -> formula ->
   Also, if we have a derivation, and know that some formula is "in" the
   list of assumptions, how do we use this info?
   I'm not sure this definition is super usable/complete at the moment*)
+
+  (*Add bool so that we can say: not proj_constr*)
+  (*Similar to projf_{i, j} in the paper, but gives whole list if 
+    [[t]]]is application of [[f]] to [[ts]]*)
+with proj_constr : (valuation i) -> term -> funsym -> list vty -> list term -> bool -> Prop :=
+| mk_proj_constr: forall v t ty f vs ts x,
+    (*Says that [[t]] = [[f(vs)]][[ts]], but operation on t and ts (NOT interpretations)*)
+    term_interp v (Tfun f vs ts) ty x ->
+    proj_constr v t f vs ts true
+(*We define [is_constr] as (exists tm, proj_constr v t f vs t)*)
+
+  (*pattern interpretations are almost the same for terms and formulas; the
+    only difference being that one takes in/returns a term, and the other a formula
+    (using Tlet/Flet). So we factor out the difference and pass in the appropriate
+    type in the term/formula interpretation*)
+  with pattern_interp: forall (A: Type) (flet: term -> vsymbol -> vty -> A -> A),
+     (valuation i) ->term -> pattern -> option A -> option A -> option A -> Prop :=
+  | PI_varNone: forall A flet v t x ty h,
+    pattern_interp A flet v t (Pvar x ty) None h None
+  | PI_varSome: forall A flet v t x ty b h,
+    pattern_interp A flet v t (Pvar x ty) (Some b) h (Some (flet t x ty b))
+  | PI_constrNilT: forall A flet (v: valuation i) t (f: funsym) (vs: list vty) b h,
+    (*If the interpretation of t (ie x), comes from the constructor f: *)
+    (exists ts, proj_constr v t f vs ts true) ->
+
+    pattern_interp A flet v t (Pconstr f vs nil) b h b
+  | PI_constrF: forall A flet v t (f: funsym) (vs: list vty) (ps: list pattern) b h,
+    (*If the interpretation of x does not come from the constructor f*)
+    (forall ts, proj_constr v t f vs ts false) ->
+
+    pattern_interp A flet v t (Pconstr f vs ps) b h h
+  | PI_constrConsT: forall A flet v t f (vs: list vty) (ps: list pattern) 
+    b h ts res,
+    proj_constr v t f vs ts true ->
+
+    (*more complicated than I thought: need to distinguish between interp and term*)
+    iter_pattern_interp A flet v ts ps b h res ->
+    pattern_interp A flet v t (Pconstr f vs ps) b h res
+  | PI_wild: forall A flet v t b h,
+    pattern_interp A flet v t Pwild b h b
+  | PI_or: forall A flet v t p1 p2 b h res res1,
+    pattern_interp A flet v t p2 b h res ->
+    pattern_interp A flet v t p1 b res res1 ->
+    pattern_interp A flet v t (Por p1 p2) b h res1
+  | PI_bindNil: forall A flet v t p x ty b h,
+    pattern_interp A flet v t p b h None ->
+    pattern_interp A flet v t (Pbind p x ty) b h None
+  | PI_bind: forall A flet v t p x ty b h res,
+    pattern_interp A flet v t p b h (Some res) ->
+    pattern_interp A flet v t (Pbind p x ty) b h (Some (flet t x ty res))
+
+with iter_pattern_interp: forall (A: Type) (flet: term -> vsymbol -> vty -> A -> A),
+(valuation i) -> list term -> list pattern -> option A -> option A -> option A -> Prop :=
+  | IPI_nil:
+    forall A flet v b h,
+    iter_pattern_interp A flet v nil nil b h b
+  | IPI_cons: forall A flet v t ts p ps b h res res1,
+    iter_pattern_interp A flet v ts ps b h res ->
+    pattern_interp A flet v t p res h res1 ->
+    iter_pattern_interp A flet v (t :: ts) (p :: ps) b h res1.
 Set Elimination Schemes.
 
 Scheme term_interp_ind := Minimality for term_interp Sort Prop
-with formula_interp_ind := Minimality for formula_interp Sort Prop.
+with formula_interp_ind := Minimality for formula_interp Sort Prop
+with proj_constr_ind := Minimality for proj_constr Sort Prop
+with pattern_interp_ind := Minimality for pattern_interp Sort Prop
+with iter_pattern_interp_ind := Minimality for iter_pattern_interp Sort Prop.
 
 (* Tests/Examples *)
 

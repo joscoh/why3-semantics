@@ -150,6 +150,14 @@ Proof.
   subst; reflexivity.
 Qed.
 
+Lemma sort_eq_dec: forall (s1 s2: sort),
+  {s1 = s2} + {s1 <> s2}.
+Proof.
+  intros. destruct (vty_eq_dec (sort_to_ty s1) (sort_to_ty s2)).
+  - left. apply sort_inj. auto.
+  - right. intro C; subst; contradiction.
+Defined.
+
 Lemma int_is_sort: is_sort vty_int.
 Proof.
   unfold is_sort; simpl. auto.
