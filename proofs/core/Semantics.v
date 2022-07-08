@@ -139,7 +139,6 @@ Inductive match_pattern: term -> list pattern -> list A -> option A -> Prop :=
     match_pattern t (p :: ps) (tm :: ts) res1.
 
 (*Proof of equivalence*)
-(*TODO: need induction principle for patterns*)
 Lemma compile_match_interp: forall (t: term) (p: pattern) (b: option A) (h: option A) (res: option A),
   compile_match t p b h = res -> pattern_interp t p b h res.
 Proof.
@@ -254,21 +253,77 @@ Qed.
 
 (*Here, we prove that a type substitution that replaces all of the type
   parameters for a function/pred symbol with sorts results in a sort *)
-Definition funsym_sigma_args (f: funsym) (s: list sort) 
-  (Hlen: length (s_params f) = length s): list sort :=
+Definition funsym_sigma_args (f: funsym) (s: list sort) : list sort :=
   ty_subst_list_s (s_params f) s (s_args f).
 
-Definition funsym_sigma_ret (f: funsym) (s: list sort)
-(Hlen: length (s_params f) = length s) : sort :=
+Definition funsym_sigma_ret (f: funsym) (s: list sort) : sort :=
   ty_subst_s (s_params f) s (s_ret f).
 
-Definition predsym_sigma_args (p: predsym) (s: list sort)
-  (Hlen: length (p_params p) = length s) : list sort :=
+Definition predsym_sigma_args (p: predsym) (s: list sort) : list sort :=
   ty_subst_list_s (p_params p) s (p_args p).
 
 Inductive domain_nonempty (domain: sort -> Type) (s: sort) :=
   | DE: forall (x: domain s),
     domain_nonempty domain s.
+
+Definition dom_cast_aux (domain: sort -> Type) (v1 v2: sort) (Hv: v1 = v2) 
+  (x: domain v1) : domain v2.
+subst. apply x.
+Defined.
+
+Section Interp.
+
+Variable sigma: sig.
+Variable gamma: context.
+Variable gamma_valid: valid_context sigma gamma. 
+
+
+Lemma funsym_sigma_ret_eq: forall {c1 c2: funsym} (s: list sort) 
+  (H: s_ret c1 = s_ret c2 /\ s_params c1 = s_params c2),
+  funsym_sigma_ret c1 s = funsym_sigma_ret c2 s.
+Proof.
+  intros. unfold funsym_sigma_ret. destruct H as [Hret Hparams];
+  rewrite Hret, Hparams. reflexivity.
+Qed.
+
+(*One other lemma we need for casting*)
+Lemma adt_typesym_funsym: forall {a: typesym} {constrs: list funsym} {c: funsym} (s: list sort),
+In (a, constrs) (datatypes_of_context gamma) ->
+In c constrs ->
+length (s_params c) = length s ->
+funsym_sigma_ret c s = typesym_to_sort a s.
+Proof.
+  intros. unfold funsym_sigma_ret. unfold typesym_to_sort.
+  apply sort_inj; simpl.
+  pose proof (adt_constr_ret_params _ _ gamma_valid _ _ _ H H0).
+  destruct H2. rewrite H2. simpl. rewrite H3. f_equal.
+  apply list_eq_ext'; rewrite !map_length; rewrite <- H3; subst. lia.
+  intros n d Hn.
+  rewrite !(map_nth_inbound) with (d2:=d).
+  2: rewrite map_length; lia.
+  rewrite (map_nth_inbound) with (d2:=s_int); try lia.
+  rewrite map_nth_inbound with (d2:=("x")%string); [|assumption]. 
+  simpl.
+  assert (NoDup (s_params c)). {
+    destruct c; simpl in *. rewrite reflect_iff. apply s_params_nodup.
+    apply nodup_NoDup.
+  }
+  assert (forall n vars (sorts : list sort) d1 d2 d3,
+    length vars = length sorts ->
+    NoDup vars ->
+    n < length vars ->
+    ty_subst_fun vars (sorts_to_tys sorts) d1 (nth n vars d2) = nth n sorts d3). {
+      clear. intros n vars; revert n; induction vars; simpl; intros; [lia|].
+      destruct sorts as [|s1 stl]; inversion H; simpl.
+      destruct n as [|n'].
+      - destruct (typevar_eq_dec a a); auto. contradiction.
+      - destruct (typevar_eq_dec (nth n' vars d2) a); auto.
+        + subst. inversion H0; subst.
+          exfalso. apply H5. apply nth_In. lia.
+        + apply IHvars; auto. inversion H0; subst; auto. lia.
+  }
+  apply H5; auto; try lia.
+Qed.
 
 Record pre_interp := {
   domain: sort -> Type;
@@ -278,32 +333,38 @@ Record pre_interp := {
 
   (*This is quite unwieldy (and could be wrong) - need to see if works/can do better*)
 
-  funs: forall (f:funsym) (s: list sort) (Hlen: length (s_params f) = length s),
-    arg_list domain (funsym_sigma_args f s Hlen) ->
-    (domain (funsym_sigma_ret f s Hlen));
+  funs: forall (f:funsym) (srts: list sort),
+    arg_list domain (funsym_sigma_args f srts) ->
+    (domain (funsym_sigma_ret f srts));
 
-  preds: forall (p:predsym) (s: list sort) (Hlen: length (p_params p) = length s),
-    arg_list domain (predsym_sigma_args p s Hlen) -> bool;
+  preds: forall (p:predsym) (srts: list sort),
+    arg_list domain (predsym_sigma_args p srts) -> bool;
 
   (*ADTs - TODO (dependent type issues)*)
   (*We don't restrict to the signature but that is OK*)
   (*TODO: dependent type issues*)
-  (*
-  adts: forall (a: typesym) (constrs: list funsym) (s: list sort), 
-    In (a, constrs) (datatypes_of_context gamma) ->
-    (*I don't think we need the first condition bc the types are
-      different, so we already have that [[f_i(s)]](t) \neq [[f_j(s)]](u)*)
-    (forall c1 c2 (Hc1: length (s_params c1) = length s)
-      (Hc2: length (s_params c2) = length s), 
-      In c1 constrs -> In c2 constrs -> c1 <> c2 
+  
+  adts: forall (a: typesym) (constrs: list funsym) (srts: list sort)
+    (Hadt: In (a, constrs) (datatypes_of_context gamma)),
+    (*1. Disjointness of constructors*)
+    (*For i \neq j, [[f_i(s)]](t) \neq [[f_j(s)]](u) *)
+    (forall c1 c2 (Hc1: In c1 constrs)
+      (Hc2: In c2 constrs), c1 <> c2 
     (*we know constructor cannot be duplicated*) ->
-      forall t u, (funs c1 s) Hc1 t <> (funs c2 s) Hc2 u) /\
-    
-    (forall c (Hc: length (s_params c) = length s) t u, In c constrs ->
-      (funs c s Hc) t = (funs c s Hc) u -> t = u) /\
-    (forall (x: domain (typesym_to_sort a s)), 
-      exists f (H: length (s_params f) = length s) t, In f constrs /\
-      x = (funs f s H) t)*)
+      forall t u, (funs c2 srts) t <> 
+        (dom_cast_aux domain _ _ 
+          (funsym_sigma_ret_eq srts (adt_constr_ret_params_eq sigma _ gamma_valid Hadt Hc1 Hc2)) 
+          ((funs c1 srts) u))) /\
+    (*2: Injectivity of constructors *)
+    (*[[f_i(s)]](t) = [f_i(s)](u) -> t = u*)
+    (forall c t u, In c constrs ->
+      (funs c srts) t = (funs c srts) u -> t = u) /\
+    (*3: Completeness of constructors*)
+    (*forall x in [[t(s)]], exists i t, x = [[f_i(s)]](t)*)
+    (forall (x: domain (typesym_to_sort a srts)), 
+      exists c t (Hc: In c constrs) (Hlen: length (s_params c) = length srts),
+      x = (dom_cast_aux domain _ _
+        (adt_typesym_funsym _ Hadt Hc Hlen) ((funs c srts) t)))
 }.
 
 (*Valuations*)
@@ -443,11 +504,9 @@ Inductive term_interp:
 
     let v_map := v_subst (v_typevar i v) in
     (* First, we get the interpretation of f *)
-    let f_interp := (funs i) f (map v_map params) 
-      (map_length_eq v_map _ _ Hlen) in
+    let f_interp := (funs i) f (map v_map params)  in
     (* Return type of f (sigma(s_ret f))*)
-    let f_ret := (funsym_sigma_ret f (map v_map params) 
-      (map_length_eq v_map _ _ Hlen)) in
+    let f_ret := (funsym_sigma_ret f (map v_map params)) in
     (*Now we need to apply it to the arguments*)
     (*argument ts_i has type sigma((s_args f)_i), where sigma is
       the map that sends the function params alpha_i -> v(params_i).
@@ -458,7 +517,7 @@ Inductive term_interp:
 
     (*The list of sigma(s_args)_i*)
     let f_arg_typs : list sort :=
-      funsym_sigma_args f (map v_map params) (map_length_eq v_map _ _ Hlen) in
+      funsym_sigma_args f (map v_map params) in
 
     (*ith elt of xs is [[t_i]]_v. We need to cast the types to get the type as
       [[v(sigma(s_args f)_i)]]*)
@@ -531,14 +590,13 @@ with formula_interp: (valuation i) -> list formula -> list formula -> formula ->
 
     let v_map := v_subst (v_typevar i v) in
     (* First, we get the interpretation of p *)
-    let p_interp := (preds i) p (map v_map params) 
-      (map_length_eq v_map _ _ Hlen) in
+    let p_interp := (preds i) p (map v_map params)  in
     (*let f_ret := (funsym_sigma_ret f (map v_map params) 
       (map_length_eq v_map _ _ Hlen)) in*)
 
     (*The list of sigma(s_args)_i*)
     let p_arg_typs : list sort :=
-      predsym_sigma_args p (map v_map params) (map_length_eq v_map _ _ Hlen) in
+      predsym_sigma_args p (map v_map params) in
     (*ith elt of xs is [[t_i]]_v. We need to cast the types to get the type as
       [[v(sigma(s_args f)_i)]]*)
 
@@ -787,8 +845,6 @@ Definition make_val (i: pre_interp) (vs: list typevar) (s1 s2: list sort)
 
 Section Logic.
 
-Variable s : sig.
-Variable gamma: context.
 
 (*A full interpretation is consistent with recursive and inductive definitions*)
 Definition full_interp (p: pre_interp) : Prop :=
@@ -800,8 +856,8 @@ Definition full_interp (p: pre_interp) : Prop :=
     In (f, vs, t) (fundefs_of_context gamma) ->
    
     forall ts,
-    let v := make_val p (s_params f) s (funsym_sigma_args f s Hs) vs ts in
-      term_interp p v t (s_ret f) ((funs p) f s Hs ts)) /\
+    let v := make_val p (s_params f) s (funsym_sigma_args f s) vs ts in
+      term_interp p v t (s_ret f) ((funs p) f s ts)) /\
   (*For each predicate p(alpha)(x) = f, 
     [[p(s)]](y) = [[f]]_v, where v maps alpha -> s and x -> y*)
   (forall (pd: predsym) (vs: list vsymbol) (f: formula) (s: list sort)
@@ -810,12 +866,12 @@ Definition full_interp (p: pre_interp) : Prop :=
     
     (*TODO: all lists or nil ones?*)
     forall ts l1 l2,
-    let v := make_val p (p_params pd) s (predsym_sigma_args pd s Hs) vs ts in
-      formula_interp p v l1 l2 f ((preds p) pd s Hs ts)
+    let v := make_val p (p_params pd) s (predsym_sigma_args pd s) vs ts in
+      formula_interp p v l1 l2 f ((preds p) pd s ts)
   ).
   (*TODO: inductive predicates*)
 
-Definition closed (f: formula) : Prop := closed_formula f /\ valid_formula s f.
+Definition closed (f: formula) : Prop := closed_formula f /\ valid_formula sigma f.
 
 Definition interp : Type := {i: pre_interp | full_interp i}.
 
@@ -844,3 +900,5 @@ Definition log_conseq (l: list formula) (f: formula) :=
   forall i, satisfied_l i l -> satisfied_f i f.
 
 End Logic.
+
+End Interp.

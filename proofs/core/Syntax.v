@@ -1,4 +1,5 @@
 Require Import Types.
+Require Import Common.
 Require Export Coq.Reals.Reals.
 
 (** Function and Predicate Symbols **)
@@ -67,7 +68,8 @@ Record funsym :=
     s_ret: vty;
     (*Well-formed - all type variables appear in params*)
     s_ret_wf: check_sublist (type_vars s_ret) s_params;
-    s_args_wf: check_args s_params s_args
+    s_args_wf: check_args s_params s_args;
+    s_params_nodup: nodupb typevar_eq_dec s_params
   }.
 
 Record predsym :=
@@ -75,7 +77,8 @@ Record predsym :=
     p_name: string;
     p_params: list typevar;
     p_args : list vty;
-    p_args_wf: check_args p_params p_args
+    p_args_wf: check_args p_params p_args;
+    p_params_nodup: nodupb typevar_eq_dec p_params
   }.
 
 (*
@@ -105,7 +108,7 @@ Definition id_params : list typevar := [a].
 Definition id_args: list vty := [vty_var a].
 Definition id_ret: vty := vty_var a.
 
-Definition id_fs : funsym := Build_funsym id_name id_params id_args id_ret eq_refl eq_refl.
+Definition id_fs : funsym := Build_funsym id_name id_params id_args id_ret eq_refl eq_refl eq_refl.
 
 End ID.
 
@@ -124,6 +127,7 @@ Proof.
   dec (vty_eq_dec s_ret0 s_ret1).
   assert (s_ret_wf0 = s_ret_wf1) by apply bool_irrelevance; subst.
   assert (s_args_wf0 = s_args_wf1) by apply bool_irrelevance; subst.
+  assert (s_params_nodup0 = s_params_nodup1) by apply bool_irrelevance; subst.
   left; reflexivity.
 Defined.
 
@@ -134,6 +138,7 @@ Proof.
   dec (list_eq_dec typevar_eq_dec p_params0 p_params1).
   dec (list_eq_dec vty_eq_dec p_args0 p_args1).
   assert (p_args_wf0 = p_args_wf1) by apply bool_irrelevance; subst.
+  assert (p_params_nodup0 = p_params_nodup1) by apply bool_irrelevance; subst.
   left; reflexivity.
 Defined.
 

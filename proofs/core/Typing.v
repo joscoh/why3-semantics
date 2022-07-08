@@ -360,3 +360,84 @@ Definition indprop_valid_type (i: indpred_def) : Prop :=
 (*TODO*)
 
 End FunPredSym.
+
+(*Put it all together*)
+Definition valid_context (s : sig) (gamma: context) :=
+  wf_context s gamma /\
+  Forall (fun d =>
+    match d with
+    | datatype_def adts => Forall adt_valid_type adts
+    | recursive_def fs => Forall (funpred_def_valid_type s) fs
+    | inductive_def is => Forall (indprop_valid_type s) is
+    end) gamma.
+
+Lemma NoDup_app: forall {A: Type} (l1 l2: list A),
+  NoDup (l1 ++ l2) ->
+  NoDup l1 /\ NoDup l2.
+Proof.
+  intros A l1. induction l1; simpl; intros; auto.
+  - split; auto. constructor.
+  - inversion H; subst.
+    apply IHl1 in H3. destruct H3. split; auto.
+    constructor; auto. intro C.
+    apply H2. apply in_or_app. left; auto.
+Qed.
+
+Lemma wf_context_expand: forall s d gamma,
+  wf_context s (d :: gamma) ->
+  wf_context s gamma.
+Proof.
+  intros s d gamma. unfold wf_context. intros.
+  unfold typesyms_of_context, datatypes_of_context, 
+  funsyms_of_context, predsyms_of_context in *; 
+  simpl in *; rewrite map_app in *.
+  repeat match goal with
+  | H: ?P /\ ?Q |- _ => destruct H
+  | H: Forall ?P (?l1 ++ ?l2) |- _ => apply Forall_app in H
+  | H: NoDup (?l1 ++ ?l2) |- _ => apply NoDup_app in H
+  | |- ?P /\ ?Q => split; auto
+  end.
+Qed.
+
+Section ValidContextLemmas.
+
+Variable s: sig.
+Variable gamma: context.
+Variable gamma_valid: valid_context s gamma.
+
+Lemma adt_constr_ret_params: forall  (a: typesym) (constrs: list funsym) (c: funsym),
+  In (a, constrs) (datatypes_of_context gamma) ->
+  In c constrs ->
+  s_ret c = vty_cons a (map vty_var (ts_args a)) /\
+  s_params c = ts_args a.
+Proof.
+  intros. unfold valid_context in gamma_valid.
+  destruct gamma_valid. induction gamma; simpl in *. inversion H.
+  unfold datatypes_of_context in H. simpl in H.
+  apply in_app_or in H. destruct H.
+  - inversion H2; subst.
+    destruct a0; simpl in H; try inversion H.
+    rewrite in_map_iff in H. destruct H as [x [Hx Hinx]].
+    destruct x; inversion Hx; subst.
+    unfold adt_valid_type in H5.
+    rewrite Forall_forall in H5.
+    specialize (H5 (alg_def a constrs) Hinx). simpl in H5.
+    rewrite Forall_forall in H5. specialize (H5 _ H0).
+    destruct H5 as [Hp Hr]; rewrite Hp, Hr; split; reflexivity.
+  - inversion H2; subst. assert (wf_context s c0) by (apply (wf_context_expand _ _ _ H1)).
+    apply IHc0; auto.
+Qed.
+
+Lemma adt_constr_ret_params_eq: forall {a: typesym} {constrs: list funsym} {c1 c2: funsym},
+  In (a, constrs) (datatypes_of_context gamma) ->
+  In c1 constrs -> In c2 constrs ->
+  s_ret c1 = s_ret c2 /\ s_params c1 = s_params c2.
+Proof.
+  intros.
+  pose proof (adt_constr_ret_params _ _ _ H H0).
+  pose proof (adt_constr_ret_params _ _ _ H H1).
+  destruct H2; destruct H3; split; congruence.
+Qed.
+
+End ValidContextLemmas.
+

@@ -255,3 +255,41 @@ Proof.
   apply IH. lia.
 Qed. 
 
+(*Decidable [NoDup]*)
+Section NoDupDec.
+Context {A: Type} (eq_dec: forall (x y: A), { x = y } + { x <> y}).
+
+Lemma nodup_length: forall (l: list A),
+  length (nodup eq_dec l) <= length l.
+Proof.
+  intros; induction l; simpl; try lia.
+  destruct (in_dec eq_dec a l); simpl; lia.
+Qed.
+
+Lemma nodup_eq_NoDup: forall (l: list A),
+  nodup eq_dec l = l ->
+  NoDup l.
+Proof.
+  intros; induction l; simpl; auto. constructor.
+  simpl in H. destruct (in_dec eq_dec a l).
+  - pose proof (nodup_length l). rewrite H in H0. simpl in H0; lia.
+  - inversion H; rewrite H1. constructor; auto.
+Qed.
+
+Definition nodupb (l: list A) : bool := list_eq_dec eq_dec (nodup eq_dec l) l.
+  
+Lemma nodup_NoDup: forall (l: list A),
+  reflect (NoDup l) (nodupb l).
+Proof.
+  intros l. unfold nodupb. destruct (list_eq_dec eq_dec (nodup eq_dec l) l).
+  - apply ReflectT. apply nodup_eq_NoDup; auto.
+  - apply ReflectF. intro C. apply (nodup_fixed_point eq_dec) in C. contradiction.
+Qed.
+
+Definition NoDup_dec: forall (l: list A),
+  {NoDup l} + {~ (NoDup l)}.
+Proof.
+  intros. apply (reflect_dec _ (nodupb l)). apply nodup_NoDup.
+Qed. 
+
+End NoDupDec.
