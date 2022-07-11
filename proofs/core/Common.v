@@ -293,3 +293,15 @@ Proof.
 Qed. 
 
 End NoDupDec.
+
+Lemma NoDup_app: forall {A: Type} (l1 l2: list A),
+  NoDup (l1 ++ l2) ->
+  NoDup l1 /\ NoDup l2.
+Proof.
+  intros A l1. induction l1; simpl; intros; auto.
+  - split; auto. constructor.
+  - inversion H; subst.
+    apply IHl1 in H3. destruct H3. split; auto.
+    constructor; auto. intro C.
+    apply H2. apply in_or_app. left; auto.
+Qed.

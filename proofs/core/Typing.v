@@ -255,6 +255,115 @@ Definition wf_context (s: sig) (gamma: context) :=
   NoDup (funsyms_of_context gamma) /\
   NoDup (predsyms_of_context gamma).
 
+(* Additional checks for pattern matches *)
+
+(*In addition to what we have above, we also need to know that pattern
+  matches operate on an algebraic data type and are exhaustive. We separate this
+  check from the main typing relation for 2 reasons:
+  1. The exhaustiveness check relies on well-typedness in a non-strictly-positive way
+  2. This check depends on the context, as opposed to the typing relation, which only
+    depends on the signature. *) 
+
+Section MatchExhaustive.
+
+Variable sigma: sig.
+Variable gamma: context.
+
+(*Describes when a pattern matches a term*)
+Inductive matches : pattern -> term -> Prop :=
+  | M_Var: forall v ty t,
+    matches (Pvar v ty) t
+  | M_Constr: forall (f: funsym) (vs: list vty) (ps: list pattern) (ts: list term),
+    (forall x, In x (combine ps ts) -> matches (fst x) (snd x)) ->
+    matches (Pconstr f vs ps) (Tfun f vs ts)
+  | M_Wild: forall t,
+    matches Pwild t
+  | M_Or: forall p1 p2 t,
+    matches p1 t \/ matches p2 t ->
+    matches (Por p1 p2) t
+  | M_Bind: forall p x ty t,
+    matches p t ->
+    matches (Pbind p x ty) t.
+
+Definition exhaustive_match (a: typesym) (constrs: list funsym) (args: list vty)
+  (ps: list pattern) : Prop :=
+  In (a, constrs) (datatypes_of_context gamma) /\
+  forall c, In c constrs -> forall (ts: list term), 
+  term_has_type sigma (Tfun c args ts) (vty_cons a args) ->
+  exists p, In p ps /\ matches p (Tfun c args ts).
+
+(*A valid pattern match matches on a term of an ADT type and is exhaustive*)
+Definition valid_pattern_match (t: term) (ps: list pattern) : Prop :=
+  exists (a: typesym) (args: list vty) (constrs: list funsym),
+    exhaustive_match a constrs args ps.
+
+(*We require that this recursively holds throughout the entire term/formula*)
+Inductive valid_pat_tm : term -> Prop :=
+  | VPT_const: forall c,
+    valid_pat_tm (Tconst c)
+  | VPT_var: forall v ty,
+    valid_pat_tm (Tvar v ty)
+  | VPT_fun: forall f vs ts,
+    (forall x, In x ts -> valid_pat_tm x) ->
+    valid_pat_tm (Tfun f vs ts)
+  | VPT_let: forall t1 v ty t2,
+    valid_pat_tm t1 ->
+    valid_pat_tm t2 ->
+    valid_pat_tm (Tlet t1 v ty t2)
+  | VTY_if: forall f t1 t2,
+    valid_pat_fmla f ->
+    valid_pat_tm t1 ->
+    valid_pat_tm t2 ->
+    valid_pat_tm (Tif f t1 t2)
+  | VTY_match: forall t (ps: list (pattern * term)),
+    valid_pattern_match t (map fst ps) ->
+    (forall x, In x (map snd ps) -> valid_pat_tm x) ->
+    valid_pat_tm (Tmatch t ps)
+with valid_pat_fmla: formula -> Prop :=
+  | VTF_pred: forall p vs ts,
+    (forall x, In x ts -> valid_pat_tm x) ->
+    valid_pat_fmla (Fpred p vs ts)
+  | VTF_quant: forall q v ty f,
+    valid_pat_fmla f ->
+    valid_pat_fmla (Fquant q v ty f)
+  | VTF_eq: forall ty t1 t2,
+    valid_pat_tm t1 ->
+    valid_pat_tm t2 ->
+    valid_pat_fmla (Feq ty t1 t2)
+  | VTF_binop: forall b f1 f2,
+    valid_pat_fmla f1 ->
+    valid_pat_fmla f2 ->
+    valid_pat_fmla (Fbinop b f1 f2)
+  | VTF_not: forall f,
+    valid_pat_fmla f ->
+    valid_pat_fmla (Fnot f)
+  | VTF_true:
+    valid_pat_fmla Ftrue
+  | VTF_false:
+    valid_pat_fmla Ffalse
+  | VTF_let: forall t x ty f,
+    valid_pat_tm t ->
+    valid_pat_fmla f ->
+    valid_pat_fmla (Flet t x ty f)
+  | VTF_if: forall f1 f2 f3,
+    valid_pat_fmla f1 ->
+    valid_pat_fmla f2 ->
+    valid_pat_fmla f3 ->
+    valid_pat_fmla (Fif f1 f2 f3)
+  | VTF_match: forall t (ps: list (pattern * formula)),
+    valid_pattern_match t (map fst ps) ->
+    (forall x, In x (map snd ps) -> valid_pat_fmla x) ->
+    valid_pat_fmla (Fmatch t ps).
+
+End MatchExhaustive.
+
+(*The full typing judgement for terms and formulas*)
+Definition well_typed_term (s: sig) (gamma: context) (t: term) (ty: vty) : Prop :=
+  term_has_type s t ty /\ valid_pat_tm s gamma t.
+
+Definition well_typed_formula (s: sig) (gamma: context) (f: formula) : Prop :=
+  valid_formula s f /\ valid_pat_fmla s gamma f.
+
 (** Validity of definitions *)
 
 (** Algebraic Data Types **)
@@ -283,6 +392,7 @@ Definition adt_valid_type (a : alg_datatype) : Prop :=
 Section FunPredSym.
 
 Variable s: sig.
+Variable gamma: context.
 
 (*A function/pred symbol is well-typed if the term has the correct return type of
   the function and all free variables in t are included in the arguments vars*)
@@ -290,10 +400,10 @@ Variable s: sig.
 Definition funpred_def_valid_type (fd: funpred_def) : Prop :=
   match fd with
   | fun_def f vars t =>
-    term_has_type s t (s_ret f) /\
+    well_typed_term s gamma t (s_ret f) /\
     sublist (term_fv t) vars
   | pred_def p vars f =>
-    valid_formula s f /\
+    well_typed_formula s gamma f /\
     sublist (form_fv f) vars
   end.
   (*TODO: handle type vars? Do we need to, or is that handled by wf of f?*)
@@ -352,7 +462,8 @@ Qed.
 
 Definition indprop_valid_type (i: indpred_def) : Prop :=
   match i with
-  | ind_def p lf => Forall (fun f => valid_formula s f /\ closed_formula f /\ valid_ind_form p f) lf
+  | ind_def p lf => Forall (fun f => well_typed_formula s gamma f /\ 
+      closed_formula f /\ valid_ind_form p f) lf
   end.
 
 (*Strict Positivity*)
@@ -367,21 +478,9 @@ Definition valid_context (s : sig) (gamma: context) :=
   Forall (fun d =>
     match d with
     | datatype_def adts => Forall adt_valid_type adts
-    | recursive_def fs => Forall (funpred_def_valid_type s) fs
-    | inductive_def is => Forall (indprop_valid_type s) is
+    | recursive_def fs => Forall (funpred_def_valid_type s gamma) fs
+    | inductive_def is => Forall (indprop_valid_type s gamma) is
     end) gamma.
-
-Lemma NoDup_app: forall {A: Type} (l1 l2: list A),
-  NoDup (l1 ++ l2) ->
-  NoDup l1 /\ NoDup l2.
-Proof.
-  intros A l1. induction l1; simpl; intros; auto.
-  - split; auto. constructor.
-  - inversion H; subst.
-    apply IHl1 in H3. destruct H3. split; auto.
-    constructor; auto. intro C.
-    apply H2. apply in_or_app. left; auto.
-Qed.
 
 Lemma wf_context_expand: forall s d gamma,
   wf_context s (d :: gamma) ->
@@ -412,20 +511,17 @@ Lemma adt_constr_ret_params: forall  (a: typesym) (constrs: list funsym) (c: fun
   s_params c = ts_args a.
 Proof.
   intros. unfold valid_context in gamma_valid.
-  destruct gamma_valid. induction gamma; simpl in *. inversion H.
-  unfold datatypes_of_context in H. simpl in H.
-  apply in_app_or in H. destruct H.
-  - inversion H2; subst.
-    destruct a0; simpl in H; try inversion H.
-    rewrite in_map_iff in H. destruct H as [x [Hx Hinx]].
-    destruct x; inversion Hx; subst.
-    unfold adt_valid_type in H5.
-    rewrite Forall_forall in H5.
-    specialize (H5 (alg_def a constrs) Hinx). simpl in H5.
-    rewrite Forall_forall in H5. specialize (H5 _ H0).
-    destruct H5 as [Hp Hr]; rewrite Hp, Hr; split; reflexivity.
-  - inversion H2; subst. assert (wf_context s c0) by (apply (wf_context_expand _ _ _ H1)).
-    apply IHc0; auto.
+  destruct gamma_valid.
+  unfold datatypes_of_context in H.
+  rewrite in_concat in H. destruct H as [datatyps [Hdatatyps Ha]].
+  rewrite Forall_forall in H2. rewrite in_map_iff in Hdatatyps.
+  destruct Hdatatyps as [d [Hd Hind]]; subst.
+  specialize (H2 _ Hind). destruct d; simpl in Ha; try solve[inversion Ha].
+  rewrite in_map_iff in Ha. destruct Ha as [alg [Halg Hinalg]].
+  destruct alg as [ts fs]; inversion Halg; subst.
+  rewrite Forall_forall in H2. apply H2 in Hinalg.
+  unfold adt_valid_type in Hinalg.
+  rewrite Forall_forall in Hinalg. apply Hinalg in H0. split; apply H0.
 Qed.
 
 Lemma adt_constr_ret_params_eq: forall {a: typesym} {constrs: list funsym} {c1 c2: funsym},
