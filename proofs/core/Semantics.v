@@ -784,7 +784,22 @@ Definition full_interp (p: pre_interp) : Prop :=
     (*TODO: all lists or nil ones?*)
     forall ts l1 l2,
     let v := make_val p (p_params pd) s (predsym_sigma_args pd s) vs ts in
-      formula_interp p v l1 l2 f ((preds p) pd s ts)
+      formula_interp p v l1 l2 f ((preds p) pd s ts) /\
+
+  (*Inductive preds: for p(alpha) = f1 | f2 | ... | fn, 
+    [[p(s)]] is the least predicate such that [[f_i]]_v holds where v maps
+    alpha to s*)
+  (forall (pd: predsym) (lf: list formula) (s: list sort) (v: valuation p) 
+    (bs: list bool) (ts: list term) b l1 l2,
+    In (pd, lf) (indpreds_of_context gamma) ->
+    Forall (fun x => (v_typevar p v) (fst x) = (snd x)) (combine (p_params pd) s) ->
+    (*TODO: all lists or nil ones?*)
+    Forall (fun x => formula_interp p v l1 l2 (fst x) (snd x))
+      (combine lf bs) ->
+    formula_interp p v l1 l2 (Fpred pd (sorts_to_tys s) ts) b ->
+    (*must be case that all f_i's together imply b*)
+    implb (fold_right andb true bs) b
+    (*TODO: is this the right meaning of "least predicate"?*))
   ).
   (*TODO: inductive predicates*)
 

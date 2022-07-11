@@ -308,6 +308,16 @@ Definition preddefs_of_def (d: def) : list (predsym * list vsymbol * formula) :=
   | _ => nil
   end.
 
+Definition indpreds_of_def (d: def) : list (predsym * list formula) :=
+  match d with
+  | inductive_def li =>
+    fold_right (fun x acc => 
+    match x with
+    | ind_def p fs => (p, fs) :: acc
+    end) nil li
+  | _ => nil
+  end.
+
 (*TODO: may want function for indprops as well*)
 
 Definition funsyms_of_def (d: def) : list funsym :=
