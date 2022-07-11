@@ -8,200 +8,6 @@ Require Import Coq.Logic.Eqdep_dec.
 
 (** Semantics **)
 
-(* Pattern matching interpretations *)
-
-(*TODO: In the paper, isf_i(t) and similar are defined on interpretations, not
-  terms, BUT they use the function on terms in the pattern matching definition.
-  So I believe this function should be OK (because on terms, it is decidable)*)
-  (*
-Definition is_constr (f: funsym) (vs: list vty) (t: term) : option (list term) :=
-  match t with
-  | Tfun f' vs' tms => if funsym_eq_dec f f' && list_eq_dec vty_eq_dec vs vs' then
-                        Some tms else None
-  | _ => None
-  end.
-
-Section PatternInterp.
-
-Context {A: Type} (flet: term -> vsymbol -> vty -> A -> A).
-
-(*A function to compile the compiled version (None is error state).
-  This shows compilation actually is decidable, and it makes iteration easier*)
-Fixpoint compile_match 
-  (t: term) (p: pattern) (b: option A) (h: option A) {struct p} : option A :=
-  match p with
-  | Pvar x ty => 
-    match b with
-    | Some tm => Some (flet t x ty tm)
-    | None => None
-    end
-  | Pconstr f vs ps =>
-    match ps with
-    | nil => 
-      match (is_constr f vs t) with
-      | Some _ => b
-      | None => h
-      end
-    | _ :: _ =>
-      match (is_constr f vs t) with
-      | Some ts => 
-        ((fix compile_matches (tms: list term) (pats: list pattern) {struct pats} : option A :=
-          match tms, pats with
-          | nil, nil => b
-          | (tm :: tl1), (p1 :: tl2) =>
-            compile_match tm p1 (compile_matches tl1 tl2) h
-          | _, _ => None
-          end
-        ) ts ps)
-      | None => h
-      end
-    end
-  | Pwild => b
-  | Por p1 p2 => compile_match t p1 b (compile_match t p2 b h)
-  | Pbind p1 x ty => 
-    match (compile_match t p1 b h) with
-    | Some tm => Some (flet t x ty tm)
-    | None => None
-    end
-  end.
-
-(*Compile a list of (match, A) pairs where failures are propagated*)
-Definition compile_full_match (t: term) (ps: list pattern) (res: list A) : option A :=
-  fold_right (fun x acc => compile_match t (fst x) (snd x) acc) None (combine ps (map Some res)).
-
-(* Inductive relation *)
-
-Definition is_some {A: Type} (o: option A) :=
-  match o with
-  | Some _ => true
-  | _ => false
-  end.
-
-(*option represents "error", which should never occur in well-typed (exhaustive) pattern*)
-(*TODO: prove that we never get error if we have well-typed term*)
-(*Their formulation encodes as if statements. We don't do this because isf_i(t) is
-  not a valid formula. It may be possible to encode this directly, but it doesn't seem
-  necessary.*)
-Unset Elimination Schemes.
-Inductive pattern_interp : term -> pattern -> option A -> option A -> option A -> Prop :=
-  | PI_varNone: forall t x ty h,
-    pattern_interp t (Pvar x ty) None h None
-  | PI_varSome: forall t x ty b h,
-    pattern_interp t (Pvar x ty) (Some b) h (Some (flet t x ty b))
-  | PI_constrNilT: forall t (f: funsym) (vs: list vty) b h,
-    is_some (is_constr f vs t) ->
-    pattern_interp t (Pconstr f vs nil) b h b
-  | PI_constrF: forall t (f: funsym) (vs: list vty) (ps: list pattern) b h,
-    negb (is_some (is_constr f vs t)) ->
-    pattern_interp t (Pconstr f vs ps) b h h
-  | PI_constrConsT: forall t f (vs: list vty) (ps: list pattern) b h (ts: list term) res,
-    is_constr f vs t = Some ts ->
-    iter_pattern_interp ts ps b h res ->
-    pattern_interp t (Pconstr f vs ps) b h res
-  | PI_wild: forall t b h,
-    pattern_interp t Pwild b h b
-  | PI_or: forall t p1 p2 b h res res1,
-    pattern_interp t p2 b h res ->
-    pattern_interp t p1 b res res1 ->
-    pattern_interp t (Por p1 p2) b h res1
-  | PI_bindNil: forall t p x ty b h,
-    pattern_interp t p b h None ->
-    pattern_interp t (Pbind p x ty) b h None
-  | PI_bind: forall t p x ty b h res,
-    pattern_interp t p b h (Some res) ->
-    pattern_interp t (Pbind p x ty) b h (Some (flet t x ty res))
-
-with iter_pattern_interp: list term -> list pattern -> option A -> option A -> option A -> Prop :=
-  | IPI_nil:
-    forall b h,
-    iter_pattern_interp nil nil b h b
-  | IPI_cons: forall t ts p ps b h res res1,
-    iter_pattern_interp ts ps b h res ->
-    pattern_interp t p res h res1 ->
-    iter_pattern_interp (t :: ts) (p :: ps) b h res1
-  (*TODO: maybe remove these: not needed because this case is never reached.
-    Only here to make the relation total*)
-  | IPI_bad1: forall t ts b h,
-    iter_pattern_interp (t :: ts) nil b h None
-  | IPI_bad2: forall p ps b h,
-    iter_pattern_interp nil (p :: ps) b h None.
-Set Elimination Schemes.
-
-Scheme pattern_interp_ind := Minimality for pattern_interp Sort Prop
-with iter_pattern_interp_ind := Minimality for iter_pattern_interp Sort Prop.
-
-(*We need another form of iteration, where failures are propagated*)
-Inductive match_pattern: term -> list pattern -> list A -> option A -> Prop :=
-  | MP_nil: forall t,
-    match_pattern t nil nil None
-  | MP_cons: forall t p ps tm ts res res1,
-    match_pattern t ps ts res ->
-    pattern_interp t p (Some tm) res res1 ->
-    match_pattern t (p :: ps) (tm :: ts) res1.
-
-(*Proof of equivalence*)
-Lemma compile_match_interp: forall (t: term) (p: pattern) (b: option A) (h: option A) (res: option A),
-  compile_match t p b h = res -> pattern_interp t p b h res.
-Proof.
-  intros. generalize dependent res; revert t b h; induction p; intros; simpl in *.
-  - destruct b; subst; constructor.
-  - destruct ps.
-    + destruct (is_constr f vs t) eqn : Hcon; subst;
-      constructor; rewrite Hcon; auto.
-    + destruct (is_constr f vs t) eqn : Hcon.
-      2 : { subst. constructor. rewrite Hcon; auto. }
-      assert (forall ls ps res1, 
-        Forall (fun p : pattern =>
-          forall (t : term) (b h res : option A),
-          compile_match t p b h = res -> pattern_interp t p b h res) ps ->
-        ((fix compile_matches (tms : list term) (pats : list pattern) {struct pats} :
-          option A :=
-          match tms with
-          | [] => match pats with
-                  | [] => b
-                  | _ :: _ => None
-                  end
-          | tm0 :: tl2 =>
-              match pats with
-              | [] => None
-              | p1 :: tl3 =>
-                  compile_match tm0 p1 (compile_matches tl2 tl3) h
-              end
-          end) ls ps) = res1 -> iter_pattern_interp ls ps b h res1). {
-        intros ls ps'. clear H0. clear H. revert ls. induction ps'; intros.
-        destruct ls; simpl in H0; subst; constructor.
-        inversion H; subst.
-        destruct ls as [|thd ttl]. constructor. eapply IPI_cons.
-        - apply IHps'.
-          auto. reflexivity.
-        - apply H3. reflexivity.
-      }
-      specialize (H1 l (p :: ps) res); simpl in H1.
-      apply H1 in H0; auto; clear H1.
-      eapply PI_constrConsT.
-      rewrite Hcon; reflexivity. apply H0.
-  - subst; apply PI_wild.
-  - eapply PI_or. apply IHp2. reflexivity. apply IHp1. assumption.
-  - destruct (compile_match t p b h) eqn : Hcon; simpl in H; subst.
-    + eapply PI_bind. apply IHp. assumption.
-    + constructor. apply IHp. assumption.
-Qed.
-
-(*TODO: other direction*)
-
-End PatternInterp.
-
-(*Get term and formula versions*)
-
-Definition compile_term_match := compile_match Tlet.
-Definition compile_formula_match := compile_match Flet.
-
-Definition term_pattern_interp := pattern_interp Tlet.
-Definition formula_pattern_interp := pattern_interp Flet.
-
-Definition match_term_pattern := match_pattern Tlet.
-Definition match_formula_pattern := match_pattern Flet.
-*)
 (* Function/Predicate Application *)
 
 (*A custom list-like data type which holds values of types [[s_i]], where
@@ -537,6 +343,12 @@ Inductive term_interp:
     (*Again, we must cast the return type of f, for the same reason*)
     term_interp v (Tfun f params ts) f_ret 
       (dom_cast _ _ (subst_sort_eq f_ret (v_typevar i v)) (f_interp xs))
+  | TI_match: forall v (t: term) ty (ps: list (pattern * term)) (t': term) x,
+    (*Translate the pattern match to a term of tests (with match_pattern), then
+      interpret*)
+    match_pattern term Tlet v t (map fst ps) (map snd ps) (Some t') ->
+    term_interp v t' ty x ->
+    term_interp v (Tmatch t ps) ty x
 
 with formula_interp: (valuation i) -> list formula -> list formula -> formula -> bool -> Prop :=
   | FI_true: forall v tl fl, formula_interp v tl fl Ftrue true
@@ -608,6 +420,12 @@ with formula_interp: (valuation i) -> list formula -> list formula -> formula ->
           (@arg_nth _ p_arg_typs xs n s_int dom_int))) ->
 
     formula_interp v tl fl (Fpred p params ts) (p_interp xs)
+  | FI_match: forall v (t: term) (ps: list (pattern * formula)) (f: formula) b tl fl,
+    (*Translate the pattern match to a formula of tests (with match_pattern), then
+      interpret*)
+    match_pattern formula Flet v t (map fst ps) (map snd ps) (Some f) ->
+    formula_interp v tl fl f b ->
+    formula_interp v tl fl (Fmatch t ps) b
   (* Make the logic classical *)
   | FI_VarT: forall v f tl fl,
     In f tl ->
@@ -636,9 +454,15 @@ with formula_interp: (valuation i) -> list formula -> list formula -> formula ->
     [[t]]]is application of [[f]] to [[ts]]*)
 with proj_constr : (valuation i) -> term -> funsym -> list vty -> list term -> bool -> Prop :=
 | mk_proj_constr: forall v t ty f vs ts x,
+    t = Tfun f vs ts ->
     (*Says that [[t]] = [[f(vs)]][[ts]], but operation on t and ts (NOT interpretations)*)
-    term_interp v (Tfun f vs ts) ty x ->
+    term_interp v t ty x ->
     proj_constr v t f vs ts true
+| not_proj_constr: forall v ty f vs ts x t' x',
+    term_interp v (Tfun f vs ts) ty x ->
+    term_interp v t' ty x' ->
+    x <> x' ->
+    proj_constr v t' f vs ts false
 (*We define [is_constr] as (exists tm, proj_constr v t f vs t)*)
 
   (*pattern interpretations are almost the same for terms and formulas; the
@@ -689,14 +513,25 @@ with iter_pattern_interp: forall (A: Type) (flet: term -> vsymbol -> vty -> A ->
   | IPI_cons: forall A flet v t ts p ps b h res res1,
     iter_pattern_interp A flet v ts ps b h res ->
     pattern_interp A flet v t p res h res1 ->
-    iter_pattern_interp A flet v (t :: ts) (p :: ps) b h res1.
+    iter_pattern_interp A flet v (t :: ts) (p :: ps) b h res1
+
+(*We need another form of iteration, where failures are propagated*)
+with match_pattern: forall (A: Type) (flet: term -> vsymbol -> vty -> A -> A),
+  (valuation i) -> term -> list pattern -> list A -> option A -> Prop :=
+  | MP_nil: forall A flet v t,
+    match_pattern A flet v t nil nil None
+  | MP_cons: forall A flet v t p ps tm ts res res1,
+    match_pattern A flet v t ps ts res ->
+    pattern_interp A flet v t p (Some tm) res res1 ->
+    match_pattern A flet v t (p :: ps) (tm :: ts) res1.
 Set Elimination Schemes.
 
 Scheme term_interp_ind := Minimality for term_interp Sort Prop
 with formula_interp_ind := Minimality for formula_interp Sort Prop
 with proj_constr_ind := Minimality for proj_constr Sort Prop
 with pattern_interp_ind := Minimality for pattern_interp Sort Prop
-with iter_pattern_interp_ind := Minimality for iter_pattern_interp Sort Prop.
+with iter_pattern_interp_ind := Minimality for iter_pattern_interp Sort Prop
+with match_pattern_ind := Minimality for match_pattern Sort Prop.
 
 (* Tests/Examples *)
 
@@ -715,6 +550,24 @@ Lemma test2: forall {A: Type} (P: A -> Prop),
 Proof.
   intros A P [x Hx] Hall. assert (P x) by apply Hall. auto.
 Qed.
+
+(*The bool version of [proj_constr] works*)
+(*
+Lemma proj_constr_false: forall v t f vs ts,
+  proj_constr v t f vs ts false ->
+  ~ proj_constr v t f vs ts true.
+Proof.
+  intros. intro C. inversion H; subst.
+  inversion C; subst. (*need injectivity, but true*)
+Abort.
+
+Lemma proj_constr_false': forall v t f vs,
+  (forall ts, proj_constr v t f vs ts false) ->
+  ~ (exists ts, proj_constr v t f vs ts true).
+Proof.
+  intros. intro C. destruct C as [ts Hp].
+  specialize (H ts). (*previous "lemma"*)
+Abort.*)
 
 Section Ex.
 

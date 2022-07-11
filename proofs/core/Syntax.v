@@ -81,24 +81,6 @@ Record predsym :=
     p_params_nodup: nodupb typevar_eq_dec p_params
   }.
 
-(*
-Definition mk_funsym (name: string) (params : list typevar) (args: list vty)
-  (ret: vty) : (check_args params args = true) ->
-    (check_sublist (type_vars ret) params = true) -> funsym.
-Proof.
-  intros. econstructor.
-  apply name.
-  apply (reflect_iff _ _ (check_sublist_correct (type_vars ret) params)). assumption.
-  apply (reflect_iff _ _ (check_args_correct params args)). assumption.
-Defined.
-
-Definition mk_predsym (name: string) (params: list typevar) (args: list vty) :
-  (check_args params args = true) -> predsym.
-Proof.
-  intros. econstructor.
-  apply name. apply (reflect_iff _ _ (check_args_correct params args)). assumption.
-Defined.*)
-
 (*As an example, we define the polymorphic identity function*)
 Section ID.
 
