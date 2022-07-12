@@ -388,8 +388,102 @@ Definition adt_valid_type (a : alg_datatype) : Prop :=
   end.
 
 (*Inhabited types*)
+Section Inhab.
 
-(*TODO*)
+Variable s: sig.
+Variable gamma: context.
+
+(*This is more complicated than it seems, for 2 reasons:
+1. Whether a type symbol/type is inhabited depends on the current context. For
+  instance, we cannot assume that a recursive instance of a type is inhabited,
+  but we can assume that previously-declared types are. Similarly, if we know
+  that a type variable a is applied to a nonexistent type, we cannot assume
+  further instances of a are inhabited. So we need 2 lists representing the
+  known non-inhabited types in the current context.
+2. The cons case in vty_inhab involes a condition: In x new_tvs <-> ~ vty_inhab _ _ y.
+   This is not strictly positive, so we include an additional boolean parameter
+   to indicate truth or falsehood. Thus, we need to add all the "false" cases,
+   which otherwise would not be needed. It remains to show that this relation is
+   decidable and that the boolean parameter correctly shows whether 
+   *_inhab tss tvs x true is provable. *)
+Inductive typesym_inhab : list typesym -> list typevar -> typesym -> bool -> Prop :=
+  | ts_check_empty: forall tss tvs ts,
+    ~ In ts (sig_t s) ->
+    typesym_inhab tss tvs ts false
+  | ts_check_rec: forall tss tvs ts, (*recursive type*)
+    In ts tss ->
+    typesym_inhab tss tvs ts false
+  | ts_check_typeT: forall tss tvs ts, (*for abstract type*)
+    ~ In ts tss ->
+    ~ In ts (map fst (datatypes_of_context gamma)) ->
+    In ts (sig_t s) ->
+    (*no "bad" type variables in context - these are the uninhabited arguments of the
+      typesym (see vty_inhab below)*)
+    null tvs ->
+    typesym_inhab tss tvs ts true
+  | ts_check_typeF: forall tss tvs ts,
+    ~In ts tss  ->
+    ~ In ts (map fst (datatypes_of_context gamma)) ->
+    negb (null tvs) ->
+    typesym_inhab tss tvs ts false
+  | ts_check_adtT: forall tss tvs ts constrs, (*for ADTs*)
+    ~In ts tss ->
+    In (ts, constrs) (datatypes_of_context gamma) ->
+    negb (null constrs) ->
+    (exists c, In c constrs /\ constr_inhab (ts :: tss) tvs c true) ->
+    typesym_inhab tss tvs ts true
+  | ts_check_adtF1: forall tss tvs ts constrs,
+    ~In ts tss ->
+    In (ts, constrs) (datatypes_of_context gamma) ->
+    null constrs ->
+    typesym_inhab tss tvs ts false
+  | ts_check_adtF2: forall tss tvs ts constrs,
+    ~In ts tss ->
+    In (ts, constrs) (datatypes_of_context gamma) ->
+    negb( null constrs) ->
+    (forall c, In c constrs -> constr_inhab (ts :: tss) tvs c false) ->
+    typesym_inhab tss tvs ts false
+with constr_inhab: list typesym -> list typevar -> funsym -> bool -> Prop :=
+  | constr_checkT: forall tss tvs c,
+    (forall x, In x (s_args c) -> vty_inhab tss tvs x true) ->
+    constr_inhab tss tvs c true
+  | constr_checkF: forall tss tvs c,
+    (exists x, In x (s_args c) /\ vty_inhab tss tvs x false) ->
+    constr_inhab tss tvs c false
+(*Here, need bool to deal with strict positivity issues*)
+with vty_inhab: list typesym -> list typevar -> vty -> bool -> Prop :=
+  | vty_check_varT: forall tss tvs tv,
+    ~ In tv tvs ->
+    vty_inhab tss tvs (vty_var tv) true
+  | vty_check_varF: forall tss tvs tv,
+    In tv tvs ->
+    vty_inhab tss tvs (vty_var tv) false
+  | vty_check_consT: forall tss tvs new_tvs ts args,
+    (*making this condition strictly positive is not easy*)
+    (*Condition: for all x y, In (x, y) (combine (ts_args ts) args) ->
+    In x new_tvs <-> ~vty_inhab tss tvs y*)
+    (forall x y, In (x, y) (combine (ts_args ts) args) ->
+    ~ (In x new_tvs) -> vty_inhab tss tvs y true) ->
+    (forall x y, In (x, y) (combine (ts_args ts) args) ->
+      In x new_tvs -> vty_inhab tss tvs y false) ->
+    typesym_inhab tss new_tvs ts true ->
+    vty_inhab tss tvs (vty_cons ts args) true
+  | vty_check_consF: forall tss tvs new_tvs ts args,
+    (forall x y, In (x, y) (combine (ts_args ts) args) ->
+    ~ (In x new_tvs) -> vty_inhab tss tvs y true) ->
+    (forall x y, In (x, y) (combine (ts_args ts) args) ->
+      In x new_tvs -> vty_inhab tss tvs y false) ->
+    typesym_inhab tss new_tvs ts false ->
+    vty_inhab tss tvs (vty_cons ts args) false
+    .
+
+(*An ADT is inhabited if its typesym is inhabited under the empty context*)
+Definition adt_inhab (a : alg_datatype) : Prop :=
+  match a with
+  | alg_def ts constrs => typesym_inhab nil nil ts true
+  end.
+
+End Inhab.
 
 (* Recursive Functions and Predicates *)
 Section FunPredSym.
@@ -480,7 +574,8 @@ Definition valid_context (s : sig) (gamma: context) :=
   wf_context s gamma /\
   Forall (fun d =>
     match d with
-    | datatype_def adts => Forall adt_valid_type adts
+    | datatype_def adts => Forall adt_valid_type adts /\ 
+                           Forall (adt_inhab s gamma) adts
     | recursive_def fs => Forall (funpred_def_valid_type s gamma) fs
     | inductive_def is => Forall (indprop_valid_type s gamma) is
     end) gamma.
