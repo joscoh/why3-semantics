@@ -294,7 +294,7 @@ Inductive term_interp:
   | TI_var: forall v (x: vsymbol) (ty: vty),
     term_interp v (Tvar x ty) ty (var_to_dom v x ty)
   | TI_iftrue: forall v f t1 t2 ty x tl fl,
-    formula_interp v tl fl f true ->
+    formula_interp v tl fl f true -> (*empty or need context - would empty work?*)
     term_interp v t1 ty x ->
     term_interp v (Tif f t1 t2) ty x
   | TI_iffalse: forall v f t1 t2 ty x tl fl,

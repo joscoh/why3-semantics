@@ -485,6 +485,84 @@ Definition adt_inhab (a : alg_datatype) : Prop :=
 
 End Inhab.
 
+(*Strict Positivity for Types*)
+
+Fixpoint typesym_in (t: typesym) (v: vty) : bool :=
+  match v with
+  | vty_int => false
+  | vty_real => false
+  | vty_var x => false
+  | vty_cons ts vs => typesym_eq_dec t ts || existsb (typesym_in t) vs
+  end.
+
+Section PosTypes.
+
+(*harder because we dont have function types - need to mention constructor,
+  not just type*)
+(*Adapted from https://coq.inria.fr/refman/language/core/inductive.html*)
+
+Variable gamma: context.
+
+Inductive strictly_positive : vty -> list typesym -> Prop :=
+  | Strict_notin: forall (t: vty) (ts: list typesym),
+    (forall x, In x ts -> negb(typesym_in x t)) ->
+    strictly_positive t ts
+  | Strict_constr: forall (t: vty) (ts: list typesym),
+    (exists (x: typesym) vs, In x ts /\ t = vty_cons x vs /\
+      (forall (y: typesym) (v: vty), In y ts -> In v vs ->
+        negb (typesym_in y v))) ->
+    strictly_positive t ts
+  (*TODO: I don't think the 3rd case applies to us because
+    we don't have built in function types - TODO: how to handle function types?
+    should we add function types? Then we need application and lambdas*)
+  | Strict_ind: forall (t: vty) (ts: list typesym) (I: typesym) 
+    (constrs: list funsym) (vs: list vty),
+    In (datatype_def [alg_def I constrs]) gamma -> (*singleton list means non-mutually recursive*)
+    t = vty_cons I vs ->
+    (forall (x: typesym) (v: vty), In x ts -> In v vs ->
+      negb (typesym_in x v)) ->
+    (forall (c: funsym), In c constrs ->
+      nested_positive c (ts_args I) vs I ts) ->
+    strictly_positive t ts
+
+(*I believe this reduces to positive in our case, but it only applies
+  to non-mutual inductive types. How to encode this?*)
+(*We don't have to worry about uniform/non-uniform params because
+  our only params are type variables*)
+(*We say constructor T of (non-mutual) inductive type I is satisfies
+  nested positivity wrt ts*)
+(*We take in the type substitution (params_i -> substs_i) (or [p_j/a_j])
+  because this has to operate on a funsym, not a vty, since we don't have
+  function types. This makes the definition a bit ugly*)
+with nested_positive: funsym -> list typevar -> list vty ->
+   typesym -> list typesym -> Prop :=
+  | Nested_constr: forall (T: funsym) (params: list typevar) (substs: list vty)
+     (I: typesym) (ts: list typesym),
+    (forall vty, In vty (s_args T) -> 
+      strictly_positive (ty_subst params substs vty) ts) ->
+    (exists vs, (ty_subst params substs (s_ret T)) = vty_cons I vs /\
+      (forall x v, In x ts -> In v vs -> negb (typesym_in x v))) ->
+    nested_positive T params substs I ts.
+
+Inductive positive : funsym -> list typesym -> Prop :=
+  (*We combine into one case because of we don't have true function types*)
+  | Pos_constr: forall (constr: funsym) (ts: list typesym),
+    (forall vty, In vty (s_args constr) -> strictly_positive vty ts) ->
+    (exists t vtys, In t ts /\ s_ret constr = vty_cons t vtys /\
+      forall (v: vty) (x: typesym), In x ts -> In v vtys ->
+        negb (typesym_in x v)) ->
+    positive constr ts.
+
+(*Finally, we want to say the following well-formedness condition:*)
+Definition adt_positive (l: list alg_datatype) : Prop :=
+  let ts : list typesym :=
+    map (fun a => match a with | alg_def ts _ => ts end) l in
+  let fs: list funsym :=
+    concat (map (fun a => match a with | alg_def _ constrs => constrs end) l) in
+  Forall (fun f => positive f ts) fs.
+
+End PosTypes.
+
 (* Recursive Functions and Predicates *)
 Section FunPredSym.
 
@@ -575,7 +653,8 @@ Definition valid_context (s : sig) (gamma: context) :=
   Forall (fun d =>
     match d with
     | datatype_def adts => Forall adt_valid_type adts /\ 
-                           Forall (adt_inhab s gamma) adts
+                           Forall (adt_inhab s gamma) adts /\
+                           adt_positive gamma adts
     | recursive_def fs => Forall (funpred_def_valid_type s gamma) fs
     | inductive_def is => Forall (indprop_valid_type s gamma) is
     end) gamma.
