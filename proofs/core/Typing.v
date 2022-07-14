@@ -597,8 +597,6 @@ Inductive valid_ind_form (p: predsym) : formula -> Prop :=
     tys = map vty_var (p_params p) -> (*TODO: is this correct? All predsyms should have same type params, right?*)
     length (p_args p) = length tms ->
     valid_ind_form p (Fpred p tys tms)
-  | VI_eq: forall ty t1 t2,
-    valid_ind_form p (Feq ty t1 t2)
   | VI_impl: forall f1 f2,
     valid_ind_form p f2 ->
     valid_ind_form p (Fbinop Timplies f1 f2)
@@ -609,13 +607,11 @@ Inductive valid_ind_form (p: predsym) : formula -> Prop :=
     valid_ind_form p f ->
     valid_ind_form p (Flet t x ty f).
      
-(*TODO: for decidable, need functional extensionality (bc predsym) or else change to bool*)
 Fixpoint valid_ind_form_dec (p: predsym) (f: formula) : bool :=
   match f with
   | Fpred p' tys tms => predsym_eq_dec p p' && list_eq_dec vty_eq_dec tys (map vty_var (p_params p))
     && (length (p_args p) =? length tms)
   | Fquant Tforall x ty f' => valid_ind_form_dec p f'
-  | Feq ty t1 t2 => true
   | Fbinop Timplies f1 f2 => valid_ind_form_dec p f2
   | Flet t x ty f' => valid_ind_form_dec p f'
   | _ => false
@@ -643,7 +639,107 @@ Definition indprop_valid_type (i: indpred_def) : Prop :=
 
 (*Strict Positivity*)
 
-(*TODO*)
+(*First, does a predicate symbol appear in a formula? Because of "if" expressions,
+  we also need a version for terms*)
+Fixpoint predsym_in (p: predsym) (f: formula) {struct f}  : bool :=
+  match f with
+  | Fpred ps tys tms => predsym_eq_dec p ps || existsb (predsym_in_term p) tms
+  | Fquant q x ty f' => predsym_in p f'
+  | Feq ty t1 t2 => predsym_in_term p t1 || predsym_in_term p t2
+  | Fbinop b f1 f2 => predsym_in p f1 || predsym_in p f2
+  | Fnot f' => predsym_in p f'
+  | Ftrue => false
+  | Ffalse => false
+  | Flet t x ty f' => predsym_in_term p t || predsym_in p f'
+  | Fif f1 f2 f3 => predsym_in p f1 || predsym_in p f2 || predsym_in p f3
+  | Fmatch t ps => predsym_in_term p t || existsb (fun x => predsym_in p (snd x)) ps
+  end
+  
+with predsym_in_term (p: predsym) (t: term) {struct t}  : bool :=
+  match t with
+  | Tconst _ => false
+  | Tvar _ _ => false
+  | Tfun fs tys tms => existsb (predsym_in_term p) tms
+  | Tlet t1 x ty t2 => predsym_in_term p t1 || predsym_in_term p t2
+  | Tif f t1 t2 => predsym_in p f || predsym_in_term p t1 || predsym_in_term p t2
+  | Tmatch t ps => predsym_in_term p t || existsb (fun x => predsym_in_term p (snd x)) ps
+  end.
+  
+(*Here, strict positivity is a bit simpler, because predicates are not
+  higher-order; we only need to reason about implication, essentially *)
+
+(*Inductive case and nested positivity cannot occur because we cannot
+  take a predicate as an argument (ie: can't have list x, where x : Prop)*)
+Inductive ind_strictly_positive (ps: list predsym) : formula -> Prop :=
+  | ISP_notin: forall (f: formula),
+    (forall p, In p ps -> negb (predsym_in p f)) ->
+    ind_strictly_positive ps f
+  | ISP_pred: forall (p: predsym) 
+    (vs: list vty) (ts: list term),
+    In p ps ->
+    (forall x t, In t ts -> In x ps -> negb (predsym_in_term x t)) ->
+    ind_strictly_positive ps (Fpred p vs ts)
+  | ISP_impl: forall  (f1 f2: formula),
+    ind_strictly_positive ps f2 ->
+    (forall p, In p ps -> negb(predsym_in p f1)) ->
+    ind_strictly_positive ps (Fbinop Timplies f1 f2)
+  (*The rest of the cases are not too interesting*)
+  | ISP_quant: forall (q: quant) (x: vsymbol) (ty: vty) (f: formula),
+    ind_strictly_positive ps f ->
+    ind_strictly_positive ps (Fquant q x ty f)
+  | ISP_and: forall (f1 f2 : formula),
+    ind_strictly_positive ps f1 ->
+    ind_strictly_positive ps f2 ->
+    ind_strictly_positive ps (Fbinop Tand f1 f2)
+  | ISP_or: forall (f1 f2 : formula),
+    ind_strictly_positive ps f1 ->
+    ind_strictly_positive ps f2 ->
+    ind_strictly_positive ps (Fbinop Tor f1 f2)
+  | ISP_let: forall (t: term) (x: vsymbol) (ty: vty) (f: formula),
+    (forall p, In p ps -> negb (predsym_in_term p t)) ->
+    ind_strictly_positive ps f -> (*TODO: is this too restrictive as well? Think OK*)
+    ind_strictly_positive ps (Flet t x ty f)
+  | ISP_if: forall f1 f2 f3,
+    (*Cannot be in guard because get (essentially), f1 -> f2 /\ ~f1 -> f3*)
+    (forall p, In p ps -> negb(predsym_in p f1)) ->
+    ind_strictly_positive ps f2 ->
+    ind_strictly_positive ps f3 ->
+    ind_strictly_positive ps (Fif f1 f2 f3)
+  | ISP_match: forall (t: term) (pats: list (pattern * formula)),
+    (forall p, In p ps -> negb (predsym_in_term p t)) ->
+    (forall f, In f (map snd pats) -> ind_strictly_positive ps f) ->
+    ind_strictly_positive ps (Fmatch t pats) 
+  (*eq, not, iff covered by case "notin" - these cannot have even strictly
+    positive occurrences *).
+
+
+Inductive ind_positive (ps: list predsym) : formula -> Prop :=
+  | IP_pred: forall (p: predsym) 
+    (vs: list vty) (ts: list term),
+    In p ps ->
+    (forall x t, In t ts -> In x ps -> negb (predsym_in_term x t)) ->
+    ind_positive ps (Fpred p vs ts)
+  | IP_forall: forall (x: vsymbol) (ty: vty) (f: formula),
+    ind_positive ps f ->
+    (* Don't need strict positivity for ty because we cannot quantify over formulas*)
+    ind_positive ps (Fquant Tforall x ty f)
+  | IP_let: forall (t: term) (x: vsymbol) (ty: vty) (f: formula),
+    (*TODO: is this the right condition? I think so, but should we allow this
+      symbol to appear in terms in any cases?*)
+    (forall p, In p ps -> negb (predsym_in_term p t)) ->
+    ind_positive ps f ->
+    ind_positive ps (Flet t x ty f)
+  | IP_impl: forall (f1 f2: formula),
+    ind_strictly_positive ps f1 ->
+    ind_positive ps f2 ->
+    ind_positive ps (Fbinop Timplies f1 f2).
+
+Definition indpred_positive (l: list indpred_def) : Prop :=
+  let ps : list predsym :=
+    map (fun i => match i with |ind_def p fs => p end) l in
+  let fs: list formula :=
+    concat (map (fun i => match i with |ind_def p fs => fs end) l) in
+  Forall (ind_positive ps) fs.
 
 End FunPredSym.
 
@@ -656,7 +752,8 @@ Definition valid_context (s : sig) (gamma: context) :=
                            Forall (adt_inhab s gamma) adts /\
                            adt_positive gamma adts
     | recursive_def fs => Forall (funpred_def_valid_type s gamma) fs
-    | inductive_def is => Forall (indprop_valid_type s gamma) is
+    | inductive_def is => Forall (indprop_valid_type s gamma) is /\
+                          indpred_positive is
     end) gamma.
 
 Lemma wf_context_expand: forall s d gamma,
