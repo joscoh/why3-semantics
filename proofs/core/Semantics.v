@@ -147,9 +147,7 @@ Record pre_interp := {
   preds: forall (p:predsym) (srts: list sort),
     arg_list domain (predsym_sigma_args p srts) -> bool;
 
-  (*ADTs - TODO (dependent type issues)*)
-  (*We don't restrict to the signature but that is OK*)
-  (*TODO: dependent type issues*)
+  (*ADTs*)
   
   adts: forall (a: typesym) (constrs: list funsym) (srts: list sort)
     (Hadt: In (a, constrs) (datatypes_of_context gamma)),
@@ -223,13 +221,6 @@ Defined.
 
 (* Some additional lemmas for casting/dependent type obligations *)
 
-(*Lemma map_length_eq: forall {A B C: Type} (f: B -> C) (l1 : list A) (l2 : list B),
-  length l1 = length l2 ->
-  length l1 = length (map f l2).
-Proof.
-  intros. rewrite H, map_length. reflexivity.
-Qed.*)
-
 (* If we have a sort, then substituting a valuation does nothing *)
 Lemma subst_sort_eq: forall (s: sort) (v: typevar -> sort),
   s = v_subst v (sort_to_ty s).
@@ -269,11 +260,6 @@ Defined.
 
 (* Semantics/Interpretation *)
 
-(*TODO: is the underlying logic supposed to be classical or constructive?
-  Seemingly classical in paper because formula interpretations are equal to bool.
-  We can assume LEM and write a function to evaluate a term/formula instead, 
-  should we do this?*)
-
 (* We use bools rather than Props to better match the intended semantics in
    in the paper. As a bonus, we get proof irrelevance for free. *)
 
@@ -293,12 +279,12 @@ Inductive term_interp:
     term_interp v (Tconst (ConstReal r)) vty_real (r_to_dom v r)
   | TI_var: forall v (x: vsymbol) (ty: vty),
     term_interp v (Tvar x ty) ty (var_to_dom v x ty)
-  | TI_iftrue: forall v f t1 t2 ty x tl fl,
-    formula_interp v tl fl f true -> (*empty or need context - would empty work?*)
+  | TI_iftrue: forall v f t1 t2 ty x,
+    formula_interp v nil nil f true -> (*TODO: does empty work?*)
     term_interp v t1 ty x ->
     term_interp v (Tif f t1 t2) ty x
-  | TI_iffalse: forall v f t1 t2 ty x tl fl,
-    formula_interp v tl fl f false ->
+  | TI_iffalse: forall v f t1 t2 ty x,
+    formula_interp v nil nil f false ->
     term_interp v t2 ty x ->
     term_interp v (Tif f t1 t2) ty x
   (*substitution changes the valuation *)
@@ -441,13 +427,6 @@ with formula_interp: (valuation i) -> list formula -> list formula -> formula ->
     formula_interp v (f :: tl) fl f' true ->
     formula_interp v (f :: tl) fl f' false ->
     formula_interp v tl fl f false
-(*TODO: do we need some weakening rules/ways to manipulate the context?
-  For example:
-    formula_interp v tl fl f true ->
-    formula_interp v (t :: tl) fl f true
-  Also, if we have a derivation, and know that some formula is "in" the
-  list of assumptions, how do we use this info?
-  I'm not sure this definition is super usable/complete at the moment*)
 
   (*Add bool so that we can say: not proj_constr*)
   (*Similar to projf_{i, j} in the paper, but gives whole list if 
@@ -463,7 +442,8 @@ with proj_constr : (valuation i) -> term -> funsym -> list vty -> list term -> b
     term_interp v t' ty x' ->
     x <> x' ->
     proj_constr v t' f vs ts false
-(*We define [is_constr] as (exists tm, proj_constr v t f vs t)*)
+(*We define [is_constr] as (exists tm, proj_constr v t f vs ts true) and
+  not [is_constr] is (forall tm, proj_constr v t f vs ts false)*)
 
   (*pattern interpretations are almost the same for terms and formulas; the
     only difference being that one takes in/returns a term, and the other a formula
@@ -781,27 +761,29 @@ Definition full_interp (p: pre_interp) : Prop :=
     (Hs: length (p_params pd) = length s),
     In (pd, vs, f) (preddefs_of_context gamma) ->
     
-    (*TODO: all lists or nil ones?*)
-    forall ts l1 l2,
+    forall ts,
     let v := make_val p (p_params pd) s (predsym_sigma_args pd s) vs ts in
-      formula_interp p v l1 l2 f ((preds p) pd s ts) /\
+      formula_interp p v nil nil f ((preds p) pd s ts) /\
 
   (*Inductive preds: for p(alpha) = f1 | f2 | ... | fn, 
     [[p(s)]] is the least predicate such that [[f_i]]_v holds where v maps
     alpha to s*)
   (forall (pd: predsym) (lf: list formula) (s: list sort) (v: valuation p) 
-    (bs: list bool) (ts: list term) b l1 l2,
+    (bs: list bool) (ts: list term) b,
     In (pd, lf) (indpreds_of_context gamma) ->
     Forall (fun x => (v_typevar p v) (fst x) = (snd x)) (combine (p_params pd) s) ->
-    (*TODO: all lists or nil ones?*)
-    Forall (fun x => formula_interp p v l1 l2 (fst x) (snd x))
-      (combine lf bs) ->
-    formula_interp p v l1 l2 (Fpred pd (sorts_to_tys s) ts) b ->
-    (*must be case that all f_i's together imply b*)
-    implb (fold_right andb true bs) b
-    (*TODO: is this the right meaning of "least predicate"?*))
+
+      (*All of the constructor interpretations imply [[p]](ts)*)
+      Forall (fun x => formula_interp p v nil nil (fst x) (snd x))
+        (combine lf bs) /\
+      formula_interp p v nil nil (Fpred pd (sorts_to_tys s) ts) b /\
+      (*must be case that all f_i's together imply b*)
+      implb (fold_right andb true bs) b /\
+
+      (*this is the least predicate such that the constructors hold*)
+      forall (b': bool), 
+        implb (fold_right andb true bs) b' -> implb b b')
   ).
-  (*TODO: inductive predicates*)
 
 Definition closed (f: formula) : Prop := closed_formula f /\ valid_formula sigma f.
 
@@ -809,7 +791,6 @@ Definition interp : Type := {i: pre_interp | full_interp i}.
 
 Coercion get_pre_interp (i: interp) : pre_interp := proj1_sig i.
 
-(*TODO: is this all lists of assumptions/antiassumptions - or nil ones?*)
 Definition satisfied_f (i: interp) (f: formula) : Prop :=
   closed f /\ forall v, formula_interp i v nil nil f true.
 

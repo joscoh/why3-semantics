@@ -268,8 +268,6 @@ Inductive funpred_def : Type :=
   | fun_def: funsym -> list vsymbol -> term -> funpred_def
   | pred_def: predsym -> list vsymbol -> formula -> funpred_def.
 
-(*TODO: more restrictive than formula - we can either define a predicate that
-  it is valid, or we can define another inductive type *)
 Inductive indpred_def : Type :=
   | ind_def: predsym -> list formula -> indpred_def.
 
@@ -317,8 +315,6 @@ Definition indpreds_of_def (d: def) : list (predsym * list formula) :=
     end) nil li
   | _ => nil
   end.
-
-(*TODO: may want function for indprops as well*)
 
 Definition funsyms_of_def (d: def) : list funsym :=
   match d with

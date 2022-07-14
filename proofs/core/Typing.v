@@ -83,7 +83,6 @@ Inductive term_has_type: sig -> term -> vty -> Prop :=
     term_has_type s t1 ty ->
     term_has_type s t2 ty2 ->
     term_has_type s (Tlet t1 x ty t2) ty2
-    (*TODO: make sure this works with nats as vars*)
   | T_If: forall s f t1 t2 ty,
     valid_formula s f ->
     term_has_type s t1 ty ->
@@ -191,15 +190,6 @@ Proof.
       inversion H; subst. destruct H0; subst; auto.
       apply H5; auto.
 Qed.
-(*
-Fixpoint typecheck_term (t: term) : option vty :=
-  match t with
-  | Tconst (ConstInt _) => Some vty_int
-  | Tconst (ConstReal _) => Some vty_real
-  | Tconst _ => None (*for now*)
-  | Tvar n v => if typecheck_type v then Some v else None
-  (*TODO: later*)
-*)
 
 (* Well-formed signmatures and Contexts *)
 
@@ -513,7 +503,7 @@ Inductive strictly_positive : vty -> list typesym -> Prop :=
         negb (typesym_in y v))) ->
     strictly_positive t ts
   (*TODO: I don't think the 3rd case applies to us because
-    we don't have built in function types - TODO: how to handle function types?
+    we don't have built in function types -  how to handle function types?
     should we add function types? Then we need application and lambdas*)
   | Strict_ind: forall (t: vty) (ts: list typesym) (I: typesym) 
     (constrs: list funsym) (vs: list vty),
@@ -594,7 +584,7 @@ Definition funpred_def_valid_type (fd: funpred_def) : Prop :=
 
 Inductive valid_ind_form (p: predsym) : formula -> Prop :=
   | VI_pred: forall (tys : list vty) tms,
-    tys = map vty_var (p_params p) -> (*TODO: is this correct? All predsyms should have same type params, right?*)
+    tys = map vty_var (p_params p) ->
     length (p_args p) = length tms ->
     valid_ind_form p (Fpred p tys tms)
   | VI_impl: forall f1 f2,
