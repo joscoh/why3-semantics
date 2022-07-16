@@ -14,14 +14,20 @@ Definition typevar_eq_dec : forall (t1 t2: typevar),
 (*Type symbol (ex: list a)*)
 Record typesym : Type := mk_ts {
   ts_name : string;
-  ts_args : list typevar
+  ts_args : list typevar;
+  ts_args_uniq : nodupb typevar_eq_dec ts_args
   }.
 
 Lemma typesym_eq_dec: forall (t1 t2: typesym),
   {t1 = t2} + {t1 <> t2}.
 Proof.
-  decide equality. apply list_eq_dec. apply typevar_eq_dec.
-  apply string_dec.
+  intros. destruct t1; destruct t2; simpl.
+  destruct (typevar_eq_dec ts_name0 ts_name1); subst; 
+    [| right; intro C; inversion C; contradiction].
+  destruct (list_eq_dec typevar_eq_dec ts_args0 ts_args1); subst;
+    [| right; intro C; inversion C; contradiction].
+  assert (ts_args_uniq0 = ts_args_uniq1) by apply bool_irrelevance; subst.
+  left; reflexivity.
 Defined.
 
 (*Value types*)
