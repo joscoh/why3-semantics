@@ -191,6 +191,19 @@ Proof.
       apply H5; auto.
 Qed.
 
+(*First, try this*)
+Lemma fun_ty_inversion: forall s (f: funsym) (vs: list vty) (tms: list term) ty_ret,
+  term_has_type s (Tfun f vs tms) ty_ret ->
+  In f (sig_f s) /\ Forall (valid_type s) vs /\
+  length tms = length (s_args f) /\
+  length vs = length (s_params f) /\
+  Forall (fun x => term_has_type s (fst x) (snd x)) 
+    (combine tms (map (ty_subst (s_params f) vs) (s_args f))) /\
+  ty_ret = ty_subst (s_params f) vs (s_ret f).
+Proof.
+  intros. inversion H; subst; repeat split; auto.
+Qed.
+
 (* Well-formed signmatures and Contexts *)
 
 (* A well-formed signature requires all types that appear in a function/predicate
@@ -396,6 +409,7 @@ Variable gamma: context.
    which otherwise would not be needed. It remains to show that this relation is
    decidable and that the boolean parameter correctly shows whether 
    *_inhab tss tvs x true is provable. *)
+Unset Elimination Schemes.
 Inductive typesym_inhab : list typesym -> list typevar -> typesym -> bool -> Prop :=
   | ts_check_empty: forall tss tvs ts,
     ~ In ts (sig_t s) ->
@@ -470,6 +484,10 @@ with vty_inhab: list typesym -> list typevar -> vty -> bool -> Prop :=
     typesym_inhab tss new_tvs ts false ->
     vty_inhab tss tvs (vty_cons ts args) false
     .
+
+Scheme typesym_inhab_ind := Minimality for typesym_inhab Sort Prop with
+constr_inhab_ind := Minimality for constr_inhab Sort Prop with
+vty_inhab_ind := Minimality for vty_inhab Sort Prop.
 
 (*An ADT is inhabited if its typesym is inhabited under the empty context*)
 Definition adt_inhab (a : alg_datatype) : Prop :=
@@ -592,7 +610,7 @@ Qed.
 Definition filter_combine {A B: Type} (l: list A) (l2: list B) (f: A -> bool) : list ( A * B) :=
     filter (fun x => f (fst x)) (combine l l2).
 *)
-Print typesym.
+
 Lemma vty_inhab_fun_eq: forall ninhab_vars seen_typesyms t n,
 vty_inhab_fun ninhab_vars seen_typesyms t n =
 ((fix check_type (t: vty) : bool :=
@@ -759,6 +777,26 @@ Proof.
   destruct H1;[inversion H1|]; subst. 
   apply in_combine_r in H0; contradiction.
   apply (IHl1 l2); auto.
+Qed.
+
+(*TODO: move*)
+Lemma in_combine_rev: forall {A B: Type} (l1 : list A) (l2: list B) x y,
+  In (x, y) (combine l1 l2) -> In (y, x) (combine l2 l1).
+Proof.
+  intros A B l1 l2 x y. revert l2; induction l1; simpl; intros; auto;
+  destruct l2; auto.
+  simpl in H. destruct H. inversion H; subst. left; auto.
+  right. auto.
+Qed. 
+
+Lemma combine_NoDup_l: forall {A B: Type} (l1: list A) (l2: list B) x y1 y2,
+  NoDup l1 ->
+  In (x, y1) (combine l1 l2) ->
+  In (x, y2) (combine l1 l2) ->
+  y1 = y2.
+Proof.
+  intros. apply in_combine_rev in H0, H1.
+  apply (combine_NoDup_r _ _ _ _ _ H H0 H1).
 Qed.
 
 (*Proving equivalence is annoying because of the mutual recursion. We prove
