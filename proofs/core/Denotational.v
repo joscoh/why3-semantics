@@ -26,6 +26,7 @@ Notation domain := (domain sigma gamma gamma_valid i).
 Notation val x :=  (v_subst (v_typevar sigma gamma gamma_valid i x)).
 Notation v_typevar := (v_typevar sigma gamma gamma_valid i).
 Notation funs := (funs sigma gamma gamma_valid i).
+Notation substi := (substi sigma gamma gamma_valid i).
 
 
 
@@ -195,48 +196,88 @@ Proof.
   subst. auto.
 Qed.
 
+Lemma ty_constint_inv {s z ty} (H: term_has_type s (Tconst (ConstInt z)) ty) :
+  ty = vty_int.
+Proof.
+  inversion H; auto.
+Qed.
+
+Lemma ty_constreal_inv {s r ty} (H: term_has_type s (Tconst (ConstReal r)) ty) :
+ty = vty_real.
+Proof.
+inversion H; auto.
+Qed.
+
+Lemma ty_var_inv {s x ty ty'} (H: term_has_type s (Tvar x ty') ty):
+ty = ty'.
+Proof.
+  inversion H; auto.
+Qed.
+
+Lemma ty_let_inv {s t1 x ty1 t2 ty} (H: term_has_type s (Tlet t1 x ty1 t2) ty):
+term_has_type s t1 ty1 /\ term_has_type s t2 ty.
+Proof.
+  inversion H; auto.
+Qed.
+
+(* There are many dependent type obligations and casting to ensure that
+  the types work out. In each case, we separate the hypotheses and give
+  explicit types for clarity. The final result is often quite simple and just
+  needs 1 or more casts for dependent type purposes. *)
 Fixpoint term_rep (v: valuation sigma gamma gamma_valid i) (t: term) (ty: vty)
   (Hty: term_has_type sigma t ty) {struct t} : domain (val v ty) :=
   (match t as tm return t = tm -> domain (val v ty) with
-  (*| Tconst (ConstInt z) =>
-    (*TODO: should we rule out w dependent type or continue with option?*)
-    match ty as s return s = ty -> option (dom (val v ty)) with
-    | vty_int => fun Heq => Some (cast_dom_vty Heq (z_to_dom sigma gamma gamma_valid i v z))
-    | _ => fun _ => None
-    end eq_refl
-  | Tconst (ConstReal r) =>
-    match ty as s return s = ty -> option (dom (val v ty)) with
-    | vty_real => fun Heq => Some (cast_dom_vty Heq (r_to_dom sigma gamma gamma_valid i v r))
-    | _ => fun _ => None
-    end eq_refl
-  | Tvar x ty' =>
-    match (vty_eq_dec ty' ty) with
-    | left _ => Some (var_to_dom sigma gamma gamma_valid i v x ty)
-    | _ => None
-    end*)
-  | Tfun f vs ts => fun Htm =>
-      (*Some proof we need; we give types for clarity*)
-      let Hfunty: term_has_type sigma (Tfun f vs ts) ty :=
-        has_type_eq Htm Hty in
-      let Hret : ty_subst (s_params f) vs (s_ret f) = ty :=
-        eq_sym (ty_fun_ind_ret Hfunty) in
-      (*The main typecast: v(sigma(ty_ret)) = sigma'(ty_ret), where
-        sigma sends (s_params f)_i -> vs_i and 
-        sigma' sends (s_params f) _i -> v(vs_i)*)
-      let Heqret : v_subst (v_typevar v) (ty_subst (s_params f) vs (s_ret f)) =
-        ty_subst_s (s_params f) (map (v_subst (v_typevar v)) vs) (s_ret f) :=
-          funsym_subst_eq (s_params f) vs (v_typevar v) (s_ret f) (s_params_nodup f)
-          (tfun_params_length Hfunty) in
+  | Tconst (ConstInt z) => fun Htm =>
+    let Hty' : term_has_type sigma (Tconst (ConstInt z)) ty :=
+      has_type_eq Htm Hty in
+    let Htyeq : vty_int = ty :=
+      eq_sym (ty_constint_inv Hty') in
 
-      (* The final result is to apply [funs] to the [arg_list] created recursively
-        from the argument domain values. We need two casts to make the dependent
-        types work out*)
-    
-      cast_dom_vty Hret (
-        dom_cast _ _ _ i 
-          (eq_sym Heqret)
-            ((funs f (map (val v) vs)) 
-             (get_arg_list v f vs ts (term_rep v) (ex_intro _ ty Hfunty))))
+    cast_dom_vty Htyeq (z_to_dom _ _ _ _ v z)
+  | Tconst (ConstReal r) => fun Htm =>
+    let Hty' : term_has_type sigma (Tconst (ConstReal r)) ty :=
+      has_type_eq Htm Hty in
+    let Htyeq : vty_real = ty :=
+      eq_sym (ty_constreal_inv Hty') in
+
+    cast_dom_vty Htyeq (r_to_dom _ _ _ _ v r)
+  | Tvar x ty' => fun Htm =>
+
+    var_to_dom _ _ _ _ v x ty
+  | Tfun f vs ts => fun Htm =>
+    (*Some proof we need; we give types for clarity*)
+    let Hty': term_has_type sigma (Tfun f vs ts) ty :=
+      has_type_eq Htm Hty in
+    let Htyeq : ty_subst (s_params f) vs (s_ret f) = ty :=
+      eq_sym (ty_fun_ind_ret Hty') in
+    (*The main typecast: v(sigma(ty_ret)) = sigma'(ty_ret), where
+      sigma sends (s_params f)_i -> vs_i and 
+      sigma' sends (s_params f) _i -> v(vs_i)*)
+    let Heqret : v_subst (v_typevar v) (ty_subst (s_params f) vs (s_ret f)) =
+      ty_subst_s (s_params f) (map (v_subst (v_typevar v)) vs) (s_ret f) :=
+        funsym_subst_eq (s_params f) vs (v_typevar v) (s_ret f) (s_params_nodup f)
+        (tfun_params_length Hty') in
+
+    (* The final result is to apply [funs] to the [arg_list] created recursively
+      from the argument domain values. We need two casts to make the dependent
+      types work out*)
+  
+    cast_dom_vty Htyeq (
+      dom_cast _ _ _ i 
+        (eq_sym Heqret)
+          ((funs f (map (val v) vs)) 
+            (get_arg_list v f vs ts (term_rep v) (ex_intro _ ty Hty'))))
+  | Tlet t1 x ty1 t2 => fun Htm =>
+    let Hty' : term_has_type sigma (Tlet t1 x ty1 t2) ty :=
+      has_type_eq Htm Hty in
+    let Ht1 : term_has_type sigma t1 ty1 :=
+      proj1 (ty_let_inv Hty') in
+    let Ht2 : term_has_type sigma t2 ty :=
+      proj2 (ty_let_inv Hty') in 
+
+    term_rep (substi v x ty1 (term_rep v t1 ty1 Ht1)) t2 ty Ht2
+
+  
       
   (*For cases not handled yet*)
   | _ => match domain_ne sigma gamma gamma_valid i (val v ty) with
