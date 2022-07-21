@@ -241,12 +241,12 @@ Proof.
 Qed. 
 
 (*Cast 1 domain into another*)
-Definition dom_cast (v1 v2: sort) (Hv: v1 = v2) (x: domain i v1) : domain i v2.
+Definition dom_cast {v1 v2: sort} (Hv: v1 = v2) (x: domain i v1) : domain i v2.
 subst. apply x.
 Defined.
 
-Lemma dom_cast_inj: forall (v1 v2: sort) (H: v1 = v2) (d1 d2: domain i v1),
-  dom_cast v1 v2 H d1 = dom_cast v1 v2 H d2 ->
+Lemma dom_cast_inj: forall {v1 v2: sort} (H: v1 = v2) (d1 d2: domain i v1),
+  dom_cast H d1 = dom_cast H d2 ->
   d1 = d2.
 Proof.
   intros. unfold dom_cast in H0. unfold eq_rect_r in H0.
@@ -323,12 +323,12 @@ Inductive term_interp:
         evaluates to [nth xs n] under v *)
       term_interp v (nth n ts (Tconst (ConstInt 0)))
         (nth n f_arg_typs s_int) 
-        (dom_cast _ _ (subst_sort_eq (nth n f_arg_typs s_int) (v_typevar i v)) 
+        (dom_cast (subst_sort_eq (nth n f_arg_typs s_int) (v_typevar i v)) 
           (@arg_nth _ f_arg_typs xs n s_int dom_int))) ->
     
     (*Again, we must cast the return type of f, for the same reason*)
     term_interp v (Tfun f params ts) f_ret 
-      (dom_cast _ _ (subst_sort_eq f_ret (v_typevar i v)) (f_interp xs))
+      (dom_cast (subst_sort_eq f_ret (v_typevar i v)) (f_interp xs))
   | TI_match: forall v (t: term) ty (ps: list (pattern * term)) (t': term) x,
     (*Translate the pattern match to a term of tests (with match_pattern), then
       interpret*)
@@ -402,7 +402,7 @@ with formula_interp: (valuation i) -> list formula -> list formula -> formula ->
     (forall n (Hn: n < length p_arg_typs),
       term_interp v (nth n ts (Tconst (ConstInt 0)))
         (nth n p_arg_typs s_int) 
-        (dom_cast _ _ (subst_sort_eq (nth n p_arg_typs s_int) (v_typevar i v)) 
+        (dom_cast (subst_sort_eq (nth n p_arg_typs s_int) (v_typevar i v)) 
           (@arg_nth _ p_arg_typs xs n s_int dom_int))) ->
 
     formula_interp v tl fl (Fpred p params ts) (p_interp xs)
@@ -718,7 +718,7 @@ Fixpoint mk_fun_arg {A: Type} (eq_dec: forall (x y: A), {x = y} + { x <> y})
     fun v =>
       (*Need to know that types are equal so we can cast the domain*)
       match (vty_eq_dec (v_subst v_var v)) shd with
-      | left Heq => if eq_dec hd x then dom_cast _ _ _ (sort_inj _ _ (eq_sym Heq)) d
+      | left Heq => if eq_dec hd x then dom_cast _ (sort_inj (eq_sym Heq)) d
           else mk_fun_arg eq_dec i v_var tl stl t x v
       | _ => mk_fun_arg eq_dec i v_var tl stl t x v
       end

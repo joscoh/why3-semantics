@@ -22,8 +22,12 @@ Variable i: pre_interp sigma gamma gamma_valid.
 
 (*Representation of terms, formulas, patterns*)
 
-Notation dom x := (domain sigma gamma gamma_valid i x).
-Notation val x := (v_subst (v_typevar sigma gamma gamma_valid i x)). 
+Notation domain := (domain sigma gamma gamma_valid i).
+Notation val x :=  (v_subst (v_typevar sigma gamma gamma_valid i x)).
+Notation v_typevar := (v_typevar sigma gamma gamma_valid i).
+Notation funs := (funs sigma gamma gamma_valid i).
+
+
 
 (*TODO: 2 options: can take in hypothesis that term has type ty and then use
   dependent type obligations
@@ -34,7 +38,7 @@ Notation val x := (v_subst (v_typevar sigma gamma gamma_valid i x)).
   *)
 
 Definition cast_dom_vty {v: valuation sigma gamma gamma_valid i} 
-{v1 v2: vty} (Heq: v1 = v2) (x: dom (val v v1)) : dom (val v v2).
+{v1 v2: vty} (Heq: v1 = v2) (x: domain (val v v1)) : domain (val v v2).
 Proof.
   subst. apply x.
 Defined.
@@ -128,42 +132,72 @@ Proof.
     2: rewrite map_length; auto. rewrite Forall_forall in H1. apply H1.
     apply nth_In. auto.
 Qed.
-    
+
+Axiom typecheck_dec: forall s t,
+  (exists x, term_has_type s t x) ->
+  { x | term_has_type s t x}.
+
+Lemma ty_fun_ind_ret {f vs ts ty} (H: term_has_type sigma (Tfun f vs ts) ty):
+  ty = ty_subst (s_params f) vs (s_ret f).
+Proof.
+  inversion H; auto.
+Qed.
+
+(*TODO: move*)
+Lemma s_params_nodup: forall (f: funsym),
+  NoDup (s_params f).
+Proof.
+  intros [f]; simpl. eapply reflect_iff. apply nodup_NoDup. apply s_params_nodup.
+Qed.
+
 (*We use the above to get the arg list (tentatively)*)
 Definition get_arg_list (v: valuation sigma gamma gamma_valid i)
-  (f: funsym) (vs: list vty) (ts: list term) (reps: forall
-    (v: valuation sigma gamma gamma_valid i) (t: term) (ty: vty),
+  (f: funsym) (vs: list vty) (ts: list term) 
+  (reps: forall (t: term) (ty: vty),
     term_has_type sigma t ty ->
-    dom (val v ty))
+    domain (val v ty))
   (Hty: exists x, term_has_type sigma (Tfun f vs ts) x) : 
-  arg_list (domain sigma gamma gamma_valid i)
+  arg_list domain
     (funsym_sigma_args f
-      (map (v_subst (v_typevar sigma gamma gamma_valid i v)) vs)).
+      (map (v_subst (v_typevar v)) vs)).
 Proof.
   (*assume we have decidable typechecking - no axioms yet*)
-  assert ({x: vty | term_has_type sigma (Tfun f vs ts) x}) by admit.
+  assert ({x: vty | term_has_type sigma (Tfun f vs ts) x}) by (apply typecheck_dec; assumption).
   destruct X as [vty Hty'].
   apply fun_ty_inversion in Hty'. repeat match goal with | H: ?P /\ ?Q |- _ => destruct H end.
-  specialize (reps v).
+  clear H; clear H0; clear H4.
   unfold funsym_sigma_args.
-  generalize dependent (s_args f). induction ts; simpl; intros.
+  generalize dependent (s_args f). clear Hty. induction ts; simpl; intros.
   - assert (l = nil). apply length_zero_iff_nil. rewrite H1; reflexivity.
-    rewrite H5. simpl. apply AL_nil.
+    rewrite H. simpl. apply AL_nil.
   - destruct l as [|a1 atl] eqn : Hargs.
     + inversion H1.
     + simpl in H1. simpl in H3. assert (A:=H3).
       apply Forall_inv in H3. apply Forall_inv_tail in A. simpl.
       apply AL_cons.
-      * specialize (reps a). simpl in H3.
-        specialize (reps _ H3).
-        rewrite <- funsym_subst_eq; auto. destruct f; simpl in *.
-        eapply reflect_iff. apply nodup_NoDup. apply s_params_nodup.
+      * specialize (reps a _ H3); simpl in reps. 
+        rewrite <- funsym_subst_eq; auto. apply s_params_nodup.
       * apply IHts; auto.
-Admitted.
+Defined.
+
+(*TODO: move*)
+Lemma tfun_params_length {s f vs ts ty}:
+  term_has_type s (Tfun f vs ts) ty ->
+  length (s_params f) = length vs.
+Proof.
+  intros. inversion H; subst. rewrite H8. reflexivity.
+Qed.
+
+Lemma has_type_eq {s t t' ty} (Heq: t = t'):
+  term_has_type s t ty ->
+  term_has_type s t' ty.
+Proof.
+  subst. auto.
+Qed.
 
 Fixpoint term_rep (v: valuation sigma gamma gamma_valid i) (t: term) (ty: vty)
-  (Hty: term_has_type sigma t ty) : dom (val v ty) :=
-  match t with
+  (Hty: term_has_type sigma t ty) {struct t} : domain (val v ty) :=
+  (match t as tm return t = tm -> domain (val v ty) with
   (*| Tconst (ConstInt z) =>
     (*TODO: should we rule out w dependent type or continue with option?*)
     match ty as s return s = ty -> option (dom (val v ty)) with
@@ -180,31 +214,35 @@ Fixpoint term_rep (v: valuation sigma gamma gamma_valid i) (t: term) (ty: vty)
     | left _ => Some (var_to_dom sigma gamma gamma_valid i v x ty)
     | _ => None
     end*)
-  | Tfun f vs ts =>
-    (*TODO: remove axioms - will be hypothesis and need uniqueness of types*)
-    match (all_dec (exists x, term_has_type sigma (Tfun f vs ts) x)) with
-    | left Hty => 
-      (*In real one, do with proof*)
-      match (vty_eq_dec ty (funsym_sigma_ret f (map (val v) vs))) with
-      | left Heq => (*(cast_dom_vty _ *) 
-        (*TODO: start with this - get types to work out, see if induction does
-          Then go back to typechecker, injectivity of types,
-          inversion lemmas most likely*)
+  | Tfun f vs ts => fun Htm =>
+      (*Some proof we need; we give types for clarity*)
+      let Hfunty: term_has_type sigma (Tfun f vs ts) ty :=
+        has_type_eq Htm Hty in
+      let Hret : ty_subst (s_params f) vs (s_ret f) = ty :=
+        eq_sym (ty_fun_ind_ret Hfunty) in
+      (*The main typecast: v(sigma(ty_ret)) = sigma'(ty_ret), where
+        sigma sends (s_params f)_i -> vs_i and 
+        sigma' sends (s_params f) _i -> v(vs_i)*)
+      let Heqret : v_subst (v_typevar v) (ty_subst (s_params f) vs (s_ret f)) =
+        ty_subst_s (s_params f) (map (v_subst (v_typevar v)) vs) (s_ret f) :=
+          funsym_subst_eq (s_params f) vs (v_typevar v) (s_ret f) (s_params_nodup f)
+          (tfun_params_length Hfunty) in
+
+      (* The final result is to apply [funs] to the [arg_list] created recursively
+        from the argument domain values. We need two casts to make the dependent
+        types work out*)
+    
+      cast_dom_vty Hret (
+        dom_cast _ _ _ i 
+          (eq_sym Heqret)
+            ((funs f (map (val v) vs)) 
+             (get_arg_list v f vs ts (term_rep v) (ex_intro _ ty Hfunty))))
       
-      ((funs _ _ _ i) f (map (val v) vs) 
-          (get_arg_list v f vs ts term_rep Hty))
-      | _ => match domain_ne sigma gamma gamma_valid i (val v ty) with
-            | DE _ _ x => x
-            end
-      end
-    
-    
-    | _ => None
-    end
+  (*For cases not handled yet*)
   | _ => match domain_ne sigma gamma gamma_valid i (val v ty) with
-          | DE _ _ x => x
+          | DE _ _ x => fun _ => x
           end
-  end.
+  end) eq_refl.
 
 Check excluded_middle_informative.
 Print Assumptions excluded_middle_informative.

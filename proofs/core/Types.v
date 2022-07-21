@@ -147,7 +147,7 @@ Coercion sort_to_ty (s: sort) : vty := @proj1_sig _ _ s.
 Definition sorts_to_tys (l: list sort) : list vty :=
   map sort_to_ty l.
 
-Lemma sort_inj: forall (s1 s2: sort),
+Lemma sort_inj: forall {s1 s2: sort},
   sort_to_ty s1 = sort_to_ty s2 ->
   s1 = s2.
 Proof.
