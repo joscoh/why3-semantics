@@ -196,6 +196,13 @@ Proof.
   subst. auto.
 Qed.
 
+Lemma valid_formula_eq {s f f'} (Heq: f = f'):
+  valid_formula s f ->
+  valid_formula s f'.
+Proof.
+  subst; auto.
+Qed.
+
 Lemma ty_constint_inv {s z ty} (H: term_has_type s (Tconst (ConstInt z)) ty) :
   ty = vty_int.
 Proof.
@@ -216,6 +223,42 @@ Qed.
 
 Lemma ty_let_inv {s t1 x ty1 t2 ty} (H: term_has_type s (Tlet t1 x ty1 t2) ty):
 term_has_type s t1 ty1 /\ term_has_type s t2 ty.
+Proof.
+  inversion H; auto.
+Qed.
+
+Lemma ty_if_inv {s f t1 t2 ty} (H: term_has_type s (Tif f t1 t2) ty):
+term_has_type s t1 ty /\
+term_has_type s t2 ty /\
+valid_formula s f.
+Proof.
+  inversion H; auto.
+Qed.
+
+Lemma valid_not_inj {s f} (H: valid_formula s (Fnot f)):
+  valid_formula s f.
+Proof.
+  inversion H; auto.
+Qed.
+
+Lemma valid_let_inj {s t x ty f} (H: valid_formula s (Flet t x ty f)):
+term_has_type s t ty /\
+valid_formula s f.
+Proof.
+  inversion H; auto.
+Qed.
+
+Lemma valid_binop_inj {s b f1 f2} (H: valid_formula s (Fbinop b f1 f2)):
+valid_formula s f1 /\
+valid_formula s f2.
+Proof.
+  inversion H; auto.
+Qed.
+
+Lemma valid_if_inj {s f1 f2 f3} (H: valid_formula s (Fif f1 f2 f3)):
+valid_formula s f1 /\
+valid_formula s f2 /\
+valid_formula s f3.
 Proof.
   inversion H; auto.
 Qed.
@@ -277,13 +320,70 @@ Fixpoint term_rep (v: valuation sigma gamma gamma_valid i) (t: term) (ty: vty)
 
     term_rep (substi v x ty1 (term_rep v t1 ty1 Ht1)) t2 ty Ht2
 
-  
+  | Tif f t1 t2 => fun Htm =>
+    let Hty' : term_has_type sigma (Tif f t1 t2) ty :=
+      has_type_eq Htm Hty in
+    let Ht1 : term_has_type sigma t1 ty :=
+      (proj1 (ty_if_inv Hty')) in
+    let Ht2 : term_has_type sigma t2 ty :=
+      (proj1 (proj2 (ty_if_inv Hty'))) in
+    let Hf: valid_formula sigma f :=
+      (proj2 (proj2 (ty_if_inv Hty'))) in
+
+    if (formula_rep v f Hf) then term_rep v t1 ty Ht1 else term_rep v t2 ty Ht2
       
   (*For cases not handled yet*)
   | _ => match domain_ne sigma gamma gamma_valid i (val v ty) with
           | DE _ _ x => fun _ => x
           end
-  end) eq_refl.
+  end) eq_refl
+
+with formula_rep (v: valuation sigma gamma gamma_valid i) (f: formula) 
+  (Hval: valid_formula sigma f) : bool :=
+  (match f as fmla return f = fmla -> bool with
+  | Ftrue => fun _ => true
+  | Ffalse => fun _ => false
+  | Fnot f' => fun Hf =>
+    let Hval' : valid_formula sigma (Fnot f') :=
+      valid_formula_eq Hf Hval in
+    let Hf' : valid_formula sigma f' :=
+      valid_not_inj Hval'
+    in 
+    
+    negb (formula_rep v f' Hf')
+  | Fbinop b f1 f2 => fun Hf =>
+    let Hval' : valid_formula sigma (Fbinop b f1 f2) :=
+      valid_formula_eq Hf Hval in
+    let Hf1 : valid_formula sigma f1 :=
+     proj1 (valid_binop_inj Hval') in
+    let Hf2 : valid_formula sigma f2 :=
+      proj2 (valid_binop_inj Hval') in
+
+    bool_of_binop b (formula_rep v f1 Hf1) (formula_rep v f2 Hf2)
+  | Flet t x ty f' => fun Hf =>
+    let Hval' : valid_formula sigma (Flet t x ty f') :=
+      valid_formula_eq Hf Hval in
+    let Ht: term_has_type sigma t ty :=
+      (proj1 (valid_let_inj Hval')) in
+    let Hf': valid_formula sigma f' :=
+      (proj2 (valid_let_inj Hval')) in
+
+    formula_rep (substi v x ty (term_rep v t ty Ht)) f' Hf'
+  | Fif f1 f2 f3 => fun Hf =>
+    let Hval' : valid_formula sigma (Fif f1 f2 f3) :=
+      valid_formula_eq Hf Hval in
+    let Hf1 : valid_formula sigma f1 :=
+      proj1 (valid_if_inj Hval') in
+    let Hf2 : valid_formula sigma f2 :=
+      proj1 (proj2 (valid_if_inj Hval')) in
+    let Hf3 : valid_formula sigma f3 :=
+      proj2 (proj2 (valid_if_inj Hval')) in
+
+    if formula_rep v f1 Hf1 then formula_rep v f2 Hf2 else formula_rep v f3 Hf3
+    
+  (*TODO*)
+  | _ => fun _ => true
+  end) eq_refl. 
 
 Check excluded_middle_informative.
 Print Assumptions excluded_middle_informative.
