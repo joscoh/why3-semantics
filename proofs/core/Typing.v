@@ -94,7 +94,7 @@ Inductive term_has_type: sig -> term -> vty -> Prop :=
     term_has_type s tm ty1 ->
     Forall (fun x => pattern_has_type s (fst x) ty1) ps ->
     Forall (fun x => term_has_type s (snd x) ty2) ps ->
-    term_has_type s (Tmatch tm ps) ty2
+    term_has_type s (Tmatch tm ty1 ps) ty2
 
 
 (* Typing rules for formulas *)
@@ -141,7 +141,7 @@ with valid_formula: sig -> formula -> Prop :=
     term_has_type s tm ty ->
     Forall(fun x => pattern_has_type s (fst x) ty) ps ->
     Forall (fun x => valid_formula s (snd x)) ps ->
-    valid_formula s (Fmatch tm ps).
+    valid_formula s (Fmatch tm ty ps).
 (*
 Notation "s '|-' t ':' ty" := (term_has_type s t ty) (at level 40).
 Notation "s '|-' f" := (valid_formula s f) (at level 40).*)
@@ -332,10 +332,10 @@ Inductive valid_pat_tm : term -> Prop :=
     valid_pat_tm t1 ->
     valid_pat_tm t2 ->
     valid_pat_tm (Tif f t1 t2)
-  | VTY_match: forall t (ps: list (pattern * term)),
+  | VTY_match: forall t ty (ps: list (pattern * term)),
     valid_pattern_match t (map fst ps) ->
     (forall x, In x (map snd ps) -> valid_pat_tm x) ->
-    valid_pat_tm (Tmatch t ps)
+    valid_pat_tm (Tmatch t ty ps)
 with valid_pat_fmla: formula -> Prop :=
   | VTF_pred: forall p vs ts,
     (forall x, In x ts -> valid_pat_tm x) ->
@@ -367,10 +367,10 @@ with valid_pat_fmla: formula -> Prop :=
     valid_pat_fmla f2 ->
     valid_pat_fmla f3 ->
     valid_pat_fmla (Fif f1 f2 f3)
-  | VTF_match: forall t (ps: list (pattern * formula)),
+  | VTF_match: forall t ty (ps: list (pattern * formula)),
     valid_pattern_match t (map fst ps) ->
     (forall x, In x (map snd ps) -> valid_pat_fmla x) ->
-    valid_pat_fmla (Fmatch t ps).
+    valid_pat_fmla (Fmatch t ty ps).
 
 End MatchExhaustive.
 
@@ -1148,7 +1148,7 @@ Fixpoint predsym_in (p: predsym) (f: formula) {struct f}  : bool :=
   | Ffalse => false
   | Flet t x ty f' => predsym_in_term p t || predsym_in p f'
   | Fif f1 f2 f3 => predsym_in p f1 || predsym_in p f2 || predsym_in p f3
-  | Fmatch t ps => predsym_in_term p t || existsb (fun x => predsym_in p (snd x)) ps
+  | Fmatch t ty ps => predsym_in_term p t || existsb (fun x => predsym_in p (snd x)) ps
   end
   
 with predsym_in_term (p: predsym) (t: term) {struct t}  : bool :=
@@ -1158,7 +1158,7 @@ with predsym_in_term (p: predsym) (t: term) {struct t}  : bool :=
   | Tfun fs tys tms => existsb (predsym_in_term p) tms
   | Tlet t1 x ty t2 => predsym_in_term p t1 || predsym_in_term p t2
   | Tif f t1 t2 => predsym_in p f || predsym_in_term p t1 || predsym_in_term p t2
-  | Tmatch t ps => predsym_in_term p t || existsb (fun x => predsym_in_term p (snd x)) ps
+  | Tmatch t ty ps => predsym_in_term p t || existsb (fun x => predsym_in_term p (snd x)) ps
   end.
   
 (*Here, strict positivity is a bit simpler, because predicates are not
@@ -1201,10 +1201,10 @@ Inductive ind_strictly_positive (ps: list predsym) : formula -> Prop :=
     ind_strictly_positive ps f2 ->
     ind_strictly_positive ps f3 ->
     ind_strictly_positive ps (Fif f1 f2 f3)
-  | ISP_match: forall (t: term) (pats: list (pattern * formula)),
+  | ISP_match: forall (t: term) ty (pats: list (pattern * formula)),
     (forall p, In p ps -> negb (predsym_in_term p t)) ->
     (forall f, In f (map snd pats) -> ind_strictly_positive ps f) ->
-    ind_strictly_positive ps (Fmatch t pats) 
+    ind_strictly_positive ps (Fmatch t ty pats) 
   (*eq, not, iff covered by case "notin" - these cannot have even strictly
     positive occurrences *).
 

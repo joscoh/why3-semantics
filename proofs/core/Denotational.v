@@ -276,6 +276,13 @@ Proof.
   inversion H; auto.
 Qed.
 
+(*TODO: add stuff about xs*)
+Lemma ty_match_inv {s t ty1 ty2 xs} (H: term_has_type s (Tmatch t ty1 xs) ty2):
+  term_has_type s t ty1.
+Proof.
+  inversion H; auto.
+Qed.
+
 Lemma valid_not_inj {s f} (H: valid_formula s (Fnot f)):
   valid_formula s f.
 Proof.
@@ -315,6 +322,44 @@ Lemma valid_eq_inj {s ty t1 t2} (H: valid_formula s (Feq ty t1 t2)):
 Proof.
   inversion H; auto.
 Qed.
+Print pattern.
+
+(*Dealing with options for patterns*)
+(*Since patterns can return "error", we represent this as a term option.
+  We will show that in an exhaustive pattern match, we can never reach the
+  error state. But we want to reason about types of term options*)
+Definition term_option_type (s: sig) (o: option term) (ty: vty) :=
+  match o with
+  | None => True
+  | Some t => term_has_type s t ty
+  end.
+Print option_map.
+(*First, we handle matches - we will take in isf and projf as predicates
+  and give them later - TODO: hopefully it works*)
+(*This makes dependent types much nicer*)
+(*TODO: factor out term/formula parts*)
+Fixpoint match_rep (isf: funsym -> term -> bool) 
+  (projf: forall (f: funsym) (tm: term) (Hisf: isf f tm), list term)
+  (t: term) (p: pattern) (b h: option term) {struct p} : option term :=
+  match p with
+  | Pvar v ty => option_map (fun t2 => Tlet t v ty t2) b
+  | Pwild => b
+  | Por p1 p2 => match_rep isf projf t p1 b (match_rep isf projf t p2 b h)
+  | Pbind p1 v ty => option_map (fun t2 => Tlet t v ty t2) (match_rep isf projf t p1 b h) 
+  | Pconstr f nil ps => if (isf f t) then b else h
+  | Pconstr f vs ps =>
+    (*This case is a bit ugly - maybe try to remove dependent types*)
+    (match (isf f t) as b return (isf f t) = b -> option term with
+    | true => fun Hisf =>
+      let ts := projf f t Hisf in
+      (fix match_reps (tms: list term) (pats: list pattern) {struct pats} : option term :=
+      match tms, pats with
+      | t1 :: ttl, p1 :: ptl => match_rep isf projf t1 p1 (match_reps ttl ptl) h
+      | _, _ => None
+      end) ts ps
+    | false => fun _ => h
+    end) eq_refl
+  end.
 
 (* There are many dependent type obligations and casting to ensure that
   the types work out. In each case, we separate the hypotheses and give
@@ -384,7 +429,40 @@ Fixpoint term_rep (v: valuation sigma gamma gamma_valid i) (t: term) (ty: vty)
       (proj2 (proj2 (ty_if_inv Hty'))) in
 
     if (formula_rep v f Hf) then term_rep v t1 ty Ht1 else term_rep v t2 ty Ht2
-      
+(*
+  | Tmatch t ty1 xs => fun Htm =>
+    let Hty' : term_has_type sigma (Tmatch t ty1 xs) ty :=
+      has_type_eq Htm Hty in
+    let Ht1 : term_has_type sigma t ty1 :=
+      ty_match_inv Hty' in
+    (*t has type vty_cons ts vs*)
+    (*Doesn't work: not structurally decreasing*)
+    (*I think we will have to go directly - dependent types will be ugly*)
+    (*May need assumption about alg type*)
+    (*TODO: start here*)
+
+    let isf (f: funsym) (tm: term) (ty: vty) (Htm: term_has_type sigma tm ty) : bool :=
+      all_dec (exists vs ts (H: term_has_type sigma (Tfun f vs ts) ty), 
+        term_rep v tm ty Htm = term_rep v (Tfun f vs ts) ty H)
+    in
+(*
+
+      all_dec (exists t (Hf: In f constrs) (Hlen: length (s_params c) = 
+        length (map val vs)),
+      term_rep v tm (vty_cons ts vs) = 
+      (adt_typesym_funsym _ Hadt Hc Hlen) ((funs c (map val vs)) t))  in
+  *)
+      match domain_ne sigma gamma gamma_valid i (val v ty) with
+      | DE _ _ x => if (isf id_fs t ty1 Ht1) then x else x
+      end
+
+
+
+     (* (forall (x: domain (typesym_to_sort a srts)), 
+      exists c t (Hc: In c constrs) (Hlen: length (s_params c) = length srts),
+      x = (dom_cast_aux domain _ _
+        (adt_typesym_funsym _ Hadt Hc Hlen) ((funs c srts) t)))*)
+  *)
   (*For cases not handled yet*)
   | _ => match domain_ne sigma gamma gamma_valid i (val v ty) with
           | DE _ _ x => fun _ => x
@@ -392,7 +470,7 @@ Fixpoint term_rep (v: valuation sigma gamma gamma_valid i) (t: term) (ty: vty)
   end) eq_refl
 
 with formula_rep (v: valuation sigma gamma gamma_valid i) (f: formula) 
-  (Hval: valid_formula sigma f) : bool :=
+  (Hval: valid_formula sigma f) {struct f} : bool :=
   (match f as fmla return f = fmla -> bool with
   | Ftrue => fun _ => true
   | Ffalse => fun _ => false
@@ -470,8 +548,39 @@ with formula_rep (v: valuation sigma gamma gamma_valid i) (f: formula)
     all_dec (term_rep v t1 ty Ht1 = term_rep v t2 ty Ht2)
   (*TODO*)
   | _ => fun _ => true
-  end) eq_refl.
+  end) eq_refl
+  
 
+  .
+
+(*Let's be better about dependent types - will say we have term of
+  type vty_cons ts vs, where ts is an ADT.
+  Then, from restriction, we know there exists some constructor and values
+  such that [[t]]_v = [[f]][[ts]] - this predicate holds exactly when f = constr
+  Maybe dont need dep types, maybe just prove later that 1 is always true
+  based on semantics, and exhaustive match ensures no errors
+  may need some casting
+
+  will be independent of valuation because we only care about the type of the term
+  ie: [[t]]_v gives some element of [[v(ts(alpha))]] = [[ts(v(alpha))]]
+  I am wrong: this should affect it: but we know that there is some (constructor)
+  f and ts
+  such that [[t]]_v = [[f(v(alpha))]](ts)
+
+  isf should return true iff f = constr
+
+  projf f ts' should return true iff f = constr and ts = [[ts']]
+  *)
+(*with isf (v: valuation sigma gamma gamma_valid i) 
+  (t: term) (ts: typesym) (vs: list vty) (Hty: term_has_type sigma t (vty_cons ts vs)) 
+  (constr: funsym) : bool :=
+  all_dec (exists tms (Htms: term_has_type sigma (Tfun constr vs tms) (vty_cons ts vs)), 
+    term_rep v t (vty_cons ts vs) Hty = 
+    term_rep v (Tfun constr vs tms) _ Htms).
+    funs constr*) 
+  
 Check excluded_middle_informative.
 Print Assumptions excluded_middle_informative.
+
+End Denot.
 

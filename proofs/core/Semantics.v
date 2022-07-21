@@ -329,12 +329,12 @@ Inductive term_interp:
     (*Again, we must cast the return type of f, for the same reason*)
     term_interp v (Tfun f params ts) f_ret 
       (dom_cast (subst_sort_eq f_ret (v_typevar i v)) (f_interp xs))
-  | TI_match: forall v (t: term) ty (ps: list (pattern * term)) (t': term) x,
+  | TI_match: forall v (t: term) ty1 ty (ps: list (pattern * term)) (t': term) x,
     (*Translate the pattern match to a term of tests (with match_pattern), then
       interpret*)
     match_pattern term Tlet v t (map fst ps) (map snd ps) (Some t') ->
     term_interp v t' ty x ->
-    term_interp v (Tmatch t ps) ty x
+    term_interp v (Tmatch t ty1 ps) ty x
 
 with formula_interp: (valuation i) -> list formula -> list formula -> formula -> bool -> Prop :=
   | FI_true: forall v tl fl, formula_interp v tl fl Ftrue true
@@ -406,12 +406,12 @@ with formula_interp: (valuation i) -> list formula -> list formula -> formula ->
           (@arg_nth _ p_arg_typs xs n s_int dom_int))) ->
 
     formula_interp v tl fl (Fpred p params ts) (p_interp xs)
-  | FI_match: forall v (t: term) (ps: list (pattern * formula)) (f: formula) b tl fl,
+  | FI_match: forall v (t: term) ty (ps: list (pattern * formula)) (f: formula) b tl fl,
     (*Translate the pattern match to a formula of tests (with match_pattern), then
       interpret*)
     match_pattern formula Flet v t (map fst ps) (map snd ps) (Some f) ->
     formula_interp v tl fl f b ->
-    formula_interp v tl fl (Fmatch t ps) b
+    formula_interp v tl fl (Fmatch t ty ps) b
   (* Make the logic classical *)
   | FI_VarT: forall v f tl fl,
     In f tl ->
@@ -432,10 +432,11 @@ with formula_interp: (valuation i) -> list formula -> list formula -> formula ->
   (*Similar to projf_{i, j} in the paper, but gives whole list if 
     [[t]]]is application of [[f]] to [[ts]]*)
 with proj_constr : (valuation i) -> term -> funsym -> list vty -> list term -> bool -> Prop :=
-| mk_proj_constr: forall v t ty f vs ts x,
-    t = Tfun f vs ts ->
-    (*Says that [[t]] = [[f(vs)]][[ts]], but operation on t and ts (NOT interpretations)*)
+| mk_proj_constr: forall v t ty f vs ts x y,
     term_interp v t ty x ->
+    term_interp v (Tfun f vs ts) ty y ->
+    x = y ->
+    (*Says that [[t]] = [[f(vs)]][[ts]], but operation on t and ts (NOT interpretations)*)
     proj_constr v t f vs ts true
 | not_proj_constr: forall v ty f vs ts x t' x',
     term_interp v (Tfun f vs ts) ty x ->

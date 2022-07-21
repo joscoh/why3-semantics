@@ -162,7 +162,7 @@ Inductive term : Type :=
   | Tfun: funsym -> list vty -> list term -> term
   | Tlet: term -> vsymbol -> vty -> term -> term
   | Tif: formula -> term -> term -> term
-  | Tmatch: term -> list (pattern * term) -> term
+  | Tmatch: term -> vty -> list (pattern * term) -> term
 with formula : Type :=
   | Fpred: predsym -> list vty -> list term -> formula
   | Fquant: quant -> vsymbol -> vty -> formula -> formula
@@ -173,7 +173,7 @@ with formula : Type :=
   | Ffalse: formula
   | Flet: term -> vsymbol -> vty -> formula -> formula
   | Fif: formula -> formula -> formula -> formula
-  | Fmatch: term -> list (pattern * formula) -> formula.
+  | Fmatch: term -> vty -> list (pattern * formula) -> formula.
   (*TODO: will need nicer (useful) induction scheme*)
 Set Elimination Schemes.
 
@@ -235,7 +235,7 @@ Fixpoint term_fv (t: term) : list vsymbol :=
   | Tfun f vtys tms => big_union' term_fv tms
   | Tlet t1 v _ t2 => union' (term_fv t1) (remove' v (term_fv t2))
   | Tif f t1 t2 => union' (form_fv f) (union' (term_fv t1) (term_fv t2))
-  | Tmatch t l => union' (term_fv t) (big_union' (fun x => remove_all' (pat_fv (fst x)) (term_fv (snd x))) l)
+  | Tmatch t ty l => union' (term_fv t) (big_union' (fun x => remove_all' (pat_fv (fst x)) (term_fv (snd x))) l)
   end
 
 with form_fv (f: formula) : list vsymbol :=
@@ -249,7 +249,7 @@ with form_fv (f: formula) : list vsymbol :=
   | Ffalse => nil
   | Flet t v _ f => union' (term_fv t) (remove' v (form_fv f))
   | Fif f1 f2 f3 => union' (form_fv f1) (union' (form_fv f2) (form_fv f3))
-  | Fmatch t l => union' (term_fv t) (big_union' (fun x => remove_all' (pat_fv (fst x)) (form_fv (snd x))) l)
+  | Fmatch t ty l => union' (term_fv t) (big_union' (fun x => remove_all' (pat_fv (fst x)) (form_fv (snd x))) l)
   end.
 
 Definition closed_term (t: term) : bool :=
