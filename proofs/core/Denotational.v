@@ -151,6 +151,12 @@ Proof.
   intros [f]; simpl. eapply reflect_iff. apply nodup_NoDup. apply s_params_nodup.
 Qed.
 
+Lemma p_params_nodup: forall (p: predsym),
+  NoDup (p_params p).
+Proof.
+  intros [p]; simpl. eapply reflect_iff. apply nodup_NoDup. apply p_params_nodup.
+Qed.
+
 (*We use the above to get the arg list (tentatively)*)
 Definition get_arg_list (v: valuation sigma gamma gamma_valid i)
   (f: funsym) (vs: list vty) (ts: list term) 
@@ -181,12 +187,47 @@ Proof.
       * apply IHts; auto.
 Defined.
 
+(*Also need a version for preds (TODO: can we reduce duplication?)*)
+Definition get_arg_list_pred (v: valuation sigma gamma gamma_valid i)
+  (p: predsym) (vs: list vty) (ts: list term) 
+  (reps: forall (t: term) (ty: vty),
+    term_has_type sigma t ty ->
+    domain (val v ty))
+  (Hval: valid_formula sigma (Fpred p vs ts)) :
+  arg_list domain
+    (predsym_sigma_args p
+      (map (v_subst (v_typevar v)) vs)).
+Proof.
+  apply pred_ty_inversion in Hval.
+  repeat match goal with | H: ?P /\ ?Q |- _ => destruct H end.
+  clear H; clear H0.
+  unfold predsym_sigma_args.
+  generalize dependent (p_args p). induction ts; simpl; intros.
+  - assert (l = nil). apply length_zero_iff_nil. rewrite H1; reflexivity.
+    rewrite H. simpl. apply AL_nil.
+  - destruct l as [|a1 atl] eqn : Hargs.
+    + inversion H1.
+    + simpl in H1. simpl in H3. assert (A:=H3).
+      apply Forall_inv in H3. apply Forall_inv_tail in A. simpl.
+      apply AL_cons.
+      * specialize (reps a _ H3); simpl in reps. 
+        rewrite <- funsym_subst_eq; auto. apply p_params_nodup.
+      * apply IHts; auto.
+Defined.
+
 (*TODO: move*)
 Lemma tfun_params_length {s f vs ts ty}:
   term_has_type s (Tfun f vs ts) ty ->
   length (s_params f) = length vs.
 Proof.
   intros. inversion H; subst. rewrite H8. reflexivity.
+Qed.
+
+Lemma fpred_params_length {s p vs ts}:
+  valid_formula s (Fpred p vs ts) ->
+  length (p_params p) = length vs.
+Proof.
+  intros. inversion H; subst. auto.
 Qed.
 
 Lemma has_type_eq {s t t' ty} (Heq: t = t'):
@@ -259,6 +300,18 @@ Lemma valid_if_inj {s f1 f2 f3} (H: valid_formula s (Fif f1 f2 f3)):
 valid_formula s f1 /\
 valid_formula s f2 /\
 valid_formula s f3.
+Proof.
+  inversion H; auto.
+Qed.
+
+Lemma valid_quant_inj {s q x ty f} (H: valid_formula s (Fquant q x ty f)):
+  valid_formula s f.
+Proof.
+  inversion H; auto.
+Qed.
+
+Lemma valid_eq_inj {s ty t1 t2} (H: valid_formula s (Feq ty t1 t2)):
+  term_has_type s t1 ty /\ term_has_type s t2 ty.
 Proof.
   inversion H; auto.
 Qed.
@@ -380,10 +433,44 @@ with formula_rep (v: valuation sigma gamma gamma_valid i) (f: formula)
       proj2 (proj2 (valid_if_inj Hval')) in
 
     if formula_rep v f1 Hf1 then formula_rep v f2 Hf2 else formula_rep v f3 Hf3
-    
+  (*Much simpler than Tfun case above because we don't need casting*)
+  | Fpred p vs ts => fun Hf =>
+    let Hval': valid_formula sigma (Fpred p vs ts) :=
+      valid_formula_eq Hf Hval in
+
+    preds _ _ _ _ p (map (val v) vs)
+      (get_arg_list_pred v p vs ts (term_rep v) Hval')
+
+  | Fquant Tforall x ty f' => fun Hf =>
+    let Hval' : valid_formula sigma (Fquant Tforall x ty f') :=
+      valid_formula_eq Hf Hval in
+    let Hf' : valid_formula sigma f' :=
+      valid_quant_inj Hval' in
+
+    (*NOTE: HERE is where we need the classical axiom assumptions*)
+    all_dec (forall d, formula_rep (substi v x ty d) f' Hf')
+
+  | Fquant Texists x ty f' => fun Hf =>
+    let Hval' : valid_formula sigma (Fquant Texists x ty f') :=
+      valid_formula_eq Hf Hval in
+    let Hf' : valid_formula sigma f' :=
+      valid_quant_inj Hval' in
+
+    (*NOTE: HERE is where we need the classical axiom assumptions*)
+    all_dec (exists d, formula_rep (substi v x ty d) f' Hf')
+  | Feq ty t1 t2 => fun Hf =>
+    let Hval' : valid_formula sigma (Feq ty t1 t2) :=
+      valid_formula_eq Hf Hval in
+    let Ht1 : term_has_type sigma t1 ty := 
+      proj1 (valid_eq_inj Hval') in
+    let Ht2 : term_has_type sigma t2 ty :=
+      proj2 (valid_eq_inj Hval') in
+
+    (*TODO: require decidable equality for all domains?*)
+    all_dec (term_rep v t1 ty Ht1 = term_rep v t2 ty Ht2)
   (*TODO*)
   | _ => fun _ => true
-  end) eq_refl. 
+  end) eq_refl.
 
 Check excluded_middle_informative.
 Print Assumptions excluded_middle_informative.

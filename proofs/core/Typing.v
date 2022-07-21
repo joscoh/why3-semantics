@@ -191,7 +191,7 @@ Proof.
       apply H5; auto.
 Qed.
 
-(*First, try this*)
+(*First, try this: TODO move*)
 Lemma fun_ty_inversion: forall s (f: funsym) (vs: list vty) (tms: list term) ty_ret,
   term_has_type s (Tfun f vs tms) ty_ret ->
   In f (sig_f s) /\ Forall (valid_type s) vs /\
@@ -200,6 +200,17 @@ Lemma fun_ty_inversion: forall s (f: funsym) (vs: list vty) (tms: list term) ty_
   Forall (fun x => term_has_type s (fst x) (snd x)) 
     (combine tms (map (ty_subst (s_params f) vs) (s_args f))) /\
   ty_ret = ty_subst (s_params f) vs (s_ret f).
+Proof.
+  intros. inversion H; subst; repeat split; auto.
+Qed.
+
+Lemma pred_ty_inversion: forall s (p: predsym) (vs: list vty) (tms: list term),
+  valid_formula s (Fpred p vs tms) ->
+  In p (sig_p s) /\ Forall (valid_type s) vs /\
+  length tms = length (p_args p) /\
+  length vs = length (p_params p) /\
+  Forall (fun x => term_has_type s (fst x) (snd x)) 
+    (combine tms (map (ty_subst (p_params p) vs) (p_args p))).
 Proof.
   intros. inversion H; subst; repeat split; auto.
 Qed.
