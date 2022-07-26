@@ -8,6 +8,9 @@ Require Export Common.
 (*Type variable (ex: a)*)
 Definition typevar : Type := string. 
 
+Definition typevar_eqb : typevar -> typevar -> bool :=
+  String.eqb.
+
 Definition typevar_eq_dec : forall (t1 t2: typevar),
   {t1 = t2} + {t1 <> t2} := string_dec.
 
@@ -18,16 +21,65 @@ Record typesym : Type := mk_ts {
   ts_args_uniq : nodupb typevar_eq_dec ts_args
   }.
 
+Fixpoint list_eqb {A: Type} (eq: A -> A -> bool) (l1 l2: list A) : bool :=
+  match l1, l2 with
+  | x1 :: t1, x2 :: t2 => eq x1 x2 && list_eqb eq t1 t2
+  | nil, nil => true
+  | _, _ => false
+  end.
+
+Lemma list_eqb_spec: forall {A: Type} (eq: A -> A -> bool)
+  (Heq: forall (x y : A), reflect (x = y) (eq x y))
+  (l1 l2: list A),
+  reflect (l1 = l2) (list_eqb eq l1 l2).
+Proof.
+  intros. revert l2. induction l1; simpl; intros.
+  - destruct l2; simpl. apply ReflectT. constructor.
+    apply ReflectF. intro C; inversion C.
+  - destruct l2; simpl. apply ReflectF. intro C; inversion C.
+    specialize (Heq a a0). destruct Heq.
+    2 : {
+      apply ReflectF. intro C; inversion C; subst; contradiction.
+    }
+    subst; simpl. specialize (IHl1 l2). destruct IHl1; subst.
+    apply ReflectT. auto. apply ReflectF. intro C; inversion C; subst; contradiction.
+Qed.
+
+Definition bool_eqb (b1 b2: bool) : bool :=
+  match b1, b2 with
+  | true, true => true
+  | false, false => true
+  | _, _ => false
+  end.
+
+Lemma typesym_eq: forall (t1 t2: typesym),
+  (ts_name t1) = (ts_name t2) ->
+  (ts_args t1) = (ts_args t2) ->
+  t1 = t2.
+Proof.
+  intros. destruct t1; destruct t2; simpl in *; subst. f_equal.
+  apply bool_irrelevance.
+Qed.
+
+Definition typesym_eqb (t1 t2: typesym) :=
+  String.eqb (ts_name t1) (ts_name t2) &&
+  list_eqb typevar_eqb (ts_args t1) (ts_args t2).
+
+Lemma typesym_eqb_spec: forall (t1 t2: typesym),
+  reflect (t1 = t2) (typesym_eqb t1 t2).
+Proof.
+  intros t1 t2. unfold typesym_eqb.
+  destruct (String.eqb_spec (ts_name t1) (ts_name t2)); simpl.
+  - destruct (list_eqb_spec typevar_eqb String.eqb_spec (ts_args t1) (ts_args t2)); simpl.
+    + apply ReflectT. apply typesym_eq; auto.
+    + apply ReflectF. intros C. destruct t1; destruct t2; subst. inversion C; contradiction.
+  - apply ReflectF. intro C; destruct t1; destruct t2; inversion C; subst; contradiction.
+Qed. 
+
 Lemma typesym_eq_dec: forall (t1 t2: typesym),
   {t1 = t2} + {t1 <> t2}.
 Proof.
-  intros. destruct t1; destruct t2; simpl.
-  destruct (typevar_eq_dec ts_name0 ts_name1); subst; 
-    [| right; intro C; inversion C; contradiction].
-  destruct (list_eq_dec typevar_eq_dec ts_args0 ts_args1); subst;
-    [| right; intro C; inversion C; contradiction].
-  assert (ts_args_uniq0 = ts_args_uniq1) by apply bool_irrelevance; subst.
-  left; reflexivity.
+  intros. eapply reflect_dec. apply typesym_eqb_spec.
 Defined.
 
 (*Value types*)

@@ -23,7 +23,7 @@ Ltac simpl_sumbool :=
 Lemma bool_irrelevance: forall (b: bool) (p1 p2: b), p1 = p2.
 Proof.
   intros b p1 p2. apply UIP_dec. apply bool_dec.
-Qed.
+Defined.
 
 (** Union on lists with decidable equality **)
 

@@ -1,11 +1,15 @@
 Require Import Syntax.
 Require Import Typing.
 Require Import Types.
+Require Import Coq.Lists.List.
 
 Inductive W (A: Set) (B: A -> Set) : Set :=
   mkW : forall (a: A) (f: B a -> W A B), W A B.
 
 Inductive empty :=.
+
+(*Some manual tests (will delete)*)
+Section Manual.
 
 (*Ex: for nats*)
 Definition wnat := W bool (fun b => if b then unit else empty).
@@ -74,7 +78,7 @@ Definition bound (n: nat) : Set := {x : nat | x < n}.
 
   (*Here is rose tree:*)
 Definition wrose (A: Set) := W (A * nat) (fun x => bound (snd x)).
-Require Import Coq.Lists.List.
+
 Definition wrnode (A: Set) (x: A) (l: list (wrose A)) : wrose A.
 Proof.
   apply mkW with (a:=(x, (length l))).
@@ -95,21 +99,6 @@ Defined.
   For now, do simple ADTS
   *)
 
-(*Let's do either*)
-Inductive either (A B: Set) : Set :=
-  | Left: A -> either A B
-  | Right: B -> either A B.
-
-(*Ok, let's try*)
-(*For first pass, suppose it only includes base types (int and real), type variables,
-  and inductive definitions for current typesym
-  then, see if we can add abstract types (maybe parameterized? - how to do?)
-  Tests will be
-  - unit, bool, type with small finite number
-  - nat, list, either, option
-  - tree, many constructor, more exotic types
-*)
-
 (*let's do some simple easy ones*)
 Definition wunit := W unit (fun _ => empty).
 
@@ -121,30 +110,46 @@ Definition wtrue : wbool := mkW _ _ true (fun (e: empty) => match e with end).
 
 Definition wfalse : wbool := mkW _ _ false (fun (e: empty) => match e with end).
 
-(*Trying to see best finite encoding*)
+End Manual.
+
+(*Some facilities for building up types:*)
+Section TypeOps.
+
+(*A type with (A + B) elements*)
+Inductive either (A B: Set) : Set :=
+  | Left: A -> either A B
+  | Right: B -> either A B.
+
+(*A type with n elements, for finite n*)
 Fixpoint finite (n: nat) : Set :=
   match n with
-  | O => unit
+  | O => empty
+  | S O => unit
   | S n' => option (finite n')
   end.
 
 Fixpoint fin_list (n: nat) : list (finite n).
 induction n.
-- apply [tt].
-- destruct n.
-  + apply [Some tt; None].
-  + apply (None :: map Some IHn).
+- apply nil. 
+- destruct n; simpl.
+  + apply [tt].
+  + destruct n.
+    * apply [None; Some tt].
+    * apply (None :: map Some IHn).
 Defined.
-
+(*TODO: see if we need these lemmas*)
+(*
 Lemma fin_list_all: forall (n: nat) (x: finite n),
   In x (fin_list n).
 Proof.
   induction n; simpl; intros.
-  - destruct x. left; auto.
+  - destruct x.
+  - destruct n.
+  - destruct x; left; auto.
   - destruct n.
     + simpl in x. destruct x.
-      * destruct u. left; auto.
-      * right; left; auto.
+      * destruct u. right; left; auto.
+      * left; auto.
     + destruct x. 2: left; auto.
       right. rewrite in_map_iff. exists f. split; auto.
 Qed.
@@ -173,58 +178,106 @@ Proof.
       * intro C. rewrite in_map_iff in C. destruct C as [o [Hcon _]]. inversion Hcon.
       * apply NoDup_map_inj. intros x y Hxy; auto. inversion Hxy; auto.
         apply IHn.
-Qed. 
+Qed. *)
 
+(*Operations on types*)
+
+(*Addition*)
 Definition plus (A B: Set) : Set := either A B.
 
+(*Multiplication*)
 Definition mult (A B: Set) : Set := (A * B).
 
-Definition emp_fun {A: Type} : empty -> A := (fun (e: empty) => match e with end).
+End TypeOps.
 
+(*Now, we come to the construction. We do this in 3 parts:
+  1. Build up the base type (A)
+  2. Build up the function (A -> Set)
+  3. Put together*)
+Section ADTConstr.
 
-Definition wunit' := W (finite 0) (fun _ => empty).
+(*Construct the base type*)
 
-Definition wtt' : wunit' := mkW _ _ tt emp_fun. 
+Definition get_vty_base (v: vty) : Set :=
+  match v with
+  | vty_int => Z
+  | vty_real => R
+  | vty_var x => (*TODO: this *) (*(fun (A: Set) => A)*) unit
+  | vty_cons ts vs => unit (*for now*)
+  end.
 
-Definition wbool' := W (finite 1) (fun _ => empty).
+Definition sprod (A B: Set) : Set := A * B.
 
-Definition wtrue' : wbool' := mkW _ _ (Some tt) emp_fun.
+(*TODO: try to get rid of extra: (_ * unit) - this is ok because
+  we multiply by 0, but it makes things messier*)
+Definition build_vty_base (l: list vty) : Set :=
+  fold_right (fun v acc => sprod (get_vty_base v) acc) unit l.
 
-Definition wweek := W (finite 6) (fun _ => empty).
+Definition build_constr_base (c: funsym) : Set :=
+  build_vty_base (s_args c).
 
-Definition wmonday : wweek := mkW _ _ None emp_fun.
-Definition wtuesday: wweek := mkW _ _ (Some None) emp_fun.
-Definition wwednesday: wweek := mkW _ _ (Some (Some None)) emp_fun.
-Definition wthursday: wweek := mkW _ _ (Some (Some (Some None))) emp_fun.
-Definition wfriday: wweek := mkW _ _ (Some (Some (Some (Some None)))) emp_fun.
-Definition wsaturday: wweek := mkW _ _ (Some (Some (Some (Some (Some None))))) emp_fun.
-Definition wsunday: wweek:= mkW _ _ (Some (Some (Some (Some (Some (Some tt)))))) emp_fun.
+Fixpoint build_base (constrs: list funsym) : Set :=
+  match constrs with
+  | nil => unit
+  | [f] => build_constr_base f
+  | f :: fs => either (build_constr_base f) (build_base fs)
+  end.
 
-(*First, trivial one for easy types*)
+(*Construct the function for recursion*)
+
+(*Count number of recursive occurrences (NOTE: doesnt work for non-uniform recursion)*)
+Definition count_rec_occ (ts: typesym) (c: funsym) :=
+  fold_right (fun v acc => 
+    match v with
+    | vty_cons ts' vs => (if typesym_eqb ts ts' (*typesym_eq_dec ts ts'*) then 1 else 0)
+    | _ => 0
+    end + acc) 0 (s_args c).
+
+Definition build_constr_rec (ts: typesym) (c: funsym) : Set :=
+  finite (count_rec_occ ts c).
+
+(*Easier to build with tactics*)
+Fixpoint build_rec (ts: typesym) (constrs: list funsym) : (build_base constrs -> Set).
+  induction constrs.
+  - simpl. intros. apply empty.
+  - destruct constrs.
+    + simpl. intros. apply (build_constr_rec ts a).
+    + intros O. destruct O.
+      * apply (build_constr_rec ts a).
+      * apply IHconstrs. apply b.
+Defined.
+
+(*Can handle simple inductive types, no polymorphism, abstract types,
+  or nested/non-uniform recursion*)
 Definition mk_adt (ts: typesym) (constrs: list funsym) : Set :=
-  let fintype := finite ((length constrs) - 1) in
-  W fintype (fun _ => empty).
+  W (build_base constrs) (build_rec ts constrs).
 
-(*This will be more complicated later*)
+(*TODO: later - get function for each constructor*)
+(*
 Definition constr_rep (ts: typesym) (constrs: list funsym) :
   list (funsym * (mk_adt ts constrs)).
 Proof.
   apply (combine constrs 
     (map (fun f => mkW _ _ f emp_fun) (fin_list (length constrs - 1)))).
-Defined.
+Defined.*)
 
+End ADTConstr.
+
+(*Just for tests*)
+Require Import Coq.Logic.FunctionalExtensionality.
 Section Tests.
 
 Notation mk_fs name params args ret_ts ret_args := 
   (Build_funsym name params args (vty_cons ret_ts ret_args) eq_refl eq_refl eq_refl).
 
+(*
 Definition find {A B: Type} (eq_dec: forall (x y : A), {x = y} + {x <> y}) 
   (l: list (A * B)) (x: A) : option B :=
   fold_right (fun y acc => if eq_dec (fst y) x then Some (snd y) else acc) None l.
 
 Notation find_constr ts constrs x :=
-  (find funsym_eq_dec (constr_rep ts constrs) x). 
-
+  (find funsym_eq_dec (constr_rep ts constrs) x).
+*)
 (*Unit*)
 Definition ts_unit : typesym := mk_ts "unit" nil eq_refl.
 Definition aunit := mk_adt ts_unit 
@@ -233,28 +286,24 @@ Definition aunit := mk_adt ts_unit
 Lemma aunit_correct: aunit = W unit (fun _ => empty).
 Proof. reflexivity. Qed.
 
-Eval compute in find_constr ts_unit [ mk_fs "tt" nil nil ts_unit nil]
-  (mk_fs "tt" nil nil ts_unit nil).
-
-Eval compute in string_dec "a" "b".
-
 Definition ta : typevar := "a"%string.
 Definition tb : typevar := "b"%string.
+
 (*
-Eval vm_compute in vty_eq_dec (vty_var ta) (vty_var tb).
+Lemma att_correct: 
+(map snd (constr_rep ts_unit [ mk_fs "tt" nil nil ts_unit nil])) =
+[mkW unit _ tt emp_fun].
+Proof. reflexivity. Qed.*)
 
-Eval compute in vty_eq_dec (vty_var "a") (vty_var "b").
-*)
-  Eval compute in (funsym_eq_dec (mk_fs "tt" nil nil ts_unit nil) (mk_fs "tt" nil nil ts_unit nil) ).
 
-(*TODO: try with ssreflect to see if we can get that stuff computes
-  easier and faster*)
+Ltac destruct_either :=
+  repeat match goal with
+  | x: either ?a ?b |- _ => destruct x 
+  end; auto.
 
-Eval compute in (map snd (constr_rep   ts_unit [ mk_fs "tt" nil nil ts_unit nil])).
-  
-  
-  =
-  Some (mkW _ _ None emp_fun).
+Ltac solve_adt_eq :=
+  vm_compute; f_equal; apply functional_extensionality;
+  intros; destruct_either.
 
 (*Bool*)
 Definition ts_bool : typesym := mk_ts "bool" nil eq_refl.
@@ -262,8 +311,16 @@ Definition abool := mk_adt ts_bool
   [mk_fs "true" nil nil ts_bool nil;
    mk_fs "false" nil nil ts_bool nil].
 
-Lemma abool_correct: abool = W (option unit) (fun _ => empty).
+Lemma abool_correct: abool = W (either unit unit) (fun _ => empty).
+Proof. solve_adt_eq. Qed.
+
+(*
+Lemma abool_constrs_correct:
+  map snd (constr_rep ts_bool [mk_fs "true" nil nil ts_bool nil;
+  mk_fs "false" nil nil ts_bool nil]) =
+  [mkW _ _ None emp_fun; mkW _ _ (Some tt) emp_fun].
 Proof. reflexivity. Qed.
+*)
 
 (*Days of the week*)
 Definition ts_week : typesym := mk_ts "days" nil eq_refl.
@@ -277,115 +334,124 @@ Definition aweek := mk_adt ts_week
    mk_fs "sun" nil nil ts_week nil].
 
 Lemma aweek_correct: aweek = 
-  W (option (option (option (option (option (option unit)))))) (fun _ => empty).
+  W (either unit (either unit (either unit (either unit 
+    (either unit (either unit unit)))))) (fun _ => empty).
+Proof.
+  solve_adt_eq. 
+Qed. 
+
+(*Types with arguments*)
+
+(*Simple type with 2 int constructors*)
+Inductive num : Set :=
+  | npos : Z -> num
+  | nneg : Z -> num
+  | nzero : num.
+
+Definition ts_num : typesym := mk_ts "num" nil eq_refl.
+Definition anum := mk_adt ts_num
+  [mk_fs "npos" nil [vty_int] ts_num nil;
+   mk_fs "nneg" nil [vty_int] ts_num nil;
+   mk_fs "nzero" nil nil ts_num nil].
+
+Lemma anum_correct: anum =
+  W (either (Z * unit) (either (Z * unit) unit)) (fun _ => empty).
+Proof.
+  solve_adt_eq.
+Qed.
+
+(*Type with mix of int and real arguments*)
+Inductive test1 : Set :=
+  | test1a : Z -> Z -> test1
+  | test1b: test1
+  | test1c : R -> Z -> test1
+  | test1d: R -> R -> R -> test1.
+
+Definition ts_test1 : typesym := mk_ts "test1" nil eq_refl.
+Definition atest1 := mk_adt ts_test1
+  [mk_fs "test1a" nil [vty_int; vty_int] ts_test1 nil;
+   mk_fs "test1b" nil nil ts_test1 nil;
+   mk_fs "test1c" nil [vty_real; vty_int] ts_test1 nil;
+   mk_fs "test1d" nil [vty_real; vty_real; vty_real] ts_test1 nil].
+
+Lemma atest1_correct : atest1 =
+  W 
+  (either (Z * (Z * unit)) (either unit (either (R * (Z * unit)) (R * (R * (R * unit))))))
+    (fun _ => empty).
+Proof.
+  solve_adt_eq.
+Qed.
+
+(*Simple Inductive types (no polymorphism, no nested recursion, 
+  only uniform recursion)*)
+
+(*Nat*)
+Definition ts_nat : typesym := mk_ts "nat" nil eq_refl.
+Definition anat := mk_adt ts_nat
+  [mk_fs "O" nil nil ts_nat nil;
+   mk_fs "S" nil [vty_cons ts_nat nil] ts_nat nil].
+
+Lemma anat_correct: anat =
+  W (either unit (unit * unit)) (fun (x: either unit (unit * unit)) =>
+    match x with
+    | Left _ _ _ => empty
+    | Right _ _ _ => unit
+    end).
 Proof. reflexivity. Qed.
 
+(*Int list*)
+Definition ts_intlist : typesym := mk_ts "intlist" nil eq_refl.
+Definition aintlist := mk_adt ts_intlist
+  [mk_fs "nil" nil nil ts_intlist nil;
+   mk_fs "cons" nil [vty_int; vty_cons ts_intlist nil] ts_intlist nil].
 
+Lemma aintlist_correct: aintlist =
+  W (either unit (Z * (unit * unit))) (fun x =>
+    match x with
+    | Left _ _ _ => empty
+    | Right _ _ _ => unit
+    end).
+Proof. reflexivity. Qed. 
 
-  reflexivity.
-Qed.
-Eval compute in aunit.
+(*Int binary tree*)
+Definition ts_inttree : typesym := mk_ts "inttree" nil eq_refl.
+Definition ainttree := mk_adt ts_inttree
+  [mk_fs "leaf" nil nil ts_inttree nil;
+   mk_fs "node" nil [vty_int; vty_cons ts_inttree nil; vty_cons ts_inttree nil]
+    ts_inttree nil].
 
+Lemma ainttree_correct: ainttree =
+  W (either unit (Z * (unit * (unit * unit)))) (fun x =>
+    match x with
+    | Left _ _ _ => empty
+    | Right _ _ _ => option unit
+    end).
+Proof. reflexivity. Qed.
 
+(*More complicated simple inductive type*)
+Inductive test2 : Set :=
+  | test2a: Z -> test2
+  | test2b: test2 -> test2
+  | test2c: test2 -> R -> test2 -> test2 -> test2
+  | test2d: Z -> Z -> test2 -> test2.
 
-Definition mk_adt (ts: typesym) (constrs: list funsym) : Set :=
-  let 
+Definition ts_test2 : typesym := mk_ts "test2" nil eq_refl.
+Definition atest2:= mk_adt ts_test2
+  [mk_fs "test2a" nil [vty_int] ts_test2 nil;
+  mk_fs "test2b" nil [vty_cons ts_test2 nil] ts_test2 nil;
+  mk_fs "test2c" nil [vty_cons ts_test2 nil; vty_real; vty_cons ts_test2 nil;
+    vty_cons ts_test2 nil] ts_test2 nil;
+  mk_fs "test2d" nil [vty_int; vty_int; vty_cons ts_test2 nil] ts_test2 nil].
 
+Lemma atest2_correct : atest2 =
+  W (either (Z * unit) (either (unit * unit) (either (unit * (R * (unit * (unit * unit)))) (Z * (Z * (unit * unit))))))
+    (fun x =>
+      match x with
+      | Left _ _ _ => empty
+      | Right _ _ (Left _ _ _) => unit
+      | Right _ _ (Right _ _ (Left _ _ _)) => option (option unit)
+      | Right _ _ _ => unit
+      end).
+Proof. reflexivity. Qed.
 
-Definition weither (A: Set) (B: Set) := W 
-
-  (*
-Definition wrnode' (A: Set) (x: A) (l: wlist (wrose A)) : wrose A.*)
-Proof.
-  apply mkW with 
-
-(*What about the following?*)
-Inductive bar (A: Set) : Set :=
-  | mkbar: A -> tree 
-
-(*I think we can use this more generally with bounded types*)
-
-(*Here is what we need:
-  our type must be "sum" of all constructors
-
-  for each constructor
-  1. get non-inductive arguments, cardinalities  (TODO: need to figure out opaque types - can these appear)
-      should be base type or type variable - this will contribute to A (will be sum of all)
-  2. the function will be a match on the argument, which will have a case for each
-  constructor, for each match,
-  for all inductive arguments of the same type, we add 1 (and just iterate through in order)
-  (NOTE: has to be uniform)
-  
-  then, need to figure out inductives of different type (if different type
-  and default args, then can just roll that into (1), but need size)
-
-  hmm, will be complicated - let's start after, build up
-  see if we can do one with tree of these types (and maybe non-uniform)
-  what does it even mean to have a tree there?
-
-      2. get inductive arguments of same inductive type, 
-
-
-
-    if single constructor, 
-*)
-
-  Search nth_error.
-  apply (mkW) with (a:=x). intros h. destruct h.
-
-(*Let's do a rose tree variant*)
-Inductive weirdrose (A: Set) :=
-  weirdnode : A -> (nat -> option (weirdrose A)) -> weirdrose A.
-
-Definition wwrose (A: Set) := W A (fun _ => option nat).
-
-Definition wwnode (A: Set) (x: A) (f: nat -> option (wwrose A)): wwrose A.
-apply (mkW) with (a:=x).
-intros o.
-destruct o.
-apply f in n. destruct n.
-apply w.
-
-apply f.
-
-
-
-(*Let's try rose trees*)
-
-Inductive rose (A: Set) :=
-  root : A -> list (rose A) -> rose A.
-
-Definition wrose (A: Set) := W A (fun x => nat).
-
-Definition wroot (A: Set) (x: A) (l: wlist (wrose A)) : wrose A.
-apply mkW with (a:=x).
-intros n.
-
-:=
-  mkW A (fun _ => nat) x
-  (fun (n: nat) => if n <? length l then nth n l else )
-*)
-
-if b then A else empty).
-
-Definition wnil (A: Set) : wlist A.
-Proof.
-  apply mkW with (a:=false).
-  intro C. destruct C.
-Defined.
-
-Definition wcons (A: Set) (x: A) (tl: wlist A) : wlist A :=
-  mkW true (fun )
-
-
-
-(f:= fun _ => n).
-
-  fun w => mkW true (fun n =>)
-
-inversion C.
-:= mkW false
-
-inductive W (A : Set) (B : A -> Set) : Set :=
-
-MkW : forall (a : A) (f : B a -> W A B), W A B.
+End Tests.
