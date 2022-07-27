@@ -219,12 +219,12 @@ Variable vars: typevar -> Set.
 
 (*Construct the base type*)
 
-Definition get_vty_base (v: vty) : Set :=
+Definition get_vty_base (v: vty) : option Set :=
   match v with
-  | vty_int => Z
-  | vty_real => R
-  | vty_var x => vars x (*TODO: this *) (*(fun (A: Set) => A)*)
-  | vty_cons ts vs => unit (*for now*)
+  | vty_int => Some Z
+  | vty_real => Some R
+  | vty_var x => Some (vars x) (*TODO: this *) (*(fun (A: Set) => A)*)
+  | vty_cons ts vs => None (*for now*)
   end.
 
 Definition sprod (A B: Set) : Set := A * B.
@@ -232,7 +232,16 @@ Definition sprod (A B: Set) : Set := A * B.
 (*TODO: try to get rid of extra: (_ * unit) - this is ok because
   we multiply by 0, but it makes things messier*)
 Definition build_vty_base (l: list vty) : Set :=
-  fold_right (fun v acc => sprod (get_vty_base v) acc) unit l.
+  let o := fold_right (fun v acc => 
+    match get_vty_base v, acc with
+    | Some t, Some t' => Some (sprod t t')
+    | None, x => x
+    | x, _ => x
+    end) None l in
+  match o with
+  | None => unit
+  | Some t => t
+  end.
 
 Definition build_constr_base (c: funsym) : Set :=
   build_vty_base (s_args c).
@@ -379,7 +388,7 @@ Definition anum := mk_adt triv_vars ts_num
    mk_fs "nzero" nil nil ts_num nil].
 
 Lemma anum_correct: anum =
-  W (either (Z * unit) (either (Z * unit) unit)) (fun _ => empty).
+  W (either Z (either Z unit)) (fun _ => empty).
 Proof.
   solve_adt_eq.
 Qed.
@@ -400,7 +409,7 @@ Definition atest1 := mk_adt triv_vars ts_test1
 
 Lemma atest1_correct : atest1 =
   W 
-  (either (Z * (Z * unit)) (either unit (either (R * (Z * unit)) (R * (R * (R * unit))))))
+  (either (Z * Z) (either unit (either (R * Z) (R * (R * R)))))
     (fun _ => empty).
 Proof.
   solve_adt_eq.
@@ -416,7 +425,7 @@ Definition anat := mk_adt triv_vars ts_nat
    mk_fs "S" nil [vty_cons ts_nat nil] ts_nat nil].
 
 Lemma anat_correct: anat =
-  W (either unit (unit * unit)) (fun (x: either unit (unit * unit)) =>
+  W (either unit unit) (fun (x: either unit unit) =>
     match x with
     | Left _ _ _ => empty
     | Right _ _ _ => unit
@@ -430,7 +439,7 @@ Definition aintlist := mk_adt triv_vars ts_intlist
    mk_fs "cons" nil [vty_int; vty_cons ts_intlist nil] ts_intlist nil].
 
 Lemma aintlist_correct: aintlist =
-  W (either unit (Z * (unit * unit))) (fun x =>
+  W (either unit Z) (fun x =>
     match x with
     | Left _ _ _ => empty
     | Right _ _ _ => unit
@@ -445,7 +454,7 @@ Definition ainttree := mk_adt triv_vars ts_inttree
     ts_inttree nil].
 
 Lemma ainttree_correct: ainttree =
-  W (either unit (Z * (unit * (unit * unit)))) (fun x =>
+  W (either unit Z) (fun x =>
     match x with
     | Left _ _ _ => empty
     | Right _ _ _ => option unit
@@ -468,7 +477,7 @@ Definition atest2:= mk_adt triv_vars ts_test2
   mk_fs "test2d" nil [vty_int; vty_int; vty_cons ts_test2 nil] ts_test2 nil].
 
 Lemma atest2_correct : atest2 =
-  W (either (Z * unit) (either (unit * unit) (either (unit * (R * (unit * (unit * unit)))) (Z * (Z * (unit * unit))))))
+  W (either Z (either unit (either R (Z * Z))))
     (fun x =>
       match x with
       | Left _ _ _ => empty
@@ -493,7 +502,7 @@ Definition aoption (A: Set) := mk_adt (one_var A) ts_option
    mk_fs "Some" [ta] [vty_var ta] ts_option [ta]].
 
 Lemma aoption_correct: forall (A: Set),
-  aoption A = W (either unit (A * unit)) (fun _ => empty).
+  aoption A = W (either unit A) (fun _ => empty).
 Proof.
   intros. solve_adt_eq.
 Qed. 
@@ -505,7 +514,7 @@ Definition aeither (A: Set) (B: Set) := mk_adt (two_var A B) ts_either
    mk_fs "Right" [ta; tb] [vty_var tb] ts_either [ta; tb]].
 
 Lemma aeither_correct: forall (A: Set) (B: Set),
-  aeither A B = W (either (A * unit) (B * unit)) (fun _ => empty).
+  aeither A B = W (either A B) (fun _ => empty).
 Proof.
   intros. solve_adt_eq.
 Qed.
@@ -517,7 +526,7 @@ Definition alist (A: Set) := mk_adt (one_var A) ts_list
    mk_fs "Cons" [ta] [vty_var ta; vty_cons ts_list [vty_var ta]] ts_list [ta]].
 
 Lemma alist_correct: forall (A: Set),
-  alist A = W (either unit (A * (unit * unit))) (fun x =>
+  alist A = W (either unit A) (fun x =>
     match x with
     | Left _ _ _ => empty
     | Right _ _ _ => unit
@@ -534,7 +543,7 @@ Definition atree (A: Set) := mk_adt (one_var A) ts_tree
     ts_tree [ta]].
 
 Lemma atree_correct: forall (A: Set),
-  atree A = W (either unit (A * (unit * (unit * unit))))
+  atree A = W (either unit A)
     (fun x => match x with
               | Left _ _ _ => empty
               | Right _ _ _ => option unit
