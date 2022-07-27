@@ -3,6 +3,24 @@ Require Import Typing.
 Require Import Types.
 Require Import Coq.Lists.List.
 
+Inductive rose (A: Set) : Set :=
+  | Node : A -> list (rose A) -> rose A.
+
+Inductive perfect (A : Set) : Set :=
+  | Two : perfect (A * A) -> perfect A
+  | One: A -> perfect A.
+(*
+Section W.
+
+Variable (I: Set).
+Variable (A: I -> Set).
+Variable (B: forall (i: I) (j: I), A i -> Set).
+
+Inductive IW : I -> Set :=
+  | mkW : forall (i: I) (a: A i) (f: forall j, B i j a -> IW j), IW i.
+
+End W.
+*)
 Inductive W (A: Set) (B: A -> Set) : Set :=
   mkW : forall (a: A) (f: B a -> W A B), W A B.
 
@@ -196,13 +214,16 @@ End TypeOps.
   3. Put together*)
 Section ADTConstr.
 
+Variable vars: typevar -> Set.
+(*Variable abstract: typesym -> *)
+
 (*Construct the base type*)
 
 Definition get_vty_base (v: vty) : Set :=
   match v with
   | vty_int => Z
   | vty_real => R
-  | vty_var x => (*TODO: this *) (*(fun (A: Set) => A)*) unit
+  | vty_var x => vars x (*TODO: this *) (*(fun (A: Set) => A)*)
   | vty_cons ts vs => unit (*for now*)
   end.
 
@@ -268,7 +289,7 @@ Require Import Coq.Logic.FunctionalExtensionality.
 Section Tests.
 
 Notation mk_fs name params args ret_ts ret_args := 
-  (Build_funsym name params args (vty_cons ret_ts ret_args) eq_refl eq_refl eq_refl).
+  (Build_funsym name params args (vty_cons ret_ts (map vty_var ret_args)) eq_refl eq_refl eq_refl).
 
 (*
 Definition find {A B: Type} (eq_dec: forall (x y : A), {x = y} + {x <> y}) 
@@ -278,9 +299,12 @@ Definition find {A B: Type} (eq_dec: forall (x y : A), {x = y} + {x <> y})
 Notation find_constr ts constrs x :=
   (find funsym_eq_dec (constr_rep ts constrs) x).
 *)
+
+Definition triv_vars : typevar -> Set := fun _ => empty.
+
 (*Unit*)
 Definition ts_unit : typesym := mk_ts "unit" nil eq_refl.
-Definition aunit := mk_adt ts_unit 
+Definition aunit := mk_adt triv_vars ts_unit 
   [ mk_fs "tt" nil nil ts_unit nil].
 
 Lemma aunit_correct: aunit = W unit (fun _ => empty).
@@ -307,7 +331,7 @@ Ltac solve_adt_eq :=
 
 (*Bool*)
 Definition ts_bool : typesym := mk_ts "bool" nil eq_refl.
-Definition abool := mk_adt ts_bool
+Definition abool := mk_adt triv_vars ts_bool
   [mk_fs "true" nil nil ts_bool nil;
    mk_fs "false" nil nil ts_bool nil].
 
@@ -324,7 +348,7 @@ Proof. reflexivity. Qed.
 
 (*Days of the week*)
 Definition ts_week : typesym := mk_ts "days" nil eq_refl.
-Definition aweek := mk_adt ts_week
+Definition aweek := mk_adt triv_vars ts_week
   [mk_fs "mon" nil nil ts_week nil;
    mk_fs "tues" nil nil ts_week nil;
    mk_fs "wed" nil nil ts_week nil;
@@ -349,7 +373,7 @@ Inductive num : Set :=
   | nzero : num.
 
 Definition ts_num : typesym := mk_ts "num" nil eq_refl.
-Definition anum := mk_adt ts_num
+Definition anum := mk_adt triv_vars ts_num
   [mk_fs "npos" nil [vty_int] ts_num nil;
    mk_fs "nneg" nil [vty_int] ts_num nil;
    mk_fs "nzero" nil nil ts_num nil].
@@ -368,7 +392,7 @@ Inductive test1 : Set :=
   | test1d: R -> R -> R -> test1.
 
 Definition ts_test1 : typesym := mk_ts "test1" nil eq_refl.
-Definition atest1 := mk_adt ts_test1
+Definition atest1 := mk_adt triv_vars ts_test1
   [mk_fs "test1a" nil [vty_int; vty_int] ts_test1 nil;
    mk_fs "test1b" nil nil ts_test1 nil;
    mk_fs "test1c" nil [vty_real; vty_int] ts_test1 nil;
@@ -387,7 +411,7 @@ Qed.
 
 (*Nat*)
 Definition ts_nat : typesym := mk_ts "nat" nil eq_refl.
-Definition anat := mk_adt ts_nat
+Definition anat := mk_adt triv_vars ts_nat
   [mk_fs "O" nil nil ts_nat nil;
    mk_fs "S" nil [vty_cons ts_nat nil] ts_nat nil].
 
@@ -401,7 +425,7 @@ Proof. reflexivity. Qed.
 
 (*Int list*)
 Definition ts_intlist : typesym := mk_ts "intlist" nil eq_refl.
-Definition aintlist := mk_adt ts_intlist
+Definition aintlist := mk_adt triv_vars ts_intlist
   [mk_fs "nil" nil nil ts_intlist nil;
    mk_fs "cons" nil [vty_int; vty_cons ts_intlist nil] ts_intlist nil].
 
@@ -415,7 +439,7 @@ Proof. reflexivity. Qed.
 
 (*Int binary tree*)
 Definition ts_inttree : typesym := mk_ts "inttree" nil eq_refl.
-Definition ainttree := mk_adt ts_inttree
+Definition ainttree := mk_adt triv_vars ts_inttree
   [mk_fs "leaf" nil nil ts_inttree nil;
    mk_fs "node" nil [vty_int; vty_cons ts_inttree nil; vty_cons ts_inttree nil]
     ts_inttree nil].
@@ -436,7 +460,7 @@ Inductive test2 : Set :=
   | test2d: Z -> Z -> test2 -> test2.
 
 Definition ts_test2 : typesym := mk_ts "test2" nil eq_refl.
-Definition atest2:= mk_adt ts_test2
+Definition atest2:= mk_adt triv_vars ts_test2
   [mk_fs "test2a" nil [vty_int] ts_test2 nil;
   mk_fs "test2b" nil [vty_cons ts_test2 nil] ts_test2 nil;
   mk_fs "test2c" nil [vty_cons ts_test2 nil; vty_real; vty_cons ts_test2 nil;
@@ -453,5 +477,68 @@ Lemma atest2_correct : atest2 =
       | Right _ _ _ => unit
       end).
 Proof. reflexivity. Qed.
+
+(*Polymorphism*)
+Definition one_var (A: Set) : typevar -> Set :=
+  fun t => if typevar_eqb ta t then A else empty.
+Definition two_var (A: Set) (B: Set) : typevar -> Set :=
+  fun t => if typevar_eqb ta t then A else
+           if typevar_eqb tb t then B else
+           empty.
+
+(*Option type*)
+Definition ts_option : typesym := mk_ts "option" [ta] eq_refl.
+Definition aoption (A: Set) := mk_adt (one_var A) ts_option
+  [mk_fs "None" [ta] nil ts_option [ta];
+   mk_fs "Some" [ta] [vty_var ta] ts_option [ta]].
+
+Lemma aoption_correct: forall (A: Set),
+  aoption A = W (either unit (A * unit)) (fun _ => empty).
+Proof.
+  intros. solve_adt_eq.
+Qed. 
+
+(*Either type*)
+Definition ts_either: typesym := mk_ts "either" [ta; tb] eq_refl.
+Definition aeither (A: Set) (B: Set) := mk_adt (two_var A B) ts_either
+  [mk_fs "Left" [ta; tb] [vty_var ta] ts_either [ta; tb];
+   mk_fs "Right" [ta; tb] [vty_var tb] ts_either [ta; tb]].
+
+Lemma aeither_correct: forall (A: Set) (B: Set),
+  aeither A B = W (either (A * unit) (B * unit)) (fun _ => empty).
+Proof.
+  intros. solve_adt_eq.
+Qed.
+
+(*List type*)
+Definition ts_list: typesym := mk_ts "list" [ta] eq_refl.
+Definition alist (A: Set) := mk_adt (one_var A) ts_list
+  [mk_fs "Nil" [ta] nil ts_list [ta];
+   mk_fs "Cons" [ta] [vty_var ta; vty_cons ts_list [vty_var ta]] ts_list [ta]].
+
+Lemma alist_correct: forall (A: Set),
+  alist A = W (either unit (A * (unit * unit))) (fun x =>
+    match x with
+    | Left _ _ _ => empty
+    | Right _ _ _ => unit
+    end).
+Proof. intros. solve_adt_eq. 
+Qed. 
+
+(*Binary tree*)
+Definition ts_tree: typesym := mk_ts "tree" [ta] eq_refl.
+Definition atree (A: Set) := mk_adt (one_var A) ts_tree
+  [mk_fs "Leaf" [ta] nil ts_tree [ta];
+   mk_fs "Node" [ta] 
+    [vty_var ta; vty_cons ts_tree [vty_var ta]; vty_cons ts_tree [vty_var ta]]
+    ts_tree [ta]].
+
+Lemma atree_correct: forall (A: Set),
+  atree A = W (either unit (A * (unit * (unit * unit))))
+    (fun x => match x with
+              | Left _ _ _ => empty
+              | Right _ _ _ => option unit
+              end).
+Proof. intros; solve_adt_eq. Qed.
 
 End Tests.
