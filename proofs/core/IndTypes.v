@@ -231,29 +231,35 @@ Definition sprod (A B: Set) : Set := A * B.
 
 (*TODO: try to get rid of extra: (_ * unit) - this is ok because
   we multiply by 0, but it makes things messier*)
-Definition build_vty_base (l: list vty) : Set :=
-  let o := fold_right (fun v acc => 
-    match get_vty_base v, acc with
+
+(*A function to take a list of sets and create the product of all of them.
+  The naive way gives lots of extra (_ * unit) *)
+Definition big_sprod (l: list (option Set)) : Set :=
+  let o := fold_right (fun v acc =>
+    match v, acc with
     | Some t, Some t' => Some (sprod t t')
     | None, x => x
     | x, _ => x
     end) None l in
   match o with
-  | None => unit
   | Some t => t
+  | None => unit
   end.
+
+Definition build_vty_base (l: list vty) : Set :=
+  big_sprod (map get_vty_base l).
 
 Definition build_constr_base (c: funsym) : Set :=
   build_vty_base (s_args c).
 
 Fixpoint build_base (constrs: list funsym) : Set :=
   match constrs with
-  | nil => unit
   | [f] => build_constr_base f
   | f :: fs => either (build_constr_base f) (build_base fs)
+  | nil => unit
   end.
 
-(*Construct the function for recursion*)
+  (*Construct the function for recursion*)
 
 (*Count number of recursive occurrences (NOTE: doesnt work for non-uniform recursion)*)
 Definition count_rec_occ (ts: typesym) (c: funsym) :=
@@ -266,8 +272,32 @@ Definition count_rec_occ (ts: typesym) (c: funsym) :=
 Definition build_constr_rec (ts: typesym) (c: funsym) : Set :=
   finite (count_rec_occ ts c).
 
-(*Easier to build with tactics*)
-Fixpoint build_rec (ts: typesym) (constrs: list funsym) : (build_base constrs -> Set).
+
+Definition cast_build_base {c1 c2: list funsym} (H: c1 = c2) (x: build_base c1) :
+  build_base c2.
+Proof.
+  subst. apply x.
+Defined.
+
+(*This is still a bit ugly because of the equality and cast
+  Otherwise Coq cannot tell that fs = x :: tl, so it can't simplify and
+  prove termination at the same time*)
+Fixpoint build_rec (ts: typesym) (constrs: list funsym) {struct constrs} : (build_base constrs -> Set) :=
+  match constrs with
+  | nil => fun _ => empty
+  | f :: fs =>
+    (match fs as l return fs = l -> (build_base (f :: l) -> Set) with
+    | nil => fun _ _ => build_constr_rec ts f
+    | x :: tl => fun Heq (o: build_base (f :: x :: tl)) =>
+      match o with
+      | Left _ _ _ => build_constr_rec ts f
+      | Right _ _ y => build_rec ts fs (cast_build_base (eq_sym Heq) y)
+      end
+    end) eq_refl
+  end.
+
+(*Alternatively, build with tactics*)
+Definition build_rec' (ts: typesym) (constrs: list funsym) : (build_base constrs -> Set).
   induction constrs.
   - simpl. intros. apply empty.
   - destruct constrs.
@@ -277,12 +307,272 @@ Fixpoint build_rec (ts: typesym) (constrs: list funsym) : (build_base constrs ->
       * apply IHconstrs. apply b.
 Defined.
 
+Lemma build_rec_eq: forall ts constrs x,
+  build_rec ts constrs x = build_rec' ts constrs x.
+Proof.
+  intros. 
+  intros; induction constrs; simpl; auto.
+  destruct constrs; auto.
+  destruct x; auto.
+Qed.
+
 (*Can handle simple inductive types, no polymorphism, abstract types,
   or nested/non-uniform recursion*)
 Definition mk_adt (ts: typesym) (constrs: list funsym) : Set :=
   W (build_base constrs) (build_rec ts constrs).
+Check mkW.
+(*Constructors*)
+Variable gamma: context.
+
+(*Each constructor requires some arguments: for example, the Cons
+constructor for list requires [A; list A]. This function finds the
+list of arguments for a given constructor from its signature*)
+Search (?A -> nat -> list ?A).
+
+(*TODO: don't like sprod - we dont know which is which*)
+(*Definition build_constr_ind_args (ts: typesym) (constrs: list funsym) 
+  (c: funsym) : :=
+  repeat (mk_adt ts constrs) (count_rec_occ ts c).
+  
+  map (fun _ => mk_adt )
+
+  big_sprod (map Some (fold_right (fun v acc => match v with
+    | vty_cons ts vs =>
+      match (find_constrs gamma ts) with
+      | Some constrs => mk_adt ts constrs :: acc (*TODO: handle map with vs*)
+      | None => acc
+      end
+    | _ => acc
+    end) nil (s_args c))).
+
+
+
+Check (build_base).
+Print build_base.*)
+
+Fixpoint in_sum {A: Type} 
+  (eq_dec: forall (x y: A), {x=y} + {x <> y}) (x: A) (l: list A) : Type :=
+  match l with
+  | nil => False
+  | y :: tl => if eq_dec x y then True else in_sum eq_dec x tl
+  end.
+
+Lemma in_in_sum: forall {A: Type} 
+(eq_dec: forall (x y: A), {x=y} + {x <> y}) (x: A) (l: list A),
+In x l ->
+in_sum eq_dec x l.
+Proof.
+  intros. induction l. inversion H.
+  simpl in H.
+  simpl. destruct (eq_dec x a); subst.
+  - apply I.
+  - destruct (in_dec eq_dec x l).
+    + apply IHl; auto.
+    + assert (~(a = x \/ In x l)). {
+      intro C. destruct C; subst; contradiction.
+    }
+    exfalso. apply H0. auto.
+Qed.
+  
+(*Get the type (in the Either) corresponding to this constructor*)
+(*We should write this function manually*)
+(*A (non-typechecking) version of the below, for clarity:
+
+  Fixpoint get_constr_type (ts: typesym) (constrs: list funsym) (f: funsym)
+  (Hin: in_sum funsym_eq_dec f constrs) (c: build_constr_base f) : build_base constrs :=
+  match constrs with
+  | nil => tt
+  | x :: xs =>
+    match xs with
+    | nil => match (funsym_eq_dec f x) with
+              | left Heq => c
+              | right _ => exfalso
+              end
+    | y :: ys =>
+      match (funsym_eq_dec f x) with
+      | left Heq => Left _ _ c
+      | right _ => Right (get_constr_type ts xs f _ c)
+      end
+    end
+  end.
+*)
+Definition get_constr_type (ts: typesym) (constrs: list funsym) (f: funsym) 
+  (*(Hin: In f constrs)*) (Hin: in_sum funsym_eq_dec f constrs)
+  (c: build_constr_base f) : 
+  (build_base constrs).
+Proof.
+  (*apply (in_in_sum funsym_eq_dec) in Hin.*)
+  induction constrs.
+  - simpl. apply tt.
+  - simpl. destruct constrs.
+    + simpl in Hin. destruct (funsym_eq_dec f a).
+      * subst. apply c. 
+      * destruct Hin.
+    + simpl in Hin. destruct (funsym_eq_dec f a).
+      * subst. apply Left. apply c.
+      * apply Right. apply IHconstrs. apply Hin.
+Defined.
+
+(*A generic map from a finite type to a bounded list*)
+Definition blist (A: Type) (n: nat) : Type := {l : list A | length l = n}.
+Definition finmap_list {A: Type} (n: nat) (l: blist A n) (f: finite n) : A.
+Proof.
+  induction n; simpl in *.
+  - destruct f.
+  - destruct n as [|n'].
+    + destruct l. destruct x. inversion e.
+      apply a.
+    + destruct l. destruct x. inversion e.
+      destruct f.
+      (*Some case: use IH*)
+      * apply IHn. apply exist with (x:=x). inversion e. reflexivity.
+        apply f.
+      (*None case: use head of list*)
+      * apply a.
+Defined.   
+
+Require Import Coq.Program.Equality.
+
+(*Now we need the function*)
+Definition get_constr_fun (ts: typesym) (constrs: list funsym) (f: funsym)
+  (Hin: in_sum funsym_eq_dec f constrs)
+  (*(Hin: In f constrs)*) (c: build_constr_base f) 
+  (x: blist (mk_adt ts constrs) (count_rec_occ ts f)):
+  build_rec ts constrs (get_constr_type ts constrs f Hin c) -> mk_adt ts constrs.
+Proof.
+  induction constrs; simpl in *.
+  - destruct Hin.
+  - destruct constrs; simpl.
+    + destruct (funsym_eq_dec f a); subst; simpl.
+      * unfold build_constr_rec.
+        apply (finmap_list _ x).
+      * exfalso. destruct Hin; subst.
+    + destruct (funsym_eq_dec f a); subst; simpl.
+      * unfold build_constr_rec. apply (finmap_list _ x).
+      * (*This is awful, has to be simpler way*)
+        (*TODO: start here*)
+      
+      intros C. unfold mk_adt. simpl.
+      
+      
+      apply IHconstrs.
+      
+      
+      
+      unfold get_constr_type at 1. simpl.
+        generalize dependent (in_in_sum funsym_eq_dec a (a :: f0 :: constrs) Hin).
+        generalize (funsym_eq_dec a a).
+        set (y:=funsym_eq_dec a a) in *.
+        dependent destruction y.
+        dependent destruction (funsym_eq_dec a a).
+        remember (funsym_eq_dec a a) as y.
+        dependent destruction y. (funsym_eq_dec a a).
+      simpl.
+        assert ({H | funsym_eq_dec a a = left H}) by admit.
+        destruct H. rewrite e.
+        generalize dependent (funsym_eq_dec a a).
+
+        destruct (funsym_eq_dec a a). 
+      
+      
+      unfold get_constr_type at 1. simpl.
+      
+      
+      Print get_constr_type. simpl.
+    
+    
+    remember (f0 :: constrs) as constrs'.
+        apply (finmap_list )
+      
+      
+      ts a.
+      
+      
+      Print build_constr_rec. 
+
+  (*Idea: get the Set from the function (build_rec ts constrs),
+    this will be of the form match x with | Left _ _ _ => t1 | Right _ _ _ => t2 ...
+    so we need to get ti, which is a finite type with the number of inductive calls
+    in the constructor. Then, we need to match on this, have a map from finite n ->
+    each of the inductive calls from x*)
+  unfold get_constr_type. unfold build_rec. simpl.
+  simpl.
+Admitted.
+
+(*should be arg*)
+
+Definition make_constr (ts: typesym) (constrs: list funsym) (f: funsym)
+  (Hin: In f constrs) (c: build_constr_base f) (x: build_constr_ind_args f) :
+  mk_adt ts constrs :=
+  mkW (build_base constrs) (build_rec ts constrs) 
+  (get_constr_type ts constrs f Hin c) (get_constr_fun ts constrs f Hin c x).
+
+(*
+Definition wnode (A: Set) (x: A) (lt: wtree A) (rt: wtree A) :=
+  mkW (option A) (fun x =>
+  match x with |None => empty | Some a => bool end) (Some x) 
+  (fun b => if b then lt else rt).
+*)
+    
+    
+    simpl in Hin. destruct (funsym_eq_dec f a). 
+      
+      
+      inversion Hin. 
+      
+      
+      simpl in IHconstrs. simpl.
+  match constrs with
+  | nil => 
+
+Fixpoint constr_rep (ts: typesym) (constrs: list funsym) (f: funsym)
+  (Hf: In f constrs) (a1: build_constr_base f) (a2: build_constr_ind_args f)
+ {struct constrs} : mk_adt ts constrs.
+Proof.
+  induction constrs.
+  - destruct Hf.
+  - simpl in *.
+    destruct (funsym_eq_dec a f).
+    + subst. unfold mk_adt; simpl.
+      destruct constrs.
+      * destruct f; simpl in *. unfold build_constr_base; simpl.
+        unfold build_constr_rec; simpl.
+        apply mkW. apply a1. intros fin.
+
+        
+        apply mkW. apply a1. intros a3.
+        
+        simpl.
+      
+      
+      
+      unfold build_constr_base. unfold constr simpl.
+    destruct (in_dec funsym_eq_dec ) destruct Hf.
+
+
+:
+  list (forall (f: funsym), constr_args f -> mk_adt ts constrs).
+Proof.
+  induction constrs.
+  - apply nil.
+  - 
+    
+  
+  funsym -> constr_args (mk_adt ts constrs)) :=
+  match constrs with
+  | nil => nil
+
 
 (*TODO: later - get function for each constructor*)
+Definition constr_rep (ts: typesym) (constrs: list funsym) :
+  list (funsym * (mk_adt ts constrs)).
+induction constrs.
+- apply nil.
+- unfold mk_adt in *. simpl in *.
+  destruct constrs; simpl.
+  + 
+
+unfold mk_adt; simpl.
 (*
 Definition constr_rep (ts: typesym) (constrs: list funsym) :
   list (funsym * (mk_adt ts constrs)).
@@ -290,7 +580,7 @@ Proof.
   apply (combine constrs 
     (map (fun f => mkW _ _ f emp_fun) (fin_list (length constrs - 1)))).
 Defined.*)
-
+*)
 End ADTConstr.
 
 (*Just for tests*)
