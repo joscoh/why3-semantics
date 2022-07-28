@@ -1,0 +1,1 @@
+COQEXTRAFLAGS=-w "-ambiguous-paths, -notation-overridden"

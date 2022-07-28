@@ -45,3 +45,7 @@ time-of-build-both.log
 time-of-build-pretty.log
 
 .DS_Store
+
+#temp
+proofs/core/TypeInhab.v
+proofs/core/SSRex.v

@@ -2,62 +2,42 @@ Require Import Types.
 Require Import Common.
 Require Export Coq.Reals.Reals.
 
+From mathcomp Require Import all_ssreflect.
+Set Bullet Behavior "Strict Subproofs".
+
 (** Function and Predicate Symbols **)
 
 (*We use bools rather than props so that we get decidable equality (like ssreflect)*)
 
 (*Check for sublist (to enable building these structures)*)
 Definition check_sublist (l1 l2: list typevar) : bool :=
-  forallb (fun x => in_dec typevar_eq_dec x l2) l1.
+  all (fun x => x \in l2) l1.
 
-Lemma check_sublist_correct: forall l1 l2,
+(*TODO: sublist in terms of mem?*)
+Lemma check_sublistP: forall l1 l2,
   reflect (sublist l1 l2) (check_sublist l1 l2).
 Proof.
-  intros. destruct (check_sublist l1 l2) eqn : Hsub.
-  - unfold check_sublist in Hsub. rewrite forallb_forall in Hsub.
-    apply ReflectT. unfold sublist; intros.
-    apply Hsub in H. simpl_sumbool.
-  - apply ReflectF. unfold sublist. intro.
-    assert (check_sublist l1 l2 = true). {
-      apply forallb_forall. intros. simpl_sumbool.
-    }
-    rewrite H0 in Hsub; inversion Hsub.
+  move=>l1 l2. (*rewrite /check_sublist.*)
+  case: (check_sublist l1 l2) /allP => /= Hall.
+  - apply ReflectT. rewrite /sublist.
+    move=>x /inP Hin. apply /inP. by apply Hall.
+  - apply ReflectF. rewrite /sublist => Hin.
+    apply Hall. move => x /inP Hinx. apply /inP.
+    by apply Hin.
 Qed.
 
 Definition check_args (params: list typevar) (args: list vty) : bool :=
-  forallb (fun x => check_sublist (type_vars x) params) args.
+  all (fun x => check_sublist (type_vars x) params) args.
 
-(*Would be easier with ssreflect*)
-Lemma check_args_correct: forall params args,
+Lemma check_argsP: forall params args,
   reflect (forall x, In x args -> sublist (type_vars x) params) (check_args params args).
 Proof.
-  intros. destruct (check_args params args) eqn : Hargs.
-  - unfold check_args in Hargs. rewrite forallb_forall in Hargs.
-    apply ReflectT. intros. apply Hargs in H.
-    apply (reflect_iff _  _ (check_sublist_correct (type_vars x) params)) in H. auto.
-  - apply ReflectF. intro C.
-    assert (check_args params args = true). {
-      apply forallb_forall. intros. apply C in H.
-      apply (reflect_iff _ _ (check_sublist_correct (type_vars x) params)). auto.
-    }
-    rewrite H in Hargs; inversion Hargs.
-Qed.
-
-(*Easy corollaries, need these for arguments to other functions which don't know
-  about the decidable versions*)
-
-Lemma check_args_prop {params args} :
-  check_args params args -> forall x, In x args -> sublist (type_vars x) params.
-Proof.
-  intros Hcheck. apply (reflect_iff _ _ (check_args_correct params args)).
-  apply Hcheck.
-Qed.
-
-Lemma check_sublist_prop {l1 l2}:
-  check_sublist l1 l2 ->
-  sublist l1 l2.
-Proof.
-  intros. apply (reflect_iff _ _ (check_sublist_correct l1 l2)), H.
+  move=>p a. case:(check_args p a) /allP => /= Hall.
+  - apply ReflectT. move => x /inP Hinx.
+    by move: Hall => /(_ x Hinx) /check_sublistP.
+  - apply ReflectF => Hc.
+    apply Hall => x /inP Hinx. apply /check_sublistP.
+    by apply Hc.
 Qed.
 
 Record funsym :=
@@ -69,7 +49,7 @@ Record funsym :=
     (*Well-formed - all type variables appear in params*)
     s_ret_wf: check_sublist (type_vars s_ret) s_params;
     s_args_wf: check_args s_params s_args;
-    s_params_nodup: nodupb typevar_eq_dec s_params
+    s_params_nodup: uniq s_params
   }.
 
 Record predsym :=
@@ -78,7 +58,7 @@ Record predsym :=
     p_params: list typevar;
     p_args : list vty;
     p_args_wf: check_args p_params p_args;
-    p_params_nodup: nodupb typevar_eq_dec p_params
+    p_params_nodup: uniq p_params
   }.
 
 (*As an example, we define the polymorphic identity function*)
@@ -90,41 +70,85 @@ Definition id_params : list typevar := [a].
 Definition id_args: list vty := [vty_var a].
 Definition id_ret: vty := vty_var a.
 
-Definition id_fs : funsym := Build_funsym id_name id_params id_args id_ret eq_refl eq_refl eq_refl.
+Definition id_fs : funsym := Build_funsym id_name id_params id_args id_ret erefl erefl erefl.
 
 End ID.
 
-Section SymEqDec.
-
-Ltac dec H :=
-  destruct H; [subst | right; let C := fresh in intro C; inversion C; auto].
+Section SymEqType.
 
 (*Decidable equality on funsyms/predsyms (why we use booleans)*)
-Lemma funsym_eq_dec: forall (f1 f2: funsym), {f1 = f2} + {f1 <> f2}.
+
+Lemma funsym_eq: forall (f1 f2: funsym),
+  (s_name f1) = (s_name f2) ->
+  (s_params f1) = (s_params f2) ->
+  (s_args f1) = (s_args f2) ->
+  (s_ret f1) = (s_ret f2) ->
+  f1 = f2.
 Proof.
-  intros. destruct f1; destruct f2; simpl.
-  dec (string_dec s_name0 s_name1).
-  dec (list_eq_dec typevar_eq_dec s_params0 s_params1).
-  dec (list_eq_dec vty_eq_dec s_args0 s_args1).
-  dec (vty_eq_dec s_ret0 s_ret1).
-  assert (s_ret_wf0 = s_ret_wf1) by apply bool_irrelevance; subst.
-  assert (s_args_wf0 = s_args_wf1) by apply bool_irrelevance; subst.
+  intros. destruct f1; destruct f2; simpl in *; subst.
   assert (s_params_nodup0 = s_params_nodup1) by apply bool_irrelevance; subst.
-  left; reflexivity.
-Defined.
+  assert (s_ret_wf0=s_ret_wf1) by apply bool_irrelevance; subst.
+  assert (s_args_wf0=s_args_wf1) by apply bool_irrelevance; subst.
+  reflexivity.
+Qed.
 
-Lemma predsym_eq_dec: forall (p1 p2: predsym), {p1 = p2} + {p1 <> p2}.
+Ltac con := apply ReflectF; intro C; subst; contradiction.
+
+Definition funsym_eqb (f1 f2: funsym) : bool :=
+    ((s_name f1) == (s_name f2)) &&
+    ((s_params f1) == (s_params f2)) &&
+    ((s_args f1) == (s_args f2)) &&
+    ((s_ret f1) == (s_ret f2)).
+
+Ltac case_reflect t1 t2 :=
+  let H := fresh in
+  let C := fresh in
+  case: (t1 == t2) /eqP => /= H; last by
+    apply ReflectF; move=>C; rewrite C in H.
+
+Lemma funsym_eqb_axiom: Equality.axiom funsym_eqb.
 Proof.
-  intros; destruct p1; destruct p2.
-  dec (string_dec p_name0 p_name1).
-  dec (list_eq_dec typevar_eq_dec p_params0 p_params1).
-  dec (list_eq_dec vty_eq_dec p_args0 p_args1).
-  assert (p_args_wf0 = p_args_wf1) by apply bool_irrelevance; subst.
-  assert (p_params_nodup0 = p_params_nodup1) by apply bool_irrelevance; subst.
-  left; reflexivity.
-Defined.
+  move=> f1 f2. rewrite /funsym_eqb.
+  case_reflect (s_name f1) (s_name f2).
+  case_reflect (s_params f1) (s_params f2).
+  case_reflect (s_args f1) (s_args f2).
+  case_reflect (s_ret f1) (s_ret f2).
+  apply ReflectT. by apply funsym_eq.
+Qed.
 
-End SymEqDec.
+Definition funsym_eqMixin := EqMixin funsym_eqb_axiom.
+Canonical funsym_eqType := EqType funsym funsym_eqMixin.
+
+(*We do the same for predicate symbols*)
+Lemma predsym_eq: forall (p1 p2: predsym),
+  (p_name p1) = (p_name p2) ->
+  (p_params p1) = (p_params p2) ->
+  (p_args p1) = (p_args p2) ->
+  p1 = p2.
+Proof.
+  intros; destruct p1; destruct p2; simpl in *; subst.
+  assert (p_params_nodup0=p_params_nodup1) by apply bool_irrelevance; subst.
+  assert (p_args_wf0=p_args_wf1) by apply bool_irrelevance; subst. reflexivity.
+Qed.
+
+Definition predsym_eqb (p1 p2: predsym) : bool :=
+  ((p_name p1) == (p_name p2)) &&
+  ((p_params p1) == (p_params p2)) &&
+  ((p_args p1) == (p_args p2)).
+
+Lemma predsym_eqb_axiom: Equality.axiom predsym_eqb.
+Proof.
+  move=>p1 p2. rewrite /predsym_eqb.
+  case_reflect (p_name p1) (p_name p2).
+  case_reflect (p_params p1) (p_params p2).
+  case_reflect (p_args p1) (p_args p2).
+  apply ReflectT. by apply predsym_eq.
+Qed.
+
+Definition predsym_eqMixin := EqMixin predsym_eqb_axiom.
+Canonical predsym_eqType := EqType predsym predsym_eqMixin.
+
+End SymEqType.
 
 (** Syntax - Terms and Formulas **)
 
@@ -145,7 +169,7 @@ Inductive binop : Type :=
 
 Definition vsymbol := string.
 
-Definition vsymbol_eq_dec : forall (x y: vsymbol), {x = y} + {x <> y} := string_dec.
+Canonical vsymbol_eqType := EqType vsymbol string_eqMixin.
 
 Unset Elimination Schemes.
 Inductive pattern : Type :=
@@ -180,6 +204,9 @@ Set Elimination Schemes.
 Scheme term_ind := Induction for term Sort Prop
 with formula_ind := Induction for formula Sort Prop.
 
+Scheme term_rec := Induction for term Sort Set
+with formula_rec := Induction for formula Sort Set.
+
 (*Induction principles*)
 Section PatternInd.
 
@@ -211,20 +238,20 @@ Fixpoint pattern_ind (p: pattern) : P p :=
 End PatternInd.
 
 Section FreeVars.
-
+(*
 Local Notation union' := (union vsymbol_eq_dec).
 Local Notation big_union' := (big_union vsymbol_eq_dec).
 Local Notation remove' := (remove vsymbol_eq_dec).
 Local Notation remove_all' := (remove_all vsymbol_eq_dec).
-
+*)
 (*Free variables of a pattern*)
 Fixpoint pat_fv (p: pattern) : list vsymbol :=
   match p with
   | Pvar x t => [x]
   | Pwild => []
-  | Pconstr _ _ ps => big_union' pat_fv ps
-  | Por p1 p2 => union' (pat_fv p1) (pat_fv p2)
-  | Pbind p x t => union' (pat_fv p) [x]
+  | Pconstr _ _ ps => big_union pat_fv ps
+  | Por p1 p2 => union (pat_fv p1) (pat_fv p2)
+  | Pbind p x t => union (pat_fv p) [x]
   end.
 
 (*Free variables of a term (all variables that appear free at least once)*)
@@ -232,24 +259,24 @@ Fixpoint term_fv (t: term) : list vsymbol :=
   match t with
   | Tconst _ => nil
   | Tvar x _ => [x]
-  | Tfun f vtys tms => big_union' term_fv tms
-  | Tlet t1 v _ t2 => union' (term_fv t1) (remove' v (term_fv t2))
-  | Tif f t1 t2 => union' (form_fv f) (union' (term_fv t1) (term_fv t2))
-  | Tmatch t ty l => union' (term_fv t) (big_union' (fun x => remove_all' (pat_fv (fst x)) (term_fv (snd x))) l)
+  | Tfun f vtys tms => big_union term_fv tms
+  | Tlet t1 v _ t2 => union (term_fv t1) (remove v (term_fv t2))
+  | Tif f t1 t2 => union (form_fv f) (union (term_fv t1) (term_fv t2))
+  | Tmatch t ty l => union (term_fv t) (big_union (fun x => remove_all (pat_fv (fst x)) (term_fv (snd x))) l)
   end
 
 with form_fv (f: formula) : list vsymbol :=
   match f with
-  | Fpred p tys tms => big_union' term_fv tms
-  | Fquant q v _ f => remove' v (form_fv f)
-  | Feq _ t1 t2 => union' (term_fv t1) (term_fv t2)
-  | Fbinop b f1 f2 => union' (form_fv f1) (form_fv f2)
+  | Fpred p tys tms => big_union term_fv tms
+  | Fquant q v _ f => remove v (form_fv f)
+  | Feq _ t1 t2 => union (term_fv t1) (term_fv t2)
+  | Fbinop b f1 f2 => union (form_fv f1) (form_fv f2)
   | Fnot f => form_fv f
   | Ftrue => nil
   | Ffalse => nil
-  | Flet t v _ f => union' (term_fv t) (remove' v (form_fv f))
-  | Fif f1 f2 f3 => union' (form_fv f1) (union' (form_fv f2) (form_fv f3))
-  | Fmatch t ty l => union' (term_fv t) (big_union' (fun x => remove_all' (pat_fv (fst x)) (form_fv (snd x))) l)
+  | Flet t v _ f => union (term_fv t) (remove v (form_fv f))
+  | Fif f1 f2 f3 => union (form_fv f1) (union (form_fv f2) (form_fv f3))
+  | Fmatch t ty l => union (term_fv t) (big_union (fun x => remove_all (pat_fv (fst x)) (form_fv (snd x))) l)
   end.
 
 Definition closed_term (t: term) : bool :=
@@ -338,8 +365,8 @@ Definition predsyms_of_def (d: def) : list predsym :=
     | pred_def ps _ _ => ps :: acc
     | _ => acc
     end) nil lf
-  | inductive_def is => map (fun a =>
+  | inductive_def inds => map (fun a =>
     match a with
     | ind_def ps _ => ps
-    end) is
+    end) inds
   end.

@@ -3,6 +3,9 @@ Require Import Typing.
 Require Import Types.
 Require Import Coq.Lists.List.
 
+From mathcomp Require all_ssreflect.
+Set Bullet Behavior "Strict Subproofs".
+
 Inductive rose (A: Set) : Set :=
   | Node : A -> list (rose A) -> rose A.
 
@@ -214,6 +217,8 @@ End TypeOps.
   3. Put together*)
 Section ADTConstr.
 
+Import all_ssreflect.
+
 Variable vars: typevar -> Set.
 (*Variable abstract: typesym -> *)
 
@@ -278,7 +283,6 @@ Definition cast_build_base {c1 c2: list funsym} (H: c1 = c2) (x: build_base c1) 
 Proof.
   subst. apply x.
 Defined.
-
 (*This is still a bit ugly because of the equality and cast
   Otherwise Coq cannot tell that fs = x :: tl, so it can't simplify and
   prove termination at the same time*)
@@ -290,10 +294,10 @@ Fixpoint build_rec (ts: typesym) (constrs: list funsym) {struct constrs} : (buil
     | nil => fun _ _ => build_constr_rec ts f
     | x :: tl => fun Heq (o: build_base (f :: x :: tl)) =>
       match o with
-      | Left _ _ _ => build_constr_rec ts f
-      | Right _ _ y => build_rec ts fs (cast_build_base (eq_sym Heq) y)
+      | Left _ => build_constr_rec ts f
+      | Right y => build_rec ts fs (cast_build_base (esym Heq) y)
       end
-    end) eq_refl
+    end) erefl
   end.
 
 (*Alternatively, build with tactics*)
@@ -321,42 +325,25 @@ Qed.
 Definition mk_adt (ts: typesym) (constrs: list funsym) : Set :=
   W (build_base constrs) (build_rec ts constrs).
 
-(*A version of "In" that we can use in proofs of Type*)
-Fixpoint in_sum {A: Type} 
-  (eq_dec: forall (x y: A), {x=y} + {x <> y}) (x: A) (l: list A) : Type :=
+(*We write our own boolean "in" function to avoid some problems with
+  computability and ssreflect*)
+Fixpoint in_bool {A: Type} (eq: A -> A -> bool) (x: A) (l: list A) : bool :=
   match l with
-  | nil => False
-  | y :: tl => if eq_dec x y then True else in_sum eq_dec x tl
+  | nil => false
+  | hd :: tl => eq x hd || in_bool eq x tl
   end.
 
-(*With decidable equality, this is equivalent to regular In*)
+Definition funsym_in (f: funsym) (l: list funsym) : bool :=
+  in_bool funsym_eqb f l.
 
-Lemma in_in_sum: forall {A: Type} 
-(eq_dec: forall (x y: A), {x=y} + {x <> y}) (x: A) (l: list A),
-In x l ->
-in_sum eq_dec x l.
+Lemma funsym_in_spec: forall f l,
+  funsym_in f l = (f \in l).
 Proof.
-  intros. induction l. inversion H.
-  simpl in H.
-  simpl. destruct (eq_dec x a); subst.
-  - apply I.
-  - destruct (in_dec eq_dec x l).
-    + apply IHl; auto.
-    + assert (~(a = x \/ In x l)). {
-      intro C. destruct C; subst; contradiction.
-    }
-    exfalso. apply H0. auto.
+  rewrite /funsym_in.
+  move=>f l; elim: l => [//= | h t /= IH].
+  by rewrite in_cons IH.
 Qed.
 
-Lemma in_sum_in: forall {A: Type}
-(eq_dec: forall (x y: A), {x=y} + {x <> y}) (x: A) (l: list A),
-in_sum eq_dec x l ->
-In x l.
-Proof.
-  intros; induction l; simpl. inversion X.
-  simpl in X. destruct (eq_dec x a); subst; [left | right]; auto.
-Qed.
-  
 (*Get the type (in the Either) corresponding to this constructor*)
 (*A (non-typechecking) version of the below, for clarity:
 
@@ -378,20 +365,26 @@ Qed.
     end
   end.
 *)
+
+Lemma not_false: ~ false.
+Proof. by []. Qed.
+
 (*TODO: Maybe change to In once we test computability*)
 Definition get_constr_type (ts: typesym) (constrs: list funsym) (f: funsym) 
-  (*(Hin: In f constrs)*) (Hin: in_sum funsym_eq_dec f constrs)
+  (Hin: funsym_in f constrs)
+  (*(Hin: In f constrs)*)
   (c: build_constr_base f) : 
   (build_base constrs).
 Proof.
+  unfold funsym_in in Hin.
   (*apply (in_in_sum funsym_eq_dec) in Hin.*)
   induction constrs.
   - simpl. apply tt.
   - simpl. destruct constrs.
-    + simpl in Hin. destruct (funsym_eq_dec f a).
+    + simpl in Hin. destruct (funsym_eqb_axiom f a).
       * subst. apply c. 
-      * destruct Hin.
-    + simpl in Hin. destruct (funsym_eq_dec f a).
+      * exfalso. apply not_false. apply Hin.
+    + simpl in Hin. destruct (funsym_eqb_axiom f a).
       * subst. apply Left. apply c.
       * apply Right. apply IHconstrs. apply Hin.
 Defined.
@@ -419,15 +412,16 @@ Defined.
   constructor f, it is really just the type that counts the number
   of recursive instances in f*)
 Lemma build_rec_get_constr_type: forall (ts: typesym) (constrs: list funsym) (f: funsym)
-(Hin: in_sum funsym_eq_dec f constrs)
+(*(Hin: in_sum funsym_eq_dec f constrs)*)
+(Hin: funsym_in f constrs)
 (c: build_constr_base f) ,
 build_rec ts constrs (get_constr_type ts constrs f Hin c) =
 finite (count_rec_occ ts f).
 Proof.
-  intros. induction constrs.
+  intros. unfold funsym_in in Hin. induction constrs.
   - inversion Hin.
-  - simpl. destruct constrs; simpl in Hin; destruct (funsym_eq_dec f a); subst; auto.
-    + destruct Hin.
+  - simpl. destruct constrs; simpl in Hin; destruct (funsym_eqb_axiom f a); subst; auto.
+    + exfalso. apply not_false. apply Hin.
     + apply IHconstrs.
 Qed.
 
@@ -442,7 +436,7 @@ Qed.
   in the constructor. Then, we need to match on this, have a map from finite n ->
   each of the inductive calls from x*)
 Definition get_constr_fun (ts: typesym) (constrs: list funsym) (f: funsym)
-  (Hin: in_sum funsym_eq_dec f constrs)
+  (Hin: funsym_in f constrs)
   (*(Hin: In f constrs)*) (c: build_constr_base f) 
   (x: blist (mk_adt ts constrs) (count_rec_occ ts f)):
   build_rec ts constrs (get_constr_type ts constrs f Hin c) -> mk_adt ts constrs.
@@ -453,7 +447,8 @@ Defined.
 (*Finally, create the constructor encoding*)
 Definition make_constr (ts: typesym) (constrs: list funsym) (f: funsym)
   (*(Hin: In f constrs)*)
-  (Hin: in_sum funsym_eq_dec f constrs) (c: build_constr_base f) 
+  (Hin: funsym_in f constrs)
+  (*(Hin: in_sum funsym_eq_dec f constrs) *) (c: build_constr_base f) 
   (x: blist (mk_adt ts constrs) (count_rec_occ ts f)) :
   mk_adt ts constrs :=
   mkW (build_base constrs) (build_rec ts constrs) 
@@ -595,8 +590,8 @@ Definition anat := mk_adt triv_vars ts_nat
 Lemma anat_correct: anat =
   W (either unit unit) (fun (x: either unit unit) =>
     match x with
-    | Left _ _ _ => empty
-    | Right _ _ _ => unit
+    | Left  _ => empty
+    | Right _ => unit
     end).
 Proof. reflexivity. Qed.
 
@@ -609,8 +604,8 @@ Definition aintlist := mk_adt triv_vars ts_intlist
 Lemma aintlist_correct: aintlist =
   W (either unit Z) (fun x =>
     match x with
-    | Left _ _ _ => empty
-    | Right _ _ _ => unit
+    | Left _ => empty
+    | Right _ => unit
     end).
 Proof. reflexivity. Qed. 
 
@@ -624,8 +619,8 @@ Definition ainttree := mk_adt triv_vars ts_inttree
 Lemma ainttree_correct: ainttree =
   W (either unit Z) (fun x =>
     match x with
-    | Left _ _ _ => empty
-    | Right _ _ _ => option unit
+    | Left _ => empty
+    | Right _ => option unit
     end).
 Proof. reflexivity. Qed.
 
@@ -648,19 +643,19 @@ Lemma atest2_correct : atest2 =
   W (either Z (either unit (either R (Z * Z))))
     (fun x =>
       match x with
-      | Left _ _ _ => empty
-      | Right _ _ (Left _ _ _) => unit
-      | Right _ _ (Right _ _ (Left _ _ _)) => option (option unit)
-      | Right _ _ _ => unit
+      | Left  _ => empty
+      | Right (Left _) => unit
+      | Right (Right (Left _)) => option (option unit)
+      | Right _ => unit
       end).
 Proof. reflexivity. Qed.
 
 (*Polymorphism*)
 Definition one_var (A: Set) : typevar -> Set :=
-  fun t => if typevar_eqb ta t then A else empty.
+  fun t => if String.eqb ta t then A else empty.
 Definition two_var (A: Set) (B: Set) : typevar -> Set :=
-  fun t => if typevar_eqb ta t then A else
-           if typevar_eqb tb t then B else
+  fun t => if String.eqb ta t then A else
+           if String.eqb tb t then B else
            empty.
 
 (*Option type*)
@@ -696,8 +691,8 @@ Definition alist (A: Set) := mk_adt (one_var A) ts_list
 Lemma alist_correct: forall (A: Set),
   alist A = W (either unit A) (fun x =>
     match x with
-    | Left _ _ _ => empty
-    | Right _ _ _ => unit
+    | Left _ => empty
+    | Right _ => unit
     end).
 Proof. intros. solve_adt_eq. 
 Qed. 
@@ -713,8 +708,8 @@ Definition atree (A: Set) := mk_adt (one_var A) ts_tree
 Lemma atree_correct: forall (A: Set),
   atree A = W (either unit A)
     (fun x => match x with
-              | Left _ _ _ => empty
-              | Right _ _ _ => option unit
+              | Left _ => empty
+              | Right _ => option unit
               end).
 Proof. intros; solve_adt_eq. Qed.
 
