@@ -322,15 +322,21 @@ Definition mk_adt (ts: typesym) (constrs: list funsym) : Set :=
   W (build_base constrs) (build_rec ts constrs).
 
 (*A version of "In" that we can use in proofs of Type*)
-Fixpoint in_sum {A: Type} 
+Fixpoint in_bool {A: Type} (eq_dec: forall (x y: A), {x = y} + {x <> y})
+  (x: A) (l: list A) : bool :=
+  match l with
+  | nil => false
+  | y :: tl => eq_dec x y || in_bool eq_dec x tl
+  end.
+(*Fixpoint in_sum {A: Type} 
   (eq_dec: forall (x y: A), {x=y} + {x <> y}) (x: A) (l: list A) : Type :=
   match l with
   | nil => False
   | y :: tl => if eq_dec x y then True else in_sum eq_dec x tl
-  end.
+  end.*)
 
 (*With decidable equality, this is equivalent to regular In*)
-
+(*
 Lemma in_in_sum: forall {A: Type} 
 (eq_dec: forall (x y: A), {x=y} + {x <> y}) (x: A) (l: list A),
 In x l ->
@@ -356,7 +362,7 @@ Proof.
   intros; induction l; simpl. inversion X.
   simpl in X. destruct (eq_dec x a); subst; [left | right]; auto.
 Qed.
-  
+  *)
 (*Get the type (in the Either) corresponding to this constructor*)
 (*A (non-typechecking) version of the below, for clarity:
 
@@ -378,27 +384,35 @@ Qed.
     end
   end.
 *)
+
 (*TODO: Maybe change to In once we test computability*)
-Definition get_constr_type (ts: typesym) (constrs: list funsym) (f: funsym) 
-  (*(Hin: In f constrs)*) (Hin: in_sum funsym_eq_dec f constrs)
-  (c: build_constr_base f) : 
+Fixpoint get_constr_type (ts: typesym) (constrs: list funsym) (f: funsym) 
+  (*(Hin: In f constrs)*) (Hin: in_bool funsym_eq_dec f constrs)
+  (c: build_constr_base f) {struct constrs} : 
   (build_base constrs).
 Proof.
-  (*apply (in_in_sum funsym_eq_dec) in Hin.*)
   induction constrs.
-  - simpl. apply tt.
-  - simpl. destruct constrs.
-    + simpl in Hin. destruct (funsym_eq_dec f a).
-      * subst. apply c. 
-      * destruct Hin.
-    + simpl in Hin. destruct (funsym_eq_dec f a).
-      * subst. apply Left. apply c.
-      * apply Right. apply IHconstrs. apply Hin.
-Defined.
+  - apply tt.
+  - simpl. destruct constrs; simpl in Hin; revert Hin;
+    refine (match (funsym_eq_dec f a) with
+    | left Heq => _
+    | right Hneq => _
+    end); intros Hin.
+    + rewrite <- Heq. apply c. Show Proof.
+    + inversion Hin.
+    + apply Left. subst. apply c.
+    + apply Right. apply IHconstrs. apply Hin.
+Defined.  
+
 
 (*A generic map from a finite type to a bounded list : TODO change finite to nat and
 use nth?*)
 Definition blist (A: Type) (n: nat) : Type := {l : list A | length l = n}.
+
+Definition mk_blist {A} (n: nat) (l: list A) (Hn: length l =? n) : blist A n.
+apply (exist _ l). apply Nat.eqb_eq. apply Hn.
+Defined.
+
 Definition finmap_list {A: Type} (n: nat) (l: blist A n) (f: finite n) : A.
 Proof.
   induction n; simpl in *.
@@ -419,7 +433,7 @@ Defined.
   constructor f, it is really just the type that counts the number
   of recursive instances in f*)
 Lemma build_rec_get_constr_type: forall (ts: typesym) (constrs: list funsym) (f: funsym)
-(Hin: in_sum funsym_eq_dec f constrs)
+(Hin: in_bool funsym_eq_dec f constrs)
 (c: build_constr_base f) ,
 build_rec ts constrs (get_constr_type ts constrs f Hin c) =
 finite (count_rec_occ ts f).
@@ -427,9 +441,9 @@ Proof.
   intros. induction constrs.
   - inversion Hin.
   - simpl. destruct constrs; simpl in Hin; destruct (funsym_eq_dec f a); subst; auto.
-    + destruct Hin.
+    + inversion Hin.
     + apply IHconstrs.
-Qed.
+Defined.
 
 (*Now we need the function: given an ADT, a constructor of that ADT,
   instances of the (non-recursive) arguments for the ADT, and a list
@@ -442,7 +456,7 @@ Qed.
   in the constructor. Then, we need to match on this, have a map from finite n ->
   each of the inductive calls from x*)
 Definition get_constr_fun (ts: typesym) (constrs: list funsym) (f: funsym)
-  (Hin: in_sum funsym_eq_dec f constrs)
+  (Hin: in_bool funsym_eq_dec f constrs)
   (*(Hin: In f constrs)*) (c: build_constr_base f) 
   (x: blist (mk_adt ts constrs) (count_rec_occ ts f)):
   build_rec ts constrs (get_constr_type ts constrs f Hin c) -> mk_adt ts constrs.
@@ -453,7 +467,7 @@ Defined.
 (*Finally, create the constructor encoding*)
 Definition make_constr (ts: typesym) (constrs: list funsym) (f: funsym)
   (*(Hin: In f constrs)*)
-  (Hin: in_sum funsym_eq_dec f constrs) (c: build_constr_base f) 
+  (Hin: in_bool funsym_eq_dec f constrs) (c: build_constr_base f) 
   (x: blist (mk_adt ts constrs) (count_rec_occ ts f)) :
   mk_adt ts constrs :=
   mkW (build_base constrs) (build_rec ts constrs) 
@@ -463,6 +477,7 @@ End ADTConstr.
 
 (*Just for tests*)
 Require Import Coq.Logic.FunctionalExtensionality.
+Require Import Coq.Logic.Eqdep_dec.
 Section Tests.
 
 Notation mk_fs name params args ret_ts ret_args := 
@@ -478,24 +493,36 @@ Notation find_constr ts constrs x :=
 *)
 
 Definition triv_vars : typevar -> Set := fun _ => empty.
+Definition emp_fun {A: Type} : empty -> A := fun x =>
+match x with end.
 
 (*Unit*)
 Definition ts_unit : typesym := mk_ts "unit" nil eq_refl.
-Definition aunit := mk_adt triv_vars ts_unit 
-  [ mk_fs "tt" nil nil ts_unit nil].
+Definition fs_tt := mk_fs "tt" nil nil ts_unit nil.
+
+Definition aunit := mk_adt triv_vars ts_unit [ fs_tt].
+
+Definition att := make_constr triv_vars ts_unit [fs_tt] fs_tt eq_refl tt
+  (mk_blist 0 nil eq_refl).  
 
 Lemma aunit_correct: aunit = W unit (fun _ => empty).
 Proof. reflexivity. Qed.
 
+Lemma all_funsym_refl: forall {f: funsym} (H: f = f),
+  H = eq_refl.
+Proof.
+  intros. apply UIP_dec. intros. eapply reflect_dec. apply funsym_eqb_spec.
+Qed.
+
+Lemma att_correct: att = mkW _ _ tt emp_fun.
+Proof.
+  unfold att. simpl. vm_compute.
+  rewrite (all_funsym_refl (reflect_true (funsym_eqb_spec fs_tt fs_tt) _)).
+  reflexivity.
+Qed.
+
 Definition ta : typevar := "a"%string.
 Definition tb : typevar := "b"%string.
-
-(*
-Lemma att_correct: 
-(map snd (constr_rep ts_unit [ mk_fs "tt" nil nil ts_unit nil])) =
-[mkW unit _ tt emp_fun].
-Proof. reflexivity. Qed.*)
-
 
 Ltac destruct_either :=
   repeat match goal with
@@ -508,12 +535,45 @@ Ltac solve_adt_eq :=
 
 (*Bool*)
 Definition ts_bool : typesym := mk_ts "bool" nil eq_refl.
+Definition fs_true := mk_fs "true" nil nil ts_bool nil.
+Definition fs_false := mk_fs "false" nil nil ts_bool nil.
+
 Definition abool := mk_adt triv_vars ts_bool
-  [mk_fs "true" nil nil ts_bool nil;
-   mk_fs "false" nil nil ts_bool nil].
+  [fs_true; fs_false].
 
 Lemma abool_correct: abool = W (either unit unit) (fun _ => empty).
 Proof. solve_adt_eq. Qed.
+
+Definition atrue := make_constr triv_vars ts_bool [fs_true; fs_false] fs_true
+  eq_refl tt (mk_blist 0 nil eq_refl).
+Definition afalse := make_constr triv_vars ts_bool [fs_true; fs_false] fs_false
+  eq_refl tt (mk_blist 0 nil eq_refl).
+(*TODO: NEED to fix computability, slow issues*)
+
+(*This proof term should not be so big*)
+Eval vm_compute in (get_constr_type triv_vars ts_bool [fs_true; fs_false] fs_true eq_refl tt).
+
+
+Lemma atrue_correct: atrue = mkW _ _ (Left _ _ tt) emp_fun.
+Proof. unfold atrue. unfold make_constr.
+
+(get_constr_type ts constrs f Hin c)
+
+simpl. unfold make_constr. simpl. 
+unfold build_constr_base at 1. simpl build_vty_base.
+unfold build_vty_base. simpl map. unfold big_sprod. simpl fold_right.
+simpl. f_equal. simpl big_sprod.
+f_equal.
+-
+
+vm_compute.
+
+
+Definition att := make_constr triv_vars ts_unit [fs_tt] fs_tt eq_refl tt
+  (mk_blist 0 nil eq_refl).  
+
+
+
 
 (*
 Lemma abool_constrs_correct:

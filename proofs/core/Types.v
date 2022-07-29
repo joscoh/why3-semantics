@@ -74,13 +74,36 @@ Proof.
     + apply ReflectT. apply typesym_eq; auto.
     + apply ReflectF. intros C. destruct t1; destruct t2; subst. inversion C; contradiction.
   - apply ReflectF. intro C; destruct t1; destruct t2; inversion C; subst; contradiction.
-Qed. 
+Qed.
 
-Lemma typesym_eq_dec: forall (t1 t2: typesym),
-  {t1 = t2} + {t1 <> t2}.
+Lemma reflect_true: forall {P} {b} (H: reflect P b),
+  b = true ->
+  P.
 Proof.
-  intros. eapply reflect_dec. apply typesym_eqb_spec.
-Defined.
+  intros. destruct H; subst; auto. inversion H0.
+Qed.
+
+Lemma reflect_false: forall {P} {b} (H: reflect P b),
+  b = false ->
+  ~ P.
+Proof.
+  intros. destruct H; subst; auto. inversion H0.
+Qed.
+
+(*Now we can transform "reflect" into computable "dec" EVEN if "reflect" is opaque.
+  This is what we are missing in the ssreflect library. We do NOT match on
+  "reflect"; we match on the boolean predicate directly*)
+Definition reflect_dec' {P} {b} (H: reflect P b): {P} + {~P} :=
+  match b as b1 return b = b1 -> _ with
+  | true => fun Heq => left (reflect_true H Heq)
+  | false => fun Hneq => right (reflect_false H Hneq)
+  end eq_refl.
+
+Definition typesym_eq_dec (t1 t2: typesym) : {t1 = t2} + {t1 <> t2} :=
+  reflect_dec' (typesym_eqb_spec t1 t2).
+
+Definition ts_unit : typesym := mk_ts "unit" nil eq_refl.
+
 
 (*Value types*)
 Unset Elimination Schemes.
@@ -161,14 +184,16 @@ Proof.
     apply H2; auto.
 Qed. 
 
-Definition vty_eq_dec: forall (v1 v2: vty), {v1 = v2} + {v1 <> v2}.
+Lemma vty_eq_spec: forall t1 t2,
+  reflect (t1 = t2) (vty_eqb t1 t2).
 Proof.
-  intros v1 v2. destruct (vty_eqb v1 v2) eqn : Heq.
-  - apply vty_eqb_eq in Heq. subst. left. auto.
-  - right. intro; subst. 
-    assert (vty_eqb v2 v2 = true) by (apply vty_eq_eqb; auto).
-    rewrite H in Heq; inversion Heq.
-Defined.
+  intros. destruct (vty_eqb t1 t2) eqn : Heq.
+  - apply ReflectT. apply vty_eqb_eq. auto.
+  - apply ReflectF. intro C; apply vty_eq_eqb in C; rewrite Heq in C; inversion C.
+Qed.
+
+Definition vty_eq_dec (v1 v2: vty): {v1 = v2} + {v1 <> v2} :=
+  reflect_dec' (vty_eq_spec v1 v2).
 
 (* Sorts *)
 
