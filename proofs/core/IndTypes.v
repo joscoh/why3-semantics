@@ -12,20 +12,20 @@ Inductive rose (A: Set) : Set :=
 Inductive perfect (A : Set) : Set :=
   | Two : perfect (A * A) -> perfect A
   | One: A -> perfect A.
-(*
+
 Section W.
 
 Variable (I: Set).
 Variable (A: I -> Set).
 Variable (B: forall (i: I) (j: I), A i -> Set).
 
-Inductive IW : I -> Set :=
-  | mkW : forall (i: I) (a: A i) (f: forall j, B i j a -> IW j), IW i.
+Inductive W : I -> Set :=
+  | mkW : forall (i: I) (a: A i) (f: forall j, B i j a -> W j), W i.
 
 End W.
-*)
-Inductive W (A: Set) (B: A -> Set) : Set :=
-  mkW : forall (a: A) (f: B a -> W A B), W A B.
+
+(*Inductive W (A: Set) (B: A -> Set) : Set :=
+  mkW : forall (a: A) (f: B a -> W A B), W A B.*)
 
 Inductive empty :=.
 
@@ -33,28 +33,31 @@ Inductive empty :=.
 Section Manual.
 
 (*Ex: for nats*)
-Definition wnat := W bool (fun b => if b then unit else empty).
+Definition wnat := W unit (fun _ => bool) (fun i j b => if b then unit else empty) tt.
 Definition w0 : wnat.
-apply mkW with (a:=false).
-intro C. destruct C.
+apply (mkW _ _ _ tt false). intros. destruct H.
 Defined.
 
 Definition wS (n: wnat): wnat.
 apply mkW with (a:=true).
-intro C. apply n.
+intros. destruct j. apply n.
 Defined.
 
 (*Let's try list*)
-Definition wlist (A: Set) := W (option A) (fun b => match b with | None => empty | Some a => unit end).
+Definition wlist (A: Set) := W unit (fun _ => option A) 
+  (fun _ _ b => match b with | None => empty | Some a => unit end) tt.
 
 Definition wnil (A: Set) : wlist A.
 Proof.
-  apply mkW with (a:=None).
-  intro C. destruct C.
+  apply mkW with (a:=None). intros. destruct H.
 Defined.
-
-Definition wcons (A: Set) (x: A) (tl: wlist A) :=
-  mkW  _ _ (Some x) (fun _ => tl).
+(*Could be a problem: need to know instance of unit and tt are equal*)
+Definition wcons (A: Set) (x: A) (tl: wlist A) : wlist A.
+Proof.
+  apply (mkW _ _ _ tt (Some x)).
+  intros. destruct j. apply tl.
+Defined.
+(* mkW  _ _ _ tt (Some x) (fun _ _ => tl).*)
 
 (*Let's do binary trees*)
 
@@ -62,19 +65,23 @@ Inductive tree (A: Set) : Set :=
   | leaf
   | node : A -> tree A -> tree A -> tree A.
 
-Definition wtree (A: Set) := W (option A) (fun x =>
-  match x with |None => empty | Some a => bool end).
+Definition wtree (A: Set) : Set := W unit (fun _ => option A) (fun _ _ x =>
+  match x with |None => empty | Some a => bool end) tt.
 
 Definition wleaf (A: Set) : wtree A.
 apply mkW with (a:=None).
-intro C. destruct C.
+intros. destruct H.
 Defined.
 
-Definition wnode (A: Set) (x: A) (lt: wtree A) (rt: wtree A) :=
-  mkW (option A) (fun x =>
-  match x with |None => empty | Some a => bool end) (Some x) 
-  (fun b => if b then lt else rt).
-
+Definition wnode (A: Set) (x: A) (lt: wtree A) (rt: wtree A) : wtree A.
+refine (mkW _ _ _ tt (Some x) _).
+intros. destruct j. destruct H.
+- apply lt.
+- apply rt.
+Defined.
+ (*(fun _ x =>
+  match x with |None => empty | Some a => bool end)*) 
+(*
 (*Let's test this*)
 Inductive foo (A: Set) :=
   mkfoo : A -> (nat -> foo A) -> foo A.
@@ -132,7 +139,7 @@ Definition wtrue : wbool := mkW _ _ true (fun (e: empty) => match e with end).
 Definition wfalse : wbool := mkW _ _ false (fun (e: empty) => match e with end).
 
 End Manual.
-
+*)
 (*Some facilities for building up types:*)
 Section TypeOps.
 
@@ -292,7 +299,6 @@ Definition count_rec_occ (ts: typesym) (c: funsym) :=
 Definition build_constr_rec (ts: typesym) (c: funsym) : Set :=
   finite (count_rec_occ ts c).
 
-
 Definition cast_build_base {c1 c2: list funsym} (H: c1 = c2) (x: build_base c1) :
   build_base c2.
 Proof.
@@ -310,9 +316,9 @@ Fixpoint build_rec (ts: typesym) (constrs: list funsym) {struct constrs} : (buil
     | x :: tl => fun Heq (o: build_base (f :: x :: tl)) =>
       match o with
       | Left _ => build_constr_rec ts f
-      | Right y => build_rec ts fs (cast_build_base (esym Heq) y)
+      | Right y => build_rec ts fs (cast_build_base (eq_sym Heq) y)
       end
-    end) erefl
+    end) eq_refl
   end.
 
 (*Alternatively, build with tactics*)
@@ -338,7 +344,7 @@ Qed.
 (*Can handle simple inductive types, no polymorphism, abstract types,
   or nested/non-uniform recursion*)
 Definition mk_adt (ts: typesym) (constrs: list funsym) : Set :=
-  W (build_base constrs) (build_rec ts constrs).
+  W (finite 1) (fun i => build_base constrs) (fun i j => build_rec ts constrs) tt.
 
 (*A version of "In" that we can use in proofs of Type*)
 Fixpoint in_bool {A: Type} (eq_dec: forall (x y: A), {x = y} + {x <> y})
@@ -446,7 +452,7 @@ Lemma build_rec_get_constr_type: forall (ts: typesym) (constrs: list funsym) (f:
 build_rec ts constrs (get_constr_type ts constrs f Hin c) =
 finite (count_rec_occ ts f).
 Proof.
-  intros. unfold funsym_in in Hin. induction constrs.
+  intros. induction constrs.
   - inversion Hin.
   - simpl. destruct constrs; simpl in Hin; destruct (funsym_eq_dec f a); subst; auto.
     + inversion Hin.
@@ -478,8 +484,11 @@ Definition make_constr (ts: typesym) (constrs: list funsym) (f: funsym)
   (Hin: in_bool funsym_eq_dec f constrs) (c: build_constr_base f) 
   (x: blist (mk_adt ts constrs) (count_rec_occ ts f)) :
   mk_adt ts constrs :=
-  mkW (build_base constrs) (build_rec ts constrs) 
-  (get_constr_type ts constrs f Hin c) (get_constr_fun ts constrs f Hin c x).
+  mkW unit (fun _ => build_base constrs) (fun i _ => build_rec ts constrs) 
+  tt (get_constr_type ts constrs f Hin c) (fun (u: unit) => 
+    match u with
+    | tt => get_constr_fun ts constrs f Hin c x
+    end).
 
 End ADTConstr.
 
@@ -520,7 +529,7 @@ Definition aunit := triv_adt ts_unit [ fs_tt].
 Definition att := triv_constr ts_unit [fs_tt] fs_tt eq_refl tt
   (mk_blist 0 nil eq_refl).  
 
-Lemma aunit_correct: aunit = W unit (fun _ => empty).
+Lemma aunit_correct: aunit = W unit (fun _ => unit) (fun _ _ _ => empty) tt.
 Proof. reflexivity. Qed.
 
 Lemma all_funsym_refl: forall {f: funsym} (H: f = f),
@@ -545,7 +554,7 @@ Ltac destruct_either :=
   end; auto.
 
 Ltac solve_adt_eq :=
-  vm_compute; f_equal; apply functional_extensionality;
+  vm_compute; f_equal; repeat(apply functional_extensionality_dep; intros);
   intros; destruct_either.
 
 (*Bool*)
@@ -556,8 +565,9 @@ Definition fs_false := mk_fs "false" nil nil ts_bool nil.
 Definition abool := triv_adt ts_bool
   [fs_true; fs_false].
 
-Lemma abool_correct: abool = W (either unit unit) (fun _ => empty).
-Proof. solve_adt_eq. Qed.
+Lemma abool_correct: abool = W unit (fun i => either unit unit)
+  (fun _ _ _ => empty) tt.
+Proof. solve_adt_eq. Qed. 
 
 Definition atrue := triv_constr ts_bool [fs_true; fs_false] fs_true
   eq_refl tt (mk_blist 0 nil eq_refl).
@@ -606,11 +616,9 @@ Definition aweek := triv_adt ts_week
    mk_fs "sun" nil nil ts_week nil].
 
 Lemma aweek_correct: aweek = 
-  W (either unit (either unit (either unit (either unit 
-    (either unit (either unit unit)))))) (fun _ => empty).
-Proof.
-  solve_adt_eq. 
-Qed. 
+  W unit (fun _ => either unit (either unit (either unit (either unit 
+    (either unit (either unit unit)))))) (fun _ _ _ => empty) tt.
+Proof. solve_adt_eq. Qed.
 
 (*Types with arguments*)
 
@@ -627,7 +635,7 @@ Definition anum := triv_adt ts_num
    mk_fs "nzero" nil nil ts_num nil].
 
 Lemma anum_correct: anum =
-  W (either Z (either Z unit)) (fun _ => empty).
+  W unit (fun _ => either Z (either Z unit)) (fun _ _ _ => empty) tt.
 Proof.
   solve_adt_eq.
 Qed.
@@ -647,9 +655,9 @@ Definition atest1 := triv_adt ts_test1
    mk_fs "test1d" nil [vty_real; vty_real; vty_real] ts_test1 nil].
 
 Lemma atest1_correct : atest1 =
-  W 
-  (either (Z * Z) (either unit (either (R * Z) (R * (R * R)))))
-    (fun _ => empty).
+  W unit 
+  (fun _ =>either (Z * Z) (either unit (either (R * Z) (R * (R * R)))))
+    (fun _ _ _ => empty) tt.
 Proof.
   solve_adt_eq.
 Qed.
@@ -667,11 +675,11 @@ Definition anat := mk_adt nat_cxt triv_vars triv_syms  ts_nat
   [fs_O; fs_S].
 
 Lemma anat_correct: anat =
-  W (either unit unit) (fun (x: either unit unit) =>
+  W unit (fun _ => either unit unit) (fun _ _ (x: either unit unit) =>
     match x with
     | Left  _ => empty
     | Right _ => unit
-    end).
+    end) tt.
 Proof. reflexivity. Qed.
 
 (*Int list*)
@@ -684,11 +692,11 @@ Definition aintlist := mk_adt intlist_cxt triv_vars triv_syms ts_intlist
   [ fs_intnil; fs_intcons].
 
 Lemma aintlist_correct: aintlist =
-  W (either unit Z) (fun x =>
+  W unit (fun _ => either unit Z) (fun _ _ x =>
     match x with
     | Left _ => empty
     | Right _ => unit
-    end).
+    end) tt.
 Proof. reflexivity. Qed. 
 
 (*Int binary tree*)
@@ -702,11 +710,11 @@ Definition ainttree := mk_adt inttree_cxt triv_vars triv_syms ts_inttree
   [fs_intleaf; fs_intnode].
 
 Lemma ainttree_correct: ainttree =
-  W (either unit Z) (fun x =>
+  W unit (fun _ => either unit Z) (fun _ _ x =>
     match x with
     | Left _ => empty
     | Right _ => option unit
-    end).
+    end) tt.
 Proof. reflexivity. Qed.
 
 (*More complicated simple inductive type*)
@@ -729,14 +737,14 @@ Definition atest2:= mk_adt test2_cxt triv_vars triv_syms ts_test2
   [ fs_test2a; fs_test2b; fs_test2c; fs_test2d].
 
 Lemma atest2_correct : atest2 =
-  W (either Z (either unit (either R (Z * Z))))
-    (fun x =>
+  W unit (fun _ => either Z (either unit (either R (Z * Z))))
+    (fun _ _ x =>
       match x with
       | Left  _ => empty
       | Right (Left _) => unit
       | Right (Right (Left _)) => option (option unit)
       | Right _ => unit
-      end).
+      end) tt.
 Proof. reflexivity. Qed.
 
 (*Polymorphism*)
@@ -757,7 +765,7 @@ Definition aoption (A: Set) := mk_adt option_cxt (one_var A) triv_syms ts_option
   [fs_none; fs_some].
 
 Lemma aoption_correct: forall (A: Set),
-  aoption A = W (either unit A) (fun _ => empty).
+  aoption A = W unit (fun _ => either unit A) (fun _ _ _ => empty) tt.
 Proof.
   intros. solve_adt_eq.
 Qed. 
@@ -772,7 +780,7 @@ Definition aeither (A: Set) (B: Set) := mk_adt either_cxt (two_var A B) triv_sym
   [fs_left; fs_right].
   
 Lemma aeither_correct: forall (A: Set) (B: Set),
-  aeither A B = W (either A B) (fun _ => empty).
+  aeither A B = W unit (fun _ => either A B) (fun _ _ _ => empty) tt.
 Proof.
   intros. solve_adt_eq.
 Qed.
@@ -787,11 +795,11 @@ Definition alist (A: Set) := mk_adt list_cxt (one_var A) triv_syms ts_list
   [ fs_nil; fs_cons ].
 
 Lemma alist_correct: forall (A: Set),
-  alist A = W (either unit A) (fun x =>
+  alist A = W unit (fun _ => either unit A) (fun _ _ x =>
     match x with
     | Left _ => empty
     | Right _ => unit
-    end).
+    end) tt.
 Proof. intros. solve_adt_eq. 
 Qed. 
 
@@ -807,11 +815,11 @@ Definition atree (A: Set) := mk_adt tree_cxt (one_var A) triv_syms ts_tree
   [fs_leaf; fs_node].
 
 Lemma atree_correct: forall (A: Set),
-  atree A = W (either unit A)
-    (fun x => match x with
+  atree A = W unit (fun _ => either unit A)
+    (fun _ _ x => match x with
               | Left _ => empty
               | Right _ => option unit
-              end).
+              end) tt.
 Proof. intros; solve_adt_eq. Qed.
 
 (*Abstract type tests*)
@@ -830,7 +838,7 @@ Definition awrap1 (A: Set) := mk_adt wrap1_cxt triv_vars (abs_map1 A) ts_wrap1
   [fs_wrap1].
 
 Definition awrap1_correct: forall (A: Set),
-  awrap1 A = W A (fun _ => empty).
+  awrap1 A = W unit (fun _ => A) (fun _ _ _ => empty) tt.
 Proof.
   intros. reflexivity. Qed. 
 
@@ -848,7 +856,7 @@ Definition awrap2 (A B C: Set) := mk_adt wrap2_cxt (two_var B C) (abs_map2 A) ts
   [fs_wrap2].
 
 Definition awrap2_correct: forall (A B C: Set),
-  awrap2 A B C = W A (fun _ => empty).
+  awrap2 A B C = W unit (fun _  => A) (fun _ _ _ => empty) tt.
 Proof.
   intros. reflexivity. Qed. 
 
