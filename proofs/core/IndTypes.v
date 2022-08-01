@@ -217,10 +217,20 @@ End TypeOps.
   3. Put together*)
 Section ADTConstr.
 
-Import all_ssreflect.
+Definition blist (A: Type) (n: nat) : Type := {l : list A | length l = n}.
+
+Definition mk_blist {A} (n: nat) (l: list A) (Hn: length l =? n) : blist A n.
+apply (exist _ l). apply Nat.eqb_eq. apply Hn.
+Defined.
+
+Variable gamma: context.
 
 Variable vars: typevar -> Set.
-(*Variable abstract: typesym -> *)
+Variable abstract: forall (t: typesym), list vty -> Set.
+(*TODO: require that if length of input != ts_args t, then give empty*)
+Variable abstract_wf: forall (t: typesym) (l: list vty),
+  length l <> length (ts_args t) ->
+  abstract t l = empty.
 
 (*Construct the base type*)
 
@@ -228,8 +238,13 @@ Definition get_vty_base (v: vty) : option Set :=
   match v with
   | vty_int => Some Z
   | vty_real => Some R
-  | vty_var x => Some (vars x) (*TODO: this *) (*(fun (A: Set) => A)*)
-  | vty_cons ts vs => None (*for now*)
+  | vty_var x => Some (vars x)
+  | vty_cons ts vs => 
+    match (find_constrs gamma ts) with
+    | None => Some (abstract ts vs) 
+    | Some constrs => None (*TODO: for now*)
+    end
+     (*for now*)
   end.
 
 Definition sprod (A B: Set) : Set := A * B.
@@ -325,25 +340,41 @@ Qed.
 Definition mk_adt (ts: typesym) (constrs: list funsym) : Set :=
   W (build_base constrs) (build_rec ts constrs).
 
-(*We write our own boolean "in" function to avoid some problems with
-  computability and ssreflect*)
-Fixpoint in_bool {A: Type} (eq: A -> A -> bool) (x: A) (l: list A) : bool :=
+(*A version of "In" that we can use in proofs of Type*)
+Fixpoint in_bool {A: Type} (eq_dec: forall (x y: A), {x = y} + {x <> y})
+  (x: A) (l: list A) : bool :=
   match l with
   | nil => false
-  | hd :: tl => eq x hd || in_bool eq x tl
+  | y :: tl => eq_dec x y || in_bool eq_dec x tl
   end.
+(*Fixpoint in_sum {A: Type} 
+  (eq_dec: forall (x y: A), {x=y} + {x <> y}) (x: A) (l: list A) : Type :=
+  match l with
+  | nil => False
+  | y :: tl => if eq_dec x y then True else in_sum eq_dec x tl
+  end.*)
 
-Definition funsym_in (f: funsym) (l: list funsym) : bool :=
-  in_bool funsym_eqb f l.
-
-Lemma funsym_in_spec: forall f l,
-  funsym_in f l = (f \in l).
+(*With decidable equality, this is equivalent to regular In*)
+(*
+Lemma in_in_sum: forall {A: Type} 
+(eq_dec: forall (x y: A), {x=y} + {x <> y}) (x: A) (l: list A),
+In x l ->
+in_sum eq_dec x l.
 Proof.
   rewrite /funsym_in.
   move=>f l; elim: l => [//= | h t /= IH].
   by rewrite in_cons IH.
 Qed.
 
+Lemma in_sum_in: forall {A: Type}
+(eq_dec: forall (x y: A), {x=y} + {x <> y}) (x: A) (l: list A),
+in_sum eq_dec x l ->
+In x l.
+Proof.
+  intros; induction l; simpl. inversion X.
+  simpl in X. destruct (eq_dec x a); subst; [left | right]; auto.
+Qed.
+  *)
 (*Get the type (in the Either) corresponding to this constructor*)
 (*A (non-typechecking) version of the below, for clarity:
 
@@ -366,32 +397,30 @@ Qed.
   end.
 *)
 
-Lemma not_false: ~ false.
-Proof. by []. Qed.
-
 (*TODO: Maybe change to In once we test computability*)
-Definition get_constr_type (ts: typesym) (constrs: list funsym) (f: funsym) 
-  (Hin: funsym_in f constrs)
-  (*(Hin: In f constrs)*)
-  (c: build_constr_base f) : 
+Fixpoint get_constr_type (ts: typesym) (constrs: list funsym) (f: funsym) 
+  (*(Hin: In f constrs)*) (Hin: in_bool funsym_eq_dec f constrs)
+  (c: build_constr_base f) {struct constrs} : 
   (build_base constrs).
 Proof.
-  unfold funsym_in in Hin.
-  (*apply (in_in_sum funsym_eq_dec) in Hin.*)
   induction constrs.
-  - simpl. apply tt.
-  - simpl. destruct constrs.
-    + simpl in Hin. destruct (funsym_eqb_axiom f a).
-      * subst. apply c. 
-      * exfalso. apply not_false. apply Hin.
-    + simpl in Hin. destruct (funsym_eqb_axiom f a).
-      * subst. apply Left. apply c.
-      * apply Right. apply IHconstrs. apply Hin.
-Defined.
+  - apply tt.
+  - simpl. destruct constrs; simpl in Hin; revert Hin;
+    refine (match (funsym_eq_dec f a) with
+    | left Heq => _
+    | right Hneq => _
+    end); intros Hin.
+    + rewrite <- Heq. apply c.
+    + inversion Hin.
+    + apply Left. subst. apply c.
+    + apply Right. apply IHconstrs. apply Hin.
+Defined.  
+
 
 (*A generic map from a finite type to a bounded list : TODO change finite to nat and
 use nth?*)
-Definition blist (A: Type) (n: nat) : Type := {l : list A | length l = n}.
+
+
 Definition finmap_list {A: Type} (n: nat) (l: blist A n) (f: finite n) : A.
 Proof.
   induction n; simpl in *.
@@ -412,18 +441,17 @@ Defined.
   constructor f, it is really just the type that counts the number
   of recursive instances in f*)
 Lemma build_rec_get_constr_type: forall (ts: typesym) (constrs: list funsym) (f: funsym)
-(*(Hin: in_sum funsym_eq_dec f constrs)*)
-(Hin: funsym_in f constrs)
+(Hin: in_bool funsym_eq_dec f constrs)
 (c: build_constr_base f) ,
 build_rec ts constrs (get_constr_type ts constrs f Hin c) =
 finite (count_rec_occ ts f).
 Proof.
   intros. unfold funsym_in in Hin. induction constrs.
   - inversion Hin.
-  - simpl. destruct constrs; simpl in Hin; destruct (funsym_eqb_axiom f a); subst; auto.
-    + exfalso. apply not_false. apply Hin.
+  - simpl. destruct constrs; simpl in Hin; destruct (funsym_eq_dec f a); subst; auto.
+    + inversion Hin.
     + apply IHconstrs.
-Qed.
+Defined.
 
 (*Now we need the function: given an ADT, a constructor of that ADT,
   instances of the (non-recursive) arguments for the ADT, and a list
@@ -436,7 +464,7 @@ Qed.
   in the constructor. Then, we need to match on this, have a map from finite n ->
   each of the inductive calls from x*)
 Definition get_constr_fun (ts: typesym) (constrs: list funsym) (f: funsym)
-  (Hin: funsym_in f constrs)
+  (Hin: in_bool funsym_eq_dec f constrs)
   (*(Hin: In f constrs)*) (c: build_constr_base f) 
   (x: blist (mk_adt ts constrs) (count_rec_occ ts f)):
   build_rec ts constrs (get_constr_type ts constrs f Hin c) -> mk_adt ts constrs.
@@ -447,8 +475,7 @@ Defined.
 (*Finally, create the constructor encoding*)
 Definition make_constr (ts: typesym) (constrs: list funsym) (f: funsym)
   (*(Hin: In f constrs)*)
-  (Hin: funsym_in f constrs)
-  (*(Hin: in_sum funsym_eq_dec f constrs) *) (c: build_constr_base f) 
+  (Hin: in_bool funsym_eq_dec f constrs) (c: build_constr_base f) 
   (x: blist (mk_adt ts constrs) (count_rec_occ ts f)) :
   mk_adt ts constrs :=
   mkW (build_base constrs) (build_rec ts constrs) 
@@ -458,6 +485,7 @@ End ADTConstr.
 
 (*Just for tests*)
 Require Import Coq.Logic.FunctionalExtensionality.
+Require Import Coq.Logic.Eqdep_dec.
 Section Tests.
 
 Notation mk_fs name params args ret_ts ret_args := 
@@ -473,24 +501,43 @@ Notation find_constr ts constrs x :=
 *)
 
 Definition triv_vars : typevar -> Set := fun _ => empty.
+Definition triv_syms: typesym -> list vty -> Set := fun _ _ => empty.
+Definition triv_context : context := nil.
+
+Notation triv_adt := (mk_adt triv_context triv_vars triv_syms).
+Notation triv_constr := (make_constr triv_context triv_vars triv_syms).
+
+Definition emp_fun {A: Type} : empty -> A := fun x =>
+match x with end.
 
 (*Unit*)
 Definition ts_unit : typesym := mk_ts "unit" nil eq_refl.
-Definition aunit := mk_adt triv_vars ts_unit 
-  [ mk_fs "tt" nil nil ts_unit nil].
+Definition fs_tt := mk_fs "tt" nil nil ts_unit nil.
+
+
+Definition aunit := triv_adt ts_unit [ fs_tt].
+
+Definition att := triv_constr ts_unit [fs_tt] fs_tt eq_refl tt
+  (mk_blist 0 nil eq_refl).  
 
 Lemma aunit_correct: aunit = W unit (fun _ => empty).
 Proof. reflexivity. Qed.
 
+Lemma all_funsym_refl: forall {f: funsym} (H: f = f),
+  H = eq_refl.
+Proof.
+  intros. apply UIP_dec. intros. eapply reflect_dec. apply funsym_eqb_spec.
+Qed.
+(*
+Lemma att_correct: att = mkW _ _ tt emp_fun.
+Proof.
+  unfold att. simpl. vm_compute.
+  rewrite (all_funsym_refl (reflect_true (funsym_eqb_spec fs_tt fs_tt) _)).
+  reflexivity.
+Qed.*)
+
 Definition ta : typevar := "a"%string.
 Definition tb : typevar := "b"%string.
-
-(*
-Lemma att_correct: 
-(map snd (constr_rep ts_unit [ mk_fs "tt" nil nil ts_unit nil])) =
-[mkW unit _ tt emp_fun].
-Proof. reflexivity. Qed.*)
-
 
 Ltac destruct_either :=
   repeat match goal with
@@ -503,12 +550,41 @@ Ltac solve_adt_eq :=
 
 (*Bool*)
 Definition ts_bool : typesym := mk_ts "bool" nil eq_refl.
-Definition abool := mk_adt triv_vars ts_bool
-  [mk_fs "true" nil nil ts_bool nil;
-   mk_fs "false" nil nil ts_bool nil].
+Definition fs_true := mk_fs "true" nil nil ts_bool nil.
+Definition fs_false := mk_fs "false" nil nil ts_bool nil.
+
+Definition abool := triv_adt ts_bool
+  [fs_true; fs_false].
 
 Lemma abool_correct: abool = W (either unit unit) (fun _ => empty).
 Proof. solve_adt_eq. Qed.
+
+Definition atrue := triv_constr ts_bool [fs_true; fs_false] fs_true
+  eq_refl tt (mk_blist 0 nil eq_refl).
+Definition afalse := triv_constr ts_bool [fs_true; fs_false] fs_false
+  eq_refl tt (mk_blist 0 nil eq_refl).
+(*TODO: NEED to fix computability, slow issues*)
+
+(*This proof term should not be so big*)
+(*Eval vm_compute in (get_constr_type triv_vars ts_bool [fs_true; fs_false] fs_true eq_refl tt).
+
+
+Lemma atrue_correct: atrue = mkW _ _ (Left _ _ tt) emp_fun.
+Proof. unfold atrue. unfold make_constr.
+
+(get_constr_type ts constrs f Hin c)
+
+simpl. unfold make_constr. simpl. 
+unfold build_constr_base at 1. simpl build_vty_base.
+unfold build_vty_base. simpl map. unfold big_sprod. simpl fold_right.
+simpl. f_equal. simpl big_sprod.
+f_equal.
+-
+
+vm_compute.
+*)
+
+
 
 (*
 Lemma abool_constrs_correct:
@@ -520,7 +596,7 @@ Proof. reflexivity. Qed.
 
 (*Days of the week*)
 Definition ts_week : typesym := mk_ts "days" nil eq_refl.
-Definition aweek := mk_adt triv_vars ts_week
+Definition aweek := triv_adt ts_week
   [mk_fs "mon" nil nil ts_week nil;
    mk_fs "tues" nil nil ts_week nil;
    mk_fs "wed" nil nil ts_week nil;
@@ -545,7 +621,7 @@ Inductive num : Set :=
   | nzero : num.
 
 Definition ts_num : typesym := mk_ts "num" nil eq_refl.
-Definition anum := mk_adt triv_vars ts_num
+Definition anum := triv_adt ts_num
   [mk_fs "npos" nil [vty_int] ts_num nil;
    mk_fs "nneg" nil [vty_int] ts_num nil;
    mk_fs "nzero" nil nil ts_num nil].
@@ -564,7 +640,7 @@ Inductive test1 : Set :=
   | test1d: R -> R -> R -> test1.
 
 Definition ts_test1 : typesym := mk_ts "test1" nil eq_refl.
-Definition atest1 := mk_adt triv_vars ts_test1
+Definition atest1 := triv_adt ts_test1
   [mk_fs "test1a" nil [vty_int; vty_int] ts_test1 nil;
    mk_fs "test1b" nil nil ts_test1 nil;
    mk_fs "test1c" nil [vty_real; vty_int] ts_test1 nil;
@@ -583,9 +659,12 @@ Qed.
 
 (*Nat*)
 Definition ts_nat : typesym := mk_ts "nat" nil eq_refl.
-Definition anat := mk_adt triv_vars ts_nat
-  [mk_fs "O" nil nil ts_nat nil;
-   mk_fs "S" nil [vty_cons ts_nat nil] ts_nat nil].
+Definition fs_O: funsym := mk_fs "O" nil nil ts_nat nil.
+Definition fs_S: funsym := mk_fs "S" nil [vty_cons ts_nat nil] ts_nat nil.
+Definition nat_cxt : context := [datatype_def [alg_def ts_nat [fs_O; fs_S]]].
+
+Definition anat := mk_adt nat_cxt triv_vars triv_syms  ts_nat
+  [fs_O; fs_S].
 
 Lemma anat_correct: anat =
   W (either unit unit) (fun (x: either unit unit) =>
@@ -597,9 +676,12 @@ Proof. reflexivity. Qed.
 
 (*Int list*)
 Definition ts_intlist : typesym := mk_ts "intlist" nil eq_refl.
-Definition aintlist := mk_adt triv_vars ts_intlist
-  [mk_fs "nil" nil nil ts_intlist nil;
-   mk_fs "cons" nil [vty_int; vty_cons ts_intlist nil] ts_intlist nil].
+Definition fs_intnil : funsym := mk_fs "nil" nil nil ts_intlist nil.
+Definition fs_intcons: funsym := 
+  mk_fs "cons" nil [vty_int; vty_cons ts_intlist nil] ts_intlist nil.
+Definition intlist_cxt : context := [datatype_def [alg_def ts_intlist [fs_intnil; fs_intcons]]].
+Definition aintlist := mk_adt intlist_cxt triv_vars triv_syms ts_intlist
+  [ fs_intnil; fs_intcons].
 
 Lemma aintlist_correct: aintlist =
   W (either unit Z) (fun x =>
@@ -611,10 +693,13 @@ Proof. reflexivity. Qed.
 
 (*Int binary tree*)
 Definition ts_inttree : typesym := mk_ts "inttree" nil eq_refl.
-Definition ainttree := mk_adt triv_vars ts_inttree
-  [mk_fs "leaf" nil nil ts_inttree nil;
-   mk_fs "node" nil [vty_int; vty_cons ts_inttree nil; vty_cons ts_inttree nil]
-    ts_inttree nil].
+Definition fs_intleaf:= mk_fs "leaf" nil nil ts_inttree nil.
+Definition fs_intnode := mk_fs "node" nil [vty_int; vty_cons ts_inttree nil; vty_cons ts_inttree nil]
+ts_inttree nil.
+Definition inttree_cxt : context := [datatype_def [alg_def ts_inttree
+  [fs_intleaf; fs_intnode]]].
+Definition ainttree := mk_adt inttree_cxt triv_vars triv_syms ts_inttree
+  [fs_intleaf; fs_intnode].
 
 Lemma ainttree_correct: ainttree =
   W (either unit Z) (fun x =>
@@ -632,12 +717,16 @@ Inductive test2 : Set :=
   | test2d: Z -> Z -> test2 -> test2.
 
 Definition ts_test2 : typesym := mk_ts "test2" nil eq_refl.
-Definition atest2:= mk_adt triv_vars ts_test2
-  [mk_fs "test2a" nil [vty_int] ts_test2 nil;
-  mk_fs "test2b" nil [vty_cons ts_test2 nil] ts_test2 nil;
-  mk_fs "test2c" nil [vty_cons ts_test2 nil; vty_real; vty_cons ts_test2 nil;
-    vty_cons ts_test2 nil] ts_test2 nil;
-  mk_fs "test2d" nil [vty_int; vty_int; vty_cons ts_test2 nil] ts_test2 nil].
+Definition fs_test2a := mk_fs "test2a" nil [vty_int] ts_test2 nil.
+Definition fs_test2b := mk_fs "test2b" nil [vty_cons ts_test2 nil] ts_test2 nil.
+Definition fs_test2c := mk_fs "test2c" nil [vty_cons ts_test2 nil; vty_real; vty_cons ts_test2 nil;
+vty_cons ts_test2 nil] ts_test2 nil.
+Definition fs_test2d := mk_fs "test2d" nil [vty_int; vty_int; vty_cons ts_test2 nil] ts_test2 nil.
+
+Definition test2_cxt := [datatype_def [alg_def ts_test2 [fs_test2a; fs_test2b; fs_test2c; fs_test2d]]].
+
+Definition atest2:= mk_adt test2_cxt triv_vars triv_syms ts_test2
+  [ fs_test2a; fs_test2b; fs_test2c; fs_test2d].
 
 Lemma atest2_correct : atest2 =
   W (either Z (either unit (either R (Z * Z))))
@@ -660,9 +749,12 @@ Definition two_var (A: Set) (B: Set) : typevar -> Set :=
 
 (*Option type*)
 Definition ts_option : typesym := mk_ts "option" [ta] eq_refl.
-Definition aoption (A: Set) := mk_adt (one_var A) ts_option
-  [mk_fs "None" [ta] nil ts_option [ta];
-   mk_fs "Some" [ta] [vty_var ta] ts_option [ta]].
+Definition fs_none := mk_fs "None" [ta] nil ts_option [ta].
+Definition fs_some := mk_fs "Some" [ta] [vty_var ta] ts_option [ta].
+Definition option_cxt := [datatype_def [alg_def ts_option [fs_none; fs_some]]].
+
+Definition aoption (A: Set) := mk_adt option_cxt (one_var A) triv_syms ts_option
+  [fs_none; fs_some].
 
 Lemma aoption_correct: forall (A: Set),
   aoption A = W (either unit A) (fun _ => empty).
@@ -672,10 +764,13 @@ Qed.
 
 (*Either type*)
 Definition ts_either: typesym := mk_ts "either" [ta; tb] eq_refl.
-Definition aeither (A: Set) (B: Set) := mk_adt (two_var A B) ts_either
-  [mk_fs "Left" [ta; tb] [vty_var ta] ts_either [ta; tb];
-   mk_fs "Right" [ta; tb] [vty_var tb] ts_either [ta; tb]].
+Definition fs_left := mk_fs "Left" [ta; tb] [vty_var ta] ts_either [ta; tb].
+Definition fs_right := mk_fs "Right" [ta; tb] [vty_var tb] ts_either [ta; tb].
+Definition either_cxt := [datatype_def [alg_def ts_either [fs_left; fs_right]]].
 
+Definition aeither (A: Set) (B: Set) := mk_adt either_cxt (two_var A B) triv_syms ts_either
+  [fs_left; fs_right].
+  
 Lemma aeither_correct: forall (A: Set) (B: Set),
   aeither A B = W (either A B) (fun _ => empty).
 Proof.
@@ -684,9 +779,12 @@ Qed.
 
 (*List type*)
 Definition ts_list: typesym := mk_ts "list" [ta] eq_refl.
-Definition alist (A: Set) := mk_adt (one_var A) ts_list
-  [mk_fs "Nil" [ta] nil ts_list [ta];
-   mk_fs "Cons" [ta] [vty_var ta; vty_cons ts_list [vty_var ta]] ts_list [ta]].
+Definition fs_nil := mk_fs "Nil" [ta] nil ts_list [ta].
+Definition fs_cons := mk_fs "Cons" [ta] [vty_var ta; vty_cons ts_list [vty_var ta]] ts_list [ta].
+Definition list_cxt := [datatype_def [alg_def ts_list [fs_nil; fs_cons]]].
+
+Definition alist (A: Set) := mk_adt list_cxt (one_var A) triv_syms ts_list
+  [ fs_nil; fs_cons ].
 
 Lemma alist_correct: forall (A: Set),
   alist A = W (either unit A) (fun x =>
@@ -699,11 +797,14 @@ Qed.
 
 (*Binary tree*)
 Definition ts_tree: typesym := mk_ts "tree" [ta] eq_refl.
-Definition atree (A: Set) := mk_adt (one_var A) ts_tree
-  [mk_fs "Leaf" [ta] nil ts_tree [ta];
-   mk_fs "Node" [ta] 
-    [vty_var ta; vty_cons ts_tree [vty_var ta]; vty_cons ts_tree [vty_var ta]]
-    ts_tree [ta]].
+Definition fs_leaf := mk_fs "Leaf" [ta] nil ts_tree [ta].
+Definition fs_node := mk_fs "Node" [ta] 
+[vty_var ta; vty_cons ts_tree [vty_var ta]; vty_cons ts_tree [vty_var ta]]
+ts_tree [ta].
+Definition tree_cxt := [datatype_def [alg_def ts_tree [fs_leaf; fs_node]]].
+
+Definition atree (A: Set) := mk_adt tree_cxt (one_var A) triv_syms ts_tree
+  [fs_leaf; fs_node].
 
 Lemma atree_correct: forall (A: Set),
   atree A = W (either unit A)
@@ -712,5 +813,43 @@ Lemma atree_correct: forall (A: Set),
               | Right _ => option unit
               end).
 Proof. intros; solve_adt_eq. Qed.
+
+(*Abstract type tests*)
+(*Test using simple wrapper type: Inductive wrap = Wrap (abs)*)
+
+(*Abstract type with no arguments*)
+Definition ts_abs := mk_ts "abs" nil eq_refl.
+Definition ts_wrap1: typesym := mk_ts "wrap1" nil eq_refl.
+Definition fs_wrap1 := mk_fs "Wrap" nil [vty_cons ts_abs nil] ts_wrap1 nil.
+Definition wrap1_cxt := [datatype_def [alg_def ts_wrap1 [fs_wrap1]]].
+
+Definition abs_map1 (A: Set) (ts: typesym) (vs: list vty) : Set :=
+  if typesym_eqb ts ts_abs then A else empty.
+
+Definition awrap1 (A: Set) := mk_adt wrap1_cxt triv_vars (abs_map1 A) ts_wrap1
+  [fs_wrap1].
+
+Definition awrap1_correct: forall (A: Set),
+  awrap1 A = W A (fun _ => empty).
+Proof.
+  intros. reflexivity. Qed. 
+
+(*Abstract type with 2 arguments*)
+Definition ts_abs2 := mk_ts "abs" [ta; tb] eq_refl.
+Definition ts_wrap2: typesym := mk_ts "wrap2" [ta; tb] eq_refl.
+Definition fs_wrap2 := mk_fs "Wrap" [ta; tb] 
+  [vty_cons ts_abs2 [vty_var ta; vty_var tb]] ts_wrap1 [ta; tb].
+Definition wrap2_cxt := [datatype_def [alg_def ts_wrap2 [fs_wrap2]]].
+
+Definition abs_map2 (A: Set) (ts: typesym) (vs: list vty) : Set :=
+  if typesym_eqb ts ts_abs2 then A else empty.
+
+Definition awrap2 (A B C: Set) := mk_adt wrap2_cxt (two_var B C) (abs_map2 A) ts_wrap2
+  [fs_wrap2].
+
+Definition awrap2_correct: forall (A B C: Set),
+  awrap2 A B C = W A (fun _ => empty).
+Proof.
+  intros. reflexivity. Qed. 
 
 End Tests.

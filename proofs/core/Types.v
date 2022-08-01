@@ -33,16 +33,42 @@ Definition typesym_eqb (t1 t2: typesym) :=
 
 Lemma typesym_eqb_axiom: Equality.axiom typesym_eqb.
 Proof.
-  move=>t1 t2; rewrite /typesym_eqb.
-  case: (ts_name t1 == ts_name t2) /eqP => /= Hn; last by
-    apply ReflectF => Ht12; move : Hn; rewrite Ht12.
-  case: (ts_args t1 == ts_args t2) /eqP => /= Ha; last by
-    apply ReflectF => Ht12; move: Ha; rewrite Ht12.
-  by apply ReflectT, typesym_eq.
+  intros t1 t2. unfold typesym_eqb.
+  destruct (String.eqb_spec (ts_name t1) (ts_name t2)); simpl.
+  - destruct (list_eqb_spec typevar_eqb String.eqb_spec (ts_args t1) (ts_args t2)); simpl.
+    + apply ReflectT. apply typesym_eq; auto.
+    + apply ReflectF. intros C. destruct t1; destruct t2; subst. inversion C; contradiction.
+  - apply ReflectF. intro C; destruct t1; destruct t2; inversion C; subst; contradiction.
 Qed.
 
-Definition typesym_eqMixin := EqMixin typesym_eqb_axiom.
-Canonical typesym_eqType := EqType typesym typesym_eqMixin.
+Lemma reflect_true: forall {P} {b} (H: reflect P b),
+  b = true ->
+  P.
+Proof.
+  intros. destruct H; subst; auto. inversion H0.
+Qed.
+
+Lemma reflect_false: forall {P} {b} (H: reflect P b),
+  b = false ->
+  ~ P.
+Proof.
+  intros. destruct H; subst; auto. inversion H0.
+Qed.
+
+(*Now we can transform "reflect" into computable "dec" EVEN if "reflect" is opaque.
+  This is what we are missing in the ssreflect library. We do NOT match on
+  "reflect"; we match on the boolean predicate directly*)
+Definition reflect_dec' {P} {b} (H: reflect P b): {P} + {~P} :=
+  match b as b1 return b = b1 -> _ with
+  | true => fun Heq => left (reflect_true H Heq)
+  | false => fun Hneq => right (reflect_false H Hneq)
+  end eq_refl.
+
+Definition typesym_eq_dec (t1 t2: typesym) : {t1 = t2} + {t1 <> t2} :=
+  reflect_dec' (typesym_eqb_spec t1 t2).
+
+Definition ts_unit : typesym := mk_ts "unit" nil eq_refl.
+
 
 (*Value types*)
 Unset Elimination Schemes.
@@ -123,16 +149,16 @@ Proof.
     inversion H; subst. rewrite H2 //=. by apply IHl.
 Qed. 
 
-Lemma vty_eqb_axiom: Equality.axiom vty_eqb.
+Lemma vty_eq_spec: forall t1 t2,
+  reflect (t1 = t2) (vty_eqb t1 t2).
 Proof.
-  move=>t1 t2. case Heq: (vty_eqb t1 t2).
-  - by apply ReflectT, vty_eqb_eq.
-  - apply ReflectF => Ht12. apply vty_eq_eqb in Ht12.
-    by rewrite Heq in Ht12.
+  intros. destruct (vty_eqb t1 t2) eqn : Heq.
+  - apply ReflectT. apply vty_eqb_eq. auto.
+  - apply ReflectF. intro C; apply vty_eq_eqb in C; rewrite Heq in C; inversion C.
 Qed.
 
-Definition vty_eqMixin := EqMixin vty_eqb_axiom.
-Canonical vty_eqType := EqType vty vty_eqMixin.
+Definition vty_eq_dec (v1 v2: vty): {v1 = v2} + {v1 <> v2} :=
+  reflect_dec' (vty_eq_spec v1 v2).
 
 (* Sorts *)
 

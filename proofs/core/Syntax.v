@@ -74,9 +74,7 @@ Definition id_fs : funsym := Build_funsym id_name id_params id_args id_ret erefl
 
 End ID.
 
-Section SymEqType.
-
-(*Decidable equality on funsyms/predsyms (why we use booleans)*)
+Section SymEqDec.
 
 Lemma funsym_eq: forall (f1 f2: funsym),
   (s_name f1) = (s_name f2) ->
@@ -92,32 +90,58 @@ Proof.
   reflexivity.
 Qed.
 
-Ltac con := apply ReflectF; intro C; subst; contradiction.
+Ltac dec H :=
+  destruct H; [ simpl | apply ReflectF; intro C; inversion C; subst; contradiction].
 
 Definition funsym_eqb (f1 f2: funsym) : bool :=
-    ((s_name f1) == (s_name f2)) &&
-    ((s_params f1) == (s_params f2)) &&
-    ((s_args f1) == (s_args f2)) &&
-    ((s_ret f1) == (s_ret f2)).
+  (String.eqb (s_name f1) (s_name f2)) &&
+  (list_eq_dec typevar_eq_dec (s_params f1) (s_params f2)) &&
+  (list_eq_dec vty_eq_dec (s_args f1) (s_args f2)) &&
+  (vty_eq_dec (s_ret f1) (s_ret f2)).
 
-Ltac case_reflect t1 t2 :=
-  let H := fresh in
-  let C := fresh in
-  case: (t1 == t2) /eqP => /= H; last by
-    apply ReflectF; move=>C; rewrite C in H.
-
-Lemma funsym_eqb_axiom: Equality.axiom funsym_eqb.
+Lemma funsym_eqb_spec: forall (f1 f2: funsym),
+  reflect (f1 = f2) (funsym_eqb f1 f2).
 Proof.
-  move=> f1 f2. rewrite /funsym_eqb.
-  case_reflect (s_name f1) (s_name f2).
-  case_reflect (s_params f1) (s_params f2).
-  case_reflect (s_args f1) (s_args f2).
-  case_reflect (s_ret f1) (s_ret f2).
-  apply ReflectT. by apply funsym_eq.
+  intros. unfold funsym_eqb.
+  dec (String.eqb_spec (s_name f1) (s_name f2)).
+  dec (list_eq_dec typevar_eq_dec (s_params f1) (s_params f2)).
+  dec (list_eq_dec vty_eq_dec (s_args f1) (s_args f2)).
+  dec (vty_eq_dec (s_ret f1) (s_ret f2)).
+  apply ReflectT. apply funsym_eq; auto.
 Qed.
 
-Definition funsym_eqMixin := EqMixin funsym_eqb_axiom.
-Canonical funsym_eqType := EqType funsym funsym_eqMixin.
+Definition funsym_eq_dec (f1 f2: funsym) : {f1 = f2} + {f1 <> f2} :=
+  reflect_dec' (funsym_eqb_spec f1 f2).
+
+(*We do the same for predicate symbols*)
+Lemma predsym_eq: forall (p1 p2: predsym),
+  (p_name p1) = (p_name p2) ->
+  (p_params p1) = (p_params p2) ->
+  (p_args p1) = (p_args p2) ->
+  p1 = p2.
+Proof.
+  intros; destruct p1; destruct p2; simpl in *; subst.
+  assert (p_params_nodup0=p_params_nodup1) by apply bool_irrelevance; subst.
+  assert (p_args_wf0=p_args_wf1) by apply bool_irrelevance; subst. reflexivity.
+Qed.
+
+Definition predsym_eqb (p1 p2: predsym) : bool :=
+  (String.eqb (p_name p1) (p_name p2)) &&
+  (list_eq_dec typevar_eq_dec (p_params p1) (p_params p2)) &&
+  (list_eq_dec vty_eq_dec (p_args p1) (p_args p2)).
+
+Lemma predsym_eqb_spec: forall (p1 p2: predsym),
+  reflect (p1 = p2) (predsym_eqb p1 p2).
+Proof.
+  intros. unfold predsym_eqb.
+  dec (String.eqb_spec (p_name p1) (p_name p2)).
+  dec (list_eq_dec typevar_eq_dec (p_params p1) (p_params p2)).
+  dec (list_eq_dec vty_eq_dec (p_args p1) (p_args p2)).
+  apply ReflectT. apply predsym_eq; auto.
+Qed.
+
+Definition predsym_eq_dec (p1 p2: predsym) : {p1 = p2} + {p1 <> p2} :=
+  reflect_dec' (predsym_eqb_spec p1 p2).
 
 (*We do the same for predicate symbols*)
 Lemma predsym_eq: forall (p1 p2: predsym),
