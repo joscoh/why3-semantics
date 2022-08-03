@@ -3,8 +3,8 @@ Require Import Typing.
 Require Import Types.
 Require Import Coq.Lists.List.
 
-From mathcomp Require all_ssreflect.
-Set Bullet Behavior "Strict Subproofs".
+(*From mathcomp Require all_ssreflect.
+Set Bullet Behavior "Strict Subproofs".*)
 
 Inductive rose (A: Set) : Set :=
   | Node : A -> list (rose A) -> rose A.
@@ -14,7 +14,13 @@ Inductive perfect (A : Set) : Set :=
   | One: A -> perfect A.
 
 Section W.
-
+(*I is the index (think of this as the number of types in the mut. rec. type)
+  A gives the base type for each type in the MR type (it is Either _ _) where
+  each _ gives the arguments needed for the corresponding constructor
+  B gives the number of recursive calls to a given type for a given type and
+  constructor of that type. i is the index of the current type, j is the index
+  of another type, A i is a constructor of type i, and the Set tells the number
+  of calls to j*)
 Variable (I: Set).
 Variable (A: I -> Set).
 Variable (B: forall (i: I) (j: I), A i -> Set).
@@ -315,8 +321,8 @@ Fixpoint build_rec (ts: typesym) (constrs: list funsym) {struct constrs} : (buil
     | nil => fun _ _ => build_constr_rec ts f
     | x :: tl => fun Heq (o: build_base (f :: x :: tl)) =>
       match o with
-      | Left _ => build_constr_rec ts f
-      | Right y => build_rec ts fs (cast_build_base (eq_sym Heq) y)
+      | Left _ _ _ => build_constr_rec ts f
+      | Right _ _ y => build_rec ts fs (cast_build_base (eq_sym Heq) y)
       end
     end) eq_refl
   end.
@@ -379,15 +385,29 @@ Definition mk_adts (l: list (typesym * list funsym)) : finite (length l) -> Set 
         (snd (fin_nth l this))).
 
 (*For the singleton list*)
+(*
 Definition single_fin (n: nat) (Hn: n = 1) : finite n.
 Proof.
   subst.
   apply tt.
-Defined.
+Defined.*)
 
 (*For non-mutual types*)
 Definition mk_adt (ts: typesym) (constrs: list funsym) : Set :=
-  mk_adts [(ts, constrs)] (single_fin (length [(ts, constrs)]) eq_refl).
+  mk_adts [(ts, constrs)] tt. 
+(*TODO: (Plan)
+1. clean up this file
+2. do constructors for mut. rec. types
+3. implement nested types by transforming 
+4. add tests (rose tree and 1 more complicated (maybe w mut rec))
+5. do constructors for this
+(would like to get this done this week)
+6. go back and add this to semantics
+7. add to denotational semantics+handle pattern matching
+
+For nested types, see notes (add here)
+
+*)
 
 (*Can handle simple inductive types, no polymorphism, abstract types,
   or nested/non-uniform recursion*)
@@ -452,23 +472,23 @@ Qed.
 *)
 
 (*TODO: Maybe change to In once we test computability*)
-Fixpoint get_constr_type (ts: typesym) (constrs: list funsym) (f: funsym) 
+Definition get_constr_type (ts: typesym) (constrs: list funsym) (f: funsym) 
   (*(Hin: In f constrs)*) (Hin: in_bool funsym_eq_dec f constrs)
-  (c: build_constr_base f) {struct constrs} : 
+  (c: build_constr_base f) : 
   (build_base constrs).
 Proof.
   induction constrs.
   - apply tt.
-  - simpl. destruct constrs; simpl in Hin; revert Hin;
-    refine (match (funsym_eq_dec f a) with
-    | left Heq => _
-    | right Hneq => _
-    end); intros Hin.
-    + rewrite <- Heq. apply c.
-    + inversion Hin.
-    + apply Left. subst. apply c.
-    + apply Right. apply IHconstrs. apply Hin.
-Defined.  
+  - simpl. destruct constrs.
+    + simpl in Hin.
+      destruct (funsym_eq_dec f a).
+      * rewrite <- e. apply c.
+      * inversion Hin.
+    + simpl in Hin.
+      destruct (funsym_eq_dec f a).
+      * apply Left. rewrite <- e. apply c. 
+      * apply Right. apply IHconstrs. apply Hin.
+Defined.
 
 
 (*A generic map from a finite type to a bounded list : TODO change finite to nat and
@@ -494,16 +514,18 @@ Defined.
 (*Now, we show that if we get the type corresponding to some
   constructor f, it is really just the type that counts the number
   of recursive instances in f*)
-Lemma build_rec_get_constr_type: forall (ts: typesym) (constrs: list funsym) (f: funsym)
+Definition build_rec_get_constr_type: forall (ts ts': typesym) (constrs: list funsym) (f: funsym)
 (Hin: in_bool funsym_eq_dec f constrs)
 (c: build_constr_base f) ,
-build_rec ts constrs (get_constr_type ts constrs f Hin c) =
-finite (count_rec_occ ts f).
+build_rec ts' constrs (get_constr_type ts constrs f Hin c) =
+finite (count_rec_occ ts' f).
 Proof.
   intros. induction constrs.
   - inversion Hin.
-  - simpl. destruct constrs; simpl in Hin; destruct (funsym_eq_dec f a); subst; auto.
+  - simpl. destruct constrs; simpl in Hin; destruct (funsym_eq_dec f a).
+    + rewrite e. reflexivity.
     + inversion Hin.
+    + rewrite e. reflexivity.
     + apply IHconstrs.
 Defined.
 
@@ -528,6 +550,49 @@ Defined.
 
 (*Finally, create the constructor encoding*)
 (*TODO*)
+
+Print mkW.
+
+Definition tuple_eq_dec {A B} (eq1: forall (x y: A), {x = y} + {x <> y})
+  (eq2: forall (x y: B), {x = y} + {x <> y}) :
+  forall (x y : (A * B)), {x = y} + { x <> y}.
+Proof.
+  intros. destruct x; destruct y.
+  destruct (eq1 a a0); [subst |right; intro C; inversion C; subst; contradiction].
+  destruct (eq2 b b0); [subst | right; intro C; inversion C; subst; contradiction].
+  left. reflexivity.
+Defined.
+
+
+Definition make_constr (l: list (typesym * list funsym)) (n: finite (length l))
+  (f: funsym)
+  (Hin: in_bool funsym_eq_dec f (snd (fin_nth l n)))
+  (c: build_constr_base f)
+  (recs: forall (x: finite (length l)), blist (mk_adts l x) 
+    (count_rec_occ (fst (fin_nth l x)) f)) :
+  mk_adts l n.
+Proof.
+  apply (mkW)with (a:=get_constr_type (fst (fin_nth l n)) _ f Hin c).
+  intros j. intros.
+  rewrite (build_rec_get_constr_type (fst(fin_nth l n)) (fst(fin_nth l j)) _ f Hin c) in H.
+  specialize (recs j). apply (finmap_list _ recs H).
+Defined.
+
+Print make_constr.
+
+(*For non-mut-rec*)
+Definition make_constr_simple (ts: typesym) (constrs: list funsym) (f: funsym)
+(Hin: in_bool funsym_eq_dec f constrs)
+(c: build_constr_base f)
+(recs: blist (mk_adt ts constrs) (count_rec_occ ts f)) :
+mk_adt ts constrs.
+Proof.
+  apply make_constr with(f:=f).
+  - apply Hin.
+  - apply c.
+  - intros. destruct x. apply recs.
+Defined. 
+
 (*
 Definition make_constr (ts: typesym) (constrs: list funsym) (f: funsym)
   (*(Hin: In f constrs)*)
@@ -538,13 +603,81 @@ Definition make_constr (ts: typesym) (constrs: list funsym) (f: funsym)
   tt (get_constr_type ts constrs f Hin c) (fun (u: unit) => 
     match u with
     | tt => get_constr_fun ts constrs f Hin c x
-    end).
-*)
+    end).*)
 End ADTConstr.
 
 (*Just for tests*)
 Require Import Coq.Logic.FunctionalExtensionality.
 Require Import Coq.Logic.Eqdep_dec.
+
+(* Mutual recursion means we need additional typecasts and axioms
+  to deal with the dependent functions. We do that here. Since this is
+  only for testing, we don't introduce any axioms into the semantics*)
+Require Import Coq.Logic.ClassicalFacts.
+  Section Cast.
+  
+  (*Cast 1 type to another*)
+  Definition cast {A1 A2: Set} (H: A1 = A2) (x: A1) : A2.
+  Proof.
+    subst. apply x.
+  Defined.
+  
+  (*We need UIP, so we assume it directly (rather than something like
+    excluded middle or proof irrelevance, which implies UIP)*)
+  Axiom UIP: forall {A: Type} {x y : A} (H1 H2: x = y), H1 = H2.
+  
+  Lemma cast_left: forall {A B A' B': Set} (H1: A = A') (H2: B = B') (H3: either A B = either A' B') x,
+    cast H3 (Left A B x) = Left A' B' (cast H1 x).
+  Proof.
+    intros. subst. unfold cast. unfold eq_rec_r. simpl. unfold eq_rec. unfold eq_rect.
+    assert (H3 = eq_refl) by apply UIP.
+    rewrite H. reflexivity.
+  Qed.
+  
+  Lemma cast_right: forall {A B A' B': Set} (H1: A = A') (H2: B = B') (H3: either A B = either A' B') x,
+  cast H3 (Right A B x) = Right A' B' (cast H2 x).
+  Proof.
+  intros. subst. unfold cast. unfold eq_rec_r. simpl. unfold eq_rec. unfold eq_rect.
+  assert (H3 = eq_refl) by apply UIP.
+  rewrite H. reflexivity.
+  Qed.
+  
+  Lemma eq_idx {I: Set} {A1 A2 : I -> Set} (Heq: A1 = A2)
+    (i: I): A1 i = A2 i.
+  Proof.
+    rewrite Heq. reflexivity.
+  Defined.
+  
+  (*A version of [f_equal] for W types*)
+  Lemma w_eq_aux: forall {I: Set} (A1 A2: I -> Set) (Heq: A1 = A2)
+    (B1: forall i: I, I -> A1 i -> Set)
+    (B2: forall i: I, I -> A2 i -> Set),
+    (forall i j a, B1 i j a = B2 i j (cast (eq_idx Heq i) a)) ->
+    W I A1 B1 = W I A2 B2.
+  Proof.
+    intros.
+    subst. f_equal. repeat(apply functional_extensionality_dep; intros).
+    rewrite H. reflexivity.
+  Qed.
+
+  Lemma eq_idx' {I: Set} {A: I -> Set} (B: forall i: I, I -> A i -> Set) {i j: I}
+    (a1 a2: A i) (Heq: a1 = a2) : B i j a1 = B i j a2.
+  Proof.
+    rewrite Heq. reflexivity.
+  Defined.
+
+  Lemma mkW_eq_aux: forall {I: Set} (A: I -> Set) (B: forall i: I, I -> A i -> Set) (i: I)
+    (a1 a2: A i) (Heq: a1 = a2) (f1: forall j, B i j a1 -> W I A B j)
+    (f2: forall j, B i j a2 -> W I A B j),
+    (forall j b, f1 j b = f2 j (cast (eq_idx' B a1 a2 Heq) b)) ->
+    mkW I A B i a1 f1 = mkW I A B i a2 f2.
+  Proof.
+    intros. subst. f_equal. repeat (apply functional_extensionality_dep; intros).
+    rewrite H. reflexivity.
+  Qed. 
+  
+  End Cast.
+
 Section Tests.
 
 Notation mk_fs name params args ret_ts ret_args := 
@@ -564,7 +697,7 @@ Definition triv_syms: typesym -> list vty -> Set := fun _ _ => empty.
 Definition triv_context : context := nil.
 
 Notation triv_adt := (mk_adt triv_context triv_vars triv_syms).
-(*Notation triv_constr := (make_constr triv_context triv_vars triv_syms).*)
+Notation triv_constr := (make_constr_simple triv_context triv_vars triv_syms).
 
 Definition emp_fun {A: Type} : empty -> A := fun x =>
 match x with end.
@@ -576,10 +709,10 @@ Definition fs_tt := mk_fs "tt" nil nil ts_unit nil.
 
 Definition aunit := triv_adt ts_unit [ fs_tt].
 
-(*Definition att := triv_constr ts_unit [fs_tt] fs_tt eq_refl tt
-  (mk_blist 0 nil eq_refl).  *)
+Definition att := triv_constr ts_unit [fs_tt] fs_tt eq_refl tt
+  (mk_blist 0 nil eq_refl). 
 
-Lemma aunit_correct: aunit = W (finite 1) (fun _ => unit) (fun _ _ _ => empty) (single_fin 1 eq_refl).
+Lemma aunit_correct: aunit = W (finite 1) (fun _ => unit) (fun _ _ _ => empty) tt.
 Proof. reflexivity. Qed. 
 
 Lemma all_funsym_refl: forall {f: funsym} (H: f = f),
@@ -587,13 +720,14 @@ Lemma all_funsym_refl: forall {f: funsym} (H: f = f),
 Proof.
   intros. apply UIP_dec. intros. eapply reflect_dec. apply funsym_eqb_spec.
 Qed.
-(*
-Lemma att_correct: att = mkW _ _ tt emp_fun.
+
+Lemma att_correct: att = mkW (finite 1) (fun _ => unit)
+  (fun _ _ _ => empty) tt tt (fun _ => emp_fun).
 Proof.
   unfold att. simpl. vm_compute.
   rewrite (all_funsym_refl (reflect_true (funsym_eqb_spec fs_tt fs_tt) _)).
   reflexivity.
-Qed.*)
+Qed.
 
 Definition ta : typevar := "a"%string.
 Definition tb : typevar := "b"%string.
@@ -619,40 +753,28 @@ Lemma abool_correct: abool = W unit (fun i => either unit unit)
   (fun _ _ _ => empty) tt.
 Proof. solve_adt_eq. Qed. 
 
-(*Definition atrue := triv_constr ts_bool [fs_true; fs_false] fs_true
+Definition atrue := triv_constr ts_bool [fs_true; fs_false] fs_true
   eq_refl tt (mk_blist 0 nil eq_refl).
 Definition afalse := triv_constr ts_bool [fs_true; fs_false] fs_false
-  eq_refl tt (mk_blist 0 nil eq_refl).*)
-(*TODO: NEED to fix computability, slow issues*)
+  eq_refl tt (mk_blist 0 nil eq_refl).
 
-(*This proof term should not be so big*)
-(*Eval vm_compute in (get_constr_type triv_vars ts_bool [fs_true; fs_false] fs_true eq_refl tt).
-
-
-Lemma atrue_correct: atrue = mkW _ _ (Left _ _ tt) emp_fun.
-Proof. unfold atrue. unfold make_constr.
-
-(get_constr_type ts constrs f Hin c)
-
-simpl. unfold make_constr. simpl. 
-unfold build_constr_base at 1. simpl build_vty_base.
-unfold build_vty_base. simpl map. unfold big_sprod. simpl fold_right.
-simpl. f_equal. simpl big_sprod.
-f_equal.
--
-
-vm_compute.
-*)
-
-
-
-(*
-Lemma abool_constrs_correct:
-  map snd (constr_rep ts_bool [mk_fs "true" nil nil ts_bool nil;
-  mk_fs "false" nil nil ts_bool nil]) =
-  [mkW _ _ None emp_fun; mkW _ _ (Some tt) emp_fun].
-Proof. reflexivity. Qed.
-*)
+(*CANNOT use vm_compute: proof term blows up*)
+Lemma atrue_correct: atrue = mkW (finite 1) _ _ tt (Left _ _ tt) (fun _ => emp_fun).
+Proof. unfold atrue. simpl.
+unfold triv_constr. simpl.
+unfold make_constr. simpl.
+match goal with | |- mkW ?i ?a ?b ?x ?a1 ?f = mkW ?i ?a ?b ?x ?a2 ?f2 =>
+  assert (a1 = a2) end.
+- f_equal. unfold eq_rect.
+  rewrite (all_funsym_refl (reflect_true _ _)).
+  reflexivity.
+- apply mkW_eq_aux with (Heq:=H).
+  intros.
+  unfold eq_rect.
+  unfold eq_ind_r. unfold eq_ind.
+  rewrite (all_funsym_refl (eq_sym _)).
+  destruct b.
+Qed.
 
 (*Days of the week*)
 Definition ts_week : typesym := mk_ts "days" nil eq_refl.
@@ -727,10 +849,29 @@ Definition anat := mk_adt nat_cxt triv_vars triv_syms  ts_nat
 Lemma anat_correct: anat =
   W unit (fun _ => either unit unit) (fun _ _ (x: either unit unit) =>
     match x with
-    | Left  _ => empty
-    | Right _ => unit
+    | Left  _ _ _ => empty
+    | Right _ _ _ => unit
     end) tt.
 Proof. reflexivity. Qed.
+
+Definition aS (l: anat) := make_constr_simple nat_cxt triv_vars triv_syms ts_nat [fs_O; fs_S] fs_S
+  eq_refl tt (mk_blist 1 [l] eq_refl).
+
+Lemma aS_correct: forall l, aS l = mkW (finite 1) _ _ tt (Right _ _ tt) (fun x _ =>
+  match x with
+  | tt => l
+  end).
+Proof.
+  intros. unfold aS. simpl. unfold make_constr_simple. simpl.
+  unfold make_constr. simpl.
+  match goal with | |- mkW ?i ?a ?b ?x ?a1 ?f = mkW ?i ?a ?b ?x ?a2 ?f2 =>
+  assert (a1 = a2) end.
+  - f_equal. unfold eq_rect.
+    rewrite (all_funsym_refl (reflect_true _ _)). reflexivity.
+  - apply mkW_eq_aux with (Heq:=H).
+    intros. destruct j; reflexivity.
+Qed.
+
 
 (*Int list*)
 Definition ts_intlist : typesym := mk_ts "intlist" nil eq_refl.
@@ -744,8 +885,8 @@ Definition aintlist := mk_adt intlist_cxt triv_vars triv_syms ts_intlist
 Lemma aintlist_correct: aintlist =
   W unit (fun _ => either unit Z) (fun _ _ x =>
     match x with
-    | Left _ => empty
-    | Right _ => unit
+    | Left _ _ _ => empty
+    | Right _ _ _ => unit
     end) tt.
 Proof. reflexivity. Qed. 
 
@@ -762,8 +903,8 @@ Definition ainttree := mk_adt inttree_cxt triv_vars triv_syms ts_inttree
 Lemma ainttree_correct: ainttree =
   W unit (fun _ => either unit Z) (fun _ _ x =>
     match x with
-    | Left _ => empty
-    | Right _ => option unit
+    | Left _ _ _ => empty
+    | Right _ _ _ => option unit
     end) tt.
 Proof. reflexivity. Qed.
 
@@ -790,10 +931,10 @@ Lemma atest2_correct : atest2 =
   W unit (fun _ => either Z (either unit (either R (Z * Z))))
     (fun _ _ x =>
       match x with
-      | Left  _ => empty
-      | Right (Left _) => unit
-      | Right (Right (Left _)) => option (option unit)
-      | Right _ => unit
+      | Right _ _ (Left _ _ _) => unit
+      | Left _ _  _ => empty
+      | Right _ _ (Right _ _ (Left _ _ _)) => option (option unit)
+      | Right _ _ _ => unit
       end) tt.
 Proof. reflexivity. Qed.
 
@@ -847,8 +988,8 @@ Definition alist (A: Set) := mk_adt list_cxt (one_var A) triv_syms ts_list
 Lemma alist_correct: forall (A: Set),
   alist A = W unit (fun _ => either unit A) (fun _ _ x =>
     match x with
-    | Left _ => empty
-    | Right _ => unit
+    | Left _ _ _ => empty
+    | Right _ _ _ => unit
     end) tt.
 Proof. intros. solve_adt_eq. 
 Qed. 
@@ -867,8 +1008,8 @@ Definition atree (A: Set) := mk_adt tree_cxt (one_var A) triv_syms ts_tree
 Lemma atree_correct: forall (A: Set),
   atree A = W unit (fun _ => either unit A)
     (fun _ _ x => match x with
-              | Left _ => empty
-              | Right _ => option unit
+              | Left _ _ _ => empty
+              | Right _ _ _ => option unit
               end) tt.
 Proof. intros; solve_adt_eq. Qed.
 
@@ -933,57 +1074,7 @@ Definition amutAB := mk_adts mutAB_ctx triv_vars triv_syms
 Definition amutA := amutAB None.
 Definition amutB := amutAB (Some tt).
 
-(* Mutual recursion means we need additional typecasts and axioms
-  to deal with the dependent functions. We do that here. Since this is
-  only for testing, we don't introduce any axioms into the semantics*)
-Require Import Coq.Logic.ClassicalFacts.
-Section Cast.
 
-(*Cast 1 type to another*)
-Definition cast {A1 A2: Set} (H: A1 = A2) (x: A1) : A2.
-Proof.
-  subst. apply x.
-Defined.
-
-(*We need UIP, so we assume it directly (rather than something like
-  excluded middle or proof irrelevance, which implies UIP)*)
-Axiom UIP: forall {A: Type} {x y : A} (H1 H2: x = y), H1 = H2.
-
-Lemma cast_left: forall {A B A' B': Set} (H1: A = A') (H2: B = B') (H3: either A B = either A' B') x,
-  cast H3 (Left A B x) = Left A' B' (cast H1 x).
-Proof.
-  intros. subst. unfold cast. unfold eq_rec_r. simpl. unfold eq_rec. unfold eq_rect.
-  assert (H3 = eq_refl) by apply UIP.
-  rewrite H. reflexivity.
-Qed.
-
-Lemma cast_right: forall {A B A' B': Set} (H1: A = A') (H2: B = B') (H3: either A B = either A' B') x,
-cast H3 (Right A B x) = Right A' B' (cast H2 x).
-Proof.
-intros. subst. unfold cast. unfold eq_rec_r. simpl. unfold eq_rec. unfold eq_rect.
-assert (H3 = eq_refl) by apply UIP.
-rewrite H. reflexivity.
-Qed.
-
-Lemma eq_idx {I: Set} {A1 A2 : I -> Set} (Heq: A1 = A2)
-  (i: I): A1 i = A2 i.
-Proof.
-  rewrite Heq. reflexivity.
-Defined.
-
-(*A version of [f_equal] for W types*)
-Lemma w_eq_aux: forall {I: Set} (A1 A2: I -> Set) (Heq: A1 = A2)
-  (B1: forall i: I, I -> A1 i -> Set)
-  (B2: forall i: I, I -> A2 i -> Set),
-  (forall i j a, B1 i j a = B2 i j (cast (eq_idx Heq i) a)) ->
-  W I A1 B1 = W I A2 B2.
-Proof.
-  intros.
-  subst. f_equal. repeat(apply functional_extensionality_dep; intros).
-  rewrite H. reflexivity.
-Qed.
-
-End Cast.
 
 Lemma amutAB_correct: amutAB =
   W (option unit) (fun x => match x with
@@ -992,8 +1083,8 @@ Lemma amutAB_correct: amutAB =
                     end)
   (fun this other x =>
     match this, x with
-    | None, Left _ => empty (*First constructor of mutA has no recursive calls*)
-    | None, Right _ => (*Second constructor of mutA has 1 call to mutB*)
+    | None, Left _ _ _ => empty (*First constructor of mutA has no recursive calls*)
+    | None, Right _ _ _ => (*Second constructor of mutA has 1 call to mutB*)
       match other with
       | None => empty
       | _ => unit
@@ -1016,6 +1107,35 @@ Proof.
     destruct i; destruct j; simpl; try reflexivity;
     destruct a; try (rewrite (cast_left eq_refl eq_refl));
     try (rewrite (cast_right eq_refl eq_refl)); reflexivity.
+Qed.
+
+(*Now we test a mutually recursive constructor*)
+Definition a_mk_A2 (b: amutB) := make_constr mutAB_ctx triv_vars triv_syms 
+[(ts_mutA, [fs_mk_A1; fs_mk_A2]); (ts_mutB, [fs_mk_B])] None fs_mk_A2 eq_refl tt
+(*creating this map is annoying, need better method*)
+(fun x => match x with
+          | None =>  exist (fun l => length l = 0) nil eq_refl
+          | Some tt => 
+              exist (fun (l: list (amutAB (Some tt))) => length l = 1) [b] eq_refl
+          end).
+
+Lemma a_mk_A2_correct: forall (b: amutB),
+  a_mk_A2 b = mkW (finite 2) _ _ None (Right _ _ tt) (fun j x =>
+    match j, x with
+    | Some tt, _ => b
+    | None, y => match y with end
+    end).
+Proof.
+  intros. unfold a_mk_A2. simpl. unfold make_constr. simpl.
+  match goal with | |- mkW ?i ?a ?b ?x ?a1 ?f = mkW ?i ?a ?b ?x ?a2 ?f2 =>
+  assert (a1 = a2) end.
+  - f_equal. unfold eq_rect.
+    rewrite (all_funsym_refl (reflect_true _ _)). reflexivity.
+  - apply mkW_eq_aux with (Heq:=H).
+    intros j x.
+    destruct j.
+    + destruct f. reflexivity.
+    + destruct x.
 Qed.
 
 (*A simple model of our terms and formulas*)
