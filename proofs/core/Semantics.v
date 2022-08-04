@@ -1,5 +1,3 @@
-From mathcomp Require all_ssreflect.
-
 Require Import Types.
 Require Import Syntax.
 Require Import Typing.
@@ -24,8 +22,8 @@ Inductive arg_list (domain: sort -> Type) : list sort -> Type :=
 (*Some definitions on [arg_list]*)
 Fixpoint arg_length {domain: sort -> Type} {l: list sort} (a: arg_list domain l) : nat :=
   match a with
-  | AL_nil => 0
-  | AL_cons _ _ d tl => 1 + arg_length tl
+  | AL_nil _ => 0
+  | AL_cons _ _ _ d tl => 1 + arg_length tl
   end.
 
 Lemma arg_length_sorts: forall (domain: sort -> Type) (l: list sort) (a: arg_list domain l),
@@ -95,13 +93,8 @@ Proof.
   rewrite Hret, Hparams. reflexivity.
 Qed.
 
-Section FunsymLemma.
-
-Import all_ssreflect.
-
 (*One other lemma we need for casting*)
-Lemma adt_typesym_funsym: forall {a: typesym} {constrs: list funsym} {c: funsym} 
-  (s: list Types.sort),
+Lemma adt_typesym_funsym: forall {a: typesym} {constrs: list funsym} {c: funsym} (s: list sort),
 In (a, constrs) (datatypes_of_context gamma) ->
 In c constrs ->
 length (s_params c) = length s ->
@@ -113,34 +106,31 @@ Proof.
   destruct H2. rewrite H2. simpl. rewrite H3. f_equal.
   apply list_eq_ext'; rewrite !map_length; rewrite <- H3; subst. lia.
   intros n d Hn.
-  rewrite -> !(map_nth_inbound) with (d2:=d).
+  rewrite !(map_nth_inbound) with (d2:=d).
   2: rewrite map_length; lia.
-  rewrite -> (map_nth_inbound) with (d2:=s_int); try lia.
-  rewrite -> map_nth_inbound with (d2:=("x")%string); [|assumption]. 
+  rewrite (map_nth_inbound) with (d2:=s_int); try lia.
+  rewrite map_nth_inbound with (d2:=("x")%string); [|assumption]. 
   simpl.
-  assert (uniq (s_params c)). {
-    by destruct c; simpl in *. 
+  assert (NoDup (s_params c)). {
+    destruct c; simpl in *. rewrite reflect_iff. apply s_params_nodup.
+    apply nodup_NoDup.
   }
-  assert (forall n vars (sorts : list Types.sort) d1 d2 d3,
+  assert (forall n vars (sorts : list sort) d1 d2 d3,
     length vars = length sorts ->
-    uniq vars ->
-    (n < length vars) ->
-    ty_subst_fun vars (sorts_to_tys sorts) d1 (List.nth n vars d2) = List.nth n sorts d3). {
-      clear. intros n vars; revert n; induction vars; simpl; intros.
-      by rewrite ltn0 in H1.
+    NoDup vars ->
+    n < length vars ->
+    ty_subst_fun vars (sorts_to_tys sorts) d1 (nth n vars d2) = nth n sorts d3). {
+      clear. intros n vars; revert n; induction vars; simpl; intros; [lia|].
       destruct sorts as [|s1 stl]; inversion H; simpl.
       destruct n as [|n'].
-      - by rewrite String.eqb_refl.
-      - move: H0 => /andP[/inP Hnotin Huniq].
-        case: (String.eqb_spec (List.nth n' vars d2) a) => Ha.
-        + subst. exfalso. apply Hnotin.
-          apply nth_In. apply /ltP. by rewrite ltnS in H1.
-        + apply IHvars; auto.
+      - destruct (typevar_eq_dec a a); auto. contradiction.
+      - destruct (typevar_eq_dec (nth n' vars d2) a); auto.
+        + subst. inversion H0; subst.
+          exfalso. apply H5. apply nth_In. lia.
+        + apply IHvars; auto. inversion H0; subst; auto. lia.
   }
-  apply H5; auto; by apply /ltP.
+  apply H5; auto; try lia.
 Qed.
-
-End FunsymLemma.
 
 Record pre_interp := {
   domain: sort -> Type;
@@ -222,8 +212,8 @@ Defined.
 
 Definition substi (v: valuation i) (x: vsymbol) (ty: vty) (y: val v ty) : valuation i.
 apply (Build_valuation i (v_typevar i v)).
-intros m ty'. destruct (String.eqb_spec m x).
-destruct (vty_eqb_axiom ty ty').
+intros m ty'. destruct (vsymbol_eq_dec m x).
+destruct (vty_eq_dec ty ty').
 - subst. apply y.
 - (*trivial case*) apply (v_vars i v m ty').
 - apply (v_vars i v m ty').
@@ -236,7 +226,7 @@ Lemma subst_sort_eq: forall (s: sort) (v: typevar -> sort),
   s = v_subst v (sort_to_ty s).
 Proof.
   intros. unfold v_subst. destruct s.
-  induction srt; simpl; auto; try solve[apply sort_inj; reflexivity].
+  induction x; simpl; auto; try solve[apply sort_inj; reflexivity].
   - apply sort_inj; simpl. unfold is_sort in i0. simpl in i0. inversion i0.
   - rewrite Forall_forall in H. apply sort_inj; simpl.
     f_equal. apply list_eq_ext'; try rewrite !map_length; auto.
@@ -720,22 +710,22 @@ End InterpLemmas.
 
 (*Find element of arg_list corresponding to element of l*)
 (*This is very ugly due to dependent types and proof obligations*)
-Fixpoint mk_fun_arg {A: Type} (eqb: A -> A -> bool) 
+Fixpoint mk_fun_arg {A: Type} (eq_dec: forall (x y: A), {x = y} + { x <> y}) 
   (i: pre_interp) v_var
   (l: list A) (s: list sort) (a: arg_list (domain i) s) (x: A): 
     forall v, domain i (v_subst v_var v) :=
   match l, a with
-  | hd :: tl, AL_cons shd stl d t => 
+  | hd :: tl, AL_cons _ shd stl d t => 
     fun v =>
       (*Need to know that types are equal so we can cast the domain*)
-      match (vty_eqb_axiom (v_subst v_var v) shd) with
-      | ReflectT Heq => if eqb hd x then dom_cast _ (sort_inj (eq_sym Heq)) d
-          else mk_fun_arg eqb i v_var tl stl t x v
-      | _ => mk_fun_arg eqb i v_var tl stl t x v
+      match (vty_eq_dec (v_subst v_var v)) shd with
+      | left Heq => if eq_dec hd x then dom_cast _ (sort_inj (eq_sym Heq)) d
+          else mk_fun_arg eq_dec i v_var tl stl t x v
+      | _ => mk_fun_arg eq_dec i v_var tl stl t x v
       end
   (* Otherwise, return default element of domain *)
   | _, _ => fun v => match domain_ne i (v_subst v_var v) with
-                      | DE y => y
+                      | DE _ _ y => y
                       end
   end.
 
@@ -747,7 +737,7 @@ Definition make_val (i: pre_interp) (vs: list typevar) (s1 s2: list sort)
   (syms: list vsymbol) (a: arg_list (domain i) s2) : valuation i :=
   let v_var := (ty_subst_fun_s vs s1 s_int) in
   Build_valuation i v_var
-    (mk_fun_arg String.eqb i v_var syms s2 a).
+    (mk_fun_arg vsymbol_eq_dec i v_var syms s2 a).
 
 (* Interpretation, Satisfiability, Validity *)
 

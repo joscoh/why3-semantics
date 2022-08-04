@@ -142,6 +142,54 @@ with valid_formula: sig -> formula -> Prop :=
     Forall(fun x => pattern_has_type s (fst x) ty) ps ->
     Forall (fun x => valid_formula s (snd x)) ps ->
     valid_formula s (Fmatch tm ty ps).
+(*
+Notation "s '|-' t ':' ty" := (term_has_type s t ty) (at level 40).
+Notation "s '|-' f" := (valid_formula s f) (at level 40).*)
+
+Lemma bool_dec: forall {A: Type} (f: A -> bool),
+  (forall x : A, {is_true (f x)} + {~ is_true (f x)}).
+Proof.
+  intros A f x. destruct (f x) eqn : Hfx; auto.
+  right. intro C. inversion C.
+Qed.
+
+(* Let's try to build a typechecker *)
+Fixpoint typecheck_type (s:sig) (v: vty) : bool :=
+  match v with
+  | vty_int => true
+  | vty_real => true
+  | vty_var tv => false
+  | vty_cons ts vs => 
+      In_dec typesym_eq_dec ts (sig_t s) &&
+      Nat.eqb (length vs) (length (ts_args ts)) &&
+      (fix check_list (l: list vty) : bool :=
+      match l with
+      | nil => true
+      | x :: t => typecheck_type s x && check_list t
+      end) vs
+  end.
+
+(*We would like to prove this correct*)
+Lemma typecheck_type_correct: forall (s: sig) (v: vty),
+  valid_type s v <-> typecheck_type s v = true.
+Proof.
+  intros s. induction v; simpl; try solve[split; auto; constructor].
+  - split; intros Hty; inversion Hty.
+  - split; intros Hty.
+    + inversion Hty; subst. repeat(apply andb_true_intro; split).
+      simpl_sumbool. apply Nat.eqb_eq. auto.
+      clear Hty H2 H4. induction vs; simpl; auto; intros.
+      inversion H; subst. rewrite <- Forall_forall in H5. inversion H5; subst.
+      apply andb_true_intro; split; auto. apply H2; auto.
+      apply IHvs; auto. apply Forall_forall. auto.
+    + apply andb_true_iff in Hty; destruct Hty.
+      apply andb_true_iff in H0; destruct H0.
+      simpl_sumbool. apply Nat.eqb_eq in H2. constructor; auto.
+      clear i H2. induction vs; simpl; auto; intros. inversion H0.
+      apply andb_true_iff in H1; destruct H1.
+      inversion H; subst. destruct H0; subst; auto.
+      apply H5; auto.
+Qed.
 
 (*First, try this: TODO move*)
 Lemma fun_ty_inversion: forall s (f: funsym) (vs: list vty) (tms: list term) ty_ret,
@@ -462,16 +510,16 @@ Definition adt_inhab (a : alg_datatype) : Prop :=
   TODO: is it actually equivalent?*)
 
 Definition find_constrs (gamma:context) (t: typesym) : option (list funsym) :=
-  fold_right (fun x acc => if typesym_eqb (fst x) t then Some (snd x) else acc)
+  fold_right (fun x acc => if typesym_eq_dec (fst x) t then Some (snd x) else acc)
     None (datatypes_of_context gamma).
 
 Lemma find_constrs_none: forall gamma t,
   find_constrs gamma t = None <-> ~In t (map fst (datatypes_of_context gamma)).
 Proof.
   intros. unfold find_constrs. induction (datatypes_of_context gamma0); simpl; split; intros; auto.
-  - destruct (typesym_eqb_axiom (fst a) t); [inversion H |].
+  - destruct (typesym_eq_dec (fst a) t); [inversion H |].
     apply IHl in H. intro C. destruct C; auto.
-  - destruct (typesym_eqb_axiom (fst a) t).
+  - destruct (typesym_eq_dec (fst a) t).
     + exfalso. apply H. left; auto.
     + apply IHl. intro C. apply H. right; auto.
 Qed.
@@ -482,12 +530,12 @@ Lemma find_constrs_some: forall gamma t cs,
 Proof.
   unfold typesyms_of_context, find_constrs. intros.
   induction (datatypes_of_context gamma0); simpl; split; intros; auto; try (solve [inversion H0]).
-  - destruct (typesym_eqb_axiom (fst a) t); simpl; subst.
+  - destruct (typesym_eq_dec (fst a) t); simpl; subst.
     + inversion H0; subst. left. destruct a; reflexivity.
     + apply IHl in H0. right; auto. simpl in H. inversion H; auto.
   - destruct H0; subst; simpl.
-    + destruct (typesym_eqb_axiom t t); auto. contradiction.
-    + destruct (typesym_eqb_axiom (fst a) t); subst; simpl.
+    + destruct (typesym_eq_dec t t); auto. contradiction.
+    + destruct (typesym_eq_dec (fst a) t); subst; simpl.
       * simpl in H. inversion H; subst. exfalso. apply H3.
         rewrite in_map_iff. exists (fst a, cs). split; auto.
       * apply IHl; auto. inversion H; auto.
@@ -502,7 +550,7 @@ Fixpoint typesym_in (t: typesym) (v: vty) : bool :=
   | vty_int => false
   | vty_real => false
   | vty_var x => false
-  | vty_cons ts vs => typesym_eqb t ts || existsb (typesym_in t) vs
+  | vty_cons ts vs => typesym_eq_dec t ts || existsb (typesym_in t) vs
   end.
 
 Section PosTypes.
@@ -573,13 +621,8 @@ Definition adt_positive (l: list alg_datatype) : Prop :=
 
 End PosTypes.
 
-From mathcomp Require all_ssreflect.
-Set Bullet Behavior "Strict Subproofs".
-
 (* Recursive Functions and Predicates *)
 Section FunPredSym.
-
-Import all_ssreflect.
 
 Variable s: sig.
 Variable gamma: context.
@@ -624,36 +667,26 @@ Inductive valid_ind_form (p: predsym) : formula -> Prop :=
      
 Fixpoint valid_ind_form_dec (p: predsym) (f: formula) : bool :=
   match f with
-  | Fpred p' tys tms => (p == p') &&
-    (tys == (map vty_var (p_params p)))
-    && (size (p_args p) == size tms)
+  | Fpred p' tys tms => predsym_eq_dec p p' && list_eq_dec vty_eq_dec tys (map vty_var (p_params p))
+    && (length (p_args p) =? length tms)
   | Fquant Tforall x ty f' => valid_ind_form_dec p f'
   | Fbinop Timplies f1 f2 => valid_ind_form_dec p f2
   | Flet t x ty f' => valid_ind_form_dec p f'
   | _ => false
   end.
 
-Ltac refl_inv :=
-    apply ReflectF => C; inversion C; subst.
-
 Lemma valid_ind_form_equiv: forall p f,
   reflect (valid_ind_form p f) (valid_ind_form_dec p f).
-Proof. 
-  move=>p f.
-  induction f using formula_rec with (P:=(fun _ => True)) => //=; try by refl_inv.
-  - case: (p == p0) /eqP => /= Hp; last by refl_inv.
-    case: (l == [seq vty_var i | i <- p_params p]) /eqP => /= Hl; 
-      last by refl_inv.
-    case: (size (p_args p) == size l0) /eqP => /= Hsz; last by refl_inv.
-    apply ReflectT. subst. by constructor.
-  - case: q; last by refl_inv.
-    case: IHf => Hind; try by refl_inv.
-    apply ReflectT. by constructor.
-  - case: b; try by refl_inv.
-    case: IHf2 => IHf2; [|by refl_inv].
-    apply ReflectT. by constructor.
-  - case: IHf0 => IHf0; [| by refl_inv].
-    apply ReflectT. by constructor.
+Proof.
+  intros. apply iff_reflect. induction f using formula_ind with (P:=(fun _ => True)); auto; simpl;
+  (split; [intros C;inversion C; subst| intros]); auto; try solve[intuition]; try solve[constructor];
+  try match goal with | H: false = true |- _ => inversion H end.
+  - rewrite H3, Nat.eqb_refl, andb_true_r. apply andb_true_intro; split; simpl_sumbool. 
+  - repeat(apply andb_prop in H; destruct H). repeat simpl_sumbool. constructor; auto.
+    apply Nat.eqb_eq. auto.
+  - destruct q;[constructor; intuition |inversion H].
+  - destruct b; try inversion H. constructor. intuition.
+  - constructor. intuition.
 Qed.
 
 Definition indprop_valid_type (i: indpred_def) : Prop :=
@@ -668,7 +701,7 @@ Definition indprop_valid_type (i: indpred_def) : Prop :=
   we also need a version for terms*)
 Fixpoint predsym_in (p: predsym) (f: formula) {struct f}  : bool :=
   match f with
-  | Fpred ps tys tms => predsym_eqb p ps || existsb (predsym_in_term p) tms
+  | Fpred ps tys tms => predsym_eq_dec p ps || existsb (predsym_in_term p) tms
   | Fquant q x ty f' => predsym_in p f'
   | Feq ty t1 t2 => predsym_in_term p t1 || predsym_in_term p t2
   | Fbinop b f1 f2 => predsym_in p f1 || predsym_in p f2
@@ -777,8 +810,8 @@ Definition valid_context (s : sig) (gamma: context) :=
                            Forall (adt_inhab s gamma) adts /\
                            adt_positive gamma adts
     | recursive_def fs => Forall (funpred_def_valid_type s gamma) fs
-    | inductive_def inds => Forall (indprop_valid_type s gamma) inds /\
-                          indpred_positive inds
+    | inductive_def is => Forall (indprop_valid_type s gamma) is /\
+                          indpred_positive is
     end) gamma.
 
 Lemma wf_context_expand: forall s d gamma,
@@ -833,6 +866,5 @@ Proof.
   pose proof (adt_constr_ret_params _ _ _ H H1).
   destruct H2; destruct H3; split; congruence.
 Qed.
-
 
 End ValidContextLemmas.

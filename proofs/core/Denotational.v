@@ -11,9 +11,6 @@ Require Import Coq.Logic.ClassicalDescription.
 (*This gives us the following (we give a shorter name)*)
 Definition all_dec : forall (P : Prop), {P} + {~P} := excluded_middle_informative.
 
-Coercion proj_sumbool {A B: Prop} (H: {A} + {B}) : bool :=
-  if H then true else false.
-
 (*Can we interpret ADTs as Coq inductive types?*)
 
 Section Denot.
@@ -60,9 +57,9 @@ Proof.
   inversion H0.
   inversion H; subst. destruct args. inversion H1.
   simpl in H0. destruct H0; subst.
-  - exists v. split. left; auto. destruct (String.eqb_spec x x); auto. contradiction.
+  - exists v. split. left; auto. destruct (typevar_eq_dec x x); auto. contradiction.
   - inversion H1. specialize (IHparams H5 H0 args H3). destruct IHparams as [ty [Hin Hty]].
-    exists ty. split. right; auto. destruct (String.eqb_spec x a); auto.
+    exists ty. split. right; auto. destruct (typevar_eq_dec x a); auto.
     subst. contradiction.
 Qed. 
 
@@ -71,7 +68,7 @@ Lemma ty_subst_fun_notin: forall params args d (x: typevar),
   ty_subst_fun params args d x = d.
 Proof.
   intros. revert args. induction params; simpl; intros; auto.
-  destruct args; auto. destruct (String.eqb_spec x a); auto; subst.
+  destruct args; auto. destruct (typevar_eq_dec x a); auto; subst.
   exfalso. apply H. left; auto. apply IHparams. intro C. apply H. right; auto.
 Qed.
 
@@ -99,7 +96,6 @@ Qed.
   assume the wrong types for the arguments?
 
 *)
-Set Bullet Behavior "Strict Subproofs".
 Lemma funsym_subst_eq: forall (params: list typevar) (args: list vty) (v: typevar -> sort) (ty: vty),
   NoDup params ->
   length params = length args ->
@@ -109,15 +105,17 @@ Proof.
   intros. unfold ty_subst_s. unfold ty_subst.
   apply sort_inj. unfold v_subst; simpl.
   induction ty; simpl; auto.
-  - destruct (in_dec string_dec v0 params).
+  - destruct (in_dec typevar_eq_dec v0 params).
      + assert (Hin:=i0). 
        apply (ty_subst_fun_in params args vty_int v0 H) in i0; auto.
        destruct i0 as [ty [Hinty Hty]]. rewrite !Hty.
        apply (ty_subst_fun_in params (sorts_to_tys
        (map
           (fun t : vty =>
-          Sort _ (v_subst_aux_sort v t)) args)) vty_int v0 H) in Hin.
-        destruct Hin as [ty' [Hinty' Hty']]; simpl in *. rewrite Hty'.
+           exist (fun t0 : vty => is_sort t0) (v_subst_aux (fun x : typevar => v x) t) (v_subst_aux_sort v t))
+          args)) vty_int v0 H) in Hin.
+        destruct Hin as [ty' [Hinty' Hty']]; simpl in *.
+        unfold sort. (*annoying type equality thing*) rewrite Hty'.
         2 : {
           unfold sorts_to_tys. rewrite !map_length; auto.
         }
@@ -146,23 +144,18 @@ Proof.
   inversion H; auto.
 Qed.
 
-Section ParamsNoDup.
-
-Import all_ssreflect.
-
+(*TODO: move*)
 Lemma s_params_nodup: forall (f: funsym),
   NoDup (s_params f).
 Proof.
-  by move=> [f]/= p a r _ _ /Common.uniqP.
+  intros [f]; simpl. eapply reflect_iff. apply nodup_NoDup. apply s_params_nodup.
 Qed.
 
 Lemma p_params_nodup: forall (p: predsym),
   NoDup (p_params p).
 Proof.
-  by move=>[p]/= par a _ /Common.uniqP.
+  intros [p]; simpl. eapply reflect_iff. apply nodup_NoDup. apply p_params_nodup.
 Qed.
-
-End ParamsNoDup.
 
 (*We use the above to get the arg list (tentatively)*)
 Definition get_arg_list (v: valuation sigma gamma gamma_valid i)
@@ -177,7 +170,7 @@ Definition get_arg_list (v: valuation sigma gamma gamma_valid i)
 Proof.
   (*assume we have decidable typechecking - no axioms yet*)
   assert ({x: vty | term_has_type sigma (Tfun f vs ts) x}) by (apply typecheck_dec; assumption).
-  destruct H as [vty Hty'].
+  destruct X as [vty Hty'].
   apply fun_ty_inversion in Hty'. repeat match goal with | H: ?P /\ ?Q |- _ => destruct H end.
   clear H; clear H0; clear H4.
   unfold funsym_sigma_args.
@@ -472,7 +465,7 @@ Fixpoint term_rep (v: valuation sigma gamma gamma_valid i) (t: term) (ty: vty)
   *)
   (*For cases not handled yet*)
   | _ => match domain_ne sigma gamma gamma_valid i (val v ty) with
-          | DE x => fun _ => x
+          | DE _ _ x => fun _ => x
           end
   end) eq_refl
 
