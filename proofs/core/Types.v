@@ -341,9 +341,44 @@ Qed.
 
 
 (*Type variables of a list of types*)
+Definition type_vars_of_list (l: list vty) :=
+  big_union typevar_eq_dec type_vars l.
 
 (*Suppose that all type variables in a type are included in a list. Then,
   suppose we substitute vs for these variables. Then, the type variables of
   the resulting type are simply the type variables present in vs*)
+  (*
+Lemma ty_subst_all_vars: forall (vars: list typevar) (vs: list vty) (v: vty),
+  (sublist (type_vars v) vars) ->
+  sublist (type_vars (ty_subst vars vs v)) (type_vars_of_list vs).
+Proof.
+  intros. unfold type_vars_of_list. generalize dependent v.
+  induction vs; intros; simpl.
+  - unfold ty_subst. unfold ty_subst_fun.
+    destruct vars; simpl;
+    admit.
+  - destruct vars; simpl; unfold ty_subst; simpl.
+    admit.
 
+  
+  revert v. revert vs. induction v; simpl in *.
+  - intros. unfold sublist. intros; auto. destruct H0.
+  - intros. unfold sublist. intros; auto. destruct H0.
+  - intros. unfold ty_subst. simpl.
+    Print ty_subst_fun. admit.
+  - intros.
+    assert (forall x, In x (map (v_subst_aux (ty_subst_fun vars vs0 vty_int)) vs) ->
+      sublist (type_vars x) (big_union typevar_eq_dec type_vars vs0)). {
+      intros. rewrite in_map_iff in H1. destruct H1 as [v [Hv Hinv]]. subst.
+      rewrite Forall_forall in H0. 
+
+      }
+
+
+    assert (forall v, In v vs0 -> sublist (map (v_subst_aux (ty_subst_fun vars v vty_))))
+  
+  
+  intros. simpl.
+    unfold ty_subst_fun. simpl. 
+*)
 (*Suppose that all *)

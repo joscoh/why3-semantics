@@ -67,8 +67,8 @@ Record funsym :=
     s_args: list vty;
     s_ret: vty;
     (*Well-formed - all type variables appear in params*)
-    s_ret_wf: check_sublist (type_vars s_ret) s_params;
-    s_args_wf: check_args s_params s_args;
+    (*s_ret_wf: check_sublist (type_vars s_ret) s_params;
+    s_args_wf: check_args s_params s_args;*)
     s_params_nodup: nodupb typevar_eq_dec s_params
   }.
 
@@ -77,7 +77,7 @@ Record predsym :=
     p_name: string;
     p_params: list typevar;
     p_args : list vty;
-    p_args_wf: check_args p_params p_args;
+    (*p_args_wf: check_args p_params p_args;*)
     p_params_nodup: nodupb typevar_eq_dec p_params
   }.
 
@@ -90,7 +90,7 @@ Definition id_params : list typevar := [a].
 Definition id_args: list vty := [vty_var a].
 Definition id_ret: vty := vty_var a.
 
-Definition id_fs : funsym := Build_funsym id_name id_params id_args id_ret eq_refl eq_refl eq_refl.
+Definition id_fs : funsym := Build_funsym id_name id_params id_args id_ret (*eq_refl eq_refl*) eq_refl.
 
 End ID.
 
@@ -105,8 +105,8 @@ Lemma funsym_eq: forall (f1 f2: funsym),
 Proof.
   intros. destruct f1; destruct f2; simpl in *; subst.
   assert (s_params_nodup0 = s_params_nodup1) by apply bool_irrelevance; subst.
-  assert (s_ret_wf0=s_ret_wf1) by apply bool_irrelevance; subst.
-  assert (s_args_wf0=s_args_wf1) by apply bool_irrelevance; subst.
+  (*assert (s_ret_wf0=s_ret_wf1) by apply bool_irrelevance; subst.
+  assert (s_args_wf0=s_args_wf1) by apply bool_irrelevance; subst.*)
   reflexivity.
 Qed.
 
@@ -142,7 +142,7 @@ Lemma predsym_eq: forall (p1 p2: predsym),
 Proof.
   intros; destruct p1; destruct p2; simpl in *; subst.
   assert (p_params_nodup0=p_params_nodup1) by apply bool_irrelevance; subst.
-  assert (p_args_wf0=p_args_wf1) by apply bool_irrelevance; subst. reflexivity.
+  (*assert (p_args_wf0=p_args_wf1) by apply bool_irrelevance; subst.*) reflexivity.
 Qed.
 
 Definition predsym_eqb (p1 p2: predsym) : bool :=

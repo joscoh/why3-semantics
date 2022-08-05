@@ -336,6 +336,99 @@ Proof.
   - intros. destruct x. apply recs.
 Defined. 
 
+(* Handle nested types*)
+
+(*We handle nested recursive types (ex: data rose = Node (list rose)) by
+  transforming this into a mutually recursive type and using the above.
+  We need to generate ismorphic ADTs and maps between them*)
+
+Definition typesym_in (ts: typesym) (v: vty) :=
+  match v with
+  | vty_cons ts' vs => typesym_eqb ts ts' || existsb (typesym_in ts) vs
+  | _ => false
+  end.
+Print typesym.
+
+(*Really, we want to generate a unique ID for each new typesym (what if someone
+names their type int or something and screws everything up?)*)
+
+Definition new_ts (ts: typesym) (vs: list vty) : typesym.
+Admitted.
+
+Definition tuple_eq_dec {A B: Type} (eq1: forall (x y : A), {x = y} + {x <> y})
+(eq2: forall (x y : B), {x = y} + {x <> y}) :
+(forall (x y : A * B), {x = y} + {x <> y}).
+Proof.
+  intros. destruct x; destruct y.
+  destruct (eq1 a a0).
+  - rewrite e. destruct (eq2 b b0).
+    + rewrite e0. left. reflexivity.
+    + right. intro C; inversion C; contradiction.
+  - right; intro C; inversion C; contradiction.
+Defined.
+
+(*TODO: move*)
+Definition adts_of_context (gamma: context) : list (list (typesym * list funsym)) :=
+  fold_right (fun x acc => match x with
+  | datatype_def algs => 
+    map (fun a => match a with |alg_def ts constrs => (ts, constrs) end) algs :: acc
+  | _ => acc
+  end) nil gamma.
+
+(*Get the entire mutually recursive type a typesym is associated with*)
+Definition find_mut_adt (gamma: context) (t: typesym) : 
+  option (list (typesym * list funsym)) :=
+  fold_right (fun x acc =>
+    if in_dec typesym_eq_dec t (map fst x) then Some x else acc
+    ) None (adts_of_context gamma).
+
+(*Specialize the type (ex: go from list 'a -> list_int) *)
+(*How can we do this for mutually recursive types?
+  ex: what if we had the following?*)
+(*Damn it, need params*)
+Lemma NoDup_nodupb: forall {A: Type} (eq_dec: forall (x y : A), {x = y} + {x <> y})
+  (l: list A), NoDup l -> nodupb eq_dec l.
+Proof.
+  intros. eapply (reflect_iff) in H. apply H. apply nodup_NoDup.
+Qed.
+
+
+(*Want to substitute *)
+Definition funsym_subst (tyvars: list typevar) (vs: list vty) (f: funsym) : funsym :=
+  Build_funsym (s_name f) (big_union typevar_eq_dec type_vars vs)
+  (ty_subst_list (s_params f) vs (s_args f))
+  (ty_subst (s_params f) vs (s_ret f))
+    (NoDup_nodupb typevar_eq_dec _ (big_union_nodup _ _ _)) .
+
+Definition adt_subst (ts: typesym) (constrs: list funsym) (vs: list vty) : list funsym :=
+  map (funsym_subst (ts_args ts) vs) constrs.
+
+Definition get_rec_isos_aux (l: list typesym) (args: list vty) : list (vty * typesym * list constrs) :=
+  fold_right (fun x acc => match x with
+  | vty_cons ts vs =>
+      match (find_mut_adt gamma ts) with
+      | None => acc
+      | Some adt => 
+        if negb(in_bool typesym_eq_dec ts l) &&
+            existsb (fun t => existsb (fun v => typesym_in t v) vs) l then
+            (*hmm this is more annoying than i thought - what args to give to mut rec?*)
+            union _ (map )
+            union (tuple_eq_dec vty_eq_dec typesym_eq_dec) 
+              [(x, new_ts, ] acc else acc
+  | _ =>  acc
+  end) nil args.
+
+Definition get_rec_isos_constr (l: list typesym) (constr: funsym) :=
+  get_rec_isos_aux l  (s_args constr).
+
+(*Step 2: generate the new ADTs (with no substitution)*)
+Definition gen_new_adt (l: list typesym) (args: list vty) : list (vty * )
+
+  
+  )
+
+*)
+
 End ADTConstr.
 
 (** Testing **)
@@ -422,7 +515,7 @@ Section Tests.
 (* Utilities for building tests *)
 
 Notation mk_fs name params args ret_ts ret_args := 
-  (Build_funsym name params args (vty_cons ret_ts (map vty_var ret_args)) eq_refl eq_refl eq_refl).
+  (Build_funsym name params args (vty_cons ret_ts (map vty_var ret_args)) eq_refl).
 
 Definition triv_vars : typevar -> Set := fun _ => empty.
 Definition triv_syms: typesym -> list vty -> Set := fun _ _ => empty.
