@@ -336,8 +336,170 @@ Proof.
   - intros. destruct x. apply recs.
 Defined. 
 
-(* Handle nested types*)
+Require Import Coq.Program.Equality.
+Require Import Coq.Logic.Eqdep_dec.
 
+Lemma all_funsym_refl: forall {f: funsym} (H: f = f),
+  H = eq_refl.
+Proof.
+  intros. apply UIP_dec. intros. eapply reflect_dec. apply funsym_eqb_spec.
+Qed.
+
+Lemma isT : is_true true.
+Proof. auto. Qed.
+
+Lemma in_bool_dec: forall {A: Type} (eq_dec: forall (x y: A), {x = y} + {x <> y}) x l,
+  proj_sumbool _  _ (in_dec eq_dec x l) = in_bool eq_dec x l.
+Proof.
+  intros. induction l; simpl; auto.
+  destruct (eq_dec a x); subst; simpl.
+  destruct (eq_dec x x); auto. contradiction.
+  destruct (eq_dec x a); auto; subst; try contradiction; simpl.
+  destruct (in_dec eq_dec x l); simpl; auto.
+Qed.
+
+(*Lemma list_eq_dec_cons: forall {A: Type} (eq_dec: forall (x y : A), { x = y} + { x <> y})
+  (x: A) (l: list A)*)
+
+(*TODO: move - this is very ssreflect-like - also very ugly proof*)
+Lemma nodupb_cons {A: Type} (eq_dec: forall (x y : A), {x = y} + {x <> y}) 
+  (x: A) (l: list A) :
+  nodupb eq_dec (x :: l) = negb (in_bool eq_dec x l) && nodupb eq_dec l.
+Proof.
+  intros.
+  destruct (nodup_NoDup eq_dec (x :: l)).
+  - inversion n; subst.
+    rewrite <- in_bool_dec. destruct (in_dec eq_dec x l); simpl; auto; try contradiction.
+    destruct (nodup_NoDup eq_dec l); auto. contradiction.
+  - rewrite <- in_bool_dec. destruct (in_dec eq_dec x l); auto; simpl.
+    destruct (nodup_NoDup eq_dec l); auto. exfalso. apply n. constructor; auto.
+Qed.
+
+Definition get_funsym_base (ts: typesym) 
+  (l: list funsym) (Hl: l <> nil) (Huniq: nodupb funsym_eq_dec l) (b: build_base l) :
+  { f: funsym & {Hin: in_bool funsym_eq_dec f l & 
+    {b1: build_constr_base f | b = get_constr_type ts l f Hin b1}}}.
+Proof.
+  induction l; simpl in b.
+  - contradiction.
+  - destruct l.
+    + apply (existT _ a). simpl.
+      destruct (funsym_eq_dec a a); simpl; auto. 2: contradiction.
+      unfold eq_rect.
+      rewrite (all_funsym_refl e).
+      apply (existT _ isT).
+      apply (exist _ b). reflexivity.
+    + destruct b.
+      * apply (existT _ a).
+        simpl. destruct (funsym_eq_dec a a); [|contradiction].
+        simpl. unfold eq_rect. rewrite (all_funsym_refl e).
+        apply (existT _ isT).
+        apply (exist _ b). reflexivity.
+      * simpl. rewrite nodupb_cons in Huniq.
+        assert (Hfl: f :: l <> []) by (intro C; inversion C).
+        specialize (IHl Hfl).
+        apply andb_true_iff in Huniq. destruct Huniq as [Hnotin Huniq].
+        specialize (IHl Huniq b).
+        destruct IHl as [f' Hf']. apply (existT _ f').
+        destruct (funsym_eq_dec f' a).
+        -- subst. destruct Hf'.
+          rewrite x in Hnotin. inversion Hnotin.
+        -- simpl. destruct Hf' as [Hin [b1 Hb]].
+          apply (existT _ Hin). apply (exist _ b1).
+          rewrite Hb. reflexivity.
+Qed.
+
+Lemma fin_nth_in: forall {A: Type} (l: list A) (n: finite (length l)),
+  In (fin_nth l n) l.
+Proof.
+  intros. induction l; auto.
+  - inversion n.
+  - simpl in n. destruct l; simpl in *.
+    left. reflexivity.
+    destruct n.
+    + specialize (IHl y). right. apply IHl.
+    + left. reflexivity.
+Qed. 
+
+Require Import Coq.Logic.FunctionalExtensionality.
+ 
+(*Can we prove this?*)
+Lemma all_constrs: forall (l: list (typesym * list funsym)) (n: finite (length l))
+  (Hnontriv: forall constrs, In constrs (map snd l) -> constrs <> nil)
+  (Huniq: forall constrs, In constrs (map snd l) -> nodupb funsym_eq_dec constrs)
+  (x: mk_adts l n),
+  {f: funsym & {t: in_bool funsym_eq_dec f (snd (fin_nth l n)) * build_constr_base f *
+     forall (x: finite (length l)), blist (mk_adts l x) 
+    (count_rec_occ (fst (fin_nth l x)) f) | 
+      x = make_constr l n f (fst (fst t)) (snd (fst t)) (snd t)}}.
+Proof.
+  intros. unfold mk_adts in x. dependent destruction x.
+  unfold make_constr.
+  set (constrs:= (fin_nth l i)) in *.
+  assert (Hl: (snd constrs) <> nil). {
+    apply Hnontriv. rewrite in_map_iff. exists constrs. split; auto.
+    apply fin_nth_in.
+  }
+  assert (Huniqc: nodupb funsym_eq_dec (snd constrs)). {
+    apply Huniq. rewrite in_map_iff. exists constrs. split; auto.
+    subst constrs. apply fin_nth_in.
+  }
+  pose proof (get_funsym_base (fst constrs) (snd constrs) Hl Huniqc a).
+  destruct X as [f' [Hin [b1 Ha]]].
+  apply (existT _ f').
+  (*TODO (START): a way to transform f into the form we want of the map.
+    Then we will see if we will need axioms (hopefully not)*)
+  (*Worst comes to worse, we can use a relation for the main semantics
+    and a function for the denotational ones, but that is annoying for sure*)
+  eapply exist with (x:=(Hin, b1, (fun x => f x))).
+  simpl. subst. f_equal.
+  (*for the moment*)
+  repeat (apply functional_extensionality_dep; intros).
+  unfold eq_rect.
+
+  Check build_rec_get_constr_type.
+  Check finmap_list.
+  Check count_rec_occ.
+  (*So our goal will have to involve f*)
+  destruct (build_rec_get_constr_type (fst constrs) (fst (fin_nth l x)) (snd constrs) f' Hin b1).
+  Check finmap_list.
+  Check build_rec_get_constr_type.
+  intros.
+  reflexivity.
+  
+  rewrite Ha.
+  apply (exist _ (Hin, _)).
+
+
+  remember (fin_nth l i) as constrs.
+  
+  simpl.
+  
+  Print build_base.
+
+
+  exists (f: funsym) (Hin: in_bool funsym_eq_dec f (snd (fin_nth l n)))
+    (c: build_constr_base f)
+    (recs: forall (x: finite (length l)), blist (mk_adts l x) 
+    (count_rec_occ (fst (fin_nth l x)) f)),
+    x = make_constr l n f Hin c recs.
+Proof.
+  intros. unfold mk_adts in x. inversion x; subst.
+  exists (snd (fin_nth l n)).
+
+
+
+(l: list (typesym * list funsym)) : finite (length l) -> Set :=
+
+(l: list (typesym * list funsym)) (n: finite (length l))
+  (f: funsym)
+  (Hin: in_bool funsym_eq_dec f (snd (fin_nth l n)))
+  (c: build_constr_base f)
+  (recs: forall (x: finite (length l)), blist (mk_adts l x) 
+    (count_rec_occ (fst (fin_nth l x)) f)) :
+*)
+(* Handle nested types*)
+(*
 (*We handle nested recursive types (ex: data rose = Node (list rose)) by
   transforming this into a mutually recursive type and using the above.
   We need to generate ismorphic ADTs and maps between them*)
@@ -403,7 +565,10 @@ Definition funsym_subst (tyvars: list typevar) (vs: list vty) (f: funsym) : funs
 Definition adt_subst (ts: typesym) (constrs: list funsym) (vs: list vty) : list funsym :=
   map (funsym_subst (ts_args ts) vs) constrs.
 
-Definition get_rec_isos_aux (l: list typesym) (args: list vty) : list (vty * typesym * list constrs) :=
+(*Problem: we need to do multiple substitutions - or we need something like longest
+  prefix match - ex: list (list (X))*)
+
+Definition get_rec_isos_aux (l: list typesym) (args: list vty) : list (vty * typesym * list funsym) :=
   fold_right (fun x acc => match x with
   | vty_cons ts vs =>
       match (find_mut_adt gamma ts) with
@@ -527,11 +692,7 @@ Notation triv_constr := (make_constr_simple triv_context triv_vars triv_syms).
 Definition emp_fun {A: Type} : empty -> A := fun x =>
 match x with end.
 
-Lemma all_funsym_refl: forall {f: funsym} (H: f = f),
-  H = eq_refl.
-Proof.
-  intros. apply UIP_dec. intros. eapply reflect_dec. apply funsym_eqb_spec.
-Qed.
+
 
 (*Unit*)
 Definition ts_unit : typesym := mk_ts "unit" nil eq_refl.
@@ -558,7 +719,7 @@ Lemma att_correct: att = mkW (finite 1) _ _ tt tt (fun _ => emp_fun).
 Proof.
   unfold att. prove_constr.
   destruct b.
-Qed. 
+Qed.
 
 Definition ta : typevar := "a"%string.
 Definition tb : typevar := "b"%string.
@@ -594,6 +755,36 @@ Lemma atrue_correct: atrue = mkW (finite 1) _ _ tt (Left _ _ tt) (fun _ => emp_f
 Proof. 
   unfold atrue. prove_constr. destruct b.
 Qed.
+
+Require Import Coq.Program.Equality.
+
+Lemma all_w: forall (I: Set) (A: I -> Set) (B: forall i : I, I -> A i -> Set) (i: I)
+  (x: W I A B i),
+  exists (a: A i) (f: forall (j: I), B i j a -> W I A B j),
+    x = mkW I A B i a f.
+Proof.
+  intros. dependent destruction x. exists a. exists f. reflexivity.
+Qed.
+
+Lemma all_bool: forall (x: abool), x = atrue \/ x = afalse.
+Proof.
+  intros. unfold abool in x. unfold triv_adt in x.
+  unfold mk_adts in x. dependent destruction x. simpl in *.
+  destruct a.
+  - left. rewrite atrue_correct. simpl.
+    unfold build_constr_base. simpl. unfold build_vty_base. simpl.
+    unfold big_sprod. simpl.
+    (*ok**)
+    reflexivity.
+    reflexivity.
+    reflexivity. unfold atrue. unfold triv_constr. unfold make_constr. simpl.
+
+
+    destruct x.
+
+  subst.
+  
+  simpl in x.
 
 (*Days of the week*)
 Definition ts_week : typesym := mk_ts "days" nil eq_refl.
