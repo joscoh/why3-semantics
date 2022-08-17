@@ -60,7 +60,7 @@ Proof.
   intros. apply (reflect_iff _ _ (check_sublist_correct l1 l2)), H.
 Qed.
 
-Record funsym :=
+Record funsym : Set :=
   {
     s_name : string;
     s_params : list typevar;
@@ -72,7 +72,7 @@ Record funsym :=
     s_params_nodup: nodupb typevar_eq_dec s_params
   }.
 
-Record predsym :=
+Record predsym : Set :=
   {
     p_name: string;
     p_params: list typevar;
@@ -167,42 +167,41 @@ End SymEqDec.
 
 (** Syntax - Terms and Formulas **)
 
-Inductive constant : Type :=
+Inductive constant : Set :=
   | ConstInt : Z -> constant
   | ConstReal : R -> constant
   | ConstStr : string -> constant.
 
-Inductive quant : Type :=
+Inductive quant : Set :=
     | Tforall
     | Texists.
 
-Inductive binop : Type :=
+Inductive binop : Set :=
     | Tand
     | Tor
     | Timplies
     | Tiff.
 
-Definition vsymbol := string.
+Definition vsymbol : Set := string.
 
 Definition vsymbol_eq_dec : forall (x y: vsymbol), {x = y} + {x <> y} := string_dec.
 
 Unset Elimination Schemes.
-Inductive pattern : Type :=
+Inductive pattern : Set :=
   | Pvar : vsymbol -> vty -> pattern
   | Pconstr : funsym -> list vty -> list pattern -> pattern
   | Pwild : pattern
   | Por: pattern -> pattern -> pattern
   | Pbind: pattern -> vsymbol -> vty -> pattern.
 
-(*No case/match at the moment*)
-Inductive term : Type :=
+Inductive term : Set :=
   | Tconst: constant -> term
   | Tvar : vsymbol -> vty -> term
   | Tfun: funsym -> list vty -> list term -> term
   | Tlet: term -> vsymbol -> vty -> term -> term
   | Tif: formula -> term -> term -> term
   | Tmatch: term -> vty -> list (pattern * term) -> term
-with formula : Type :=
+with formula : Set :=
   | Fpred: predsym -> list vty -> list term -> formula
   | Fquant: quant -> vsymbol -> vty -> formula -> formula
   | Feq: vty -> term -> term -> formula
@@ -300,17 +299,17 @@ End FreeVars.
 
 (*Definitions: functions, predicates, algebraic data types, inductive predicates*)
 
-Inductive alg_datatype : Type :=
+Inductive alg_datatype : Set :=
   | alg_def: typesym -> list funsym -> alg_datatype.
 
-Inductive funpred_def : Type :=
+Inductive funpred_def : Set :=
   | fun_def: funsym -> list vsymbol -> term -> funpred_def
   | pred_def: predsym -> list vsymbol -> formula -> funpred_def.
 
-Inductive indpred_def : Type :=
+Inductive indpred_def : Set :=
   | ind_def: predsym -> list formula -> indpred_def.
 
-Inductive def : Type :=
+Inductive def : Set :=
   | datatype_def : list alg_datatype -> def (*for mutual recursion*)
   | recursive_def: list funpred_def -> def
   | inductive_def : list indpred_def -> def.

@@ -6,7 +6,7 @@ Require Export Lia.
 Require Export Common.
 
 (*Type variable (ex: a)*)
-Definition typevar : Type := string. 
+Definition typevar : Set := string. 
 
 Definition typevar_eqb : typevar -> typevar -> bool :=
   String.eqb.
@@ -15,7 +15,7 @@ Definition typevar_eq_dec : forall (t1 t2: typevar),
   {t1 = t2} + {t1 <> t2} := string_dec.
 
 (*Type symbol (ex: list a)*)
-Record typesym : Type := mk_ts {
+Record typesym : Set := mk_ts {
   ts_name : string;
   ts_args : list typevar;
   ts_args_uniq : nodupb typevar_eq_dec ts_args
@@ -107,7 +107,7 @@ Definition ts_unit : typesym := mk_ts "unit" nil eq_refl.
 
 (*Value types*)
 Unset Elimination Schemes.
-Inductive vty : Type :=
+Inductive vty : Set :=
   | vty_int : vty
   | vty_real : vty
   | vty_var: typevar -> vty
@@ -217,7 +217,7 @@ Qed.
 Definition is_sort (t: vty) : bool :=
   null (type_vars t).
 
-Definition sort : Type := {t: vty | is_sort t}.
+Definition sort : Set := {t: vty | is_sort t}.
 
 Coercion sort_to_ty (s: sort) : vty := @proj1_sig _ _ s.
 
