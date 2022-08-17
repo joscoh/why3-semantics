@@ -269,6 +269,7 @@ Defined.
   of recursive instances in f*)
 (*We need this to be Defined so that we can simplify in [make_constr] without
   axioms*)
+  
 Definition build_rec_get_constr_type: forall (ts ts': typesym) (constrs: list funsym) 
   (f: funsym) (Hin: in_bool funsym_eq_dec f constrs)
   (c: build_constr_base f) ,
@@ -309,6 +310,7 @@ Defined.
   the fact that this is equivalent to just the number of recursive occurrences of
   this index, and constructs a [finmap_list]; ie: applying the nth argument to the
   nth recursive call.*)
+
 Definition make_constr (l: list (typesym * list funsym)) (n: finite (length l))
   (f: funsym)
   (Hin: in_bool funsym_eq_dec f (snd (fin_nth l n)))
@@ -322,6 +324,29 @@ Proof.
   rewrite (build_rec_get_constr_type (fst(fin_nth l n)) (fst(fin_nth l j)) _ f Hin c) in H.
   specialize (recs j). apply (finmap_list _ recs H).
 Defined.
+
+  (*New plan: use ssreflect fintypes, prove that build_rec gives a fintype,
+    then, just define *)
+
+
+
+
+Definition build_rec_get_constr_type: forall (ts ts': typesym) (constrs: list funsym) 
+  (f: funsym) (Hin: in_bool funsym_eq_dec f constrs)
+  (c: build_constr_base f) ,
+  build_rec ts' constrs (get_constr_type ts constrs f Hin c) =
+  finite (count_rec_occ ts' f).
+Proof.
+  intros. induction constrs.
+  - inversion Hin.
+  - simpl. destruct constrs; simpl in Hin; destruct (funsym_eq_dec f a).
+    + rewrite e. reflexivity.
+    + inversion Hin.
+    + rewrite e. reflexivity.
+    + apply IHconstrs.
+Defined.
+
+
 
 (*For non-mutually-recursive-types *)
 Definition make_constr_simple (ts: typesym) (constrs: list funsym) (f: funsym)
@@ -422,7 +447,304 @@ Proof.
 Qed. 
 
 Require Import Coq.Logic.FunctionalExtensionality.
- 
+
+(*Easiest: enumerate all finite elements*)
+Definition all_fins (m: nat) : list (finite m).
+induction m as [| m' IHm'].
+- apply nil.
+- destruct m' as [| m''].
+  + apply [tt].
+  + apply (map Some IHm' ++ [None]).
+Defined.
+
+Lemma all_fins_all: forall (m: nat) (x: finite m),
+  In x (all_fins m).
+Proof.
+  intros. induction m; simpl.
+  - inversion x.
+  - destruct m.
+    + destruct x. left; auto.
+    + simpl in x. apply in_or_app. destruct x.
+      * left. rewrite in_map_iff. specialize (IHm y).
+        exists y. split; auto.
+      * right. left. auto.
+Qed.
+
+Lemma NoDup_map_inj: forall {A B: Type} (f: A -> B)
+  (inj: forall x y, f x = f y -> x = y)
+  (l: list A),
+  NoDup l ->
+  NoDup (map f l).
+Proof.
+  intros; induction l; simpl. constructor.
+  inversion H; subst.
+  constructor. rewrite in_map_iff. intro C.
+  destruct C as [x [Hx Hinx]]. apply inj in Hx. subst.
+  contradiction.
+  auto.
+Qed.
+
+Lemma app_cons: forall {A: Type} (x: A) (l: list A),
+  [x] ++ l = x :: l.
+Proof.
+  intros. reflexivity.
+Qed.
+
+Lemma all_fins_nodup: forall (m: nat),
+  NoDup (all_fins m).
+Proof.
+  intros; induction m; simpl.
+  - constructor.
+  - destruct m.
+    + constructor; auto. constructor.
+    + rewrite <- rev_involutive, rev_app_distr.
+      apply NoDup_rev. simpl rev at 1.
+      rewrite app_cons. apply NoDup_cons.
+      * rewrite <- in_rev,  in_map_iff. intro C.
+        destruct C as [x [Hx Hinx]]. inversion Hx.
+      * apply NoDup_rev. apply NoDup_map_inj; auto.
+        intros x y Hxy. inversion Hxy. auto.
+Qed.
+
+Lemma all_fins_length: forall (m: nat),
+  length (all_fins m) = m.
+Proof.
+  induction m; simpl; auto.
+  destruct m.
+  - reflexivity.
+  - rewrite app_length, map_length. simpl length at 2.
+    rewrite Nat.add_1_r. auto.
+Qed.
+
+Definition make_blist {A: Type} (m: nat) (l: list A) (H: length l = m) : blist A m :=
+  exist _ l H.
+
+Lemma cast_fin {n m: nat} (Hnm: m = n) (x: finite n) : finite m.
+rewrite Hnm. apply x.
+Defined.
+
+Lemma cast_fin_none: forall {n m: nat} (Hnm: S (S m) = S (S n)),
+  cast_fin Hnm None = None.
+Proof.
+  intros. unfold cast_fin. unfold eq_rec_r, eq_rec, eq_rect, eq_sym.
+  assert (n = m). {
+    inversion Hnm. reflexivity.
+  } subst. assert (Hnm = eq_refl) by (apply UIP_dec, Nat.eq_dec).
+  rewrite H. reflexivity.
+Qed.
+
+Print nth.
+
+Lemma not_ltbnn: forall n, ~(n <? n).
+Proof.
+  intros. rewrite Nat.ltb_irrefl. intro C; inversion C.
+Qed.
+
+Lemma not_ltbsz: forall n, ~(S n <? 0).
+Proof.
+  intros. intro C. inversion C.
+Qed.
+
+Lemma ltb_inj: forall n m, (S n <? S m) = (n <? m).
+Proof.
+  intros. destruct (Nat.ltb_spec0 n m); simpl;
+  destruct (Nat.ltb_spec0 (S n) (S m)); simpl; auto; lia.
+Qed.
+
+Lemma ltb_inj': forall n m, (S n <? S m) -> (n <? m).
+Proof.
+  intros n m. rewrite ltb_inj. auto.
+Qed.
+
+Lemma ltb_trans: forall {n m p}, (n <? m) -> (m <? p) -> (n <? p).
+Proof.
+  intros. destruct (Nat.ltb_spec0 n m); simpl; try inversion H.
+  destruct (Nat.ltb_spec0 m p); simpl; try inversion H0.
+  destruct (Nat.ltb_spec0 n p); simpl; auto. lia.
+Qed.
+
+Lemma ltbs: forall n, (n <? S n).
+Proof.
+  intros. destruct (Nat.ltb_spec0 n (S n)); auto; lia.
+Qed.
+
+Definition nth_inb {A: Type} (n: nat) (l: list A) (Hn: n <? length l) : A.
+Proof.
+  generalize dependent l; induction n; intros.
+  - destruct l.
+    + exfalso. apply (not_ltbnn 0 Hn).
+    + apply a.
+  - destruct l.
+    + exfalso. apply (not_ltbsz n Hn).
+    + apply (IHn l (ltb_inj' n (length l) Hn)).
+Defined.
+(*
+Definition nth' {A: Type} (n: nat) (l: list A) (default: A) : A.
+Proof.
+  revert l. induction n; intros.
+  - destruct l.
+    + apply default.
+    + apply a.
+  - destruct l.
+    + apply default.
+    + apply IHn. apply l.
+Defined.
+
+Lemma nth_equiv: forall {A: Type} (n: nat) (l: list A) (d: A),
+  nth n l d = nth' n l d.
+Proof.
+  intros. revert l. induction n; intros; destruct l; simpl; auto.
+Qed.*)
+
+
+
+Print nth.
+
+(*First, make proof generic*)
+Lemma nth_inb_map: forall {A B: Type} (f: A -> B) (l: list A) (n: nat) 
+  (Hn1: n <? length l) (Hn2: n <? length (map f l)),
+  nth_inb n (map f l) Hn2 = f (nth_inb n l Hn1).
+Proof.
+  intros A B f l n. revert l. induction n; intros; destruct l; simpl.
+  - inversion Hn1.
+  - reflexivity.
+  - inversion Hn1.
+  - erewrite <- IHn. reflexivity.
+Qed.
+
+Definition nat_of_fin {m: nat} (x: finite m) : nat.
+induction m.
+- inversion x.
+- destruct m.
+  + simpl in x. apply 0.
+  + destruct x.
+    * apply IHm. apply f.
+    * apply (S m).
+Defined.
+
+Lemma nat_of_fin_range: forall {m: nat} (x: finite m),
+  nat_of_fin x < m.
+Proof.
+  intros. induction m.
+  - inversion x.
+  - destruct m.
+    + simpl; lia.
+    + destruct x.
+      * assert (@nat_of_fin (S (S m)) (@Some (finite (S m)) f) = nat_of_fin f) by reflexivity.
+        specialize (IHm f). lia.
+      * simpl. lia.
+Qed.
+
+Lemma nat_of_fin_inj: forall {m: nat} (x y: finite m),
+  nat_of_fin x = nat_of_fin y ->
+  x = y.
+Proof.
+  intros. induction m.
+  - inversion x.
+  - destruct m.
+    + destruct x; destruct y. reflexivity.
+    + destruct x; destruct y;
+      try (replace (@nat_of_fin (S (S m)) (@None (finite (S m)))) 
+        with (S m) in H by reflexivity);
+      try (replace (@nat_of_fin (S (S m)) (@Some (finite (S m)) f)) 
+        with (nat_of_fin f) in H by reflexivity); auto.
+      * f_equal. apply IHm. auto.
+      * pose proof (nat_of_fin_range f). lia.
+      * pose proof (nat_of_fin_range f). lia.
+Qed.
+
+Lemma nat_of_fin_surj: forall {n m: nat} (Hn: n < m),
+  exists (x: finite m), nat_of_fin x = n.
+Proof.
+  intros. induction m.
+  - lia.
+  - destruct m.
+    + assert (n = 0) by lia; subst. exists tt. reflexivity.
+    + assert (n = S m \/ n < S m) by lia.
+      destruct H.
+      * subst. exists None. reflexivity.
+      * apply IHm in H. destruct H as [x Hx]. exists (Some x). apply Hx.
+Qed.
+
+(*TODO: need inverse (with ssreflect we can get for free but whatever)*)
+
+(*TODO: is this the way to do with IH?*)
+Lemma fin_blist_proof: forall {m: nat} {A: Type} (b: blist A m) (k: finite m),
+  nat_of_fin k <? length (proj1_sig b).
+Proof.
+  intros. apply Nat.ltb_lt. 
+  replace (length (proj1_sig b)) with m.
+  apply nat_of_fin_range. destruct b. simpl. auto.
+Qed.
+
+(*TODO: define finmap list differently so this lemma isnt needed*)
+Lemma finmap_list_nth: forall {m: nat} {A: Type} (b: blist A m) (k: finite m),
+  finmap_list _ b k = nth_inb (nat_of_fin k) (proj1_sig b) (fin_blist_proof b k).
+Proof.
+  intros. generalize dependent (fin_blist_proof b k).
+  induction m; intros.
+  - destruct k.
+Admitted. 
+
+(*Many lemmas are way easier just using "nth", as long as we have a 
+  default element*)
+Lemma nth_inb_nth: forall {A: Type} (n: nat) (l: list A) (Hn: n <? length l) (x: A),
+  nth_inb n l Hn = nth n l x.
+Proof.
+  intros A n. induction n; intros; destruct l; simpl; auto; inversion Hn.
+Qed.
+
+Definition fin_default (m: nat) : finite (S m) :=
+  match m with
+  | O => tt
+  | _ => None
+  end.
+
+Lemma nth_all_fins: forall (m: nat) (k: finite m) 
+(H: nat_of_fin k <? length (all_fins m)),
+nth_inb (nat_of_fin k) (all_fins m) H = k.
+Proof.
+  intros. destruct m.
+  - inversion k.
+  - rewrite nth_inb_nth with (x:=fin_default m).
+    generalize dependent (fin_default m).
+    induction (S m) as [| m' IHm'].
+    + inversion k.
+    + destruct m' as [| m''].
+      * simpl. destruct k. reflexivity.
+      * intros default.
+      replace (all_fins (S (S m''))) with (map Some (all_fins (S m'')) ++ [None]) by reflexivity.
+        destruct k.
+        -- replace (@nat_of_fin (S (S m'')) (Some f)) with (nat_of_fin f) by reflexivity.
+          rewrite app_nth1 by 
+            (rewrite map_length, all_fins_length; apply nat_of_fin_range).
+          rewrite map_nth_inbound with (d2:= fin_default m'') by 
+            (rewrite all_fins_length; apply nat_of_fin_range).
+          f_equal. apply IHm'.
+          rewrite all_fins_length. apply Nat.ltb_lt. apply nat_of_fin_range.
+        -- replace (@nat_of_fin (S (S m'')) (@None (finite (S m'')))) with (S m'') by reflexivity.
+          rewrite app_nth2; rewrite map_length, all_fins_length; auto.
+          rewrite Nat.sub_diag. reflexivity.
+Qed.
+
+Definition finite_fun_blist {n: nat} {A: finite n -> Type} 
+(ns: finite n -> nat)
+(f: forall (j: finite n) (x: finite (ns j)), A j):
+{h: forall j: finite n, blist (A j) (ns j) |  forall j (k: finite (ns j)),
+  f j k = finmap_list (ns j) (h j) k}.
+Proof.
+  (*Let's do blist first*)
+  refine (exist _ (fun j => make_blist (ns j) (map (fun fin => f j fin) (all_fins (ns j))) 
+    (eq_trans (map_length _ _) (all_fins_length (ns j)))) _).
+  intros.
+  rewrite finmap_list_nth. simpl.
+  assert (nat_of_fin k <? length (all_fins (ns j))). {
+    rewrite all_fins_length. apply Nat.ltb_lt. apply nat_of_fin_range.
+  }
+  rewrite nth_inb_map with (Hn1 :=H).
+  rewrite nth_all_fins. reflexivity.
+Qed.
+
 (*Can we prove this?*)
 Lemma all_constrs: forall (l: list (typesym * list funsym)) (n: finite (length l))
   (Hnontriv: forall constrs, In constrs (map snd l) -> constrs <> nil)
@@ -447,14 +769,37 @@ Proof.
   pose proof (get_funsym_base (fst constrs) (snd constrs) Hl Huniqc a).
   destruct X as [f' [Hin [b1 Ha]]].
   apply (existT _ f').
+
+  (*For now, require functional ext, we can remove after with ssreflect*)
+Check build_rec_get_constr_type.
+  (*construct the function we need*)
+  unshelve epose (g:=_ : forall j: finite (Datatypes.length l),
+    finite (count_rec_occ (fst (fin_nth l j)) f') ->
+    W (finite (Datatypes.length l))
+      (fun n : finite (Datatypes.length l) => build_base (snd (fin_nth l n)))
+      (fun this i : finite (Datatypes.length l) =>
+       build_rec (fst (fin_nth l i)) (snd (fin_nth l this))) j). {
+        intros j t. apply f. subst. rewrite build_rec_get_constr_type. apply t.
+       }
+  pose proof (@finite_fun_blist (length l) _ (fun j => count_rec_occ (fst (fin_nth l j)) f') g) as h.
+  destruct h as [h Hhg].
+
   (*TODO (START): a way to transform f into the form we want of the map.
     Then we will see if we will need axioms (hopefully not)*)
   (*Worst comes to worse, we can use a relation for the main semantics
     and a function for the denotational ones, but that is annoying for sure*)
-  eapply exist with (x:=(Hin, b1, (fun x => f x))).
+  apply exist with (x:=(Hin, b1, h)).
   simpl. subst. f_equal.
   (*for the moment*)
   repeat (apply functional_extensionality_dep; intros).
+  rewrite <- (Hhg x _).
+  subst g. simpl. f_equal. unfold eq_rec_r. simpl.
+  unfold eq_rec. unfold eq_rect. unfold eq_sym.
+  unfold build_rec_get_constr_type. vm_compute. simpl.
+  
+  
+  
+  simpl.
   unfold eq_rect.
 
   Check build_rec_get_constr_type.
