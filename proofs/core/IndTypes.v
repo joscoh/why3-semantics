@@ -169,7 +169,32 @@ Variable abstract_wf: forall (t: typesym) (l: list vty),
 
 (*Construct the base type*)
 
-Definition get_vty_base (v: vty) : option Set :=
+(*Filter out the inductive types*)
+Definition get_nonind_vtys (l: list vty) : list vty :=
+  filter (fun v => match v with 
+                    | vty_cons ts vs =>
+                      ~~isSome (find_constrs gamma ts)
+                    | _ => true
+                    end) l.
+
+Fixpoint big_sprod (l: list Set) : Set :=
+  match l with
+  | nil => unit
+  | [x] => x
+  | x :: xs => (x * (big_sprod xs))%type
+  end.
+
+Definition build_vty_base (l: list vty) : Set :=
+  big_sprod (map (fun v => 
+    match v with
+    | vty_int => Z
+    | vty_real => R
+    | vty_var x => vars x
+    | vty_cons ts vs => (abstract ts vs)
+    end) (get_nonind_vtys l)).
+
+
+(*Definition get_vty_base (v: vty) : option Set :=
   match v with
   | vty_int => Some Z
   | vty_real => Some R
@@ -198,7 +223,7 @@ Definition big_sprod (l: list (option Set)) : Set :=
   end.
 
 Definition build_vty_base (l: list vty) : Set :=
-  big_sprod (map get_vty_base l).
+  big_sprod (map get_vty_base l).*)
 
 (*This gives the base type for a single constructor. It will be (_ * _ * ... * _),
   where each _ is one of the nontrivial, nonrecursive arguments*)
@@ -393,6 +418,262 @@ Proof.
   unfold tnthS in Heq. rewrite ord_ordS_cancel in Heq. apply Heq.
 Qed.
 
+End ADTConstr.
+
+(*Facilities to build ADTs*)
+Section Build.
+
+(* Get index of constructor*)
+
+Definition typesym_eqMixin := EqMixin typesym_eqb_spec.
+Canonical typesym_eqType := EqType typesym typesym_eqMixin.
+
+Lemma in_In {A: eqType} (x: A) (l: list A):
+  reflect (In x l) (x \in l).
+Proof.
+  elim:l => [//=| h t /= IH].
+  - by apply ReflectF.
+  - rewrite in_cons.
+    apply orPP => //.
+    rewrite eq_sym. by apply eqP.
+Qed.
+
+Definition get_adt_index (l: list (typesym * list funsym)) (a: typesym) 
+  (Hin: In a (map fst l)) : ordinalS (length l).
+eapply (@OrdinalS _ (index a (map fst l))).
+have->: length l = size l by [].
+have->:size l = size (map fst l) by rewrite size_map.
+rewrite index_mem.
+apply /in_In. apply Hin.
+Defined.
+
+(*Build the input functions*)
+
+(*The map sends each type variable in a's args to the corresponding sort from s,
+  and gives some default value for everything else*)
+Definition typevar_map (a: typesym) (s: list Types.sort) (srts: Types.sort -> Set) :
+  typevar -> Set := fun v => srts(ty_subst_s (ts_args a) s (vty_var v)).
+
+(*The type symbol map is a bit harder*)
+
+(*First, we want a way to transform a list of vty into a list of sort
+  if they are all known to be sorts*)
+Fixpoint tys_to_srts (l: list vty) (a: all is_sort l) : list Types.sort :=
+  (match l as l' return all is_sort l' -> list Types.sort with
+  | nil => fun _ => nil
+  | h :: tl => fun al => match (andb_prop _ _ al) with
+              | conj Ha Htl => cons (exist _ h Ha) (tys_to_srts tl Htl)
+              end
+  end) a.
+
+(*The map takes in the list of types. If all are sorts, it transforms
+them into sorts and calls srts, since the whole thing is a sort. Otherwise,
+give a trivial Set.
+This works because in our interpretation, we only care about typesyms
+applies to sorts: the domain is only defined for sorts, so all
+inner parts of the type must also be sorts.
+*)
+Definition typesym_map (srts: Types.sort -> Set) :
+  typesym -> list vty -> Set :=
+  fun ts vs => 
+    match (all is_sort vs) as b return (all is_sort vs) = b -> Set with
+    | true => fun Hall => srts (typesym_to_sort ts (tys_to_srts vs Hall))
+    | false => fun _ => empty
+    end erefl.
+    (*if all sorts then srts(typesym_to_sort ts (ss)) else empty*)
+
+(*The hard part: for constructors, we need to translate
+the input [args_list] into the [build_constr_base] and the
+recursive map. This involves lots of very tedious
+dependent type manipulations*)
+
+(*TEMP - TODO figure out how to do this*)
+(*A custom list-like data type which holds values of types [[s_i]], where
+    s is a list of sorts*)
+    Inductive arg_list (domain: Types.sort -> Type) : list Types.sort -> Type :=
+    | AL_nil: arg_list domain nil
+    | AL_cons: forall s tl,
+        domain s ->
+        arg_list domain tl ->
+        arg_list domain (s :: tl).
+  
+  (*Some definitions on [arg_list]*)
+  Fixpoint arg_length {domain: Types.sort -> Type} {l: list Types.sort} (a: arg_list domain l) : nat :=
+    match a with
+    | AL_nil => 0
+    | AL_cons _ _ d tl => 1 + arg_length tl
+    end.
+  
+  Lemma arg_length_sorts: forall (domain: Types.sort -> Type) (l: list Types.sort) (a: arg_list domain l),
+    arg_length a = length l.
+  Proof.
+    intros d l a. induction a; simpl; auto.
+  Qed.
+  
+  Definition arg_nth {domain: Types.sort -> Type} {l: list Types.sort} (a: arg_list domain l) (i: nat)
+   (d: Types.sort) (d': domain d) : domain (List.nth i l d).
+  Proof.
+    generalize dependent i. induction a; simpl; intros.
+    - destruct i; apply d'. 
+    - destruct i.
+      + simpl. apply d0.
+      + apply IHa.
+  Defined.
+  
+  Lemma arg_list_eq_ext: forall {domain: Types.sort -> Type} {l: list Types.sort} (a1 a2: arg_list domain l)
+    (d: Types.sort) (d': domain d),
+    (forall i, (i < length l)%coq_nat -> arg_nth a1 i d d' = arg_nth a2 i d d') ->
+    a1 = a2.
+  Proof.
+    intros d l a1. dependent induction a1; simpl; intros a2; dependent induction a2;
+    simpl; intros; auto. clear IHa2.
+    assert (d0 = d1). {
+      assert (0 < S(length tl))%coq_nat by lia.
+      specialize (H 0 H0). simpl in H. auto.
+    }
+    subst. f_equal. apply (IHa1 _ d2 d'). intros.
+    assert (S(i) < S(Datatypes.length tl))%coq_nat by lia.
+    specialize (H _ H1). simpl in H. auto.
+  Qed.
+  
+  (*Here, we prove that a type substitution that replaces all of the type
+    parameters for a function/pred symbol with sorts results in a sort *)
+  Definition funsym_sigma_args (f: funsym) (s: list Types.sort) : list Types.sort :=
+    ty_subst_list_s (s_params f) s (s_args f).
+  
+  Definition funsym_sigma_ret (f: funsym) (s: list Types.sort) : Types.sort :=
+    ty_subst_s (s_params f) s (s_ret f).
+
+Lemma null_nil {A: Type} (l: list A):
+  null l <-> l = nil.
+Proof.
+  destruct l; simpl; split; intros; auto; inversion H.
+Qed. 
+
+Lemma sort_cons: forall ts vs,
+  is_sort (vty_cons ts vs) ->
+  (forall x, In x vs -> is_sort x).
+Proof.
+  intros. unfold is_sort in *.
+  rewrite null_nil. rewrite null_nil in H.
+  eapply type_vars_cons in H. apply H. auto.
+Qed.
+
+(*TODO: move*)
+Lemma ty_subst_s_sort: forall (vs: list typevar) (ts: list Types.sort)
+  (v: vty) (Hv: is_sort v),
+  ty_subst_s vs ts v = exist _ v Hv.
+Proof.
+  intros. unfold ty_subst_s. unfold v_subst. simpl.
+  apply sort_inj. simpl.
+  induction v; simpl; auto.
+  - inversion Hv.
+  - f_equal. apply list_eq_ext'; rewrite map_length; auto.
+    intros n d Hn.
+    rewrite -> (map_nth_inbound) with (d2:=d) by auto.
+    rewrite Forall_forall in H. apply H.
+    apply nth_In. auto.
+    apply (sort_cons _ _ Hv). apply nth_In; auto.
+Qed.
+
+Definition args_to_constr_base (gamma: context) (l: list (typesym * list funsym))
+  (c: funsym) (adt: typesym) (constrs: list funsym)
+  (Hin1: In l (mutrec_datatypes_of_context gamma))
+  (Hin2: In (adt, constrs) l)
+  (Hin3: In c constrs)
+  (domain: Types.sort -> Set) (srts: list Types.sort)
+  (Hint: domain s_int = Z)
+  (Hreal: domain s_real = R)
+  (a: arg_list domain (funsym_sigma_args c srts)):
+  build_constr_base gamma (typevar_map adt srts domain) 
+    (typesym_map domain) c.
+Proof.
+  unfold build_constr_base. unfold funsym_sigma_args in a.
+  induction (s_args c).
+  - unfold build_vty_base. simpl. apply tt.
+  - unfold build_vty_base in *. simpl.
+    inversion a; subst.
+    destruct a0.
+    + simpl.
+      rewrite ty_subst_s_sort in H1.
+      assert (exist (fun t : vty => is_sort t) vty_int is_true_true = s_int).
+        apply sort_inj. reflexivity.
+      rewrite H in H1.
+      rewrite Hint in H1.
+      destruct ([seq match v with
+      | vty_int => Z
+      | vty_real => R
+      | vty_var x => typevar_map adt srts domain x
+      | vty_cons ts vs => typesym_map domain ts vs
+      end
+      | v <- get_nonind_vtys gamma l0]).
+      * apply H1.
+      * apply (H1, IHl0 H2).
+    + simpl. rewrite ty_subst_s_sort in H1.
+      assert (exist (fun t : vty => is_sort t) vty_real is_true_true = s_real).
+      apply sort_inj. reflexivity.
+      rewrite H in H1.
+      rewrite Hreal in H1.
+      destruct ([seq match v with
+      | vty_int => Z
+      | vty_real => R
+      | vty_var x => typevar_map adt srts domain x
+      | vty_cons ts vs => typesym_map domain ts vs
+      end
+      | v <- get_nonind_vtys gamma l0]).
+      * apply H1.
+      * apply (H1, IHl0 H2).
+    + simpl. (*need to know that this var is in params*)
+      admit.
+    + destruct (find_constrs gamma t) eqn : Htcon; simpl.
+      apply (IHl0 H2).
+      (*basically- we need a closer correspondence between
+        domain and typesym_map/typevar_map/what we have in the type
+        can we make these closer?
+        maybe: just have a sort -> Set map and create the maps directly
+        for the ADT - that is not enough for vars of course
+        hmm - think about this*)
+
+      (*possibly: change type to be dependently typed list -
+        so we have generic arg_list on A, list A, and A -> Set, then
+        build_constr_base is arg_list (s_args a) (fun v => match v with ...)
+        and we might as well just include the unit because nothing is readable
+        anymore anyway
+        let;s try this next
+        *)
+    
+    simpl in H1.
+    
+    simpl in H1.
+    replace 
+    
+    
+    simpl in H1.
+    unfold ty_subst_s in H1.
+    unfold v_subst in H1. simpl in H1.
+    
+    simpl in H1.
+    simpl in H1.
+    apply 0%Z.
+    inversion a; subst.
+
+  - unfold build_vty_base in *. simpl.
+    unfold big_sprod in *. simpl.
+
+
+  (a: typesym) 
+
+
+  3
+
+    Definition make_constr (l: list (typesym * list funsym)) (n: ordinalS (length l))
+    (f: funsym)
+    (Hin: in_bool funsym_eq_dec f (snd (fin_nth l n)))
+    (c: build_constr_base f)
+    (recs: forall (x: ordinalS (length l)), 
+      (count_rec_occ (fst (fin_nth l x)) f).-tuple (mk_adts l x) ) :
+
+End Build.
 (* TODO: Handle nested types*)
 (*
 (*We handle nested recursive types (ex: data rose = Node (list rose)) by
@@ -488,8 +769,6 @@ Definition gen_new_adt (l: list typesym) (args: list vty) : list (vty * )
   )
 
 *)
-
-End ADTConstr.
 
 (** Testing **)
 

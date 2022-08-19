@@ -132,8 +132,10 @@ Proof.
   apply H5; auto; try lia.
 Qed.
 
+Require Import IndTypes.
+
 Record pre_interp := {
-  domain: sort -> Type;
+  domain: sort -> Set;
   domain_int: domain s_int = Z;
   domain_real: domain s_real = R;
   domain_ne: forall s, domain_nonempty domain s;
@@ -147,9 +149,21 @@ Record pre_interp := {
   preds: forall (p:predsym) (srts: list sort),
     arg_list domain (predsym_sigma_args p srts) -> bool;
 
-  (*ADTs*)
+  (*ADTs: they are the corresponding W type created by [mk_adts],
+    with the typesym and typevar map coming from sorts on which
+    the type is applied*)
+
+  adts: forall (l: list (typesym * list funsym)) (a: typesym) 
+    (srts: list sort) (Hina: In a (map fst l)),
+    In l (mutrec_datatypes_of_context gamma) ->
+    domain (typesym_to_sort a srts) = 
+    mk_adts gamma (typevar_map a srts domain)
+      (typesym_map domain) l (get_adt_index l a Hina);
+
+  (*The interpretation for each constructor comes from [make_constr] TODO*)
+  constrs: True (*TODO*)
   
-  adts: forall (a: typesym) (constrs: list funsym) (srts: list sort)
+  (*adts: forall (a: typesym) (constrs: list funsym) (srts: list sort)
     (Hadt: In (a, constrs) (datatypes_of_context gamma)),
     (*1. Disjointness of constructors*)
     (*For i \neq j, [[f_i(s)]](t) \neq [[f_j(s)]](u) *)
@@ -169,7 +183,7 @@ Record pre_interp := {
     (forall (x: domain (typesym_to_sort a srts)), 
       exists c t (Hc: In c constrs) (Hlen: length (s_params c) = length srts),
       x = (dom_cast_aux domain _ _
-        (adt_typesym_funsym _ Hadt Hc Hlen) ((funs c srts) t)))
+        (adt_typesym_funsym _ Hadt Hc Hlen) ((funs c srts) t)))*)
 }.
 
 (*Valuations*)

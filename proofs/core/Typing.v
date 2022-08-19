@@ -241,6 +241,9 @@ Definition context := list def.
 Definition datatypes_of_context (c: context) : list (typesym * list funsym) :=
   concat (map datatypes_of_def c).
 
+Definition mutrec_datatypes_of_context (c: context) : list (list (typesym * list funsym)) :=
+  map datatypes_of_def c.
+
 Definition fundefs_of_context (c: context) : list (funsym * list vsymbol * term) :=
   concat (map fundefs_of_def c).
 
