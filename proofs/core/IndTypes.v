@@ -90,7 +90,6 @@ Qed.
 
 End Finite.
 
-
 Section W.
 (*I is the index (think of this as the number of types in the mut. rec. type)
   A gives the base type for each type in the MR type (it is Either _ _) where
@@ -120,6 +119,15 @@ Definition empty : Set := (ordinalS 0).
 Inductive either (A B: Set) : Set :=
   | Left: A -> either A B
   | Right: B -> either A B.
+
+(*Iterated either for list of Set*)
+Fixpoint iter_either (l: list Set) : Set :=
+  match l with
+  | nil => unit
+  | [x] => x
+  | x :: t => either x (iter_either t)
+  end.
+
 
 End TypeOps.
 
@@ -151,7 +159,28 @@ Lemma In_in_bool: forall {A: Type} (eq_dec: forall (x y : A), {x = y} + {x <> y}
 Proof.
   intros. eapply reflect_iff in H. apply H. apply in_bool_spec.
 Qed.
+(*
+Definition mk_iter_either {A: Type} 
+  (eqb: A -> A -> bool)
+  (eqb_spec: forall (x y) reflect ())
+  (eq_dec: forall (x y: A), {x = y} + {x <> y}) 
+  (f: A -> Set)
+  (l: list A) (x: A) (Hx: in_bool eq_dec x l) (y: f x):
+  iter_either (map f l).
+Proof.
+  induction l.
+  - apply tt.
+  - destruct l; simpl in *.
+    + destruct (eq_dec x a). 2: inversion Hx.
 
+      destruct e. apply y.
+      Show Proof. 
+  
+  Show Proof. simpl in Hx. simpl.
+
+  
+  simpl.
+*)
 (*Now, we come to the construction. We do this in 3 parts:
   1. Build up the base type (A)
   2. Build up the function (A -> Set)
@@ -176,6 +205,209 @@ Definition get_nonind_vtys (l: list vty) : list vty :=
                       ~~isSome (find_constrs gamma ts)
                     | _ => true
                     end) l.
+(*
+Lemma vty_subst (v1 v2: vty) (Heq: vty_eqb v1 v2) (P: vty -> Type)
+  (H1: P v1) : P v2.
+Proof.
+  generalize dependent H1. generalize dependent v2; induction v1; intros.
+  destruct v1; destruct v2; try (solve[inversion Heq]).
+  apply H1.
+  apply H1.
+  simpl in Heq. admit.
+  simpl in Heq.
+*)
+
+Print Ascii.eqb.
+
+Lemma bool_eqbTF: ~Bool.eqb true false.
+Proof.
+  intro. inversion H.
+Qed.
+
+Lemma bool_eqbFT: ~Bool.eqb false true.
+Proof.
+  intro. inversion H.
+Qed.
+
+Definition rewritable {A: Type} (eqb: A -> A -> bool) :=
+  forall (x1 x2: A) (Heq: eqb x1 x2) (P: A -> Type) (H1: P x1), P x2.
+
+Definition rewrite_with {A: Type} {eqb: A -> A -> bool}
+  (Hr: rewritable eqb) {x1 x2: A} (Heq: eqb x1 x2) (P: A -> Type):
+  P x1 -> P x2 := (Hr x1 x2 Heq P).
+
+(*Important: NO rewrite (eq_ind_r), so it should reduce*)
+Lemma bool_rewrite : rewritable Bool.eqb.
+Proof.
+  unfold rewritable; intros b1 b2 Heq P Hb1. 
+  destruct b1; destruct b2.
+  - apply Hb1.
+  - exfalso. apply (bool_eqbTF Heq).
+  - exfalso. apply (bool_eqbFT Heq).
+  - apply Hb1.
+Defined.
+
+Lemma not_false: ~is_true false.
+Proof.
+  intro C; inversion C.
+Qed.
+
+Lemma ascii_rewrite : rewritable Ascii.eqb.
+Proof.
+  unfold rewritable; intros a1 a2 Heq P Ha1.
+  destruct a1; destruct a2; simpl in Heq.
+  repeat match goal with
+  | H: context[ match Bool.eqb ?b1 ?b2 with | true => ?p | false => ?q end ] |- _ =>
+    let Hb := fresh "Hb" in
+    destruct (Bool.eqb b1 b2) eqn : Hb; [|exfalso; apply (not_false Heq)]
+  end.
+  repeat match goal with
+  | H : Bool.eqb ?b1 ?b2 = true |- _ => apply (rewrite_with bool_rewrite H)
+  end.
+  apply (rewrite_with bool_rewrite Heq).
+  apply Ha1.
+Defined.
+
+Lemma string_eqbES: forall a s2,
+~("" =? String a s2)%string.
+Proof.
+  intros; intro C; inversion C.
+Qed.
+
+Lemma string_eqbSE: forall a s2,
+~(String a s2 =? "")%string.
+Proof.
+  intros; intro C; inversion C.
+Qed.
+
+Lemma string_rewrite : rewritable String.eqb.
+Proof.
+  unfold rewritable; intros s1.
+  induction s1; intros s2 Heq P Hs1; destruct s2.
+  - apply Hs1.
+  - exfalso. apply (string_eqbES _ _ Heq).
+  - exfalso. apply (string_eqbSE _ _ Heq).
+  - simpl in Heq. destruct (Ascii.eqb a a0) eqn : Ha; [|exfalso; apply (not_false Heq)].
+    apply (rewrite_with ascii_rewrite Ha).
+    exact (IHs1 _ Heq (fun s => P (String a s)) Hs1).
+Defined.
+
+Definition typevar_rewrite : rewritable typevar_eqb :=
+  string_rewrite.
+
+Lemma andb_prop_elim: forall (a b: bool),
+  a && b -> a /\ b.
+Proof.
+  intros. apply andb_true_iff. apply H.
+Qed.
+
+Lemma list_rewrite: forall {A: Type} {eqb: A -> A -> bool}
+  (Hr: rewritable eqb), rewritable (list_eqb eqb).
+Proof.
+  unfold rewritable at 2; intros A eqb Hr l1.
+  induction l1; intros l2 Heq P Hl1; destruct l2.
+  - apply Hl1.
+  - exfalso. apply (not_false Heq).
+  - exfalso. apply (not_false Heq).
+  - simpl in Heq. 
+    apply andb_prop_elim in Heq.
+    destruct Heq as [Heq1 Heq2].
+    apply (rewrite_with Hr Heq1).
+    exact (IHl1 _ Heq2 (fun l => P (a :: l)) Hl1).
+Defined.
+
+Lemma typesym_rewrite : rewritable typesym_eqb.
+Proof.
+  intros t1 t2 Heq P Ht1.
+  destruct t1; destruct t2; simpl in Heq.
+  unfold typesym_eqb in Heq; simpl in Heq.
+  apply andb_prop_elim in Heq.
+  destruct Heq as [Hn Hl].
+  apply (rewrite_with string_rewrite Hn).
+  apply (rewrite_with (list_rewrite typevar_rewrite) Hl).
+  apply Ht1.
+Defined.
+
+Print in_bool.
+
+(*TODO: is this QED OK?*)
+Lemma ForallT_forall: forall {A: Type} (eq_dec: forall (x y: A), {x = y} + {x <> y}) 
+  (P: A -> Type) (l: list A),
+  ForallT P l -> (forall x, in_bool eq_dec x l -> P x).
+Proof.
+  intros. induction X.
+  - inversion H.
+  - simpl in H.
+    destruct (eq_dec x x0); subst. apply p.
+    simpl in H. exact (IHX H).
+Qed.
+
+Lemma vty_rewrite : rewritable vty_eqb.
+Proof.
+  intros v1. induction v1; intros v2 Heq P Hv1; destruct v2;
+  try solve[exfalso; apply (not_false Heq)]; try solve[apply Hv1].
+  - simpl in Heq. apply (rewrite_with typevar_rewrite Heq). apply Hv1.
+  - simpl in Heq. apply andb_prop_elim in Heq.
+    destruct Heq as [Hts Hvs].
+    apply (rewrite_with typesym_rewrite Hts).
+    (*Let's see*)
+    generalize dependent l.
+    generalize dependent P.
+    induction vs; intros; destruct l; try solve[exfalso; apply (not_false Hvs)].
+    apply Hv1.
+    apply andb_prop_elim in Hvs.
+    destruct Hvs as [Ha Hl].
+    assert (X1:=X).
+    apply (ForallT_hd) in X.
+    apply (X v Ha).
+    apply (IHvs (ForallT_tl _ _ _ X1) (fun v => match v with
+      | vty_cons t1 v1 => P (vty_cons t1 (a :: v1))
+      | _ => P v
+      end)).
+    apply Hv1. apply Hl.
+Defined.
+
+(*TODO: start with this, do funsym, try to do before but with
+  this instead of rewrite, see if it helps*)
+
+
+(*Can we generalize this to reflection? Try to see*)
+Lemma typevar_rewrite {t1 t2: typevar} (Heq: typevar_eqb t1 t2)
+  (P: typevar -> Type) (Ht1: P t1) : P t2.
+Proof.
+  generalize dependent t2. induction t1; intros; destruct t2;
+  try solve[inversion Heq].
+  - apply Ht1.
+  - simpl in Heq.
+
+
+Lemma get_nonind_vtys_eq (l1 l2: list vty) (Heq: list_eqb vty_eqb l1 l2)
+  (P: list vty -> Type) (Hl1: P l1): P l2.
+Proof.
+  generalize dependent l2. generalize dependent P.
+  induction l1; intros; destruct l2; simpl in Heq; try solve[inversion Heq].
+  apply Hl1.
+  (*TODO: will need induction*)
+  destruct a; destruct v; try solve[inversion Heq].
+  - simpl in Heq. apply IHl1 with (P:= fun x => P(vty_int :: x)).
+    apply Hl1. apply Heq.
+  - simpl in Heq. apply IHl1 with (P:= fun x => P(vty_real :: x)).
+    apply Hl1. apply Heq.
+  - simpl in Heq.
+    (*First, we need to iterate through string*)
+
+    
+  revert Hl1. inductio
+  assert (forall x, P (x :: l1) -> P (x :: l2)). {
+    generalize dependent l2; induction l1; intros; simpl in Heq.
+    destruct l2. apply H. inversion Heq.
+    destruct l2. inversion Heq.
+  }*)
+  generalize dependent l2;
+  induction l1; intros; simpl in Heq.
+  - destruct l2. apply Hl1. inversion Heq.
+  - destruct l2. inversion Heq.
+    destruct a; destruct v; try solve[inversion Heq]. 
 
 Fixpoint big_sprod (l: list Set) : Set :=
   match l with
@@ -192,6 +424,27 @@ Definition build_vty_base (l: list vty) : Set :=
     | vty_var x => vars x
     | vty_cons ts vs => (abstract ts vs)
     end) (get_nonind_vtys l)).
+
+Definition cast_vty_base (l1 l2: list vty) (Heq: list_eqb vty_eqb l1 l2)
+  (x: build_vty_base l1) : build_vty_base l2.
+Proof.
+  unfold build_vty_base in *. generalize dependent l2. 
+  induction l1; intros; simpl in *.
+  - destruct l2; simpl in *. apply x. inversion Heq.
+  - destruct l2. inversion Heq.
+    simpl. destruct a; simpl in Heq; destruct v; simpl in Heq;
+    try solve[inversion Heq].
+    + simpl in *.
+      destruct ([seq match v with
+      | vty_int => Z
+      | vty_real => R
+      | vty_var x => vars x
+      | vty_cons ts vs => abstract ts vs
+      end
+    | v <- get_nonind_vtys l1])
+    
+    
+    rewrite IHl1. apply x. simpl in Heq.
 
 
 (*Definition get_vty_base (v: vty) : option Set :=
@@ -229,6 +482,13 @@ Definition build_vty_base (l: list vty) : Set :=
   where each _ is one of the nontrivial, nonrecursive arguments*)
 Definition build_constr_base (c: funsym) : Set :=
   build_vty_base (s_args c).
+
+Definition build_constr_base_eq (c1 c2: funsym) (Heq: funsym_eqb c1 c2) 
+  (x: build_constr_base c1) : build_constr_base c2.
+unfold build_constr_base in *.
+unfold funsym_eqb in Heq.
+unfold build_vty_base in *.
+
 
 (*This gives the combined base type for all constructors - the iterated
   Either of each constructor*)
@@ -488,6 +748,20 @@ recursive map. This involves lots of very tedious
 dependent type manipulations*)
 
 (*TEMP - TODO figure out how to do this*)
+
+(*A list with possibly different types*)
+(*
+Inductive dlist {A: Type} (f: A -> Set) : list A -> Type :=
+  | DL_nil: dlist f nil
+  | DL_cons: forall x tl,
+    f x ->
+    dlist f tl ->
+    dlist f (x :: tl).
+
+Definition arg_list (domain: Types.sort -> Set) := dlist domain.*)
+
+(*42*)
+
 (*A custom list-like data type which holds values of types [[s_i]], where
     s is a list of sorts*)
     Inductive arg_list (domain: Types.sort -> Type) : list Types.sort -> Type :=
@@ -625,9 +899,10 @@ Proof.
       * apply (H1, IHl0 H2).
     + simpl. (*need to know that this var is in params*)
       admit.
-    + destruct (find_constrs gamma t) eqn : Htcon; simpl.
-      apply (IHl0 H2).
+Admitted.
+     (* apply (IHl0 H2).
       (*basically- we need a closer correspondence between
+      + destruct (find_constrs gamma t) eqn : Htcon; simpl.
         domain and typesym_map/typevar_map/what we have in the type
         can we make these closer?
         maybe: just have a sort -> Set map and create the maps directly
@@ -672,7 +947,7 @@ Proof.
     (c: build_constr_base f)
     (recs: forall (x: ordinalS (length l)), 
       (count_rec_occ (fst (fin_nth l x)) f).-tuple (mk_adts l x) ) :
-
+*)
 End Build.
 (* TODO: Handle nested types*)
 (*
@@ -775,7 +1050,7 @@ Definition gen_new_adt (l: list typesym) (args: list vty) : list (vty * )
 (*TODO: this is all screwed up because of the changes to [build_base] and the
   tests don't work. They are also much less useful. We should either remove them
   or try to come up with some way to make them nicer. For now, they are commented out.*)
-  (*
+  
 
 (*We need some axioms for testing: dependent functional extensionality,
   and, for mutually recursive types, Uniqueness of Identity Proofs*)
@@ -866,7 +1141,7 @@ match constrs with
   | [f] => build_constr_base gamma vars abstract f
   | f :: fs => either (build_constr_base gamma vars abstract f) (build_base' fs)
   | nil => empty
-  end.
+end.
 
 Definition bb_to_bb' (constrs: list funsym) (x: build_base gamma vars abstract constrs) : build_base' constrs.
 Proof.
@@ -883,12 +1158,16 @@ Proof.
       apply Hinf'.
 Defined.
 
-Definition bb'_to_bb (constrs: list funsym) (x: build_base' constrs) : build_base gamma vars abstract constrs.
+Definition bb'_to_bb (constrs: list funsym) (x: build_base' constrs) : 
+  {y : build_base gamma vars abstract constrs | bb_to_bb' constrs y = x}.
 Proof.
   unfold build_base. induction constrs.
   - simpl. simpl in x. inversion x. inversion H.
   - simpl in x. destruct constrs.
-    + apply (exist _ (existT _ a x)). 
+    + 
+    
+    
+    eapply (exist _ _ _). apply (exist _ (exist _ (existT _ a x)) _). 
       simpl. destruct (funsym_eq_dec a a). reflexivity. contradiction.
     + destruct x.
       * apply (exist _ (existT _ a b)).
@@ -898,14 +1177,24 @@ Proof.
         apply (exist _ (existT _ f' base)).
         simpl. destruct (funsym_eq_dec f' a). reflexivity. apply Hinf'.
 Defined.
-(*
+
 Lemma bb_to_bb'_inv: forall (constrs: list funsym) (x: build_base gamma vars abstract constrs),
   bb'_to_bb constrs (bb_to_bb' constrs x) = x.
 Proof.
   intros. unfold build_base in x. induction constrs.
   - destruct x. inversion i.
   - destruct constrs; simpl.
-    + simpl in *. destruct x as [[f' base] Hinf']. simpl.
+    + simpl in *. destruct x as [[f' base] Hinf'].
+      match goal with
+      | |- exist ?p ?x1 ?y1 = exist ?p ?x2 ?y2 => 
+      assert (Hx12: x1 = x2)
+      end.
+      * Search (existT ?x ?y ?z = existT ?a ?b ?c). f_equal.
+      f_equal.
+      Search (exist ?p ?a ?x = exist ?p ?b ?y).
+      destruct (funsym_eq_dec a a).
+    
+    f_equal.
       destruct (funsym_eq_dec f' a).
 
 
@@ -1008,9 +1297,36 @@ Lemma nat_lt_1: forall n,
 Proof.
   move => x. by rewrite ltnS leqn0 => /eqP Hm.
 Qed.
+Print W.
+Print mk_adts.
+Check build_base.
+Print build_constr_rec.
+
+Definition w_convert (gamma: context) vars abs (n: nat)
+  (g: ordinalS n -> seq funsym) h (i: ordinalS n)
+  (w: W (ordinalS n) (fun n => build_base' gamma vars abs ( g n)) h i) :
+  W (ordinalS n) (fun n => build_base gamma vars abs (g n))
+  (fun this i x => h this i (bb_to_bb' gamma vars abs (g this) x)) i.
+Proof.
+  dependent destruction w.
+  apply mkW with(a:=bb'_to_bb gamma vars abs (g i) a). intros.
+
+  apply f in H.
+
+Definition w_convert (gamma: context) vars abs (n: nat) (g: ordinalS n -> seq funsym)
+  h
+  (w: W (ordinalS n) (fun n => build_base gamma vars abs (g n))) h
+
+
+Lemma aunit_correct: aunit = W (ordinalS 1) 
+  (fun x => build_base' triv_context triv_vars triv_syms [fs_tt]) (fun _ _ _ => empty)
+  (OrdinalS _ _ lt_01).
+Proof.
+  unfold aunit, triv_adt, mk_adts. simpl.
 
 (*This is a LOT more work than the previous version: was only reflexivity there*)
-Lemma aunit_correct: aunit = W (ordinalS 1) (fun x => triv_build_base [fs_tt]) (fun _ _ _ => empty) (OrdinalS _ _ lt_01).
+Lemma aunit_correct: aunit = W (ordinalS 1) 
+  (fun x => triv_build_base [fs_tt]) (fun _ _ _ => empty) (OrdinalS _ _ lt_01).
 Proof. 
   unfold aunit, triv_adt, mk_adts, triv_build_base. simpl.
   match goal with 

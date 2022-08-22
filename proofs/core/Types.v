@@ -5,20 +5,50 @@ Require Export Lia.
 
 Require Export Common.
 
+Lemma reflect_true: forall {P} {b} (H: reflect P b),
+  b = true ->
+  P.
+Proof.
+  intros. destruct H; subst; auto. inversion H0.
+Qed.
+
+Lemma reflect_false: forall {P} {b} (H: reflect P b),
+  b = false ->
+  ~ P.
+Proof.
+  intros. destruct H; subst; auto. inversion H0.
+Qed.
+
+(*Now we can transform "reflect" into computable "dec" EVEN if "reflect" is opaque.
+  This is what we are missing in the ssreflect library. We do NOT match on
+  "reflect"; we match on the boolean predicate directly*)
+Definition reflect_dec' {P} {b} (H: reflect P b): {P} + {~P} :=
+  match b as b1 return b = b1 -> _ with
+  | true => fun Heq => left (reflect_true H Heq)
+  | false => fun Hneq => right (reflect_false H Hneq)
+  end eq_refl.
+
+Search String.eqb.
+
 (*Type variable (ex: a)*)
 Definition typevar : Set := string. 
 
 Definition typevar_eqb : typevar -> typevar -> bool :=
   String.eqb.
 
-Definition typevar_eq_dec : forall (t1 t2: typevar),
-  {t1 = t2} + {t1 <> t2} := string_dec.
+Lemma typevar_eqb_spec (t1 t2: typevar) : reflect (t1 = t2) (typevar_eqb t1 t2).
+Proof.
+  apply String.eqb_spec.
+Qed.
+
+Definition typevar_eq_dec (t1 t2: typevar):
+  {t1 = t2} + {t1 <> t2} := reflect_dec' (String.eqb_spec t1 t2).
 
 (*Type symbol (ex: list a)*)
 Record typesym : Set := mk_ts {
   ts_name : string;
   ts_args : list typevar;
-  ts_args_uniq : nodupb typevar_eq_dec ts_args
+  (*ts_args_uniq : nodupb typevar_eq_dec ts_args*)
   }.
 
 Fixpoint list_eqb {A: Type} (eq: A -> A -> bool) (l1 l2: list A) : bool :=
@@ -58,12 +88,32 @@ Lemma typesym_eq: forall (t1 t2: typesym),
   t1 = t2.
 Proof.
   intros. destruct t1; destruct t2; simpl in *; subst. f_equal.
-  apply bool_irrelevance.
+  (*apply bool_irrelevance.*)
 Qed.
+
+Definition is_true_eqb {b1 b2: bool} (p1: is_true b1) (p2: is_true b2) : bool :=
+  Bool.eqb b1 b2.
+(*
+Definition typesym_eqb (t1 t2: typesym) :=
+  String.eqb (ts_name t1) (ts_name t2) &&
+  list_eqb typevar_eqb (ts_args t1) (ts_args t2) &&
+  (*This is not needed (we show that below), but it is
+    very useful for the "rewrite" lemmas in IndTypes*)
+  is_true_eqb (ts_args_uniq t1) (ts_args_uniq t2).*)
 
 Definition typesym_eqb (t1 t2: typesym) :=
   String.eqb (ts_name t1) (ts_name t2) &&
   list_eqb typevar_eqb (ts_args t1) (ts_args t2).
+(*
+Lemma typesym_eqb_equiv: forall t1 t2,
+  typesym_eqb t1 t2 = typesym_eqb' t1 t2.
+Proof.
+  intros. unfold typesym_eqb, typesym_eqb'.
+  destruct (String.eqb_spec (ts_name t1) (ts_name t2)); simpl; auto.
+  destruct (list_eqb_spec _ typevar_eqb_spec (ts_args t1) (ts_args t2)); simpl; auto.
+  unfold is_true_eqb.
+  rewrite e0. apply eqb_reflx.
+Qed.*)
 
 Lemma typesym_eqb_spec: forall (t1 t2: typesym),
   reflect (t1 = t2) (typesym_eqb t1 t2).
@@ -76,33 +126,10 @@ Proof.
   - apply ReflectF. intro C; destruct t1; destruct t2; inversion C; subst; contradiction.
 Qed.
 
-Lemma reflect_true: forall {P} {b} (H: reflect P b),
-  b = true ->
-  P.
-Proof.
-  intros. destruct H; subst; auto. inversion H0.
-Qed.
-
-Lemma reflect_false: forall {P} {b} (H: reflect P b),
-  b = false ->
-  ~ P.
-Proof.
-  intros. destruct H; subst; auto. inversion H0.
-Qed.
-
-(*Now we can transform "reflect" into computable "dec" EVEN if "reflect" is opaque.
-  This is what we are missing in the ssreflect library. We do NOT match on
-  "reflect"; we match on the boolean predicate directly*)
-Definition reflect_dec' {P} {b} (H: reflect P b): {P} + {~P} :=
-  match b as b1 return b = b1 -> _ with
-  | true => fun Heq => left (reflect_true H Heq)
-  | false => fun Hneq => right (reflect_false H Hneq)
-  end eq_refl.
-
 Definition typesym_eq_dec (t1 t2: typesym) : {t1 = t2} + {t1 <> t2} :=
   reflect_dec' (typesym_eqb_spec t1 t2).
 
-Definition ts_unit : typesym := mk_ts "unit" nil eq_refl.
+Definition ts_unit : typesym := mk_ts "unit" nil (*eq_refl*).
 
 
 (*Value types*)
@@ -138,14 +165,63 @@ Fixpoint vty_ind (t: vty) : P t :=
 
 End TyInd.
 
+(*Need a version for Type too*)
+
+Inductive ForallT {A: Type} (P: A -> Type) : list A -> Type :=
+  | ForallT_nil: ForallT P nil
+  | ForallT_cons: forall {x: A} {l: list A},
+    P x -> ForallT P l -> ForallT P (x :: l).
+
+Lemma ForallT_hd {A: Type} (P: A -> Type) (x: A) (l: list A):
+  ForallT P (x :: l) ->
+  P x.
+Proof.
+  intros. inversion X; subst. apply X0.
+Qed.
+
+Lemma ForallT_tl {A: Type} (P: A -> Type) (x: A) (l: list A):
+  ForallT P (x :: l) ->
+  ForallT P l.
+Proof.
+  intros. inversion X; auto.
+Qed.
+
+
+Check Forall_forall.
+
+Section TyIndType.
+
+Variable P : vty -> Type.
+Variable Hint: P vty_int.
+Variable Hreal: P vty_real.
+Variable Hvar: forall v, P (vty_var v).
+Variable Hcons: forall tsym vs,
+  ForallT P vs -> P (vty_cons tsym vs).
+
+Fixpoint vty_rect (t: vty) : P t :=
+  match t with
+  | vty_int => Hint
+  | vty_real => Hreal
+  | vty_var t => Hvar t
+  | vty_cons tsym vs => Hcons tsym vs
+    ((fix vty_ind_list (l: list vty) : ForallT P l :=
+      match l with
+      | nil => ForallT_nil _
+      | x :: t => ForallT_cons _ (vty_rect x) (vty_ind_list t)
+      end) vs)
+  end.
+
+  End TyIndType.
+
+
 (*Decidable equality on types*)
 Fixpoint vty_eqb (t1 t2: vty) : bool :=
   match t1, t2 with
   | vty_int, vty_int => true
   | vty_real, vty_real => true
-  | vty_var t1, vty_var t2 => typevar_eq_dec t1 t2
+  | vty_var t1, vty_var t2 => typevar_eqb t1 t2
   | vty_cons ts1 vs1, vty_cons ts2 vs2 =>
-    typesym_eq_dec ts1 ts2 &&
+    typesym_eqb ts1 ts2 &&
     ((fix vty_eqb_list (l1 l2: list vty) : bool :=
       match l1, l2 with
       | nil, nil => true
@@ -162,12 +238,14 @@ Proof.
   try match goal with
   | H : is_true false |- _ => inversion H
   end; try simpl_sumbool.
+  destruct (typevar_eqb_spec v t); subst; auto. inversion H.
   apply andb_prop in H0. destruct H0.
-  simpl_sumbool. f_equal. generalize dependent l. induction vs; simpl;
+  destruct (typesym_eqb_spec tsym t); subst. 2: inversion H0.
+  f_equal. generalize dependent l. induction vs; simpl;
   auto; intros; destruct l; auto; try solve[inversion H1].
   inversion H; subst.
   apply andb_prop in H1. destruct H1.
-  apply H3 in H0; subst. f_equal.
+  apply H4 in H1; subst. f_equal.
   apply IHvs; auto.
 Qed.
 
@@ -177,8 +255,9 @@ Lemma vty_eq_eqb: forall t1 t2,
 Proof.
   intros t1. induction t1; simpl; auto; intros; destruct t2; auto; try solve[inversion H];
   try solve[inversion H0].
-  - inversion H; subst. simpl_sumbool.
-  - inversion H0; subst. apply andb_true_intro; split; [simpl_sumbool |].
+  - inversion H; subst. destruct (typevar_eqb_spec t t); auto.
+  - inversion H0; subst. apply andb_true_intro; split; 
+    [destruct (typesym_eqb_spec t t); auto |].
     clear H0. induction l; simpl; auto.
     inversion H; subst. apply andb_true_intro; split; auto.
     apply H2; auto.
