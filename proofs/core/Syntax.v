@@ -115,18 +115,18 @@ Ltac dec H :=
 
 Definition funsym_eqb (f1 f2: funsym) : bool :=
   (String.eqb (s_name f1) (s_name f2)) &&
-  (list_eq_dec typevar_eq_dec (s_params f1) (s_params f2)) &&
-  (list_eq_dec vty_eq_dec (s_args f1) (s_args f2)) &&
-  (vty_eq_dec (s_ret f1) (s_ret f2)).
+  (list_eqb typevar_eqb (s_params f1) (s_params f2)) &&
+  (list_eqb vty_eqb (s_args f1) (s_args f2)) &&
+  (vty_eqb (s_ret f1) (s_ret f2)).
 
 Lemma funsym_eqb_spec: forall (f1 f2: funsym),
   reflect (f1 = f2) (funsym_eqb f1 f2).
 Proof.
   intros. unfold funsym_eqb.
   dec (String.eqb_spec (s_name f1) (s_name f2)).
-  dec (list_eq_dec typevar_eq_dec (s_params f1) (s_params f2)).
-  dec (list_eq_dec vty_eq_dec (s_args f1) (s_args f2)).
-  dec (vty_eq_dec (s_ret f1) (s_ret f2)).
+  dec (list_eqb_spec _ typevar_eqb_spec (s_params f1) (s_params f2)).
+  dec (list_eqb_spec _ vty_eq_spec (s_args f1) (s_args f2)).
+  dec (vty_eq_spec (s_ret f1) (s_ret f2)).
   apply ReflectT. apply funsym_eq; auto.
 Qed.
 
