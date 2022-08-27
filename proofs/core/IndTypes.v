@@ -21,9 +21,11 @@ Section Finite.
 
 (*Let's try a version we can pattern match (again)*)
 Inductive empty : Set :=.
+
 Fixpoint finite (n: nat) : Set :=
   match n with
   | O => empty
+  | S O => unit
   | S n' => option (finite n')
   end.
 
@@ -32,11 +34,10 @@ Fixpoint finite (n: nat) : Set :=
     intro C; inversion C.
   Qed.
 
-Lemma no_ord_0 {A: Type} (x: 'I_0) : A.
+Lemma no_ord_0 (x: 'I_0) : False.
 destruct x.
-rewrite ltn0 in i.
-exfalso. apply (not_false i).
-Qed. (*TODO: does it need to be defined?*)
+inversion i.
+Qed.
 
 Lemma lt_S {m n}: m < n.+1 -> {m = 0} + {0 < m /\ m.-1 < n}.
 Proof.
@@ -48,9 +49,40 @@ Proof.
     rewrite -subn1 ltn_subLR //.
 Qed.
 
+Section FiniteOrd.
+
+Definition ord_to_finite {n: nat} (x: 'I_n) : finite n.
+Proof.
+  induction n.
+  - exact (False_rect _ (no_ord_0 x)).
+  - simpl. destruct n.
+    + exact tt.
+    + destruct x. destruct (lt_S i).
+      * exact None.
+      * exact (Some (IHn (Ordinal (proj2 a)))).
+Defined.
+
+Lemma ord_to_finite_S: forall {n: nat} (x: 'I_n.+1),
+  ord_to_finite x =
+  (match n as n' return 'I_n'.+1 -> finite n'.+1 with
+  | O => fun _ => tt
+  | S m' => fun y =>
+      match y with
+      | Ordinal m Hlt =>
+        match (lt_S Hlt) with
+        | left Heq => None
+        | right Hlt' => Some (ord_to_finite (Ordinal (proj2 Hlt')))
+        end
+      end
+  end) x.
+Proof.
+  intros. destruct n; auto.
+Qed.
+
+(*
 Fixpoint ord_to_finite {n: nat} : 'I_n -> finite n :=
   match n as n' return 'I_n' -> finite n' with
-  | O => fun i => no_ord_0 i
+  | O => fun i => False_rect _ (no_ord_0 i)
   | S m => fun i =>
     match i with
     | Ordinal _ Hlt => 
@@ -59,8 +91,47 @@ Fixpoint ord_to_finite {n: nat} : 'I_n -> finite n :=
       | right Hlt' => Some (ord_to_finite (Ordinal (proj2 Hlt')))
       end
     end
-  end.
+  end.*)
 
+Definition finite_to_nat {n: nat} (x: finite n) : nat.
+Proof.
+  induction n.
+  - exact (match x with end).
+  - destruct n.
+    + apply 0.
+    + destruct x.
+      * exact (IHn f).+1.
+      * exact 0.
+Defined.
+
+(*Lemma test: forall n, finite n.+2 = option (finite n.+1).
+Proof.
+  intros. reflexivity.*)
+(*
+Lemma finite_to_nat_S: forall {n: nat} (x: finite n.+2),
+  finite_to_nat x = match x with
+                    | Some f => (@finite_to_nat n.+1 f).+1
+                    | None => 0
+                    end.
+Proof.
+  intros. destruct x; reflexivity.
+Qed.*)
+  
+Lemma finite_to_nat_S: forall {n: nat} (x: finite n.+1),
+  finite_to_nat x =
+  (match n as m return finite m.+1 -> nat with
+                    | 0 => fun _ => 0
+                    | n' => fun y => match y with
+                            | Some f => (@finite_to_nat n' f).+1
+                            | None => 0
+                            end
+                    end) x.
+Proof.
+  intros. destruct n; auto.
+Qed.
+
+
+(*
 Fixpoint finite_to_nat {n: nat} : finite n -> nat :=
   match n as n' return finite n' -> nat with
   | O => fun (f: finite 0) => match f with end
@@ -68,16 +139,19 @@ Fixpoint finite_to_nat {n: nat} : finite n -> nat :=
                     | None => O
                     | Some f' => (finite_to_nat f').+1
                     end
-  end.
+  end.*)
 
 Lemma finite_to_nat_bound: forall {n: nat} (x: finite n),
   finite_to_nat x < n.
 Proof.
   intros. induction n.
   - inversion x.
-  - simpl. destruct x.
-    rewrite -(addn1 (finite_to_nat f)) -(addn1 n) ltn_add2r. apply IHn.
-    by [].
+  - rewrite finite_to_nat_S. destruct n.
+    + reflexivity.
+    + destruct x.
+      * simpl. rewrite -(addn1 (finite_to_nat f)) -(addn1 n.+1) ltn_add2r.
+        apply IHn.
+      * by [].
 Qed.
 
 Definition finite_to_ord {n: nat} (x: finite n) : 'I_n :=
@@ -90,36 +164,93 @@ Proof.
   generalize dependent (finite_to_nat_bound x).
   induction n; intros.
   - inversion x.
-  - simpl. destruct x; simpl.
-    + destruct (@lt_S (S (@finite_to_nat n f)) n i).
-      * simpl in i. inversion e.
-      * f_equal. apply IHn.
-    + destruct (@lt_S O n i).
-      * reflexivity.
-      * destruct a. exfalso. rewrite ltnn in i0. apply (not_false i0).
+  - rewrite ord_to_finite_S. destruct n.
+    + destruct x; reflexivity.
+    + destruct (@lt_S (@finite_to_nat n.+2 x) n.+1 i).
+      * destruct x; auto. inversion e.
+      * destruct x. 2: { destruct a. inversion i0. }
+        f_equal. apply IHn.
 Qed.
 
 Lemma ord_finite_cancel: forall {n: nat},
   cancel (@ord_to_finite n) (finite_to_ord).
 Proof.
   move => n x. induction n; intros.
-  - by apply no_ord_0.
-  - simpl. destruct x.
-    destruct (@lt_S m n i).
-    + apply ord_inj. simpl. by subst.
-    + apply ord_inj; simpl.
-      specialize (IHn (Ordinal (proj2 a))).
-      apply (f_equal (@nat_of_ord _)) in IHn.
-      simpl in IHn.
-      rewrite IHn prednK //. apply a.
+  - exfalso. by apply no_ord_0.
+  - rewrite ord_to_finite_S; destruct n.
+    + apply ord_inj; simpl. destruct x.
+      destruct m; [|inversion i]. reflexivity.
+    + destruct x.
+      destruct (@lt_S m (S n) i).
+      * subst. apply ord_inj; reflexivity.
+      * apply ord_inj. specialize (IHn (Ordinal (proj2 a))).
+        apply (f_equal (@nat_of_ord _)) in IHn.
+        simpl. simpl in IHn. rewrite IHn {IHn} prednK //. apply a.
 Qed.
+
+Section Mixins.
+
+Variable m: nat.
+Notation finm := (finite m).
+Notation finite_ord_cancel' := (@finite_ord_cancel m).
+Notation ord_finite_cancel' := (@ord_finite_cancel m).
+
+Definition finite_eqMixin := CanEqMixin finite_ord_cancel'.
+Canonical finite_eqType := EqType finm finite_eqMixin.
+Definition finite_choiceMixin := CanChoiceMixin finite_ord_cancel'.
+Canonical finite_choiceType := ChoiceType finm finite_choiceMixin.
+Definition finite_countMixin := CanCountMixin finite_ord_cancel'.
+Canonical finite_countType := CountType finm finite_countMixin.
+
+Definition finite_finMixin := CanFinMixin finite_ord_cancel'.
+Canonical finite_finType := FinType finm finite_finMixin.
+
+End Mixins.
+
+Lemma finite_eq_dec: forall (n: nat) (x y: finite n),
+  { x = y } + { x <> y}.
+Proof.
+  intros. apply (reflect_dec _ _ (@eqP _ x y)).
+Qed.
+
+End FiniteOrd.
 
 (*Get nth element of a list*)
 (*While we could convert to an ordinal and use ssreflect's
 tuple and finite libraries, this does not compute and it makes
 test cases awful. So it is a bit more work, but it is worth defining
 a separate function that computes.*)
+(*
+Definition fin_nth {A: Type} (l: list A) (n: finite (length l)) : A.
+Proof.
+  remember (length l) as m.
+  generalize dependent l. induction m; intros.
+  - inversion n.
+  - simpl in n. destruct l.
+    + inversion Heqm.
+    + simpl in Heqm. inversion Heqm.
+      destruct m.
+      * apply a.
+      * destruct n.
+        -- apply (IHm f l H0).
+        -- apply a.
+Defined.*)
 
+Definition fin_nth_aux {A: Type} {n: nat} (l: list A) (Hl: length l = n)
+  (x: finite n) : A.
+Proof.
+  generalize dependent l; induction n; intros l Hl.
+  - exact (match x with end).
+  - destruct l. 
+    + exact (False_rect _ (O_S _ Hl)).
+    + destruct n.
+      * exact a.
+      * destruct x.
+        -- exact (IHn f l (Nat.succ_inj (length l) n.+1 Hl)).
+        -- exact a.
+Defined.
+
+(*
 Definition fin_nth {A: Type} (l: list A) (n: finite (length l)) : A.
 Proof.
   remember (length l) as m.
@@ -130,7 +261,8 @@ Proof.
     + injection Heqm. intros Hm. apply (IHm f _ Hm).
     + apply a.
 Defined.
-
+*)
+(*
 Fixpoint fin_nth_aux {A: Type}{n: nat} 
   (l: list A): length l = n -> finite n -> A :=
   match n as n' return length l = n' -> finite n' -> A with
@@ -143,12 +275,16 @@ Fixpoint fin_nth_aux {A: Type}{n: nat}
               | Some f' => fin_nth_aux tl (Nat.succ_inj _ _ Hlen) f' 
               end
             end
-  end.
-Definition fin_nth' {A: Type} (l: list A): finite (length l) -> A :=
+  end.*)
+Definition fin_nth {A: Type} (l: list A): finite (length l) -> A :=
   fin_nth_aux l erefl.
+(*
+  Search (S ?x = S ?y).
 
-Search size ?n.-tuple.
-
+Lemma fin_nth_aux_cons: forall {A: Type} {n: nat} (a: A) (l: list A) (x: finite n)
+  (Hl: length l = n) (Hl': (length l).+1 = n.+1),
+  fin_nth_aux l Hl = fin_nth_aux (a :: l) Hl' (Some x).
+  fin_nth l x = @fin_nth (n.+1) (a :: l) x.*)
 (*Lemma size_tuple': forall [n: nat] [T: Type] (t: n.-tuple T),
   size (tval t) = n.
 Proof.
@@ -159,6 +295,7 @@ Show Proof.
 size_tuple: forall [n : nat] [T : Type] (t : n.-tuple T), size t = n
 *)
 (*Get nth elt of tuple*)
+
 Definition tnthS {n: nat} {T: Type} (t: n.-tuple T) (x: finite n) : T :=
   fin_nth_aux (tval t) (size_tuple t) x.
 (*
@@ -171,6 +308,7 @@ Qed.
   simpl.
   rewrite /nth.
 *)
+
 Definition tnthS_equiv: forall {n: nat} {T: Type} (t: n.-tuple T) (x: finite n),
   tnthS t x = tnth t (finite_to_ord x).
 Proof.
@@ -179,13 +317,15 @@ Proof.
   destruct t. simpl.
   move: (size_tuple (Tuple (n:=n) (tval:=tval) i)).
   simpl. clear i. move: tval.
-  induction n; simpl; intros.
+  induction n; intros.
   - inversion x.
-  - destruct tval. inversion size_tuple.
-    destruct x.
-    + apply (IHn f tval _ tnth_default).
+  - rewrite finite_to_nat_S. destruct tval. inversion size_tuple.
+    destruct n.
     + reflexivity.
-Qed. 
+    + destruct x.
+      * apply (IHn f tval _ tnth_default).
+      * reflexivity.
+Qed.
 
 
 
@@ -263,6 +403,7 @@ Definition fin_nth {A: Type} (s: seq A) (n: ordinalS (size s)) : A :=
 
 (* For any function f: ordinal n -> ordinal m -> A, we can consider this as 
   a function which first produces an m-tuple, then selects the correct element. *)
+
 Definition finite_fun_blist {n: nat} {A: finite n -> Type} 
 (ns: finite n -> nat)
 (f: forall (j: finite n) (x: finite (ns j)), A j):
@@ -278,7 +419,7 @@ Proof.
   apply val_inj => /=.
   rewrite nth_enum_ord //.
   apply finite_to_nat_bound.
-Qed. 
+Qed.
 
 End Finite.
 
@@ -322,7 +463,7 @@ Fixpoint iter_either (l: list Set) : Set :=
 
 
 End TypeOps.
-
+(*
 (*A bool-valued version of "In" that we can use in proofs of Type*)
 Definition in_bool {A: Type} (eqb: A -> A -> bool)
   (x: A) (l: list A) : bool :=
@@ -345,7 +486,7 @@ Proof.
     + destruct IHl.
       * apply ReflectT. right; auto.
       * apply ReflectF. intros [c1 | c2]; subst; contradiction.
-Qed.
+Qed.*)
 
 (*
 Lemma In_in_bool: forall {A: Type} (eq_dec: forall (x y : A), {x = y} + {x <> y})
@@ -469,7 +610,7 @@ Lemma string_eqbSE: forall a s2,
 Proof.
   intros; intro C; inversion C.
 Qed.*)
-
+(*
 Lemma string_rewrite : rewritable String.eqb.
 Proof.
   unfold rewritable; intros s1.
@@ -574,7 +715,7 @@ Proof.
   apply bool_irrelevance.
   destruct Heqp.
   apply Hf1.
-Defined.
+Defined.*)
 
 Fixpoint big_sprod (l: list Set) : Set :=
   match l with
@@ -649,26 +790,120 @@ unfold funsym_eqb in Heq.
 unfold build_vty_base in *.
 *)
 
-(*This gives the combined base type for all constructors - the iterated
-  Either of each constructor*)
+(*Since each type has at least one constructor, we use the following non-empty list.
+  Otherwise, we need to special case nil and the singleton list (or else our
+  types would have an extra (either A empty) and be ugly) and many of the functions
+  get much harder due to nested dependent pattern matching.*)
+Inductive ne_list (A: Set) : Set :=
+  | ne_hd : A -> ne_list A
+  | ne_cons : A -> ne_list A -> ne_list A.
+
+Arguments ne_hd {A}.
+Arguments ne_cons {A}.
+
+Lemma isT : true.
+Proof. auto. Qed.
+
+Definition list_to_ne_list {A: Set} (l: list A) (Hl: negb (null l)) : ne_list A. 
+(*:= TODO: find out how to resolve the issue where cant unify match
+  match l as l' return negb (null l') -> ne_list A with
+  | nil => fun H => False_rect _ (not_false H)
+  | hd :: tl => fun H =>
+    match tl as tl' return negb (null ) ne_list A with
+    | nil => ne_hd hd
+    | hd2 :: tl2 => ne_cons hd (list_to_ne_list (hd2 :: tl2) isT)
+    end
+  end Hl.
+  Definit*)
+induction l.
+- apply (False_rect _ (not_false Hl)).
+- destruct l.
+  + apply (ne_hd a).
+  + apply (ne_cons a (IHl isT)).
+Defined.
+
+Lemma list_to_ne_list_cons: forall {A: Set} (hd: A) (tl: list A) (H: negb (null (hd :: tl))),
+  list_to_ne_list (hd :: tl) H =
+  match tl with
+  | nil => ne_hd hd
+  | a :: t => ne_cons hd (list_to_ne_list (a :: t) isT)
+  end.
+Proof.
+  intros.
+  destruct tl; auto.
+Qed.
+
+Fixpoint ne_list_to_list {A: Set} (l: ne_list A) : list A :=
+  match l with
+  | ne_hd x => [x]
+  | ne_cons x tl => x :: ne_list_to_list tl
+  end.
+
+Lemma ne_list_to_list_size: forall {A: Set} (l: ne_list A),
+  negb (null (ne_list_to_list l)).
+Proof.
+  intros. destruct l; reflexivity.
+Qed.
+
+Lemma ne_list_to_list_cons: forall {A: Set} (x: A) (l: ne_list A),
+  ne_list_to_list (ne_cons x l) = x :: ne_list_to_list l.
+Proof.
+  intros. reflexivity.
+Qed.
+
+Lemma list_ne_list_inv: forall {A: Set} (l: list A) (Hl: negb (null l)),
+  ne_list_to_list (list_to_ne_list l Hl) = l.
+Proof.
+  intros. induction l.
+  - inversion Hl.
+  - destruct l.
+    + reflexivity.
+    + rewrite list_to_ne_list_cons ne_list_to_list_cons. f_equal.
+      apply IHl.
+Qed.
+
+Lemma ne_list_list_inv: forall {A: Set} (l: ne_list A),
+  list_to_ne_list (ne_list_to_list l) (ne_list_to_list_size l) = l.
+Proof.
+  intros. generalize dependent (ne_list_to_list_size l). induction l; intros.
+  - reflexivity.
+  - simpl in i. destruct l; simpl in *; try reflexivity.
+    specialize (IHl isT).
+    destruct (ne_list_to_list l). inversion IHl.
+    f_equal. apply IHl.
+Qed.
+
 (*There are two possible options for the base type, each with pros and cons:
   1. Define the base type as the iterated Either of the base of each constructor.
     This makes pattern matching nice, and makes the types readable (for example, 
     List A would be Either unit A). But the proofs are very difficult, because
     we need induction for everything (to determine which constructor we are in) and
     proofs due not reduce due to equality issues (so some "obvious" lemmas with
-    equality are not provable).
+    equality are very difficult).
   2. Define the base type simply as the type of constructors in the list, along
     with an instance of their base type. This is much, much nicer to use in proofs,
     as it reduces, requires no induction (we already have the constructor available),
     and has all the useful information already encapsulated in the type. But it
     does not allow nice pattern matching and makes the types into a cryptic
     nested sigma type.
-  We choose to use the 2nd method because the proofs become much simpler. These types
-  are only used in specifications, so we do not expect readability to be as much 
-  of an issue. The test cases become much worse.*)
-Definition build_base (constrs: list funsym) : Set :=
-  { x: {f: funsym & build_constr_base f} | in_bool funsym_eqb (projT1 x) constrs}.
+  We choose to use the 1st method because we want to make sure we can test the
+  encoding, which can get quite complicated. Some of the proofs (of constructor
+  existence) are harder but provable, some still need to be proved (injectivity,
+  disjointness). (TODO: we need to figure ou) the proofs become much simpler. 
+  Either way, this will be hidden by an API for the main semantics, so some
+  difficult proofs are not a problem for the rest of the semantics.*)
+Fixpoint build_base (constrs: ne_list funsym) : Set :=
+  match constrs with
+  | ne_hd hd => build_constr_base hd
+  | ne_cons hd tl => either (build_constr_base hd) (build_base tl)
+  end.
+ (* 
+Fixpoint build_base (constrs: list funsym) : Set :=
+  match constrs with
+  | [f] => build_constr_base f
+  | f :: fs => either (build_constr_base f) (build_base fs)
+  | nil => unit
+  end.*)
 
 (*Setp 2: Construct the function for recursion*)
 
@@ -683,49 +918,311 @@ Definition count_rec_occ (ts: typesym) (c: funsym) :=
 Definition build_constr_rec (ts: typesym) (c: funsym) : Set :=
    finite (count_rec_occ ts c).
 
-(*This suffices for the 2nd method for [build_base]; otherwise, we would need
-  extra recursive functions to find which constructor we are in, and we would
-  need dependent type casts.*)
+(*Definition cast_build_base {c1 c2: list funsym} (H: c1 = c2) (x: build_base c1) :
+  build_base c2.
+Proof.
+  subst. apply x.
+Defined.*)
+
+(*This is the recursive function for the W type:
+  it takes in an instance of the constrs base type, and for the base type
+  belonging to constructor i, the result is the finite type of the number of
+  recursive occurrences of ts in i *)
+(*This is one of the places where the [ne_list] simplifies things; otherwise, we need
+  a nested pattern match and the dependent pattern match becomes very complicated.*)
+Fixpoint build_rec (ts: typesym) (constrs: ne_list funsym) {struct constrs} : (build_base constrs -> Set) :=
+  match constrs with
+  | ne_hd f => fun _ => build_constr_rec ts f
+  | ne_cons f fs => fun o =>
+    match o with
+    | Left _ => build_constr_rec ts f
+    | Right y => build_rec ts fs y
+    end
+  end.
+(*
+
+    (match fs as l return fs = l -> (build_base (f :: l) -> Set) with
+    | nil => fun _ _ => build_constr_rec ts f
+    | x :: tl => fun Heq (o: build_base (f :: x :: tl)) =>
+      match o with
+      | Left _ _ _ => build_constr_rec ts f
+      | Right _ _ y => build_rec ts fs (cast_build_base (eq_sym Heq) y)
+      end
+    end) eq_refl
+  end.*)
+
+(*Alternatively, build with tactics (arguably cleaner to read but not use)*)
+(*
+Definition build_rec' (ts: typesym) (constrs: list funsym) : (build_base constrs -> Set).
+  induction constrs.
+  - simpl. intros. apply empty.
+  - destruct constrs.
+    + simpl. intros. apply (build_constr_rec ts a).
+    + intros O. destruct O.
+      * apply (build_constr_rec ts a).
+      * apply IHconstrs. apply b.
+Defined.
+
+Lemma build_rec_eq: forall ts constrs x,
+  build_rec ts constrs x = build_rec' ts constrs x.
+Proof.
+  intros. 
+  intros; induction constrs; simpl; auto.
+  destruct constrs; auto.
+  destruct x; auto.
+Qed.*)
 
 (*The full encoding of ADTs*)
 
-(*This handles mutual recursion (but not nested recursion at the moment).*)
-Definition mk_adts (l: list (typesym * list funsym)) : finite (length l) -> Set :=
+(*This handles mutual recursion (but not nested recursion at the moment).
+  Mutual recursion is not too bad, we just need to be careful to call [build_rec]
+  with the correct typesym to count.*)
+Definition mk_adts (l: list (typesym * ne_list funsym)) : finite (length l) -> Set :=
   W (finite (length l)) (fun n => build_base (snd (fin_nth l n)))
-    (fun this i (x: build_base (snd (fin_nth l this))) => 
-    build_constr_rec (fst (fin_nth l i)) (projT1 (proj1_sig x))).
-
-Lemma lt_01: 0 < 1.
-by [].
-Qed.
+    (fun (this: finite _) (i: finite _) => 
+      build_rec (fst (fin_nth l i))
+        (snd (fin_nth l this))).
 
 (*For non-mutual types*)
-Definition mk_adt (ts: typesym) (constrs: list funsym) : Set :=
-  mk_adts [(ts, constrs)] None. 
+Definition mk_adt (ts: typesym) (constrs: ne_list funsym) : Set :=
+  mk_adts [(ts, constrs)] tt. 
 
+(*A bool-valued version of "In" that we can use in proofs of Type*)
+Fixpoint in_bool {A: Type} (eq_dec: forall (x y: A), {x = y} + {x <> y})
+  (x: A) (l: list A) : bool :=
+  match l with
+  | nil => false
+  | y :: tl => eq_dec x y || in_bool eq_dec x tl
+  end.
+
+Fixpoint in_bool_ne {A: Set} (eq_dec: forall (x y: A), {x = y} + {x <> y})
+  (x: A) (l: ne_list A) : bool :=
+  match l with
+  | ne_hd y => eq_dec x y
+  | ne_cons y tl => eq_dec x y || in_bool_ne eq_dec x tl
+  end.
 
 (** Constructors *)
+(*Generating the constructor takes a decent amount of effort. 
+First, we need to
+  transform an instance of the arguments of the constructor ([build_constr_base])
+  into an instance of the base type ([build_base]).
+Then, we need to know that [build_rec] of a constructor base type is
+  just the finite type counting the number of occurrences (the dependent types
+  make this non-trivial to prove).
+Then, we define a mapping between a finite type and a bounded list of
+  the same size.
+Finally, we can use these pieces to define the constructor encoding. *)
 
-(*Generating the constructors is not too complicated given our choice of encoding.
-  The constructor function (the non-trivial part) takes in the [build_base],
-  knows what constructor we are dealing with, and, knowing the number of times
-  the given type symbol is used recursively, selects the nth argument of the
-  input list to apply to the nth recursive call.
-  
-  With the alternate encoding, we would need a recursive function to find which
-  constructor we are in, then a recursive lemma to prove that the (A i) actually
-  equals the finite type with the number of recursive calls, then we would need to
-  use this lemma to manually create a mapping (and this dependent type casting will
-  lead to terms that don't reduce).
-  *)
+(*Step1: transform instance of [build_constr_base] to instance of [build_base].
+  The function is conceptually simple (walk through list until we find the correct
+  constructor), dependent types make it very hard to write by hand.*)
 
-  (*A slightly nicer form to get the [build_base] for a constructor*)
-Definition get_constr_type (ts: typesym) (constrs: list funsym) (f: funsym) 
-  (Hin: in_bool funsym_eqb f constrs)
+
+
+Definition get_constr_type (ts: typesym) (constrs: ne_list funsym) (f: funsym) 
+  (Hin: in_bool_ne funsym_eq_dec f constrs)
   (c: build_constr_base f) : 
-  (build_base constrs) := exist _ (existT _ f c) Hin.
+  (build_base constrs).
+Proof.
+  induction constrs; simpl; simpl in Hin; destruct (funsym_eq_dec f a).
+  - rewrite <- e. apply c.
+  - exfalso. apply (not_false Hin).
+  - apply Left. rewrite <- e. apply c.
+  - apply Right. apply (IHconstrs Hin).
+Defined.
+(*
+  
+  exfalso. apply (not_false Hin).
+  - simpl. simpl in Hin.
+    destruct (funsym_eq_dec f a).
+    + apply Left. rewrite <- e.
+      apply c.
+    + apply Right. apply (IHconstrs Hin).
+Defined.*)
 
-(*Create the constructor encoding: given a mutually recursive type,
+(*Almost the exact same*)
+Fixpoint get_constr_type' (ts: typesym) (constrs: ne_list funsym) (f: funsym)
+  (Hin: in_bool_ne funsym_eq_dec f constrs)
+  (c: build_constr_base f):
+  build_base constrs :=
+  (match constrs as cs return in_bool_ne funsym_eq_dec f cs -> build_base cs with
+  | ne_hd a => fun Hin' =>
+    match (funsym_eq_dec f a) as b return b -> build_base (ne_hd a) with
+    | left Heq => fun _ => (ltac:(rewrite <- Heq; apply c))
+    | right Hneq => fun b => False_rect _ (not_false b)
+    end Hin'
+  | ne_cons a tl => fun Hin' =>
+    (match (funsym_eq_dec f a) as b 
+      return b || in_bool_ne funsym_eq_dec f tl -> build_base (ne_cons a tl)
+    with
+    | left Heq => fun _ =>Left _ _ (ltac:(rewrite <- Heq; apply c))
+    | right Hneq => fun Hin'' => Right _ _ (get_constr_type' ts tl f Hin'' c)
+    end) Hin' 
+  end) Hin.
+
+Lemma get_constr_type_eq: forall ts constrs f (Hin: in_bool_ne funsym_eq_dec f constrs)
+  (c: build_constr_base f),
+    get_constr_type ts constrs f Hin c = get_constr_type' ts constrs f Hin c.
+Proof.
+  intros. induction constrs; simpl; auto;
+  simpl in Hin;
+  destruct (funsym_eq_dec f a); auto. rewrite IHconstrs; auto.
+Qed.
+(*  
+  apply tt.
+  - simpl. destruct constrs.
+    + simpl in Hin.
+      destruct (funsym_eq_dec f a).
+      * rewrite <- e. apply c.
+      * inversion Hin.
+    + simpl in Hin.
+      destruct (funsym_eq_dec f a).
+      * apply Left. rewrite <- e. apply c. 
+      * apply Right. apply IHconstrs. apply Hin.
+Defined.*)
+
+(*Now, we show that if we get the type corresponding to some
+  constructor f, it is really just the type that counts the number
+  of recursive instances in f*)
+(*We need this to be Defined so that we can simplify in [make_constr] without
+  axioms*)
+Definition build_rec_get_constr_type: forall (ts ts': typesym) (constrs: ne_list funsym) 
+  (f: funsym) (Hin: in_bool_ne funsym_eq_dec f constrs)
+  (c: build_constr_base f) ,
+  build_rec ts' constrs (get_constr_type ts constrs f Hin c) =
+  finite (count_rec_occ ts' f).
+Proof.
+  intros. induction constrs; simpl; simpl in Hin;
+  destruct (funsym_eq_dec f a); subst; auto.
+  exfalso. apply (not_false Hin).
+Qed.
+
+  
+  (*
+  destruct constrs; simpl in Hin; destruct (funsym_eq_dec f a).
+    + rewrite e. reflexivity.
+    + inversion Hin.
+    + rewrite e. reflexivity.
+    + apply IHconstrs.
+Defined.*)
+
+Definition build_rec_get_constr_type' {ts ts': typesym} {constrs: ne_list funsym} 
+  {f: funsym} {Hin: in_bool_ne funsym_eq_dec f constrs}
+  {c: build_constr_base f}
+  (x: build_rec ts' constrs (get_constr_type ts constrs f Hin c)) :
+  finite (count_rec_occ ts' f).
+
+
+  (*
+refine
+  ((match constrs as l return (forall (H: in_bool funsym_eq_dec f l),
+    build_rec ts' l (get_constr_type ts l f H c) -> finite (count_rec_occ ts' f)) 
+  with
+  | nil => fun H _ => False_rect _ (not_false H)
+  | hd :: tl => 
+    match tl as l' return (forall (H: in_bool funsym_eq_dec f (hd :: l')),
+      build_rec ts' (hd :: l') (get_constr_type ts (hd :: l') f H c) -> finite (count_rec_occ ts' f))
+    with
+    | nil => fun Hin X =>
+      (match (funsym_eq_dec f hd) as b return 
+        b || in_bool funsym_eq_dec f nil -> finite (count_rec_occ ts' f) with
+      | left  _ Heq => fun Hin' => _
+      | right _ Hneq => fun Hin' => False_rect _ (not_false Hin')
+      end) Hin
+    | hd' :: tl' => fun Hin X =>
+      (match (funsym_eq_dec f hd) as b return
+      b || in_bool funsym_eq_dec f (hd' :: tl') -> finite (count_rec_occ ts' f) with
+      | left _ Heq => fun Hin' => _
+      | right _ Hneq => fun Hin' => _
+      end) Hin
+  end
+end) Hin x).
+- rewrite Heq. apply X.
+- rewrite Heq. simpl in X. apply X.*)
+Proof.
+  intros. induction constrs; simpl in x; simpl in Hin; destruct (funsym_eq_dec f a).
+  - rewrite e. apply x.
+  - exfalso. apply (not_false Hin).
+  - rewrite e. apply x.
+  - apply (IHconstrs Hin x).
+Defined.
+
+Definition build_rec_get_constr_type'': forall {ts ts': typesym} {constrs: ne_list funsym} 
+  {f: funsym} {Hin: in_bool_ne funsym_eq_dec f constrs}
+  {c: build_constr_base f}
+  (x: finite (count_rec_occ ts' f)),
+  build_rec ts' constrs (get_constr_type ts constrs f Hin c).
+Proof.
+  intros. induction constrs; simpl; simpl in Hin; destruct (funsym_eq_dec f a).
+  - rewrite <- e. apply x.
+  - apply (False_rec _ (not_false Hin)).
+  - rewrite <- e. apply x.
+  - apply (IHconstrs Hin).
+Defined.
+
+(*TODO: use user-defined build_rec, define get_constrs, define
+  each of these functions*)
+  (*For now, admit and see*)
+Lemma build_rec_constr_inv1: forall {ts ts': typesym} {constrs: ne_list funsym} 
+{f: funsym} {Hin: in_bool_ne funsym_eq_dec f constrs}
+{c: build_constr_base f} 
+(x: build_rec ts' constrs (get_constr_type ts constrs f Hin c)),
+(@build_rec_get_constr_type'' ts ts' constrs f Hin c 
+  (build_rec_get_constr_type' x)) = x.
+Proof.
+  intros. induction constrs; simpl in Hin; simpl in x; simpl;
+  destruct (funsym_eq_dec f a); subst; auto. exfalso. apply (not_false Hin).
+Qed.
+
+Lemma build_rec_constr_inv2: forall {ts ts': typesym} {constrs: ne_list funsym} 
+{f: funsym} {Hin: in_bool_ne funsym_eq_dec f constrs}
+{c: build_constr_base f} 
+(x: finite (count_rec_occ ts' f)),
+(@build_rec_get_constr_type' ts ts' constrs f Hin c 
+  (build_rec_get_constr_type'' x)) = x.
+Proof.
+  intros. induction constrs; simpl in Hin; simpl in x; simpl;
+  destruct (funsym_eq_dec f a); subst; auto. exfalso. apply (not_false Hin).
+Qed.
+
+(*
+  - inversion Hin.
+  - simpl. simpl in Hin.
+    simpl in x. destruct (funsym_eq_dec f a).
+    + subst. reflexivity.
+    + apply IHconstrs.
+Qed.*)
+(*
+Proof.
+  intros. induction constrs.
+  - inversion Hin.
+  - unfold build_rec_get_constr_type', build_rec_get_constr_type''.
+    destruct constrs; simpl in Hin; destruct (funsym_eq_dec f a).
+  
+  
+  destruct constrs; simpl in Hin; destruct (funsym_eq_dec f a).*)
+
+
+(*A generic map from a finite type to a bounded list *)
+(*
+Definition finmap_list {A: Type} (n: nat) (l: blist A n) (f: finite n) : A.
+Proof.
+  induction n; simpl in *.
+  - destruct f.
+  - destruct n as [|n'].
+    + destruct l. destruct x. inversion e.
+      apply a.
+    + destruct l. destruct x. inversion e.
+      destruct f.
+      (*Some case: use IH*)
+      * apply IHn. apply exist with (x:=x). inversion e. reflexivity.
+        apply f.
+      (*None case: use head of list*)
+      * apply a.
+Defined.   *)
+
+(*Finally, create the constructor encoding: given a mutually recursive type,
   an index into the type, a constructor in the constructors of that index,
   and the arguments to the constructor (recursive and non-recursive), we encode
   the constructor such that the function matches on the mutually recursive index and
@@ -733,32 +1230,139 @@ Definition get_constr_type (ts: typesym) (constrs: list funsym) (f: funsym)
   the fact that this is equivalent to just the number of recursive occurrences of
   this index, and constructs a finite mapping; ie: applying the nth argument to the
   nth recursive call.*)
-Definition make_constr (l: list (typesym * list funsym)) (n: finite (length l))
+
+Definition make_constr (l: list (typesym * ne_list funsym)) (n: finite (length l))
   (f: funsym)
-  (Hin: in_bool funsym_eqb f (snd (fin_nth l n)))
+  (Hin: in_bool_ne funsym_eq_dec f (snd (fin_nth l n)))
   (c: build_constr_base f)
-  (recs: forall (x: finite (length l)), 
-    (count_rec_occ (fst (fin_nth l x)) f).-tuple (mk_adts l x) ) :
-  mk_adts l n :=
-  (mkW (finite (length l)) _ _ _ 
-    (get_constr_type (fst (fin_nth l n)) _ f Hin c) 
-    (fun j X => tnthS (recs j) X)).
+  (recs: forall (x: finite (length l)), (count_rec_occ (fst (fin_nth l x)) f).-tuple (mk_adts l x)
+    ) :
+  mk_adts l n := mkW (finite (length l)) _ _ n 
+    (get_constr_type (fst (fin_nth l n)) _ f Hin c)
+    (fun j H => tnthS (recs j) (build_rec_get_constr_type' H)).
+(*
+  induction (snd (fin_nth l n)).
+  - exfalso. inversion Hin.
+  - 
+  
+  
+  
+  apply (not_false Hin).
+
+
+
+  rewrite (build_rec_get_constr_type (fst(fin_nth l n)) (fst(fin_nth l j)) _ f Hin c) in H.
+  specialize (recs j). apply (finmap_list _ recs H).
+Defined.*)
+
+  (*New plan: use ssreflect fintypes, prove that build_rec gives a fintype,
+    then, just define *)
+
+
+
 
 (*For non-mutually-recursive-types *)
-Definition make_constr_simple (ts: typesym) (constrs: list funsym) (f: funsym)
-(Hin: in_bool funsym_eqb f constrs)
+Definition make_constr_simple (ts: typesym) (constrs: ne_list funsym) (f: funsym)
+(Hin: in_bool_ne funsym_eq_dec f constrs)
 (c: build_constr_base f)
 (recs: (count_rec_occ ts f).-tuple (mk_adt ts constrs)) :
 mk_adt ts constrs.
 Proof.
-  apply make_constr with(f:=f).
-  - apply Hin.
-  - apply c.
-  - intros. destruct x. inversion f0. simpl.
-  apply recs.
+  apply (make_constr [(ts, constrs)] tt f Hin c).
+  intros x. destruct x. apply recs.
 Defined.
 
 (* Theorems about ADTs*)
+
+Require Import Coq.Program.Equality.
+Require Import Coq.Logic.Eqdep_dec.
+
+Lemma all_funsym_refl: forall {f: funsym} (H: f = f),
+  H = erefl.
+Proof.
+  intros. apply UIP_dec. intros. eapply reflect_dec. apply funsym_eqb_spec.
+Qed.
+
+
+
+Lemma in_bool_dec: forall {A: Type} (eq_dec: forall (x y: A), {x = y} + {x <> y}) x l,
+  proj_sumbool _  _ (in_dec eq_dec x l) = in_bool eq_dec x l.
+Proof.
+  intros. induction l; simpl; auto.
+  destruct (eq_dec a x); subst; simpl.
+  destruct (eq_dec x x); auto. contradiction.
+  destruct (eq_dec x a); auto; subst; try contradiction; simpl.
+  destruct (in_dec eq_dec x l); simpl; auto.
+Qed.
+
+(*Lemma list_eq_dec_cons: forall {A: Type} (eq_dec: forall (x y : A), { x = y} + { x <> y})
+  (x: A) (l: list A)*)
+
+(*TODO: move - this is very ssreflect-like - also very ugly proof*)
+Lemma nodupb_cons {A: Type} (eq_dec: forall (x y : A), {x = y} + {x <> y}) 
+  (x: A) (l: list A) :
+  nodupb eq_dec (x :: l) = negb (in_bool eq_dec x l) && nodupb eq_dec l.
+Proof.
+  intros.
+  destruct (nodup_NoDup eq_dec (x :: l)).
+  - inversion n; subst.
+    rewrite <- in_bool_dec. destruct (in_dec eq_dec x l); simpl; auto; try contradiction.
+    destruct (nodup_NoDup eq_dec l); auto. contradiction.
+  - rewrite <- in_bool_dec. destruct (in_dec eq_dec x l); auto; simpl.
+    destruct (nodup_NoDup eq_dec l); auto. exfalso. apply n. constructor; auto.
+Qed.
+
+Lemma in_bool_ne_equiv: forall {A: Set} (eq_dec: forall (x y: A), { x = y} + {x <> y})
+  (x: A) (l: ne_list A),
+  in_bool_ne eq_dec x l = in_bool eq_dec x (ne_list_to_list l).
+Proof.
+  intros. induction l; simpl; [rewrite orb_false_r | rewrite IHl ]; reflexivity.
+Qed.
+
+Definition get_funsym_base (ts: typesym) 
+  (l: ne_list funsym) (Huniq: nodupb funsym_eq_dec (ne_list_to_list l)) 
+  (b: build_base l) :
+  { f: funsym & {Hin: in_bool_ne funsym_eq_dec f l & 
+    {b1: build_constr_base f | b = get_constr_type ts l f Hin b1}}}.
+Proof.
+  induction l; simpl in b.
+  - simpl. apply (existT _ a).
+    destruct (funsym_eq_dec a a);[|contradiction]; simpl.
+    apply (existT _ isT).
+    apply (exist _ b).
+    unfold eq_rect. assert (e = erefl) by (apply UIP_dec; apply funsym_eq_dec).
+    rewrite H; reflexivity.
+  - simpl. destruct b.
+    + apply (existT _ a). destruct (funsym_eq_dec a a); [|contradiction].
+      simpl. apply (existT _ isT). apply (exist _ b). f_equal.
+      unfold eq_rect.
+      assert (e = erefl) by (apply UIP_dec; apply funsym_eq_dec).
+      rewrite H. reflexivity.
+    + simpl in Huniq. rewrite nodupb_cons in Huniq.
+      apply andb_true_iff in Huniq.
+      destruct Huniq as [Heq Huniq].
+      specialize (IHl Huniq b).
+      destruct IHl as [f [Hinf [b1 Hb1]]].
+      apply (existT _ f).
+      destruct (funsym_eq_dec f a).
+      * subst. rewrite <- in_bool_ne_equiv in Heq. 
+        rewrite Hinf in Heq. inversion Heq.
+      * apply (existT _ Hinf). apply (exist _ b1). f_equal. apply Hb1.
+Qed.
+
+
+Lemma fin_nth_in: forall {A: Type} (l: list A) (n: finite (length l)),
+  In (fin_nth l n) l.
+Proof.
+  intros. unfold fin_nth. generalize dependent (erefl (length l)). 
+  induction l; auto; intros.
+  - inversion n.
+  - simpl in n. destruct l; simpl in *.
+    left. reflexivity.
+    destruct n.
+    + specialize (IHl y). right. apply IHl.
+    + left. reflexivity.
+Qed. 
 
 Require Import Coq.Program.Equality.
 Require Import Coq.Logic.FunctionalExtensionality.
@@ -770,29 +1374,85 @@ Require Import Coq.Logic.FunctionalExtensionality.
   extensionality by using Mathcomp's finfun type for finite functions. However,
   this would require significant refactoring and makes other parts of the
   proofs quite complicated. Since we assume this axiom elsewhere anyway, it is OK.*)
-Definition all_constrs: forall (l: list (typesym * list funsym)) (n: finite (length l))
+(*Can we prove this?*)
+Lemma all_constrs: forall (l: list (typesym * ne_list funsym)) (n: finite (length l))
+  (Huniq: forall constrs, In constrs (map snd l) -> 
+    nodupb funsym_eq_dec (ne_list_to_list constrs))
   (x: mk_adts l n),
-  {f: funsym & {t: in_bool funsym_eqb f (snd (fin_nth l n)) * build_constr_base f *
+  {f: funsym & {t: in_bool_ne funsym_eq_dec f (snd (fin_nth l n)) * build_constr_base f *
      forall (x: finite (length l)), 
-      (count_rec_occ (fst (fin_nth l x)) f).-tuple (mk_adts l x) 
-     | x = make_constr l n f (fst (fst t)) (snd (fst t)) (snd t)}}.
+     (count_rec_occ (fst (fin_nth l x)) f).-tuple (mk_adts l x) 
+     | 
+      x = make_constr l n f (fst (fst t)) (snd (fst t)) (snd t)}}.
 Proof.
   intros. unfold mk_adts in x. dependent destruction x.
   unfold make_constr.
-  destruct a as [[f' base] Hinf']. simpl in *.
+  set (constrs:= (fin_nth l i)) in *.
+  assert (Huniqc: nodupb funsym_eq_dec (ne_list_to_list (snd constrs))). {
+    apply Huniq. rewrite in_map_iff. exists constrs. split; auto.
+    subst constrs. apply fin_nth_in.
+  }
+  pose proof (get_funsym_base (fst constrs) (snd constrs) Huniqc a).
+  destruct H as [f' [Hin [b1 Ha]]].
   apply (existT _ f').
-  pose proof (@finite_fun_blist (length l) _ (fun j => count_rec_occ (fst (fin_nth l j)) f') f) as h.
-  destruct h as [h Hhf].
-  apply exist with (x:=(Hinf', base, h)).
-  f_equal.
-  do 2 (apply functional_extensionality_dep; intros).
-  rewrite Hhf. reflexivity. 
+  (*construct the function we need*)
+  unshelve epose (g:=_ : forall j: finite (Datatypes.length l),
+    finite (count_rec_occ (fst (fin_nth l j)) f') ->
+    W (finite (Datatypes.length l))
+      (fun n : finite (Datatypes.length l) => build_base (snd (fin_nth l n)))
+      (fun this i : finite (Datatypes.length l) =>
+       build_rec (fst (fin_nth l i)) (snd (fin_nth l this))) j). {
+        intros j t. apply f. subst. apply build_rec_get_constr_type''. apply t.
+       }
+  pose proof (@finite_fun_blist (length l) _ (fun j => count_rec_occ (fst (fin_nth l j)) f') g) as h.
+  destruct h as [h Hhg].
+  apply exist with (x:=(Hin, b1, h)).
+  simpl. subst. f_equal.
+  (*for the moment*)
+  repeat (apply functional_extensionality_dep; intros).
+  rewrite <- (Hhg x _).
+  subst g. simpl. f_equal. unfold eq_rec_r. simpl.
+  rewrite build_rec_constr_inv1. reflexivity.
 Qed.
 
 (*2. Constructors are disjoint *)
-Lemma constrs_disjoint: forall (l: list (typesym * list funsym)) (n: finite (length l))
-  (f1 f2: funsym) (Hin1: in_bool funsym_eqb f1 (snd (fin_nth l n)))
-  (Hin2: in_bool funsym_eqb f2 (snd (fin_nth l n)))
+
+Lemma get_constr_type_inj1: forall (ts: typesym) (constrs: ne_list funsym) 
+(f1 f2: funsym) (Hin1: in_bool_ne funsym_eq_dec f1 constrs)
+(Hin2: in_bool_ne funsym_eq_dec f2 constrs)
+(c1: build_constr_base f1)
+(c2: build_constr_base f2),
+get_constr_type ts constrs f1 Hin1 c1 =
+    get_constr_type ts constrs f2 Hin2 c2 ->
+f1 = f2.
+Proof.
+  intros. induction constrs.
+  - simpl in H; simpl in Hin1; simpl in Hin2.
+    destruct (funsym_eq_dec f1 a); 
+    destruct (funsym_eq_dec f2 a); subst; auto;
+    try solve[inversion Hin1]; solve[inversion Hin2].
+  - simpl in H; simpl in Hin1; simpl in Hin2.
+    destruct (funsym_eq_dec f1 a);
+    destruct (funsym_eq_dec f2 a); subst; auto; inversion H.
+    apply (IHconstrs Hin1 Hin2 H1).
+Qed.
+
+Lemma get_constr_type_inj2: forall (ts: typesym) (constrs: ne_list funsym)
+  (f: funsym) (Hin: in_bool_ne funsym_eq_dec f constrs)
+  (c1: build_constr_base f)
+  (c2: build_constr_base f),
+  get_constr_type ts constrs f Hin c1 = get_constr_type ts constrs f Hin c2 ->
+  c1 = c2.
+Proof.
+  intros. induction constrs; simpl in Hin; simpl in H; destruct (funsym_eq_dec f a);
+  subst; auto; try solve[inversion Hin].
+  - inversion H. reflexivity.
+  - inversion H. apply (IHconstrs Hin H1).
+Qed.
+
+Lemma constrs_disjoint: forall (l: list (typesym * ne_list funsym)) (n: finite (length l))
+  (f1 f2: funsym) (Hin1: in_bool_ne funsym_eq_dec f1 (snd (fin_nth l n)))
+  (Hin2: in_bool_ne funsym_eq_dec f2 (snd (fin_nth l n)))
   (c1: build_constr_base f1)
   (c2: build_constr_base f2)
   (recs1: forall (x: finite (length l)), 
@@ -802,14 +1462,10 @@ Lemma constrs_disjoint: forall (l: list (typesym * list funsym)) (n: finite (len
   f1 <> f2 ->
   make_constr l n f1 Hin1 c1 recs1 <> make_constr l n f2 Hin2 c2 recs2.
 Proof.
-  intros. intro C. inversion C; subst; contradiction.
-Qed.
-
-Lemma fun_args_eq: forall {A B : Type} (f g: A -> B) (x: A),
-f = g ->
-f x = g x.
-Proof.
-intros. subst. reflexivity.
+  intros. intro C. inversion C; subst.
+  apply inj_pair2_eq_dec in H1.
+  - apply get_constr_type_inj1 in H1. subst; contradiction.
+  - apply finite_eq_dec.
 Qed.
 
 Lemma fun_args_eq_dep: forall {A : Type} {B: A -> Type} (f g: forall(x: A), B x) (x: A),
@@ -819,26 +1475,30 @@ Proof.
   intros. subst. reflexivity.
 Qed.
 
-(*3. Constructors are injective (this needs functional extensionality and UIP)*)
-Lemma constrs_inj: forall (l: list (typesym * list funsym)) (n: finite (length l))
-(f: funsym) (Hin: in_bool funsym_eqb f (snd (fin_nth l n)))
+(*3. Constructors are injective (this needs eq_rect_eq (UIP))*)
+Lemma constrs_inj: forall (l: list (typesym * ne_list funsym)) (n: finite (length l))
+(f: funsym) (Hin: in_bool_ne funsym_eq_dec f (snd (fin_nth l n)))
 (c1 c2: build_constr_base f)
 (recs1 recs2: forall (x: finite (length l)), 
   (count_rec_occ (fst (fin_nth l x)) f).-tuple (mk_adts l x) ),
 make_constr l n f Hin c1 recs1 = make_constr l n f Hin c2 recs2 ->
-c1 = c2 /\ recs1 = recs2.
+c1 = c2 /\ (forall x, recs1 x = recs2 x).
 Proof.
-  intros. dependent destruction H. rename x into Heq. split; auto.
-  apply functional_extensionality_dep. intros i.
-  apply fun_args_eq_dep with(x:=i) in Heq.
+  intros. dependent destruction H.
+  assert (c1 = c2) by (apply (get_constr_type_inj2 _ _ _ _ _ _ x)).
+  split; auto.
+  subst. dependent destruction H.
+  intros x2.
   apply eq_from_tnth. move => y.
-  apply fun_args_eq_dep with (x:=(ord_to_finite y)) in Heq.
-  rewrite !tnthS_equiv in Heq.
-  rewrite ord_finite_cancel in Heq. apply Heq.
+  replace y with (finite_to_ord (ord_to_finite y)) by apply ord_finite_cancel.
+  rewrite <- !tnthS_equiv.
+  apply fun_args_eq_dep with(x:=x2) in x.
+  apply fun_args_eq_dep with (x:=(build_rec_get_constr_type'' (ord_to_finite y))) in x.
+  rewrite build_rec_constr_inv2 in x. apply x.
 Qed.
 
 End ADTConstr.
-
+(*
 (*Facilities to build ADTs*)
 Section Build.
 
@@ -857,18 +1517,6 @@ Proof.
     rewrite eq_sym. by apply eqP.
 Qed.
 
-(*TODO: fix w Finite*)
-(*
-Definition get_adt_index (l: list (typesym * list funsym)) (a: typesym) 
-  (Hin: In a (map fst l)) : finite (length l).
-
-eapply (@finite (index a (map fst l))).
-have->: length l = size l by [].
-have->:size l = size (map fst l) by rewrite size_map.
-rewrite index_mem.
-apply /in_In. apply Hin.
-Defined.
-*)
 (*Build the input functions*)
 
 (*The map sends each type variable in a's args to the corresponding sort from s,
@@ -932,7 +1580,7 @@ Definition arg_list (domain: Types.sort -> Set) := dlist domain.*)
         domain s ->
         arg_list domain tl ->
         arg_list domain (s :: tl).
-  
+
   (*Some definitions on [arg_list]*)
   Fixpoint arg_length {domain: Types.sort -> Type} {l: list Types.sort} (a: arg_list domain l) : nat :=
     match a with
@@ -1110,8 +1758,10 @@ Admitted.
     (recs: forall (x: ordinalS (length l)), 
       (count_rec_occ (fst (fin_nth l x)) f).-tuple (mk_adts l x) ) :
 *)
+
 End Build.
 (* TODO: Handle nested types*)
+
 (*
 (*We handle nested recursive types (ex: data rose = Node (list rose)) by
   transforming this into a mutually recursive type and using the above.
@@ -1206,7 +1856,7 @@ Definition gen_new_adt (l: list typesym) (args: list vty) : list (vty * )
   )
 
 *)
-
+*)
 (** Testing **)
 
 (*TODO: this is all screwed up because of the changes to [build_base] and the
@@ -1234,7 +1884,7 @@ Require Import Coq.Logic.ClassicalFacts.
   
   (*We need UIP, so we assume it directly (rather than something like
     excluded middle or proof irrelevance, which implies UIP)*)
-  Axiom UIP: forall {A: Type} {x y : A} (H1 H2: x = y), H1 = H2.
+  Axiom UIP: forall {A: Type}, EqdepFacts.UIP_ A.
   
   Lemma cast_left: forall {A B A' B': Set} (H1: A = A') (H2: B = B') (H3: either A B = either A' B') x,
     cast H3 (Left A B x) = Left A' B' (cast H1 x).
@@ -1288,7 +1938,7 @@ Require Import Coq.Logic.ClassicalFacts.
   Qed. 
   
 End Cast.
-
+(*
 (*For testing purposes, we provide an altnerative to [build_base], which is
 very unweildy due to dependent types. This was what we used before. It makes
 proofs MUCH worse but is easier to work with.*)
@@ -1539,7 +2189,7 @@ Admitted.*)
 *)      
 
 End BuildBaseAlt.
-
+*)
 (* We give many unit tests of increasing complexity to validate the encoding
   and ensure that the encodings can be proved equivalent to simpler, expected forms.*)
 
@@ -1555,184 +2205,11 @@ Definition triv_syms: typesym -> list vty -> Set := fun _ _ => empty.
 Definition triv_context : context := nil.
 
 Notation triv_adt := (mk_adt triv_context triv_vars triv_syms).
+
 Notation triv_constr := (make_constr_simple triv_context triv_vars triv_syms).
-(*
-Definition bb'_to_bb_cast (gamma: context) (vars: typevar -> Set) 
-(syms: typesym -> list vty -> Set) (cs: list funsym) s
-(Hs: build_base' gamma vars syms cs = s) : build_base' gamma vars syms cs.
-Proof.
-  rewrite Hs. apply s.
-
-
-
-  (s)
-*)
-Notation triv_bb'_to_bb := (bb'_to_bb triv_context triv_vars triv_syms).
-Notation triv_build_base := (build_base triv_context triv_vars triv_syms).
 
 Definition emp_fun {A: Type} : empty -> A := fun e =>
   match e with end.
-
-
-(*Unit*)
-Definition ts_unit : typesym := mk_ts "unit" nil.
-Definition fs_tt := mk_fs "tt" nil nil ts_unit nil.
-
-Definition aunit := triv_adt ts_unit [ fs_tt].
-
-Definition att := triv_constr ts_unit [fs_tt] fs_tt erefl tt
-  (in_tuple nil).
-(*
-Definition cast_base (cs: list funsym) (s: Set) (Hs: build_base' )
-*)
-(*
-Lemma test: triv_build_base [fs_tt] = unit.
-Proof.
-  unfold triv_build_base. simpl.
-  reflexivity.
-*)
-(*  Lemma test:
-  build_base' triv_context triv_vars triv_syms [fs_tt] = unit.
-  Proof.
-    reflexivity.
-  Qed.
-
-Lemma test: bb'_to_bb triv_context triv_vars triv_syms [fs_tt] unit =
-  triv_build_base [fs_tt].
-
-triv_build_base [fs_tt] = triv_bb_to_bb' [fs_tt] unit.
-Proof.
-  vm_compute.*)
-(*
-Check W.
-Check triv_build_base.
-Check 
-Lemma aunit_correct: aunit = W (finite 1) (fun _ => triv_bb'_to_bb [fs_tt]) (fun _ _ _ => empty) tt.
-Proof. 
-  unfold aunit, triv_adt, mk_adts, triv_build_base. simpl. f_equal.
-  repeat(apply functional_extensionality_dep; intros).
-  destruct x1 as [[f base] Hf]. simpl in *. destruct (funsym_eq_dec f fs_tt); auto; subst.
-  reflexivity. inversion Hf.
-Qed. 
-*)
-
-Definition def_adt : typesym * list funsym := (ts_unit, [fs_tt]).
-
-Lemma nat_lt_1: forall n,
-  n < 1 ->
-  n = 0.
-Proof.
-  move => x. by rewrite ltnS leqn0 => /eqP Hm.
-Qed.
-Print W.
-Print mk_adts.
-Check build_base.
-Print build_constr_rec.
-Print mk_adts.
-Lemma aunit_correct: w_iso' triv_context triv_vars triv_syms 
-  [(ts_unit, [fs_tt])] aunit None
-  (fun x => build_base' triv_context triv_vars triv_syms [fs_tt])
-  (fun _ _ _ => empty).
-Proof.
-  simpl. split. reflexivity.
-  unfold triv_build_base. simpl.
-
-
-
-  simpl.
-  Print triv_build_base.
-  Print build_constr_base.
-  Print build_base.
-  Print build_base'.
-
-
-(ordinalS 1)
-  aunit (W (ordinalS 1) 
-   (fun _ _ _ => empty)
-  (OrdinalS _ _ lt_01)) 
-  
-  (OrdinalS _ _ lt_01)
-  _
-  _
-
-  (fun x => build_base' triv_context triv_vars triv_syms [fs_tt])
-  (fun _ _ _ => empty)
-  .
-
-
-Definition w_iso (I: Set) (x y: I -> Set)  (A : I -> Set) (B: forall i: I, I -> A i -> Set)
-(A1: I -> Set) (B1: forall i, I -> A1 i -> Set) : Prop :=
-x = W I A B /\
-y = W I A1 B1 /\
-exists f g, w_iso_fg I A A1 B B1 f g.
-
-Definition w_convert (gamma: context) vars abs (n: nat)
-  (g: ordinalS n -> seq funsym) h (i: ordinalS n)
-  (w: W (ordinalS n) (fun n => build_base' gamma vars abs ( g n)) h i) :
-  W (ordinalS n) (fun n => build_base gamma vars abs (g n))
-  (fun this i x => h this i (bb_to_bb' gamma vars abs (g this) x)) i.
-Proof.
-  induction w.
-  apply mkW with(a:=bb'_to_bb gamma vars abs (g i) a). intros.
-  apply H.
-  rewrite bb'_to_bb_inv in H0. apply H0.
-Defined.
-
-Lemma aunit_correct: aunit = W (ordinalS 1) 
-  (fun x => build_base' triv_context triv_vars triv_syms [fs_tt]) (fun _ _ _ => empty)
-  (OrdinalS _ _ lt_01).
-Proof.
-  unfold aunit, triv_adt, mk_adts. simpl.
-Lemma aunit_correct: aunit = w_convert triv_context triv_vars triv_syms
-  _ _ _ _ ()
-
-(*This is a LOT more work than the previous version: was only reflexivity there*)
-Lemma aunit_correct: aunit = W (ordinalS 1) 
-  (fun x => triv_build_base [fs_tt]) (fun _ _ _ => empty) (OrdinalS _ _ lt_01).
-Proof. 
-  unfold aunit, triv_adt, mk_adts, triv_build_base. simpl.
-  match goal with 
-  | |- W ?I1 ?A1 ?B1 ?x1 = W ?I1 ?A2 ?B2 ?x2 => assert (He: A1 = A2)
-  end.
-  - repeat (apply functional_extensionality_dep; intros).
-    unfold fin_nth, tnthS. simpl. destruct x.
-    have Hm: m = 0 by apply nat_lt_1. by subst.
-  - erewrite w_eq_aux with(Heq:=He). reflexivity.
-  intros.
-  simpl. destruct a. destruct x. move: i0. simpl in *.
-  destruct i, j. rewrite /fin_nth /tnthS/= !(tnth_nth def_adt)/=.
-  have->: m = 0 by apply nat_lt_1.
-  have->/=: m0 = 0 by apply nat_lt_1.
-  destruct (funsym_eq_dec x fs_tt) => [|//]. subst.
-  move =>_. unfold build_constr_rec. unfold count_rec_occ. simpl.
-  reflexivity.
-Qed.
-
-(*
-Ltac prove_constr :=
-  unfold triv_constr, make_constr_simple, make_constr; simpl;
-  let He := fresh "Heq" in
-  match goal with | |- mkW ?i ?a ?b ?x ?a1 ?f = mkW ?i ?a ?b ?x ?a2 ?f2 =>
-    assert (He: a1 = a2) end;
-  [unfold eq_rect; rewrite (all_funsym_refl (reflect_true _ _)); reflexivity|
-  apply mkW_eq_aux with (Heq:=He); intros; unfold eq_rect, eq_ind_r, eq_ind;
-  try rewrite (all_funsym_refl (eq_sym _))].
-  *)
-
-Lemma att_correct: att = mkW (ordinalS 1) _ _ (OrdinalS _ _ lt_01) (OrdinalS _ _ lt_01) (fun _ => emp_fun).
-Proof.
-  unfold att. prove_constr.
-  destruct b.
-Qed.
-
-Lemma att_correct: att = mkW (finite 1) _ _ tt tt (fun _ => emp_fun).
-Proof.
-  unfold att. prove_constr.
-  destruct b.
-Qed.
-
-Definition ta : typevar := "a"%string.
-Definition tb : typevar := "b"%string.
 
 Ltac destruct_either :=
   repeat match goal with
@@ -1743,22 +2220,78 @@ Ltac solve_adt_eq :=
   vm_compute; f_equal; repeat(apply functional_extensionality_dep; intros);
   intros; destruct_either.
 
+
+
+(*Unit*)
+Definition ts_unit : typesym := mk_ts "unit" nil.
+Definition fs_tt := mk_fs "tt" nil nil ts_unit nil.
+Definition unit_constrs := list_to_ne_list [fs_tt] erefl.
+
+Definition aunit := triv_adt ts_unit unit_constrs.
+
+(*UGH: this makes it not compute*)
+Definition mk_tuple {A: Type} (n: nat) (l: list A) (Hl: size l == n) : n.-tuple A :=
+  Tuple Hl.
+
+Definition att := triv_constr ts_unit unit_constrs fs_tt erefl tt
+  (mk_tuple 0 nil erefl). 
+
+Lemma aunit_correct: aunit = W unit (fun _ => unit) (fun _ _ _ => empty) tt.
+Proof. reflexivity. Qed. 
+
+Ltac revert_eqs:=
+  repeat match goal with
+  | H: ?x = ?y |- _ => generalize dependent H
+  end.
+
+Lemma unit_dec : forall (x y: unit), { x = y} + { x <> y}.
+Proof.
+  intros. left. destruct x; destruct y; reflexivity.
+Qed.
+
+Ltac prove_constr :=
+  unfold triv_constr, make_constr_simple, make_constr; simpl;
+  let He := fresh "Heq" in
+  match goal with | |- mkW ?i ?a ?b ?x ?a1 ?f = mkW ?i ?a ?b ?x ?a2 ?f2 =>
+    assert (He: a1 = a2);
+  [unfold eq_rect; rewrite (all_funsym_refl (reflect_true _ _)); reflexivity|
+  apply (mkW_eq_aux a b x a1 a2 He); intros; revert_eqs;
+  unfold cast, eq_rec_r, eq_rec, eq_rect, eq_idx', eq_ind_r, eq_ind (*eq_rect, eq_ind_r, eq_ind, eq_rec_r), eq_rec*);
+  repeat (progress (try rewrite (all_funsym_refl (reflect_true _ _));
+    try rewrite (all_funsym_refl (eq_sym _)))); intros;
+    repeat match goal with
+    | H: ?x = ?x |- _ => let He := fresh in 
+      assert (He: H = eq_refl) by (apply UIP_dec; try (apply unit_dec (*TDOO*)));
+      rewrite He; simpl
+    end]; try reflexivity; auto
+  end.
+
+Lemma att_correct: att = mkW (finite 1) _ _ tt tt (fun _ => emp_fun).
+Proof.
+  unfold att. prove_constr. destruct b.
+Qed.
+
+Definition ta : typevar := "a"%string.
+Definition tb : typevar := "b"%string.
+
+
+
 (*Bool*)
-Definition ts_bool : typesym := mk_ts "bool" nil eq_refl.
+Definition ts_bool : typesym := mk_ts "bool" nil.
 Definition fs_true := mk_fs "true" nil nil ts_bool nil.
 Definition fs_false := mk_fs "false" nil nil ts_bool nil.
+Definition bool_constrs := list_to_ne_list [fs_true; fs_false] erefl.
 
-Definition abool := triv_adt ts_bool
-  [fs_true; fs_false].
+Definition abool := triv_adt ts_bool bool_constrs.
 
 Lemma abool_correct: abool = W unit (fun i => either unit unit)
   (fun _ _ _ => empty) tt.
 Proof. solve_adt_eq. Qed. 
 
-Definition atrue := triv_constr ts_bool [fs_true; fs_false] fs_true
-  eq_refl tt (mk_blist 0 nil eq_refl).
-Definition afalse := triv_constr ts_bool [fs_true; fs_false] fs_false
-  eq_refl tt (mk_blist 0 nil eq_refl).
+Definition atrue := triv_constr ts_bool bool_constrs fs_true
+  erefl tt (mk_tuple 0 nil erefl).
+Definition afalse := triv_constr ts_bool bool_constrs fs_false
+  erefl tt (mk_tuple 0 nil erefl).
 
 
 Lemma atrue_correct: atrue = mkW (finite 1) _ _ tt (Left _ _ tt) (fun _ => emp_fun).
@@ -1768,44 +2301,17 @@ Qed.
 
 Require Import Coq.Program.Equality.
 
-Lemma all_w: forall (I: Set) (A: I -> Set) (B: forall i : I, I -> A i -> Set) (i: I)
-  (x: W I A B i),
-  exists (a: A i) (f: forall (j: I), B i j a -> W I A B j),
-    x = mkW I A B i a f.
-Proof.
-  intros. dependent destruction x. exists a. exists f. reflexivity.
-Qed.
-
-Lemma all_bool: forall (x: abool), x = atrue \/ x = afalse.
-Proof.
-  intros. unfold abool in x. unfold triv_adt in x.
-  unfold mk_adts in x. dependent destruction x. simpl in *.
-  destruct a.
-  - left. rewrite atrue_correct. simpl.
-    unfold build_constr_base. simpl. unfold build_vty_base. simpl.
-    unfold big_sprod. simpl.
-    (*ok**)
-    reflexivity.
-    reflexivity.
-    reflexivity. unfold atrue. unfold triv_constr. unfold make_constr. simpl.
-
-
-    destruct x.
-
-  subst.
-  
-  simpl in x.
-
 (*Days of the week*)
-Definition ts_week : typesym := mk_ts "days" nil eq_refl.
-Definition aweek := triv_adt ts_week
-  [mk_fs "mon" nil nil ts_week nil;
-   mk_fs "tues" nil nil ts_week nil;
-   mk_fs "wed" nil nil ts_week nil;
-   mk_fs "thurs" nil nil ts_week nil;
-   mk_fs "fri" nil nil ts_week nil;
-   mk_fs "sat" nil nil ts_week nil;
-   mk_fs "sun" nil nil ts_week nil].
+Definition ts_week : typesym := mk_ts "days" nil.
+Definition week_constrs := list_to_ne_list
+[mk_fs "mon" nil nil ts_week nil;
+mk_fs "tues" nil nil ts_week nil;
+mk_fs "wed" nil nil ts_week nil;
+mk_fs "thurs" nil nil ts_week nil;
+mk_fs "fri" nil nil ts_week nil;
+mk_fs "sat" nil nil ts_week nil;
+mk_fs "sun" nil nil ts_week nil] erefl.
+Definition aweek := triv_adt ts_week week_constrs.
 
 Lemma aweek_correct: aweek = 
   W unit (fun _ => either unit (either unit (either unit (either unit 
@@ -1820,11 +2326,12 @@ Inductive num : Set :=
   | nneg : Z -> num
   | nzero : num.
 
-Definition ts_num : typesym := mk_ts "num" nil eq_refl.
-Definition anum := triv_adt ts_num
-  [mk_fs "npos" nil [vty_int] ts_num nil;
-   mk_fs "nneg" nil [vty_int] ts_num nil;
-   mk_fs "nzero" nil nil ts_num nil].
+Definition ts_num : typesym := mk_ts "num" nil.
+Definition num_constrs := list_to_ne_list 
+[mk_fs "npos" nil [vty_int] ts_num nil;
+mk_fs "nneg" nil [vty_int] ts_num nil;
+mk_fs "nzero" nil nil ts_num nil] erefl.
+Definition anum := triv_adt ts_num num_constrs.
 
 Lemma anum_correct: anum =
   W unit (fun _ => either Z (either Z unit)) (fun _ _ _ => empty) tt.
@@ -1839,12 +2346,13 @@ Inductive test1 : Set :=
   | test1c : R -> Z -> test1
   | test1d: R -> R -> R -> test1.
 
-Definition ts_test1 : typesym := mk_ts "test1" nil eq_refl.
-Definition atest1 := triv_adt ts_test1
-  [mk_fs "test1a" nil [vty_int; vty_int] ts_test1 nil;
+Definition ts_test1 : typesym := mk_ts "test1" nil.
+Definition test1_constrs := list_to_ne_list
+[mk_fs "test1a" nil [vty_int; vty_int] ts_test1 nil;
    mk_fs "test1b" nil nil ts_test1 nil;
    mk_fs "test1c" nil [vty_real; vty_int] ts_test1 nil;
-   mk_fs "test1d" nil [vty_real; vty_real; vty_real] ts_test1 nil].
+   mk_fs "test1d" nil [vty_real; vty_real; vty_real] ts_test1 nil] erefl.
+Definition atest1 := triv_adt ts_test1 test1_constrs.
 
 Lemma atest1_correct : atest1 =
   W unit 
@@ -1858,24 +2366,24 @@ Qed.
   only uniform recursion)*)
 
 (*Nat*)
-Definition ts_nat : typesym := mk_ts "nat" nil eq_refl.
+Definition ts_nat : typesym := mk_ts "nat" nil.
 Definition fs_O: funsym := mk_fs "O" nil nil ts_nat nil.
 Definition fs_S: funsym := mk_fs "S" nil [vty_cons ts_nat nil] ts_nat nil.
 Definition nat_cxt : context := [datatype_def [alg_def ts_nat [fs_O; fs_S]]].
+Definition nat_constrs := list_to_ne_list [fs_O; fs_S] erefl.
 
-Definition anat := mk_adt nat_cxt triv_vars triv_syms  ts_nat
-  [fs_O; fs_S].
+Definition anat := mk_adt nat_cxt triv_vars triv_syms  ts_nat nat_constrs.
 
 Lemma anat_correct: anat =
   W unit (fun _ => either unit unit) (fun _ _ (x: either unit unit) =>
     match x with
-    | Left  _ _ _ => empty
-    | Right _ _ _ => unit
+    | Left  _ => empty
+    | Right _ => unit
     end) tt.
 Proof. reflexivity. Qed.
 
-Definition aS (l: anat) := make_constr_simple nat_cxt triv_vars triv_syms ts_nat [fs_O; fs_S] fs_S
-  eq_refl tt (mk_blist 1 [l] eq_refl).
+Definition aS (l: anat) := make_constr_simple nat_cxt triv_vars triv_syms ts_nat nat_constrs fs_S
+  erefl tt (mk_tuple 1 [l] erefl).
 
 Lemma aS_correct: forall l, aS l = mkW (finite 1) _ _ tt (Right _ _ tt) (fun x _ =>
   match x with
@@ -1887,37 +2395,37 @@ Proof.
 Qed.
 
 (*Int list*)
-Definition ts_intlist : typesym := mk_ts "intlist" nil eq_refl.
+Definition ts_intlist : typesym := mk_ts "intlist" nil.
 Definition fs_intnil : funsym := mk_fs "nil" nil nil ts_intlist nil.
 Definition fs_intcons: funsym := 
   mk_fs "cons" nil [vty_int; vty_cons ts_intlist nil] ts_intlist nil.
 Definition intlist_cxt : context := [datatype_def [alg_def ts_intlist [fs_intnil; fs_intcons]]].
-Definition aintlist := mk_adt intlist_cxt triv_vars triv_syms ts_intlist
-  [ fs_intnil; fs_intcons].
+Definition intlist_constrs := list_to_ne_list [ fs_intnil; fs_intcons] erefl.
+Definition aintlist := mk_adt intlist_cxt triv_vars triv_syms ts_intlist intlist_constrs.
 
 Lemma aintlist_correct: aintlist =
   W unit (fun _ => either unit Z) (fun _ _ x =>
     match x with
-    | Left _ _ _ => empty
-    | Right _ _ _ => unit
+    | Left _ => empty
+    | Right _ => unit
     end) tt.
 Proof. reflexivity. Qed. 
 
 (*Int binary tree*)
-Definition ts_inttree : typesym := mk_ts "inttree" nil eq_refl.
+Definition ts_inttree : typesym := mk_ts "inttree" nil.
 Definition fs_intleaf:= mk_fs "leaf" nil nil ts_inttree nil.
 Definition fs_intnode := mk_fs "node" nil [vty_int; vty_cons ts_inttree nil; vty_cons ts_inttree nil]
 ts_inttree nil.
 Definition inttree_cxt : context := [datatype_def [alg_def ts_inttree
   [fs_intleaf; fs_intnode]]].
-Definition ainttree := mk_adt inttree_cxt triv_vars triv_syms ts_inttree
-  [fs_intleaf; fs_intnode].
+Definition inttree_constrs := list_to_ne_list [fs_intleaf; fs_intnode] erefl.
+Definition ainttree := mk_adt inttree_cxt triv_vars triv_syms ts_inttree inttree_constrs.
 
 Lemma ainttree_correct: ainttree =
   W unit (fun _ => either unit Z) (fun _ _ x =>
     match x with
-    | Left _ _ _ => empty
-    | Right _ _ _ => option unit
+    | Left _ => empty
+    | Right _ => option unit
     end) tt.
 Proof. reflexivity. Qed.
 
@@ -1928,7 +2436,7 @@ Inductive test2 : Set :=
   | test2c: test2 -> R -> test2 -> test2 -> test2
   | test2d: Z -> Z -> test2 -> test2.
 
-Definition ts_test2 : typesym := mk_ts "test2" nil eq_refl.
+Definition ts_test2 : typesym := mk_ts "test2" nil.
 Definition fs_test2a := mk_fs "test2a" nil [vty_int] ts_test2 nil.
 Definition fs_test2b := mk_fs "test2b" nil [vty_cons ts_test2 nil] ts_test2 nil.
 Definition fs_test2c := mk_fs "test2c" nil [vty_cons ts_test2 nil; vty_real; vty_cons ts_test2 nil;
@@ -1936,18 +2444,17 @@ vty_cons ts_test2 nil] ts_test2 nil.
 Definition fs_test2d := mk_fs "test2d" nil [vty_int; vty_int; vty_cons ts_test2 nil] ts_test2 nil.
 
 Definition test2_cxt := [datatype_def [alg_def ts_test2 [fs_test2a; fs_test2b; fs_test2c; fs_test2d]]].
-
-Definition atest2:= mk_adt test2_cxt triv_vars triv_syms ts_test2
-  [ fs_test2a; fs_test2b; fs_test2c; fs_test2d].
+Definition test2_constrs := list_to_ne_list [ fs_test2a; fs_test2b; fs_test2c; fs_test2d] erefl.
+Definition atest2:= mk_adt test2_cxt triv_vars triv_syms ts_test2 test2_constrs.
 
 Lemma atest2_correct : atest2 =
   W unit (fun _ => either Z (either unit (either R (Z * Z))))
     (fun _ _ x =>
       match x with
-      | Right _ _ (Left _ _ _) => unit
-      | Left _ _  _ => empty
-      | Right _ _ (Right _ _ (Left _ _ _)) => option (option unit)
-      | Right _ _ _ => unit
+      | Right (Left _) => unit
+      | Left   _ => empty
+      | Right (Right (Left _)) => option (option unit)
+      | Right _ => unit
       end) tt.
 Proof. reflexivity. Qed.
 
@@ -1960,13 +2467,14 @@ Definition two_var (A: Set) (B: Set) : typevar -> Set :=
            empty.
 
 (*Option type*)
-Definition ts_option : typesym := mk_ts "option" [ta] eq_refl.
+Definition ts_option : typesym := mk_ts "option" [ta].
 Definition fs_none := mk_fs "None" [ta] nil ts_option [ta].
 Definition fs_some := mk_fs "Some" [ta] [vty_var ta] ts_option [ta].
 Definition option_cxt := [datatype_def [alg_def ts_option [fs_none; fs_some]]].
+Definition option_constrs := list_to_ne_list [fs_none; fs_some] erefl.
 
 Definition aoption (A: Set) := mk_adt option_cxt (one_var A) triv_syms ts_option
-  [fs_none; fs_some].
+  option_constrs.
 
 Lemma aoption_correct: forall (A: Set),
   aoption A = W unit (fun _ => either unit A) (fun _ _ _ => empty) tt.
@@ -1975,13 +2483,14 @@ Proof.
 Qed. 
 
 (*Either type*)
-Definition ts_either: typesym := mk_ts "either" [ta; tb] eq_refl.
+Definition ts_either: typesym := mk_ts "either" [ta; tb].
 Definition fs_left := mk_fs "Left" [ta; tb] [vty_var ta] ts_either [ta; tb].
 Definition fs_right := mk_fs "Right" [ta; tb] [vty_var tb] ts_either [ta; tb].
 Definition either_cxt := [datatype_def [alg_def ts_either [fs_left; fs_right]]].
+Definition either_constrs := list_to_ne_list [fs_left; fs_right] erefl.
 
 Definition aeither (A: Set) (B: Set) := mk_adt either_cxt (two_var A B) triv_syms ts_either
-  [fs_left; fs_right].
+  either_constrs.
   
 Lemma aeither_correct: forall (A: Set) (B: Set),
   aeither A B = W unit (fun _ => either A B) (fun _ _ _ => empty) tt.
@@ -1990,39 +2499,41 @@ Proof.
 Qed.
 
 (*List type*)
-Definition ts_list: typesym := mk_ts "list" [ta] eq_refl.
+Definition ts_list: typesym := mk_ts "list" [ta].
 Definition fs_nil := mk_fs "Nil" [ta] nil ts_list [ta].
 Definition fs_cons := mk_fs "Cons" [ta] [vty_var ta; vty_cons ts_list [vty_var ta]] ts_list [ta].
 Definition list_cxt := [datatype_def [alg_def ts_list [fs_nil; fs_cons]]].
+Definition list_constrs := list_to_ne_list [ fs_nil; fs_cons ] erefl.
 
 Definition alist (A: Set) := mk_adt list_cxt (one_var A) triv_syms ts_list
-  [ fs_nil; fs_cons ].
+  list_constrs.
 
 Lemma alist_correct: forall (A: Set),
   alist A = W unit (fun _ => either unit A) (fun _ _ x =>
     match x with
-    | Left _ _ _ => empty
-    | Right _ _ _ => unit
+    | Left _ => empty
+    | Right _ => unit
     end) tt.
 Proof. intros. solve_adt_eq. 
 Qed. 
 
 (*Binary tree*)
-Definition ts_tree: typesym := mk_ts "tree" [ta] eq_refl.
+Definition ts_tree: typesym := mk_ts "tree" [ta].
 Definition fs_leaf := mk_fs "Leaf" [ta] nil ts_tree [ta].
 Definition fs_node := mk_fs "Node" [ta] 
 [vty_var ta; vty_cons ts_tree [vty_var ta]; vty_cons ts_tree [vty_var ta]]
 ts_tree [ta].
 Definition tree_cxt := [datatype_def [alg_def ts_tree [fs_leaf; fs_node]]].
+Definition tree_constrs := list_to_ne_list [fs_leaf; fs_node] erefl.
 
 Definition atree (A: Set) := mk_adt tree_cxt (one_var A) triv_syms ts_tree
-  [fs_leaf; fs_node].
+  tree_constrs.
 
 Lemma atree_correct: forall (A: Set),
   atree A = W unit (fun _ => either unit A)
     (fun _ _ x => match x with
-              | Left _ _ _ => empty
-              | Right _ _ _ => option unit
+              | Left _ => empty
+              | Right _ => option unit
               end) tt.
 Proof. intros; solve_adt_eq. Qed.
 
@@ -2030,16 +2541,18 @@ Proof. intros; solve_adt_eq. Qed.
 (*Test using simple wrapper type: Inductive wrap = Wrap (abs)*)
 
 (*Abstract type with no arguments*)
-Definition ts_abs := mk_ts "abs" nil eq_refl.
-Definition ts_wrap1: typesym := mk_ts "wrap1" nil eq_refl.
+Definition ts_abs := mk_ts "abs" nil.
+Definition ts_wrap1: typesym := mk_ts "wrap1" nil.
 Definition fs_wrap1 := mk_fs "Wrap" nil [vty_cons ts_abs nil] ts_wrap1 nil.
 Definition wrap1_cxt := [datatype_def [alg_def ts_wrap1 [fs_wrap1]]].
 
 Definition abs_map1 (A: Set) (ts: typesym) (vs: list vty) : Set :=
   if typesym_eqb ts ts_abs then A else empty.
 
+Definition wrap1_constrs := list_to_ne_list [fs_wrap1] erefl.
+
 Definition awrap1 (A: Set) := mk_adt wrap1_cxt triv_vars (abs_map1 A) ts_wrap1
-  [fs_wrap1].
+  wrap1_constrs.
 
 Definition awrap1_correct: forall (A: Set),
   awrap1 A = W unit (fun _ => A) (fun _ _ _ => empty) tt.
@@ -2047,8 +2560,8 @@ Proof.
   intros. reflexivity. Qed. 
 
 (*Abstract type with 2 arguments*)
-Definition ts_abs2 := mk_ts "abs" [ta; tb] eq_refl.
-Definition ts_wrap2: typesym := mk_ts "wrap2" [ta; tb] eq_refl.
+Definition ts_abs2 := mk_ts "abs" [ta; tb].
+Definition ts_wrap2: typesym := mk_ts "wrap2" [ta; tb].
 Definition fs_wrap2 := mk_fs "Wrap" [ta; tb] 
   [vty_cons ts_abs2 [vty_var ta; vty_var tb]] ts_wrap1 [ta; tb].
 Definition wrap2_cxt := [datatype_def [alg_def ts_wrap2 [fs_wrap2]]].
@@ -2056,8 +2569,10 @@ Definition wrap2_cxt := [datatype_def [alg_def ts_wrap2 [fs_wrap2]]].
 Definition abs_map2 (A: Set) (ts: typesym) (vs: list vty) : Set :=
   if typesym_eqb ts ts_abs2 then A else empty.
 
+Definition wrap2_constrs := list_to_ne_list [fs_wrap2] erefl.
+
 Definition awrap2 (A B C: Set) := mk_adt wrap2_cxt (two_var B C) (abs_map2 A) ts_wrap2
-  [fs_wrap2].
+  wrap2_constrs.
 
 Definition awrap2_correct: forall (A B C: Set),
   awrap2 A B C = W unit (fun _  => A) (fun _ _ _ => empty) tt.
@@ -2073,17 +2588,19 @@ Inductive mutA : Set :=
 with mutB : Set :=
   | mk_B : mutA -> mutB.
 
-Definition ts_mutA := mk_ts "mutA" nil eq_refl.
-Definition ts_mutB := mk_ts "mutB" nil eq_refl.
+Definition ts_mutA := mk_ts "mutA" nil.
+Definition ts_mutB := mk_ts "mutB" nil.
 Definition fs_mk_A1 := mk_fs "mk_A1" nil nil ts_mutA nil.
 Definition fs_mk_A2 := mk_fs "mk_A2" nil [vty_cons ts_mutB nil] ts_mutA nil.
 Definition fs_mk_B := mk_fs "mk_B" nil [vty_cons ts_mutA nil] ts_mutB nil.
 
 Definition mutAB_ctx := [datatype_def [alg_def ts_mutA [fs_mk_A1; fs_mk_A2];
 alg_def ts_mutB [fs_mk_B]]].
+Definition mutAB_constrs :=
+  [(ts_mutA, list_to_ne_list [fs_mk_A1; fs_mk_A2] erefl); 
+    (ts_mutB, list_to_ne_list [fs_mk_B] erefl)].
 
-Definition amutAB := mk_adts mutAB_ctx triv_vars triv_syms
-  [(ts_mutA, [fs_mk_A1; fs_mk_A2]); (ts_mutB, [fs_mk_B])].
+Definition amutAB := mk_adts mutAB_ctx triv_vars triv_syms mutAB_constrs.
 Definition amutA := amutAB None.
 Definition amutB := amutAB (Some tt).
 
@@ -2094,8 +2611,8 @@ Lemma amutAB_correct: amutAB =
                     end)
   (fun this other x =>
     match this, x with
-    | None, Left _ _ _ => empty (*First constructor of mutA has no recursive calls*)
-    | None, Right _ _ _ => (*Second constructor of mutA has 1 call to mutB*)
+    | None, Left _ => empty (*First constructor of mutA has no recursive calls*)
+    | None, Right  _ => (*Second constructor of mutA has 1 call to mutB*)
       match other with
       | None => empty
       | _ => unit
@@ -2114,17 +2631,17 @@ Proof.
   - apply w_eq_aux with(Heq:=H).
     intros.
     destruct i; destruct j; simpl; try reflexivity;
-    destruct a; try (rewrite (cast_left eq_refl eq_refl));
-    try (rewrite (cast_right eq_refl eq_refl)); reflexivity.
+    destruct a; try(rewrite cast_left; try reflexivity);
+    try (rewrite cast_right; try reflexivity).
 Qed.
 
 (*Now we test a mutually recursive constructor*)
 Definition a_mk_A2 (b: amutB) := make_constr mutAB_ctx triv_vars triv_syms 
-[(ts_mutA, [fs_mk_A1; fs_mk_A2]); (ts_mutB, [fs_mk_B])] None fs_mk_A2 eq_refl tt
+mutAB_constrs None fs_mk_A2 erefl tt
 (*creating this map is annoying, need better method*)
 (fun x => match x with
-          | None => mk_blist 0 nil eq_refl
-          | Some tt => mk_blist 1 [b] eq_refl
+          | None => mk_tuple 0 nil erefl
+          | Some tt => mk_tuple 1 [b] erefl
           end).
 
 Lemma a_mk_A2_correct: forall (b: amutB),
@@ -2136,7 +2653,7 @@ Lemma a_mk_A2_correct: forall (b: amutB),
 Proof.
   intros. unfold a_mk_A2. prove_constr.
   destruct j.
-  - destruct f. reflexivity.
+  - destruct u. reflexivity.
   - destruct b0.
 Qed.
 
@@ -2149,8 +2666,8 @@ with fmla : Set :=
   | fm_true : fmla
   | fm_false: fmla.
 
-Definition ts_tm := mk_ts "tm" nil eq_refl.
-Definition ts_fmla := mk_ts "fmla" nil eq_refl.
+Definition ts_tm := mk_ts "tm" nil.
+Definition ts_fmla := mk_ts "fmla" nil.
 Definition fs_tm_const := mk_fs "tm_const" nil [vty_int] ts_tm nil.
 Definition fs_tm_if := mk_fs "tm_if" nil [vty_cons ts_fmla nil; vty_cons ts_tm nil;
   vty_cons ts_tm nil] ts_tm nil.
@@ -2162,9 +2679,12 @@ Definition fs_fm_false := mk_fs "fm_false" nil nil ts_fmla nil.
 Definition tm_fmla_ctx := [datatype_def[alg_def ts_tm [fs_tm_const; fs_tm_if];
   alg_def ts_fmla [fs_fm_eq; fs_fm_true; fs_fm_false]]].
 
+Definition tm_fmla_constrs :=
+  [(ts_tm, list_to_ne_list [fs_tm_const; fs_tm_if] erefl); 
+   (ts_fmla, list_to_ne_list [fs_fm_eq; fs_fm_true; fs_fm_false] erefl)].
+
 Definition atm_fmla := mk_adts tm_fmla_ctx triv_vars triv_syms 
-  [(ts_tm, [fs_tm_const; fs_tm_if]); 
-   (ts_fmla, [fs_fm_eq; fs_fm_true; fs_fm_false])].
+  tm_fmla_constrs.
 
 Definition atm := atm_fmla None.
 Definition afmla := atm_fmla (Some tt).
@@ -2176,18 +2696,18 @@ Lemma atm_correct: atm_fmla = W (option unit)
   end)
 (fun this other x =>
   match this, x with
-  | None, Left _ _ _ => empty (*term const has no recursive calls*)
-  | None, Right _ _ _ => (*term if has 1 call to fmla, 2 to term*)
+  | None, Left _ => empty (*term const has no recursive calls*)
+  | None, Right _ => (*term if has 1 call to fmla, 2 to term*)
     match other with
     | None => finite 2
     | _ => finite 1
     end
-  | Some _, Left _ _ _ => (*fmla eq has 2 to term, 0 to fmla*)
+  | Some _, Left _ => (*fmla eq has 2 to term, 0 to fmla*)
     match other with
     | None => finite 2
     | _ => empty
     end
-  | Some _, Right _ _ _ => empty (*true and false have no recursive calls*)
+  | Some _, Right _ => empty (*true and false have no recursive calls*)
   end).
 Proof.
   unfold atm_fmla, mk_adts, build_base, fin_nth, eq_rect_r; simpl.
@@ -2197,13 +2717,10 @@ Proof.
   - apply w_eq_aux with(Heq:=H).
     intros.
     destruct i; destruct j; simpl; try reflexivity;
-    destruct a; try (rewrite (cast_left eq_refl eq_refl));
-    try (rewrite (cast_right eq_refl eq_refl)); try reflexivity;
-    match goal with | |- match ?e with | @Left _ _ _ => ?t | @Right _ _ _ => ?u end = ?x => destruct e end;
-    reflexivity.
+    destruct a; repeat(try (rewrite cast_left; solve[reflexivity]);
+    try (rewrite cast_right; solve[reflexivity]); destruct e).
 Qed.
 
 End Tests.
-*)
 
 End SSReflect.
