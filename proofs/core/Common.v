@@ -324,7 +324,6 @@ Proof.
   apply (IHl1 l2); auto.
 Qed.
 
-(*TODO: move*)
 Lemma in_combine_rev: forall {A B: Type} (l1 : list A) (l2: list B) x y,
   In (x, y) (combine l1 l2) -> In (y, x) (combine l2 l1).
 Proof.
@@ -342,4 +341,35 @@ Lemma combine_NoDup_l: forall {A B: Type} (l1: list A) (l2: list B) x y1 y2,
 Proof.
   intros. apply in_combine_rev in H0, H1.
   apply (combine_NoDup_r _ _ _ _ _ H H0 H1).
+Qed.
+
+(*A bool-valued version of "In" that we can use in proofs of Type*)
+Fixpoint in_bool {A: Type} (eq_dec: forall (x y: A), {x = y} + {x <> y})
+  (x: A) (l: list A) : bool :=
+  match l with
+  | nil => false
+  | y :: tl => eq_dec x y || in_bool eq_dec x tl
+  end.
+
+  Lemma in_bool_dec: forall {A: Type} (eq_dec: forall (x y: A), {x = y} + {x <> y}) x l,
+  proj_sumbool _  _ (in_dec eq_dec x l) = in_bool eq_dec x l.
+Proof.
+  intros. induction l; simpl; auto.
+  destruct (eq_dec a x); subst; simpl.
+  destruct (eq_dec x x); auto. contradiction.
+  destruct (eq_dec x a); auto; subst; try contradiction; simpl.
+  destruct (in_dec eq_dec x l); simpl; auto.
+Qed.
+
+Lemma nodupb_cons {A: Type} (eq_dec: forall (x y : A), {x = y} + {x <> y}) 
+  (x: A) (l: list A) :
+  nodupb eq_dec (x :: l) = negb (in_bool eq_dec x l) && nodupb eq_dec l.
+Proof.
+  intros.
+  destruct (nodup_NoDup eq_dec (x :: l)).
+  - inversion n; subst.
+    rewrite <- in_bool_dec. destruct (in_dec eq_dec x l); simpl; auto; try contradiction.
+    destruct (nodup_NoDup eq_dec l); auto. contradiction.
+  - rewrite <- in_bool_dec. destruct (in_dec eq_dec x l); auto; simpl.
+    destruct (nodup_NoDup eq_dec l); auto. exfalso. apply n. constructor; auto.
 Qed.
