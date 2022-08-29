@@ -158,7 +158,7 @@ Record pre_interp := {
     In l (mutrec_datatypes_of_context gamma) ->
     domain (typesym_to_sort a srts) = 
     mk_adts gamma (typevar_map a srts domain)
-      (typesym_map domain) l (get_adt_index l a Hina);
+      (typesym_map a srts domain) l (get_adt_index l a Hina);
 
   (*The interpretation for each constructor comes from [make_constr] TODO*)
   constrs: True (*TODO*)

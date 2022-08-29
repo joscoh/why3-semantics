@@ -870,4 +870,33 @@ Proof.
   destruct H2; destruct H3; split; congruence.
 Qed.
 
+(*TODO: automate this: just a bunch of Forall_forall, in_map_iff, etc*)
+Definition args_params_eq: forall {l: list (typesym * list funsym)}
+  {c: funsym} {adt: typesym} {constrs: list funsym}
+  (Hin1: In l (mutrec_datatypes_of_context gamma))
+  (Hin2: In (adt, constrs) l)
+  (Hin3: In c constrs),
+  ts_args adt = s_params c.
+Proof.
+  intros. unfold valid_context in gamma_valid.
+  destruct gamma_valid.
+  rewrite Forall_forall in H0.
+  unfold mutrec_datatypes_of_context in Hin1.
+  rewrite in_map_iff in Hin1.
+  destruct Hin1 as [d [Hl Hind]]; subst.
+  specialize (H0 _ Hind).
+  destruct d; try solve[inversion Hin2].
+  destruct H0 as [Hval _].
+  rewrite Forall_forall in Hval.
+  simpl in Hin2.
+  rewrite in_map_iff in Hin2.
+  destruct Hin2 as [a [Ha Hina]]; subst.
+  destruct a. inversion Ha; subst.
+  specialize (Hval _ Hina).
+  unfold adt_valid_type in Hval.
+  rewrite Forall_forall in Hval.
+  specialize (Hval _ Hin3).
+  destruct Hval as [Heq _]. auto.
+Qed.
+
 End ValidContextLemmas.

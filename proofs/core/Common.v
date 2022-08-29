@@ -351,7 +351,7 @@ Fixpoint in_bool {A: Type} (eq_dec: forall (x y: A), {x = y} + {x <> y})
   | y :: tl => eq_dec x y || in_bool eq_dec x tl
   end.
 
-  Lemma in_bool_dec: forall {A: Type} (eq_dec: forall (x y: A), {x = y} + {x <> y}) x l,
+Lemma in_bool_dec: forall {A: Type} (eq_dec: forall (x y: A), {x = y} + {x <> y}) x l,
   proj_sumbool _  _ (in_dec eq_dec x l) = in_bool eq_dec x l.
 Proof.
   intros. induction l; simpl; auto.
@@ -359,6 +359,25 @@ Proof.
   destruct (eq_dec x x); auto. contradiction.
   destruct (eq_dec x a); auto; subst; try contradiction; simpl.
   destruct (in_dec eq_dec x l); simpl; auto.
+Qed.
+
+(*Note: in ssreflect*)
+Lemma reflect_or: forall {b1 b2: bool} {p1 p2: Prop},
+  reflect p1 b1 ->
+  reflect p2 b2 ->
+  reflect (p1 \/ p2) (b1 || b2).
+Proof.
+  intros. destruct H; simpl.
+  - apply ReflectT. left; auto.
+  - destruct H0; constructor; auto. intro C. destruct C; contradiction.
+Qed.
+
+Lemma in_bool_spec: forall {A: Type} (eq_dec: forall (x y: A), {x = y} + {x <> y}) x l,
+  reflect (In x l) (in_bool eq_dec x l).
+Proof.
+  intros. induction l; simpl; try constructor. auto.
+  apply reflect_or; auto.
+  destruct (eq_dec x a); simpl; constructor; auto.
 Qed.
 
 Lemma nodupb_cons {A: Type} (eq_dec: forall (x y : A), {x = y} + {x <> y}) 
