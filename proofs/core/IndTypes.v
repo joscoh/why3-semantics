@@ -1705,6 +1705,41 @@ Proof.
 
 (*Mutually recursive type*)
 
+Ltac destruct_option :=
+  repeat match goal with
+  | H: option ?X |- _ => destruct H
+  end.
+
+Ltac simpl_build_base :=
+  repeat match goal with
+  | H: (build_base ?a ?b ?c ?d) |- _ => simpl in H
+  end.
+
+
+Ltac solve_mut_eq :=
+  unfold mk_adts, fin_nth, eq_rect_r; simpl;
+  match goal with | |- W ?x ?a ?b = W ?x ?a2 ?b2 =>
+    let He := fresh "Heq" in assert (Heq: a = a2);[
+      let x := fresh "x" in 
+        apply functional_extensionality_dep; intros x; destruct x;
+        simpl; reflexivity |
+      apply w_eq with (Heq:= He); intros;
+      destruct_option; simpl; try reflexivity;
+      simpl_build_base; destruct_either;
+      try(rewrite cast_left; try reflexivity);
+      try (rewrite cast_right; try reflexivity);
+      auto]
+  end.
+(*
+  - apply functional_extensionality_dep; intros.
+    destruct x; simpl; reflexivity.
+  - apply w_eq with(Heq:=H).
+    intros.
+    destruct i; destruct j; simpl; try reflexivity;
+    destruct a; try(rewrite cast_left; try reflexivity);
+    try (rewrite cast_right; try reflexivity).
+*)
+
 (*A very simple mutually recursive type*)
 Inductive mutA : Set :=
   | mk_A1 : mutA
@@ -1748,15 +1783,7 @@ Lemma amutAB_correct: amutAB =
       end
     end).
 Proof.
-  unfold amutAB, mk_adts, build_base, fin_nth, eq_rect_r. simpl.
-  match goal with | |- W ?x ?a ?b = W ?x ?a2 ?b2 => assert (a = a2) end.
-  - apply functional_extensionality_dep; intros.
-    destruct x; simpl; reflexivity.
-  - apply w_eq with(Heq:=H).
-    intros.
-    destruct i; destruct j; simpl; try reflexivity;
-    destruct a; try(rewrite cast_left; try reflexivity);
-    try (rewrite cast_right; try reflexivity).
+  unfold amutAB. solve_mut_eq.
 Qed.
 
 (*Now we test a mutually recursive constructor*)
@@ -1834,16 +1861,122 @@ Lemma atm_correct: atm_fmla = W (option unit)
   | Some _, Right _ => empty (*true and false have no recursive calls*)
   end).
 Proof.
-  unfold atm_fmla, mk_adts, build_base, fin_nth, eq_rect_r; simpl.
-  match goal with | |- W ?x ?a ?b = W ?x ?a2 ?b2 => assert (a = a2) end.
-  - apply functional_extensionality_dep; intros.
-    destruct x; simpl; reflexivity.
-  - apply w_eq with(Heq:=H).
-    intros.
-    destruct i; destruct j; simpl; try reflexivity;
-    destruct a; repeat(try (rewrite cast_left; solve[reflexivity]);
-    try (rewrite cast_right; solve[reflexivity]); destruct e).
+  unfold atm_fmla. solve_mut_eq.
 Qed.
+
+(*Test polymorphism + mutual recursion*)
+
+(*Right now, we support only limited polymorphism + mutual recursion, in the
+  following senses:
+  1. For any polymorphic inductive type, all recursive instances must have
+    the same type parameters
+  2. For any mutually-recursive instance, it must also be the case that any recursive
+    calls to any inductive type have the same (syntactic) type paramters as
+    the definition of that type. For example,
+    
+    type test1 'a =
+    Test1 'a (test2 'a)
+    with test2 'a =
+    Test2 (test1 'a)
+
+    is allowed, but
+
+    type test3 'a =
+    Test3 'a (test4 'a)
+    with test4 'b =
+    Test4 (test3 'b)
+     
+    is not.
+
+  Extending this to deal with more sophisticated calls is non-trivial, and can
+  quickly extend into full-blown nonuniform recursion. For now, we assume this
+  restriction.
+  TODO: is this actually restrictive, ie: can we always transform into something
+  of this form? Maybe not because of non-uniformity, take for example:
+  type test5 'a 'b =
+  Test5 (test6 'a) | Test5' (test6 'b)
+  with test6 'a =
+  A | Test6 (test5 'a 'a)
+
+  where the constraint that 'a = 'b for the test6 argument might not be possible
+  to encode.
+    *)
+
+(*An encoding of rose trees*)
+(*NOTE: in why3, the parameters to mutually recursive types do NOT have
+  to be the same, unlike in Coq*)
+  Inductive rose (A: Set) : Set :=
+  | rnode: A -> treelist A -> rose A
+with treelist (A: Set) : Set :=
+  | tnil : treelist A
+  | tcons: rose A -> treelist A -> treelist A.
+
+
+
+Definition ts_rose := mk_ts "rose" [ta].
+Definition ts_treelist := mk_ts "treelist" [ta].
+Definition fs_rnode := mk_fs "rnode" [ta] 
+  [vty_var ta; vty_cons ts_treelist [vty_var ta]]
+  ts_rose [ta].
+Definition fs_tnil := mk_fs "tnil" [ta] []
+  ts_treelist [ta].
+Definition fs_tcons := mk_fs "tcons" [ta]
+  [vty_cons ts_rose [vty_var ta]; vty_cons ts_treelist [vty_var ta]]
+  ts_treelist [ta].
+
+Definition rose_ctx := [datatype_def [alg_def ts_rose [fs_rnode];
+  alg_def ts_treelist [fs_tnil; fs_tcons]]].
+Definition rose_constrs :=
+    [(ts_rose, list_to_ne_list [fs_rnode] erefl);
+     (ts_treelist, list_to_ne_list [fs_tnil; fs_tcons] erefl)].
+
+Definition arose_treelist (A: Set) := mk_adts rose_ctx (one_var A) triv_syms
+  rose_constrs.
+Definition arose (A: Set) := arose_treelist A None.
+Definition atreelist (A: Set) := arose_treelist A (Some tt).
+
+Lemma arose_correct (A: Set) : arose_treelist A =
+  W (option unit)
+  (fun x => match x with
+  | None => A
+  | Some _ => either unit unit
+  end)
+  (fun this other x =>
+    match this, x with
+    | None, _ => (*rose has 1 call to treelist, 0 to rose*)
+      match other with
+      | None => empty
+      | Some _ => unit
+      end
+    | Some _, Left _ => empty (*tnil has no calls*)
+    | Some _, Right _ => unit (*tcons has 1 call to each*)
+    end).
+Proof.
+  unfold arose_treelist. solve_mut_eq.
+Qed.
+
+(*Test a constructor with mutual recursive calls and polymorphism.*)
+Definition a_tcons (A: Set) (r: arose A) (l: atreelist A) := 
+  make_constr rose_ctx (one_var A) triv_syms rose_constrs (Some tt)
+  fs_tcons erefl tt
+  (fun x => match x with
+            | None => mk_tuple 1 [r] erefl
+            | Some tt => mk_tuple 1 [l] erefl
+            end).
+
+Lemma a_tcons_correct: forall (A: Set) (r: arose A) (l: atreelist A),
+  a_tcons A r l = mkW (option unit) _ _ (Some tt) (Right _ _ tt)
+  (fun j x =>
+    match j, x with
+    | None, _ => r
+    | Some tt, _ => l
+    end).
+Proof.
+  intros.
+  unfold a_tcons. prove_constr. destruct j.
+  - destruct u. reflexivity.
+  - reflexivity.
+Qed. 
 
 End Tests.
 
