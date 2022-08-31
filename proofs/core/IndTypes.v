@@ -967,13 +967,86 @@ dependent type manipulations*)
 (*TEMP - TODO figure out how to do this*)
 
 (*A list with possibly different types*)
-(*
-Inductive dlist {A: Type} (f: A -> Set) : list A -> Type :=
-  | DL_nil: dlist f nil
-  | DL_cons: forall x tl,
+
+(*Heterogenous list*)
+Inductive hlist {A: Type} (f: A -> Type) : list A -> Type :=
+  | HL_nil: hlist f nil
+  | HL_cons: forall x tl,
     f x ->
-    dlist f tl ->
-    dlist f (x :: tl).
+    hlist f tl ->
+    hlist f (x :: tl).
+
+(*"inversion" for htlists*)
+Definition hlist_hd {A: Type} {f: A -> Type} {hd: A} {tl: list A} 
+  (h: hlist f (hd :: tl)) : f hd :=
+  match h with
+  | HL_nil => idProp
+  | HL_cons _ _ hd tl => hd
+  end.
+
+Definition hlist_tl {A: Type} {f: A -> Type} {hd: A} {tl: list A} 
+  (h: hlist f (hd :: tl)) : hlist f tl :=
+  match h with
+  | HL_nil => idProp
+  | HL_cons _ _ hd tl => tl
+  end.
+(*Operations on dlists*)
+
+(*Length*)
+Fixpoint hlength {A: Type} {f: A -> Type} {l: list A} (h: hlist f l) : nat :=
+  match h with
+  | HL_nil => 0
+  | HL_cons _ _ hd tl => 1 + hlength tl
+  end.
+
+Lemma hlength_eq {A: Type} {f: A -> Type} {l: list A} (h: hlist f l) :
+  hlength h = length l.
+Proof.
+  induction h; simpl; auto.
+Qed.
+
+(*nth*)
+Fixpoint hnth {A: Type} {f: A -> Type} {l: list A} (i: nat) (h: hlist f l)
+  (d: A) (d': f d) : f (List.nth i l d) :=
+  match l as l' return hlist f l' -> f (List.nth i l' d) with
+  | nil => fun _ =>
+    match i with
+    | O => d'
+    | S _ => d'
+    end
+  | hd :: tl => fun h =>
+    match i with
+    | O => hlist_hd h
+    | S i' => hnth i' (hlist_tl h) d d'
+    end
+  end h.
+
+(*filter*)
+Fixpoint hfilter {A: Type} {f: A -> Type} {l: list A} (g: A -> bool) (h: hlist f l)  :
+  hlist f (filter g l) :=
+  match l as l' return hlist f l' -> hlist f (filter g l') with
+  | nil => fun _ => (@HL_nil _ _)
+  | hd :: tl => fun h =>
+    match (g hd) as b return hlist f (if b then hd :: filter g tl else filter g tl) with
+    | true => HL_cons _ _ _ (hlist_hd h) (hfilter g (hlist_tl h))
+    | false => hfilter g (hlist_tl h)
+    end
+  end h.
+
+  (*TODO: continue with this tomorrow*)
+
+(*map*)
+Fixpoint hmap {A B: Type} {f1: A -> Type} (f2: B -> Type)
+  {l: list A} (h: hlist f1 l) (g: A -> B) : hlist f2 (map g l) :=
+  match l as l' return hlist f1 l' -> hlist f2 (map g l') with
+  | nil => fun _ => (@HL_nil _ _)
+  | hd :: tl => fun h =>
+    HL_cons f2 (f2 ()) (hlist_hd h) (hmap f2 (hlist_tl tl) g)
+  end.
+
+
+
+
 
 Definition arg_list (domain: Types.sort -> Set) := dlist domain.*)
 
@@ -1009,7 +1082,67 @@ Definition arg_list (domain: Types.sort -> Set) := dlist domain.*)
       + simpl. apply d0.
       + apply IHa.
   Defined.
+
+  (*An inversion lemma for [arg_list]*)
+  Definition arg_inv {domain: Types.sort -> Type} {x: Types.sort}
+    {l: list Types.sort} (a: arg_list domain (x :: l)) : domain x * arg_list domain l :=
+    match a with
+    | AL_nil => idProp
+    | AL_cons _ _ hd tl => (hd, tl)
+    end.
+
+  (*Filter an arg_list by a predicate on the underlying sort list*)
+  Fixpoint arg_filter {domain: Types.sort -> Type} (l: list Types.sort) (a: arg_list domain l)
+    (f: Types.sort -> bool) : arg_list domain (filter f l) :=
+  match l as l' return arg_list domain l' -> arg_list domain (filter f l') with
+  | nil => fun _ => (AL_nil domain)
+  | hd :: tl => fun al =>
+    let (x, alt) := (arg_inv al) in
+    match (f hd) as b return 
+      arg_list domain (if b then (hd :: filter f tl) else (filter f tl)) with
+    | true => AL_cons domain _ _ x (arg_filter tl alt f)
+    | false => arg_filter tl alt f
+    end
+  end a.
+
+  (*TODO: should generalize to generic heterogenous list, then can write this
+    easier with just map and filter *)
+  Definition arg_map_filter {domain: Types.sort -> Type} (l: list vty)
+    (f: vty -> Types.sort) (a: arg_list domain (map f l))
+    (g: vty -> bool) : arg_list domain (map f (filter g l)) :=
+
+  Admitted.
+
+(*TODO: move/figure out where to put all this stuff*)
+Definition dom_cast {domain: Types.sort -> Type} 
+  {v1 v2: Types.sort} (Hv: v1 = v2) (x: domain v1) : domain v2.
+rewrite <- Hv. exact x.
+Defined.
+
+Lemma dom_cast_inj: forall {domain: Types.sort -> Type} {v1 v2: Types.sort} 
+  (H: v1 = v2) (d1 d2: domain v1),
+  dom_cast H d1 = dom_cast H d2 ->
+  d1 = d2.
+Proof.
+  intros. unfold dom_cast in H0.
+  unfold eq_rect in H0. destruct H. auto.
+Qed.
+
+  (*If all elements of an [arg_list] have the same type, we can convert
+    this into a list*)
+  Fixpoint arg_to_list {domain: Types.sort -> Type} {s: Types.sort} (l: list Types.sort) 
+    (a: arg_list domain l)
+    (Hall: Forall (fun x => x = s) l):
+    list (domain s) :=
+    match l as l' return arg_list domain l' -> Forall (fun x => x = s) l' ->
+      list (domain s) with 
+    | nil => fun _ _ => nil
+    | hd :: tl => fun al Hall =>
+      let (x, alt) := (arg_inv al) in
+      (dom_cast (Forall_inv Hall) x) :: arg_to_list tl alt (Forall_inv_tail Hall)
+    end a Hall.
   
+  (*Extensional equality for arg lists*)
   Lemma arg_list_eq_ext: forall {domain: Types.sort -> Type} {l: list Types.sort} (a1 a2: arg_list domain l)
     (d: Types.sort) (d': domain d),
     (forall i, (i < length l)%coq_nat -> arg_nth a1 i d d' = arg_nth a2 i d d') ->
@@ -1091,13 +1224,8 @@ Ltac destruct_list :=
   [build_constr_base].
   TODO: can we make this reduce/nicer? Should we test this?*)
 Definition args_to_constr_base_aux (gamma: context) 
-  (*(l: list (typesym * list funsym))*)
-  (c: funsym) (adt: typesym) (*(constrs: list funsym)*)
-  (*(Hin1: In l (mutrec_datatypes_of_context gamma))
-  (Hin2: In (adt, constrs) l)
-  (Hin3: In c constrs)*)
+  (c: funsym) (adt: typesym)
   (Hparams: ts_args adt = s_params c)
-  (*follows from valid_context, but we keep assumptions minimal for now*)
   (domain: Types.sort -> Set) (srts: list Types.sort)
   (Hint: domain s_int = Z)
   (Hreal: domain s_real = R)
@@ -1180,6 +1308,177 @@ Definition args_to_constr_base {s: sig} {gamma: context}
     domain srts Hint Hreal a.
 
 (*Now we handle the inductive types*)
+
+(*For this, we need the uniformity assumption (TODO: eventually we may want
+  to remove this). If we do not have this, our recursive instances in [make_constr]
+  will need to be more sophisticated (not sure exactly how)*)
+Definition uniform_adts (gamma: context) : Prop :=
+  forall (f: funsym) (adt: typesym)
+    (constrs: list funsym) (ts: typesym) (vs: list vty),
+    In (adt, constrs) (datatypes_of_context gamma) ->
+    In f constrs ->
+    In (vty_cons ts vs) (s_args f) ->
+    In ts (typesyms_of_context gamma) ->
+    vs = map vty_var (ts_args ts).
+
+Lemma in_filter: forall {A: Type}
+  (f: A -> bool) (l: list A) (x: A),
+  In x (filter f l) <-> f x /\ In x l.
+Proof.
+  intros. induction l; simpl; auto.
+  - split; auto. intros [_ Hf]; destruct Hf.
+  - destruct (f a) eqn : Hfa; subst.
+    + simpl. split; intros.
+      * destruct H; subst.
+        -- split; auto.
+        -- split; auto. apply IHl. auto.
+           right. apply IHl. apply H.
+      * destruct H. destruct H0; auto.
+        right. apply IHl. auto.
+    + split; intros.
+      * split; auto. apply IHl; auto. right. apply IHl. auto.
+      * destruct H. destruct H0; subst. rewrite Hfa in H. inversion H.
+        apply IHl. split; auto.
+Qed.
+(*Filter idea may not work - we dont know what we substitute, could substitite
+  this inductive type: ie, consider
+  Cons a (list b) and we subst a -> list int, b -> int
+  we cannot distinguish these*)
+Definition args_to_ind_base_aux (gamma : context)
+(l : seq (typesym * ne_list funsym)) (adt: typesym) (f: funsym)
+(srts: list Types.sort) (domain: Types.sort -> Set)
+(*(Hadts: forall (l: list (typesym * list funsym)) (a: typesym) 
+    (srts: list sort) (Hina: In a (map fst l))
+    (Hinl: In l (mutrec_datatypes_of_context gamma)),
+    domain (typesym_to_sort a srts) = 
+    mk_adts gamma (typevar_map a srts domain)
+      (typesym_map a srts domain) (build_ne_lists gamma_valid Hinl) 
+        (get_adt_index gamma_valid l Hinl a Hina))*)
+(Hunif: uniform_adts gamma)
+(a: arg_list domain (funsym_sigma_args f srts))
+: (forall x: finite (length l), (count_rec_occ (fin_nth l x).1 f).-tuple
+  (mk_adts gamma (typevar_map adt srts domain) (typesym_map adt srts domain) l x)).
+Proof.
+  intros x.
+  unfold funsym_sigma_args in a.
+  set (ts:= (fin_nth l x).1).
+  set (ff := (ty_subst_s (s_params f) srts)).
+  set (gg := (fun s => match s with
+  | vty_cons t vs => typesym_eq_dec t ts && list_eq_dec vty_eq_dec vs (map vty_var (ts_args ts))
+  | _ => false
+  end)).
+  set (amf := arg_map_filter (s_args f) ff a gg).
+  set (ls:= map ff (filter gg (s_args f))) in *.
+  assert (Forall (fun x =>
+    x = typesym_to_sort ts (ty_subst_list_s (s_params f) srts (map vty_var (ts_args ts))))
+     ls). {
+      apply Forall_forall. intros s Hins. subst ls.
+      rewrite in_map_iff in Hins. destruct Hins as [ty [Hty Hinty]]. subst.
+      rewrite in_filter in Hinty. destruct Hinty as [Hty Hinty].
+      subst gg. simpl in Hty. subst ff.
+      rewrite <- ty_subst_s_cons.
+      f_equal. destruct ty; try solve[inversion Hty].
+      apply andb_true_iff in Hty. destruct Hty.
+      repeat simpl_sumbool.
+     }
+  
+
+
+  Definition arg_map_filter {domain: Types.sort -> Type} (l: list vty)
+  (f: vty -> Types.sort) (a: arg_list domain (map f l))
+  (g: vty -> bool) : arg_list domain (map f (filter g l)).
+
+
+  Definition arg_map_filter {domain: Types.sort -> Type} (l: list Types.sort)
+  (f: vty -> Types.sort) (a: arg_list domain (map f (sorts_to_tys l)))
+  (g: Types.sort -> bool) : arg_list domain (map f (sorts_to_tys (filter g l))).
+
+
+  set (fb:= 
+    (fun s => match sort_to_ty s with
+              | vty_cons t vs => typesym_eq_dec t ts
+              | _ => false
+              end)).
+  set (ls := (ty_subst_list_s (s_params f) srts (s_args f))).
+  set (af := arg_filter ls a fb).
+  (*this is not true - we can substitute the same type with different params for a variable*)
+  assert (Forall (fun x => 
+    x = typesym_to_sort ts (ty_subst_list_s (s_params f) srts (map vty_var (ts_args ts)))) 
+    (filter fb ls)). {
+      rewrite Forall_forall. intros. rewrite <- ty_subst_s_cons.
+      subst ls.
+      rewrite in_filter in H. destruct H. subst fb. simpl in H.
+      rewrite in_map_iff in H0. destruct x0. simpl in H.
+      destruct x0; try solve[inversion H].
+      apply sort_inj; simpl. destruct (typesym_eq_dec t ts); try solve[inversion H].
+      subst. destruct H0 as [v [Hv Hinv]]; subst.
+      apply (f_equal sort_to_ty) in Hv. simpl in Hv. Print v_subst_aux. 
+      rewrite List.map_map. simpl.
+      destruct v; try (solve[inversion Hv]).
+      simpl in Hv.
+
+
+      simpl.
+
+      simpl in H0.
+      
+      destruct H0 as [v [Hv Hinv]]; subst.
+
+
+
+      subst fb.
+      
+      Search typesym_to_sort. subst ls.
+      unfold ty_subst_list_s in H.
+      rewrite in_filter in H. destruct H.
+      rewrite in_map_iff in H0.
+      destruct H0 as [v [Hv Hinv]]. subst.
+      subst fb. simpl in H.
+      destruct v; simpl in H; try (solve[exfalso; apply (not_false H)]).
+      - apply sort_inj. simpl. unfold ty_subst_list_s.
+        rewrite List.map_map.
+        destruct (ty_subst_fun (s_params f) (sorts_to_tys srts) vty_int t) eqn : Hsubst;
+        try solve[exfalso; apply (not_false H)].
+        destruct (typesym_eq_dec t0 ts); subst; try solve[inversion H].
+        f_equal. 
+         assert (exists s, In s (sorts_to_tys srts) /\ 
+        ty_subst_fun (s_params f) (sorts_to_tys srts) vty_int t = s). { admit. }
+        destruct H0 as [s [Hins Hs]]; subst.
+        rewrite Hsubst in Hins. unfold sorts_to_tys in Hins.
+        rewrite in_map_iff in Hins. destruct Hins as [v [Hv' Hinv']]; subst.
+
+        rewrite Hv' in Hinv'.
+        subst.
+      
+      
+      Print ty_subst_fun.
+      simpl.
+
+    }
+
+
+  
+  assert ()
+  Print 
+              |))
+
+
+  {domain: Types.sort -> Type} (l: list Types.sort) (a: arg_list domain l)
+    (f: Types.sort -> bool) : arg_list domain (filter f l) :=
+  assert (length (arg_filter ))
+
+
+  apply mk_tuple.
+
+Definition args_to_constr_base_aux (gamma: context) 
+  (c: funsym) (adt: typesym)
+  (Hparams: ts_args adt = s_params c)
+  (domain: Types.sort -> Set) (srts: list Types.sort)
+  (Hint: domain s_int = Z)
+  (Hreal: domain s_real = R)
+  (a: arg_list domain (funsym_sigma_args c srts)):
+  build_constr_base gamma (typevar_map adt srts domain) 
+    (typesym_map adt srts domain) c.
 
 End Build.
 (* TODO: Handle nested types*)
