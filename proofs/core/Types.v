@@ -28,8 +28,6 @@ Definition reflect_dec' {P} {b} (H: reflect P b): {P} + {~P} :=
   | false => fun Hneq => right (reflect_false H Hneq)
   end eq_refl.
 
-Search String.eqb.
-
 (*Type variable (ex: a)*)
 Definition typevar : Set := string. 
 
@@ -185,9 +183,6 @@ Lemma ForallT_tl {A: Type} (P: A -> Type) (x: A) (l: list A):
 Proof.
   intros. inversion X; auto.
 Qed.
-
-
-Check Forall_forall.
 
 Section TyIndType.
 

@@ -2,6 +2,7 @@
 Require Import Syntax.
 Require Import Types.
 Require Import Typing.
+Require Import IndTypes.
 Require Import Semantics.
 Require Import Coq.Program.Equality.
 
@@ -170,7 +171,7 @@ Definition get_arg_list (v: valuation sigma gamma gamma_valid i)
 Proof.
   (*assume we have decidable typechecking - no axioms yet*)
   assert ({x: vty | term_has_type sigma (Tfun f vs ts) x}) by (apply typecheck_dec; assumption).
-  destruct X as [vty Hty'].
+  destruct H as [vty Hty'].
   apply fun_ty_inversion in Hty'. repeat match goal with | H: ?P /\ ?Q |- _ => destruct H end.
   clear H; clear H0; clear H4.
   unfold funsym_sigma_args.
@@ -322,7 +323,6 @@ Lemma valid_eq_inj {s ty t1 t2} (H: valid_formula s (Feq ty t1 t2)):
 Proof.
   inversion H; auto.
 Qed.
-Print pattern.
 
 (*Dealing with options for patterns*)
 (*Since patterns can return "error", we represent this as a term option.
@@ -333,7 +333,6 @@ Definition term_option_type (s: sig) (o: option term) (ty: vty) :=
   | None => True
   | Some t => term_has_type s t ty
   end.
-Print option_map.
 (*First, we handle matches - we will take in isf and projf as predicates
   and give them later - TODO: hopefully it works*)
 (*This makes dependent types much nicer*)
@@ -465,7 +464,7 @@ Fixpoint term_rep (v: valuation sigma gamma gamma_valid i) (t: term) (ty: vty)
   *)
   (*For cases not handled yet*)
   | _ => match domain_ne sigma gamma gamma_valid i (val v ty) with
-          | DE _ _ x => fun _ => x
+          | DE x => fun _ => x
           end
   end) eq_refl
 
@@ -578,9 +577,6 @@ with formula_rep (v: valuation sigma gamma gamma_valid i) (f: formula)
     term_rep v t (vty_cons ts vs) Hty = 
     term_rep v (Tfun constr vs tms) _ Htms).
     funs constr*) 
-  
-Check excluded_middle_informative.
-Print Assumptions excluded_middle_informative.
 
 End Denot.
 

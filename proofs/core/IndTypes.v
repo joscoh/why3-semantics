@@ -361,6 +361,18 @@ Proof.
   intros. induction l; simpl; [rewrite orb_false_r | rewrite IHl ]; reflexivity.
 Qed.
 
+Fixpoint lists_to_ne_lists {A: Set} (l: list (list A)) 
+  (Hall: forallb (fun x => negb (null x)) l) :
+  list (ne_list A) :=
+  match l as l' return (forallb (fun x => negb (null x)) l') -> list (ne_list A) with
+  | nil => fun _ => nil
+  | hd :: tl => fun Hnull =>
+    match (andb_prop _ (forallb (fun x => negb (null x)) tl) Hnull) with
+    | conj Hhd Htl =>
+      (list_to_ne_list hd Hhd) :: lists_to_ne_lists tl Htl
+    end
+  end Hall.
+
 End NEList.
 
 (*W-types*)
@@ -871,9 +883,46 @@ Proof.
       apply IHl.
 Qed.
 
-Definition get_adt_index (l: list (typesym * list funsym)) (a: typesym)
+Definition get_adt_index_aux {A: Type} (l: list (typesym * A)) (a: typesym)
   (Hina: In a (map fst l)) : finite (length l) :=
   (get_idx_fst typesym_eq_dec _ _ (introT (in_bool_spec _ a (map fst l)) Hina)).
+
+(*Build the [ne_list]s*)
+Definition build_ne_lists {s: sig} {gamma: context} (Hval: valid_context s gamma)
+{l: list (typesym * list funsym)}
+(Hin: In l (mutrec_datatypes_of_context gamma))  :
+  list (typesym * ne_list funsym) :=
+  combine (map fst l) (lists_to_ne_lists (map snd l) (constrs_ne Hval Hin)).
+
+Lemma build_ne_lists_length: forall {s: sig} {gamma: context} (Hval: valid_context s gamma)
+{l: list (typesym * list funsym)}
+(Hin: In l (mutrec_datatypes_of_context gamma)),
+length (build_ne_lists Hval Hin) = length l.
+Proof.
+  intros. unfold build_ne_lists. generalize dependent (constrs_ne Hval Hin). simpl.
+  clear Hin.
+  induction l; auto.
+  - simpl. intros Hall.
+    destruct (andb_prop (~~ null a.2)
+    (forallb (fun x : seq funsym => ~~ null x) [seq i.2 | i <- l]) Hall).
+    simpl. f_equal. apply IHl.
+Qed.
+
+(*TODO: move*)
+Definition fin_cast {n n': nat} (x: finite n) (Hn: n = n') : finite n'.
+rewrite <- Hn. exact x.
+Defined.
+
+(*This introduces a slight problem: the index is with respect to the original list l,
+  but we need a finite type with respect to [build_ne_lists l]. These are
+  equivalent, but we need an additional cast.*)
+Definition get_adt_index  {s: sig} {gamma: context} (Hval: valid_context s gamma)
+  (l: list (typesym * list funsym))
+  (Hin: In l (mutrec_datatypes_of_context gamma))
+  (a: typesym)
+  (Hina: In a (map fst l)):
+  finite (length (build_ne_lists Hval Hin)) :=
+  fin_cast (get_adt_index_aux l a Hina) (esym (build_ne_lists_length Hval Hin)).
 
 (*Build the input functions*)
 
@@ -1127,7 +1176,7 @@ Definition args_to_constr_base {s: sig} {gamma: context}
   build_constr_base gamma (typevar_map adt srts domain) 
     (typesym_map adt srts domain) c :=
   args_to_constr_base_aux gamma c adt 
-    (args_params_eq s gamma Hval Hin1 Hin2 Hin3) 
+    (args_params_eq Hval Hin1 Hin2 Hin3) 
     domain srts Hint Hreal a.
 
 (*Now we handle the inductive types*)

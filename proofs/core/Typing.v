@@ -409,6 +409,7 @@ Section Inhab.
 
 Variable s: sig.
 Variable gamma: context.
+Variable gamma_wf: wf_context s gamma.
 
 (*This is more complicated than it seems, for 2 reasons:
 1. Whether a type symbol/type is inhabited depends on the current context. For
@@ -444,11 +445,13 @@ Inductive typesym_inhab : list typesym -> list typevar -> typesym -> bool -> Pro
     ~ In ts (map fst (datatypes_of_context gamma)) ->
     negb (null tvs) ->
     typesym_inhab tss tvs ts false
-  | ts_check_adtT: forall tss tvs ts constrs, (*for ADTs*)
+  | ts_check_adtT: forall tss tvs ts constrs c, (*for ADTs*)
+    In ts (sig_t s) ->
     ~In ts tss ->
     In (ts, constrs) (datatypes_of_context gamma) ->
     negb (null constrs) ->
-    (exists c, In c constrs /\ constr_inhab (ts :: tss) tvs c true) ->
+    In c constrs ->
+    (constr_inhab (ts :: tss) tvs c true) ->
     typesym_inhab tss tvs ts true
   | ts_check_adtF1: forall tss tvs ts constrs,
     ~In ts tss ->
@@ -465,8 +468,9 @@ with constr_inhab: list typesym -> list typevar -> funsym -> bool -> Prop :=
   | constr_checkT: forall tss tvs c,
     (forall x, In x (s_args c) -> vty_inhab tss tvs x true) ->
     constr_inhab tss tvs c true
-  | constr_checkF: forall tss tvs c,
-    (exists x, In x (s_args c) /\ vty_inhab tss tvs x false) ->
+  | constr_checkF: forall tss tvs c v,
+    In v (s_args c) ->
+    vty_inhab tss tvs v false ->
     constr_inhab tss tvs c false
 (*Here, need bool to deal with strict positivity issues*)
 with vty_inhab: list typesym -> list typevar -> vty -> bool -> Prop :=
@@ -506,7 +510,7 @@ vty_inhab_ind := Minimality for vty_inhab Sort Prop.
 (*An ADT is inhabited if its typesym is inhabited under the empty context*)
 Definition adt_inhab (a : alg_datatype) : Prop :=
   match a with
-  | alg_def ts constrs => typesym_inhab nil nil ts true
+  | alg_def ts constrs => negb (null constrs) /\ typesym_inhab nil nil ts true
   end.
 
 (*We want to prove that this definition corresponds to (closed) types being inhabited.
@@ -835,9 +839,31 @@ Qed.
 
 Section ValidContextLemmas.
 
-Variable s: sig.
-Variable gamma: context.
-Variable gamma_valid: valid_context s gamma.
+Context {s: sig} {gamma: context} (gamma_valid: valid_context s gamma).
+
+(*These lemmas all have the same form: keep applying Forall_forall, in_map_iff,
+  and similar, until we get what we want. Here we automate them*)
+Ltac valid_context_tac :=
+  let Hwf := fresh "Hwf" in
+  let Hadts := fresh "Hadts" in
+  destruct gamma_valid as [Hwf Hadts];
+  rewrite Forall_forall in Hadts;
+  repeat match goal with
+  | Hin: In ?x (?p gamma) |- _ => unfold p in Hin
+  | Hin: In ?x (concat ?l) |- _ => rewrite in_concat in Hin
+  | Hex: exists x, ?p |- _ => destruct Hex; subst
+  | Hconj: ?P /\ ?Q |- _ => destruct Hconj; subst
+  | Hmap: In ?x (map ?f ?l) |- _ => rewrite in_map_iff in Hmap
+  | Hgam: In ?x gamma |- _ => apply Hadts in Hgam
+  | Hdef: def |- _ => destruct Hdef; simpl in *
+  | Halg: match ?x with | alg_def ts fs => ?p end = ?q |- _ => 
+    destruct x; inversion Halg; subst; clear Halg
+  | Halg: match ?x with | alg_def ts fs => ?p end |- _ => destruct x
+  | Hf: False |- _ => destruct Hf
+  | Hall: Forall ?P ?l |- _ => rewrite Forall_forall in Hall
+  | Hin: In ?x ?l, Hall: forall x : ?t, In x ?l -> ?P |- _ =>
+    specialize (Hall _ Hin)
+  end; auto.
 
 Lemma adt_constr_ret_params: forall  (a: typesym) (constrs: list funsym) (c: funsym),
   In (a, constrs) (datatypes_of_context gamma) ->
@@ -845,18 +871,9 @@ Lemma adt_constr_ret_params: forall  (a: typesym) (constrs: list funsym) (c: fun
   s_ret c = vty_cons a (map vty_var (ts_args a)) /\
   s_params c = ts_args a.
 Proof.
-  intros. unfold valid_context in gamma_valid.
-  destruct gamma_valid.
-  unfold datatypes_of_context in H.
-  rewrite in_concat in H. destruct H as [datatyps [Hdatatyps Ha]].
-  rewrite Forall_forall in H2. rewrite in_map_iff in Hdatatyps.
-  destruct Hdatatyps as [d [Hd Hind]]; subst.
-  specialize (H2 _ Hind). destruct d; simpl in Ha; try solve[inversion Ha].
-  rewrite in_map_iff in Ha. destruct Ha as [alg [Halg Hinalg]].
-  destruct alg as [ts fs]; inversion Halg; subst.
-  rewrite Forall_forall in H2. apply H2 in Hinalg.
-  unfold adt_valid_type in Hinalg.
-  rewrite Forall_forall in Hinalg. apply Hinalg in H0. split; apply H0.
+  intros. valid_context_tac.
+  unfold adt_valid_type in H.
+  valid_context_tac.
 Qed.
 
 Lemma adt_constr_ret_params_eq: forall {a: typesym} {constrs: list funsym} {c1 c2: funsym},
@@ -878,25 +895,19 @@ Definition args_params_eq: forall {l: list (typesym * list funsym)}
   (Hin3: In c constrs),
   ts_args adt = s_params c.
 Proof.
-  intros. unfold valid_context in gamma_valid.
-  destruct gamma_valid.
-  rewrite Forall_forall in H0.
-  unfold mutrec_datatypes_of_context in Hin1.
-  rewrite in_map_iff in Hin1.
-  destruct Hin1 as [d [Hl Hind]]; subst.
-  specialize (H0 _ Hind).
-  destruct d; try solve[inversion Hin2].
-  destruct H0 as [Hval _].
-  rewrite Forall_forall in Hval.
-  simpl in Hin2.
-  rewrite in_map_iff in Hin2.
-  destruct Hin2 as [a [Ha Hina]]; subst.
-  destruct a. inversion Ha; subst.
-  specialize (Hval _ Hina).
-  unfold adt_valid_type in Hval.
-  rewrite Forall_forall in Hval.
-  specialize (Hval _ Hin3).
-  destruct Hval as [Heq _]. auto.
+  intros. valid_context_tac.
+  unfold adt_valid_type in H.
+  valid_context_tac.
+Qed.
+
+Definition constrs_ne: forall {l: list (typesym * list funsym)}
+  (Hin: In l (mutrec_datatypes_of_context gamma)),
+  forallb (fun b => negb (null b)) (map snd l).
+Proof.
+  intros. apply forallb_forall. intros.
+  valid_context_tac.
+  unfold adt_inhab in H1.
+  valid_context_tac.
 Qed.
 
 End ValidContextLemmas.

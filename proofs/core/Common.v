@@ -392,3 +392,14 @@ Proof.
   - rewrite <- in_bool_dec. destruct (in_dec eq_dec x l); auto; simpl.
     destruct (nodup_NoDup eq_dec l); auto. exfalso. apply n. constructor; auto.
 Qed.
+
+Lemma tuple_eq_dec {A B: Type} (eq1: forall (x y: A), { x = y } + {x <> y})
+  (eq2: forall (x y : B), {x=y} + {x<>y}) :
+  (forall (x y : A * B), {x = y} + { x <> y}).
+Proof.
+  intros.
+  destruct x; destruct y.
+  destruct (eq1 a a0); subst; [| right; intro C; inversion C; subst; contradiction].
+  destruct (eq2 b b0); subst; [|right; intro C; inversion C; subst; contradiction].
+  left; reflexivity.
+Defined.

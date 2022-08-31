@@ -1,6 +1,7 @@
 Require Import Types.
 Require Import Syntax.
 Require Import Typing.
+Require Import IndTypes.
 
 Require Import Coq.Program.Equality.
 Require Import Coq.Logic.Eqdep_dec.
@@ -12,6 +13,7 @@ Require Import Coq.Logic.Eqdep_dec.
 
 (*A custom list-like data type which holds values of types [[s_i]], where
     s is a list of sorts*)
+    (*
 Inductive arg_list (domain: sort -> Type) : list sort -> Type :=
   | AL_nil: arg_list domain nil
   | AL_cons: forall s tl,
@@ -64,7 +66,7 @@ Definition funsym_sigma_args (f: funsym) (s: list sort) : list sort :=
   ty_subst_list_s (s_params f) s (s_args f).
 
 Definition funsym_sigma_ret (f: funsym) (s: list sort) : sort :=
-  ty_subst_s (s_params f) s (s_ret f).
+  ty_subst_s (s_params f) s (s_ret f).*)
 
 Definition predsym_sigma_args (p: predsym) (s: list sort) : list sort :=
   ty_subst_list_s (p_params p) s (p_args p).
@@ -102,7 +104,7 @@ funsym_sigma_ret c s = typesym_to_sort a s.
 Proof.
   intros. unfold funsym_sigma_ret. unfold typesym_to_sort.
   apply sort_inj; simpl.
-  pose proof (adt_constr_ret_params _ _ gamma_valid _ _ _ H H0).
+  pose proof (adt_constr_ret_params gamma_valid _ _ _ H H0).
   destruct H2. rewrite H2. simpl. rewrite H3. f_equal.
   apply list_eq_ext'; rewrite !map_length; rewrite <- H3; subst. lia.
   intros n d Hn.
@@ -132,8 +134,6 @@ Proof.
   apply H5; auto; try lia.
 Qed.
 
-Require Import IndTypes.
-
 Record pre_interp := {
   domain: sort -> Set;
   domain_int: domain s_int = Z;
@@ -154,11 +154,12 @@ Record pre_interp := {
     the type is applied*)
 
   adts: forall (l: list (typesym * list funsym)) (a: typesym) 
-    (srts: list sort) (Hina: In a (map fst l)),
-    In l (mutrec_datatypes_of_context gamma) ->
+    (srts: list sort) (Hina: In a (map fst l))
+    (Hinl: In l (mutrec_datatypes_of_context gamma)),
     domain (typesym_to_sort a srts) = 
     mk_adts gamma (typevar_map a srts domain)
-      (typesym_map a srts domain) l (get_adt_index l a Hina);
+      (typesym_map a srts domain) (build_ne_lists gamma_valid Hinl) 
+        (get_adt_index gamma_valid l Hinl a Hina);
 
   (*The interpretation for each constructor comes from [make_constr] TODO*)
   constrs: True (*TODO*)
@@ -256,15 +257,15 @@ Qed.
 
 (*Cast 1 domain into another*)
 Definition dom_cast {v1 v2: sort} (Hv: v1 = v2) (x: domain i v1) : domain i v2.
-subst. apply x.
+rewrite <- Hv. exact x.
 Defined.
 
 Lemma dom_cast_inj: forall {v1 v2: sort} (H: v1 = v2) (d1 d2: domain i v1),
   dom_cast H d1 = dom_cast H d2 ->
   d1 = d2.
 Proof.
-  intros. unfold dom_cast in H0. unfold eq_rect_r in H0.
-  unfold eq_rect in H0. destruct (eq_sym H). auto.
+  intros. unfold dom_cast in H0.
+  unfold eq_rect in H0. destruct H. auto.
 Qed.
 
 Definition dom_int : domain i s_int.
@@ -729,7 +730,7 @@ Fixpoint mk_fun_arg {A: Type} (eq_dec: forall (x y: A), {x = y} + { x <> y})
   (l: list A) (s: list sort) (a: arg_list (domain i) s) (x: A): 
     forall v, domain i (v_subst v_var v) :=
   match l, a with
-  | hd :: tl, AL_cons _ shd stl d t => 
+  | hd :: tl, AL_cons shd stl d t => 
     fun v =>
       (*Need to know that types are equal so we can cast the domain*)
       match (vty_eq_dec (v_subst v_var v)) shd with
@@ -739,7 +740,7 @@ Fixpoint mk_fun_arg {A: Type} (eq_dec: forall (x y: A), {x = y} + { x <> y})
       end
   (* Otherwise, return default element of domain *)
   | _, _ => fun v => match domain_ne i (v_subst v_var v) with
-                      | DE _ _ y => y
+                      | DE y => y
                       end
   end.
 
