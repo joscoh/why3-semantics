@@ -2,71 +2,12 @@ Require Import Types.
 Require Import Syntax.
 Require Import Typing.
 Require Import IndTypes.
+Require Import Hlist.
 
 Require Import Coq.Program.Equality.
 Require Import Coq.Logic.Eqdep_dec.
 
-
 (** Semantics **)
-
-(* Function/Predicate Application *)
-
-(*A custom list-like data type which holds values of types [[s_i]], where
-    s is a list of sorts*)
-    (*
-Inductive arg_list (domain: sort -> Type) : list sort -> Type :=
-  | AL_nil: arg_list domain nil
-  | AL_cons: forall s tl,
-      domain s ->
-      arg_list domain tl ->
-      arg_list domain (s :: tl).
-
-(*Some definitions on [arg_list]*)
-Fixpoint arg_length {domain: sort -> Type} {l: list sort} (a: arg_list domain l) : nat :=
-  match a with
-  | AL_nil _ => 0
-  | AL_cons _ _ _ d tl => 1 + arg_length tl
-  end.
-
-Lemma arg_length_sorts: forall (domain: sort -> Type) (l: list sort) (a: arg_list domain l),
-  arg_length a = length l.
-Proof.
-  intros d l a. induction a; simpl; auto.
-Qed.
-
-Definition arg_nth {domain: sort -> Type} {l: list sort} (a: arg_list domain l) (i: nat)
- (d: sort) (d': domain d) : domain (nth i l d).
-Proof.
-  generalize dependent i. induction a; simpl; intros.
-  - destruct i; apply d'. 
-  - destruct i.
-    + simpl. apply d0.
-    + apply IHa.
-Defined.
-
-Lemma arg_list_eq_ext: forall {domain: sort -> Type} {l: list sort} (a1 a2: arg_list domain l)
-  (d: sort) (d': domain d),
-  (forall i, i < length l -> arg_nth a1 i d d' = arg_nth a2 i d d') ->
-  a1 = a2.
-Proof.
-  intros d l a1. dependent induction a1; simpl; intros a2; dependent induction a2;
-  simpl; intros; auto. clear IHa2.
-  assert (d0 = d1). {
-    assert (0 < S(length tl)) by lia.
-    specialize (H 0 H0). simpl in H. auto.
-  }
-  subst. f_equal. apply (IHa1 _ d2 d'). intros.
-  assert (S(i) < S(Datatypes.length tl)) by lia.
-  specialize (H _ H1). simpl in H. auto.
-Qed.
-
-(*Here, we prove that a type substitution that replaces all of the type
-  parameters for a function/pred symbol with sorts results in a sort *)
-Definition funsym_sigma_args (f: funsym) (s: list sort) : list sort :=
-  ty_subst_list_s (s_params f) s (s_args f).
-
-Definition funsym_sigma_ret (f: funsym) (s: list sort) : sort :=
-  ty_subst_s (s_params f) s (s_ret f).*)
 
 Definition predsym_sigma_args (p: predsym) (s: list sort) : list sort :=
   ty_subst_list_s (p_params p) s (p_args p).
@@ -339,7 +280,7 @@ Inductive term_interp:
       term_interp v (nth n ts (Tconst (ConstInt 0)))
         (nth n f_arg_typs s_int) 
         (dom_cast (subst_sort_eq (nth n f_arg_typs s_int) (v_typevar i v)) 
-          (@arg_nth _ f_arg_typs xs n s_int dom_int))) ->
+          (hnth n xs s_int dom_int))) ->
     
     (*Again, we must cast the return type of f, for the same reason*)
     term_interp v (Tfun f params ts) f_ret 
@@ -418,7 +359,7 @@ with formula_interp: (valuation i) -> list formula -> list formula -> formula ->
       term_interp v (nth n ts (Tconst (ConstInt 0)))
         (nth n p_arg_typs s_int) 
         (dom_cast (subst_sort_eq (nth n p_arg_typs s_int) (v_typevar i v)) 
-          (@arg_nth _ p_arg_typs xs n s_int dom_int))) ->
+          (hnth n xs s_int dom_int ))) ->
 
     formula_interp v tl fl (Fpred p params ts) (p_interp xs)
   | FI_match: forall v (t: term) ty (ps: list (pattern * formula)) (f: formula) b tl fl,
@@ -730,7 +671,7 @@ Fixpoint mk_fun_arg {A: Type} (eq_dec: forall (x y: A), {x = y} + { x <> y})
   (l: list A) (s: list sort) (a: arg_list (domain i) s) (x: A): 
     forall v, domain i (v_subst v_var v) :=
   match l, a with
-  | hd :: tl, AL_cons shd stl d t => 
+  | hd :: tl, HL_cons shd stl d t => 
     fun v =>
       (*Need to know that types are equal so we can cast the domain*)
       match (vty_eq_dec (v_subst v_var v)) shd with

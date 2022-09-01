@@ -4,6 +4,7 @@ Require Import Types.
 Require Import Typing.
 Require Import IndTypes.
 Require Import Semantics.
+Require Import Hlist.
 Require Import Coq.Program.Equality.
 
 (*The axioms we need: excluded middle and definite description*)
@@ -177,12 +178,12 @@ Proof.
   unfold funsym_sigma_args.
   generalize dependent (s_args f). clear Hty. induction ts; simpl; intros.
   - assert (l = nil). apply length_zero_iff_nil. rewrite H1; reflexivity.
-    rewrite H. simpl. apply AL_nil.
+    rewrite H. simpl. apply HL_nil.
   - destruct l as [|a1 atl] eqn : Hargs.
     + inversion H1.
     + simpl in H1. simpl in H3. assert (A:=H3).
       apply Forall_inv in H3. apply Forall_inv_tail in A. simpl.
-      apply AL_cons.
+      apply HL_cons.
       * specialize (reps a _ H3); simpl in reps. 
         rewrite <- funsym_subst_eq; auto. apply s_params_nodup.
       * apply IHts; auto.
@@ -205,12 +206,12 @@ Proof.
   unfold predsym_sigma_args.
   generalize dependent (p_args p). induction ts; simpl; intros.
   - assert (l = nil). apply length_zero_iff_nil. rewrite H1; reflexivity.
-    rewrite H. simpl. apply AL_nil.
+    rewrite H. simpl. apply HL_nil.
   - destruct l as [|a1 atl] eqn : Hargs.
     + inversion H1.
     + simpl in H1. simpl in H3. assert (A:=H3).
       apply Forall_inv in H3. apply Forall_inv_tail in A. simpl.
-      apply AL_cons.
+      apply HL_cons.
       * specialize (reps a _ H3); simpl in reps. 
         rewrite <- funsym_subst_eq; auto. apply p_params_nodup.
       * apply IHts; auto.

@@ -2,6 +2,7 @@ Require Import Syntax.
 Require Import Typing.
 Require Import Types.
 Require Import Coq.Lists.List.
+Require Import Hlist.
 
 Require Import Coq.Logic.Eqdep_dec.
 (*Need eq_rect_eq for injectivity of constructors and test cases*)
@@ -475,11 +476,12 @@ Fixpoint build_base (constrs: ne_list funsym) : Set :=
 (*Count number of recursive occurrences (NOTE: doesnt work for non-uniform 
   or nested recursion)*)
 Definition count_rec_occ (ts: typesym) (c: funsym) :=
-  fold_right (fun v acc => 
+  length (filter (fun v => 
     match v with
-    | vty_cons ts' vs => (if typesym_eqb ts ts' then 1 else 0)
-    | _ => 0
-    end + acc) 0 (s_args c).
+    | vty_cons t vs => typesym_eq_dec t ts && 
+                       list_eq_dec vty_eq_dec vs (map vty_var (ts_args ts))
+    | _ => false
+  end) (s_args c)).
 
 Definition build_constr_rec (ts: typesym) (c: funsym) : Set :=
    finite (count_rec_occ ts c).
@@ -835,6 +837,12 @@ Qed.
 
 End ADTConstr.
 
+Ltac destruct_list :=
+  match goal with
+  | |- context [ match ?l with | nil => ?x1 | a :: b => ?x2 end] =>
+    destruct l 
+  end.
+
 (*Facilities to build ADTs*)
 Section Build.
 
@@ -964,208 +972,16 @@ the input [args_list] into the [build_constr_base] and the
 recursive map. This involves lots of very tedious
 dependent type manipulations*)
 
-(*TEMP - TODO figure out how to do this*)
-
-(*A list with possibly different types*)
-
-(*Heterogenous list*)
-Inductive hlist {A: Type} (f: A -> Type) : list A -> Type :=
-  | HL_nil: hlist f nil
-  | HL_cons: forall x tl,
-    f x ->
-    hlist f tl ->
-    hlist f (x :: tl).
-
-(*"inversion" for htlists*)
-Definition hlist_hd {A: Type} {f: A -> Type} {hd: A} {tl: list A} 
-  (h: hlist f (hd :: tl)) : f hd :=
-  match h with
-  | HL_nil => idProp
-  | HL_cons _ _ hd tl => hd
-  end.
-
-Definition hlist_tl {A: Type} {f: A -> Type} {hd: A} {tl: list A} 
-  (h: hlist f (hd :: tl)) : hlist f tl :=
-  match h with
-  | HL_nil => idProp
-  | HL_cons _ _ hd tl => tl
-  end.
-(*Operations on dlists*)
-
-(*Length*)
-Fixpoint hlength {A: Type} {f: A -> Type} {l: list A} (h: hlist f l) : nat :=
-  match h with
-  | HL_nil => 0
-  | HL_cons _ _ hd tl => 1 + hlength tl
-  end.
-
-Lemma hlength_eq {A: Type} {f: A -> Type} {l: list A} (h: hlist f l) :
-  hlength h = length l.
-Proof.
-  induction h; simpl; auto.
-Qed.
-
-(*nth*)
-Fixpoint hnth {A: Type} {f: A -> Type} {l: list A} (i: nat) (h: hlist f l)
-  (d: A) (d': f d) : f (List.nth i l d) :=
-  match l as l' return hlist f l' -> f (List.nth i l' d) with
-  | nil => fun _ =>
-    match i with
-    | O => d'
-    | S _ => d'
-    end
-  | hd :: tl => fun h =>
-    match i with
-    | O => hlist_hd h
-    | S i' => hnth i' (hlist_tl h) d d'
-    end
-  end h.
-
-(*filter*)
-Fixpoint hfilter {A: Type} {f: A -> Type} {l: list A} (g: A -> bool) (h: hlist f l)  :
-  hlist f (filter g l) :=
-  match l as l' return hlist f l' -> hlist f (filter g l') with
-  | nil => fun _ => (@HL_nil _ _)
-  | hd :: tl => fun h =>
-    match (g hd) as b return hlist f (if b then hd :: filter g tl else filter g tl) with
-    | true => HL_cons _ _ _ (hlist_hd h) (hfilter g (hlist_tl h))
-    | false => hfilter g (hlist_tl h)
-    end
-  end h.
-
-  (*TODO: continue with this tomorrow*)
-
-(*map*)
-Fixpoint hmap {A B: Type} {f1: A -> Type} (f2: B -> Type)
-  {l: list A} (h: hlist f1 l) (g: A -> B) : hlist f2 (map g l) :=
-  match l as l' return hlist f1 l' -> hlist f2 (map g l') with
-  | nil => fun _ => (@HL_nil _ _)
-  | hd :: tl => fun h =>
-    HL_cons f2 (f2 ()) (hlist_hd h) (hmap f2 (hlist_tl tl) g)
-  end.
-
-
-
-
-
-Definition arg_list (domain: Types.sort -> Set) := dlist domain.*)
-
-(*TODO: move this somewhere else (maybe separate file?)*)
-(*A custom list-like data type which holds values of types [[s_i]], where
-    s is a list of sorts*)
-    Inductive arg_list (domain: Types.sort -> Type) : list Types.sort -> Type :=
-    | AL_nil: arg_list domain nil
-    | AL_cons: forall s tl,
-        domain s ->
-        arg_list domain tl ->
-        arg_list domain (s :: tl).
-
-  (*Some definitions on [arg_list]*)
-  Fixpoint arg_length {domain: Types.sort -> Type} {l: list Types.sort} (a: arg_list domain l) : nat :=
-    match a with
-    | AL_nil => 0
-    | AL_cons _ _ d tl => 1 + arg_length tl
-    end.
+(*TODO: where to put this?*)
+Definition arg_list (domain: Types.sort -> Set) := hlist domain.
   
-  Lemma arg_length_sorts: forall (domain: Types.sort -> Type) (l: list Types.sort) (a: arg_list domain l),
-    arg_length a = length l.
-  Proof.
-    intros d l a. induction a; simpl; auto.
-  Qed.
-  
-  Definition arg_nth {domain: Types.sort -> Type} {l: list Types.sort} (a: arg_list domain l) (i: nat)
-   (d: Types.sort) (d': domain d) : domain (List.nth i l d).
-  Proof.
-    generalize dependent i. induction a; simpl; intros.
-    - destruct i; apply d'. 
-    - destruct i.
-      + simpl. apply d0.
-      + apply IHa.
-  Defined.
+(*Here, we prove that a type substitution that replaces all of the type
+  parameters for a function/pred symbol with sorts results in a sort *)
+Definition funsym_sigma_args (f: funsym) (s: list Types.sort) : list Types.sort :=
+  ty_subst_list_s (s_params f) s (s_args f).
 
-  (*An inversion lemma for [arg_list]*)
-  Definition arg_inv {domain: Types.sort -> Type} {x: Types.sort}
-    {l: list Types.sort} (a: arg_list domain (x :: l)) : domain x * arg_list domain l :=
-    match a with
-    | AL_nil => idProp
-    | AL_cons _ _ hd tl => (hd, tl)
-    end.
-
-  (*Filter an arg_list by a predicate on the underlying sort list*)
-  Fixpoint arg_filter {domain: Types.sort -> Type} (l: list Types.sort) (a: arg_list domain l)
-    (f: Types.sort -> bool) : arg_list domain (filter f l) :=
-  match l as l' return arg_list domain l' -> arg_list domain (filter f l') with
-  | nil => fun _ => (AL_nil domain)
-  | hd :: tl => fun al =>
-    let (x, alt) := (arg_inv al) in
-    match (f hd) as b return 
-      arg_list domain (if b then (hd :: filter f tl) else (filter f tl)) with
-    | true => AL_cons domain _ _ x (arg_filter tl alt f)
-    | false => arg_filter tl alt f
-    end
-  end a.
-
-  (*TODO: should generalize to generic heterogenous list, then can write this
-    easier with just map and filter *)
-  Definition arg_map_filter {domain: Types.sort -> Type} (l: list vty)
-    (f: vty -> Types.sort) (a: arg_list domain (map f l))
-    (g: vty -> bool) : arg_list domain (map f (filter g l)) :=
-
-  Admitted.
-
-(*TODO: move/figure out where to put all this stuff*)
-Definition dom_cast {domain: Types.sort -> Type} 
-  {v1 v2: Types.sort} (Hv: v1 = v2) (x: domain v1) : domain v2.
-rewrite <- Hv. exact x.
-Defined.
-
-Lemma dom_cast_inj: forall {domain: Types.sort -> Type} {v1 v2: Types.sort} 
-  (H: v1 = v2) (d1 d2: domain v1),
-  dom_cast H d1 = dom_cast H d2 ->
-  d1 = d2.
-Proof.
-  intros. unfold dom_cast in H0.
-  unfold eq_rect in H0. destruct H. auto.
-Qed.
-
-  (*If all elements of an [arg_list] have the same type, we can convert
-    this into a list*)
-  Fixpoint arg_to_list {domain: Types.sort -> Type} {s: Types.sort} (l: list Types.sort) 
-    (a: arg_list domain l)
-    (Hall: Forall (fun x => x = s) l):
-    list (domain s) :=
-    match l as l' return arg_list domain l' -> Forall (fun x => x = s) l' ->
-      list (domain s) with 
-    | nil => fun _ _ => nil
-    | hd :: tl => fun al Hall =>
-      let (x, alt) := (arg_inv al) in
-      (dom_cast (Forall_inv Hall) x) :: arg_to_list tl alt (Forall_inv_tail Hall)
-    end a Hall.
-  
-  (*Extensional equality for arg lists*)
-  Lemma arg_list_eq_ext: forall {domain: Types.sort -> Type} {l: list Types.sort} (a1 a2: arg_list domain l)
-    (d: Types.sort) (d': domain d),
-    (forall i, (i < length l)%coq_nat -> arg_nth a1 i d d' = arg_nth a2 i d d') ->
-    a1 = a2.
-  Proof.
-    intros d l a1. dependent induction a1; simpl; intros a2; dependent induction a2;
-    simpl; intros; auto. clear IHa2.
-    assert (d0 = d1). {
-      assert (0 < S(length tl))%coq_nat by lia.
-      specialize (H 0 H0). simpl in H. auto.
-    }
-    subst. f_equal. apply (IHa1 _ d2 d'). intros.
-    assert (S(i) < S(Datatypes.length tl))%coq_nat by lia.
-    specialize (H _ H1). simpl in H. auto.
-  Qed.
-  
-  (*Here, we prove that a type substitution that replaces all of the type
-    parameters for a function/pred symbol with sorts results in a sort *)
-  Definition funsym_sigma_args (f: funsym) (s: list Types.sort) : list Types.sort :=
-    ty_subst_list_s (s_params f) s (s_args f).
-  
-  Definition funsym_sigma_ret (f: funsym) (s: list Types.sort) : Types.sort :=
-    ty_subst_s (s_params f) s (s_ret f).
+Definition funsym_sigma_ret (f: funsym) (s: list Types.sort) : Types.sort :=
+  ty_subst_s (s_params f) s (s_ret f).
 
 Lemma null_nil {A: Type} (l: list A):
   null l <-> l = nil.
@@ -1212,11 +1028,7 @@ Proof.
   reflexivity.
 Qed.
 
-Ltac destruct_list :=
-  match goal with
-  | |- context [ match ?l with | nil => ?x1 | a :: b => ?x2 end] =>
-    destruct l 
-  end.
+
 
 (*The function is long but not very interesting; almost all of the complexity
   comes from dependent type equality. We just iterate through the arg_list,
@@ -1340,20 +1152,38 @@ Proof.
       * destruct H. destruct H0; subst. rewrite Hfa in H. inversion H.
         apply IHl. split; auto.
 Qed.
+
+Definition cast_list {A B: Set} (l: list A) (Heq: A = B) : list B :=
+  match Heq with
+  | erefl => l
+  end.
+
+Lemma cast_list_length: forall {A B: Set} (l: list A) (Heq: A = B),
+  length (cast_list l Heq) = length l.
+Proof.
+  intros. unfold cast_list. destruct Heq. reflexivity.
+Qed. 
+
+Definition mk_tuple {A: Type} (n: nat) (l: list A) (Hl: size l == n) : n.-tuple A :=
+  Tuple Hl.
+
+Lemma size_length: forall {A: Type} (l: list A),
+  length l = size l.
+Proof. reflexivity. Qed.
+
 (*Filter idea may not work - we dont know what we substitute, could substitite
   this inductive type: ie, consider
   Cons a (list b) and we subst a -> list int, b -> int
   we cannot distinguish these*)
-Definition args_to_ind_base_aux (gamma : context)
+
+Definition args_to_ind_base_aux (sigma: sig) (gamma : context) 
+(gamma_valid: valid_context sigma gamma)
 (l : seq (typesym * ne_list funsym)) (adt: typesym) (f: funsym)
 (srts: list Types.sort) (domain: Types.sort -> Set)
-(*(Hadts: forall (l: list (typesym * list funsym)) (a: typesym) 
-    (srts: list sort) (Hina: In a (map fst l))
-    (Hinl: In l (mutrec_datatypes_of_context gamma)),
-    domain (typesym_to_sort a srts) = 
-    mk_adts gamma (typevar_map a srts domain)
-      (typesym_map a srts domain) (build_ne_lists gamma_valid Hinl) 
-        (get_adt_index gamma_valid l Hinl a Hina))*)
+(Hadts: forall (x: finite (length l)) (srts: list Types.sort),
+domain (typesym_to_sort (fin_nth l x).1 srts) =
+mk_adts gamma (typevar_map (fin_nth l x).1 srts domain) 
+  (typesym_map (fin_nth l x).1 srts domain) l x)
 (Hunif: uniform_adts gamma)
 (a: arg_list domain (funsym_sigma_args f srts))
 : (forall x: finite (length l), (count_rec_occ (fin_nth l x).1 f).-tuple
@@ -1367,8 +1197,13 @@ Proof.
   | vty_cons t vs => typesym_eq_dec t ts && list_eq_dec vty_eq_dec vs (map vty_var (ts_args ts))
   | _ => false
   end)).
-  set (amf := arg_map_filter (s_args f) ff a gg).
-  set (ls:= map ff (filter gg (s_args f))) in *.
+  set (amf := hlist_map_filter ff a gg).
+  set (ls:= List.map ff (List.filter gg (s_args f))) in *.
+  (*What we want to do: just filter the arg_list by those arising from
+    (mutually) recursive instances of [ts]
+    But this needs a few steps: we need to know that all elements of this filtered
+    hlist have the same type, that we can convert this type to a W type, 
+    and that the length is correct. Then we can construct the tuple*)
   assert (Forall (fun x =>
     x = typesym_to_sort ts (ty_subst_list_s (s_params f) srts (map vty_var (ts_args ts))))
      ls). {
@@ -1381,104 +1216,45 @@ Proof.
       apply andb_true_iff in Hty. destruct Hty.
       repeat simpl_sumbool.
      }
-  
+  set (amf_list := hlist_to_list amf H).
 
-
-  Definition arg_map_filter {domain: Types.sort -> Type} (l: list vty)
-  (f: vty -> Types.sort) (a: arg_list domain (map f l))
-  (g: vty -> bool) : arg_list domain (map f (filter g l)).
-
-
-  Definition arg_map_filter {domain: Types.sort -> Type} (l: list Types.sort)
-  (f: vty -> Types.sort) (a: arg_list domain (map f (sorts_to_tys l)))
-  (g: Types.sort -> bool) : arg_list domain (map f (sorts_to_tys (filter g l))).
-
-
-  set (fb:= 
-    (fun s => match sort_to_ty s with
-              | vty_cons t vs => typesym_eq_dec t ts
-              | _ => false
-              end)).
-  set (ls := (ty_subst_list_s (s_params f) srts (s_args f))).
-  set (af := arg_filter ls a fb).
-  (*this is not true - we can substitute the same type with different params for a variable*)
-  assert (Forall (fun x => 
-    x = typesym_to_sort ts (ty_subst_list_s (s_params f) srts (map vty_var (ts_args ts)))) 
-    (filter fb ls)). {
-      rewrite Forall_forall. intros. rewrite <- ty_subst_s_cons.
-      subst ls.
-      rewrite in_filter in H. destruct H. subst fb. simpl in H.
-      rewrite in_map_iff in H0. destruct x0. simpl in H.
-      destruct x0; try solve[inversion H].
-      apply sort_inj; simpl. destruct (typesym_eq_dec t ts); try solve[inversion H].
-      subst. destruct H0 as [v [Hv Hinv]]; subst.
-      apply (f_equal sort_to_ty) in Hv. simpl in Hv. Print v_subst_aux. 
-      rewrite List.map_map. simpl.
-      destruct v; try (solve[inversion Hv]).
-      simpl in Hv.
-
-
-      simpl.
-
-      simpl in H0.
-      
-      destruct H0 as [v [Hv Hinv]]; subst.
-
-
-
-      subst fb.
-      
-      Search typesym_to_sort. subst ls.
-      unfold ty_subst_list_s in H.
-      rewrite in_filter in H. destruct H.
-      rewrite in_map_iff in H0.
-      destruct H0 as [v [Hv Hinv]]. subst.
-      subst fb. simpl in H.
-      destruct v; simpl in H; try (solve[exfalso; apply (not_false H)]).
-      - apply sort_inj. simpl. unfold ty_subst_list_s.
-        rewrite List.map_map.
-        destruct (ty_subst_fun (s_params f) (sorts_to_tys srts) vty_int t) eqn : Hsubst;
-        try solve[exfalso; apply (not_false H)].
-        destruct (typesym_eq_dec t0 ts); subst; try solve[inversion H].
-        f_equal. 
-         assert (exists s, In s (sorts_to_tys srts) /\ 
-        ty_subst_fun (s_params f) (sorts_to_tys srts) vty_int t = s). { admit. }
-        destruct H0 as [s [Hins Hs]]; subst.
-        rewrite Hsubst in Hins. unfold sorts_to_tys in Hins.
-        rewrite in_map_iff in Hins. destruct Hins as [v [Hv' Hinv']]; subst.
-
-        rewrite Hv' in Hinv'.
-        subst.
-      
-      
-      Print ty_subst_fun.
-      simpl.
-
+  (*steps: 1. prove that length of amf is count_rec_occ
+  2. prove (separately) that hlist_to_list preserves length
+  3. prove list of length -> tuple (separately) - use mk_tuple
+  4. convert the type using hypothesis about adts
+  done*)
+  assert (Hlen: length amf_list = count_rec_occ ts f). {
+    subst amf_list. rewrite hlist_to_list_length.
+    subst amf. rewrite hlength_eq.
+    subst ls. rewrite map_length. reflexivity.
+  } subst ts.
+  set (amf_cast := (cast_list amf_list (Hadts x (ty_subst_list_s (s_params f) srts
+  [seq vty_var i | i <- ts_args (fin_nth l x).1])))).
+   
+    (*Now we need to prove that the double substitution doesn't do antyhing*)
+    unfold typevar_map. unfold typevar_map in amf_cast.
+    (*is there a simpler way?*)
+    assert (ty_subst_list_s (s_params f) srts [seq vty_var i | i <- ts_args (fin_nth l x).1] =
+      srts). {
+        assert ((s_params f) = ts_args (fin_nth l x).1) by admit.
+        rewrite <- H0. unfold ty_subst_list_s.
+        rewrite map_map.
+        (*TODO: this is provable*)
+        admit.
+      }
+    rewrite <- H0.
+    assert (Hlen': length amf_cast = 
+    count_rec_occ (fin_nth l x).1 f). {
+      rewrite cast_list_length. apply Hlen.
     }
+    move: Hlen' => /eqP Hlen'.
+    assert (ts_args adt = ts_args (fin_nth l x).1) by admit.
+    unfold typesym_map.
+    rewrite H1.
+    apply (mk_tuple _ _ Hlen').
+Admitted.
 
-
-  
-  assert ()
-  Print 
-              |))
-
-
-  {domain: Types.sort -> Type} (l: list Types.sort) (a: arg_list domain l)
-    (f: Types.sort -> bool) : arg_list domain (filter f l) :=
-  assert (length (arg_filter ))
-
-
-  apply mk_tuple.
-
-Definition args_to_constr_base_aux (gamma: context) 
-  (c: funsym) (adt: typesym)
-  (Hparams: ts_args adt = s_params c)
-  (domain: Types.sort -> Set) (srts: list Types.sort)
-  (Hint: domain s_int = Z)
-  (Hreal: domain s_real = R)
-  (a: arg_list domain (funsym_sigma_args c srts)):
-  build_constr_base gamma (typevar_map adt srts domain) 
-    (typesym_map adt srts domain) c.
+(*OK, need a few equalities then ok, no extensionality needed*)
 
 End Build.
 (* TODO: Handle nested types*)
@@ -1679,8 +1455,7 @@ Notation triv_constr := (make_constr_simple triv_context triv_vars triv_syms).
 Definition emp_fun {A: Type} : empty -> A := fun e =>
   match e with end.
 
-Definition mk_tuple {A: Type} (n: nat) (l: list A) (Hl: size l == n) : n.-tuple A :=
-  Tuple Hl.
+
 
 Definition ta : typevar := "a"%string.
 Definition tb : typevar := "b"%string.
