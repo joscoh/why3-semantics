@@ -380,6 +380,14 @@ Proof.
   destruct (eq_dec x a); simpl; constructor; auto.
 Qed.
 
+Lemma In_in_bool: forall {A: Type} 
+  (eq_dec: forall (x y: A), {x = y} + {x <> y}) x l,
+  In x l ->
+  in_bool eq_dec x l.
+Proof.
+  intros. apply (reflect_iff _ _ (in_bool_spec eq_dec x l)). assumption.
+Qed.
+
 Lemma nodupb_cons {A: Type} (eq_dec: forall (x y : A), {x = y} + {x <> y}) 
   (x: A) (l: list A) :
   nodupb eq_dec (x :: l) = negb (in_bool eq_dec x l) && nodupb eq_dec l.
@@ -403,3 +411,132 @@ Proof.
   destruct (eq2 b b0); subst; [|right; intro C; inversion C; subst; contradiction].
   left; reflexivity.
 Defined.
+
+
+
+(*Non-empty lists*)
+Section NEList.
+
+(*Our list of constructors are non-empty, and if we just use regular lists,
+  we will need to pattern match on nil, [x], and x :: t. This makes the
+  dependent pattern match much more complicated and leads to huge proof terms.
+  So instead we define a non-empty list as a custom Inductive type, and have simple
+  ways to transform between this and the standard list.*)
+
+Inductive ne_list (A: Set) : Set :=
+  | ne_hd : A -> ne_list A
+  | ne_cons : A -> ne_list A -> ne_list A.
+
+Global Arguments ne_hd {A}.
+Global Arguments ne_cons {A}.
+
+Lemma not_false: ~is_true false.
+Proof.
+  intro C; inversion C.
+Qed.
+
+Lemma isT : true.
+Proof. auto. Qed.
+
+Definition list_to_ne_list {A: Set} (l: list A) (Hl: negb (null l)) : ne_list A. 
+induction l.
+- exact (False_rect _ (not_false Hl)).
+- destruct l.
+  + exact (ne_hd a).
+  + exact (ne_cons a (IHl isT)).
+Defined.
+
+(*rewrite lemma*)
+Lemma list_to_ne_list_cons: forall {A: Set} (hd: A) (tl: list A) (H: negb (null (hd :: tl))),
+  list_to_ne_list (hd :: tl) H =
+  match tl with
+  | nil => ne_hd hd
+  | a :: t => ne_cons hd (list_to_ne_list (a :: t) isT)
+  end.
+Proof.
+  intros.
+  destruct tl; auto.
+Qed.
+
+Fixpoint ne_list_to_list {A: Set} (l: ne_list A) : list A :=
+  match l with
+  | ne_hd x => [x]
+  | ne_cons x tl => x :: ne_list_to_list tl
+  end.
+
+Lemma ne_list_to_list_size: forall {A: Set} (l: ne_list A),
+  negb (null (ne_list_to_list l)).
+Proof.
+  intros. destruct l; reflexivity.
+Qed.
+
+Lemma ne_list_to_list_cons: forall {A: Set} (x: A) (l: ne_list A),
+  ne_list_to_list (ne_cons x l) = x :: ne_list_to_list l.
+Proof.
+  intros. reflexivity.
+Qed.
+
+Lemma list_ne_list_inv: forall {A: Set} (l: list A) (Hl: negb (null l)),
+  ne_list_to_list (list_to_ne_list l Hl) = l.
+Proof.
+  intros. induction l.
+  - inversion Hl.
+  - destruct l.
+    + reflexivity.
+    + rewrite list_to_ne_list_cons, ne_list_to_list_cons. f_equal.
+      apply IHl.
+Qed.
+
+Lemma ne_list_list_inv: forall {A: Set} (l: ne_list A),
+  list_to_ne_list (ne_list_to_list l) (ne_list_to_list_size l) = l.
+Proof.
+  intros. generalize dependent (ne_list_to_list_size l). induction l; intros.
+  - reflexivity.
+  - simpl in i. destruct l; simpl in *; try reflexivity.
+    specialize (IHl isT).
+    destruct (ne_list_to_list l). inversion IHl.
+    f_equal. apply IHl.
+Qed.
+
+Fixpoint in_bool_ne {A: Set} (eq_dec: forall (x y: A), {x = y} + {x <> y})
+  (x: A) (l: ne_list A) : bool :=
+  match l with
+  | ne_hd y => eq_dec x y
+  | ne_cons y tl => eq_dec x y || in_bool_ne eq_dec x tl
+  end.
+
+Lemma in_bool_ne_equiv: forall {A: Set} (eq_dec: forall (x y: A), { x = y} + {x <> y})
+  (x: A) (l: ne_list A),
+  in_bool_ne eq_dec x l = in_bool eq_dec x (ne_list_to_list l).
+Proof.
+  intros. induction l; simpl; [rewrite orb_false_r | rewrite IHl ]; reflexivity.
+Qed.
+
+Fixpoint lists_to_ne_lists {A: Set} (l: list (list A)) 
+  (Hall: forallb (fun x => negb (null x)) l) :
+  list (ne_list A) :=
+  match l as l' return (forallb (fun x => negb (null x)) l') -> list (ne_list A) with
+  | nil => fun _ => nil
+  | hd :: tl => fun Hnull =>
+    match (andb_prop _ (forallb (fun x => negb (null x)) tl) Hnull) with
+    | conj Hhd Htl =>
+      (list_to_ne_list hd Hhd) :: lists_to_ne_lists tl Htl
+    end
+  end Hall.
+
+Ltac right_dec := solve[let C := fresh "C" in right; intro C; inversion C; try contradiction].
+
+(*TODO: hopefully we don't need to run this, if we do, make nicer*)
+Definition ne_list_eq_dec {A: Set} 
+  (eq_dec: forall (x y : A), {x = y} + {x <> y})
+  (l1 l2: ne_list A) :
+  {l1 = l2} + { l1 <> l2}.
+Proof.
+  revert l2.
+  induction l1 as [hd1|hd1 tl1 IH]; intros [hd2|hd2 tl2]; try right_dec;
+  destruct (eq_dec hd1 hd2); try right_dec; rewrite e; clear e.
+  - left. reflexivity.
+  - destruct (IH tl2); [|right_dec]. rewrite e. left; reflexivity.
+Defined.
+
+End NEList.

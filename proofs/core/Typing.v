@@ -262,6 +262,31 @@ Definition funsyms_of_context (c: context) : list funsym :=
 Definition predsyms_of_context (c: context) : list predsym :=
   concat (map predsyms_of_def c).
 
+(*Ways of dealing with adts and parts in context*)
+Definition mut_in_ctx (m: mut_adt) (gamma: context) :=
+  In (datatype_def m) gamma.
+
+Definition adt_in_mut (a: alg_datatype) (m: mut_adt) :=
+  In a m.
+
+Definition adt_mut_in_ctx (a: alg_datatype) (m: mut_adt) (gamma: context) :=
+  adt_in_mut a m /\ mut_in_ctx m gamma.
+
+Definition adt_in_ctx (a: alg_datatype) (gamma: context) :=
+  exists (m: mut_adt), adt_mut_in_ctx a m gamma.
+
+Definition constr_in_adt (c: funsym) (a: alg_datatype) :=
+  in_bool_ne funsym_eq_dec c (adt_constrs a).
+
+Definition constr_adt_mut_in_ctx (c: funsym) (a: alg_datatype) 
+  (m: mut_adt) (gamma: context) :=
+  constr_in_adt c a /\ adt_mut_in_ctx a m gamma.
+
+Definition constr_adt_in_ctx (c: funsym) (a: alg_datatype) (gamma: context) :=
+  constr_in_adt c a /\ adt_in_ctx a gamma.
+
+
+
 (*A context gamma extending signature s is well-formed if all type, function, and
   predicate symbols in gamma appear in s, and none appear more than once*)
 (*Note: we do not check the type/function/pred symbols within the terms and formulas
@@ -401,7 +426,9 @@ Definition adt_valid_type (a : alg_datatype) : Prop :=
   match a with
   | alg_def ts constrs => 
     Forall (fun (c: funsym) => 
-      (s_params c) = (ts_args ts) /\ (s_ret c) = vty_cons ts (map vty_var (ts_args ts))) constrs
+      (s_params c) = (ts_args ts) /\ 
+      (s_ret c) = vty_cons ts (map vty_var (ts_args ts))) 
+        (ne_list_to_list constrs)
   end.
 
 (*Inhabited types*)
@@ -510,7 +537,7 @@ vty_inhab_ind := Minimality for vty_inhab Sort Prop.
 (*An ADT is inhabited if its typesym is inhabited under the empty context*)
 Definition adt_inhab (a : alg_datatype) : Prop :=
   match a with
-  | alg_def ts constrs => negb (null constrs) /\ typesym_inhab nil nil ts true
+  | alg_def ts constrs => typesym_inhab nil nil ts true
   end.
 
 (*We want to prove that this definition corresponds to (closed) types being inhabited.
@@ -581,12 +608,12 @@ Inductive strictly_positive : vty -> list typesym -> Prop :=
     we don't have built in function types -  how to handle function types?
     should we add function types? Then we need application and lambdas*)
   | Strict_ind: forall (t: vty) (ts: list typesym) (I: typesym) 
-    (constrs: list funsym) (vs: list vty),
-    In (datatype_def [alg_def I constrs]) gamma -> (*singleton list means non-mutually recursive*)
+    (constrs: ne_list funsym) (vs: list vty),
+    mut_in_ctx [alg_def I constrs] gamma -> (*singleton list means non-mutually recursive*)
     t = vty_cons I vs ->
     (forall (x: typesym) (v: vty), In x ts -> In v vs ->
       negb (typesym_in x v)) ->
-    (forall (c: funsym), In c constrs ->
+    (forall (c: funsym), In c (ne_list_to_list constrs) ->
       nested_positive c (ts_args I) vs I ts) ->
     strictly_positive t ts
 
@@ -623,7 +650,7 @@ Definition adt_positive (l: list alg_datatype) : Prop :=
   let ts : list typesym :=
     map (fun a => match a with | alg_def ts _ => ts end) l in
   let fs: list funsym :=
-    concat (map (fun a => match a with | alg_def _ constrs => constrs end) l) in
+    concat (map (fun a => match a with | alg_def _ constrs => ne_list_to_list constrs end) l) in
   Forall (fun f => positive f ts) fs.
 
 End PosTypes.
@@ -899,7 +926,7 @@ Proof.
   unfold adt_valid_type in H.
   valid_context_tac.
 Qed.
-
+(*
 Definition constrs_ne: forall {l: list (typesym * list funsym)}
   (Hin: In l (mutrec_datatypes_of_context gamma)),
   forallb (fun b => negb (null b)) (map snd l).
@@ -907,7 +934,7 @@ Proof.
   intros. apply forallb_forall. intros.
   valid_context_tac.
   unfold adt_inhab in H1.
-  valid_context_tac.
-Qed.
+  valid_context_tac. simpl.
+Qed.*)
 
 End ValidContextLemmas.

@@ -300,7 +300,7 @@ End FreeVars.
 (*Definitions: functions, predicates, algebraic data types, inductive predicates*)
 
 Inductive alg_datatype : Set :=
-  | alg_def: typesym -> list funsym -> alg_datatype.
+  | alg_def: typesym -> ne_list funsym -> alg_datatype.
 
 Inductive funpred_def : Set :=
   | fun_def: funsym -> list vsymbol -> term -> funpred_def
@@ -314,11 +314,25 @@ Inductive def : Set :=
   | recursive_def: list funpred_def -> def
   | inductive_def : list indpred_def -> def.
 
+(*These definitions can be unwieldy, so we provide nicer functions*)
+(*Deal with algebraic data types*)
+Global Notation mut_adt := (list alg_datatype).
+
+Definition adt_name (a: alg_datatype) : typesym :=
+  match a with
+  | alg_def t _ => t
+  end.
+
+Definition adt_constrs (a: alg_datatype) : ne_list funsym :=
+  match a with
+  | alg_def _ c => c
+  end.
+
 Definition datatypes_of_def (d: def) : list (typesym * list funsym) :=
   match d with
   | datatype_def la => map (fun a =>
       match a with
-      | alg_def ts fs => (ts, fs)
+      | alg_def ts fs => (ts, ne_list_to_list fs)
       end) la
   | recursive_def _ => nil
   | inductive_def _ => nil
@@ -358,7 +372,7 @@ Definition funsyms_of_def (d: def) : list funsym :=
   match d with
   | datatype_def la => concat ((map (fun a =>
     match a with
-    | alg_def _ fs => fs
+    | alg_def _ fs => ne_list_to_list fs
     end)) la)
   | recursive_def lf =>
     fold_right (fun x acc => match x with

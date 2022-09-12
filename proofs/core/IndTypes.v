@@ -36,11 +36,6 @@ Fixpoint finite (n: nat) : Set :=
   | S n' => option (finite n')
   end.
 
-Lemma not_false: ~is_true false.
-Proof.
-  intro C; inversion C.
-Qed.
-
 Lemma no_ord_0 (x: 'I_0) : False.
 destruct x.
 inversion i.
@@ -269,113 +264,6 @@ Qed.
 
 End Finite.
 
-(*Non-empty lists*)
-Section NEList.
-
-(*Our list of constructors are non-empty, and if we just use regular lists,
-  we will need to pattern match on nil, [x], and x :: t. This makes the
-  dependent pattern match much more complicated and leads to huge proof terms.
-  So instead we define a non-empty list as a custom Inductive type, and have simple
-  ways to transform between this and the standard list.*)
-
-Inductive ne_list (A: Set) : Set :=
-  | ne_hd : A -> ne_list A
-  | ne_cons : A -> ne_list A -> ne_list A.
-
-Global Arguments ne_hd {A}.
-Global Arguments ne_cons {A}.
-
-Lemma isT : true.
-Proof. auto. Qed.
-
-Definition list_to_ne_list {A: Set} (l: list A) (Hl: negb (null l)) : ne_list A. 
-induction l.
-- exact (False_rect _ (not_false Hl)).
-- destruct l.
-  + exact (ne_hd a).
-  + exact (ne_cons a (IHl isT)).
-Defined.
-
-(*rewrite lemma*)
-Lemma list_to_ne_list_cons: forall {A: Set} (hd: A) (tl: list A) (H: negb (null (hd :: tl))),
-  list_to_ne_list (hd :: tl) H =
-  match tl with
-  | nil => ne_hd hd
-  | a :: t => ne_cons hd (list_to_ne_list (a :: t) isT)
-  end.
-Proof.
-  intros.
-  destruct tl; auto.
-Qed.
-
-Fixpoint ne_list_to_list {A: Set} (l: ne_list A) : list A :=
-  match l with
-  | ne_hd x => [x]
-  | ne_cons x tl => x :: ne_list_to_list tl
-  end.
-
-Lemma ne_list_to_list_size: forall {A: Set} (l: ne_list A),
-  negb (null (ne_list_to_list l)).
-Proof.
-  intros. destruct l; reflexivity.
-Qed.
-
-Lemma ne_list_to_list_cons: forall {A: Set} (x: A) (l: ne_list A),
-  ne_list_to_list (ne_cons x l) = x :: ne_list_to_list l.
-Proof.
-  intros. reflexivity.
-Qed.
-
-Lemma list_ne_list_inv: forall {A: Set} (l: list A) (Hl: negb (null l)),
-  ne_list_to_list (list_to_ne_list l Hl) = l.
-Proof.
-  intros. induction l.
-  - inversion Hl.
-  - destruct l.
-    + reflexivity.
-    + rewrite list_to_ne_list_cons ne_list_to_list_cons. f_equal.
-      apply IHl.
-Qed.
-
-Lemma ne_list_list_inv: forall {A: Set} (l: ne_list A),
-  list_to_ne_list (ne_list_to_list l) (ne_list_to_list_size l) = l.
-Proof.
-  intros. generalize dependent (ne_list_to_list_size l). induction l; intros.
-  - reflexivity.
-  - simpl in i. destruct l; simpl in *; try reflexivity.
-    specialize (IHl isT).
-    destruct (ne_list_to_list l). inversion IHl.
-    f_equal. apply IHl.
-Qed.
-
-Fixpoint in_bool_ne {A: Set} (eq_dec: forall (x y: A), {x = y} + {x <> y})
-  (x: A) (l: ne_list A) : bool :=
-  match l with
-  | ne_hd y => eq_dec x y
-  | ne_cons y tl => eq_dec x y || in_bool_ne eq_dec x tl
-  end.
-
-Lemma in_bool_ne_equiv: forall {A: Set} (eq_dec: forall (x y: A), { x = y} + {x <> y})
-  (x: A) (l: ne_list A),
-  in_bool_ne eq_dec x l = in_bool eq_dec x (ne_list_to_list l).
-Proof.
-  intros. induction l; simpl; [rewrite orb_false_r | rewrite IHl ]; reflexivity.
-Qed.
-
-Fixpoint lists_to_ne_lists {A: Set} (l: list (list A)) 
-  (Hall: forallb (fun x => negb (null x)) l) :
-  list (ne_list A) :=
-  match l as l' return (forallb (fun x => negb (null x)) l') -> list (ne_list A) with
-  | nil => fun _ => nil
-  | hd :: tl => fun Hnull =>
-    match (andb_prop _ (forallb (fun x => negb (null x)) tl) Hnull) with
-    | conj Hhd Htl =>
-      (list_to_ne_list hd Hhd) :: lists_to_ne_lists tl Htl
-    end
-  end Hall.
-
-End NEList.
-
 (*W-types*)
 
 Section W.
@@ -473,15 +361,18 @@ Fixpoint build_base (constrs: ne_list funsym) : Set :=
 
 (*Step 2: Construct the function for recursion*)
 
-(*Count number of recursive occurrences (NOTE: doesnt work for non-uniform 
-  or nested recursion)*)
-Definition count_rec_occ (ts: typesym) (c: funsym) :=
-  length (filter (fun v => 
+Definition rec_occ_fun (ts: typesym) : vty -> bool :=
+  (fun v => 
     match v with
     | vty_cons t vs => typesym_eq_dec t ts && 
                        list_eq_dec vty_eq_dec vs (map vty_var (ts_args ts))
     | _ => false
-  end) (s_args c)).
+  end).
+
+(*Count number of recursive occurrences (NOTE: doesnt work for non-uniform 
+  or nested recursion)*)
+Definition count_rec_occ (ts: typesym) (c: funsym) :=
+  length (filter (rec_occ_fun ts) (s_args c)).
 
 Definition build_constr_rec (ts: typesym) (c: funsym) : Set :=
    finite (count_rec_occ ts c).
@@ -507,15 +398,15 @@ Fixpoint build_rec (ts: typesym) (constrs: ne_list funsym) {struct constrs} : (b
 (*This handles mutual recursion (but not nested recursion at the moment).
   Mutual recursion is not too bad, we just need to be careful to call [build_rec]
   with the correct typesym to count.*)
-Definition mk_adts (l: list (typesym * ne_list funsym)) : finite (length l) -> Set :=
-  W (finite (length l)) (fun n => build_base (snd (fin_nth l n)))
+Definition mk_adts (m: mut_adt) : finite (length m) -> Set :=
+  W (finite (length m)) (fun n => build_base (adt_constrs (fin_nth m n)))
     (fun (this: finite _) (i: finite _) => 
-      build_rec (fst (fin_nth l i))
-        (snd (fin_nth l this))).
+      build_rec (adt_name (fin_nth m i))
+        (adt_constrs (fin_nth m this))).
 
 (*For non-mutual types*)
 Definition mk_adt (ts: typesym) (constrs: ne_list funsym) : Set :=
-  mk_adts [(ts, constrs)] tt. 
+  mk_adts [alg_def ts constrs] tt. 
 
 (** Constructors *)
 (*Generating the constructor takes a decent amount of effort. 
@@ -649,14 +540,14 @@ Qed.
   this index, and constructs a finite mapping; ie: applying the nth argument to the
   nth recursive call.*)
 
-Definition make_constr (l: list (typesym * ne_list funsym)) (n: finite (length l))
+Definition make_constr (m: mut_adt) (n: finite (length m))
   (f: funsym)
-  (Hin: in_bool_ne funsym_eq_dec f (snd (fin_nth l n)))
+  (Hin: in_bool_ne funsym_eq_dec f (adt_constrs (fin_nth m n)))
   (c: build_constr_base f)
-  (recs: forall (x: finite (length l)), 
-    (count_rec_occ (fst (fin_nth l x)) f).-tuple (mk_adts l x)) :
-  mk_adts l n := mkW (finite (length l)) _ _ n 
-    (get_constr_type (fst (fin_nth l n)) _ f Hin c)
+  (recs: forall (x: finite (length m)), 
+    (count_rec_occ (adt_name (fin_nth m x)) f).-tuple (mk_adts m x)) :
+  mk_adts m n := mkW (finite (length m)) _ _ n 
+    (get_constr_type (adt_name (fin_nth m n)) _ f Hin c)
     (fun j H => tnthS (recs j) (build_rec_to_finite H)).
 
 (*For non-mutually-recursive-types *)
@@ -666,7 +557,7 @@ Definition make_constr_simple (ts: typesym) (constrs: ne_list funsym) (f: funsym
 (recs: (count_rec_occ ts f).-tuple (mk_adt ts constrs)) :
 mk_adt ts constrs.
 Proof.
-  apply (make_constr [(ts, constrs)] tt f Hin c).
+  apply (make_constr [alg_def ts constrs] tt f Hin c).
   intros x. destruct x. apply recs.
 Defined.
 
@@ -713,37 +604,37 @@ Qed.
   extensionality by using Mathcomp's finfun type for finite functions. However,
   this would require significant refactoring and makes other parts of the
   proofs quite complicated. Since we assume this axiom elsewhere anyway, it is OK.*)
-Definition find_constr: forall (l: list (typesym * ne_list funsym)) (n: finite (length l))
-  (Huniq: forall constrs, In constrs (map snd l) -> 
+Definition find_constr: forall (m: mut_adt) (n: finite (length m))
+  (Huniq: forall constrs, In constrs (map adt_constrs m) -> 
     nodupb funsym_eq_dec (ne_list_to_list constrs))
-  (x: mk_adts l n),
-  {f: funsym & {t: in_bool_ne funsym_eq_dec f (snd (fin_nth l n)) * build_constr_base f *
-     forall (x: finite (length l)), 
-     (count_rec_occ (fst (fin_nth l x)) f).-tuple (mk_adts l x) 
+  (x: mk_adts m n),
+  {f: funsym & {t: in_bool_ne funsym_eq_dec f (adt_constrs (fin_nth m n)) * build_constr_base f *
+     forall (x: finite (length m)), 
+     (count_rec_occ (adt_name (fin_nth m x)) f).-tuple (mk_adts m x) 
      | 
-      x = make_constr l n f (fst (fst t)) (snd (fst t)) (snd t)}}.
+      x = make_constr m n f (fst (fst t)) (snd (fst t)) (snd t)}}.
 Proof.
   intros. unfold mk_adts in x. dependent destruction x.
   unfold make_constr.
-  set (constrs:= (fin_nth l i)) in *.
-  assert (Huniqc: nodupb funsym_eq_dec (ne_list_to_list (snd constrs))). {
+  set (constrs:= (fin_nth m i)) in *.
+  assert (Huniqc: nodupb funsym_eq_dec (ne_list_to_list (adt_constrs constrs))). {
     apply Huniq. rewrite in_map_iff. exists constrs. split; auto.
     subst constrs. apply fin_nth_in.
   }
-  pose proof (get_funsym_base (fst constrs) (snd constrs) Huniqc a).
+  pose proof (get_funsym_base (adt_name constrs) (adt_constrs constrs) Huniqc a).
   destruct H as [f' [Hin [b1 Ha]]].
   apply (existT _ f').
   (*construct the function we need*)
-  unshelve epose (g:=_ : forall j: finite (Datatypes.length l),
-    finite (count_rec_occ (fst (fin_nth l j)) f') ->
-    W (finite (Datatypes.length l))
-      (fun n : finite (Datatypes.length l) => build_base (snd (fin_nth l n)))
-      (fun this i : finite (Datatypes.length l) =>
-       build_rec (fst (fin_nth l i)) (snd (fin_nth l this))) j). {
+  unshelve epose (g:=_ : forall j: finite (Datatypes.length m),
+    finite (count_rec_occ (adt_name (fin_nth m j)) f') ->
+    W (finite (Datatypes.length m))
+      (fun n : finite (Datatypes.length m) => build_base (adt_constrs (fin_nth m n)))
+      (fun this i : finite (Datatypes.length m) =>
+       build_rec (adt_name (fin_nth m i)) (adt_constrs (fin_nth m this))) j). {
         intros j t. apply f. subst. apply finite_to_build_rec. apply t.
        }
   (*Transform this to a function on tuples with [finite_fun_tuple]]*)
-  pose proof (@finite_fun_tuple (length l) _ (fun j => count_rec_occ (fst (fin_nth l j)) f') g) as h.
+  pose proof (@finite_fun_tuple (length m) _ (fun j => count_rec_occ (adt_name (fin_nth m j)) f') g) as h.
   destruct h as [h Hhg].
   apply exist with (x:=(Hin, b1, h)).
   simpl. subst. f_equal.
@@ -788,17 +679,17 @@ Qed.
 
 (*Second result: no two different constructors, no matter their arguments, can
   produce the same instance of the W-type (no axioms needed)*)
-Lemma constrs_disjoint: forall (l: list (typesym * ne_list funsym)) (n: finite (length l))
-  (f1 f2: funsym) (Hin1: in_bool_ne funsym_eq_dec f1 (snd (fin_nth l n)))
-  (Hin2: in_bool_ne funsym_eq_dec f2 (snd (fin_nth l n)))
+Lemma constrs_disjoint: forall (m: mut_adt) (n: finite (length m))
+  (f1 f2: funsym) (Hin1: in_bool_ne funsym_eq_dec f1 (adt_constrs (fin_nth m n)))
+  (Hin2: in_bool_ne funsym_eq_dec f2 (adt_constrs (fin_nth m n)))
   (c1: build_constr_base f1)
   (c2: build_constr_base f2)
-  (recs1: forall (x: finite (length l)), 
-    (count_rec_occ (fst (fin_nth l x)) f1).-tuple (mk_adts l x) )
-  (recs2: forall (x: finite (length l)), 
-    (count_rec_occ (fst (fin_nth l x)) f2).-tuple (mk_adts l x) ),
+  (recs1: forall (x: finite (length m)), 
+    (count_rec_occ (adt_name (fin_nth m x)) f1).-tuple (mk_adts m x) )
+  (recs2: forall (x: finite (length m)), 
+    (count_rec_occ (adt_name (fin_nth m x)) f2).-tuple (mk_adts m x) ),
   f1 <> f2 ->
-  make_constr l n f1 Hin1 c1 recs1 <> make_constr l n f2 Hin2 c2 recs2.
+  make_constr m n f1 Hin1 c1 recs1 <> make_constr m n f2 Hin2 c2 recs2.
 Proof.
   intros. intro C. inversion C; subst.
   apply inj_pair2_eq_dec in H1.
@@ -814,12 +705,12 @@ Proof.
 Qed.
 
 (*3. Constructors are injective (this needs eq_rect_eq (UIP))*)
-Lemma constrs_inj: forall (l: list (typesym * ne_list funsym)) (n: finite (length l))
-  (f: funsym) (Hin: in_bool_ne funsym_eq_dec f (snd (fin_nth l n)))
+Lemma constrs_inj: forall (m: mut_adt) (n: finite (length m))
+  (f: funsym) (Hin: in_bool_ne funsym_eq_dec f (adt_constrs (fin_nth m n)))
   (c1 c2: build_constr_base f)
-  (recs1 recs2: forall (x: finite (length l)), 
-    (count_rec_occ (fst (fin_nth l x)) f).-tuple (mk_adts l x) ),
-  make_constr l n f Hin c1 recs1 = make_constr l n f Hin c2 recs2 ->
+  (recs1 recs2: forall (x: finite (length m)), 
+    (count_rec_occ (adt_name (fin_nth m x)) f).-tuple (mk_adts m x) ),
+  make_constr m n f Hin c1 recs1 = make_constr m n f Hin c2 recs2 ->
   c1 = c2 /\ (forall x, recs1 x = recs2 x).
 Proof.
   intros. dependent destruction H.
@@ -843,8 +734,302 @@ Ltac destruct_list :=
     destruct l 
   end.
 
+(*Convert between elements in a list and finite values*)
+(*TODO: move*)
+Section InFin.
+
+Context {A: Type}.
+Variable eq_dec: forall (x y : A), {x = y} + {x <> y}.
+
+Definition get_idx (x: A) (l: list A) (Hin: in_bool eq_dec x l) 
+  : finite (length l).
+Proof.
+  induction l.
+  - exfalso. exact (not_false Hin).
+  - simpl in Hin. destruct l.
+    + exact tt.
+    + destruct (eq_dec x a).
+      * exact None.
+      * exact (Some (IHl Hin)).
+Defined.
+
+Lemma get_idx_correct (x: A) (l: list A) (Hin: in_bool eq_dec x l) :
+  fin_nth l (get_idx x l Hin) = x.
+Proof.
+  unfold fin_nth. generalize dependent (erefl (length l)).
+  induction l; intros; simpl.
+  - inversion Hin.
+  - destruct l; simpl.
+    + simpl in Hin. destruct (eq_dec x a); subst; auto.
+      inversion Hin.
+    + simpl in Hin. destruct (eq_dec x a); subst; auto.
+      apply IHl.
+Qed.
+
+End InFin.
+
+(*TODO: dont duplicate*)
+Ltac right_dec := 
+  solve[let C := fresh "C" in right; intro C; inversion C; try contradiction].
+
+Definition adt_dec: forall (x1 x2: alg_datatype), {x1 = x2} + {x1 <> x2}.
+intros [t1 c1] [t2 c2].
+destruct (typesym_eq_dec t1 t2); [|right_dec].
+destruct (ne_list_eq_dec funsym_eq_dec c1 c2); [|right_dec].
+left. rewrite e e0; reflexivity.
+Defined.
+
 (*Facilities to build ADTs*)
 Section Build.
+
+(*We provide a nicer interface to build an AST, using a context,
+  function symbols, and the like rather than finite values and ne_lists.*)
+Variable s: sig.
+Variable gamma: context.
+Variable gamma_valid: valid_context s gamma.
+
+Variable m : mut_adt.
+
+Variable srts : list Types.sort.
+(*The adt used to define the map sigma*)
+Variable adt : alg_datatype.
+Variable adt_in_m : adt_in_mut adt m. 
+Definition sigma : vty -> Types.sort :=
+  ty_subst_s (ts_args (adt_name adt)) srts.
+
+(*TODO: do we need this?*)
+(*Variable srts_len : length srts = length (ts_args adt_name).*)
+
+Variable domain: Types.sort -> Set.
+
+(*Variable map - evaluate the variable after substituting with the
+  sort given by the map sigma (args -> sorts)*)
+Definition var_map : typevar -> Set :=
+  fun v => domain (sigma (vty_var v)).
+
+(*Abstract typesym map - all typesyms are applied to sorts so 
+  this works*)
+Definition typesym_map : typesym -> list vty -> Set :=
+  fun ts vs =>
+    domain (typesym_to_sort ts (map sigma vs)).
+
+(*A nicer interface for the ADT*)
+
+Definition adt_rep (a: alg_datatype) (a_in: adt_in_mut a m)
+ := mk_adts gamma var_map typesym_map m
+  (get_idx adt_dec a m (In_in_bool adt_dec _ _ a_in)).
+
+(*Now we want to make an interface for the constructor. This is harder.*)
+(*We need to build the [build_constr_base] and the recursive map.
+  We can do this by filtering the input [arg_list], which is not
+  conceptually difficult, but involves lots of annoying dependent types*)
+
+(*The ADT we want to build the constructor for*)
+Variable t: alg_datatype.
+
+Variable c: funsym.
+Variable c_in : constr_in_adt c t.
+Variable t_in: adt_in_mut t m.
+(*TODO: prove this later*)
+Axiom c_wf: s_params c = ts_args (adt_name t).
+
+Variable dom_int: domain s_int = Z.
+Variable dom_real: domain s_real = R.
+
+Definition arg_list (domain: Types.sort -> Set) := hlist domain.
+
+Definition sigma_args : list Types.sort :=
+  map sigma (s_args c).
+
+Definition sigma_ret: Types.sort :=
+  sigma (s_ret c).
+
+(*Part 1: make_constr_base*)
+
+(*Lemmas we need for the proof obligations:*)
+
+Lemma sigma_int: sigma vty_int = s_int.
+Proof.
+  apply sort_inj; reflexivity.
+Qed.
+
+Lemma sigma_real: sigma vty_real = s_real.
+Proof.
+  apply sort_inj; reflexivity.
+Qed.
+
+(*TODO: move*)
+Lemma ty_subst_s_cons: forall (vs: list typevar) (ts: list Types.sort)
+  (t: typesym) (args: list vty),
+  ty_subst_s vs ts (vty_cons t args) = typesym_to_sort t (ty_subst_list_s vs ts args).
+Proof.
+  intros. unfold ty_subst_list_s, ty_subst_s, v_subst. simpl. apply sort_inj; simpl.
+  f_equal.
+  apply list_eq_ext'; rewrite !map_length; auto.
+  intros n d Hn. rewrite -> !(map_nth_inbound) with (d2:=d) by auto.
+  rewrite -> (map_nth_inbound) with (d2:=s_int) by (rewrite map_length; auto).
+  rewrite -> (map_nth_inbound) with (d2:=d) by auto.
+  reflexivity.
+Qed.
+
+Lemma sigma_cons: forall t l,
+  sigma (vty_cons t l) = typesym_to_sort t (map sigma l).
+Proof.
+  intros. apply ty_subst_s_cons.
+Qed.
+
+Definition build_sprod_cons {a: Set} {l: list Set}
+  (x: a) (tl: big_sprod l) :
+  big_sprod (a :: l) :=
+  match l as l' return big_sprod l' -> big_sprod (a :: l') with
+  | nil => fun _ => x
+  | y :: ys => fun tl => (x, tl)
+  end tl.
+
+(*The function, built with tactics*)
+(*TODO: if rewrite gives problems, use similar as before with
+  function and inverses*)
+Definition args_to_constr_base (a: arg_list domain sigma_args):
+  build_constr_base gamma var_map typesym_map c.
+Proof.
+  unfold build_constr_base. unfold sigma_args in a.
+  induction (s_args c).
+  - exact tt.
+  - unfold build_vty_base in *. simpl.
+    set (Hd:=hlist_hd a).
+    set (Hal:=hlist_tl a).
+    destruct a0.
+    + (*NOTE: ssreflect rewrite doesnt work, regular does*)
+      rewrite -> sigma_int, dom_int in Hd.
+      exact (build_sprod_cons Hd (IHl Hal)).
+    + rewrite -> sigma_real, dom_real in Hd.
+      exact (build_sprod_cons Hd (IHl Hal)).
+    + exact (build_sprod_cons Hd (IHl Hal)).
+    + destruct (find_constrs gamma t0).
+      * exact (IHl Hal).
+      * rewrite -> sigma_cons in Hd.
+        exact (build_sprod_cons Hd (IHl Hal)).
+Defined.
+
+(*Part 2: build the recursive arguments*)
+
+(*First, we do in terms of finite args, then we will convert
+  to a more friendly interface*)
+(*Hmm, might want to keep things bool*)
+Variable dom_adts : forall (x: finite (length m)),
+  domain (typesym_to_sort (adt_name (fin_nth m x)) srts) =
+  adt_rep (fin_nth m x) (fin_nth_in _ x).
+
+Definition args_to_ind_base (a: arg_list domain sigma_args) :
+  forall (x: finite (length m)), 
+    (count_rec_occ (adt_name (fin_nth m x)) c).-tuple
+      (adt_rep (fin_nth m x) (fin_nth_in _ x)).
+Proof.
+  intros x.
+  unfold sigma_args in a.
+  set (ts:= adt_name (fin_nth m x)).
+  (*Idea: filter arg_list by those arising from mutually recursive
+    instances of ts. This involves a bunch of annoying proofs
+    TODO: factor outside of this*)
+  set (amf := hlist_map_filter sigma a (rec_occ_fun ts)).
+  set (ls := List.map sigma (List.filter (rec_occ_fun ts) (s_args c))) in *.
+  (*TODO: factor out*)
+  assert (Forall (fun x =>
+    x = typesym_to_sort ts srts) ls). {
+      apply Forall_forall. intros s' Hins'. subst ls.
+      rewrite in_map_iff in Hins'. destruct Hins' as [v [Hv Hinv]]; subst.
+      (*TODO: need assumptions about same params for all*)
+      (*TODO: add this as assumption? Include in mut rec def? Maybe
+      that would make things simpler for sure - slightly limiting but
+      I think ok*)
+    }
+
+
+  intros x.
+  unfold funsym_sigma_args in a.
+  set (ts:= (fin_nth l x).1).
+  set (ff := (ty_subst_s (s_params f) srts)).
+  set (gg := rec_occ_fun ts).
+  set (amf := hlist_map_filter ff a gg).
+  set (ls:= List.map ff (List.filter gg (s_args f))) in *.
+  (*What we want to do: just filter the arg_list by those arising from
+    (mutually) recursive instances of [ts]
+    But this needs a few steps: we need to know that all elements of this filtered
+    hlist have the same type, that we can convert this type to a W type, 
+    and that the length is correct. Then we can construct the tuple*)
+  assert (Forall (fun x =>
+    x = typesym_to_sort ts (ty_subst_list_s (s_params f) srts (map vty_var (ts_args ts))))
+     ls). {
+      apply Forall_forall. intros s Hins. subst ls.
+      rewrite in_map_iff in Hins. destruct Hins as [ty [Hty Hinty]]. subst.
+      rewrite in_filter in Hinty. destruct Hinty as [Hty Hinty].
+      subst gg. simpl in Hty. subst ff.
+      rewrite <- ty_subst_s_cons.
+      f_equal. destruct ty; try solve[inversion Hty].
+      apply andb_true_iff in Hty. destruct Hty.
+      repeat simpl_sumbool.
+     }
+  set (amf_list := hlist_to_list amf H).
+
+  (*steps: 1. prove that length of amf is count_rec_occ
+  2. prove (separately) that hlist_to_list preserves length
+  3. prove list of length -> tuple (separately) - use mk_tuple
+  4. convert the type using hypothesis about adts
+  done*)
+  assert (Hlen: length amf_list = count_rec_occ ts f). {
+    subst amf_list. rewrite hlist_to_list_length.
+    subst amf. rewrite hlength_eq.
+    subst ls. rewrite map_length. reflexivity.
+  } subst ts.
+  set (amf_cast := (cast_list amf_list (Hadts x (ty_subst_list_s (s_params f) srts
+  [seq vty_var i | i <- ts_args (fin_nth l x).1])))).
+   
+    (*Now we need to prove that the double substitution doesn't do antyhing*)
+    unfold typevar_map. unfold typevar_map in amf_cast.
+    (*is there a simpler way?*)
+    assert (ty_subst_list_s (s_params f) srts [seq vty_var i | i <- ts_args (fin_nth l x).1] =
+      srts). {
+        assert ((s_params f) = ts_args (fin_nth l x).1) by admit.
+        rewrite <- H0. unfold ty_subst_list_s.
+        rewrite map_map.
+        apply subst_same.
+        (*TODO: this is provable*)
+        admit.
+      }
+    rewrite <- H0.
+    assert (Hlen': length amf_cast = 
+    count_rec_occ (fin_nth l x).1 f). {
+      rewrite cast_list_length. apply Hlen.
+    }
+    move: Hlen' => /eqP Hlen'.
+    assert (ts_args adt = ts_args (fin_nth l x).1) by admit.
+    unfold typesym_map.
+    rewrite H1.
+    apply (mk_tuple _ _ Hlen').
+Admitted.
+
+
+
+Definition args_to_ind_base_aux (sigma: sig) (gamma : context) 
+(gamma_valid: valid_context sigma gamma)
+(l : seq (typesym * ne_list funsym)) (adt: typesym) (f: funsym)
+(srts: list Types.sort) (domain: Types.sort -> Set)
+(Hadts: forall (x: finite (length l)) (srts: list Types.sort),
+domain (typesym_to_sort (fin_nth l x).1 srts) =
+mk_adts gamma (typevar_map (fin_nth l x).1 srts domain) 
+  (typesym_map (fin_nth l x).1 srts domain) l x)
+(Hunif: uniform_adts gamma)
+(a: arg_list domain (funsym_sigma_args f srts))
+: (forall x: finite (length l), (count_rec_occ (fin_nth l x).1 f).-tuple
+  (mk_adts gamma (typevar_map adt srts domain) (typesym_map adt srts domain) l x)).
+
+
+
+End Build.
+
+
+
+
 
 (* Get index of constructor*)
 (*
@@ -983,37 +1168,9 @@ Definition funsym_sigma_args (f: funsym) (s: list Types.sort) : list Types.sort 
 Definition funsym_sigma_ret (f: funsym) (s: list Types.sort) : Types.sort :=
   ty_subst_s (s_params f) s (s_ret f).
 
-Lemma null_nil {A: Type} (l: list A):
-  null l <-> l = nil.
-Proof.
-  destruct l; simpl; split; intros; auto; inversion H.
-Qed. 
 
-Lemma sort_cons: forall ts vs,
-  is_sort (vty_cons ts vs) ->
-  (forall x, In x vs -> is_sort x).
-Proof.
-  intros. unfold is_sort in *.
-  rewrite null_nil. rewrite null_nil in H.
-  eapply type_vars_cons in H. apply H. auto.
-Qed.
 
-(*TODO: move*)
-Lemma ty_subst_s_sort: forall (vs: list typevar) (ts: list Types.sort)
-  (v: vty) (Hv: is_sort v),
-  ty_subst_s vs ts v = exist _ v Hv.
-Proof.
-  intros. unfold ty_subst_s. unfold v_subst. simpl.
-  apply sort_inj. simpl.
-  induction v; simpl; auto.
-  - inversion Hv.
-  - f_equal. apply list_eq_ext'; rewrite map_length; auto.
-    intros n d Hn.
-    rewrite -> (map_nth_inbound) with (d2:=d) by auto.
-    rewrite Forall_forall in H. apply H.
-    apply nth_In. auto.
-    apply (sort_cons _ _ Hv). apply nth_In; auto.
-Qed.
+
 
 Lemma ty_subst_s_cons: forall (vs: list typevar) (ts: list Types.sort)
   (t: typesym) (args: list vty),
@@ -1027,7 +1184,6 @@ Proof.
   rewrite -> (map_nth_inbound) with (d2:=d) by auto.
   reflexivity.
 Qed.
-
 
 
 (*The function is long but not very interesting; almost all of the complexity
@@ -1176,6 +1332,56 @@ Proof. reflexivity. Qed.
   Cons a (list b) and we subst a -> list int, b -> int
   we cannot distinguish these*)
 
+(*Basic idea: from [count_rec_occurences], we know that this is
+  a filter - we know that there are CRO instances of the typesym in
+  s_args, and we can find them.
+  If we get them all, and take the portion of the arg_list corresponding
+  to this, all have the same type, and by the assumption, they all have
+  the right type.
+  Should this be so complicated?
+  
+  *)
+
+  (*TODO: move*)
+  
+  Lemma ty_subst_fun_nth: forall (vars: list typevar) (vs: list vty)
+    (d: vty) (n: nat) (a: typevar) (s: vty),
+    length vars = length vs ->
+    (n < length vars) %coq_nat ->
+    NoDup vars ->
+    ty_subst_fun vars vs d (List.nth n vars a) = List.nth n vs s.
+  Proof.
+    intros vars vs d n a s. revert n. revert vs. induction vars.
+    - simpl; intros; lia.
+    - intros; destruct vs.
+      + inversion H.
+      + destruct n.
+        * simpl. destruct (typevar_eq_dec a0 a0); auto. contradiction.
+        * simpl.
+          inversion H1; subst. simpl in H0.
+          destruct (typevar_eq_dec (List.nth n vars a) a0); subst; auto.
+          -- exfalso. apply H4. apply nth_In. lia.
+          -- apply IHvars; try lia. inversion H; auto. assumption.
+Qed.
+
+
+Lemma subst_same: forall (vars: list typevar) (srts: list Types.sort),
+  length vars = length srts ->
+  NoDup vars ->
+  map (fun x => ty_subst_s vars srts (vty_var x)) vars = srts.
+Proof.
+  intros. apply list_eq_ext'; rewrite map_length; auto. intros n d Hd.
+  assert (a: typevar). apply "A"%string.
+  rewrite -> (map_nth_inbound) with (d2:=a); auto.
+  unfold ty_subst_s. apply sort_inj; simpl.
+  rewrite -> ty_subst_fun_nth with(s:=vty_int); try lia; unfold sorts_to_tys.
+  rewrite -> (map_nth_inbound) with (d2:=d). reflexivity. lia.
+  rewrite map_length; lia.
+  assumption.
+Qed.
+
+Check make_constr.
+
 Definition args_to_ind_base_aux (sigma: sig) (gamma : context) 
 (gamma_valid: valid_context sigma gamma)
 (l : seq (typesym * ne_list funsym)) (adt: typesym) (f: funsym)
@@ -1193,10 +1399,7 @@ Proof.
   unfold funsym_sigma_args in a.
   set (ts:= (fin_nth l x).1).
   set (ff := (ty_subst_s (s_params f) srts)).
-  set (gg := (fun s => match s with
-  | vty_cons t vs => typesym_eq_dec t ts && list_eq_dec vty_eq_dec vs (map vty_var (ts_args ts))
-  | _ => false
-  end)).
+  set (gg := rec_occ_fun ts).
   set (amf := hlist_map_filter ff a gg).
   set (ls:= List.map ff (List.filter gg (s_args f))) in *.
   (*What we want to do: just filter the arg_list by those arising from
@@ -1239,6 +1442,7 @@ Proof.
         assert ((s_params f) = ts_args (fin_nth l x).1) by admit.
         rewrite <- H0. unfold ty_subst_list_s.
         rewrite map_map.
+        apply subst_same.
         (*TODO: this is provable*)
         admit.
       }
