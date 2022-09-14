@@ -892,6 +892,7 @@ Ltac valid_context_tac :=
   let Hadts := fresh "Hadts" in
   destruct gamma_valid as [Hwf Hadts];
   rewrite Forall_forall in Hadts;
+  unfold mut_in_ctx, adt_in_mut, constr_in_adt in *;
   repeat match goal with
   | Hin: In ?x (?p gamma) |- _ => unfold p in Hin
   | Hin: In ?x (concat ?l) |- _ => rewrite in_concat in Hin
@@ -909,7 +910,8 @@ Ltac valid_context_tac :=
     specialize (Hall _ Hin)
   end; auto.
 
-Lemma adt_constr_ret_params: forall  (a: typesym) (constrs: list funsym) (c: funsym),
+(*
+(a: typesym) (constrs: list funsym) (c: funsym),
   In (a, constrs) (datatypes_of_context gamma) ->
   In c constrs ->
   s_ret c = vty_cons a (map vty_var (ts_args a)) /\
@@ -929,9 +931,10 @@ Proof.
   pose proof (adt_constr_ret_params _ _ _ H H0).
   pose proof (adt_constr_ret_params _ _ _ H H1).
   destruct H2; destruct H3; split; congruence.
-Qed.
+Qed.*)
 
 (*TODO: automate this: just a bunch of Forall_forall, in_map_iff, etc*)
+(*
 Definition args_params_eq: forall {l: list (typesym * list funsym)}
   {c: funsym} {adt: typesym} {constrs: list funsym}
   (Hin1: In l (mutrec_datatypes_of_context gamma))
@@ -943,7 +946,7 @@ Proof.
   unfold adt_valid_type in H.
   valid_context_tac.
 Qed.
-
+*)
 Lemma adt_args: forall {m: mut_adt} {a: alg_datatype}
   (Hin: adt_mut_in_ctx a m gamma),
   ts_args (adt_name a) = m_params m.
@@ -953,6 +956,64 @@ Proof.
   valid_context_tac.
   unfold valid_mut_rec in H3.
   valid_context_tac.
+Qed.
+
+Lemma adt_constr_params: forall {m: mut_adt} {a: alg_datatype}
+  {c: funsym} (Hm: mut_in_ctx m gamma)
+  (Ha: adt_in_mut a m)
+  (Hc: constr_in_adt c a),
+  s_params c = m_params m.
+Proof.
+  intros. unfold mut_in_ctx in Hm. unfold adt_in_mut in Ha.
+  unfold constr_in_adt in Hc.
+  valid_context_tac.
+  unfold valid_mut_rec in H2.
+  valid_context_tac. rewrite <- H3. reflexivity.
+  rewrite in_bool_ne_equiv in Hc.
+  apply (reflect_iff _ _ (in_bool_spec funsym_eq_dec _ _)).
+  apply Hc.
+Qed.
+
+Lemma adt_constr_ret: forall {m: mut_adt} {a: alg_datatype}
+  {c: funsym} (Hm: mut_in_ctx m gamma) (Ha: adt_in_mut a m) 
+  (Hc: constr_in_adt c a),
+  s_ret c = vty_cons (adt_name a) (map vty_var (m_params m)).
+Proof.
+  intros.
+  (*This is an ugly hack, should change tactic so it leaves "in"
+  assumptions*)
+  assert (adt_mut_in_ctx a m gamma) by 
+    (unfold adt_mut_in_ctx; split; assumption). 
+  valid_context_tac.
+  unfold adt_valid_type in H0.
+  rewrite in_bool_ne_equiv in Hc.
+  apply (reflect_iff _ _ (in_bool_spec funsym_eq_dec _ _)) in Hc.
+  valid_context_tac.
+  rewrite H4. f_equal.
+  f_equal. replace t with (adt_name ((alg_def t n))) by auto.
+  apply adt_args. auto.
+Qed. 
+
+Lemma adts_nodups: forall {m: mut_adt}
+  (Hin: mut_in_ctx m gamma),
+  NoDup (typs m).
+Proof.
+  intros. unfold mut_in_ctx in Hin.
+  unfold valid_context in gamma_valid.
+  destruct gamma_valid as [Hwf _].
+  unfold wf_context in Hwf.
+  clear -Hin Hwf.
+  destruct Hwf as [_ [_ [_ [Huniq _]]]].
+  induction gamma.
+  - inversion Hin.
+  - simpl in *. unfold typesyms_of_context in *.
+    unfold datatypes_of_context in *. simpl in Huniq.
+    rewrite map_app in Huniq.
+    rewrite NoDup_app_iff in Huniq.
+    destruct Huniq as [Hn1 [Hn2 [Hi1 Hi2]]].
+    destruct Hin; subst.
+    + simpl in Hn1. repeat apply NoDup_map_inv in Hn1. auto.
+    + apply IHc. apply H. apply Hn2.
 Qed.
 
 (*

@@ -9,6 +9,8 @@ Require Import Coq.Logic.Eqdep_dec.
 
 (** Semantics **)
 
+
+
 Definition predsym_sigma_args (p: predsym) (s: list sort) : list sort :=
   ty_subst_list_s (p_params p) s (p_args p).
 
@@ -28,15 +30,16 @@ Variable gamma: context.
 Variable gamma_valid: valid_context sigma gamma. 
 
 
-Lemma funsym_sigma_ret_eq: forall {c1 c2: funsym} (s: list sort) 
+(*Lemma funsym_sigma_ret_eq: forall {c1 c2: funsym} (s: list sort) 
   (H: s_ret c1 = s_ret c2 /\ s_params c1 = s_params c2),
   funsym_sigma_ret c1 s = funsym_sigma_ret c2 s.
 Proof.
   intros. unfold funsym_sigma_ret. destruct H as [Hret Hparams];
   rewrite Hret, Hparams. reflexivity.
-Qed.
+Qed.*)
 
 (*One other lemma we need for casting*)
+(*
 Lemma adt_typesym_funsym: forall {a: typesym} {constrs: list funsym} {c: funsym} (s: list sort),
 In (a, constrs) (datatypes_of_context gamma) ->
 In c constrs ->
@@ -73,7 +76,7 @@ Proof.
         + apply IHvars; auto. inversion H0; subst; auto. lia.
   }
   apply H5; auto; try lia.
-Qed.
+Qed.*)
 
 Record pre_interp := {
   domain: sort -> Set;
@@ -94,16 +97,30 @@ Record pre_interp := {
     with the typesym and typevar map coming from sorts on which
     the type is applied*)
 
-  adts: forall (l: list (typesym * list funsym)) (a: typesym) 
+  adts: forall (m: mut_adt) (srts: list sort)
+    (a: alg_datatype) (Hin: adt_in_mut a m),
+    domain (typesym_to_sort (adt_name a) srts) =
+    adt_rep gamma m srts domain a Hin;
+
+  (*adts: forall (l: list (typesym * list funsym)) (a: typesym) 
     (srts: list sort) (Hina: In a (map fst l))
     (Hinl: In l (mutrec_datatypes_of_context gamma)),
     domain (typesym_to_sort a srts) = 
     mk_adts gamma (typevar_map a srts domain)
       (typesym_map a srts domain) (build_ne_lists gamma_valid Hinl) 
-        (get_adt_index gamma_valid l Hinl a Hina);
+        (get_adt_index gamma_valid l Hinl a Hina);*)
 
-  (*The interpretation for each constructor comes from [make_constr] TODO*)
-  constrs: True (*TODO*)
+  (*The interpretation for each constructor comes from [constr_rep]
+    with an additional cast for the domains*)
+  constrs: forall (m: mut_adt) (a: alg_datatype) (c: funsym)
+    (Hm: mut_in_ctx m gamma) (Ha: adt_in_mut a m) (Hc: constr_in_adt c a)
+    (srts: list sort) (Hlens: length srts = length (m_params m))
+    (args: arg_list domain (funsym_sigma_args c srts)),
+    funs c srts args =
+    constr_rep_dom sigma gamma gamma_valid m Hm srts Hlens domain a c
+      Hc Ha domain_int domain_real (adts m srts) args
+  
+  (*TODO*)
   
   (*adts: forall (a: typesym) (constrs: list funsym) (srts: list sort)
     (Hadt: In (a, constrs) (datatypes_of_context gamma)),

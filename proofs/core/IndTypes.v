@@ -209,22 +209,22 @@ Fixpoint fin_nth_aux {A: Type} {n: nat} (l: list A)
     end
   end Hl x.
 
-
-(*Definition fin_nth_aux {A: Type} {n: nat} (l: list A) (Hl: length l = n)
-  (x: finite n) : A.
+Lemma fin_nth_aux_in: forall {A: Type} {n: nat} {l: list A}
+  (Hl: length l = n) (x : finite n),
+  In (fin_nth_aux l Hl x) l.
 Proof.
-  generalize dependent l; induction n; intros l Hl.
-  - exact (match x with end).
-  - destruct l. 
-    + exact (False_rect _ (O_S _ Hl)).
+  intros A n. induction n; simpl; intros; subst.
+  - destruct x.
+  - destruct l.
+    + inversion Hl.
     + destruct n.
-      * exact a.
+      * destruct x; simpl. left; auto.
       * destruct x.
-        -- exact (IHn f l (Nat.succ_inj (length l) n.+1 Hl)).
-        -- exact a.
-Defined.*)
+        -- simpl. right. apply IHn.
+        -- left. reflexivity.
+Qed.
 
-Lemma fin_nth_aux_proof_irrel: forall {A: Type} {n: nat} {l: list A}
+(*Lemma fin_nth_aux_proof_irrel: forall {A: Type} {n: nat} {l: list A}
   (H1 H2: length l = n) (x: finite n),
   fin_nth_aux l H1 x = fin_nth_aux l H2 x.
 Proof.
@@ -237,9 +237,36 @@ Proof.
       * destruct x.
         -- apply IHn.
         -- reflexivity.
+Qed.*)
+
+Lemma fin_nth_aux_inj: forall {A: Type} {n: nat} {l: list A}
+  (Hn: NoDup l)
+  (H1 H2: length l = n) (x y: finite n),
+  fin_nth_aux l H1 x = fin_nth_aux l H2 y ->
+  x = y.
+Proof.
+  intros A n. induction n; simpl; intros; subst.
+  - destruct x.
+  - destruct l.
+    + inversion H1.
+    + destruct n.
+      * destruct x; destruct y. reflexivity.
+      * assert (~ In a l) by (inversion Hn; auto).
+        destruct x; destruct y; auto; simpl in H.
+        -- f_equal. eapply IHn. 2: apply H.
+          inversion Hn; subst; auto.
+        -- rewrite <- H in H0.
+          exfalso. apply H0.
+          apply fin_nth_aux_in.
+        -- rewrite H in H0.
+          exfalso. apply H0.
+          apply fin_nth_aux_in.
 Qed.
 
+
+
 (*rewrite lemma - might not need*)
+(*
 Lemma fin_nth_cons {A: Type} {n: nat} (x1 x2: A) (l: list A) 
   (Hl1: length (x1 :: x2 :: l) = n.+2) (Hl2: length (x2 :: l) = n.+1)
   (f: finite n.+2) :
@@ -252,7 +279,7 @@ Proof.
   simpl. destruct f; auto.
   destruct n; auto. destruct f; auto.
   apply fin_nth_aux_proof_irrel.
-Qed.
+Qed.*)
 
 Definition fin_nth {A: Type} (l: list A): finite (length l) -> A :=
   fin_nth_aux l erefl.
@@ -260,15 +287,8 @@ Definition fin_nth {A: Type} (l: list A): finite (length l) -> A :=
 Lemma fin_nth_in: forall {A: Type} (l: list A) (n: finite (length l)),
   In (fin_nth l n) l.
 Proof.
-  intros. unfold fin_nth. generalize dependent (erefl (length l)). 
-  induction l; auto; intros.
-  - inversion n.
-  - simpl in n. destruct l; simpl in *.
-    left. reflexivity.
-    destruct n.
-    + specialize (IHl y). right. apply IHl.
-    + left. reflexivity.
-Qed. 
+  intros. apply fin_nth_aux_in.
+Qed.
 
 (*Get nth elt of tuple*)
 
@@ -816,51 +836,15 @@ Proof.
     + simpl in Hin. destruct (eq_dec x a); subst; auto.
       apply IHl.
 Qed.
-(*
-Lemma fin_nth_aux_inj {n: nat} {l: list A} (x y: finite n)
-  (Hl1 Hl2: length l = n) :
-  fin_nth_aux l Hl1 x = fin_nth_aux l Hl2 y ->
-  x = y.
-Proof.
-  revert Hl1 Hl2. generalize dependent l.
-  induction n; simpl; intros; subst.
-  - destruct x.
-  - destruct l.
-    + inversion Hl1.
-    + simpl in H. destruct n.
-      * destruct x; destruct y; reflexivity.
-      * destruct x; destruct y; auto.
-        f_equal. eapply IHn. apply H.
-        (*ugh, obviously this is not true - need no dups*)  
-    
-    
-    simpl in H. destruct x; destruct y; reflexivity.
-  
-  induction l; simpl; intros; subst.
-  - destruct x.
-  - destruct l.
-    + destruct x; destruct y; reflexivity.
-    + simpl length in H.
-    
-    
-    
-    simpl in H. simpl in H. 
 
 Lemma fin_nth_inj {l: list A} ( x y: finite (length l)) :
+  NoDup l ->
   fin_nth l x = fin_nth l y ->
   x = y.
 Proof.
-  unfold fin_nth. generalize dependent (erefl (length l)).
-  induction l; simpl; intros.
-  - destruct x.
-  - destruct l.
-    + destruct x; destruct y. reflexivity.
-    + simpl in H. destruct x.
-      * destruct y.
-        -- f_equal. eapply IHl. apply H.
-        -- Print fin_nth_aux. inversion H. simpl in H.
-    
-    dest*)
+  intros.
+  apply fin_nth_aux_inj in H0; subst; auto.
+Qed.
     
 (*TODO: do we need a version of get_idx that works on n more generally?*)
 (*might not be generalizable enough*)
@@ -870,20 +854,13 @@ Proof.
   TODO: need additional assumptions - no duplicates in
   mutual recursion list*)
 Lemma get_idx_fin {l: list A} {x: finite (length l)} 
+  (Hl: NoDup l)
   (Hin: in_bool eq_dec (fin_nth l x) l) :
   get_idx (fin_nth l x) l Hin = x.
 Proof.
-  unfold fin_nth. generalize dependent Hin.
-  induction l; intros; simpl.
-  - inversion Hin.
-  -  inversion sim
-  remember (length l) as n.
-  
-  induction l; intros; simpl.
-  - inversion Hin.
-  - destruct l.
-  
-  generalize dependent (erefl (length l)). generalize dependent Hin.
+  apply fin_nth_inj. auto.
+  rewrite get_idx_correct. reflexivity.
+Qed.
 
 End InFin.
 
@@ -1043,7 +1020,7 @@ Defined.
 Variable dom_adts: forall (a: alg_datatype) (Hin: adt_in_mut a m),
   domain (typesym_to_sort (adt_name a) srts) =
   adt_rep a Hin.
-Print adt_rep.
+
 (*A more convenient format for us in proofs:*)
 Lemma dom_adts_fin: forall (x: finite (length adts)),
   domain (typesym_to_sort (adt_name (fin_nth adts x)) srts) =
@@ -1052,13 +1029,15 @@ Proof.
   intros. rewrite dom_adts. apply fin_nth_in.
   intros Hin.
   unfold adt_rep.
-  f_equal. Search get_idx.
-  reflexivity.
-  unfold adt_in_mut.
+  f_equal.
+  rewrite get_idx_fin. reflexivity.
+  apply (adts_nodups gamma_valid m_in).
+Qed.
 
+(*
 Variable dom_adts : forall (x: finite (length adts)),
   domain (typesym_to_sort (adt_name (fin_nth adts x)) srts) =
-  adt_rep (fin_nth adts x) (fin_nth_in _ x).
+  adt_rep (fin_nth adts x) (fin_nth_in _ x).*)
 
 (*TODO: move lemmas*)
 Lemma in_filter: forall {A: Type}
@@ -1169,6 +1148,7 @@ Proof.
   rewrite H.
   rewrite <- map_comp. apply subst_same. 
   rewrite srts_len; reflexivity.
+  clear -m. (*TODO: separate lemma*)
   destruct m; simpl. apply /nodup_NoDup. apply m_nodup.
 Qed.
 
@@ -1184,7 +1164,7 @@ Lemma filter_args_length (a: arg_list domain sigma_args)
         )
         (filter_args_same x)
     ) 
-  (dom_adts x)) = count_rec_occ (adt_name (fin_nth adts x)) c.
+  (dom_adts_fin x)) = count_rec_occ (adt_name (fin_nth adts x)) c.
 Proof.
   rewrite cast_list_length hlist_to_list_length hlength_eq map_length.
   reflexivity.
@@ -1196,26 +1176,94 @@ Qed.
 Definition args_to_ind_base (a: arg_list domain sigma_args) :
   forall (x: finite (length adts)), 
     (count_rec_occ (adt_name (fin_nth adts x)) c).-tuple
-      (adt_rep (fin_nth adts x) (fin_nth_in _ x)) :=
+      (mk_adts gamma var_map typesym_map adts x) :=
   fun x => tup_of_list (filter_args_length a x).
 
 (*Now we can build the constructor corresponding to the function
   symbol c*)
-  Check adt_rep.
-  Search t.
-  Check make_constr.
-  Print adt_rep.
-Definition constr_rep (a: arg_list domain sigma_args) :=
-  make_constr gamma _ _ _ _ _ _ (args_to_constr_base a)
-    (args_to_ind_base a).
 
+Lemma constr_in_lemma :
+     (in_bool_ne funsym_eq_dec c
+        (adt_constrs
+           (fin_nth adts 
+            (get_idx adt_dec t adts
+               (In_in_bool adt_dec t (typs m) t_in))))).
+Proof.
+  rewrite get_idx_correct. apply c_in.
+Qed.
 
+(*Only thing remaining: for the domain, we need a map from the type
+  variables of the constructor to the sorts; here we have a map from
+  the type variables of the inductive type to the sorts. These are
+  the same, we just need to show it*)
 
-  adt_rep (fin_nth adts x) (fin_nth_in _ x).
+(*TODO: where to put?*)
+Definition funsym_sigma_args (f: funsym) (s: list Types.sort) : list Types.sort :=
+  ty_subst_list_s (s_params f) s (s_args f).
+
+(*More casting we need: TODO: should it go here or elsewhere?*)
+Definition funsym_sigma_ret (f: funsym) (s: list Types.sort) : Types.sort :=
+  ty_subst_s (s_params f) s (s_ret f).
+(*Doesnt really belong here*)
+Lemma adt_typesym_funsym:
+typesym_to_sort (adt_name t) srts = funsym_sigma_ret c srts.
+Proof.
+  unfold funsym_sigma_ret, typesym_to_sort.
+  apply sort_inj; simpl.
+  rewrite (adt_constr_ret gamma_valid m_in t_in); auto.
+  simpl. f_equal.
+  rewrite <- subst_same at 1.
+  2: symmetry; apply srts_len.
+  rewrite !map_map.
+  apply map_ext_in_iff.
+  intros. simpl. f_equal. symmetry.
+  apply (adt_constr_params gamma_valid m_in t_in c_in).
+  clear -m. destruct m; simpl.
+  apply /nodup_NoDup. apply m_nodup.
+Qed. 
+
+Lemma sigma_args_eq: funsym_sigma_args c srts = sigma_args.
+Proof.
+  unfold funsym_sigma_args. unfold sigma_args.
+  unfold ty_subst_list_s.
+  unfold sigma.
+  assert (s_params c = m_params m). {
+    eapply adt_constr_params; eassumption. 
+  }
+  rewrite H. reflexivity.
+Qed. 
+
+Definition cast_arg_list {domain: Types.sort -> Set} {l1 l2}
+  (Heq: l1 = l2) (x: arg_list domain l1) : arg_list domain l2 :=
+  match Heq with
+  | erefl => x
+  end.
+
+  Definition scast {S1 S2: Set} (Heq: S1 = S2) (s: S1) : S2 :=
+    match Heq with
+    | erefl => s
+    end.
+
+(*The final representation of the constructor: just use the two functions
+  from before*)
+Definition constr_rep (a: arg_list domain (funsym_sigma_args c srts)) :
+  adt_rep t t_in :=
+  make_constr gamma _ _ _ _ _ constr_in_lemma 
+    (args_to_constr_base (cast_arg_list sigma_args_eq a))
+    (args_to_ind_base (cast_arg_list sigma_args_eq a)).
+
+Definition constr_rep_dom (a: arg_list domain (funsym_sigma_args c srts)) :
+  domain (funsym_sigma_ret c srts) := 
+  scast 
+    (*equality proof*)
+    (etrans (esym (dom_adts t t_in)) 
+      (f_equal domain adt_typesym_funsym)
+    ) 
+    (*the real value*)
+    (constr_rep a).
 
 End Build.
 
-Check args_to_ind_base.
 
 (* TODO: Handle nested types*)
 
@@ -1415,10 +1463,17 @@ Notation triv_constr := (make_constr_simple triv_context triv_vars triv_syms).
 Definition emp_fun {A: Type} : empty -> A := fun e =>
   match e with end.
 
-
-
 Definition ta : typevar := "a"%string.
 Definition tb : typevar := "b"%string.
+
+Definition mk_tuple {A: Type} (n: nat) (l: list A) (Hl: size l == n) :
+  n.-tuple A := Tuple Hl.
+
+Notation mk_ne l :=
+  (list_to_ne_list l erefl).
+
+Notation triv_mut l :=
+  (mk_mut l nil erefl).
 
 (** Tactics *)
 
@@ -1576,7 +1631,8 @@ Qed.
 Definition ts_nat : typesym := mk_ts "nat" nil.
 Definition fs_O: funsym := mk_fs "O" nil nil ts_nat nil.
 Definition fs_S: funsym := mk_fs "S" nil [vty_cons ts_nat nil] ts_nat nil.
-Definition nat_cxt : context := [datatype_def [alg_def ts_nat [fs_O; fs_S]]].
+Definition nat_cxt : context := 
+    [datatype_def (triv_mut [alg_def ts_nat (mk_ne [fs_O; fs_S])])].
 Definition nat_constrs := list_to_ne_list [fs_O; fs_S] erefl.
 
 Definition anat := mk_adt nat_cxt triv_vars triv_syms  ts_nat nat_constrs.
@@ -1606,7 +1662,9 @@ Definition ts_intlist : typesym := mk_ts "intlist" nil.
 Definition fs_intnil : funsym := mk_fs "nil" nil nil ts_intlist nil.
 Definition fs_intcons: funsym := 
   mk_fs "cons" nil [vty_int; vty_cons ts_intlist nil] ts_intlist nil.
-Definition intlist_cxt : context := [datatype_def [alg_def ts_intlist [fs_intnil; fs_intcons]]].
+Definition intlist_cxt : context := 
+    [datatype_def (triv_mut [alg_def ts_intlist 
+      (mk_ne [fs_intnil; fs_intcons])])].
 Definition intlist_constrs := list_to_ne_list [ fs_intnil; fs_intcons] erefl.
 Definition aintlist := mk_adt intlist_cxt triv_vars triv_syms ts_intlist intlist_constrs.
 
@@ -1623,8 +1681,9 @@ Definition ts_inttree : typesym := mk_ts "inttree" nil.
 Definition fs_intleaf:= mk_fs "leaf" nil nil ts_inttree nil.
 Definition fs_intnode := mk_fs "node" nil [vty_int; vty_cons ts_inttree nil; vty_cons ts_inttree nil]
 ts_inttree nil.
-Definition inttree_cxt : context := [datatype_def [alg_def ts_inttree
-  [fs_intleaf; fs_intnode]]].
+Definition inttree_cxt : context := 
+  [datatype_def (triv_mut [alg_def ts_inttree
+  (mk_ne [fs_intleaf; fs_intnode])])].
 Definition inttree_constrs := list_to_ne_list [fs_intleaf; fs_intnode] erefl.
 Definition ainttree := mk_adt inttree_cxt triv_vars triv_syms ts_inttree inttree_constrs.
 
@@ -1650,7 +1709,9 @@ Definition fs_test2c := mk_fs "test2c" nil [vty_cons ts_test2 nil; vty_real; vty
 vty_cons ts_test2 nil] ts_test2 nil.
 Definition fs_test2d := mk_fs "test2d" nil [vty_int; vty_int; vty_cons ts_test2 nil] ts_test2 nil.
 
-Definition test2_cxt := [datatype_def [alg_def ts_test2 [fs_test2a; fs_test2b; fs_test2c; fs_test2d]]].
+Definition test2_cxt := [datatype_def 
+  (triv_mut [alg_def ts_test2 
+    (mk_ne [fs_test2a; fs_test2b; fs_test2c; fs_test2d])])].
 Definition test2_constrs := list_to_ne_list [ fs_test2a; fs_test2b; fs_test2c; fs_test2d] erefl.
 Definition atest2:= mk_adt test2_cxt triv_vars triv_syms ts_test2 test2_constrs.
 
@@ -1677,7 +1738,8 @@ Definition two_var (A: Set) (B: Set) : typevar -> Set :=
 Definition ts_option : typesym := mk_ts "option" [ta].
 Definition fs_none := mk_fs "None" [ta] nil ts_option [ta].
 Definition fs_some := mk_fs "Some" [ta] [vty_var ta] ts_option [ta].
-Definition option_cxt := [datatype_def [alg_def ts_option [fs_none; fs_some]]].
+Definition option_cxt := [datatype_def 
+  (mk_mut [alg_def ts_option (mk_ne [fs_none; fs_some])] [ta] erefl)].
 Definition option_constrs := list_to_ne_list [fs_none; fs_some] erefl.
 
 Definition aoption (A: Set) := mk_adt option_cxt (one_var A) triv_syms ts_option
@@ -1693,7 +1755,8 @@ Qed.
 Definition ts_either: typesym := mk_ts "either" [ta; tb].
 Definition fs_left := mk_fs "Left" [ta; tb] [vty_var ta] ts_either [ta; tb].
 Definition fs_right := mk_fs "Right" [ta; tb] [vty_var tb] ts_either [ta; tb].
-Definition either_cxt := [datatype_def [alg_def ts_either [fs_left; fs_right]]].
+Definition either_cxt := [datatype_def 
+  (mk_mut [alg_def ts_either (mk_ne [fs_left; fs_right])] [ta; tb] erefl)].
 Definition either_constrs := list_to_ne_list [fs_left; fs_right] erefl.
 
 Definition aeither (A: Set) (B: Set) := mk_adt either_cxt (two_var A B) triv_syms ts_either
@@ -1709,7 +1772,8 @@ Qed.
 Definition ts_list: typesym := mk_ts "list" [ta].
 Definition fs_nil := mk_fs "Nil" [ta] nil ts_list [ta].
 Definition fs_cons := mk_fs "Cons" [ta] [vty_var ta; vty_cons ts_list [vty_var ta]] ts_list [ta].
-Definition list_cxt := [datatype_def [alg_def ts_list [fs_nil; fs_cons]]].
+Definition list_cxt := [datatype_def 
+  (mk_mut [alg_def ts_list (mk_ne [fs_nil; fs_cons])] [ta] erefl)].
 Definition list_constrs := list_to_ne_list [ fs_nil; fs_cons ] erefl.
 
 Definition alist (A: Set) := mk_adt list_cxt (one_var A) triv_syms ts_list
@@ -1730,7 +1794,8 @@ Definition fs_leaf := mk_fs "Leaf" [ta] nil ts_tree [ta].
 Definition fs_node := mk_fs "Node" [ta] 
 [vty_var ta; vty_cons ts_tree [vty_var ta]; vty_cons ts_tree [vty_var ta]]
 ts_tree [ta].
-Definition tree_cxt := [datatype_def [alg_def ts_tree [fs_leaf; fs_node]]].
+Definition tree_cxt := [datatype_def 
+  (mk_mut [alg_def ts_tree (mk_ne [fs_leaf; fs_node])] [ta] erefl)].
 Definition tree_constrs := list_to_ne_list [fs_leaf; fs_node] erefl.
 
 Definition atree (A: Set) := mk_adt tree_cxt (one_var A) triv_syms ts_tree
@@ -1751,7 +1816,8 @@ Proof. intros; solve_adt_eq. Qed.
 Definition ts_abs := mk_ts "abs" nil.
 Definition ts_wrap1: typesym := mk_ts "wrap1" nil.
 Definition fs_wrap1 := mk_fs "Wrap" nil [vty_cons ts_abs nil] ts_wrap1 nil.
-Definition wrap1_cxt := [datatype_def [alg_def ts_wrap1 [fs_wrap1]]].
+Definition wrap1_cxt := [datatype_def 
+  (triv_mut [alg_def ts_wrap1 (mk_ne [fs_wrap1])])].
 
 Definition abs_map1 (A: Set) (ts: typesym) (vs: list vty) : Set :=
   if typesym_eqb ts ts_abs then A else empty.
@@ -1771,7 +1837,8 @@ Definition ts_abs2 := mk_ts "abs" [ta; tb].
 Definition ts_wrap2: typesym := mk_ts "wrap2" [ta; tb].
 Definition fs_wrap2 := mk_fs "Wrap" [ta; tb] 
   [vty_cons ts_abs2 [vty_var ta; vty_var tb]] ts_wrap1 [ta; tb].
-Definition wrap2_cxt := [datatype_def [alg_def ts_wrap2 [fs_wrap2]]].
+Definition wrap2_cxt := [datatype_def 
+  (mk_mut [alg_def ts_wrap2 (mk_ne [fs_wrap2])] [ta; tb] erefl)].
 
 Definition abs_map2 (A: Set) (ts: typesym) (vs: list vty) : Set :=
   if typesym_eqb ts ts_abs2 then A else empty.
@@ -1836,11 +1903,13 @@ Definition fs_mk_A1 := mk_fs "mk_A1" nil nil ts_mutA nil.
 Definition fs_mk_A2 := mk_fs "mk_A2" nil [vty_cons ts_mutB nil] ts_mutA nil.
 Definition fs_mk_B := mk_fs "mk_B" nil [vty_cons ts_mutA nil] ts_mutB nil.
 
-Definition mutAB_ctx := [datatype_def [alg_def ts_mutA [fs_mk_A1; fs_mk_A2];
-alg_def ts_mutB [fs_mk_B]]].
+Definition mutAB_ctx := [datatype_def 
+  (triv_mut [alg_def ts_mutA (mk_ne [fs_mk_A1; fs_mk_A2]);
+alg_def ts_mutB (mk_ne [fs_mk_B])])].
+
 Definition mutAB_constrs :=
-  [(ts_mutA, list_to_ne_list [fs_mk_A1; fs_mk_A2] erefl); 
-    (ts_mutB, list_to_ne_list [fs_mk_B] erefl)].
+  [alg_def ts_mutA (list_to_ne_list [fs_mk_A1; fs_mk_A2] erefl); 
+   alg_def ts_mutB (list_to_ne_list [fs_mk_B] erefl)].
 
 Definition amutAB := mk_adts mutAB_ctx triv_vars triv_syms mutAB_constrs.
 Definition amutA := amutAB None.
@@ -1910,12 +1979,13 @@ Definition fs_fm_eq := mk_fs "fm_eq" nil [vty_cons ts_tm nil; vty_cons ts_tm nil
 Definition fs_fm_true := mk_fs "fm_true" nil nil ts_fmla nil.
 Definition fs_fm_false := mk_fs "fm_false" nil nil ts_fmla nil.
 
-Definition tm_fmla_ctx := [datatype_def[alg_def ts_tm [fs_tm_const; fs_tm_if];
-  alg_def ts_fmla [fs_fm_eq; fs_fm_true; fs_fm_false]]].
+Definition tm_fmla_ctx := [datatype_def
+  (triv_mut [alg_def ts_tm (mk_ne [fs_tm_const; fs_tm_if]);
+  alg_def ts_fmla (mk_ne [fs_fm_eq; fs_fm_true; fs_fm_false])])].
 
 Definition tm_fmla_constrs :=
-  [(ts_tm, list_to_ne_list [fs_tm_const; fs_tm_if] erefl); 
-   (ts_fmla, list_to_ne_list [fs_fm_eq; fs_fm_true; fs_fm_false] erefl)].
+  [alg_def ts_tm (list_to_ne_list [fs_tm_const; fs_tm_if] erefl); 
+   alg_def ts_fmla (list_to_ne_list [fs_fm_eq; fs_fm_true; fs_fm_false] erefl)].
 
 Definition atm_fmla := mk_adts tm_fmla_ctx triv_vars triv_syms 
   tm_fmla_constrs.
@@ -2007,11 +2077,12 @@ Definition fs_tcons := mk_fs "tcons" [ta]
   [vty_cons ts_rose [vty_var ta]; vty_cons ts_treelist [vty_var ta]]
   ts_treelist [ta].
 
-Definition rose_ctx := [datatype_def [alg_def ts_rose [fs_rnode];
-  alg_def ts_treelist [fs_tnil; fs_tcons]]].
+Definition rose_ctx := [datatype_def 
+  (mk_mut [alg_def ts_rose (mk_ne [fs_rnode]);
+  alg_def ts_treelist (mk_ne [fs_tnil; fs_tcons])] [ta] erefl)].
 Definition rose_constrs :=
-    [(ts_rose, list_to_ne_list [fs_rnode] erefl);
-     (ts_treelist, list_to_ne_list [fs_tnil; fs_tcons] erefl)].
+    [alg_def ts_rose (list_to_ne_list [fs_rnode] erefl);
+     alg_def ts_treelist (list_to_ne_list [fs_tnil; fs_tcons] erefl)].
 
 Definition arose_treelist (A: Set) := mk_adts rose_ctx (one_var A) triv_syms
   rose_constrs.
