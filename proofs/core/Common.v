@@ -571,3 +571,23 @@ Proof.
 Defined.
 
 End NEList.
+
+Lemma in_filter: forall {A: Type}
+  (f: A -> bool) (l: list A) (x: A),
+  In x (filter f l) <-> f x /\ In x l.
+Proof.
+  intros. induction l; simpl; auto.
+  - split; auto. intros [_ Hf]; destruct Hf.
+  - destruct (f a) eqn : Hfa; subst.
+    + simpl. split; intros.
+      * destruct H; subst.
+        -- split; auto.
+        -- split; auto. apply IHl. auto.
+           right. apply IHl. apply H.
+      * destruct H. destruct H0; auto.
+        right. apply IHl. auto.
+    + split; intros.
+      * split; auto. apply IHl; auto. right. apply IHl. auto.
+      * destruct H. destruct H0; subst. rewrite Hfa in H. inversion H.
+        apply IHl. split; auto.
+Qed.

@@ -224,21 +224,6 @@ Proof.
         -- left. reflexivity.
 Qed.
 
-(*Lemma fin_nth_aux_proof_irrel: forall {A: Type} {n: nat} {l: list A}
-  (H1 H2: length l = n) (x: finite n),
-  fin_nth_aux l H1 x = fin_nth_aux l H2 x.
-Proof.
-  intros A n. induction n; simpl; intros; subst.
-  - destruct x.
-  - destruct l.
-    + inversion H1.
-    + destruct n.
-      * reflexivity.
-      * destruct x.
-        -- apply IHn.
-        -- reflexivity.
-Qed.*)
-
 Lemma fin_nth_aux_inj: forall {A: Type} {n: nat} {l: list A}
   (Hn: NoDup l)
   (H1 H2: length l = n) (x y: finite n),
@@ -263,24 +248,6 @@ Proof.
           apply fin_nth_aux_in.
 Qed.
 
-
-
-(*rewrite lemma - might not need*)
-(*
-Lemma fin_nth_cons {A: Type} {n: nat} (x1 x2: A) (l: list A) 
-  (Hl1: length (x1 :: x2 :: l) = n.+2) (Hl2: length (x2 :: l) = n.+1)
-  (f: finite n.+2) :
-  fin_nth_aux (x1 :: x2 :: l) Hl1 f = 
-    match f with
-    | Some y => fin_nth_aux (x2 :: l) Hl2 y
-    | None => x1
-    end.
-Proof.
-  simpl. destruct f; auto.
-  destruct n; auto. destruct f; auto.
-  apply fin_nth_aux_proof_irrel.
-Qed.*)
-
 Definition fin_nth {A: Type} (l: list A): finite (length l) -> A :=
   fin_nth_aux l erefl.
 
@@ -289,6 +256,58 @@ Lemma fin_nth_in: forall {A: Type} (l: list A) (n: finite (length l)),
 Proof.
   intros. apply fin_nth_aux_in.
 Qed.
+
+(*Convert between elements in a list and finite values*)
+Section InFin.
+
+Context {A: Type}.
+Variable eq_dec: forall (x y : A), {x = y} + {x <> y}.
+
+Definition get_idx (x: A) (l: list A) (Hin: in_bool eq_dec x l) 
+  : finite (length l).
+Proof.
+  induction l.
+  - exfalso. exact (not_false Hin).
+  - simpl in Hin. destruct l.
+    + exact tt.
+    + destruct (eq_dec x a).
+      * exact None.
+      * exact (Some (IHl Hin)).
+Defined.
+
+Lemma get_idx_correct (x: A) (l: list A) (Hin: in_bool eq_dec x l) :
+  fin_nth l (get_idx x l Hin) = x.
+Proof.
+  unfold fin_nth. generalize dependent (erefl (length l)).
+  induction l; intros; simpl.
+  - inversion Hin.
+  - destruct l; simpl.
+    + simpl in Hin. destruct (eq_dec x a); subst; auto.
+      inversion Hin.
+    + simpl in Hin. destruct (eq_dec x a); subst; auto.
+      apply IHl.
+Qed.
+
+Lemma fin_nth_inj {l: list A} ( x y: finite (length l)) :
+  NoDup l ->
+  fin_nth l x = fin_nth l y ->
+  x = y.
+Proof.
+  intros.
+  apply fin_nth_aux_inj in H0; subst; auto.
+Qed.
+    
+(*The other direction of the inverse proof*)
+Lemma get_idx_fin {l: list A} {x: finite (length l)} 
+  (Hl: NoDup l)
+  (Hin: in_bool eq_dec (fin_nth l x) l) :
+  get_idx (fin_nth l x) l Hin = x.
+Proof.
+  apply fin_nth_inj. auto.
+  rewrite get_idx_correct. reflexivity.
+Qed.
+
+End InFin.
 
 (*Get nth elt of tuple*)
 
@@ -805,65 +824,6 @@ Ltac destruct_list :=
     destruct l 
   end.
 
-(*Convert between elements in a list and finite values*)
-(*TODO: move*)
-Section InFin.
-
-Context {A: Type}.
-Variable eq_dec: forall (x y : A), {x = y} + {x <> y}.
-
-Definition get_idx (x: A) (l: list A) (Hin: in_bool eq_dec x l) 
-  : finite (length l).
-Proof.
-  induction l.
-  - exfalso. exact (not_false Hin).
-  - simpl in Hin. destruct l.
-    + exact tt.
-    + destruct (eq_dec x a).
-      * exact None.
-      * exact (Some (IHl Hin)).
-Defined.
-
-Lemma get_idx_correct (x: A) (l: list A) (Hin: in_bool eq_dec x l) :
-  fin_nth l (get_idx x l Hin) = x.
-Proof.
-  unfold fin_nth. generalize dependent (erefl (length l)).
-  induction l; intros; simpl.
-  - inversion Hin.
-  - destruct l; simpl.
-    + simpl in Hin. destruct (eq_dec x a); subst; auto.
-      inversion Hin.
-    + simpl in Hin. destruct (eq_dec x a); subst; auto.
-      apply IHl.
-Qed.
-
-Lemma fin_nth_inj {l: list A} ( x y: finite (length l)) :
-  NoDup l ->
-  fin_nth l x = fin_nth l y ->
-  x = y.
-Proof.
-  intros.
-  apply fin_nth_aux_inj in H0; subst; auto.
-Qed.
-    
-(*TODO: do we need a version of get_idx that works on n more generally?*)
-(*might not be generalizable enough*)
-(*Yes, I need either a generalized version of [get_idx] or maybe
-  just a handwritten version (or a rewrite lemma)*)
-  (*Damn, this is not true - what about repeats in the list?
-  TODO: need additional assumptions - no duplicates in
-  mutual recursion list*)
-Lemma get_idx_fin {l: list A} {x: finite (length l)} 
-  (Hl: NoDup l)
-  (Hin: in_bool eq_dec (fin_nth l x) l) :
-  get_idx (fin_nth l x) l Hin = x.
-Proof.
-  apply fin_nth_inj. auto.
-  rewrite get_idx_correct. reflexivity.
-Qed.
-
-End InFin.
-
 (*TODO: dont duplicate*)
 Ltac right_dec := 
   solve[let C := fresh "C" in right; intro C; inversion C; try contradiction].
@@ -879,7 +839,11 @@ Defined.
 Section Build.
 
 (*We provide a nicer interface to build an AST, using a context,
-  function symbols, and the like rather than finite values and ne_lists.*)
+  function symbols, and the like rather than finite values and ne_lists.
+  This way, in the semantics, we don't need to worry about the 
+  specifics of W-types, finite types, etc, but rather we can work
+  at the higher level of the context and function symbols and just have
+  an API for working with ADT representations.*)
 Variable s: sig.
 Variable gamma: context.
 Variable gamma_valid: valid_context s gamma.
@@ -895,9 +859,6 @@ Variable srts_len: length srts = length (m_params m).
 
 Definition sigma : vty -> Types.sort :=
   ty_subst_s (m_params m)  srts.
-
-(*TODO: do we need this?*)
-(*Variable srts_len : length srts = length (ts_args adt_name).*)
 
 Variable domain: Types.sort -> Set.
 
@@ -929,9 +890,6 @@ Variable t: alg_datatype.
 Variable c: funsym.
 Variable c_in : constr_in_adt c t.
 Variable t_in: adt_in_mut t m.
-(*TODO: prove this later*)
-(*
-Axiom c_wf: s_params c = ts_args (adt_name t).*)
 
 Variable dom_int: domain s_int = Z.
 Variable dom_real: domain s_real = R.
@@ -958,20 +916,6 @@ Proof.
   apply sort_inj; reflexivity.
 Qed.
 
-(*TODO: move*)
-Lemma ty_subst_s_cons: forall (vs: list typevar) (ts: list Types.sort)
-  (t: typesym) (args: list vty),
-  ty_subst_s vs ts (vty_cons t args) = typesym_to_sort t (ty_subst_list_s vs ts args).
-Proof.
-  intros. unfold ty_subst_list_s, ty_subst_s, v_subst. simpl. apply sort_inj; simpl.
-  f_equal.
-  apply list_eq_ext'; rewrite !map_length; auto.
-  intros n d Hn. rewrite -> !(map_nth_inbound) with (d2:=d) by auto.
-  rewrite -> (map_nth_inbound) with (d2:=s_int) by (rewrite map_length; auto).
-  rewrite -> (map_nth_inbound) with (d2:=d) by auto.
-  reflexivity.
-Qed.
-
 Lemma sigma_cons: forall t l,
   sigma (vty_cons t l) = typesym_to_sort t (map sigma l).
 Proof.
@@ -986,7 +930,7 @@ Definition build_sprod_cons {a: Set} {l: list Set}
   | y :: ys => fun tl => (x, tl)
   end tl.
 
-(*The function, built with tactics*)
+(*The function to build the constr_base, built with tactics*)
 (*TODO: if rewrite gives problems, use similar as before with
   function and inverses*)
 Definition args_to_constr_base (a: arg_list domain sigma_args):
@@ -1013,10 +957,8 @@ Defined.
 
 (*Part 2: build the recursive arguments*)
 
-(*First, we do in terms of finite args, then we will convert
-  to a more friendly interface*)
-(*Hmm, might want to keep things bool*)
-
+(*We assume that the domain of all adts is given by [adt_rep]
+  (which we will require of all possible valid domains)*)
 Variable dom_adts: forall (a: alg_datatype) (Hin: adt_in_mut a m),
   domain (typesym_to_sort (adt_name a) srts) =
   adt_rep a Hin.
@@ -1034,69 +976,8 @@ Proof.
   apply (adts_nodups gamma_valid m_in).
 Qed.
 
-(*
-Variable dom_adts : forall (x: finite (length adts)),
-  domain (typesym_to_sort (adt_name (fin_nth adts x)) srts) =
-  adt_rep (fin_nth adts x) (fin_nth_in _ x).*)
-
-(*TODO: move lemmas*)
-Lemma in_filter: forall {A: Type}
-  (f: A -> bool) (l: list A) (x: A),
-  In x (filter f l) <-> f x /\ In x l.
-Proof.
-  intros. induction l; simpl; auto.
-  - split; auto. intros [_ Hf]; destruct Hf.
-  - destruct (f a) eqn : Hfa; subst.
-    + simpl. split; intros.
-      * destruct H; subst.
-        -- split; auto.
-        -- split; auto. apply IHl. auto.
-           right. apply IHl. apply H.
-      * destruct H. destruct H0; auto.
-        right. apply IHl. auto.
-    + split; intros.
-      * split; auto. apply IHl; auto. right. apply IHl. auto.
-      * destruct H. destruct H0; subst. rewrite Hfa in H. inversion H.
-        apply IHl. split; auto.
-Qed.
-
-  (*TODO: move*)
-  
-  Lemma ty_subst_fun_nth: forall (vars: list typevar) (vs: list vty)
-    (d: vty) (n: nat) (a: typevar) (s: vty),
-    length vars = length vs ->
-    (n < length vars) %coq_nat ->
-    NoDup vars ->
-    ty_subst_fun vars vs d (List.nth n vars a) = List.nth n vs s.
-  Proof.
-    intros vars vs d n a s'. revert n. revert vs. induction vars.
-    - simpl; intros; lia.
-    - intros; destruct vs.
-      + inversion H.
-      + destruct n.
-        * simpl. destruct (typevar_eq_dec a0 a0); auto. contradiction.
-        * simpl.
-          inversion H1; subst. simpl in H0.
-          destruct (typevar_eq_dec (List.nth n vars a) a0); subst; auto.
-          -- exfalso. apply H4. apply nth_In. lia.
-          -- apply IHvars; try lia. inversion H; auto. assumption.
-Qed.
-
-
-Lemma subst_same: forall (vars: list typevar) (srts: list Types.sort),
-  length vars = length srts ->
-  NoDup vars ->
-  map (fun x => ty_subst_s vars srts (vty_var x)) vars = srts.
-Proof.
-  intros. apply list_eq_ext'; rewrite map_length; auto. intros n d Hd.
-  assert (a: typevar). apply "A"%string.
-  rewrite -> (map_nth_inbound) with (d2:=a); auto.
-  unfold ty_subst_s. apply sort_inj; simpl.
-  rewrite -> ty_subst_fun_nth with(s:=vty_int); try lia; unfold sorts_to_tys.
-  rewrite -> (map_nth_inbound) with (d2:=d). reflexivity. lia.
-  rewrite map_length; lia.
-  assumption.
-Qed.
+(*Now we need some intermediate results about casting*)
+Section Cast.
 
 Definition cast_list {A B: Set} (l: list A) (Heq: A = B) : list B :=
   match Heq with
@@ -1109,8 +990,23 @@ Proof.
   intros. unfold cast_list. destruct Heq. reflexivity.
 Qed.
 
+Definition cast_arg_list {domain: Types.sort -> Set} {l1 l2}
+  (Heq: l1 = l2) (x: arg_list domain l1) : arg_list domain l2 :=
+  match Heq with
+  | erefl => x
+  end.
+
+(*Cast any Set*)
+Definition scast {S1 S2: Set} (Heq: S1 = S2) (s: S1) : S2 :=
+  match Heq with
+  | erefl => s
+  end.
+
+End Cast.
+
 Definition tup_of_list {A: Type} {n: nat} {l: list A} (Hl: length l = n) :
   n.-tuple A := (Tuple (introT eqP Hl)).
+
 
 (*To build the recursive instance function, we do the following: 
   take the input arg list and filter out the domain elements 
@@ -1179,23 +1075,9 @@ Definition args_to_ind_base (a: arg_list domain sigma_args) :
       (mk_adts gamma var_map typesym_map adts x) :=
   fun x => tup_of_list (filter_args_length a x).
 
-(*Now we can build the constructor corresponding to the function
-  symbol c*)
-
-Lemma constr_in_lemma :
-     (in_bool_ne funsym_eq_dec c
-        (adt_constrs
-           (fin_nth adts 
-            (get_idx adt_dec t adts
-               (In_in_bool adt_dec t (typs m) t_in))))).
-Proof.
-  rewrite get_idx_correct. apply c_in.
-Qed.
-
-(*Only thing remaining: for the domain, we need a map from the type
-  variables of the constructor to the sorts; here we have a map from
-  the type variables of the inductive type to the sorts. These are
-  the same, we just need to show it*)
+(* The interesting part is done, but we need to cast the result from
+  an [adt_rep] to an element of the appropriate domain. We need
+  a few lemmas to do this, mainly about substitution. *)
 
 (*TODO: where to put?*)
 Definition funsym_sigma_args (f: funsym) (s: list Types.sort) : list Types.sort :=
@@ -1204,9 +1086,9 @@ Definition funsym_sigma_args (f: funsym) (s: list Types.sort) : list Types.sort 
 (*More casting we need: TODO: should it go here or elsewhere?*)
 Definition funsym_sigma_ret (f: funsym) (s: list Types.sort) : Types.sort :=
   ty_subst_s (s_params f) s (s_ret f).
-(*Doesnt really belong here*)
+
 Lemma adt_typesym_funsym:
-typesym_to_sort (adt_name t) srts = funsym_sigma_ret c srts.
+  typesym_to_sort (adt_name t) srts = funsym_sigma_ret c srts.
 Proof.
   unfold funsym_sigma_ret, typesym_to_sort.
   apply sort_inj; simpl.
@@ -1233,25 +1115,26 @@ Proof.
   rewrite H. reflexivity.
 Qed. 
 
-Definition cast_arg_list {domain: Types.sort -> Set} {l1 l2}
-  (Heq: l1 = l2) (x: arg_list domain l1) : arg_list domain l2 :=
-  match Heq with
-  | erefl => x
-  end.
+(*One lemma we need for [constr_rep]*)
+Lemma constr_in_lemma :
+     (in_bool_ne funsym_eq_dec c
+        (adt_constrs
+           (fin_nth adts 
+            (get_idx adt_dec t adts
+               (In_in_bool adt_dec t (typs m) t_in))))).
+Proof.
+  rewrite get_idx_correct. apply c_in.
+Qed.
 
-  Definition scast {S1 S2: Set} (Heq: S1 = S2) (s: S1) : S2 :=
-    match Heq with
-    | erefl => s
-    end.
-
-(*The final representation of the constructor: just use the two functions
-  from before*)
+(*Now we can build the constructor corresponding to the function
+  symbol c using the two functions from before*)
 Definition constr_rep (a: arg_list domain (funsym_sigma_args c srts)) :
   adt_rep t t_in :=
   make_constr gamma _ _ _ _ _ constr_in_lemma 
     (args_to_constr_base (cast_arg_list sigma_args_eq a))
     (args_to_ind_base (cast_arg_list sigma_args_eq a)).
 
+(*We cast the result to the appropriate domain for the semantics*)
 Definition constr_rep_dom (a: arg_list domain (funsym_sigma_args c srts)) :
   domain (funsym_sigma_ret c srts) := 
   scast 
@@ -1375,7 +1258,6 @@ Qed.
 (* Mutual recursion means we need additional typecasts and axioms
   to deal with the dependent functions. We do that here. Since this is
   only for testing, we don't introduce any axioms into the semantics*)
-(*Require Import Coq.Logic.ClassicalFacts.*)
 
   Section Cast.
   

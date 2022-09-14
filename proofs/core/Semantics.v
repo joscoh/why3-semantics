@@ -194,25 +194,6 @@ Defined.
 
 (* Some additional lemmas for casting/dependent type obligations *)
 
-(* If we have a sort, then substituting a valuation does nothing *)
-Lemma subst_sort_eq: forall (s: sort) (v: typevar -> sort),
-  s = v_subst v (sort_to_ty s).
-Proof.
-  intros. unfold v_subst. destruct s.
-  induction x; simpl; auto; try solve[apply sort_inj; reflexivity].
-  - apply sort_inj; simpl. unfold is_sort in i0. simpl in i0. inversion i0.
-  - rewrite Forall_forall in H. apply sort_inj; simpl.
-    f_equal. apply list_eq_ext'; try rewrite !map_length; auto.
-    intros n d Hn. rewrite map_nth_inbound with(d2:=d); auto.
-    assert (Hin: In (nth n vs d) vs) by (apply nth_In; auto).
-    assert (Hsort: is_sort (nth n vs d)). {
-      unfold is_sort. unfold is_sort in i0.
-      rewrite (type_vars_cons tsym vs); auto. 
-      destruct (type_vars (vty_cons tsym vs)) eqn : Ht; auto. inversion i0.
-    }
-    specialize (H _ Hin Hsort). inversion H. reflexivity.
-Qed. 
-
 (*Cast 1 domain into another*)
 Definition dom_cast {v1 v2: sort} (Hv: v1 = v2) (x: domain i v1) : domain i v2.
 rewrite <- Hv. exact x.
