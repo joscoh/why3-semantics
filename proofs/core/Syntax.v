@@ -309,14 +309,18 @@ Inductive funpred_def : Set :=
 Inductive indpred_def : Set :=
   | ind_def: predsym -> list formula -> indpred_def.
 
+Record mut_adt := mk_mut {typs : list alg_datatype;
+                          m_params: list typevar;
+                          m_nodup: nodupb typevar_eq_dec m_params }.
+
+(*NOTE: we require that every mutually recursive type has the same
+  type variable parameters. That simplifies some of the proofs.*)
 Inductive def : Set :=
-  | datatype_def : list alg_datatype -> def (*for mutual recursion*)
+  | datatype_def : mut_adt -> def (*for mutual recursion*)
   | recursive_def: list funpred_def -> def
   | inductive_def : list indpred_def -> def.
 
 (*These definitions can be unwieldy, so we provide nicer functions*)
-(*Deal with algebraic data types*)
-Global Notation mut_adt := (list alg_datatype).
 
 Definition adt_name (a: alg_datatype) : typesym :=
   match a with
@@ -330,10 +334,10 @@ Definition adt_constrs (a: alg_datatype) : ne_list funsym :=
 
 Definition datatypes_of_def (d: def) : list (typesym * list funsym) :=
   match d with
-  | datatype_def la => map (fun a =>
+  | datatype_def m => map (fun a =>
       match a with
       | alg_def ts fs => (ts, ne_list_to_list fs)
-      end) la
+      end) (typs m)
   | recursive_def _ => nil
   | inductive_def _ => nil
   end.
@@ -370,10 +374,10 @@ Definition indpreds_of_def (d: def) : list (predsym * list formula) :=
 
 Definition funsyms_of_def (d: def) : list funsym :=
   match d with
-  | datatype_def la => concat ((map (fun a =>
+  | datatype_def m => concat ((map (fun a =>
     match a with
     | alg_def _ fs => ne_list_to_list fs
-    end)) la)
+    end)) (typs m))
   | recursive_def lf =>
     fold_right (fun x acc => match x with
       | fun_def fs _ _ => fs :: acc

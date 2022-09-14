@@ -241,6 +241,12 @@ Definition context := list def.
 Definition datatypes_of_context (c: context) : list (typesym * list funsym) :=
   concat (map datatypes_of_def c).
 
+Definition mut_of_context (c: context) : list mut_adt :=
+  fold_right (fun x acc => match x with
+    | datatype_def m => m :: acc
+    | _ => acc
+    end) nil c.
+
 Definition mutrec_datatypes_of_context (c: context) : list (list (typesym * list funsym)) :=
   map datatypes_of_def c.
 
@@ -266,8 +272,12 @@ Definition predsyms_of_context (c: context) : list predsym :=
 Definition mut_in_ctx (m: mut_adt) (gamma: context) :=
   In (datatype_def m) gamma.
 
+Definition mut_typs_in_ctx (l: list alg_datatype) (gamma: context) :=
+  exists (vars: list typevar) (H: nodupb typevar_eq_dec vars), 
+  In (datatype_def (mk_mut l vars H)) gamma.
+
 Definition adt_in_mut (a: alg_datatype) (m: mut_adt) :=
-  In a m.
+  In a (typs m).
 
 Definition adt_mut_in_ctx (a: alg_datatype) (m: mut_adt) (gamma: context) :=
   adt_in_mut a m /\ mut_in_ctx m gamma.
@@ -285,7 +295,13 @@ Definition constr_adt_mut_in_ctx (c: funsym) (a: alg_datatype)
 Definition constr_adt_in_ctx (c: funsym) (a: alg_datatype) (gamma: context) :=
   constr_in_adt c a /\ adt_in_ctx a gamma.
 
-
+(*We also require that all type variables in mutually recursive types
+  are correct: all component types and constructors have the same
+  parameters*)
+Definition valid_mut_rec (m: mut_adt) : Prop :=
+  Forall (fun a => (m_params m) = (ts_args (adt_name a)) /\
+    Forall (fun f => (m_params m) = (s_params f)) 
+      (ne_list_to_list (adt_constrs a))) (typs m).
 
 (*A context gamma extending signature s is well-formed if all type, function, and
   predicate symbols in gamma appear in s, and none appear more than once*)
@@ -609,7 +625,7 @@ Inductive strictly_positive : vty -> list typesym -> Prop :=
     should we add function types? Then we need application and lambdas*)
   | Strict_ind: forall (t: vty) (ts: list typesym) (I: typesym) 
     (constrs: ne_list funsym) (vs: list vty),
-    mut_in_ctx [alg_def I constrs] gamma -> (*singleton list means non-mutually recursive*)
+    mut_typs_in_ctx [alg_def I constrs] gamma -> (*singleton list means non-mutually recursive*)
     t = vty_cons I vs ->
     (forall (x: typesym) (v: vty), In x ts -> In v vs ->
       negb (typesym_in x v)) ->
@@ -840,9 +856,10 @@ Definition valid_context (s : sig) (gamma: context) :=
   wf_context s gamma /\
   Forall (fun d =>
     match d with
-    | datatype_def adts => Forall adt_valid_type adts /\ 
-                           Forall (adt_inhab s gamma) adts /\
-                           adt_positive gamma adts
+    | datatype_def m => Forall adt_valid_type (typs m) /\ 
+                           Forall (adt_inhab s gamma) (typs m) /\
+                           adt_positive gamma (typs m) /\
+                           valid_mut_rec m
     | recursive_def fs => Forall (funpred_def_valid_type s gamma) fs
     | inductive_def is => Forall (indprop_valid_type s gamma) is /\
                           indpred_positive is
@@ -926,6 +943,18 @@ Proof.
   unfold adt_valid_type in H.
   valid_context_tac.
 Qed.
+
+Lemma adt_args: forall {m: mut_adt} {a: alg_datatype}
+  (Hin: adt_mut_in_ctx a m gamma),
+  ts_args (adt_name a) = m_params m.
+Proof.
+  intros. unfold adt_mut_in_ctx in Hin. destruct Hin.
+  unfold adt_in_mut in H. unfold mut_in_ctx in H0.
+  valid_context_tac.
+  unfold valid_mut_rec in H3.
+  valid_context_tac.
+Qed.
+
 (*
 Definition constrs_ne: forall {l: list (typesym * list funsym)}
   (Hin: In l (mutrec_datatypes_of_context gamma)),
