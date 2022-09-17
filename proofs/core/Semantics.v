@@ -100,7 +100,7 @@ Record pre_interp := {
   adts: forall (m: mut_adt) (srts: list sort)
     (a: alg_datatype) (Hin: adt_in_mut a m),
     domain (typesym_to_sort (adt_name a) srts) =
-    adt_rep gamma m srts domain a Hin;
+    adt_rep m srts domain a Hin;
 
   (*adts: forall (l: list (typesym * list funsym)) (a: typesym) 
     (srts: list sort) (Hina: In a (map fst l))

@@ -279,6 +279,43 @@ Definition mut_typs_in_ctx (l: list alg_datatype) (gamma: context) :=
 Definition adt_in_mut (a: alg_datatype) (m: mut_adt) :=
   In a (typs m).
 
+Definition ts_in_mut_list (ts: typesym) (m: list alg_datatype) : bool :=
+  in_bool typesym_eq_dec ts (map adt_name m).
+
+
+Lemma ts_in_mut_list_ex: forall ts m,
+  ts_in_mut_list ts (typs m) -> { a | ts = adt_name a /\ 
+  adt_in_mut a m}.
+Proof.
+  unfold adt_in_mut, ts_in_mut_list; intros. induction (typs m); simpl.
+  - inversion H.
+  - simpl in H.
+    destruct (typesym_eq_dec ts (adt_name a)); subst.
+    + apply (exist _ a). split; auto.
+    + specialize (IHl H).
+      destruct IHl as [a' [Ha' Hina']].
+      apply (exist _ a'). subst; split; auto.
+Qed.
+
+Lemma ts_in_mut_list_spec: forall ts m,
+  ts_in_mut_list ts (typs m) <-> exists a, ts = adt_name a /\ 
+  adt_in_mut a m.
+Proof.
+  intros. unfold adt_in_mut, ts_in_mut_list. induction (typs m); simpl.
+  - split; intros; auto. inversion H. destruct H as [a [_ []]].
+  - split; intros.
+    + destruct (typesym_eq_dec ts (adt_name a)).
+      * subst. exists a. split; auto.
+      * apply IHl in H. destruct H as [a' [Ha' Hina']].
+        subst. exists a'. split; auto.
+    + destruct H as [a' [Ha' Hina']]; subst.
+      destruct Hina'; subst.
+      * destruct (typesym_eq_dec (adt_name a') (adt_name a')); auto;
+        contradiction.
+      * apply orb_true_iff. right. apply IHl.
+        exists a'. split; auto.
+Qed.
+
 Definition adt_mut_in_ctx (a: alg_datatype) (m: mut_adt) (gamma: context) :=
   adt_in_mut a m /\ mut_in_ctx m gamma.
 
@@ -994,9 +1031,9 @@ Proof.
   apply adt_args. auto.
 Qed. 
 
-Lemma adts_nodups: forall {m: mut_adt}
+Lemma adts_names_nodups: forall {m: mut_adt}
   (Hin: mut_in_ctx m gamma),
-  NoDup (typs m).
+  NoDup (map adt_name (typs m)).
 Proof.
   intros. unfold mut_in_ctx in Hin.
   unfold valid_context in gamma_valid.
@@ -1012,8 +1049,21 @@ Proof.
     rewrite NoDup_app_iff in Huniq.
     destruct Huniq as [Hn1 [Hn2 [Hi1 Hi2]]].
     destruct Hin; subst.
-    + simpl in Hn1. repeat apply NoDup_map_inv in Hn1. auto.
+    + simpl in Hn1. rewrite map_map in Hn1.
+      unfold adt_name. 
+      assert (forall {A} (l1 l2: list A), NoDup l1 -> l1 = l2
+      -> NoDup l2) by (intros; subst; auto).
+      apply (H _ _ _ Hn1).
+      apply map_ext. intros. destruct a; reflexivity.
     + apply IHc. apply H. apply Hn2.
+Qed.
+
+Lemma adts_nodups: forall {m: mut_adt}
+  (Hin: mut_in_ctx m gamma),
+  NoDup (typs m).
+Proof.
+  intros.
+  eapply NoDup_map_inv. apply adts_names_nodups. apply Hin.
 Qed.
 
 (*
