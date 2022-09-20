@@ -87,6 +87,20 @@ Definition cast {A1 A2: Type} (H: A1 = A2) (x: A1) : A2 :=
   | eq_refl => x
   end.
 
+  Require Import Coq.Logic.Eqdep_dec.
+Lemma cast_eq: forall {A: Type} {f: A -> Type} 
+  (eq_dec: forall (x y : A), { x =y} + { x <> y}) {x1 x2: A}
+  (Heq1 Heq2: x1 = x2)
+  (y1: f x1) (y2: f x2),
+  cast (f_equal f Heq1) y1 = cast (f_equal f Heq2) y1.
+Proof.
+  intros. unfold cast. subst. simpl.
+  assert (Heq2 = eq_refl). {
+    apply UIP_dec. apply eq_dec.
+  }
+  rewrite H. reflexivity.
+Qed.
+
 (*hlist to list*)
 Fixpoint hlist_to_list {A: Type} {f: A -> Type} {l: list A} (h: hlist f l)
   {a: A} (Hall: Forall (fun x => x = a) l) :
@@ -109,6 +123,81 @@ Proof.
   rewrite (hlist_inv h) at 2. simpl. f_equal.
   apply IHl.
 Qed.
+
+Lemma all_nth {A: Type} {P: A -> Prop} {l: list A} (Hall: Forall P l) 
+  (i: nat) (d: A) (Hi: i < length l) :
+  P (nth i l d).
+Proof.
+  rewrite Forall_forall in Hall. apply Hall.
+  apply nth_In. apply Hi.
+Qed.
+
+(*Existential is because of weird UIP-related stuff*)
+Lemma hlist_to_list_nth: forall {A: Type} {f: A -> Type} {l: list A}
+  (h: hlist f l) {a: A} (Hall: Forall (fun x => x = a) l) (i: nat)
+  (Hi: i < length l)
+  (d: f a) (d1: A) (d2: f d1),
+  exists Heq,
+  List.nth i (hlist_to_list h Hall) d =
+  cast Heq (hnth i h d1 d2).
+Proof.
+  intros A f l.
+  induction l; simpl; intros; subst; simpl.
+  - lia.
+  - destruct i.
+    + exists (f_equal f (Forall_inv Hall)). reflexivity.
+    + apply IHl. lia.
+Qed. 
+
+(*Version for decidable equality*)
+
+Lemma hlist_to_list_nth_dec: forall {A: Type} {f: A -> Type} {l: list A}
+  (eq_dec: forall (x y : A), {x = y} + {x <> y})
+  (h: hlist f l) {a: A} (Hall: Forall (fun x => x = a) l) (i: nat)
+  (Hi: i < length l)
+  (d: f a) (d1: A) (d2: f d1) Heq,
+  List.nth i (hlist_to_list h Hall) d =
+  cast (f_equal f Heq) (hnth i h d1 d2).
+Proof.
+  intros A f l.
+  induction l; simpl; intros; subst; simpl.
+  - lia.
+  - destruct i.
+    + unfold cast.
+      assert (Forall_inv Hall = eq_refl). {
+        apply UIP_dec. apply eq_dec.
+      }
+      rewrite H. reflexivity.
+    + apply IHl with (d1:=d1) (d2:=d2) (Heq:=eq_refl). apply eq_dec.
+      lia.
+Qed. 
+
+Lemma hlist_to_list_nth_dec': forall {A: Type} {f: A -> Type} {l: list A}
+  (eq_dec: forall (x y : A), {x = y} + {x <> y})
+  (h: hlist f l) {a: A} (Hall: Forall (fun x => x = a) l) (i: nat)
+  (Hi: i < length l)
+  (d: f a) (d1: A) (d2: f d1),
+  List.nth i (hlist_to_list h Hall) d =
+  cast (f_equal f (all_nth Hall i d1 Hi)) (hnth i h d1 d2).
+Proof.
+  intros. apply hlist_to_list_nth_dec. apply eq_dec. apply Hi.
+Qed.
+
+Lemma hlist_to_list_irrel: forall {A: Type} {f: A -> Type} {l: list A}
+(eq_dec: forall (x y : A), {x = y} + {x <> y})
+(h: hlist f l) {a: A} (Ha1 Ha2: Forall (fun x => x = a) l),
+hlist_to_list h Ha1 = hlist_to_list h Ha2.
+Proof.
+  intros.
+  revert Ha1 Ha2. induction l; simpl; intros. reflexivity.
+  f_equal.
+  apply cast_eq. apply eq_dec. 
+  2: apply IHl.
+  inversion h; subst.
+  assert (a = a0). inversion Ha1; subst. reflexivity.
+  subst. apply X.
+Qed.
+
 
 (*extensional equality for hlists*)
 Lemma hlist_ext_eq {A: Type} {f: A -> Type} {l: list A}
@@ -143,3 +232,61 @@ Fixpoint hlist_map_filter {A B: Type} {f: A -> Type} {l: list B}
     | false => (hlist_map_filter f1 (hlist_tl hmap) g)
     end
   end h.
+
+Definition hcast {A: Type} {f: A -> Type} {l1 l2: list A}
+  (Heq: l1 = l2) (x: hlist f l1) : hlist f l2 :=
+  match Heq with
+  | eq_refl => x
+  end.
+
+  
+(*
+Lemma hlist_map_filter_eq {A B: Type} {f: A -> Type} {l1 l2: list B}
+  (eq_dec: forall (x y: A), { x = y} + {x <> y})
+  (f1: B -> A) (h1: hlist f (map f1 l1)) (h2: hlist f (map f1 l2))
+  (g: B -> bool) (Heq: filter g l1 = filter g l2):
+  hlist_map_filter f1 h1 g = hcast (f_equal (map f1) (eq_sym Heq)) 
+    (hlist_map_filter f1 h2 g).
+Proof.
+  generalize dependent (f_equal (map f1) (eq_sym Heq)).
+  generalize dependent l2. revert f1 h1 g.
+  induction l1; simpl; intros; subst; simpl.
+  - destruct l2; simpl in *.
+    + unfold hcast.
+      assert (e = eq_refl) by (apply UIP_dec; apply list_eq_dec; apply eq_dec).
+      rewrite H. reflexivity.
+    + destruct (g b); simpl.
+      * inversion Heq.
+      * unfold hcast.
+        destruct e.
+        assert (e = eq_refl).
+      
+      
+      
+      set (h3:=(hlist_map_filter f1 (hlist_tl h2) g)) in |- *.
+        rewrite <- Heq in h3.
+        
+        
+        
+        set (x :=filter g l2) in *.  rewrite <- Heq. subst. subst Heq.  subst Heq. rewrite <- Heq in e |- *.
+      
+      
+      rewrite <- Heq in e. subst. assert ((map f1 (filter g l2)) = nil). rewrite <- Heq. reflexivity.
+        unfold hcast.
+        destruct (hlist_map_filter f1 (hlist_tl h2) g) eqn : Hh.
+        Search 
+        destruct Heq.
+        rewrite H.
+        subst. assert ((hlist_map_filter f1 (hlist_tl h2) g) = HL_nil f).  
+      
+      
+      
+      unfold hcast. simpl.
+      
+      
+      
+      inver
+    
+    
+    
+    reflexivity. subst.*)
