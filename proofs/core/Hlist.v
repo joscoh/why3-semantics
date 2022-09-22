@@ -87,7 +87,14 @@ Definition cast {A1 A2: Type} (H: A1 = A2) (x: A1) : A2 :=
   | eq_refl => x
   end.
 
-  Require Import Coq.Logic.Eqdep_dec.
+Lemma cast_inj: forall {A B: Type} (Heq: A = B) (x1 x2: A),
+  cast Heq x1 = cast Heq x2 ->
+  x1 = x2.
+Proof.
+  intros. destruct Heq. apply H.
+Qed.
+
+Require Import Coq.Logic.Eqdep_dec.
 Lemma cast_eq: forall {A: Type} {f: A -> Type} 
   (eq_dec: forall (x y : A), { x =y} + { x <> y}) {x1 x2: A}
   (Heq1 Heq2: x1 = x2)
@@ -198,6 +205,19 @@ Proof.
   subst. apply X.
 Qed.
 
+Lemma hlist_to_list_inj: forall {A: Type} {f: A -> Type} {l: list A}
+(eq_dec: forall (x y : A), {x = y} + {x <> y})
+(h1 h2: hlist f l) {a: A} (H: Forall (fun x => x = a) l),
+hlist_to_list h1 H = hlist_to_list h2 H -> h1 = h2.
+Proof.
+  intros. induction l; simpl.
+  - rewrite (hlist_nil h1), (hlist_nil h2). reflexivity.
+  - rewrite (hlist_inv h1), (hlist_inv h2).
+    rewrite (hlist_inv h1), (hlist_inv h2) in H0.
+    simpl in H0. inversion H0; subst.
+    f_equal. apply cast_inj in H2; auto.
+    eapply IHl. apply H3.
+Qed.
 
 (*extensional equality for hlists*)
 Lemma hlist_ext_eq {A: Type} {f: A -> Type} {l: list A}
@@ -238,55 +258,3 @@ Definition hcast {A: Type} {f: A -> Type} {l1 l2: list A}
   match Heq with
   | eq_refl => x
   end.
-
-  
-(*
-Lemma hlist_map_filter_eq {A B: Type} {f: A -> Type} {l1 l2: list B}
-  (eq_dec: forall (x y: A), { x = y} + {x <> y})
-  (f1: B -> A) (h1: hlist f (map f1 l1)) (h2: hlist f (map f1 l2))
-  (g: B -> bool) (Heq: filter g l1 = filter g l2):
-  hlist_map_filter f1 h1 g = hcast (f_equal (map f1) (eq_sym Heq)) 
-    (hlist_map_filter f1 h2 g).
-Proof.
-  generalize dependent (f_equal (map f1) (eq_sym Heq)).
-  generalize dependent l2. revert f1 h1 g.
-  induction l1; simpl; intros; subst; simpl.
-  - destruct l2; simpl in *.
-    + unfold hcast.
-      assert (e = eq_refl) by (apply UIP_dec; apply list_eq_dec; apply eq_dec).
-      rewrite H. reflexivity.
-    + destruct (g b); simpl.
-      * inversion Heq.
-      * unfold hcast.
-        destruct e.
-        assert (e = eq_refl).
-      
-      
-      
-      set (h3:=(hlist_map_filter f1 (hlist_tl h2) g)) in |- *.
-        rewrite <- Heq in h3.
-        
-        
-        
-        set (x :=filter g l2) in *.  rewrite <- Heq. subst. subst Heq.  subst Heq. rewrite <- Heq in e |- *.
-      
-      
-      rewrite <- Heq in e. subst. assert ((map f1 (filter g l2)) = nil). rewrite <- Heq. reflexivity.
-        unfold hcast.
-        destruct (hlist_map_filter f1 (hlist_tl h2) g) eqn : Hh.
-        Search 
-        destruct Heq.
-        rewrite H.
-        subst. assert ((hlist_map_filter f1 (hlist_tl h2) g) = HL_nil f).  
-      
-      
-      
-      unfold hcast. simpl.
-      
-      
-      
-      inver
-    
-    
-    
-    reflexivity. subst.*)

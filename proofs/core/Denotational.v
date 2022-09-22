@@ -17,20 +17,16 @@ Definition all_dec : forall (P : Prop), {P} + {~P} := excluded_middle_informativ
 
 Section Denot.
 
-Variable sigma : sig.
-Variable gamma: context.
-Variable gamma_valid: valid_context sigma gamma.
-Variable i: pre_interp sigma gamma gamma_valid.
+Context {sigma: sig} {gamma: context} (gamma_valid: valid_context sigma gamma)
+  (i: pre_interp gamma_valid).
 
 (*Representation of terms, formulas, patterns*)
 
-Notation domain := (domain sigma gamma gamma_valid i).
-Notation val x :=  (v_subst (v_typevar sigma gamma gamma_valid i x)).
-Notation v_typevar := (v_typevar sigma gamma gamma_valid i).
-Notation funs := (funs sigma gamma gamma_valid i).
-Notation substi := (substi sigma gamma gamma_valid i).
-
-
+Notation domain := (domain (dom_aux gamma_valid i)).
+Notation val x :=  (v_subst (v_typevar gamma_valid i x)).
+Notation v_typevar := (v_typevar gamma_valid i).
+Notation funs := (funs gamma_valid i).
+Notation substi := (substi gamma_valid i).
 
 (*TODO: 2 options: can take in hypothesis that term has type ty and then use
   dependent type obligations
@@ -40,7 +36,7 @@ Notation substi := (substi sigma gamma gamma_valid i).
   and we shouldn't have to match on types everywhere
   *)
 
-Definition cast_dom_vty {v: valuation sigma gamma gamma_valid i} 
+Definition cast_dom_vty {v: valuation gamma_valid i} 
 {v1 v2: vty} (Heq: v1 = v2) (x: domain (val v v1)) : domain (val v v2).
 Proof.
   subst. apply x.
@@ -160,7 +156,7 @@ Proof.
 Qed.
 
 (*We use the above to get the arg list (tentatively)*)
-Definition get_arg_list (v: valuation sigma gamma gamma_valid i)
+Definition get_arg_list (v: valuation gamma_valid i)
   (f: funsym) (vs: list vty) (ts: list term) 
   (reps: forall (t: term) (ty: vty),
     term_has_type sigma t ty ->
@@ -190,7 +186,7 @@ Proof.
 Defined.
 
 (*Also need a version for preds (TODO: can we reduce duplication?)*)
-Definition get_arg_list_pred (v: valuation sigma gamma gamma_valid i)
+Definition get_arg_list_pred (v: valuation gamma_valid i)
   (p: predsym) (vs: list vty) (ts: list term) 
   (reps: forall (t: term) (ty: vty),
     term_has_type sigma t ty ->
@@ -365,7 +361,7 @@ Fixpoint match_rep (isf: funsym -> term -> bool)
   the types work out. In each case, we separate the hypotheses and give
   explicit types for clarity. The final result is often quite simple and just
   needs 1 or more casts for dependent type purposes. *)
-Fixpoint term_rep (v: valuation sigma gamma gamma_valid i) (t: term) (ty: vty)
+Fixpoint term_rep (v: valuation gamma_valid i) (t: term) (ty: vty)
   (Hty: term_has_type sigma t ty) {struct t} : domain (val v ty) :=
   (match t as tm return t = tm -> domain (val v ty) with
   | Tconst (ConstInt z) => fun Htm =>
@@ -374,17 +370,17 @@ Fixpoint term_rep (v: valuation sigma gamma gamma_valid i) (t: term) (ty: vty)
     let Htyeq : vty_int = ty :=
       eq_sym (ty_constint_inv Hty') in
 
-    cast_dom_vty Htyeq (z_to_dom _ _ _ _ v z)
+    cast_dom_vty Htyeq z (*(z_to_dom _ _ _ _ v z)*)
   | Tconst (ConstReal r) => fun Htm =>
     let Hty' : term_has_type sigma (Tconst (ConstReal r)) ty :=
       has_type_eq Htm Hty in
     let Htyeq : vty_real = ty :=
       eq_sym (ty_constreal_inv Hty') in
 
-    cast_dom_vty Htyeq (r_to_dom _ _ _ _ v r)
+    cast_dom_vty Htyeq r (*(r_to_dom _ _ _ _ v r)*)
   | Tvar x ty' => fun Htm =>
 
-    var_to_dom _ _ _ _ v x ty
+    var_to_dom _ _ v x ty
   | Tfun f vs ts => fun Htm =>
     (*Some proof we need; we give types for clarity*)
     let Hty': term_has_type sigma (Tfun f vs ts) ty :=
@@ -404,7 +400,7 @@ Fixpoint term_rep (v: valuation sigma gamma gamma_valid i) (t: term) (ty: vty)
       types work out*)
   
     cast_dom_vty Htyeq (
-      dom_cast _ _ _ i 
+      dom_cast (dom_aux gamma_valid i)
         (eq_sym Heqret)
           ((funs f (map (val v) vs)) 
             (get_arg_list v f vs ts (term_rep v) (ex_intro _ ty Hty'))))
@@ -464,12 +460,12 @@ Fixpoint term_rep (v: valuation sigma gamma gamma_valid i) (t: term) (ty: vty)
         (adt_typesym_funsym _ Hadt Hc Hlen) ((funs c srts) t)))*)
   *)
   (*For cases not handled yet*)
-  | _ => match domain_ne sigma gamma gamma_valid i (val v ty) with
+  | _ => match domain_ne gamma_valid i (val v ty) with
           | DE x => fun _ => x
           end
   end) eq_refl
 
-with formula_rep (v: valuation sigma gamma gamma_valid i) (f: formula) 
+with formula_rep (v: valuation gamma_valid i) (f: formula) 
   (Hval: valid_formula sigma f) {struct f} : bool :=
   (match f as fmla return f = fmla -> bool with
   | Ftrue => fun _ => true
@@ -516,7 +512,7 @@ with formula_rep (v: valuation sigma gamma gamma_valid i) (f: formula)
     let Hval': valid_formula sigma (Fpred p vs ts) :=
       valid_formula_eq Hf Hval in
 
-    preds _ _ _ _ p (map (val v) vs)
+    preds _ _ p (map (val v) vs)
       (get_arg_list_pred v p vs ts (term_rep v) Hval')
 
   | Fquant Tforall x ty f' => fun Hf =>

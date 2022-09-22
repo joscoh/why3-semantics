@@ -25,73 +25,24 @@ Defined.
 
 Section Interp.
 
-Variable sigma: sig.
-Variable gamma: context.
-Variable gamma_valid: valid_context sigma gamma. 
-
-
-(*Lemma funsym_sigma_ret_eq: forall {c1 c2: funsym} (s: list sort) 
-  (H: s_ret c1 = s_ret c2 /\ s_params c1 = s_params c2),
-  funsym_sigma_ret c1 s = funsym_sigma_ret c2 s.
-Proof.
-  intros. unfold funsym_sigma_ret. destruct H as [Hret Hparams];
-  rewrite Hret, Hparams. reflexivity.
-Qed.*)
-
-(*One other lemma we need for casting*)
-(*
-Lemma adt_typesym_funsym: forall {a: typesym} {constrs: list funsym} {c: funsym} (s: list sort),
-In (a, constrs) (datatypes_of_context gamma) ->
-In c constrs ->
-length (s_params c) = length s ->
-funsym_sigma_ret c s = typesym_to_sort a s.
-Proof.
-  intros. unfold funsym_sigma_ret. unfold typesym_to_sort.
-  apply sort_inj; simpl.
-  pose proof (adt_constr_ret_params gamma_valid _ _ _ H H0).
-  destruct H2. rewrite H2. simpl. rewrite H3. f_equal.
-  apply list_eq_ext'; rewrite !map_length; rewrite <- H3; subst. lia.
-  intros n d Hn.
-  rewrite !(map_nth_inbound) with (d2:=d).
-  2: rewrite map_length; lia.
-  rewrite (map_nth_inbound) with (d2:=s_int); try lia.
-  rewrite map_nth_inbound with (d2:=("x")%string); [|assumption]. 
-  simpl.
-  assert (NoDup (s_params c)). {
-    destruct c; simpl in *. rewrite reflect_iff. apply s_params_nodup.
-    apply nodup_NoDup.
-  }
-  assert (forall n vars (sorts : list sort) d1 d2 d3,
-    length vars = length sorts ->
-    NoDup vars ->
-    n < length vars ->
-    ty_subst_fun vars (sorts_to_tys sorts) d1 (nth n vars d2) = nth n sorts d3). {
-      clear. intros n vars; revert n; induction vars; simpl; intros; [lia|].
-      destruct sorts as [|s1 stl]; inversion H; simpl.
-      destruct n as [|n'].
-      - destruct (typevar_eq_dec a a); auto. contradiction.
-      - destruct (typevar_eq_dec (nth n' vars d2) a); auto.
-        + subst. inversion H0; subst.
-          exfalso. apply H5. apply nth_In. lia.
-        + apply IHvars; auto. inversion H0; subst; auto. lia.
-  }
-  apply H5; auto; try lia.
-Qed.*)
+Context {sigma: sig} {gamma: context} (gamma_valid: valid_context sigma gamma).
 
 Record pre_interp := {
-  domain: sort -> Set;
-  domain_int: domain s_int = Z;
-  domain_real: domain s_real = R;
-  domain_ne: forall s, domain_nonempty domain s;
+  dom_aux: sort -> Set; 
+  (*the prelimiary domain function: the full
+    function is (domain dom_aux), which enforces that domain s_int reduces
+    to Z and domain s_real reduces to R*)
+  domain_ne: forall s, domain_nonempty (domain dom_aux) s;
 
-  (*This is quite unwieldy (and could be wrong) - need to see if works/can do better*)
+  (*Functions and predicates take in a heterogenous list such that
+    the ith argument has the correct type.*)
 
   funs: forall (f:funsym) (srts: list sort),
-    arg_list domain (funsym_sigma_args f srts) ->
-    (domain (funsym_sigma_ret f srts));
+    arg_list (domain dom_aux) (funsym_sigma_args f srts) ->
+    (domain dom_aux (funsym_sigma_ret f srts));
 
   preds: forall (p:predsym) (srts: list sort),
-    arg_list domain (predsym_sigma_args p srts) -> bool;
+    arg_list (domain dom_aux) (predsym_sigma_args p srts) -> bool;
 
   (*ADTs: they are the corresponding W type created by [mk_adts],
     with the typesym and typevar map coming from sorts on which
@@ -99,80 +50,34 @@ Record pre_interp := {
 
   adts: forall (m: mut_adt) (srts: list sort)
     (a: alg_datatype) (Hin: adt_in_mut a m),
-    domain (typesym_to_sort (adt_name a) srts) =
-    adt_rep m srts domain a Hin;
-
-  (*adts: forall (l: list (typesym * list funsym)) (a: typesym) 
-    (srts: list sort) (Hina: In a (map fst l))
-    (Hinl: In l (mutrec_datatypes_of_context gamma)),
-    domain (typesym_to_sort a srts) = 
-    mk_adts gamma (typevar_map a srts domain)
-      (typesym_map a srts domain) (build_ne_lists gamma_valid Hinl) 
-        (get_adt_index gamma_valid l Hinl a Hina);*)
+    (domain dom_aux) (typesym_to_sort (adt_name a) srts) =
+    adt_rep m srts dom_aux a Hin;
 
   (*The interpretation for each constructor comes from [constr_rep]
     with an additional cast for the domains*)
   constrs: forall (m: mut_adt) (a: alg_datatype) (c: funsym)
     (Hm: mut_in_ctx m gamma) (Ha: adt_in_mut a m) (Hc: constr_in_adt c a)
     (srts: list sort) (Hlens: length srts = length (m_params m))
-    (args: arg_list domain (funsym_sigma_args c srts)),
+    (args: arg_list (domain dom_aux) (funsym_sigma_args c srts)),
     funs c srts args =
-    constr_rep_dom sigma gamma gamma_valid m Hm srts Hlens domain a c
-      Hc Ha domain_int domain_real (adts m srts) args
-  
-  (*TODO*)
-  
-  (*adts: forall (a: typesym) (constrs: list funsym) (srts: list sort)
-    (Hadt: In (a, constrs) (datatypes_of_context gamma)),
-    (*1. Disjointness of constructors*)
-    (*For i \neq j, [[f_i(s)]](t) \neq [[f_j(s)]](u) *)
-    (forall c1 c2 (Hc1: In c1 constrs)
-      (Hc2: In c2 constrs), c1 <> c2 
-    (*we know constructor cannot be duplicated*) ->
-      forall t u, (funs c2 srts) t <> 
-        (dom_cast_aux domain _ _ 
-          (funsym_sigma_ret_eq srts (adt_constr_ret_params_eq sigma _ gamma_valid Hadt Hc1 Hc2)) 
-          ((funs c1 srts) u))) /\
-    (*2: Injectivity of constructors *)
-    (*[[f_i(s)]](t) = [f_i(s)](u) -> t = u*)
-    (forall c t u, In c constrs ->
-      (funs c srts) t = (funs c srts) u -> t = u) /\
-    (*3: Completeness of constructors*)
-    (*forall x in [[t(s)]], exists i t, x = [[f_i(s)]](t)*)
-    (forall (x: domain (typesym_to_sort a srts)), 
-      exists c t (Hc: In c constrs) (Hlen: length (s_params c) = length srts),
-      x = (dom_cast_aux domain _ _
-        (adt_typesym_funsym _ Hadt Hc Hlen) ((funs c srts) t)))*)
+    constr_rep_dom gamma_valid m Hm srts Hlens dom_aux a Ha
+      c Hc (adts m srts) args
 }.
 
 (*Valuations*)
 Record valuation (i: pre_interp) := {
   v_typevar : typevar -> sort;
-  v_vars: forall (x: vsymbol) (v: vty), (domain i (v_subst (v_typevar) v))
+  v_vars: forall (x: vsymbol) (v: vty), (domain (dom_aux i) (v_subst (v_typevar) v))
 }.
 
 Section Interp.
 
 Variable i: pre_interp.
 
-Notation val v t  := (domain i (v_subst (v_typevar i v) t)).
+Notation val v t  := (domain (dom_aux i) (v_subst (v_typevar i v) t)).
 
-Definition z_to_dom (v: valuation i) (z: Z) : val v vty_int.
-Proof.
-  erewrite sort_inj. rewrite (domain_int i). apply z.
-  reflexivity.
-Defined.
-
-Definition r_to_dom (v: valuation i) (r: R) : val v vty_real.
-Proof.
-  erewrite sort_inj. rewrite (domain_real i). apply r.
-  reflexivity.
-Defined.
-
-Definition var_to_dom (v: valuation i) (x: vsymbol) (t: vty) : val v t.
-Proof.
-  apply v_vars. apply x.
-Defined. 
+Definition var_to_dom (v: valuation i) (x: vsymbol) (t: vty) : val v t :=
+  v_vars i v x t.
 
 (*Substitution*)
 
@@ -193,24 +98,9 @@ destruct (vty_eq_dec ty ty').
 Defined.
 
 (* Some additional lemmas for casting/dependent type obligations *)
+Notation dcast := (dom_cast (dom_aux i)).
 
-(*Cast 1 domain into another*)
-Definition dom_cast {v1 v2: sort} (Hv: v1 = v2) (x: domain i v1) : domain i v2.
-rewrite <- Hv. exact x.
-Defined.
-
-Lemma dom_cast_inj: forall {v1 v2: sort} (H: v1 = v2) (d1 d2: domain i v1),
-  dom_cast H d1 = dom_cast H d2 ->
-  d1 = d2.
-Proof.
-  intros. unfold dom_cast in H0.
-  unfold eq_rect in H0. destruct H. auto.
-Qed.
-
-Definition dom_int : domain i s_int.
-destruct i. simpl. rewrite domain_int0. apply 0%Z.
-Defined.
-
+Definition dom_int : domain (dom_aux i) s_int := 0%Z.
 
 (* Semantics/Interpretation *)
 
@@ -226,11 +116,11 @@ Definition bool_of_binop (b: binop) : bool -> bool -> bool :=
   end.
 Unset Elimination Schemes.
 Inductive term_interp: 
-  forall (v: valuation i) (tm: term) (ty: vty) (x: domain i (v_subst (v_typevar i v) ty)), Prop :=
+  forall (v: valuation i) (tm: term) (ty: vty) (x: domain (dom_aux i) (v_subst (v_typevar i v) ty)), Prop :=
   | TI_int: forall v z,
-    term_interp v (Tconst (ConstInt z)) vty_int (z_to_dom v z)
+    term_interp v (Tconst (ConstInt z)) vty_int z
   | TI_real: forall v r,
-    term_interp v (Tconst (ConstReal r)) vty_real (r_to_dom v r)
+    term_interp v (Tconst (ConstReal r)) vty_real r
   | TI_var: forall v (x: vsymbol) (ty: vty),
     term_interp v (Tvar x ty) ty (var_to_dom v x ty)
   | TI_iftrue: forall v f t1 t2 ty x,
@@ -277,12 +167,12 @@ Inductive term_interp:
         evaluates to [nth xs n] under v *)
       term_interp v (nth n ts (Tconst (ConstInt 0)))
         (nth n f_arg_typs s_int) 
-        (dom_cast (subst_sort_eq (nth n f_arg_typs s_int) (v_typevar i v)) 
+        (dcast (subst_sort_eq (nth n f_arg_typs s_int) (v_typevar i v)) 
           (hnth n xs s_int dom_int))) ->
     
     (*Again, we must cast the return type of f, for the same reason*)
     term_interp v (Tfun f params ts) f_ret 
-      (dom_cast (subst_sort_eq f_ret (v_typevar i v)) (f_interp xs))
+      (dcast (subst_sort_eq f_ret (v_typevar i v)) (f_interp xs))
   | TI_match: forall v (t: term) ty1 ty (ps: list (pattern * term)) (t': term) x,
     (*Translate the pattern match to a term of tests (with match_pattern), then
       interpret*)
@@ -356,7 +246,7 @@ with formula_interp: (valuation i) -> list formula -> list formula -> formula ->
     (forall n (Hn: n < length p_arg_typs),
       term_interp v (nth n ts (Tconst (ConstInt 0)))
         (nth n p_arg_typs s_int) 
-        (dom_cast (subst_sort_eq (nth n p_arg_typs s_int) (v_typevar i v)) 
+        (dcast (subst_sort_eq (nth n p_arg_typs s_int) (v_typevar i v)) 
           (hnth n xs s_int dom_int ))) ->
 
     formula_interp v tl fl (Fpred p params ts) (p_interp xs)
@@ -666,8 +556,8 @@ End InterpLemmas.
 (*This is very ugly due to dependent types and proof obligations*)
 Fixpoint mk_fun_arg {A: Type} (eq_dec: forall (x y: A), {x = y} + { x <> y}) 
   (i: pre_interp) v_var
-  (l: list A) (s: list sort) (a: arg_list (domain i) s) (x: A): 
-    forall v, domain i (v_subst v_var v) :=
+  (l: list A) (s: list sort) (a: arg_list (domain (dom_aux i)) s) (x: A): 
+    forall v, domain (dom_aux i) (v_subst v_var v) :=
   match l, a with
   | hd :: tl, HL_cons shd stl d t => 
     fun v =>
@@ -688,7 +578,7 @@ Fixpoint mk_fun_arg {A: Type} (eq_dec: forall (x y: A), {x = y} + { x <> y})
   corresponding element of a (modulo dependent type stuff)
   Give default values if something is not in the list*)
 Definition make_val (i: pre_interp) (vs: list typevar) (s1 s2: list sort)
-  (syms: list vsymbol) (a: arg_list (domain i) s2) : valuation i :=
+  (syms: list vsymbol) (a: arg_list (domain (dom_aux i)) s2) : valuation i :=
   let v_var := (ty_subst_fun_s vs s1 s_int) in
   Build_valuation i v_var
     (mk_fun_arg vsymbol_eq_dec i v_var syms s2 a).

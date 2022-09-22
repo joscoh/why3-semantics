@@ -947,16 +947,13 @@ Definition adt_rep (a: alg_datatype) (a_in: adt_in_mut a m)
 
 (*The ADT we want to build the constructor for*)
 Variable t: alg_datatype.
+Variable t_in: adt_in_mut t m.
+
+Section Constr.
 
 Variable c: funsym.
 Variable c_in : constr_in_adt c t.
-Variable t_in: adt_in_mut t m.
 
-
-
-(*Variable dom_int: domain s_int = Z.
-Variable dom_real: domain s_real = R.*)
-Print domain.
 Definition arg_list (domain: Types.sort -> Set) := hlist domain.
 
 Definition sigma_args : list Types.sort :=
@@ -994,8 +991,6 @@ Definition build_sprod_cons {a: Set} {l: list Set}
   end tl.
 
 (*The function to build the constr_base, built with tactics*)
-(*TODO: if rewrite gives problems, use similar as before with
-  function and inverses*)
 
 (*Need aux version so that l is sufficiently general for induction*)
 
@@ -1018,6 +1013,13 @@ Proof.
   intros. destruct Heq; reflexivity.
 Qed.
 
+Lemma dom_cast_inj: forall {v1 v2: Types.sort} (Heq: v1 = v2) (x1 x2: domain v1),
+  dom_cast Heq x1 = dom_cast Heq x2 ->
+  x1 = x2.
+Proof.
+  intros. destruct Heq. apply H.
+Qed.
+
 Definition args_to_constr_base_aux (l: list vty) 
   (a: arg_list domain (sigma_aux l)) :
   build_vty_base var_map typesym_map adts l.
@@ -1031,7 +1033,8 @@ Proof.
     + exact (build_sprod_cons Hd (IHl Hal)).
     + exact (build_sprod_cons Hd (IHl Hal)). 
     + exact (build_sprod_cons Hd (IHl Hal)).
-    + destruct (ts_in_mut_list t0 adts).
+    + generalize dependent (ts_in_mut_list t0 adts); intros b.
+      destruct b.
       * exact (IHl Hal).
       * exact (build_sprod_cons (dom_cast (sigma_cons t0 l0) Hd) (IHl Hal)).
 Defined.
@@ -1061,9 +1064,25 @@ Proof.
   apply (adts_nodups gamma_valid m_in).
 Qed.
 
-(*Now we need some intermediate results about casting*)
+(*Now we need some intermediate results about casting (some are not
+  used until later)*)
+(*TODO: move?*)
 Section Cast.
 
+(*Cast any Set*)
+Definition scast {S1 S2: Set} (Heq: S1 = S2) (s: S1) : S2 :=
+  match Heq with
+  | erefl => s
+  end.
+
+Lemma scast_inj: forall {A B: Set} (Heq: A = B) (x1 x2: A),
+  scast Heq x1 = scast Heq x2 ->
+  x1 = x2.
+Proof.
+  intros. destruct Heq. apply H.
+Qed.
+
+(*Cast a list*)
 Definition cast_list {A B: Set} (l: list A) (Heq: A = B) : list B :=
   match Heq with
   | erefl => l
@@ -1075,13 +1094,32 @@ Proof.
   intros. unfold cast_list. destruct Heq. reflexivity.
 Qed.
 
+Lemma cast_nil: forall {A B} (H: A = B),
+  cast_list nil H = nil.
+Proof.
+  intros. unfold cast_list. destruct H. reflexivity.
+Qed. 
+
+Lemma cast_list_cons: forall {A B: Set} (x: A)(l: list A) (Heq: A = B),
+  cast_list (x :: l) Heq = scast Heq x :: cast_list l Heq.
+Proof.
+  intros. subst. reflexivity.
+Qed.
+
+Lemma cast_list_inj: forall {A B: Set} {l1 l2: seq A}(Heq: A = B),
+  cast_list l1 Heq = cast_list l2 Heq ->
+  l1 = l2.
+Proof.
+  intros. destruct Heq. simpl in H. subst; auto.
+Qed.
+
+(*Cast an [arg_list] - here we use a type with decidable equality*)
 Definition cast_arg_list {domain: Types.sort -> Set} {l1 l2}
   (Heq: l1 = l2) (x: arg_list domain l1) : arg_list domain l2 :=
   match Heq with
   | erefl => x
   end.
 
-  (*TODO: maybe remove casts bc we just go back and forth*)
 Lemma cast_arg_list_twice {domain: Types.sort -> Set} {l1 l2}
   (Heq: l1 = l2) (x: arg_list domain l2) :
   cast_arg_list Heq (cast_arg_list (esym Heq) x) = x.
@@ -1089,11 +1127,13 @@ Proof.
   destruct Heq. reflexivity.
 Qed.
 
-(*Cast any Set*)
-Definition scast {S1 S2: Set} (Heq: S1 = S2) (s: S1) : S2 :=
-  match Heq with
-  | erefl => s
-  end.
+Lemma cast_arg_list_inj: forall {domain: Types.sort -> Set} 
+  {l1 l2: list Types.sort} (Heq: l1 = l2) (a1 a2: arg_list domain l1),
+  cast_arg_list Heq a1 = cast_arg_list Heq a2 ->
+  a1 = a2.
+Proof.
+  intros. destruct Heq. apply H.
+Qed.
 
 End Cast.
 
@@ -1246,8 +1286,8 @@ Definition constr_rep_dom (a: arg_list domain (funsym_sigma_args c srts)) :
     (constr_rep a).
 
 (*Now comes the second part: the inverse function (ie: go from a
-  constr_base and a function to an arg_list). This is a bit trickier
-  to define and the inverse proof is annoying*)
+  constr_base and a function to an arg_list). This is a lot trickier
+  to define and the inverse proof is not easy*)
 Section Inv.
 
 (*TODO: see where to add assumption, maybe prop version*)
@@ -1282,20 +1322,7 @@ Definition uniform (m: mut_adt) : bool :=
 
 Variable m_unif: uniform m.
 
-Lemma eqSS' {p n: nat}:
-  p.+1 == n.+1 ->
-  p == n.
-Proof.
-  by rewrite eqSS.
-Qed.
-
-Definition ttl {n: nat} {A: Type} (x: (n.+1).-tuple A) : n.-tuple A.
-destruct x. destruct tval.
-- exact (False_rect _ (not_false i)).
-- exact (Tuple (eqSS' i)).
-Defined.
-
-(*TODO: move*)
+(*Lemmas and definitions we need for the inverse function:*)
 
 Lemma adt_names_inj: forall x y,
   adt_name (fin_nth adts x) = adt_name (fin_nth adts y) ->
@@ -1330,6 +1357,9 @@ Proof.
   destruct l; reflexivity.
 Qed.
 
+(*Dealing with the function in the recursive case is hard. When
+  we have a mutually recursive instance, we need to update the
+  function appropriately. We do that below; this is a lemma we need*)
 Lemma split_arg_func_lemma1 (ts: typesym) l0 l a
 (Hl0: l0 = [seq vty_var i | i <- m_params m])
 (f: forall x, list (mk_adts var_map typesym_map adts x))
@@ -1344,7 +1374,6 @@ Proof.
     assert (l0 = [seq vty_var i | i <- ts_args (adt_name (fin_nth adts (get_idx adt_dec _ _ (In_in_bool _ _ _ Hina))))]).
     {
       subst. 
-      (*ugh lost info about constructor - need to know this*)
       rewrite get_idx_correct. f_equal. symmetry.
       apply (adt_args gamma_valid). split; assumption.
     }
@@ -1363,22 +1392,7 @@ Proof.
     destruct m; simpl. apply /nodup_NoDup. apply m_nodup.
 Qed.
 
-Definition get_ind_arg (ts: typesym) l0 l
-(Hts: ts_in_mut_list ts adts)
-(Hl0: l0 = [seq vty_var i | i <- m_params m])
-(f: forall x, list (mk_adts var_map typesym_map adts x))
-(Hf: forall x: finite (length adts), length (f x) = 
-    count_rec_occ_aux (vty_cons ts l0 :: l) (adt_name (fin_nth adts x)) c):
-(domain (sigma (vty_cons ts l0))).
-Proof.
-  apply ts_in_mut_list_ex in Hts.
-  destruct Hts as [a [Ha Hina]]. rewrite Ha.
-  rewrite sigma_cons (split_arg_func_lemma2 ts l0 Hl0) dom_adts.
-  exact (safehead _ (split_arg_func_lemma1 ts l0 l a Hl0 f Hf Ha Hina)).
-Defined.
-
-Lemma get_ind_arg' (ts: typesym) l0 l a Hina
-(*(Hts: ts_in_mut_list ts adts)*)
+Lemma get_ind_arg (ts: typesym) l0 l a Hina
 (Hta: ts = adt_name a)
 (Hl0: l0 = [seq vty_var i | i <- m_params m])
 (Heq: domain (sigma (vty_cons ts l0)) = adt_rep a Hina)
@@ -1387,12 +1401,11 @@ Lemma get_ind_arg' (ts: typesym) l0 l a Hina
     count_rec_occ_aux (vty_cons ts l0 :: l) (adt_name (fin_nth adts x)) c):
 (domain (sigma (vty_cons ts l0))).
 Proof.
-  (*apply ts_in_mut_list_ex in Hts.
-  destruct Hts as [a [Ha Hina]].*) 
   exact (scast (esym Heq) 
     (safehead _ (split_arg_func_lemma1 ts l0 l a Hl0 f Hf Hta Hina))).
 Defined.
 
+(*The updated function - proof is below*)
 Definition split_arg_func (ts: typesym) l0 l
 (Hts: ts_in_mut_list ts adts)
 (Hl0: l0 = [seq vty_var i | i <- m_params m])
@@ -1411,7 +1424,7 @@ Proof.
     + exact (f x).
 Defined.
 
-(*This proof can be ugly because we can make it opaque*)
+(*This proof is ugly but we make it opaque*)
 Lemma split_arg_func_invar (ts: typesym) l0 l
 (Hts: ts_in_mut_list ts adts)
 (Hl0: l0 = [seq vty_var i | i <- m_params m])
@@ -1450,99 +1463,10 @@ Proof.
     + subst. exfalso. apply n. rewrite get_idx_correct. reflexivity.
     + simpl in Hf. apply Hf.
 Qed. 
-    
-(*
-Definition split_arg_func (ts: typesym) l0 l 
-(Hts: ts_in_mut_list ts adts)
-(Hl0: l0 = [seq vty_var i | i <- m_params m])
-(f: forall x : finite (Datatypes.length adts),
-    (Datatypes.length
-       [seq v <- vty_cons ts l0 :: l
-          | match v with
-            | vty_cons t vs =>
-                typesym_eq_dec t (adt_name (fin_nth adts x)) &&
-                list_eq_dec vty_eq_dec vs
-                  [seq vty_var i | i <- ts_args (adt_name (fin_nth adts x))]
-            | _ => false
-            end]).-tuple (mk_adts var_map typesym_map adts x)) :
-(domain (sigma (vty_cons ts l0))) *
-(forall x : finite (Datatypes.length adts),
-  (Datatypes.length
-      [seq v <- l
-        | match v with
-          | vty_cons t vs =>
-              typesym_eq_dec t (adt_name (fin_nth adts x)) &&
-              list_eq_dec vty_eq_dec vs
-                [seq vty_var i
-                    | i <- ts_args (adt_name (fin_nth adts x))]
-          | _ => false
-          end]).-tuple (mk_adts var_map typesym_map adts x)).
-Proof.
-  simpl in f.
-  unfold adts in Hts.
-  apply ts_in_mut_list_ex in Hts.
-  destruct Hts as [a [Ha Hina]].
-  (*TODO: separate lemma(s)*)
-  assert (Hina1 : in_bool adt_dec a adts). {
-    apply In_in_bool. apply Hina.
-  }
-  assert (ts = adt_name (fin_nth adts (get_idx _ _ _ Hina1))). {
-    subst. f_equal. rewrite get_idx_correct. reflexivity.
-  }
-  assert (typesym_eq_dec ts (adt_name (fin_nth adts (get_idx _ _ _ Hina1)))).
-  {
-    simpl_sumbool.
-  }
-  assert (l0 = [seq vty_var i | i <- ts_args (adt_name (fin_nth adts (get_idx _ _ _ Hina1)))]).
-  {
-    subst. 
-    (*ugh lost info about constructor - need to know this*)
-    rewrite get_idx_correct. f_equal. symmetry.
-    apply (adt_args gamma_valid). split; assumption.
-  }
-  assert (
-    list_eq_dec vty_eq_dec l0
-           [seq vty_var i | i <- ts_args (adt_name (fin_nth adts (get_idx _ _ _ Hina1)))]
-  ).
-  {
-    rewrite <- H1. destruct (list_eq_dec vty_eq_dec l0 l0); auto; contradiction. 
-  }
-  split.
-  - specialize (f (get_idx _ _ _ Hina1)).
-    rewrite H0 H2 in f. simpl in f.
-    rewrite sigma_cons. rewrite Ha.
-    (*TODO: separate*)
-    assert ([seq sigma i | i <- l0] = srts). {
-      unfold sigma. subst. rewrite -map_comp. unfold "\o".
-      apply subst_same. rewrite srts_len; auto.
-      clear -m. (*TODO: separate lemma*)
-      destruct m; simpl. apply /nodup_NoDup. apply m_nodup.
-    }
-    rewrite H3. rewrite dom_adts. unfold adt_rep.
-    assert ((In_in_bool adt_dec a (typs m) Hina) = Hina1) by apply bool_irrelevance.
-    rewrite H4. exact (thead f).
-  - intros x.
-    specialize (f x).
-    (*2 cases; x = idx of a and not*)
-    destruct (finite_eq_dec _ x (get_idx _ _ _ Hina1)).
-    + rewrite e H0 H2 in f. simpl in f.
-      rewrite e.
-      exact (ttl f).
-    + (*separate lemma*)
-      assert (ts <> adt_name (fin_nth adts x)). {
-        intro C. subst.
-        rewrite C in H.
-        apply adt_names_inj in H.
-        contradiction.
-      }
-      destruct (typesym_eq_dec ts (adt_name (fin_nth adts x))); try contradiction.
-      simpl in f.
-      exact f.
-Defined.*)
 
+(*If the typesym is not a recursive instance, we have the following:*)
 Lemma args_func_false_case1: forall (x: finite (Datatypes.length adts)) ts,
-ts_in_mut_list ts adts = false -> (*
-ts <> (adt_name (fin_nth adts x)). *) 
+ts_in_mut_list ts adts = false -> 
 proj_sumbool _ _ (typesym_eq_dec ts (adt_name (fin_nth adts x))) = false.
 Proof.
   intros.
@@ -1554,342 +1478,14 @@ Proof.
   rewrite H0 in H; inversion H.
 Qed.
 
-Definition args_func_false
-(ts: typesym) l0 l 
-(Hts: ts_in_mut_list ts adts = false)
-(*(Hl0: l0 = [seq vty_var i | i <- m_params m])*)
-(f: forall x : finite (Datatypes.length adts),
-    (Datatypes.length
-       [seq v <- vty_cons ts l0 :: l
-          | match v with
-            | vty_cons t vs =>
-                typesym_eq_dec t (adt_name (fin_nth adts x)) &&
-                list_eq_dec vty_eq_dec vs
-                  [seq vty_var i | i <- ts_args (adt_name (fin_nth adts x))]
-            | _ => false
-            end]).-tuple (mk_adts var_map typesym_map adts x)) :
-(forall x : finite (Datatypes.length adts),
-(Datatypes.length
-    [seq v <- l
-      | match v with
-        | vty_cons t vs =>
-            typesym_eq_dec t (adt_name (fin_nth adts x)) &&
-            list_eq_dec vty_eq_dec vs
-              [seq vty_var i
-                  | i <- ts_args (adt_name (fin_nth adts x))]
-        | _ => false
-        end]).-tuple (mk_adts var_map typesym_map adts x)).
-Proof.
-  intros x.
-  simpl in f. specialize (f x).
-  rewrite (args_func_false_case1 x ts Hts) in f.
-  exact f.
-Defined.
-
-
-(*
-(*TODO: we need uniformity assumption - in s_args, if we have 
-  vty_cons ts ls and if ts *)
-  Definition constr_ind_to_args 
-  (b: build_constr_base var_map typesym_map adts c)
-  (i: forall x : finite (Datatypes.length adts),
-    (count_rec_occ (adt_name (fin_nth adts x)) c).-tuple
-    (mk_adts var_map typesym_map adts x)) :
-  { a: arg_list domain sigma_args |
-  args_to_constr_base a = b /\
-  args_to_ind_base a = i (*/\
-  forall a', args_to_constr_base a' = b ->
-    args_to_ind_base a' = i ->
-    a = a'*)}.
-Proof.
-  unfold count_rec_occ in i.
-  unfold rec_occ_fun in i.
-  unfold build_constr_base in b.
-  unfold sigma_args.
-  assert (Hunif: uniform_list m (s_args c)). {
-    unfold uniform in m_unif.
-    assert (Hu:=m_unif). unfold is_true in Hu.
-    rewrite forallb_forall in Hu.
-    specialize (Hu t t_in).
-    rewrite forallb_forall in Hu.
-    assert (Hinc: In c (ne_list_to_list (adt_constrs t))). {
-      apply /in_bool_spec. rewrite <- in_bool_ne_equiv.
-      apply c_in.
-    }
-    exact (Hu c Hinc).
-  }
-  unfold args_to_constr_base.
-  unfold args_to_ind_base.
-  induction (s_args c).
-  - exact (@HL_nil _ domain).
-  - simpl.
-    unfold build_vty_base in *.
-    simpl in b.
-    (*ugh will be annoying*)
-    destruct a; simpl in b.
-    + simpl in i.
-      destruct ([seq match v with
-        | vty_int => Z
-        | vty_real => R
-        | vty_var x => var_map x
-        | vty_cons ts vs => typesym_map ts vs
-        end
-      | v <- get_nonind_vtys adts l]).
-      * apply HL_cons. rewrite sigma_int. rewrite dom_int.
-        exact b. exact (IHl tt i (uniform_list_cons Hunif)).
-      * apply HL_cons. rewrite sigma_int. rewrite dom_int.
-        exact (b.1). exact (IHl b.2 i (uniform_list_cons Hunif)).
-    + simpl in i.
-    destruct ([seq match v with
-      | vty_int => Z
-      | vty_real => R
-      | vty_var x => var_map x
-      | vty_cons ts vs => typesym_map ts vs
-      end
-    | v <- get_nonind_vtys adts l]).
-    * apply HL_cons. rewrite sigma_real. rewrite dom_real.
-      exact b. exact (IHl tt i (uniform_list_cons Hunif)).
-    * apply HL_cons. rewrite sigma_real. rewrite dom_real.
-      exact (b.1). exact (IHl b.2 i (uniform_list_cons Hunif)).
-    + simpl in i.
-    destruct ([seq match v with
-      | vty_int => Z
-      | vty_real => R
-      | vty_var x => var_map x
-      | vty_cons ts vs => typesym_map ts vs
-      end
-    | v <- get_nonind_vtys adts l]).
-    * apply HL_cons. exact b. exact (IHl tt i (uniform_list_cons Hunif)).
-    * apply HL_cons. exact b.1. exact (IHl b.2 i (uniform_list_cons Hunif)).
-    + destruct (ts_in_mut_list t0 adts) eqn : Hcon.
-      * simpl in b. simpl in i.
-        unfold adts in Hcon.
-        (*TODO: separate lemma*)
-        assert (l0 = map vty_var (m_params m)). {
-          unfold uniform_list in Hunif. unfold is_true in Hunif.
-          rewrite forallb_forall in Hunif.
-          specialize (Hunif (vty_cons t0 l0) (or_introl _ erefl)).
-          simpl in Hunif. move: Hunif => /implyP Hunif.
-          specialize (Hunif Hcon).
-          simpl_sumbool.
-        }
-        apply HL_cons.
-        exact (fst (split_arg_func _ _ _ Hcon H i)).
-        exact (IHl b (snd (split_arg_func _ _ _ Hcon H i)) (uniform_list_cons Hunif)).
-      * simpl in b. 
-      destruct ([seq match v with
-      | vty_int => Z
-      | vty_real => R
-      | vty_var x => var_map x
-      | vty_cons ts vs => typesym_map ts vs
-      end
-    | v <- get_nonind_vtys adts l]).
-    -- apply HL_cons. 
-        rewrite sigma_cons. simpl in i.
-        (*ugh, need function for this because we know that
-          adt_name can't be t0 for any x - have another separate one*)
-        
-        exact b.
-        exact (IHl tt (args_func_false t0 l0 l Hcon i) (uniform_list_cons Hunif)).
-    -- apply HL_cons.
-    rewrite sigma_cons. exact (b.1).
-    exact (IHl b.2 (args_func_false t0 l0 l Hcon i) (uniform_list_cons Hunif)).
-Defined.
-*)
-
-
-(*real one*)
-(*
-Definition constr_ind_to_args_aux (l: list vty) (Hl: uniform_list m l)
-  (b: build_vty_base var_map typesym_map adts l)
-  (i: forall x : finite (Datatypes.length adts),
-    (count_rec_occ_aux l (adt_name (fin_nth adts x)) c).-tuple
-    (mk_adts var_map typesym_map adts x)) :
-  arg_list domain (sigma_aux l).
-Proof.
-  (*
-  unfold count_rec_occ in i.
-  unfold rec_occ_fun in i.
-  unfold build_constr_base in b.
-  unfold sigma_args.
-  assert (Hunif: uniform_list m (s_args c)). {
-    unfold uniform in m_unif.
-    assert (Hu:=m_unif). unfold is_true in Hu.
-    rewrite forallb_forall in Hu.
-    specialize (Hu t t_in).
-    rewrite forallb_forall in Hu.
-    assert (Hinc: In c (ne_list_to_list (adt_constrs t))). {
-      apply /in_bool_spec. rewrite <- in_bool_ne_equiv.
-      apply c_in.
-    }
-    exact (Hu c Hinc).
-  }
-  induction (s_args c).*)
-  induction l.
-  - exact (@HL_nil _ domain).
-  - simpl.
-    unfold build_vty_base in *.
-    simpl in b.
-    (*ugh will be annoying*)
-    destruct a; simpl in b.
-    + simpl in i.
-      destruct ([seq vty_to_set var_map typesym_map i | i <- get_nonind_vtys adts l]).
-      * apply HL_cons. exact (dom_cast sigma_int b). (*rewrite sigma_int.
-        exact b. *) exact (IHl (uniform_list_cons Hl) tt i).
-      * apply HL_cons. exact (dom_cast sigma_int b.1). (* rewrite sigma_int.
-        exact (b.1). *) exact (IHl (uniform_list_cons Hl) b.2 i).
-    + simpl in i.
-    destruct ([seq vty_to_set var_map typesym_map i | i <- get_nonind_vtys adts l]).
-    * apply HL_cons. rewrite sigma_real.
-      exact b. exact (IHl (uniform_list_cons Hl) tt i).
-    * apply HL_cons. rewrite sigma_real.
-      exact (b.1). exact (IHl (uniform_list_cons Hl) b.2 i).
-    + simpl in i.
-    destruct ([seq vty_to_set var_map typesym_map i | i <- get_nonind_vtys adts l]).
-    * apply HL_cons. exact b. exact (IHl (uniform_list_cons Hl) tt i).
-    * apply HL_cons. exact b.1. exact (IHl (uniform_list_cons Hl) b.2 i).
-    + destruct (ts_in_mut_list t0 adts) eqn : Hcon.
-      * simpl in b. simpl in i.
-        unfold adts in Hcon.
-        (*TODO: separate lemma*)
-        assert (l0 = map vty_var (m_params m)). {
-          unfold uniform_list in Hl. unfold is_true in Hl.
-          rewrite forallb_forall in Hl.
-          specialize (Hl (vty_cons t0 l0) (or_introl _ erefl)).
-          simpl in Hl. move: Hl => /implyP Hl.
-          specialize (Hl Hcon).
-          simpl_sumbool.
-        }
-        apply HL_cons.
-        exact (fst (split_arg_func _ _ _ Hcon H i)).
-        exact (IHl (uniform_list_cons Hl) b (snd (split_arg_func _ _ _ Hcon H i)) ).
-      * simpl in b. 
-      destruct ([seq vty_to_set var_map typesym_map i | i <- get_nonind_vtys adts l]).
-    -- apply HL_cons. 
-        rewrite sigma_cons. simpl in i.
-        (*ugh, need function for this because we know that
-          adt_name can't be t0 for any x - have another separate one*)
-        
-        exact b.
-        exact (IHl (uniform_list_cons Hl) tt (args_func_false t0 l0 l Hcon i) ).
-    -- apply HL_cons.
-    rewrite sigma_cons. exact (b.1).
-    exact (IHl (uniform_list_cons Hl) b.2 (args_func_false t0 l0 l Hcon i) ).
-Defined.
-
-
-Definition constr_ind_to_args
-  (b: build_constr_base var_map typesym_map adts c)
-  (i: forall x : finite (Datatypes.length adts),
-    (count_rec_occ (adt_name (fin_nth adts x)) c).-tuple
-    (mk_adts var_map typesym_map adts x)) :
-  arg_list domain (sigma_args).
-apply constr_ind_to_args_aux with (l:=s_args c).
-2: exact b. 2: exact i.
-(*TODO: separate lemma*)
-unfold uniform in m_unif.
-assert (Hu:=m_unif). unfold is_true in Hu.
-rewrite forallb_forall in Hu.
-specialize (Hu t t_in).
-rewrite forallb_forall in Hu.
-assert (Hinc: In c (ne_list_to_list (adt_constrs t))). {
-  apply /in_bool_spec. rewrite <- in_bool_ne_equiv.
-  apply c_in.
-}
-exact (Hu c Hinc).
-Defined.*)
-
-Lemma cast_nil: forall {A B} (H: A = B),
-  cast_list nil H = nil.
-Proof.
-  intros. unfold cast_list. destruct H. reflexivity.
-Qed. 
-
-Lemma null_nil: forall {A: Type} (l: list A),
-  null l = true <-> l = nil.
-Proof.
-  intros. destruct l; split; intro C; auto; inversion C.
-Qed.
-(*
-Check scast.
-Lemma scast_dec: forall {S1 S2: Set} (Heq: S1 = S2)
-  (x: S1),
-  (forall x y: )
-*)
-
-
-(*TODO: fix sections*)
-(*SO: idea is that for this (and maybe others), only need first
-  side of inverse - second side will be harder I think*)
-  (*
-  End Inv.
-  End Build.
-Definition find_constr_rep: forall (s: sig) (gamma: context)
-  (gamma_valid: valid_context s gamma) (m: mut_adt) 
-  (srts: list Types.sort) (dom: Types.sort -> Set) (t: alg_datatype)
-  (m_in: mut_in_ctx m gamma)
-  (t_in: adt_in_mut t m) 
-  (srts_len: length srts = length (m_params m))
-  (dom_adts: forall (a: alg_datatype) (Hin: adt_in_mut a m),
-    dom (typesym_to_sort (adt_name a) srts) =
-    adt_rep m srts dom a Hin)
-  (m_unif: uniform m)
-  
-  (x: adt_rep m srts dom t t_in),
-  {f: funsym & {Hf: constr_in_adt f t * arg_list (domain dom) (funsym_sigma_args f srts) |
-    x = constr_rep gamma_valid m m_in srts srts_len dom t f (fst Hf) t_in 
-    dom_adts
-    (snd Hf)}}.
-Proof.
-  intros. 
-  assert (Hcons: (forall constrs : ne_list funsym,
-  In constrs [seq adt_constrs i | i <- typs m] ->
-  nodupb funsym_eq_dec (ne_list_to_list constrs))) by admit.
-  
-  
-  pose proof 
-    (find_constr (var_map m srts dom) (typesym_map m srts dom) (typs m)
-    (get_idx adt_dec t (typs m) (In_in_bool adt_dec t (typs m) t_in)) Hcons).
-  unfold adt_rep in x.
-  specialize (X x).
-  destruct X as [f Hf].
-  destruct Hf as [[[Hinf base] inds] Hx]. subst.
-  apply (existT _ f).
-  assert (f_in: constr_in_adt f t). {
-    rewrite get_idx_correct in Hinf. apply Hinf. 
-  }
-  (*TODO: change return type of constr_ind_to_args to funsym_sigma_args*)
-  (*rewrite sigma_args_eq.
-  Print funsym_sigma_args.
-  Search funsym_sigma_args.
-  *)
-  Search funsym_sigma_args sigma_args.
-  set (args:=(constr_ind_to_args gamma_valid m m_in srts srts_len dom t f f_in t_in dom_adts m_unif base inds)).
-
-  apply (exist _ (f_in, 
-    (cast_arg_list (esym (sigma_args_eq gamma_valid m m_in srts t f f_in t_in)) args))).
-  simpl. unfold constr_rep.
-  f_equal.
-  - apply bool_irrelevance.
-  - rewrite cast_arg_list_twice. subst args.
-    (*NOTE: only first*)*)
-  
-  
-
-(*TODO: specialize with s_args c*)
-(*
-Definition constr_ind_to_args
-  (b: build_vty_base var_map typesym_map adts l)
-  (i: forall x : finite (Datatypes.length adts),
-    (count_rec_occ_aux l (adt_name (fin_nth adts x)) c).-tuple
-    (mk_adts var_map typesym_map adts x)) :
-  arg_list domain (sigma_aux l).*)
 Definition is_nonind (v: vty) :=
   match v with
   | vty_cons t0 _ => negb (ts_in_mut_list t0 adts)
   | _ => true
   end.
 
+(*Break apart a [big_sprod] without explicitly destructing, which
+  causes dependent type issues*)
 Definition get_sprod_parts {a l} (Ha: is_nonind a)
   (x: big_sprod
   [seq vty_to_set var_map typesym_map i
@@ -1909,6 +1505,16 @@ Proof.
     exact (dom_cast (esym (sigma_cons _ _)) x, tt).
     exact (dom_cast (esym (sigma_cons _ _)) x.1, x.2).
 Defined. 
+
+(*While the W type uses a function from (finite n) to tuples
+  of length (count_rec_occ (fin_nth x) c) and of type 
+  (mk_adts (fin_nth x)), using this directly makes the proofs
+  horrible due to all of the dependent types. Instead, we operate
+  on functions giving lists, and we have a separate lemma that
+  says that all of the lists have the right length. Then, we can
+  prove a lemma separately from giving the function definition, and
+  we don't need to mix proofs in with the function definition.
+  We provide this transformation here:*)
 
 (*Convert between function to list with proof of lengths and tuple*)
 Definition f_to_tuple_f {n} {B: finite n -> Type} 
@@ -1944,6 +1550,20 @@ Proof.
   move: i => /eqP Hi. by rewrite -Hi.
 Qed.
 
+Lemma tuple_f_to_f_inj: forall {n} {B: finite n -> Type}
+{lens: finite n -> nat}
+(f1 f2: forall x: finite n, (lens x).-tuple (B x)),
+tuple_f_to_f f1 = tuple_f_to_f f2 ->
+f1 = f2.
+Proof.
+  intros n B lens f1 f2. unfold tuple_f_to_f.
+  intros.
+  apply functional_extensionality_dep. intros.
+  apply val_inj. simpl. apply (fun_args_eq_dep _ _ x) in H.
+  apply H.
+Qed.
+
+(*We don't actually use this lemma - all we use is [tuple_f_to_f_inj]*)
 Lemma f_to_tuple_f_inv {n} {B: finite n -> Type} 
 {lens: finite n -> nat}
 (f: forall x: finite n, list (B x))
@@ -1957,21 +1577,9 @@ Proof.
   rewrite Hf. apply eq_leq. reflexivity.
 Qed.
 
+(*The last lemma: to simplify a particular sequence of casts in
+  the proof, we need to assume UIP*)
 Axiom UIP: forall {A: Type}, EqdepFacts.UIP_ A.
-
-Lemma cast_rev: forall {A B: Type} (Heq1: A = B) (Heq2: B = A) x,
-  cast Heq1 (cast Heq2 x) = x.
-Proof.
-  intros. subst. simpl.
-  assert (Heq2 = erefl) by (apply UIP).
-  rewrite H. reflexivity.
-Qed.
-
-Lemma cast_list_cons: forall {A B: Set} (x: A)(l: list A) (Heq: A = B),
-  cast_list (x :: l) Heq = scast Heq x :: cast_list l Heq.
-Proof.
-  intros. subst. reflexivity.
-Qed.
 
 Lemma scast_cast_scast: forall {v1 v2: Types.sort} {A1: Set} 
 (H1: domain v1 = A1) (H2: v2 = v1) (H3: A1 = domain v2) y, 
@@ -1983,41 +1591,41 @@ Proof.
   simpl. assert (H3 = erefl) by (apply UIP). subst. reflexivity.
 Qed. 
 
-  Definition constr_ind_to_args_aux' (l: list vty) (Hl: uniform_list m l)
+(*Several of the cases are identical.*)
+Ltac solve_cast_list_eq l :=
+  unfold args_to_ind_base_aux;
+  apply functional_extensionality_dep; intros x;
+    f_equal;
+  apply list_eq_ext';
+  rewrite !hlist_to_list_length 
+    !hlength_eq !map_length //;
+  intros n d Hn;
+  assert (Hn': (n < length (map sigma (filter (rec_occ_fun (adt_name (fin_nth adts x)))l)))%coq_nat) by 
+    (rewrite map_length; apply Hn);
+  assert (Hsint: domain s_int) by (unfold domain; simpl; apply 0%Z);
+  erewrite -> !hlist_to_list_nth_dec' with(Hi:=Hn') (d1:=s_int) (d2:=Hsint);
+  try apply sort_eq_dec;
+  apply cast_eq; [apply sort_eq_dec | apply d].
+
+(*The general inverse function. It uses a generic list l to allow
+  for general enough induction. It gives a (horrible) function which
+  is the inverse of [args_to_constr_base_aux] and [args_to_ind_base_aux],
+  but that is OK, we never use the definition of this function; we only
+  need to know that it exists and it is truly an inverse. This turns out
+  to be much easier than defining a (only slightly less horrible)
+  separate function then proving inverse properties later.*)
+Definition constr_ind_to_args_aux (l: list vty) (Hl: uniform_list m l)
   (b: build_vty_base var_map typesym_map adts l)
   (i: forall x: finite (length adts), list (mk_adts var_map typesym_map adts x))
   (Hi: forall x: finite (length adts), length (i x) = 
-    count_rec_occ_aux l (adt_name (fin_nth adts x)) c)
-  (*(i: forall x : finite (Datatypes.length adts),
-    (count_rec_occ_aux l (adt_name (fin_nth adts x)) c).-tuple
-    (mk_adts var_map typesym_map adts x))*) :
+    count_rec_occ_aux l (adt_name (fin_nth adts x)) c) :
   {a: arg_list domain (sigma_aux l) |
   args_to_constr_base_aux l a = b /\
-  (tuple_f_to_f (args_to_ind_base_aux l a)) = i (*/\
-  forall a', args_to_constr_base_aux l a' = b ->
-  args_to_ind_base_aux l a' = i -> a = a'*)}.
+  (tuple_f_to_f (args_to_ind_base_aux l a)) = i}.
 Proof.
   unfold count_rec_occ_aux in i.
   unfold rec_occ_fun in i.
   unfold tuple_f_to_f.
-  (*
-  unfold count_rec_occ in i.
-  unfold rec_occ_fun in i.
-  unfold build_constr_base in b.
-  unfold sigma_args.
-  assert (Hunif: uniform_list m (s_args c)). {
-    unfold uniform in m_unif.
-    assert (Hu:=m_unif). unfold is_true in Hu.
-    rewrite forallb_forall in Hu.
-    specialize (Hu t t_in).
-    rewrite forallb_forall in Hu.
-    assert (Hinc: In c (ne_list_to_list (adt_constrs t))). {
-      apply /in_bool_spec. rewrite <- in_bool_ne_equiv.
-      apply c_in.
-    }
-    exact (Hu c Hinc).
-  }
-  induction (s_args c).*)
   generalize dependent i.
   induction l; intros.
   - simpl. apply (exist _ (@HL_nil _ domain)).
@@ -2043,415 +1651,471 @@ Proof.
         -- reflexivity.
         -- destruct b; reflexivity.
       * rewrite <- Hat2. subst x. simpl in *. clear.
-      destruct ([seq vty_to_set var_map typesym_map i | i <- get_nonind_vtys adts l]).
-        -- simpl.
-          unfold args_to_ind_base_aux. apply functional_extensionality_dep.
-          intros. f_equal.
-          apply list_eq_ext';
-          rewrite !hlist_to_list_length 
-            !hlength_eq !map_length //.
-          intros n d Hn.
-          assert (Hn': (n < length (map sigma (filter (rec_occ_fun (adt_name (fin_nth adts x)))l)))%coq_nat). {
-            rewrite map_length. apply Hn.
-          }
-          assert (domain s_int). {
-            unfold domain. simpl. apply 0%Z.
-          }
-          erewrite -> !hlist_to_list_nth_dec' with(Hi:=Hn') (d1:=s_int) (d2:=H);
-          try apply sort_eq_dec.
-          apply cast_eq. apply sort_eq_dec.
-          apply d.
-        -- (*exact same proof*) unfold args_to_ind_base_aux.
-          apply functional_extensionality_dep; intros.
-           f_equal.
-          apply list_eq_ext';
-          rewrite !hlist_to_list_length 
-            !hlength_eq !map_length //.
-          intros n d Hn.
-          assert (Hn': (n < length (map sigma (filter (rec_occ_fun (adt_name (fin_nth adts x)))l)))%coq_nat). {
-            rewrite map_length. apply Hn.
-          }
-          assert (domain s_int). {
-            unfold domain. simpl. apply 0%Z.
-          }
-          erewrite -> !hlist_to_list_nth_dec' with(Hi:=Hn') (d1:=s_int) (d2:=H);
-          try apply sort_eq_dec.
-          apply cast_eq. apply sort_eq_dec.
-          apply d.
-    + simpl in i.
-    set (x:=(@get_sprod_parts vty_real _ erefl b)).
-    specialize (IHl (uniform_list_cons Hl) x.2 i Hi).
-    destruct IHl as [atl [Hat1 Hat2]].
-    apply (exist _ (HL_cons _ (sigma vty_real) _ x.1  atl)).
-    simpl.
-    split.
-    * rewrite Hat1. clear Hat1. unfold build_sprod_cons.  simpl.
-      subst x. simpl in *.
-      destruct ([seq vty_to_set var_map typesym_map i | i <- get_nonind_vtys adts l]).
-      -- reflexivity.
-      -- destruct b; reflexivity.
-    * rewrite <- Hat2. subst x. simpl in *. clear.
-    destruct ([seq vty_to_set var_map typesym_map i | i <- get_nonind_vtys adts l]).
-      -- simpl.
-        unfold args_to_ind_base_aux. apply functional_extensionality_dep.
-        intros. f_equal.
-        apply list_eq_ext';
-        rewrite !hlist_to_list_length 
-          !hlength_eq !map_length //.
-        intros n d Hn.
-        assert (Hn': (n < length (map sigma (filter (rec_occ_fun (adt_name (fin_nth adts x)))l)))%coq_nat). {
-          rewrite map_length. apply Hn.
-        }
-        assert (domain s_int). {
-          unfold domain. simpl. apply 0%Z.
-        }
-        erewrite -> !hlist_to_list_nth_dec' with(Hi:=Hn') (d1:=s_int) (d2:=H);
-        try apply sort_eq_dec.
-        apply cast_eq. apply sort_eq_dec.
-        apply d.
-      -- (*exact same proof*) unfold args_to_ind_base_aux.
-        apply functional_extensionality_dep; intros.
-        f_equal.
-        apply list_eq_ext';
-        rewrite !hlist_to_list_length 
-          !hlength_eq !map_length //.
-        intros n d Hn.
-        assert (Hn': (n < length (map sigma (filter (rec_occ_fun (adt_name (fin_nth adts x)))l)))%coq_nat). {
-          rewrite map_length. apply Hn.
-        }
-        assert (domain s_int). {
-          unfold domain. simpl. apply 0%Z.
-        }
-        erewrite -> !hlist_to_list_nth_dec' with(Hi:=Hn') (d1:=s_int) (d2:=H);
-        try apply sort_eq_dec.
-        apply cast_eq. apply sort_eq_dec.
-        apply d.
-    + simpl in i.
-    set (x:=(@get_sprod_parts (vty_var t0) _ erefl b)).
-    specialize (IHl (uniform_list_cons Hl) x.2 i Hi).
-    destruct IHl as [atl [Hat1 Hat2]].
-    apply (exist _ (HL_cons _ (sigma (vty_var t0)) _ x.1  atl)).
-    simpl.
-    split.
-    * rewrite Hat1. clear Hat1. unfold build_sprod_cons.  simpl.
-      subst x. simpl in *.
-      destruct ([seq vty_to_set var_map typesym_map i | i <- get_nonind_vtys adts l]).
-      -- reflexivity.
-      -- destruct b; reflexivity.
-    * rewrite <- Hat2. subst x. simpl in *. clear.
-    destruct ([seq vty_to_set var_map typesym_map i | i <- get_nonind_vtys adts l]).
-      -- simpl.
-        unfold args_to_ind_base_aux. apply functional_extensionality_dep.
-        intros.  f_equal.
-        apply list_eq_ext';
-        rewrite !hlist_to_list_length 
-          !hlength_eq !map_length //.
-        intros n d Hn.
-        assert (Hn': (n < length (map sigma (filter (rec_occ_fun (adt_name (fin_nth adts x)))l)))%coq_nat). {
-          rewrite map_length. apply Hn.
-        }
-        assert (domain s_int). {
-          unfold domain. simpl. apply 0%Z.
-        }
-        erewrite -> !hlist_to_list_nth_dec' with(Hi:=Hn') (d1:=s_int) (d2:=H);
-        try apply sort_eq_dec.
-        apply cast_eq. apply sort_eq_dec.
-        apply d.
-      -- (*exact same proof*) unfold args_to_ind_base_aux.
-        apply functional_extensionality_dep; intros.
-        f_equal.
-        apply list_eq_ext';
-        rewrite !hlist_to_list_length 
-          !hlength_eq !map_length //.
-        intros n d Hn.
-        assert (Hn': (n < length (map sigma (filter (rec_occ_fun (adt_name (fin_nth adts x)))l)))%coq_nat). {
-          rewrite map_length. apply Hn.
-        }
-        assert (domain s_int). {
-          unfold domain. simpl. apply 0%Z.
-        }
-        erewrite -> !hlist_to_list_nth_dec' with(Hi:=Hn') (d1:=s_int) (d2:=H);
-        try apply sort_eq_dec.
-        apply cast_eq. apply sort_eq_dec.
-        apply d.
-    + simpl in *. (*the hard case*)
-    destruct (ts_in_mut_list t0 adts) eqn : Hind.
-    * (*case with mutual type*)
-      simpl in b.
-      assert (Hl0: l0 = map vty_var (m_params m)). {
-        unfold uniform_list in Hl. rewrite Hind in Hl. simpl in Hl.
-        move: Hl => /andP [Hl _]. simpl_sumbool.
-      }
-      assert (Hl': uniform_list m (vty_cons t0 l0 :: l)). {
-        simpl. auto.
-      }
-      specialize (IHl (uniform_list_cons Hl') b ((split_arg_func t0 l0 l Hind Hl0 i Hi))
-        (split_arg_func_invar t0 l0 l Hind Hl0 i Hi)).
-      destruct IHl as [atl [Hat1 Hat2]].
-      (*generalize dependent ((filter_args_same (vty_cons t0 l0 :: l))).
-      simpl. intros Hf.
-      unshelve epose (Hp:=_: forall x,
-      t0 = adt_name (fin_nth adts x) ->
-      l0 = map vty_var (ts_args (adt_name (fin_nth adts x))) ->
-      sigma
-      (vty_cons (adt_name (fin_nth adts x))
-         [seq vty_var i | i <- m_params m]) =
-    typesym_to_sort (adt_name (fin_nth adts x)) srts). {
-      intros x Ht Hll. specialize (Hf x).
-      destruct (typesym_eq_dec t0 (adt_name (fin_nth adts x))); [|contradiction].
-      destruct (list_eq_dec vty_eq_dec l0
-      [seq vty_var i | i <- ts_args (adt_name (fin_nth adts x))]); [|contradiction].
-      simpl in Hf. rewrite e in Hf.
-      rewrite e0 in Hf. 
-      (*assert (l0 = srts).*)
-      exact (Forall_inv Hf).
-
-    }*)
-      destruct (ts_in_mut_list_ex t0 m Hind). destruct a.
-      assert (domain (sigma (vty_cons t0 l0)) = adt_rep x H0). {
-        rewrite sigma_cons. rewrite split_arg_func_lemma2.
-        rewrite H. apply dom_adts. exact t0. exact Hl0.
-      }
-      apply (exist _ (HL_cons domain (sigma (vty_cons t0 l0)) _ 
-        (get_ind_arg' t0 l0 l x H0 H Hl0 H1 i Hi) atl)).
-      simpl in *. 
-      split.
-      -- assumption.
-      -- apply functional_extensionality_dep. intros x'.
-         clear -Hat2.
-         unfold split_arg_func in *. destruct (ts_in_mut_list_ex). destruct a.
-         simpl in *.
-        generalize dependent (filter_args_same (vty_cons t0 l0 :: l) x').
-        simpl.
-        destruct (typesym_eq_dec t0 (adt_name (fin_nth adts x'))).
-        ++ assert (x0 = fin_nth adts x'). {
-          subst. assert (x0 = fin_nth adts (get_idx adt_dec x0 adts (In_in_bool _ _ _ a))). {
-            rewrite get_idx_correct. reflexivity.
-          }
-          rewrite H2 in e0.
-          apply adt_names_inj in e0. subst. rewrite get_idx_correct.
-          reflexivity.
-        } 
-        destruct (list_eq_dec vty_eq_dec l0
-        [seq vty_var i | i <- ts_args (adt_name (fin_nth adts x'))]); try contradiction.
-          2 : {
-            exfalso. apply n. subst. f_equal. symmetry. apply (adt_args gamma_valid).
-            split; auto.
-          }
-          simpl. unfold get_ind_arg'. intros Hf.
-          rewrite cast_list_cons.
-          assert (x' = (get_idx adt_dec x (typs m) (In_in_bool adt_dec x (typs m) H0))). {
-
-            subst. unfold adt_in_mut in H0.  Search In in_bool.
-            assert (x = fin_nth adts (get_idx adt_dec x adts (In_in_bool _ _ _ H0))).
-              rewrite get_idx_correct. reflexivity.
-            rewrite H2 in H. Search adt_name "inj". apply adt_names_inj in H.
-            subst. reflexivity.
-          }
-          subst x'. simpl. subst. simpl.
-          rewrite scast_cast_scast.
-          set (x':=(get_idx adt_dec x (typs m) (In_in_bool adt_dec x (typs m) H0))).
-          apply (fun_args_eq_dep _ _ x') in Hat2.
-          simpl in Hat2. clear -Hat2. 
-          destruct (finite_eq_dec (Datatypes.length adts) x'
-          (get_idx adt_dec
-             (fin_nth adts
-                (get_idx adt_dec x (typs m)
-                   (In_in_bool adt_dec x (typs m) H0))) 
-             (typs m)
-             (In_in_bool adt_dec
-                (fin_nth adts
-                   (get_idx adt_dec x (typs m)
-                      (In_in_bool adt_dec x (typs m) H0))) 
-                (typs m) a))); try contradiction.
-          {
-            rewrite -> hlist_to_list_irrel with (Ha2:=(filter_args_same l x')) by apply sort_eq_dec.
-            rewrite Hat2.
-            apply safehead_tl.
-          }
-          {
-            (*contradiction case*)
-            exfalso. apply n. rewrite get_idx_fin.
-            subst x'; reflexivity.
-            apply (adts_nodups gamma_valid); auto.
-          }
-      ++ (*case where we are NOT seeing t0*) simpl.
-        intros Hf.
-        apply (fun_args_eq_dep _ _ x') in Hat2.
-        simpl in Hat2.
-        rewrite -> hlist_to_list_irrel with (Ha2:=(filter_args_same l x'))
-          by apply sort_eq_dec.
-        rewrite Hat2. destruct (finite_eq_dec (Datatypes.length adts) x'
-        (get_idx adt_dec x0 (typs m) (In_in_bool adt_dec x0 (typs m) a))).
-        {
-          (*another contradiction*)
-          exfalso. apply n. subst. rewrite get_idx_correct. reflexivity.
-        }
-        {
-          reflexivity.
-        }
-      *
-    (*simpl in *.*) 
-      (*assert (Hind': is_nonind (vty_cons t0 l0)). { simpl. rewrite Hind. auto. }*)
-      
-    (*set (x:=(@get_sprod_parts (vty_cons t0 l0) _ Hind' b)).
-    assert (Hind': ts_in_mut_list t0 adts = false). {
-      simpl in Hind. apply negb_true_iff. assumption. 
-    }*)
-    assert (Hi': forall x, length (i x) = count_rec_occ_aux l (adt_name (fin_nth adts x)) c). {
-      intros. specialize (Hi x). rewrite Hi. unfold count_rec_occ_aux; simpl.
-      rewrite -> args_func_false_case1 by auto. reflexivity. 
-    }
-    assert (Hl': uniform_list m (vty_cons t0 l0 :: l)). {
-      simpl. auto.
-    } simpl in b.
-    (*use the function for the false case*)
-    unshelve epose (b':=_:big_sprod [seq vty_to_set var_map typesym_map i |
-      i <- get_nonind_vtys adts l]). {
-        clear -b.
-        destruct ([seq vty_to_set var_map typesym_map i | i <- get_nonind_vtys adts l]).
-        exact tt. exact b.2.
-      }
-    unshelve epose (y:=_:domain (sigma (vty_cons t0 l0))). {
-      clear -b. destruct ([seq vty_to_set var_map typesym_map i | i <- get_nonind_vtys adts l]).
-      exact (dom_cast (esym (sigma_cons _ _)) b).
-      exact (dom_cast (esym (sigma_cons _ _)) b.1).
-    }
-
-    specialize (IHl (uniform_list_cons Hl') b' i Hi').
-    destruct IHl as [atl [Hat1 Hat2]].
-    subst b'.
-    apply (exist _ (HL_cons domain (sigma (vty_cons t0 l0)) _ y  atl)).
-    simpl. subst y. simpl in *. 
-    split.
-    -- rewrite Hat1. clear Hat1. unfold build_sprod_cons.  simpl.
-        clear.
       destruct ([seq vty_to_set var_map typesym_map i | i <- get_nonind_vtys adts l]);
-      rewrite dom_cast_twice; try (destruct b); reflexivity.
-    -- rewrite <- Hat2. apply functional_extensionality_dep; intros.
-       unfold args_to_ind_base_aux in *. simpl in *. clear -Hind.
-       destruct ([seq vty_to_set var_map typesym_map i | i <- get_nonind_vtys adts l]); simpl.
-       (*2 are identical i think*)
-       ++ f_equal. 
-        generalize dependent (filter_args_same (vty_cons t0 l0 :: l) x).
-        simpl.
-        rewrite args_func_false_case1; simpl; auto.
-        intros Hf.
-        destruct (typesym_eq_dec t0 (adt_name (fin_nth adts x))); simpl.
-        ** apply hlist_to_list_irrel. apply sort_eq_dec.
-        ** apply hlist_to_list_irrel. apply sort_eq_dec.
-      ++ f_equal.
-      generalize dependent (filter_args_same (vty_cons t0 l0 :: l) x).
+      solve_cast_list_eq l. 
+    + simpl in i.
+      set (x:=(@get_sprod_parts vty_real _ erefl b)).
+      specialize (IHl (uniform_list_cons Hl) x.2 i Hi).
+      destruct IHl as [atl [Hat1 Hat2]].
+      apply (exist _ (HL_cons _ (sigma vty_real) _ x.1  atl)).
       simpl.
-      rewrite args_func_false_case1; simpl; auto.
-      intros Hf.
-      destruct (typesym_eq_dec t0 (adt_name (fin_nth adts x))); simpl.
-      ** apply hlist_to_list_irrel. apply sort_eq_dec.
-      ** apply hlist_to_list_irrel. apply sort_eq_dec.
-      
+      split.
+      * rewrite Hat1. clear Hat1. unfold build_sprod_cons.  simpl.
+        subst x. simpl in *.
+        destruct ([seq vty_to_set var_map typesym_map i | i <- get_nonind_vtys adts l]).
+        -- reflexivity.
+        -- destruct b; reflexivity.
+      * rewrite <- Hat2. subst x. simpl in *. clear.
+        destruct ([seq vty_to_set var_map typesym_map i | i <- get_nonind_vtys adts l]);
+        solve_cast_list_eq l.
+    + simpl in i.
+      set (x:=(@get_sprod_parts (vty_var t0) _ erefl b)).
+      specialize (IHl (uniform_list_cons Hl) x.2 i Hi).
+      destruct IHl as [atl [Hat1 Hat2]].
+      apply (exist _ (HL_cons _ (sigma (vty_var t0)) _ x.1  atl)).
+      simpl.
+      split.
+      * rewrite Hat1. clear Hat1. unfold build_sprod_cons.  simpl.
+        subst x. simpl in *.
+        destruct ([seq vty_to_set var_map typesym_map i | i <- get_nonind_vtys adts l]).
+        -- reflexivity.
+        -- destruct b; reflexivity.
+      * rewrite <- Hat2. subst x. simpl in *. clear.
+        destruct ([seq vty_to_set var_map typesym_map i | i <- get_nonind_vtys adts l]);
+        solve_cast_list_eq l.
+    + simpl in *. (*the hard case*)
+      destruct (ts_in_mut_list t0 adts) eqn : Hind.
+      * (*case with mutual type*)
+        simpl in b.
+        assert (Hl0: l0 = map vty_var (m_params m)). {
+          unfold uniform_list in Hl. rewrite Hind in Hl. simpl in Hl.
+          move: Hl => /andP [Hl _]. simpl_sumbool.
+        }
+        assert (Hl': uniform_list m (vty_cons t0 l0 :: l)). {
+          simpl. auto.
+        }
+        specialize (IHl (uniform_list_cons Hl') b ((split_arg_func t0 l0 l Hind Hl0 i Hi))
+          (split_arg_func_invar t0 l0 l Hind Hl0 i Hi)).
+        destruct IHl as [atl [Hat1 Hat2]].
+        destruct (ts_in_mut_list_ex t0 m Hind). destruct a.
+        assert (domain (sigma (vty_cons t0 l0)) = adt_rep x H0). {
+          rewrite sigma_cons. rewrite split_arg_func_lemma2.
+          rewrite H. apply dom_adts. exact t0. exact Hl0.
+        }
+        apply (exist _ (HL_cons domain (sigma (vty_cons t0 l0)) _ 
+          (get_ind_arg t0 l0 l x H0 H Hl0 H1 i Hi) atl)).
+        simpl in *. 
+        split.
+        -- assumption.
+        -- apply functional_extensionality_dep. intros x'.
+          clear -Hat2.
+          unfold split_arg_func in *. destruct (ts_in_mut_list_ex). 
+          destruct a. simpl in *.
+          generalize dependent (filter_args_same (vty_cons t0 l0 :: l) x').
+          simpl.
+          (*Here, we have to handle the cases based on the variable x*)
+          destruct (typesym_eq_dec t0 (adt_name (fin_nth adts x'))).
+          ++ (*case 1: x' corresponds to t0*) 
+            assert (x0 = fin_nth adts x'). {
+              subst. 
+              assert (Hx0: x0 = fin_nth adts (get_idx adt_dec x0 adts 
+                (In_in_bool _ _ _ a))) by (rewrite get_idx_correct; reflexivity). 
+              rewrite Hx0 in e0.
+              apply adt_names_inj in e0. subst. rewrite get_idx_correct.
+              reflexivity.
+            }
+            (*The list is correct by context validity*) 
+            destruct (list_eq_dec vty_eq_dec l0
+            [seq vty_var i | i <- ts_args (adt_name (fin_nth adts x'))]).
+            2 : {
+              exfalso. apply n. subst. f_equal. symmetry. apply (adt_args gamma_valid).
+              split; auto.
+            }
+            simpl. unfold get_ind_arg. intros Hf.
+            rewrite cast_list_cons.
+            assert (x' = (get_idx adt_dec x (typs m) (In_in_bool adt_dec x (typs m) H0))). {
+              subst. unfold adt_in_mut in H0. 
+              assert (x = fin_nth adts (get_idx adt_dec x adts (In_in_bool _ _ _ H0))).
+                rewrite get_idx_correct. reflexivity.
+              rewrite H2 in H. apply adt_names_inj in H.
+              subst. reflexivity.
+            }
+            subst; simpl. (*Here, we need UIP*)
+            rewrite scast_cast_scast.
+            set (x':=(get_idx adt_dec x (typs m) (In_in_bool adt_dec x (typs m) H0))).
+            apply (fun_args_eq_dep _ _ x') in Hat2.
+            simpl in Hat2. clear -Hat2. 
+            (*use the IH, which tells us about values of i*)
+            destruct (finite_eq_dec (Datatypes.length adts) x'
+            (get_idx adt_dec
+              (fin_nth adts
+                  (get_idx adt_dec x (typs m)
+                    (In_in_bool adt_dec x (typs m) H0))) 
+              (typs m)
+              (In_in_bool adt_dec
+                  (fin_nth adts
+                    (get_idx adt_dec x (typs m)
+                        (In_in_bool adt_dec x (typs m) H0))) 
+                  (typs m) a))); try contradiction.
+            {
+              rewrite -> hlist_to_list_irrel with (Ha2:=(filter_args_same l x')) by apply sort_eq_dec.
+              rewrite Hat2.
+              apply safehead_tl.
+            }
+            {
+              (*contradiction case*)
+              exfalso. apply n. rewrite get_idx_fin.
+              subst x'; reflexivity.
+              apply (adts_nodups gamma_valid); auto.
+            }
+        ++ (*case where we are NOT seeing t0*) simpl.
+          intros Hf.
+          apply (fun_args_eq_dep _ _ x') in Hat2.
+          simpl in Hat2.
+          rewrite -> hlist_to_list_irrel with (Ha2:=(filter_args_same l x'))
+            by apply sort_eq_dec.
+          rewrite Hat2. destruct (finite_eq_dec (Datatypes.length adts) x'
+          (get_idx adt_dec x0 (typs m) (In_in_bool adt_dec x0 (typs m) a))).
+          {
+            (*another contradiction*)
+            exfalso. apply n. subst. rewrite get_idx_correct. reflexivity.
+          }
+          {
+            reflexivity.
+          }
+      * (*non-recursive instance case*)
+        assert (Hi': forall x, length (i x) = count_rec_occ_aux l (adt_name (fin_nth adts x)) c). {
+          intros. specialize (Hi x). rewrite Hi. unfold count_rec_occ_aux; simpl.
+          rewrite -> args_func_false_case1 by auto. reflexivity. 
+        }
+        assert (Hl': uniform_list m (vty_cons t0 l0 :: l)). {
+          simpl. auto.
+        } simpl in b.
+        (*use the function for the false case*)
+        unshelve epose (b':=_:big_sprod [seq vty_to_set var_map typesym_map i |
+          i <- get_nonind_vtys adts l]). {
+            clear -b.
+            destruct ([seq vty_to_set var_map typesym_map i | i <- get_nonind_vtys adts l]).
+            exact tt. exact b.2.
+          }
+        unshelve epose (y:=_:domain (sigma (vty_cons t0 l0))). {
+          clear -b. destruct ([seq vty_to_set var_map typesym_map i | i <- get_nonind_vtys adts l]).
+          exact (dom_cast (esym (sigma_cons _ _)) b).
+          exact (dom_cast (esym (sigma_cons _ _)) b.1).
+        }
+        specialize (IHl (uniform_list_cons Hl') b' i Hi').
+        destruct IHl as [atl [Hat1 Hat2]].
+        subst b'.
+        apply (exist _ (HL_cons domain (sigma (vty_cons t0 l0)) _ y  atl)).
+        simpl. subst y. simpl in *. 
+        split.
+        -- rewrite Hat1. clear Hat1. unfold build_sprod_cons. simpl.
+           clear.
+           destruct ([seq vty_to_set var_map typesym_map i | i <- get_nonind_vtys adts l]);
+          rewrite dom_cast_twice; try (destruct b); reflexivity.
+        -- rewrite <- Hat2. apply functional_extensionality_dep; intros.
+          unfold args_to_ind_base_aux in *. simpl in *. clear -Hind.
+          destruct ([seq vty_to_set var_map typesym_map i | i <- get_nonind_vtys adts l]); simpl;
+          (*two identical cases*)
+          f_equal; generalize dependent (filter_args_same (vty_cons t0 l0 :: l) x);
+          simpl; rewrite args_func_false_case1; simpl; auto; intros Hf;
+          apply hlist_to_list_irrel; apply sort_eq_dec.
+Qed.
+
+(*Finally, the complete inverse function. We use Qed, since we
+  don't care about the body of the function, only that it is
+  correct*)
+Definition constr_ind_to_args 
+(b: build_constr_base var_map typesym_map adts c)
+(i: forall x: finite (length adts), 
+  (count_rec_occ (adt_name (fin_nth adts x)) c).-tuple 
+    (mk_adts var_map typesym_map adts x)) :
+{a: arg_list domain sigma_args |
+  args_to_constr_base a = b /\
+  args_to_ind_base a = i}.
+Proof.
+  (*TODO: separate lemma?*)
+  assert (Hunif: uniform_list m (s_args c)). {
+    unfold uniform in m_unif.
+    assert (Hu:=m_unif). unfold is_true in Hu.
+    rewrite forallb_forall in Hu.
+    specialize (Hu t t_in).
+    rewrite forallb_forall in Hu.
+    assert (Hinc: In c (ne_list_to_list (adt_constrs t))). {
+      apply /in_bool_spec. rewrite <- in_bool_ne_equiv.
+      apply c_in.
+    }
+    exact (Hu c Hinc).
+  }
+  pose proof (constr_ind_to_args_aux _ Hunif b (tuple_f_to_f i)).
+  assert (forall x : finite (Datatypes.length adts),
+  Datatypes.length (tuple_f_to_f i x) =
+  count_rec_occ_aux (s_args c) (adt_name (fin_nth adts x)) c). {
+    intros. unfold tuple_f_to_f. destruct (i x); simpl.
+    apply /eqP. apply i0.
+  }
+  specialize (H H0).
+  destruct H as [a [Hb Hi]].
+  apply (exist _ a). split; auto.
+  apply tuple_f_to_f_inj in Hi. apply Hi.
 Qed.
 
 End Inv.
 
-End Build.
+End Constr.
 
+(*Here we give the 3 properties of ADTs expressed only in terms
+  of funsyms, arg_list, adt_rep, and constr_rep. Thus, our
+  semantics do not need to directly reason about finite types,
+  W-types, or the explicit functions above.*)
 
-(* TODO: Handle nested types*)
+Variable dom_adts: forall (a: alg_datatype) (Hin: adt_in_mut a m),
+domain (typesym_to_sort (adt_name a) srts) =
+adt_rep a Hin.
 
-(*
-(*We handle nested recursive types (ex: data rose = Node (list rose)) by
-  transforming this into a mutually recursive type and using the above.
-  We need to generate ismorphic ADTs and maps between them*)
+Variable m_unif: uniform m.
 
-Definition typesym_in (ts: typesym) (v: vty) :=
-  match v with
-  | vty_cons ts' vs => typesym_eqb ts ts' || existsb (typesym_in ts) vs
-  | _ => false
-  end.
-Print typesym.
-
-(*Really, we want to generate a unique ID for each new typesym (what if someone
-names their type int or something and screws everything up?)*)
-
-Definition new_ts (ts: typesym) (vs: list vty) : typesym.
-Admitted.
-
-Definition tuple_eq_dec {A B: Type} (eq1: forall (x y : A), {x = y} + {x <> y})
-(eq2: forall (x y : B), {x = y} + {x <> y}) :
-(forall (x y : A * B), {x = y} + {x <> y}).
+(*Now, the main result we need: given an instance x of an adt rep,
+  we can always find a constructor and an args list whose rep equals x*)
+(*Needs funext and UIP*)
+Definition find_constr_rep (x: adt_rep t t_in) :
+  {f: funsym & {Hf: constr_in_adt f t * arg_list (domain) (funsym_sigma_args f srts) |
+  x = constr_rep f (fst Hf) dom_adts (snd Hf)}}.
 Proof.
-  intros. destruct x; destruct y.
-  destruct (eq1 a a0).
-  - rewrite e. destruct (eq2 b b0).
-    + rewrite e0. left. reflexivity.
-    + right. intro C; inversion C; contradiction.
-  - right; intro C; inversion C; contradiction.
-Defined.
-
-(*TODO: move*)
-Definition adts_of_context (gamma: context) : list (list (typesym * list funsym)) :=
-  fold_right (fun x acc => match x with
-  | datatype_def algs => 
-    map (fun a => match a with |alg_def ts constrs => (ts, constrs) end) algs :: acc
-  | _ => acc
-  end) nil gamma.
-
-(*Get the entire mutually recursive type a typesym is associated with*)
-Definition find_mut_adt (gamma: context) (t: typesym) : 
-  option (list (typesym * list funsym)) :=
-  fold_right (fun x acc =>
-    if in_dec typesym_eq_dec t (map fst x) then Some x else acc
-    ) None (adts_of_context gamma).
-
-(*Specialize the type (ex: go from list 'a -> list_int) *)
-(*How can we do this for mutually recursive types?
-  ex: what if we had the following?*)
-(*Damn it, need params*)
-Lemma NoDup_nodupb: forall {A: Type} (eq_dec: forall (x y : A), {x = y} + {x <> y})
-  (l: list A), NoDup l -> nodupb eq_dec l.
-Proof.
-  intros. eapply (reflect_iff) in H. apply H. apply nodup_NoDup.
+  assert (Hcons: (forall constrs : ne_list funsym,
+  In constrs [seq adt_constrs i | i <- typs m] ->
+  nodupb funsym_eq_dec (ne_list_to_list constrs))). {
+    intros.
+    eapply constrs_nodups. apply gamma_valid. apply m_in.
+    apply H.
+  }
+  pose proof 
+    (find_constr var_map typesym_map (typs m)
+    (get_idx adt_dec t (typs m) (In_in_bool adt_dec t (typs m) t_in)) Hcons).
+  unfold adt_rep in x.
+  specialize (X x).
+  destruct X as [f Hf].
+  destruct Hf as [[[Hinf base] inds] Hx]. subst.
+  apply (existT _ f).
+  assert (f_in: constr_in_adt f t). {
+    rewrite get_idx_correct in Hinf. apply Hinf. 
+  }
+  destruct (constr_ind_to_args f f_in dom_adts m_unif base inds) as 
+  [a [Hbase Hinds]].
+  apply (exist _ (f_in, 
+    (cast_arg_list (esym (sigma_args_eq f f_in)) a))).
+  simpl. unfold constr_rep.
+  f_equal.
+  - apply bool_irrelevance.
+  - rewrite cast_arg_list_twice. subst. reflexivity.
+  - rewrite cast_arg_list_twice. subst. reflexivity.
 Qed.
 
+(*Constructors are disjoint (axiom-free)*)
+Lemma constr_rep_disjoint: forall {f1 f2: funsym}
+{f1_in: constr_in_adt f1 t} {f2_in: constr_in_adt f2 t}
+(a1: arg_list domain (funsym_sigma_args f1 srts))
+(a2: arg_list domain (funsym_sigma_args f2 srts)),
+f1 <> f2 ->
+constr_rep f1 f1_in dom_adts a1 <>
+constr_rep f2 f2_in dom_adts a2.
+Proof.
+  intros.
+  unfold constr_rep. apply constrs_disjoint. auto.
+Qed.
 
-(*Want to substitute *)
-Definition funsym_subst (tyvars: list typevar) (vs: list vty) (f: funsym) : funsym :=
-  Build_funsym (s_name f) (big_union typevar_eq_dec type_vars vs)
-  (ty_subst_list (s_params f) vs (s_args f))
-  (ty_subst (s_params f) vs (s_ret f))
-    (NoDup_nodupb typevar_eq_dec _ (big_union_nodup _ _ _)) .
+(*Preliminary lemmas for injectivity:*)
 
-Definition adt_subst (ts: typesym) (constrs: list funsym) (vs: list vty) : list funsym :=
-  map (funsym_subst (ts_args ts) vs) constrs.
+Lemma build_sprod_cons_inj: forall {A: Set} {l: seq Set} {x: A} y 
+  {l1: big_sprod l} l2,
+build_sprod_cons x l1 = build_sprod_cons y l2 ->
+x = y /\ l1 = l2.
+Proof.
+  intros. unfold build_sprod_cons in H. destruct l; subst.
+  split; auto. unfold big_sprod in l1, l2. destruct l1; destruct l2; reflexivity.
+  inversion H; subst; split; reflexivity.
+Qed.
 
-(*Problem: we need to do multiple substitutions - or we need something like longest
-  prefix match - ex: list (list (X))*)
+(*The big lemma we need for injectivity: if [args_to_constr_base]
+  and [args_to_ind_base] are equal, then so are the underlying
+  arg lists*)
+Lemma args_to_base_inj: forall (l: seq vty) c
+  (Hl: uniform_list m l)
+  (a1 a2: arg_list domain (sigma_aux l)),
+  args_to_constr_base_aux l a1 = args_to_constr_base_aux l a2 ->
+  (forall x, args_to_ind_base_aux c dom_adts l a1 x =
+    args_to_ind_base_aux c dom_adts l a2 x) ->
+  a1 = a2.
+Proof.
+  intros. induction l; simpl in *.
+  - rewrite (hlist_nil a1). rewrite (hlist_nil a2). reflexivity.
+  - rewrite (hlist_inv a1). rewrite (hlist_inv a2).
+     destruct a.
+    + apply build_sprod_cons_inj in H. destruct H.
+      f_equal. apply H.
+      apply IHl; auto. intros x.
+      specialize (H0 x). clear -H0.
+      unfold args_to_ind_base_aux in *.
+      apply val_inj; simpl. 
+      apply ((f_equal val)) in H0. simpl in H0.
+      f_equal.
+      apply cast_list_inj in H0.
+      apply hlist_to_list_inj in H0; [|apply sort_eq_dec].
+      rewrite H0. reflexivity.
+    + apply build_sprod_cons_inj in H. destruct H.
+      f_equal. apply H.
+      apply IHl; auto. intros x.
+      specialize (H0 x). clear -H0.
+      unfold args_to_ind_base_aux in *.
+      apply val_inj; simpl. 
+      apply ((f_equal val)) in H0. simpl in H0.
+      f_equal.
+      apply cast_list_inj in H0.
+      apply hlist_to_list_inj in H0; [|apply sort_eq_dec].
+      rewrite H0. reflexivity.
+    + apply build_sprod_cons_inj in H. destruct H.
+      f_equal. apply H.
+      apply IHl; auto. intros x.
+      specialize (H0 x). clear -H0.
+      unfold args_to_ind_base_aux in *.
+      apply val_inj; simpl. 
+      apply ((f_equal val)) in H0. simpl in H0.
+      f_equal.
+      apply cast_list_inj in H0.
+      apply hlist_to_list_inj in H0; [|apply sort_eq_dec].
+      rewrite H0. reflexivity.
+    + simpl in H.
+      (*clear -H.*) 
+       generalize dependent H.
+       unfold build_vty_base.
+       simpl.
+       destruct (ts_in_mut_list t0 adts) eqn : Hin; intros H.
+       * (*mutual case*) (*f_equal.*)
+        assert (Hin':=Hin). move: Hin => /in_bool_spec. rewrite in_map_iff => [[a [Ha Hina]]].
+          subst. move: Hina => /(in_bool_spec adt_dec) Hina.
+        assert (Hfeq:=H0).
+        specialize (H0 (get_idx _ a adts Hina)).
+        unfold args_to_ind_base_aux in H0.
+        apply (f_equal val) in H0. generalize dependent H0.
+        simpl. generalize dependent (filter_args_same (vty_cons (adt_name a) l0 :: l)
+        (get_idx adt_dec a adts Hina)). simpl.
+        (*Once again, lots of annoying cases - TODO: is there better way?*)
+        destruct (typesym_eq_dec (adt_name a)
+        (adt_name (fin_nth adts (get_idx adt_dec a adts Hina)))).
+        2 : {
+          exfalso. apply n. f_equal. rewrite get_idx_correct. reflexivity.
+        }
+        destruct (list_eq_dec vty_eq_dec l0
+        [seq vty_var i
+            | i <- ts_args
+                    (adt_name
+                        (fin_nth adts (get_idx adt_dec a adts Hina)))]).
+        2 : {
+          (*Here we need uniformity - or else we lose some info and
+            we cannot prove injectivity*)
+          exfalso. apply n. rewrite get_idx_correct.
+          move: Hl => /andP[/implyP Hunif _].
+          specialize (Hunif Hin').
+          simpl_sumbool. f_equal. symmetry. apply (adt_args gamma_valid).
+          split; auto. apply /in_bool_spec. apply Hina.
+        }
+        simpl. intros Hf.
+        rewrite !cast_list_cons. intros Heq. inversion Heq.
+        f_equal.
+        -- apply scast_inj in H1. apply cast_inj in H1. apply H1.
+        -- apply IHl.
+          ++ move: Hl => /andP[_ Hl]//.
+          ++ apply H.
+          ++ clear -Hfeq H2. intros x.
+             specialize (Hfeq x).
+             (*TODO: we need some other info I think*)
+             unfold args_to_ind_base_aux in *.
+             apply val_inj; simpl.
+             apply (f_equal val) in Hfeq; simpl in Hfeq.
+             move: Hfeq.
+             generalize dependent (filter_args_same (vty_cons (adt_name a) l0 :: l) x).
+             simpl.
+             destruct (typesym_eq_dec (adt_name a) (adt_name (fin_nth adts x))).
+             {
+              (*when we deal with the current one - did most of the work already*)
+              intros _ _.
+              assert (get_idx adt_dec a adts Hina = x). {
+                assert (a = fin_nth adts (get_idx _ _ _ Hina)) by 
+                  (rewrite get_idx_correct; reflexivity).
+                rewrite H in e. apply adt_names_inj in e.
+                auto.
+              }
+              subst.
+              f_equal. apply cast_list_inj in H2.
+              rewrite -> (hlist_to_list_irrel) with (Ha2:=(Forall_inv_tail Hf)) by 
+                apply sort_eq_dec.
+              rewrite H2. apply hlist_to_list_irrel. apply sort_eq_dec.
+             }
+             {
+              (*deal with others*) simpl. intros Hf'.
+              intros Heq. f_equal. apply cast_list_inj in Heq.
+              rewrite -> (hlist_to_list_irrel) with (Ha2:=Hf') by 
+                apply sort_eq_dec.
+              rewrite Heq. apply hlist_to_list_irrel. apply sort_eq_dec.
+             }
+       * (*no mutual occurrence*)
+        apply build_sprod_cons_inj in H.
+        destruct H as [Hhd Htl].
+        f_equal.
+        apply dom_cast_inj in Hhd.
+        apply Hhd.
+        apply IHl; auto. move: Hl => /andP[_ H]//.
+        intros x. specialize (H0 x). clear -H0 Hin.
+        unfold args_to_ind_base_aux in *.
+        apply val_inj; simpl.
+        apply (f_equal val) in H0; simpl in H0.
+        move: H0.
+        generalize dependent (filter_args_same (vty_cons t0 l0 :: l) x).
+        simpl. destruct (typesym_eq_dec t0 (adt_name (fin_nth adts x))).
+        -- (*not possible to be eq, or else in mut*)
+          exfalso. subst. unfold ts_in_mut_list in Hin.
+          move: Hin => /(in_bool_spec typesym_eq_dec).
+          rewrite in_map_iff. intro C.
+          apply C. exists (fin_nth adts x). split; auto. apply fin_nth_in.
+        -- simpl. intros Hf Heq.
+          f_equal. apply cast_list_inj in Heq.
+          rewrite -> hlist_to_list_irrel with (Ha2:=Hf) by apply sort_eq_dec.
+          rewrite Heq. apply hlist_to_list_irrel. apply sort_eq_dec.
+Qed.
 
-Definition get_rec_isos_aux (l: list typesym) (args: list vty) : list (vty * typesym * list funsym) :=
-  fold_right (fun x acc => match x with
-  | vty_cons ts vs =>
-      match (find_mut_adt gamma ts) with
-      | None => acc
-      | Some adt => 
-        if negb(in_bool typesym_eq_dec ts l) &&
-            existsb (fun t => existsb (fun v => typesym_in t v) vs) l then
-            (*hmm this is more annoying than i thought - what args to give to mut rec?*)
-            union _ (map )
-            union (tuple_eq_dec vty_eq_dec typesym_eq_dec) 
-              [(x, new_ts, ] acc else acc
-  | _ =>  acc
-  end) nil args.
+(*Constructors are injective. Requires UIP*)
+Lemma constr_rep_inj: forall {f: funsym}
+{f_in: constr_in_adt f t}
+(a1 a2: arg_list domain (funsym_sigma_args f srts)),
+constr_rep f f_in dom_adts a1 = constr_rep f f_in dom_adts a2 ->
+a1 = a2.
+Proof.
+  intros. unfold constr_rep in H.
+  apply constrs_inj in H.
+  destruct H as [Hb Hi].
+  unfold args_to_constr_base in Hb.
+  unfold args_to_ind_base in Hi.
+  unfold funsym_sigma_args in a1.
+  unfold funsym_sigma_args in a2.
+  assert (cast_arg_list (sigma_args_eq f f_in) a1 =
+  (cast_arg_list (sigma_args_eq f f_in) a2)). {
+    eapply args_to_base_inj. 2: apply Hb. 2: apply Hi.
+    (*TODO: separate lemma*)
+    unfold uniform in m_unif.
+    assert (Hu:=m_unif). unfold is_true in Hu.
+    rewrite forallb_forall in Hu.
+    specialize (Hu t t_in).
+    rewrite forallb_forall in Hu.
+    assert (Hinf: In f (ne_list_to_list (adt_constrs t))). {
+      apply /in_bool_spec. rewrite <- in_bool_ne_equiv.
+      apply f_in.
+    }
+    exact (Hu f Hinf).
+  }
+  apply cast_arg_list_inj in H. apply H.
+Qed.
 
-Definition get_rec_isos_constr (l: list typesym) (constr: funsym) :=
-  get_rec_isos_aux l  (s_args constr).
-
-(*Step 2: generate the new ADTs (with no substitution)*)
-Definition gen_new_adt (l: list typesym) (args: list vty) : list (vty * )
-
-  
-  )
-
-*)
+End Build.
 
 (** Testing **)
 
@@ -2468,29 +2132,24 @@ Qed.
   only for testing, we don't introduce any axioms into the semantics*)
 
   Section Cast.
-  
-  (*Cast 1 type to another*)
-  Definition cast {A1 A2: Set} (H: A1 = A2) (x: A1) : A2.
-  Proof.
-    subst. apply x.
-  Defined.
+
+  (*Some results about casts require UIP*)
   
   (*We need UIP, so we assume it directly (rather than something like
     excluded middle or proof irrelevance, which implies UIP)*)
-  Axiom UIP: forall {A: Type}, EqdepFacts.UIP_ A.
   
-  Lemma cast_left: forall {A B A' B': Set} (H1: A = A') (H2: B = B') (H3: either A B = either A' B') x,
-    cast H3 (Left A B x) = Left A' B' (cast H1 x).
+  Lemma scast_left: forall {A B A' B': Set} (H1: A = A') (H2: B = B') (H3: either A B = either A' B') x,
+    scast H3 (Left A B x) = Left A' B' (scast H1 x).
   Proof.
-    intros. subst. unfold cast, eq_rec_r, eq_rec, eq_rect. simpl.
+    intros. subst. unfold scast, eq_rec_r, eq_rec, eq_rect.
     assert (H3 = erefl) by apply UIP.
     rewrite H. reflexivity.
   Qed.
   
-  Lemma cast_right: forall {A B A' B': Set} (H1: A = A') (H2: B = B') (H3: either A B = either A' B') x,
-  cast H3 (Right A B x) = Right A' B' (cast H2 x).
+  Lemma scast_right: forall {A B A' B': Set} (H1: A = A') (H2: B = B') (H3: either A B = either A' B') x,
+  scast H3 (Right A B x) = Right A' B' (scast H2 x).
   Proof.
-    intros. subst. unfold cast, eq_rec_r, eq_rec, eq_rect. simpl.
+    intros. subst. unfold scast, eq_rec_r, eq_rec, eq_rect. simpl.
     assert (H3 = erefl) by apply UIP.
     rewrite H. reflexivity.
   Qed.
@@ -2505,7 +2164,7 @@ Qed.
   Lemma w_eq: forall {I: Set} (A1 A2: I -> Set) (Heq: A1 = A2)
     (B1: forall i: I, I -> A1 i -> Set)
     (B2: forall i: I, I -> A2 i -> Set),
-    (forall i j a, B1 i j a = B2 i j (cast (eq_idx Heq i) a)) ->
+    (forall i j a, B1 i j a = B2 i j (scast (eq_idx Heq i) a)) ->
     W I A1 B1 = W I A2 B2.
   Proof.
     intros.
@@ -2523,7 +2182,7 @@ Qed.
   Lemma mkW_eq: forall {I: Set} (A: I -> Set) (B: forall i: I, I -> A i -> Set) (i: I)
     (a1 a2: A i) (Heq: a1 = a2) (f1: forall j, B i j a1 -> W I A B j)
     (f2: forall j, B i j a2 -> W I A B j),
-    (forall j b, f1 j b = f2 j (cast (eq_idx' B a1 a2 Heq) b)) ->
+    (forall j b, f1 j b = f2 j (scast (eq_idx' B a1 a2 Heq) b)) ->
     mkW I A B i a1 f1 = mkW I A B i a2 f2.
   Proof.
     intros. subst. f_equal. repeat (apply functional_extensionality_dep; intros).
@@ -2966,8 +2625,8 @@ Ltac solve_mut_eq :=
       apply w_eq with (Heq:= He); intros;
       destruct_option; simpl; try reflexivity;
       simpl_build_base; destruct_either;
-      try(rewrite cast_left; try reflexivity);
-      try (rewrite cast_right; try reflexivity);
+      try(rewrite scast_left; try reflexivity);
+      try (rewrite scast_right; try reflexivity);
       auto]
   end.
 (*

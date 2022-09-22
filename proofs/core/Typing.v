@@ -1066,6 +1066,195 @@ Proof.
   eapply NoDup_map_inv. apply adts_names_nodups. apply Hin.
 Qed.
 
+(*TODO: don't need these anymore but maybe useful later?*)
+
+Lemma NoDup_equiv: forall {A: Type} (l: list A),
+  NoDup l <-> (forall n1 n2 d1 d2, n1 < length l -> n2 < length l ->
+    nth n1 l d1 = nth n2 l d2 -> n1 = n2).
+Proof.
+  intros A l. induction l; simpl; split; intros.
+  - inversion H0.
+  - constructor.
+  - inversion H; subst.
+    destruct n1.
+    + destruct n2; auto.
+      exfalso. apply H5. subst. apply nth_In. lia.
+    + destruct n2. 
+      * exfalso. apply H5. subst. apply nth_In. lia.
+      * f_equal. rewrite IHl in H6.
+        apply (H6 _ _ d1 d2); auto; lia.
+  - constructor.
+    + intro C.
+      pose proof (In_nth l a a C).
+      destruct H0 as [n [Hn Ha]].
+      assert (0 = S n). {
+        apply (H _ _ a a); try lia.
+        auto.
+      }
+      inversion H0.
+    + apply IHl. intros n1 n2 d1 d2 Hn1 Hn2 Heq.
+      assert (S n1 = S n2). {
+        apply (H _ _ d1 d2); try lia; auto.
+      }
+      inversion H0; auto.
+Qed.
+(*
+Lemma nth_concat: forall {A: Type} {l: list (list A)} {l2: list A} 
+{n: nat}
+  {d} {n2 d2},
+  n2 < length l ->
+  n < length (concat l) ->
+  nth n2 l d2 = l2 ->
+  nth n (concat l) d =
+    nth (n - length (concat (firstn n2 l))) l2 d.
+Proof.
+  intros A l; induction l; simpl; intros.
+  - inversion H0.
+  - destruct n2.
+    + subst. simpl. 
+  
+  
+  destruct H0.
+  - induction l
+*)
+
+Lemma NoDup_not_cons: forall {A: Type} 
+(eq_dec: forall (x y : A), {x = y} + {x <> y}) {a : A} {l},
+  ~ NoDup (a :: l) <-> In a l \/ ~NoDup l.
+Proof.
+  intros.
+  rewrite (reflect_iff _ _ (nodup_NoDup eq_dec _)).
+  rewrite nodupb_cons.
+  rewrite (reflect_iff _ _ (nodup_NoDup eq_dec _)).
+  rewrite (reflect_iff _ _ (in_bool_spec eq_dec _ _)).
+  split; intros; auto.
+  - destruct (in_bool eq_dec a l); simpl. left; auto.
+    simpl in H. right; auto.
+  - destruct H.
+    + rewrite H. simpl; intro C; inversion C.
+    + intro C. destruct (nodupb eq_dec l). contradiction.
+      rewrite andb_false_r in C. inversion C.
+Qed. 
+
+Lemma in_exists: forall {A: Type} {x: A} {l: list A},
+  In x l <-> exists l1 l2, l = l1 ++ [x] ++ l2.
+Proof.
+  intros; induction l; simpl; split; intros.
+  - destruct H.
+  - destruct H as [l1 [l2 Hl]]. destruct l1; inversion Hl.
+  - destruct H; subst.
+    + exists nil. exists l. reflexivity.
+    + apply IHl in H. destruct H as [l1 [l2 Hl]]; rewrite Hl.
+      exists (a :: l1). exists l2. reflexivity.
+  - destruct H as [l1 [l2 Hl]]; subst.
+    destruct l1.
+    + inversion Hl; subst. left; auto.
+    + simpl in Hl. inversion Hl; subst.
+      right. apply IHl. exists l1. exists l2. reflexivity.
+Qed.
+
+Lemma not_NoDup: forall {A: Type}
+(eq_dec: forall (x y : A), {x = y} + {x <> y})
+  (l: list A),
+  ~NoDup l <->
+  exists x l1 l2 l3,
+    l = l1 ++ [x] ++ l2 ++ [x] ++ l3.
+Proof.
+  intros A eq_dec l; induction l; simpl; intros; split; intros.
+  - exfalso. apply H. constructor.
+  - intro C. destruct H as [x [l1 [l2 [l3 Hl]]]]; subst.
+    destruct l1; inversion Hl.
+  - apply (NoDup_not_cons eq_dec) in H.
+    destruct H.
+    + exists a. exists nil.
+      apply in_exists in H. destruct H as [l1 [l2 Hl]].
+      rewrite Hl. exists l1. exists l2. reflexivity.
+    + apply IHl in H. destruct H as [x [l1 [l2 [l3 Hl]]]].
+      rewrite Hl. exists x. exists (a :: l1). exists l2. exists l3.
+      reflexivity.
+  - rewrite NoDup_not_cons by apply eq_dec.
+    destruct H as [x [l1 [l2 [l3 Hl]]]]. destruct l1.
+    + inversion Hl; subst. left. apply in_or_app. right. left; auto.
+    + inversion Hl; subst.
+      right. apply IHl. exists x. exists l1. exists l2. exists l3.
+      reflexivity.
+Qed.
+
+(*Just need these*)
+
+Lemma NoDup_concat: forall {A: Type}
+  (eq_dec: forall (x y: A), {x = y} + {x <> y})
+{l: list (list A)} 
+  {l1: list A},
+  NoDup (concat l) ->
+  In l1 l ->
+  NoDup l1.
+Proof.
+  intros A eq_dec; induction l; intros; simpl; auto.
+  - destruct H0. 
+  - simpl in H. simpl in H0.
+    rewrite NoDup_app_iff in H.
+    destruct H as [Hna [Hnc [Hina Hinc]]].
+    destruct H0; subst.
+    + assumption.
+    + apply IHl; assumption.
+Qed.
+
+Lemma NoDup_concat': forall {A: Type}
+  (eq_dec: forall (x y: A), {x = y} + {x <> y})
+{l: list (list A)} 
+  {l1: list (list A)} {l2: list A},
+  NoDup (concat l) ->
+  In (concat l1) l ->
+  In l2 l1 ->
+  NoDup l2.
+Proof.
+  intros.
+  assert (NoDup (concat l1)). apply (NoDup_concat eq_dec H H0).
+  apply (NoDup_concat eq_dec H2 H1).
+Qed.
+
+(*awful hack - TODO fix*)
+Definition mut_in_ctx' := mut_in_ctx.
+
+Lemma constrs_nodups: forall {m: mut_adt} {constrs: ne_list funsym}
+  {m_in: mut_in_ctx m gamma}
+  (Hin: In constrs (map adt_constrs (typs m))),
+  nodupb funsym_eq_dec (ne_list_to_list constrs).
+Proof.
+  intros. unfold mut_in_ctx in m_in.
+  apply (reflect_iff _ _ (nodup_NoDup _ _)).
+  rewrite in_map_iff in Hin. destruct Hin as [a [Ha Hina]]; subst.
+  assert (m_in': mut_in_ctx' m gamma) by auto.
+  valid_context_tac.
+  unfold wf_context in Hwf. destruct Hwf as [_ [_ [_ [_ [Hnodup _]]]]].
+  clear Hadts. unfold funsyms_of_context in Hnodup.
+  assert (exists l l', In l (map funsyms_of_def gamma) /\ l = concat l' /\
+    In (ne_list_to_list (adt_constrs a)) l'). {
+      unfold funsyms_of_def. unfold adt_constrs.
+      exists (concat
+      (map
+         (fun a0 : alg_datatype =>
+          match a0 with
+          | alg_def _ fs => ne_list_to_list fs
+          end) (typs m))).
+    exists ((map
+    (fun a0 : alg_datatype =>
+     match a0 with
+     | alg_def _ fs => ne_list_to_list fs
+     end) (typs m))).
+      split; auto.
+      - rewrite in_map_iff. exists (datatype_def m).
+        split; auto.
+      - split; auto. rewrite in_map_iff.
+        exists a. split; auto. destruct a; reflexivity.
+  }
+  destruct H3 as [l [l' [Hinl [Hl Hinl']]]]; subst.
+  eapply NoDup_concat'. apply funsym_eq_dec. 
+  3: apply Hinl'. 2: apply Hinl.
+  apply Hnodup.
+Qed.
+
 (*
 Definition constrs_ne: forall {l: list (typesym * list funsym)}
   (Hin: In l (mutrec_datatypes_of_context gamma)),
