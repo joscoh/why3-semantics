@@ -71,6 +71,8 @@ Inductive term_has_type: sig -> term -> vty -> Prop :=
   | T_Fun: forall s (params : list vty) (tms : list term) (f: funsym),
     In f (sig_f s) ->
     Forall (valid_type s) params ->
+    (*NOTE: NOT included in paper - is this implied elsewhere?*)
+    valid_type s (s_ret f) ->
     length tms = length (s_args f) ->
     length params = length (s_params f) ->
     (* For all i, [nth i tms] has type [sigma(nth i (s_args f))], where
@@ -215,6 +217,19 @@ Proof.
   intros. inversion H; subst; repeat split; auto.
 Qed.
 
+Lemma valid_type_subst: forall s ty vars tys,
+  valid_type s ty ->
+  Forall (valid_type s) tys ->
+  valid_type s (ty_subst vars tys ty).
+Proof.
+  intros. induction H; unfold ty_subst; simpl; constructor; auto.
+  rewrite map_length. apply H1.
+  intros x. rewrite in_map_iff. intros [x1 [Hx1 Hinx1]].
+  specialize (H3 _ Hinx1 H0). subst. apply H3.
+Qed. 
+
+
+
 (* Well-formed signmatures and Contexts *)
 
 (* A well-formed signature requires all types that appear in a function/predicate
@@ -271,6 +286,20 @@ Definition predsyms_of_context (c: context) : list predsym :=
 (*Ways of dealing with adts and parts in context*)
 Definition mut_in_ctx (m: mut_adt) (gamma: context) :=
   In (datatype_def m) gamma.
+
+Lemma mut_in_ctx_eq: forall m gamma,
+  mut_in_ctx m gamma <-> In m (mut_of_context gamma).
+Proof.
+  intros. unfold mut_of_context, mut_in_ctx.
+  induction gamma; simpl; intros; auto.
+  - reflexivity.
+  - split; intros.
+    + destruct H; subst; simpl; auto.
+      apply IHgamma in H.
+      destruct a; simpl; auto.
+    + destruct a; simpl in H; try solve[right; apply IHgamma; auto].
+      destruct H. left; subst; auto. right; apply IHgamma; auto.
+Qed.
 
 Definition mut_typs_in_ctx (l: list alg_datatype) (gamma: context) :=
   exists (vars: list typevar) (H: nodupb typevar_eq_dec vars), 
@@ -461,6 +490,33 @@ Definition well_typed_term (s: sig) (gamma: context) (t: term) (ty: vty) : Prop 
 
 Definition well_typed_formula (s: sig) (gamma: context) (f: formula) : Prop :=
   valid_formula s f /\ valid_pat_fmla s gamma f.
+(*TODO: start here*)
+  (*TODO: we need to do this when we have a valid context, so that we
+    know that mut adt is nonempty
+    TODO: change to NOT datatypes_of_context*)
+(*
+Lemma valid_pattern_match_nil: forall s gamma t,
+  ~ valid_pattern_match s gamma t nil.
+Proof.
+  intros. intro C. unfold valid_pattern_match in C.
+  destruct C as [a [args [constrs Hex]]].
+  unfold exhaustive_match in Hex.
+  destruct Hex as [Hin Hall]. inversion C.
+
+(*If a term has a type, that type is well-formed. We need the 
+  [valid_pat_fmla] or else we could have an empty pattern*)
+Lemma has_type_valid: forall s gamma t ty,
+  well_typed_term s gamma t ty ->
+  valid_type s ty.
+Proof.
+  intros. destruct H. induction H; try solve[constructor]; try assumption.
+  apply valid_type_subst; assumption.
+  - inversion H0; subst. auto.
+  - inversion H0; subst; auto.
+  - inversion H0; subst.
+    destruct ps.
+    simpl in H5.*)
+  
 
 (** Validity of definitions *)
 

@@ -330,6 +330,306 @@ Definition term_option_type (s: sig) (o: option term) (ty: vty) :=
   | None => True
   | Some t => term_has_type s t ty
   end.
+
+(*A not-as-typechecked version of [substi]*)
+(*Definition add_val (v: valuation gamma_valid i) (x: vsymbol) (vty: vty)
+Print valuation.
+
+Check substi.
+Print substi.
+Print Semantics.substi.
+
+Print valuation.*)
+
+Lemma existsb_exists': forall {A: Type} (f: A -> bool) (l: list A),
+  existsb f l = true -> {x | In x l /\ f x = true}.
+Proof.
+  intros. induction l; simpl in H. inversion H.
+  destruct (f a) eqn : Hf.
+  - exists a. split; auto. left; auto.
+  - specialize (IHl H). destruct IHl as [x [Hinx Hx]].
+    + apply (exist _ x). split; auto. right; auto.
+Qed.
+
+Check find.
+Search find.
+Locate find.
+
+Definition find_ts_in_mut (ts: typesym) (m: mut_adt) : option alg_datatype :=
+  find (fun a => typesym_eq_dec ts (adt_name a)) (typs m).
+
+Lemma find_ts_in_mut_some: forall ts m a,
+  find_ts_in_mut ts m = Some a ->
+  adt_in_mut a m /\ adt_name a = ts.
+Proof.
+  intros ts m a Hf. apply find_some in Hf.
+  destruct Hf as [Hin Heq].
+  split; auto.
+  simpl_sumbool.
+Qed.
+
+Set Bullet Behavior "Strict Subproofs".
+
+Lemma find_some_nodup: forall {A: Type} (f: A -> bool) (l: list A) (x: A),
+  (forall x y, In x l -> In y l -> f x -> f y -> x = y) ->  
+  (find f l = Some x <-> In x l /\ f x = true).
+Proof.
+  intros. induction l; intros; simpl; split; intros.
+  - inversion H0.
+  - destruct H0. destruct H0.
+  - destruct (f a) eqn : Hfa.
+    + inversion H0; subst. split; auto.
+    + apply IHl in H0. 
+      * destruct H0. split; auto.
+      * intros; apply H; auto; right; auto.
+  - destruct H0. destruct H0; subst. rewrite H1. reflexivity.
+    destruct (f a) eqn : Hfa.
+    + f_equal. apply H; auto. left; auto. right; auto.
+    + apply IHl; [|split; auto].
+      intros; apply H; auto; right; auto.
+Qed.
+
+Lemma NoDup_map_in: forall {A B: Type} {f: A -> B} {l: list A} {x1 x2: A},
+  NoDup (map f l) ->
+  In x1 l -> In x2 l ->
+  f x1 = f x2 ->
+  x1 = x2.
+Proof.
+  intros. induction l; simpl; intros; auto.
+  inversion H0.
+  simpl in H0; simpl in H1. simpl in H; inversion H; subst.
+  destruct H0; subst; destruct H1; subst.
+  - reflexivity.
+  - rewrite H2 in H5. exfalso. apply H5. rewrite in_map_iff. 
+    exists x2; split; auto.
+  - rewrite <- H2 in H5. exfalso. apply H5. rewrite in_map_iff.
+    exists x1; split; auto.
+  - apply IHl; auto.
+Qed.
+
+Lemma find_ts_in_mut_iff: forall ts m a,
+  NoDup (map adt_name (typs m)) ->
+  (find_ts_in_mut ts m = Some a) <-> (adt_in_mut a m /\ adt_name a = ts).
+Proof.
+  intros. eapply iff_trans. apply find_some_nodup.
+  - intros. repeat simpl_sumbool.
+    apply (NoDup_map_in H); auto.
+  - simpl. unfold adt_in_mut. apply and_iff_compat_l.
+    split; intros; simpl_sumbool.
+Qed.
+
+Definition find_ts_in_ctx (ts: typesym) : option (mut_adt * alg_datatype) :=
+  fold_right (fun m acc => 
+    match (find_ts_in_mut ts m) with
+    | Some a => Some (m, a)
+    | None => acc
+    end) None (mut_of_context gamma).
+
+(*TODO: move?*)
+Lemma no_adt_name_dups:
+  NoDup (map adt_name (concat (map typs (mut_of_context gamma)))).
+Proof.
+  assert (forall g, 
+    (map adt_name (concat (map typs (mut_of_context g)))) =
+  typesyms_of_context g). {
+    induction g; unfold typesyms_of_context in *; simpl; auto.
+    unfold datatypes_of_context in *.
+    destruct a; simpl; auto.
+    rewrite !map_app, IHg. f_equal.
+    rewrite map_map.
+    apply map_ext. intros a. destruct a; reflexivity.
+  }
+  rewrite H. apply gamma_valid.
+Qed.
+
+(*The real spec we want: (TODO: maybe move all this)*)
+Lemma find_ts_in_ctx_iff: forall ts m a,
+  (find_ts_in_ctx ts = Some (m, a) <-> mut_in_ctx m gamma /\
+    adt_in_mut a m /\ adt_name a = ts).
+Proof.
+  intros. unfold find_ts_in_ctx. rewrite mut_in_ctx_eq.
+  assert (forall m, In m (mut_of_context gamma) ->
+    NoDup (map adt_name (typs m))). {
+      intros m'. rewrite <- mut_in_ctx_eq.
+      eapply adts_names_nodups. apply gamma_valid.
+    }
+  assert (Hnodup:=no_adt_name_dups).
+  induction (mut_of_context gamma); simpl; intros; split; intros; auto.
+  - inversion H0.
+  - destruct H0 as [[] _].
+  - destruct (find_ts_in_mut ts a0) eqn : Hmut.
+    + inversion H0; subst. apply find_ts_in_mut_iff in Hmut. destruct Hmut.
+      repeat split; auto.
+      apply H. left; auto.
+    + apply IHl in H0. destruct H0 as [Hin [Ha Hn]]. repeat split; auto.
+      intros. apply H. right; auto.
+      simpl in Hnodup. rewrite map_app in Hnodup. apply NoDup_app in Hnodup.
+      apply Hnodup.
+  - destruct H0 as [[Ham | Hinm] [Ha Hn]]; subst.
+    + assert (find_ts_in_mut (adt_name a) m = Some a). {
+        apply find_ts_in_mut_iff. apply H. left; auto. split; auto.
+      }
+      rewrite H0. reflexivity.
+    + simpl in Hnodup. rewrite map_app in Hnodup.
+      rewrite NoDup_app_iff in Hnodup.
+      destruct (find_ts_in_mut (adt_name a) a0 ) eqn : Hf.
+      * apply find_ts_in_mut_iff in Hf. 2: apply H; simpl; auto.
+        destruct Hf.
+        destruct Hnodup as [Hn1 [Hn2 [Hi1 Hi2]]].
+        exfalso. apply (Hi1 (adt_name a1)). rewrite in_map_iff.
+        exists a1. split; auto. rewrite H1.
+        rewrite in_map_iff. exists a. split; auto.
+        rewrite in_concat. exists (typs m). split; auto.
+        rewrite in_map_iff. exists m; split; auto.
+      * apply IHl; auto.
+        intros. apply H. right; auto.
+        apply Hnodup.
+Qed.
+
+Definition vty_is_cons (v: vty) :=
+  match v with
+  | vty_cons _ _ => true
+  | _ => false
+  end.
+
+Lemma null_nil: forall {A: Type} (l: list A),
+  null l <-> l = nil.
+Proof.
+  intros; destruct l; split; intros; auto; inversion H.
+Qed.
+
+Lemma is_sort_cons: forall (ts: typesym) (l: list vty),
+  is_sort (vty_cons ts l) ->
+  forall x, In x l -> is_sort x.
+Proof.
+  intros. unfold is_sort in *. simpl in H.
+  rewrite null_nil in *.
+  eapply big_union_nil in H. apply H. assumption.
+Qed.
+
+Definition is_sort_cons_sorts (ts: typesym) (l: list vty) 
+  (Hall: forall x, In x l -> is_sort x):
+  {s: list sort | sorts_to_tys s = l}.
+Proof.
+  induction l.
+  - apply (exist _ nil). reflexivity.
+  - simpl in Hall.
+    assert (is_sort a). apply Hall. left; auto.
+    assert (forall x : vty, In x l -> is_sort x). {
+      intros. apply Hall; right; auto.
+    }
+    specialize (IHl H0). destruct IHl as [tl Htl].
+    apply (exist _ ((exist _ a H) :: tl)).
+    simpl. rewrite Htl. reflexivity.
+Qed.
+(*
+Definition sort_cons (t: typesym) (l: list vty) (Hsrt: is_sort (vty_cons t l)) :
+  { s: list sort | 
+    vty_cons t  = vty_cons (fst t) (sorts_to_tys (snd t))}
+| _ => unit
+end.
+Proof.
+  destruct s. simpl. destruct x; try solve[apply tt].
+  pose proof (is_sort_cons_sorts t l (is_sort_cons t l i0)) as ls.
+  destruct ls as [s Hs].
+  apply (exist _ (t, s)). simpl. rewrite Hs. reflexivity.
+Qed.*)
+
+Definition is_sort_adt (s: sort) : 
+  option (mut_adt * alg_datatype * typesym * list sort).
+Proof.
+  destruct s.
+  destruct x.
+  - exact None.
+  - exact None.
+  - exact None.
+  - destruct (find_ts_in_ctx t);[|exact None].
+    exact (Some (fst p, snd p, t, 
+      proj1_sig (is_sort_cons_sorts t l (is_sort_cons t l i0)))).
+Defined.
+
+(*TODO: do we need other direction?*)
+Lemma is_sort_adt_spec: forall s m a ts srts,
+  is_sort_adt s = Some (m, a, ts, srts) ->
+  s = typesym_to_sort (adt_name a) srts /\
+  adt_in_mut a m /\ mut_in_ctx m gamma /\ ts = adt_name a.
+Proof.
+  intros. unfold is_sort_adt in H.
+  destruct s. destruct x; try solve[inversion H].
+  destruct (find_ts_in_ctx t) eqn : Hf.
+  - inversion H; subst. destruct p as [m a]. simpl.
+    apply find_ts_in_ctx_iff in Hf. destruct Hf as [Hmg [Ham Hat]]; 
+    repeat split; auto; subst.
+    apply sort_inj. simpl. f_equal. clear H. 
+    generalize dependent (is_sort_cons (adt_name a) l i0).
+    intros H.
+    destruct (is_sort_cons_sorts (adt_name a) l H). simpl.
+    rewrite <- e; reflexivity.
+  - inversion H.
+Qed.
+
+Check find_constr_rep.
+Print pre_interp.
+Check adts.
+
+(*We handle pattern matches slightly differently than in the paper.
+  We build up a complete valuation that binds all of the pattern
+  variables to the domain values, then interpret the resulting term
+  or formula using this valuation. We provide a function that gives
+  the valuation and the term/formula to abstract out the common
+  functionality.*)
+Fixpoint match_val_single (v: valuation gamma_valid i) (ty: vty)
+  (d: domain (val v ty))
+  (p: pattern) : option (valuation gamma_valid i) :=
+  match p with
+  | Pvar x _ => Some (substi v x ty d)
+  | Pwild => Some v
+  | Por p1 p2 => match (match_val_single v ty d p1) with
+                  | Some v1 => Some v1
+                  | None => match_val_single v ty d p2
+                  end
+  | Pbind p1 x _ => match_val_single (substi v x ty d) ty d p1 
+    (*TODO: is this right - do we evaluation pattern with additional binding?*)
+  | Pconstr f vs ps =>
+    match (is_sort_adt (val v ty)) as o return
+      (is_sort_adt (val v ty)) = o -> option (valuation gamma_valid i)
+    with
+    | Some (m, a, ts, srts) => fun Hisadt =>
+      (*So now (with result about, we know that sort is ADT)*)
+      (*Now we need to cast this to adt_rep*)
+      (*First, get info about a, m, srts from [is_sort_adt_spec]*)
+      match (is_sort_adt_spec _ _ _ _ _ Hisadt) with
+      | conj Hseq (conj a_in (conj m_in Htseq)) =>
+        (*We cast to get an ADT, now that we know that this actually is
+          an ADT*)
+        let adt : adt_rep m srts (dom_aux gamma_valid i) a a_in :=
+          scast (adts gamma_valid i m srts a a_in) (dom_cast _ Hseq d) in
+          None
+        (*TODO: need to know that length of srts is correct - need to know
+          that type itself is well-typed (then use separate lemma to show
+          this, need to know that args are same for all which I believe is
+          current assumption)*)
+        (*let f := find_constr_rep gamma_valid m m_in srts (*TODO*) _ 
+          _ a a_in (adts gamma_valid i m srts a a_in)*)
+          (*TODO: need uniformity*)
+          (*TODO: need to cast this to [adt_rep m srts domain_aux a a_in]*)
+      (*let f := find_constr_rep gamma_valid m *)
+      end 
+
+
+
+      
+    | None => fun _ => None
+    end eq_refl
+    (*Idea: see if sort is ADT - need function to do this + get parts*)
+    (*if not, give None*)
+    (*if so, get constr_rep and see if equals f, if not None*)
+    (*if equals f, then take arg list, eval list of patterns on this
+      will need to know that this is (val v ty) for each ty - hopefully
+      not too hard to show*)
+  end.
+
+
 (*First, we handle matches - we will take in isf and projf as predicates
   and give them later - TODO: hopefully it works*)
 (*This makes dependent types much nicer*)
