@@ -67,6 +67,8 @@ Record pre_interp := {
 (*Valuations*)
 Record valuation (i: pre_interp) := {
   v_typevar : typevar -> sort;
+  (*All sorts must be valid*)
+  v_typevar_val: forall x, valid_type sigma (v_typevar x);
   v_vars: forall (x: vsymbol) (v: vty), (domain (dom_aux i) (v_subst (v_typevar) v))
 }.
 
@@ -90,11 +92,12 @@ Definition var_to_dom (v: valuation i) (x: vsymbol) (t: vty) : val v t :=
 
 Definition substi (v: valuation i) (x: vsymbol) (ty: vty) (y: val v ty) : valuation i.
 apply (Build_valuation i (v_typevar i v)).
-intros m ty'. destruct (vsymbol_eq_dec m x).
-destruct (vty_eq_dec ty ty').
-- subst. apply y.
-- (*trivial case*) apply (v_vars i v m ty').
-- apply (v_vars i v m ty').
++ intros. destruct v. simpl. apply v_typevar_val0. 
++ intros m ty'. destruct (vsymbol_eq_dec m x).
+  destruct (vty_eq_dec ty ty').
+  - subst. apply y.
+  - (*trivial case*) apply (v_vars i v m ty').
+  - apply (v_vars i v m ty').
 Defined.
 
 (* Some additional lemmas for casting/dependent type obligations *)
@@ -418,6 +421,8 @@ Section InterpLemmas.
 (*There is always a trivial valuation (need for defaults)*)
 Definition triv_val (i: pre_interp) : valuation i.
 apply (Build_valuation i (fun _ => s_int)).
+- intros. constructor.
+-
 intros.
 destruct i; simpl. specialize (domain_ne0 (v_subst (fun _ : typevar => s_int) v)).
 inversion domain_ne0. apply x0.
@@ -577,10 +582,38 @@ Fixpoint mk_fun_arg {A: Type} (eq_dec: forall (x y: A), {x = y} + { x <> y})
   to the corresponding sort in s and each element of syms to the
   corresponding element of a (modulo dependent type stuff)
   Give default values if something is not in the list*)
+
+Set Bullet Behavior "Strict Subproofs".
+
+Lemma make_val_valid_type: forall (vs: list typevar) (s1: list sort),
+  length vs = length s1 ->
+  (forall s, In s s1 -> valid_type sigma s) ->
+  forall (x: typevar), valid_type sigma (ty_subst_fun_s vs s1 s_int x).
+Proof.
+  intros vs s1 Hlen Hall. unfold ty_subst_fun_s. simpl.
+  assert (length vs = length (sorts_to_tys s1)). {
+    unfold sorts_to_tys; rewrite map_length; auto.
+  }
+  (*Should be separate lemma*)
+  assert (forall x, In x (sorts_to_tys s1) -> valid_type sigma x). {
+    intros. unfold sorts_to_tys in H0. rewrite in_map_iff in H0.
+    destruct H0 as [y [Hy Hiny]]; subst. apply Hall. auto.
+  }
+  clear Hall Hlen. generalize dependent vs.
+  induction (sorts_to_tys s1); intros.
+  - destruct vs ;[|inversion H]. constructor.
+  - destruct vs;[inversion H|]. simpl.
+    destruct (typevar_eq_dec x t).
+    + subst. apply H0. left; auto.
+    + apply IHl; auto. intros. apply H0; right; auto.
+Qed.
+
 Definition make_val (i: pre_interp) (vs: list typevar) (s1 s2: list sort)
+  (Hlen: length vs = length s1)
+  (Hall: forall s, In s s1 -> valid_type sigma s)
   (syms: list vsymbol) (a: arg_list (domain (dom_aux i)) s2) : valuation i :=
   let v_var := (ty_subst_fun_s vs s1 s_int) in
-  Build_valuation i v_var
+  Build_valuation i v_var (make_val_valid_type vs s1 Hlen Hall)
     (mk_fun_arg vsymbol_eq_dec i v_var syms s2 a).
 
 (* Interpretation, Satisfiability, Validity *)
@@ -594,20 +627,22 @@ Definition full_interp (p: pre_interp) : Prop :=
     [[f(s)]](y) = [[t]]_v, where v maps alpha -> s and x -> y*)
   (*Note that y_i has type [[sigma(tau_i)]], where sigma maps alpha -> s*)
   (forall (f: funsym) (vs: list vsymbol) (t: term) (s: list sort) 
-    (Hs: length (s_params f) = length s),
+    (Hs: length (s_params f) = length s)
+    (Halls: forall x, In x s -> valid_type sigma x),
     In (f, vs, t) (fundefs_of_context gamma) ->
    
     forall ts,
-    let v := make_val p (s_params f) s (funsym_sigma_args f s) vs ts in
+    let v := make_val p (s_params f) s (funsym_sigma_args f s) Hs Halls vs ts in
       term_interp p v t (s_ret f) ((funs p) f s ts)) /\
   (*For each predicate p(alpha)(x) = f, 
     [[p(s)]](y) = [[f]]_v, where v maps alpha -> s and x -> y*)
   (forall (pd: predsym) (vs: list vsymbol) (f: formula) (s: list sort)
-    (Hs: length (p_params pd) = length s),
+    (Hs: length (p_params pd) = length s)
+    (Halls: forall x, In x s -> valid_type sigma x),
     In (pd, vs, f) (preddefs_of_context gamma) ->
     
     forall ts,
-    let v := make_val p (p_params pd) s (predsym_sigma_args pd s) vs ts in
+    let v := make_val p (p_params pd) s (predsym_sigma_args pd s) Hs Halls vs ts in
       formula_interp p v nil nil f ((preds p) pd s ts) /\
 
   (*Inductive preds: for p(alpha) = f1 | f2 | ... | fn, 

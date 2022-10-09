@@ -218,7 +218,7 @@ Lemma tfun_params_length {s f vs ts ty}:
   term_has_type s (Tfun f vs ts) ty ->
   length (s_params f) = length vs.
 Proof.
-  intros. inversion H; subst. rewrite H8. reflexivity.
+  intros. inversion H; subst. rewrite H9. reflexivity.
 Qed.
 
 Lemma fpred_params_length {s p vs ts}:
@@ -274,11 +274,12 @@ Proof.
   inversion H; auto.
 Qed.
 
-(*TODO: add stuff about xs*)
 Lemma ty_match_inv {s t ty1 ty2 xs} (H: term_has_type s (Tmatch t ty1 xs) ty2):
-  term_has_type s t ty1.
+  term_has_type s t ty1 /\
+  Forall (fun x : pattern * term => term_has_type s (snd x) ty2) xs.
 Proof.
-  inversion H; auto.
+  inversion H; subst; split; auto.
+  rewrite Forall_forall. auto.
 Qed.
 
 Lemma valid_not_inj {s f} (H: valid_formula s (Fnot f)):
@@ -313,6 +314,13 @@ Lemma valid_quant_inj {s q x ty f} (H: valid_formula s (Fquant q x ty f)):
   valid_formula s f.
 Proof.
   inversion H; auto.
+Qed.
+
+Lemma valid_match_inv {s t ty1 xs} (H: valid_formula s (Fmatch t ty1 xs)):
+  term_has_type s t ty1 /\
+  Forall (fun x : pattern * formula => valid_formula s (snd x)) xs.
+Proof.
+  inversion H; subst; split; auto.
 Qed.
 
 Lemma valid_eq_inj {s ty t1 t2} (H: valid_formula s (Feq ty t1 t2)):
@@ -568,94 +576,279 @@ Proof.
   - inversion H.
 Qed.
 
-Check find_constr_rep.
-Print pre_interp.
-Check adts.
+(*Want to prove: suppose that type is valid and we have valuation, 
+  then val v ty is valid*)
+Lemma val_valid: forall (v: valuation gamma_valid i) (ty: vty),
+  valid_type sigma ty ->
+  valid_type sigma (val v ty).
+Proof.
+  intros. unfold val. simpl.
+  apply valid_type_v_subst; auto.
+  intros x.
+  destruct v; simpl. apply v_typevar_val.
+Qed. 
 
-(*We handle pattern matches slightly differently than in the paper.
-  We build up a complete valuation that binds all of the pattern
-  variables to the domain values, then interpret the resulting term
-  or formula using this valuation. We provide a function that gives
-  the valuation and the term/formula to abstract out the common
-  functionality.*)
+(*We need info about lengths and validity of the srts list*)
+Lemma adt_srts_valid: forall {v ty m a ts srts},
+  is_sort_adt (val v ty) = Some (m, a, ts, srts) ->
+  valid_type sigma ty ->
+  valid_type sigma (typesym_to_sort (adt_name a) srts).
+Proof.
+  intros v ty m a ts srts H.
+  apply is_sort_adt_spec in H.
+  destruct H as [Hts [a_in [m_in _]]].
+  intros Hval.
+  rewrite <- Hts. apply val_valid. assumption.
+Qed.
+
+(*We need to know something about the lengths*)
+Lemma adt_srts_length_eq: forall {v ty m a ts srts},
+  is_sort_adt (val v ty) = Some (m, a, ts, srts) ->
+  valid_type sigma ty ->
+  length srts = length (m_params m).
+Proof.
+  intros v ty m a ts srts H Hval.
+  pose proof (Hval':=adt_srts_valid H Hval).
+  apply is_sort_adt_spec in H.
+  destruct H as [Hts [a_in [m_in _]]].
+  unfold typesym_to_sort in Hval'. 
+  simpl in Hval'; inversion Hval'; subst.
+  rewrite map_length in H3. rewrite H3.
+  f_equal. apply (adt_args gamma_valid). split; auto.
+Qed.
+
+(*Assume that all ADTs are uniform for now*)
+Variable all_unif: forall m,
+  mut_in_ctx m gamma ->
+  uniform m.
+
+Lemma val_sort_eq: forall v (s: sort),
+  s = val v s.
+Proof.
+  intros. apply subst_sort_eq.
+Qed.
+
+(*Need to know that all sorts are valid types*)
+Lemma adts_srts_valid: forall {v ty m a ts srts c},
+  is_sort_adt (val v ty) = Some (m, a, ts, srts) ->
+  valid_type sigma ty ->
+  constr_in_adt c a ->
+  Forall (valid_type sigma) (sorts_to_tys (funsym_sigma_args c srts)).
+Proof.
+  intros v ty m a ts srts c H Hval c_in.
+  pose proof (Hval':=adt_srts_valid H Hval).
+  pose proof (Hlen:=adt_srts_length_eq H Hval).
+  apply is_sort_adt_spec in H.
+  destruct H as [Hts [a_in [m_in _]]].
+  rewrite Forall_forall; intros t.
+  unfold sorts_to_tys. rewrite in_map_iff; intros [srt [Hsrt Hinsrt]]; subst.
+  unfold funsym_sigma_args in Hinsrt.
+  unfold ty_subst_list_s in Hinsrt.
+  rewrite in_map_iff in Hinsrt.
+  destruct Hinsrt as [t [Ht Hint]]; subst.
+  unfold ty_subst_s. apply valid_type_v_subst.
+  - apply (constr_ret_valid gamma_valid m_in a_in c_in). apply Hint.
+  - intros. apply make_val_valid_type.
+    + rewrite Hlen. f_equal.
+      apply (adt_constr_params gamma_valid m_in a_in c_in).
+    + intros s Hsin. simpl in Hval'. inversion Hval'; subst.
+      apply H4. rewrite in_map_iff. exists s. split; auto.
+Qed.
+
+(*Pattern matches are quite complicated. Rather than compiling down
+  to elementary let statements, as in the paper, we instead build up
+  the entire valuation (consisting of pairs of vsymbols and domain
+  elements for an appropriate type). Doing this is conceptually simple,
+  but very difficult in practice due to depenedent type obligations.
+  
+  The interesting case is the case when we match against a constructor.
+  In this case, we determine if the type is an instance of and ADT, 
+  and if so, we use [find_constr_rep] (after some casting) to get 
+  the constructor and arguments (arg_list) that comprise this instance.
+  Then, we check if the constructor equals the one in the pattern match,
+  and if so, we iterate through the arg_list and build up the valuation
+  entries recursively, returning None if we ever find a non-matching pattern.
+  
+  We need many of the above lemmas to handle the preconditions for
+  [find_constr_rep] and casting.
+  *)
+
 Fixpoint match_val_single (v: valuation gamma_valid i) (ty: vty)
+  (Hval: valid_type sigma ty)
   (d: domain (val v ty))
-  (p: pattern) : option (valuation gamma_valid i) :=
+  (p: pattern) : 
+  (*For a pair (x, d), we just need that there is SOME type t such that
+    d has type [domain (val v t)], but we don't care what t is*)
+  option (list (vsymbol * {t: vty & domain (val v t) })) :=
   match p with
-  | Pvar x _ => Some (substi v x ty d)
-  | Pwild => Some v
-  | Por p1 p2 => match (match_val_single v ty d p1) with
+  | Pvar x _ => Some [(x, (existT _ ty d))] 
+  | Pwild => Some nil
+  | Por p1 p2 => match (match_val_single v ty Hval d p1) with
                   | Some v1 => Some v1
-                  | None => match_val_single v ty d p2
+                  | None => match_val_single v ty Hval d p2
                   end
-  | Pbind p1 x _ => match_val_single (substi v x ty d) ty d p1 
-    (*TODO: is this right - do we evaluation pattern with additional binding?*)
+  | Pbind p1 x _ =>
+    (*Binding adds an additional binding at the end for the whole
+      pattern*)
+    match (match_val_single v ty Hval d p1) with
+    | None => None
+    | Some l => Some ((x, (existT _ ty d)) :: l)
+    end
   | Pconstr f vs ps =>
+    (*First, check to see if this type is an ADT*)
     match (is_sort_adt (val v ty)) as o return
-      (is_sort_adt (val v ty)) = o -> option (valuation gamma_valid i)
+      (is_sort_adt (val v ty)) = o -> 
+      option (list (vsymbol * {t: vty & domain (val v t) })) 
     with
     | Some (m, a, ts, srts) => fun Hisadt =>
-      (*So now (with result about, we know that sort is ADT)*)
-      (*Now we need to cast this to adt_rep*)
-      (*First, get info about a, m, srts from [is_sort_adt_spec]*)
+      (*If it is, we get information about a, m, srts 
+        from [is_sort_adt_spec]*)
       match (is_sort_adt_spec _ _ _ _ _ Hisadt) with
       | conj Hseq (conj a_in (conj m_in Htseq)) =>
         (*We cast to get an ADT, now that we know that this actually is
           an ADT*)
         let adt : adt_rep m srts (dom_aux gamma_valid i) a a_in :=
           scast (adts gamma_valid i m srts a a_in) (dom_cast _ Hseq d) in
-          None
-        (*TODO: need to know that length of srts is correct - need to know
-          that type itself is well-typed (then use separate lemma to show
-          this, need to know that args are same for all which I believe is
-          current assumption)*)
-        (*let f := find_constr_rep gamma_valid m m_in srts (*TODO*) _ 
-          _ a a_in (adts gamma_valid i m srts a a_in)*)
-          (*TODO: need uniformity*)
-          (*TODO: need to cast this to [adt_rep m srts domain_aux a a_in]*)
-      (*let f := find_constr_rep gamma_valid m *)
+       
+        (*Need a lemma about lengths for [find_constr_rep]*)
+        let lengths_eq : length srts = length (m_params m) := 
+          adt_srts_length_eq Hisadt Hval in
+
+        (*The key part: get the constructor c and arg_list a
+          such that d = [[c(a)]]*)
+        let Hrep := find_constr_rep gamma_valid m m_in srts lengths_eq 
+          (dom_aux gamma_valid i) a a_in (adts gamma_valid i m srts) 
+          (all_unif m m_in) adt in
+
+        (*The different parts of Hrep we need*)
+        let c : funsym := projT1 Hrep in
+        let c_in : constr_in_adt c a :=
+          fst (proj1_sig (projT2 Hrep)) in
+        let args : arg_list domain (funsym_sigma_args c srts) := 
+          snd (proj1_sig (projT2 Hrep)) in
+
+        (*Idea: iterate over arg list, build up valuation, return None
+        if we every see None*)
+        (*This function is actually quite simple, we just need a bit
+          of dependent pattern matching for the [arg_list]*)
+        let fix iter_arg_list (tys: list sort) (a: arg_list domain tys)
+          (Hall: Forall (valid_type sigma) (sorts_to_tys tys)) (pats: list pattern) :
+          option (list (vsymbol * {t: vty & domain (val v t) })) :=
+          match tys as t' return arg_list domain t' ->
+            Forall (valid_type sigma) (sorts_to_tys t') -> 
+            option (list (vsymbol * {t: vty & domain (val v t) }))
+          with
+          | nil => fun _ _ => Some nil
+          | ty :: tl => fun a' Hall' =>
+            match ps with
+            | nil => None (*lengths have to be the same*)
+            | phd :: ptl =>
+              (*We try to evaluate the head against the first pattern.
+                If this succeeds we combine with tail, if either fails
+                we give None*)
+              (*Since ty is a sort, val v ty = ty, therefore we can cast*)
+              match (match_val_single v ty (Forall_inv Hall') 
+                (dom_cast _ (val_sort_eq _ ty) (hlist_hd a')) phd) with
+              | None => None
+              | Some l =>
+                match iter_arg_list tl (hlist_tl a') (Forall_inv_tail Hall') ptl with
+                | None => None
+                | Some l' => Some (l ++ l')
+                end
+              end
+            end
+          end a Hall in
+          (*Finally, if the constructors match, check all arguments,
+            otherwise, gives None*)
+          if funsym_eq_dec c f then
+            iter_arg_list _ args (adts_srts_valid Hisadt Hval c_in) ps
+          else None
       end 
-
-
-
-      
+    (*If not an ADT, does not match*)
     | None => fun _ => None
     end eq_refl
-    (*Idea: see if sort is ADT - need function to do this + get parts*)
-    (*if not, give None*)
-    (*if so, get constr_rep and see if equals f, if not None*)
-    (*if equals f, then take arg list, eval list of patterns on this
-      will need to know that this is (val v ty) for each ty - hopefully
-      not too hard to show*)
   end.
 
+Definition get_assoc_list {A B: Set} (eq_dec: forall (x y: A), {x = y} + { x <> y}) 
+  (l: list (A * B)) (x: A) : option B :=
+  fold_right (fun y acc => if eq_dec x (fst y) then Some (snd y) else acc) None l.
 
-(*First, we handle matches - we will take in isf and projf as predicates
-  and give them later - TODO: hopefully it works*)
-(*This makes dependent types much nicer*)
-(*TODO: factor out term/formula parts*)
-Fixpoint match_rep (isf: funsym -> term -> bool) 
-  (projf: forall (f: funsym) (tm: term) (Hisf: isf f tm), list term)
-  (t: term) (p: pattern) (b h: option term) {struct p} : option term :=
-  match p with
-  | Pvar v ty => option_map (fun t2 => Tlet t v ty t2) b
-  | Pwild => b
-  | Por p1 p2 => match_rep isf projf t p1 b (match_rep isf projf t p2 b h)
-  | Pbind p1 v ty => option_map (fun t2 => Tlet t v ty t2) (match_rep isf projf t p1 b h) 
-  | Pconstr f nil ps => if (isf f t) then b else h
-  | Pconstr f vs ps =>
-    (*This case is a bit ugly - maybe try to remove dependent types*)
-    (match (isf f t) as b return (isf f t) = b -> option term with
-    | true => fun Hisf =>
-      let ts := projf f t Hisf in
-      (fix match_reps (tms: list term) (pats: list pattern) {struct pats} : option term :=
-      match tms, pats with
-      | t1 :: ttl, p1 :: ptl => match_rep isf projf t1 p1 (match_reps ttl ptl) h
-      | _, _ => None
-      end) ts ps
-    | false => fun _ => h
-    end) eq_refl
+(*Look up each entry in the list, if the name or type doesn't
+  match, default to existing val*)
+(*Usefully, Coq can tell that this does not affect v_typevar*)
+Definition extend_val_with_list (v: valuation gamma_valid i) 
+  (l: list (vsymbol * {t: vty & domain (val v t) })) :
+  valuation gamma_valid i.
+apply (Build_valuation gamma_valid _ (v_typevar v)).
+- intros x. destruct v. apply v_typevar_val. 
+- intros x ty.
+  destruct (get_assoc_list vsymbol_eq_dec l x).
+  + destruct (vty_eq_dec ty (projT1 s)).
+    * rewrite e. exact (projT2 s).
+    * exact (v_vars gamma_valid _ v x ty).
+  + exact (v_vars gamma_valid _ v x ty).
+Defined.
+(*
+Definition extend_val_eq v l ty:
+  val (extend_val_with_list v l) ty = val v ty := eq_refl.
+
+(*Compiling a pattern match is now easy*)
+(*TODO: prove we never hit the default*)
+
+Fixpoint match_rep {A: Set} (v: valuation gamma_valid i) (ty: vty)
+  (Hval: valid_type sigma ty) (d: domain (val v ty))
+  (ps: list (pattern * A)) : 
+  option (pattern * A * valuation gamma_valid i) :=
+  match ps with
+  | (p, dat) :: ptl => 
+    match (match_val_single v ty Hval d p) with
+    | Some l => Some(p, dat, extend_val_with_list v l)
+    | None => match_rep v ty Hval d ptl
+    end
+  | _ => None
   end.
+
+Lemma match_rep_val_eq: forall {A: Set} {v ty p x newv d} 
+  {ps: list (pattern * A)} (Hval: valid_type sigma ty) typ,  
+  match_rep v ty Hval d ps = Some (p, x, newv) ->
+  val newv typ = val v typ.
+Proof.
+  intros. induction ps; simpl in *.
+  inversion H.
+  destruct a. destruct (match_val_single v ty Hval d p0).
+  inversion H; subst. reflexivity.
+  apply IHps. apply H.
+Qed.
+
+Lemma match_rep_x_in: forall {A: Set} {v ty p x newv d} 
+{ps: list (pattern * A)} (Hval: valid_type sigma ty),
+  match_rep v ty Hval d ps = Some (p, x, newv) ->
+  In x (map snd ps).
+Proof.
+  intros. induction ps; simpl in *. inversion H.
+  destruct a. destruct (match_val_single v ty Hval d p0).
+  inversion H; subst. left; auto. auto.
+Qed.
+
+Lemma match_rep_x_type: forall{v ty p x newv d} 
+{ps: list (pattern * term)} (Hval: valid_type sigma ty) typ
+  (Hall: (forall x, In x ps -> term_has_type sigma (snd x) typ)),
+  match_rep v ty Hval d ps = Some (p, x, newv) ->
+  term_has_type sigma x typ.
+Proof.
+  intros.
+  apply match_rep_x_in in H. rewrite in_map_iff in H.
+  destruct H as [[pat tm] [Hp Hinp]]; subst.
+  apply Hall. auto.
+Qed.*)
+
+(*Inversion lemma for patterns*)
+
+(*TODO: need to prove we never hit None on well-typed pattern
+  match by exhaustivenss - need relation of [match] with
+  [match_val_single]*)
+
+(*Terms*)
 
 (* There are many dependent type obligations and casting to ensure that
   the types work out. In each case, we separate the hypotheses and give
@@ -725,44 +918,40 @@ Fixpoint term_rep (v: valuation gamma_valid i) (t: term) (ty: vty)
       (proj2 (proj2 (ty_if_inv Hty'))) in
 
     if (formula_rep v f Hf) then term_rep v t1 ty Ht1 else term_rep v t2 ty Ht2
-(*
   | Tmatch t ty1 xs => fun Htm =>
     let Hty' : term_has_type sigma (Tmatch t ty1 xs) ty :=
       has_type_eq Htm Hty in
     let Ht1 : term_has_type sigma t ty1 :=
-      ty_match_inv Hty' in
-    (*t has type vty_cons ts vs*)
-    (*Doesn't work: not structurally decreasing*)
-    (*I think we will have to go directly - dependent types will be ugly*)
-    (*May need assumption about alg type*)
-    (*TODO: start here*)
+      proj1 (ty_match_inv Hty') in
+    let Hall : Forall (fun x => term_has_type sigma (snd x) ty) xs :=
+      proj2 (ty_match_inv Hty') in
+    
 
-    let isf (f: funsym) (tm: term) (ty: vty) (Htm: term_has_type sigma tm ty) : bool :=
-      all_dec (exists vs ts (H: term_has_type sigma (Tfun f vs ts) ty), 
-        term_rep v tm ty Htm = term_rep v (Tfun f vs ts) ty H)
-    in
-(*
+    let Hval : valid_type sigma ty1 :=
+      has_type_valid gamma_valid _ _ Ht1 in
 
-      all_dec (exists t (Hf: In f constrs) (Hlen: length (s_params c) = 
-        length (map val vs)),
-      term_rep v tm (vty_cons ts vs) = 
-      (adt_typesym_funsym _ Hadt Hc Hlen) ((funs c (map val vs)) t))  in
-  *)
-      match domain_ne sigma gamma gamma_valid i (val v ty) with
-      | DE _ _ x => if (isf id_fs t ty1 Ht1) then x else x
-      end
+    let dom_t := term_rep v t ty1 Ht1 in
 
-
-
-     (* (forall (x: domain (typesym_to_sort a srts)), 
-      exists c t (Hc: In c constrs) (Hlen: length (s_params c) = length srts),
-      x = (dom_cast_aux domain _ _
-        (adt_typesym_funsym _ Hadt Hc Hlen) ((funs c srts) t)))*)
-  *)
-  (*For cases not handled yet*)
-  | _ => match domain_ne gamma_valid i (val v ty) with
-          | DE x => fun _ => x
-          end
+      (*Can't make [match_rep] a separate function or else Coq
+      cannot tell structurally decreasing. So we inline it*)
+      let fix match_rep (ps: list (pattern * term)) 
+        (Hall: Forall (fun x => term_has_type sigma (snd x) ty) ps) :
+         domain (val v ty) :=
+      match ps as l' return 
+        Forall (fun x => term_has_type sigma (snd x) ty) l' ->
+        domain (val v ty) with
+      | (p , dat) :: ptl => fun Hall =>
+        match (match_val_single v ty1 Hval dom_t p) with
+        | Some l => term_rep (extend_val_with_list v l) dat ty
+          (Forall_inv Hall) 
+        | None => match_rep ptl (Forall_inv_tail Hall)
+        end
+      | _ => (*TODO: show we cannot reach this*) fun _ =>
+        match domain_ne gamma_valid i (val v ty) with
+        | DE x =>  x
+        end
+      end Hall in
+      match_rep xs Hall
   end) eq_refl
 
 with formula_rep (v: valuation gamma_valid i) (f: formula) 
@@ -842,38 +1031,40 @@ with formula_rep (v: valuation gamma_valid i) (f: formula)
 
     (*TODO: require decidable equality for all domains?*)
     all_dec (term_rep v t1 ty Ht1 = term_rep v t2 ty Ht2)
-  (*TODO*)
-  | _ => fun _ => true
+  | Fmatch t ty1 xs => fun Hf =>
+    (*Similar to term case*)
+    let Hval' : valid_formula sigma (Fmatch t ty1 xs) :=
+      valid_formula_eq Hf Hval in
+    let Ht1 : term_has_type sigma t ty1 :=
+      proj1 (valid_match_inv Hval') in
+    let Hall : Forall (fun x => valid_formula sigma (snd x)) xs :=
+      proj2 (valid_match_inv Hval') in
+    
+
+    let Hval : valid_type sigma ty1 :=
+      has_type_valid gamma_valid _ _ Ht1 in
+
+    let dom_t := term_rep v t ty1 Ht1 in
+
+      (*Can't make [match_rep] a separate function or else Coq
+      cannot tell structurally decreasing. So we inline it*)
+      let fix match_rep (ps: list (pattern * formula)) 
+        (Hall: Forall (fun x => valid_formula sigma (snd x)) ps) :
+         bool :=
+      match ps as l' return 
+        Forall (fun x => valid_formula sigma (snd x)) l' ->
+        bool with
+      | (p , dat) :: ptl => fun Hall =>
+        match (match_val_single v ty1 Hval dom_t p) with
+        | Some l => formula_rep (extend_val_with_list v l) dat
+          (Forall_inv Hall) 
+        | None => match_rep ptl (Forall_inv_tail Hall)
+        end
+      | _ => (*TODO: show we cannot reach this*) fun _ => false
+      end Hall in
+      match_rep xs Hall
   end) eq_refl
-  
-
   .
-
-(*Let's be better about dependent types - will say we have term of
-  type vty_cons ts vs, where ts is an ADT.
-  Then, from restriction, we know there exists some constructor and values
-  such that [[t]]_v = [[f]][[ts]] - this predicate holds exactly when f = constr
-  Maybe dont need dep types, maybe just prove later that 1 is always true
-  based on semantics, and exhaustive match ensures no errors
-  may need some casting
-
-  will be independent of valuation because we only care about the type of the term
-  ie: [[t]]_v gives some element of [[v(ts(alpha))]] = [[ts(v(alpha))]]
-  I am wrong: this should affect it: but we know that there is some (constructor)
-  f and ts
-  such that [[t]]_v = [[f(v(alpha))]](ts)
-
-  isf should return true iff f = constr
-
-  projf f ts' should return true iff f = constr and ts = [[ts']]
-  *)
-(*with isf (v: valuation sigma gamma gamma_valid i) 
-  (t: term) (ts: typesym) (vs: list vty) (Hty: term_has_type sigma t (vty_cons ts vs)) 
-  (constr: funsym) : bool :=
-  all_dec (exists tms (Htms: term_has_type sigma (Tfun constr vs tms) (vty_cons ts vs)), 
-    term_rep v t (vty_cons ts vs) Hty = 
-    term_rep v (Tfun constr vs tms) _ Htms).
-    funs constr*) 
 
 End Denot.
 

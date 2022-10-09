@@ -170,7 +170,7 @@ End SymEqDec.
 Inductive constant : Set :=
   | ConstInt : Z -> constant
   | ConstReal : R -> constant
-  | ConstStr : string -> constant.
+  (*| ConstStr : string -> constant*).
 
 Inductive quant : Set :=
     | Tforall

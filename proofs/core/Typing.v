@@ -94,8 +94,13 @@ Inductive term_has_type: sig -> term -> vty -> Prop :=
     (*we defer the check for algebraic datatypes or exhaustiveness until
       later, because we need an additional context*)
     term_has_type s tm ty1 ->
-    Forall (fun x => pattern_has_type s (fst x) ty1) ps ->
-    Forall (fun x => term_has_type s (snd x) ty2) ps ->
+    (forall x, In x ps -> pattern_has_type s (fst x) ty1) ->
+    (forall x, In x ps -> term_has_type s (snd x) ty2) ->
+    (*Makes things MUCH simpler to include this - TODO: is this a problem?
+    If not, need to prove by knowing that pattern matching exhaustive, so
+    nonempty, so can take 1st element. But then we need a context
+    and additional hypotheses in semantics.*)
+    valid_type s ty2 ->
     term_has_type s (Tmatch tm ty1 ps) ty2
 
 
@@ -217,6 +222,19 @@ Proof.
   intros. inversion H; subst; repeat split; auto.
 Qed.
 
+Lemma valid_type_v_subst: forall s (f: typevar -> vty) (ty: vty),
+  valid_type s ty ->
+  (forall x, valid_type s (f x)) ->
+  valid_type s (v_subst_aux f ty).
+Proof.
+  intros.
+  induction H; simpl; constructor; auto.
+  rewrite map_length. apply H1.
+  intros x. rewrite in_map_iff. intros [x1 [Hx1 Hinx1]].
+  specialize (H3 _ Hinx1 H0). subst. apply H3.
+Qed.
+
+(*TODO: use previous lemma to prove*)
 Lemma valid_type_subst: forall s ty vars tys,
   valid_type s ty ->
   Forall (valid_type s) tys ->
@@ -375,6 +393,7 @@ Definition valid_mut_rec (m: mut_adt) : Prop :=
   in the definition - these will be checked for the validity check for each
   definition.*)
 Definition wf_context (s: sig) (gamma: context) :=
+  wf_sig s /\
   Forall (fun t => In t (sig_t s)) (typesyms_of_context gamma) /\
   Forall (fun f => In f (sig_f s)) (funsyms_of_context gamma) /\
   Forall (fun p => In p (sig_p s)) (predsyms_of_context gamma) /\
@@ -412,17 +431,27 @@ Inductive matches : pattern -> term -> Prop :=
     matches p t ->
     matches (Pbind p x ty) t.
 
-Definition exhaustive_match (a: typesym) (constrs: list funsym) (args: list vty)
+(*A match is exhaustive if for every instance of an alg_datatype,
+  some pattern matches it*)
+Definition exhaustive_match (a: alg_datatype) (args: list vty)
   (ps: list pattern) : Prop :=
-  In (a, constrs) (datatypes_of_context gamma) /\
-  forall c, In c constrs -> forall (ts: list term), 
-  term_has_type sigma (Tfun c args ts) (vty_cons a args) ->
-  exists p, In p ps /\ matches p (Tfun c args ts).
+  adt_in_ctx a gamma /\
+  forall t, term_has_type sigma t (vty_cons (adt_name a) args) ->
+    exists p, In p ps /\ matches p t.
+  (*
+  
+  /\
+  forall c, in_bool_ne funsym_eq_dec c (adt_constrs a) -> 
+
+  forall (ts: list term), 
+  term_has_type sigma (Tfun c args ts) (vty_cons (adt_name a) args) ->
+  exists p, In p ps /\ matches p (Tfun c args ts).*)
 
 (*A valid pattern match matches on a term of an ADT type and is exhaustive*)
-Definition valid_pattern_match (t: term) (ps: list pattern) : Prop :=
-  exists (a: typesym) (args: list vty) (constrs: list funsym),
-    exhaustive_match a constrs args ps.
+Definition valid_pattern_match (*(t: term)*) (ps: list pattern) : Prop :=
+  exists (a: alg_datatype) (args: list vty),
+    length args = length (ts_args (adt_name a)) /\
+    exhaustive_match a args ps.
 
 (*We require that this recursively holds throughout the entire term/formula*)
 Inductive valid_pat_tm : term -> Prop :=
@@ -443,7 +472,7 @@ Inductive valid_pat_tm : term -> Prop :=
     valid_pat_tm t2 ->
     valid_pat_tm (Tif f t1 t2)
   | VTY_match: forall t ty (ps: list (pattern * term)),
-    valid_pattern_match t (map fst ps) ->
+    valid_pattern_match (map fst ps) ->
     (forall x, In x (map snd ps) -> valid_pat_tm x) ->
     valid_pat_tm (Tmatch t ty ps)
 with valid_pat_fmla: formula -> Prop :=
@@ -478,7 +507,7 @@ with valid_pat_fmla: formula -> Prop :=
     valid_pat_fmla f3 ->
     valid_pat_fmla (Fif f1 f2 f3)
   | VTF_match: forall t ty (ps: list (pattern * formula)),
-    valid_pattern_match t (map fst ps) ->
+    valid_pattern_match (map fst ps) ->
     (forall x, In x (map snd ps) -> valid_pat_fmla x) ->
     valid_pat_fmla (Fmatch t ty ps).
 
@@ -490,33 +519,6 @@ Definition well_typed_term (s: sig) (gamma: context) (t: term) (ty: vty) : Prop 
 
 Definition well_typed_formula (s: sig) (gamma: context) (f: formula) : Prop :=
   valid_formula s f /\ valid_pat_fmla s gamma f.
-(*TODO: start here*)
-  (*TODO: we need to do this when we have a valid context, so that we
-    know that mut adt is nonempty
-    TODO: change to NOT datatypes_of_context*)
-(*
-Lemma valid_pattern_match_nil: forall s gamma t,
-  ~ valid_pattern_match s gamma t nil.
-Proof.
-  intros. intro C. unfold valid_pattern_match in C.
-  destruct C as [a [args [constrs Hex]]].
-  unfold exhaustive_match in Hex.
-  destruct Hex as [Hin Hall]. inversion C.
-
-(*If a term has a type, that type is well-formed. We need the 
-  [valid_pat_fmla] or else we could have an empty pattern*)
-Lemma has_type_valid: forall s gamma t ty,
-  well_typed_term s gamma t ty ->
-  valid_type s ty.
-Proof.
-  intros. destruct H. induction H; try solve[constructor]; try assumption.
-  apply valid_type_subst; assumption.
-  - inversion H0; subst. auto.
-  - inversion H0; subst; auto.
-  - inversion H0; subst.
-    destruct ps.
-    simpl in H5.*)
-  
 
 (** Validity of definitions *)
 
@@ -683,6 +685,16 @@ Proof.
         rewrite in_map_iff. exists (fst a, cs). split; auto.
       * apply IHl; auto. inversion H; auto.
 Qed.
+
+(*For now, we assume this as an axiom*)
+(*
+Lemma adt_inhab_inhab: forall a,
+  adt_in_ctx a gamma ->
+  adt_inhab a ->
+  forall vs,
+    length vs = length (ts_args (adt_name a)) ->
+    exists t, term_has_type s t (vty_cons (adt_name a) vs).
+Admitted.*)
 
 End Inhab.
 
@@ -1096,7 +1108,7 @@ Proof.
   destruct gamma_valid as [Hwf _].
   unfold wf_context in Hwf.
   clear -Hin Hwf.
-  destruct Hwf as [_ [_ [_ [Huniq _]]]].
+  destruct Hwf as [_ [_ [_ [_ [Huniq _]]]]].
   induction gamma.
   - inversion Hin.
   - simpl in *. unfold typesyms_of_context in *.
@@ -1283,7 +1295,7 @@ Proof.
   rewrite in_map_iff in Hin. destruct Hin as [a [Ha Hina]]; subst.
   assert (m_in': mut_in_ctx' m gamma) by auto.
   valid_context_tac.
-  unfold wf_context in Hwf. destruct Hwf as [_ [_ [_ [_ [Hnodup _]]]]].
+  unfold wf_context in Hwf. destruct Hwf as [_ [_ [_ [_ [_ [Hnodup _]]]]]].
   clear Hadts. unfold funsyms_of_context in Hnodup.
   assert (exists l l', In l (map funsyms_of_def gamma) /\ l = concat l' /\
     In (ne_list_to_list (adt_constrs a)) l'). {
@@ -1310,6 +1322,106 @@ Proof.
   3: apply Hinl'. 2: apply Hinl.
   apply Hnodup.
 Qed.
+
+(*We want to know: when we have a valid context, a list of
+  patterns in a valid match is nonempty*)
+
+  (*TODO: we need to do this when we have a valid context, so that we
+    know that mut adt is nonempty
+    TODO: change to NOT datatypes_of_context*)
+(*
+Lemma valid_pattern_match_nil: forall s gamma,
+  valid_context s gamma ->
+  ~ valid_pattern_match s gamma nil.
+Proof.
+  clear gamma_valid s gamma.
+  intros s gamma gamma_valid. intro C. unfold valid_pattern_match in C.
+  destruct C as [a [args [Hlen [Hina Hex]]]].
+  assert (adt_inhab s gamma a). {
+    unfold adt_in_ctx in Hina. destruct Hina as [m Hm].
+    unfold adt_mut_in_ctx, adt_in_mut, mut_in_ctx in Hm.
+    valid_context_tac.
+  }
+  assert (Hinhab:=H).
+  unfold adt_inhab in H. destruct a. 
+  apply adt_inhab_inhab with (vs:=args) in Hinhab; auto.
+  2 : { apply gamma_valid. }
+  destruct Hinhab as [tm Htm].
+  specialize (Hex tm Htm). destruct Hex as [p [[] _]].
+Qed.*)
+
+(*If a term has a type, that type is well-formed. We need the 
+  [valid_pat_fmla] or else we could have an empty pattern*)
+Lemma has_type_valid: forall (*s gamma*) t ty,
+  (*well_typed_term s gamma t ty ->*)
+  term_has_type s t ty ->
+  valid_type s ty.
+Proof.
+  intros. induction H; try solve[constructor]; try assumption; auto.
+  apply valid_type_subst; assumption.
+Qed.
+(*
+  - inversion H0; subst. auto.
+  - inversion H0; subst; auto.
+  - inversion H0; subst.
+    destruct ps.
+    simpl in H6. exfalso. apply (valid_pattern_match_nil _ _ gamma_valid H6).
+    simpl in H8. assert (valid_pat_tm s gamma (snd p)).
+      apply H8. left. auto.
+    apply (H3 p). left; auto. assumption. apply H8; left; auto.
+Qed.*)
+
+(*TODO: move*)
+Lemma in_bool_ne_In {A: Set} (eq_dec: forall (x y : A), {x = y} + {x <> y})
+  (x: A) (l: ne_list A):
+  in_bool_ne eq_dec x l ->
+  In x (ne_list_to_list l).
+Proof.
+  rewrite in_bool_ne_equiv. intros.
+  apply (reflect_iff _ _ (in_bool_spec eq_dec x _)).
+  assumption.
+Qed.
+  
+(*All constrs are in [funsym_of_context gamma]*)
+Lemma constrs_in_funsyms: forall {gamma c a m},
+  mut_in_ctx m gamma ->
+  adt_in_mut a m ->
+  constr_in_adt c a ->
+  In c (funsyms_of_context gamma).
+Proof.
+  clear.
+  intros gamma c a m. unfold mut_in_ctx, adt_in_mut, constr_in_adt.
+  intros m_in a_in c_in; induction gamma; simpl. inversion m_in.
+  simpl in m_in. unfold funsyms_of_context in *. simpl.
+  destruct m_in as [Ha0 | m_in]; [| apply in_or_app; right; auto].
+  subst. apply in_or_app; left. simpl.
+  rewrite in_concat. exists (ne_list_to_list (adt_constrs a)).
+  rewrite in_map_iff. split; [| eapply in_bool_ne_In; apply c_in].
+  exists a. split; auto. destruct a. reflexivity.
+Qed. 
+
+(*All constr args types are valid*)
+Lemma constr_ret_valid: forall {c a m},
+  mut_in_ctx m gamma ->
+  adt_in_mut a m ->
+  constr_in_adt c a ->
+  forall x, In x (s_args c) -> valid_type s x.
+Proof.
+  intros c a m m_in a_in c_in x Hinx.
+  unfold valid_context in gamma_valid.
+  unfold wf_context in gamma_valid.
+  destruct gamma_valid as [[Hsig [_ [Hfuns _]]] _].
+  clear gamma_valid.
+  unfold wf_sig in Hsig.
+  destruct Hsig as [Hsig _].
+  rewrite Forall_forall in Hsig, Hfuns.
+  assert (Hinsig: In c (sig_f s)). {
+    apply Hfuns. apply (constrs_in_funsyms m_in a_in c_in).
+  }
+  clear Hfuns. specialize (Hsig _ Hinsig).
+  rewrite Forall_forall in Hsig. apply Hsig. right; auto.
+Qed.  
+
 
 (*
 Definition constrs_ne: forall {l: list (typesym * list funsym)}
