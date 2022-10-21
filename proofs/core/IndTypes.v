@@ -1236,7 +1236,7 @@ Proof.
   simpl. f_equal.
   rewrite <- subst_same at 1.
   2: symmetry; apply srts_len.
-  rewrite !map_map.
+  rewrite -!map_comp.
   apply map_ext_in_iff.
   intros. simpl. f_equal. symmetry.
   apply (adt_constr_params gamma_valid m_in t_in c_in).
@@ -2257,10 +2257,10 @@ Ltac prove_constr :=
   let He := fresh "Heq" in
   match goal with | |- mkW ?i ?a ?b ?x ?a1 ?f = mkW ?i ?a ?b ?x ?a2 ?f2 =>
     assert (He: a1 = a2);
-  [unfold eq_rect; rewrite (all_funsym_refl (reflect_true _ _)); reflexivity|
+  [unfold eq_rect; rewrite (all_funsym_refl (elimT _ _)); reflexivity|
   apply (mkW_eq a b x a1 a2 He); intros; revert_eqs;
   unfold cast, eq_rec_r, eq_rec, eq_rect, eq_idx', eq_ind_r, eq_ind (*eq_rect, eq_ind_r, eq_ind, eq_rec_r), eq_rec*);
-  repeat (progress (try rewrite (all_funsym_refl (reflect_true _ _));
+  repeat (progress (try rewrite (all_funsym_refl (elimT _ _));
     try rewrite (all_funsym_refl (eq_sym _)))); intros;
     repeat match goal with
     | H: ?x = ?x |- _ => let He := fresh in 

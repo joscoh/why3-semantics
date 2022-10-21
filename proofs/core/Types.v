@@ -5,39 +5,34 @@ Require Export Lia.
 
 Require Export Common.
 
-Lemma reflect_true: forall {P} {b} (H: reflect P b),
-  b = true ->
-  P.
-Proof.
-  intros. destruct H; subst; auto. inversion H0.
-Qed.
-
-Lemma reflect_false: forall {P} {b} (H: reflect P b),
-  b = false ->
-  ~ P.
-Proof.
-  intros. destruct H; subst; auto. inversion H0.
-Qed.
+From mathcomp Require Import all_ssreflect.
+Set Bullet Behavior "Strict Subproofs".
 
 (*Now we can transform "reflect" into computable "dec" EVEN if "reflect" is opaque.
   This is what we are missing in the ssreflect library. We do NOT match on
   "reflect"; we match on the boolean predicate directly*)
 Definition reflect_dec' {P} {b} (H: reflect P b): {P} + {~P} :=
   match b as b1 return b = b1 -> _ with
-  | true => fun Heq => left (reflect_true H Heq)
-  | false => fun Hneq => right (reflect_false H Hneq)
-  end eq_refl.
+  | true => fun Heq => left (elimT H Heq)
+  | false => fun Hneq => right (elimF H Hneq)
+  end erefl.
 
 (*Type variable (ex: a)*)
 Definition typevar : Set := string. 
 
+(*
 Definition typevar_eqb : typevar -> typevar -> bool :=
   String.eqb.
 
 Lemma typevar_eqb_spec (t1 t2: typevar) : reflect (t1 = t2) (typevar_eqb t1 t2).
 Proof.
   apply String.eqb_spec.
-Qed.
+Qed.*)
+
+Definition string_eqMixin := EqMixin String.eqb_spec.
+Canonical string_eqType := EqType string string_eqMixin.
+(*Definition typevar_eqMixin := EqMixin typevar_eqb_spec.*)
+Canonical typevar_eqType := EqType typevar string_eqMixin.
 
 Definition typevar_eq_dec (t1 t2: typevar):
   {t1 = t2} + {t1 <> t2} := reflect_dec' (String.eqb_spec t1 t2).
@@ -89,8 +84,8 @@ Proof.
   (*apply bool_irrelevance.*)
 Qed.
 
-Definition is_true_eqb {b1 b2: bool} (p1: is_true b1) (p2: is_true b2) : bool :=
-  Bool.eqb b1 b2.
+(*Definition is_true_eqb {b1 b2: bool} (p1: is_true b1) (p2: is_true b2) : bool :=
+  Bool.eqb b1 b2.*)
 (*
 Definition typesym_eqb (t1 t2: typesym) :=
   String.eqb (ts_name t1) (ts_name t2) &&
@@ -99,6 +94,27 @@ Definition typesym_eqb (t1 t2: typesym) :=
     very useful for the "rewrite" lemmas in IndTypes*)
   is_true_eqb (ts_args_uniq t1) (ts_args_uniq t2).*)
 
+Definition typesym_eqb (t1 t2: typesym) :=
+  ((ts_name t1) == (ts_name t2)) &&
+  ((ts_args t1) == (ts_args t2)).
+
+Lemma typesym_eqb_spec: forall (t1 t2: typesym),
+  reflect (t1 = t2) (typesym_eqb t1 t2).
+Proof.
+  move=>[n1 a1] [n2 a2]; rewrite /typesym_eqb/=.
+  case: (n1 == n2) /eqP => Hn/=; last by
+    apply ReflectF => [[C]].
+  case: (a1 == a2) /eqP => Ha/=; last by
+    apply ReflectF => [[C]].
+  apply ReflectT. by rewrite Hn Ha.
+Qed.
+
+Definition typesym_eqMixin := EqMixin typesym_eqb_spec.
+Canonical typesym_eqType := EqType typesym typesym_eqMixin.
+
+
+
+(*
 Definition typesym_eqb (t1 t2: typesym) :=
   String.eqb (ts_name t1) (ts_name t2) &&
   list_eqb typevar_eqb (ts_args t1) (ts_args t2).
@@ -122,7 +138,7 @@ Proof.
     + apply ReflectT. apply typesym_eq; auto.
     + apply ReflectF. intros C. destruct t1; destruct t2; subst. inversion C; contradiction.
   - apply ReflectF. intro C; destruct t1; destruct t2; inversion C; subst; contradiction.
-Qed.
+Qed.*)
 
 Definition typesym_eq_dec (t1 t2: typesym) : {t1 = t2} + {t1 <> t2} :=
   reflect_dec' (typesym_eqb_spec t1 t2).
@@ -214,9 +230,9 @@ Fixpoint vty_eqb (t1 t2: vty) : bool :=
   match t1, t2 with
   | vty_int, vty_int => true
   | vty_real, vty_real => true
-  | vty_var t1, vty_var t2 => typevar_eqb t1 t2
+  | vty_var t1, vty_var t2 => t1 == t2
   | vty_cons ts1 vs1, vty_cons ts2 vs2 =>
-    typesym_eqb ts1 ts2 &&
+    (ts1 == ts2) &&
     ((fix vty_eqb_list (l1 l2: list vty) : bool :=
       match l1, l2 with
       | nil, nil => true
@@ -229,42 +245,42 @@ Fixpoint vty_eqb (t1 t2: vty) : bool :=
 Lemma vty_eqb_eq: forall t1 t2,
   vty_eqb t1 t2 -> t1 = t2.
 Proof.
-  intros t1. induction t1; simpl; auto; intros; destruct t2; auto; 
-  try match goal with
-  | H : is_true false |- _ => inversion H
-  end; try simpl_sumbool.
-  destruct (typevar_eqb_spec v t); subst; auto. inversion H.
-  apply andb_prop in H0. destruct H0.
-  destruct (typesym_eqb_spec tsym t); subst. 2: inversion H0.
-  f_equal. generalize dependent l. induction vs; simpl;
-  auto; intros; destruct l; auto; try solve[inversion H1].
-  inversion H; subst.
-  apply andb_prop in H1. destruct H1.
-  apply H4 in H1; subst. f_equal.
-  apply IHvs; auto.
+  move=> t1; elim: t1 =>/=[t2 | t2 | v t2 | ts vs Hall t2];
+  case: t2 =>//.
+  - by move=> v2 => /eqP ->.
+  - move=> ts2 vs2 => /andP[/eqP Hts Hlist].
+    subst. f_equal. rewrite {ts2}.
+    move: vs2 Hall Hlist. elim: vs => 
+      [// [// | h2 t2 //] | h t /= IH [// | h2 t2 /=] Hall /andP[Hh Ht]].
+    have->//: h = h2 by apply (Forall_inv Hall).
+    f_equal. apply IH=>//. by apply (Forall_inv_tail Hall).
 Qed.
 
 Lemma vty_eq_eqb: forall t1 t2,
   t1 = t2 ->
   vty_eqb t1 t2.
 Proof.
-  intros t1. induction t1; simpl; auto; intros; destruct t2; auto; try solve[inversion H];
-  try solve[inversion H0].
-  - inversion H; subst. destruct (typevar_eqb_spec t t); auto.
-  - inversion H0; subst. apply andb_true_intro; split; 
-    [destruct (typesym_eqb_spec t t); auto |].
-    clear H0. induction l; simpl; auto.
-    inversion H; subst. apply andb_true_intro; split; auto.
-    apply H2; auto.
-Qed. 
+  move=> t1; elim: t1 =>/=[t2 | t2 | v t2 | ts vs Hall t2];
+  case: t2 => //.
+  - by move=> v2 [] /eqP.
+  - move=> ts1 vs1 [] Hts Hvs; subst. rewrite eq_refl/=.
+    rewrite {ts1}. move: Hall. elim: vs1 => [// | h t /= IH Hall].
+    apply /andP; split.
+    + by apply (Forall_inv Hall).
+    + by apply IH, (Forall_inv_tail Hall).
+Qed.
 
 Lemma vty_eq_spec: forall t1 t2,
   reflect (t1 = t2) (vty_eqb t1 t2).
 Proof.
-  intros. destruct (vty_eqb t1 t2) eqn : Heq.
-  - apply ReflectT. apply vty_eqb_eq. auto.
-  - apply ReflectF. intro C; apply vty_eq_eqb in C; rewrite Heq in C; inversion C.
+  move=>t1 t2. case Heq: (vty_eqb t1 t2); constructor.
+  - by apply vty_eqb_eq.
+  - move=> C. have: vty_eqb t1 t2 by apply (vty_eq_eqb _ _ C).
+    by rewrite Heq.
 Qed.
+
+Definition vty_eqMixin := EqMixin vty_eq_spec.
+Canonical vty_eqType := EqType vty vty_eqMixin.
 
 Definition vty_eq_dec (v1 v2: vty): {v1 = v2} + {v1 <> v2} :=
   reflect_dec' (vty_eq_spec v1 v2).
@@ -307,13 +323,27 @@ Proof.
   subst; reflexivity.
 Qed.
 
-Lemma sort_eq_dec: forall (s1 s2: sort),
-  {s1 = s2} + {s1 <> s2}.
+Definition sort_eqb_spec: forall (s1 s2: sort),
+  reflect (s1 = s2) ((sort_to_ty s1) == (sort_to_ty s2)).
+Proof.
+  move=> s1 s2. case: ((sort_to_ty s1) == (sort_to_ty s2)) /eqP => Hsort;
+  constructor.
+  - by apply sort_inj.
+  - by move=> C; subst.
+Qed.
+
+Definition sort_eqMixin := EqMixin sort_eqb_spec.
+Canonical sort_eqType := EqType sort sort_eqMixin.
+
+Definition sort_eq_dec (s1 s2: sort) :
+  {s1 = s2} + {s1 <> s2} :=
+  reflect_dec _ _ (sort_eqb_spec s1 s2).
+(*
 Proof.
   intros. destruct (vty_eq_dec (sort_to_ty s1) (sort_to_ty s2)).
   - left. apply sort_inj. auto.
   - right. intro C; subst; contradiction.
-Defined.
+Defined.*)
 
 Lemma int_is_sort: is_sort vty_int.
 Proof.
@@ -430,7 +460,7 @@ Qed.
 Lemma ty_subst_fun_nth: forall (vars: list typevar) (vs: list vty)
   (d: vty) (n: nat) (a: typevar) (s: vty),
   length vars = length vs ->
-  (n < length vars) ->
+  (n < length vars)%coq_nat ->
   NoDup vars ->
   ty_subst_fun vars vs d (List.nth n vars a) = List.nth n vs s.
 Proof.
@@ -471,9 +501,9 @@ Proof.
   - apply sort_inj; simpl. inversion i.
   - rewrite Forall_forall in H. apply sort_inj; simpl.
     f_equal. apply list_eq_ext'; try rewrite !map_length; auto.
-    intros n d Hn. rewrite map_nth_inbound with(d2:=d); auto.
-    assert (Hin: In (nth n vs d) vs) by (apply nth_In; auto).
-    assert (Hsort: is_sort (nth n vs d)). {
+    intros n d Hn. rewrite -> map_nth_inbound with(d2:=d); auto.
+    assert (Hin: In (List.nth n vs d) vs) by (apply nth_In; auto).
+    assert (Hsort: is_sort (List.nth n vs d)). {
       unfold is_sort. unfold is_sort in i.
       rewrite (type_vars_cons tsym vs); auto. 
       destruct (type_vars (vty_cons tsym vs)) eqn : Ht; auto. inversion i.

@@ -57,7 +57,7 @@ Inductive pattern_has_type: sig -> pattern -> vty -> Prop :=
   | P_Bind: forall s x ty p,
     ~ In x (pat_fv p) ->
     pattern_has_type s p ty ->
-    pattern_has_type s (Pvar x ty) ty.
+    pattern_has_type s (Pbind p x ty) ty.
 
 (* Typing rules for terms *)
 Inductive term_has_type: sig -> term -> vty -> Prop :=
@@ -162,45 +162,6 @@ Lemma bool_dec: forall {A: Type} (f: A -> bool),
   (forall x : A, {is_true (f x)} + {~ is_true (f x)}).
 Proof.
   intros A f x. destruct (f x) eqn : Hfx; auto.
-  right. intro C. inversion C.
-Qed.
-
-(* Let's try to build a typechecker *)
-Fixpoint typecheck_type (s:sig) (v: vty) : bool :=
-  match v with
-  | vty_int => true
-  | vty_real => true
-  | vty_var tv => false
-  | vty_cons ts vs => 
-      In_dec typesym_eq_dec ts (sig_t s) &&
-      Nat.eqb (length vs) (length (ts_args ts)) &&
-      (fix check_list (l: list vty) : bool :=
-      match l with
-      | nil => true
-      | x :: t => typecheck_type s x && check_list t
-      end) vs
-  end.
-
-(*We would like to prove this correct*)
-Lemma typecheck_type_correct: forall (s: sig) (v: vty),
-  valid_type s v <-> typecheck_type s v = true.
-Proof.
-  intros s. induction v; simpl; try solve[split; auto; constructor].
-  - split; intros Hty; inversion Hty.
-  - split; intros Hty.
-    + inversion Hty; subst. repeat(apply andb_true_intro; split).
-      simpl_sumbool. apply Nat.eqb_eq. auto.
-      clear Hty H2 H4. induction vs; simpl; auto; intros.
-      inversion H; subst. rewrite <- Forall_forall in H5. inversion H5; subst.
-      apply andb_true_intro; split; auto. apply H2; auto.
-      apply IHvs; auto. apply Forall_forall. auto.
-    + apply andb_true_iff in Hty; destruct Hty.
-      apply andb_true_iff in H0; destruct H0.
-      simpl_sumbool. apply Nat.eqb_eq in H2. constructor; auto.
-      clear i H2. induction vs; simpl; auto; intros. inversion H0.
-      apply andb_true_iff in H1; destruct H1.
-      inversion H; subst. destruct H0; subst; auto.
-      apply H5; auto.
 Qed.
 
 (*First, try this: TODO move*)
