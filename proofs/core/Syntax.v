@@ -201,6 +201,7 @@ Inductive term : Set :=
   | Tlet: term -> vsymbol -> vty -> term -> term
   | Tif: formula -> term -> term -> term
   | Tmatch: term -> vty -> list (pattern * term) -> term
+  | Teps: formula -> vsymbol -> term
 with formula : Set :=
   | Fpred: predsym -> list vty -> list term -> formula
   | Fquant: quant -> vsymbol -> vty -> formula -> formula
@@ -274,6 +275,7 @@ Fixpoint term_fv (t: term) : list vsymbol :=
   | Tlet t1 v _ t2 => union' (term_fv t1) (remove' v (term_fv t2))
   | Tif f t1 t2 => union' (form_fv f) (union' (term_fv t1) (term_fv t2))
   | Tmatch t ty l => union' (term_fv t) (big_union' (fun x => remove_all' (pat_fv (fst x)) (term_fv (snd x))) l)
+  | Teps f x => remove' x (form_fv f)
   end
 
 with form_fv (f: formula) : list vsymbol :=

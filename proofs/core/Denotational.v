@@ -8,7 +8,7 @@ Require Import Hlist.
 Require Import Coq.Program.Equality.
 
 (*The axioms we need: excluded middle and definite description*)
-Require Import Coq.Logic.ClassicalDescription.
+Require Import Coq.Logic.ClassicalEpsilon.
 
 (*This gives us the following (we give a shorter name)*)
 Definition all_dec : forall (P : Prop), {P} + {~P} := excluded_middle_informative.
@@ -282,6 +282,12 @@ Proof.
   rewrite Forall_forall. auto.
 Qed.
 
+Lemma ty_eps_inv {s f x ty} (H: term_has_type s (Teps f x) ty):
+  valid_formula s f.
+Proof.
+  inversion H; subst; auto.
+Qed.
+
 Lemma valid_not_inj {s f} (H: valid_formula s (Fnot f)):
   valid_formula s f.
 Proof.
@@ -358,10 +364,6 @@ Proof.
   - specialize (IHl H). destruct IHl as [x [Hinx Hx]].
     + apply (exist _ x). split; auto. right; auto.
 Qed.
-
-Check find.
-Search find.
-Locate find.
 
 Definition find_ts_in_mut (ts: typesym) (m: mut_adt) : option alg_datatype :=
   find (fun a => typesym_eq_dec ts (adt_name a)) (typs m).
@@ -952,6 +954,24 @@ Fixpoint term_rep (v: valuation gamma_valid i) (t: term) (ty: vty)
         end
       end Hall in
       match_rep xs Hall
+    | Teps f x => fun Htm =>
+      let Hty' : term_has_type sigma (Teps f x) ty :=
+        has_type_eq Htm Hty in
+      let Hval : valid_formula sigma f := ty_eps_inv Hty' in
+      (*We need to show that domain (val v ty) is inhabited*)
+      let def : domain (val v ty) :=
+      match (domain_ne gamma_valid i (val v ty)) with
+      | DE x => x 
+      end in
+      (*Semantics for epsilon - use Coq's classical epsilon,
+        we get an instance y of [domain (val v ty)]
+        that makes f true when x evaluates to y
+        TODO: make sure this works*)
+
+      epsilon (inhabits def) (fun (y: domain (val v ty)) =>
+        is_true (formula_rep (substi v x ty y) f Hval))
+
+
   end) eq_refl
 
 with formula_rep (v: valuation gamma_valid i) (f: formula) 

@@ -102,6 +102,11 @@ Inductive term_has_type: sig -> term -> vty -> Prop :=
     and additional hypotheses in semantics.*)
     valid_type s ty2 ->
     term_has_type s (Tmatch tm ty1 ps) ty2
+  | T_eps: forall s x ty f,
+    (*TODO: is this the right typing rule?*)
+    valid_formula s f ->
+    valid_type s ty ->
+    term_has_type s (Teps f x) ty
 
 
 (* Typing rules for formulas *)
@@ -475,6 +480,9 @@ Inductive valid_pat_tm : term -> Prop :=
     valid_pattern_match (map fst ps) ->
     (forall x, In x (map snd ps) -> valid_pat_tm x) ->
     valid_pat_tm (Tmatch t ty ps)
+  | VTY_eps: forall f x,
+    valid_pat_fmla f ->
+    valid_pat_tm (Teps f x)
 with valid_pat_fmla: formula -> Prop :=
   | VTF_pred: forall p vs ts,
     (forall x, In x ts -> valid_pat_tm x) ->
@@ -876,6 +884,7 @@ with predsym_in_term (p: predsym) (t: term) {struct t}  : bool :=
   | Tlet t1 x ty t2 => predsym_in_term p t1 || predsym_in_term p t2
   | Tif f t1 t2 => predsym_in p f || predsym_in_term p t1 || predsym_in_term p t2
   | Tmatch t ty ps => predsym_in_term p t || existsb (fun x => predsym_in_term p (snd x)) ps
+  | Teps f x => predsym_in p f
   end.
   
 (*Here, strict positivity is a bit simpler, because predicates are not
