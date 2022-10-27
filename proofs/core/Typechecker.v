@@ -90,27 +90,47 @@ Fixpoint typecheck_pattern (s: sig) (p: pattern) (v: vty) : bool :=
 
 (*Proofs of correctness*)
 
-(*We would like to prove this correct*)
-Lemma typecheck_type_correct: forall (s: sig) (v: vty),
-  valid_type s v <-> typecheck_type s v = true.
+(*TODO: move*)
+Lemma inP: forall {A: eqType} (x: A) (l: seq A),
+  reflect (In x l) (x \in l).
 Proof.
-  intros s. induction v; simpl; try solve[split; auto; constructor].
-  - split; intros Hty; inversion Hty.
-  - split; intros Hty.
-    + inversion Hty; subst. repeat(apply andb_true_intro; split).
-      simpl_sumbool. apply Nat.eqb_eq. auto.
-      clear Hty H2 H4. induction vs; simpl; auto; intros.
-      inversion H; subst. rewrite <- Forall_forall in H5. inversion H5; subst.
-      apply andb_true_intro; split; auto. apply H2; auto.
-      apply IHvs; auto. apply Forall_forall. auto.
-    + apply andb_true_iff in Hty; destruct Hty.
-      apply andb_true_iff in H0; destruct H0.
-      simpl_sumbool. apply Nat.eqb_eq in H2. constructor; auto.
-      clear i H2. induction vs; simpl; auto; intros. inversion H0.
-      apply andb_true_iff in H1; destruct H1.
-      inversion H; subst. destruct H0; subst; auto.
-      apply H5; auto.
+  move=> A x l. elim: l => [//= | h t /= IH].
+  - by apply ReflectF.
+  - rewrite in_cons. apply orPP => //.
+    rewrite eq_sym. apply eqP.
 Qed.
 
-Definition 
+(*We would like to prove this correct*)
+Lemma typecheck_type_correct: forall (s: sig) (v: vty),
+  reflect (valid_type s v) (typecheck_type s v).
+Proof.
+  move=> s. apply vty_rect=>//=.
+  - apply ReflectT. constructor.
+  - apply ReflectT. constructor.
+  - move=> v. apply ReflectF => C. inversion C.
+  - move=> ts vs Hty. case Hts: (ts \in sig_t s)=>/=; last first.
+      apply ReflectF => C. inversion C; subst.
+      move: H1 => /inP. by rewrite Hts.
+    (*Annoyingly, we can't do a single induction because of the
+      length requirement*)
+    apply iff_reflect. split.
+    + move => Hty'. inversion Hty'; subst. rewrite {H1} (introT eqP H3)/=.
+      move: Hty H4. clear. elim: vs => [// | v vs /= IH Hall Hval].
+      have->/=: typecheck_type s v by apply /(ForallT_hd _ _ _ Hall);
+        apply Hval; left.
+      apply IH. by apply (ForallT_tl _ _ _ Hall).
+      move=> x Hinx. by apply Hval; right.
+    + move => /andP[/eqP Hlen Hvs].
+      constructor=>//. by apply /inP.
+      move: Hvs Hty. clear. elim: vs => 
+        [// | v vs /= IH /andP[Hv Hvs] Hall x [Hvx | Hinx]]; subst.
+      by apply /(ForallT_hd _ _ _ Hall).
+      apply IH=>//. by apply (ForallT_tl _ _ _ Hall).
+Qed.
+
+(*Let's start this*)
+Lemma typecheck_pattern_correct: forall (s: sig) (p: pattern) (v: vty),
+  reflect (pattern_has_type s p v) (typecheck_pattern s p v).
+Proof.
+  move=> s p v. (*TODO: need induction for Set/Type for patterns*)
 
