@@ -249,6 +249,36 @@ Fixpoint pattern_ind (p: pattern) : P p :=
 
 End PatternInd.
 
+(*Version for Type*)
+Section PatternRect.
+
+Variable P: pattern -> Type.
+Variable Hvar: forall (v: vsymbol) (ty: vty),
+  P (Pvar v ty).
+Variable Hconstr: forall (f: funsym) (vs: list vty) (ps: list pattern),
+  ForallT P ps ->
+  P (Pconstr f vs ps).
+Variable Hwild: P Pwild.
+Variable Hor: forall p1 p2, P p1 -> P p2 -> P (Por p1 p2).
+Variable Hbind: forall p v ty,
+  P p -> P (Pbind p v ty).
+
+Fixpoint pattern_rect (p: pattern) : P p :=
+  match p with
+  | Pvar x ty => Hvar x ty
+  | Pconstr f tys ps => Hconstr f tys ps
+    ((fix all_patterns (l: list pattern) : ForallT P l :=
+    match l with
+    | nil => @ForallT_nil _ P
+    | x :: t => @ForallT_cons _ P _ _ (pattern_rect x) (all_patterns t)
+    end) ps)
+  | Pwild => Hwild
+  | Por p1 p2 => Hor p1 p2 (pattern_rect p1) (pattern_rect p2)
+  | Pbind p x ty => Hbind p x ty (pattern_rect p)
+  end.
+
+End PatternRect.
+
 Section FreeVars.
 
 Local Notation union' := (union vsymbol_eq_dec).
