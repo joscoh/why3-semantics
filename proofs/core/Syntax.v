@@ -201,7 +201,7 @@ Inductive term : Set :=
   | Tlet: term -> vsymbol -> vty -> term -> term
   | Tif: formula -> term -> term -> term
   | Tmatch: term -> vty -> list (pattern * term) -> term
-  | Teps: formula -> vsymbol -> term
+  | Teps: formula -> vsymbol -> vty -> term
 with formula : Set :=
   | Fpred: predsym -> list vty -> list term -> formula
   | Fquant: quant -> vsymbol -> vty -> formula -> formula
@@ -216,8 +216,8 @@ with formula : Set :=
   (*TODO: will need nicer (useful) induction scheme*)
 Set Elimination Schemes.
 
-Scheme term_ind := Induction for term Sort Prop
-with formula_ind := Induction for formula Sort Prop.
+(*Scheme term_ind := Induction for term Sort Prop
+with formula_ind := Induction for formula Sort Prop.*)
 
 (*Induction principles*)
 Section PatternInd.
@@ -279,6 +279,195 @@ Fixpoint pattern_rect (p: pattern) : P p :=
 
 End PatternRect.
 
+(*Induction for terms and formulas*)
+Section TermFormInd.
+
+Variable P1: term -> Prop.
+Variable P2: formula -> Prop.
+
+Variable tconst: forall c: constant, P1 (Tconst c).
+Variable tvar: forall (v: vsymbol) (ty: vty),
+  P1 (Tvar v ty).
+Variable tfun: forall (f1: funsym) (l: list vty) (l1: list term),
+  Forall P1 l1 ->
+  P1 (Tfun f1 l l1).
+Variable tlet: forall (tm1 : term) (v: vsymbol) (ty: vty) (tm2: term),
+  P1 tm1 -> P1 tm2 -> P1 (Tlet tm1 v ty tm2).
+Variable tif: forall (f: formula) (t1 t2: term),
+  P2 f -> P1 t1 -> P1 t2 -> P1 (Tif f t1 t2).
+Variable tmatch: forall (tm: term) (v: vty) (ps: list (pattern * term)),
+  P1 tm -> Forall P1 (map snd ps) -> P1 (Tmatch tm v ps).
+Variable teps: forall (f: formula) (v: vsymbol) (ty: vty),
+  P2 f -> P1 (Teps f v ty).
+
+Variable fpred: forall (p: predsym) (tys: list vty) (tms: list term),
+  Forall P1 tms -> P2 (Fpred p tys tms).
+Variable fquant: forall (q: quant) (v: vsymbol) (ty: vty) (f: formula),
+  P2 f -> P2 (Fquant q v ty f).
+Variable feq: forall (v: vty) (t1 t2: term),
+  P1 t1 -> P1 t2 -> P2 (Feq v t1 t2).
+Variable fbinop: forall (b: binop) (f1 f2: formula),
+  P2 f1 -> P2 f2 -> P2 (Fbinop b f1 f2).
+Variable fnot: forall (f: formula),
+  P2 f -> P2 (Fnot f).
+Variable ftrue : P2 Ftrue.
+Variable ffalse: P2 Ffalse.
+Variable flet: forall (tm: term) (v: vsymbol) (ty: vty) (f: formula),
+  P1 tm -> P2 f -> P2 (Flet tm v ty f).
+Variable fif: forall (f1 f2 f3: formula),
+  P2 f1 -> P2 f2 -> P2 f3 -> P2 (Fif f1 f2 f3).
+Variable fmatch: forall (tm: term) (v: vty) (ps: list (pattern * formula)),
+  P1 tm ->
+  Forall P2 (map snd ps) ->
+  P2 (Fmatch tm v ps).
+
+Fixpoint term_ind (tm: term) : P1 tm :=
+  match tm with
+  | Tconst c => tconst c
+  | Tvar v ty => tvar v ty
+  | Tfun f vs tms => tfun f vs tms 
+    ((fix term_list_ind (l: list term) : Forall P1 l :=
+    match l with
+    | nil => (@Forall_nil _ P1)
+    | x :: t => Forall_cons _ (term_ind x) (term_list_ind t)
+    end) tms)
+  | Tlet t1 v ty t2 => tlet t1 v ty t2 (term_ind t1) (term_ind t2)
+  | Tif f t1 t2 => tif f t1 t2 (formula_ind f) (term_ind t1) (term_ind t2)
+  | Tmatch tm ty ps => tmatch tm ty ps (term_ind tm)
+    ((fix snd_ind (l: list (pattern * term)) : Forall P1 (map snd l) :=
+    match l as l' return Forall P1 (map snd l') with
+    | nil => (@Forall_nil _ P1)
+    | (x, y) :: t => Forall_cons _ (term_ind y) (snd_ind t)
+    end) ps)
+  | Teps f v ty => teps f v ty (formula_ind f)
+  end
+with formula_ind (f: formula) : P2 f :=
+  match f with
+  | Fpred p vs tms => fpred p vs tms
+    ((fix term_list_ind (l: list term) : Forall P1 l :=
+    match l with
+    | nil => (@Forall_nil _ P1)
+    | x :: t => Forall_cons _ (term_ind x) (term_list_ind t)
+    end) tms)
+  | Fquant q v ty f => fquant q v ty f (formula_ind f)
+  | Feq ty t1 t2 => feq ty t1 t2 (term_ind t1) (term_ind t2)
+  | Fbinop b f1 f2 => fbinop b f1 f2 (formula_ind f1) (formula_ind f2)
+  | Fnot f => fnot f (formula_ind f)
+  | Ftrue => ftrue
+  | Ffalse => ffalse
+  | Flet tm v ty f1 => flet tm v ty f1 (term_ind tm) (formula_ind f1)
+  | Fif f1 f2 f3 => fif f1 f2 f3 (formula_ind f1) (formula_ind f2)
+    (formula_ind f3)
+  | Fmatch tm ty ps => fmatch tm ty ps (term_ind tm)
+    ((fix snd_ind (l: list (pattern * formula)) : Forall P2 (map snd l) :=
+    match l as l' return Forall P2 (map snd l') with
+    | nil => (@Forall_nil _ P2)
+    | (x, y) :: t => Forall_cons _ (formula_ind y) (snd_ind t)
+    end) ps)
+  end.
+
+(*Also, we can prove things about both, only needing the 
+  assumptions once:*)
+Definition term_formula_ind: forall (tm: term) (f: formula),
+  P1 tm /\ P2 f := fun tm f => (conj (term_ind tm) (formula_ind f)).
+
+End TermFormInd.
+
+(*The _rect version*)
+Section TermFormRect.
+
+Variable P1: term -> Type.
+Variable P2: formula -> Type.
+
+Variable tconst: forall c: constant, P1 (Tconst c).
+Variable tvar: forall (v: vsymbol) (ty: vty),
+  P1 (Tvar v ty).
+Variable tfun: forall (f1: funsym) (l: list vty) (l1: list term),
+  ForallT P1 l1 ->
+  P1 (Tfun f1 l l1).
+Variable tlet: forall (tm1 : term) (v: vsymbol) (ty: vty) (tm2: term),
+  P1 tm1 -> P1 tm2 -> P1 (Tlet tm1 v ty tm2).
+Variable tif: forall (f: formula) (t1 t2: term),
+  P2 f -> P1 t1 -> P1 t2 -> P1 (Tif f t1 t2).
+Variable tmatch: forall (tm: term) (v: vty) (ps: list (pattern * term)),
+  P1 tm -> ForallT P1 (map snd ps) -> P1 (Tmatch tm v ps).
+Variable teps: forall (f: formula) (v: vsymbol) (ty: vty),
+  P2 f -> P1 (Teps f v ty).
+
+Variable fpred: forall (p: predsym) (tys: list vty) (tms: list term),
+  ForallT P1 tms -> P2 (Fpred p tys tms).
+Variable fquant: forall (q: quant) (v: vsymbol) (ty: vty) (f: formula),
+  P2 f -> P2 (Fquant q v ty f).
+Variable feq: forall (v: vty) (t1 t2: term),
+  P1 t1 -> P1 t2 -> P2 (Feq v t1 t2).
+Variable fbinop: forall (b: binop) (f1 f2: formula),
+  P2 f1 -> P2 f2 -> P2 (Fbinop b f1 f2).
+Variable fnot: forall (f: formula),
+  P2 f -> P2 (Fnot f).
+Variable ftrue : P2 Ftrue.
+Variable ffalse: P2 Ffalse.
+Variable flet: forall (tm: term) (v: vsymbol) (ty: vty) (f: formula),
+  P1 tm -> P2 f -> P2 (Flet tm v ty f).
+Variable fif: forall (f1 f2 f3: formula),
+  P2 f1 -> P2 f2 -> P2 f3 -> P2 (Fif f1 f2 f3).
+Variable fmatch: forall (tm: term) (v: vty) (ps: list (pattern * formula)),
+  P1 tm ->
+  ForallT P2 (map snd ps) ->
+  P2 (Fmatch tm v ps).
+
+Fixpoint term_rect (tm: term) : P1 tm :=
+  match tm with
+  | Tconst c => tconst c
+  | Tvar v ty => tvar v ty
+  | Tfun f vs tms => tfun f vs tms 
+    ((fix term_list_rect (l: list term) : ForallT P1 l :=
+    match l with
+    | nil => (@ForallT_nil _ P1)
+    | x :: t => ForallT_cons _ (term_rect x) (term_list_rect t)
+    end) tms)
+  | Tlet t1 v ty t2 => tlet t1 v ty t2 (term_rect t1) (term_rect t2)
+  | Tif f t1 t2 => tif f t1 t2 (formula_rect f) (term_rect t1) (term_rect t2)
+  | Tmatch tm ty ps => tmatch tm ty ps (term_rect tm)
+    ((fix snd_rect (l: list (pattern * term)) : ForallT P1 (map snd l) :=
+    match l as l' return ForallT P1 (map snd l') with
+    | nil => (@ForallT_nil _ P1)
+    | (x, y) :: t => ForallT_cons _ (term_rect y) (snd_rect t)
+    end) ps)
+  | Teps f v ty => teps f v ty (formula_rect f)
+  end
+with formula_rect (f: formula) : P2 f :=
+  match f with
+  | Fpred p vs tms => fpred p vs tms
+    ((fix term_list_rect (l: list term) : ForallT P1 l :=
+    match l with
+    | nil => (@ForallT_nil _ P1)
+    | x :: t => ForallT_cons _ (term_rect x) (term_list_rect t)
+    end) tms)
+  | Fquant q v ty f => fquant q v ty f (formula_rect f)
+  | Feq ty t1 t2 => feq ty t1 t2 (term_rect t1) (term_rect t2)
+  | Fbinop b f1 f2 => fbinop b f1 f2 (formula_rect f1) (formula_rect f2)
+  | Fnot f => fnot f (formula_rect f)
+  | Ftrue => ftrue
+  | Ffalse => ffalse
+  | Flet tm v ty f1 => flet tm v ty f1 (term_rect tm) (formula_rect f1)
+  | Fif f1 f2 f3 => fif f1 f2 f3 (formula_rect f1) (formula_rect f2)
+    (formula_rect f3)
+  | Fmatch tm ty ps => fmatch tm ty ps (term_rect tm)
+    ((fix snd_rect (l: list (pattern * formula)) : ForallT P2 (map snd l) :=
+    match l as l' return ForallT P2 (map snd l') with
+    | nil => (@ForallT_nil _ P2)
+    | (x, y) :: t => ForallT_cons _ (formula_rect y) (snd_rect t)
+    end) ps)
+  end.
+
+(*Also, we can prove things about both, only needing the 
+  assumptions once:*)
+Definition term_formula_rect: forall (tm: term) (f: formula),
+  P1 tm * P2 f := fun tm f => ((term_rect tm), (formula_rect f)).
+
+End TermFormRect.
+
+
 Section FreeVars.
 
 Local Notation union' := (union vsymbol_eq_dec).
@@ -305,7 +494,7 @@ Fixpoint term_fv (t: term) : list vsymbol :=
   | Tlet t1 v _ t2 => union' (term_fv t1) (remove' v (term_fv t2))
   | Tif f t1 t2 => union' (form_fv f) (union' (term_fv t1) (term_fv t2))
   | Tmatch t ty l => union' (term_fv t) (big_union' (fun x => remove_all' (pat_fv (fst x)) (term_fv (snd x))) l)
-  | Teps f x => remove' x (form_fv f)
+  | Teps f x ty => remove' x (form_fv f)
   end
 
 with form_fv (f: formula) : list vsymbol :=

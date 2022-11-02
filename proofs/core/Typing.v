@@ -77,7 +77,7 @@ Inductive term_has_type: sig -> term -> vty -> Prop :=
     length params = length (s_params f) ->
     (* For all i, [nth i tms] has type [sigma(nth i (s_args f))], where
       sigma is the type substitution that maps f's type vars to [params] *)
-    let sigma : vty -> vty := ty_subst (s_params f) params in
+    (*let sigma : vty -> vty := ty_subst (s_params f) params in*)
     Forall (fun x => term_has_type s (fst x) (snd x)) (combine tms
       (map (ty_subst (s_params f) params) (s_args f))) ->
     term_has_type s (Tfun f params tms) (ty_subst (s_params f) params (s_ret f))
@@ -100,13 +100,15 @@ Inductive term_has_type: sig -> term -> vty -> Prop :=
     If not, need to prove by knowing that pattern matching exhaustive, so
     nonempty, so can take 1st element. But then we need a context
     and additional hypotheses in semantics.*)
-    valid_type s ty2 ->
+    (*valid_type s ty2 ->*)
+    (*need this to ensure that typing is decidable*)
+    negb (null ps) ->
     term_has_type s (Tmatch tm ty1 ps) ty2
   | T_eps: forall s x ty f,
     (*TODO: is this the right typing rule?*)
     valid_formula s f ->
     valid_type s ty ->
-    term_has_type s (Teps f x) ty
+    term_has_type s (Teps f x ty) ty
 
 
 (* Typing rules for formulas *)
@@ -441,9 +443,9 @@ Inductive valid_pat_tm : term -> Prop :=
     valid_pattern_match (map fst ps) ->
     (forall x, In x (map snd ps) -> valid_pat_tm x) ->
     valid_pat_tm (Tmatch t ty ps)
-  | VTY_eps: forall f x,
+  | VTY_eps: forall f x ty,
     valid_pat_fmla f ->
-    valid_pat_tm (Teps f x)
+    valid_pat_tm (Teps f x ty)
 with valid_pat_fmla: formula -> Prop :=
   | VTF_pred: forall p vs ts,
     (forall x, In x ts -> valid_pat_tm x) ->
@@ -802,11 +804,12 @@ Fixpoint valid_ind_form_dec (p: predsym) (f: formula) : bool :=
 Lemma valid_ind_form_equiv: forall p f,
   reflect (valid_ind_form p f) (valid_ind_form_dec p f).
 Proof.
-  intros. apply iff_reflect. induction f using formula_ind with (P:=(fun _ => True)); auto; simpl;
+  intros. apply iff_reflect. 
+  induction f using formula_ind with (P1:=(fun _ => True)); auto; simpl;
   (split; [intros C;inversion C; subst| intros]); auto; try solve[intuition]; try solve[constructor];
   try match goal with | H: false = true |- _ => inversion H end.
-  - rewrite H3, Nat.eqb_refl, andb_true_r. apply andb_true_intro; split; simpl_sumbool. 
-  - repeat(apply andb_prop in H; destruct H). repeat simpl_sumbool. constructor; auto.
+  - rewrite H4, Nat.eqb_refl, andb_true_r. apply andb_true_intro; split; simpl_sumbool. 
+  - repeat(apply andb_prop in H0; destruct H0). repeat simpl_sumbool. constructor; auto.
     apply Nat.eqb_eq. auto.
   - destruct q;[constructor; intuition |inversion H].
   - destruct b; try inversion H. constructor. intuition.
@@ -845,7 +848,7 @@ with predsym_in_term (p: predsym) (t: term) {struct t}  : bool :=
   | Tlet t1 x ty t2 => predsym_in_term p t1 || predsym_in_term p t2
   | Tif f t1 t2 => predsym_in p f || predsym_in_term p t1 || predsym_in_term p t2
   | Tmatch t ty ps => predsym_in_term p t || existsb (fun x => predsym_in_term p (snd x)) ps
-  | Teps f x => predsym_in p f
+  | Teps f x ty => predsym_in p f
   end.
   
 (*Here, strict positivity is a bit simpler, because predicates are not
@@ -1329,6 +1332,8 @@ Lemma has_type_valid: forall (*s gamma*) t ty,
 Proof.
   intros. induction H; try solve[constructor]; try assumption; auto.
   apply valid_type_subst; assumption.
+  destruct ps. inversion H3.
+  apply (H2 p); auto. left; auto. 
 Qed.
 (*
   - inversion H0; subst. auto.

@@ -76,6 +76,8 @@ Qed.
 (*TODO*)
 Definition funsym_eqMixin := EqMixin funsym_eqb_spec.
 Canonical funsym_eqType := EqType funsym funsym_eqMixin.
+Definition predsym_eqMixin := EqMixin predsym_eqb_spec.
+Canonical predsym_eqType := EqType predsym predsym_eqMixin.
 
 (*Decidable list intersection, may have duplicates*)
 Definition seqI {A: eqType} (s1 s2: seq A) :=
@@ -292,3 +294,128 @@ Proof.
     case: (typecheck_pattern s p ty) /(IH ty) => Hty; last by reflF.
     apply ReflectT. by constructor.
 Qed.
+Print term_has_type.
+Check ty_subst.
+(*Terms and formulas*)
+Fixpoint typecheck_term (s: sig) (t: term) : option vty :=
+  match t with
+  | Tconst (ConstInt z) => Some vty_int
+  | Tconst (ConstReal r) => Some vty_real
+  | Tvar x ty => if typecheck_type s ty then Some ty else None
+  | Tlet tm1 x ty tm2 => 
+    if (typecheck_term s tm1) == Some ty then
+    typecheck_term s tm2 else None
+  | Tif f tm1 tm2 =>
+    if typecheck_formula s f then
+    match (typecheck_term s tm1) with
+    | Some ty1 => if typecheck_term s tm2 == Some ty1 then Some ty1 else None
+    | None => None
+    end else None
+  | Tmatch tm ty1 ps =>
+    if (typecheck_term s tm == Some ty1) &&
+      all (fun x => typecheck_pattern s (fst x) ty1) ps
+    then 
+      match ps with
+      | nil => None
+      | (pat, tm) :: tl =>
+        match (typecheck_term s tm) with
+        | Some ty2 =>
+          (*Now we have ty2, so we can check that all terms have this*)
+          if ((fix check_list (l: list (pattern * term)) : bool :=
+           match l with
+          | (pat, tm) :: tl => (typecheck_term s tm == Some ty2) && 
+            check_list tl
+          | nil => true
+          end) ps) then Some ty2 else None
+        | None => None
+        end
+      end
+    else None
+  | Tfun f params tms =>
+    if (f \in (sig_f s)) &&
+      all (typecheck_type s) params &&
+      typecheck_type s (s_ret f) &&
+      (length tms == length (s_args f)) &&
+      (length params == length (s_params f)) &&
+      ((fix typecheck_args (l1: list term) (l2: list vty) : bool :=
+      match l1, l2 with
+      | tm1 :: tl1, ty1 :: tl2 => 
+        (typecheck_term s tm1 == Some ty1)
+        && typecheck_args tl1 tl2
+      | nil, nil => true
+      | _, _ => false
+      end) tms (List.map (ty_subst (s_params f) params) (s_args f)))
+    then Some (ty_subst (s_params f) params (s_ret f))
+    else None
+  (*Function case*)
+
+  | Teps f x ty => if typecheck_formula s f && typecheck_type s ty
+    then Some ty else None
+  end 
+with typecheck_formula (s: sig) (f: formula) : bool :=
+  match f with
+  | Ftrue => true
+  | Ffalse => true
+  | Fbinop b f1 f2 =>
+    typecheck_formula s f1 && typecheck_formula s f2
+  | Fnot f1 => typecheck_formula s f1
+  | Fquant q x ty f1 =>
+    typecheck_type s ty &&
+    typecheck_formula s f1
+  | Fpred p params tms =>
+      (p \in (sig_p s)) &&
+      all (typecheck_type s) params &&
+      (length tms == length (p_args p)) &&
+      (length params == length (p_params p)) &&
+      ((fix typecheck_args (l1: list term) (l2: list vty) : bool :=
+      match l1, l2 with
+      | tm1 :: tl1, ty1 :: tl2 => 
+        (typecheck_term s tm1 == Some ty1)
+        && typecheck_args tl1 tl2
+      | nil, nil => true
+      | _, _ => false
+      end) tms (List.map (ty_subst (p_params p) params) (p_args p)))
+  | Flet t x ty f1 =>
+    (typecheck_term s t == Some ty) &&
+    typecheck_formula s f1
+  | Fif f1 f2 f3 =>
+    typecheck_formula s f1 &&
+    typecheck_formula s f2 &&
+    typecheck_formula s f3
+  | Feq ty t1 t2 =>
+    (typecheck_term s t1 == Some ty) &&
+    typecheck_term s t2 == Some ty
+  | Fmatch tm ty ps =>
+    (typecheck_term s tm == Some ty) &&
+    all (fun x => typecheck_pattern s (fst x) ty) ps &&
+    ((fix check_list (l: list (pattern * formula)) : bool :=
+      match l with
+      | (pat, fm) :: tl => typecheck_formula s fm && 
+        check_list tl
+      | nil => true
+      end) ps)
+  end.
+
+Ltac reflT := apply ReflectT; constructor.
+
+(*Now we prove the correctness of this*)
+Lemma typecheck_term_fmla_spec (s: sig): 
+  forall (tm: term) (f: formula),
+  (forall v, 
+    reflect (term_has_type s tm v) (typecheck_term s tm == Some v)) *
+  reflect (valid_formula s f) (typecheck_formula s f).
+Proof.
+  apply (term_formula_rect) with(P1:=fun tm => forall v,
+    reflect (term_has_type s tm v) (typecheck_term s tm == Some v))
+  (P2:= fun f => reflect (valid_formula s f) (typecheck_formula s f))=>/=.
+  - move=> c v. case: c => [z | r].
+    + by case: (Some vty_int == Some v) /eqP=> [[Hv] | Hneq]; 
+      subst; [reflT | reflF].
+    + by case: (Some vty_real == Some v) /eqP=> [[Hv] | Hneq]; 
+      subst; [reflT | reflF].
+  - move=> v ty1 ty2. 
+    case: (typecheck_type s ty1) /typecheck_type_correct => Hval; 
+    last by reflF.
+    by case: (Some ty1 == Some ty2) /eqP => [[Hv12] | Hneq]; subst;
+    [reflT | reflF].
+  - 

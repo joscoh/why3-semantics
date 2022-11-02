@@ -282,7 +282,7 @@ Proof.
   rewrite Forall_forall. auto.
 Qed.
 
-Lemma ty_eps_inv {s f x ty} (H: term_has_type s (Teps f x) ty):
+Lemma ty_eps_inv {s f x ty ty'} (H: term_has_type s (Teps f x ty) ty'):
   valid_formula s f.
 Proof.
   inversion H; subst; auto.
@@ -954,8 +954,8 @@ Fixpoint term_rep (v: valuation gamma_valid i) (t: term) (ty: vty)
         end
       end Hall in
       match_rep xs Hall
-    | Teps f x => fun Htm =>
-      let Hty' : term_has_type sigma (Teps f x) ty :=
+    | Teps f x ty1 => fun Htm =>
+      let Hty' : term_has_type sigma (Teps f x ty1) ty :=
         has_type_eq Htm Hty in
       let Hval : valid_formula sigma f := ty_eps_inv Hty' in
       (*We need to show that domain (val v ty) is inhabited*)
