@@ -155,6 +155,8 @@ with valid_formula: sig -> formula -> Prop :=
     term_has_type s tm ty ->
     Forall(fun x => pattern_has_type s (fst x) ty) ps ->
     Forall (fun x => valid_formula s (snd x)) ps ->
+    (*See comment in term*)
+    negb (null ps) ->
     valid_formula s (Fmatch tm ty ps).
 (*
 Notation "s '|-' t ':' ty" := (term_has_type s t ty) (at level 40).

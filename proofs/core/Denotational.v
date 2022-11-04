@@ -2,6 +2,7 @@
 Require Import Syntax.
 Require Import Types.
 Require Import Typing.
+Require Import Typechecker. (*We need [typecheck_dec]*)
 Require Import IndTypes.
 Require Import Semantics.
 Require Import Hlist.
@@ -132,9 +133,9 @@ Proof.
     apply nth_In. auto.
 Qed.
 
-Axiom typecheck_dec: forall s t,
+(*Axiom typecheck_dec: forall s t,
   (exists x, term_has_type s t x) ->
-  { x | term_has_type s t x}.
+  { x | term_has_type s t x}.*)
 
 Lemma ty_fun_ind_ret {f vs ts ty} (H: term_has_type sigma (Tfun f vs ts) ty):
   ty = ty_subst (s_params f) vs (s_ret f).
@@ -1088,3 +1089,4 @@ with formula_rep (v: valuation gamma_valid i) (f: formula)
 
 End Denot.
 
+(*Print Assumptions term_rep.*)
