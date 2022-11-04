@@ -398,6 +398,13 @@ with typecheck_formula (s: sig) (f: formula) : bool :=
 
 Ltac reflT := apply ReflectT; constructor.
 
+(*Use this because we cannot assume eqType, so need In, not \in*)
+Lemma all_forallb: forall {A: Type} (p: A -> bool) (l: seq A),
+  all p l = forallb p l.
+Proof.
+  by [].
+Qed.
+
 (*Now we prove the correctness of this*)
 Lemma typecheck_term_fmla_spec (s: sig): 
   forall (tm: term) (f: formula),
@@ -418,4 +425,111 @@ Proof.
     last by reflF.
     by case: (Some ty1 == Some ty2) /eqP => [[Hv12] | Hneq]; subst;
     [reflT | reflF].
-  - 
+  - move=> f tys tms Hall1 v.
+    case: (f \in sig_f s) /inP => Hinf/=; last by reflF.
+    have Halltyps: forall x, x \in tys -> 
+      reflect (valid_type s x) (typecheck_type s x) by move=> x _;
+      apply typecheck_type_correct.
+    case: (all (typecheck_type s) tys) /(all_Forall _ _ _ Halltyps) =>Halltys/=;
+    last by reflF.
+    rewrite {Halltyps}.
+    case: (typecheck_type s (s_ret f)) /typecheck_type_correct => Hvalret/=;
+    last by reflF.
+    case: (length tms == length (s_args f)) /eqP => Hlentms/=; last by reflF.
+    case: (length tys == length (s_params f)) /eqP => Hlentys/=; 
+    last by reflF.
+    have Hargs:
+      Forall (fun x : term * vty => term_has_type s x.1 x.2)
+      (combine tms (List.map (ty_subst (s_params f) tys) (s_args f))) <->
+      (fix typecheck_args (l1 : seq term) (l2 : seq vty) {struct l1} : bool :=
+      match l1 with
+      | [::] => match l2 with
+                | [::] => true
+                | _ :: _ => false
+                end
+      | tm1 :: tl1 =>
+          match l2 with
+          | [::] => false
+          | ty1 :: tl2 =>
+              (typecheck_term s tm1 == Some ty1) && typecheck_args tl1 tl2
+          end
+      end) tms (List.map (ty_subst (s_params f) tys) (s_args f)). {
+      clear -Hall1 Hlentms. 
+      move: (s_args f) Hlentms Hall1. move: (ty_subst (s_params f) tys).
+      elim: tms => [// sigma [|]//= | h t /= IH sigma [//| arg1 argtl/=] [Hlens] HallT].
+      split.
+      - move=> Hall.
+        case: (typecheck_term s h == Some (sigma arg1)) 
+          /(ForallT_hd _ _ _ HallT) => Hty/=; last by inversion Hall.
+        apply IH=>//. by inversion HallT. by inversion Hall.
+      - move => /andP[/(ForallT_hd _ _ _ HallT) Htyp Hargs ].
+        constructor=>//. apply IH=>//.
+        by inversion HallT.
+    }
+    apply iff_reflect. split.
+    + move=> Hty. inversion Hty; subst. rewrite Hargs in H9.
+      rewrite H9. by apply /eqP.
+    + move: Hargs.
+      case: ((fix typecheck_args (l1 : seq term) (l2 : seq vty) {struct l1} : bool :=
+      match l1 with
+      | [::] => match l2 with
+                | [::] => true
+                | _ :: _ => false
+                end
+      | tm1 :: tl1 =>
+          match l2 with
+          | [::] => false
+          | ty1 :: tl2 =>
+              (typecheck_term s tm1 == Some ty1) && typecheck_args tl1 tl2
+          end
+      end) tms (List.map (ty_subst (s_params f) tys) (s_args f))) => 
+      Hargs /eqP // [Hv]; subst.
+      constructor=>//. by rewrite Hargs.
+  - move=> tm1 v ty tm2 IHtm1 IHtm2 ty'.
+    case: (typecheck_term s tm1 == Some ty) /(IHtm1 ty)=> Hty1/=; 
+    last by reflF.
+    case: (typecheck_term s tm2 == Some ty') /(IHtm2 ty') => Hty2/=;
+    last by reflF.
+    by reflT.
+  - move=> f t1 t2 IHf IHt1 IHt2 v.
+    case: (typecheck_formula s f) /IHf => Hf/=; last by reflF.
+    (*Useful in multiple cases*)
+    have Hunique: forall t ty1 ty2,
+      (forall v, reflect (term_has_type s t v) 
+        (typecheck_term s t == Some v)) ->
+      term_has_type s t ty1 ->
+      term_has_type s t ty2 ->
+      ty1 = ty2. {
+      move=> t ty1 ty2 Hr /(Hr ty1) /eqP Hty1 /(Hr ty2).
+      by rewrite Hty1 => /eqP [].
+    }
+    case Ht1': (typecheck_term s t1) =>[ty |].
+    + move: Ht1' => /eqP /(IHt1 ty) Ht1.
+      case: (typecheck_term s t2 == Some ty) /(IHt2 ty) => Ht2.
+      * case: (Some ty == Some v) /eqP => [[Hv] | Hneq]; subst.
+        by reflT. reflF.
+        have Heq: ty = v by apply (Hunique t1). by subst. 
+      * case: (None == Some v) /eqP=>//= _. reflF.
+        have Heq: ty = v by apply (Hunique t1). by subst.
+    + case: (None == Some v) /eqP=>//= _. reflF.
+      move: H5 => /(IHt1 v). by rewrite Ht1'.
+  - move=> tm ty ps IHtm HallT v.
+    case: (typecheck_term s tm == Some ty) /(IHtm ty)=> Htm/=; last by reflF.
+    (*Here things get a little trickier because terms and patterns are not
+      eqTypes*)
+    case Hall: (all (fun x : pattern * term => typecheck_pattern s x.1 ty) ps);
+      rewrite all_forallb in Hall; last first.
+      case: (None == Some v) /eqP =>// _; reflF.
+      have: forallb (fun x : pattern * term => typecheck_pattern s x.1 ty) ps.
+        apply forallb_forall => x Hinx. apply /typecheck_pattern_correct.
+        by apply H4.
+      by rewrite Hall.
+    have Hallpat: forall x, In x ps -> pattern_has_type s x.1 ty. {
+      move=> x Hinx. apply /typecheck_pattern_correct. move: x Hinx.
+      by apply forallb_forall.
+    }
+    rewrite {Hall}.
+    case Hnull: (null ps).
+    (*TODO: start here, much more awkward bc we can't use ssreflect
+      utilities because no eqType. Also need to deal with null/
+      pattern match thing and nested induction*)
