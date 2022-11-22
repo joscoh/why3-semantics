@@ -68,6 +68,7 @@ Require Import Typing.
 Require Import IndTypes.
 Require Import Semantics.
 Require Import Denotational.
+Require Import Hlist.
 
 Section IndPropRep.
 
@@ -113,10 +114,70 @@ Definition interp_with_P (pi: pre_interp gamma_valid) (p: predsym)
   adts := adts gamma_valid pi;
   constrs := constrs gamma_valid pi
 |}.
+(*
+Check preds.*)
+(*For the list of predsyms, we need to search through the list
+  to apply the correct pred. The dependent types make this
+  complicated, so we use a separate function*)
+Fixpoint find_apply_pred (pi: pre_interp gamma_valid)
+(ps: list predsym)
+(*Our props are an hlist, where we have a Pi for each pi
+of type (srts -> arg_list pi srts -> bool)*)
+(Ps: hlist (fun p => forall srts, 
+  arg_list (domain (dom_aux _ pi)) 
+  (predsym_sigma_args p srts) -> bool) ps) (p: predsym) :
+  (forall srts : list sort,
+    arg_list (domain (dom_aux gamma_valid pi)) 
+      (predsym_sigma_args p srts) -> bool) :=
+  (match ps as ps' return
+  (hlist (fun p : predsym =>
+    forall srts : list sort,
+    arg_list (domain (dom_aux gamma_valid pi))
+      (predsym_sigma_args p srts) -> bool) ps') ->
+    forall srts : list sort,
+      arg_list (domain (dom_aux gamma_valid pi)) 
+        (predsym_sigma_args p srts) -> bool with
+  (*Underneath the depednent types, this is quite
+    simple: iterate through the list, compare for equality
+    and if so, apply the correct Pi function*)
+  | nil => fun _ => (preds gamma_valid pi p)
+  | p' :: ptl =>  fun Hp =>
+    match (predsym_eq_dec p p') with
+    | left Heq => ltac:(rewrite Heq; exact (hlist_hd Hp))
+    | right _ => (find_apply_pred pi ptl (hlist_tl Hp) p)
+    end
+  end) Ps.
+
+(*Do the same for a list of predsyms*)
+Definition interp_with_Ps (pi: pre_interp gamma_valid)
+  (ps: list predsym)
+  (*Our props are an hlist, where we have a Pi for each pi
+  of type (srts -> arg_list pi srts -> bool)*)
+  (Ps: hlist (fun p => forall srts, 
+    arg_list (domain (dom_aux _ pi)) 
+    (predsym_sigma_args p srts) -> bool) ps) :
+  pre_interp gamma_valid :=
+  {|
+  dom_aux := dom_aux gamma_valid pi;
+  domain_ne := domain_ne gamma_valid pi;
+  funs := funs gamma_valid pi;
+  preds := find_apply_pred pi ps Ps;
+  adts := adts gamma_valid pi;
+  constrs := constrs gamma_valid pi
+|}.
+
 
 (*Any valuation is equivalent under each interpretation*)
 Definition interp_P_val pi p P (v: valuation gamma_valid pi):
   valuation gamma_valid (interp_with_P pi p P).
+apply (Build_valuation gamma_valid _ 
+  (v_typevar _ _ v) 
+  (v_typevar_val _ _ v)).
+apply (v_vars _ _ v).
+Defined.
+
+Definition interp_Ps_val pi p Pi (v: valuation gamma_valid pi):
+  valuation gamma_valid (interp_with_Ps pi p Pi).
 apply (Build_valuation gamma_valid _ 
   (v_typevar _ _ v) 
   (v_typevar_val _ _ v)).
@@ -133,6 +194,54 @@ Fixpoint dep_map {A B: Type} {P: A -> Prop} (f: forall x, P x -> B)
   | x :: tl => fun Hforall => f x (Forall_inv Hforall) ::
     dep_map f tl (Forall_inv_tail Hforall)
   end Hall.
+
+(*TODO: move*)
+(*Given an element in a list and an hlist, get the corresponding element
+  of the hlist*)
+Print hlist.
+Definition get_hlist_elt {A: Type} {f: A -> Type} {l: list A}
+  (h: hlist f l) (x: A)
+  (Hinx: In x l) : f x.
+Admitted.
+
+(*Since inductive predicates can be mutually recursive, we need
+  a list of predsyms and formula lists. This makes the dependent
+  types tricky, since we need a (P: forall srts, arg_list srts -> bool)
+  for each such predsym*)
+
+Definition indpred_rep (v: valuation gamma_valid i) 
+  (indpred : list (predsym * list formula))
+  (Hform: Forall (Forall (valid_formula sigma)) (map snd indpred)) 
+  (p: predsym)
+  (Hin: In p (map fst indpred))
+  (srts: list sort)
+  (a: arg_list (domain (dom_aux gamma_valid i)) 
+  (predsym_sigma_args p srts)) : Prop :=
+  (*Our props are an hlist, where we have a Pi for each pi
+  of type (srts -> arg_list pi srts -> bool)*)
+  (forall (Ps: hlist (fun (p': predsym) => 
+    (forall (srts: list sort), 
+    arg_list (domain (dom_aux gamma_valid i)) 
+    (predsym_sigma_args p' srts) -> bool)) (map fst indpred)),
+    (*The precondition is the conjunction of all of the
+      inductive hypotheses from the list of formulas, with
+      each recursive instance using the appropriate Pi*)
+    ((fix build_indpred (l: list (list formula)) 
+      (Hl: Forall (Forall (valid_formula sigma)) l) : Prop :=
+      match l as l' return 
+        Forall (Forall (valid_formula sigma)) l' -> Prop 
+      with
+      | nil => fun _ => True
+      | fs :: ftl => fun Hall =>
+        iter_and (map is_true (dep_map (@formula_rep _ _ gamma_valid
+          (interp_with_Ps i _ Ps) all_unif
+          (interp_Ps_val i _ Ps v))
+           fs (Forall_inv Hall))) /\
+          build_indpred ftl (Forall_inv_tail Hall)
+      end Hl) _ Hform)
+       -> 
+      
+      (get_hlist_elt Ps p Hin) srts a).
 
   (*The encoding we want*)
 Definition indpred_rep (v: valuation gamma_valid i) (p: predsym)
@@ -164,6 +273,126 @@ Lemma indpred_least_fp (v: valuation gamma_valid i) (p: predsym)
 Proof.
   intros Hand srts a. unfold indpred_rep; intros. apply H. apply Hand.
 Qed.
+
+(*Need to deal with mutually recursive inductive predicates*)
+
+(*Test: even and odd*)
+Unset Elimination Schemes.
+Inductive ev : nat -> Prop :=
+  | ev0': ev 0
+  | ev_odd: forall n, odd n -> ev (S n)
+with odd: nat -> Prop :=
+  | odd_ev: forall n, ev n -> odd (S n).
+Set Elimination Schemes.
+
+Scheme ev_ind := Minimality for ev Sort Prop
+with odd_ind := Minimality for odd Sort Prop.
+
+Check ev_ind.
+
+Set Bullet Behavior "Strict Subproofs".
+
+(*Prove equivalent first (just to see)*)
+Lemma ev_eq: forall n, 
+  (ev n <-> even n) /\
+  (odd n <-> ~ (even n)).
+Proof.
+  intros n. induction n using lt_wf_ind; simpl; split; intros; split; intros.
+  - destruct n; try constructor.
+    destruct n; inversion H0; subst; inversion H2; subst.
+    constructor. apply H; auto.
+  - destruct n; constructor. destruct n; inversion H0; subst.
+    constructor. apply H; auto.
+  - destruct n; inversion H0; subst.
+    destruct n; inversion H2; subst;
+    intro C; inversion C; subst.
+    assert (~ even n). apply H; auto. auto.
+  - destruct n. exfalso. apply H0; constructor.
+    constructor. destruct n; constructor.
+    apply H; auto. intro C.
+    apply H0. constructor; auto.
+Qed.
+
+(*Now give the predicate*)
+Definition test_ev: nat -> Prop :=
+  fun m => forall (P1 P2: nat -> Prop),
+    P1 0 ->
+    (forall n, P2 n -> P1 (S n)) ->
+    (forall n, P1 n -> P2 (S n)) ->
+    P1 m.
+
+Definition test_odd: nat -> Prop :=
+  fun m => forall (P1 P2: nat -> Prop),
+    P1 0 ->
+    (forall n, P2 n -> P1 (S n)) ->
+    (forall n, P1 n -> P2 (S n)) ->
+    P2 m.
+
+Lemma test_ev_correct: forall n,
+  ev n <-> test_ev n.
+Proof.
+  intros n. unfold test_ev; split; intros.
+  - apply (ev_ind) with(P:=P1) (P0:=P2); auto.
+  - specialize (H ev odd). apply H; constructor; auto.
+Qed.
+
+Lemma test_odd_correct: forall n,
+  odd n <-> test_odd n.
+Proof.
+  intros n. unfold test_odd; split; intros.
+  - apply odd_ind with(P:=P1)(P0:=P2); auto.
+  - specialize (H ev odd). apply H; constructor; auto.
+Qed.
+
+induction H. (P0:=P2).
+  
+  
+  unfold test_ev
+
+
+  Lemma see: forall n, even n -> test1 n.
+Proof.
+  intros n He. unfold test1. intros P Hp0 Hps. induction He.
+  auto. subst. apply Hps. auto.
+Qed.
+
+Lemma see2: forall n, test1 n -> even n.
+Proof.
+  intros n. unfold test1. intros Htest.
+  specialize (Htest even). apply Htest; constructor. auto.
+Qed.
+
+Lemma equiv: forall n, even n <-> test1 n.
+Proof.
+  intros n. split. apply see. apply see2.
+Qed.
+
+
+
+(*Let's see*)
+Definition test1 : nat -> Prop :=
+  fun m => forall (P: nat -> Prop),
+    P 0 ->
+    (forall n, P n -> P(S (S n))) ->
+    P m.
+ 
+
+(*Test case: semantics for simple terms and formulas*)
+
+Inductive tm : Set :=
+  | tm_nat : nat -> tm
+  | tm_plus: tm -> tm -> tm
+  | tm_if: fmla -> tm -> tm -> tm
+with fmla : Set :=
+  | fm_tru : fmla
+  | fm_flse: fmla
+  | fm_not: fmla -> fmla
+  | fm_and: fmla -> fmla -> fmla
+  | fm_eq: tm -> tm -> fmla.
+
+Inductive tm_sem : tm -> nat -> Prop :=
+  | 
+
   
 (*Get a valuation where the v_typevar maps the typevars in a list
   to a list of sorts*)
