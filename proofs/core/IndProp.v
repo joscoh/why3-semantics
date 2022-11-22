@@ -145,6 +145,25 @@ Definition indpred_rep (v: valuation gamma_valid i) (p: predsym)
     iter_and (map is_true (dep_map (@formula_rep _ _ gamma_valid 
       (interp_with_P i p P) all_unif (interp_P_val i p P v)) 
       fs Hform)) -> P srts a).
+
+(*Now prove least fixpoint: For any other P 
+  such that all constructor formulas hold when p is
+  interpreted as P and for all x, indpred_rep x -> P x*)
+Lemma indpred_least_fp (v: valuation gamma_valid i) (p: predsym)
+(fs: list formula) (Hform: Forall (valid_formula sigma) fs) 
+(P: forall (srts: list sort),
+  arg_list (domain (dom_aux gamma_valid i)) 
+  (predsym_sigma_args p srts) -> bool):
+  iter_and (map is_true (dep_map (@formula_rep _ _
+    gamma_valid (interp_with_P i p P) 
+    all_unif (interp_P_val i p P v)) fs Hform)) ->
+  forall (srts: list sort) 
+  (a: arg_list (domain (dom_aux gamma_valid i)) 
+  (predsym_sigma_args p srts)),
+  indpred_rep v p fs Hform srts a -> P srts a.
+Proof.
+  intros Hand srts a. unfold indpred_rep; intros. apply H. apply Hand.
+Qed.
   
 (*Get a valuation where the v_typevar maps the typevars in a list
   to a list of sorts*)
