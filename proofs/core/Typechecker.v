@@ -702,4 +702,14 @@ Proof.
     by rewrite Hcheck.
 Qed.
 
+Lemma term_has_type_unique: forall s t x y,
+  term_has_type s t x ->
+  term_has_type s t y ->
+  x = y.
+Proof.
+  move=>s t x y /(typecheck_term_correct s t) /eqP Hx
+    /(typecheck_term_correct s t) /eqP.
+  by rewrite Hx => [[]].
+Qed.
+
 End Typechecker.

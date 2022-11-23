@@ -10,12 +10,29 @@ Inductive hlist {A: Type} (f: A -> Type) : list A -> Type :=
 
 (*"inversion" for htlists - these lemmas allow us to avoid introducing
   extra axioms with "dependent destruction"*)
+
 Definition hlist_hd {A: Type} {f: A -> Type} {hd: A} {tl: list A} 
   (h: hlist f (hd :: tl)) : f hd :=
   match h with
   | HL_nil _ => idProp
   | HL_cons _ _ _ hd tl => hd
   end.
+
+Lemma hlist_hd_cons {A: Type} (f: A -> Type) {hd: A} {tl: list A}
+  (hhd: f hd) (htl: hlist f tl):
+  hlist_hd (HL_cons f hd tl hhd htl) = hhd.
+Proof.
+  reflexivity.
+Qed.
+(*
+Definition hlist_hd {A: Type} {f: A -> Type} {hd: A} {tl: list A} 
+  (h: hlist f (hd :: tl)) : f hd :=
+  match h in (hlist _ (hd :: tl)) with
+  | HL_cons _ _ _ hd tl => hd
+  end.
+
+  Print hlist_hd.
+*)
 
 Definition hlist_tl {A: Type} {f: A -> Type} {hd: A} {tl: list A} 
   (h: hlist f (hd :: tl)) : hlist f tl :=

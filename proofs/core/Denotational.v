@@ -186,6 +186,55 @@ Proof.
       * apply IHts; auto.
 Defined.
 
+Require Import Coq.Logic.Eqdep_dec.
+Set Bullet Behavior "Strict Subproofs".
+
+Lemma nat_eq_refl {n m: nat} (H1 H2: n = m) : H1 = H2.
+Proof.
+  destruct H1. apply UIP_dec. apply Nat.eq_dec.
+Qed.
+
+
+(*This is irrelevant in the choice of proof*)
+
+Lemma get_arg_list_irrel (v: valuation gamma_valid i)
+(f: funsym) (vs: list vty) (ts: list term) 
+(reps: forall (t: term) (ty: vty),
+  term_has_type sigma t ty ->
+  domain (val v ty))
+(Hreps: Forall
+(fun tm : term =>
+ forall (ty : vty)
+   (Hty1 Hty2 : term_has_type sigma tm ty),
+ reps tm ty Hty1 = reps tm ty Hty2) ts)
+(Hty1 Hty2: exists x, term_has_type sigma (Tfun f vs ts) x) :
+get_arg_list v f vs ts reps Hty1 =
+get_arg_list v f vs ts reps Hty2.
+Proof.
+  unfold get_arg_list. simpl.
+  destruct (typecheck_dec sigma (Tfun f vs ts) Hty1).
+  destruct (typecheck_dec sigma (Tfun f vs ts) Hty2).
+  assert (x = x0) by
+    apply (term_has_type_unique _ _ _ _ t t0).
+  subst.
+  destruct (fun_ty_inversion sigma f vs ts x0 t).
+  destruct (fun_ty_inversion sigma f vs ts x0 t0).
+  destruct a as [Hallval1 [Hlents1 [Hlenvs1 [Hallty1 Hx01]]]].
+  destruct a0 as [Hallval2 [Hlents2 [Hlenvs2 [Hallty2 Hx02]]]].
+  simpl. subst.
+  unfold funsym_sigma_args.
+  generalize dependent (s_args f).
+  clear Hty1 Hty2 t0 t. 
+  induction ts; simpl; intros. 
+  - f_equal. f_equal. f_equal. apply nat_eq_refl.
+  - destruct l.
+    + inversion Hlents2.
+    + simpl in Hlenvs2. f_equal. 2: apply IHts; inversion Hreps; auto.
+      assert (Hlenvs1 = Hlenvs2) by apply nat_eq_refl.
+      rewrite H. f_equal.
+      inversion Hreps; auto.
+Qed.
+ 
 (*Also need a version for preds (TODO: can we reduce duplication?)*)
 Definition get_arg_list_pred (v: valuation gamma_valid i)
   (p: predsym) (vs: list vty) (ts: list term) 
@@ -213,6 +262,39 @@ Proof.
         rewrite <- funsym_subst_eq; auto. apply p_params_nodup.
       * apply IHts; auto.
 Defined.
+
+Lemma get_arg_list_pred_irrel (v: valuation gamma_valid i)
+(p: predsym) (vs: list vty) (ts: list term) 
+(reps: forall (t: term) (ty: vty),
+  term_has_type sigma t ty ->
+  domain (val v ty))
+(Hreps: Forall
+(fun tm : term =>
+ forall (ty : vty)
+   (Hty1 Hty2 : term_has_type sigma tm ty),
+ reps tm ty Hty1 = reps tm ty Hty2) ts)
+(Hval1 Hval2: valid_formula sigma (Fpred p vs ts)) :
+get_arg_list_pred v p vs ts reps Hval1 =
+get_arg_list_pred v p vs ts reps Hval2.
+Proof.
+  unfold get_arg_list_pred. simpl.
+  destruct (pred_ty_inversion sigma p vs ts Hval1).
+  destruct (pred_ty_inversion sigma p vs ts Hval2).
+  destruct a as [Hallval1 [Hlents1 [Hlenvs1 Hallty1]]].
+  destruct a0 as [Hallval2 [Hlents2 [Hlenvs2 Hallty2]]].
+  simpl. 
+  unfold predsym_sigma_args.
+  generalize dependent (p_args p).
+  clear Hval1 Hval2. 
+  induction ts; simpl; intros. 
+  - f_equal. f_equal. f_equal. apply nat_eq_refl. 
+  - destruct l.
+    + inversion Hlents2.
+    + simpl in Hlenvs2. f_equal. 2: apply IHts; inversion Hreps; auto.
+      assert (Hlenvs1 = Hlenvs2) by apply nat_eq_refl.
+      rewrite H. f_equal.
+      inversion Hreps; auto.
+Qed.
 
 (*TODO: move*)
 Lemma tfun_params_length {s f vs ts ty}:
@@ -679,7 +761,7 @@ Qed.
 Fixpoint match_val_single (v: valuation gamma_valid i) (ty: vty)
   (Hval: valid_type sigma ty)
   (d: domain (val v ty))
-  (p: pattern) : 
+  (p: pattern) {struct p} : 
   (*For a pair (x, d), we just need that there is SOME type t such that
     d has type [domain (val v t)], but we don't care what t is*)
   option (list (vsymbol * {t: vty & domain (val v t) })) :=
@@ -729,42 +811,41 @@ Fixpoint match_val_single (v: valuation gamma_valid i) (ty: vty)
           fst (proj1_sig (projT2 Hrep)) in
         let args : arg_list domain (funsym_sigma_args c srts) := 
           snd (proj1_sig (projT2 Hrep)) in
-
-        (*Idea: iterate over arg list, build up valuation, return None
-        if we every see None*)
-        (*This function is actually quite simple, we just need a bit
-          of dependent pattern matching for the [arg_list]*)
-        let fix iter_arg_list (tys: list sort) (a: arg_list domain tys)
-          (Hall: Forall (valid_type sigma) (sorts_to_tys tys)) (pats: list pattern) :
-          option (list (vsymbol * {t: vty & domain (val v t) })) :=
-          match tys as t' return arg_list domain t' ->
-            Forall (valid_type sigma) (sorts_to_tys t') -> 
-            option (list (vsymbol * {t: vty & domain (val v t) }))
-          with
-          | nil => fun _ _ => Some nil
-          | ty :: tl => fun a' Hall' =>
-            match ps with
-            | nil => None (*lengths have to be the same*)
-            | phd :: ptl =>
-              (*We try to evaluate the head against the first pattern.
-                If this succeeds we combine with tail, if either fails
-                we give None*)
-              (*Since ty is a sort, val v ty = ty, therefore we can cast*)
-              match (match_val_single v ty (Forall_inv Hall') 
-                (dom_cast _ (val_sort_eq _ ty) (hlist_hd a')) phd) with
-              | None => None
-              | Some l =>
-                match iter_arg_list tl (hlist_tl a') (Forall_inv_tail Hall') ptl with
+        (*If the constructors match, check all arguments,
+          otherwise, gives None*)
+          if funsym_eq_dec c f then
+            (*Idea: iterate over arg list, build up valuation, return None
+            if we every see None*)
+            (*This function is actually quite simple, we just need a bit
+              of dependent pattern matching for the [arg_list]*)
+            (fix iter_arg_list (tys: list sort) (a: arg_list domain tys)
+            (Hall: Forall (valid_type sigma) (sorts_to_tys tys)) 
+              (pats: list pattern) {struct pats} :
+            option (list (vsymbol * {t: vty & domain (val v t) })) :=
+            match tys as t' return arg_list domain t' ->
+              Forall (valid_type sigma) (sorts_to_tys t') -> 
+              option (list (vsymbol * {t: vty & domain (val v t) }))
+            with
+            | nil => fun _ _ => Some nil
+            | ty :: tl => fun a' Hall' =>
+              match pats with
+              | nil => None (*lengths have to be the same*)
+              | phd :: ptl =>
+                (*We try to evaluate the head against the first pattern.
+                  If this succeeds we combine with tail, if either fails
+                  we give None*)
+                (*Since ty is a sort, val v ty = ty, therefore we can cast*)
+                match (match_val_single v ty (Forall_inv Hall') 
+                  (dom_cast _ (val_sort_eq _ ty) (hlist_hd a')) phd) with
                 | None => None
-                | Some l' => Some (l ++ l')
+                | Some l =>
+                  match iter_arg_list tl (hlist_tl a') (Forall_inv_tail Hall') ptl with
+                  | None => None
+                  | Some l' => Some (l ++ l')
+                  end
                 end
               end
-            end
-          end a Hall in
-          (*Finally, if the constructors match, check all arguments,
-            otherwise, gives None*)
-          if funsym_eq_dec c f then
-            iter_arg_list _ args (adts_srts_valid Hisadt Hval c_in) ps
+            end a Hall)  _ args (adts_srts_valid Hisadt Hval c_in) ps
           else None
       end 
     (*If not an ADT, does not match*)
@@ -772,6 +853,95 @@ Fixpoint match_val_single (v: valuation gamma_valid i) (ty: vty)
     end eq_refl
   end.
 
+Lemma seq_map_map {A B: Type} (f: A -> B) (s: list A):
+  seq.map f s = map f s.
+Proof.
+  reflexivity.
+Qed.
+
+  (*TODO: move*)
+  (*
+Lemma find_constr_rep_irrel (m: mut_adt) (m_in mut_in_ctx m gamma)
+  (srts: list sort)
+*)
+(*TODO: move below prob*)
+Lemma match_val_single_irrel (v: valuation gamma_valid i) (ty: vty)
+(Hval1 Hval2: valid_type sigma ty)
+(d: domain (val v ty))
+(p: pattern) :
+  match_val_single v ty Hval1 d p =
+  match_val_single v ty Hval2 d p.
+Proof.
+  revert Hval1 Hval2. revert d. generalize dependent ty.
+  induction p; intros; auto.
+  - (*The hard case: need lots of generalization for dependent types
+      and need nested induction*) 
+    unfold match_val_single; fold match_val_single.
+    generalize dependent (is_sort_adt_spec (val v ty)).
+    generalize dependent ((@adt_srts_length_eq v ty)).
+    generalize dependent (@adts_srts_valid v ty).
+    destruct (is_sort_adt (val v ty)) eqn : Hisadt; auto.
+    intros Hsrtsvalid Hsrtslen Hadtspec.
+    destruct p as [[[m adt] ts] srts].
+    destruct (Hadtspec m adt ts srts eq_refl) as 
+      [Hvaleq [Hinmut [Hincts Htseq]]].
+    (*This part is actually easy: all nat equality proofs are equal*)
+    assert (Hsrtslen m adt ts srts eq_refl Hval1 =
+    Hsrtslen m adt ts srts eq_refl Hval2) by
+      apply nat_eq_refl.
+    rewrite H0.
+    clear H0.
+    destruct (funsym_eq_dec
+    (projT1
+       (find_constr_rep gamma_valid m Hincts srts
+          (Hsrtslen m adt ts srts eq_refl Hval2) (dom_aux gamma_valid i) adt
+          Hinmut (adts gamma_valid i m srts) (all_unif m Hincts)
+          (scast (adts gamma_valid i m srts adt Hinmut)
+             (dom_cast (dom_aux gamma_valid i) Hvaleq d)))) f); auto.
+    (*Need nested induction: simplify first*)
+    generalize dependent (find_constr_rep gamma_valid m Hincts srts
+    (Hsrtslen m adt ts srts eq_refl Hval2) 
+    (dom_aux gamma_valid i) adt Hinmut (adts gamma_valid i m srts)
+    (all_unif m Hincts)
+    (scast (adts gamma_valid i m srts adt Hinmut)
+       (dom_cast (dom_aux gamma_valid i) Hvaleq d))).
+    intros constr. destruct constr as [f' Hf']. simpl. intros Hf; subst.
+    generalize dependent ((Hsrtsvalid m adt (adt_name adt) srts f eq_refl Hval1 (fst (proj1_sig Hf')))).
+    generalize dependent ((Hsrtsvalid m adt (adt_name adt) srts f eq_refl Hval2 (fst (proj1_sig Hf')))).
+    destruct Hf'. simpl. clear e.
+    destruct x. simpl. generalize dependent a.
+    generalize dependent ps.
+    generalize dependent ((funsym_sigma_args f srts)).
+    induction l; simpl; intros; auto.
+    + destruct ps; auto.
+    + inversion H; subst. reflexivity.
+      (*Don't know why we need to expand map*)
+      rewrite (H0 a (dom_cast (dom_aux gamma_valid i) (val_sort_eq v a) (hlist_hd a0))
+        _ ((@Forall_inv vty (valid_type sigma) (sort_to_ty a)
+      ((fix map (s : list sort) : list vty :=
+          match s return (list vty) with
+          | nil => @nil vty
+          | cons x0 s' => @cons vty (sort_to_ty x0) (map s')
+          end) l) f0))).
+      (*Now we can destruct and simplify*)
+      destruct (match_val_single v a (@Forall_inv vty (valid_type sigma) (sort_to_ty a)
+      ((fix map (s : list sort) : list vty :=
+          match s return (list vty) with
+          | nil => @nil vty
+          | cons x0 s' => @cons vty (sort_to_ty x0) (map s')
+          end) l) f0)
+      (dom_cast (dom_aux gamma_valid i) (val_sort_eq v a) (hlist_hd a0)) x) eqn : Hm; auto.
+      match goal with 
+      | |- match ?o1 with | Some x => ?a | None => ?b end =
+        match ?o2 with | Some y => ?c | None => ?d end =>
+        assert (Ho: o1 = o2);[|rewrite Ho; reflexivity] end.
+      apply IHl. apply H1.
+  - simpl. replace (match_val_single v ty Hval1 d p1) with
+    (match_val_single v ty Hval2 d p1) by apply IHp1.
+    destruct (match_val_single v ty Hval2 d p1); auto.
+  - simpl. rewrite (IHp ty0 d Hval1 Hval2). reflexivity.
+Qed.
+  
 Definition get_assoc_list {A B: Set} (eq_dec: forall (x y: A), {x = y} + { x <> y}) 
   (l: list (A * B)) (x: A) : option B :=
   fold_right (fun y acc => if eq_dec x (fst y) then Some (snd y) else acc) None l.
@@ -1087,6 +1257,168 @@ with formula_rep (v: valuation gamma_valid i) (f: formula)
   end) eq_refl
   .
 
+(*We need to know that the valid typing proof is irrelevant.
+  I believe this should be provable without proof irrelevance,
+  but [term_rep] and [formula_rep] already depend on
+  classical logic, which implies proof irrelevance.
+  We prove without proof irrelevance to limit the use of axioms.
+  We need functional extensionality for the epsilon case only*)
+
+Require Import FunctionalExtensionality.
+Lemma term_form_rep_irrel: forall (tm: term) (f: formula),
+  (forall (v: valuation gamma_valid i) (ty: vty) (Hty1 Hty2:
+    term_has_type sigma tm ty), 
+      term_rep v tm ty Hty1 = term_rep v tm ty Hty2) /\
+  (forall (v: valuation gamma_valid i) (Hval1 Hval2:
+    valid_formula sigma f), 
+      formula_rep v f Hval1 = formula_rep v f Hval2).
+Proof.
+  apply term_formula_ind; intros; simpl; auto.
+  - simpl. destruct c; simpl;
+    f_equal; apply UIP_dec; apply vty_eq_dec.
+  - f_equal. apply UIP_dec; apply vty_eq_dec.
+    f_equal. apply UIP_dec; apply sort_eq_dec.
+    f_equal. apply get_arg_list_irrel.
+    rewrite Forall_forall. intros x Hinx ty' H1 H2.
+    rewrite Forall_forall in H. apply H. assumption.
+  - replace ((term_rep v0 tm1 ty (proj1 (ty_let_inv (has_type_eq eq_refl Hty1)))))
+    with  (term_rep v0 tm1 ty (proj1 (ty_let_inv (has_type_eq eq_refl Hty2))))
+    by apply H.
+    apply (H0 (substi v0 v ty _)).
+  - replace (formula_rep v f (proj2 (proj2 (ty_if_inv (has_type_eq eq_refl Hty1)))))
+    with (formula_rep v f (proj2 (proj2 (ty_if_inv (has_type_eq eq_refl Hty2)))))
+    by apply H.
+    match goal with | |- context [ if ?b then ?x else ?y] => destruct b end.
+    apply H0. apply H1.
+  - (*ugh, this one is very annoying*)
+    (*We need a nested induction here*)
+    generalize dependent (proj1 (ty_match_inv (has_type_eq eq_refl Hty1))).
+    generalize dependent (proj2 (ty_match_inv (has_type_eq eq_refl Hty1))).
+    generalize dependent (proj1 (ty_match_inv (has_type_eq eq_refl Hty2))).
+    generalize dependent (proj2 (ty_match_inv (has_type_eq eq_refl Hty2))).
+    clear Hty1 Hty2.
+    intros Hall1 Hty1 Hall2 Hty2. (*for better names*)
+    revert Hall1 Hty1 Hall2 Hty2. 
+    induction ps; simpl; intros; auto.
+    destruct a.
+    (*Bulk of work done in [match_val_single_irrel]*)
+    rewrite (H _ _ Hty1 Hty2) at 1.
+    rewrite (match_val_single_irrel _ _ (has_type_valid gamma_valid tm v
+    Hty1) (has_type_valid gamma_valid tm v Hty2)).
+    destruct (match_val_single v0 v
+    (has_type_valid gamma_valid tm v Hty2)
+    (term_rep v0 tm v Hty2) p).
+    + inversion H0; subst. apply (H3 (extend_val_with_list v0 l)).
+    + inversion H0; subst.
+      apply IHps. auto.
+  - (*TODO: is this possible without funext?*)
+    f_equal. apply functional_extensionality_dep.
+    intros x.
+    rewrite (H (substi v0 v ty0 x) (ty_eps_inv (has_type_eq eq_refl Hty1))
+    (ty_eps_inv (has_type_eq eq_refl Hty2))).
+    reflexivity.
+  - f_equal. apply get_arg_list_pred_irrel.
+    rewrite Forall_forall. intros x Hinx ty' H1 H2.
+    rewrite Forall_forall in H. apply H. assumption.
+  - destruct q;
+    repeat match goal with |- context [ all_dec ?P ] => 
+      destruct (all_dec P); simpl; auto end.
+    + exfalso. apply n. intros d.
+      erewrite (H (substi v0 v ty d)).
+      apply i0.
+    + exfalso. apply n. intros d.
+      erewrite H. apply i0.
+    + exfalso. apply n. 
+      destruct e as [d Hd].
+      exists d. erewrite H. apply Hd.
+    + exfalso. apply n.
+      destruct e as [d Hd].
+      exists d. erewrite H. apply Hd.
+  - erewrite H. erewrite H0. reflexivity.
+  - erewrite H. erewrite H0. reflexivity.
+  - erewrite H. reflexivity.
+  - erewrite H. erewrite H0. reflexivity.
+  - erewrite H. erewrite H0. erewrite H1. reflexivity.
+  - (*Match case again - proof almost identical*)
+    generalize dependent (proj1 (valid_match_inv (valid_formula_eq eq_refl Hval1))).
+    generalize dependent (proj2 (valid_match_inv (valid_formula_eq eq_refl Hval1))).
+    generalize dependent (proj1 (valid_match_inv (valid_formula_eq eq_refl Hval2))).
+    generalize dependent (proj2 (valid_match_inv (valid_formula_eq eq_refl Hval2))).
+    clear Hval1 Hval2.
+    intros Hall1 Hty1 Hall2 Hty2. (*for better names*)
+    revert Hall1 Hty1 Hall2 Hty2. 
+    induction ps; simpl; intros; auto.
+    destruct a.
+    (*Bulk of work done in [match_val_single_irrel]*)
+    rewrite (H _ _ Hty1 Hty2) at 1.
+    rewrite (match_val_single_irrel _ _ (has_type_valid gamma_valid tm v
+    Hty1) (has_type_valid gamma_valid tm v Hty2)).
+    destruct (match_val_single v0 v
+    (has_type_valid gamma_valid tm v Hty2)
+    (term_rep v0 tm v Hty2) p).
+    + inversion H0; subst. apply (H3 (extend_val_with_list v0 l)).
+    + inversion H0; subst.
+      apply IHps. auto.
+Qed.
+
 End Denot.
+
+(*
+Section InterpEq.
+
+Context {sigma: sig} {gamma: context} (gamma_valid: valid_context sigma gamma).
+
+
+Definition val_val_eq {i1 i2: pre_interp gamma_valid}
+{v1: valuation gamma_valid i1}
+{v2: valuation gamma_valid i2}
+(Heq1: (v_typevar gamma_valid i1 v1) =
+(v_typevar gamma_valid i2 v2)) :
+(forall x, valid_type sigma (v_typevar gamma_valid i2 v2 x)) =
+(forall x, valid_type sigma (v_typevar gamma_valid i1 v1 x)).
+destruct Heq1.
+exact eq_refl.
+Defined.
+
+Definition pcast {P1 P2: Prop} (H: P1 = P2) (x: P1) : P2 :=
+  match H with
+  | eq_refl => x
+  end.
+
+(*TODO: move*)
+(*Notion of when 2 valuations on equal (but not necessarily convertible)
+  interpretations are the same*)
+Definition val_equiv (i1 i2: pre_interp gamma_valid)
+  (Hieq: i1 = i2)
+  (v1: valuation gamma_valid i1)
+  (v2: valuation gamma_valid i2) : Prop :=
+  { Heq1: (v_typevar gamma_valid _ v1)=
+  (v_typevar gamma_valid _ v2) &
+  (v_typevar_val gamma_valid _ v1) =
+  (pcast (val_val_eq Heq1) (v_typevar_val gamma_valid _ v2)) /\
+  (v_vars gamma_valid _ v1) =
+  (v_vars gamma_valid _ v2)
+  
+  }.
+  /\
+   /\
+  .
+
+
+
+(*Annoying to state (and hopefully not prove)*)
+Lemma term_form_rep_interp_eq: forall (i1 i2: pre_interp gamma_valid)
+  (Hieq: i1 = i2) (tm: term) (f: formula),
+  (forall (v1: valuation gamma_valid i1) (ty: vty) (Hty1 Hty2:
+    term_has_type sigma tm ty), 
+      term_rep v tm ty Hty1 = term_rep v tm ty Hty2) /\
+  (forall (v: valuation gamma_valid i) (Hval1 Hval2:
+    valid_formula sigma f), 
+      formula_rep v f Hval1 = formula_rep v f Hval2).
+
+  
+End Denot.
+*)
+
 
 (*Print Assumptions term_rep.*)
