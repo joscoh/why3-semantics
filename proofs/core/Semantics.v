@@ -97,6 +97,19 @@ apply (Build_valuation i (v_typevar i v)).
   * subst. exact y.
   * exact (v_vars i v m).
 Defined.
+
+Require Import FunctionalExtensionality.
+
+Lemma substi_same (v: valuation i) (x: vsymbol) (y z: val v (snd x)):
+  substi (substi v x y) x z =
+  substi v x z.
+Proof.
+  unfold substi.
+  simpl.
+  f_equal. apply functional_extensionality_dep; intros. 
+  destruct (vsymbol_eq_dec x0 x); subst; reflexivity.
+Qed.
+
 (*
   destruct (vty_eq_dec ty ty').
   - subst. apply y.

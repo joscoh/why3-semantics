@@ -844,8 +844,8 @@ Lemma fun_args_eq_dep: forall {A : Type} {B: A -> Type} (f g: forall(x: A), B x)
   f = g ->
   f x = g x.
 Proof.
-  intros. subst. reflexivity.
-Qed.
+  intros. destruct H. reflexivity. 
+Defined.
 
 (*3. Constructors are injective (this needs eq_rect_eq (UIP))*)
 Lemma constrs_inj: forall (n: finite (length m))

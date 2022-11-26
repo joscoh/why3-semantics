@@ -1448,27 +1448,99 @@ Definition subst_val (v: valuation gamma_valid i) (x y: vsymbol) :
   - exact (v_vars gamma_valid i v).
     + rewrite <- e.*)
 
+Definition val_eq (v1 v2: valuation gamma_valid i)
+  (Heq: v1 = v2) (ty: vty) :
+  val v2 ty = val v1 ty :=
+  fun_args_eq_dep _ _ ty (f_equal (fun x => val x) (eq_sym Heq)).
+
+(*I think we may need this - see*)
+Lemma term_val_eq (t: term) (v1 v2: valuation gamma_valid i)
+  (Heq: v1 = v2) (ty: vty)
+  (Hty: term_has_type sigma t ty) :
+  term_rep v1 t ty Hty =
+  dom_cast _ (val_eq v1 v2 Heq ty) (term_rep v2 t ty Hty).
+Admitted.
+
 (*Prove that substitution is correct: the substituted
   formula is the same as evaluating the original where
   x is substituted for y*)
 (*Problem: x and y have some (unique) type in f, but we don't
   know what they are - could add types to variables, let's see*)
-  Check dom_cast.
+
 Lemma sub_correct (t: term) (f: formula) :
-  (forall (x y: vsymbol) (Heq: snd x = snd y) (v: valuation gamma_valid i) (ty ty': vty) 
+  (forall (x y: vsymbol) (Heq: snd x = snd y) (v: valuation gamma_valid i) (ty: vty) 
     (Hty1: term_has_type sigma t ty)
     (Hty2: term_has_type sigma (sub_t x y t) ty),
     term_rep (substi v x 
     (dom_cast _ (f_equal (val v) (eq_sym Heq))
       (v_vars gamma_valid i v y))) t ty Hty1 =
     term_rep v (sub_t x y t) ty Hty2) /\
-  (forall (x y: vsymbol) (Heq: snd x = snd y) (v: valuation gamma_valid i) (ty': vty)
+  (forall (x y: vsymbol) (Heq: snd x = snd y) (v: valuation gamma_valid i)
     (Hval1: valid_formula sigma f)
     (Hval2: valid_formula sigma (sub_f x y f)),
     formula_rep (substi v x 
     (dom_cast _ (f_equal (val v) (eq_sym Heq))
       (v_vars gamma_valid i v y))) f Hval1 =
     formula_rep v (sub_f x y f) Hval2).
+Admitted.
+
+Corollary sub_f_correct (f: formula) (x y: vsymbol) (Heq: snd x = snd y) (v: valuation gamma_valid i)
+(Hval1: valid_formula sigma f)
+(Hval2: valid_formula sigma (sub_f x y f)):
+formula_rep (substi v x 
+(dom_cast _ (f_equal (val v) (eq_sym Heq))
+  (v_vars gamma_valid i v y))) f Hval1 =
+formula_rep v (sub_f x y f) Hval2.
+Proof.
+  apply sub_correct. apply (Tconst(ConstInt 0)).
+Qed.
+
+(*Lemma all_dec_eq (P: Prop) (x1 x2: P) :
+  (x1 <-> x2) ->
+  all_dec x1 = all_dec x2.*)
+
+  (*Need some assumption like: v2 is not present in (or at least
+    not free in) f
+    TODO
+    see if there is better way: lemma is nightmare to prove
+    can we do without subst/prove something else
+    seeif this lemma works
+    
+    current idea:
+    prove: if valuation agrees on all variables that appear free
+    in f, then formula_rep v1 f = formula_rep v2 f
+    (to prove) - need lemma like above:
+    if valuation agrees on all variables that appear free in t,
+    then term_rep v1 t = cast (term_rep v2 t)
+
+    then show: in this case, since v2 does not appear free in t,
+    and these agree on all except v2, we get equality
+    (need irrelevance lemma)
+
+    and tihs should help prove term too
+    but that lemma is awful
+    
+    *)
+Lemma alpha_convert_quant (v: valuation gamma_valid i) 
+  (q: quant) (v1 v2: vsymbol) (Heq: snd v1 = snd v2) (f: formula)
+  (Hval1: valid_formula sigma (Fquant q v1 f))
+  (Hval2: valid_formula sigma (Fquant q v2 (sub_f v1 v2 f))):
+  formula_rep v (Fquant q v1 f) Hval1 = 
+  formula_rep v (Fquant q v2 (sub_f v1 v2 f)) Hval2.
+Proof.
+  simpl. destruct q.
+  - repeat match goal with |- context[ all_dec ?P ] => destruct (all_dec P); auto end.
+    + exfalso. apply n. intros d.
+      inversion Hval1; subst.
+      inversion Hval2; subst.
+      rewrite <- (sub_f_correct) with(Heq:=Heq)(Hval1:=H4).
+
+
+
+      erewrite <- sub_f_correct.
+sub_f v1 v2 (Fquant )
+
+
 Proof.
   revert t f.
   apply term_formula_ind; intros; simpl; auto.
@@ -1554,7 +1626,79 @@ Proof.
     rewrite H0.
     (*Here, we use the IH*)
     f_equal.
-    (*Hmm, we need a separate lemma again*)
+    (*Hmm, we need a separate lemma again - TODO*)
+    admit.
+  - generalize dependent Hty2. simpl. 
+    destruct (vsymbol_eq_dec x v); subst; intros Hty2.
+    + simpl.
+      (*f_equal.*)
+
+
+      rewrite term_val_eq with(Heq:=(substi_same gamma_valid i v0 v
+      (dom_cast (dom_aux gamma_valid i) (f_equal (val v0) (eq_sym Heq))
+      (v_vars gamma_valid i v0 y))
+      (term_rep
+        (substi v0 v
+           (dom_cast (dom_aux gamma_valid i) (f_equal (val v0) (eq_sym Heq))
+              (v_vars gamma_valid i v0 y))) tm1 (snd v)
+              (proj1 (ty_let_inv (has_type_eq eq_refl Hty1)))))).
+      unfold dom_cast at 1.
+      unfold val_eq, fun_args_eq_dep, f_equal, eq_sym.
+      
+      generalize dependent (snd v).
+      destruct (val_eq
+      (substi
+         (substi v0 v
+            (dom_cast (dom_aux gamma_valid i) (f_equal (val v0) (eq_sym Heq))
+               (v_vars gamma_valid i v0 y))) v
+         (term_rep
+            (substi v0 v
+               (dom_cast (dom_aux gamma_valid i)
+                  (f_equal (val v0) (eq_sym Heq)) (v_vars gamma_valid i v0 y)))
+            tm1 (snd v) (proj1 (ty_let_inv (has_type_eq eq_refl Hty1)))))
+      (substi v0 v
+         (term_rep
+            (substi v0 v
+               (dom_cast (dom_aux gamma_valid i)
+                  (f_equal (val v0) (eq_sym Heq)) (v_vars gamma_valid i v0 y)))
+            tm1 (snd v) (proj1 (ty_let_inv (has_type_eq eq_refl Hty1)))))
+      (substi_same gamma_valid i v0 v
+         (dom_cast (dom_aux gamma_valid i) (f_equal (val v0) (eq_sym Heq))
+            (v_vars gamma_valid i v0 y))
+         (term_rep
+            (substi v0 v
+               (dom_cast (dom_aux gamma_valid i)
+                  (f_equal (val v0) (eq_sym Heq)) (v_vars gamma_valid i v0 y)))
+            tm1 (snd v) (proj1 (ty_let_inv (has_type_eq eq_refl Hty1))))) ty).
+      
+      unfold val_eq at 1.
+      (*unfold dom_cast. simpl.*)
+
+      unfold val_eq. unfold fun_args_eq_dep.
+      unfold f_equal. unfold eq_sym.
+      Check substi_same. 
+      
+      simpl.
+
+
+    Print term_rep.
+    Check dom_cast.
+
+
+      rewrite (substi_same gamma_valid i v0 v
+      (dom_cast (dom_aux gamma_valid i) (f_equal (val v0) (eq_sym Heq))
+      (v_vars gamma_valid i v0 y))
+      (term_rep
+        (substi v0 v
+           (dom_cast (dom_aux gamma_valid i) (f_equal (val v0) (eq_sym Heq))
+              (v_vars gamma_valid i v0 y))) tm1 (snd v)
+              (proj1 (ty_let_inv (has_type_eq eq_refl Hty1))))).
+    
+    
+    rewrite H0. apply H0.
+  
+  
+  unfold substi. simpl. simpl.
     Check get_arg_list.
     
     
