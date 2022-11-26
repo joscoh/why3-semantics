@@ -20,6 +20,13 @@ Proof.
   unfold test1. intros. apply H.
 Qed.
 
+Lemma constr_test2: forall n, test1 n -> test1 (S (S n)).
+Proof.
+  intros n. unfold test1. intros.
+  apply H1.
+  apply H. apply H0. apply H1.
+Qed. 
+
 Lemma see: forall n, even n -> test1 n.
 Proof.
   intros n He. unfold test1. intros P Hp0 Hps. induction He.
@@ -475,6 +482,18 @@ Proof.
   reflexivity.
 Qed.
 
+Lemma fbinop_rep (pi: pre_interp gamma_valid) (v: valuation gamma_valid pi) 
+  (f1 f2: formula) (b: binop) (Hval: valid_formula sigma (Fbinop b f1 f2)) :
+  formula_rep gamma_valid pi all_unif v (Fbinop b f1 f2) Hval =
+  bool_of_binop b 
+  (formula_rep gamma_valid pi all_unif v f1 
+    (proj1 (valid_binop_inj (valid_formula_eq eq_refl Hval))))
+  (formula_rep gamma_valid pi all_unif v f2 
+    (proj2 (valid_binop_inj (valid_formula_eq eq_refl Hval)))).
+Proof.
+  reflexivity.
+Qed.
+
 (*Will prove:
   1. For p = f1 | .. fn,
     all fn's are true
@@ -500,6 +519,118 @@ Proof.
   inversion H.
 Qed.
 
+Scheme Minimality for valid_ind_form Sort Prop.
+Print indpred_rep_single.
+(*Prove second part first - this is easy*)
+Lemma indpred_least_pred_single (v: valuation gamma_valid i)
+  (p: predsym) (fs: list formula) (Hform: Forall (valid_formula sigma) fs):
+  forall (P:
+    forall srts : list sort,
+    arg_list (domain (dom_aux gamma_valid i)) 
+      (predsym_sigma_args p srts) ->
+    bool
+  ),  
+  (*If P holds of all of the constructors*)
+  iter_and
+  (map is_true
+     (dep_map
+        (formula_rep gamma_valid (interp_with_P i p P) all_unif
+  
+  (*Then indpred_rep p fs x -> P x*)      
+  (interp_P_val i p P v)) fs Hform)) ->
+  forall (srts : list sort)
+  (a: arg_list (domain (dom_aux gamma_valid i)) 
+    (predsym_sigma_args p srts)),
+    indpred_rep_single v p fs Hform srts a -> P srts a.
+Proof.
+  intros P Hand srts a. unfold indpred_rep_single.
+  rewrite simpl_all_dec. intros.
+  apply H. apply Hand.
+Qed.
+
+(*On the other hand, the first part is hard (showing that [indpred_rep]
+  holds of all constructors). Here is an approach to show it:
+  1. Prove that any constructor is equivalent to one where we
+    have a bunch of forall quantifiers, followed by a bunch
+    of let statements, followed by a chain of impliciations
+    ending in indpred_rep p fs x for some x
+  2. From this, unfold the definition of indpred_rep
+    and TODO
+    
+  The first step is not easy. We need to define alpha
+  substitution and some quantifier elimination/prenex normal form*)
+
+(*First, alpha substitution*)
+Section Alpha.
+
+(*Substitute y for all free ocurrences of x*)
+Print pattern.
+Fixpoint pattern_boundvars (p: pattern) : list vsymbol :=
+  match p with
+  | Pvar v _ => [v]
+  | Pconstr f tys ps => concat (map pattern_boundvars ps)
+  | Pwild => nil
+  | Por p1 p2 => (pattern_boundvars p1) ++ (pattern_boundvars p2)
+  | Pbind p1 v ty => v :: (pattern_boundvars p1)
+  end.
+
+Fixpoint sub_f (x y: vsymbol) (f: formula) : formula :=
+  match f with
+  | Fpred p tys tms => Fpred p tys (map (sub_t x y) tms)
+  | Fquant q v ty f' =>
+    if vsymbol_eq_dec x v then f else
+    Fquant q v ty (sub_f x y f')
+  | Feq ty t1 t2 =>
+    Feq ty (sub_t x y t1) (sub_t x y t2)
+  | Fbinop b f1 f2 =>
+    Fbinop b (sub_f x y f1) (sub_f x y f2)
+  | Fnot f' => Fnot (sub_f x y f')
+  | Ftrue => Ftrue
+  | Ffalse => Ffalse
+  | Flet tm v ty f' =>
+    if vsymbol_eq_dec x v then Flet (sub_t x y tm) v ty f' else
+    Flet (sub_t x y tm) v ty (sub_f x y f')
+  | Fif f1 f2 f3 =>
+    Fif (sub_f x y f1) (sub_f x y f2) (sub_f x y f3)
+  | Fmatch tm ty ps =>
+    if in_bool vsymbol_eq_dec x (concat (map (fun x => 
+      (pattern_boundvars (fst x))) ps)) 
+    then Fmatch (sub_t x y tm) ty ps
+    else Fmatch (sub_t x y tm) ty
+      ((map (fun p => (fst p, sub_f x y (snd p)))) ps)
+  end
+with sub_t (x y: vsymbol) (t: term) : term :=
+  match t with
+  | Tconst c => Tconst c
+  | Tvar v ty => 
+    (*The base case*)
+    Tvar (if vsymbol_eq_dec x v then y else v) ty
+  | Tfun fs tys tms =>
+    Tfun fs tys (map (sub_t x y) tms)
+  | Tlet tm1 v ty tm2 =>
+    if vsymbol_eq_dec x v then Tlet (sub_t x y tm1) v ty tm2
+    else Tlet (sub_t x y tm1) v ty (sub_t x y tm2)
+  | Tif f1 t1 t2 =>
+    Tif (sub_f x y f1) (sub_t x y t1) (sub_t x y t2)
+  | Tmatch tm ty ps =>
+    if in_bool vsymbol_eq_dec x (concat (map (fun x => 
+    (pattern_boundvars (fst x))) ps)) 
+    then Tmatch (sub_t x y tm) ty ps
+    else Tmatch (sub_t x y tm) ty
+      ((map (fun p => (fst p, sub_t x y (snd p)))) ps)
+  | Teps f1 v ty =>
+    (*TODO: is this correct?*)
+    Teps (sub_f x y f1) v ty
+  end.
+
+(*Prove that this substitution is safe: it does not
+  change the semantics of f*)
+
+
+
+
+  Search all_dec.
+
 
 (*First prove for single bc dependent types suck*)
 Lemma indpred_constrs_true (v: valuation gamma_valid i)
@@ -519,8 +650,23 @@ Proof.
   rewrite in_map_iff. intros [b [Hb Hinb]].
   apply dep_map_in in Hinb. destruct Hinb as [f [Hvalf [Hinf Hfrep]]].
   rewrite <- Hb. rewrite <- Hfrep.
+  (*TODO: see if we need this*)
   assert (valid_ind_form p f) by admit.
+  (*hmm how can I get the In to not apply
+    need to see argument: maybe do on paper*)
+  induction H; subst.
+  2: {
+    rewrite fbinop_rep. simpl.
+
+
+
+  }
   inversion H; subst.
+  2: { rewrite fbinop_rep. simpl.
+
+  
+  
+  unfold formula_rep;  simpl. }
   - rewrite fpred_rep.
     rewrite Hindpred. unfold indpred_rep_single.
     rewrite simpl_all_dec. intros P Hconstrs.
@@ -558,6 +704,7 @@ Proof.
       rewrite H2.
       (*OK, now just need to know something about relation between
         interp_with_P and i applied to P*)
+      
         
       
       rewrite <- H0.

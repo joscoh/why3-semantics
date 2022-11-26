@@ -84,14 +84,14 @@ Definition seqI {A: eqType} (s1 s2: seq A) :=
 
 Fixpoint typecheck_pattern (s: sig) (p: pattern) (v: vty) : bool :=
   match p with
-  | Pvar x ty => (v == ty) && typecheck_type s ty
+  | Pvar x => (v == (snd x)) && typecheck_type s (snd x)
   | Pwild => typecheck_type s v
   | Por p1 p2 => 
     typecheck_pattern s p1 v &&
     typecheck_pattern s p2 v &&
     (eq_memb (pat_fv p2) (pat_fv p1))
-  | Pbind p x ty =>
-    (v == ty) &&
+  | Pbind p x =>
+    (v == (snd x)) &&
     (x \notin (pat_fv p)) &&
     (typecheck_pattern s p v)
   | Pconstr f params ps => 
@@ -215,9 +215,9 @@ Proof.
   move=> s. apply 
     (pattern_rect (fun (p: pattern) => forall v, 
       reflect (pattern_has_type s p v) (typecheck_pattern s p v)))=>//=.
-  - move=> vs ty1 ty2. 
-    case: (ty2 == ty1) /eqP => //= Hty12; subst; last by reflF.
-    case: (typecheck_type s ty1) /typecheck_type_correct => Hty1; 
+  - move=> vs ty2. 
+    case: (ty2 == (snd vs)) /eqP => //= Hty12; subst; last by reflF.
+    case: (typecheck_type s (snd vs)) /typecheck_type_correct => Hty1; 
     last by reflF.
     apply ReflectT. by constructor.
   - (*The hard case*)
@@ -302,10 +302,10 @@ Proof.
     + apply ReflectT. constructor=>//. by rewrite eq_mem_In.
     + apply ReflectF => C. inversion C; subst.
       rewrite eq_mem_In in H5. apply Heq=> x. by rewrite H5.
-  - move=> p v ty IH v'.
-    case: (v' == ty) /eqP => Hv'/=; subst; last by reflF.
+  - move=> p v IH v'.
+    case: (v' == (snd v)) /eqP => Hv'/=; subst; last by reflF.
     case: (v \in pat_fv p) /inP => Hinv/=; first by reflF.
-    case: (typecheck_pattern s p ty) /(IH ty) => Hty; last by reflF.
+    case: (typecheck_pattern s p (snd v)) /(IH (snd v)) => Hty; last by reflF.
     apply ReflectT. by constructor.
 Qed.
 
@@ -314,9 +314,9 @@ Fixpoint typecheck_term (s: sig) (t: term) : option vty :=
   match t with
   | Tconst (ConstInt z) => Some vty_int
   | Tconst (ConstReal r) => Some vty_real
-  | Tvar x ty => if typecheck_type s ty then Some ty else None
-  | Tlet tm1 x ty tm2 => 
-    if (typecheck_term s tm1) == Some ty then
+  | Tvar x => if typecheck_type s (snd x) then Some (snd x) else None
+  | Tlet tm1 x tm2 => 
+    if (typecheck_term s tm1) == Some (snd x) then
     typecheck_term s tm2 else None
   | Tif f tm1 tm2 =>
     if typecheck_formula s f then
@@ -362,8 +362,8 @@ Fixpoint typecheck_term (s: sig) (t: term) : option vty :=
     else None
   (*Function case*)
 
-  | Teps f x ty => if typecheck_formula s f && typecheck_type s ty
-    then Some ty else None
+  | Teps f x => if typecheck_formula s f && typecheck_type s (snd x)
+    then Some (snd x) else None
   end 
 with typecheck_formula (s: sig) (f: formula) : bool :=
   match f with
@@ -372,8 +372,8 @@ with typecheck_formula (s: sig) (f: formula) : bool :=
   | Fbinop b f1 f2 =>
     typecheck_formula s f1 && typecheck_formula s f2
   | Fnot f1 => typecheck_formula s f1
-  | Fquant q x ty f1 =>
-    typecheck_type s ty &&
+  | Fquant q x f1 =>
+    typecheck_type s (snd x) &&
     typecheck_formula s f1
   | Fpred p params tms =>
       (p \in (sig_p s)) &&
@@ -388,8 +388,8 @@ with typecheck_formula (s: sig) (f: formula) : bool :=
       | nil, nil => true
       | _, _ => false
       end) tms (List.map (ty_subst (p_params p) params) (p_args p)))
-  | Flet t x ty f1 =>
-    (typecheck_term s t == Some ty) &&
+  | Flet t x f1 =>
+    (typecheck_term s t == Some (snd x)) &&
     typecheck_formula s f1
   | Fif f1 f2 f3 =>
     typecheck_formula s f1 &&
@@ -427,10 +427,10 @@ Proof.
       subst; [reflT | reflF].
     + by case: (Some vty_real == Some v) /eqP=> [[Hv] | Hneq]; 
       subst; [reflT | reflF].
-  - move=> v ty1 ty2. 
-    case: (typecheck_type s ty1) /typecheck_type_correct => Hval; 
+  - move=> v ty2. 
+    case: (typecheck_type s (snd v)) /typecheck_type_correct => Hval; 
     last by reflF.
-    by case: (Some ty1 == Some ty2) /eqP => [[Hv12] | Hneq]; subst;
+    by case: (Some (snd v) == Some ty2) /eqP => [[Hv12] | Hneq]; subst;
     [reflT | reflF].
   - move=> f tys tms Hall1 v.
     case: (f \in sig_f s) /inP => Hinf/=; last by reflF.
@@ -492,8 +492,8 @@ Proof.
       end) tms (List.map (ty_subst (s_params f) tys) (s_args f))) => 
       Hargs /eqP // [Hv]; subst.
       constructor=>//. by rewrite Hargs.
-  - move=> tm1 v ty tm2 IHtm1 IHtm2 ty'.
-    case: (typecheck_term s tm1 == Some ty) /(IHtm1 ty)=> Hty1/=; 
+  - move=> tm1 v tm2 IHtm1 IHtm2 ty'.
+    case: (typecheck_term s tm1 == Some (snd v)) /(IHtm1 (snd v))=> Hty1/=; 
     last by reflF.
     case: (typecheck_term s tm2 == Some ty') /(IHtm2 ty') => Hty2/=;
     last by reflF.
@@ -596,11 +596,11 @@ Proof.
           by rewrite Htm1' =>/= [[]].
         }
         by apply H6; right.
-  - move=> f v ty1 IHf ty2.
+  - move=> f v IHf ty2.
     case: (typecheck_formula s f) /IHf => Hval; last by reflF.
-    case: (typecheck_type s ty1) /typecheck_type_correct => /=Hty1;
+    case: (typecheck_type s (snd v)) /typecheck_type_correct => /=Hty1;
     last by reflF.
-    case: (Some ty1 == Some ty2) /eqP => [[] Heq| Hneq].
+    case: (Some (snd v) == Some ty2) /eqP => [[] Heq| Hneq].
     + subst. by reflT.
     + by reflF.
   - (*Now for formulas*)
@@ -630,8 +630,8 @@ Proof.
         HallT /= /andP[/(ForallT_hd _ _ _ HallT) Hh Hargs]]; 
         first by constructor.
       constructor=>//. apply IH=>//. by inversion HallT.
-  - move=> q v ty f IHf.
-    case: (typecheck_type s ty) /typecheck_type_correct => Hty/=; 
+  - move=> q v f IHf.
+    case: (typecheck_type s (snd v)) /typecheck_type_correct => Hty/=; 
       last by reflF.
     by case: (typecheck_formula s f) /IHf => Hf; [reflT | reflF].
   - move=> ty t1 t2 Ht1 Ht2.
@@ -646,8 +646,8 @@ Proof.
     by case: (typecheck_formula s f) /Hf => Hf/=; [reflT | reflF].
   - by reflT.
   - by reflT.
-  - move=> tm v ty f Htm Hf.
-    case: (typecheck_term s tm == Some ty) /Htm => Htm/=; last by reflF.
+  - move=> tm v f Htm Hf.
+    case: (typecheck_term s tm == Some (snd v)) /Htm => Htm/=; last by reflF.
     by case: (typecheck_formula s f) /Hf => Hf/=; [reflT | reflF].
   - move=> f1 f2 f3 Hf1 Hf2 Hf3.
     case: (typecheck_formula s f1) /Hf1 => Hf1/=; last by reflF.

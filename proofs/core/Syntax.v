@@ -182,35 +182,36 @@ Inductive binop : Set :=
     | Timplies
     | Tiff.
 
-Definition vsymbol : Set := string.
+Definition vsymbol : Set := (string * vty).
 
-Definition vsymbol_eq_dec : forall (x y: vsymbol), {x = y} + {x <> y} := string_dec.
+Definition vsymbol_eq_dec : forall (x y: vsymbol), 
+  {x = y} + {x <> y} := tuple_eq_dec string_dec vty_eq_dec.
 
 Unset Elimination Schemes.
 Inductive pattern : Set :=
-  | Pvar : vsymbol -> vty -> pattern
+  | Pvar : vsymbol -> pattern
   | Pconstr : funsym -> list vty -> list pattern -> pattern
   | Pwild : pattern
   | Por: pattern -> pattern -> pattern
-  | Pbind: pattern -> vsymbol -> vty -> pattern.
+  | Pbind: pattern -> vsymbol -> pattern.
 
 Inductive term : Set :=
   | Tconst: constant -> term
-  | Tvar : vsymbol -> vty -> term
+  | Tvar : vsymbol -> term
   | Tfun: funsym -> list vty -> list term -> term
-  | Tlet: term -> vsymbol -> vty -> term -> term
+  | Tlet: term -> vsymbol -> term -> term
   | Tif: formula -> term -> term -> term
   | Tmatch: term -> vty -> list (pattern * term) -> term
-  | Teps: formula -> vsymbol -> vty -> term
+  | Teps: formula -> vsymbol ->term
 with formula : Set :=
   | Fpred: predsym -> list vty -> list term -> formula
-  | Fquant: quant -> vsymbol -> vty -> formula -> formula
+  | Fquant: quant -> vsymbol -> formula -> formula
   | Feq: vty -> term -> term -> formula
   | Fbinop: binop -> formula -> formula -> formula
   | Fnot: formula -> formula
   | Ftrue: formula
   | Ffalse: formula
-  | Flet: term -> vsymbol -> vty -> formula -> formula
+  | Flet: term -> vsymbol -> formula -> formula
   | Fif: formula -> formula -> formula -> formula
   | Fmatch: term -> vty -> list (pattern * formula) -> formula.
   (*TODO: will need nicer (useful) induction scheme*)
@@ -223,19 +224,19 @@ with formula_ind := Induction for formula Sort Prop.*)
 Section PatternInd.
 
 Variable P: pattern -> Prop.
-Variable Hvar: forall (v: vsymbol) (ty: vty),
-  P (Pvar v ty).
+Variable Hvar: forall (v: vsymbol),
+  P (Pvar v).
 Variable Hconstr: forall (f: funsym) (vs: list vty) (ps: list pattern),
   Forall P ps ->
   P (Pconstr f vs ps).
 Variable Hwild: P Pwild.
 Variable Hor: forall p1 p2, P p1 -> P p2 -> P (Por p1 p2).
-Variable Hbind: forall p v ty,
-  P p -> P (Pbind p v ty).
+Variable Hbind: forall p v,
+  P p -> P (Pbind p v).
 
 Fixpoint pattern_ind (p: pattern) : P p :=
   match p with
-  | Pvar x ty => Hvar x ty
+  | Pvar x => Hvar x
   | Pconstr f tys ps => Hconstr f tys ps
     ((fix all_patterns (l: list pattern) : Forall P l :=
     match l with
@@ -244,7 +245,7 @@ Fixpoint pattern_ind (p: pattern) : P p :=
     end) ps)
   | Pwild => Hwild
   | Por p1 p2 => Hor p1 p2 (pattern_ind p1) (pattern_ind p2)
-  | Pbind p x ty => Hbind p x ty (pattern_ind p)
+  | Pbind p x  => Hbind p x (pattern_ind p)
   end.
 
 End PatternInd.
@@ -253,19 +254,19 @@ End PatternInd.
 Section PatternRect.
 
 Variable P: pattern -> Type.
-Variable Hvar: forall (v: vsymbol) (ty: vty),
-  P (Pvar v ty).
+Variable Hvar: forall (v: vsymbol),
+  P (Pvar v).
 Variable Hconstr: forall (f: funsym) (vs: list vty) (ps: list pattern),
   ForallT P ps ->
   P (Pconstr f vs ps).
 Variable Hwild: P Pwild.
 Variable Hor: forall p1 p2, P p1 -> P p2 -> P (Por p1 p2).
-Variable Hbind: forall p v ty,
-  P p -> P (Pbind p v ty).
+Variable Hbind: forall p v,
+  P p -> P (Pbind p v).
 
 Fixpoint pattern_rect (p: pattern) : P p :=
   match p with
-  | Pvar x ty => Hvar x ty
+  | Pvar x => Hvar x
   | Pconstr f tys ps => Hconstr f tys ps
     ((fix all_patterns (l: list pattern) : ForallT P l :=
     match l with
@@ -274,7 +275,7 @@ Fixpoint pattern_rect (p: pattern) : P p :=
     end) ps)
   | Pwild => Hwild
   | Por p1 p2 => Hor p1 p2 (pattern_rect p1) (pattern_rect p2)
-  | Pbind p x ty => Hbind p x ty (pattern_rect p)
+  | Pbind p x => Hbind p x (pattern_rect p)
   end.
 
 End PatternRect.
@@ -286,24 +287,24 @@ Variable P1: term -> Prop.
 Variable P2: formula -> Prop.
 
 Variable tconst: forall c: constant, P1 (Tconst c).
-Variable tvar: forall (v: vsymbol) (ty: vty),
-  P1 (Tvar v ty).
+Variable tvar: forall (v: vsymbol),
+  P1 (Tvar v).
 Variable tfun: forall (f1: funsym) (l: list vty) (l1: list term),
   Forall P1 l1 ->
   P1 (Tfun f1 l l1).
-Variable tlet: forall (tm1 : term) (v: vsymbol) (ty: vty) (tm2: term),
-  P1 tm1 -> P1 tm2 -> P1 (Tlet tm1 v ty tm2).
+Variable tlet: forall (tm1 : term) (v: vsymbol) (tm2: term),
+  P1 tm1 -> P1 tm2 -> P1 (Tlet tm1 v tm2).
 Variable tif: forall (f: formula) (t1 t2: term),
   P2 f -> P1 t1 -> P1 t2 -> P1 (Tif f t1 t2).
 Variable tmatch: forall (tm: term) (v: vty) (ps: list (pattern * term)),
   P1 tm -> Forall P1 (map snd ps) -> P1 (Tmatch tm v ps).
-Variable teps: forall (f: formula) (v: vsymbol) (ty: vty),
-  P2 f -> P1 (Teps f v ty).
+Variable teps: forall (f: formula) (v: vsymbol),
+  P2 f -> P1 (Teps f v).
 
 Variable fpred: forall (p: predsym) (tys: list vty) (tms: list term),
   Forall P1 tms -> P2 (Fpred p tys tms).
-Variable fquant: forall (q: quant) (v: vsymbol) (ty: vty) (f: formula),
-  P2 f -> P2 (Fquant q v ty f).
+Variable fquant: forall (q: quant) (v: vsymbol) (f: formula),
+  P2 f -> P2 (Fquant q v f).
 Variable feq: forall (v: vty) (t1 t2: term),
   P1 t1 -> P1 t2 -> P2 (Feq v t1 t2).
 Variable fbinop: forall (b: binop) (f1 f2: formula),
@@ -312,8 +313,8 @@ Variable fnot: forall (f: formula),
   P2 f -> P2 (Fnot f).
 Variable ftrue : P2 Ftrue.
 Variable ffalse: P2 Ffalse.
-Variable flet: forall (tm: term) (v: vsymbol) (ty: vty) (f: formula),
-  P1 tm -> P2 f -> P2 (Flet tm v ty f).
+Variable flet: forall (tm: term) (v: vsymbol) (f: formula),
+  P1 tm -> P2 f -> P2 (Flet tm v f).
 Variable fif: forall (f1 f2 f3: formula),
   P2 f1 -> P2 f2 -> P2 f3 -> P2 (Fif f1 f2 f3).
 Variable fmatch: forall (tm: term) (v: vty) (ps: list (pattern * formula)),
@@ -324,14 +325,14 @@ Variable fmatch: forall (tm: term) (v: vty) (ps: list (pattern * formula)),
 Fixpoint term_ind (tm: term) : P1 tm :=
   match tm with
   | Tconst c => tconst c
-  | Tvar v ty => tvar v ty
+  | Tvar v => tvar v
   | Tfun f vs tms => tfun f vs tms 
     ((fix term_list_ind (l: list term) : Forall P1 l :=
     match l with
     | nil => (@Forall_nil _ P1)
     | x :: t => Forall_cons _ (term_ind x) (term_list_ind t)
     end) tms)
-  | Tlet t1 v ty t2 => tlet t1 v ty t2 (term_ind t1) (term_ind t2)
+  | Tlet t1 v t2 => tlet t1 v t2 (term_ind t1) (term_ind t2)
   | Tif f t1 t2 => tif f t1 t2 (formula_ind f) (term_ind t1) (term_ind t2)
   | Tmatch tm ty ps => tmatch tm ty ps (term_ind tm)
     ((fix snd_ind (l: list (pattern * term)) : Forall P1 (map snd l) :=
@@ -339,7 +340,7 @@ Fixpoint term_ind (tm: term) : P1 tm :=
     | nil => (@Forall_nil _ P1)
     | (x, y) :: t => Forall_cons _ (term_ind y) (snd_ind t)
     end) ps)
-  | Teps f v ty => teps f v ty (formula_ind f)
+  | Teps f v => teps f v (formula_ind f)
   end
 with formula_ind (f: formula) : P2 f :=
   match f with
@@ -349,13 +350,13 @@ with formula_ind (f: formula) : P2 f :=
     | nil => (@Forall_nil _ P1)
     | x :: t => Forall_cons _ (term_ind x) (term_list_ind t)
     end) tms)
-  | Fquant q v ty f => fquant q v ty f (formula_ind f)
+  | Fquant q v f => fquant q v f (formula_ind f)
   | Feq ty t1 t2 => feq ty t1 t2 (term_ind t1) (term_ind t2)
   | Fbinop b f1 f2 => fbinop b f1 f2 (formula_ind f1) (formula_ind f2)
   | Fnot f => fnot f (formula_ind f)
   | Ftrue => ftrue
   | Ffalse => ffalse
-  | Flet tm v ty f1 => flet tm v ty f1 (term_ind tm) (formula_ind f1)
+  | Flet tm v f1 => flet tm v f1 (term_ind tm) (formula_ind f1)
   | Fif f1 f2 f3 => fif f1 f2 f3 (formula_ind f1) (formula_ind f2)
     (formula_ind f3)
   | Fmatch tm ty ps => fmatch tm ty ps (term_ind tm)
@@ -380,24 +381,24 @@ Variable P1: term -> Type.
 Variable P2: formula -> Type.
 
 Variable tconst: forall c: constant, P1 (Tconst c).
-Variable tvar: forall (v: vsymbol) (ty: vty),
-  P1 (Tvar v ty).
+Variable tvar: forall (v: vsymbol),
+  P1 (Tvar v).
 Variable tfun: forall (f1: funsym) (l: list vty) (l1: list term),
   ForallT P1 l1 ->
   P1 (Tfun f1 l l1).
-Variable tlet: forall (tm1 : term) (v: vsymbol) (ty: vty) (tm2: term),
-  P1 tm1 -> P1 tm2 -> P1 (Tlet tm1 v ty tm2).
+Variable tlet: forall (tm1 : term) (v: vsymbol) (tm2: term),
+  P1 tm1 -> P1 tm2 -> P1 (Tlet tm1 v tm2).
 Variable tif: forall (f: formula) (t1 t2: term),
   P2 f -> P1 t1 -> P1 t2 -> P1 (Tif f t1 t2).
 Variable tmatch: forall (tm: term) (v: vty) (ps: list (pattern * term)),
   P1 tm -> ForallT P1 (map snd ps) -> P1 (Tmatch tm v ps).
-Variable teps: forall (f: formula) (v: vsymbol) (ty: vty),
-  P2 f -> P1 (Teps f v ty).
+Variable teps: forall (f: formula) (v: vsymbol),
+  P2 f -> P1 (Teps f v).
 
 Variable fpred: forall (p: predsym) (tys: list vty) (tms: list term),
   ForallT P1 tms -> P2 (Fpred p tys tms).
-Variable fquant: forall (q: quant) (v: vsymbol) (ty: vty) (f: formula),
-  P2 f -> P2 (Fquant q v ty f).
+Variable fquant: forall (q: quant) (v: vsymbol) (f: formula),
+  P2 f -> P2 (Fquant q v f).
 Variable feq: forall (v: vty) (t1 t2: term),
   P1 t1 -> P1 t2 -> P2 (Feq v t1 t2).
 Variable fbinop: forall (b: binop) (f1 f2: formula),
@@ -406,8 +407,8 @@ Variable fnot: forall (f: formula),
   P2 f -> P2 (Fnot f).
 Variable ftrue : P2 Ftrue.
 Variable ffalse: P2 Ffalse.
-Variable flet: forall (tm: term) (v: vsymbol) (ty: vty) (f: formula),
-  P1 tm -> P2 f -> P2 (Flet tm v ty f).
+Variable flet: forall (tm: term) (v: vsymbol) (f: formula),
+  P1 tm -> P2 f -> P2 (Flet tm v f).
 Variable fif: forall (f1 f2 f3: formula),
   P2 f1 -> P2 f2 -> P2 f3 -> P2 (Fif f1 f2 f3).
 Variable fmatch: forall (tm: term) (v: vty) (ps: list (pattern * formula)),
@@ -418,14 +419,14 @@ Variable fmatch: forall (tm: term) (v: vty) (ps: list (pattern * formula)),
 Fixpoint term_rect (tm: term) : P1 tm :=
   match tm with
   | Tconst c => tconst c
-  | Tvar v ty => tvar v ty
+  | Tvar v => tvar v
   | Tfun f vs tms => tfun f vs tms 
     ((fix term_list_rect (l: list term) : ForallT P1 l :=
     match l with
     | nil => (@ForallT_nil _ P1)
     | x :: t => ForallT_cons _ (term_rect x) (term_list_rect t)
     end) tms)
-  | Tlet t1 v ty t2 => tlet t1 v ty t2 (term_rect t1) (term_rect t2)
+  | Tlet t1 v t2 => tlet t1 v t2 (term_rect t1) (term_rect t2)
   | Tif f t1 t2 => tif f t1 t2 (formula_rect f) (term_rect t1) (term_rect t2)
   | Tmatch tm ty ps => tmatch tm ty ps (term_rect tm)
     ((fix snd_rect (l: list (pattern * term)) : ForallT P1 (map snd l) :=
@@ -433,7 +434,7 @@ Fixpoint term_rect (tm: term) : P1 tm :=
     | nil => (@ForallT_nil _ P1)
     | (x, y) :: t => ForallT_cons _ (term_rect y) (snd_rect t)
     end) ps)
-  | Teps f v ty => teps f v ty (formula_rect f)
+  | Teps f v => teps f v (formula_rect f)
   end
 with formula_rect (f: formula) : P2 f :=
   match f with
@@ -443,13 +444,13 @@ with formula_rect (f: formula) : P2 f :=
     | nil => (@ForallT_nil _ P1)
     | x :: t => ForallT_cons _ (term_rect x) (term_list_rect t)
     end) tms)
-  | Fquant q v ty f => fquant q v ty f (formula_rect f)
+  | Fquant q v f => fquant q v f (formula_rect f)
   | Feq ty t1 t2 => feq ty t1 t2 (term_rect t1) (term_rect t2)
   | Fbinop b f1 f2 => fbinop b f1 f2 (formula_rect f1) (formula_rect f2)
   | Fnot f => fnot f (formula_rect f)
   | Ftrue => ftrue
   | Ffalse => ffalse
-  | Flet tm v ty f1 => flet tm v ty f1 (term_rect tm) (formula_rect f1)
+  | Flet tm v f1 => flet tm v f1 (term_rect tm) (formula_rect f1)
   | Fif f1 f2 f3 => fif f1 f2 f3 (formula_rect f1) (formula_rect f2)
     (formula_rect f3)
   | Fmatch tm ty ps => fmatch tm ty ps (term_rect tm)
@@ -478,35 +479,35 @@ Local Notation remove_all' := (remove_all vsymbol_eq_dec).
 (*Free variables of a pattern*)
 Fixpoint pat_fv (p: pattern) : list vsymbol :=
   match p with
-  | Pvar x t => [x]
+  | Pvar x => [x]
   | Pwild => []
   | Pconstr _ _ ps => big_union' pat_fv ps
   | Por p1 p2 => union' (pat_fv p1) (pat_fv p2)
-  | Pbind p x t => union' (pat_fv p) [x]
+  | Pbind p x => union' (pat_fv p) [x]
   end.
 
 (*Free variables of a term (all variables that appear free at least once)*)
 Fixpoint term_fv (t: term) : list vsymbol :=
   match t with
   | Tconst _ => nil
-  | Tvar x _ => [x]
+  | Tvar x => [x]
   | Tfun f vtys tms => big_union' term_fv tms
-  | Tlet t1 v _ t2 => union' (term_fv t1) (remove' v (term_fv t2))
+  | Tlet t1 v t2 => union' (term_fv t1) (remove' v (term_fv t2))
   | Tif f t1 t2 => union' (form_fv f) (union' (term_fv t1) (term_fv t2))
   | Tmatch t ty l => union' (term_fv t) (big_union' (fun x => remove_all' (pat_fv (fst x)) (term_fv (snd x))) l)
-  | Teps f x ty => remove' x (form_fv f)
+  | Teps f x  => remove' x (form_fv f)
   end
 
 with form_fv (f: formula) : list vsymbol :=
   match f with
   | Fpred p tys tms => big_union' term_fv tms
-  | Fquant q v _ f => remove' v (form_fv f)
+  | Fquant q v f => remove' v (form_fv f)
   | Feq _ t1 t2 => union' (term_fv t1) (term_fv t2)
   | Fbinop b f1 f2 => union' (form_fv f1) (form_fv f2)
   | Fnot f => form_fv f
   | Ftrue => nil
   | Ffalse => nil
-  | Flet t v _ f => union' (term_fv t) (remove' v (form_fv f))
+  | Flet t v f => union' (term_fv t) (remove' v (form_fv f))
   | Fif f1 f2 f3 => union' (form_fv f1) (union' (form_fv f2) (form_fv f3))
   | Fmatch t ty l => union' (term_fv t) (big_union' (fun x => remove_all' (pat_fv (fst x)) (form_fv (snd x))) l)
   end.

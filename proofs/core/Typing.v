@@ -29,9 +29,9 @@ Inductive valid_type : sig -> vty -> Prop :=
 
 (*Typing rules for patterns*)
 Inductive pattern_has_type: sig -> pattern -> vty -> Prop :=
-  | P_Var: forall s x ty,
-    valid_type s ty ->
-    pattern_has_type s (Pvar x ty) ty
+  | P_Var: forall s x,
+    valid_type s (snd x) ->
+    pattern_has_type s (Pvar x) (snd x)
   | P_Wild: forall s ty,
     valid_type s ty ->
     pattern_has_type s Pwild ty
@@ -54,10 +54,10 @@ Inductive pattern_has_type: sig -> pattern -> vty -> Prop :=
     pattern_has_type s p2 ty ->
     (forall x, In x (pat_fv p1) <-> In x (pat_fv p2)) ->
     pattern_has_type s (Por p1 p2) ty
-  | P_Bind: forall s x ty p,
+  | P_Bind: forall s x p,
     ~ In x (pat_fv p) ->
-    pattern_has_type s p ty ->
-    pattern_has_type s (Pbind p x ty) ty.
+    pattern_has_type s p (snd x) ->
+    pattern_has_type s (Pbind p x) (snd x).
 
 (* Typing rules for terms *)
 Inductive term_has_type: sig -> term -> vty -> Prop :=
@@ -65,9 +65,9 @@ Inductive term_has_type: sig -> term -> vty -> Prop :=
     term_has_type s (Tconst (ConstInt z)) vty_int
   | T_real: forall s r,
     term_has_type s (Tconst (ConstReal r)) vty_real
-  | T_Var: forall s x ty,
-    valid_type s ty ->
-    term_has_type s (Tvar x ty) ty
+  | T_Var: forall s x,
+    valid_type s (snd x) ->
+    term_has_type s (Tvar x) (snd x)
   | T_Fun: forall s (params : list vty) (tms : list term) (f: funsym),
     In f (sig_f s) ->
     Forall (valid_type s) params ->
@@ -81,10 +81,10 @@ Inductive term_has_type: sig -> term -> vty -> Prop :=
     Forall (fun x => term_has_type s (fst x) (snd x)) (combine tms
       (map (ty_subst (s_params f) params) (s_args f))) ->
     term_has_type s (Tfun f params tms) (ty_subst (s_params f) params (s_ret f))
-  | T_Let: forall s t1 x ty t2 ty2,
-    term_has_type s t1 ty ->
+  | T_Let: forall s t1 x t2 ty2,
+    term_has_type s t1 (snd x) ->
     term_has_type s t2 ty2 ->
-    term_has_type s (Tlet t1 x ty t2) ty2
+    term_has_type s (Tlet t1 x t2) ty2
   | T_If: forall s f t1 t2 ty,
     valid_formula s f ->
     term_has_type s t1 ty ->
@@ -104,11 +104,11 @@ Inductive term_has_type: sig -> term -> vty -> Prop :=
     (*need this to ensure that typing is decidable*)
     negb (null ps) ->
     term_has_type s (Tmatch tm ty1 ps) ty2
-  | T_eps: forall s x ty f,
+  | T_eps: forall s x f,
     (*TODO: is this the right typing rule?*)
     valid_formula s f ->
-    valid_type s ty ->
-    term_has_type s (Teps f x ty) ty
+    valid_type s (snd x) ->
+    term_has_type s (Teps f x) (snd x)
 
 
 (* Typing rules for formulas *)
@@ -124,10 +124,10 @@ with valid_formula: sig -> formula -> Prop :=
   | F_Not: forall s f,
     valid_formula s f ->
     valid_formula s (Fnot f)
-  | F_Quant: forall s q x ty f,
-    valid_type s ty ->
+  | F_Quant: forall s q x f,
+    valid_type s (snd x) ->
     valid_formula s f ->
-    valid_formula s (Fquant q x ty f)
+    valid_formula s (Fquant q x f)
   | F_Pred: forall s (params: list vty) (tms: list term) (p: predsym),
     (*Very similar to function case*)
     In p (sig_p s) ->
@@ -138,10 +138,10 @@ with valid_formula: sig -> formula -> Prop :=
     Forall (fun x => term_has_type s (fst x) (snd x))
       (combine tms (map sigma (p_args p))) ->
     valid_formula s (Fpred p params tms)
-  | F_Let: forall s t x ty f,
-    term_has_type s t ty ->
+  | F_Let: forall s t x f,
+    term_has_type s t (snd x) ->
     valid_formula s f ->
-    valid_formula s (Flet t x ty f)
+    valid_formula s (Flet t x f)
   | F_If: forall s f1 f2 f3,
     valid_formula s f1 ->
     valid_formula s f2 ->
@@ -387,8 +387,8 @@ Variable gamma: context.
 
 (*Describes when a pattern matches a term*)
 Inductive matches : pattern -> term -> Prop :=
-  | M_Var: forall v ty t,
-    matches (Pvar v ty) t
+  | M_Var: forall v t,
+    matches (Pvar v) t
   | M_Constr: forall (f: funsym) (vs: list vty) (ps: list pattern) (ts: list term),
     (forall x, In x (combine ps ts) -> matches (fst x) (snd x)) ->
     matches (Pconstr f vs ps) (Tfun f vs ts)
@@ -397,9 +397,9 @@ Inductive matches : pattern -> term -> Prop :=
   | M_Or: forall p1 p2 t,
     matches p1 t \/ matches p2 t ->
     matches (Por p1 p2) t
-  | M_Bind: forall p x ty t,
+  | M_Bind: forall p x t,
     matches p t ->
-    matches (Pbind p x ty) t.
+    matches (Pbind p x) t.
 
 (*A match is exhaustive if for every instance of an alg_datatype,
   some pattern matches it*)
@@ -427,15 +427,15 @@ Definition valid_pattern_match (*(t: term)*) (ps: list pattern) : Prop :=
 Inductive valid_pat_tm : term -> Prop :=
   | VPT_const: forall c,
     valid_pat_tm (Tconst c)
-  | VPT_var: forall v ty,
-    valid_pat_tm (Tvar v ty)
+  | VPT_var: forall v,
+    valid_pat_tm (Tvar v)
   | VPT_fun: forall f vs ts,
     (forall x, In x ts -> valid_pat_tm x) ->
     valid_pat_tm (Tfun f vs ts)
-  | VPT_let: forall t1 v ty t2,
+  | VPT_let: forall t1 v t2,
     valid_pat_tm t1 ->
     valid_pat_tm t2 ->
-    valid_pat_tm (Tlet t1 v ty t2)
+    valid_pat_tm (Tlet t1 v t2)
   | VTY_if: forall f t1 t2,
     valid_pat_fmla f ->
     valid_pat_tm t1 ->
@@ -445,16 +445,16 @@ Inductive valid_pat_tm : term -> Prop :=
     valid_pattern_match (map fst ps) ->
     (forall x, In x (map snd ps) -> valid_pat_tm x) ->
     valid_pat_tm (Tmatch t ty ps)
-  | VTY_eps: forall f x ty,
+  | VTY_eps: forall f x,
     valid_pat_fmla f ->
-    valid_pat_tm (Teps f x ty)
+    valid_pat_tm (Teps f x)
 with valid_pat_fmla: formula -> Prop :=
   | VTF_pred: forall p vs ts,
     (forall x, In x ts -> valid_pat_tm x) ->
     valid_pat_fmla (Fpred p vs ts)
-  | VTF_quant: forall q v ty f,
+  | VTF_quant: forall q v f,
     valid_pat_fmla f ->
-    valid_pat_fmla (Fquant q v ty f)
+    valid_pat_fmla (Fquant q v f)
   | VTF_eq: forall ty t1 t2,
     valid_pat_tm t1 ->
     valid_pat_tm t2 ->
@@ -470,10 +470,10 @@ with valid_pat_fmla: formula -> Prop :=
     valid_pat_fmla Ftrue
   | VTF_false:
     valid_pat_fmla Ffalse
-  | VTF_let: forall t x ty f,
+  | VTF_let: forall t x f,
     valid_pat_tm t ->
     valid_pat_fmla f ->
-    valid_pat_fmla (Flet t x ty f)
+    valid_pat_fmla (Flet t x f)
   | VTF_if: forall f1 f2 f3,
     valid_pat_fmla f1 ->
     valid_pat_fmla f2 ->
@@ -786,20 +786,20 @@ Inductive valid_ind_form (p: predsym) : formula -> Prop :=
   | VI_impl: forall f1 f2,
     valid_ind_form p f2 ->
     valid_ind_form p (Fbinop Timplies f1 f2)
-  | VI_forall: forall x ty f,
+  | VI_forall: forall x f,
     valid_ind_form p f ->
-    valid_ind_form p (Fquant Tforall x ty f)
-  | VI_let: forall x ty t f,
+    valid_ind_form p (Fquant Tforall x f)
+  | VI_let: forall x t f,
     valid_ind_form p f ->
-    valid_ind_form p (Flet t x ty f).
+    valid_ind_form p (Flet t x f).
      
 Fixpoint valid_ind_form_dec (p: predsym) (f: formula) : bool :=
   match f with
   | Fpred p' tys tms => predsym_eq_dec p p' && list_eq_dec vty_eq_dec tys (map vty_var (p_params p))
     && (length (p_args p) =? length tms)
-  | Fquant Tforall x ty f' => valid_ind_form_dec p f'
+  | Fquant Tforall x f' => valid_ind_form_dec p f'
   | Fbinop Timplies f1 f2 => valid_ind_form_dec p f2
-  | Flet t x ty f' => valid_ind_form_dec p f'
+  | Flet t x f' => valid_ind_form_dec p f'
   | _ => false
   end.
 
@@ -831,13 +831,13 @@ Definition indprop_valid_type (i: indpred_def) : Prop :=
 Fixpoint predsym_in (p: predsym) (f: formula) {struct f}  : bool :=
   match f with
   | Fpred ps tys tms => predsym_eq_dec p ps || existsb (predsym_in_term p) tms
-  | Fquant q x ty f' => predsym_in p f'
+  | Fquant q x f' => predsym_in p f'
   | Feq ty t1 t2 => predsym_in_term p t1 || predsym_in_term p t2
   | Fbinop b f1 f2 => predsym_in p f1 || predsym_in p f2
   | Fnot f' => predsym_in p f'
   | Ftrue => false
   | Ffalse => false
-  | Flet t x ty f' => predsym_in_term p t || predsym_in p f'
+  | Flet t x f' => predsym_in_term p t || predsym_in p f'
   | Fif f1 f2 f3 => predsym_in p f1 || predsym_in p f2 || predsym_in p f3
   | Fmatch t ty ps => predsym_in_term p t || existsb (fun x => predsym_in p (snd x)) ps
   end
@@ -845,12 +845,12 @@ Fixpoint predsym_in (p: predsym) (f: formula) {struct f}  : bool :=
 with predsym_in_term (p: predsym) (t: term) {struct t}  : bool :=
   match t with
   | Tconst _ => false
-  | Tvar _ _ => false
+  | Tvar _ => false
   | Tfun fs tys tms => existsb (predsym_in_term p) tms
-  | Tlet t1 x ty t2 => predsym_in_term p t1 || predsym_in_term p t2
+  | Tlet t1 x t2 => predsym_in_term p t1 || predsym_in_term p t2
   | Tif f t1 t2 => predsym_in p f || predsym_in_term p t1 || predsym_in_term p t2
   | Tmatch t ty ps => predsym_in_term p t || existsb (fun x => predsym_in_term p (snd x)) ps
-  | Teps f x ty => predsym_in p f
+  | Teps f x => predsym_in p f
   end.
   
 (*Here, strict positivity is a bit simpler, because predicates are not
@@ -872,9 +872,9 @@ Inductive ind_strictly_positive (ps: list predsym) : formula -> Prop :=
     (forall p, In p ps -> negb(predsym_in p f1)) ->
     ind_strictly_positive ps (Fbinop Timplies f1 f2)
   (*The rest of the cases are not too interesting*)
-  | ISP_quant: forall (q: quant) (x: vsymbol) (ty: vty) (f: formula),
+  | ISP_quant: forall (q: quant) (x: vsymbol) (f: formula),
     ind_strictly_positive ps f ->
-    ind_strictly_positive ps (Fquant q x ty f)
+    ind_strictly_positive ps (Fquant q x f)
   | ISP_and: forall (f1 f2 : formula),
     ind_strictly_positive ps f1 ->
     ind_strictly_positive ps f2 ->
@@ -883,10 +883,10 @@ Inductive ind_strictly_positive (ps: list predsym) : formula -> Prop :=
     ind_strictly_positive ps f1 ->
     ind_strictly_positive ps f2 ->
     ind_strictly_positive ps (Fbinop Tor f1 f2)
-  | ISP_let: forall (t: term) (x: vsymbol) (ty: vty) (f: formula),
+  | ISP_let: forall (t: term) (x: vsymbol) (f: formula),
     (forall p, In p ps -> negb (predsym_in_term p t)) ->
     ind_strictly_positive ps f -> (*TODO: is this too restrictive as well? Think OK*)
-    ind_strictly_positive ps (Flet t x ty f)
+    ind_strictly_positive ps (Flet t x f)
   | ISP_if: forall f1 f2 f3,
     (*Cannot be in guard because get (essentially), f1 -> f2 /\ ~f1 -> f3*)
     (forall p, In p ps -> negb(predsym_in p f1)) ->
@@ -907,16 +907,16 @@ Inductive ind_positive (ps: list predsym) : formula -> Prop :=
     In p ps ->
     (forall x t, In t ts -> In x ps -> negb (predsym_in_term x t)) ->
     ind_positive ps (Fpred p vs ts)
-  | IP_forall: forall (x: vsymbol) (ty: vty) (f: formula),
+  | IP_forall: forall (x: vsymbol) (f: formula),
     ind_positive ps f ->
     (* Don't need strict positivity for ty because we cannot quantify over formulas*)
-    ind_positive ps (Fquant Tforall x ty f)
-  | IP_let: forall (t: term) (x: vsymbol) (ty: vty) (f: formula),
+    ind_positive ps (Fquant Tforall x f)
+  | IP_let: forall (t: term) (x: vsymbol) (f: formula),
     (*TODO: is this the right condition? I think so, but should we allow this
       symbol to appear in terms in any cases?*)
     (forall p, In p ps -> negb (predsym_in_term p t)) ->
     ind_positive ps f ->
-    ind_positive ps (Flet t x ty f)
+    ind_positive ps (Flet t x f)
   | IP_impl: forall (f1 f2: formula),
     ind_strictly_positive ps f1 ->
     ind_positive ps f2 ->

@@ -69,7 +69,7 @@ Record valuation (i: pre_interp) := {
   v_typevar : typevar -> sort;
   (*All sorts must be valid*)
   v_typevar_val: forall x, valid_type sigma (v_typevar x);
-  v_vars: forall (x: vsymbol) (v: vty), (domain (dom_aux i) (v_subst (v_typevar) v))
+  v_vars: forall (x: vsymbol), (domain (dom_aux i) (v_subst (v_typevar) (snd x)))
 }.
 
 Section Interp.
@@ -78,8 +78,8 @@ Variable i: pre_interp.
 
 Notation val v t  := (domain (dom_aux i) (v_subst (v_typevar i v) t)).
 
-Definition var_to_dom (v: valuation i) (x: vsymbol) (t: vty) : val v t :=
-  v_vars i v x t.
+Definition var_to_dom (v: valuation i) (x: vsymbol): val v (snd x) :=
+  v_vars i v x.
 
 (*Substitution*)
 
@@ -90,15 +90,19 @@ Definition var_to_dom (v: valuation i) (x: vsymbol) (t: vty) : val v t :=
   We will always be replacing variable 0 in a term (the innermost bound variable)
   *)
 
-Definition substi (v: valuation i) (x: vsymbol) (ty: vty) (y: val v ty) : valuation i.
+Definition substi (v: valuation i) (x: vsymbol) (y: val v (snd x)) : valuation i.
 apply (Build_valuation i (v_typevar i v)).
-+ intros. destruct v. simpl. apply v_typevar_val0. 
-+ intros m ty'. destruct (vsymbol_eq_dec m x).
++ exact (v_typevar_val i v).  
++ intros m. destruct (vsymbol_eq_dec m x).
+  * subst. exact y.
+  * exact (v_vars i v m).
+Defined.
+(*
   destruct (vty_eq_dec ty ty').
   - subst. apply y.
   - (*trivial case*) apply (v_vars i v m ty').
   - apply (v_vars i v m ty').
-Defined.
+Defined.*)
 
 (* Some additional lemmas for casting/dependent type obligations *)
 Notation dcast := (dom_cast (dom_aux i)).
@@ -124,8 +128,8 @@ Inductive term_interp:
     term_interp v (Tconst (ConstInt z)) vty_int z
   | TI_real: forall v r,
     term_interp v (Tconst (ConstReal r)) vty_real r
-  | TI_var: forall v (x: vsymbol) (ty: vty),
-    term_interp v (Tvar x ty) ty (var_to_dom v x ty)
+  | TI_var: forall v (x: vsymbol),
+    term_interp v (Tvar x) (snd x) (var_to_dom v x)
   | TI_iftrue: forall v f t1 t2 ty x,
     formula_interp v nil nil f true -> (*TODO: does empty work?*)
     term_interp v t1 ty x ->
@@ -135,10 +139,10 @@ Inductive term_interp:
     term_interp v t2 ty x ->
     term_interp v (Tif f t1 t2) ty x
   (*substitution changes the valuation *)
-  | TI_let: forall v t1 (x: vsymbol) t2 ty1 ty2 x1 x2,
-    term_interp v t1 ty1 x1 ->
-    term_interp (substi v x ty1 x1) t2 ty2 x2 ->
-    term_interp v (Tlet t1 x ty1 t2) ty2 x2
+  | TI_let: forall v t1 (x: vsymbol) t2 ty2 x1 x2,
+    term_interp v t1 (snd x) x1 ->
+    term_interp (substi v x x1) t2 ty2 x2 ->
+    term_interp v (Tlet t1 x t2) ty2 x2
   | TI_func: forall (v: valuation i) (f: funsym) (params: list vty) (ts: list term) 
     (Hlen: length (s_params f) = length params) xs,
 
@@ -201,23 +205,23 @@ with formula_interp: (valuation i) -> list formula -> list formula -> formula ->
     formula_interp v tl fl f false ->
     formula_interp v tl fl f2 b ->
     formula_interp v tl fl (Fif f f1 f2) b
-  | FI_let: forall v t (x: vsymbol) ty f x1 b tl fl,
-    term_interp v t ty x1 ->
-    formula_interp (substi v x ty x1) tl fl f b ->
-    formula_interp v tl fl (Flet t x ty f) b
-  | FI_forallT: forall v x ty f tl fl,
-    (forall d, formula_interp (substi v x ty d) tl fl f true) ->
-    formula_interp v tl fl (Fquant Tforall x ty f) true
+  | FI_let: forall v t (x: vsymbol) f x1 b tl fl,
+    term_interp v t (snd x) x1 ->
+    formula_interp (substi v x x1) tl fl f b ->
+    formula_interp v tl fl (Flet t x f) b
+  | FI_forallT: forall v x f tl fl,
+    (forall d, formula_interp (substi v x d) tl fl f true) ->
+    formula_interp v tl fl (Fquant Tforall x f) true
   (*TODO: may not need this with classical part*)
-  | FI_forallF: forall v x ty f d tl fl, (*otherwise we cannot prove that forall is false*)
-    (formula_interp (substi v x ty d) tl fl f false) ->
-    formula_interp v tl fl (Fquant Tforall x ty f) false
-  | FI_existsT: forall v x ty f d tl fl,
-    (formula_interp (substi v x ty d) tl fl f true) ->
-    formula_interp v tl fl (Fquant Texists x ty f) true
-  | FI_existsF: forall v x ty f tl fl,
-    (forall d, formula_interp (substi v x ty d) tl fl f false) ->
-    formula_interp v tl fl (Fquant Texists x ty f) false
+  | FI_forallF: forall v x f d tl fl, (*otherwise we cannot prove that forall is false*)
+    (formula_interp (substi v x d) tl fl f false) ->
+    formula_interp v tl fl (Fquant Tforall x f) false
+  | FI_existsT: forall v x f d tl fl,
+    (formula_interp (substi v x d) tl fl f true) ->
+    formula_interp v tl fl (Fquant Texists x f) true
+  | FI_existsF: forall v x f tl fl,
+    (forall d, formula_interp (substi v x d) tl fl f false) ->
+    formula_interp v tl fl (Fquant Texists x f) false
   | FI_eqT: forall v ty t1 t2 x1 x2 tl fl, (*TODO: assume decidable equality?*)
     term_interp v t1 ty x1 ->
     term_interp v t2 ty x2 ->
@@ -297,12 +301,12 @@ with proj_constr : (valuation i) -> term -> funsym -> list vty -> list term -> b
     only difference being that one takes in/returns a term, and the other a formula
     (using Tlet/Flet). So we factor out the difference and pass in the appropriate
     type in the term/formula interpretation*)
-  with pattern_interp: forall (A: Type) (flet: term -> vsymbol -> vty -> A -> A),
+  with pattern_interp: forall (A: Type) (flet: term -> vsymbol -> A -> A),
      (valuation i) ->term -> pattern -> option A -> option A -> option A -> Prop :=
-  | PI_varNone: forall A flet v t x ty h,
-    pattern_interp A flet v t (Pvar x ty) None h None
-  | PI_varSome: forall A flet v t x ty b h,
-    pattern_interp A flet v t (Pvar x ty) (Some b) h (Some (flet t x ty b))
+  | PI_varNone: forall A flet v t x h,
+    pattern_interp A flet v t (Pvar x) None h None
+  | PI_varSome: forall A flet v t x b h,
+    pattern_interp A flet v t (Pvar x) (Some b) h (Some (flet t x b))
   | PI_constrNilT: forall A flet (v: valuation i) t (f: funsym) (vs: list vty) b h,
     (*If the interpretation of t (ie x), comes from the constructor f: *)
     (exists ts, proj_constr v t f vs ts true) ->
@@ -326,14 +330,14 @@ with proj_constr : (valuation i) -> term -> funsym -> list vty -> list term -> b
     pattern_interp A flet v t p2 b h res ->
     pattern_interp A flet v t p1 b res res1 ->
     pattern_interp A flet v t (Por p1 p2) b h res1
-  | PI_bindNil: forall A flet v t p x ty b h,
+  | PI_bindNil: forall A flet v t p x b h,
     pattern_interp A flet v t p b h None ->
-    pattern_interp A flet v t (Pbind p x ty) b h None
-  | PI_bind: forall A flet v t p x ty b h res,
+    pattern_interp A flet v t (Pbind p x) b h None
+  | PI_bind: forall A flet v t p x b h res,
     pattern_interp A flet v t p b h (Some res) ->
-    pattern_interp A flet v t (Pbind p x ty) b h (Some (flet t x ty res))
+    pattern_interp A flet v t (Pbind p x) b h (Some (flet t x res))
 
-with iter_pattern_interp: forall (A: Type) (flet: term -> vsymbol -> vty -> A -> A),
+with iter_pattern_interp: forall (A: Type) (flet: term -> vsymbol -> A -> A),
 (valuation i) -> list term -> list pattern -> option A -> option A -> option A -> Prop :=
   | IPI_nil:
     forall A flet v b h,
@@ -344,7 +348,7 @@ with iter_pattern_interp: forall (A: Type) (flet: term -> vsymbol -> vty -> A ->
     iter_pattern_interp A flet v (t :: ts) (p :: ps) b h res1
 
 (*We need another form of iteration, where failures are propagated*)
-with match_pattern: forall (A: Type) (flet: term -> vsymbol -> vty -> A -> A),
+with match_pattern: forall (A: Type) (flet: term -> vsymbol -> A -> A),
   (valuation i) -> term -> list pattern -> list A -> option A -> Prop :=
   | MP_nil: forall A flet v t,
     match_pattern A flet v t nil nil None
@@ -402,7 +406,7 @@ Section Ex.
 Local Open Scope string_scope.
 (*Let's give an example: prove that equality is reflexive*)
 Lemma prove_eq_refl: forall (v: valuation i) (a: vty) tl fl,
-  formula_interp v tl fl (Fquant Tforall "x" a (Feq a (Tvar "x" a) (Tvar "x" a))) true.
+  formula_interp v tl fl (Fquant Tforall ("x", a) (Feq a (Tvar ("x", a)) (Tvar ("x", a)))) true.
 Proof.
   intros v a. constructor. intros d.
   eapply FI_eqT. 
@@ -424,7 +428,7 @@ apply (Build_valuation i (fun _ => s_int)).
 - intros. constructor.
 -
 intros.
-destruct i; simpl. specialize (domain_ne0 (v_subst (fun _ : typevar => s_int) v)).
+destruct i; simpl. specialize (domain_ne0 (v_subst (fun _ : typevar => s_int) (snd x))).
 inversion domain_ne0. apply x0.
 Defined.
 
@@ -559,21 +563,21 @@ End InterpLemmas.
 
 (*Find element of arg_list corresponding to element of l*)
 (*This is very ugly due to dependent types and proof obligations*)
-Fixpoint mk_fun_arg {A: Type} (eq_dec: forall (x y: A), {x = y} + { x <> y}) 
+Fixpoint mk_fun_arg (*{A: Type} (eq_dec: forall (x y: A), {x = y} + { x <> y})*) 
   (i: pre_interp) v_var
-  (l: list A) (s: list sort) (a: arg_list (domain (dom_aux i)) s) (x: A): 
-    forall v, domain (dom_aux i) (v_subst v_var v) :=
+  (l: list vsymbol) (s: list sort) (a: arg_list (domain (dom_aux i)) s) 
+    (x: vsymbol): 
+    domain (dom_aux i) (v_subst v_var (snd x)) :=
   match l, a with
   | hd :: tl, HL_cons shd stl d t => 
-    fun v =>
       (*Need to know that types are equal so we can cast the domain*)
-      match (vty_eq_dec (v_subst v_var v)) shd with
-      | left Heq => if eq_dec hd x then dom_cast _ (sort_inj (eq_sym Heq)) d
-          else mk_fun_arg eq_dec i v_var tl stl t x v
-      | _ => mk_fun_arg eq_dec i v_var tl stl t x v
+      match (vty_eq_dec (v_subst v_var (snd x))) shd with
+      | left Heq => if vsymbol_eq_dec hd x then dom_cast _ (sort_inj (eq_sym Heq)) d
+          else mk_fun_arg i v_var tl stl t x
+      | _ => mk_fun_arg i v_var tl stl t x
       end
   (* Otherwise, return default element of domain *)
-  | _, _ => fun v => match domain_ne i (v_subst v_var v) with
+  | _, _ =>  match domain_ne i (v_subst v_var (snd x)) with
                       | DE y => y
                       end
   end.
@@ -614,7 +618,7 @@ Definition make_val (i: pre_interp) (vs: list typevar) (s1 s2: list sort)
   (syms: list vsymbol) (a: arg_list (domain (dom_aux i)) s2) : valuation i :=
   let v_var := (ty_subst_fun_s vs s1 s_int) in
   Build_valuation i v_var (make_val_valid_type vs s1 Hlen Hall)
-    (mk_fun_arg vsymbol_eq_dec i v_var syms s2 a).
+    (mk_fun_arg i v_var syms s2 a).
 
 (* Interpretation, Satisfiability, Validity *)
 
