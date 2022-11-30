@@ -826,7 +826,12 @@ Fixpoint match_val_single (v: val_typevar gamma_valid i) (ty: vty)
               Forall (valid_type sigma) (sorts_to_tys t') -> 
               option (list (vsymbol * {t: vty & domain (val v t) }))
             with
-            | nil => fun _ _ => Some nil
+            | nil => fun _ _ =>
+              (*matches only if lengths are the same*)
+              match pats with
+              | nil => Some nil
+              | _ :: _ => None
+              end
             | ty :: tl => fun a' Hall' =>
               match pats with
               | nil => None (*lengths have to be the same*)
@@ -1395,6 +1400,8 @@ Qed.
 Section Alpha.
 
 (*Substitute y for all free ocurrences of x*)
+
+(*TODO: remove this: same as pat_fv*)
 Fixpoint pattern_boundvars (p: pattern) : list vsymbol :=
   match p with
   | Pvar v => [v]
@@ -1635,6 +1642,111 @@ Proof.
       solve_bnd.
 Qed.
 
+Lemma or_idem (P: Prop):
+  (P \/ P) <-> P.
+Proof.
+  split; intros; auto. destruct H; auto.
+Qed.
+
+Lemma or_false_r (P: Prop):
+  (P \/ False) <-> P.
+Proof.
+  split; intros; auto. destruct H; auto. destruct H.
+Qed.
+
+(*Lemma for [match_val_single]*)
+Lemma match_var_single_free_var ty Hval d p l x ty'
+  (Hpat: pattern_has_type sigma p ty'):
+  match_val_single vt ty Hval d p = Some l ->
+  In x (pat_fv p) <-> In x (map fst l).
+Proof.
+  revert Hval d l. generalize dependent ty'. 
+  generalize dependent ty.
+  induction p; auto.
+  - simpl; intros. inversion H. subst. reflexivity.
+  - intros ty ty' Hpatty Hval d.
+    inversion Hpatty; subst. clear H3 H4 H5 H7 H10 Hpatty. subst sigma0.
+    (*replace (map (ty_subst (s_params f) vs) (s_args f))
+    with (funsym_sigma_args f) in H9.*)
+
+    (*The hard case: need lots of generalization for dependent types
+      and need nested induction*) 
+    unfold match_val_single; fold match_val_single.
+    generalize dependent (is_sort_adt_spec (val vt ty)).
+    generalize dependent ((@adt_srts_length_eq vt ty)).
+    generalize dependent (@adts_srts_valid vt ty).
+    destruct (is_sort_adt (val vt ty)) eqn : Hisadt;
+    [|intros _ _ _ ? Hc; inversion Hc].
+    intros Hsrtsvalid Hsrtslen Hadtspec.
+    destruct p as [[[m adt] ts] srts].
+    destruct (Hadtspec m adt ts srts eq_refl) as 
+      [Hvaleq [Hinmut [Hincts Htseq]]].
+    destruct (funsym_eq_dec
+    (projT1
+       (find_constr_rep gamma_valid m Hincts srts
+          (Hsrtslen m adt ts srts eq_refl Hval) (dom_aux gamma_valid i) adt
+          Hinmut (adts gamma_valid i m srts) (all_unif m Hincts)
+          (scast (adts gamma_valid i m srts adt Hinmut)
+             (dom_cast (dom_aux gamma_valid i) Hvaleq d)))) f); 
+             [|intros ? C; inversion C].
+    (*Need nested induction: simplify first*)
+    generalize dependent (find_constr_rep gamma_valid m Hincts srts
+    (Hsrtslen m adt ts srts eq_refl Hval) 
+    (dom_aux gamma_valid i) adt Hinmut (adts gamma_valid i m srts)
+    (all_unif m Hincts)
+    (scast (adts gamma_valid i m srts adt Hinmut)
+       (dom_cast (dom_aux gamma_valid i) Hvaleq d))).
+    intros constr. destruct constr as [f' Hf']. simpl. intros Hf; subst.
+    generalize dependent ((Hsrtsvalid m adt (adt_name adt) srts f eq_refl Hval (fst (proj1_sig Hf')))).
+    destruct Hf'. simpl. clear e.
+    destruct x0. simpl. generalize dependent a.
+    generalize dependent ps.
+    (*TODO: do we need to know about length of this?*)
+    assert (Hargslen: length (funsym_sigma_args f srts) = length (s_args f)). {
+      unfold funsym_sigma_args, ty_subst_list_s.
+      rewrite map_length. reflexivity.
+    }
+    revert Hargslen.
+    generalize dependent (s_args f); intros args; revert args.
+    generalize dependent ((funsym_sigma_args f srts)).
+    induction l; simpl; intros; auto. 
+    + destruct ps; inversion H0; subst; reflexivity.
+    + revert H0. destruct ps. intro C; inversion C.
+      repeat match goal with 
+      |- (match ?p with |Some l => ?x | None => ?y end) = ?z -> ?q =>
+        let Hp := fresh "Hmatch" in 
+        destruct p eqn: Hp end.
+      all: intro C; inversion C.
+      subst.
+      (*Now, just need to handle the pieces*)
+      inversion H; subst.
+      destruct args. inversion Hargslen.
+      inversion H9; subst. simpl in H4.
+      apply (H2 _(ty_subst (s_params f) vs v)) in Hmatch; auto.
+      apply (IHl args) in Hmatch0; auto.
+      simpl. rewrite union_elts, map_app, in_app_iff, Hmatch, Hmatch0.
+      reflexivity.
+  - simpl. intros. inversion H; subst. reflexivity.
+  - simpl. intros. destruct (match_val_single vt ty Hval d p1) eqn: Hm.
+    + inversion H; subst. inversion Hpat; subst.
+      apply (IHp1 _ ty') in Hm; auto.
+      rewrite union_elts, Hm. rewrite <- H6, Hm, or_idem.
+      reflexivity.
+    + inversion Hpat; subst.
+      apply (IHp2 _ ty') in H; auto.
+      rewrite union_elts, H. rewrite <- H, H6, or_idem. 
+      reflexivity.
+  - simpl. intros.
+    destruct (match_val_single vt ty Hval d p) eqn : Hm.
+    + inversion H; subst. simpl.
+      rewrite union_elts. simpl.
+      inversion Hpat; subst.
+      apply (IHp _ (snd v)) in Hm; auto.
+      rewrite Hm, or_comm, or_false_r. reflexivity.
+    + inversion H.
+Qed.
+  
+
 (*TODO: see if we can get rid of casting in Here*)
 Lemma sub_correct (t: term) (f: formula) :
   (forall (x y: vsymbol) (Heq: snd x = snd y) 
@@ -1775,7 +1887,101 @@ Proof.
     erewrite H1 by solve_bnd.
     reflexivity.
   - (*term match case: TODO (will be hard)*)
-    admit.
+    (*Let's see*)
+    (*TODO: generalize proofs?*)
+    (*Need to know that patterns are well typed*)
+    inversion Hty1; subst. clear H4 H8 H9.
+    rename H6 into Hallpats.
+    generalize dependent (proj1 (ty_match_inv (has_type_eq eq_refl Hty1))).
+    generalize dependent (proj2 (ty_match_inv (has_type_eq eq_refl Hty1))).
+    clear Hty1.
+    simpl in Hty2.
+    generalize dependent (proj1 (ty_match_inv (@has_type_eq sigma
+    (Tmatch (sub_t x y tm) v
+    (map (fun p => if in_bool vsymbol_eq_dec x (pat_fv (fst p)) then
+      p else (fst p, sub_t x y (snd p))) ps)) _ _ eq_refl Hty2))).
+    generalize dependent (proj2 (ty_match_inv (@has_type_eq sigma
+    (Tmatch (sub_t x y tm) v
+    (map (fun p => if in_bool vsymbol_eq_dec x (pat_fv (fst p)) then
+      p else (fst p, sub_t x y (snd p))) ps)) _ _ eq_refl Hty2))).
+    clear Hty2. 
+    intros Hall1 Hty1 Hall2 Hty2. (*for better names*)
+    revert Hall1 Hty1 Hall2 Hty2 Hallpats. 
+    induction ps; simpl; intros; auto.
+    simpl. destruct a as [p1 t1]; simpl.
+    destruct (match_val_single vt v (has_type_valid gamma_valid tm v Hty2)
+    (term_rep
+       (substi vt v0 x
+          (dom_cast (dom_aux gamma_valid i) (f_equal (val vt) (eq_sym Heq))
+             (v0 y))) tm v Hty2) p1) as [newval |] eqn : Hmatch.
+    + revert Hall1. simpl.
+      destruct (in_bool vsymbol_eq_dec x (pat_fv p1)) eqn : Hinp1.
+      * intros.
+        rewrite <- H with(Heq:=Heq) (Hty1:=Hty2) by solve_bnd.
+        rewrite match_val_single_irrel with (Hval2:=(has_type_valid gamma_valid tm v Hty2)).
+        rewrite Hmatch.
+        assert (In x (map fst newval)). {
+          apply (match_var_single_free_var) with(x:=x)(ty':=v) in Hmatch.
+          apply Hmatch. destruct (in_bool_spec vsymbol_eq_dec x (pat_fv p1)); auto.
+          inversion Hinp1.
+          specialize (Hallpats (p1, t1)). apply Hallpats. left; auto.
+       }
+       (*TODO: just prove that we can move the substi to the end
+        (a longer verison of [substi_same])*)
+      
+
+        (*TODO: prove this: prove that any free var in pattern is in
+          the list, so when we extend it, we can effectively ignore the
+          substi (basically a bigger version of [substi_same])
+          So we need
+          1. when x is in free vars of p and match_val_single = Some l,
+            then x is in l
+          2. If x is in l, then extend_val_with_list (substi x d) l =
+            extend_val_with_list l
+
+          Did 1st part, need the easier second part
+          *)
+        admit.
+      * intros.
+        rewrite <- H with(Heq:=Heq) (Hty1:=Hty2) by solve_bnd.
+        rewrite match_val_single_irrel with (Hval2:=(has_type_valid gamma_valid tm v Hty2)).
+        rewrite Hmatch.
+        (*TODO: prove this case: if var x not free in match,
+          then list does not contain it, and then
+          that we can rearrange the order of the substi
+          (basically a bigger [substi_diff]), then we apply
+          the IH (the Forall one)*)
+        admit.
+    + revert Hall1. simpl.  
+      destruct (in_bool vsymbol_eq_dec x (pat_fv p1)) eqn : Hinp1.
+      * intros.
+        rewrite <- H with(Heq:=Heq) (Hty1:=Hty2) by solve_bnd.
+        rewrite match_val_single_irrel with (Hval2:=(has_type_valid gamma_valid tm v Hty2)).
+        rewrite Hmatch.
+        inversion H0; subst.
+        specialize (IHps H4).
+        assert (~ In y (bnd_t (Tmatch tm v ps))). solve_bnd.
+          simpl in H1. apply in_app_or in H1.
+          destruct H1;[left; auto |]. solve_bnd.
+        specialize (IHps H1).
+        inversion Hall1; subst.
+        rewrite IHps with(Hall1:=(Forall_inv_tail Hall1))(Hty1:=Hty1).
+        (*Need to use term_rep lemma*)
+        erewrite H. reflexivity. solve_bnd.
+      * intros.
+        rewrite <- H with(Heq:=Heq) (Hty1:=Hty2) by solve_bnd.
+        rewrite match_val_single_irrel with (Hval2:=(has_type_valid gamma_valid tm v Hty2)).
+        rewrite Hmatch.
+        inversion H0; subst.
+        specialize (IHps H4).
+        assert (~ In y (bnd_t (Tmatch tm v ps))). solve_bnd.
+          simpl in H1. apply in_app_or in H1.
+          destruct H1;[left; auto |]. solve_bnd.
+        specialize (IHps H1).
+        inversion Hall1; subst.
+        rewrite IHps with(Hall1:=(Forall_inv_tail Hall1))(Hty1:=Hty1).
+        (*Need to use term_rep lemma*)
+        erewrite H. reflexivity. solve_bnd.
   - (*epsilon*) 
     generalize dependent Hty2. simpl. 
     destruct (vsymbol_eq_dec x v); subst; intros; simpl.
