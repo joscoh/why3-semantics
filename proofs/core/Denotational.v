@@ -1531,11 +1531,30 @@ with bnd_t (t: term) : list vsymbol :=
     | H: ~In ?x (bnd_t ?t) |- ~In ?x (bnd_t ?t2) =>
       let C := fresh in
       intro C; apply H; simpl
+    | H: ~In ?x (bnd_f ?t) |- ~In ?x (bnd_f ?f) =>
+      let C := fresh in
+      intro C; apply H; simpl
+    | H: ~In ?x (bnd_f ?t) |- ~In ?x (bnd_t ?t2) =>
+      let C := fresh in
+      intro C; apply H; simpl
     | |- In ?x (?l1 ++ ?l2) => apply in_or_app
     | |- ?P \/ ?Q => (*idtac "x";*)
       first [left; solve[solve_bnd] | right; solve[solve_bnd]]
     | |- In ?x ?y => solve[try assumption; auto]
     end.
+
+Ltac simpl_all_dec :=
+  repeat match goal with |- context[ all_dec ?P ] => destruct (all_dec P); auto end.
+
+Lemma all_dec_eq: forall (P Q: Prop),
+  (P <-> Q) ->
+  (@eq bool (proj_sumbool _ _ (all_dec P)) (proj_sumbool _ _ (all_dec Q))).
+Proof.
+  intros. simpl_all_dec; exfalso.
+  - apply n. apply H. apply p.
+  - apply n. apply H. apply q.
+Qed.
+
 
   (*TODO: see if we can get rid of casting in Here*)
 Lemma sub_correct (t: term) (f: formula) :
@@ -1565,28 +1584,24 @@ Proof.
     inversion Hty2; subst;
     unfold cast_dom_vty, eq_rec_r, eq_rec, eq_rect.
     (*Equality is annoying*)
-    + assert (eq_sym (eq_sym (ty_constint_inv (has_type_eq eq_refl Hty1))) = eq_refl).
+    + assert (ty_constint_inv (has_type_eq eq_refl Hty1) = eq_refl).
         apply UIP_dec. apply vty_eq_dec.
-      rewrite H.
-      unfold eq_sym. 
+      rewrite H. simpl.
       assert (ty_constint_inv (@has_type_eq sigma (Tconst (ConstInt z))
         (Tconst (ConstInt z)) vty_int eq_refl Hty2) = eq_refl).
         apply UIP_dec; apply vty_eq_dec.
       rewrite H0. reflexivity.
-    + assert (eq_sym (eq_sym (ty_constreal_inv (has_type_eq eq_refl Hty1))) = eq_refl).
+    + assert (ty_constreal_inv (has_type_eq eq_refl Hty1) = eq_refl).
         apply UIP_dec. apply vty_eq_dec. 
-      rewrite H.
-      unfold eq_sym.
+      rewrite H. simpl.
       assert (ty_constreal_inv (@has_type_eq sigma (Tconst (ConstReal r))
         (Tconst (ConstReal r)) vty_real eq_refl Hty2) = eq_refl).
         apply UIP_dec; apply vty_eq_dec.
       rewrite H0. reflexivity.
-  - unfold var_to_dom. (*generalize dependent (has_type_eq eq_refl Hty1).*)
+  - unfold var_to_dom.
     generalize dependent (@has_type_eq sigma (Tvar
-    match vsymbol_eq_dec x v return vsymbol with
-    | left _ => y
-    | right _ => v
-    end) _ ty eq_refl Hty2).
+      (if vsymbol_eq_dec x v then y else v)) 
+     _ ty eq_refl Hty2).
     destruct (vsymbol_eq_dec x v).
     + intros. subst. (*destruct (vsymbol_eq_dec v v); [|contradiction].*)
       unfold dom_cast, f_equal, eq_sym.
@@ -1610,7 +1625,7 @@ Proof.
     + intros. unfold substi.
       destruct (vsymbol_eq_dec v x); subst; try contradiction.
       f_equal. f_equal. f_equal. apply UIP_dec. apply vty_eq_dec.
-  - unfold cast_dom_vty, eq_rec_r, eq_rec, eq_rect.
+  - (*function case*) unfold cast_dom_vty, eq_rec_r, eq_rec, eq_rect.
     inversion Hty1; subst.
     assert (ty_fun_ind_ret (has_type_eq eq_refl Hty1) = eq_refl). {
       apply UIP_dec. apply vty_eq_dec.
@@ -1649,8 +1664,9 @@ Proof.
     f_equal.
     (*Hmm, we need a separate lemma again - TODO*)
     admit.
-  - inversion Hty2; subst. 
-    rewrite H with(Hty2:=H6).
+  - (*let*) 
+    inversion Hty2; subst. 
+    rewrite H with(Hty2:=H6) by solve_bnd.
     generalize dependent H7.
     generalize dependent ((@has_type_eq sigma
     (Tlet (sub_t x y tm1) v
@@ -1659,35 +1675,28 @@ Proof.
     generalize dependent Hty2.
     simpl.
     destruct (vsymbol_eq_dec x v).
-    + intros. subst. simpl.
+    + intros. subst.
       rewrite substi_same.
       rewrite term_rep_irrel with
         (Hty2:=(proj1 (ty_let_inv (t Hty2)))).
       apply term_rep_irrel.
     + intros.
       rewrite substi_diff; auto.
-      (*
-        rewrite term_rep_irrel with
-        (Hty2:=(proj1 (ty_let_inv (t Hty2)))).
-      *)
-
       inversion Hty1; subst.
-      rewrite <- H0 with (Heq:=Heq) (Hty1:=H9).
+      rewrite <- H0 with (Heq:=Heq) (Hty1:=H9) by solve_bnd.
       rewrite term_rep_irrel with (Hty2:=(proj1 (ty_let_inv (t Hty2)))).
       unfold substi at 5.
       destruct (vsymbol_eq_dec y v); subst; simpl.
       * (*Know v <> y because y is not bound*)
         exfalso. apply Hfree. simpl. left; auto.
       * apply term_rep_irrel.
-      * solve_bnd. 
-    + solve_bnd. 
   - (*If case*)
-    rewrite H with(Hval2:=(proj2 (proj2 (ty_if_inv (has_type_eq eq_refl Hty2)))));
-    [|solve_bnd].
-    rewrite H0 with (Hty2:=(proj1 (ty_if_inv (has_type_eq eq_refl Hty2))));
-    [| solve_bnd].
-    rewrite H1 with (Hty2:= (proj1 (proj2 (ty_if_inv (has_type_eq eq_refl Hty2)))));
-    [|solve_bnd].
+    rewrite H with(Hval2:=(proj2 (proj2 (ty_if_inv (has_type_eq eq_refl Hty2)))))
+    by solve_bnd.
+    rewrite H0 with (Hty2:=(proj1 (ty_if_inv (has_type_eq eq_refl Hty2))))
+    by solve_bnd.
+    rewrite H1 with (Hty2:= (proj1 (proj2 (ty_if_inv (has_type_eq eq_refl Hty2)))))
+    by solve_bnd.
     reflexivity.
   - (*match case: TODO (will be hard)*)
     admit.
@@ -1706,7 +1715,7 @@ Proof.
     + f_equal. apply functional_extensionality_dep. intros d.
       inversion Hty1; subst.
       rewrite substi_diff; auto.
-      rewrite <- H with(Heq:=Heq)(Hval1:=H3);[|solve_bnd].
+      rewrite <- H with(Heq:=Heq)(Hval1:=H3) by solve_bnd.
       unfold substi at 5. 
       destruct (vsymbol_eq_dec y v).
       * exfalso. subst. apply Hfree. left. auto.
@@ -1717,90 +1726,65 @@ Proof.
       
       erewrite fmla_rep_irrel. reflexivity.
   - (*predicate - TODO*)
-      
-      Hval2:=(proj1 (ty_eps_inv (has_type_eq eq_refl Hty2)))).
-      apply H.
-    
-    
-    exfalso. apply Hfree. left. auto. apply n.
-      
-
-
-      
-      f_equal.
+    f_equal. (*TODO: separate lemma again*) admit.
+  - (*quantifiers*)
+    destruct q; revert Hval2; simpl; destruct (vsymbol_eq_dec x v); 
+    intros; subst; simpl;
+    apply all_dec_eq.
+    (*1st and 3rd cases quite similar, same for 2nd and 4th*)
+    + split; intros Hall d; specialize (Hall d); revert Hall;
+      rewrite substi_same; intros Hall; erewrite fmla_rep_irrel; apply Hall.
+    + split; intros Hall d; specialize (Hall d); revert Hall;
+      rewrite substi_diff; auto; inversion Hval1; subst;
+      rewrite <- H with(Heq:=Heq) (Hval1:=H5);try solve_bnd;
+      [unfold substi at 5| unfold substi at 3];
+      destruct (vsymbol_eq_dec y v); 
+      try solve[subst; exfalso; apply Hfree; left; reflexivity];
+      intros Hrep; erewrite fmla_rep_irrel; apply Hrep.
+    + split; intros [d Hex]; exists d; revert Hex;
+      rewrite substi_same; intros Hex; erewrite fmla_rep_irrel; apply Hex.
+    + split; intros [d Hex]; exists d; revert Hex;
+      rewrite substi_diff; auto; inversion Hval1; subst;
+      rewrite <- H with(Heq:=Heq) (Hval1:=H5);try solve_bnd;
+      [unfold substi at 5| unfold substi at 3];
+      destruct (vsymbol_eq_dec y v); 
+      try solve[subst; exfalso; apply Hfree; left; reflexivity];
+      intros Hrep; erewrite fmla_rep_irrel; apply Hrep.
+  - (*eq*)
+    apply all_dec_eq. 
+    rewrite H with(Hty2:=(proj1 (valid_eq_inj (valid_formula_eq eq_refl Hval2))))
+    by solve_bnd.
+    rewrite H0 with (Hty2:=(proj2 (valid_eq_inj (valid_formula_eq eq_refl Hval2))))
+    by solve_bnd.
+    reflexivity.
+  - (*binop*)
+    f_equal. apply H; solve_bnd. apply H0; solve_bnd.
+  - (*not*)
+    f_equal. apply H. solve_bnd.
+  - (*let*)
+    inversion Hval2; subst. 
+    rewrite H with(Hty2:=H4) by solve_bnd.
+    generalize dependent Hval2. simpl.
+    destruct (vsymbol_eq_dec x v); simpl; intros; subst.
+    + rewrite substi_same.
+      erewrite term_rep_irrel.
       apply fmla_rep_irrel.
-      apply term_form
-      erewrite <- H with(Heq:=Heq) (Hval1:= H3);[|solve_bnd].
-    unfold substi at 5. 
-    destruct (vsymbol_eq_dec y v); subst; auto.
-    + exfalso. apply Hfree. simpl. left; auto.
-    + rewrite substi_diff.
-    
-    
-    apply term_formula_irrel.
-    apply H.
-  
-  
-  apply epsilon_inh_irrelevance. Search epsilon.
-    2: {
-    
-      Print Ltac solve_bnd.
-      solve_bnd.
-      
-      simpl in t 
-      | |- ~ In ?x (bnd_f ?f)
+    + rewrite substi_diff;auto.
+      inversion Hval1; subst.
+      rewrite <- H0 with (Heq:=Heq) (Hval1:=H8) by solve_bnd.
+      unfold substi at 5.
+      destruct (vsymbol_eq_dec y v).
+        exfalso. apply Hfree. left; auto.
+      erewrite term_rep_irrel.
+      apply fmla_rep_irrel.
+  - (*if*)
+    erewrite H by solve_bnd.
+    erewrite H0 by solve_bnd.
+    erewrite H1 by solve_bnd.
+    reflexivity.
+  - (*match - TODO*)
+    admit.
 
-    }  
-  
-  rewrite <- H with(Heq:=Heq)(Hval1:= (proj2 (proj2 (ty_if_inv (has_type_eq eq_refl Hty1))))). (H )  
-  
-  f_equal.
-    rewrite H.  
-      
-      contradiction.
-      
-      unfold eq_rec_r, eq_rec, eq_rect. simpl.
-
-      apply term_rep_irrel.
-
-
-      rewrite <- H.
-      rewrite H.
-      rewrite H0.
-      
-    
-    subst.
-      apply H0.
-      rewrite term_form_rep_irrel.
-      apply term_form_rep_irrel.
-
-
-    (Tlet (sub_t x y tm1) v
-      (if vsymbol_eq_dec x v then tm2 else sub_t x y tm2)) ty
-    eq_refl)).
-    (@eq_refl term
-       (Tlet (sub_t x y tm1) v
-       (if vsymbol_eq_dec x v then tm2 else sub_t x y tm2))) Hty2)).
-
-    generalize dependent ((has_type_eq eq_refl Hty1)).
-    generalize dependent (has_type_eq eq_refl Hty2).
-    simpl.
-
-    
-    destruct (vsymbol_eq_dec x v).
-
-
-    rewrite substi_same.
-    
-    rewrite (substi_same gamma_valid i vt).
-  
-  unfold substi. rewrite substi_same. Search Semantics.substi. rewrite substi_twice.
-  
-  
-  generalize dependent Hty2. simpl. 
-    destruct (vsymbol_eq_dec x v); subst; intros Hty2.
-    + simpl.
-      (*f_equal.*)
   
 Admitted.
 
@@ -1814,10 +1798,6 @@ formula_rep v (sub_f x y f) Hval2.
 Proof.
   apply sub_correct. apply (Tconst(ConstInt 0)).
 Qed.
-
-(*Lemma all_dec_eq (P: Prop) (x1 x2: P) :
-  (x1 <-> x2) ->
-  all_dec x1 = all_dec x2.*)
 
   (*Need some assumption like: v2 is not present in (or at least
     not free in) f
@@ -1854,209 +1834,6 @@ Proof.
       inversion Hval1; subst.
       inversion Hval2; subst.
       rewrite <- (sub_f_correct) with(Heq:=Heq)(Hval1:=H4).
-
-
-
-      erewrite <- sub_f_correct.
-sub_f v1 v2 (Fquant )
-
-
-Proof.
-  
-
-
-      rewrite term_val_eq with(Heq:=(substi_same gamma_valid i v0 v
-      (dom_cast (dom_aux gamma_valid i) (f_equal (val v0) (eq_sym Heq))
-      (v_vars gamma_valid i v0 y))
-      (term_rep
-        (substi v0 v
-           (dom_cast (dom_aux gamma_valid i) (f_equal (val v0) (eq_sym Heq))
-              (v_vars gamma_valid i v0 y))) tm1 (snd v)
-              (proj1 (ty_let_inv (has_type_eq eq_refl Hty1)))))).
-      unfold dom_cast at 1.
-      unfold val_eq, fun_args_eq_dep, f_equal, eq_sym.
-      
-      generalize dependent (snd v).
-      destruct (val_eq
-      (substi
-         (substi v0 v
-            (dom_cast (dom_aux gamma_valid i) (f_equal (val v0) (eq_sym Heq))
-               (v_vars gamma_valid i v0 y))) v
-         (term_rep
-            (substi v0 v
-               (dom_cast (dom_aux gamma_valid i)
-                  (f_equal (val v0) (eq_sym Heq)) (v_vars gamma_valid i v0 y)))
-            tm1 (snd v) (proj1 (ty_let_inv (has_type_eq eq_refl Hty1)))))
-      (substi v0 v
-         (term_rep
-            (substi v0 v
-               (dom_cast (dom_aux gamma_valid i)
-                  (f_equal (val v0) (eq_sym Heq)) (v_vars gamma_valid i v0 y)))
-            tm1 (snd v) (proj1 (ty_let_inv (has_type_eq eq_refl Hty1)))))
-      (substi_same gamma_valid i v0 v
-         (dom_cast (dom_aux gamma_valid i) (f_equal (val v0) (eq_sym Heq))
-            (v_vars gamma_valid i v0 y))
-         (term_rep
-            (substi v0 v
-               (dom_cast (dom_aux gamma_valid i)
-                  (f_equal (val v0) (eq_sym Heq)) (v_vars gamma_valid i v0 y)))
-            tm1 (snd v) (proj1 (ty_let_inv (has_type_eq eq_refl Hty1))))) ty).
-      
-      unfold val_eq at 1.
-      (*unfold dom_cast. simpl.*)
-
-      unfold val_eq. unfold fun_args_eq_dep.
-      unfold f_equal. unfold eq_sym.
-      Check substi_same. 
-      
-      simpl.
-
-
-    Print term_rep.
-    Check dom_cast.
-
-
-      rewrite (substi_same gamma_valid i v0 v
-      (dom_cast (dom_aux gamma_valid i) (f_equal (val v0) (eq_sym Heq))
-      (v_vars gamma_valid i v0 y))
-      (term_rep
-        (substi v0 v
-           (dom_cast (dom_aux gamma_valid i) (f_equal (val v0) (eq_sym Heq))
-              (v_vars gamma_valid i v0 y))) tm1 (snd v)
-              (proj1 (ty_let_inv (has_type_eq eq_refl Hty1))))).
-    
-    
-    rewrite H0. apply H0.
-  
-  
-  unfold substi. simpl. simpl.
-    Check get_arg_list.
-    
-    
-    f_equal.
-
-
-
-    unfold f_equal.
-    generalize dependent (snd x).
-    assert (match
-      match
-        match Heq in (_ = y0) return (y0 = snd x) with
-        | eq_refl => eq_refl
-        end in (_ = y0) return (val v (snd y) = val v y0)
-      with
-      | eq_refl => eq_refl
-      end in (_ = s) return (domain s)
-    with
-    | eq_refl => v_vars gamma_valid i v y
-    end = v_vars gamma_valid i v y).
-
-    generalize dependent (match
-      match
-        match Heq in (_ = y) return (y = snd x) with
-        | eq_refl => eq_refl
-        end in (_ = y0) return (val v (snd y) = val v y0)
-      with
-      | eq_refl => eq_refl
-      end in (_ = s) return (domain s)
-    with
-    | eq_refl => v_vars gamma_valid i v y
-    end).
-    generalize dependent (snd x).
-    assert (Heq = eq_refl).
-    generalize dependent (snd x).
-
-    generalize dependent (substi v x
-    match
-      f_equal (val v)
-        match Heq in (_ = y0) return (y0 = snd x) with
-        | eq_refl => eq_refl
-        end in (_ = s) return (domain s)
-    with
-    | eq_refl => v_vars gamma_valid i v y
-    end).
-    generalize dependent (snd x).
-    assert (Heq = eq_refl).
-    simpl.
-
-
-    generalize dependent (ty_subst_s (s_params f1) (map (val v) l) (s_ret f1)).
-
-    (*generalize dependent (ty_subst_s (s_params f1) (map (val v) l) (s_ret f1)).*)
-    generalize dependent ((funsym_subst_eq (s_params f1) l (v_typevar v) 
-    (s_ret f1) (s_params_nodup f1)
-    (@tfun_params_length sigma f1 l (@map term term (sub_f x y) l1)
-      (ty_subst (s_params f1) l (s_ret f1)) (has_type_eq eq_refl Hty2)))).
-
-    
-    
-    
-    = eq_refl).
-
-
-  
-  assert (ty_fun_ind_ret (has_type_eq eq_refl Hty1) =
-    (ty_fun_ind_ret (has_type_eq eq_refl Hty2))). {
-      apply UIP_dec. apply vty_eq_dec.
-    }
-    rewrite H0.
-    assert ((tfun_params_length (has_type_eq eq_refl Hty1)) =
-    (tfun_params_length (has_type_eq eq_refl Hty2))). {
-      apply UIP_dec. apply Nat.eq_dec.
-    }
-    rewrite H1.
-    unfold cast_dom_vty, eq_rec_r, eq_rec, eq_rect.
-
-    f_equal.
-    simpl.
-    
-    
-    f_equal.
-    ) reflexivity. simpl. 
-
-
-      destruct Heq.
-
-
-      assert (Heq = eq_refl).
-
-      reflexivity.
-      * 
-    + subst. simpl in Hty2. 
-      destruct (vsymbol_eq_dec v v); [|contradiction].
-      destruct (vty_eq_dec ty' ty0).
-      * subst. reflexivity.
-      * unfold var_to_dom. 
-      
-      
-      reflexivity. unfold eq_rec_r, eq_rec, eq_rect. reflexivity. simpl. 
-      inversion Hty1; subst.
-      inversion Hty2; subst.
-      simpl in Hty2. 
-    
-    rewrite H0.
-    unfold eq_sym.
-    assert (ty_constint_inv (has_type_eq eq_refl Hty1) = eq_refl).
-    assert (eq_sym (eq_sym (ty_constint_inv (has_type_eq eq_refl Hty1))) = eq_refl).
-    have: 
-  
-  simpl. f_equal. apply UIP_dec; apply vty_eq_dec.
-  - destruct (vsymbol_eq_dec x v)
-  
-  
-  simpl.
-    
-    
-    (x y: vsymbol), term_interp)
-
-
-  Lemma term_form_rep_irrel: forall (tm: term) (f: formula),
-  (forall (v: valuation gamma_valid i) (ty: vty) (Hty1 Hty2:
-    term_has_type sigma tm ty), 
-      term_rep v tm ty Hty1 = term_rep v tm ty Hty2) /\
-  (forall (v: valuation gamma_valid i) (Hval1 Hval2:
-    valid_formula sigma f), 
-      formula_rep v f Hval1 = formula_rep v f Hval2).
 
 
 End Denot.

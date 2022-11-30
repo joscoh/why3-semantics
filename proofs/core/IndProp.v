@@ -560,71 +560,10 @@ Qed.
   The first step is not easy. We need to define alpha
   substitution and some quantifier elimination/prenex normal form*)
 
-(*First, alpha substitution*)
-Section Alpha.
 
-(*Substitute y for all free ocurrences of x*)
-Print pattern.
-Fixpoint pattern_boundvars (p: pattern) : list vsymbol :=
-  match p with
-  | Pvar v _ => [v]
-  | Pconstr f tys ps => concat (map pattern_boundvars ps)
-  | Pwild => nil
-  | Por p1 p2 => (pattern_boundvars p1) ++ (pattern_boundvars p2)
-  | Pbind p1 v ty => v :: (pattern_boundvars p1)
-  end.
 
-Fixpoint sub_f (x y: vsymbol) (f: formula) : formula :=
-  match f with
-  | Fpred p tys tms => Fpred p tys (map (sub_t x y) tms)
-  | Fquant q v ty f' =>
-    if vsymbol_eq_dec x v then f else
-    Fquant q v ty (sub_f x y f')
-  | Feq ty t1 t2 =>
-    Feq ty (sub_t x y t1) (sub_t x y t2)
-  | Fbinop b f1 f2 =>
-    Fbinop b (sub_f x y f1) (sub_f x y f2)
-  | Fnot f' => Fnot (sub_f x y f')
-  | Ftrue => Ftrue
-  | Ffalse => Ffalse
-  | Flet tm v ty f' =>
-    if vsymbol_eq_dec x v then Flet (sub_t x y tm) v ty f' else
-    Flet (sub_t x y tm) v ty (sub_f x y f')
-  | Fif f1 f2 f3 =>
-    Fif (sub_f x y f1) (sub_f x y f2) (sub_f x y f3)
-  | Fmatch tm ty ps =>
-    if in_bool vsymbol_eq_dec x (concat (map (fun x => 
-      (pattern_boundvars (fst x))) ps)) 
-    then Fmatch (sub_t x y tm) ty ps
-    else Fmatch (sub_t x y tm) ty
-      ((map (fun p => (fst p, sub_f x y (snd p)))) ps)
-  end
-with sub_t (x y: vsymbol) (t: term) : term :=
-  match t with
-  | Tconst c => Tconst c
-  | Tvar v ty => 
-    (*The base case*)
-    Tvar (if vsymbol_eq_dec x v then y else v) ty
-  | Tfun fs tys tms =>
-    Tfun fs tys (map (sub_t x y) tms)
-  | Tlet tm1 v ty tm2 =>
-    if vsymbol_eq_dec x v then Tlet (sub_t x y tm1) v ty tm2
-    else Tlet (sub_t x y tm1) v ty (sub_t x y tm2)
-  | Tif f1 t1 t2 =>
-    Tif (sub_f x y f1) (sub_t x y t1) (sub_t x y t2)
-  | Tmatch tm ty ps =>
-    if in_bool vsymbol_eq_dec x (concat (map (fun x => 
-    (pattern_boundvars (fst x))) ps)) 
-    then Tmatch (sub_t x y tm) ty ps
-    else Tmatch (sub_t x y tm) ty
-      ((map (fun p => (fst p, sub_t x y (snd p)))) ps)
-  | Teps f1 v ty =>
-    (*TODO: is this correct?*)
-    Teps (sub_f x y f1) v ty
-  end.
 
-(*Prove that this substitution is safe: it does not
-  change the semantics of f*)
+  Fixpoint sub_f (x y: vsymbol) (f: formula) : formula
 
 
 
