@@ -2234,72 +2234,139 @@ Proof.
     erewrite H0 by solve_bnd.
     erewrite H1 by solve_bnd.
     reflexivity.
-  - (*fmla match - TODO - copy from term*)
-    admit.
-
-  
-Admitted.
-
-
-Definition get_arg_list (v: val_typevar gamma_valid i)
-  (f: funsym) (vs: list vty) (ts: list term) 
-  (reps: forall (t: term) (ty: vty),
-    term_has_type sigma t ty ->
-    domain (val v ty))
-  (Hty: exists x, term_has_type sigma (Tfun f vs ts) x) : 
-  arg_list domain
-    (funsym_sigma_args f
-      (map (v_subst (v_typevar v)) vs)).
-
-
-      Lemma get_arg_list_irrel (v: val_typevar gamma_valid i)
-      (f: funsym) (vs: list vty) (ts: list term) 
-      (reps: forall (t: term) (ty: vty),
-        term_has_type sigma t ty ->
-        domain (val v ty))
-      (Hreps: Forall
-      (fun tm : term =>
-       forall (ty : vty)
-         (Hty1 Hty2 : term_has_type sigma tm ty),
-       reps tm ty Hty1 = reps tm ty Hty2) ts)
-      (Hty1 Hty2: exists x, term_has_type sigma (Tfun f vs ts) x) :
-      get_arg_list v f vs ts reps Hty1 =
-      get_arg_list v f vs ts reps Hty2.
-      Proof.
-        unfold get_arg_list. simpl.
-        destruct (typecheck_dec sigma (Tfun f vs ts) Hty1).
-        destruct (typecheck_dec sigma (Tfun f vs ts) Hty2).
-        assert (x = x0) by
-          apply (term_has_type_unique _ _ _ _ t t0).
-        subst.
-        destruct (fun_ty_inversion sigma f vs ts x0 t).
-        destruct (fun_ty_inversion sigma f vs ts x0 t0).
-        destruct a as [Hallval1 [Hlents1 [Hlenvs1 [Hallty1 Hx01]]]].
-        destruct a0 as [Hallval2 [Hlents2 [Hlenvs2 [Hallty2 Hx02]]]].
-        simpl. subst.
-        unfold funsym_sigma_args.
-        generalize dependent (s_args f).
-        clear Hty1 Hty2 t0 t. 
-        induction ts; simpl; intros. 
-        - f_equal. f_equal. f_equal. apply nat_eq_refl.
-        - destruct l.
-          + inversion Hlents2.
-          + simpl in Hlenvs2. f_equal. 2: apply IHts; inversion Hreps; auto.
-            assert (Hlenvs1 = Hlenvs2) by apply nat_eq_refl.
-            rewrite H. f_equal.
-            inversion Hreps; auto.
-      Qed.
-
-Corollary sub_f_correct (f: formula) (x y: vsymbol) (Heq: snd x = snd y) (v: valuation gamma_valid i)
-(Hval1: valid_formula sigma f)
-(Hval2: valid_formula sigma (sub_f x y f)):
-formula_rep (substi v x 
-(dom_cast _ (f_equal (val v) (eq_sym Heq))
-  (v_vars gamma_valid i v y))) f Hval1 =
-formula_rep v (sub_f x y f) Hval2.
-Proof.
-  apply sub_correct. apply (Tconst(ConstInt 0)).
+  - (*fmla match - lots of duplication from term*)
+    (*Need to know that patterns are well typed*)
+    inversion Hval1; subst. clear H4 H7 H8.
+    rename H6 into Hallpats.
+    generalize dependent (proj1 (valid_match_inv (valid_formula_eq eq_refl Hval1))).
+    generalize dependent (proj2 (valid_match_inv (valid_formula_eq eq_refl Hval1))).
+    clear Hval1.
+    simpl in Hval2.
+    generalize dependent (proj1 (valid_match_inv (valid_formula_eq eq_refl Hval2))).
+    generalize dependent (proj2 (valid_match_inv (valid_formula_eq eq_refl Hval2))).
+    clear Hval2. 
+    intros Hall1 Hty1 Hall2 Hty2. (*for better names*)
+    revert Hall1 Hty1 Hall2 Hty2 Hallpats. 
+    induction ps; simpl; intros; auto.
+    simpl. destruct a as [p1 f1]; simpl.
+    destruct (match_val_single vt v (has_type_valid gamma_valid tm v Hty2)
+    (term_rep
+       (substi vt v0 x
+          (dom_cast (dom_aux gamma_valid i) (f_equal (val vt) (eq_sym Heq))
+             (v0 y))) tm v Hty2) p1) as [newval |] eqn : Hmatch.
+    + revert Hall1. simpl.
+      destruct (in_bool vsymbol_eq_dec x (pat_fv p1)) eqn : Hinp1.
+      * intros.
+        rewrite <- H with(Heq:=Heq) (Hty1:=Hty2) by solve_bnd.
+        rewrite match_val_single_irrel with (Hval2:=(has_type_valid gamma_valid tm v Hty2)).
+        rewrite Hmatch.
+        assert (In x (map fst newval)). {
+          apply (match_var_single_free_var) with(x:=x)(ty':=v) in Hmatch.
+          apply Hmatch. destruct (in_bool_spec vsymbol_eq_dec x (pat_fv p1)); auto.
+          inversion Hinp1.
+          inversion Hallpats; subst. exact H3.
+       }
+       rewrite extend_val_with_list_in; auto.
+       apply fmla_rep_irrel.
+       eapply match_val_single_typs.
+       apply Hmatch.
+      * intros.
+        rewrite <- H with(Heq:=Heq) (Hty1:=Hty2) by solve_bnd.
+        rewrite match_val_single_irrel with (Hval2:=(has_type_valid gamma_valid tm v Hty2)).
+        rewrite Hmatch.
+        (*Again, use other lemma*)
+        assert (~In x (map fst newval)). {
+          apply (match_var_single_free_var) with(x:=x)(ty':=v) in Hmatch.
+          intro C.
+          apply Hmatch in C. destruct (in_bool_spec vsymbol_eq_dec x (pat_fv p1)); auto.
+          inversion Hinp1.
+          inversion Hallpats; subst. exact H4.
+        }
+       rewrite extend_val_with_list_notin; auto.
+       inversion H0; subst. 
+       rewrite <- H4 with(Heq:=Heq)(Hval1:=(Forall_inv Hall2));[|solve_bnd].
+       f_equal. f_equal. f_equal.
+       (*Need to know that y is not bound (in the list)*)
+       unfold extend_val_with_list.
+       destruct (get_assoc_list vsymbol_eq_dec newval y) eqn : Ha; auto.
+       apply get_assoc_list_some in Ha.
+       apply match_var_single_free_var with(x:=y)(ty':=v) in Hmatch.
+       exfalso. apply Hfree. simpl.
+       assert (In y (pat_fv p1)). apply Hmatch. rewrite in_map_iff.
+       exists (y, s). split; auto.
+       solve_bnd.
+       inversion Hallpats; subst. auto.
+       eapply match_val_single_typs.
+       apply Hmatch.
+        (*TODO: prove this case: if var x not free in match,
+          then list does not contain it, and then
+          that we can rearrange the order of the substi
+          (basically a bigger [substi_diff]), then we apply
+          the IH (the Forall one)*)
+    + revert Hall1. simpl.  
+      destruct (in_bool vsymbol_eq_dec x (pat_fv p1)) eqn : Hinp1.
+      * intros.
+        rewrite <- H with(Heq:=Heq) (Hty1:=Hty2) by solve_bnd.
+        rewrite match_val_single_irrel with (Hval2:=(has_type_valid gamma_valid tm v Hty2)).
+        rewrite Hmatch.
+        inversion H0; subst.
+        specialize (IHps H4).
+        assert (~ In y (bnd_f (Fmatch tm v ps))). solve_bnd.
+          simpl in H1. apply in_app_or in H1.
+          destruct H1;[left; auto |]. solve_bnd.
+        specialize (IHps H1).
+        inversion Hall1; subst.
+        rewrite IHps with(Hall1:=(Forall_inv_tail Hall1))(Hty1:=Hty1).
+        (*Need to use term_rep lemma*)
+        erewrite H. reflexivity. solve_bnd.
+        intros. inversion Hallpats; subst. auto.
+      * intros.
+        rewrite <- H with(Heq:=Heq) (Hty1:=Hty2) by solve_bnd.
+        rewrite match_val_single_irrel with (Hval2:=(has_type_valid gamma_valid tm v Hty2)).
+        rewrite Hmatch.
+        inversion H0; subst.
+        specialize (IHps H4).
+        assert (~ In y (bnd_f (Fmatch tm v ps))). solve_bnd.
+          simpl in H1. apply in_app_or in H1.
+          destruct H1;[left; auto |]. solve_bnd.
+        specialize (IHps H1).
+        inversion Hall1; subst.
+        rewrite IHps with(Hall1:=(Forall_inv_tail Hall1))(Hty1:=Hty1).
+        (*Need to use term_rep lemma*)
+        erewrite H. reflexivity. solve_bnd.
+        intros. inversion Hallpats; auto.
 Qed.
+
+
+(*The useful versions:*)
+Corollary sub_t_correct (t: term) (x y: vsymbol)
+  (Heq: snd x = snd y)
+  (v: val_vars gamma_valid i vt) (ty: vty)
+  (Hty1: term_has_type sigma t ty)
+  (Hty2: term_has_type sigma (sub_t x y t) ty)
+  (Hfree: ~In y (bnd_t t)):
+  term_rep v (sub_t x y t) ty Hty2 =
+  term_rep (substi vt v x 
+  (dom_cast _ (f_equal (val vt) (eq_sym Heq))
+    (v y))) t ty Hty1.
+Proof.
+  symmetry. apply sub_correct; auto. apply Ffalse.
+Qed.
+
+Corollary sub_f_correct (f: formula)
+  (x y: vsymbol) (Heq: snd x = snd y) 
+  (v: val_vars gamma_valid i vt)
+  (Hval1: valid_formula sigma f)
+  (Hval2: valid_formula sigma (sub_f x y f))
+  (Hfree: ~In y (bnd_f f)):
+  formula_rep v (sub_f x y f) Hval2 =
+  formula_rep (substi vt v x 
+    (dom_cast _ (f_equal (val vt) (eq_sym Heq))
+      (v y))) f Hval1.
+Proof.
+  symmetry. apply sub_correct; auto. apply (Tconst (ConstInt 0)).
+Qed.
+
 
   (*Need some assumption like: v2 is not present in (or at least
     not free in) f
