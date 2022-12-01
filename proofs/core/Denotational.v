@@ -2367,43 +2367,175 @@ Proof.
   symmetry. apply sub_correct; auto. apply (Tconst (ConstInt 0)).
 Qed.
 
+(*Other lemma we need: a term/formula is interpreted the
+  same on all valuations that agree on the free variables*)
+Lemma val_fv_agree (t: term) (f: formula) :
+(forall (v1 v2: val_vars gamma_valid i vt) (ty: vty) 
+  (Hty: term_has_type sigma t ty),
+  (forall x, In x (term_fv t) -> v1 x = v2 x) ->
+  term_rep v1 t ty Hty = term_rep v2 t ty Hty) /\
+(forall (v1 v2: val_vars gamma_valid i vt) 
+  (Hval: valid_formula sigma f),
+  (forall x, In x (form_fv f) -> v1 x = v2 x) ->
+  formula_rep v1 f Hval = formula_rep v2 f Hval).
+Proof.
+  revert t f.
+  apply term_formula_ind; simpl; intros; auto.
+  - f_equal. unfold var_to_dom. apply H. left; auto.
+  - f_equal. f_equal. f_equal.
+    (*TODO: [get_arg_list] lemma*)
+    admit.
+  - apply H0. intros x Hinx.
+    unfold substi. destruct (vsymbol_eq_dec x v); auto; subst.
+    f_equal. apply H. intros. apply H1. rewrite union_elts. left; auto.
+    apply H1. rewrite union_elts. right.
+    apply in_in_remove; auto.
+  - rewrite (H _ v2). 
+    rewrite (H0 _ v2).
+    rewrite (H1 _ v2).
+    reflexivity.
+    all: intros x Hinx; apply H2; rewrite !union_elts; solve_bnd.
+  - (*TODO: match case*)
+    admit.
+  - f_equal. apply functional_extensionality_dep; intros.
+    erewrite H. reflexivity.
+    intros y Hiny.
+    unfold substi.
+    destruct (vsymbol_eq_dec y v); auto.
+    apply H0. apply in_in_remove; auto.
+  - f_equal. (*TODO: [get_arg_list_pre] lemma*)
+    admit.
+  - destruct q; apply all_dec_eq.
+    + split; intros Hall d; specialize (Hall d);
+      erewrite H; try solve[apply Hall]; intros x Hinx;
+      unfold substi; destruct (vsymbol_eq_dec x v); auto;
+      [symmetry|]; apply H0; apply in_in_remove; auto.
+    + split; intros [d Hex]; exists d;
+      erewrite H; try solve[apply Hex]; intros x Hinx;
+      unfold substi; destruct (vsymbol_eq_dec x v); auto;
+      [symmetry|]; apply H0; apply in_in_remove; auto.
+  - apply all_dec_eq. rewrite (H _ v2). rewrite (H0 _ v2).
+    reflexivity.
+    all: intros x Hinx; apply H1; rewrite union_elts; auto.
+  - f_equal.
+    + apply H; intros x Hinx. apply H1. rewrite union_elts. auto.
+    + apply H0. intros x Hinx. apply H1. rewrite union_elts. auto.
+  - f_equal. apply H. intros x Hinx. apply H0. auto.
+  - apply H0. intros x Hinx.
+    unfold substi. destruct (vsymbol_eq_dec x v); auto.
+    + f_equal. apply H. intros y Hiny. apply H1.
+      rewrite union_elts. auto.
+    + apply H1. rewrite union_elts. right.
+      apply in_in_remove; auto.
+  - rewrite (H _ v2).
+    rewrite (H0 _ v2).
+    rewrite (H1 _ v2).
+    reflexivity. 
+    all: intros x Hinx; apply H2; rewrite !union_elts; auto.
+  - (*other match*)
+    admit.
+Admitted.
 
-  (*Need some assumption like: v2 is not present in (or at least
-    not free in) f
-    TODO
-    see if there is better way: lemma is nightmare to prove
-    can we do without subst/prove something else
-    seeif this lemma works
-    
-    current idea:
-    prove: if valuation agrees on all variables that appear free
-    in f, then formula_rep v1 f = formula_rep v2 f
-    (to prove) - need lemma like above:
-    if valuation agrees on all variables that appear free in t,
-    then term_rep v1 t = cast (term_rep v2 t)
+(*Corollaries:*)
+Corollary term_fv_agree (t: term)
+  (v1 v2: val_vars gamma_valid i vt) (ty: vty) 
+  (Hty: term_has_type sigma t ty):
+  (forall x, In x (term_fv t) -> v1 x = v2 x) ->
+  term_rep v1 t ty Hty = term_rep v2 t ty Hty.
+Proof.
+  intros. apply val_fv_agree; auto. apply Ftrue.
+Qed.
 
-    then show: in this case, since v2 does not appear free in t,
-    and these agree on all except v2, we get equality
-    (need irrelevance lemma)
+Corollary form_fv_agree (f: formula)
+  (v1 v2: val_vars gamma_valid i vt) 
+  (Hval: valid_formula sigma f):
+  (forall x, In x (form_fv f) -> v1 x = v2 x) ->
+  formula_rep v1 f Hval = formula_rep v2 f Hval.
+Proof.
+  intros. apply val_fv_agree; auto. apply (Tconst (ConstInt 0)).
+Qed.
 
-    and tihs should help prove term too
-    but that lemma is awful
-    
-    *)
-Lemma alpha_convert_quant (v: valuation gamma_valid i) 
+(*With this we can prove: we can rename the variables in a quantifier
+  to a new variable without changing the truth value*)
+(*The proof is a straightforward application of [sub_f_correct]
+  and [form_fv_agree], but the casts make it a bit tedious*)
+Lemma alpha_convert_quant (v: val_vars gamma_valid i vt) 
   (q: quant) (v1 v2: vsymbol) (Heq: snd v1 = snd v2) (f: formula)
   (Hval1: valid_formula sigma (Fquant q v1 f))
-  (Hval2: valid_formula sigma (Fquant q v2 (sub_f v1 v2 f))):
+  (Hval2: valid_formula sigma (Fquant q v2 (sub_f v1 v2 f)))
+  (Hbnd: ~In v2 (bnd_f f))
+  (Hfree: ~In v2 (form_fv f)):
   formula_rep v (Fquant q v1 f) Hval1 = 
   formula_rep v (Fquant q v2 (sub_f v1 v2 f)) Hval2.
 Proof.
+  remember (snd v1) as ty.
   simpl. destruct q.
-  - repeat match goal with |- context[ all_dec ?P ] => destruct (all_dec P); auto end.
-    + exfalso. apply n. intros d.
-      inversion Hval1; subst.
-      inversion Hval2; subst.
-      rewrite <- (sub_f_correct) with(Heq:=Heq)(Hval1:=H4).
-
+  - apply all_dec_eq.
+    split; intros Hall d.
+    + inversion Hval1; subst.
+      rewrite sub_f_correct with(Heq:=Heq)(Hval1:=H4); auto.
+      rewrite (form_fv_agree _ _ (substi vt v v1 (dom_cast (dom_aux gamma_valid i) (f_equal (val vt) (eq_sym Heq))
+      (substi vt v v2 d v2)))).
+      2: {
+        intros x Hinx. unfold substi. destruct (vsymbol_eq_dec x v2); auto.
+        subst. contradiction.
+      }
+      erewrite fmla_rep_irrel. apply Hall.
+    + revert Heq Heqty. inversion Hval1; subst. intros Heq Heqty.
+      specialize (Hall (dom_cast _ (f_equal (val vt) (eq_sym (eq_trans (eq_sym Heq) Heqty))) d)).
+      revert Hall.
+      rewrite sub_f_correct with (Heq:=(eq_sym (eq_trans (eq_sym Heq) Heqty)))(Hval1:=H4); auto.
+      rewrite (form_fv_agree _ _ (substi vt v v1 d)); auto.
+      * rewrite (fmla_rep_irrel _ _   _ (valid_quant_inj (valid_formula_eq eq_refl Hval1))).
+        auto.
+      * (*Proof is annoying casting/dependent equality stuff*)
+        intros x Hinx. unfold substi.
+        destruct (vsymbol_eq_dec x v1). 
+        -- unfold eq_rec_r, eq_rec, eq_rect.
+          revert Heq Heqty; subst; intros Heq Heqty.
+          simpl. unfold dom_cast. subst. simpl. destruct Heqty.
+          simpl. destruct (vsymbol_eq_dec v2 v2); auto; try contradiction.
+          assert (e = eq_refl). apply UIP_dec. apply vsymbol_eq_dec.
+          subst. reflexivity.
+        -- destruct (vsymbol_eq_dec x v2); auto.
+          subst. contradiction.
+  - apply all_dec_eq.
+    split; intros [d Hex].
+    + exists (dom_cast _ (f_equal (val vt) (eq_sym (eq_trans (eq_sym Heq) Heqty))) d).
+      rewrite sub_f_correct with (Heq:=(eq_sym (eq_trans (eq_sym Heq) Heqty))) 
+        (Hval1:= (valid_quant_inj (valid_formula_eq eq_refl Hval1))); auto.
+      rewrite (form_fv_agree _ _ (substi vt v v1 d)); auto.
+      intros x Hinx.
+      unfold substi.
+      destruct (vsymbol_eq_dec x v1); auto.
+      * unfold eq_rec_r, eq_rec, eq_rect. revert Heq Heqty; subst;
+        intros Heq Heqty; simpl.
+        unfold dom_cast. clear Hex. subst; simpl; destruct Heqty; simpl.
+        destruct (vsymbol_eq_dec v2 v2); try contradiction.
+        assert (e = eq_refl) by (apply UIP_dec; apply vsymbol_eq_dec).
+        rewrite H; reflexivity.
+      * destruct (vsymbol_eq_dec x v2); auto.
+        subst; contradiction.
+    + (*TODO: lots of similarities*)
+      exists (dom_cast _ (f_equal (val vt) (eq_trans (eq_sym Heq) Heqty)) d).
+      revert Hex.
+      rewrite sub_f_correct with (Heq:= (eq_sym (eq_trans (eq_sym Heq) Heqty))) 
+        (Hval1:= (valid_quant_inj (valid_formula_eq eq_refl Hval1))); auto.
+      rewrite (form_fv_agree _ _ (substi vt v v1
+      (dom_cast (dom_aux gamma_valid i)
+         (f_equal (val vt) (eq_trans (eq_sym Heq) Heqty)) d))); auto.
+      intros x Hinx.
+      unfold substi.
+      destruct (vsymbol_eq_dec x v1); auto.
+      * unfold eq_rec_r, eq_rec, eq_rect. revert Heq Heqty; subst;
+        intros Heq Heqty; simpl.
+        unfold dom_cast. subst; simpl; destruct Heqty; simpl.
+        destruct (vsymbol_eq_dec v2 v2); try contradiction.
+        assert (e = eq_refl) by (apply UIP_dec; apply vsymbol_eq_dec).
+        rewrite H; reflexivity.
+      * destruct (vsymbol_eq_dec x v2); auto.
+        subst; contradiction.
+Qed.
 
 End Denot.
 
