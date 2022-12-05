@@ -27,41 +27,52 @@ Section Interp.
 
 Context {sigma: sig} {gamma: context} (gamma_valid: valid_context sigma gamma).
 
-Record pre_interp := {
+(*A pre-interpretation includes a map from sorts to Set, the condition that
+  all of these Sets are nonempty, interpretations for functions and predicates,
+  the requirement that all ADT domains are [adt_rep], and the
+  requirement that all constructor domains are [constr_rep]
+  (we will later add restrictions on functions and predicates).
+  It makes some dependent type stuff easier to split out the domain-related
+  pieces from the function and predicate pieces, since the latter
+  will change without affecting domains or valuations*)
+Record pi_dom := {
   dom_aux: sort -> Set; 
   (*the prelimiary domain function: the full
     function is (domain dom_aux), which enforces that domain s_int reduces
     to Z and domain s_real reduces to R*)
   domain_ne: forall s, domain_nonempty (domain dom_aux) s;
 
-  (*Functions and predicates take in a heterogenous list such that
-    the ith argument has the correct type.*)
-
-  funs: forall (f:funsym) (srts: list sort),
-    arg_list (domain dom_aux) (funsym_sigma_args f srts) ->
-    (domain dom_aux (funsym_sigma_ret f srts));
-
-  preds: forall (p:predsym) (srts: list sort),
-    arg_list (domain dom_aux) (predsym_sigma_args p srts) -> bool;
-
   (*ADTs: they are the corresponding W type created by [mk_adts],
     with the typesym and typevar map coming from sorts on which
     the type is applied*)
 
-  adts: forall (m: mut_adt) (srts: list sort)
+    adts: forall (m: mut_adt) (srts: list sort)
     (a: alg_datatype) (Hin: adt_in_mut a m),
     (domain dom_aux) (typesym_to_sort (adt_name a) srts) =
     adt_rep m srts dom_aux a Hin;
+
+}.
+Record pi_funpred (pd: pi_dom) := {
+  (*Functions and predicates take in a heterogenous list such that
+    the ith argument has the correct type.*)
+
+  funs: forall (f:funsym) (srts: list sort),
+    arg_list (domain (dom_aux pd)) (funsym_sigma_args f srts) ->
+    (domain (dom_aux pd) (funsym_sigma_ret f srts));
+
+  preds: forall (p:predsym) (srts: list sort),
+    arg_list (domain (dom_aux pd)) (predsym_sigma_args p srts) -> bool;
 
   (*The interpretation for each constructor comes from [constr_rep]
     with an additional cast for the domains*)
   constrs: forall (m: mut_adt) (a: alg_datatype) (c: funsym)
     (Hm: mut_in_ctx m gamma) (Ha: adt_in_mut a m) (Hc: constr_in_adt c a)
     (srts: list sort) (Hlens: length srts = length (m_params m))
-    (args: arg_list (domain dom_aux) (funsym_sigma_args c srts)),
+    (args: arg_list (domain (dom_aux pd)) (funsym_sigma_args c srts)),
     funs c srts args =
-    constr_rep_dom gamma_valid m Hm srts Hlens dom_aux a Ha
-      c Hc (adts m srts) args
+    constr_rep_dom gamma_valid m Hm srts Hlens (dom_aux pd) a Ha
+      c Hc (adts pd m srts) args
+
 }.
 
 (*TODO: separate into v_typevar and v_vars
@@ -69,13 +80,13 @@ Record pre_interp := {
   then the output ONLY depends on v_typevar so no
   dependent type issues*)
 (*Valuations*)
-Record val_typevar (i: pre_interp) := {
+Record val_typevar (*(pd: pi_dom)*) := {
   v_typevar : typevar -> sort;
   (*All sorts must be valid*)
   v_typevar_val: forall x, valid_type sigma (v_typevar x);
 }.
-Definition val_vars (i: pre_interp) (vt: val_typevar i) : Type :=
-  forall (x: vsymbol), domain (dom_aux i) (v_subst (v_typevar i vt) (snd x)).
+Definition val_vars (pd: pi_dom) (vt: val_typevar) : Type :=
+  forall (x: vsymbol), domain (dom_aux pd) (v_subst (v_typevar vt) (snd x)).
 
   (*
 Record valuation (i: pre_interp) := {
@@ -85,12 +96,13 @@ Record valuation (i: pre_interp) := {
 
 Section Interp.
 
-Variable i: pre_interp.
-Variable v: val_typevar i.
+Variable pd: pi_dom.
+Variable pfp: pi_funpred pd.
+Variable v: val_typevar.
 
-Notation val t  := (domain (dom_aux i) (v_subst (v_typevar i v) t)).
+Notation val t  := (domain (dom_aux pd) (v_subst (v_typevar v) t)).
 
-Definition var_to_dom (vv: val_vars i v) (x: vsymbol): val (snd x) :=
+Definition var_to_dom (vv: val_vars pd v) (x: vsymbol): val (snd x) :=
   vv x.
 
 (*Substitution*)
@@ -102,8 +114,8 @@ Definition var_to_dom (vv: val_vars i v) (x: vsymbol): val (snd x) :=
   We will always be replacing variable 0 in a term (the innermost bound variable)
   *)
 
-Definition substi (vv: val_vars i v) (x: vsymbol) (y: val (snd x)) : 
-  val_vars i v.
+Definition substi (vv: val_vars pd v) (x: vsymbol) (y: val (snd x)) : 
+  val_vars pd v.
 Proof.
   unfold val_vars. intros m.
   destruct (vsymbol_eq_dec m x).
@@ -126,7 +138,7 @@ Defined.
 *)
 Require Import FunctionalExtensionality.
 
-Lemma substi_same (vv: val_vars i v) (x: vsymbol) (y z: val (snd x)):
+Lemma substi_same (vv: val_vars pd v) (x: vsymbol) (y z: val (snd x)):
   substi (substi vv x y) x z =
   substi vv x z.
 Proof.
@@ -135,7 +147,7 @@ Proof.
   destruct (vsymbol_eq_dec x0 x); subst; reflexivity.
 Qed.
 
-Lemma substi_diff (vv: val_vars i v) (x1 x2: vsymbol) y z :
+Lemma substi_diff (vv: val_vars pd v) (x1 x2: vsymbol) y z :
   x1 <> x2 ->
   substi (substi vv x1 y) x2 z =
   substi (substi vv x2 z) x1 y.
@@ -155,9 +167,9 @@ Qed.
 Defined.*)
 
 (* Some additional lemmas for casting/dependent type obligations *)
-Notation dcast := (dom_cast (dom_aux i)).
+Notation dcast := (dom_cast (dom_aux pd)).
 
-Definition dom_int : domain (dom_aux i) s_int := 0%Z.
+Definition dom_int : domain (dom_aux pd) s_int := 0%Z.
 
 (* Semantics/Interpretation *)
 
@@ -173,7 +185,7 @@ Definition bool_of_binop (b: binop) : bool -> bool -> bool :=
   end.
 Unset Elimination Schemes.
 Inductive term_interp: 
-  forall (vv: val_vars i v) (tm: term) (ty: vty) (x: domain (dom_aux i) (v_subst (v_typevar i v) ty)), Prop :=
+  forall (vv: val_vars pd v) (tm: term) (ty: vty) (x: domain (dom_aux pd) (v_subst (v_typevar v) ty)), Prop :=
   | TI_int: forall v z,
     term_interp v (Tconst (ConstInt z)) vty_int z
   | TI_real: forall v r,
@@ -193,12 +205,12 @@ Inductive term_interp:
     term_interp v t1 (snd x) x1 ->
     term_interp (substi v x x1) t2 ty2 x2 ->
     term_interp v (Tlet t1 x t2) ty2 x2
-  | TI_func: forall (vv: val_vars i v) (f: funsym) (params: list vty) (ts: list term) 
+  | TI_func: forall (vv: val_vars pd v) (f: funsym) (params: list vty) (ts: list term) 
     (Hlen: length (s_params f) = length params) xs,
 
-    let v_map := v_subst (v_typevar i v) in
+    let v_map := v_subst (v_typevar v) in
     (* First, we get the interpretation of f *)
-    let f_interp := (funs i) f (map v_map params)  in
+    let f_interp := (funs pd pfp) f (map v_map params)  in
     (* Return type of f (sigma(s_ret f))*)
     let f_ret := (funsym_sigma_ret f (map v_map params)) in
     (*Now we need to apply it to the arguments*)
@@ -224,12 +236,12 @@ Inductive term_interp:
         evaluates to [nth xs n] under v *)
       term_interp vv (nth n ts (Tconst (ConstInt 0)))
         (nth n f_arg_typs s_int) 
-        (dcast (subst_sort_eq (nth n f_arg_typs s_int) (v_typevar i v)) 
+        (dcast (subst_sort_eq (nth n f_arg_typs s_int) (v_typevar v)) 
           (hnth n xs s_int dom_int))) ->
     
     (*Again, we must cast the return type of f, for the same reason*)
     term_interp vv (Tfun f params ts) f_ret 
-      (dcast (subst_sort_eq f_ret (v_typevar i v)) (f_interp xs))
+      (dcast (subst_sort_eq f_ret (v_typevar v)) (f_interp xs))
   | TI_match: forall v (t: term) ty1 ty (ps: list (pattern * term)) (t': term) x,
     (*Translate the pattern match to a term of tests (with match_pattern), then
       interpret*)
@@ -237,7 +249,7 @@ Inductive term_interp:
     term_interp v t' ty x ->
     term_interp v (Tmatch t ty1 ps) ty x
 
-with formula_interp: (val_vars i v) -> list formula -> list formula -> formula -> bool -> Prop :=
+with formula_interp: (val_vars pd v) -> list formula -> list formula -> formula -> bool -> Prop :=
   | FI_true: forall v tl fl, formula_interp v tl fl Ftrue true
   | FI_false: forall v tl fl, formula_interp v tl fl Ffalse false
   | FI_not: forall v tl fl f b,
@@ -283,14 +295,14 @@ with formula_interp: (val_vars i v) -> list formula -> list formula -> formula -
     term_interp v t2 ty x2 ->
     x1 <> x2 ->
     formula_interp v tl fl (Feq ty t1 t2) false
-  | FI_prop: forall (vv: val_vars i v) (p: predsym) (params: list vty) (ts: list term) 
+  | FI_prop: forall (vv: val_vars pd v) (p: predsym) (params: list vty) (ts: list term) 
     (Hlen: length (p_params p) = length params) xs tl fl,
 
     (*Very similar to function*)
 
-    let v_map := v_subst (v_typevar i v) in
+    let v_map := v_subst (v_typevar v) in
     (* First, we get the interpretation of p *)
-    let p_interp := (preds i) p (map v_map params)  in
+    let p_interp := (preds pd pfp) p (map v_map params)  in
     (*let f_ret := (funsym_sigma_ret f (map v_map params) 
       (map_length_eq v_map _ _ Hlen)) in*)
 
@@ -303,7 +315,7 @@ with formula_interp: (val_vars i v) -> list formula -> list formula -> formula -
     (forall n (Hn: n < length p_arg_typs),
       term_interp vv (nth n ts (Tconst (ConstInt 0)))
         (nth n p_arg_typs s_int) 
-        (dcast (subst_sort_eq (nth n p_arg_typs s_int) (v_typevar i v)) 
+        (dcast (subst_sort_eq (nth n p_arg_typs s_int) (v_typevar v)) 
           (hnth n xs s_int dom_int ))) ->
 
     formula_interp vv tl fl (Fpred p params ts) (p_interp xs)
@@ -332,7 +344,7 @@ with formula_interp: (val_vars i v) -> list formula -> list formula -> formula -
   (*Add bool so that we can say: not proj_constr*)
   (*Similar to projf_{i, j} in the paper, but gives whole list if 
     [[t]]]is application of [[f]] to [[ts]]*)
-with proj_constr : (val_vars i v) -> term -> funsym -> list vty -> list term -> bool -> Prop :=
+with proj_constr : (val_vars pd v) -> term -> funsym -> list vty -> list term -> bool -> Prop :=
 | mk_proj_constr: forall v t ty f vs ts x y,
     term_interp v t ty x ->
     term_interp v (Tfun f vs ts) ty y ->
@@ -352,12 +364,12 @@ with proj_constr : (val_vars i v) -> term -> funsym -> list vty -> list term -> 
     (using Tlet/Flet). So we factor out the difference and pass in the appropriate
     type in the term/formula interpretation*)
   with pattern_interp: forall (A: Type) (flet: term -> vsymbol -> A -> A),
-     (val_vars i v) ->term -> pattern -> option A -> option A -> option A -> Prop :=
+     (val_vars pd v) ->term -> pattern -> option A -> option A -> option A -> Prop :=
   | PI_varNone: forall A flet v t x h,
     pattern_interp A flet v t (Pvar x) None h None
   | PI_varSome: forall A flet v t x b h,
     pattern_interp A flet v t (Pvar x) (Some b) h (Some (flet t x b))
-  | PI_constrNilT: forall A flet (vv: val_vars i v) t (f: funsym) (vs: list vty) b h,
+  | PI_constrNilT: forall A flet (vv: val_vars pd v) t (f: funsym) (vs: list vty) b h,
     (*If the interpretation of t (ie x), comes from the constructor f: *)
     (exists ts, proj_constr vv t f vs ts true) ->
 
@@ -388,7 +400,7 @@ with proj_constr : (val_vars i v) -> term -> funsym -> list vty -> list term -> 
     pattern_interp A flet v t (Pbind p x) b h (Some (flet t x res))
 
 with iter_pattern_interp: forall (A: Type) (flet: term -> vsymbol -> A -> A),
-(val_vars i v) -> list term -> list pattern -> option A -> option A -> option A -> Prop :=
+(val_vars pd v) -> list term -> list pattern -> option A -> option A -> option A -> Prop :=
   | IPI_nil:
     forall A flet v b h,
     iter_pattern_interp A flet v nil nil b h b
@@ -399,7 +411,7 @@ with iter_pattern_interp: forall (A: Type) (flet: term -> vsymbol -> A -> A),
 
 (*We need another form of iteration, where failures are propagated*)
 with match_pattern: forall (A: Type) (flet: term -> vsymbol -> A -> A),
-  (val_vars i v) -> term -> list pattern -> list A -> option A -> Prop :=
+  (val_vars pd v) -> term -> list pattern -> list A -> option A -> Prop :=
   | MP_nil: forall A flet v t,
     match_pattern A flet v t nil nil None
   | MP_cons: forall A flet v t p ps tm ts res res1,
@@ -455,7 +467,7 @@ Section Ex.
 
 Local Open Scope string_scope.
 (*Let's give an example: prove that equality is reflexive*)
-Lemma prove_eq_refl: forall (vv: val_vars i v) (a: vty) tl fl,
+Lemma prove_eq_refl: forall (vv: val_vars pd v) (a: vty) tl fl,
   formula_interp vv tl fl (Fquant Tforall ("x", a) (Feq a (Tvar ("x", a)) (Tvar ("x", a)))) true.
 Proof.
   intros vv a. constructor. intros d.
@@ -473,16 +485,16 @@ End Interp.
 Section InterpLemmas.
 
 (*There is always a trivial valuation (need for defaults)*)
-Definition triv_val_typevar (i: pre_interp) : val_typevar i.
+Definition triv_val_typevar (*(pd: pi_dom) (i: pre_interp)*) : val_typevar.
 Proof.
-  apply (Build_val_typevar i (fun _ => s_int)).
+  apply (Build_val_typevar (fun _ => s_int)).
   intros. constructor.
 Defined.
 
-Definition triv_val_vars (i: pre_interp) : val_vars i (triv_val_typevar i).
+Definition triv_val_vars (i: pi_dom) : val_vars i (triv_val_typevar).
 Proof.
   unfold val_vars. intros x.
-  destruct i; simpl. 
+  destruct i; simpl. unfold v_subst.
   specialize (domain_ne0 (v_subst (fun _ : typevar => s_int) (snd x))).
   inversion domain_ne0. exact x0.
 Defined.
@@ -619,20 +631,20 @@ End InterpLemmas.
 (*Find element of arg_list corresponding to element of l*)
 (*This is very ugly due to dependent types and proof obligations*)
 Fixpoint mk_fun_arg (*{A: Type} (eq_dec: forall (x y: A), {x = y} + { x <> y})*) 
-  (i: pre_interp) v_var
-  (l: list vsymbol) (s: list sort) (a: arg_list (domain (dom_aux i)) s) 
+  (pd: pi_dom) v_var
+  (l: list vsymbol) (s: list sort) (a: arg_list (domain (dom_aux pd)) s) 
     (x: vsymbol): 
-    domain (dom_aux i) (v_subst v_var (snd x)) :=
+    domain (dom_aux pd) (v_subst v_var (snd x)) :=
   match l, a with
   | hd :: tl, HL_cons shd stl d t => 
       (*Need to know that types are equal so we can cast the domain*)
       match (vty_eq_dec (v_subst v_var (snd x))) shd with
       | left Heq => if vsymbol_eq_dec hd x then dom_cast _ (sort_inj (eq_sym Heq)) d
-          else mk_fun_arg i v_var tl stl t x
-      | _ => mk_fun_arg i v_var tl stl t x
+          else mk_fun_arg pd v_var tl stl t x
+      | _ => mk_fun_arg pd v_var tl stl t x
       end
   (* Otherwise, return default element of domain *)
-  | _, _ =>  match domain_ne i (v_subst v_var (snd x)) with
+  | _, _ =>  match domain_ne pd (v_subst v_var (snd x)) with
                       | DE y => y
                       end
   end.
@@ -667,20 +679,20 @@ Proof.
     + apply IHl; auto. intros. apply H0; right; auto.
 Qed.
 
-Definition make_val_typevar (i: pre_interp) (vs: list typevar) (s1 s2: list sort)
+Definition make_val_typevar (*(pd: pi_dom)*) (vs: list typevar) (s1 (*s2*): list sort)
   (Hlen: length vs = length s1)
   (Hall: forall s, In s s1 -> valid_type sigma s)
-  (syms: list vsymbol) (a: arg_list (domain (dom_aux i)) s2) : val_typevar i :=
+  (*(syms: list vsymbol)*) (*(a: arg_list (domain (dom_aux pd)) s2)*) : val_typevar :=
   let v_var := (ty_subst_fun_s vs s1 s_int) in
-  Build_val_typevar i v_var (make_val_valid_type vs s1 Hlen Hall).
+  Build_val_typevar v_var (make_val_valid_type vs s1 Hlen Hall).
 
-Definition make_val_vars (i: pre_interp) (vs: list typevar) (s1 s2: list sort)
+Definition make_val_vars (pd: pi_dom) (vs: list typevar) (s1 s2: list sort)
   (Hlen: length vs = length s1)
   (Hall: forall s, In s s1 -> valid_type sigma s)
-  (syms: list vsymbol) (a: arg_list (domain (dom_aux i)) s2) : 
-    val_vars i (make_val_typevar i vs s1 s2 Hlen Hall syms a) :=
+  (syms: list vsymbol) (a: arg_list (domain (dom_aux pd)) s2) : 
+    val_vars pd (make_val_typevar vs s1 Hlen Hall) :=
   let v_var := (ty_subst_fun_s vs s1 s_int) in
-  (mk_fun_arg i v_var syms s2 a).
+  (mk_fun_arg pd v_var syms s2 a).
 
 (* Interpretation, Satisfiability, Validity *)
 
@@ -688,7 +700,7 @@ Section Logic.
 
 
 (*A full interpretation is consistent with recursive and inductive definitions*)
-Definition full_interp (p: pre_interp) : Prop :=
+Definition full_interp (p_dom: pi_dom) (p_fun: pi_funpred p_dom) : Prop :=
   (*For each function f(alpha)(x) = t, 
     [[f(s)]](y) = [[t]]_v, where v maps alpha -> s and x -> y*)
   (*Note that y_i has type [[sigma(tau_i)]], where sigma maps alpha -> s*)
@@ -698,11 +710,11 @@ Definition full_interp (p: pre_interp) : Prop :=
     In (f, vs, t) (fundefs_of_context gamma) ->
    
     forall ts,
-    let vt := make_val_typevar p (s_params f) s 
-      (funsym_sigma_args f s) Hs Halls vs ts in
-    let vv := make_val_vars p (s_params f) s 
+    let vt := make_val_typevar (s_params f) s 
+      Hs Halls in
+    let vv := make_val_vars p_dom (s_params f) s 
     (funsym_sigma_args f s) Hs Halls vs ts in
-      term_interp p vt vv t (s_ret f) ((funs p) f s ts)) /\
+      term_interp p_dom p_fun vt vv t (s_ret f) ((funs p_dom p_fun) f s ts)) /\
   (*For each predicate p(alpha)(x) = f, 
     [[p(s)]](y) = [[f]]_v, where v maps alpha -> s and x -> y*)
   (forall (pd: predsym) (vs: list vsymbol) (f: formula) (s: list sort)
@@ -711,25 +723,25 @@ Definition full_interp (p: pre_interp) : Prop :=
     In (pd, vs, f) (preddefs_of_context gamma) ->
     
     forall ts,
-    let vt := make_val_typevar p (p_params pd) s 
+    let vt := make_val_typevar (p_params pd) s 
+      Hs Halls in
+    let vv := make_val_vars p_dom (p_params pd) s 
       (predsym_sigma_args pd s) Hs Halls vs ts in
-    let vv := make_val_vars p (p_params pd) s 
-      (predsym_sigma_args pd s) Hs Halls vs ts in
-      formula_interp p vt vv nil nil f ((preds p) pd s ts) /\
+      formula_interp p_dom p_fun vt vv nil nil f ((preds p_dom p_fun) pd s ts) /\
 
   (*Inductive preds: for p(alpha) = f1 | f2 | ... | fn, 
     [[p(s)]] is the least predicate such that [[f_i]]_v holds where v maps
     alpha to s*)
   (forall (pd: predsym) (lf: list formula) (s: list sort) 
-    (vt: val_typevar p) (vv: val_vars p vt)
+    (vt: val_typevar) (vv: val_vars p_dom vt)
     (bs: list bool) (ts: list term) b,
     In (pd, lf) (indpreds_of_context gamma) ->
-    Forall (fun x => (v_typevar p vt) (fst x) = (snd x)) (combine (p_params pd) s) ->
+    Forall (fun x => (v_typevar vt) (fst x) = (snd x)) (combine (p_params pd) s) ->
 
       (*All of the constructor interpretations imply [[p]](ts)*)
-      Forall (fun x => formula_interp p vt vv nil nil (fst x) (snd x))
+      Forall (fun x => formula_interp p_dom p_fun vt vv nil nil (fst x) (snd x))
         (combine lf bs) /\
-      formula_interp p vt vv nil nil (Fpred pd (sorts_to_tys s) ts) b /\
+      formula_interp p_dom p_fun vt vv nil nil (Fpred pd (sorts_to_tys s) ts) b /\
       (*must be case that all f_i's together imply b*)
       implb (fold_right andb true bs) b /\
 
@@ -740,12 +752,14 @@ Definition full_interp (p: pre_interp) : Prop :=
 
 Definition closed (f: formula) : Prop := closed_formula f /\ valid_formula sigma f.
 
-Definition interp : Type := {i: pre_interp | full_interp i}.
+Definition interp : Type := {pd: pi_dom & {pf: pi_funpred pd | full_interp pd pf}}.
 
-Coercion get_pre_interp (i: interp) : pre_interp := proj1_sig i.
+Coercion get_pi_dom (i: interp) : pi_dom := projT1 i.
+Coercion get_pi_funpred (i: interp) : pi_funpred i :=
+  proj1_sig (projT2 i).
 
 Definition satisfied_f (i: interp) (f: formula) : Prop :=
-  closed f /\ forall vt vv, formula_interp i vt vv nil nil f true.
+  closed f /\ forall vt vv, formula_interp i i vt vv nil nil f true.
 
 Definition satisfied_l (i: interp) (l: list formula) : Prop :=
   Forall (satisfied_f i) l.
