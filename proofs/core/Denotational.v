@@ -2722,6 +2722,22 @@ Lemma alpha_t_aux_correct (t: term) (l: list vsymbol),
 Definition 
 *)
 End Alpha.
+
+(*TODO: move rewrite lemmas*)
+
+(*Some other results we need for IndProp*)
+
+(*true -> P is equivalent to P*)
+Lemma true_impl (vv: val_vars pd vt) (f: formula) (Hval1: valid_formula sigma f)
+  (Hval2: valid_formula sigma (Fbinop Timplies Ftrue f)) :
+  formula_rep vv f Hval1 =
+  formula_rep vv (Fbinop Timplies Ftrue f) Hval2.
+Proof.
+  simpl. apply fmla_rep_irrel.
+Qed. 
+
+
+
 End Denot.
 
 (*
