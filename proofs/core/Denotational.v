@@ -2736,7 +2736,16 @@ Proof.
   simpl. apply fmla_rep_irrel.
 Qed. 
 
-
+(*(f1 /\ f2) -> f3 is equivalent to f1 -> f2 -> f3*)
+Lemma and_impl (vv: val_vars pd vt) 
+  (f1 f2 f3: formula) Hval1 Hval2:
+  formula_rep vv (Fbinop Timplies (Fbinop Tand f1 f2) f3) Hval1 =
+  formula_rep vv (Fbinop Timplies f1 (Fbinop Timplies f2 f3)) Hval2.
+Proof.
+  simpl. rewrite implb_curry.
+  f_equal. apply fmla_rep_irrel.
+  f_equal; apply fmla_rep_irrel.
+Qed.
 
 End Denot.
 

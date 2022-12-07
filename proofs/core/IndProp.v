@@ -745,6 +745,12 @@ Fixpoint indpred_decomp (f: formula) :
   well-formed bound variables, [indpred_decomp] produces
   an equivalent formula when interpreted.*)
 
+  Ltac split_all :=
+  repeat match goal with
+  | H: ?P /\ ?Q |- _ => destruct H
+  | |- ?P /\ ?Q => split
+  end.
+
 (*Iterated forall - TODO: maybe move to Denotational*)
 Definition fforalls (vs: list vsymbol) (f: formula) : formula :=
   fold_right (fun x acc => Fquant Tforall x acc) f vs.
@@ -756,6 +762,15 @@ Lemma fforalls_valid (vs: list vsymbol) (f: formula)
 Proof.
   induction vs; auto. inversion Hall; subst. 
   simpl. constructor; auto.
+Qed.
+
+Lemma fforalls_valid_inj (vs: list vsymbol) (f: formula)
+  (Hval: valid_formula sigma (fforalls vs f)):
+  valid_formula sigma f /\ Forall (fun x => valid_type sigma (snd x)) vs.
+Proof.
+  induction vs; auto.
+  simpl in Hval. inversion Hval; subst.
+  specialize (IHvs H4). split_all; auto.
 Qed.
 
 (*Substitute in a bunch of values for a bunch of variables,
@@ -811,6 +826,23 @@ Proof.
       apply Hforall.
 Qed.
 
+Lemma fforalls_val' (pf: pi_funpred gamma_valid pd)
+  (vt: val_typevar) (vv: val_vars pd vt) 
+  (vs: list vsymbol) (f: formula) 
+  Hval1 Hval2:
+  formula_rep gamma_valid pd pf all_unif vt vv (fforalls vs f) 
+    Hval2 =
+    all_dec (forall (h: hlist  (fun x =>
+      domain (dom_aux pd) (v_subst (v_typevar vt) x)) (map snd vs)),
+      formula_rep gamma_valid pd pf all_unif vt
+        (substi_mult vt vv vs h) f Hval1).
+Proof.
+  assert (A:=Hval2).
+  apply fforalls_valid_inj in A. split_all.
+  rewrite fmla_rep_irrel with(Hval2:=(fforalls_valid vs f Hval1 H0)).
+  apply fforalls_val.
+Qed.
+
 (*Next we give the valuation for an iterated let. This time,
   we don't need to worry about hlists*)
 Fixpoint substi_multi_let (pf: pi_funpred gamma_valid pd) (vt: val_typevar) (vv: @val_vars sigma pd vt) 
@@ -840,6 +872,16 @@ Proof.
   induction vs; simpl; auto.
   inversion Hall; subst.
   constructor; auto.
+Qed.
+
+Lemma iter_flet_valid_inj (vs: list (vsymbol * term)) (f: formula)
+(Hval: valid_formula sigma (iter_flet vs f)):
+(valid_formula sigma f) /\
+(Forall (fun x => term_has_type sigma (snd x) (snd (fst x))) vs).
+Proof.
+  induction vs; simpl in *; auto.
+  inversion Hval; subst. specialize (IHvs H4).
+  split_all; auto.
 Qed.
 
 Lemma iter_flet_val (pf: pi_funpred gamma_valid pd) 
@@ -876,11 +918,7 @@ Proof.
   induction l; simpl; constructor; inversion Hall; subst; auto.
 Qed.
 
-Ltac split_all :=
-  repeat match goal with
-  | H: ?P /\ ?Q |- _ => destruct H
-  | |- ?P /\ ?Q => split
-  end.
+
 
 (*A few results about [indpred_decomp]*)
 
@@ -911,6 +949,109 @@ Proof.
   - apply (Tconst (ConstInt 0)).
 Qed.
 
+Ltac triv_fls :=
+  split_all; intros; 
+    match goal with | H: False |- _ => destruct H end.
+
+Lemma indpred_decomp_bound (f: formula) :
+  (forall x, In x (tup_1 (indpred_decomp f)) -> In x (bnd_f f)) /\
+  (forall x, In x (tup_2 (indpred_decomp f)) -> In (fst x) (bnd_f f)).
+Proof.
+  apply (term_formula_ind) with(P1:=fun _ => True) (P2:= fun f =>
+  (forall x : vsymbol, In x (tup_1 (indpred_decomp f)) -> In x (bnd_f f)) /\
+  (forall x : vsymbol * term,
+   In x (tup_2 (indpred_decomp f)) -> In (fst x) (bnd_f f))); simpl; auto; intros;
+   try solve[triv_fls]. 
+  - destruct q; simpl;[|triv_fls].
+    split_all; intros.
+    + destruct H1; subst. left; auto. right. apply H. auto.
+    + apply H0 in H1. right; auto.
+  - destruct b; simpl; try triv_fls. split; intros; simpl;
+    apply in_or_app; right; apply H0; auto.
+  - split_all; intros. right. apply in_or_app. right. apply H0; auto.
+    destruct H2; subst. left; auto. right. apply in_or_app. right. 
+    apply H1. auto.
+  - apply (Tconst (ConstInt 0)).
+Qed.
+
+
+(*TODO: move*)
+Lemma wf_quant (q: quant) (v: vsymbol) (f: formula) :
+  fmla_wf (Fquant q v f) ->
+  fmla_wf f.
+Proof.
+  unfold fmla_wf. simpl. intros. split_all.
+  - inversion H; auto.
+  - intros x C. split_all.
+    apply (H0 x).
+    destruct (vsymbol_eq_dec x v); subst; auto.
+    + inversion H; subst. contradiction.
+    + split. apply in_in_remove; auto. right; auto.
+Qed. 
+
+Lemma wf_binop (b: binop) (f1 f2: formula) :
+  fmla_wf (Fbinop b f1 f2) ->
+  fmla_wf f1 /\ fmla_wf f2.
+Proof.
+  unfold fmla_wf. simpl. rewrite NoDup_app_iff.
+  intros. split_all; auto; intros x C; split_all.
+  - apply (H0 x).
+    split_all. apply union_elts. left; auto.
+    apply in_or_app. left; auto.
+  - apply (H0 x).
+    split_all. apply union_elts. right; auto.
+    apply in_or_app. right; auto.
+Qed.
+
+Lemma wf_let (t: term) (v: vsymbol) (f: formula) :
+  fmla_wf (Flet t v f) ->
+  fmla_wf f.
+Proof.
+  unfold fmla_wf. simpl. intros; split_all; auto; 
+  inversion H; subst; auto.
+  - rewrite NoDup_app_iff in H4; apply H4.
+  - intros x C. split_all.
+    apply (H0 x). split.
+    + apply union_elts. right.
+      apply in_in_remove; auto. intro Heq; subst.
+      inversion H; subst.
+      apply H7. apply in_or_app. right; auto.
+    + right. apply in_or_app. right; auto.
+Qed.
+
+
+Lemma indpred_decomp_wf (f: formula) (Hwf: fmla_wf f):
+  (forall x, ~ (In x (tup_1 (indpred_decomp f)) /\ 
+    In x (map fst (tup_2 (indpred_decomp f))))).
+Proof.
+  revert Hwf.
+  apply (term_formula_ind) with(P1:=fun _ => True) (P2:= fun f =>
+  fmla_wf f ->
+  forall x : vsymbol,
+  ~
+  (In x (tup_1 (indpred_decomp f)) /\ In x (map fst (tup_2 (indpred_decomp f)))));
+  auto; simpl; auto; intros; try solve[intro C; triv_fls].
+  - destruct q; simpl; [|intro C; triv_fls].
+    intro C. split_all.
+    destruct H1; subst.
+    + specialize (H (wf_quant _ _ _ H0)).
+      unfold fmla_wf in H0.
+      simpl in H0. split_all. inversion H0; subst.
+      rewrite in_map_iff in H2. destruct H2 as [y [Hy Hiny]].
+      assert (In (fst y) (bnd_f f0)).  
+      apply indpred_decomp_bound. auto. subst. contradiction.
+    + apply (H (wf_quant _ _ _ H0) x); auto.
+  - destruct b; simpl; intro C; try triv_fls.
+    apply (H0 (proj2 (wf_binop _ _ _ H1)) x). auto.
+  - specialize (H0 (wf_let _ _ _ H1)).
+    intro C. split_all.
+    destruct H3; subst.
+    + unfold fmla_wf in H1. simpl in H1. split_all. inversion H1; subst.
+      apply H6. apply in_or_app. right. apply indpred_decomp_bound; auto.
+    + apply (H0 x); auto.
+  - apply (Tconst (ConstInt 0)).
+Qed. 
+
 (*How we transform this decomposition into a formula*)
 Definition indpred_transform (f: formula) : formula :=
   (fforalls (tup_1 (indpred_decomp f))
@@ -930,19 +1071,8 @@ Proof.
   apply indpred_decomp_valid; auto.
 Qed.
 
-(*TODO: move*)
-Lemma wf_quant (q: quant) (v: vsymbol) (f: formula) :
-  fmla_wf (Fquant q v f) ->
-  fmla_wf f.
-Proof.
-  unfold fmla_wf. simpl. intros. split_all.
-  - inversion H; auto.
-  - intros x C. split_all.
-    apply (H0 x).
-    destruct (vsymbol_eq_dec x v); subst; auto.
-    + inversion H; subst. contradiction.
-    + split. apply in_in_remove; auto. right; auto.
-Qed. 
+  
+  Search NoDup app.
 
 Lemma bool_of_binop_impl: forall b1 b2,
   bool_of_binop Timplies b1 b2 = all_dec (b1 -> b2).
@@ -951,6 +1081,71 @@ Proof.
   match goal with |- context[ all_dec ?P ] => destruct (all_dec P); auto end;
   exfalso; apply n; auto.
 Qed.
+
+(*TODO: move*)
+Lemma distr_impl_forall (pf: pi_funpred gamma_valid pd) 
+(vt: val_typevar) (vv: @val_vars sigma pd vt)  
+(f1 f2: formula) (x: vsymbol)
+(Hval1: valid_formula sigma (Fbinop Timplies f1 (Fquant Tforall x f2)))
+(Hval2: valid_formula sigma (Fquant Tforall x (Fbinop Timplies f1 f2))):
+~In x (form_fv f1) ->
+formula_rep gamma_valid pd pf all_unif vt vv
+  (Fbinop Timplies f1 (Fquant Tforall x f2)) Hval1 =
+formula_rep gamma_valid pd pf all_unif vt vv
+  (Fquant Tforall x (Fbinop Timplies f1 f2)) Hval2.
+Proof.
+  intros Hnotin.
+  rewrite fforall_rep, fbinop_rep, bool_of_binop_impl.
+  apply all_dec_eq. rewrite fforall_rep. split; intros.
+  - rewrite fbinop_rep, bool_of_binop_impl, simpl_all_dec.
+    intros.
+    assert (formula_rep gamma_valid pd pf all_unif vt vv f1
+    (proj1 (valid_binop_inj (valid_formula_eq eq_refl Hval1)))). {
+      erewrite form_fv_agree. erewrite fmla_rep_irrel. apply H0.
+      intros. unfold substi.
+      destruct (vsymbol_eq_dec x0 x); subst; auto. contradiction.
+    }
+    specialize (H H1).
+    rewrite simpl_all_dec in H.
+    specialize (H d).
+    erewrite fmla_rep_irrel. apply H.
+  - rewrite simpl_all_dec. intros d.
+    specialize (H d).
+    revert H. rewrite fbinop_rep, bool_of_binop_impl, simpl_all_dec;
+    intros.
+    erewrite fmla_rep_irrel.
+    apply H. erewrite form_fv_agree. erewrite fmla_rep_irrel. apply H0.
+    intros. unfold substi. destruct (vsymbol_eq_dec x0 x); subst; auto.
+    contradiction.
+Qed.
+
+(*TODO: move*)
+Lemma distr_impl_let (pf: pi_funpred gamma_valid pd) 
+(vt: val_typevar) (vv: @val_vars sigma pd vt)  
+(f1 f2: formula) (t: term) (x: vsymbol)
+(Hval1: valid_formula sigma (Fbinop Timplies f1 (Flet t x f2)))
+(Hval2: valid_formula sigma (Flet t x (Fbinop Timplies f1 f2))):
+~In x (form_fv f1) ->
+formula_rep gamma_valid pd pf all_unif vt vv
+  (Fbinop Timplies f1 (Flet t x f2)) Hval1 =
+formula_rep gamma_valid pd pf all_unif vt vv
+  (Flet t x (Fbinop Timplies f1 f2)) Hval2.
+Proof.
+  intros.
+  rewrite flet_rep, !fbinop_rep, !bool_of_binop_impl.
+  apply all_dec_eq.
+  rewrite flet_rep.
+  erewrite form_fv_agree.
+  erewrite (form_fv_agree _ _ _ _ _ f2).
+  erewrite fmla_rep_irrel.
+  erewrite (fmla_rep_irrel _ _ _ _ _ _ f2).
+  reflexivity.
+  all: intros; unfold substi;
+  destruct (vsymbol_eq_dec x0 x); subst; auto; try contradiction.
+  unfold eq_rec_r, eq_rec, eq_rect. simpl.
+  apply term_rep_irrel.
+Qed.
+  
 
 (*TODO: move*)
 (*If the formula is wf, we can move an implication
@@ -971,56 +1166,155 @@ Lemma distr_impl_let_forall (pf: pi_funpred gamma_valid pd)
   formula_rep gamma_valid pd pf all_unif vt vv
     (Fbinop Timplies f1 (fforalls q (iter_flet l f2))) Hval2.
 Proof.
-  induction l; simpl.
-  - (*TODO: separate lemma - move f1 past foralls*)
-    admit.
-  - erewrite fmla_rep_irrel. rewrite fforalls_val.
-    rewrite fbinop_rep.
-    rewrite bool_of_binop_impl. apply all_dec_eq.
-    split; intros.
-    + erewrite fmla_rep_irrel. rewrite fforalls_val.
-      rewrite simpl_all_dec. intros h.
-      specialize (H h).
-      revert H.
+  revert vv.
+  induction q.
+  - simpl.
+    (*Prove let case here*)
+    induction l; simpl; auto.
+    + intros. apply fmla_rep_irrel.
+    + intros. erewrite distr_impl_let.
+      * erewrite !flet_rep, IHl.
+        f_equal. f_equal. apply term_rep_irrel.
+        intros x C. apply (Hl x). split_all; auto. right; auto.
+        (*Go back and do [valid_formula]*)
+        Unshelve.
+        simpl in Hval1. simpl in Hval2.
+        inversion Hval1; subst.
+        constructor; auto.
+        inversion Hval2; subst.
+        constructor; auto.
+        inversion H6; subst; auto.
+      * intro C. apply (Hl a). split_all; auto. left; auto.
+  - intros vv. simpl.
+    erewrite distr_impl_forall.
+    + rewrite !fforall_rep. apply all_dec_eq.
+      split; intros.
+      * erewrite  <- IHq. apply H.
+        intros. intro C. apply (Hq x). split_all; auto.
+        right; auto.
+      * erewrite IHq. apply H. intros. intro C. apply (Hq x).
+        split_all; auto. right; auto.
+        (*Go back and do [valid_formula]*)
+        Unshelve.
+        simpl in Hval1; simpl in Hval2; inversion Hval1; 
+        inversion Hval2; subst.
+        constructor; auto. constructor; auto.
+        inversion H10; subst. auto.
+    + intro C.
+      apply (Hq a). split; auto. left; auto.
+Qed.
+
+(*Kind of a silly lemma, but we need to be able
+  to rewrite the first of an implication without
+  unfolding all bound variables
+  *)
+(*TODO: move*)
+Lemma and_impl_bound (pf: pi_funpred gamma_valid pd) 
+(vt: val_typevar) (vv: @val_vars sigma pd vt)  
+(f1 f2 f3: formula)
+(q: list vsymbol) (l: list (vsymbol * term))
+Hval1 Hval2: 
+formula_rep gamma_valid pd pf all_unif vt vv
+  (fforalls q (iter_flet l (Fbinop Timplies (Fbinop Tand f1 f2) f3))) Hval1 =
+formula_rep gamma_valid pd pf all_unif vt vv
+  (fforalls q (iter_flet l (Fbinop Timplies f1 (Fbinop Timplies f2 f3)))) Hval2.
+Proof.
+  assert (A:=Hval1).
+  assert (B:=Hval2).
+  apply fforalls_valid_inj in A.
+  apply fforalls_valid_inj in B. split_all.
+  rewrite (fforalls_val') with(Hval1:=H1).
+  rewrite (fforalls_val') with(Hval1:=H).
+  assert (A:=H1).
+  apply iter_flet_valid_inj in A.
+  assert (B:=H).
+  apply iter_flet_valid_inj in B.
+  split_all.
+  apply all_dec_eq. split; intros Hrep h.
+  - specialize (Hrep h).
+    rewrite fmla_rep_irrel with (Hval1:=H) 
+      (Hval2:=iter_flet_valid  l _ H3 H4).
+    rewrite fmla_rep_irrel with (Hval1:=H1)
+      (Hval2:=iter_flet_valid l _ H5 H4) in Hrep.
+    revert Hrep. rewrite !iter_flet_val.
+    rewrite and_impl with(Hval2:=H3).
+    intros C; apply C.
+  - specialize (Hrep h).
+    rewrite fmla_rep_irrel with (Hval1:=H) 
+      (Hval2:=iter_flet_valid  l _ H3 H4) in Hrep.
+    rewrite fmla_rep_irrel with (Hval1:=H1)
+      (Hval2:=iter_flet_valid l _ H5 H4).
+    revert Hrep. rewrite !iter_flet_val.
+    rewrite and_impl with(Hval2:=H3).
+    intros C; apply C.
+Qed.
+
+(*Last (I hope) intermediate lemma: we can
+  push a let outside of foralls if the variable does not
+  appear quantified and no free variables in the term appear in
+  the list either*)
+Lemma distr_let_foralls (pf: pi_funpred gamma_valid pd) 
+(vt: val_typevar) (vv: @val_vars sigma pd vt)  
+(t: term) (x: vsymbol) (f: formula)
+(q: list vsymbol) Hval1 Hval2:
+(~ In x q) ->
+(forall y, In y (term_fv t) -> ~ In y q) ->
+formula_rep gamma_valid pd pf all_unif vt vv
+  (fforalls q (Flet t x f)) Hval1 =
+formula_rep gamma_valid pd pf all_unif vt vv
+  (Flet t x (fforalls q f)) Hval2.
+Proof.
+  intros. revert vv. induction q; intros vv.
+  - simpl. apply fmla_rep_irrel.
+  - simpl. (*Here, we prove the single transformation*)
+    rewrite fforall_rep, flet_rep, fforall_rep.
+    assert (Hval3: valid_formula sigma (Flet t x (fforalls q f))). {
+        simpl in Hval2. inversion Hval2; subst.
+        inversion H6; subst. constructor; auto.
+      }
+    assert (Hnotx: ~ In x q). {
+      intro C. apply H. right; auto.
+    }
+    assert (Hinq: forall y : vsymbol, In y (term_fv t) -> ~ In y q). {
+      intros y Hy C. apply (H0 y); auto. right; auto.
+    }
+    apply all_dec_eq. split; intros Hrep d; specialize (Hrep d).
+    + rewrite IHq with (Hval2:=Hval3) in Hrep; auto.
+      rewrite flet_rep in Hrep.
+      rewrite substi_diff.
+      rewrite term_rep_irrel with(Hty2:=(proj1 (valid_let_inj (valid_formula_eq eq_refl Hval3)))).
+      rewrite fmla_rep_irrel with (Hval2:=(proj2 (valid_let_inj (valid_formula_eq eq_refl Hval3)))).
+      erewrite term_fv_agree in Hrep. apply Hrep.
+      intros. unfold substi. destruct (vsymbol_eq_dec x0 a); subst; auto.
+      exfalso. apply (H0 a); auto. left; auto.
+      intro; subst. apply H. left; auto.
+    + rewrite IHq with (Hval2:=Hval3); auto.
+      rewrite flet_rep.
+      rewrite substi_diff.
+      rewrite term_rep_irrel with(Hty2:=(proj1 (valid_let_inj (valid_formula_eq eq_refl Hval2)))).
+      rewrite fmla_rep_irrel with (Hval2:=(valid_quant_inj
+      (valid_formula_eq eq_refl
+         (proj2 (valid_let_inj (valid_formula_eq eq_refl Hval2)))))).
+      erewrite term_fv_agree in Hrep. apply Hrep.
+      intros. unfold substi. destruct (vsymbol_eq_dec x0 a); subst; auto.
+      exfalso. apply (H0 a); auto. left; auto.
+      intro; subst. apply H. left; auto.
+Qed.
+
+
       (*Now need to simplify let and generalize v*)
       (*TODO: start here - should be doable, just need to push through*)
-
-      rewrite IHl in H.
-      Search all_dec.
-
-    instantiate.
-    instantiate H1:=1.
-    instantiate 1 as Hq.
-  
-  Search fforalls.
-  
-  apply fmla_rep_irrel.
-  (*TODO: separate lemmas? Can we do this?*)
-  induction q; simpl.
-  - induction l; simpl. apply fmla_rep_irrel.
-    (*TODO: prove this lemma separately in Denot*)
-    admit.
-  - (*TODO: has to be way to move impl all the way past let, then
-      past quants*) rewrite fforall_rep, fbinop_rep.
-
-  
-  rewrite fquant_rep.
-    simpl.
-  
-  induction l.
-  - simpl. 
-  
-  
-  : first we will prove fo*)
-
-
-
-formula_rep gamma_valid pd pf all_unif vt vv
-  (fforalls (tup_1 (indpred_decomp f2))
-     (iter_flet (tup_2 (indpred_decomp f2))
-        (Fbinop Timplies
-           (Fbinop Tand f1 (iter_fand (tup_3 (indpred_decomp f2))))
-           (tup_4 (indpred_decomp f2))))) v
+(*After, finish following lemma, equal interp
+  THEN prove that for valid_ind_form, last is p tys tms for tys and
+  tms we can get in a function
+  THEN prove (probably) that this is still strictly positive
+  THEN try to prove main theorem, see where we get stuck
+  and see if assuming SP -> (indpred -> P) lets us prove it
+  if so, go back to that lemma and prove
+  finally, deal with alpha substitution (can assume as
+    axiom for now)
+  also fix those admitted cases in denot
+  *)
 
 (*Now, we prove that any formula which is valid and whose bound
   variables are well-formed is equivalent to the one formed
@@ -1048,7 +1342,8 @@ Proof.
     simpl in v0. 
     rewrite !fforall_rep. apply all_dec_eq.
     split; intros Hall d.
-    + erewrite <- H. apply (Hall d).
+    + rewrite <- H with (Hval:=(valid_quant_inj (valid_formula_eq eq_refl Hval))). 
+      apply (Hall d).
       apply wf_quant in H0; auto.
     + erewrite H. apply (Hall d).
       apply wf_quant in H0; auto.
@@ -1057,11 +1352,160 @@ Proof.
     simpl in v.
     (*We need to know that we can push a let and a quantifier
       across an implication. This is why we need the wf assumption*)
-    rewrite !fbinop_rep. simpl.
-    simpl in v.
-    erewrite H.
-    + (*TODO: we need the following*)
+    rewrite !fbinop_rep, bool_of_binop_impl.
+    assert (Hval1 : valid_formula sigma
+    (fforalls (tup_1 (indpred_decomp f2))
+       (iter_flet (tup_2 (indpred_decomp f2))
+          (Fbinop Timplies (iter_fand (tup_3 (indpred_decomp f2)))
+             (tup_4 (indpred_decomp f2)))))). {
+      apply fforalls_valid_inj in v. split_all.
+      apply fforalls_valid; auto.
+      apply iter_flet_valid_inj in H2. split_all.
+      apply iter_flet_valid; auto.
+      inversion H2; subst.
+      constructor; auto.
+      inversion H8; subst. auto.
+    }
+    rewrite H0 with(v:=Hval1); [| apply (wf_binop _ _ _ H1)].
+    assert (Hval2: valid_formula sigma
+    (fforalls (tup_1 (indpred_decomp f2))
+       (iter_flet (tup_2 (indpred_decomp f2))
+          (Fbinop Timplies f1 (Fbinop Timplies 
+            (iter_fand (tup_3 (indpred_decomp f2))) 
+            (tup_4 (indpred_decomp f2))))))). {
+      inversion Hval; subst.
+      apply fforalls_valid_inj in Hval1. split_all.
+      apply iter_flet_valid_inj in H2. split_all.
+      inversion H2; subst.
+      apply fforalls_valid; auto.
+      apply iter_flet_valid; auto.
+      constructor; auto.
+    }
+    rewrite and_impl_bound with(Hval2:=Hval2).
+    assert (Hval3: valid_formula sigma (Fbinop Timplies f1
+      (fforalls (tup_1 (indpred_decomp f2))
+      (iter_flet (tup_2 (indpred_decomp f2))
+            (Fbinop Timplies (iter_fand (tup_3 (indpred_decomp f2)))
+                (tup_4 (indpred_decomp f2))))))). {
+      apply fforalls_valid_inj in Hval2; split_all.
+      apply iter_flet_valid_inj in H2; split_all.
+      inversion H2; subst. constructor; auto. 
+    }
+    rewrite (distr_impl_let_forall _ _ _ f1) with(Hval2:=Hval3).
+    + rewrite fbinop_rep, bool_of_binop_impl.
+      apply all_dec_eq. split; intros;
+      erewrite fmla_rep_irrel;
+      apply H2; erewrite fmla_rep_irrel; apply H3.
+    + (*Now, prove that everything in tup_1 is a bound variable in formula*)
+      intros. intro C. split_all.
+      unfold fmla_wf in H1. split_all. apply (H4 x).
+      split_all; simpl; auto. apply union_elts. left; auto.
+      apply in_or_app. right. apply indpred_decomp_bound; auto.
+    + intros x C. unfold fmla_wf in H1. split_all.
+      apply (H4 (fst x)). split_all.
+      simpl. apply union_elts. left; auto.
+      simpl. apply in_or_app. right. apply indpred_decomp_bound; auto.
+  - (*On to let case*)
+    rewrite flet_rep.
+    assert (Hval1: valid_formula sigma
+    (fforalls (tup_1 (indpred_decomp f0))
+       (iter_flet (tup_2 (indpred_decomp f0))
+          (Fbinop Timplies (iter_fand (tup_3 (indpred_decomp f0)))
+             (tup_4 (indpred_decomp f0)))))). {
+      apply fforalls_valid_inj in v0; split_all.
+      inversion H2; subst.
+      apply fforalls_valid; auto.
+    }
+    rewrite H0 with(v:=Hval1); [| apply (wf_let _ _ _ H1)].
+    (*Yes, show that we can push a let through a fforalls as long
+      as v is not in any of those bound variables*) 
+    (*temp*)
+    (*Hmm ugh: we need to know the following:
+      1. v is not in the list of quantified vars
+      2. no free variable in t appears in list - should follow
+        from fact that these are all bound*)
+    assert (Hval2: valid_formula sigma (Flet tm v 
+    (fforalls (tup_1 (indpred_decomp f0))
+       (iter_flet (tup_2 (indpred_decomp f0))
+          (Fbinop Timplies (iter_fand (tup_3 (indpred_decomp f0)))
+             (tup_4 (indpred_decomp f0))))))). {
+      apply fforalls_valid_inj in v0; split_all.
+      inversion H2; subst.
+      constructor; auto.
+    } 
+    erewrite distr_let_foralls with(Hval2:=Hval2).
+    rewrite flet_rep.
+    erewrite term_rep_irrel.
+    erewrite fmla_rep_irrel. reflexivity.
+    (*These contradict wf*)
+    intro C.
+    assert (In v (bnd_f f0)). {
+      apply indpred_decomp_bound; auto.
+    }
+    unfold fmla_wf in H1. split_all. simpl in H1. inversion H1; subst.
+    apply H6. apply in_or_app; right; auto.
+    intros y Hy C.
+    assert (In y (bnd_f f0)). {
+      apply indpred_decomp_bound; auto.
+    }
+    unfold fmla_wf in H1. split_all. simpl in H3.
+    apply (H3 y). 
+    split_all; auto.
+    apply union_elts. left; auto.
+    right. apply in_or_app. right; auto.
+  - apply (Tconst (ConstInt 0)).
+Qed.
+
+    Unshelve.
+    erewrite 
+    reflexivity.
+    assert (~ In v (tup_1 (indpred_decomp f0)))
+
+
+      auto.  
+
+
+      erewrite fmla_rep_irrel. apply H2.
+      
+      specialize (H2 H3). reflexivity.
+
+
+
     
+
+    (*Hmm, we don't know (and we cannot assume, I think) that we
+      can transport everything across the bound variables
+      We will do in separate lemma*)
+    Check distr_impl_let_forall.
+    assert (Hval3: valid_formula sigma
+    (Fbinop Timplies (Fbinop Tand f1 ?f)
+       (fforalls ?M3326 (iter_flet ?M3327 ?M3325)))")
+    erewrite (distr_impl_let_forall _ _ _ (Fbinop Tand f1 _)) with(Hval2:=Hval2).  with(Hval2:=Hval).
+    
+    _ Hval1).
+    erewrite H0.
+    + (*TODO: we need the following*)
+      erewrite !distr_impl_let_forall.
+      * instantiate. Unshelve.
+        2 : {
+          apply fforalls_valid.
+          admit.
+          admit.
+        }
+        2 : admit.
+        2: admit.
+      
+      
+      erewrite and_impl, !fbinop_rep, !bool_of_binop_impl.
+        apply all_dec_eq. split; intros.
+        specialize (H2 H3).
+        erewrite (fmla_rep_irrel _ _ _ _ _ _ (iter_fand (tup_3 _))).
+        erewrite (fmla_rep_irrel _ _ _ _ _ _ (fforalls _ _)).
+        reflexivity.
+        f_equal. 
+      (*TOO: show that ((f1 /\ f2) -> f3) is same as f1 -> f2 -> f3*)
+      rewrite !fbinop_rep, !bool_of_binop_impl.
+      * Unshelve.
     (*Need to rewrite with all the rep relations*)
 
     rewrite <- H.
