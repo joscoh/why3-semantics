@@ -19,14 +19,13 @@ Definition all_dec : forall (P : Prop), {P} + {~P} := excluded_middle_informativ
 Section Denot.
 
 Context {sigma: sig} {gamma: context} (gamma_valid: valid_context sigma gamma)
-  (pd: pi_dom) (pf: pi_funpred gamma_valid pd).
+  (pd: pi_dom) .
 
 (*Representation of terms, formulas, patterns*)
 
 Notation domain := (domain (dom_aux pd)).
 Notation val x :=  (v_subst (v_typevar x)).
 Notation val_typevar := (@val_typevar sigma).
-Notation funs := (funs gamma_valid pd pf).
 Notation substi := (substi pd).
 
 (*TODO: 2 options: can take in hypothesis that term has type ty and then use
@@ -1107,6 +1106,10 @@ Qed.*)
 
 (*TODO: move above?*)
 Variable vt: val_typevar.
+Section Defs.
+
+Variable (pf: pi_funpred gamma_valid pd).
+Notation funs := (funs gamma_valid pd pf).
 
 (*Inversion lemma for patterns*)
 
@@ -2747,6 +2750,127 @@ Proof.
   f_equal; apply fmla_rep_irrel.
 Qed.
 
+(*TODO: maybe move above*)
+(*Lemma to rewrite both a term/formula and a proof at once*)
+Lemma fmla_rewrite vv (f1 f2: formula) (Heq: f1 = f2)
+  (Hval1: valid_formula sigma f1)
+  (Hval2: valid_formula sigma f2):
+  formula_rep vv f1 Hval1 = formula_rep vv f2 Hval2.
+Proof.
+  subst. apply fmla_rep_irrel.
+Qed.
+
+End Defs.
+
+(*We need different pf's*)
+Check formula_rep.
+Check predsym_in_term.
+(*TODO: move*)
+(*Suppose we have a term/fmla and 2 pi_funpreds which agree
+  on all predicates that are used. Then, their interp is equiv*)
+(*TODO: maybe separate out funs and preds? Meh, prob not needed*)
+(*This proof is not interesting, since we never adjust the
+  pre-interp like we do the valuation. We just need to push through
+  the induction*)
+Lemma pi_predsym_agree (t: term) (f: formula) :
+(forall (p1 p2: pi_funpred gamma_valid pd) 
+  (v: val_vars pd vt) (ty: vty) 
+  (Hty: term_has_type sigma t ty),
+  (forall p, predsym_in_term p t -> 
+    preds gamma_valid pd p1 p = preds gamma_valid pd p2 p) ->
+  (forall f, funs gamma_valid pd p1 f = funs gamma_valid pd p2 f) ->
+  term_rep p1 v t ty Hty = term_rep p2 v t ty Hty) /\
+(forall (p1 p2: pi_funpred gamma_valid pd) (v: val_vars pd vt) 
+  (Hval: valid_formula sigma f),
+  (forall p, predsym_in p f -> 
+    preds gamma_valid pd p1 p = preds gamma_valid pd p2 p) ->
+  (forall f, funs gamma_valid pd p1 f = funs gamma_valid pd p2 f) ->
+  formula_rep p1 v f Hval = formula_rep p2 v f Hval).
+Proof.
+  revert t f.
+  apply term_formula_ind; simpl; intros; auto.
+  - rewrite H1. f_equal. f_equal. f_equal.
+    (*TODO: separate lemma*)
+    admit.
+  - erewrite H. apply H0; auto. all: auto.
+    all: intros; apply H1; rewrite H3; auto.
+    rewrite orb_true_r. auto.
+  - erewrite H. erewrite H1. erewrite H0. reflexivity.
+    all: auto.
+    all: intros p Hinp; apply H2; rewrite Hinp; simpl; auto;
+    rewrite orb_true_r; auto.
+  - (*match*) 
+    inversion Hty; subst. clear H6 H10 H11.
+    rename H8 into Hallpats.
+    generalize dependent (proj1 (ty_match_inv (has_type_eq eq_refl Hty))).
+    generalize dependent (proj2 (ty_match_inv (has_type_eq eq_refl Hty))).
+    clear Hty.
+    revert v0.
+    induction ps; simpl; intros; auto.
+    destruct a as [pat1 t1]; simpl.
+    rewrite H with(p2:=p2) at 1; auto.
+    destruct (match_val_single vt v (has_type_valid gamma_valid tm v t) (term_rep p2 v0 tm v t) pat1) eqn : Hm.
+    + inversion H0; subst.
+      apply H5; auto.
+      intros. apply H1. simpl. rewrite H3; simpl. 
+      rewrite orb_true_r; auto.
+    + apply IHps; auto.
+      * inversion H0; subst; auto.
+      * intros. apply H1. simpl.
+        rewrite orb_assoc, (orb_comm (predsym_in_term p tm)), <- orb_assoc, H3,
+        orb_true_r; auto.
+      * intros. apply Hallpats. right; auto.
+    + intros. apply H1. rewrite H3; auto.
+  - f_equal. apply functional_extensionality_dep.
+    intros. erewrite H. reflexivity. all: auto.
+  - (*Here, we use fact that predsym in*)
+    rewrite H0; [|destruct (predsym_eq_dec p p); auto; contradiction].
+    f_equal. (*TODO: this*) admit.
+  - destruct q; apply all_dec_eq.
+    + split; intros Hall d; specialize (Hall d);
+      erewrite H; try apply Hall; auto.
+      intros. rewrite H0; auto.
+    + split; intros [d Hall]; exists d;
+      erewrite H; try apply Hall; auto.
+      intros. rewrite H0; auto.
+  - erewrite H. erewrite H0. reflexivity.
+    all: auto. all: intros; apply H1; rewrite H3; auto;
+    rewrite orb_true_r; auto.
+  - erewrite H. erewrite H0. reflexivity.
+    all: auto. all: intros p Hinp; apply H1; rewrite Hinp; auto;
+    rewrite orb_true_r; auto.
+  - erewrite H; auto.
+  - erewrite H. apply H0.
+    all: auto. all: intros p Hinp; apply H1; rewrite Hinp; auto;
+    rewrite orb_true_r; auto.
+  - erewrite H. erewrite H0. erewrite H1. reflexivity.
+    all: auto. all: intros p Hinp; apply H2; rewrite Hinp; auto;
+    rewrite !orb_true_r; auto.
+  - (*match*) 
+    inversion Hval; subst. clear H6 H9 H10.
+    rename H8 into Hallpats.
+    generalize dependent (proj1 (valid_match_inv (valid_formula_eq eq_refl Hval))).
+    generalize dependent (proj2 (valid_match_inv (valid_formula_eq eq_refl Hval))).
+    clear Hval.
+    revert v0.
+    induction ps; simpl; intros; auto.
+    destruct a as [pat1 f1]; simpl.
+    rewrite H with(p2:=p2) at 1; auto.
+    destruct (match_val_single vt v (has_type_valid gamma_valid tm v t) (term_rep p2 v0 tm v t) pat1) eqn : Hm.
+    + inversion H0; subst.
+      apply H5; auto.
+      intros. apply H1. simpl. rewrite H3; simpl. 
+      rewrite orb_true_r; auto.
+    + apply IHps; auto.
+      * inversion H0; subst; auto.
+      * intros. apply H1. simpl.
+        rewrite orb_assoc, (orb_comm (predsym_in_term p tm)), <- orb_assoc, H3,
+        orb_true_r; auto.
+      * inversion Hallpats; subst; auto.
+    + intros. apply H1. rewrite H3; auto.
+Admitted.
+
+  
 End Denot.
 
 (*

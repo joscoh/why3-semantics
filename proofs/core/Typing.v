@@ -618,6 +618,8 @@ Scheme typesym_inhab_ind := Minimality for typesym_inhab Sort Prop with
 constr_inhab_ind := Minimality for constr_inhab Sort Prop with
 vty_inhab_ind := Minimality for vty_inhab Sort Prop.
 
+Set Elimination Schemes.
+
 (*An ADT is inhabited if its typesym is inhabited under the empty context*)
 Definition adt_inhab (a : alg_datatype) : Prop :=
   match a with
