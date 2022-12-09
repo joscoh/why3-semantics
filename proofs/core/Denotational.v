@@ -1409,6 +1409,98 @@ with formula_rep (v: val_vars pd vt) (f: formula)
   end) eq_refl
   .
 
+(*First, rewriting lemmas for formulas*)
+(*In other files, things do not simplify/reduce because of the
+  dependent types/proofs. These rewrite lemmas ensure we 
+  never have to unfold giant proof terms*)
+Lemma fbinop_rep (vv: val_vars pd vt)
+  (f1 f2: formula) (b: binop) 
+  (Hval: valid_formula sigma (Fbinop b f1 f2)) :
+  formula_rep vv (Fbinop b f1 f2) Hval =
+  bool_of_binop b 
+  (formula_rep vv f1 
+    (proj1 (valid_binop_inj (valid_formula_eq eq_refl Hval))))
+  (formula_rep vv f2 
+    (proj2 (valid_binop_inj (valid_formula_eq eq_refl Hval)))).
+Proof.
+  reflexivity.
+Qed.
+
+Lemma fforall_rep (vv: val_vars pd vt)
+  (f: formula) (v: vsymbol) 
+  (Hval: valid_formula sigma (Fquant Tforall v f)) :
+  formula_rep vv (Fquant Tforall v f) Hval =
+  all_dec (forall d, formula_rep (substi vt vv v d) f
+    (valid_quant_inj (valid_formula_eq eq_refl Hval))).
+Proof.
+  reflexivity.
+Qed.
+
+Lemma flet_rep (vv: val_vars pd vt)
+  (t: term) (v: vsymbol) (f: formula) 
+  (Hval: valid_formula sigma (Flet t v f)) :
+  formula_rep vv (Flet t v f) Hval =
+  formula_rep
+  (substi vt vv v (term_rep vv t (snd v) 
+    (proj1 (valid_let_inj (valid_formula_eq eq_refl Hval))))) f
+    (proj2(valid_let_inj (valid_formula_eq eq_refl Hval))).
+Proof.
+  reflexivity.
+Qed.
+
+Lemma fexists_rep (vv: val_vars pd vt)
+  (f: formula) (v: vsymbol) 
+  (Hval: valid_formula sigma (Fquant Texists v f)) :
+  formula_rep vv (Fquant Texists v f) Hval =
+  all_dec (exists d, formula_rep (substi vt vv v d) f
+    (valid_quant_inj (valid_formula_eq eq_refl Hval))).
+Proof.
+  reflexivity.
+Qed.
+
+Lemma fif_rep (vv: val_vars pd vt)
+  (f1 f2 f3: formula)
+  (Hval: valid_formula sigma (Fif f1 f2 f3)) :
+  formula_rep vv (Fif f1 f2 f3) Hval =
+  if (formula_rep vv f1 
+  (proj1 (valid_if_inj (valid_formula_eq eq_refl Hval))))
+  then 
+  (formula_rep vv f2 
+    (proj1 (proj2 (valid_if_inj (valid_formula_eq eq_refl Hval)))))
+  else
+  (formula_rep vv f3 
+    (proj2 (proj2 (valid_if_inj (valid_formula_eq eq_refl Hval))))).
+Proof.
+  reflexivity.
+Qed.
+
+Lemma fmatch_rep (vv: val_vars pd vt)
+  (t: term) (ty: vty) (ps: list (pattern * formula))
+  (Hval: valid_formula sigma (Fmatch t ty ps)):
+  formula_rep vv (Fmatch t ty ps) Hval =
+  (fix match_rep (xs: list (pattern * formula)) 
+  (Hall: Forall (fun x => valid_formula sigma (snd x)) xs) :
+   bool :=
+    match xs as l' return 
+      Forall (fun x => valid_formula sigma (snd x)) l' ->
+      bool with
+    | (p , dat) :: ptl => fun Hall =>
+      match (match_val_single vt ty 
+        (has_type_valid gamma_valid _ _ 
+          (proj1 (valid_match_inv (valid_formula_eq eq_refl Hval)))) (term_rep vv t ty 
+        (proj1 (valid_match_inv (valid_formula_eq eq_refl Hval)))) p) with
+      | Some l => formula_rep (extend_val_with_list vt vv l) dat
+        (Forall_inv Hall) 
+      | None => match_rep ptl (Forall_inv_tail Hall)
+      end
+    | _ => fun _ => false
+    end Hall) ps (proj2 (valid_match_inv (valid_formula_eq eq_refl Hval))).
+Proof.
+  reflexivity.
+Qed.
+  
+
+
 (*We need to know that the valid typing proof is irrelevant.
   I believe this should be provable without proof irrelevance,
   but [term_rep] and [formula_rep] already depend on
@@ -2548,6 +2640,30 @@ Proof.
   intros. apply val_fv_agree; auto. apply (Tconst (ConstInt 0)).
 Qed.
 
+(*The interpretation of any 
+  closed term is equivalent under any valuation*)
+Corollary term_closed_val (t: term)
+  (v1 v2: val_vars pd vt) (ty: vty)
+  (Hty: term_has_type sigma t ty):
+  closed_term t ->
+  term_rep v1 t ty Hty = term_rep v2 t ty Hty.
+Proof.
+  unfold closed_term. intros.
+  apply term_fv_agree; intros.
+  destruct (term_fv t); inversion H; inversion H0.
+Qed.
+
+Corollary fmla_closed_val (f: formula)
+  (v1 v2: val_vars pd vt) 
+  (Hval: valid_formula sigma f):
+  closed_formula f ->
+  formula_rep v1 f Hval = formula_rep v2 f Hval.
+Proof.
+  unfold closed_formula; intros.
+  apply form_fv_agree; intros.
+  destruct (form_fv f); inversion H; inversion H0.
+Qed.
+
 (*With this we can prove: we can rename the variables in a quantifier
   to a new variable without changing the truth value*)
 (*The proof is a straightforward application of [sub_f_correct]
@@ -2967,6 +3083,19 @@ Lemma term_predsym_agree (t: term):
 Proof.
   apply pi_predsym_agree. apply Ftrue.
 Qed.
+
+Lemma fmla_predsym_agree (f: formula):
+(forall (p1 p2: pi_funpred gamma_valid pd) (v: val_vars pd vt) 
+  (Hval: valid_formula sigma f),
+  (forall p, predsym_in p f -> 
+    preds gamma_valid pd p1 p = preds gamma_valid pd p2 p) ->
+  (forall f, funs gamma_valid pd p1 f = funs gamma_valid pd p2 f) ->
+  formula_rep p1 v f Hval = formula_rep p2 v f Hval).
+Proof.
+  apply pi_predsym_agree. apply (Tconst (ConstInt 0)).
+Qed.
+
+
   
 End Denot.
 

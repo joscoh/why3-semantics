@@ -558,43 +558,6 @@ Qed.
 
 (*Quick test*)
 
-Lemma fbinop_rep (pd': pi_dom) (pf: pi_funpred gamma_valid pd') 
-  (vt: val_typevar) (vv: val_vars pd' vt)
-  (f1 f2: formula) (b: binop) (Hval: valid_formula sigma (Fbinop b f1 f2)) :
-  formula_rep gamma_valid pd' all_unif vt pf vv (Fbinop b f1 f2) Hval =
-  bool_of_binop b 
-  (formula_rep gamma_valid pd' all_unif vt pf vv f1 
-    (proj1 (valid_binop_inj (valid_formula_eq eq_refl Hval))))
-  (formula_rep gamma_valid pd' all_unif vt pf vv f2 
-    (proj2 (valid_binop_inj (valid_formula_eq eq_refl Hval)))).
-Proof.
-  reflexivity.
-Qed.
-
-Lemma fforall_rep (pd': pi_dom) (pf: pi_funpred gamma_valid pd') 
-(vt: val_typevar) (vv: val_vars pd' vt)
-(f: formula) (v: vsymbol) (Hval: valid_formula sigma (Fquant Tforall v f)) :
-formula_rep gamma_valid pd' all_unif vt pf vv (Fquant Tforall v f) Hval =
-all_dec (forall d, formula_rep gamma_valid pd' all_unif vt pf (substi pd' vt vv v d) f
-  (valid_quant_inj (valid_formula_eq eq_refl Hval))).
-Proof.
-  reflexivity.
-Qed.
-
-Lemma flet_rep (pd': pi_dom) (pf: pi_funpred gamma_valid pd') 
-(vt: val_typevar) (vv: val_vars pd' vt)
-(t: term) (v: vsymbol) (f: formula) 
-(Hval: valid_formula sigma (Flet t v f)) :
-formula_rep gamma_valid pd' all_unif vt pf vv (Flet t v f) Hval =
-formula_rep gamma_valid pd' all_unif vt pf 
-(substi pd' vt vv v (term_rep gamma_valid pd' all_unif 
-  vt pf vv t (snd v) 
-  (proj1 (valid_let_inj (valid_formula_eq eq_refl Hval))))) f
-  (proj2(valid_let_inj (valid_formula_eq eq_refl Hval))).
-Proof.
-  reflexivity.
-Qed.
-
 
 (*Will prove:
   1. For p = f1 | .. fn,
@@ -1591,37 +1554,183 @@ Proof.
   split_all; auto.
 Qed.
 
+(*We need the following: since all of the constructor
+  formulas are closed, they are equivalent under any valuation;
+  accordingly, so is [indpred_rep]*)
+Lemma constrs_val_eq (pf: pi_funpred gamma_valid pd)
+(vt: val_typevar) (v1 v2: val_vars pd vt) 
+(fs: list formula)
+(Hform: Forall (valid_formula sigma) fs)
+(Hclosed: Forall closed_formula fs) :
+  iter_and (map is_true (dep_map
+    (formula_rep gamma_valid pd  
+      all_unif vt pf v1) fs Hform)) =
+  iter_and (map is_true (dep_map
+    (formula_rep gamma_valid pd  
+      all_unif vt pf v2) fs Hform)).
+Proof.
+  f_equal. f_equal.
+  revert Hform.
+  induction fs; simpl; auto.
+  intros. inversion Hform; subst. inversion Hclosed; subst. 
+  f_equal; auto.
+  apply fmla_closed_val; auto.
+Qed.
+
+Lemma indpred_rep_single_val_eq (pf: pi_funpred gamma_valid pd)
+(vt: val_typevar) (v1 v2: val_vars pd vt) (p: predsym)
+(fs: list formula) 
+(Hform: Forall (valid_formula sigma) fs)
+(Hclosed: Forall closed_formula fs) :
+  indpred_rep_single pf vt v1 p fs Hform =
+  indpred_rep_single pf vt v2 p fs Hform.
+Proof.
+  unfold indpred_rep_single. 
+  repeat(apply functional_extensionality_dep; intros).
+  apply all_dec_eq.
+  split; intros Hand P; specialize (Hand P);
+  erewrite constrs_val_eq; auto; apply Hand.
+Qed.
+
+(*Let us prove the following: for a closed formula, the interpretation
+  is equivalent under any valuation. Basically, we want to prove
+  that [indpred_rep_single], as well as the [formula_rep]s for the
+  constructors, can be evaluated under any valuation with the same
+  results*)
 (*Now we prove our key intermediate lemma that we need:
   suppose f is a formula in which p appears strictly positiviely,
   then [[f]]_(p->indpred_rep p) implies [[f]]_(p->P) for any P*)
-  (*
 Lemma strict_pos_impred_implies_P (pf: pi_funpred gamma_valid pd) 
 (vt: val_typevar) (vv: val_vars pd vt)
 (p: predsym) (ps: list predsym) 
 (fs: list formula) 
 (Hinp: In p ps)
 (f: formula)
+(Hvalf: valid_formula sigma f)
 (Hpos: ind_strictly_positive ps f)
-(Hform: Forall (valid_formula sigma) fs):
-forall (P:
-  forall srts : list sort,
-  arg_list (domain (dom_aux pd)) 
-    (predsym_sigma_args p srts) ->
-  bool
-),  
+(Hform: Forall (valid_formula sigma) fs)
+(Hclosed: Forall closed_formula fs)
+(Hindpred: preds gamma_valid pd pf p = indpred_rep_single pf vt vv p fs Hform)
+:
+forall (P: forall srts : list sort,
+  arg_list (domain (dom_aux pd)) (predsym_sigma_args p srts) ->
+  bool),  
 (*If P holds of all of the constructors*)
-iter_and
-(map is_true
-   (dep_map
-      (formula_rep gamma_valid pd (interp_with_P pf p P) 
-        all_unif vt vv) fs Hform)) ->
-(*Then indpred_rep p fs x -> P x*) 
-formula_rep gamma_valid pd (interp_with_P ) vt vv f Hvalf 
-forall (srts : list sort)
-(a: arg_list (domain (dom_aux pd)) 
-  (predsym_sigma_args p srts)),
-  indpred_rep_single pf vt vv p fs Hform srts a -> P srts a.
-  *)
+iter_and (map is_true (dep_map
+  (formula_rep gamma_valid pd all_unif vt 
+    (interp_with_P pf p P) vv) fs Hform)) ->
+(*Then [[f]]_(p->indpred_rep p) implies [[f]]_(p->P)*) 
+formula_rep gamma_valid pd all_unif vt pf vv f Hvalf ->
+formula_rep gamma_valid pd all_unif vt (interp_with_P pf p P) vv f Hvalf.
+Proof.
+  intros P HandP.
+  generalize dependent vv.
+  induction Hpos; simpl; intros vv Hindpred HandP; auto.
+  - intros Hrep. erewrite fmla_predsym_agree. apply Hrep.
+    all: auto.
+    intros p' Hinp'.
+    unfold interp_with_P; simpl.
+    destruct (predsym_eq_dec p p'); subst; auto.
+    specialize (H p' Hinp). rewrite Hinp' in H. inversion H.
+  - rewrite !fpred_rep. simpl.
+    (*Show arg lists are the same: because P cannot appear
+      in list by strict positivity*)
+    assert ((get_arg_list_pred pd vt p0 vs ts
+    (term_rep gamma_valid pd all_unif vt pf vv)
+    (valid_formula_eq eq_refl Hvalf)) =  (get_arg_list_pred pd vt p0 vs ts
+    (term_rep gamma_valid pd all_unif vt (interp_with_P pf p P) vv)
+    (valid_formula_eq eq_refl Hvalf))). {
+      apply get_arg_list_pred_eq.
+      rewrite Forall_forall. intros.
+      rewrite term_rep_irrel with(Hty2:=Hty2).
+      apply term_predsym_agree; simpl; auto.
+      intros p' Hinp'.
+      destruct (predsym_eq_dec p p'); subst; auto; simpl.
+      specialize (H0 _ _ H1 Hinp).
+      rewrite Hinp' in H0. inversion H0.
+    }
+    destruct (predsym_eq_dec p p0); subst; simpl; auto.
+    + rewrite Hindpred, H1.
+      apply indpred_least_pred_single with(P:=P); auto. 
+    + rewrite H1. auto.
+  - rewrite !fbinop_rep, !bool_of_binop_impl, !simpl_all_dec.
+    intros Hinpl Hval.
+    apply IHHpos; auto.
+    apply Hinpl. 
+    (*Now we use the fact that P is not in f1*)
+    rewrite (fmla_predsym_agree) with(p2:=(interp_with_P pf p P)); auto.
+    intros p' Hinp'.
+    simpl. destruct (predsym_eq_dec p p'); subst; auto.
+    specialize (H _ Hinp). rewrite Hinp' in H. inversion H.
+  - destruct q.
+    + rewrite !fforall_rep, !simpl_all_dec; intros Hall d; specialize (Hall d).
+      apply IHHpos; auto.
+      (*Use closed fmla assumptions*)
+      erewrite indpred_rep_single_val_eq; auto. apply Hindpred.
+      erewrite constrs_val_eq; auto. apply HandP.
+    + rewrite !fexists_rep, !simpl_all_dec; intros [d Hex]; exists d.
+      apply IHHpos; auto.
+      erewrite indpred_rep_single_val_eq; auto. apply Hindpred.
+      erewrite constrs_val_eq; auto. apply HandP.
+  - rewrite !fbinop_rep; simpl; unfold is_true; rewrite !andb_true_iff;
+    intros [Hf1 Hf2].
+    split; [apply IHHpos1 | apply IHHpos2]; auto.
+  - rewrite !fbinop_rep; simpl; unfold is_true; rewrite !orb_true_iff;
+    intros [Hf1 | Hf2]; 
+    [left; apply IHHpos1 | right; apply IHHpos2]; auto.
+  - rewrite !flet_rep; intros Hf.
+    apply IHHpos; auto. 
+    + erewrite indpred_rep_single_val_eq; auto. apply Hindpred.
+    + erewrite constrs_val_eq; auto. apply HandP.
+    + (*Need fact that p doesn't appear in let term*)
+      erewrite term_predsym_agree. apply Hf. all: auto.
+      intros p' Hinp'. unfold interp_with_P; simpl.
+      destruct (predsym_eq_dec p p'); subst; auto.
+      specialize (H _ Hinp). rewrite Hinp' in H. inversion H.
+  - rewrite !fif_rep.
+    (*First, know that [[f1]] eq in both cases because P cannot be
+      present*)
+    assert (Hf1: formula_rep gamma_valid pd all_unif vt pf vv f1
+    (proj1 (valid_if_inj (valid_formula_eq eq_refl Hvalf))) =
+    formula_rep gamma_valid pd all_unif vt (interp_with_P pf p P) vv f1
+    (proj1 (valid_if_inj (valid_formula_eq eq_refl Hvalf)))). {
+      apply fmla_predsym_agree; auto; simpl; intros p' Hinp'.
+      destruct (predsym_eq_dec p p'); subst; auto.
+      specialize (H _ Hinp). rewrite Hinp' in H; inversion H.
+    }
+    rewrite <- Hf1.
+    destruct (formula_rep gamma_valid pd all_unif vt pf vv f1
+    (proj1 (valid_if_inj (valid_formula_eq eq_refl Hvalf))));
+    [apply IHHpos1 | apply IHHpos2]; auto.
+  - (*Hmm, this is the hardest one - need rewrite lemma for match*)
+    rewrite !fmatch_rep.
+    (*Here, we need a nested induction*)
+    generalize dependent (proj2 (valid_match_inv (valid_formula_eq eq_refl Hvalf))).
+    generalize dependent  (proj1 (valid_match_inv (valid_formula_eq eq_refl Hvalf))).
+    clear Hvalf.
+    induction pats; simpl; auto.
+    intros Hty Hallval. destruct a as [fh ph].
+    (*Show that [term_rep] is equal because P cannot appear*)
+    assert (Hteq: 
+    (term_rep gamma_valid pd all_unif vt pf vv t ty Hty) =
+    (term_rep gamma_valid pd all_unif vt (interp_with_P pf p P) vv t ty Hty)). {
+      apply term_predsym_agree; auto. intros p' Hinp'; simpl.
+      destruct (predsym_eq_dec p p'); subst; auto.
+      specialize (H _ Hinp). rewrite Hinp' in H. inversion H.
+    }
+    rewrite <- Hteq at 1.
+    destruct (match_val_single gamma_valid pd all_unif vt ty
+    (has_type_valid gamma_valid t ty Hty)
+    (term_rep gamma_valid pd all_unif vt pf vv t ty Hty) fh) eqn : Hm.
+    + (*First case follows from original IH*) 
+      apply H1; simpl; auto.
+      * erewrite indpred_rep_single_val_eq; auto. apply Hindpred.
+      * erewrite constrs_val_eq; auto. apply HandP.
+    + (*From nested IH*)
+      apply IHpats; auto.
+      * intros h Hinf. apply H0. right; auto.
+      * intros. apply H1; auto. right; auto.
+Qed.
 
 (*We axiomatize alpha substitution, we will do it later*)
 Axiom alpha_f : formula -> formula.
@@ -1724,6 +1833,7 @@ Theorem indpred_constrs_true
   (Hform: Forall (valid_formula sigma) fs)
   (Hvalind: Forall (fun f => valid_ind_form p f) fs)
   (Hpos: Forall (fun f => ind_positive [p] f) fs)
+  (Hclosed: Forall closed_formula fs)
   (Hindpred: (preds gamma_valid pd pf) p = 
     indpred_rep_single pf vt vv p fs Hform) :
   (forall (f: formula) (Hvalf: valid_formula sigma f), 
@@ -1796,14 +1906,8 @@ Proof.
   destruct (predsym_eq_dec p p); auto; try contradiction.
   assert (e= eq_refl). apply UIP_dec. apply predsym_eq_dec.
   rewrite H. intros.
-  (*Now, we need to show that the arguments to P are actually the same
-    because these terms cannot involve P*)
-  (*Ugly but oh well*)
-  match goal with | H: _ -> is_true (P ?y ?z) |- is_true (P ?y ?a) => assert (z = a) end.
-  - apply get_arg_list_pred_eq.
-    rewrite Forall_forall. intros x Hinx ty Hty1 Hty2.
-    (*First, prove the valuations are equal*)
-    assert ((substi_multi_let (interp_with_P pf p P) vt
+  (*Need this in multiple places*)
+  assert ((substi_multi_let (interp_with_P pf p P) vt
     (substi_mult vt vv (tup_1 (indpred_decomp (alpha_f f))) h)
     (tup_2 (indpred_decomp (alpha_f f))) Halltup2) =
     (substi_multi_let pf vt
@@ -1813,7 +1917,13 @@ Proof.
       - apply indpred_decomp_let_notin with(ps:=[p]); auto.
       - intros p'. destruct (predsym_eq_dec p p'); auto; subst.
         intros. exfalso. apply H. left; auto.
-    }
+  }
+  (*Now, we need to show that the arguments to P are actually the same
+    because these terms cannot involve P*)
+  (*Ugly but oh well*)
+  match goal with | H: _ -> is_true (P ?y ?z) |- is_true (P ?y ?a) => assert (z = a) end.
+  - apply get_arg_list_pred_eq.
+    rewrite Forall_forall. intros x Hinx ty Hty1 Hty2.
     rewrite H0.
     rewrite term_rep_irrel with(Hty2:=Hty2).
     apply term_predsym_agree; auto.
@@ -1828,8 +1938,17 @@ Proof.
     inversion Hindt; subst.
     specialize (H4 p' x Hinx H2).
     rewrite Hinp' in H4. inversion H4.
-  - rewrite <- H0. apply Hformf.
-    clear H0 Hformf.
+  - rewrite <- H1. apply Hformf.
+    clear H1 Hformf.
+    rewrite H0. clear H0.
+    (*TODO: need to prove that this valuation is the
+      same on all free vars of f' to get equivalence
+      Basically, know because everything in quants list + let
+      list is a bound variable and term is wf. But need to show*)
+    remember (substi_multi_let pf vt
+    (substi_mult vt vv (tup_1 (indpred_decomp (alpha_f f))) h)
+    (tup_2 (indpred_decomp (alpha_f f))) Halltup2) as vv'.
+    clear Heqvv'.
     (*Now, we just need to prove that the [iter_and] of all of 
       these constructors is true, when we interpre p with P
       instead of [pf]. Here we will use the strict positivity
@@ -1838,446 +1957,16 @@ Proof.
     rewrite iter_fand_rep in Hconstrs.
     intros f' Hvalf' Hinf'.
     specialize (Hconstrs f' Hvalf' Hinf').
-    (*This is exactly the lemma I need to prove*)
-    (*start here*)
-
-
-  (*TODO: only nontrivial part: need to show that [term_rep]
-    is the same. This follows because p cannot appear in args
-    because of positivity/strict positivity
-    
-    So we need the following results
-    1. For each f in the (and) part of the decomp, p appears
-      strictly positively (done)
-    2. For the remaining formula (and therefore in the terms)
-      P appears positively (that is, when combined with the previous,
-      P does not appear at all) (done)
-    3. Given two terms, if p does not appear anywhere in them,
-      then their interpretation is equal under 2 pfp's who
-      agree on everything but p (or: if agree on all where
-      predsym_in, then same - easier+more general) (done)
-    4. Given a formula where p appears strictly positively,
-      f true under [p->indpred_rep p] -> f true under [p->P]
-      for any p (TODO)
-    
-    *)
-  
-  
-  apply Hformf.
-  unfold interp_with_P at 3.
-  intros.
-  
-  apply Hformf.
-  
-  rewrite (ind_form_decomp _ _ Hvalinda). Hindpred.
-  erewrite fforalls_val in Hformf.
-  rewrite simpl_all_dec in Fo. intros h.
-  rewrite iter_flet_val, fbinop_rep, bool_of_binop_impl, simpl_all_dec.
-  intros Hconstrs.
-
-
-      
-      Search dep_map In.
-    Search iter_and.
-  }
-
-
-
-  rewrite (fmla_rewrite) with(Heq:=ind_form_decomp _ _ Hvalinda).
-  fmla_rewrite
-  Unshelve.
-  erewrite fmla_rep_irrel.
-  rewrite (ind_form_decomp _ _ Hvalinda).
-
-
-  Lemma indpred_decomp_equiv (pf: pi_funpred gamma_valid pd) 
-  (vt: val_typevar) (vv: @val_vars sigma pd vt)  
-  (f: formula) (Hval: valid_formula sigma f)
-  (Hwf: fmla_wf f) :
-  formula_rep gamma_valid pd pf all_unif vt vv f Hval =
-  formula_rep gamma_valid pd pf all_unif vt vv 
-    (indpred_transform f) (indpred_transform_valid f Hval).
-
-
-  (*TODO: assume existence of alpha*)
-
-
-
-  (Hindpred: preds gamma_valid i p = 
-    indpred_rep_single v p fs Hall) :
-  (iter_and (map is_true (dep_map 
-    (@formula_rep _ _ gamma_valid i all_unif v) fs Hall))).
-
-
-
-(pf: pi_funpred gamma_valid pd) 
-(vt: val_typevar) (vv: val_vars pd vt)
-(p: predsym) (fs: list formula) (Hform: Forall (valid_formula sigma) fs):
-forall (P:
-  forall srts : list sort,
-  arg_list (domain (dom_aux pd)) 
-    (predsym_sigma_args p srts) ->
-  bool
-),  
-(*If P holds of all of the constructors*)
-iter_and
-(map is_true
-   (dep_map
-      (formula_rep gamma_valid pd (interp_with_P pf p P) 
-        all_unif vt vv) fs Hform)) ->
-(*Then indpred_rep p fs x -> P x*)  
-forall (srts : list sort)
-(a: arg_list (domain (dom_aux pd)) 
-  (predsym_sigma_args p srts)),
-  indpred_rep_single pf vt vv p fs Hform srts a -> P srts a.
-
-
-(indpred_transform f)
-
-
-    Unshelve.
-    erewrite 
-    reflexivity.
-    assert (~ In v (tup_1 (indpred_decomp f0)))
-
-
-      auto.  
-
-
-      erewrite fmla_rep_irrel. apply H2.
-      
-      specialize (H2 H3). reflexivity.
-
-
-
-    
-
-    (*Hmm, we don't know (and we cannot assume, I think) that we
-      can transport everything across the bound variables
-      We will do in separate lemma*)
-    Check distr_impl_let_forall.
-    assert (Hval3: valid_formula sigma
-    (Fbinop Timplies (Fbinop Tand f1 ?f)
-       (fforalls ?M3326 (iter_flet ?M3327 ?M3325)))")
-    erewrite (distr_impl_let_forall _ _ _ (Fbinop Tand f1 _)) with(Hval2:=Hval2).  with(Hval2:=Hval).
-    
-    _ Hval1).
-    erewrite H0.
-    + (*TODO: we need the following*)
-      erewrite !distr_impl_let_forall.
-      * instantiate. Unshelve.
-        2 : {
-          apply fforalls_valid.
-          admit.
-          admit.
-        }
-        2 : admit.
-        2: admit.
-      
-      
-      erewrite and_impl, !fbinop_rep, !bool_of_binop_impl.
-        apply all_dec_eq. split; intros.
-        specialize (H2 H3).
-        erewrite (fmla_rep_irrel _ _ _ _ _ _ (iter_fand (tup_3 _))).
-        erewrite (fmla_rep_irrel _ _ _ _ _ _ (fforalls _ _)).
-        reflexivity.
-        f_equal. 
-      (*TOO: show that ((f1 /\ f2) -> f3) is same as f1 -> f2 -> f3*)
-      rewrite !fbinop_rep, !bool_of_binop_impl.
-      * Unshelve.
-    (*Need to rewrite with all the rep relations*)
-
-    rewrite <- H.
-  
-  
-  apply true_impl. simpl. 
-
-
-      unfold fmla_wf in H0; simpl in H0.
-      simpl in H0.
-    apply H.
-    
-    simpl.
-
-
-  
-  
-  simpl. apply fmla_rep_irrel. rewrite fpred_rep. apply fmla_rep_irrel.
-
-    (fforalls (tup_1 (indpred_decomp f))
-      (iter_flet (tup_2 (indpred_decomp f))
-        Fbinop Timplies
-          (iter_and (tup_3 (indpred_decomp ))) )
-    
-    ).
-
-
-
-Fixpoint indpred_decomp (f: formula) : 
-  (list vsymbol * list (vsymbol * term) * list formula * formula) :=
-
-
-  is well-formed*)
-
-(*Now, we prove that if it is a [valid_ind_form], then
-  interp equiv*)
-
-      generalize dependent (Forall_inv_tail Hall).
-
-      generalize dependent (@proj1 (term_has_type sigma t (@snd string vty v))
-      (valid_formula sigma (iter_flet vs f))
-      (@valid_let_inj sigma t v (iter_flet vs f)
-         (@valid_formula_eq sigma (Flet t v (iter_flet vs f))
-            (Flet t v (iter_flet vs f))
-            (@eq_refl formula (Flet t v (iter_flet vs f))) Hval')))
-
-      generalize dependent (proj1 (valid_let_inj (valid_formula_eq eq_refl Hval'))).
-      generalize 
-      generalize dependent (Forall_inv_tail Hall)
-    
-    
-    f_equal. 
-  generalize dependent (iter_flet vs f).
-    
-    
-    
-    (forall (h: hlist  (fun x =>
-      domain (dom_aux pd) (v_subst (v_typevar vt) x)) (map snd vs)),
-      formula_rep gamma_valid pd pf all_unif vt
-        (substi_mult vt vv vs h) f Hval).
-
-
-fold_right (fun x => substi)
-
-(vals: hlist (fun x =>
-domain (dom_aux pd) (v_subst (v_typevar vt) x)) (map snd vs)) :
-val_vars pd vt :=
-
-
-      simpl in Hforall.
-    + intros d.
-      specialize (Hforall (hlist_cons ))
-      intros _.
-      specialize (i (hlist_tl h)).
-      apply i.
-
-
-
-      erewrite 
-
-    
-    
-    intros Hal
-    split; intros.
-    +
-
-    simpl.
-
-
-    
-    exfalso. assert (true = false); auto. rewrite < 
-    
-    apply i. constructor.
-    + exfalso. apply n.
-    
-    
-    simpl.
-    mat
-
-
-  simpl.
-
-
-
-
-  Fixpoint sub_f (x y: vsymbol) (f: formula) : formula
-
-
-
-
-  Search all_dec.
-
-
-(*First prove for single bc dependent types suck*)
-Lemma indpred_constrs_true (v: valuation gamma_valid i)
-  (p: predsym) (fs: list formula) (Hall: Forall (valid_formula sigma) fs)
-  (*(srts: list sort) (args: list term)
-  (Hval: valid_formula sigma (Fpred p (sorts_to_tys srts) args))*)
-  (*
-  (a: arg_list (domain (dom_aux gamma_valid i)) (predsym_sigma_args p srts))*)
-  (*TODO: is this right? We will be changing, although valuation
-    won't change*)
-  (Hindpred: preds gamma_valid i p = 
-    indpred_rep_single v p fs Hall) :
-  (iter_and (map is_true (dep_map 
-    (@formula_rep _ _ gamma_valid i all_unif v) fs Hall))).
-Proof.
-  rewrite <- prove_iter_and. intros P.
-  rewrite in_map_iff. intros [b [Hb Hinb]].
-  apply dep_map_in in Hinb. destruct Hinb as [f [Hvalf [Hinf Hfrep]]].
-  rewrite <- Hb. rewrite <- Hfrep.
-  (*TODO: see if we need this*)
-  assert (valid_ind_form p f) by admit.
-  (*hmm how can I get the In to not apply
-    need to see argument: maybe do on paper*)
-  induction H; subst.
-  2: {
-    rewrite fbinop_rep. simpl.
-
-
-
-  }
-  inversion H; subst.
-  2: { rewrite fbinop_rep. simpl.
-
-  
-  
-  unfold formula_rep;  simpl. }
-  - rewrite fpred_rep.
-    rewrite Hindpred. unfold indpred_rep_single.
-    rewrite simpl_all_dec. intros P Hconstrs.
-    (*Know this is true because in the list*)
-    rewrite <- prove_iter_and in Hconstrs.
-    specialize (Hconstrs (all_dec (P (map (v_subst (v_typevar gamma_valid i v)) (map vty_var (p_params p)))
-    (get_arg_list_pred gamma_valid i v p (map vty_var (p_params p)) tms
-       (term_rep gamma_valid i all_unif v) (valid_formula_eq eq_refl Hvalf))))).
-    rewrite <- simpl_all_dec. apply Hconstrs.
-    rewrite in_map_iff.
-    exists (all_dec
-    (P (map (v_subst (v_typevar gamma_valid i v)) (map vty_var (p_params p)))
-       (get_arg_list_pred gamma_valid i v p (map vty_var (p_params p)) tms
-          (term_rep gamma_valid i all_unif v)
-          (valid_formula_eq eq_refl Hvalf)))). split; auto.
-    pose proof (in_dep_map (formula_rep gamma_valid (interp_with_P i p P) all_unif
-    (interp_P_val i p P v)) fs Hall _ Hinf).
-    destruct H0 as [Hval Hin].
-    assert (formula_rep gamma_valid (interp_with_P i p P) all_unif
-    (interp_P_val i p P v) (Fpred p (map vty_var (p_params p)) tms)
-    Hval = (all_dec
-    (P
-       (map (v_subst (v_typevar gamma_valid i v)) (map vty_var (p_params p)))
-       (get_arg_list_pred gamma_valid i v p (map vty_var (p_params p)) tms
-          (term_rep gamma_valid i all_unif v)
-          (valid_formula_eq eq_refl Hvalf))))). {
-      rewrite fpred_rep.
-      (*Hmm, need some additional info about how [interp_with_P]
-        relates to our interp (which of course has [indpred_rep])
-        We want [indpred_rep] to imply P
-        We should also work with Props, not bools, so we can use iff*)
-      assert (forall (P1 P2: Prop), (P1 <-> P2) = (P1 = P2)) by admit.
-      simpl. destruct (predsym_eq_dec p p); simpl;[|contradiction].
-      assert (e = eq_refl). apply UIP_dec. apply predsym_eq_dec.
-      rewrite H2.
-      (*OK, now just need to know something about relation between
-        interp_with_P and i applied to P*)
-      
-        
-      
-      rewrite <- H0.
-
-      rewrite <- H0.
-
-          }
-
-
-
-
-    Check in_dep_map.
-
-    in_dep_map
-
-    
-    
-    exists ((P (map (v_subst (v_typevar gamma_valid i v)) (map vty_var (p_params p)))
-    (get_arg_list_pred gamma_valid i v p (map vty_var (p_params p)) tms
-       (term_rep gamma_valid i all_unif v)
-       (valid_formula_eq eq_refl Hvalf)))).
-    split.
-    
-    rewrite simpl_all_dec. 
-
-
-    
-
-
-
-
-    unfold all_dec.
-    intros. intros.
-
-
-
-
-  destruct b; rewrite <- Hb; auto.
-  (*Now we need to show that this formula is actually true*)
-  (*Here, we might need the valid_ind_form*)
-  assert (valid_ind_form p f) by admit.
-  inversion H; subst.
-  - rewrite fpred_rep in Hfrep.
-    rewrite Hindpred in Hfrep.
-    rewrite <- Hfrep.
-    unfold indpred_rep_single.
-    
-
- 
-    match goal with |- context[ all_dec ?P ] => destruct (all_dec P); auto end.
-    exfalso. apply n. intros P Hiter.
-    intros _.
-    exfalso. apply 
-
-
-
-    match goal with | H: (proj_sumbool _ (all_dec ?P)) = false |- _ => destruct (all_dec P); auto end.
-
-
-
-
-  rewrite <- Hfrep.
-
-
-
-  clear Hfrep.
-
-
-
-  inversion Hvalf.
-
-
-
-  
-  
-
-
-  Print iter_and.
-
-    formula_rep _ _  all_unif v (Fpred p (sorts_to_tys srts) args) Hval.
-Proof.
-  intros Hconstrs.
-  rewrite fpred_rep.
-  rewrite Hindpred.
-  unfold indpred_rep_single.
-  match goal with |- context [all_dec ?P] => destruct (all_dec P); auto end.
-  exfalso. apply n. intros P Hallp. clear n.
-  Print indpred_rep_single.
-  apply indpred_rep_single.
-
-
-  intros iter.
-
-
-  cbn.
-
-  vm_compute.
-  simpl.
-  Print formula_rep.
-  unfold formula_rep. simpl.
-  simpl.
-
-  () srts a.
-  (interp_with_P i p P) all_unif (interp_P_val i p P v)) 
-  fs Hform))
-
-
+    revert Hconstrs.
+    eapply strict_pos_impred_implies_P with(ps:=[p])(Hform:=Hform); auto.
+    + left; auto.
+    + apply (indpred_decomp_and_strict_pos _ _ Hposa); auto.
+    + erewrite indpred_rep_single_val_eq; auto.
+      apply Hindpred.
+    + erewrite constrs_val_eq; auto. apply Hallconstrs.
+Qed.
+
+(*
 (*Now prove least fixpoint: For any other P 
   such that all constructor formulas hold when p is
   interpreted as P and for all x, indpred_rep x -> P x*)
@@ -2365,161 +2054,4 @@ Proof.
   intros n. unfold test_odd; split; intros.
   - apply odd_ind with(P:=P1)(P0:=P2); auto.
   - specialize (H ev odd). apply H; constructor; auto.
-Qed.
-
-induction H. (P0:=P2).
-  
-  
-  unfold test_ev
-
-
-  Lemma see: forall n, even n -> test1 n.
-Proof.
-  intros n He. unfold test1. intros P Hp0 Hps. induction He.
-  auto. subst. apply Hps. auto.
-Qed.
-
-Lemma see2: forall n, test1 n -> even n.
-Proof.
-  intros n. unfold test1. intros Htest.
-  specialize (Htest even). apply Htest; constructor. auto.
-Qed.
-
-Lemma equiv: forall n, even n <-> test1 n.
-Proof.
-  intros n. split. apply see. apply see2.
-Qed.
-
-
-
-(*Let's see*)
-Definition test1 : nat -> Prop :=
-  fun m => forall (P: nat -> Prop),
-    P 0 ->
-    (forall n, P n -> P(S (S n))) ->
-    P m.
- 
-
-(*Test case: semantics for simple terms and formulas*)
-
-Inductive tm : Set :=
-  | tm_nat : nat -> tm
-  | tm_plus: tm -> tm -> tm
-  | tm_if: fmla -> tm -> tm -> tm
-with fmla : Set :=
-  | fm_tru : fmla
-  | fm_flse: fmla
-  | fm_not: fmla -> fmla
-  | fm_and: fmla -> fmla -> fmla
-  | fm_eq: tm -> tm -> fmla.
-
-Inductive tm_sem : tm -> nat -> Prop :=
-  | 
-
-  
-(*Get a valuation where the v_typevar maps the typevars in a list
-  to a list of sorts*)
-  (*TODO: assume all valid for now, need to add to funs/preds*)
-(*
-Definition val_of_srts (v: valuation gamma_valid i) (vars: list typevar)
-  (srts: list sort) (Hall: Forall (fun x => valid_type sigma x) (sorts_to_tys srts)) : 
-  valuation gamma_valid i.
-Proof.
-  apply (Build_valuation gamma_valid i (fun (var: typevar) =>
-    ty_subst_fun_s vars srts (v_typevar gamma_valid i v var) var (*default to old value*))).
-  - intros x. unfold ty_subst_fun_s; simpl.
-    admit.
-  - (*ugh, need to adjust vars too*)
-  (*need to think about this more - is this what we want?*)
-*)
-
-(*Ex: Fquant Tforall n nat (Fbinop Timplies (Fpred p nil (Tvar n)))
-                                            (Fpred p nil (Tfun S S n))
-    should give (forall n, P n -> P (S S n)) - need notion of prop with hole
-    kind of? Or arg list?
-    should basicallybe formula rep right? but with special case for P
-    maybe take in or adjust valuation*)
-
-Set Bullet Behavior "Strict Subproofs".
-  (*Get the rep for a single formula*)
-  (*Ah, should not be any sort - should be according to valuation,
-    can have many arg lists but sorts are fixed*)
-    (*But preds work on arbitrary sorts - ned to see*)
-(*Idea: we know that sort list is map (val v) vs for some vs*)
-Definition indpred_rep_f (v: valuation gamma_valid i) (p: predsym)
-(f: formula) (Hf: valid_formula sigma f) (Hform: valid_ind_form p f) 
- (P: forall srts, arg_list (domain (dom_aux gamma_valid i)) 
-(predsym_sigma_args p srts) 
--> Prop) : Prop.
-Proof.
-  revert Hf Hform P.
-(*TODO: write as function first, not dep type*)
-induction f using formula_rect with (P1:=fun _ => True) (P2:=fun f => valid_formula sigma f ->
-  valid_ind_form p f -> (forall srts, arg_list (domain (dom_aux gamma_valid i)) 
-  (predsym_sigma_args p srts) 
-  -> Prop) -> Prop ); try solve[exfalso; inversion Hform]; auto; intros
-  Hf Hform P; try solve[exfalso; inversion Hform].
-- apply valid_ind_pred in Hform. destruct Hform as [Hl [Hlo Hp]].
-  eapply P. unfold predsym_sigma_args.
-  apply (@get_arg_list_pred sigma gamma gamma_valid i) with(ts:=tms).
-  intros t ty Hty. exact (term_rep gamma_valid i all_unif v t ty Hty).
-  rewrite Hp.
-  apply Hf.
-- (*Need forall here - think about this*) 
-
-(*TODO - remove inversion*)
-  apply IHf. inversion Hf; auto. inversion Hform; auto.
-  apply P.
-- apply IHf2. inversion Hf; auto. inversion Hform; auto.
-  apply P.
-- apply IHf0. apply 
-
-
-Print valid_ind_form.
-
-
-Print valid_ind_form. 
-  (*ugh, at same point: Need to know vs = l0 by some sort of uniformity
-    argument*)
-  (*hmm i really need to see - maybe [get_arg_list_pred] is too strong?*)
-  Check get_arg_list_pred.
-    Print valid_formula.
-  exact Hf.
-  unfold predsym_sigma_args in H.
-  Print valuation.
-  Search v_subst v_typevar.
-  Check get_arg_list_pred.
-  (*We need [get_arg_list_pred] with the valuation mapping each
-    variable to the corresponding sort in srts*)
-  *)
-(*Problem: we need to know that inner ones applied to sorts also
-  other*)
-(*Let's give the condition as: apply predsym to sort - ugh how to do this?
-cant wait until end because we need actual Sets for sorts, but
-no info at beginning
-
-so instaed let's say: give Prop for (Fpred p srts ts)
-but cant do that because we are giving val for ts
-ugh - can we take in additional assumptions about srts and (p_args p)?
-
-*)
-Definition indpred_rep (v: valuation gamma_valid i) (p: predsym)
-  (fs: list formula) (Hform: Forall (fun f => valid_formula sigma f /\
-    valid_ind_form p f) fs) (srts: list sort) 
-  (a: arg_list (domain (dom_aux gamma_valid i)) 
-  (predsym_sigma_args p srts)) : Prop.
-  refine (forall (P: 
-    arg_list (domain (dom_aux gamma_valid i)) 
-      (predsym_sigma_args p srts) -> Prop), _ ).
-
-
-
-Print valid_ind_form.
-
-
-
-1
-15
-
-(*Let's try to generalize*)
-
+Qed.*)
