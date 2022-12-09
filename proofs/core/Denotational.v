@@ -193,22 +193,21 @@ Proof.
   destruct H1. apply UIP_dec. apply Nat.eq_dec.
 Qed.
 
-
-(*This is irrelevant in the choice of proof*)
-
-Lemma get_arg_list_irrel (v: val_typevar)
+(*If the reps are equal only for the terms in the list,
+  then the arg_lists are equal, and they are irrelevant
+  in the choice of typing proof*)
+Lemma get_arg_list_eq (v: val_typevar)
 (f: funsym) (vs: list vty) (ts: list term) 
-(reps: forall (t: term) (ty: vty),
+(reps1 reps2: forall (t: term) (ty: vty),
   term_has_type sigma t ty ->
   domain (val v ty))
 (Hreps: Forall
 (fun tm : term =>
- forall (ty : vty)
-   (Hty1 Hty2 : term_has_type sigma tm ty),
- reps tm ty Hty1 = reps tm ty Hty2) ts)
+ forall (ty : vty) (Hty1 Hty2: term_has_type sigma tm ty),
+ reps1 tm ty Hty1 = reps2 tm ty Hty2) ts)
 (Hty1 Hty2: exists x, term_has_type sigma (Tfun f vs ts) x) :
-get_arg_list v f vs ts reps Hty1 =
-get_arg_list v f vs ts reps Hty2.
+get_arg_list v f vs ts reps1 Hty1 =
+get_arg_list v f vs ts reps2 Hty2.
 Proof.
   unfold get_arg_list. simpl.
   destruct (typecheck_dec sigma (Tfun f vs ts) Hty1).
@@ -233,6 +232,25 @@ Proof.
       rewrite H. f_equal.
       inversion Hreps; auto.
 Qed.
+
+(*
+Lemma get_arg_list_irrel (v: val_typevar)
+(f: funsym) (vs: list vty) (ts: list term) 
+(reps: forall (t: term) (ty: vty),
+  term_has_type sigma t ty ->
+  domain (val v ty))
+(Hreps: Forall
+(fun tm : term =>
+ forall (ty : vty)
+   (Hty1 Hty2 : term_has_type sigma tm ty),
+ reps tm ty Hty1 = reps tm ty Hty2) ts)
+(Hty1 Hty2: exists x, term_has_type sigma (Tfun f vs ts) x) :
+get_arg_list v f vs ts reps Hty1 =
+get_arg_list v f vs ts reps Hty2.
+Proof.
+  apply get_arg_list_eq; auto.
+Qed.*)
+
  
 (*Also need a version for preds (TODO: can we reduce duplication?)*)
 Definition get_arg_list_pred (v: val_typevar)
@@ -262,19 +280,18 @@ Proof.
       * apply IHts; auto.
 Defined.
 
-Lemma get_arg_list_pred_irrel (v: val_typevar)
+Lemma get_arg_list_pred_eq (v: val_typevar)
 (p: predsym) (vs: list vty) (ts: list term) 
-(reps: forall (t: term) (ty: vty),
+(reps1 reps2: forall (t: term) (ty: vty),
   term_has_type sigma t ty ->
   domain (val v ty))
 (Hreps: Forall
 (fun tm : term =>
- forall (ty : vty)
-   (Hty1 Hty2 : term_has_type sigma tm ty),
- reps tm ty Hty1 = reps tm ty Hty2) ts)
-(Hval1 Hval2: valid_formula sigma (Fpred p vs ts)) :
-get_arg_list_pred v p vs ts reps Hval1 =
-get_arg_list_pred v p vs ts reps Hval2.
+ forall (ty : vty) (Hty1 Hty2: term_has_type sigma tm ty),
+ reps1 tm ty Hty1 = reps2 tm ty Hty2) ts)
+ (Hval1 Hval2: valid_formula sigma (Fpred p vs ts)) :
+get_arg_list_pred v p vs ts reps1 Hval1 =
+get_arg_list_pred v p vs ts reps2 Hval2.
 Proof.
   unfold get_arg_list_pred. simpl.
   destruct (pred_ty_inversion sigma p vs ts Hval1).
@@ -294,6 +311,41 @@ Proof.
       rewrite H. f_equal.
       inversion Hreps; auto.
 Qed.
+(*
+Lemma get_arg_list_pred_irrel (v: val_typevar)
+(p: predsym) (vs: list vty) (ts: list term) 
+(reps: forall (t: term) (ty: vty),
+  term_has_type sigma t ty ->
+  domain (val v ty))
+(Hreps: Forall
+(fun tm : term =>
+ forall (ty : vty)
+   (Hty1 Hty2 : term_has_type sigma tm ty),
+ reps tm ty Hty1 = reps tm ty Hty2) ts)
+(Hval1 Hval2: valid_formula sigma (Fpred p vs ts)) :
+get_arg_list_pred v p vs ts reps Hval1 =
+get_arg_list_pred v p vs ts reps Hval2.
+Proof.
+  apply get_arg_list_pred_eq; auto.
+Qed.
+  unfold get_arg_list_pred. simpl.
+  destruct (pred_ty_inversion sigma p vs ts Hval1).
+  destruct (pred_ty_inversion sigma p vs ts Hval2).
+  destruct a as [Hallval1 [Hlents1 [Hlenvs1 Hallty1]]].
+  destruct a0 as [Hallval2 [Hlents2 [Hlenvs2 Hallty2]]].
+  simpl. 
+  unfold predsym_sigma_args.
+  generalize dependent (p_args p).
+  clear Hval1 Hval2. 
+  induction ts; simpl; intros. 
+  - f_equal. f_equal. f_equal. apply nat_eq_refl. 
+  - destruct l.
+    + inversion Hlents2.
+    + simpl in Hlenvs2. f_equal. 2: apply IHts; inversion Hreps; auto.
+      assert (Hlenvs1 = Hlenvs2) by apply nat_eq_refl.
+      rewrite H. f_equal.
+      inversion Hreps; auto.
+Qed.*)
 
 (*TODO: move*)
 Lemma tfun_params_length {s f vs ts ty}:
@@ -1379,7 +1431,7 @@ Proof.
   - f_equal. f_equal. apply UIP_dec; apply vty_eq_dec.
   - f_equal. apply UIP_dec; apply vty_eq_dec.
     f_equal. f_equal. f_equal. apply UIP_dec. apply Nat.eq_dec.
-    f_equal. apply get_arg_list_irrel.
+    f_equal. apply get_arg_list_eq.
     rewrite Forall_forall. intros x Hinx ty' H1 H2.
     rewrite Forall_forall in H. apply H. assumption.
   - replace ((term_rep v0 tm1 (snd v) (proj1 (ty_let_inv (has_type_eq eq_refl Hty1)))))
@@ -1423,7 +1475,7 @@ Proof.
     (proj2 (ty_eps_inv (has_type_eq eq_refl Hty2)))).
     apply UIP_dec. apply vty_eq_dec. rewrite H0.
     reflexivity.
-  - f_equal. apply get_arg_list_pred_irrel.
+    - f_equal. apply get_arg_list_pred_eq.
     rewrite Forall_forall. intros x Hinx ty' H1 H2.
     rewrite Forall_forall in H. apply H. assumption.
   - destruct q;
@@ -2385,6 +2437,18 @@ Proof.
   symmetry. apply sub_correct; auto. apply (Tconst (ConstInt 0)).
 Qed.
 
+(*TODO: move*)
+Lemma big_union_elts {A: Type} (eq_dec: forall (x y: A), {x = y} + {x <> y})
+  {B: Type} (f: B -> list A) (l: list B) x:
+  (exists y, In y l /\ In x (f y)) ->
+  In x (big_union eq_dec f l).
+Proof.
+  induction l; simpl; auto; intros.
+  - do 3 (destruct H).
+  - destruct H as [y [[Hay | Hiny] Hinx]]; subst.
+    + apply union_elts. left; auto.
+    + apply union_elts. right. apply IHl. exists y. split; auto.
+Qed. 
 (*Other lemma we need: a term/formula is interpreted the
   same on all valuations that agree on the free variables*)
 Lemma val_fv_agree (t: term) (f: formula) :
@@ -2401,8 +2465,13 @@ Proof.
   apply term_formula_ind; simpl; intros; auto.
   - f_equal. unfold var_to_dom. apply H. left; auto.
   - f_equal. f_equal. f_equal.
-    (*TODO: [get_arg_list] lemma*)
-    admit.
+    apply get_arg_list_eq.
+    rewrite Forall_forall. intros.
+    rewrite Forall_forall in H.
+    rewrite term_rep_irrel with (Hty2:=Hty2).
+    apply H; intros; auto.
+    apply H0.
+    apply big_union_elts. exists x; auto.
   - apply H0. intros x Hinx.
     unfold substi. destruct (vsymbol_eq_dec x v); auto; subst.
     f_equal. apply H. intros. apply H1. rewrite union_elts. left; auto.
@@ -2422,7 +2491,13 @@ Proof.
     destruct (vsymbol_eq_dec y v); auto.
     apply H0. apply in_in_remove; auto.
   - f_equal. (*TODO: [get_arg_list_pre] lemma*)
-    admit.
+    apply get_arg_list_pred_eq.
+    rewrite Forall_forall. intros.
+    rewrite Forall_forall in H.
+    rewrite term_rep_irrel with (Hty2:=Hty2).
+    apply H; intros; auto.
+    apply H0.
+    apply big_union_elts. exists x; auto.
   - destruct q; apply all_dec_eq.
     + split; intros Hall d; specialize (Hall d);
       erewrite H; try solve[apply Hall]; intros x Hinx;
@@ -2790,8 +2865,12 @@ Proof.
   revert t f.
   apply term_formula_ind; simpl; intros; auto.
   - rewrite H1. f_equal. f_equal. f_equal.
-    (*TODO: separate lemma*)
-    admit.
+    apply get_arg_list_eq.
+    revert H; rewrite !Forall_forall; intros.
+    rewrite (term_rep_irrel) with(Hty2:=Hty2).
+    apply H; auto.
+    intros p Hinp.
+    apply H0. apply existsb_exists. exists x; auto. 
   - erewrite H. apply H0; auto. all: auto.
     all: intros; apply H1; rewrite H3; auto.
     rewrite orb_true_r. auto.
@@ -2825,7 +2904,14 @@ Proof.
     intros. erewrite H. reflexivity. all: auto.
   - (*Here, we use fact that predsym in*)
     rewrite H0; [|destruct (predsym_eq_dec p p); auto; contradiction].
-    f_equal. (*TODO: this*) admit.
+    f_equal.
+    apply get_arg_list_pred_eq.
+    revert H; rewrite !Forall_forall; intros.
+    rewrite (term_rep_irrel) with(Hty2:=Hty2).
+    apply H; auto.
+    intros p' Hinp'.
+    apply H0. apply orb_true_iff. right. 
+    apply existsb_exists. exists x; auto. 
   - destruct q; apply all_dec_eq.
     + split; intros Hall d; specialize (Hall d);
       erewrite H; try apply Hall; auto.
@@ -2868,8 +2954,19 @@ Proof.
         orb_true_r; auto.
       * inversion Hallpats; subst; auto.
     + intros. apply H1. rewrite H3; auto.
-Admitted.
+Qed.
 
+Lemma term_predsym_agree (t: term):
+(forall (p1 p2: pi_funpred gamma_valid pd) 
+  (v: val_vars pd vt) (ty: vty) 
+  (Hty: term_has_type sigma t ty),
+  (forall p, predsym_in_term p t -> 
+    preds gamma_valid pd p1 p = preds gamma_valid pd p2 p) ->
+  (forall f, funs gamma_valid pd p1 f = funs gamma_valid pd p2 f) ->
+  term_rep p1 v t ty Hty = term_rep p2 v t ty Hty).
+Proof.
+  apply pi_predsym_agree. apply Ftrue.
+Qed.
   
 End Denot.
 
