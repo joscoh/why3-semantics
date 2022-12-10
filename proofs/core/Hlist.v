@@ -275,3 +275,22 @@ Definition hcast {A: Type} {f: A -> Type} {l1 l2: list A}
   match Heq with
   | eq_refl => x
   end.
+
+Require Import Common.
+
+(*Given an element in a list and an hlist, get the corresponding element
+  of the hlist*)
+Fixpoint get_hlist_elt {A: Type} (eq_dec: forall x y, {x = y} + {x <> y}) 
+  {f: A -> Type} {l: list A}
+  (h: hlist f l) (x: A)
+  (Hinx: in_bool eq_dec x l) : f x :=
+  (match l as l' return in_bool eq_dec x l' -> hlist f l' -> f x with
+  | nil => fun Hin _ => False_rect _ (not_false Hin)
+  | y :: tl => fun Hin h' =>
+    (match (eq_dec x y) as b return b || in_bool eq_dec x tl ->
+      f x with
+    | left Heq => fun _ => ltac:(rewrite Heq; exact (hlist_hd h'))
+    | right Hneq => fun Hin' => 
+      get_hlist_elt eq_dec (hlist_tl h') x Hin'
+    end) Hin
+  end) Hinx h.
