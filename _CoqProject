@@ -8,6 +8,7 @@ proofs/core/Hlist.v
 proofs/core/IndTypes.v
 proofs/core/Semantics.v
 proofs/core/Denotational.v
+proofs/core/IndProp.v
 proofs/Util.v
 proofs/Ty.v
 proofs/Term.v
