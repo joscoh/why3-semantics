@@ -2567,6 +2567,78 @@ Proof.
     + apply union_elts. left; auto.
     + apply union_elts. right. apply IHl. exists y. split; auto.
 Qed. 
+
+Lemma in_remove_iff {A: Type} (eq_dec : forall x y : A, {x = y} + {x <> y})
+  (y : A) (l: list A) (x: A):
+  In x (remove eq_dec y l) <-> In x l /\ x <> y.
+Proof.
+  split; intros.
+  - apply (in_remove eq_dec _ _ _ H).
+  - apply in_in_remove; apply H.
+Qed.
+
+Lemma remove_all_elts {A: Type} (eq_dec: forall (x y: A), {x = y} + {x <> y})
+(l1 l2: list A) x:
+(In x l2 /\ ~In x l1) <-> In x (remove_all eq_dec l1 l2).
+Proof.
+  induction l1; simpl; split; intros; auto.
+  destruct H; auto.
+  - destruct H as [Hinx Hnot].
+    destruct (eq_dec x a); subst; auto.
+    + exfalso. apply Hnot; left; auto.
+    + rewrite in_remove_iff, <- IHl1. split_all; auto.
+  - rewrite in_remove_iff in H. destruct H.
+    apply IHl1 in H. split_all; auto.
+    intro C. destruct C; subst; contradiction.
+Qed.
+
+(*TODO: move*)
+Lemma extend_val_with_list_in_eq
+  (v1 v2: val_vars pd vt) l x
+  (Htys: forall (x : vsymbol) t,
+  In (x, t) l -> projT1 t = snd x):
+  In x (map fst l) ->
+  extend_val_with_list vt v1 l x =
+  extend_val_with_list vt v2 l x.
+Proof.
+  intros Hin.
+  unfold extend_val_with_list.
+  destruct (get_assoc_list vsymbol_eq_dec l x) eqn : Hassoc.
+  + apply get_assoc_list_some in Hassoc.
+    apply Htys in Hassoc.
+    destruct (vty_eq_dec (snd x) (projT1 s)); auto; try contradiction.
+    rewrite Hassoc in n; contradiction.
+  + rewrite get_assoc_list_none in Hassoc. contradiction.
+Qed.
+
+(*TODO: rename*)
+Lemma extend_val_with_list_notin'  (vv : val_vars pd vt) 
+(x : vsymbol) (d : domain (val vt (snd x)))
+(l : list (vsymbol * {t : vty & domain (val vt t)})):
+~ In x (map fst l) ->
+extend_val_with_list vt vv l x = vv x.
+Proof.
+  intros. unfold extend_val_with_list.
+  rewrite <- get_assoc_list_none in H.
+  rewrite H.
+  reflexivity.
+Qed.
+
+(*
+Lemma extend_val_with_list_notin_eq
+  (v1 v2: val_vars pd vt) l x
+  (Hvs: v1 x = v2 x):
+  extend_val_with_list vt v1 l x =
+  extend_val_with_list vt v2 l x.
+Proof.
+  unfold extend_val_with_list.
+  destruct (in_bool_spec vsymbol_eq_dec x (map fst l)).
+  - destruct (get_assoc_list vsymbol_eq_dec l x) eqn : Hassoc.
+    + destruct (vty_eq_dec (snd x) (projT1 s)); auto.
+    + rewrite get_assoc_list_none in Hassoc. contradiction.
+  - rewrite <- get_assoc_list_none in n. rewrite n. auto.
+Qed.*)
+  
 (*Other lemma we need: a term/formula is interpreted the
   same on all valuations that agree on the free variables*)
 Lemma val_fv_agree (t: term) (f: formula) :
@@ -2600,8 +2672,43 @@ Proof.
     rewrite (H1 _ v2).
     reflexivity.
     all: intros x Hinx; apply H2; rewrite !union_elts; solve_bnd.
-  - (*TODO: match case*)
-    admit.
+  - generalize dependent (proj2 (ty_match_inv (has_type_eq eq_refl Hty))).
+    generalize dependent (proj1 (ty_match_inv (has_type_eq eq_refl Hty))).
+    inversion Hty; subst.
+    clear Hty H5 H9 H10. revert H7; intros Hallpats; revert Hallpats.
+    induction ps; simpl; auto; intros.
+    destruct a.
+    inversion H0; subst.
+    rewrite (H v1 v2) at 1.
+    destruct (match_val_single vt v (has_type_valid gamma_valid tm v t) (term_rep v2 tm v t) p) eqn : Hm;
+    [|apply IHps].
+    + apply H4.
+      intros.
+      destruct (in_bool_spec vsymbol_eq_dec x (map fst l)).
+      *
+      (*Need to know about [extend_val_with_list]*)
+      apply extend_val_with_list_in_eq.
+      apply (match_val_single_typs _ _ _ _ _ _ Hm). auto.
+      * (*Now, need to know that map fst l = free vars of p (elementwise)*)
+        rewrite !extend_val_with_list_notin'; auto.
+        apply H1.
+        apply union_elts. right.
+        apply big_union_elts.
+        exists (p, t0). split; auto. left; auto.
+        simpl. apply remove_all_elts.
+        split; auto.
+        assert (pattern_has_type sigma p v). {
+          apply (Hallpats (p, t0)). left; auto.
+        }
+        rewrite <- bnd_fv_p, 
+          (match_var_single_free_var _ _ _ _ _ _ _ H3 Hm); auto.
+    + auto.
+    + intros x Hinx.
+      apply H1. simpl.
+      revert Hinx. rewrite !union_elts; intros.
+      destruct Hinx as [Hin1 | Hinx]; [left; auto | right; right; auto].
+    + intros. apply Hallpats. right; auto.
+    + intros. apply H1. simpl. rewrite union_elts. left; auto.
   - f_equal. apply functional_extensionality_dep; intros.
     erewrite H. reflexivity.
     intros y Hiny.
@@ -2643,9 +2750,39 @@ Proof.
     rewrite (H1 _ v2).
     reflexivity. 
     all: intros x Hinx; apply H2; rewrite !union_elts; auto.
-  - (*other match*)
-    admit.
-Admitted.
+  - generalize dependent (proj2 (valid_match_inv (valid_formula_eq eq_refl Hval))).
+    generalize dependent (proj1 (valid_match_inv (valid_formula_eq eq_refl Hval))).
+    inversion Hval; subst.
+    clear Hval H5 H8 H9. revert H7; intros Hallpats; revert Hallpats.
+    induction ps; simpl; auto; intros.
+    destruct a.
+    inversion H0; subst.
+    rewrite (H v1 v2) at 1.
+    destruct (match_val_single vt v (has_type_valid gamma_valid tm v t) (term_rep v2 tm v t) p) eqn : Hm;
+    [|apply IHps].
+    + apply H4.
+      intros.
+      destruct (in_bool_spec vsymbol_eq_dec x (map fst l)).
+      * apply extend_val_with_list_in_eq.
+        apply (match_val_single_typs _ _ _ _ _ _ Hm). auto.
+      * rewrite !extend_val_with_list_notin'; auto.
+        apply H1.
+        apply union_elts. right.
+        apply big_union_elts.
+        exists (p, f0). split; auto. left; auto.
+        simpl. apply remove_all_elts.
+        split; auto.
+        inversion Hallpats; subst.
+        rewrite <- bnd_fv_p, 
+          (match_var_single_free_var _ _ _ _ _ _ _ H7 Hm); auto.
+    + auto.
+    + intros x Hinx.
+      apply H1. simpl.
+      revert Hinx. rewrite !union_elts; intros.
+      destruct Hinx as [Hin1 | Hinx]; [left; auto | right; right; auto].
+    + intros. inversion Hallpats; subst; auto.
+    + intros. apply H1. simpl. rewrite union_elts. left; auto.
+Qed. 
 
 (*Corollaries:*)
 Corollary term_fv_agree (t: term)
