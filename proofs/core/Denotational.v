@@ -3026,17 +3026,44 @@ Fixpoint alpha_p_aux {A: Type} (sub: vsymbol -> vsymbol -> A -> A)
       (Pconstr f tys ps', xnew)
     end.
 (*Proving this correct will not be too fun, but let's see*)
-(*
-Print term.
-Print bnd_t.
-Print sub_t.
-(*TOOD: might not be able to use map, see*)
+
+(*This awkward definition satisfies Coq's positivity checker
+  for nested induction, unlike the normal one*)
+Definition map2 {A B C: Type} :=
+  fun (f: A -> B -> C) =>
+    fix map2 (l1: list A) : list B -> list C :=
+      match l1 with
+      | nil => fun l2 => nil
+      | x1 :: t1 =>
+        fun l2 =>
+        match l2 with
+        | nil => nil
+        | x2 :: t2 => f x1 x2 :: map2 t1 t2
+        end
+      end.
+
+      (*
+      fun l2 =>
+      match l
+
+Fixpoint map2 {A B C: Type} (f: A -> B -> C) (l1 : list A) (l2: list B)
+  {struct l1} : list C :=
+  match l1, l2 with
+  | x1 :: t1, x2 :: t2 => f x1 x2 :: map2 f t1 t2
+  | _, _ => nil
+  end.
+
+  Print map.
+  Print map2.*)
+Print formula.
+
 Fixpoint alpha_t_aux (t: term) (l: list string) {struct t} : term :=
   (*We only care about the bound variable and inductive cases*)
   match t with
   | Tlet t1 x t2 => 
     match l with
-    | str :: _ => Tlet t1 (str, snd x) (sub_t x (str, snd x) t2)
+    | str :: tl => Tlet t1 (str, snd x) (sub_t x (str, snd x) 
+      (alpha_t_aux t2 tl))
     | _ => t
     end
   | Tfun fs tys tms =>
@@ -3044,14 +3071,14 @@ Fixpoint alpha_t_aux (t: term) (l: list string) {struct t} : term :=
       (size (bnd_t tm))*)
     let lens := map (fun tm => length (bnd_t tm)) tms in
     let l_split := split_lens l lens in
-    Tfun fs tys (map (fun (t: term * list string) =>
-      let (tm, l') := t in alpha_t_aux tm l') (combine tms l_split))
+    Tfun fs tys (map2 (fun (tm: term) (l': list string) =>
+    alpha_t_aux tm l') tms l_split)
   | Tif f t1 t2 =>
     let f_sz := length (bnd_f f) in
     let t1_sz := length (bnd_t t1) in
     Tif (alpha_f_aux f (sublist l 0 f_sz)) 
-      (alpha_t_aux t1 (sublist l (f_sz + 1) (f_sz + 1 + t1_sz)))
-      (alpha_t_aux t2 (sublist l (f_sz + 1 + t1_sz + 1) (length l)))
+      (alpha_t_aux t1 (sublist l f_sz (f_sz + t1_sz)))
+      (alpha_t_aux t2 (sublist l (f_sz + t1_sz) (length l)))
   | Tmatch t1 ty ps =>
     (*First do the pattern substitutions, then do the terms
       recursively*)
@@ -3060,13 +3087,13 @@ Fixpoint alpha_t_aux (t: term) (l: list string) {struct t} : term :=
     let l_split := split_lens l lens in
     let t1_sz := length (bnd_t t1) in
     Tmatch (alpha_t_aux t1 (sublist l 0 t1_sz)) ty
-      (map (fun (t: (pattern * term) * list string) => let (x, strs):= t in
+      (map2 (fun (x: pattern * term) (strs: list string) =>
         let p_sz := length (bnd_p (fst x)) in
         let l1 := sublist strs 0 p_sz in
         let l2 := sublist strs p_sz (length strs) in
-        let (p1, y) := alpha_p_aux sub_t (fst x) (snd x) l1 in
-        (p1, alpha_t_aux y l2)
-        ) (combine ps l_split))
+        let t2 := alpha_t_aux (snd x) l2 in
+        alpha_p_aux sub_t (fst x) t2  l1
+        ) ps l_split)
   | Teps f v =>
     match l with
     | nil => t
@@ -3083,44 +3110,72 @@ with alpha_f_aux (f: formula) (l: list string) {struct f} : formula :=
       (size (bnd_t tm))*)
     let lens := map (fun tm => length (bnd_t tm)) tms in
     let l_split := split_lens l lens in
-    Fpred ps tys (map (fun (t: term * list string) =>
-      let (tm, l') := t in alpha_t_aux tm l') (combine tms l_split))
-  | _ => f
+    Fpred ps tys (map2 (fun (t: term) (l': list string) =>
+      alpha_t_aux t l') tms l_split)
+  | Fquant q v f1 =>
+      match l with
+      | str :: tl =>
+        let v' := (str, snd v) in
+        Fquant q v' (sub_f v v' (alpha_f_aux f1 tl))
+      | _ => f
+      end
+  | Feq ty t1 t2 =>
+    let t_sz := length (bnd_t t1) in
+    Feq ty (alpha_t_aux t1 (sublist l 0 t_sz))
+      (alpha_t_aux t2 (sublist l t_sz (length l)))
+  | Fbinop b f1 f2 =>
+    let f_sz := length (bnd_f f1) in
+    Fbinop b (alpha_f_aux f1 (sublist l 0 f_sz))
+      (alpha_f_aux f2 (sublist l f_sz (length l)))
+  | Fnot f1 =>
+    Fnot (alpha_f_aux f1 l)
+  | Flet t v f1 =>
+    match l with
+    | str :: tl =>
+      let v':=(str, snd v) in
+      Flet t v' (sub_f v v' 
+      (alpha_f_aux f1 tl))
+    | _ => f
+    end
+  | Fif f1 f2 f3 =>
+    let f1_sz := length (bnd_f f1) in
+    let f2_sz := length (bnd_f f2) in
+    Fif (alpha_f_aux f1 (sublist l 0 f1_sz)) 
+      (alpha_f_aux f2 (sublist l f1_sz (f1_sz + f2_sz)))
+      (alpha_f_aux f3 (sublist l (f1_sz + f2_sz) (length l)))
+  | Fmatch t1 ty ps =>
+    (*First do the pattern substitutions, then do the terms
+      recursively*)
+    let lens := map (fun x => length (bnd_p (fst x)) + 
+    length (bnd_f (snd x))) ps in
+    let l_split := split_lens l lens in
+    let t1_sz := length (bnd_t t1) in
+    Fmatch (alpha_t_aux t1 (sublist l 0 t1_sz)) ty
+      (map2 (fun (x: pattern * formula) (strs: list string) =>
+        let p_sz := length (bnd_p (fst x)) in
+        let l1 := sublist strs 0 p_sz in
+        let l2 := sublist strs p_sz (length strs) in
+        let f2 := alpha_f_aux (snd x) l2 in
+        alpha_p_aux sub_f (fst x) f2  l1
+        ) ps l_split)
+  | _ => f (*No other bound/recursive cases*)
   end.
 
-    (fix alpha_ts_aux (l: list (pattern * term)) :
-      list (pattern * term)
-    let ps_p
-
-    (*harder*)
-    
-    Tmatch (alpha_t_aux t1 (sublist l 0 t1_sz)) ty
-      (fun (p: pattern * term) =>
-
-
-
-      
-      )
-
-
-
-
-    Tfun fs tys 
-  | Tconst _ => t
-  | Tvar v => t
-
+(*Prove correctness: 3 lemmas
+  1. results in wf term/fmla
+  2. preserves interp
+  3. has same "shape" (and corollaries: ind form, positive, etc)*)
+(*
 Lemma alpha_t_aux_correct (t: term) (l: list vsymbol),
   NoDup l ->
   (forall x, In x l -> ~ In x (map fst (term_fv t))) ->
   length l = length (bnd_t t) ->
   term_interp (alpha_t_aux t l) Hty =
   term_interp t Hty /\
-  term_wf (alpha_t_aux t l).
+  term_wf (alpha_t_aux t l).*)
 
 
 (*Let's try*)
-Definition 
-*)
 End Alpha.
 
 
