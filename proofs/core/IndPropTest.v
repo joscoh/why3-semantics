@@ -3,6 +3,26 @@ Require Import Coq.Arith.Wf_nat.
 (*First, we give some concrete examples in Coq*)
 Section Example.
 
+Require Import Coq.Lists.List.
+Import ListNotations.
+
+Definition testlist {A: Type} (l: list A) : list A.
+induction l as [| hd tl IHl].
+- exact nil.
+- destruct tl as [| hd2 tl].
+  + 
+  
+  destruc
+
+Fixpoint testlist {A: Type} (x: list A) : list A :=
+  match x with
+  | hd :: hd2 :: tl => hd :: testlist tl
+  | _ => nil
+  end.
+
+Print testlist.
+Print fix.
+
 Inductive even : nat -> Prop :=
   | ev0: even 0
   | evSS: forall n, even n -> even (S (S n)).
