@@ -132,14 +132,19 @@ Qed.
 
 Lemma big_union_elts
   {B: Type} (f: B -> list A) (l: list B) x:
-  (exists y, In y l /\ In x (f y)) ->
+  (exists y, In y l /\ In x (f y)) <->
   In x (big_union f l).
 Proof.
-  induction l; simpl; auto; intros.
+  induction l; simpl; split; intros; auto.
   - do 3 (destruct H).
+  - destruct H.
   - destruct H as [y [[Hay | Hiny] Hinx]]; subst.
     + apply union_elts. left; auto.
     + apply union_elts. right. apply IHl. exists y. split; auto.
+  - rewrite union_elts in H. destruct H.
+    + exists a. split; auto.
+    + apply IHl in H.
+      destruct H as [y [Hiny Hinx]]. exists y. split; auto.
 Qed. 
 
 End Union.
