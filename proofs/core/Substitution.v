@@ -1329,38 +1329,11 @@ Qed.
 Set Bullet Behavior "Strict Subproofs".
 Search sub_t term_fv.
 
-Definition set_eq {A: Type} (l1 l2: list A) : Prop :=
-  forall x, In x l1 <-> In x l2.
+(*Part 2.5: We need to know that this substitution does not
+  change the free variables. This is very hard to show, particularly
+  due to the patterns and their dependencies*)
 
-Lemma set_eq_refl {A: Type} (l : list A) :
-  set_eq l l.
-Proof.
-  unfold set_eq; intros; reflexivity.
-Qed.
-
-Lemma set_eq_trans {A: Type} (l1 l2 l3: list A) :
-  set_eq l1 l2 ->
-  set_eq l2 l3 ->
-  set_eq l1 l3.
-Proof.
-  unfold set_eq; intros. rewrite H, H0. reflexivity.
-Qed.
-(*
-Lemma union_cons
-*)
-(*Removing from [big_union] is same as removing from each set*)
-Lemma remove_big_union {A: Type} (eq_dec: forall x y : A, {x = y} + {x <> y})
-{B: Type} (f: B -> list A) (l1: list B) (x: A) :
-set_eq (remove eq_dec x (big_union eq_dec f l1))
-  (big_union eq_dec (fun y => remove eq_dec x (f y)) l1).
-Admitted.
-
-Lemma set_eq_big_union {A: Type} (eq_dec: forall x y : A, {x = y} + {x <> y})
-  {B: Type} (f1 f2: B -> list A) (l1 l2: list B) :
-  length l1 = length l2 ->
-  Forall (fun t => set_eq (f1 (fst t)) (f2 (snd t))) (combine l1 l2) ->
-  set_eq (big_union eq_dec f1 l1) (big_union eq_dec f2 l2).
-Admitted.
+(*Some tactics that will be useful:*)
 
 Ltac simpl_set_goal :=
   repeat match goal with
@@ -1414,27 +1387,6 @@ Ltac triv :=
   | |- ?P \/ ?Q => solve[left; inner] + solve[right; inner]
   end.
 
-(*TODO: copied*)
-Ltac solve_bnd :=  
-  repeat match goal with
-  | H: ~In ?x (bnd_t ?t) |- ~In ?x (bnd_f ?f) =>
-    let C := fresh in
-    intro C; apply H; simpl
-  | H: ~In ?x (bnd_t ?t) |- ~In ?x (bnd_t ?t2) =>
-    let C := fresh in
-    intro C; apply H; simpl
-  | H: ~In ?x (bnd_f ?t) |- ~In ?x (bnd_f ?f) =>
-    let C := fresh in
-    intro C; apply H; simpl
-  | H: ~In ?x (bnd_f ?t) |- ~In ?x (bnd_t ?t2) =>
-    let C := fresh in
-    intro C; apply H; simpl
-  | |- In ?x (?l1 ++ ?l2) => apply in_or_app
-  | |- ?P \/ ?Q => (*idtac "x";*)
-    first [left; solve[solve_bnd] | right; solve[solve_bnd]]
-  | |- In ?x ?y => solve[try assumption; auto]
-  end.
-
 Ltac not_or name :=
   repeat match goal with 
   | H: ~(?P \/ ?Q) |- _ => let N1 := fresh name in
@@ -1449,6 +1401,8 @@ Ltac case_in :=
   | |- context [if in_bool ?e ?x ?l then ?y else ?z] => 
     destruct (in_bool_spec e x l)
   end.
+
+(*A few easy results about sub_t/f and free vars:*)
 
 (*If the free var to sub is not in the term, substitution does nothing*)
 Lemma sub_notin (t: term) (f: formula) :
@@ -1564,7 +1518,9 @@ Corollary sub_f_eq (f: formula):
     sub_f x x f = f).
 Proof. apply sub_eq. apply tm_d. Qed.
 
-(*Alternate approach*)
+(*It is easier to prove some of the lemmas with an alternate
+  approach: define when a variable is free rather than show
+  the sets of free vars are equal:*)
 Fixpoint free_in_t (x: vsymbol) (t: term) {struct t} : bool :=
   match t with
   | Tconst _ => false
@@ -1654,23 +1610,8 @@ Lemma dec_negb_iff {P: Prop} {dec: {P} + {~ P}}:
 Proof.
   destruct dec; simpl; split; intros; auto.
 Qed.
-(*
-destruct H.
 
-Lemma eq_dec_iff {A: Type} {eq_dec: forall (x y: A), {x = y} + {x <> y}}
-  {x y: A}:
-  eq_dec x y <-> x = y.
-Proof.
-  destruct (eq_dec x y); split; intros; subst; auto. inversion H.
-Qed.
-
-Lemma eq_dec_negb_iff  {A: Type} {eq_dec: forall (x y: A), {x = y} + {x <> y}}
-  {x y: A}:
-  negb (eq_dec x y) <-> x <> y.
-Proof.
-  destruct (eq_dec x y); split; simpl; intros; subst; simpl; auto.
-Qed.*)
-
+(*This is equivalent to the other formulation*)
 (*TODO: would be easier with ssreflect*)
 Lemma free_in_spec (t: term) (f: formula) :
   (forall x, free_in_t x t <-> In x (term_fv t)) /\
@@ -2056,12 +1997,12 @@ Corollary sub_f_fv_in (f: formula):
     free_in_f y (sub_f x y f) = (free_in_f x f) || (free_in_f y f)).
 Proof. apply sub_fv_in. apply tm_d. Qed.
 
-(*Analagous lemmas for term/formula in [alpha_p_aux]*)
+(*Analagous lemmas for term/formula in [alpha_p_aux]. These 
+  are much harder*)
 
-(*1. For any vsymbol not in the free vars of p and not
-  in the image of the free variables in l, 
+(*1. For any vsymbol not in the free vars of p and not in
+  the free vars of the resulting pattern,  
   [alpha_p_aux] does not change the result*)
-(*TODO: is (notin (map snd l)) too strong? Should be ok i think*)
 
 Lemma alpha_p_aux_diff {A: Type} (sub: vsymbol -> vsymbol -> A -> A)
 (p: pattern) (t: A) (l: list (vsymbol * string))
@@ -2117,111 +2058,8 @@ Proof.
       apply get_assoc_list_some in Ha.
       exists v. exists s. split_all; auto. simpl_set; triv.
 Qed.
-(*
-Lemma alpha_p_aux_diff {A: Type} (sub: vsymbol -> vsymbol -> A -> A)
-(p: pattern) (t: A) (l: list (vsymbol * string))
-(free_in: vsymbol -> A -> bool)
-(Hsub: forall a x y z, z <> x -> z <> y -> 
-  free_in z (sub x y a) = free_in z a):
-forall x, ~In x (pat_fv p) ->
-  ~ In (fst x) (map snd l) ->
-   free_in x (snd (alpha_p_aux sub p t l)) = free_in x t.
-Proof.
-  intros. revert t.
-  induction p; simpl in *; intros.
-  - destruct (get_assoc_list vsymbol_eq_dec l v) eqn : ha.
-    + simpl. rewrite Hsub; auto.
-      intro Heq; subst.
-      apply get_assoc_list_some in ha.
-      apply H0. rewrite in_map_iff; simpl.
-      exists (v, s). split; auto.
-    + auto.
-  - generalize dependent t. induction ps; simpl; intros; auto.
-    inversion H1; subst.
-    rewrite IHps; auto.
-    + rewrite H4; auto.
-      intro C. apply H. simpl. simpl_set. triv.
-    + intro C. apply H. simpl. simpl_set. triv.
-  - auto.
-  - rewrite IHp2; auto.
-    intro C. apply H. simpl_set; triv.
-  - destruct (get_assoc_list vsymbol_eq_dec l v) eqn : Ha.
-    + simpl. rewrite Hsub; auto.
-      * apply IHp.
-        intro C. apply H. simpl_set; triv.
-      * intro Heq; subst. apply H. simpl_set; triv.
-      * intro Heq; subst. apply H0. simpl.
-        apply get_assoc_list_some in Ha.
-        rewrite in_map_iff. exists (v, s); auto.
-    + auto.
-Qed.
 
-(*Version that uses only free vars in patterns before and after.
-  Need a lot of assumptions about list l*)
-Lemma alpha_p_aux_diff' {A: Type} (sub: vsymbol -> vsymbol -> A -> A)
-(p: pattern) (t: A) (l: list (vsymbol * string))
-(free_in: vsymbol -> A -> bool)
-(Hsub: forall a x y z, z <> x -> z <> y -> 
-  free_in z (sub x y a) = free_in z a)
-(Hnodup: NoDup (map fst l))
-(Hallfv1: forall x y, In (x, y) l -> In x (pat_fv p))
-(Hallfv2: forall v, In v (pat_fv p) -> In v (map fst l)):
-forall x, ~In x (pat_fv p) ->
-  ~ In (fst x) (map fst (pat_fv (fst (alpha_p_aux sub p t l)))) ->
-   free_in x (snd (alpha_p_aux sub p t l)) = free_in x t.
-Proof.
-  intros. apply alpha_p_aux_diff; auto.
-  intro Hinl. apply H0.
-  rewrite in_map_iff in Hinl.
-  assert (~ In x (pat_fv (fst (alpha_p_aux sub p t l)))). admit.
-  clear H0.
-  assert (~In (fst x) (map fst (pat_fv (fst (alpha_p_aux sub p t l))))).
-  intro C.
-  (*apply H1.*) rewrite in_map_iff in C. destruct 
-  C as [y [Hfst Hiny]].
-
-  
-  
-  rewrite in_map_iff in H1.
-  intro C. apply H0. rewrite in_map_iff.
-  exists x. split; auto.
-  (*Hmm need to think
-    So is the stronger statement true?
-    The free vars that are affected are the ones in (pat_fv p)
-      (which are replaced) and the ones in (pat_fv (fst ...)),
-      which are substituted for
-    The problem becomes: what if x has the same name as something
-    that is in the free vars,
-    so we have y in resulting pat_fv, x notin resulting pat_fv
-    this means that y is in (map snd l)
-
-    
-    If x is not in resulting free vars, then
-
-  
-  *)
-  apply alpha_p_aux_wf_aux_gen'; auto.
-  rewrite in_map_iff in Hinl.
-  destruct Hinl as [y [Hfst Hy]].
-  destruct y as [v str].
-  assert (Hy':=Hy).
-  apply Hallfv1 in Hy.
-  simpl in *; subst.
-  exists v. exists (fst x). split_all; auto.
-  
-  
-  exists str. split_all; auto.
-  exists (v, str).
-  simpl in Hfst; subst.
-  assert (Hy':=Hy).
-  apply Hallfv1 in Hy.
-  rewrite in_map_iff.
-  exists (fst x, snd v). split; auto.
-  rewrite alpha_p_aux_wf_aux_gen'; auto.
-  exists v. exists (fst x). auto.
-Qed.*)
-
-
+(*TODO: move these*)
 Lemma sub_t_in_implies (t: term): forall z x y,
   free_in_t z (sub_t x y t) ->
   (free_in_t z t /\ z <> x) \/ z = y.
@@ -2233,10 +2071,21 @@ Proof.
     + vsym_eq z y.
       rewrite sub_t_fv_diff in H; auto.
 Qed.
-(*Let's see:
-  every variable free in the result is free in the term or
-  is in the image of the list*)
-  (*TODO: add pattern well typed for or case*)
+
+Lemma sub_f_in_implies (f: formula): forall z x y,
+  free_in_f z (sub_f x y f) ->
+  (free_in_f z f /\ z <> x) \/ z = y.
+Proof.
+  intros. vsym_eq x y.
+  - rewrite sub_f_eq in H. vsym_eq z y.
+  - vsym_eq z x.
+    + rewrite (sub_f_fv_notin _ _ _ n) in H. inversion H.
+    + vsym_eq z y.
+      rewrite sub_f_fv_diff in H; auto.
+Qed.
+
+(*1.5: Every variable free in the result is free in the term or
+  is free in the new pattern*)
 Lemma alpha_p_aux_in_implies {A: Type} (sub: vsymbol -> vsymbol -> A -> A)
   (p: pattern) (t: A) (l: list (vsymbol * string))
   (free_in: vsymbol -> A -> bool) (ty: vty)
@@ -2311,8 +2160,9 @@ Proof.
       exfalso. apply Ha. apply Hallin. simpl_set. triv.
 Qed.
 
-(*2. For any vsymbol in the free vars of p, it is not free
-  in the result*)
+(*2. For any vsymbol in the free vars of p, and the free vars
+  of the new pattern. it is not free in the result. This is quite
+  hard to show*)
 Lemma alpha_p_aux_notin {A: Type} (sub: vsymbol -> vsymbol -> A -> A)
   (p: pattern) (t: A) (l: list (vsymbol * string))
   (free_in: vsymbol -> A -> bool) ty
@@ -2460,562 +2310,6 @@ Proof.
       exfalso. apply Ha. apply Hallin; simpl; simpl_set; triv.
 Qed.
 
-      (*one way: separate induction: prove that if x not in free vars of t
-        AND x not in (map snd l), then x not in free vars of whole thing*)
-      (*this lemma may not hold without assumptions that we cant have repeats*)
-      (*need to think more*)
-  
-  
-  (*assert (In x (big_union vsymbol_eq_dec pat_fv ps) \/ free_in x t = false).
-      left; auto. clear H.
-    generalize dependent t. induction ps; simpl; intros.
-    + destruct H1 as [[] | Hin]; auto.
-    + inversion H0; subst.
-      apply IHps.
-      * intros. intro C. apply (Hfree x0); auto. simpl.
-        simpl in C. rewrite union_elts; right; auto.
-      * intros. apply (Hallin x0). simpl.
-        rewrite union_elts; right; apply H1.
-      * simpl in H.
-        simpl_set. right.
-    
-    
-    simpl in H.
-  
-  revert t.
-  
-  
-  simpl_set.
-
-
-
-      Search alpha_p_aux.
-    simpl.
-      wf_tac.
-
-Check alpha_p_aux.
-
-
-Lemma sub_fv_notin (t: term) (f: formula):
-  (forall (x y: vsymbol),
-    x <> y ->
-    free_in_t x (sub_t x y t) = false)
-
-(*need 2 lemmas: like before
-        1. For any vsymbol in the free vars of p (before),
-          it is NOT free in the result
-        2. For any vsymbol not in the free vars of p before or after,
-          free_in_t is the same as the inderling term*)
-
-(*
-Lemma sub_fv_in (t: term) (f: formula) :
-(forall (x y: vsymbol)
-  (Hbnd: ~ In y (bnd_t t))
-  (Hinx: In x (term_fv t))
-  (Hxy: x <> y),
-  set_eq (term_fv (sub_t x y t))
-  (union vsymbol_eq_dec (remove vsymbol_eq_dec x (term_fv t)) [y])) /\
-  (forall (x y: vsymbol)
-  (Hbnd: ~ In y (bnd_f f))
-  (Hinx: In x (form_fv f))
-  (Hxy: x <> y),
-  set_eq (form_fv (sub_f x y f))
-  (union vsymbol_eq_dec (remove vsymbol_eq_dec x (form_fv f)) [y])).
-Proof.
-Admitted.
-*)
-
-Lemma set_add_remove {A: Type} (eq_dec: forall (x y: A), {x = y} + {x <> y})
-  (l1: list A) (x: A) :
-  In x l1 ->
-  set_eq (union eq_dec (remove eq_dec x l1) [x]) l1.
-Proof.
-  intros; unfold set_eq; intros; simpl_set.
-  split; intros; destruct_all; auto.
-  destruct (eq_dec x x0); subst; triv.
-Qed.
-
-Lemma set_eq_sym {A: Type} (l1 l2: list A):
-  set_eq l1 l2 ->
-  set_eq l2 l1.
-Proof.
-  unfold set_eq; intros. rewrite H; reflexivity.
-Qed.
-
-(*Problem: if we have let t1 := v in t2 and we say sub x with v
-  then v is NOT in the free variables
-  so we need to assume y is not bound*)
-(*
-Lemma sub_t_fv (t: term):
-(forall (x y: vsymbol)
-    (Hbnd: ~ In y (bnd_t t)),
-    set_eq (term_fv (sub_t x y t))
-      (if in_bool vsymbol_eq_dec x (term_fv t) then
-        (union vsymbol_eq_dec (remove vsymbol_eq_dec x (term_fv t)) [y])
-      else term_fv t)).
-Proof.
-  intros. case_in. case (vsymbol_eq_dec x y); intros; subst.
-  - rewrite sub_t_eq. apply set_eq_sym. apply set_add_remove. auto.
-  - apply sub_fv_in; auto. apply Ftrue.
-  - rewrite sub_t_notin; auto. apply set_eq_refl.
-Qed.
-
-Lemma sub_f_fv (f: formula) :
-  (forall (x y: vsymbol)
-    (Hbnd: ~ In y (bnd_f f)),
-    set_eq (form_fv (sub_f x y f))
-      (if in_bool vsymbol_eq_dec x (form_fv f) then
-        (union vsymbol_eq_dec (remove vsymbol_eq_dec x (form_fv f)) [y])
-      else form_fv f)). 
-Proof.
-  intros. case_in. case (vsymbol_eq_dec x y); intros; subst.
-  - rewrite sub_f_eq. apply set_eq_sym. apply set_add_remove. auto.
-  - apply sub_fv_in; auto. apply tm_d.
-  - rewrite sub_f_notin; auto. apply set_eq_refl.
-Qed.*)
-(*
-    
-    
-    rewrite (sub_eq_t). t). subst.
-    apply sub_fv_in; auto.
-  revert t f. apply term_formula_ind; simpl; auto; intros.
-  - apply set_eq_refl.
-  - destruct (vsymbol_eq_dec x v); simpl; apply set_eq_refl.
-  - case_in.
-    + unfold set_eq; intros; simpl_destruct_set.
-      setoid_rewrite in_map_iff.
-      rewrite Forall_forall in H.
-      split; intros; simpl_destruct_set.
-      * apply H in H3; auto. revert H3; case_in; intros.
-        -- simpl_destruct_set; try triv. 
-          left. split; auto. exists x3; auto.
-        -- left. split; [|intro C; subst; contradiction].
-          exists x3; auto.
-        -- intro C. apply Hbnd. rewrite in_concat.
-          exists (bnd_t x3). split; wf_tac.
-      * assert (Hinx1:=H2). apply (H x2) with(x:=x)(y:=y) in H2.
-        revert H2; case_in; intros.
-        -- exists (sub_t x y x2).  split; auto.
-          exists x2; auto.
-          apply H2; simpl_set. triv.
-        -- exists (sub_t x y x2). split; auto. exists x2; auto.
-          apply H2; auto.
-        -- intro C; apply Hbnd; rewrite in_concat; 
-          exists (bnd_t x2); split; wf_tac.
-      * specialize (H _ H0 x x0).
-        exists (sub_t x x0 x1). split; auto.
-        -- exists x1; auto.
-        -- apply H. intro C. apply Hbnd. rewrite in_concat.
-          exists (bnd_t x1); split; wf_tac.
-          destruct (in_bool_spec vsymbol_eq_dec x (term_fv x1)); try contradiction.
-          simpl_set. triv.
-    + unfold set_eq; intros.
-      revert n.
-      (*Could prove this by showing each union identical, see how hard it is to prove otherwise*)
-      simpl_destruct_set; intros.
-      rewrite Forall_forall in H.
-      setoid_rewrite in_map_iff. split; intros; simpl_destruct_set.
-      * apply H in H1; auto.
-        destruct (in_bool_spec vsymbol_eq_dec x (term_fv x2)).
-        -- exfalso. apply n. exists x2; auto.
-        -- exists x2; auto.
-        -- intro C; apply Hbnd; rewrite in_concat; 
-          exists (bnd_t x2); split; wf_tac.
-      * exists (sub_t x y x1). split.
-        -- exists x1; auto.
-        -- apply H; auto.
-          intro C; apply Hbnd; rewrite in_concat; 
-          exists (bnd_t x1); split; wf_tac.
-          destruct (in_bool_spec vsymbol_eq_dec x (term_fv x1)); auto.
-          exfalso. apply n. exists x1; auto.
-  - rewrite in_app_iff in Hbnd. not_or Hbnd.
-    case_in.
-     + unfold set_eq. intros. simpl_destruct_set.
-      * split; intros; simpl_destruct_set.
-        -- apply H in H2; auto. 
-          rewrite (In_in_bool _ _ _ H1) in H2.
-          simpl_destruct_set; triv.
-        -- destruct (vsymbol_eq_dec x v); subst; auto.
-          apply H0 in H2; auto. revert H2; case_in; intros;
-          simpl_destruct_set; triv.
-        -- left. apply H; auto. rewrite (In_in_bool _ _ _ H1).
-            simpl_destruct_set; triv.
-        -- right. destruct (vsymbol_eq_dec x v); auto.
-          split; auto.
-          apply H0; auto. case_in; auto.
-          simpl_destruct_set; triv.
-        -- left.
-          apply H; auto. rewrite (In_in_bool _ _ _ H1).
-          simpl_destruct_set; triv.
-      * destruct (vsymbol_eq_dec x v); subst; try contradiction. clear n.
-        rewrite (H x y Hbnd x0), (H0 x y Hbnd2 x0), (In_in_bool _ _ _ H1).
-        simpl_set.
-        case_in; subst;
-        simpl_set; split; intros; destruct_all; triv.
-    + unfold set_eq; intros. revert n. simpl_set. intros.
-      apply Decidable.not_or in n. destruct n as [Hnotin1 H2].
-      rewrite (H x y Hbnd x0).
-      case_in; try contradiction.
-      clear n.
-      destruct (vsymbol_eq_dec x v); subst; auto; try reflexivity.
-      rewrite (H0 x y Hbnd2 x0).
-      case_in; subst; auto;
-      try reflexivity. exfalso. apply H2; auto.
-  - rewrite !in_app_iff in Hbnd.
-    not_or Hbnd. case_in;
-    unfold set_eq; intros; simpl_destruct_set; 
-    rewrite (H x y Hbnd0 x0), (H0 x y Hbnd x0), (H1 x y Hbnd2 x0);
-    try solve[rewrite (In_in_bool _ _ _ H2); case_in;
-      split; intros; simpl_destruct_set; triv].
-    revert n; simpl_set; intros.
-    not_or Hinfv. case_in; try contradiction; reflexivity.
-  - (*match will be so fun*)
-    rewrite in_app_iff in Hbnd.
-    not_or Hbnd.
-    rewrite in_concat in Hbnd1.
-    setoid_rewrite in_map_iff in Hbnd1.
-    unfold set_eq; intros.
-    case_in.
-    + (*dont do big union for now*) 
-      revert i; rewrite !union_elts, in_remove_iff, !union_elts; intros.
-      rewrite (H x y Hbnd0 x0).
-      destruct i.
-      * case_in; try contradiction. rewrite union_elts, in_remove_iff.
-        split; intros.
-        -- destruct_all. left. split; auto.
-          right. auto.
-          revert H2.
-          rewrite <- !big_union_elts.
-          (*TODO: START HERE*)
-          assert (In x0
-          (big_union vsymbol_eq_dec
-             (fun x1 : pattern * term =>
-              remove_all vsymbol_eq_dec (pat_fv (fst x1)) (term_fv (snd x1)))
-             (map
-                (fun p : pattern * term =>
-                 if in_bool vsymbol_eq_dec x (pat_fv (fst p))
-                 then p
-                 else (fst p, sub_t x y (snd p))) ps)) <->
-        In x0
-          (big_union vsymbol_eq_dec
-             (fun x1 : pattern * term =>
-              remove_all vsymbol_eq_dec (pat_fv (fst x1)) (term_fv (snd x1))) ps)). {
-                rewrite  <- !big_union_elts.
-                split; intros [p1 [Hinp1 Hinx0]].
-                - rewrite in_map_iff in Hinp1. destruct Hinp1 as [p2 [Hp1 Hinx1']]; subst.
-                revert Hinx0. case_in; simpl; intros; exists p2.
-                + split; auto.
-                + (*Here need defn of remove_all*)
-                  split; auto.
-                  simpl_destruct_set. 
-                  rewrite Forall_forall in H0. apply H0 in H2; wf_tac.
-                  revert H2; case_in; intros; simpl_destruct_set; auto.
-                  split; auto. 
-
-
-                  (*HAVE: In x0 (term_fv (sub_t x y (snd p2)))*)
-                  admit.
-                - setoid_rewrite in_map_iff.
-              }
-          (*Can we prove iff for this?*)
-          rewrite <- !big_union_elts.
-
-
-        destruct H2. destruct H2. left.  split; auto. 
-    (*Do *)
-    
-    
-    _iff.
-    case_in; simpl_set.
-    + revert i; simpl_set; intros.
-      rewrite (H x y Hbnd0 x0).
-      split; intros.
-      -- destruct i.
-        ++ revert H1; case_in; try contradiction; intros.
-          destruct H1.
-          ** simpl_destruct_set; triv.
-          ** destruct H1 as [p [Hinp Hinx0]].
-            rewrite in_map_iff in Hinp.
-            destruct Hinp as [p1 [Hp Hinx1']]; subst.
-            revert Hinx0; case_in; intros.
-            {
-              left. split. right. exists p1. auto.
-              intro C; subst.
-              simpl_destruct_set. contradiction.
-            }
-            {
-              simpl_destruct_set; simpl in *.
-              rewrite Forall_forall in H0.
-              apply H0 in H1; wf_tac.
-              2: { intro C; apply Hbnd1. exists (pat_fv (fst p1) ++ bnd_t (snd p1)).
-                split; [exists p1; auto |]. rewrite in_app_iff; auto. }
-              revert H1; case_in; auto; intros. simpl_destruct_set.
-              {
-                left. split; auto. right. exists p1. split; auto.
-                simpl_set. auto.
-              }
-              { right; auto. }
-              { left. split; auto. 2: intro C; subst; contradiction.
-                right. exists p1. split; auto.
-                simpl_set; auto.
-              }
-            }
-        ++ destruct H2 as [p1 [Hinp1 Hinx]].
-          simpl_set. destruct Hinx as [Hinx Hnotinx].
-          simpl_destruct_set.
-          ** revert H1; case_in; intros; simpl_destruct_set; triv.
-          ** rewrite in_map_iff in H1. destruct H1 as [p2 [Hx1 Hinx0]]; subst.
-            revert H3 H2. case_in; simpl_set; simpl; intros.
-            {
-              left. split; [|intro C; subst; contradiction].
-              right. exists p2; simpl. simpl_set. auto.
-            }
-            {
-              rewrite Forall_forall in H0. apply H0 in H2; wf_tac.
-              2: { intro C; apply Hbnd1. exists (pat_fv (fst p2) ++ bnd_t (snd p2)).
-                split; [exists p2; auto|]. rewrite in_app_iff. right; auto. }
-              revert H2; case_in; intros; simpl_destruct_set.
-              {
-                left. split; auto. right. exists p2. simpl_set; auto.
-              }
-              { triv. }
-              {
-                left. split; [|intro C; subst; contradiction].
-                right. exists p2. simpl_set; auto.
-              }
-            }
-      -- rewrite Forall_forall in H0.
-        destruct i.
-        ++ case_in; try contradiction.
-          simpl_set. destruct_all.
-          ** triv.
-          ** right. exists x1. split; auto.
-            rewrite in_map_iff.
-            (*I have no idea wtf is going on*)
-            
-            simpl_destruct_set.
-            right.  
-            right. exists  
-          destruct H1.
-          ** destruct H1. destruct H1.  destruct H1.  
-        
-        
-        simpl_destruct_set; case_in; try contradiction; simpl_set; try triv.
-        ++ right.
-          
-          specialize (H0 H7 x0).
-          unfold set_eq in H0.
-          revert H0.
-          case_in; simpl_set; intros.
-          {
-            specialize (H0 x0).
-
-          }
-
-          exists x1. (*TODO: not this*)
-          rewrite in_map_iff. split. 2: simpl_set; auto.
-          exists x1.
-          revert H0. case_in; unfold set_eq; intros; simpl_set; split; auto.
-
-
-        
-        simpl_set.
-      
-      
-      destruct H1.
-            
-            }
-            triv.
-            simpl_destruct_set.
-            {
-              left. split; auto.
-            }
-        
-        
-        revert H1; case_in; try contradic
-                
-              
-              (*Here, use bound vars assumption*)
-
-              exfalso. apply Hbnd1. exists (pat_fv (fst p1) ++ bnd_t (snd p1)).
-                split; [exists p1; auto|]. 
-                exfalso.
-              }
-              left. split; auto. right; auto. exists p1. split; auto.
-              simpl_set. split; auto.
-              rewrite Forall_forall in H0.
-              apply H0 in H1; auto.
-              { revert H1; case_in; auto; intros.
-                simpl_set. simpl_destruct_set. auto. simpl_destruct_set; auto.
-                exfalso. apply Hbnd1. exists (pat_fv (fst p1) ++ (bnd_t (snd p1))).
-                split. exists p1; auto. apply in_app_iff. left; auto.
-                exists p1. }
-              rewrite <- remove_all_elts in Hinx0. destruct_all; contradiction.
-              simpl in Hinx0.
-              left. split; auto. right. exists p1. split; auto.
-              split.
-              simpl_destruct_set.
-              revert H1 H3. case_in; intros.
-              left. split; [|intro C; subst; contradiction].
-              right. exists p1. split; auto.
-            }
-            
-            }
-            
-            
-            right.
-            split.
-            Search remove_all.
-          
-          revert H1; simpl_destruct_set.
-          left.  split; auto.
-          split; auto.
-      case_in.  left. 2: {  }
-      split; intros.
-      * simpl_destruct_set.
-      * split. left.
-    simpl_set.
-    eapply Classical_Pred_Type.not_ex_all_not in Hbnd1.
-    
-    Print Assumptions Classical_Pred_Type.not_ex_all_not. Search (~ (exists x, ?P x)).
-
-
-
-     (*Now not in anything*)
-      case_in; try [exfalso; apply n; rewrite union_elts]
-      (*TODO: tactic for destructing*)
-
-    
-    simpl_set.
-      
-    
-    simpl_set. 
-
-
-      apply Decidable.not_and in H2. 2: unfold Decidable.decidable.
-      apply Decidable.not_or in H2.
-        split; intros; destruct_all; try triv. left. split. right.  left.
-        right. split; auto. intro; subst.
-        split; auto.
-
-        rewrite H.
-      
-      triv. destruct 9
-      
-      destruct (in_bool_spec vsymbol_eq_dec x (term_fv tm1));
-          apply H0.
-          rewrite (In_in_bool _ _ _ _ H2).
-        
-        
-        left. apply H. rewrite (In_in_bool _ _ _ H2).
-          simpl_destruct_set. triv.
-            
-            destruct (vsymbol_eq_dec x v); subst; auto.
-          ++ 
-          ++ left. apply H. rewrite (In_in_bool _ _ _ H1).
-            simpl_destruct_set; triv. right; split; auto. 
-          left. split_all; auto. intro C; subst.
-          ++ left; split_all; auto.
-          ++ right; auto. left; split_all; auto.   
-  
-  
-  simpl_set.
-      
-      exists x0.  
-        exists 
-
-      
-      
-      Search in_bool In. 
-          apply H; auto.  
-      exists x1. 
-      
-      simpl_destruct_set.
-        
-        rewrite union_elts, in_remove_iff in Hinx0;
-          simpl in Hinx0; rewrite or_false_r.
-          destruct 
-        
-      Search (?P \/ False).
-      split; intros.
-      * destruct H0 as [y' [Hiny' Hinx0]].
-        rewrite in_map_iff in Hiny'. destruct Hiny' as [x1 [Hy' Hinx1]]; subst.
-        rewrite Forall_forall in H.
-        specialize (H _ Hinx1 x y). apply H in Hinx0.
-        destruct (in_bool_spec vsymbol_eq_dec x (term_fv x1)).
-        -- rewrite union_elts in Hinx0. destruct Hinx0; auto.
-          left. rewrite in_remove_iff in H0.
-          rewrite in_remove_iff. destruct H0.
-          split; auto.
-          rewrite <- big_union_elts. exists x1; auto.
-        -- left. rewrite in_remove_iff,<- big_union_elts.
-          split. exists x1; auto.
-          intro C; subst; contradiction.
-      * destruct H0.
-        -- rewrite in_re
-          Search in
-          
-          Search In remove.
-        
-        rewrite union_remove in Hinx0. rewrite remove_union in Hinx0. 
-    
-    
-    unfold union. simpl. simpl. eapply set_eq_trans.
-      * apply set_eq_big_union with(f2:= fun tm => union vsymbol_eq_dec (remove vsymbol_eq_dec x (term_fv tm)) [y])
-        (l2:= l1). wf_tac.
-        rewrite Forall_forall; intros.
-        rewrite in_combine_iff in H0; wf_tac.
-        rewrite Forall_forall in H.
-        destruct H0 as [i [Hi Hx0]].
-        specialize (Hx0 tm_d tm_d); subst; simpl.
-        revert Hi; wf_tac.
-        assert (Hin': In (nth i l1 tm_d) l1) by wf_tac.
-        specialize (H (nth i l1 tm_d) Hin' x y).
-        assert (Hinxi: in_bool vsymbol_eq_dec x (term_fv (nth i l1 tm_d))). {
-
-        } 
-        
-        
-        (map ())))
-        apply H.
-        rewrite map_length; auto.
-      
-      
-      with(l2:=map (union vsymbol_eq_dec (remove vsymbol_eq_dec x (term_fv )))).
-  - 
-    
-    
-    if in_bool vsymbol_eq_dec x (term_fv t) then
-    )
-*)
-*)
-Lemma set_eq_union {A: Type} (eq_dec: forall (x y: A), {x = y} + {x <> y})
-  (l1 l2 l3 l4: list A) :
-  set_eq l1 l2 ->
-  set_eq l3 l4 ->
-  set_eq (union eq_dec l1 l3) (union eq_dec l2 l4).
-Proof.
-  unfold set_eq; intros. simpl_set. rewrite H, H0. reflexivity.
-Qed.
-
-Lemma set_eq_remove {A: Type} (eq_dec: forall (x y: A), {x = y} + {x <> y})
-(l1 l2: list A) x :
-set_eq l1 l2 ->
-set_eq (remove eq_dec x l1) (remove eq_dec x l2).
-Proof.
-  unfold set_eq; intros. simpl_set. rewrite H; reflexivity.
-Qed.
-
-(*If x is not in l already, then remove x (union l [x]) is equal to l*)
-Lemma remove_union_notin  {A: Type} (eq_dec: forall (x y: A), {x = y} + {x <> y})
-(l: list A) x :
-~ In x l ->
-set_eq (remove eq_dec x (union eq_dec l [x])) l.
-Proof.
-  intros. unfold set_eq; intros; simpl_set. split; intros; auto; try triv.
-  destruct_all; auto. contradiction.
-Qed.
-
 Ltac prove_hyp H :=
   match goal with
   | H: ?P -> ?Q |- _ => let N := fresh in assert (N: P); [|specialize (H N); clear N]
@@ -3026,13 +2320,6 @@ Ltac prove_hyps n H :=
   | O => idtac
   | (S ?m) => prove_hyp H; [|prove_hyps m H]
   end.
-  (* 
-  prove_hyp H; [| prove_hyps ]
-  match goal with
-  | H: ?P -> ?Q
-*)
-(*Ugh, of course need assumption that nothing in l appears in fv
-  already*)
 
 Ltac vsym_eq2 x y z :=
   let H := fresh in
@@ -3040,6 +2327,9 @@ Ltac vsym_eq2 x y z :=
   (vsym_eq x y; right; vsym_eq x z);
   destruct H as [? | [[? ?]|[? ?]]].
 
+(*The big lemma we want: the free vars of [alpha_t_aux] and
+  [alpha_f_aux] are the same as those of the original terms.
+  This is very hard to prove, though very intuitive*)
 Lemma alpha_aux_fv (t: term) (f: formula) :
   (forall (ty: vty)
     (Hty: term_has_type sigma t ty)
@@ -3260,329 +2550,220 @@ Proof.
       vsym_eq x (s, snd v); simpl.
       vsym_eq x v; simpl.
       apply H.
-  - (*All terms done*)
-  
-
-
-    simpl.
-    erewrite H.
-    vsym_eq x (s, snd v).
-    + vsym_eq (s, snd v) v; auto. simpl.
-
-
-
-  forall x0 : string * vty,
-  In (fst x0)
-    (firstn (Datatypes.length (pat_fv (fst (nth i ps (Pwild, tm_d)))))
-       (nth i
-          (split_lens (skipn (Datatypes.length (bnd_t tm)) l)
-             (map
-                (fun x1 : pattern * term =>
-                 Datatypes.length (pat_fv (fst x1)) +
-                 Datatypes.length (bnd_t (snd x1))) ps)) [])) ->
-  ~ In x0 (pat_fv (fst (nth i ps (Pwild, tm_d))))
-
-
-        -- intros. rewrite in_combine_iff in H1; wf_tac.
-          destruct H1 as [j [Hj Hxy]].
-          specialize (Hxy (a, vty_int) a). inversion Hxy.
-          wf_tac.
-        -- rewrite in_map_iff. intro C.
-          destruct C as [y [Hfst Hiny]].
-          apply n.
-          (*Rely on no duplicates*)
-          Search NoDup
-          
-        -- rewrite map_snd_combine; wf_tac.
-          (*TODO: easier to change lemma or prove equivalent?*)
-          intro C.
-          apply n.
-          rewrite alpha_p_aux_wf_aux_gen'; wf_tac.
-          exists (snd x); exists (fst x).
-          Search In pat_fv alpha_p_aux.
-        Check alpha_p_aux_diff.
-          intro 
-          
-          Search free_in_t sub_t.
-
-                simpl_set. right. exists (nth i ps (Pwild, tm_d)).
-                split; wf_tac. simpl_set.
-
-                Search nth split_lens.
-        
-        Search alpha_p_aux pat_fv.
-      (*need 2 lemmas: like before
-        1. For any vsymbol in the free vars of p (before),
-          it is NOT free in the result
-        2. For any vsymbol not in the free vars of p before or after,
-          free_in_t is the same as the inderling term*)
-
-        
-        rewrite in_map_iff in i0.
-        destruct i0 as [y [Hxy Hiny]]; subst.
-        rewrite in_combine_iff in Hiny; wf_tac.
-        -- destruct Hiny as [j [Hj Hy]].
-          specialize (Hy (a, vty_int) a); subst; simpl.
-          rewrite <- Hxy. simpl.
-
-
-
-          destruct x.
-
-      Search pat_fv alpha_p_aux.
-    
-    
-    triv.
-    {
-
-    }
-    
-
-
-    try (apply(Hfree y)); try (apply Hbnd y)
-    + apply (Hfree y); simpl. apply In_skipn in Hiny; wf_tac.
-      simpl_set. triv.
-    + apply (Hbnd y); simpl. apply In_skipn in Hiny; wf_tac.
-      rewrite !in_app_iff; triv.
-    + apply (Hfree y); simpl. apply In_firstn in Hiny; wf_tac.
-      simpl_set. triv.
-    + apply (Hbnd y). apply In_firstn in Hiny; wf_tac.
-      rewrite !in_app_iff; triv.
-    + apply (F)
-      simpl_set. triv. 
-    simpl_set. right. split; auto. intro Heq; subst.
-    apply (Hbnd v). right; wf_tac. left; auto.
-    specialize (H (firstn (Datatypes.length (bnd_f f)) l)
-
-
-        apply (Hbnd (s, snd v)). simpl; triv.
-        rewrite in_app_iff. right. 
-        
-        
-        wf_tac. triv.
-        destruct (free_in_t (s, snd v) tm2) eqn : Hfreet; auto.
-        Search is_true (?x = true).
-        rewrite free_in_t_spec in Hfreet.
-        Search free_in_t.
-    
-    simpl andb.
-    Search free_in_t sub_t.
-
-
-    rewrite H; wf_tac.
-    2: {
-      intros y Hiny C.
-    }
-    
-    wf_tac.
-  
-  
-  apply set_eq_big_union. wf_tac.
+  - (*Fpred*)
+    apply existsb_eq; wf_tac.
     revert H. rewrite !Forall_forall; intros.
     revert H0. rewrite in_combine_iff; wf_tac.
-    intros [i [Hi Hx]].
-    specialize (Hx tm_d tm_d).
-    subst. simpl.
-    rewrite map2_nth with(d1:=tm_d)(d2:=nil); wf_tac.
-    apply H; wf_tac; intros x Hinx C; apply in_split_lens_ith in Hinx; wf_tac.
-    + apply (Hfree x); simpl_set; auto.
-      exists (nth i l1 tm_d). split; wf_tac.
-    + apply (Hbnd x); auto. rewrite in_concat.
-      exists (bnd_t (nth i l1 tm_d)). split; wf_tac.
-  - destruct l; inversion Hlen.
-    simpl.
-    apply set_eq_union.
-    + apply H; wf_tac.
-      * inversion Hnodupl; subst; auto. 
-      * intros. intro C. apply (Hfree x); simpl. right; wf_tac.
-        simpl_set. triv.
-      * intros. intro C. apply (Hbnd x). simpl; right; wf_tac.
-        rewrite in_app_iff. triv.
-    + eapply set_eq_trans.
-      apply set_eq_remove.
-      apply sub_t_fv.
-      * intro C. inversion Hnodupl; subst.
-        apply alpha_t_aux_wf in C; wf_tac.
-        apply H4; wf_tac.
-      * (*We use H0 multiple times, so we instantiate the hypotheses*)
-        specialize (H0 ((skipn (Datatypes.length (bnd_t tm1)) l))).
-        inversion Hnodupl; subst.
-        prove_hyps 4 H0; wf_tac.
-        {
-          intros x Hinx C.
-          apply (Hfree x). simpl; right; wf_tac.
-          simpl_set. right. split; auto.
-          intro Heq; subst.
-          apply (Hbnd v). simpl; right; wf_tac. left; auto.
-        }
-        {
-          intros x Hinx C.
-          apply (Hbnd x). simpl; right; wf_tac.
-          rewrite in_app_iff. triv.
-        }
-        case_in.
-        -- eapply set_eq_trans.
-          apply remove_union_notin.
-          simpl_set; intro Hinx.
-          destruct_all.
-          apply H0 in H1.
-          (*contradicts Hfree assumption*) 
-          apply (Hfree (s, snd v)). simpl; auto.
-          simpl_set. triv.
-          apply set_eq_remove. apply H0.
-        -- rewrite !notin_remove; auto.
-          ++ intro C. apply n; apply H0; auto.
-          ++ intro C. apply H0 in C.
-            apply (Hfree (s, snd v)). left; auto.
-            simpl_set. right. split; auto.
-            intro Heq; subst.
-            apply (Hbnd v). left; rewrite <- Heq; auto.
-            left; auto.
-  - (*TODO : if case?*)
-    eapply set_eq_trans.
-    + apply set_eq_union.
-      * apply H; wf_tac.
-        -- intros x Hinx C.
-          apply (Hfree x); wf_tac.
-          simpl_set. triv.
-        -- intros x Hinx C.
-          apply (Hbnd x); wf_tac.
-          rewrite !in_app_iff; triv.
-      * apply set_eq_union.
-        -- apply H0; wf_tac.
-          ++ intros x Hinx C.
-            apply (Hfree x); wf_tac.
-            apply In_firstn in Hinx. wf_tac.
-            simpl_set. triv.
-          ++ intros x Hinx C.
-            apply (Hbnd x); wf_tac.
-            apply In_firstn in Hinx; wf_tac.
-            rewrite !in_app_iff; triv.
-        -- apply H1; wf_tac.
-          ++ intros x Hinx C.
-            apply (Hfree x); wf_tac.
-            apply In_skipn in Hinx; wf_tac.
-            simpl_set. triv.
-          ++ intros x Hinx C.
-            apply (Hbnd x); apply In_skipn in Hinx; wf_tac.
-            rewrite !in_app_iff. triv.
-    + apply set_eq_refl.
-  - (*Pattern case*)
-    apply set_eq_union.
-    { apply H; wf_tac.
-      - intros x Hinx C.
-        apply (Hfree x); wf_tac.
-        simpl_set. triv.
-      - intros x Hinx C.
-        apply (Hbnd x); wf_tac.
-        simpl_set. rewrite in_app_iff. triv.
+    intros [i [Hi Hx]]. specialize (Hx tm_d tm_d).
+    subst; simpl. rewrite map2_nth with(d1:=tm_d)(d2:=nil); wf_tac.
+    assert (term_has_type sigma (nth i tms tm_d) (nth i (map (ty_subst (p_params p) tys) (p_args p)) vty_int)).
+    {
+      inversion Hval; subst. rewrite Forall_forall in H8.
+
+      specialize (H8 (nth i tms tm_d, (nth i (map (ty_subst (p_params p) tys) (p_args p)) vty_int))).
+      apply H8. rewrite in_combine_iff; wf_tac.
+      exists i. split; auto; intros; f_equal; apply nth_indep; wf_tac. 
     }
-    (*Hmm, can we do it piece by piece? See*)
-    apply set_eq_big_union; wf_tac.
-    revert H0.
-    rewrite !Forall_forall; intros.
+    eapply H; [| apply H0 | | | |]; wf_tac; intros y Hiny C; apply in_split_lens_ith in Hiny; wf_tac.
+    + apply (Hfree y); simpl_set; auto.
+      exists (nth i tms tm_d). split; wf_tac.
+    + apply (Hbnd y); auto. rewrite in_concat.
+      exists (bnd_t (nth i tms tm_d)). split; wf_tac.
+  - (*Fquant -similar to let/eps*)
+    destruct l; inversion Hlen.
+    inversion Hnodupl;subst.
+    inversion Hval; subst.
+    simpl.
+    assert (v <> (s, snd v)). {
+      intro C; subst. apply (Hbnd v); try triv. 
+      left; rewrite C; auto.
+    }
+    specialize (H H8 l).
+    prove_hyps 4 H; wf_tac;
+    try(intros y Hiny C); [apply (Hfree y) | apply (Hbnd y)|];
+    try solve[simpl; right; wf_tac];
+    simpl_set; auto.
+    split; auto; intro Heq; subst.
+    apply (Hbnd v); [right; wf_tac | left; auto].
+    (*Now we proceed by cases depending on whether x = v,
+      x = (s, snd v), or none of the above*)
+    vsym_eq2 x v (s, snd v).
+    + subst. rewrite sub_f_fv_notin; auto. simpl_bool.
+      vsym_eq v v.
+    + (*If x = (s, snd v)*)
+      subst. vsym_eq (s, snd v) (s, snd v).
+      rewrite sub_f_fv_in; auto.
+      * rewrite !H.
+        vsym_eq (s, snd v) v. simpl.
+        (*TODO: change Hfree to use [free_in_t]?*)
+        symmetry. apply free_in_f_negb. intro Hin.
+        apply (Hfree (s, snd v)). left; auto. 
+        simpl_set. triv.
+      * intro Hin. apply alpha_f_aux_wf in Hin; wf_tac.
+    + (*The last case is quite easy, nothing changes*) 
+      rewrite sub_f_fv_diff; auto.
+      vsym_eq x (s, snd v); simpl.
+      vsym_eq x v; simpl.
+      apply H.
+  - (*Feq*)
+    inversion Hval; subst.
+    rewrite (H _ H4), (H0 _ H6); wf_tac; intros y Hiny C;
+    try solve[(apply (Hfree y); wf_tac; simpl_set; triv)];
+    apply (Hbnd y); wf_tac; rewrite in_app_iff; triv.
+  - (*Fbinop*)
+    inversion Hval; subst.
+    rewrite (H  H4), (H0 H6); wf_tac; intros y Hiny C;
+    try solve[(apply (Hfree y); wf_tac; simpl_set; triv)];
+    apply (Hbnd y); wf_tac; rewrite in_app_iff; triv.
+  - apply H; wf_tac. inversion Hval; subst; auto.
+  - (*Flet*)
+    destruct l; inversion Hlen.
+    simpl. inversion Hnodupl; subst.
+    inversion Hval; subst.
+    erewrite H; [| apply H7 | | | |]; wf_tac; try(intros y Hiny C); [|apply (Hfree y) | apply (Hbnd y)];
+    try(simpl; right; wf_tac); [|simpl_set; triv|rewrite in_app_iff; triv].
+    f_equal.
+    assert (v <> (s, snd v)). {
+      intro C; subst. apply (Hbnd v); try triv. 
+      left; rewrite C; auto.
+    }
+    specialize (H0 H9 (skipn (Datatypes.length (bnd_t tm)) l)).
+    prove_hyps 4 H0; wf_tac;
+    try(intros y Hiny C); [apply (Hfree y) | apply (Hbnd y)|];
+    try solve[simpl; right; wf_tac];
+    [simpl_set; right; split; auto; intro Heq; subst;
+      apply (Hbnd v); [right; wf_tac | left; auto]
+    | rewrite in_app_iff; triv |].
+    (*Now we proceed by cases depending on whether x = v,
+      x = (s, snd v), or none of the above*)
+    vsym_eq2 x v (s, snd v).
+    + subst. rewrite sub_f_fv_notin; auto. simpl_bool.
+      vsym_eq v v.
+    + (*If x = (s, snd v)*)
+      subst. vsym_eq (s, snd v) (s, snd v).
+      rewrite sub_f_fv_in; auto.
+      * rewrite !H0.
+        vsym_eq (s, snd v) v. simpl.
+        (*TODO: change Hfree to use [free_in_t]?*)
+        symmetry. apply free_in_f_negb. intro Hin.
+        apply (Hfree (s, snd v)). left; auto. 
+        simpl_set. triv.
+      * intro Hin. apply alpha_f_aux_wf in Hin; wf_tac.
+        apply In_skipn in Hin.
+        simpl in Hin. contradiction. (*contradicts NoDup*)
+    + (*The last case is quite easy, nothing changes*) 
+      rewrite sub_f_fv_diff; auto.
+      vsym_eq x (s, snd v); simpl.
+      vsym_eq x v; simpl.
+      apply H0.
+  - (*Fif*)
+    inversion Hval; subst.
+    rewrite H, H0, H1; wf_tac; intros y Hiny C;
+    [apply (Hfree y) | apply (Hbnd y) | apply (Hfree y) | apply (Hbnd y) |
+    apply (Hfree y) | apply (Hbnd y)];
+    try(apply (Hfree y)); try(apply (Hbnd y));
+    try (apply In_skipn in Hiny); try (apply In_firstn in Hiny);
+    wf_tac; simpl_set; try (rewrite !in_app_iff); triv.
+  - (*Fmatch - copied and pasted*)
+    inversion Hval; subst.
+    specialize (H _ H4 (firstn (Datatypes.length (bnd_t tm)) l)).
+    prove_hyps 4 H; wf_tac; try(intros y Hiny C);
+    [apply (Hfree y) | apply (Hbnd y) |]; wf_tac;
+    [simpl_set; triv | rewrite in_app_iff; triv |].
+    rewrite H. f_equal.
+    apply existsb_eq; wf_tac.
+    revert H0. rewrite !Forall_forall; intros.
     revert H1. rewrite in_combine_iff; wf_tac.
-    intros [i [Hi Hx]].
-    specialize (Hx (Pwild, tm_d) (Pwild, tm_d)).
+    intros [i [Hi Hx]]. specialize (Hx (Pwild, Ftrue) (Pwild, Ftrue)).
     subst; simpl.
-    rewrite map2_nth with(d1:=(Pwild, tm_d))(d2:=nil); wf_tac.
-    rewrite in_combine_iff in H1.
-    
-    right. exists  triv. }
-            auto. l left; subst; auto. triv.
-        intro C.
-          rewrite <- H0.
-        
-        Search remove In.
-        
-        
-        apply H0; wf_tac.
-            simpl_set. 
-            
-            
-            triv.
-            
-            triv.
-
-
-          assert (Hnodup: NoDup (skipn (Datatypes.length (bnd_t tm1)) l)) by 
-            (inversion Hnodupl; subst; wf_tac).
-          specialize (H0 _ Hnodup).
-          apply H0 in H1; wf_tac.
-          unfold set_eq in Hnodup.
-          apply H0 in Hnodup.
-          rewrite H0 in Hnodup.
-
-          assert (In (s, snd v) (term_fv tm2)). rewrite <- H0.
-
-
-          rewrite (H0 in H1.  
-
-
-
-        apply In_skipn in C 
-      
-      
-      Search bnd_t alpha_t_aux.
-
-
-        wf_tac.
-    (*Need some ext lemmas for union*)
-    
-    rewrite H.
-    + f_equal. (*TODO: not sure about this*) Search term_fv sub_t. rewrite !notin_remove.
-      * f_equal. rewrite H0. Search remove. 
-    
-    
-    H0.
-  
-  unfold big_union.
-  
-  
-  rewrite <- !big_union_elts. split; auto; intros [y [Hiny Hinx]].
-    + rewrite in_map2_iff with(d1:=tm_d)(d2:=nil) in Hiny; wf_tac.
-      destruct Hiny as [i [Hi Hy]]; subst.
-      rewrite Forall_forall in H.
-      apply H in Hinx; wf_tac. exists (nth i l1 tm_d). 
-      split; wf_tac.
-    + eexists.
-      rewrite in_map2_iff with(d1:=tm_d) (d2:=nil); wf_tac. split; auto.
-
-    
-    rewrite Forall_forall in H.
-      apply In_nth with(d:=tm_d) in Hiny.
-      destruct Hiny as [n [Hn Hy]]; subst.
-      exists (nth n l1 tm_d). (*TODO: fix*)
-      rewrite in_map2_iff with(d1:=tm_d) (d2:=nil); wf_tac. split; auto.
-      exists n. split; auto.
-      appl
-      rewrite <- H with(l:=nth n (split_lens l0 (map 
-        (fun tm : term => Datatypes.length (bnd_t tm)) l1)) nil) in Hinx; wf_tac.
-      apply In_nth with(d:=(a, vty_int)) in Hinx.
-      destruct Hinx as [i [Hi Hx]]; subst.
-      exists (nth n )
-      exists (nth)
-      rewrite Hx.
-    
-    
-    exists y. split; auto.
-      rewrite in_map2_iff with(d1:=tm_d)(d2:=nil); wf_tac.
-      rewrite Forall_forall in H.
-      apply In_nth with(d:=tm_d) in Hiny.
-      destruct Hiny as [n [Hn Hnth]]; subst.
-      rewrite <- H with(l:=(nth n
-      (split_lens l0 (map (fun tm : term => Datatypes.length (bnd_t tm)) l1)) nil)) in Hinx; wf_tac.
-      apply In_nth with(d:=(a, vty_int)) in Hinx.
-      destruct Hinx as [i [Hi Hx]]; subst.
-      
-
-      
-      rewrite Forall_forall in H.
-      rewrite <- H with(l:=) in Hinx; wf_tac.
-      exists n. split; auto.
-
-      all: try (apply nth_In; auto).
-      wf 
+    rewrite map2_nth with(d1:=(Pwild, Ftrue))(d2:=nil); wf_tac.
+    assert (Hsum: sum
+    (map
+      (fun x0 : pattern * formula =>
+        Datatypes.length (pat_fv (fst x0)) + Datatypes.length (bnd_f (snd x0)))
+      ps) = Datatypes.length l - Datatypes.length (bnd_t tm)). {
+      rewrite Hlen, length_concat, map_map, minus_plus.
+      f_equal. apply map_ext_in_iff; intros.
+        rewrite app_length; auto.
+    }
+    (*Ok, so we are back where we were before*)
+    match goal with
+    | |- context [in_bool ?e ?x ?l] => destruct (in_bool_spec e x l)
+    end; simpl.
+    + (*If x is in the pattern free vars, then it is in l*)
+      destruct (in_bool_spec vsymbol_eq_dec x (pat_fv (fst (nth i ps (Pwild, Ftrue))))); simpl; auto.
+      symmetry. apply free_in_f_negb. intro Hinfree.
+      apply alpha_p_aux_wf_aux in i0.
+      * rewrite map_snd_combine in i0; wf_tac.
+        apply In_firstn in i0.
+        apply in_split_lens_ith in i0; wf_tac.
+        apply (Hfree x); wf_tac. simpl_set.
+        right. exists (nth i ps (Pwild, Ftrue)).
+        split; wf_tac.
+        simpl_set. split; auto.
+      * rewrite map_fst_combine; wf_tac.
+      * intros. rewrite map_fst_combine; wf_tac.
+    + (*Otherwise, x not in pattern free vars*)
+      (*Need this result in 2 places*)
+      assert (Hnotfree: forall x0 : string * vty,
+      In (fst x0)
+          (nth i
+              (split_lens (skipn (Datatypes.length (bnd_t tm)) l)
+                (map
+                    (fun x1 : pattern * formula =>
+                    Datatypes.length (pat_fv (fst x1)) +
+                    Datatypes.length (bnd_f (snd x1))) ps)) []) ->
+      ~ (In x0 (form_fv (snd (nth i ps (Pwild, Ftrue)))) \/
+        In x0 (pat_fv (fst (nth i ps (Pwild, Ftrue)))))). {
+        intros y Hy C.
+        apply in_split_lens_ith in Hy; wf_tac.
+        (*Do [pat_fv] first*)
+        assert (~In y (pat_fv (fst (nth i ps (Pwild, Ftrue))))). {
+          (*Contradiction: y in l, so not bound in pattern,
+            which is same as pattern free var*)
+          intro Hnot.
+          apply (Hbnd y); wf_tac.
+          rewrite in_app_iff. right.
+          rewrite in_concat. exists (pat_fv (fst (nth i ps (Pwild, Ftrue))) ++
+            bnd_f (snd (nth i ps (Pwild, Ftrue)))). split; wf_tac.
+          exists (nth i ps (Pwild, Ftrue)); split; wf_tac.
+          rewrite in_app_iff; triv.
+        }
+        destruct C; try contradiction.
+        (*Here, contradicts [Hfree], need [pat_fv result]*)
+        apply (Hfree y); simpl_set; wf_tac.
+        right. exists (nth i ps (Pwild, Ftrue)). split;
+        auto; simpl_set; wf_tac. 
+      }
+      destruct (in_bool_spec vsymbol_eq_dec x (pat_fv (fst (nth i ps (Pwild, Ftrue))))); simpl.
+      * (*If x in orig pattern free vars, need to show false*)
+        assert (Hty': pattern_has_type sigma (fst (nth i ps (Pwild, Ftrue))) v). {
+          rewrite Forall_forall in H6; apply H6. wf_tac.
+        }
+        eapply alpha_p_aux_notin; [apply Hty' | | | | | | |]; wf_tac.
+        -- intros; apply sub_f_fv_notin; auto.
+        -- intros; apply sub_f_in_implies; auto.
+        -- intros. apply In_firstn in H1. apply Hnotfree in H1.
+          intro C; apply H1; triv.
+      * rewrite alpha_p_aux_diff; wf_tac.
+        assert (Hty': valid_formula sigma (snd (nth i ps (Pwild, Ftrue)))). {
+          rewrite Forall_forall in H7; apply H7; wf_tac.
+        }
+        -- erewrite H0; [| | apply Hty' | | | |]; wf_tac.
+          ++ intros y Hy C.
+            apply In_skipn in Hy.
+            apply Hnotfree in Hy. apply Hy; triv.
+          ++ intros y Hy C.
+            apply In_skipn in Hy.
+            apply in_split_lens_ith in Hy; wf_tac.
+            apply (Hbnd y); wf_tac.
+            rewrite in_app_iff; right.
+            rewrite in_concat. exists (pat_fv (fst (nth i ps (Pwild, Ftrue))) ++
+              bnd_f (snd (nth i ps (Pwild, Ftrue)))). split; wf_tac.
+            exists (nth i ps (Pwild, Ftrue)); split; wf_tac.
+            rewrite in_app_iff; triv.
+        -- apply sub_f_fv_diff.
+Qed.
 
 (*Finally, we need to prove that the [alpha] functions
   do not change the meaning of the term/formula (since we
@@ -3647,54 +2828,3 @@ Proof.
       simpl in C. apply In_skipn in C. contradiction.
     + intro C.
       (*TODO: prove that [alpha_t_aux] does not change free variables*)
-    
-    Search term_fv alpha_t_aux. apply alpha_t_aux_wf in C; wf_tac.
-    
-    
-    wf_tac.
-    
-    apply alpha_aux_wf_aux in C; wf_tac.
-    
-    
-    Search alpha_t_aux.
-    
-    reflexivity.
-      erewrite (term_rep_irrel _ _ _ _ _ _ (alpha_t_aux tm2 _)).
-      apply H0.
-    
-
-
-      (term_rep vv (alpha_t_aux tm1 (firstn (Datatypes.length (bnd_t tm1)) l))
-        (snd (s, snd v)) (proj1 (ty_let_inv (has_type_eq eq_refl Hty2)))))
-
-    rewrite H.
-    + wf_tac.
-    rewrite nth_map2.
-    wf_tac.
-    + wf_tac. rewrite map2_length.
-    (*TODO: need another more general [get_arg_list_eq] lemma
-      says: have ts1 and ts2, lengths are the same
-      and forall i, i < length ts1 ->
-      forall ty Hty1 Hty2, reps (nth i ts1 d_tm) ty Hty1 = 
-        reps (nth i ts2 d_tm) ty Hty2 ->
-        get_args_lists eq - so general over ts, reps, Hty*)
-    (*Should work for sub_t/f lemma as well *)
-
-    f_equal.
-
-    Check get_arg_list_eq.
-    apply get_arg_list_eq.
-  
-  
-  apply term_rep_irrel. inversion Hty; subst.
-  
-  /\
-  (Hnodup: NoDup l)
-  (Hlenl: length l = length (bnd_t t)),
-  term_has_type sigma t ty ->
-  term_has_type sigma (alpha_t_aux t l) ty) /\
-  (forall (l: list string)
-  (Hnodup: NoDup l)
-  (Hlenl: length l = length (bnd_f f)),
-  valid_formula sigma f ->
-  valid_formula sigma (alpha_f_aux f l)).
