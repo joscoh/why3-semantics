@@ -1438,6 +1438,15 @@ Section RewriteLemmas.
   dependent types/proofs. These rewrite lemmas ensure we 
   never have to unfold giant proof terms*)
 
+Lemma tvar_rep (vv: val_vars pd vt)
+  (x: vsymbol) (ty: vty) (Hty: term_has_type sigma (Tvar x) ty) :
+  term_rep vv (Tvar x) ty Hty =
+  dom_cast (dom_aux pd) (f_equal (val vt) (eq_sym (ty_var_inv (has_type_eq eq_refl Hty)))) 
+    (var_to_dom pd vt vv x).
+Proof.
+  reflexivity.
+Qed.
+
 Lemma tfun_rep (vv: val_vars pd vt)
   (f: funsym) (vs: list vty) (args: list term) (ty: vty)
   (Hty: term_has_type sigma (Tfun f vs args) ty) :
