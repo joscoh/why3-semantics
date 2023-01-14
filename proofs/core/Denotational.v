@@ -1095,6 +1095,7 @@ Qed.
 (*Look up each entry in the list, if the name or type doesn't
   match, default to existing val*)
 (*Usefully, Coq can tell that this does not affect v_typevar*)
+(*
 Definition extend_val_with_list (v: val_typevar) 
   (vv: val_vars pd v)
   (l: list (vsymbol * {t: vty & domain (val v t) })) :
@@ -1105,7 +1106,34 @@ intros x.
     * rewrite e. exact (projT2 s).
     * exact (vv x).
   + exact (vv x).
-Defined.
+Defined.*)
+
+Definition extend_val_with_list (v: val_typevar) 
+  (vv: val_vars pd v)
+  (l: list (vsymbol * {t: vty & domain (val v t) })):
+  val_vars pd v := fun x =>
+  match (get_assoc_list vsymbol_eq_dec l x) with
+  | Some a => 
+    match (vty_eq_dec (snd x) (projT1 a)) with
+    | left Heq =>
+      dom_cast _ (f_equal (val v) (eq_sym Heq)) (projT2 a)
+    | right _ => vv x
+    end
+  | None => vv x
+  end.
+
+  (*
+Lemma extend_val_eq v vv l :
+  extend_val_with_list v vv l =
+  extend_val_with_list' v vv l.
+Proof.
+  apply functional_extensionality_dep; intros.
+  unfold extend_val_with_list, extend_val_with_list'.
+  destruct (get_assoc_list vsymbol_eq_dec l x); simpl; auto.
+  destruct (vty_eq_dec (snd x) (projT1 s)); simpl; auto.
+  unfold dom_cast. unfold eq_rec_r, eq_rec, eq_rect.
+  destruct x; simpl in *. subst. simpl. reflexivity.
+Qed.*)
 
 Variable vt: val_typevar.
 
@@ -1946,20 +1974,71 @@ Proof.
     auto. apply nth_In; auto.
 Qed.
 
-(*Lemma for [match_val_single]*)
-Lemma match_var_single_free_var ty Hval d p l x ty'
+(*TODO: move*)
+Lemma union_app_disjoint {A: Type} 
+  (eq_dec: forall (x y: A), {x = y} + {x <> y})
+  (l1 l2: list A)
+  (Hdisj: forall x, ~ (In x l1 /\ In x l2))
+  (Hnodup: NoDup l1):
+  union eq_dec l1 l2 = l1 ++ l2.
+Proof.
+  induction l1; simpl; auto.
+  destruct (in_dec eq_dec a (union eq_dec l1 l2)).
+  - rewrite union_elts in i.
+    destruct i.
+    + inversion Hnodup; contradiction.
+    + exfalso. apply (Hdisj a); split; auto. left; auto.
+  - rewrite IHl1; auto. intros. intro C. apply (Hdisj x).
+    destruct C.
+    split; simpl; auto. inversion Hnodup; auto.
+Qed.
+
+(*TODO: move*)
+Lemma union_subset {A: Type}
+  (eq_dec: forall (x y: A), {x = y} + {x <> y})
+  (l1 l2: list A)
+  (Hsame: forall x, In x l1 -> In x l2)
+  (Hnodup: NoDup l2):
+  union eq_dec l1 l2 = l2.
+Proof.
+  induction l1; simpl; auto.
+  destruct (in_dec eq_dec a (union eq_dec l1 l2)).
+  - apply IHl1. intros. apply Hsame. right; auto.
+  - rewrite union_elts in n.
+    exfalso. apply n. right. apply Hsame. left; auto.
+Qed.
+
+(*TODO: move somewhere*)
+Lemma NoDup_pat_fv (p: pattern) : NoDup (pat_fv p).
+Proof.
+  induction p; simpl; try constructor; auto.
+  - constructor.
+  - apply big_union_nodup.
+  - apply union_nodup; auto.
+  - apply union_nodup; auto. constructor; auto. constructor.
+Qed.
+
+
+(*Lemmas for [match_val_single] and free vars*)
+
+Require Import Coq.Sorting.Permutation.
+
+(*The variables bound are exactly the free variables of pattern p.
+  Note that we do NOT get equality because of OR patterns, but
+  Permutation is sufficient*)
+Lemma match_val_single_perm ty Hval d p l ty'
   (Hpat: pattern_has_type sigma p ty'):
   match_val_single vt ty Hval d p = Some l ->
-  In x (pat_fv p) <-> In x (map fst l).
+  Permutation (map fst l) (pat_fv p).
 Proof.
   revert Hval d l. generalize dependent ty'. 
   generalize dependent ty.
   induction p; auto.
   - simpl; intros.
-    destruct (vty_eq_dec (snd v) ty). inversion H. subst. reflexivity.
-    inversion H.
+    destruct (vty_eq_dec (snd v) ty); inversion H.
+    subst. simpl. apply Permutation_refl.
   - intros ty ty' Hpatty Hval d.
-    inversion Hpatty; subst. clear H3 H4 H5 H7 H10 Hpatty. subst sigma0.
+    inversion Hpatty; subst. clear H3 H4 H5 H7 Hpatty. subst sigma0.
     (*The hard case: need lots of generalization for dependent types
       and need nested induction*) 
     unfold match_val_single; fold match_val_single.
@@ -1990,7 +2069,7 @@ Proof.
     intros constr. destruct constr as [f' Hf']. simpl. intros Hf; subst.
     generalize dependent ((Hsrtsvalid m adt (adt_name adt) srts f eq_refl Hval (fst (proj1_sig Hf')))).
     destruct Hf'. simpl. clear e.
-    destruct x0. simpl. generalize dependent a.
+    destruct x. simpl. generalize dependent a.
     generalize dependent ps.
     assert (Hargslen: length (funsym_sigma_args f srts) = length (s_args f)). {
       unfold funsym_sigma_args, ty_subst_list_s.
@@ -2000,8 +2079,9 @@ Proof.
     generalize dependent (s_args f); intros args; revert args.
     generalize dependent ((funsym_sigma_args f srts)).
     induction l; simpl; intros; auto. 
-    + destruct ps; inversion H0; subst; reflexivity.
+    + destruct ps; inversion H0; subst. constructor.
     + revert H0. destruct ps. intro C; inversion C.
+      (*TODO: use tactic*)
       repeat match goal with 
       |- (match ?p with |Some l => ?x | None => ?y end) = ?z -> ?q =>
         let Hp := fresh "Hmatch" in 
@@ -2014,28 +2094,71 @@ Proof.
       inversion H9; subst. simpl in H4.
       apply (H2 _(ty_subst (s_params f) vs v)) in Hmatch; auto.
       apply (IHl args) in Hmatch0; auto.
-      simpl. rewrite union_elts, map_app, in_app_iff ,Hmatch, Hmatch0.
-      reflexivity.
+      2: {
+        intros i' j'; intros. apply (H10 (S i') (S j')); auto; simpl; lia.
+      }
+      rewrite map_app. simpl. rewrite union_app_disjoint.
+      * apply Permutation_app; auto.
+      * intros. intros [Hinx1 Hinx2].
+        rewrite <- big_union_elts in Hinx2.
+        destruct Hinx2 as [p' [Hinp' Hinx2]].
+        pose proof (In_nth _ _ Pwild Hinp').
+        destruct H0 as [n [Hn Hp']]; subst.
+        apply (H10 0 (S n) Pwild x); auto; simpl; lia.
+      * apply NoDup_pat_fv.
   - simpl. intros. inversion H; subst. reflexivity.
-  - simpl. intros. destruct (match_val_single vt ty Hval d p1) eqn: Hm.
-    + inversion H; subst. inversion Hpat; subst.
-      apply (IHp1 _ ty') in Hm; auto.
-      rewrite union_elts ,<- H6, or_idem, Hm.
-      reflexivity.
-    + inversion Hpat; subst.
-      apply (IHp2 _ ty') in H; auto.
-      rewrite union_elts, H6, or_idem, H.
-      reflexivity.
   - simpl. intros.
+    inversion Hpat; subst.
+    assert (Permutation (pat_fv p1) (pat_fv p2)). {
+      apply NoDup_Permutation; auto; apply NoDup_pat_fv.
+    }
+    destruct (match_val_single vt ty Hval d p1) eqn: Hm.
+    + inversion H; subst. 
+      apply (IHp1 _ ty') in Hm; auto.
+      rewrite union_subset; auto.
+      * apply (perm_trans Hm); auto.
+      * intros; apply H6; auto.
+      * apply NoDup_pat_fv.
+    + apply (IHp2 _ ty') in H; auto.
+      rewrite union_subset; auto.
+      * intros; apply H6; auto.
+      * apply NoDup_pat_fv.
+  - simpl. intros. 
+    inversion Hpat; subst.
+    rewrite union_app_disjoint; [| | apply NoDup_pat_fv].
+    2: {
+      intros. intros [Hinx1 [Heq | []]]; subst; contradiction.
+    }
     destruct (match_val_single vt ty Hval d p) eqn : Hm.
     + destruct (vty_eq_dec (snd v) ty); inversion H; subst. simpl.
-      inversion Hpat; subst.
+      eapply perm_trans. apply Permutation_cons_append.
+      apply Permutation_app_tail. 
       apply (IHp _ (snd v)) in Hm; auto.
-      rewrite union_elts; simpl.
-      rewrite or_false_r, or_comm, Hm.
-      reflexivity.
     + inversion H.
 Qed.
+
+(*Corollaries*)
+Corollary match_val_single_free_var ty Hval d p l x ty'
+  (Hpat: pattern_has_type sigma p ty'):
+  match_val_single vt ty Hval d p = Some l ->
+  In x (pat_fv p) <-> In x (map fst l).
+Proof.
+  intros. apply match_val_single_perm with(ty':=ty') in H; auto.
+  split; apply Permutation_in; auto.
+  apply Permutation_sym; auto.
+Qed.
+
+Lemma match_val_single_nodup ty Hval d p l ty'
+  (Hpat: pattern_has_type sigma p ty'):
+  match_val_single vt ty Hval d p = Some l ->
+  NoDup (map fst l).
+Proof.
+  intros. apply match_val_single_perm with(ty':=ty') in H; auto.
+  apply Permutation_sym in H.
+  apply Permutation_NoDup in H; auto.
+  apply NoDup_pat_fv.
+Qed.
+
 
 (*TODO: see if we can get rid of casting in Here*)
 Lemma sub_correct (t: term) (f: formula) :
@@ -2210,7 +2333,7 @@ Proof.
         rewrite match_val_single_irrel with (Hval2:=(has_type_valid gamma_valid tm v Hty2)).
         rewrite Hmatch.
         assert (In x (map fst newval)). {
-          apply (match_var_single_free_var) with(x:=x)(ty':=v) in Hmatch.
+          apply (match_val_single_free_var) with(x:=x)(ty':=v) in Hmatch.
           apply Hmatch. destruct (in_bool_spec vsymbol_eq_dec x (pat_fv p1)); auto.
           inversion Hinp1.
           specialize (Hallpats (p1, t1)). apply Hallpats. left; auto.
@@ -2225,7 +2348,7 @@ Proof.
         rewrite Hmatch.
         (*Again, use other lemma*)
         assert (~In x (map fst newval)). {
-          apply (match_var_single_free_var) with(x:=x)(ty':=v) in Hmatch.
+          apply (match_val_single_free_var) with(x:=x)(ty':=v) in Hmatch.
           intro C.
           apply Hmatch in C. destruct (in_bool_spec vsymbol_eq_dec x (pat_fv p1)); auto.
           inversion Hinp1.
@@ -2239,7 +2362,7 @@ Proof.
        unfold extend_val_with_list.
        destruct (get_assoc_list vsymbol_eq_dec newval y) eqn : Ha; auto.
        apply get_assoc_list_some in Ha.
-       apply match_var_single_free_var with(x:=y)(ty':=v) in Hmatch.
+       apply match_val_single_free_var with(x:=y)(ty':=v) in Hmatch.
        exfalso. apply Hfree. simpl.
        assert (In y (pat_fv p1)). apply Hmatch. rewrite in_map_iff.
        exists (y, s). split; auto.
@@ -2396,7 +2519,7 @@ Proof.
         rewrite match_val_single_irrel with (Hval2:=(has_type_valid gamma_valid tm v Hty2)).
         rewrite Hmatch.
         assert (In x (map fst newval)). {
-          apply (match_var_single_free_var) with(x:=x)(ty':=v) in Hmatch.
+          apply (match_val_single_free_var) with(x:=x)(ty':=v) in Hmatch.
           apply Hmatch. destruct (in_bool_spec vsymbol_eq_dec x (pat_fv p1)); auto.
           inversion Hinp1.
           inversion Hallpats; subst. exact H3.
@@ -2411,7 +2534,7 @@ Proof.
         rewrite Hmatch.
         (*Again, use other lemma*)
         assert (~In x (map fst newval)). {
-          apply (match_var_single_free_var) with(x:=x)(ty':=v) in Hmatch.
+          apply (match_val_single_free_var) with(x:=x)(ty':=v) in Hmatch.
           intro C.
           apply Hmatch in C. destruct (in_bool_spec vsymbol_eq_dec x (pat_fv p1)); auto.
           inversion Hinp1.
@@ -2425,7 +2548,7 @@ Proof.
        unfold extend_val_with_list.
        destruct (get_assoc_list vsymbol_eq_dec newval y) eqn : Ha; auto.
        apply get_assoc_list_some in Ha.
-       apply match_var_single_free_var with(x:=y)(ty':=v) in Hmatch.
+       apply match_val_single_free_var with(x:=y)(ty':=v) in Hmatch.
        exfalso. apply Hfree. simpl.
        assert (In y (pat_fv p1)). apply Hmatch. rewrite in_map_iff.
        exists (y, s). split; auto.
@@ -2560,7 +2683,7 @@ Proof.
         assert (pattern_has_type sigma p v). {
           apply (Hallpats (p, t0)). left; auto.
         }
-        rewrite (match_var_single_free_var _ _ _ _ _ _ _ H3 Hm); auto.
+        rewrite (match_val_single_free_var _ _ _ _ _ _ _ H3 Hm); auto.
     + auto.
     + intros x Hinx.
       apply H1. simpl.
@@ -2632,7 +2755,7 @@ Proof.
         simpl. apply remove_all_elts.
         split; auto.
         inversion Hallpats; subst.
-        rewrite (match_var_single_free_var _ _ _ _ _ _ _ H7 Hm); auto.
+        rewrite (match_val_single_free_var _ _ _ _ _ _ _ H7 Hm); auto.
     + auto.
     + intros x Hinx.
       apply H1. simpl.
