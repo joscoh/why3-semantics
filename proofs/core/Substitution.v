@@ -3249,6 +3249,48 @@ Proof.
     + (*From assumption*)
       apply (Hnotin2 v0); auto. left; auto.
 Qed.
+
+(*TODO: how to avoid repeating? Proof is same*)
+Corollary alpha_equiv_f_redundant' (f1 f2: formula) 
+  (v1 v2: list (vsymbol * vsymbol))
+  (Halleq: forall x, In x v1 -> fst x = snd x)
+  (Hnodup: NoDup v1)
+  (Hnotin1: forall x, In x (map fst v1) -> ~ In x (map fst v2))
+  (Hnotin2: forall x, In x (map fst v1) -> ~ In x (map snd v2)):
+  alpha_equiv_f (v1 ++ v2) f1 f2 =
+  alpha_equiv_f v2 f1 f2.
+Proof.
+  induction v1; simpl; auto.
+  destruct a.
+  assert (fst (v, v0) = snd (v, v0)). apply Halleq. left; auto.
+  simpl in H; subst.
+  inversion Hnodup; subst.
+  rewrite alpha_equiv_f_redundant with(x:=v0)(v1:=nil)(v2:=(v1 ++ v2));
+  simpl; auto.
+  - apply IHv1; auto; intros; 
+    [apply Halleq | apply Hnotin1 | apply Hnotin2]; simpl; triv.
+  - rewrite map_app. rewrite in_app_iff. intros [Hin1 | Hin2].
+    + (*From NoDups*)
+      rewrite in_map_iff in Hin1.
+      destruct Hin1 as [y [Hy Hin1]]; subst.
+      assert (fst y = snd y). {
+        apply Halleq. right; triv.
+      }
+      apply H1. destruct y; simpl in *; subst; auto.
+    + (*From assumption*)
+      apply (Hnotin1 v0); auto. left; auto.
+  - (*similar*) 
+   rewrite map_app. rewrite in_app_iff. intros [Hin1 | Hin2].
+   + (*From NoDups*)
+      rewrite in_map_iff in Hin1.
+      destruct Hin1 as [y [Hy Hin1]]; subst.
+      assert (fst y = snd y). {
+        apply Halleq. right; triv.
+      }
+      apply H1. destruct y; simpl in *; subst; auto.
+    + (*From assumption*)
+      apply (Hnotin2 v0); auto. left; auto.
+Qed.
   
 Lemma in_split {A: Type} (x: A) (l: list A):
   In x l ->
@@ -3302,12 +3344,12 @@ Lemma alpha_equiv_sub (t: term) (f: formula):
     alpha_equiv_f [(x, y)] f (sub_f x y f)).
 Proof.
   revert t f; apply term_formula_ind; simpl; auto; intros.
-  - simpl_sumbool.
-  - not_or Hvy. clear Hbnd Hvy0.
+  - (*Tconst*) simpl_sumbool.
+  - (*Tvar*) not_or Hvy. clear Hbnd Hvy0.
     vsym_eq v x.
     + vsym_eq x x. vsym_eq y y. vsym_eq x x.
     + vsym_eq x v. vsym_eq v y. vsym_eq v v.
-  - bool_to_prop. split_all; [simpl_sumbool | wf_tac | simpl_sumbool |];
+  - (*Tfun*) bool_to_prop. split_all; [simpl_sumbool | wf_tac | simpl_sumbool |];
     [apply Nat.eqb_refl|].
     induction l1; simpl in *; auto.
     inversion H; subst.
@@ -3318,7 +3360,7 @@ Proof.
     + apply IHl1; auto.
       * intro C. apply Hbnd. wf_tac.
       * intro C. apply Hfree. simpl_set. wf_tac.
-  - (*The let case is hard and requires the previous lemmas*) 
+  - (*The Tlet case requires lots of previous lemmas*) 
     bool_to_prop; split_all; [simpl_sumbool | |].
     + apply H; auto.
       * intro C. apply Hbnd. right. wf_tac.
@@ -3336,9 +3378,10 @@ Proof.
         try (intro C; destruct C as [Heq' | []]; subst; auto).
         apply H0; auto. intro C. apply Hfree. right.
         split; auto.
-  - simpl_set. rewrite !in_app_iff in Hbnd. 
+  - (*Tif*) simpl_set. rewrite !in_app_iff in Hbnd. 
     rewrite H, H0, H1; auto.
-  - rewrite map_length, Nat.eqb_refl. simpl_bool.
+  - (*Tmatch - basically iterated Tlet, we need the many previous results*) 
+    rewrite map_length, Nat.eqb_refl. simpl_bool.
     rewrite union_elts in Hfree.
     rewrite in_app_iff in Hbnd.
     rewrite H; auto. destruct (vty_eq_dec v v); auto; simpl.
@@ -3407,9 +3450,151 @@ Proof.
       * intros. rewrite map_fst_combine in H1; auto.
         simpl. intros [Hxx0 | []]; subst. simpl in n.
         apply Hbnd. simpl. in_tac.
-  - 
-        
-(*Can we prove this?*)
+  - (*Teps - Similar to let, a bit simpler*) 
+    simpl_set.  
+    vsym_eq x v; destruct (vty_eq_dec (snd v) (snd v)); simpl; auto.
+    + pose proof (alpha_f_equiv_dup f f v v y nil nil nil).
+      simpl in H0. rewrite H0; auto.
+      * apply alpha_f_equiv_same.
+        simpl; intros. destruct H1 as [Hx | []]; subst; auto.
+      * intro C; apply Hfree. simpl_set. split; auto.
+    + rewrite alpha_equiv_f_redundant with(x:=v)(v1:=nil)(v2:=(x, y) :: nil); simpl;
+        try (intro C; destruct C as [Heq' | []]; subst; auto).
+      apply H; auto. intro C. apply Hfree. split; auto. 
+  - (*Fpred*) 
+    bool_to_prop. split_all; [simpl_sumbool | wf_tac | simpl_sumbool |];
+    [apply Nat.eqb_refl|].
+    induction tms; simpl in *; auto.
+    inversion H; subst.
+    bool_to_prop; split.
+    + apply H2; auto.
+      * intro C. apply Hbnd. wf_tac.
+      * intro C. apply Hfree. simpl_set. wf_tac.
+    + apply IHtms; auto.
+      * intro C. apply Hbnd. wf_tac.
+      * intro C. apply Hfree. simpl_set. wf_tac.
+  - (*Fquant - like Teps*)
+    simpl_set.  
+    vsym_eq x v; destruct (quant_eq_dec q q); 
+    destruct (vty_eq_dec (snd v) (snd v)); simpl; auto.
+    + pose proof (alpha_f_equiv_dup f f v v y nil nil nil).
+      simpl in H0. rewrite H0; auto.
+      * apply alpha_f_equiv_same.
+        simpl; intros. destruct H1 as [Hx | []]; subst; auto.
+      * intro C; apply Hfree. simpl_set. split; auto.
+    + rewrite alpha_equiv_f_redundant with(x:=v)(v1:=nil)(v2:=(x, y) :: nil); simpl;
+        try (intro C; destruct C as [Heq' | []]; subst; auto).
+      apply H; auto. intro C. apply Hfree. split; auto.
+  - (*Feq*)
+    destruct (vty_eq_dec v v); simpl; auto.
+    simpl_set. rewrite in_app_iff in Hbnd.
+    rewrite H, H0; auto.
+  - (*Fbinop*)
+    destruct (binop_eq_dec b b); simpl; auto.
+    simpl_set. rewrite in_app_iff in Hbnd.
+    rewrite H, H0; auto.
+  - (*Flet*)
+    bool_to_prop; split_all; [simpl_sumbool | |].
+    + apply H; auto.
+      * intro C. apply Hbnd. right. wf_tac.
+      * intro C. apply Hfree. simpl_set. wf_tac.
+    + rewrite in_app_iff in Hbnd. simpl_set.
+      vsym_eq x v.
+      * pose proof (alpha_f_equiv_dup f f v v y nil nil nil).
+        simpl in H1.
+        rewrite H1; auto.
+        -- apply alpha_f_equiv_same. simpl; intros.
+          destruct H2 as [? | []]; subst; auto.
+        -- intro C; apply Hfree. simpl_set. right. auto.
+      * rewrite alpha_equiv_f_redundant with(x:=v)(v1:=nil)(v2:=(x, y) :: nil); simpl;
+        try (intro C; destruct C as [Heq' | []]; subst; auto).
+        apply H0; auto. intro C. apply Hfree. right.
+        split; auto.
+  - (*Fif*)
+    simpl_set. rewrite !in_app_iff in Hbnd.
+    rewrite H, H0, H1; auto.
+  - (*Fmatch*)
+    rewrite map_length, Nat.eqb_refl. simpl_bool.
+    rewrite union_elts in Hfree.
+    rewrite in_app_iff in Hbnd.
+    rewrite H; auto. destruct (vty_eq_dec v v); auto; simpl.
+    not_or Hiny. clear Hiny1 Hiny.
+    rename Hiny0 into Hfree.
+    rename Hiny2 into Hbnd.
+    induction ps; simpl; auto.
+    destruct a.
+    inversion H0; subst. 
+    case_in.
+    + unfold add_vals.
+      rewrite alpha_equiv_p_same; simpl;
+      [|apply in_combine_same | intros; rewrite map_fst_combine; auto].
+      assert (alpha_equiv_f (combine (pat_fv p) (pat_fv p) ++ [(x, y)]) f f). {
+        simpl in i.
+        pose proof (In_nth _ _ vs_d i).
+        destruct H1 as [n [Hn Hx]].
+        assert (In (x, x) (combine (pat_fv p) (pat_fv p))). {
+          rewrite in_combine_iff; auto. exists n.
+          split; auto.
+          intros. subst. f_equal; apply nth_indep; auto. 
+        }
+        apply in_split in H1. destruct H1 as [v1 [v2 Hcomb]].
+        rewrite Hcomb.
+        rewrite <- app_assoc.
+        simpl.
+        rewrite alpha_f_equiv_dup; auto.
+        - rewrite app_nil_r, <- Hcomb.
+          apply alpha_f_equiv_same; simpl.
+          apply in_combine_same.
+        - intro C; apply Hfree. simpl_set.
+          exists (p, f); simpl; split; simpl_set; auto.
+          split; auto. intro C1. apply Hbnd.
+          rewrite in_concat. exists (pat_fv p ++ bnd_f f).
+          simpl. split; auto. in_tac.
+        - intro C; apply Hbnd. rewrite in_concat.
+          exists (pat_fv p ++ bnd_f f). simpl; split; auto.
+          in_tac.
+      }
+      rewrite H1; simpl.
+      apply IHps; auto.
+      * intro C. apply Hbnd. simpl. in_tac.
+      * intro C. apply Hfree. simpl. simpl_set; auto.
+    + (*In this case, we need to do substitution*)
+      simpl.
+      rewrite alpha_equiv_p_same; simpl;
+      [|apply in_combine_same | intros; rewrite map_fst_combine; auto].
+      (*We can remove all the redundant variables at the start of
+        the list with previous lemmas*)
+      unfold add_vals.
+      rewrite alpha_equiv_f_redundant' with(v1:=(combine (pat_fv p) (pat_fv p))).
+      * rewrite H3; auto. simpl. apply IHps; auto.
+        -- intro C; apply Hbnd. simpl; in_tac.
+        -- intro C; apply Hfree; simpl_set; auto.
+          destruct C as [t' [Hint Hiny]].
+          exists t'. split; auto. simpl; triv.
+        -- intro C; apply Hbnd. simpl. in_tac.
+        -- intro C; apply Hfree. simpl_set. exists (p, f). split; simpl; auto.
+          simpl_set. split; auto. intro C1. apply Hbnd.
+          simpl. in_tac.
+      * apply in_combine_same.
+      * apply NoDup_combine; apply NoDup_pat_fv.
+      * intros. rewrite map_fst_combine in H1; auto.
+        simpl. intros [Hxx0 | []]; subst. contradiction.
+      * intros. rewrite map_fst_combine in H1; auto.
+        simpl. intros [Hxx0 | []]; subst. simpl in n.
+        apply Hbnd. simpl. in_tac.
+Qed.
+
+(*TODO: automate "Corollary" process*)
+Definition alpha_equiv_sub_t (t: term) := proj1(alpha_equiv_sub t Ftrue).
+Definition alpha_equiv_sub_f (f: formula) :=
+  proj2 (alpha_equiv_sub tm_d f).
+
+(*Now that we have our structural results, we prove results
+  about alpha equivalence of let, quantifiers, and match statements.
+  This means that we should never again need to unfold the
+  definition of alpha equivalence or work inductively over the list
+  (TODO: except to prove transitivity and stuff)*)
+(*These results, with all our work, are easy*)
 Lemma alpha_convert_quant
   (q: quant) (v1 v2: vsymbol) (Heq: snd v1 = snd v2) (f: formula)
   (Hbnd: ~In v2 (bnd_f f))
@@ -3418,10 +3603,49 @@ Lemma alpha_convert_quant
 Proof.
   unfold a_equiv_f. simpl.
   bool_to_prop; split_all; try solve[simpl_sumbool].
+  apply alpha_equiv_sub_f; auto.
+Qed.
 
+Lemma alpha_convert_tlet 
+  (v1 v2: vsymbol) (Heq: snd v1 = snd v2) (tm1 tm2: term)
+  (Hbnd: ~In v2 (bnd_t tm2))
+  (Hfree: ~In v2 (term_fv tm2)):
+  a_equiv_t (Tlet tm1 v1 tm2) (Tlet tm1 v2 (sub_t v1 v2 tm2)).
+Proof.
+  unfold a_equiv_t.
+  simpl. destruct (vty_eq_dec (snd v1) (snd v2)); simpl; auto.
+  bool_to_prop. split.
+  - apply alpha_t_equiv_same; simpl; intros. destruct H.
+  - apply alpha_equiv_sub_t; auto.
+Qed.
+
+Lemma alpha_convert_flet 
+  (v1 v2: vsymbol) (Heq: snd v1 = snd v2) (t1: term) (f2: formula)
+  (Hbnd: ~In v2 (bnd_f f2))
+  (Hfree: ~In v2 (form_fv f2)):
+  a_equiv_f (Flet t1 v1 f2) (Flet t1 v2 (sub_f v1 v2 f2)).
+Proof.
+  unfold a_equiv_f.
+  simpl. destruct (vty_eq_dec (snd v1) (snd v2)); simpl; auto.
+  bool_to_prop. split.
+  - apply alpha_t_equiv_same; simpl; intros. destruct H.
+  - apply alpha_equiv_sub_f; auto.
+Qed.
+
+(*TODO: start with match*)
+Lemma alpha_convert_tmatch_single
+  (v1 v2: vsymbol) (Heq: snd v1 = snd v2) (t: term) ty
+  (ps: list (pattern * term)):
+  a_equiv_t (Tmatch t ty ps) (Tmatch t ty (map (fun x => (sub_p v1 v2 (fst x), sub_t v1 v2 (snd x))) ps)).
+Proof.
+  unfold a_equiv_t. simpl.
+  rewrite map_length.
+  (*TODO: start here*)
+  rewrite length_map.
   simpl.
-  formula_rep v (Fquant q v1 f) Hval1 = 
-  formula_rep v (Fquant q v2 (sub_f v1 v2 f)) Hval2.
+  (Hbnd: ~In v2 (bnd_f f2))
+  (Hfree: ~In v2 (form_fv f2)):
+  a_equiv_f (Flet t1 v1 f2) (Flet t1 v2 (sub_f v1 v2 f2)).
 
 
 (*Now we want to define a function to rename bound variables to unique
