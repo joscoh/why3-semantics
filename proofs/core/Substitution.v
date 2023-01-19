@@ -1635,6 +1635,29 @@ Proof.
       exfalso. apply Hb. rewrite in_map_iff; exists (v, v0); auto.
 Qed.
 
+Lemma flip_flip {A B: Type} (l: list (A * B)):
+  flip (flip l) = l.
+Proof.
+  induction l; simpl; auto. rewrite IHl. f_equal.
+  destruct a; auto.
+Qed.
+
+(*An alternate form*)
+Lemma alpha_equiv_p_sym_eq (p1 p2: pattern) 
+  (vars: list (vsymbol * vsymbol))
+  (Hnodup1: NoDup (map fst vars))
+  (Hnodup2: NoDup (map snd vars)):
+  alpha_equiv_p vars p1 p2 = alpha_equiv_p (flip vars) p2 p1.
+Proof.
+  destruct (alpha_equiv_p vars p1 p2) eqn : Heq.
+  - symmetry. apply alpha_equiv_p_sym; auto.
+  - destruct (alpha_equiv_p (flip vars) p2 p1) eqn : Heq'; auto.
+    apply alpha_equiv_p_sym in Heq'; auto.
+    rewrite flip_flip in Heq'. rewrite Heq' in Heq. inversion Heq.
+    rewrite map_fst_flip; auto.
+    rewrite map_snd_flip; auto.
+Qed.
+
 (*From the symmetry, we get that [match_val_single] are either
   always both None or both Some*)
 Lemma match_val_single_alpha_p_none_iff {ty: vty}
@@ -3632,7 +3655,172 @@ Proof.
   - apply alpha_equiv_sub_f; auto.
 Qed.
 
+(*Prove Equivalence Relation (TODO: move, put after or before
+  all inductive cases)*)
+
+(*We proved refl already*)
+Lemma a_equiv_t_refl (t: term):
+  a_equiv_t t t.
+Proof.
+  unfold a_equiv_t.
+  apply alpha_t_equiv_same. intros. inversion H.
+Qed.
+
+Lemma a_equiv_f_refl (f: formula):
+  a_equiv_f f f.
+Proof.
+  unfold a_equiv_f.
+  apply alpha_f_equiv_same; intros; inversion H.
+Qed.
+
+Lemma eq_dec_sym {A: Type} {eq_dec: forall (x y: A), {x = y}+ {x <> y}}
+  (x y: A):
+  (@eq bool (eq_dec x y) (eq_dec y x)).
+Proof.
+  destruct (eq_dec x y); simpl; destruct (eq_dec y x); subst; auto.
+  contradiction.
+Qed.
+
+(*Need this to avoid length arguments*)
+Lemma map_fst_combine_nodup {A B: Type} (l1: list A) (l2: list B):
+  NoDup l1 ->
+  NoDup (map fst (combine l1 l2)).
+Proof.
+  intros. revert l2. induction l1; simpl; intros; auto.
+  inversion H; subst. destruct l2; simpl; constructor.
+  - intro C. rewrite in_map_iff in C.
+    destruct C as [t [Ha Hint]]; subst.
+    destruct t.
+    apply in_combine_l in Hint. simpl in H2. contradiction.
+  - apply IHl1; auto.
+Qed.
+
+Lemma map_snd_combine_nodup {A B: Type} (l1: list A) (l2: list B):
+  NoDup l2 ->
+  NoDup (map snd (combine l1 l2)).
+Proof.
+  intros. generalize dependent l2. induction l1; simpl; intros; auto.
+  constructor. 
+  destruct l2; simpl; inversion H; subst; constructor.
+  - intro C. rewrite in_map_iff in C.
+    destruct C as [t [Ha Hint]]; subst.
+    destruct t.
+    apply in_combine_r in Hint. simpl in H2. contradiction.
+  - apply IHl1; auto.
+Qed.
+
+Lemma flip_combine {A B: Type} (l1: list A) (l2: list B):
+  flip (combine l1 l2) = combine l2 l1.
+Proof.
+  revert l2. induction l1; simpl; intros; destruct l2; auto.
+  simpl.
+  rewrite IHl1; auto.
+Qed.
+
+(*Symmetry*)
+Lemma alpha_equiv_sym (t: term) (f: formula):
+  (forall t1 l,
+    alpha_equiv_t l t t1 = alpha_equiv_t (flip l) t1 t) /\
+  (forall f1 l,
+    alpha_equiv_f l f f1 = alpha_equiv_f (flip l) f1 f).
+Proof.
+  revert t f. apply term_formula_ind; simpl; intros; auto.
+  - destruct t1; auto; simpl.
+    destruct (all_dec (c = c0)); subst; simpl.
+    + destruct (all_dec (c0 = c0)); auto. contradiction.
+    + destruct (all_dec (c0 = c)); subst; auto.
+  - destruct t1; auto; simpl.
+    rewrite flip_flip.
+    case_inner_match.
+    + case_inner_match; auto. solve_bool.
+    + case_inner_match; auto. apply eq_dec_sym. 
+  - destruct t1; auto; simpl.
+    rewrite Nat.eqb_sym.
+    destruct (length l3 =? length l1) eqn : Hlen; simpl_bool; auto.
+    apply Nat.eqb_eq in Hlen.
+    f_equal.
+    + rewrite eq_dec_sym. f_equal. apply eq_dec_sym.
+    + generalize dependent l3. induction l1; simpl; intros; auto;
+      destruct l3; inversion Hlen; auto.
+      inversion H; subst.
+      f_equal; auto.
+  - destruct t1; auto; simpl. rewrite H, H0, eq_dec_sym. reflexivity. 
+  - destruct t0; auto; simpl.
+    rewrite H, H0, H1; auto.
+  - destruct t1; auto; simpl.
+    rewrite Nat.eqb_sym.
+    destruct (length l0 =? length ps) eqn : Hlen; simpl_bool; auto.
+    apply Nat.eqb_eq in Hlen.
+    rewrite H, eq_dec_sym. f_equal. clear H.
+    generalize dependent l0. induction ps; simpl; intros; auto; 
+    destruct l0; inversion Hlen; auto.
+    destruct p; destruct a.
+    rewrite alpha_equiv_p_sym_eq.
+    2: {
+      apply map_fst_combine_nodup.
+      apply NoDup_pat_fv.
+    }
+    2: {
+      apply map_snd_combine_nodup. apply NoDup_pat_fv.
+    }
+    rewrite flip_combine.
+    inversion H0; subst. f_equal; auto.
+    f_equal. rewrite H3. unfold add_vals.
+    rewrite flip_app, flip_combine; auto.
+  - destruct t1; auto; simpl.
+    rewrite H, eq_dec_sym. reflexivity.
+  - destruct f1; auto; simpl.
+    rewrite Nat.eqb_sym.
+    destruct (length l1 =? length tms) eqn : Hlen; simpl_bool; auto.
+    apply Nat.eqb_eq in Hlen.
+    f_equal.
+    + rewrite eq_dec_sym. f_equal. apply eq_dec_sym.
+    + generalize dependent l1. induction tms; simpl; intros; auto;
+      destruct l1; inversion Hlen; auto.
+      inversion H; subst.
+      f_equal; auto.
+  - destruct f1; auto; simpl.
+    rewrite H, eq_dec_sym. f_equal. f_equal.
+    apply eq_dec_sym.
+  - destruct f1; auto; simpl.
+    rewrite eq_dec_sym, H, H0; reflexivity.
+  - destruct f0; auto; simpl.
+    rewrite eq_dec_sym, H, H0; reflexivity.
+  - destruct f1; auto; simpl.
+    apply H.
+  - destruct f1; auto.
+  - destruct f1; auto.
+  - destruct f1; auto; simpl.
+    rewrite eq_dec_sym, H, H0; reflexivity.
+  - destruct f0; auto; simpl.
+    rewrite H, H0, H1; reflexivity.
+  - destruct f1; auto; simpl.
+    rewrite Nat.eqb_sym.
+    destruct (length l0 =? length ps) eqn : Hlen; simpl_bool; auto.
+    apply Nat.eqb_eq in Hlen.
+    rewrite H, eq_dec_sym. f_equal. clear H.
+    generalize dependent l0. induction ps; simpl; intros; auto; 
+    destruct l0; inversion Hlen; auto.
+    destruct p; destruct a.
+    rewrite alpha_equiv_p_sym_eq.
+    2: {
+      apply map_fst_combine_nodup.
+      apply NoDup_pat_fv.
+    }
+    2: {
+      apply map_snd_combine_nodup. apply NoDup_pat_fv.
+    }
+    rewrite flip_combine.
+    inversion H0; subst. f_equal; auto.
+    f_equal. rewrite H3. unfold add_vals.
+    rewrite flip_app, flip_combine; auto.
+Qed.
+
+(*TODO: do corollaries, prove transitivity*)
+
 (*TODO: start with match*)
+(*TODO: see what we need*)
+(*
 Lemma alpha_convert_tmatch_single
   (v1 v2: vsymbol) (Heq: snd v1 = snd v2) (t: term) ty
   (ps: list (pattern * term)):
@@ -3646,7 +3834,7 @@ Proof.
   (Hbnd: ~In v2 (bnd_f f2))
   (Hfree: ~In v2 (form_fv f2)):
   a_equiv_f (Flet t1 v1 f2) (Flet t1 v2 (sub_f v1 v2 f2)).
-
+*)
 
 (*Now we want to define a function to rename bound variables to unique
   values such that terms and formulas have no duplicate bound
@@ -3654,7 +3842,7 @@ Proof.
   This makes many transformations easier.*)
 
 Section Sub.
-Context {sigma: sig} {gamma: context} (gamma_valid: valid_context sigma gamma).
+(*Context {sigma: sig} {gamma: context} (gamma_valid: valid_context sigma gamma).*)
   
 
 (*Alpha substitute for patterns only in the given term/formula*)
@@ -3817,6 +4005,26 @@ with alpha_f_aux (f: formula) (l: list string) {struct f} : formula :=
   2. preserves interp
   3. has same "shape" (and corollaries: ind form, positive, etc)*)
 
+(*TODO: move*)
+
+
+Lemma alpha_t_aux_equiv (t: term) (f: formula):
+  (forall l
+    (Hlen: length l = length (bnd_t t))
+    (Hfree: forall x, In (fst x) l -> ~ In x (term_fv t))
+    (Hbnd: forall x, In (fst x) l -> ~ In x (bnd_t t)),
+    a_equiv_t t (alpha_t_aux t l)) /\
+  (forall l
+    (Hlen: length l = length (bnd_f f))
+    (Hfree: forall x, In (fst x) l -> ~ In x (form_fv f))
+    (Hbnd: forall x, In (fst x) l -> ~ In x (bnd_f f)),
+    length l = length (bnd_f f) ->
+    a_equiv_f f (alpha_f_aux f l)).
+Proof.
+  revert t f. apply term_formula_ind; simpl; intros; auto;
+  try solve[apply a_equiv_t_refl].
+  - (*TODO: inductive case for fun, pred*) admit.
+  - destruct l; inversion Hlen.
 
 
 
