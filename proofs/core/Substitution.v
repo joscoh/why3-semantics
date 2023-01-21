@@ -945,16 +945,22 @@ Fixpoint alpha_equiv_p (p1 p2: pattern) : bool :=
   | _, _ => false
   end.*)
 
+(*Check that (x, y) binding is at the same point in the list.
+  This is equivalent to the old method (proved below, will delete)
+  but should be (TODO?) easier to work with*)
+  Definition eq_var (vars: list (vsymbol * vsymbol)) v1 v2 :=
+    fold_right (fun t acc => (vsymbol_eq_dec v1 (fst t) && vsymbol_eq_dec v2 (snd t)) ||
+      (negb (vsymbol_eq_dec v1 (fst t)) && negb (vsymbol_eq_dec v2 (snd t)) &&
+      acc)) (vsymbol_eq_dec v1 v2) vars.
+
 (*Hmm think about this - is this correct def?*)
-Fixpoint alpha_equiv_p (vars: list (vsymbol * vsymbol)) (p1 p2: pattern)  : bool :=
+Fixpoint alpha_equiv_p (vars: vsymbol -> vsymbol) 
+(*(vars: list (vsymbol * vsymbol))*) (p1 p2: pattern)  : bool :=
   match p1, p2 with
   | Pvar v1, Pvar v2 =>
     vty_eq_dec (snd v1) (snd v2) &&
-    (*These variables are not bound, so it OK to just check one*)
-    match (get_assoc_list vsymbol_eq_dec vars v1) with
-    | None => false (*no free/bound var distinction in patterns*)
-    | Some v3 => vsymbol_eq_dec v3 v2
-    end
+    vsymbol_eq_dec v2 (vars v1)
+    (*eq_var vars v1 v2*)
   | Pconstr f1 ty1 ps1, Pconstr f2 ty2 ps2 =>
     (funsym_eq_dec f1 f2) &&
     (length ps1 =? length ps2) &&
@@ -970,14 +976,345 @@ Fixpoint alpha_equiv_p (vars: list (vsymbol * vsymbol)) (p1 p2: pattern)  : bool
     alpha_equiv_p vars p3 p4
   | Pbind p1 v1, Pbind p2 v2 =>
     vty_eq_dec (snd v1) (snd v2) &&
-    match (get_assoc_list vsymbol_eq_dec vars v1) with
-    | None => false
-    | Some v3 => vsymbol_eq_dec v3 v2
-    end &&
+    vsymbol_eq_dec v2 (vars v1) &&
+    (*eq_var vars v1 v2 &&*)
     alpha_equiv_p vars p1 p2
   | Pwild, Pwild => true
   | _, _ => false
   end.
+
+(*TODO: let's see*)
+Lemma map_union {A B: Type} 
+  (eq_dec1: forall (x y: A), {x=y} + {x<>y})
+  (eq_dec2: forall (x y: B), {x=y} + {x<>y}) 
+  (f: A -> B) (l1 l2: list A)
+  (Hinj: forall x y, In x (l1 ++ l2) -> In y (l1 ++ l2) ->
+    f x = f y -> x = y):
+  map f (union eq_dec1 l1 l2) = union eq_dec2 (map f l1) (map f l2).
+Proof.
+  generalize dependent l2. induction l1; simpl; intros; auto.
+  rewrite <- IHl1; auto.
+  destruct (in_dec eq_dec1 a (union eq_dec1 l1 l2)).
+  - destruct (in_dec eq_dec2 (f a) (map f (union eq_dec1 l1 l2))); auto.
+    exfalso. apply n. apply in_map_iff. exists a; auto.
+  - simpl. destruct (in_dec eq_dec2 (f a) (map f (union eq_dec1 l1 l2))); auto.
+    rewrite in_map_iff in i.
+    destruct i as [y [Hxy Hiny]].
+    assert (a = y). { apply Hinj; auto; try triv. right.
+      rewrite in_app_iff; rewrite union_elts in Hiny; auto.
+    }
+    subst; contradiction.
+Qed.
+
+Lemma alpha_equiv_p_fv (p1 p2: pattern) (vars: vsymbol -> vsymbol)
+  (Heq: alpha_equiv_p vars p1 p2)
+  (Hinj: forall x y, In x (pat_fv p1) -> In y (pat_fv p1) ->
+    vars x = vars y -> x = y):
+  pat_fv p2 = map vars (pat_fv p1).
+Proof.
+  generalize dependent p2. induction p1; simpl in *; intros;
+  destruct p2; try solve[inversion Heq]; simpl;
+  revert Heq; bool_to_prop; intros; destruct_all; repeat (simpl_sumbool);
+  auto.
+  - apply Nat.eqb_eq in H3.
+    generalize dependent l0.
+    induction ps; simpl; intros; destruct l0; inversion H3; clear H3; auto.
+    simpl.
+    inversion H; subst.
+    revert H1; bool_to_prop; intros; destruct_all.
+    simpl in Hinj.
+    rewrite H4; auto.
+    + rewrite map_union with(eq_dec2:=vsymbol_eq_dec).
+      rewrite IHps; auto.
+      * intros; apply Hinj; auto; simpl_set; triv.
+      * intros x y. rewrite !in_app_iff; intros; apply Hinj; auto;
+        rewrite union_elts; auto.
+    + intros; apply Hinj; auto; simpl_set; triv.
+  - rewrite map_union with(eq_dec2:=vsymbol_eq_dec); auto;
+    [| intros x y; rewrite !in_app_iff; intros; apply Hinj; simpl_set; auto].
+    rewrite IHp1_1 with(p2:=p2_1), IHp1_2 with(p2:=p2_2); auto;
+    intros; apply Hinj; simpl_set; triv.
+  - rewrite map_union with (eq_dec2:=vsymbol_eq_dec); auto; simpl.
+    + rewrite IHp1; auto; intros; apply Hinj; simpl_set; triv.
+    + intros x y. rewrite !in_app_iff; intros; apply Hinj; simpl_set; auto;
+      simpl in *; [rewrite or_false_r in H | rewrite or_false_r in H1]; auto.
+Qed.
+
+(*Now we will create the map and show it is injective.*)
+(*Could make polymorphic (and subsume ty_subst_fun) but
+  we don't want even more eq_decs. Should use ssreflect probably*)
+Fixpoint mk_fun (l1 l2: list vsymbol) (x: vsymbol) : vsymbol :=
+  match l1, l2 with
+  | a :: t1, b :: t2 => if vsymbol_eq_dec x a then b else mk_fun t1 t2 x
+  | _, _ => x
+  end.
+
+Lemma mk_fun_in l1 l2 x:
+  length l1 <= length l2 ->
+  In x l1 ->
+  In (mk_fun l1 l2 x) l2.
+Proof.
+  revert l2. induction l1; simpl; intros; auto. destruct H0.
+  destruct l2. inversion H. simpl in H.
+  vsym_eq x a; simpl; try triv.
+  destruct H0; subst; auto.
+  contradiction. right. apply IHl1; auto; lia.
+Qed.
+
+Lemma mk_fun_inj (l1 l2: list vsymbol):
+  NoDup l1 ->
+  NoDup l2 ->
+  length l1 <= length l2 ->
+  (forall x y, In x l1 -> In y l1 -> 
+    (mk_fun l1 l2 x) = (mk_fun l1 l2 y) -> x = y).
+Proof.
+  revert l2. induction l1; simpl; intros. destruct H2.
+  destruct l2. inversion H1. simpl in H1.
+  inversion H; inversion H0; subst.
+  vsym_eq x a.
+  - vsym_eq y a.
+    destruct H3; subst; auto.
+    apply mk_fun_in with(l2:=l2) in H3; auto.
+    contradiction. lia.
+  - vsym_eq y a.
+    + destruct H2; subst; auto.
+      apply mk_fun_in with(l2:=l2) in H2; auto. contradiction. lia.
+    + destruct H2; subst; auto; try contradiction.
+      destruct H3; subst; auto; try contradiction. 
+      apply IHl1 with(l2:=l2); auto. lia.
+Qed.
+
+(*TODO: move this whole thing*)
+Require Import Coq.Logic.FinFun.
+Section NoDupsList.
+
+Context {A: Type}.
+Variable (f: nat -> A).
+(*We have an injection nat -> A*)
+Variable (Hinj: forall n1 n2, f n1 = f n2 -> n1 = n2).
+
+(*Generate list with n distinct elements*)
+Definition gen_dist (n: nat) : list A :=
+  map f (seq 0 n).
+
+Lemma gen_dist_length (n: nat): length (gen_dist n) = n.
+Proof.
+  unfold gen_dist. rewrite map_length, seq_length. reflexivity.
+Qed.
+
+Lemma gen_dist_correct (n: nat): NoDup (gen_dist n).
+Proof.
+  unfold gen_dist. apply Injective_map_NoDup.
+  unfold Injective. apply Hinj.
+  apply seq_NoDup.
+Qed.
+
+(*Generate list of n distinct elements, all of which are not
+  in l*)
+Variable eq_dec: forall (x y: A), {x=y} +{x<>y}.
+Definition gen_dist_notin (n: nat) (l: list A): list A :=
+  firstn n 
+    (filter (fun x => negb(in_dec eq_dec x l)) (gen_dist (n + length l))).
+
+Lemma filter_length_le {B: Type} (g: B -> bool) (l: list B):
+  length (filter g l) <= length l.
+Proof.
+  induction l; simpl; auto. destruct (g a); simpl; auto.
+  apply le_n_S; auto.
+Qed.
+
+Lemma all_filter {B: Type} (g: B -> bool) (l: list B):
+  forallb g l <-> filter g l = l.
+Proof.
+  induction l; simpl; split; intros; auto.
+  - destruct (g a) eqn : Hg; try solve[inversion H].
+    apply IHl in H. rewrite H; auto.
+  - destruct (g a) eqn : Hg; simpl; auto. 
+    + inversion H. rewrite H1. apply IHl in H1; auto.
+    + assert (length (a :: l) <= length l). {
+        rewrite <- H. apply filter_length_le.
+      }
+      simpl in H0. lia.
+Qed.
+
+Lemma in_split (x: A) (l: list A):
+  In x l ->
+  exists l1 l2, l = l1 ++ x :: l2.
+Proof.
+  induction l; simpl; intros. destruct H.
+  destruct H; subst.
+  - exists nil. exists l. reflexivity.
+  - apply IHl in H. destruct H as [l1 [l2 Hl]]; subst.
+    exists (a :: l1). exists l2. reflexivity.
+Qed. 
+
+Lemma filter_cons (g: A -> bool) (x: A) (l: list A):
+  filter g (x :: l) = if g x then x :: filter g l else filter g l.
+Proof.
+  reflexivity.
+Qed.
+
+(*Useful for us*)
+Lemma filter_in_notin (l1 l2: list A) (x: A):
+  ~ In x l2 ->
+  filter (fun y => negb (in_dec eq_dec y (x :: l1))) l2 =
+  filter (fun y => negb (in_dec eq_dec y l1)) l2.
+Proof.
+  intros.
+  apply filter_ext_in; intros.
+  destruct (in_dec eq_dec a l1); simpl;
+  destruct (eq_dec x a); subst; auto;
+  destruct (in_dec eq_dec a l1); auto;
+  contradiction.
+Qed.
+
+(*Proving that this is correct is not trivial*)
+(*A version of the pigeonhole principle: given two lists l1 and l2,
+  if l2 is larger and has no duplicates, it has at least 
+    (length l2) - (length l1) elements that are not in l1*)
+Lemma php (l1 l2: list A):
+  NoDup l2 -> 
+  length l1 <= length l2 ->
+  length l2 - length l1 <= 
+    length (filter (fun x => negb(in_dec eq_dec x l1)) l2).
+Proof.
+  (*Try alternate, then go back*)
+  revert l2. induction l1; intros; auto.
+  - simpl. rewrite Nat.sub_0_r.
+    assert ((filter (fun _ : A => true) l2) = l2). {
+      apply all_filter. apply forallb_forall. auto.
+    }
+    rewrite H1. auto.
+  - destruct (in_dec eq_dec a l2).
+    2: {
+      rewrite filter_in_notin; auto; simpl.
+      specialize (IHl1 _ H). lia.
+    }
+    (*For this one, we have to split l2 depending on
+      where a appears*)
+    apply in_split in i.
+    destruct i as [p1 [p2 Hl2]].
+    rewrite Hl2, filter_app, filter_cons.
+    assert (Hnodup:=H).
+    rewrite Hl2 in H.
+    rewrite NoDup_app_iff in H. destruct H as [Hn1 [Hn2 [Hnotin1 Hnotin2]]].
+    inversion Hn2. subst x l.
+    assert (~ In a p1). {
+      apply Hnotin2. left; auto.
+    } 
+    rewrite !filter_in_notin; auto.
+    simpl. destruct (eq_dec a a); auto; try contradiction.
+    simpl. rewrite <- filter_app.
+    assert (Hn3: NoDup (p1 ++ p2)). {
+      rewrite NoDup_app_iff. repeat split; auto.
+      - intros; intro C. apply (Hnotin1 x H1). right; auto.
+      - intros; apply Hnotin2. right; auto.
+    }
+    specialize (IHl1 _ Hn3).
+    rewrite !app_length; simpl. simpl in H0.
+    rewrite !app_length in IHl1. lia.
+Qed.
+
+(*Now we can prove our function correct*)
+Lemma gen_dist_notin_length (n: nat) (l: list A):
+  length (gen_dist_notin n l) = n.
+Proof.
+  unfold gen_dist_notin.
+  rewrite firstn_length_le; auto.
+  pose proof (php l (gen_dist (n + length l))).
+  rewrite gen_dist_length in H.
+  specialize (H (gen_dist_correct _)). lia.
+Qed.
+
+Lemma gen_dist_notin_nodup (n: nat) (l: list A):
+  NoDup (gen_dist_notin n l).
+Proof.
+  unfold gen_dist_notin.
+  apply NoDup_firstn.
+  apply NoDup_filter.
+  apply gen_dist_correct.
+Qed.
+
+Lemma gen_dist_notin_notin (n: nat) (l: list A):
+  forall y, In y (gen_dist_notin n l) -> ~ In y l.
+Proof.
+  intros. unfold gen_dist_notin in H.
+  apply In_firstn in H.
+  rewrite in_filter in H. destruct H.
+  destruct (in_dec eq_dec y l); auto.
+Qed.
+
+End NoDupsList.
+
+
+(*Get a string with n zeroes*)
+Fixpoint nth_str (n: nat) : string :=
+  match n with
+  | O => EmptyString
+  | S m => String Ascii.zero (nth_str m)
+  end.
+
+Lemma nth_string_inj: forall n1 n2,
+  nth_str n1 = nth_str n2 ->
+  n1 = n2.
+Proof.
+  intros n1; induction n1; simpl; intros;
+  destruct n2; inversion H; subst; auto.
+Qed.
+
+Definition nth_vs (n: nat) : vsymbol :=
+  (nth_str n, vty_int).
+
+Lemma nth_vs_inj: forall n1 n2,
+  nth_vs n1 = nth_vs n2 ->
+  n1 = n2.
+Proof.
+  intros. unfold nth_vs in H. inversion H; subst.
+  apply nth_string_inj in H1; auto.
+Qed.
+
+(*Now we provide a new definition of [mk_fun] that does not
+  require the lists to be of the same length but still has
+  the property we want*)
+  Print mk_fun.
+  Check gen_dist_notin.
+Definition mk_fun' (l1 l2: list vsymbol) (x: vsymbol) : vsymbol :=
+  let n1 := length l1 in
+  let n2 := length l2 in
+  let l2' := if (n2 <? n1) then l2 ++
+    gen_dist_notin nth_vs vsymbol_eq_dec (n1 - n2) l2 else l2 in
+  mk_fun l1 l2' x.
+
+Lemma add_notin_nodup (l1: list vsymbol) n:
+  NoDup l1 ->
+  NoDup (l1 ++ gen_dist_notin nth_vs vsymbol_eq_dec n l1).
+Proof.
+  intros.
+  rewrite NoDup_app_iff; split_all; auto.
+  + apply gen_dist_notin_nodup; apply nth_vs_inj.
+  + intros. intro C. apply gen_dist_notin_notin in C. contradiction.
+  + intros. apply gen_dist_notin_notin in H0. auto.
+Qed.
+
+Lemma mk_fun_inj' (l1 l2: list vsymbol):
+  NoDup l1 ->
+  NoDup l2 ->
+  forall x y,
+    In x l1 -> In y l1 -> mk_fun' l1 l2 x = mk_fun' l1 l2 y -> x = y.
+Proof.
+  intros. unfold mk_fun' in H3. apply mk_fun_inj in H3; auto.
+  - destruct (length l2 <? length l1); auto.
+    apply add_notin_nodup; auto.
+  - destruct (Nat.ltb_spec0 (length l2) (length l1)); try lia.
+    rewrite app_length, gen_dist_notin_length. lia.
+    apply nth_vs_inj.
+Qed.
+
+(*TODO (start here) - need to figure out how to flip and stuff
+  unless we specifically say from a list - but at that point
+  might as well just use lists
+  maybe use lists*)
+
 
 Definition binop_eqb (b1 b2: binop) : bool :=
   match b1, b2 with
@@ -1121,13 +1458,6 @@ Definition quant_eq_dec q1 q2 := reflect_dec' (quant_eqb_spec q1 q2).
 Notation remove_bnd := (remove_pair vsymbol_eq_dec vsymbol_eq_dec).
 Notation remove_bnds := (remove_pairs vsymbol_eq_dec vsymbol_eq_dec).
 
-(*Check that (x, y) binding is at the same point in the list.
-  This is equivalent to the old method (proved below, will delete)
-  but should be (TODO?) easier to work with*)
-Definition eq_var (vars: list (vsymbol * vsymbol)) v1 v2 :=
-  fold_right (fun t acc => (vsymbol_eq_dec v1 (fst t) && vsymbol_eq_dec v2 (snd t)) ||
-    (negb (vsymbol_eq_dec v1 (fst t)) && negb (vsymbol_eq_dec v2 (snd t)) &&
-    acc)) (vsymbol_eq_dec v1 v2) vars.
 
 Lemma alpha_t_var_equiv: forall (v1 v2: vsymbol) (vars: list (vsymbol * vsymbol)),
   match (get_assoc_list vsymbol_eq_dec vars v1),
@@ -1186,7 +1516,7 @@ Fixpoint alpha_equiv_t (vars: list (vsymbol * vsymbol)) (t1 t2: term) : bool :=
     match l1, l2 with
     | nil, nil => true
     | (p1, t1) :: tl1, (p2, t2) :: tl2 =>
-      alpha_equiv_p (combine (pat_fv p1) (pat_fv p2)) p1 p2 &&
+      alpha_equiv_p (mk_fun' (pat_fv p1) (pat_fv p2)) p1 p2 &&
       alpha_equiv_t (add_vals (pat_fv p1) (pat_fv p2) 
         vars) t1 t2 && all2 tl1 tl2
     | _, _ => false
@@ -1241,7 +1571,7 @@ with alpha_equiv_f (vars: list (vsymbol * vsymbol)) (f1 f2: formula) {struct f1}
     match l1, l2 with
     | nil, nil => true
     | (p1, f1) :: tl1, (p2, f2) :: tl2 =>
-      alpha_equiv_p (combine (pat_fv p1) (pat_fv p2)) p1 p2 &&
+      alpha_equiv_p (mk_fun' (pat_fv p1) (pat_fv p2)) p1 p2 &&
       alpha_equiv_f (add_vals (pat_fv p1) (pat_fv p2) vars) f1 f2
       && all2 tl1 tl2
     | _, _ => false
@@ -1508,7 +1838,7 @@ Lemma match_val_single_alpha_p_none {ty: vty}
 (Hval Hval2: valid_type sigma ty)
 (d: domain (dom_aux pd) (v_subst (v_typevar vt) ty))
 (p1 p2: pattern)
-(vars: list (vsymbol * vsymbol))
+(vars: vsymbol -> vsymbol)
 (Heq: alpha_equiv_p vars p1 p2) :
 match_val_single gamma_valid pd all_unif vt ty Hval d p1 = None ->
 match_val_single gamma_valid pd all_unif vt ty Hval2 d p2 = None.
@@ -1517,12 +1847,11 @@ Proof.
   generalize dependent p2. induction p1.
   - simpl; intros; destruct p2; try solve[inversion Heq].
     revert Heq; bool_to_prop; intros [Htys Heq].
-    destruct (get_assoc_list vsymbol_eq_dec vars v) eqn : Ha;
-    try solve[inversion Heq].
     repeat simpl_sumbool.
-    simpl. destruct (vty_eq_dec (snd v) ty); subst. inversion H.
-    destruct (vty_eq_dec (snd v0) ty); subst; auto.
-    contradiction.
+    destruct (vty_eq_dec (snd v) ty); subst; auto.
+    + inversion H.
+    + cbn. destruct (vty_eq_dec (snd (vars v)) ty); subst; auto.
+      rewrite e in n; contradiction.
   - intros; destruct p2; try solve[inversion Heq].
     revert H0.
     simpl in Heq.
@@ -1618,13 +1947,13 @@ Proof.
     eapply IHp1_2. auto. apply H.
   - simpl; intros. destruct p2; try solve[inversion Heq]. simpl.
     revert Heq; bool_to_prop; intros [[Htys Heq] Hp12]; simpl_sumbool.
-    destruct (get_assoc_list vsymbol_eq_dec vars v) eqn : Ha; try solve[inversion Heq].
-    simpl_sumbool.
+    (*destruct (get_assoc_list vsymbol_eq_dec vars v) eqn : Ha; try solve[inversion Heq].
+    simpl_sumbool.*)
     revert H. case_match_hyp.
     + destruct (vty_eq_dec (snd v) ty); [intro C; inversion C |].
       intros _.
-      case_match_goal. destruct (vty_eq_dec (snd v0) ty); auto.
-      subst. contradiction.
+      case_match_goal. destruct (vty_eq_dec (snd (vars v)) ty); auto.
+      subst. simpl_sumbool. rewrite e in n. contradiction.
     + intros _. erewrite IHp1; auto. apply Hmatch.
 Qed.
 
@@ -1636,7 +1965,46 @@ Proof.
   exists (x, y). split; auto.
 Qed.
 
+Lemma eq_dec_sym {A: Type} {eq_dec: forall (x y: A), {x = y}+ {x <> y}}
+  (x y: A):
+  (@eq bool (eq_dec x y) (eq_dec y x)).
+Proof.
+  destruct (eq_dec x y); simpl; destruct (eq_dec y x); subst; auto.
+  contradiction.
+Qed.
+
+Lemma eq_var_flip vars x y:
+  eq_var vars x y = eq_var (flip vars) y x.
+Proof.
+  induction vars; simpl.
+  - apply eq_dec_sym.
+  - rewrite eq_dec_sym. f_equal. solve_bool.
+    f_equal. solve_bool. apply IHvars.
+Qed.
+
+(*
+
+Lemma alpha_equiv_p_sym (p1 p2: pattern)
+  (vars: vsymbol -> vsymbol):
+  alpha_equiv_p vars p1 p2 = alpha_equiv_p (flip vars) p2 p1.
+Proof.
+  revert p2. induction p1; simpl; intros; destruct p2; auto; simpl.
+  - rewrite eq_dec_sym, eq_var_flip. reflexivity.
+  - rewrite eq_dec_sym, Nat.eqb_sym.
+    destruct (length l0 =? length ps) eqn : Hlen; simpl_bool; auto.
+    apply Nat.eqb_eq in Hlen.
+    f_equal; [f_equal; apply eq_dec_sym |].
+    generalize dependent l0. induction ps; simpl; intros;
+    destruct l0; inversion Hlen; auto; clear Hlen.
+    inversion H; subst.
+    rewrite H3. f_equal. auto.
+  - rewrite IHp1_1, IHp1_2. reflexivity.
+  - rewrite eq_dec_sym, IHp1. do 2 f_equal.
+    apply eq_var_flip.
+Qed.*)
+
 (*Can we prove this? (to show Some <-> Some)*)
+(*
 Lemma alpha_equiv_p_sym (p1 p2: pattern) 
   (vars: list (vsymbol * vsymbol))
   (Heq: alpha_equiv_p vars p1 p2)
@@ -1689,7 +2057,7 @@ Proof.
     + apply get_assoc_list_none in Hb.
       rewrite map_fst_flip in Hb.
       exfalso. apply Hb. rewrite in_map_iff; exists (v, v0); auto.
-Qed.
+Qed.*)
 
 Lemma flip_flip {A B: Type} (l: list (A * B)):
   flip (flip l) = l.
@@ -1700,6 +2068,7 @@ Qed.
 
 (*An alternate form - TODO: try to prove directly, might be
   easier*)
+  (*
 Lemma alpha_equiv_p_sym_eq (p1 p2: pattern) 
   (vars: list (vsymbol * vsymbol))
   (Hnodup1: NoDup (map fst vars))
@@ -1713,7 +2082,7 @@ Proof.
     rewrite flip_flip in Heq'. rewrite Heq' in Heq. inversion Heq.
     rewrite map_fst_flip; auto.
     rewrite map_snd_flip; auto.
-Qed.
+Qed.*)
 
 (*From the symmetry, we get that [match_val_single] are either
   always both None or both Some*)
@@ -1721,17 +2090,15 @@ Lemma match_val_single_alpha_p_none_iff {ty: vty}
   (Hval Hval2: valid_type sigma ty)
   (d: domain (dom_aux pd) (v_subst (v_typevar vt) ty))
   (p1 p2: pattern)
-  (vars: list (vsymbol * vsymbol))
-  (Heq: alpha_equiv_p vars p1 p2)
-  (Hnodup1: NoDup (map fst vars))
-  (Hnodup2: NoDup (map snd vars)) :
+  (vars: vsymbol -> vsymbol)
+  (Heq: alpha_equiv_p vars p1 p2):
   match_val_single gamma_valid pd all_unif vt ty Hval d p1 = None <->
   match_val_single gamma_valid pd all_unif vt ty Hval2 d p2 = None.
 Proof.
   split; intros.
   - apply (match_val_single_alpha_p_none Hval _ _ _ _ _ Heq); auto.
   - apply (match_val_single_alpha_p_none Hval2 _ _ p2 _ (flip vars)); auto.
-    apply alpha_equiv_p_sym; auto.
+    rewrite <- alpha_equiv_p_sym; auto.
 Qed.
 
 Lemma or_iff (P1 P2 P3 P4: Prop) :
@@ -1750,6 +2117,38 @@ Proof.
   intros. 
   rewrite !in_app_iff. apply or_iff; auto.
 Qed. 
+
+Lemma eq_var_in_eq l x y z:
+  NoDup (map fst l) ->
+  eq_var l x y ->
+  In (x, z) l ->
+  y = z.
+Proof.
+  induction l; simpl; intros.
+  - destruct H1.
+  - vsym_eq x (fst a); simpl in H0.
+    + vsym_eq y (snd a); inversion H0; subst. clear H0.
+      destruct H1; [rewrite H0 |]; auto.
+      inversion H; subst. exfalso. apply H3. rewrite in_map_iff.
+      exists (fst a, z); auto.
+    + vsym_eq y (snd a); simpl in H0; try solve[inversion H0].
+      inversion H; subst.
+      destruct H1; subst; auto.
+      contradiction.
+Qed.
+
+Lemma eq_var_in_eq_r l x y z:
+  NoDup (map snd l) ->
+  eq_var l y x ->
+  In (z, x) l ->
+  y = z.
+Proof.
+  intros.
+  assert (NoDup (map fst (flip l))). rewrite map_fst_flip; auto.
+  assert (eq_var (flip l) x y). rewrite eq_var_flip, flip_flip; auto.
+  assert (In (x, z) (flip l)). rewrite in_flip_iff; auto.
+  apply (eq_var_in_eq _ _ _ _ H2 H3 H4).
+Qed.
 
 (*Now we will (try to) do the Some case*)
 (*TODO: first we will admit this and see if it works, then we 
@@ -1776,16 +2175,14 @@ Proof.
   - simpl; intros; destruct p2; try solve[inversion Heq].
     simpl in *.
     revert Heq; bool_to_prop; intros [Htys Heq].
-    destruct (get_assoc_list vsymbol_eq_dec vars v) eqn : Ha;
-    try solve[inversion Heq].
     repeat simpl_sumbool.
     destruct (vty_eq_dec (snd v) ty); subst; inversion H.
     destruct (vty_eq_dec (snd v0) (snd v)); subst; inversion H0.
     subst. clear H. clear H0. simpl.
-    apply get_assoc_list_some in Ha.
-    split; intros [Heq | []]; inversion Heq; subst; auto.
-    + left. f_equal. apply (nodup_fst_inj Hnodup1 Ha H1).
-    + left. f_equal. apply (nodup_snd_inj Hnodup2 Ha H1).
+    apply or_iff_compat_r. split; intros Heq'; inversion Heq'; subst;
+    f_equal.
+    + apply (eq_var_in_eq _ _ _ _ Hnodup1 Heq); auto.
+    + apply (eq_var_in_eq_r _ _ _ _ Hnodup2 Heq); auto.
   - (*Constr case, let's see how awful this is*)
     intros; destruct p2; try solve[inversion Heq].
     revert H0 H1.
@@ -1897,9 +2294,6 @@ Proof.
   - simpl; intros. destruct p2; try solve[inversion Heq].
     simpl in H0.
     revert Heq; bool_to_prop; intros [[Htys Heq] Hp12]; simpl_sumbool.
-    destruct (get_assoc_list vsymbol_eq_dec vars v) eqn : Ha; try solve[inversion Heq].
-    simpl_sumbool.
-    apply get_assoc_list_some in Ha.
     revert H H0. case_match_hyp; [|intro C; inversion C].
     destruct (vty_eq_dec (snd v) ty); [| intro C; inversion C].
     intros Hl1; inversion Hl1; subst.
@@ -1907,9 +2301,9 @@ Proof.
     destruct (vty_eq_dec (snd v0) (snd v)); subst. 2: { rewrite e in n; contradiction. }
     simpl. intros Hl2; inversion Hl2; subst. simpl.
     apply or_iff.
-    + split; intros Heq; inversion Heq; subst; f_equal;
-        [apply (nodup_fst_inj Hnodup1 Ha H1) |
-        apply (nodup_snd_inj Hnodup2 Ha H1) ].
+    + split; intros Heq'; inversion Heq'; subst; f_equal.
+      apply (eq_var_in_eq _ _ _ _ Hnodup1 Heq); auto.
+      apply (eq_var_in_eq_r _ _ _ _ Hnodup2 Heq); auto.
     + eapply IHp1. apply Hp12. apply Hmatch. apply Hmatch0. auto.
 Qed.
 
@@ -1938,6 +2332,90 @@ Qed.
   If too hard, just add it*)
 (*Two alpha-equivalent, well-typed patterns have the same
   number of free variables*)
+(*TODO: prove this WITHOUT typing conditions*)
+Lemma alpha_equiv_p_fv (p1 p2: pattern) vars x
+  (Heq: alpha_equiv_p vars p1 p2):
+  In x (pat_fv p1) <-> exists y, eq_var vars x y /\ In y (pat_fv p2).
+Proof.
+  generalize dependent p2. induction p1; simpl; intros;
+  destruct p2; try solve[inversion Heq]; simpl.
+  - split; intros.
+    + destruct H as [Heq' | []]; subst.
+      revert Heq; bool_to_prop; intros; destruct_all.
+      exists v0. split; auto.
+    + destruct H as [y [Heq' [Heq'' | []]]]; subst.
+(*TODO: prove this if needed*)
+Admitted.
+
+Lemma alpha_equiv_p_fv_len (p1 p2: pattern)
+  (vars: list (vsymbol * vsymbol))
+  (Heq: alpha_equiv_p vars p1 p2):
+  length (pat_fv p1) = length (pat_fv p2).
+Proof.
+  generalize dependent p2.
+  induction p1; simpl; intros;
+  destruct p2; try solve[inversion Heq]; simpl; auto.
+  - (*Need to know something about which free vars are in which*)
+    (*TODO: this*)
+  
+  
+  
+  inversion Hty1; subst.
+    clear Hty1 H3 H4 H7.
+    inversion Hty2; subst.
+    clear Hty2 H3 H4 H8. subst sigma0 sigma1.
+    rename l0 into ps2.
+    assert (Hlen1: length ps = 
+      length (map (ty_subst (s_params f) vs) (s_args f))) by wf_tac.
+    assert (Hlen2: length ps2 =
+      length (map (ty_subst (s_params f0) l) (s_args f0))) by wf_tac.
+    clear H5 H6.
+    revert Heq; bool_to_prop; intros [[[Hf Hps] Hvs] Hall2]; 
+    repeat simpl_sumbool.
+    apply Nat.eqb_eq in Hps.
+    assert (Hall: forall i, i < length ps ->
+      alpha_equiv_p vars (nth i ps Pwild) (nth i ps2 Pwild)). {
+      clear -Hps Hall2. generalize dependent ps2; induction ps; simpl;
+      intros; destruct ps2; inversion Hps; try lia.
+      revert Hall2; bool_to_prop; intros [Hap Hall2].
+      destruct i; simpl; auto.
+      apply IHps; auto. lia.
+    }
+    clear Hall2.
+    rewrite !big_union_disjoint with(d:=Pwild); auto; intros; wf_tac.
+    rewrite !length_concat.
+    rewrite !map_map.
+    f_equal. apply list_eq_ext'; wf_tac.
+    intros. wf_tac.
+    rewrite Forall_forall in H9.
+    rewrite Forall_forall in H12.
+    generalize dependent (map (ty_subst (s_params f0) l) (s_args f0));
+    intros a; intros.
+    specialize (H9 (nth n ps Pwild, nth n a vty_int)).
+    specialize (H12 (nth n ps2 Pwild, nth n a vty_int)).
+    simpl in *.
+    rewrite Forall_forall in H; eapply H; wf_tac;
+    [apply H9 | apply H12];
+    rewrite in_combine_iff; wf_tac; exists n; split; wf_tac;
+    intros; f_equal; apply nth_indep; wf_tac.
+  - inversion Hty1; subst.
+    inversion Hty2; subst. 
+    rewrite !union_subset; wf_tac.
+    + eapply IHp1_2. apply H3. apply H6. revert Heq; bool_to_prop;
+      intros [Hp1 Hp2]; auto.
+    + intros; apply H8; auto.
+    + intros; apply H5; auto.
+  - inversion Hty1; subst.
+    inversion Hty2; subst.
+    rewrite !union_app_disjoint; wf_tac.
+    + rewrite !app_length; simpl. f_equal.
+      revert Heq; bool_to_prop; intros [_ Hps].
+      eapply IHp1; auto. apply H4. apply H6.
+    + intros; intros [Hinx1 [Heq' | []]]; subst; contradiction.
+    + intros; intros [Hinx1 [Heq' | []]]; subst; contradiction.
+Qed. 
+
+
 Lemma alpha_equiv_p_fv_len (p1 p2: pattern) (ty1 ty2: vty) 
   (vars: list (vsymbol * vsymbol))
   (Hty1: pattern_has_type sigma p1 ty1)
@@ -3734,14 +4212,6 @@ Proof.
   apply alpha_f_equiv_same; intros; inversion H.
 Qed.
 
-Lemma eq_dec_sym {A: Type} {eq_dec: forall (x y: A), {x = y}+ {x <> y}}
-  (x y: A):
-  (@eq bool (eq_dec x y) (eq_dec y x)).
-Proof.
-  destruct (eq_dec x y); simpl; destruct (eq_dec y x); subst; auto.
-  contradiction.
-Qed.
-
 (*Need this to avoid length arguments*)
 Lemma map_fst_combine_nodup {A B: Type} (l1: list A) (l2: list B):
   NoDup l1 ->
@@ -3778,14 +4248,7 @@ Proof.
   rewrite IHl1; auto.
 Qed.
 
-Lemma eq_var_flip vars x y:
-  eq_var vars x y = eq_var (flip vars) y x.
-Proof.
-  induction vars; simpl.
-  - apply eq_dec_sym.
-  - rewrite eq_dec_sym. f_equal. solve_bool.
-    f_equal. solve_bool. apply IHvars.
-Qed.
+
 
 (*Symmetry*)
 Lemma alpha_equiv_sym (t: term) (f: formula):
@@ -3904,6 +4367,31 @@ Qed.
 Definition alist_trans (l1 l2: list (vsymbol * vsymbol)) :=
   map2 (fun x y => (fst x, snd y)) l1 l2.
 
+  (*
+Lemma eq_var_trans v1 v2 x y z:
+  eq_var v1 x y ->
+  eq_var v2 y z ->
+  eq_var (alist_trans v1 v2) x z.
+Proof.
+  revert v2. induction v1; simpl; intros; destruct v2.
+  - simpl in H0. vsym_eq x y.
+  - simpl in H0. vsym_eq x y.
+    vsym_eq y (fst p); simpl in H0.
+    + vsym_eq z (snd p). simpl in H0. rewrite orb_false_r in H0.
+  
+  
+  inversion H; subst.
+  - simpl in H1. vsym_eq x y.
+  - simpl. clear H. simpl in H1.
+    vsym_eq x (fst a); simpl in *; auto; revert H0; simpl_bool; intros.
+    + vsym_eq y (snd a). vsym_eq (snd a) (fst p); auto; simpl in *.
+      vsym_eq z (snd p).
+    + vsym_eq y (snd a); simpl in H0.
+      vsym_eq y (fst p); simpl in *.
+      vsym_eq z (snd p); simpl in *.
+      apply IHv1; auto.
+Qed.*)
+
 Lemma eq_var_trans v1 v2 x y z:
   map snd v1 = map fst v2 ->
   eq_var v1 x y ->
@@ -3922,12 +4410,158 @@ Proof.
       apply IHv1; auto.
 Qed.
 
+Lemma alpha_equiv_p_type (p1 p2: pattern)
+  (vars: list (vsymbol * vsymbol)) (ty: vty)
+  (Heq: alpha_equiv_p vars p1 p2)
+  (*(Hvars: forall x y, In (x, y) vars -> snd x = snd y)*)
+  (Hnodup1: NoDup (map fst vars))
+  (Hnodup2: NoDup (map snd vars)):
+  pattern_has_type sigma p1 ty ->
+  pattern_has_type sigma p2 ty.
+Proof.
+  revert ty.
+  generalize dependent p2.
+  induction p1; simpl; intros; auto;
+  destruct p2; try solve[inversion Heq];
+  revert Heq; bool_to_prop; intros; destruct_all;
+  repeat simpl_sumbool.
+  - inversion H; subst. rewrite e. constructor. rewrite <- e; auto.
+  - apply Nat.eqb_eq in H4.
+    inversion H0; subst. constructor; auto; try lia.
+    (*How to show disjointness?
+      We should use a better and stronger notion of alpha equiv on patterns*)
+      Search alpha_equiv_p.
+  
+  
+  rewrite e. constructor. rewrite <- e; auto.
+  - destruct l0; inversion H2. inversion
+  - destruct p2; try solve[inversion Heq] revert ty.
+  ind
+  revert p2.
 
+(*TODO: see how hard this is to prove*)
+Lemma alpha_equiv_type (t: term) (f: formula):
+  (forall t1 (vars: list (vsymbol * vsymbol)) (ty: vty)
+    (Heq: alpha_equiv_t vars t t1)
+    (Hvars: forall x y, In (x, y) vars -> snd x = snd y),
+    term_has_type sigma t ty ->
+    term_has_type sigma t1 ty) /\
+  (forall f1 (vars: list (vsymbol * vsymbol))
+    (Heq: alpha_equiv_f vars f f1)
+    (Hvars: forall x y, In (x, y) vars -> snd x = snd y),
+    valid_formula sigma f ->
+    valid_formula sigma f1).
+Proof.
+  revert t f; apply term_formula_ind; simpl; intros.
+  - destruct t1; try solve[inversion Heq].
+    destruct (all_dec (c = c0)); subst; auto. inversion Heq.
+  - destruct t1; try solve[inversion Heq].
+    apply eq_var_in_first in Heq.
+    destruct_all; subst; auto.
+    apply in_first_in in H0.
+    apply Hvars in H0.
+    inversion H; subst.
+    rewrite H0. constructor. rewrite <- H0; auto.
+  - destruct t1; try solve[inversion Heq].
+    revert Heq; bool_to_prop; intros; destruct_all.
+    simpl_sumbool. simpl_sumbool.
+    apply Nat.eqb_eq in H4.
+    inversion H0; subst. constructor; auto; try lia.
+    clear -H13 H2 H H10 H4 Hvars.
+    assert (length l1 = length (map (ty_subst (s_params f) l0) (s_args f))) by wf_tac.
+    generalize dependent (map (ty_subst (s_params f) l0) (s_args f)).
+    intros typs; revert typs.
+    clear H10. generalize dependent l2. induction l1; simpl; intros; auto;
+    destruct typs; inversion H0.
+    + destruct l2; inversion H4. constructor.
+    + destruct l2; inversion H4. inversion H13; subst.
+      inversion H; subst.
+      revert H2; bool_to_prop; intros; destruct_all. 
+      constructor; auto; simpl.
+      eapply H9. apply H1. auto. apply H7.
+  - destruct t1; try solve[inversion Heq].
+    revert Heq; bool_to_prop; intros; destruct_all.
+    simpl_sumbool.
+    inversion H1; subst. constructor; auto.
+    + eapply H. apply H4. intros; auto. rewrite <- e; auto.
+    + eapply H0. apply H3. 2: auto. simpl; intros x y [Heq | Hin].
+      * inversion Heq; subst; auto.
+      * auto.
+  - destruct t0; try solve[inversion Heq].
+    revert Heq; bool_to_prop; intros; destruct_all.
+    inversion H2; subst.
+    constructor; [apply (H _ _ H3) | apply (H0 _ _ _ H5) | apply (H1 _ _ _ H4)]; auto.
+  - destruct t1; try solve[inversion Heq].
+    revert Heq; bool_to_prop; intros; destruct_all. simpl_sumbool.
+    apply Nat.eqb_eq in H5.
+    inversion H1; subst.
+    assert (forall i, i < length ps ->
+        let t1 := (nth i ps (Pwild, tm_d)) in
+        let t2 := (nth i l (Pwild, tm_d)) in
+        alpha_equiv_p (combine (pat_fv (fst t1)) (pat_fv (fst t2))) 
+          (fst t1) (fst t2) /\
+        alpha_equiv_t (add_vals (pat_fv (fst t1)) (pat_fv (fst t2)) vars)
+          (snd t1) (snd t2)
+    ). 
+    {
+      clear -H5 H3. generalize dependent l.
+      induction ps; simpl; intros; try lia; destruct l; inversion H5.
+      clear H5.
+      destruct a; destruct p.
+      revert H3; bool_to_prop; intros; destruct_all.
+      destruct i. auto. 
+      simpl. apply IHps; auto. lia.
+    }
+    constructor; auto; [apply (H _ _ _ H2); auto | | |
+      destruct l; destruct ps; auto; inversion H5].
+    + intros. pose proof (In_nth _ _ (Pwild, tm_d) H6).
+      destruct H7 as [n [Hn Hx]]; subst.
+      a
+    3: {
+      destruct l; destruct ps; auto; inversion H5.
+
+    }
+    (*TODO: move*)
+      
+      - intros; apply H10; right; auto.
+      - auto. simpl. split; auto. revert H3 simpl.
+      destruct i.
+    }
+
+
+
+    {
+      apply (H _ _ _ H2); auto.
+    }
+  
+  
+  intros auto.
+      * 
+    generalize depen
+    simpl_sumbool.
+    inversion H; subst.
+  
+  
+  /\
+
+Search alpha_equiv_t term_has_type.
+
+(*TODO: this should be true in general (not just for well-typed
+  terms and formulas) but isn't. The issue is from patterns:
+  Pconstr f (Pvar x) (Pvar y) and Pconstr f (Pvar a) (Pvar a)
+  are considered alpha-equivalent under the list
+  (x, a) (y, a) but their free variables have different lengths.
+  Hence we do not have the invariant that map snd v1 = map fst v2.
+  This isn't really a problem, because we only care about well-typed
+  terms and formulas anyway, though it would be nice to have the
+  more general lemma
+  *)
 Lemma alpha_equiv_trans (t: term) (f: formula) :
-  (forall t1 t2 (v1 v2: list (vsymbol * vsymbol))
+  (forall t1 t2 (v1 v2: list (vsymbol * vsymbol)) ty
     (Hl: map snd v1 = map fst v2)
     (Heq1: alpha_equiv_t v1 t t1)
-    (Heq2: alpha_equiv_t v2 t1 t2),
+    (Heq2: alpha_equiv_t v2 t1 t2)
+    (Hty1: term_has_type ),
     alpha_equiv_t (alist_trans v1 v2) t t2) /\
   (forall f1 f2 (v1 v2: list (vsymbol * vsymbol))
     (Hl: map snd v1 = map fst v2)
