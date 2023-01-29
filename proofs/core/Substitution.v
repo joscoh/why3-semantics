@@ -4752,24 +4752,31 @@ Proof.
 Qed.
 
 (*TODO: move*)
-Lemma mk_fun_nth' l1 l2 i d1 d2
+Lemma mk_fun_nth l1 l2 i d1 d2
+  (Hlen: length l1 = length l2)
+  (Hn1: NoDup l1)
+  (Hi: i < length l1):
+  mk_fun l1 l2 (nth i l1 d1) = nth i l2 d2.
+Proof.
+  generalize dependent l2.
+  generalize dependent i.
+  induction l1; simpl; intros; destruct l2; inversion Hlen; [lia|].
+  destruct i.
+  - vsym_eq a a.
+  - inversion Hn1; subst.
+    vsym_eq (nth i l1 d1) a; simpl.
+    + exfalso. apply H2. wf_tac.
+    + apply IHl1; auto. lia.
+Qed.
+
+Corollary mk_fun_nth' l1 l2 i d1 d2
   (Hlen: length l1 = length l2)
   (Hn1: NoDup l1)
   (Hi: i < length l1):
   mk_fun' l1 l2 (nth i l1 d1) = nth i l2 d2.
 Proof.
-  generalize dependent l2.
-  generalize dependent i.
-  unfold mk_fun'.
-  induction l1; simpl; intros; destruct l2; inversion Hlen; [lia |].
-  simpl. rewrite H0, Nat.ltb_irrefl.
-  destruct i.
-  - vsym_eq a a.
-  - inversion Hn1; subst. vsym_eq (nth i l1 d1) a.
-    + exfalso. apply H2. wf_tac.
-    + specialize (IHl1 H3 i ltac:(lia) l2 H0).
-      rewrite H0, Nat.ltb_irrefl in IHl1.
-      assumption.
+  unfold mk_fun'. rewrite Hlen, Nat.ltb_irrefl.
+  apply mk_fun_nth; auto.
 Qed.
     
 (*Another key property of alpha equivalence: it preserves
@@ -5393,6 +5400,20 @@ Qed.
   definition of alpha equivalence in future lemmas
   (ie: to prove that substitution function is alpha equiv)*)
 
+Lemma alpha_tfun_congr f tys tms1 tms2:
+  length tms1 = length tms2 ->
+  Forall (fun x => a_equiv_t (fst x) (snd x)) (combine tms1 tms2) ->
+  a_equiv_t (Tfun f tys tms1) (Tfun f tys tms2).
+Proof.
+  unfold a_equiv_t. simpl. intros Hlen Hall.
+  bool_to_prop; split_all; try simpl_sumbool; 
+    [rewrite Hlen; apply Nat.eqb_refl |].
+  generalize dependent tms2.
+  induction tms1; simpl; intros; destruct tms2; inversion Hlen; auto.
+  inversion Hall; subst.
+  bool_to_prop; split; auto.
+Qed.
+
 
 (*TODO: do corollaries, prove transitivity*)
 
@@ -5427,6 +5448,7 @@ Section Sub.
 (*Here, we need to keep the dependencies between pattern variables
   (as, for instance, an "or" pattern should have the same free
   vars on each side, so we use an association list)*)
+  (*
   Fixpoint alpha_p_aux {A: Type} (sub: vsymbol -> vsymbol -> A -> A) 
   (p: pattern) (x: A) (l: list (vsymbol * string)) : (pattern * A) :=
   match p with
@@ -5464,6 +5486,11 @@ Section Sub.
     (Pconstr f tys (fst t), (snd t))
     end.
 (*Proving this correct will not be too fun, but let's see*)
+*)
+
+Definition mk_fun_str (l: list vsymbol) (l2: list string) :
+  vsymbol -> vsymbol :=
+  mk_fun l (combine l2 (map snd l)).
 
 Fixpoint alpha_t_aux (t: term) (l: list string) {struct t} : term :=
   (*We only care about the bound variable and inductive cases*)
@@ -5506,7 +5533,8 @@ Fixpoint alpha_t_aux (t: term) (l: list string) {struct t} : term :=
         let (l1, l2) := split strs p_sz in
         let t2 := alpha_t_aux (snd x) l2 in
         let vars := combine (pat_fv (fst x)) l1 in
-        (sub_ps vars (fst x), sub_ts vars t2)) ps l_split)
+        (map_pat (mk_fun_str (pat_fv (fst x)) l1) (fst x), sub_ts vars t2)) ps l_split)
+        (*(sub_ps vars (fst x), sub_ts vars t2)) ps l_split)*)
   | Teps f v =>
     match l with
     | nil => t
@@ -5575,7 +5603,8 @@ with alpha_f_aux (f: formula) (l: list string) {struct f} : formula :=
         let (l1, l2) := split strs p_sz in
         let f2 := alpha_f_aux (snd x) l2 in
         let vars := combine (pat_fv (fst x)) l1 in
-        (sub_ps vars (fst x), sub_fs vars f2)) ps l_split)
+        (map_pat (mk_fun_str (pat_fv (fst x)) l1) (fst x), sub_fs vars f2)) ps l_split)
+        (*(sub_ps vars (fst x), sub_fs vars f2)) ps l_split)*)
   | _ => f (*No other bound/recursive cases*)
   end.
 (*Prove correctness: 3 lemmas
@@ -5585,14 +5614,589 @@ with alpha_f_aux (f: formula) (l: list string) {struct f} : formula :=
 
 (*TODO: move*)
 
+(*TODO: think we need this first, prove after*)
+Lemma alpha_aux_wf_aux (t: term) (f: formula) :
+  (forall (l: list string),
+    NoDup l ->
+    length l = length (bnd_t t) ->
+    NoDup (bnd_t (alpha_t_aux t l)) /\
+    (forall x, In x (bnd_t (alpha_t_aux t l)) -> In (fst x) l)) /\
+  (forall (l: list string),
+    NoDup l ->
+    length l = length (bnd_f f) ->
+    NoDup (bnd_f (alpha_f_aux f l)) /\
+    (forall x, In x (bnd_f (alpha_f_aux f l)) -> In (fst x) l)).
+Admitted.
 
-Lemma alpha_t_aux_equiv (t: term) (f: formula):
+Definition alpha_t_aux_wf (t: term) := proj1 (alpha_aux_wf_aux t Ftrue).
+Definition alpha_f_aux_wf (f: formula) := proj2 (alpha_aux_wf_aux tm_d f).
+
+Lemma NoDup_combine_l {A B: Type} (l1: list A) (l2: list B):
+  NoDup l1 ->
+  NoDup (combine l1 l2).
+Proof.
+  revert l2. induction l1; simpl; intros. constructor.
+  destruct l2. constructor.
+  inversion H; subst.
+  constructor; auto.
+  intro Hin.
+  apply in_combine_l in Hin. contradiction.
+Qed.
+
+Lemma map_pat_str_fv (strs: list string) (p: pattern) :
+  length (pat_fv p) = length strs ->
+  NoDup strs ->
+  pat_fv (map_pat (mk_fun_str (pat_fv p) strs) p) = map (mk_fun_str (pat_fv p) strs) (pat_fv p).
+Proof.
+  intros.
+  apply map_pat_free_vars. intros.
+  unfold mk_fun_str in H3.
+  apply mk_fun_inj in H3; auto.
+  - apply NoDup_pat_fv.
+  - apply NoDup_combine_l; auto.
+  - rewrite H.
+    unfold vsymbol. (*otherwise rewrite fails*)
+    rewrite combine_length, map_length, <- H, Nat.min_id.
+    apply Nat.le_refl.
+Qed.
+
+Lemma in_map_pat_str_fv_iff (strs: list string) (p: pattern):
+  length (pat_fv p) = length strs ->
+  NoDup strs ->
+  forall x, In x (pat_fv (map_pat (mk_fun_str (pat_fv p) strs) p)) <->
+    In x (combine strs (map snd (pat_fv p))).
+Proof.
+  intros. rewrite map_pat_str_fv; auto.
+  rewrite in_map_iff.
+  split; intros.
+  - destruct H1 as [y [Hx Hiny]]; subst.
+    unfold mk_fun_str.
+    pose proof (mk_fun_in (pat_fv p) (combine strs (map snd (pat_fv p))) y).
+    unfold vsymbol in H, H1.
+    rewrite H, combine_length, map_length, <- H, Nat.min_id in H1.
+    apply H1; auto.
+  - unfold vsymbol in H1. 
+    rewrite in_combine_iff in H1; wf_tac.
+    destruct H1 as [i [Hi Hx]].
+    specialize (Hx EmptyString vty_int). 
+    unfold mk_fun_str.
+    exists (nth i (pat_fv p) vs_d).
+    split; wf_tac.
+    rewrite mk_fun_nth with(d2:=vs_d); unfold vsymbol in *; wf_tac.
+    + unfold vs_d.
+      rewrite combine_nth; wf_tac.
+      subst. f_equal; auto. apply nth_indep; auto.
+    + rewrite combine_length, map_length. lia.
+Qed.
+
+Corollary in_map_pat_str_fv (strs: list string) (p: pattern):
+  length (pat_fv p) = length strs ->
+  NoDup strs ->
+  forall x, In x (pat_fv (map_pat (mk_fun_str (pat_fv p) strs) p)) ->
+    In (fst x) strs.
+Proof.
+  intros. apply in_map_pat_str_fv_iff in H1; auto.
+  unfold vsymbol in H1.
+  rewrite in_combine_iff in H1; wf_tac.
+  destruct H1 as [i [Hi Hx]].
+  specialize (Hx EmptyString vty_int); subst; simpl.
+  wf_tac.
+Qed.
+
+(*Need free var lemmas for [sub_ts]. These are all easy corollaries
+  of the appropriate result for [sub_t]*)
+
+Print sub_ts.
+Print sub_mult.
+Search sub_t free_in_t.
+
+(*We prove iterated version of the free vars lemmas for
+  sub_ts and sub_fs. We do it generically first so we prove both
+  at once*)
+Section IterFvar.
+
+Context {A: Type}.
+Variable sub: vsymbol -> vsymbol -> A -> A.
+Variable free_in: vsymbol -> A -> bool.
+Variable sub_notin: forall (t: A) (x y: vsymbol), x <> y ->
+  free_in x (sub x y t) = false.
+Variable sub_diff: forall (t: A) (x y z: vsymbol),
+  z <> x -> z <> y -> free_in z (sub x y t) = free_in z t.
+Notation subs := (sub_mult sub).
+
+(*The iterated version of [sub_fv_notin]. Awkward to state so
+  that we can prove term and formula versions together*)
+Lemma sub_mult_fv_notin
+  (vars: list (vsymbol * string)) (t: A)
+  (Hn: NoDup (map fst vars))
+  (Huniq: forall x, In x (map fst vars) -> ~ In (fst x) (map snd vars)):
+  forall x, In x (map fst vars) -> free_in x (subs vars t) = false.
+Proof.
+  induction vars; simpl; intros. destruct H.
+  destruct H; subst.
+  - rewrite sub_notin; auto.
+    destruct a as[v str]; destruct v as [nm ty]; simpl in *; intro C;
+    inversion C; subst.
+    apply (Huniq (str, ty)); simpl; triv.
+  - inversion Hn; subst. 
+    rewrite sub_diff; auto.
+    + apply IHvars; auto.
+      intros. intro C.
+      apply (Huniq x0); simpl; triv.
+    + intro C; subst. contradiction.
+    + destruct a; destruct v; simpl in *; intro C; inversion C; subst.
+      apply (Huniq (s, v)); triv.
+Qed.
+
+Lemma sub_mult_fv_diff (vars: list (vsymbol * string)) (t: A):
+  forall x, ~ In x (map fst vars) -> 
+    ~ In x (combine (map snd vars) (map snd (map fst vars))) ->
+  free_in x (subs vars t) = free_in x t.
+Proof.
+  intros x Hn1 Hn2.
+  induction vars; simpl; auto.
+  simpl in Hn1, Hn2. not_or Hn.
+  rewrite sub_diff; auto.
+Qed.
+
+End IterFvar.
+
+Definition sub_ts_fv_notin := sub_mult_fv_notin _ _ 
+  sub_t_fv_notin sub_t_fv_diff.
+Definition sub_fs_fv_notin := sub_mult_fv_notin _ _
+  sub_f_fv_notin sub_f_fv_diff.
+Definition sub_ts_fv_diff := sub_mult_fv_diff _ _
+  sub_t_fv_diff.
+Definition sub_fs_fv_diff := sub_mult_fv_diff _ _
+  sub_f_fv_diff.
+
+Ltac prove_hyp H :=
+  match goal with
+  | H: ?P -> ?Q |- _ => let N := fresh in assert (N: P); [|specialize (H N); clear N]
+  end.
+
+Ltac prove_hyps n H :=
+  match constr:(n) with
+  | O => idtac
+  | (S ?m) => prove_hyp H; [|prove_hyps m H]
+  end.
+
+Ltac vsym_eq2 x y z :=
+  let H := fresh in
+  assert (H: x = y \/ (x <> y /\ x = z) \/ (x <> y /\ x <> z)) by
+  (vsym_eq x y; right; vsym_eq x z);
+  destruct H as [? | [[? ?]|[? ?]]].
+
+(*A big lemma we want: the free vars of [alpha_t_aux] and
+  [alpha_f_aux] are the same as those of the original terms.
+  This is very hard to prove, though very intuitive*)
+Lemma alpha_aux_fv (t: term) (f: formula) :
+  (forall (l: list string)
+    (Hnodupl: NoDup l)
+    (Hlen: length l = length (bnd_t t))
+    (Hfree: forall x, In (fst x) l -> ~ In x (term_fv t))
+    (Hbnd: forall x, In (fst x) l -> ~ In x (bnd_t t)),
+    forall x,
+    free_in_t x (alpha_t_aux t l) = free_in_t x t) /\
+  (forall (l: list string)  
+    (Hnodupl: NoDup l)
+    (Hlen: length l = length (bnd_f f))
+    (Hfree: forall x, In (fst x) l -> ~ In x (form_fv f))
+    (Hbnd: forall x, In (fst x) l -> ~ In x (bnd_f f)),
+    forall x,
+    free_in_f x (alpha_f_aux f l) = free_in_f x f).
+Proof.
+  revert t f. apply term_formula_ind; simpl; auto; intros; try reflexivity.
+  - apply existsb_eq; wf_tac.
+    revert H. rewrite !Forall_forall; intros.
+    revert H0. rewrite in_combine_iff; wf_tac.
+    intros [i [Hi Hx]]. specialize (Hx tm_d tm_d).
+    subst; simpl. rewrite map2_nth with(d1:=tm_d)(d2:=nil); wf_tac.
+    apply H; wf_tac; intros y Hiny C; apply in_split_lens_ith in Hiny; wf_tac.
+    + apply (Hfree y); simpl_set; auto.
+      exists (nth i l1 tm_d). split; wf_tac.
+    + apply (Hbnd y); auto. rewrite in_concat.
+      exists (bnd_t (nth i l1 tm_d)). split; wf_tac.
+  - (*Let - this case is complicated because we are binding variables*) 
+    destruct l; inversion Hlen.
+    simpl. inversion Hnodupl; subst.
+    rewrite H; wf_tac; try(intros y Hiny C); [|apply (Hfree y) | apply (Hbnd y)];
+    try(simpl; right; wf_tac); [|simpl_set; triv].
+    f_equal.
+    assert (v <> (s, snd v)). {
+      intro C; subst. apply (Hbnd v); try triv. 
+      left; rewrite C; auto.
+    }
+    specialize (H0 (skipn (Datatypes.length (bnd_t tm1)) l)).
+    prove_hyps 4 H0; wf_tac;
+    try(intros y Hiny C); [apply (Hfree y) | apply (Hbnd y)|];
+    try solve[simpl; right; wf_tac];
+    [simpl_set; right; split; auto; intro Heq; subst;
+      apply (Hbnd v); [right; wf_tac | left; auto]
+    | ].
+    (*Now we proceed by cases depending on whether x = v,
+      x = (s, snd v), or none of the above*)
+    vsym_eq2 x v (s, snd v).
+    + subst. rewrite sub_t_fv_notin; auto. simpl_bool.
+      vsym_eq v v.
+    + (*If x = (s, snd v)*)
+      subst. vsym_eq (s, snd v) (s, snd v).
+      rewrite sub_t_fv_in; auto.
+      * rewrite !H0.
+        vsym_eq (s, snd v) v. simpl.
+        (*TODO: change Hfree to use [free_in_t]?*)
+        symmetry. apply free_in_t_negb. intro Hin.
+        apply (Hfree (s, snd v)). left; auto. 
+        simpl_set. triv.
+      * intro Hin. apply alpha_t_aux_wf in Hin; wf_tac.
+    + (*The last case is quite easy, nothing changes*) 
+      rewrite sub_t_fv_diff; auto.
+      vsym_eq x (s, snd v); simpl.
+      vsym_eq x v; simpl.
+      apply H0.
+  - (*If case - hypotheses for IH's are annoying *)
+    rewrite H, H0, H1; wf_tac; intros y Hiny C;
+    [apply (Hfree y) | apply (Hbnd y) | apply (Hfree y) | apply (Hbnd y) |
+    apply (Hfree y) | apply (Hbnd y)];
+    try(apply (Hfree y)); try(apply (Hbnd y));
+    try (apply In_skipn in Hiny); try (apply In_firstn in Hiny);
+    wf_tac; simpl_set; try (rewrite !in_app_iff); triv.
+  - (*Match case - let's see*)
+    specialize (H (firstn (Datatypes.length (bnd_t tm)) l)).
+    prove_hyps 4 H; wf_tac; try(intros y Hiny C);
+    [apply (Hfree y) | apply (Hbnd y) |]; wf_tac;
+    [simpl_set; triv | ].
+    rewrite H. f_equal.
+    apply existsb_eq; wf_tac.
+    revert H0. rewrite !Forall_forall; intros.
+    revert H1. rewrite in_combine_iff; wf_tac.
+    intros [i [Hi Hx]]. specialize (Hx (Pwild, tm_d) (Pwild, tm_d)).
+    subst; simpl.
+    rewrite map2_nth with(d1:=(Pwild, tm_d))(d2:=nil); wf_tac.
+    assert (Hsum: sum
+    (map
+       (fun x0 : pattern * term =>
+        Datatypes.length (pat_fv (fst x0)) + Datatypes.length (bnd_t (snd x0)))
+       ps) = Datatypes.length l - Datatypes.length (bnd_t tm)). {
+      rewrite Hlen, length_concat, map_map, Nat.add_comm, Nat.add_sub.
+      f_equal. apply map_ext_in_iff; intros.
+        rewrite app_length; auto.
+    }
+    match goal with
+    | |- context [in_bool ?e ?x ?l] => destruct (in_bool_spec e x l)
+    end; simpl.
+    + (*If x is in the pattern free vars, then it is in l*)
+      destruct (in_bool_spec vsymbol_eq_dec x (pat_fv (fst (nth i ps (Pwild, tm_d))))); simpl; auto.
+      symmetry. apply free_in_t_negb. intro Hinfree.
+      simpl in i0.
+      apply in_map_pat_str_fv in i0; wf_tac.
+      apply In_firstn in i0.
+      apply in_split_lens_ith in i0; wf_tac.
+      apply (Hfree x); wf_tac. simpl_set.
+      right. exists (nth i ps (Pwild, tm_d)).
+      split; wf_tac.
+      simpl_set. split; auto.
+    + (*Otherwise, x not in pattern free vars*)
+      (*Need this result in 2 places*)
+      assert (Hnotfree: forall x0 : string * vty,
+      In (fst x0)
+           (nth i
+              (split_lens (skipn (Datatypes.length (bnd_t tm)) l)
+                 (map
+                    (fun x1 : pattern * term =>
+                     Datatypes.length (pat_fv (fst x1)) +
+                     Datatypes.length (bnd_t (snd x1))) ps)) []) ->
+      ~ (In x0 (term_fv (snd (nth i ps (Pwild, tm_d)))) \/
+        In x0 (pat_fv (fst (nth i ps (Pwild, tm_d)))))). {
+        intros y Hy C.
+        apply in_split_lens_ith in Hy; wf_tac.
+        (*Do [pat_fv] first*)
+        assert (~In y (pat_fv (fst (nth i ps (Pwild, tm_d))))). {
+          (*Contradiction: y in l, so not bound in pattern,
+            which is same as pattern free var*)
+          intro Hnot.
+          apply (Hbnd y); wf_tac.
+          rewrite in_app_iff. right.
+          rewrite in_concat. exists (pat_fv (fst (nth i ps (Pwild, tm_d))) ++
+            bnd_t (snd (nth i ps (Pwild, tm_d)))). split; wf_tac.
+          exists (nth i ps (Pwild, tm_d)); split; wf_tac.
+        }
+        destruct C; try contradiction.
+        (*Here, contradicts [Hfree], need [pat_fv result]*)
+        apply (Hfree y); simpl_set; wf_tac.
+        right. exists (nth i ps (Pwild, tm_d)). split;
+        auto; simpl_set; wf_tac. 
+      }
+      destruct (in_bool_spec vsymbol_eq_dec x (pat_fv (fst (nth i ps (Pwild, tm_d))))); simpl.
+      * apply sub_ts_fv_notin; wf_tac.
+        intros y Hiny Hiny2.
+        apply In_firstn in Hiny2. apply Hnotfree in Hiny2.
+        not_or Hiny. contradiction.
+      * simpl in n.
+        rewrite sub_ts_fv_diff; wf_tac. 
+        -- rewrite H0; wf_tac.
+          ++ intros y Hy C.
+            apply In_skipn in Hy.
+            apply Hnotfree in Hy. apply Hy; triv.
+          ++ intros y Hy C.
+            apply In_skipn in Hy.
+            apply in_split_lens_ith in Hy; wf_tac.
+            apply (Hbnd y); wf_tac.
+            rewrite in_app_iff; right.
+            rewrite in_concat. exists (pat_fv (fst (nth i ps (Pwild, tm_d))) ++
+              bnd_t (snd (nth i ps (Pwild, tm_d)))). split; wf_tac.
+            exists (nth i ps (Pwild, tm_d)); split; wf_tac.
+        -- intro C.
+          apply n. simpl.
+          apply in_map_pat_str_fv_iff; wf_tac.
+  - (*Teps - basically same as let*) 
+    destruct l; inversion Hlen. simpl.
+    assert (v <> (s, snd v)). {
+      intro C; subst. apply (Hbnd v); try triv. 
+      left; rewrite C; auto.
+    }
+    inversion Hnodupl; subst.
+    specialize (H l).
+    prove_hyps 4 H; wf_tac;
+    try(intros y Hiny C); [apply (Hfree y) | apply (Hbnd y)|];
+    try solve[simpl; right; wf_tac];
+    simpl_set; auto.
+    split; auto; intro Heq; subst.
+    apply (Hbnd v); [right; wf_tac | left; auto].
+    (*Now we proceed by cases depending on whether x = v,
+      x = (s, snd v), or none of the above*)
+    vsym_eq2 x v (s, snd v).
+    + subst. rewrite sub_f_fv_notin; auto. simpl_bool.
+      vsym_eq v v.
+    + (*If x = (s, snd v)*)
+      subst. vsym_eq (s, snd v) (s, snd v).
+      rewrite sub_f_fv_in; auto.
+      * rewrite !H.
+        vsym_eq (s, snd v) v. simpl.
+        symmetry. apply free_in_f_negb. intro Hin.
+        apply (Hfree (s, snd v)). left; auto. 
+        simpl_set. triv.
+      * intro Hin. apply alpha_f_aux_wf in Hin; wf_tac.
+    + (*The last case is quite easy, nothing changes*) 
+      rewrite sub_f_fv_diff; auto.
+      vsym_eq x (s, snd v); simpl.
+      vsym_eq x v; simpl.
+      apply H.
+  - (*Fpred*)
+    apply existsb_eq; wf_tac.
+    revert H. rewrite !Forall_forall; intros.
+    revert H0. rewrite in_combine_iff; wf_tac.
+    intros [i [Hi Hx]]. specialize (Hx tm_d tm_d).
+    subst; simpl. rewrite map2_nth with(d1:=tm_d)(d2:=nil); wf_tac.
+    apply H; wf_tac; intros y Hiny C; apply in_split_lens_ith in Hiny; wf_tac.
+    + apply (Hfree y); simpl_set; auto.
+      exists (nth i tms tm_d). split; wf_tac.
+    + apply (Hbnd y); auto. rewrite in_concat.
+      exists (bnd_t (nth i tms tm_d)). split; wf_tac.
+  - (*Fquant -similar to let/eps*)
+    destruct l; inversion Hlen.
+    inversion Hnodupl;subst.
+    simpl.
+    assert (v <> (s, snd v)). {
+      intro C; subst. apply (Hbnd v); try triv. 
+      left; rewrite C; auto.
+    }
+    specialize (H l).
+    prove_hyps 4 H; wf_tac;
+    try(intros y Hiny C); [apply (Hfree y) | apply (Hbnd y)|];
+    try solve[simpl; right; wf_tac];
+    simpl_set; auto.
+    split; auto; intro Heq; subst.
+    apply (Hbnd v); [right; wf_tac | left; auto].
+    (*Now we proceed by cases depending on whether x = v,
+      x = (s, snd v), or none of the above*)
+    vsym_eq2 x v (s, snd v).
+    + subst. rewrite sub_f_fv_notin; auto. simpl_bool.
+      vsym_eq v v.
+    + (*If x = (s, snd v)*)
+      subst. vsym_eq (s, snd v) (s, snd v).
+      rewrite sub_f_fv_in; auto.
+      * rewrite !H.
+        vsym_eq (s, snd v) v. simpl.
+        (*TODO: change Hfree to use [free_in_t]?*)
+        symmetry. apply free_in_f_negb. intro Hin.
+        apply (Hfree (s, snd v)). left; auto. 
+        simpl_set. triv.
+      * intro Hin. apply alpha_f_aux_wf in Hin; wf_tac.
+    + (*The last case is quite easy, nothing changes*) 
+      rewrite sub_f_fv_diff; auto.
+      vsym_eq x (s, snd v); simpl.
+      vsym_eq x v; simpl.
+      apply H.
+  - (*Feq*)
+    rewrite H, H0; wf_tac; intros y Hiny C;
+    try solve[(apply (Hfree y); wf_tac; simpl_set; triv)];
+    apply (Hbnd y); wf_tac; rewrite in_app_iff; triv.
+  - (*Fbinop*)
+    rewrite H, H0; wf_tac; intros y Hiny C;
+    try solve[(apply (Hfree y); wf_tac; simpl_set; triv)];
+    apply (Hbnd y); wf_tac; rewrite in_app_iff; triv.
+  - (*Flet*)
+    destruct l; inversion Hlen.
+    simpl. inversion Hnodupl; subst.
+    rewrite H; wf_tac; try(intros y Hiny C); [|apply (Hfree y) | apply (Hbnd y)];
+    try(simpl; right; wf_tac); [|simpl_set; triv].
+    f_equal.
+    assert (v <> (s, snd v)). {
+      intro C; subst. apply (Hbnd v); try triv. 
+      left; rewrite C; auto.
+    }
+    specialize (H0 (skipn (Datatypes.length (bnd_t tm)) l)).
+    prove_hyps 4 H0; wf_tac;
+    try(intros y Hiny C); [apply (Hfree y) | apply (Hbnd y)|];
+    try solve[simpl; right; wf_tac];
+    [simpl_set; right; split; auto; intro Heq; subst;
+      apply (Hbnd v); [right; wf_tac | left; auto]
+    | ].
+    (*Now we proceed by cases depending on whether x = v,
+      x = (s, snd v), or none of the above*)
+    vsym_eq2 x v (s, snd v).
+    + subst. rewrite sub_f_fv_notin; auto. simpl_bool.
+      vsym_eq v v.
+    + (*If x = (s, snd v)*)
+      subst. vsym_eq (s, snd v) (s, snd v).
+      rewrite sub_f_fv_in; auto.
+      * rewrite !H0.
+        vsym_eq (s, snd v) v. simpl.
+        symmetry. apply free_in_f_negb. intro Hin.
+        apply (Hfree (s, snd v)). left; auto. 
+        simpl_set. triv.
+      * intro Hin. apply alpha_f_aux_wf in Hin; wf_tac.
+    + (*The last case is quite easy, nothing changes*) 
+      rewrite sub_f_fv_diff; auto.
+      vsym_eq x (s, snd v); simpl.
+      vsym_eq x v; simpl.
+      apply H0.
+  - (*Fif*)
+    rewrite H, H0, H1; wf_tac; intros y Hiny C;
+    [apply (Hfree y) | apply (Hbnd y) | apply (Hfree y) | apply (Hbnd y) |
+    apply (Hfree y) | apply (Hbnd y)];
+    try(apply (Hfree y)); try(apply (Hbnd y));
+    try (apply In_skipn in Hiny); try (apply In_firstn in Hiny);
+    wf_tac; simpl_set; try (rewrite !in_app_iff); triv.
+  - (*Fmatch - copied and pasted*)
+    specialize (H (firstn (Datatypes.length (bnd_t tm)) l)).
+    prove_hyps 4 H; wf_tac; try(intros y Hiny C);
+    [apply (Hfree y) | apply (Hbnd y) |]; wf_tac;
+    [simpl_set; triv | ].
+    rewrite H. f_equal.
+    apply existsb_eq; wf_tac.
+    revert H0. rewrite !Forall_forall; intros.
+    revert H1. rewrite in_combine_iff; wf_tac.
+    intros [i [Hi Hx]]. specialize (Hx (Pwild, Ftrue) (Pwild, Ftrue)).
+    subst; simpl.
+    rewrite map2_nth with(d1:=(Pwild, Ftrue))(d2:=nil); wf_tac.
+    assert (Hsum: sum
+    (map
+      (fun x0 : pattern * formula =>
+        Datatypes.length (pat_fv (fst x0)) + Datatypes.length (bnd_f (snd x0)))
+      ps) = Datatypes.length l - Datatypes.length (bnd_t tm)). {
+      rewrite Hlen, length_concat, map_map, Nat.add_comm, Nat.add_sub.
+      f_equal. apply map_ext_in_iff; intros.
+        rewrite app_length; auto.
+    }
+    match goal with
+    | |- context [in_bool ?e ?x ?l] => destruct (in_bool_spec e x l)
+    end; simpl.
+    + (*If x is in the pattern free vars, then it is in l*)
+      destruct (in_bool_spec vsymbol_eq_dec x (pat_fv (fst (nth i ps (Pwild, Ftrue))))); simpl; auto.
+      symmetry. apply free_in_f_negb. intro Hinfree.
+      simpl in i0.
+      apply in_map_pat_str_fv in i0; wf_tac.
+      apply In_firstn in i0.
+      apply in_split_lens_ith in i0; wf_tac.
+      apply (Hfree x); wf_tac. simpl_set.
+      right. exists (nth i ps (Pwild, Ftrue)).
+      split; wf_tac.
+      simpl_set. split; auto.
+    + (*Otherwise, x not in pattern free vars*)
+      (*Need this result in 2 places*)
+      assert (Hnotfree: forall x0 : string * vty,
+      In (fst x0)
+          (nth i
+              (split_lens (skipn (Datatypes.length (bnd_t tm)) l)
+                (map
+                    (fun x1 : pattern * formula =>
+                    Datatypes.length (pat_fv (fst x1)) +
+                    Datatypes.length (bnd_f (snd x1))) ps)) []) ->
+      ~ (In x0 (form_fv (snd (nth i ps (Pwild, Ftrue)))) \/
+        In x0 (pat_fv (fst (nth i ps (Pwild, Ftrue)))))). {
+        intros y Hy C.
+        apply in_split_lens_ith in Hy; wf_tac.
+        (*Do [pat_fv] first*)
+        assert (~In y (pat_fv (fst (nth i ps (Pwild, Ftrue))))). {
+          (*Contradiction: y in l, so not bound in pattern,
+            which is same as pattern free var*)
+          intro Hnot.
+          apply (Hbnd y); wf_tac.
+          rewrite in_app_iff. right.
+          rewrite in_concat. exists (pat_fv (fst (nth i ps (Pwild, Ftrue))) ++
+            bnd_f (snd (nth i ps (Pwild, Ftrue)))). split; wf_tac.
+          exists (nth i ps (Pwild, Ftrue)); split; wf_tac.
+        }
+        destruct C; try contradiction.
+        (*Here, contradicts [Hfree], need [pat_fv result]*)
+        apply (Hfree y); simpl_set; wf_tac.
+        right. exists (nth i ps (Pwild, Ftrue)). split;
+        auto; simpl_set; wf_tac. 
+      }
+      destruct (in_bool_spec vsymbol_eq_dec x (pat_fv (fst (nth i ps (Pwild, Ftrue))))); simpl.
+      * (*If x in orig pattern free vars, need to show false*)
+        apply sub_fs_fv_notin; wf_tac.
+        intros y Hiny Hiny2.
+        apply In_firstn in Hiny2. apply Hnotfree in Hiny2.
+        not_or Hiny. contradiction.
+      * simpl in n.
+        rewrite sub_fs_fv_diff; wf_tac. 
+        -- rewrite H0; wf_tac.
+          ++ intros y Hy C.
+            apply In_skipn in Hy.
+            apply Hnotfree in Hy. apply Hy; triv.
+          ++ intros y Hy C.
+            apply In_skipn in Hy.
+            apply in_split_lens_ith in Hy; wf_tac.
+            apply (Hbnd y); wf_tac.
+            rewrite in_app_iff; right.
+            rewrite in_concat. exists (pat_fv (fst (nth i ps (Pwild, Ftrue))) ++
+              bnd_f (snd (nth i ps (Pwild, Ftrue)))). split; wf_tac.
+            exists (nth i ps (Pwild, Ftrue)); split; wf_tac.
+        -- intro C.
+          apply n. simpl.
+          apply in_map_pat_str_fv_iff; wf_tac.
+Qed.
+
+Definition alpha_t_aux_fv (t: term) :=
+  proj1 (alpha_aux_fv t Ftrue).
+Definition alpha_f_aux_fv (f: formula) :=
+  proj2 (alpha_aux_fv tm_d f).
+
+Corollary alpha_t_aux_fv' (t: term):
+  (forall (l: list string)
+  (Hnodupl: NoDup l)
+  (Hlen: length l = length (bnd_t t))
+  (Hfree: forall x, In (fst x) l -> ~ In x (term_fv t))
+  (Hbnd: forall x, In (fst x) l -> ~ In x (bnd_t t)),
+  forall x, In x (term_fv (alpha_t_aux t l)) <-> In x (term_fv t)).
+Proof.
+  intros. rewrite <- !free_in_t_spec, alpha_t_aux_fv; auto.
+  reflexivity.
+Qed. 
+
+(*TODO: do bnd lemma, then this one*)
+Theorem alpha_t_aux_equiv (t: term) (f: formula):
   (forall l
+    (Hn: NoDup l)
     (Hlen: length l = length (bnd_t t))
     (Hfree: forall x, In (fst x) l -> ~ In x (term_fv t))
     (Hbnd: forall x, In (fst x) l -> ~ In x (bnd_t t)),
     a_equiv_t t (alpha_t_aux t l)) /\
   (forall l
+    (Hn: NoDup l)
     (Hlen: length l = length (bnd_f f))
     (Hfree: forall x, In (fst x) l -> ~ In x (form_fv f))
     (Hbnd: forall x, In (fst x) l -> ~ In x (bnd_f f)),
@@ -5601,7 +6205,39 @@ Lemma alpha_t_aux_equiv (t: term) (f: formula):
 Proof.
   revert t f. apply term_formula_ind; simpl; intros; auto;
   try solve[apply a_equiv_t_refl].
-  - (*TODO: inductive case for fun, pred*) admit.
+  - (*Tfun*)
+    apply alpha_tfun_congr; wf_tac.
+    revert H.
+    rewrite !Forall_forall; intros.
+    rewrite in_combine_iff in H0; wf_tac.
+    destruct H0 as [i [Hi Hx]].
+    specialize (Hx tm_d tm_d); subst. simpl.
+    rewrite map2_nth with(d1:=tm_d)(d2:=nil); wf_tac.
+    apply H; wf_tac.
+    + intros. intro C.
+      apply in_split_lens_ith in H0; wf_tac.
+      apply (Hfree x); wf_tac.
+      simpl_set. exists (nth i l1 tm_d). split; wf_tac.
+    + intros. intro C.
+      apply in_split_lens_ith in H0; wf_tac.
+      apply (Hbnd x); wf_tac.
+      rewrite in_concat. exists (bnd_t (nth i l1 tm_d)).
+      split; wf_tac.
+  - (*Tlet*)
+    destruct l; inversion Hlen.
+    apply alpha_convert_tlet'; wf_tac.
+    + intro C.
+      inversion Hn; subst.
+      apply alpha_t_aux_wf in C; wf_tac.
+    + intro C.
+      inversion Hn; subst.
+
+      
+      
+      Search bnd_t alpha_t_aux.
+  
+  
+  (*TODO: inductive case for fun, pred*) admit.
   - destruct l; inversion Hlen.
 
 
