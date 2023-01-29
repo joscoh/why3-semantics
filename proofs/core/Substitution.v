@@ -4753,7 +4753,8 @@ Proof.
       assumption.
 Qed.
     
-(*TODO: see how hard this is to prove*)
+(*Another key property of alpha equivalence: it preserves
+  well-typedness*)
 Lemma alpha_equiv_type (t: term) (f: formula):
   (forall t1 (vars: list (vsymbol * vsymbol)) (ty: vty)
     (Heq: alpha_equiv_t vars t t1)
@@ -4867,61 +4868,145 @@ Proof.
       inversion Hxy; subst; auto.
     + rewrite <- e; assumption.
   - (*Fpred*)
-    
-
-
-
-
-        rewrite mk_fun_nth' with(d2:=vs_d); auto; [| apply NoDup_pat_fv].
-        mk_fun_vars_eq_full.
-
-        Search nth map.
-        rewrite nth_map_inbound.
-      *  all: wf_tac. 
-      * wf_tac. rewrite in_map_iff. re
-      apply alpha_equiv_p_type_full with(ty:=v0) in Heqp; auto.
-      apply H10. wf_tac.
-      apply Heqp. auto.
-      apply H10.
-      
-      auto.
-
-
-
-      Search alpha_equiv_p pat_fv.
-
-
-
-      apply H10. apply nth_In. wf_tac.
-      a
-    3: {
-      destruct l; destruct ps; auto; inversion H5.
-
-    }
-    (*TODO: move*)
-      
-      - intros; apply H10; right; auto.
-      - auto. simpl. split; auto. revert H3 simpl.
-      destruct i.
-    }
-
-
-
-    {
-      apply (H _ _ _ H2); auto.
-    }
-  
-  
-  intros auto.
-      * 
-    generalize depen
-    simpl_sumbool.
+    destruct f1; try solve[inversion Heq].
+    revert Heq; bool_to_prop; intros; destruct_all.
+    simpl_sumbool. simpl_sumbool.
+    apply Nat.eqb_eq in H4.
+    inversion H0; subst. constructor; auto; try lia.
+    clear -H11 H2 H H9 H4 Hvars. subst sigma0.
+    assert (length l0 = length (map (ty_subst (p_params p0) l) (p_args p0))) by wf_tac.
+    generalize dependent (map (ty_subst (p_params p0) l) (p_args p0)).
+    intros typs; revert typs.
+    clear H9. rename l0 into tms2. generalize dependent tms2. 
+    induction tms; simpl; intros; auto;
+    destruct typs; inversion H0;
+    destruct tms2; inversion H4; simpl; try solve[constructor].
+    inversion H11; subst.
     inversion H; subst.
-  
-  
-  /\
+    revert H2; bool_to_prop; intros; destruct_all. 
+    constructor; auto; simpl.
+    eapply H9. apply H1. auto. apply H7.
+  - (*Fquant*)
+    destruct f1; try solve[inversion Heq].
+    revert Heq; bool_to_prop; intros; destruct_all; repeat simpl_sumbool.
+    inversion H0; subst.
+    constructor; [rewrite <- e |]; auto.
+    apply H in H2; auto. simpl; intros x y [Hxy | Hinxy]; auto.
+    inversion Hxy; subst; auto.
+  - (*Feq*)
+    destruct f1; try solve[inversion Heq].
+    revert Heq; bool_to_prop; intros; destruct_all.
+    inversion H1; subst.
+    simpl_sumbool.
+    constructor; [apply H with(ty:=v0) in H4 | 
+      apply H0 with(ty:=v0) in H3]; auto.
+  - (*Fbinop - same*)
+    destruct f0; try solve[inversion Heq].
+    revert Heq; bool_to_prop; intros; destruct_all.
+    inversion H1; subst.
+    simpl_sumbool.
+    constructor; [apply H in H4 | apply H0 in H3]; auto.
+  - (*Fnot*)
+    destruct f1; try solve[inversion Heq].
+    inversion H0; subst.
+    constructor.
+    apply H in Heq; auto.
+  - (*Ftrue*)
+    destruct f1; try solve[inversion Heq]. constructor.
+  - (*Ffalse*)
+    destruct f1; try solve[inversion Heq]. constructor.
+  - (*Flet*)
+    destruct f1; try solve[inversion Heq].
+    revert Heq; bool_to_prop; intros; destruct_all.
+    simpl_sumbool.
+    inversion H1; subst. constructor; auto.
+    + eapply H. apply H4. intros; auto. rewrite <- e; auto.
+    + eapply H0. apply H3. 2: auto. simpl; intros x y [Heq | Hin].
+      * inversion Heq; subst; auto.
+      * auto.
+  - (*Fif*) destruct f0; try solve[inversion Heq].
+    revert Heq; bool_to_prop; intros; destruct_all.
+    inversion H2; subst.
+    constructor; [apply (H _ _ H3) | apply (H0 _ _  H5) | apply (H1 _ _ H4)]; auto.
+  - (*Fmatch*) destruct f1; try solve[inversion Heq].
+    revert Heq; bool_to_prop; intros; destruct_all. simpl_sumbool.
+    apply Nat.eqb_eq in H5.
+    inversion H1; subst.
+    assert (forall i, i < length ps ->
+        let t1 := (nth i ps (Pwild, Ftrue)) in
+        let t2 := (nth i l (Pwild, Ftrue)) in
+        length (pat_fv (fst t1)) = length (pat_fv (fst t2)) /\
+        alpha_equiv_p (combine (pat_fv (fst t1)) (pat_fv (fst t2))) 
+          (fst t1) (fst t2) /\
+        alpha_equiv_f (add_vals (pat_fv (fst t1)) (pat_fv (fst t2)) vars)
+          (snd t1) (snd t2)
+    ). 
+    {
+      clear -H5 H3. generalize dependent l.
+      induction ps; simpl; intros; try lia; destruct l; inversion H5.
+      clear H5.
+      destruct a; destruct p.
+      revert H3; bool_to_prop; intros; destruct_all.
+      destruct i; simpl.
+      - split_all; auto. apply alpha_equiv_p_fv_len_full; auto.
+      - apply IHps; auto. lia.
+    }
+    constructor; auto; [apply (H _ _ _ H2); auto | | |
+      destruct l; destruct ps; auto; inversion H5].
+    + rewrite Forall_forall; intros. 
+      pose proof (In_nth _ _ (Pwild, Ftrue) H6).
+      destruct H7 as [n [Hn Hx]]; subst.
+      specialize (H4 n ltac:(lia)).
+      simpl in H4.
+      destruct H4 as [ Heql [Heqp Heqt]].
+      apply alpha_equiv_p_type_full with(ty:=v0) in Heqp; auto.
+      rewrite Forall_forall in H10.
+      apply H10. wf_tac.
+    + rewrite Forall_forall; intros. 
+      pose proof (In_nth _ _ (Pwild, Ftrue) H6).
+      destruct H7 as [n [Hn Hx]]; subst.
+      specialize (H4 n ltac:(lia)).
+      simpl in H4.
+      destruct H4 as [ Heql [Heqp Heqt]].
+      rewrite Forall_forall in H0.
+      eapply H0. 2: apply Heqt.
+      * wf_tac.
+      * unfold add_vals.
+        intros. rewrite in_app_iff in H4.
+        destruct H4; auto.
+        assert (Heqp':=Heqp).
+        apply alpha_equiv_p_fv_full in Heqp. rewrite Heqp in H4.
+        rewrite in_combine_iff in H4; wf_tac.
+        destruct H4 as [i [Hi Hxy]].
+        specialize (Hxy vs_d vs_d). inversion Hxy; subst. clear Hxy.
+        rewrite map_nth_inbound with(d2:=vs_d); auto.
+        rewrite mk_fun_vars_eq_full; auto.
+        wf_tac.
+      * rewrite Forall_forall in H11. apply H11. wf_tac.
+Qed. 
 
-Search alpha_equiv_t term_has_type.
+Definition alpha_equiv_t_type (t: term) := proj1 (alpha_equiv_type t Ftrue).
+Definition alpha_equiv_f_valid (f: formula) := proj2 (alpha_equiv_type tm_d f).
+
+Corollary a_equiv_t_type (t1 t2: term) (ty: vty):
+  a_equiv_t t1 t2 ->
+  term_has_type sigma t1 ty ->
+  term_has_type sigma t2 ty.
+Proof.
+  unfold a_equiv_t. intros Heq.
+  apply alpha_equiv_t_type with(vars:=nil); auto.
+  simpl; intros ? ? [].
+Qed.
+
+Corollary a_equiv_f_valid (f1 f2: formula):
+  a_equiv_f f1 f2 ->
+  valid_formula sigma f1 ->
+  valid_formula sigma f2.
+Proof.
+  unfold a_equiv_f. intros Heq.
+  apply alpha_equiv_f_valid with(vars:=nil); auto.
+  simpl; intros ? ? [].
+Qed.
 
 (*TODO: this should be true in general (not just for well-typed
   terms and formulas) but isn't. The issue is from patterns:
