@@ -4590,6 +4590,25 @@ Proof.
       apply IHv1; auto.
 Qed.
 
+(*Same proof: TODO fix*)
+Lemma in_firstb_trans v1 v2 x y z:
+  map snd v1 = map fst v2 ->
+  var_in_firstb (x, y) v1 ->
+  var_in_firstb (y, z) v2 ->
+  var_in_firstb (x, z) (alist_trans v1 v2).
+Proof.
+  revert v2. induction v1; simpl; intros; destruct v2; inversion H; subst;
+  [inversion H0 |].
+  simpl. clear H. simpl in H1.
+  vsym_eq x (fst a); simpl in *; auto; revert H0; simpl_bool; intros.
+  + vsym_eq y (snd a). vsym_eq (snd a) (fst p); auto; simpl in *.
+    vsym_eq z (snd p).
+  + vsym_eq y (snd a); simpl in H0.
+    vsym_eq y (fst p); simpl in *.
+    vsym_eq z (snd p); simpl in *.
+    apply IHv1; auto.
+Qed.
+
 (*As long as the vars list includes all free vars of p1
   and has no duplicates, any two patterns that are
   alpha equivalent are well-typed if the other is*)
@@ -5008,22 +5027,79 @@ Proof.
   simpl; intros ? ? [].
 Qed.
 
-(*TODO: this should be true in general (not just for well-typed
-  terms and formulas) but isn't. The issue is from patterns:
-  Pconstr f (Pvar x) (Pvar y) and Pconstr f (Pvar a) (Pvar a)
-  are considered alpha-equivalent under the list
-  (x, a) (y, a) but their free variables have different lengths.
-  Hence we do not have the invariant that map snd v1 = map fst v2.
-  This isn't really a problem, because we only care about well-typed
-  terms and formulas anyway, though it would be nice to have the
-  more general lemma
-  *)
+(*Now, let's prove transitivity*)
+
+(*The pattern case is easy, but its use relies on the lengths of
+  the free vars lists being the same (in the map assumption)
+  which comes from [alpha_equiv_p_fv_len_full]*)
+Lemma alpha_equiv_p_trans (p1 p2 p3: pattern)
+  (v1 v2: list (vsymbol * vsymbol))
+  (Hl: map snd v1 = map fst v2)
+  (Heq1: alpha_equiv_p v1 p1 p2)
+  (Heq2: alpha_equiv_p v2 p2 p3):
+  alpha_equiv_p (alist_trans v1 v2) p1 p3.
+Proof.
+  generalize dependent p3.
+  generalize dependent p2. 
+  induction p1; simpl; intros;
+  destruct p2; try solve[inversion Heq1];
+  destruct p3; try solve[inversion Heq2];
+  simpl in Heq2; revert Heq1 Heq2;
+  bool_to_prop; intros; destruct_all;
+  repeat simpl_sumbool; simpl; auto.
+  - split; [simpl_sumbool; simpl; rewrite e0 in n; contradiction | ].
+    apply in_firstb_trans with(y:=v0); auto.
+  - apply Nat.eqb_eq in H7, H3.
+    rewrite H7, H3, Nat.eqb_refl. split_all; auto.
+    rename l0 into ps2.
+    rename l2 into ps3.
+    rename H7 into Hlen1.
+    rename H3 into Hlen2.
+    generalize dependent ps3.
+    generalize dependent ps2.
+    induction ps; simpl; intros; destruct ps2; inversion Hlen1;
+    destruct ps3; inversion Hlen2; auto.
+    revert H1 H5; bool_to_prop; intros; destruct_all.
+    inversion H; subst.
+    split.
+    + apply (H8 p); auto.
+    + apply (IHps H9 ps2); auto.
+  - split; [apply (IHp1_1 p2_1) | apply (IHp1_2 p2_2)]; auto.
+  - split_all; [simpl_sumbool; simpl; rewrite e0 in n; contradiction |
+    | apply (IHp1 p2); auto].
+    apply in_firstb_trans with(y:=v0); auto.
+Qed.
+
+Lemma combine_alist_trans l1 l2 l3:
+  length l1 = length l2 ->
+  length l2 = length l3 ->
+  alist_trans (combine l1 l2) (combine l2 l3) = combine l1 l3.
+Proof.
+  intros Hlen1 Hlen2.
+  generalize dependent l3.
+  generalize dependent l2.
+  induction l1; simpl; intros; destruct l2; inversion Hlen1;
+  destruct l3; inversion Hlen2; auto; simpl.
+  f_equal. apply IHl1; auto.
+Qed.
+
+Lemma alist_trans_app l1 l2 l3 l4:
+  length l1 = length l2 ->
+  alist_trans l1 l2 ++ alist_trans l3 l4 =
+  alist_trans (l1 ++ l3) (l2 ++ l4).
+Proof.
+  intros Hlen.
+  generalize dependent l2.
+  induction l1; simpl; intros;
+  destruct l2; inversion Hlen; simpl; auto.
+  f_equal. apply IHl1; auto.
+Qed.
+
 Lemma alpha_equiv_trans (t: term) (f: formula) :
-  (forall t1 t2 (v1 v2: list (vsymbol * vsymbol)) ty
+  (forall t1 t2 (v1 v2: list (vsymbol * vsymbol))
     (Hl: map snd v1 = map fst v2)
     (Heq1: alpha_equiv_t v1 t t1)
-    (Heq2: alpha_equiv_t v2 t1 t2)
-    (Hty1: term_has_type ),
+    (Heq2: alpha_equiv_t v2 t1 t2),
     alpha_equiv_t (alist_trans v1 v2) t t2) /\
   (forall f1 f2 (v1 v2: list (vsymbol * vsymbol))
     (Hl: map snd v1 = map fst v2)
@@ -5032,20 +5108,291 @@ Lemma alpha_equiv_trans (t: term) (f: formula) :
     alpha_equiv_f (alist_trans v1 v2) f f2).
 Proof.
   revert t f; apply term_formula_ind; simpl; intros.
-  - destruct t1; try solve[inversion Heq1].
+  - (*Tconst*) 
+    destruct t1; try solve[inversion Heq1].
     destruct t2; try solve[inversion Heq2].
     simpl in Heq2.
     destruct (all_dec (c = c0)); auto.
     destruct (all_dec (c0 = c1)); auto.
     subst.
     destruct (all_dec (c1 = c1)); auto.
-  - destruct t1; try solve[inversion Heq1].
+  - (*Tvar*)
+    destruct t1; try solve[inversion Heq1].
     destruct t2; try solve [inversion Heq2].
     simpl in Heq2.
     eapply eq_var_trans.
     apply Hl. apply Heq1. apply Heq2.
-    (*It works!*)
-   
+  - (*Tfun*)
+    destruct t1; try solve[inversion Heq1].
+    destruct t2; try solve[inversion Heq2].
+    simpl in Heq2.
+    revert Heq1 Heq2; bool_to_prop; intros;
+    destruct_all; repeat simpl_sumbool; simpl.
+    apply Nat.eqb_eq in H7, H3.
+    rewrite H7, H3, Nat.eqb_refl. split_all; auto.
+    rename H7 into Hlen1.
+    rename H3 into Hlen2.
+    generalize dependent l2.
+    generalize dependent l4.
+    induction l1; simpl; intros; destruct l2; inversion Hlen1;
+    destruct l4; inversion Hlen2; auto.
+    revert H5 H1; bool_to_prop; intros; destruct_all.
+    inversion H; subst.
+    split.
+    + apply H8 with(t1:=t); auto.
+    + apply IHl1 with(l2:=l2); auto.
+  - (*Tlet*)
+    destruct t1; try solve[inversion Heq1].
+    destruct t2; try solve[inversion Heq2].
+    simpl in Heq2.
+    revert Heq1 Heq2; bool_to_prop; intros;
+    destruct_all; repeat simpl_sumbool.
+    split_all.
+    + simpl_sumbool. simpl. rewrite e0 in n. contradiction.
+    + apply H with(t1:=t1_1); auto.
+    + assert (Hmap: map snd ((v, v0) :: v1) = map fst ((v0, v3) :: v2)). {
+        simpl. f_equal. auto. 
+      }
+      apply (H0 _ _ _ _ Hmap H5 H2).
+  - (*Tif*)
+    destruct t0; try solve[inversion Heq1].
+    destruct t3; try solve[inversion Heq2].
+    simpl in Heq2.
+    revert Heq1 Heq2; bool_to_prop; intros;
+    destruct_all.
+    split_all; [apply (H f0) | apply (H0 t0_1) | apply (H1 t0_2)]; auto.
+  - (*Tmatch*)
+    destruct t1; try solve[inversion Heq1].
+    destruct t2; try solve[inversion Heq2].
+    simpl in Heq2.
+    revert Heq1 Heq2; bool_to_prop; intros;
+    destruct_all; repeat simpl_sumbool.
+    apply Nat.eqb_eq in H8, H4.
+    split_all; auto.
+    + apply (H t1); auto.
+    + rewrite H8, H4; apply Nat.eqb_refl.
+    + clear H H5 H1.
+      rename l into ps2.
+      rename l0 into ps3.
+      rename H8 into Hlen1.
+      rename H4 into Hlen2.
+      generalize dependent ps2.
+      generalize dependent ps3.
+      induction ps; intros;
+      destruct ps2; inversion Hlen1;
+      destruct ps3; inversion Hlen2; auto.
+      destruct a as [p1 tm1].
+      destruct p as [p2 tm2].
+      destruct p0 as [p3 tm3].
+      revert H6 H2; bool_to_prop; intros;
+      destruct_all.
+      assert (Hlenp1: length (pat_fv p1) = length (pat_fv p2)) by
+        (apply alpha_equiv_p_fv_len_full; auto).
+      assert (Hlenp2: length (pat_fv p2) = length (pat_fv p3)) by
+        (apply alpha_equiv_p_fv_len_full; auto).
+      inversion H0; subst.
+      split_all.
+      * rewrite <- combine_alist_trans with(l2:=pat_fv p2); auto.
+        apply alpha_equiv_p_trans with(p2:=p2); auto.
+        rewrite map_snd_combine, map_fst_combine; auto.
+      * unfold add_vals.
+        rewrite <- combine_alist_trans with(l2:=pat_fv p2); auto.
+        rewrite alist_trans_app.
+        -- apply H10 with(t1:=tm2); auto.
+          rewrite !map_app, Hl, map_fst_combine, map_snd_combine; auto.
+        -- rewrite !combine_length. lia.
+      * apply IHps with(ps2:=ps2); auto.
+  - (*Teps*)
+    destruct t1; try solve[inversion Heq1].
+    destruct t2; try solve[inversion Heq2].
+    simpl in Heq2.
+    revert Heq1 Heq2; bool_to_prop; intros;
+    destruct_all; repeat simpl_sumbool.
+    split.
+    + simpl_sumbool. simpl. rewrite e0 in n. contradiction.
+    + assert (Hmap: map snd ((v, v0) :: v1) = map fst ((v0, v3) :: v2)). {
+        simpl. f_equal. auto.
+      }
+      apply (H _ _ _ _ Hmap H3 H1).
+  - (*Fpred*)
+    destruct f1; try solve[inversion Heq1].
+    destruct f2; try solve[inversion Heq2].
+    simpl in Heq2.
+    revert Heq1 Heq2; bool_to_prop; intros;
+    destruct_all; repeat simpl_sumbool; simpl.
+    apply Nat.eqb_eq in H7, H3.
+    rewrite H7, H3, Nat.eqb_refl. split_all; auto.
+    rename H7 into Hlen1.
+    rename H3 into Hlen2.
+    generalize dependent l2.
+    generalize dependent l0.
+    induction tms; simpl; intros; destruct l0; inversion Hlen1;
+    destruct l2; inversion Hlen2; auto.
+    revert H5 H1; bool_to_prop; intros; destruct_all.
+    inversion H; subst.
+    split.
+    + apply H8 with (t1:=t); auto.
+    + apply IHtms with(l0:=l0); auto.
+  - (*Fquant*)
+    destruct f1; try solve[inversion Heq1].
+    destruct f2; try solve[inversion Heq2].
+    simpl in Heq2.
+    revert Heq1 Heq2; bool_to_prop; intros;
+    destruct_all; repeat simpl_sumbool.
+    split_all; auto.
+    + simpl_sumbool. simpl. rewrite e0 in n. contradiction.
+    + assert (Hmap: map snd ((v, v0) :: v1) = map fst ((v0, v3) :: v2)). {
+        simpl. f_equal. auto.
+      }
+      apply (H _ _ _ _ Hmap H4 H1).
+  - (*Feq*)
+    destruct f1; try solve[inversion Heq1].
+    destruct f2; try solve[inversion Heq2].
+    simpl in Heq2.
+    revert Heq1 Heq2; bool_to_prop; intros;
+    destruct_all; repeat simpl_sumbool.
+    split_all; auto; [apply (H t) | apply (H0 t0)]; auto.
+  - (*Fbinop*)
+    destruct f0; try solve[inversion Heq1].
+    destruct f3; try solve[inversion Heq2].
+    simpl in Heq2.
+    revert Heq1 Heq2; bool_to_prop; intros;
+    destruct_all; repeat simpl_sumbool.
+    split_all; auto; [apply (H f0_1) | apply (H0 f0_2)]; auto.
+  - (*Fnot*)
+    destruct f1; try solve[inversion Heq1].
+    destruct f2; try solve[inversion Heq2].
+    simpl in Heq2.
+    apply (H f1); auto.
+  - (*Ftrue*)
+    destruct f1; try solve[inversion Heq1].
+    destruct f2; try solve[inversion Heq2].
+    auto.
+  - (*Ffalse*) 
+    destruct f1; try solve[inversion Heq1].
+    destruct f2; try solve[inversion Heq2].
+    auto.
+  - (*Flet*)
+    destruct f1; try solve[inversion Heq1].
+    destruct f2; try solve[inversion Heq2].
+    simpl in Heq2.
+    revert Heq1 Heq2; bool_to_prop; intros;
+    destruct_all; repeat simpl_sumbool.
+    split_all.
+    + simpl_sumbool. simpl. rewrite e0 in n. contradiction.
+    + apply (H t); auto.
+    + assert (Hmap: map snd ((v, v0) :: v1) = map fst ((v0, v3) :: v2)). {
+        simpl. f_equal. auto. 
+      }
+      apply (H0 _ _ _ _ Hmap H5 H2).
+  - (*Tif*)
+    destruct f0; try solve[inversion Heq1].
+    destruct f4; try solve[inversion Heq2].
+    simpl in Heq2.
+    revert Heq1 Heq2; bool_to_prop; intros;
+    destruct_all.
+    split_all; [apply (H f0_1) | apply (H0 f0_2) | apply (H1 f0_3)]; auto.
+  - (*Tmatch*)
+    destruct f1; try solve[inversion Heq1].
+    destruct f2; try solve[inversion Heq2].
+    simpl in Heq2.
+    revert Heq1 Heq2; bool_to_prop; intros;
+    destruct_all; repeat simpl_sumbool.
+    apply Nat.eqb_eq in H8, H4.
+    split_all; auto.
+    + apply (H t); auto.
+    + rewrite H8, H4; apply Nat.eqb_refl.
+    + clear H H5 H1.
+      rename l into ps2.
+      rename l0 into ps3.
+      rename H8 into Hlen1.
+      rename H4 into Hlen2.
+      generalize dependent ps2.
+      generalize dependent ps3.
+      induction ps; intros;
+      destruct ps2; inversion Hlen1;
+      destruct ps3; inversion Hlen2; auto.
+      destruct a as [p1 tm1].
+      destruct p as [p2 tm2].
+      destruct p0 as [p3 tm3].
+      revert H6 H2; bool_to_prop; intros;
+      destruct_all.
+      assert (Hlenp1: length (pat_fv p1) = length (pat_fv p2)) by
+        (apply alpha_equiv_p_fv_len_full; auto).
+      assert (Hlenp2: length (pat_fv p2) = length (pat_fv p3)) by
+        (apply alpha_equiv_p_fv_len_full; auto).
+      inversion H0; subst.
+      split_all.
+      * rewrite <- combine_alist_trans with(l2:=pat_fv p2); auto.
+        apply alpha_equiv_p_trans with(p2:=p2); auto.
+        rewrite map_snd_combine, map_fst_combine; auto.
+      * unfold add_vals.
+        rewrite <- combine_alist_trans with(l2:=pat_fv p2); auto.
+        rewrite alist_trans_app.
+        -- apply (H10 tm2); auto.
+          rewrite !map_app, Hl, map_fst_combine, map_snd_combine; auto.
+        -- rewrite !combine_length. lia.
+      * apply IHps with(ps2:=ps2); auto.
+Qed.
+
+Definition alpha_equiv_t_trans (t: term) :=
+  proj1 (alpha_equiv_trans t Ftrue).
+Definition alpha_equiv_f_trans (f: formula) :=
+  proj2 (alpha_equiv_trans tm_d f).
+
+Corollary a_equiv_t_trans (t1 t2 t3: term):
+  a_equiv_t t1 t2 ->
+  a_equiv_t t2 t3 ->
+  a_equiv_t t1 t3.
+Proof.
+  unfold a_equiv_t. apply alpha_equiv_t_trans; reflexivity.
+Qed.
+
+Corollary a_equiv_f_trans (f1 f2 f3: formula):
+  a_equiv_f f1 f2 ->
+  a_equiv_f f2 f3 ->
+  a_equiv_f f1 f3.
+Proof.
+  unfold a_equiv_f. apply alpha_equiv_f_trans; reflexivity.
+Qed.
+
+(*Congruences (TODO)*)
+
+Lemma alpha_tlet_congr v1 tm1 tm2 tm3 tm4:
+  a_equiv_t tm1 tm3 ->
+  a_equiv_t tm2 tm4 ->
+  a_equiv_t (Tlet tm1 v1 tm2) (Tlet tm3 v1 tm4).
+Proof.
+  unfold a_equiv_t; simpl; intros.
+  rewrite H; simpl_bool.
+  destruct (vty_eq_dec (snd v1) (snd v1)); auto.
+  simpl.
+  rewrite (alpha_equiv_t_redundant _ _ v1 nil nil); auto.
+Qed.
+
+(*And from transitivity:*)
+Lemma alpha_convert_tlet':
+forall v1 v2 : vsymbol,
+  snd v1 = snd v2 ->
+  forall tm1 tm2 tm3 tm4 : term,
+  ~ In v2 (bnd_t tm4) ->
+  ~ In v2 (term_fv tm4) ->
+  a_equiv_t tm1 tm3 ->
+  a_equiv_t tm2 tm4 ->
+  a_equiv_t (Tlet tm1 v1 tm2) (Tlet tm3 v2 (sub_t v1 v2 tm4)).
+Proof.
+  intros.
+  eapply a_equiv_t_trans.
+  2: apply alpha_convert_tlet; auto.
+  apply alpha_tlet_congr; auto.
+Qed.
+
+(*Next: do all congruence lemmas, then see what
+  case we need for match.
+  With these, we should not ever have to unfold the
+  definition of alpha equivalence in future lemmas
+  (ie: to prove that substitution function is alpha equiv)*)
+
 
 (*TODO: do corollaries, prove transitivity*)
 

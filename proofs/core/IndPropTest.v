@@ -10,9 +10,9 @@ Definition testlist {A: Type} (l: list A) : list A.
 induction l as [| hd tl IHl].
 - exact nil.
 - destruct tl as [| hd2 tl].
-  + 
-  
-  destruc
+  + exact nil.
+  + exact (hd :: IHl).
+Defined.
 
 Fixpoint testlist {A: Type} (x: list A) : list A :=
   match x with
