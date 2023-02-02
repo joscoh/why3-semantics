@@ -159,6 +159,8 @@ Ltac wf_tac :=
   | |- ?i < length ?l -> ?P => intros
   | |- context [Nat.min ?x ?x] =>
     rewrite Nat.min_id
+  | |- context [In ?x (?l1 ++ ?l2)] =>
+    rewrite in_app_iff
   (*TODO: this is hacky*)
   | |- context [nth ?i (map ?f ?l) ?d] =>
     (rewrite map_nth_inbound with(d2:=tm_d)) ||
@@ -4086,265 +4088,779 @@ Proof.
   apply IHl1; auto.
 Qed.
 
-(*The key structural lemma we need about substitution and
-  alpha equivalence*)
-Theorem alpha_equiv_sub (t: term) (f: formula):
-  (forall (x y: vsymbol)
-    (Htys: snd x = snd y)
-    (Hbnd: ~ In y (bnd_t t))
-    (Hfree: ~ In y (term_fv t)),
-    alpha_equiv_t [(x, y)] t (sub_t x y t)) /\
-  (forall (x y: vsymbol)
-    (Htys: snd x = snd y)
-    (Hbnd: ~ In y (bnd_f f))
-    (Hfree: ~ In y (form_fv f)),
-    alpha_equiv_f [(x, y)] f (sub_f x y f)).
+(*TODO: where to put?*)
+
+(*We proved refl already*)
+Lemma a_equiv_t_refl (t: term):
+  a_equiv_t t t.
 Proof.
-  revert t f; apply term_formula_ind; simpl; auto; intros.
-  - (*Tconst*) simpl_sumbool.
-  - (*Tvar*) not_or Hvy. clear Hbnd Hvy0.
-    vsym_eq v x; simpl.
-    + vsym_eq x x. vsym_eq y y.
-    + vsym_eq x v. vsym_eq v y. vsym_eq v v.
-  - (*Tfun*) bool_to_prop. split_all; [simpl_sumbool | wf_tac | simpl_sumbool |];
-    [apply Nat.eqb_refl|].
-    induction l1; simpl in *; auto.
-    inversion H; subst.
-    bool_to_prop; split.
-    + apply H2; auto.
-      * intro C. apply Hbnd. wf_tac.
-      * intro C. apply Hfree. simpl_set. wf_tac.
-    + apply IHl1; auto.
-      * intro C. apply Hbnd. wf_tac.
-      * intro C. apply Hfree. simpl_set. wf_tac.
-  - (*The Tlet case requires lots of previous lemmas*) 
-    bool_to_prop; split_all; [simpl_sumbool | |].
-    + apply H; auto.
-      * intro C. apply Hbnd. right. wf_tac.
-      * intro C. apply Hfree. simpl_set. wf_tac.
-    + rewrite in_app_iff in Hbnd. simpl_set.
-      vsym_eq x v.
-      * (*Why we needed the previous lemmas*)
-        pose proof (alpha_t_equiv_dup tm2 tm2 v v y nil nil nil).
-        simpl in H1.
-        rewrite H1; auto.
-        -- apply alpha_t_equiv_same. simpl; intros.
-          destruct H2 as [? | []]; subst; auto.
-        -- intro C; apply Hfree. simpl_set. right. auto.
-      * rewrite alpha_equiv_t_redundant with(x:=v)(v1:=nil)(v2:=(x, y) :: nil); simpl;
-        try (intro C; destruct C as [Heq' | []]; subst; auto).
-        apply H0; auto. intro C. apply Hfree. right.
-        split; auto.
-  - (*Tif*) simpl_set. rewrite !in_app_iff in Hbnd. 
-    rewrite H, H0, H1; auto.
-  - (*Tmatch - basically iterated Tlet, we need the many previous results*) 
-    rewrite map_length, Nat.eqb_refl. simpl_bool.
-    rewrite union_elts in Hfree.
-    rewrite in_app_iff in Hbnd.
-    rewrite H; auto. destruct (vty_eq_dec v v); auto; simpl.
-    not_or Hiny. clear Hiny1 Hiny.
-    rename Hiny0 into Hfree.
-    rename Hiny2 into Hbnd.
-    induction ps; simpl; auto.
-    destruct a.
-    inversion H0; subst. 
-    case_in.
-    + unfold add_vals.
-      (*Can use existing lemmas*)
-      rewrite alpha_equiv_p_same; simpl;
-      [|apply in_combine_same | intros; rewrite map_fst_combine; auto].
-      assert (alpha_equiv_t (combine (pat_fv p) (pat_fv p) ++ [(x, y)]) t t). {
-        simpl in i.
-        pose proof (In_nth _ _ vs_d i).
-        destruct H1 as [n [Hn Hx]].
-        assert (In (x, x) (combine (pat_fv p) (pat_fv p))). {
-          rewrite in_combine_iff; auto. exists n.
-          split; auto.
-          intros. subst. f_equal; apply nth_indep; auto. 
-        }
-        apply in_split in H1. destruct H1 as [v1 [v2 Hcomb]].
-        rewrite Hcomb.
-        rewrite <- app_assoc.
-        simpl.
-        rewrite alpha_t_equiv_dup; auto.
-        - rewrite app_nil_r, <- Hcomb.
-          apply alpha_t_equiv_same; simpl.
-          apply in_combine_same.
-        - intro C; apply Hfree. simpl_set.
-          exists (p, t); simpl; split; simpl_set; auto.
-          split; auto. intro C1. apply Hbnd.
-          rewrite in_concat. exists (pat_fv p ++ bnd_t t).
-          simpl. split; auto. in_tac.
-        - intro C; apply Hbnd. rewrite in_concat.
-          exists (pat_fv p ++ bnd_t t). simpl; split; auto.
-          in_tac.
-      }
-      rewrite H1; simpl.
-      apply IHps; auto.
-      * intro C. apply Hbnd. simpl. in_tac.
-      * intro C. apply Hfree. simpl. simpl_set; auto.
-    + (*In this case, we need to do substitution*)
-      simpl.
-      rewrite alpha_equiv_p_same; simpl;
-      [|apply in_combine_same | intros; rewrite map_fst_combine; auto].
-      (*We can remove all the redundant variables at the start of
-        the list with previous lemmas*)
-      unfold add_vals.
-      rewrite alpha_equiv_t_redundant' with(v1:=(combine (pat_fv p) (pat_fv p))).
-      * rewrite H3; auto. simpl. apply IHps; auto.
-        -- intro C; apply Hbnd. simpl; in_tac.
-        -- intro C; apply Hfree; simpl_set; auto.
-          destruct C as [t' [Hint Hiny]].
-          exists t'. split; auto. simpl; triv.
-        -- intro C; apply Hbnd. simpl. in_tac.
-        -- intro C; apply Hfree. simpl_set. exists (p, t). split; simpl; auto.
-          simpl_set. split; auto. intro C1. apply Hbnd.
-          simpl. in_tac.
-      * apply in_combine_same.
-      * apply NoDup_combine; apply NoDup_pat_fv.
-      * intros. rewrite map_fst_combine in H1; auto.
-        simpl. intros [Hxx0 | []]; subst. contradiction.
-      * intros. rewrite map_fst_combine in H1; auto.
-        simpl. intros [Hxx0 | []]; subst. simpl in n.
-        apply Hbnd. simpl. in_tac.
-  - (*Teps - Similar to let, a bit simpler*) 
-    simpl_set.  
-    vsym_eq x v; destruct (vty_eq_dec (snd v) (snd v)); simpl; auto.
-    + pose proof (alpha_f_equiv_dup f f v v y nil nil nil).
-      simpl in H0. rewrite H0; auto.
-      * apply alpha_f_equiv_same.
-        simpl; intros. destruct H1 as [Hx | []]; subst; auto.
-      * intro C; apply Hfree. simpl_set. split; auto.
-    + rewrite alpha_equiv_f_redundant with(x:=v)(v1:=nil)(v2:=(x, y) :: nil); simpl;
-        try (intro C; destruct C as [Heq' | []]; subst; auto).
-      apply H; auto. intro C. apply Hfree. split; auto. 
-  - (*Fpred*) 
-    bool_to_prop. split_all; [simpl_sumbool | wf_tac | simpl_sumbool |];
-    [apply Nat.eqb_refl|].
-    induction tms; simpl in *; auto.
-    inversion H; subst.
-    bool_to_prop; split.
-    + apply H2; auto.
-      * intro C. apply Hbnd. wf_tac.
-      * intro C. apply Hfree. simpl_set. wf_tac.
-    + apply IHtms; auto.
-      * intro C. apply Hbnd. wf_tac.
-      * intro C. apply Hfree. simpl_set. wf_tac.
-  - (*Fquant - like Teps*)
-    simpl_set.  
-    vsym_eq x v; destruct (quant_eq_dec q q); 
-    destruct (vty_eq_dec (snd v) (snd v)); simpl; auto.
-    + pose proof (alpha_f_equiv_dup f f v v y nil nil nil).
-      simpl in H0. rewrite H0; auto.
-      * apply alpha_f_equiv_same.
-        simpl; intros. destruct H1 as [Hx | []]; subst; auto.
-      * intro C; apply Hfree. simpl_set. split; auto.
-    + rewrite alpha_equiv_f_redundant with(x:=v)(v1:=nil)(v2:=(x, y) :: nil); simpl;
-        try (intro C; destruct C as [Heq' | []]; subst; auto).
-      apply H; auto. intro C. apply Hfree. split; auto.
-  - (*Feq*)
-    destruct (vty_eq_dec v v); simpl; auto.
-    simpl_set. rewrite in_app_iff in Hbnd.
-    rewrite H, H0; auto.
-  - (*Fbinop*)
-    destruct (binop_eq_dec b b); simpl; auto.
-    simpl_set. rewrite in_app_iff in Hbnd.
-    rewrite H, H0; auto.
-  - (*Flet*)
-    bool_to_prop; split_all; [simpl_sumbool | |].
-    + apply H; auto.
-      * intro C. apply Hbnd. right. wf_tac.
-      * intro C. apply Hfree. simpl_set. wf_tac.
-    + rewrite in_app_iff in Hbnd. simpl_set.
-      vsym_eq x v.
-      * pose proof (alpha_f_equiv_dup f f v v y nil nil nil).
-        simpl in H1.
-        rewrite H1; auto.
-        -- apply alpha_f_equiv_same. simpl; intros.
-          destruct H2 as [? | []]; subst; auto.
-        -- intro C; apply Hfree. simpl_set. right. auto.
-      * rewrite alpha_equiv_f_redundant with(x:=v)(v1:=nil)(v2:=(x, y) :: nil); simpl;
-        try (intro C; destruct C as [Heq' | []]; subst; auto).
-        apply H0; auto. intro C. apply Hfree. right.
-        split; auto.
-  - (*Fif*)
-    simpl_set. rewrite !in_app_iff in Hbnd.
-    rewrite H, H0, H1; auto.
-  - (*Fmatch*)
-    rewrite map_length, Nat.eqb_refl. simpl_bool.
-    rewrite union_elts in Hfree.
-    rewrite in_app_iff in Hbnd.
-    rewrite H; auto. destruct (vty_eq_dec v v); auto; simpl.
-    not_or Hiny. clear Hiny1 Hiny.
-    rename Hiny0 into Hfree.
-    rename Hiny2 into Hbnd.
-    induction ps; simpl; auto.
-    destruct a.
-    inversion H0; subst. 
-    case_in.
-    + unfold add_vals.
-      rewrite alpha_equiv_p_same; simpl;
-      [|apply in_combine_same | intros; rewrite map_fst_combine; auto].
-      assert (alpha_equiv_f (combine (pat_fv p) (pat_fv p) ++ [(x, y)]) f f). {
-        simpl in i.
-        pose proof (In_nth _ _ vs_d i).
-        destruct H1 as [n [Hn Hx]].
-        assert (In (x, x) (combine (pat_fv p) (pat_fv p))). {
-          rewrite in_combine_iff; auto. exists n.
-          split; auto.
-          intros. subst. f_equal; apply nth_indep; auto. 
-        }
-        apply in_split in H1. destruct H1 as [v1 [v2 Hcomb]].
-        rewrite Hcomb.
-        rewrite <- app_assoc.
-        simpl.
-        rewrite alpha_f_equiv_dup; auto.
-        - rewrite app_nil_r, <- Hcomb.
-          apply alpha_f_equiv_same; simpl.
-          apply in_combine_same.
-        - intro C; apply Hfree. simpl_set.
-          exists (p, f); simpl; split; simpl_set; auto.
-          split; auto. intro C1. apply Hbnd.
-          rewrite in_concat. exists (pat_fv p ++ bnd_f f).
-          simpl. split; auto. in_tac.
-        - intro C; apply Hbnd. rewrite in_concat.
-          exists (pat_fv p ++ bnd_f f). simpl; split; auto.
-          in_tac.
-      }
-      rewrite H1; simpl.
-      apply IHps; auto.
-      * intro C. apply Hbnd. simpl. in_tac.
-      * intro C. apply Hfree. simpl. simpl_set; auto.
-    + (*In this case, we need to do substitution*)
-      simpl.
-      rewrite alpha_equiv_p_same; simpl;
-      [|apply in_combine_same | intros; rewrite map_fst_combine; auto].
-      (*We can remove all the redundant variables at the start of
-        the list with previous lemmas*)
-      unfold add_vals.
-      rewrite alpha_equiv_f_redundant' with(v1:=(combine (pat_fv p) (pat_fv p))).
-      * rewrite H3; auto. simpl. apply IHps; auto.
-        -- intro C; apply Hbnd. simpl; in_tac.
-        -- intro C; apply Hfree; simpl_set; auto.
-          destruct C as [t' [Hint Hiny]].
-          exists t'. split; auto. simpl; triv.
-        -- intro C; apply Hbnd. simpl. in_tac.
-        -- intro C; apply Hfree. simpl_set. exists (p, f). split; simpl; auto.
-          simpl_set. split; auto. intro C1. apply Hbnd.
-          simpl. in_tac.
-      * apply in_combine_same.
-      * apply NoDup_combine; apply NoDup_pat_fv.
-      * intros. rewrite map_fst_combine in H1; auto.
-        simpl. intros [Hxx0 | []]; subst. contradiction.
-      * intros. rewrite map_fst_combine in H1; auto.
-        simpl. intros [Hxx0 | []]; subst. simpl in n.
-        apply Hbnd. simpl. in_tac.
+  unfold a_equiv_t.
+  apply alpha_t_equiv_same. intros. inversion H.
 Qed.
 
-(*TODO: automate "Corollary" process*)
-Definition alpha_equiv_sub_t (t: term) := proj1(alpha_equiv_sub t Ftrue).
-Definition alpha_equiv_sub_f (f: formula) :=
+Lemma a_equiv_f_refl (f: formula):
+  a_equiv_f f f.
+Proof.
+  unfold a_equiv_f.
+  apply alpha_f_equiv_same; intros; inversion H.
+Qed.
+
+Fixpoint same_in_p (p1 p2: pattern) (x: vsymbol) : bool :=
+  match p1, p2 with
+  | Pvar v1, Pvar v2 => eqb (vsymbol_eq_dec v1 x) (vsymbol_eq_dec v2 x)
+  | Pconstr f1 tys1 ps1, Pconstr t2 tys2 ps2 =>
+    (length ps1 =? length ps2) &&
+    forallb (fun x => x) (map2 (fun p1 p2 => same_in_p p1 p2 x) ps1 ps2)
+  | Pwild, Pwild => true
+  | Por p1 p2, Por p3 p4 =>
+    same_in_p p1 p3 x &&
+    same_in_p p2 p4 x
+  | Pbind p1 v1, Pbind p2 v2 =>
+    same_in_p p1 p2 x &&
+    eqb (vsymbol_eq_dec v1 x) (vsymbol_eq_dec v2 x)
+  | _, _ => false
+  end.
+
+Fixpoint same_in_t (t1 t2: term) (x: vsymbol) : bool :=
+  match t1, t2 with
+  | Tconst _, Tconst _ => true
+  | Tvar v1, Tvar v2 => eqb (vsymbol_eq_dec v1 x) (vsymbol_eq_dec v2 x)
+  | Tlet tm1 v1 tm2, Tlet tm3 v2 tm4 =>
+    same_in_t tm1 tm3 x &&
+    (eqb (vsymbol_eq_dec v1 x) (vsymbol_eq_dec v2 x)) &&
+    same_in_t tm2 tm4 x
+  | Tfun f1 tys1 tms1, Tfun f2 tys2 tms2 =>
+    (*TODO: don't need all, can use this - should change*)
+    (length tms1 =? length tms2) &&
+    forallb (fun x => x) (map2 (fun t1 t2 => same_in_t t1 t2 x) tms1 tms2)
+  | Tif f1 tm1 tm2, Tif f2 tm3 tm4 =>
+    same_in_f f1 f2 x &&
+    same_in_t tm1 tm3 x &&
+    same_in_t tm2 tm4 x
+  | Tmatch tm1 v1 ps1, Tmatch tm2 v2 ps2 =>
+    (length ps1 =? length ps2) &&
+    same_in_t tm1 tm2 x &&
+    forallb (fun x => x) (map2 (fun x1 x2 => 
+      (length (pat_fv (fst x1)) =? length (pat_fv (fst x2))) && (*makes proofs easier*)
+      same_in_p (fst x1) (fst x2) x &&
+      same_in_t (snd x1) (snd x2) x) ps1 ps2)
+  | Teps f1 v1, Teps f2 v2 =>
+    (eqb (vsymbol_eq_dec v1 x) (vsymbol_eq_dec v2 x)) &&
+    same_in_f f1 f2 x
+  | _, _ => false
+  end
+with same_in_f (f1 f2: formula) (x: vsymbol) : bool :=
+  match f1, f2 with
+  | Fpred p1 tys1 tms1, Fpred p2 tys2 tms2 =>
+    (*TODO: don't need all, can use this - should change*)
+    (length tms1 =? length tms2) &&
+    forallb (fun x => x) (map2 (fun t1 t2 => same_in_t t1 t2 x) tms1 tms2)
+  | Fquant q1 v1 f1, Fquant q2 v2 f2 =>
+    eqb (vsymbol_eq_dec v1 x) (vsymbol_eq_dec v2 x) &&
+    same_in_f f1 f2 x
+  | Feq v1 t1 t2, Feq v2 t3 t4 =>
+    same_in_t t1 t3 x &&
+    same_in_t t2 t4 x
+  | Fbinop b1 f1 f2, Fbinop b2 f3 f4 =>
+    same_in_f f1 f3 x &&
+    same_in_f f2 f4 x
+  | Fnot f1, Fnot f2 =>
+    same_in_f f1 f2 x
+  | Ftrue, Ftrue => true
+  | Ffalse, Ffalse => true
+  | Flet tm1 v1 f1, Flet tm2 v2 f2 =>
+    same_in_t tm1 tm2 x &&
+    (eqb (vsymbol_eq_dec v1 x) (vsymbol_eq_dec v2 x)) &&
+    same_in_f f1 f2 x
+  | Fif f1 f2 f3, Fif f4 f5 f6 =>
+    same_in_f f1 f4 x &&
+    same_in_f f2 f5 x &&
+    same_in_f f3 f6 x
+  | Fmatch tm1 v1 ps1, Fmatch tm2 v2 ps2 =>
+    (length ps1 =? length ps2) &&
+    same_in_t tm1 tm2 x &&
+    forallb (fun x => x) (map2 (fun x1 x2 => 
+     (length (pat_fv (fst x1)) =? length (pat_fv (fst x2))) && (*makes proofs easier*)
+      same_in_p (fst x1) (fst x2) x &&
+      same_in_f (snd x1) (snd x2) x) ps1 ps2)
+  | _, _ => false
+  end.
+
+Lemma forallb_map2 {A B: Type} (f: A -> B -> bool) (d1: A) (d2: B)
+  (l1: list A) (l2: list B):
+  length l1 = length l2 ->
+  forallb (fun x => x) (map2 f l1 l2) <-> (forall i, i < length l1 ->
+    f (nth i l1 d1) (nth i l2 d2)).
+Proof.
+  intros. unfold is_true at 1. rewrite forallb_forall.
+  split; intros.
+  - apply H0. rewrite in_map2_iff; auto. exists i. split_all; auto.
+  - rewrite in_map2_iff with(d1:=d1)(d2:=d2) in H1; auto.
+    destruct H1 as [i [Hi Hx]].
+    rewrite Hx. apply H0. auto.
+Qed.
+
+Lemma fold_is_true (b: bool):
+  b = true <-> b.
+Proof.
+  reflexivity.
+Qed.
+
+Lemma same_in_p_fv (p1 p2: pattern) x:
+  same_in_p p1 p2 x ->
+  In x (pat_fv p1) <-> In x (pat_fv p2).
+Proof.
+  revert p2. induction p1; simpl; intros p2 Hsame; destruct p2;
+  try solve[inversion Hsame]; simpl; try reflexivity.
+  - vsym_eq v x; vsym_eq v0 x; try solve[inversion Hsame];
+    split; intros [Heq | []]; auto.
+  - simpl_set. revert Hsame; bool_to_prop; intros; destruct Hsame as [Hlen Hall].
+    apply Nat.eqb_eq in Hlen.
+    rewrite fold_is_true, forallb_map2 with(d1:=Pwild)(d2:=Pwild) in Hall; auto.
+    split; intros [p [Hiny Hinx]];
+    pose proof (In_nth _ _ Pwild Hiny) as Hnth; destruct Hnth as [n [Hn Hp]]; subst;
+    [exists (nth n l0 Pwild) | exists (nth n ps Pwild)]; split; wf_tac;
+    rewrite Forall_forall in H; specialize (Hall n ltac:(lia)); apply H in Hall; auto;
+    try (apply Hall; assumption); wf_tac.
+  - simpl_set. revert Hsame; bool_to_prop; intros [Hs1 Hs2]. 
+    rewrite (IHp1_1 p2_1), (IHp1_2 p2_2); auto. reflexivity.
+  - revert Hsame; bool_to_prop; intros [Hsame Heq]. 
+    simpl_set.
+    rewrite (IHp1 p2); auto.
+    vsym_eq v x; vsym_eq v0 x; try solve[inversion Heq]; try reflexivity;
+    split; intros [Hin | Heq']; subst; auto; contradiction.
+Qed.
+
+
+Lemma same_in_p_refl (p: pattern) x:
+  same_in_p p p x.
+Proof.
+  induction p; simpl; auto.
+  - rewrite eqb_reflx; auto.
+  - rewrite Nat.eqb_refl; simpl. induction ps; simpl; auto.
+    inversion H; subst.
+    rewrite H2, IHps; auto.
+  - rewrite IHp1, IHp2; auto.
+  - rewrite IHp, eqb_reflx; auto.
+Qed. 
+
+Lemma same_in_refl (t: term) (f: formula):
+  (forall x, same_in_t t t x) /\
+  (forall x, same_in_f f f x).
+Proof.
+  revert t f. apply term_formula_ind; simpl; intros; auto.
+  - rewrite eqb_reflx; auto.
+  - induction l1; simpl; auto.
+    inversion H; subst.
+    rewrite Nat.eqb_refl in IHl1.
+    rewrite Nat.eqb_refl, H2, IHl1; auto.
+  - rewrite H, H0, eqb_reflx; auto.
+  - rewrite H, H0, H1; auto.
+  - rewrite H, Nat.eqb_refl. simpl.
+    induction ps; simpl; intros; auto.
+    inversion H0; subst.
+    rewrite Nat.eqb_refl, same_in_p_refl, H3, IHps; auto.
+  - rewrite eqb_reflx, H; auto.
+  - induction tms; simpl; auto.
+    inversion H; subst.
+    rewrite Nat.eqb_refl in IHtms.
+    rewrite Nat.eqb_refl, H2, IHtms; auto.
+  - rewrite eqb_reflx, H; auto.
+  - rewrite H, H0; auto.
+  - rewrite H, H0; auto.
+  - rewrite H, H0, eqb_reflx; auto.
+  - rewrite H, H0, H1; auto.
+  - rewrite H, Nat.eqb_refl; simpl.
+    induction ps; simpl; intros; auto.
+    inversion H0; subst.
+    rewrite Nat.eqb_refl, same_in_p_refl, H3, IHps; auto.
+Qed.
+
+Definition same_in_t_refl (t: term) := proj1 (same_in_refl t Ftrue).
+Definition same_in_f_refl (f: formula) := proj2 (same_in_refl tm_d f).
+
+
+(*The key structural lemma we need about substitution and
+  alpha equivalence*)
+  (*
+  Lemma alpha_equiv_sub_ts (t: term) (vs: list vsymbol) (strs: list string)
+  (Hlen: length strs = length vs)
+  (Hnotfree: forall s, In (fst s) strs -> ~ In s (bnd_t t))
+  (Hnotbnd: forall s, In (fst s) strs -> ~ In s (term_fv t))
+  (Hnodup: NoDup strs)
+  (Hn1: NoDup vs):
+  alpha_equiv_t (add_vals vs (combine strs (map snd vs)) nil) t
+    (sub_ts (combine vs strs) t).
+Proof.
+  unfold add_vals.
+  generalize dependent strs. induction vs; simpl; intros;
+  destruct strs; inversion Hlen.
+  - admit.
+  - simpl. inversion Hn1; subst.
+    inversion Hnodup; subst.
+  
+  
+  apply a_equiv_t_refl.
+  - simpl.
+  (*What if we had: none of the variables in vs are in vars (so
+    they have to be the same?)*)
+*)
+
+Ltac alpha_case x Heq :=
+  destruct x; try solve[inversion Heq]; simpl; simpl in *.
+
+(*This lemma describes how substitution affects alpha equivalence, 
+  and states that under some conditions, a substiution is alpha equivalent
+  under the context extended with the substitution.
+  The theorem is awkwardly stated because substitution, unlike alpha equivalence,
+  depends on the specific bound variable names.
+  We give more useful corollaries; we need the general form to prove
+  results about iterated substitution.
+  *)
+Theorem alpha_equiv_sub (t: term) (f: formula):
+  (forall (tm2: term) (x y: vsymbol) v1 v2
+    (Htys: snd x = snd y)
+    (Hbnd: ~ In y (bnd_t tm2))
+    (Hfree: ~ In y (term_fv tm2))
+    (Hsame: same_in_t t tm2 x)
+    (Hv1a: ~In x (map fst v1))
+    (Hv1b: ~ In y (map snd v1))
+    (Heq: alpha_equiv_t (v1 ++ v2) t tm2),
+    alpha_equiv_t (v1 ++ (x, y) :: v2) t (sub_t x y tm2)) /\
+  (forall (fm2: formula) (x y: vsymbol) v1 v2
+    (Htys: snd x = snd y)
+    (Hbnd: ~ In y (bnd_f fm2))
+    (Hfree: ~ In y (form_fv fm2))
+    (Hsame: same_in_f f fm2 x)
+    (Hv1a: ~In x (map fst v1))
+    (Hv1b: ~ In y (map snd v1))
+    (Heq: alpha_equiv_f (v1 ++ v2) f fm2),
+    alpha_equiv_f (v1 ++ (x, y):: v2) f (sub_f x y fm2)).
+Proof.
+  revert t f; apply term_formula_ind; simpl; auto; intros.
+  - (*Tconst*) alpha_case tm2 Heq; auto.
+  - (*Tvar*) alpha_case tm2 Heq. not_or Hvy. clear Hbnd Hvy0.
+    vsym_eq v x; simpl.
+    + vsym_eq x v0.
+      * vsym_eq v0 v0.
+        rewrite eq_var_app. simpl.
+        destruct (in_dec vsymbol_eq_dec v0 (map fst v1)); simpl; try contradiction.
+        destruct (in_dec vsymbol_eq_dec y (map snd v1)); simpl; try contradiction.
+        vsym_eq v0 v0; simpl. vsym_eq y y. simpl. simpl_bool. auto.
+      * vsym_eq v0 x.
+    + vsym_eq v0 x. vsym_eq x v0.
+      revert Heq. rewrite !eq_var_app. simpl. vsym_eq v x. vsym_eq v0 y.
+  - (*Tfun*)
+    alpha_case tm2 Heq.
+    revert Heq Hsame; 
+    bool_to_prop; intros; destruct_all; clear H5; apply Nat.eqb_eq in H0; 
+    split_all; [simpl_sumbool | wf_tac | simpl_sumbool |];
+    [rewrite H0; apply Nat.eqb_refl |].
+    clear H2 H4.
+    generalize dependent l2.
+    induction l1; intros; destruct l2; inversion H0; simpl; auto.
+    revert H3; bool_to_prop; intros; destruct_all.
+    inversion H; subst.
+    simpl in H1. apply andb_true_iff in H1. destruct H1.
+    split.
+    + apply H7; auto; intro C; [apply Hbnd | apply Hfree]; simpl; simpl_set; wf_tac.
+    + apply IHl1; wf_tac; intro C; [apply Hbnd | apply Hfree]; simpl; simpl_set; wf_tac.
+  - (*Tlet*)
+    alpha_case tm0 Heq. simpl_set.
+    rewrite in_app_iff in Hbnd.
+    revert Heq Hsame;
+    bool_to_prop; intros; destruct_all; split_all; [simpl_sumbool | |].
+    + apply H; auto.
+    + vsym_eq x v0.
+      * vsym_eq v0 v0. vsym_eq v v0.
+        pose proof (alpha_t_equiv_dup tm2 tm0_2 v0 v0 y nil v1 v2).
+        simpl in H7.
+        rewrite H7; auto.
+        not_or Hy. auto.
+      * vsym_eq v0 x. vsym_eq v x.
+        not_or Hy.
+        apply H0 with(v1:=(v, v0) :: v1); auto; simpl; intros [Heq | Hin]; subst;
+        auto.
+  - (*Tif*)
+    alpha_case tm2 Heq. revert Heq Hsame; bool_to_prop; intros; destruct_all.
+    simpl_set. rewrite !in_app_iff in Hbnd. 
+    rewrite H, H0, H1; auto.
+  - (*Tmatch - basically iterated Tlet, we need the many previous results*)
+    alpha_case tm2 Heq.
+    revert Heq Hsame; bool_to_prop; intros; destruct_all. clear H1.
+    apply Nat.eqb_eq in H7.
+    repeat simpl_sumbool. 
+    rewrite map_length, H7, Nat.eqb_refl. simpl.
+    rewrite union_elts in Hfree.
+    rewrite in_app_iff in Hbnd.
+    rewrite H; auto. split_all; auto.
+    not_or Hiny. clear Hiny1 Hiny.
+    rename Hiny0 into Hfree.
+    rename Hiny2 into Hbnd.
+    rename H7 into Hlen.
+    rename l into ps2.
+    generalize dependent ps2. clear H.
+    induction ps; simpl; auto; intros; destruct ps2; inversion Hlen; simpl; auto.
+    destruct a.
+    inversion H0; subst. 
+    destruct p as [p1 t1].
+    simpl in H2. revert H2 H5; bool_to_prop; intros; destruct_all.
+    case_in.
+    + unfold add_vals.
+      rewrite H; simpl.
+      bool_to_prop;
+      split_all; auto.
+      2: { apply IHps; auto; intro C; [apply Hbnd | apply Hfree]; simpl; simpl_set; wf_tac. }
+      simpl in i.
+      apply Nat.eqb_eq in H2.
+      rewrite <- same_in_p_fv in i. 2: apply H11.
+      pose proof (In_nth _ _ vs_d i) as Hnth.
+      destruct Hnth as [n [Hn Hx]].
+      assert (Hinx: In (x, (nth n (pat_fv p1) vs_d)) (combine (pat_fv p0) (pat_fv p1))). {
+        rewrite in_combine_iff; auto. exists n.
+        split; auto.
+        intros. subst. f_equal; apply nth_indep; auto. lia. 
+      }
+      apply in_split in Hinx. destruct Hinx as [v1' [v2' Hcomb]].
+      rewrite Hcomb, <- app_assoc.
+      simpl.
+      rewrite (app_assoc v2' v1).
+      rewrite (alpha_t_equiv_dup t t1 x _ _ v1' (v2' ++ v1) v2); auto.
+      * rewrite <- app_assoc.
+        replace (v1' ++ (x, nth n (pat_fv p1) vs_d) :: v2' ++ v1 ++ v2) with
+        ((v1' ++ (x, nth n (pat_fv p1) vs_d) :: v2') ++ (v1 ++ v2)) by 
+        (rewrite <- !app_assoc; reflexivity).
+        rewrite <- Hcomb. apply H6.
+      * intro C; apply Hfree; simpl; simpl_set.
+        left. split; auto. intro C1.
+        apply Hbnd. simpl. wf_tac.
+      * intro C. apply Hbnd. simpl. wf_tac.
+    + (*In this case, we need to do substitution*)
+      simpl.
+      apply Nat.eqb_eq in H2.
+      rewrite H; simpl.
+      bool_to_prop; split.
+      * unfold add_vals.
+        rewrite app_assoc. apply (H7 t1 x y (combine (pat_fv p0) (pat_fv p1) ++ v1)); auto.
+        -- intro C. apply Hbnd. simpl. wf_tac.
+        -- intro C. apply Hfree. simpl. simpl_set. left; split; wf_tac.
+          intro C1. apply Hbnd. simpl; wf_tac.
+        -- rewrite map_app. wf_tac; auto. intro C.
+          destruct C; auto. simpl in n.
+          apply same_in_p_fv in H11. apply H11 in H12.
+          contradiction.
+        -- rewrite map_app. wf_tac; intro C.
+          destruct C; auto. apply Hbnd. simpl. wf_tac.
+        -- rewrite <- app_assoc. apply H6.
+      * apply IHps; auto.
+        -- intro C. apply Hbnd. simpl. wf_tac.
+        -- intro C. apply Hfree. simpl. simpl_set; wf_tac.
+  - (*Teps*)
+    alpha_case tm2 Heq. simpl_set.
+    revert Heq Hsame;
+    bool_to_prop; intros; destruct_all.
+    not_or Hy.
+    vsym_eq x v0; rewrite H2; simpl.
+    + vsym_eq v0 v0. vsym_eq v v0.
+      pose proof (alpha_f_equiv_dup f f0 v0 v0 y nil v1 v2).
+      simpl in H4.
+      rewrite H4, H3; auto. 
+    + vsym_eq v0 x. vsym_eq v x.
+      apply H with(v1:=(v, v0) :: v1); auto; simpl; intros [Heq | Hin]; subst;
+      auto.
+  - (*Fpred*)
+    alpha_case fm2 Heq.
+    revert Heq Hsame; 
+    bool_to_prop; intros; destruct_all; clear H5; apply Nat.eqb_eq in H0; 
+    split_all; [simpl_sumbool | wf_tac | simpl_sumbool |];
+    [rewrite H0; apply Nat.eqb_refl |].
+    clear H2 H4.
+    generalize dependent l0.
+    induction tms; intros; destruct l0; inversion H0; simpl; auto.
+    revert H3; bool_to_prop; intros; destruct_all.
+    inversion H; subst.
+    simpl in H1. apply andb_true_iff in H1. destruct H1.
+    split.
+    + apply H7; auto; intro C; [apply Hbnd | apply Hfree]; simpl; simpl_set; wf_tac.
+    + apply IHtms; wf_tac; intro C; [apply Hbnd | apply Hfree]; simpl; simpl_set; wf_tac.
+  - (*Fquant - same as Teps*)
+    alpha_case fm2 Heq. simpl_set.
+    revert Heq Hsame;
+    bool_to_prop; intros; destruct_all.
+    not_or Hy.
+    vsym_eq x v0; rewrite H2, H4; simpl.
+    + vsym_eq v0 v0. vsym_eq v v0.
+      pose proof (alpha_f_equiv_dup f fm2 v0 v0 y nil v1 v2).
+      simpl in H5.
+      rewrite H5; auto. 
+    + vsym_eq v0 x. vsym_eq v x.
+      apply H with(v1:=(v, v0) :: v1); auto; simpl; intros [Heq | Hin]; subst;
+      auto.
+  - (*Feq*)
+    alpha_case fm2 Heq.
+    revert Heq Hsame; bool_to_prop; intros; destruct_all.
+    simpl_set. rewrite in_app_iff in Hbnd.
+    rewrite H3, H, H0; auto. 
+  - (*Fbinop*)
+    alpha_case fm2 Heq.
+    revert Heq Hsame; bool_to_prop; intros; destruct_all.
+    simpl_set. rewrite in_app_iff in Hbnd.
+    rewrite H3, H, H0; auto.
+  - (*Fnot*)
+    alpha_case fm2 Heq.
+    apply H; auto.
+  - (*Ftrue*)
+    alpha_case fm2 Heq; auto.
+  - (*Ffalse*)
+    alpha_case fm2 Heq; auto.
+  - (*Flet*)
+    alpha_case fm2 Heq. simpl_set.
+    rewrite in_app_iff in Hbnd.
+    revert Heq Hsame;
+    bool_to_prop; intros; destruct_all; split_all; [simpl_sumbool | |].
+    + apply H; auto.
+    + vsym_eq x v0.
+      * vsym_eq v0 v0. vsym_eq v v0.
+        pose proof (alpha_f_equiv_dup f fm2 v0 v0 y nil v1 v2).
+        simpl in H7.
+        rewrite H7; auto.
+        not_or Hy. auto.
+      * vsym_eq v0 x. vsym_eq v x.
+        not_or Hy.
+        apply H0 with(v1:=(v, v0) :: v1); auto; simpl; intros [Heq | Hin]; subst;
+        auto.
+  - (*Fif*)
+    alpha_case fm2 Heq. simpl_set.
+    rewrite !in_app_iff in Hbnd.
+    revert Heq Hsame; bool_to_prop; intros; destruct_all.
+    rewrite H, H0, H1; auto.
+  - (*Fmatch - exact same as Tmatch (except we use [alpha_f_equiv_dup]) *)
+    alpha_case fm2 Heq.
+    revert Heq Hsame; bool_to_prop; intros; destruct_all. clear H1.
+    apply Nat.eqb_eq in H7.
+    repeat simpl_sumbool. 
+    rewrite map_length, H7, Nat.eqb_refl. simpl.
+    rewrite union_elts in Hfree.
+    rewrite in_app_iff in Hbnd.
+    rewrite H; auto. split_all; auto.
+    not_or Hiny. clear Hiny1 Hiny.
+    rename Hiny0 into Hfree.
+    rename Hiny2 into Hbnd.
+    rename H7 into Hlen.
+    rename l into ps2.
+    generalize dependent ps2. clear H.
+    induction ps; simpl; auto; intros; destruct ps2; inversion Hlen; simpl; auto.
+    destruct a.
+    inversion H0; subst. 
+    destruct p as [p1 f1].
+    simpl in H2. revert H2 H5; bool_to_prop; intros; destruct_all.
+    case_in.
+    + unfold add_vals.
+      rewrite H; simpl.
+      bool_to_prop;
+      split_all; auto.
+      2: { apply IHps; auto; intro C; [apply Hbnd | apply Hfree]; simpl; simpl_set; wf_tac. }
+      simpl in i.
+      apply Nat.eqb_eq in H2.
+      rewrite <- same_in_p_fv in i. 2: apply H11.
+      pose proof (In_nth _ _ vs_d i) as Hnth.
+      destruct Hnth as [n [Hn Hx]].
+      assert (Hinx: In (x, (nth n (pat_fv p1) vs_d)) (combine (pat_fv p0) (pat_fv p1))). {
+        rewrite in_combine_iff; auto. exists n.
+        split; auto.
+        intros. subst. f_equal; apply nth_indep; auto. lia. 
+      }
+      apply in_split in Hinx. destruct Hinx as [v1' [v2' Hcomb]].
+      rewrite Hcomb, <- app_assoc.
+      simpl.
+      rewrite (app_assoc v2' v1).
+      rewrite (alpha_f_equiv_dup f f1 x _ _ v1' (v2' ++ v1) v2); auto.
+      * rewrite <- app_assoc.
+        replace (v1' ++ (x, nth n (pat_fv p1) vs_d) :: v2' ++ v1 ++ v2) with
+        ((v1' ++ (x, nth n (pat_fv p1) vs_d) :: v2') ++ (v1 ++ v2)) by 
+        (rewrite <- !app_assoc; reflexivity).
+        rewrite <- Hcomb. apply H6.
+      * intro C; apply Hfree; simpl; simpl_set.
+        left. split; auto. intro C1.
+        apply Hbnd. simpl. wf_tac.
+      * intro C. apply Hbnd. simpl. wf_tac.
+    + (*In this case, we need to do substitution*)
+      simpl.
+      apply Nat.eqb_eq in H2.
+      rewrite H; simpl.
+      bool_to_prop; split.
+      * unfold add_vals.
+        rewrite app_assoc. apply (H7 f1 x y (combine (pat_fv p0) (pat_fv p1) ++ v1)); auto.
+        -- intro C. apply Hbnd. simpl. wf_tac.
+        -- intro C. apply Hfree. simpl. simpl_set. left; split; wf_tac.
+          intro C1. apply Hbnd. simpl; wf_tac.
+        -- rewrite map_app. wf_tac; auto. intro C.
+          destruct C; auto. simpl in n.
+          apply same_in_p_fv in H11. apply H11 in H12.
+          contradiction.
+        -- rewrite map_app. wf_tac; intro C.
+          destruct C; auto. apply Hbnd. simpl. wf_tac.
+        -- rewrite <- app_assoc. apply H6.
+      * apply IHps; auto.
+        -- intro C. apply Hbnd. simpl. wf_tac.
+        -- intro C. apply Hfree. simpl. simpl_set; wf_tac.
+Qed.
+
+(*Corollaries*)
+Definition alpha_equiv_sub_t_full (t: term) := proj1(alpha_equiv_sub t Ftrue).
+Definition alpha_equiv_sub_f_full (f: formula) :=
   proj2 (alpha_equiv_sub tm_d f).
+
+(*How a substitution changes alpha equivalence*)
+Corollary alpha_equiv_sub_t (t: term) (x y: vsymbol)
+  (Htys: snd x = snd y)
+  (Hbnd: ~ In y (bnd_t t))
+  (Hfree: ~ In y (term_fv t)):
+  alpha_equiv_t [(x, y)] t (sub_t x y t).
+Proof.
+  apply alpha_equiv_sub_t_full with(v1:=nil)(v2:=nil); simpl; auto.
+  - apply same_in_t_refl.
+  - apply a_equiv_t_refl.
+Qed.
+
+Corollary alpha_equiv_sub_f (f: formula) (x y: vsymbol)
+  (Htys: snd x = snd y)
+  (Hbnd: ~ In y (bnd_f f))
+  (Hfree: ~ In y (form_fv f)):
+  alpha_equiv_f [(x, y)] f (sub_f x y f).
+Proof.
+  apply alpha_equiv_sub_f_full with(v1:=nil)(v2:=nil); simpl; auto.
+  - apply same_in_f_refl.
+  - apply a_equiv_f_refl.
+Qed.
+
+(*TODO: delete when we move this*)
+(*
+Lemma bnd_sub_ts l t :
+  bnd_t (sub_ts l t) = bnd_t t.
+Proof.
+  induction l; simpl; auto.
+  rewrite bnd_sub_t; auto.
+Qed.*)
+
+
+(*TODO: prove*)
+Lemma same_in_sub (t: term) (f: formula):
+  (forall (x y z: vsymbol),
+  z <> x ->
+  z <> y ->
+  same_in_t t (sub_t x y t) z) /\
+  (forall (x y z: vsymbol),
+  z <> x ->
+  z <> y ->
+  same_in_f f (sub_f x y f) z).
+Proof.
+  revert t f. apply term_formula_ind; simpl; intros; auto.
+  - vsym_eq v z.
+    + vsym_eq x z. vsym_eq z z.
+    + vsym_eq x v.
+      * vsym_eq y z.
+      * vsym_eq v z.
+  - induction l1; simpl; auto. inversion H; subst.
+    specialize (IHl1 H5).
+    bool_to_prop.
+    apply andb_true_iff in IHl1. destruct IHl1 as [Hlens Hall].
+    rewrite Hlens, H4, Hall; auto.
+  - rewrite H; auto; simpl.
+    rewrite eqb_reflx.
+    vsym_eq x v.
+    + apply same_in_t_refl.
+    + apply H0; auto.
+  - rewrite H, H0, H1; auto.
+  - rewrite H, map_length, Nat.eqb_refl; auto. simpl.
+    induction ps; simpl; intros; auto.
+    inversion H0; subst.
+    case_in.
+    + rewrite Nat.eqb_refl, same_in_p_refl, same_in_t_refl, IHps; auto.
+    + rewrite Nat.eqb_refl, same_in_p_refl; simpl.
+      rewrite H5, IHps; auto.
+  - vsym_eq x v; rewrite eqb_reflx.
+    + rewrite same_in_f_refl; auto.
+    + rewrite H; auto.
+  - induction tms; simpl; auto. inversion H; subst.
+    specialize (IHtms H5).
+    bool_to_prop.
+    apply andb_true_iff in IHtms. destruct IHtms as [Hlens Hall].
+    rewrite Hlens, H4, Hall; auto.
+  - vsym_eq x v; rewrite eqb_reflx; [apply same_in_f_refl | apply H]; auto.
+  - rewrite H, H0; auto.
+  - rewrite H, H0; auto.
+  - rewrite H, eqb_reflx; auto.
+    vsym_eq x v; [apply same_in_f_refl | apply H0]; auto.
+  - rewrite H, H0, H1; auto.
+  - rewrite H, map_length, Nat.eqb_refl; auto; simpl.
+    induction ps; simpl; auto.
+    inversion H0; subst.
+    case_in; rewrite Nat.eqb_refl, same_in_p_refl; simpl.
+    + rewrite same_in_f_refl, IHps; auto.
+    + rewrite H5, IHps; auto.
+Qed. 
+
+Definition same_in_sub_t (t: term) := proj1 (same_in_sub t Ftrue).
+Definition same_in_sub_f (f: formula) := proj2 (same_in_sub tm_d f).
+
+Lemma same_in_p_trans (p1 p2 p3: pattern) x:
+  same_in_p p1 p2 x ->
+  same_in_p p2 p3 x ->
+  same_in_p p1 p3 x.
+Proof.
+  revert p2 p3. induction p1; simpl; intros p2 p3 Hp12 Hp23; intros;
+  alpha_case p2 Hp12; alpha_case p3 Hp23; auto.
+  - vsym_eq v x; vsym_eq v0 x.
+  - revert Hp12 Hp23; bool_to_prop; intros; destruct_all.
+    apply Nat.eqb_eq in H2, H0.
+    rewrite H2, H0, Nat.eqb_refl. split; auto.
+    rename H2 into Hlen1.
+    rename H0 into Hlen2.
+    rename l0 into ps2.
+    rename l2 into ps3.
+    generalize dependent ps3.
+    generalize dependent ps2.
+    induction ps; simpl; intros; destruct ps2; inversion Hlen1; auto;
+    destruct ps3; inversion Hlen2; simpl in *.
+    revert H3 H1; bool_to_prop; intros; destruct_all.
+    inversion H; subst.
+    rewrite (H8 p), (IHps H9 ps2); auto.
+  - revert Hp12 Hp23; bool_to_prop; intros; destruct_all.
+    rewrite (IHp1_1 p2_1), (IHp1_2 p2_2); auto.
+  - revert Hp12 Hp23; bool_to_prop; intros; destruct_all.
+    rewrite (IHp1 p2); auto.
+    vsym_eq v x; vsym_eq v0 x.
+Qed.
+    
+(*Annoying to prove - repetitive, can be automated I expect*)
+Lemma same_in_trans (t: term) (f: formula):
+  (forall (t2 t3: term) x
+    (Hs1: same_in_t t t2 x)
+    (Hs2: same_in_t t2 t3 x),
+    same_in_t t t3 x) /\
+  (forall (f2 f3: formula) x
+    (Hs1: same_in_f f f2 x)
+    (Hs2: same_in_f f2 f3 x),
+    same_in_f f f3 x).
+Proof.
+  revert t f. apply term_formula_ind; simpl; auto; intros.
+  - alpha_case t2 Hs1. alpha_case t3 Hs2. auto.
+  - alpha_case t2 Hs1. alpha_case t3 Hs2. 
+    vsym_eq v x; vsym_eq v0 x.
+  - alpha_case t2 Hs1. alpha_case t3 Hs2.
+    revert Hs1 Hs2; bool_to_prop; intros; destruct_all.
+    apply Nat.eqb_eq in H2, H0.
+    rewrite H2, H0, Nat.eqb_refl.
+    split; auto.
+    rename H2 into Hlen1.
+    rename H0 into Hlen2.
+    generalize dependent l4. generalize dependent l2.
+    induction l1; simpl; intros; destruct l2; inversion Hlen1; auto;
+    destruct l4; inversion Hlen2.
+    simpl. inversion H; subst.
+    simpl in H3, H1.
+    revert H3 H1; bool_to_prop; intros; destruct_all.
+    split.
+    + rewrite H6; auto. apply H3. apply H0.
+    + apply IHl1 with(l2:=l2); auto.
+  - alpha_case t2 Hs1. alpha_case t3 Hs2.
+    revert Hs1 Hs2; bool_to_prop; intros; destruct_all.
+    rewrite (H t2_1), (H0 t2_2); auto. vsym_eq v x; vsym_eq v0 x.
+  - alpha_case t0 Hs1. alpha_case t3 Hs2.
+    revert Hs1 Hs2; bool_to_prop; intros; destruct_all.
+    rewrite (H f0), (H0 t0_1), (H1 t0_2); auto.
+  - alpha_case t2 Hs1. alpha_case t3 Hs2.
+    revert Hs1 Hs2; bool_to_prop; intros; destruct_all.
+    apply Nat.eqb_eq in H4, H1.
+    rename H4 into Hlen1.
+    rename H1 into Hlen2.
+    rename l into ps2.
+    rename l0 into ps3.
+    rewrite (H t2), Hlen1, Hlen2, Nat.eqb_refl; auto.
+    split_all; auto.
+    clear H6 H3. generalize dependent ps3.
+    generalize dependent ps2.
+    induction ps; simpl; intros; destruct ps2; inversion Hlen1; auto;
+    destruct ps3; inversion Hlen2; simpl in *.
+    revert H2 H5; bool_to_prop; intros; destruct_all.
+    apply Nat.eqb_eq in H2, H1.
+    inversion H0; subst.
+    rewrite H1, H2, Nat.eqb_refl, (same_in_p_trans _ (fst p)), (H13 (snd p)),
+    (IHps H14 ps2); auto.
+  - alpha_case t2 Hs1. alpha_case t3 Hs2.
+    revert Hs1 Hs2; bool_to_prop; intros; destruct_all.
+    rewrite (H f0); auto. vsym_eq v x; vsym_eq v0 x.
+  - alpha_case f2 Hs1. alpha_case f3 Hs2.
+    revert Hs1 Hs2; bool_to_prop; intros; destruct_all.
+    apply Nat.eqb_eq in H2, H0.
+    rewrite H2, H0, Nat.eqb_refl.
+    split; auto.
+    rename H2 into Hlen1.
+    rename H0 into Hlen2.
+    generalize dependent l2. generalize dependent l0.
+    induction tms; simpl; intros; destruct l0; inversion Hlen1; auto;
+    destruct l2; inversion Hlen2.
+    simpl. inversion H; subst.
+    simpl in H3, H1.
+    revert H3 H1; bool_to_prop; intros; destruct_all.
+    split.
+    + rewrite H6; auto. apply H3. apply H0.
+    + apply IHtms with(l0:=l0); auto.
+  - alpha_case f2 Hs1. alpha_case f3 Hs2.
+    revert Hs1 Hs2; bool_to_prop; intros; destruct_all.
+    rewrite (H f2); auto. vsym_eq v x; vsym_eq v0 x.
+  - alpha_case f2 Hs1. alpha_case f3 Hs2.
+    revert Hs1 Hs2; bool_to_prop; intros; destruct_all.
+    rewrite (H t), (H0 t0); auto.
+  - alpha_case f0 Hs1. alpha_case f3 Hs2.
+    revert Hs1 Hs2; bool_to_prop; intros; destruct_all.
+    rewrite (H f0_1), (H0 f0_2); auto.
+  - alpha_case f2 Hs1. alpha_case f3 Hs2.
+    apply (H f2); auto.
+  - alpha_case f2 Hs1. alpha_case f3 Hs2. auto.
+  - alpha_case f2 Hs1. alpha_case f3 Hs2. auto.
+  - alpha_case f2 Hs1. alpha_case f3 Hs2.
+    revert Hs1 Hs2; bool_to_prop; intros; destruct_all.
+    rewrite (H t), (H0 f2); auto. vsym_eq v x; vsym_eq v0 x.
+  - alpha_case f0 Hs1. alpha_case f4 Hs2.
+    revert Hs1 Hs2; bool_to_prop; intros; destruct_all.
+    rewrite (H f0_1), (H0 f0_2), (H1 f0_3); auto.
+  - alpha_case f2 Hs1. alpha_case f3 Hs2.
+    revert Hs1 Hs2; bool_to_prop; intros; destruct_all.
+    apply Nat.eqb_eq in H4, H1.
+    rename H4 into Hlen1.
+    rename H1 into Hlen2.
+    rename l into ps2.
+    rename l0 into ps3.
+    rewrite (H t), Hlen1, Hlen2, Nat.eqb_refl; auto.
+    split_all; auto.
+    clear H6 H3. generalize dependent ps3.
+    generalize dependent ps2.
+    induction ps; simpl; intros; destruct ps2; inversion Hlen1; auto;
+    destruct ps3; inversion Hlen2; simpl in *.
+    revert H2 H5; bool_to_prop; intros; destruct_all.
+    apply Nat.eqb_eq in H2, H1.
+    inversion H0; subst.
+    rewrite H1, H2, Nat.eqb_refl, (same_in_p_trans _ (fst p)), (H13 (snd p)),
+    (IHps H14 ps2); auto.
+Qed.
+
+Definition same_in_t_trans (t: term) := proj1 (same_in_trans t Ftrue).
+Definition same_in_f_trans (f: formula) := proj2 (same_in_trans tm_d f).
+
+Lemma same_in_sub_ts (t: term) vs z:
+  ~ In z (map fst vs) ->
+  ~ In (fst z) (map snd vs) ->
+  same_in_t t (sub_ts vs t) z.
+Proof.
+  intros; induction vs; simpl in *.
+  - apply same_in_t_refl.
+  - not_or Hz. eapply same_in_t_trans.
+    apply IHvs; auto.
+    apply same_in_sub_t; auto. intro Heq.
+    subst. contradiction.
+Qed. 
 
 (*Now that we have our structural results, we prove results
   about alpha equivalence of let, quantifiers, and match statements.
@@ -4392,20 +4908,6 @@ Qed.
 (*Prove Equivalence Relation (TODO: move, put after or before
   all inductive cases)*)
 
-(*We proved refl already*)
-Lemma a_equiv_t_refl (t: term):
-  a_equiv_t t t.
-Proof.
-  unfold a_equiv_t.
-  apply alpha_t_equiv_same. intros. inversion H.
-Qed.
-
-Lemma a_equiv_f_refl (f: formula):
-  a_equiv_f f f.
-Proof.
-  unfold a_equiv_f.
-  apply alpha_f_equiv_same; intros; inversion H.
-Qed.
 
 (*Need this to avoid length arguments*)
 Lemma map_fst_combine_nodup {A B: Type} (l1: list A) (l2: list B):
@@ -5394,6 +5896,71 @@ Proof.
   apply alpha_tlet_congr; auto.
 Qed.
 
+(*Match*)
+(*
+Lemma alpha_convert_tmatch tm ps ts (vars: list (list string))
+  (Hlens1: length ps = length vars)
+  (Hlens2: Forall (fun x => length (snd x) = 
+    length (pat_fv (fst (fst x))) +
+    length (bnd_t (snd (fst x))))
+    (combine ps vars))
+  (Hlents: length ps = length ts)
+  (Hts: Forall (fun x => a_equiv_t (snd (fst x)) (snd x)) (combine ps ts)):
+  a_equiv_t (Tmatch tm ps1) (Tmatch tm 
+    (map2 (fun (x: pattern * term) (strs: list string) => 
+      map_pat (mk_fun_str (pat_fv (fst x))
+        (firstn (length (pat_fv (fst x))) strs))
+        (fst x),
+      sub_ts (combine (pat_fv (fst x))
+        (firstn (length (pat_fv (fst x))) strs))
+
+        )))
+
+
+      a_equiv_t (Tmatch tm v ps)
+      (Tmatch (alpha_t_aux tm (firstn (Datatypes.length (bnd_t tm)) l)) v
+         (map2
+            (fun (x : pattern * term) (strs : list string) =>
+             (map_pat
+                (mk_fun_str (pat_fv (fst x))
+                   (firstn (Datatypes.length (pat_fv (fst x))) strs)) 
+                (fst x),
+              sub_ts
+                (combine (pat_fv (fst x))
+                   (firstn (Datatypes.length (pat_fv (fst x))) strs))
+                (alpha_t_aux (snd x)
+                   (skipn (Datatypes.length (pat_fv (fst x))) strs)))) ps
+            (split_lens (skipn (Datatypes.length (bnd_t tm)) l)
+               (map
+                  (fun x : pattern * term =>
+                   Datatypes.length (pat_fv (fst x)) +
+                   Datatypes.length (bnd_t (snd x))) ps))))
+
+
+Lemma alpha_convert_tlet 
+  (v1 v2: vsymbol) (Heq: snd v1 = snd v2) (tm1 tm2: term)
+  (Hbnd: ~In v2 (bnd_t tm2))
+  (Hfree: ~In v2 (term_fv tm2)):
+  a_equiv_t (Tlet tm1 v1 tm2) (Tlet tm1 v2 (sub_t v1 v2 tm2)).
+Proof.
+  unfold a_equiv_t.
+  simpl. destruct (vty_eq_dec (snd v1) (snd v2)); simpl; auto.
+  bool_to_prop. split.
+  - apply alpha_t_equiv_same; simpl; intros. destruct H.
+  - apply alpha_equiv_sub_t; auto.
+Qed.
+
+(*Let's see about match*)
+Lemma alpha_tmatch_congr t1 t2 ps1 ps2:
+  a_equiv_t t1 t2 ->
+  length ps1 = length ps2 ->
+  Forall (fun x => 
+    let x1 := fst x in
+    let x2 := snd x in
+    alpha_equiv_p (pat_fv (fst x1)) (pat_fv (fst x2)) /\
+    a_equiv_t )
+  alpha_equiv_
+*)
 (*Next: do all congruence lemmas, then see what
   case we need for match.
   With these, we should not ever have to unfold the
@@ -5896,7 +6463,6 @@ Proof.
         -- intros i1 i2 d x. wf_tac.
           rewrite !map2_nth with(d1:=(Pwild, tm_d)) (d2:=nil); wf_tac.
           intros [Hini1 Hini2].
-          apply in_app_or in Hini1, Hini2.
           (*Now we get 4 cases need to show each is impossible*)
           destruct Hini1 as [Hini1 | Hini1].
           ++ apply in_map_pat_str_fv in Hini1; wf_tac.
@@ -6102,7 +6668,6 @@ Proof.
         -- intros i1 i2 d x. wf_tac.
           rewrite !map2_nth with(d1:=(Pwild, Ftrue)) (d2:=nil); wf_tac.
           intros [Hini1 Hini2].
-          apply in_app_or in Hini1, Hini2.
           (*Now we get 4 cases need to show each is impossible*)
           destruct Hini1 as [Hini1 | Hini1].
           ++ apply in_map_pat_str_fv in Hini1; wf_tac.
@@ -6326,8 +6891,7 @@ Proof.
           (*Contradiction: y in l, so not bound in pattern,
             which is same as pattern free var*)
           intro Hnot.
-          apply (Hbnd y); wf_tac.
-          rewrite in_app_iff. right.
+          apply (Hbnd y); wf_tac. right.
           rewrite in_concat. exists (pat_fv (fst (nth i ps (Pwild, tm_d))) ++
             bnd_t (snd (nth i ps (Pwild, tm_d)))). split; wf_tac.
           exists (nth i ps (Pwild, tm_d)); split; wf_tac.
@@ -6352,8 +6916,7 @@ Proof.
           ++ intros y Hy C.
             apply In_skipn in Hy.
             apply in_split_lens_ith in Hy; wf_tac.
-            apply (Hbnd y); wf_tac.
-            rewrite in_app_iff; right.
+            apply (Hbnd y); wf_tac. right.
             rewrite in_concat. exists (pat_fv (fst (nth i ps (Pwild, tm_d))) ++
               bnd_t (snd (nth i ps (Pwild, tm_d)))). split; wf_tac.
             exists (nth i ps (Pwild, tm_d)); split; wf_tac.
@@ -6442,11 +7005,11 @@ Proof.
   - (*Feq*)
     rewrite H, H0; wf_tac; intros y Hiny C;
     try solve[(apply (Hfree y); wf_tac; simpl_set; triv)];
-    apply (Hbnd y); wf_tac; rewrite in_app_iff; triv.
+    apply (Hbnd y); wf_tac.
   - (*Fbinop*)
     rewrite H, H0; wf_tac; intros y Hiny C;
     try solve[(apply (Hfree y); wf_tac; simpl_set; triv)];
-    apply (Hbnd y); wf_tac; rewrite in_app_iff; triv.
+    apply (Hbnd y); wf_tac.
   - (*Flet*)
     destruct l; inversion Hlen.
     simpl. inversion Hnodupl; subst.
@@ -6489,7 +7052,7 @@ Proof.
     apply (Hfree y) | apply (Hbnd y)];
     try(apply (Hfree y)); try(apply (Hbnd y));
     try (apply In_skipn in Hiny); try (apply In_firstn in Hiny);
-    wf_tac; simpl_set; try (rewrite !in_app_iff); triv.
+    wf_tac; simpl_set; triv.
   - (*Fmatch - copied and pasted*)
     specialize (H (firstn (Datatypes.length (bnd_t tm)) l)).
     prove_hyps 4 H; wf_tac; try(intros y Hiny C);
@@ -6544,8 +7107,7 @@ Proof.
           (*Contradiction: y in l, so not bound in pattern,
             which is same as pattern free var*)
           intro Hnot.
-          apply (Hbnd y); wf_tac.
-          rewrite in_app_iff. right.
+          apply (Hbnd y); wf_tac. right.
           rewrite in_concat. exists (pat_fv (fst (nth i ps (Pwild, Ftrue))) ++
             bnd_f (snd (nth i ps (Pwild, Ftrue)))). split; wf_tac.
           exists (nth i ps (Pwild, Ftrue)); split; wf_tac.
@@ -6571,8 +7133,7 @@ Proof.
           ++ intros y Hy C.
             apply In_skipn in Hy.
             apply in_split_lens_ith in Hy; wf_tac.
-            apply (Hbnd y); wf_tac.
-            rewrite in_app_iff; right.
+            apply (Hbnd y); wf_tac. right.
             rewrite in_concat. exists (pat_fv (fst (nth i ps (Pwild, Ftrue))) ++
               bnd_f (snd (nth i ps (Pwild, Ftrue)))). split; wf_tac.
             exists (nth i ps (Pwild, Ftrue)); split; wf_tac.
@@ -6597,6 +7158,412 @@ Proof.
   intros. rewrite <- !free_in_t_spec, alpha_t_aux_fv; auto.
   reflexivity.
 Qed. 
+
+
+(*TODO: move congruence lemmas together*)
+Lemma alpha_tif_congr f1 t1 t2 f2 t3 t4:
+  a_equiv_f f1 f2 ->
+  a_equiv_t t1 t3 ->
+  a_equiv_t t2 t4 ->
+  a_equiv_t (Tif f1 t1 t2) (Tif f2 t3 t4).
+Proof.
+  unfold a_equiv_t, a_equiv_f; simpl; intros Hf Ht1 Ht2;
+  rewrite Hf, Ht1, Ht2; reflexivity.
+Qed.
+
+(*TODO: change proofs to use this*)
+Lemma eq_dec_refl {A: Type} {eq_dec: forall (x y: A), {x = y}+ {x <> y}}
+  (x: A):
+  (@eq bool (eq_dec x x) true).
+Proof.
+  destruct (eq_dec x x); auto.
+Qed.
+
+(*Show map_pat is equiv as*)
+Search map_pat alpha_equiv_p.
+Lemma map_pat_alpha_equiv vars p1 f
+  (Hf1: forall x, In x (pat_fv p1) ->
+    snd x = snd (f x))
+  (Hf2: forall x, In x (pat_fv p1) ->
+    var_in_firstb (x, (f x)) vars):
+  alpha_equiv_p vars p1 (map_pat f p1).
+Proof.
+  intros; induction p1; simpl; auto.
+  - rewrite Hf1; simpl; auto.
+    rewrite eq_dec_refl, Hf2; simpl; auto.
+  - rewrite !eq_dec_refl, map_length, Nat.eqb_refl. simpl.
+    induction ps; simpl; intros; auto.
+    inversion H; subst.
+    rewrite H2; simpl.
+    + apply IHps; auto; simpl.
+      * intros; apply Hf1; simpl; simpl_set; triv.
+      * intros; apply Hf2; simpl; simpl_set; triv.
+    + intros; apply Hf1; simpl; simpl_set; triv.
+    + intros; apply Hf2; simpl; simpl_set; triv.
+  - rewrite IHp1_1, IHp1_2; auto; intros;
+    [apply Hf1 | apply Hf2 | apply Hf1 | apply Hf2];
+    simpl; simpl_set; triv.
+  - rewrite Hf1, eq_dec_refl, Hf2, IHp1; simpl; auto;
+    intros; [apply Hf1 | apply Hf2 | |]; simpl; simpl_set; auto.
+Qed.
+
+(*TODO: move*)
+Lemma mk_fun_in_firstb_iff (l1 l2: list vsymbol) x y
+  (Hlen: length l1 = length l2)
+  (Hn2: NoDup l2)
+  (Hin: In x l1):
+  var_in_firstb (x, y) (combine l1 l2) <-> mk_fun l1 l2 x = y.
+Proof.
+  generalize dependent l2. induction l1; simpl; intros. inversion Hin.
+  destruct l2; inversion Hlen; simpl.
+  vsym_eq x a; simpl.
+  - vsym_eq y v; simpl; split; intros; auto. inversion H.
+  - inversion Hn2; subst. destruct Hin; subst; try contradiction.
+    vsym_eq y v; simpl.
+    + split; intros; auto. inversion H1.
+      exfalso. apply H2. rewrite <- H1. apply mk_fun_in; auto; lia.
+    + apply IHl1; auto.
+Qed.
+
+(*Only need injectivity on the elts*)
+Lemma NoDup_map_inj {A B: Type} (f: A -> B) (l: list A)
+  (Hinj: forall x y, In x l -> In y l -> f x = f y -> x = y):
+  NoDup l ->
+  NoDup (map f l).
+Proof.
+  induction l; simpl; intros; inversion H; constructor; subst.
+  - intro C.
+    rewrite in_map_iff in C.
+    destruct C as [y [Hy Hiny]].
+    assert (a = y) by (apply Hinj; simpl; auto).
+    subst. contradiction.
+  - apply IHl; auto. intros; apply Hinj; simpl; auto.
+Qed. 
+
+Lemma map_mk_fun l1 l2
+  (Hlen: length l1 = length l2)
+  (Hn1: NoDup l1):
+  map (mk_fun l1 l2) l1 = l2.
+Proof.
+  generalize dependent l2.
+  induction l1; simpl; intros; destruct l2; inversion Hlen; auto.
+  vsym_eq a a. f_equal.
+  inversion Hn1; subst.
+  erewrite map_ext_in. apply IHl1; auto.
+  intros. vsym_eq a0 a.
+Qed.
+
+Lemma map_pat_str_alpha p strs
+  (Hlen: length strs = length (pat_fv p))
+  (Hn: NoDup strs):
+  alpha_equiv_p
+    (combine (pat_fv p) (map (mk_fun_str (pat_fv p) strs) (pat_fv p))) p
+    (map_pat (mk_fun_str (pat_fv p) strs) p).
+Proof.
+  assert (Hlen2: Datatypes.length (pat_fv p) =
+    Datatypes.length (combine strs (map snd (pat_fv p)))) by
+    (unfold vsymbol; rewrite combine_length, map_length,
+    Hlen, Nat.min_id; auto).
+  apply map_pat_alpha_equiv.
+  - intros. unfold mk_fun_str.
+    pose proof (In_nth _ _ vs_d H).
+    destruct H0 as [i [Hi Hx]]; subst.
+    rewrite mk_fun_nth with(d2:=vs_d); wf_tac.
+    unfold vs_d, vsymbol. rewrite combine_nth; wf_tac.
+    rewrite map_nth_inbound with(d2:=vs_d); auto.
+  - intros. apply mk_fun_in_firstb_iff; wf_tac.
+    + apply NoDup_map_inj; [|apply NoDup_pat_fv].
+      unfold mk_fun_str.
+      apply mk_fun_inj; wf_tac. 2: rewrite Hlen2; auto.
+      apply NoDup_combine_l; auto.
+    + unfold mk_fun_str.
+      rewrite map_mk_fun; wf_tac.
+Qed.
+(*
+Search alpha_equiv_t "trans".
+
+Lemma alpha_equiv_sub_t_gen (t1 t2: term) (x y: vsymbol) vars:
+  alpha_equiv_t vars t1 t2 ->
+  snd x = snd y ->
+  ~ In y (bnd_t t2) ->
+  ~ In y (term_fv t2) ->
+  alpha_equiv_t ((x, y) :: vars) t1 (sub_t x y t2).
+Proof.
+  induction vars; simpl; intros.
+  - eapply alpha_equiv_t_trans. apply alpha_equiv_sub_t.
+*)
+
+(*Alpha equivalence with iterated substitution*)
+Lemma alpha_equiv_sub_ts (t: term) (vs: list vsymbol) (strs: list string)
+  (Hlen: length strs = length vs)
+  (Hnotbnd: forall s, In (fst s) strs -> ~ In s (bnd_t t))
+  (Hnotfree: forall s, In (fst s) strs -> ~ In s (term_fv t))
+  (Hnodup: NoDup strs)
+  (Hn1: NoDup vs)
+  (Hnew: forall x, In x vs -> ~ In (fst x) strs):
+  alpha_equiv_t (add_vals vs (combine strs (map snd vs)) nil) t
+    (sub_ts (combine vs strs) t).
+Proof.
+  unfold add_vals.
+  generalize dependent strs. induction vs; simpl; intros;
+  destruct strs; inversion Hlen.
+  - apply a_equiv_t_refl.
+  - simpl. inversion Hn1; subst.
+    inversion Hnodup; subst.
+    apply (alpha_equiv_sub_t_full _ _ a (s, snd a) nil _); auto.
+    + rewrite bnd_sub_ts. intro C.
+      apply (Hnotbnd (s, snd a)); simpl; auto.
+    + rewrite <- free_in_t_negb.
+      rewrite sub_ts_fv_diff.
+      * rewrite free_in_t_negb. apply Hnotfree. simpl; auto.
+      * rewrite map_fst_combine; auto.
+        intro C.
+        apply (Hnew (s, snd a)); simpl; auto.
+      * rewrite map_fst_combine, map_snd_combine; auto.
+        intro C.
+        apply in_combine_l in C. contradiction.
+    + apply same_in_sub_ts.
+      * rewrite map_fst_combine; auto.
+      * rewrite map_snd_combine; auto.
+        specialize (Hnew a).
+        intro C.
+        apply Hnew; simpl; auto.
+    + simpl. apply IHvs; auto.
+      * intros. intro C. apply (Hnotbnd s0); simpl; auto.
+      * intros. intro C. apply (Hnotfree s0); simpl; auto.
+      * intros x Hinx1 Hinx2. apply (Hnew x); simpl; auto.
+Qed.
+
+(*I think we need a general way of reasoning about combining two lists,
+  as long as they do not overlap*)
+(*What about this?*)
+Lemma alpha_combine (t: term) (f: formula):
+  (forall t2 t3 v1 v2
+    (Heq1: alpha_equiv_t v1 t t2)
+    (Heq2: alpha_equiv_t v2 t2 t3)
+    (*TODO: I think we need stronger: these should be
+      completely disjoint so we don't bind one var for one
+      but not another*)
+    (*start here*)
+    (Hv12_f: forall x, In x (map fst v1) -> ~ In x (map fst v2))
+    (Hv12_s: forall x, In x (map snd v1) -> ~ In x (map snd v2))
+    (Hv21_f: forall x, In x (map fst v2) -> ~ In x (map fst v1))
+    (Hv21_s: forall x, In x (map snd v2) -> ~ In x (map snd v2)),
+    alpha_equiv_t (v1 ++ v2) t t3) /\
+  (forall f2 f3 v1 v2
+    (Heq1: alpha_equiv_f v1 f f2)
+    (Heq2: alpha_equiv_f v2 f2 f3)
+    (Hv12_f: forall x, In x (map fst v1) -> ~ In x (map fst v2))
+    (Hv12_s: forall x, In x (map snd v1) -> ~ In x (map snd v2))
+    (Hv21_f: forall x, In x (map fst v2) -> ~ In x (map fst v1))
+    (Hv21_s: forall x, In x (map snd v2) -> ~ In x (map snd v2)),
+    alpha_equiv_f (v1 ++ v2) f f3).
+Proof.
+  revert t f; apply term_formula_ind; simpl; intros.
+  - (*Tconst*) alpha_case t2 Heq1. alpha_case t3 Heq2.
+    rewrite simpl_all_dec in *; subst; auto.
+  - (*Tvar*) alpha_case t2 Heq1. alpha_case t3 Heq2.
+    rewrite eq_var_app.
+    rewrite eq_var_in_first in Heq1, Heq2.
+
+
+
+(*What about this*)
+Lemma alpha_sub_congr (t: term) (f: formula):
+  (forall t2 x y vars
+    (Heq: alpha_equiv_t vars t t2),
+    alpha_equiv_t vars (sub_t x y t) (sub_t x y t2)) /\
+  (forall f2 x y vars
+    (Heq: alpha_equiv_f vars f f2),
+    alpha_equiv_f vars (sub_f x y f) (sub_f x y f2)).
+Proof.
+  revert t f; apply term_formula_ind; simpl; intros.
+  - (*Tconst*) alpha_case t2 Heq; auto.
+  - (*Tvar*) alpha_case t2 Heq. vsym_eq x v.
+
+(*Let's see if this lemma is true and if so, if it easy to show*)
+Lemma alpha_under_sub (t: term) (f: formula):
+  (forall t2 t3 x y vars
+    (Heq1: alpha_equiv_t vars t (sub_t x y t2))
+    (Heq2: alpha_equiv_t nil t2 t3),
+    alpha_equiv_t vars t (sub_t x y t3)) /\
+  (forall f2 f3 x y vars
+    (Heq1: alpha_equiv_f vars f (sub_f x y f2))
+    (Heq2: alpha_equiv_f nil f2 f3),
+    alpha_equiv_f vars f (sub_f x y f3)).
+Proof.
+  revert t f; apply term_formula_ind; simpl.
+
+
+
+
+(*TODO: move*)
+Lemma alpha_tmatch tm1 tm2 v ps (strs: list (list string))
+  (f: term -> list string -> term)
+  (Heq1: a_equiv_t tm1 tm2)
+  (Hlen1: length strs = length ps)
+  (Hlen2: forall i, i < length ps ->
+    length (pat_fv (fst (nth i ps (Pwild, tm_d)))) +
+    length (bnd_t (snd (nth i ps (Pwild, tm_d)))) = 
+    length (nth i strs nil))
+  (Hf: forall i, i < length ps ->
+    let x := nth i ps (Pwild, tm_d) in
+    a_equiv_t (snd x) 
+      (f (snd x) (skipn (length (pat_fv (fst x))) (nth i strs nil))))
+  (Hnotfree: forall v l, In l strs -> In (fst v) l ->
+    ~ In v (big_union vsymbol_eq_dec term_fv (map snd ps)))
+  (Hnotbnd: forall v l, In l strs -> In (fst v) l ->
+    ~ In v (concat
+    (map (fun p : pattern * term => pat_fv (fst p) ++ bnd_t (snd p))
+       ps)))
+  (Hnodup: NoDup (concat strs)):
+  a_equiv_t (Tmatch tm1 v ps)
+    (Tmatch tm2 v
+     (map2
+        (fun (x : pattern * term) (strs : list string) =>
+         (map_pat
+            (mk_fun_str (pat_fv (fst x))
+               (firstn (length (pat_fv (fst x))) strs)) 
+            (fst x),
+          sub_ts
+            (combine (pat_fv (fst x))
+               (firstn (length (pat_fv (fst x))) strs))
+            (f (snd x)
+               (skipn (length (pat_fv (fst x))) strs)))) ps strs)).
+Proof.
+  unfold a_equiv_t in *.
+  simpl.
+  rewrite Heq1, map2_length, Hlen1, Nat.min_id, Nat.eqb_refl; simpl.
+  destruct (vty_eq_dec v v); auto; simpl. clear e.
+  generalize dependent strs. clear Heq1.
+  induction ps; simpl; intros; auto.
+  destruct strs; inversion Hlen1.
+  destruct a as [p1 t1].
+  simpl.
+  rewrite NoDup_concat_iff in Hnodup. destruct Hnodup as [Hn1 Hn2].
+  assert (Hlenl: Datatypes.length (firstn (Datatypes.length (pat_fv p1)) l) =
+    Datatypes.length (pat_fv p1)) by
+    (wf_tac; specialize (Hlen2 0 ltac:(lia)); simpl in Hlen2; lia).
+  assert (Hnl: NoDup l) by (apply Hn1; simpl; auto).
+  (*rewrite !map_pat_str_fv; wf_tac.
+  unfold mk_fun_str at 1 3.
+  rewrite !map_mk_fun; wf_tac.
+  2: {
+    unfold vsymbol in *;
+    rewrite combine_length, Hlenl, map_length. lia.
+  }*)
+  rewrite map_pat_str_fv; wf_tac.
+  rewrite map_pat_str_alpha; wf_tac; simpl.
+  unfold mk_fun_str at 1.
+  rewrite map_mk_fun; wf_tac.
+  2: {
+    unfold vsymbol in *;
+    rewrite combine_length, Hlenl, map_length. lia.
+  }
+  bool_to_prop; split.
+  - (*We need transitivity, which is annoying because we have to go forward*) 
+    pose proof (alpha_equiv_sub_ts t1 (pat_fv p1) 
+      (firstn (Datatypes.length (pat_fv p1)) l) Hlenl).
+    assert (forall s : string * vty,
+    In (fst s) (firstn (Datatypes.length (pat_fv p1)) l) ->
+    ~ In s (bnd_t t1)). {
+      intros v' Hinvl Hinvb.
+      apply (Hnotbnd v' l); simpl; wf_tac. 
+    }
+    specialize (H H1); clear H1.
+    assert (forall s : string * vty,
+    In (fst s) (firstn (Datatypes.length (pat_fv p1)) l) ->
+    ~ In s (term_fv t1)). {
+      intros v' Hinl Hinvf.
+      apply (Hnotfree v' l); simpl; simpl_set; wf_tac.
+    }
+    specialize (H H1 ltac:(wf_tac) (NoDup_pat_fv _)); clear H1.
+    assert (forall x : vsymbol,
+    In x (pat_fv p1) ->
+    ~ In (fst x) (firstn (Datatypes.length (pat_fv p1)) l)). {
+      intros v' Hinvb Hinvl.
+      apply (Hnotbnd v' l); simpl; wf_tac.
+    }
+    specialize (H H1); clear H1.
+    specialize (Hf 0 ltac:(lia)); simpl in Hf.
+    (*What we want to show: we can "substitute" under sub_t:
+      i.e. if a_equiv_t t1 t2, then
+      a_equiv_t
+    
+    *)
+
+    (*Problem: 1 is alpha equiv under context, 1 is
+      alpha equiv with no context
+      Intuitively: should be able to combine because no
+      free var of one appears in the list (it is all unique values)
+
+      can we say this?
+      Suppose alpha_equiv_t vars t1 t2 and alpha_equiv nil t1 t3
+      
+      *)
+
+
+    specialize ()
+
+    
+    
+    
+    eapply alpha_equiv_t_trans. apply alpha_equiv_sub_ts.
+  rewrite alpha_equiv_sub_ts.
+  Search alpha_equiv_t sub_t.
+  -  
+
+
+
+    2: {
+      specialize (Hlen2 0 ltac:(lia)). simpl in Hlen2. lia.
+    }
+    2: {
+      apply Hn1. simpl; auto.
+    }
+
+    
+    
+    rewrite Search pat_fv map_pat.
+
+
+
+        (split_lens (skipn (Datatypes.length (bnd_t tm)) l)
+           (map
+              (fun x : pattern * term =>
+               Datatypes.length (pat_fv (fst x)) +
+               Datatypes.length (bnd_t (snd x))) ps))))
+
+
+Ltac free_bnd Hfree Hbnd :=
+  let x := fresh "x" in
+  let Hinx1 := fresh "Hinx" in
+  let Hinx2 := fresh "Hinx" in
+  intros x Hinx1;
+  match goal with
+    | |- ~ In ?x (form_fv ?f) => intros Hinx2; apply (Hfree x)
+    | |- ~ In ?x (bnd_f ?f) => intros Hinx2; apply (Hbnd x)
+    | |- ~ In ?x (term_fv ?t) => intros Hinx2; apply (Hfree x)
+    | |- ~ In ?x (bnd_t ?t) => intros Hinx2; apply (Hbnd x)
+    end; simpl_set; wf_tac;
+  repeat (match goal with
+  | H: In ?x (nth ?i (split_lens ?l1 ?l2) ?d) |- In ?x ?l1 =>
+    apply in_split_lens_ith in H
+  | |- In ?x (concat ?l) => rewrite in_concat
+  (*2 goals from [in_map_iff]*)
+  | H: In ?x (?f (nth ?i ?l ?d)), H1: ?i < length ?l |- 
+    exists y, In y ?l /\ In ?x (?f y) =>
+    exists (nth i l d); split
+  | H: In ?x (?f (nth ?i ?l ?d)), H1: ?i < length ?l |-
+    exists y, In y (map ?f ?l) /\ In ?x y =>
+    exists (f (nth i l d)); split
+  (*The annoying bound variable case*)
+  | H: In ?x (?f ?t) |-
+    ?P \/ In ?x (?f ?t) /\ ?x <> ?v =>
+    let C := fresh in
+    right; split; auto; intro C; subst;
+    apply (Hbnd v); simpl
+  end; wf_tac).
 
 Theorem alpha_t_aux_equiv (t: term) (f: formula):
   (forall l
@@ -6623,35 +7590,91 @@ Proof.
     destruct H0 as [i [Hi Hx]].
     specialize (Hx tm_d tm_d); subst. simpl.
     rewrite map2_nth with(d1:=tm_d)(d2:=nil); wf_tac.
-    apply H; wf_tac.
-    + intros. intro C.
-      apply in_split_lens_ith in H0; wf_tac.
-      apply (Hfree x); wf_tac.
-      simpl_set. exists (nth i l1 tm_d). split; wf_tac.
-    + intros. intro C.
-      apply in_split_lens_ith in H0; wf_tac.
-      apply (Hbnd x); wf_tac.
-      rewrite in_concat. exists (bnd_t (nth i l1 tm_d)).
-      split; wf_tac.
+    apply H; wf_tac; free_bnd Hfree Hbnd.
   - (*Tlet*)
     destruct l; inversion Hlen.
+    inversion Hn; subst.
     apply alpha_convert_tlet'; wf_tac.
     + intro C.
-      inversion Hn; subst.
       apply alpha_t_aux_wf in C; wf_tac.
     + intro C.
-      inversion Hn; subst.
-      rewrite alpha_t_aux_fv' in C; wf_tac.
-      * apply (Hfree (s, snd v)); simpl; simpl_set; auto.
-        right. split; auto. intro Heq.
-        apply (Hbnd v); auto. simpl. rewrite <- Heq. triv.
-      * intros x Hinx1 Hinx2. apply (Hfree x); simpl; simpl_set; wf_tac.
-        right. split; auto.
-        intro Heq; subst.
-        apply (Hbnd v); simpl; try triv. right. wf_tac.
-      * intros x Hinx1 Hinx2. apply (Hbnd x); simpl; wf_tac.
-        right. in_tac.
-    + (*ugh, more annoying obligations - need way to automate this*)
+      rewrite alpha_t_aux_fv' in C; wf_tac;
+      try free_bnd Hfree Hbnd.
+      apply (Hfree (s, snd v)); simpl; simpl_set; auto.
+      right. split; auto. intro Heq.
+      apply (Hbnd v); auto. simpl. rewrite <- Heq. triv.
+    + apply H; wf_tac; free_bnd Hfree Hbnd.
+    + apply H0; wf_tac; free_bnd Hfree Hbnd.
+  - (*Tif*)
+    apply alpha_tif_congr; [apply H | apply H0 | apply H1];
+    wf_tac; free_bnd Hfree Hbnd.
+  - (*Tmatch*)
+    (*Try induction at first, should put in sep lemma*)
+    unfold a_equiv_t; simpl.
+    rewrite H; wf_tac; try free_bnd Hfree Hbnd. simpl.
+    rewrite Nat.eqb_refl; simpl.
+    destruct (vty_eq_dec v v); simpl; auto. clear e.
+    Search map2 nth.
+    (*So this is the condition that we need*)
+    (*say that strs is list(list string) w right lengths*)
+    (*We need that:
+      length ts = length ps ->
+      Forall (fun x => a_equiv_t (fst x) (snd x)) (combine ts (map snd ps)) ->
+      length ps = length strs ->
+      i < length ps ->
+      let s1 := nth i strs Pwild in
+      let x1 := nth i ps (Pwild, tm_d) in
+      let tnew := nth i ts tm_d in
+      let p1 := fst x1 in
+      let t1 := snd x1 in
+      let p2 := (map_pat (mk_fun_str (pat_fv p1))
+        (firstn (length (pat_fv p1)) s1)
+        p1) in
+      let t2 :=
+        sub_ts (combine (pat_fv p1) (firstn (length (pat_fv p1)) s1))
+          tnew in
+      (*What is the condition to give, NOT alpha_equiv ones?
+        should just be based on free vars i think - then we prove this*)
+
+      (*TODO: give a better condition for this - just based on
+        vars I think*)
+      alpha_equiv_p (combine (pat_fv p1) (pat_fv p2) p1 p2) /\
+      alpha_equiv_t (add_vals (pat_fv p1) (pat_fv p2) nil) t1 t2
+
+      (*Hmm think for a bit*)
+
+
+      
+      
+      ) nth i 
+    
+    *)
+
+
+
+
+
+    Print alpha_equiv_t.
+    
+    wf_tac;
+    intros x Hinx1;
+    match goal with
+    | |- ~ In ?x (form_fv ?f) => intros Hinx2; apply (Hfree x)
+    | |- ~ In ?x (bnd_f ?f) => intros Hinx2; apply (Hbnd x)
+    | |- ~ In ?x (term_fv ?t) => intros Hinx2; apply (Hfree x)
+    | |- ~ In ?x (bnd_t ?t) => intros Hinx2; apply (Hbnd x)
+    end; simpl_set; wf_tac.
+
+    intros x Hinx1 Hinx2; [apply (Hfree x)]
+    + apply H; wf_tac.
+
+
+
+      * intros x Hinx1 Hinx2; apply (Hfree x); simpl; simpl_set; wf_tac.
+      * intros x Hinx1 Hinx2; apply (Hbnd x); simpl; simpl_set; wf_tac.
+
+
+
       
     
     apply H; wf_tac. apply H0.
