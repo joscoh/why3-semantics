@@ -6491,6 +6491,47 @@ Definition alpha_equiv_sub_t_full (t: term) := proj1(alpha_equiv_sub t Ftrue).
 Definition alpha_equiv_sub_f_full (f: formula) :=
   proj2 (alpha_equiv_sub tm_d f).
 
+(*TODO: move*)
+
+Lemma same_free_refl (t: term) (f: formula):
+  (forall x, same_free_t t t x x) /\
+  (forall x, same_free_f f f x x).
+Proof.
+  revert t f. apply term_formula_ind; simpl; intros; auto.
+  - rewrite eqb_reflx; auto.
+  - induction l1; simpl; auto.
+    inversion H; subst.
+    rewrite Nat.eqb_refl in IHl1.
+    rewrite Nat.eqb_refl, H2, IHl1; auto.
+  - rewrite H, H0. simpl_bool.
+    vsym_eq v x.
+  - rewrite H, H0, H1; auto.
+  - rewrite H, Nat.eqb_refl. simpl.
+    induction ps; simpl; intros; auto.
+    inversion H0; subst.
+    rewrite Nat.eqb_refl, H3, IHps; auto; simpl_bool.
+    destruct (in_dec vsymbol_eq_dec x (pat_fv (fst a))); simpl; auto.
+  - rewrite H. vsym_eq v x.
+  - induction tms; simpl; auto.
+    inversion H; subst.
+    rewrite Nat.eqb_refl in IHtms.
+    rewrite Nat.eqb_refl, H2, IHtms; auto.
+  - rewrite H. vsym_eq v x.
+  - rewrite H, H0; auto.
+  - rewrite H, H0; auto.
+  - rewrite H, H0. simpl_bool.
+    vsym_eq v x.
+  - rewrite H, H0, H1; auto.
+  - rewrite H, Nat.eqb_refl. simpl.
+    induction ps; simpl; intros; auto.
+    inversion H0; subst.
+    rewrite Nat.eqb_refl, H3, IHps; auto; simpl_bool.
+    destruct (in_dec vsymbol_eq_dec x (pat_fv (fst a))); simpl; auto.
+Qed.
+
+Definition same_free_t_refl t := proj1 (same_free_refl t Ftrue).
+Definition same_free_f_refl f := proj2 (same_free_refl tm_d f).
+
 (*How a substitution changes alpha equivalence*)
 Corollary alpha_equiv_sub_t (t: term) (x y: vsymbol)
   (Htys: snd x = snd y)
@@ -6499,7 +6540,7 @@ Corollary alpha_equiv_sub_t (t: term) (x y: vsymbol)
   alpha_equiv_t [(x, y)] t (sub_t x y t).
 Proof.
   apply alpha_equiv_sub_t_full with(v1:=nil)(v2:=nil); simpl; auto.
-  - apply same_in_t_refl.
+  - apply same_free_t_refl.
   - apply a_equiv_t_refl.
 Qed.
 
@@ -6510,7 +6551,7 @@ Corollary alpha_equiv_sub_f (f: formula) (x y: vsymbol)
   alpha_equiv_f [(x, y)] f (sub_f x y f).
 Proof.
   apply alpha_equiv_sub_f_full with(v1:=nil)(v2:=nil); simpl; auto.
-  - apply same_in_f_refl.
+  - apply same_free_f_refl.
   - apply a_equiv_f_refl.
 Qed.
 
@@ -7636,6 +7677,95 @@ Proof.
   2: apply alpha_convert_tlet; auto.
   apply alpha_tlet_congr; auto.
 Qed.
+
+(*Annoying to show, need lots of transitivity and
+  strengthening/weakening with [redundant] lemma*)
+Lemma a_equiv_t_sub_congr (t1 t2: term) (x y: vsymbol)
+  (Hsnd: snd x = snd y)
+  (Hbnd1: ~ In y (bnd_t t1))
+  (Hbnd2: ~ In y (bnd_t t2))
+  (Hfree1: ~ In y (term_fv t1))
+  (Hfree2: ~In y (term_fv t2))
+  (Heq: a_equiv_t t1 t2):
+  a_equiv_t (sub_t x y t1) (sub_t x y t2).
+Proof.
+  unfold a_equiv_t in *.
+  Search alpha_equiv_t sub_t.
+  pose proof (alpha_equiv_sub_t _ _ _ Hsnd Hbnd1 Hfree1) as Heq1.
+  pose proof (alpha_equiv_sub_t _ _ _ Hsnd Hbnd2 Hfree2) as Heq2.
+  rewrite alpha_t_equiv_sym in Heq1.
+  simpl in Heq1.
+  assert (Heq3: alpha_equiv_t [(x, x)] t1 t2) by
+    (rewrite alpha_equiv_t_redundant with(v1:=nil)(v2:=nil)(x:=x); auto).
+  assert (Hmap: map snd [(y, x)] = map fst [(x, x)]) by reflexivity.
+  pose proof (alpha_equiv_t_trans _ _ _ _ _ Hmap Heq1 Heq3).
+  simpl in H.
+  assert (Hmap2: map snd [(y, x)] = map fst [(x, y)]) by reflexivity.
+  pose proof (alpha_equiv_t_trans _ _ _ _ _ Hmap2 H Heq2).
+  simpl in H0.
+  rewrite alpha_equiv_t_redundant with (x:=y)(v1:=nil)(v2:=nil) in H0; auto.
+Qed.
+
+Check sub_ts.
+
+(*And the [sub_ts] version*)
+Lemma a_equiv_t_sub_ts_congr (t1 t2: term) 
+  (vars: list (vsymbol * string))
+  (Hbnd1: forall x, In (fst x) (map snd vars) -> ~ In x (bnd_t t1))
+  (Hbnd2: forall x, In (fst x) (map snd vars) -> ~ In x (bnd_t t2))
+  (Hfree1: forall x, In (fst x) (map snd vars) -> ~ In x (term_fv t1))
+  (Hfree2: forall x, In (fst x) (map snd vars) -> ~ In x (term_fv t2))
+  (Heq: a_equiv_t t1 t2):
+  a_equiv_t (sub_ts vars t1) (sub_ts vars t2).
+Proof.
+  (*Need stronger IH*)
+  unfold a_equiv_t in *.
+  (*What do we need about vars?*)
+  generalize dependent (@nil (vsymbol * vsymbol)).
+  induction vars; simpl; intros; auto.
+  assert (alpha_equiv_t l (sub_ts vars t1) (sub_ts vars t2)). admit.
+  destruct a as [x y]. simpl.
+  rewrite alpha_t_equiv_sym in H.
+  apply alpha_equiv_sub_t_full with(v1:=nil)(x:=x)(y:=(y, snd x)) in H; auto.
+  (*TODO: need to prove same_free_t of sub and subs*)
+  - simpl in H. rewrite alpha_t_equiv_sym in H.
+    simpl in H. rewrite flip_flip in H.
+    (*Have to do the transitivity thing again*)
+    (*TODO: does it actually matter that we had the same_free?
+      Would same_in have worked?
+      No - need to know that x is same_free in base
+      can prove that from alpha_equiv, CANNOT prove same_in*)
+    (*TODO: start here, prove this lemma, continue to match
+      THEN fill in admitted proofs*)
+    
+    Search (flip (flip ?l)). rewrite flip_twice in H. rewrite flip_involutive in H.
+
+  Search alpha_equiv_t sub_t.
+  
+  intros l; revert var.
+  induction vars; simpl; auto.
+  
+  In x (map snd vars) -> ~ In x ()) 
+
+
+
+(x y: vsymbol)
+  (Hsnd: snd x = snd y)
+  (Hbnd1: ~ In y (bnd_t t1))
+  (Hbnd2: ~ In y (bnd_t t2))
+  (Hfree1: ~ In y (term_fv t1))
+  (Hfree2: ~In y (term_fv t2))
+  (Heq: a_equiv_t t1 t2):
+  a_equiv_t (sub_t x y t1) (sub_t x y t2).
+
+  Search "alpha" "sym".
+  rewrite alpha_equiv_t_sym in Heq2.
+
+  alpha_equiv_sub_t:
+  forall (t : term) (x y : vsymbol),
+  snd x = snd y ->
+  ~ In y (bnd_t t) ->
+  ~ In y (term_fv t) -> alpha_equiv_t [(x, y)] t (sub_t x y t)
 
 (*Match*)
 (*
