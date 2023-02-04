@@ -5885,9 +5885,12 @@ Qed.
 (*TODO: use this instead of revert*)
 Ltac bool_hyps :=
   repeat match goal with
-  | H: is_true (?b1 && ?b2) |- _ => apply andb_true_iff in H; destruct H
-  | H: is_true (?b1 || ?b2) |- _ => apply orb_true_iff in H
-  | H: is_true (negb ?b1) |- _ => apply negb_true_iff in H
+  | H: is_true (?b1 && ?b2) |- _ => unfold is_true in H
+  | H: ?b1 && ?b2 = true |- _ => apply andb_true_iff in H; destruct H
+  | H: is_true (?b1 || ?b2) |- _ => unfold is_true in H
+  | H: ?b1 || ?b2 = true |- _ => apply orb_true_iff in H
+  | H: is_true (negb ?b1) |- _ => unfold is_true in H
+  | H: negb ?b1 = true |- _ => apply negb_true_iff in H
   | H: ?b1 && ?b2 = false |- _ => apply andb_false_iff in H
   | H: ?b1 || ?b2 = false |- _ => apply orb_false_iff in H; destruct H
   | H: negb (?b1) = false |- _ => apply negb_false_iff in H
@@ -6009,6 +6012,19 @@ Proof.
         simpl; solve_negb.
 Admitted.
 
+Definition alpha_equiv_t_notin_remove (t: term) :=
+  proj1 (alpha_equiv_notin_remove t Ftrue).
+Definition alpha_equiv_f_notin_remove (f: formula) :=
+  proj2 (alpha_equiv_notin_remove tm_d f).
+
+Ltac tf :=
+  match goal with
+  | H: true = false |- _ => inversion H
+  | H: false = true |- _ => inversion H
+  end.
+
+  (*TODO: not sure we need exactly the v1 assumptions
+    could maybe do v2 instead and prove eq, but OK for now*)
 (*And so we want a weaker lemma about substitution: it must only
   be the case that t1 and t2 agree on x as a free variable:
   x can be bound in either or both *)
@@ -6048,284 +6064,128 @@ Proof.
       revert Heq. rewrite !eq_var_app. simpl. vsym_eq v x. vsym_eq v0 y.
   - (*Tfun*)
     alpha_case tm2 Heq.
-    revert Heq Hsame; 
-    bool_to_prop; intros; destruct_all; clear H5; apply Nat.eqb_eq in H0; 
-    split_all; [simpl_sumbool | wf_tac | simpl_sumbool |];
-    [rewrite H0; apply Nat.eqb_refl |].
-    clear H2 H4.
-    generalize dependent l2.
-    induction l1; intros; destruct l2; inversion H0; simpl; auto.
-    revert H3; bool_to_prop; intros; destruct_all.
-    inversion H; subst.
-    simpl in H1. apply andb_true_iff in H1. destruct H1.
-    split.
-    + apply H7; auto; intro C; [apply Hbnd | apply Hfree]; simpl; simpl_set; wf_tac.
-    + apply IHl1; wf_tac; intro C; [apply Hbnd | apply Hfree]; simpl; simpl_set; wf_tac.
+    bool_hyps. repeat simpl_sumbool.
+    rewrite map_length, H3. simpl.
+    clear H3.
+    nested_ind_case.
+    simpl in H5, Hbnd, Hfree.
+    rewrite in_app_iff in Hbnd.
+    rewrite union_elts in Hfree.
+    not_or Hy.
+    bool_hyps.
+    rewrite Hp, IHl1; auto.
   - (*Tlet*)
     alpha_case tm0 Heq. simpl_set.
     rewrite in_app_iff in Hbnd.
     revert Heq Hsame; bool_to_prop; intros [[Htyseq Heq1] Heq2] [Hs1 Hs2].
     split_all; [simpl_sumbool | apply H; auto |].
-    (*Just see if we can do this*)
-    vsym_eq x v0.
-    + vsym_eq v0 v0. simpl in Hs2.
-      vsym_eq v v0; simpl in Hs2.
-      * pose proof (alpha_t_equiv_dup tm2 tm0_2 v0 v0 y nil v1 v2) as Hd.
+    not_or Hy.
+    (*Lots of cases*)
+    vsym_eq x v; simpl in Hs2.
+    + vsym_eq v v; simpl in Hs2.
+      (*sub doesn't matter because var not free in only nontriv case*)
+      assert ((if vsymbol_eq_dec v v0 then tm0_2 else sub_t v y tm0_2) = tm0_2). {
+        vsym_eq v0 v; [vsym_eq v v | vsym_eq v v0];
+        simpl in Hs2. destruct_all; try tf.
+        rewrite sub_t_notin; auto.
+        apply free_in_t_negb; bool_hyps; auto.
+      }
+      rewrite H1; clear H1.
+      vsym_eq v0 v; simpl in Hs2.
+      * (*Can apply [dup_fst]*)
+        pose proof (alpha_t_equiv_dup_fst tm2 tm0_2 v v y nil v1 v2) as Hd.
         simpl in Hd.
         rewrite Hd; auto.
-        not_or Hy. auto.
       * destruct_all; auto.
-        not_or Hy.
-        
-        Search alpha_equiv_t term_fv.
-        (*What we want to know: if we have (x, y) in vars
-          and x is not in free vars of t1 and y not in free vars of t2
-          then we can remove it from vars*)
-
-      destruct_all; auto.
-
-
-    + apply H; auto.
-    +
-    revert Heq Hsame;
-    bool_to_prop; intros; destruct_all; split_all; [simpl_sumbool | |].
-    + apply H; auto.
-    + vsym_eq x v0.
-      * vsym_eq v0 v0. vsym_eq v v0.
-        pose proof (alpha_t_equiv_dup tm2 tm0_2 v0 v0 y nil v1 v2).
-        simpl in H7.
-        rewrite H7; auto.
-        not_or Hy. auto.
-      * vsym_eq v0 x. vsym_eq v x.
-        not_or Hy.
-        apply H0 with(v1:=(v, v0) :: v1); auto; simpl; intros [Heq | Hin]; subst;
-        auto.
-  - (*Tif*)
-    alpha_case tm2 Heq. revert Heq Hsame; bool_to_prop; intros; destruct_all.
-    simpl_set. rewrite !in_app_iff in Hbnd. 
-    rewrite H, H0, H1; auto.
-  - (*Tmatch - basically iterated Tlet, we need the many previous results*)
-    alpha_case tm2 Heq.
-    revert Heq Hsame; bool_to_prop; intros; destruct_all. clear H1.
-    apply Nat.eqb_eq in H7.
-    repeat simpl_sumbool. 
-    rewrite map_length, H7, Nat.eqb_refl. simpl.
-    rewrite union_elts in Hfree.
-    rewrite in_app_iff in Hbnd.
-    rewrite H; auto. split_all; auto.
-    not_or Hiny. clear Hiny1 Hiny.
-    rename Hiny0 into Hfree.
-    rename Hiny2 into Hbnd.
-    rename H7 into Hlen.
-    rename l into ps2.
-    generalize dependent ps2. clear H.
-    induction ps; simpl; auto; intros; destruct ps2; inversion Hlen; simpl; auto.
-    destruct a.
-    inversion H0; subst. 
-    destruct p as [p1 t1].
-    simpl in H2. revert H2 H5; bool_to_prop; intros; destruct_all.
-    case_in.
-    + unfold add_vals.
-      rewrite H; simpl.
-      bool_to_prop;
-      split_all; auto.
-      2: { apply IHps; auto; intro C; [apply Hbnd | apply Hfree]; simpl; simpl_set; wf_tac. }
-      simpl in i.
-      apply Nat.eqb_eq in H2.
-      rewrite <- same_in_p_fv in i. 2: apply H11.
-      pose proof (In_nth _ _ vs_d i) as Hnth.
-      destruct Hnth as [n [Hn Hx]].
-      assert (Hinx: In (x, (nth n (pat_fv p1) vs_d)) (combine (pat_fv p0) (pat_fv p1))). {
-        rewrite in_combine_iff; auto. exists n.
-        split; auto.
-        intros. subst. f_equal; apply nth_indep; auto. lia. 
-      }
-      apply in_split in Hinx. destruct Hinx as [v1' [v2' Hcomb]].
-      rewrite Hcomb, <- app_assoc.
-      simpl.
-      rewrite (app_assoc v2' v1).
-      rewrite (alpha_t_equiv_dup t t1 x _ _ v1' (v2' ++ v1) v2); auto.
-      * rewrite <- app_assoc.
-        replace (v1' ++ (x, nth n (pat_fv p1) vs_d) :: v2' ++ v1 ++ v2) with
-        ((v1' ++ (x, nth n (pat_fv p1) vs_d) :: v2') ++ (v1 ++ v2)) by 
-        (rewrite <- !app_assoc; reflexivity).
-        rewrite <- Hcomb. apply H6.
-      * intro C; apply Hfree; simpl; simpl_set.
-        left. split; auto. intro C1.
-        apply Hbnd. simpl. wf_tac.
-      * intro C. apply Hbnd. simpl. wf_tac.
-    + (*In this case, we need to do substitution*)
-      simpl.
-      apply Nat.eqb_eq in H2.
-      rewrite H; simpl.
-      bool_to_prop; split.
-      * unfold add_vals.
-        rewrite app_assoc. apply (H7 t1 x y (combine (pat_fv p0) (pat_fv p1) ++ v1)); auto.
-        -- intro C. apply Hbnd. simpl. wf_tac.
-        -- intro C. apply Hfree. simpl. simpl_set. left; split; wf_tac.
-          intro C1. apply Hbnd. simpl; wf_tac.
-        -- rewrite map_app. wf_tac; auto. intro C.
-          destruct C; auto. simpl in n.
-          apply same_in_p_fv in H11. apply H11 in H12.
-          contradiction.
-        -- rewrite map_app. wf_tac; intro C.
-          destruct C; auto. apply Hbnd. simpl. wf_tac.
-        -- rewrite <- app_assoc. apply H6.
-      * apply IHps; auto.
-        -- intro C. apply Hbnd. simpl. wf_tac.
-        -- intro C. apply Hfree. simpl. simpl_set; wf_tac.
-  - (*Teps*)
-    alpha_case tm2 Heq. simpl_set.
-    revert Heq Hsame;
-    bool_to_prop; intros; destruct_all.
-    not_or Hy.
-    vsym_eq x v0; rewrite H2; simpl.
-    + vsym_eq v0 v0. vsym_eq v v0.
-      pose proof (alpha_f_equiv_dup f f0 v0 v0 y nil v1 v2).
-      simpl in H4.
-      rewrite H4, H3; auto. 
-    + vsym_eq v0 x. vsym_eq v x.
-      apply H with(v1:=(v, v0) :: v1); auto; simpl; intros [Heq | Hin]; subst;
-      auto.
-  - (*Fpred*)
-    alpha_case fm2 Heq.
-    revert Heq Hsame; 
-    bool_to_prop; intros; destruct_all; clear H5; apply Nat.eqb_eq in H0; 
-    split_all; [simpl_sumbool | wf_tac | simpl_sumbool |];
-    [rewrite H0; apply Nat.eqb_refl |].
-    clear H2 H4.
-    generalize dependent l0.
-    induction tms; intros; destruct l0; inversion H0; simpl; auto.
-    revert H3; bool_to_prop; intros; destruct_all.
-    inversion H; subst.
-    simpl in H1. apply andb_true_iff in H1. destruct H1.
-    split.
-    + apply H7; auto; intro C; [apply Hbnd | apply Hfree]; simpl; simpl_set; wf_tac.
-    + apply IHtms; wf_tac; intro C; [apply Hbnd | apply Hfree]; simpl; simpl_set; wf_tac.
-  - (*Fquant - same as Teps*)
-    alpha_case fm2 Heq. simpl_set.
-    revert Heq Hsame;
-    bool_to_prop; intros; destruct_all.
-    not_or Hy.
-    vsym_eq x v0; rewrite H2, H4; simpl.
-    + vsym_eq v0 v0. vsym_eq v v0.
-      pose proof (alpha_f_equiv_dup f fm2 v0 v0 y nil v1 v2).
-      simpl in H5.
-      rewrite H5; auto. 
-    + vsym_eq v0 x. vsym_eq v x.
-      apply H with(v1:=(v, v0) :: v1); auto; simpl; intros [Heq | Hin]; subst;
-      auto.
-  - (*Feq*)
-    alpha_case fm2 Heq.
-    revert Heq Hsame; bool_to_prop; intros; destruct_all.
-    simpl_set. rewrite in_app_iff in Hbnd.
-    rewrite H3, H, H0; auto. 
-  - (*Fbinop*)
-    alpha_case fm2 Heq.
-    revert Heq Hsame; bool_to_prop; intros; destruct_all.
-    simpl_set. rewrite in_app_iff in Hbnd.
-    rewrite H3, H, H0; auto.
-  - (*Fnot*)
-    alpha_case fm2 Heq.
-    apply H; auto.
-  - (*Ftrue*)
-    alpha_case fm2 Heq; auto.
-  - (*Ffalse*)
-    alpha_case fm2 Heq; auto.
-  - (*Flet*)
-    alpha_case fm2 Heq. simpl_set.
-    rewrite in_app_iff in Hbnd.
-    revert Heq Hsame;
-    bool_to_prop; intros; destruct_all; split_all; [simpl_sumbool | |].
-    + apply H; auto.
-    + vsym_eq x v0.
-      * vsym_eq v0 v0. vsym_eq v v0.
-        pose proof (alpha_f_equiv_dup f fm2 v0 v0 y nil v1 v2).
-        simpl in H7.
-        rewrite H7; auto.
-        not_or Hy. auto.
-      * vsym_eq v0 x. vsym_eq v x.
-        not_or Hy.
-        apply H0 with(v1:=(v, v0) :: v1); auto; simpl; intros [Heq | Hin]; subst;
-        auto.
-  - (*Fif*)
-    alpha_case fm2 Heq. simpl_set.
+         (*Can apply [dup_fst]*)
+        pose proof (alpha_t_equiv_dup_fst tm2 tm0_2 v v0 y nil v1 v2) as Hd.
+        simpl in Hd.
+        rewrite Hd; auto.
+    + vsym_eq v x; simpl in Hs2.
+      vsym_eq v0 x; simpl in Hs2; destruct_all; auto.
+      * vsym_eq x x.
+        destruct_all; auto.
+        (*Now, we use [alpha_equiv_t_notin_remove]*)
+        rewrite app_comm_cons, 
+        alpha_equiv_t_notin_remove with(v1:=(v, x) :: v1); auto.
+        apply negb_true_iff.
+        apply free_in_t_negb; auto.
+      * vsym_eq x v0. 
+        (*Here we can use the IH*)
+        apply H0 with(v1:=(v, v0) :: v1); auto; simpl; 
+        intros [C | C]; auto.
+  - (*Tif*) alpha_case tm2 Heq. simpl_set.
     rewrite !in_app_iff in Hbnd.
-    revert Heq Hsame; bool_to_prop; intros; destruct_all.
+    bool_hyps.
     rewrite H, H0, H1; auto.
-  - (*Fmatch - exact same as Tmatch (except we use [alpha_f_equiv_dup]) *)
-    alpha_case fm2 Heq.
-    revert Heq Hsame; bool_to_prop; intros; destruct_all. clear H1.
-    apply Nat.eqb_eq in H7.
-    repeat simpl_sumbool. 
-    rewrite map_length, H7, Nat.eqb_refl. simpl.
-    rewrite union_elts in Hfree.
+  - (*Tmatch*)
+    alpha_case tm2 Heq.
     rewrite in_app_iff in Hbnd.
-    rewrite H; auto. split_all; auto.
-    not_or Hiny. clear Hiny1 Hiny.
-    rename Hiny0 into Hfree.
-    rename Hiny2 into Hbnd.
-    rename H7 into Hlen.
-    rename l into ps2.
-    generalize dependent ps2. clear H.
-    induction ps; simpl; auto; intros; destruct ps2; inversion Hlen; simpl; auto.
-    destruct a.
-    inversion H0; subst. 
-    destruct p as [p1 f1].
-    simpl in H2. revert H2 H5; bool_to_prop; intros; destruct_all.
-    case_in.
-    + unfold add_vals.
-      rewrite H; simpl.
-      bool_to_prop;
-      split_all; auto.
-      2: { apply IHps; auto; intro C; [apply Hbnd | apply Hfree]; simpl; simpl_set; wf_tac. }
-      simpl in i.
-      apply Nat.eqb_eq in H2.
-      rewrite <- same_in_p_fv in i. 2: apply H11.
-      pose proof (In_nth _ _ vs_d i) as Hnth.
-      destruct Hnth as [n [Hn Hx]].
-      assert (Hinx: In (x, (nth n (pat_fv p1) vs_d)) (combine (pat_fv p0) (pat_fv p1))). {
-        rewrite in_combine_iff; auto. exists n.
-        split; auto.
-        intros. subst. f_equal; apply nth_indep; auto. lia. 
-      }
-      apply in_split in Hinx. destruct Hinx as [v1' [v2' Hcomb]].
-      rewrite Hcomb, <- app_assoc.
-      simpl.
-      rewrite (app_assoc v2' v1).
-      rewrite (alpha_f_equiv_dup f f1 x _ _ v1' (v2' ++ v1) v2); auto.
-      * rewrite <- app_assoc.
-        replace (v1' ++ (x, nth n (pat_fv p1) vs_d) :: v2' ++ v1 ++ v2) with
-        ((v1' ++ (x, nth n (pat_fv p1) vs_d) :: v2') ++ (v1 ++ v2)) by 
-        (rewrite <- !app_assoc; reflexivity).
-        rewrite <- Hcomb. apply H6.
-      * intro C; apply Hfree; simpl; simpl_set.
-        left. split; auto. intro C1.
-        apply Hbnd. simpl. wf_tac.
-      * intro C. apply Hbnd. simpl. wf_tac.
-    + (*In this case, we need to do substitution*)
-      simpl.
-      apply Nat.eqb_eq in H2.
-      rewrite H; simpl.
-      bool_to_prop; split.
-      * unfold add_vals.
-        rewrite app_assoc. apply (H7 f1 x y (combine (pat_fv p0) (pat_fv p1) ++ v1)); auto.
-        -- intro C. apply Hbnd. simpl. wf_tac.
-        -- intro C. apply Hfree. simpl. simpl_set. left; split; wf_tac.
-          intro C1. apply Hbnd. simpl; wf_tac.
-        -- rewrite map_app. wf_tac; auto. intro C.
-          destruct C; auto. simpl in n.
-          apply same_in_p_fv in H11. apply H11 in H12.
-          contradiction.
-        -- rewrite map_app. wf_tac; intro C.
-          destruct C; auto. apply Hbnd. simpl. wf_tac.
-        -- rewrite <- app_assoc. apply H6.
-      * apply IHps; auto.
-        -- intro C. apply Hbnd. simpl. wf_tac.
-        -- intro C. apply Hfree. simpl. simpl_set; wf_tac.
-Qed.
-
-
+    rewrite union_elts in Hfree. not_or Hy.
+    bool_hyps. repeat simpl_sumbool. rewrite H; auto; simpl.
+    rewrite map_length, H4; simpl.
+    clear H Hy1 Hy H7.
+    nested_ind_case.
+    destruct a as [p1 tm_1].
+    destruct p as [p2 tm_2].
+    simpl.
+    simpl in H5, H6, Hy0, Hy2.
+    rewrite !in_app_iff in Hy2.
+    bool_hyps.
+    rename H9 into Hcase.
+    pose proof (alpha_equiv_p_fv_len_full _ _ H) as Hlen2.
+    rewrite union_elts in Hy0.
+    rewrite <- remove_all_elts in Hy0.
+    not_or Hy.
+    (*Again, lots of cases*)
+    case_in;
+    destruct (in_dec vsymbol_eq_dec x (pat_fv p2)); try contradiction;
+    simpl in Hcase.
+    + rewrite H, IHps; auto.
+      simpl_bool.
+      revert H7; unfold add_vals; intros Hteq.
+      destruct (in_dec vsymbol_eq_dec x (pat_fv p1));
+      simpl in Hcase.
+      * (*Case 1: x is in free vars of both patterns:
+        we can use dup_fst*)
+        destruct (in_combine_split_l (pat_fv p1) (pat_fv p2) 
+          vs_d vs_d x i1 Hlen2) as [i' [l1 [l2 [Hi' [Hx Hcomb]]]]].
+        unfold is_true. rewrite <- Hteq, Hcomb, <- !app_assoc; simpl.
+        rewrite !(app_assoc l2).
+        apply alpha_t_equiv_dup_fst with(v2:=l2 ++ v1); auto.
+      * (*Case 2: x is in free vars of second, not first
+        but x is free in term of first. Then we use 
+        [alpha_equiv_t_notin_remove]*)
+        destruct Hcase as [|Hcase]; try tf.
+        bool_hyps.
+        unfold is_true. rewrite <- Hteq, !(app_assoc _ v1).
+        apply alpha_equiv_t_notin_remove; try solve_negb.
+        apply negb_true_iff.
+        apply free_in_t_negb; auto.
+    + rewrite H, IHps; auto.
+      simpl_bool.
+      revert H7; unfold add_vals; intros Hteq.
+      destruct (in_dec vsymbol_eq_dec x (pat_fv p1));
+      simpl in Hcase.
+      * (*Case3: x is in free vars of p1 not p2,
+        sub_t does nothing bc not in free var, again use [dup_fst]*)
+        destruct Hcase as [Hcase|]; try tf.
+        bool_hyps.
+        rewrite sub_t_notin; [|apply free_in_t_negb; auto].
+        destruct (in_combine_split_l (pat_fv p1) (pat_fv p2) 
+        vs_d vs_d x i Hlen2) as [i' [l1 [l2 [Hi' [Hx Hcomb]]]]].
+        unfold is_true. rewrite <- Hteq, Hcomb, <- !app_assoc; simpl.
+        rewrite !(app_assoc l2).
+        apply alpha_t_equiv_dup_fst with(v2:=l2 ++ v1); auto.
+      * (*Case 4: use IH*)
+        repeat (destruct Hcase as [Hcase |]; try tf;
+        bool_hyps).
+        rewrite (app_assoc _ v1).
+        apply Hp; auto; [| | rewrite <- app_assoc; auto];
+        rewrite map_app; [rewrite map_fst_combine | rewrite map_snd_combine];
+        auto; rewrite in_app_iff; intros [C | C]; auto.
+  -
+Admitted.
 
 
 (*This lemma describes how substitution affects alpha equivalence, 
@@ -6336,6 +6196,7 @@ Qed.
   We give more useful corollaries; we need the general form to prove
   results about iterated substitution.
   *)
+  (*
 Theorem alpha_equiv_sub (t: term) (f: formula):
   (forall (tm2: term) (x y: vsymbol) v1 v2
     (Htys: snd x = snd y)
@@ -6623,7 +6484,7 @@ Proof.
       * apply IHps; auto.
         -- intro C. apply Hbnd. simpl. wf_tac.
         -- intro C. apply Hfree. simpl. simpl_set; wf_tac.
-Qed.
+Qed.*)
 
 (*Corollaries*)
 Definition alpha_equiv_sub_t_full (t: term) := proj1(alpha_equiv_sub t Ftrue).
