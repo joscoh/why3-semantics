@@ -7105,6 +7105,29 @@ Proof.
   apply alpha_teps_congr; auto.
 Qed.
 
+Lemma alpha_quant_congr q v f1 f2:
+  a_equiv_f f1 f2 ->
+  a_equiv_f (Fquant q v f1) (Fquant q v f2).
+Proof.
+  unfold a_equiv_f; simpl; intros.
+  rewrite !eq_dec_refl; simpl.
+  apply a_equiv_f_expand; auto; simpl;
+  intros x [Hx | []]; subst; auto.
+Qed.
+
+Lemma alpha_convert_quant': forall q v1 v2,
+  snd v1 = snd v2 ->
+  forall f1 f2: formula,
+  ~ In v2 (bnd_f f2) ->
+  ~ In v2 (form_fv f2) ->
+  a_equiv_f f1 f2 ->
+  a_equiv_f (Fquant q v1 f1) (Fquant q v2 (sub_f v1 v2 f2)).
+Proof.
+  intros. eapply a_equiv_f_trans.
+  2: apply alpha_convert_quant; auto.
+  apply alpha_quant_congr; auto.
+Qed.
+
 
 (*Annoying to show, need lots of transitivity and
   strengthening/weakening with [redundant] lemma*)
@@ -8879,6 +8902,70 @@ Proof.
         apply (Hn2 (S i1) (S i2) d x ltac:(lia) ltac:(lia) ltac:(lia)).
 Qed.
 
+Lemma alpha_feq_congr ty t1 t2 t3 t4:
+  a_equiv_t t1 t2 ->
+  a_equiv_t t3 t4 ->
+  a_equiv_f (Feq ty t1 t3) (Feq ty t2 t4).
+Proof.
+  unfold a_equiv_t, a_equiv_f; intros; simpl;
+  rewrite eq_dec_refl, H, H0; auto.
+Qed.
+
+Lemma alpha_fbinop_congr b f1 f2 f3 f4:
+  a_equiv_f f1 f2 ->
+  a_equiv_f f3 f4 ->
+  a_equiv_f (Fbinop b f1 f3) (Fbinop b f2 f4).
+Proof.
+  unfold a_equiv_f; intros; simpl;
+  rewrite eq_dec_refl, H, H0; auto.
+Qed.
+
+Lemma alpha_flet_congr v1 tm1 tm2 f1 f2:
+  a_equiv_t tm1 tm2 ->
+  a_equiv_f f1 f2 ->
+  a_equiv_f (Flet tm1 v1 f1) (Flet tm2 v1 f2).
+Proof.
+  unfold a_equiv_t, a_equiv_f; simpl; intros.
+  rewrite H, eq_dec_refl; simpl_bool.
+  apply a_equiv_f_expand; simpl; auto.
+  intros x [Hx | []]; subst; auto.
+Qed.
+
+(*And from transitivity:*)
+Lemma alpha_convert_flet':
+forall v1 v2 : vsymbol,
+  snd v1 = snd v2 ->
+  forall tm1 tm2 f1 f2,
+  ~ In v2 (bnd_f f2) ->
+  ~ In v2 (form_fv f2) ->
+  a_equiv_t tm1 tm2 ->
+  a_equiv_f f1 f2 ->
+  a_equiv_f (Flet tm1 v1 f1) (Flet tm2 v2 (sub_f v1 v2 f2)).
+Proof.
+  intros.
+  eapply a_equiv_f_trans.
+  2: apply alpha_convert_flet; auto.
+  apply alpha_flet_congr; auto.
+Qed.
+
+(*TODO: move congruence lemmas together*)
+Lemma alpha_fif_congr f1 f2 f3 f4 f5 f6:
+  a_equiv_f f1 f2 ->
+  a_equiv_f f3 f4 ->
+  a_equiv_f f5 f6 ->
+  a_equiv_f (Fif f1 f3 f5) (Fif f2 f4 f6).
+Proof.
+  unfold a_equiv_f; simpl; intros Hf Ht1 Ht2;
+  rewrite Hf, Ht1, Ht2; reflexivity.
+Qed.
+
+Lemma alpha_fnot_congr f1 f2:
+  a_equiv_f f1 f2 ->
+  a_equiv_f (Fnot f1) (Fnot f2).
+Proof.
+  unfold a_equiv_f; simpl; auto.
+Qed.
+
 
 Ltac free_bnd Hfree Hbnd :=
   let x := fresh "x" in
@@ -9067,6 +9154,44 @@ Proof.
     rewrite map2_nth with(d1:=tm_d)(d2:=nil); wf_tac.
     apply H; wf_tac; free_bnd Hfree Hbnd.
   - (*Fquant*)
+    destruct l; inversion Hlen.
+    inversion Hn; subst.
+    apply alpha_convert_quant'; wf_tac.
+    + intro C.
+      apply alpha_f_aux_wf in C; wf_tac.
+    + intro C.
+      rewrite alpha_f_aux_fv' in C; wf_tac;
+      try free_bnd Hfree Hbnd.
+      apply (Hfree (s, snd v)); simpl; simpl_set; auto.
+      split; auto. intro Heq.
+      apply (Hbnd v); auto. simpl. rewrite <- Heq. triv.
+    + apply H; wf_tac; free_bnd Hfree Hbnd.
+  - (*Feq*)
+    apply alpha_feq_congr; [apply H | apply H0]; wf_tac;
+    free_bnd Hfree Hbnd.
+  - (*Fbinop*)
+    apply alpha_fbinop_congr; [apply H | apply H0]; wf_tac;
+    free_bnd Hfree Hbnd.
+  - (*Fnot*)
+    apply alpha_fnot_congr. apply H; wf_tac; free_bnd Hfree Hbnd.
+  - (*Flet*)
+    destruct l; inversion Hlen.
+    inversion Hn; subst.
+    apply alpha_convert_flet'; wf_tac.
+    + intro C.
+      apply alpha_f_aux_wf in C; wf_tac.
+    + intro C.
+      rewrite alpha_f_aux_fv' in C; wf_tac;
+      try free_bnd Hfree Hbnd.
+      apply (Hfree (s, snd v)); simpl; simpl_set; auto.
+      right. split; auto. intro Heq.
+      apply (Hbnd v); auto. simpl. rewrite <- Heq. triv.
+    + apply H; wf_tac; free_bnd Hfree Hbnd.
+    + apply H0; wf_tac; free_bnd Hfree Hbnd.
+  - (*Fif*)
+    apply alpha_fif_congr; [apply H | apply H0 | apply H1];
+    wf_tac; free_bnd Hfree Hbnd.
+  - (*Fmatch*)
 
 
   (*
