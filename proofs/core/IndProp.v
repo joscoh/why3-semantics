@@ -1068,28 +1068,8 @@ Proof.
       * intros. apply H1; auto. right; auto.
 Qed.
 
-(*We axiomatize alpha substitution, we will do it later*)
-Axiom alpha_f : formula -> formula.
-
-Axiom alpha_valid : forall (f: formula) (Hval: valid_formula sigma f),
-  valid_formula sigma (alpha_f f).
-
-Axiom alpha_f_equiv : forall (pf: pi_funpred gamma_valid pd)
-  (vt: val_typevar) (vv: val_vars pd vt) 
-  (f: formula) (Hvalf: valid_formula sigma f),
-  formula_rep gamma_valid pd all_unif vt pf vv f Hvalf =
-  formula_rep gamma_valid pd all_unif vt pf vv (alpha_f f) 
-    (alpha_valid f Hvalf).
-
-Axiom alpha_f_wf: forall (f: formula), fmla_wf (alpha_f f).
-
-Axiom alpha_valid_ind_form: forall (p: predsym) (f: formula),
-  valid_ind_form p f ->
-  valid_ind_form p (alpha_f f).
-
-Axiom alpha_pos: forall (ps: list predsym) (f: formula),
-  ind_positive ps f ->
-  ind_positive ps (alpha_f f).
+(*Need alpha conversion*)
+Require Import Substitution.
 
 (*TODO: move*)
 (*If some pred P does not appear in any terms for [substi_multi_let],
@@ -1151,8 +1131,8 @@ Proof.
   assert (Hinfs':=Hinfs).
   rewrite in_map_iff in Hinfs.
   destruct Hinfs as [[p fs'] [Hfst Hinfs]]; simpl in Hfst; subst.
-  (*Part 1: work with alpha to get wf*)
-  rewrite alpha_f_equiv.
+  (*Part 1: work with alpha conversion to get wf*)
+  rewrite a_convert_f_rep.
   assert (Hvalindf: valid_ind_form p f). {
     rewrite Forall_forall in Hvalind.
     specialize (Hvalind (p, fs) Hinfs). simpl in Hvalind.
@@ -1164,19 +1144,19 @@ Proof.
     rewrite Forall_forall in Hpos.
     apply Hpos; auto.
   } 
-  assert (Hvalinda:=(alpha_valid_ind_form p f Hvalindf)).
-  assert (Hwfa:=(alpha_f_wf f)).
-  assert (Hposa:=(alpha_pos (map fst indpred) f Hposf)).
+  assert (Hvalinda:=(a_convert_f_valid_ind_form p f Hvalindf)).
+  assert (Hwfa:=(a_convert_f_wf f)).
+  assert (Hposa:=(a_convert_f_pos (map fst indpred) f Hposf)).
   (*Part 2: Work with [indpred_transform] *)
   rewrite indpred_decomp_equiv; auto.
-  assert (Hvaldec:=(indpred_transform_valid _ (alpha_valid _ Hvalf))).
+  assert (Hvaldec:=(indpred_transform_valid _ (a_convert_f_valid _ Hvalf))).
   (*Then we can unfold manually*)
   unfold indpred_transform in *.
   assert (A:=Hvaldec).
   apply fforalls_valid_inj in A.
   destruct A as [Hval1 Halltup1].
   rewrite fmla_rep_irrel with
-    (Hval2:= (fforalls_valid (tup_1 (indpred_decomp (alpha_f f))) _ Hval1 Halltup1)).
+    (Hval2:= (fforalls_valid (tup_1 (indpred_decomp (a_convert_f f))) _ Hval1 Halltup1)).
   rewrite fforalls_val. rewrite simpl_all_dec. intros h.
   assert (A:=Hval1).
   apply iter_flet_valid_inj in A.
@@ -1185,7 +1165,7 @@ Proof.
   rewrite iter_flet_val, fbinop_rep, bool_of_binop_impl, simpl_all_dec.
   intros Hconstrs.
   (*Might need lemma about equality of fmlas*)
-  assert (Hval3: valid_formula sigma (Fpred p (fst (get_indprop_args (alpha_f f))) (snd (get_indprop_args (alpha_f f))))). {
+  assert (Hval3: valid_formula sigma (Fpred p (fst (get_indprop_args (a_convert_f f))) (snd (get_indprop_args (a_convert_f f))))). {
     rewrite <- ind_form_decomp; auto.
     inversion Hval2; subst; auto.
   }
@@ -1226,7 +1206,7 @@ Proof.
   }
   (*Now we repeat the process again (alpha, [indpred_transform, etc])*)
   revert Hformf.
-  rewrite alpha_f_equiv, indpred_decomp_equiv; auto.
+  rewrite a_convert_f_rep, indpred_decomp_equiv; auto.
   unfold indpred_transform.
   rewrite fmla_rep_irrel with
     (Hval2:= (fforalls_valid _ _ Hval1 Halltup1)).
@@ -1243,11 +1223,11 @@ Proof.
   intros.
   (*Need this in multiple places*)
   assert ((substi_multi_let gamma_valid pd all_unif vt (interp_with_Ps pf (map fst indpred) Ps)
-    (substi_mult pd vt vv (tup_1 (indpred_decomp (alpha_f f))) h)
-    (tup_2 (indpred_decomp (alpha_f f))) Halltup2) =
+    (substi_mult pd vt vv (tup_1 (indpred_decomp (a_convert_f f))) h)
+    (tup_2 (indpred_decomp (a_convert_f f))) Halltup2) =
     (substi_multi_let gamma_valid pd all_unif vt pf
-     (substi_mult pd vt vv (tup_1 (indpred_decomp (alpha_f f))) h)
-     (tup_2 (indpred_decomp (alpha_f f))) Halltup2)). {
+     (substi_mult pd vt vv (tup_1 (indpred_decomp (a_convert_f f))) h)
+     (tup_2 (indpred_decomp (a_convert_f f))) Halltup2)). {
       apply substi_mult_notin_eq with(ps:=map fst indpred); simpl; auto.
       - apply indpred_decomp_let_notin with(ps:=map fst indpred); auto.
       - apply find_apply_pred_notin.
@@ -1267,7 +1247,7 @@ Proof.
     destruct (in_bool_spec predsym_eq_dec p1 (map fst indpred)); 
     [|rewrite find_apply_pred_notin; auto].
     (*Use fact that p1 not in x*)
-    assert (Hindt: ind_positive (map fst indpred) (tup_4 (indpred_decomp (alpha_f f)))).
+    assert (Hindt: ind_positive (map fst indpred) (tup_4 (indpred_decomp (a_convert_f f)))).
       apply indpred_decomp_last_pos; auto.
     rewrite ind_form_decomp with(p:=p) in Hindt; auto.
     inversion Hindt; subst.
@@ -1277,8 +1257,8 @@ Proof.
     clear H0 Hformf.
     rewrite H. clear H.
     remember (substi_multi_let gamma_valid pd all_unif vt pf
-    (substi_mult pd vt vv (tup_1 (indpred_decomp (alpha_f f))) h)
-    (tup_2 (indpred_decomp (alpha_f f))) Halltup2) as vv'.
+    (substi_mult pd vt vv (tup_1 (indpred_decomp (a_convert_f f))) h)
+    (tup_2 (indpred_decomp (a_convert_f f))) Halltup2) as vv'.
     clear Heqvv'.
     (*Now, we just need to prove that the [iter_and] of all of 
       these constructors is true, when we interpre p with P

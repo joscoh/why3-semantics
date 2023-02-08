@@ -393,12 +393,12 @@ Ltac case_match_goal :=
           destruct p eqn: Hp end; auto.
 
 (*A way to get out the tm and fmla parts of a theorem*)
-Definition proj_tm {P1: term -> Prop} {P2: formula -> Prop}
-  (H: forall (t: term) (f: formula), P1 t /\ P2 f) : 
-  forall t, P1 t := fun t => proj1 (H t Ftrue).
-Definition proj_fmla {P1: term -> Prop} {P2: formula -> Prop}
-  (H: forall (t: term) (f: formula), P1 t /\ P2 f) : 
-  forall f, P2 f := fun f => proj2 (H tm_d f).
+Notation proj_tm H t := (*{P1: term -> Prop} {P2: formula -> Prop}
+  (H: forall (t: term) (f: formula), P1 t /\ P2 f) (t: term) : 
+  P1 t*) (proj1 (H t Ftrue)).
+Notation proj_fmla H f := (*{P1: term -> Prop} {P2: formula -> Prop}
+  (H: forall (t: term) (f: formula), P1 t /\ P2 f) (f: formula) : 
+  P2 f :=*) (proj2 (H tm_d f)).
 
 (*First, general and useful results about substitution*)
 Section GenSub.
@@ -492,8 +492,8 @@ Proof.
     split; wf_tac. simpl_set. split; auto.
 Qed.
 
-Definition sub_t_notin := proj_tm sub_notin.
-Definition sub_f_notin := proj_fmla sub_notin.
+Definition sub_t_notin t := proj_tm sub_notin t.
+Definition sub_f_notin f := proj_fmla sub_notin f.
 
 (*If we substitute x with itself, then nothing changes*)
 Lemma sub_eq (t: term) (f: formula) :
@@ -530,8 +530,8 @@ Proof.
     case_in; auto. destruct (nth n ps d); auto.
 Qed.
 
-Definition sub_t_eq := proj_tm sub_eq. 
-Definition sub_f_eq := proj_fmla sub_eq. 
+Definition sub_t_eq t := proj_tm sub_eq t. 
+Definition sub_f_eq f := proj_fmla sub_eq f. 
 
 (*It is easier to prove some of the lemmas with an alternate
   approach: define when a variable is free rather than show
@@ -646,8 +646,8 @@ Proof.
     apply dec_negb_iff.
 Qed.
 
-Definition free_in_t_spec := proj_tm free_in_spec. 
-Definition free_in_f_spec := proj_fmla free_in_spec. 
+Definition free_in_t_spec t := proj_tm free_in_spec t. 
+Definition free_in_f_spec f := proj_fmla free_in_spec f. 
 
 Section FreeNegb.
 Variable (A: Type).
@@ -741,8 +741,8 @@ Proof.
     simpl; rewrite H0; wf_tac.
 Qed.
 
-Definition sub_t_fv_diff := proj_tm sub_fv_diff. 
-Definition sub_f_fv_diff := proj_fmla sub_fv_diff.
+Definition sub_t_fv_diff t := proj_tm sub_fv_diff t. 
+Definition sub_f_fv_diff f := proj_fmla sub_fv_diff f.
 
 Lemma existsb_false {A: Type} (f: A -> bool) (l: list A):
   (existsb f l = false) <-> Forall (fun x => f x = false) l.
@@ -800,8 +800,8 @@ Proof.
     apply H0; wf_tac.
 Qed.
 
-Definition sub_t_fv_notin := proj_tm sub_fv_notin.
-Definition sub_f_fv_notin := proj_fmla sub_fv_notin.
+Definition sub_t_fv_notin t := proj_tm sub_fv_notin t.
+Definition sub_f_fv_notin f := proj_fmla sub_fv_notin f.
 
 Lemma existsb_orb {A: Type} (f1 f2: A -> bool) (l: list A):
   existsb f1 l || existsb f2 l =
@@ -925,8 +925,8 @@ Proof.
       split; wf_tac. exists (nth i ps (Pwild, Ftrue)). split; wf_tac.
 Qed. 
 
-Definition sub_t_fv_in := proj_tm sub_fv_in. 
-Definition sub_f_fv_in := proj_fmla sub_fv_in.
+Definition sub_t_fv_in t := proj_tm sub_fv_in t. 
+Definition sub_f_fv_in f := proj_fmla sub_fv_in f.
 
 End GenSub.
 
@@ -1399,7 +1399,7 @@ Definition mk_fun_gen (l1 l2: list vsymbol) (x: vsymbol) : vsymbol :=
   let n1 := length l1 in
   let n2 := length l2 in
   let l2' := if (n2 <? n1) then l2 ++
-    gen_notin nth_vs vsymbol_eq_dec (n1 - n2) l2 else l2 in
+    gen_vars (n1 - n2) l2 else l2 in
   mk_fun l1 l2' x.
 
 Lemma mk_fun_gen_inj (l1 l2: list vsymbol):
@@ -1413,8 +1413,7 @@ Proof.
     apply add_notin_nodup; auto.
     apply nth_vs_inj.
   - destruct (Nat.ltb_spec0 (length l2) (length l1)); try lia.
-    rewrite app_length, gen_notin_length. lia.
-    apply nth_vs_inj.
+    rewrite app_length, gen_vars_length. lia.
 Qed.
 
 (*TODO: move*)
@@ -3282,8 +3281,8 @@ Proof.
 Qed.
 
 (*Corollaries*)
-Definition alpha_equiv_t_equiv := proj_tm alpha_equiv_equiv.
-Definition alpha_equiv_f_equiv := proj_fmla alpha_equiv_equiv.
+Definition alpha_equiv_t_equiv t := proj_tm alpha_equiv_equiv t.
+Definition alpha_equiv_f_equiv f := proj_fmla alpha_equiv_equiv f.
 
 (*Full alpha equivalence: when there are no vars in the
   context*)
@@ -3440,8 +3439,8 @@ Proof.
       specialize (Hx vs_d vs_d). subst; simpl; reflexivity.
 Qed.
 
-Definition alpha_t_equiv_same := proj_tm alpha_equiv_same.
-Definition alpha_f_equiv_same := proj_fmla alpha_equiv_same.
+Definition alpha_t_equiv_same t := proj_tm alpha_equiv_same t.
+Definition alpha_f_equiv_same f := proj_fmla alpha_equiv_same f.
 
 (*Full reflexivity*)
 Lemma a_equiv_t_refl (t: term):
@@ -3570,8 +3569,8 @@ Proof.
     rewrite flip_app, flip_combine; auto.
 Qed.
 
-Definition alpha_t_equiv_sym := proj_tm alpha_equiv_sym. 
-Definition alpha_f_equiv_sym := proj_fmla alpha_equiv_sym.
+Definition alpha_t_equiv_sym t := proj_tm alpha_equiv_sym t. 
+Definition alpha_f_equiv_sym f := proj_fmla alpha_equiv_sym f.
 
 (*Transitivity*)
 
@@ -3868,8 +3867,8 @@ Proof.
     * apply IHps with(ps2:=ps2); auto.
 Qed.
 
-Definition alpha_equiv_t_trans := proj_tm alpha_equiv_trans.
-Definition alpha_equiv_f_trans := proj_fmla alpha_equiv_trans.
+Definition alpha_equiv_t_trans t := proj_tm alpha_equiv_trans t.
+Definition alpha_equiv_f_trans f := proj_fmla alpha_equiv_trans f.
 
 Corollary a_equiv_t_trans (t1 t2 t3: term):
   a_equiv_t t1 t2 ->
@@ -4256,8 +4255,8 @@ Proof.
       * rewrite Forall_forall in H11. apply H11. wf_tac.
 Qed. 
 
-Definition alpha_equiv_t_type := proj_tm alpha_equiv_type.
-Definition alpha_equiv_f_valid := proj_fmla alpha_equiv_type.
+Definition alpha_equiv_t_type t := proj_tm alpha_equiv_type t.
+Definition alpha_equiv_f_valid f := proj_fmla alpha_equiv_type f.
 
 Corollary a_equiv_t_type (t1 t2: term) (ty: vty):
   a_equiv_t t1 t2 ->
@@ -4356,8 +4355,8 @@ Proof.
     rewrite <- !app_assoc in Hp. apply Hp.
 Qed.
 
-Definition alpha_equiv_t_full_dup := proj_tm alpha_equiv_full_dup.
-Definition alpha_equiv_f_full_dup := proj_fmla alpha_equiv_full_dup.
+Definition alpha_equiv_t_full_dup t := proj_tm alpha_equiv_full_dup t.
+Definition alpha_equiv_f_full_dup f := proj_fmla alpha_equiv_full_dup f.
 
 (*2. If both elements of a pair appear separately earlier in the list,
   we can remove this.
@@ -4417,8 +4416,8 @@ Proof.
     rewrite <- !app_assoc in Hp. apply Hp.
 Qed.
 
-Definition alpha_equiv_t_dup3 := proj_tm alpha_equiv_dup3. 
-Definition alpha_equiv_f_dup3 := proj_fmla alpha_equiv_dup3.
+Definition alpha_equiv_t_dup3 t := proj_tm alpha_equiv_dup3 t. 
+Definition alpha_equiv_f_dup3 f := proj_fmla alpha_equiv_dup3 f.
 
 (*We also need the symmetric lemma*)
 (*TOOO: better name*)
@@ -4698,8 +4697,8 @@ Proof.
       rewrite !app_assoc; auto.
 Qed.
 
-Definition alpha_t_equiv_dup_fst := proj_tm alpha_equiv_dup.
-Definition alpha_f_equiv_dup_fst := proj_fmla alpha_equiv_dup.
+Definition alpha_t_equiv_dup_fst t := proj_tm alpha_equiv_dup t.
+Definition alpha_f_equiv_dup_fst f := proj_fmla alpha_equiv_dup f.
 
 (*Other direction comes from symmetry*)
 (*
@@ -4828,8 +4827,8 @@ Proof.
     rewrite <- !app_assoc in Hp. apply Hp; auto.
 Qed.
 
-Definition alpha_equiv_t_redundant := proj_tm alpha_equiv_redundant.
-Definition alpha_equiv_f_redundant := proj_fmla alpha_equiv_redundant.
+Definition alpha_equiv_t_redundant t := proj_tm alpha_equiv_redundant t.
+Definition alpha_equiv_f_redundant f := proj_fmla alpha_equiv_redundant f.
 
 (*Remove redundant lists - do generically so we prove once*)
 Section RemoveList.
@@ -4914,6 +4913,8 @@ Definition alpha_equiv_t_redundant' :=
   a_redundant_list _ _ alpha_equiv_t_redundant alpha_equiv_t_full_dup.
 Definition alpha_equiv_f_redundant' :=
   a_redundant_list _ _ alpha_equiv_f_redundant alpha_equiv_f_full_dup.
+
+(*TODO: put expand lemmas here*)
 
 (*TODO: move*)
 Lemma in_combine_same {A: Type} (l: list A):
@@ -5097,8 +5098,8 @@ Proof.
     rewrite Nat.eqb_refl, same_in_p_refl, H3, IHps; auto.
 Qed.
 
-Definition same_in_t_refl := proj_tm same_in_refl. 
-Definition same_in_f_refl := proj_fmla same_in_refl.
+Definition same_in_t_refl t := proj_tm same_in_refl t. 
+Definition same_in_f_refl f := proj_fmla same_in_refl f.
 
 (*
 Lemma in_first_inj_r {A B: Type} (x: A) (y1 y2: B) (l: list (A * B)) :
@@ -5384,8 +5385,8 @@ Proof.
 Qed.
 
 (*Corollaries*)
-Definition alpha_equiv_sub_t_full := proj_tm alpha_equiv_sub.
-Definition alpha_equiv_sub_f_full := proj_fmla alpha_equiv_sub.
+Definition alpha_equiv_sub_t_full t := proj_tm alpha_equiv_sub t.
+Definition alpha_equiv_sub_f_full f := proj_fmla alpha_equiv_sub f.
 
 (*How a substitution changes alpha equivalence*)
 Corollary alpha_equiv_sub_t (t: term) (x y: vsymbol)
@@ -5469,8 +5470,8 @@ Proof.
     + rewrite H5, IHps; auto.
 Qed. 
 
-Definition same_in_sub_t := proj_tm same_in_sub.
-Definition same_in_sub_f := proj_fmla same_in_sub.
+Definition same_in_sub_t t := proj_tm same_in_sub t.
+Definition same_in_sub_f f := proj_fmla same_in_sub f.
 
 Lemma same_in_p_trans (p1 p2 p3: pattern) x:
   same_in_p p1 p2 x ->
@@ -5599,8 +5600,8 @@ Proof.
     (IHps H16 ps2); auto.
 Qed.
 
-Definition same_in_t_trans := proj_tm same_in_trans.
-Definition same_in_f_trans := proj_fmla same_in_trans. 
+Definition same_in_t_trans t := proj_tm same_in_trans t.
+Definition same_in_f_trans f := proj_fmla same_in_trans f. 
 
 Lemma same_in_sub_ts (t: term) vs z:
   ~ In z (map fst vs) ->
@@ -5905,6 +5906,196 @@ Qed.
 
 End API.
 
+(*We need some iterated versions of the above free variable lemmas
+  and congruence lemmas: we do terms and formulas together by
+  generalizing *)
+Section Iter.
+
+Context {A: Type}.
+Variable sub: vsymbol -> vsymbol -> A -> A.
+Variable free_in: vsymbol -> A -> bool.
+Variable sub_notin: forall (t: A) (x y: vsymbol), x <> y ->
+  free_in x (sub x y t) = false.
+Variable sub_diff: forall (t: A) (x y z: vsymbol),
+  z <> x -> z <> y -> free_in z (sub x y t) = free_in z t.
+Notation subs := (sub_mult sub).
+(*For bound vars*)
+Variable bnd: A -> list vsymbol.
+Variable bnd_sub : forall (t: A) (x y: vsymbol),
+  bnd (sub x y t) = bnd t.
+
+(*The iterated version of [sub_fv_notin]. Awkward to state so
+  that we can prove term and formula versions together*)
+Lemma sub_mult_fv_notin
+  (vars: list (vsymbol * string)) (t: A)
+  (Hn: NoDup (map fst vars))
+  (Huniq: forall x, In x (map fst vars) -> ~ In (fst x) (map snd vars)):
+  forall x, In x (map fst vars) -> free_in x (subs vars t) = false.
+Proof.
+  induction vars; simpl; intros. destruct H.
+  destruct H; subst.
+  - rewrite sub_notin; auto.
+    destruct a as[v str]; destruct v as [nm ty]; simpl in *; intro C;
+    inversion C; subst.
+    apply (Huniq (str, ty)); simpl; triv.
+  - inversion Hn; subst. 
+    rewrite sub_diff; auto.
+    + apply IHvars; auto.
+      intros. intro C.
+      apply (Huniq x0); simpl; triv.
+    + intro C; subst. contradiction.
+    + destruct a; destruct v; simpl in *; intro C; inversion C; subst.
+      apply (Huniq (s, v)); triv.
+Qed.
+
+Lemma sub_mult_fv_diff (vars: list (vsymbol * string)) (t: A):
+  forall x, ~ In x (map fst vars) -> 
+    ~ In x (combine (map snd vars) (map snd (map fst vars))) ->
+  free_in x (subs vars t) = free_in x t.
+Proof.
+  intros x Hn1 Hn2.
+  induction vars; simpl; auto.
+  simpl in Hn1, Hn2. not_or Hn.
+  rewrite sub_diff; auto.
+Qed.
+
+Lemma bnd_subs vars (t: A):
+  bnd (subs vars t) = bnd t.
+Proof.
+  induction vars; simpl; auto.
+  rewrite bnd_sub; assumption.
+Qed.
+
+Variable sub_eq: forall t x, sub x x t = t.
+
+Lemma free_in_sub_impl (t: A) (x y z: vsymbol):
+free_in z (sub x y t) ->
+free_in z t \/ z = y.
+Proof.
+  vsym_eq x y.
+  - rewrite sub_eq; intros; auto.
+  - vsym_eq z x.
+    + rewrite sub_notin; auto.
+    + vsym_eq z y.
+      rewrite sub_diff; auto.
+Qed.
+
+Lemma free_in_subs_impl (t: A) (x: vsymbol) l:
+free_in x (subs l t) ->
+free_in x t \/ In (fst x) (map snd l).
+Proof.
+  induction l; simpl; auto; intros.
+  apply free_in_sub_impl in H.
+  destruct H; subst; simpl; auto.
+  apply IHl in H.
+  destruct H; auto.
+Qed.
+
+Variable alpha: list (vsymbol * vsymbol) -> A -> A -> bool.
+Notation a_eq := (alpha nil).
+Variable fv : A -> list vsymbol.
+Variable alpha_sym: forall t1 t2 l,
+  alpha l t1 t2 = alpha (flip l) t2 t1.
+Variable alpha_redundant: forall t1 t2 x v1 v2,
+  ~ In x (map fst v2) ->
+  ~ In x (map snd v2) ->
+  alpha (v1 ++ (x, x) :: v2) t1 t2 =
+  alpha (v1 ++ v2) t1 t2.
+Variable alpha_trans: forall t1 t2 t3 v1 v2,
+  map snd v1 = map fst v2 ->
+  alpha v1 t1 t2 ->
+  alpha v2 t2 t3 ->
+  alpha (alist_trans v1 v2) t1 t3.
+
+(*Prove congruence lemma for sub*)
+Variable alpha_sub: forall t x y,
+  snd x = snd y ->
+  ~ In y (bnd t) ->
+  ~ In y (fv t) -> alpha [(x, y)] t (sub x y t).
+
+(*Annoying to show, need lots of transitivity and
+strengthening/weakening with [redundant] lemma*)
+Lemma a_eq_sub_congr (t1 t2: A) (x y: vsymbol)
+  (Hsnd: snd x = snd y)
+  (Hbnd1: ~ In y (bnd t1))
+  (Hbnd2: ~ In y (bnd t2))
+  (Hfree1: ~ In y (fv t1))
+  (Hfree2: ~In y (fv t2))
+  (Heq: a_eq t1 t2):
+  a_eq (sub x y t1) (sub x y t2).
+Proof.
+  pose proof (alpha_sub _ _ _ Hsnd Hbnd1 Hfree1) as Heq1.
+  pose proof (alpha_sub _ _ _ Hsnd Hbnd2 Hfree2) as Heq2.
+  rewrite alpha_sym in Heq1.
+  simpl in Heq1.
+  assert (Heq3: alpha [(x, x)] t1 t2) by
+    (rewrite alpha_redundant with(v1:=nil)(v2:=nil)(x:=x); auto).
+  assert (Hmap: map snd [(y, x)] = map fst [(x, x)]) by reflexivity.
+  pose proof (alpha_trans _ _ _ _ _ Hmap Heq1 Heq3).
+  simpl in H.
+  assert (Hmap2: map snd [(y, x)] = map fst [(x, y)]) by reflexivity.
+  pose proof (alpha_trans _ _ _ _ _ Hmap2 H Heq2).
+  simpl in H0.
+  rewrite alpha_redundant with (x:=y)(v1:=nil)(v2:=nil) in H0; auto.
+Qed.
+
+Variable free_in_spec: forall t x,
+  free_in x t <-> In x (fv t).
+
+Lemma a_equiv_subs_congr (t1 t2: A) 
+  (vars: list (vsymbol * string))
+  (Hbnd1: forall x, In (fst x) (map snd vars) -> ~ In x (bnd t1))
+  (Hbnd2: forall x, In (fst x) (map snd vars) -> ~ In x (bnd t2))
+  (Hfree1: forall x, In (fst x) (map snd vars) -> ~ In x (fv t1))
+  (Hfree2: forall x, In (fst x) (map snd vars) -> ~ In x (fv t2))
+  (Hn: NoDup (map snd vars))
+  (Heq: a_eq t1 t2):
+  a_eq (subs vars t1) (subs vars t2).
+Proof.
+  induction vars; simpl; auto.
+  simpl in *.
+  inversion Hn; subst.
+  apply a_eq_sub_congr; auto.
+  - rewrite bnd_subs; apply Hbnd1; auto.
+  - rewrite bnd_subs; apply Hbnd2; auto.
+  - intro C. apply free_in_spec in C.
+    apply free_in_subs_impl in C.
+    destruct C.
+    + apply free_in_spec in H.
+      apply (Hfree1 (snd a, snd (fst a))); auto.
+    + simpl in H. contradiction.
+  - intro C. apply free_in_spec in C.
+    apply free_in_subs_impl in C.
+    destruct C.
+    + apply free_in_spec in H.
+      apply (Hfree2 (snd a, snd (fst a))); auto.
+    + simpl in H. contradiction.
+Qed.
+
+End Iter.
+
+(*Now we specialize these results for terms and formulas*)
+
+Definition sub_ts_fv_notin := sub_mult_fv_notin _ _ 
+sub_t_fv_notin sub_t_fv_diff.
+Definition sub_fs_fv_notin := sub_mult_fv_notin _ _
+sub_f_fv_notin sub_f_fv_diff.
+Definition sub_ts_fv_diff := sub_mult_fv_diff _ _
+sub_t_fv_diff.
+Definition sub_fs_fv_diff := sub_mult_fv_diff _ _
+sub_f_fv_diff.
+Definition bnd_sub_ts := bnd_subs _ _ bnd_sub_t.
+Definition bnd_sub_fs := bnd_subs _ _ bnd_sub_f.
+
+Definition a_equiv_t_sub_ts_congr :=
+a_equiv_subs_congr _ _ sub_t_fv_notin sub_t_fv_diff _ 
+bnd_sub_t sub_t_eq _ _  alpha_t_equiv_sym alpha_equiv_t_redundant
+alpha_equiv_t_trans alpha_equiv_sub_t free_in_t_spec.
+Definition a_equiv_f_sub_fs_congr :=
+a_equiv_subs_congr _ _ sub_f_fv_notin sub_f_fv_diff _ 
+bnd_sub_f sub_f_eq _ _  alpha_f_equiv_sym alpha_equiv_f_redundant
+alpha_equiv_f_trans alpha_equiv_sub_f free_in_f_spec.
+
 (*Now we want to define a function to rename bound variables to unique
   values such that terms and formulas have no duplicate bound
   variables and no clashes between free and bound variable names.
@@ -5916,13 +6107,15 @@ Definition mk_fun_str (l: list vsymbol) (l2: list string) :
   vsymbol -> vsymbol :=
   mk_fun l (combine l2 (map snd l)).
 
+Notation split l n := (firstn n l, skipn n l).
+
 Fixpoint alpha_t_aux (t: term) (l: list string) {struct t} : term :=
   (*We only care about the bound variable and inductive cases*)
   match t with
   | Tlet t1 x t2 => 
     match l with
     | str :: tl =>
-      let (l1, l2) := (split) tl (length (bnd_t t1)) in 
+      let (l1, l2) := split tl (length (bnd_t t1)) in 
       Tlet (alpha_t_aux t1 l1) (str, snd x) (sub_t x (str, snd x) 
       (alpha_t_aux t2 l2))
     | _ => t
@@ -6031,207 +6224,8 @@ with alpha_f_aux (f: formula) (l: list string) {struct f} : formula :=
         (*(sub_ps vars (fst x), sub_fs vars f2)) ps l_split)*)
   | _ => f (*No other bound/recursive cases*)
   end.
-(*Prove correctness: 3 lemmas
-  1. results in wf term/fmla
-  2. preserves interp
-  3. has same "shape" (and corollaries: ind form, positive, etc)*)
 
 (*TODO: move*)
-
-
-(*Need free var lemmas for [sub_ts]. These are all easy corollaries
-  of the appropriate result for [sub_t]*)
-
-(*We prove iterated version of the free vars lemmas for
-  sub_ts and sub_fs. We do it generically first so we prove both
-  at once*)
-Section IterFvar.
-
-  Context {A: Type}.
-  Variable sub: vsymbol -> vsymbol -> A -> A.
-  Variable free_in: vsymbol -> A -> bool.
-  Variable sub_notin: forall (t: A) (x y: vsymbol), x <> y ->
-    free_in x (sub x y t) = false.
-  Variable sub_diff: forall (t: A) (x y z: vsymbol),
-    z <> x -> z <> y -> free_in z (sub x y t) = free_in z t.
-  Notation subs := (sub_mult sub).
-  (*For bound vars*)
-  Variable bnd: A -> list vsymbol.
-  Variable bnd_sub : forall (t: A) (x y: vsymbol),
-    bnd (sub x y t) = bnd t.
-  
-  (*The iterated version of [sub_fv_notin]. Awkward to state so
-    that we can prove term and formula versions together*)
-  Lemma sub_mult_fv_notin
-    (vars: list (vsymbol * string)) (t: A)
-    (Hn: NoDup (map fst vars))
-    (Huniq: forall x, In x (map fst vars) -> ~ In (fst x) (map snd vars)):
-    forall x, In x (map fst vars) -> free_in x (subs vars t) = false.
-  Proof.
-    induction vars; simpl; intros. destruct H.
-    destruct H; subst.
-    - rewrite sub_notin; auto.
-      destruct a as[v str]; destruct v as [nm ty]; simpl in *; intro C;
-      inversion C; subst.
-      apply (Huniq (str, ty)); simpl; triv.
-    - inversion Hn; subst. 
-      rewrite sub_diff; auto.
-      + apply IHvars; auto.
-        intros. intro C.
-        apply (Huniq x0); simpl; triv.
-      + intro C; subst. contradiction.
-      + destruct a; destruct v; simpl in *; intro C; inversion C; subst.
-        apply (Huniq (s, v)); triv.
-  Qed.
-  
-  Lemma sub_mult_fv_diff (vars: list (vsymbol * string)) (t: A):
-    forall x, ~ In x (map fst vars) -> 
-      ~ In x (combine (map snd vars) (map snd (map fst vars))) ->
-    free_in x (subs vars t) = free_in x t.
-  Proof.
-    intros x Hn1 Hn2.
-    induction vars; simpl; auto.
-    simpl in Hn1, Hn2. not_or Hn.
-    rewrite sub_diff; auto.
-  Qed.
-
-  Lemma bnd_subs vars (t: A):
-    bnd (subs vars t) = bnd t.
-  Proof.
-    induction vars; simpl; auto.
-    rewrite bnd_sub; assumption.
-  Qed.
-
-  Variable sub_eq: forall t x, sub x x t = t.
-
-  Lemma free_in_sub_impl (t: A) (x y z: vsymbol):
-  free_in z (sub x y t) ->
-  free_in z t \/ z = y.
-  Proof.
-    vsym_eq x y.
-    - rewrite sub_eq; intros; auto.
-    - vsym_eq z x.
-      + rewrite sub_notin; auto.
-      + vsym_eq z y.
-        rewrite sub_diff; auto.
-  Qed.
-  
-  Lemma free_in_subs_impl (t: A) (x: vsymbol) l:
-  free_in x (subs l t) ->
-  free_in x t \/ In (fst x) (map snd l).
-  Proof.
-    induction l; simpl; auto; intros.
-    apply free_in_sub_impl in H.
-    destruct H; subst; simpl; auto.
-    apply IHl in H.
-    destruct H; auto.
-  Qed.
-
-  Variable alpha: list (vsymbol * vsymbol) -> A -> A -> bool.
-  Notation a_eq := (alpha nil).
-  Variable fv : A -> list vsymbol.
-  Variable alpha_sym: forall t1 t2 l,
-    alpha l t1 t2 = alpha (flip l) t2 t1.
-  Variable alpha_redundant: forall t1 t2 x v1 v2,
-    ~ In x (map fst v2) ->
-    ~ In x (map snd v2) ->
-    alpha (v1 ++ (x, x) :: v2) t1 t2 =
-    alpha (v1 ++ v2) t1 t2.
-  Variable alpha_trans: forall t1 t2 t3 v1 v2,
-    map snd v1 = map fst v2 ->
-    alpha v1 t1 t2 ->
-    alpha v2 t2 t3 ->
-    alpha (alist_trans v1 v2) t1 t3.
-
-  (*Prove congruence lemma for sub*)
-  Variable alpha_sub: forall t x y,
-    snd x = snd y ->
-    ~ In y (bnd t) ->
-    ~ In y (fv t) -> alpha [(x, y)] t (sub x y t).
-
-  (*Annoying to show, need lots of transitivity and
-  strengthening/weakening with [redundant] lemma*)
-  Lemma a_eq_sub_congr (t1 t2: A) (x y: vsymbol)
-    (Hsnd: snd x = snd y)
-    (Hbnd1: ~ In y (bnd t1))
-    (Hbnd2: ~ In y (bnd t2))
-    (Hfree1: ~ In y (fv t1))
-    (Hfree2: ~In y (fv t2))
-    (Heq: a_eq t1 t2):
-    a_eq (sub x y t1) (sub x y t2).
-  Proof.
-    pose proof (alpha_sub _ _ _ Hsnd Hbnd1 Hfree1) as Heq1.
-    pose proof (alpha_sub _ _ _ Hsnd Hbnd2 Hfree2) as Heq2.
-    rewrite alpha_sym in Heq1.
-    simpl in Heq1.
-    assert (Heq3: alpha [(x, x)] t1 t2) by
-      (rewrite alpha_redundant with(v1:=nil)(v2:=nil)(x:=x); auto).
-    assert (Hmap: map snd [(y, x)] = map fst [(x, x)]) by reflexivity.
-    pose proof (alpha_trans _ _ _ _ _ Hmap Heq1 Heq3).
-    simpl in H.
-    assert (Hmap2: map snd [(y, x)] = map fst [(x, y)]) by reflexivity.
-    pose proof (alpha_trans _ _ _ _ _ Hmap2 H Heq2).
-    simpl in H0.
-    rewrite alpha_redundant with (x:=y)(v1:=nil)(v2:=nil) in H0; auto.
-  Qed.
-  
-  Variable free_in_spec: forall t x,
-    free_in x t <-> In x (fv t).
-
-  Lemma a_equiv_subs_congr (t1 t2: A) 
-    (vars: list (vsymbol * string))
-    (Hbnd1: forall x, In (fst x) (map snd vars) -> ~ In x (bnd t1))
-    (Hbnd2: forall x, In (fst x) (map snd vars) -> ~ In x (bnd t2))
-    (Hfree1: forall x, In (fst x) (map snd vars) -> ~ In x (fv t1))
-    (Hfree2: forall x, In (fst x) (map snd vars) -> ~ In x (fv t2))
-    (Hn: NoDup (map snd vars))
-    (Heq: a_eq t1 t2):
-    a_eq (subs vars t1) (subs vars t2).
-  Proof.
-    induction vars; simpl; auto.
-    simpl in *.
-    inversion Hn; subst.
-    apply a_eq_sub_congr; auto.
-    - rewrite bnd_subs; apply Hbnd1; auto.
-    - rewrite bnd_subs; apply Hbnd2; auto.
-    - intro C. apply free_in_spec in C.
-      apply free_in_subs_impl in C.
-      destruct C.
-      + apply free_in_spec in H.
-        apply (Hfree1 (snd a, snd (fst a))); auto.
-      + simpl in H. contradiction.
-    - intro C. apply free_in_spec in C.
-      apply free_in_subs_impl in C.
-      destruct C.
-      + apply free_in_spec in H.
-        apply (Hfree2 (snd a, snd (fst a))); auto.
-      + simpl in H. contradiction.
-  Qed.
-  
-End IterFvar.
-  
-Definition sub_ts_fv_notin := sub_mult_fv_notin _ _ 
-  sub_t_fv_notin sub_t_fv_diff.
-Definition sub_fs_fv_notin := sub_mult_fv_notin _ _
-  sub_f_fv_notin sub_f_fv_diff.
-Definition sub_ts_fv_diff := sub_mult_fv_diff _ _
-  sub_t_fv_diff.
-Definition sub_fs_fv_diff := sub_mult_fv_diff _ _
-  sub_f_fv_diff.
-Definition bnd_sub_ts := bnd_subs _ _ bnd_sub_t.
-Definition bnd_sub_fs := bnd_subs _ _ bnd_sub_f.
-
-Definition a_equiv_t_sub_ts_congr :=
-  a_equiv_subs_congr _ _ sub_t_fv_notin sub_t_fv_diff _ 
-  bnd_sub_t sub_t_eq _ _  alpha_t_equiv_sym alpha_equiv_t_redundant
-  alpha_equiv_t_trans alpha_equiv_sub_t free_in_t_spec.
-Definition a_equiv_f_sub_fs_congr :=
-  a_equiv_subs_congr _ _ sub_f_fv_notin sub_f_fv_diff _ 
-  bnd_sub_f sub_f_eq _ _  alpha_f_equiv_sym alpha_equiv_f_redundant
-  alpha_equiv_f_trans alpha_equiv_sub_f free_in_f_spec.
-
-(*TODO: prove iterated version of above, use below*)
-
 Lemma NoDup_combine_l {A B: Type} (l1: list A) (l2: list B):
   NoDup l1 ->
   NoDup (combine l1 l2).
@@ -6243,6 +6237,8 @@ Proof.
   intro Hin.
   apply in_combine_l in Hin. contradiction.
 Qed.
+
+(*Some lemmas about [mk_fun_str] and pattern free vars*)
 
 Lemma map_pat_str_fv (strs: list string) (p: pattern) :
   length (pat_fv p) = length strs ->
@@ -6304,10 +6300,10 @@ Proof.
   wf_tac.
 Qed.
 
-(*The bound variables of our substitution are unique
-  and all from the original list.
-  TODO: automate this proof more, it is very repetitive*)
-Lemma alpha_aux_wf_aux (t: term) (f: formula) :
+(*1. The bound variables, after conversion,
+  are unique and all from the input list.
+  This proof is very tedious and should be improved*)
+Lemma alpha_aux_bnd (t: term) (f: formula) :
   (forall (l: list string),
     NoDup l ->
     length l = length (bnd_t t) ->
@@ -6716,8 +6712,8 @@ Proof.
         apply in_split_lens_ith in Hinx; wf_tac.
 Qed.
 
-Definition alpha_t_aux_wf (t: term) := proj1 (alpha_aux_wf_aux t Ftrue).
-Definition alpha_f_aux_wf (f: formula) := proj2 (alpha_aux_wf_aux tm_d f).
+Definition alpha_t_aux_bnd t := proj_tm alpha_aux_bnd t.
+Definition alpha_f_aux_bnd f := proj_fmla alpha_aux_bnd f.
 
 Ltac prove_hyp H :=
   match goal with
@@ -6736,9 +6732,11 @@ Ltac vsym_eq2 x y z :=
   (vsym_eq x y; right; vsym_eq x z);
   destruct H as [? | [[? ?]|[? ?]]].
 
-(*A big lemma we want: the free vars of [alpha_t_aux] and
-  [alpha_f_aux] are the same as those of the original terms.
-  This is very hard to prove, though very intuitive*)
+(*2: The free variables after conversion are equal.
+  NOTE: in general, it is true that the free variables of
+  any alpha-equivalent terms are equal, but this is hard to
+  show, and we don't need the general version at the moment.
+  (proved part of it in alt approach)*)
 Lemma alpha_aux_fv (t: term) (f: formula) :
   (forall (l: list string)
     (Hnodupl: NoDup l)
@@ -6797,7 +6795,7 @@ Proof.
         symmetry. apply free_in_t_negb. intro Hin.
         apply (Hfree (s, snd v)). left; auto. 
         simpl_set. triv.
-      * intro Hin. apply alpha_t_aux_wf in Hin; wf_tac.
+      * intro Hin. apply alpha_t_aux_bnd in Hin; wf_tac.
     + (*The last case is quite easy, nothing changes*) 
       rewrite sub_t_fv_diff; auto.
       vsym_eq x (s, snd v); simpl.
@@ -6923,7 +6921,7 @@ Proof.
         symmetry. apply free_in_f_negb. intro Hin.
         apply (Hfree (s, snd v)). left; auto. 
         simpl_set. triv.
-      * intro Hin. apply alpha_f_aux_wf in Hin; wf_tac.
+      * intro Hin. apply alpha_f_aux_bnd in Hin; wf_tac.
     + (*The last case is quite easy, nothing changes*) 
       rewrite sub_f_fv_diff; auto.
       vsym_eq x (s, snd v); simpl.
@@ -6969,7 +6967,7 @@ Proof.
         symmetry. apply free_in_f_negb. intro Hin.
         apply (Hfree (s, snd v)). left; auto. 
         simpl_set. triv.
-      * intro Hin. apply alpha_f_aux_wf in Hin; wf_tac.
+      * intro Hin. apply alpha_f_aux_bnd in Hin; wf_tac.
     + (*The last case is quite easy, nothing changes*) 
       rewrite sub_f_fv_diff; auto.
       vsym_eq x (s, snd v); simpl.
@@ -7013,7 +7011,7 @@ Proof.
         symmetry. apply free_in_f_negb. intro Hin.
         apply (Hfree (s, snd v)). left; auto. 
         simpl_set. triv.
-      * intro Hin. apply alpha_f_aux_wf in Hin; wf_tac.
+      * intro Hin. apply alpha_f_aux_bnd in Hin; wf_tac.
     + (*The last case is quite easy, nothing changes*) 
       rewrite sub_f_fv_diff; auto.
       vsym_eq x (s, snd v); simpl.
@@ -7115,10 +7113,8 @@ Proof.
           apply in_map_pat_str_fv_iff; wf_tac.
 Qed.
 
-Definition alpha_t_aux_fv (t: term) :=
-  proj1 (alpha_aux_fv t Ftrue).
-Definition alpha_f_aux_fv (f: formula) :=
-  proj2 (alpha_aux_fv tm_d f).
+Definition alpha_t_aux_fv t := proj_tm alpha_aux_fv t.
+Definition alpha_f_aux_fv f := proj_fmla alpha_aux_fv f. 
 
 Corollary alpha_t_aux_fv' (t: term):
   (forall (l: list string)
@@ -7144,14 +7140,10 @@ Proof.
   reflexivity.
 Qed. 
 
-
-(*TODO: move congruence lemmas together*)
-
-
-
-
-(*Show map_pat is equiv as*)
-Search map_pat alpha_equiv_p.
+(*TODO: move earlier*)
+(*If we map a function over the variables of a pattern,
+  if the function agrees with vars and mantains types,
+  the two patterns are alpha equivalent*)
 Lemma map_pat_alpha_equiv vars p1 f
   (Hf1: forall x, In x (pat_fv p1) ->
     snd x = snd (f x))
@@ -7164,7 +7156,7 @@ Proof.
     rewrite eq_dec_refl, Hf2; simpl; auto.
   - rewrite !eq_dec_refl, map_length, Nat.eqb_refl. simpl.
     induction ps; simpl; intros; auto.
-    inversion H; subst.
+    rewrite all2_cons; inversion H; subst.
     rewrite H2; simpl.
     + apply IHps; auto; simpl.
       * intros; apply Hf1; simpl; simpl_set; triv.
@@ -7211,6 +7203,7 @@ Proof.
   - apply IHl; auto. intros; apply Hinj; simpl; auto.
 Qed. 
 
+(*TODO: move*)
 Lemma map_mk_fun l1 l2
   (Hlen: length l1 = length l2)
   (Hn1: NoDup l1):
@@ -7224,6 +7217,9 @@ Proof.
   intros. vsym_eq a0 a.
 Qed.
 
+(*mapping [mk_fun_str] over a pattern results in an
+  alpha-equivalent pattern under the valuation mapping
+  their free variables*)
 Lemma map_pat_str_alpha p strs
   (Hlen: length strs = length (pat_fv p))
   (Hn: NoDup strs):
@@ -7250,32 +7246,10 @@ Proof.
     + unfold mk_fun_str.
       rewrite map_mk_fun; wf_tac.
 Qed.
-(*
-Search alpha_equiv_t "trans".
-
-Lemma alpha_equiv_sub_t_gen (t1 t2: term) (x y: vsymbol) vars:
-  alpha_equiv_t vars t1 t2 ->
-  snd x = snd y ->
-  ~ In y (bnd_t t2) ->
-  ~ In y (term_fv t2) ->
-  alpha_equiv_t ((x, y) :: vars) t1 (sub_t x y t2).
-Proof.
-  induction vars; simpl; intros.
-  - eapply alpha_equiv_t_trans. apply alpha_equiv_sub_t.
-*)
 
 (*Alpha equivalence with iterated substitution*)
 
-(*TODO: generic version*)
-(*TODO: see if we need*)
 (*TODO: combine with other section*)
-Print sub_ts.
-Check a_equiv_t_refl.
-Check alpha_equiv_sub_t_full.
-Check bnd_sub_ts.
-Check sub_ts_fv_diff.
-Check free_in_t_negb.
-Check same_in_sub_ts.
 Section AlphaSubIter.
 
 Context {A: Type}.
@@ -7361,74 +7335,11 @@ Definition alpha_equiv_sub_fs :=
   alpha_equiv_subs _ _ _ _ _ _ a_equiv_f_refl alpha_equiv_sub_f_full
   bnd_sub_fs free_in_f_negb sub_fs_fv_diff same_in_sub_fs.
 
+(*Before our final result, we handle the match cases separately
+  using a sort-of-congruence lemma. These proofs are
+  tricky and the tmatch and fmatch cases are very similar.
+  They should be combined if possible*)
 
-(*
-(*I think we need a general way of reasoning about combining two lists,
-  as long as they do not overlap*)
-(*What about this?*)
-Lemma alpha_combine (t: term) (f: formula):
-  (forall t2 t3 v1 v2
-    (Heq1: alpha_equiv_t v1 t t2)
-    (Heq2: alpha_equiv_t v2 t2 t3)
-    (*TODO: I think we need stronger: these should be
-      completely disjoint so we don't bind one var for one
-      but not another*)
-    (*start here*)
-    (Hv12_f: forall x, In x (map fst v1) -> ~ In x (map fst v2))
-    (Hv12_s: forall x, In x (map snd v1) -> ~ In x (map snd v2))
-    (Hv21_f: forall x, In x (map fst v2) -> ~ In x (map fst v1))
-    (Hv21_s: forall x, In x (map snd v2) -> ~ In x (map snd v2)),
-    alpha_equiv_t (v1 ++ v2) t t3) /\
-  (forall f2 f3 v1 v2
-    (Heq1: alpha_equiv_f v1 f f2)
-    (Heq2: alpha_equiv_f v2 f2 f3)
-    (Hv12_f: forall x, In x (map fst v1) -> ~ In x (map fst v2))
-    (Hv12_s: forall x, In x (map snd v1) -> ~ In x (map snd v2))
-    (Hv21_f: forall x, In x (map fst v2) -> ~ In x (map fst v1))
-    (Hv21_s: forall x, In x (map snd v2) -> ~ In x (map snd v2)),
-    alpha_equiv_f (v1 ++ v2) f f3).
-Proof.
-  revert t f; apply term_formula_ind; simpl; intros.
-  - (*Tconst*) alpha_case t2 Heq1. alpha_case t3 Heq2.
-    rewrite simpl_all_dec in *; subst; auto.
-  - (*Tvar*) alpha_case t2 Heq1. alpha_case t3 Heq2.
-    rewrite eq_var_app.
-    rewrite eq_var_in_first in Heq1, Heq2.
-
-
-
-(*What about this*)
-Lemma alpha_sub_congr (t: term) (f: formula):
-  (forall t2 x y vars
-    (Heq: alpha_equiv_t vars t t2),
-    alpha_equiv_t vars (sub_t x y t) (sub_t x y t2)) /\
-  (forall f2 x y vars
-    (Heq: alpha_equiv_f vars f f2),
-    alpha_equiv_f vars (sub_f x y f) (sub_f x y f2)).
-Proof.
-  revert t f; apply term_formula_ind; simpl; intros.
-  - (*Tconst*) alpha_case t2 Heq; auto.
-  - (*Tvar*) alpha_case t2 Heq. vsym_eq x v.
-
-(*Let's see if this lemma is true and if so, if it easy to show*)
-Lemma alpha_under_sub (t: term) (f: formula):
-  (forall t2 t3 x y vars
-    (Heq1: alpha_equiv_t vars t (sub_t x y t2))
-    (Heq2: alpha_equiv_t nil t2 t3),
-    alpha_equiv_t vars t (sub_t x y t3)) /\
-  (forall f2 f3 x y vars
-    (Heq1: alpha_equiv_f vars f (sub_f x y f2))
-    (Heq2: alpha_equiv_f nil f2 f3),
-    alpha_equiv_f vars f (sub_f x y f3)).
-Proof.
-  revert t f; apply term_formula_ind; simpl.
-
-*)
-
-
-
-
-(*TODO: move*)
 Lemma alpha_tmatch tm1 tm2 v ps (strs: list (list string))
   (f: term -> list string -> term)
   (Heq1: a_equiv_t tm1 tm2)
@@ -7479,19 +7390,13 @@ Proof.
   induction ps; simpl; intros; auto.
   destruct strs; inversion Hlen1.
   destruct a as [p1 t1].
+  rewrite all2_cons.
   simpl.
   rewrite NoDup_concat_iff in Hnodup. destruct Hnodup as [Hn1 Hn2].
   assert (Hlenl: Datatypes.length (firstn (Datatypes.length (pat_fv p1)) l) =
     Datatypes.length (pat_fv p1)) by
     (wf_tac; specialize (Hlen2 0 ltac:(lia)); simpl in Hlen2; lia).
   assert (Hnl: NoDup l) by (apply Hn1; simpl; auto).
-  (*rewrite !map_pat_str_fv; wf_tac.
-  unfold mk_fun_str at 1 3.
-  rewrite !map_mk_fun; wf_tac.
-  2: {
-    unfold vsymbol in *;
-    rewrite combine_length, Hlenl, map_length. lia.
-  }*)
   rewrite map_pat_str_fv; wf_tac.
   rewrite map_pat_str_alpha; wf_tac; simpl.
   unfold mk_fun_str at 1.
@@ -7636,6 +7541,7 @@ Proof.
   generalize dependent strs. clear Heq1.
   induction ps; simpl; intros; auto.
   destruct strs; inversion Hlen1.
+  rewrite all2_cons.
   destruct a as [p1 t1].
   simpl.
   rewrite NoDup_concat_iff in Hnodup. destruct Hnodup as [Hn1 Hn2].
@@ -7643,13 +7549,6 @@ Proof.
     Datatypes.length (pat_fv p1)) by
     (wf_tac; specialize (Hlen2 0 ltac:(lia)); simpl in Hlen2; lia).
   assert (Hnl: NoDup l) by (apply Hn1; simpl; auto).
-  (*rewrite !map_pat_str_fv; wf_tac.
-  unfold mk_fun_str at 1 3.
-  rewrite !map_mk_fun; wf_tac.
-  2: {
-    unfold vsymbol in *;
-    rewrite combine_length, Hlenl, map_length. lia.
-  }*)
   rewrite map_pat_str_fv; wf_tac.
   rewrite map_pat_str_alpha; wf_tac; simpl.
   unfold mk_fun_str at 1.
@@ -7744,8 +7643,9 @@ Proof.
         apply (Hn2 (S i1) (S i2) d x ltac:(lia) ltac:(lia) ltac:(lia)).
 Qed.
 
-
-
+(*TODO: might be helpful to use earlier*)
+(*Solve inductive cases for proving variables not
+  in free or bound variables*)
 Ltac free_bnd Hfree Hbnd :=
   let x := fresh "x" in
   let Hinx1 := fresh "Hinx" in
@@ -7779,6 +7679,10 @@ Ltac free_bnd Hfree Hbnd :=
   apply (Hbnd v); simpl
   end; wf_tac).
 
+(*Finally, our last main theorem: this conversion
+  function is alpha equivalent to the original term/formula
+  if all of the new variables are unique and distinct.
+  Most cases follow from the API; the match cases are hard*)
 Theorem alpha_aux_equiv (t: term) (f: formula):
   (forall l
     (Hn: NoDup l)
@@ -7791,7 +7695,6 @@ Theorem alpha_aux_equiv (t: term) (f: formula):
     (Hlen: length l = length (bnd_f f))
     (Hfree: forall x, In (fst x) l -> ~ In x (form_fv f))
     (Hbnd: forall x, In (fst x) l -> ~ In x (bnd_f f)),
-    length l = length (bnd_f f) ->
     a_equiv_f f (alpha_f_aux f l)).
 Proof.
   revert t f. apply term_formula_ind; simpl; intros; auto;
@@ -7810,7 +7713,7 @@ Proof.
     inversion Hn; subst.
     apply alpha_convert_tlet'; wf_tac.
     + intro C.
-      apply alpha_t_aux_wf in C; wf_tac.
+      apply alpha_t_aux_bnd in C; wf_tac.
     + intro C.
       rewrite alpha_t_aux_fv' in C; wf_tac;
       try free_bnd Hfree Hbnd.
@@ -7881,7 +7784,7 @@ Proof.
       apply H0; wf_tac.
     + intros i Hi y l'.
       intros z Hinz.
-      apply alpha_t_aux_wf in Hinz; subst l' y; wf_tac.
+      apply alpha_t_aux_bnd in Hinz; subst l' y; wf_tac.
     + intros i Hi y l' z.
       apply alpha_t_aux_fv; subst l' y; wf_tac.
     + (*ugh this one is annoying - go from In to nth*)
@@ -7915,7 +7818,7 @@ Proof.
     inversion Hn; subst.
     apply alpha_convert_teps'; wf_tac.
     + intro C.
-      apply alpha_f_aux_wf in C; wf_tac.
+      apply alpha_f_aux_bnd in C; wf_tac.
     + intro C.
       rewrite alpha_f_aux_fv' in C; wf_tac;
       try free_bnd Hfree Hbnd.
@@ -7927,8 +7830,8 @@ Proof.
     apply alpha_fpred_congr; wf_tac.
     revert H.
     rewrite !Forall_forall; intros.
-    rewrite in_combine_iff in H1; wf_tac.
-    destruct H1 as [i [Hi Hx]].
+    rewrite in_combine_iff in H0; wf_tac.
+    destruct H0 as [i [Hi Hx]].
     specialize (Hx tm_d tm_d); subst. simpl.
     rewrite map2_nth with(d1:=tm_d)(d2:=nil); wf_tac.
     apply H; wf_tac; free_bnd Hfree Hbnd.
@@ -7937,7 +7840,7 @@ Proof.
     inversion Hn; subst.
     apply alpha_convert_quant'; wf_tac.
     + intro C.
-      apply alpha_f_aux_wf in C; wf_tac.
+      apply alpha_f_aux_bnd in C; wf_tac.
     + intro C.
       rewrite alpha_f_aux_fv' in C; wf_tac;
       try free_bnd Hfree Hbnd.
@@ -7958,7 +7861,7 @@ Proof.
     inversion Hn; subst.
     apply alpha_convert_flet'; wf_tac.
     + intro C.
-      apply alpha_f_aux_wf in C; wf_tac.
+      apply alpha_f_aux_bnd in C; wf_tac.
     + intro C.
       rewrite alpha_f_aux_fv' in C; wf_tac;
       try free_bnd Hfree Hbnd.
@@ -8029,13 +7932,12 @@ Proof.
       apply H0; wf_tac.
     + intros i Hi y l'.
       intros z Hinz.
-      apply alpha_f_aux_wf in Hinz; subst l' y; wf_tac.
+      apply alpha_f_aux_bnd in Hinz; subst l' y; wf_tac.
     + intros i Hi y l' z.
       apply alpha_f_aux_fv; subst l' y; wf_tac.
     + (*ugh this one is annoying - go from In to nth*)
       intros z strs Hins Hinz1 Hinz2.
-      pose proof (In_nth _ _ nil Hins).
-      destruct H2 as [n' [Hn' Hstrs]].
+      destruct (In_nth _ _ nil Hins) as [n' [Hn' Hstrs]].
       revert Hn'; wf_tac.
       subst. clear Hins.
       apply in_split_lens_ith in Hinz1; wf_tac.
@@ -8052,18 +7954,422 @@ Proof.
         right. exists p. simpl_set; auto.
     + (*Similar to last one*)
       intros z strs Hins Hinz1 Hinz2.
-      pose proof (In_nth _ _ nil Hins).
-      destruct H2 as [n' [Hn' Hstrs]].
+      destruct (In_nth _ _ nil Hins) as [n' [Hn' Hstrs]].
       revert Hn'; wf_tac.
       subst. clear Hins.
       apply in_split_lens_ith in Hinz1; wf_tac.
       apply (Hbnd z); wf_tac.
 Qed.
 
-Definition alpha_t_aux_equiv t :=
-  proj1 (alpha_aux_equiv t Ftrue).
-Definition alpha_f_aux_equiv f :=
-  proj2 (alpha_aux_equiv tm_d f).
+Definition alpha_t_aux_equiv t := proj_tm alpha_aux_equiv t.
+Definition alpha_f_aux_equiv f := proj_fmla alpha_aux_equiv f.
 
-(*TODO: final versions, put all together in nice lemmas,
-  clean up code*)
+End Convert.
+
+(*Before giving the final conversion function, we define
+  a looser notion: two terms/formulas have the same "shape" -
+  ignoring free and bound variables.
+  We show that alpha equivalence implies this, but also that
+  this implies equivalence of [valid_ind_form] and [ind_positive]*)
+Section Shape.
+
+Fixpoint shape_p (p1 p2: pattern) :=
+  match p1, p2 with
+  | Pwild, Pwild => true
+  | Por pa pb, Por pc pd => shape_p pa pc && shape_p pb pd
+  | Pbind p1 v1, Pbind p2 v2 => shape_p p1 p2
+  | Pvar v1, Pvar v2 => true
+  | Pconstr f1 tys1 ps1, Pconstr f2 tys2 ps2 =>
+    (funsym_eq_dec f1 f2) &&
+    (list_eq_dec vty_eq_dec tys1 tys2) &&
+    (length ps1 =? length ps2) &&
+    all2 (fun p1 p2 => shape_p p1 p2) ps1 ps2
+  | _, _ => false
+  end.
+
+Lemma alpha_p_shape vars p1 p2
+  (Heq: alpha_equiv_p vars p1 p2):
+  shape_p p1 p2.
+Proof.
+  generalize dependent p2. induction p1; simpl; intros;
+  alpha_case p2 Heq; auto; bool_hyps; repeat simpl_sumbool;
+  simpl.
+  - rewrite H3. simpl. nested_ind_case.
+    rewrite all2_cons in H1 |- *. bool_hyps.
+    rewrite (Hp p), (IHps Hforall _ H2); auto.
+  - rewrite IHp1_1, IHp1_2; auto.
+Qed.
+
+Fixpoint shape_t (t1 t2: term):=
+  match t1, t2 with
+  | Tconst c1, Tconst c2 => true
+  | Tvar v1, Tvar v2 => true
+  | Tfun f1 ty1 tm1, Tfun f2 ty2 tm2 =>
+    (funsym_eq_dec f1 f2) &&
+    (length tm1 =? length tm2) && 
+    (list_eq_dec vty_eq_dec ty1 ty2) &&
+    (all2 (fun t1 t2 => shape_t t1 t2)) tm1 tm2
+  | Tlet tm1 x tm2, Tlet tm3 y tm4 =>
+    shape_t tm1 tm3 &&
+    shape_t tm2 tm4
+  | Tif f1 t1 t3, Tif f2 t2 t4 =>
+    shape_f f1 f2 &&
+    shape_t t1 t2 &&
+    shape_t t3 t4
+  | Tmatch t1 ty1 ps1, Tmatch t2 ty2 ps2 =>
+    shape_t t1 t2 &&
+    (length ps1 =? length ps2) &&
+    (vty_eq_dec ty1 ty2) &&
+    all2 (fun (x1 x2: pattern * term) =>
+      shape_p (fst x1) (fst x2) &&
+      shape_t (snd x1) (snd x2)) ps1 ps2
+  | Teps f1 x, Teps f2 y => 
+    shape_f f1 f2
+  | _, _ => false
+  end
+with shape_f (f1 f2: formula) {struct f1} : bool :=
+  match f1, f2 with
+  | Fpred p1 ty1 tm1, Fpred p2 ty2 tm2 =>
+    (predsym_eq_dec p1 p2) &&
+    (length tm1 =? length tm2) && 
+    (list_eq_dec vty_eq_dec ty1 ty2) &&
+    (all2 (fun t1 t2 => shape_t t1 t2)) tm1 tm2
+  | Fquant q1 x f1, Fquant q2 y f2 =>
+    quant_eq_dec q1 q2 &&
+    shape_f f1 f2
+  | Feq ty1 t1 t3, Feq ty2 t2 t4 =>
+    vty_eq_dec ty1 ty2 &&
+    shape_t t1 t2 &&
+    shape_t t3 t4
+  | Fbinop b1 f1 f3, Fbinop b2 f2 f4 =>
+    binop_eq_dec b1 b2 &&
+    shape_f f1 f2 &&
+    shape_f f3 f4
+  | Fnot f1, Fnot f2 =>
+    shape_f f1 f2
+  | Ftrue, Ftrue => true
+  | Ffalse, Ffalse => true
+  | Flet t1 x f1, Flet t2 y f2 =>
+    shape_t t1 t2 &&
+    shape_f f1 f2
+  | Fif f1 f3 f5, Fif f2 f4 f6 =>
+    shape_f f1 f2 &&
+    shape_f f3 f4 &&
+    shape_f f5 f6
+  | Fmatch t1 ty1 ps1, Fmatch t2 ty2 ps2 =>
+    shape_t t1 t2 &&
+    (length ps1 =? length ps2) &&
+    (vty_eq_dec ty1 ty2) &&
+    all2 (fun (x1 x2: pattern * formula) =>
+      shape_p (fst x1) (fst x2) &&
+      shape_f (snd x1) (snd x2)) ps1 ps2
+  | _, _ => false
+  end.
+
+Lemma alpha_shape t1 f1:
+  (forall t2 vars
+    (Heq: alpha_equiv_t vars t1 t2),
+    shape_t t1 t2) /\
+  (forall f2 vars
+    (Heq: alpha_equiv_f vars f1 f2),
+    shape_f f1 f2).
+Proof.
+  revert t1 f1. apply term_formula_ind; simpl; auto;
+  intros.
+  - alpha_case t2 Heq; auto.
+  - alpha_case t2 Heq; auto.
+  - alpha_case t2 Heq; bool_hyps; repeat simpl_sumbool.
+    rewrite H3. simpl. nested_ind_case.
+    rewrite all2_cons in H1 |- *. bool_hyps.
+    rewrite (Hp t vars), (IHl1 Hforall _ H2); auto.
+  - alpha_case t2 Heq; bool_hyps.
+    rewrite (H t2_1 vars), (H0 t2_2 ((v, v0) :: vars)); auto.
+  - alpha_case t0 Heq; bool_hyps.
+    rewrite (H f0 vars), (H0 t0_1 vars), (H1 t0_2 vars); auto.
+  - alpha_case t2 Heq; bool_hyps; repeat simpl_sumbool.
+    rewrite (H t2 vars); auto. clear H H1. rewrite H4; simpl.
+    nested_ind_case. rewrite all2_cons in H2 |- *; bool_hyps.
+    rewrite (alpha_p_shape (combine (pat_fv (fst a)) (pat_fv (fst p)))),
+      (Hp _ (add_vals (pat_fv (fst a)) (pat_fv (fst p)) vars) ),
+      (IHps Hforall _ H1); auto.
+  - alpha_case t2 Heq. bool_hyps. apply (H _ ((v, v0) :: vars)); auto.
+  - alpha_case f2 Heq; bool_hyps; repeat simpl_sumbool.
+    rewrite H3. simpl. nested_ind_case.
+    rewrite all2_cons in H1 |- *. bool_hyps.
+    rewrite (Hp t vars), (IHtms Hforall _ H2); auto.
+  - alpha_case f2 Heq. bool_hyps; repeat simpl_sumbool.
+    apply (H _ ((v, v0) :: vars)); auto.
+  - alpha_case f2 Heq; bool_hyps; repeat simpl_sumbool.
+    rewrite (H t vars), (H0 t0 vars); auto.
+  - alpha_case f0 Heq; bool_hyps; repeat simpl_sumbool.
+    rewrite (H f0_1 vars), (H0 f0_2 vars); auto.
+  - alpha_case f2 Heq; apply (H _ vars); auto.
+  - alpha_case f2 Heq; bool_hyps.
+    rewrite (H t vars), (H0 f2 ((v, v0) :: vars)); auto.
+  - alpha_case f0 Heq; bool_hyps.
+    rewrite (H f0_1 vars), (H0 f0_2 vars), (H1 f0_3 vars); auto.
+  - alpha_case f2 Heq; bool_hyps; repeat simpl_sumbool.
+    rewrite (H t vars); auto. clear H H1. rewrite H4; simpl.
+    nested_ind_case. rewrite all2_cons in H2 |- *; bool_hyps.
+    rewrite (alpha_p_shape (combine (pat_fv (fst a)) (pat_fv (fst p)))),
+      (Hp _ (add_vals (pat_fv (fst a)) (pat_fv (fst p)) vars) ),
+      (IHps Hforall _ H1); auto.
+Qed.
+
+Definition alpha_shape_t t := proj_tm alpha_shape t.
+Definition alpha_shape_f f := proj_fmla alpha_shape f.
+
+(*We prove that this preserves [valid_ind_form]
+  and [ind_positive]*)
+Lemma shape_ind_form p (f1 f2: formula):
+  shape_f f1 f2 ->
+  valid_ind_form p f1 ->
+  valid_ind_form p f2.
+Proof.
+  intros Hshp Hind. generalize dependent f2.
+  induction Hind; intros; simpl in Hshp;
+  [alpha_case f2 Hshp | alpha_case f0 Hshp |
+    alpha_case f2 Hshp | alpha_case f2 Hshp];
+  bool_hyps; repeat simpl_sumbool; constructor; auto.
+  apply Nat.eqb_eq in H4.
+  rewrite H0, H4; auto.
+Qed.
+
+Lemma shape_predsym_in t1 f1:
+  (forall t2 p
+    (Hshp: shape_t t1 t2),
+    predsym_in_term p t1 = predsym_in_term p t2) /\
+  (forall f2 p
+    (Hshp: shape_f f1 f2),
+    predsym_in p f1 = predsym_in p f2).
+Proof.
+  revert t1 f1; apply term_formula_ind; simpl; intros.
+  - alpha_case t2 Hshp; auto.
+  - alpha_case t2 Hshp; auto.
+  - alpha_case t2 Hshp; bool_hyps; repeat simpl_sumbool.
+    nested_ind_case. rewrite all2_cons in H1. bool_hyps.
+    rewrite (Hp t), (IHl1 Hforall _ H2); auto.
+  - alpha_case t2 Hshp. bool_hyps.
+    rewrite (H t2_1), (H0 t2_2); auto.
+  - alpha_case t0 Hshp. bool_hyps.
+    rewrite (H f0), (H0 t0_1), (H1 t0_2); auto.
+  - alpha_case t2 Hshp. bool_hyps; repeat simpl_sumbool.
+    rewrite (H t2); auto; f_equal.
+    clear H1 H. nested_ind_case.
+    rewrite all2_cons in H2. bool_hyps.
+    rewrite (Hp (snd p0)), (IHps Hforall _ H1); auto.
+  - alpha_case t2 Hshp. apply H. auto.
+  - alpha_case f2 Hshp; bool_hyps; repeat simpl_sumbool. f_equal.
+    nested_ind_case. rewrite all2_cons in H1. bool_hyps.
+    rewrite (Hp t), (IHtms Hforall _ H2); auto.
+  - alpha_case f2 Hshp. bool_hyps. simpl_sumbool.
+  - alpha_case f2 Hshp. bool_hyps. rewrite (H t), (H0 t0); auto.
+  - alpha_case f0 Hshp; bool_hyps; repeat simpl_sumbool.
+    rewrite (H f0_1), (H0 f0_2); auto.
+  - alpha_case f2 Hshp. apply H; auto.
+  - alpha_case f2 Hshp; auto.
+  - alpha_case f2 Hshp; auto.
+  - alpha_case f2 Hshp; auto. bool_hyps.
+    rewrite (H t), (H0 f2); auto.
+  - alpha_case f0 Hshp. bool_hyps.
+    rewrite (H f0_1), (H0 f0_2), (H1 f0_3); auto.
+  - alpha_case f2 Hshp. bool_hyps; repeat simpl_sumbool.
+    rewrite (H t); auto; f_equal.
+    clear H1 H. nested_ind_case.
+    rewrite all2_cons in H2. bool_hyps.
+    rewrite (Hp (snd p0)), (IHps Hforall _ H1); auto.
+Qed.
+
+Definition shape_t_predsym_in t := proj_tm shape_predsym_in t.
+Definition shape_f_predsym_in f := proj_fmla shape_predsym_in f.
+
+Lemma shape_ind_strictly_positive ps f1 f2:
+  shape_f f1 f2 ->
+  ind_strictly_positive ps f1 ->
+  ind_strictly_positive ps f2.
+Proof.
+  intros Hshp Hind. generalize dependent f2.
+  induction Hind; intros; simpl in Hshp.
+  - apply ISP_notin; intros.
+    rewrite <- (shape_f_predsym_in f f2); auto.
+  - alpha_case f2 Hshp; bool_hyps; repeat simpl_sumbool.
+    apply ISP_pred; auto.
+    (*TODO: improve nested_ind_case*)
+    apply Nat.eqb_eq in H4. rename l0 into tms2.
+    generalize dependent tms2.
+    induction ts; simpl; intros; destruct tms2; inversion H4; auto.
+    rewrite all2_cons in H2. bool_hyps. simpl in H0.
+    destruct H1; subst.
+    + rewrite <-(shape_t_predsym_in a t); auto.
+    + apply IHts with(tms2:=tms2); auto.
+  - alpha_case f0 Hshp. bool_hyps. repeat simpl_sumbool.
+    apply ISP_impl; auto. intros.
+    rewrite <- (shape_f_predsym_in f1 f0_1); auto.
+  - alpha_case f2 Hshp. bool_hyps; simpl_sumbool.
+    apply ISP_quant; auto.
+  - alpha_case f0 Hshp; bool_hyps; simpl_sumbool.
+    apply ISP_and; auto.
+  - alpha_case f0 Hshp; bool_hyps; simpl_sumbool.
+    apply ISP_or; auto.
+  - alpha_case f2 Hshp; bool_hyps. apply ISP_let; auto.
+    intros. rewrite <- (shape_t_predsym_in t t0); auto.
+  - alpha_case f0 Hshp; bool_hyps. apply ISP_if; auto;
+    intros. rewrite <- (shape_f_predsym_in f1 f0_1); auto.
+  - alpha_case f2 Hshp; bool_hyps; repeat simpl_sumbool.
+    apply ISP_match; [
+      intros; rewrite <-(shape_t_predsym_in t t0); auto |].
+    clear H2 H.
+    apply Nat.eqb_eq in H5.
+    rename l into ps2. generalize dependent ps2.
+    induction pats; simpl; intros; destruct ps2; inversion H5;
+    auto. rewrite all2_cons in H3; bool_hyps.
+    simpl in H0, H1.
+    destruct H; subst; auto.
+    + apply (H1 (snd a)); auto.
+    + apply IHpats with(ps2:=ps2); auto.
+      intros. apply (H1 f0); auto.
+Qed.
+
+Lemma shape_ind_positive ps f1 f2:
+  shape_f f1 f2 ->
+  ind_positive ps f1 ->
+  ind_positive ps f2.
+Proof.
+  intros Hshp Hind. generalize dependent f2.
+  induction Hind; intros; simpl in Hshp;
+  [alpha_case f2 Hshp | alpha_case f2 Hshp | alpha_case f2 Hshp |
+    alpha_case f0 Hshp] ; bool_hyps;
+  repeat simpl_sumbool; try constructor; auto.
+  - apply Nat.eqb_eq in H4.
+    generalize dependent l0. induction ts; simpl; intros;
+    destruct l0; inversion H4; auto.
+    rewrite all2_cons in H2. bool_hyps.
+    destruct H1; subst.
+    + rewrite <- (shape_t_predsym_in a t); auto.
+      apply H0; simpl; auto.
+    + apply IHts with(l0:=l0); auto.
+      intros; apply H0; simpl; auto.
+  - intros. rewrite <- (shape_t_predsym_in t t0); auto.
+  - apply (shape_ind_strictly_positive _ f1); auto.
+Qed.
+
+End Shape.
+  
+
+(*Now we can give a final alpha conversion function
+  and show it has all the nice properties we want*)
+Section ConvertFn.
+
+Definition a_convert_t (t: term) :=
+  alpha_t_aux t (gen_strs (length (bnd_t t)) (bnd_t t ++ term_fv t)).
+Definition a_convert_f (f: formula) :=
+  alpha_f_aux f (gen_strs (length (bnd_f f)) (bnd_f f ++ form_fv f)).
+
+(*Correctness*)
+Theorem a_convert_t_wf t :
+  term_wf (a_convert_t t).
+Proof.
+  unfold term_wf.
+  pose proof (gen_strs_nodup (length (bnd_t t)) (bnd_t t ++ term_fv t)) as Hnodup.
+  pose proof (gen_strs_length (length (bnd_t t)) (bnd_t t ++ term_fv t)) as Hlen.
+  pose proof (gen_strs_notin (length (bnd_t t)) (bnd_t t ++ term_fv t)) as Hnotin.
+  split.
+  - apply alpha_t_aux_bnd; auto.
+  - intros x [Hinx1 Hinx2].
+    apply alpha_t_aux_bnd in Hinx2; auto.
+    apply alpha_t_aux_fv' in Hinx1; auto;
+    try (intros y Hy1 Hy2; apply Hnotin in Hy1; apply Hy1; in_tac).
+    apply Hnotin in Hinx2. apply Hinx2. in_tac.
+Qed.
+
+Theorem a_convert_t_equiv t:
+  a_equiv_t t (a_convert_t t).
+Proof.
+  apply alpha_t_aux_equiv; 
+  [apply gen_strs_nodup | apply gen_strs_length | |];
+  intros y Hy Hy2; apply gen_strs_notin in Hy; apply Hy; in_tac.
+Qed.
+
+(*And the corollaries:*)
+Corollary a_convert_t_ty t ty:
+  term_has_type sigma t ty ->
+  term_has_type sigma (a_convert_t t) ty.
+Proof.
+  apply a_equiv_t_type.
+  apply a_convert_t_equiv.
+Qed.
+
+Corollary a_convert_t_rep v t ty 
+  (Hty: term_has_type sigma t ty):
+  term_rep v t ty Hty = 
+  term_rep v (a_convert_t t) ty (a_convert_t_ty t ty Hty).
+Proof.
+  apply a_equiv_t_equiv.
+  apply a_convert_t_equiv.
+Qed.
+
+(*And likewise for formulas*)
+
+Theorem a_convert_f_wf f :
+  fmla_wf (a_convert_f f).
+Proof.
+  unfold fmla_wf.
+  pose proof (gen_strs_nodup (length (bnd_f f)) (bnd_f f ++ form_fv f)) as Hnodup.
+  pose proof (gen_strs_length (length (bnd_f f)) (bnd_f f ++ form_fv f)) as Hlen.
+  pose proof (gen_strs_notin (length (bnd_f f)) (bnd_f f ++ form_fv f)) as Hnotin.
+  split.
+  - apply alpha_f_aux_bnd; auto.
+  - intros x [Hinx1 Hinx2].
+    apply alpha_f_aux_bnd in Hinx2; auto.
+    apply alpha_f_aux_fv' in Hinx1; auto;
+    try (intros y Hy1 Hy2; apply Hnotin in Hy1; apply Hy1; in_tac).
+    apply Hnotin in Hinx2. apply Hinx2. in_tac.
+Qed.
+
+Theorem a_convert_f_equiv f:
+  a_equiv_f f (a_convert_f f).
+Proof.
+  apply alpha_f_aux_equiv;
+  [apply gen_strs_nodup | apply gen_strs_length | |];
+  intros y Hy Hy2; apply gen_strs_notin in Hy; apply Hy; in_tac.
+Qed.
+
+(*And the corollaries:*)
+Corollary a_convert_f_valid f:
+  valid_formula sigma f ->
+  valid_formula sigma (a_convert_f f).
+Proof.
+  apply a_equiv_f_valid.
+  apply a_convert_f_equiv.
+Qed.
+
+Corollary a_convert_f_rep v f 
+  (Hval: valid_formula sigma f):
+  formula_rep v f Hval = 
+  formula_rep v (a_convert_f f) (a_convert_f_valid f Hval).
+Proof.
+  apply a_equiv_f_equiv.
+  apply a_convert_f_equiv.
+Qed.
+
+Corollary a_convert_f_valid_ind_form p f:
+  valid_ind_form p f ->
+  valid_ind_form p (a_convert_f f).
+Proof.
+  intros. eapply shape_ind_form. 2: apply H.
+  apply alpha_shape_f with(vars:=nil).
+  apply a_convert_f_equiv.
+Qed.
+
+Corollary a_convert_f_pos ps f:
+  ind_positive ps f ->
+  ind_positive ps (a_convert_f f).
+Proof.
+  intros. eapply shape_ind_positive. 2: apply H.
+  apply alpha_shape_f with (vars:=nil).
+  apply a_convert_f_equiv.
+Qed.
+
+End ConvertFn.
+
+End Alpha.

@@ -126,24 +126,290 @@ Qed.
 
 End NoDupsList.
 
+(*We want to apply this to strings and vsymbols.
+  To do this, we want to give decent names (at least
+  x0, x1, etc) and not just 0, 00, 000 or something
+  easy to define and prove injective. Converting 
+  nats to strings is surprisingly difficult*)
+
 (*Apply this to vsymbols*)
 Require Import Types.
 Require Import Syntax.
 Require Import Coq.Strings.String.
+Require Import FunInd.
+Require Import Recdef.
+From mathcomp Require Import all_ssreflect ssrnat div.
 
-(*Get a string with n zeroes*)
-Fixpoint nth_str (n: nat) : string :=
+Set Bullet Behavior "Strict Subproofs".
+
+Section NatToStr.
+
+Local Open Scope string_scope.
+
+Definition nat_to_digit (n : nat) : string :=
   match n with
-  | O => EmptyString
-  | S m => String Ascii.zero (nth_str m)
+    | 0 => "0"%string
+    | 1 => "1"%string
+    | 2 => "2"%string
+    | 3 => "3"%string
+    | 4 => "4"%string
+    | 5 => "5"%string
+    | 6 => "6"%string
+    | 7 => "7"%string
+    | 8 => "8"%string
+    | _ => "9"%string
   end.
 
-Lemma nth_string_inj: forall n1 n2,
+(*Gives list of digits in reverse order*)
+Function nat_to_digits (n : nat) {measure (fun x => x) n} : list string :=
+  if n < 10 then [nat_to_digit (n %% 10)] else 
+  nat_to_digit (n %% 10) :: nat_to_digits (n %/ 10).
+Proof.
+  move=> n Hn10. apply /ltP.
+  apply ltn_Pdiv=>//.
+  move: Hn10. by case: n.
+Defined.
+
+Lemma nat_to_digits_simpl n :
+  nat_to_digits n = nat_to_digit (n %% 10) :: if n < 10 then nil else 
+    nat_to_digits (n %/ 10).
+Proof.
+  rewrite nat_to_digits_equation.
+  by case: (n < 10).
+Qed.
+
+(*Injectivity*)
+
+Ltac solve_or :=
+  match goal with
+  | |- ?P \/ ?Q => solve[left; solve_or] + solve[right; solve_or] 
+  | |- _ => auto
+  end.
+
+(*Makes things easier*)
+Lemma nat_lt10 (n: nat):
+  n < 10 ->
+  n = 0 \/ n = 1 \/ n = 2 \/ n = 3 \/ n =4 \/
+  n = 5 \/ n = 6 \/ n = 7 \/ n = 8 \/ n= 9.
+Proof.
+  move=> Hn.
+  do 10 (destruct n as [| n]; solve_or). inversion Hn.
+Qed.
+
+Ltac case_or :=
+  repeat match goal with
+  | H: ?P \/ ?Q |- _ => destruct H
+  end.
+
+(*Just do all 100 cases*)
+Lemma nat_to_digit_inj (n1 n2: nat):
+  n1 < 10 ->
+  n2 < 10 ->
+  nat_to_digit n1 = nat_to_digit n2 ->
+  n1 = n2.
+Proof.
+  move=>Hn1 Hn2.
+  apply nat_lt10 in Hn1; apply nat_lt10 in Hn2.
+  case_or; subst; simpl; auto; intros H; inversion H.
+Qed.
+
+Lemma nat_to_digits_nil n:
+  ~ (nat_to_digits n = nil).
+Proof. 
+  by rewrite nat_to_digits_simpl.
+Qed.
+
+Lemma modn_inj (m n d: nat):
+  m < d ->
+  n < d ->
+  m = n %[mod d] ->
+  m = n.
+Proof.
+  move=> Hm Hn Hmod.
+  by rewrite (divn_eq m d) (divn_eq n d) !divn_small.
+Qed.
+
+Lemma nat_to_digits_inj n1 n2:
+  nat_to_digits n1 = nat_to_digits n2 ->
+  n1 = n2.
+Proof.
+  move: n2.
+  apply nat_to_digits_ind with
+    (P:=fun m1 m2 => forall n2, m2 = nat_to_digits n2 -> m1 = n2).
+  - move=> n Hn n2.
+    rewrite nat_to_digits_simpl => [[]].
+    case Hn2: (n2 < 10).
+    + move=> Hdig _.
+      apply nat_to_digit_inj in Hdig; try by
+      apply ltn_pmod.
+      by apply (modn_inj _ _ _ Hn).
+    + by rewrite nat_to_digits_simpl.
+  - move=> n2 [//| Hn2 _ Hdigits n3].
+    rewrite (nat_to_digits_simpl n3).
+    case Hn3: (n3 < 10).
+    + move=> []. by rewrite nat_to_digits_simpl.
+    + move=> [Heq1 Heq2].
+      apply Hdigits in Heq2.
+      apply nat_to_digit_inj in Heq1; try by
+      apply ltn_pmod.
+      by rewrite (divn_eq n2 10) (divn_eq n3 10) Heq1 Heq2.
+Qed.
+
+(*Convert digits to string*)
+Definition digits_to_string (l: list string) : string :=
+  concat "" l.
+
+(*How is this not in the stdlib?*)
+Lemma append_length s1 s2:
+  length (s1 ++ s2) = length s1 + length s2.
+Proof.
+  elim: s1 =>//=a s IH. by rewrite IH.
+Qed.
+
+(*Intermediate cases for injectivity - concat is annoying*)
+
+Lemma concat_nil l:
+  (forall x, In x l -> length x = 1) -> 
+  concat "" l = "" -> l = nil.
+Proof.
+  case: l => //= x l Hallin Heq.
+  have //: 1 <= length "".
+  rewrite -Heq {Heq}. move: Hallin.
+  by case: l =>//=[Hallin | y l Hallin];
+  [|rewrite append_length]; rewrite Hallin; auto.
+Qed.
+
+Lemma concat_cons_case x1 x2 y1 l1:
+  length x1 = 1 ->
+  length x2 = 1 ->
+  length y1 = 1 ->
+  x1 ++ concat "" (y1 :: l1) <> x2.
+Proof.
+  move=> Hlen1 Hlen2 Hlen3.
+  rewrite /=. case: l1=>[| z1 l1].
+  - move=> Heq.
+    have: length x1 + length y1 = length x2 by 
+      rewrite -Heq append_length.
+    by rewrite Hlen1 Hlen2 Hlen3.
+  - move=> Heq.
+    have: length x1 + length y1 + length (concat "" (z1 :: l1)) =
+      length x2 by rewrite -Heq !append_length addnA.
+    rewrite Hlen1 Hlen2 Hlen3 => Heq2. 
+    by have: 1 + 1 <= 1 by rewrite -{3}Heq2.
+Qed.
+
+Lemma append_inj s1 s2 s3 s4:
+  length s1 = length s2 ->
+  s1 ++ s3 = s2 ++ s4 ->
+  s1 = s2 /\ s3 = s4.
+Proof.
+  revert s2.
+  elim: s1 => [[| a2 s2]//=| a1 s1/= IH [| a2 s2]//= [Hlen] [Hstr] Heq].
+  apply IH in Heq=>//. case: Heq => [Hseq Hseq2].
+  by subst.
+Qed.
+
+Lemma concat_cons x1 x2 l1 l2:
+  (forall x, In x (x1 :: l1) -> length x = 1) ->
+  (forall x, In x (x2 :: l2) -> length x = 1) ->
+  concat "" (x1 :: l1) = concat "" (x2 :: l2) ->
+  x1 = x2 /\ concat "" l1 = concat "" l2.
+Proof.
+  rewrite /=. case: l1 =>[| y1 l1]; case: l2 =>[| y2 l2] //.
+  - move=>/= Hall1 Hall2 Heq. symmetry in Heq.
+    by apply concat_cons_case in Heq; auto.
+  - move=>/= Hall1 Hall2 Heq.
+    by apply concat_cons_case in Heq; auto.
+  - move=> Hall1 Hall2 Heq.
+    by apply append_inj in Heq; last by
+      rewrite Hall1; auto; rewrite Hall2; auto.
+Qed.
+
+
+Lemma digits_to_string_inj (l1 l2: list string):
+  (forall x, In x l1 -> length x = 1) ->
+  (forall x, In x l2 -> length x = 1) ->
+  digits_to_string l1 = digits_to_string l2 ->
+  l1 = l2.
+Proof.
+  revert l2. rewrite /digits_to_string.
+  elim: l1=>[/=| x1 l1 IHl [|x2 l2]].
+  - move=>l2 _ Hallin Heq.
+    symmetry in Heq. by apply concat_nil in Heq.
+  - move=> Hallin _ Heq. by apply concat_nil in Heq.
+  - move=> Hall1 Hall2 Heq.
+    apply concat_cons in Heq=>//.
+    case: Heq => [Hxeq Hceq].
+    rewrite Hxeq. f_equal. by apply IHl=>//;
+    [intros; apply Hall1 | intros; apply Hall2]=>/=; auto.
+Qed.
+
+Lemma rev_inj {A: Type} (l1 l2: list A):
+  rev l1 = rev l2 ->
+  l1 = l2.
+Proof.
+  move=> Hrev.
+  by rewrite -(revK l1) Hrev revK.
+Qed.
+
+(*All things in digit list have length 1*)
+Lemma nat_to_digit_len n:
+  length (nat_to_digit n) = 1.
+Proof.
+  repeat (destruct n; auto).
+Qed.
+
+Lemma nat_to_digits_len n:
+  forall x, In x (nat_to_digits n) -> length x = 1.
+Proof.
+  apply nat_to_digits_ind with (P:=fun m1 m2 => forall x, In x m2 -> length x = 1).
+  - move=> n1 Hn1 x/= [Hx | []]. by rewrite -Hx nat_to_digit_len.
+  - move=> n1 [//| Hn1 _] IH x/= [Hh | Htl].
+    + by rewrite -Hh nat_to_digit_len.
+    + by apply IH.
+Qed.
+
+Lemma in_rev {A: Type} x (l: list A):
+  In x l <-> In x (rev l).
+Proof.
+  elim: l=>//= y l IH.
+  by rewrite IH rev_cons -cats1 in_app_iff /= or_false_r or_comm.
+Qed.
+
+(*Finally, the full function and theorem*)
+Definition nat_to_string (n: nat) : string :=
+  digits_to_string (rev (nat_to_digits n)).
+
+(*Some tests*)
+Eval compute in (nat_to_string 654).
+Eval compute in (nat_to_string 0).
+Eval compute in (nat_to_string 1000).
+
+Lemma nat_to_string_inj n1 n2:
+  nat_to_string n1 = nat_to_string n2 ->
+  n1 = n2.
+Proof.
+  rewrite /nat_to_string.
+  move=> Hn.
+  apply digits_to_string_inj in Hn;
+  try (move=> x; rewrite -in_rev; apply nat_to_digits_len).
+  apply rev_inj in Hn.
+  by apply nat_to_digits_inj in Hn.
+Qed.
+
+End NatToStr.
+
+(*Get the string xn*)
+Definition nth_str (n: nat) : string :=
+  "x" ++ nat_to_string n.
+
+Lemma nth_str_inj: forall n1 n2,
   nth_str n1 = nth_str n2 ->
   n1 = n2.
 Proof.
-  intros n1; induction n1; simpl; intros;
-  destruct n2; inversion H; subst; auto.
+  intros n1 n2. unfold nth_str.
+  intros. inversion H.
+  apply nat_to_string_inj in H1; auto.
 Qed.
 
 Definition nth_vs (n: nat) : vsymbol :=
@@ -154,5 +420,52 @@ Lemma nth_vs_inj: forall n1 n2,
   n1 = n2.
 Proof.
   intros. unfold nth_vs in H. inversion H; subst.
-  apply nth_string_inj in H1; auto.
+  apply nat_to_string_inj in H1; auto.
+Qed.
+
+(*We give a specific function for generating n distinct
+  vsymbols not in list l*)
+Definition gen_vars (n: nat) (l: list vsymbol) :=
+  gen_notin nth_vs vsymbol_eq_dec n l.
+
+Lemma gen_vars_length (n: nat) (l: list vsymbol):
+  List.length (gen_vars n l) = n.
+Proof.
+  apply gen_notin_length. apply nth_vs_inj.
+Qed.
+
+Lemma gen_vars_nodup (n: nat) (l: list vsymbol):
+  NoDup (gen_vars n l).
+Proof.
+  apply gen_notin_nodup. apply nth_vs_inj.
+Qed.
+
+Lemma gen_vars_notin (n: nat) (l: list vsymbol):
+  forall x, In x (gen_vars n l) -> ~ In x l.
+Proof.
+  apply gen_notin_notin.
+Qed.
+
+(*And one to generate new variable names*)
+Definition gen_strs (n: nat) (l: list vsymbol) : list string :=
+  gen_notin nth_str string_dec n (map fst l).
+
+Lemma gen_strs_length n l:
+  List.length (gen_strs n l) = n.
+Proof.
+  apply gen_notin_length. apply nth_str_inj.
+Qed.
+
+Lemma gen_strs_nodup n l:
+  NoDup (gen_strs n l).
+Proof.
+  apply gen_notin_nodup. apply nth_str_inj.
+Qed.
+
+Lemma gen_strs_notin (n: nat) (l: list vsymbol):
+  forall (x: vsymbol), In (fst x) (gen_strs n l) -> ~ In x l.
+Proof.
+  intros. apply gen_notin_notin in H.
+  rewrite in_map_iff in H. intro Hin.
+  apply H. exists x. split; auto.
 Qed.
