@@ -2,7 +2,7 @@ Require Export Coq.Lists.List.
 Require Export Coq.Bool.Bool.
 Export ListNotations.
 Require Import Coq.Logic.Eqdep_dec.
-Require Import Lia.
+Require Export Lia.
 (** Generally useful definitions, lemmas, and tactics *)
 
 (** Working with bool/props **)
@@ -17,6 +17,7 @@ Ltac simpl_sumbool :=
     | [H: (proj_sumbool ?x ?y ?z) = true |- _ ] => destruct z; inversion H; clear H; subst; auto
     | |- is_true (proj_sumbool ?x ?y ?z) => destruct z; subst; auto
     | |- (proj_sumbool ?x ?y ?z) = true => destruct z; subst; auto
+    | H: proj_sumbool ?x ?y ?z = false |- _ => destruct z; inversion H; clear H
     end.
 Ltac split_all :=
   repeat match goal with
@@ -955,3 +956,66 @@ Proof.
 Qed.
 
 End AssocList.
+
+(*Results about filter*)
+Section Filter.
+
+Lemma filter_length_le {B: Type} (g: B -> bool) (l: list B):
+  length (filter g l) <= length l.
+Proof.
+  induction l; simpl; auto. destruct (g a); simpl; auto.
+  apply le_n_S; auto.
+Qed.
+
+Lemma all_filter {B: Type} (g: B -> bool) (l: list B):
+  forallb g l <-> filter g l = l.
+Proof.
+  induction l; simpl; split; intros; auto.
+  - destruct (g a) eqn : Hg; try solve[inversion H].
+    apply IHl in H. rewrite H; auto.
+  - destruct (g a) eqn : Hg; simpl; auto. 
+    + inversion H. rewrite H1. apply IHl in H1; auto.
+    + assert (length (a :: l) <= length l). {
+        rewrite <- H. apply filter_length_le.
+      }
+      simpl in H0. lia.
+Qed.
+
+Lemma filter_cons {A: Type} (g: A -> bool) (x: A) (l: list A):
+  filter g (x :: l) = if g x then x :: filter g l else filter g l.
+Proof.
+  reflexivity.
+Qed.
+
+Lemma filter_in_notin {A: Type} 
+  (eq_dec: forall (x y: A), {x = y} + {x <> y}) (l1 l2: list A) (x: A):
+  ~ In x l2 ->
+  filter (fun y => negb (in_dec eq_dec y (x :: l1))) l2 =
+  filter (fun y => negb (in_dec eq_dec y l1)) l2.
+Proof.
+  intros.
+  apply filter_ext_in; intros.
+  destruct (in_dec eq_dec a l1); simpl;
+  destruct (eq_dec x a); subst; auto;
+  destruct (in_dec eq_dec a l1); auto;
+  contradiction.
+Qed.
+
+End Filter.
+
+(*Results about [in]*)
+Section In.
+
+Lemma in_split {A: Type} (x: A) (l: list A):
+  In x l ->
+  exists l1 l2, l = l1 ++ x :: l2.
+Proof.
+  induction l; simpl; intros. destruct H.
+  destruct H; subst.
+  - exists nil. exists l. reflexivity.
+  - apply IHl in H. destruct H as [l1 [l2 Hl]]; subst.
+    exists (a :: l1). exists l2. reflexivity.
+Qed.
+
+End In.
+
