@@ -3,13 +3,14 @@ proofs/core/Common.v
 proofs/core/Types.v
 proofs/core/Syntax.v
 proofs/core/Typing.v
+proofs/core/Substitution.v
 proofs/core/Typechecker.v
 proofs/core/Hlist.v
 proofs/core/IndTypes.v
 proofs/core/Semantics.v
 proofs/core/Denotational.v
 proofs/core/GenElts.v
-proofs/core/Substitution.v
+proofs/core/Alpha.v
 proofs/core/IndProp.v
 proofs/Util.v
 proofs/Ty.v

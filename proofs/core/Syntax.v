@@ -81,14 +81,29 @@ Record predsym : Set :=
     p_params_nodup: nodupb typevar_eq_dec p_params
   }.
 
+Lemma s_params_Nodup: forall (f: funsym),
+  NoDup (s_params f).
+Proof.
+  intros. eapply reflect_iff. apply nodup_NoDup. 
+  apply s_params_nodup.
+Qed.
+
+Lemma p_params_Nodup: forall (p: predsym),
+  NoDup (p_params p).
+Proof.
+  intros. eapply reflect_iff. apply nodup_NoDup. 
+  apply p_params_nodup.
+Qed.
+
+
 (*As an example, we define the polymorphic identity function*)
 Section ID.
 
 Definition id_name : string := "id".
-Definition a : string := "a".
-Definition id_params : list typevar := [a].
-Definition id_args: list vty := [vty_var a].
-Definition id_ret: vty := vty_var a.
+Definition a_var : string := "a".
+Definition id_params : list typevar := [a_var].
+Definition id_args: list vty := [vty_var a_var].
+Definition id_ret: vty := vty_var a_var.
 
 Definition id_fs : funsym := Build_funsym id_name id_params id_args id_ret eq_refl eq_refl eq_refl.
 
@@ -214,11 +229,10 @@ with formula : Set :=
   | Flet: term -> vsymbol -> formula -> formula
   | Fif: formula -> formula -> formula -> formula
   | Fmatch: term -> vty -> list (pattern * formula) -> formula.
-  (*TODO: will need nicer (useful) induction scheme*)
 Set Elimination Schemes.
 
-(*Scheme term_ind := Induction for term Sort Prop
-with formula_ind := Induction for formula Sort Prop.*)
+(*Default values*)
+Definition tm_d : term := Tconst (ConstInt 0).
 
 (*Induction principles*)
 Section PatternInd.
@@ -374,6 +388,10 @@ Definition term_formula_ind: forall (tm: term) (f: formula),
 
 End TermFormInd.
 
+(*A way to get out the tm and fmla parts of a theorem*)
+Notation proj_tm H t := (proj1 (H t Ftrue)).
+Notation proj_fmla H f := (proj2 (H tm_d f)).
+
 (*The _rect version*)
 Section TermFormRect.
 
@@ -516,6 +534,15 @@ Definition closed_term (t: term) : bool :=
   null (term_fv t).
 Definition closed_formula (f: formula) : bool :=
   null (form_fv f).
+
+Lemma NoDup_pat_fv (p: pattern) : NoDup (pat_fv p).
+Proof.
+  induction p; simpl; try constructor; auto.
+  - constructor.
+  - apply big_union_nodup.
+  - apply union_nodup; auto.
+  - apply union_nodup; auto. constructor; auto. constructor.
+Qed.
 
 End FreeVars.
 

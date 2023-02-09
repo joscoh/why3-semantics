@@ -702,3 +702,600 @@ Definition alpha_equiv_t_notin_remove (t: term) :=
   proj1 (alpha_equiv_notin_remove t Ftrue).
 Definition alpha_equiv_f_notin_remove (f: formula) :=
   proj2 (alpha_equiv_notin_remove tm_d f).
+
+
+(*TODO: see if we need these two lemmas*)
+
+(*
+
+Lemma alpha_equiv_fv_notin (t1: term) (f1: formula):
+  (forall (t2: term) vars y
+    (Heq: alpha_equiv_t vars t1 t2)
+    (Hin: In y (map snd vars))
+    (Hnotin: (forall x, ~ in_first (x, y) vars) (*\/ (forall x, ~ in_first (y, x) vars)*)),
+    free_in_t y t2 = false) /\
+  (forall (f2: formula) vars y
+    (Heq: alpha_equiv_f vars f1 f2)
+    (Hin: In y (map snd vars))
+    (Hnotin: (forall x, ~ in_first (x, y) vars) (*\/ (forall x, ~ in_first (y, x) vars)*)),
+    free_in_f y f2 = false).
+Proof.
+  revert t1 f1. apply term_formula_ind; simpl; intros.
+  - alpha_case t2 Heq; auto.
+  - alpha_case t2 Heq.
+    rewrite eq_var_in_first in Heq.
+    destruct_all; subst.
+    + vsym_eq y v0; simpl.
+      exfalso. apply (Hnotin v); auto.
+    + vsym_eq y v0.
+  - alpha_case t2 Heq.
+    revert Heq; bool_to_prop; intros; destruct_all.
+    apply Nat.eqb_eq in H3.
+    rename H3 into Hlen.
+    rename l1 into tms.
+    rename l2 into tms2.
+    clear H0 H2.
+    generalize dependent tms2.
+    induction tms; simpl; intros; destruct tms2; inversion Hlen; auto; simpl.
+    revert H1; bool_to_prop; intros [Heq Hall].
+    inversion H; subst.
+    rewrite (H3 _ _ _ Heq); auto; simpl.
+    apply IHtms; auto.
+  - alpha_case t2 Heq.
+    revert Heq; bool_to_prop; intros; destruct_all.
+    rewrite (H t2_1 vars y); auto. simpl.
+    vsym_eq y v0; simpl.
+    apply (H0 _ ((v, v0):: vars)); simpl; auto.
+    intros x. rewrite in_first_cons. intro C.
+    destruct_all; subst; auto. apply (Hnotin _ H6).
+  - alpha_case t0 Heq.
+    revert Heq; bool_to_prop; intros; destruct_all.
+    rewrite (H f0 vars y), (H0 t0_1 vars y), (H1 t0_2 vars y); auto.
+  - alpha_case t2 Heq.
+    revert Heq; bool_to_prop; intros; destruct_all.
+    apply Nat.eqb_eq in H4. 
+    rewrite (H t2 vars y); auto. simpl.
+    clear H1 H3 H.
+    rename H4 into Hlen.
+    rename l into ps2.
+    generalize dependent ps2.
+    induction ps; simpl; intros; destruct ps2; inversion Hlen; auto; simpl.
+    destruct a as [p1 tm1]. destruct p as [p2 tm2]. simpl.
+    revert H2; bool_to_prop; intros; destruct_all.
+    inversion H0; subst.
+    destruct (in_bool_spec vsymbol_eq_dec y (pat_fv p2)); simpl.
+    + apply IHps; auto.
+    + rewrite IHps; auto; simpl_bool.
+      apply (H6 _ _ _ H3); unfold add_vals.
+      * rewrite map_app. in_tac.
+      * intros x Hinx.
+        rewrite in_first_app in Hinx.
+        destruct_all.
+        -- apply in_first_in in H4.
+          apply in_combine_r in H4. contradiction.
+        -- apply (Hnotin x); auto.
+  - alpha_case t2 Heq. revert Heq; bool_to_prop; intros [_ Heq].
+    vsym_eq y v0. simpl.
+    rewrite (H _ _ _ Heq); simpl; auto; simpl_bool; auto.
+    intros x. rewrite in_first_cons; intro C. destruct_all; subst; auto.
+    apply (Hnotin x); auto.
+  - alpha_case f2 Heq.
+    revert Heq; bool_to_prop; intros; destruct_all.
+    apply Nat.eqb_eq in H3.
+    rename H3 into Hlen.
+    rename l0 into tms2.
+    clear H0 H2.
+    generalize dependent tms2.
+    induction tms; simpl; intros; destruct tms2; inversion Hlen; auto; simpl.
+    revert H1; bool_to_prop; intros [Heq Hall].
+    inversion H; subst.
+    rewrite (H3 _ _ _ Heq); auto; simpl.
+    apply IHtms; auto.
+  - alpha_case f2 Heq. revert Heq; bool_to_prop; intros [_ Heq].
+    vsym_eq y v0. simpl.
+    rewrite (H _ _ _ Heq); simpl; auto; simpl_bool; auto.
+    intros x. rewrite in_first_cons; intro C. destruct_all; subst; auto.
+    apply (Hnotin x); auto.
+  - alpha_case f2 Heq. revert Heq; bool_to_prop; intros [[_ Heq1] Heq2].
+    rewrite (H _ _ _ Heq1), (H0 _ _ _ Heq2); auto.
+  - alpha_case f0 Heq. revert Heq; bool_to_prop; intros [[_ Heq1] Heq2].
+    rewrite (H _ _ _ Heq1), (H0 _ _ _ Heq2); auto.
+  - alpha_case f2 Heq. apply (H _ _ _ Heq); auto.
+  - alpha_case f2 Heq; auto.
+  - alpha_case f2 Heq; auto.
+  - alpha_case f2 Heq.
+    revert Heq; bool_to_prop; intros; destruct_all.
+    rewrite (H _ _ _ H3); auto. simpl.
+    vsym_eq y v0; simpl.
+    apply (H0 _ ((v, v0):: vars)); simpl; auto.
+    intros x. rewrite in_first_cons. intro C.
+    destruct_all; subst; auto. apply (Hnotin _ H6).
+  - alpha_case f0 Heq.
+    revert Heq; bool_to_prop; intros; destruct_all.
+    rewrite (H _ _ _ H2), (H0 _ _ _ H4), (H1 _ _ _ H3); auto.
+  - alpha_case f2 Heq.
+    revert Heq; bool_to_prop; intros; destruct_all.
+    apply Nat.eqb_eq in H4. 
+    rewrite (H _ _ _ H1); auto. simpl.
+    clear H1 H3 H.
+    rename H4 into Hlen.
+    rename l into ps2.
+    generalize dependent ps2.
+    induction ps; simpl; intros; destruct ps2; inversion Hlen; auto; simpl.
+    destruct a as [p1 tm1]. destruct p as [p2 tm2]. simpl.
+    revert H2; bool_to_prop; intros; destruct_all.
+    inversion H0; subst.
+    destruct (in_bool_spec vsymbol_eq_dec y (pat_fv p2)); simpl.
+    + apply IHps; auto.
+    + rewrite IHps; auto; simpl_bool.
+      apply (H6 _ _ _ H3); unfold add_vals.
+      * rewrite map_app. in_tac.
+      * intros x Hinx.
+        rewrite in_first_app in Hinx.
+        destruct_all.
+        -- apply in_first_in in H4.
+          apply in_combine_r in H4. contradiction.
+        -- apply (Hnotin x); auto.
+Qed.
+
+Definition alpha_t_equiv_fv_notin_r (t: term) := proj1(alpha_equiv_fv_notin t Ftrue).
+Definition alpha_f_equiv_fv_notin_r (f: formula) := proj2(alpha_equiv_fv_notin tm_d f).
+
+(*The other direction*)
+
+(*Other direction uses symmetry*)
+Lemma alpha_t_equiv_fv_notin_l (t1 t2: term)
+   (vars : list (vsymbol * vsymbol)) (y : vsymbol):
+    alpha_equiv_t vars t1 t2 ->
+    In y (map fst vars) ->
+    (forall x : vsymbol, ~ in_first (y, x) vars) -> free_in_t y t1 = false.
+Proof.
+  intros.
+  apply alpha_t_equiv_fv_notin_r with(vars:=flip vars)(t:=t2).
+  - rewrite <- alpha_t_equiv_sym; auto.
+  - rewrite map_snd_flip; auto.
+  - intros x Hinx.
+    apply (H1 x).
+    apply (reflect_iff _ _ (in_firstb_spec vsymbol_eq_dec vsymbol_eq_dec (y, x) vars)).
+    rewrite var_in_firstb_flip.
+    destruct (in_firstb_spec vsymbol_eq_dec vsymbol_eq_dec (x, y) (flip vars)); auto.
+Qed.
+
+Lemma alpha_f_equiv_fv_notin_l (f1 f2: formula)
+  (vars : list (vsymbol * vsymbol)) (y : vsymbol):
+  alpha_equiv_f vars f1 f2 ->
+  In y (map fst vars) ->
+  (forall x : vsymbol, ~ in_first (y, x) vars) -> free_in_f y f1 = false.
+Proof.
+  intros.
+  apply alpha_f_equiv_fv_notin_r with(vars:=flip vars)(f:=f2).
+  - rewrite <- alpha_f_equiv_sym; auto.
+  - rewrite map_snd_flip; auto.
+  - intros x Hinx.
+    apply (H1 x).
+    apply (reflect_iff _ _ (in_firstb_spec vsymbol_eq_dec vsymbol_eq_dec (y, x) vars)).
+    rewrite var_in_firstb_flip.
+    destruct (in_firstb_spec vsymbol_eq_dec vsymbol_eq_dec (x, y) (flip vars)); auto.
+Qed.
+
+(*
+Ltac case_in_dec :=
+  repeat match goal with
+  | H: negb ?b = true |- _ => rewrite negb_true_iff in H
+  | H: (proj_sumbool _ _ (in_dec ?e ?x ?l)) = true |- _ => destruct (in_dec e x l); inversion H; clear H
+  | H: (proj_sumbool _ _ (in_dec ?e ?x ?l)) = false |- _ => destruct (in_dec e x l); inversion H; clear H
+  | |- context [in_bool ?e ?x ?l] =>
+    destruct (in_bool_spec e x l)
+  end; auto; try contradiction.*)
+
+  (*
+  (*TODO: might not need this*)
+Lemma same_free_in (t1: term) (f1: formula):
+  (forall (t2: term) x y
+    (Hsame: same_free_t t1 t2 x y),
+    free_in_t x t1 = free_in_t y t2) /\
+  (forall (f2: formula) x y
+    (Hsame: same_free_f f1 f2 x y),
+    free_in_f x f1 = free_in_f y f2).
+Proof.
+  revert t1 f1. apply term_formula_ind; simpl; intros.
+  - alpha_case t2 Hsame; auto.
+  - alpha_case t2 Hsame.
+    apply eqb_prop in Hsame.
+    rewrite eq_dec_sym, Hsame, eq_dec_sym. reflexivity.
+  - alpha_case t2 Hsame; revert Hsame; bool_to_prop; intros [Hlen Hall];
+    apply Nat.eqb_eq in Hlen. rename l1 into tms. rename l2 into tms2.
+    generalize dependent tms2. induction tms; simpl; intros; destruct tms2;
+    inversion Hlen; auto; simpl.
+    simpl in Hall.
+    revert Hall; bool_to_prop; intros[Heq Hall].
+    inversion H; subst.
+    rewrite (H3 _ _ _ Heq), (IHtms H4 _ H1); auto.
+  - alpha_case t2 Hsame.
+    revert Hsame; bool_to_prop; intros [Hs1 Hs2].
+    rewrite (H _ _ _ Hs1). f_equal. clear Hs1 H.
+    destruct_all; repeat simpl_sumbool.
+    + rewrite !eq_dec_refl; auto.
+    + rewrite eq_dec_sym, H, eq_dec_sym, H2. 
+      apply H0; auto.
+    + rewrite eq_dec_refl, eq_dec_sym, H2. 
+      rewrite negb_true_iff in H1; auto.
+    + rewrite eq_dec_refl, eq_dec_sym, H. simpl.
+      rewrite negb_true_iff in H1; auto.
+  - alpha_case t0 Hsame; revert Hsame; bool_to_prop;
+    intros [[Hs1 Hs2] Hs3]; 
+    rewrite (H _ _ _ Hs1), (H0 _ _ _ Hs2), (H1 _ _ _ Hs3); auto.
+  - alpha_case t2 Hsame.
+    revert Hsame; bool_to_prop; intros; destruct_all.
+    rewrite (H _ _ _ H3). f_equal. clear H H3.
+    apply Nat.eqb_eq in H1.
+    rename H1 into Hlen.
+    rename l into ps2.
+    generalize dependent ps2.
+    induction ps; simpl; intros; destruct ps2; inversion Hlen; auto; simpl.
+    simpl in H2. revert H2; bool_to_prop; intros [Hsame Hall].
+    inversion H0; subst.
+    rewrite (IHps H4 _ H1 Hall); f_equal. clear IHps Hall.
+    destruct_all; repeat simpl_sumbool; case_in_dec; simpl.
+    apply H3; auto.
+  - alpha_case t2 Hsame.
+    revert Hsame; bool_to_prop; intros;
+    destruct_all; repeat simpl_sumbool.
+    + rewrite !eq_dec_refl; auto.
+    + rewrite eq_dec_sym, H0, eq_dec_sym, H2. 
+      apply H; auto.
+    + rewrite eq_dec_refl, eq_dec_sym, H2. 
+      rewrite negb_true_iff in H1; auto.
+    + rewrite eq_dec_refl, eq_dec_sym, H0. simpl.
+      rewrite negb_true_iff in H1; auto.
+  - alpha_case f2 Hsame; revert Hsame; bool_to_prop; intros [Hlen Hall];
+    apply Nat.eqb_eq in Hlen. rename l0 into tms2.
+    generalize dependent tms2. induction tms; simpl; intros; destruct tms2;
+    inversion Hlen; auto; simpl.
+    simpl in Hall.
+    revert Hall; bool_to_prop; intros[Heq Hall].
+    inversion H; subst.
+    rewrite (H3 _ _ _ Heq), (IHtms H4 _ H1); auto.
+  - alpha_case f2 Hsame.
+    revert Hsame; bool_to_prop; intros;
+    destruct_all; repeat simpl_sumbool.
+    + rewrite !eq_dec_refl; auto.
+    + rewrite eq_dec_sym, H0, eq_dec_sym, H2. 
+      apply H; auto.
+    + rewrite eq_dec_refl, eq_dec_sym, H2. 
+      rewrite negb_true_iff in H1; auto.
+    + rewrite eq_dec_refl, eq_dec_sym, H0. simpl.
+      rewrite negb_true_iff in H1; auto.
+  - alpha_case f2 Hsame. revert Hsame; bool_to_prop; intros [Hs1 Hs2];
+    rewrite (H _ _ _ Hs1), (H0 _ _ _ Hs2); auto.
+  - alpha_case f0 Hsame. revert Hsame; bool_to_prop; intros [Hs1 Hs2];
+    rewrite (H _ _ _ Hs1), (H0 _ _ _ Hs2); auto.
+  - alpha_case f2 Hsame. apply H; auto.
+  - alpha_case f2 Hsame; auto.
+  - alpha_case f2 Hsame; auto.
+  - alpha_case f2 Hsame.
+    revert Hsame; bool_to_prop; intros [Hs1 Hs2].
+    rewrite (H _ _ _ Hs1). f_equal. clear Hs1 H.
+    destruct_all; repeat simpl_sumbool.
+    + rewrite !eq_dec_refl; auto.
+    + rewrite eq_dec_sym, H, eq_dec_sym, H2. 
+      apply H0; auto.
+    + rewrite eq_dec_refl, eq_dec_sym, H2. 
+      rewrite negb_true_iff in H1; auto.
+    + rewrite eq_dec_refl, eq_dec_sym, H. simpl.
+      rewrite negb_true_iff in H1; auto.
+  - alpha_case f0 Hsame; revert Hsame; bool_to_prop;
+    intros [[Hs1 Hs2] Hs3]; 
+    rewrite (H _ _ _ Hs1), (H0 _ _ _ Hs2), (H1 _ _ _ Hs3); auto.
+  - alpha_case f2 Hsame.
+    revert Hsame; bool_to_prop; intros; destruct_all.
+    rewrite (H _ _ _ H3). f_equal. clear H H3.
+    apply Nat.eqb_eq in H1.
+    rename H1 into Hlen.
+    rename l into ps2.
+    generalize dependent ps2.
+    induction ps; simpl; intros; destruct ps2; inversion Hlen; auto; simpl.
+    simpl in H2. revert H2; bool_to_prop; intros [Hsame Hall].
+    inversion H0; subst.
+    rewrite (IHps H4 _ H1 Hall); f_equal. clear IHps Hall.
+    destruct_all; repeat simpl_sumbool; case_in_dec; simpl.
+    apply H3; auto.
+Qed.
+
+Definition same_free_in_t (t: term) := proj1(same_free_in t Ftrue).
+Definition same_free_in_f (f: formula) := proj2 (same_free_in tm_d f).
+
+
+
+(*A really annoying lemma to prove: if t1 and t2 are alpha
+  equivalent in the context vars, all pairs which appear first
+  in vars occur free in exactly the same way in both t1 and t2*)
+Lemma alpha_equiv_same_free_in (t1: term) (f1: formula) :
+  (forall (t2: term) vars x y
+    (Hin: in_first (x, y) vars)
+    (Heq: alpha_equiv_t vars t1 t2),
+    same_free_t t1 t2 x y) /\
+  (forall (f2: formula) vars x y
+    (Hin: in_first (x, y) vars)
+    (Heq: alpha_equiv_f vars f1 f2),
+    same_free_f f1 f2 x y).
+Proof.
+  revert t1 f1. apply term_formula_ind; simpl; intros.
+  - alpha_case t2 Heq. auto.
+  - alpha_case t2 Heq.
+    vsym_eq v x; simpl.
+    + vsym_eq v0 y; simpl.
+      exfalso. apply n.
+      rewrite eq_var_in_first in Heq.
+      destruct_all; subst; auto.
+      * apply (in_first_inj_r x v0 y vars); auto.
+      * exfalso. apply H. apply in_first_in in Hin.
+        rewrite in_map_iff. exists (v0, y); auto.
+    + vsym_eq v0 y; simpl.
+      rewrite eq_var_in_first in Heq. destruct_all; subst; auto.
+      * exfalso; apply n; apply (in_first_inj_l v x y vars); auto.
+      * exfalso. apply H0. rewrite in_map_iff.
+        apply in_first_in in Hin. exists (x, y); auto.
+  - alpha_case t2 Heq.
+    revert Heq; bool_to_prop; intros; destruct_all.
+    rewrite H3. apply Nat.eqb_eq in H3. rename H3 into Hlen.
+    clear H0 H2. rename l1 into tms. rename l2 into tms2.
+    split; auto.
+    generalize dependent tms2; induction tms; simpl; intros;
+    destruct tms2; inversion Hlen; auto; simpl.
+    revert H1; bool_to_prop; intros [Heq Hall].
+    inversion H; subst.
+    rewrite (H3 _ vars); auto.
+  - (*Tlet: lots of annoying cases*) 
+    alpha_case t2 Heq.
+    revert Heq; bool_to_prop; intros; destruct_all.
+    rewrite (H t2_1 vars); auto. split; auto.
+    vsym_eq v x; simpl.
+    + vsym_eq v0 y; simpl. right. right. left. split_all; auto.
+      rewrite alpha_t_equiv_fv_notin_r with(vars:=((x, v0) :: vars))(t:=tm2); auto.
+      * simpl. apply in_first_in in Hin.
+        right. rewrite in_map_iff. exists (x, y); auto.
+      * intros z. rewrite in_first_cons; intro C; destruct_all; subst; auto.
+        apply H4. apply (in_first_inj_l _ _ _ _ H6 Hin).
+    + vsym_eq v0 y; simpl.
+      * right. right. right. split_all; auto.
+        rewrite alpha_t_equiv_fv_notin_l with (vars:= (v, y) :: vars) (t2:=t2_2); auto.
+        -- simpl. apply in_first_in in Hin.
+          right. rewrite in_map_iff. exists (x, y); auto.
+        -- intros z. rewrite in_first_cons; intro C; destruct_all; subst; auto.
+          apply H5. apply (in_first_inj_r _ _ _ _ H6 Hin).
+      * right. left. split_all; auto.
+        apply (H0 _ ((v, v0) :: vars)); auto.
+        rewrite in_first_cons. right. split_all; auto.
+  - (*Tif*)
+    alpha_case t0 Heq. revert Heq; bool_to_prop; intros [[Heq1 Heq2] Heq3];
+      rewrite (H f0 vars), (H0 t0_1 vars), (H1 t0_2 vars); auto.
+  - (*Tmatch - similar to Tlet with induction*)
+    alpha_case t2 Heq.
+    revert Heq; bool_to_prop; intros; destruct_all.
+    rewrite H4. apply Nat.eqb_eq in H4. rename H4 into Hlen.
+    rewrite (H t2 vars); auto. clear H H1 H3.
+    split_all; auto.
+    rename l into ps2. generalize dependent ps2.
+    induction ps; simpl; intros; destruct ps2; inversion Hlen; auto; simpl.
+    destruct a as[p1 tm1]; destruct p as [p2 tm2]. simpl.
+    revert H2; bool_to_prop; intros [[Hpeq Hteq] Hall].
+    inversion H0; subst.
+    rewrite (IHps H4 _ H1); auto. clear IHps H4 Hall.
+    pose proof (alpha_equiv_p_fv_len_full _ _ Hpeq) as Hlen2. 
+    split_all; auto.
+    + rewrite Hlen2, Nat.eqb_refl. auto.
+    + destruct (in_dec vsymbol_eq_dec x (pat_fv p1)); simpl;
+      destruct (in_dec vsymbol_eq_dec y (pat_fv p2)); simpl; auto.
+      * right. right. left. split_all; auto.
+        rewrite alpha_t_equiv_fv_notin_r with
+          (vars:=(add_vals (pat_fv p1) (pat_fv p2) vars))(t:=tm1); auto.
+        -- unfold add_vals. rewrite map_app, in_app_iff. right.
+          apply in_first_in in Hin. rewrite in_map_iff.
+          exists (x, y); auto.
+        -- intros z. unfold add_vals. rewrite in_first_app, map_fst_combine,
+          map_snd_combine; auto.
+          intro C. destruct_all.
+          ++ apply in_first_in in H. apply in_combine_r in H. contradiction.
+          ++ assert (x = z) by apply (in_first_inj_l _ _ _ _ Hin H).
+            subst; contradiction.
+      * (*Basically symmetric proof as previous case*)
+        right. right. right. split_all; auto.
+        rewrite alpha_t_equiv_fv_notin_l with
+        (vars:=(add_vals (pat_fv p1) (pat_fv p2) vars))(t2:=tm2); auto.
+        --  unfold add_vals. rewrite map_app, in_app_iff. right.
+          apply in_first_in in Hin. rewrite in_map_iff.
+          exists (x, y); auto.
+        -- intros z. unfold add_vals. rewrite in_first_app, map_fst_combine,
+          map_snd_combine; auto.
+          intro C. destruct_all.
+          ++ apply in_first_in in H. apply in_combine_l in H. contradiction.
+          ++ assert (y = z) by apply (in_first_inj_r _ _ _ _ Hin H).
+            subst; contradiction.
+      * right. left. split_all; auto.
+        (*Here, we use the IH*)
+        apply (H3 _ (add_vals (pat_fv p1) (pat_fv p2) vars)); auto; unfold add_vals.
+        rewrite in_first_app, map_fst_combine, map_snd_combine; auto.
+  - (*Teps - slightly simpler Tlet*) 
+    alpha_case t2 Heq.
+    revert Heq; bool_to_prop; intros; destruct_all.
+    vsym_eq v x; simpl.
+    + vsym_eq v0 y; simpl. right. right. left. split_all; auto.
+      rewrite alpha_f_equiv_fv_notin_r with(vars:=((x, v0) :: vars))(f:=f); auto.
+      * simpl. apply in_first_in in Hin.
+        right. rewrite in_map_iff. exists (x, y); auto.
+      * intros z. rewrite in_first_cons; intro C; destruct_all; subst; auto.
+        apply H2. apply (in_first_inj_l _ _ _ _ H4 Hin).
+    + vsym_eq v0 y; simpl.
+      * right. right. right. split_all; auto.
+        rewrite alpha_f_equiv_fv_notin_l with (vars:= (v, y) :: vars) (f2:=f0); auto.
+        -- simpl. apply in_first_in in Hin.
+          right. rewrite in_map_iff. exists (x, y); auto.
+        -- intros z. rewrite in_first_cons; intro C; destruct_all; subst; auto.
+          apply H3. apply (in_first_inj_r _ _ _ _ H4 Hin).
+      * right. left. split_all; auto.
+        apply (H _ ((v, v0) :: vars)); auto.
+        rewrite in_first_cons. right. split_all; auto.
+  - (*Fpred*)
+    alpha_case f2 Heq.
+    revert Heq; bool_to_prop; intros; destruct_all.
+    rewrite H3. apply Nat.eqb_eq in H3. rename H3 into Hlen.
+    clear H0 H2. rename l0 into tms2.
+    split; auto.
+    generalize dependent tms2; induction tms; simpl; intros;
+    destruct tms2; inversion Hlen; auto; simpl.
+    revert H1; bool_to_prop; intros [Heq Hall].
+    inversion H; subst.
+    rewrite (H3 _ vars); auto.
+  - (*Fquant - same as Teps*)
+    alpha_case f2 Heq.
+    revert Heq; bool_to_prop; intros; destruct_all.
+    vsym_eq v x; simpl.
+    + vsym_eq v0 y; simpl. right. right. left. split_all; auto.
+      rewrite alpha_f_equiv_fv_notin_r with(vars:=((x, v0) :: vars))(f:=f); auto.
+      * simpl. apply in_first_in in Hin.
+        right. rewrite in_map_iff. exists (x, y); auto.
+      * intros z. rewrite in_first_cons; intro C; destruct_all; subst; auto.
+        apply H3. apply (in_first_inj_l _ _ _ _ H5 Hin).
+    + vsym_eq v0 y; simpl.
+      * right. right. right. split_all; auto.
+        rewrite alpha_f_equiv_fv_notin_l with (vars:= (v, y) :: vars) (f2:=f2); auto.
+        -- simpl. apply in_first_in in Hin.
+          right. rewrite in_map_iff. exists (x, y); auto.
+        -- intros z. rewrite in_first_cons; intro C; destruct_all; subst; auto.
+          apply H4. apply (in_first_inj_r _ _ _ _ H5 Hin).
+      * right. left. split_all; auto.
+        apply (H _ ((v, v0) :: vars)); auto.
+        rewrite in_first_cons. right. split_all; auto.
+  - alpha_case f2 Heq.
+    revert Heq; bool_to_prop; intros [[_ Heq1] Heq2];
+    rewrite (H _ vars), (H0 _ vars); auto.
+  - alpha_case f0 Heq.
+    revert Heq; bool_to_prop; intros [[_ Heq1] Heq2];
+    rewrite (H _ vars), (H0 _ vars); auto.
+  - alpha_case f2 Heq.
+    apply (H _ vars); auto.
+  - alpha_case f2 Heq; auto.
+  - alpha_case f2 Heq; auto.
+  - (*Flet*)
+    alpha_case f2 Heq.
+    revert Heq; bool_to_prop; intros; destruct_all.
+    rewrite (H t vars); auto. split; auto.
+    vsym_eq v x; simpl.
+    + vsym_eq v0 y; simpl. right. right. left. split_all; auto.
+      rewrite alpha_f_equiv_fv_notin_r with(vars:=((x, v0) :: vars))(f:=f); auto.
+      * simpl. apply in_first_in in Hin.
+        right. rewrite in_map_iff. exists (x, y); auto.
+      * intros z. rewrite in_first_cons; intro C; destruct_all; subst; auto.
+        apply H4. apply (in_first_inj_l _ _ _ _ H6 Hin).
+    + vsym_eq v0 y; simpl.
+      * right. right. right. split_all; auto.
+        rewrite alpha_f_equiv_fv_notin_l with (vars:= (v, y) :: vars) (f2:=f2); auto.
+        -- simpl. apply in_first_in in Hin.
+          right. rewrite in_map_iff. exists (x, y); auto.
+        -- intros z. rewrite in_first_cons; intro C; destruct_all; subst; auto.
+          apply H5. apply (in_first_inj_r _ _ _ _ H6 Hin).
+      * right. left. split_all; auto.
+        apply (H0 _ ((v, v0) :: vars)); auto.
+        rewrite in_first_cons. right. split_all; auto.
+  - alpha_case f0 Heq. revert Heq; bool_to_prop; intros [[Heq1 Heq2] Heq3];
+    rewrite (H _ vars), (H0 _ vars), (H1 _ vars); auto.
+  - (*Fmatch*)
+    alpha_case f2 Heq.
+    revert Heq; bool_to_prop; intros; destruct_all.
+    rewrite H4. apply Nat.eqb_eq in H4. rename H4 into Hlen.
+    rewrite (H t vars); auto. clear H H1 H3.
+    split_all; auto.
+    rename l into ps2. generalize dependent ps2.
+    induction ps; simpl; intros; destruct ps2; inversion Hlen; auto; simpl.
+    destruct a as[p1 tm1]; destruct p as [p2 tm2]. simpl.
+    revert H2; bool_to_prop; intros [[Hpeq Hteq] Hall].
+    inversion H0; subst.
+    rewrite (IHps H4 _ H1); auto. clear IHps H4 Hall.
+    pose proof (alpha_equiv_p_fv_len_full _ _ Hpeq) as Hlen2. 
+    split_all; auto.
+    + rewrite Hlen2, Nat.eqb_refl. auto.
+    + destruct (in_dec vsymbol_eq_dec x (pat_fv p1)); simpl;
+      destruct (in_dec vsymbol_eq_dec y (pat_fv p2)); simpl; auto.
+      * right. right. left. split_all; auto.
+        rewrite alpha_f_equiv_fv_notin_r with
+          (vars:=(add_vals (pat_fv p1) (pat_fv p2) vars))(f:=tm1); auto.
+        -- unfold add_vals. rewrite map_app, in_app_iff. right.
+          apply in_first_in in Hin. rewrite in_map_iff.
+          exists (x, y); auto.
+        -- intros z. unfold add_vals. rewrite in_first_app, map_fst_combine,
+          map_snd_combine; auto.
+          intro C. destruct_all.
+          ++ apply in_first_in in H. apply in_combine_r in H. contradiction.
+          ++ assert (x = z) by apply (in_first_inj_l _ _ _ _ Hin H).
+            subst; contradiction.
+      * (*Basically symmetric proof as previous case*)
+        right. right. right. split_all; auto.
+        rewrite alpha_f_equiv_fv_notin_l with
+        (vars:=(add_vals (pat_fv p1) (pat_fv p2) vars))(f2:=tm2); auto.
+        --  unfold add_vals. rewrite map_app, in_app_iff. right.
+          apply in_first_in in Hin. rewrite in_map_iff.
+          exists (x, y); auto.
+        -- intros z. unfold add_vals. rewrite in_first_app, map_fst_combine,
+          map_snd_combine; auto.
+          intro C. destruct_all.
+          ++ apply in_first_in in H. apply in_combine_l in H. contradiction.
+          ++ assert (y = z) by apply (in_first_inj_r _ _ _ _ Hin H).
+            subst; contradiction.
+      * right. left. split_all; auto.
+        (*Here, we use the IH*)
+        apply (H3 _ (add_vals (pat_fv p1) (pat_fv p2) vars)); auto; unfold add_vals.
+        rewrite in_first_app, map_fst_combine, map_snd_combine; auto.
+Qed.
+
+Definition alpha_equiv_t_same_free_in (t: term) := proj1(alpha_equiv_same_free_in t Ftrue).
+Definition alpha_equiv_f_same_free_in (f: formula) := proj2 (alpha_equiv_same_free_in tm_d f).
+
+
+
+(*Can we prove: if alpha_equiv vars t1 t2 and if x is not in vars,
+      then free_in_t x t1 = free_in_t x t2*)
+(*Weaker than following result, but needed to prove it*)
+(*
+Lemma alpha_equiv_fv (t1: term) (f1: formula):
+  (forall (t2: term) vars x
+    (Hx1: ~ In x (map fst vars))
+    (Hx2: ~ In x (map snd vars))
+    (Heq: alpha_equiv_t vars t1 t2),
+    free_in_t x t1 = free_in_t x t2) /\
+  (forall (f2: formula) vars x
+    (Hx1: ~ In x (map fst vars))
+    (Hx2: ~ In x (map snd vars))
+    (Heq: alpha_equiv_f vars f1 f2),
+    free_in_f x f1 = free_in_f x f2).
+Proof.
+  revert t1 f1. apply term_formula_ind; simpl; intros.
+  - alpha_case t2 Heq; auto.
+  - alpha_case t2 Heq. vsym_eq x v.
+    + apply eq_var_in_first in Heq; destruct_all; subst; [|vsym_eq v0 v0].
+      apply in_first_in in H.
+      exfalso. apply Hx1. rewrite in_map_iff. exists (v, v0); auto.
+    + vsym_eq x v0. apply eq_var_in_first in Heq; destruct_all; subst; auto.
+      apply in_first_in in H.
+      exfalso. apply Hx2; rewrite in_map_iff; exists (v, v0); auto.
+  - alpha_case t2 Heq.
+    revert Heq; bool_to_prop; intros; destruct_all.
+    clear H0 H2. apply Nat.eqb_eq in H3.
+    rename H3 into Hlen.
+    rename l1 into tms. rename l2 into tms2.
+    generalize dependent tms2.
+    induction tms; simpl; intros; destruct tms2; inversion Hlen; auto; simpl.
+    inversion H; subst.
+    revert H1; bool_to_prop; intros [Heq Hall].
+    rewrite (H4 t vars), (IHtms H5 tms2); auto.
+  - alpha_case t2 Heq.
+    revert Heq. bool_to_prop; intros; destruct_all.
+    rewrite (H t2_1 vars); auto. f_equal.
+    vsym_eq x v; simpl.
+    + vsym_eq v v0; simpl.
+      Check alpha_equiv_t_same_free_in.
+
+    
+    /\   
+  )
+*)

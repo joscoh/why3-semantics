@@ -1,5 +1,6 @@
 Require Export Coq.Lists.List.
 Require Export Coq.Bool.Bool.
+Require Export Coq.Arith.PeanoNat.
 Export ListNotations.
 Require Import Coq.Logic.Eqdep_dec.
 Require Export Lia.
@@ -29,6 +30,11 @@ Lemma bool_irrelevance: forall (b: bool) (p1 p2: b), p1 = p2.
 Proof.
   intros b p1 p2. apply UIP_dec. apply bool_dec.
 Defined.
+
+Lemma nat_eq_refl {n m: nat} (H1 H2: n = m) : H1 = H2.
+Proof.
+  destruct H1. apply UIP_dec. apply Nat.eq_dec.
+Qed.
 
 (** Union on lists with decidable equality **)
 
@@ -148,6 +154,37 @@ Proof.
       destruct H as [y [Hiny Hinx]]. exists y. split; auto.
 Qed. 
 
+(*When the two lists are disjoint, union is append*)
+Lemma union_app_disjoint
+  (l1 l2: list A)
+  (Hdisj: forall x, ~ (In x l1 /\ In x l2))
+  (Hnodup: NoDup l1):
+  union l1 l2 = l1 ++ l2.
+Proof.
+  induction l1; simpl; auto.
+  destruct (in_dec eq_dec a (union l1 l2)).
+  - rewrite union_elts in i.
+    destruct i.
+    + inversion Hnodup; contradiction.
+    + exfalso. apply (Hdisj a); split; auto. left; auto.
+  - rewrite IHl1; auto. intros. intro C. apply (Hdisj x).
+    destruct C.
+    split; simpl; auto. inversion Hnodup; auto.
+Qed.
+
+Lemma union_subset
+  (l1 l2: list A)
+  (Hsame: forall x, In x l1 -> In x l2)
+  (Hnodup: NoDup l2):
+  union l1 l2 = l2.
+Proof.
+  induction l1; simpl; auto.
+  destruct (in_dec eq_dec a (union l1 l2)).
+  - apply IHl1. intros. apply Hsame. right; auto.
+  - rewrite union_elts in n.
+    exfalso. apply n. right. apply Hsame. left; auto.
+Qed.
+
 End Union.
 
 Definition sublist {A: Type} (l1 l2: list A) : Prop :=
@@ -163,6 +200,12 @@ Lemma null_map {A B: Type} {f: A -> B} {l: list A} :
   null (map f l) = null l.
 Proof.
   destruct l; simpl; auto.
+Qed.
+
+Lemma null_nil: forall {A: Type} (l: list A),
+  null l <-> l = nil.
+Proof.
+  intros; destruct l; split; intros; auto; inversion H.
 Qed.
 
 (** Lemmas about [remove] **)
@@ -598,6 +641,24 @@ Proof.
   rewrite NoDup_app_iff; intros; split_all; auto.
 Qed.
 
+Lemma NoDup_map_in: forall {A B: Type} {f: A -> B} {l: list A} {x1 x2: A},
+  NoDup (map f l) ->
+  In x1 l -> In x2 l ->
+  f x1 = f x2 ->
+  x1 = x2.
+Proof.
+  intros. induction l; simpl; intros; auto.
+  inversion H0.
+  simpl in H0; simpl in H1. simpl in H; inversion H; subst.
+  destruct H0; subst; destruct H1; subst.
+  - reflexivity.
+  - rewrite H2 in H5. exfalso. apply H5. rewrite in_map_iff. 
+    exists x2; split; auto.
+  - rewrite <- H2 in H5. exfalso. apply H5. rewrite in_map_iff.
+    exists x1; split; auto.
+  - apply IHl; auto.
+Qed.
+
 End NoDupLemmas.
 
 (*A bool-valued version of "In" that we can use in proofs of Type*)
@@ -905,6 +966,14 @@ Proof.
   auto; inversion H.
 Qed.
 
+Lemma combine_map2: forall {A B C: Type} (l1 : list A) (l2: list B) (f: B -> C),
+  combine l1 (map f l2) = map (fun x => (fst x, f (snd x))) (combine l1 l2).
+Proof.
+  intros. revert l2. induction l1; simpl; intros; auto.
+  destruct l2; simpl in *; auto.
+  rewrite IHl1. reflexivity.
+Qed.
+
 End Map2.
 
 Section Props.
@@ -1018,4 +1087,28 @@ Proof.
 Qed.
 
 End In.
+
+(*Results about [find]*)
+Section Find.
+
+Lemma find_some_nodup: forall {A: Type} (f: A -> bool) (l: list A) (x: A),
+  (forall x y, In x l -> In y l -> f x -> f y -> x = y) ->  
+  (find f l = Some x <-> In x l /\ f x = true).
+Proof.
+  intros. induction l; intros; simpl; split; intros.
+  - inversion H0.
+  - destruct H0. destruct H0.
+  - destruct (f a) eqn : Hfa.
+    + inversion H0; subst. split; auto.
+    + apply IHl in H0. 
+      * destruct H0. split; auto.
+      * intros; apply H; auto; right; auto.
+  - destruct H0. destruct H0; subst. rewrite H1. reflexivity.
+    destruct (f a) eqn : Hfa.
+    + f_equal. apply H; auto. left; auto. right; auto.
+    + apply IHl; [|split; auto].
+      intros; apply H; auto; right; auto.
+Qed.
+
+End Find.
 
