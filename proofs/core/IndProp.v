@@ -5,9 +5,11 @@ Require Import Common.
 Require Import Syntax.
 Require Import Types.
 Require Import Typing.
+Require Import Substitution. (*for bnd_t - move? *)
 Require Import IndTypes.
 Require Import Semantics.
 Require Import Denotational.
+Require Import Alpha.
 Require Import Hlist.
 Require Import FunctionalExtensionality.
 Require Import Coq.Logic.Eqdep_dec.
@@ -1067,9 +1069,6 @@ Proof.
       * intros h Hinf. apply H0. right; auto.
       * intros. apply H1; auto. right; auto.
 Qed.
-
-(*Need alpha conversion*)
-Require Import Substitution.
 
 (*TODO: move*)
 (*If some pred P does not appear in any terms for [substi_multi_let],

@@ -233,6 +233,7 @@ Set Elimination Schemes.
 
 (*Default values*)
 Definition tm_d : term := Tconst (ConstInt 0).
+Definition vs_d : vsymbol := (EmptyString, vty_int).
 
 (*Induction principles*)
 Section PatternInd.
@@ -545,6 +546,51 @@ Proof.
 Qed.
 
 End FreeVars.
+
+(*We do NOT have decidable equality on terms and formulas,
+  because of real numbers (TODO: see how we should model these)
+  But we need some of the pieces*)
+Section EqDec.
+
+Definition binop_eqb (b1 b2: binop) : bool :=
+  match b1, b2 with
+  | Tand, Tand => true
+  | Tor, Tor => true
+  | Timplies, Timplies => true
+  | Tiff, Tiff => true
+  | _, _ => false
+  end.
+
+Lemma binop_eqb_spec (b1 b2: binop):
+  reflect (b1 = b2) (binop_eqb b1 b2).
+Proof.
+  destruct (binop_eqb b1 b2) eqn : Hbinop.
+  - apply ReflectT.
+    destruct b1; destruct b2; simpl in Hbinop; auto; inversion Hbinop.
+  - apply ReflectF. intro C; subst.
+    destruct b2; inversion Hbinop.
+Qed.
+
+Definition binop_eq_dec (b1 b2: binop) :
+  {b1 = b2} + {b1 <> b2} := reflect_dec' (binop_eqb_spec b1 b2).
+
+Definition quant_eqb (q1 q2: quant) : bool :=
+  match q1, q2 with
+  | Tforall, Tforall => true
+  | Texists, Texists => true
+  | _, _ => false
+  end.
+
+Lemma quant_eqb_spec q1 q2:
+  reflect (q1 = q2) (quant_eqb q1 q2).
+Proof.
+  destruct q1; destruct q2; simpl; try solve[apply ReflectT; auto];
+  apply ReflectF; intro C; inversion C.
+Qed.
+
+Definition quant_eq_dec q1 q2 := reflect_dec' (quant_eqb_spec q1 q2).
+
+End EqDec.
 
 (*Definitions: functions, predicates, algebraic data types, inductive predicates*)
 

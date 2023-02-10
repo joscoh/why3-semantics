@@ -1212,6 +1212,26 @@ Proof.
   reflexivity.
 Qed.
 
+Lemma extend_val_with_list_lookup (v: val_vars pd vt) l x t:
+  NoDup (map fst l) ->
+  In (x, t) l ->
+  extend_val_with_list vt v l x =
+    match vty_eq_dec (snd x) (projT1 t) with
+    | left Heq =>
+        dom_cast (dom_aux pd) (f_equal (v_subst (v_typevar vt)) (eq_sym Heq))
+          (projT2 t)
+    | right _ => v x
+    end.
+Proof.
+  intros. unfold extend_val_with_list.
+  destruct (get_assoc_list vsymbol_eq_dec l x) eqn : ha.
+  - apply get_assoc_list_some in ha.
+    assert (t = s). apply (nodup_fst_inj H H0 ha). subst.
+    reflexivity.
+  - apply get_assoc_list_none in ha.
+    exfalso. apply ha. rewrite in_map_iff. exists (x, t). auto.
+Qed.
+
 End ExtendVal.
 
 (*Now we give the denotational semantics:*)

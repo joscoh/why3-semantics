@@ -25,6 +25,12 @@ Ltac split_all :=
   | H: ?P /\ ?Q |- _ => destruct H
   | |- ?P /\ ?Q => split
   end.
+Ltac destruct_all :=
+  repeat match goal with
+  | H: ?P /\ ?Q |- _ => destruct H
+  | H: exists x, ?P |- _ => destruct H
+  | H: ?P \/ ?Q |- _ => destruct H
+  end; subst.
 
 Lemma bool_irrelevance: forall (b: bool) (p1 p2: b), p1 = p2.
 Proof.
@@ -185,7 +191,51 @@ Proof.
     exfalso. apply n. right. apply Hsame. left; auto.
 Qed.
 
+Lemma big_union_disjoint {B: Type}
+  (f: B -> list A) (l: list B)
+  (Hnodup: forall b, In b l -> NoDup (f b)) (d: B):
+  (forall i j x, i < length l -> j < length l -> i <> j ->
+    ~ (In x (f (nth i l d)) /\ In x (f (nth j l d)))) ->
+  big_union f l =
+  concat (map f l).
+Proof.
+  induction l; intros; simpl; auto.
+  rewrite union_app_disjoint; auto.
+  - f_equal. apply IHl; intros. apply Hnodup; simpl; auto.
+    apply (H (S i) (S j) x); auto; simpl; lia.
+  - intros x [Hinx1 Hinx2]. rewrite <- big_union_elts in Hinx2. 
+    destruct Hinx2 as [y [Hiny Hinx2]].
+    destruct (In_nth _ _ d Hiny) as [n [Hn Hy]]; subst.
+    apply (H 0 (S n) x); simpl; auto; lia.
+  - apply Hnodup. simpl; auto.
+Qed. 
+
 End Union.
+
+
+Lemma map_union {A B: Type} 
+  (eq_dec1: forall (x y: A), {x=y} + {x<>y})
+  (eq_dec2: forall (x y: B), {x=y} + {x<>y}) 
+  (f: A -> B) (l1 l2: list A)
+  (Hinj: forall x y, In x (l1 ++ l2) -> In y (l1 ++ l2) ->
+    f x = f y -> x = y):
+  map f (union eq_dec1 l1 l2) = union eq_dec2 (map f l1) (map f l2).
+Proof.
+  generalize dependent l2. induction l1; simpl; intros; auto.
+  rewrite <- IHl1; auto.
+  destruct (in_dec eq_dec1 a (union eq_dec1 l1 l2)).
+  - destruct (in_dec eq_dec2 (f a) (map f (union eq_dec1 l1 l2))); auto.
+    exfalso. apply n. apply in_map_iff. exists a; auto.
+  - simpl. destruct (in_dec eq_dec2 (f a) (map f (union eq_dec1 l1 l2))); auto.
+    rewrite in_map_iff in i.
+    destruct i as [y [Hxy Hiny]].
+    assert (a = y). { apply Hinj; auto. right.
+      rewrite in_app_iff; rewrite union_elts in Hiny; auto.
+    }
+    subst; contradiction.
+Qed.
+
+
 
 Definition sublist {A: Type} (l1 l2: list A) : Prop :=
     forall x, In x l1 -> In x l2.
@@ -438,7 +488,112 @@ Proof.
     + right. apply IHl1; auto. exists i; split; auto; lia.
 Qed.
 
+Lemma in_combine_same {A: Type} (l: list A):
+  forall (x: A * A), In x (combine l l) -> fst x = snd x.
+Proof.
+  intros. rewrite in_combine_iff in H; auto.
+  destruct H as [i [Hi Hx]].
+  destruct x; simpl.
+  specialize (Hx a a). inversion Hx; subst; auto.
+  apply nth_indep; auto.
+Qed. 
+
+Lemma combine_eq {A B: Type} (l: list (A * B)):
+  combine (map fst l) (map snd l) = l.
+Proof.
+  induction l; simpl; auto. destruct a; simpl; rewrite IHl; auto.
+Qed.
+
+(*Need this to avoid length arguments*)
+Lemma map_fst_combine_nodup {A B: Type} (l1: list A) (l2: list B):
+  NoDup l1 ->
+  NoDup (map fst (combine l1 l2)).
+Proof.
+  intros. revert l2. induction l1; simpl; intros; auto.
+  inversion H; subst. destruct l2; simpl; constructor.
+  - intro C. rewrite in_map_iff in C.
+    destruct C as [t [Ha Hint]]; subst.
+    destruct t.
+    apply in_combine_l in Hint. simpl in H2. contradiction.
+  - apply IHl1; auto.
+Qed.
+
+Lemma map_snd_combine_nodup {A B: Type} (l1: list A) (l2: list B):
+  NoDup l2 ->
+  NoDup (map snd (combine l1 l2)).
+Proof.
+  intros. generalize dependent l2. induction l1; simpl; intros; auto.
+  constructor. 
+  destruct l2; simpl; inversion H; subst; constructor.
+  - intro C. rewrite in_map_iff in C.
+    destruct C as [t [Ha Hint]]; subst.
+    destruct t.
+    apply in_combine_r in Hint. simpl in H2. contradiction.
+  - apply IHl1; auto.
+Qed.
+
+Lemma NoDup_combine_l {A B: Type} (l1: list A) (l2: list B):
+  NoDup l1 ->
+  NoDup (combine l1 l2).
+Proof.
+  revert l2. induction l1; simpl; intros. constructor.
+  destruct l2. constructor.
+  inversion H; subst.
+  constructor; auto.
+  intro Hin.
+  apply in_combine_l in Hin. contradiction.
+Qed.
+
 End CombineLemmas.
+
+(*Flip: switch tuples in list*)
+Section Flip.
+
+Definition flip {A B: Type} (l: list (A * B)) : list (B * A) :=
+  map (fun x => (snd x, fst x)) l.
+
+Lemma map_fst_flip {A B: Type} (l: list (A * B)) :
+  map fst (flip l) = map snd l.
+Proof.
+  induction l; simpl; auto; rewrite IHl; auto.
+Qed.
+
+Lemma map_snd_flip {A B: Type} (l: list (A * B)) :
+  map snd (flip l) = map fst l.
+Proof.
+  induction l; simpl; auto; rewrite IHl; auto.
+Qed.
+
+Lemma in_flip_iff {A B: Type} (x: A) (y: B) (l: list (A * B)) :
+  In (y, x) (flip l) <-> In (x, y) l.
+Proof.
+  unfold flip. rewrite in_map_iff. split; intros;
+  destruct_all. inversion H; subst; auto. destruct x0; auto.
+  exists (x, y). split; auto.
+Qed.
+
+Lemma flip_flip {A B: Type} (l: list (A * B)):
+  flip (flip l) = l.
+Proof.
+  induction l; simpl; auto. rewrite IHl. f_equal.
+  destruct a; auto.
+Qed.
+
+Lemma flip_combine {A B: Type} (l1: list A) (l2: list B):
+  flip (combine l1 l2) = combine l2 l1.
+Proof.
+  revert l2. induction l1; simpl; intros; destruct l2; auto.
+  simpl.
+  rewrite IHl1; auto.
+Qed.
+
+Lemma flip_app {A B: Type} (l1 l2: list (A * B)) :
+  flip (l1 ++ l2) = flip l1 ++ flip l2.
+Proof.
+  unfold flip. rewrite map_app. auto.
+Qed.
+
+End Flip.
 
 Section NoDupLemmas.
 
@@ -976,6 +1131,36 @@ Qed.
 
 End Map2.
 
+Section All2.
+
+Definition all2 {A B: Type} (f: A -> B -> bool) 
+  (l1: list A) (l2: list B) : bool :=
+  forallb (fun x => x) (map2 f l1 l2).
+
+Lemma all2_cons {A B: Type} (f: A -> B -> bool)
+  x1 l1 x2 l2:
+  all2 f (x1 :: l1) (x2 :: l2) =
+  f x1 x2 && all2 f l1 l2.
+Proof.
+  reflexivity.
+Qed.
+
+Lemma all2_forall {A B: Type} (f: A -> B -> bool) (d1: A) (d2: B)
+  (l1: list A) (l2: list B):
+  length l1 = length l2 ->
+  all2 f l1 l2 <-> (forall i, i < length l1 ->
+    f (nth i l1 d1) (nth i l2 d2)).
+Proof.
+  intros. unfold all2. unfold is_true at 1. rewrite forallb_forall.
+  split; intros.
+  - apply H0. rewrite in_map2_iff; auto. exists i. split_all; auto.
+  - rewrite in_map2_iff with(d1:=d1)(d2:=d2) in H1; auto.
+    destruct H1 as [i [Hi Hx]].
+    rewrite Hx. apply H0. auto.
+Qed.
+
+End All2.
+
 Section Props.
 
 Lemma or_false_r (P: Prop):
@@ -988,6 +1173,14 @@ Lemma or_idem (P: Prop):
   (P \/ P) <-> P.
 Proof.
   split; intros; auto. destruct H; auto.
+Qed.
+
+Lemma or_iff (P1 P2 P3 P4: Prop) :
+  (P1 <-> P3) ->
+  (P2 <-> P4) ->
+  (P1 \/ P2) <-> (P3 \/ P4).
+Proof.
+  intros. split; intros; destruct_all; intuition.
 Qed.
 
 End Props.
@@ -1075,15 +1268,73 @@ End Filter.
 (*Results about [in]*)
 Section In.
 
+Lemma nth_split {A: Type} (d: A) (l: list A) (i: nat)
+  (Hi: i < length l):
+  exists l1 l2,
+    l = l1 ++ nth i l d :: l2.
+Proof.
+  generalize dependent i. induction l; simpl; intros;
+  destruct i; try lia.
+  - exists nil. exists l. reflexivity.
+  - apply Nat.succ_lt_mono in Hi.
+    specialize (IHl _ Hi).
+    destruct IHl as [l1 [l2 Hl]]; subst.
+    exists (a :: l1). exists l2. rewrite Hl at 1. 
+    reflexivity.
+Qed. 
+
 Lemma in_split {A: Type} (x: A) (l: list A):
   In x l ->
   exists l1 l2, l = l1 ++ x :: l2.
 Proof.
-  induction l; simpl; intros. destruct H.
-  destruct H; subst.
-  - exists nil. exists l. reflexivity.
-  - apply IHl in H. destruct H as [l1 [l2 Hl]]; subst.
-    exists (a :: l1). exists l2. reflexivity.
+  intros. destruct (In_nth _ _ x H) as [n [Hn Hx]].
+  rewrite <- Hx. apply nth_split; auto.
+Qed.
+
+Lemma in_app_iff_simpl {A: Type} (l1 l2 l3 l4 : list A) x y :
+  (In x l1 <-> In y l3) ->
+  (In x l2 <-> In y l4) ->
+  (In x (l1 ++ l2) <-> In y (l3 ++ l4)).
+Proof.
+  intros. 
+  rewrite !in_app_iff. apply or_iff; auto.
+Qed. 
+
+(*TODO: put this above In lemmas and put these in Combine section?*)
+Lemma in_combine_split_r {A B: Type} (l1: list A) (l2: list B) (d1: A) (d2: B) 
+  (y: B) (Hiny: In y l2)
+  (Hlen: length l1 = length l2):
+  exists i l3 l4, i < length l1 /\ y = nth i l2 d2 /\ 
+  combine l1 l2 = l3 ++ (nth i l1 d1, y) :: l4.
+Proof.
+  pose proof (In_nth _ _ d2 Hiny).
+  destruct H as [i [Hi Hy]]; subst.
+  exists i.
+  assert (nth i (combine l1 l2) (d1, d2) = (nth i l1 d1, nth i l2 d2)). {
+    rewrite combine_nth; auto.
+  }
+  rewrite <- H.
+  destruct (nth_split (d1, d2) (combine l1 l2) i) as [l3 [l4 Hl]].
+    rewrite combine_length. lia.
+  exists l3. exists l4. split_all; auto. lia.
+Qed.
+
+Lemma in_combine_split_l {A B: Type} (l1: list A) (l2: list B) (d1: A) (d2: B) 
+  (x: A) (Hinx: In x l1)
+  (Hlen: length l1 = length l2):
+  exists i l3 l4, i < length l1 /\ x = nth i l1 d1 /\ 
+  combine l1 l2 = l3 ++ (x, nth i l2 d2) :: l4.
+Proof.
+  pose proof (In_nth _ _ d1 Hinx).
+  destruct H as [i [Hi Hx]]; subst.
+  exists i.
+  assert (nth i (combine l1 l2) (d1, d2) = (nth i l1 d1, nth i l2 d2)). {
+    rewrite combine_nth; auto.
+  }
+  rewrite <- H.
+  destruct (nth_split (d1, d2) (combine l1 l2) i) as [l3 [l4 Hl]].
+    rewrite combine_length. lia.
+  exists l3. exists l4. split_all; auto.
 Qed.
 
 End In.
@@ -1112,3 +1363,323 @@ Qed.
 
 End Find.
 
+(*Lemmas about props/decidable eq*)
+Section PropDec.
+Lemma ex_in_eq {A: Type} (l: list A) (P1 P2: A -> Prop) :
+  Forall (fun x => P1 x <-> P2 x) l ->
+  (exists x, In x l /\ P1 x) <->
+  (exists x, In x l /\ P2 x).
+Proof.
+  intros. rewrite Forall_forall in H. 
+  split; intros [x [Hinx Hpx]]; exists x; split; auto;
+  apply H; auto.
+Qed.
+
+Lemma eq_sym_iff {A: Type} (x y: A):
+  x = y <-> y = x.
+Proof.
+  split; intros; subst; auto.
+Qed.
+
+Lemma dec_iff {P: Prop} {dec: {P} + { ~ P}}:
+  dec <-> P.
+Proof.
+  destruct dec; simpl; split; intros; auto. inversion H.
+Qed.
+
+Lemma dec_negb_iff {P: Prop} {dec: {P} + {~ P}}:
+  negb dec <-> ~ P.
+Proof.
+  destruct dec; simpl; split; intros; auto. inversion H.
+Qed.
+
+Lemma fold_is_true (b: bool):
+  b = true <-> b.
+Proof.
+  reflexivity.
+Qed.
+
+Lemma eq_dec_sym {A: Type} {eq_dec: forall (x y: A), {x = y}+ {x <> y}}
+  (x y: A):
+  (@eq bool (eq_dec x y) (eq_dec y x)).
+Proof.
+  destruct (eq_dec x y); simpl; destruct (eq_dec y x); subst; auto.
+  contradiction.
+Qed.
+
+(*TODO: change proofs to use this*)
+Lemma eq_dec_refl {A: Type} {eq_dec: forall (x y: A), {x = y}+ {x <> y}}
+  (x: A):
+  (@eq bool (eq_dec x x) true).
+Proof.
+  destruct (eq_dec x x); auto.
+Qed.
+
+
+End PropDec.
+
+Section Existsb.
+
+Lemma existsb_eq {A: Type} {f1 f2: A -> bool} (l1 l2: list A):
+  length l1 = length l2 ->
+  Forall (fun x => f1 (fst x) = f2 (snd x)) (combine l1 l2) ->
+  existsb f1 l1 = existsb f2 l2.
+Proof.
+  revert l2. induction l1; simpl; intros; destruct l2; inversion H; simpl; auto.
+  inversion H0; subst.
+  simpl in H4. rewrite H4, (IHl1 l2); auto.
+Qed.
+
+Lemma existsb_false {A: Type} (f: A -> bool) (l: list A):
+  (existsb f l = false) <-> Forall (fun x => f x = false) l.
+Proof.
+  induction l; simpl; split; intros; auto.
+  - rewrite orb_false_iff in H.
+    destruct H; subst; constructor; auto.
+    apply IHl; auto.
+  - rewrite orb_false_iff. inversion H; subst.
+    split; auto. apply IHl; auto.
+Qed.
+
+
+Lemma existsb_orb {A: Type} (f1 f2: A -> bool) (l: list A):
+  existsb f1 l || existsb f2 l =
+  existsb (fun x => f1 x || f2 x) l.
+Proof.
+  induction l; simpl; auto.
+  rewrite <- !orb_assoc. f_equal.
+  rewrite orb_comm, <- orb_assoc. f_equal.
+  rewrite orb_comm; apply IHl.
+Qed.
+
+End Existsb.
+
+(*Other lemmas*)
+Lemma Nat_eqb_S (n1 n2: nat):
+  S n1 <? S n2 = (n1 <? n2).
+Proof.
+  destruct (Nat.ltb_spec0 n1 n2);
+  destruct (Nat.ltb_spec0 (S n1) (S n2)); auto; try lia.
+Qed.
+
+(*Tactics*)
+
+
+(*small - without big_union*)
+Ltac simpl_set_goal_small :=
+  repeat match goal with
+  (*remove*)
+  | H: In ?x (remove ?e ?y ?l) |- _ => rewrite in_remove_iff in H
+  | |- context [ In ?x (remove ?e ?y ?l)] => rewrite in_remove_iff
+  (*union*)
+  | H: In ?x (union ?e ?l1 ?l2) |- _ => rewrite union_elts in H
+  | |- context [ In ?x (union ?e ?l1 ?l2)] => rewrite union_elts
+  (*big union simpl*)
+  | H: In ?x (big_union ?e ?f (?y :: ?l)) |- _ => simpl in H
+  | |- context [In ?x (big_union ?e ?f (?y :: ?l))] => simpl
+  (*cons - TODO do without simpl*)
+  | H: In ?x (?y :: ?t) |-_ => simpl in H
+  | |- context [In ?x (?y :: ?t)] => simpl
+  (*remove \/ False from In goals*)
+  | H: ?P \/ False |- _ => rewrite or_false_r in H
+  | |- context [ ?P \/ False] => rewrite or_false_r
+  (*remove_all*)
+  | H: In ?x (remove_all ?e ?l1 ?l2) |- _ => rewrite <- remove_all_elts in H
+  | |- context [In ?x (remove_all ?e ?l1 ?l2)] => rewrite <- remove_all_elts
+  end.
+
+Ltac simpl_set_goal :=
+  simpl_set_goal_small;
+  repeat match goal with
+  (*big_union*)
+  | H: In ?x (big_union ?e ?f ?l) |- _ => rewrite <- big_union_elts in H
+  | |- context [ In ?x (big_union ?e ?f ?l)] => rewrite <- big_union_elts
+  end.
+
+Ltac simpl_set_small :=
+  simpl_set_goal_small;
+  repeat match goal with
+  | H: ~ In ?x (remove_all ?e ?l1 ?l2) |- _ => revert H; simpl_set_goal_small; intros
+  | H: ~ In ?x (union ?e ?l1 ?l2) |- _ => revert H; simpl_set_goal_small; intros
+  | H: ~ In ?x (big_union ?e ?f ?l) |- _ => revert H; simpl_set_goal_small; intros
+  | H: ~ In ?x (remove ?e ?y ?l) |- _ => revert H; simpl_set_goal_small; intros
+  end.
+
+Ltac simpl_set :=
+  simpl_set_goal;
+  repeat match goal with
+  | H: ~ In ?x (remove_all ?e ?l1 ?l2) |- _ => revert H; simpl_set_goal; intros
+  | H: ~ In ?x (union ?e ?l1 ?l2) |- _ => revert H; simpl_set_goal; intros
+  | H: ~ In ?x (big_union ?e ?f ?l) |- _ => revert H; simpl_set_goal; intros
+  | H: ~ In ?x (remove ?e ?y ?l) |- _ => revert H; simpl_set_goal; intros
+  end.
+  
+Ltac triv :=
+  let inner := split_all; auto; 
+  match goal with
+  | |- ~ ?P => let C := fresh in intro C; subst; contradiction
+  end
+  in
+  try solve[inner];
+  match goal with
+  | |- ?P \/ ?Q => solve[left; inner] + solve[right; inner]
+  end.
+
+Ltac not_or name :=
+  repeat match goal with 
+  | H: ~(?P \/ ?Q) |- _ => let N1 := fresh name in
+    let N2 := fresh name in
+    apply Decidable.not_or in H;
+    
+    destruct H as [N1 N2]
+  end.
+
+Ltac len_tac :=
+  repeat match goal with
+  | |- context [length (firstn ?n ?l)] => rewrite firstn_length
+  | |- context [length (skipn ?n ?l)] => rewrite skipn_length
+  | H: length ?l = ?x |- context [length ?l] => rewrite H
+  | |- context [length (?x ++ ?y)] => rewrite app_length
+  end; try lia.
+  
+(*Deal with In (firstn) and similar goals*)
+Ltac in_tac :=
+  repeat match goal with
+  | |- In (?x :: ?l) => simpl
+  | |- In (nth ?i ?l ?x) ?l =>
+    apply nth_In
+  | H: In ?x (firstn ?n ?l) |- _ => apply In_firstn in H
+  | H: In ?x (skipn ?n ?l) |- _ => apply In_skipn in H
+  | |- In ?x (map ?g ?l) => rewrite in_map_iff
+  | |- In ?x (?l1 ++ ?l2) => rewrite in_app_iff
+  | |- In ?x ?l1 \/ In ?x ?l2 => solve[left; in_tac] + solve[right; in_tac]
+  end; auto.
+
+
+Definition sum (l: list nat) : nat :=
+  fold_right (fun x y => x + y) 0 l.
+
+Lemma length_concat {A: Type} (l: list (list A)):
+  length (concat l) = sum (map (@length A) l).
+Proof.
+  induction l; simpl; auto.
+  rewrite app_length, IHl; auto.
+Qed.
+
+Ltac list_tac :=
+  repeat(
+  assumption +
+  solve[len_tac] +
+  solve[lia] +
+  solve[in_tac] +
+  match goal with
+  | |- context [map snd (combine ?l1 ?l2)] =>
+    rewrite map_snd_combine
+  | |- context [map fst (combine ?l1 ?l2)] =>
+    rewrite map_fst_combine
+  | |- NoDup (firstn ?n ?l) => apply NoDup_firstn
+  | |- NoDup (skipn ?n ?l) => apply NoDup_skipn
+  | |- context [length (map ?f ?x)] => rewrite map_length
+  | |- context [length (firstn ?n ?l)] => rewrite firstn_length
+  | |- context [length (skipn ?n ?l)] => rewrite skipn_length
+  | |- In (nth ?i ?l ?x) ?l =>
+    apply nth_In
+  | |- context [length (map2 ?f ?l1 ?l2)] =>
+    rewrite map2_length
+  | |- ?i < length ?l -> ?P => intros
+  | |- context [Nat.min ?x ?x] =>
+    rewrite Nat.min_id
+  | |- context [In ?x (?l1 ++ ?l2)] =>
+    rewrite in_app_iff
+  (*Deal with some "In" goals - TODO improve*)
+  | |- In ?x (map ?g ?l) => rewrite in_map_iff
+  | H: In ?x (firstn ?n ?l) |- In ?x ?l => apply In_firstn in H
+  | H: In ?x (skipn ?n ?l) |- In ?x ?l => apply In_skipn in H
+  | H: In ?x (firstn ?n ?l1) |- In ?x ?l2 => apply In_firstn in H
+  | |- exists y, ?f y = ?f ?x /\ ?P => exists x; split
+  (*Solve the sum length goal*)
+  | H: length ?l = length (concat (map ?f ?l1)) |-
+    sum (map ?g ?l1) = length ?l => rewrite length_concat in H;
+    rewrite H; f_equal; rewrite map_map; apply map_ext
+  | H: length (?x :: ?l) = ?n |- _ => simpl in H
+  | H: ?x = length (?l1 ++ ?l2) |- _ => rewrite app_length in H
+  end); auto; try lia. 
+
+Ltac case_in :=
+  repeat match goal with
+  | |- context [if in_bool ?e ?x ?l then ?y else ?z] => 
+    destruct (in_bool_spec e x l)
+  end.
+    
+  Ltac bool_to_prop :=
+    repeat (progress (
+    unfold is_true;
+    (*First, convert bools to props*)
+    repeat match goal with
+    | |- context [(?b && ?b1) = true] =>
+      rewrite andb_true_iff
+    | |- context [(?b1 || ?b2) = true] =>
+      rewrite orb_true_iff
+    | |- context [existsb ?f ?l = true] =>
+      rewrite existsb_exists
+    end;
+    (*Try to simplify*)
+    repeat(
+      apply or_iff_compat_l ||
+      apply and_iff_compat_l
+    );
+    (*Put the goal in a nicer form*)
+    repeat lazymatch goal with
+    | |- ?P /\ ?Q <-> ?Q /\ ?R => rewrite (and_comm P Q)
+    | |- ?P \/ ?Q <-> ?Q \/ ?R => rewrite (or_comm P Q)
+    | |- ?P /\ ?Q <-> ?R /\ ?P => rewrite (and_comm R P)
+    | |- ?P \/ ?Q <-> ?R /\ ?P => rewrite (or_comm R P)
+    | |- context [ (?P \/ ?Q) \/ ?R] => rewrite or_assoc
+    | |- ?P <-> ?P => reflexivity
+    end)).
+  
+  Ltac bool_hyps :=
+    repeat match goal with
+    | H: is_true (?b1 && ?b2) |- _ => unfold is_true in H
+    | H: ?b1 && ?b2 = true |- _ => apply andb_true_iff in H; destruct H
+    | H: is_true (?b1 || ?b2) |- _ => unfold is_true in H
+    | H: ?b1 || ?b2 = true |- _ => apply orb_true_iff in H
+    | H: is_true (negb ?b1) |- _ => unfold is_true in H
+    | H: negb ?b1 = true |- _ => apply negb_true_iff in H
+    | H: ?b1 && ?b2 = false |- _ => apply andb_false_iff in H
+    | H: ?b1 || ?b2 = false |- _ => apply orb_false_iff in H; destruct H
+    | H: negb (?b1) = false |- _ => apply negb_false_iff in H
+    end.
+  
+  Ltac solve_negb :=
+    match goal with
+    | H: ?b = false |- is_true (negb ?b) => rewrite H; auto
+    end.
+
+  Ltac tf :=
+  match goal with
+  | H: true = false |- _ => inversion H
+  | H: false = true |- _ => inversion H
+  end.
+
+  Ltac simpl_bool :=
+  repeat (progress (simpl;
+  try rewrite !orb_assoc;
+  try rewrite !andb_assoc;
+  repeat match goal with
+  | |- context [ ?b && true] => rewrite andb_true_r
+  | |- context [?b || true] => rewrite orb_true_r
+  | |- context [?b && false] => rewrite andb_false_r
+  | |- context [?b || false] => rewrite orb_false_r
+  end)).
+
+Ltac solve_bool :=
+  simpl_bool;
+  (*Then brute force the solution*)
+  repeat 
+  (match goal with
+  | |- ?b1 && ?b2 = ?z => destruct b2
+  | |- ?b1 || ?b2 = ?z => destruct b2
+  | |- ?z = ?b1 && ?b2 => destruct b2
+  | |- ?z = ?b1 || ?b2 => destruct b2
+  end; simpl_bool; try reflexivity).
