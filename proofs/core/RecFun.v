@@ -514,16 +514,39 @@ Print val.
 Locate adts.
 Print Semantics.adts.
 
+
+Lemma val_sorts_eq (srts: list sort):
+  map (v_subst (v_typevar vt)) (map sort_to_ty srts) = srts.
+Proof.
+  apply list_eq_ext'; rewrite !map_length; auto.
+  intros.
+  rewrite map_nth_inbound with(d2:=vty_int). 2: rewrite map_length; lia.
+  rewrite map_nth_inbound with(d2:=d); auto.
+  symmetry. apply subst_sort_eq.
+Qed.
+
+(*
+domain
+    (nth i
+       (map (v_subst (v_typevar vt))
+          (map (ty_subst (s_params c) (map sort_to_ty srts)) (s_args c)))
+       s_int)" while it is expected to have type"
+ domain
+    (val (proj1_sig (exist (fun ty : vty => valid_type sigma ty) ty Hval1)))
+
+*)
+Search s_int.
 Inductive adt_smaller: {t: {ty: vty | valid_type sigma ty} & 
   domain (val (proj1_sig t))} ->
   {t: {ty: vty | valid_type sigma ty} & domain (val (proj1_sig t))} -> Prop :=
-  | ADT_small: forall x1 x2 vv ty t1 t2 Hval1 Hval2 d1 d2 m a ts srts
+  | ADT_small: forall (x1 x2: {t: {ty: vty | valid_type sigma ty} & domain (val (proj1_sig t))})  
+    ty Hval1 Hval2 d1 d2 m a ts srts
     (*NOTE: in general, not all same type, need 2 tys*)
     (Hx1: x1 = existT _ (exist (valid_type sigma) ty Hval2) d1)
     (Hx2: x2 = existT _ (exist _ ty Hval1) d2)
     (Hisadt: is_sort_adt (val ty) = 
       Some (m, a, ts, srts)),
-    let adt_spec := (is_sort_adt_spec _ _ _ _ _ _ Hisadt) in
+    let adt_spec := (is_sort_adt_spec gamma_valid _ _ _ _ _ Hisadt) in
     let Hseq := proj1 adt_spec in
     let a_in := proj1 (proj2 adt_spec) in
     let m_in :=  proj1 (proj2 (proj2 adt_spec)) in
@@ -543,6 +566,8 @@ Inductive adt_smaller: {t: {ty: vty | valid_type sigma ty} &
       fst (proj1_sig (projT2 Hrep)) in
     let args : arg_list domain (funsym_sigma_args c srts) := 
       snd (proj1_sig (projT2 Hrep)) in
+    let args' := cast_arg_list 
+      (f_equal (funsym_sigma_args c) (eq_sym (val_sorts_eq srts))) args in
     (*Then it must be the case that d1 equals
       one of the arguments in args*)
       (*TODO: need lengths of (s_params c)*)
@@ -550,12 +575,18 @@ Inductive adt_smaller: {t: {ty: vty | valid_type sigma ty} &
       f_equal (@length _) (adt_constr_params gamma_valid m_in a_in c_in) in
     let lens': length (s_params c) = length srts :=
       eq_trans lens (eq_sym lengths_eq) in
-    (*TODO: convert args list bc they are sorts - is there better
-      way than all this? Maybe not - this is similar to match*)
-    let val_args := funargs_to_vals pd vt c (map sort_to_ty srts) _ 
-      (*lens'*) args in
-    exists i, i < hlength val_args /\
-    d2 = hnth i val_args.
+    let lens'' : length (s_params c) = length (map sort_to_ty srts) :=
+      eq_trans lens' (eq_sym (map_length sort_to_ty srts)) in
+    let val_args := funargs_to_vals pd vt c (map sort_to_ty srts) lens''
+      (*lens'*) args' in
+    (exists i
+    (Heq: (nth i
+    (map (v_subst (v_typevar vt))
+       (map (ty_subst (s_params c) (map sort_to_ty srts)) (s_args c)))
+    s_int) = val ty), i < hlength val_args /\
+    (*TODO: need some type equality*)
+    d2 = dom_cast _ Heq (hnth i val_args s_int (dom_int pd))) ->
+    adt_smaller x1 x2.
 
 
     (*TODO: make more generic function to convert between
