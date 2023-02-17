@@ -183,6 +183,39 @@ Definition bool_of_binop (b: binop) : bool -> bool -> bool :=
   | Timplies => implb
   | Tiff => eqb
   end.
+
+
+(*Build valuation from a list, ie: the valuation that sends each element of vs
+  to the corresponding sort in s and each element of syms to the
+  corresponding element of a (modulo dependent type stuff)
+  Give default values if something is not in the list*)
+
+  Set Bullet Behavior "Strict Subproofs".
+
+Lemma make_val_valid_type: forall (vs: list typevar) (s1: list sort),
+  length vs = length s1 ->
+  (forall s, In s s1 -> valid_type sigma s) ->
+  forall (x: typevar), valid_type sigma (ty_subst_fun_s vs s1 s_int x).
+Proof.
+  intros vs s1 Hlen Hall. unfold ty_subst_fun_s. simpl.
+  assert (length vs = length (sorts_to_tys s1)). {
+    unfold sorts_to_tys; rewrite map_length; auto.
+  }
+  (*Should be separate lemma*)
+  assert (forall x, In x (sorts_to_tys s1) -> valid_type sigma x). {
+    intros. unfold sorts_to_tys in H0. rewrite in_map_iff in H0.
+    destruct H0 as [y [Hy Hiny]]; subst. apply Hall. auto.
+  }
+  clear Hall Hlen. generalize dependent vs.
+  induction (sorts_to_tys s1); intros.
+  - destruct vs ;[|inversion H]. constructor.
+  - destruct vs;[inversion H|]. simpl.
+    destruct (typevar_eq_dec x t).
+    + subst. apply H0. left; auto.
+    + apply IHl; auto. intros. apply H0; right; auto.
+Qed.
+
+  (*
 Unset Elimination Schemes.
 Inductive term_interp: 
   forall (vv: val_vars pd v) (tm: term) (ty: vty) (x: domain (dom_aux pd) (v_subst (v_typevar v) ty)), Prop :=
@@ -649,35 +682,6 @@ Fixpoint mk_fun_arg (*{A: Type} (eq_dec: forall (x y: A), {x = y} + { x <> y})*)
                       end
   end.
 
-(*Build valuation from a list, ie: the valuation that sends each element of vs
-  to the corresponding sort in s and each element of syms to the
-  corresponding element of a (modulo dependent type stuff)
-  Give default values if something is not in the list*)
-
-Set Bullet Behavior "Strict Subproofs".
-
-Lemma make_val_valid_type: forall (vs: list typevar) (s1: list sort),
-  length vs = length s1 ->
-  (forall s, In s s1 -> valid_type sigma s) ->
-  forall (x: typevar), valid_type sigma (ty_subst_fun_s vs s1 s_int x).
-Proof.
-  intros vs s1 Hlen Hall. unfold ty_subst_fun_s. simpl.
-  assert (length vs = length (sorts_to_tys s1)). {
-    unfold sorts_to_tys; rewrite map_length; auto.
-  }
-  (*Should be separate lemma*)
-  assert (forall x, In x (sorts_to_tys s1) -> valid_type sigma x). {
-    intros. unfold sorts_to_tys in H0. rewrite in_map_iff in H0.
-    destruct H0 as [y [Hy Hiny]]; subst. apply Hall. auto.
-  }
-  clear Hall Hlen. generalize dependent vs.
-  induction (sorts_to_tys s1); intros.
-  - destruct vs ;[|inversion H]. constructor.
-  - destruct vs;[inversion H|]. simpl.
-    destruct (typevar_eq_dec x t).
-    + subst. apply H0. left; auto.
-    + apply IHl; auto. intros. apply H0; right; auto.
-Qed.
 
 Definition make_val_typevar (*(pd: pi_dom)*) (vs: list typevar) (s1 (*s2*): list sort)
   (Hlen: length vs = length s1)
@@ -780,5 +784,7 @@ Definition log_conseq (l: list formula) (f: formula) :=
   forall i, satisfied_l i l -> satisfied_f i f.
 
 End Logic.
+*)
+End Interp.
 
 End Interp.

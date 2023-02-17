@@ -141,6 +141,143 @@ Proof.
   inversion H; auto.
 Qed.
 
+Print arg_list.
+Print hlist.
+Check funsym_subst_eq.
+Definition val_list (v: val_typevar) (l: list vty) : Set :=
+  hlist domain (map (val v) l). 
+(*We can use the above to convert between arg_lists*)
+
+(*
+Definition vals_to_args (vt: val_typevar) (params: list typevar) (args: list vty)
+  (vs: list vty) (Hn: NoDup params)
+  (Hlen: length params = length vs)
+  (a: val_list vt (map (ty_subst params vs) args)):
+  arg_list domain (ty_subst_list_s params (map (val vt) vs) args).
+Proof.
+  induction args.
+  - exact (HL_nil _).
+  - exact (HL_cons _ _ _ (dom_cast (dom_aux pd) (funsym_subst_eq _ vs _ _ Hn Hlen) (hlist_hd a))
+  (IHargs (hlist_tl a))). 
+Defined.*)
+
+
+Fixpoint vals_to_args (vt: val_typevar) (params: list typevar) (args: list vty)
+  (vs: list vty) (Hn: NoDup params)
+  (Hlen: length params = length vs)
+  (a: val_list vt (map (ty_subst params vs) args)):
+  arg_list domain (ty_subst_list_s params (map (val vt) vs) args) :=
+match args as args' return val_list vt (map (ty_subst params vs) args')->
+  arg_list domain (ty_subst_list_s params (map (val vt) vs) args') with
+  | nil => fun _ => HL_nil _
+  | ahd :: atl => fun vl =>
+    HL_cons _ _ _ 
+      (dom_cast (dom_aux pd) (funsym_subst_eq _ vs _ _ Hn Hlen) (hlist_hd vl))
+      (vals_to_args vt params atl vs Hn Hlen (hlist_tl vl))
+end a.
+
+Definition vals_to_funargs (vt: val_typevar) (f: funsym)
+  (vs: list vty)
+  (Hlen: length (s_params f) = length vs)
+  (a: val_list vt (map (ty_subst (s_params f) vs) (s_args f))):
+  arg_list domain (funsym_sigma_args f (map (val vt) vs)) :=
+  (vals_to_args vt (s_params f) (s_args f) vs (s_params_Nodup f)
+  Hlen a).
+
+(*And the inverse*)
+Fixpoint args_to_vals (vt: val_typevar) (params: list typevar) (args: list vty)
+  (vs: list vty) (Hn: NoDup params)
+  (Hlen: length params = length vs)
+  (a: arg_list domain (ty_subst_list_s params (map (val vt) vs) args)) :
+  val_list vt (map (ty_subst params vs) args) :=
+match args as args' return arg_list domain (ty_subst_list_s params (map (val vt) vs) args')->
+val_list vt (map (ty_subst params vs) args') with
+  | nil => fun _ => HL_nil _
+  | ahd :: atl => fun vl =>
+    HL_cons _ _ _ 
+      (dom_cast (dom_aux pd) (eq_sym (funsym_subst_eq _ vs _ _ Hn Hlen)) (hlist_hd vl))
+      (args_to_vals vt params atl vs Hn Hlen (hlist_tl vl))
+end a.
+
+Definition funargs_to_vals (vt: val_typevar) (f: funsym)
+  (vs: list vty)
+  (Hlen: length (s_params f) = length vs)
+  (a: arg_list domain (funsym_sigma_args f (map (val vt) vs)))
+  : val_list vt (map (ty_subst (s_params f) vs) (s_args f)) :=
+  (args_to_vals vt (s_params f) (s_args f) vs (s_params_Nodup f)
+  Hlen a).
+
+Lemma dom_cast_sym1 aux v1 v2 (Heq: v1 = v2) x:
+  dom_cast aux (eq_sym Heq) (dom_cast aux Heq x) = x.
+Proof.
+  unfold dom_cast. subst. reflexivity.
+Qed. 
+
+Lemma dom_cast_sym2 aux v1 v2 (Heq: v1 = v2) x:
+  dom_cast aux Heq (dom_cast aux (eq_sym Heq) x) = x.
+Proof.
+  unfold dom_cast. subst. reflexivity.
+Qed. 
+
+
+(*Prove inverse*)
+Lemma args_to_vals_to_args (vt: val_typevar) (params: list typevar) (args: list vty)
+(vs: list vty) (Hn: NoDup params)
+(Hlen: length params = length vs)
+(a: val_list vt (map (ty_subst params vs) args)):
+args_to_vals vt params args vs Hn Hlen 
+  (vals_to_args vt params args vs Hn Hlen a) = a.
+Proof.
+  induction args; simpl.
+  - simpl in a. rewrite hlist_nil. reflexivity.
+  - simpl in a. rewrite hlist_inv.
+    f_equal. 2: rewrite IHargs; auto.
+    apply dom_cast_sym1.
+Qed.
+
+Lemma vals_to_args_to_vals (vt: val_typevar) (params: list typevar) (args: list vty)
+(vs: list vty) (Hn: NoDup params)
+(Hlen: length params = length vs)
+(a: arg_list domain (ty_subst_list_s params (map (val vt) vs) args)):
+vals_to_args vt params args vs Hn Hlen 
+  (args_to_vals vt params args vs Hn Hlen a) = a.
+Proof.
+  induction args; simpl.
+  - simpl in a. rewrite hlist_nil. reflexivity.
+  - simpl in a. rewrite hlist_inv.
+    f_equal. 2: rewrite IHargs; auto.
+    apply dom_cast_sym2.
+Qed.
+
+(*From a well-typed function and val function, get list *)
+Definition get_arg_list_aux (v: val_typevar)
+  (f: funsym) (vs: list vty) (ts: list term) ty
+  (reps: forall (t: term) (ty: vty),
+    term_has_type sigma t ty ->
+    domain (val v ty))
+  (Hty: term_has_type sigma (Tfun f vs ts) ty) : 
+  val_list v (map (ty_subst (s_params f) vs) (s_args f)).
+Proof.
+  apply fun_ty_inversion in Hty.
+  destruct_all.
+  (*TODO: just get hyps i need, maybe manual*)
+  clear H H0 H2. generalize dependent (s_args f). induction ts; intros.
+  - destruct l.
+    + exact (HL_nil _).
+    + exact (False_rect _ (Nat.neq_0_succ _ H1)).
+  - destruct l.
+    + exact (False_rect _ (Nat.neq_succ_0 _ H1)).
+    + simpl. apply HL_cons.
+      * exact (reps _ _ (Forall_inv H3)).
+      * injection H1; intros Hlen. 
+        exact (IHts _ Hlen (Forall_inv_tail H3)).
+Defined.
+
+(*TODO: combine with old [get_arg_list] - can generalize for
+  pred too, maybe make above more generic for both*)
+
+(*And versions for functions*)
+
 (*We use the above to get the arg list*)
 Definition get_arg_list (v: val_typevar)
   (f: funsym) (vs: list vty) (ts: list term) 
