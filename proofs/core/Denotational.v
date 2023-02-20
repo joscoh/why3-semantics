@@ -608,7 +608,7 @@ Lemma find_ts_in_mut_some: forall ts m a,
 Proof.
   intros ts m a Hf. apply find_some in Hf.
   destruct Hf as [Hin Heq].
-  split; auto.
+  split; auto. apply In_in_bool; auto.
   simpl_sumbool.
 Qed.
 
@@ -619,8 +619,9 @@ Proof.
   intros. eapply iff_trans. apply find_some_nodup.
   - intros. repeat simpl_sumbool.
     apply (NoDup_map_in H); auto.
-  - simpl. unfold adt_in_mut. apply and_iff_compat_l.
-    split; intros; simpl_sumbool.
+  - simpl. unfold adt_in_mut. split; intros [Hin Hname];
+    repeat simpl_sumbool; split; auto; try simpl_sumbool;
+    apply (reflect_iff _ _ (in_bool_spec adt_dec a (typs m))); auto.
 Qed.
 
 Definition find_ts_in_ctx (ts: typesym) : option (mut_adt * alg_datatype) :=
@@ -681,10 +682,13 @@ Proof.
         destruct Hf.
         destruct Hnodup as [Hn1 [Hn2 [Hi1 Hi2]]].
         exfalso. apply (Hi1 (adt_name a1)). rewrite in_map_iff.
-        exists a1. split; auto. rewrite H1.
+        exists a1. split; auto. apply (in_bool_In _ _ _ H0).
+        rewrite H1.
         rewrite in_map_iff. exists a. split; auto.
         rewrite in_concat. exists (typs m). split; auto.
         rewrite in_map_iff. exists m; split; auto.
+        (*TODO: automate this or at least fix lemma w args*)
+        apply (in_bool_In _ _ _ Ha).
       * apply IHl; auto.
         intros. apply H. right; auto.
         apply Hnodup.

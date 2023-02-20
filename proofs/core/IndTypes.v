@@ -879,16 +879,7 @@ Ltac destruct_list :=
     destruct l 
   end.
 
-(*TODO: dont duplicate*)
-Ltac right_dec := 
-  solve[let C := fresh "C" in right; intro C; inversion C; try contradiction].
 
-Definition adt_dec: forall (x1 x2: alg_datatype), {x1 = x2} + {x1 <> x2}.
-intros [t1 c1] [t2 c2].
-destruct (typesym_eq_dec t1 t2); [|right_dec].
-destruct (ne_list_eq_dec funsym_eq_dec c1 c2); [|right_dec].
-left. rewrite e e0; reflexivity.
-Defined.
 
 (*Facilities to build ADTs*)
 Section Build.
@@ -938,7 +929,7 @@ Definition typesym_map : typesym -> list vty -> Set :=
 
 Definition adt_rep (a: alg_datatype) (a_in: adt_in_mut a m)
  := mk_adts var_map typesym_map adts
-  (get_idx adt_dec a adts (In_in_bool adt_dec _ _ a_in)).
+  (get_idx adt_dec a adts a_in).
 
 (*Now we want to make an interface for the constructor. This is harder.*)
 (*We need to build the [build_constr_base] and the recursive map.
@@ -1056,7 +1047,7 @@ Lemma dom_adts_fin: forall (x: finite (length adts)),
   domain (typesym_to_sort (adt_name (fin_nth adts x)) srts) =
   mk_adts var_map typesym_map adts x.
 Proof.
-  intros. rewrite dom_adts. apply fin_nth_in.
+  intros. rewrite dom_adts. apply In_in_bool. apply fin_nth_in.
   intros Hin.
   unfold adt_rep.
   f_equal.
@@ -1172,7 +1163,7 @@ Proof.
   assert (ts_args ts = m_params m). {
     subst ts. apply (@adt_args s gamma gamma_valid).
     unfold adt_mut_in_ctx. split; auto.
-    unfold adt_in_mut. apply fin_nth_in.
+    apply In_in_bool. apply fin_nth_in.
   }
   rewrite H.
   rewrite <- map_comp. apply subst_same. 
@@ -1260,8 +1251,7 @@ Lemma constr_in_lemma :
      (in_bool_ne funsym_eq_dec c
         (adt_constrs
            (fin_nth adts 
-            (get_idx adt_dec t adts
-               (In_in_bool adt_dec t (typs m) t_in))))).
+            (get_idx adt_dec t adts t_in)))).
 Proof.
   rewrite get_idx_correct. apply c_in.
 Qed.
@@ -1367,11 +1357,11 @@ Lemma split_arg_func_lemma1 (ts: typesym) l0 l a
     count_rec_occ_aux (vty_cons ts l0 :: l) (adt_name (fin_nth adts x)) c)
 (Htsa: ts = adt_name a)
     (Hina: adt_in_mut a m):
-    0 < length (f (get_idx adt_dec _ _ (In_in_bool _ _ _ Hina))).
+    0 < length (f (get_idx adt_dec _ _ Hina)).
 Proof.
   rewrite Hf. rewrite get_idx_correct. unfold count_rec_occ_aux. simpl.
     destruct (typesym_eq_dec ts (adt_name a)); auto; try contradiction.
-    assert (l0 = [seq vty_var i | i <- ts_args (adt_name (fin_nth adts (get_idx adt_dec _ _ (In_in_bool _ _ _ Hina))))]).
+    assert (l0 = [seq vty_var i | i <- ts_args (adt_name (fin_nth adts (get_idx adt_dec _ _  Hina)))]).
     {
       subst. 
       rewrite get_idx_correct. f_equal. symmetry.
@@ -1419,7 +1409,7 @@ Proof.
   intros x.
     (*specialize (f x).*)
     (*2 cases; x = idx of a and not*)
-    destruct (finite_eq_dec _ x (get_idx adt_dec _ _ (In_in_bool _ _ _ Hina))).
+    destruct (finite_eq_dec _ x (get_idx adt_dec _ _ Hina)).
     + exact (tl (f x)).
     + exact (f x).
 Defined.
@@ -1441,7 +1431,7 @@ Proof.
   specialize (Hf x).
   destruct (typesym_eq_dec ts (adt_name (fin_nth adts x))).
   - assert (x0 = fin_nth adts x). {
-      subst. assert (x0 = fin_nth adts (get_idx adt_dec x0 adts (In_in_bool _ _ _ a))). {
+      subst. assert (x0 = fin_nth adts (get_idx adt_dec x0 adts i)). {
         rewrite get_idx_correct. reflexivity.
       }
       rewrite H in e.
@@ -1451,7 +1441,7 @@ Proof.
     destruct ( list_eq_dec vty_eq_dec l0
     [seq vty_var i | i <- ts_args (adt_name (fin_nth adts x))]).
     + destruct (finite_eq_dec (Datatypes.length adts) x
-    (get_idx adt_dec x0 (typs m) (In_in_bool adt_dec x0 (typs m) a))).
+    (get_idx adt_dec x0 (typs m) i)).
       * simpl in Hf. rewrite tl_len Hf. reflexivity.
       *  subst. exfalso. apply n. rewrite get_idx_fin. reflexivity.
         apply (adts_nodups gamma_valid). apply m_in.
@@ -1459,7 +1449,7 @@ Proof.
       subst. exfalso. apply n. f_equal. symmetry. apply (adt_args gamma_valid).
       split; auto.
   - subst. destruct (finite_eq_dec (Datatypes.length adts) x
-      (get_idx adt_dec x0 (typs m) (In_in_bool adt_dec x0 (typs m) a))).
+      (get_idx adt_dec x0 (typs m) i)).
     + subst. exfalso. apply n. rewrite get_idx_correct. reflexivity.
     + simpl in Hf. apply Hf.
 Qed. 
@@ -1473,7 +1463,7 @@ Proof.
   destruct (typesym_eq_dec ts (adt_name (fin_nth adts x))); auto.
   assert (ts_in_mut_list ts adts = true). {
     apply ts_in_mut_list_spec. exists (fin_nth adts x). split; auto.
-    apply fin_nth_in.
+    apply In_in_bool. apply fin_nth_in.
   }
   rewrite H0 in H; inversion H.
 Qed.
@@ -1718,8 +1708,7 @@ Proof.
           ++ (*case 1: x' corresponds to t0*) 
             assert (x0 = fin_nth adts x'). {
               subst. 
-              assert (Hx0: x0 = fin_nth adts (get_idx adt_dec x0 adts 
-                (In_in_bool _ _ _ a))) by (rewrite get_idx_correct; reflexivity). 
+              assert (Hx0: x0 = fin_nth adts (get_idx adt_dec x0 adts i0)) by (rewrite get_idx_correct; reflexivity). 
               rewrite Hx0 in e0.
               apply adt_names_inj in e0. subst. rewrite get_idx_correct.
               reflexivity.
@@ -1733,30 +1722,24 @@ Proof.
             }
             simpl. unfold get_ind_arg. intros Hf.
             rewrite cast_list_cons.
-            assert (x' = (get_idx adt_dec x (typs m) (In_in_bool adt_dec x (typs m) H0))). {
+            assert (x' = (get_idx adt_dec x (typs m) H0)). {
               subst. unfold adt_in_mut in H0. 
-              assert (x = fin_nth adts (get_idx adt_dec x adts (In_in_bool _ _ _ H0))).
+              assert (x = fin_nth adts (get_idx adt_dec x adts H0)).
                 rewrite get_idx_correct. reflexivity.
               rewrite H2 in H. apply adt_names_inj in H.
               subst. reflexivity.
             }
             subst; simpl. (*Here, we need UIP*)
             rewrite scast_cast_scast.
-            set (x':=(get_idx adt_dec x (typs m) (In_in_bool adt_dec x (typs m) H0))).
+            set (x':=(get_idx adt_dec x (typs m) H0)).
             apply (fun_args_eq_dep _ _ x') in Hat2.
             simpl in Hat2. clear -Hat2. 
             (*use the IH, which tells us about values of i*)
             destruct (finite_eq_dec (Datatypes.length adts) x'
             (get_idx adt_dec
               (fin_nth adts
-                  (get_idx adt_dec x (typs m)
-                    (In_in_bool adt_dec x (typs m) H0))) 
-              (typs m)
-              (In_in_bool adt_dec
-                  (fin_nth adts
-                    (get_idx adt_dec x (typs m)
-                        (In_in_bool adt_dec x (typs m) H0))) 
-                  (typs m) a))); try contradiction.
+                  (get_idx adt_dec x (typs m) H0)) 
+              (typs m) i0)); try contradiction.
             {
               rewrite -> hlist_to_list_irrel with (Ha2:=(filter_args_same l x')) by apply sort_eq_dec.
               rewrite Hat2.
@@ -1775,7 +1758,7 @@ Proof.
           rewrite -> hlist_to_list_irrel with (Ha2:=(filter_args_same l x'))
             by apply sort_eq_dec.
           rewrite Hat2. destruct (finite_eq_dec (Datatypes.length adts) x'
-          (get_idx adt_dec x0 (typs m) (In_in_bool adt_dec x0 (typs m) a))).
+          (get_idx adt_dec x0 (typs m) i0)).
           {
             (*another contradiction*)
             exfalso. apply n. subst. rewrite get_idx_correct. reflexivity.
@@ -1839,7 +1822,7 @@ Proof.
     unfold uniform in m_unif.
     assert (Hu:=m_unif). unfold is_true in Hu.
     rewrite forallb_forall in Hu.
-    specialize (Hu t t_in).
+    specialize (Hu t (in_bool_In _ _ _ t_in)).
     rewrite forallb_forall in Hu.
     assert (Hinc: In c (ne_list_to_list (adt_constrs t))). {
       apply /in_bool_spec. rewrite <- in_bool_ne_equiv.
@@ -1891,7 +1874,7 @@ Proof.
   }
   pose proof 
     (find_constr var_map typesym_map (typs m)
-    (get_idx adt_dec t (typs m) (In_in_bool adt_dec t (typs m) t_in)) Hcons).
+    (get_idx adt_dec t (typs m) t_in) Hcons).
   unfold adt_rep in x.
   specialize (X x).
   destruct X as [f Hf].
@@ -2017,7 +2000,7 @@ Proof.
           move: Hl => /andP[/implyP Hunif _].
           specialize (Hunif Hin').
           simpl_sumbool. f_equal. symmetry. apply (adt_args gamma_valid).
-          split; auto. apply /in_bool_spec. apply Hina.
+          split; auto.
         }
         simpl. intros Hf.
         rewrite !cast_list_cons. intros Heq. inversion Heq.
@@ -2104,7 +2087,7 @@ Proof.
     unfold uniform in m_unif.
     assert (Hu:=m_unif). unfold is_true in Hu.
     rewrite forallb_forall in Hu.
-    specialize (Hu t t_in).
+    specialize (Hu t (in_bool_In _ _ _ t_in)).
     rewrite forallb_forall in Hu.
     assert (Hinf: In f (ne_list_to_list (adt_constrs t))). {
       apply /in_bool_spec. rewrite <- in_bool_ne_equiv.

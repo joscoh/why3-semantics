@@ -536,7 +536,349 @@ domain
     (val (proj1_sig (exist (fun ty : vty => valid_type sigma ty) ty Hval1)))
 
 *)
-Search s_int.
+
+Definition cast_w {I: Set} {A: I -> Set} {B: forall i: I, I -> A i -> Set}
+  {i1 i2: I} (Heq: i1 = i2) (w: W I A B i1) : W I A B i2 :=
+  match Heq with
+  | eq_refl => w
+  end.
+Print W.
+
+Definition cast_a {I: Set} {A: I -> Set} {i1 i2: I} (Heq: i1 = i2)
+  (a: A i1) : A i2 := scast (f_equal A Heq) a.
+
+Definition cast_b {I: Set} {A: I -> Set} {B: forall i: I, I -> A i -> Set}
+  {i1 i2 j: I} (Heq: i1 = i2) {a: A i1} (b: B i1 j a) :
+    B i2 j (cast_a Heq a).
+  destruct Heq. exact b.
+Defined.
+
+Lemma cast_a_sym {I: Set} {A: I -> Set} {i1 i2: I} (Heq: i1 = i2)
+(a: A i1): cast_a (eq_sym Heq) (cast_a Heq a) = a.
+Proof.
+  unfold cast_a. subst. reflexivity.
+Defined. 
+
+Lemma cast_w_mkw {I: Set} {A: I -> Set} {B: forall i: I, I -> A i -> Set}
+{i1 i2: I} (Heq: i1 = i2) (a: A i1) (f: forall j: I, B i1 j a -> W I A B j):
+  cast_w Heq (mkW I A B i1 a f) =
+  mkW I A B i2 (cast_a Heq a) 
+  (fun (j: I) (b: B i2 j (@cast_a I A _ _ Heq a)) =>
+    let b' : B i1 j (cast_a (eq_sym Heq) (cast_a Heq a)) 
+      := cast_b (eq_sym Heq) b in
+    let b'': B i1 j a := scast (f_equal (B i1 j) (cast_a_sym Heq a)) b' in
+    f j b'').
+Proof.
+  unfold cast_w. subst. simpl. unfold cast_a. simpl.
+  unfold scast, cast_a_sym. f_equal.
+Qed. 
+
+Lemma cast_i (m: mut_adt) (m_in: mut_in_ctx m gamma) (i: finite (length (adts m))):
+  i = get_idx adt_dec (fin_nth (adts m) i) (adts m)
+  (In_in_bool adt_dec (fin_nth (adts m) i) (typs m) (fin_nth_in (adts m) i)).
+Proof.
+  rewrite get_idx_fin; auto.
+  apply (adts_nodups gamma_valid). apply m_in.
+Qed.
+
+Require Import Coq.Logic.Eqdep_dec.
+
+Definition cast_adt_rep {m srts t1 t2 tin1 tin2}
+  (H: t1 = t2)
+  (x: adt_rep m srts (dom_aux pd) t1 tin1):
+  adt_rep m srts (dom_aux pd) t2 tin2.
+  revert x. unfold adt_rep, mk_adts.
+  apply cast_w. subst. f_equal. apply bool_irrelevance.
+Defined.
+
+(*Relies on decidability of domain*)
+Lemma cast_w_twice {I: Set} {A: I -> Set} {B: forall i: I, I -> A i -> Set}
+{i1 i2: I}
+(eq_dec: forall x y: I, {x=y} + {x<>y})
+(Heq: i1 = i2) (Heq2: i2 = i1) (w: W I A B i1):
+  cast_w Heq2 (cast_w Heq w) = w.
+Proof.
+  subst. unfold cast_w. assert (Heq2=eq_refl). apply UIP_dec. auto.
+  rewrite H. reflexivity.
+Qed.
+
+(*
+Lemma cast_adt_rep_w {srts t1 t2 tin1 tin2}
+  (H: t1 = t2) H1
+  x:
+  cast_adt_rep H (cast_w H1 x) = x.
+
+  W (finite (Datatypes.length (adts m)))
+      (fun n : finite (Datatypes.length (adts m)) =>
+       build_base (var_map m srts (dom_aux pd))
+         (typesym_map m srts (dom_aux pd)) (adts m)
+         (adt_constrs (fin_nth (adts m) n)))
+      (fun this i : finite (Datatypes.length (adts m)) =>
+       build_rec (var_map m srts (dom_aux pd))
+         (typesym_map m srts (dom_aux pd)) (adts m)
+         (adt_name (fin_nth (adts m) i))
+         (adt_constrs (fin_nth (adts m) this)))
+      (get_idx adt_dec t (adts m) t_in)
+Ht: fin_nth (adts m) (get_idx adt_dec t (adts m) t_in) = t
+1/1
+P t t_in
+  (cast_adt_rep Ht
+     (cast_w (cast_i m m_in (get_idx adt_dec t (adts m) t_in)) x)) ->
+P t t_in x
+
+*)
+
+(*
+Definition cast_adt_rep {m srts t t_in1 t_in2}
+  (Heq: t_in1 = t_in2)
+  (x: adt_rep m srts (dom_aux pd) t t_in1):
+  adt_rep m srts (dom_aux pd) t t_in2 :=
+  match Heq with
+  | eq_refl => x
+  end.*)
+  
+(*These lemmas show why it is critical to have a bool for t_in*)
+Lemma rewrite_P {m srts}
+(P: forall t t_in, adt_rep m srts (dom_aux pd) t t_in -> Prop):
+forall t1 t2 t_in1 t_in2 (Ht: t1 = t2) x,
+  P t1 t_in1 x <-> P t2 t_in2 (cast_adt_rep Ht x).
+Proof.
+  intros. unfold cast_adt_rep. unfold cast_w, eq_ind_r, eq_ind.
+  subst. simpl. 
+  destruct ((bool_irrelevance (adt_in_mut t2 m) t_in1 t_in2)).
+  simpl. reflexivity.
+Qed.
+
+(*TODO: move*)
+(*
+Lemma v_subst_aux_inv f ty name args:
+  v_subst_aux f ty = vty_cons name args ->
+  ty = vty_cons name args.
+Proof.
+  intros. destruct ty; simpl in H; try solve[inversion H].
+
+  2: {}
+
+
+
+v_subst_aux
+       (fun x : typevar =>
+        ty_subst_fun (s_params c) (sorts_to_tys srts) vty_int x)
+       (nth j (s_args c) vty_int) =
+     vty_cons (adt_name t') (seq.map sort_to_ty srts)
+
+*)
+  (*i =
+ get_idx adt_dec (fin_nth (adts m) i) (adts m)
+   *)
+(*Yes, change to boolean*)
+(*We should be able to do better - we know the recursive instances*)
+Lemma adt_rep_ind m m_in srts
+  (Hlen: length srts = length (m_params m)) 
+  (P: forall t t_in, adt_rep m srts (dom_aux pd) t t_in -> Prop):
+  (forall t t_in (x: adt_rep m srts (dom_aux pd) t t_in) 
+    (c: funsym) (Hc: constr_in_adt c t) (a: arg_list domain (funsym_sigma_args c srts))
+    (Hx: x = constr_rep gamma_valid m m_in srts Hlen (dom_aux pd) t t_in c
+      Hc (Semantics.adts pd m srts) a),
+    (forall i t' t_in' Heq, i < length (s_args c) ->
+      (*If nth i a has type adt_rep ..., then P holds of it*)
+      P t' t_in' (scast (Semantics.adts pd m srts t' t_in') 
+        (dom_cast _ Heq (hnth i a s_int (dom_int pd)))) 
+      ) ->
+    P t t_in x
+    ) ->
+  forall t t_in (x: adt_rep m srts (dom_aux pd) t t_in),
+  P t t_in x.
+Proof.
+  intros.
+  unfold adt_rep in x, P. unfold mk_adts in x, P.
+  (*
+  (*Make generic in choice of t, t_in*)
+  assert (fin_nth (adts m) (get_idx adt_dec t (adts m) (In_in_bool adt_dec t (typs m) t_in)) = t). {
+    apply get_idx_correct.
+  }
+
+  generalize dependent H. revert P.
+  generalize dependent ((get_idx adt_dec t (adts m) (In_in_bool adt_dec t (typs m) t_in))).
+  Search get_idx.
+*)
+  pose proof (W_ind (finite (length (adts m)))
+  (fun n : finite (Datatypes.length (adts m)) =>
+    build_base (var_map m srts (dom_aux pd))
+    (typesym_map m srts (dom_aux pd)) (adts m)
+    (adt_constrs (fin_nth (adts m) n)))
+  (fun this i : finite (Datatypes.length (adts m)) =>
+    build_rec (var_map m srts (dom_aux pd))
+      (typesym_map m srts (dom_aux pd)) (adts m)
+      (adt_name (fin_nth (adts m) i))
+      (adt_constrs (fin_nth (adts m) this)))
+  (*instantiate P*)
+  (fun i w => P (fin_nth (adts m) i) (*TODO*) 
+    (In_in_bool adt_dec _ _ (fin_nth_in (adts m) i)) 
+    (cast_w (cast_i m m_in i) w))
+  ) as wind.
+  (*TODO: fix*)
+  match goal with
+  | H: ?P -> ?Q |- _ => let Hhyp := fresh "Hindh" in
+    assert (Hhyp: P); [clear H|specialize (H Hhyp); clear Hhyp]
+  end.
+  2: {
+    specialize (wind 
+      (get_idx _ t (adts m) t_in) x).
+      simpl in wind.
+    clear -wind.
+    (*TODO: might need to make adt_in_mut a bool*)
+    revert wind.
+    assert (Ht: (fin_nth (adts m) (get_idx adt_dec t (adts m) t_in)) = t). {
+      apply get_idx_correct.
+    }
+    rewrite rewrite_P with(P:=P)(t2:=t)(t_in2:=t_in)(Ht:=Ht).
+    assert ((cast_adt_rep Ht
+    (cast_w (cast_i m m_in (get_idx adt_dec t (adts m) t_in)) x)) = x). {
+      clear. unfold cast_adt_rep.
+      apply cast_w_twice.
+      apply finite_eq_dec.
+    }
+  rewrite <- H at 2. auto.
+  }
+  (*OK, now we need to prove IH equivalence*)
+  intros i a f IH.
+  (*Now we need to use our inductive assumption*)
+  rewrite cast_w_mkw. simpl.
+  match goal with
+  | |- P ?i ?h ?y => set (x':=y) in *
+  end.
+  destruct (find_constr_rep gamma_valid m m_in srts Hlen (dom_aux pd)
+    (fin_nth (adts m) i) (In_in_bool adt_dec _ _ (fin_nth_in (adts m) i))
+    (Semantics.adts pd m srts) (all_unif m m_in) x') as [c [[c_in args] Hx']].
+  specialize (H _ _ x' c c_in args Hx').
+  apply H.
+  (*Now we need to show that the [forall i] condition
+    corresponds to that in the IH*)
+  clear -IH.
+  intros j t' t_in' Heq Hj.
+  specialize (IH (get_idx adt_dec t' (adts m) t_in')).
+  Print rec_occ_fun.
+  (*Which [build_rec] do we need?*)
+  (*Ah, we need to know which occurrence this i is
+    so we should specialize with (j: finite (count_rec_occ ts c)
+    where ts is the typesym we are looking at (ts' name)
+    and j is the number ocurring before i*)
+  assert (Hnth: exists l, nth j (s_args c) vty_int = vty_cons (adt_name t') l). {
+    revert Heq. unfold funsym_sigma_args. 
+    unfold ty_subst_list_s.
+    rewrite (map_nth_inbound) with(d2:= vty_int); auto.
+    (*Problem: what if one of our srts includes an inductive
+      type? Feel like we dealt with this before*)
+    (*Need to think about this*)
+    (*TODO: I think I should modify the IH, only require
+      this holds of all cases when nth (s_args i ...) has the
+      correct type (and then cast from there) - also modify relation
+      
+      Complicated case: say we have wlist a and we interpret a
+      in our valuation as (list int) (coq type)
+      then arguments to cons are (list int) and (list (list int)) in coq
+      i believe this is valid - uniformity is syntactic, not semantic
+      but we don't want to allow recursion on the 1st argument
+      (or rather, we can't say that this prop holds on the first argument)
+      ok in pattern matching because there we work on the reps directly
+      so if we interpret A as list, it is OK - any property we want to
+      prove had better not depend on that because we require it to be
+      true for all possible valuations
+      think about if pattern matching is OK or if this ruins stuff
+      so we should change this
+      
+      **)
+    Search ty_subst_s typesym_to_sort.
+    unfold typesym_to_sort, ty_subst_s, v_subst. intros.
+    inversion Heq.
+    Search v_subst_aux.
+    unfold v_subst_aux in H0.
+    intros [Hnth].
+    rewrite <- ty_subst_s_cons.
+    Search typesym_to_sort.
+    
+    unfold seq.map. rewrite map_map. rewrite map_nth.
+  }
+  assert ()
+
+  assert ()
+
+  Print build_constr_rec.
+
+
+
+  unfold scast. 
+  apply IH.
+
+  unfold build_rec.
+  Search constr_rep.
+
+  find_constr_rep:
+  forall {s : sig} {gamma : context} (gamma_valid : valid_context s gamma)
+	(m : mut_adt) (m_in : mut_in_ctx m gamma) (srts : list sort)
+    (srts_len : Datatypes.length srts = Datatypes.length (m_params m))
+    (domain_aux : sort -> Set) (t : alg_datatype) 
+    (t_in : adt_in_mut t m)
+    (dom_adts : forall (a : alg_datatype) (Hin : adt_in_mut a m),
+                IndTypes.domain domain_aux
+                  (typesym_to_sort (adt_name a) srts) =
+                adt_rep m srts domain_aux a Hin),
+  uniform m ->
+  forall x : adt_rep m srts domain_aux t t_in,
+  {f : funsym &
+  {Hf
+  : constr_in_adt f t *
+    arg_list (IndTypes.domain domain_aux) (funsym_sigma_args f srts)
+  | x =
+    constr_rep gamma_valid m m_in srts srts_len domain_aux t t_in f 
+      (fst Hf) dom_adts (snd Hf)}}
+
+
+
+  unfold constr_rep, make_constr in H.
+    eapply H.
+    + unfold constr_rep. unfold make_constr. simpl.
+      (*yikes, this is awful - todo: plan this out on paper, might
+        be easier*)
+      reflexivity.
+    f_equal.
+  
+
+  match 
+  Print Ltac prove_hyp.
+  assert ()
+
+
+  eapply W_ind with(I:=(finite (length (adts m))))
+  (A:=)
+  (B:=)
+  (P:= fun i w => P (fin_nth (adts m) i)  _).
+  (i:=(get_idx adt_dec t (adts m) (In_in_bool adt_dec t (typs m) t_in))) (w:=x).
+2: apply x.
+(*Need to prove that IH coincides*)
+intros i a f Hindf.
+(*Now we need to know that x is the application of a constructor*)
+destruct (find_constr_rep gamma_valid m m_in srts Hlen (dom_aux pd) 
+  t t_in (Semantics.adts pd m srts) (all_unif _ m_in) x) as [c [[c_in args] Hx]].
+simpl in Hx.
+Check W_ind.
+
+eapply Hindf.
+Print build_rec.
+
+
+rewrite Hx.
+Search mkW.
+intros.
+
+
+revert x.
+  
+  Check W_ind. apply W_ind with(P:=P).
+
+
+(*TODO: don't require spec, just require hypotheses*)
 Inductive adt_smaller: {t: {ty: vty | valid_type sigma ty} & 
   domain (val (proj1_sig t))} ->
   {t: {ty: vty | valid_type sigma ty} & domain (val (proj1_sig t))} -> Prop :=
@@ -612,145 +954,6 @@ Proof.
   apply fin_nth_in.
   unfold adt_in_mut. apply fin_nth_in. Search In fin_nth.
 *)
-Definition cast_w {I: Set} {A: I -> Set} {B: forall i: I, I -> A i -> Set}
-  {i1 i2: I} (Heq: i1 = i2) (w: W I A B i1) : W I A B i2 :=
-  match Heq with
-  | eq_refl => w
-  end.
-Print W.
-
-Definition cast_a {I: Set} {A: I -> Set} {i1 i2: I} (Heq: i1 = i2)
-  (a: A i1) : A i2 := scast (f_equal A Heq) a.
-
-Definition cast_b {I: Set} {A: I -> Set} {B: forall i: I, I -> A i -> Set}
-  {i1 i2 j: I} (Heq: i1 = i2) {a: A i1} (b: B i1 j a) :
-    B i2 j (cast_a Heq a).
-  destruct Heq. exact b.
-Defined.
-
-Lemma cast_a_sym {I: Set} {A: I -> Set} {i1 i2: I} (Heq: i1 = i2)
-(a: A i1): cast_a (eq_sym Heq) (cast_a Heq a) = a.
-Proof.
-  unfold cast_a. subst. reflexivity.
-Defined. 
-
-Lemma cast_w_mkw {I: Set} {A: I -> Set} {B: forall i: I, I -> A i -> Set}
-{i1 i2: I} (Heq: i1 = i2) (a: A i1) (f: forall j: I, B i1 j a -> W I A B j):
-  cast_w Heq (mkW I A B i1 a f) =
-  mkW I A B i2 (cast_a Heq a) 
-  (fun (j: I) (b: B i2 j (@cast_a I A _ _ Heq a)) =>
-    let b' : B i1 j (cast_a (eq_sym Heq) (cast_a Heq a)) 
-      := cast_b (eq_sym Heq) b in
-    let b'': B i1 j a := scast (f_equal (B i1 j) (cast_a_sym Heq a)) b' in
-    f j b'').
-Proof.
-  unfold cast_w. subst. simpl. unfold cast_a. simpl.
-  unfold scast, cast_a_sym. f_equal.
-Qed. 
-
-Lemma cast_i (m: mut_adt) (m_in: mut_in_ctx m gamma) (i: finite (length (adts m))):
-  i = get_idx adt_dec (fin_nth (adts m) i) (adts m)
-  (In_in_bool adt_dec (fin_nth (adts m) i) (typs m) (fin_nth_in (adts m) i)).
-Proof.
-  rewrite get_idx_fin; auto.
-  apply (adts_nodups gamma_valid). apply m_in.
-Qed.
-
-
-  (*i =
- get_idx adt_dec (fin_nth (adts m) i) (adts m)
-   *)
-  Search get_idx fin_nth.
-
-(*We should be able to do better - we know the recursive instances*)
-Lemma adt_rep_ind m m_in srts
-  (Hlen: length srts = length (m_params m)) 
-  (P: forall t t_in, adt_rep m srts (dom_aux pd) t t_in -> Prop):
-  (forall t t_in (x: adt_rep m srts (dom_aux pd) t t_in) 
-    (c: funsym) (Hc: constr_in_adt c t) (a: arg_list domain (funsym_sigma_args c srts))
-    (Hx: x = constr_rep gamma_valid m m_in srts Hlen (dom_aux pd) t t_in c
-      Hc (Semantics.adts pd m srts) a),
-    (forall i Heq, i < hlength a ->
-      (*If nth i a has type adt_rep ..., then P holds of it*)
-      P t t_in (scast (Semantics.adts pd m srts t t_in) (dom_cast _ Heq (hnth i a s_int (dom_int pd)))) 
-      ) ->
-    P t t_in x
-    ) ->
-  forall t t_in (x: adt_rep m srts (dom_aux pd) t t_in),
-  P t t_in x.
-Proof.
-  intros.
-  unfold adt_rep in x, P. unfold mk_adts in x, P.
-  (*
-  (*Make generic in choice of t, t_in*)
-  assert (fin_nth (adts m) (get_idx adt_dec t (adts m) (In_in_bool adt_dec t (typs m) t_in)) = t). {
-    apply get_idx_correct.
-  }
-
-  generalize dependent H. revert P.
-  generalize dependent ((get_idx adt_dec t (adts m) (In_in_bool adt_dec t (typs m) t_in))).
-  Search get_idx.
-*)
-  pose proof (W_ind (finite (length (adts m)))
-  (fun n : finite (Datatypes.length (adts m)) =>
-    build_base (var_map m srts (dom_aux pd))
-    (typesym_map m srts (dom_aux pd)) (adts m)
-    (adt_constrs (fin_nth (adts m) n)))
-  (fun this i : finite (Datatypes.length (adts m)) =>
-    build_rec (var_map m srts (dom_aux pd))
-      (typesym_map m srts (dom_aux pd)) (adts m)
-      (adt_name (fin_nth (adts m) i))
-      (adt_constrs (fin_nth (adts m) this)))
-  (*instantiate P*)
-  (fun i w => P (fin_nth (adts m) i) (fin_nth_in (adts m) i) (cast_w (cast_i m m_in i) w))
-  ).
-  (*TODO: fix*)
-  match goal with
-  | H: ?P -> ?Q |- _ => let Hhyp := fresh "Hindh" in
-    assert (Hhyp: P); [clear H|specialize (H Hhyp); clear Hhyp]
-  end.
-  - intros i a f IH.
-    (*Now we need to use our inductive assumption*)
-    rewrite cast_w_mkw. simpl.
-    eapply H.
-    + unfold constr_rep. unfold make_constr. simpl.
-      (*yikes, this is awful - todo: plan this out on paper, might
-        be easier*)
-      reflexivity.
-    f_equal.
-  
-
-  match 
-  Print Ltac prove_hyp.
-  assert ()
-
-
-  eapply W_ind with(I:=(finite (length (adts m))))
-  (A:=)
-  (B:=)
-  (P:= fun i w => P (fin_nth (adts m) i)  _).
-  (i:=(get_idx adt_dec t (adts m) (In_in_bool adt_dec t (typs m) t_in))) (w:=x).
-2: apply x.
-(*Need to prove that IH coincides*)
-intros i a f Hindf.
-(*Now we need to know that x is the application of a constructor*)
-destruct (find_constr_rep gamma_valid m m_in srts Hlen (dom_aux pd) 
-  t t_in (Semantics.adts pd m srts) (all_unif _ m_in) x) as [c [[c_in args] Hx]].
-simpl in Hx.
-Check W_ind.
-
-eapply Hindf.
-Print build_rec.
-
-
-rewrite Hx.
-Search mkW.
-intros.
-
-
-revert x.
-  
-  Check W_ind. apply W_ind with(P:=P).
 
 
 adt_rep m srts (dom_aux pd) a a_in :=

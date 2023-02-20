@@ -1,6 +1,7 @@
 Require Import Common.
 Require Import Types.
 Require Import Syntax.
+Set Bullet Behavior "Strict Subproofs".
 
 (** Typechecking **)
 
@@ -272,6 +273,7 @@ Definition predsyms_of_context (c: context) : list predsym :=
   concat (map predsyms_of_def c).
 
 (*Ways of dealing with adts and parts in context*)
+(*TODO: boolean?*)
 Definition mut_in_ctx (m: mut_adt) (gamma: context) :=
   In (datatype_def m) gamma.
 
@@ -293,8 +295,21 @@ Definition mut_typs_in_ctx (l: list alg_datatype) (gamma: context) :=
   exists (vars: list typevar) (H: nodupb typevar_eq_dec vars), 
   In (datatype_def (mk_mut l vars H)) gamma.
 
+(*TODO: dont duplicate*)
+Ltac right_dec := 
+  solve[let C := fresh "C" in right; intro C; inversion C; try contradiction].
+
+Definition adt_dec: forall (x1 x2: alg_datatype), {x1 = x2} + {x1 <> x2}.
+intros [t1 c1] [t2 c2].
+destruct (typesym_eq_dec t1 t2); [|right_dec].
+destruct (ne_list_eq_dec funsym_eq_dec c1 c2); [|right_dec].
+left. rewrite e, e0; reflexivity.
+Defined.
+
+(*For recursive functions, it is VERY helpful for this to be
+  a (proof irrelevant) boolean*)
 Definition adt_in_mut (a: alg_datatype) (m: mut_adt) :=
-  In a (typs m).
+  in_bool adt_dec a (typs m).
 
 Definition ts_in_mut_list (ts: typesym) (m: list alg_datatype) : bool :=
   in_bool typesym_eq_dec ts (map adt_name m).
@@ -305,13 +320,13 @@ Lemma ts_in_mut_list_ex: forall ts m,
   adt_in_mut a m}.
 Proof.
   unfold adt_in_mut, ts_in_mut_list; intros. induction (typs m); simpl.
-  - inversion H.
+  - simpl in H. inversion H.
   - simpl in H.
     destruct (typesym_eq_dec ts (adt_name a)); subst.
-    + apply (exist _ a). split; auto.
+    + apply (exist _ a). rewrite eq_dec_refl. split; auto.
     + specialize (IHl H).
       destruct IHl as [a' [Ha' Hina']].
-      apply (exist _ a'). subst; split; auto.
+      apply (exist _ a'). rewrite Hina'. subst; simpl_bool; split; auto.
 Qed.
 
 Lemma ts_in_mut_list_spec: forall ts m,
@@ -319,16 +334,15 @@ Lemma ts_in_mut_list_spec: forall ts m,
   adt_in_mut a m.
 Proof.
   intros. unfold adt_in_mut, ts_in_mut_list. induction (typs m); simpl.
-  - split; intros; auto. inversion H. destruct H as [a [_ []]].
+  - split; intros; auto. inversion H. destruct H as [a [H]]; inversion H0.
   - split; intros.
     + destruct (typesym_eq_dec ts (adt_name a)).
-      * subst. exists a. split; auto.
+      * subst. exists a. rewrite eq_dec_refl. split; auto.
       * apply IHl in H. destruct H as [a' [Ha' Hina']].
-        subst. exists a'. split; auto.
+        subst. exists a'. rewrite Hina'. simpl_bool. split; auto.
     + destruct H as [a' [Ha' Hina']]; subst.
-      destruct Hina'; subst.
-      * destruct (typesym_eq_dec (adt_name a') (adt_name a')); auto;
-        contradiction.
+      destruct (adt_dec a' a); subst; simpl in Hina'.
+      * rewrite eq_dec_refl. reflexivity.
       * apply orb_true_iff. right. apply IHl.
         exists a'. split; auto.
 Qed.
@@ -963,6 +977,15 @@ Proof.
   end.
 Qed.
 
+(*TODO: move*)
+Lemma in_bool_In  {A : Type} 
+(eq_dec : forall x y : A, {x = y} + {x <> y}) 
+(x : A) (l : list A): in_bool eq_dec x l -> In x l.
+Proof.
+  intros Hin. apply (reflect_iff _ _ (in_bool_spec eq_dec x l)).
+  auto.
+Qed. 
+
 Section ValidContextLemmas.
 
 Context {s: sig} {gamma: context} (gamma_valid: valid_context s gamma).
@@ -976,6 +999,10 @@ Ltac valid_context_tac :=
   rewrite Forall_forall in Hadts;
   unfold mut_in_ctx, adt_in_mut, constr_in_adt in *;
   repeat match goal with
+  | Hin: is_true (in_bool adt_dec ?x ?l) |- _ =>
+    let Hinx := fresh "Hin" in
+    assert (Hinx: In x l) by (apply (in_bool_In _  _ _ Hin));
+    clear Hin
   | Hin: In ?x (?p gamma) |- _ => unfold p in Hin
   | Hin: In ?x (concat ?l) |- _ => rewrite in_concat in Hin
   | Hex: exists x, ?p |- _ => destruct Hex; subst
@@ -1036,7 +1063,7 @@ Proof.
   intros. unfold adt_mut_in_ctx in Hin. destruct Hin.
   unfold adt_in_mut in H. unfold mut_in_ctx in H0.
   valid_context_tac.
-  unfold valid_mut_rec in H3.
+  unfold valid_mut_rec in H2.
   valid_context_tac.
 Qed.
 
@@ -1377,6 +1404,7 @@ Proof.
   rewrite in_concat. exists (ne_list_to_list (adt_constrs a)).
   rewrite in_map_iff. split; [| eapply in_bool_ne_In; apply c_in].
   exists a. split; auto. destruct a. reflexivity.
+  apply (in_bool_In _ _ _ a_in).
 Qed. 
 
 (*All constr args types are valid*)
