@@ -649,13 +649,93 @@ Proof.
   simpl. reflexivity.
 Qed.
 
-(*TODO: move*)
 (*
 Lemma v_subst_aux_inv f ty name args:
   v_subst_aux f ty = vty_cons name args ->
   ty = vty_cons name args.
 Proof.
   intros. destruct ty; simpl in H; try solve[inversion H].
+*)
+
+Lemma map_map_eq {A B: Type} (f: A -> B) (l: list A):
+  seq.map f l = map f l.
+Proof. reflexivity. Qed.
+
+(*TODO: move*)
+(*Not sure if this works, maybe srts *)
+(*This is not true, ugh whatever*)
+(*
+Check vty_cons.
+Lemma funsym_sigma_args_inv c srts j t:
+  j < length (s_args c) ->
+  nth j (funsym_sigma_args c srts) s_int =
+  typesym_to_sort (adt_name t) srts ->
+  nth j (s_args c) vty_int = 
+    vty_cons (adt_name t) (map sort_to_ty srts).
+Proof.
+  intros Hj. unfold funsym_sigma_args, typesym_to_sort, ty_subst_list_s.
+  rewrite (map_nth_inbound) with(d2:=vty_int); auto.
+  unfold ty_subst_s, v_subst. intros Heq. inversion Heq. clear Heq.
+  destruct (nth j (s_args c) vty_int) eqn : Hnth; simpl in H0;
+  try solve[inversion H0].
+  2: {
+    inversion H0; subst.
+    f_equal.
+    (*why do we need all of these?*)
+    rewrite !map_map_eq, (map_map_eq sort_to_ty srts)  in H2.
+    assert (length l = length srts). {
+      rewrite <- (map_length sort_to_ty srts), <- H2, map_length;
+      reflexivity.
+    }
+    apply list_eq_ext'.
+    - rewrite map_length, H. reflexivity.
+    - intros n d Hn. rewrite (map_nth_inbound) with(d2:=s_int); try lia.
+        apply (f_equal (nth n)) in H2.
+      apply (fun_args_eq_dep) with(x:=vty_int) in H2.
+      revert H2.
+      rewrite map_nth_inbound with(d2:=vty_int); auto.
+      rewrite map_nth_inbound with(d2:=s_int); try lia.
+      intros.
+      rewrite nth_indep with(d':=vty_int); auto.
+      destruct (nth n l vty_int) eqn : Hnth'; simpl in H2; auto.
+      + 
+      }
+      apply (f_equal (nth n)) in H2.
+      apply (fun_args_eq_dep) with(x:=vty_int) in H2.
+      revert H2.
+      rewrite map_nth_inbound with(d2:=vty_int); auto.
+      rewrite map_nth_inbound with(d2:=s_int); try lia.
+      intros. rewrite <- H2. clear H2.
+      rewrite nth_indep with(d':=vty_int); auto.
+
+
+      Search v_subst_aux.
+
+      Search (?f = ?g -> ?f ?x = ?g ?x).
+    Print v_subst_aux.
+    rewrite <- H2.
+
+  }
+  - destruc Search ty_subst_fun.
+
+  ty_subst_fun_nth:
+  forall (vars : list typevar) (vs : list vty) (d : vty) 
+	(n : nat) (a : typevar) (s : vty),
+  Datatypes.length vars = Datatypes.length vs ->
+  n < Datatypes.length vars ->
+  NoDup vars -> ty_subst_fun vars vs d (nth n vars a) = nth n vs s
+
+
+  ty_subst_fun_notin:
+  forall (params : list typevar) (args : list vty) (d : vty) (x : typevar),
+  ~ In x params -> ty_subst_fun params args d x = d
+
+
+
+nth j (funsym_sigma_args c srts) s_int =
+      typesym_to_sort (adt_name t') srts
+(*
+
 
   2: {}
 
@@ -671,6 +751,127 @@ v_subst_aux
   (*i =
  get_idx adt_dec (fin_nth (adts m) i) (adts m)
    *)
+   *)
+
+(*A list of the "smaller" types contained in a type*)
+Definition subterm_ty (v: vty) : list vty :=
+  match v with
+  | vty_cons _ tys => tys
+  | _ => nil
+  end.
+
+Fixpoint vty_size (v: vty) : nat :=
+  match v with
+  | vty_int => 1
+  | vty_real => 1
+  | vty_var _ => 1
+  | vty_cons _ ts => 1 + sum (map vty_size ts)
+  end.
+
+Definition vtys_size (l: list vty) : nat :=
+  sum (map vty_size l).
+
+Lemma vty_size_eq (v: vty):
+  vty_size v =
+  match v with
+  | vty_int => 1
+  | vty_real => 1
+  | vty_var _ => 1
+  | vty_cons _ ts => 1 + vtys_size ts
+  end.
+Proof.
+  destruct v; auto.
+Qed.
+
+(*The size of a single type is smaller than 
+  the whole list*)
+Lemma vtys_size_in (l: list vty) (t: vty):
+  In t l ->
+  vty_size t <= vtys_size l.
+Proof.
+  unfold vtys_size.
+  induction l; simpl; intros; auto. destruct H.
+  destruct H; subst; try lia.
+  specialize (IHl H). lia.
+Qed.
+  
+
+(*An obvious lemma but one that is tricky to prove.
+  We prove this by giving the above size function
+  and proving that if (vty_cons t l) is in l, then
+  it has a smaller size than l, a contradiction *)
+(*Note: I believe that the same proof holds for any
+  coutable type*)
+Lemma sub_not_whole : forall t l,
+   ~ In (vty_cons t l) l.
+Proof.
+  intros. intro C.
+  apply vtys_size_in in C.
+  rewrite vty_size_eq in C. lia.
+Qed.
+
+(*As a corollary, we get the following*)
+Lemma list_srts_not_whole (n: nat) (tys: list vty) (ts: typesym):
+  nth n tys vty_int <> vty_cons ts tys.
+Proof.
+  assert (n < length tys \/ length tys <= n) by lia. destruct H.
+  - intro C.
+    apply (sub_not_whole ts tys). rewrite <- C.
+    apply nth_In; auto.
+  - rewrite nth_overflow; auto. intro C; inversion C.
+Qed. 
+
+(*TODO: move this*)
+(*Suppose we know that the ith element of a list satisfies a predicate.
+  Then we can find a j such that nth j (filter p l) = nth i l*)
+Lemma find_idx_filter {A: Type} (p: A -> bool) (l: list A)
+  (n: nat) (Hn: n < length l) (d: A):
+  p (nth n l d) ->
+  {j : nat | j < length (filter p l) /\ nth j (filter p l) d = nth n l d}.
+Proof.
+  revert n Hn.
+  induction l; simpl; intros. exfalso. inversion Hn.
+  destruct n.
+  - rewrite H. apply (exist _ 0). split; auto. simpl. lia.
+  - assert (n < length l) by lia.
+    specialize (IHl _ H0 H). destruct IHl as [j' [Hj' Hnthj']].
+    destruct (p a) eqn : Hpa.
+    + apply (exist _ (S j')). simpl. split; auto. lia.
+    + apply (exist _ j'). split; auto.
+Qed.
+
+(*Not sure if we have this*)
+(*TODO: add to IndTypes*)
+Definition lt_to_ssr {m n: nat} (H: m < n) : ssrnat.leq (S m) n :=
+ssrbool.introT (ssrnat.ltP) H.
+Search finite.
+Definition nat_to_finite {n: nat} (m: nat) (Hm: m < n) : finite n :=
+  ord_to_finite (fintype.Ordinal (lt_to_ssr Hm)).
+
+Lemma nat_to_finite_inv {n: nat} (m: finite n) (Hm: finite_to_nat m < n):
+  nat_to_finite (finite_to_nat m) Hm = m.
+Proof.
+  unfold nat_to_finite.
+  apply (ssrfun.can_inj finite_ord_cancel).
+  rewrite ord_finite_cancel. unfold finite_to_ord.
+  f_equal. apply bool_irrelevance.
+Qed.
+
+Require Import mathcomp.ssreflect.eqtype.
+Require Import mathcomp.ssreflect.fintype.
+
+Lemma finite_to_nat_inv {n: nat} (m: nat) (Hm: m < n):
+  finite_to_nat (nat_to_finite m Hm) = m.
+Proof.
+  unfold nat_to_finite.
+  assert (finite_to_ord (ord_to_finite (fintype.Ordinal (n:=n) (m:=m) (lt_to_ssr Hm))) =
+    fintype.Ordinal (lt_to_ssr Hm)). {
+      rewrite ord_finite_cancel. reflexivity.
+  }
+  unfold finite_to_ord in H.
+  apply (f_equal (@nat_of_ord n)) in H. simpl in H. auto.
+Qed.
+
 (*Yes, change to boolean*)
 (*We should be able to do better - we know the recursive instances*)
 Lemma adt_rep_ind m m_in srts
@@ -748,17 +949,158 @@ Proof.
   match goal with
   | |- P ?i ?h ?y => set (x':=y) in *
   end.
+  (*Idea: x' is some instance of W type (ith in m)
+    we can find the constructor c and args such that x' = c(args)
+    NOTE: we NEED to keep x' around to show that it must correspond
+    to THIS constructor - we need to show that a corresponds to
+    this constructor - TODO: START
+    *)
   destruct (find_constr_rep gamma_valid m m_in srts Hlen (dom_aux pd)
     (fin_nth (adts m) i) (In_in_bool adt_dec _ _ (fin_nth_in (adts m) i))
     (Semantics.adts pd m srts) (all_unif m m_in) x') as [c [[c_in args] Hx']].
+  (*TODO: we MIGHT need to destruct a here so we know
+  which constructor we are in*)
   specialize (H _ _ x' c c_in args Hx').
   apply H.
   (*Now we need to show that the [forall i] condition
     corresponds to that in the IH*)
-  clear -IH.
+  clear -IH Hlen c_in all_unif.
   intros j t' t_in' Heq Hj.
   specialize (IH (get_idx adt_dec t' (adts m) t_in')).
+  assert (Hini: adt_in_mut (fin_nth (adts m) i) m). {
+    apply In_in_bool. apply fin_nth_in.
+  }
+  assert (Hparams: (s_params c) = (m_params m)). {
+    eapply adt_constr_params. apply gamma_valid.
+    auto. apply Hini. apply c_in. 
+  }
+  (*THIS is what we need - TODO: may need as separate lemma:
+    for uniform adt m and c as constr of m, this holds*)
+  assert (Heq': nth j (s_args c) vty_int =
+    vty_cons (adt_name t') (map vty_var (ts_args (adt_name t')))). {
+    revert Heq.
+    unfold funsym_sigma_args, typesym_to_sort, ty_subst_list_s.
+    rewrite map_nth_inbound with(d2:=vty_int); auto.
+    unfold ty_subst_s, v_subst; intros Heq.
+    inversion Heq. clear Heq.
+    destruct (nth j (s_args c) vty_int) eqn : Hnth; simpl in H0;
+    try solve[inversion H0].
+    - destruct (in_dec typevar_eq_dec t (s_params c)).
+      + destruct (In_nth _ _ EmptyString i0) as [n [Hn Hnthn]].
+        rewrite <- Hnthn in H0.
+        rewrite ty_subst_fun_nth with(s:=vty_int) in H0; auto.
+        * unfold sorts_to_tys in H0.
+          exfalso.
+          (*We get contradiction: can't have srts inside srts
+            This proves that this case cannot happen*)
+          apply (list_srts_not_whole n (sorts_to_tys srts) (adt_name t')); auto.
+        * unfold sorts_to_tys. rewrite map_length, Hlen, Hparams.
+          reflexivity.
+        * apply s_params_Nodup.
+      + rewrite ty_subst_fun_notin in H0; auto. inversion H0.
+    - (*The case that can actually happen: cons*)
+      inversion H0; subst. clear H0. 
+      (*Use uniformity - just instantiate all hyps, takes a while
+        should automate*)
+      assert (Hunif: uniform m). {
+        apply all_unif. auto.
+      }
+      unfold uniform in Hunif. unfold is_true in Hunif. 
+      rewrite forallb_forall in Hunif.
+      specialize (Hunif (fin_nth (adts m) i) (in_bool_In _ _ _ Hini)).
+      rewrite forallb_forall in Hunif.
+      specialize (Hunif c).
+      assert (Hinc: In c (ne_list_to_list (adt_constrs (fin_nth (adts m) i)))). {
+        apply in_bool_ne_In with(eq_dec:=funsym_eq_dec).
+        apply c_in.
+      }
+      specialize (Hunif Hinc).
+      unfold uniform_list in Hunif.
+      rewrite forallb_forall in Hunif.
+      assert (Hincons: In (vty_cons (adt_name t') l) (s_args c)). {
+        rewrite <- Hnth. apply nth_In; auto.
+      }
+      specialize (Hunif _ Hincons). simpl in Hunif.
+      rewrite implb_true_iff in Hunif.
+      assert (Htsin: ts_in_mut_list (adt_name t') (typs m)). {
+        unfold adt_in_mut in t_in'. 
+        unfold ts_in_mut_list. apply In_in_bool. rewrite in_map_iff.
+        exists t'. split; auto. apply (in_bool_In _ _ _ t_in'). 
+      }
+      specialize (Hunif Htsin). simpl_sumbool.
+      f_equal.
+      erewrite adt_args with(m:=m); [| apply gamma_valid |].
+      + reflexivity.
+      + unfold adt_mut_in_ctx. split; auto.
+    }
+    Print build_base.
+    Print build_rec.
+    (*With this crucial result, we now know that this represents
+      an instance of (count_rec_occ) and so we can choose the
+      appropriate finite type*)
+    (*I think (TODO: see) that we need to know which "case"
+      we are in from build_base (a) and then
+      maybe do this before - we will be the case corresponding to
+      some constructor in (fin_nth (adts m) i) - it may NOT be c
+      (maybe use [get_funsym_base])
+      *)
+    assert (Hty: build_rec (var_map m srts (dom_aux pd))
+      (typesym_map m srts (dom_aux pd)) (adts m)
+      (adt_name (fin_nth (adts m) (get_idx adt_dec t' (adts m) t_in')))
+      (adt_constrs (fin_nth (adts m) i)) a =
+      
+      )
+      Lemma find_idx_filter {A: Type} (p: A -> bool) (l: list A)
+      (n: nat) (Hn: n < length l) (d: A):
+      p (nth n l d) ->
+      {j : nat | j < length (filter p l) /\ nth j (filter p l) d = nth n l d}.
+    
+
+    
+    f_equal.
+      
+      
+      2: auto.
+      Print ts_args.
+      Print s_params.
+      Search s_params ts_args.
+      
+      f_equal.
+      Search (implb ?x ?y = true).
+
+        rewrite in_bool_ne_equiv. unfold constr_in_adt in c_in. unfold adt_constrs.
+        Search in_bool_ne.
+        Search In ne_list_to_list.
+      }
+      assert (Hini: )
+      assert (uniform m) by apply all_unif.
+
+      Print uniform.
+      Print uniform_list.
+    
+    Search ty_subst_fun.
+        erewrite 
+        Search s_params NoDup.
+        apply s_params_NoDup.
+        Search fin_nth In. apply In_fin_nth. apply t_in. apply c_in.
+        Search m_params s_params.
+        rewrite map_length.
+        rewrite Hlen.
+
+
+
+        rewrite map_nth_inbound.
+        (*How to express that this is a contradiction?
+          can't have nth n srts s_int be this?*)
+        Search ty_subst_fun nth.
+
+    }
+  (*So the question is: is this enough to conclude
+    that nth j (s_args c) vty_int = 
+    vty_cons (adt_name t') (map vty_var (ts_args (adt_name t')))*)
   Print rec_occ_fun.
+  (*We should be able to prove this: can't be part of sorts,
+    otherwise list is too big (or whatever)*)
   (*Which [build_rec] do we need?*)
   (*Ah, we need to know which occurrence this i is
     so we should specialize with (j: finite (count_rec_occ ts c)
