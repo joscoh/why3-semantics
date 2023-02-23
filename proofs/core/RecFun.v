@@ -872,8 +872,64 @@ Proof.
   apply (f_equal (@nat_of_ord n)) in H. simpl in H. auto.
 Qed.
 
+Definition cast_dep {A: Set} (B: A -> Set) 
+  {a1 a2: A} (Heq: a1 = a2) (x: B a1) : B a2 :=
+  scast (f_equal B Heq) x.
+
+(*Another level*)
+Definition cast_dep' {A: Set} (B: A -> Set) (C: forall (a: A), B a -> Set)
+  {a1 a2: A} (Heq: a1 = a2) (x: B a1) (y: C a1 x) :
+  C a2 (cast_dep B Heq x).
+  destruct Heq. unfold cast_dep. exact y.
+Defined.
+
+(*
+Definition cast_dep {T: Set} {A: Type} (B: A -> T -> Type)
+{t1 t2: T} {x: A} (Heq: t1 = t2) (y: B x t1) : B x t2 :=
+cast (f_equal (B x) Heq) y.*)
+
+ (* Definition cast_trd {T: Set} {A: Type} (B: A -> T -> Type)
+  (C: forall (x: A) (t: T), B x t -> Type)
+  {t1 t2: T} {x: A} (Heq: t1 = t2) (y: B x t1) (z: C x t1 y) : C x t2 (cast_snd B Heq y).
+  destruct Heq. unfold cast_snd. simpl. exact z.
+  Defined.*)
+(*
+Lemma cast_sn_sym {T: Set} {A: Type} (B: A -> T -> Type)
+(*{C: forall (x: A) (t: T), B x t -> Type}*)
+{t1 t2: T} {x: A} (Heq: t1 = t2) (y: B x t2):
+cast_snd B Heq (cast_snd B (Logic.eq_sym Heq) y) = y.
+Proof.
+  unfold cast_snd. destruct Heq. reflexivity.
+Defined.*)
+
+(*An awful lemma for casting dependent functions*)
+(*
+Lemma cast_fun {T: Set} {A: Type} {B: A -> T -> Type} 
+  {C: forall (x: A) (t: T), B x t -> Type} {t1 t2: T} 
+  {f: forall (x: A)(y: B x t1), C x t1 y} (Heq: t1 = t2):
+  cast (f_equal (fun (x: T) => forall (a: A)(b: B a x), C a x b) Heq) f = 
+  fun (x: A) (y: B x t2) => 
+    let y' : B x t1 := cast_snd B (Logic.eq_sym Heq) y in
+    let f': C x t1 y' := f x y' in
+    let Heq': cast_snd B Heq y' = y := cast_snd_sym B Heq y in
+    let f'' := cast_trd B C Heq y' f' in cast (f_equal (C x t2) Heq') f''.
+Proof.
+  repeat(apply functional_extensionality_dep; intros).
+  simpl. destruct Heq. simpl. unfold cast_snd. simpl. reflexivity.
+Qed. *)
+
+Lemma cast_fun' {T: Set} {A: Type} {B: A -> T -> Type} 
+  {C: A -> Type} {t1 t2: T} 
+  {f: forall (x: A)(y: B x t1), C x} (Heq: t1 = t2):
+  forall x y,
+  (cast (f_equal (fun (x: T) => forall (a: A)(b: B a x), C a) Heq) f) x y = 
+  (fun (x: A) (y: B x t2) => 
+    f x (cast (f_equal (B x) (Logic.eq_sym Heq)) y)) x y.
+Proof.
+  destruct Heq. simpl. intros. reflexivity.
+Qed.
+
 Lemma scast_get_constr_type {m: mut_adt}
-  
   {i1 i2: finite (length (adts m))} (Heqi: i1 = i2)
   {vars typesyms c Hinc Hinc' x}:
   scast (f_equal 
@@ -889,6 +945,100 @@ Proof.
   rewrite H. reflexivity.
 Qed.
 
+(*Cast from one [build_rec] to another*)
+(*
+Definition cast_build_rec {m: mut_adt}
+  vars typesyms ts constrs {t1 t2} 
+  (Heqt: t1 = t2):
+  build_rec vars typesyms (adts m) ts constrs t1 ->
+  build_rec vars typesyms (adts m) ts constrs t2 := 
+  fun br =>
+    scast (f_equal (fun x => build_rec vars typesyms (adts m) ts constrs x) Heqt) br.
+*)
+(*
+Definition cast_build_rec_gen {m: mut_adt} {constrs1 constrs2}
+  (Heq: constrs1 = constrs2) vars typesyms ts ts1 ts2 c Hinc1 Hinc2 b:
+    build_rec vars typesyms (adts m) ts constrs1
+      (get_constr_type vars typesyms (adts m) ts1 constrs1 c Hinc1 b) ->
+    build_rec vars typesyms (adts m) ts constrs2
+      (get_constr_type vars typesyms (adts m) ts2 constrs2 c Hinc2 b).
+Proof.
+
+  Check ((cast_dep'
+    (fun c => build_base vars typesyms (adts m) c)
+    (fun c t => build_rec vars typesyms (adts m) ts c t)
+    Heq)).
+  
+  .*)
+
+Definition cast_build_rec {m: mut_adt} {i1 i2: finite (length (adts m))} 
+(Heqi: i1 = i2)
+vars typesyms ts c Hinc  x:
+build_rec vars typesyms (adts m) ts (adt_constrs (fin_nth (adts m) i1))
+  (get_constr_type vars typesyms (adts m) (adt_name (fin_nth (adts m) i1))
+  (adt_constrs (fin_nth (adts m) i1)) c Hinc x) ->
+build_rec vars typesyms (adts m) ts (adt_constrs (fin_nth (adts m) i2))
+(scast (f_equal 
+(fun n => build_base vars typesyms (adts m)
+(adt_constrs (fin_nth (adts m) n))) Heqi)
+(get_constr_type vars typesyms (adts m) (adt_name (fin_nth (adts m) i1))
+(adt_constrs (fin_nth (adts m) i1)) c Hinc x)).
+apply (cast_dep' 
+  (fun i : finite (Datatypes.length (adts m)) =>
+    build_base vars typesyms (adts m) (adt_constrs (fin_nth (adts m) i)))
+  (fun (i : finite (Datatypes.length (adts m)))
+    (t : build_base vars typesyms (adts m)
+      (adt_constrs (fin_nth (adts m) i))) =>
+    build_rec vars typesyms (adts m) ts (adt_constrs (fin_nth (adts m) i)) t)
+  Heqi).
+Defined.
+
+(*
+Lemma cast_build_rec {m: mut_adt} {i1 i2: finite (length (adts m))} 
+  (Heqi: i1 = i2)
+  vars typesyms ts c Hinc x:
+  build_rec vars typesyms (adts m) ts (adt_constrs (fin_nth (adts m) i1))
+    (get_constr_type vars typesyms (adts m) (adt_name (fin_nth (adts m) i1))
+    (adt_constrs (fin_nth (adts m) i1)) c Hinc x) ->
+  build_rec vars typesyms (adts m) ts (adt_constrs (fin_nth (adts m) i2))
+  (scast (f_equal 
+  (fun n => build_base vars typesyms (adts m)
+  (adt_constrs (fin_nth (adts m) n))) Heqi)
+(get_constr_type vars typesyms (adts m) (adt_name (fin_nth (adts m) i1))
+  (adt_constrs (fin_nth (adts m) i1)) c Hinc x)).
+Proof.
+  destruct Heqi. simpl. intros y; exact y.
+Defined.*)
+(*
+Lemma cast_build_rec_eq {m: mut_adt} {i1 i2: finite (length (adts m))} 
+(Heqi: i1 = i2) vars typesyms ts c Hinc x br:
+exists H,
+@cast_build_rec m i1 i2 Heqi vars typesyms ts c Hinc x br =
+scast H br.
+Proof.
+  destruct Heqi. simpl.
+  exists Logic.eq_refl. reflexivity.
+Defined.*)
+(*
+Print cast_build_rec_eq.
+
+
+(@f_equal _ Type
+  (fun g => build_rec vars typesyms (adts m) ts (adt_constrs (fin_nth (adts m) i2)) g)
+  _ _
+ (@scast_get_constr_type m i1 i2 Heqi vars typesyms c Hinc Hinc' x)). br.
+
+Lemma cast_build_rec'{m: mut_adt} {i1 i2: finite (length (adts m))} 
+(Heqi: i1 = i2)
+vars typesyms ts x y:
+build_rec vars typesyms (adts m) ts (adt_constrs (fin_nth (adts m) i1))
+  x ->
+build_rec vars typesyms (adts m) ts (adt_constrs (fin_nth (adts m) i2))
+ ().
+Proof.
+destruct Heqi. simpl. intros y; exact y.
+Defined.
+*)
 Lemma existT_inj_dec {U: Type} {P: U -> Type} (eq_dec: forall x y : U, {x = y} + {x <> y}) {x1 x2: U} {H1: P x1} (H2: P x2):
   existT P x1 H1 = existT P x2 H2 ->
   {Heq: x1 = x2 & H2 = cast (f_equal P Heq) H1}.
@@ -908,6 +1058,58 @@ Proof.
   apply Eqdep.EqdepTheory.inj_pair2 in Hex. subst.
   apply (existT _ (Logic.eq_refl)). reflexivity.
 Qed.
+
+Check f_equal.
+Print cast_b.
+
+
+
+(*
+Lemma simpl_cast_fun {T: Set} {A: Type} {B: A -> T -> Type} 
+{C: forall (x: A) (t: T), B x t -> Type} {t1 t2: T} 
+{f: forall (x: A)(y: B x t1), C x t1 y} (a: A) (b: B a t2) (Heq: t1 = t2) x y:
+cast (f_equal (fun (_: B a t2) => C a t2 b) (cast_snd_sym B Heq x))
+  (cast_trd B C Heq (cast_snd B (Logic.eq_sym Heq) x) y) = y.
+
+
+  rewrite (@cast_fun _ 
+      (finite (Datatypes.length (adts m)))
+      (fun j0 a => build_rec (var_map m srts (dom_aux pd))
+        (typesym_map m srts (dom_aux pd)) (adts m)
+        (adt_name (fin_nth (adts m) j0))
+        (adt_constrs
+          (fin_nth (adts m)
+              (get_idx adt_dec (fin_nth (adts m) i) 
+                (adts m)
+                (In_in_bool adt_dec (fin_nth (adts m) i) 
+                    (adts m) (fin_nth_in (adts m) i))))) a)
+      (fun j0 a b => W (finite (Datatypes.length (adts m)))
+        (fun n0 : finite (Datatypes.length (adts m)) =>
+        build_base (var_map m srts (dom_aux pd))
+          (typesym_map m srts (dom_aux pd)) (adts m)
+          (adt_constrs (fin_nth (adts m) n0)))
+        (fun this i0 : finite (Datatypes.length (adts m)) =>
+        build_rec (var_map m srts (dom_aux pd))
+          (typesym_map m srts (dom_aux pd)) (adts m)
+          (adt_name (fin_nth (adts m) i0))
+          (adt_constrs (fin_nth (adts m) this))) j0)
+      _ _ _ Heq2
+      
+    ).
+
+
+  i1 = get_constr_tye ... (long)
+i2 = cast_a (cast_i ..) (get_constr_type ) (short)
+br_cast: on i2 (so x is on i2)
+y is unrelated (I guess it is W, specialized)
+
+  cast (f_equal _ (cast_snd_sym B Heq2 br_cast))
+  (cast_trd B C Heq2 (cast_snd B (Logic.eq_sym Heq2) br_cast) x)
+
+
+cast (f_equal _ (cast_snd_sym _ Heq2 br_cast))
+(cast_trd _ _ Heq2 (cast_snd _ (Logic.eq_sym Heq2) br_cast) x)
+*)
 
 (*Yes, change to boolean*)
 (*We should be able to do better - we know the recursive instances*)
@@ -1031,53 +1233,13 @@ Proof.
     apply get_constr_type_inj1 in Hconstrs.
     subst; auto.
   }
-  (*Now we need to know something about f*)
-  assert (True). {
-    unfold constr_rep in Hx'.
-    unfold make_constr in Hx'.
-    subst x'.
-    inversion Hx'. clear Hx'.
-    clear H2.
-    apply existT_inj_dec in H3. 2: apply finite_eq_dec.
-    destruct H3 as [Heq Hexeq].
-    assert (Heq = Logic.eq_refl). {
-      apply UIP_dec. apply finite_eq_dec.
-    }
-    rewrite H1 in Hexeq. simpl in Hexeq. clear H1.
-    (*Now we have another equality of existT*)
-    (*HERE, we need UIP*)
-    apply existT_inj in Hexeq. destruct Hexeq as [Heq' Hexeq].
-    (*Need way of commuting cast and function*)
-    (*TODO: start here (at end, have thing we want to prove)
-      about function and j's*)
-    (*HERE*)
-
-    apply EqdepFacts.eq_sigT_fst in Hexeq.
-
-    apply existT_inj in Hexeq. Print build_vty_base.
-    (*Need lemma about casting existT*)
-    unfold cast in Hexeq.
-
-    assert (forall )
-    destruct Heq.
-    apply inj_pair2_eq_dec in H3. 2: apply finite_eq_dec.
-    assert (H4:=H3).
-    subst.
-    apply EqdepFacts.eq_sigT_fst in H3.
-    subst.
-    revert H3.
-    Print Assumptions EqdepFacts.eq_sigT_fst.
-    Search (existT ?f ?g ?x = existT ?f ?y ?z).
-    apply inj_pair2_eq_dec in H3.
-  }
-
   subst c'.
   (*Now we know about a. This is helpful*)
   specialize (H _ _ x' c c_in args Hx').
   apply H.
   (*Now we need to show that the [forall i] condition
     corresponds to that in the IH*)
-  clear -IH Hlen c_in all_unif Ha.
+  (*clear -IH Hlen c_in all_unif Ha.*)
   intros j t' t_in' Heq Hj.
   specialize (IH (get_idx adt_dec t' (adts m) t_in')).
   assert (Hini: adt_in_mut (fin_nth (adts m) i) m). {
@@ -1096,13 +1258,13 @@ Proof.
     rewrite map_nth_inbound with(d2:=vty_int); auto.
     unfold ty_subst_s, v_subst; intros Heq.
     inversion Heq. clear Heq.
-    destruct (nth j (s_args c) vty_int) eqn : Hnth; simpl in H0;
-    try solve[inversion H0].
-    - destruct (in_dec typevar_eq_dec t (s_params c)).
+    destruct (nth j (s_args c) vty_int) eqn : Hnth; simpl in H1;
+    try solve[inversion H1].
+    - destruct (in_dec typevar_eq_dec t0 (s_params c)).
       + destruct (In_nth _ _ EmptyString i0) as [n [Hn Hnthn]].
-        rewrite <- Hnthn in H0.
-        rewrite ty_subst_fun_nth with(s:=vty_int) in H0; auto.
-        * unfold sorts_to_tys in H0.
+        rewrite <- Hnthn in H1.
+        rewrite ty_subst_fun_nth with(s:=vty_int) in H1; auto.
+        * unfold sorts_to_tys in H1.
           exfalso.
           (*We get contradiction: can't have srts inside srts
             This proves that this case cannot happen*)
@@ -1110,9 +1272,9 @@ Proof.
         * unfold sorts_to_tys. rewrite map_length, Hlen, Hparams.
           reflexivity.
         * apply s_params_Nodup.
-      + rewrite ty_subst_fun_notin in H0; auto. inversion H0.
+      + rewrite ty_subst_fun_notin in H1; auto. inversion H1.
     - (*The case that can actually happen: cons*)
-      inversion H0; subst. clear H0. 
+      inversion H1; subst. clear H1. 
       (*Use uniformity - just instantiate all hyps, takes a while
         should automate*)
       assert (Hunif: uniform m). {
@@ -1161,7 +1323,7 @@ Proof.
       apply Hn.
     }
     set (fin:=nat_to_finite n Hn').
-    specialize (IH (@finite_to_build_rec 
+    set (br:=(@finite_to_build_rec 
     (var_map m srts (dom_aux pd))
     (typesym_map m srts (dom_aux pd))
     (adts m)
@@ -1170,6 +1332,7 @@ Proof.
     (adt_constrs (fin_nth (adts m) i))
     c Hinc' b1 fin
     )).
+    specialize (IH br).
     (*Now, we just need to cast*)
     revert IH.
     assert (Ht: fin_nth (adts m) (get_idx adt_dec t' (adts m) t_in') = t'). {
@@ -1179,11 +1342,683 @@ Proof.
     assert ((cast_adt_rep Ht
       (cast_w (cast_i m m_in (get_idx adt_dec t' (adts m) t_in'))
        (f (get_idx adt_dec t' (adts m) t_in')
-          (finite_to_build_rec (var_map m srts (dom_aux pd))
-             (typesym_map m srts (dom_aux pd)) (adts m) fin)))) =
+          br))) =
              (scast (Semantics.adts pd m srts t' t_in')
              (dom_cast (dom_aux pd) Heq (hnth j args s_int (dom_int pd))))). {
-      clear. unfold cast_adt_rep. rewrite cast_w_twice. 2: apply finite_eq_dec.
+    unfold cast_adt_rep. rewrite cast_w_twice. 2: apply finite_eq_dec.
+      (*Now we need to know something about f*)
+       (*Now we need to know something about f*)
+    unfold constr_rep in Hx'.
+    unfold make_constr in Hx'.
+    subst x'.
+    inversion Hx'. clear Hx'.
+    clear H1.
+    apply existT_inj_dec in H2. 2: apply finite_eq_dec.
+    destruct H2 as [Heq1 Hexeq].
+    assert (Heq1 = Logic.eq_refl). {
+      apply UIP_dec. apply finite_eq_dec.
+    }
+    rewrite H0 in Hexeq. simpl in Hexeq. clear H0.
+    (*Now we have another equality of existT*)
+    (*HERE, we need UIP*)
+    apply existT_inj in Hexeq. destruct Hexeq as [Heq2 Hexeq].
+    (*Let's see on specific value - probably wrong one but lets see*)
+    apply fun_args_eq_dep with(x:=(get_idx adt_dec t' (adts m) t_in')) in Hexeq.
+    (*Idea: specialize with correct type, will need to simplify casts,
+      get equivalence for f*)
+    (*cast will be annoying - use lemma to cast the result*)
+    unfold cast_a in Hexeq.
+    (*We use a cast on the [build_rec] to specialize the function*)
+    set (br_cast := (cast_build_rec (cast_i m m_in i)
+    (var_map m srts (dom_aux pd))
+    (typesym_map m srts (dom_aux pd)) 
+    (adt_name (fin_nth (adts m) (get_idx adt_dec t' (adts m) t_in')))
+    c Hinc' b1 br
+    )).
+    apply fun_args_eq_dep with (x:=br_cast) in Hexeq.
+    (*Now we have an equivalence for f, we just need to simplify everything*)
+    clear -Hexeq.
+    (*TO deal with implicit args, use tactics*)
+    match goal with 
+    | H: f ?i ?br' = ?z |- f ?i ?br = ?y => assert (Hbr: br = br');
+      [|rewrite <- Hbr in H; rewrite H; clear Hbr]
+    end.
+    {
+      clear. (*Now, just casting*) subst br br_cast.
+      generalize dependent (cast_i m m_in i). intros. destruct e. simpl.
+      reflexivity.
+    }
+    (*simplify casts for function*)
+    (*TODO: instantiate this*)
+    (*this is a bit awful because we need all the function types*)
+    rewrite (@cast_fun' _ 
+      (finite (Datatypes.length (adts m)))
+      (fun j0 a => build_rec (var_map m srts (dom_aux pd))
+        (typesym_map m srts (dom_aux pd)) (adts m)
+        (adt_name (fin_nth (adts m) j0))
+        (adt_constrs
+          (fin_nth (adts m)
+              (get_idx adt_dec (fin_nth (adts m) i) 
+                (adts m)
+                (In_in_bool adt_dec (fin_nth (adts m) i) 
+                    (adts m) (fin_nth_in (adts m) i))))) a)
+      (fun (j0 : finite (Datatypes.length (adts m))) => 
+      W (finite (Datatypes.length (adts m)))
+        (fun n0 : finite (Datatypes.length (adts m)) =>
+        build_base (var_map m srts (dom_aux pd))
+          (typesym_map m srts (dom_aux pd)) (adts m)
+          (adt_constrs (fin_nth (adts m) n0)))
+        (fun this i0 : finite (Datatypes.length (adts m)) =>
+        build_rec (var_map m srts (dom_aux pd))
+          (typesym_map m srts (dom_aux pd)) (adts m)
+          (adt_name (fin_nth (adts m) i0))
+          (adt_constrs (fin_nth (adts m) this))) j0)
+      _ _ _ Heq2
+      
+    ).
+  (*Now we simplify the finite type - the last cast*)
+  subst br_cast.
+  Check cast_build_rec.
+  match goal with
+  | |- tnthS ?x ?y = ?z => assert (Hfin: y = fin); [|rewrite Hfin; clear Hfin]
+  end.
+  { 
+    clear. subst fin.
+    match goal with 
+    | |- build_rec_to_finite ?i ?j ?k 
+      (cast ?Heq (cast_build_rec ?H2 ?map ?abs ?name ?c ?Hinc ?b ?y)) = ?z => 
+      assert (Hbuild: 
+      exists H, (cast Heq (cast_build_rec H2 map abs name c Hinc b y)) =
+      scast H y)
+    end.
+    { Check (get_constr_type (var_map m srts (dom_aux pd))
+    (typesym_map m srts (dom_aux pd)) (adts m)
+    (adt_name
+       (fin_nth (adts m)
+          (get_idx adt_dec (fin_nth (adts m) i) 
+             (adts m)
+             (In_in_bool adt_dec (fin_nth (adts m) i) 
+                (adts m) (fin_nth_in (adts m) i)))))
+    (adt_constrs
+       (fin_nth (adts m)
+          (get_idx adt_dec (fin_nth (adts m) i) 
+             (adts m)
+             (In_in_bool adt_dec (fin_nth (adts m) i) 
+                (adts m) (fin_nth_in (adts m) i))))) c
+    (constr_in_lemma m (fin_nth (adts m) i)
+       (In_in_bool adt_dec (fin_nth (adts m) i) 
+          (adts m) (fin_nth_in (adts m) i)) c c_in)
+    (args_to_constr_base m srts (dom_aux pd) c
+       (cast_arg_list
+          (sigma_args_eq gamma_valid m m_in srts 
+             (fin_nth (adts m) i)
+             (In_in_bool adt_dec (fin_nth (adts m) i) 
+                (adts m) (fin_nth_in (adts m) i)) c c_in) args))).
+      unfold cast_build_rec.
+      Check cast_dep'.
+      assert (forall vars typesyms i1 i2 (Heqi: i1 = i2) ts c Hinc b1 
+        (br: build_rec vars typesyms (adts m) ts (adt_constrs (fin_nth (adts m) i1))
+          (get_constr_type vars typesyms (adts m) 
+          (adt_name (fin_nth (adts m) i1)) (adt_constrs (fin_nth (adts m) i1)) c
+          Hinc b1))
+        (x1 x2: build_base vars typesyms (adts m) 
+          (adt_constrs (fin_nth (adts m) i2)))
+        (Heqx: x1 = (cast_dep
+        (fun i : finite (Datatypes.length (adts m)) =>
+         build_base vars typesyms (adts m) (adt_constrs (fin_nth (adts m) i)))
+        Heqi
+        (get_constr_type vars typesyms (adts m)
+           (adt_name (fin_nth (adts m) i1))
+           (adt_constrs (fin_nth (adts m) i1)) c Hinc b1)))
+          ,
+        cast (@f_equal _ Type (fun (a: build_base vars typesyms (adts m)
+          (adt_constrs (fin_nth (adts m) i2))) =>
+          (build_rec vars typesyms (adts m) ts
+          (adt_constrs (fin_nth (adts m) i2))) a) _ _ (Logic.eq_sym Heqx))
+        (cast_dep' (fun i => build_base vars typesyms (adts m)
+          (adt_constrs (fin_nth (adts m) i)))
+          (fun i t => build_rec vars typesyms (adts m) ts
+            (adt_constrs (fin_nth (adts m) i)) t)
+          Heqi
+          (get_constr_type vars typesyms (adts m) (adt_name (fin_nth (adts m) i1))
+            (adt_constrs (fin_nth (adts m) i1)) c Hinc b1) br) =
+          (*Now what should the other side be? want a single cast*)
+
+          (*Type should be
+              build_rec vars typesyms (adts m) ts (adt_constrs (fin_nth (adts m) i2)) x1
+            br has type  
+            build_rec vars typesyms (adts m) ts (adt_constrs (fin_nth (adts m) i1))
+              (get_constr_type vars typesyms (adts m) (adt_name (fin_nth (adts m) i1))
+                (adt_constrs (fin_nth (adts m) i1)) c0 Hinc b0) 
+              *)
+            (*TODO: START HERE*)
+
+          br).
+
+        cast_dep' (fun ) br
+      
+      ).
+    }
+    assert (exists H,
+      )
+
+
+    assert (forall vars typesyms m ts constrs1 constrs2 c Hin1 Hin2 b1 b2
+      (f: build_rec vars typesyms m ts constrs1
+        (get_constr_type vars typesyms m ts constrs1 c Hin1 b1) ->
+        build_rec vars typesyms m ts constrs2
+          (get_constr_type vars typesyms m ts constrs2 c Hin2 b2))
+      (Heq: constrs1 = constrs2) x,
+      build_rec_to_finite vars typesyms m x = build_rec_to_finite vars typesyms m (f x)). {
+        intros. destruct Heq.
+        
+        
+        unfold build_rec_to_finite.
+      }
+    
+    )
+
+
+    Check build_rec_to_finite.
+
+    Check ((scast
+    (f_equal
+       (fun
+          a : build_base (var_map m srts (dom_aux pd))
+                (typesym_map m srts (dom_aux pd)) 
+                (adts m)
+                (adt_constrs
+                   (fin_nth (adts m)
+                      (get_idx adt_dec (fin_nth (adts m) i) 
+                         (adts m)
+                         (In_in_bool adt_dec (fin_nth (adts m) i) 
+                            (adts m) (fin_nth_in (adts m) i))))) =>
+        build_rec (var_map m srts (dom_aux pd))
+          (typesym_map m srts (dom_aux pd)) (adts m)
+          (adt_name (fin_nth (adts m) (get_idx adt_dec t' (adts m) t_in')))
+          (adt_constrs
+             (fin_nth (adts m)
+                (get_idx adt_dec (fin_nth (adts m) i) 
+                   (adts m)
+                   (In_in_bool adt_dec (fin_nth (adts m) i) 
+                      (adts m) (fin_nth_in (adts m) i))))) a)
+       (Logic.eq_sym Heq2))
+    (cast_build_rec (cast_i m m_in i) (var_map m srts (dom_aux pd))
+       (typesym_map m srts (dom_aux pd))
+       (adt_name (fin_nth (adts m) (get_idx adt_dec t' (adts m) t_in'))) c
+       Hinc' b1 br))).
+    Check br.
+    (*unfold cast_build_rec.*)
+    match goal with 
+    | |- build_rec_to_finite ?i ?j ?k 
+      (cast ?Heq (cast_build_rec ?H2 ?map ?abs ?name ?c ?Hinc ?b ?y)) = ?z => 
+      assert (Hbuild: 
+      (cast Heq (cast_build_rec H2 map abs name c Hinc b y)) =
+      (cast_build_rec H2 map abs name c Hinc b y)); [|rewrite Hbuild; clear Hbuild]
+    end.
+    (*OK, so can we reason about how cast and cast_dep' interact?*)
+(*
+    unfold cast_dep'.
+    unfold cast. unfold cast_dep. unfold scast.
+    simpl.
+    unfold cast_a. destruct (cast_i m m_in i).
+    
+    
+    Print cast_build_rec. (*subst br.*)*)
+    (*We need to commute [build_rec_to_finite] and cast*)
+    assert (forall vars typesyms constrs i1 i2 (Heqi: i1 = i2) 
+      (t1 t2: build_base vars typesyms (adts m)
+      (adt_constrs (fin_nth (adts m) i2))) 
+      (Heq: t2 = t1) ts' y  c Hinc b1 y,
+      build_rec_to_finite vars typesyms (adts m) (cast (@f_equal _ Type (fun a => 
+        build_rec vars typesyms (adts m) ts' (adt_constrs (fin_nth (adts m) i2)) a) 
+        _ _ Heq) 
+        (@cast_build_rec m i1 i2 Heqi vars typesyms ts' c Hinc b1 y)) =
+      cast _ build_rec_to_finite vars typesyms y).
+      )
+
+
+
+
+
+    build_base (var_map m srts (dom_aux pd))
+    (typesym_map m srts (dom_aux pd)) (adts m)
+    (adt_constrs
+       (fin_nth (adts m)
+          (get_idx adt_dec (fin_nth (adts m) i) 
+             (adts m)
+             (In_in_bool adt_dec (fin_nth (adts m) i) 
+                (adts m) (fin_nth_in (adts m) i)))))
+
+
+    Check cast_build_rec.
+    Check (finite_to_build_rec (var_map m srts (dom_aux pd))
+    (typesym_map m srts (dom_aux pd)) (adts m) 
+    (nat_to_finite n Hn')).
+    Check (@finite_to_build_rec (var_map m srts (dom_aux pd))
+    (typesym_map m srts (dom_aux pd)) (adts m)
+    (adt_name (@fin_nth alg_datatype (adts m) i))
+    (adt_name
+       (@fin_nth alg_datatype (adts m)
+          (@get_idx alg_datatype adt_dec t' (adts m) t_in')))
+    (adt_constrs (@fin_nth alg_datatype (adts m) i)) c Hinc' b1
+    (@nat_to_finite
+       (count_rec_occ
+          (adt_name
+             (@fin_nth alg_datatype (adts m)
+                (@get_idx alg_datatype adt_dec t' (adts m) t_in')))
+          c) n Hn')).
+    Check (get_constr_type (var_map m srts (dom_aux pd))
+    (typesym_map m srts (dom_aux pd)) (adts m)
+    (adt_name
+       (fin_nth (adts m)
+          (get_idx adt_dec (fin_nth (adts m) i) 
+             (adts m)
+             (In_in_bool adt_dec (fin_nth (adts m) i) 
+                (adts m) (fin_nth_in (adts m) i)))))
+    (adt_constrs
+       (fin_nth (adts m)
+          (get_idx adt_dec (fin_nth (adts m) i) 
+             (adts m)
+             (In_in_bool adt_dec (fin_nth (adts m) i) 
+                (adts m) (fin_nth_in (adts m) i))))) c
+    (constr_in_lemma m (fin_nth (adts m) i)
+       (In_in_bool adt_dec (fin_nth (adts m) i) 
+          (adts m) (fin_nth_in (adts m) i)) c c_in)
+    (args_to_constr_base m srts (dom_aux pd) c
+       (cast_arg_list
+          (sigma_args_eq gamma_valid m m_in srts 
+             (fin_nth (adts m) i)
+             (In_in_bool adt_dec (fin_nth (adts m) i) 
+                (adts m) (fin_nth_in (adts m) i)) c c_in) args))).
+    Check (cast_a (cast_i m m_in i)
+    (get_constr_type (var_map m srts (dom_aux pd))
+       (typesym_map m srts (dom_aux pd)) (adts m)
+       (adt_name (fin_nth (adts m) i))
+       (adt_constrs (fin_nth (adts m) i)) c Hinc' b1)).
+
+    (*assert (forall vars typesyms Heq Heq1 name c Hinc b1 br,
+      build_rec_to_finite vars typesyms (adts m)
+      (cast Heq
+        (cast_build_rec Heq1 vars typesyms name c Hinc b1 br) =
+      cast Heq (build_rec_to_finite )
+    build_rec_to_finite vars typesyms (adts m) br)).*)
+    Check build_rec_to_finite.
+    match goal with 
+    | |- build_rec_to_finite ?i ?j ?k 
+      (cast ?Heq (cast_build_rec ?H2 ?map ?abs ?name ?c ?Hinc ?b ?y)) = ?z => 
+      assert (Hbuild: build_rec_to_finite i j k 
+      (cast Heq (cast_build_rec H2 map abs name c Hinc b y)) =
+      build_rec_to_finite i j k y); [|rewrite Hbuild; clear Hbuild]
+    end.
+    {
+
+      f_equal.
+    }
+      assert (cast Heq (cast_build_rec H2 map abs name c Hinc b y) = y)
+      
+      (*set(Heq1:=Heq)*)
+    end.
+    Check ((cast
+    (f_equal
+       (fun
+          a : build_base (var_map m srts (dom_aux pd))
+                (typesym_map m srts (dom_aux pd)) 
+                (adts m)
+                (adt_constrs
+                   (fin_nth (adts m)
+                      (get_idx adt_dec (fin_nth (adts m) i) 
+                         (adts m)
+                         (In_in_bool adt_dec (fin_nth (adts m) i) 
+                            (adts m) (fin_nth_in (adts m) i))))) =>
+        build_rec (var_map m srts (dom_aux pd))
+          (typesym_map m srts (dom_aux pd)) (adts m)
+          (adt_name (fin_nth (adts m) (get_idx adt_dec t' (adts m) t_in')))
+          (adt_constrs
+             (fin_nth (adts m)
+                (get_idx adt_dec (fin_nth (adts m) i) 
+                   (adts m)
+                   (In_in_bool adt_dec (fin_nth (adts m) i) 
+                      (adts m) (fin_nth_in (adts m) i))))) a)
+       (Logic.eq_sym Heq2))
+    (cast_build_rec (cast_i m m_in i) (var_map m srts (dom_aux pd))
+       (typesym_map m srts (dom_aux pd))
+       (adt_name (fin_nth (adts m) (get_idx adt_dec t' (adts m) t_in'))) c
+       Hinc' b1))).
+    unfold cast_build_rec.
+    generalize dependent Heq2.
+    generalize dependent (cast_i m m_in i). intros e.
+    unfold cast_a, scast. destruct e. generalize dependent () simpl.
+    unfold cast_build_rec, cast. destruct Heq2.
+    (*Want to cancel out cast and cast_build_rec*)
+  }
+  Check (tnthS
+  (args_to_ind_base gamma_valid m m_in srts Hlen (dom_aux pd) c
+     (Semantics.adts pd m srts)
+     (cast_arg_list
+        (sigma_args_eq gamma_valid m m_in srts (fin_nth (adts m) i)
+           (In_in_bool adt_dec (fin_nth (adts m) i) 
+              (adts m) (fin_nth_in (adts m) i)) c c_in) args)
+     (get_idx adt_dec t' (adts m) t_in'))).
+  unfold cast_build_rec.
+  generalize dependent Heq2.
+  generalize dependent (cast_i m m_in i).
+  intros. destruct e.
+  Print cast_build_rec.
+  Check (cast
+  (f_equal
+     (fun
+        a : build_base (var_map m srts (dom_aux pd))
+              (typesym_map m srts (dom_aux pd)) 
+              (adts m)
+              (adt_constrs
+                 (fin_nth (adts m)
+                    (get_idx adt_dec (fin_nth (adts m) i) 
+                       (adts m)
+                       (In_in_bool adt_dec (fin_nth (adts m) i)
+                          (adts m) (fin_nth_in (adts m) i))))) =>
+      build_rec (var_map m srts (dom_aux pd))
+        (typesym_map m srts (dom_aux pd)) (adts m)
+        (adt_name
+           (fin_nth (adts m) (get_idx adt_dec t' (adts m) t_in')))
+        (adt_constrs
+           (fin_nth (adts m)
+              (get_idx adt_dec (fin_nth (adts m) i) 
+                 (adts m)
+                 (In_in_bool adt_dec (fin_nth (adts m) i) 
+                    (adts m) (fin_nth_in (adts m) i))))) a)
+     (Logic.eq_sym Heq2))
+  (cast_build_rec (cast_i m m_in i) (var_map m srts (dom_aux pd))
+     (typesym_map m srts (dom_aux pd))
+     (adt_name (fin_nth (adts m) (get_idx adt_dec t' (adts m) t_in')))
+     c Hinc' b1 br)).
+  unfold cast_build_rec.
+  unfold build_rec_to_finite.
+  Check  (build_rec_to_finite (var_map m srts (dom_aux pd))
+  (typesym_map m srts (dom_aux pd)) (adts m)
+  (cast
+     (f_equal
+        (fun
+           a : build_base (var_map m srts (dom_aux pd))
+                 (typesym_map m srts (dom_aux pd)) 
+                 (adts m)
+                 (adt_constrs
+                    (fin_nth (adts m)
+                       (get_idx adt_dec (fin_nth (adts m) i) 
+                          (adts m)
+                          (In_in_bool adt_dec (fin_nth (adts m) i)
+                             (adts m) (fin_nth_in (adts m) i))))) =>
+         build_rec (var_map m srts (dom_aux pd))
+           (typesym_map m srts (dom_aux pd)) (adts m)
+           (adt_name
+              (fin_nth (adts m) (get_idx adt_dec t' (adts m) t_in')))
+           (adt_constrs
+              (fin_nth (adts m)
+                 (get_idx adt_dec (fin_nth (adts m) i) 
+                    (adts m)
+                    (In_in_bool adt_dec (fin_nth (adts m) i) 
+                       (adts m) (fin_nth_in (adts m) i))))) a)
+        (Logic.eq_sym Heq2)) br_cast)).
+  (*And now we need to prove the actual equivalence*)
+  clear Hexeq.
+  Check tnthS.
+  Search args_to_ind_base.
+  simpl.
+  (*overall structure:
+    
+  cast (f_equal _ (cast_snd_sym B Heq2 br_cast))
+(cast_trd B C Heq2 (cast_snd B (Logic.eq_sym Heq2) br_cast) x)
+
+i1 = get_constr_tye ... (long)
+i2 = cast_a (cast_i ..) (get_constr_type ) (short)
+br_cast: on i2 (so x is on i2)
+y is unrelated (I guess it is W, specialized)
+  *)
+  Check (tnthS
+  (args_to_ind_base gamma_valid m m_in srts Hlen 
+     (dom_aux pd) c (Semantics.adts pd m srts)
+     (cast_arg_list
+        (sigma_args_eq gamma_valid m m_in srts 
+           (fin_nth (adts m) i)
+           (In_in_bool adt_dec (fin_nth (adts m) i) 
+              (adts m) (fin_nth_in (adts m) i)) c c_in) args)
+     (get_idx adt_dec t' (adts m) t_in'))
+  (build_rec_to_finite (var_map m srts (dom_aux pd))
+     (typesym_map m srts (dom_aux pd)) (adts m)
+     (cast_snd
+        (fun (j0 : finite (Datatypes.length (adts m)))
+           (a : build_base (var_map m srts (dom_aux pd))
+                  (typesym_map m srts (dom_aux pd)) 
+                  (adts m)
+                  (adt_constrs
+                     (fin_nth (adts m)
+                        (get_idx adt_dec (fin_nth (adts m) i) 
+                           (adts m)
+                           (In_in_bool adt_dec 
+                              (fin_nth (adts m) i) 
+                              (adts m) (fin_nth_in (adts m) i)))))) =>
+         build_rec (var_map m srts (dom_aux pd))
+           (typesym_map m srts (dom_aux pd)) 
+           (adts m) (adt_name (fin_nth (adts m) j0))
+           (adt_constrs
+              (fin_nth (adts m)
+                 (get_idx adt_dec (fin_nth (adts m) i) 
+                    (adts m)
+                    (In_in_bool adt_dec (fin_nth (adts m) i) 
+                       (adts m) (fin_nth_in (adts m) i))))) a)
+        (Logic.eq_sym Heq2) br_cast))).
+        Check scast (Semantics.adts pd m srts t' t_in')
+        (dom_cast (dom_aux pd) Heq (hnth j args s_int (dom_int pd))).
+        Print adt_rep.
+
+  unfold cast_trd.
+
+    rewrite cast_fun.
+Check (f_equal
+(fun
+   a : build_base (var_map m srts (dom_aux pd))
+         (typesym_map m srts (dom_aux pd)) (adts m)
+         (adt_constrs
+            (fin_nth (adts m)
+               (get_idx adt_dec (fin_nth (adts m) i) 
+                  (adts m)
+                  (In_in_bool adt_dec (fin_nth (adts m) i) 
+                     (adts m) (fin_nth_in (adts m) i))))) =>
+ forall j0 : finite (Datatypes.length (adts m)),
+ build_rec (var_map m srts (dom_aux pd))
+   (typesym_map m srts (dom_aux pd)) (adts m)
+   (adt_name (fin_nth (adts m) j0))
+   (adt_constrs
+      (fin_nth (adts m)
+         (get_idx adt_dec (fin_nth (adts m) i) 
+            (adts m)
+            (In_in_bool adt_dec (fin_nth (adts m) i) 
+               (adts m) (fin_nth_in (adts m) i))))) a ->
+ W (finite (Datatypes.length (adts m)))
+   (fun n0 : finite (Datatypes.length (adts m)) =>
+    build_base (var_map m srts (dom_aux pd))
+      (typesym_map m srts (dom_aux pd)) (adts m)
+      (adt_constrs (fin_nth (adts m) n0)))
+   (fun this i0 : finite (Datatypes.length (adts m)) =>
+    build_rec (var_map m srts (dom_aux pd))
+      (typesym_map m srts (dom_aux pd)) (adts m)
+      (adt_name (fin_nth (adts m) i0))
+      (adt_constrs (fin_nth (adts m) this))) j0) Heq2).
+      cast (f_equal _ (cast_snd_sym _ Heq2 br_cast))
+      (cast_trd _ _ Heq2 (cast_snd _ (Logic.eq_sym Heq2) br_cast) x)
+
+
+    (*The final cast - need to commute cast and function*)
+    unfold cast. clear.
+    generalize dependent (cast_i m m_in i). intros.
+    generalize dependent Heq2.
+    unfold cast_a. destruct e.
+    rewrite get_idx_correct.
+    
+    intros; destruct Heq2.
+    rewrite Hbr.
+    
+    
+    subst.  rewrite Hexeq. Hexeq.
+
+
+    f (get_idx adt_dec t' (adts m) t_in')
+          (scast
+             (f_equal
+                (build_rec (var_map m srts (dom_aux pd))
+                   (typesym_map m srts (dom_aux pd)) 
+                   (adts m)
+                   (adt_name
+                      (fin_nth (adts m) (get_idx adt_dec t' (adts m) t_in')))
+                   (adt_constrs (fin_nth (adts m) i)))
+                (cast_a_sym (cast_i m m_in i)
+                   (get_constr_type (var_map m srts (dom_aux pd))
+                      (typesym_map m srts (dom_aux pd)) 
+                      (adts m) (adt_name (fin_nth (adts m) i))
+                      (adt_constrs (fin_nth (adts m) i)) c Hinc' b1)))
+             (cast_b (Logic.eq_sym (cast_i m m_in i)) br_cast)) =
+
+
+    rewrite  <- Hbr in Hexeq.
+    rewrite Hbr; clear Hbr
+    
+    subst.
+      unfold cast_build_rec.
+      unfold cast_b.
+      (*Assert: scast *)
+      unfold scast.
+    }
+    revert Hexeq. unfold scast. Check cast_a_sym.
+    Check .
+    apply fun_args_eq_dep with (x:= (cast_build_rec (va)) in Hexeq.
+    apply fun_args_eq_dep with (x:=(@finite_to_build_rec
+    (var_map m srts (dom_aux pd))
+    (typesym_map m srts (dom_aux pd))
+    (adts m)
+    (adt_name (fin_nth (adts m) i))
+    (adt_name (fin_nth (adts m) (get_idx adt_dec t' (adts m) t_in')))
+    (adt_constrs (fin_nth (adts m) i))
+    c Hinc' b1 fin
+    )) in Hexeq.
+    ))
+    Check (@finite_to_build_rec 
+    (var_map m srts (dom_aux pd))
+    (typesym_map m srts (dom_aux pd))
+    (adts m)
+    (adt_name (fin_nth (adts m) i))
+    (adt_name (fin_nth (adts m) (get_idx adt_dec t' (adts m) t_in')))
+    (adt_constrs (fin_nth (adts m) i))
+    c Hinc' b1 fin
+    ).
+    Search (?f = ?g -> ?f ?x = ?g ?x). (adt_name (fin_nth (adts m) i))
+
+
+    f (get_idx adt_dec t' (adts m) t_in')
+           (scast
+              (f_equal
+                 (build_rec (var_map m srts (dom_aux pd))
+                    (typesym_map m srts (dom_aux pd)) 
+                    (adts m)
+                    (adt_name
+                       (fin_nth (adts m) (get_idx adt_dec t' (adts m) t_in')))
+                    (adt_constrs (fin_nth (adts m) i)))
+                 (cast_a_sym (cast_i m m_in i)
+                    (get_constr_type (var_map m srts (dom_aux pd))
+                       (typesym_map m srts (dom_aux pd)) 
+                       (adts m) (adt_name (fin_nth (adts m) i))
+                       (adt_constrs (fin_nth (adts m) i)) c Hinc' b1)))
+              (cast_b (Logic.eq_sym (cast_i m m_in i)) b)))
+
+    (*Need way of commuting cast and function*)
+    (*TODO: start here (at end, have thing we want to prove)
+      about function and j's*)
+    (*HERE*)
+    assert (forall {A: Set} {B: A -> Set} {C: forall (a: A), B a -> Type} 
+      {f: forall (a: A) (b: B a), C a b})
+
+    (forall j : finite (Datatypes.length (adts m)),
+    build_rec (var_map m srts (dom_aux pd))
+      (typesym_map m srts (dom_aux pd)) (adts m)
+      (adt_name (fin_nth (adts m) j))
+      (adt_constrs
+         (fin_nth (adts m)
+            (get_idx adt_dec (fin_nth (adts m) i) 
+               (adts m)
+               (In_in_bool adt_dec (fin_nth (adts m) i) 
+                  (adts m) (fin_nth_in (adts m) i)))))
+      (get_constr_type (var_map m srts (dom_aux pd))
+         (typesym_map m srts (dom_aux pd)) (adts m)
+         (adt_name
+            (fin_nth (adts m)
+               (get_idx adt_dec (fin_nth (adts m) i) 
+                  (adts m)
+                  (In_in_bool adt_dec (fin_nth (adts m) i) 
+                     (adts m) (fin_nth_in (adts m) i)))))
+         (adt_constrs
+            (fin_nth (adts m)
+               (get_idx adt_dec (fin_nth (adts m) i) 
+                  (adts m)
+                  (In_in_bool adt_dec (fin_nth (adts m) i) 
+                     (adts m) (fin_nth_in (adts m) i))))) c
+         (constr_in_lemma m (fin_nth (adts m) i)
+            (In_in_bool adt_dec (fin_nth (adts m) i) 
+               (adts m) (fin_nth_in (adts m) i)) c c_in)
+         (args_to_constr_base m srts (dom_aux pd) c
+            (cast_arg_list
+               (sigma_args_eq gamma_valid m m_in srts
+                  (fin_nth (adts m) i)
+                  (In_in_bool adt_dec (fin_nth (adts m) i) 
+                     (adts m) (fin_nth_in (adts m) i)) c c_in) args))) ->
+    W (finite (Datatypes.length (adts m)))
+      (fun n : finite (Datatypes.length (adts m)) =>
+       build_base (var_map m srts (dom_aux pd))
+         (typesym_map m srts (dom_aux pd)) (adts m)
+         (adt_constrs (fin_nth (adts m) n)))
+      (fun this i : finite (Datatypes.length (adts m)) =>
+       build_rec (var_map m srts (dom_aux pd))
+         (typesym_map m srts (dom_aux pd)) (adts m)
+         (adt_name (fin_nth (adts m) i))
+         (adt_constrs (fin_nth (adts m) this))) j) =
+   (forall j : finite (Datatypes.length (adts m)),
+    build_rec (var_map m srts (dom_aux pd))
+      (typesym_map m srts (dom_aux pd)) (adts m)
+      (adt_name (fin_nth (adts m) j))
+      (adt_constrs
+         (fin_nth (adts m)
+            (get_idx adt_dec (fin_nth (adts m) i) 
+               (adts m)
+               (In_in_bool adt_dec (fin_nth (adts m) i) 
+                  (adts m) (fin_nth_in (adts m) i)))))
+      (cast_a (cast_i m m_in i) a) ->
+    W (finite (Datatypes.length (adts m)))
+      (fun n : finite (Datatypes.length (adts m)) =>
+       build_base (var_map m srts (dom_aux pd))
+         (typesym_map m srts (dom_aux pd)) (adts m)
+         (adt_constrs (fin_nth (adts m) n)))
+      (fun this i : finite (Datatypes.length (adts m)) =>
+       build_rec (var_map m srts (dom_aux pd))
+         (typesym_map m srts (dom_aux pd)) (adts m)
+         (adt_name (fin_nth (adts m) i))
+         (adt_constrs (fin_nth (adts m) this))) j)
+
+    apply EqdepFacts.eq_sigT_fst in Hexeq.
+
+    apply existT_inj in Hexeq. Print build_vty_base.
+    (*Need lemma about casting existT*)
+    unfold cast in Hexeq.
+
+    assert (forall )
+    destruct Heq.
+    apply inj_pair2_eq_dec in H3. 2: apply finite_eq_dec.
+    assert (H4:=H3).
+    subst.
+    apply EqdepFacts.eq_sigT_fst in H3.
+    subst.
+    revert H3.
+    Print Assumptions EqdepFacts.eq_sigT_fst.
+    Search (existT ?f ?g ?x = existT ?f ?y ?z).
+    apply inj_pair2_eq_dec in H3.
+  }
       (*OK, we need to know this - we need to know that f
         of [finite_to_biuld_rec (fin j)] = hnth j args*)
       (*Yeah, this will be hard to show*)
