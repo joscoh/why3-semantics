@@ -872,6 +872,43 @@ Proof.
   apply (f_equal (@nat_of_ord n)) in H. simpl in H. auto.
 Qed.
 
+Lemma scast_get_constr_type {m: mut_adt}
+  
+  {i1 i2: finite (length (adts m))} (Heqi: i1 = i2)
+  {vars typesyms c Hinc Hinc' x}:
+  scast (f_equal 
+    (fun n => build_base vars typesyms (adts m)
+    (adt_constrs (fin_nth (adts m) n))) Heqi)
+  (get_constr_type vars typesyms (adts m) (adt_name (fin_nth (adts m) i1))
+    (adt_constrs (fin_nth (adts m) i1)) c Hinc x) =
+  get_constr_type vars typesyms (adts m) (adt_name (fin_nth (adts m) i2))
+    (adt_constrs (fin_nth (adts m) i2)) c Hinc' x.
+Proof.
+  unfold scast. destruct Heqi. simpl.
+  assert (Hinc = Hinc') by (apply bool_irrelevance).
+  rewrite H. reflexivity.
+Qed.
+
+Lemma existT_inj_dec {U: Type} {P: U -> Type} (eq_dec: forall x y : U, {x = y} + {x <> y}) {x1 x2: U} {H1: P x1} (H2: P x2):
+  existT P x1 H1 = existT P x2 H2 ->
+  {Heq: x1 = x2 & H2 = cast (f_equal P Heq) H1}.
+Proof.
+  intros. assert (Hex:=H).
+  apply EqdepFacts.eq_sigT_fst in H. subst.
+  apply inj_pair2_eq_dec in Hex. 2: apply eq_dec. subst.
+  apply (existT _ (Logic.eq_refl)). reflexivity.
+Qed.
+
+Lemma existT_inj {U: Type} {P: U -> Type} {x1 x2: U} {H1: P x1} (H2: P x2):
+  existT P x1 H1 = existT P x2 H2 ->
+  {Heq: x1 = x2 & H2 = cast (f_equal P Heq) H1}.
+Proof.
+  intros. assert (Hex:=H).
+  apply EqdepFacts.eq_sigT_fst in H. subst.
+  apply Eqdep.EqdepTheory.inj_pair2 in Hex. subst.
+  apply (existT _ (Logic.eq_refl)). reflexivity.
+Qed.
+
 (*Yes, change to boolean*)
 (*We should be able to do better - we know the recursive instances*)
 Lemma adt_rep_ind m m_in srts
@@ -958,13 +995,89 @@ Proof.
   destruct (find_constr_rep gamma_valid m m_in srts Hlen (dom_aux pd)
     (fin_nth (adts m) i) (In_in_bool adt_dec _ _ (fin_nth_in (adts m) i))
     (Semantics.adts pd m srts) (all_unif m m_in) x') as [c [[c_in args] Hx']].
-  (*TODO: we MIGHT need to destruct a here so we know
-  which constructor we are in*)
+  (*Here, we need info about a*)
+  assert (Hnodupb: nodupb funsym_eq_dec
+    (ne_list_to_list (adt_constrs (fin_nth (adts m) i)))). {
+    eapply constrs_nodups with(m:=m). apply gamma_valid. auto.
+    rewrite in_map_iff. exists (fin_nth (adts m) i). split; auto.
+    apply fin_nth_in.
+  }
+  destruct (get_funsym_base (var_map m srts (dom_aux pd))
+    (typesym_map m srts (dom_aux pd)) (adts m) 
+    (adt_name (fin_nth (adts m) i))
+    (adt_constrs (fin_nth (adts m) i)) Hnodupb a
+    ) as [c' [Hinc' [b1 Ha]]].
+  assert (c = c'). {
+    (*Idea: we know from x' + inversion that [get_constr_types]
+      agree, use injectivity*)
+    (*TODO: do we need anything about relation
+      of inductive args? I hope not*)
+    unfold constr_rep in Hx'.
+    unfold make_constr in Hx'.
+    subst x'.
+    inversion Hx'. clear Hx'.
+    apply inj_pair2_eq_dec in H1. 2: apply finite_eq_dec.
+    revert H1.
+    unfold cast_a.
+    (*want to prove, essentially, that a = get_constr_type c b,
+      for appropriate b (from [get_funsym_base])*)
+    rewrite Ha.
+    (*TODO: need lemma about scast and [get_constr_type]*)
+    rewrite scast_get_constr_type with(Hinc':=
+    (constr_in_lemma m (fin_nth (adts m) i)
+    (In_in_bool adt_dec (fin_nth (adts m) i) (adts m)
+      (fin_nth_in (adts m) i)) c' Hinc')).
+    intros Hconstrs.
+    apply get_constr_type_inj1 in Hconstrs.
+    subst; auto.
+  }
+  (*Now we need to know something about f*)
+  assert (True). {
+    unfold constr_rep in Hx'.
+    unfold make_constr in Hx'.
+    subst x'.
+    inversion Hx'. clear Hx'.
+    clear H2.
+    apply existT_inj_dec in H3. 2: apply finite_eq_dec.
+    destruct H3 as [Heq Hexeq].
+    assert (Heq = Logic.eq_refl). {
+      apply UIP_dec. apply finite_eq_dec.
+    }
+    rewrite H1 in Hexeq. simpl in Hexeq. clear H1.
+    (*Now we have another equality of existT*)
+    (*HERE, we need UIP*)
+    apply existT_inj in Hexeq. destruct Hexeq as [Heq' Hexeq].
+    (*Need way of commuting cast and function*)
+    (*TODO: start here (at end, have thing we want to prove)
+      about function and j's*)
+    (*HERE*)
+
+    apply EqdepFacts.eq_sigT_fst in Hexeq.
+
+    apply existT_inj in Hexeq. Print build_vty_base.
+    (*Need lemma about casting existT*)
+    unfold cast in Hexeq.
+
+    assert (forall )
+    destruct Heq.
+    apply inj_pair2_eq_dec in H3. 2: apply finite_eq_dec.
+    assert (H4:=H3).
+    subst.
+    apply EqdepFacts.eq_sigT_fst in H3.
+    subst.
+    revert H3.
+    Print Assumptions EqdepFacts.eq_sigT_fst.
+    Search (existT ?f ?g ?x = existT ?f ?y ?z).
+    apply inj_pair2_eq_dec in H3.
+  }
+
+  subst c'.
+  (*Now we know about a. This is helpful*)
   specialize (H _ _ x' c c_in args Hx').
   apply H.
   (*Now we need to show that the [forall i] condition
     corresponds to that in the IH*)
-  clear -IH Hlen c_in all_unif.
+  clear -IH Hlen c_in all_unif Ha.
   intros j t' t_in' Heq Hj.
   specialize (IH (get_idx adt_dec t' (adts m) t_in')).
   assert (Hini: adt_in_mut (fin_nth (adts m) i) m). {
@@ -1033,6 +1146,64 @@ Proof.
       + reflexivity.
       + unfold adt_mut_in_ctx. split; auto.
     }
+    subst a.
+    (*Now we use [finite_to_build_rec] to get our b*)
+    assert (Hp: rec_occ_fun (adt_name t') (nth j (s_args c) vty_int)). {
+      unfold rec_occ_fun. rewrite Heq'.
+      bool_to_prop. split; simpl_sumbool.
+     }
+    destruct (find_idx_filter _ _ _ Hj vty_int Hp) as [n [Hn Hni]].
+    (*Build finite value*)
+    assert ( Hn': n < (count_rec_occ
+      (adt_name (fin_nth (adts m) 
+        (get_idx adt_dec t' (adts m) t_in'))) c)). {
+      rewrite get_idx_correct.
+      apply Hn.
+    }
+    set (fin:=nat_to_finite n Hn').
+    specialize (IH (@finite_to_build_rec 
+    (var_map m srts (dom_aux pd))
+    (typesym_map m srts (dom_aux pd))
+    (adts m)
+    (adt_name (fin_nth (adts m) i))
+    (adt_name (fin_nth (adts m) (get_idx adt_dec t' (adts m) t_in')))
+    (adt_constrs (fin_nth (adts m) i))
+    c Hinc' b1 fin
+    )).
+    (*Now, we just need to cast*)
+    revert IH.
+    assert (Ht: fin_nth (adts m) (get_idx adt_dec t' (adts m) t_in') = t'). {
+      apply get_idx_correct.
+    }
+    rewrite rewrite_P with(P:=P)(t2:=t')(t_in2:=t_in')(Ht:=Ht).
+    assert ((cast_adt_rep Ht
+      (cast_w (cast_i m m_in (get_idx adt_dec t' (adts m) t_in'))
+       (f (get_idx adt_dec t' (adts m) t_in')
+          (finite_to_build_rec (var_map m srts (dom_aux pd))
+             (typesym_map m srts (dom_aux pd)) (adts m) fin)))) =
+             (scast (Semantics.adts pd m srts t' t_in')
+             (dom_cast (dom_aux pd) Heq (hnth j args s_int (dom_int pd))))). {
+      clear. unfold cast_adt_rep. rewrite cast_w_twice. 2: apply finite_eq_dec.
+      (*OK, we need to know this - we need to know that f
+        of [finite_to_biuld_rec (fin j)] = hnth j args*)
+      (*Yeah, this will be hard to show*)
+
+    }
+    assert ((cast_adt_rep Ht
+    (cast_w (cast_i m m_in (get_idx adt_dec t (adts m) t_in)) x)) = x). {
+      clear. unfold cast_adt_rep.
+      apply cast_w_twice.
+      apply finite_eq_dec.
+    }
+  rewrite <- H at 2. auto.
+
+
+    find_idx_filter {A: Type} (p: A -> bool) (l: list A)
+  (n: nat) (Hn: n < length l) (d: A):
+  p (nth n l d) ->
+  {j : nat | j < length (filter p l) /\ nth j (filter p l) d = nth n l d}.
+
+
     Print build_base.
     Print build_rec.
     (*With this crucial result, we now know that this represents
