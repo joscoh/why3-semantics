@@ -12,6 +12,7 @@ proofs/core/Denotational.v
 proofs/core/GenElts.v
 proofs/core/Alpha.v
 proofs/core/IndProp.v
-proofs/Util.v
-proofs/Ty.v
-proofs/Term.v
+proofs/core/RecFun.v
+#proofs/Util.v
+#proofs/Ty.v
+#proofs/Term.v

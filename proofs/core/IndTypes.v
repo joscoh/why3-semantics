@@ -9,6 +9,8 @@ Require Import Coq.Logic.Eqdep_dec.
 Require Import Coq.Program.Equality.
 (*Used for constructor existence, injectivity of constructors, and test cases*)
 Require Import Coq.Logic.FunctionalExtensionality.
+(*We assume [eq_rect_eq], equivalent to UIP, for some proofs*)
+Require Import Coq.Logic.EqdepFacts.
 
 (*Dealing with finite types*)
 
@@ -153,6 +155,34 @@ Proof.
       * apply ord_inj. specialize (IHn (Ordinal (proj2 a))).
         apply (f_equal (@nat_of_ord _)) in IHn.
         simpl. simpl in IHn. rewrite IHn {IHn} prednK //. apply a.
+Qed.
+
+(*We also want to go from a nat to a finite type*)
+
+Definition lt_to_ssr {m n: nat} (H: (m < n)%coq_nat) : ssrnat.leq (S m) n :=
+  introT ltP H.
+Definition nat_to_finite {n: nat} (m: nat) (Hm: (m < n)%coq_nat) : finite n :=
+  ord_to_finite (fintype.Ordinal (lt_to_ssr Hm)).
+
+Lemma nat_to_finite_inv {n: nat} (m: finite n) 
+  (Hm: (finite_to_nat m < n)%coq_nat):
+  nat_to_finite (finite_to_nat m) Hm = m.
+Proof.
+  rewrite /nat_to_finite.
+  apply (can_inj finite_ord_cancel).
+  rewrite ord_finite_cancel/finite_to_ord.
+  f_equal.
+  by apply bool_irrelevance.
+Qed.
+
+Lemma finite_to_nat_inv {n: nat} (m: nat) (Hm: (m < n)%coq_nat):
+  finite_to_nat (nat_to_finite m Hm) = m.
+Proof.
+  rewrite /nat_to_finite.
+  have-: (finite_to_ord (ord_to_finite (fintype.Ordinal (n:=n) (m:=m) (lt_to_ssr Hm))) =
+  fintype.Ordinal (lt_to_ssr Hm)) by rewrite ord_finite_cancel.
+  rewrite /finite_to_ord => Hord.
+  by apply (f_equal (@nat_of_ord n)) in Hord.
 Qed.
 
 (*With this isomorphism, we can get many mathcomp structures for free.*)
@@ -365,6 +395,25 @@ Proof.
     + destruct x.
       * apply (IHn f tval _ tnth_default).
       * reflexivity.
+Qed.
+
+(*TODO: move above*)
+Definition tup_of_list {A: Type} {n: nat} {l: list A} (Hl: length l = n) :
+  n.-tuple A := (Tuple (introT eqP Hl)).
+
+Lemma nth_equiv {A: Type} (d: A) (l: list A) (i: nat):
+  nth d l i = List.nth i l d.
+Proof.
+  move: l. elim: i => [/= [// | //]| n' IH [// | h tl /=]].
+  by apply IH.
+Qed.
+
+Lemma tnthS_tup_of_list {A: Type} {n: nat} (l: list A) 
+  (Hl: length l = n) (d: A) (i: nat) (Hi: (i < n)%coq_nat):
+  tnthS (tup_of_list Hl) (nat_to_finite i Hi) = List.nth i l d.
+Proof.
+  by rewrite /tup_of_list tnthS_equiv 
+    (@tnth_nth _ _ d)/= finite_to_nat_inv nth_equiv.
 Qed.
 
 (* For any function f: finite n -> finite m -> A, we can consider this as 
@@ -661,6 +710,22 @@ Proof.
   intros. induction constrs; simpl in Hin; simpl in x; simpl;
   destruct (funsym_eq_dec f a); subst; auto. exfalso. apply (not_false Hin).
 Qed.
+(*TODO: change to cast*)
+(*
+Lemma build_rec_finite_inj: forall {ts ts': typesym} {constrs: ne_list funsym}
+{f: funsym} {Hin: in_bool_ne funsym_eq_dec f constrs}
+{c1 c2: build_constr_base f}
+(x1: build_rec ts' constrs (get_constr_type ts constrs f Hin c1))
+(x2: build_rec ts' constrs (get_constr_type ts constrs f Hin c2)),
+@build_rec_to_finite ts ts' constrs f Hin c1 x1 =
+@build_rec_to_finite ts ts' constrs f Hin c2 x2.
+Proof.
+  intros. induction constrs; simpl in Hin, x1, x2.
+  - simpl. destruct (funsym_eq_dec f a) ; subst; auto.
+    unfold eq_rec_r, eq_rec, eq_rect. simpl.
+    
+    reflexivity.
+    *)
 
 (*Finally, create the constructor encoding: given a mutually recursive type,
   an index into the type, a constructor in the constructors of that index,
@@ -993,10 +1058,9 @@ Definition domain_sigma_int_Z (x: domain (sigma vty_int)) : Z.
 rewrite sigma_int in x. exact x.
 Defined.
 
-Definition dom_cast {v1 v2: Types.sort} (Heq: v1 = v2) (x: domain v1) : domain v2 :=
-  match Heq with
-  | erefl => x
-  end.
+Definition dom_cast {v1 v2: Types.sort} (Heq: v1 = v2) (x: domain v1) : 
+  domain v2 :=
+  scast (f_equal domain Heq) x.
 
 Lemma dom_cast_twice: forall {v1 v2: Types.sort} (Heq: v1 = v2) x,
   dom_cast Heq (dom_cast (esym Heq) x) = x.
@@ -1060,19 +1124,6 @@ Qed.
 (*TODO: move?*)
 Section Cast.
 
-(*Cast any Set*)
-Definition scast {S1 S2: Set} (Heq: S1 = S2) (s: S1) : S2 :=
-  match Heq with
-  | erefl => s
-  end.
-
-Lemma scast_inj: forall {A B: Set} (Heq: A = B) (x1 x2: A),
-  scast Heq x1 = scast Heq x2 ->
-  x1 = x2.
-Proof.
-  intros. destruct Heq. apply H.
-Qed.
-
 (*Cast a list*)
 Definition cast_list {A B: Set} (l: list A) (Heq: A = B) : list B :=
   match Heq with
@@ -1104,6 +1155,16 @@ Proof.
   intros. destruct Heq. simpl in H. subst; auto.
 Qed.
 
+Lemma cast_list_nth: forall {A B: Set} (l: list A) (Heq: A = B)
+  (d': B)
+  (i: nat),
+  List.nth i (cast_list l Heq) d' = 
+    scast Heq (List.nth i l (scast (Logic.eq_sym Heq) d')).
+Proof.
+  intros. subst. reflexivity.
+Qed. 
+
+
 (*Cast an [arg_list] - here we use a type with decidable equality*)
 Definition cast_arg_list {domain: Types.sort -> Set} {l1 l2}
   (Heq: l1 = l2) (x: arg_list domain l1) : arg_list domain l2 :=
@@ -1126,11 +1187,21 @@ Proof.
   intros. destruct Heq. apply H.
 Qed.
 
+Definition cast_nth_eq {A: Set} {l1 l2: list A} (Heq: l1 = l2)
+  (i: nat) (d: A) : List.nth i l1 d = List.nth i l2 d.
+  destruct Heq. reflexivity.
+Defined.
+
+Lemma hnth_cast_arg_list {domain: Types.sort -> Set} {l1 l2}
+(Heq: l1 = l2) (x: arg_list domain l1) (i: nat) (d: Types.sort)
+  (d1: domain d):
+  hnth i (cast_arg_list Heq x) d d1 =
+  scast (f_equal domain (cast_nth_eq Heq i d)) (hnth i x d d1).
+Proof.
+  destruct Heq. reflexivity.
+Qed.
+
 End Cast.
-
-Definition tup_of_list {A: Type} {n: nat} {l: list A} (Hl: length l = n) :
-  n.-tuple A := (Tuple (introT eqP Hl)).
-
 
 (*To build the recursive instance function, we do the following: 
   take the input arg list and filter out the domain elements 
@@ -1568,8 +1639,21 @@ Proof.
 Qed.
 
 (*The last lemma: to simplify a particular sequence of casts in
-  the proof, we need to assume UIP*)
-Axiom UIP: forall {A: Type}, EqdepFacts.UIP_ A.
+  the proof, we need to assume UIP. We prove this
+  using [Eqdep.Eq_rect_eq.eq_rect_eq]; this shows up
+  in other places via theorems about existT and it therefore
+  reduces the axioms we need*)
+
+
+Definition UIP: forall {A: Type}, UIP_ A.
+intros.
+apply eq_dep_eq__UIP.
+apply eq_rect_eq__eq_dep_eq.
+unfold Eq_rect_eq. intros.
+unfold Eq_rect_eq_on. intros.
+apply Eqdep.Eq_rect_eq.eq_rect_eq.
+Qed.
+
 
 Lemma scast_cast_scast: forall {v1 v2: Types.sort} {A1: Set} 
 (H1: domain v1 = A1) (H2: v2 = v1) (H3: A1 = domain v2) y, 

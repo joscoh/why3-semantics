@@ -141,9 +141,6 @@ Proof.
   inversion H; auto.
 Qed.
 
-Print arg_list.
-Print hlist.
-Check funsym_subst_eq.
 Definition val_list (v: val_typevar) (l: list vty) : Set :=
   hlist domain (map (val v) l). 
 (*We can use the above to convert between arg_lists*)
@@ -2144,7 +2141,7 @@ Proof.
     intros. subst.
     assert (e0 = eq_refl). { apply UIP_dec. apply sort_eq_dec. }
     rewrite H0.
-    f_equal.
+    f_equal. f_equal.
     (*Now we show the arg lists equal by a separate lemma*)
     apply get_arg_list_sub; auto.
     eapply Forall_impl. 2: apply H. simpl.

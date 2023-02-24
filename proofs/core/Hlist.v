@@ -24,15 +24,6 @@ Lemma hlist_hd_cons {A: Type} (f: A -> Type) {hd: A} {tl: list A}
 Proof.
   reflexivity.
 Qed.
-(*
-Definition hlist_hd {A: Type} {f: A -> Type} {hd: A} {tl: list A} 
-  (h: hlist f (hd :: tl)) : f hd :=
-  match h in (hlist _ (hd :: tl)) with
-  | HL_cons _ _ _ hd tl => hd
-  end.
-
-  Print hlist_hd.
-*)
 
 Definition hlist_tl {A: Type} {f: A -> Type} {hd: A} {tl: list A} 
   (h: hlist f (hd :: tl)) : hlist f tl :=
@@ -106,6 +97,19 @@ Definition cast {A1 A2: Type} (H: A1 = A2) (x: A1) : A2 :=
 
 Lemma cast_inj: forall {A B: Type} (Heq: A = B) (x1 x2: A),
   cast Heq x1 = cast Heq x2 ->
+  x1 = x2.
+Proof.
+  intros. destruct Heq. apply H.
+Qed.
+
+(*Cast any Set*)
+Definition scast {S1 S2: Set} (Heq: S1 = S2) (s: S1) : S2.
+  destruct Heq.
+  exact s.
+Defined.
+
+Lemma scast_inj: forall {A B: Set} (Heq: A = B) (x1 x2: A),
+  scast Heq x1 = scast Heq x2 ->
   x1 = x2.
 Proof.
   intros. destruct Heq. apply H.
@@ -207,6 +211,39 @@ Proof.
   intros. apply hlist_to_list_nth_dec. apply eq_dec. apply Hi.
 Qed.
 
+(*TODO: Do we need the type version?*)
+Lemma hlist_to_list_nth_dec_set: forall {A: Set} {f: A -> Set} {l: list A}
+  (eq_dec: forall (x y : A), {x = y} + {x <> y})
+  (h: hlist f l) {a: A} (Hall: Forall (fun x => x = a) l) (i: nat)
+  (Hi: i < length l)
+  (d: f a) (d1: A) (d2: f d1) Heq,
+  List.nth i (hlist_to_list h Hall) d =
+  scast (f_equal f Heq) (hnth i h d1 d2).
+Proof.
+  intros A f l.
+  induction l; simpl; intros; subst; simpl.
+  - lia.
+  - destruct i.
+    + unfold cast.
+      assert (Forall_inv Hall = eq_refl). {
+        apply UIP_dec. apply eq_dec.
+      }
+      rewrite H. reflexivity.
+    + apply IHl with (d1:=d1) (d2:=d2) (Heq:=eq_refl). apply eq_dec.
+      lia.
+Qed. 
+
+Lemma hlist_to_list_nth_dec_set': forall {A: Set} {f: A -> Set} {l: list A}
+  (eq_dec: forall (x y : A), {x = y} + {x <> y})
+  (h: hlist f l) {a: A} (Hall: Forall (fun x => x = a) l) (i: nat)
+  (Hi: i < length l)
+  (d: f a) (d1: A) (d2: f d1),
+  List.nth i (hlist_to_list h Hall) d =
+  scast (f_equal f (all_nth Hall i d1 Hi)) (hnth i h d1 d2).
+Proof.
+  intros. apply hlist_to_list_nth_dec_set. apply eq_dec. apply Hi.
+Qed.
+
 Lemma hlist_to_list_irrel: forall {A: Type} {f: A -> Type} {l: list A}
 (eq_dec: forall (x y : A), {x = y} + {x <> y})
 (h: hlist f l) {a: A} (Ha1 Ha2: Forall (fun x => x = a) l),
@@ -260,7 +297,8 @@ Qed.
 Fixpoint hlist_map_filter {A B: Type} {f: A -> Type} {l: list B}
   (f1: B -> A) (h: hlist f (map f1 l)) (g: B -> bool) :
   hlist f (map f1 (filter g l)) :=
-  match l as l' return hlist f (map f1 l') -> hlist f (map f1 (filter g l')) with
+  match l as l' return hlist f (map f1 l') -> 
+    hlist f (map f1 (filter g l')) with
   | nil => fun _ => (@HL_nil _ _)
   | hd :: tl => fun hmap =>
     match (g hd) as b return 

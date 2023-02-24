@@ -8,6 +8,7 @@ Require Import Substitution.
 Require Import Denotational.
 Require Import GenElts.
 Require Import Coq.Logic.Eqdep_dec.
+Require Import Hlist. (*for cast - TODO change?*)
 
 (*For a proof using induction on length of list*)
 Require Import Coq.Arith.Wf_nat.
