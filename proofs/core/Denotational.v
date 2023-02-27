@@ -700,7 +700,7 @@ Proof.
   eapply big_union_nil in H. apply H. assumption.
 Qed.
 
-Definition is_sort_cons_sorts (ts: typesym) (l: list vty) 
+Definition is_sort_cons_sorts (*(ts: typesym)*) (l: list vty) 
   (Hall: forall x, In x l -> is_sort x):
   {s: list sort | sorts_to_tys s = l}.
 Proof.
@@ -714,6 +714,21 @@ Proof.
     specialize (IHl H0). destruct IHl as [tl Htl].
     apply (exist _ ((exist _ a H) :: tl)).
     simpl. rewrite Htl. reflexivity.
+Defined.
+
+Lemma is_sort_cons_sorts_eq (l: list sort)
+  (Hall: forall x, In x (sorts_to_tys l) -> is_sort x):
+  proj1_sig (is_sort_cons_sorts (sorts_to_tys l) Hall) = l.
+Proof.
+  induction l; simpl; auto.
+  destruct (is_sort_cons_sorts (sorts_to_tys l)
+  (fun (x : vty) (H0 : In x (sorts_to_tys l)) => Hall x (or_intror H0))) eqn : ind;
+  simpl.
+  apply (f_equal (@proj1_sig _ _)) in ind.
+  simpl in ind.
+  rewrite IHl in ind. subst. f_equal.
+  destruct a; simpl. 
+  f_equal. apply bool_irrelevance.
 Qed.
 
 (*A function that tells us if a sort is an ADT and if so,
@@ -728,7 +743,7 @@ Proof.
   - exact None.
   - destruct (find_ts_in_ctx t);[|exact None].
     exact (Some (fst p, snd p, t, 
-      proj1_sig (is_sort_cons_sorts t l (is_sort_cons t l i)))).
+      proj1_sig (is_sort_cons_sorts l (is_sort_cons t l i)))).
 Defined.
 
 (*And its proof of correctness*)
@@ -746,7 +761,7 @@ Proof.
     apply sort_inj. simpl. f_equal. clear H. 
     generalize dependent (is_sort_cons (adt_name a) l i).
     intros H.
-    destruct (is_sort_cons_sorts (adt_name a) l H). simpl.
+    destruct (is_sort_cons_sorts l H). simpl.
     rewrite <- e; reflexivity.
   - inversion H.
 Qed.

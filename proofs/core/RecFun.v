@@ -1351,90 +1351,212 @@ Qed.
 
 End Induction.
 
-(*TODO: don't require [is_sort_adt] and spec, just require hypotheses*)
-(*TODO: change to use similar method as induction (and
-  pattern amtch)*)
-Inductive adt_smaller: {t: {ty: vty | valid_type sigma ty} & 
-  domain (val (proj1_sig t))} ->
-  {t: {ty: vty | valid_type sigma ty} & domain (val (proj1_sig t))} -> Prop :=
-  | ADT_small: forall (x1 x2: {t: {ty: vty | valid_type sigma ty} & domain (val (proj1_sig t))})  
-    ty Hval1 Hval2 d1 d2 m a ts srts
-    (*NOTE: in general, not all same type, need 2 tys*)
-    (Hx1: x1 = existT _ (exist (valid_type sigma) ty Hval2) d1)
-    (Hx2: x2 = existT _ (exist _ ty Hval1) d2)
-    (Hisadt: is_sort_adt (val ty) = 
-      Some (m, a, ts, srts)),
-    let adt_spec := (is_sort_adt_spec gamma_valid _ _ _ _ _ Hisadt) in
-    let Hseq := proj1 adt_spec in
-    let a_in := proj1 (proj2 adt_spec) in
-    let m_in :=  proj1 (proj2 (proj2 adt_spec)) in
-    (*cast to adt type*)
-    let adt : adt_rep m srts (dom_aux pd) a a_in :=
-      scast (Semantics.adts pd m srts a a_in) (dom_cast _ Hseq d2) in 
-    (*need lengths lemma*)
-    let lengths_eq : length srts = length (m_params m) :=
-      adt_srts_length_eq gamma_valid Hisadt Hval2 in 
-    (*Now we get the constructor c and arg_list a such
-      that d2 = [[c(a)]]*)
-    let Hrep := find_constr_rep gamma_valid m m_in srts lengths_eq
-      (dom_aux pd) a a_in (Semantics.adts pd m srts) 
-        (all_unif m m_in) adt in
-    let c : funsym := projT1 Hrep in
-    let c_in : constr_in_adt c a :=
-      fst (proj1_sig (projT2 Hrep)) in
-    let args : arg_list domain (funsym_sigma_args c srts) := 
-      snd (proj1_sig (projT2 Hrep)) in
-    let args' := cast_arg_list 
-      (f_equal (funsym_sigma_args c) (eq_sym (val_sorts_eq srts))) args in
-    (*Then it must be the case that d1 equals
-      one of the arguments in args*)
-      (*TODO: need lengths of (s_params c)*)
-    let lens : length (s_params c) = length (m_params m) :=
-      f_equal (@length _) (adt_constr_params gamma_valid m_in a_in c_in) in
-    let lens': length (s_params c) = length srts :=
-      eq_trans lens (eq_sym lengths_eq) in
-    let lens'' : length (s_params c) = length (map sort_to_ty srts) :=
-      eq_trans lens' (eq_sym (map_length sort_to_ty srts)) in
-    let val_args := funargs_to_vals pd vt c (map sort_to_ty srts) lens''
-      (*lens'*) args' in
-    (exists i
-    (*TODO: remove this, just use scast with equality on
-    [funsym_sigma_args]*)
-    (Heq: (nth i
-    (map (v_subst (v_typevar vt))
-       (map (ty_subst (s_params c) (map sort_to_ty srts)) (s_args c)))
-    s_int) = val ty), i < hlength val_args /\
-    (*TODO: need some type equality*)
-    d2 = dom_cast _ Heq (hnth i val_args s_int (dom_int pd))) ->
+Section WellFounded.
+
+(*The [adt_smaller] relation is conceptually simple:
+  both types are instances of ADTs from mut adt m, the second
+  is c(args), and the first is in the args of the second*)
+Inductive adt_smaller: 
+  {ty: vty &  domain (val ty)} -> {ty: vty & domain (val ty)} -> Prop :=
+  | ADT_small: forall 
+    (x1 x2: {ty: vty &  domain (val ty)})
+    ty1 ty2 (Hval1: valid_type sigma ty1)
+    (Hval2: valid_type sigma ty2) (d1: domain (val ty1)) 
+    (d2: domain (val ty2)) m a1 a2 srts c args
+    (Hx1_1: projT1 x1 = ty1)
+    (Hx1_2: d1 = (dom_cast (dom_aux pd) 
+      (f_equal (fun x => val x) Hx1_1) (projT2 x1)))
+    (Hx2_1: projT1 x2 = ty2)
+    (Hx2_2: d2 = (dom_cast (dom_aux pd) 
+      (f_equal (fun x => val x) Hx2_1) (projT2 x2)))
+    (Hty1: val ty1 = typesym_to_sort (adt_name a1) srts)
+    (Hty2: val ty2 = typesym_to_sort (adt_name a2) srts) (*TODO: srts same?*)
+    (a_in1: adt_in_mut a1 m)
+    (a_in2: adt_in_mut a2 m)
+    (m_in: mut_in_ctx m gamma)
+    (c_in: constr_in_adt c a2)
+    (lengths_eq: length srts = length (m_params m)),
+    let adt2 : adt_rep m srts (dom_aux pd) a2 a_in2 :=
+      scast (Semantics.adts pd m srts a2 a_in2) (dom_cast _ Hty2 d2) in
+    let adt1: adt_rep m srts (dom_aux pd) a1 a_in1 :=
+      scast (Semantics.adts pd m srts a1 a_in1) (dom_cast _ Hty1 d1) in
+    forall (Hadt2: adt2 = constr_rep gamma_valid m m_in srts
+      lengths_eq (dom_aux pd) a2 a_in2 c c_in (Semantics.adts pd m srts) args),
+    (exists i Heq, 
+    i < length (s_args c) /\
+    adt1 = scast (Semantics.adts pd m srts a1 a_in1) 
+      (dom_cast (dom_aux pd) Heq (hnth i args s_int (dom_int pd)))) ->
     adt_smaller x1 x2.
 
-(*Let's see how awful this is - I know I will need induction*)
-(*
+(*TODO: move*)
+(*We show that [is_sort_adt] is Some for adts*)
+Lemma is_sort_adt_adt a srts m:
+  mut_in_ctx m gamma ->
+  adt_in_mut a m ->
+  @is_sort_adt gamma (typesym_to_sort (adt_name a) srts) =
+    Some (m, a, (adt_name a), srts).
+Proof.
+  intros m_in a_in.
+  unfold is_sort_adt. simpl.
+  assert (@find_ts_in_ctx gamma (adt_name a) = Some (m, a)). {
+    apply (@find_ts_in_ctx_iff sigma); auto.
+  }
+  rewrite H. simpl. 
+  f_equal. f_equal.
+  apply is_sort_cons_sorts_eq.
+Qed.
+
+Lemma scast_rev {A B: Set} (H: A = B) {x y} (Heq: x = scast H y) :
+  y = scast (eq_sym H) x.
+Proof.
+subst. reflexivity.
+Qed.
+
+Lemma typesym_to_sort_inj t1 t2 s1 s2:
+  typesym_to_sort t1 s1 = typesym_to_sort t2 s2 ->
+  t1 = t2 /\ s1 = s2.
+Proof.
+  unfold typesym_to_sort. intros. inversion H; subst.
+  split; auto.
+  apply seq.inj_map in H2; auto.
+  unfold ssrfun.injective. intros.
+  apply sort_inj. auto.
+Qed.
+
+Lemma scast_eq_sym {A B: Set} (Heq: A = B) x:
+  scast (eq_sym Heq) (scast Heq x) = x.
+Proof.
+  subst. reflexivity.
+Qed.
+
+(*Now we prove that this is well_founded. Basically our proof
+  consists of 3 parts:
+  1. Show that the second element of the relation has to be
+  an ADT
+  2. Apply our induction principle from above and do
+  various inversions and to show that the generated variables
+  are equivalent, allowing us to apply the IH
+  3. Apply the IH
+  This requires UIP (and funext from adt_rep_ind)*)
 Lemma adt_smaller_wf: well_founded adt_smaller.
 Proof.
-  unfold well_founded.
-  intros a. destruct a as [[ty Hval] d].
+  unfold well_founded. 
+  intros a. destruct a as [ty d].
   simpl in *.
   destruct (@is_sort_adt gamma (val ty)) eqn : Hisadt.
   (*Can't be None, contradiction*)
   2: {
     constructor. intros.
     inversion H; subst.
-    apply EqdepFacts.eq_sigT_fst in Hx2.
-    apply EqdepFacts.eq_sig_fst in Hx2. subst.
-    clear -Hisadt Hisadt0. exfalso.
-    rewrite Hisadt in Hisadt0. inversion Hisadt0.
+    simpl in Hty2.
+    rewrite Hty2 in Hisadt.
+    rewrite (is_sort_adt_adt _ _ _ m_in a_in2) in Hisadt.
+    inversion Hisadt.
   }
   destruct p as [[[m a] ts] srts].
-  (*Need to do induction on w-type, so we get that*)
-  remember (
-    let adt_spec := (is_sort_adt_spec gamma_valid _ _ _ _ _ Hisadt) in
-    let Hseq := proj1 adt_spec in
-    let a_in := proj1 (proj2 adt_spec) in
-    let m_in :=  proj1 (proj2 (proj2 adt_spec)) in
-    (*cast to adt type*)
-      scast (Semantics.adts pd m srts a a_in) (dom_cast _ Hseq d)
-  ) as adt.*)
+  (*We need to know about the length of the srts list*)
+  destruct (Nat.eq_dec (length srts) (length (m_params m))).
+  2: {
+    constructor. intros. inversion H; subst.
+    simpl in Hty2.
+    rewrite Hty2 in Hisadt.
+    rewrite (is_sort_adt_adt _ _ _ m_in a_in2) in Hisadt.
+    inversion Hisadt; subst.
+    rewrite lengths_eq in n. contradiction.
+  }
+  rename e into Hlen.
+  (*Need an adt_rep to do induction on*)
+  set (adt_spec := (is_sort_adt_spec gamma_valid _ _ _ _ _ Hisadt)).
+  pose proof (proj1 adt_spec) as Hseq.
+  pose proof (proj1 (proj2 adt_spec)) as a_in.
+  pose proof (proj1 (proj2 (proj2 adt_spec))) as m_in.
+  clear adt_spec.
+  remember (scast (Semantics.adts pd m srts a a_in) (dom_cast _ Hseq d)) as adt.
+  revert Heqadt.
+  unfold dom_cast. rewrite scast_scast. intros Hd.
+  apply scast_rev in Hd.
+  generalize dependent ((eq_sym
+  (eq_trans (f_equal domain Hseq) (Semantics.adts pd m srts a a_in)))).
+  intros Heqadt Hd. subst.
+  (*Here, we use induction*)
+  apply (adt_rep_ind m m_in srts Hlen (fun t t_in x =>
+    forall ty1 Heq, val ty1 = typesym_to_sort (adt_name t) srts ->
+    Acc adt_smaller (existT (fun ty0 => domain (val ty0)) ty1 
+      (scast Heq x)))); auto.
+  intros t t_in x c Hc args Hx IH ty1 Heq Hty1.
+  constructor.
+  intros y Hsmall.
+  remember (scast Heq x) as x2. inversion Hsmall. subst.
+  simpl in *. unfold dom_cast in adt1, adt2. simpl in adt1, adt2.
+
+  destruct H as [i [Heqith [Hi Hadt1]]].
+  (*Need to prove lots of equalities before applying the IH. First,
+    a2's name and srts*)
+  assert (adt_name a2 = adt_name t /\ srts0 = srts). {
+    apply typesym_to_sort_inj; rewrite <- Hty2; auto.
+  }
+  destruct H;subst srts0.
+  (*Now prove m equal*)
+  assert (m = m0) by
+    (apply (@mut_adts_inj _ _ gamma_valid) with(a1:=t)(a2:=a2); auto).
+  subst m0.
+  (*Now prove a2 and t equal*)
+  assert (a2 = t) by
+    (apply (adt_names_inj' gamma_valid a_in2); auto).
+  subst t.
+  clear H.
+  (*Now we need to deal with adt1 and adt2*)
+  subst adt1. apply scast_inj in Hadt1.
+  unfold dom_cast in Hadt1.
+  destruct y as [ty2 d2]. simpl in *.
+  symmetry in Hadt1.
+  apply scast_rev in Hadt1. subst.
+  (*From adt2, get info about c*)
+  subst adt2. rewrite !scast_scast in Hadt2.
+  assert (m_in = m_in0) by apply bool_irrelevance.
+  subst m_in0.
+  assert (Hlen = lengths_eq). {
+    clear. generalize dependent (length srts); intros.
+    subst. apply UIP_dec. apply Nat.eq_dec.
+  }
+  subst lengths_eq. 
+  assert (a_in2 = t_in). {
+    apply bool_irrelevance.
+  }
+  subst a_in2.
+  assert (eq_trans Heq
+  (eq_trans (f_equal domain Hty2)
+     (Semantics.adts pd m srts a2 t_in)) = eq_refl). {
+  (*HERE, we need UIP*)
+    clear. apply IndTypes.UIP. }
+  rewrite H in Hadt2. simpl in Hadt2.
+  clear H.
+  (*Now we use injectivity*)
+  destruct (funsym_eq_dec c c0). 2: {
+    exfalso. 
+    apply (constr_rep_disjoint gamma_valid _ _ _ _ _ _ _ _ _ _ n Hadt2).
+  }
+  subst c0.
+  assert (Hc = c_in). apply bool_irrelevance. subst Hc.
+  apply constr_rep_inj in Hadt2. 2: apply all_unif; auto.
+  subst args0.
+  (*Now, we can apply the IH*)
+  specialize (IH _ _ a_in1 Heqith Hi ty2).
+  (*We don't need UIP here if we build a proof term carefully*)
+  set (Hrep := (eq_trans (eq_sym (Semantics.adts pd m srts a1 a_in1))
+  (eq_sym (f_equal domain Hty0)))).
+  specialize (IH Hrep Hty0).
+  match goal with
+  | H: Acc ?y (existT ?g1 ?ty1 ?x1) |- Acc ?y (existT ?g ?ty2 ?x2) =>
+    let Heq := fresh "Heq" in
+    assert (Heq: x1 = x2); [|rewrite <- Heq; auto]
+  end. clear.
+  generalize dependent (val ty2). intros; subst. simpl.
+  subst Hrep. simpl. rewrite scast_eq_sym.
+  reflexivity.
+Qed.
+
+End WellFounded.
 
 End FunDef.
 

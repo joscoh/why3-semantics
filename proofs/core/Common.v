@@ -943,6 +943,13 @@ Proof.
   intros. destruct l; reflexivity.
 Qed.
 
+Lemma ne_list_to_list_nil {A: Set} (l: ne_list A):
+  ne_list_to_list l <> nil.
+Proof.
+  destruct l; simpl; intro C; inversion C.
+Qed.
+
+
 Lemma ne_list_to_list_cons: forall {A: Set} (x: A) (l: ne_list A),
   ne_list_to_list (ne_cons x l) = x :: ne_list_to_list l.
 Proof.
@@ -969,6 +976,17 @@ Proof.
     specialize (IHl isT).
     destruct (ne_list_to_list l). inversion IHl.
     f_equal. apply IHl.
+Qed.
+
+Lemma ne_list_list_inj {A: Set} {l1 l2: ne_list A}:
+  ne_list_to_list l1 = ne_list_to_list l2 ->
+  l1 = l2.
+Proof.
+  revert l2. induction l1; simpl; intros;
+  destruct l2; inversion H; subst; auto.
+  - exfalso; apply (ne_list_to_list_nil l2); auto.
+  - exfalso; apply (ne_list_to_list_nil l1); auto.
+  - f_equal. apply IHl1; auto.
 Qed.
 
 Fixpoint in_bool_ne {A: Set} (eq_dec: forall (x y: A), {x = y} + {x <> y})
