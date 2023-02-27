@@ -255,6 +255,90 @@ Proof.
   inversion H0; subst. apply IHa.
 Defined.
 
+Variable i_test: nat.
+
+Inductive arg_list_rel {A: Type} : list (list A) -> list (list A) -> Prop :=
+  |  ALR_constr: forall x1 x2,
+    list_rel (nth i_test x1 nil) (nth i_test x2 nil) ->
+    arg_list_rel x1 x2.
+
+(*temp*)
+Lemma firstn_skipn_nth {A: Type} (n: nat) (l: list A) (d: A):
+  n < length l ->
+  l = firstn n l ++ (nth n l d) :: skipn (S n) l.
+Proof.
+  revert n. induction l; simpl; intros.
+  - inversion H.
+  - destruct n; auto.
+    simpl firstn. rewrite <- app_comm_cons.
+    f_equal. apply IHl. lia.
+Qed. 
+
+Set Bullet Behavior "Strict Subproofs".
+
+Lemma arg_list_rel_wf: forall A, well_founded (@arg_list_rel A).
+Proof.
+  intros. unfold well_founded. intros a.
+  (*let's try: see if i_test is in bounds*)
+  assert (i_test < length a \/ (length a <= i_test)) by lia.
+  destruct H.
+  2: {
+    constructor. intros. inversion H0; subst.
+    rewrite !(nth_overflow a) in H1; auto.
+    inversion H1; subst. inversion H2.
+  }
+  assert (a = firstn i_test a ++ (nth i_test a nil) :: skipn (S i_test) a). {
+    apply firstn_skipn_nth. auto.
+  }
+  assert (length (firstn i_test a) = i_test). {
+    rewrite firstn_length_le; auto. lia. }
+  generalize dependent (skipn (S i_test) a).
+  generalize dependent (firstn i_test a).
+  remember (nth i_test a nil) as l'.
+  generalize dependent a.
+  induction l'; simpl; intros.
+  - constructor. intros. inversion H2; subst.
+    rewrite app_nth2 in H3; try lia. 
+    rewrite H1 in H3. rewrite Nat.sub_diag in H3.
+    simpl in H3.
+    (*Get contradiction bc at bottom of list rel*)
+    inversion H3; subst. inversion H0.
+  - constructor. intros.
+    (*First, length*)
+    assert (i_test < length y \/ (length y <= i_test)) by lia.
+    destruct H3.
+    2: {
+      constructor. intros. inversion H4; subst.
+      rewrite !(nth_overflow y) in H5; auto.
+      inversion H5; subst. inversion H0.
+    } 
+    rename H3 into Hy.
+      constructor.
+    inversion H2; subst. clear H2.
+    rewrite app_nth2 in H3; try lia.
+    rewrite H1 in H3. rewrite Nat.sub_diag in H3.
+    simpl in H3.
+    (*Idea: invert list_rel to get info about y*)
+    (*Not great, not using well-founded from before*) 
+    inversion H3; subst.
+    inversion H0; subst.
+    (*Need something about the lengths*)
+    eapply IHl'. auto.
+    reflexivity.
+    2: apply firstn_skipn_nth.
+    rewrite firstn_length_le; auto. lia. auto.
+Qed.
+(*Hmm, so we didn't need that proof at all; we used
+  properties of lists instead*)
+(*Next: try this with real arg_lists (for funsym)
+  main difference: have invariants encoded+have different
+  values of i_test per funsym (but fixed)
+  Basically will try to do same thing: say, for any arg_list f,
+  if (f_idx f) th one is x, then true - do induction on x
+  (generalize f as well, so holds for any f in fs)
+  I think that this basic idea should work
+  *)
+
 (*OK, how about mutual recursive type*)
 Unset Elimination Schemes.
 Inductive rosetree {A: Type} : Type :=
@@ -287,7 +371,7 @@ Inductive rose_rel {A: Type} : Either (@rosetree A) (@roselist A) ->
     rl1 = RL_cons x rl2 ->
     rose_rel (Right _ _ rl2) (Right _ _ rl1).
 
-Set Bullet Behavior "Strict Subproofs".
+
 
 Definition prop_either {A B: Type} (P: A -> Prop) (P1: B -> Prop):
   Either A B -> Prop :=
