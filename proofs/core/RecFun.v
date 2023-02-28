@@ -15,9 +15,11 @@ Require Import Coq.Logic.Eqdep_dec.
   consisting of the name, arguments, index of the argument that
   is decreasing, and body*)
 Record fn := mk_fn {fn_name: funsym; fn_args: list vsymbol;
-  fn_idx : nat; fn_idx_in: fn_idx <? length fn_args}.
+  fn_idx : nat; fn_idx_in: fn_idx <? length fn_args;
+  fn_args_len: length fn_args =? length (s_args fn_name)}.
 Record pn := mk_pn {pn_name: predsym; pn_args: list vsymbol;
-  pn_idx: nat; pn_idx_in: pn_idx <? length pn_args}.
+  pn_idx: nat; pn_idx_in: pn_idx <? length pn_args;
+  pn_args_len: length pn_args =? length (p_args pn_name)}.
 
 (*TODO: combine with [predsym_in]*)
 Fixpoint funsym_in_tm (f: funsym) (t: term) : bool :=
@@ -235,111 +237,14 @@ Notation val x :=  (v_subst (v_typevar vt) x).
 
 (*This is the "inner" function, assuming we already have the argument
   that is recursive*)
-(*Require Import Denotational.*)
-
 
 (*TODO: where do we need the bodies?*)
 Variable (fs: list fn) (ps: list pn).
 
-(*Let's try this at first*)
-Inductive list_rel {A: Type} : list A -> list A -> Prop :=
-  | LR_constr: forall x t l,
-    l = x :: t ->
-    list_rel t l.
-
-Lemma list_rel_wf: forall A, well_founded (@list_rel A).
-Proof.
-  intros. unfold well_founded. intros. induction a; simpl.
-  constructor. intros. inversion H; subst. inversion H0.
-  constructor. intros. inversion H; subst.
-  inversion H0; subst. apply IHa.
-Defined.
-
-Variable i_test: nat.
-
-Inductive arg_list_rel {A: Type} : list (list A) -> list (list A) -> Prop :=
-  |  ALR_constr: forall x1 x2,
-    list_rel (nth i_test x1 nil) (nth i_test x2 nil) ->
-    arg_list_rel x1 x2.
-
-(*temp*)
-Lemma firstn_skipn_nth {A: Type} (n: nat) (l: list A) (d: A):
-  n < length l ->
-  l = firstn n l ++ (nth n l d) :: skipn (S n) l.
-Proof.
-  revert n. induction l; simpl; intros.
-  - inversion H.
-  - destruct n; auto.
-    simpl firstn. rewrite <- app_comm_cons.
-    f_equal. apply IHl. lia.
-Qed. 
-
 Set Bullet Behavior "Strict Subproofs".
 
-Lemma arg_list_rel_wf: forall A, well_founded (@arg_list_rel A).
-Proof.
-  intros. unfold well_founded. intros a.
-  (*let's try: see if i_test is in bounds*)
-  assert (i_test < length a \/ (length a <= i_test)) by lia.
-  destruct H.
-  2: {
-    constructor. intros. inversion H0; subst.
-    rewrite !(nth_overflow a) in H1; auto.
-    inversion H1; subst. inversion H2.
-  }
-  assert (a = firstn i_test a ++ (nth i_test a nil) :: skipn (S i_test) a). {
-    apply firstn_skipn_nth. auto.
-  }
-  assert (length (firstn i_test a) = i_test). {
-    rewrite firstn_length_le; auto. lia. }
-  generalize dependent (skipn (S i_test) a).
-  generalize dependent (firstn i_test a).
-  remember (nth i_test a nil) as l'.
-  generalize dependent a.
-  induction l'; simpl; intros.
-  - constructor. intros. inversion H2; subst.
-    rewrite app_nth2 in H3; try lia. 
-    rewrite H1 in H3. rewrite Nat.sub_diag in H3.
-    simpl in H3.
-    (*Get contradiction bc at bottom of list rel*)
-    inversion H3; subst. inversion H0.
-  - constructor. intros.
-    (*First, length*)
-    assert (i_test < length y \/ (length y <= i_test)) by lia.
-    destruct H3.
-    2: {
-      constructor. intros. inversion H4; subst.
-      rewrite !(nth_overflow y) in H5; auto.
-      inversion H5; subst. inversion H0.
-    } 
-    rename H3 into Hy.
-      constructor.
-    inversion H2; subst. clear H2.
-    rewrite app_nth2 in H3; try lia.
-    rewrite H1 in H3. rewrite Nat.sub_diag in H3.
-    simpl in H3.
-    (*Idea: invert list_rel to get info about y*)
-    (*Not great, not using well-founded from before*) 
-    inversion H3; subst.
-    inversion H0; subst.
-    (*Need something about the lengths*)
-    eapply IHl'. auto.
-    reflexivity.
-    2: apply firstn_skipn_nth.
-    rewrite firstn_length_le; auto. lia. auto.
-Qed.
-(*Hmm, so we didn't need that proof at all; we used
-  properties of lists instead*)
-(*Next: try this with real arg_lists (for funsym)
-  main difference: have invariants encoded+have different
-  values of i_test per funsym (but fixed)
-  Basically will try to do same thing: say, for any arg_list f,
-  if (f_idx f) th one is x, then true - do induction on x
-  (generalize f as well, so holds for any f in fs)
-  I think that this basic idea should work
-  *)
-
 (*OK, how about mutual recursive type*)
+(*TODO: remove this once we have function, this is just for testing*)
 Unset Elimination Schemes.
 Inductive rosetree {A: Type} : Type :=
   | Leaf: A -> rosetree
@@ -511,95 +416,6 @@ Defined.
 Next Obligation.
   eapply RR_constr3'. reflexivity.
 Defined.
-
-(*OK, so now I want to try a non-terminating function
-  using my approach, and see where it goes wrong*)
-
-(*Idea: function on two lists, pattern match on both*)
-(*
-Fixpoint foo {A: Type} (l1 l2: list A)  : list A :=
-  match l1, l2 with
-  | x1 :: t1, x2 :: t2 => foo t1 (x1 :: x2 :: t2)
-  | _, x2 :: t2 => foo [x2] t2
-  | _, _ => nil
-  
-  end.
-*)
-
-(*Now we will define a well-founded relation on
-  pairs of lists*)
-(*Is this well-founded?*)
-Definition pairlist_rel : 
-  (bool * (list nat * list nat)) -> (bool * (list nat * list nat)) -> Prop :=
-  fun x1 x2 =>
-    match x1, x2 with
-    | (b1, (l11, l12)), (b2, (l21, l22)) =>
-    list_rel (if b1 then l11 else l12) (if b2 then l21 else l22)
-    end.
-
-(*
-Lemma pairlist_rel_wf: well_founded pairlist_rel.
-
-Good, we can't prove this - but what should we do?
-  Key idea: every invocation of the SAME function must use the same
-  index.
-
-  For non mutual - we have a single index, look at
-  arg_lists, compare this single (fixed) index.
-  This should be prvable: example 
-*)
-Definition pairlist_fstrel: (bool * (list nat * list nat)) ->
-  (bool * (list nat * list nat)) -> Prop :=
-  fun x1 x2 =>
-  match x1, x2 with
-    | (b1, (l11, l12)), (b2, (l21, l22)) =>
-    if b1 && b2 then list_rel l11 l21 else False
-  end.
-
-Lemma pairlist_rel_wf: well_founded pairlist_fstrel.
-Proof.
-  unfold well_founded. intros.
-  destruct a as [b [l1 l2]].
-  revert l2.
-  (*Key: Only need to generalize/do induction on l1*)
-  induction l1; simpl.
-  - constructor. intros. unfold pairlist_fstrel in H.
-    destruct y; destruct p. destruct b0; destruct b; inversion H.
-    inversion H0.
-  - constructor. intros. unfold pairlist_fstrel in H.
-    destruct y; destruct p. destruct b0; destruct b; inversion H.
-    subst. inversion H0; subst.
-    apply IHl1.
-Qed.
-
-(*For the mutual case, we will need a different index
-  for each function*)
-(*How can we prove that this is WF? I guess our relation is
-  something like:
-  {f: funsym & funsym_sigma_args sigma f}
-  or so, then internally we use the index
-  How can we model this here?
-  *) 
-
-(*I think - do single first, then worry about mutual when we
-  see what we need - should be OK*)
-
-(*TODO: first, we will do this for the non-mutual case with
-  just a single function. Then, we will add mutual recursion*)
-
-(*Let's define the relation*)
-
-
-(*TODO: see if we need*)
-Lemma val_sorts_eq (srts: list sort):
-  map (v_subst (v_typevar vt)) (map sort_to_ty srts) = srts.
-Proof.
-  apply list_eq_ext'; rewrite !map_length; auto.
-  intros.
-  rewrite map_nth_inbound with(d2:=vty_int). 2: rewrite map_length; lia.
-  rewrite map_nth_inbound with(d2:=d); auto.
-  symmetry. apply subst_sort_eq.
-Qed.
 
 (*Induction for ADTS*)
 Section Induction.
@@ -1640,7 +1456,138 @@ Proof.
   reflexivity.
 Qed.
 
+(*Now, transitive closure*)
+Inductive R_trans {A: Type} (R: A -> A -> Prop) : A -> A -> Prop :=
+  | Rtrans_once: forall x y,
+    R x y ->
+    R_trans R x y
+  | Rtrans_multi: forall x y z,
+    R_trans R x y ->
+    R y z ->
+    R_trans R x z.
+
+(*Proof of transitive closure wf from 
+  [https://madiot.fr/pso/tp6.html]*)
+Lemma Acc_inv {A : Type} (R : A -> A -> Prop) x y: 
+  R x y -> Acc R y -> Acc R x.
+Proof.
+  intros. apply H0. auto.
+Qed.
+
+Lemma Acc_trans {A : Type} (R : A -> A -> Prop) :
+  forall x, Acc R x -> Acc (R_trans R) x.
+Proof.
+  intros. induction H.
+  constructor. intros.
+  inversion H1; subst.
+  - apply H0; auto.
+  - eapply Acc_inv. apply H2. apply H0. auto.
+Qed.
+
+Lemma R_trans_wf {A: Type} (R: A -> A -> Prop):
+  well_founded R ->
+  well_founded (R_trans R).
+Proof.
+  intros Hr.
+  unfold well_founded.
+  intros. apply Acc_trans. apply Hr.
+Qed.
+
+(*The transitive closure of [adt_smaller]*)
+Definition adt_smaller_trans := R_trans adt_smaller.
+Definition adt_smaller_trans_wf := R_trans_wf adt_smaller adt_smaller_wf.
+
+(*Part 2: lift to [arg_list]*)
+
+(*TODO: do version with predsyms also*)
+
+Variable srts: list sort.
+
+Definition hide_ty {ty: vty} (d: domain (val ty)) :
+  {x: vty & domain (val x)} := existT _ ty d.
+
+(*Lemma for casting*)
+Lemma arg_nth_eq (f: funsym) (i: nat) (Hi: i < length (s_args f)) :
+  nth i (funsym_sigma_args f srts) s_int =
+  val (ty_subst (s_params f) (sorts_to_tys srts)
+    (nth i (s_args f) vty_int)).
+Proof.
+  assert ((ty_subst (s_params f) (sorts_to_tys srts) (nth i (s_args f) vty_int)) =
+  (ty_subst_s (s_params f) srts (nth i (s_args f) vty_int))). {
+    unfold ty_subst_s, ty_subst, v_subst. simpl. reflexivity. }
+  rewrite H. clear H.
+  unfold funsym_sigma_args, ty_subst_list_s.
+  rewrite map_nth_inbound with(d2:=vty_int); auto.
+  apply subst_sort_eq.
+Qed.
+
+Lemma fn_idx_bound (f: fn) : fn_idx f < length (s_args (fn_name f)).
+Proof.
+  destruct f; simpl in *.
+  apply Nat.eqb_eq in fn_args_len0. rewrite <- fn_args_len0.
+  apply Nat.ltb_lt. apply fn_idx_in0.
+Qed.
+
+Definition cast_funargs {f1 f2: funsym} (H: f1 = f2) :
+  funsym_sigma_args f1 srts = funsym_sigma_args f2 srts :=
+  fun_args_eq_dep _ _ srts (f_equal funsym_sigma_args H).
+
+(*The relation is simple: the (fn_idx)th element of the 1st
+  arg_list must be smaller than the second*)
+Inductive arg_list_smaller: 
+  {x: {f: fn | In f fs} & arg_list domain (funsym_sigma_args (fn_name (proj1_sig x)) srts)} ->
+  {x: {f: fn | In f fs} & arg_list domain (funsym_sigma_args (fn_name (proj1_sig x)) srts)} ->
+  Prop :=
+  | AL_small: forall 
+    (x1: {x: {f: fn | In f fs} & arg_list domain (funsym_sigma_args (fn_name (proj1_sig x)) srts)}) 
+    (x2: {x: {f: fn | In f fs} & arg_list domain (funsym_sigma_args (fn_name (proj1_sig x)) srts)})
+    (f1 f2: fn) 
+    (a1: arg_list domain (funsym_sigma_args (fn_name f1) srts)) 
+    (a2: arg_list domain (funsym_sigma_args (fn_name f2) srts))
+    (Hf1: f1 = proj1_sig (projT1 x1))
+    (Hf2: f2 = proj1_sig (projT1 x2))
+    (Ha1: a1 = cast_arg_list (cast_funargs (eq_sym (f_equal fn_name Hf1))) 
+      (projT2 x1))
+    (Ha2: a2 = cast_arg_list (cast_funargs (eq_sym (f_equal fn_name Hf2))) 
+      (projT2 x2)),
+    adt_smaller_trans 
+      (hide_ty (dom_cast _ (arg_nth_eq (fn_name f1) (fn_idx f1) (fn_idx_bound f1)) 
+        (hnth (fn_idx f1) a1 s_int (dom_int pd))))
+      (hide_ty (dom_cast _ (arg_nth_eq (fn_name f2) (fn_idx f2) (fn_idx_bound f2)) 
+        (hnth (fn_idx f2) a2 s_int (dom_int pd)))) ->
+    arg_list_smaller x1 x2.
+
+(*Now we prove that this is well-founded using
+  well-founded induction on [adt_smaller_trans].
+  This proof is actually very easy*)
+Lemma arg_list_smaller_wf: well_founded arg_list_smaller.
+Proof.
+  unfold well_founded. intros a.
+  (*Now we get y to induct on*)
+  set (a2 := projT2 a).
+  set (f2:= proj1_sig (projT1 a)).
+  remember ((hide_ty (dom_cast _ (arg_nth_eq (fn_name f2) (fn_idx f2) (fn_idx_bound f2)) 
+  (hnth (fn_idx f2) a2 s_int (dom_int pd))))) as y.
+  subst a2 f2.
+  generalize dependent a. revert y.
+  (*Apply IH*)
+  match goal with
+  | |- forall y, ?P => apply (well_founded_ind (adt_smaller_trans_wf)
+    (fun y => P)) end. 
+  (*Rest is direct from IH and inversion on rel*)
+  intros x IH a2 Hx.
+  constructor.
+  intros a1 Hsmall.
+  inversion Hsmall; subst.
+  eapply IH.
+  apply H. reflexivity.
+Qed.
+
+(*TODO: don't think we need the transitive closure of this, but see*)
+
 End WellFounded.
+
+(*TODO: with well-founded relation, start function*)
 
 End FunDef.
 
