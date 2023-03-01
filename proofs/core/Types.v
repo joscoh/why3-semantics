@@ -510,3 +510,44 @@ Proof.
     }
     specialize (H _ Hin Hsort). inversion H. reflexivity.
 Qed. 
+
+Lemma v_subst_ext (v1 v2: typevar -> sort) ty:
+  (forall x, In x (type_vars ty) -> v1 x = v2 x) ->
+  v_subst v1 ty = v_subst v2 ty.
+Proof.
+  intros. apply sort_inj. simpl. 
+  induction ty; simpl; auto.
+  rewrite H; simpl; auto.
+  f_equal. simpl in H. induction vs; simpl in *; auto.
+  inversion H0; subst.
+  f_equal.
+  - apply H3. intros; apply H. simpl_set; triv.
+  - apply IHvs; auto. intros. apply H; simpl_set; auto.
+Qed.
+
+(*Suppose we have a list of params and a list of srts such that
+  for all i, v(nth i params) = nth i srts. Suppose that all
+  type variables in ty are in params.
+  Then v_subst v ty = ty_subst_list params srts ty*)
+Lemma v_ty_subst_eq (params: list typevar) (srts: list sort)
+  (v: typevar -> sort) ty
+  (Hnodup: NoDup params)
+  (Hlen: length srts = length params):
+  (forall i, (i < length params)%coq_nat -> 
+    v (List.nth i params EmptyString) = List.nth i srts s_int) ->
+  (forall x, In x (type_vars ty) -> In x params) ->
+  v_subst v ty = ty_subst_s params srts ty.
+Proof.
+  intros.
+  unfold ty_subst_s.
+  apply v_subst_ext.
+  intros.
+  apply H0 in H1.
+  destruct (In_nth _ _ EmptyString H1) as [i [Hi Hx]]; subst.
+  rewrite H; auto.
+  apply sort_inj. simpl. rewrite (ty_subst_fun_nth _ _ _ _ _ s_int); auto.
+  - unfold sorts_to_tys.
+    rewrite -> map_nth_inbound with(d2:=s_int); auto.
+    rewrite Hlen; auto.
+  - unfold sorts_to_tys. rewrite map_length. auto.
+Qed.

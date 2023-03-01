@@ -212,7 +212,6 @@ Qed.
 
 End Union.
 
-
 Lemma map_union {A B: Type} 
   (eq_dec1: forall (x y: A), {x=y} + {x<>y})
   (eq_dec2: forall (x y: B), {x=y} + {x<>y}) 
@@ -235,7 +234,31 @@ Proof.
     subst; contradiction.
 Qed.
 
+(*Intersection*)
+Section Intersect.
 
+Context {A: Type}.
+Variable eq_dec: forall (x y : A), {x = y} + {x <> y}.
+
+Definition intersect (l1 l2: list A) : list A :=
+  filter (fun x => in_dec eq_dec x l2) l1.
+
+Lemma intersect_elts (l1 l2: list A) (x: A):
+  In x (intersect l1 l2) <-> In x l1 /\ In x l2.
+Proof.
+  unfold intersect. rewrite filter_In.
+  apply and_iff_compat_l. destruct (in_dec eq_dec x l2); simpl; 
+  split; intros; auto. inversion H.
+Qed.
+
+Lemma intersect_nodup (l1 l2: list A) (x: A):
+  NoDup l1 ->
+  NoDup (intersect l1 l2).
+Proof.
+  intros. unfold intersect. apply NoDup_filter. auto.
+Qed.
+
+End Intersect.
 
 Definition sublist {A: Type} (l1 l2: list A) : Prop :=
     forall x, In x l1 -> In x l2.

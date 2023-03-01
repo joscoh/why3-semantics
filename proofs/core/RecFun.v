@@ -15,10 +15,10 @@ Require Import Coq.Logic.Eqdep_dec.
   consisting of the name, arguments, index of the argument that
   is decreasing, and body*)
 Record fn := mk_fn {fn_name: funsym; fn_args: list vsymbol;
-  fn_idx : nat; fn_idx_in: fn_idx <? length fn_args;
+  fn_idx : nat; fn_body: term; fn_idx_in: fn_idx <? length fn_args;
   fn_args_len: length fn_args =? length (s_args fn_name)}.
 Record pn := mk_pn {pn_name: predsym; pn_args: list vsymbol;
-  pn_idx: nat; pn_idx_in: pn_idx <? length pn_args;
+  pn_idx: nat; pn_body: formula; pn_idx_in: pn_idx <? length pn_args;
   pn_args_len: length pn_args =? length (p_args pn_name)}.
 
 (*TODO: combine with [predsym_in]*)
@@ -73,6 +73,24 @@ Fixpoint testpred {A: Type} (l1 l2: list A) : Prop :=
     | _ :: t => testpred t x
     end.
 
+Print pattern.
+
+(*TODO: move maybe*)
+(*All variables from a pattern that are strictly "smaller" than
+  the matched value*)
+Fixpoint pat_constr_vars (p: pattern) : list vsymbol :=
+  match p with
+  | Pconstr c tys ps =>
+    (*Once we bind in a constructor, all vars are smaller*) 
+    big_union vsymbol_eq_dec pat_fv ps
+  | Por p1 p2 => 
+    (*Those smaller in both patterns are smaller*)
+    intersect vsymbol_eq_dec (pat_constr_vars p1) (pat_constr_vars p2)
+  | Pbind p _ => pat_constr_vars p
+  (*Vars are not smaller unless we are already in a constructor*)
+  | _ => nil
+  end.
+
 (*PROBLEM! My syntax is not correct - functions and predicates
   can be recursive together - so we need something like:
   list (Either fn pn)
@@ -111,7 +129,11 @@ Inductive decrease_fun (fs: list fn) (ps: list pn) :
     (*TODO: can we only match on a variable?*)
     mvar = hd \/ In mvar small ->
     (*TODO: don't allow repeated matches on same variable*)
-    Forall (fun x => decrease_fun fs ps (pat_fv (fst x) ++ small) mvar (snd x)) pats ->
+    Forall (fun x => decrease_fun fs ps 
+      (*remove pat_fv's (bound), add back constr vars (smaller)*)
+      (union vsymbol_eq_dec (pat_constr_vars (fst x)) 
+        (remove_all vsymbol_eq_dec (pat_fv (fst x)) 
+        small)) mvar (snd x)) pats ->
     decrease_fun fs ps small hd (Tmatch (Tvar mvar) v pats) 
   (*Other pattern match is recursive case*)
   | Dec_tmatch_rec: forall (small: list vsymbol) (hd: vsymbol)
@@ -128,7 +150,8 @@ Inductive decrease_fun (fs: list fn) (ps: list pn) :
   | Dec_tlet: forall (small: list vsymbol) (hd: vsymbol) (t1: term)
     (v: vsymbol) (t2: term),
     decrease_fun fs ps small hd t1 ->
-    decrease_fun fs ps small hd t2 ->
+    (*v is bound, so it is no longer smaller in t2*)
+    decrease_fun fs ps (remove vsymbol_eq_dec v small) hd t2 ->
     decrease_fun fs ps small hd (Tlet t1 v t2)
   | Dec_tif: forall (small: list vsymbol) (hd: vsymbol) (f1: formula)
     (t1 t2: term),
@@ -138,7 +161,7 @@ Inductive decrease_fun (fs: list fn) (ps: list pn) :
     decrease_fun fs ps small hd (Tif f1 t1 t2)
   | Dec_eps: forall (small: list vsymbol) (hd: vsymbol) (f: formula)
     (v: vsymbol),
-    decrease_pred fs ps small hd f ->
+    decrease_pred fs ps (remove vsymbol_eq_dec v small) hd f ->
     decrease_fun fs ps small hd (Teps f v)
 (*This is very similar*)
 with decrease_pred (fs: list fn) (ps: list pn) : 
@@ -169,7 +192,11 @@ with decrease_pred (fs: list fn) (ps: list pn) :
     (*TODO: can we only match on a variable?*)
     mvar = hd \/ In mvar small ->
     (*TODO: don't allow repeated matches on same variable*)
-    Forall (fun x => decrease_pred fs ps (pat_fv (fst x) ++ small) mvar (snd x)) pats ->
+    Forall (fun x => decrease_pred fs ps 
+     (*remove pat_fv's (bound), add back constr vars (smaller)*)
+     (union vsymbol_eq_dec (pat_constr_vars (fst x)) 
+     (remove_all vsymbol_eq_dec (pat_fv (fst x)) 
+     small)) mvar (snd x)) pats ->
     decrease_pred fs ps small hd (Fmatch (Tvar mvar) v pats) 
   (*Other pattern match is recursive case*)
   | Dec_fmatch_rec: forall (small: list vsymbol) (hd: vsymbol)
@@ -185,7 +212,7 @@ with decrease_pred (fs: list fn) (ps: list pn) :
   (*Recursive cases: quantifier, eq, binop, let, if*)
   | Dec_quant: forall (small: list vsymbol) (hd: vsymbol)
     (q: quant) (v: vsymbol) (f: formula),
-    decrease_pred fs ps small hd f ->
+    decrease_pred fs ps (remove vsymbol_eq_dec v small) hd f ->
     decrease_pred fs ps small hd (Fquant q v f)
   | Dec_eq: forall (small: list vsymbol) (hd: vsymbol)
     (ty: vty) (t1 t2: term),
@@ -200,7 +227,7 @@ with decrease_pred (fs: list fn) (ps: list pn) :
   | Dec_flet: forall (small: list vsymbol) (hd: vsymbol) (t1: term)
     (v: vsymbol) (f: formula),
     decrease_fun fs ps small hd t1 ->
-    decrease_pred fs ps small hd f ->
+    decrease_pred fs ps (remove vsymbol_eq_dec v small) hd f ->
     decrease_pred fs ps small hd (Flet t1 v f)
   | Dec_fif: forall (small: list vsymbol) (hd: vsymbol) 
     (f1 f2 f3: formula),
@@ -1583,11 +1610,268 @@ Proof.
   apply H. reflexivity.
 Qed.
 
+Check arg_list_smaller.
+Check funsym_sigma_ret.
+Check funs.
 (*TODO: don't think we need the transitive closure of this, but see*)
 
+(*TODO: move srts*)
+(*
 End WellFounded.
+*)
 
-(*TODO: with well-founded relation, start function*)
+Lemma wf_telescope_lemma {A B: Type} (R: A -> A -> Prop)
+  (R_wf: well_founded R):
+  WellFounded (Telescopes.tele_measure
+    (Telescopes.ext A (fun (_ : A) =>
+      Telescopes.tip B))
+    A
+    (fun (x: A) (_: B) => x) R).
+Proof.
+  unfold WellFounded. unfold Telescopes.tele_measure, 
+    Telescopes.tele_sigma, Telescopes.tele_MR.
+
+  assert (forall (a: Init.sigma (fun _ : A => B)), Acc R (pr1 a) ->
+    Acc (fun x y : Init.sigma (fun _ : A => B) => R (pr1 x) (pr1 y)) a). {
+    intros. destruct a. simpl in *. generalize dependent pr2.
+    induction H.
+    intros. constructor. intros.
+    apply H0. apply H1.
+  }
+  unfold well_founded. intros.
+  apply H. apply R_wf.
+Qed.
+
+Instance arg_list_smaller_wf':
+WellFounded
+        (Telescopes.tele_measure
+           (Telescopes.ext
+              {x : {f : fn | In f fs} &
+              arg_list domain
+                (funsym_sigma_args (fn_name (proj1_sig x)) srts)}
+              (fun
+                 _ : {x : {f : fn | In f fs} &
+                     arg_list domain
+                       (funsym_sigma_args (fn_name (proj1_sig x)) srts)} =>
+               Telescopes.tip (val_vars pd vt)))
+               {x : {f : fn | In f fs} &
+               arg_list domain
+                 (funsym_sigma_args (fn_name (proj1_sig x)) srts)}
+           (fun
+              (fa : {x : {f : fn | In f fs} &
+                    arg_list domain
+                      (funsym_sigma_args (fn_name (proj1_sig x)) srts)})
+              (_ : val_vars pd vt) => fa) arg_list_smaller).
+Proof.
+  apply wf_telescope_lemma.
+  apply arg_list_smaller_wf.
+Defined.
+
+
+(*TODO: move*)
+(*We can make this opaque: we don't actually need
+  to compute with this (TODO: should this be Defined?)*)
+Definition find_fn (f: funsym) (l: list fn) : 
+Either
+  {f': fn | In f' l /\ f = fn_name f'}
+  (~ In f (map fn_name l)).
+induction l; simpl.
+- apply Right. auto.
+- destruct IHl.
+  + destruct s as [f' [Hinf' Hf]]; subst.
+    apply Left. apply (exist _ f'). split; auto.
+  + destruct (funsym_eq_dec (fn_name a) f).
+    * subst. apply Left. apply (exist _ a). split; auto.
+    * apply Right. intros [Heq | Hin]; subst; auto.
+Qed.
+
+  (*unfold WellFounded.
+  Print WellFounded.
+  Print Telescopes.tele_measure.
+  unfold Telescopes.tele_measure.
+  apply arg_list_smaller_wf.
+
+
+
+
+WellFounded
+(Telescopes.tele_measure (Telescopes.tip {x : {f : fn | In f fs} &
+arg_list domain (funsym_sigma_args (fn_name (proj1_sig x)) srts)})
+   ({x : {f : fn | In f fs} &
+   arg_list domain (funsym_sigma_args (fn_name (proj1_sig x)) srts)}) 
+   (fun o : {x : {f : fn | In f fs} &
+   arg_list domain (funsym_sigma_args (fn_name (proj1_sig x)) srts)} => o)
+   arg_list_smaller).
+Proof.
+  unfold WellFounded. apply arg_list_smaller_wf.
+Defined. 
+*)
+
+Check get_arg_list.
+
+(*TODO: write this, just use [get_arg_list] I think (or maybe not,
+  maybe need to prove eq)*)
+(*Extended*)
+
+Definition get_arg_list_ext {v : val_vars pd vt} {y d} (f: funsym)
+  (vs: list vty) (ts: list term):
+  (forall (t: term) (ty: vty) (small: list vsymbol)
+    (Hty: term_has_type sigma t ty)
+    (Hdec: decrease_fun fs nil small y t)
+    (Hsmall: forall x, In x small ->
+        (*TODO: type restriction here?*)
+        adt_smaller_trans (hide_ty (v x)) d),
+    domain (val ty)) ->
+  (exists x, term_has_type sigma (Tfun f vs ts) x) ->
+  arg_list domain (funsym_sigma_args f (map (fun x => val x) vs)).
+Admitted.
+
+
+
+(*Idea should be:
+  suppose have params and srts with length params = length srts
+
+  Suppose that vt matches params to appropriate srts
+
+  let ty be a vty and suppose that all typevars in vty are in 
+  params. Then val vt ty = ty_subst_s params srts ty
+
+  (*NOTE: showed this in [v_ty_subst_eq]*)
+
+  then, if we know that each of vs has type corresponding to
+  s_args f, and that all typevars must be in s_params,
+  we get that (map (val vt) vs = funsym_sigma_args srts)
+  or something
+  (*TODO: this*)
+
+*)
+
+(*TODO: we need to require that all function applications
+  are uniform: we cannot have:
+  let rec foo (n: nat) (x: 'a) (y: 'b) : int =
+    match n with
+    | O => 1
+    | S n' => 1 + foo n' y x
+    end
+  why3 DOES allow this
+  *)
+
+(*NOTE: we ALSO need val_typevar because
+  all typevars should get assigned srts
+  Then, we need to prove that (under some well-typed, valid
+    context assumptions)
+  *)
+Equations funcs_rep_aux 
+  (*The function symbol and arg list*)
+  (fa: {x : {f : fn | In f fs} &
+  arg_list domain (funsym_sigma_args (fn_name (proj1_sig x)) srts)})
+  (v: val_vars pd vt) :
+  domain (funsym_sigma_ret (fn_name (proj1_sig (projT1 fa))) srts) 
+  by wf fa arg_list_smaller :=
+  funcs_rep_aux fa v := 
+  let f1 := proj1_sig (projT1 fa) in
+  let a1 := projT2 fa in
+  (*d is the ADT instance we must be smaller than to recurse*)
+  let d := (hide_ty (dom_cast _ 
+    (arg_nth_eq (fn_name f1) (fn_idx f1) (fn_idx_bound f1)) 
+    (hnth (fn_idx f1) a1 s_int (dom_int pd)))) in
+  (*y is the vsymbol we must be syntactically decreasing on*)
+  let y := nth (fn_idx f1) (fn_args f1) vs_d in
+  
+    let fix term_rep_aux (v: val_vars pd vt) (t: term) (ty: vty) (small: list vsymbol)
+      (Hty: term_has_type sigma t ty)
+      (Hdec: decrease_fun fs nil small y t)
+      (*All variables in small list correspond to
+        values in the valuation which are actually smaller than d*)
+      (Hsmall: forall x, In x small ->
+        (*TODO: type restriction here?*)
+        adt_smaller_trans (hide_ty (v x)) d) :
+      domain (val ty) :=
+      match t as tm return term_has_type sigma tm ty ->
+        decrease_fun fs nil small y tm -> 
+        domain (val ty) with
+      (*Some cases are identical to [term_rep]*)
+      | Tconst (ConstInt z) => fun Hty' _ =>
+        let Htyeq : vty_int = ty :=
+          eq_sym (ty_constint_inv Hty') in
+    
+        cast_dom_vty pd Htyeq z 
+      | Tvar x => fun Hty' _ =>
+        let Heq : ty = snd x := ty_var_inv Hty' in
+        (dom_cast _ (f_equal (fun x => val x) (eq_sym Heq)) (var_to_dom _ vt v x))
+      (*The function case is one of the 2 interesting cases*)
+      | Tfun f vs ts => fun Hty' =>
+
+        (*Some proof we need; we give types for clarity*)
+        let Htyeq : ty_subst (s_params f) vs (s_ret f) = ty :=
+          eq_sym (ty_fun_ind_ret Hty') in
+        (*The main typecast: v(sigma(ty_ret)) = sigma'(ty_ret), where
+          sigma sends (s_params f)_i -> vs_i and 
+          sigma' sends (s_params f) _i -> v(vs_i)*)
+        let Heqret : v_subst (v_typevar vt) (ty_subst (s_params f) vs (s_ret f)) =
+          ty_subst_s (s_params f) (map (v_subst (v_typevar vt)) vs) (s_ret f) :=
+            funsym_subst_eq (s_params f) vs (v_typevar vt) (s_ret f) (s_params_Nodup f)
+            (tfun_params_length Hty') in
+
+        (*Get argument to apply recursively*)
+        let args : arg_list domain (funsym_sigma_args f 
+          (map (fun x => val x) vs))  := get_arg_list_ext f vs ts 
+          (*TODO: this needs to be function where we instantiate
+            stuff*)
+          (term_rep_aux v)
+          (ex_intro _ ty Hty') in
+
+
+        (*If f is in fs, then we need to make a recursive call*)
+        match (find_fn f fs) with
+        | Left x =>
+          let fn_def : fn := proj1_sig x in
+          let fn_in: In fn_def fs := proj1 (proj2_sig x) in
+          let f_fn : f = fn_name fn_def := proj2 (proj2_sig x) in
+
+          let args': arg_list domain (funsym_sigma_args (fn_name fn_def) srts) 
+            :=
+            scast (f_equal (fun x => arg_list domain (funsym_sigma_args x srts)) _) args in
+
+          let ind_arg := existT _ (exist _ fn_def fn_in) args in
+          (*TODO: not v*)
+          (*Here is our recursive call*)
+          funcs_rep_aux ind_arg v
+
+        | Right Hnotin =>
+          (*Otherwise, use funs*)
+
+        (* The final result is to apply [funs] to the [arg_list] created recursively
+          from the argument domain values. We need two casts to make the dependent
+          types work out*)
+      
+        cast_dom_vty Htyeq (
+          dom_cast (dom_aux pd)
+            (eq_sym Heqret)
+              ((funs f (map (val vt) vs)) args))
+        end
+
+      
+
+
+      (*TODO: placeholder*)
+      | _ => fun _ _ => match domain_ne pd (val ty) with
+                        | DE x =>  x
+                        end
+      end Hty Hdec
+    in
+    dom_cast _ _ (term_rep_aux v (fn_body f1) 
+    (funsym_sigma_ret (fn_name (proj1_sig (projT1 fa))) srts) nil
+    (*TODO*) _ _ _ ).
+Next Obligation.
+(*can do this*)
+Admitted.
+Next Obligation.
+(*assume this*)
+Admitted.
+Next Obligation.
+(*Assume this*)
+Admitted.
 
 End FunDef.
 
