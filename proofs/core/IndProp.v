@@ -630,7 +630,7 @@ Proof.
     simpl in v0. 
     rewrite !fforall_rep. apply all_dec_eq.
     split; intros Hall d.
-    + rewrite <- H with (Hval:=(valid_quant_inj (valid_formula_eq eq_refl Hval))). 
+    + rewrite <- H with (Hval:=(valid_quant_inj Hval)). 
       apply (Hall d).
       apply wf_quant in H0; auto.
     + erewrite H. apply (Hall d).
@@ -962,10 +962,10 @@ Proof.
     (*Show arg lists are the same: because P cannot appear
       in list by strict positivity*)
     assert ((get_arg_list_pred pd vt p vs ts
-    (term_rep gamma_valid pd all_unif vt pf vv)
-    (valid_formula_eq eq_refl Hvalf)) =  (get_arg_list_pred pd vt p vs ts
-    (term_rep gamma_valid pd all_unif vt (interp_with_Ps pf (map fst ps) Ps) vv)
-    (valid_formula_eq eq_refl Hvalf))). {
+    (term_rep gamma_valid pd all_unif vt pf vv) Hvalf) =  
+    (get_arg_list_pred pd vt p vs ts
+    (term_rep gamma_valid pd all_unif vt 
+    (interp_with_Ps pf (map fst ps) Ps) vv) Hvalf)). {
       apply get_arg_list_pred_eq.
       rewrite Forall_forall. intros.
       rewrite term_rep_irrel with(Hty2:=Hty2).
@@ -1024,9 +1024,9 @@ Proof.
     (*First, know that [[f1]] eq in both cases because P cannot be
       present*)
     assert (Hf1: formula_rep gamma_valid pd all_unif vt pf vv f1
-    (proj1 (valid_if_inj (valid_formula_eq eq_refl Hvalf))) =
+    (proj1 (valid_if_inj Hvalf)) =
     formula_rep gamma_valid pd all_unif vt (interp_with_Ps pf (map fst ps) Ps) vv f1
-    (proj1 (valid_if_inj (valid_formula_eq eq_refl Hvalf)))). {
+    (proj1 (valid_if_inj Hvalf))). {
       apply fmla_predsym_agree; auto; simpl; intros p' Hinp'.
       symmetry.
       destruct (in_bool_spec predsym_eq_dec p' (map fst ps));
@@ -1035,13 +1035,13 @@ Proof.
     }
     rewrite <- Hf1.
     destruct (formula_rep gamma_valid pd all_unif vt pf vv f1
-    (proj1 (valid_if_inj (valid_formula_eq eq_refl Hvalf))));
+    (proj1 (valid_if_inj Hvalf)));
     [apply IHHpos1 | apply IHHpos2]; auto.
   - (*Hmm, this is the hardest one - need rewrite lemma for match*)
     rewrite !fmatch_rep.
     (*Here, we need a nested induction*)
-    generalize dependent (proj2 (valid_match_inv (valid_formula_eq eq_refl Hvalf))).
-    generalize dependent  (proj1 (valid_match_inv (valid_formula_eq eq_refl Hvalf))).
+    generalize dependent (proj2 (valid_match_inv Hvalf)).
+    generalize dependent  (proj1 (valid_match_inv Hvalf)).
     clear Hvalf.
     induction pats; simpl; auto.
     intros Hty Hallval. destruct a as [fh ph].

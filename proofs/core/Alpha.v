@@ -1200,10 +1200,10 @@ Proof.
       unfold dom_cast.
       destruct v0; simpl in *.
       subst. simpl.
-      assert ((ty_var_inv (has_type_eq eq_refl Hty)) = eq_refl) by
+      assert ((ty_var_inv Hty) = eq_refl) by
         (apply UIP_dec; apply vty_eq_dec).
       rewrite H0. simpl.
-      assert ((ty_var_inv (has_type_eq eq_refl Hty2)) = eq_refl) by
+      assert ((ty_var_inv Hty2) = eq_refl) by
         (apply UIP_dec; apply vty_eq_dec).
       rewrite H1. reflexivity.
     + erewrite term_fv_agree. apply term_rep_irrel. simpl.
@@ -1255,9 +1255,9 @@ Proof.
     alpha_case t0 Heq.
     bool_hyps.
     rewrite !tif_rep. 
-    rewrite (H _ _ _ v2 _ (proj2 (proj2 (ty_if_inv (has_type_eq eq_refl Hty2)))) H2),
-      (H0 _ _ _ v2 _ _ (proj1 (ty_if_inv (has_type_eq eq_refl Hty2))) H4),
-      (H1 _ _ _ v2 _ _ (proj1 (proj2 (ty_if_inv (has_type_eq eq_refl Hty2)))) H3); auto.
+    rewrite (H _ _ _ v2 _ (proj2 (proj2 (ty_if_inv Hty2))) H2),
+      (H0 _ _ _ v2 _ _ (proj1 (ty_if_inv Hty2)) H4),
+      (H1 _ _ _ v2 _ _ (proj1 (proj2 (ty_if_inv Hty2))) H3); auto.
   - (*Tmatch - predictably, this is the hard case*)
     alpha_case t2 Heq.
     rename t2 into tm2.
@@ -1271,10 +1271,10 @@ Proof.
     rewrite all2_forall with(d1:=(Pwild, tm_d))(d2:=(Pwild, tm_d)) in Hall; auto.
     rewrite !tmatch_rep.
     (*Need nested induction here*)
-    generalize dependent (proj1 (ty_match_inv (has_type_eq eq_refl Hty))).
-    generalize dependent (proj2 (ty_match_inv (has_type_eq eq_refl Hty))).
-    generalize dependent (proj1 (ty_match_inv (has_type_eq eq_refl Hty2))).
-    generalize dependent (proj2 (ty_match_inv (has_type_eq eq_refl Hty2))).
+    generalize dependent (proj1 (ty_match_inv Hty)).
+    generalize dependent (proj2 (ty_match_inv Hty)).
+    generalize dependent (proj1 (ty_match_inv Hty2)).
+    generalize dependent (proj2 (ty_match_inv Hty2)).
     inversion Hty2; subst. clear H4 H8 H9 Hty2.
     inversion Hty; subst. clear H4 H9 H10 Hty.
     generalize dependent tys2.
@@ -1426,8 +1426,8 @@ Proof.
         assert (e0 = eq_refl) by (apply UIP_dec; apply vsymbol_eq_dec).
         assert (e1 = eq_refl) by (apply UIP_dec; apply vsymbol_eq_dec).
         rewrite H0, H1. simpl. clear e0 e1 H0 H1.
-        generalize dependent (proj2 (ty_eps_inv (has_type_eq eq_refl Hty))).
-        generalize dependent (proj2 (ty_eps_inv (has_type_eq eq_refl Hty2))).
+        generalize dependent (proj2 (ty_eps_inv Hty)).
+        generalize dependent (proj2 (ty_eps_inv Hty2)).
         intros. subst. destruct v; simpl in *; subst; simpl.
         assert (e1 = eq_refl) by (apply UIP_dec; apply vty_eq_dec).
         assert (Heq0 = eq_refl) by (apply UIP_dec; apply vty_eq_dec).
@@ -1457,9 +1457,9 @@ Proof.
     (*So we don't have to repeat proofs*)
     assert (Halleq: forall d,
       formula_rep (substi pd vt v1 (s, v0) d) f
-        (valid_quant_inj (valid_formula_eq eq_refl Hval)) =
+        (valid_quant_inj Hval) =
       formula_rep (substi pd vt v2 (s0, v0) d) f2
-        (valid_quant_inj (valid_formula_eq eq_refl Hval2))). {
+        (valid_quant_inj Hval2)). {
       intros. eapply H. apply Heq.
       - (*Prove Hval*) 
         intros. simpl in H0. bool_hyps; destruct H0; bool_hyps;
@@ -1494,16 +1494,16 @@ Proof.
     alpha_case f2 Heq. bool_hyps; simpl_sumbool.
     rewrite !feq_rep.
     rewrite H with(t2:=t)(vars:=vars)(v2:=v2)
-    (Hty2:=(proj1 (valid_eq_inj (valid_formula_eq eq_refl Hval2)))),
+    (Hty2:=(proj1 (valid_eq_inj Hval2))),
       H0 with(t2:=t0)(vars:=vars)(v2:=v2)
-    (Hty2:=(proj2 (valid_eq_inj (valid_formula_eq eq_refl Hval2)))); auto.
+    (Hty2:=(proj2 (valid_eq_inj Hval2))); auto.
   - (*Fbinop*)
     alpha_case f0 Heq; bool_hyps; simpl_sumbool.
     rewrite !fbinop_rep.
     rewrite H with(f2:=f0_1)(vars:=vars)(v2:=v2)
-    (Hval2:=(proj1 (valid_binop_inj (valid_formula_eq eq_refl Hval2)))),
+    (Hval2:=(proj1 (valid_binop_inj Hval2))),
     H0 with(f2:=f0_2)(vars:=vars)(v2:=v2)
-    (Hval2:=(proj2 (valid_binop_inj (valid_formula_eq eq_refl Hval2)))); auto.
+    (Hval2:=(proj2 (valid_binop_inj Hval2))); auto.
   - (*Fnot*)
     alpha_case f2 Heq.  
     rewrite !fnot_rep. f_equal. apply H with(vars:=vars); auto.
@@ -1541,11 +1541,11 @@ Proof.
     alpha_case f0 Heq. bool_hyps.
     rewrite !fif_rep.
     rewrite H with(f2:=f0_1)(vars:=vars)(v2:=v2)
-      (Hval2:=(proj1 (valid_if_inj (valid_formula_eq eq_refl Hval2)))),
+      (Hval2:=(proj1 (valid_if_inj Hval2))),
     H0 with (f2:=f0_2)(vars:=vars)(v2:=v2)
-      (Hval2:=(proj1 (proj2 (valid_if_inj (valid_formula_eq eq_refl Hval2))))),
+      (Hval2:=(proj1 (proj2 (valid_if_inj Hval2)))),
     H1 with (f2:=f0_3)(vars:=vars) (v2:=v2)
-      (Hval2:=(proj2 (proj2 (valid_if_inj (valid_formula_eq eq_refl Hval2))))); auto.
+      (Hval2:=(proj2 (proj2 (valid_if_inj Hval2)))); auto.
   - (*Fmatch - similar to Tmatch*)
     alpha_case f2 Heq.
     rename t into tm2.
@@ -1560,10 +1560,10 @@ Proof.
     rewrite all2_forall with(d1:=(Pwild, Ftrue))(d2:=(Pwild, Ftrue)) in Hall; auto.
     rewrite !fmatch_rep.
     (*Need nested induction here*)
-    generalize dependent (proj1 (valid_match_inv (valid_formula_eq eq_refl Hval))).
-    generalize dependent (proj2 (valid_match_inv (valid_formula_eq eq_refl Hval))).
-    generalize dependent (proj1 (valid_match_inv (valid_formula_eq eq_refl Hval2))).
-    generalize dependent (proj2 (valid_match_inv (valid_formula_eq eq_refl Hval2))).
+    generalize dependent (proj1 (valid_match_inv Hval)).
+    generalize dependent (proj2 (valid_match_inv Hval)).
+    generalize dependent (proj1 (valid_match_inv Hval2)).
+    generalize dependent (proj2 (valid_match_inv Hval2)).
     inversion Hval2; subst. clear H4 H7 H8 Hval2.
     inversion Hval; subst. clear H4 H8 H9 Hval.
     generalize dependent tys2.
