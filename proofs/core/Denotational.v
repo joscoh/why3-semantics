@@ -451,6 +451,32 @@ Section GetADT.
 Definition find_ts_in_mut (ts: typesym) (m: mut_adt) : option alg_datatype :=
   find (fun a => typesym_eq_dec ts (adt_name a)) (typs m).
 
+(*TODO: move*)
+Lemma find_none_iff {A: Type} (f: A -> bool) (l: list A):
+  find f l = None <-> forall x, In x l -> f x = false.
+Proof.
+  split. apply find_none.
+  induction l; simpl; intros; auto.
+  destruct (f a) eqn : Ha; auto.
+  rewrite H in Ha; auto. inversion Ha.
+Qed.
+
+Lemma find_ts_in_mut_none: forall ts m,
+  find_ts_in_mut ts m = None <->
+  forall a, adt_in_mut a m -> adt_name a <> ts.
+Proof.
+  intros. unfold find_ts_in_mut.
+  rewrite find_none_iff.
+  split; intros Hall x Hin.
+  - intro C; subst.
+    apply in_bool_In in Hin.
+    specialize (Hall _ Hin). simpl_sumbool. contradiction.
+  - apply (In_in_bool adt_dec) in Hin.
+    specialize (Hall _ Hin).
+    destruct (typesym_eq_dec ts (adt_name x)); auto; subst;
+    contradiction.
+Qed.
+
 Lemma find_ts_in_mut_some: forall ts m a,
   find_ts_in_mut ts m = Some a ->
   adt_in_mut a m /\ adt_name a = ts.
