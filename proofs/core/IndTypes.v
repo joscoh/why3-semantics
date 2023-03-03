@@ -1168,9 +1168,7 @@ Qed.
 (*Cast an [arg_list] - here we use a type with decidable equality*)
 Definition cast_arg_list {domain: Types.sort -> Set} {l1 l2}
   (Heq: l1 = l2) (x: arg_list domain l1) : arg_list domain l2 :=
-  match Heq with
-  | erefl => x
-  end.
+  scast (f_equal (fun x => arg_list domain x) Heq) x.
 
 Lemma cast_arg_list_twice {domain: Types.sort -> Set} {l1 l2}
   (Heq: l1 = l2) (x: arg_list domain l2) :
@@ -1188,9 +1186,8 @@ Proof.
 Qed.
 
 Definition cast_nth_eq {A: Set} {l1 l2: list A} (Heq: l1 = l2)
-  (i: nat) (d: A) : List.nth i l1 d = List.nth i l2 d.
-  destruct Heq. reflexivity.
-Defined.
+  (i: nat) (d: A) : List.nth i l1 d = List.nth i l2 d :=
+  f_equal (fun (x: list A) => List.nth i x d) Heq.
 
 Lemma hnth_cast_arg_list {domain: Types.sort -> Set} {l1 l2}
 (Heq: l1 = l2) (x: arg_list domain l1) (i: nat) (d: Types.sort)
