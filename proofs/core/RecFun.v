@@ -2796,7 +2796,11 @@ assert (Heqx = eq_refl). apply IndTypes.UIP. rewrite H. reflexivity.
 Defined.
 Next Obligation.
 Tactics.program_simplify. simpl.
-Admitted.
+(*TODO: prove bested fix equal to other version, use proof *)
+
+(*apply func_decreasing.*)
+apply bad.
+Defined.
 (*
 apply func_decreasing.
 Defined.*)
@@ -2808,6 +2812,23 @@ apply bad.
   *)
 Defined.
 Next Obligation.
+apply bad.
+Defined.
+Next Obligation.
+apply bad.
+Defined.
+Next Obligation.
+destruct H.
+Defined.
+Print funcs_rep_aux_unfold.
+(*TODO: actually fill in all these proofs
+*)
+
+Search funcs_rep_aux.
+
+
+Next Obligation.
+apply bad.
 (*What is this?*)
 apply nat.
 Defined.
