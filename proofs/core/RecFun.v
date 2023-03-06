@@ -2559,6 +2559,119 @@ Qed.
 
 Axiom bad: forall A: Type, A.
 
+(*TODO: move*)
+Lemma v_subst_aux_sort_eq (v: typevar -> sort) (t: vty):
+  is_sort t ->
+  v_subst_aux v t = t.
+Proof.
+  induction t; simpl; auto; intros.
+  inversion H.
+  f_equal. apply list_eq_ext'; rewrite map_length; auto.
+  intros. rewrite map_nth_inbound with(d2:=d); auto.
+  rewrite Forall_forall in H. apply H.
+  apply nth_In; auto.
+  apply (is_sort_cons _ _ H0). apply nth_In; auto.
+Qed.
+
+(*TODO: move*)
+
+(*Create the valuation given a list of sorts and variables*)
+Fixpoint val_with_args (vv: val_vars pd vt) (vars: list vsymbol) 
+  {srts: list sort}
+  (a: arg_list domain srts) :
+  val_vars pd vt :=
+  fun (x: vsymbol) =>
+  match vars, a with
+  | hd :: tl, HL_cons shd stl d t =>
+     (*Need to know that types are equal so we can cast the domain*)
+     match (vty_eq_dec (val (snd x))) shd with
+     | left Heq => if vsymbol_eq_dec hd x then 
+        dom_cast _ (sort_inj (eq_sym Heq)) d
+         else val_with_args vv tl t x
+     | _ => val_with_args vv tl t x
+     end
+  | _, _ => vv x
+  end.
+
+  (*Basically UIP for x = y instead of x = x*)
+Lemma dec_uip_diff {A: Set} {x1 x2: A} 
+  (eq_dec: forall (x y: A), {x= y} + {x <> y}) 
+  (H1 H2: x1 = x2):
+  H1 = H2.
+Proof.
+  subst. apply UIP_dec. auto.
+Qed.
+
+(*TODO: move*)
+(*
+Lemma scast_eq_dec {A B: Set} (H1 H2: A = B) x:
+  (forall (x y: A), {x = y} + {x <> y}) ->
+  scast H1 x = scast H2 x.
+Proof.
+  intros. subst. simpl.
+  assert (H2 = eq_refl). apply UIP_dec. apply H. destruct H2.
+*)
+
+(*The spec: suppose that length vars = length srts
+  and that for all i, snd (nth i vars) = val (nth i s_args).
+  Then val_with_args vv (nth i vars) = nth i a*)
+Lemma val_with_args_in vv (vars: list vsymbol) (srts: list sort)
+  (a: arg_list domain srts)
+  (Hnodup: NoDup vars)
+  (Hlen: length vars = length srts)
+  (Htys: forall i, i < length vars -> 
+    val(snd (nth i vars vs_d)) =
+    nth i srts s_int):
+  forall i (Hi: i < length vars),
+  val_with_args vv vars a (nth i vars vs_d) =
+  dom_cast _ (eq_sym (Htys i Hi)) (hnth i a s_int (dom_int pd)).
+Proof.
+  intros. generalize dependent srts. generalize dependent i.
+  induction vars; simpl; intros.
+  - inversion Hi.
+  - destruct a0.
+    + inversion Hlen.
+    + simpl. destruct i.
+      * (*i=0*) 
+        destruct (vsymbol_eq_dec a a); try contradiction.
+        destruct (vty_eq_dec (v_subst_aux (fun x0 : typevar => v_typevar vt x0) (snd a)) x); subst.
+        -- unfold dom_cast.
+          f_equal. f_equal. apply dec_uip_diff. apply sort_eq_dec.
+        -- exfalso. apply n.
+          specialize (Htys 0 ltac:(lia)).
+          simpl in Htys. subst. reflexivity.
+      * (*i <> 0*) inversion Hnodup; subst.
+        destruct (vty_eq_dec
+        (v_subst_aux (fun x0 : typevar => v_typevar vt x0) (snd (nth i vars vs_d))) x).
+        -- destruct (vsymbol_eq_dec a (nth i vars vs_d)).
+          ++ exfalso; subst. apply H1. apply nth_In; auto. simpl in Hi. lia.
+          ++ erewrite IHvars; auto. f_equal. f_equal.
+            apply dec_uip_diff. apply sort_eq_dec.
+            Unshelve. apply Nat.succ_lt_mono; auto.
+            intros.
+            apply (Htys (S i0)); lia.
+        -- erewrite IHvars; auto. f_equal. apply dec_uip_diff.
+          apply sort_eq_dec. Unshelve.
+          apply Nat.succ_lt_mono; auto.
+          intros.
+          apply (Htys (S i0)); lia.
+Qed.
+
+(*The other case is much easier*)
+Lemma val_with_args_notin vv (vars: list vsymbol) (srts: list sort)
+  (a: arg_list domain srts) (x : vsymbol)
+  (Hnotinx: ~ In x vars):
+  val_with_args vv vars a x = vv x.
+Proof.
+  generalize dependent srts. induction vars; simpl; intros; auto.
+  destruct a0; auto.
+  simpl in Hnotinx. not_or Hx.
+  destruct (vty_eq_dec (v_subst_aux (fun x1 : typevar => v_typevar vt x1) (snd x)) x0).
+  - destruct (vsymbol_eq_dec a x); subst; auto; contradiction.
+  - apply IHvars; auto.
+Qed.
+
+
 (*The default tactic builds buge terms that take forever*)
 Obligation Tactic := simpl in *; intros; try discriminate.
 
@@ -2784,15 +2897,15 @@ Equations funcs_rep_aux
                         end
       end Hty Hdec
     in
-    dom_cast _ _ (proj1_sig (term_rep_aux v (fn_body f1) 
+    dom_cast _ _ (proj1_sig (term_rep_aux 
+      (val_with_args v (fn_args f1) a1) (fn_body f1) 
     (funsym_sigma_ret (fn_name (proj1_sig (projT1 fa))) srts) nil
     (*TODO*) _ _ _ )).
 Next Obligation.
-simpl; intros. inversion Heqx. subst.
+simpl; intros. injection Heqx. intros; subst.
 (*First, show var case - TODO: maybe add in, see*)
 unfold term_has_type_cast.
-(*Use UIP for now*)
-assert (Heqx = eq_refl). apply IndTypes.UIP. rewrite H. reflexivity.
+f_equal. f_equal. apply dec_uip_diff. apply vty_eq_dec.
 Defined.
 Next Obligation.
 Tactics.program_simplify. simpl.
@@ -2805,129 +2918,28 @@ Defined.
 apply func_decreasing.
 Defined.*)
 Next Obligation.
+(*TODO: do this next, semarate lemma prob*)
+
+(*Ah, I think we need to know that vt sends correctly
+  (or vt_eq srts or something)
+  have this already - use it*)
+unfold val, funsym_sigma_ret.
+apply sort_inj; simpl.
 apply bad.
-(*No idea why this is still failing.
-  Maybe try with Fix or Program Fixpoint
-  Looks like bug https://github.com/coq/coq/issues/10841
-  *)
 Defined.
 Next Obligation.
+(*TODO: need assumption about this in context:
+  body should have type s_ret (or maybe funsym_sigma_ret - need to see)*)
 apply bad.
 Defined.
 Next Obligation.
+(*TODO: also need assumption about this in context: all decreasing
+  on idx*)
 apply bad.
 Defined.
 Next Obligation.
 destruct H.
 Defined.
-Print funcs_rep_aux_unfold.
-(*TODO: actually fill in all these proofs
-*)
-
-Search funcs_rep_aux.
-
-
-Next Obligation.
-apply bad.
-(*What is this?*)
-apply nat.
-Defined.
-Next Obligation.
-Check funcs_rep_aux_obligations_obligation_4.
-unfold funcs_rep_aux_obligations_obligation_4.
-simpl.
-
-Show Proof.
-(*What is this obligation?*)
-apply bad.
-Defined.
-Admitted.
-simpl. intros. discriminate.
-Print Ltac Tactics.discriminates.
-Tactics.discriminates.
-Print Ltac Tactics.program_simplify.
-Tactics.program_simplify. inversion Heqx.
-Defined.
-Next Obligation.
-simpl; intros.
-inversion Heqx.
-Defined.
-Next Obligation.
-simpl; intros.
-inversion Heqx.
-Defined.
-Next Obligation.
-simpl; intros.
-inversion Heqx.
-Defined.
-Next Obligation.
-simpl; intros.
-inversion Heqx.
-Defined.
-Next Obligation.
-
-
-exact (func_decreasing fa (proj1 Hsrts) v1 term_rep_aux v ty small Hsmall l ts x
-  Hdec' Hty' i).
-(*We do this in a separate lemma or else Equations is extremely slow*)
-Defined.
-2: apply funcs_rep_aux.
-apply bad.
-Defined.
-Next Obligation.
-apply bad.
-Defined.
-Next Obligation.
-apply bad.
-Defined.
-Next Obligation.
-apply bad.
-Defined.
-
-Search funcs_rep_aux.
-
-
-Print funcs_rep_aux.
-
-
-
-Next Obligation.
-
-
-Search funcs_rep_aux.
-(*
-Admitted.
-Next Obligation.
-(*This is the big one - show recursive call is smaller*)
-(*TODO: I think we will need a dependent type for term_rep_aux
-  so that we know that if it is a variable, we give v (x)
-  
-  *)
-econstructor. reflexivity. reflexivity. simpl.
-rewrite !hnth_cast_arg_list.
-simpl.
-Check funcs_rep_aux_obligations_obligation_1.
-rewrite scast_scast.
-Check scast_scast.
-rewrite scast_scast.
-(*We need to simplify hnth of scast*)
-
-simpl.
-(*Let's see if we can simplify casts*)
-rewrite scast_scast.
-unfold scast.
-destruct x.
-rewrite scast_scast.
-destruct x.
-destruct x as [f' [Hinfs' Hfeq]]; subst.
-unfold arg_list_smaller.
-
-constructor.
-(*assume this*)
-Admitted.
-Next Obligation.
-(*Assume this*)
-Admitted.
 
 End FunDef.
 
