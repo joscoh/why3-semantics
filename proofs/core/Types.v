@@ -477,6 +477,22 @@ intros vars vs d n a s'. revert n. revert vs. induction vars.
       -- apply IHvars; try lia. inversion H; auto. assumption.
 Qed.
 
+Lemma ty_subst_fun_in_sort (vars: list typevar) (srts: list sort)
+  (d: vty) x:
+  length srts = length vars ->
+  In x vars ->
+  is_sort (ty_subst_fun vars (sorts_to_tys srts) d x).
+Proof.
+  intros. generalize dependent srts. 
+  induction vars; simpl; intros. inversion H0.
+  simpl in H0. destruct srts; simpl in *.
+  - inversion H.
+  - destruct (typevar_eq_dec x a); subst; simpl.
+    + destruct s; auto.
+    + destruct H0; subst; try contradiction.
+      apply IHvars; auto.
+Qed. 
+
 Lemma subst_same: forall (vars: list typevar) (srts: list Types.sort),
   length vars = length srts ->
   NoDup vars ->
@@ -492,24 +508,43 @@ Proof.
   assumption.
 Qed.
 
+Lemma is_sort_cons_iff: forall (ts: typesym) (l: list vty),
+  is_sort (vty_cons ts l) <->
+  forall x, In x l -> is_sort x.
+Proof.
+  intros. split; intros.
+  - unfold is_sort in *. simpl in H.
+    rewrite -> null_nil in *.
+    eapply big_union_nil in H. apply H. assumption.
+  - unfold is_sort in *. simpl. rewrite -> null_nil in *.
+    apply big_union_nil_eq. intros.
+    rewrite <- null_nil. apply H. auto.
+Qed.
+
+Lemma is_sort_cons: forall (ts: typesym) (l: list vty),
+  is_sort (vty_cons ts l) ->
+  forall x, In x l -> is_sort x.
+Proof.
+  intros ts l. apply is_sort_cons_iff.
+Qed.
+
 (* If we have a sort, then substituting a valuation does nothing *)
+Lemma subst_is_sort_eq (t: vty) (Ht: is_sort t) (v: typevar -> vty):
+  t = v_subst_aux v t.
+Proof.
+  induction t; simpl in *; auto. inversion Ht.
+  f_equal. apply list_eq_ext'; [rewrite map_length|]; auto; intros.
+  rewrite -> map_nth_inbound with (d2:=d); auto.
+  rewrite Forall_nth in H. apply H; auto.
+  apply (is_sort_cons _ _ Ht). apply nth_In; auto.
+Qed. 
+
 Lemma subst_sort_eq: forall (s: sort) (v: typevar -> sort),
   s = v_subst v (sort_to_ty s).
 Proof.
-  intros. unfold v_subst. destruct s.
-  induction x; simpl; auto; try solve[apply sort_inj; reflexivity].
-  - apply sort_inj; simpl. inversion i.
-  - rewrite Forall_forall in H. apply sort_inj; simpl.
-    f_equal. apply list_eq_ext'; try rewrite !map_length; auto.
-    intros n d Hn. rewrite -> map_nth_inbound with(d2:=d); auto.
-    assert (Hin: In (List.nth n vs d) vs) by (apply nth_In; auto).
-    assert (Hsort: is_sort (List.nth n vs d)). {
-      unfold is_sort. unfold is_sort in i.
-      rewrite (type_vars_cons tsym vs); auto. 
-      destruct (type_vars (vty_cons tsym vs)) eqn : Ht; auto. inversion i.
-    }
-    specialize (H _ Hin Hsort). inversion H. reflexivity.
-Qed. 
+  intros. unfold v_subst. destruct s. apply sort_inj. simpl.
+  apply subst_is_sort_eq; auto.
+Qed.
 
 Lemma v_subst_ext (v1 v2: typevar -> sort) ty:
   (forall x, In x (type_vars ty) -> v1 x = v2 x) ->

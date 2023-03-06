@@ -569,15 +569,6 @@ Proof.
         apply Hnodup.
 Qed.
 
-Lemma is_sort_cons: forall (ts: typesym) (l: list vty),
-  is_sort (vty_cons ts l) ->
-  forall x, In x l -> is_sort x.
-Proof.
-  intros. unfold is_sort in *. simpl in H.
-  rewrite null_nil in *.
-  eapply big_union_nil in H. apply H. assumption.
-Qed.
-
 Definition is_sort_cons_sorts (*(ts: typesym)*) (l: list vty) 
   (Hall: forall x, In x l -> is_sort x):
   {s: list sort | sorts_to_tys s = l}.

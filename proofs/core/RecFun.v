@@ -2560,6 +2560,8 @@ Qed.
 Axiom bad: forall A: Type, A.
 
 (*TODO: move*)
+(*This is not quite the lemma we need*)
+(*
 Lemma v_subst_aux_sort_eq (v: typevar -> sort) (t: vty):
   is_sort t ->
   v_subst_aux v t = t.
@@ -2571,9 +2573,20 @@ Proof.
   rewrite Forall_forall in H. apply H.
   apply nth_In; auto.
   apply (is_sort_cons _ _ H0). apply nth_In; auto.
-Qed.
+Qed.*)
 
-(*TODO: move*)
+Lemma v_subst_aux_sort_eq (v: typevar -> vty) (t: vty):
+  (forall x, In x (type_vars t) -> is_sort (v x)) ->
+  is_sort (v_subst_aux v t).
+Proof.
+  intros. induction t; simpl; intros; auto.
+  apply H. left; auto.
+  apply is_sort_cons_iff.
+  intros. rewrite in_map_iff in H1.
+  destruct H1 as [y [Hy Hiny]]; subst.
+  rewrite Forall_forall in H0. apply H0; auto.
+  intros. apply H. simpl. simpl_set. exists y. split; auto.
+Qed.
 
 (*Create the valuation given a list of sorts and variables*)
 Fixpoint val_with_args (vv: val_vars pd vt) (vars: list vsymbol) 
@@ -2671,6 +2684,27 @@ Proof.
   - apply IHvars; auto.
 Qed.
 
+Lemma fn_ret_cast_eq (f: fn) (Hinf: In f fs)
+  (srts: list sort)
+  (args: arg_list domain (funsym_sigma_args (fn_name f) srts))
+  (Hlen: length srts = length params) (*TODO: see*)
+  (Hvt_eq: vt_eq srts):
+  val
+  (v_subst_aux
+     (fun x : typevar =>
+      ty_subst_fun (s_params (fn_name f)) (sorts_to_tys srts) vty_int x)
+     (s_ret (fn_name f))) = funsym_sigma_ret (fn_name f) srts.
+Proof.
+  apply sort_inj; simpl.
+  rewrite <- subst_is_sort_eq; auto.
+  (*Prove that this is a sort because all of its type vars are in
+    params, and thus are substituted with srts*)
+  apply v_subst_aux_sort_eq.
+  intros.
+  rewrite params_eq; auto.
+  apply ty_subst_fun_in_sort; auto.
+  eapply f_typevars. apply Hinf. 2: apply H. left; auto.
+Qed. 
 
 (*The default tactic builds buge terms that take forever*)
 Obligation Tactic := simpl in *; intros; try discriminate.
@@ -2918,14 +2952,10 @@ Defined.
 apply func_decreasing.
 Defined.*)
 Next Obligation.
-(*TODO: do this next, semarate lemma prob*)
-
-(*Ah, I think we need to know that vt sends correctly
-  (or vt_eq srts or something)
-  have this already - use it*)
-unfold val, funsym_sigma_ret.
-apply sort_inj; simpl.
-apply bad.
+destruct fa as [[f Hinf] [srts args]].
+simpl in *.
+destruct Hsrts as [Hlen Hty].
+apply fn_ret_cast_eq; assumption.
 Defined.
 Next Obligation.
 (*TODO: need assumption about this in context:
