@@ -2010,6 +2010,17 @@ Fixpoint get_arg_list_ext_aux {v : val_vars pd vt} {y d} (f: funsym)
       end Hlen Htys
   end.
 
+  (*A computable version - why is standard version not computable?*)
+Definition proj1' {A B: Prop} (H: A /\ B) : A :=
+  match H with
+  | conj x x0 => x
+  end.
+
+Definition proj2' {A B: Prop} (H: A /\ B) : B :=
+  match H with
+  | conj x x0 => x0
+  end.
+
 Definition get_arg_list_ext {v : val_vars pd vt} {y d} (f: funsym)
   {vs': list vty} {ts: list term} {ty: vty}
   {small}
@@ -2031,9 +2042,9 @@ Definition get_arg_list_ext {v : val_vars pd vt} {y d} (f: funsym)
   arg_list domain (funsym_sigma_args f (map (fun x => val x) vs')) :=
 
   let Hinv := fun_ty_inversion _ _ _ _ _ Hty in 
-  let Hargslen := proj1 (proj2 (proj2 Hinv)) in
-  let Hparamslen := proj1 (proj2 (proj2 (proj2 Hinv))) in
-  let Hall := proj1 (proj2 (proj2 (proj2 (proj2 Hinv)))) in
+  let Hargslen := proj1' (proj2' (proj2' Hinv)) in
+  let Hparamslen := proj1' (proj2' (proj2' (proj2' Hinv))) in
+  let Hall := proj1' (proj2' (proj2' (proj2' (proj2' Hinv)))) in
   let Hdec' := dec_inv_tfun_rec Hdec in
 
   get_arg_list_ext_aux f Hsmall rep Hparamslen (s_args f) Hargslen
@@ -2269,16 +2280,7 @@ Proof.
     context assumptions)
   *)
 
-(*A computable version - why is standard version not computable?*)
-Definition proj1' {A B: Prop} (H: A /\ B) : A :=
-  match H with
-  | conj x x0 => x
-  end.
 
-Definition proj2' {A B: Prop} (H: A /\ B) : B :=
-  match H with
-  | conj x x0 => x0
-  end.
 
   Lemma eq_trans_refl {A: Set} {x1 x2: A} (H: x1 = x2):
   eq_trans eq_refl H = H.
@@ -2459,9 +2461,13 @@ valid_type sigma (nth (fn_idx x) (s_args (fn_name x)) vty_int)
 
 
 (*TODO: remove stuff we don't need*)
+(*
 Lemma func_decreasing (fa: packed_args) (*(v0: val_vars pd vt)*)
 (e: Datatypes.length (projT1 (projT2 fa)) = Datatypes.length params)
-(v1: vt_eq (projT1 (projT2 fa)))
+(v1: vt_eq (projT1 (projT2 fa))): 
+let f1:= proj1_sig (projT1 fa) in
+let y:= nth (fn_idx f1) (fn_args f1) vs_d in 
+forall
 (*(funcs_rep_aux: forall x : packed_args,
                 val_vars pd vt ->
                 Datatypes.length (projT1 (projT2 x)) = Datatypes.length params /\
@@ -2517,7 +2523,180 @@ Lemma func_decreasing (fa: packed_args) (*(v0: val_vars pd vt)*)
           (nth (fn_idx (proj1_sig (projT1 fa))) (fn_args (proj1_sig (projT1 fa))) vs_d)
           m vs (Tfun (fn_name x) l ts))
 (Hty': term_has_type sigma (Tfun (fn_name x) l ts) ty)
-(i: In x fs) :
+(i: In x fs),
+let get_arg_list_ext_aux:= fix get_arg_list_ext_aux
+(f : funsym) (vs' : list vty) 
+(ts : list term)
+(Hparamslen : Datatypes.length vs' =
+              Datatypes.length (s_params f))
+{struct ts} :
+  forall args : list vty,
+  Datatypes.length ts = Datatypes.length args ->
+  Forall
+    (fun x : term * vty =>
+     term_has_type sigma (fst x) (snd x))
+    (combine ts
+       (map (ty_subst (s_params f) vs') args)) ->
+  Forall
+    (fun t : term =>
+     decrease_fun fs [] small y m vs t) ts ->
+  arg_list domain
+    (ty_subst_list_s (s_params f)
+       (map (fun x : vty => val x) vs') args) :=
+match
+  ts as ts'
+  return
+    (forall args : list vty,
+     Datatypes.length ts' = Datatypes.length args ->
+     Forall
+       (fun x : term * vty =>
+        term_has_type sigma (fst x) (snd x))
+       (combine ts'
+          (map (ty_subst (s_params f) vs') args)) ->
+     Forall
+       (fun t : term =>
+        decrease_fun fs [] small y m vs t) ts' ->
+     arg_list domain
+       (ty_subst_list_s 
+          (s_params f)
+          (map (fun x : vty => val x) vs') args))
+with
+| [] =>
+    fun (args : list vty)
+      (Hlen : Datatypes.length [] =
+              Datatypes.length args)
+      (_ : Forall
+             (fun x : term * vty =>
+              term_has_type sigma (fst x) (snd x))
+             (combine []
+                (map (ty_subst (s_params f) vs')
+                   args)))
+      (_ : Forall
+             (fun t : term =>
+              decrease_fun fs [] small y m vs t) [])
+    =>
+    match
+      args as a'
+      return
+        (Datatypes.length [] = Datatypes.length a' ->
+         arg_list domain
+           (ty_subst_list_s 
+              (s_params f)
+              (map (fun x : vty => val x) vs') a'))
+    with
+    | [] =>
+        fun
+          _ : Datatypes.length [] =
+              Datatypes.length [] => 
+        HL_nil domain
+    | ahd :: atl =>
+        fun
+          Heq : Datatypes.length [] =
+                Datatypes.length (ahd :: atl) =>
+        False_rect
+          (arg_list domain
+             (ty_subst_list_s 
+                (s_params f)
+                (map (fun x : vty => val x) vs')
+                (ahd :: atl)))
+          (Nat.neq_0_succ 
+             (Datatypes.length atl) Heq)
+    end Hlen
+| thd :: ttl =>
+    fun (args : list vty)
+      (Hlen : Datatypes.length (thd :: ttl) =
+              Datatypes.length args)
+      (Htys : Forall
+                (fun x : term * vty =>
+                 term_has_type sigma 
+                   (fst x) 
+                   (snd x))
+                (combine 
+                   (thd :: ttl)
+                   (map 
+                      (ty_subst (s_params f) vs')
+                      args)))
+      (Hdecs : Forall
+                 (fun t : term =>
+                  decrease_fun fs [] small y m vs t)
+                 (thd :: ttl)) =>
+    match
+      args as a'
+      return
+        (Datatypes.length (thd :: ttl) =
+         Datatypes.length a' ->
+         Forall
+           (fun x : term * vty =>
+            term_has_type sigma (fst x) (snd x))
+           (combine (thd :: ttl)
+              (map (ty_subst (s_params f) vs') a')) ->
+         arg_list domain
+           (ty_subst_list_s 
+              (s_params f)
+              (map (fun x : vty => val x) vs') a'))
+    with
+    | [] =>
+        fun
+          (Heq : Datatypes.length (thd :: ttl) =
+                 Datatypes.length [])
+          (_ : Forall
+                 (fun x : term * vty =>
+                  term_has_type sigma 
+                    (fst x) 
+                    (snd x))
+                 (combine 
+                    (thd :: ttl)
+                    (map
+                       (ty_subst (s_params f) vs')
+                       []))) =>
+        False_rect
+          (arg_list domain
+             (ty_subst_list_s 
+                (s_params f)
+                (map (fun x : vty => val x) vs') []))
+          (Nat.neq_succ_0 
+             (Datatypes.length ttl) Heq)
+    | ahd :: atl =>
+        fun
+          (Heq : Datatypes.length (thd :: ttl) =
+                 Datatypes.length (ahd :: atl))
+          (Htys0 : Forall
+                     (fun x : term * vty =>
+                      term_has_type sigma 
+                       (fst x) 
+                       (snd x))
+                     (combine 
+                       (thd :: ttl)
+                       (map
+                       (ty_subst (s_params f) vs')
+                       (ahd :: atl)))) =>
+        HL_cons domain
+          (ty_subst_s (s_params f)
+             (map (v_subst (v_typevar vt)) vs') ahd)
+          (ty_subst_list_s 
+             (s_params f)
+             (map (fun x : vty => val x) vs') atl)
+          (dom_cast (dom_aux pd)
+             (funsym_subst_eq 
+                (s_params f) vs' 
+                (v_typevar vt) ahd
+                (s_params_Nodup f)
+                (eq_sym Hparamslen))
+             (proj1_sig
+                (term_rep_aux v thd
+                   (ty_subst (s_params f) vs' ahd)
+                   small 
+                   (Forall_inv Htys0)
+                   (Forall_inv Hdecs) Hsmall)))
+          (get_arg_list_ext_aux f vs' ttl
+             Hparamslen atl
+             (Nat.succ_inj 
+                (Datatypes.length ttl)
+                (Datatypes.length atl) Heq)
+             (Forall_inv_tail Htys0)
+             (Forall_inv_tail Hdecs))
+    end Hlen Htys
+end in
 arg_list_smaller
   (existT
      (fun x0 : {f : fn | In f fs} =>
@@ -2540,6 +2719,25 @@ arg_list_smaller
               (term_rep_aux v) Hty' Hdec'))))
   fa.
 Proof.
+  (*eapply (AL_small _ _ _ _ (projT1 (projT2 fa))).
+  Unshelve.
+  6: { reflexivity. }
+  Show Proof.
+  6: reflexivity.
+  Show Proof.
+    Print AL_small.
+  - reflexivity.
+  - reflexivity.
+  -simpl. Unshelve. 5: {
+    simpl.
+
+  } 
+  eapply (@AL_small _ _ _ _ _ eq_refl).
+  
+  
+  Show Proof.
+  Print arg_list_smaller.
+  constructor.*)
   econstructor.
   - reflexivity.
   - reflexivity.
@@ -2583,8 +2781,199 @@ Proof.
       have. So we can use [adt_smaller_trans_hide_cast]*)
     apply adt_smaller_trans_hide_cast. apply A.
 Defined. 
-(*NEED to make this opaque or else it takes forever in Equations*)
+Print func_decreasing.
 
+
+AL_small
+  (existT
+     (fun x0 : {f : fn | In f fs} =>
+      {srts : list sort &
+      arg_list domain (funsym_sigma_args (fn_name (proj1_sig x0)) srts)})
+     (exist (fun f : fn => In f fs) x i)
+     (existT
+        (fun srts : list sort =>
+         arg_list domain (funsym_sigma_args (fn_name x) srts))
+        (projT1 (projT2 fa))
+        (scast
+           (f_equal
+              (fun x0 : list sort =>
+               arg_list domain (funsym_sigma_args (fn_name x) x0))
+              (eq_sym
+                 (eq_trans
+                    (eq_sym
+                       (eq_trans eq_refl
+                          (map_vals_srts' (projT1 (projT2 fa)) x e v1 i)))
+                    (f_equal
+                       (fun x0 : list vty => map (fun x1 : vty => val x1) x0)
+                       (eq_sym (proj1' (dec_inv_tfun_in Hdec' i eq_refl)))))))
+           (get_arg_list_ext (fn_name x) Hsmall (term_rep_aux v) Hty' Hdec'))))
+  fa
+  (proj1_sig
+     (projT1
+        (existT
+           (fun x0 : {f : fn | In f fs} =>
+            {srts : list sort &
+            arg_list domain (funsym_sigma_args (fn_name (proj1_sig x0)) srts)})
+           (exist (fun f : fn => In f fs) x i)
+           (existT
+              (fun srts : list sort =>
+               arg_list domain (funsym_sigma_args (fn_name x) srts))
+              (projT1 (projT2 fa))
+              (scast
+                 (f_equal
+                    (fun x0 : list sort =>
+                     arg_list domain (funsym_sigma_args (fn_name x) x0))
+                    (eq_sym
+                       (eq_trans
+                          (eq_sym
+                             (eq_trans eq_refl
+                                (map_vals_srts' (projT1 (projT2 fa)) x e v1 i)))
+                          (f_equal
+                             (fun x0 : list vty =>
+                              map (fun x1 : vty => val x1) x0)
+                             (eq_sym
+                                (proj1' (dec_inv_tfun_in Hdec' i eq_refl)))))))
+                 (get_arg_list_ext (fn_name x) Hsmall 
+                    (term_rep_aux v) Hty' Hdec')))))) 
+  (proj1_sig (projT1 fa))
+  (projT1
+     (projT2
+        (existT
+           (fun x0 : {f : fn | In f fs} =>
+            {srts : list sort &
+            arg_list domain (funsym_sigma_args (fn_name (proj1_sig x0)) srts)})
+           (exist (fun f : fn => In f fs) x i)
+           (existT
+              (fun srts : list sort =>
+               arg_list domain (funsym_sigma_args (fn_name x) srts))
+              (projT1 (projT2 fa))
+              (scast
+                 (f_equal
+                    (fun x0 : list sort =>
+                     arg_list domain (funsym_sigma_args (fn_name x) x0))
+                    (eq_sym
+                       (eq_trans
+                          (eq_sym
+                             (eq_trans eq_refl
+                                (map_vals_srts' (projT1 (projT2 fa)) x e v1 i)))
+                          (f_equal
+                             (fun x0 : list vty =>
+                              map (fun x1 : vty => val x1) x0)
+                             (eq_sym
+                                (proj1' (dec_inv_tfun_in Hdec' i eq_refl)))))))
+                 (get_arg_list_ext (fn_name x) Hsmall 
+                    (term_rep_aux v) Hty' Hdec')))))) eq_refl eq_refl
+  (cast_arg_list
+     (eq_trans
+        (cast_funargs
+           (projT1
+              (projT2
+                 (existT
+                    (fun x0 : {f : fn | In f fs} =>
+                     {srts : list sort &
+                     arg_list domain
+                       (funsym_sigma_args (fn_name (proj1_sig x0)) srts)})
+                    (exist (fun f : fn => In f fs) x i)
+                    (existT
+                       (fun srts : list sort =>
+                        arg_list domain (funsym_sigma_args (fn_name x) srts))
+                       (projT1 (projT2 fa))
+                       (scast
+                          (f_equal
+                             (fun x0 : list sort =>
+                              arg_list domain
+                                (funsym_sigma_args (fn_name x) x0))
+                             (eq_sym
+                                (eq_trans
+                                   (eq_sym
+                                      (eq_trans eq_refl
+                                         (map_vals_srts' 
+                                            (projT1 (projT2 fa)) x e v1 i)))
+                                   (f_equal
+                                      (fun x0 : list vty =>
+                                       map (fun x1 : vty => val x1) x0)
+                                      (eq_sym
+                                         (proj1'
+                                            (dec_inv_tfun_in Hdec' i eq_refl)))))))
+                          (get_arg_list_ext (fn_name x) Hsmall
+                             (term_rep_aux v) Hty' Hdec'))))))
+           (eq_sym (f_equal fn_name eq_refl)))
+        (f_equal
+           (funsym_sigma_args
+              (fn_name
+                 (proj1_sig
+                    (projT1
+                       (existT
+                          (fun x0 : {f : fn | In f fs} =>
+                           {srts : list sort &
+                           arg_list domain
+                             (funsym_sigma_args (fn_name (proj1_sig x0)) srts)})
+                          (exist (fun f : fn => In f fs) x i)
+                          (existT
+                             (fun srts : list sort =>
+                              arg_list domain
+                                (funsym_sigma_args (fn_name x) srts))
+                             (projT1 (projT2 fa))
+                             (scast
+                                (f_equal
+                                   (fun x0 : list sort =>
+                                    arg_list domain
+                                      (funsym_sigma_args (fn_name x) x0))
+                                   (eq_sym
+                                      (eq_trans
+                                         (eq_sym
+                                            (eq_trans eq_refl
+                                               (map_vals_srts'
+                                                 (projT1 (projT2 fa)) x e v1
+                                                 i)))
+                                         (f_equal
+                                            (fun x0 : list vty =>
+                                             map (fun x1 : vty => val x1) x0)
+                                            (eq_sym
+                                               (proj1'
+                                                 (dec_inv_tfun_in Hdec' i
+                                                 eq_refl)))))))
+                                (get_arg_list_ext 
+                                   (fn_name x) Hsmall 
+                                   (term_rep_aux v) Hty' Hdec'))))))))
+           eq_refl))
+     (projT2
+        (projT2
+           (existT
+              (fun x0 : {f : fn | In f fs} =>
+               {srts : list sort &
+               arg_list domain
+                 (funsym_sigma_args (fn_name (proj1_sig x0)) srts)})
+              (exist (fun f : fn => In f fs) x i)
+              (existT
+                 (fun srts : list sort =>
+                  arg_list domain (funsym_sigma_args (fn_name x) srts))
+                 (projT1 (projT2 fa))
+                 (scast
+                    (f_equal
+                       (fun x0 : list sort =>
+                        arg_list domain (funsym_sigma_args (fn_name x) x0))
+                       (eq_sym
+                          (eq_trans
+                             (eq_sym
+                                (eq_trans eq_refl
+                                   (map_vals_srts' 
+                                      (projT1 (projT2 fa)) x e v1 i)))
+                             (f_equal
+                                (fun x0 : list vty =>
+                                 map (fun x1 : vty => val x1) x0)
+                                (eq_sym
+                                   (proj1' (dec_inv_tfun_in Hdec' i eq_refl)))))))
+                    (get_arg_list_ext (fn_name x) Hsmall 
+                       (term_rep_aux v) Hty' Hdec')))))))
+  (cast_arg_list
+     (eq_trans
+        (cast_funargs (projT1 (projT2 fa)) (eq_sym (f_equal fn_name eq_refl)))
+        (f_equal (funsym_sigma_args (fn_name (proj1_sig (projT1 fa))))
+           eq_refl)) (projT2 (projT2 fa))) eq_refl eq_refl eq_refl eq_refl
+
+(*NEED to make this opaque or else it takes forever in Equations*)
+*)
 Axiom bad: forall A: Type, A.
 
 (*TODO: move*)
@@ -2831,7 +3220,7 @@ Proof.
   - destruct args; inversion Hargslen.
     simpl in *.
     f_equal. apply IHts.
-Defined.
+Qed.
 
 Lemma Forall_In {A: Type} {P: A -> Prop} {l: list A} {x: A}:
   Forall P l ->
@@ -2840,226 +3229,6 @@ Lemma Forall_In {A: Type} {P: A -> Prop} {l: list A} {x: A}:
 Proof.
   induction l; simpl; intros; destruct H0; subst; inversion H; auto.
 Qed.
-
-(*Temp*)
-Lemma func_decreasing'
-(fa: packed_args) (*(v0: val_vars pd vt)*)
-(e: Datatypes.length (projT1 (projT2 fa)) = Datatypes.length params)
-(v1: vt_eq (projT1 (projT2 fa)))
-(*(funcs_rep_aux: forall x : packed_args,
-                val_vars pd vt ->
-                Datatypes.length (projT1 (projT2 x)) = Datatypes.length params /\
-                vt_eq (projT1 (projT2 x)) ->
-                arg_list_smaller x fa ->
-                domain (funsym_sigma_ret (fn_name (proj1_sig (projT1 x)))
-                         (projT1 (projT2 x))))*)
-(term_rep_aux: forall (v : val_vars pd vt) (t : term) (ty : vty) 
-                 (small : list vsymbol) (Hty : term_has_type sigma t ty),
-               decrease_fun fs [] small
-                 (nth (fn_idx (proj1_sig (projT1 fa)))
-                    (fn_args (proj1_sig (projT1 fa))) vs_d) m vs t ->
-               (forall x : vsymbol,
-                In x small ->
-                adt_smaller_trans (hide_ty (v x))
-                  (hide_ty
-                     (dom_cast (dom_aux pd)
-                        (arg_nth_eq (projT1 (projT2 fa))
-                           (fn_name (proj1_sig (projT1 fa)))
-                           (fn_idx (proj1_sig (projT1 fa)))
-                           (fn_idx_bound (proj1_sig (projT1 fa))))
-                        (hnth (fn_idx (proj1_sig (projT1 fa))) 
-                           (projT2 (projT2 fa)) s_int (dom_int pd))))) ->
-               {d : domain (val ty)
-               | forall (x : vsymbol) (Heqx : t = Tvar x),
-                 d =
-                 dom_cast (dom_aux pd)
-                   (f_equal (fun x0 : vty => val x0)
-                      (eq_sym (ty_var_inv (term_has_type_cast Heqx Hty))))
-                   (var_to_dom pd vt v x)})
-(v: val_vars pd vt)
-(*(t: term)*)
-(ty: vty)
-(small: list vsymbol)
-(*(Hty: term_has_type sigma t ty)*)
-(*(Hdec: decrease_fun fs [] small
-         (nth (fn_idx (proj1_sig (projT1 fa))) (fn_args (proj1_sig (projT1 fa))) vs_d)
-         m vs t)*)
-(Hsmall: forall x : vsymbol,
-         In x small ->
-         adt_smaller_trans (hide_ty (v x))
-           (hide_ty
-              (dom_cast (dom_aux pd)
-                 (arg_nth_eq (projT1 (projT2 fa)) (fn_name (proj1_sig (projT1 fa)))
-                    (fn_idx (proj1_sig (projT1 fa)))
-                    (fn_idx_bound (proj1_sig (projT1 fa))))
-                 (hnth (fn_idx (proj1_sig (projT1 fa))) (projT2 (projT2 fa)) s_int
-                    (dom_int pd)))))
-(l: list vty)
-(ts: list term)
-(x: fn)
-(Hdec': decrease_fun fs [] small
-          (nth (fn_idx (proj1_sig (projT1 fa))) (fn_args (proj1_sig (projT1 fa))) vs_d)
-          m vs (Tfun (fn_name x) l ts))
-(Hty': term_has_type sigma (Tfun (fn_name x) l ts) ty)
-(i: In x fs) :arg_list_smaller
-(existT
-   (fun x0 : {f : fn | In f fs} =>
-    {srts : list sort &
-    arg_list domain (funsym_sigma_args (fn_name (proj1_sig x0)) srts)})
-   (exist (fun f : fn => In f fs) x i)
-   (existT
-      (fun srts : list sort => arg_list domain (funsym_sigma_args (fn_name x) srts))
-      (projT1 (projT2 fa))
-      (scast
-         (f_equal
-            (fun x0 : list sort => arg_list domain (funsym_sigma_args (fn_name x) x0))
-            (eq_sym
-               (eq_trans
-                  (eq_sym
-                     (eq_trans eq_refl (map_vals_srts' (projT1 (projT2 fa)) x e v1 i)))
-                  (f_equal (fun x0 : list vty => map (fun x1 : vty => val x1) x0)
-                     (eq_sym (proj1' (dec_inv_tfun_in Hdec' i eq_refl)))))))
-         ((fix get_arg_list_ext_aux
-             (f : funsym) (vs' : list vty) (ts0 : list term)
-             (Hparamslen : Datatypes.length vs' = Datatypes.length (s_params f))
-             {struct ts0} :
-               forall args : list vty,
-               Datatypes.length ts0 = Datatypes.length args ->
-               Forall (fun x0 : term * vty => term_has_type sigma (fst x0) (snd x0))
-                 (combine ts0 (map (ty_subst (s_params f) vs') args)) ->
-               Forall
-                 (fun t0 : term =>
-                  decrease_fun fs [] small
-                    (nth (fn_idx (proj1_sig (projT1 fa)))
-                       (fn_args (proj1_sig (projT1 fa))) vs_d) m vs t0) ts0 ->
-               arg_list domain
-                 (ty_subst_list_s (s_params f) (map (fun x0 : vty => val x0) vs')
-                    args) :=
-             match
-               ts0 as ts'
-               return
-                 (forall args : list vty,
-                  Datatypes.length ts' = Datatypes.length args ->
-                  Forall
-                    (fun x0 : term * vty => term_has_type sigma (fst x0) (snd x0))
-                    (combine ts' (map (ty_subst (s_params f) vs') args)) ->
-                  Forall
-                    (fun t0 : term =>
-                     decrease_fun fs [] small
-                       (nth (fn_idx (proj1_sig (projT1 fa)))
-                          (fn_args (proj1_sig (projT1 fa))) vs_d) m vs t0) ts' ->
-                  arg_list domain
-                    (ty_subst_list_s (s_params f) (map (fun x0 : vty => val x0) vs')
-                       args))
-             with
-             | [] =>
-                 fun (args : list vty) (Hlen : 0 = Datatypes.length args)
-                   (_ : Forall
-                          (fun x0 : term * vty =>
-                           term_has_type sigma (fst x0) (snd x0)) [])
-                   (_ : Forall
-                          (fun t0 : term =>
-                           decrease_fun fs [] small
-                             (nth (fn_idx (proj1_sig (projT1 fa)))
-                                (fn_args (proj1_sig (projT1 fa))) vs_d) m vs t0) [])
-                 =>
-                 match
-                   args as a'
-                   return
-                     (0 = Datatypes.length a' ->
-                      arg_list domain
-                        (ty_subst_list_s (s_params f)
-                           (map (fun x0 : vty => val x0) vs') a'))
-                 with
-                 | [] => fun _ : 0 = 0 => HL_nil domain
-                 | ahd :: atl =>
-                     fun Heq : 0 = S (Datatypes.length atl) =>
-                     False_rect
-                       (arg_list domain
-                          (ty_subst_s (s_params f) (map (fun x0 : vty => val x0) vs')
-                             ahd
-                           :: ty_subst_list_s (s_params f)
-                                (map (fun x0 : vty => val x0) vs') atl))
-                       (Nat.neq_0_succ (Datatypes.length atl) Heq)
-                 end Hlen
-             | thd :: ttl =>
-                 fun (args : list vty)
-                   (Hlen : S (Datatypes.length ttl) = Datatypes.length args)
-                   (Htys : Forall
-                             (fun x0 : term * vty =>
-                              term_has_type sigma (fst x0) (snd x0))
-                             match map (ty_subst (s_params f) vs') args with
-                             | [] => []
-                             | y :: tl' => (thd, y) :: combine ttl tl'
-                             end)
-                   (Hdecs : Forall
-                              (fun t0 : term =>
-                               decrease_fun fs [] small
-                                 (nth (fn_idx (proj1_sig (projT1 fa)))
-                                    (fn_args (proj1_sig (projT1 fa))) vs_d) m vs t0)
-                              (thd :: ttl)) =>
-                 match
-                   args as a'
-                   return
-                     (S (Datatypes.length ttl) = Datatypes.length a' ->
-                      Forall
-                        (fun x0 : term * vty => term_has_type sigma (fst x0) (snd x0))
-                        match map (ty_subst (s_params f) vs') a' with
-                        | [] => []
-                        | y :: tl' => (thd, y) :: combine ttl tl'
-                        end ->
-                      arg_list domain
-                        (ty_subst_list_s (s_params f)
-                           (map (fun x0 : vty => val x0) vs') a'))
-                 with
-                 | [] =>
-                     fun (Heq : S (Datatypes.length ttl) = 0)
-                       (_ : Forall
-                              (fun x0 : term * vty =>
-                               term_has_type sigma (fst x0) (snd x0)) []) =>
-                     False_rect (arg_list domain [])
-                       (Nat.neq_succ_0 (Datatypes.length ttl) Heq)
-                 | ahd :: atl =>
-                     fun (Heq : S (Datatypes.length ttl) = S (Datatypes.length atl))
-                       (Htys0 : Forall
-                                  (fun x0 : term * vty =>
-                                   term_has_type sigma (fst x0) (snd x0))
-                                  ((thd, ty_subst (s_params f) vs' ahd)
-                                   :: combine ttl
-                                        (map (ty_subst (s_params f) vs') atl))) =>
-                     HL_cons domain
-                       (ty_subst_s (s_params f) (map (v_subst (v_typevar vt)) vs')
-                          ahd)
-                       (ty_subst_list_s (s_params f)
-                          (map (fun x0 : vty => val x0) vs') atl)
-                       (dom_cast (dom_aux pd)
-                          (funsym_subst_eq (s_params f) vs' 
-                             (v_typevar vt) ahd (s_params_Nodup f)
-                             (eq_sym Hparamslen))
-                          (proj1_sig
-                             (term_rep_aux v thd (ty_subst (s_params f) vs' ahd)
-                                small (Forall_inv Htys0) 
-                                (Forall_inv Hdecs) Hsmall)))
-                       (get_arg_list_ext_aux f vs' ttl Hparamslen atl
-                          (Nat.succ_inj (Datatypes.length ttl) 
-                             (Datatypes.length atl) Heq) 
-                          (Forall_inv_tail Htys0) (Forall_inv_tail Hdecs))
-                 end Hlen Htys
-             end) (fn_name x) l ts
-            (proj1
-               (proj2
-                  (proj2 (proj2 (fun_ty_inversion sigma (fn_name x) l ts ty Hty')))))
-            (s_args (fn_name x))
-            (proj1 (proj2 (proj2 (fun_ty_inversion sigma (fn_name x) l ts ty Hty'))))
-            (proj1
-               (proj2
-                  (proj2
-                     (proj2 (proj2 (fun_ty_inversion sigma (fn_name x) l ts ty Hty'))))))
-            (dec_inv_tfun_rec Hdec'))))) fa.
-Proof.
-  rewrite rewrite_get_arg_list_ext_aux.
-apply func_decreasing.
-Defined.
 
 Definition R_projT1 {A : Type} (B: A -> Type) (R: A -> A -> Prop) :
   {x: A & B x} -> {x : A & B x} -> Prop :=
@@ -3119,14 +3288,524 @@ Proof.
   simpl. f_equal. apply dec_uip_diff. apply sort_eq_dec.
 Qed.
 
+(*
 Lemma func_smaller_case input ind_arg': 
 R_projT1
      (fun fa : packed_args =>
       (val_vars pd vt *
        (Datatypes.length (projT1 (projT2 fa)) = Datatypes.length params /\
         vt_eq (projT1 (projT2 fa))))%type) arg_list_smaller ind_arg' input.
-Admitted.
+Admitted.*)
 
+Lemma rewrite_dom_cast: forall (v1 v2: sort) (Heq: v1 = v2)
+  x,
+  scast (f_equal domain Heq) x = dom_cast (dom_aux pd) Heq x.
+Proof.
+  intros. reflexivity.
+Qed.
+
+Lemma func_smaller_case (v:val_vars pd vt) (input: packed_args2)  :
+let fa:= projT1 input in
+let f1:= proj1_sig (projT1 fa) in
+let y:= nth (fn_idx f1) (fn_args f1) vs_d in 
+let a1:= projT2 (projT2 fa) in
+let Hsrts:= snd (projT2 input) in
+let srts_len:= proj1' Hsrts in
+let vt_eq_srts:= proj2' Hsrts in
+let srts:= projT1 (projT2 fa) in
+let d:= hide_ty
+(dom_cast (dom_aux pd)
+   (arg_nth_eq srts (fn_name f1) (fn_idx f1) (fn_idx_bound f1))
+   (hnth (fn_idx f1) a1 s_int (dom_int pd))) in
+forall (small: list vsymbol)
+  (ty: vty) (f: funsym) (l: list vty) (ts: list term)
+  (Hty': term_has_type sigma (Tfun f l ts) ty)
+  (Hdec': decrease_fun fs [] small y m vs (Tfun f l ts))
+  (x: {f' : fn | In f' fs /\ f = fn_name f'})
+  (Hsmall: forall x : vsymbol,
+    In x small -> adt_smaller_trans (hide_ty (v x)) d)
+  (term_rep_aux: forall (v : val_vars pd vt) (t : term) 
+      (ty : vty) (small : list vsymbol)
+      (Hty : term_has_type sigma t ty),
+    decrease_fun fs [] small y m vs t ->
+    (forall x : vsymbol,
+    In x small -> adt_smaller_trans (hide_ty (v x)) d) ->
+    {d : domain (val ty)
+    | forall (x : vsymbol) (Heqx : t = Tvar x),
+      d =
+      dom_cast (dom_aux pd)
+        (f_equal (fun x0 : vty => val x0)
+          (eq_sym (ty_var_inv (term_has_type_cast Heqx Hty))))
+        (var_to_dom pd vt v x)}),
+let get_arg_list_ext_aux:= fix get_arg_list_ext_aux
+(f : funsym) (vs' : list vty) 
+(ts : list term)
+(Hparamslen : Datatypes.length vs' =
+              Datatypes.length (s_params f))
+{struct ts} :
+  forall args : list vty,
+  Datatypes.length ts = Datatypes.length args ->
+  Forall
+    (fun x : term * vty =>
+     term_has_type sigma (fst x) (snd x))
+    (combine ts
+       (map (ty_subst (s_params f) vs') args)) ->
+  Forall
+    (fun t : term =>
+     decrease_fun fs [] small y m vs t) ts ->
+  arg_list domain
+    (ty_subst_list_s (s_params f)
+       (map (fun x : vty => val x) vs') args) :=
+match
+  ts as ts'
+  return
+    (forall args : list vty,
+     Datatypes.length ts' = Datatypes.length args ->
+     Forall
+       (fun x : term * vty =>
+        term_has_type sigma (fst x) (snd x))
+       (combine ts'
+          (map (ty_subst (s_params f) vs') args)) ->
+     Forall
+       (fun t : term =>
+        decrease_fun fs [] small y m vs t) ts' ->
+     arg_list domain
+       (ty_subst_list_s 
+          (s_params f)
+          (map (fun x : vty => val x) vs') args))
+with
+| [] =>
+    fun (args : list vty)
+      (Hlen : Datatypes.length [] =
+              Datatypes.length args)
+      (_ : Forall
+             (fun x : term * vty =>
+              term_has_type sigma (fst x) (snd x))
+             (combine []
+                (map (ty_subst (s_params f) vs')
+                   args)))
+      (_ : Forall
+             (fun t : term =>
+              decrease_fun fs [] small y m vs t) [])
+    =>
+    match
+      args as a'
+      return
+        (Datatypes.length [] = Datatypes.length a' ->
+         arg_list domain
+           (ty_subst_list_s 
+              (s_params f)
+              (map (fun x : vty => val x) vs') a'))
+    with
+    | [] =>
+        fun
+          _ : Datatypes.length [] =
+              Datatypes.length [] => 
+        HL_nil domain
+    | ahd :: atl =>
+        fun
+          Heq : Datatypes.length [] =
+                Datatypes.length (ahd :: atl) =>
+        False_rect
+          (arg_list domain
+             (ty_subst_list_s 
+                (s_params f)
+                (map (fun x : vty => val x) vs')
+                (ahd :: atl)))
+          (Nat.neq_0_succ 
+             (Datatypes.length atl) Heq)
+    end Hlen
+| thd :: ttl =>
+    fun (args : list vty)
+      (Hlen : Datatypes.length (thd :: ttl) =
+              Datatypes.length args)
+      (Htys : Forall
+                (fun x : term * vty =>
+                 term_has_type sigma 
+                   (fst x) 
+                   (snd x))
+                (combine 
+                   (thd :: ttl)
+                   (map 
+                      (ty_subst (s_params f) vs')
+                      args)))
+      (Hdecs : Forall
+                 (fun t : term =>
+                  decrease_fun fs [] small y m vs t)
+                 (thd :: ttl)) =>
+    match
+      args as a'
+      return
+        (Datatypes.length (thd :: ttl) =
+         Datatypes.length a' ->
+         Forall
+           (fun x : term * vty =>
+            term_has_type sigma (fst x) (snd x))
+           (combine (thd :: ttl)
+              (map (ty_subst (s_params f) vs') a')) ->
+         arg_list domain
+           (ty_subst_list_s 
+              (s_params f)
+              (map (fun x : vty => val x) vs') a'))
+    with
+    | [] =>
+        fun
+          (Heq : Datatypes.length (thd :: ttl) =
+                 Datatypes.length [])
+          (_ : Forall
+                 (fun x : term * vty =>
+                  term_has_type sigma 
+                    (fst x) 
+                    (snd x))
+                 (combine 
+                    (thd :: ttl)
+                    (map
+                       (ty_subst (s_params f) vs')
+                       []))) =>
+        False_rect
+          (arg_list domain
+             (ty_subst_list_s 
+                (s_params f)
+                (map (fun x : vty => val x) vs') []))
+          (Nat.neq_succ_0 
+             (Datatypes.length ttl) Heq)
+    | ahd :: atl =>
+        fun
+          (Heq : Datatypes.length (thd :: ttl) =
+                 Datatypes.length (ahd :: atl))
+          (Htys0 : Forall
+                     (fun x : term * vty =>
+                      term_has_type sigma 
+                       (fst x) 
+                       (snd x))
+                     (combine 
+                       (thd :: ttl)
+                       (map
+                       (ty_subst (s_params f) vs')
+                       (ahd :: atl)))) =>
+        HL_cons domain
+          (ty_subst_s (s_params f)
+             (map (v_subst (v_typevar vt)) vs') ahd)
+          (ty_subst_list_s 
+             (s_params f)
+             (map (fun x : vty => val x) vs') atl)
+          (dom_cast (dom_aux pd)
+             (funsym_subst_eq 
+                (s_params f) vs' 
+                (v_typevar vt) ahd
+                (s_params_Nodup f)
+                (eq_sym Hparamslen))
+             (proj1_sig
+                (term_rep_aux v thd
+                   (ty_subst (s_params f) vs' ahd)
+                   small 
+                   (Forall_inv Htys0)
+                   (Forall_inv Hdecs) Hsmall)))
+          (get_arg_list_ext_aux f vs' ttl
+             Hparamslen atl
+             (Nat.succ_inj 
+                (Datatypes.length ttl)
+                (Datatypes.length atl) Heq)
+             (Forall_inv_tail Htys0)
+             (Forall_inv_tail Hdecs))
+    end Hlen Htys
+end in
+let Hinv:= fun_ty_inversion sigma f l ts ty Hty' in
+
+
+let Hdec2:= dec_inv_tfun_rec Hdec' in
+let Hall:= proj1' (proj2' (proj2' (proj2' (proj2' Hinv)))) in
+let Hargslen:= proj1' (proj2' (proj2' Hinv)) in
+let Hparamslen:= proj1' (proj2' (proj2' (proj2' Hinv))) in
+let args:= get_arg_list_ext_aux f l ts Hparamslen (s_args f) Hargslen Hall Hdec2 in
+
+let fn_def:= proj1_sig x in
+let f_fn:= proj2' (proj2_sig x) in
+let fn_in:= proj1' (proj2_sig x)  in
+let l_eq:= proj1' (dec_inv_tfun_in Hdec' fn_in f_fn) in
+let srts_eq:= eq_trans
+(f_equal
+   (fun x : funsym =>
+    map (fun x0 : vty => val x0) (map vty_var (s_params x)))
+   f_fn) (map_vals_srts' srts fn_def srts_len vt_eq_srts fn_in) in
+
+let l_eq2:= eq_trans (eq_sym srts_eq)
+(f_equal (fun x : list vty => map (fun x0 : vty => val x0) x)
+   (eq_sym l_eq)) in
+let args':= scast
+           (f_equal
+              (fun x : list sort => arg_list domain (funsym_sigma_args f x))
+              (eq_sym l_eq2)) args in
+let args'':= scast
+(f_equal
+   (fun x : funsym => arg_list domain (funsym_sigma_args x srts))
+   f_fn) args' in
+let ind_arg:= existT
+(fun x : {f : fn | In f fs} =>
+ {srts : list sort &
+ arg_list domain
+   (funsym_sigma_args (fn_name (proj1_sig x)) srts)})
+(exist (fun f : fn => In f fs) fn_def fn_in)
+(existT
+   (fun srts : list sort =>
+    arg_list domain
+      (funsym_sigma_args
+         (fn_name
+            (proj1_sig
+               (exist (fun f : fn => In f fs) fn_def fn_in)))
+         srts)) srts args'') in
+let ind_arg':= pack_args ind_arg v (conj srts_len vt_eq_srts) in
+R_projT1
+(fun fa0 : packed_args =>
+ (val_vars pd vt *
+  (Datatypes.length (projT1 (projT2 fa0)) = Datatypes.length params /\
+   vt_eq (projT1 (projT2 fa0))))%type) arg_list_smaller ind_arg' input.
+Proof.
+  intros.
+  unfold R_projT1.
+  subst ind_arg' ind_arg args'' args' l_eq2 f_fn srts_eq l_eq d
+    Hargslen Hparamslen Hall Hdec2 args srts fa Hinv.
+  unfold pack_args. simpl in *.
+  Tactics.program_simplify. simpl.
+  (*Put proof of func_decreasing here*)
+  econstructor.
+  - reflexivity.
+  - reflexivity.
+  - simpl. Unshelve. 5: reflexivity. 4: reflexivity. 4: reflexivity. 3: reflexivity.
+    simpl. rewrite eq_trans_refl.
+    simpl. unfold cast_arg_list. simpl.
+    rewrite scast_funsym_args_eq.
+    rewrite hnth_cast_arg_list. 
+    unfold cast_nth_eq.
+    rewrite eq_trans_sym_distr, eq_sym_map_distr,
+    !eq_sym_involutive, !eq_trans_map_distr, !f_equal_compose.
+    generalize dependent  (dec_inv_tfun_in Hdec' i eq_refl).
+    intros. destruct H as [Heq [Hall1 Hall2]]. subst. simpl.
+    simpl in *.
+    generalize dependent (map_vals_srts' (projT1 (projT2 (projT1 input))) fn_def srts_len
+    vt_eq_srts fn_in).
+    intros.
+    subst f1 y a1 srts_len vt_eq_srts.
+    destruct input as [fa [v' [srts_len vt_eq_srts]]].
+    simpl in *.
+    destruct fa; simpl in *. destruct s; simpl in *. subst.
+    simpl.
+    set (y:= (nth (fn_idx (proj1_sig x0))
+    (fn_args (proj1_sig x0)) vs_d)) in *.
+    (*Now we prove a lemma about hnth of get_arg_list_ext_aux0
+      We do this here so that (hopefully) Coq can see that
+      everything is decreasing structurally*)
+    (*First, try with assert*)
+    assert (Hnth: forall (i: nat)
+    (f: funsym)
+    (vs': list vty) (ts: list term) (*{ty: vty}*)
+    (Hparamslen: length vs' = length (s_params f))
+    args
+    (Hargslen: length ts = length args)
+    (Hall: Forall (fun x => term_has_type sigma (fst x) (snd x))
+      (combine ts (map (ty_subst (s_params f) vs') args)))
+    (*(Hty': ty = ty_subst (s_params f) vs' (s_ret f))*)
+    (Hdec: Forall (fun t => decrease_fun fs nil small y m vs t) ts),
+    i < length ts ->
+    exists ty' Hty' Hdec' Heq,
+    hnth i (get_arg_list_ext_aux0 f vs' ts Hparamslen args Hargslen Hall Hdec) 
+      s_int (dom_int pd) =
+    dom_cast _ Heq (proj1_sig (term_rep_aux v (nth i ts tm_d) ty' small Hty' Hdec' Hsmall))).
+    {
+      clear. intros i f vs' ts Hparamslen. revert i.
+      induction ts; simpl; intros.
+      - exact (False_rect _ (Nat.nlt_0_r _ H)).
+      - destruct args.
+        + exact (False_rect _ (Nat.neq_succ_0 (length ts) Hargslen)).
+        + simpl. destruct i.
+          * exists (ty_subst (s_params f) vs' v0).
+            exists (Forall_inv Hall).
+            exists (Forall_inv Hdec).
+            exists (funsym_subst_eq (s_params f) vs' (v_typevar vt) v0 (s_params_Nodup f)
+            (eq_sym Hparamslen)).
+            reflexivity.
+          * apply IHts. apply Nat.succ_lt_mono. apply H.
+    }
+    (*OK, now all the casting is done except for the final dom_cast*)
+    (*Now we need to know about hnth of get_arg_list_ext*)
+    assert (Hidx: fn_idx x < Datatypes.length ts). {
+      (*TODO: remove inversion?*)
+      inversion Hty'; subst.
+      rewrite H6. apply fn_idx_bound.
+    }
+    set (Hinv:= (fun_ty_inversion sigma (fn_name x)
+    (map vty_var (s_params (fn_name x))) ts ty Hty')).
+    set (Hdec2:= dec_inv_tfun_rec Hdec').
+    set (Hall:= proj1' (proj2' (proj2' (proj2' (proj2' Hinv))))).
+    set (Hargslen:= proj1' (proj2' (proj2' Hinv))).
+    set (Hparamslen:= proj1' (proj2' (proj2' (proj2' Hinv)))).
+    subst fn_def.
+    (*set (args:= get_arg_list_ext_aux0 f l ts Hparamslen (s_args f) Hargslen Hall Hdec2 in*)
+    destruct (Hnth (fn_idx x) (fn_name x) 
+      (map vty_var (s_params (fn_name x))) ts Hparamslen _
+      Hargslen Hall Hdec2 Hidx) as [ty2 [Hty2 [Hdec2' [Heq Hnth']]]].
+    unfold funsym_sigma_args.
+    rewrite Hnth'.
+    (*Now we know that (nth (fn_idx x) ts tm_d) is a var in small*)
+    destruct (dec_inv_tfun_arg Hdec' i eq_refl) as [vs_small [Hinvs Hvar]].
+    generalize dependent Hty2. simpl.
+    generalize dependent Hdec2'.
+    rewrite Hvar. intros Hdec2'' Hty2 Hnth'.
+  
+    destruct (term_rep_aux v (Tvar vs_small) ty2 small Hty2 Hdec2'' Hsmall).
+    simpl.
+    assert (B:=e0).
+    specialize (B vs_small eq_refl). subst. simpl.
+    assert (A:=Hsmall).
+    specialize (A _ Hinvs).
+    unfold var_to_dom.
+    rewrite rewrite_dom_cast.
+    rewrite !dom_cast_compose.
+    (*Now, this is just a casted version of the smaller assumption we
+      have. So we can use [adt_smaller_trans_hide_cast]*)
+    apply adt_smaller_trans_hide_cast. exact A.
+Defined. 
+
+ (*
+   sigma: sig
+gamma: context
+gamma_valid: valid_context sigma gamma
+pd: pi_dom
+all_unif: forall m : mut_adt, mut_in_ctx m gamma -> uniform m
+vt: val_typevar
+pf: pi_funpred gamma_valid pd
+fs: list fn
+ps: list pn
+fs_uniq: NoDup (map fn_name fs)
+fs_typed: Forall
+             (fun f : fn =>
+              term_has_type sigma (fn_body f) (s_ret (fn_name f))) fs
+params: list typevar
+params_eq: forall f : fn, In f fs -> s_params (fn_name f) = params
+f_typevars: forall f : fn,
+             In f fs ->
+             forall ty : vty,
+             In ty (s_ret (fn_name f) :: s_args (fn_name f)) ->
+             forall x : typevar, In x (type_vars ty) -> In x params
+m: mut_adt
+vs: list vty
+args_agree: forall f : fn,
+             In f fs -> map snd (fn_args f) = s_args (fn_name f)
+recurse_on_adt: forall f : fn,
+                 In f fs ->
+                 exists a : alg_datatype,
+                   adt_in_mut a m /\
+                   snd (nth (fn_idx f) (fn_args f) vs_d) =
+                   vty_cons (adt_name a) vs
+fs_dec: Forall
+           (fun f : fn =>
+            decrease_fun fs [] [] (nth (fn_idx f) (fn_args f) vs_d) m vs
+              (fn_body f)) fs
+
+rec: forall y : packed_args2,
+      R_projT1
+        (fun fa : packed_args =>
+         (val_vars pd vt *
+          (Datatypes.length (projT1 (projT2 fa)) = Datatypes.length params /\
+           vt_eq (projT1 (projT2 fa))))%type) arg_list_smaller y input ->
+      domain
+        (funsym_sigma_ret (fn_name (proj1_sig (projT1 (projT1 y))))
+           (projT1 (projT2 (projT1 y))))
+: packed_args
+v0:= fst (projT2 input) : val_vars pd vt
+
+ : Datatypes.length (projT1 (projT2 (projT1 input))) =
+   Datatypes.length params /\ vt_eq (projT1 (projT2 (projT1 input)))
+ : fn
+
+ : (fun srts : list sort =>
+    arg_list domain
+      (funsym_sigma_args (fn_name (proj1_sig (projT1 fa))) srts))
+     (projT1 (projT2 fa))
+ : list sort
+
+ : Datatypes.length (projT1 (projT2 (projT1 input))) =
+   Datatypes.length params
+ : vt_eq (projT1 (projT2 (projT1 input)))
+
+ : {x : vty & domain (val x)}
+: vsymbol
+
+
+t: term
+
+
+Hty: term_has_type sigma t ty
+Hdec: decrease_fun fs [] small y m vs t
+
+
+
+
+
+
+Htyeq:= eq_sym (ty_fun_ind_ret Hty')
+ : ty_subst (s_params f) l (s_ret f) = ty
+Heqret:= funsym_subst_eq (s_params f) l (v_typevar vt) 
+            (s_ret f) (s_params_Nodup f) (tfun_params_length Hty')
+ : val (ty_subst (s_params f) l (s_ret f)) =
+   ty_subst_s (s_params f) (map (v_subst (v_typevar vt)) l) (s_ret f)
+
+ : forall (f : funsym) (vs' : list vty) (ts : list term),
+   Datatypes.length vs' = Datatypes.length (s_params f) ->
+   forall args : list vty,
+   Datatypes.length ts = Datatypes.length args ->
+   Forall (fun x : term * vty => term_has_type sigma (fst x) (snd x))
+     (combine ts (map (ty_subst (s_params f) vs') args)) ->
+   Forall (fun t : term => decrease_fun fs [] small y m vs t) ts ->
+   arg_list domain
+     (ty_subst_list_s (s_params f) (map (fun x : vty => val x) vs') args)
+
+ : In f (sig_f sigma) /\
+   Forall (valid_type sigma) l /\
+   Datatypes.length ts = Datatypes.length (s_args f) /\
+   Datatypes.length l = Datatypes.length (s_params f) /\
+   Forall (fun x : term * vty => term_has_type sigma (fst x) (snd x))
+     (combine ts (map (ty_subst (s_params f) l) (s_args f))) /\
+   ty = ty_subst (s_params f) l (s_ret f)
+
+ : Datatypes.length ts = Datatypes.length (s_args f)
+
+ : Datatypes.length l = Datatypes.length (s_params f)
+
+ : Forall (fun x : term * vty => term_has_type sigma (fst x) (snd x))
+     (combine ts (map (ty_subst (s_params f) l) (s_args f)))
+
+ : Forall (fun t : term => decrease_fun fs [] small y m vs t) ts
+ : arg_list domain (funsym_sigma_args f (map (fun x : vty => val x) l))
+
+ : fn
+: In fn_def fs
+ : f = fn_name fn_def
+
+ : l = map vty_var (s_params f)
+: map (fun x : vty => val x) (map vty_var (s_params f)) = srts
+ : srts = map (fun x : vty => val x) l
+
+ : arg_list domain (funsym_sigma_args f srts)
+
+ : arg_list domain (funsym_sigma_args (fn_name fn_def) srts)
+ind_arg:= existT
+             (fun x : {f : fn | In f fs} =>
+              {srts : list sort &
+              arg_list domain
+                (funsym_sigma_args (fn_name (proj1_sig x)) srts)})
+             (exist (fun f : fn => In f fs) fn_def fn_in)
+             (existT
+                (fun srts : list sort =>
+                 arg_list domain
+                   (funsym_sigma_args
+                      (fn_name
+                         (proj1_sig
+                            (exist (fun f : fn => In f fs) fn_def fn_in)))
+                      srts)) srts args'') : packed_args
+ind_arg':= pack_args ind_arg v (conj srts_len vt_eq_srts) : packed_args2
+*)
+Print nat.
 Definition funcs_rep_aux_body (input: packed_args2)
 (rec:(forall
   y : packed_args2,
@@ -3261,9 +3940,9 @@ refine (
         end in
 
         let Hinv := fun_ty_inversion _ _ _ _ _ Hty' in 
-        let Hargslen := proj1 (proj2 (proj2 Hinv)) in
-        let Hparamslen := proj1 (proj2 (proj2 (proj2 Hinv))) in
-        let Hall := proj1 (proj2 (proj2 (proj2 (proj2 Hinv)))) in
+        let Hargslen := proj1' (proj2' (proj2' Hinv)) in
+        let Hparamslen := proj1' (proj2' (proj2' (proj2' Hinv))) in
+        let Hall := proj1' (proj2' (proj2' (proj2' (proj2' Hinv)))) in
         let Hdec2 := dec_inv_tfun_rec Hdec' in
 
         (*Get argument to apply recursively*)
@@ -3322,7 +4001,8 @@ refine (
             domain
     (funsym_sigma_ret (fn_name (proj1_sig (projT1 (projT1 ind_arg'))))
        (projT1 (projT2 (projT1 ind_arg')))) :=
-            (rec ind_arg' _) in
+            (rec ind_arg' 
+              (func_smaller_case v input small ty f l ts Hty' Hdec' x Hsmall term_rep_aux)) in
           let ret_val1 : domain (funsym_sigma_ret (fn_name fn_def) 
             (projT1 (projT2 (projT1 input)))) :=
             dom_cast (dom_aux pd) (f_equal (fun x => funsym_sigma_ret x 
@@ -3377,7 +4057,45 @@ refine (
         (s_ret (fn_name (proj1_sig (projT1 fa))))  nil
     (*TODO*) (Forall_In fs_typed (proj2_sig (projT1 fa)))
       (Forall_In fs_dec (proj2_sig (projT1 fa)))
-      (fun x Hx => match Hx with end) ))).
+      (fun x Hx => match Hx with end) )));
+try (intros; discriminate).
+Print pattern.
+Unshelve.
+- reflexivity.
+- reflexivity.
+Defined.
+Print term.
+
+
+
+subst ind_arg' ind_arg args'' args' l_eq2 f_fn srts_eq l_eq d
+Hargslen Hparamslen Hall Hdec2 args srts fa Hinv.
+Search v0. 
+pose proof (@func_smaller_case input small ty f l ts Hty' Hdec' x Hsmall term_rep_aux).
+
+
+
+    apply func_smaller_case.
+  unfold pack_args. simpl in *.
+  Tactics.program_simplify. simpl.
+  pose proof (func_decreasing (projT1 input) srts_len vt_eq_srts term_rep_aux v ty small Hsmall l ts fn_def Hdec' Hty' fn_in).
+  subst fn_def.
+  unfold get_arg_list_ext in H.
+  subst get_arg_list_ext_aux.
+  rewrite rewrite_get_arg_list_ext_aux.
+  apply H.
+- subst ind_arg'. simpl. reflexivity.
+- subst srts.  subst fa. reflexivity.
+(*TODO: how to get it to work?*)
+(*made opaque, maybe need transparent again*)
+Print pattern.
+Defined.
+
+Print term.
+
+- intros. discriminate.
+- intros. discriminate.
+- 
 (*TODO: fill in*)
 Admitted.
 
