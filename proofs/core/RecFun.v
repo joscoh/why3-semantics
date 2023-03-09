@@ -2504,6 +2504,47 @@ Lemma rewrite_dom_cast: forall (v1 v2: sort) (Heq: v1 = v2)
 Proof.
   intros. reflexivity.
 Qed.
+Print decrease_fun.
+(*Inversion lemmas for decreasing*)
+
+
+(*If no funsym or predsym appears in t, *)
+(*Lemma dec_fun_weaken: forall fs ps y t small x,
+  (forall f, In f fs -> negb (funsym_in_tm (fn_name f) t)) ->
+  (forall p, In p ps -> negb (predsym_in_term (pn_name p) t)) ->
+  decrease_fun fs ps (remove vsymbol_eq_dec x small) y m vs t.
+Proof.
+  intros. a inversion H; subst.
+  - apply Dec_notin_t; auto.
+  - destruct (vsymbol_eq_dec x x0).
+    + subst. apply Dec_fun_notin. apply Dec_fun_in with(f_decl:=f_decl)(x:=x0); auto.
+*)
+(*TODO: later wont need extra fs and ps*)
+Lemma dec_inv_tlet {fs' ps' tm1 x tm2 small y}:
+  decrease_fun fs' ps' small y m vs (Tlet tm1 x tm2) ->
+  decrease_fun fs' ps' small y m vs tm1 /\
+  decrease_fun fs' ps' (remove vsymbol_eq_dec x small) y m vs tm2.
+Proof.
+  intros. inversion H; subst.
+  - (*No funsym case*)
+    simpl in H0, H1.
+    split; apply Dec_notin_t; intros.
+    + apply H0 in H2. bool_hyps. rewrite H2; auto.
+    + apply H1 in H2. bool_hyps. rewrite H2; auto.
+    + apply H0 in H2. bool_hyps. rewrite H3; auto.
+    + apply H1 in H2. bool_hyps. rewrite H3; auto.
+  - split; auto.
+Qed.
+
+
+Lemma in_remove {A: Type} {P: A -> Prop} {l: list A} {x: A}
+  {eq_dec: forall (x y: A), {x=y} +{x <> y}}:
+  (forall x, In x l -> P x) ->
+  (forall y, In y (remove eq_dec x l) -> P y).
+Proof.
+  intros. simpl_set. destruct H0. apply H; auto.
+Qed.
+
 
 (*Now we prove one of the key results: we call the
   function on smaller inputs, according to our well-founded
@@ -2895,6 +2936,36 @@ Proof.
   exact H.
 Defined.
 
+Lemma small_remove_lemma_gen (v: val_vars pd vt) (x: vsymbol)  
+  (t: domain (val (snd x))) (small: list vsymbol)
+  {P: forall (ty: vty), domain (val ty) -> Prop}:
+  (forall x, In x small -> P _ (v x)) ->
+  (forall y, In y (remove vsymbol_eq_dec x small) -> 
+    P _ (substi pd vt v x t y)).
+Proof.
+  intros. unfold substi. simpl_set. destruct H0.
+  destruct (vsymbol_eq_dec y x); subst; auto; try contradiction.
+Qed.
+
+Lemma small_remove_lemma (v: val_vars pd vt) (x: vsymbol)
+  (t: domain (val (snd x))) {small d} 
+  (Hsmall: forall x, In x small -> adt_smaller_trans (hide_ty (v x)) d):
+  forall y, In y (remove vsymbol_eq_dec x small) ->
+  adt_smaller_trans (hide_ty (substi pd vt v x t y)) d.
+Proof.
+  intros.
+  apply small_remove_lemma_gen with(small:=small)(P:=(fun ty y =>
+    adt_smaller_trans (hide_ty y) d)); auto.
+Qed.
+
+(*
+forall x : vsymbol,
+  In x (remove vsymbol_eq_dec v1 small) ->
+  adt_smaller_trans
+    (hide_ty
+       (substi pd vt v v1
+          (proj1_sig (term_rep_aux v tm1 (snd v1) small Ht1 Hdec1 Hsmall)) x)) d*)
+
 (*Finally, start building the real function. We separate into
   pieces to avoid too many layers of nested recursion and to
   make things easier for Coq's termination checker*)
@@ -3210,11 +3281,30 @@ Definition term_rep_aux_body
           (fun x Heqx => False_rect _ (fun_not_var Heqx)))
   end
 
-(*TODO: placeholder*)
-| Tlet tm1 v1 tm2 => 
-  fun _ _ => match domain_ne pd (val ty) with
+(*Tlet is pretty simple. We need a lemma to show that we mantain
+  the Hsmall invariant (holds because substi replaces the variable
+  that we substitute in)
+  We also have an awkward exist (proj1_sig _) H, because the inductive
+  proof is not quite right, though both are trivial*)
+| Tlet tm1 v1 tm2 => fun Hty' Hdec' =>
+    let Ht1 : term_has_type sigma tm1 (snd v1) :=
+      proj1 (ty_let_inv Hty') in
+    let Ht2 : term_has_type sigma tm2 ty :=
+      proj2 (ty_let_inv Hty') in 
+    let Hdec1 : decrease_fun fs nil small y m vs tm1 := 
+      proj1 (dec_inv_tlet Hdec') in
+    let Hdec2 : decrease_fun fs nil (remove vsymbol_eq_dec v1 small) y m vs tm2 := 
+      proj2 (dec_inv_tlet Hdec') in
+
+    exist _ (proj1_sig (term_rep_aux (substi pd vt v v1 
+      (proj1_sig (term_rep_aux v tm1 (snd v1) small Ht1 Hdec1 Hsmall))) 
+    tm2 ty (remove vsymbol_eq_dec v1 small) Ht2 Hdec2 
+    (small_remove_lemma v v1 (proj1_sig (term_rep_aux v tm1 (snd v1) small Ht1 Hdec1 Hsmall)) 
+      Hsmall))) (fun x Heqx => False_rect _ (tlet_not_var Heqx))
+  (*fun _ _ => match domain_ne pd (val ty) with
   | DE x =>  exist _ x (fun x Heqx => False_rect _ (tlet_not_var Heqx))
-  end 
+  end *)
+(*TODO: after, don't want mutual recursion yet*)
 | Tif f1 t2 t3 =>
   fun _ _ => match domain_ne pd (val ty) with
   | DE x =>  exist _ x (fun x Heqx => False_rect _ (tif_not_var Heqx))
