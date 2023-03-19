@@ -98,6 +98,7 @@ Fixpoint typecheck_pattern (s: sig) (p: pattern) (v: vty) : bool :=
     (v == ty_subst (s_params f) params (s_ret f)) &&
     (f \in (sig_f s)) &&
     all (fun x => typecheck_type s x) params &&
+    (typecheck_type s (s_ret f)) &&
     (length ps == length (s_args f)) &&
     (length params == length (s_params f)) &&
     ((fix check_list (l1: list pattern) (l2: list vty) : bool :=
@@ -228,6 +229,7 @@ Proof.
     case: (all [eta typecheck_type s] vs) 
       /(all_Forall _ _ _ (fun x _ => typecheck_type_correct s x)) => Hforall/=;
       last by reflF.
+    case: (typecheck_type s (s_ret f)) /typecheck_type_correct => Hvalret; last by reflF.
     case: (length ps == length (s_args f)) /eqP => Hlenps/=; last by reflF.
     case: (length vs == length (s_params f)) /eqP => Hlenvs/=; last by reflF.
     (*Prove each of the last two conditions separately*)
@@ -274,24 +276,26 @@ Proof.
     reflF.
     (*Now we just have the nested induction left*)
     apply iff_reflect. split.
-    + move=> Hty. inversion Hty; subst. clear -H7 H4 Hall.
-      move: H4 H7. subst sigma.
+    + move=> Hty. inversion Hty; subst. clear -H8 H5 Hall.
+      move: H5 H8. subst sigma.
       move: Hall (s_params f) (s_args f) vs.
       elim: ps =>[//= Hall params [|] vs //| phd ptl /= IH Hall params 
         [// | ahd atl/=] vs [Hlen] Hforall].
       case: (typecheck_pattern s phd (ty_subst params vs ahd))
         /(ForallT_hd _ _ _  Hall) => Hhasty/=; last by
-        exfalso; apply Hhasty; apply (Forall_inv Hforall).
+        exfalso; apply Hhasty; 
+        apply (Hforall (phd, ty_subst params vs ahd));
+        left.
       apply IH=>//. apply (ForallT_tl _ _ _ Hall).
-      apply (Forall_inv_tail Hforall).
+      by move=> x Hinx; apply Hforall; right.
     + move => Hcheck. constructor=>//.
       clear -Hcheck Hall Hlenps.
       move: (s_params f) (s_args f) vs Hlenps Hall Hcheck.
       elim: ps => [//= | phd ptl /= IH params [// | ahd atl /=] vs [Hlen] Hall].
       case: (typecheck_pattern s phd (ty_subst params vs ahd))
       /(ForallT_hd _ _ _  Hall) => Hhasty//= Hcheck.
-      constructor=>//. apply IH=>//.
-      apply (ForallT_tl _ _ _ Hall).
+      move=> x [Hx/= | Hinx]; subst=>//=.
+      by apply (IH _ _ _ Hlen (ForallT_tl _ _ _ Hall) Hcheck).
   - move=> v.
     case: (typecheck_type s v) /typecheck_type_correct => Hv; last by reflF.
     apply ReflectT. by constructor.

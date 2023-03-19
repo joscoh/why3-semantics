@@ -546,18 +546,27 @@ Proof.
   apply subst_is_sort_eq; auto.
 Qed.
 
-Lemma v_subst_ext (v1 v2: typevar -> sort) ty:
-  (forall x, In x (type_vars ty) -> v1 x = v2 x) ->
-  v_subst v1 ty = v_subst v2 ty.
+Lemma v_subst_aux_ex (v1 v2: typevar -> vty) ty:
+  (forall x, In x (type_vars ty) -> v1 x = v2 x ) ->
+  v_subst_aux v1 ty = v_subst_aux v2 ty.
 Proof.
-  intros. apply sort_inj. simpl. 
-  induction ty; simpl; auto.
+  intros. induction ty; simpl; auto.
   rewrite H; simpl; auto.
   f_equal. simpl in H. induction vs; simpl in *; auto.
   inversion H0; subst.
   f_equal.
   - apply H3. intros; apply H. simpl_set; triv.
   - apply IHvs; auto. intros. apply H; simpl_set; auto.
+Qed.
+
+
+Lemma v_subst_ext (v1 v2: typevar -> sort) ty:
+  (forall x, In x (type_vars ty) -> v1 x = v2 x) ->
+  v_subst v1 ty = v_subst v2 ty.
+Proof.
+  intros. apply sort_inj, v_subst_aux_ex.
+  intros. apply H in H0. apply (f_equal sort_to_ty) in H0.
+  auto.
 Qed.
 
 (*Suppose we have a list of params and a list of srts such that

@@ -731,6 +731,324 @@ End GetADT.
   [find_constr_rep] and casting.
   *)
 
+  Print pattern_has_type.
+
+Lemma pat_var_inv {s x ty}:
+  pattern_has_type s (Pvar x) ty ->
+  snd x = ty.
+Proof.
+  intros. inversion H; subst; auto.
+Qed.
+
+Lemma pat_or_inv {s p1 p2 ty}:
+  pattern_has_type s (Por p1 p2) ty ->
+  pattern_has_type s p1 ty /\ pattern_has_type s p2 ty.
+Proof.
+  intros. inversion H; subst. auto.
+Qed.
+
+Lemma pat_bind_inv {s p x ty}:
+  pattern_has_type s (Pbind p x) ty ->
+  pattern_has_type s p ty /\ ty = snd x.
+Proof.
+  intros. inversion H; subst. auto.
+Qed.
+
+(*TODO: put this as condition in overall maybe
+problem is - inner patterns need NOT be adts - this is not
+preserved throughout - maybe dont have this, just prove
+  "matches"*)
+Definition is_vty_adt (ty: vty) : 
+  option (mut_adt * alg_datatype * list vty) :=
+  match ty with
+  | vty_cons ts tys =>
+    match (find_ts_in_ctx ts) with
+    | Some (m, a) => Some (m, a, tys)
+    | None => None
+    end
+  | _ => None
+  end.
+
+Lemma is_vty_adt_spec {ty: vty} {m a vs}:
+  is_vty_adt ty = Some (m, a, vs) ->
+  ty = vty_cons (adt_name a) vs /\
+  adt_in_mut a m /\
+  mut_in_ctx m gamma.
+Proof.
+  unfold is_vty_adt. destruct ty; intro C; inversion C.
+  destruct (find_ts_in_ctx t) eqn : Hts; inversion H0; subst.
+  destruct p. inversion C; subst.
+  apply find_ts_in_ctx_iff in Hts. destruct_all; subst; auto.
+Qed.
+
+Lemma adt_vty_length_eq: forall {ty m a vs},
+  is_vty_adt ty = Some (m, a, vs) ->
+  valid_type sigma ty ->
+  length vs = length (m_params m).
+Proof.
+  intros ty m a vs H Hval.
+  apply is_vty_adt_spec in H. destruct_all; subst.
+  inversion Hval; subst. rewrite H5.
+  f_equal. apply (adt_args gamma_valid). split; auto.
+Qed.
+
+
+(*TOOD: move*)
+Lemma v_subst_cons {f} ts vs:
+  v_subst f (vty_cons ts vs) =
+  typesym_to_sort ts (map (v_subst f) vs).
+Proof.
+  apply sort_inj. simpl.
+  f_equal. apply list_eq_ext'; rewrite !map_length; auto.
+  intros n d Hn.
+  rewrite !map_nth_inbound with (d2:=s_int); [|rewrite map_length; auto].
+  rewrite !map_nth_inbound with (d2:=vty_int); auto.
+Qed.
+
+(*Typecast we need for inner arg list*)
+Lemma funsym_sigma_args_map (v: val_typevar) (f: funsym) 
+  (vs: list vty):
+  length (s_params f) = length vs ->
+  funsym_sigma_args f (map (val v) vs) =
+  map (val v) (ty_subst_list (s_params f) vs (s_args f)).
+Proof.
+  intros Hlen.
+  unfold funsym_sigma_args, ty_subst_list_s, ty_subst_list.
+  apply list_eq_ext'; rewrite !map_length; auto.
+  intros n d Hn.
+  rewrite !map_nth_inbound with (d2:=vty_int); auto;
+  [|rewrite map_length]; auto.
+  symmetry. apply funsym_subst_eq; auto.
+  apply s_params_Nodup.
+Qed.
+
+Lemma constr_length_eq: forall {ty m a vs c},
+  is_vty_adt ty = Some (m, a, vs) ->
+  valid_type sigma ty ->
+  constr_in_adt c a ->
+  length (s_params c) = length vs.
+Proof.
+  intros.
+  rewrite (adt_vty_length_eq H H0).
+  f_equal.
+  apply is_vty_adt_spec in H. destruct_all; subst.
+  apply (adt_constr_params gamma_valid H3 H2 H1).
+Qed.
+
+(*TODO: move*)
+Lemma ty_subst_cons (vars: list typevar) (params: list vty)
+  (ts: typesym) (vs: list vty):
+  ty_subst vars params (vty_cons ts vs) =
+  vty_cons ts (map (ty_subst vars params) vs).
+Proof.
+  reflexivity.
+Qed.
+
+(*TODO: assume it is adt, prove that params = ps*)
+Lemma pat_constr_ind {s params ps vs f1 f2 m a}:
+  pattern_has_type s (Pconstr f1 params ps) (vty_cons (adt_name a) vs) ->
+  mut_in_ctx m gamma ->
+  adt_in_mut a m ->
+  f1 = f2 ->
+  constr_in_adt f2 a ->
+  Forall (fun x => pattern_has_type s (fst x) (snd x))
+    (combine ps (ty_subst_list (s_params f2) vs (s_args f2))).
+Proof.
+  intros. subst.
+  inversion H; subst.
+  subst sigma0.
+  assert (ty_subst (s_params f2) params (s_ret f2) = vty_cons (adt_name a) params). {
+    rewrite (adt_constr_ret gamma_valid H0 H1 H3).
+    rewrite (adt_constr_params gamma_valid H0 H1 H3) in H12 |- *.
+    unfold ty_subst. simpl. f_equal.
+    apply list_eq_ext'; rewrite !map_length; auto.
+    intros n d Hn.
+    rewrite map_nth_inbound with (d2:=vty_int); [|rewrite map_length; auto].
+    rewrite (map_nth_inbound) with (d2:=EmptyString); auto.
+    simpl.
+    rewrite ty_subst_fun_nth with(s:=d); auto.
+    rewrite <- (adt_constr_params gamma_valid H0 H1 H3).
+    apply s_params_Nodup.
+  }
+  rewrite H2 in H6. inversion H6; subst.
+  rewrite Forall_forall.
+  intros. apply H13. 
+  unfold ty_subst_list in H4. apply H4.
+Qed.
+
+Definition cast_prop {A: Set} (P: A -> Prop) {a1 a2: A} (H: a1 = a2)
+  (Hp: P a1) : P a2 :=
+  match H with
+  |eq_refl => Hp
+  end.
+
+Definition pat_has_type_eq {s p ty1 ty2} (H: ty1 = ty2) 
+  (Hp: pattern_has_type s p ty1):
+  pattern_has_type s p ty2 :=
+  cast_prop (pattern_has_type s p) H Hp.
+
+Definition cast_bool {A: Set} (P: A -> bool) {a1 a2: A} (H: a1 = a2)
+  (Hp: P a1) : P a2 :=
+  cast_prop P H Hp.
+
+(*Updated version: relies on well-typedness
+  and matches on ty for constr case, NOT (val ty), which
+  removes useful information*)
+Fixpoint match_val_single (v: val_typevar) (ty: vty)
+  (p: pattern) 
+  (Hp: pattern_has_type sigma p ty)
+  (d: domain (val v ty))
+  {struct p} : 
+  (*For a pair (x, d), we just need that there is SOME type t such that
+    d has type [domain (val v t)], but we don't care what t is.
+    We prove later that it matches (snd x)*)
+  option (list (vsymbol * {t: vty & domain (val v t) })) :=
+  match p as p' return pattern_has_type sigma p' ty -> 
+    option (list (vsymbol * {t: vty & domain (val v t) })) with
+  | Pvar x => fun Hty' =>
+    (*Here, it is safe to always give Some*)
+    Some [(x, (existT _ ty d))]
+    (*TODO: really do want to show that None is never reached*)
+    (*if (vty_eq_dec (snd x) ty) then
+    Some [(x, (existT _ ty d))] else None*)
+  | Pwild => fun _ => Some nil
+  | Por p1 p2 => fun Hty' =>
+    match (match_val_single v ty p1 (proj1 (pat_or_inv Hty')) d) with
+                  | Some v1 => Some v1
+                  | None => match_val_single v ty p2 
+                    (proj2 (pat_or_inv Hty')) d
+                  end
+  | Pbind p1 x => fun Hty' =>
+    (*Binding adds an additional binding at the end for the whole
+      pattern*)
+    match (match_val_single v ty p1 (proj1 (pat_bind_inv Hty')) d) with
+    | None => None
+    | Some l => Some ((x, (existT _ ty d)) :: l)
+      (*if (vty_eq_dec (snd x) ty) then 
+       Some ((x, (existT _ ty d)) :: l) else None*)
+    end
+  | Pconstr f params ps => fun Hty' =>
+    (*Let's try this differently*)
+    (*TODO: want to know that this type is adt - have assumption,
+      will be part of typing*)
+    match (is_vty_adt ty) as o return
+      is_vty_adt ty = o ->
+      option (list (vsymbol * {t: vty & domain (val v t) })) 
+    with
+    | Some (m, a, vs) => (*TODO*) fun Hisadt => 
+      (*Get info from [is_vty_adt_spec]*)
+      let Htyeq : ty = vty_cons (adt_name a) vs :=
+        proj1 (is_vty_adt_spec Hisadt) in
+      let a_in : adt_in_mut a m :=
+        proj1 (proj2 (is_vty_adt_spec Hisadt)) in
+      let m_in : mut_in_ctx m gamma :=
+        proj2 (proj2 (is_vty_adt_spec Hisadt)) in
+
+      let srts := (map (val v) vs) in
+
+      let valeq : val v ty = typesym_to_sort (adt_name a) srts :=
+        eq_trans (f_equal (val v) Htyeq)
+          (v_subst_cons (adt_name a) vs) in
+
+      (*We cast to get an ADT, now that we know that this actually is
+          an ADT*)
+      let adt : adt_rep m srts (dom_aux pd) a a_in :=
+        scast (adts pd m srts a a_in) (dom_cast _ 
+          valeq d) in
+
+      (*Need a lemma about lengths for [find_constr_rep]*)
+      let lengths_eq : length srts = length (m_params m) := 
+        eq_trans (map_length _ _)
+          (adt_vty_length_eq Hisadt 
+          (pat_has_type_valid gamma_valid _ _ Hty')) in
+
+      (*The key part: get the constructor c and arg_list a
+          such that d = [[c(a)]]*)
+      let Hrep := find_constr_rep gamma_valid m m_in srts lengths_eq 
+        (dom_aux pd) a a_in (adts pd m srts) 
+        (all_unif m m_in) adt in
+
+      (*The different parts of Hrep we need*)
+      let c : funsym := projT1 Hrep in
+      let c_in : constr_in_adt c a :=
+        fst (proj1_sig (projT2 Hrep)) in
+      let args : arg_list domain (funsym_sigma_args c srts) := 
+        snd (proj1_sig (projT2 Hrep)) in
+
+      let lengths_eq' : length (s_params c) = length vs :=
+        (constr_length_eq Hisadt 
+        (pat_has_type_valid gamma_valid _ _ Hty') c_in) in
+      (*If the constructors match, check all arguments,
+        otherwise, gives None*)
+      (*We need proof of equality*)
+      match funsym_eq_dec c f with
+      | left Heq =>
+        (*Idea: iterate over arg list, build up valuation, return None
+        if we every see None*)
+        (*This function is actually quite simple, we just need a bit
+        of dependent pattern matching for the [arg_list]*)
+        let fix iter_arg_list (tys: list vty)
+          (a: arg_list domain (map (val v) tys))
+          (pats: list pattern)
+          (Hall: Forall (fun x => pattern_has_type sigma (fst x) (snd x)) 
+            (combine pats tys))
+          {struct pats} :
+          option (list (vsymbol * {t: vty & domain (val v t) })) :=
+          match tys as t' return arg_list domain (map (val v) t') ->
+            forall (pats: list pattern)
+            (Hall: Forall (fun x => pattern_has_type sigma (fst x) (snd x)) 
+              (combine pats t')),
+            option (list (vsymbol * {t: vty & domain (val v t) }))
+          with 
+          | nil => fun _ pats _ =>
+            (*matches only if lengths are the same*)
+            match pats with
+            | nil => Some nil
+            | _ => None
+            end
+          | ty :: tl => fun a' ps' Hall' =>
+            match ps' as pats return 
+              Forall (fun x => pattern_has_type sigma (fst x) (snd x)) 
+                (combine pats (ty :: tl) ) ->
+              option (list (vsymbol * {t: vty & domain (val v t) }))
+            with 
+            | nil => fun _ => None
+            | phd :: ptl => fun Hall' =>
+              (*We try to evaluate the head against the first pattern.
+                If this succeeds we combine with tail, if either fails
+                we give None*)
+              (*Since ty is a sort, val v ty = ty, therefore we can cast*)
+              match (match_val_single v ty phd (Forall_inv Hall') 
+                (hlist_hd a')) with
+              | None => None
+              | Some l =>
+                match iter_arg_list tl (hlist_tl a') ptl
+                  (Forall_inv_tail Hall') with
+                | None => None
+                | Some l' => Some (l ++ l')
+                end
+              end
+            end Hall'
+          end a pats Hall
+        in
+
+        let c_in': constr_in_adt f a :=
+          cast_prop (fun x => constr_in_adt x a) Heq c_in in
+
+        iter_arg_list _ (cast_arg_list 
+          (funsym_sigma_args_map v c vs lengths_eq') args) ps
+          (pat_constr_ind (pat_has_type_eq Htyeq Hty') m_in a_in 
+            (eq_sym Heq) c_in)
+
+      | right Hneq => None
+      end
+
+    (*Has to be ADT, will rule out later*)
+    | None => fun _ => None
+    end eq_refl
+  end Hp.
+(*Old*)
+(*
 Fixpoint match_val_single (v: val_typevar) (ty: vty)
   (Hval: valid_type sigma ty)
   (d: domain (val v ty))
@@ -834,7 +1152,7 @@ Fixpoint match_val_single (v: val_typevar) (ty: vty)
     (*If not an ADT, does not match*)
     | None => fun _ => None
     end eq_refl
-  end.
+  end.*)
 
 (*Lemmas about [match_val_single]*)
 

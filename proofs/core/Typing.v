@@ -39,13 +39,15 @@ Inductive pattern_has_type: sig -> pattern -> vty -> Prop :=
   | P_Constr: forall s (params : list vty) (ps : list pattern) (f: funsym),
     In f (sig_f s) ->
     Forall (valid_type s) params ->
+    (*NOTE: NOT included in paper - is this implied elsewhere?*)
+    valid_type s (s_ret f) ->
     length ps = length (s_args f) ->
     length params = length (s_params f) ->
     (* For all i, [nth i tms] has type [sigma(nth i (s_args f))], where
       sigma is the type substitution that maps f's type vars to [params] *)
     let sigma : vty -> vty := ty_subst (s_params f) params in
-    Forall (fun x => pattern_has_type s (fst x) (snd x)) (combine ps
-      (map sigma (s_args f))) ->
+    (forall x, In x (combine ps (map sigma (s_args f))) ->
+      pattern_has_type s (fst x) (snd x)) ->
     (* No free variables in common *)
     (forall i j d x, i < length ps -> j < length ps -> i <> j ->
       ~(In x (pat_fv (nth i ps d)) /\ In x (pat_fv (nth j ps d)))) ->
@@ -1372,6 +1374,14 @@ Proof.
   destruct Hinhab as [tm Htm].
   specialize (Hex tm Htm). destruct Hex as [p [[] _]].
 Qed.*)
+
+Lemma pat_has_type_valid: forall p ty,
+  pattern_has_type s p ty ->
+  valid_type s ty.
+Proof.
+  intros. induction H; try assumption; auto.
+  apply valid_type_subst; auto.
+Qed.
 
 (*If a term has a type, that type is well-formed. We need the 
   [valid_pat_fmla] or else we could have an empty pattern*)
