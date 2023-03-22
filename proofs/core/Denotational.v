@@ -2236,6 +2236,246 @@ Notation funs := (funs gamma_valid pd pf).
   the types work out. In each case, we separate the hypotheses and give
   explicit types for clarity. The final result is often quite simple and just
   needs 1 or more casts for dependent type purposes. *)
+
+Equations term_rep (v: val_vars pd vt) (t: term) (ty: vty)
+(Hty: term_has_type sigma t ty) : domain (val vt ty) by struct t := {
+
+term_rep v (Tconst (ConstInt z)) ty Hty :=
+  let Htyeq : vty_int = ty :=
+  eq_sym (ty_constint_inv Hty) in
+  cast_dom_vty Htyeq z;
+
+term_rep v (Tconst (ConstReal r)) ty Hty :=
+  let Htyeq : vty_real = ty :=
+  eq_sym (ty_constreal_inv Hty) in
+  cast_dom_vty Htyeq r;
+
+term_rep v (Tvar x) ty Hty :=
+  let Heq : ty = snd x := ty_var_inv Hty in
+  (dom_cast _ (f_equal (val vt) (eq_sym Heq)) (var_to_dom _ vt v x));
+
+term_rep v (Tfun f vs ts) ty Hty :=
+  (*Some proof we need; we give types for clarity*)
+  let Htyeq : ty_subst (s_params f) vs (s_ret f) = ty :=
+    eq_sym (ty_fun_ind_ret Hty) in
+  (*The main typecast: v(sigma(ty_ret)) = sigma'(ty_ret), where
+    sigma sends (s_params f)_i -> vs_i and 
+    sigma' sends (s_params f) _i -> v(vs_i)*)
+  let Heqret : v_subst (v_typevar vt) (ty_subst (s_params f) vs (s_ret f)) =
+    ty_subst_s (s_params f) (map (v_subst (v_typevar vt)) vs) (s_ret f) :=
+      funsym_subst_eq (s_params f) vs (v_typevar vt) (s_ret f) (s_params_Nodup f)
+      (tfun_params_length Hty) in
+
+  (* The final result is to apply [funs] to the [arg_list] created recursively
+    from the argument domain values. We need two casts to make the dependent
+    types work out*)
+
+  cast_dom_vty Htyeq (
+    dom_cast (dom_aux pd)
+      (eq_sym Heqret)
+        ((funs f (map (val vt) vs)) 
+          (get_arg_list vt f vs ts (term_rep v) (ex_intro _ ty Hty))));
+  
+term_rep v (Tlet t1 x t2) ty Hty :=
+  let Ht1 : term_has_type sigma t1 (snd x) :=
+    proj1 (ty_let_inv Hty) in
+  let Ht2 : term_has_type sigma t2 ty :=
+    proj2 (ty_let_inv Hty) in 
+  term_rep (substi vt v x (term_rep v t1 (snd x) Ht1)) t2 ty Ht2;
+
+term_rep v (Tif f t1 t2) ty Hty :=
+  let Ht1 : term_has_type sigma t1 ty :=
+    (proj1 (ty_if_inv Hty)) in
+  let Ht2 : term_has_type sigma t2 ty :=
+    (proj1 (proj2 (ty_if_inv Hty))) in
+  let Hf: valid_formula sigma f :=
+    (proj2 (proj2 (ty_if_inv Hty))) in
+  if (formula_rep v f Hf) then term_rep v t1 ty Ht1 
+  else term_rep v t2 ty Ht2;
+
+term_rep v (Tmatch t ty1 xs) ty Hty :=
+  let Ht1 : term_has_type sigma t ty1 :=
+    proj1 (ty_match_inv Hty) in
+  let Hps : Forall (fun x => pattern_has_type sigma (fst x) ty1) xs :=
+    proj1 (proj2 (ty_match_inv Hty)) in
+  let Hall : Forall (fun x => term_has_type sigma (snd x) ty) xs :=
+    proj2 (proj2 (ty_match_inv Hty)) in
+
+  let dom_t := term_rep v t ty1 Ht1 in
+
+  let fix match_rep (ps: list (pattern * term)) 
+        (Hps: Forall (fun x => pattern_has_type sigma (fst x) ty1) ps)
+        (Hall: Forall (fun x => term_has_type sigma (snd x) ty) ps) :
+         domain (val vt ty) :=
+      match ps as l' return 
+        Forall (fun x => pattern_has_type sigma (fst x) ty1) l' ->
+        Forall (fun x => term_has_type sigma (snd x) ty) l' ->
+        domain (val vt ty) with
+      | (p , dat) :: ptl => fun Hpats Hall =>
+        match (match_val_single vt ty1 p (Forall_inv Hpats) dom_t) with
+        | Some l => term_rep (extend_val_with_list vt v l) dat ty
+          (Forall_inv Hall) 
+        | None => match_rep ptl (Forall_inv_tail Hpats) (Forall_inv_tail Hall)
+        end
+      | _ => (*TODO: show we cannot reach this*) fun _ _ =>
+        match domain_ne pd (val vt ty) with
+        | DE x =>  x
+        end
+      end Hps Hall in
+      match_rep xs Hps Hall;
+
+  (*match_rep_tm t ty1 ty Ht1 xs Hps Hall;*)
+
+term_rep v (Teps f x) ty Hty :=
+  let Hval : valid_formula sigma f := proj1 (ty_eps_inv Hty) in
+  let Heq : ty = snd x := proj2 (ty_eps_inv Hty) in
+  (*We need to show that domain (val v ty) is inhabited*)
+  let def : domain (val vt ty) :=
+  match (domain_ne pd (val vt ty)) with
+  | DE x => x 
+  end in
+  (*Semantics for epsilon - use Coq's classical epsilon,
+    we get an instance y of [domain (val v ty)]
+    that makes f true when x evaluates to y
+    TODO: make sure this works*)
+
+  epsilon (inhabits def) (fun (y: domain (val vt ty)) =>
+    is_true (formula_rep (substi vt v x (dom_cast _ (f_equal (val vt) Heq) y)) f Hval));
+}
+
+(*where match_rep_tm t ty1 ty (Hty: term_has_type sigma t ty1) 
+  (ps: list (pattern * term)) 
+  (Hps: Forall (fun x => pattern_has_type sigma (fst x) ty1) ps)
+  (Hall: Forall (fun x => term_has_type sigma (snd x) ty) ps) :
+  domain (val vt ty) by struct ps := {
+
+  match_rep_tm t ty1 ty Hty ((p, dat) :: ptl) Hpats Hall :=
+    match (match_val_single vt ty1 p (Forall_inv Hpats) 
+      (term_rep v t ty1 Hty)) with
+    | Some l => term_rep (extend_val_with_list vt v l) dat ty
+      (Forall_inv Hall) 
+    | None => match_rep_tm v t ty1 ty Hty ptl (Forall_inv_tail Hpats) (Forall_inv_tail Hall)
+    end;
+  (*TODO: show we cannot reach this*)
+  match_rep_tm v t ty1 ty Hty nil _ _ :=
+    match domain_ne pd (val vt ty) with
+    | DE x =>  x
+    end
+  }*)
+
+
+with formula_rep (v: val_vars pd vt) (f: formula) 
+  (Hval: valid_formula sigma f) : bool by struct f :=
+
+  formula_rep v Ftrue Hval := true;
+  formula_rep v Ffalse Hval := false;
+  formula_rep v (Fnot f') Hval :=
+    let Hf' : valid_formula sigma f' :=
+      valid_not_inj Hval
+    in 
+    negb (formula_rep v f' Hf');
+
+  formula_rep v (Fbinop b f1 f2) Hval :=
+    let Hf1 : valid_formula sigma f1 :=
+    proj1 (valid_binop_inj Hval) in
+    let Hf2 : valid_formula sigma f2 :=
+      proj2 (valid_binop_inj Hval) in
+    bool_of_binop b (formula_rep v f1 Hf1) (formula_rep v f2 Hf2);
+
+  formula_rep v (Flet t x f') Hval :=
+    let Ht: term_has_type sigma t (snd x) :=
+      (proj1 (valid_let_inj Hval)) in
+    let Hf': valid_formula sigma f' :=
+      (proj2 (valid_let_inj Hval)) in
+    formula_rep (substi vt v x (term_rep v t (snd x) Ht)) f' Hf';
+
+  formula_rep v (Fif f1 f2 f3) Hval :=
+    let Hf1 : valid_formula sigma f1 :=
+      proj1 (valid_if_inj Hval) in
+    let Hf2 : valid_formula sigma f2 :=
+      proj1 (proj2 (valid_if_inj Hval)) in
+    let Hf3 : valid_formula sigma f3 :=
+      proj2 (proj2 (valid_if_inj Hval)) in
+    if formula_rep v f1 Hf1 then formula_rep v f2 Hf2 else formula_rep v f3 Hf3;
+
+  (*Much simpler than Tfun case above because we don't need casting*)
+  formula_rep v (Fpred p vs ts) Hval :=
+    preds _ _ pf p (map (val vt) vs)
+      (get_arg_list_pred vt p vs ts (term_rep v) Hval);
+
+  formula_rep v (Fquant Tforall x f') Hval :=
+    let Hf' : valid_formula sigma f' :=
+      valid_quant_inj Hval in
+    (*NOTE: HERE is where we need the classical axiom assumptions*)
+    all_dec (forall d, formula_rep (substi vt v x d) f' Hf');
+  
+  formula_rep v (Fquant Texists x f') Hval :=
+    let Hf' : valid_formula sigma f' :=
+      valid_quant_inj Hval in
+    (*NOTE: HERE is where we need the classical axiom assumptions*)
+    all_dec (exists d, formula_rep (substi vt v x d) f' Hf');
+
+  formula_rep v (Feq ty t1 t2) Hval := 
+    let Ht1 : term_has_type sigma t1 ty := 
+      proj1 (valid_eq_inj Hval) in
+    let Ht2 : term_has_type sigma t2 ty :=
+      proj2 (valid_eq_inj Hval) in
+    (*TODO: require decidable equality for all domains?*)
+    all_dec (term_rep v t1 ty Ht1 = term_rep v t2 ty Ht2);
+
+  formula_rep v (Fmatch t ty1 xs) Hval :=
+    (*Similar to term case*)
+    let Ht1 : term_has_type sigma t ty1 :=
+      proj1 (valid_match_inv Hval) in
+    let Hps : Forall (fun x => pattern_has_type sigma (fst x) ty1) xs :=
+      proj1 (proj2 (valid_match_inv Hval)) in
+    let Hall : Forall (fun x => valid_formula sigma (snd x)) xs :=
+      proj2 (proj2 (valid_match_inv Hval)) in
+
+    let dom_t := term_rep v t ty1 Ht1 in
+    let fix match_rep (ps: list (pattern * formula)) 
+      (Hps: Forall (fun x => pattern_has_type sigma (fst x) ty1) ps)
+      (Hall: Forall (fun x => valid_formula sigma (snd x)) ps) :
+        bool :=
+    match ps as l' return 
+      Forall (fun x => pattern_has_type sigma (fst x) ty1) l' ->
+      Forall (fun x => valid_formula sigma (snd x)) l' ->
+      bool with
+    | (p , dat) :: ptl => fun Hpats Hall =>
+      match (match_val_single vt ty1 p (Forall_inv Hpats) dom_t) with
+      | Some l => formula_rep (extend_val_with_list vt v l) dat
+        (Forall_inv Hall) 
+      | None => match_rep ptl (Forall_inv_tail Hpats) (Forall_inv_tail Hall)
+      end
+    | _ => (*TODO: show we cannot reach this*) fun _ _ => false
+    end Hps Hall in
+    match_rep xs Hps Hall.
+
+(*Ugh, in section, have to see*)
+(*TODO*)
+
+(*NOTE: doesn't work with where clauses, need nested fix*)
+
+
+(*
+where match_rep_fmla t ty1
+(Hty: term_has_type sigma t ty1) 
+(ps: list (pattern * formula)) 
+(Hps: Forall (fun x => pattern_has_type sigma (fst x) ty1) ps)
+(Hall: Forall (fun x => valid_formula sigma (snd x)) ps) :
+bool by struct ps :=
+
+match_rep_fmla v t ty1 Hty ((p, dat) :: ptl) Hpats Hall :=
+  match (match_val_single vt ty1 p (Forall_inv Hpats) 
+    (term_rep v t ty1 Hty)) with
+  | Some l => formula_rep (extend_val_with_list vt v l) dat
+    (Forall_inv Hall) 
+  | None => match_rep_fmla t ty1 Hty ptl (Forall_inv_tail Hpats) (Forall_inv_tail Hall)
+  end
+(*TODO: show we cannot reach this*)
+match_rep_fmla t ty1 Hty nil _ _ := false.*)
+
+(*
 Fixpoint term_rep (v: val_vars pd vt) (t: term) (ty: vty)
   (Hty: term_has_type sigma t ty) {struct t} : domain (val vt ty) :=
   (match t as tm return term_has_type sigma tm ty -> domain (val vt ty) with
@@ -2437,174 +2677,10 @@ with formula_rep (v: val_vars pd vt) (f: formula)
   end) Hval
   .
 
-Print matches.
-(*TODO: prove exhaustiveness*)
-Inductive matches : pattern -> term -> Prop :=
-  | M_Var: forall v t,
-    matches (Pvar v) t
-  | M_Constr: forall (m: mut_adt) (a: alg_datatype) 
-      (f: funsym) (vs: list vty) (ps: list pattern) (ts: list term),
-    mut_in_ctx m gamma ->
-    adt_in_mut a m ->
-    constr_in_adt f a ->
-    (forall x, In x (combine ps ts) -> matches (fst x) (snd x)) ->
-    matches (Pconstr f vs ps) (Tfun f vs ts)
-  | M_Wild: forall t,
-    matches Pwild t
-  | M_Or: forall p1 p2 t,
-    matches p1 t \/ matches p2 t ->
-    matches (Por p1 p2) t
-  | M_Bind: forall p x t,
-    matches p t ->
-    matches (Pbind p x) t.
-
-End Defs.
-End Temp.
-
-Lemma dom_cast_compose {domain_aux: sort -> Set} {s1 s2 s3: sort}
-  (Heq1: s2 = s3) (Heq2: s1 = s2) x:
-  dom_cast domain_aux Heq1 (dom_cast domain_aux Heq2 x) =
-  dom_cast domain_aux (eq_trans Heq2 Heq1) x.
-Proof.
-  subst. reflexivity.
-Qed.
-
-(*TODO: dont end section*)
-(*Hmm this is more difficult because our IH has be very careful
-  cannot be constructor unless ADT*)
-Lemma term_rep_matches (vt: val_typevar)
-  (pi: pi_funpred gamma_valid pd) (v: val_vars pd vt) 
-  (ty: vty) (p: pattern) (t: term)
-  (Hty: term_has_type sigma t ty)
-  (Hp: pattern_has_type sigma p ty):
-  matches p t ->
-  match_val_single vt ty p Hp (term_rep vt pi v t ty Hty) <> None.
-Proof.
-  (*Fine, for now do induction, then think about how to do it
-    better - annoying with generalization*)
-
-  (*Ugh, should we not include vt - never changes?*)
-  remember (term_rep vt pi v t ty Hty) as d.
-  revert vt ty p Hp d v t Hty Heqd.
-  apply (match_val_single_ind (fun v' ty p d o =>
-    forall (v: val_vars pd v') t (Hty: term_has_type sigma t ty),
-      d = term_rep v' pi v t ty Hty ->
-      matches p t ->
-      o <> None) (fun _ _ => True)); auto.
-  - intros. intro C; inversion C.
-  - intros. inversion H0; subst.
-    assert (is_vty_adt ty = Some (m, a, params)). {
-      apply is_vty_adt_iff. split; auto.
-      inversion Hty; subst.
-      rewrite (adt_constr_subst_ret H4 H5 H7); auto.
-    }
-    rewrite Hnone in H. inversion H.
-  - intros.
-    (*Here, we need to know that we will get f when 
-      we evaluate t and find the constr rep*)
-    subst. simpl in H.
-    inversion H1; subst.
-    simpl in H.
-    inversion Hty; subst.
-    (*Hmm, what is argument here?*)
-    rewrite (adt_constr_subst_ret H4 H5 H7) in H6; auto.
-    inversion H6; subst.
-    (*So we can prove that m's are equal, as are a and adt*)
-    assert (m = m0) by
-      (apply (@mut_adts_inj _ _ gamma_valid) with(a1:=adt)(a2:=a); auto).
-    subst m0.
-    assert (a = adt) by
-      (apply (adt_names_inj' gamma_valid H5); auto). subst.
-    clear H2 H5 H4.
-    assert (Hlen: length (map (val v) vs2) = length (m_params m)) by 
-      (rewrite map_length; auto).
-    (*Now we can rewrite, knowing that funs constrs = constr_rep*)
-    rewrite (constrs _ _ _ _ _ _ Hinctx Hinmut H7 _ Hlen) in H.
-    (*Now, we need a lemma that [find_constr_rep [constr_rep ?x]] = ?x*)
-    revert H.
-    unfold cast_dom_vty.
-    unfold constr_rep_dom.
-    (*TODO: unfold this giant cast*)
-    rewrite !dom_cast_compose.
-    generalize dependent (eq_trans
-    (eq_sym
-       (funsym_subst_eq (s_params f) vs2 (v_typevar v) 
-          (s_ret f) (s_params_Nodup f) (tfun_params_length Hty)))
-    (eq_trans (f_equal (val v) (eq_sym (ty_fun_ind_ret Hty)))
-       (eq_trans eq_refl (v_subst_cons (adt_name adt) vs2)))).
-    intros e.
-    unfold constr_rep_dom. simpl.
-    Check (scast (adts pd m (map (val v) vs2) adt Hinmut)
-    (dom_cast (dom_aux pd) e
-       (constr_rep_dom gamma_valid m Hinctx (map (val v) vs2) Hlen 
-          (dom_aux pd) adt Hinmut f H7 (adts pd m (map (val v) vs2))
-          (get_arg_list v f vs2 ts (term_rep v pi v0)
-             (ex_intro (fun x : vty => term_has_type sigma (Tfun f vs2 ts) x)
-                (vty_cons (adt_name adt) vs2) Hty))))).
-    Check (constr_rep_dom gamma_valid m Hinctx (map (val v) vs2) Hlen 
-    (dom_aux pd) adt Hinmut f H7 (adts pd m (map (val v) vs2))
-    (get_arg_list v f vs2 ts (term_rep v pi v0)
-       (ex_intro (fun x : vty => term_has_type sigma (Tfun f vs2 ts) x)
-          (vty_cons (adt_name adt) vs2) Hty))).
-
-
-    Check find_constr_rep.
-    Check constr_rep.
-
-
-
-    Check (dom_cast (dom_aux pd)
-    (eq_trans
-       (eq_sym
-          (funsym_subst_eq (s_params f) vs2 (v_typevar v) 
-             (s_ret f) (s_params_Nodup f) (tfun_params_length Hty)))
-       (eq_trans (f_equal (val v) (eq_sym (ty_fun_ind_ret Hty)))
-          (eq_trans eq_refl (v_subst_cons (adt_name adt) vs2))))
-    (constr_rep_dom gamma_valid m Hinctx (map (val v) vs2) Hlen 
-       (dom_aux pd) adt Hinmut f H7 (adts pd m (map (val v) vs2))
-       (get_arg_list v f vs2 ts (term_rep v pi v0)
-          (ex_intro (fun x : vty => term_has_type sigma (Tfun f vs2 ts) x)
-             (vty_cons (adt_name adt) vs2) Hty)))).
-    Check (constr_rep_dom gamma_valid m Hinctx (map (val v) vs2) Hlen 
-    (dom_aux pd) adt Hinmut f H7 (adts pd m (map (val v) vs2))
-    (get_arg_list v f vs2 ts (term_rep v pi v0)
-       (ex_intro (fun x : vty => term_has_type sigma (Tfun f vs2 ts) x)
-          (vty_cons (adt_name adt) vs2) Hty))).
-    Search eq_trans eq_sym.
-    rewrite !eq_trans_distr.
-    rewrite !eq_trans_compose.
-  
-
-
-
-    rewrite eq_trans_refl in H.
-
-    simpl.
-
-    Unshelve.
-    2: {
-
-    }
-    Search funs.
-
-
-    exfalso.
-  
-  subst. intros; subst. intro
-  revert v ty p Hp.
-  generalize dependent Hty.
-  revert Hty.
-  revert v ty.
-  revert v ty p Hty d.
-  apply (match_val_single_ind (fun v ty p d o =>
-  forall l,
-    o = Some l ->
-  forall x t, In (x, t) l -> projT1 t = snd x)
-  (fun _ _ => True)); auto.
-
-
 (*Rewriting Lemmas*)
 Section RewriteLemmas.
+
+(*NOTE: should really use Equations, get these for free*)
 
 (*In other files, things do not simplify/reduce because of the
   dependent types/proofs. These rewrite lemmas ensure we 
@@ -2663,29 +2739,30 @@ Lemma tmatch_rep (vv: val_vars pd vt)
   (t: term) (ty: vty) (ty2: vty) (ps: list (pattern * term))
   (Hty: term_has_type sigma (Tmatch t ty ps) ty2):
   term_rep vv (Tmatch t ty ps) ty2 Hty =
-  (fix match_rep (xs: list (pattern * term)) 
-  (Hall: Forall (fun x => term_has_type sigma (snd x) ty2) xs) :
-   domain (val vt ty2) :=
-    match xs as l' return 
-      Forall (fun x => term_has_type sigma (snd x) ty2) l' ->
-      domain (val vt ty2) with
-    | (p , dat) :: ptl => fun Hall =>
-      match (match_val_single vt ty 
-        (has_type_valid gamma_valid _ _ 
-          (proj1 (ty_match_inv Hty))) (term_rep vv t ty 
-        (proj1 (ty_match_inv Hty))) p) with
-      | Some l => term_rep (extend_val_with_list vt vv l) dat ty2
-        (Forall_inv Hall) 
-      | None => match_rep ptl (Forall_inv_tail Hall)
-      end
-    | _ => fun _ =>
+  (fix match_rep (ps: list (pattern * term)) 
+    (Hps: Forall (fun x => pattern_has_type sigma (fst x) ty) ps)
+    (Hall: Forall (fun x => term_has_type sigma (snd x) ty2) ps) :
+    domain (val vt ty2) :=
+  match ps as l' return 
+    Forall (fun x => pattern_has_type sigma (fst x) ty) l' ->
+    Forall (fun x => term_has_type sigma (snd x) ty2) l' ->
+    domain (val vt ty2) with
+  | (p , dat) :: ptl => fun Hpats Hall =>
+    match (match_val_single vt ty p (Forall_inv Hpats) 
+    (term_rep vv t ty (proj1 (ty_match_inv Hty)))) with
+    | Some l => term_rep (extend_val_with_list vt vv l) dat ty2
+      (Forall_inv Hall) 
+    | None => match_rep ptl (Forall_inv_tail Hpats) (Forall_inv_tail Hall)
+    end
+  | _ => (*TODO: show we cannot reach this*) fun _ _ =>
     match domain_ne pd (val vt ty2) with
     | DE x =>  x
     end
-    end Hall) ps (proj2 (ty_match_inv Hty)).
+  end Hps Hall) ps (proj1 (proj2 (ty_match_inv Hty)))
+    (proj2 (proj2 (ty_match_inv Hty))).
 Proof.
   reflexivity.
-Qed.
+Qed. 
 
 Lemma teps_rep (vv: val_vars pd vt)
   (f: formula) (v: vsymbol) (ty: vty)
@@ -2770,26 +2847,25 @@ Lemma fmatch_rep (vv: val_vars pd vt)
   (t: term) (ty: vty) (ps: list (pattern * formula))
   (Hval: valid_formula sigma (Fmatch t ty ps)):
   formula_rep vv (Fmatch t ty ps) Hval =
-  (fix match_rep (xs: list (pattern * formula)) 
-  (Hall: Forall (fun x => valid_formula sigma (snd x)) xs) :
-   bool :=
-    match xs as l' return 
-      Forall (fun x => valid_formula sigma (snd x)) l' ->
-      bool with
-    | (p , dat) :: ptl => fun Hall =>
-      match (match_val_single vt ty 
-        (has_type_valid gamma_valid _ _ 
-          (proj1 (valid_match_inv Hval))) (term_rep vv t ty 
-        (proj1 (valid_match_inv Hval))) p) with
-      | Some l => formula_rep (extend_val_with_list vt vv l) dat
-        (Forall_inv Hall) 
-      | None => match_rep ptl (Forall_inv_tail Hall)
-      end
-    | _ => fun _ => false
-    end Hall) ps (proj2 (valid_match_inv Hval)).
-Proof.
-  reflexivity.
-Qed.
+  (fix match_rep (ps: list (pattern * formula)) 
+    (Hps: Forall (fun x => pattern_has_type sigma (fst x) ty) ps)
+    (Hall: Forall (fun x => valid_formula sigma (snd x)) ps) :
+      bool :=
+  match ps as l' return 
+    Forall (fun x => pattern_has_type sigma (fst x) ty) l' ->
+    Forall (fun x => valid_formula sigma (snd x)) l' ->
+    bool with
+  | (p , dat) :: ptl => fun Hpats Hall =>
+    match (match_val_single vt ty p (Forall_inv Hpats) 
+    (term_rep vv t ty (proj1 (valid_match_inv Hval)))) with
+    | Some l => formula_rep (extend_val_with_list vt vv l) dat
+      (Forall_inv Hall) 
+    | None => match_rep ptl (Forall_inv_tail Hpats) (Forall_inv_tail Hall)
+    end
+  | _ => (*TODO: show we cannot reach this*) fun _ _ => false
+  end Hps Hall) ps (proj1 (proj2 (valid_match_inv Hval)))
+    (proj2 (proj2 (valid_match_inv Hval))).
+Proof. reflexivity. Qed.
 
 Lemma feq_rep (vv: val_vars pd vt)
 (t1 t2: term) (ty: vty)
@@ -2811,7 +2887,23 @@ Proof.
   reflexivity.
 Qed.
 
-End RewriteLemmas.
+End RewriteLemmas.*)
+
+Ltac simpl_rep :=
+  repeat match goal with
+  | |- context [term_rep ?v ?t ?ty ?Hty] =>
+    lazymatch t with
+    | Tconst (ConstInt ?z) => rewrite term_rep_equation_1
+    | Tconst (ConstReal ?r) => rewrite term_rep_equation_2
+    | Tvar ?v => rewrite term_rep_equation_3
+    | Tfun ?f ?l1 ?l2 => rewrite term_rep_equation_4
+    | Tlet ?t1 ?v ?t2 => rewrite term_rep_equation_5
+    | Tif ?f ?t1 ?t2 => rewrite term_rep_equation_6
+    | Tmatch ?t ?v ?ps => rewrite term_rep_equation_7
+    | Teps ?f ?v => rewrite term_rep_equation_8
+    end
+  end.
+
 
 (*Results about the Denotational Semantics*)
 
@@ -2830,8 +2922,8 @@ Lemma term_form_rep_irrel: forall (tm: term) (f: formula),
     valid_formula sigma f), 
       formula_rep v f Hval1 = formula_rep v f Hval2).
 Proof.
-  apply term_formula_ind; intros; simpl; auto.
-  - simpl. destruct c; simpl;
+  apply term_formula_ind; intros; simpl_rep; simpl; auto. (*simpl.*) (*auto.*)
+  - destruct c; simpl_rep; simpl;
     f_equal; apply UIP_dec; apply vty_eq_dec.
   - f_equal. f_equal. apply UIP_dec; apply vty_eq_dec.
   - f_equal. apply UIP_dec; apply vty_eq_dec.
@@ -2851,21 +2943,22 @@ Proof.
   - (*ugh, this one is very annoying*)
     (*We need a nested induction here*)
     generalize dependent (proj1 (ty_match_inv Hty1)).
-    generalize dependent (proj2 (ty_match_inv Hty1)).
     generalize dependent (proj1 (ty_match_inv Hty2)).
-    generalize dependent (proj2 (ty_match_inv Hty2)).
+    generalize dependent (proj1 (proj2 (ty_match_inv Hty1))).
+    generalize dependent (proj2 (proj2 (ty_match_inv Hty1))).
+    generalize dependent (proj1 (proj2 (ty_match_inv Hty2))).
+    generalize dependent (proj2 (proj2 (ty_match_inv Hty2))).
     clear Hty1 Hty2.
-    intros Hall1 Hty1 Hall2 Hty2. (*for better names*)
-    revert Hall1 Hty1 Hall2 Hty2. 
+    intros Htm1 Hpat1 Htm2 Hpat2 Hty1 Hty2. (*for better names*)
+    revert Htm1 Hpat1 Htm2 Hpat2 Hty1 Hty2.
     induction ps; simpl; intros; auto.
     destruct a.
     (*Bulk of work done in [match_val_single_irrel]*)
-    rewrite (H _ _ Hty1 Hty2) at 1.
-    rewrite (match_val_single_irrel _ _ (has_type_valid gamma_valid tm v
-    Hty1) (has_type_valid gamma_valid tm v Hty2)).
-    destruct (match_val_single vt v
-    (has_type_valid gamma_valid tm v Hty2)
-    (term_rep v0 tm v Hty2) p).
+    rewrite (H _ _ Hty1 Hty2) at 1. 
+    rewrite match_val_single_irrel with(Hval2:=(Forall_inv Hpat1)).
+    simpl.
+    destruct (match_val_single vt v p 
+      (Forall_inv Hpat1) (term_rep v0 tm v Hty2)).
     + inversion H0; subst. apply (H3 (extend_val_with_list vt v0 l)).
     + inversion H0; subst.
       apply IHps. auto.
@@ -2880,7 +2973,7 @@ Proof.
     (proj2 (ty_eps_inv Hty2))).
     apply UIP_dec. apply vty_eq_dec. rewrite H0.
     reflexivity.
-    - f_equal. apply get_arg_list_pred_eq.
+  - f_equal. apply get_arg_list_pred_eq.
     rewrite Forall_forall. intros x Hinx ty' H1 H2.
     rewrite Forall_forall in H. apply H. assumption.
   - destruct q;
@@ -2904,25 +2997,25 @@ Proof.
   - erewrite H. erewrite H0. erewrite H1. reflexivity.
   - (*Match case again - proof almost identical*)
     generalize dependent (proj1 (valid_match_inv Hval1)).
-    generalize dependent (proj2 (valid_match_inv Hval1)).
     generalize dependent (proj1 (valid_match_inv Hval2)).
-    generalize dependent (proj2 (valid_match_inv Hval2)).
+    generalize dependent (proj1 (proj2 (valid_match_inv Hval1))).
+    generalize dependent (proj2 (proj2 (valid_match_inv Hval1))).
+    generalize dependent (proj1 (proj2 (valid_match_inv Hval2))).
+    generalize dependent (proj2 (proj2 (valid_match_inv Hval2))).
     clear Hval1 Hval2.
-    intros Hall1 Hty1 Hall2 Hty2. (*for better names*)
-    revert Hall1 Hty1 Hall2 Hty2. 
+    intros Htm1 Hpat1 Htm2 Hpat2 Hty1 Hty2. (*for better names*)
+    revert Htm1 Hpat1 Htm2 Hpat2 Hty1 Hty2.
     induction ps; simpl; intros; auto.
     destruct a.
     (*Bulk of work done in [match_val_single_irrel]*)
     rewrite (H _ _ Hty1 Hty2) at 1.
-    rewrite (match_val_single_irrel _ _ (has_type_valid gamma_valid tm v
-    Hty1) (has_type_valid gamma_valid tm v Hty2)).
-    destruct (match_val_single vt v
-    (has_type_valid gamma_valid tm v Hty2)
-    (term_rep v0 tm v Hty2) p).
+    rewrite match_val_single_irrel with (Hval2:=(Forall_inv Hpat1)); simpl.
+    destruct (match_val_single vt v p (Forall_inv Hpat1) (term_rep v0 tm v Hty2)).
     + inversion H0; subst. apply (H3 (extend_val_with_list vt v0 l)).
     + inversion H0; subst.
       apply IHps. auto.
 Qed.
+(*TODO: automate match cases*)
 
 Definition term_rep_irrel t := proj_tm term_form_rep_irrel t.
 Definition fmla_rep_irrel f := proj_fmla term_form_rep_irrel f.
