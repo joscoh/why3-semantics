@@ -403,6 +403,8 @@ Definition wf_context (s: sig) (gamma: context) :=
   NoDup (funsyms_of_context gamma) /\
   NoDup (predsyms_of_context gamma).
 
+(*TODO: move this maybe*)
+
 (* Additional checks for pattern matches *)
 
 (*In addition to what we have above, we also need to know that pattern
@@ -412,16 +414,26 @@ Definition wf_context (s: sig) (gamma: context) :=
   2. This check depends on the context, as opposed to the typing relation, which only
     depends on the signature. *) 
 
+(*TODO: this does NOT work for exhaustiveness checking,
+  since we can never prove it, we do need to check
+  that the pattern match occurs on an ADT 
+*)
+
 Section MatchExhaustive.
 
 Variable sigma: sig.
 Variable gamma: context.
 
+(*
 (*Describes when a pattern matches a term*)
 Inductive matches : pattern -> term -> Prop :=
   | M_Var: forall v t,
     matches (Pvar v) t
-  | M_Constr: forall (f: funsym) (vs: list vty) (ps: list pattern) (ts: list term),
+  | M_Constr: forall (m: mut_adt) (a: alg_datatype) 
+      (f: funsym) (vs: list vty) (ps: list pattern) (ts: list term),
+    mut_in_ctx m gamma ->
+    adt_in_mut a m ->
+    constr_in_adt f a ->
     (forall x, In x (combine ps ts) -> matches (fst x) (snd x)) ->
     matches (Pconstr f vs ps) (Tfun f vs ts)
   | M_Wild: forall t,
@@ -439,91 +451,68 @@ Definition exhaustive_match (a: alg_datatype) (args: list vty)
   (ps: list pattern) : Prop :=
   adt_in_ctx a gamma /\
   forall t, term_has_type sigma t (vty_cons (adt_name a) args) ->
-    exists p, In p ps /\ matches p t.
-  (*
-  
-  /\
-  forall c, in_bool_ne funsym_eq_dec c (adt_constrs a) -> 
+    exists p, In p ps /\ matches p t.*)
 
-  forall (ts: list term), 
-  term_has_type sigma (Tfun c args ts) (vty_cons (adt_name a) args) ->
-  exists p, In p ps /\ matches p (Tfun c args ts).*)
 
-(*A valid pattern match matches on a term of an ADT type and is exhaustive*)
-Definition valid_pattern_match (*(t: term)*) (ps: list pattern) : Prop :=
-  exists (a: alg_datatype) (args: list vty),
-    length args = length (ts_args (adt_name a)) /\
-    exhaustive_match a args ps.
-
-(*We require that this recursively holds throughout the entire term/formula*)
-Inductive valid_pat_tm : term -> Prop :=
-  | VPT_const: forall c,
-    valid_pat_tm (Tconst c)
-  | VPT_var: forall v,
-    valid_pat_tm (Tvar v)
-  | VPT_fun: forall f vs ts,
-    (forall x, In x ts -> valid_pat_tm x) ->
-    valid_pat_tm (Tfun f vs ts)
-  | VPT_let: forall t1 v t2,
-    valid_pat_tm t1 ->
-    valid_pat_tm t2 ->
-    valid_pat_tm (Tlet t1 v t2)
-  | VTY_if: forall f t1 t2,
-    valid_pat_fmla f ->
-    valid_pat_tm t1 ->
-    valid_pat_tm t2 ->
-    valid_pat_tm (Tif f t1 t2)
-  | VTY_match: forall t ty (ps: list (pattern * term)),
-    valid_pattern_match (map fst ps) ->
-    (forall x, In x (map snd ps) -> valid_pat_tm x) ->
-    valid_pat_tm (Tmatch t ty ps)
-  | VTY_eps: forall f x,
-    valid_pat_fmla f ->
-    valid_pat_tm (Teps f x)
-with valid_pat_fmla: formula -> Prop :=
-  | VTF_pred: forall p vs ts,
-    (forall x, In x ts -> valid_pat_tm x) ->
-    valid_pat_fmla (Fpred p vs ts)
-  | VTF_quant: forall q v f,
-    valid_pat_fmla f ->
-    valid_pat_fmla (Fquant q v f)
-  | VTF_eq: forall ty t1 t2,
-    valid_pat_tm t1 ->
-    valid_pat_tm t2 ->
-    valid_pat_fmla (Feq ty t1 t2)
-  | VTF_binop: forall b f1 f2,
-    valid_pat_fmla f1 ->
-    valid_pat_fmla f2 ->
-    valid_pat_fmla (Fbinop b f1 f2)
-  | VTF_not: forall f,
-    valid_pat_fmla f ->
-    valid_pat_fmla (Fnot f)
-  | VTF_true:
-    valid_pat_fmla Ftrue
-  | VTF_false:
-    valid_pat_fmla Ffalse
-  | VTF_let: forall t x f,
-    valid_pat_tm t ->
-    valid_pat_fmla f ->
-    valid_pat_fmla (Flet t x f)
-  | VTF_if: forall f1 f2 f3,
-    valid_pat_fmla f1 ->
-    valid_pat_fmla f2 ->
-    valid_pat_fmla f3 ->
-    valid_pat_fmla (Fif f1 f2 f3)
-  | VTF_match: forall t ty (ps: list (pattern * formula)),
-    valid_pattern_match (map fst ps) ->
-    (forall x, In x (map snd ps) -> valid_pat_fmla x) ->
-    valid_pat_fmla (Fmatch t ty ps).
+(*For now, we say that a valid pattern match is one that matches
+  on an ADT*)
+Fixpoint All {A: Type} (P: A -> Prop) (l: list A) {struct l} : Prop :=
+  match l with
+  | nil => True
+  | x :: xs => P x /\ All P xs
+  end.
+Definition iter_and (l: list Prop) : Prop :=
+  fold_right and True l.
+(*TODO: need to require somewhere that pattern constructors
+  have to actually be constructors*)
+Fixpoint valid_matches_tm (t: term) : Prop :=
+  match t with
+  | Tfun f vs tms => iter_and (map valid_matches_tm tms)
+  | Tlet tm1 v tm2 => valid_matches_tm tm1 /\ valid_matches_tm tm2
+  | Tif f1 t1 t2 => valid_matches_fmla f1 /\ valid_matches_tm t1 /\
+    valid_matches_tm t2
+  | Tmatch tm v ps =>
+    valid_matches_tm tm /\
+    (*the type v is an ADT applied to some valid arguments
+      (validity from typing)*)
+    (exists a m args, mut_in_ctx m gamma /\
+      adt_in_mut a m /\
+      v = vty_cons (adt_name a) args) /\
+    iter_and (map (fun x => valid_matches_tm (snd x)) ps)
+      (*iter_and (map valid_matches_tm (map snd ps))*)
+  | Teps f x => valid_matches_fmla f
+  | _ => True
+  end
+with valid_matches_fmla (f: formula) : Prop :=
+  match f with
+  | Fpred p vs tms => iter_and (map valid_matches_tm tms)
+  | Fquant q v f => valid_matches_fmla f
+  | Feq v t1 t2 => valid_matches_tm t1 /\ valid_matches_tm t2
+  | Fbinop b f1 f2 => valid_matches_fmla f1 /\
+    valid_matches_fmla f2
+  | Fnot f => valid_matches_fmla f
+  | Flet t v f => valid_matches_tm t /\ valid_matches_fmla f
+  | Fif f1 f2 f3 => valid_matches_fmla f1 /\
+    valid_matches_fmla f2 /\ valid_matches_fmla f3
+  | Fmatch t v ps =>
+    valid_matches_tm t /\
+    (*the type v is an ADT applied to some valid arguments
+      (validity from typing)*)
+    (exists a m args, mut_in_ctx m gamma /\
+      adt_in_mut a m /\
+      v = vty_cons (adt_name a) args) /\
+    iter_and (map (fun x => valid_matches_fmla (snd x)) ps)
+  | _ => True
+  end.
 
 End MatchExhaustive.
 
 (*The full typing judgement for terms and formulas*)
 Definition well_typed_term (s: sig) (gamma: context) (t: term) (ty: vty) : Prop :=
-  term_has_type s t ty /\ valid_pat_tm s gamma t.
+  term_has_type s t ty /\ valid_matches_tm gamma t.
 
 Definition well_typed_formula (s: sig) (gamma: context) (f: formula) : Prop :=
-  valid_formula s f /\ valid_pat_fmla s gamma f.
+  valid_formula s f /\ valid_matches_fmla gamma f.
 
 (** Validity of definitions *)
 

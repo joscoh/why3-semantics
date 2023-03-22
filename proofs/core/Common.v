@@ -884,6 +884,14 @@ Proof.
   intros. apply (reflect_iff _ _ (in_bool_spec eq_dec x l)). assumption.
 Qed.
 
+Lemma in_bool_In  {A : Type} 
+(eq_dec : forall x y : A, {x = y} + {x <> y}) 
+(x : A) (l : list A): in_bool eq_dec x l -> In x l.
+Proof.
+  intros Hin. apply (reflect_iff _ _ (in_bool_spec eq_dec x l)).
+  auto.
+Qed. 
+
 Lemma nodupb_cons {A: Type} (eq_dec: forall (x y : A), {x = y} + {x <> y}) 
   (x: A) (l: list A) :
   nodupb eq_dec (x :: l) = negb (in_bool eq_dec x l) && nodupb eq_dec l.
