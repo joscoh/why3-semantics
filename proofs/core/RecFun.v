@@ -11,6 +11,11 @@ Require Import Coq.Logic.Eqdep_dec.
 
 Set Bullet Behavior "Strict Subproofs".
 
+(*TODO: move*)
+Inductive Either (A B: Type) : Type :=
+  | Left: A -> Either A B
+  | Right: B -> Either A B. 
+
 (*First, define syntactic restriction on functions*)
 
 (*For our purposes here, a function declaration is a tuple
@@ -75,13 +80,37 @@ Fixpoint testpred {A: Type} (l1 l2: list A) : Prop :=
     | _ :: t => testpred t x
     end.
 
-Definition vsym_in_m (m: mut_adt) (vs: list vty) (x: vsymbol) : bool :=
-  match (snd x) with
+Definition vty_in_m (m: mut_adt) (vs: list vty) (v: vty) : bool :=
+  match v with
   | vty_cons ts vs' => 
     ssrbool.isSome (find_ts_in_mut ts m) &&
     list_eq_dec vty_eq_dec vs' vs
   | _ => false
   end.
+
+Lemma vty_in_m_spec (m: mut_adt) (vs: list vty) (v: vty):
+  reflect 
+  (exists a, adt_in_mut a m /\ v = vty_cons (adt_name a) vs)
+  (vty_in_m m vs v) .
+Proof.
+  unfold vty_in_m. destruct v; try solve[apply ReflectF; intros [a [Ha Heq]]; inversion Heq].
+  destruct (find_ts_in_mut t m) eqn : Hfind; simpl.
+  - apply find_ts_in_mut_some in Hfind.
+    destruct Hfind; subst.
+    destruct (list_eq_dec vty_eq_dec l vs); subst; simpl.
+    + apply ReflectT. exists a. split; auto.
+    + apply ReflectF. intros [a' [Ha' Heq]]; inversion Heq; subst;
+      contradiction.
+  - apply ReflectF. rewrite find_ts_in_mut_none in Hfind.
+    intros [a [Ha Heq]]; subst.
+    inversion Heq; subst.
+    apply (Hfind a Ha); auto.
+Qed. 
+  
+(*Use uniformity here*)
+
+Definition vsym_in_m (m: mut_adt) (vs: list vty) (x: vsymbol) : bool :=
+  vty_in_m m vs (snd x).
 
 
 (*From a list of vsymbols, keep those which have type vty_cons a ts
@@ -97,7 +126,7 @@ Lemma vsyms_in_m_in (m: mut_adt) (vs: list vty) (l: list vsymbol):
   forall x, In x (vsyms_in_m m vs l) <-> In x l /\ exists a,
     adt_in_mut a m /\ snd x = vty_cons (adt_name a) vs.
 Proof.
-  intros. unfold vsyms_in_m, vsym_in_m.
+  intros. unfold vsyms_in_m, vsym_in_m, vty_in_m.
   rewrite in_filter. rewrite and_comm. bool_to_prop.
   destruct x; simpl in *. destruct v; try (solve[split; [intro C; inversion C | 
     intros [a [a_in Hty]]; inversion Hty]]).
@@ -117,6 +146,22 @@ Qed.
 Definition constr_in_m (f: funsym) (m: mut_adt) : bool :=
   existsb (fun a => constr_in_adt f a) (typs m).
 
+  (*Ok fine this doesn't work
+    should use map2 or nested fix instead*)
+Definition filter2 {A B: Type} :=
+fun (f: A -> B -> bool) =>
+  fix filter2 (l1: list A) {struct l1} : list B -> list (A * B) :=
+    match l1 with
+    | nil => fun l2 => nil
+    | x1 :: t1 =>
+      fun l2 =>
+      match l2 with
+      | nil => nil
+      | x2 :: t2 => if f x1 x2 then (x1, x2) :: filter2 t1 t2
+        else filter2 t1 t2
+      end
+    end.
+
 (*TODO: move maybe*)
 (*All variables from a pattern that are strictly "smaller" than
   the matched value*)
@@ -126,25 +171,77 @@ Definition constr_in_m (f: funsym) (m: mut_adt) : bool :=
 hmm wht to do *)
 (*Inside a constructor: keep all variables of correct type *)
 (*Gets all vars known to be decreasing (not strictly decreasing)*)
-Fixpoint pat_constr_vars_inner (m: mut_adt) (vs: list vty) (p: pattern) : list vsymbol :=
+Fixpoint pat_constr_vars_inner (m: mut_adt) (vs: list vty) (p: pattern)
+  {struct p} : list vsymbol :=
   match p with
   | Pconstr c tys ps =>
     if constr_in_m c m &&
-      list_eq_dec vty_eq_dec tys vs then
-    big_union vsymbol_eq_dec (pat_constr_vars_inner m vs) ps
-    (*ONLY add those from a constructor in m*)
+    list_eq_dec vty_eq_dec tys vs &&
+    (length ps =? length (s_args c)) then
+    (*Only take those where the s_args is in m
+      or else we get extra vsymbols which are not necessarily
+      smaller (like the head in list)*)
+    (*Ah, need to do union inside too*)
+    ((fix constr_inner (ps: list pattern) (vs': list vty) : list vsymbol :=
+      match ps, vs' with
+      | p1 :: p2, v1 :: v2 => 
+        (*NOTE: we want type v1 to have type t(a, b, ...) NOT
+        t(vs) - since this is in the constructor*)
+        if vty_in_m m (map vty_var (m_params m)) v1 then
+        union vsymbol_eq_dec (pat_constr_vars_inner m vs p1) (constr_inner p2 v2)
+        else constr_inner p2 v2
+      | _, _ => nil
+      end    
+    ) ps (s_args c))
     else nil
   | Por p1 p2 =>
     intersect vsymbol_eq_dec (pat_constr_vars_inner m vs p1)
       (pat_constr_vars_inner m vs p2)
   (*Only add variables of correct type*)
-  | Pbind p y =>
+  | Pbind p' y =>
     union vsymbol_eq_dec (if vsym_in_m m vs y then [y] else nil)
-      (pat_constr_vars_inner m vs p)
+      (pat_constr_vars_inner m vs p')
   | Pvar y =>
     if vsym_in_m m vs y then [y] else nil
   | Pwild => nil
   end.
+
+(*rewrite lemma*)
+Lemma pat_constr_vars_inner_eq (m: mut_adt) (vs: list vty) (p: pattern):
+  pat_constr_vars_inner m vs p =
+  match p with
+  | Pconstr c tys ps =>
+    if constr_in_m c m &&
+    list_eq_dec vty_eq_dec tys vs &&
+    (length ps =? length (s_args c)) then
+    big_union vsymbol_eq_dec (pat_constr_vars_inner m vs)
+      (map fst (filter (fun (x: pattern * vty) => 
+        vty_in_m m (map vty_var (m_params m)) (snd x)) (combine ps (s_args c))))
+    else nil
+  | Por p1 p2 =>
+    intersect vsymbol_eq_dec (pat_constr_vars_inner m vs p1)
+      (pat_constr_vars_inner m vs p2)
+  (*Only add variables of correct type*)
+  | Pbind p' y =>
+    union vsymbol_eq_dec (if vsym_in_m m vs y then [y] else nil)
+      (pat_constr_vars_inner m vs p')
+  | Pvar y =>
+    if vsym_in_m m vs y then [y] else nil
+  | Pwild => nil
+  end.
+Proof.
+  unfold pat_constr_vars_inner at 1.
+  destruct p; auto.
+  destruct (constr_in_m f m); simpl; auto.
+  destruct (list_eq_dec vty_eq_dec l vs); simpl; auto.
+  destruct (length l0 =? length (s_args f)) eqn : Hlen; simpl; auto.
+  apply Nat.eqb_eq in Hlen.
+  generalize dependent (s_args f). subst. induction l0;
+  intros; destruct l; inversion Hlen; simpl; auto.
+  destruct (vty_in_m m (map vty_var (m_params m)) v) eqn : Hty; auto.
+  simpl. fold pat_constr_vars_inner.
+  rewrite IHl0; auto.
+Qed.
 
 (*Get strictly smaller (not just <=) vars*)
 (*TODO: reduce duplication? Could take in bool but eh that
@@ -153,9 +250,15 @@ Fixpoint pat_constr_vars (m: mut_adt) (vs: list vty) (p: pattern) : list vsymbol
   match p with
   | Pconstr c tys ps =>
       if constr_in_m c m &&
-      list_eq_dec vty_eq_dec tys vs then
-      big_union vsymbol_eq_dec (pat_constr_vars_inner m vs) ps
+      list_eq_dec vty_eq_dec tys vs &&
+      (length ps =? length (s_args c)) then
+      big_union vsymbol_eq_dec (pat_constr_vars_inner m vs)
+        (map fst (filter (fun (x: pattern * vty) => 
+          vty_in_m m (map vty_var (m_params m)) (snd x)) (combine ps (s_args c))))
       else nil
+      (*Only take those where the s_args is in m
+        or else we get extra vsymbols which are not necessarily
+        smaller (like the head in list)*)
   | Por p1 p2 =>
       intersect vsymbol_eq_dec (pat_constr_vars m vs p1)
         (pat_constr_vars m vs p2)
@@ -445,11 +548,8 @@ Section FunDef.
 
 
 Context {sigma: sig} {gamma: context} (gamma_valid: valid_context sigma gamma)
-{pd: pi_dom} (all_unif: forall m, mut_in_ctx m gamma -> IndTypes.uniform m)
-  {vt: @val_typevar sigma} {pf: pi_funpred gamma_valid pd}.
- 
-Notation domain := (domain (dom_aux pd)).
-Notation val x :=  (v_subst (v_typevar vt) x).
+{pd: pi_dom} (all_unif: forall m, mut_in_ctx m gamma -> IndTypes.uniform m).
+
 
 
 (*We will handle mutual recursion by giving an index*)
@@ -465,179 +565,36 @@ Variable (fs: list fn) (ps: list pn).
 Variable fs_uniq: NoDup (map fn_name fs).
 Variable fs_typed: Forall (fun f => term_has_type sigma (fn_body f) (s_ret (fn_name f))) fs.
 
-(*OK, how about mutual recursive type*)
-(*TODO: remove this once we have function, this is just for testing*)
-Unset Elimination Schemes.
-Inductive rosetree {A: Type} : Type :=
-  | Leaf: A -> rosetree
-  | Node: roselist -> rosetree
-with roselist {A: Type} : Type :=
-  | RL_nil : roselist
-  | RL_cons: rosetree -> roselist -> roselist.
-Set Elimination Schemes.
+(*So we need other hypotheses about vt, params, etc*)
 
-Scheme rosetree_ind := Induction for rosetree Sort Prop with
-roselist_ind := Induction for roselist Sort Prop.
+(*Since vt is fixed through everything (we are requiring all
+  mutually recursive functions to have the same params)
+  This is a restriction on why3 (maybe), but I am OK with that
+  we can assume some property of it, then build it up later
+  *)
+  Variable params: list typevar.
+  Variable params_eq: forall f, In f fs -> s_params (fn_name f) = params.
+  (*Variable srts_len: length srts = length params.*)
+  Variable f_typevars: forall f, In f fs -> 
+    forall ty, In ty (s_ret (fn_name f) :: s_args (fn_name f)) ->
+    forall x, In x (type_vars ty) ->
+    In x params.
+  (*Will come from wf_context*)
 
+  Notation domain := (domain (dom_aux pd)).
 
-Inductive Either (A B: Type) : Type :=
-  | Left: A -> Either A B
-  | Right: B -> Either A B.
+Section Smaller.
 
+Context  {vt: @val_typevar sigma} {pf: pi_funpred gamma_valid pd}.
+ 
 
-(*Now can we get a wf relation?*)
-Inductive rose_rel {A: Type} : Either (@rosetree A) (@roselist A) -> 
-  Either (@rosetree A) (@roselist A) -> Prop :=
-  | RR_constr1: forall rt rl,
-    rt = Node rl ->
-    rose_rel (Right _ _ rl) (Left _ _ rt)
-  | RR_constr2: forall rt rl x,
-    rl = RL_cons rt x ->
-    rose_rel (Left _ _ rt) (Right _ _ rl)
-  | RR_constr3: forall rl1 rl2 x,
-    rl1 = RL_cons x rl2 ->
-    rose_rel (Right _ _ rl2) (Right _ _ rl1).
+Notation val x :=  (v_subst (v_typevar vt) x).
 
-
-
-Definition prop_either {A B: Type} (P: A -> Prop) (P1: B -> Prop):
-  Either A B -> Prop :=
-  fun x =>
-  match x with
-  | Left y => P y
-  | Right y => P1 y
-  end.
-
-(*Lemma rose_tree_list_ind {A: Type} (P: @rosetree A -> Prop)
-(P0: roselist -> Prop)
-(Hleaf: forall a, P (Leaf a))
-(Hnode: forall r, P0 r -> P(Node r))
-(Hnil: P0 RL_nil)
-(Hcons: forall r, P r -> forall r0, P0 r0 -> P0 (RL_cons r r0)):
-*)
-
-Definition either_rose_ind {A: Type} (P: @rosetree A -> Prop)
-  (P0: roselist -> Prop) (P3: Either rosetree roselist -> Prop)
-  (Hleaf: forall a, P (Leaf a))
-  (Hnode: forall r, P0 r -> P(Node r))
-  (Hnil: P0 RL_nil)
-  (Hcons: forall r, P r -> forall r0, P0 r0 -> P0 (RL_cons r r0))
-  (Hp3_1: forall x, P3 (Left _ _ x) <-> P x)
-  (Hp3_2: forall x, P3 (Right _ _ x) <-> P0 x)
-  :
-  forall (x: Either rosetree roselist), P3 x.
-Proof.
-  intros. destruct x.
-  - rewrite Hp3_1. apply rosetree_ind with(P0:=P0); auto.
-  - rewrite Hp3_2. apply roselist_ind with(P:=P); auto.
-Qed.
-
-Lemma rose_rel_wf: forall A, well_founded (@rose_rel A).
-Proof.
-  intros. unfold well_founded.
-  apply either_rose_ind with(P:= fun x => Acc rose_rel (Left _ _ x))
-    (P0:= fun y => Acc rose_rel (Right _ _ y)); intros.
-  - constructor. intros. inversion H; subst. inversion H2.
-  - constructor. intros. inversion H0; subst.
-    inversion H3; subst. apply H.
-  - constructor. intros. inversion H; subst; inversion H2.
-  - constructor. intros. inversion H1; subst;
-    inversion H4; subst; assumption.
-  - reflexivity.
-  - reflexivity.
-Qed.
-
-Instance rose_rel_wf': WellFounded
-(Telescopes.tele_measure (Telescopes.tip (Either rosetree roselist))
-   (Either rosetree (@roselist nat)) (fun o : Either rosetree roselist => o)
-   rose_rel).
-Proof.
-  unfold WellFounded. apply rose_rel_wf.
-Defined. 
-
-Equations rose_size (*{A: Type}*) (o: Either (@rosetree nat) (@roselist nat)) : nat
-  by wf o (@rose_rel nat) :=
-  rose_size (Left (Leaf x)) := 1;
-  rose_size (Left (Node l)) := rose_size (Right _ _ l);
-  rose_size (Right RL_nil) := 0;
-  rose_size (Right (RL_cons t ls)) :=
-    rose_size (Left _ _ t) + rose_size (Right _ _ ls).
-Next Obligation.
-  constructor. reflexivity.
-Defined.
-Next Obligation.
-  eapply RR_constr2. reflexivity.
-Defined.
-Next Obligation.
-  eapply RR_constr3. reflexivity.
-Defined.
-
-(*Next, want to make polymoprhic by including type there*)
-(*Now can we get a wf relation?*)
-Inductive rose_rel2: {A: Type & Either (@rosetree A) (@roselist A)} -> 
-  {A: Type & Either (@rosetree A) (@roselist A)} -> Prop :=
-  | RR_constr1': forall A rt rl,
-    rt = Node rl ->
-    rose_rel2 (existT _ A (Right _ _ rl)) (existT _ A (Left _ _ rt))
-  | RR_constr2': forall A rt rl x,
-    rl = RL_cons rt x ->
-    rose_rel2 (existT _ A (Left _ _ rt)) (existT _ A (Right _ _ rl))
-  | RR_constr3': forall A rl1 rl2 x,
-    rl1 = RL_cons x rl2 ->
-    rose_rel2 (existT _ A (Right _ _ rl2)) (existT _ A (Right _ _ rl1)).
-
-Lemma rose_rel2_wf:well_founded (rose_rel2).
-Proof.
-  unfold well_founded.
-  (*Can intros A because it is fixed (by definition) - will
-    this be true in why3 types?*)
-  intros [A o]. revert o.
-  apply either_rose_ind with(P:= fun x => Acc rose_rel2 (existT _ A (Left _ _ x)))
-    (P0:= fun y => Acc rose_rel2 (existT _ A (Right _ _ y))); intros.
-  - constructor. intros. inversion H; subst. inversion H3.
-  - constructor. intros. inversion H0; subst.
-    inversion H4; subst.
-    (*In real one, will be able to have decidable types
-    (quantify with vty)*)
-    apply Eqdep.EqdepTheory.inj_pair2 in H2.
-    (*Hmm, annoying things with existT - ToDO*)
-    (*apply Eqdep_dec.inj_pair2_eq_dec in H2.*)
-    subst. assumption.
-  - constructor. intros. inversion H; subst; inversion H3.
-  - constructor. intros. inversion H1; subst; inversion H5;
-    apply Eqdep.EqdepTheory.inj_pair2 in H3;
-    apply Eqdep.EqdepTheory.inj_pair2 in H4; subst; assumption.
-  - reflexivity.
-  - reflexivity.
-Qed.
-
-Instance rose_rel2_wf': WellFounded
-(Telescopes.tele_measure
-   (Telescopes.tip {A : Type & Either rosetree roselist})
-   {A : Type & Either rosetree roselist}
-   (fun o : {A : Type & Either rosetree roselist} => o) rose_rel2).
-Proof.
-  apply rose_rel2_wf.
-Defined.
-
-Equations rose_size2 (*{A: Type}*) 
-  (o: {A: Type & Either (@rosetree A) (@roselist A) }) : nat
-  by wf o (rose_rel2) :=
-  rose_size2 (existT _ A (Left (Leaf x))) := 1;
-  rose_size2 (existT _ A (Left (Node l))) := 
-    rose_size2 (existT _ A (Right _ _ l));
-  rose_size2 (existT _ A (Right RL_nil)) := 0;
-  rose_size2 (existT _ A (Right (RL_cons t ls))) :=
-    rose_size2 (existT _ A (Left _ _ t)) + rose_size2 (existT _ A (Right _ _ ls)).
-Next Obligation.
-  constructor. reflexivity.
-Defined.
-Next Obligation.
-  eapply RR_constr2'. reflexivity.
-Defined.
-Next Obligation.
-  eapply RR_constr3'. reflexivity.
-Defined.
+  (*We need to build a new val_typevar, we cannot assume this
+    or maybe it is OK*)
+  (*HMM see*)
+  Definition vt_eq srts:= forall i, i < length params ->
+    (v_typevar vt) (nth i params EmptyString) = nth i srts s_int.
 
 (*Induction for ADTS*)
 Section Induction.
@@ -807,8 +764,9 @@ Proof.
 Qed. 
 
 Theorem adts_from_constrs {m: mut_adt} (m_in: mut_in_ctx m gamma)
-  (i: finite (length (adts m))) (c: funsym) 
-  (c_in: constr_in_adt c (fin_nth (adts m) i))
+  (a': alg_datatype) (Hini: adt_in_mut a' m)
+  (c: funsym) 
+  (c_in: constr_in_adt c a')
   (t': alg_datatype) (t_in': adt_in_mut t' m)
   (j: nat) (srts: list sort)
   (Hj: j < Datatypes.length (s_args c))
@@ -818,9 +776,6 @@ Theorem adts_from_constrs {m: mut_adt} (m_in: mut_in_ctx m gamma)
   nth j (s_args c) vty_int =
     vty_cons (adt_name t') (map vty_var (ts_args (adt_name t'))).
 Proof.
-  assert (Hini: adt_in_mut (fin_nth (adts m) i) m). {
-    apply In_in_bool. apply fin_nth_in.
-  }
   assert (Hparams: (s_params c) = (m_params m)). {
     eapply adt_constr_params. apply gamma_valid.
     auto. apply Hini. apply c_in. 
@@ -833,7 +788,7 @@ Proof.
   destruct (nth j (s_args c) vty_int) eqn : Hnth; simpl in H0;
   try solve[inversion H0].
   - destruct (in_dec typevar_eq_dec t (s_params c)).
-    + destruct (In_nth _ _ EmptyString i0) as [n [Hn Hnthn]].
+    + destruct (In_nth _ _ EmptyString i) as [n [Hn Hnthn]].
       rewrite <- Hnthn in H0.
       rewrite ty_subst_fun_nth with(s:=vty_int) in H0; auto.
       * unfold sorts_to_tys in H0.
@@ -854,10 +809,10 @@ Proof.
     }
     unfold uniform in Hunif. unfold is_true in Hunif. 
     rewrite forallb_forall in Hunif.
-    specialize (Hunif (fin_nth (adts m) i) (in_bool_In _ _ _ Hini)).
+    specialize (Hunif a' (in_bool_In _ _ _ Hini)).
     rewrite forallb_forall in Hunif.
     specialize (Hunif c).
-    assert (Hinc: In c (ne_list_to_list (adt_constrs (fin_nth (adts m) i)))). {
+    assert (Hinc: In c (ne_list_to_list (adt_constrs a'))). {
       apply in_bool_ne_In with(eq_dec:=funsym_eq_dec).
       apply c_in.
     }
@@ -1211,7 +1166,8 @@ Proof.
   specialize (IH (get_idx adt_dec t' (adts m) t_in')).
   assert (Heq': nth j (s_args c) vty_int =
     vty_cons (adt_name t') (map vty_var (ts_args (adt_name t')))). {
-    apply adts_from_constrs with(i:=i)(srts:=srts); auto.
+    apply (@adts_from_constrs m) with(a':=fin_nth (adts m) i)(srts:=srts); auto.
+    apply In_in_bool. apply fin_nth_in.
   }
   subst a.
   (*Now we use [finite_to_build_rec] to get our b, which is
@@ -1688,6 +1644,42 @@ Inductive R_trans {A: Type} (R: A -> A -> Prop) : A -> A -> Prop :=
     R y z ->
     R_trans R x z.
 
+Lemma R_trans_trans {A: Type} {R: A -> A -> Prop} {x y z: A}:
+  R_trans R x y ->
+  R_trans R y z ->
+  R_trans R x z.
+Proof.
+  intros.
+  induction H0.
+  - eapply Rtrans_multi. apply H. auto.
+  - eapply Rtrans_multi. apply IHR_trans. auto. auto.
+Qed.
+
+(*Need reflexive closure*)
+Inductive R_refl {A: Type} (R: A -> A -> Prop) : A -> A -> Prop :=
+  | Rrefl_R: forall x y,
+    R x y ->
+    R_refl R x y
+  | Rrefl_refl: forall x,
+    R_refl R x x.
+
+(*Reflexive transitive closure*)
+Definition R_refl_trans {A: Type} (R: A -> A -> Prop) : A -> A -> Prop :=
+  R_refl (R_trans R).
+
+(*Now we prove: if we have R_refl_trans R x y and we have R_trans y z,
+  then we have R_trans x z. In other words, we can repeat R
+  0 or more times, then repeat R 1 or more times*)
+Lemma R_refl_trans_trans {A: Type} (R: A -> A -> Prop) x y z:
+  R_refl_trans R x y ->
+  R_trans R y z ->
+  R_trans R x z.
+Proof.
+  intros. unfold R_refl_trans in H.
+  inversion H; subst; auto.
+  eapply R_trans_trans. apply H1. auto.
+Qed.
+
 (*Proof of transitive closure wf from 
   [https://madiot.fr/pso/tp6.html]*)
 Lemma Acc_inv {A : Type} (R : A -> A -> Prop) x y: 
@@ -1725,8 +1717,1213 @@ Definition adt_smaller_trans_wf := R_trans_wf adt_smaller adt_smaller_wf.
 (*
 Variable srts: list sort.*)
 
-Definition hide_ty {ty: vty} (d: domain (val ty)) :
-  {x: vty & domain (val x)} := existT _ ty d.
+Definition hide_ty {vt: @val_typevar sigma} {ty: vty} 
+  (d: domain (v_subst (v_typevar vt) ty)) :
+  {x: vty & domain (v_subst (v_typevar vt) x)} := existT _ ty d.
+
+
+End WellFounded.
+End Smaller.
+
+
+  (*The mut adt we are recursing on*)
+  Variable m: mut_adt.
+  Variable vs: list vty.
+  
+  Variable vs_len: length vs = length (m_params m).
+  
+  
+  (*TODO: will need to add this to typing*)
+  
+  (*TODO: I think: need hypothesis about relationship
+    between s_args and fn_args - also move to typing/put in
+    definition of funpred_def maybe*)
+  Variable args_agree: forall f, In f fs ->
+    map snd (fn_args f) = s_args (fn_name f).
+  
+  Variable recurse_on_adt: forall f, In f fs ->
+    vty_in_m m vs (snd (nth (fn_idx f) (fn_args f) vs_d)).
+    (*exists a,
+    adt_in_mut a m /\ snd(nth (fn_idx f) (fn_args f) vs_d) =*)
+
+
+(*TODO: (temp) do match lemma here so vt not fixed*)
+
+
+Variable m_in: mut_in_ctx m gamma.
+
+(*I think we need assumption: all params in vs
+  are in params*)
+
+Lemma v_subst_aux_sort_eq (v: typevar -> vty) (t: vty):
+  (forall x, In x (type_vars t) -> is_sort (v x)) ->
+  is_sort (v_subst_aux v t).
+Proof.
+  intros. induction t; simpl; intros; auto.
+  apply H. left; auto.
+  apply is_sort_cons_iff.
+  intros. rewrite in_map_iff in H1.
+  destruct H1 as [y [Hy Hiny]]; subst.
+  rewrite Forall_forall in H0. apply H0; auto.
+  intros. apply H. simpl. simpl_set. exists y. split; auto.
+Qed.
+
+
+
+(*This is the key point:*)
+Lemma funsym_args_in_params (f: funsym) (v: vty) (t: typevar) :
+  In v (s_args f) ->
+  In t (type_vars v) ->
+  In t (s_params f).
+Proof.
+  intros. destruct f; simpl in *.
+  unfold is_true in s_args_wf.
+  rewrite <- (reflect_iff _ _ (check_args_correct _ _)) in s_args_wf.
+  apply s_args_wf in H0; auto.
+Qed.
+
+Lemma dom_cast_compose {domain_aux: sort -> Set} {s1 s2 s3: sort}
+  (Heq1: s2 = s3) (Heq2: s1 = s2) x:
+  dom_cast domain_aux Heq1 (dom_cast domain_aux Heq2 x) =
+  dom_cast domain_aux (eq_trans Heq2 Heq1) x.
+Proof.
+  subst. reflexivity.
+Qed.
+
+Ltac none_some :=
+  match goal with
+  | H: Some ?x = None |- _ => discriminate
+  | H: None = Some ?x |- _ => discriminate
+  end.
+
+Lemma map_ty_subst_var (vars: list typevar) (vs2: list vty):
+  length vars = length vs2 ->
+  NoDup vars ->
+  map (ty_subst vars vs2) (map vty_var vars) = vs2.
+Proof.
+  intros.
+  apply list_eq_ext'; rewrite !map_length; auto.
+  intros n d Hn.
+  rewrite map_nth_inbound with (d2:=vty_int); [|rewrite map_length; auto].
+  rewrite map_nth_inbound with (d2:=EmptyString); auto.
+  unfold ty_subst. simpl. apply ty_subst_fun_nth; auto.
+Qed.
+
+Lemma hlist_hd_cast {d: sort -> Set} 
+  {s1 s2: sort} {t1 t2: list sort}
+  {a: arg_list d (s1 :: t1)}
+  (Heq1: s1 :: t1 = s2 :: t2)
+  (Heq2: s1 = s2):
+  hlist_hd (cast_arg_list Heq1 a) =
+  scast (f_equal d Heq2) (hlist_hd a).
+Proof.
+  subst. inversion Heq1; subst.
+  assert (Heq1 = eq_refl).
+    apply UIP_dec. apply list_eq_dec. apply sort_eq_dec.
+  subst. reflexivity.
+Qed. 
+
+Lemma hide_ty_eq {vt ty1 ty2} (d1: domain (v_subst (v_typevar vt) ty1))
+  (d2: domain (v_subst (v_typevar vt) ty2))
+  (Heqty: ty1 = ty2)
+  Heq2:
+  d2 = dom_cast (dom_aux pd) Heq2 d1 ->
+  hide_ty d1 = hide_ty d2.
+Proof.
+  intros.
+  subst. unfold dom_cast.
+  assert (Heq2 = eq_refl). apply UIP_dec. apply sort_eq_dec.
+  subst. reflexivity.
+Qed.
+(*
+Lemma hide_ty_scast_eq {vt s1 ty1 ty2} {d: domain s1}
+  (H1: s1 = v_subst (v_typevar vt) ty1) (H2: s1 = v_subst (v_typevar vt) ty2):
+  hide_ty (scast (f_equal domain H1) d) =
+  hide_ty (scast (f_equal domain H2) d).
+Proof.
+  subst.
+  (*Is this true? Maybe not*)
+
+  generalize dependent (@hide_ty vt).
+  
+  generalize dependent (v_subst (v_typevar vt) ty1).
+  (*How to prove that H2= eq_refl?*)
+  destruct H2.
+
+
+hide_ty (scast (f_equal domain ?Heq2) (hlist_hd a0)) =
+hide_ty
+  (scast (f_equal domain (val_sort_eq vt (ty_subst_s (s_params f) srts a)))
+     (hlist_hd a0))
+*)
+
+Lemma v_subst_twice {v} ty:
+  v_subst v (v_subst v ty) = v_subst v ty.
+Proof.
+  symmetry. apply subst_sort_eq.
+Qed.
+
+
+(*Let's try to prove our match lemma*)
+(*TODO: not quite: need to make sure the types match (vsyms_in_m)*)
+
+Lemma match_val_single_smaller (vt: val_typevar) (v: val_vars pd vt) (ty: vty)
+  (p: pattern)
+  (Hp: pattern_has_type sigma p ty)
+  (Hty: vty_in_m m vs ty)
+  (*(Hty: exists a, adt_in_mut a m /\ ty = vty_cons (adt_name a) vs)*)
+  (d: domain(v_subst (v_typevar vt) ty))
+  (l: list (vsymbol * {t : vty & domain (v_subst (v_typevar vt) t)})):
+  match_val_single gamma_valid pd all_unif vt ty p Hp d = Some l ->
+    (*For [pat_constr_vars_inner], either same or smaller*)
+    (forall x y (*a*), In (x, y) l ->
+      In x (pat_constr_vars_inner m vs p) ->
+      (*adt_in_mut a m ->
+      projT1 y = vty_cons (adt_name a) vs ->*)
+      (*Either y is the same as d or it is smaller*)
+      y = hide_ty d \/
+      adt_smaller_trans y (hide_ty d)) /\
+    (*For [pat_constr_vars], strictly smaller*)
+    (forall x y (*a*), In (x, y) l ->
+      In x (pat_constr_vars m vs p) ->
+      (*adt_in_mut a m ->
+      projT1 y = vty_cons (adt_name a) vs ->*)
+    adt_smaller_trans y (hide_ty d)).
+Proof.
+  clear -fs ps Hty m_in vs_len (*f_typevars params_eq*).
+  (*OK, we will do it manually first*)
+  revert d l. generalize dependent ty.
+  induction p; intros.
+  - (*Var case is easy - it is the same*) simpl in H. simpl.
+    split; [intros |intros x y Hin [] ].
+    inversion Hp; subst.
+    unfold vsym_in_m in H1. rewrite Hty in H1.
+    destruct H1 as [Hxv | []]; subst.
+    inversion H; subst. clear H.
+    destruct H0 as [Hy | []]. inversion Hy; subst. clear Hy.
+    left. unfold hide_ty. 
+    reflexivity.
+  - (*Constr case is the hard and interesting one.*)
+    revert H0.
+    rewrite pat_constr_vars_inner_eq.
+    rewrite match_val_single_rewrite. cbn zeta.
+    generalize dependent (@is_vty_adt_spec _ _ gamma_valid ty).
+    generalize dependent (@adt_vty_length_eq _ _ gamma_valid ty).
+    generalize dependent (@constr_length_eq _ _ gamma_valid ty).
+    destruct (is_vty_adt ty) eqn : Hisadt.
+    2: intros; discriminate.
+    intros Hvslen1 Hvslen2 Hadtspec.
+    destruct p as [[m' adt] vs2].
+    destruct (Hadtspec m' adt vs2 eq_refl)
+      as [Htyeq [Hinmut Hinctx]].
+    clear Hadtspec.
+    (*Now want to show equiv between m and m'*)
+    assert (m = m'). {
+      subst.
+      apply (reflect_iff _ _ (vty_in_m_spec _ _ _)) in Hty. 
+      destruct Hty as [a' [Ha' Hty']]; subst.
+      inversion Hty'; subst.
+      apply (mut_adts_inj gamma_valid m_in Hinctx Ha' Hinmut); auto.
+    }
+    subst m'.
+    assert (vs2 = vs). {
+      subst.
+      apply (reflect_iff _ _ (vty_in_m_spec _ _ _)) in Hty. 
+      destruct Hty as [a' [Ha' Hty']]; subst.
+      inversion Hty'; subst; auto.
+    }
+    subst vs.
+    (*A few more generalizations to make the goal nicer*)
+    simpl.
+    generalize dependent (Hvslen2 m adt vs2 eq_refl
+    (pat_has_type_valid gamma_valid (Pconstr f vs0 ps0) ty Hp)).
+    clear Hvslen2.
+    intros Hvslen2.
+    destruct (funsym_eq_dec
+    (projT1
+       (find_constr_rep gamma_valid m Hinctx (map (v_subst (v_typevar vt)) vs2)
+          (eq_trans (map_length (v_subst (v_typevar vt)) vs2) Hvslen2) 
+          (dom_aux pd) adt Hinmut
+          (Semantics.adts pd m (map (v_subst (v_typevar vt)) vs2)) 
+          (all_unif m Hinctx)
+          (scast (Semantics.adts pd m (map (v_subst (v_typevar vt)) vs2) adt Hinmut)
+             (dom_cast (dom_aux pd)
+                (eq_trans (f_equal (v_subst (v_typevar vt)) Htyeq)
+                   (v_subst_cons (adt_name adt) vs2)) d)))) f);
+    [| intros; discriminate].
+    generalize dependent (find_constr_rep gamma_valid m Hinctx (map (v_subst (v_typevar vt)) vs2)
+    (eq_trans (map_length (v_subst (v_typevar vt)) vs2) Hvslen2) 
+    (dom_aux pd) adt Hinmut
+    (Semantics.adts pd m (map (v_subst (v_typevar vt)) vs2))
+    (all_unif m Hinctx)
+    (scast
+       (Semantics.adts pd m (map (v_subst (v_typevar vt)) vs2) adt Hinmut)
+       (dom_cast (dom_aux pd)
+          (eq_trans (f_equal (v_subst (v_typevar vt)) Htyeq)
+             (v_subst_cons (adt_name adt) vs2)) d))).
+    intros constr. destruct constr as [f' Hf']. simpl. intros Hf; subst.
+    simpl.
+    (*generalize dependent ((Hsrtsvalid m adt (adt_name adt) srts f eq_refl Hval (fst (proj1_sig Hf')))).*)
+    destruct Hf'. simpl.
+    (*Here, let us prove that 
+      everything in (snd x) is smaller than d - this is the key
+      theorem - when we pattern match, we actually get a smaller
+      ADT*)
+    set (srts:=(map (v_subst (v_typevar vt)) vs2)) in *.
+    assert (Hparams: s_params f = m_params m). {
+      eapply adt_constr_params. apply gamma_valid.
+      auto. apply Hinmut. apply (fst x).
+    }
+    assert (Hlenvs2: length vs2 = length (s_params f)) by
+    (rewrite Hparams; auto).
+    (*Ah, do NOT want val_sort_eq, instead prove directly*)
+    assert (Hithcast: forall i, i < length (s_args f) ->
+      nth i (funsym_sigma_args f srts) s_int =
+      v_subst (v_typevar vt) (ty_subst (s_params f) vs2 
+        (nth i (s_args f) vty_int))). {
+      intros. subst srts. rewrite funsym_sigma_args_map; auto.
+      unfold ty_subst_list. rewrite map_map.
+      rewrite map_nth_inbound with (d2:=vty_int); auto. 
+    }
+
+    assert (Hsmall: forall i (Hi: i < length (s_args f)),
+      vty_in_m m (map vty_var (m_params m)) (nth i (s_args f) vty_int) ->
+      adt_smaller 
+      (hide_ty (dom_cast (dom_aux pd) (*(val_sort_eq vt _) *) (Hithcast i Hi)
+        (hnth i (snd x) s_int (dom_int pd)))) (hide_ty d)). {
+      intros.
+      apply (reflect_iff _ _ (vty_in_m_spec _ _ _)) in H0.
+      destruct H0 as [adt2 [Hina2 Hntheq]].
+      assert (Hvalntheq: v_subst (v_typevar vt) 
+        (nth i (funsym_sigma_args f srts) s_int) =
+      typesym_to_sort (adt_name adt2) srts). {
+        (*TODO: maybe separate lemma or something - inverse of
+          [adts_from_constrs] or whatever it is*)
+        apply (reflect_iff _ _ (vty_in_m_spec m vs2 _)) in Hty.
+        destruct Hty as [a' [Ha' Hty]].
+        subst.
+        (*unfold val in Hvaleq.
+        unfold typesym_to_sort in Hvaleq.
+        injection Hvaleq; intros.*)
+        unfold funsym_sigma_args, ty_subst_list_s,
+        typesym_to_sort.
+        apply sort_inj. simpl.
+        rewrite map_nth_inbound with(d2:=vty_int); auto.
+        rewrite Hntheq.
+        simpl.
+        unfold ty_subst_s, ty_subst_fun_s. simpl.
+        unfold sorts_to_tys. (*rewrite <- H1.*)
+        rewrite !map_map.
+        f_equal.
+        assert (Hlensrts: length srts = length (m_params m)). {
+          subst srts. rewrite map_length. auto.
+        }
+        apply list_eq_ext'; rewrite !map_length; auto. 
+        intros n d' Hn.
+        rewrite !map_nth_inbound with (d2:=EmptyString); auto.
+        (*Now just doing the same thing a bunch I think*)
+        rewrite <- subst_is_sort_eq.
+        2: {
+          apply v_subst_aux_sort_eq. rewrite Hparams.
+          intros. fold (sorts_to_tys srts).
+          replace vty_int with (sort_to_ty s_int) by reflexivity. 
+          apply ty_subst_fun_sort.
+        }
+        rewrite !map_nth_inbound with (d2:=s_int); [|lia].
+        simpl.
+        rewrite <- Hparams.
+        rewrite ty_subst_fun_nth with(s:=s_int); auto.
+        + simpl. rewrite map_nth_inbound with (d2:=s_int); auto. lia.
+        + rewrite map_length, Hparams. auto.
+        + rewrite Hparams; auto. 
+        + apply s_params_Nodup.
+      }
+      (*eapply (ADT_small (hide_ty
+        (dom_cast (dom_aux pd) (val_sort_eq vt (nth i (funsym_sigma_args f (map (v_subst (v_typevar vt)) vs2)) s_int))
+          (hnth i (snd x) s_int (dom_int pd)))) (hide_ty d)
+        (nth i (funsym_sigma_args f srts)
+         s_int) ((vty_cons (adt_name adt) vs2))
+        _ _ m adt2 adt srts f (snd x) eq_refl eq_refl eq_refl eq_refl
+
+      ).*)
+      Check ADT_small.
+      eapply (ADT_small (hide_ty (dom_cast (dom_aux pd) (Hithcast i Hi)
+          (hnth i (snd x) s_int (dom_int pd)))) (hide_ty d)
+          (ty_subst (s_params f) vs2 (nth i (s_args f) vty_int))
+          (vty_cons (adt_name adt) vs2) _ _ m adt2 adt srts f (snd x)
+          eq_refl eq_refl eq_refl eq_refl
+      ).
+      exact e.
+      exists i.
+      eexists. split; auto.
+      rewrite !dom_cast_compose. simpl.
+      rewrite !dom_cast_compose. reflexivity.
+      Unshelve.
+      2: assumption.
+      rewrite <- Hvalntheq.
+      rewrite Hithcast; auto.
+      rewrite v_subst_twice. reflexivity.
+    }
+    (*The second claim is stronger. We prove that first*)
+    (*Now we can do induction for the first claim, and prove the second
+      directly.*)
+    clear e.
+    intros Hl.
+    match goal with
+    | |- ?A /\ ?B => assert B
+    end.
+    { (*Need to generalize cast proof*)
+      generalize dependent (Hvslen1 m adt vs2 f eq_refl
+        (pat_has_type_valid gamma_valid (Pconstr f vs0 ps0)
+          (vty_cons (adt_name adt) vs2) Hp) (fst x)).
+      clear Hvslen1.
+      intros.
+      generalize dependent (funsym_sigma_args_map vt f vs2 e).
+      clear e.
+      
+      generalize dependent ((pat_constr_ind gamma_valid Hp Hinctx Hinmut eq_refl (fst x))).
+      destruct x. simpl.
+      generalize dependent a.
+      (*What should ps be?*)
+      generalize dependent ps0.
+      assert (length (funsym_sigma_args f srts) = length (s_args f)). {
+        unfold funsym_sigma_args, ty_subst_list_s. rewrite map_length; reflexivity.
+      }
+      unfold funsym_sigma_args in *.
+      (*generalize dependent ((funsym_sigma_args f srts)).*)
+      generalize dependent (s_args f).
+      
+      induction l0; simpl; intros; auto. 
+      + destruct ps0. inversion Hl; subst. 
+        inversion H0.
+        inversion Hl.
+      + revert Hl. destruct ps0. discriminate.
+        simpl.
+        repeat match goal with 
+        |- (match ?p with |Some l => ?x | None => ?y end) = ?z -> ?q =>
+          let Hp := fresh "Hmatch" in 
+          destruct p eqn: Hp end.
+        all: try discriminate.
+        intro C; inversion C; subst. clear C.
+        apply in_app_or in H0. destruct H0.
+        * clear Hmatch0.
+          destruct (constr_in_m f m && list_eq_dec vty_eq_dec vs0 vs2 &&
+          (Datatypes.length (p :: ps0) =? S (Datatypes.length l0))) eqn : Hconds;
+          [|inversion H2].
+        simpl in H2. 
+        destruct (vty_in_m m (map vty_var (m_params m)) a) eqn : Hadtv.
+        -- simpl in H2. rewrite union_elts in H2.
+          destruct H2.
+          ++ inversion H1; subst.
+            clear H6.
+            
+            specialize (Hsmall 0 (Nat.lt_0_succ (length l0)) Hadtv). simpl in Hsmall.
+              (*problem - lose connection between s_args
+                and funsym_sigma_args*)
+            eapply R_refl_trans_trans.
+            2: {
+              apply Rtrans_once. apply Hsmall.
+            }
+            (*Now need to know that (ty_subst (s_params f) vs2 a)
+              is an ADT. Here is where it is CRUCIAL that we recurse on
+              a type, not a sort in [match_val_single], or else
+              Hadtv will not be strong enough*)
+            assert (Halg: vty_in_m m vs2 (ty_subst (s_params f) vs2 a)). {
+              apply (reflect_iff _ _ (vty_in_m_spec _ _ _)) in Hadtv.
+              destruct Hadtv as [a' [Hina' Ha']]; subst.
+              apply (reflect_iff _ _ (vty_in_m_spec _ _ _)).
+              exists a'. split; auto.
+              rewrite ty_subst_cons. f_equal.
+              rewrite <- Hparams.
+              rewrite map_ty_subst_var; auto.
+              apply s_params_Nodup.
+            }
+            specialize (H5 _ _ Halg _ _ Hmatch).
+            destruct H5. clear H4.
+            specialize (H3 _ _ H0 H2).
+            (*Both need this result*)
+            assert (Haleq: hide_ty (hlist_hd (cast_arg_list e a0)) =
+            hide_ty
+              (dom_cast (dom_aux pd) (Hithcast 0 (Nat.lt_0_succ (Datatypes.length l0)))
+                 (hlist_hd a0))). {
+              erewrite hlist_hd_cast.
+              eapply hide_ty_eq.
+              Unshelve. all: try reflexivity.
+              unfold dom_cast; simpl.
+              (*Um what? how did 2 goals disappear?*)
+              reflexivity.
+            }
+            destruct H3; subst; auto.
+            (*TODO: need to unfold cast I think*)
+            ** (*these are the same*)
+              rewrite <- Haleq.
+              apply Rrefl_refl.
+            ** (*Otherwise, we hae transitivity*)
+              apply Rrefl_R.
+              rewrite <- Haleq. apply H3.
+          ++ (*I THINK: get contradiction because
+            in pat_constr_fv of later (so in pat_fv of later)
+            and in output of first (so in pat_fv of first)*)
+            admit.
+        -- (*same contradiction*)
+          admit.
+      * (*This should be IH - if in first, contradiction
+        otherwise use IH*)
+        admit.
+      
+          
+          
+          (*Here, we know that x0 is in big_union, so we find
+               the appropriate one and use Hsmall (I think)*)
+              simpl_set.
+              destruct H2 as [p' [Hinp' Hinx0]].
+              rewrite in_map_iff in Hinp'.
+              destruct Hinp' as [pt [Hp' Hinpt]]; subst.
+              rewrite in_filter in Hinpt.
+              destruct pt as [p' t']; simpl in Hinpt, Hinx0.
+              destruct Hinpt as [Hvtyin Hinpt].
+              assert (Hcomb:=Hinpt).
+              simpl in Hconds. bool_hyps.
+              apply Nat.eqb_eq in H3.
+              rewrite in_combine_iff in Hinpt; auto.
+              destruct Hinpt as [i' [Hi' Hpteq]].
+              specialize (Hpteq Pwild vty_int).
+              inversion Hpteq; subst.
+              rewrite H3 in Hi'.
+              (*With all of this, we can instantiate Hsmall*)
+              specialize (Hsmall (S i') (Arith_prebase.lt_n_S_stt i' 
+                (length l0) Hi') Hvtyin).
+              simpl in Hsmall.
+              (*Now we need the other half, about y - comes
+                from second part of H1*)
+              inversion H1; subst. clear H7.
+              rewrite Forall_forall in H8.
+              specialize (H8 (nth i' ps0 Pwild)).
+               
+
+              eapply Rtrans_multi.
+              apply H3.
+              apply Hsmall.
+
+              Print R_trans.
+              unfold R_refl_trans.
+
+              Print R_refl.
+                Unshelve.
+
+                unfold dom_cast.
+                (*TODO: separate lemma?*)
+                assert (ty_subst (s_params f) vs2 a =
+                v_subst_aux
+                  (fun x : typevar => ty_subst_fun (s_params f) (sorts_to_tys srts) vty_int x) a). {
+                  apply (reflect_iff _ _ (vty_in_m_spec _ _ _)) in Hadtv.
+                  destruct Hadtv as [a' [Hina' Ha']]; subst.
+                  rewrite ty_subst_cons.
+                  rewrite <- Hparams.
+                  simpl. f_equal.
+                 
+                  rewrite map_ty_subst_var; auto; [| apply s_params_Nodup].
+                  rewrite map_map.
+                  (*Ugh, annoying proof seems like duplicate*)
+                  apply list_eq_ext'; rewrite ?map_length; auto.
+                  intros n d' Hn.
+                  rewrite map_nth_inbound with (d2:=EmptyString).
+                  2: { unfold typevar in H3; lia. }
+                  simpl.
+                  subst srts.
+                  unfold sorts_to_tys. rewrite map_map. simpl. 
+                  rewrite simpl.
+                  rewrite ty_subst_fun_nth with(s:=d').
+
+
+                  unfold typevar in H3.
+                  rewrite <- 
+                  2: rewrite map_length.
+                  2: rewrite <- H3.
+                  [| rewrite <- H3; auto].
+                  
+                  [| simpl in *; lia].
+
+                  rewrite vs_len, Hparams. auto.
+                  apply s_params_Nodup.
+
+                }
+                eapply hide_ty_eq.
+                (*OK, have to prove this*)
+                Search ty_subst v_subst_aux.
+                apply sort_inj.
+                erewrite hlist_hd_cast.
+                unfold dom_cast. rewrite scast_scast.
+                rewrite <- eq_trans_map_distr.
+                Search eq_trans f_equal.
+                Unshelve.
+
+
+                ty_subst (s_params f) vs2 a =
+v_subst_aux
+  (fun x : typevar => ty_subst_fun (s_params f) (sorts_to_tys srts) vty_int x) a
+                
+                (*cast equality should be OK bc decidable*)
+                rewrite hlist_hd_cast with (Heq2:=(val_sort_eq vt (ty_subst_s (s_params f) srts a))).
+                reflexivity.
+
+
+                Print hide_ty.
+                Search hlist_hd cast_arg_list.
+                assert (hlist_hd )
+                unfold hide_ty.
+                Search (existT ?d ?y ?z = existT ?d ?a ?b).
+                
+                f_equal. simpl.
+              }
+              assert ()
+            
+            
+            unfold hide_ty. simpl.
+
+            Search hide_ty dom_cast.
+            unfold dom_cast.
+            simpl.
+            
+            
+
+
+
+
+
+
+
+    simpl.
+
+
+    generalize dependent ((eq_trans (map_length (v_subst (v_typevar vt)) vs2) Hvslen2) ).
+    simpl.
+
+    (*simpl.
+    match goal with 
+    | |- ?A /\ ?B => assert B
+    end.
+    {
+      intros. inversion H1; subst.
+      revert H0.*)
+      (*The hard case: need lots of generalization for dependent types
+      and need nested induction*) 
+    unfold match_val_single; fold (@match_val_single sigma gamma gamma_valid pd all_unif).
+    generalize dependent (is_sort_adt_spec gamma_valid (val ty)).
+    generalize dependent ((@adt_srts_length_eq _ _ gamma_valid vt ty)).
+    generalize dependent (@adts_srts_valid _ _ gamma_valid vt ty).
+    destruct (is_sort_adt (val ty)) eqn : Hisadt;
+    [|intros; discriminate].
+    intros Hsrtsvalid Hsrtslen Hadtspec.
+    destruct p as [[[m' adt] ts'] srts].
+    destruct (Hadtspec m' adt ts' srts eq_refl) as 
+      [Hvaleq [Hinmut [Hincts Htseq]]].
+    clear Hadtspec.
+    (*Now want to show equiv between m and m'*)
+    assert (m = m'). {
+      subst.
+      apply (reflect_iff _ _ (vty_in_m_spec _ _ _)) in Hty. 
+      destruct Hty as [a' [Ha' Hty']]; subst.
+      unfold val in Hvaleq. simpl in Hvaleq.
+      inversion Hvaleq.
+      apply (mut_adts_inj gamma_valid m_in Hincts Ha' Hinmut H1).
+      }
+      subst m'. 
+    destruct (funsym_eq_dec
+    (projT1
+      (find_constr_rep gamma_valid m Hincts srts
+          (Hsrtslen m adt ts' srts eq_refl Hval) (dom_aux pd) adt
+          Hinmut (Semantics.adts pd m srts) (all_unif m Hincts)
+          (scast (Semantics.adts pd m srts adt Hinmut)
+            (dom_cast (dom_aux pd) Hvaleq d)))) f); [|discriminate].
+    (*Need nested induction: simplify first*)
+    generalize dependent (find_constr_rep gamma_valid m Hincts srts
+    (Hsrtslen m adt ts' srts eq_refl Hval) 
+    (dom_aux pd) adt Hinmut (Semantics.adts pd m srts)
+    (all_unif m Hincts)
+    (scast (Semantics.adts pd m srts adt Hinmut)
+      (dom_cast (dom_aux pd) Hvaleq d))).
+    intros constr. destruct constr as [f' Hf']. simpl. 
+    intros Hf; subst.
+    generalize dependent ((Hsrtsvalid m adt (adt_name adt) srts f eq_refl Hval (fst (proj1_sig Hf')))).
+    destruct Hf'. simpl.
+    (*Here, let us prove that 
+      everything in (snd x) is smaller than d - this is the key
+      theorem - when we pattern match, we actually get a smaller
+      ADT*)
+    (*
+    assert (Hsmall:forall i, i < length ((funsym_sigma_args f srts)) ->
+      (exists a, adt_in_mut a m /\ 
+      nth i (funsym_sigma_args f srts) s_int =
+        typesym_to_sort (adt_name a) srts)-> (*is this the condition?*)
+      adt_smaller 
+      (hide_ty (dom_cast (dom_aux pd) (val_sort_eq vt _) 
+        (hnth i (snd x) s_int (dom_int pd)))) (hide_ty d)). {
+      intros.
+      destruct H1 as [adt2 [Hina2 Hntheq]].
+      eapply (ADT_small (hide_ty
+        (dom_cast (dom_aux pd) (val_sort_eq vt (nth i (funsym_sigma_args f srts) s_int))
+          (hnth i (snd x) s_int (dom_int pd)))) (hide_ty d)
+        (nth i (funsym_sigma_args f srts) s_int) ty
+        _ _ m adt2 adt srts f (snd x) eq_refl eq_refl eq_refl eq_refl
+
+      ). apply e. Unshelve. all: auto.
+      2: {
+        exact (eq_trans (eq_sym 
+          (val_sort_eq vt (nth i (funsym_sigma_args f srts) s_int)))
+          Hntheq
+        ).
+      }
+      exists i. exists Hntheq. split; auto.
+      unfold funsym_sigma_args in H0.
+      unfold ty_subst_list_s in H0.
+      rewrite map_length in H0. auto.
+      (*Prove equality is equal*)
+      rewrite !dom_cast_compose. unfold hide_ty. simpl.
+      rewrite eq_trans_refl. rewrite dom_cast_compose.
+      rewrite eq_trans_assoc, eq_trans_sym_inv_r,
+      eq_trans_refl. reflexivity.
+    }*)
+    (*TODO: see what we need*)
+    assert (Hsmall: forall i, i < length (s_args f) ->
+      vty_in_m m (map vty_var (m_params m)) (nth i (s_args f) vty_int) ->
+      adt_smaller 
+      (hide_ty (dom_cast (dom_aux pd) (val_sort_eq vt _) 
+        (hnth i (snd x) s_int (dom_int pd)))) (hide_ty d)). {
+          intros.
+          apply (reflect_iff _ _ (vty_in_m_spec _ _ _)) in H1.
+          destruct H1 as [adt2 [Hina2 Hntheq]].
+          assert (Hvalntheq: val (nth i (funsym_sigma_args f srts) s_int) =
+          typesym_to_sort (adt_name adt2) srts). {
+            (*TODO: maybe separate lemma or something - inverse of
+              [adts_from_constrs] or whatever it is*)
+            apply (reflect_iff _ _ (vty_in_m_spec m vs _)) in Hty.
+            destruct Hty as [a' [Ha' Hty]].
+            subst.
+            unfold val in Hvaleq.
+            unfold typesym_to_sort in Hvaleq.
+            injection Hvaleq; intros.
+            unfold funsym_sigma_args, ty_subst_list_s,
+            typesym_to_sort.
+            apply sort_inj. simpl.
+            rewrite map_nth_inbound with(d2:=vty_int); auto.
+            rewrite Hntheq.
+            simpl.
+            unfold ty_subst_s, ty_subst_fun_s. simpl.
+            unfold sorts_to_tys. rewrite <- H1.
+            rewrite !map_map.
+            f_equal.
+            assert (s_params f = m_params m). {
+              eapply adt_constr_params. apply gamma_valid.
+              auto. apply Hinmut. apply (fst x).
+            }
+            apply list_eq_ext'; rewrite !map_length;
+            auto.
+            intros n d' Hn.
+            rewrite !map_nth_inbound with (d2:=EmptyString); auto.
+            (*Now just doing the same thing a bunch I think*)
+            rewrite <- subst_is_sort_eq.
+            2: {
+              apply v_subst_aux_sort_eq. rewrite H1.
+              intros. fold (sorts_to_tys srts).
+              replace vty_int with (sort_to_ty s_int) by reflexivity. 
+              apply ty_subst_fun_sort.
+            }
+            rewrite !map_nth_inbound with (d2:=vty_int); 
+            (*TODO: remove*) try lia.
+            simpl.
+            rewrite <- H3.
+            rewrite ty_subst_fun_nth with(s:=s_int); auto.
+            + rewrite map_nth_inbound with (d2:=vty_int); auto.
+              rewrite vs_len; auto.
+            + rewrite map_length, vs_len, H3. auto.
+            + rewrite H3; auto.
+            + apply s_params_Nodup.
+          }
+          eapply (ADT_small (hide_ty
+            (dom_cast (dom_aux pd) (val_sort_eq vt (nth i (funsym_sigma_args f srts) s_int))
+              (hnth i (snd x) s_int (dom_int pd)))) (hide_ty d)
+            (nth i (funsym_sigma_args f srts) s_int) ty
+            _ _ m adt2 adt srts f (snd x) eq_refl eq_refl eq_refl eq_refl
+    
+          ). apply e. Unshelve. all: auto.
+          exists i.
+          eexists. split; auto.
+          rewrite !dom_cast_compose. simpl.
+          rewrite !dom_cast_compose. reflexivity.
+    }
+    
+
+
+
+  (*Damn it, vt needs to be generalized*)
+  revert vt ty Hp d Hty l.
+  apply (match_val_single_ind gamma_valid pd all_unif 
+    (fun v ty p d o =>
+    vty_in_m m vs ty ->
+    forall (l: list (vsymbol * {t : vty & domain (v_subst (v_typevar v) t)})) ,
+    o = Some l ->
+    (forall (x : vsymbol) (y : {t : vty & domain (v_subst (v_typevar v) t)}),
+      In (x, y) l ->
+      In x (pat_constr_vars_inner m vs p) ->
+      y = hide_ty d \/ adt_smaller_trans y (hide_ty d)) /\
+    (forall (x : vsymbol) (y : {t : vty & domain (v_subst (v_typevar v) t)}),
+      In (x, y) l -> In x (pat_constr_vars m vs p) -> 
+      adt_smaller_trans y (hide_ty d)))
+    (fun _ _ => True)); auto.
+  - intros. inversion H0; subst. clear H0.
+    split; intros x' y' [Hinxy | []]; inversion Hinxy; subst;
+    simpl.
+
+
+
+    (*Q needs to be much more sophisticated: need (at least)
+      f, m - need to see what we need*)
+
+
+    (fun tys a =>
+    forall,
+    (Hsmall: forall i, i < length (s_args f) ->
+    vty_in_m m (map vty_var (m_params m)) (nth i (s_args f) vty_int) ->
+    adt_smaller 
+    (hide_ty (dom_cast (dom_aux pd) (val_sort_eq vt _) 
+      (hnth i (snd x) s_int (dom_int pd)))) (hide_ty d)). {
+    
+    
+    )).
+  
+
+  
+  ))
+
+  induction p; intros.
+  - (*Var case is easy - it is the same*) simpl in H. simpl.
+    split; [intros |intros x y Hin [] ].
+    destruct (vty_eq_dec (snd v) ty); try discriminate.
+    inversion H; subst. clear H.
+    simpl in H0.
+    destruct H0 as [Hy | []]. inversion Hy; subst.
+    left. unfold hide_ty. 
+    reflexivity.
+  - (*Constr case is the hard and interesting one.*)
+    revert H0.
+    rewrite pat_constr_vars_inner_eq.
+    (*simpl.
+    match goal with 
+    | |- ?A /\ ?B => assert B
+    end.
+    {
+      intros. inversion H1; subst.
+      revert H0.*)
+      (*The hard case: need lots of generalization for dependent types
+      and need nested induction*) 
+    unfold match_val_single; fold (@match_val_single sigma gamma gamma_valid pd all_unif).
+    generalize dependent (is_sort_adt_spec gamma_valid (val ty)).
+    generalize dependent ((@adt_srts_length_eq _ _ gamma_valid vt ty)).
+    generalize dependent (@adts_srts_valid _ _ gamma_valid vt ty).
+    destruct (is_sort_adt (val ty)) eqn : Hisadt;
+    [|intros; discriminate].
+    intros Hsrtsvalid Hsrtslen Hadtspec.
+    destruct p as [[[m' adt] ts'] srts].
+    destruct (Hadtspec m' adt ts' srts eq_refl) as 
+      [Hvaleq [Hinmut [Hincts Htseq]]].
+    clear Hadtspec.
+    (*Now want to show equiv between m and m'*)
+    assert (m = m'). {
+      subst.
+      apply (reflect_iff _ _ (vty_in_m_spec _ _ _)) in Hty. 
+      destruct Hty as [a' [Ha' Hty']]; subst.
+      unfold val in Hvaleq. simpl in Hvaleq.
+      inversion Hvaleq.
+      apply (mut_adts_inj gamma_valid m_in Hincts Ha' Hinmut H1).
+      }
+      subst m'. 
+    destruct (funsym_eq_dec
+    (projT1
+      (find_constr_rep gamma_valid m Hincts srts
+          (Hsrtslen m adt ts' srts eq_refl Hval) (dom_aux pd) adt
+          Hinmut (Semantics.adts pd m srts) (all_unif m Hincts)
+          (scast (Semantics.adts pd m srts adt Hinmut)
+            (dom_cast (dom_aux pd) Hvaleq d)))) f); [|discriminate].
+    (*Need nested induction: simplify first*)
+    generalize dependent (find_constr_rep gamma_valid m Hincts srts
+    (Hsrtslen m adt ts' srts eq_refl Hval) 
+    (dom_aux pd) adt Hinmut (Semantics.adts pd m srts)
+    (all_unif m Hincts)
+    (scast (Semantics.adts pd m srts adt Hinmut)
+      (dom_cast (dom_aux pd) Hvaleq d))).
+    intros constr. destruct constr as [f' Hf']. simpl. 
+    intros Hf; subst.
+    generalize dependent ((Hsrtsvalid m adt (adt_name adt) srts f eq_refl Hval (fst (proj1_sig Hf')))).
+    destruct Hf'. simpl.
+    (*Here, let us prove that 
+      everything in (snd x) is smaller than d - this is the key
+      theorem - when we pattern match, we actually get a smaller
+      ADT*)
+    (*
+    assert (Hsmall:forall i, i < length ((funsym_sigma_args f srts)) ->
+      (exists a, adt_in_mut a m /\ 
+      nth i (funsym_sigma_args f srts) s_int =
+        typesym_to_sort (adt_name a) srts)-> (*is this the condition?*)
+      adt_smaller 
+      (hide_ty (dom_cast (dom_aux pd) (val_sort_eq vt _) 
+        (hnth i (snd x) s_int (dom_int pd)))) (hide_ty d)). {
+      intros.
+      destruct H1 as [adt2 [Hina2 Hntheq]].
+      eapply (ADT_small (hide_ty
+        (dom_cast (dom_aux pd) (val_sort_eq vt (nth i (funsym_sigma_args f srts) s_int))
+          (hnth i (snd x) s_int (dom_int pd)))) (hide_ty d)
+        (nth i (funsym_sigma_args f srts) s_int) ty
+        _ _ m adt2 adt srts f (snd x) eq_refl eq_refl eq_refl eq_refl
+
+      ). apply e. Unshelve. all: auto.
+      2: {
+        exact (eq_trans (eq_sym 
+          (val_sort_eq vt (nth i (funsym_sigma_args f srts) s_int)))
+          Hntheq
+        ).
+      }
+      exists i. exists Hntheq. split; auto.
+      unfold funsym_sigma_args in H0.
+      unfold ty_subst_list_s in H0.
+      rewrite map_length in H0. auto.
+      (*Prove equality is equal*)
+      rewrite !dom_cast_compose. unfold hide_ty. simpl.
+      rewrite eq_trans_refl. rewrite dom_cast_compose.
+      rewrite eq_trans_assoc, eq_trans_sym_inv_r,
+      eq_trans_refl. reflexivity.
+    }*)
+    (*TODO: see what we need*)
+    assert (Hsmall: forall i, i < length (s_args f) ->
+      vty_in_m m (map vty_var (m_params m)) (nth i (s_args f) vty_int) ->
+      adt_smaller 
+      (hide_ty (dom_cast (dom_aux pd) (val_sort_eq vt _) 
+        (hnth i (snd x) s_int (dom_int pd)))) (hide_ty d)). {
+          intros.
+          apply (reflect_iff _ _ (vty_in_m_spec _ _ _)) in H1.
+          destruct H1 as [adt2 [Hina2 Hntheq]].
+          assert (Hvalntheq: val (nth i (funsym_sigma_args f srts) s_int) =
+          typesym_to_sort (adt_name adt2) srts). {
+            (*TODO: maybe separate lemma or something - inverse of
+              [adts_from_constrs] or whatever it is*)
+            apply (reflect_iff _ _ (vty_in_m_spec m vs _)) in Hty.
+            destruct Hty as [a' [Ha' Hty]].
+            subst.
+            unfold val in Hvaleq.
+            unfold typesym_to_sort in Hvaleq.
+            injection Hvaleq; intros.
+            unfold funsym_sigma_args, ty_subst_list_s,
+            typesym_to_sort.
+            apply sort_inj. simpl.
+            rewrite map_nth_inbound with(d2:=vty_int); auto.
+            rewrite Hntheq.
+            simpl.
+            unfold ty_subst_s, ty_subst_fun_s. simpl.
+            unfold sorts_to_tys. rewrite <- H1.
+            rewrite !map_map.
+            f_equal.
+            assert (s_params f = m_params m). {
+              eapply adt_constr_params. apply gamma_valid.
+              auto. apply Hinmut. apply (fst x).
+            }
+            apply list_eq_ext'; rewrite !map_length;
+            auto.
+            intros n d' Hn.
+            rewrite !map_nth_inbound with (d2:=EmptyString); auto.
+            (*Now just doing the same thing a bunch I think*)
+            rewrite <- subst_is_sort_eq.
+            2: {
+              apply v_subst_aux_sort_eq. rewrite H1.
+              intros. fold (sorts_to_tys srts).
+              replace vty_int with (sort_to_ty s_int) by reflexivity. 
+              apply ty_subst_fun_sort.
+            }
+            rewrite !map_nth_inbound with (d2:=vty_int); 
+            (*TODO: remove*) try lia.
+            simpl.
+            rewrite <- H3.
+            rewrite ty_subst_fun_nth with(s:=s_int); auto.
+            + rewrite map_nth_inbound with (d2:=vty_int); auto.
+              rewrite vs_len; auto.
+            + rewrite map_length, vs_len, H3. auto.
+            + rewrite H3; auto.
+            + apply s_params_Nodup.
+          }
+          eapply (ADT_small (hide_ty
+            (dom_cast (dom_aux pd) (val_sort_eq vt (nth i (funsym_sigma_args f srts) s_int))
+              (hnth i (snd x) s_int (dom_int pd)))) (hide_ty d)
+            (nth i (funsym_sigma_args f srts) s_int) ty
+            _ _ m adt2 adt srts f (snd x) eq_refl eq_refl eq_refl eq_refl
+    
+          ). apply e. Unshelve. all: auto.
+          exists i.
+          eexists. split; auto.
+          rewrite !dom_cast_compose. simpl.
+          rewrite !dom_cast_compose. reflexivity.
+    }
+    (*The second claim is stronger. We prove that first*)
+    (*Now we can do induction for the first claim, and prove the second
+      directly.*)
+      clear e.
+      intros Hall Hl.
+      match goal with
+      | |- ?A /\ ?B => assert B
+      end.
+      { generalize dependent Hall.
+        destruct x. simpl. generalize dependent a.
+        (*What should ps be?*)
+        generalize dependent ps0.
+        assert (length (funsym_sigma_args f srts) = length (s_args f)). {
+          unfold funsym_sigma_args, ty_subst_list_s. rewrite map_length; reflexivity.
+        }
+        unfold funsym_sigma_args in *.
+        (*generalize dependent ((funsym_sigma_args f srts)).*)
+        generalize dependent (s_args f).
+        
+        induction l0; simpl; intros; auto. 
+        + destruct ps0. inversion Hl; subst. 
+          inversion H1.
+          inversion Hl.
+        + revert Hl. destruct ps0. discriminate.
+          repeat match goal with 
+          |- (match ?p with |Some l => ?x | None => ?y end) = ?z -> ?q =>
+            let Hp := fresh "Hmatch" in 
+            destruct p eqn: Hp end.
+          all: try discriminate.
+          intro C; inversion C; subst. clear C.
+          apply in_app_or in H1. destruct H1.
+          * clear Hmatch0.
+            destruct (constr_in_m f m && list_eq_dec vty_eq_dec vs0 vs &&
+            (Datatypes.length (p :: ps0) =? S (Datatypes.length l0))) eqn : Hconds;
+            [|inversion H2].
+          simpl in H2. 
+          destruct (vty_in_m m (map vty_var (m_params m)) a) eqn : Hadtv.
+          -- simpl in H2. rewrite union_elts in H2.
+            destruct H2.
+            ++ inversion H0; subst.
+              clear H6.
+              (*Hmm what is going on here?
+              patterns should have type (ex: list int)
+              while underlying constructors have type list A and
+              we sub A -> int (with srts)
+              so (here) a should have type t(a, b, c)
+              and ty_subst_s (s_params f) srts a would have
+              type t (int, real, list int) (or whatever)
+
+              *)
+              specialize (Hsmall 0 ltac:(lia)). simpl in Hsmall.
+              (*problem - lose connection between s_args
+                and funsym_sigma_args*)
+              eapply R_refl_trans_trans.
+              2: {
+                apply Rtrans_once. apply Hsmall. auto.
+              }
+              assert (Halg: vty_in_m m vs (ty_subst_s (s_params f) srts a)). {
+                (*Hopefully this is true*)
+                (*maybe not: could be that val x = val y, not x = y*)
+                unfold ty_subst_s.
+                apply (reflect_iff _ _ (vty_in_m_spec _ _ _)).
+                apply (reflect_iff _ _ (vty_in_m_spec _ _ _)) in Hadtv.
+                destruct Hadtv as [adt2 [Hinadt2 Ha]]. subst.
+                simpl. exists adt2. split; auto.
+                f_equal.
+                (*This is NOT TRUE*)
+                Print pattern_has_type.
+                Print valid_pattern_match.
+                (*Hmm, I think this says that *)
+              }
+              (*TODO: change condition*)
+              assert (Halg: exists a0 : alg_datatype,
+              adt_in_mut a0 m /\
+              sort_to_ty (ty_subst_s (s_params f) srts a) = vty_cons (adt_name a0) vs).
+              { admit. }
+              (*Now use IH*)
+              specialize (H5 _ _ Halg _ _ Hmatch).
+              destruct H5. clear H4.
+              specialize (H3 _ _ H1 H2). destruct H3; subst; auto.
+              (*OK, just need other lemma: if we have 0 or more
+                then 1, then we have trans*)
+              (*OK, this should be provable now, I think*)
+              
+              Print R_trans. 2: apply Rtrans_single. 2: apply Hsmall'.
+           (*In first part 44*)
+            (*Use IH*)
+            (*TODO: do we need this stuff here?*)
+            destruct (constr_in_m f m && list_eq_dec vty_eq_dec vs0 vs) eqn : Hcond.
+            simpl in H1. simpl_set.
+            destruct H1.
+            -- (*in [pat_constr_vars_inner p], so use IH*)
+              inversion H; subst.
+              clear H5.
+              (*Ugh same problem: we need to know that a is 
+                an instance of a'[vs] for a' in m 13-19*)
+            specialize (Hsmall 0 ltac:(lia)).
+            Search match_val_single.
+            (*Maybe - use typing information for patterns
+              ONLY recurse
+
+
+    (**)
+    Print pat_constr_vars.
+    (*An alternate, more useful formulation*)
+    assert (Hsmall': forall i, i < length (s_args f) ->
+      vty_in_m m vs (nth i (s_args f) vty_int) ->
+      adt_smaller 
+      (hide_ty (dom_cast (dom_aux pd) (val_sort_eq vt _) 
+        (hnth i (snd x) s_int (dom_int pd)))) (hide_ty d)).
+    {
+      intros.
+      apply (reflect_iff _ _ (vty_in_m_spec m vs _)) in H1.
+      destruct H1 as [adt2 [Hina1 Hntheq]].
+      eapply (ADT_small (hide_ty
+        (dom_cast (dom_aux pd) (val_sort_eq vt (nth i (funsym_sigma_args f srts) s_int))
+          (hnth i (snd x) s_int (dom_int pd)))) (hide_ty d) _ ty _  _ m adt2
+          adt srts f (snd x) eq_refl eq_refl eq_refl eq_refl).
+        apply e. Unshelve. all: auto.
+        2: {
+          simpl.
+          (*First, we need to know about srts*)
+          (*TODO: maybe separate lemma or something*)
+          destruct Hty as [a' [Ha' Hty]].
+          subst.
+          unfold val in Hvaleq.
+          unfold typesym_to_sort in Hvaleq.
+          injection Hvaleq; intros.
+        (*So we say: replace parameters of f with *)
+          (*Hmm, so we know that all typesyms in s_args f are in
+            s_params f
+            so should be: replacing params with srts (v (vs))
+            AH, we DO know that all params are in params - because of nth assumption
+            *)
+          unfold funsym_sigma_args, ty_subst_list_s,
+          typesym_to_sort.
+          apply sort_inj. simpl.
+          rewrite map_nth_inbound with(d2:=vty_int); auto.
+          rewrite Hntheq.
+          simpl.
+          unfold ty_subst_s, ty_subst_fun_s. simpl.
+          unfold sorts_to_tys. rewrite <- H1.
+          rewrite !map_map.
+          f_equal.
+          apply list_eq_ext'; rewrite !map_length; auto.
+          intros n d' Hn.
+          rewrite !map_nth_inbound with (d2:=vty_int); auto.
+          (*Now just doing the same thing a bunch I think*)
+          rewrite <- subst_is_sort_eq.
+          2: {
+            apply v_subst_aux_sort_eq. rewrite H1.
+            intros. fold (sorts_to_tys srts).
+            replace vty_int with (sort_to_ty s_int) by reflexivity. 
+            apply ty_subst_fun_sort.
+          }
+          apply v_subst_aux_ex.
+          (*is this true?*)
+
+          intros tv Hinvars.
+          assert (forall v t, In v vs ->
+            In t (type_vars v) ->
+            In t (s_params f)). {
+              intros.
+              assert (In (nth i (s_args f) vty_int) (s_args f)). {
+                apply nth_In; auto.
+              }
+              apply funsym_args_in_params with(t:=t) in H5; auto.
+              rewrite Hntheq. simpl. simpl_set.
+              exists v. split; auto.
+          }
+          assert (Hinvars': In tv (s_params f)). {
+            apply H3 with(v:=(nth n vs vty_int)); auto.
+            apply nth_In; auto.
+          }
+          destruct (In_nth _ _ EmptyString Hinvars') as [m' [Hm' Hmth]].
+          subst.
+          rewrite ty_subst_fun_nth with (s:=s_int); auto.
+          (*is this true?*)
+          rewrite H1.
+          rewrite map_nth_inbound with (d2:=vty_int); auto.
+          (*Need to know length vs = length *)
+          (*START HERE*)
+
+          destruct 
+          simpl.
+
+
+          Search v_subst_aux.
+
+        }
+        (nth i (funsym_sigma_args f srts) s_int) ty
+        _ _ m adt2 adt srts f (snd x) eq_refl eq_refl eq_refl eq_refl
+
+      ). apply e. Unshelve. all: auto.
+      2: {
+        (*First, we need to know about srts*)
+        (*TODO: maybe separate lemma or something*)
+        destruct Hty as [a' [Ha' Hty]].
+        subst.
+        unfold val in Hvaleq.
+        unfold typesym_to_sort in Hvaleq.
+        injection Hvaleq; intros.
+        (*So we say: replace parameters of f with *)
+
+        unfold funsym_sigma_args, ty_subst_list_s,
+        typesym_to_sort.
+        apply sort_inj. simpl.
+        rewrite map_nth_inbound with(d2:=vty_int); auto.
+        rewrite Hntheq.
+        simpl.
+        unfold ty_subst_s, ty_subst_fun_s. simpl.
+        unfold sorts_to_tys. rewrite <- H1.
+
+        (*TODO: don't want rewrites*)
+        rewrite map_nth_inbound with(d2:=vty_int); try assumption.
+        rewrite Hntheq. simpl.
+        rewrite !map_map.
+        f_equal.
+        apply list_eq_ext'; rewrite !map_length; auto.
+        intros n d' Hn.
+        rewrite !map_nth_inbound with (d2:=vty_int); auto.
+        unfold sorts_to_tys.
+        rewrite <- H1.
+        (*Now just doing the same thing a bunch I think*)
+        rewrite <- subst_is_sort_eq.
+        2: {
+          apply v_subst_aux_sort_eq. rewrite H1.
+          intros. fold (sorts_to_tys srts).
+          replace vty_int with (sort_to_ty s_int) by reflexivity. 
+          apply ty_subst_fun_sort.
+        }
+        (*1 side: take params of f, substitute with
+          p_i with v(vs_i)
+        do we know that params in vs are in s_params f?
+        not necessarily
+
+        f is constructor for ADT
+        ex: cons [a] [a; vty_cons list [vty_var a])
+
+        vs are arguments we are giving to mutual ADT in our function
+        ex: 
+        map (l: list int) (f: int -> int) : list int ...
+
+        can vs has parameters? yes, we could have
+
+        should we 
+
+        no - what about
+
+        map (l: list (a * b)) (f: a * b -> c) : list c
+
+        cannot assume anything about params in v
+
+          
+          
+
+
+
+
+
+
+
+
 
 (*Lemma for casting*)
 Lemma arg_nth_eq srts (f: funsym) (i: nat) (Hi: i < length (s_args f)) :
@@ -1825,6 +3022,8 @@ Defined.
 
 End WellFounded.
 
+End Smaller.
+
 (*TODO: move*)
 (*We can make this opaque: we don't actually need
   to compute with this (TODO: should this be Defined?)*)
@@ -1842,45 +3041,8 @@ induction l; simpl.
     * apply Right. intros [Heq | Hin]; subst; auto.
 Qed.
 
-(*So we need other hypotheses about vt, params, etc*)
 
-(*Since vt is fixed through everything (we are requiring all
-  mutually recursive functions to have the same params)
-  This is a restriction on why3 (maybe), but I am OK with that
-  we can assume some property of it, then build it up later
-  *)
-Variable params: list typevar.
-Variable params_eq: forall f, In f fs -> s_params (fn_name f) = params.
-(*Variable srts_len: length srts = length params.*)
-Variable f_typevars: forall f, In f fs -> 
-  forall ty, In ty (s_ret (fn_name f) :: s_args (fn_name f)) ->
-  forall x, In x (type_vars ty) ->
-  In x params.
-(*Will come from wf_context*)
-
-(*We need to build a new val_typevar, we cannot assume this
-  or maybe it is OK*)
-
-Definition vt_eq srts:= forall i, i < length params ->
-  (v_typevar vt) (nth i params EmptyString) = nth i srts s_int.
-
-(*The mut adt we are recursing on*)
-Variable m: mut_adt.
-Variable vs: list vty.
-
-
-(*TODO: will need to add this to typing*)
-
-(*TODO: I think: need hypothesis about relationship
-  between s_args and fn_args - also move to typing/put in
-  definition of funpred_def maybe*)
-Variable args_agree: forall f, In f fs ->
-  map snd (fn_args f) = s_args (fn_name f).
-
-Variable recurse_on_adt: forall f, In f fs ->
-  exists a,
-  adt_in_mut a m /\ snd(nth (fn_idx f) (fn_args f) vs_d) =
-    vty_cons (adt_name a) vs.
+    vty_cons (adt_name a) vs.*)
 (*Now we can prove the lemma to convert*)
 
 
@@ -2424,18 +3586,6 @@ Proof.
     apply IHR_trans. reflexivity. auto.
 Qed.
 
-Lemma v_subst_aux_sort_eq (v: typevar -> vty) (t: vty):
-  (forall x, In x (type_vars t) -> is_sort (v x)) ->
-  is_sort (v_subst_aux v t).
-Proof.
-  intros. induction t; simpl; intros; auto.
-  apply H. left; auto.
-  apply is_sort_cons_iff.
-  intros. rewrite in_map_iff in H1.
-  destruct H1 as [y [Hy Hiny]]; subst.
-  rewrite Forall_forall in H0. apply H0; auto.
-  intros. apply H. simpl. simpl_set. exists y. split; auto.
-Qed.
 
 (*Create the valuation given a list of sorts and variables*)
 Fixpoint val_with_args (vv: val_vars pd vt) (vars: list vsymbol) 
@@ -2973,6 +4123,7 @@ Proof.
     pose proof (ty_var_inv H) as Hsndty.
     assert (Halg: (exists a : alg_datatype, adt_in_mut a m /\ snd vs_small = vty_cons (adt_name a) vs)). {
       specialize (recurse_on_adt _ i).
+      apply (reflect_iff _ _ (vty_in_m_spec _ _ _)) in recurse_on_adt.
       destruct recurse_on_adt as [a' [Ha' Hsnda']].
       exists a'. split; try assumption.
       rewrite <- Hsnda', Hsndty. reflexivity. 
@@ -3271,59 +4422,102 @@ Print uniform_list.
   
   *)
 
-(*hmm ok this *)
-Inductive ltest (A: Type): Type :=
-  | lbase: ltest A
-  | llist: list (ltest A) -> ltest A
-  .
-
-Fixpoint ltestfix (A: Type) (x: ltest A) : nat :=
-  match x with
-  | lbase => 1
-  | llist (y :: _) => ltestfix A y
-  | llist nil => 0
+(*Let's define the condition - when 1 type appears in another*)
+(*
+(*Type equality ignoring arguments*)
+Definition ts_eq (v1 v2: vty): bool :=
+  match v1, v2 with
+  | vty_int, vty_int => true
+  | vty_real, vty_real => true
+  | vty_cons ts1 _, vty_cons ts2 _ => typesym_eq_dec ts1 ts2
+  | _, _ => false
   end.
+(*
+Definition ts_in (v: vty) (l: list vty) : bool :=
+  existsb (fun v' => ts_eq v v') l.
+*)
+(*Hmm which direction do I want to do this in?*)
+(*Let's just do for typesym*)
 
-Fixpoint
+Inductive ts_in : typesym -> vty -> Prop :=
+  | ts_in_eq: forall (ts: typesym) (l: list vty),
+    ts_in ts (vty_cons ts l)
+  | ts_in_params: forall (ts1 ts2: typesym) (l: list vty) x,
+    In x l ->
+    ts_in ts1 x ->
+    ts_in ts1 (vty_cons ts2 l)
+  | ts_in_constrs: forall (ts1 ts2: typesym) (l: list vty) 
+    (m: mut_adt) (a: alg_datatype) (c: funsym) (v: vty),
+    mut_in_ctx m gamma ->
+    adt_in_mut a m ->
+    constr_in_adt c a ->
+    In v (s_args c) ->
+    ts_in ts1 v ->
+    ts2 = adt_name a ->
+    ts_in ts1 (vty_cons ts2 l).
 
-Variable m_in: mut_in_ctx m gamma.
+(*
+Print ty_subst_s.
 
-(*Let's try to prove our match lemma*)
-(*TODO: not quite: need to make sure the types match (vsyms_in_m)*)
-
-Lemma match_val_single_smaller (v: val_vars pd vt) (ty: vty)
-  (Hval: valid_type sigma ty)
-  (Hty: exists a, adt_in_mut a m /\ ty = vty_cons (adt_name a) vs)
-  (d: domain (val ty)):
-  (forall (p: pattern) 
-    (l: list (vsymbol * {t : vty & domain (val t)})),
-    match_val_single gamma_valid pd all_unif vt ty Hval d p = Some l ->
-    (*For [pat_constr_vars_inner], either same or smaller*)
-    (forall x y (*a*), In (x, y) l ->
-      In x (pat_constr_vars_inner m vs p) ->
-      (*adt_in_mut a m ->
-      projT1 y = vty_cons (adt_name a) vs ->*)
-      (*Either y is the same as d or it is smaller*)
-      y = hide_ty d \/
-      adt_smaller_trans y (hide_ty d)) /\
-    (*For [pat_constr_vars], strictly smaller*)
-    (forall x y (*a*), In (x, y) l ->
-      In x (pat_constr_vars m vs p) ->
-      (*adt_in_mut a m ->
-      projT1 y = vty_cons (adt_name a) vs ->*)
-    adt_smaller_trans y (hide_ty d))).
+Lemma ts_in_v_subst_aux: forall ts f v,
+  ts_in ts (v_subst_aux f v) ->
+  ts_in ts v.
 Proof.
-  clear -fs ps Hty m_in. intros p. revert d. generalize dependent ty.
-  induction p; intros.
-  - (*Var case is easy - it is the same*) simpl in H. simpl.
-    split; [intros |intros x y Hin [] ].
-    destruct (vty_eq_dec (snd v) ty); try discriminate.
-    inversion H; subst. clear H.
-    simpl in H0.
-    destruct H0 as [Hy | []]. inversion Hy; subst.
-    left. unfold hide_ty. 
-    reflexivity.
-  - (*Constr case is the hard and interesting one.*)
+  intros.
+  induction v; simpl in *; auto.
+
+  (*Hmm this might not be true*)
+Lemma ts_in_ty_subst_s : forall ts params srts v,
+  ts_in ts (ty_subst_s params srts v) ->
+  ts_in ts v.
+Proof.
+  intros. unfold ty_subst_s in H.
+  simpl in H. 
+
+
+    ts_in ts' (ty_subst_s (s_params f) srts v')
+
+    Print mut_adt.
+    *)
+(*Stronger than uniform - says that ADT does not appear in
+  params of another type or in a previous type (this will be
+  enforced by ordering)*)
+Definition appears_simple (m: mut_adt) (ty: vty) : Prop :=
+  forall (a: alg_datatype), adt_in_mut a m ->
+    ~ ts_in (adt_name a) ty.
+    
+(*Then, we assume that all ADTs are simple*)
+Definition adt_simple (m: mut_adt) : Prop :=
+  forall (a: alg_datatype) (c: funsym) (ty: vty),
+    adt_in_mut a m ->
+    constr_in_adt c a ->
+    In ty (s_args c) ->
+    appears_simple m ty.
+
+Variable all_simple: forall m, mut_in_ctx m gamma ->
+  adt_simple m.
+
+(*OK, now we need to prove that ts_in implies things about
+  pat fv's*)
+(*Anything that is the list formed from a match (ie: pat_fv)
+  that is a typesym must be "ts_in" the original ty*)
+(*TODO: well-typed?*)
+Lemma pat_match_fv_ts_in (v: val_vars pd vt) (ty: vty)
+  (Hval: valid_type sigma ty)
+  (d: domain (val ty))
+  (p: pattern)
+  (l: list (vsymbol * {t: vty & domain (val t)})) :
+  match_val_single gamma_valid pd all_unif vt ty Hval d p = Some l ->
+  forall x y ts vs,
+  In (x, y) l ->
+  snd x = vty_cons ts vs ->
+  ts_in ts ty.
+Proof.
+  revert l d. generalize dependent ty. induction p; intros.
+  - simpl in H. destruct (vty_eq_dec (snd v0) ty); inversion H; subst.
+    clear H. simpl in H0. destruct H0 as [Hxy | []]. inversion Hxy; subst.
+    rewrite H1. constructor.
+  - (*As usual, constr case is interesting one*)
     revert H0.
     (*simpl.
     match goal with 
@@ -3346,35 +4540,39 @@ Proof.
       [Hvaleq [Hinmut [Hincts Htseq]]].
     clear Hadtspec.
     (*Now want to show equiv between m and m'*)
-    assert (m = m'). {
+    (*assert (m = m'). {
       subst. destruct Hty as [a' [Ha' Hty']]; subst.
       unfold val in Hvaleq. simpl in Hvaleq.
       inversion Hvaleq.
       apply (mut_adts_inj gamma_valid m_in Hincts Ha' Hinmut H1).
       }
-      subst m'. 
+      subst m'. *)
     destruct (funsym_eq_dec
     (projT1
-      (find_constr_rep gamma_valid m Hincts srts
-          (Hsrtslen m adt ts' srts eq_refl Hval) (dom_aux pd) adt
-          Hinmut (Semantics.adts pd m srts) (all_unif m Hincts)
-          (scast (Semantics.adts pd m srts adt Hinmut)
+      (find_constr_rep gamma_valid m' Hincts srts
+          (Hsrtslen m' adt ts' srts eq_refl Hval) (dom_aux pd) adt
+          Hinmut (Semantics.adts pd m' srts) (all_unif m' Hincts)
+          (scast (Semantics.adts pd m' srts adt Hinmut)
             (dom_cast (dom_aux pd) Hvaleq d)))) f); [|discriminate].
     (*Need nested induction: simplify first*)
-    generalize dependent (find_constr_rep gamma_valid m Hincts srts
-    (Hsrtslen m adt ts' srts eq_refl Hval) 
-    (dom_aux pd) adt Hinmut (Semantics.adts pd m srts)
-    (all_unif m Hincts)
-    (scast (Semantics.adts pd m srts adt Hinmut)
+    generalize dependent (find_constr_rep gamma_valid m' Hincts srts
+    (Hsrtslen m' adt ts' srts eq_refl Hval) 
+    (dom_aux pd) adt Hinmut (Semantics.adts pd m' srts)
+    (all_unif m' Hincts)
+    (scast (Semantics.adts pd m' srts adt Hinmut)
       (dom_cast (dom_aux pd) Hvaleq d))).
     intros constr. destruct constr as [f' Hf']. simpl. 
     intros Hf; subst.
-    generalize dependent ((Hsrtsvalid m adt (adt_name adt) srts f eq_refl Hval (fst (proj1_sig Hf')))).
+    generalize dependent ((Hsrtsvalid m' adt (adt_name adt) srts f eq_refl Hval (fst (proj1_sig Hf')))).
     destruct Hf'. simpl.
     (*Here, let us prove that 
       everything in (snd x) is smaller than d - this is the key
       theorem - when we pattern match, we actually get a smaller
       ADT*)
+    (*We need knowledge that adt is simple, and thus a, which is
+      arg_list for constrs, *)
+    
+      (*
     assert (Hsmall:forall i, i < length ((funsym_sigma_args f srts)) ->
       (exists a, adt_in_mut a m /\ 
       nth i (funsym_sigma_args f srts) s_int =
@@ -3406,7 +4604,740 @@ Proof.
       rewrite eq_trans_refl. rewrite dom_cast_compose.
       rewrite eq_trans_assoc, eq_trans_sym_inv_r,
       eq_trans_refl. reflexivity.
+    }*)
+    (*The second claim is stronger. We prove that first*)
+    (*Now we can do induction for the first claim, and prove the second
+      directly.*)
+    clear e.
+    destruct x0. simpl. generalize dependent a.
+      (*What should ps be?*)
+      generalize dependent ps0.
+      (*can't forget completely, need to know part of constr*)
+      assert (forall x ts, In x (funsym_sigma_args f srts) ->
+        ts_in ts x ->
+        ts_in ts ty). {
+          (*Don't know about srts - how do we know typesym
+            doesn't appear here
+            maybe it does - list (list int) is valid for list A*)
+            (*Is this statement even true?
+            problem - need to distinguish between static
+
+            maybe typing
+            yes - need to know pattern has type ty, then we should
+            know (I think) that we can't match on after-sorts, just before
+
+            or maybe - in pattern match, need to match type, NOT val ty
+            in other words - if we match type and know it is ADT, 
+            use Semantics.ADTs to cast domain
+            otherwise, return nothing
+            so that way, constr only matches correct type
+            does this help
+
+            NEED to figure this out
+            
+            *)
+          (*Hmm what about srts? need to know our ADT doesnt appear there*)
+          intros s ts'.
+          unfold funsym_sigma_args, ty_subst_list_s.
+          rewrite in_map_iff. intros [v' [Hs Hinv']].
+          subst. 
+        intros. unfold funsym_sigma_args in H.
+        unfold typ_s
+      }
+      generalize dependent ((funsym_sigma_args f srts)).
+      induction l0; simpl; intros; auto. 
+      + destruct ps0. inversion H0; subst. 
+        inversion H1.
+        inversion H0.
+      + revert H0. destruct ps0. discriminate.
+        repeat match goal with 
+        |- (match ?p with |Some l => ?x | None => ?y end) = ?z -> ?q =>
+          let Hp := fresh "Hmatch" in 
+          destruct p eqn: Hp end.
+        all: try discriminate.
+        intro C; inversion C; subst. clear C.
+        apply in_app_or in H1. destruct H1.
+        * clear Hmatch0.
+          (*Use IH*)
+          inversion H; subst.
+          (*TODO: maybe need lemma: for arg_list, all ts_in*)
+
+          eapply H4 in Hmatch.
+          apply 
+          eapply 
+         (*In first part 44*)
+          (*Use IH*)
+          (*TODO: do we need this stuff here?*)
+          destruct (constr_in_m f m && list_eq_dec vty_eq_dec vs0 vs) eqn : Hcond.
+          simpl in H1. simpl_set.
+          destruct H1.
+          -- (*in [pat_constr_vars_inner p], so use IH*)
+            inversion H; subst.
+            clear H5.
+            (*Ugh same problem: we need to know that a is 
+              an instance of a'[vs] for a' in m 13-19*)
+          specialize (Hsmall 0 ltac:(lia)).
+          Search match_val_single.
+          (*Maybe - use typing information for patterns
+            ONLY recurse
+
+  - simpl in H. inversion H. subst. inversion H0.
+  - simpl in H. 
+    destruct (match_val_single gamma_valid pd all_unif vt ty Hval d p1) eqn : Hmatch.
+    + inversion H; subst.
+      eapply IHp1 in Hmatch. apply Hmatch. apply H0. apply H1.
+    + eapply IHp2 in H. apply H. apply H0. apply H1.
+  - simpl in H.
+    destruct (match_val_single gamma_valid pd all_unif vt ty Hval d p) eqn : Hmatch;
+    [|inversion H].
+    destruct (vty_eq_dec (snd v0) ty); inversion H; subst. clear H.
+    simpl in H0. destruct H0.
+    + inversion H; subst. rewrite H1. constructor.
+    + eapply IHp in Hmatch. apply Hmatch. apply H. apply H1.
+  intros p.
+  clear -fs ps Hty m_in. intros p. revert d. generalize dependent ty.
+  induction p; intros.
+  - (*Var case is easy - it is the same*) simpl in H. simpl.
+    split; [intros |intros x y Hin [] ].
+    destruct (vty_eq_dec (snd v) ty); try discriminate.
+    inversion H; subst. clear H.
+    simpl in H0.
+    destruct H0 as [Hy | []]. inversion Hy; subst.
+    left. unfold hide_ty. 
+    reflexivity.
+  - (*Constr case is the hard and interesting one.*)
+    
+            
+            hmm how can we do this? does not seem obvious at all
+            
+            *)
+          
+          simpl in Hsmall.
+          inversion H; subst. clear H7 Hmatch0. inversion f; subst.
+          specialize (H6 a H7).
+          (*is this a problem?
+            what if we have in adt -> notin adt -> in adt
+            then transitivity doesn't hold
+            how can we prevent this case?*)
+          inversion f; subst.
+          (*I think: in pat_constr_vars, look at constructor
+            only keep patterns when the constructor's ith arg
+            type is in m*)
+
+
+          eapply Rtrans_multi.
+          Print R_trans.
+          Print adt_smaller_trans.
+
+        
+        
+        inversion H; subst.
+          apply H3 with(x:=x) (t:=t) in Hmatch; auto.
+        * apply IHl with(x:=x) (t:=t) in Hmatch0; auto.
+          inversion H; subst. auto.
+
+      simpl in H0.
     }
+    Search ((?A -> ?B) -> ?A -> (?A /\ ?B) ). 
+    split.
+    + (*The first side is easy - it follows from the second*)
+      intros. right. apply
+    admit.
+    
+    }
+    
+  
+      clear e.
+      
+  - (*Pwild is contradiction*) 
+    split; [|intros; discriminate].
+    intros. simpl in H. inversion H; subst. inversion H0.
+  - (*Por just by IH*)
+    split; [|intros; discriminate].
+    intros. simpl in H.
+    destruct (match_val_single gamma_valid pd all_unif vt ty Hval d p1) eqn : Hmatch1.
+    + inversion H; subst. clear H.
+      apply (proj1 (IHp1 ty Hval d l Hmatch1) y a); auto.
+    + apply (proj1 (IHp2 ty Hval d l H) y a); auto.
+  - split; [|intros; discriminate].
+    intros. simpl in H.
+    destruct (match_val_single gamma_valid pd all_unif vt ty Hval d p) eqn : Hmatch.
+    + destruct (vty_eq_dec (snd v) ty); inversion H; subst.
+      simpl in H0.
+      destruct H0.
+      * left. subst. reflexivity.
+      * apply (proj1 (IHp (snd v) Hval d l0 Hmatch) y a); auto.
+    + inversion H.
+
+
+
+  :
+  (forall (p: pattern) 
+    (l: list (vsymbol * {t : vty & domain (val t)})),
+    ->
+    
+
+  forallb (fun a => )
+
+(*Now we assume: for any ADT*)
+
+
+Inductive type_in : vty -> vty -> Prop :=
+  | type_in_int: type_in vty_int vty_int
+  | type_in_real: type_in vty_real vty_real
+  | type_in_ts_params: forall (ts: typesym) (args: list vty) (v: vty):
+    ts_in v args ->
+    type_in v (vty_cons ts args)
+
+
+
+(*hmm ok this *)
+Inductive ltest (A: Type): Type :=
+  | lbase: ltest A
+  | llist: list (ltest A) -> ltest A
+  .
+
+Fixpoint ltestfix (A: Type) (x: ltest A) : nat :=
+  match x with
+  | lbase => 1
+  | llist (y :: _) => ltestfix A y
+  | llist nil => 0
+  end.
+
+Fixpoint
+*)
+
+(*Let's see*)
+End FunDef.
+
+Section MatchLemma.
+
+Variable m_in: mut_in_ctx m gamma.
+
+(*I think we need assumption: all params in vs
+  are in params*)
+
+
+(*This is the key point:*)
+Lemma funsym_args_in_params (f: funsym) (v: vty) (t: typevar) :
+  In v (s_args f) ->
+  In t (type_vars v) ->
+  In t (s_params f).
+Proof.
+  intros. destruct f; simpl in *.
+  unfold is_true in s_args_wf.
+  rewrite <- (reflect_iff _ _ (check_args_correct _ _)) in s_args_wf.
+  apply s_args_wf in H0; auto.
+Qed.
+
+(*Let's try to prove our match lemma*)
+(*TODO: not quite: need to make sure the types match (vsyms_in_m)*)
+Search funsym_sigma_args v_subst.
+Lemma match_val_single_smaller (v: val_vars pd vt) (ty: vty)
+  (p: pattern)
+  (Hp: pattern_has_type sigma p ty)
+  (Hty: vty_in_m m vs ty)
+  (*(Hty: exists a, adt_in_mut a m /\ ty = vty_cons (adt_name a) vs)*)
+  (d: domain (val ty))
+  (l: list (vsymbol * {t : vty & domain (val t)})):
+  match_val_single gamma_valid pd all_unif vt ty p Hp d = Some l ->
+    (*For [pat_constr_vars_inner], either same or smaller*)
+    (forall x y (*a*), In (x, y) l ->
+      In x (pat_constr_vars_inner m vs p) ->
+      (*adt_in_mut a m ->
+      projT1 y = vty_cons (adt_name a) vs ->*)
+      (*Either y is the same as d or it is smaller*)
+      y = hide_ty d \/
+      adt_smaller_trans y (hide_ty d)) /\
+    (*For [pat_constr_vars], strictly smaller*)
+    (forall x y (*a*), In (x, y) l ->
+      In x (pat_constr_vars m vs p) ->
+      (*adt_in_mut a m ->
+      projT1 y = vty_cons (adt_name a) vs ->*)
+    adt_smaller_trans y (hide_ty d)).
+Proof.
+  clear -fs ps Hty m_in vs_len (*f_typevars params_eq*). 
+  revert d l. generalize dependent ty.
+  (*Let's try*)
+  Check hide_ty.
+  Check adt_smaller_trans.
+  generalize dependent vt.
+  (*Damn it, vt needs to be generalized*)
+  revert vt.
+  Check (match_val_single_ind gamma_valid pd all_unif 
+    (fun v ty p d o =>
+    vty_in_m m vs ty ->
+    forall (l: list (vsymbol * {t : vty & domain (v_subst (v) t)})) ,
+    o = Some l ->
+    (forall (x : vsymbol) (y : {t : vty & domain (val t)}),
+      In (x, y) l ->
+      In x (pat_constr_vars_inner m vs p) ->
+      y = hide_ty d \/ adt_smaller_trans y (hide_ty d)) /\
+    (forall (x : vsymbol) (y : {t : vty & domain (val t)}),
+      In (x, y) l -> In x (pat_constr_vars m vs p) -> 
+      adt_smaller_trans y (hide_ty d)))).
+  
+  ))
+
+  induction p; intros.
+  - (*Var case is easy - it is the same*) simpl in H. simpl.
+    split; [intros |intros x y Hin [] ].
+    destruct (vty_eq_dec (snd v) ty); try discriminate.
+    inversion H; subst. clear H.
+    simpl in H0.
+    destruct H0 as [Hy | []]. inversion Hy; subst.
+    left. unfold hide_ty. 
+    reflexivity.
+  - (*Constr case is the hard and interesting one.*)
+    revert H0.
+    rewrite pat_constr_vars_inner_eq.
+    (*simpl.
+    match goal with 
+    | |- ?A /\ ?B => assert B
+    end.
+    {
+      intros. inversion H1; subst.
+      revert H0.*)
+      (*The hard case: need lots of generalization for dependent types
+      and need nested induction*) 
+    unfold match_val_single; fold (@match_val_single sigma gamma gamma_valid pd all_unif).
+    generalize dependent (is_sort_adt_spec gamma_valid (val ty)).
+    generalize dependent ((@adt_srts_length_eq _ _ gamma_valid vt ty)).
+    generalize dependent (@adts_srts_valid _ _ gamma_valid vt ty).
+    destruct (is_sort_adt (val ty)) eqn : Hisadt;
+    [|intros; discriminate].
+    intros Hsrtsvalid Hsrtslen Hadtspec.
+    destruct p as [[[m' adt] ts'] srts].
+    destruct (Hadtspec m' adt ts' srts eq_refl) as 
+      [Hvaleq [Hinmut [Hincts Htseq]]].
+    clear Hadtspec.
+    (*Now want to show equiv between m and m'*)
+    assert (m = m'). {
+      subst.
+      apply (reflect_iff _ _ (vty_in_m_spec _ _ _)) in Hty. 
+      destruct Hty as [a' [Ha' Hty']]; subst.
+      unfold val in Hvaleq. simpl in Hvaleq.
+      inversion Hvaleq.
+      apply (mut_adts_inj gamma_valid m_in Hincts Ha' Hinmut H1).
+      }
+      subst m'. 
+    destruct (funsym_eq_dec
+    (projT1
+      (find_constr_rep gamma_valid m Hincts srts
+          (Hsrtslen m adt ts' srts eq_refl Hval) (dom_aux pd) adt
+          Hinmut (Semantics.adts pd m srts) (all_unif m Hincts)
+          (scast (Semantics.adts pd m srts adt Hinmut)
+            (dom_cast (dom_aux pd) Hvaleq d)))) f); [|discriminate].
+    (*Need nested induction: simplify first*)
+    generalize dependent (find_constr_rep gamma_valid m Hincts srts
+    (Hsrtslen m adt ts' srts eq_refl Hval) 
+    (dom_aux pd) adt Hinmut (Semantics.adts pd m srts)
+    (all_unif m Hincts)
+    (scast (Semantics.adts pd m srts adt Hinmut)
+      (dom_cast (dom_aux pd) Hvaleq d))).
+    intros constr. destruct constr as [f' Hf']. simpl. 
+    intros Hf; subst.
+    generalize dependent ((Hsrtsvalid m adt (adt_name adt) srts f eq_refl Hval (fst (proj1_sig Hf')))).
+    destruct Hf'. simpl.
+    (*Here, let us prove that 
+      everything in (snd x) is smaller than d - this is the key
+      theorem - when we pattern match, we actually get a smaller
+      ADT*)
+    (*
+    assert (Hsmall:forall i, i < length ((funsym_sigma_args f srts)) ->
+      (exists a, adt_in_mut a m /\ 
+      nth i (funsym_sigma_args f srts) s_int =
+        typesym_to_sort (adt_name a) srts)-> (*is this the condition?*)
+      adt_smaller 
+      (hide_ty (dom_cast (dom_aux pd) (val_sort_eq vt _) 
+        (hnth i (snd x) s_int (dom_int pd)))) (hide_ty d)). {
+      intros.
+      destruct H1 as [adt2 [Hina2 Hntheq]].
+      eapply (ADT_small (hide_ty
+        (dom_cast (dom_aux pd) (val_sort_eq vt (nth i (funsym_sigma_args f srts) s_int))
+          (hnth i (snd x) s_int (dom_int pd)))) (hide_ty d)
+        (nth i (funsym_sigma_args f srts) s_int) ty
+        _ _ m adt2 adt srts f (snd x) eq_refl eq_refl eq_refl eq_refl
+
+      ). apply e. Unshelve. all: auto.
+      2: {
+        exact (eq_trans (eq_sym 
+          (val_sort_eq vt (nth i (funsym_sigma_args f srts) s_int)))
+          Hntheq
+        ).
+      }
+      exists i. exists Hntheq. split; auto.
+      unfold funsym_sigma_args in H0.
+      unfold ty_subst_list_s in H0.
+      rewrite map_length in H0. auto.
+      (*Prove equality is equal*)
+      rewrite !dom_cast_compose. unfold hide_ty. simpl.
+      rewrite eq_trans_refl. rewrite dom_cast_compose.
+      rewrite eq_trans_assoc, eq_trans_sym_inv_r,
+      eq_trans_refl. reflexivity.
+    }*)
+    (*TODO: see what we need*)
+    assert (Hsmall: forall i, i < length (s_args f) ->
+      vty_in_m m (map vty_var (m_params m)) (nth i (s_args f) vty_int) ->
+      adt_smaller 
+      (hide_ty (dom_cast (dom_aux pd) (val_sort_eq vt _) 
+        (hnth i (snd x) s_int (dom_int pd)))) (hide_ty d)). {
+          intros.
+          apply (reflect_iff _ _ (vty_in_m_spec _ _ _)) in H1.
+          destruct H1 as [adt2 [Hina2 Hntheq]].
+          assert (Hvalntheq: val (nth i (funsym_sigma_args f srts) s_int) =
+          typesym_to_sort (adt_name adt2) srts). {
+            (*TODO: maybe separate lemma or something - inverse of
+              [adts_from_constrs] or whatever it is*)
+            apply (reflect_iff _ _ (vty_in_m_spec m vs _)) in Hty.
+            destruct Hty as [a' [Ha' Hty]].
+            subst.
+            unfold val in Hvaleq.
+            unfold typesym_to_sort in Hvaleq.
+            injection Hvaleq; intros.
+            unfold funsym_sigma_args, ty_subst_list_s,
+            typesym_to_sort.
+            apply sort_inj. simpl.
+            rewrite map_nth_inbound with(d2:=vty_int); auto.
+            rewrite Hntheq.
+            simpl.
+            unfold ty_subst_s, ty_subst_fun_s. simpl.
+            unfold sorts_to_tys. rewrite <- H1.
+            rewrite !map_map.
+            f_equal.
+            assert (s_params f = m_params m). {
+              eapply adt_constr_params. apply gamma_valid.
+              auto. apply Hinmut. apply (fst x).
+            }
+            apply list_eq_ext'; rewrite !map_length;
+            auto.
+            intros n d' Hn.
+            rewrite !map_nth_inbound with (d2:=EmptyString); auto.
+            (*Now just doing the same thing a bunch I think*)
+            rewrite <- subst_is_sort_eq.
+            2: {
+              apply v_subst_aux_sort_eq. rewrite H1.
+              intros. fold (sorts_to_tys srts).
+              replace vty_int with (sort_to_ty s_int) by reflexivity. 
+              apply ty_subst_fun_sort.
+            }
+            rewrite !map_nth_inbound with (d2:=vty_int); 
+            (*TODO: remove*) try lia.
+            simpl.
+            rewrite <- H3.
+            rewrite ty_subst_fun_nth with(s:=s_int); auto.
+            + rewrite map_nth_inbound with (d2:=vty_int); auto.
+              rewrite vs_len; auto.
+            + rewrite map_length, vs_len, H3. auto.
+            + rewrite H3; auto.
+            + apply s_params_Nodup.
+          }
+          eapply (ADT_small (hide_ty
+            (dom_cast (dom_aux pd) (val_sort_eq vt (nth i (funsym_sigma_args f srts) s_int))
+              (hnth i (snd x) s_int (dom_int pd)))) (hide_ty d)
+            (nth i (funsym_sigma_args f srts) s_int) ty
+            _ _ m adt2 adt srts f (snd x) eq_refl eq_refl eq_refl eq_refl
+    
+          ). apply e. Unshelve. all: auto.
+          exists i.
+          eexists. split; auto.
+          rewrite !dom_cast_compose. simpl.
+          rewrite !dom_cast_compose. reflexivity.
+    }
+    (*The second claim is stronger. We prove that first*)
+    (*Now we can do induction for the first claim, and prove the second
+      directly.*)
+      clear e.
+      intros Hall Hl.
+      match goal with
+      | |- ?A /\ ?B => assert B
+      end.
+      { generalize dependent Hall.
+        destruct x. simpl. generalize dependent a.
+        (*What should ps be?*)
+        generalize dependent ps0.
+        assert (length (funsym_sigma_args f srts) = length (s_args f)). {
+          unfold funsym_sigma_args, ty_subst_list_s. rewrite map_length; reflexivity.
+        }
+        unfold funsym_sigma_args in *.
+        (*generalize dependent ((funsym_sigma_args f srts)).*)
+        generalize dependent (s_args f).
+        
+        induction l0; simpl; intros; auto. 
+        + destruct ps0. inversion Hl; subst. 
+          inversion H1.
+          inversion Hl.
+        + revert Hl. destruct ps0. discriminate.
+          repeat match goal with 
+          |- (match ?p with |Some l => ?x | None => ?y end) = ?z -> ?q =>
+            let Hp := fresh "Hmatch" in 
+            destruct p eqn: Hp end.
+          all: try discriminate.
+          intro C; inversion C; subst. clear C.
+          apply in_app_or in H1. destruct H1.
+          * clear Hmatch0.
+            destruct (constr_in_m f m && list_eq_dec vty_eq_dec vs0 vs &&
+            (Datatypes.length (p :: ps0) =? S (Datatypes.length l0))) eqn : Hconds;
+            [|inversion H2].
+          simpl in H2. 
+          destruct (vty_in_m m (map vty_var (m_params m)) a) eqn : Hadtv.
+          -- simpl in H2. rewrite union_elts in H2.
+            destruct H2.
+            ++ inversion H0; subst.
+              clear H6.
+              (*Hmm what is going on here?
+              patterns should have type (ex: list int)
+              while underlying constructors have type list A and
+              we sub A -> int (with srts)
+              so (here) a should have type t(a, b, c)
+              and ty_subst_s (s_params f) srts a would have
+              type t (int, real, list int) (or whatever)
+
+              *)
+              specialize (Hsmall 0 ltac:(lia)). simpl in Hsmall.
+              (*problem - lose connection between s_args
+                and funsym_sigma_args*)
+              eapply R_refl_trans_trans.
+              2: {
+                apply Rtrans_once. apply Hsmall. auto.
+              }
+              assert (Halg: vty_in_m m vs (ty_subst_s (s_params f) srts a)). {
+                (*Hopefully this is true*)
+                (*maybe not: could be that val x = val y, not x = y*)
+                unfold ty_subst_s.
+                apply (reflect_iff _ _ (vty_in_m_spec _ _ _)).
+                apply (reflect_iff _ _ (vty_in_m_spec _ _ _)) in Hadtv.
+                destruct Hadtv as [adt2 [Hinadt2 Ha]]. subst.
+                simpl. exists adt2. split; auto.
+                f_equal.
+                (*This is NOT TRUE*)
+                Print pattern_has_type.
+                Print valid_pattern_match.
+                (*Hmm, I think this says that *)
+              }
+              (*TODO: change condition*)
+              assert (Halg: exists a0 : alg_datatype,
+              adt_in_mut a0 m /\
+              sort_to_ty (ty_subst_s (s_params f) srts a) = vty_cons (adt_name a0) vs).
+              { admit. }
+              (*Now use IH*)
+              specialize (H5 _ _ Halg _ _ Hmatch).
+              destruct H5. clear H4.
+              specialize (H3 _ _ H1 H2). destruct H3; subst; auto.
+              (*OK, just need other lemma: if we have 0 or more
+                then 1, then we have trans*)
+              (*OK, this should be provable now, I think*)
+              
+              Print R_trans. 2: apply Rtrans_single. 2: apply Hsmall'.
+           (*In first part 44*)
+            (*Use IH*)
+            (*TODO: do we need this stuff here?*)
+            destruct (constr_in_m f m && list_eq_dec vty_eq_dec vs0 vs) eqn : Hcond.
+            simpl in H1. simpl_set.
+            destruct H1.
+            -- (*in [pat_constr_vars_inner p], so use IH*)
+              inversion H; subst.
+              clear H5.
+              (*Ugh same problem: we need to know that a is 
+                an instance of a'[vs] for a' in m 13-19*)
+            specialize (Hsmall 0 ltac:(lia)).
+            Search match_val_single.
+            (*Maybe - use typing information for patterns
+              ONLY recurse
+
+
+    (**)
+    Print pat_constr_vars.
+    (*An alternate, more useful formulation*)
+    assert (Hsmall': forall i, i < length (s_args f) ->
+      vty_in_m m vs (nth i (s_args f) vty_int) ->
+      adt_smaller 
+      (hide_ty (dom_cast (dom_aux pd) (val_sort_eq vt _) 
+        (hnth i (snd x) s_int (dom_int pd)))) (hide_ty d)).
+    {
+      intros.
+      apply (reflect_iff _ _ (vty_in_m_spec m vs _)) in H1.
+      destruct H1 as [adt2 [Hina1 Hntheq]].
+      eapply (ADT_small (hide_ty
+        (dom_cast (dom_aux pd) (val_sort_eq vt (nth i (funsym_sigma_args f srts) s_int))
+          (hnth i (snd x) s_int (dom_int pd)))) (hide_ty d) _ ty _  _ m adt2
+          adt srts f (snd x) eq_refl eq_refl eq_refl eq_refl).
+        apply e. Unshelve. all: auto.
+        2: {
+          simpl.
+          (*First, we need to know about srts*)
+          (*TODO: maybe separate lemma or something*)
+          destruct Hty as [a' [Ha' Hty]].
+          subst.
+          unfold val in Hvaleq.
+          unfold typesym_to_sort in Hvaleq.
+          injection Hvaleq; intros.
+        (*So we say: replace parameters of f with *)
+          (*Hmm, so we know that all typesyms in s_args f are in
+            s_params f
+            so should be: replacing params with srts (v (vs))
+            AH, we DO know that all params are in params - because of nth assumption
+            *)
+          unfold funsym_sigma_args, ty_subst_list_s,
+          typesym_to_sort.
+          apply sort_inj. simpl.
+          rewrite map_nth_inbound with(d2:=vty_int); auto.
+          rewrite Hntheq.
+          simpl.
+          unfold ty_subst_s, ty_subst_fun_s. simpl.
+          unfold sorts_to_tys. rewrite <- H1.
+          rewrite !map_map.
+          f_equal.
+          apply list_eq_ext'; rewrite !map_length; auto.
+          intros n d' Hn.
+          rewrite !map_nth_inbound with (d2:=vty_int); auto.
+          (*Now just doing the same thing a bunch I think*)
+          rewrite <- subst_is_sort_eq.
+          2: {
+            apply v_subst_aux_sort_eq. rewrite H1.
+            intros. fold (sorts_to_tys srts).
+            replace vty_int with (sort_to_ty s_int) by reflexivity. 
+            apply ty_subst_fun_sort.
+          }
+          apply v_subst_aux_ex.
+          (*is this true?*)
+
+          intros tv Hinvars.
+          assert (forall v t, In v vs ->
+            In t (type_vars v) ->
+            In t (s_params f)). {
+              intros.
+              assert (In (nth i (s_args f) vty_int) (s_args f)). {
+                apply nth_In; auto.
+              }
+              apply funsym_args_in_params with(t:=t) in H5; auto.
+              rewrite Hntheq. simpl. simpl_set.
+              exists v. split; auto.
+          }
+          assert (Hinvars': In tv (s_params f)). {
+            apply H3 with(v:=(nth n vs vty_int)); auto.
+            apply nth_In; auto.
+          }
+          destruct (In_nth _ _ EmptyString Hinvars') as [m' [Hm' Hmth]].
+          subst.
+          rewrite ty_subst_fun_nth with (s:=s_int); auto.
+          (*is this true?*)
+          rewrite H1.
+          rewrite map_nth_inbound with (d2:=vty_int); auto.
+          (*Need to know length vs = length *)
+          (*START HERE*)
+
+          destruct 
+          simpl.
+
+
+          Search v_subst_aux.
+
+        }
+        (nth i (funsym_sigma_args f srts) s_int) ty
+        _ _ m adt2 adt srts f (snd x) eq_refl eq_refl eq_refl eq_refl
+
+      ). apply e. Unshelve. all: auto.
+      2: {
+        (*First, we need to know about srts*)
+        (*TODO: maybe separate lemma or something*)
+        destruct Hty as [a' [Ha' Hty]].
+        subst.
+        unfold val in Hvaleq.
+        unfold typesym_to_sort in Hvaleq.
+        injection Hvaleq; intros.
+        (*So we say: replace parameters of f with *)
+
+        unfold funsym_sigma_args, ty_subst_list_s,
+        typesym_to_sort.
+        apply sort_inj. simpl.
+        rewrite map_nth_inbound with(d2:=vty_int); auto.
+        rewrite Hntheq.
+        simpl.
+        unfold ty_subst_s, ty_subst_fun_s. simpl.
+        unfold sorts_to_tys. rewrite <- H1.
+
+        (*TODO: don't want rewrites*)
+        rewrite map_nth_inbound with(d2:=vty_int); try assumption.
+        rewrite Hntheq. simpl.
+        rewrite !map_map.
+        f_equal.
+        apply list_eq_ext'; rewrite !map_length; auto.
+        intros n d' Hn.
+        rewrite !map_nth_inbound with (d2:=vty_int); auto.
+        unfold sorts_to_tys.
+        rewrite <- H1.
+        (*Now just doing the same thing a bunch I think*)
+        rewrite <- subst_is_sort_eq.
+        2: {
+          apply v_subst_aux_sort_eq. rewrite H1.
+          intros. fold (sorts_to_tys srts).
+          replace vty_int with (sort_to_ty s_int) by reflexivity. 
+          apply ty_subst_fun_sort.
+        }
+        (*1 side: take params of f, substitute with
+          p_i with v(vs_i)
+        do we know that params in vs are in s_params f?
+        not necessarily
+
+        f is constructor for ADT
+        ex: cons [a] [a; vty_cons list [vty_var a])
+
+        vs are arguments we are giving to mutual ADT in our function
+        ex: 
+        map (l: list int) (f: int -> int) : list int ...
+
+        can vs has parameters? yes, we could have
+
+        should we 
+
+        no - what about
+
+        map (l: list (a * b)) (f: a * b -> c) : list c
+
+        cannot assume anything about params in v
+
+          
+          
+          *)
+
+
+
+        Search ty_subst
+        
+        (subst_is_sort_eq (nth n vs vty_int)).
+        2: {
+
+        }
+
+        simpl.
+
+        Search v_subst_aux.
+        exact (eq_trans (eq_sym 
+          (val_sort_eq vt (nth i (funsym_sigma_args f srts) s_int)))
+          Hntheq
+        ).
+      }
+      exists i. exists Hntheq. split; auto.
+      unfold funsym_sigma_args in H0.
+      unfold ty_subst_list_s in H0.
+      rewrite map_length in H0. auto.
+      (*Prove equality is equal*)
+      rewrite !dom_cast_compose. unfold hide_ty. simpl.
+      rewrite eq_trans_refl. rewrite dom_cast_compose.
+      rewrite eq_trans_assoc, eq_trans_sym_inv_r,
+      eq_trans_refl. reflexivity.
+    }
+    (exists a, adt_in_mut a m /\ 
+    nth i (s_args c) vty_int =
+    vty_cons (adt_name a) (map vty_var (ts_args (adt_name a)))
+    nth i (funsym_sigma_args f srts) s_int =
+      typesym_to_sort (adt_name a) srts)-> (*is this the condition?*)
+    adt_smaller 
+    (hide_ty (dom_cast (dom_aux pd) (val_sort_eq vt _) 
+      (hnth i (snd x) s_int (dom_int pd)))) (hide_ty d)). {
+
+    (*adts_from_constrs*)
     (*The second claim is stronger. We prove that first*)
     (*Now we can do induction for the first claim, and prove the second
       directly.*)
