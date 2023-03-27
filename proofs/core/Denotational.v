@@ -3545,6 +3545,20 @@ Ltac simpl_rep :=
     | Tmatch ?t ?v ?ps => rewrite term_rep_equation_7
     | Teps ?f ?v => rewrite term_rep_equation_8
     end
+  | |- context [formula_rep ?valid ?pd ?unif ?vt ?pf ?v ?f ?Hval] =>
+    lazymatch f with
+    | Fpred ?p ?vs ?ts => rewrite formula_rep_equation_1
+    | Fquant Tforall ?x ?f' => rewrite formula_rep_equation_2
+    | Fquant Texists ?x ?f' => rewrite formula_rep_equation_3
+    | Feq ?ty ?t1 ?t2 => rewrite formula_rep_equation_4
+    | Fbinop ?b ?f1 ?f2 => rewrite formula_rep_equation_5
+    | Fnot ?f => rewrite formula_rep_equation_6
+    | Ftrue => rewrite formula_rep_equation_7
+    | Ffalse => rewrite formula_rep_equation_8
+    | Flet ?t ?x ?f' => rewrite formula_rep_equation_9
+    | Fif ?f1 ?f2 ?f3 => rewrite formula_rep_equation_10
+    | Fmatch ?t ?ty1 ?xs => rewrite formula_rep_equation_11
+    end
   end.
 
 Ltac simpl_rep_full :=

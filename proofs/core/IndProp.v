@@ -627,8 +627,8 @@ Proof.
   formula_rep gamma_valid pd all_unif vt pf vv (indpred_transform f) v); 
   unfold indpred_transform; simpl; auto; intros; try solve[apply true_impl].
   - destruct q; simpl; auto; [|apply true_impl].
-    simpl in v0. 
-    rewrite !fforall_rep. apply all_dec_eq.
+    simpl in v0.
+    simpl_rep_full. apply all_dec_eq.
     split; intros Hall d.
     + rewrite <- H with (Hval:=(valid_quant_inj Hval)). 
       apply (Hall d).
@@ -640,7 +640,8 @@ Proof.
     simpl in v.
     (*We need to know that we can push a let and a quantifier
       across an implication. This is why we need the wf assumption*)
-    rewrite !fbinop_rep, bool_of_binop_impl.
+    simpl_rep_full.
+    rewrite bool_of_binop_impl.
     assert (Hval1 : valid_formula sigma
     (fforalls (tup_1 (indpred_decomp f2))
        (iter_flet (tup_2 (indpred_decomp f2))
@@ -680,7 +681,7 @@ Proof.
       inversion H2; subst. constructor; auto. 
     }
     rewrite (distr_impl_let_forall _ _ _ vt pf vv f1) with(Hval2:=Hval3).
-    + rewrite fbinop_rep, bool_of_binop_impl.
+    + simpl_rep_full. rewrite bool_of_binop_impl.
       apply all_dec_eq. split; intros;
       erewrite fmla_rep_irrel;
       apply H2; erewrite fmla_rep_irrel; apply H3.
@@ -694,7 +695,7 @@ Proof.
       simpl. apply union_elts. left; auto.
       simpl. apply in_or_app. right. apply indpred_decomp_bound; auto.
   - (*On to let case*)
-    rewrite flet_rep.
+    simpl_rep_full.  
     assert (Hval1: valid_formula sigma
     (fforalls (tup_1 (indpred_decomp f0))
        (iter_flet (tup_2 (indpred_decomp f0))
@@ -717,7 +718,7 @@ Proof.
       constructor; auto.
     } 
     erewrite distr_let_foralls with(Hval2:=Hval2).
-    rewrite flet_rep.
+    simpl_rep_full.
     erewrite term_rep_irrel.
     erewrite fmla_rep_irrel. reflexivity.
     (*These contradict wf*)
@@ -949,7 +950,8 @@ Lemma strict_pos_impred_implies_P' (pf: pi_funpred gamma_valid pd)
 Proof.
   intros Ps HandPs.
   generalize dependent vv.
-  induction Hpos; simpl; intros vv Hindpred HandP; auto.
+  induction Hpos; simpl; intros vv Hindpred HandP; auto;
+  simpl_rep_full.
   - intros Hrep. erewrite fmla_predsym_agree. apply Hrep.
     all: auto.
     intros p' Hinp'.
@@ -958,8 +960,7 @@ Proof.
     destruct (in_bool_spec predsym_eq_dec p' (map fst ps));
     [|apply find_apply_pred_notin; auto].
     specialize (H _ i). rewrite Hinp' in H. inversion H.
-  - rewrite !fpred_rep. simpl.
-    (*Show arg lists are the same: because P cannot appear
+  - (*Show arg lists are the same: because P cannot appear
       in list by strict positivity*)
     assert ((get_arg_list_pred pd vt p vs ts
     (term_rep gamma_valid pd all_unif vt pf vv) Hvalf) =  
@@ -978,7 +979,7 @@ Proof.
     rewrite <- H1. rewrite Hindpred with(Hinp:=(In_in_bool predsym_eq_dec _ _ H)).
     rewrite find_apply_pred_in with(Hinp:=(In_in_bool predsym_eq_dec _ _ H)).
     apply indpred_least_pred. auto.
-  - rewrite !fbinop_rep, !bool_of_binop_impl, !simpl_all_dec.
+  - rewrite !bool_of_binop_impl, !simpl_all_dec.
     intros Hinpl Hval.
     apply IHHpos; auto.
     apply Hinpl. 
@@ -989,28 +990,27 @@ Proof.
     destruct (in_bool_spec predsym_eq_dec p' (map fst ps));
     [|apply find_apply_pred_notin; auto].
     specialize (H _ i). rewrite Hinp' in H. inversion H.
-  - destruct q.
-    + rewrite !fforall_rep, !simpl_all_dec; intros Hall d; specialize (Hall d).
+  - destruct q;simpl_rep_full.
+    + rewrite !simpl_all_dec; intros Hall d; specialize (Hall d).
       apply IHHpos; auto.
       (*Use closed fmla assumptions*)
       * intros p Hinp.
         erewrite indpred_rep_val_eq; auto.
       * intros. erewrite constrs_val_eq; auto. 
         rewrite Forall_forall in Hclosed. apply Hclosed; auto.
-    + rewrite !fexists_rep, !simpl_all_dec; intros [d Hex]; exists d.
+    + rewrite !simpl_all_dec; intros [d Hex]; exists d.
       apply IHHpos; auto.
       * intros p Hinp.
         erewrite indpred_rep_val_eq; auto.
       * intros. erewrite constrs_val_eq; auto. 
         rewrite Forall_forall in Hclosed. apply Hclosed; auto.
-  - rewrite !fbinop_rep; simpl; unfold is_true; rewrite !andb_true_iff;
+  - unfold is_true; rewrite !andb_true_iff;
     intros [Hf1 Hf2].
     split; [apply IHHpos1 | apply IHHpos2]; auto.
-  - rewrite !fbinop_rep; simpl; unfold is_true; rewrite !orb_true_iff;
+  - unfold is_true; rewrite !orb_true_iff;
     intros [Hf1 | Hf2]; 
     [left; apply IHHpos1 | right; apply IHHpos2]; auto.
-  - rewrite !flet_rep; intros Hf.
-    apply IHHpos; auto. 
+  - intros Hf. apply IHHpos; auto. 
     + intros p Hinp. erewrite indpred_rep_val_eq; auto.
     + intros. erewrite constrs_val_eq; auto. 
       rewrite Forall_forall in Hclosed. apply Hclosed; auto.
@@ -1020,8 +1020,7 @@ Proof.
       destruct (in_bool_spec predsym_eq_dec p' (map fst ps));
       [|apply find_apply_pred_notin; auto].
       specialize (H _ i). rewrite Hinp' in H. inversion H.
-  - rewrite !fif_rep.
-    (*First, know that [[f1]] eq in both cases because P cannot be
+  - (*First, know that [[f1]] eq in both cases because P cannot be
       present*)
     assert (Hf1: formula_rep gamma_valid pd all_unif vt pf vv f1
     (proj1 (valid_if_inj Hvalf)) =
@@ -1038,17 +1037,15 @@ Proof.
     (proj1 (valid_if_inj Hvalf)));
     [apply IHHpos1 | apply IHHpos2]; auto.
   - (*Hmm, this is the hardest one - need rewrite lemma for match*)
-    rewrite !fmatch_rep.
     (*Here, we need a nested induction*)
-    generalize dependent (proj2 (valid_match_inv Hvalf)).
-    generalize dependent  (proj1 (valid_match_inv Hvalf)).
-    clear Hvalf.
+    iter_match_gen Hvalf Htms Hps Hvalf.
     induction pats; simpl; auto.
-    intros Hty Hallval. destruct a as [fh ph].
+    intros. destruct a as [fh ph]. revert H2.
     (*Show that [term_rep] is equal because P cannot appear*)
     assert (Hteq: 
-    (term_rep gamma_valid pd all_unif vt pf vv t ty Hty) =
-    (term_rep gamma_valid pd all_unif vt (interp_with_Ps pf (map fst ps) Ps) vv t ty Hty)). {
+    (term_rep gamma_valid pd all_unif vt pf vv t ty Hvalf) =
+    (term_rep gamma_valid pd all_unif vt (interp_with_Ps pf (map fst ps) Ps) vv t ty
+       Hvalf)). {
       apply term_predsym_agree; auto. intros p' Hinp'; simpl.
       symmetry.
       destruct (in_bool_spec predsym_eq_dec p' (map fst ps));
@@ -1056,9 +1053,8 @@ Proof.
       specialize (H _ i). rewrite Hinp' in H. inversion H.
     }
     rewrite <- Hteq at 1.
-    destruct (match_val_single gamma_valid pd all_unif vt ty
-    (has_type_valid gamma_valid t ty Hty)
-    (term_rep gamma_valid pd all_unif vt pf vv t ty Hty) fh) eqn : Hm.
+    destruct (match_val_single gamma_valid pd all_unif vt ty fh (Forall_inv Hps)
+    (term_rep gamma_valid pd all_unif vt pf vv t ty Hvalf)) eqn : Hm.
     + (*First case follows from original IH*) 
       apply H1; simpl; auto.
       * intros p Hinp. erewrite indpred_rep_val_eq; auto.
@@ -1106,6 +1102,9 @@ Proof.
 Qed.
 
 (*Finally, we prove the main theorem*)
+(*TODO: prove version with recursive instance of Ps
+  (need lemma that we can assign Ps anything and it doesn't
+  matter - not hard to show)*)
 Theorem indpred_constrs_true
   (pf: pi_funpred gamma_valid pd)
   (vt: val_typevar) (vv: val_vars pd vt)
@@ -1161,7 +1160,8 @@ Proof.
   apply iter_flet_valid_inj in A.
   destruct A as [Hval2 Halltup2].
   rewrite (fmla_rep_irrel) with(Hval2:=(iter_flet_valid _ _ Hval2 Halltup2)).
-  rewrite iter_flet_val, fbinop_rep, bool_of_binop_impl, simpl_all_dec.
+  rewrite iter_flet_val. simpl_rep_full.
+  rewrite bool_of_binop_impl, simpl_all_dec.
   intros Hconstrs.
   (*Might need lemma about equality of fmlas*)
   assert (Hval3: valid_formula sigma (Fpred p (fst (get_indprop_args (a_convert_f f))) (snd (get_indprop_args (a_convert_f f))))). {
@@ -1169,7 +1169,7 @@ Proof.
     inversion Hval2; subst; auto.
   }
   rewrite fmla_rewrite with(Hval2:=Hval3); [|apply ind_form_decomp; auto].
-  rewrite fpred_rep.
+  simpl_rep_full.
   assert (Hinp: In p (map fst indpred)). {
     rewrite in_map_iff. exists (p, fs); auto.
   }
@@ -1213,9 +1213,10 @@ Proof.
   intros. specialize (Hformf h).
   revert Hformf.
   rewrite (fmla_rep_irrel) with(Hval2:=(iter_flet_valid _ _ Hval2 Halltup2)).
-  rewrite iter_flet_val, fbinop_rep, bool_of_binop_impl, simpl_all_dec.
+  rewrite iter_flet_val; simpl_rep_full.
+  rewrite bool_of_binop_impl, simpl_all_dec.
   rewrite fmla_rewrite with(f1:=(tup_4 _))(Hval2:=Hval3); [|apply ind_form_decomp; auto].
-  rewrite fpred_rep. simpl.
+  simpl_rep_full.
   (*Here we need to deal with [find_apply_pred] - need to show
     it is equal to [get_hlist_elt]*)
   rewrite find_apply_pred_in with(Hinp:=Hinp').
