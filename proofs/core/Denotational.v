@@ -939,12 +939,12 @@ Fixpoint match_val_single (v: val_typevar) (ty: vty)
   (*For a pair (x, d), we just need that there is SOME type t such that
     d has type [domain (val v t)], but we don't care what t is.
     We prove later that it matches (snd x)*)
-  option (list (vsymbol * {t: vty & domain (val v t) })) :=
+  option (list (vsymbol * {s: sort & domain s })) :=
   match p as p' return pattern_has_type sigma p' ty -> 
-    option (list (vsymbol * {t: vty & domain (val v t) })) with
+    option (list (vsymbol * {s: sort & domain s })) with
   | Pvar x => fun Hty' =>
     (*Here, it is safe to always give Some*)
-    Some [(x, (existT _ ty d))]
+    Some [(x, (existT _ (val v ty) d))]
     (*TODO: really do want to show that None is never reached*)
     (*if (vty_eq_dec (snd x) ty) then
     Some [(x, (existT _ ty d))] else None*)
@@ -960,7 +960,7 @@ Fixpoint match_val_single (v: val_typevar) (ty: vty)
       pattern*)
     match (match_val_single v ty p1 (proj1' (pat_bind_inv Hty')) d) with
     | None => None
-    | Some l => Some ((x, (existT _ ty d)) :: l)
+    | Some l => Some ((x, (existT _ (val v ty) d)) :: l)
       (*if (vty_eq_dec (snd x) ty) then 
        Some ((x, (existT _ ty d)) :: l) else None*)
     end
@@ -970,7 +970,7 @@ Fixpoint match_val_single (v: val_typevar) (ty: vty)
       will be part of typing*)
     match (is_vty_adt ty) as o return
       is_vty_adt ty = o ->
-      option (list (vsymbol * {t: vty & domain (val v t) })) 
+      option (list (vsymbol * {s: sort & domain s })) 
     with
     | Some (m, a, vs) => (*TODO*) fun Hisadt => 
       (*Get info from [is_vty_adt_spec]*)
@@ -1030,12 +1030,12 @@ Fixpoint match_val_single (v: val_typevar) (ty: vty)
           (Hall: Forall (fun x => pattern_has_type sigma (fst x) (snd x)) 
             (combine pats tys))
           {struct pats} :
-          option (list (vsymbol * {t: vty & domain (val v t) })) :=
+          option (list (vsymbol * {s: sort & domain s })) :=
           match tys as t' return arg_list domain (map (val v) t') ->
             forall (pats: list pattern)
             (Hall: Forall (fun x => pattern_has_type sigma (fst x) (snd x)) 
               (combine pats t')),
-            option (list (vsymbol * {t: vty & domain (val v t) }))
+            option (list (vsymbol * {s: sort & domain s }))
           with 
           | nil => fun _ pats _ =>
             (*matches only if lengths are the same*)
@@ -1047,7 +1047,7 @@ Fixpoint match_val_single (v: val_typevar) (ty: vty)
             match ps' as pats return 
               Forall (fun x => pattern_has_type sigma (fst x) (snd x)) 
                 (combine pats (ty :: tl) ) ->
-              option (list (vsymbol * {t: vty & domain (val v t) }))
+              option (list (vsymbol * {s: sort & domain s }))
             with 
             | nil => fun _ => None
             | phd :: ptl => fun Hall' =>
@@ -1092,12 +1092,12 @@ Fixpoint iter_arg_list {v: val_typevar} (tys: list vty)
   (Hall: Forall (fun x => pattern_has_type sigma (fst x) (snd x)) 
     (combine pats tys))
   {struct pats} :
-  option (list (vsymbol * {t: vty & domain (val v t) })) :=
+  option (list (vsymbol * {s: sort & domain s })) :=
   match tys as t' return arg_list domain (map (val v) t') ->
     forall (pats: list pattern)
     (Hall: Forall (fun x => pattern_has_type sigma (fst x) (snd x)) 
       (combine pats t')),
-    option (list (vsymbol * {t: vty & domain (val v t) }))
+    option (list (vsymbol * {s: sort & domain s }))
   with 
   | nil => fun _ pats _ =>
     (*matches only if lengths are the same*)
@@ -1109,7 +1109,7 @@ Fixpoint iter_arg_list {v: val_typevar} (tys: list vty)
     match ps' as pats return 
       Forall (fun x => pattern_has_type sigma (fst x) (snd x)) 
         (combine pats (ty :: tl) ) ->
-      option (list (vsymbol * {t: vty & domain (val v t) }))
+      option (list (vsymbol * {s: sort & domain s }))
     with 
     | nil => fun _ => None
     | phd :: ptl => fun Hall' =>
@@ -1136,9 +1136,9 @@ Lemma match_val_single_rewrite  (v: val_typevar) (ty: vty)
   (d: domain (val v ty)) : 
   match_val_single v ty p Hp d =
   match p as p' return pattern_has_type sigma p' ty -> 
-    option (list (vsymbol * {t: vty & domain (val v t) })) with
+    option (list (vsymbol * {s: sort & domain s })) with
   | Pvar x => fun Hty' =>
-    Some [(x, (existT _ ty d))]
+    Some [(x, (existT _ (val v ty) d))]
   | Pwild => fun _ => Some nil
   | Por p1 p2 => fun Hty' =>
     match (match_val_single v ty p1 (proj1' (pat_or_inv Hty')) d) with
@@ -1149,12 +1149,12 @@ Lemma match_val_single_rewrite  (v: val_typevar) (ty: vty)
   | Pbind p1 x => fun Hty' =>
     match (match_val_single v ty p1 (proj1' (pat_bind_inv Hty')) d) with
     | None => None
-    | Some l => Some ((x, (existT _ ty d)) :: l)
+    | Some l => Some ((x, (existT _ (val v ty) d)) :: l)
     end
   | Pconstr f params ps => fun Hty' =>
     match (is_vty_adt ty) as o return
       is_vty_adt ty = o ->
-      option (list (vsymbol * {t: vty & domain (val v t) })) 
+      option (list (vsymbol * {s: sort & domain s })) 
     with
     | Some (m, a, vs) =>  fun Hisadt => 
       let Htyeq : ty = vty_cons (adt_name a) vs :=
@@ -1308,14 +1308,14 @@ Qed.
 Lemma match_val_single_ind 
 (P : forall (v : val_typevar) (ty : vty) (p : pattern)
   (d: domain (val v ty)),
-  option (list (vsymbol * {t : vty & domain (val v t)})) -> Prop)
+  option (list (vsymbol * {s: sort & domain s})) -> Prop)
 (*In arg list case, lets us retain info*)
 (Q: forall (l: list sort), arg_list domain l -> Prop)
 (Hvar: forall (v : val_typevar) (ty : vty) (x : vsymbol)
   (Hty' : pattern_has_type sigma (Pvar x) ty) 
   (d : domain (val v ty)),
     P v ty (Pvar x) d (*ty (Pvar x) Hty' d*)
-      (Some [(x, existT (fun t : vty => domain (val v t)) ty d)]))
+      (Some [(x, existT (fun s => domain s) (val v ty) d)]))
 (*This one is different; we don't want the user to have
   to do induction every time, so we give more concrete conditions*)
 (*If not ADT, None*)
@@ -1422,7 +1422,7 @@ Lemma match_val_single_ind
       match_val_single v ty p1 (proj1' (pat_bind_inv Hty')) d
     with
     | Some l =>
-        Some ((x, existT (fun t : vty => domain (val v t)) ty d) :: l)
+        Some ((x, existT (fun s => domain s) (val v ty) d) :: l)
     | None => None
     end):
 forall (v : val_typevar) (ty : vty) (p : pattern)
@@ -1534,13 +1534,13 @@ Lemma match_val_single_typs (v: val_typevar) (ty: vty)
 (Hty: pattern_has_type sigma p ty)
 (d: domain (val v ty)) l:
 match_val_single v ty p Hty d = Some l ->
-forall x t, In (x, t) l -> projT1 t = (snd x).
+forall x t, In (x, t) l -> projT1 t = val v (snd x).
 Proof.
   revert v ty p Hty d l.
   apply (match_val_single_ind (fun v ty p d o =>
   forall l,
     o = Some l ->
-  forall x t, In (x, t) l -> projT1 t = snd x)
+  forall x t, In (x, t) l -> projT1 t = val v (snd x))
   (fun _ _ => True)); auto.
   - intros. inversion H; subst. clear H.
     destruct H0 as [| []]. inversion H; subst.
@@ -1683,14 +1683,14 @@ disj pat_fv ps ->
 Forall
 (fun p : pattern =>
  forall (ty : vty) (Hp : pattern_has_type sigma p ty) (d0 : domain (val v ty))
-   (l0 : list (vsymbol * {t : vty & domain (val v t)})),
+   (l0 : list (vsymbol * {s : sort & domain s})),
  match_val_single v ty p Hp d0 = Some l0 -> Permutation (map fst l0) (pat_fv p)) ps ->
 forall (a : arg_list domain (ty_subst_list_s (s_params f) (map (val v) vs2) l))
 (e : ty_subst_list_s (s_params f) (map (val v) vs2) l =
      map (val v) (ty_subst_list (s_params f) vs2 l))
 (f0 : Forall (fun x : pattern * vty => pattern_has_type sigma (fst x) (snd x))
         (combine ps (ty_subst_list (s_params f) vs2 l))),
-forall l0 : list (vsymbol * {t : vty & domain (val v t)}),
+forall l0 : list (vsymbol * {s: sort & domain s}),
 iter_arg_list (ty_subst_list (s_params f) vs2 l) (cast_arg_list e a) ps f0 = Some l0 ->
 Permutation (map fst l0) (big_union vsymbol_eq_dec pat_fv ps).
 Proof.
@@ -1795,14 +1795,14 @@ disj pat_fv ps ->
 Forall
 (fun p : pattern =>
  forall (ty : vty) (Hp : pattern_has_type sigma p ty) (d0 : domain (val v ty))
-   (l0 : list (vsymbol * {t : vty & domain (val v t)})),
+   (l0 : list (vsymbol * {s : sort & domain s})),
  match_val_single v ty p Hp d0 = Some l0 -> Permutation (map fst l0) (pat_fv p)) ps ->
 forall (a : arg_list domain (ty_subst_list_s (s_params f) (map (val v) vs2) l))
 (e : ty_subst_list_s (s_params f) (map (val v) vs2) l =
      map (val v) (ty_subst_list (s_params f) vs2 l))
 (f0 : Forall (fun x : pattern * vty => pattern_has_type sigma (fst x) (snd x))
         (combine ps (ty_subst_list (s_params f) vs2 l))),
-forall l0 : list (vsymbol * {t : vty & domain (val v t)}),
+forall l0 : list (vsymbol * {s: sort & domain s}),
 iter_arg_list (ty_subst_list (s_params f) vs2 l) (cast_arg_list e a) ps f0 = Some l0 ->
 forall x, In x (big_union vsymbol_eq_dec pat_fv ps) <-> In x (map fst l0).
 Proof.
@@ -1819,13 +1819,13 @@ Section ExtendVal.
   match, default to existing val*)
 Definition extend_val_with_list (v: val_typevar) 
   (vv: val_vars pd v)
-  (l: list (vsymbol * {t: vty & domain (val v t) })):
+  (l: list (vsymbol * {s: sort & domain s })):
   val_vars pd v := fun x =>
   match (get_assoc_list vsymbol_eq_dec l x) with
   | Some a => 
-    match (vty_eq_dec (snd x) (projT1 a)) with
+    match (sort_eq_dec (val v (snd x)) (projT1 a)) with
     | left Heq =>
-      dom_cast _ (f_equal (val v) (eq_sym Heq)) (projT2 a)
+      dom_cast _ (eq_sym Heq) (projT2 a)
     | right _ => vv x
     end
   | None => vv x
@@ -1835,8 +1835,9 @@ Definition extend_val_with_list (v: val_typevar)
 
 Lemma extend_val_with_list_in (vv: val_vars pd vt) 
   (x: vsymbol)
-  (d: domain (val vt (snd x))) (l: list (vsymbol * {t : vty & domain (val vt t)}))
-  (Hl: forall x y, In (x, y) l -> projT1 y = snd x):
+  (d: domain (val vt (snd x))) (l: list (vsymbol * {s: sort & 
+    domain s}))
+  (Hl: forall x y, In (x, y) l -> projT1 y = val vt (snd x)):
     In x (map fst l) ->
     extend_val_with_list vt (substi vt vv x d) l =
     extend_val_with_list vt vv l.
@@ -1846,7 +1847,7 @@ Proof.
   destruct (get_assoc_list vsymbol_eq_dec l v) eqn : Ha.
   - apply get_assoc_list_some in Ha.
     apply Hl in Ha.
-    destruct (vty_eq_dec (snd v) (projT1 s)); auto. rewrite Ha in n.
+    destruct (sort_eq_dec (val vt (snd v)) (projT1 s)); auto. rewrite Ha in n.
     contradiction.
   - rewrite get_assoc_list_none in Ha.
     unfold substi. 
@@ -1856,8 +1857,9 @@ Qed.
 
 Lemma extend_val_with_list_notin (vv: val_vars pd vt) 
   (x: vsymbol)
-  (d: domain (val vt (snd x))) (l: list (vsymbol * {t : vty & domain (val vt t)}))
-  (Hl: forall x y, In (x, y) l -> projT1 y = snd x):
+  (d: domain (val vt (snd x))) 
+  (l: list (vsymbol * {s: sort & domain s}))
+  (Hl: forall x y, In (x, y) l -> projT1 y = val vt (snd x)):
     ~In x (map fst l) ->
     extend_val_with_list vt (substi vt vv x d) l =
     substi vt (extend_val_with_list vt vv l) x d.
@@ -1874,7 +1876,7 @@ Qed.
 Lemma extend_val_with_list_in_eq
   (v1 v2: val_vars pd vt) l x
   (Htys: forall (x : vsymbol) t,
-  In (x, t) l -> projT1 t = snd x):
+  In (x, t) l -> projT1 t = val vt (snd x)):
   In x (map fst l) ->
   extend_val_with_list vt v1 l x =
   extend_val_with_list vt v2 l x.
@@ -1884,7 +1886,7 @@ Proof.
   destruct (get_assoc_list vsymbol_eq_dec l x) eqn : Hassoc.
   + apply get_assoc_list_some in Hassoc.
     apply Htys in Hassoc.
-    destruct (vty_eq_dec (snd x) (projT1 s)); auto; try contradiction.
+    destruct (sort_eq_dec (val vt (snd x)) (projT1 s)); auto; try contradiction.
     rewrite Hassoc in n; contradiction.
   + rewrite get_assoc_list_none in Hassoc. contradiction.
 Qed.
@@ -1892,7 +1894,7 @@ Qed.
 (*TODO: rename*)
 Lemma extend_val_with_list_notin'  (vv : val_vars pd vt) 
 (x : vsymbol) (d : domain (val vt (snd x)))
-(l : list (vsymbol * {t : vty & domain (val vt t)})):
+(l : list (vsymbol * {s: sort & domain s})):
 ~ In x (map fst l) ->
 extend_val_with_list vt vv l x = vv x.
 Proof.
@@ -1906,9 +1908,9 @@ Lemma extend_val_with_list_lookup (v: val_vars pd vt) l x t:
   NoDup (map fst l) ->
   In (x, t) l ->
   extend_val_with_list vt v l x =
-    match vty_eq_dec (snd x) (projT1 t) with
+    match (sort_eq_dec (val vt (snd x)) (projT1 t))  with
     | left Heq =>
-        dom_cast (dom_aux pd) (f_equal (v_subst (v_typevar vt)) (eq_sym Heq))
+        dom_cast (dom_aux pd) (eq_sym Heq)
           (projT2 t)
     | right _ => v x
     end.

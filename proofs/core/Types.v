@@ -546,7 +546,7 @@ Proof.
   apply subst_is_sort_eq; auto.
 Qed.
 
-Lemma v_subst_aux_ex (v1 v2: typevar -> vty) ty:
+Lemma v_subst_aux_ext (v1 v2: typevar -> vty) ty:
   (forall x, In x (type_vars ty) -> v1 x = v2 x ) ->
   v_subst_aux v1 ty = v_subst_aux v2 ty.
 Proof.
@@ -564,9 +564,32 @@ Lemma v_subst_ext (v1 v2: typevar -> sort) ty:
   (forall x, In x (type_vars ty) -> v1 x = v2 x) ->
   v_subst v1 ty = v_subst v2 ty.
 Proof.
-  intros. apply sort_inj, v_subst_aux_ex.
+  intros. apply sort_inj, v_subst_aux_ext.
   intros. apply H in H0. apply (f_equal sort_to_ty) in H0.
   auto.
+Qed.
+
+Lemma v_ty_subst_eq_aux (params: list typevar) (srts: list sort)
+  (v: typevar -> sort) ty
+  (Hnodup: NoDup params)
+  (Hlen: length srts = length params):
+  (forall i, (i < length params)%coq_nat -> 
+    v (List.nth i params EmptyString) = List.nth i srts s_int) ->
+  (forall x, In x (type_vars ty) -> In x params) ->
+  v_subst_aux v ty = ty_subst params (sorts_to_tys srts) ty.
+Proof.
+  intros.
+  unfold ty_subst.
+  apply v_subst_aux_ext.
+  intros.
+  apply H0 in H1.
+  destruct (In_nth _ _ EmptyString H1) as [i [Hi Hx]]; subst.
+  rewrite H; auto.
+  rewrite (ty_subst_fun_nth _ _ _ _ _ s_int); auto.
+  - unfold sorts_to_tys.
+    rewrite -> map_nth_inbound with(d2:=s_int); auto.
+    rewrite Hlen; auto.
+  - unfold sorts_to_tys. rewrite map_length. auto.
 Qed.
 
 (*Suppose we have a list of params and a list of srts such that
@@ -583,15 +606,6 @@ Lemma v_ty_subst_eq (params: list typevar) (srts: list sort)
   v_subst v ty = ty_subst_s params srts ty.
 Proof.
   intros.
-  unfold ty_subst_s.
-  apply v_subst_ext.
-  intros.
-  apply H0 in H1.
-  destruct (In_nth _ _ EmptyString H1) as [i [Hi Hx]]; subst.
-  rewrite H; auto.
-  apply sort_inj. simpl. rewrite (ty_subst_fun_nth _ _ _ _ _ s_int); auto.
-  - unfold sorts_to_tys.
-    rewrite -> map_nth_inbound with(d2:=s_int); auto.
-    rewrite Hlen; auto.
-  - unfold sorts_to_tys. rewrite map_length. auto.
+  apply sort_inj; simpl.
+  apply v_ty_subst_eq_aux; auto.
 Qed.
