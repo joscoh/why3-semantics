@@ -3373,9 +3373,17 @@ Proof.
       inversion Ht; subst; contradiction.
 Qed.
 
-(*Inversion lemmas for [tmatch]*)
+(*Inversion lemmas for [tmatch] and [fmatch]*)
 Lemma dec_inv_tmatch_fst {fs' ps' tm small hd v pats}:
   decrease_fun fs' ps' small hd m vs (Tmatch tm v pats) ->
+  decrease_fun fs' ps' small hd m vs tm.
+Proof.
+  solve_dec_inv.
+  apply Dec_notin_t; simpl; auto.
+Qed.
+
+Lemma dec_inv_fmatch_fst {fs' ps' tm small hd v pats}:
+  decrease_pred fs' ps' small hd m vs (Fmatch tm v pats) ->
   decrease_fun fs' ps' small hd m vs tm.
 Proof.
   solve_dec_inv.
@@ -3407,6 +3415,32 @@ Proof.
   - exfalso. apply H7. exists mvar. auto.
 Qed.
 
+(*Proof identical*)
+Lemma dec_inv_fmatch_var {fs' ps' tm small hd mvar v pats}
+  (Htm: tm = Tvar mvar /\ (hd = Some mvar \/ In mvar small)):
+  decrease_pred fs' ps' small hd m vs (Fmatch tm v pats) ->
+  Forall
+  (fun x : pattern * formula =>
+   decrease_pred fs' ps'
+     (union vsymbol_eq_dec
+        (vsyms_in_m m vs (pat_constr_vars m vs (fst x)))
+        (remove_all vsymbol_eq_dec (pat_fv (fst x)) small))
+      (upd_option_iter hd (pat_fv (fst x))) m vs (snd x)) pats.
+Proof.
+  intros. inversion H; subst.
+  - (*No funsym or predsym occurrence*)
+    rewrite Forall_forall. intros.
+    apply Dec_notin_f; intros y Hiny;
+    [apply H0 in Hiny | apply H1 in Hiny];
+    simpl in Hiny; bool_hyps;
+    rewrite existsb_false in H4;
+    rewrite Forall_forall in H4;
+    rewrite H4; auto.
+  - destruct Htm as [Ht _]. inversion Ht; subst.
+    rewrite Forall_forall. auto.
+  - exfalso. apply H7. exists mvar. auto.
+Qed.
+
 Lemma dec_inv_tmatch_notvar {fs' ps' tm small hd v pats}
   (Htm: ~ exists var, tm = Tvar var /\ (hd = Some var \/ In var small)):
   decrease_fun fs' ps' small hd m vs (Tmatch tm v pats) ->
@@ -3426,6 +3460,25 @@ Proof.
   - rewrite Forall_forall. auto.
 Qed.
 
+(*Proof also identical*)
+Lemma dec_inv_fmatch_notvar {fs' ps' tm small hd v pats}
+  (Htm: ~ exists var, tm = Tvar var /\ (hd = Some var \/ In var small)):
+  decrease_pred fs' ps' small hd m vs (Fmatch tm v pats) ->
+  Forall (fun x => decrease_pred fs' ps' 
+    (remove_all vsymbol_eq_dec (pat_fv (fst x)) small) 
+    ((upd_option_iter hd (pat_fv (fst x)))) m vs (snd x)) pats.
+Proof.
+  intros. inversion H; subst.
+  - rewrite Forall_forall. intros.
+    apply Dec_notin_f; intros y Hiny;
+    [apply H0 in Hiny | apply H1 in Hiny];
+    simpl in Hiny; bool_hyps;
+    rewrite existsb_false in H4;
+    rewrite Forall_forall in H4;
+    rewrite H4; auto.
+  - exfalso. apply Htm. exists mvar. auto.
+  - rewrite Forall_forall. auto.
+Qed.
 
 Lemma in_remove {A: Type} {P: A -> Prop} {l: list A} {x: A}
   {eq_dec: forall (x y: A), {x=y} +{x <> y}}:
@@ -4747,9 +4800,13 @@ bool)
         end
       end Hall Hpats Hdec in
 
-        match domain_ne pd (val ty) with
-        | DE x =>  exist _ x (fun x Heqx => False_rect _ (tmatch_not_var Heqx))
-        end
+       (*For some reason, Coq needs the typing annotation here*)
+       exist (fun d => forall x Heqx, d = 
+       dom_cast (dom_aux pd)
+       (f_equal (fun x0 : vty => val x0)
+          (eq_sym (ty_var_inv (term_has_type_cast Heqx Hty')))) 
+       (var_to_dom pd vt v x)) (match_rep pats Hall Hpats Hdec2)
+         (fun x Heqx => False_rect _ (tmatch_not_var Heqx))
 
       (*TODO: do this, first do easy case*)
 
@@ -4938,6 +4995,127 @@ bool :=
     proj1_sig (term_rep_aux v t1 ty small hd Ht1 Hdec1 Hsmall Hhd) = 
     proj1_sig (term_rep_aux v t2 ty small hd Ht2 Hdec2 Hsmall Hhd))
 
+(*Fmatch is similar to Tmatch*)
+| Fmatch t ty1 pats => fun Hval' Hdec' =>
+  let Ht1 : term_has_type sigma t ty1 :=
+    proj1 (valid_match_inv Hval') in
+  let Hall : Forall (fun x => valid_formula sigma (snd x)) pats :=
+    proj2 (proj2 (valid_match_inv Hval')) in
+  let Hpats: Forall (fun x => pattern_has_type sigma (fst x) ty1) pats :=
+    proj1 (proj2 (valid_match_inv Hval')) in
+
+  let Hdec1 : decrease_fun fs ps small hd m vs t := 
+    dec_inv_fmatch_fst Hdec' in
+
+  (*let Hval : valid_type sigma ty1 :=
+    has_type_valid gamma_valid _ _ Ht1 in*)
+
+  let dom_t := proj1_sig (term_rep_aux v t ty1 small hd Ht1 Hdec1 Hsmall Hhd) in
+  let dom_t_pf := proj2_sig (term_rep_aux v t ty1 small hd Ht1 Hdec1 Hsmall Hhd) in
+
+  (*hmm, we have 2 different cases: we might need to have 2
+  different inner recursive functions, 1 for each case*)
+  match tmatch_case t hd small with
+  | Left z =>
+    let mvar : vsymbol := proj1_sig z in
+    let tm_eq : t = Tvar mvar := proj1' (proj2_sig z) in
+    let mvar_small : hd = Some mvar \/ In mvar small :=
+      proj2' (proj2_sig z) in
+
+    let Hdec2 : Forall (fun x => decrease_pred fs ps
+      (union vsymbol_eq_dec (vsyms_in_m m vs (pat_constr_vars m vs (fst x)))
+        (remove_all vsymbol_eq_dec (pat_fv (fst x)) small))
+      (upd_option_iter hd (pat_fv (fst x))) m vs (snd x)) pats :=
+      dec_inv_fmatch_var (proj2_sig z) Hdec' in
+      
+
+    (*Can't make [match_rep] a separate function or else Coq
+    cannot tell structurally decreasing. So we inline it*)
+    (*Unfortunately, we need a different version for each
+      pattern match*)
+    let fix match_rep (pats: list (pattern * formula)) 
+      (Hall: Forall (fun x => valid_formula sigma (snd x)) pats)
+      (Hpats: Forall (fun x => pattern_has_type sigma (fst x) ty1) pats)
+      (Hdec: Forall (fun x => decrease_pred fs ps
+      (union vsymbol_eq_dec (vsyms_in_m m vs (pat_constr_vars m vs (fst x)))
+        (remove_all vsymbol_eq_dec (pat_fv (fst x)) small))
+      (upd_option_iter hd (pat_fv (fst x))) m vs (snd x)) pats) :
+      bool :=
+    match pats as l' return 
+      Forall (fun x => valid_formula sigma (snd x)) l' ->
+      Forall (fun x => pattern_has_type sigma (fst x) ty1) l' ->
+      Forall (fun x => decrease_pred fs ps
+      (union vsymbol_eq_dec (vsyms_in_m m vs (pat_constr_vars m vs (fst x)))
+        (remove_all vsymbol_eq_dec (pat_fv (fst x)) small))
+      (upd_option_iter hd (pat_fv (fst x))) m vs (snd x)) l' ->
+      bool with
+    | (p , dat) :: ptl => fun Hall Hpats Hdec =>
+      (*We need info about [match_val_single] to know how the
+        valuation changes*)
+      match (match_val_single gamma_valid pd all_unif vt ty1 p (Forall_inv Hpats) dom_t) as o
+        return (match_val_single gamma_valid pd all_unif vt ty1 p (Forall_inv Hpats) dom_t) = o ->
+        bool with
+      | Some l => fun Hmatch => 
+        formula_rep_aux (extend_val_with_list pd vt v l) dat
+        _ _ (Forall_inv Hall) (Forall_inv Hdec) 
+        (small_match_lemma Hmatch Ht1 (proj2_sig z) (dom_t_pf _ (proj1 (proj2_sig z))) Hsmall Hhd)
+        (match_val_single_upd_option hd Hmatch Hhd)
+      | None => fun _ => match_rep ptl (Forall_inv_tail Hall)
+        (Forall_inv_tail Hpats) (Forall_inv_tail Hdec)
+      end eq_refl
+    | _ => (*TODO: show we cannot reach this*) fun _ _ _ =>
+      false
+    end Hall Hpats Hdec in
+
+    match_rep pats Hall Hpats Hdec2
+
+    (*TODO: do this, first do easy case*)
+
+  | Right Hnotvar =>
+    (*Easier, recursive case*)
+    let Hdec2 : 
+      Forall (fun x => decrease_pred fs ps 
+        (remove_all vsymbol_eq_dec (pat_fv (fst x)) small) 
+        (upd_option_iter hd (pat_fv (fst x))) m vs (snd x)) pats :=
+      dec_inv_fmatch_notvar Hnotvar Hdec' in
+
+
+    (*Can't make [match_rep] a separate function or else Coq
+    cannot tell structurally decreasing. So we inline it*)
+    let fix match_rep (pats: list (pattern * formula)) 
+      (Hall: Forall (fun x => valid_formula sigma (snd x)) pats)
+      (Hpats: Forall (fun x => pattern_has_type sigma (fst x) ty1) pats)
+      (Hdec: Forall (fun x => decrease_pred fs ps 
+        (remove_all vsymbol_eq_dec (pat_fv (fst x)) small) 
+        (upd_option_iter hd (pat_fv (fst x))) m vs (snd x)) pats) :
+      bool :=
+    match pats as l' return 
+      Forall (fun x => valid_formula sigma (snd x)) l' ->
+      Forall (fun x => pattern_has_type sigma (fst x) ty1) l' ->
+      Forall (fun x => decrease_pred fs ps 
+        (remove_all vsymbol_eq_dec (pat_fv (fst x)) small) 
+        (upd_option_iter hd (pat_fv (fst x))) m vs (snd x)) l' ->
+      bool with
+    | (p , dat) :: ptl => fun Hall Hpats Hdec =>
+      (*We need info about [match_val_single] to know how the
+        valuation changes*)
+      match (match_val_single gamma_valid pd all_unif vt ty1 p (Forall_inv Hpats) dom_t) as o
+        return (match_val_single gamma_valid pd all_unif vt ty1 p (Forall_inv Hpats) dom_t) = o ->
+        bool with
+      | Some l => fun Hmatch => 
+        formula_rep_aux (extend_val_with_list pd vt v l) dat
+        _ _ (Forall_inv Hall) (Forall_inv Hdec) 
+        (match_val_single_small1 Hmatch Hsmall)
+        (match_val_single_upd_option hd Hmatch Hhd)
+      | None => fun _ => match_rep ptl (Forall_inv_tail Hall)
+        (Forall_inv_tail Hpats) (Forall_inv_tail Hdec)
+      end eq_refl
+    | _ => (*TODO: show we cannot reach this*) fun _ _ _ =>
+      false
+    end Hall Hpats Hdec in
+    (*For some reason, Coq needs the typing annotation here*)
+     (match_rep pats Hall Hpats Hdec2)
+  end
 
 
 | _ => fun _ _ => false
