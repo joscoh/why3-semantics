@@ -136,47 +136,46 @@ Proof.
 Qed.
 
 Lemma ty_fun_ind_ret {f vs ts ty} (H: term_has_type sigma (Tfun f vs ts) ty):
-  ty = ty_subst (s_params f) vs (s_ret f).
+  ty = ty_subst (s_params f) vs (f_ret f).
 Proof.
   inversion H; auto.
 Qed.
 
 (*We use the above to get the arg list*)
+(*TODO: generalize, don't have type info, have info from inversion*)
+(*TODO: write Fixpoint version?*)
 Definition get_arg_list (v: val_typevar)
-  (f: funsym) (vs: list vty) (ts: list term) 
+  (s: fpsym) (vs: list vty) (ts: list term) 
   (reps: forall (t: term) (ty: vty),
     term_has_type sigma t ty ->
     domain (val v ty))
-  (Hty: exists x, term_has_type sigma (Tfun f vs ts) x) : 
+  (Hlents: length ts = length (s_args s))
+  (Hlenvs: length vs = length (s_params s))
+  (Hall: Forall (fun x => term_has_type sigma (fst x) (snd x))
+    (combine ts (map (ty_subst (s_params s) vs) (s_args s)))):
   arg_list domain
-    (funsym_sigma_args f
+    (sym_sigma_args s
       (map (v_subst (v_typevar v)) vs)).
 Proof.
-  (*use decidable typechecking *)
-  assert ({x: vty | term_has_type sigma (Tfun f vs ts) x}) by (apply typecheck_dec; assumption).
-  destruct H as [vty Hty'].
-  apply fun_ty_inversion in Hty'. repeat match goal with | H: ?P /\ ?Q |- _ => destruct H end.
-  clear H; clear H0; clear H4.
-  unfold funsym_sigma_args.
-  generalize dependent (s_args f). clear Hty. induction ts; simpl; intros.
-  - assert (l = nil). apply length_zero_iff_nil. rewrite H1; reflexivity.
+  unfold sym_sigma_args.
+  generalize dependent (s_args s). induction ts; simpl; intros.
+  - assert (l = nil). apply length_zero_iff_nil; auto.
     rewrite H. simpl. apply HL_nil.
   - destruct l as [|a1 atl] eqn : Hargs.
-    + inversion H1.
-    + simpl in H1. simpl in H3. assert (A:=H3).
-      apply Forall_inv in H3. apply Forall_inv_tail in A. simpl.
+    + discriminate.
+    + simpl in Hlents. simpl in Hall. assert (A:=Hall).
+      apply Forall_inv in Hall. apply Forall_inv_tail in A. simpl.
       apply HL_cons.
-      * specialize (reps a _ H3); simpl in reps. 
+      * specialize (reps a _ Hall); simpl in reps. 
         rewrite <- funsym_subst_eq; auto. apply s_params_Nodup.
       * apply IHts; auto.
 Defined.
 
 (*If the reps are equal only for the terms in the list,
   then the arg_lists are equal, and they are irrelevant
-  in the choice of typing proof*)
-
+  in the choice of proof*)
 Lemma get_arg_list_ext (v: val_typevar)
-  (f: funsym) (vs: list vty) (ts1 ts2: list term) 
+  (s: fpsym) (vs: list vty) (ts1 ts2: list term) 
   (reps1 reps2: forall (t: term) (ty: vty),
     term_has_type sigma t ty ->
     domain (val v ty))
@@ -185,26 +184,21 @@ Lemma get_arg_list_ext (v: val_typevar)
     i < length ts1 ->
     forall (ty : vty) Hty1 Hty2,
     reps1 (nth i ts1 tm_d) ty Hty1 = reps2 (nth i ts2 tm_d) ty Hty2)
-  (Hty1: exists x, term_has_type sigma (Tfun f vs ts1) x)
-  (Hty2: exists x, term_has_type sigma (Tfun f vs ts2) x):
-  get_arg_list v f vs ts1 reps1 Hty1 =
-  get_arg_list v f vs ts2 reps2 Hty2.
+  (Hlents1: length ts1 = length (s_args s))
+  (Hlents2: length ts2 = length (s_args s))
+  (Hlenvs1 Hlenvs2: length vs = length (s_params s))
+  (Hall1: Forall (fun x => term_has_type sigma (fst x) (snd x))
+    (combine ts1 (map (ty_subst (s_params s) vs) (s_args s))))
+  (Hall2: Forall (fun x => term_has_type sigma (fst x) (snd x))
+    (combine ts2 (map (ty_subst (s_params s) vs) (s_args s)))):
+  get_arg_list v s vs ts1 reps1 Hlents1 Hlenvs1 Hall1 =
+  get_arg_list v s vs ts2 reps2 Hlents2 Hlenvs2 Hall2.
 Proof.
   unfold get_arg_list. simpl.
-  destruct (typecheck_dec sigma (Tfun f vs ts1) Hty1).
-  destruct (typecheck_dec sigma (Tfun f vs ts2) Hty2).
-  assert (x = x0). {
-    inversion t; inversion t0; reflexivity.
-  }
+  unfold sym_sigma_args.
+  assert (Hlenvs1 = Hlenvs2). apply UIP_dec. apply Nat.eq_dec.
   subst.
-  destruct (fun_ty_inversion sigma f vs ts1 x0 t).
-  destruct (fun_ty_inversion sigma f vs ts2 x0 t0).
-  destruct a as [Hallval1 [Hlents1 [Hlenvs1 [Hallty1 Hx01]]]].
-  destruct a0 as [Hallval2 [Hlents2 [Hlenvs2 [Hallty2 Hx02]]]].
-  simpl. subst.
-  unfold funsym_sigma_args.
-  generalize dependent (s_args f).
-  clear Hty1 Hty2 t0 t.
+  generalize dependent (s_args s).
   generalize dependent ts2. 
   induction ts1; simpl; intros. 
   - destruct ts2; [|subst; inversion Hts]. simpl.
@@ -213,8 +207,7 @@ Proof.
     destruct l.
     + inversion Hlents2.
     + simpl in Hlenvs2. f_equal.
-      * assert (Hlenvs1 = Hlenvs2) by apply nat_eq_refl.
-        rewrite H. f_equal.
+      * f_equal.
         apply (Hreps 0). lia.
       * apply IHts1; auto.
         intros j Hj ty Hty1 Hty2.
@@ -223,7 +216,7 @@ Qed.
 
 (*A corollary (TODO: change name) when ts are equal*)
 Lemma get_arg_list_eq (v: val_typevar)
-(f: funsym) (vs: list vty) (ts: list term) 
+(s: fpsym) (vs: list vty) (ts: list term) 
 (reps1 reps2: forall (t: term) (ty: vty),
   term_has_type sigma t ty ->
   domain (val v ty))
@@ -231,100 +224,71 @@ Lemma get_arg_list_eq (v: val_typevar)
 (fun tm : term =>
  forall (ty : vty) (Hty1 Hty2: term_has_type sigma tm ty),
  reps1 tm ty Hty1 = reps2 tm ty Hty2) ts)
-(Hty1 Hty2: exists x, term_has_type sigma (Tfun f vs ts) x) :
-get_arg_list v f vs ts reps1 Hty1 =
-get_arg_list v f vs ts reps2 Hty2.
+(Hlents1 Hlents2: length ts = length (s_args s))
+(Hlenvs1 Hlenvs2: length vs = length (s_params s))
+(Hall1 Hall2: Forall (fun x => term_has_type sigma (fst x) (snd x))
+  (combine ts (map (ty_subst (s_params s) vs) (s_args s)))):
+get_arg_list v s vs ts reps1 Hlents1 Hlenvs1 Hall1 =
+get_arg_list v s vs ts reps2 Hlents2 Hlenvs2 Hall2.
 Proof.
   apply get_arg_list_ext; auto.
   intros i Hi ty H1 H2.
   rewrite Forall_forall in Hreps; apply Hreps.
   apply nth_In; auto.
 Qed.
- 
-(*Also need a version for preds (TODO: can we reduce duplication?)*)
-Definition get_arg_list_pred (v: val_typevar)
-  (p: predsym) (vs: list vty) (ts: list term) 
-  (reps: forall (t: term) (ty: vty),
-    term_has_type sigma t ty ->
-    domain (val v ty))
-  (Hval: valid_formula sigma (Fpred p vs ts)) :
-  arg_list domain
-    (predsym_sigma_args p
-      (map (v_subst (v_typevar v)) vs)).
-Proof.
-  apply pred_ty_inversion in Hval.
-  repeat match goal with | H: ?P /\ ?Q |- _ => destruct H end.
-  clear H; clear H0.
-  unfold predsym_sigma_args.
-  generalize dependent (p_args p). induction ts; simpl; intros.
-  - assert (l = nil). apply length_zero_iff_nil. rewrite H1; reflexivity.
-    rewrite H. simpl. apply HL_nil.
-  - destruct l as [|a1 atl] eqn : Hargs.
-    + inversion H1.
-    + simpl in H1. simpl in H3. assert (A:=H3).
-      apply Forall_inv in H3. apply Forall_inv_tail in A. simpl.
-      apply HL_cons.
-      * specialize (reps a _ H3); simpl in reps. 
-        rewrite <- funsym_subst_eq; auto. apply p_params_Nodup.
-      * apply IHts; auto.
-Defined.
 
-Lemma get_arg_list_pred_ext (v: val_typevar)
-  (p: predsym) (vs: list vty) (ts1 ts2: list term) 
-  (reps1 reps2: forall (t: term) (ty: vty),
-    term_has_type sigma t ty ->
-    domain (val v ty))
-  (Hts: length ts1 = length ts2)
-  (Hreps: forall (i: nat),
-    i < length ts1 ->
-    forall (ty : vty) Hty1 Hty2,
-    reps1 (nth i ts1 tm_d) ty Hty1 = reps2 (nth i ts2 tm_d) ty Hty2)
-  (Hval1: valid_formula sigma (Fpred p vs ts1))
-  (Hval2: valid_formula sigma (Fpred p vs ts2)):
-  get_arg_list_pred v p vs ts1 reps1 Hval1 =
-  get_arg_list_pred v p vs ts2 reps2 Hval2.
-Proof.
-  unfold get_arg_list_pred. simpl.
-  destruct (pred_ty_inversion sigma p vs ts1 Hval1).
-  destruct (pred_ty_inversion sigma p vs ts2 Hval2).
-  destruct a as [Hallval1 [Hlents1 [Hlenvs1 Hallty1]]].
-  destruct a0 as [Hallval2 [Hlents2 [Hlenvs2 Hallty2]]].
-  simpl. 
-  unfold predsym_sigma_args.
-  generalize dependent (p_args p).
-  clear Hval1 Hval2. 
-  generalize dependent ts2. 
-  induction ts1; simpl; intros; destruct ts2; inversion Hts; simpl.
-  - f_equal. f_equal. f_equal. apply nat_eq_refl. 
-  - destruct l.
-    + inversion Hlents2.
-    + simpl in Hlenvs2. f_equal.
-    * assert (Hlenvs1 = Hlenvs2) by apply nat_eq_refl.
-      rewrite H. f_equal.
-      apply (Hreps 0). lia.
-    * apply IHts1; auto.
-      intros j Hj ty Hty1 Hty2.
-      apply (Hreps (S j)); lia.
-Qed. 
+(*The function version*)
 
-(*TODO: change name*)
-Lemma get_arg_list_pred_eq (v: val_typevar)
-(p: predsym) (vs: list vty) (ts: list term) 
-(reps1 reps2: forall (t: term) (ty: vty),
+Lemma fun_ty_inv {s} {f: funsym} 
+  {vs: list vty} {tms: list term} {ty_ret}:
+  term_has_type s (Tfun f vs tms) ty_ret ->
+  length tms = length (s_args f) /\
+  length vs = length (s_params f) /\
+  Forall (fun x => term_has_type s (fst x) (snd x)) 
+    (combine tms (map (ty_subst (s_params f) vs) (s_args f))) /\
+  ty_ret = ty_subst (s_params f) vs (f_ret f).
+Proof.
+  intros. inversion H; subst; auto.
+Qed.
+
+Definition fun_arg_list {ty} (v: val_typevar)
+(f: funsym) (vs: list vty) (ts: list term) 
+(reps: forall (t: term) (ty: vty),
   term_has_type sigma t ty ->
   domain (val v ty))
-(Hreps: Forall
-(fun tm : term =>
- forall (ty : vty) (Hty1 Hty2: term_has_type sigma tm ty),
- reps1 tm ty Hty1 = reps2 tm ty Hty2) ts)
- (Hval1 Hval2: valid_formula sigma (Fpred p vs ts)) :
-get_arg_list_pred v p vs ts reps1 Hval1 =
-get_arg_list_pred v p vs ts reps2 Hval2.
+(Hty: term_has_type sigma (Tfun f vs ts) ty):
+arg_list domain
+  (sym_sigma_args f
+    (map (v_subst (v_typevar v)) vs)) :=
+get_arg_list v f vs ts reps (proj1 (fun_ty_inv Hty))
+  (proj1 (proj2 (fun_ty_inv Hty)))
+  (proj1 (proj2 (proj2 (fun_ty_inv Hty)))).
+
+(*The predsym version*)
+
+Lemma pred_val_inv {s} {p: predsym} 
+  {vs: list vty} {tms: list term}:
+  valid_formula s (Fpred p vs tms) ->
+  length tms = length (s_args p) /\
+  length vs = length (s_params p) /\
+  Forall (fun x => term_has_type s (fst x) (snd x)) 
+    (combine tms (map (ty_subst (s_params p) vs) (s_args p))).
 Proof.
-  apply get_arg_list_pred_ext; auto.
-  intros. rewrite Forall_forall in Hreps; apply Hreps;
-  apply nth_In; auto.
+  intros. inversion H; subst; auto.
 Qed.
+
+Definition pred_arg_list (v: val_typevar)
+(p: predsym) (vs: list vty) (ts: list term) 
+(reps: forall (t: term) (ty: vty),
+  term_has_type sigma t ty ->
+  domain (val v ty))
+(Hval: valid_formula sigma (Fpred p vs ts)):
+arg_list domain
+  (sym_sigma_args p
+    (map (v_subst (v_typevar v)) vs)) :=
+get_arg_list v p vs ts reps (proj1 (pred_val_inv Hval))
+  (proj1 (proj2 (pred_val_inv Hval)))
+  (proj2 (proj2 (pred_val_inv Hval))).
 
 (*Inversion lemmas we use in the semantics to 
   destruct and reconstruct typing proofs*)
@@ -338,7 +302,7 @@ Qed.
 
 Lemma fpred_params_length {s p vs ts}:
   valid_formula s (Fpred p vs ts) ->
-  length (p_params p) = length vs.
+  length (s_params p) = length vs.
 Proof.
   intros. inversion H; subst. auto.
 Qed.
@@ -691,7 +655,7 @@ Lemma adts_srts_valid: forall {v : val_typevar} {ty m a ts srts c},
   is_sort_adt (val v ty) = Some (m, a, ts, srts) ->
   valid_type sigma ty ->
   constr_in_adt c a ->
-  Forall (valid_type sigma) (sorts_to_tys (funsym_sigma_args c srts)).
+  Forall (valid_type sigma) (sorts_to_tys (sym_sigma_args c srts)).
 Proof.
   intros v ty m a ts srts c H Hval c_in.
   pose proof (Hval':=adt_srts_valid H Hval).
@@ -700,7 +664,7 @@ Proof.
   destruct H as [Hts [a_in [m_in _]]].
   rewrite Forall_forall; intros t.
   unfold sorts_to_tys. rewrite in_map_iff; intros [srt [Hsrt Hinsrt]]; subst.
-  unfold funsym_sigma_args in Hinsrt.
+  unfold sym_sigma_args in Hinsrt.
   unfold ty_subst_list_s in Hinsrt.
   rewrite in_map_iff in Hinsrt.
   destruct Hinsrt as [t [Ht Hint]]; subst.
@@ -821,14 +785,14 @@ Proof.
 Qed.
 
 (*Typecast we need for inner arg list*)
-Lemma funsym_sigma_args_map (v: val_typevar) (f: funsym) 
+Lemma sym_sigma_args_map (v: val_typevar) (f: funsym) 
   (vs: list vty):
   length (s_params f) = length vs ->
-  funsym_sigma_args f (map (val v) vs) =
+  sym_sigma_args f (map (val v) vs) =
   map (val v) (ty_subst_list (s_params f) vs (s_args f)).
 Proof.
   intros Hlen.
-  unfold funsym_sigma_args, ty_subst_list_s, ty_subst_list.
+  unfold sym_sigma_args, ty_subst_list_s, ty_subst_list.
   apply list_eq_ext'; rewrite !map_length; auto.
   intros n d Hn.
   rewrite !map_nth_inbound with (d2:=vty_int); auto;
@@ -867,7 +831,7 @@ Lemma adt_constr_subst_ret {params a m f}:
   adt_in_mut a m ->
   constr_in_adt f a ->
   length params = length (s_params f) ->
-  ty_subst (s_params f) params (s_ret f) = vty_cons (adt_name a) params.
+  ty_subst (s_params f) params (f_ret f) = vty_cons (adt_name a) params.
 Proof.
   intros m_in a_in c_in Hlen.
   rewrite (adt_constr_ret gamma_valid m_in a_in c_in).
@@ -1009,7 +973,7 @@ Fixpoint match_val_single (v: val_typevar) (ty: vty)
       let c : funsym := projT1 Hrep in
       let c_in : constr_in_adt c a :=
         fst (proj1_sig (projT2 Hrep)) in
-      let args : arg_list domain (funsym_sigma_args c srts) := 
+      let args : arg_list domain (sym_sigma_args c srts) := 
         snd (proj1_sig (projT2 Hrep)) in
 
       let lengths_eq' : length (s_params c) = length vs :=
@@ -1073,7 +1037,7 @@ Fixpoint match_val_single (v: val_typevar) (ty: vty)
           cast_prop (fun x => constr_in_adt x a) Heq c_in in
 
         iter_arg_list _ (cast_arg_list 
-          (funsym_sigma_args_map v c vs lengths_eq') args) ps
+          (sym_sigma_args_map v c vs lengths_eq') args) ps
           (pat_constr_ind (pat_has_type_eq Htyeq Hty') m_in a_in 
             (eq_sym Heq) c_in)
 
@@ -1186,7 +1150,7 @@ Lemma match_val_single_rewrite  (v: val_typevar) (ty: vty)
       let c : funsym := projT1 Hrep in
       let c_in : constr_in_adt c a :=
         fst (proj1_sig (projT2 Hrep)) in
-      let args : arg_list domain (funsym_sigma_args c srts) := 
+      let args : arg_list domain (sym_sigma_args c srts) := 
         snd (proj1_sig (projT2 Hrep)) in
 
       let lengths_eq' : length (s_params c) = length vs :=
@@ -1200,7 +1164,7 @@ Lemma match_val_single_rewrite  (v: val_typevar) (ty: vty)
           cast_prop (fun x => constr_in_adt x a) Heq c_in in
 
         iter_arg_list _ (cast_arg_list 
-          (funsym_sigma_args_map v c vs lengths_eq') args) ps
+          (sym_sigma_args_map v c vs lengths_eq') args) ps
           (pat_constr_ind (pat_has_type_eq Htyeq Hty') m_in a_in 
             (eq_sym Heq) c_in)
 
@@ -1482,7 +1446,7 @@ Proof.
     generalize dependent ((pat_has_type_valid gamma_valid (Pconstr f vs ps)
     (vty_cons (adt_name adt) vs2) Hp)).
     intros Hval e. simpl in e.
-    generalize dependent (funsym_sigma_args_map v f vs2
+    generalize dependent (sym_sigma_args_map v f vs2
     (Hvslen1 m adt vs2 f eq_refl
        Hval i)).
     intros.
@@ -1647,10 +1611,10 @@ Proof.
     end.
     destruct Hf'. simpl.
     destruct x. simpl.
-    generalize dependent (funsym_sigma_args_map v f vs2 e1).
+    generalize dependent (sym_sigma_args_map v f vs2 e1).
     clear Hval1 Hval2.
     clear e.
-    unfold funsym_sigma_args in *.
+    unfold sym_sigma_args in *.
     generalize dependent ps.
     generalize dependent a.
     generalize dependent (s_args f).
@@ -1967,14 +1931,14 @@ term_rep v (Tvar x) ty Hty :=
 
 term_rep v (Tfun f vs ts) ty Hty :=
   (*Some proof we need; we give types for clarity*)
-  let Htyeq : ty_subst (s_params f) vs (s_ret f) = ty :=
+  let Htyeq : ty_subst (s_params f) vs (f_ret f) = ty :=
     eq_sym (ty_fun_ind_ret Hty) in
   (*The main typecast: v(sigma(ty_ret)) = sigma'(ty_ret), where
     sigma sends (s_params f)_i -> vs_i and 
     sigma' sends (s_params f) _i -> v(vs_i)*)
-  let Heqret : v_subst (v_typevar vt) (ty_subst (s_params f) vs (s_ret f)) =
-    ty_subst_s (s_params f) (map (v_subst (v_typevar vt)) vs) (s_ret f) :=
-      funsym_subst_eq (s_params f) vs (v_typevar vt) (s_ret f) (s_params_Nodup f)
+  let Heqret : v_subst (v_typevar vt) (ty_subst (s_params f) vs (f_ret f)) =
+    ty_subst_s (s_params f) (map (v_subst (v_typevar vt)) vs) (f_ret f) :=
+      funsym_subst_eq (s_params f) vs (v_typevar vt) (f_ret f) (s_params_Nodup f)
       (tfun_params_length Hty) in
 
   (* The final result is to apply [funs] to the [arg_list] created recursively
@@ -1985,7 +1949,7 @@ term_rep v (Tfun f vs ts) ty Hty :=
     dom_cast (dom_aux pd)
       (eq_sym Heqret)
         ((funs f (map (val vt) vs)) 
-          (get_arg_list vt f vs ts (term_rep v) (ex_intro _ ty Hty))));
+          (fun_arg_list vt f vs ts (term_rep v) Hty)));
   
 term_rep v (Tlet t1 x t2) ty Hty :=
   let Ht1 : term_has_type sigma t1 (snd x) :=
@@ -2089,7 +2053,7 @@ with formula_rep (v: val_vars pd vt) (f: formula)
   (*Much simpler than Tfun case above because we don't need casting*)
   formula_rep v (Fpred p vs ts) Hval :=
     preds _ _ pf p (map (val vt) vs)
-      (get_arg_list_pred vt p vs ts (term_rep v) Hval);
+      (pred_arg_list vt p vs ts (term_rep v) Hval);
 
   formula_rep v (Fquant Tforall x f') Hval :=
     let Hf' : valid_formula sigma f' :=
@@ -2241,7 +2205,7 @@ Proof.
     (proj2 (ty_eps_inv Hty2))).
     apply UIP_dec. apply vty_eq_dec. rewrite H0.
     reflexivity.
-  - f_equal. apply get_arg_list_pred_eq.
+  - f_equal. apply get_arg_list_eq.
     rewrite Forall_forall. intros x Hinx ty' H1 H2.
     rewrite Forall_forall in H. apply H. assumption.
   - destruct q;
@@ -2307,7 +2271,7 @@ Ltac solve_bnd :=
   end.
 
 (*Substitution over [get_arg_list]*)
-Lemma get_arg_list_sub x y f tys tms 
+Lemma get_arg_list_sub x y s tys tms 
   (reps1 reps2: forall (t: term) (ty: vty),
   term_has_type sigma t ty ->
   domain (val vt ty))
@@ -2316,11 +2280,16 @@ Lemma get_arg_list_sub x y f tys tms
     ~ In y (bnd_t tm) ->
     reps1 tm ty Hty1 =
     reps2 (sub_t x y tm) ty Hty2) tms)
-  (Hfree: ~In y (bnd_t (Tfun f tys tms)))
-  (Hex1 : exists typ, term_has_type sigma (Tfun f tys tms) typ)
-  (Hex2: exists typ, term_has_type sigma (Tfun f tys (map (sub_t x y) tms)) typ):
-  get_arg_list vt f tys tms reps1 Hex1 =
-  get_arg_list vt f tys (map (sub_t x y) tms) reps2 Hex2.
+  (Hfree: ~In y (concat (map bnd_t tms)))
+  (Hlents1: length tms = length (s_args s))
+  (Hlents2: length (map (sub_t x y) tms) = length (s_args s))
+  (Hlenvs1 Hlenvs2: length tys = length (s_params s))
+  (Hall1: Forall (fun x => term_has_type sigma (fst x) (snd x))
+    (combine tms (map (ty_subst (s_params s) tys) (s_args s))))
+  (Hall2: Forall (fun x => term_has_type sigma (fst x) (snd x))
+    (combine (map (sub_t x y) tms) (map (ty_subst (s_params s) tys) (s_args s)))):
+  get_arg_list vt s tys tms reps1 Hlents1 Hlenvs1 Hall1 =
+  get_arg_list vt s tys (map (sub_t x y) tms) reps2 Hlents2 Hlenvs2 Hall2.
 Proof.
   apply get_arg_list_ext.
   - rewrite map_length; auto.
@@ -2329,12 +2298,12 @@ Proof.
     rewrite (map_nth_inbound) with(d2:=tm_d); auto; intros.
     apply Hreps; auto.
     apply nth_In; auto.
-    simpl in Hfree. intro Hiny.
+    intro Hiny.
     apply Hfree. rewrite in_concat. exists (bnd_t (nth i tms tm_d)).
     split; auto. rewrite in_map_iff. exists (nth i tms tm_d); split;
     auto. apply nth_In; auto.
 Qed.
-  
+(*
 (*Same for [get_arg_list_pred]*)
 Lemma get_arg_list_pred_sub x y p tys tms 
   (reps1 reps2: forall (t: term) (ty: vty),
@@ -2362,7 +2331,7 @@ Proof.
     apply Hfree. rewrite in_concat. exists (bnd_t (nth i tms tm_d)).
     split; auto. rewrite in_map_iff. exists (nth i tms tm_d); split;
     auto. apply nth_In; auto.
-Qed.
+Qed.*)
 
 (*TODO: see if we can get rid of casting in Here*)
 (*Could rewrite by saying (x, ty) and (y, ty).
@@ -2436,7 +2405,7 @@ Proof.
     }
     rewrite H0. simpl.
     assert ((@ty_fun_ind_ret f1 l (@map term term (sub_t x y) l1)
-      (ty_subst (s_params f1) l (s_ret f1)) Hty2) = eq_refl). {
+      (ty_subst (s_params f1) l (f_ret f1)) Hty2) = eq_refl). {
       apply UIP_dec. apply vty_eq_dec.
     }
     rewrite H1. simpl.
@@ -2448,15 +2417,15 @@ Proof.
     clear -H Hfree.
     unfold eq_sym at 1 3.
     generalize dependent (funsym_subst_eq (s_params f1) l (v_typevar vt) 
-    (s_ret f1) (s_params_Nodup f1)
+    (f_ret f1) (s_params_Nodup f1)
     (tfun_params_length Hty2)).
     generalize dependent (funsym_subst_eq (s_params f1) l (v_typevar vt) 
-    (s_ret f1) (s_params_Nodup f1)
+    (f_ret f1) (s_params_Nodup f1)
     (@tfun_params_length sigma f1 l (@map term term (sub_t x y) l1)
-      (ty_subst (s_params f1) l (s_ret f1)) Hty2)).
+      (ty_subst (s_params f1) l (f_ret f1)) Hty2)).
     simpl.
     (*To eliminate eqs*)
-    generalize dependent (val vt (ty_subst (s_params f1) l (s_ret f1))).
+    generalize dependent (val vt (ty_subst (s_params f1) l (f_ret f1))).
     intros. subst.
     assert (e0 = eq_refl). { apply UIP_dec. apply sort_eq_dec. }
     rewrite H0.
@@ -2590,7 +2559,7 @@ Proof.
       erewrite fmla_rep_irrel. reflexivity.
   - (*predicate*)
     f_equal.
-    apply get_arg_list_pred_sub; auto.
+    apply get_arg_list_sub; auto.
     eapply Forall_impl. 2: apply H. simpl; intros.
     apply H0. auto.
   - (*quantifiers*)
@@ -2822,7 +2791,7 @@ Proof.
     destruct (vsymbol_eq_dec y v); auto.
     apply H0. apply in_in_remove; auto.
   - f_equal.
-    apply get_arg_list_pred_eq.
+    apply get_arg_list_eq.
     rewrite Forall_forall. intros.
     rewrite Forall_forall in H.
     rewrite term_rep_irrel with (Hty2:=Hty2).
@@ -3476,7 +3445,7 @@ Proof.
   - (*Here, we use fact that predsym in*)
     rewrite H0; simpl; [|destruct (predsym_eq_dec p p); auto; contradiction].
     f_equal.
-    apply get_arg_list_pred_eq.
+    apply get_arg_list_eq.
     revert H; rewrite !Forall_forall; intros.
     rewrite (term_rep_irrel) with(Hty2:=Hty2).
     apply H; auto.

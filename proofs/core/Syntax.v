@@ -60,13 +60,37 @@ Proof.
   intros. apply (reflect_iff _ _ (check_sublist_correct l1 l2)), H.
 Qed.
 
-Record funsym : Set :=
+(*We separate out the name, args, and params because they
+  are common; this helps us avoid duplicating some results.
+  The difference is in the return types*)
+Record fpsym : Set :=
+  { s_name: string;
+    s_params: list typevar;
+    s_args: list vty;
+    (*Well-formed - all type variables appear in params*)
+    s_args_wf: check_args s_params s_args;
+    s_params_nodup: nodupb typevar_eq_dec s_params}.
+
+Record funsym: Set :=
+  { f_sym: fpsym;
+    f_ret: vty;
+    f_ret_wf : check_sublist (type_vars f_ret) 
+      (s_params f_sym) }.
+
+Coercion f_sym : funsym >-> fpsym.
+
+Record predsym: Set :=
+    { p_sym : fpsym }.
+
+Coercion p_sym : predsym >-> fpsym.
+
+(*Record funsym : Set :=
   {
     s_name : string;
     s_params : list typevar;
     s_args: list vty;
     s_ret: vty;
-    (*Well-formed - all type variables appear in params*)
+    
     s_ret_wf: check_sublist (type_vars s_ret) s_params;
     s_args_wf: check_args s_params s_args;
     s_params_nodup: nodupb typevar_eq_dec s_params
@@ -79,20 +103,26 @@ Record predsym : Set :=
     p_args : list vty;
     p_args_wf: check_args p_params p_args;
     p_params_nodup: nodupb typevar_eq_dec p_params
-  }.
+  }.*)
 
-Lemma s_params_Nodup: forall (f: funsym),
-  NoDup (s_params f).
+Lemma s_params_Nodup: forall (s: fpsym),
+  NoDup (s_params s).
 Proof.
   intros. eapply reflect_iff. apply nodup_NoDup. 
   apply s_params_nodup.
 Qed.
 
-Lemma p_params_Nodup: forall (p: predsym),
-  NoDup (p_params p).
+Lemma f_params_Nodup: forall (f: funsym),
+  NoDup (s_params f).
 Proof.
-  intros. eapply reflect_iff. apply nodup_NoDup. 
-  apply p_params_nodup.
+  intros.
+  apply s_params_Nodup.
+Qed.
+
+Lemma p_params_Nodup: forall (p: predsym),
+  NoDup (s_params p).
+Proof.
+  intros. apply s_params_Nodup.
 Qed.
 
 
@@ -105,43 +135,65 @@ Definition id_params : list typevar := [a_var].
 Definition id_args: list vty := [vty_var a_var].
 Definition id_ret: vty := vty_var a_var.
 
-Definition id_fs : funsym := Build_funsym id_name id_params id_args id_ret eq_refl eq_refl eq_refl.
+Definition id_sym : fpsym := Build_fpsym id_name id_params id_args eq_refl eq_refl.
+
+Definition id_fs : funsym := Build_funsym id_sym id_ret eq_refl.
 
 End ID.
 
 Section SymEqDec.
 
-Lemma funsym_eq: forall (f1 f2: funsym),
-  (s_name f1) = (s_name f2) ->
-  (s_params f1) = (s_params f2) ->
-  (s_args f1) = (s_args f2) ->
-  (s_ret f1) = (s_ret f2) ->
-  f1 = f2.
+Lemma fpsym_eq: forall (s1 s2: fpsym),
+  s_name s1 = s_name s2 ->
+  s_params s1 = s_params s2 ->
+  s_args s1 = s_args s2 ->
+  s1 = s2.
 Proof.
-  intros. destruct f1; destruct f2; simpl in *; subst.
-  assert (s_params_nodup0 = s_params_nodup1) by apply bool_irrelevance; subst.
-  assert (s_ret_wf0=s_ret_wf1) by apply bool_irrelevance; subst.
-  assert (s_args_wf0=s_args_wf1) by apply bool_irrelevance; subst.
-  reflexivity.
+  intros. destruct s1; destruct s2; simpl in *; subst.
+  f_equal; apply bool_irrelevance.
 Qed.
+
+Definition fpsym_eqb (s1 s2: fpsym): bool :=
+  (String.eqb (s_name s1) (s_name s2)) &&
+  (list_eqb String.eqb (s_params s1) (s_params s2)) &&
+  (list_eqb vty_eqb (s_args s1) (s_args s2)).
 
 Ltac dec H :=
   destruct H; [ simpl | apply ReflectF; intro C; inversion C; subst; contradiction].
 
+
+Lemma fpsym_eqb_spec: forall (f1 f2: fpsym),
+  reflect (f1 = f2) (fpsym_eqb f1 f2).
+Proof.
+  intros. unfold fpsym_eqb.
+  dec (String.eqb_spec (s_name f1) (s_name f2)).
+  dec (list_eqb_spec _ String.eqb_spec (s_params f1) (s_params f2)).
+  dec (list_eqb_spec _ vty_eq_spec (s_args f1) (s_args f2)).
+  apply ReflectT. apply fpsym_eq; auto.
+Qed.
+
+Definition fpsym_eq_dec (f1 f2: fpsym) : {f1 = f2} + {f1 <> f2} :=
+  reflect_dec' (fpsym_eqb_spec f1 f2).
+
+Lemma funsym_eq: forall (f1 f2: funsym),
+  f_sym f1 = f_sym f2 ->
+  f_ret f1 = f_ret f2 ->
+  f1 = f2.
+Proof.
+  intros. destruct f1; destruct f2; simpl in *; subst.
+  f_equal; apply bool_irrelevance.
+Qed.
+
 Definition funsym_eqb (f1 f2: funsym) : bool :=
-  (String.eqb (s_name f1) (s_name f2)) &&
-  (list_eqb String.eqb (s_params f1) (s_params f2)) &&
-  (list_eqb vty_eqb (s_args f1) (s_args f2)) &&
-  (vty_eqb (s_ret f1) (s_ret f2)).
+  (fpsym_eqb (f_sym f1) (f_sym f2)) &&
+  (vty_eqb (f_ret f1) (f_ret f2)).
 
 Lemma funsym_eqb_spec: forall (f1 f2: funsym),
   reflect (f1 = f2) (funsym_eqb f1 f2).
 Proof.
   intros. unfold funsym_eqb.
-  dec (String.eqb_spec (s_name f1) (s_name f2)).
-  dec (list_eqb_spec _ String.eqb_spec (s_params f1) (s_params f2)).
-  dec (list_eqb_spec _ vty_eq_spec (s_args f1) (s_args f2)).
-  dec (vty_eq_spec (s_ret f1) (s_ret f2)).
+  dec (fpsym_eqb_spec (f_sym f1) (f_sym f2)).
+  dec (vty_eq_spec (f_ret f1) (f_ret f2)).
   apply ReflectT. apply funsym_eq; auto.
 Qed.
 
@@ -149,30 +201,16 @@ Definition funsym_eq_dec (f1 f2: funsym) : {f1 = f2} + {f1 <> f2} :=
   reflect_dec' (funsym_eqb_spec f1 f2).
 
 (*We do the same for predicate symbols*)
-Lemma predsym_eq: forall (p1 p2: predsym),
-  (p_name p1) = (p_name p2) ->
-  (p_params p1) = (p_params p2) ->
-  (p_args p1) = (p_args p2) ->
-  p1 = p2.
-Proof.
-  intros; destruct p1; destruct p2; simpl in *; subst.
-  assert (p_params_nodup0=p_params_nodup1) by apply bool_irrelevance; subst.
-  assert (p_args_wf0=p_args_wf1) by apply bool_irrelevance; subst. reflexivity.
-Qed.
 
 Definition predsym_eqb (p1 p2: predsym) : bool :=
-  (String.eqb (p_name p1) (p_name p2)) &&
-  (list_eq_dec typevar_eq_dec (p_params p1) (p_params p2)) &&
-  (list_eq_dec vty_eq_dec (p_args p1) (p_args p2)).
+  fpsym_eqb (p_sym p1) (p_sym p2).
 
 Lemma predsym_eqb_spec: forall (p1 p2: predsym),
   reflect (p1 = p2) (predsym_eqb p1 p2).
 Proof.
   intros. unfold predsym_eqb.
-  dec (String.eqb_spec (p_name p1) (p_name p2)).
-  dec (list_eq_dec typevar_eq_dec (p_params p1) (p_params p2)).
-  dec (list_eq_dec vty_eq_dec (p_args p1) (p_args p2)).
-  apply ReflectT. apply predsym_eq; auto.
+  dec (fpsym_eqb_spec p1 p2).
+  apply ReflectT. destruct p1; destruct p2; simpl in *; subst; auto.
 Qed.
 
 Definition predsym_eq_dec (p1 p2: predsym) : {p1 = p2} + {p1 <> p2} :=

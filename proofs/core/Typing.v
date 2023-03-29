@@ -40,7 +40,7 @@ Inductive pattern_has_type: sig -> pattern -> vty -> Prop :=
     In f (sig_f s) ->
     Forall (valid_type s) params ->
     (*NOTE: NOT included in paper - is this implied elsewhere?*)
-    valid_type s (s_ret f) ->
+    valid_type s (f_ret f) ->
     length ps = length (s_args f) ->
     length params = length (s_params f) ->
     (* For all i, [nth i tms] has type [sigma(nth i (s_args f))], where
@@ -51,7 +51,7 @@ Inductive pattern_has_type: sig -> pattern -> vty -> Prop :=
     (* No free variables in common *)
     (forall i j d x, i < length ps -> j < length ps -> i <> j ->
       ~(In x (pat_fv (nth i ps d)) /\ In x (pat_fv (nth j ps d)))) ->
-        pattern_has_type s (Pconstr f params ps) (sigma (s_ret f))
+        pattern_has_type s (Pconstr f params ps) (sigma (f_ret f))
   | P_Or: forall s p1 p2 ty,
     pattern_has_type s p1 ty ->
     pattern_has_type s p2 ty ->
@@ -75,7 +75,7 @@ Inductive term_has_type: sig -> term -> vty -> Prop :=
     In f (sig_f s) ->
     Forall (valid_type s) params ->
     (*NOTE: NOT included in paper - is this implied elsewhere?*)
-    valid_type s (s_ret f) ->
+    valid_type s (f_ret f) ->
     length tms = length (s_args f) ->
     length params = length (s_params f) ->
     (* For all i, [nth i tms] has type [sigma(nth i (s_args f))], where
@@ -83,7 +83,7 @@ Inductive term_has_type: sig -> term -> vty -> Prop :=
     (*let sigma : vty -> vty := ty_subst (s_params f) params in*)
     Forall (fun x => term_has_type s (fst x) (snd x)) (combine tms
       (map (ty_subst (s_params f) params) (s_args f))) ->
-    term_has_type s (Tfun f params tms) (ty_subst (s_params f) params (s_ret f))
+    term_has_type s (Tfun f params tms) (ty_subst (s_params f) params (f_ret f))
   | T_Let: forall s t1 x t2 ty2,
     term_has_type s t1 (snd x) ->
     term_has_type s t2 ty2 ->
@@ -135,11 +135,11 @@ with valid_formula: sig -> formula -> Prop :=
     (*Very similar to function case*)
     In p (sig_p s) ->
     Forall (valid_type s) params ->
-    length tms = length (p_args p) ->
-    length params = length (p_params p) ->
-    let sigma : vty -> vty := ty_subst (p_params p) params in
+    length tms = length (s_args p) ->
+    length params = length (s_params p) ->
+    let sigma : vty -> vty := ty_subst (s_params p) params in
     Forall (fun x => term_has_type s (fst x) (snd x))
-      (combine tms (map sigma (p_args p))) ->
+      (combine tms (map sigma (s_args p))) ->
     valid_formula s (Fpred p params tms)
   | F_Let: forall s t x f,
     term_has_type s t (snd x) ->
@@ -179,7 +179,7 @@ Lemma fun_ty_inversion: forall s (f: funsym) (vs: list vty) (tms: list term) ty_
   length vs = length (s_params f) /\
   Forall (fun x => term_has_type s (fst x) (snd x)) 
     (combine tms (map (ty_subst (s_params f) vs) (s_args f))) /\
-  ty_ret = ty_subst (s_params f) vs (s_ret f).
+  ty_ret = ty_subst (s_params f) vs (f_ret f).
 Proof.
   intros. inversion H; subst; repeat split; auto.
 Qed.
@@ -187,10 +187,10 @@ Qed.
 Lemma pred_ty_inversion: forall s (p: predsym) (vs: list vty) (tms: list term),
   valid_formula s (Fpred p vs tms) ->
   In p (sig_p s) /\ Forall (valid_type s) vs /\
-  length tms = length (p_args p) /\
-  length vs = length (p_params p) /\
+  length tms = length (s_args p) /\
+  length vs = length (s_params p) /\
   Forall (fun x => term_has_type s (fst x) (snd x)) 
-    (combine tms (map (ty_subst (p_params p) vs) (p_args p))).
+    (combine tms (map (ty_subst (s_params p) vs) (s_args p))).
 Proof.
   intros. inversion H; subst; repeat split; auto.
 Qed.
@@ -231,13 +231,13 @@ Definition wf_sig (s: sig) : Prop :=
   Forall (fun (f: funsym) =>
     Forall (fun (t: vty) => 
       valid_type s t /\ Forall (fun (fv: typevar) => In fv (s_params f)) (type_vars t)
-    ) ((s_ret f) :: (s_args f))
+    ) ((f_ret f) :: (s_args f))
   ) (sig_f s) /\
   (*Predicate symbols are quite similar*)
   Forall (fun (p: predsym) =>
     Forall (fun (t: vty) => 
-      valid_type s t /\ Forall (fun (fv: typevar) => In fv (p_params p)) (type_vars t)
-    ) (p_args p)
+      valid_type s t /\ Forall (fun (fv: typevar) => In fv (s_params p)) (type_vars t)
+    ) (s_args p)
   ) (sig_p s).
 
 (*A context includes definitions for some of the types/functions/predicates in
@@ -386,7 +386,7 @@ Definition constr_adt_in_ctx (c: funsym) (a: alg_datatype) (gamma: context) :=
   parameters*)
 Definition valid_mut_rec (m: mut_adt) : Prop :=
   Forall (fun a => (m_params m) = (ts_args (adt_name a)) /\
-    Forall (fun f => (m_params m) = (s_params f)) 
+    Forall (fun (f: funsym) => (m_params m) = (s_params f)) 
       (ne_list_to_list (adt_constrs a))) (typs m).
 
 (*A context gamma extending signature s is well-formed if all type, function, and
@@ -532,7 +532,7 @@ Definition adt_valid_type (a : alg_datatype) : Prop :=
   | alg_def ts constrs => 
     Forall (fun (c: funsym) => 
       (s_params c) = (ts_args ts) /\ 
-      (s_ret c) = vty_cons ts (map vty_var (ts_args ts))) 
+      (f_ret c) = vty_cons ts (map vty_var (ts_args ts))) 
         (ne_list_to_list constrs)
   end.
 
@@ -597,10 +597,10 @@ Inductive typesym_inhab : list typesym -> list typevar -> typesym -> bool -> Pro
     (forall c, In c constrs -> constr_inhab (ts :: tss) tvs c false) ->
     typesym_inhab tss tvs ts false
 with constr_inhab: list typesym -> list typevar -> funsym -> bool -> Prop :=
-  | constr_checkT: forall tss tvs c,
+  | constr_checkT: forall tss tvs (c: funsym),
     (forall x, In x (s_args c) -> vty_inhab tss tvs x true) ->
     constr_inhab tss tvs c true
-  | constr_checkF: forall tss tvs c v,
+  | constr_checkF: forall tss tvs (c: funsym) v,
     In v (s_args c) ->
     vty_inhab tss tvs v false ->
     constr_inhab tss tvs c false
@@ -749,7 +749,7 @@ with nested_positive: funsym -> list typevar -> list vty ->
      (I: typesym) (ts: list typesym),
     (forall vty, In vty (s_args T) -> 
       strictly_positive (ty_subst params substs vty) ts) ->
-    (exists vs, (ty_subst params substs (s_ret T)) = vty_cons I vs /\
+    (exists vs, (ty_subst params substs (f_ret T)) = vty_cons I vs /\
       (forall x v, In x ts -> In v vs -> negb (typesym_in x v))) ->
     nested_positive T params substs I ts.
 
@@ -757,7 +757,7 @@ Inductive positive : funsym -> list typesym -> Prop :=
   (*We combine into one case because of we don't have true function types*)
   | Pos_constr: forall (constr: funsym) (ts: list typesym),
     (forall vty, In vty (s_args constr) -> strictly_positive vty ts) ->
-    (exists t vtys, In t ts /\ s_ret constr = vty_cons t vtys /\
+    (exists t vtys, In t ts /\ f_ret constr = vty_cons t vtys /\
       forall (v: vty) (x: typesym), In x ts -> In v vtys ->
         negb (typesym_in x v)) ->
     positive constr ts.
@@ -784,7 +784,7 @@ Variable gamma: context.
 Definition funpred_def_valid_type (fd: funpred_def) : Prop :=
   match fd with
   | fun_def f vars t =>
-    well_typed_term s gamma t (s_ret f) /\
+    well_typed_term s gamma t (f_ret f) /\
     sublist (term_fv t) vars
   | pred_def p vars f =>
     well_typed_formula s gamma f /\
@@ -803,8 +803,8 @@ Definition funpred_def_valid_type (fd: funpred_def) : Prop :=
 
 Inductive valid_ind_form (p: predsym) : formula -> Prop :=
   | VI_pred: forall (tys : list vty) tms,
-    tys = map vty_var (p_params p) ->
-    length (p_args p) = length tms ->
+    tys = map vty_var (s_params p) ->
+    length (s_args p) = length tms ->
     valid_ind_form p (Fpred p tys tms)
   | VI_impl: forall f1 f2,
     valid_ind_form p f2 ->
@@ -818,8 +818,8 @@ Inductive valid_ind_form (p: predsym) : formula -> Prop :=
      
 Fixpoint valid_ind_form_dec (p: predsym) (f: formula) : bool :=
   match f with
-  | Fpred p' tys tms => predsym_eq_dec p p' && list_eq_dec vty_eq_dec tys (map vty_var (p_params p))
-    && (length (p_args p) =? length tms)
+  | Fpred p' tys tms => predsym_eq_dec p p' && list_eq_dec vty_eq_dec tys (map vty_var (s_params p))
+    && (length (s_args p) =? length tms)
   | Fquant Tforall x f' => valid_ind_form_dec p f'
   | Fbinop Timplies f1 f2 => valid_ind_form_dec p f2
   | Flet t x f' => valid_ind_form_dec p f'
@@ -1094,7 +1094,7 @@ Qed.
 Lemma adt_constr_ret: forall {m: mut_adt} {a: alg_datatype}
   {c: funsym} (Hm: mut_in_ctx m gamma) (Ha: adt_in_mut a m) 
   (Hc: constr_in_adt c a),
-  s_ret c = vty_cons (adt_name a) (map vty_var (m_params m)).
+  f_ret c = vty_cons (adt_name a) (map vty_var (m_params m)).
 Proof.
   intros.
   (*This is an ugly hack, should change tactic so it leaves "in"

@@ -11,8 +11,8 @@ Require Import Coq.Logic.Eqdep_dec.
 
 
 
-Definition predsym_sigma_args (p: predsym) (s: list sort) : list sort :=
-  ty_subst_list_s (p_params p) s (p_args p).
+(*Definition predsym_sigma_args (p: predsym) (s: list sort) : list sort :=
+  ty_subst_list_s (p_params p) s (p_args p).*)
 
 Inductive domain_nonempty (domain: sort -> Type) (s: sort) :=
   | DE: forall (x: domain s),
@@ -57,18 +57,18 @@ Record pi_funpred (pd: pi_dom) := {
     the ith argument has the correct type.*)
 
   funs: forall (f:funsym) (srts: list sort),
-    arg_list (domain (dom_aux pd)) (funsym_sigma_args f srts) ->
+    arg_list (domain (dom_aux pd)) (sym_sigma_args f srts) ->
     (domain (dom_aux pd) (funsym_sigma_ret f srts));
 
   preds: forall (p:predsym) (srts: list sort),
-    arg_list (domain (dom_aux pd)) (predsym_sigma_args p srts) -> bool;
+    arg_list (domain (dom_aux pd)) (sym_sigma_args p srts) -> bool;
 
   (*The interpretation for each constructor comes from [constr_rep]
     with an additional cast for the domains*)
   constrs: forall (m: mut_adt) (a: alg_datatype) (c: funsym)
     (Hm: mut_in_ctx m gamma) (Ha: adt_in_mut a m) (Hc: constr_in_adt c a)
     (srts: list sort) (Hlens: length srts = length (m_params m))
-    (args: arg_list (domain (dom_aux pd)) (funsym_sigma_args c srts)),
+    (args: arg_list (domain (dom_aux pd)) (sym_sigma_args c srts)),
     funs c srts args =
     constr_rep_dom gamma_valid m Hm srts Hlens (dom_aux pd) a Ha
       c Hc (adts pd m srts) args

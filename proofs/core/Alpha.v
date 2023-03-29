@@ -823,10 +823,10 @@ Proof.
     generalize dependent (pat_constr_ind gamma_valid Hty2 Hinctx Hinmut eq_refl (fst (proj1_sig Hf'))).
     destruct Hf'. simpl.
     destruct x. simpl.
-    generalize dependent (funsym_sigma_args_map vt f vs2 e1).
+    generalize dependent (sym_sigma_args_map vt f vs2 e1).
     clear Hty1 Hty2 Hadtspec Hvslen2 Hvslen1.
     clear e.
-    unfold funsym_sigma_args in *.
+    unfold sym_sigma_args in *.
     generalize dependent ps2.
     generalize dependent ps.
     generalize dependent a.
@@ -1111,10 +1111,10 @@ Proof.
     generalize dependent (pat_constr_ind gamma_valid Hty2 Hinctx Hinmut eq_refl (fst (proj1_sig Hf'))).
     destruct Hf'. simpl.
     destruct x0. simpl.
-    generalize dependent (funsym_sigma_args_map vt f vs2 e1).
+    generalize dependent (sym_sigma_args_map vt f vs2 e1).
     clear Hty1 Hty2 Hadtspec Hvslen2 Hvslen1.
     clear e.
-    unfold funsym_sigma_args in *.
+    unfold sym_sigma_args in *.
     generalize dependent ps2.
     generalize dependent ps.
     generalize dependent a.
@@ -1474,7 +1474,7 @@ Proof.
     simpl_rep_full.
     f_equal.
     (*Now prove that arg_lists equivalent*)
-    apply get_arg_list_pred_ext; wf_tac.
+    apply get_arg_list_ext; wf_tac.
     rewrite fold_is_true in Hall.
     rewrite all2_forall with(d1:=tm_d)(d2:=tm_d) in Hall; auto.
     intros. rewrite Forall_forall in H. 
@@ -2478,8 +2478,8 @@ Proof.
     apply Nat.eqb_eq in H4.
     inversion H0; subst. constructor; auto; try lia.
     clear -H11 H2 H H9 H4 Hvars. subst sigma0.
-    assert (length l0 = length (map (ty_subst (p_params p0) l) (p_args p0))) by wf_tac.
-    generalize dependent (map (ty_subst (p_params p0) l) (p_args p0)).
+    assert (length l0 = length (map (ty_subst (s_params p0) l) (s_args p0))) by wf_tac.
+    generalize dependent (map (ty_subst (s_params p0) l) (s_args p0)).
     intros typs; revert typs.
     clear H9. rename l0 into tms2. generalize dependent tms2. 
     induction tms; simpl; intros; auto;

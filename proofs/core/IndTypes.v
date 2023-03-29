@@ -1016,7 +1016,7 @@ Definition sigma_args : list Types.sort :=
   map sigma (s_args c).
 
 Definition sigma_ret: Types.sort :=
-  sigma (s_ret c).
+  sigma (f_ret c).
 
 (*Part 1: make_constr_base*)
 
@@ -1279,12 +1279,14 @@ Definition args_to_ind_base (a: arg_list domain sigma_args) :
   a few lemmas to do this, mainly about substitution. *)
 
 (*TODO: where to put?*)
-Definition funsym_sigma_args (f: funsym) (s: list Types.sort) : list Types.sort :=
-  ty_subst_list_s (s_params f) s (s_args f).
+Definition sym_sigma_args (sym: fpsym) (s: list Types.sort) : list Types.sort :=
+  ty_subst_list_s (s_params sym) s (s_args sym).
+(*Definition funsym_sigma_args (f: funsym) (s: list Types.sort) : list Types.sort :=
+  ty_subst_list_s (s_params f) s (s_args f).*)
 
 (*More casting we need: TODO: should it go here or elsewhere?*)
 Definition funsym_sigma_ret (f: funsym) (s: list Types.sort) : Types.sort :=
-  ty_subst_s (s_params f) s (s_ret f).
+  ty_subst_s (s_params f) s (f_ret f).
 
 Lemma adt_typesym_funsym:
   typesym_to_sort (adt_name t) srts = funsym_sigma_ret c srts.
@@ -1303,9 +1305,9 @@ Proof.
   apply /nodup_NoDup. apply m_nodup.
 Qed. 
 
-Lemma sigma_args_eq: funsym_sigma_args c srts = sigma_args.
+Lemma sigma_args_eq: sym_sigma_args c srts = sigma_args.
 Proof.
-  unfold funsym_sigma_args. unfold sigma_args.
+  unfold sym_sigma_args. unfold sigma_args.
   unfold ty_subst_list_s.
   unfold sigma.
   assert (s_params c = m_params m). {
@@ -1326,14 +1328,14 @@ Qed.
 
 (*Now we can build the constructor corresponding to the function
   symbol c using the two functions from before*)
-Definition constr_rep (a: arg_list domain (funsym_sigma_args c srts)) :
+Definition constr_rep (a: arg_list domain (sym_sigma_args c srts)) :
   adt_rep t t_in :=
   make_constr _ _ _ _ _ constr_in_lemma 
     (args_to_constr_base (cast_arg_list sigma_args_eq a))
     (args_to_ind_base (cast_arg_list sigma_args_eq a)).
 
 (*We cast the result to the appropriate domain for the semantics*)
-Definition constr_rep_dom (a: arg_list domain (funsym_sigma_args c srts)) :
+Definition constr_rep_dom (a: arg_list domain (sym_sigma_args c srts)) :
   domain (funsym_sigma_ret c srts) := 
   scast 
     (*equality proof*)
@@ -1373,7 +1375,7 @@ Qed.
 
 Definition uniform (m: mut_adt) : bool :=
   forallb (fun a => 
-    forallb (fun f =>
+    forallb (fun (f: funsym) =>
       uniform_list m (s_args f) 
     ) (ne_list_to_list (adt_constrs a))
   ) (typs m).
@@ -1943,7 +1945,7 @@ Variable m_unif: uniform m.
   we can always find a constructor and an args list whose rep equals x*)
 (*Needs funext and UIP*)
 Definition find_constr_rep (x: adt_rep t t_in) :
-  {f: funsym & {Hf: constr_in_adt f t * arg_list (domain) (funsym_sigma_args f srts) |
+  {f: funsym & {Hf: constr_in_adt f t * arg_list (domain) (sym_sigma_args f srts) |
   x = constr_rep f (fst Hf) dom_adts (snd Hf)}}.
 Proof.
   assert (Hcons: (forall constrs : ne_list funsym,
@@ -1978,8 +1980,8 @@ Qed.
 (*Constructors are disjoint (axiom-free)*)
 Lemma constr_rep_disjoint: forall {f1 f2: funsym}
 {f1_in: constr_in_adt f1 t} {f2_in: constr_in_adt f2 t}
-(a1: arg_list domain (funsym_sigma_args f1 srts))
-(a2: arg_list domain (funsym_sigma_args f2 srts)),
+(a1: arg_list domain (sym_sigma_args f1 srts))
+(a2: arg_list domain (sym_sigma_args f2 srts)),
 f1 <> f2 ->
 constr_rep f1 f1_in dom_adts a1 <>
 constr_rep f2 f2_in dom_adts a2.
@@ -2150,7 +2152,7 @@ Qed.
 (*Constructors are injective. Requires UIP*)
 Lemma constr_rep_inj: forall {f: funsym}
 {f_in: constr_in_adt f t}
-(a1 a2: arg_list domain (funsym_sigma_args f srts)),
+(a1 a2: arg_list domain (sym_sigma_args f srts)),
 constr_rep f f_in dom_adts a1 = constr_rep f f_in dom_adts a2 ->
 a1 = a2.
 Proof.
@@ -2159,8 +2161,7 @@ Proof.
   destruct H as [Hb Hi].
   unfold args_to_constr_base in Hb.
   unfold args_to_ind_base in Hi.
-  unfold funsym_sigma_args in a1.
-  unfold funsym_sigma_args in a2.
+  unfold sym_sigma_args in a1, a2.
   assert (cast_arg_list (sigma_args_eq f f_in) a1 =
   (cast_arg_list (sigma_args_eq f f_in) a2)). {
     eapply args_to_base_inj. 2: apply Hb. 2: apply Hi.
@@ -2263,7 +2264,8 @@ Section Tests.
 (** Utilities for building tests *)
 
 Notation mk_fs name params args ret_ts ret_args := 
-  (Build_funsym name params args (vty_cons ret_ts (map vty_var ret_args)) erefl erefl erefl).
+  (Build_funsym (Build_fpsym name params args erefl erefl) 
+    (vty_cons ret_ts (map vty_var ret_args)) erefl).
 
 Definition triv_vars : typevar -> Set := fun _ => empty.
 Definition triv_syms: typesym -> list vty -> Set := fun _ _ => empty.

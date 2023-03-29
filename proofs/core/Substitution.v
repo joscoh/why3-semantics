@@ -280,7 +280,7 @@ Proof.
     specialize (Hx0 tm_d vty_int); subst; simpl.
     rewrite map_nth_inbound with(d2:=tm_d); auto.
     apply H; list_tac2.
-    apply (H10 (nth i tms tm_d, (nth i (map (ty_subst (p_params p) tys) (p_args p)) vty_int))).
+    apply (H10 (nth i tms tm_d, (nth i (map (ty_subst (s_params p) tys) (s_args p)) vty_int))).
     rewrite in_combine_iff; list_tac2.
     exists i. split; auto. intros.
     f_equal; apply nth_indep; list_tac2.

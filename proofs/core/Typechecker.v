@@ -95,10 +95,10 @@ Fixpoint typecheck_pattern (s: sig) (p: pattern) (v: vty) : bool :=
     (x \notin (pat_fv p)) &&
     (typecheck_pattern s p v)
   | Pconstr f params ps => 
-    (v == ty_subst (s_params f) params (s_ret f)) &&
+    (v == ty_subst (s_params f) params (f_ret f)) &&
     (f \in (sig_f s)) &&
     all (fun x => typecheck_type s x) params &&
-    (typecheck_type s (s_ret f)) &&
+    (typecheck_type s (f_ret f)) &&
     (length ps == length (s_args f)) &&
     (length params == length (s_params f)) &&
     ((fix check_list (l1: list pattern) (l2: list vty) : bool :=
@@ -223,13 +223,13 @@ Proof.
     apply ReflectT. by constructor.
   - (*The hard case*)
     move=> f vs ps Hall v.
-    case: (v == ty_subst (s_params f) vs (s_ret f)) /eqP => Hv/=; 
+    case: (v == ty_subst (s_params f) vs (f_ret f)) /eqP => Hv/=; 
       subst; last by reflF.
     case: (f \in sig_f s) /inP => Hinf/=; last by reflF.
     case: (all [eta typecheck_type s] vs) 
       /(all_Forall _ _ _ (fun x _ => typecheck_type_correct s x)) => Hforall/=;
       last by reflF.
-    case: (typecheck_type s (s_ret f)) /typecheck_type_correct => Hvalret; last by reflF.
+    case: (typecheck_type s (f_ret f)) /typecheck_type_correct => Hvalret; last by reflF.
     case: (length ps == length (s_args f)) /eqP => Hlenps/=; last by reflF.
     case: (length vs == length (s_params f)) /eqP => Hlenvs/=; last by reflF.
     (*Prove each of the last two conditions separately*)
@@ -351,7 +351,7 @@ Fixpoint typecheck_term (s: sig) (t: term) : option vty :=
   | Tfun f params tms =>
     if (f \in (sig_f s)) &&
       all (typecheck_type s) params &&
-      typecheck_type s (s_ret f) &&
+      typecheck_type s (f_ret f) &&
       (length tms == length (s_args f)) &&
       (length params == length (s_params f)) &&
       ((fix typecheck_args (l1: list term) (l2: list vty) : bool :=
@@ -362,7 +362,7 @@ Fixpoint typecheck_term (s: sig) (t: term) : option vty :=
       | nil, nil => true
       | _, _ => false
       end) tms (List.map (ty_subst (s_params f) params) (s_args f)))
-    then Some (ty_subst (s_params f) params (s_ret f))
+    then Some (ty_subst (s_params f) params (f_ret f))
     else None
   (*Function case*)
 
@@ -382,8 +382,8 @@ with typecheck_formula (s: sig) (f: formula) : bool :=
   | Fpred p params tms =>
       (p \in (sig_p s)) &&
       all (typecheck_type s) params &&
-      (length tms == length (p_args p)) &&
-      (length params == length (p_params p)) &&
+      (length tms == length (s_args p)) &&
+      (length params == length (s_params p)) &&
       ((fix typecheck_args (l1: list term) (l2: list vty) : bool :=
       match l1, l2 with
       | tm1 :: tl1, ty1 :: tl2 => 
@@ -391,7 +391,7 @@ with typecheck_formula (s: sig) (f: formula) : bool :=
         && typecheck_args tl1 tl2
       | nil, nil => true
       | _, _ => false
-      end) tms (List.map (ty_subst (p_params p) params) (p_args p)))
+      end) tms (List.map (ty_subst (s_params p) params) (s_args p)))
   | Flet t x f1 =>
     (typecheck_term s t == Some (snd x)) &&
     typecheck_formula s f1
@@ -444,7 +444,7 @@ Proof.
     case: (all (typecheck_type s) tys) /(all_Forall _ _ _ Halltyps) =>Halltys/=;
     last by reflF.
     rewrite {Halltyps}.
-    case: (typecheck_type s (s_ret f)) /typecheck_type_correct => Hvalret/=;
+    case: (typecheck_type s (f_ret f)) /typecheck_type_correct => Hvalret/=;
     last by reflF.
     case: (length tms == length (s_args f)) /eqP => Hlentms/=; last by reflF.
     case: (length tys == length (s_params f)) /eqP => Hlentys/=; 
@@ -616,20 +616,20 @@ Proof.
     case: (all (typecheck_type s) tys) /(all_Forall _ _ _ Halltyps) =>Halltys/=;
     last by reflF.
     rewrite {Halltyps}.
-    case: (length tms == length (p_args p)) /eqP => Hlentms/=; last by reflF.
-    case: (length tys == length (p_params p)) /eqP => Hlentys/=; 
+    case: (length tms == length (s_args p)) /eqP => Hlentms/=; last by reflF.
+    case: (length tys == length (s_params p)) /eqP => Hlentys/=; 
     last by reflF.
     apply iff_reflect. split.
     + move=> Hvalp. inversion Hvalp; subst.
       clear -H7 HallT Hlentms. subst sigma.
-      move: (p_args p) (ty_subst (p_params p) tys) Hlentms HallT H7 .
+      move: (s_args p) (ty_subst (s_params p) tys) Hlentms HallT H7 .
       elim: tms => [// [|]// | tmh tmtl /= IH [//|ah atl] sigma [Hlen]
         HallT /= Hall].
       apply /andP; split.
       * apply /(ForallT_hd _ _ _ HallT). apply (Forall_inv Hall).
       * apply IH=>//. by inversion HallT. by inversion Hall.
     + move=> Hargs. constructor=>//.
-      move: (p_args p) (ty_subst (p_params p) tys) Hlentms HallT Hargs. clear.
+      move: (s_args p) (ty_subst (s_params p) tys) Hlentms HallT Hargs. clear.
       elim: tms => [[|]// | tmh tmtl /= IH [//| ah atl] sigma [Hlen]
         HallT /= /andP[/(ForallT_hd _ _ _ HallT) Hh Hargs]]; 
         first by constructor.
