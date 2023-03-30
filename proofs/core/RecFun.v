@@ -675,12 +675,57 @@ Variable ps_typed: Forall
   we can assume some property of it, then build it up later
   *)
   Variable params: list typevar.
-  Variable params_eq: forall f, In f fs -> s_params (fn_sym f) = params.
+  Variable funs_params_eq: forall f, In f fs -> s_params (fn_sym f) = params.
+  Variable preds_params_eq: forall p, In p ps -> s_params (pn_sym p) = params.
+
+  Definition sns : list sn :=
+    map fn_sn fs ++ map pn_sn ps.
+
+  Lemma params_eq: forall s, In s sns -> s_params (sn_sym s) = params.
+  Proof.
+    intros. unfold sns in H. rewrite in_app_iff in H.
+    destruct H; auto; rewrite in_map_iff in H;
+    destruct H as [x [Heq Hinx]]; subst.
+    - replace (sn_sym x) with (f_sym (fn_sym x)).
+      rewrite funs_params_eq; auto.
+      destruct x; simpl. rewrite fn_wf0.
+      reflexivity.
+    - replace (sn_sym x) with (p_sym (pn_sym x)). 
+      rewrite preds_params_eq; auto.
+      destruct x; simpl. rewrite pn_wf0.
+      reflexivity.
+  Qed.
+
   (*Variable srts_len: length srts = length params.*)
   Variable f_typevars: forall f, In f fs -> 
     forall ty, In ty (f_ret (fn_sym f) :: s_args (fn_sym f)) ->
     forall x, In x (type_vars ty) ->
     In x params.
+
+  Variable p_typevars: forall p, In p ps ->
+    forall ty, In ty (s_args (pn_sym p)) ->
+    forall x, In x (type_vars ty) ->
+    In x params.
+
+  (*Here we lose info for funsyms*)
+  Lemma s_typevars: forall s, In s sns ->
+    forall ty, In ty (s_args (sn_sym s)) ->
+    forall x, In x (type_vars ty) ->
+    In x params.
+  Proof.
+    intros. unfold sns in H. rewrite in_app_iff in H.
+    destruct H; rewrite in_map_iff in H;
+    destruct H as [x' [Heq Hinx']]; subst.
+    - apply (f_typevars x' Hinx' ty); auto. right.
+      destruct x'; simpl in *.
+      rewrite fn_wf0. auto.
+    - apply (p_typevars x' Hinx' ty); auto. 
+      destruct x'; simpl in *.
+      rewrite pn_wf0. auto.
+  Qed.
+
+  (*TODO: ps version*)
+
   (*Will come from wf_context*)
 
   Notation domain := (domain (dom_aux pd)).
@@ -1835,11 +1880,44 @@ End Smaller.
   (*TODO: I think: need hypothesis about relationship
     between s_args and fn_args - also move to typing/put in
     definition of funpred_def maybe*)
-  Variable args_agree: forall f, In f fs ->
+  Variable funs_args_agree: forall f, In f fs ->
     map snd (sn_args f) = s_args (fn_sym f).
+  Variable preds_args_agree: forall p, In p ps ->
+    map snd (sn_args p) = s_args (pn_sym p).
+
+
+
+  Lemma args_agree: forall s, In s sns ->
+    map snd (sn_args s) = s_args (sn_sym s).
+  Proof.
+    intros. unfold sns in H. rewrite in_app_iff in H.
+    destruct H; auto; rewrite in_map_iff in H;
+    destruct H as [x [Heq Hinx]]; subst.
+    - rewrite funs_args_agree; auto.
+      destruct x; simpl. rewrite fn_wf0.
+      reflexivity.
+    - rewrite preds_args_agree; auto.
+      destruct x; simpl. rewrite pn_wf0.
+      reflexivity.
+  Qed.
+
   
-  Variable recurse_on_adt: forall f, In f fs ->
+  Variable funs_recurse_on_adt: forall f, In f fs ->
     vty_in_m m vs (snd (nth (sn_idx f) (sn_args f) vs_d)).
+  Variable preds_recurse_on_adt: forall p, In p ps ->
+    vty_in_m m vs (snd (nth (sn_idx p) (sn_args p) vs_d)).
+
+
+
+  Lemma recurse_on_adt: forall s, In s sns ->
+    vty_in_m m vs (snd (nth (sn_idx s) (sn_args s) vs_d)).
+  Proof.
+    intros. unfold sns in H. rewrite in_app_iff in H.
+    destruct H; auto; rewrite in_map_iff in H;
+    destruct H as [x [Heq Hinx]]; subst;
+    [apply funs_recurse_on_adt | apply preds_recurse_on_adt]; auto.
+  Qed.
+
     (*exists a,
     adt_in_mut a m /\ snd(nth (fn_idx f) (fn_args f) vs_d) =*)
 
@@ -2436,8 +2514,7 @@ Definition cast_symargs (srts: list sort) {s1 s2: fpsym} (H: s1 = s2) :
   for both functions and predicates. We define sn, the list
   formed by the sn's of fs and ps*)
 
-Definition sns : list sn :=
-  map fn_sn fs ++ map pn_sn ps.
+
 
 Definition packed_args : Set :=
   {x: {s: sn | In s sns} & {srts: list sort & arg_list domain (sym_sigma_args (sn_sym (proj1_sig x)) srts)}}.
@@ -2878,11 +2955,11 @@ Proof.
   rewrite vt_eq; auto. erewrite nth_indep; auto. lia.
 Qed.
 
-Lemma map_vals_srts' srts f:
+Lemma map_vals_srts' srts s:
   length srts = length params ->
   vt_eq srts ->
-  In f fs ->
-  map (fun x => val x) (map vty_var (s_params (fn_sym f))) = srts.
+  In s sns ->
+  map (fun x => val x) (map vty_var (s_params (sn_sym s))) = srts.
 Proof.
   intros.
   rewrite params_eq; auto. apply map_vars_srts; auto.
@@ -3201,9 +3278,9 @@ Lemma fn_ret_cast_eq (f: fn) (Hinf: In f fs)
   (Hvt_eq: vt_eq srts):
   val (f_ret (fn_sym f)) = funsym_sigma_ret (fn_sym f) srts.
 Proof.
-  unfold funsym_sigma_ret. rewrite params_eq; auto.
+  unfold funsym_sigma_ret. rewrite funs_params_eq; auto.
   apply v_ty_subst_eq; auto.
-  - rewrite <- (params_eq _ Hinf); auto. apply s_params_Nodup.
+  - rewrite <- (funs_params_eq _ Hinf); auto. apply s_params_Nodup.
   - eapply f_typevars. apply Hinf. left; auto.
 Qed.
 
@@ -3212,6 +3289,8 @@ Qed.
     but where do we need this? TODO: see*)
 Variable fs_dec: Forall (fun (f: fn) => decrease_fun fs ps nil 
   (Some (nth (sn_idx f) (sn_args f) vs_d)) m vs (fn_body f)) fs.
+Variable ps_dec: Forall (fun (p: pn) => decrease_pred fs ps nil 
+  (Some (nth (sn_idx p) (sn_args p) vs_d)) m vs (pn_body p)) ps.
 
 Lemma Forall_In {A: Type} {P: A -> Prop} {l: list A} {x: A}:
   Forall P l ->
@@ -3252,13 +3331,14 @@ Qed. (*TODO: Defined?*)
   with belongs to some function or predicate symbol*)
 Definition combined_args : Set :=
   {pa: packed_args & 
-  Either {f: fn | fn_sn f = proj1_sig (projT1 pa)}
-         {p: pn | pn_sn p = proj1_sig (projT1 pa)}}.
+  Either {f: fn | In f fs /\ fn_sn f = proj1_sig (projT1 pa)}
+         {p: pn | In p ps /\ pn_sn p = proj1_sig (projT1 pa)}}.
 
 Definition combine_args_fun (pa: packed_args) (f: fn)
+  (Hin: In f fs)
   (Hf: fn_sn f = proj1_sig (projT1 pa)) :
   combined_args :=
-  existT _ pa (Left _ _ (exist _ f Hf)).
+  existT _ pa (Left _ _ (exist _ f (conj Hin Hf))).
 
 (*
   {x: {s: sn | In s sn} &
@@ -3599,23 +3679,23 @@ Qed.
   have as input. But using the naive way means that we cannot
   prove that the nth argument (in fn_args) actually corresponds 
   to d. So we need another lemma*)
-Lemma arg_list_args_eq {srts: list sort} {f: fn} 
-  (Hin: In f fs)
+Lemma arg_list_args_eq {srts: list sort} {s: sn} 
+  (Hin: In s sns)
   (Hsrtslen: length srts = length params)
   (Hvteq: vt_eq srts)
   (i: nat):
-  i < length (sn_args f) ->
-  nth i (sym_sigma_args (fn_sym f) srts) s_int =
-  val (snd (nth i (sn_args f) vs_d)).
+  i < length (sn_args s) ->
+  nth i (sym_sigma_args (sn_sym s) srts) s_int =
+  val (snd (nth i (sn_args s) vs_d)).
 Proof.
   intros Hi.
-  pose proof (Hargs:=args_agree f Hin).
-  assert (Hleneq: length (sn_args f) = length (s_args (fn_sym f))). {
+  pose proof (Hargs:=args_agree s Hin).
+  assert (Hleneq: length (sn_args s) = length (s_args (sn_sym s))). {
     pose proof (f_equal (fun x => length x) Hargs) as Hlen.
     rewrite map_length in Hlen. unfold vsymbol. rewrite Hlen. auto.
   }
-  assert (Hitheq: (snd (nth i (sn_args f) vs_d) =
-  (nth i (s_args (fn_sym f)) vty_int))). {
+  assert (Hitheq: (snd (nth i (sn_args s) vs_d) =
+  (nth i (s_args (sn_sym s)) vty_int))). {
     pose proof (f_equal (fun x => nth i x vty_int) Hargs) as Hntheq.
     rewrite <- Hntheq.
     rewrite map_nth_inbound with (d2:=vs_d); auto.
@@ -3630,14 +3710,14 @@ Proof.
     + rewrite (params_eq _ Hin).
       apply Hvteq.
     + intros x. rewrite (params_eq _ Hin).
-      eapply f_typevars. apply Hin. simpl. right.
+      eapply s_typevars. apply Hin.
       apply nth_In. lia.
   - unfold ty_subst. apply v_subst_aux_sort_eq.
     intros.
     (*Basically, know that these are all in params*)
     (*TODO: separate lemma?*)
     assert (In x params). {
-      revert H. eapply f_typevars. apply Hin. right.
+      revert H. eapply s_typevars. apply Hin. 
       apply nth_In; lia.
     }
     rewrite (params_eq _ Hin).
@@ -3757,9 +3837,9 @@ let s2 := sn_sym sn_def in
 let s_eq := eq_trans (f_equal f_sym f_fn) (fn_wf fn_def) in
 let srts_eq:= eq_trans
 (f_equal
-   (fun x : funsym =>
+   (fun x : fpsym =>
     map (fun x0 : vty => val x0) (map vty_var (s_params x)))
-   f_fn) (map_vals_srts' srts fn_def srts_len vt_eq_srts fn_in) in
+   s_eq) (map_vals_srts' srts fn_def srts_len vt_eq_srts sn_in) in
 
 let l_eq2:= eq_trans (eq_sym srts_eq)
 (f_equal (fun x : list vty => map (fun x0 : vty => val x0) x)
@@ -3784,7 +3864,7 @@ let ind_arg:= existT
                         (sn_sym
                            (proj1_sig (exist (fun s : sn => In s sns) sn_def sn_in)))
                         srts)) srts args'') : packed_args in
-let ind_comb := combine_args_fun ind_arg fn_def eq_refl in
+let ind_comb := combine_args_fun ind_arg fn_def fn_in eq_refl in
 let ind_arg':= pack_args ind_comb v (conj srts_len vt_eq_srts) in
 R_projT1
      (fun fa : combined_args =>
@@ -3793,8 +3873,8 @@ R_projT1
         vt_eq (projT1 (projT2 (projT1 fa)))))%type)
      (R_projT1
         (fun pa : packed_args =>
-         Either {f : fn | fn_sn f = proj1_sig (projT1 pa)}
-           {p : pn | pn_sn p = proj1_sig (projT1 pa)}) arg_list_smaller) ind_arg' input.
+         Either {f : fn | In f fs /\ fn_sn f = proj1_sig (projT1 pa)}
+           {p : pn | In p ps /\ pn_sn p = proj1_sig (projT1 pa)}) arg_list_smaller) ind_arg' input.
 Proof.
   intros.
   unfold R_projT1.
@@ -3829,15 +3909,19 @@ Proof.
                  (eq_sym
                     (eq_trans
                        (eq_sym
-                          (eq_trans eq_refl
+                          (eq_trans
+                             (f_equal
+                                (fun x0 : fpsym =>
+                                 map (fun x1 : vty => val x1)
+                                   (map vty_var (s_params x0))) s_eq)
                              (map_vals_srts' (projT1 (projT2 (projT1 (projT1 input))))
-                                fn_def srts_len vt_eq_srts fn_in)))
+                                fn_def srts_len vt_eq_srts sn_in)))
                        (f_equal (fun x0 : list vty => map (fun x1 : vty => val x1) x0)
                           (eq_sym (proj1' (dec_inv_tfun_in Hdec' fn_in eq_refl)))))))
               args))))
     _ _ _ (projT1 (projT2 (projT1 (projT1 input)))) 
     eq_refl eq_refl _ _ eq_refl eq_refl eq_refl eq_refl).
-    simpl. rewrite eq_trans_refl.
+    simpl. (*rewrite eq_trans_refl.*)
     unfold cast_arg_list.
     rewrite scast_funsym_args_eq. simpl.
     rewrite scast_funsym_args_eq'. 
@@ -3847,8 +3931,8 @@ Proof.
     !eq_sym_involutive, !eq_trans_map_distr, !f_equal_compose.
     generalize dependent  (dec_inv_tfun_in Hdec' i eq_refl).
     intros. destruct H as [Heq [Hall1 Hall2]]. subst. 
-    generalize dependent (map_vals_srts' (projT1 (projT2 (projT1 (projT1 input)))) fn_def
-    srts_len vt_eq_srts fn_in).
+    generalize dependent (map_vals_srts' (projT1 (projT2 (projT1 (projT1 input))))
+    fn_def srts_len vt_eq_srts sn_in).
     intros.
     subst f1 y a1 srts_len vt_eq_srts.
     destruct input as [fa [v' [srts_len vt_eq_srts]]].
@@ -3875,7 +3959,7 @@ Proof.
     (*Now, this is just a casted version of the smaller assumption we
       have. So we can use [adt_smaller_trans_hide_cast]*)
     apply adt_smaller_trans_hide_cast.
-    rewrite <- eq_trans_map_distr, rewrite_dom_cast.
+    rewrite <- !eq_trans_map_distr, rewrite_dom_cast.
     repeat apply adt_smaller_trans_hide_cast.
     assert (term_has_type sigma (Tvar vs_small) (snd (nth (sn_idx x) (sn_args x) vs_d))). {
       pose proof (fun_ty_inversion sigma _ _ _ _ Hty') as Hinv.
@@ -3893,13 +3977,13 @@ Proof.
         intros. f_equal. apply nth_indep; auto.
         rewrite map_nth_inbound with(d2:=vty_int); [|rewrite <- Hlen; assumption]. 
         rewrite ty_subst_params_id; auto. intros.
-        rewrite params_eq; auto.
+        rewrite funs_params_eq; auto.
         apply f_typevars with(f:=x)
           (ty:=(nth (sn_idx x) (s_args (fn_sym x)) vty_int)); auto.
         right. apply nth_In. rewrite <- Hlen; assumption.
-      - rewrite <- args_agree; auto.
+      - rewrite <- funs_args_agree; auto.
         rewrite map_nth_inbound with (d2:=vs_d); auto.
-        rewrite <- args_agree in Hlen; auto.
+        rewrite <- funs_args_agree in Hlen; auto.
         rewrite map_length in Hlen. unfold vsymbol. 
         rewrite <- Hlen; assumption.
     }
@@ -4113,9 +4197,9 @@ let s2 := sn_sym sn_def in
 let s_eq := eq_trans (f_equal f_sym f_fn) (fn_wf fn_def) in
 let srts_eq:= eq_trans
 (f_equal
-   (fun x : funsym =>
+   (fun x : fpsym =>
     map (fun x0 : vty => val x0) (map vty_var (s_params x)))
-   f_fn) (map_vals_srts' srts fn_def srts_len vt_eq_srts fn_in) in
+   s_eq) (map_vals_srts' srts fn_def srts_len vt_eq_srts sn_in) in
 
 let l_eq2:= eq_trans (eq_sym srts_eq)
 (f_equal (fun x : list vty => map (fun x0 : vty => val x0) x)
@@ -4140,7 +4224,7 @@ let ind_arg:= existT
                 (sn_sym
                    (proj1_sig (exist (fun s : sn => In s sns) sn_def sn_in)))
                 srts)) srts args'') : packed_args in
-let ind_comb := combine_args_fun ind_arg fn_def eq_refl in
+let ind_comb := combine_args_fun ind_arg fn_def fn_in eq_refl in
 let ind_arg':= pack_args ind_comb v (conj srts_len vt_eq_srts) in
 R_projT1
      (fun fa : combined_args =>
@@ -4149,8 +4233,8 @@ R_projT1
         vt_eq (projT1 (projT2 (projT1 fa)))))%type)
      (R_projT1
         (fun pa : packed_args =>
-         Either {f : fn | fn_sn f = proj1_sig (projT1 pa)}
-           {p : pn | pn_sn p = proj1_sig (projT1 pa)}) arg_list_smaller) ind_arg' input.
+         Either {f : fn | In f fs /\ fn_sn f = proj1_sig (projT1 pa)}
+           {p : pn | In p ps /\ pn_sn p = proj1_sig (projT1 pa)}) arg_list_smaller) ind_arg' input.
 Proof.
   intros.
   apply func_smaller_case_gen with(ty:=ty)(Hty':=Hty').
@@ -4514,8 +4598,6 @@ Notation d := (hide_ty
 (*y is the vsymbol we must be syntactically decreasing on*)
 Notation y := (nth (sn_idx f1) (sn_args f1) vs_d).
 
-Print packed_args.
-
 (*The body of [term_rep_aux]*)
 Definition term_rep_aux_body 
 (term_rep_aux: forall (v: val_vars pd vt) 
@@ -4772,9 +4854,9 @@ bool)
     (*With l_eq, we can begin casting*)
     let srts_eq : map (fun x => val x) (map vty_var (s_params s1)) =
       srts :=
-      eq_trans (f_equal (fun (x: funsym) => map (fun x => val x) (map vty_var (s_params x)))
-        f_fn)
-        (map_vals_srts' srts fn_def srts_len vt_eq_srts fn_in) in
+      eq_trans (f_equal (fun (x: fpsym) => map (fun x => val x) (map vty_var (s_params x)))
+        s_eq)
+        (map_vals_srts' srts fn_def srts_len vt_eq_srts sn_in) in
 
     let l_eq2: srts = map (fun x => val x) l :=
       eq_trans (eq_sym srts_eq) 
@@ -4793,7 +4875,7 @@ bool)
     := existT _ (exist _ (sn_def) sn_in) 
       (existT _ srts args'') in
     let ind_comb: combined_args :=
-      combine_args_fun ind_arg fn_def eq_refl in
+      combine_args_fun ind_arg fn_def fn_in eq_refl in
     let ind_arg' : packed_args2 :=
       pack_args ind_comb v (conj srts_len vt_eq_srts) in
 
@@ -5323,10 +5405,10 @@ formula_rep_aux_body term_rep_aux formula_rep_aux v f small hd Hval Hdec Hsmall 
 
 End TermRepAux.
 
-(*
+
 (*Need to show that Hhd is satisfied for y*)
 Lemma y_eq_d (input: packed_args2):
-let fa := projT1 input in
+let fa := projT1 (projT1 input) in
 let v := fst (projT2 input) in
 let Hsrts := snd (projT2 input) in
 let f1 := proj1_sig (projT1 fa) in
@@ -5336,19 +5418,19 @@ let srts_len := proj1' Hsrts in
 let vt_eq_srts := proj2' Hsrts in
 (*d is the ADT instance we must be smaller than to recurse*)
 let d :=  (dom_cast _ 
-(arg_nth_eq srts (fn_sym f1) (sn_idx f1) (sn_idx_bound f1)) 
+(arg_nth_eq srts (sn_sym f1) (sn_idx f1) (sn_idx_bound f1)) 
 (hnth (sn_idx f1) a1 s_int (dom_int pd))) in
 (*y is the vsymbol we must be syntactically decreasing on*)
-let y := nth (sn_idx f1) (fn_args f1) vs_d in
+let y := nth (sn_idx f1) (sn_args f1) vs_d in
 forall (h : vsymbol),
 Some y = Some h ->
 vty_in_m m vs (snd h) /\
-hide_ty (val_with_args v (fn_args f1) a1 h)= 
+hide_ty (val_with_args v (sn_args f1) a1 h)= 
 hide_ty d.
 Proof.
   intros.
   inversion H; subst.
-  assert (Hin: In f1 fs). {
+  assert (Hin: In f1 sns). {
     destruct fa. simpl in *. destruct x. auto.
   }
   split.
@@ -5358,127 +5440,137 @@ Proof.
     (Heq:=arg_list_args_eq Hin srts_len vt_eq_srts (sn_idx f1) (sn_idx_bound' f1)); auto.
     + subst d.
       apply hide_ty_dom_cast.
-    + apply fn_args_Nodup. 
+    + apply sn_args_Nodup. 
     + unfold sym_sigma_args, ty_subst_list_s. 
       rewrite map_length, <- (args_agree _ Hin), map_length; auto.
     + apply sn_idx_bound'.
 Qed.
-*)
 (*The body of the outer function - calls [term_rep_aux]
   with appropriate arguments*)
-Print combined_args.
-(*TODO: do with tactics first, then try to write*)
+
+Lemma fn_sym_eq (f: fn):
+  f_sym (fn_sym f) = sn_sym f.
+Proof.
+  destruct f; auto.
+Qed.
+
+(*We define the full function body manually. We use the 
+  list of "let"s rather than a deeper pattern match because
+  the resulting proof term is much smaller
+  (this is the same reason we give a manual, not tactic, definition) *)
 Definition funcs_rep_aux_body (input: packed_args2)
 (rec:(forall
   y : packed_args2,
   (R_projT1 _ (R_projT1 _ arg_list_smaller)) y input ->
   funrep_ret (projT1 y))):
   funrep_ret (projT1 input) :=
-  let fa := projT1 (projT1 input) in
-  let v := fst (projT2 input) in
-  let Hsrts := snd (projT2 input) in
-  let f1 := proj1_sig (projT1 fa) in
-  let a1 := projT2 (projT2 fa) in
-  let srts := projT1 (projT2 fa) in
-  let srts_len := proj1' Hsrts in
-  let vt_eq_srts := proj2' Hsrts in
 
-  let o := projT2 (projT1 input) in
+  match input as i return
+  (forall
+  y : packed_args2,
+  (R_projT1 _ (R_projT1 _ arg_list_smaller)) y i ->
+  funrep_ret (projT1 y)) -> funrep_ret (projT1 i) with
+  (*We do each case separately*)
+  | existT (existT packed (Left fndata)) valsrts => fun rec => 
 
-  (*d is the ADT instance we must be smaller than to recurse*)
-  let d := (hide_ty (dom_cast _ 
-    (arg_nth_eq srts (sn_sym f1) (sn_idx f1) (sn_idx_bound f1)) 
-    (hnth (sn_idx f1) a1 s_int (dom_int pd)))) in
+    let s1 := proj1_sig (projT1 packed) in
+    let s_in := proj2_sig (projT1 packed) in
+    let srts := projT1 (projT2 packed) in
+    let a1 := projT2 (projT2 packed) in
+    let f := proj1_sig fndata in
+    let Hinf := proj1' (proj2_sig fndata) in
+    let Heqf := proj2' (proj2_sig fndata) in
+    let v := fst valsrts in
+    let srts_len := proj1' (snd valsrts) in
+    let vt_eq_srts := proj2' (snd valsrts) in
 
+    let input : packed_args2 := 
+      existT _ (existT _ packed (Left _ _ fndata)) valsrts in
 
-  match projT2 (projT1 input) as o return
-    funrep_ret  with
-  | Left finfo =>
-    let fn_def := proj1_sig finfo in
-    let fn_eq : fn_sn fn_def = f1 := proj2_sig finfo in
+    let y := nth (sn_idx s1) (sn_args s1) vs_d in
 
-    let s_in : In f1 sns := proj2_sig (projT1 fa) in
-    let f1_in : In fn_def fs := _ in
+    let y_eq : y = nth (sn_idx f) (sn_args f) vs_d := 
+      f_equal (fun x => nth (sn_idx x) (sn_args x) vs_d) (eq_sym Heqf) in
 
-      (*y is the vsymbol we must be syntactically decreasing on*)
-    let y := nth (sn_idx fn_def) (sn_args fn_def) vs_d in
+    (*tm is the result of calling term_rep_aux*)
+    let tm :=
+    (proj1_sig (term_rep_aux input rec
+      (val_with_args v (sn_args s1) a1) (fn_body f) 
+        (f_ret (fn_sym f))  nil
+      (Some y)
+      (*proofs we need for [term_rep_aux]*)
+      (Forall_In fs_typed Hinf)
+      (eq_ind _ (fun x => decrease_fun fs ps _ x m vs _)  
+        (Forall_In fs_dec Hinf) _ (f_equal Some (eq_sym y_eq)))
+      (fun x Hx => match Hx with end)
+      (y_eq_d input) )) in
 
+    (*Then we cast the result*)
 
-    (*dom_cast _ (fn_ret_cast_eq _ f1_in srts a1
-      (proj1' Hsrts) (proj2' Hsrts)) *)
-      (proj1_sig (term_rep_aux input rec
-        (val_with_args v (sn_args f1) a1) (fn_body fn_def) 
-          (f_ret (fn_sym fn_def))  nil
-        (Some y)
-        (*proofs we need for [term_rep_aux]*)
-        (Forall_In fs_typed f1_in)
-        (Forall_In fs_dec f1_in)
-        (fun x Hx => match Hx with end)
-        (*(y_eq_d input)*) _ ))(*)*)
+    let Hsf : sn_sym s1 = fn_sym f := 
+      eq_sym (eq_trans (fn_sym_eq f) (f_equal sn_sym Heqf)) in
 
+    let a2 : arg_list domain (sym_sigma_args (fn_sym f) srts) :=
+      cast_arg_list (f_equal (fun x => sym_sigma_args x srts) Hsf) a1 in
 
-    
-  | Right pinfo => false
-  end.
+    dom_cast _ (fn_ret_cast_eq f Hinf srts a2 srts_len vt_eq_srts) tm
 
-  
-  
+  (*Pred case - slightly better, no casting needed*)
+  | existT (existT packed (Right pndata)) valsrts => fun rec => 
 
-(*TODO: prove that y has this property*)
-*)
+    let s1 := proj1_sig (projT1 packed) in
+    let s_in := proj2_sig (projT1 packed) in
+    let srts := projT1 (projT2 packed) in
+    let a1 := projT2 (projT2 packed) in
+    let p := proj1_sig pndata in
+    let Hinp := proj1' (proj2_sig pndata) in
+    let Heqp := proj2' (proj2_sig pndata) in
+    let v := fst valsrts in
+    let srts_len := proj1' (snd valsrts) in
+    let vt_eq_srts := proj2' (snd valsrts) in
+
+    let input : packed_args2 := 
+      existT _ (existT _ packed (Right _ _ pndata)) valsrts in
+
+    let y := nth (sn_idx s1) (sn_args s1) vs_d in
+
+    let y_eq : y = nth (sn_idx p) (sn_args p) vs_d := 
+    f_equal (fun x => nth (sn_idx x) (sn_args x) vs_d) (eq_sym Heqp) in
+
+    (formula_rep_aux input rec
+      (val_with_args v (sn_args s1) a1) (pn_body p) 
+      nil
+      (Some y)
+      (*proofs we need for [term_rep_aux]*)
+      (Forall_In ps_typed Hinp)
+      (eq_ind _ (fun x => decrease_pred fs ps _ x m vs _)  
+        (Forall_In ps_dec Hinp) _ (f_equal Some (eq_sym y_eq)))
+      (fun x Hx => match Hx with end)
+      (y_eq_d input) )
+
+  end rec.
+
 (*Define final function with Fix*)
-
-
-
 Definition funcs_rep_aux (fa: combined_args)
 (v: val_vars pd vt)
 (Hsrts: length (projT1 (projT2 (projT1 fa))) = length params /\
   vt_eq (projT1 (projT2 (projT1 fa)))) :
   (*The return type depends on whether this is a function or
     predicate definition*)
-  funrep_ret fa.
+  funrep_ret fa :=
 
-pose (Hwf :=
-  wf_projT1 (wf_projT1 arg_list_smaller_wf): 
+  @Fix packed_args2 _ 
+  (*well-founded proof*)
+  (wf_projT1 (wf_projT1 arg_list_smaller_wf): 
   well_founded (fun (x y: packed_args2) =>
-    R_projT1 _ (R_projT1 _ arg_list_smaller) x y) ); simpl in Hwf.
-
-pose proof (@Fix packed_args2 _ Hwf
+    R_projT1 _ (R_projT1 _ arg_list_smaller) x y))
+  (*type of function*)
   (fun (p: packed_args2) => 
   funrep_ret (projT1 p))
-
-).
-simpl in X.
-(*OK, so we know the type now*)
-
-
-apply wf_projT1.
-
-
-well_founded (R_projT1 _ (R_projT1)))
-
-  Check (R_projT1 _(R_projT1 _ arg_list_smaller)).
-  (*Our relation should be*)
-
-
-assert (Hwf: well_founded
-(fun
-   x
-    y : {fa0 : packed_args &
-        (val_vars pd vt *
-         (Datatypes.length (projT1 (projT2 fa0)) = Datatypes.length params /\
-          vt_eq (projT1 (projT2 fa0))))%type} =>
- arg_list_smaller (projT1 x) (projT1 y))). {
-  exact (wf_projT1 arg_list_smaller_wf).
-}
-pose proof (@Fix packed_args2
-(R_projT1 _ arg_list_smaller) Hwf
-(fun input => domain (funsym_sigma_ret (fn_sym (proj1_sig (projT1 (projT1 input))))
-(projT1 (projT2 (projT1 input)))) )
-funcs_rep_aux_body).
-specialize (X (pack_args fa v Hsrts)).
-simpl in X. apply X.
-Defined.
+  (*body*)
+  funcs_rep_aux_body
+  (*applied to*)
+  (pack_args fa v Hsrts).
 
 (*We have it!*)
 
