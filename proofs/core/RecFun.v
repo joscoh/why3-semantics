@@ -732,10 +732,10 @@ Variable ps_typed: Forall
 
 Section Smaller.
 
-Context  {vt: @val_typevar sigma} {pf: pi_funpred gamma_valid pd}.
+Context  {vt: val_typevar} {pf: pi_funpred gamma_valid pd}.
  
 
-Notation val x :=  (v_subst (v_typevar vt) x).
+Notation val x :=  (v_subst vt x).
 
 (*Induction for ADTS*)
 Section Induction.
@@ -1858,7 +1858,7 @@ Variable srts: list sort.*)
 (*This definition might be bad, see about this*)
 
 (*This is why we need sort, not 
-  {x: vty & domain (v_subst (v_typevar vt) x)}
+  {x: vty & domain (v_subst vt x)}
   This definition is unusable when we have types who are not
   equal but their valuations are*)
 Definition hide_ty {s: sort} (d: domain s) : {s: sort & domain s} :=
@@ -2013,19 +2013,6 @@ Proof.
   subst. reflexivity.
 Qed.
 
-(*Lemma hide_ty_eq {vt ty1 ty2} (d1: domain (v_subst (v_typevar vt) ty1))
-  (d2: domain (v_subst (v_typevar vt) ty2))
-  (Heqty: ty1 = ty2)
-  Heq2:
-  d2 = dom_cast (dom_aux pd) Heq2 d1 ->
-  hide_ty d1 = hide_ty d2.
-Proof.
-  intros.
-  subst. unfold dom_cast.
-  assert (Heq2 = eq_refl). apply UIP_dec. apply sort_eq_dec.
-  subst. reflexivity.
-Qed.*)
-
 Lemma v_subst_twice {v} ty:
   v_subst v (v_subst v ty) = v_subst v ty.
 Proof.
@@ -2043,7 +2030,7 @@ Theorem match_val_single_smaller (vt: val_typevar) (v: val_vars pd vt) (ty: vty)
   (p: pattern)
   (Hp: pattern_has_type sigma p ty)
   (Hty: vty_in_m m vs ty)
-  (d: domain(v_subst (v_typevar vt) ty))
+  (d: domain(v_subst vt ty))
   (l: list (vsymbol * {s: sort & domain s})):
   match_val_single gamma_valid pd all_unif vt ty p Hp d = Some l ->
     (*For [pat_constr_vars_inner], either same or smaller*)
@@ -2107,25 +2094,25 @@ Proof.
     intros Hvslen2.
     destruct (funsym_eq_dec
     (projT1
-       (find_constr_rep gamma_valid m Hinctx (map (v_subst (v_typevar vt)) vs2)
-          (eq_trans (map_length (v_subst (v_typevar vt)) vs2) Hvslen2) 
+       (find_constr_rep gamma_valid m Hinctx (map (v_subst vt) vs2)
+          (eq_trans (map_length (v_subst vt) vs2) Hvslen2) 
           (dom_aux pd) adt Hinmut
-          (Semantics.adts pd m (map (v_subst (v_typevar vt)) vs2)) 
+          (Semantics.adts pd m (map (v_subst vt) vs2)) 
           (all_unif m Hinctx)
-          (scast (Semantics.adts pd m (map (v_subst (v_typevar vt)) vs2) adt Hinmut)
+          (scast (Semantics.adts pd m (map (v_subst vt) vs2) adt Hinmut)
              (dom_cast (dom_aux pd)
-                (eq_trans (f_equal (v_subst (v_typevar vt)) Htyeq)
+                (eq_trans (f_equal (v_subst vt) Htyeq)
                    (v_subst_cons (adt_name adt) vs2)) d)))) f);
     [| intros; discriminate].
-    generalize dependent (find_constr_rep gamma_valid m Hinctx (map (v_subst (v_typevar vt)) vs2)
-    (eq_trans (map_length (v_subst (v_typevar vt)) vs2) Hvslen2) 
+    generalize dependent (find_constr_rep gamma_valid m Hinctx (map (v_subst vt) vs2)
+    (eq_trans (map_length (v_subst vt) vs2) Hvslen2) 
     (dom_aux pd) adt Hinmut
-    (Semantics.adts pd m (map (v_subst (v_typevar vt)) vs2))
+    (Semantics.adts pd m (map (v_subst vt) vs2))
     (all_unif m Hinctx)
     (scast
-       (Semantics.adts pd m (map (v_subst (v_typevar vt)) vs2) adt Hinmut)
+       (Semantics.adts pd m (map (v_subst vt) vs2) adt Hinmut)
        (dom_cast (dom_aux pd)
-          (eq_trans (f_equal (v_subst (v_typevar vt)) Htyeq)
+          (eq_trans (f_equal (v_subst vt) Htyeq)
              (v_subst_cons (adt_name adt) vs2)) d))).
     intros constr. destruct constr as [f' Hf']. simpl. intros Hf; subst.
     simpl.
@@ -2135,7 +2122,7 @@ Proof.
       everything in (snd x) is smaller than d - this is the key
       theorem - when we pattern match, we actually get a smaller
       ADT*)
-    set (srts:=(map (v_subst (v_typevar vt)) vs2)) in *.
+    set (srts:=(map (v_subst vt) vs2)) in *.
     assert (Hparams: s_params f = m_params m). {
       eapply adt_constr_params. apply gamma_valid.
       auto. apply Hinmut. apply (fst x).
@@ -2145,7 +2132,7 @@ Proof.
     (*We do NOT want val_sort_eq, instead prove directly*)
     assert (Hithcast: forall i, i < length (s_args f) ->
       nth i (sym_sigma_args f srts) s_int =
-      v_subst (v_typevar vt) (ty_subst (s_params f) vs2 
+      v_subst vt (ty_subst (s_params f) vs2 
         (nth i (s_args f) vty_int))). {
       intros. subst srts. rewrite sym_sigma_args_map; auto.
       unfold ty_subst_list. rewrite map_map.
@@ -2154,7 +2141,7 @@ Proof.
 
     assert (Hsmall: forall i (Hi: i < length (s_args f))
       (Hithcast: nth i (sym_sigma_args f srts) s_int =
-      v_subst (v_typevar vt) (ty_subst (s_params f) vs2 
+      v_subst vt (ty_subst (s_params f) vs2 
         (nth i (s_args f) vty_int))),
       vty_in_m m (map vty_var (m_params m)) (nth i (s_args f) vty_int) ->
       adt_smaller 
@@ -2163,7 +2150,7 @@ Proof.
       intros.
       apply (reflect_iff _ _ (vty_in_m_spec _ _ _)) in H0.
       destruct H0 as [adt2 [Hina2 Hntheq]].
-      assert (Hvalntheq: v_subst (v_typevar vt) 
+      assert (Hvalntheq: v_subst vt 
         (nth i (sym_sigma_args f srts) s_int) =
       typesym_to_sort (adt_name adt2) srts). {
         (*TODO: maybe separate lemma or something - inverse of
@@ -2205,9 +2192,9 @@ Proof.
       }
       eapply (ADT_small (hide_ty (dom_cast (dom_aux pd) Hithcast0
           (hnth i (snd x) s_int (dom_int pd)))) (hide_ty d)
-          (v_subst (v_typevar vt) 
+          (v_subst vt 
             (ty_subst (s_params f) vs2 (nth i (s_args f) vty_int)))
-          (v_subst (v_typevar vt) 
+          (v_subst vt 
             (vty_cons (adt_name adt) vs2))
            _ _ m adt2 adt srts f (snd x)
           eq_refl eq_refl eq_refl eq_refl
@@ -2461,15 +2448,17 @@ End MatchSmallerLemma.
 
 (*Now that we are done, we can fix vt*)
 
-Context  {vt: @val_typevar sigma} {pf: pi_funpred gamma_valid pd}.
+Section Def.
+
+Context  {vt: val_typevar} {pf: pi_funpred gamma_valid pd}.
  
-Notation val x :=  (v_subst (v_typevar vt) x).
+Notation val x :=  (v_subst vt x).
 
 (*We need to build a new val_typevar, we cannot assume this
   or maybe it is OK*)
 (*HMM see*)
 Definition vt_eq srts:= forall i, i < length params ->
-  (v_typevar vt) (nth i params EmptyString) = nth i srts s_int.
+  vt (nth i params EmptyString) = nth i srts s_int.
 
 Section WellFounded2.
 
@@ -2842,7 +2831,7 @@ exists
 (ty' : vty) (Hty' : term_has_type sigma (Tvar vs_small) ty') 
 (Heq0 : val ty' = ty_subst_s (s_params s) (map (fun x : vty => val x) vs') ahd),
 dom_cast (dom_aux pd)
-  (funsym_subst_eq (s_params s) vs' (v_typevar vt) ahd (s_params_Nodup s)
+  (funsym_subst_eq (s_params s) vs' vt ahd (s_params_Nodup s)
      (eq_sym Hparamslen))
   (proj1_sig
      (rep thd (ty_subst (s_params s) vs' ahd) small hd (Forall_inv Htys)
@@ -2856,7 +2845,7 @@ Proof.
   exists (eq_ind (nth 0 (thd :: ttl) tm_d)
   (fun t : term => term_has_type sigma t (ty_subst (s_params s) vs' ahd))
   (Forall_inv Htys) (Tvar vs_small) Hthd).
-  exists (funsym_subst_eq (s_params s) vs' (v_typevar vt) ahd
+  exists (funsym_subst_eq (s_params s) vs' vt ahd
       (s_params_Nodup _) (eq_sym Hparamslen)) .
   (*simpl.*)
   destruct (rep thd (ty_subst (s_params s) vs' ahd) small hd
@@ -2969,7 +2958,7 @@ match ts as ts'
         False_rect _ (Nat.neq_succ_0 (length ttl) Hlen)
       | ahd :: atl => fun Heq Htys =>
         exist _ (HL_cons _ _ _ (dom_cast (dom_aux pd)
-        (funsym_subst_eq (s_params f) vs' (v_typevar vt) ahd
+        (funsym_subst_eq (s_params f) vs' vt ahd
          (s_params_Nodup _) (eq_sym Hparamslen)) 
           (proj1_sig (rep _ _ _ _ (Forall_inv Htys) (Forall_inv Hdecs) Hsmall Hhd))) 
           (proj1_sig (get_arg_list_ext_aux'  f  Hsmall Hhd rep Hparamslen atl 
@@ -2987,10 +2976,10 @@ match ts as ts'
                       (ty_subst_list_s (s_params f) (map (fun x : vty => val x) vs') (ahd :: atl))
                       s_int),
               hnth j'
-                (HL_cons domain (ty_subst_s (s_params f) (map (v_subst (v_typevar vt)) vs') ahd)
+                (HL_cons domain (ty_subst_s (s_params f) (map (v_subst vt) vs') ahd)
                   (ty_subst_list_s (s_params f) (map (fun x : vty => val x) vs') atl)
                   (dom_cast (dom_aux pd)
-                      (funsym_subst_eq (s_params f) vs' (v_typevar vt) ahd 
+                      (funsym_subst_eq (s_params f) vs' vt ahd 
                         (s_params_Nodup f) (eq_sym Hparamslen))
                       (proj1_sig
                         (rep (fst (thd, ty_subst (s_params f) vs' ahd))
@@ -3336,14 +3325,14 @@ Proof.
     + simpl. destruct i.
       * (*i=0*) 
         destruct (vsymbol_eq_dec a a); try contradiction.
-        destruct (vty_eq_dec (v_subst_aux (fun x0 : typevar => v_typevar vt x0) (snd a)) x); subst.
+        destruct (vty_eq_dec (v_subst_aux (fun x0 : typevar => vt x0) (snd a)) x); subst.
         -- unfold dom_cast.
           f_equal. f_equal. apply dec_uip_diff. apply sort_eq_dec.
         -- exfalso. apply n.
           simpl in Heq. subst. reflexivity.
       * (*i <> 0*) inversion Hnodup; subst.
         destruct (vty_eq_dec
-        (v_subst_aux (fun x0 : typevar => v_typevar vt x0) (snd (nth i vars vs_d))) x).
+        (v_subst_aux (fun x0 : typevar => vt x0) (snd (nth i vars vs_d))) x).
         -- destruct (vsymbol_eq_dec a (nth i vars vs_d)).
           ++ exfalso; subst. apply H1. apply nth_In; auto. simpl in Hi. lia.
           ++ erewrite IHvars; auto. lia. 
@@ -3359,7 +3348,7 @@ Proof.
   generalize dependent srts. induction vars; simpl; intros; auto.
   destruct a0; auto.
   simpl in Hnotinx. not_or Hx.
-  destruct (vty_eq_dec (v_subst_aux (fun x1 : typevar => v_typevar vt x1) (snd x)) x0).
+  destruct (vty_eq_dec (v_subst_aux (fun x1 : typevar => vt x1) (snd x)) x0).
   - destruct (vsymbol_eq_dec a x); subst; auto; contradiction.
   - apply IHvars; auto.
 Qed.
@@ -4148,7 +4137,7 @@ with
       False_rect _ (Nat.neq_succ_0 (length ttl) Hlen)
     | ahd :: atl => fun Heq Htys =>
       exist _ (HL_cons _ _ _ (dom_cast (dom_aux pd)
-      (funsym_subst_eq (s_params s) vs' (v_typevar vt) ahd
+      (funsym_subst_eq (s_params s) vs' vt ahd
       (s_params_Nodup _) (eq_sym Hparamslen)) 
         (proj1_sig (term_rep_aux v _ _ _ _ (Forall_inv Htys) (Forall_inv Hdecs) Hsmall Hhd))) 
         (proj1_sig (get_arg_list_ext_aux'  s  Hparamslen atl 
@@ -4166,10 +4155,10 @@ with
                     (ty_subst_list_s (s_params s) (map (fun x : vty => val x) vs') (ahd :: atl))
                     s_int),
             hnth j'
-              (HL_cons domain (ty_subst_s (s_params s) (map (v_subst (v_typevar vt)) vs') ahd)
+              (HL_cons domain (ty_subst_s (s_params s) (map (v_subst vt) vs') ahd)
                 (ty_subst_list_s (s_params s) (map (fun x : vty => val x) vs') atl)
                 (dom_cast (dom_aux pd)
-                    (funsym_subst_eq (s_params s) vs' (v_typevar vt) ahd 
+                    (funsym_subst_eq (s_params s) vs' vt ahd 
                       (s_params_Nodup s) (eq_sym Hparamslen))
                     (proj1_sig
                       (term_rep_aux v (fst (thd, ty_subst (s_params s) vs' ahd))
@@ -4395,7 +4384,7 @@ with
       False_rect _ (Nat.neq_succ_0 (length ttl) Hlen)
     | ahd :: atl => fun Heq Htys =>
       exist _ (HL_cons _ _ _ (dom_cast (dom_aux pd)
-      (funsym_subst_eq (s_params s) vs' (v_typevar vt) ahd
+      (funsym_subst_eq (s_params s) vs' vt ahd
       (s_params_Nodup _) (eq_sym Hparamslen)) 
         (proj1_sig (term_rep_aux v _ _ _ _ (Forall_inv Htys) (Forall_inv Hdecs) Hsmall Hhd))) 
         (proj1_sig (get_arg_list_ext_aux'  s  Hparamslen atl 
@@ -4413,10 +4402,10 @@ with
                     (ty_subst_list_s (s_params s) (map (fun x : vty => val x) vs') (ahd :: atl))
                     s_int),
             hnth j'
-              (HL_cons domain (ty_subst_s (s_params s) (map (v_subst (v_typevar vt)) vs') ahd)
+              (HL_cons domain (ty_subst_s (s_params s) (map (v_subst vt) vs') ahd)
                 (ty_subst_list_s (s_params s) (map (fun x : vty => val x) vs') atl)
                 (dom_cast (dom_aux pd)
-                    (funsym_subst_eq (s_params s) vs' (v_typevar vt) ahd 
+                    (funsym_subst_eq (s_params s) vs' vt ahd 
                       (s_params_Nodup s) (eq_sym Hparamslen))
                     (proj1_sig
                       (term_rep_aux v (fst (thd, ty_subst (s_params s) vs' ahd))
@@ -4867,9 +4856,9 @@ bool)
   (*The main typecast: v(sigma(ty_ret)) = sigma'(ty_ret), where
     sigma sends (s_params f)_i -> l_i and 
     sigma' sends (s_params f) _i -> v(l_i)*)
-  let Heqret : v_subst (v_typevar vt) (ty_subst (s_params f) l (f_ret f)) =
-    ty_subst_s (s_params f) (map (v_subst (v_typevar vt)) l) (f_ret f) :=
-      funsym_subst_eq (s_params f) l (v_typevar vt) (f_ret f) (s_params_Nodup f)
+  let Heqret : v_subst vt (ty_subst (s_params f) l (f_ret f)) =
+    ty_subst_s (s_params f) (map (v_subst vt) l) (f_ret f) :=
+      funsym_subst_eq (s_params f) l vt (f_ret f) (s_params_Nodup f)
       (tfun_params_length Hty') in
 
   (*This is a horrible function, hopefully eventually
@@ -4955,7 +4944,7 @@ bool)
           False_rect _ (Nat.neq_succ_0 (length ttl) Hlen)
         | ahd :: atl => fun Heq Htys =>
           exist _ (HL_cons _ _ _ (dom_cast (dom_aux pd)
-          (funsym_subst_eq (s_params s) vs' (v_typevar vt) ahd
+          (funsym_subst_eq (s_params s) vs' vt ahd
           (s_params_Nodup _) (eq_sym Hparamslen)) 
             (proj1_sig (term_rep_aux v _ _ _ _ (Forall_inv Htys) (Forall_inv Hdecs) Hsmall Hhd))) 
             (proj1_sig (get_arg_list_ext_aux'  s  Hparamslen atl 
@@ -4973,10 +4962,10 @@ bool)
                         (ty_subst_list_s (s_params s) (map (fun x : vty => val x) vs') (ahd :: atl))
                         s_int),
                 hnth j'
-                  (HL_cons domain (ty_subst_s (s_params s) (map (v_subst (v_typevar vt)) vs') ahd)
+                  (HL_cons domain (ty_subst_s (s_params s) (map (v_subst vt) vs') ahd)
                     (ty_subst_list_s (s_params s) (map (fun x : vty => val x) vs') atl)
                     (dom_cast (dom_aux pd)
-                        (funsym_subst_eq (s_params s) vs' (v_typevar vt) ahd 
+                        (funsym_subst_eq (s_params s) vs' vt ahd 
                           (s_params_Nodup s) (eq_sym Hparamslen))
                         (proj1_sig
                           (term_rep_aux v (fst (thd, ty_subst (s_params s) vs' ahd))
@@ -5086,7 +5075,7 @@ bool)
 
     let ret2 : 
       domain (ty_subst_s (s_params f) 
-        (map (v_subst (v_typevar vt)) l) (f_ret f)) :=
+        (map (v_subst vt) l) (f_ret f)) :=
       dom_cast (dom_aux pd) 
         (f_equal (fun x => ty_subst_s (s_params f) x (f_ret f))
         l_eq2) ret1 in
@@ -5549,9 +5538,9 @@ bool :=
   (*The main typecast: v(sigma(ty_ret)) = sigma'(ty_ret), where
     sigma sends (s_params f)_i -> l_i and 
     sigma' sends (s_params f) _i -> v(l_i)*)
-  (*let Heqret : v_subst (v_typevar vt) (ty_subst (s_params f) l (f_ret f)) =
-    ty_subst_s (s_params f) (map (v_subst (v_typevar vt)) l) (f_ret f) :=
-      funsym_subst_eq (s_params f) l (v_typevar vt) (f_ret f) (s_params_Nodup f)
+  (*let Heqret : v_subst vt (ty_subst (s_params f) l (f_ret f)) =
+    ty_subst_s (s_params f) (map (v_subst vt) l) (f_ret f) :=
+      funsym_subst_eq (s_params f) l vt (f_ret f) (s_params_Nodup f)
       (tfun_params_length Hty') in*)
 
   (*TODO: generalize with sym*)
@@ -5638,7 +5627,7 @@ bool :=
           False_rect _ (Nat.neq_succ_0 (length ttl) Hlen)
         | ahd :: atl => fun Heq Htys =>
           exist _ (HL_cons _ _ _ (dom_cast (dom_aux pd)
-          (funsym_subst_eq (s_params s) vs' (v_typevar vt) ahd
+          (funsym_subst_eq (s_params s) vs' vt ahd
           (s_params_Nodup _) (eq_sym Hparamslen)) 
             (proj1_sig (term_rep_aux v _ _ _ _ (Forall_inv Htys) (Forall_inv Hdecs) Hsmall Hhd))) 
             (proj1_sig (get_arg_list_ext_aux'  s  Hparamslen atl 
@@ -5656,10 +5645,10 @@ bool :=
                         (ty_subst_list_s (s_params s) (map (fun x : vty => val x) vs') (ahd :: atl))
                         s_int),
                 hnth j'
-                  (HL_cons domain (ty_subst_s (s_params s) (map (v_subst (v_typevar vt)) vs') ahd)
+                  (HL_cons domain (ty_subst_s (s_params s) (map (v_subst vt) vs') ahd)
                     (ty_subst_list_s (s_params s) (map (fun x : vty => val x) vs') atl)
                     (dom_cast (dom_aux pd)
-                        (funsym_subst_eq (s_params s) vs' (v_typevar vt) ahd 
+                        (funsym_subst_eq (s_params s) vs' vt ahd 
                           (s_params_Nodup s) (eq_sym Hparamslen))
                         (proj1_sig
                           (term_rep_aux v (fst (thd, ty_subst (s_params s) vs' ahd))
@@ -5772,7 +5761,7 @@ bool :=
 
     let ret2 : 
       domain (ty_subst_s (s_params f) 
-        (map (v_subst (v_typevar vt)) l) (f_ret f)) :=
+        (map (v_subst vt) l) (f_ret f)) :=
       dom_cast (dom_aux pd) 
         (f_equal (fun x => ty_subst_s (s_params f) x (f_ret f))
         l_eq2) ret1 in
@@ -6003,30 +5992,124 @@ Definition funcs_rep_aux (pa: packed_args2) :
   (*applied to*)
   pa.
 
-(*We have it!*)
+  (*We have it!*)
+
+(*Now, we give a rewrite lemma.*)
+  Lemma funcs_rep_aux_eq (pa: packed_args2):
+  funcs_rep_aux pa = funcs_rep_aux_body pa
+    (fun (x: packed_args2) 
+      (p: R_projT1 _ (R_projT1 _ arg_list_smaller) x pa) => 
+      funcs_rep_aux x).
+  Proof.
+    unfold funcs_rep_aux. rewrite Init.Wf.Fix_eq; auto.
+    intros.
+    (*TODO: maybe can prove without but we use funext anyway*)
+    (*TODO: can use proof irrelevance but let's see*)
+    assert (f = g). repeat (apply functional_extensionality_dep; intros); auto.
+    subst; auto.
+  Qed.
+
+End Def.
 
 Section FunRewrite.
 
-(*Now we need to prove our spec. First, we give a rewrite lemma
-  and put it into the final form*)
-Lemma funcs_rep_aux_eq (pa: packed_args2):
-funcs_rep_aux pa = funcs_rep_aux_body pa
-  (fun (x: packed_args2) 
-    (p: R_projT1 _ (R_projT1 _ arg_list_smaller) x pa) => 
-    funcs_rep_aux x).
+(*TODO: change val typevar to remove the record, just have function
+  then continue here should be a bit simpler
+  
+  probably: prove in denotational that if we have 2 vt that agree
+  on all typevars in term, and 2 vv's (1 for each) that agree 
+  on all variables in term (with appropriate casts), then
+  term_reps equal (with casts)
+  then, we can prove our result here and say that
+  term_rep_aux vt vv = term_rep vt vv,
+  get that funs ... = term_rep (vt_with_vars triv_vt) (vv_with_args triv_vv)
+  and then use existing lemma to show that this is equal to
+  term_rep (vt_with_vars vt) (vv_with_args vv) for any vt and vv
+  (assuming that the only free vars of the term are in args)
+
+  either way need cast somewhere so it is OK, but we do want to
+  make sure that our results are in a single dom_cast (maybe
+  need just some UIP_dec/rewrite stuff there)
+
+  will need to define notion of type vars in term and prove
+  (from typing) that all in function def are in s_params
+
+  START
+
+  *)
+(*TODO*)
+(*Here, we fix our valuation since we cannot take in any
+  input in our final version. We can give a trivial valuation
+  and define the mapping on the typesyms and vsyms that we care
+  about. We will need to show it equals a [term_rep] and [formula_rep]
+  for an arbirtary valuation, which will require a bit of annoying casting*)
+
+(*First, a trivial val_typevar*)
+
+Definition triv_val_typevar : val_typevar :=
+  fun x => s_int.
+
+(*Then, from a val_typevar, set variables alpha to srts*)
+
+Fixpoint vt_with_args (vt: val_typevar) (args: list typevar)
+  (srts: list sort) : val_typevar :=
+  fun (x: typevar) =>
+  match args with
+  | nil => vt x
+  | a :: atl =>
+    match srts with
+    | nil => vt x
+    | s1 :: stl => if typevar_eq_dec x a then s1 
+      else vt_with_args vt atl stl x
+    end
+  end.
+
+Lemma vt_with_args_nth (vt: val_typevar) args srts:
+  length args = length srts ->
+  NoDup args ->
+  forall i, i < length args ->
+  vt_with_args vt args srts (nth i args EmptyString) = nth i srts s_int.
 Proof.
-  unfold funcs_rep_aux. rewrite Init.Wf.Fix_eq; auto.
-  intros.
-  (*TODO: maybe can prove without but we use funext anyway*)
-  (*TODO: can use proof irrelevance but let's see*)
-  assert (f = g). repeat (apply functional_extensionality_dep; intros); auto.
-  subst; auto.
+  intros. generalize dependent srts. generalize dependent i. 
+  induction args; simpl; intros.
+  simpl in *; lia.
+  destruct srts; inversion H; subst.
+  destruct i.
+  - destruct (typevar_eq_dec a a); try contradiction; auto.
+  - destruct (typevar_eq_dec (nth i args EmptyString) a).
+    + subst. inversion H0; subst.
+      exfalso. apply H5. apply nth_In. simpl in H1. lia.
+    + simpl. apply IHargs; auto. inversion H0; subst; auto. lia.
 Qed.
 
+(*Now we prove that this has the [vt_eq] property - args = params*)
+Lemma vt_with_args_vt_eq (vt: val_typevar)
+  (srts: list sort):
+  length srts = length params ->
+  @vt_eq (vt_with_args vt params srts) srts.
+Proof.
+  intros. unfold vt_eq. intros.
+  apply vt_with_args_nth; auto.
+  (*Ugh, need to know that params NoDup (follows if fn, pn nonempty
+    maybe require funsym in here? see)*)
+
+
+
+
+
+  fun x =>
+  match args with
+  | nil => vt x
+  | a :: atl =>
+    match srts as s' return Forall (valid_type sigma) s' -> 
+
+
+
+
 (*Trivial valuation gives default elements*)
-Definition triv_val_vars : val_vars pd vt :=
+Definition triv_val_vars (vt: val_typevar) : val_vars pd vt :=
   fun x => 
-  match domain_ne pd (val (snd x)) with
+  match domain_ne pd (v_subst vt (snd x)) with
   | DE y => y
   end.
 
@@ -6076,6 +6159,10 @@ End FunRewrite.
 
 (*First, we assume that [funs] and [preds] map all 
   f in fs and p in ps to their reps. We will construct this later*)
+(*TODO: go back to typing, put stuff in right place, see what we need
+  especially with pf, val_typevar, etc
+  I think - want vt, then use vt_with_srts for definition of func
+  otherwise we have a bad dependency*)
 Variable pf_funs: forall (f: fn) (f_in: In f fs)
   (srts: list sort)
   (srts_len: length srts = length params)
@@ -6143,7 +6230,12 @@ Definition funcs_rep_aux_unfold (pa: packed_args2) :
 
 (*First, the theorem relating [term_rep] and [term_rep_aux]
   and likewise for formula*)
+Check pf.
+Definition interp_with_funcs (pf': pi_funpred gamma_valid pd)
 
+
+(*TODO: cannot assume pf, need to have term_rep input
+  as [interp_with_funcs pf]*)
 Theorem term_fmla_rep_aux_eq (t: term) (f: formula) :
   (forall (input: packed_args2)
     (rec: (forall y : packed_args2,
@@ -6237,18 +6329,22 @@ Proof.
     any well-founded induction*)
   (*TODO: why does this proof take so long - 
     think because term_rep_aux is giant because of termination proof ugh *)
-  revert t f. apply term_formula_ind; intros; simpl_rep_full; auto.
+  revert t f. apply term_formula_ind; intros.
+  (*TODO: prove rewrite lemma*)
+Admitted.
+  (*simpl_rep_full; auto.
   - destruct c; simpl_rep_full; reflexivity.
   - (*the function case will be hard and interesting
     TODO: start*)
-  
-  
-  intros. simpl.
 
-*)
+  
+  
+  intros. simpl.*)
+
 (*We have to prove the version with packed_args to get an appropriate
   induction hypothesis*)
 
+(*TODO: term_rep should be with *)
 
 
 

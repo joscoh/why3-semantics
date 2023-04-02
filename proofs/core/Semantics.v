@@ -80,13 +80,15 @@ Record pi_funpred (pd: pi_dom) := {
   then the output ONLY depends on v_typevar so no
   dependent type issues*)
 (*Valuations*)
+Definition val_typevar := typevar -> sort.
+(*
 Record val_typevar (*(pd: pi_dom)*) := {
   v_typevar : typevar -> sort;
   (*All sorts must be valid*)
-  v_typevar_val: forall x, valid_type sigma (v_typevar x);
-}.
+  (*v_typevar_val: forall x, valid_type sigma (v_typevar x);*)
+}.*)
 Definition val_vars (pd: pi_dom) (vt: val_typevar) : Type :=
-  forall (x: vsymbol), domain (dom_aux pd) (v_subst (v_typevar vt) (snd x)).
+  forall (x: vsymbol), domain (dom_aux pd) (v_subst vt (snd x)).
 
   (*
 Record valuation (i: pre_interp) := {
@@ -100,7 +102,7 @@ Variable pd: pi_dom.
 Variable pfp: pi_funpred pd.
 Variable v: val_typevar.
 
-Notation val t  := (domain (dom_aux pd) (v_subst (v_typevar v) t)).
+Notation val t  := (domain (dom_aux pd) (v_subst v t)).
 
 Definition var_to_dom (vv: val_vars pd v) (x: vsymbol): val (snd x) :=
   vv x.

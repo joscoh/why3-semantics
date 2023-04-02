@@ -608,7 +608,7 @@ Qed.
   variables are well-formed is equivalent to the one formed
   by [indpred_decomp]*)
 Lemma indpred_decomp_equiv (pf: pi_funpred gamma_valid pd) 
-  (vt: val_typevar) (vv: @val_vars sigma pd vt)  
+  (vt: val_typevar) (vv: val_vars pd vt)  
   (f: formula) (Hval: valid_formula sigma f)
   (Hwf: fmla_wf f) :
   formula_rep gamma_valid pd all_unif vt pf vv f Hval =

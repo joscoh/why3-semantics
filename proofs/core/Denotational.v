@@ -50,8 +50,8 @@ Context {sigma: sig} {gamma: context} (gamma_valid: valid_context sigma gamma)
 (*Representation of terms, formulas, patterns*)
 
 Notation domain := (domain (dom_aux pd)).
-Notation val x :=  (v_subst (v_typevar x)).
-Notation val_typevar := (@val_typevar sigma).
+Notation val x :=  (v_subst x).
+(*Notation val_typevar := (@val_typevar sigma).*)
 Notation substi := (substi pd).
 
 Definition cast_dom_vty {v: val_typevar} 
@@ -155,7 +155,7 @@ Definition get_arg_list (v: val_typevar)
     (combine ts (map (ty_subst (s_params s) vs) (s_args s)))):
   arg_list domain
     (sym_sigma_args s
-      (map (v_subst (v_typevar v)) vs)).
+      (map (v_subst v) vs)).
 Proof.
   unfold sym_sigma_args.
   generalize dependent (s_args s). induction ts; simpl; intros.
@@ -259,7 +259,7 @@ Definition fun_arg_list {ty} (v: val_typevar)
 (Hty: term_has_type sigma (Tfun f vs ts) ty):
 arg_list domain
   (sym_sigma_args f
-    (map (v_subst (v_typevar v)) vs)) :=
+    (map (v_subst v) vs)) :=
 get_arg_list v f vs ts reps (proj1 (fun_ty_inv Hty))
   (proj1 (proj2 (fun_ty_inv Hty)))
   (proj1 (proj2 (proj2 (fun_ty_inv Hty)))).
@@ -285,7 +285,7 @@ Definition pred_arg_list (v: val_typevar)
 (Hval: valid_formula sigma (Fpred p vs ts)):
 arg_list domain
   (sym_sigma_args p
-    (map (v_subst (v_typevar v)) vs)) :=
+    (map (v_subst v) vs)) :=
 get_arg_list v p vs ts reps (proj1 (pred_val_inv Hval))
   (proj1 (proj2 (pred_val_inv Hval)))
   (proj2 (proj2 (pred_val_inv Hval))).
@@ -605,7 +605,7 @@ Qed.
 
 (*Suppose that type is valid and we have valuation, 
   then val v ty is valid*)
-Lemma val_valid: forall (v: val_typevar) (ty: vty),
+(*Lemma val_valid: forall (v: val_typevar) (ty: vty),
   valid_type sigma ty ->
   valid_type sigma (val v ty).
 Proof.
@@ -613,9 +613,10 @@ Proof.
   apply valid_type_v_subst; auto.
   intros x.
   destruct v; simpl. apply v_typevar_val.
-Qed. 
+Qed. *)
 
 (*We need info about lengths and validity of the srts list*)
+(*
 Lemma adt_srts_valid: forall {v: val_typevar}  {ty m a ts srts},
   is_sort_adt (val v ty) = Some (m, a, ts, srts) ->
   valid_type sigma ty ->
@@ -626,23 +627,24 @@ Proof.
   destruct H as [Hts [a_in [m_in _]]].
   intros Hval.
   rewrite <- Hts. apply val_valid. assumption.
-Qed.
+Qed.*)
 
 (*We need to know something about the lengths*)
+(*
 Lemma adt_srts_length_eq: forall {v: val_typevar} {ty m a ts srts},
   is_sort_adt (val v ty) = Some (m, a, ts, srts) ->
   valid_type sigma ty ->
   length srts = length (m_params m).
 Proof.
   intros v ty m a ts srts H Hval.
-  pose proof (Hval':=adt_srts_valid H Hval).
+  (*pose proof (Hval':=adt_srts_valid H Hval).*)
   apply is_sort_adt_spec in H.
   destruct H as [Hts [a_in [m_in _]]].
   unfold typesym_to_sort in Hval'. 
   simpl in Hval'; inversion Hval'; subst.
   rewrite map_length in H3. rewrite H3.
   f_equal. apply (adt_args gamma_valid). split; auto.
-Qed.
+Qed.*)
 
 Lemma val_sort_eq: forall (v: val_typevar) (s: sort),
   s = val v s.
@@ -651,6 +653,7 @@ Proof.
 Qed.
 
 (*Need to know that all sorts are valid types*)
+(*
 Lemma adts_srts_valid: forall {v : val_typevar} {ty m a ts srts c},
   is_sort_adt (val v ty) = Some (m, a, ts, srts) ->
   valid_type sigma ty ->
@@ -675,7 +678,7 @@ Proof.
       apply (adt_constr_params gamma_valid m_in a_in c_in).
     + intros s Hsin. simpl in Hval'. inversion Hval'; subst.
       apply H4. rewrite in_map_iff. exists s. split; auto.
-Qed.
+Qed.*)
 
 End GetADT.
 
@@ -1936,9 +1939,9 @@ term_rep v (Tfun f vs ts) ty Hty :=
   (*The main typecast: v(sigma(ty_ret)) = sigma'(ty_ret), where
     sigma sends (s_params f)_i -> vs_i and 
     sigma' sends (s_params f) _i -> v(vs_i)*)
-  let Heqret : v_subst (v_typevar vt) (ty_subst (s_params f) vs (f_ret f)) =
-    ty_subst_s (s_params f) (map (v_subst (v_typevar vt)) vs) (f_ret f) :=
-      funsym_subst_eq (s_params f) vs (v_typevar vt) (f_ret f) (s_params_Nodup f)
+  let Heqret : v_subst vt (ty_subst (s_params f) vs (f_ret f)) =
+    ty_subst_s (s_params f) (map (v_subst vt) vs) (f_ret f) :=
+      funsym_subst_eq (s_params f) vs vt (f_ret f) (s_params_Nodup f)
       (tfun_params_length Hty) in
 
   (* The final result is to apply [funs] to the [arg_list] created recursively
@@ -2416,10 +2419,10 @@ Proof.
     rewrite H2.
     clear -H Hfree.
     unfold eq_sym at 1 3.
-    generalize dependent (funsym_subst_eq (s_params f1) l (v_typevar vt) 
+    generalize dependent (funsym_subst_eq (s_params f1) l vt 
     (f_ret f1) (s_params_Nodup f1)
     (tfun_params_length Hty2)).
-    generalize dependent (funsym_subst_eq (s_params f1) l (v_typevar vt) 
+    generalize dependent (funsym_subst_eq (s_params f1) l vt 
     (f_ret f1) (s_params_Nodup f1)
     (@tfun_params_length sigma f1 l (@map term term (sub_t x y) l1)
       (ty_subst (s_params f1) l (f_ret f1)) Hty2)).
@@ -2968,13 +2971,13 @@ Qed.
 
 (*Substitute in a bunch of values for a bunch of variables,
   using an hlist to ensure they have the correct type*)
-Fixpoint substi_mult (vt: val_typevar) (vv: @val_vars sigma pd vt) 
+Fixpoint substi_mult (vt: val_typevar) (vv: val_vars pd vt) 
   (vs: list vsymbol)
   (vals: hlist (fun x =>
-  domain (v_subst (v_typevar vt) x)) (map snd vs)) :
+  domain (v_subst vt x)) (map snd vs)) :
   val_vars pd vt :=
   (match vs as l return hlist  
-    (fun x => domain (v_subst (v_typevar vt) x)) 
+    (fun x => domain (v_subst vt x)) 
     (map snd l) -> val_vars pd vt with
   | nil => fun _ => vv
   | x :: tl => fun h' => 
@@ -2990,7 +2993,7 @@ Lemma fforalls_val (vv: val_vars pd vt)
   formula_rep pf vv (fforalls vs f) 
     (fforalls_valid vs f Hval Hall) =
     all_dec (forall (h: hlist  (fun x =>
-      domain (v_subst (v_typevar vt) x)) (map snd vs)),
+      domain (v_subst vt x)) (map snd vs)),
       formula_rep pf (substi_mult vt vv vs h) f Hval).
 Proof.
   revert vv.
@@ -3023,7 +3026,7 @@ Lemma fforalls_val' (vv: val_vars pd vt)
   formula_rep pf vv (fforalls vs f) 
     Hval2 =
     all_dec (forall (h: hlist  (fun x =>
-      domain (v_subst (v_typevar vt) x)) (map snd vs)),
+      domain (v_subst vt x)) (map snd vs)),
       formula_rep pf (substi_mult vt vv vs h) f Hval1).
 Proof.
   assert (A:=Hval2).
@@ -3034,7 +3037,7 @@ Qed.
 
 (*Next we give the valuation for an iterated let. This time,
   we don't need to worry about hlists*)
-Fixpoint substi_multi_let (vv: @val_vars sigma pd vt) 
+Fixpoint substi_multi_let (vv: val_vars pd vt) 
 (vs: list (vsymbol * term)) 
   (Hall: Forall (fun x => term_has_type sigma (snd x) (snd (fst x))) vs) :
 val_vars pd vt := 
@@ -3073,7 +3076,7 @@ Proof.
   split_all; auto.
 Qed.
 
-Lemma iter_flet_val (vv: @val_vars sigma pd vt) 
+Lemma iter_flet_val (vv: val_vars pd vt) 
   (vs: list (vsymbol * term)) (f: formula)
   (Hval: valid_formula sigma f)
   (Hall: Forall (fun x => term_has_type sigma (snd x) (snd (fst x))) vs) :
@@ -3179,7 +3182,7 @@ Qed.
 (*We can push an implication across a forall if no free variables
   become bound*)
 Lemma distr_impl_forall
-(vv: @val_vars sigma pd vt)  
+(vv: val_vars pd vt)  
 (f1 f2: formula) (x: vsymbol)
 (Hval1: valid_formula sigma (Fbinop Timplies f1 (Fquant Tforall x f2)))
 (Hval2: valid_formula sigma (Fquant Tforall x (Fbinop Timplies f1 f2))):
@@ -3214,7 +3217,7 @@ Qed.
 
 (*We can push an implication across a let, again assuming no
   free variables become bound*)
-Lemma distr_impl_let (vv: @val_vars sigma pd vt)  
+Lemma distr_impl_let (vv: val_vars pd vt)  
 (f1 f2: formula) (t: term) (x: vsymbol)
 (Hval1: valid_formula sigma (Fbinop Timplies f1 (Flet t x f2)))
 (Hval2: valid_formula sigma (Flet t x (Fbinop Timplies f1 f2))):
@@ -3240,7 +3243,7 @@ Qed.
 
 (*If the formula is wf, we can move an implication
   across lets and foralls *)
-Lemma distr_impl_let_forall (vv: @val_vars sigma pd vt)  
+Lemma distr_impl_let_forall (vv: val_vars pd vt)  
   (f1 f2: formula)
   (q: list vsymbol) (l: list (vsymbol * term))
   (Hval1: valid_formula sigma (fforalls q (iter_flet l (Fbinop Timplies f1 f2))))
@@ -3297,7 +3300,7 @@ Qed.
   to rewrite the first of an implication without
   unfolding all bound variables
   *)
-Lemma and_impl_bound  (vv: @val_vars sigma pd vt)  
+Lemma and_impl_bound  (vv: val_vars pd vt)  
 (f1 f2 f3: formula)
 (q: list vsymbol) (l: list (vsymbol * term))
 Hval1 Hval2: 
@@ -3340,7 +3343,7 @@ Qed.
   push a let outside of foralls if the variable does not
   appear quantified and no free variables in the term appear in
   the list either*)
-Lemma distr_let_foralls (vv: @val_vars sigma pd vt)  
+Lemma distr_let_foralls (vv: val_vars pd vt)  
 (t: term) (x: vsymbol) (f: formula)
 (q: list vsymbol) Hval1 Hval2:
 (~ In x q) ->

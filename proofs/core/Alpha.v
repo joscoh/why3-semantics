@@ -150,7 +150,7 @@ Section Alpha.
 
 Context {sigma: sig} {gamma: context} (gamma_valid: valid_context sigma gamma)
  {pd: pi_dom} (all_unif: forall m, mut_in_ctx m gamma -> IndTypes.uniform m)
-  {vt: @val_typevar sigma} {pf: pi_funpred gamma_valid pd}.
+  {vt: val_typevar} {pf: pi_funpred gamma_valid pd}.
 
 Notation term_rep := (term_rep gamma_valid pd all_unif vt pf).
 Notation formula_rep := (formula_rep gamma_valid pd all_unif vt pf).
@@ -750,7 +750,7 @@ Lemma match_val_single_alpha_p_none {ty: vty}
 (p1 p2: pattern)
 (Hty1: pattern_has_type sigma p1 ty)
 (Hty2: pattern_has_type sigma p2 ty)
-(d: domain (dom_aux pd) (v_subst (v_typevar vt) ty))
+(d: domain (dom_aux pd) (v_subst vt ty))
 (vars: list (vsymbol * vsymbol))
 (Heq: alpha_equiv_p vars p1 p2) :
 match_val_single gamma_valid pd all_unif vt ty p1 Hty1 d = None ->
@@ -794,19 +794,19 @@ Proof.
     simpl.
     destruct (funsym_eq_dec
     (projT1
-       (find_constr_rep gamma_valid m Hinctx (map (v_subst (v_typevar vt)) vs2)
-          (eq_trans (map_length (v_subst (v_typevar vt)) vs2) e0) 
-          (dom_aux pd) adt Hinmut (adts pd m (map (v_subst (v_typevar vt)) vs2))
+       (find_constr_rep gamma_valid m Hinctx (map (v_subst vt) vs2)
+          (eq_trans (map_length (v_subst vt) vs2) e0) 
+          (dom_aux pd) adt Hinmut (adts pd m (map (v_subst vt) vs2))
           (all_unif m Hinctx)
-          (scast (adts pd m (map (v_subst (v_typevar vt)) vs2) adt Hinmut)
+          (scast (adts pd m (map (v_subst vt) vs2) adt Hinmut)
              (dom_cast (dom_aux pd) (eq_trans eq_refl (v_subst_cons (adt_name adt) vs2))
                 d)))) f); [|reflexivity].
     (*Need nested induction, simplify first*)
-    generalize dependent (find_constr_rep gamma_valid m Hinctx (map (v_subst (v_typevar vt)) vs2)
-    (eq_trans (map_length (v_subst (v_typevar vt)) vs2) e0) 
-    (dom_aux pd) adt Hinmut (adts pd m (map (v_subst (v_typevar vt)) vs2))
+    generalize dependent (find_constr_rep gamma_valid m Hinctx (map (v_subst vt) vs2)
+    (eq_trans (map_length (v_subst vt) vs2) e0) 
+    (dom_aux pd) adt Hinmut (adts pd m (map (v_subst vt) vs2))
     (all_unif m Hinctx)
-    (scast (adts pd m (map (v_subst (v_typevar vt)) vs2) adt Hinmut)
+    (scast (adts pd m (map (v_subst vt) vs2) adt Hinmut)
        (dom_cast (dom_aux pd)
           (eq_trans eq_refl (v_subst_cons (adt_name adt) vs2)) d))).
     intros constr. destruct constr as [f' Hf']. simpl. intros Hf; subst.
@@ -1003,7 +1003,7 @@ Lemma match_val_single_alpha_p_none_iff {ty: vty}
   (p1 p2: pattern)
   (Hty1: pattern_has_type sigma p1 ty)
   (Hty2: pattern_has_type sigma p2 ty)
-  (d: domain (dom_aux pd) (v_subst (v_typevar vt) ty))
+  (d: domain (dom_aux pd) (v_subst vt ty))
   (vars: list (vsymbol * vsymbol))
   (Heq: alpha_equiv_p vars p1 p2):
   match_val_single gamma_valid pd all_unif vt ty p1 Hty1 d = None <->
@@ -1022,7 +1022,7 @@ Lemma match_val_single_alpha_p_some {ty: vty}
   (p1 p2: pattern)
   (Hty1: pattern_has_type sigma p1 ty)
   (Hty2: pattern_has_type sigma p2 ty)
-  (d: domain (dom_aux pd) (v_subst (v_typevar vt) ty))
+  (d: domain (dom_aux pd) (v_subst vt ty))
   (vars: list (vsymbol * vsymbol))
   (Heq: alpha_equiv_p vars p1 p2)
   (Hnodup1: NoDup (map fst vars))
@@ -1082,19 +1082,19 @@ Proof.
     simpl.
     destruct (funsym_eq_dec
     (projT1
-       (find_constr_rep gamma_valid m Hinctx (map (v_subst (v_typevar vt)) vs2)
-          (eq_trans (map_length (v_subst (v_typevar vt)) vs2) e0) 
-          (dom_aux pd) adt Hinmut (adts pd m (map (v_subst (v_typevar vt)) vs2))
+       (find_constr_rep gamma_valid m Hinctx (map (v_subst vt) vs2)
+          (eq_trans (map_length (v_subst vt) vs2) e0) 
+          (dom_aux pd) adt Hinmut (adts pd m (map (v_subst vt) vs2))
           (all_unif m Hinctx)
-          (scast (adts pd m (map (v_subst (v_typevar vt)) vs2) adt Hinmut)
+          (scast (adts pd m (map (v_subst vt) vs2) adt Hinmut)
              (dom_cast (dom_aux pd) (eq_trans eq_refl (v_subst_cons (adt_name adt) vs2))
                 d)))) f); [|discriminate].
     (*Need nested induction, simplify first*)
-    generalize dependent (find_constr_rep gamma_valid m Hinctx (map (v_subst (v_typevar vt)) vs2)
-    (eq_trans (map_length (v_subst (v_typevar vt)) vs2) e0) 
-    (dom_aux pd) adt Hinmut (adts pd m (map (v_subst (v_typevar vt)) vs2))
+    generalize dependent (find_constr_rep gamma_valid m Hinctx (map (v_subst vt) vs2)
+    (eq_trans (map_length (v_subst vt) vs2) e0) 
+    (dom_aux pd) adt Hinmut (adts pd m (map (v_subst vt) vs2))
     (all_unif m Hinctx)
-    (scast (adts pd m (map (v_subst (v_typevar vt)) vs2) adt Hinmut)
+    (scast (adts pd m (map (v_subst vt) vs2) adt Hinmut)
        (dom_cast (dom_aux pd)
           (eq_trans eq_refl (v_subst_cons (adt_name adt) vs2)) d))).
     intros constr. destruct constr as [f' Hf']. simpl. intros Hf; subst.
@@ -1372,8 +1372,8 @@ Proof.
             }
             rewrite !extend_val_with_list_lookup with(t:=t'); auto.
             (*Now handle all the casting*)
-            destruct (sort_eq_dec (v_subst (v_typevar vt) (snd x)) (projT1 t')).
-            ** destruct (sort_eq_dec (v_subst (v_typevar vt) (snd y)) (projT1 t')).
+            destruct (sort_eq_dec (v_subst vt (snd x)) (projT1 t')).
+            ** destruct (sort_eq_dec (v_subst vt (snd y)) (projT1 t')).
               {
                 destruct x; destruct y; simpl in *; subst.
                 destruct t'; simpl in *; subst; simpl.
@@ -1653,8 +1653,8 @@ Proof.
             }
             rewrite !extend_val_with_list_lookup with(t:=t'); auto.
             (*Now handle all the casting*)
-            destruct (sort_eq_dec (v_subst (v_typevar vt) (snd x)) (projT1 t')).
-            ** destruct (sort_eq_dec (v_subst (v_typevar vt) (snd y)) (projT1 t')).
+            destruct (sort_eq_dec (v_subst vt (snd x)) (projT1 t')).
+            ** destruct (sort_eq_dec (v_subst vt (snd y)) (projT1 t')).
               {
                 destruct x; destruct y; simpl in *; subst.
                 destruct t'; simpl in *; subst. simpl.
