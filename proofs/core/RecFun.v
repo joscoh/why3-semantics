@@ -5,6 +5,7 @@ Require Import Typing.
 Require Import Semantics.
 Require Import IndTypes.
 Require Import Hlist.
+Require Import ADTInd.
 Require Import Denotational.
 From Equations Require Import Equations.
 Require Import Coq.Logic.Eqdep_dec.
@@ -16,649 +17,20 @@ Inductive Either (A B: Set) : Set :=
   | Left: A -> Either A B
   | Right: B -> Either A B. 
 
-(*First, define syntactic restriction on functions*)
-
-Record sn := mk_sn {sn_sym: fpsym; sn_args: list vsymbol;
-  sn_idx: nat; sn_idx_in: sn_idx <? length sn_args;
-  sn_args_len: length sn_args =? length (s_args sn_sym);
-  sn_args_nodup: nodupb vsymbol_eq_dec sn_args}.
-
-  (*Hmm, how to do this?*)
-(*This duplicates part of funsym*)
-(*Not great: enforce that sym in funsym same as in sn*)
-Record fn := mk_fn {fn_sym: funsym; fn_sn : sn;
-  fn_body: term; fn_wf: f_sym fn_sym = sn_sym fn_sn}.
-
-Coercion fn_sn : fn >-> sn.
-
-Record pn := mk_pn {pn_sym: predsym; pn_sn: sn;
-  pn_body: formula; pn_wf: p_sym pn_sym = sn_sym pn_sn}.
-
-Coercion pn_sn : pn >-> sn.
-
-(*For our purposes here, a function declaration is a tuple
-  consisting of the name, arguments, index of the argument that
-  is decreasing, and body*)
-  (*
-Record fn := mk_fn {fn_name: funsym; fn_args: list vsymbol;
-  fn_idx : nat; fn_body: term; fn_idx_in: fn_idx <? length fn_args;
-  fn_args_len: length fn_args =? length (s_args fn_name);
-  fn_args_nodup: nodupb vsymbol_eq_dec fn_args}.
-Record pn := mk_pn {pn_name: predsym; pn_args: list vsymbol;
-  pn_idx: nat; pn_body: formula; pn_idx_in: pn_idx <? length pn_args;
-  pn_args_len: length pn_args =? length (p_args pn_name);
-  pn_args_nodup: nodupb vsymbol_eq_dec pn_args}.
-  *)
-
-(*TODO: combine with [predsym_in]*)
-Fixpoint funsym_in_tm (f: funsym) (t: term) : bool :=
-  match t with
-  | Tfun fs _ tms => funsym_eq_dec f fs || existsb (funsym_in_tm f) tms
-  | Tlet t1 _ t2 => funsym_in_tm f t1 || funsym_in_tm f t2
-  | Tif f1 t1 t2 => funsym_in_fmla f f1 || funsym_in_tm f t1 ||
-    funsym_in_tm f t2
-  | Tmatch t1 _ ps => funsym_in_tm f t1 ||
-    existsb (fun x => funsym_in_tm f (snd x)) ps
-  | Teps f1 _ => funsym_in_fmla f f1
-  | _ => false
-  end
-  with funsym_in_fmla (f: funsym) (f1: formula) : bool :=
-  match f1 with
-  | Fpred _ _ tms => existsb (funsym_in_tm f) tms
-  | Feq _ t1 t2 => funsym_in_tm f t1 || funsym_in_tm f t2
-  | Fbinop _ fm1 fm2 => funsym_in_fmla f fm1 || funsym_in_fmla f fm2
-  | Fquant _ _ f' | Fnot f' => funsym_in_fmla f f'
-  | Flet t _ f' => funsym_in_tm f t || funsym_in_fmla f f'
-  | Fif fm1 fm2 fm3 => funsym_in_fmla f fm1 || funsym_in_fmla f fm2 ||
-    funsym_in_fmla f fm3
-  | Fmatch t _ ps => funsym_in_tm f t ||
-    existsb (fun x => funsym_in_fmla f (snd x)) ps
-  | _ => false
-  end.
-
-Fixpoint test {A: Type} (l: list A) : list A :=
-  match l with
-  | nil => nil
-  | x :: t =>
-    match t with
-    | nil => nil
-    | y :: v => test v
-    end
-  end.
-
-Fixpoint test2 {A: Type} (l: list A) : list A :=
-  match (length l =? 8) with
-  | true => nil
-  | false => match l with
-                | nil => nil
-                | x :: t => test2 t
-                end
-  end.
-
-Fixpoint testpred {A: Type} (l1 l2: list A) : Prop :=
-  forall x,
-    match l1 with
-    | nil => False
-    | _ :: t => testpred t x
-    end.
-
-Definition vty_in_m (m: mut_adt) (vs: list vty) (v: vty) : bool :=
-  match v with
-  | vty_cons ts vs' => 
-    ssrbool.isSome (find_ts_in_mut ts m) &&
-    list_eq_dec vty_eq_dec vs' vs
-  | _ => false
-  end.
-
-Lemma vty_in_m_spec (m: mut_adt) (vs: list vty) (v: vty):
-  reflect 
-  (exists a, adt_in_mut a m /\ v = vty_cons (adt_name a) vs)
-  (vty_in_m m vs v) .
-Proof.
-  unfold vty_in_m. destruct v; try solve[apply ReflectF; intros [a [Ha Heq]]; inversion Heq].
-  destruct (find_ts_in_mut t m) eqn : Hfind; simpl.
-  - apply find_ts_in_mut_some in Hfind.
-    destruct Hfind; subst.
-    destruct (list_eq_dec vty_eq_dec l vs); subst; simpl.
-    + apply ReflectT. exists a. split; auto.
-    + apply ReflectF. intros [a' [Ha' Heq]]; inversion Heq; subst;
-      contradiction.
-  - apply ReflectF. rewrite find_ts_in_mut_none in Hfind.
-    intros [a [Ha Heq]]; subst.
-    inversion Heq; subst.
-    apply (Hfind a Ha); auto.
-Qed. 
-  
-(*Use uniformity here*)
-
-Definition vsym_in_m (m: mut_adt) (vs: list vty) (x: vsymbol) : bool :=
-  vty_in_m m vs (snd x).
-
-
-(*From a list of vsymbols, keep those which have type vty_cons a ts
-  for some a in mut_adt m*)
-  Definition vsyms_in_m (m: mut_adt) (vs: list vty) (l: list vsymbol) :
-  list vsymbol :=
-  filter (vsym_in_m m vs) l.
-
-
-
-(*A more useful formulation*)
-Lemma vsyms_in_m_in (m: mut_adt) (vs: list vty) (l: list vsymbol):
-  forall x, In x (vsyms_in_m m vs l) <-> In x l /\ exists a,
-    adt_in_mut a m /\ snd x = vty_cons (adt_name a) vs.
-Proof.
-  intros. unfold vsyms_in_m, vsym_in_m, vty_in_m.
-  rewrite in_filter. rewrite and_comm. bool_to_prop.
-  destruct x; simpl in *. destruct v; try (solve[split; [intro C; inversion C | 
-    intros [a [a_in Hty]]; inversion Hty]]).
-  unfold ssrbool.isSome.
-  destruct (find_ts_in_mut t m) eqn : Hts; simpl.
-  - destruct (list_eq_dec vty_eq_dec l0 vs); subst; simpl; split;
-    intros; auto; try tf.
-    + exists a. apply find_ts_in_mut_some in Hts. destruct Hts.
-      subst. split; auto.
-    + destruct H as [a' [Ha' Hty]]. inversion Hty; subst; auto.
-  - split; [intro C; inversion C | intros [a [Ha Hty]]].
-    rewrite find_ts_in_mut_none in Hts.
-    inversion Hty; subst.
-    apply Hts in Ha. contradiction.
-Qed.
-
-Definition constr_in_m (f: funsym) (m: mut_adt) : bool :=
-  existsb (fun a => constr_in_adt f a) (typs m).
-
-  (*Ok fine this doesn't work
-    should use map2 or nested fix instead*)
-Definition filter2 {A B: Type} :=
-fun (f: A -> B -> bool) =>
-  fix filter2 (l1: list A) {struct l1} : list B -> list (A * B) :=
-    match l1 with
-    | nil => fun l2 => nil
-    | x1 :: t1 =>
-      fun l2 =>
-      match l2 with
-      | nil => nil
-      | x2 :: t2 => if f x1 x2 then (x1, x2) :: filter2 t1 t2
-        else filter2 t1 t2
-      end
-    end.
-
-(*TODO: move maybe*)
-(*All variables from a pattern that are strictly "smaller" than
-  the matched value*)
-(*NOTE: we do NOT add all of the pat_fv in the constr case because
-  we could have the *)
-(*NOPE
-hmm wht to do *)
-(*Inside a constructor: keep all variables of correct type *)
-(*Gets all vars known to be decreasing (not strictly decreasing)*)
-Fixpoint pat_constr_vars_inner (m: mut_adt) (vs: list vty) (p: pattern)
-  {struct p} : list vsymbol :=
-  match p with
-  | Pconstr c tys ps =>
-    if constr_in_m c m &&
-    list_eq_dec vty_eq_dec tys vs &&
-    (length ps =? length (s_args c)) then
-    (*Only take those where the s_args is in m
-      or else we get extra vsymbols which are not necessarily
-      smaller (like the head in list)*)
-    (*Ah, need to do union inside too*)
-    ((fix constr_inner (ps: list pattern) (vs': list vty) : list vsymbol :=
-      match ps, vs' with
-      | p1 :: p2, v1 :: v2 => 
-        (*NOTE: we want type v1 to have type t(a, b, ...) NOT
-        t(vs) - since this is in the constructor*)
-        if vty_in_m m (map vty_var (m_params m)) v1 then
-        union vsymbol_eq_dec (pat_constr_vars_inner m vs p1) (constr_inner p2 v2)
-        else constr_inner p2 v2
-      | _, _ => nil
-      end    
-    ) ps (s_args c))
-    else nil
-  | Por p1 p2 =>
-    intersect vsymbol_eq_dec (pat_constr_vars_inner m vs p1)
-      (pat_constr_vars_inner m vs p2)
-  (*Only add variables of correct type*)
-  | Pbind p' y =>
-    union vsymbol_eq_dec (if vsym_in_m m vs y then [y] else nil)
-      (pat_constr_vars_inner m vs p')
-  | Pvar y =>
-    if vsym_in_m m vs y then [y] else nil
-  | Pwild => nil
-  end.
-
-(*rewrite lemma*)
-Lemma pat_constr_vars_inner_eq (m: mut_adt) (vs: list vty) (p: pattern):
-  pat_constr_vars_inner m vs p =
-  match p with
-  | Pconstr c tys ps =>
-    if constr_in_m c m &&
-    list_eq_dec vty_eq_dec tys vs &&
-    (length ps =? length (s_args c)) then
-    big_union vsymbol_eq_dec (pat_constr_vars_inner m vs)
-      (map fst (filter (fun (x: pattern * vty) => 
-        vty_in_m m (map vty_var (m_params m)) (snd x)) (combine ps (s_args c))))
-    else nil
-  | Por p1 p2 =>
-    intersect vsymbol_eq_dec (pat_constr_vars_inner m vs p1)
-      (pat_constr_vars_inner m vs p2)
-  (*Only add variables of correct type*)
-  | Pbind p' y =>
-    union vsymbol_eq_dec (if vsym_in_m m vs y then [y] else nil)
-      (pat_constr_vars_inner m vs p')
-  | Pvar y =>
-    if vsym_in_m m vs y then [y] else nil
-  | Pwild => nil
-  end.
-Proof.
-  unfold pat_constr_vars_inner at 1.
-  destruct p; auto.
-  destruct (constr_in_m f m); simpl; auto.
-  destruct (list_eq_dec vty_eq_dec l vs); simpl; auto.
-  destruct (length l0 =? length (s_args f)) eqn : Hlen; simpl; auto.
-  apply Nat.eqb_eq in Hlen.
-  generalize dependent (s_args f). subst. induction l0;
-  intros; destruct l; inversion Hlen; simpl; auto.
-  destruct (vty_in_m m (map vty_var (m_params m)) v) eqn : Hty; auto.
-  simpl. fold pat_constr_vars_inner.
-  rewrite IHl0; auto.
-Qed.
-
-(*Get strictly smaller (not just <=) vars*)
-(*TODO: reduce duplication? Could take in bool but eh that
-  seems not great*)
-Fixpoint pat_constr_vars (m: mut_adt) (vs: list vty) (p: pattern) : list vsymbol :=
-  match p with
-  | Pconstr c tys ps =>
-      if constr_in_m c m &&
-      list_eq_dec vty_eq_dec tys vs &&
-      (length ps =? length (s_args c)) then
-      big_union vsymbol_eq_dec (pat_constr_vars_inner m vs)
-        (map fst (filter (fun (x: pattern * vty) => 
-          vty_in_m m (map vty_var (m_params m)) (snd x)) (combine ps (s_args c))))
-      else nil
-      (*Only take those where the s_args is in m
-        or else we get extra vsymbols which are not necessarily
-        smaller (like the head in list)*)
-  | Por p1 p2 =>
-      intersect vsymbol_eq_dec (pat_constr_vars m vs p1)
-        (pat_constr_vars m vs p2)
-  (*Don't add variables*)
-  | Pbind p y => pat_constr_vars m vs p
-  | _ => nil
-  end.
-
-(*Both of these are subsets of [pat_fv]*)
-Lemma pat_constr_vars_inner_fv (m: mut_adt) (vs: list vty) (p: pattern):
-  forall x, In x (pat_constr_vars_inner m vs p) ->
-  In x (pat_fv p).
-Proof.
-  intros x. induction p.
-  - simpl; intros.
-    destruct (vsym_in_m m vs v). apply H.
-    inversion H.
-  - rewrite pat_constr_vars_inner_eq.
-    intros.
-    destruct (constr_in_m f m && list_eq_dec vty_eq_dec vs0 vs &&
-    (Datatypes.length ps =? Datatypes.length (s_args f))) eqn : Hconds;
-     [|inversion H0].
-    bool_hyps.
-    apply Nat.eqb_eq in H2.
-    simpl_set.
-    destruct H0 as [p' [Hinp' Hinx]].
-    rewrite in_map_iff in Hinp'.
-    destruct Hinp' as [[p'' t'] [Hp' Hint]]; simpl in *; subst.
-    rewrite in_filter in Hint.
-    destruct Hint as [_ Hincomb].
-    rewrite in_combine_iff in Hincomb; auto.
-    destruct Hincomb as [i [Hi Heq]].
-    specialize (Heq Pwild vty_int); inversion Heq; subst; clear Heq.
-    simpl_set. exists (nth i ps Pwild). split; [apply nth_In; auto|].
-    rewrite Forall_forall in H. apply H.
-    apply nth_In; auto. auto.
-  - simpl. auto.
-  - simpl. intros.
-    rewrite intersect_elts in H.
-    destruct H.
-    simpl_set. left. apply IHp1; auto.
-  - simpl. intros.
-    simpl_set. destruct (vsym_in_m m vs v).
-    + destruct H as [[Hxv | []] | Hinx]; subst; auto.
-    + destruct H as [[] | Hinx]; auto.
-Qed.
-
-Lemma pat_constr_vars_subset (m: mut_adt) (vs: list vty) (p: pattern):
-  forall x, In x (pat_constr_vars m vs p) ->
-  In x (pat_constr_vars_inner m vs p).
-Proof.
-  intros x. induction p.
-  - simpl; intros. destruct H. 
-  - (*constr case is super easy - they are equal*) 
-    rewrite pat_constr_vars_inner_eq. auto.
-  - auto.
-  - simpl. rewrite !intersect_elts; intros; destruct_all; split; auto.
-  - simpl. intros. rewrite union_elts. auto. 
-Qed.
-
-Lemma pat_constr_vars_fv (m: mut_adt) (vs: list vty) (p: pattern):
-forall x, In x (pat_constr_vars m vs p) ->
-In x (pat_fv p).
-Proof.
-  intros. apply pat_constr_vars_subset in H.
-  apply (pat_constr_vars_inner_fv _ _ _ _ H).
-Qed.
-
-(*
-Fixpoint pat_constr_vars (m: mut_adt) (vs: list vty) (p: pattern) : list vsymbol :=
-  match p with
-  | Pconstr c tys ps =>
-    (*Only count these vars if they belong to m(vs)*)
-    big_union vsymbol_eq_dec pat_constr_vars ps
-  | Por p1 p2 =>
-    (*Those smaller in both patterns are smaller*)
-    intersect vsymbol_eq_dec (pat_constr_vars p1) (pat_constr_vars p2)
-  | Pbind p y => pat_constr_vars 
-Fixpoint pat_constr_vars (p: pattern) : list vsymbol :=
-  match p with
-  | Pconstr c tys ps =>
-    (*Once we bind in a constructor, all vars are smaller*) 
-    big_union vsymbol_eq_dec pat_fv ps
-  | Por p1 p2 => 
-    (*Those smaller in both patterns are smaller*)
-    intersect vsymbol_eq_dec (pat_constr_vars p1) (pat_constr_vars p2)
-  | Pbind p _ => pat_constr_vars p
-  (*Vars are not smaller unless we are already in a constructor*)
-  | _ => nil
-  end.*)
-
-(*PROBLEM! My syntax is not correct - functions and predicates
-  can be recursive together - so we need something like:
-  list (Either fn pn)
-  or maybe nicer - list of fs followed by list of ps
-  (we can always reorder)*)
-
-(*The list of vsymbols denotes all variables we "know" to be
-  smaller than the argument, which is the second argument to the
-  relation*)
-(*TODO: add mut and vs - require that type is correct*)
-(*We have the relation : dec fs ps small hd m vs t ->
-  means that 
-  1. all ocurrences of functions/pred syms in fs and ps 
-    occur where the decreasing argument comes from small,
-    which is a list of elements that are smaller than hd
-    and which come from the same mut adt as hd
-  
-  Hmm, how do we want to do this?
-  Would like to avoid dependent types if possible
-  but don't want invariant across whole thing
-  maybe do invariants separately
-
-  *)
-
-
-
-Fixpoint testweird {A: Type} (l: list A) : nat :=
-  match l with
-  | nil => 1
-  | y :: z =>
-    match l with
-    | y1 :: z1 => testweird z1 + testweird z
-    | nil => 1
-    end
-  end.
-
-(*TODO: do we need m and vs in here? Or should it be separate?*)
-
-(*TODO: I think we can keep hd in the pattern match case.
-  Reason: we are still allowed to match on the original value
-  (as long as it is not shadowed) - as in, say we have a really dumb:
-  foo (x: list A) =
-  match x with
-  | nil => a
-  | y :: z => 
-    match x with
-    | y1 :: z1 => foo z1
-    | nil => a
-    end
-  This is OK, and we can still do nested stuff:
-  foo (x: list A) =
-  match x with
-  | y :: z =>
-    match z with
-    | y1 :: z1 => foo z1
-    | nil => a
-  | nil => a
-  end
-
-  So we need to worry about shadowing by pattern match variables?
-  I think no - if a variable in a pattern match,
-  it must be either equal or smaller (will show)
-    *)
-
-Definition upd_option (hd: option vsymbol) (x: vsymbol) : option vsymbol :=
-  match hd with
-  | Some y => if vsymbol_eq_dec x y then None else hd
-  | None => None
-  end.
-
-Definition upd_option_iter (hd: option vsymbol) (xs: list vsymbol) :
-  option vsymbol :=
-  fold_right (fun x acc => upd_option acc x) hd xs.
-
-Unset Elimination Schemes.
-(*list of vsymbols are known to be smaller
-  option vsymbol is equal, if it is some
-  It is an option because it can be shadowed, say by a let statement*)
-Inductive decrease_fun (fs: list fn) (ps: list pn) : 
-  list vsymbol -> option vsymbol -> mut_adt -> list vty -> term -> Prop :=
-  (*Before any of the constructor cases, if none of fs or ps appear
-    in t, then t is trivially a decreasing function*)
-  | Dec_notin_t: forall (small: list vsymbol) (hd: option vsymbol) (m: mut_adt)
-    (vs: list vty) (t: term),
-    (forall (f: fn), In f fs -> negb (funsym_in_tm (fn_sym f) t)) ->
-    (forall p, In p ps -> negb (predsym_in_term (pn_sym p) t)) ->
-    decrease_fun fs ps small hd m vs t
-  (*First, the recursive function call case*)
-  | Dec_fun_in: forall (small: list vsymbol) (hd: option vsymbol) (m: mut_adt)
-    (vs: list vty) 
-    (f: funsym) (f_decl: fn) (l: list vty) (ts: list term) (x: vsymbol),
-    In f_decl fs ->
-    f = fn_sym f_decl ->
-    (*The decreasing argument is a variable in our list of decreasing terms*)
-    In x small ->
-    nth (sn_idx f_decl) ts tm_d = Tvar x ->
-    (*Uniformity: we must be applying the function uniformly
-      (TODO: make this separate?)*)
-    l = map vty_var (s_params f) ->
-    (*None of [fs] of [ps] appear in the terms*) 
-    (*TODO: will likely need this to show we can ignore function binding in interp for recursive cases*)
-    Forall (fun t => forall f,  In f fs -> negb (funsym_in_tm (fn_sym f) t)) ts ->
-    Forall (fun t => forall p, In p ps -> negb (predsym_in_term (pn_sym p) t)) ts ->
-    (*Then this recursive call is valid*)
-    decrease_fun fs ps small hd m vs (Tfun f l ts)
-  (*Other function call*)
-  | Dec_fun_notin: forall (small: list vsymbol) (hd: option vsymbol)
-    (m: mut_adt) (vs: list vty) 
-    (f: funsym) (l: list vty) (ts: list term),
-    ~ In f (map fn_sym fs) ->
-    (*In this case, just recursive*)
-    (*TODO: Forall doesn't give ind principle*)
-    (forall t, In t ts -> (decrease_fun fs ps small hd m vs t)) ->
-    decrease_fun fs ps small hd m vs (Tfun f l ts)
-  (*Pattern match on var - this is how we add new, smaller variables*)
-  | Dec_tmatch: forall (small: list vsymbol) (hd: option vsymbol) 
-    (m: mut_adt)
-    (vs: list vty) (a: alg_datatype)
-    (mvar: vsymbol) (v: vty) (pats: list (pattern * term)),
-    (*TODO: can we only match on a variable?*)
-    (hd = Some mvar) \/ In mvar small ->
-    adt_in_mut a m ->
-    snd mvar = vty_cons (adt_name a) vs ->
-    (*TODO: don't allow repeated matches on same variable
-      TODO: now we do, makes things easier*)
-    (forall (x: pattern * term), In x pats ->
-      decrease_fun fs ps 
-      (*remove pat_fv's (bound), add back constr vars (smaller)*)
-      (union vsymbol_eq_dec (vsyms_in_m m vs (pat_constr_vars m vs (fst x))) 
-        (remove_all vsymbol_eq_dec (pat_fv (fst x)) 
-        small)) (upd_option_iter hd (pat_fv (fst x))) m vs (snd x)) ->
-    decrease_fun fs ps small hd m vs (Tmatch (Tvar mvar) v pats) 
-  (*Other pattern match is recursive case*)
-  | Dec_tmatch_rec: forall (small: list vsymbol) (hd: option vsymbol)
-    m vs
-    (tm: term) (v: vty) (pats: list (pattern * term)),
-    ~(exists var, tm = Tvar var /\ (hd = Some var \/ In var small)) ->
-    decrease_fun fs ps small hd m vs tm ->
-    (forall x, In x pats ->
-      decrease_fun fs ps 
-      (remove_all vsymbol_eq_dec (pat_fv (fst x)) small) 
-      (upd_option_iter hd (pat_fv (fst x))) m vs (snd x)) ->
-    decrease_fun fs ps small hd m vs (Tmatch tm v pats)
-  (*Now the easy cases: Constants, Variables always decreasing*)
-  | Dec_var: forall (small : list vsymbol) (hd: option vsymbol) m vs (v: vsymbol),
-    decrease_fun fs ps small hd m vs (Tvar v)
-  | Dec_const: forall (small : list vsymbol) (hd: option vsymbol) m vs (c: constant),
-    decrease_fun fs ps small hd m vs (Tconst c)
-  (*Recursive cases: let, if, eps*)
-  | Dec_tlet: forall (small: list vsymbol) (hd: option vsymbol) m vs (t1: term)
-    (v: vsymbol) (t2: term),
-    decrease_fun fs ps small hd m vs t1 ->
-    (*v is bound, so it is no longer smaller in t2 or equal in hd*)
-    decrease_fun fs ps (remove vsymbol_eq_dec v small) (upd_option hd v) m vs t2 ->
-    decrease_fun fs ps small hd m vs (Tlet t1 v t2)
-  | Dec_tif: forall (small: list vsymbol) (hd: option vsymbol) m vs (f1: formula)
-    (t1 t2: term),
-    decrease_pred fs ps small hd m vs f1 ->
-    decrease_fun fs ps small hd m vs t1 ->
-    decrease_fun fs ps small hd m vs t2 ->
-    decrease_fun fs ps small hd m vs (Tif f1 t1 t2)
-  | Dec_eps: forall (small: list vsymbol) (hd: option vsymbol) m vs (f: formula)
-    (v: vsymbol),
-    decrease_pred fs ps (remove vsymbol_eq_dec v small) (upd_option hd v) m vs f ->
-    decrease_fun fs ps small hd m vs (Teps f v)
-(*This is very similar*)
-with decrease_pred (fs: list fn) (ps: list pn) : 
-  list vsymbol -> option vsymbol -> mut_adt -> list vty -> formula -> Prop :=
-  | Dec_notin_f: forall (small: list vsymbol) (hd: option vsymbol) (m: mut_adt)
-  (vs: list vty) (fmla: formula),
-  (forall f, In f fs -> negb (funsym_in_fmla (fn_sym f) fmla)) ->
-  (forall p, In p ps -> negb (predsym_in (pn_sym p) fmla)) ->
-  decrease_pred fs ps small hd m vs fmla
-  (*First, the recursive predicate call case*)
-  | Dec_pred_in: forall (small: list vsymbol) (hd: option vsymbol) m vs
-    (p: predsym) (p_decl: pn) (l: list vty) (ts: list term) x,
-    In p_decl ps ->
-    p = pn_sym p_decl ->
-    (*The decreasing argument must be in our list of decreasing terms*)
-    In x small ->
-    nth (sn_idx p_decl) ts tm_d = Tvar x ->
-    (*Uniformity: we must be applying the function uniformly
-    (TODO: make this separate?)*)
-    l = map vty_var (s_params p) ->
-    (*None of [fs] or[ps] appear in the terms*) 
-    Forall (fun t => forall f,  In f fs -> negb (funsym_in_tm (fn_sym f) t)) ts ->
-    Forall (fun t => forall p, In p ps -> negb (predsym_in_term (pn_sym p) t)) ts ->
-    (*Then this recursive call is valid*)
-    decrease_pred fs ps small hd m vs (Fpred p l ts)
-  (*Other predicate call*)
-  | Dec_pred_notin: forall (small: list vsymbol) (hd: option vsymbol) m vs
-    (p: predsym) (l: list vty) (ts: list term),
-    ~ In p (map pn_sym ps) ->
-    (*In this case, just recursive*)
-    (forall t, In t ts -> decrease_fun fs ps small hd m vs t) ->
-    decrease_pred fs ps small hd m vs (Fpred p l ts)
-  (*Pattern match on var - this is how we add new, smaller variables*)
-  | Dec_fmatch: forall (small: list vsymbol) (hd: option vsymbol) m vs
-    (a: alg_datatype)
-    (mvar: vsymbol) (v: vty) (pats: list (pattern * formula)),
-    (*TODO: can we only match on a variable?*)
-    hd = Some mvar \/ In mvar small ->
-    adt_in_mut a m ->
-    snd mvar = vty_cons (adt_name a) vs ->
-    (*TODO: don't allow repeated matches on same variable*)
-    (forall x, In x pats -> decrease_pred fs ps 
-     (*remove pat_fv's (bound), add back constr vars (smaller)*)
-     (union vsymbol_eq_dec (vsyms_in_m m vs (pat_constr_vars m vs (fst x))) 
-        (remove_all vsymbol_eq_dec (pat_fv (fst x)) 
-        small)) (upd_option_iter hd (pat_fv (fst x))) m vs (snd x)) ->
-    decrease_pred fs ps small hd m vs (Fmatch (Tvar mvar) v pats)
-  (*Other pattern match is recursive case*)
-  | Dec_fmatch_rec: forall (small: list vsymbol) (hd: option vsymbol) m vs
-    (tm: term) (v: vty) (pats: list (pattern * formula)),
-    ~(exists var, tm = Tvar var /\ (hd = Some var \/ In var small)) ->
-    decrease_fun fs ps small hd m vs tm ->
-    (forall x, In x pats ->
-      decrease_pred fs ps 
-      (remove_all vsymbol_eq_dec (pat_fv (fst x)) small) 
-      (upd_option_iter hd (pat_fv (fst x))) m vs (snd x)) ->
-   decrease_pred fs ps small hd m vs (Fmatch tm v pats)
-  (*Easy cases: true, false*)
-  | Dec_true: forall (small: list vsymbol) (hd: option vsymbol) m vs,
-    decrease_pred fs ps small hd m vs Ftrue
-  | Dec_false: forall (small: list vsymbol) (hd: option vsymbol) m vs,
-    decrease_pred fs ps small hd m vs Ffalse
-  (*Recursive cases: not, quantifier, eq, binop, let, if*)
-  | Dec_not: forall small hd m vs f,
-    decrease_pred fs ps small hd m vs f ->
-    decrease_pred fs ps small hd m vs (Fnot f)
-  | Dec_quant: forall (small: list vsymbol) (hd: option vsymbol) m vs
-    (q: quant) (v: vsymbol) (f: formula),
-    decrease_pred fs ps (remove vsymbol_eq_dec v small) (upd_option hd v) m vs f ->
-    decrease_pred fs ps small hd m vs (Fquant q v f)
-  | Dec_eq: forall (small: list vsymbol) (hd: option vsymbol) m vs
-    (ty: vty) (t1 t2: term),
-    decrease_fun fs ps small hd m vs t1 ->
-    decrease_fun fs ps small hd m vs t2 ->
-    decrease_pred fs ps small hd m vs (Feq ty t1 t2)
-  | Dec_binop: forall (small: list vsymbol) (hd: option vsymbol) m vs
-    (b: binop) (f1 f2: formula),
-    decrease_pred fs ps small hd m vs f1 ->
-    decrease_pred fs ps small hd m vs f2 ->
-    decrease_pred fs ps small hd m vs (Fbinop b f1 f2)
-  | Dec_flet: forall (small: list vsymbol) (hd: option vsymbol) m vs (t1: term)
-    (v: vsymbol) (f: formula),
-    decrease_fun fs ps small hd m vs t1 ->
-    decrease_pred fs ps (remove vsymbol_eq_dec v small) (upd_option hd v) m vs f ->
-    decrease_pred fs ps small hd m vs (Flet t1 v f)
-  | Dec_fif: forall (small: list vsymbol) (hd: option vsymbol) m vs
-    (f1 f2 f3: formula),
-    decrease_pred fs ps small hd m vs f1 ->
-    decrease_pred fs ps small hd m vs f2 ->
-    decrease_pred fs ps small hd m vs f3 ->
-    decrease_pred fs ps small hd m vs (Fif f1 f1 f2)
-    .
-Set Elimination Schemes.
-Scheme decrease_fun_ind := Minimality for decrease_fun Sort Prop
-with decrease_pred_ind := Minimality for decrease_pred Sort Prop.
-    
-(*TODO: write decidable version*)
-
-
-(*Now let's see what the signature for such a function looks like*)
-
-(*Want: Definition _ : forall (f: funsym) (srts: list sort),
-  arg_list (domain (dom_aux pd)) (funsym_sigma_args f srts) ->
-  domain (dom_aux pd (funsym_sigma_ret f srts))
-  *)
-
 Section FunDef.
 
 
 Context {sigma: sig} {gamma: context} (gamma_valid: valid_context sigma gamma)
 {pd: pi_dom} (all_unif: forall m, mut_in_ctx m gamma -> IndTypes.uniform m).
 
+(*First, we assume we have our fs and ps lists and that
+  they satisfy all of the well-founded conditions which follow
+  from typing*)
 
-
-(*We will handle mutual recursion by giving an index*)
-(*i is the index of the function that we build - TODO: should this
-  be bounded/dependent*)
-
-(*This is the "inner" function, assuming we already have the argument
-  that is recursive*)
-
-(*TODO: where do we need the bodies?*)
 Variable (fs: list fn) (ps: list pn).
+
+Definition sns : list sn :=
+  map fn_sn fs ++ map pn_sn ps.
 
 Variable fs_uniq: NoDup (map fn_sym fs).
 Variable ps_uniq: NoDup (map pn_sym ps).
@@ -667,908 +39,83 @@ Variable fs_typed: Forall
 Variable ps_typed: Forall
   (fun p => valid_formula sigma (pn_body p)) ps.
 
-(*So we need other hypotheses about vt, params, etc*)
+Variable funs_args_agree: forall f, In f fs ->
+  map snd (sn_args f) = s_args (fn_sym f).
+Variable preds_args_agree: forall p, In p ps ->
+  map snd (sn_args p) = s_args (pn_sym p).
+
+Lemma args_agree: forall s, In s sns ->
+  map snd (sn_args s) = s_args (sn_sym s).
+Proof.
+  intros. unfold sns in H. rewrite in_app_iff in H.
+  destruct H; auto; rewrite in_map_iff in H;
+  destruct H as [x [Heq Hinx]]; subst.
+  - rewrite funs_args_agree; auto.
+    destruct x; simpl. rewrite fn_wf.
+    reflexivity.
+  - rewrite preds_args_agree; auto.
+    destruct x; simpl. rewrite pn_wf.
+    reflexivity.
+Qed.
 
 (*Since vt is fixed through everything (we are requiring all
   mutually recursive functions to have the same params)
   This is a restriction on why3 (maybe), but I am OK with that
   we can assume some property of it, then build it up later
   *)
-  Variable params: list typevar.
-  Variable funs_params_eq: forall f, In f fs -> s_params (fn_sym f) = params.
-  Variable preds_params_eq: forall p, In p ps -> s_params (pn_sym p) = params.
+Variable params: list typevar.
+Variable funs_params_eq: forall f, In f fs -> s_params (fn_sym f) = params.
+Variable preds_params_eq: forall p, In p ps -> s_params (pn_sym p) = params.
 
-  Definition sns : list sn :=
-    map fn_sn fs ++ map pn_sn ps.
+Lemma params_eq: forall s, In s sns -> s_params (sn_sym s) = params.
+Proof.
+  intros. unfold sns in H. rewrite in_app_iff in H.
+  destruct H; auto; rewrite in_map_iff in H;
+  destruct H as [x [Heq Hinx]]; subst.
+  - replace (sn_sym x) with (f_sym (fn_sym x)).
+    rewrite funs_params_eq; auto.
+    destruct x; simpl. rewrite fn_wf.
+    reflexivity.
+  - replace (sn_sym x) with (p_sym (pn_sym x)). 
+    rewrite preds_params_eq; auto.
+    destruct x; simpl. rewrite pn_wf.
+    reflexivity.
+Qed.
 
-  Lemma params_eq: forall s, In s sns -> s_params (sn_sym s) = params.
-  Proof.
-    intros. unfold sns in H. rewrite in_app_iff in H.
-    destruct H; auto; rewrite in_map_iff in H;
-    destruct H as [x [Heq Hinx]]; subst.
-    - replace (sn_sym x) with (f_sym (fn_sym x)).
-      rewrite funs_params_eq; auto.
-      destruct x; simpl. rewrite fn_wf0.
-      reflexivity.
-    - replace (sn_sym x) with (p_sym (pn_sym x)). 
-      rewrite preds_params_eq; auto.
-      destruct x; simpl. rewrite pn_wf0.
-      reflexivity.
-  Qed.
+Variable f_typevars: forall f, In f fs -> 
+  forall ty, In ty (f_ret (fn_sym f) :: s_args (fn_sym f)) ->
+  forall x, In x (type_vars ty) ->
+  In x params.
 
-  (*Variable srts_len: length srts = length params.*)
-  Variable f_typevars: forall f, In f fs -> 
-    forall ty, In ty (f_ret (fn_sym f) :: s_args (fn_sym f)) ->
-    forall x, In x (type_vars ty) ->
-    In x params.
+Variable p_typevars: forall p, In p ps ->
+  forall ty, In ty (s_args (pn_sym p)) ->
+  forall x, In x (type_vars ty) ->
+  In x params.
 
-  Variable p_typevars: forall p, In p ps ->
-    forall ty, In ty (s_args (pn_sym p)) ->
-    forall x, In x (type_vars ty) ->
-    In x params.
+(*Here we lose info for funsyms*)
+Lemma s_typevars: forall s, In s sns ->
+  forall ty, In ty (s_args (sn_sym s)) ->
+  forall x, In x (type_vars ty) ->
+  In x params.
+Proof.
+  intros. unfold sns in H. rewrite in_app_iff in H.
+  destruct H; rewrite in_map_iff in H;
+  destruct H as [x' [Heq Hinx']]; subst.
+  - apply (f_typevars x' Hinx' ty); auto. right.
+    destruct x'; simpl in *.
+    rewrite fn_wf. auto.
+  - apply (p_typevars x' Hinx' ty); auto. 
+    destruct x'; simpl in *.
+    rewrite pn_wf. auto.
+Qed.
 
-  (*Here we lose info for funsyms*)
-  Lemma s_typevars: forall s, In s sns ->
-    forall ty, In ty (s_args (sn_sym s)) ->
-    forall x, In x (type_vars ty) ->
-    In x params.
-  Proof.
-    intros. unfold sns in H. rewrite in_app_iff in H.
-    destruct H; rewrite in_map_iff in H;
-    destruct H as [x' [Heq Hinx']]; subst.
-    - apply (f_typevars x' Hinx' ty); auto. right.
-      destruct x'; simpl in *.
-      rewrite fn_wf0. auto.
-    - apply (p_typevars x' Hinx' ty); auto. 
-      destruct x'; simpl in *.
-      rewrite pn_wf0. auto.
-  Qed.
-
-  (*TODO: ps version*)
-
-  (*Will come from wf_context*)
-
-  Notation domain := (domain (dom_aux pd)).
+Notation domain := (domain (dom_aux pd)).
 
 Section Smaller.
 
 Context  {vt: val_typevar} {pf: pi_funpred gamma_valid pd}.
- 
 
 Notation val x :=  (v_subst vt x).
-
-(*Induction for ADTS*)
-Section Induction.
-
-(*First, we need an induction principle for ADTs (TODO: move
-  to IndTypes?)
-  We of course rely on the induction principle for W-types, but
-  our encoding is very complicated, so it is very difficult
-  to get this into a usable form. We need lots of typecasts
-  and intermediate results
-  *)
-
-Definition cast_w {I: Set} {A: I -> Set} {B: forall i: I, I -> A i -> Set}
-  {i1 i2: I} (Heq: i1 = i2) (w: W I A B i1) : W I A B i2 :=
-  match Heq with
-  | eq_refl => w
-  end.
-
-Definition cast_a {I: Set} {A: I -> Set} {i1 i2: I} (Heq: i1 = i2)
-  (a: A i1) : A i2 := scast (f_equal A Heq) a.
-
-Definition cast_b {I: Set} {A: I -> Set} {B: forall i: I, I -> A i -> Set}
-  {i1 i2 j: I} (Heq: i1 = i2) {a: A i1} (b: B i1 j a) :
-    B i2 j (cast_a Heq a).
-  destruct Heq. exact b.
-Defined.
-
-Lemma cast_a_sym {I: Set} {A: I -> Set} {i1 i2: I} (Heq: i1 = i2)
-(a: A i1): cast_a (eq_sym Heq) (cast_a Heq a) = a.
-Proof.
-  unfold cast_a. subst. reflexivity.
-Defined. 
-
-Lemma cast_w_mkw {I: Set} {A: I -> Set} {B: forall i: I, I -> A i -> Set}
-{i1 i2: I} (Heq: i1 = i2) (a: A i1) (f: forall j: I, B i1 j a -> W I A B j):
-  cast_w Heq (mkW I A B i1 a f) =
-  mkW I A B i2 (cast_a Heq a) 
-  (fun (j: I) (b: B i2 j (@cast_a I A _ _ Heq a)) =>
-    let b' : B i1 j (cast_a (eq_sym Heq) (cast_a Heq a)) 
-      := cast_b (eq_sym Heq) b in
-    let b'': B i1 j a := scast (f_equal (B i1 j) (cast_a_sym Heq a)) b' in
-    f j b'').
-Proof.
-  unfold cast_w. subst. simpl. unfold cast_a. simpl.
-  unfold scast, cast_a_sym. f_equal.
-Qed. 
-
-Lemma cast_i (m: mut_adt) (m_in: mut_in_ctx m gamma) (i: finite (length (adts m))):
-  i = get_idx adt_dec (fin_nth (adts m) i) (adts m)
-  (In_in_bool adt_dec (fin_nth (adts m) i) (typs m) (fin_nth_in (adts m) i)).
-Proof.
-  rewrite get_idx_fin; auto.
-  apply (adts_nodups gamma_valid). apply m_in.
-Qed.
-
-Definition cast_adt_rep {m srts t1 t2 tin1 tin2}
-  (H: t1 = t2)
-  (x: adt_rep m srts (dom_aux pd) t1 tin1):
-  adt_rep m srts (dom_aux pd) t2 tin2.
-  revert x. unfold adt_rep, mk_adts.
-  apply cast_w. subst. f_equal. apply bool_irrelevance.
-Defined.
-
-(*Relies on decidability of domain*)
-Lemma cast_w_twice {I: Set} {A: I -> Set} {B: forall i: I, I -> A i -> Set}
-{i1 i2: I}
-(eq_dec: forall x y: I, {x=y} + {x<>y})
-(Heq: i1 = i2) (Heq2: i2 = i1) (w: W I A B i1):
-  cast_w Heq2 (cast_w Heq w) = w.
-Proof.
-  subst. unfold cast_w. assert (Heq2=eq_refl). apply UIP_dec. auto.
-  rewrite H. reflexivity.
-Qed.
-
-(*We can rewrite under a proposition for equivalent ADTs*)
-(*These lemmas show why it is critical to have a bool for t_in*)
-Lemma rewrite_P {m srts}
-(P: forall t t_in, adt_rep m srts (dom_aux pd) t t_in -> Prop):
-forall t1 t2 t_in1 t_in2 (Ht: t1 = t2) x,
-  P t1 t_in1 x <-> P t2 t_in2 (cast_adt_rep Ht x).
-Proof.
-  intros. unfold cast_adt_rep. unfold cast_w, eq_ind_r, eq_ind.
-  subst. simpl. 
-  destruct ((bool_irrelevance (adt_in_mut t2 m) t_in1 t_in2)).
-  simpl. reflexivity.
-Qed.
-
-Lemma map_map_eq {A B: Type} (f: A -> B) (l: list A):
-  seq.map f l = map f l.
-Proof. reflexivity. Qed.
-
-(*TODO: maybe separate out into separate lemma*)
-(*We show that if the interpretation of a type is
-  the ADT applied to sorts, the type of the constructor
-  must have been the ADT name applied to the args.
-  This is not as trivial as it would seem; we need to
-  show it cannot be some typesym which is given the ADT
-  as an interpretation. We do this by showing such a
-  list would be impossible to construct in the following
-  few functions. This seems a bit hacky:*)
-
-(*A list of the "smaller" types contained in a type*)
-Definition subterm_ty (v: vty) : list vty :=
-  match v with
-  | vty_cons _ tys => tys
-  | _ => nil
-  end.
-
-Fixpoint vty_size (v: vty) : nat :=
-  match v with
-  | vty_int => 1
-  | vty_real => 1
-  | vty_var _ => 1
-  | vty_cons _ ts => 1 + sum (map vty_size ts)
-  end.
-
-Definition vtys_size (l: list vty) : nat :=
-  sum (map vty_size l).
-
-Lemma vty_size_eq (v: vty):
-  vty_size v =
-  match v with
-  | vty_int => 1
-  | vty_real => 1
-  | vty_var _ => 1
-  | vty_cons _ ts => 1 + vtys_size ts
-  end.
-Proof.
-  destruct v; auto.
-Qed.
-
-(*The size of a single type is smaller than 
-  the whole list*)
-Lemma vtys_size_in (l: list vty) (t: vty):
-  In t l ->
-  vty_size t <= vtys_size l.
-Proof.
-  unfold vtys_size.
-  induction l; simpl; intros; auto. destruct H.
-  destruct H; subst; try lia.
-  specialize (IHl H). lia.
-Qed.
-  
-(*An obvious lemma but one that is tricky to prove.
-  We prove this by giving the above size function
-  and proving that if (vty_cons t l) is in l, then
-  it has a smaller size than l, a contradiction *)
-(*Note: I believe that the same proof holds for any
-  coutable type*)
-Lemma sub_not_whole : forall t l,
-   ~ In (vty_cons t l) l.
-Proof.
-  intros. intro C.
-  apply vtys_size_in in C.
-  rewrite vty_size_eq in C. lia.
-Qed.
-
-(*As a corollary, we get the following*)
-Lemma list_srts_not_whole (n: nat) (tys: list vty) (ts: typesym):
-  nth n tys vty_int <> vty_cons ts tys.
-Proof.
-  assert (n < length tys \/ length tys <= n) by lia. destruct H.
-  - intro C.
-    apply (sub_not_whole ts tys). rewrite <- C.
-    apply nth_In; auto.
-  - rewrite nth_overflow; auto. intro C; inversion C.
-Qed. 
-
-Theorem adts_from_constrs {m: mut_adt} (m_in: mut_in_ctx m gamma)
-  (a': alg_datatype) (Hini: adt_in_mut a' m)
-  (c: funsym) 
-  (c_in: constr_in_adt c a')
-  (t': alg_datatype) (t_in': adt_in_mut t' m)
-  (j: nat) (srts: list sort)
-  (Hj: j < Datatypes.length (s_args c))
-  (Hlen: Datatypes.length srts = Datatypes.length (m_params m))
-  (Hnth: nth j (sym_sigma_args c srts) s_int =
-    typesym_to_sort (adt_name t') srts):
-  nth j (s_args c) vty_int =
-    vty_cons (adt_name t') (map vty_var (ts_args (adt_name t'))).
-Proof.
-  assert (Hparams: (s_params c) = (m_params m)). {
-    eapply adt_constr_params. apply gamma_valid.
-    auto. apply Hini. apply c_in. 
-  }
-  revert Hnth.
-  unfold sym_sigma_args, typesym_to_sort, ty_subst_list_s.
-  rewrite map_nth_inbound with(d2:=vty_int); auto.
-  unfold ty_subst_s, v_subst; intros Heq.
-  inversion Heq. clear Heq.
-  destruct (nth j (s_args c) vty_int) eqn : Hnth; simpl in H0;
-  try solve[inversion H0].
-  - destruct (in_dec typevar_eq_dec t (s_params c)).
-    + destruct (In_nth _ _ EmptyString i) as [n [Hn Hnthn]].
-      rewrite <- Hnthn in H0.
-      rewrite ty_subst_fun_nth with(s:=vty_int) in H0; auto.
-      * unfold sorts_to_tys in H0.
-        exfalso.
-        (*We get contradiction: can't have srts inside srts
-          This proves that this case cannot happen*)
-        apply (list_srts_not_whole n (sorts_to_tys srts) (adt_name t')); auto.
-      * unfold sorts_to_tys. rewrite map_length, Hlen, Hparams.
-        reflexivity.
-      * apply s_params_Nodup.
-    + rewrite ty_subst_fun_notin in H0; auto. inversion H0.
-  - (*The case that can actually happen: cons*)
-    inversion H0; subst. clear H0. 
-    (*Use uniformity - just instantiate all hyps, takes a while
-      should automate*)
-    assert (Hunif: uniform m). {
-      apply all_unif. auto.
-    }
-    unfold uniform in Hunif. unfold is_true in Hunif. 
-    rewrite forallb_forall in Hunif.
-    specialize (Hunif a' (in_bool_In _ _ _ Hini)).
-    rewrite forallb_forall in Hunif.
-    specialize (Hunif c).
-    assert (Hinc: In c (ne_list_to_list (adt_constrs a'))). {
-      apply in_bool_ne_In with(eq_dec:=funsym_eq_dec).
-      apply c_in.
-    }
-    specialize (Hunif Hinc).
-    unfold uniform_list in Hunif.
-    rewrite forallb_forall in Hunif.
-    assert (Hincons: In (vty_cons (adt_name t') l) (s_args c)). {
-      rewrite <- Hnth. apply nth_In; auto.
-    }
-    specialize (Hunif _ Hincons). simpl in Hunif.
-    rewrite implb_true_iff in Hunif.
-    assert (Htsin: ts_in_mut_list (adt_name t') (typs m)). {
-      unfold adt_in_mut in t_in'. 
-      unfold ts_in_mut_list. apply In_in_bool. rewrite in_map_iff.
-      exists t'. split; auto. apply (in_bool_In _ _ _ t_in'). 
-    }
-    specialize (Hunif Htsin). simpl_sumbool.
-    f_equal.
-    erewrite adt_args with(m:=m); [| apply gamma_valid |].
-    + reflexivity.
-    + unfold adt_mut_in_ctx. split; auto.
-Qed.
-
-(*TODO: move this*)
-(*Suppose we know that the ith element of a list satisfies a predicate.
-  Then we can find a j such that nth j (filter p l) = nth i l;
-  and moreover, we know exactly which j*)
-
-Definition idx_filter {A: Type} (p: A -> bool) (l: list A)
-  (n: nat) := length (filter p (firstn n l)).
-
-Lemma idx_filter_length {A: Type} (p: A -> bool) (l: list A)
-  (n: nat) (Hn: n < length l) (d: A):
-  p (nth n l d) ->
-  idx_filter p l n < length (filter p l).
-Proof.
-  generalize dependent n.
-  unfold idx_filter. induction l; intros; simpl; auto. inversion Hn.
-  simpl in Hn. destruct n; simpl.
-  - simpl in H. rewrite H. simpl; lia.
-  - simpl in H.
-    specialize (IHl n (ltac:(lia)) H).
-    destruct (p a); simpl; lia.
-Qed.
-
-Lemma idx_filter_le {A: Type} (p: A -> bool) (l: list A)
-(n: nat):
-idx_filter p l n <= length (filter p l).
-Proof.
-  unfold idx_filter.
-  revert n. induction l; simpl; intros; destruct n; simpl; auto.
-  - lia.
-  - specialize (IHl n). destruct (p a); simpl; lia.
-Qed.
-
-Lemma firstn_skipn_nth {A: Type} (n: nat) (l: list A) (d: A):
-  n < length l ->
-  l = firstn n l ++ (nth n l d) :: skipn (S n) l.
-Proof.
-  revert n. induction l; simpl; intros.
-  - inversion H.
-  - destruct n; auto.
-    simpl firstn. rewrite <- app_comm_cons.
-    f_equal. apply IHl. lia.
-Qed. 
-
-Lemma idx_filter_correct {A: Type} (p: A -> bool) (l: list A)
-  (n: nat) (Hn: n < length l) (d: A):
-  p (nth n l d) ->
-  nth (idx_filter p l n) (filter p l) d = nth n l d.
-Proof.
-  intros. unfold idx_filter.
-  generalize dependent n. induction l; simpl; intros.
-  - inversion Hn.
-  - destruct n.
-    + simpl. rewrite H. reflexivity.
-    + simpl firstn. simpl filter.
-      destruct (p a); simpl; apply IHl; auto; lia.
-Qed.
-
-(*We need this specific function and j value for the following
-  lemma:*)
-Lemma hnth_hlist_map_filter  {A B: Set} {f: A -> Set} {l: list B}
-(f1: B -> A) (h: hlist f (map f1 l)) (g: B -> bool) j d1 d2 d3
-(eq_dec: forall (x y: A), {x = y} + {x <> y})
-(Hij: (nth j (map f1 l) d1) = (nth (idx_filter g l j) (map f1 (filter g l)) d1))
-(Hg: g (nth j l d2)):
-  hnth (idx_filter g l j) (hlist_map_filter f1 h g) d1 d3 =
-  (scast (f_equal f Hij) (hnth j h d1 d3)).
-Proof.
-  revert Hij.
-  generalize dependent j.
-  induction l; intros; simpl in Hij |- *.
-  - destruct j; simpl in *; subst;
-    assert (Hij = eq_refl) by (apply UIP_dec; apply eq_dec);
-    rewrite H; simpl; reflexivity.
-  - destruct j; simpl in Hij |- *.
-    + unfold idx_filter in *. simpl in *.
-      destruct (g a) eqn : Ha; simpl in *.
-      * assert (Hij = eq_refl). apply UIP_dec. apply eq_dec.
-        rewrite H; reflexivity.
-      * inversion Hg.
-    + unfold idx_filter in *; simpl in *.
-      destruct (g a) eqn : Ha; simpl in *;
-      apply IHl; auto.
-Qed.
-
-(*Casting over dependent types/build_rec;
-  this is where things get very tricky*)
-
-Definition cast_dep {A: Set} (B: A -> Set) 
-  {a1 a2: A} (Heq: a1 = a2) (x: B a1) : B a2 :=
-  scast (f_equal B Heq) x.
-
-(*Another level*)
-Definition cast_dep' {A: Set} (B: A -> Set) (C: forall (a: A), B a -> Set)
-  {a1 a2: A} (Heq: a1 = a2) (x: B a1) (y: C a1 x) :
-  C a2 (cast_dep B Heq x).
-  destruct Heq. unfold cast_dep. exact y.
-Defined.
-
-Lemma cast_fun' {T: Set} {A: Type} {B: A -> T -> Type} 
-  {C: A -> Type} {t1 t2: T} 
-  {f: forall (x: A)(y: B x t1), C x} (Heq: t1 = t2):
-  forall x y,
-  (cast (f_equal (fun (x: T) => forall (a: A)(b: B a x), C a) Heq) f) x y = 
-  (fun (x: A) (y: B x t2) => 
-    f x (cast (f_equal (B x) (Logic.eq_sym Heq)) y)) x y.
-Proof.
-  destruct Heq. simpl. intros. reflexivity.
-Qed.
-
-Lemma scast_get_constr_type {m: mut_adt}
-  {i1 i2: finite (length (adts m))} (Heqi: i1 = i2)
-  {vars typesyms c Hinc Hinc' x}:
-  scast (f_equal 
-    (fun n => build_base vars typesyms (adts m)
-    (adt_constrs (fin_nth (adts m) n))) Heqi)
-  (get_constr_type vars typesyms (adts m) (adt_name (fin_nth (adts m) i1))
-    (adt_constrs (fin_nth (adts m) i1)) c Hinc x) =
-  get_constr_type vars typesyms (adts m) (adt_name (fin_nth (adts m) i2))
-    (adt_constrs (fin_nth (adts m) i2)) c Hinc' x.
-Proof.
-  unfold scast. destruct Heqi. simpl.
-  assert (Hinc = Hinc') by (apply bool_irrelevance).
-  rewrite H. reflexivity.
-Qed.
-
-(*Cast from one [build_rec] to another*)
-Definition cast_build_rec_gen {m: mut_adt} {constrs1 constrs2}
-  (Heq: constrs1 = constrs2) vars typesyms ts ts1 ts2 c Hinc1 Hinc2 b1 b2:
-    build_rec vars typesyms (adts m) ts constrs1
-      (get_constr_type vars typesyms (adts m) ts1 constrs1 c Hinc1 b1) ->
-    build_rec vars typesyms (adts m) ts constrs2
-      (get_constr_type vars typesyms (adts m) ts2 constrs2 c Hinc2 b2).
-Proof.
-  destruct Heq. assert (Hinc1 = Hinc2) by apply bool_irrelevance.
-  intros A.
-  apply finite_to_build_rec.
-  eapply build_rec_to_finite. apply A.
-Defined.
-
-(*Annoying dependent reasons why we need extra typesym*)
-Lemma build_rec_to_finite_cast {m: mut_adt} {constrs1 constrs2}
-(Heq: constrs1 = constrs2) vars typesyms ts ts1 ts2 ts3 
-  (Hts: ts2 = ts3) c Hinc1 Hinc2 b1 b2 x:
-  @build_rec_to_finite vars typesyms (adts m) ts3 ts constrs2 c Hinc2 b2
-    (cast_build_rec_gen Heq vars typesyms ts ts1 ts2 c Hinc1 Hinc2 b1 b2 x) =
-  build_rec_to_finite vars typesyms (adts m) x.
-Proof.
-  destruct Hts.
-  unfold cast_build_rec_gen. subst.
-  rewrite build_rec_finite_inv2. reflexivity.
-Qed.
-
-Definition cast_build_rec {m: mut_adt} {i1 i2: finite (length (adts m))} 
-(Heqi: i1 = i2)
-vars typesyms ts c Hinc  x:
-build_rec vars typesyms (adts m) ts (adt_constrs (fin_nth (adts m) i1))
-  (get_constr_type vars typesyms (adts m) (adt_name (fin_nth (adts m) i1))
-  (adt_constrs (fin_nth (adts m) i1)) c Hinc x) ->
-build_rec vars typesyms (adts m) ts (adt_constrs (fin_nth (adts m) i2))
-(scast (f_equal 
-(fun n => build_base vars typesyms (adts m)
-(adt_constrs (fin_nth (adts m) n))) Heqi)
-(get_constr_type vars typesyms (adts m) (adt_name (fin_nth (adts m) i1))
-(adt_constrs (fin_nth (adts m) i1)) c Hinc x)).
-apply (cast_dep' 
-  (fun i : finite (Datatypes.length (adts m)) =>
-    build_base vars typesyms (adts m) (adt_constrs (fin_nth (adts m) i)))
-  (fun (i : finite (Datatypes.length (adts m)))
-    (t : build_base vars typesyms (adts m)
-      (adt_constrs (fin_nth (adts m) i))) =>
-    build_rec vars typesyms (adts m) ts (adt_constrs (fin_nth (adts m) i)) t)
-  Heqi).
-Defined.
-
-(*Injectivity for [existT]*)
-
-Lemma existT_inj_dec {U: Type} {P: U -> Type} (eq_dec: forall x y : U, {x = y} + {x <> y}) {x1 x2: U} {H1: P x1} (H2: P x2):
-  existT P x1 H1 = existT P x2 H2 ->
-  {Heq: x1 = x2 & H2 = cast (f_equal P Heq) H1}.
-Proof.
-  intros. assert (Hex:=H).
-  apply EqdepFacts.eq_sigT_fst in H. subst.
-  apply inj_pair2_eq_dec in Hex. 2: apply eq_dec. subst.
-  apply (existT _ (Logic.eq_refl)). reflexivity.
-Qed.
-
-Lemma existT_inj {U: Type} {P: U -> Type} {x1 x2: U} {H1: P x1} (H2: P x2):
-  existT P x1 H1 = existT P x2 H2 ->
-  {Heq: x1 = x2 & H2 = cast (f_equal P Heq) H1}.
-Proof.
-  intros. assert (Hex:=H).
-  apply EqdepFacts.eq_sigT_fst in H. subst.
-  apply Eqdep.EqdepTheory.inj_pair2 in Hex. subst.
-  apply (existT _ (Logic.eq_refl)). reflexivity.
-Qed.
-
-Lemma scast_scast {A B C: Set} (H1: B = A) (H2: C = B) x:
-  scast H1 (scast H2 x) = scast (eq_trans H2 H1) x.
-Proof.
-  subst. reflexivity.
-Qed.
-
-(*Finally, we define a generalized induction principle on ADTs: 
-  - Suppose we have P, a proposition on all ADTs in mut adt m
-  - Suppose we know that, for any instance x = c(args) of
-    an ADT in m, if P holds for all elements of args which are
-    recursive, then P holds of x
-  - Then P holds for all instances of ADTs in m  
-  *)
-Theorem adt_rep_ind m m_in srts
-  (Hlen: length srts = length (m_params m)) 
-  (P: forall t t_in, adt_rep m srts (dom_aux pd) t t_in -> Prop):
-  (forall t t_in (x: adt_rep m srts (dom_aux pd) t t_in) 
-    (c: funsym) (Hc: constr_in_adt c t) (a: arg_list domain (sym_sigma_args c srts))
-    (Hx: x = constr_rep gamma_valid m m_in srts Hlen (dom_aux pd) t t_in c
-      Hc (Semantics.adts pd m srts) a),
-    (forall i t' t_in' Heq, i < length (s_args c) ->
-      (*If nth i a has type adt_rep ..., then P holds of it*)
-      P t' t_in' (scast (Semantics.adts pd m srts t' t_in') 
-        (dom_cast _ Heq (hnth i a s_int (dom_int pd)))) 
-      ) ->
-    P t t_in x
-    ) ->
-  forall t t_in (x: adt_rep m srts (dom_aux pd) t t_in),
-  P t t_in x.
-Proof.
-  intros.
-  unfold adt_rep in x, P. unfold mk_adts in x, P.
-  (*We use [W_ind], the induction principle for
-  indexed W types. There is a LOT of work needed to
-  use it for this*)
-  pose proof (W_ind (finite (length (adts m)))
-  (fun n : finite (Datatypes.length (adts m)) =>
-    build_base (var_map m srts (dom_aux pd))
-    (typesym_map m srts (dom_aux pd)) (adts m)
-    (adt_constrs (fin_nth (adts m) n)))
-  (fun this i : finite (Datatypes.length (adts m)) =>
-    build_rec (var_map m srts (dom_aux pd))
-      (typesym_map m srts (dom_aux pd)) (adts m)
-      (adt_name (fin_nth (adts m) i))
-      (adt_constrs (fin_nth (adts m) this)))
-  (*instantiate P*)
-  (fun i w => P (fin_nth (adts m) i)
-    (In_in_bool adt_dec _ _ (fin_nth_in (adts m) i)) 
-    (cast_w (cast_i m m_in i) w))
-  ) as wind.
-  (*There are two goals: show that W_ind allows us to
-    conclude P ..., then prove that the hypotheses
-    are satisfied. The first part is much easier, so we
-    do it first*)
-  match goal with
-  | H: ?P -> ?Q |- _ => let Hhyp := fresh "Hindh" in
-    assert (Hhyp: P); [clear H|specialize (H Hhyp); clear Hhyp]
-  end.
-  2: {
-    specialize (wind 
-      (get_idx _ t (adts m) t_in) x).
-      simpl in wind.
-    clear -wind.
-    revert wind.
-    assert (Ht: (fin_nth (adts m) (get_idx adt_dec t (adts m) t_in)) = t). {
-      apply get_idx_correct.
-    }
-    rewrite rewrite_P with(P:=P)(t2:=t)(t_in2:=t_in)(Ht:=Ht).
-    assert ((cast_adt_rep Ht
-    (cast_w (cast_i m m_in (get_idx adt_dec t (adts m) t_in)) x)) = x). {
-      clear. unfold cast_adt_rep.
-      apply cast_w_twice.
-      apply finite_eq_dec.
-    }
-  rewrite <- H at 2. auto.
-  }
-  (*The hard part: prove that the IH's coincide*)
-  intros i a f IH.
-  rewrite cast_w_mkw. simpl.
-  match goal with
-  | |- P ?i ?h ?y => set (x':=y) in *
-  end.
-  (*Idea: x' is some instance of W type (ith in m)
-    we can find the constructor c and args such that x' = c(args)
-    Then we use (complicated, dependent) inversion to
-    connect the components of x' with those of the constructor and args
-    *)
-  destruct (find_constr_rep gamma_valid m m_in srts Hlen (dom_aux pd)
-    (fin_nth (adts m) i) (In_in_bool adt_dec _ _ (fin_nth_in (adts m) i))
-    (Semantics.adts pd m srts) (all_unif m m_in) x') as [c [[c_in args] Hx']].
-  (*Here, we need info about a*)
-  assert (Hnodupb: nodupb funsym_eq_dec
-    (ne_list_to_list (adt_constrs (fin_nth (adts m) i)))). {
-    eapply constrs_nodups with(m:=m). apply gamma_valid. auto.
-    rewrite in_map_iff. exists (fin_nth (adts m) i). split; auto.
-    apply fin_nth_in.
-  }
-  destruct (get_funsym_base (var_map m srts (dom_aux pd))
-    (typesym_map m srts (dom_aux pd)) (adts m) 
-    (adt_name (fin_nth (adts m) i))
-    (adt_constrs (fin_nth (adts m) i)) Hnodupb a
-    ) as [c' [Hinc' [b1 Ha]]].
-  assert (c = c'). {
-    (*Idea: we know from x' + inversion that [get_constr_types]
-      agree, use injectivity*)
-    unfold constr_rep in Hx'.
-    unfold make_constr in Hx'.
-    subst x'.
-    inversion Hx'. clear Hx'.
-    apply inj_pair2_eq_dec in H1. 2: apply finite_eq_dec.
-    revert H1.
-    unfold cast_a.
-    (*want to prove, essentially, that a = get_constr_type c b,
-      for appropriate b (from [get_funsym_base])*)
-    rewrite Ha.
-    rewrite scast_get_constr_type with(Hinc':=
-    (constr_in_lemma m (fin_nth (adts m) i)
-    (In_in_bool adt_dec (fin_nth (adts m) i) (adts m)
-      (fin_nth_in (adts m) i)) c' Hinc')).
-    intros Hconstrs.
-    apply get_constr_type_inj1 in Hconstrs.
-    subst; auto.
-  }
-  subst c'.
-  (*Now we know about a. This is helpful*)
-  specialize (H _ _ x' c c_in args Hx').
-  apply H.
-  (*Now we need to show that the [forall i] condition
-    corresponds to that in the IH. This is the hardest part*)
-  (*clear -IH Hlen c_in all_unif Ha.*)
-  intros j t' t_in' Heq Hj.
-  specialize (IH (get_idx adt_dec t' (adts m) t_in')).
-  assert (Heq': nth j (s_args c) vty_int =
-    vty_cons (adt_name t') (map vty_var (ts_args (adt_name t')))). {
-    apply (@adts_from_constrs m) with(a':=fin_nth (adts m) i)(srts:=srts); auto.
-    apply In_in_bool. apply fin_nth_in.
-  }
-  subst a.
-  (*Now we use [finite_to_build_rec] to get our b, which is
-    the value [idx_filter] corresponding to j cast to a finite type*)
-  assert (Hp: rec_occ_fun (adt_name t') (nth j (s_args c) vty_int)). {
-    unfold rec_occ_fun. rewrite Heq'.
-    bool_to_prop. split; simpl_sumbool.
-  }
-  pose proof (idx_filter_length _ _ _ Hj vty_int Hp) as Hn.
-  pose proof (idx_filter_correct _ _ _ Hj vty_int Hp) as Hni.
-  set (n:= (idx_filter (rec_occ_fun (adt_name t')) (s_args c) j)) in *.
-  (*Build finite value*)
-  assert ( Hn': n < (count_rec_occ
-    (adt_name (fin_nth (adts m) 
-      (get_idx adt_dec t' (adts m) t_in'))) c)). {
-    rewrite get_idx_correct.
-    apply Hn.
-  }
-  set (fin:=nat_to_finite n Hn').
-  set (br:=(@finite_to_build_rec 
-  (var_map m srts (dom_aux pd))
-  (typesym_map m srts (dom_aux pd))
-  (adts m)
-  (adt_name (fin_nth (adts m) i))
-  (adt_name (fin_nth (adts m) (get_idx adt_dec t' (adts m) t_in')))
-  (adt_constrs (fin_nth (adts m) i))
-  c Hinc' b1 fin
-  )).
-  specialize (IH br).
-  (*Now, we need to cast*)
-  revert IH.
-  assert (Ht: fin_nth (adts m) (get_idx adt_dec t' (adts m) t_in') = t'). {
-    apply get_idx_correct.
-  }
-  rewrite rewrite_P with(P:=P)(t2:=t')(t_in2:=t_in')(Ht:=Ht).
-  (*The "only" thing that remains is to show that these last
-    two casted ADTs are equal. This is not easy*)
-  assert ((cast_adt_rep Ht
-    (cast_w (cast_i m m_in (get_idx adt_dec t' (adts m) t_in'))
-      (f (get_idx adt_dec t' (adts m) t_in')
-        br))) =
-            (scast (Semantics.adts pd m srts t' t_in')
-            (dom_cast (dom_aux pd) Heq (hnth j args s_int (dom_int pd))))). {
-    unfold cast_adt_rep. rewrite cast_w_twice. 2: apply finite_eq_dec.
-    (*Now we need to know something about f, again by
-      inversion on x'*)
-    unfold constr_rep in Hx'.
-    unfold make_constr in Hx'.
-    subst x'.
-    inversion Hx'. clear Hx'.
-    clear H1.
-    apply existT_inj_dec in H2. 2: apply finite_eq_dec.
-    destruct H2 as [Heq1 Hexeq].
-    assert (Heq1 = Logic.eq_refl). {
-      apply UIP_dec. apply finite_eq_dec.
-    }
-    rewrite H0 in Hexeq. simpl in Hexeq. clear H0.
-    (*Here (and in other places), we need UIP*)
-    apply existT_inj in Hexeq. destruct Hexeq as [Heq2 Hexeq].
-    apply fun_args_eq_dep with(x:=(get_idx adt_dec t' (adts m) t_in')) in Hexeq.
-    (*Idea: specialize with correct type, will need to simplify casts,
-      get equivalence for f*)
-    unfold cast_a in Hexeq.
-    (*We use a cast on the [build_rec] to specialize the function*)
-    set (br_cast := (cast_build_rec (cast_i m m_in i)
-    (var_map m srts (dom_aux pd))
-    (typesym_map m srts (dom_aux pd)) 
-    (adt_name (fin_nth (adts m) (get_idx adt_dec t' (adts m) t_in')))
-    c Hinc' b1 br
-    )).
-    apply fun_args_eq_dep with (x:=br_cast) in Hexeq.
-    (*Now we have an equivalence for f, we need to simplify everything*)
-    (*TO deal with implicit args, use tactics*)
-    match goal with 
-    | H: f ?i ?br' = ?z |- f ?i ?br = ?y => assert (Hbr: br = br');
-      [|rewrite <- Hbr in H; rewrite H; clear Hbr]
-    end.
-    {
-      clear. (*Now, just casting*) subst br br_cast.
-      generalize dependent (cast_i m m_in i). intros. destruct e. simpl.
-      reflexivity.
-    }
-    (*simplify casts in function*)
-    (*this is a bit awful because we need all the function types*)
-    rewrite (@cast_fun' _ 
-      (finite (Datatypes.length (adts m)))
-      (fun j0 a => build_rec (var_map m srts (dom_aux pd))
-        (typesym_map m srts (dom_aux pd)) (adts m)
-        (adt_name (fin_nth (adts m) j0))
-        (adt_constrs
-          (fin_nth (adts m)
-              (get_idx adt_dec (fin_nth (adts m) i) 
-                (adts m)
-                (In_in_bool adt_dec (fin_nth (adts m) i) 
-                    (adts m) (fin_nth_in (adts m) i))))) a)
-      (fun (j0 : finite (Datatypes.length (adts m))) => 
-      W (finite (Datatypes.length (adts m)))
-        (fun n0 : finite (Datatypes.length (adts m)) =>
-        build_base (var_map m srts (dom_aux pd))
-          (typesym_map m srts (dom_aux pd)) (adts m)
-          (adt_constrs (fin_nth (adts m) n0)))
-        (fun this i0 : finite (Datatypes.length (adts m)) =>
-        build_rec (var_map m srts (dom_aux pd))
-          (typesym_map m srts (dom_aux pd)) (adts m)
-          (adt_name (fin_nth (adts m) i0))
-          (adt_constrs (fin_nth (adts m) this))) j0)
-      _ _ _ Heq2).
-    (*Now we have 2 goals: show that the finite types are
-      equivalent, then prove that the values are the same.
-      Both involve some awful casts, particularly the first one*)
-    subst br_cast.
-    match goal with
-    | |- tnthS ?x ?y = ?z => assert (Hfin: y = fin); [|rewrite Hfin; clear Hfin]
-    end.
-    { 
-      clear. subst fin.
-      unfold cast_a in Heq2. unfold scast in Heq2.
-      unfold cast_build_rec.
-      (*We need to collapse these casts into one. The dependent
-        types are awful, we need to be more generic; we do that here.
-        This assertion is as general as we can be with a cast and cast_dep'
-        in there*)
-      assert (forall vars typesyms i1 i2 (Heqi: i1 = i2) ts c Hinc Hinc2 b1 b2
-        (br: build_rec vars typesyms (adts m) ts (adt_constrs (fin_nth (adts m) i1))
-          (get_constr_type vars typesyms (adts m) 
-          (adt_name (fin_nth (adts m) i1)) (adt_constrs (fin_nth (adts m) i1)) c
-          Hinc b1))
-        (Heqx: get_constr_type vars typesyms (adts m) 
-          (adt_name (fin_nth (adts m) i2)) 
-          (adt_constrs (fin_nth (adts m) i2))
-          c Hinc2 b2 =(cast_dep
-          (fun i : finite (Datatypes.length (adts m)) =>
-          build_base vars typesyms (adts m) (adt_constrs (fin_nth (adts m) i)))
-          Heqi
-          (get_constr_type vars typesyms (adts m)
-            (adt_name (fin_nth (adts m) i1))
-            (adt_constrs (fin_nth (adts m) i1)) c Hinc b1)))
-          ,
-        cast (@f_equal _ Type (fun (a: build_base vars typesyms (adts m)
-          (adt_constrs (fin_nth (adts m) i2))) =>
-          (build_rec vars typesyms (adts m) ts
-          (adt_constrs (fin_nth (adts m) i2))) a) _ _ (Logic.eq_sym Heqx))
-        (cast_dep' (fun i => build_base vars typesyms (adts m)
-          (adt_constrs (fin_nth (adts m) i)))
-          (fun i t => build_rec vars typesyms (adts m) ts
-            (adt_constrs (fin_nth (adts m) i)) t)
-          Heqi
-          (get_constr_type vars typesyms (adts m) (adt_name (fin_nth (adts m) i1))
-            (adt_constrs (fin_nth (adts m) i1)) c Hinc b1) br) =
-          (cast_build_rec_gen (f_equal (fun x => adt_constrs (fin_nth (adts m) x)) Heqi)
-            vars typesyms ts _ (adt_name (fin_nth (adts m) i1)) c _ Hinc2 _ b2 br)). {
-          clear.
-          intros. destruct Heqi.
-          simpl.
-          unfold cast_dep in Heqx. simpl in Heqx.
-          assert (Hinc = Hinc2) by apply bool_irrelevance.
-          subst.
-          assert (b2 = b1) by (apply get_constr_type_inj2 in Heqx; subst; auto).
-          subst.
-          assert (Heqx = Logic.eq_refl). {
-            (*rely on UIP here*)
-            apply IndTypes.UIP.
-          }
-          subst. simpl.
-          rewrite build_rec_finite_inv1. reflexivity.
-        }
-        (*With that lemma, we can rewrite*)
-        rewrite (H (var_map m srts (dom_aux pd))
-        (typesym_map m srts (dom_aux pd)) _ _ (cast_i m m_in i) ).
-        (*Now we have a [build_rec_to_finite] of a single cast*)
-        rewrite build_rec_to_finite_cast.
-        2: {
-          rewrite (cast_i m m_in i) at 1. reflexivity. }
-        (*Finally, no more casting! Just need to show that
-          finite types equal*)
-        subst br.
-        rewrite build_rec_finite_inv2.
-        reflexivity.
-    }
-    (*Now, we show that this really is the nth of [args_to_ind_base].
-      This will involve pushing the [tnthS] through the layers,
-      introducing many, many casts. Then we simplify at the end*)
-    clear Hexeq Heq2 Heq1 Ht.
-    unfold args_to_ind_base, args_to_ind_base_aux.
-    subst fin.
-    (*need a default adt*)
-    set (d_adt:= scast (Semantics.adts pd m srts t' t_in')
-    (dom_cast (dom_aux pd) Heq (hnth j args s_int (dom_int pd)))).
-    (*1. Push through [tup_of_list]*)
-    rewrite tnthS_tup_of_list with(d:=d_adt).
-    (*2. Push through [cast_list]*)
-    rewrite cast_list_nth.
-    (*3. Push through [hlist_to_list]*)
-    assert (Hn2: n <
-    Datatypes.length
-      (map (IndTypes.sigma m srts)
-        (filter
-            (rec_occ_fun
-              (adt_name (fin_nth (adts m) (get_idx adt_dec t' (adts m) t_in'))))
-            (s_args c)))). {
-    rewrite map_length. apply Hn'. }
-    rewrite hlist_to_list_nth_dec_set' with(Hi:=Hn2)(d1:=s_int)(d2:=dom_int pd).
-    2: apply sort_eq_dec.
-    (*4. Push through [hlist_map_filter]. Here we need
-      the fact that n is [idx_filter j], but annoying the function
-      in the [hlist_map_filter] is a bit different (though equal)*)
-    subst d_adt.
-    assert (Hnalt: n = idx_filter (rec_occ_fun
-    (adt_name
-      (fin_nth (adts m) (get_idx adt_dec t' (adts m) t_in'))))
-      (s_args c) j). {
-      subst n. f_equal. rewrite get_idx_correct. reflexivity.
-    }
-    generalize dependent n; intros. subst n.
-    assert (Hnth': nth j (map (IndTypes.sigma m srts) (s_args c)) s_int =
-    nth
-      (idx_filter
-        (rec_occ_fun
-            (adt_name (fin_nth (adts m) (get_idx adt_dec t' (adts m) t_in'))))
-        (s_args c) j)
-      (map (IndTypes.sigma m srts)
-        (filter
-            (rec_occ_fun
-              (adt_name (fin_nth (adts m) (get_idx adt_dec t' (adts m) t_in'))))
-            (s_args c))) s_int). {
-      rewrite map_nth_inbound with(d2:=vty_int); auto.
-      rewrite (map_nth_inbound) with(d2:=vty_int); auto.
-      f_equal. rewrite <- Hni. f_equal. f_equal. rewrite get_idx_correct.
-      reflexivity.
-    }
-    rewrite hnth_hlist_map_filter with(d2:=vty_int)(Hij:=Hnth').
-    2: apply sort_eq_dec.
-    2: {
-      rewrite get_idx_correct. auto.
-    }
-    (*5. Push through [cast_arg_list]*)
-    rewrite hnth_cast_arg_list.
-    (*Final cast simplification*)
-    clear.
-    (*Need UIP*)
-    assert (forall {A B C D E: Set} x
-      (H1: B = A) (H2: C = B) (H3: D = C) (H4: E = D)
-      (H5: E = A),
-      scast H1 (scast H2 (scast H3 (scast H4 x))) =
-      scast H5 x). {
-        clear. intros. subst. simpl.
-        assert (H5 = eq_refl). apply IndTypes.UIP. subst. reflexivity.
-    }
-    generalize dependent (hnth j args s_int (dom_int pd)); intros d.
-    unfold dom_cast.
-    erewrite H.
-    rewrite scast_scast. reflexivity.
-  }
-  (*And we are finally done!*)
-  rewrite <- H0. intros X; apply X.
-Qed.
-
-(*Print Assumptions adt_rep_ind.*)
-
-End Induction.
 
 Section WellFounded.
 
@@ -1642,6 +189,7 @@ Proof.
   apply sort_inj. auto.
 Qed.
 
+(*TODO: move*)
 Lemma scast_eq_sym {A B: Set} (Heq: A = B) x:
   scast (eq_sym Heq) (scast Heq x) = x.
 Proof.
@@ -1698,7 +246,7 @@ Proof.
   (eq_trans (f_equal domain Hseq) (Semantics.adts pd m srts a a_in)))).
   intros Heqadt Hd. subst d.
   (*Here, we use induction*)
-  apply (adt_rep_ind m m_in srts Hlen (fun t t_in x =>
+  apply (adt_rep_ind gamma_valid all_unif m m_in srts Hlen (fun t t_in x =>
     forall s Heq, s = typesym_to_sort (adt_name t) srts ->
     Acc adt_smaller (existT (fun s => domain s) s 
       (scast Heq x)))); auto.
@@ -1851,12 +399,6 @@ Definition adt_smaller_trans_wf := R_trans_wf adt_smaller adt_smaller_wf.
 
 (*Part 2: lift to [arg_list]*)
 
-(*TODO: do version with predsyms also*)
-(*
-Variable srts: list sort.*)
-
-(*This definition might be bad, see about this*)
-
 (*This is why we need sort, not 
   {x: vty & domain (v_subst vt x)}
   This definition is unusable when we have types who are not
@@ -1868,70 +410,31 @@ End WellFounded.
 End Smaller.
 
 
-  (*The mut adt we are recursing on*)
-  Variable m: mut_adt.
-  Variable vs: list vty.
+(*The mut adt we are recursing on*)
+Variable m: mut_adt.
+Variable vs: list vty.
+
+Variable vs_len: length vs = length (m_params m).
   
-  Variable vs_len: length vs = length (m_params m).
-  
-  
-  (*TODO: will need to add this to typing*)
-  
-  (*TODO: I think: need hypothesis about relationship
-    between s_args and fn_args - also move to typing/put in
-    definition of funpred_def maybe*)
-  Variable funs_args_agree: forall f, In f fs ->
-    map snd (sn_args f) = s_args (fn_sym f).
-  Variable preds_args_agree: forall p, In p ps ->
-    map snd (sn_args p) = s_args (pn_sym p).
+Variable funs_recurse_on_adt: forall f, In f fs ->
+  vty_in_m m vs (snd (nth (sn_idx f) (sn_args f) vs_d)).
+Variable preds_recurse_on_adt: forall p, In p ps ->
+  vty_in_m m vs (snd (nth (sn_idx p) (sn_args p) vs_d)).
 
-
-
-  Lemma args_agree: forall s, In s sns ->
-    map snd (sn_args s) = s_args (sn_sym s).
-  Proof.
-    intros. unfold sns in H. rewrite in_app_iff in H.
-    destruct H; auto; rewrite in_map_iff in H;
-    destruct H as [x [Heq Hinx]]; subst.
-    - rewrite funs_args_agree; auto.
-      destruct x; simpl. rewrite fn_wf0.
-      reflexivity.
-    - rewrite preds_args_agree; auto.
-      destruct x; simpl. rewrite pn_wf0.
-      reflexivity.
-  Qed.
-
-  
-  Variable funs_recurse_on_adt: forall f, In f fs ->
-    vty_in_m m vs (snd (nth (sn_idx f) (sn_args f) vs_d)).
-  Variable preds_recurse_on_adt: forall p, In p ps ->
-    vty_in_m m vs (snd (nth (sn_idx p) (sn_args p) vs_d)).
-
-
-
-  Lemma recurse_on_adt: forall s, In s sns ->
-    vty_in_m m vs (snd (nth (sn_idx s) (sn_args s) vs_d)).
-  Proof.
-    intros. unfold sns in H. rewrite in_app_iff in H.
-    destruct H; auto; rewrite in_map_iff in H;
-    destruct H as [x [Heq Hinx]]; subst;
-    [apply funs_recurse_on_adt | apply preds_recurse_on_adt]; auto.
-  Qed.
-
-    (*exists a,
-    adt_in_mut a m /\ snd(nth (fn_idx f) (fn_args f) vs_d) =*)
-
-
-(*TODO: (temp) do match lemma here so vt not fixed*)
-
+Lemma recurse_on_adt: forall s, In s sns ->
+  vty_in_m m vs (snd (nth (sn_idx s) (sn_args s) vs_d)).
+Proof.
+  intros. unfold sns in H. rewrite in_app_iff in H.
+  destruct H; auto; rewrite in_map_iff in H;
+  destruct H as [x [Heq Hinx]]; subst;
+  [apply funs_recurse_on_adt | apply preds_recurse_on_adt]; auto.
+Qed.
 
 Variable m_in: mut_in_ctx m gamma.
 
 Section MatchSmallerLemma.
 
-(*I think we need assumption: all params in vs
-  are in params*)
-
+(*TODO: move*)
 Lemma v_subst_aux_sort_eq (v: typevar -> vty) (t: vty):
   (forall x, In x (type_vars t) -> is_sort (v x)) ->
   is_sort (v_subst_aux v t).
@@ -1944,18 +447,6 @@ Proof.
   rewrite Forall_forall in H0. apply H0; auto.
   intros. apply H. simpl. simpl_set. exists y. split; auto.
 Qed.
-(*
-(*This is the key point:*)
-Lemma funsym_args_in_params (f: funsym) (v: vty) (t: typevar) :
-  In v (s_args f) ->
-  In t (type_vars v) ->
-  In t (s_params f).
-Proof.
-  intros. destruct f; simpl in *.
-  unfold is_true in s_args_wf.
-  rewrite <- (reflect_iff _ _ (check_args_correct _ _)) in s_args_wf.
-  apply s_args_wf in H0; auto.
-Qed.*)
 
 (*TODO: move*)
 Lemma dom_cast_compose {domain_aux: sort -> Set} {s1 s2 s3: sort}
@@ -2454,9 +945,6 @@ Context  {vt: val_typevar} {pf: pi_funpred gamma_valid pd}.
  
 Notation val x :=  (v_subst vt x).
 
-(*We need to build a new val_typevar, we cannot assume this
-  or maybe it is OK*)
-(*HMM see*)
 Definition vt_eq srts:= forall i, i < length params ->
   vt (nth i params EmptyString) = nth i srts s_int.
 
@@ -2480,13 +968,13 @@ Qed.
 Lemma sn_idx_bound (s: sn) : sn_idx s < length (s_args (sn_sym s)).
 Proof.
   destruct s; simpl in *.
-  apply Nat.eqb_eq in sn_args_len0. rewrite <- sn_args_len0.
-  apply Nat.ltb_lt. apply sn_idx_in0.
+  apply Nat.eqb_eq in sn_args_len. rewrite <- sn_args_len.
+  apply Nat.ltb_lt. apply sn_idx_in.
 Qed.
 
 Lemma sn_idx_bound' (s: sn): sn_idx s < length (sn_args s).
 Proof.
-  destruct s. simpl. apply Nat.ltb_lt in sn_idx_in0. auto.
+  destruct s. simpl. apply Nat.ltb_lt in sn_idx_in. auto.
 Qed.
 
 Lemma sn_args_Nodup s: NoDup (sn_args s).
@@ -2500,17 +988,10 @@ Definition cast_symargs (srts: list sort) {s1 s2: fpsym} (H: s1 = s2) :
   f_equal (fun x => sym_sigma_args x srts) H.
 
 (*Our packed_args works over generic symbols, since it will be used
-  for both functions and predicates. We define sn, the list
-  formed by the sn's of fs and ps*)
-
-
+  for both functions and predicates.*)
 
 Definition packed_args : Set :=
   {x: {s: sn | In s sns} & {srts: list sort & arg_list domain (sym_sigma_args (sn_sym (proj1_sig x)) srts)}}.
-
-(*Definition packed_args : Set :=
-    {x: {f: fn | In f fs} & {srts: list sort & arg_list domain (sym_sigma_args (fn_sym (proj1_sig x)) srts)}}.*)
-
 
 (*The relation is simple: the (fn_idx)th element of the 1st
   arg_list must be smaller than the second*)
@@ -2580,7 +1061,7 @@ End WellFounded2.
 
 (*TODO: move*)
 (*We can make this opaque: we don't actually need
-  to compute with this (TODO: should this be Defined?)*)
+  to compute with this*)
 Definition find_fn (f: funsym) (l: list fn) : 
 Either
   {f': fn | In f' l /\ f = fn_sym f'}
@@ -2610,9 +1091,6 @@ induction l; simpl.
 Qed.
 
 (*Invert [decrease_fun] for funs - 2 cases*)
-
-(*TODO: need invariant that all elements in small have correct
-  types (I think) - easy to show it is preserved*)
 
 Lemma dec_inv_tfun_in {small: list vsymbol} {hd: option vsymbol} {f: funsym}
   {l: list vty} {ts: list term}
@@ -2763,8 +1241,7 @@ Proof.
   - eapply dec_inv_fpred_notin. apply Hde. auto.
 Qed.
 
-(*TODO: START: prove these for preds*)
-
+(*TODO: remove or use eq_ind*)
 Definition term_has_type_cast {t1 t2: term} {ty: vty} (Heq: t1 = t2)
   (Hty: term_has_type sigma t1 ty) : term_has_type sigma t2 ty :=
   match Heq with
@@ -3011,6 +1488,7 @@ match ts as ts'
       end Hlen Htys
   end.
 
+  (*
   (*A computable version - why is standard version not computable?*)
 Definition proj1' {A B: Prop} (H: A /\ B) : A :=
   match H with
@@ -3020,7 +1498,7 @@ Definition proj1' {A B: Prop} (H: A /\ B) : A :=
 Definition proj2' {A B: Prop} (H: A /\ B) : B :=
   match H with
   | conj x x0 => x0
-  end.
+  end.*)
 
 (*Is this the lemma we need?*)
 
@@ -3047,85 +1525,7 @@ Proof.
   rewrite params_eq; auto. apply map_vars_srts; auto.
 Qed.
 
-
-(*I think we need to assume uniform functions for this to work*)
-
-(*So we need to say: all have same params
-  and
-  any invocation of any of the functions in fs
-  have to be with (map vty_var params)
-  
-  Then, we know (from some stuff proved before)
-  that val vt of this is just srts (similar to ADTs)
-
-  problem: vt should not be same in outer and inner
-  i think that inner (in term_rep_aux) needs to have
-  vt (nth i params) = nth i srts
-  outer not necessarily
-  so we may need to carry this around in a proof
-
-  *)
-(* TODO: after uniform, with assumption
-Lemma fun_args_srts (f: fn)  (vs: list vty) (ts: list term) :
-  length vs = length srts ->
-  In f fs ->
-  Forall (fun x : term * vty => term_has_type sigma (fst x) (snd x))
-    (combine ts (map (ty_subst (s_params (fn_sym f)) vs) (s_args (fn_sym f)))) ->
-  (map (fun x => val x) vs) = srts.
-Proof.
-  intros.
-  apply list_eq_ext'; rewrite map_length; auto.
-  intros n d Hn.
-  rewrite map_nth_inbound with(d2:=vty_int); auto.
-  erewrite v_ty_subst_eq with(params:=params) (srts:=srts); auto.
-*)
-
-(*TODO: fix the smaller relation - can only add things of
-  correct type
-  So if x (vsymbol) has type vty_cons ts vs,
-  and if ts is in mut adt m,
-  only add things of form vty_cons ts' vs, for ts' in m
-  Or we can say (since it must be case that structurally dec on ADT,
-    say: we have mut adt m, adt a in m such that x has type 
-    vty_cons (adt_name a) vs)
-
-    need vs because we cannot recurse on list bool if arg
-    is list int 
-    hmm, do we need - seems like uniformity should rule this out
-    dont add for now, might need later
-  
-  *)
-
-
-(*TODO: move to typing (I think)*)
-(*2 parts to condition
-  1. All function and pred symbols in def have same params
-  2. All functions/pred symbols in def appear in each term/fmla
-    applied to same arguments*)
-
-(*TODO: need something about *)
-
-
-
-(*Idea should be:
-  suppose have params and srts with length params = length srts
-
-  Suppose that vt matches params to appropriate srts
-
-  let ty be a vty and suppose that all typevars in vty are in 
-  params. Then val vt ty = ty_subst_s params srts ty
-
-  (*NOTE: showed this in [v_ty_subst_eq]*)
-
-  then, if we know that each of vs has type corresponding to
-  s_args f, and that all typevars must be in s_params,
-  we get that (map (val vt) vs = sym_sigma_args srts)
-  or something
-  (*TODO: this*)
-
-*)
-
-
+(*TODO: move*)
 Lemma eq_trans_refl {A: Set} {x1 x2: A} (H: x1 = x2):
 eq_trans eq_refl H = H.
 Proof.
@@ -3181,16 +1581,6 @@ Proof.
   exists x. split; auto.
 Qed.
 
-(*I believe we have the following*)
-
-(*Lemma dom_cast_compose {domain_aux: sort -> Set} {s1 s2 s3: sort}
-  (Heq1: s2 = s3) (Heq2: s1 = s2) x:
-  dom_cast domain_aux Heq1 (dom_cast domain_aux Heq2 x) =
-  dom_cast domain_aux (eq_trans Heq2 Heq1) x.
-Proof.
-  subst. reflexivity.
-Qed.*)
-
 (*The type doesn't actually matter for [adt_smaller]; only
   the value. Thus, we can cast and still have the relation hold*)
 Lemma adt_smaller_hide_cast {s1 s2: sort} (x: domain s1) 
@@ -3236,6 +1626,7 @@ Qed.
 
 
 (*Create the valuation given a list of sorts and variables*)
+(*TODO: move to Semantics/Interp*)
 Fixpoint val_with_args (vv: val_vars pd vt) (vars: list vsymbol) 
   {srts: list sort}
   (a: arg_list domain srts) :
@@ -3261,52 +1652,6 @@ Lemma dec_uip_diff {A: Set} {x1 x2: A}
 Proof.
   subst. apply UIP_dec. auto.
 Qed.
-
-(*
-  nth i (funsym_sigma_args f srts) s_int =
-  val (ty_subst (s_params f) (sorts_to_tys srts)
-    (nth i (s_args f) vty_int)).
-
-
-hide_ty
-       (dom_cast (dom_aux pd)
-          (arg_nth_eq srts (fn_sym f1) (fn_idx f1) (fn_idx_bound f1))
-          (hnth (fn_idx f1) a1 s_int (dom_int pd))) : {x : vty & domain (val x)}*)
-
-(*The spec: suppose that length vars = length srts
-  and that for all i, snd (nth i vars) = val (nth i s_args).
-  Then val_with_args vv (nth i vars) = nth i a*)
-(*Lemma val_with_args_in vv (vars: list vsymbol) (srts: list sort)
-  (a: arg_list domain srts) (ty: vty)
-  (Hnodup: NoDup vars)
-  (Hlen: length vars = length srts):
-  forall i (Hi: i < length vars)
-  (Heq1: nth i srts s_int = val ty)
-  (Heq2: ),
-  val_with_args vv vars a (nth i vars vs_d) =
-  dom_cast _ Heq (hnth i a s_int (dom_int pd)).
-Proof.
-  intros. generalize dependent srts. generalize dependent i.
-  induction vars; simpl; intros.
-  - inversion Hi.
-  - destruct a0.
-    + inversion Hlen.
-    + simpl. destruct i.
-      * (*i=0*) 
-        destruct (vsymbol_eq_dec a a); try contradiction.
-        destruct (vty_eq_dec (v_subst_aux (fun x0 : typevar => v_typevar vt x0) (snd a)) x); subst.
-        -- unfold dom_cast.
-          f_equal. f_equal. apply dec_uip_diff. apply sort_eq_dec.
-        -- exfalso. apply n.
-          simpl in Heq. subst. reflexivity.
-      * (*i <> 0*) inversion Hnodup; subst.
-        destruct (vty_eq_dec
-        (v_subst_aux (fun x0 : typevar => v_typevar vt x0) (snd (nth i vars vs_d))) x).
-        -- destruct (vsymbol_eq_dec a (nth i vars vs_d)).
-          ++ exfalso; subst. apply H1. apply nth_In; auto. simpl in Hi. lia.
-          ++ erewrite IHvars; auto. lia. 
-        -- erewrite IHvars; auto. lia.
-Qed.*)
 
 Lemma val_with_args_in vv (vars: list vsymbol) (srts: list sort)
   (a: arg_list domain srts)
@@ -3366,9 +1711,7 @@ Proof.
   - eapply f_typevars. apply Hinf. left; auto.
 Qed.
 
-(*TODO: move, and see if we need m and vs in context
-  Probably, so we know which m and vs we are recursing on,
-    but where do we need this? TODO: see*)
+(*TODO: move*)
 Variable fs_dec: Forall (fun (f: fn) => decrease_fun fs ps nil 
   (Some (nth (sn_idx f) (sn_args f) vs_d)) m vs (fn_body f)) fs.
 Variable ps_dec: Forall (fun (p: pn) => decrease_pred fs ps nil 
@@ -3428,18 +1771,6 @@ Definition combine_args_pred (pa: packed_args) (p: pn)
   combined_args :=
   existT _ pa (Right _ _ (exist _ p (conj Hin Hp))).
 
-(*
-  {x: {s: sn | In s sn} &
-    {y: Either {f: fn | fn_sn = proj1_sig s}
-               { p: pn | pn_sn = proj1_sig s}
-    & {srts : list sort &
-      arg_list domain ()}}
-
-Definition packed_funargs : Set := 
-  { x: {f: fn | In f fs} &
-    {srts: list sort &
-      arg_list domain (sym_sigma_args (sn_sym (proj1_sig x)) srts)}}.
-*)
 Lemma in_fs_sns {f: fn}:
   In f fs ->
   In (fn_sn f) sns.
@@ -3455,32 +1786,6 @@ Proof.
   intros. unfold sns. rewrite in_app_iff. right. rewrite in_map_iff.
   exists p. split; auto.
 Qed.
-(*
-Definition packed_funargs_args (p: packed_funargs) : packed_args :=
-  existT _ (exist _ (fn_sn (proj1_sig (projT1 p)))
-    (in_fs_sns (proj2_sig (projT1 p)))) (projT2 p).
-
-Definition packed_predargs : Set :=
-  { x: {p: pn | In p ps} &
-    {srts: list sort &
-      arg_list domain (sym_sigma_args (sn_sym (proj1_sig x)) srts)}}.
-
-Lemma in_ps_sns {p: pn}:
-  In p ps ->
-  In (pn_sn p) sns.
-Proof.
-  intros. unfold sns. rewrite in_app_iff. right. rewrite in_map_iff.
-  exists p. split; auto.
-Qed.
-
-Definition packed_predargs_args (p: packed_predargs) : packed_args :=
-  existT _ (exist _ (pn_sn (proj1_sig (projT1 p)))
-    (in_ps_sns (proj2_sig (projT1 p)))) (projT2 p).
-
-(*Our full argument is either a function arg or a predicate arg*)
-Definition combined_args : Set :=
-  Either packed_funargs packed_predargs.
-*)
 
 (*Finally, we pack it all together with the valuation and
   some conditions on the srts list*)
@@ -3551,6 +1856,7 @@ Proof.
   simpl. f_equal. apply dec_uip_diff. apply sort_eq_dec.
 Qed.
 
+(*TODO: move*)
 Lemma rewrite_dom_cast: forall (v1 v2: sort) (Heq: v1 = v2)
   x,
   scast (f_equal domain Heq) x = dom_cast (dom_aux pd) Heq x.
@@ -3560,8 +1866,6 @@ Qed.
 
 (*Inversion lemmas for decreasing*)
 
-
-(*TODO: do above*)
 Ltac solve_dec_inv :=
   intros;
   match goal with
@@ -4738,16 +3042,14 @@ Qed.
 
 (*The return type - depends on whether this is a function
   or predicate definition*)
-  
-  Definition funrep_ret (fa: combined_args) : Set :=
-    match (projT2 fa) with
-    | Left fdata => 
-      domain (funsym_sigma_ret (fn_sym (proj1_sig fdata)) 
-      (projT1 (projT2 (projT1 fa))))
-    | Right _ => bool
-    end.
-
-
+(*TODO: move*)
+Definition funrep_ret (fa: combined_args) : Set :=
+  match (projT2 fa) with
+  | Left fdata => 
+    domain (funsym_sigma_ret (fn_sym (proj1_sig fdata)) 
+    (projT1 (projT2 (projT1 fa))))
+  | Right _ => bool
+  end.
 
 (*Finally, start building the real function. We separate into
   pieces to avoid too many layers of nested recursion and to
@@ -6034,6 +4336,9 @@ Section FunRewrite.
   will need to define notion of type vars in term and prove
   (from typing) that all in function def are in s_params
 
+  first thing we will do is put stuff in typing properly
+  so that we can figure out what we need/what we have/where to put
+
   START
 
   *)
@@ -6085,25 +4390,16 @@ Qed.
 (*Now we prove that this has the [vt_eq] property - args = params*)
 Lemma vt_with_args_vt_eq (vt: val_typevar)
   (srts: list sort):
+  NoDup params ->
   length srts = length params ->
   @vt_eq (vt_with_args vt params srts) srts.
 Proof.
   intros. unfold vt_eq. intros.
   apply vt_with_args_nth; auto.
-  (*Ugh, need to know that params NoDup (follows if fn, pn nonempty
-    maybe require funsym in here? see)*)
+Qed.
 
-
-
-
-
-  fun x =>
-  match args with
-  | nil => vt x
-  | a :: atl =>
-    match srts as s' return Forall (valid_type sigma) s' -> 
-
-
+Definition func_vt (srts: list sort) : val_typevar := 
+  vt_with_args triv_val_typevar params srts.
 
 
 (*Trivial valuation gives default elements*)
@@ -6112,6 +4408,8 @@ Definition triv_val_vars (vt: val_typevar) : val_vars pd vt :=
   match domain_ne pd (v_subst vt (snd x)) with
   | DE y => y
   end.
+
+  Print packed_args2.
 
 (*Now a version for funsyms and predsyms that we can
   use for [funs] and [preds]*)
@@ -6131,7 +4429,7 @@ Definition funs_rep_aux (f: fn) (f_in: In f fs)
   let ca : combined_args :=
     combine_args_fun pa f f_in eq_refl in
   let pa2: packed_args2 :=
-    existT _ ca (triv_val_vars, conj srts_len vt_eq_srts) in
+    existT _ ca (@triv_val_vars (func_vt srts), conj srts_len vt_eq_srts) in
   (*and call the function*)
   funcs_rep_aux pa2.
 

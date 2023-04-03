@@ -1410,6 +1410,15 @@ Proof.
       intros; apply H; auto; right; auto.
 Qed.
 
+Lemma find_none_iff {A: Type} (f: A -> bool) (l: list A):
+  find f l = None <-> forall x, In x l -> f x = false.
+Proof.
+  split. apply find_none.
+  induction l; simpl; intros; auto.
+  destruct (f a) eqn : Ha; auto.
+  rewrite H in Ha; auto. inversion Ha.
+Qed.
+
 End Find.
 
 (*Lemmas about props/decidable eq*)

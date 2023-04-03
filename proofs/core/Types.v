@@ -493,6 +493,31 @@ Proof.
       apply IHvars; auto.
 Qed. 
 
+Lemma ty_subst_fun_notin: forall params args d (x: typevar),
+  ~In x params ->
+  ty_subst_fun params args d x = d.
+Proof.
+  intros. revert args. induction params; simpl; intros; auto.
+  destruct args; auto. destruct (typevar_eq_dec x a); auto; subst.
+  exfalso. apply H. left; auto. apply IHparams. intro C. apply H. right; auto.
+Qed.
+
+Lemma ty_subst_fun_in: forall params args d (x: typevar),
+  NoDup params ->
+  In x params ->
+  length params = length args ->
+  exists ty, In (x, ty) (combine params args) /\ ty_subst_fun params args d x = ty.
+Proof.
+  intros. generalize dependent args. induction params; simpl; intros; auto.
+  inversion H0.
+  inversion H; subst. destruct args. inversion H1.
+  simpl in H0. destruct H0; subst.
+  - exists v. split. left; auto. destruct (typevar_eq_dec x x); auto. contradiction.
+  - inversion H1. specialize (IHparams H5 H0 args H3). destruct IHparams as [ty [Hin Hty]].
+    exists ty. split. right; auto. destruct (typevar_eq_dec x a); auto.
+    subst. contradiction.
+Qed. 
+
 Lemma subst_same: forall (vars: list typevar) (srts: list Types.sort),
   length vars = length srts ->
   NoDup vars ->

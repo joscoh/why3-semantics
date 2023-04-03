@@ -732,3 +732,56 @@ Definition predsyms_of_def (d: def) : list predsym :=
     | ind_def ps _ => ps
     end) is
   end.
+
+(*Some utilities we need:*)
+
+(*TODO: change name*)
+Fixpoint predsym_in (p: predsym) (f: formula) {struct f}  : bool :=
+  match f with
+  | Fpred ps tys tms => predsym_eq_dec p ps || existsb (predsym_in_term p) tms
+  | Fquant q x f' => predsym_in p f'
+  | Feq ty t1 t2 => predsym_in_term p t1 || predsym_in_term p t2
+  | Fbinop b f1 f2 => predsym_in p f1 || predsym_in p f2
+  | Fnot f' => predsym_in p f'
+  | Ftrue => false
+  | Ffalse => false
+  | Flet t x f' => predsym_in_term p t || predsym_in p f'
+  | Fif f1 f2 f3 => predsym_in p f1 || predsym_in p f2 || predsym_in p f3
+  | Fmatch t ty ps => predsym_in_term p t || existsb (fun x => predsym_in p (snd x)) ps
+  end
+  
+with predsym_in_term (p: predsym) (t: term) {struct t}  : bool :=
+  match t with
+  | Tconst _ => false
+  | Tvar _ => false
+  | Tfun fs tys tms => existsb (predsym_in_term p) tms
+  | Tlet t1 x t2 => predsym_in_term p t1 || predsym_in_term p t2
+  | Tif f t1 t2 => predsym_in p f || predsym_in_term p t1 || predsym_in_term p t2
+  | Tmatch t ty ps => predsym_in_term p t || existsb (fun x => predsym_in_term p (snd x)) ps
+  | Teps f x => predsym_in p f
+  end.
+
+Fixpoint funsym_in_tm (f: funsym) (t: term) : bool :=
+  match t with
+  | Tfun fs _ tms => funsym_eq_dec f fs || existsb (funsym_in_tm f) tms
+  | Tlet t1 _ t2 => funsym_in_tm f t1 || funsym_in_tm f t2
+  | Tif f1 t1 t2 => funsym_in_fmla f f1 || funsym_in_tm f t1 ||
+    funsym_in_tm f t2
+  | Tmatch t1 _ ps => funsym_in_tm f t1 ||
+    existsb (fun x => funsym_in_tm f (snd x)) ps
+  | Teps f1 _ => funsym_in_fmla f f1
+  | _ => false
+  end
+  with funsym_in_fmla (f: funsym) (f1: formula) : bool :=
+  match f1 with
+  | Fpred _ _ tms => existsb (funsym_in_tm f) tms
+  | Feq _ t1 t2 => funsym_in_tm f t1 || funsym_in_tm f t2
+  | Fbinop _ fm1 fm2 => funsym_in_fmla f fm1 || funsym_in_fmla f fm2
+  | Fquant _ _ f' | Fnot f' => funsym_in_fmla f f'
+  | Flet t _ f' => funsym_in_tm f t || funsym_in_fmla f f'
+  | Fif fm1 fm2 fm3 => funsym_in_fmla f fm1 || funsym_in_fmla f fm2 ||
+    funsym_in_fmla f fm3
+  | Fmatch t _ ps => funsym_in_tm f t ||
+    existsb (fun x => funsym_in_fmla f (snd x)) ps
+  | _ => false
+  end.

@@ -8,6 +8,7 @@ proofs/core/Typechecker.v
 proofs/core/Hlist.v
 proofs/core/IndTypes.v
 proofs/core/Semantics.v
+proofs/core/ADTInd.v
 proofs/core/Denotational.v
 proofs/core/GenElts.v
 proofs/core/Alpha.v

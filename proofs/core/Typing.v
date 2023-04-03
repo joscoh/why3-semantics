@@ -295,6 +295,9 @@ destruct (list_eq_dec typevar_eq_dec m_params m_params0); subst;[|right_dec].
 left. f_equal. apply bool_irrelevance.
 Defined.
 
+(*Utilities for dealing with mutual types and context*)
+Section MutADTUtil.
+
 Definition mut_in_ctx (m: mut_adt) (gamma: context) :=
   in_bool mut_adt_dec m (mut_of_context gamma).
 
@@ -380,6 +383,121 @@ Definition constr_adt_mut_in_ctx (c: funsym) (a: alg_datatype)
 
 Definition constr_adt_in_ctx (c: funsym) (a: alg_datatype) (gamma: context) :=
   constr_in_adt c a /\ adt_in_ctx a gamma.
+
+(*Now we need utilities for finding the ADT/mutual adt that a
+  type belongs to*)
+
+(*For pattern matches (and for typing info), 
+  we need to look at an element of type s, 
+  determine if s is an ADT type, and if so,
+  extract the components (constructor and args). We need
+  a lot of machinery to do this; we do this here.*)
+
+Definition find_ts_in_mut (ts: typesym) (m: mut_adt) : option alg_datatype :=
+  find (fun a => typesym_eq_dec ts (adt_name a)) (typs m).
+
+Lemma find_ts_in_mut_none: forall ts m,
+  find_ts_in_mut ts m = None <->
+  forall a, adt_in_mut a m -> adt_name a <> ts.
+Proof.
+  intros. unfold find_ts_in_mut.
+  rewrite find_none_iff.
+  split; intros Hall x Hin.
+  - intro C; subst.
+    apply in_bool_In in Hin.
+    specialize (Hall _ Hin). simpl_sumbool. contradiction.
+  - apply (In_in_bool adt_dec) in Hin.
+    specialize (Hall _ Hin).
+    destruct (typesym_eq_dec ts (adt_name x)); auto; subst;
+    contradiction.
+Qed.
+
+Lemma find_ts_in_mut_some: forall ts m a,
+  find_ts_in_mut ts m = Some a ->
+  adt_in_mut a m /\ adt_name a = ts.
+Proof.
+  intros ts m a Hf. apply find_some in Hf.
+  destruct Hf as [Hin Heq].
+  split; auto. apply In_in_bool; auto.
+  simpl_sumbool.
+Qed.
+
+Lemma find_ts_in_mut_iff: forall ts m a,
+  NoDup (map adt_name (typs m)) ->
+  (find_ts_in_mut ts m = Some a) <-> (adt_in_mut a m /\ adt_name a = ts).
+Proof.
+  intros. eapply iff_trans. apply find_some_nodup.
+  - intros. repeat simpl_sumbool.
+    apply (NoDup_map_in H); auto.
+  - simpl. unfold adt_in_mut. split; intros [Hin Hname];
+    repeat simpl_sumbool; split; auto; try simpl_sumbool;
+    apply (reflect_iff _ _ (in_bool_spec adt_dec a (typs m))); auto.
+Qed.
+
+Definition vty_in_m (m: mut_adt) (vs: list vty) (v: vty) : bool :=
+  match v with
+  | vty_cons ts vs' => 
+    ssrbool.isSome (find_ts_in_mut ts m) &&
+    list_eq_dec vty_eq_dec vs' vs
+  | _ => false
+  end.
+
+Lemma vty_in_m_spec (m: mut_adt) (vs: list vty) (v: vty):
+  reflect 
+  (exists a, adt_in_mut a m /\ v = vty_cons (adt_name a) vs)
+  (vty_in_m m vs v) .
+Proof.
+  unfold vty_in_m. destruct v; try solve[apply ReflectF; intros [a [Ha Heq]]; inversion Heq].
+  destruct (find_ts_in_mut t m) eqn : Hfind; simpl.
+  - apply find_ts_in_mut_some in Hfind.
+    destruct Hfind; subst.
+    destruct (list_eq_dec vty_eq_dec l vs); subst; simpl.
+    + apply ReflectT. exists a. split; auto.
+    + apply ReflectF. intros [a' [Ha' Heq]]; inversion Heq; subst;
+      contradiction.
+  - apply ReflectF. rewrite find_ts_in_mut_none in Hfind.
+    intros [a [Ha Heq]]; subst.
+    inversion Heq; subst.
+    apply (Hfind a Ha); auto.
+Qed. 
+
+Definition vsym_in_m (m: mut_adt) (vs: list vty) (x: vsymbol) : bool :=
+  vty_in_m m vs (snd x).
+
+
+(*From a list of vsymbols, keep those which have type vty_cons a ts
+  for some a in mut_adt m*)
+Definition vsyms_in_m (m: mut_adt) (vs: list vty) (l: list vsymbol) :
+  list vsymbol :=
+  filter (vsym_in_m m vs) l.
+
+(*A more useful formulation*)
+Lemma vsyms_in_m_in (m: mut_adt) (vs: list vty) (l: list vsymbol):
+  forall x, In x (vsyms_in_m m vs l) <-> In x l /\ exists a,
+    adt_in_mut a m /\ snd x = vty_cons (adt_name a) vs.
+Proof.
+  intros. unfold vsyms_in_m, vsym_in_m, vty_in_m.
+  rewrite in_filter. rewrite and_comm. bool_to_prop.
+  destruct x; simpl in *. destruct v; try (solve[split; [intro C; inversion C | 
+    intros [a [a_in Hty]]; inversion Hty]]).
+  unfold ssrbool.isSome.
+  destruct (find_ts_in_mut t m) eqn : Hts; simpl.
+  - destruct (list_eq_dec vty_eq_dec l0 vs); subst; simpl; split;
+    intros; auto; try tf.
+    + exists a. apply find_ts_in_mut_some in Hts. destruct Hts.
+      subst. split; auto.
+    + destruct H as [a' [Ha' Hty]]. inversion Hty; subst; auto.
+  - split; [intro C; inversion C | intros [a [Ha Hty]]].
+    rewrite find_ts_in_mut_none in Hts.
+    inversion Hty; subst.
+    apply Hts in Ha. contradiction.
+Qed.
+
+Definition constr_in_m (f: funsym) (m: mut_adt) : bool :=
+  existsb (fun a => constr_in_adt f a) (typs m).
+
+End MutADTUtil.
+
 
 (*We also require that all type variables in mutually recursive types
   are correct: all component types and constructors have the same
@@ -778,24 +896,555 @@ Section FunPredSym.
 Variable s: sig.
 Variable gamma: context.
 
+(*This is complicated; we need to enforce a number of conditions.
+  First, we bundle up the recursive function/predicate into a structure
+  with its relevant information (this lets us define the 
+  function/pred more conveniently)*)
+
+(*First, we define how to get the "smaller" variables*)
+Section SmallVar.
+
+(*All variables from a pattern that are strictly "smaller" than
+  the matched value*)
+(*Inside a constructor: keep all variables of correct type *)
+(*Gets all vars known to be decreasing (not strictly decreasing)*)
+Fixpoint pat_constr_vars_inner (m: mut_adt) (vs: list vty) (p: pattern)
+  {struct p} : list vsymbol :=
+  match p with
+  | Pconstr c tys ps =>
+    if constr_in_m c m &&
+    list_eq_dec vty_eq_dec tys vs &&
+    (length ps =? length (s_args c)) then
+    (*Only take those where the s_args is in m
+      or else we get extra vsymbols which are not necessarily
+      smaller (like the head in list)*)
+    ((fix constr_inner (ps: list pattern) (vs': list vty) : list vsymbol :=
+      match ps, vs' with
+      | p1 :: p2, v1 :: v2 => 
+        (*NOTE: we want type v1 to have type t(a, b, ...) NOT
+        t(vs) - since this is in the constructor*)
+        if vty_in_m m (map vty_var (m_params m)) v1 then
+        union vsymbol_eq_dec (pat_constr_vars_inner m vs p1) (constr_inner p2 v2)
+        else constr_inner p2 v2
+      | _, _ => nil
+      end    
+    ) ps (s_args c))
+    else nil
+  | Por p1 p2 =>
+    intersect vsymbol_eq_dec (pat_constr_vars_inner m vs p1)
+      (pat_constr_vars_inner m vs p2)
+  (*Only add variables of correct type*)
+  | Pbind p' y =>
+    union vsymbol_eq_dec (if vsym_in_m m vs y then [y] else nil)
+      (pat_constr_vars_inner m vs p')
+  | Pvar y =>
+    if vsym_in_m m vs y then [y] else nil
+  | Pwild => nil
+  end.
+
+(*rewrite lemma*)
+Lemma pat_constr_vars_inner_eq (m: mut_adt) (vs: list vty) (p: pattern):
+  pat_constr_vars_inner m vs p =
+  match p with
+  | Pconstr c tys ps =>
+    if constr_in_m c m &&
+    list_eq_dec vty_eq_dec tys vs &&
+    (length ps =? length (s_args c)) then
+    big_union vsymbol_eq_dec (pat_constr_vars_inner m vs)
+      (map fst (filter (fun (x: pattern * vty) => 
+        vty_in_m m (map vty_var (m_params m)) (snd x)) (combine ps (s_args c))))
+    else nil
+  | Por p1 p2 =>
+    intersect vsymbol_eq_dec (pat_constr_vars_inner m vs p1)
+      (pat_constr_vars_inner m vs p2)
+  (*Only add variables of correct type*)
+  | Pbind p' y =>
+    union vsymbol_eq_dec (if vsym_in_m m vs y then [y] else nil)
+      (pat_constr_vars_inner m vs p')
+  | Pvar y =>
+    if vsym_in_m m vs y then [y] else nil
+  | Pwild => nil
+  end.
+Proof.
+  unfold pat_constr_vars_inner at 1.
+  destruct p; auto.
+  destruct (constr_in_m f m); simpl; auto.
+  destruct (list_eq_dec vty_eq_dec l vs); simpl; auto.
+  destruct (length l0 =? length (s_args f)) eqn : Hlen; simpl; auto.
+  apply Nat.eqb_eq in Hlen.
+  generalize dependent (s_args f). subst. induction l0;
+  intros; destruct l; inversion Hlen; simpl; auto.
+  destruct (vty_in_m m (map vty_var (m_params m)) v) eqn : Hty; auto.
+  simpl. fold pat_constr_vars_inner.
+  rewrite IHl0; auto.
+Qed.
+
+(*Get strictly smaller (not just <=) vars*)
+Fixpoint pat_constr_vars (m: mut_adt) (vs: list vty) (p: pattern) : list vsymbol :=
+  match p with
+  | Pconstr c tys ps =>
+      if constr_in_m c m &&
+      list_eq_dec vty_eq_dec tys vs &&
+      (length ps =? length (s_args c)) then
+      big_union vsymbol_eq_dec (pat_constr_vars_inner m vs)
+        (map fst (filter (fun (x: pattern * vty) => 
+          vty_in_m m (map vty_var (m_params m)) (snd x)) (combine ps (s_args c))))
+      else nil
+      (*Only take those where the s_args is in m
+        or else we get extra vsymbols which are not necessarily
+        smaller (like the head in list)*)
+  | Por p1 p2 =>
+      intersect vsymbol_eq_dec (pat_constr_vars m vs p1)
+        (pat_constr_vars m vs p2)
+  (*Don't add variables*)
+  | Pbind p y => pat_constr_vars m vs p
+  | _ => nil
+  end.
+
+(*Both of these are subsets of [pat_fv]*)
+Lemma pat_constr_vars_inner_fv (m: mut_adt) (vs: list vty) (p: pattern):
+  forall x, In x (pat_constr_vars_inner m vs p) ->
+  In x (pat_fv p).
+Proof.
+  intros x. induction p.
+  - simpl; intros.
+    destruct (vsym_in_m m vs v). apply H.
+    inversion H.
+  - rewrite pat_constr_vars_inner_eq.
+    intros.
+    destruct (constr_in_m f m && list_eq_dec vty_eq_dec vs0 vs &&
+    (Datatypes.length ps =? Datatypes.length (s_args f))) eqn : Hconds;
+     [|inversion H0].
+    bool_hyps.
+    apply Nat.eqb_eq in H2.
+    simpl_set.
+    destruct H0 as [p' [Hinp' Hinx]].
+    rewrite in_map_iff in Hinp'.
+    destruct Hinp' as [[p'' t'] [Hp' Hint]]; simpl in *; subst.
+    rewrite in_filter in Hint.
+    destruct Hint as [_ Hincomb].
+    rewrite in_combine_iff in Hincomb; auto.
+    destruct Hincomb as [i [Hi Heq]].
+    specialize (Heq Pwild vty_int); inversion Heq; subst; clear Heq.
+    simpl_set. exists (nth i ps Pwild). split; [apply nth_In; auto|].
+    rewrite Forall_forall in H. apply H.
+    apply nth_In; auto. auto.
+  - simpl. auto.
+  - simpl. intros.
+    rewrite intersect_elts in H.
+    destruct H.
+    simpl_set. left. apply IHp1; auto.
+  - simpl. intros.
+    simpl_set. destruct (vsym_in_m m vs v).
+    + destruct H as [[Hxv | []] | Hinx]; subst; auto.
+    + destruct H as [[] | Hinx]; auto.
+Qed.
+
+Lemma pat_constr_vars_subset (m: mut_adt) (vs: list vty) (p: pattern):
+  forall x, In x (pat_constr_vars m vs p) ->
+  In x (pat_constr_vars_inner m vs p).
+Proof.
+  intros x. induction p.
+  - simpl; intros. destruct H. 
+  - (*constr case is super easy - they are equal*) 
+    rewrite pat_constr_vars_inner_eq. auto.
+  - auto.
+  - simpl. rewrite !intersect_elts; intros; destruct_all; split; auto.
+  - simpl. intros. rewrite union_elts. auto. 
+Qed.
+
+Lemma pat_constr_vars_fv (m: mut_adt) (vs: list vty) (p: pattern):
+forall x, In x (pat_constr_vars m vs p) ->
+In x (pat_fv p).
+Proof.
+  intros. apply pat_constr_vars_subset in H.
+  apply (pat_constr_vars_inner_fv _ _ _ _ H).
+Qed.
+
+End SmallVar.
+
+(*When considering the variable we recurse on, we represent it
+  as an option: if we overwrite it (say, with a let binding),
+  it is no longer valid to match and recurse on this*)
+
+Definition upd_option (hd: option vsymbol) (x: vsymbol) : option vsymbol :=
+  match hd with
+  | Some y => if vsymbol_eq_dec x y then None else hd
+  | None => None
+  end.
+
+Definition upd_option_iter (hd: option vsymbol) (xs: list vsymbol) :
+  option vsymbol :=
+  fold_right (fun x acc => upd_option acc x) hd xs.
+
+(*Package the function definition components (including
+  the index of the decreasing arguments) into a structure*)
+
+Record sn := mk_sn {sn_sym: fpsym; sn_args: list vsymbol;
+  sn_idx: nat; sn_idx_in: sn_idx <? length sn_args;
+  sn_args_len: length sn_args =? length (s_args sn_sym);
+  sn_args_nodup: nodupb vsymbol_eq_dec sn_args}.
+
+Record fn := mk_fn {fn_sym: funsym; fn_sn : sn;
+  fn_body: term; fn_wf: f_sym fn_sym = sn_sym fn_sn}.
+
+Coercion fn_sn : fn >-> sn.
+
+Record pn := mk_pn {pn_sym: predsym; pn_sn: sn;
+  pn_body: formula; pn_wf: p_sym pn_sym = sn_sym pn_sn}.
+
+Coercion pn_sn : pn >-> sn.
+
+(*Then, we define the termination metric: we require that
+  the function is structurally decreasing. The following
+  relation describes when a term or formula is decreasing,
+  assuming that "small" is a list of vsymbols known to be
+  smaller, and "hd" is an option vsymbol that, if Some h,
+  means that h is equal to the value we are recursing on*)
+
+Unset Elimination Schemes.
+(*list of vsymbols are known to be smaller
+  option vsymbol is equal, if it is some
+  It is an option because it can be shadowed, say by a let statement*)
+(*We have the relation : dec fs ps small hd m vs t ->
+  means that 
+  1. all ocurrences of functions/pred syms in fs and ps 
+    occur where the decreasing argument comes from small,
+    which is a list of elements that are smaller than hd
+    and which come from the same mut adt as hd*)
+Inductive decrease_fun (fs: list fn) (ps: list pn) : 
+  list vsymbol -> option vsymbol -> mut_adt -> list vty -> term -> Prop :=
+  (*Before any of the constructor cases, if none of fs or ps appear
+    in t, then t is trivially a decreasing function*)
+  | Dec_notin_t: forall (small: list vsymbol) (hd: option vsymbol) (m: mut_adt)
+    (vs: list vty) (t: term),
+    (forall (f: fn), In f fs -> negb (funsym_in_tm (fn_sym f) t)) ->
+    (forall p, In p ps -> negb (predsym_in_term (pn_sym p) t)) ->
+    decrease_fun fs ps small hd m vs t
+  (*First, the recursive function call case*)
+  | Dec_fun_in: forall (small: list vsymbol) (hd: option vsymbol) (m: mut_adt)
+    (vs: list vty) 
+    (f: funsym) (f_decl: fn) (l: list vty) (ts: list term) (x: vsymbol),
+    In f_decl fs ->
+    f = fn_sym f_decl ->
+    (*The decreasing argument is a variable in our list of decreasing terms*)
+    In x small ->
+    nth (sn_idx f_decl) ts tm_d = Tvar x ->
+    (*Uniformity: we must be applying the function uniformly
+      (TODO: make this separate?)*)
+    l = map vty_var (s_params f) ->
+    (*None of [fs] of [ps] appear in the terms*) 
+    (*TODO: will likely need this to show we can ignore function binding in interp for recursive cases*)
+    Forall (fun t => forall f,  In f fs -> negb (funsym_in_tm (fn_sym f) t)) ts ->
+    Forall (fun t => forall p, In p ps -> negb (predsym_in_term (pn_sym p) t)) ts ->
+    (*Then this recursive call is valid*)
+    decrease_fun fs ps small hd m vs (Tfun f l ts)
+  (*Other function call*)
+  | Dec_fun_notin: forall (small: list vsymbol) (hd: option vsymbol)
+    (m: mut_adt) (vs: list vty) 
+    (f: funsym) (l: list vty) (ts: list term),
+    ~ In f (map fn_sym fs) ->
+    (*In this case, just recursive*)
+    (*TODO: Forall doesn't give ind principle*)
+    (forall t, In t ts -> (decrease_fun fs ps small hd m vs t)) ->
+    decrease_fun fs ps small hd m vs (Tfun f l ts)
+  (*Pattern match on var - this is how we add new, smaller variables*)
+  | Dec_tmatch: forall (small: list vsymbol) (hd: option vsymbol) 
+    (m: mut_adt)
+    (vs: list vty) (a: alg_datatype)
+    (mvar: vsymbol) (v: vty) (pats: list (pattern * term)),
+    (*TODO: can we only match on a variable?*)
+    (hd = Some mvar) \/ In mvar small ->
+    adt_in_mut a m ->
+    snd mvar = vty_cons (adt_name a) vs ->
+    (*TODO: don't allow repeated matches on same variable
+      TODO: now we do, makes things easier*)
+    (forall (x: pattern * term), In x pats ->
+      decrease_fun fs ps 
+      (*remove pat_fv's (bound), add back constr vars (smaller)*)
+      (union vsymbol_eq_dec (vsyms_in_m m vs (pat_constr_vars m vs (fst x))) 
+        (remove_all vsymbol_eq_dec (pat_fv (fst x)) 
+        small)) (upd_option_iter hd (pat_fv (fst x))) m vs (snd x)) ->
+    decrease_fun fs ps small hd m vs (Tmatch (Tvar mvar) v pats) 
+  (*Other pattern match is recursive case*)
+  | Dec_tmatch_rec: forall (small: list vsymbol) (hd: option vsymbol)
+    m vs
+    (tm: term) (v: vty) (pats: list (pattern * term)),
+    ~(exists var, tm = Tvar var /\ (hd = Some var \/ In var small)) ->
+    decrease_fun fs ps small hd m vs tm ->
+    (forall x, In x pats ->
+      decrease_fun fs ps 
+      (remove_all vsymbol_eq_dec (pat_fv (fst x)) small) 
+      (upd_option_iter hd (pat_fv (fst x))) m vs (snd x)) ->
+    decrease_fun fs ps small hd m vs (Tmatch tm v pats)
+  (*Now the easy cases: Constants, Variables always decreasing*)
+  | Dec_var: forall (small : list vsymbol) (hd: option vsymbol) m vs (v: vsymbol),
+    decrease_fun fs ps small hd m vs (Tvar v)
+  | Dec_const: forall (small : list vsymbol) (hd: option vsymbol) m vs (c: constant),
+    decrease_fun fs ps small hd m vs (Tconst c)
+  (*Recursive cases: let, if, eps*)
+  | Dec_tlet: forall (small: list vsymbol) (hd: option vsymbol) m vs (t1: term)
+    (v: vsymbol) (t2: term),
+    decrease_fun fs ps small hd m vs t1 ->
+    (*v is bound, so it is no longer smaller in t2 or equal in hd*)
+    decrease_fun fs ps (remove vsymbol_eq_dec v small) (upd_option hd v) m vs t2 ->
+    decrease_fun fs ps small hd m vs (Tlet t1 v t2)
+  | Dec_tif: forall (small: list vsymbol) (hd: option vsymbol) m vs (f1: formula)
+    (t1 t2: term),
+    decrease_pred fs ps small hd m vs f1 ->
+    decrease_fun fs ps small hd m vs t1 ->
+    decrease_fun fs ps small hd m vs t2 ->
+    decrease_fun fs ps small hd m vs (Tif f1 t1 t2)
+  | Dec_eps: forall (small: list vsymbol) (hd: option vsymbol) m vs (f: formula)
+    (v: vsymbol),
+    decrease_pred fs ps (remove vsymbol_eq_dec v small) (upd_option hd v) m vs f ->
+    decrease_fun fs ps small hd m vs (Teps f v)
+(*This is very similar*)
+with decrease_pred (fs: list fn) (ps: list pn) : 
+  list vsymbol -> option vsymbol -> mut_adt -> list vty -> formula -> Prop :=
+  | Dec_notin_f: forall (small: list vsymbol) (hd: option vsymbol) (m: mut_adt)
+  (vs: list vty) (fmla: formula),
+  (forall f, In f fs -> negb (funsym_in_fmla (fn_sym f) fmla)) ->
+  (forall p, In p ps -> negb (predsym_in (pn_sym p) fmla)) ->
+  decrease_pred fs ps small hd m vs fmla
+  (*First, the recursive predicate call case*)
+  | Dec_pred_in: forall (small: list vsymbol) (hd: option vsymbol) m vs
+    (p: predsym) (p_decl: pn) (l: list vty) (ts: list term) x,
+    In p_decl ps ->
+    p = pn_sym p_decl ->
+    (*The decreasing argument must be in our list of decreasing terms*)
+    In x small ->
+    nth (sn_idx p_decl) ts tm_d = Tvar x ->
+    (*Uniformity: we must be applying the function uniformly
+    (TODO: make this separate?)*)
+    l = map vty_var (s_params p) ->
+    (*None of [fs] or[ps] appear in the terms*) 
+    Forall (fun t => forall f,  In f fs -> negb (funsym_in_tm (fn_sym f) t)) ts ->
+    Forall (fun t => forall p, In p ps -> negb (predsym_in_term (pn_sym p) t)) ts ->
+    (*Then this recursive call is valid*)
+    decrease_pred fs ps small hd m vs (Fpred p l ts)
+  (*Other predicate call*)
+  | Dec_pred_notin: forall (small: list vsymbol) (hd: option vsymbol) m vs
+    (p: predsym) (l: list vty) (ts: list term),
+    ~ In p (map pn_sym ps) ->
+    (*In this case, just recursive*)
+    (forall t, In t ts -> decrease_fun fs ps small hd m vs t) ->
+    decrease_pred fs ps small hd m vs (Fpred p l ts)
+  (*Pattern match on var - this is how we add new, smaller variables*)
+  | Dec_fmatch: forall (small: list vsymbol) (hd: option vsymbol) m vs
+    (a: alg_datatype)
+    (mvar: vsymbol) (v: vty) (pats: list (pattern * formula)),
+    (*TODO: can we only match on a variable?*)
+    hd = Some mvar \/ In mvar small ->
+    adt_in_mut a m ->
+    snd mvar = vty_cons (adt_name a) vs ->
+    (*TODO: don't allow repeated matches on same variable*)
+    (forall x, In x pats -> decrease_pred fs ps 
+      (*remove pat_fv's (bound), add back constr vars (smaller)*)
+      (union vsymbol_eq_dec (vsyms_in_m m vs (pat_constr_vars m vs (fst x))) 
+        (remove_all vsymbol_eq_dec (pat_fv (fst x)) 
+        small)) (upd_option_iter hd (pat_fv (fst x))) m vs (snd x)) ->
+    decrease_pred fs ps small hd m vs (Fmatch (Tvar mvar) v pats)
+  (*Other pattern match is recursive case*)
+  | Dec_fmatch_rec: forall (small: list vsymbol) (hd: option vsymbol) m vs
+    (tm: term) (v: vty) (pats: list (pattern * formula)),
+    ~(exists var, tm = Tvar var /\ (hd = Some var \/ In var small)) ->
+    decrease_fun fs ps small hd m vs tm ->
+    (forall x, In x pats ->
+      decrease_pred fs ps 
+      (remove_all vsymbol_eq_dec (pat_fv (fst x)) small) 
+      (upd_option_iter hd (pat_fv (fst x))) m vs (snd x)) ->
+    decrease_pred fs ps small hd m vs (Fmatch tm v pats)
+  (*Easy cases: true, false*)
+  | Dec_true: forall (small: list vsymbol) (hd: option vsymbol) m vs,
+    decrease_pred fs ps small hd m vs Ftrue
+  | Dec_false: forall (small: list vsymbol) (hd: option vsymbol) m vs,
+    decrease_pred fs ps small hd m vs Ffalse
+  (*Recursive cases: not, quantifier, eq, binop, let, if*)
+  | Dec_not: forall small hd m vs f,
+    decrease_pred fs ps small hd m vs f ->
+    decrease_pred fs ps small hd m vs (Fnot f)
+  | Dec_quant: forall (small: list vsymbol) (hd: option vsymbol) m vs
+    (q: quant) (v: vsymbol) (f: formula),
+    decrease_pred fs ps (remove vsymbol_eq_dec v small) (upd_option hd v) m vs f ->
+    decrease_pred fs ps small hd m vs (Fquant q v f)
+  | Dec_eq: forall (small: list vsymbol) (hd: option vsymbol) m vs
+    (ty: vty) (t1 t2: term),
+    decrease_fun fs ps small hd m vs t1 ->
+    decrease_fun fs ps small hd m vs t2 ->
+    decrease_pred fs ps small hd m vs (Feq ty t1 t2)
+  | Dec_binop: forall (small: list vsymbol) (hd: option vsymbol) m vs
+    (b: binop) (f1 f2: formula),
+    decrease_pred fs ps small hd m vs f1 ->
+    decrease_pred fs ps small hd m vs f2 ->
+    decrease_pred fs ps small hd m vs (Fbinop b f1 f2)
+  | Dec_flet: forall (small: list vsymbol) (hd: option vsymbol) m vs (t1: term)
+    (v: vsymbol) (f: formula),
+    decrease_fun fs ps small hd m vs t1 ->
+    decrease_pred fs ps (remove vsymbol_eq_dec v small) (upd_option hd v) m vs f ->
+    decrease_pred fs ps small hd m vs (Flet t1 v f)
+  | Dec_fif: forall (small: list vsymbol) (hd: option vsymbol) m vs
+    (f1 f2 f3: formula),
+    decrease_pred fs ps small hd m vs f1 ->
+    decrease_pred fs ps small hd m vs f2 ->
+    decrease_pred fs ps small hd m vs f3 ->
+    decrease_pred fs ps small hd m vs (Fif f1 f1 f2)
+    .
+Set Elimination Schemes.
+Scheme decrease_fun_ind := Minimality for decrease_fun Sort Prop
+with decrease_pred_ind := Minimality for decrease_pred Sort Prop.
+
+(*TODO: move*)
+Inductive Either (A B: Set) : Set :=
+  | Left: A -> Either A B
+  | Right: B -> Either A B. 
+
+(*Now we define how to convert a [funpred_def] to an fs or ps, given 
+  an index*)
+
+Definition fundef_to_fn (f: funsym) (vars: list vsymbol) (t: term)
+  (i: nat) (Hi: i < length (s_args f)) (Hn: NoDup vars) 
+  (Hlen: length vars = length (s_args f)) : fn :=
+  mk_fn f (mk_sn (f_sym f) vars i 
+    (ssrbool.introT (Nat.ltb_spec0 _ _) 
+      (eq_ind _ (fun x => i < x) Hi _ (eq_sym Hlen)))
+    (ssrbool.introT (Nat.eqb_spec _ _) Hlen) 
+    (ssrbool.introT (nodup_NoDup _ _) Hn)) t eq_refl.
+
+Definition preddef_to_pn (p: predsym) (vars: list vsymbol) (f: formula)
+(i: nat) (Hi: i < length (s_args p)) (Hn: NoDup vars) 
+(Hlen: length vars = length (s_args p)) : pn :=
+mk_pn p (mk_sn (p_sym p) vars i 
+  (ssrbool.introT (Nat.ltb_spec0 _ _) 
+    (eq_ind _ (fun x => i < x) Hi _ (eq_sym Hlen)))
+  (ssrbool.introT (Nat.eqb_spec _ _) Hlen) 
+  (ssrbool.introT (nodup_NoDup _ _) Hn)) f eq_refl.
+
+Definition funpred_sym (fd: funpred_def) : fpsym :=
+  match fd with
+  | fun_def f _ _ => f
+  | pred_def p _ _ => p
+  end.
+
+Definition funpred_args (fd: funpred_def) : list vsymbol :=
+  match fd with
+  | fun_def _ a _ => a
+  | pred_def _ a _ => a
+  end.
+
+(*We need a default [funpred_def]*)
+(*TODO: shouldn't use id*)
+Definition fd_d : funpred_def :=
+  fun_def id_fs nil tm_d.
+
+(*We need to do 2 passes: first, check that each individual
+  component is well-typed and well-formed, then do the termination
+  checking*)
+
+(*First, individual checking*)
+
 (*A function/pred symbol is well-typed if the term has the correct return type of
   the function and all free variables in t are included in the arguments vars*)
-
+(*TODO: handle type vars? Do we need to, or is that handled by wf of f?*)
+(*TODO: prove that it is handled by the typing of t/f, or enforce
+  all typevars in term must appear in params*)
 Definition funpred_def_valid_type (fd: funpred_def) : Prop :=
   match fd with
   | fun_def f vars t =>
     well_typed_term s gamma t (f_ret f) /\
-    sublist (term_fv t) vars
+    sublist (term_fv t) vars /\
+    length vars = length (s_args f)  /\
+    NoDup (map fst vars) /\
+    map snd vars = s_args f (*types of args correct*)
   | pred_def p vars f =>
     well_typed_formula s gamma f /\
-    sublist (form_fv f) vars
+    sublist (form_fv f) vars /\
+    length vars = length (s_args p) /\
+    NoDup (map fst vars) /\
+    map snd vars = s_args p (*types of args correct*)
+
   end.
-  (*TODO: handle type vars? Do we need to, or is that handled by wf of f?*)
 
-(*Termination*)
+(*Now we deal with termination. We need the following:
+  There is a list is of nats such that
+  1. length is = length l (number of mut. rec. functions)
+  2. For all n, n < length is -> nth n is < length (s_args nth n l)
+    (all i's are bounded)
+  3. There is a mutually recursive type m and arguments vs of 
+    correct length such that if we build the fn and pn instances 
+    for each l using i as the value, each function body satisfies
+    [decrease_fun] or [decrease_pred]
+  
+  Finally, we need all type parameters for the function to be
+  equal (say, equal to some list params)
+  *)
 
-(*TODO*)
+(*First, create list of fs and ps - do with tactics for now*)
+Definition funpred_defs_to_sns (l: list funpred_def) (is: list nat)
+(Hlen: length is = length l)
+(Hall: forall i, i < length is -> 
+  nth i is 0 < length (s_args (funpred_sym (nth i l fd_d))))
+(Hl: Forall funpred_def_valid_type l) : 
+  (list fn * list pn).
+Proof.
+  generalize dependent l. induction is; simpl; intros.
+  - destruct l.
+    + exact (nil, nil).
+    + exact (False_rect _ (Nat.neq_0_succ (length l) Hlen)).
+  - destruct l.
+    + exact (False_rect _ (Nat.neq_succ_0 (length is) Hlen)).
+    + simpl in Hlen. injection Hlen; intros. 
+      specialize (IHis _ H (fun i Hi => Hall (S i) (Arith_prebase.lt_n_S_stt _ _ Hi)) (Forall_inv_tail Hl)).
+      (*Now we need to see which one to add to*)
+      destruct f.
+      * exact ((fundef_to_fn f l0 t a 
+          (Hall 0 (Nat.lt_0_succ (length is))) 
+          (NoDup_map_inv _ _ (proj1 (proj2 (proj2 (proj2 (Forall_inv Hl)))))) 
+          (proj1 (proj2 (proj2 (Forall_inv Hl))))) :: fst IHis, snd IHis).
+      * exact (fst IHis, (preddef_to_pn p l0 f a 
+          (Hall 0 (Nat.lt_0_succ (length is))) 
+          (NoDup_map_inv _ _ (proj1 (proj2 (proj2 (proj2 (Forall_inv Hl)))))) 
+          (proj1 (proj2 (proj2 (Forall_inv Hl))))) :: snd IHis).
+Defined.
 
+(*Now we can give our termination condition*)
+Definition funpred_def_term (l: list funpred_def)
+  (Hl: Forall funpred_def_valid_type l) : Prop :=
+  exists 
+  (m: mut_adt)
+  (params: list typevar)
+  (vs: list vty)
+  (Hvs: length vs = length (m_params m))
+  (m_in: mut_in_ctx m gamma)
+  (is: list nat)
+  (Hlen: length is = length l)
+  (Hall: forall i, i < length is -> 
+    nth i is 0 < length (s_args (funpred_sym (nth i l fd_d)))),
+  let fs := fst (funpred_defs_to_sns l is Hlen Hall Hl) in
+  let ps := snd (funpred_defs_to_sns l is Hlen Hall Hl) in
+  (*All functions recurse on ADT instance*)
+  (forall f, In f fs -> 
+    vty_in_m m vs (snd (nth (sn_idx f) (sn_args f) vs_d))) /\
+  (forall p, In p ps ->
+    vty_in_m m vs (snd (nth (sn_idx p) (sn_args p) vs_d))) /\
+  (*All functions have params = params*)
+  (forall f, In f fs -> s_params (fn_sym f) = params) /\
+  (forall p, In p ps -> s_params (pn_sym p) = params) /\
+  (*TODO: see if we can prove the params part*)
+  (*All functions are structurally (mutually) decreasing
+    on mut type m(vs)*)
+  Forall (fun (f: fn) => decrease_fun fs ps nil 
+    (Some (nth (sn_idx f) (sn_args f) vs_d)) m vs (fn_body f)) fs /\
+  Forall (fun (p: pn) => decrease_pred fs ps nil 
+    (Some (nth (sn_idx p) (sn_args p) vs_d)) m vs (pn_body p)) ps.
+
+(*Now, the final requirement for a well-typed mutually
+  recursive function definition: combine these*)
+
+Definition funpred_valid_type (l: list funpred_def) : Prop :=
+  exists (Hl: Forall funpred_def_valid_type l),
+  funpred_def_term l Hl.
+ 
 (*Inductive Predicates*)
 
 (*Each clause must be a closed formula, well-typed, and belong to a restricted grammar, which
@@ -849,32 +1498,6 @@ Definition indprop_valid_type (i: indpred_def) : Prop :=
 
 (*Strict Positivity*)
 
-(*First, does a predicate symbol appear in a formula? Because of "if" expressions,
-  we also need a version for terms*)
-Fixpoint predsym_in (p: predsym) (f: formula) {struct f}  : bool :=
-  match f with
-  | Fpred ps tys tms => predsym_eq_dec p ps || existsb (predsym_in_term p) tms
-  | Fquant q x f' => predsym_in p f'
-  | Feq ty t1 t2 => predsym_in_term p t1 || predsym_in_term p t2
-  | Fbinop b f1 f2 => predsym_in p f1 || predsym_in p f2
-  | Fnot f' => predsym_in p f'
-  | Ftrue => false
-  | Ffalse => false
-  | Flet t x f' => predsym_in_term p t || predsym_in p f'
-  | Fif f1 f2 f3 => predsym_in p f1 || predsym_in p f2 || predsym_in p f3
-  | Fmatch t ty ps => predsym_in_term p t || existsb (fun x => predsym_in p (snd x)) ps
-  end
-  
-with predsym_in_term (p: predsym) (t: term) {struct t}  : bool :=
-  match t with
-  | Tconst _ => false
-  | Tvar _ => false
-  | Tfun fs tys tms => existsb (predsym_in_term p) tms
-  | Tlet t1 x t2 => predsym_in_term p t1 || predsym_in_term p t2
-  | Tif f t1 t2 => predsym_in p f || predsym_in_term p t1 || predsym_in_term p t2
-  | Tmatch t ty ps => predsym_in_term p t || existsb (fun x => predsym_in_term p (snd x)) ps
-  | Teps f x => predsym_in p f
-  end.
   
 (*Here, strict positivity is a bit simpler, because predicates are not
   higher-order; we only need to reason about implication, essentially *)
@@ -963,7 +1586,7 @@ Definition valid_context (s : sig) (gamma: context) :=
                            Forall (adt_inhab s gamma) (typs m) /\
                            adt_positive gamma (typs m) /\
                            valid_mut_rec m
-    | recursive_def fs => Forall (funpred_def_valid_type s gamma) fs
+    | recursive_def fs => funpred_valid_type s gamma fs
     | inductive_def is => Forall (indprop_valid_type s gamma) is /\
                           indpred_positive is
     end) gamma.

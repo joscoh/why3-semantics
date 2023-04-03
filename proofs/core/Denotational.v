@@ -60,31 +60,6 @@ Definition cast_dom_vty {v: val_typevar}
 
 (*First, lemmas for function case - quite nontrivial *)
 
-Lemma ty_subst_fun_in: forall params args d (x: typevar),
-  NoDup params ->
-  In x params ->
-  length params = length args ->
-  exists ty, In (x, ty) (combine params args) /\ ty_subst_fun params args d x = ty.
-Proof.
-  intros. generalize dependent args. induction params; simpl; intros; auto.
-  inversion H0.
-  inversion H; subst. destruct args. inversion H1.
-  simpl in H0. destruct H0; subst.
-  - exists v. split. left; auto. destruct (typevar_eq_dec x x); auto. contradiction.
-  - inversion H1. specialize (IHparams H5 H0 args H3). destruct IHparams as [ty [Hin Hty]].
-    exists ty. split. right; auto. destruct (typevar_eq_dec x a); auto.
-    subst. contradiction.
-Qed. 
-
-Lemma ty_subst_fun_notin: forall params args d (x: typevar),
-  ~In x params ->
-  ty_subst_fun params args d x = d.
-Proof.
-  intros. revert args. induction params; simpl; intros; auto.
-  destruct args; auto. destruct (typevar_eq_dec x a); auto; subst.
-  exfalso. apply H. left; auto. apply IHparams. intro C. apply H. right; auto.
-Qed.
-
 (*A crucial result for the function arguments:
   Suppose we have a function f<alpha>(tau) : t, where alpha and tau are vectors
   In a well-typed function application f<mu>(ts), ts_i has type sigma(tau_i), where
@@ -142,7 +117,6 @@ Proof.
 Qed.
 
 (*We use the above to get the arg list*)
-(*TODO: generalize, don't have type info, have info from inversion*)
 (*TODO: write Fixpoint version?*)
 Definition get_arg_list (v: val_typevar)
   (s: fpsym) (vs: list vty) (ts: list term) 
@@ -409,61 +383,6 @@ Variable all_unif: forall m,
 
 (*Getting ADT instances*)
 Section GetADT.
-(*For pattern matches, we need to look at an element of
-  type dom(s), determine if s is an ADT type, and if so,
-  extract the components (constructor and args). We need
-  a lot of machinery to do this; we do this here.*)
-
-Definition find_ts_in_mut (ts: typesym) (m: mut_adt) : option alg_datatype :=
-  find (fun a => typesym_eq_dec ts (adt_name a)) (typs m).
-
-(*TODO: move*)
-Lemma find_none_iff {A: Type} (f: A -> bool) (l: list A):
-  find f l = None <-> forall x, In x l -> f x = false.
-Proof.
-  split. apply find_none.
-  induction l; simpl; intros; auto.
-  destruct (f a) eqn : Ha; auto.
-  rewrite H in Ha; auto. inversion Ha.
-Qed.
-
-Lemma find_ts_in_mut_none: forall ts m,
-  find_ts_in_mut ts m = None <->
-  forall a, adt_in_mut a m -> adt_name a <> ts.
-Proof.
-  intros. unfold find_ts_in_mut.
-  rewrite find_none_iff.
-  split; intros Hall x Hin.
-  - intro C; subst.
-    apply in_bool_In in Hin.
-    specialize (Hall _ Hin). simpl_sumbool. contradiction.
-  - apply (In_in_bool adt_dec) in Hin.
-    specialize (Hall _ Hin).
-    destruct (typesym_eq_dec ts (adt_name x)); auto; subst;
-    contradiction.
-Qed.
-
-Lemma find_ts_in_mut_some: forall ts m a,
-  find_ts_in_mut ts m = Some a ->
-  adt_in_mut a m /\ adt_name a = ts.
-Proof.
-  intros ts m a Hf. apply find_some in Hf.
-  destruct Hf as [Hin Heq].
-  split; auto. apply In_in_bool; auto.
-  simpl_sumbool.
-Qed.
-
-Lemma find_ts_in_mut_iff: forall ts m a,
-  NoDup (map adt_name (typs m)) ->
-  (find_ts_in_mut ts m = Some a) <-> (adt_in_mut a m /\ adt_name a = ts).
-Proof.
-  intros. eapply iff_trans. apply find_some_nodup.
-  - intros. repeat simpl_sumbool.
-    apply (NoDup_map_in H); auto.
-  - simpl. unfold adt_in_mut. split; intros [Hin Hname];
-    repeat simpl_sumbool; split; auto; try simpl_sumbool;
-    apply (reflect_iff _ _ (in_bool_spec adt_dec a (typs m))); auto.
-Qed.
 
 Definition find_ts_in_ctx (ts: typesym) : option (mut_adt * alg_datatype) :=
   fold_right (fun m acc => 
@@ -568,6 +487,7 @@ Qed.
 
 (*A function that tells us if a sort is an ADT and if so,
   get its info*)
+
 Definition is_sort_adt (s: sort) : 
   option (mut_adt * alg_datatype * typesym * list sort).
 Proof.
