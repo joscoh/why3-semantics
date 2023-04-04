@@ -588,6 +588,7 @@ Fixpoint All {A: Type} (P: A -> Prop) (l: list A) {struct l} : Prop :=
   end.
 Definition iter_and (l: list Prop) : Prop :=
   fold_right and True l.
+
 (*TODO: need to require somewhere that pattern constructors
   have to actually be constructors*)
 Fixpoint valid_matches_tm (t: term) : Prop :=
@@ -1623,6 +1624,8 @@ Proof.
   auto.
 Qed. 
 
+Context {s: sig} {gamma: context} (gamma_valid: valid_context s gamma).
+
 Section ValidContextLemmas.
 
 Context {s: sig} {gamma: context} (gamma_valid: valid_context s gamma).
@@ -2157,3 +2160,186 @@ Proof.
 Qed.*)
 
 End ValidContextLemmas.
+
+Section GetADT.
+
+Variable gamma: context.
+
+(*Get ADT of a type*)
+
+Definition find_ts_in_ctx (ts: typesym) : option (mut_adt * alg_datatype) :=
+  fold_right (fun m acc => 
+    match (find_ts_in_mut ts m) with
+    | Some a => Some (m, a)
+    | None => acc
+    end) None (mut_of_context gamma).
+
+Definition is_vty_adt (ty: vty) : 
+  option (mut_adt * alg_datatype * list vty) :=
+  match ty with
+  | vty_cons ts tys =>
+    match (find_ts_in_ctx ts) with
+    | Some (m, a) => Some (m, a, tys)
+    | None => None
+    end
+  | _ => None
+  end.
+
+(*First, a weaker spec that does not rely on
+  the context being well-formed*)
+
+Lemma find_ts_in_ctx_weak (ts: typesym):
+  reflect (exists (a: alg_datatype) (m: mut_adt),
+    mut_in_ctx m gamma /\ adt_in_mut a m /\
+    adt_name a = ts) (ssrbool.isSome (find_ts_in_ctx ts)).
+Proof.
+  unfold find_ts_in_ctx, mut_in_ctx.
+  induction (mut_of_context gamma); simpl.
+  - apply ReflectF. intros [a [m [H _]]]; inversion H.
+  - destruct (find_ts_in_mut ts a) eqn : Hinmut; simpl.
+    + apply ReflectT. apply find_ts_in_mut_some in Hinmut.
+      destruct Hinmut. exists a0. exists a.
+      rewrite eq_dec_refl.
+      subst. simpl. split; auto.
+    + destruct IHl.
+      * apply ReflectT.
+        destruct e as [a' [m [m_in [a_in Hts]]]]; subst.
+        exists a'. exists m. rewrite m_in, orb_true_r.
+        split; auto.
+      * apply ReflectF. intros [a' [m [Hma [a_in Hts]]]]; subst.
+        destruct (mut_adt_dec m a); simpl in *; subst.
+        -- rewrite find_ts_in_mut_none in Hinmut.
+          apply Hinmut in a_in. auto.
+        -- apply n. exists a'. exists m. split; auto.
+Qed.
+
+Lemma is_vty_adt_isSome ts tys:
+  ssrbool.isSome (is_vty_adt (vty_cons ts tys)) =
+  ssrbool.isSome (find_ts_in_ctx ts).
+Proof.
+  simpl. destruct (find_ts_in_ctx ts); simpl; auto.
+  destruct p; auto.
+Qed.
+
+Lemma is_vty_adt_weak (ty: vty):
+  reflect (exists (a: alg_datatype) (m: mut_adt) (args: list vty),
+    mut_in_ctx m gamma /\ adt_in_mut a m /\ 
+    ty = vty_cons (adt_name a) args) (ssrbool.isSome (is_vty_adt ty)).
+Proof.
+  destruct ty; try (apply ReflectF; 
+    intros [a [m [args [_ [_ H]]]]]; discriminate).
+  rewrite is_vty_adt_isSome.
+  destruct (find_ts_in_ctx_weak t); [apply ReflectT | apply ReflectF].
+  - destruct e as [a [m [m_in [a_in Hts]]]]; subst.
+    exists a. exists m. exists l. auto.
+  - intros [a [m [args [m_in [a_in Hcons]]]]]; inversion Hcons; subst.
+    apply n. exists a. exists m. auto.
+Qed.
+
+(*Now, the stronger specs*)
+Context {sigma: sig} (gamma_valid: valid_context sigma gamma).
+
+
+Lemma no_adt_name_dups:
+  NoDup (map adt_name (concat (map typs (mut_of_context gamma)))).
+Proof.
+  assert (forall g, 
+    (map adt_name (concat (map typs (mut_of_context g)))) =
+  typesyms_of_context g). {
+    induction g; unfold typesyms_of_context in *; simpl; auto.
+    unfold datatypes_of_context in *.
+    destruct a; simpl; auto.
+    rewrite !map_app, IHg. f_equal.
+    rewrite map_map.
+    apply map_ext. intros a. destruct a; reflexivity.
+  }
+  rewrite H. apply gamma_valid.
+Qed.
+
+(*The real spec we want: *)
+Lemma find_ts_in_ctx_iff: forall ts m a,
+  (find_ts_in_ctx ts = Some (m, a) <-> mut_in_ctx m gamma /\
+    adt_in_mut a m /\ adt_name a = ts).
+Proof.
+  intros. unfold find_ts_in_ctx. rewrite mut_in_ctx_eq.
+  assert (forall m, In m (mut_of_context gamma) ->
+    NoDup (map adt_name (typs m))). {
+      intros m'. rewrite <- mut_in_ctx_eq.
+      eapply adts_names_nodups. apply gamma_valid.
+    }
+  assert (Hnodup:=no_adt_name_dups).
+  induction (mut_of_context gamma); simpl; intros; split; intros; auto.
+  - inversion H0.
+  - destruct H0 as [[] _].
+  - destruct (find_ts_in_mut ts a0) eqn : Hmut.
+    + inversion H0; subst. apply find_ts_in_mut_iff in Hmut. destruct Hmut.
+      repeat split; auto.
+      apply H. left; auto.
+    + apply IHl in H0. destruct H0 as [Hin [Ha Hn]]. repeat split; auto.
+      intros. apply H. right; auto.
+      simpl in Hnodup. rewrite map_app in Hnodup. apply NoDup_app in Hnodup.
+      apply Hnodup.
+  - destruct H0 as [[Ham | Hinm] [Ha Hn]]; subst.
+    + assert (find_ts_in_mut (adt_name a) m = Some a). {
+        apply find_ts_in_mut_iff. apply H. left; auto. split; auto.
+      }
+      rewrite H0. reflexivity.
+    + simpl in Hnodup. rewrite map_app in Hnodup.
+      rewrite NoDup_app_iff in Hnodup.
+      destruct (find_ts_in_mut (adt_name a) a0 ) eqn : Hf.
+      * apply find_ts_in_mut_iff in Hf. 2: apply H; simpl; auto.
+        destruct Hf.
+        destruct Hnodup as [Hn1 [Hn2 [Hi1 Hi2]]].
+        exfalso. apply (Hi1 (adt_name a1)). rewrite in_map_iff.
+        exists a1. split; auto. apply (in_bool_In _ _ _ H0).
+        rewrite H1.
+        rewrite in_map_iff. exists a. split; auto.
+        rewrite in_concat. exists (typs m). split; auto.
+        rewrite in_map_iff. exists m; split; auto.
+        (*TODO: automate this or at least fix lemma w args*)
+        apply (in_bool_In _ _ _ Ha).
+      * apply IHl; auto.
+        intros. apply H. right; auto.
+        apply Hnodup.
+Qed.
+
+Lemma is_vty_adt_iff {ty: vty} {m a vs}:
+  is_vty_adt ty = Some (m, a, vs) <->
+  ty = vty_cons (adt_name a) vs /\
+  adt_in_mut a m /\
+  mut_in_ctx m gamma.
+Proof.
+  unfold is_vty_adt. split.
+  - destruct ty; intro C; inversion C.
+    destruct (find_ts_in_ctx t) eqn : Hts; inversion H0; subst.
+    destruct p. inversion C; subst.
+    apply find_ts_in_ctx_iff in Hts. destruct_all; subst; auto.
+  - intros. destruct_all; subst; simpl.
+    assert (find_ts_in_ctx (adt_name a) = Some (m, a)). {
+      apply find_ts_in_ctx_iff. split; auto.
+    }
+    rewrite H. reflexivity.
+Qed.
+
+Lemma is_vty_adt_spec {ty: vty} {m a vs}:
+  is_vty_adt ty = Some (m, a, vs) ->
+  ty = vty_cons (adt_name a) vs /\
+  adt_in_mut a m /\
+  mut_in_ctx m gamma.
+Proof.
+  apply is_vty_adt_iff.
+Qed.
+
+Lemma adt_vty_length_eq: forall {ty m a vs},
+  is_vty_adt ty = Some (m, a, vs) ->
+  valid_type sigma ty ->
+  length vs = length (m_params m).
+Proof.
+  intros ty m a vs H Hval.
+  apply is_vty_adt_spec in H. destruct_all; subst.
+  inversion Hval; subst. rewrite H5.
+  f_equal. apply (adt_args gamma_valid). split; auto.
+Qed.
+
+End GetADT.
+

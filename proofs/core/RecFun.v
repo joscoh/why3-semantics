@@ -4647,17 +4647,47 @@ Definition predsym_in_mutfun (p: predsym) (l: list funpred_def) : bool :=
 
 Definition get_mutfun_pred (p: predsym) (gamma': context) : option (list funpred_def) :=
   find (predsym_in_mutfun p) (mutfuns_of_context gamma').
-Print pi_funpred.
+
 
 
 Context {sigma: sig} {gamma: context} (gamma_valid: valid_context sigma gamma)
 {pd: pi_dom} (all_unif: forall m, mut_in_ctx m gamma -> IndTypes.uniform m).
 
+Lemma in_mutfuns_spec: forall l gamma',
+  In l (mutfuns_of_context gamma') <-> In (recursive_def l) gamma'.
+Proof.
+  intros. induction gamma'; simpl; intros; [split; auto |].
+  destruct a; simpl.
+  - split; intros; [apply IHgamma' in H; auto| 
+      destruct_all; try discriminate; apply IHgamma'; auto].
+  - split; intros; destruct_all; subst; auto; [apply IHgamma' in H; auto| 
+      destruct_all; try discriminate; inversion H; auto |
+      right; apply IHgamma'; auto].
+  - split; intros; [apply IHgamma' in H; auto| 
+      destruct_all; try discriminate; apply IHgamma'; auto].
+Qed.
+
 (*TODO: move to typing*)
+Lemma funpred_def_valid (l: list funpred_def)
+  (l_in: In l (mutfuns_of_context gamma)):
+  funpred_valid_type sigma gamma l.
+Proof.
+  destruct gamma_valid.
+  rewrite Forall_forall in H0.
+  rewrite in_mutfuns_spec in l_in.
+  specialize (H0 _ l_in). exact H0.
+Qed.
 
 (*Get fs and ps associated with a funpred_def*)
 Definition get_funpred_def_info (l: list funpred_def)
-  (l_in: In l (mutfuns_of_context gamma)) : (list fn, list pn)
+  (l_in: in_bool (list_eq_dec funpred_def_eq_dec) l 
+  (mutfuns_of_context gamma)) : (list fn * list pn).
+assert (funpred_valid_type sigma gamma l).
+  apply funpred_def_valid. eapply in_bool_In. apply l_in.
+
+destruct H.
+unfold valid_context in gamma_valid.
+
 
 Notation domain := (domain (dom_aux pd)).
 

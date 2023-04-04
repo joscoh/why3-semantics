@@ -147,6 +147,9 @@ Ltac dec H :=
 
 Ltac refl_t := solve[apply ReflectT; subst; auto].
 
+Ltac destruct_triv p :=
+  destruct p; try solve[apply ReflectF; intro C; inversion C].
+
 Section SymEqDec.
 
 Lemma fpsym_eq: forall (s1 s2: fpsym),
@@ -241,8 +244,39 @@ Inductive binop : Set :=
 
 Definition vsymbol : Set := (string * vty).
 
-Definition vsymbol_eq_dec : forall (x y: vsymbol), 
-  {x = y} + {x <> y} := tuple_eq_dec string_dec vty_eq_dec.
+(*TODO: move*)
+Definition tuple_eqb {A B: Type}
+  (eq1: A -> A -> bool)
+  (eq2: B -> B -> bool)
+  (x y: A * B) : bool :=
+  eq1 (fst x) (fst y) &&
+  eq2 (snd x) (snd y).
+
+Lemma tuple_eqb_spec {A B: Type}
+  {eq1 eq2}
+  (Heq1: forall (x y: A), reflect (x = y) (eq1 x y))
+  (Heq2: forall (x y: B), reflect (x = y) (eq2 x y)):
+  forall (x y: A * B), reflect (x = y) (tuple_eqb eq1 eq2 x y).
+Proof.
+  intros.
+  unfold tuple_eqb. dec (Heq1 (fst x) (fst y)).
+  dec (Heq2 (snd x) (snd y)).
+  destruct x; destruct y; simpl in *; subst; refl_t.
+Qed.
+
+Definition vsymbol_eqb (x y: vsymbol) :=
+  tuple_eqb String.eqb vty_eqb x y.
+
+Lemma vsymbol_eqb_spec (x y: vsymbol) :
+  reflect (x = y) (vsymbol_eqb x y).
+Proof.
+  apply tuple_eqb_spec.
+  apply String.eqb_spec.
+  apply vty_eq_spec.
+Qed.
+
+Definition vsymbol_eq_dec (x y: vsymbol): 
+  {x = y} + {x <> y} := reflect_dec' (vsymbol_eqb_spec x y).
 
 Unset Elimination Schemes.
 Inductive pattern : Set :=
@@ -644,7 +678,7 @@ Defined.
 
 Fixpoint pattern_eqb (p1 p2: pattern) : bool :=
   match p1, p2 with
-  | Pvar v1, Pvar v2 => vsymbol_eq_dec v1 v2
+  | Pvar v1, Pvar v2 => vsymbol_eqb v1 v2
   | Pconstr f1 vs1 ps1, Pconstr f2 vs2 ps2 =>
     funsym_eqb f1 f2 && list_eqb vty_eqb vs1 vs2 &&
     (length ps1 =? length ps2) &&
@@ -653,12 +687,9 @@ Fixpoint pattern_eqb (p1 p2: pattern) : bool :=
   | Por pa1 pa2, Por pb1 pb2 => pattern_eqb pa1 pb1 &&
     pattern_eqb pa2 pb2
   | Pbind p1 v1, Pbind p2 v2 => pattern_eqb p1 p2 &&
-    vsymbol_eq_dec v1 v2
+    vsymbol_eqb v1 v2
   | _, _ => false
   end.
-
-Ltac destruct_triv p :=
-  destruct p; try solve[apply ReflectF; intro C; inversion C].
 
 Lemma pattern_eqb_spec (p1 p2: pattern) :
   reflect (p1 = p2) (pattern_eqb p1 p2).
@@ -667,7 +698,7 @@ Proof.
   apply (pattern_rect (fun p => forall p2,
     reflect (p = p2) (pattern_eqb p p2))); intros; simpl.
   - destruct_triv p2.
-    dec (vsymbol_eq_dec v v0). refl_t.
+    dec (vsymbol_eqb_spec v v0). refl_t.
   - destruct_triv p2. dec (funsym_eqb_spec f f0).
     dec (list_eqb_spec vty_eqb vty_eq_spec vs l).
     dec (Nat.eqb_spec (length ps) (length l0)).
@@ -694,7 +725,7 @@ Proof.
     dec (H0 p0_2); subst; simpl.
     refl_t.
   - destruct_triv p2.
-    dec (H p2). dec (vsymbol_eq_dec v v0). subst.
+    dec (H p2). dec (vsymbol_eqb_spec v v0). subst.
     refl_t.
 Qed.
 
@@ -708,7 +739,7 @@ Fixpoint term_eqb (t1 t2: term) {struct t1} : bool :=
     Z.eqb z1 z2
   | Tconst (ConstReal q1), Tconst (ConstReal q2) =>
     Q_eq_dec q1 q2 (*TODO: this fails if we use Coq classical reals*)
-  | Tvar v1, Tvar v2 => vsymbol_eq_dec v1 v2
+  | Tvar v1, Tvar v2 => vsymbol_eqb v1 v2
   | Tfun f1 tys1 tms1, Tfun f2 tys2 tms2 =>
     funsym_eqb f1 f2 &&
     list_eqb vty_eqb tys1 tys2 &&
@@ -716,7 +747,7 @@ Fixpoint term_eqb (t1 t2: term) {struct t1} : bool :=
     all2 (fun t1 t2 => term_eqb t1 t2) tms1 tms2
   | Tlet ta1 v1 ta2, Tlet tb1 v2 tb2 =>
     term_eqb ta1 tb1 &&
-    vsymbol_eq_dec v1 v2 &&
+    vsymbol_eqb v1 v2 &&
     term_eqb ta2 tb2
   | Tif f1 ta1 ta2, Tif f2 tb1 tb2 =>
     formula_eqb f1 f2 &&
@@ -730,7 +761,7 @@ Fixpoint term_eqb (t1 t2: term) {struct t1} : bool :=
       term_eqb (snd x) (snd y)) ps1 ps2
   | Teps f1 v1, Teps f2 v2 =>
     formula_eqb f1 f2 &&
-    vsymbol_eq_dec v1 v2
+    vsymbol_eqb v1 v2
   | _, _ => false
   end
 with formula_eqb (f1 f2: formula) {struct f1} : bool :=
@@ -742,7 +773,7 @@ with formula_eqb (f1 f2: formula) {struct f1} : bool :=
     all2 (fun t1 t2 => term_eqb t1 t2) tms1 tms2
   | Fquant q1 v1 f1, Fquant q2 v2 f2 =>
     quant_eqb q1 q2 &&
-    vsymbol_eq_dec v1 v2 &&
+    vsymbol_eqb v1 v2 &&
     formula_eqb f1 f2
   | Feq ty1 ta1 ta2, Feq ty2 tb1 tb2 =>
     vty_eqb ty1 ty2 &&
@@ -758,7 +789,7 @@ with formula_eqb (f1 f2: formula) {struct f1} : bool :=
   | Ffalse, Ffalse => true
   | Flet t1 v1 f1, Flet t2 v2 f2 =>
     term_eqb t1 t2 &&
-    vsymbol_eq_dec v1 v2 &&
+    vsymbol_eqb v1 v2 &&
     formula_eqb f1 f2
   | Fif fa1 fa2 fa3, Fif fb1 fb2 fb3 =>
     formula_eqb fa1 fb1 &&
@@ -783,7 +814,7 @@ Proof.
   - destruct t2; destruct_triv c; destruct_triv c0.
     + dec (Z.eqb_spec z z0); refl_t.
     + dec (Q_eq_dec q q0). refl_t.
-  - destruct_triv t2. dec (vsymbol_eq_dec v v0). refl_t.
+  - destruct_triv t2. dec (vsymbol_eqb_spec v v0). refl_t.
   - destruct_triv t2. 
     dec (funsym_eqb_spec f1 f).
     dec (list_eqb_spec _ vty_eq_spec l l0).
@@ -802,7 +833,7 @@ Proof.
       assert (false) by (apply H0; auto). inversion H1.
   - destruct_triv t2.
     dec (H t2_1).
-    dec (vsymbol_eq_dec v v0).
+    dec (vsymbol_eqb_spec v v0).
     dec (H0 t2_2). refl_t.
   - destruct_triv t0.
     dec (H f0).
@@ -834,7 +865,7 @@ Proof.
       assert (false) by (apply H1; auto). inversion H2.
   - destruct_triv t2.
     dec (H f0).
-    dec (vsymbol_eq_dec v v0). refl_t.
+    dec (vsymbol_eqb_spec v v0). refl_t.
   - destruct_triv f2.
     dec (predsym_eqb_spec p p0).
     dec (list_eqb_spec _ vty_eq_spec tys l).
@@ -854,7 +885,7 @@ Proof.
       assert (false) by (apply H0; auto). inversion H1.
   - destruct_triv f2.
     dec (quant_eqb_spec q q0).
-    dec (vsymbol_eq_dec v v0).
+    dec (vsymbol_eqb_spec v v0).
     dec (H f2). refl_t.
   - destruct_triv f2.
     dec (vty_eq_spec v v0).
@@ -868,7 +899,7 @@ Proof.
   - destruct_triv f2. refl_t.
   - destruct_triv f2. refl_t.
   - destruct_triv f2.
-    dec (H t). dec (vsymbol_eq_dec v v0).
+    dec (H t). dec (vsymbol_eqb_spec v v0).
     dec (H0 f2). refl_t.
   - destruct_triv f0.
     dec (H f0_1). dec (H0 f0_2). dec (H1 f0_3). refl_t.
@@ -1066,3 +1097,33 @@ Fixpoint funsym_in_tm (f: funsym) (t: term) : bool :=
     existsb (fun x => funsym_in_fmla f (snd x)) ps
   | _ => false
   end.
+
+Definition funpred_def_eqb (f1 f2: funpred_def) : bool :=
+  match f1, f2 with
+  | fun_def f1 v1 t1, fun_def f2 v2 t2 =>
+    funsym_eqb f1 f2 &&
+    list_eqb vsymbol_eqb v1 v2 &&
+    term_eqb t1 t2
+  | pred_def p1 v1 f1, pred_def p2 v2 f2 =>
+    predsym_eqb p1 p2 &&
+    list_eqb vsymbol_eqb v1 v2 &&
+    formula_eqb f1 f2
+  | _, _ => false
+  end.
+
+Lemma funpred_def_eqb_spec (f1 f2: funpred_def) :
+  reflect (f1 = f2) (funpred_def_eqb f1 f2).
+Proof.
+  destruct f1; destruct_triv f2; simpl.
+  - dec (funsym_eqb_spec f f0).
+    dec (list_eqb_spec _ vsymbol_eqb_spec l l0).
+    dec (term_eqb_spec t t0).
+    refl_t.
+  - dec (predsym_eqb_spec p p0).
+    dec (list_eqb_spec _ vsymbol_eqb_spec l l0).
+    dec (formula_eqb_spec f f0).
+    refl_t.
+Qed.
+
+Definition funpred_def_eq_dec (f1 f2: funpred_def) :
+  {f1 = f2} + {f1 <> f2} := reflect_dec' (funpred_def_eqb_spec f1 f2).

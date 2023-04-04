@@ -681,17 +681,13 @@ Proof.
 Qed.
 
 (*Now a few easy corollaries*)
-Theorem typecheck_term_correct (s: sig) (tm: term) (v: vty):
-  reflect (term_has_type s tm v) (typecheck_term s tm == Some v).
-Proof.
-  apply typecheck_term_fmla_spec. exact Ftrue.
-Qed.
+Definition typecheck_term_correct (s: sig) (tm: term) (v: vty):
+  reflect (term_has_type s tm v) (typecheck_term s tm == Some v) :=
+  fst (typecheck_term_fmla_spec s tm Ftrue) v.
 
-Theorem typecheck_formula_correct (s: sig) (f: formula):
-  reflect (valid_formula s f) (typecheck_formula s f).
-Proof.
-  apply typecheck_term_fmla_spec. exact (Tconst (ConstInt 0)).
-Qed.
+Definition typecheck_formula_correct (s: sig) (f: formula):
+  reflect (valid_formula s f) (typecheck_formula s f) :=
+  snd (typecheck_term_fmla_spec s tm_d f).
 
 (*TODO: separate module or something so we don't have imports?*)
 (*TODO: better name*)
@@ -715,5 +711,139 @@ Proof.
     /(typecheck_term_correct s t) /eqP.
   by rewrite Hx => [[]].
 Qed.
+
+Section ContextCheck.
+
+Variable gamma: context.
+
+(*Here, we show that the context checks (some of them for now)
+  are decidable.
+  We need this for some proofs; namely for recursive functions, 
+  we need to be able to find the fs and ps to build our function*)
+
+Fixpoint check_valid_matches_tm (t: term) : bool :=
+  match t with
+  | Tfun f vs tms =>
+    all check_valid_matches_tm tms
+  | Tlet tm1 v tm2 =>
+    check_valid_matches_tm tm1 &&
+    check_valid_matches_tm tm2
+  | Tif f1 t1 t2 =>
+    check_valid_matches_fmla f1 &&
+    check_valid_matches_tm t1 &&
+    check_valid_matches_tm t2
+  | Tmatch t1 v ps =>
+    check_valid_matches_tm t1 &&
+    is_vty_adt gamma v &&
+    all (fun x => check_valid_matches_tm (snd x)) ps
+  | Teps f v =>
+    check_valid_matches_fmla f
+  | _ => true
+  end
+with check_valid_matches_fmla (f: formula) : bool :=
+  match f with
+  | Fpred p vs tms => all check_valid_matches_tm tms
+  | Fquant q v f => check_valid_matches_fmla f
+  | Feq v t1 t2 => check_valid_matches_tm t1 &&
+    check_valid_matches_tm t2
+  | Fbinop b f1 f2 => check_valid_matches_fmla f1 &&
+    check_valid_matches_fmla f2
+  | Fnot f => check_valid_matches_fmla f
+  | Flet t v f => check_valid_matches_tm t &&
+    check_valid_matches_fmla f
+  | Fif f1 f2 f3 =>
+    check_valid_matches_fmla f1 &&
+    check_valid_matches_fmla f2 &&
+    check_valid_matches_fmla f3
+  | Fmatch t v ps =>
+    check_valid_matches_tm t &&
+    is_vty_adt gamma v &&
+    all (fun x => check_valid_matches_fmla (snd x)) ps
+  | _ => true
+  end.
+
+(*We could assume stuff, but let's just plow through
+  this I guess*)
+Definition pattern_eqMixin := EqMixin pattern_eqb_spec.
+Canonical pattern_eqType := EqType pattern pattern_eqMixin.
+Definition term_eqMixin := EqMixin term_eqb_spec.
+Canonical term_eqType := EqType term term_eqMixin.
+Definition formula_eqMixin := EqMixin formula_eqb_spec.
+Canonical formula_eqType := EqType formula formula_eqMixin.
+
+Lemma iter_and_Forall {A: Type} {P: A -> Prop} {l: list A}:
+  Forall P l <-> iter_and (List.map P l).
+Proof.
+  elim: l=>//= h t IH/=.
+  split =>[Hall | [Hh Ht]].
+  - split.
+    + exact (Forall_inv Hall).
+    + rewrite -IH. exact (Forall_inv_tail Hall).
+  - constructor=>//. by apply IH.
+Qed.
+
+Lemma check_valid_matches_spec (t: term) (f: formula):
+  reflect (valid_matches_tm gamma t) (check_valid_matches_tm t) *
+  reflect (valid_matches_fmla gamma f) (check_valid_matches_fmla f).
+Proof.
+  revert t f; apply term_formula_rect =>//=;
+  (try by (intros; apply ReflectT));
+  try by (intros; apply andPP).
+  (*Only 3 nontrivial cases for each: fun/pred, if (basically trivial),
+  and match*)
+  - move=> f1 tys tms Hall.
+    eapply equivP. 2: apply iter_and_Forall.
+    apply all_Forall. 
+    move: Hall; elim: tms => [//=| thd ttl IH /= Hall x].
+    rewrite in_cons. (*Can't destruct on or*)
+    case: (x == thd) /eqP => [Hxh _ | Hneq]/=; subst.
+    + exact (ForallT_hd _ _ _ Hall).
+    + apply IH. exact (ForallT_tl _ _ _ Hall).
+  - move=> f t1 t2 IH1 IH2 IH3.
+    rewrite -andbA.
+    repeat apply andPP=>//.
+  - move=> tm v ps IH1 Hall. cbn.
+    rewrite -andbA.
+    repeat apply andPP=>//.
+    + apply is_vty_adt_weak.
+    + eapply equivP. 2: apply iter_and_Forall.
+      apply all_Forall.
+      move: Hall.
+      elim: ps => //= [[p1 t1]] tl IH Hall x.
+      rewrite in_cons.
+      case: (x == (p1, t1)) /eqP => /=[Hxp1 _ | Hneq ]; subst=>/=.
+      * exact (ForallT_hd _ _ _ Hall).
+      * apply IH. exact (ForallT_tl _ _ _ Hall).
+  - move=> p tys tms Hall.
+    eapply equivP. 2: apply iter_and_Forall.
+    apply all_Forall. 
+    move: Hall; elim: tms => [//=| thd ttl IH /= Hall x].
+    rewrite in_cons. (*Can't destruct on or*)
+    case: (x == thd) /eqP => [Hxh _ | Hneq]/=; subst.
+    + exact (ForallT_hd _ _ _ Hall).
+    + apply IH. exact (ForallT_tl _ _ _ Hall).
+  - move=> f1 f2 f3 IH1 IH2 IH3.
+    rewrite -andbA.
+    repeat apply andPP=>//.
+  - move=> tm v ps IH1 Hall. cbn.
+    rewrite -andbA.
+    repeat apply andPP=>//.
+    + apply is_vty_adt_weak.
+    + eapply equivP. 2: apply iter_and_Forall.
+      apply all_Forall.
+      move: Hall.
+      elim: ps => //= [[p1 t1]] tl IH Hall x.
+      rewrite in_cons.
+      case: (x == (p1, t1)) /eqP => /=[Hxp1 _ | Hneq ]; subst=>/=.
+      * exact (ForallT_hd _ _ _ Hall).
+      * apply IH. exact (ForallT_tl _ _ _ Hall).
+Qed.
+
+Definition check_valid_matches_tm_spec t := 
+  fst (check_valid_matches_spec t Ftrue).
+Definition check_valid_matches_fmla_spec f := 
+  snd (check_valid_matches_spec tm_d f).
+
+End ContextCheck.
 
 End Typechecker.
