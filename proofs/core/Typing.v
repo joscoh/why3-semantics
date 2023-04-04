@@ -256,11 +256,18 @@ Definition mut_of_context (c: context) : list mut_adt :=
 Definition mutrec_datatypes_of_context (c: context) : list (list (typesym * list funsym)) :=
   map datatypes_of_def c.
 
-Definition fundefs_of_context (c: context) : list (funsym * list vsymbol * term) :=
+Definition mutfuns_of_context (c: context) : list (list funpred_def) :=
+  fold_right (fun o acc =>
+    match o with
+    | recursive_def lf => lf :: acc
+    | _ => acc
+    end) nil c.
+
+(*Definition fundefs_of_context (c: context) : list (funsym * list vsymbol * term) :=
   concat (map fundefs_of_def c).
 
 Definition preddefs_of_context (c: context) : list (predsym * list vsymbol * formula) :=
-  concat (map preddefs_of_def c).
+  concat (map preddefs_of_def c).*)
 
 Definition indpreds_of_context (c: context) : list (predsym * list formula) :=
   concat (map indpreds_of_def c).

@@ -4311,105 +4311,32 @@ Definition funcs_rep_aux (pa: packed_args2) :
     subst; auto.
   Qed.
 
-End Def.
+(*Plan: first write the definition and theorem with assumptions about
+  fp, vt, vv, then define one with context and types to show
+  that these are satisfied. Then prove theorems
+  
+  Will need:
+  1. term_rep_aux/formula_rep_aux rewrite lemmas
+  2. If pf1 and pf2 are equal on all fun/pred syms appearing in
+  t/f that are not in fs, ps, then term_rep_aux pf1 t = term_rep_aux pf2 t
+  and likewise for formula_rep
+  3. If pf satisfies funs/preds rep (circular dependency)
+    and vt satifies vt_eq (can build from vt_with_args)
+    and vv is vv_with_args vv'
+    and IH holds for reps,
+    then term_rep_aux = term_rep and likewise
+
+    later on, prove that we can substitute any vt as long as we
+    have vt_eq (OR - show in term_rep that we can always "change"
+    vt by adjusting valuation - might be easier to show)
+  
+  *)
 
 Section FunRewrite.
 
-(*TODO: change val typevar to remove the record, just have function
-  then continue here should be a bit simpler
-  
-  probably: prove in denotational that if we have 2 vt that agree
-  on all typevars in term, and 2 vv's (1 for each) that agree 
-  on all variables in term (with appropriate casts), then
-  term_reps equal (with casts)
-  then, we can prove our result here and say that
-  term_rep_aux vt vv = term_rep vt vv,
-  get that funs ... = term_rep (vt_with_vars triv_vt) (vv_with_args triv_vv)
-  and then use existing lemma to show that this is equal to
-  term_rep (vt_with_vars vt) (vv_with_args vv) for any vt and vv
-  (assuming that the only free vars of the term are in args)
-
-  either way need cast somewhere so it is OK, but we do want to
-  make sure that our results are in a single dom_cast (maybe
-  need just some UIP_dec/rewrite stuff there)
-
-  will need to define notion of type vars in term and prove
-  (from typing) that all in function def are in s_params
-
-  first thing we will do is put stuff in typing properly
-  so that we can figure out what we need/what we have/where to put
-
-  START
-
-  *)
-(*TODO*)
-(*Here, we fix our valuation since we cannot take in any
-  input in our final version. We can give a trivial valuation
-  and define the mapping on the typesyms and vsyms that we care
-  about. We will need to show it equals a [term_rep] and [formula_rep]
-  for an arbirtary valuation, which will require a bit of annoying casting*)
-
-(*First, a trivial val_typevar*)
-
-Definition triv_val_typevar : val_typevar :=
-  fun x => s_int.
-
-(*Then, from a val_typevar, set variables alpha to srts*)
-
-Fixpoint vt_with_args (vt: val_typevar) (args: list typevar)
-  (srts: list sort) : val_typevar :=
-  fun (x: typevar) =>
-  match args with
-  | nil => vt x
-  | a :: atl =>
-    match srts with
-    | nil => vt x
-    | s1 :: stl => if typevar_eq_dec x a then s1 
-      else vt_with_args vt atl stl x
-    end
-  end.
-
-Lemma vt_with_args_nth (vt: val_typevar) args srts:
-  length args = length srts ->
-  NoDup args ->
-  forall i, i < length args ->
-  vt_with_args vt args srts (nth i args EmptyString) = nth i srts s_int.
-Proof.
-  intros. generalize dependent srts. generalize dependent i. 
-  induction args; simpl; intros.
-  simpl in *; lia.
-  destruct srts; inversion H; subst.
-  destruct i.
-  - destruct (typevar_eq_dec a a); try contradiction; auto.
-  - destruct (typevar_eq_dec (nth i args EmptyString) a).
-    + subst. inversion H0; subst.
-      exfalso. apply H5. apply nth_In. simpl in H1. lia.
-    + simpl. apply IHargs; auto. inversion H0; subst; auto. lia.
-Qed.
-
-(*Now we prove that this has the [vt_eq] property - args = params*)
-Lemma vt_with_args_vt_eq (vt: val_typevar)
-  (srts: list sort):
-  NoDup params ->
-  length srts = length params ->
-  @vt_eq (vt_with_args vt params srts) srts.
-Proof.
-  intros. unfold vt_eq. intros.
-  apply vt_with_args_nth; auto.
-Qed.
-
-Definition func_vt (srts: list sort) : val_typevar := 
-  vt_with_args triv_val_typevar params srts.
+Variable vv: val_vars pd vt.
 
 
-(*Trivial valuation gives default elements*)
-Definition triv_val_vars (vt: val_typevar) : val_vars pd vt :=
-  fun x => 
-  match domain_ne pd (v_subst vt (snd x)) with
-  | DE y => y
-  end.
-
-  Print packed_args2.
 
 (*Now a version for funsyms and predsyms that we can
   use for [funs] and [preds]*)
@@ -4429,7 +4356,7 @@ Definition funs_rep_aux (f: fn) (f_in: In f fs)
   let ca : combined_args :=
     combine_args_fun pa f f_in eq_refl in
   let pa2: packed_args2 :=
-    existT _ ca (@triv_val_vars (func_vt srts), conj srts_len vt_eq_srts) in
+    existT _ ca (vv, conj srts_len vt_eq_srts) in
   (*and call the function*)
   funcs_rep_aux pa2.
 
@@ -4447,11 +4374,9 @@ Definition preds_rep_aux (p: pn) (p_in: In p ps)
   let ca : combined_args :=
     combine_args_pred pa p p_in eq_refl in
   let pa2: packed_args2 :=
-    existT _ ca (triv_val_vars, conj srts_len vt_eq_srts) in
+    existT _ ca (vv, conj srts_len vt_eq_srts) in
   (*and call the function*)
   funcs_rep_aux pa2.
-
-End FunRewrite.
 
 (*Now we state our correctness theorem.*)
 
@@ -4493,6 +4418,7 @@ Definition funcs_rep_aux_unfold (pa: packed_args2) :
     | existT (existT pa' (Left finfo)) pa2 => 
       let f : fn := proj1_sig finfo in
       let f_in : In f fs := proj1' (proj2_sig finfo) in
+      let vv := (fst pa2) in
       let srts : list sort := projT1 (projT2 pa') in
       let srts_len  := proj1' (snd  pa2) in
       let vt_eq_srts := proj2' (snd pa2) in
@@ -4506,12 +4432,13 @@ Definition funcs_rep_aux_unfold (pa: packed_args2) :
       (
       term_rep gamma_valid pd all_unif vt pf
         (*OK to use triv_val_vars here, later we will show equiv*)
-        (val_with_args triv_val_vars (sn_args f) a)
+        (val_with_args vv (sn_args f) a)
         (fn_body f) _
         (Forall_In fs_typed (proj1' (proj2_sig finfo))))
     | existT (existT pa' (Right pinfo)) pa2 =>
       let p : pn := proj1_sig pinfo in
       let p_in : In p ps := proj1' (proj2_sig pinfo) in
+      let vv := (fst pa2) in
       let srts : list sort := projT1 (projT2 pa') in
       let srts_len  := proj1' (snd  pa2) in
       let vt_eq_srts := proj2' (snd pa2) in
@@ -4521,15 +4448,13 @@ Definition funcs_rep_aux_unfold (pa: packed_args2) :
       ) (projT2 (projT2 pa'))) in
     formula_rep gamma_valid pd all_unif vt pf
       (*OK to use triv_val_vars here, later we will show equiv*)
-      (val_with_args triv_val_vars (sn_args p) a)
+      (val_with_args vv (sn_args p) a)
       (pn_body p)
       (Forall_In ps_typed (proj1' (proj2_sig pinfo)))
     end.
 
 (*First, the theorem relating [term_rep] and [term_rep_aux]
   and likewise for formula*)
-Check pf.
-Definition interp_with_funcs (pf': pi_funpred gamma_valid pd)
 
 
 (*TODO: cannot assume pf, need to have term_rep input
@@ -4623,13 +4548,14 @@ Theorem term_fmla_rep_aux_eq (t: term) (f: formula) :
   )
   .
 Proof.
+Admitted.
   (*This proof just uses [term_formula_ind], we do not need
     any well-founded induction*)
   (*TODO: why does this proof take so long - 
     think because term_rep_aux is giant because of termination proof ugh *)
-  revert t f. apply term_formula_ind; intros.
+(*  revert t f. apply term_formula_ind; intros.
   (*TODO: prove rewrite lemma*)
-Admitted.
+Admitted.*)
   (*simpl_rep_full; auto.
   - destruct c; simpl_rep_full; reflexivity.
   - (*the function case will be hard and interesting
@@ -4644,7 +4570,16 @@ Admitted.
 
 (*TODO: term_rep should be with *)
 
+Print val_with_args.
 
+(*TODO: move*)
+Lemma val_with_args_cast_eq (vv': val_vars pd vt) (l1 l2: list vsymbol)
+  (s1 s2: list sort) (Heq: s1 = s2) (a1: arg_list domain s1):
+  l1 = l2 ->
+  val_with_args vv' l1 a1 = val_with_args vv' l2 (cast_arg_list Heq a1).
+Proof.
+  intros. subst. reflexivity.
+Qed.
 
 Theorem funpred_rep_aux_eq:
   forall (pa: packed_args2),
@@ -4666,21 +4601,152 @@ Proof.
       a goal only about the [term_rep] and [term_rep_aux]*)
     f_equal.
     + f_equal. f_equal. apply UIP_dec. apply list_eq_dec. apply sort_eq_dec.
-    + 
-  
-  
-  simpl.
+    + rewrite (proj1 (term_fmla_rep_aux_eq _ Ftrue)); auto.
+      f_equal.
+      assert (proj1_sig (projT1 pa) = (proj1_sig finfo)). {
+        destruct finfo; simpl. destruct a; subst; auto.
+      }
+      apply val_with_args_cast_eq. f_equal. apply H; auto.
+  - rewrite funcs_rep_aux_eq. simpl.
+    rewrite (proj2 (term_fmla_rep_aux_eq tm_d _)); auto.
+    f_equal.
+    assert (proj1_sig (projT1 pa) = (proj1_sig pinfo)). {
+      destruct pinfo; simpl. destruct a; subst; auto.
+    }
+    apply val_with_args_cast_eq. f_equal. apply H; auto.
+Qed.
+
+End FunRewrite.
+
+(*Now we instead work from typing and give all the proofs*)
+End Def.
+
+End FunDef.
+
+(*Now we give the full definition*)
+Section Full.
+
+(*First, we define when a mutual function body is in a context*)
+
+(*TODO: move*)
+
+(*Similar to mutual types*)
+
+Definition funsym_in_mutfun (f: funsym) (l: list funpred_def) : bool :=
+  in_bool funsym_eq_dec f 
+    (fold_right (fun x acc => match x with | fun_def f' _ _ => 
+      f' :: acc | _ => acc end) nil l).
+
+Definition get_mutfun_fun (f: funsym) (gamma': context) : option (list funpred_def) :=
+  find (funsym_in_mutfun f) (mutfuns_of_context gamma').
+
+Definition predsym_in_mutfun (p: predsym) (l: list funpred_def) : bool :=
+  in_bool predsym_eq_dec p 
+    (fold_right (fun x acc => match x with | pred_def p' _ _ => 
+      p' :: acc | _ => acc end) nil l).
+
+Definition get_mutfun_pred (p: predsym) (gamma': context) : option (list funpred_def) :=
+  find (predsym_in_mutfun p) (mutfuns_of_context gamma').
+Print pi_funpred.
+
+
+Context {sigma: sig} {gamma: context} (gamma_valid: valid_context sigma gamma)
+{pd: pi_dom} (all_unif: forall m, mut_in_ctx m gamma -> IndTypes.uniform m).
+
+(*TODO: move to typing*)
+
+(*Get fs and ps associated with a funpred_def*)
+Definition get_funpred_def_info (l: list funpred_def)
+  (l_in: In l (mutfuns_of_context gamma)) : (list fn, list pn)
+
+Notation domain := (domain (dom_aux pd)).
+
+(*Definition of funs_rep*)
+Definition funs_rep (f: funsym) (l: list funpred_def)
+  (f_in: funsym_in_mutfun f l)
+  (l_in: In l (mutfuns_of_context gamma))
+  (srts: list sort)
+  (srts_len: length srts = length (s_params f))
+  (a: arg_list domain (sym_sigma_args f srts)):
+  domain (funsym_sigma_ret f srts) :=
+
+  funs_rep_aux gamma_valid all_unif.
 
 
 
-  apply well_founded_induction.
-    
+Definition funs_rep_aux (f: fn) (f_in: In f fs)
+  (srts: list sort)
+  (srts_len: length srts = length params)
+  (*TODO: we will build the typesym map later so that this holds*)
+  (vt_eq_srts: vt_eq srts)
+  (a: arg_list domain (sym_sigma_args (sn_sym (fn_sn f)) srts)) :
+  domain (funsym_sigma_ret (fn_sym f) srts) :=
 
 
-  (pa: packed_args2) :
-  (*The return type depends on whether this is a function or
-    predicate definition*)
-  funrep_ret (projT1 pa) :=
+Definition pf_with_funrep (pf: pi_funpred gamma_valid pd) 
+(l: list funpred_def) : pi_funpred gamma_valid pd.
+Admitted.
+
+(*What we want to prove
+1. For all mutual function defs and all funsyms and predsyms
+  in these, this interpretation maps f srts a to
+  the term_rep and p to the formula_rep (we also prove that)
+2. For all other functions and predicates, the result is the same*)
+Lemma pf_with_funrep_funs: forall (l: list funpred_def)
+  (Hinl: In l (mutfuns_of_context gamma))
+  (srts: list sort),
+  (forall (f: funsym) (Hf:funsym_in_mutfun f l)
+    (srts_len: length srts = length (s_params f))
+    (a: arg_list domain (sym_sigma_args (fn_sym f) srts)):
+    funs gamma_valid pd (pf_with_funrep)
+
+
+Variable pf_funs: forall (f: fn) (f_in: In f fs)
+  (srts: list sort)
+  (srts_len: length srts = length params)
+  (vt_eq_srts: vt_eq srts)
+  (a: arg_list domain (sym_sigma_args (fn_sym f) srts)),
+  (*Unfortunately, we need to cast a*)
+  funs gamma_valid pd pf (fn_sym f) srts a =
+  funs_rep_aux f f_in srts srts_len vt_eq_srts 
+    (cast_arg_list (f_equal (fun x => (sym_sigma_args x srts)) (fn_wf f)) a).
+
+Variable pf_preds: forall (p: pn) (p_in: In p ps)
+(srts: list sort)
+(srts_len: length srts = length params)
+(vt_eq_srts: vt_eq srts)
+(a: arg_list domain (sym_sigma_args (pn_sym p) srts)),
+(*Unfortunately, we need to cast a*)
+preds gamma_valid pd pf (pn_sym p) srts a =
+preds_rep_aux p p_in srts srts_len vt_eq_srts 
+  (cast_arg_list (f_equal (fun x => (sym_sigma_args x srts)) (pn_wf p)) a).
+
+
+
+
+
+
+
+(*TODO: cannot make bool bc we don't have decidable equality on terms
+  unless we use all_dec - do we need it?*)
+Definition mutfun_in_ctx (l: list funpred_def) (gamma': ctx) : Prop :=
+  in_bool
+
+
+Check pi_funpred.
+
+
+V
+
+
+
+Check gamma.
+Check fs.
+Check fs_uniq.
+End A.
+
+End A.
+
 
 
 Theorem funpred_rep_aux_eq:
@@ -4696,7 +4762,7 @@ Theorem funpred_rep_aux_eq:
     (
     term_rep gamma_valid pd all_unif vt pf
       (*OK to use triv_val_vars here, later we will show equiv*)
-      (val_with_args triv_val_vars (sn_args f) a)
+      (val_with_args vv (sn_args f) a)
        (fn_body f) _
        (Forall_In fs_typed f_in))) /\
   (forall (p: pn) (p_in: In p ps) (srts: list sort)
@@ -4706,7 +4772,7 @@ Theorem funpred_rep_aux_eq:
     preds gamma_valid pd pf (pn_sym p) srts a =
     formula_rep gamma_valid pd all_unif vt pf
       (*OK to use triv_val_vars here, later we will show equiv*)
-      (val_with_args triv_val_vars (sn_args p) a)
+      (val_with_args vv (sn_args p) a)
       (pn_body p)
       (Forall_In ps_typed p_in)).
 Proof.
@@ -4722,3 +4788,73 @@ Proof.
 End FunDef.
 
 Check funcs_rep_aux.
+
+
+
+(*TODO: move these to Interp*)
+
+(*Here, we fix our valuation since we cannot take in any
+  input in our final version. We can give a trivial valuation
+  and define the mapping on the typesyms and vsyms that we care
+  about. We will need to show it equals a [term_rep] and [formula_rep]
+  for an arbirtary valuation, which will require a bit of annoying casting*)
+
+(*First, a trivial val_typevar*)
+
+Definition triv_val_typevar : val_typevar :=
+  fun x => s_int.
+
+(*Then, from a val_typevar, set variables alpha to srts*)
+
+Fixpoint vt_with_args (vt: val_typevar) (args: list typevar)
+  (srts: list sort) : val_typevar :=
+  fun (x: typevar) =>
+  match args with
+  | nil => vt x
+  | a :: atl =>
+    match srts with
+    | nil => vt x
+    | s1 :: stl => if typevar_eq_dec x a then s1 
+      else vt_with_args vt atl stl x
+    end
+  end.
+
+Lemma vt_with_args_nth (vt: val_typevar) args srts:
+  length args = length srts ->
+  NoDup args ->
+  forall i, i < length args ->
+  vt_with_args vt args srts (nth i args EmptyString) = nth i srts s_int.
+Proof.
+  intros. generalize dependent srts. generalize dependent i. 
+  induction args; simpl; intros.
+  simpl in *; lia.
+  destruct srts; inversion H; subst.
+  destruct i.
+  - destruct (typevar_eq_dec a a); try contradiction; auto.
+  - destruct (typevar_eq_dec (nth i args EmptyString) a).
+    + subst. inversion H0; subst.
+      exfalso. apply H5. apply nth_In. simpl in H1. lia.
+    + simpl. apply IHargs; auto. inversion H0; subst; auto. lia.
+Qed.
+
+(*Now we prove that this has the [vt_eq] property - args = params*)
+Lemma vt_with_args_vt_eq (vt: val_typevar)
+  (srts: list sort):
+  NoDup params ->
+  length srts = length params ->
+  @vt_eq (vt_with_args vt params srts) srts.
+Proof.
+  intros. unfold vt_eq. intros.
+  apply vt_with_args_nth; auto.
+Qed.
+
+Definition func_vt (srts: list sort) : val_typevar := 
+  vt_with_args triv_val_typevar params srts.
+
+
+(*Trivial valuation gives default elements*)
+Definition triv_val_vars (vt: val_typevar) : val_vars pd vt :=
+  fun x => 
+  match domain_ne pd (v_subst vt (snd x)) with
+  | DE y => y
+  end.
