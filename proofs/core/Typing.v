@@ -1089,19 +1089,96 @@ Definition upd_option_iter (hd: option vsymbol) (xs: list vsymbol) :
   the index of the decreasing arguments) into a structure*)
 
 Record sn := mk_sn {sn_sym: fpsym; sn_args: list vsymbol;
-  sn_idx: nat; sn_idx_in: sn_idx <? length sn_args;
-  sn_args_len: length sn_args =? length (s_args sn_sym);
-  sn_args_nodup: nodupb vsymbol_eq_dec sn_args}.
+  sn_idx: nat; (*sn_idx_in: sn_idx <? length sn_args;*)
+  (*sn_args_len: length sn_args =? length (s_args sn_sym);
+  sn_args_nodup: nodupb vsymbol_eq_dec sn_args*)}.
+
+Definition sn_wf (s: sn): Prop :=
+  sn_idx s < length (sn_args s) /\
+  length (sn_args s) = length (s_args (sn_sym s)) /\
+  NoDup (sn_args s).
 
 Record fn := mk_fn {fn_sym: funsym; fn_sn : sn;
-  fn_body: term; fn_wf: f_sym fn_sym = sn_sym fn_sn}.
+  fn_body: term; (*fn_wf: f_sym fn_sym = sn_sym fn_sn*)}.
 
 Coercion fn_sn : fn >-> sn.
 
+Definition fn_wf (f: fn) : Prop :=
+  sn_wf f /\
+  f_sym (fn_sym f) = sn_sym (fn_sn f).
+
 Record pn := mk_pn {pn_sym: predsym; pn_sn: sn;
-  pn_body: formula; pn_wf: p_sym pn_sym = sn_sym pn_sn}.
+  pn_body: formula; (*pn_wf: p_sym pn_sym = sn_sym pn_sn*)}.
 
 Coercion pn_sn : pn >-> sn.
+
+Definition pn_wf (p: pn) : Prop :=
+  sn_wf p /\
+  p_sym (pn_sym p) = sn_sym (pn_sn p).
+
+(*Decidable equality*)
+
+Definition sn_eqb  (s1 s2: sn) : bool :=
+  fpsym_eqb (sn_sym s1) (sn_sym s2) &&
+  list_eqb vsymbol_eqb (sn_args s1) (sn_args s2) &&
+  (sn_idx s1 =? sn_idx s2).
+
+Definition fn_eqb (f1 f2: fn) : bool :=
+  funsym_eqb (fn_sym f1) (fn_sym f2) &&
+  sn_eqb (fn_sn f1) (fn_sn f2) &&
+  term_eqb (fn_body f1) (fn_body f2).
+
+Definition pn_eqb (p1 p2: pn) : bool :=
+  predsym_eqb (pn_sym p1) (pn_sym p2) &&
+  sn_eqb (pn_sn p1) (pn_sn p2) &&
+  formula_eqb (pn_body p1) (pn_body p2).
+
+Lemma sn_eqb_spec (s1 s2: sn) :
+  reflect (s1 = s2) (sn_eqb s1 s2).
+Proof.
+  unfold sn_eqb.
+  dec (fpsym_eqb_spec (sn_sym s1) (sn_sym s2)).
+  dec (list_eqb_spec _ vsymbol_eqb_spec (sn_args s1) (sn_args s2)).
+  dec (Nat.eqb_spec (sn_idx s1) (sn_idx s2)).
+  apply ReflectT.
+  destruct s1; destruct s2; simpl in *; subst; auto.
+Qed.
+
+Lemma fn_eqb_spec (f1 f2: fn) :
+  reflect (f1 = f2) (fn_eqb f1 f2).
+Proof.
+  unfold fn_eqb.
+  dec (funsym_eqb_spec (fn_sym f1) (fn_sym f2)).
+  dec (sn_eqb_spec (fn_sn f1) (fn_sn f2)).
+  dec (term_eqb_spec (fn_body f1) (fn_body f2)).
+  apply ReflectT. destruct f1; destruct f2; simpl in *; subst; auto.
+Qed.
+
+Lemma pn_eqb_spec (p1 p2: pn) :
+  reflect (p1 = p2) (pn_eqb p1 p2).
+Proof.
+  unfold pn_eqb.
+  dec (predsym_eqb_spec (pn_sym p1) (pn_sym p2)).
+  dec (sn_eqb_spec (pn_sn p1) (pn_sn p2)).
+  dec (formula_eqb_spec (pn_body p1) (pn_body p2)).
+  apply ReflectT. destruct p1; destruct p2; simpl in *; subst; auto.
+Qed.
+
+
+
+(*Decidable equality*)
+(*
+Lemma sn_eq (s1 s2: sn) :
+  sn_sym s1 = sn_sym s2 ->
+  sn_args s1 = sn_args s2 ->
+  sn_idx s1 = sn_idx s2 ->
+
+
+Definition sn_eqb  (s1 s2: sn) : bool :=
+  fpsym_eqb (sn_sym s1) (sn_sym s2) &&
+  list_eqb vsymbol_eqb (sn_args s1) (sn_args s2) &&
+  (sn_idx s1 =? sn_idx s2).*)
+
 
 (*Then, we define the termination metric: we require that
   the function is structurally decreasing. The following
@@ -1311,22 +1388,50 @@ Inductive Either (A B: Set) : Set :=
   an index*)
 
 Definition fundef_to_fn (f: funsym) (vars: list vsymbol) (t: term)
+  (i: nat): fn :=
+  mk_fn f (mk_sn (f_sym f) vars i) t.
+
+Lemma fundef_fn_wf (f: funsym) (vars: list vsymbol) (t: term)
+  (i: nat) (Hi: i < length (s_args f)) (Hn: NoDup vars)
+  (Hlen: length vars = length (s_args f)) :
+  fn_wf (fundef_to_fn f vars t i).
+Proof.
+  unfold fn_wf. split; auto.
+  unfold sn_wf. split; auto.
+  simpl. lia.
+Qed.
+
+(*Definition fundef_to_fn (f: funsym) (vars: list vsymbol) (t: term)
   (i: nat) (Hi: i < length (s_args f)) (Hn: NoDup vars) 
   (Hlen: length vars = length (s_args f)) : fn :=
   mk_fn f (mk_sn (f_sym f) vars i 
     (ssrbool.introT (Nat.ltb_spec0 _ _) 
       (eq_ind _ (fun x => i < x) Hi _ (eq_sym Hlen)))
     (ssrbool.introT (Nat.eqb_spec _ _) Hlen) 
-    (ssrbool.introT (nodup_NoDup _ _) Hn)) t eq_refl.
+    (ssrbool.introT (nodup_NoDup _ _) Hn)) t eq_refl.*)
 
 Definition preddef_to_pn (p: predsym) (vars: list vsymbol) (f: formula)
+  (i: nat) : pn :=
+  mk_pn p (mk_sn (p_sym p) vars i) f.
+
+Lemma preddef_pn_wf (p: predsym) (vars: list vsymbol) (f: formula)
+  (i: nat) (Hi: i < length (s_args p)) (Hn: NoDup vars) 
+  (Hlen: length vars = length (s_args p)) : 
+  pn_wf (preddef_to_pn p vars f i).
+Proof.
+  unfold pn_wf. split; auto.
+  unfold sn_wf. split; auto.
+  simpl; lia.
+Qed.
+
+(*Definition preddef_to_pn (p: predsym) (vars: list vsymbol) (f: formula)
 (i: nat) (Hi: i < length (s_args p)) (Hn: NoDup vars) 
 (Hlen: length vars = length (s_args p)) : pn :=
 mk_pn p (mk_sn (p_sym p) vars i 
   (ssrbool.introT (Nat.ltb_spec0 _ _) 
     (eq_ind _ (fun x => i < x) Hi _ (eq_sym Hlen)))
   (ssrbool.introT (Nat.eqb_spec _ _) Hlen) 
-  (ssrbool.introT (nodup_NoDup _ _) Hn)) f eq_refl.
+  (ssrbool.introT (nodup_NoDup _ _) Hn)) f eq_refl.*)
 
 Definition funpred_sym (fd: funpred_def) : fpsym :=
   match fd with
@@ -1388,6 +1493,48 @@ Definition funpred_def_valid_type (fd: funpred_def) : Prop :=
   *)
 
 (*First, create list of fs and ps - do with tactics for now*)
+Definition funpred_defs_to_sns (l: list (funpred_def * nat))
+: (list fn * list pn) :=
+fold_right (fun x acc =>
+  match x with
+  | (fun_def f vs t, i) => (fundef_to_fn f vs t i :: fst acc, snd acc)
+  | (pred_def p vs f, i) => (fst acc, preddef_to_pn p vs f i :: snd acc)
+  end
+  ) (nil, nil) l.
+
+Lemma funpred_def_to_sns_wf (l: list funpred_def) (is: list nat)
+  (Hlen: length is = length l)
+  (Hall: forall i, i < length is -> 
+    nth i is 0 < length (s_args (funpred_sym (nth i l fd_d))))
+  (Hl: Forall funpred_def_valid_type l):
+  Forall fn_wf (fst (funpred_defs_to_sns (combine l is))) /\
+  Forall pn_wf (snd (funpred_defs_to_sns (combine l is))).
+Proof.
+  generalize dependent is. induction l; simpl; intros;
+  destruct is; inversion Hlen; auto.
+  simpl.
+  inversion Hl; subst.
+  destruct a; simpl; split; try constructor; try (apply IHl; auto);
+  try (intros i Hi; apply (Hall (S i) ltac:(lia)));
+  constructor; auto.
+  - unfold funpred_def_valid_type in H2. destruct_all.
+    apply fundef_fn_wf; auto.
+    + specialize (Hall 0 ltac:(lia)). simpl in Hall.
+      lia.
+    + apply NoDup_map_inv in H4; auto.
+  - unfold funpred_def_valid_type in H2. destruct_all.
+    apply preddef_pn_wf; auto.
+    + specialize (Hall 0 ltac:(lia)). simpl in Hall.
+      lia.
+    + apply NoDup_map_inv in H4; auto.
+Qed.
+
+
+(*TODO: do without dependent, then prove wf with assumptions*)
+(*TODO: require {is: list nat | P is}
+  so we can use directly - then prove typechecker, maybe later
+  (after decrease_fun and decrease_pred complete*)
+(*
 Definition funpred_defs_to_sns (l: list funpred_def) (is: list nat)
 (Hlen: length is = length l)
 (Hall: forall i, i < length is -> 
@@ -1413,9 +1560,44 @@ Proof.
           (Hall 0 (Nat.lt_0_succ (length is))) 
           (NoDup_map_inv _ _ (proj1 (proj2 (proj2 (proj2 (Forall_inv Hl)))))) 
           (proj1 (proj2 (proj2 (Forall_inv Hl))))) :: snd IHis).
-Defined.
+Defined.*)
 
-(*Now we can give our termination condition*)
+(*TODO: name (term is termination)*)
+(*It is crucial that this is a sigma type, NOT "exists",
+  because in our function, we actually need to know
+  which arguments terminate*)
+Definition funpred_def_term (l: list funpred_def) :=
+  {x: mut_adt * list typevar * list vty * list nat |
+    let m := fst (fst (fst x)) in
+    let params := snd (fst (fst x)) in
+    let vs := snd (fst x) in
+    let is := snd x in
+    let fs := fst (funpred_defs_to_sns (combine l is)) in
+    let ps := snd (funpred_defs_to_sns (combine l is)) in
+    length vs = length (m_params m) /\
+    mut_in_ctx m gamma /\
+    length is = length l /\
+    (forall i, i < length is -> 
+    nth i is 0 < length (s_args (funpred_sym (nth i l fd_d)))) /\
+    (*All functions recurse on ADT instance*)
+    (forall f, In f fs -> 
+      vty_in_m m vs (snd (nth (sn_idx f) (sn_args f) vs_d))) /\
+    (forall p, In p ps ->
+      vty_in_m m vs (snd (nth (sn_idx p) (sn_args p) vs_d))) /\
+    (*All functions have params = params*)
+    (forall f, In f fs -> s_params (fn_sym f) = params) /\
+    (forall p, In p ps -> s_params (pn_sym p) = params) /\
+    (*All functions are structurally (mutually) decreasing
+    on mut type m(vs)*)
+    (*TODO: see if we can prove the params/typesyms part*)
+    Forall (fun (f: fn) => decrease_fun fs ps nil 
+      (Some (nth (sn_idx f) (sn_args f) vs_d)) m vs (fn_body f)) fs /\
+    Forall (fun (p: pn) => decrease_pred fs ps nil 
+      (Some (nth (sn_idx p) (sn_args p) vs_d)) m vs (pn_body p)) ps
+  }.
+
+ (* ive our termination condition*)
+(*
 Definition funpred_def_term (l: list funpred_def)
   (Hl: Forall funpred_def_valid_type l) : Prop :=
   exists 
@@ -1445,13 +1627,18 @@ Definition funpred_def_term (l: list funpred_def)
     (Some (nth (sn_idx f) (sn_args f) vs_d)) m vs (fn_body f)) fs /\
   Forall (fun (p: pn) => decrease_pred fs ps nil 
     (Some (nth (sn_idx p) (sn_args p) vs_d)) m vs (pn_body p)) ps.
-
+*)
 (*Now, the final requirement for a well-typed mutually
   recursive function definition: combine these*)
 
-Definition funpred_valid_type (l: list funpred_def) : Prop :=
+(*Note: this is NOT a Prop like the others - is this a problem?*)
+Definition funpred_valid_type (l: list funpred_def) :=
+    ((Forall funpred_def_valid_type l) *
+    funpred_def_term l)%type.
+
+(*Definition funpred_valid_type (l: list funpred_def) : Prop :=
   exists (Hl: Forall funpred_def_valid_type l),
-  funpred_def_term l Hl.
+  funpred_def_term l Hl.*)
  
 (*Inductive Predicates*)
 
@@ -1586,7 +1773,7 @@ Definition indpred_positive (l: list indpred_def) : Prop :=
 End FunPredSym.
 
 (*Put it all together*)
-Definition valid_context (s : sig) (gamma: context) :=
+Definition valid_context (s : sig) (gamma: context) : Prop :=
   wf_context s gamma /\
   Forall (fun d =>
     match d with
@@ -1594,7 +1781,8 @@ Definition valid_context (s : sig) (gamma: context) :=
                            Forall (adt_inhab s gamma) (typs m) /\
                            adt_positive gamma (typs m) /\
                            valid_mut_rec m
-    | recursive_def fs => funpred_valid_type s gamma fs
+    | recursive_def fs => (*awful hack that won't work, TODO fix*) 
+                          exists (H : funpred_valid_type s gamma fs), True
     | inductive_def is => Forall (indprop_valid_type s gamma) is /\
                           indpred_positive is
     end) gamma.
@@ -2185,33 +2373,118 @@ Definition is_vty_adt (ty: vty) :
   | _ => None
   end.
 
+(*Weaker specs - no well-formed context*)
+Lemma find_ts_in_ctx_none (ts: typesym):
+  reflect (forall (a: alg_datatype) (m: mut_adt),
+    mut_in_ctx m gamma -> adt_in_mut a m ->
+    adt_name a <> ts) (negb (ssrbool.isSome (find_ts_in_ctx ts))).
+Proof.
+  unfold find_ts_in_ctx, mut_in_ctx.
+  induction (mut_of_context gamma); simpl.
+  - apply ReflectT. intros a m H; inversion H.
+  - destruct (find_ts_in_mut ts a) eqn : Hinmut; simpl.
+    + apply ReflectF. intro C.
+      apply find_ts_in_mut_some in Hinmut.
+      destruct Hinmut. subst. apply (C a0 a); auto.
+      rewrite eq_dec_refl; auto. 
+    + rewrite find_ts_in_mut_none in Hinmut. 
+      destruct IHl.
+      * apply ReflectT. intros.
+        destruct (mut_adt_dec m a); simpl in H; subst.
+        apply (Hinmut _ H0); auto.
+        apply (n _ m); auto.
+      * apply ReflectF. intros C.
+        apply n. intros a' m Hin. apply C. 
+        rewrite Hin, orb_true_r. auto.
+Qed.
+
+Lemma find_ts_in_ctx_none_iff (ts: typesym):
+  (forall (a: alg_datatype) (m: mut_adt),
+    mut_in_ctx m gamma -> adt_in_mut a m ->
+    adt_name a <> ts) <-> find_ts_in_ctx ts = None.
+Proof.
+  rewrite (reflect_iff _ _ (find_ts_in_ctx_none ts)).
+  destruct (find_ts_in_ctx ts); simpl; split; intros; auto; discriminate.
+Qed.
+
+Lemma find_ts_in_ctx_some (ts: typesym) m a:
+  find_ts_in_ctx ts = Some (m, a) ->
+  mut_in_ctx m gamma /\ adt_in_mut a m /\
+  ts = adt_name a.
+Proof.
+  unfold find_ts_in_ctx, mut_in_ctx.
+  induction (mut_of_context gamma); simpl; auto; intros; try discriminate.
+  destruct (find_ts_in_mut ts a0) eqn : Hfind.
+  - inversion H; subst.
+    apply find_ts_in_mut_some in Hfind. destruct_all.
+    rewrite eq_dec_refl; auto.
+  - apply IHl in H. destruct_all; subst. split; auto.
+    rewrite H, orb_true_r; auto.
+Qed.
+
+Lemma is_vty_adt_none (ty: vty):
+  reflect (forall a m vs,
+    mut_in_ctx m gamma ->
+    adt_in_mut a m ->
+    ty <> vty_cons (adt_name a) vs) 
+  (negb (ssrbool.isSome (is_vty_adt ty))).
+Proof.
+  unfold is_vty_adt.
+  destruct ty; simpl; try (apply ReflectT; intros; discriminate).
+  destruct (find_ts_in_ctx t) eqn : Hfind.
+  - destruct p as [m a]. simpl. apply ReflectF.
+    apply find_ts_in_ctx_some in Hfind.
+    destruct_all.
+    intro.
+    apply (H1 a m l); auto.
+  - simpl. apply ReflectT.
+    rewrite <- find_ts_in_ctx_none_iff in Hfind.
+    intros.
+    intro C; inversion C; subst.
+    apply (Hfind a m); auto.
+Qed.
+
+Lemma is_vty_adt_none_iff (ty: vty):
+  (forall a m vs,
+  mut_in_ctx m gamma ->
+  adt_in_mut a m ->
+  ty <> vty_cons (adt_name a) vs) <->
+  is_vty_adt ty = None.
+Proof.
+  rewrite (reflect_iff _ _ (is_vty_adt_none ty)).
+  destruct (is_vty_adt ty); simpl; split; auto; discriminate.
+Qed.
+
+Lemma is_vty_adt_some (ty: vty) m a vs:
+  is_vty_adt ty = Some (m, a, vs) ->
+  mut_in_ctx m gamma /\
+  adt_in_mut a m /\
+  ty = vty_cons (adt_name a) vs.
+Proof.
+  unfold is_vty_adt; intros.
+  destruct ty; try discriminate.
+  destruct (find_ts_in_ctx t) eqn : Hfind; try discriminate.
+  destruct p as [m' a']. inversion H; subst.
+  apply find_ts_in_ctx_some in Hfind.
+  destruct_all; subst; auto.
+Qed.
+
 (*First, a weaker spec that does not rely on
   the context being well-formed*)
-
+(*
 Lemma find_ts_in_ctx_weak (ts: typesym):
   reflect (exists (a: alg_datatype) (m: mut_adt),
     mut_in_ctx m gamma /\ adt_in_mut a m /\
     adt_name a = ts) (ssrbool.isSome (find_ts_in_ctx ts)).
 Proof.
-  unfold find_ts_in_ctx, mut_in_ctx.
-  induction (mut_of_context gamma); simpl.
-  - apply ReflectF. intros [a [m [H _]]]; inversion H.
-  - destruct (find_ts_in_mut ts a) eqn : Hinmut; simpl.
-    + apply ReflectT. apply find_ts_in_mut_some in Hinmut.
-      destruct Hinmut. exists a0. exists a.
-      rewrite eq_dec_refl.
-      subst. simpl. split; auto.
-    + destruct IHl.
-      * apply ReflectT.
-        destruct e as [a' [m [m_in [a_in Hts]]]]; subst.
-        exists a'. exists m. rewrite m_in, orb_true_r.
-        split; auto.
-      * apply ReflectF. intros [a' [m [Hma [a_in Hts]]]]; subst.
-        destruct (mut_adt_dec m a); simpl in *; subst.
-        -- rewrite find_ts_in_mut_none in Hinmut.
-          apply Hinmut in a_in. auto.
-        -- apply n. exists a'. exists m. split; auto.
-Qed.
+  destruct (find_ts_in_ctx ts) eqn : Hfind; simpl;
+  [apply ReflectT | apply ReflectF].
+  - destruct p as [m a]. apply find_ts_in_ctx_some in Hfind.
+    destruct_all; subst. exists a. exists m. auto.
+  - rewrite <- find_ts_in_ctx_none_iff in Hfind.
+    intros [a [m [m_in [a_in Hts]]]]; subst.
+    apply (Hfind a m); auto.
+Qed. 
 
 Lemma is_vty_adt_isSome ts tys:
   ssrbool.isSome (is_vty_adt (vty_cons ts tys)) =
@@ -2219,21 +2492,21 @@ Lemma is_vty_adt_isSome ts tys:
 Proof.
   simpl. destruct (find_ts_in_ctx ts); simpl; auto.
   destruct p; auto.
-Qed.
+Qed.*)
 
 Lemma is_vty_adt_weak (ty: vty):
   reflect (exists (a: alg_datatype) (m: mut_adt) (args: list vty),
     mut_in_ctx m gamma /\ adt_in_mut a m /\ 
     ty = vty_cons (adt_name a) args) (ssrbool.isSome (is_vty_adt ty)).
 Proof.
-  destruct ty; try (apply ReflectF; 
-    intros [a [m [args [_ [_ H]]]]]; discriminate).
-  rewrite is_vty_adt_isSome.
-  destruct (find_ts_in_ctx_weak t); [apply ReflectT | apply ReflectF].
-  - destruct e as [a [m [m_in [a_in Hts]]]]; subst.
-    exists a. exists m. exists l. auto.
-  - intros [a [m [args [m_in [a_in Hcons]]]]]; inversion Hcons; subst.
-    apply n. exists a. exists m. auto.
+  destruct (is_vty_adt ty) eqn : Hadt; simpl; 
+  [apply ReflectT | apply ReflectF].
+  - destruct p as [[m a] vs].
+    apply is_vty_adt_some in Hadt. destruct_all.
+    exists a. exists m. exists vs. auto.
+  - rewrite <- is_vty_adt_none_iff in Hadt.
+    intros [a [m [vs [m_in [a_in Hty]]]]]; subst.
+    apply (Hadt a m vs); auto.
 Qed.
 
 (*Now, the stronger specs*)
@@ -2321,6 +2594,8 @@ Proof.
     rewrite H. reflexivity.
 Qed.
 
+(*NOTE: this is now [is_vty_adt_some]*)
+(*
 Lemma is_vty_adt_spec {ty: vty} {m a vs}:
   is_vty_adt ty = Some (m, a, vs) ->
   ty = vty_cons (adt_name a) vs /\
@@ -2328,7 +2603,7 @@ Lemma is_vty_adt_spec {ty: vty} {m a vs}:
   mut_in_ctx m gamma.
 Proof.
   apply is_vty_adt_iff.
-Qed.
+Qed.*)
 
 Lemma adt_vty_length_eq: forall {ty m a vs},
   is_vty_adt ty = Some (m, a, vs) ->
@@ -2336,10 +2611,103 @@ Lemma adt_vty_length_eq: forall {ty m a vs},
   length vs = length (m_params m).
 Proof.
   intros ty m a vs H Hval.
-  apply is_vty_adt_spec in H. destruct_all; subst.
+  apply is_vty_adt_some in H. destruct_all; subst.
   inversion Hval; subst. rewrite H5.
   f_equal. apply (adt_args gamma_valid). split; auto.
 Qed.
 
 End GetADT.
 
+(*TODO: will move, but this shows that we can actually
+  write decreasing recursive functions*)
+
+(*Let's do a quick test*)
+(*Binary tree*)
+Notation mk_fs name params args ret_ts ret_args := 
+  (Build_funsym (Build_fpsym name params args eq_refl eq_refl) 
+    (vty_cons ret_ts (map vty_var ret_args)) eq_refl).
+Notation mk_ne l :=
+  (list_to_ne_list l eq_refl).
+    
+Definition ta : typevar := "a"%string.
+Definition ts_tree: typesym := mk_ts "tree" [ta].
+Definition fs_leaf := mk_fs "Leaf" [ta] nil ts_tree [ta].
+Definition fs_node := mk_fs "Node" [ta] 
+[vty_var ta; vty_cons ts_tree [vty_var ta]; vty_cons ts_tree [vty_var ta]]
+ts_tree [ta].
+
+Definition tree_adt: alg_datatype :=
+  alg_def ts_tree (mk_ne [fs_leaf; fs_node]).
+
+Definition tree_mut : mut_adt :=
+  (mk_mut [tree_adt] [ta] eq_refl).
+
+(*Now we define the size function on ADTs*)
+
+(*First, define the plus function symbol*)
+Definition fs_plus := Build_funsym (Build_fpsym "plus" [ta] 
+[vty_var ta; vty_var ta] eq_refl eq_refl) (vty_var ta) eq_refl.
+
+(*Now we define the function symbol and the function body*)
+Definition fs_size := Build_funsym (Build_fpsym "size" [ta]
+  [vty_cons ts_tree [vty_var ta]] eq_refl eq_refl)
+  (vty_var ta) eq_refl.
+
+Definition tree_ty : vty := vty_cons ts_tree [vty_var ta].
+
+Definition size_arg : vsymbol := ("t"%string, tree_ty).
+Definition l_var : vsymbol := ("l"%string, tree_ty).
+Definition r_var : vsymbol := ("r"%string, tree_ty).
+
+Definition size_args : list vsymbol := [size_arg].
+Print pattern.
+(*This is:
+  match t with
+  | Leaf => tm_d
+  | Node t l r => Plus (size l) (size r)
+  end*)
+Definition size_body : term :=
+  Tmatch (Tvar size_arg) (vty_cons ts_tree [vty_var ta])
+    (*List of (pattern * term) pairs*)
+    [ (Pconstr fs_leaf [vty_var ta] nil,
+        (*Just return some garbage value*)
+        tm_d
+    );
+    (Pconstr fs_node [vty_var ta] [Pvar size_arg; Pvar l_var; Pvar r_var],
+      (*Make the recursive call*)
+      Tfun fs_plus [vty_var ta] 
+        [ Tfun fs_size [vty_var ta] [Tvar l_var];
+          Tfun fs_size [vty_var ta] [Tvar r_var]]
+    )
+    ].
+
+(*Now create the fs list*)
+Definition size_sn : sn := mk_sn fs_size size_args 0 (*eq_refl eq_refl eq_refl*).
+Definition size_fn : fn := mk_fn fs_size size_sn size_body (*eq_refl*).
+
+Lemma size_decreases: decrease_fun [size_fn] nil nil
+  (Some size_arg) tree_mut [vty_var ta] size_body.
+Proof.
+  unfold size_body.
+  eapply Dec_tmatch with(a:=tree_adt).
+  - left; auto.
+  - unfold adt_in_mut. (*Well that is a problem, need computable*)
+    apply In_in_bool. unfold tree_mut. simpl. left; auto.
+  - reflexivity.
+  - intros. simpl in H.
+    destruct_all.
+    + simpl. unfold tm_d.
+      apply Dec_notin_t; simpl; intros; auto.
+    + simpl. apply Dec_fun_notin.
+      * simpl. intros [H | Hf]; auto. inversion H.
+      * simpl; intros.
+        destruct_all; simpl.
+        -- (*This is the case with recursion*) 
+          eapply Dec_fun_in with(f_decl:=size_fn)(x:=l_var); try
+            reflexivity; simpl; auto.
+        -- (*Other case*) 
+          eapply Dec_fun_in with(f_decl:=size_fn)(x:=r_var); try
+            reflexivity; simpl; auto.
+        -- destruct H.
+    + destruct H.
+Qed.
