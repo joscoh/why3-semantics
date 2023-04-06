@@ -941,7 +941,6 @@ Qed.
 (*Now, we come to the core of this: finding the list of
   indices such that the function is structurally 
   decreasing on these indices*)
-Search find.
 
 (*Default values for fn, sn*)
 Definition sn_d : sn :=
@@ -986,13 +985,9 @@ Fixpoint check_decrease_fun (fs: list fn) (ps: list pn)
   (*Other hard cases - pattern matches*)
   | Tmatch (Tvar mvar) v pats =>
     if ((hd == Some mvar) || (mvar \in small)) then 
-    (*TODO: WRONG, need to use [vty_in_m] because we check against
-      m, not everything*)
-      match (is_vty_adt gamma (snd mvar)) with
-      | Some (m', a, vs) =>
-        mut_adt_dec m m' && (*TODO: do we need mut_eqb*)
-        adt_in_mut a m &&
-        all (fun x =>
+      match vty_m_adt m vs (snd mvar) with
+      | Some _ =>
+          all (fun x =>
           check_decrease_fun fs ps
           (union vsymbol_eq_dec (vsyms_in_m m vs (pat_constr_vars m vs (fst x))) 
           (remove_all vsymbol_eq_dec (pat_fv (fst x)) 
@@ -1050,29 +1045,29 @@ with check_decrease_pred (fs: list fn) (ps: list pn)
       all (fun t => check_decrease_fun fs ps small hd m vs t) ts
    (*Other hard cases - pattern matches*)
    | Fmatch (Tvar mvar) v pats =>
-   ((hd == Some mvar) || (mvar \in small)) &&
-   match (is_vty_adt gamma (snd mvar)) with
-   | Some (m', a, vs) =>
-     (*mut_adt_dec m m' && (*TODO: do we need mut_eqb*)
-     adt_in_mut a m &&*)
-     all (fun x =>
-       check_decrease_pred fs ps
-       (union vsymbol_eq_dec (vsyms_in_m m vs (pat_constr_vars m vs (fst x))) 
-       (remove_all vsymbol_eq_dec (pat_fv (fst x)) 
-       small)) (upd_option_iter hd (pat_fv (fst x))) m vs (snd x)
-       ) pats
-   | None => false
-   end
- | Fmatch tm v pats =>
-   match tm with
-   | Tvar x => (hd != Some x) && (x \notin small)
-   | _ => true
-   end &&
-   check_decrease_fun fs ps small hd m vs tm &&
-   all (fun x =>
-     check_decrease_pred fs ps 
-     (remove_all vsymbol_eq_dec (pat_fv (fst x)) small) 
-     (upd_option_iter hd (pat_fv (fst x))) m vs (snd x)) pats
+    if ((hd == Some mvar) || (mvar \in small)) then 
+      match vty_m_adt m vs (snd mvar) with
+      | Some _ =>
+          all (fun x =>
+          check_decrease_pred fs ps
+          (union vsymbol_eq_dec (vsyms_in_m m vs (pat_constr_vars m vs (fst x))) 
+          (remove_all vsymbol_eq_dec (pat_fv (fst x)) 
+          small)) (upd_option_iter hd (pat_fv (fst x))) m vs (snd x)
+          ) pats
+      | None => false
+      end
+    (*Non-smaller cases*)
+    else 
+      all (fun x =>
+        check_decrease_pred fs ps 
+        (remove_all vsymbol_eq_dec (pat_fv (fst x)) small) 
+        (upd_option_iter hd (pat_fv (fst x))) m vs (snd x)) pats
+  | Fmatch tm v pats =>
+    check_decrease_fun fs ps small hd m vs tm &&
+    all (fun x =>
+      check_decrease_pred fs ps 
+      (remove_all vsymbol_eq_dec (pat_fv (fst x)) small) 
+      (upd_option_iter hd (pat_fv (fst x))) m vs (snd x)) pats
   | Fnot f =>
     check_decrease_pred fs ps small hd m vs f 
   | Fquant q v f =>
@@ -1117,6 +1112,30 @@ Proof.
   apply idP.
 Qed.
 
+Lemma funsym_in_fmlaP: forall fs (fm: formula),
+  reflect (forall (f: fn), In f fs -> negb (funsym_in_fmla (fn_sym f) fm))
+    (all (fun f => negb (funsym_in_fmla (fn_sym f) fm)) fs).
+Proof.
+  move=> fs t.
+  eapply equivP.
+  2: apply Forall_forall.
+  apply forallb_ForallP.
+  move=> x Hinx.
+  apply idP.
+Qed.
+
+Lemma predsym_in_fmlaP: forall ps (fm: formula),
+  reflect (forall p, In p ps -> negb (predsym_in (pn_sym p) fm))
+    (all (fun p => negb (predsym_in (pn_sym p) fm)) ps).
+Proof.
+  move=> ps t.
+  eapply equivP.
+  2: apply Forall_forall.
+  apply forallb_ForallP.
+  move=> x Hinx.
+  apply idP.
+Qed.
+
 Definition fn_eqMixin := EqMixin fn_eqb_spec.
 Canonical fn_eqType := EqType fn fn_eqMixin.
 Definition pn_eqMixin := EqMixin pn_eqb_spec.
@@ -1131,11 +1150,18 @@ Ltac not_in_tm_case fs ps t :=
     /(andPP (funsym_in_tmP fs t) (predsym_in_termP ps t))=>/=;
   [move=> [Hnotf Hnotp]; apply ReflectT; by apply Dec_notin_t |].
 
+Ltac not_in_fmla_case fs ps fm :=
+  case: (all (fun (f: fn) => ~~ (funsym_in_fmla (fn_sym f) fm)) fs &&
+    all (fun (p: pn) => ~~ (predsym_in (pn_sym p) fm)) ps)
+    /(andPP (funsym_in_fmlaP fs fm) (predsym_in_fmlaP ps fm))=>/=;
+  [move=> [Hnotf Hnotp]; apply ReflectT; by apply Dec_notin_f |].
+
 (*Handle trivial cases for false*)
 Ltac false_triv_case Hnot :=
   let C := fresh "C" in 
   apply ReflectF; intro C; inversion C; subst; try by apply Hnot.
 
+(*It is not easy to prove this correct*)
 Lemma check_decrease_spec fs ps m vs (t: term) (f: formula):
   NoDup (map fn_sym fs) ->
   NoDup (map pn_sym ps) ->
@@ -1318,135 +1344,239 @@ Proof.
         apply Hmvar. by case: Hvar => Hcon; [left; apply /eqP | right; apply /inP].
       - by apply Dec_notin_t.
     }
-    case Hadt: (is_vty_adt gamma (snd mvar)) => [[[m' a'] vs'] |].
-    + apply is_vty_adt_some in Hadt.
-
-    
-    
-    destruct_all; subst.
-    Search is_vty_adt.
-    case Hadt:
-      
-      case: Heq => Heq; subst.
-        
-        false_triv_case Hnotin.
-        apply
+    case Hadt: (vty_m_adt m vs (snd mvar)) => [a |]/=; last first.
+    {
+      false_triv_case Hnotin. eapply vty_m_adt_none in Hadt.
+      apply Hadt. apply H8. by [].
+      apply H6. exists mvar. split=>//. 
+      by case: Hmvar => Hcon; [left; apply /eqP | right; apply /inP].
     }
-      
-
-
-
-    + intros. case: (IH1 small hd) => Hdec1/=;
+    (*TODO: will the exists be a problem?*)
+    case: (Hall (fun x =>  (union vsymbol_eq_dec (vsyms_in_m m vs (pat_constr_vars m vs x.1))
+    (remove_all vsymbol_eq_dec (pat_fv x.1) small)))
+    (fun x => (upd_option_iter hd (pat_fv x.1))))=> Hallin;
+    last first.
+    {
+      false_triv_case Hnotin. apply H6. (*TODO: write as lemma*)
+      exists mvar. split=>//. 
+      by case: Hmvar => Hcon; [left; apply /eqP | right; apply /inP].
+    }
+    apply ReflectT.
+    apply vty_m_adt_some in Hadt. case: Hadt => [a_in mvar_eq].
+    apply Dec_tmatch with(a:=a)=>//.
+    by case: Hmvar => Hcon; [left; apply /eqP | right; apply /inP].
+  - move=> f v IH small hd.
+    not_in_tm_case fs ps (Teps f v).
+    move => Hnotin.
+    case: (IH (remove vsymbol_eq_dec v small) (upd_option hd v))=> 
+      Hdec2/=; last by false_triv_case Hnotin.
+    apply ReflectT. by apply Dec_eps.
+  - (*Now, formula proof*)
+    (*copy Tfun for now*)
+    move=> p1 tys tms IHall small hd.
+    (*First, handle case where fun/predsyms do not occur*)
+    not_in_fmla_case fs ps (Fpred p1 tys tms).
+    (*Now, the main case*)
+    move=> Hnotfp. (*Don't need fun/predsym info anymore*)
+    rewrite -has_find.
+    case: (has (fun p' : pn => pn_sym p' == p1) ps) /hasP => Hhas; last first.
+    {
+      (*First, do non-recursive (in constructed function) case*)
+      have Hnotin: ~ In p1 (List.map pn_sym ps). {
+        rewrite in_map_iff => [[x [Hf1 Hinx]]]; subst.
+        apply Hhas. exists x. by apply/inP. by [].
+      }
+      have Hall: (forall x, x \in tms ->
+        reflect (decrease_fun fs ps small hd m vs x)
+          (check_decrease_fun fs ps small hd m vs x)).
+      { 
+        move {Hnotfp}.
+        move: IHall.
+        elim: tms =>[//= | h t /= IH Hall x].
+        rewrite in_cons.
+        case: (x == h) /eqP => [Hxh _ | Hneq/= Hint]; subst.
+        - apply (ForallT_hd _ _ _ Hall).
+        - apply IH=>//. apply (ForallT_tl _ _ _ Hall).
+      }
+      case: (all [eta check_decrease_fun fs ps small hd m vs] tms)
+        /(all_Forall _ _ _ Hall) => Hall2.
+      - apply ReflectT. apply Dec_pred_notin=>//.
+        by rewrite -Forall_forall.
+      - false_triv_case Hnotfp.
+        (*Now, we have ruled out all cases for decrease_fun*)
+        + apply Hnotin. rewrite in_map_iff.
+          by exists p_decl.
+        + apply Hall2. by apply Forall_forall.   
+    }
+    (*Now we handle the recursive case*)
+    move: Hhas => /hasP Hhas.
+    have /eqP Hnth :=nth_find pn_d Hhas.
+    (*Here, need NoDup, so that f_decl actually equals
+      find ...*)
+    have Hntheq: forall p_decl, In p_decl ps ->
+      p1 = pn_sym p_decl ->
+      p_decl = (nth pn_d ps
+      (find (fun p' : pn => pn_sym p' == pn_sym p_decl) ps)).
+    {
+      move=> p_decl Hin Hf1.
+      apply (NoDup_map_in Hnodup)=>//.
+      + apply /inP. apply mem_nth. rewrite -has_find. apply /hasP.
+        exists p_decl=>//. by apply /inP.
+      + subst. by rewrite Hnth.
+     }
+    have Hinmap: In p1 (List.map pn_sym ps). {
+      rewrite in_map_iff. eexists. split; [apply Hnth |].
+      apply /inP. apply mem_nth. by rewrite -has_find. 
+    }
+    (*We have to case on the term, only 1 case is interesting;
+      there are a lot of trivial ones*)
+    case Hntht: (nth tm_d tms
+    (sn_idx (nth pn_d ps (find (fun p' : pn => pn_sym p' == p1) ps))))
+    => [| v | | | | |];
+    try (apply ReflectF; intros C; inversion C; subst;
+    try (by apply Hnotfp);
+    try (rewrite -(Hntheq p_decl ltac:(assumption) erefl) in
+      Hntht;
+      match goal with
+      | H1: List.nth ?i ?tms ?tm_d = ?x, H2: nth ?tm_d ?tms ?i = ?y |- _ =>
+        rewrite nth_eq in H1; rewrite H1 in H2; try discriminate end);
+    try contradiction
+    ).
+    case: (v \in small) /inP => Hinv/=; last first.
+    {
+      false_triv_case Hnotfp.
+      rewrite nth_eq in H5. 
+      rewrite -(Hntheq p_decl H2 erefl) in Hntht.
+      rewrite H5 in Hntht. by injection Hntht => Hxy; subst.
+    }
+    case: (tys == map vty_var (s_params p1)) /eqP => Htys/=; last
+    by false_triv_case Hnotfp.
+    (*Hmm- this is annoying - do manually first*)
+    case: ((all (fun t : term => all (fun f : fn => ~~ funsym_in_tm (fn_sym f) t) fs) tms &&
+    all (fun t : term => all (fun p : pn => ~~ predsym_in_term (pn_sym p) t) ps) tms))
+    /(andPP allP allP).
+    + (*The case where we actually say true*)
+      move=> [Hall1 Hall2].
+      apply ReflectT.
+      apply Dec_pred_in with(x:=v)(p_decl:=(nth pn_d ps (find (fun x : pn_eqType => pn_sym x == p1) ps))) =>//.
+      * apply /inP. apply mem_nth. by rewrite -has_find.
+      * by rewrite nth_eq.
+      * rewrite Forall_forall. move=> x /inP Hinx.
+        move: Hall1 => /(_ _ Hinx) /allP Hall1 f /inP Hinf.
+        by apply Hall1.
+      * rewrite Forall_forall. move=> x /inP Hinx.
+        move: Hall2 => /(_ _ Hinx) /allP Hall2 f /inP Hinf.
+        by apply Hall2.
+    + (*One final contradiction case*)
+      move=> /(andPP allP allP).
+      rewrite negb_and.
+      case: (all (fun x : term_eqType => all (fun f : fn => ~~ funsym_in_tm (fn_sym f) x) fs) tms)
+      /allP =>//= [Hall1 Hnotall2 | Hnotall _];
+      false_triv_case Hnotfp. 
+      * move: Hnotall2 => /negP C1. apply C1. apply /allP.
+        move=> t Hint. apply /allP.
+        move=> p Hinp. rewrite Forall_forall in H12. by apply H12; apply /inP.
+      * apply Hnotall. move=> t Hint. apply /allP.
+        move=> f Hinf. rewrite Forall_forall in H11. by apply H11; apply /inP.
+  - move=> q v f IH small hd.
+    not_in_fmla_case fs ps (Fquant q v f) => Hnotin.
+    case: (IH (remove vsymbol_eq_dec v small) (upd_option hd v)) =>Hdec;
+    last by false_triv_case Hnotin.
+    apply ReflectT. by apply Dec_quant.
+  - move=> v t1 t2 IH1 IH2 small hd.
+    not_in_fmla_case fs ps (Feq v t1 t2)=> Hnotin.
+    case: (IH1 small hd)=> Hdec1; last by false_triv_case Hnotin.
+    case: (IH2 small hd)=>Hdec2; last by false_triv_case Hnotin.
+    apply ReflectT. by apply Dec_eq.
+  - move=> b f1 f2 IH1 IH2 small hd.
+    not_in_fmla_case fs ps (Fbinop b f1 f2)=> Hnotin.
+    case: (IH1 small hd)=> Hdec1; last by false_triv_case Hnotin.
+    case: (IH2 small hd)=> Hdec2; last by false_triv_case Hnotin.
+    apply ReflectT. by apply Dec_binop.
+  - move=> f IH small hd.
+    not_in_fmla_case fs ps (Fnot f)=> Hnotin.
+    case: (IH small hd)=> Hdec; last by false_triv_case Hnotin.
+    apply ReflectT. by apply Dec_not.
+  - move=> small hd. apply ReflectT. apply Dec_true.
+  - move=> small hd. apply ReflectT. apply Dec_false.
+  - move=> tm v f IH1 IH2 small hd.
+    not_in_fmla_case fs ps (Flet tm v f)=> Hnotin.
+    case: (IH1 small hd)=>Hdec1; last by false_triv_case Hnotin.
+    case: (IH2 (remove vsymbol_eq_dec v small) (upd_option hd v))=> Hdec2;
       last by false_triv_case Hnotin.
+    apply ReflectT. by apply Dec_flet.
+  - move=> f1 f2 f3 IH1 IH2 IH3 small hd.
+    not_in_fmla_case fs ps (Fif f1 f2 f3) => Hnotin.
+    case: (IH1 small hd)=> Hdec1; last by false_triv_case Hnotin.
+    case: (IH2 small hd)=> Hdec2; last by false_triv_case Hnotin.
+    case: (IH3 small hd)=> Hdec3; last by false_triv_case Hnotin.
+    apply ReflectT. by apply Dec_fif.
+  -  (*Match case - other hard one*) 
+    move=> tm v pats IH1 IHall small hd.
+    not_in_fmla_case fs ps (Fmatch tm v pats).
+    move=> Hnotin.
+    move: IH1 Hnotin.
+    (*Most of the cases are the same. First, prove a lemma*)
+    have Hall: forall small hd,
+      reflect (forall x, In x pats ->
+        decrease_pred fs ps (small x) (hd x) m vs (snd x))
+        (all (fun x => check_decrease_pred fs ps (small x) (hd x) m vs (snd x)) pats).
+    {
+      move=> s h. eapply equivP. 2: apply Forall_forall.
+      apply forallb_ForallP.
+      move=> x /inP.
+      move: IHall. elim: pats => [// | h' t' /= IH Hall].
+      rewrite in_cons. case: (x == h') /eqP => Hxh /= => [_ | Hint]; subst.
+      - apply (ForallT_hd _ _ _ Hall).
+      - apply IH=>//. apply (ForallT_tl _ _ _ Hall).
+    }
+    case: tm;
+    (*all cases but 1 are identical*)
+    try (intros; case: (IH1 small hd) => Hdec1/=;
+      [| by false_triv_case Hnotin];
       case: (Hall (fun x =>(remove_all vsymbol_eq_dec (pat_fv x.1) small) )
         (fun x => (upd_option_iter hd (pat_fv x.1)))) => Hall1;
-      last by false_triv_case Hnotin.
-      apply ReflectT. apply Dec_tmatch_rec=>//.
-      move=> [var [Hvar _]]. discriminate.
-    + admit.
-    + intros. case: (IH1 small hd) => Hdec1/=;
-    last by false_triv_case Hnotin.
-    case: (Hall (fun x =>(remove_all vsymbol_eq_dec (pat_fv x.1) small) )
-      (fun x => (upd_option_iter hd (pat_fv x.1)))) => Hall1;
-    last by false_triv_case Hnotin.
-    apply ReflectT. apply Dec_tmatch_rec=>//.
-    move=> [var [Hvar _]]. discriminate.
-    
-    
-    
-    rewrite /=.
-
-
-
+      [| by false_triv_case Hnotin];
+      apply ReflectT; apply Dec_fmatch_rec=>//;
+      move=> [var [Hvar _]]; discriminate).
+    (*Now we come to the variable case*)
+    move=> mvar IH1 Hnotin.
+    case: (@orP ((hd == Some mvar)) ((mvar \in small))) => Hmvar; last first.
     {
-      apply ReflectF. move=> C. inversion C; subst;
-      by apply Hnotin.
+      case: (Hall (fun x =>(remove_all vsymbol_eq_dec (pat_fv x.1) small) )
+        (fun x => (upd_option_iter hd (pat_fv x.1)))) => Hall1;
+        last first.
+        {
+          false_triv_case Hnotin.
+          apply Hmvar. by case: H2 => Hcon; [left; apply /eqP | right; apply /inP].
+        }
+      apply ReflectT. apply Dec_fmatch_rec=>//.
+      - move=> [var [[Heq] Hvar]]; subst.
+        apply Hmvar. by case: Hvar => Hcon; [left; apply /eqP | right; apply /inP].
+      - by apply Dec_notin_t.
     }
-    case: 
-    
-    [Hnot1 Hnot2].
-    case: ((
-      all (fun f => ~~ (funsym_in_tm (fn_sym f) (Tlet tm1 v tm2))) fs && 
-      all (fun p => ~~ (predsym_in_term (pn_sym p) (Tlet tm1 v tm2))) ps)). || predsym_in_term (pn_sym p) tm2)) ps))
-  /(andPP (funsym_in_tmP fs (Tlet tm1 v tm2)) (predsym_in_termP ps (Tlet tm1 v tm2)))=>/=.
-  {
-    move=> [Hnotf Hnotp]. apply ReflectT. by apply Dec_notin_t.
-  }
-      
-      
-      apply
-      
-      /nandP [Hnot1 | Hnto2].
-      Search (negb (?x && ?y)).
-      
-      apply nth_In. apply /inP.
-
-    
-    (funsym_in_tmP fs (Tfun f1 tys tms)) (predsym_in_termP ps (Tfun f1 tys tms)))=>/=.
-
-
-    move: _v_ => v.
-
-      Search List.nth nth.
-    2: {}
-    ).
-    try ()).
-
-
-
-    set (f_decl :=(nth fn_d fs (find (fun x : fn_eqType => fn_sym x == f1) fs))).
-    case: 
-    move Hnth
-
-
-
-    Search has nth find.
-    Search size length.
-    rewrite size_length.
-    Search find reflect.
-
-
-    nth_find:
-  forall [T : Type] (x0 : T) [a : pred T] [s : seq T],
-  has a s -> a (nth x0 s (find a s))
-
-
-    case: (all
-    (fun f : fn =>
-     ~~ (funsym_eq_dec (fn_sym f) f1 || existsb (funsym_in_tm (fn_sym f)) tms)) fs) 
-     /(funsym_in_tmP fs (Tfun f1 tys tms))=>/=;
-    case: (all (fun p0 : pn => ~~ existsb (predsym_in_term (pn_sym p0)) tms) ps)
-    /(predsym_in_termP ps (Tfun f1 tys tms))=>/=.
-
-  
-  
-  Print decrease_fun. constructor. auto.
-
-
-
-  (*Pattern match on var - this is how we add new, smaller variables*)
- 
-  (*Other pattern match is recursive case*)
-  
-(*This is very similar*)
-with decrease_pred (fs: list fn) (ps: list pn) : 
-  list vsymbol -> option vsymbol -> mut_adt -> list vty -> formula -> Prop :=
-  (*Easy cases: true, false*)
-  | Dec_true: forall (small: list vsymbol) (hd: option vsymbol) m vs,
-    decrease_pred fs ps small hd m vs Ftrue
-  | Dec_false: forall (small: list vsymbol) (hd: option vsymbol) m vs,
-    decrease_pred fs ps small hd m vs Ffalse
-  (*Recursive cases: not, quantifier, eq, binop, let, if*)
-  | Dec_fif: forall (small: list vsymbol) (hd: option vsymbol) m vs
-    (f1 f2 f3: formula),
-    decrease_pred fs ps small hd m vs f1 ->
-    decrease_pred fs ps small hd m vs f2 ->
-    decrease_pred fs ps small hd m vs f3 ->
-    decrease_pred fs ps small hd m vs (Fif f1 f1 f2)
-    .
-
-
-End RecFun.
+    case Hadt: (vty_m_adt m vs (snd mvar)) => [a |]/=; last first.
+    {
+      false_triv_case Hnotin. eapply vty_m_adt_none in Hadt.
+      apply Hadt. apply H8. by [].
+      apply H6. exists mvar. split=>//. 
+      by case: Hmvar => Hcon; [left; apply /eqP | right; apply /inP].
+    }
+    (*TODO: will the exists be a problem?*)
+    case: (Hall (fun x =>  (union vsymbol_eq_dec (vsyms_in_m m vs (pat_constr_vars m vs x.1))
+    (remove_all vsymbol_eq_dec (pat_fv x.1) small)))
+    (fun x => (upd_option_iter hd (pat_fv x.1))))=> Hallin;
+    last first.
+    {
+      false_triv_case Hnotin. apply H6. (*TODO: write as lemma*)
+      exists mvar. split=>//. 
+      by case: Hmvar => Hcon; [left; apply /eqP | right; apply /inP].
+    }
+    apply ReflectT.
+    apply vty_m_adt_some in Hadt. case: Hadt => [a_in mvar_eq].
+    apply Dec_fmatch with(a:=a)=>//.
+    by case: Hmvar => Hcon; [left; apply /eqP | right; apply /inP].
+Qed.
 
 End ContextCheck.
 

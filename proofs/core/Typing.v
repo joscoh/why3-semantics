@@ -449,6 +449,15 @@ Definition vty_in_m (m: mut_adt) (vs: list vty) (v: vty) : bool :=
   | _ => false
   end.
 
+Definition vty_m_adt (m: mut_adt) (vs: list vty) (v: vty) : option (alg_datatype) :=
+  match v with
+  | vty_cons ts vs' =>
+      if list_eq_dec vty_eq_dec vs' vs then
+         find_ts_in_mut ts m
+      else None
+  | _ => None
+  end.
+
 Lemma vty_in_m_spec (m: mut_adt) (vs: list vty) (v: vty):
   reflect 
   (exists a, adt_in_mut a m /\ v = vty_cons (adt_name a) vs)
@@ -1373,7 +1382,7 @@ with decrease_pred (fs: list fn) (ps: list pn) :
     decrease_pred fs ps small hd m vs f1 ->
     decrease_pred fs ps small hd m vs f2 ->
     decrease_pred fs ps small hd m vs f3 ->
-    decrease_pred fs ps small hd m vs (Fif f1 f1 f2)
+    decrease_pred fs ps small hd m vs (Fif f1 f2 f3)
     .
 Set Elimination Schemes.
 Scheme decrease_fun_ind := Minimality for decrease_fun Sort Prop
@@ -2372,6 +2381,27 @@ Definition is_vty_adt (ty: vty) :
     end
   | _ => None
   end.
+
+Lemma vty_m_adt_some (m: mut_adt) (vs: list vty) (v: vty) a:
+  vty_m_adt m vs v = Some a ->
+  adt_in_mut a m /\ v = vty_cons (adt_name a) vs.
+Proof.
+  intros. unfold vty_m_adt in H.
+  destruct v; try discriminate.
+  destruct (list_eq_dec vty_eq_dec l vs); subst; try discriminate.
+  apply find_ts_in_mut_some in H. destruct H; subst; auto.
+Qed.
+
+Lemma vty_m_adt_none (m: mut_adt) (vs: list vty) (v: vty):
+  vty_m_adt m vs v = None ->
+  (forall a, adt_in_mut a m -> v <> vty_cons (adt_name a) vs).
+Proof.
+  intros. unfold vty_m_adt in H. destruct v; try discriminate.
+  destruct (list_eq_dec vty_eq_dec l vs); subst; try (intro C; inversion C; subst; contradiction).
+  rewrite find_ts_in_mut_none in H.
+  intro C; inversion C; subst.
+  apply (H _ H0); auto.
+Qed.
 
 (*Weaker specs - no well-formed context*)
 Lemma find_ts_in_ctx_none (ts: typesym):
