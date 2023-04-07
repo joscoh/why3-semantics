@@ -1578,6 +1578,449 @@ Proof.
     by case: Hmvar => Hcon; [left; apply /eqP | right; apply /inP].
 Qed.
 
+Definition check_decrease_fun_spec fs ps m vs (t: term) small hd
+  (Hn1: NoDup (map fn_sym fs))
+  (Hn2: NoDup (map pn_sym ps)):=
+  (fst (check_decrease_spec fs ps m vs t Ftrue Hn1 Hn2)) small hd.
+
+Definition check_decrease_pred_spec fs ps m vs (f: formula) small hd
+  (Hn1: NoDup (map fn_sym fs))
+  (Hn2: NoDup (map pn_sym ps)):=
+  (snd (check_decrease_spec fs ps m vs tm_d f Hn1 Hn2)) small hd.
+
+
+(*Now we need to find the list of is, m, and vs
+  such that the conditions we need hold. The following method
+  is not efficient (ideally this should be done lazily)
+  but it is relatively simple: we generate all possible lists
+  and check each one. For small-ish mutually recursive functions,
+  this is not too bad*)
+
+(*First, generate the lists*)
+(*Generate all lists of length n with element i bounded between
+0 and f(i)*)
+Fixpoint get_lists_bound (f: nat -> nat) (n: nat) : list (list nat) :=
+  match n with
+  | O => [nil]
+  | S n' =>
+    let l_n' := get_lists_bound f n' in
+    (*Idea: take all lists of length n-1, make f(n) copies of each,
+      each one with 1 element from 0 to f(n)
+      *)
+    (*TODO: should really reverse at end instead of concat (or something)
+    but oh well*)
+    concat (map (fun l => (map (fun i => rcons l i) (iota 0 (f(n'))))) l_n')
+  end.
+
+Lemma concatP {A: eqType} (l: list (list A)) (x: A):
+  reflect (exists2 y, y \in l & x \in y) (x \in (concat l)).
+Proof.
+  apply iff_reflect. rewrite -(reflect_iff _ _ (inP _ _)).
+  rewrite in_concat. split; intros [y Hy]; destruct_all; 
+  exists y; try split; 
+  try apply /inP; auto.
+Qed.
+
+
+(*TODO: move*)
+(*
+Lemma length_concat_rect {A: Type} (l: list (list A)) n:
+  Forall (fun x => length x = n) l ->
+  length (concat l) = *)
+
+Lemma length_size {A: Type} (l: list A):
+  length l = size l.
+Proof.
+  by [].
+Qed. 
+
+Lemma nil_or_rcons {A: Type} (l: list A):
+  l = nil \/ exists t h, l = rcons t h.
+Proof.
+  elim: l => [//= | h1 t1 /= IH]; first by left.
+  right. case: IH => [-> | [t2 [h2 Ht1]]].
+  - exists nil. by exists h1.
+  - subst. exists (h1 :: t2). exists h2.
+    by rewrite rcons_cons.
+Qed. 
+
+Lemma get_lists_bound_spec (f: nat -> nat) (n: nat) (l: list nat):
+  reflect (length l = n /\ (forall i, i < length l ->
+    nth 0 l i < f (i))) (l \in (get_lists_bound f n)).
+Proof.
+  move: l.
+  elim: n => [l | n' IH l]/=.
+  - rewrite in_cons orbF.
+    case: (l == nil) /eqP => Hnil; [apply ReflectT | apply ReflectF].
+    + rewrite -length_zero_iff_nil in Hnil. 
+      by rewrite Hnil.
+    + move=> [Hlen _]. by rewrite length_zero_iff_nil in Hlen.
+  - case: (l
+  \in concat
+        [seq [seq rcons l0 i | i <- iota 0 (f n')] | l0 <- get_lists_bound f n'])
+    /concatP=> Hex; [apply ReflectT | apply ReflectF].
+  (*Note: need to get Prop before destructing exists*)
+  + move: Hex => [l' /mapP [l'' Hinl'' Hl'] Hinl]; subst.
+    move: Hinl => /mapP [i Hini Hl]; subst.
+    move: Hinl''.
+    case: (IH l'') => // [[Hlenl'' Hl'']] _.
+    rewrite length_size in Hlenl'' Hl''.
+    rewrite length_size size_rcons Hlenl''.
+    split=>//.
+    move=> [_/=| j'].
+    * rewrite nth_rcons.
+      move: Hlenl'' Hl''. case: l''=>/= [Hn' _ | h l' Hlenl' Hl']; subst.
+      -- by rewrite mem_iota in Hini.
+      -- by apply Hl'.
+    * rewrite ltnS=> Hj.
+      rewrite nth_rcons. subst.
+      move: Hj. rewrite leq_eqVlt => /orP[Hj1 | Hj1];
+      rewrite Hj1.
+      -- move: Hj1 => /eqP Hj1. rewrite Hj1 ltnn.
+        by rewrite mem_iota in Hini.
+      -- by apply Hl''.
+  + (*Now, the reverse direction*)
+    move=> [Hlenl Hl].
+    (*We show that there must be a list with the properties*)
+    case (nil_or_rcons l) => [Hleq | [t [h Hleq]]]; subst=>//.
+    rewrite length_size size_rcons in Hl Hlenl.
+    case: Hlenl => Hn; subst.
+    apply Hex.
+    exists [seq rcons t i | i <- iota 0 (f (size t))].
+    * apply /mapP. exists t=>//.
+      (*Now, we prove that t is in [get_lists_bound]*)
+      case: (IH t)=>//.
+      move=> C. exfalso. apply C. rewrite {C}.
+      split=>//.
+      move=> i. rewrite length_size.
+      move=> Hi.
+      move: Hl => /( _ i (ltn_trans Hi (ltnSn _))).
+      by rewrite nth_rcons Hi.
+    * apply /mapP. exists h=>//. rewrite mem_iota/= add0n.
+      move: Hl => /( _ (size t) (ltnSn _)).
+      by rewrite nth_rcons ltnn eq_refl.
+Qed.
+
+(*Now, we define the test for finding the mutual adt and args,
+  as well as checking termination, given a list of potential
+  indices*)
+
+Definition find_mut_args (fs: list fn) (ps: list pn) (il: list nat) :
+  option (mut_adt * list vty) :=
+
+  (*First, get candidates*)
+  let sns := map fn_sn fs ++ map pn_sn ps in
+  match sns with
+  | nil => None
+  | hd :: tl => 
+    let i := nth 0 il 0 in
+    match (is_vty_adt gamma (snd (nth vs_d (sn_args hd) i))) with
+    | Some (m, _, vs) => 
+      (*Check if size vs = size (m_params m)*)
+      (*TODO: do we need to check this? Or is this implied by typing?*)
+      if (size vs =? size (m_params m)) &&
+       (*Check using is list*)
+       all (fun x =>
+       let i := fst x in
+       let s := snd x in
+       vty_in_m m vs (snd (nth vs_d (sn_args s) i))) 
+       (combine il sns) &&
+      (*And check termination*)
+      all (fun x =>
+        let i := fst x in
+        let f : fn := snd x in
+        check_decrease_fun fs ps nil
+        (Some (nth vs_d (sn_args f) i )) m vs (fn_body f))
+        (combine (take (size fs) il) fs) &&
+      all (fun x =>
+        let i := fst x in
+        let p : pn := snd x in
+        check_decrease_pred fs ps nil
+        (Some (nth vs_d (sn_args p) i)) m vs (pn_body p))
+        (combine (drop (size fs) il) ps)
+      then Some (m, vs)
+      else None
+    | None => None
+    end
+  end.
+
+(*TODO: make this for real so we can compute*)
+Definition mut_adt_eqb (m1 m2: mut_adt) : bool :=
+  mut_adt_dec m1 m2.
+
+Lemma mut_adt_eqb_spec (m1 m2: mut_adt) :
+  reflect (m1 = m2) (mut_adt_eqb m1 m2).
+Proof.
+  unfold mut_adt_eqb. destruct (mut_adt_dec m1 m2); subst; simpl;
+  [apply ReflectT | apply ReflectF]; auto.
+Qed.
+
+Definition mut_eqMixin := EqMixin mut_adt_eqb_spec.
+Canonical mut_eqType := EqType mut_adt mut_eqMixin.
+Definition sn_eqMixin := EqMixin sn_eqb_spec.
+Canonical sn_eqType := EqType sn sn_eqMixin.
+
+Lemma list_map_map {A B: Type} (f: A -> B) (l: list A):
+  List.map f l = map f l.
+Proof.
+by [].
+Qed.
+
+Lemma app_cat {A: Type} (l1 l2: list A):
+  (l1 ++ l2)%list = l1 ++ l2.
+Proof. by []. Qed.
+
+Lemma combineP {A B: eqType} (l1: list A) (l2: list B) x:
+  size l1 = size l2 ->
+  reflect (exists i, i < size l1 /\
+    forall d1 d2,
+    x = (nth d1 l1 i, nth d2 l2 i))
+  (x \in (combine l1 l2)).
+Proof.
+  move=> Hsz. apply iff_reflect.
+  rewrite -(reflect_iff _ _ (inP x (combine l1 l2))).
+  rewrite in_combine_iff; last by rewrite !length_size.
+  rewrite length_size.
+  by split => [[i [Hi Hx]] | [i [Hi Hx]]]; exists i; split; (try by apply /ltP);
+  move=> d1 d2; rewrite (Hx d1 d2) !nth_eq.
+Qed.
+
+(*And the spec*)
+(*Do with all ssreflect functions, fix later*)
+Lemma find_mut_args_spec (fs: list fn) (ps: list pn) (il: list nat) m vs:
+  size il = (size fs + size ps) ->
+  (*il agrees with sn_idx*)
+  (forall i, i < size il -> 
+    sn_idx (nth sn_d (map fn_sn fs ++ map pn_sn ps) i) =
+    nth 0 il i) ->
+  (*At least one list should not be nil*)
+  ((size fs + size ps) != 0) ->
+  (*Cannot have duplicate ADTs - this is implied by
+    wf_context (see [mut_adts_inj]), so there are no
+    circular dependencies*)
+  (forall (m1 m2: mut_adt) {a1 a2: alg_datatype},
+    mut_in_ctx m1 gamma ->
+    mut_in_ctx m2 gamma ->
+    adt_in_mut a1 m1 ->
+    adt_in_mut a2 m2 ->
+    adt_name a1 = adt_name a2 ->
+    m1 = m2) ->
+  (*From spec for decrease_fun and pred*)
+  NoDup (map fn_sym fs) ->
+  NoDup (map pn_sym ps) ->
+  reflect (size vs = size (m_params m) /\
+    mut_in_ctx m gamma /\
+    (forall f, f \in fs ->
+      vty_in_m m vs (snd (nth vs_d (sn_args f) (sn_idx f)))) /\
+    (forall p, p \in ps ->
+      vty_in_m m vs (snd (nth vs_d (sn_args p) (sn_idx p) ))) /\
+    (forall f, f \in fs ->
+       decrease_fun fs ps nil 
+      (Some (nth vs_d (sn_args f) (sn_idx f))) m vs (fn_body f)) /\
+    (forall p, p \in ps ->
+      decrease_pred fs ps nil 
+      (Some (nth vs_d (sn_args p) (sn_idx p))) m vs (pn_body p)))
+    (find_mut_args fs ps il == Some (m, vs)).
+Proof.
+  rewrite /find_mut_args. move=>Hlen Hileq Hnotemp Hadtsuniq Hn1 Hn2.
+  case Happ: ([seq fn_sn i | i <- fs] ++ [seq pn_sn i | i <- ps]) => [| shd stl].
+  {
+    (*Nil case is not very intersting - contradicts assumption*)
+    apply ReflectF. exfalso.
+    case: (negP Hnotemp). apply /eqP.
+    by rewrite -(size_map fn_sn) -(size_map pn_sn) -size_cat Happ.
+  }
+  (*Some cleanup*)
+  rewrite {Hnotemp}.
+  have Hlen': size il = size ([seq fn_sn i | i <- fs] ++ [seq pn_sn i | i <- ps])
+    by rewrite size_cat !size_map.
+  rewrite {Hlen}. move: Hlen' => Hlen.
+  (*First, we make a simplification: we don't want to consider
+    fs and ps separately for vty_in_m*)
+  have Hvtymeq: ((forall f : fn_eqType,
+    f \in fs -> vty_in_m m vs (nth vs_d (sn_args f) (sn_idx f)).2) /\
+  (forall p : pn_eqType,
+    p \in ps -> vty_in_m m vs (nth vs_d (sn_args p) (sn_idx p)).2) <->
+  (forall s, s \in [seq fn_sn i | i <- fs] ++ [seq pn_sn i | i <- ps] ->
+    vty_in_m m vs (nth vs_d (sn_args s) (sn_idx s)).2)). {
+    split.
+    - move=> [Hf Hp] s. rewrite mem_cat => /orP [/mapP [x Hinx Hsx]|
+      /mapP [x Hinx Hsx]]; subst.
+      by rewrite Hf. by rewrite Hp.
+    - move=> Hs. by split=> s Hins; apply Hs; rewrite mem_cat; apply /orP;
+      [left | right]; apply /mapP; exists s.
+  }
+  (*Now we see if the first element has an ADT in the correct place*)
+  case Hisadt: (is_vty_adt gamma (nth vs_d (sn_args shd) (nth 0 il 0)).2) => [ [[m' a] vs']| ];
+  last first.
+  {
+    (*If not, we must prove a contradiction - it is not hard,
+      but there are a lot of parts*)
+    apply ReflectF => [[Hlen' [m_in [Hfsm [Hpsm _]]]]].
+    (*With the lemma we just proved, we consider the fs and ps cases
+      together*)
+    rewrite Happ in Hvtymeq.
+    case: Hvtymeq => [/(_ (conj Hfsm Hpsm) _ (mem_head _ _)) 
+      /vty_in_m_spec [a [a_in Hnth]]  _].
+    move: Hisadt. rewrite -Hileq/=; last by rewrite Hlen Happ.
+    rewrite Happ/= -is_vty_adt_none_iff => Hadt.
+    by apply (Hadt a m vs).
+  }
+  apply is_vty_adt_some in Hisadt.
+  case: Hisadt => [m_in [a_in Hnth]].
+  (*Now we prove that this "candidate" is sufficient:
+    if the fs and ps all have a mutual type m vs,
+    it must be this m' and vs'*)
+  have Hsuffices: ( forall m,
+    mut_in_ctx m gamma ->
+    (forall s : sn_eqType,
+           s \in [seq fn_sn i | i <- fs] ++ [seq pn_sn i | i <- ps] ->
+           vty_in_m m vs (nth vs_d (sn_args s) (sn_idx s)).2) ->
+    m = m' /\ vs = vs').
+  {
+    move=> m1 m1_in.
+    rewrite Happ => /(_ _ (mem_head _ _)) /vty_in_m_spec 
+    [a' [a_in' Hnth']].
+    move: Hnth. rewrite -Hileq/=; last by rewrite Hlen Happ.
+    rewrite Happ/= Hnth' => [[Hname Hvs]]; subst.
+    split=>//. by apply (Hadtsuniq m1 m' a' a).
+  }
+  (*Now, we continue*)
+  case: (size vs' =? size (m_params m')) /eqP=>/= Hszvs; last first.
+  {
+    apply ReflectF => [[Hlenvs [m_in' [Hfsm [Hpsm _]]]]].
+    (*Now from our previous results, m=m' and vs=vs'*)
+    have [Hm Hvs]: m = m' /\ vs = vs' by apply Hsuffices=>//; apply Hvtymeq.
+    subst.
+    by apply Hszvs.
+  }
+  (*Check for mut args*)
+  case: (all (fun x : nat * sn => vty_in_m m' vs' (nth vs_d (sn_args x.2) x.1).2)
+  (combine il (shd :: stl))) /allP => Hallvty/=; last first.
+  {
+    apply ReflectF => [[Hlenvs [m_in' [Hfsm [Hpsm _]]]]].
+    have [Hm Hvs]: m = m' /\ vs = vs' by apply Hsuffices=>//; apply Hvtymeq.
+    subst.
+    apply Hallvty=> x /combineP.
+    rewrite -{1}Happ {1}Hlen => /(_ erefl ) [i [Hi /(_ 0 sn_d) Hx]]; subst.
+    rewrite /=. rewrite -Hileq// Happ.
+    apply Hvtymeq=>//. by rewrite Happ mem_nth // -Happ -Hlen.
+  }
+  have Hsztake: size (take (size fs) il) = size fs. {
+    rewrite size_take Hlen size_cat !size_map.
+    have: (size fs <= size fs + size ps) by rewrite leq_addr.
+    rewrite leq_eqVlt => /orP[/eqP Hsz | Hlt].
+    - have: (size ps = 0). {
+        rewrite addnC in Hsz.
+        apply (f_equal (fun x => x - size fs)) in Hsz.
+        by rewrite -addnBA // subnn addn0 in Hsz.
+      }
+      move->. by rewrite addn0 ltnn.
+    - by rewrite Hlt.
+  }
+  have Hsz': size fs <= size il by
+          rewrite Hlen size_cat !size_map leq_addr.
+  have Hsz'': forall i, i < size ps -> size fs + i < size il by
+    move=> i Hi; rewrite Hlen size_cat !size_map ltn_add2l.
+  have Hszps: size il - size fs = size ps by
+    rewrite Hlen size_cat !size_map addnC -addnBA // subnn addn0.
+  (*Finally, check for termination*)
+  case: (all
+    (fun x : nat * fn =>
+    check_decrease_fun fs ps [::] (Some (nth vs_d (sn_args x.2) x.1)) m' vs'
+      (fn_body x.2)) (combine (take (size fs) il) fs) &&
+  all
+    (fun x : nat * pn =>
+    check_decrease_pred fs ps [::] (Some (nth vs_d (sn_args x.2) x.1)) m' vs'
+      (pn_body x.2)) (combine (drop (size fs) il) ps)) 
+  /(andPP allP allP) => Hdec; last first.
+  {
+    apply ReflectF => [[Hlenvs [m_in' [Hfsm [Hpsm [Hdecf Hdecp]]]]]].
+    have [Hm Hvs]: m = m' /\ vs = vs' by apply Hsuffices=>//; apply Hvtymeq.
+    subst.
+    apply Hdec. split; move=> x /combineP. (*Cases are similar*)
+    - rewrite Hsztake => /(_ erefl) [i [Hi /(_ 0 fn_d)]].
+      rewrite nth_take // => Hx; subst=>/=.
+      rewrite -Hileq; last by rewrite (leq_trans Hi Hsz').
+      rewrite nth_cat size_map Hi (nth_map fn_d) //.
+      apply /check_decrease_fun_spec =>//.
+      apply Hdecf. by rewrite mem_nth.
+    - (*Similar, but drop instead of take - lemma is easier*)
+      rewrite size_drop Hszps.
+      move=> /(_ erefl) [i [Hi /(_ 0 pn_d)]].
+      rewrite nth_drop // => Hx; subst=>/=.
+      rewrite -Hileq //; last by apply Hsz''. 
+      rewrite nth_cat size_map ltnNge leq_addr/=
+        addnC -addnBA // subnn addn0 (nth_map pn_d) //.
+      apply /check_decrease_pred_spec =>//.
+      apply Hdecp. by rewrite mem_nth.
+  }
+  (*Finally, the last case*)
+  case : (Some (m', vs') == Some (m, vs)) /eqP => [[Hm Hvs] | Hneq];
+  last first.
+  {
+    (*Easy contradiction*)
+    apply ReflectF => [[Hlenvs [m_in' [Hfsm [Hpsm [Hdecf Hdecp]]]]]].
+    have [Hm Hvs]: m = m' /\ vs = vs' by apply Hsuffices=>//; apply Hvtymeq.
+    subst. by apply Hneq.
+  }
+  
+  (*The true case*)
+  apply ReflectT.
+  subst.
+  (*We prove both vy_in_m's together*)
+  have Hallvtys: (forall s : sn_eqType,
+    s \in [seq fn_sn i | i <- fs] ++ [seq pn_sn i | i <- ps] ->
+    vty_in_m m vs (nth vs_d (sn_args s) (sn_idx s)).2).
+  {
+    move=> s Hins.
+    move: Hallvty. rewrite -Happ => Hallvty.
+    have/nthP:=Hins.
+    move=> /(_ sn_d) [i Hi Hf]; subst.
+    rewrite -Hlen in Hi.
+    have Hcomb: (nth 0 il i, 
+      nth sn_d ([seq fn_sn i | i <- fs] ++ [seq pn_sn i | i <- ps]) i) 
+      \in  combine il ([seq fn_sn i | i <- fs] ++ [seq pn_sn i | i <- ps]). {
+      apply /combineP. 
+      by rewrite Hlen Happ.
+      exists i. split=>//.
+      move=> d1 d2.
+      by rewrite (set_nth_default d1) // 
+        (set_nth_default d2) // -Hlen.
+    }
+    move: Hallvty => /( _ _ Hcomb).
+    by rewrite -(Hileq). 
+  }
+  split_all=>//; try by apply Hvtymeq.
+  - (*Only need decrease fun and pred cases - annoying part is combine*)
+    move=> f Hinf. have/nthP: f \in fs by [].
+    move=> /(_ fn_d) [i Hi Hf]; subst.
+    have Hcomb: (nth 0 il i, nth fn_d fs i) \in combine (take (size fs) il) fs. {
+        apply /combineP; rewrite Hsztake //.
+        exists i. split=>//. move=> d1 d2. rewrite nth_take //.
+        rewrite (set_nth_default d1); last by apply (leq_trans Hi Hsz').
+        by rewrite (set_nth_default d2).
+      }
+      move: H => /(_ _ Hcomb)/=.
+      rewrite -(Hileq) //; last by apply (leq_trans Hi Hsz').
+      rewrite nth_cat size_map Hi (nth_map fn_d) //.
+      move=> Hcheck. by apply /check_decrease_fun_spec.
+  - move=> p Hinp. have/nthP: p \in ps by [].
+    move=> /(_ pn_d) [i Hi Hp]; subst.
+    have Hcomb: (nth 0 il (size fs + i), nth pn_d ps i) \in 
+      (combine (drop (size fs) il) ps). {
+        apply /combineP; rewrite size_drop Hszps //.
+        exists i. split=>//. move=> d1 d2. rewrite nth_drop.
+        rewrite (set_nth_default d1); last by apply Hsz''.
+        by rewrite (set_nth_default d2).
+    }
+    move: H0 => /(_ _ Hcomb)/=.
+    rewrite -(Hileq) //; last by apply Hsz''.
+    rewrite nth_cat size_map ltnNge leq_addr /= addnC -addnBA // subnn addn0
+    (nth_map pn_d) //.
+    move=> Hcheck. by apply /check_decrease_pred_spec.
+Qed.
+
 End ContextCheck.
 
 End Typechecker.

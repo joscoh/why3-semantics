@@ -1576,11 +1576,8 @@ Defined.*)
   because in our function, we actually need to know
   which arguments terminate*)
 Definition funpred_def_term (l: list funpred_def) :=
-  {x: mut_adt * list typevar * list vty * list nat |
-    let m := fst (fst (fst x)) in
-    let params := snd (fst (fst x)) in
-    let vs := snd (fst x) in
-    let is := snd x in
+  exists (m: mut_adt) (params: list typevar) (vs: list vty)
+    (is: list nat),
     let fs := fst (funpred_defs_to_sns (combine l is)) in
     let ps := snd (funpred_defs_to_sns (combine l is)) in
     length vs = length (m_params m) /\
@@ -1602,8 +1599,7 @@ Definition funpred_def_term (l: list funpred_def) :=
     Forall (fun (f: fn) => decrease_fun fs ps nil 
       (Some (nth (sn_idx f) (sn_args f) vs_d)) m vs (fn_body f)) fs /\
     Forall (fun (p: pn) => decrease_pred fs ps nil 
-      (Some (nth (sn_idx p) (sn_args p) vs_d)) m vs (pn_body p)) ps
-  }.
+      (Some (nth (sn_idx p) (sn_args p) vs_d)) m vs (pn_body p)) ps.
 
  (* ive our termination condition*)
 (*
@@ -1642,8 +1638,8 @@ Definition funpred_def_term (l: list funpred_def)
 
 (*Note: this is NOT a Prop like the others - is this a problem?*)
 Definition funpred_valid_type (l: list funpred_def) :=
-    ((Forall funpred_def_valid_type l) *
-    funpred_def_term l)%type.
+    ((Forall funpred_def_valid_type l) /\
+    funpred_def_term l).
 
 (*Definition funpred_valid_type (l: list funpred_def) : Prop :=
   exists (Hl: Forall funpred_def_valid_type l),
