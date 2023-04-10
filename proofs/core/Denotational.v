@@ -426,7 +426,7 @@ Proof.
   - exact None.
   - exact None.
   - exact None.
-  - destruct (find_ts_in_ctx t);[|exact None].
+  - destruct (find_ts_in_ctx gamma t);[|exact None].
     exact (Some (fst p, snd p, t, 
       proj1_sig (is_sort_cons_sorts l (is_sort_cons t l i)))).
 Defined.
@@ -439,9 +439,10 @@ Lemma is_sort_adt_spec: forall s m a ts srts,
 Proof.
   intros. unfold is_sort_adt in H.
   destruct s. destruct x; try solve[inversion H].
-  destruct (find_ts_in_ctx t) eqn : Hf.
+  destruct (find_ts_in_ctx gamma t) eqn : Hf.
   - inversion H; subst. destruct p as [m a]. simpl.
-    apply find_ts_in_ctx_iff in Hf. destruct Hf as [Hmg [Ham Hat]]; 
+    apply (find_ts_in_ctx_iff gamma gamma_valid) in Hf. 
+    destruct Hf as [Hmg [Ham Hat]]; 
     repeat split; auto; subst.
     apply sort_inj. simpl. f_equal. clear H. 
     generalize dependent (is_sort_cons (adt_name a) l i).
@@ -575,55 +576,6 @@ Qed.
 problem is - inner patterns need NOT be adts - this is not
 preserved throughout - maybe dont have this, just prove
   "matches"*)
-Definition is_vty_adt (ty: vty) : 
-  option (mut_adt * alg_datatype * list vty) :=
-  match ty with
-  | vty_cons ts tys =>
-    match (find_ts_in_ctx ts) with
-    | Some (m, a) => Some (m, a, tys)
-    | None => None
-    end
-  | _ => None
-  end.
-
-Lemma is_vty_adt_iff {ty: vty} {m a vs}:
-  is_vty_adt ty = Some (m, a, vs) <->
-  ty = vty_cons (adt_name a) vs /\
-  adt_in_mut a m /\
-  mut_in_ctx m gamma.
-Proof.
-  unfold is_vty_adt. split.
-  - destruct ty; intro C; inversion C.
-    destruct (find_ts_in_ctx t) eqn : Hts; inversion H0; subst.
-    destruct p. inversion C; subst.
-    apply find_ts_in_ctx_iff in Hts. destruct_all; subst; auto.
-  - intros. destruct_all; subst; simpl.
-    assert (find_ts_in_ctx (adt_name a) = Some (m, a)). {
-      apply find_ts_in_ctx_iff. split; auto.
-    }
-    rewrite H. reflexivity.
-Qed.
-
-Lemma is_vty_adt_spec {ty: vty} {m a vs}:
-  is_vty_adt ty = Some (m, a, vs) ->
-  ty = vty_cons (adt_name a) vs /\
-  adt_in_mut a m /\
-  mut_in_ctx m gamma.
-Proof.
-  apply is_vty_adt_iff.
-Qed.
-
-Lemma adt_vty_length_eq: forall {ty m a vs},
-  is_vty_adt ty = Some (m, a, vs) ->
-  valid_type sigma ty ->
-  length vs = length (m_params m).
-Proof.
-  intros ty m a vs H Hval.
-  apply is_vty_adt_spec in H. destruct_all; subst.
-  inversion Hval; subst. rewrite H5.
-  f_equal. apply (adt_args gamma_valid). split; auto.
-Qed.
-
 
 (*TOOD: move*)
 Lemma v_subst_cons {f} ts vs:
@@ -655,15 +607,15 @@ Proof.
 Qed.
 
 Lemma constr_length_eq: forall {ty m a vs c},
-  is_vty_adt ty = Some (m, a, vs) ->
+  is_vty_adt gamma ty = Some (m, a, vs) ->
   valid_type sigma ty ->
   constr_in_adt c a ->
   length (s_params c) = length vs.
 Proof.
   intros.
-  rewrite (adt_vty_length_eq H H0).
+  rewrite (adt_vty_length_eq gamma gamma_valid H H0).
   f_equal.
-  apply is_vty_adt_spec in H. destruct_all; subst.
+  apply is_vty_adt_some in H. destruct_all; subst.
   apply (adt_constr_params gamma_valid H3 H2 H1).
 Qed.
 
@@ -785,18 +737,18 @@ Fixpoint match_val_single (v: val_typevar) (ty: vty)
     (*Let's try this differently*)
     (*TODO: want to know that this type is adt - have assumption,
       will be part of typing*)
-    match (is_vty_adt ty) as o return
-      is_vty_adt ty = o ->
+    match (is_vty_adt gamma ty) as o return
+      is_vty_adt gamma ty = o ->
       option (list (vsymbol * {s: sort & domain s })) 
     with
     | Some (m, a, vs) => (*TODO*) fun Hisadt => 
-      (*Get info from [is_vty_adt_spec]*)
+      (*Get info from [is_vty_adt_some]*)
       let Htyeq : ty = vty_cons (adt_name a) vs :=
-        proj1' (is_vty_adt_spec Hisadt) in
+        proj1' (is_vty_adt_some gamma Hisadt) in
       let a_in : adt_in_mut a m :=
-        proj1' (proj2' (is_vty_adt_spec Hisadt)) in
+        proj1' (proj2' (is_vty_adt_some gamma Hisadt)) in
       let m_in : mut_in_ctx m gamma :=
-        proj2' (proj2' (is_vty_adt_spec Hisadt)) in
+        proj2' (proj2' (is_vty_adt_some gamma Hisadt)) in
 
       let srts := (map (val v) vs) in
 
@@ -813,7 +765,7 @@ Fixpoint match_val_single (v: val_typevar) (ty: vty)
       (*Need a lemma about lengths for [find_constr_rep]*)
       let lengths_eq : length srts = length (m_params m) := 
         eq_trans (map_length _ _)
-          (adt_vty_length_eq Hisadt 
+          (adt_vty_length_eq gamma gamma_valid Hisadt 
           (pat_has_type_valid gamma_valid _ _ Hty')) in
 
       (*The key part: get the constructor c and arg_list a
@@ -969,17 +921,17 @@ Lemma match_val_single_rewrite  (v: val_typevar) (ty: vty)
     | Some l => Some ((x, (existT _ (val v ty) d)) :: l)
     end
   | Pconstr f params ps => fun Hty' =>
-    match (is_vty_adt ty) as o return
-      is_vty_adt ty = o ->
+    match (is_vty_adt gamma ty) as o return
+      is_vty_adt gamma ty = o ->
       option (list (vsymbol * {s: sort & domain s })) 
     with
     | Some (m, a, vs) =>  fun Hisadt => 
       let Htyeq : ty = vty_cons (adt_name a) vs :=
-        proj1' (is_vty_adt_spec Hisadt) in
+        proj1' (is_vty_adt_some gamma Hisadt) in
       let a_in : adt_in_mut a m :=
-        proj1' (proj2' (is_vty_adt_spec Hisadt)) in
+        proj1' (proj2' (is_vty_adt_some gamma Hisadt)) in
       let m_in : mut_in_ctx m gamma :=
-        proj2' (proj2' (is_vty_adt_spec Hisadt)) in
+        proj2' (proj2' (is_vty_adt_some gamma Hisadt)) in
 
       let srts := (map (val v) vs) in
 
@@ -993,7 +945,7 @@ Lemma match_val_single_rewrite  (v: val_typevar) (ty: vty)
 
       let lengths_eq : length srts = length (m_params m) := 
         eq_trans (map_length _ _)
-          (adt_vty_length_eq Hisadt 
+          (adt_vty_length_eq gamma gamma_valid Hisadt 
           (pat_has_type_valid gamma_valid _ _ Hty')) in
 
       let Hrep := find_constr_rep gamma_valid m m_in srts lengths_eq 
@@ -1030,10 +982,10 @@ Proof.
   destruct p; try solve[reflexivity].
   (*TODO: we will automate this*)
   unfold match_val_single; fold match_val_single.
-  generalize dependent (@is_vty_adt_spec ty).
-  generalize dependent (@adt_vty_length_eq ty).
+  generalize dependent (@is_vty_adt_some gamma ty).
+  generalize dependent (@adt_vty_length_eq gamma sigma gamma_valid ty).
   generalize dependent (@constr_length_eq ty).
-  destruct (is_vty_adt ty) eqn : Hisadt; [|reflexivity].
+  destruct (is_vty_adt gamma ty) eqn : Hisadt; [|reflexivity].
   intros Hvslen1 Hvslen2 Hadtspec.
   destruct p as [[m adt] vs2].
   destruct (Hadtspec m adt vs2 eq_refl)
@@ -1139,14 +1091,14 @@ Lemma match_val_single_ind
 (Hconstr1: forall (v: val_typevar) (ty: vty) (f: funsym) (params: list vty)
   (ps: list pattern) (Hty': pattern_has_type sigma (Pconstr f params ps) ty)
   (d: domain (val v ty))
-  (Hnone: is_vty_adt ty = None),
+  (Hnone: is_vty_adt gamma ty = None),
   P v ty (Pconstr f params ps) d None)
 (*If not funsym, None*)
 (Hconstr2: forall (v: val_typevar) (ty: vty) (f: funsym) (params: list vty)
   (ps: list pattern) (Hty': pattern_has_type sigma (Pconstr f params ps) ty)
   (d: domain (val v ty))
   m vs2 adt
-  (Hisadt: is_vty_adt ty = Some (m, adt, vs2))
+  (Hisadt: is_vty_adt gamma ty = Some (m, adt, vs2))
   (Htyeq: ty = vty_cons (adt_name adt) vs2)
   (Hinmut: adt_in_mut adt m)
   (Hinctx: mut_in_ctx m gamma)
@@ -1172,7 +1124,7 @@ Lemma match_val_single_ind
     Some (m, adt, vs2) = Some (m0, a, vs) ->
     valid_type sigma (vty_cons (adt_name adt) vs2) ->
     Datatypes.length vs = Datatypes.length (m_params m0))
-  (Hisadt: is_vty_adt (vty_cons (adt_name adt) vs2) = Some (m, adt, vs2))
+  (Hisadt: is_vty_adt gamma (vty_cons (adt_name adt) vs2) = Some (m, adt, vs2))
   (d: domain (val v (vty_cons (adt_name adt) vs2)))
   (Hinmut: adt_in_mut adt m)
   (Hinctx: mut_in_ctx m gamma)
@@ -1188,7 +1140,7 @@ Lemma match_val_single_ind
     Q _ a)
 (Hconstr3: forall (v: val_typevar) (f: funsym) (params: list vty)
   (adt: alg_datatype) (vs2: list vty) (m: mut_adt)
-  (Hisadt: is_vty_adt (vty_cons (adt_name adt) vs2) = Some (m, adt, vs2))
+  (Hisadt: is_vty_adt gamma (vty_cons (adt_name adt) vs2) = Some (m, adt, vs2))
   (d: domain (val v (vty_cons (adt_name adt) vs2)))
   (Hinmut: adt_in_mut adt m)
   (Hinctx: mut_in_ctx m gamma)
@@ -1251,10 +1203,10 @@ Proof.
   - simpl. apply Hvar. auto.
   - (*The hard case: do work here so we don't have to repeat*)
     rewrite match_val_single_rewrite. simpl.
-    generalize dependent (@is_vty_adt_spec ty).
-    generalize dependent (@adt_vty_length_eq ty).
+    generalize dependent (@is_vty_adt_some gamma ty).
+    generalize dependent (@adt_vty_length_eq gamma sigma gamma_valid ty).
     generalize dependent (@constr_length_eq ty).
-    destruct (is_vty_adt ty) eqn : Hisadt.
+    destruct (is_vty_adt gamma ty) eqn : Hisadt.
     2: {
       intros. apply (Hconstr1 v ty f vs ps Hp d). auto. }
     intros Hvslen1 Hvslen2 Hadtspec.
@@ -1408,10 +1360,10 @@ Proof.
   - rewrite !match_val_single_rewrite; simpl.
     (*The hard case: need lots of generalization for dependent types
       and need nested induction*) 
-    generalize dependent (@is_vty_adt_spec ty).
-    generalize dependent (@adt_vty_length_eq ty).
+    generalize dependent (@is_vty_adt_some gamma ty).
+    generalize dependent (@adt_vty_length_eq gamma sigma gamma_valid ty).
     generalize dependent (@constr_length_eq ty).
-    destruct (is_vty_adt ty) eqn : Hisadt; [|reflexivity].
+    destruct (is_vty_adt gamma ty) eqn : Hisadt; [|reflexivity].
     intros Hvslen1 Hvslen2 Hadtspec.
     destruct p as [[m adt] vs2].
     destruct (Hadtspec m adt vs2 eq_refl)

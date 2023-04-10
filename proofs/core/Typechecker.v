@@ -943,8 +943,7 @@ Qed.
   decreasing on these indices*)
 
 (*Default values for fn, sn*)
-Definition sn_d : sn :=
-  (mk_sn id_sym [vs_d] 0).
+
 
 Definition fn_d : fn :=
   (mk_fn id_fs sn_d tm_d).
@@ -1867,7 +1866,7 @@ Proof.
     by apply (Hadt a m vs).
   }
   apply is_vty_adt_some in Hisadt.
-  case: Hisadt => [m_in [a_in Hnth]].
+  case: Hisadt => [Hnth [a_in m_in]].
   (*Now we prove that this "candidate" is sufficient:
     if the fs and ps all have a mutual type m vs,
     it must be this m' and vs'*)
@@ -2019,6 +2018,487 @@ Proof.
     rewrite nth_cat size_map ltnNge leq_addr /= addnC -addnBA // subnn addn0
     (nth_map pn_d) //.
     move=> Hcheck. by apply /check_decrease_pred_spec.
+Qed.
+
+(*Now, a version of [find] that returns the element: given
+  a function that evaluates to Some x (success) or None (failure),
+  return the first success*)
+Definition find_elt {A B: Type} (f: A -> option B) (l: list A) :
+  option (A * B) :=
+  fold_right (fun x acc => match f x with | None => acc | Some y => Some (x, y) end)
+  None l.
+
+Lemma find_elt_some {A B : eqType} (f: A -> option B) (l: list A) x y:
+  find_elt f l = Some (x, y) ->
+  x \in l /\ f x = Some y.
+Proof.
+  elim: l =>[//| h t /= Ih].
+  case Hh: (f h)=>[a |].
+  - move=> [Hax] hay; subst. by rewrite mem_head.
+  - move=> Hfind. apply Ih in Hfind.
+    case: Hfind => Hinxt Hfx.
+    by rewrite in_cons Hinxt orbT.
+Qed.
+
+Lemma find_elt_none {A B : eqType} (f: A -> option B) (l: list A):
+  reflect (forall y, y \in l -> f y = None)
+    (find_elt f l == None).
+Proof.
+  elim: l => [//= | h t /= IH].
+  - by apply ReflectT.
+  - case Hh: (f h) => [a |].
+    + apply ReflectF. move=> C. 
+      rewrite C in Hh=>//. by rewrite mem_head.
+    + eapply equivP. apply IH.
+      split; move=> Hall y.
+      * rewrite in_cons => /orP[/eqP Hhy | Hint]; subst=>//.
+        by apply Hall.
+      * move=> Hint. apply Hall. by rewrite in_cons Hint orbT.
+Qed.
+
+
+(*We also need to check the params. This is easy; we do it generically*)
+
+(*Given a list of A's and a function A -> B, return Some x 
+  iff f y = x for all y in l*)
+Definition find_eq {A B: eqType} (f: A -> B) (l: list A) : option B :=
+  match l with
+  | nil => None
+  | x :: tl => 
+    (*x is our candidate*)
+    if all (fun y => f y == f x) l then Some (f x) else None
+    end.
+
+Lemma find_eq_spec {A B: eqType} (f: A -> B) (l: list A) (b: B):
+  reflect (l <> nil /\ forall x, x \in l -> f x = b)
+  (find_eq f l == Some b).
+Proof.
+  rewrite /find_eq.
+  case: l => [//= | h t /=].
+  - by apply ReflectF => [] [].
+  - rewrite eq_refl/=.
+    case: (all (fun y : A => f y == f h) t) /allP => [ Hall| Hnotall].
+    + case: (Some (f h) == Some b) /eqP => [[Hhb] | Hneq]; subst.
+      * apply ReflectT.  split=>//. move=> x.
+        rewrite in_cons => /orP[/eqP Hxh | Hint]; subst=>//.
+        by apply /eqP; apply Hall.
+      * apply ReflectF.
+        move=> [_ Hall2].
+        rewrite Hall2 in Hneq=>//.
+        by rewrite mem_head.
+    + apply ReflectF.
+      move=> [_ Hall].
+      apply Hnotall. move=> x Hinx. rewrite !Hall //.
+      by rewrite mem_head.
+      by rewrite in_cons Hinx orbT.
+Qed. 
+
+(*TODO: move*)
+
+Definition fpsym_eqMixin := EqMixin fpsym_eqb_spec.
+Canonical fpsym_eqType := EqType fpsym fpsym_eqMixin.
+
+Definition funpred_def_eqMixin := EqMixin funpred_def_eqb_spec.
+Canonical funpred_def_eqType := EqType funpred_def funpred_def_eqMixin.
+
+
+(*Now we can define the fill function*)
+Definition find_funpred_def_term (l: list funpred_def) :
+  option (mut_adt * list typevar * list vty * list nat) :=
+  let t := split_funpred_defs l in
+  let syms := map (fun x => f_sym (fst (fst x))) (fst t) ++
+    map (fun x => p_sym (fst (fst x))) (snd t) in
+
+  (*First, find params*)
+  let o_params :=
+    find_eq (fun x => s_params x) syms in
+  match o_params with
+  | None => None
+  | Some params =>
+      (*Now, we iterate over all possible il lists and find
+        the first (m, vs) pair *)
+        let m_data := 
+        find_elt (
+          fun il =>
+            let fs :=  fst (funpred_defs_to_sns l il) in
+            let ps := snd (funpred_defs_to_sns l il) in
+            find_mut_args fs ps il
+        ) (get_lists_bound (fun i =>
+          (*Here, we use syms - needs to correspond to
+          correct order*)
+          size (s_args (nth id_sym syms i))) (size l)) in
+
+        match m_data with
+        | Some (il, (m, vs)) => Some (m, params, vs, il)
+        | None => None
+        end
+  end.
+
+Lemma firstn_take {A: Type} (n: nat) (l: list A) :
+firstn n l = take n l.
+Proof.
+  move: n.
+  elim:l=>//=[ [| n'] //| h t IH [| n'] //=].
+  by rewrite IH.
+Qed.
+
+Lemma skipn_drop {A: Type} (n: nat) (l: list A) :
+skipn n l = drop n l.
+Proof.
+  move: n.
+  by elim:l=>//=[ [| n'] //| h t IH [| n'] //=].
+Qed.
+
+Lemma size_combine {A B: Type} (l1: list A) (l2: list B):
+  size l1 = size l2 ->
+  size (combine l1 l2) = size l1.
+Proof.
+  move: l2. elim: l1=> [[| h2 t2] // | h1 t1 /= IH [// | h2 t2/=[] Hsz] ].
+  by rewrite IH.
+Qed.
+
+Lemma size_skipn {A: Type} (n: nat) (l: list A) :
+  size (skipn n l) = size l - n.
+Proof.
+  by rewrite skipn_drop size_drop.
+Qed.
+(*
+Lemma size_firstn {A: Type} (n: nat) (l: list A) :
+size (firstn n l) = min n (size l).
+Proof.
+  rewrite firstn_take size_take.
+  case: (n < size l) /ltP => Hlt.
+  - rewrite min_l =>//. lia.
+  - rewrite min_r //. lia.
+Qed.*)
+
+(*This is not great*)
+Definition id_ps : predsym :=
+  Build_predsym id_sym.
+
+  (*Need a bunch of size results*)
+Lemma size_split_funpred_defs_fst l (il: list nat):
+  size l = size il ->
+  size (split_funpred_defs l).1 =
+  size (firstn (Datatypes.length (split_funpred_defs l).1) il).
+Proof.
+  move=> Hsz.
+  have Hlen: (size (split_funpred_defs l).1 + size (split_funpred_defs l).2) = size l
+    by rewrite -!length_size -(split_funpred_defs_length l).
+  rewrite firstn_take size_take length_size.
+  have: size (split_funpred_defs l).1 <= size il by
+    rewrite -Hsz -Hlen leq_addr.
+  rewrite leq_eqVlt => /orP[/eqP Hsz1 | ->//].
+  by rewrite Hsz1 ltnn.
+Qed.
+
+Lemma size_split_funpred_defs_snd l (il: list nat):
+  size l = size il ->
+  size (split_funpred_defs l).2 =
+    size (skipn (Datatypes.length (split_funpred_defs l).1) il).
+Proof.
+  move=> Hsz.
+  have Hlen: (size (split_funpred_defs l).1 + size (split_funpred_defs l).2) = size l
+    by rewrite -!length_size -(split_funpred_defs_length l).
+  by rewrite size_skipn -Hsz -Hlen  length_size addnC -addnBA // subnn addn0.
+Qed.
+
+Lemma size_split_funpred_defs_comb1 l (il: list nat):
+  size l = size il ->
+  size (combine (split_funpred_defs l).1
+    (firstn (Datatypes.length (split_funpred_defs l).1) il)) =
+  size (split_funpred_defs l).1.
+Proof.
+  move=> Hsz. 
+  by rewrite size_combine // (size_split_funpred_defs_fst _ il).
+Qed.
+
+Lemma size_split_funpred_defs_comb2 l (il: list nat):
+  size l = size il ->
+  size (combine (split_funpred_defs l).2
+    (skipn (Datatypes.length (split_funpred_defs l).1) il)) =
+  size (split_funpred_defs l).2.
+Proof.
+  move=> Hsz.
+  by rewrite size_combine // (size_split_funpred_defs_snd _ il).
+Qed. 
+
+(*TODO: should be in typing, but in terms of ssreflect*)
+Lemma funpred_defs_to_sns_idx l il:
+  size l = size il ->
+  forall i,
+  i < size il ->
+    sn_idx
+      (nth sn_d
+        ([seq fn_sn i | i <- (funpred_defs_to_sns l il).1] ++
+          [seq pn_sn i | i <- (funpred_defs_to_sns l il).2]) i) = 
+    nth 0 il i.
+Proof.
+  move=> Hsz i Hi.
+  rewrite nth_cat size_map. have Hleneq: length l = length il by rewrite !length_size.
+  (*have Hlen:=funpred_defs_to_sns_length l il Hleneq.
+  rewrite !length_size in Hlen.*)
+  have Hlen: (size (split_funpred_defs l).1 + size (split_funpred_defs l).2) = size l
+    by rewrite -!length_size -(split_funpred_defs_length l).
+  rewrite /funpred_defs_to_sns/= !size_map size_split_funpred_defs_comb1 //.
+  case Hilt: (i < size (split_funpred_defs l).1).
+  - rewrite (nth_map fn_d) //=; last by
+      rewrite size_map size_split_funpred_defs_comb1.
+    rewrite (nth_map (id_fs, @nil vsymbol, tm_d, 0)) /=;
+      last by rewrite size_split_funpred_defs_comb1.
+    rewrite -nth_eq combine_nth //=; last by
+      rewrite !length_size -(size_split_funpred_defs_fst _ il).
+    by rewrite firstn_take nth_eq nth_take.
+  - have Hige: size (split_funpred_defs l).1 <= i. {
+      move: Hilt; rewrite ltnNge => Hle. by apply negbFE in Hle.
+    }
+    have Hi': i - size (split_funpred_defs l).1 < size (split_funpred_defs l).2
+      by rewrite ltn_subLR // Hlen Hsz.
+    rewrite (nth_map pn_d) //=; last by rewrite size_map 
+      size_split_funpred_defs_comb2.
+    rewrite (nth_map (id_ps, nil, Ftrue, 0)) /=;
+      last by rewrite size_split_funpred_defs_comb2.
+    rewrite -nth_eq combine_nth //=; last by
+      rewrite !length_size -size_split_funpred_defs_snd.
+    by rewrite skipn_drop nth_eq nth_drop length_size subnKC.
+Qed.
+
+Lemma plus_coq_nat n1 n2:
+  (n1 + n2)%coq_nat = n1 + n2.
+by [].
+Qed.
+
+Lemma size_funpred_defs_to_sns l il:
+  size l = size il ->
+  size (funpred_defs_to_sns l il).1 =
+  size (split_funpred_defs l).1 /\
+  size (funpred_defs_to_sns l il).2 =
+  size (split_funpred_defs l).2.
+Proof.
+  move=> Hsz.
+  rewrite /funpred_defs_to_sns !size_map !size_combine //.
+  - by rewrite -size_split_funpred_defs_snd.
+  - by rewrite -size_split_funpred_defs_fst.
+Qed.
+
+Variable gamma_wf: wf_context sigma gamma.
+
+
+(*We need 2 specs: if it is Some (m, p, vs, il), then these
+  satisfy the conditions of *)
+
+(*The converse is not true because in principle many lists could
+  satsify the conditions*)
+Theorem find_funpred_def_term_some (l: list funpred_def) m params vs il:
+  l \in (mutfuns_of_context gamma) ->
+  find_funpred_def_term l = Some (m, params, vs, il) ->
+  funpred_def_term gamma l m params vs il.
+Proof.
+  move=> Hinl.
+  rewrite /find_funpred_def_term /funpred_def_term.
+  case Hfind: (find_eq s_params ([seq f_sym x.1.1 | x <- (split_funpred_defs l).1] ++
+  [seq p_sym x.1.1 | x <- (split_funpred_defs l).2])) => [p | //].
+  move: Hfind => /eqP /find_eq_spec => [[Hnotnil Hparams]].
+  case Hfind: (find_elt
+  (fun il0 : seq nat =>
+   find_mut_args (funpred_defs_to_sns l il0).1 (funpred_defs_to_sns l il0).2 il0)
+  (get_lists_bound
+     (fun i : nat =>
+      size
+        (s_args
+           (nth id_sym
+              ([seq f_sym x.1.1 | x <- (split_funpred_defs l).1] ++
+               [seq p_sym x.1.1 | x <- (split_funpred_defs l).2]) i))) 
+     (size l))) => [[il' [m' vs']] | //].
+  move => [Hm] Hp Hvs Hil; subst.
+  apply find_elt_some in Hfind.
+  case: Hfind => [/get_lists_bound_spec [Hlenil Hil] /eqP /find_mut_args_spec Hfind].
+  (*We have to prove the hypotheses*)
+  have Hsz1: size il =
+  size (funpred_defs_to_sns l il).1 + size (funpred_defs_to_sns l il).2 by
+    rewrite -!length_size Hlenil -length_size -(funpred_defs_to_sns_length _ il).
+  rewrite length_size in Hlenil.
+  move: Hfind => /(_ Hsz1 (funpred_defs_to_sns_idx l il (esym Hlenil))) => Hfind.
+  rewrite {Hsz1}.
+  have Hsz2: size (funpred_defs_to_sns l il).1 + size (funpred_defs_to_sns l il).2 != 0. {
+    have []:=(size_funpred_defs_to_sns l il (esym Hlenil))=>->->.
+    rewrite -(size_map(fun x => f_sym x.1.1)) -(size_map (fun x => p_sym x.1.1)).
+    rewrite -size_cat size_eq0. by apply /eqP.
+  }
+  have Hleneq: length l = length il by rewrite !length_size.
+  move: Hfind => /( _ Hsz2 (@mut_adts_inj _ _ gamma_wf)
+    (proj1 (funpred_defs_to_sns_NoDup gamma_wf l il (elimT (inP _ _) Hinl) Hleneq))
+    (proj2 (funpred_defs_to_sns_NoDup gamma_wf l il (elimT (inP _ _) Hinl) Hleneq)))
+  [ Hszvs [m_in [Hallvtyf [Hallvtyp [Hdecf Hdecp]]]]].
+  split_all =>//.
+  - move=> Hl; subst. by apply Hnotnil.
+  - move=> i /ltP Hi. apply /ltP. rewrite !nth_eq length_size app_cat.
+    by apply Hil.
+  - move=> f /inP. rewrite nth_eq. apply Hallvtyf.
+  - move=> p /inP. rewrite nth_eq. apply Hallvtyp.
+  - move=> f /inP.
+    rewrite /funpred_defs_to_sns/==> /mapP [x Hx Hf]; subst=>/=.
+    move: Hx => /combineP.
+    rewrite -size_split_funpred_defs_fst // => /(_ erefl) [i [Hi /(_ (id_fs, nil, tm_d) 0)]]
+    ->/=. apply Hparams.
+    rewrite mem_cat. apply /orP; left.
+    apply /mapP. exists ((nth (id_fs, [::], tm_d) (split_funpred_defs l).1 i))=>//.
+    by rewrite mem_nth.
+  - move=> p /inP.
+    rewrite /funpred_defs_to_sns/==> /mapP [x Hx Hp]; subst=>/=.
+    move: Hx => /combineP.
+    rewrite -size_split_funpred_defs_snd // => /(_ erefl) [i [Hi /(_ (id_ps, nil, Ftrue) 0)]]
+    ->/=. apply Hparams.
+    rewrite mem_cat. apply /orP; right.
+    apply /mapP. exists ((nth (id_ps, [::], Ftrue) (split_funpred_defs l).2 i))=>//.
+    by rewrite mem_nth.
+  - rewrite Forall_forall => x /inP. rewrite nth_eq. by apply Hdecf.
+  - rewrite Forall_forall => x /inP. rewrite nth_eq. by apply Hdecp.
+Qed.
+
+(*For the converse, we show that if this function gives None,
+  [funpred_def_term gamma l m params vs il] is always false*)
+Theorem find_funpred_def_term_none (l: list funpred_def):
+  l \in (mutfuns_of_context gamma) ->
+  find_funpred_def_term l = None ->
+  forall m params vs il,
+    ~ funpred_def_term gamma l m params vs il.
+Proof.
+  move=> Hinl Hfind m params vs il.
+  rewrite /funpred_def_term => [[Hlnil [Hlenvs [m_in [Hlenil 
+    [Hargsnth [Hfvty [Hpty [Hfparams [Hpparams [Hfdec Hpdec]]]]]]]]]]].
+  move: Hfind.
+  rewrite /find_funpred_def_term.
+  (*First, show that [find_eq] must be (Some params). This is annoying*)
+  have->: (find_eq s_params ([seq f_sym x.1.1 | x <- (split_funpred_defs l).1] ++
+  [seq p_sym x.1.1 | x <- (split_funpred_defs l).2])) = Some params. {
+    apply /eqP. apply /find_eq_spec.
+    split.
+    - have:=(split_funpred_defs_length l).
+      rewrite !length_size plus_coq_nat => Hszl.
+      move=> Hnil; apply (f_equal (@size _)) in Hnil;
+      move: Hnil; rewrite !size_cat !size_map Hszl/= => /eqP.
+      by rewrite size_eq0  => /eqP Hl; subst.
+    - move=> x. rewrite mem_cat => /orP[/mapP [x' Hinx' Hx'] | /mapP [x' Hinx' Hx']];
+      subst.
+      + have:=(nth_index (id_fs, nil, tm_d) Hinx') => Hx'; subst.
+        rewrite -Hx'/=.
+        move: Hfparams => /(_ (fundef_to_fn x'.1.1 x'.1.2 x'.2 (nth 0 il (index x' (split_funpred_defs l).1)))).
+        have Hin: In (fundef_to_fn x'.1.1 x'.1.2 x'.2 (nth 0 il (index x' (split_funpred_defs l).1)))
+        (funpred_defs_to_sns l il).1. {
+          apply /inP. rewrite /funpred_defs_to_sns/=. apply /mapP.
+          exists (x', nth 0 (firstn (Datatypes.length (split_funpred_defs l).1) il) (index x' (split_funpred_defs l).1))=>//.
+          apply /combineP; first by rewrite -size_split_funpred_defs_fst.
+          exists (index x' (split_funpred_defs l).1).
+          split.
+          - by rewrite index_mem.
+          - move=> d1 d2. rewrite -{1}Hx'/=.
+            rewrite (set_nth_default d1); last by rewrite index_mem. 
+            by rewrite (set_nth_default d2) // -size_split_funpred_defs_fst //
+            index_mem.
+          - by rewrite firstn_take nth_take // length_size index_mem.
+        }
+        move=> /(_ Hin)/=. by rewrite -{1}Hx'.
+      + (*In the 2nd part, very similar*)
+        have:=(nth_index (id_ps, nil, Ftrue) Hinx') => Hx'; subst.
+        rewrite -Hx'/=.
+        move: Hpparams => /(_ (preddef_to_pn x'.1.1 x'.1.2 x'.2 (nth 0 il (size (split_funpred_defs l).1 + (index x' (split_funpred_defs l).2))))).
+        have Hin: In
+        (preddef_to_pn x'.1.1 x'.1.2 x'.2
+           (nth 0 il (size (split_funpred_defs l).1 + index x' (split_funpred_defs l).2)))
+        (funpred_defs_to_sns l il).2. {
+          apply /inP. rewrite /funpred_defs_to_sns/=. apply /mapP.
+          exists (x', nth 0 (skipn (Datatypes.length (split_funpred_defs l).1) il) 
+            (index x' (split_funpred_defs l).2))=>//; last by
+            rewrite /= skipn_drop nth_drop length_size.
+          apply /combineP; first by rewrite -size_split_funpred_defs_snd.
+          exists (index x' (split_funpred_defs l).2).
+          split.
+          - by rewrite index_mem.
+          - move=> d1 d2. rewrite -{1}Hx'/=.
+            rewrite (set_nth_default d1); last by rewrite index_mem. 
+            by rewrite (set_nth_default d2) // -size_split_funpred_defs_snd //
+            index_mem.
+        }
+        move=> /(_ Hin)/=. by rewrite -{1}Hx'.
+  }
+  case Hfind: (find_elt
+  (fun il0 : seq nat =>
+   find_mut_args (funpred_defs_to_sns l il0).1 (funpred_defs_to_sns l il0).2 il0)
+  (get_lists_bound
+     (fun i : nat =>
+      size
+        (s_args
+           (nth id_sym
+              ([seq f_sym x.1.1 | x <- (split_funpred_defs l).1] ++
+               [seq p_sym x.1.1 | x <- (split_funpred_defs l).2]) i))) 
+     (size l))) => [[il' [m' vs']]// |].
+  move: Hfind => /eqP /find_elt_none.
+  (*We give a contradiction by showing that il satisfies the conditions*)
+  move=> /(_ il).
+  have Hil: (il
+  \in get_lists_bound
+        (fun i : nat =>
+         size
+           (s_args
+              (nth id_sym
+                 ([seq f_sym x.1.1 | x <- (split_funpred_defs l).1] ++
+                  [seq p_sym x.1.1 | x <- (split_funpred_defs l).2]) i))) 
+        (size l)).
+  {
+    apply /get_lists_bound_spec. split; rewrite length_size //.
+    move=> i Hi.
+    move: Hargsnth. rewrite !length_size => /(_ i (elimT ltP Hi)).
+    by rewrite !nth_eq length_size => /ltP.
+  }
+  move=> /(_ Hil).
+  (*Now we show a contradiction from [find_mut_args]. Again we
+    need to prove the hypotheses first*)
+  have->//:
+  find_mut_args (funpred_defs_to_sns l il).1 (funpred_defs_to_sns l il).2 il =
+  Some (m, vs).
+  apply /eqP.
+  rewrite !length_size in Hlenil.
+  apply /find_mut_args_spec.
+  - have:=(funpred_defs_to_sns_length l il). 
+    rewrite !length_size plus_coq_nat => /(_ (esym Hlenil)).
+    by rewrite Hlenil.
+  - apply (funpred_defs_to_sns_idx l il (esym Hlenil)).
+  - have:=(funpred_defs_to_sns_length l il).
+    rewrite !length_size plus_coq_nat => /(_ (esym Hlenil)) ->.
+    rewrite size_eq0. by apply /eqP.
+  - apply (@mut_adts_inj _ _ gamma_wf).
+  - have Hleneq: length l = length il by rewrite !length_size.
+    apply (funpred_defs_to_sns_NoDup gamma_wf l il (elimT (inP _ _) Hinl) Hleneq).
+  - have Hleneq: length l = length il by rewrite !length_size.
+    apply (funpred_defs_to_sns_NoDup gamma_wf l il (elimT (inP _ _) Hinl) Hleneq).
+  - (*Now we prove each of the conditions*)
+    split_all=>//.
+    + move=> f /inP. by rewrite -nth_eq; apply Hfvty.
+    + move=> p /inP. by rewrite -nth_eq; apply Hpty.
+    + move=> f /inP Hinf. move: Hfdec.
+      rewrite Forall_forall => /(_ _ Hinf).
+      by rewrite nth_eq.
+    + move=> p /inP Hinp. move: Hpdec.
+      rewrite Forall_forall => /(_ _ Hinp).
+      by rewrite nth_eq.
+Qed.
+
+(*And now we can prove the following theorem, which
+  we need to define the recursive functions*)
+Lemma funpred_def_term_decide (l: list funpred_def) :
+  In l (mutfuns_of_context gamma) ->
+  funpred_def_term_exists gamma l ->
+  { x: (mut_adt * list typevar * list vty * list nat) |
+    funpred_def_term gamma l x.1.1.1 x.1.1.2 x.1.2 x.2}.
+Proof.
+  move=> Hin Hex.
+  case Hfind: (find_funpred_def_term l) => [[[[m params] vs] il] |].
+  - apply (exist _ (m, params, vs, il)). apply find_funpred_def_term_some =>//.
+    by apply /inP.
+  - exfalso. destruct Hex as [m [params [vs [il Hterm]]]].
+    move: Hin => /inP Hin.
+    by apply (find_funpred_def_term_none l Hin Hfind m params vs il).
 Qed.
 
 End ContextCheck.

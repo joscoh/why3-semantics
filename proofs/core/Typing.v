@@ -1501,16 +1501,174 @@ Definition funpred_def_valid_type (fd: funpred_def) : Prop :=
   equal (say, equal to some list params)
   *)
 
-(*First, create list of fs and ps - do with tactics for now*)
-Definition funpred_defs_to_sns (l: list (funpred_def * nat))
-: (list fn * list pn) :=
-fold_right (fun x acc =>
-  match x with
-  | (fun_def f vs t, i) => (fundef_to_fn f vs t i :: fst acc, snd acc)
-  | (pred_def p vs f, i) => (fst acc, preddef_to_pn p vs f i :: snd acc)
-  end
-  ) (nil, nil) l.
+Definition separate_either {A B: Set} (l: list (Either A B)) :
+  list A * list B :=
+  fold_right (fun x acc =>
+    let tl := acc in
+    match x with
+    | Left y => (y :: fst tl, snd tl)
+    | Right y => (fst tl, y :: snd tl)
+    end) (nil, nil) l.
 
+Lemma separate_either_length {A B: Set} (l: list (Either A B)):
+  length (fst (separate_either l)) + length (snd (separate_either l)) =
+  length l.
+Proof.
+  induction l; simpl; auto; destruct a; simpl; lia.
+Qed.
+
+(*It will be more convenient to have our list as follows:
+  all fundefs, followed by all preddefs*)
+
+Definition split_funpred_defs (l: list funpred_def):
+  list (funsym * list vsymbol * term) *
+  list (predsym * list vsymbol * formula) :=
+  (fold_right (fun x acc =>
+    let tl := acc in
+    match x with
+    | fun_def f vs t => ((f, vs, t) :: fst tl, snd tl)
+    | pred_def p vs f => (fst tl, (p, vs, f) :: snd tl)
+    end) (nil, nil) l).
+
+Lemma split_funpred_defs_length l :
+  length (fst (split_funpred_defs l)) +
+  length (snd (split_funpred_defs l)) = length l.
+Proof.
+  induction l; simpl; auto; destruct a; simpl; lia.
+Qed.
+
+
+
+(*Definition sort_funpred_defs (l: list funpred_def) :
+list funpred_def :=
+  let t := split_funpred_defs l in
+  (map (fun x => fun_def (fst (fst x)) (fst (snd x)) (snd x))).
+  filter (fun x => match x with | fun_def _ _ _ => true | pred_def _ _ _ => false end) l
+  ++
+  filter (fun x => match x with | fun_def _ _ _ => false | pred_def _ _ _ => true end) l.
+
+Lemma sort_funpred_defs_in: forall l f,
+  In f (sort_funpred_defs l) <-> In f l.
+Proof.
+  intros. unfold sort_funpred_defs. rewrite in_app_iff.
+  destruct f; rewrite !in_filter; split; intros; destruct_all; auto.
+Qed.
+
+Lemma sort_funpred_defs_len: forall l,
+  length (sort_funpred_defs l) = length l.
+Proof.
+  induction l; simpl; auto.
+  unfold sort_funpred_defs in *; simpl; destruct a; simpl;
+  rewrite !app_length in *; simpl; lia.
+Qed. *)
+
+(*First, create list of fs and ps - do with tactics for now*)
+Definition funpred_defs_to_sns (l: list funpred_def) (li: list nat)
+: (list fn * list pn) :=
+let t := split_funpred_defs l in
+(map (fun x =>
+  fundef_to_fn (fst (fst (fst x))) (snd (fst (fst x))) (snd (fst x)) (snd x))
+  (combine (fst t) (firstn (length (fst t)) li)),
+map (fun x =>
+  preddef_to_pn (fst (fst (fst x))) (snd (fst (fst x))) (snd (fst x)) (snd x))
+  (combine (snd t) (skipn (length (fst t)) li))
+).
+
+Lemma funpred_defs_to_sns_length l is:
+  length l = length is ->
+  length (fst (funpred_defs_to_sns l is)) +
+  length (snd (funpred_defs_to_sns l is)) = length l.
+Proof.
+  intros. unfold funpred_defs_to_sns.
+  simpl. rewrite !map_length, !combine_length, !firstn_length, 
+  !skipn_length.
+  pose proof (split_funpred_defs_length l). lia.
+Qed.
+(*
+Require Import Coq.Sorting.Permutation.
+
+
+Lemma split_funpred_defs_perm (l: list funpred_def):
+  Permutation (map (fun x => f_sym (fst (fst x))) (fst (split_funpred_defs l)) ++
+  map (fun x => p_sym (fst (fst x))) (snd (split_funpred_defs l)))
+  (map funpred_sym l).
+Proof.
+  induction l as [| h t IH]; simpl; auto.
+  destruct h; simpl.
+  - apply Permutation_cons; auto.
+  - eapply Permutation_trans. apply Permutation_sym.
+    apply Permutation_middle. apply Permutation_cons; auto.
+Qed.*)
+
+Lemma map_fst_fst_fst_combine: forall {A B C D: Type} l1 l2,
+  length l1 = length l2 ->
+  map (fun (x : A * B * C * D) => fst (fst (fst x)))
+    (combine l1 l2) =
+  map (fun (x: A * B * C) => fst (fst x)) l1. 
+  intros. generalize dependent l2. induction l1; simpl; intros; auto;
+  destruct l2; simpl; auto; inversion H. rewrite IHl1; auto.
+Qed.
+
+(*Alt - produce the list*)
+
+
+(*We want the ith element of (map snd l) to be the ith sn_idx.
+  So we first create the fn and pn's, then separate them*)
+  (*
+let t := separate_either(
+map (fun x =>
+  match x with
+  | fun_def f vs t => Left _ _ (f, vs, t)
+  | pred_def p vs f => Right _ _ (p, vs, f)
+  end) l) in
+((map (fun (x: (funsym * list vsymbol * term) * nat) =>
+  fundef_to_fn (fst (fst (fst x)))
+    (snd (fst (fst x))) (snd (fst x)) (snd x)
+  )) (combine (fst t) li1),
+(map (fun (x: (predsym * list vsymbol * formula) * nat) =>
+  preddef_to_pn (fst (fst (fst x)))
+    (snd (fst (fst x))) (snd (fst x)) (snd x)
+  )) (combine (snd t) li2)).*)
+
+
+(*Lemma funpred_defs_to_sns_length: forall l li,
+  length (fst (funpred_defs_to_sns l li)) +
+  length (snd (funpred_defs_to_sns l li)) =
+  length l.
+Proof.
+  intros. unfold funpred_defs_to_sns. 
+  rewrite separate_either_length, map_length.
+  reflexivity.
+Qed.*)
+
+Definition sn_d : sn :=
+  (mk_sn id_sym [vs_d] 0).
+
+  (*NOTE: this is not true, we just add an i when we get one
+    We need the list to be ordered already for this to be
+    the case*)
+(*TODO*)
+(*
+Lemma funpred_defs_to_sns_idx: forall l i,
+  i < length l ->
+  sn_idx (nth i (map fn_sn (fst (funpred_defs_to_sns l)) ++
+    map pn_sn (snd (funpred_defs_to_sns l))) sn_d) =
+  nth i (map snd l) 0.
+Proof.
+  unfold funpred_defs_to_sns.
+  induction l as [| h t]; simpl; intros. lia. simpl.
+  destruct h as [shd ihd]. simpl. destruct shd; simpl; destruct i; simpl; auto.
+  - apply IHt. lia.
+  - destruct (fst (funpred_defs_to_sns t)) eqn : Hfs; simpl; auto.
+    specialize (IHt 0). destruct t. simpl in H.
+    simpl in IHt.
+    lia.
+
+  
+  simpl.
+  ->
+  *)
+(*
 Lemma funpred_def_to_sns_wf (l: list funpred_def) (is: list nat)
   (Hlen: length is = length l)
   (Hall: forall i, i < length is -> 
@@ -1536,7 +1694,7 @@ Proof.
     + specialize (Hall 0 ltac:(lia)). simpl in Hall.
       lia.
     + apply NoDup_map_inv in H4; auto.
-Qed.
+Qed.*)
 
 
 (*TODO: do without dependent, then prove wf with assumptions*)
@@ -1575,16 +1733,22 @@ Defined.*)
 (*It is crucial that this is a sigma type, NOT "exists",
   because in our function, we actually need to know
   which arguments terminate*)
-Definition funpred_def_term (l: list funpred_def) :=
-  exists (m: mut_adt) (params: list typevar) (vs: list vty)
-    (is: list nat),
-    let fs := fst (funpred_defs_to_sns (combine l is)) in
-    let ps := snd (funpred_defs_to_sns (combine l is)) in
+Definition funpred_def_term (l: list funpred_def)
+  (m: mut_adt) (params: list typevar) (vs: list vty)
+    (is: list nat) :=
+    l <> nil /\
+    let fs := fst (funpred_defs_to_sns l is) in
+    let ps := snd (funpred_defs_to_sns l is) in
     length vs = length (m_params m) /\
     mut_in_ctx m gamma /\
     length is = length l /\
     (forall i, i < length is -> 
-    nth i is 0 < length (s_args (funpred_sym (nth i l fd_d)))) /\
+    (*The ith element in is should give s_args of the ith elt
+      in the combined list*)
+    nth i is 0 < length (s_args (nth i 
+      (map (fun x => f_sym (fst (fst x))) (fst (split_funpred_defs l)) ++
+      map (fun x => p_sym (fst (fst x))) (snd (split_funpred_defs l)))
+    id_fs))) /\
     (*All functions recurse on ADT instance*)
     (forall f, In f fs -> 
       vty_in_m m vs (snd (nth (sn_idx f) (sn_args f) vs_d))) /\
@@ -1600,6 +1764,11 @@ Definition funpred_def_term (l: list funpred_def) :=
       (Some (nth (sn_idx f) (sn_args f) vs_d)) m vs (fn_body f)) fs /\
     Forall (fun (p: pn) => decrease_pred fs ps nil 
       (Some (nth (sn_idx p) (sn_args p) vs_d)) m vs (pn_body p)) ps.
+
+Definition funpred_def_term_exists (l: list funpred_def) :=
+  exists (m: mut_adt) (params: list typevar) (vs: list vty)
+  (is: list nat),
+  funpred_def_term l m params vs is.
 
  (* ive our termination condition*)
 (*
@@ -1639,7 +1808,7 @@ Definition funpred_def_term (l: list funpred_def)
 (*Note: this is NOT a Prop like the others - is this a problem?*)
 Definition funpred_valid_type (l: list funpred_def) :=
     ((Forall funpred_def_valid_type l) /\
-    funpred_def_term l).
+    funpred_def_term_exists l).
 
 (*Definition funpred_valid_type (l: list funpred_def) : Prop :=
   exists (Hl: Forall funpred_def_valid_type l),
@@ -1817,7 +1986,96 @@ Proof.
   auto.
 Qed. 
 
-Context {s: sig} {gamma: context} (gamma_valid: valid_context s gamma).
+(*First, prove lemmas about wf_contexts (not valid)*)
+Section WFContextLemmas.
+
+Context {s: sig} {gamma: context} (gamma_wf: wf_context s gamma).
+
+(*TODO: move*)
+Lemma adt_in_mut_alt {m: mut_adt} {a: alg_datatype}:
+  reflect (In (adt_name a, ne_list_to_list (adt_constrs a)) 
+  (datatypes_of_def (datatype_def m))) (adt_in_mut a m).
+Proof.
+  unfold adt_in_mut.
+  destruct m. simpl. induction typs; simpl.
+  - apply ReflectF; auto.
+  - apply ssrbool.orPP; auto. destruct a0; simpl in *.
+    destruct (adt_dec a (alg_def t n)) eqn : Hadteq; simpl.
+    + apply ReflectT. subst. simpl. reflexivity.
+    + apply ReflectF. intro Ht. inversion Ht; subst.
+      apply ne_list_list_inj in H1. subst.
+      destruct a; simpl in n0; contradiction.
+Qed.
+
+(*If m1 and m2 have an ADT name in common, they are equal*)
+Lemma mut_adts_inj {m1 m2: mut_adt} {a1 a2: alg_datatype}:
+  mut_in_ctx m1 gamma ->
+  mut_in_ctx m2 gamma ->
+  adt_in_mut a1 m1 ->
+  adt_in_mut a2 m2 ->
+  adt_name a1 = adt_name a2 ->
+  m1 = m2.
+Proof.
+  intros m_in1 m_in2 a_in1 a_in2 Heq.
+  destruct gamma_wf as [_ [_ [_ [_ [Hnodup _]]]]].
+  unfold typesyms_of_context, datatypes_of_context in Hnodup.
+  rewrite concat_map in Hnodup.
+  rewrite map_map in Hnodup.
+  rewrite NoDup_concat_iff in Hnodup.
+  destruct_all. clear H.
+  rewrite mut_in_ctx_eq2 in m_in1, m_in2.
+  destruct (In_nth _ _ (recursive_def nil) m_in1) as [i [Hi Hith]].
+  destruct (In_nth _ _ (recursive_def nil) m_in2) as [j [Hj Hjth]].
+  rewrite map_length in H0.
+  destruct (Nat.eq_dec i j). {
+    (*If i=j, easy*)
+    subst. rewrite Hith in Hjth.
+    inversion Hjth; auto.
+  }
+  specialize (H0 i j nil (adt_name a1) Hi Hj n).
+  exfalso. apply H0; clear H0.
+  rewrite !map_nth_inbound with(d2:=(recursive_def [])); auto.
+  rewrite Hith, Hjth.
+  split; rewrite in_map_iff;
+  [exists (adt_name a1, ne_list_to_list (adt_constrs a1))| 
+   exists (adt_name a2, ne_list_to_list (adt_constrs a2))]; 
+   split; auto; apply (ssrbool.elimT adt_in_mut_alt); auto.
+Qed.
+
+(*The syms in the [funpred_defs_to_sns] are unique*)
+Lemma funpred_defs_to_sns_NoDup (l: list funpred_def) il:
+  In l (mutfuns_of_context gamma) ->
+  length l = length il ->
+  NoDup (map fn_sym (fst (funpred_defs_to_sns l il))) /\
+  NoDup (map pn_sym (snd (funpred_defs_to_sns l il))).
+Proof.
+  unfold wf_context in gamma_wf.
+  intros Hlen.
+  destruct gamma_wf as [_ [_ [_ [_ [_ [Hwf1 Hwf2]]]]]].
+  intros.
+  unfold funsyms_of_context in Hwf1.
+  unfold predsyms_of_context in Hwf2.
+  unfold funpred_defs_to_sns; simpl; rewrite !map_map; simpl.
+  pose proof (split_funpred_defs_length l) as Hlenfstsnd.
+  rewrite !map_fst_fst_fst_combine; [| rewrite skipn_length | rewrite firstn_length]; try lia.
+  (*TODO maybe prove equal to filter or seomthing*)
+  rewrite !NoDup_concat_iff in Hwf1.
+  rewrite !NoDup_concat_iff in Hwf2.
+  destruct Hwf1 as [Hwf1 _ ].
+  destruct Hwf2 as [Hwf2 _].
+  assert (Hin: In (recursive_def l) gamma). {
+    unfold mutfuns_of_context in Hlen. clear -Hlen.
+    induction gamma; simpl. inversion Hlen.
+    simpl in Hlen. destruct a; simpl in *; auto.
+    destruct Hlen; subst; auto.
+  }
+  split; [apply Hwf1 | apply Hwf2]; rewrite in_map_iff;
+  exists (recursive_def l); split; auto; simpl; clear;
+  induction l; simpl; auto; destruct a; simpl; auto;
+  rewrite IHl; reflexivity.
+Qed.
+
+End WFContextLemmas.
 
 Section ValidContextLemmas.
 
@@ -2274,57 +2532,8 @@ Proof.
   rewrite Forall_forall in Hsig. apply Hsig. right; auto.
 Qed. 
 
-Lemma adt_in_mut_alt {m: mut_adt} {a: alg_datatype}:
-  reflect (In (adt_name a, ne_list_to_list (adt_constrs a)) 
-  (datatypes_of_def (datatype_def m))) (adt_in_mut a m).
-Proof.
-  unfold adt_in_mut.
-  destruct m. simpl. induction typs; simpl.
-  - apply ReflectF; auto.
-  - apply ssrbool.orPP; auto. destruct a0; simpl in *.
-    destruct (adt_dec a (alg_def t n)) eqn : Hadteq; simpl.
-    + apply ReflectT. subst. simpl. reflexivity.
-    + apply ReflectF. intro Ht. inversion Ht; subst.
-      apply ne_list_list_inj in H1. subst.
-      destruct a; simpl in n0; contradiction.
-Qed.
 
-(*If m1 and m2 have an ADT name in common, they are equal*)
-Lemma mut_adts_inj {m1 m2: mut_adt} {a1 a2: alg_datatype}:
-  mut_in_ctx m1 gamma ->
-  mut_in_ctx m2 gamma ->
-  adt_in_mut a1 m1 ->
-  adt_in_mut a2 m2 ->
-  adt_name a1 = adt_name a2 ->
-  m1 = m2.
-Proof.
-  intros m_in1 m_in2 a_in1 a_in2 Heq.
-  destruct gamma_valid as [Hwf _].
-  unfold wf_context in Hwf.
-  destruct Hwf as [_ [_ [_ [_ [Hnodup _]]]]].
-  unfold typesyms_of_context, datatypes_of_context in Hnodup.
-  rewrite concat_map in Hnodup.
-  rewrite map_map in Hnodup.
-  rewrite NoDup_concat_iff in Hnodup.
-  destruct_all. clear H.
-  rewrite mut_in_ctx_eq2 in m_in1, m_in2.
-  destruct (In_nth _ _ (recursive_def nil) m_in1) as [i [Hi Hith]].
-  destruct (In_nth _ _ (recursive_def nil) m_in2) as [j [Hj Hjth]].
-  rewrite map_length in H0.
-  destruct (Nat.eq_dec i j). {
-    (*If i=j, easy*)
-    subst. rewrite Hith in Hjth.
-    inversion Hjth; auto.
-  }
-  specialize (H0 i j nil (adt_name a1) Hi Hj n).
-  exfalso. apply H0; clear H0.
-  rewrite !map_nth_inbound with(d2:=(recursive_def [])); auto.
-  rewrite Hith, Hjth.
-  split; rewrite in_map_iff;
-  [exists (adt_name a1, ne_list_to_list (adt_constrs a1))| 
-   exists (adt_name a2, ne_list_to_list (adt_constrs a2))]; 
-   split; auto; apply (ssrbool.elimT adt_in_mut_alt); auto.
-Qed.
+
 
 (*TODO: have similar lemma in IndTypes but for finite version*)
 Lemma adt_names_inj' {a1 a2: alg_datatype} {m: mut_adt}:
@@ -2481,11 +2690,11 @@ Proof.
   destruct (is_vty_adt ty); simpl; split; auto; discriminate.
 Qed.
 
-Lemma is_vty_adt_some (ty: vty) m a vs:
+Lemma is_vty_adt_some {ty: vty} {m a vs}:
   is_vty_adt ty = Some (m, a, vs) ->
-  mut_in_ctx m gamma /\
+  ty = vty_cons (adt_name a) vs /\
   adt_in_mut a m /\
-  ty = vty_cons (adt_name a) vs.
+  mut_in_ctx m gamma.
 Proof.
   unfold is_vty_adt; intros.
   destruct ty; try discriminate.
@@ -2686,7 +2895,7 @@ Definition l_var : vsymbol := ("l"%string, tree_ty).
 Definition r_var : vsymbol := ("r"%string, tree_ty).
 
 Definition size_args : list vsymbol := [size_arg].
-Print pattern.
+
 (*This is:
   match t with
   | Leaf => tm_d

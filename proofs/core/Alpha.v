@@ -775,10 +775,10 @@ Proof.
     rewrite !match_val_single_rewrite. cbn zeta. 
     (*The hard case: need lots of generalization for dependent types
     and need nested induction*) 
-    generalize dependent (@is_vty_adt_spec _ _ gamma_valid ty).
+    generalize dependent (@is_vty_adt_some gamma ty).
     generalize dependent (@adt_vty_length_eq _ _ gamma_valid ty).
     generalize dependent (@constr_length_eq _ _ gamma_valid ty).
-    destruct (is_vty_adt ty) eqn : Hisadt; [|reflexivity].
+    destruct (is_vty_adt gamma ty) eqn : Hisadt; [|reflexivity].
     intros Hvslen1 Hvslen2 Hadtspec.
     destruct p as [[m adt] vs2].
     destruct (Hadtspec m adt vs2 eq_refl)
@@ -1063,10 +1063,10 @@ Proof.
     rewrite !match_val_single_rewrite; cbn zeta.
     (*The hard case: need lots of generalization for dependent types
     and need nested induction*) 
-    generalize dependent (@is_vty_adt_spec _ _ gamma_valid ty).
+    generalize dependent (@is_vty_adt_some gamma ty).
     generalize dependent (@adt_vty_length_eq _ _ gamma_valid ty).
     generalize dependent (@constr_length_eq _ _ gamma_valid ty).
-    destruct (is_vty_adt ty) eqn : Hisadt; [|discriminate].
+    destruct (is_vty_adt gamma ty) eqn : Hisadt; [|discriminate].
     intros Hvslen1 Hvslen2 Hadtspec.
     destruct p as [[m adt] vs2].
     destruct (Hadtspec m adt vs2 eq_refl)
