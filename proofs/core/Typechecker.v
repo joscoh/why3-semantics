@@ -907,13 +907,11 @@ Definition check_funpred_def_valid_type (fd: funpred_def) : bool :=
   | fun_def f vars t =>
     check_well_typed_tm t (f_ret f) &&
     sublistb (term_fv t) vars &&
-    (length vars == length (s_args f)) &&
     uniq (map fst vars) &&
     (map snd vars == s_args f)
   | pred_def p vars f =>
     check_well_typed_fmla f &&
     sublistb (form_fv f) vars &&
-    (length vars == length (s_args p)) &&
     uniq (map fst vars) &&
     (map snd vars == s_args p)
   end.
@@ -924,16 +922,14 @@ Lemma check_funpred_def_valid_type_spec (fd: funpred_def):
 Proof.
   rewrite /funpred_def_valid_type/check_funpred_def_valid_type.
   case: fd => [f vars t | p vars f].
-  - rewrite -andbA -andbA -andbA. repeat (apply andPP; [|apply andPP]).
+  - rewrite -andbA -andbA. repeat (apply andPP; [|apply andPP; [| apply andPP]]).
     + apply check_well_typed_tm_spec.
     + apply sublistbP.
-    + apply eqP.
     + apply uniqP.
     + apply eqP.
-  - rewrite -andbA -andbA -andbA. repeat (apply andPP; [|apply andPP]).
+  - rewrite -andbA -andbA. repeat (apply andPP; [|apply andPP; [| apply andPP]]).
     + apply check_well_typed_fmla_spec.
     + apply sublistbP.
-    + apply eqP.
     + apply uniqP.
     + apply eqP.
 Qed.
@@ -2172,9 +2168,6 @@ Proof.
   - rewrite min_r //. lia.
 Qed.*)
 
-(*This is not great*)
-Definition id_ps : predsym :=
-  Build_predsym id_sym.
 
   (*Need a bunch of size results*)
 Lemma size_split_funpred_defs_fst l (il: list nat):
@@ -2355,6 +2348,8 @@ Proof.
   - rewrite Forall_forall => x /inP. rewrite nth_eq. by apply Hdecf.
   - rewrite Forall_forall => x /inP. rewrite nth_eq. by apply Hdecp.
 Qed.
+
+Check nth_take.
 
 (*For the converse, we show that if this function gives None,
   [funpred_def_term gamma l m params vs il] is always false*)

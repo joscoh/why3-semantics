@@ -1105,7 +1105,8 @@ Record sn := mk_sn {sn_sym: fpsym; sn_args: list vsymbol;
 Definition sn_wf (s: sn): Prop :=
   sn_idx s < length (sn_args s) /\
   length (sn_args s) = length (s_args (sn_sym s)) /\
-  NoDup (sn_args s).
+  NoDup (sn_args s) /\
+  map snd (sn_args s) = s_args (sn_sym s).
 
 Record fn := mk_fn {fn_sym: funsym; fn_sn : sn;
   fn_body: term; (*fn_wf: f_sym fn_sym = sn_sym fn_sn*)}.
@@ -1402,11 +1403,13 @@ Definition fundef_to_fn (f: funsym) (vars: list vsymbol) (t: term)
 
 Lemma fundef_fn_wf (f: funsym) (vars: list vsymbol) (t: term)
   (i: nat) (Hi: i < length (s_args f)) (Hn: NoDup vars)
-  (Hlen: length vars = length (s_args f)) :
+  (Hargs: map snd vars = s_args f) :
   fn_wf (fundef_to_fn f vars t i).
 Proof.
+  assert (length vars = length (s_args f)) by
+    (rewrite <- Hargs, map_length; auto).
   unfold fn_wf. split; auto.
-  unfold sn_wf. split; auto.
+  unfold sn_wf. repeat (split; auto).
   simpl. lia.
 Qed.
 
@@ -1425,9 +1428,11 @@ Definition preddef_to_pn (p: predsym) (vars: list vsymbol) (f: formula)
 
 Lemma preddef_pn_wf (p: predsym) (vars: list vsymbol) (f: formula)
   (i: nat) (Hi: i < length (s_args p)) (Hn: NoDup vars) 
-  (Hlen: length vars = length (s_args p)) : 
+  (Hargs: map snd vars = s_args p) : 
   pn_wf (preddef_to_pn p vars f i).
 Proof.
+  assert (length vars = length (s_args p)) by
+    (rewrite <- Hargs, map_length; auto).
   unfold pn_wf. split; auto.
   unfold sn_wf. split; auto.
   simpl; lia.
@@ -1475,13 +1480,11 @@ Definition funpred_def_valid_type (fd: funpred_def) : Prop :=
   | fun_def f vars t =>
     well_typed_term s gamma t (f_ret f) /\
     sublist (term_fv t) vars /\
-    length vars = length (s_args f)  /\
     NoDup (map fst vars) /\
     map snd vars = s_args f (*types of args correct*)
   | pred_def p vars f =>
     well_typed_formula s gamma f /\
     sublist (form_fv f) vars /\
-    length vars = length (s_args p) /\
     NoDup (map fst vars) /\
     map snd vars = s_args p (*types of args correct*)
 
@@ -1668,33 +1671,194 @@ Proof.
   simpl.
   ->
   *)
-(*
+
+Fixpoint filterMap {A B: Type} (f: A -> bool) (g: {x: A | f x} -> B) (l: list A):
+  list B :=
+  match l with
+  | nil => nil
+  | x :: t =>
+    match f x as b return f x = b -> list B with
+    | true => fun Hfa => (g (exist _ _ Hfa)) :: filterMap f g t
+    | false => fun _ => filterMap f g t
+    end eq_refl
+  end.
+
+(*Print split_funpred_defs.
+Lemma split_funpred_defs_filter l:
+  split_funpred_defs l =
+  fold_right (fun x => match x wit)
+
+  (map (fun x =>
+    match ))*)
+
+(*TODO: just use ssreflect?*)
+Lemma firstn_nth {A: Type} (n: nat) (l: list A) (i: nat) (x: A):
+  i < n ->
+  nth i (firstn n l) x = nth i l x.
+Proof.
+  revert i l. induction n; simpl; intros; try lia.
+  destruct l; auto; simpl.
+  destruct i; auto. apply (IHn i l (ltac:(lia))).
+Qed.
+
+Lemma skipn_nth {A: Type} (n: nat) (l: list A) (i: nat) (x: A):
+  nth i (skipn n l) x = nth (n + i) l x.
+Proof.
+  revert i l. induction n; simpl; intros; auto.
+  destruct l; auto; simpl;
+  destruct i; auto.
+Qed.
+
+(*What about this?*)
+Lemma funpred_defs_to_sns_in_fst (l: list funpred_def) (is: list nat) (x: fn):
+  length l = length is ->
+  In x (fst (funpred_defs_to_sns l is)) <->
+  exists i,
+    i < length (fst (split_funpred_defs l)) /\
+    let y := (nth i (fst (split_funpred_defs l)) (id_fs, nil, tm_d)) in 
+    x = fundef_to_fn (fst (fst y)) (snd (fst y)) (snd y)
+    (nth i is 0).
+Proof. 
+  intros Hlen.
+  pose proof (split_funpred_defs_length l) as Hlen'.
+  unfold funpred_defs_to_sns; simpl.
+  rewrite in_map_iff. split; intros.
+  - destruct H as [y [Hx Hiny]]; subst.
+    rewrite in_combine_iff in Hiny.
+    destruct Hiny as [i [Hi Hy]].
+    exists i. split; auto.
+    specialize (Hy (id_fs, nil, tm_d) 0). subst. simpl. f_equal.
+    (*Ugh, need firstn nth*)
+    rewrite firstn_nth; auto.
+    rewrite firstn_length, <- Hlen. lia.
+  - destruct H as [i [Hi Hx]]. subst.
+    exists (nth i (fst (split_funpred_defs l)) (id_fs, nil, tm_d), nth i is 0).
+    split; auto.
+    rewrite in_combine_iff. exists i.
+    split; auto. intros.
+    rewrite firstn_nth; auto.
+    (*need nth firstn again*)
+    f_equal; apply nth_indep; auto.
+    rewrite <- Hlen. lia.
+    rewrite firstn_length, <- Hlen. lia.
+Qed.
+
+(*This is not great*)
+Definition id_ps : predsym :=
+  Build_predsym id_sym.
+
+Lemma funpred_defs_to_sns_in_snd (l: list funpred_def) (is: list nat) 
+  (x: pn):
+  length l = length is ->
+  In x (snd (funpred_defs_to_sns l is)) <->
+  exists i,
+    i < length (snd (split_funpred_defs l)) /\
+    let y := (nth i (snd (split_funpred_defs l)) (id_ps, nil, Ftrue)) in 
+    x = preddef_to_pn (fst (fst y)) (snd (fst y)) (snd y)
+    (nth ((length (fst (funpred_defs_to_sns l is))) + i) is 0).
+Proof. 
+  intros Hlen.
+  pose proof (split_funpred_defs_length l) as Hlen'.
+  unfold funpred_defs_to_sns; simpl.
+  rewrite in_map_iff. split; intros.
+  - destruct H as [y [Hx Hiny]]; subst.
+    rewrite in_combine_iff in Hiny.
+    destruct Hiny as [i [Hi Hy]].
+    exists i. split; auto.
+    specialize (Hy (id_ps, nil, Ftrue) 0). subst. simpl. f_equal.
+    rewrite map_length, combine_length.
+    + rewrite skipn_nth. f_equal. f_equal.
+      rewrite firstn_length. lia.
+    + rewrite skipn_length. lia.
+  - destruct H as [i [Hi Hx]]. subst.
+    exists (nth i (snd (split_funpred_defs l)) (id_ps, nil, Ftrue), 
+      nth (length (fst (split_funpred_defs l)) + i) is 0).
+    split; simpl; auto.
+    + f_equal. rewrite map_length, combine_length, firstn_length.
+      f_equal. lia.
+    + rewrite in_combine_iff. exists i.
+      split; auto. intros.
+      rewrite skipn_nth; auto.
+      (*need nth firstn again*)
+      f_equal; apply nth_indep; auto. lia.
+      rewrite skipn_length, <- Hlen. lia.
+Qed.
+
+Lemma split_funpred_defs_in_l (l: list funpred_def):
+  (forall x, In x (fst (split_funpred_defs l)) <->
+    In (fun_def (fst (fst x)) (snd (fst x)) (snd x)) l) /\
+  (forall x, In x (snd (split_funpred_defs l)) <->
+    In (pred_def (fst (fst x)) (snd (fst x)) (snd x)) l).
+Proof.
+  induction l; simpl; split; intros; try reflexivity.
+  - destruct a; simpl; split; intros; destruct_all; auto;
+    try solve[right; apply H0; auto]; try solve[apply H0; auto];
+    try discriminate.
+    inversion H; subst. left. destruct x. destruct p. reflexivity.
+  - destruct a; simpl; split; intros; destruct_all; auto;
+    try solve[right; apply H1; auto]; try solve[apply H1; auto];
+    try discriminate.
+    inversion H; subst. left. destruct x. destruct p. reflexivity.
+Qed.
+
+
 Lemma funpred_def_to_sns_wf (l: list funpred_def) (is: list nat)
   (Hlen: length is = length l)
   (Hall: forall i, i < length is -> 
-    nth i is 0 < length (s_args (funpred_sym (nth i l fd_d))))
+    nth i is 0 < length (s_args (nth i 
+      (map (fun x => f_sym (fst (fst x))) (fst (split_funpred_defs l)) ++
+       map (fun x => p_sym (fst (fst x))) (snd (split_funpred_defs l)))
+      id_fs)))
   (Hl: Forall funpred_def_valid_type l):
-  Forall fn_wf (fst (funpred_defs_to_sns (combine l is))) /\
-  Forall pn_wf (snd (funpred_defs_to_sns (combine l is))).
+  Forall fn_wf (fst (funpred_defs_to_sns l is)) /\
+  Forall pn_wf (snd (funpred_defs_to_sns l is)).
 Proof.
-  generalize dependent is. induction l; simpl; intros;
-  destruct is; inversion Hlen; auto.
-  simpl.
-  inversion Hl; subst.
-  destruct a; simpl; split; try constructor; try (apply IHl; auto);
-  try (intros i Hi; apply (Hall (S i) ltac:(lia)));
-  constructor; auto.
-  - unfold funpred_def_valid_type in H2. destruct_all.
+  pose proof (split_funpred_defs_length l) as Hlen'.
+  split.
+  - rewrite Forall_forall.
+    intros f.
+    rewrite Forall_forall in Hl.
+    rewrite funpred_defs_to_sns_in_fst; auto.
+    intros [i [Hi Hf]]. rewrite Hf.
+    set (y:=nth i (fst (split_funpred_defs l)) (id_fs, [], tm_d)) in *.
+    simpl in Hf. 
+    assert (Hinl: In (fun_def (fst (fst y)) (snd (fst y)) (snd y)) l). {
+      apply split_funpred_defs_in_l. subst y. apply nth_In. auto.
+    }
+    specialize (Hl _ Hinl). simpl in Hl.
+    destruct_all.
     apply fundef_fn_wf; auto.
-    + specialize (Hall 0 ltac:(lia)). simpl in Hall.
-      lia.
-    + apply NoDup_map_inv in H4; auto.
-  - unfold funpred_def_valid_type in H2. destruct_all.
+    + specialize (Hall i ltac:(lia)).
+      revert Hall. rewrite app_nth1 by (rewrite map_length; auto).
+      rewrite map_nth_inbound with (d2:=(id_fs, nil, tm_d)); auto.
+    + apply NoDup_map_inv in H1; auto.
+  - (*Very similar*)
+    rewrite Forall_forall.
+    intros p.
+    rewrite Forall_forall in Hl.
+    rewrite funpred_defs_to_sns_in_snd; auto.
+    intros [i [Hi Hp]]. rewrite Hp.
+    set (y:= nth i (snd (split_funpred_defs l)) (id_ps, [], Ftrue)) in *.
+    simpl in Hp.
+    assert (Hinl: In (pred_def (fst (fst y)) (snd (fst y)) (snd y)) l). {
+      apply split_funpred_defs_in_l. subst y. apply nth_In. auto.
+    }
+    specialize (Hl _ Hinl). simpl in Hl.
+    destruct_all.
     apply preddef_pn_wf; auto.
-    + specialize (Hall 0 ltac:(lia)). simpl in Hall.
-      lia.
-    + apply NoDup_map_inv in H4; auto.
-Qed.*)
+    + specialize (Hall (length (fst (split_funpred_defs l)) + i) ltac:(lia)).
+      revert Hall. rewrite app_nth2 by (rewrite map_length; lia).
+      rewrite map_length.
+      replace (length (fst (split_funpred_defs l)) + i -
+        length (fst (split_funpred_defs l))) with i by lia.
+      rewrite map_nth_inbound with (d2:=(id_ps, nil, Ftrue)); auto.
+      subst y; simpl. rewrite map_length.
+      replace (length (combine (fst (split_funpred_defs l))
+      (firstn (Datatypes.length (fst (split_funpred_defs l))) is)))
+      with (length (fst (split_funpred_defs l))); auto.
+      rewrite combine_length, firstn_length. lia.
+    + apply (NoDup_map_inv) in H1. auto.
+Qed.
 
 
 (*TODO: do without dependent, then prove wf with assumptions*)
@@ -1956,7 +2120,7 @@ Definition valid_context (s : sig) (gamma: context) : Prop :=
                            adt_positive gamma (typs m) /\
                            valid_mut_rec m
     | recursive_def fs => (*awful hack that won't work, TODO fix*) 
-                          exists (H : funpred_valid_type s gamma fs), True
+                          funpred_valid_type s gamma fs
     | inductive_def is => Forall (indprop_valid_type s gamma) is /\
                           indpred_positive is
     end) gamma.
@@ -2560,6 +2724,34 @@ Proof.
   unfold adt_inhab in H1.
   valid_context_tac. simpl.
 Qed.*)
+
+(*Stuff for recursive functions*)
+
+Lemma in_mutfuns_spec: forall l gamma',
+  In l (mutfuns_of_context gamma') <-> In (recursive_def l) gamma'.
+Proof.
+  intros. induction gamma'; simpl; intros; [split; auto |].
+  destruct a; simpl.
+  - split; intros; [apply IHgamma' in H; auto| 
+      destruct_all; try discriminate; apply IHgamma'; auto].
+  - split; intros; destruct_all; subst; auto; [apply IHgamma' in H; auto| 
+      destruct_all; try discriminate; inversion H; auto |
+      right; apply IHgamma'; auto].
+  - split; intros; [apply IHgamma' in H; auto| 
+      destruct_all; try discriminate; apply IHgamma'; auto].
+Qed.
+
+Lemma all_funpred_def_valid_type l:
+  In l (mutfuns_of_context gamma) ->
+  Forall (funpred_def_valid_type s gamma) l.
+Proof.
+  intros. unfold valid_context in gamma_valid.
+  destruct gamma_valid as [_ Hall].
+  rewrite in_mutfuns_spec in H.
+  rewrite Forall_forall in Hall.
+  specialize (Hall _ H). simpl in Hall.
+  apply Hall.
+Qed. 
 
 End ValidContextLemmas.
 
