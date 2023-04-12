@@ -4602,8 +4602,6 @@ Admitted.*)
 
 (*TODO: term_rep should be with *)
 
-Print val_with_args.
-
 (*TODO: move*)
 Lemma val_with_args_cast_eq (vv': val_vars pd vt) (l1 l2: list vsymbol)
   (s1 s2: list sort) (Heq: s1 = s2) (a1: arg_list domain s1):
@@ -5322,6 +5320,101 @@ Proof.
   left; auto. destruct a; simpl; try right; auto.
 Qed.
 
+Lemma pred_in_mutfun {p args body l}:
+In (pred_def p args body) l->
+predsym_in_mutfun p l.
+Proof.
+  intros. apply In_in_bool. simpl.
+  induction l; simpl; destruct H; subst; auto.
+  left; auto. destruct a; simpl; try right; auto.
+Qed.
+
+Lemma f_body_type {l: list funpred_def}
+  (l_in: In l (mutfuns_of_context gamma))
+  {f: funsym} {args: list vsymbol} {body: term}
+  (f_in: In (fun_def f args body) l):
+  term_has_type sigma body (f_ret f).
+Proof.
+  destruct gamma_valid as [_ Hval].
+  rewrite Forall_forall in Hval.
+  apply in_mutfuns_spec in l_in.
+  specialize (Hval _ l_in). simpl in Hval.
+  unfold funpred_valid_type in Hval.
+  destruct Hval as [Hall _].
+  rewrite Forall_forall in Hall.
+  specialize (Hall _ f_in).
+  simpl in Hall.
+  destruct Hall as [Hty _]. apply Hty.
+Qed.
+
+Lemma p_body_type {l: list funpred_def}
+  (l_in: In l (mutfuns_of_context gamma))
+  {p: predsym} {args: list vsymbol} {body: formula}
+  (p_in: In (pred_def p args body) l):
+  valid_formula sigma body.
+Proof.
+  destruct gamma_valid as [_ Hval].
+  rewrite Forall_forall in Hval.
+  apply in_mutfuns_spec in l_in.
+  specialize (Hval _ l_in). simpl in Hval.
+  unfold funpred_valid_type in Hval.
+  destruct Hval as [Hall _].
+  rewrite Forall_forall in Hall.
+  specialize (Hall _ p_in).
+  simpl in Hall.
+  destruct Hall as [Hty _]. apply Hty.
+Qed.
+
+Lemma vt_with_args_cast vt params srts ty:
+  (forall x, In x (type_vars ty) -> In x params) ->
+  NoDup params ->
+  length srts = length params ->
+  v_subst (vt_with_args vt params srts) ty =
+  ty_subst_s params srts ty.
+Proof.
+  intros. apply v_ty_subst_eq; auto.
+  intros. apply vt_with_args_nth; auto.
+Qed.
+
+Lemma recfun_in_funsyms {f: funsym} {l: list funpred_def}
+  (l_in: In l (mutfuns_of_context gamma))
+  (f_in: funsym_in_mutfun f l):
+  In f (funsyms_of_context gamma).
+Proof.
+  unfold funsyms_of_context. rewrite in_concat.
+  exists (funsyms_of_def (recursive_def l)).
+  split. rewrite in_map_iff. exists (recursive_def l).
+  split; auto. apply in_mutfuns_spec in l_in; auto.
+  apply in_bool_In in f_in. auto.
+Qed.
+
+(*NOTE: really could just require f in funsyms_of_context gamma*)
+Lemma funs_cast vt {f: funsym} {srts}
+  (f_in: In f (funsyms_of_context gamma)):
+  length srts = length (s_params f) ->
+  v_subst (vt_with_args vt (s_params f) srts) (f_ret f) = 
+  funsym_sigma_ret f srts.
+Proof.
+  intros.
+  unfold funsym_sigma_ret.
+  apply vt_with_args_cast; auto.
+  2: apply s_params_Nodup.
+  destruct gamma_valid as [Hwf _].
+  destruct Hwf as [Hwf [_ [Hfin _]]].
+  rewrite Forall_forall in Hfin.
+  specialize (Hfin _ f_in).
+  destruct Hwf as [Hwff _].
+  rewrite Forall_forall in Hwff.
+  specialize (Hwff _ Hfin). rewrite Forall_forall in Hwff.
+  specialize (Hwff (f_ret f) (ltac:(simpl; auto))).
+  destruct Hwff as [_ Hall].
+  rewrite Forall_forall in Hall. apply Hall.
+Qed.
+
+  
+  (*TODO: separate lemma? This is what
+    allows us to*)
+
 (*Now, we can state our spec:*)
 Theorem funs_rep_spec (pf: pi_funpred gamma_valid pd)
   (l: list funpred_def)
@@ -5332,6 +5425,8 @@ Theorem funs_rep_spec (pf: pi_funpred gamma_valid pd)
   (a: arg_list domain (sym_sigma_args f srts))
   (vt: val_typevar) (vv: val_vars pd vt),
   funs_rep pf f l (fun_in_mutfun f_in) l_in srts srts_len a =
+  (*We need a cast because we change [val_typevar]*)
+  dom_cast _ (funs_cast vt (recfun_in_funsyms l_in (fun_in_mutfun f_in)) srts_len) (
   (*The function is the same as evaluating the body*)
   term_rep gamma_valid pd all_unif 
   (*Setting the function params to srts*)
@@ -5342,144 +5437,33 @@ Theorem funs_rep_spec (pf: pi_funpred gamma_valid pd)
   (val_with_args (upd_vv_args vt vv (s_params f) srts (eq_sym srts_len)
     (s_params_Nodup _)) args a)
   (*Evaluating the function body*)
-  body (f_ret f).
-  (*Problem - we have changed the domain*)
-  (*TODO*)
-
-
-  generalize dependent (@eq_refl bool (funsym_in_mutfun c l)).
-  destruct (funsym_in_mutfun c l) eqn : Hfun.
-  
-  
-  funs_rep pd l 
-
-
-  (f: funsym) (l: list funpred_def)
-  (f_in: funsym_in_mutfun f l)
-  (l_in: In l (mutfuns_of_context gamma))
-  (srts: list sort)
-  (srts_len: length srts = length (s_params f))
-  (a: arg_list domain (sym_sigma_args f srts)):
-  domain (funsym_sigma_ret f srts).
-
+  body (f_ret f) (f_body_type l_in f_in)).
 Proof.
+Admitted.
 
-
-Theorem 
-
-(*Now we need to prove the theorems for each:
-
-
-  1. *)
-
-
-
-
-(*What we want to prove
-1. For all mutual function defs and all funsyms and predsyms
-  in these, this interpretation maps f srts a to
-  the term_rep and p to the formula_rep (we also prove that)
-2. For all other functions and predicates, the result is the same*)
-Lemma pf_with_funrep_funs: forall (l: list funpred_def)
-  (Hinl: In l (mutfuns_of_context gamma))
-  (srts: list sort),
-  (forall (f: funsym) (Hf:funsym_in_mutfun f l)
-    (srts_len: length srts = length (s_params f))
-    (a: arg_list domain (sym_sigma_args (fn_sym f) srts)):
-    funs gamma_valid pd (pf_with_funrep)
-
-
-Variable pf_funs: forall (f: fn) (f_in: In f fs)
-  (srts: list sort)
-  (srts_len: length srts = length params)
-  (vt_eq_srts: vt_eq srts)
-  (a: arg_list domain (sym_sigma_args (fn_sym f) srts)),
-  (*Unfortunately, we need to cast a*)
-  funs gamma_valid pd pf (fn_sym f) srts a =
-  funs_rep_aux f f_in srts srts_len vt_eq_srts 
-    (cast_arg_list (f_equal (fun x => (sym_sigma_args x srts)) (fn_wf f)) a).
-
-Variable pf_preds: forall (p: pn) (p_in: In p ps)
-(srts: list sort)
-(srts_len: length srts = length params)
-(vt_eq_srts: vt_eq srts)
-(a: arg_list domain (sym_sigma_args (pn_sym p) srts)),
-(*Unfortunately, we need to cast a*)
-preds gamma_valid pd pf (pn_sym p) srts a =
-preds_rep_aux p p_in srts srts_len vt_eq_srts 
-  (cast_arg_list (f_equal (fun x => (sym_sigma_args x srts)) (pn_wf p)) a).
-
-
-
-
-
-
-
-(*TODO: cannot make bool bc we don't have decidable equality on terms
-  unless we use all_dec - do we need it?*)
-Definition mutfun_in_ctx (l: list funpred_def) (gamma': ctx) : Prop :=
-  in_bool
-
-
-Check pi_funpred.
-
-
-V
-
-
-
-Check gamma.
-Check fs.
-Check fs_uniq.
-End A.
-
-End A.
-
-
-
-Theorem funpred_rep_aux_eq:
-  (forall (f: fn) (f_in: In f fs) (srts: list sort)
-    (srts_len: length srts = length params)
-    (vt_eq_srts: vt_eq srts)
-    (a: arg_list domain (sym_sigma_args (fn_sym f) srts)),
-    funs gamma_valid pd pf (fn_sym f) srts a =
-    (*Unfortunately, we need a cast here because
-      val (f_ret f) is not definitionally equal to
-      funsym_sigma_ret f srts*)
-    dom_cast _ (fn_ret_cast_eq f f_in srts a srts_len vt_eq_srts) 
-    (
-    term_rep gamma_valid pd all_unif vt pf
-      (*OK to use triv_val_vars here, later we will show equiv*)
-      (val_with_args vv (sn_args f) a)
-       (fn_body f) _
-       (Forall_In fs_typed f_in))) /\
-  (forall (p: pn) (p_in: In p ps) (srts: list sort)
-    (srts_len: length srts = length params)
-    (vt_eq_srts: vt_eq srts)
-    (a: arg_list domain (sym_sigma_args (pn_sym p) srts)),
-    preds gamma_valid pd pf (pn_sym p) srts a =
-    formula_rep gamma_valid pd all_unif vt pf
-      (*OK to use triv_val_vars here, later we will show equiv*)
-      (val_with_args vv (sn_args p) a)
-      (pn_body p)
-      (Forall_In ps_typed p_in)).
+(*The pred spec is easier, we don't need a cast*)
+Theorem preds_rep_spec (pf: pi_funpred gamma_valid pd)
+  (l: list funpred_def)
+  (l_in: In l (mutfuns_of_context gamma)):
+  forall (p: predsym) (args: list vsymbol) (body: formula)
+  (p_in: In (pred_def p args body) l)
+  (srts: list sort) (srts_len: length srts = length (s_params p))
+  (a: arg_list domain (sym_sigma_args p srts))
+  (vt: val_typevar) (vv: val_vars pd vt),
+  preds_rep pf p l (pred_in_mutfun p_in) l_in srts srts_len a =
+  (*The function is the same as evaluating the body*)
+  formula_rep gamma_valid pd all_unif 
+  (*Setting the function params to srts*)
+  (vt_with_args vt (s_params p) srts)
+  (*And recursively using [funs_rep] and [preds_rep]*)
+  (funpred_with_reps pf l l_in)
+  (*And setting the function arguments to a*)
+  (val_with_args (upd_vv_args vt vv (s_params p) srts (eq_sym srts_len)
+    (s_params_Nodup _)) args a)
+  (*Evaluating the function body*)
+  body (p_body_type l_in p_in).
 Proof.
-  (*First, see what happens for 1 side - need well-founded recursion*)
+Admitted.
 
 
-  .
-
-
-
-
-
-End FunDef.
-
-Check funcs_rep_aux.
-
-
-
-(*TODO: move these to Interp*)
-
-
-
+End Full.
