@@ -1468,6 +1468,53 @@ Definition fd_d : funpred_def :=
   component is well-typed and well-formed, then do the termination
   checking*)
 
+(*TODO: move*)
+Check type_vars.
+
+Section GetTypeVars.
+
+Notation union := (union typevar_eq_dec).
+Notation big_union := (big_union typevar_eq_dec).
+
+Definition pat_type_vars (p: pattern) : list typevar :=
+  big_union type_vars (map snd (pat_fv p)).
+
+(*First, axiomatize*)
+Definition tm_type_vars (t: term) : list typevar.
+Admitted.
+
+Definition fmla_type_vars (f: formula) : list typevar.
+Admitted.
+(*
+Fixpoint tm_type_vars (t: term) : list typevar :=
+  match t with
+  | Tvar x => type_vars (snd x)
+  | Tfun f tys ts => (*union (big_union type_vars tys)*)
+    (*can ignore tys bc in well-typed term, nth i ts has type 
+      nth i (s_args f) with tys substituted, so free vars already
+      in term*) 
+    (big_union tm_type_vars ts)
+  | Tlet t1 x t2 => (*Same reason we don't need to add *) 
+    union (union (tm_type_vars t1) (tm_type_vars t2)) 
+    (type_vars (snd x))
+  | Tif f t1 t2 => union (fmla_type_vars f) 
+    (union (tm_type_vars t1) (tm_type_vars t2))
+  | Tmatch t ty ps =>
+    union (union (tm_type_vars t) 
+    (big_union tm_type_vars (map snd ps)))
+    (big_union pat_type_vars (map fst ps)) 
+  | Teps f x => union (fmla_type_vars f) (type_vars (snd x))
+  | Tconst c => nil
+  end
+with fmla_type_vars (f: formula) : list typevar :=
+  match f with
+  | Fpred p tys ts => big_union tm_type_vars ts
+  | Flet t1 x f2 => union (union (tm_type_vars t1) (fmla_type_vars f2))
+    (type_vars (snd x))
+  | _ => nil
+  end. *)
+End GetTypeVars.
+
 (*First, individual checking*)
 
 (*A function/pred symbol is well-typed if the term has the correct return type of
@@ -1480,6 +1527,7 @@ Definition funpred_def_valid_type (fd: funpred_def) : Prop :=
   | fun_def f vars t =>
     well_typed_term s gamma t (f_ret f) /\
     sublist (term_fv t) vars /\
+    (*TODO: need to add condition for type variables*)
     NoDup (map fst vars) /\
     map snd vars = s_args f (*types of args correct*)
   | pred_def p vars f =>
