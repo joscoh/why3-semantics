@@ -1,7 +1,4 @@
-Require Import Common.
-Require Import Syntax.
-Require Import Types.
-Require Import Typing.
+Require Export Typing.
 Set Bullet Behavior "Strict Subproofs".
 
 Ltac list_tac2 :=
@@ -132,50 +129,12 @@ with sub_t (x y: vsymbol) (t: term) : term :=
 
 (*TODO: define full substitution*)
 
-(*Define bound variables of formula and term *)
-Fixpoint bnd_f (f: formula) : list vsymbol :=
-  match f with
-  | Fpred p tys tms => concat (map bnd_t tms)
-  | Fquant q v f' =>
-    v :: bnd_f f'
-  | Feq ty t1 t2 =>
-    bnd_t t1 ++ bnd_t t2
-  | Fbinop b f1 f2 =>
-    bnd_f f1 ++ bnd_f f2
-  | Fnot f' => bnd_f f'
-  | Ftrue => nil
-  | Ffalse => nil
-  | Flet tm v f' =>
-    v :: bnd_t tm ++ bnd_f f' 
-  | Fif f1 f2 f3 =>
-    bnd_f f1 ++ bnd_f f2 ++ bnd_f f3
-  | Fmatch tm ty ps =>
-    bnd_t tm ++ concat (map 
-      (fun p => pat_fv (fst p) ++ bnd_f (snd p)) ps)
-  end
-with bnd_t (t: term) : list vsymbol :=
-  match t with
-  | Tconst c => nil
-  | Tvar v  => nil 
-  | Tfun fs tys tms =>
-    concat (map bnd_t tms)
-  | Tlet tm1 v tm2 =>
-    v :: bnd_t tm1 ++ bnd_t tm2
-  | Tif f1 t1 t2 =>
-    bnd_f f1 ++ bnd_t t1 ++ bnd_t t2
-  | Tmatch tm ty ps =>
-    bnd_t tm ++ concat (map
-      (fun p => pat_fv (fst p) ++ bnd_t (snd p)) ps)
-  | Teps f1 v =>
-    v :: bnd_f f1
-  end.
-
 (*Need to know that sub_t and sub_f do not change bound variables*)
 Lemma sub_bound_eq (t: term) (f: formula) :
   (forall x y,
-    bnd_t (sub_t x y t) = bnd_t t) /\
+    tm_bnd (sub_t x y t) = tm_bnd t) /\
   (forall x y,
-    bnd_f (sub_f x y f) = bnd_f f).
+    fmla_bnd (sub_f x y f) = fmla_bnd f).
 Proof.
   revert t f. apply term_formula_ind; simpl; auto; intros.
   - f_equal. rewrite map_map. apply map_ext_in_iff.
@@ -350,10 +309,10 @@ Definition sub_fs: list (vsymbol * string) -> formula -> formula :=
 (*If the free var to sub is not in the term, substitution does nothing*)
 Lemma sub_notin (t: term) (f: formula) :
   (forall (x y: vsymbol),
-    ~ In x (term_fv t) ->
+    ~ In x (tm_fv t) ->
     sub_t x y t = t) /\
     (forall (x y: vsymbol),
-    ~ In x (form_fv f) ->
+    ~ In x (fmla_fv f) ->
     sub_f x y f = f).
 Proof.
   revert t f. apply term_formula_ind; simpl; auto; intros; simpl_set; not_or Hinx.
@@ -485,8 +444,8 @@ with free_in_f (x: vsymbol) (f: formula) {struct f} : bool :=
 (*This is equivalent to the other formulation*)
 (*TODO: would be easier with ssreflect*)
 Lemma free_in_spec (t: term) (f: formula) :
-  (forall x, free_in_t x t <-> In x (term_fv t)) /\
-  (forall x, free_in_f x f <-> In x (form_fv f)).
+  (forall x, free_in_t x t <-> In x (tm_fv t)) /\
+  (forall x, free_in_f x f <-> In x (fmla_fv f)).
 Proof.
   revert t f.
   apply term_formula_ind; simpl; intros; auto; simpl_set; auto;
@@ -671,11 +630,11 @@ Definition sub_f_fv_notin f := proj_fmla sub_fv_notin f.
   the substituted term even if x is a free variable in t2*)
   Lemma sub_fv_in (t: term) (f: formula):
   (forall (x y: vsymbol)
-    (Hbnd: ~ In y (bnd_t t)),
+    (Hbnd: ~ In y (tm_bnd t)),
     x <> y ->
     free_in_t y (sub_t x y t) = (free_in_t x t) || (free_in_t y t)) /\
   (forall (x y: vsymbol)
-    (Hbnd: ~ In y (bnd_f f)),
+    (Hbnd: ~ In y (fmla_bnd f)),
     x <> y ->
     free_in_f y (sub_f x y f) = (free_in_f x f) || (free_in_f y f)).
 Proof.
@@ -688,7 +647,7 @@ Proof.
     revert H1. rewrite in_combine_iff; list_tac2.
     intros [i [Hi Hx]]. specialize (Hx tm_d tm_d); subst; simpl.
     list_tac2. apply H; list_tac2. intro C.
-    apply Hbnd. rewrite in_concat. exists (bnd_t (nth i l1 tm_d)); 
+    apply Hbnd. rewrite in_concat. exists (tm_bnd (nth i l1 tm_d)); 
     split; list_tac2.
   - rewrite H; auto; [|intro C; apply Hbnd; right; apply in_or_app; triv]. 
     rewrite <- !orb_assoc. f_equal.
@@ -715,12 +674,12 @@ Proof.
     + (*contradiction: y not in bound vars*)
       exfalso. apply Hbnd. rewrite in_app_iff. right.
       rewrite in_concat. exists ((pat_fv (fst (nth i ps (Pwild, tm_d))))
-      ++ (bnd_t (snd (nth i ps (Pwild, tm_d))))).
+      ++ (tm_bnd (snd (nth i ps (Pwild, tm_d))))).
       split; list_tac2. exists (nth i ps (Pwild, tm_d)). split; list_tac2.
     + rewrite H0; list_tac2. intro C.
       apply Hbnd. rewrite in_app_iff. right. 
       rewrite in_concat. exists ((pat_fv (fst (nth i ps (Pwild, tm_d))))
-      ++ (bnd_t (snd (nth i ps (Pwild, tm_d))))).
+      ++ (tm_bnd (snd (nth i ps (Pwild, tm_d))))).
       split; list_tac2. exists (nth i ps (Pwild, tm_d)). split; list_tac2.
   - vsym_eq x v; simpl.
     vsym_eq y v; simpl.
@@ -732,7 +691,7 @@ Proof.
     revert H1. rewrite in_combine_iff; list_tac2.
     intros [i [Hi Hx]]. specialize (Hx tm_d tm_d); subst; simpl.
     list_tac2. apply H; list_tac2. intro C.
-    apply Hbnd. rewrite in_concat. exists (bnd_t (nth i tms tm_d)); 
+    apply Hbnd. rewrite in_concat. exists (tm_bnd (nth i tms tm_d)); 
     split; list_tac2.
   - vsym_eq x v; simpl.
     vsym_eq y v; simpl.
@@ -766,12 +725,12 @@ Proof.
     + (*contradiction: y not in bound vars*)
       exfalso. apply Hbnd. rewrite in_app_iff. right.
       rewrite in_concat. exists ((pat_fv (fst (nth i ps (Pwild, Ftrue))))
-      ++ (bnd_f (snd (nth i ps (Pwild, Ftrue))))).
+      ++ (fmla_bnd (snd (nth i ps (Pwild, Ftrue))))).
       split; list_tac2. exists (nth i ps (Pwild, Ftrue)). split; list_tac2.
     + rewrite H0; list_tac2. intro C.
       apply Hbnd. rewrite in_app_iff. right. 
       rewrite in_concat. exists ((pat_fv (fst (nth i ps (Pwild, Ftrue))))
-      ++ (bnd_f (snd (nth i ps (Pwild, Ftrue))))).
+      ++ (fmla_bnd (snd (nth i ps (Pwild, Ftrue))))).
       split; list_tac2. exists (nth i ps (Pwild, Ftrue)). split; list_tac2.
 Qed. 
 

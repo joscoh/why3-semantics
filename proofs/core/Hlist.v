@@ -1,5 +1,6 @@
 Require Import Coq.Lists.List.
 Require Import Lia.
+Require Export Cast.
 (*Heterogenous list*)
 Inductive hlist {A: Type} (f: A -> Type) : list A -> Type :=
   | HL_nil: hlist f nil
@@ -89,45 +90,6 @@ Fixpoint hfilter {A: Type} {f: A -> Type} {l: list A} (g: A -> bool) (h: hlist f
     | false => hfilter g (hlist_tl h)
     end
   end h.
-
-Definition cast {A1 A2: Type} (H: A1 = A2) (x: A1) : A2 :=
-  match H with
-  | eq_refl => x
-  end.
-
-Lemma cast_inj: forall {A B: Type} (Heq: A = B) (x1 x2: A),
-  cast Heq x1 = cast Heq x2 ->
-  x1 = x2.
-Proof.
-  intros. destruct Heq. apply H.
-Qed.
-
-(*Cast any Set*)
-Definition scast {S1 S2: Set} (Heq: S1 = S2) (s: S1) : S2.
-  destruct Heq.
-  exact s.
-Defined.
-
-Lemma scast_inj: forall {A B: Set} (Heq: A = B) (x1 x2: A),
-  scast Heq x1 = scast Heq x2 ->
-  x1 = x2.
-Proof.
-  intros. destruct Heq. apply H.
-Qed.
-
-Require Import Coq.Logic.Eqdep_dec.
-Lemma cast_eq: forall {A: Type} {f: A -> Type} 
-  (eq_dec: forall (x y : A), { x =y} + { x <> y}) {x1 x2: A}
-  (Heq1 Heq2: x1 = x2)
-  (y1: f x1) (y2: f x2),
-  cast (f_equal f Heq1) y1 = cast (f_equal f Heq2) y1.
-Proof.
-  intros. unfold cast. subst. simpl.
-  assert (Heq2 = eq_refl). {
-    apply UIP_dec. apply eq_dec.
-  }
-  rewrite H. reflexivity.
-Qed.
 
 (*hlist to list*)
 Fixpoint hlist_to_list {A: Type} {f: A -> Type} {l: list A} (h: hlist f l)
@@ -307,12 +269,6 @@ Fixpoint hlist_map_filter {A B: Type} {f: A -> Type} {l: list B}
     | false => (hlist_map_filter f1 (hlist_tl hmap) g)
     end
   end h.
-
-Definition hcast {A: Type} {f: A -> Type} {l1 l2: list A}
-  (Heq: l1 = l2) (x: hlist f l1) : hlist f l2 :=
-  match Heq with
-  | eq_refl => x
-  end.
 
 Require Import Common.
 

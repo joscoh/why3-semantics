@@ -1,18 +1,15 @@
-Require Import Syntax.
-Require Import Typing.
-Require Import Types.
+Require Export Typing.
 Require Import Coq.Lists.List.
-Require Import Hlist.
+Require Export Hlist.
 (*For a test, TODO delete*)
 Require Import Coq.Reals.Reals.
 
-Require Import Coq.Logic.Eqdep_dec.
 (*Need eq_rect_eq for injectivity of constructors and test cases*)
 Require Import Coq.Program.Equality.
 (*Used for constructor existence, injectivity of constructors, and test cases*)
-Require Import Coq.Logic.FunctionalExtensionality.
+Require Export Coq.Logic.FunctionalExtensionality.
 (*We assume [eq_rect_eq], equivalent to UIP, for some proofs*)
-Require Import Coq.Logic.EqdepFacts.
+Require Import Coq.Logic.EqdepFacts. (*TODO: do we need this*)
 
 (*Dealing with finite types*)
 
@@ -459,11 +456,6 @@ Inductive W : I -> Set :=
 
 End W.
 
-(*A type with (A + B) elements*)
-Inductive either (A B: Set) : Set :=
-  | Left: A -> either A B
-  | Right: B -> either A B.
-
 (*Now, we come to the construction. We do this in 3 parts:
   1. Build up the base type (A)
   2. Build up the function (A -> Set)
@@ -539,7 +531,7 @@ Definition build_constr_base (c: funsym) : Set :=
 Fixpoint build_base (constrs: ne_list funsym) : Set :=
   match constrs with
   | ne_hd hd => build_constr_base hd
-  | ne_cons hd tl => either (build_constr_base hd) (build_base tl)
+  | ne_cons hd tl => Either (build_constr_base hd) (build_base tl)
   end.
 
 (*Step 2: Construct the function for recursion*)
@@ -1060,6 +1052,9 @@ Definition domain_sigma_int_Z (x: domain (sigma vty_int)) : Z.
 rewrite sigma_int in x. exact x.
 Defined.
 
+(*TODO: should we move this somewhere else?*)
+Section DomCast.
+
 Definition dom_cast {v1 v2: Types.sort} (Heq: v1 = v2) (x: domain v1) : 
   domain v2 :=
   scast (f_equal domain Heq) x.
@@ -1076,6 +1071,39 @@ Lemma dom_cast_inj: forall {v1 v2: Types.sort} (Heq: v1 = v2) (x1 x2: domain v1)
 Proof.
   intros. destruct Heq. apply H.
 Qed.
+
+Lemma dom_cast_compose {s1 s2 s3: Types.sort}
+  (Heq1: s2 = s3) (Heq2: s1 = s2) x:
+  dom_cast Heq1 (dom_cast Heq2 x) =
+  dom_cast (eq_trans Heq2 Heq1) x.
+Proof.
+  subst. reflexivity.
+Qed.
+
+Lemma dom_cast_eq {s1 s2: Types.sort} (H1 H2: s1 = s2) x:
+  dom_cast H1 x = dom_cast H2 x.
+Proof.
+  subst. unfold dom_cast. simpl.
+  assert (H2 = erefl). apply UIP_dec. apply sort_eq_dec.
+  rewrite H.
+  reflexivity.
+Qed.
+
+Lemma dom_cast_refl {s1} (H: s1 = s1) x:
+  dom_cast H x = x.
+Proof.
+  assert (H = erefl). apply UIP_dec. apply sort_eq_dec.
+  subst; reflexivity.
+Qed.
+
+Lemma rewrite_dom_cast: forall (v1 v2: Types.sort) (Heq: v1 = v2)
+  x,
+  scast (f_equal domain Heq) x = dom_cast Heq x.
+Proof.
+  intros. reflexivity.
+Qed.
+
+End DomCast.
 
 Definition args_to_constr_base_aux (l: list vty) 
   (a: arg_list domain (sigma_aux l)) :
@@ -1125,8 +1153,7 @@ Qed.
   used until later)*)
 (*TODO: move?*)
 Section Cast.
-
-(*Cast a list*)
+(*Cast a list - can't use scast bc list is Type -> Type*)
 Definition cast_list {A B: Set} (l: list A) (Heq: A = B) : list B :=
   match Heq with
   | erefl => l
@@ -1179,6 +1206,14 @@ Proof.
   destruct Heq. reflexivity.
 Qed.
 
+Lemma cast_arg_list_eq {d: Types.sort -> Set} {l1 l2: list Types.sort} (Heq1 Heq2: l1 = l2) 
+  (a: arg_list d l1):
+  cast_arg_list Heq1 a = cast_arg_list Heq2 a.
+Proof.
+  subst. assert (Heq2 = erefl). apply UIP_dec. apply list_eq_dec.
+  apply sort_eq_dec. subst. reflexivity.
+Qed.
+
 Lemma cast_arg_list_inj: forall {domain: Types.sort -> Set} 
   {l1 l2: list Types.sort} (Heq: l1 = l2) (a1 a2: arg_list domain l1),
   cast_arg_list Heq a1 = cast_arg_list Heq a2 ->
@@ -1198,6 +1233,68 @@ Lemma hnth_cast_arg_list {domain: Types.sort -> Set} {l1 l2}
   scast (f_equal domain (cast_nth_eq Heq i d)) (hnth i x d d1).
 Proof.
   destruct Heq. reflexivity.
+Qed.
+
+Lemma cons_inj_hd {A: Type} {x y: A} {l1 l2: list A}
+  (C: x :: l1 = y :: l2):
+  x = y.
+Proof.
+  injection C; auto.
+Defined.
+
+Lemma cons_inj_tl {A: Type} {x y : A} {l1 l2: list A}:
+  x :: l1 = y :: l2 ->
+  l1 = l2.
+Proof.
+  intros C. injection C. auto.
+Defined.
+
+Lemma cast_arg_list_cons {h1 h2: Types.sort} {d: Types.sort -> Set} {s1 s2: list Types.sort} 
+  {x} {a}
+  (Heq: h1 :: s1 = h2 :: s2):
+  cast_arg_list Heq (HL_cons _ h1 s1 x a) =
+  HL_cons d h2 s2 (scast (f_equal d (cons_inj_hd Heq)) x) 
+    (cast_arg_list (cons_inj_tl Heq) a).
+Proof.
+  inversion Heq. subst.
+  assert (Heq = erefl).
+  apply UIP_dec. apply list_eq_dec. apply sort_eq_dec.
+  subst. reflexivity. 
+Qed.
+
+Lemma hlist_tl_cast {d} {s1 s2: Types.sort} {t1 t2: list Types.sort}  
+  (Heq: (s1:: t1) = (s2:: t2)) a:
+  hlist_tl (cast_arg_list Heq a) = 
+    @cast_arg_list d _ _ (cons_inj_tl Heq) (hlist_tl a).
+Proof.
+  inversion Heq. subst.
+  assert (Heq = erefl). apply UIP_dec. apply list_eq_dec.
+    apply sort_eq_dec. subst. reflexivity.
+Qed.
+
+Lemma hlist_hd_cast {d: Types.sort -> Set} 
+  {s1 s2: Types.sort} {t1 t2: list Types.sort}
+  {a: arg_list d (s1 :: t1)}
+  (Heq1: s1 :: t1 = s2 :: t2)
+  (Heq2: s1 = s2):
+  hlist_hd (cast_arg_list Heq1 a) =
+  scast (f_equal d Heq2) (hlist_hd a).
+Proof.
+  subst. inversion Heq1; subst.
+  assert (Heq1 = erefl).
+    apply UIP_dec. apply list_eq_dec. apply sort_eq_dec.
+  subst. reflexivity.
+Qed. 
+
+Lemma cast_arg_list_compose {d: Types.sort -> Set} 
+  {l1 l2 l3: list Types.sort} (Heq: l1 = l2)
+  (Heq2: l2 = l3)
+  (x: arg_list d l1):
+  cast_arg_list Heq2 (cast_arg_list Heq x) =
+  cast_arg_list (eq_trans Heq Heq2) x.
+Proof.
+  unfold cast_arg_list. rewrite scast_scast.
+  rewrite eq_trans_map_distr. reflexivity.
 Qed.
 
 End Cast.
@@ -1645,26 +1742,17 @@ Qed.
   in other places via theorems about existT and it therefore
   reduces the axioms we need*)
 
+  Lemma scast_cast_scast_uip: forall {v1 v2: Types.sort} {A1: Set} 
+  (H1: domain v1 = A1) (H2: v2 = v1) (H3: A1 = domain v2) y, 
+  @scast (domain v1) A1 H1 
+    (@cast (domain v2) (domain v1) (@f_equal Types.sort Type domain v2 v1 H2) 
+      (@scast A1 (domain v2) H3 y))= y.
+  Proof.
+    intros. subst.
+    simpl. assert (H3 = erefl) by (apply UIP). subst. reflexivity.
+  Qed. 
+  
 
-Definition UIP: forall {A: Type}, UIP_ A.
-intros.
-apply eq_dep_eq__UIP.
-apply eq_rect_eq__eq_dep_eq.
-unfold Eq_rect_eq. intros.
-unfold Eq_rect_eq_on. intros.
-apply Eqdep.Eq_rect_eq.eq_rect_eq.
-Qed.
-
-
-Lemma scast_cast_scast: forall {v1 v2: Types.sort} {A1: Set} 
-(H1: domain v1 = A1) (H2: v2 = v1) (H3: A1 = domain v2) y, 
-@scast (domain v1) A1 H1 
-  (@cast (domain v2) (domain v1) (@f_equal Types.sort Type domain v2 v1 H2) 
-    (@scast A1 (domain v2) H3 y))= y.
-Proof.
-  intros. subst.
-  simpl. assert (H3 = erefl) by (apply UIP). subst. reflexivity.
-Qed. 
 
 (*Several of the cases are identical.*)
 Ltac solve_cast_list_eq l :=
@@ -1815,7 +1903,7 @@ Proof.
               subst. reflexivity.
             }
             subst; simpl. (*Here, we need UIP*)
-            rewrite scast_cast_scast.
+            rewrite scast_cast_scast_uip.
             set (x':=(get_idx adt_dec x (typs m) H0)).
             apply (fun_args_eq_dep _ _ x') in Hat2.
             simpl in Hat2. clear -Hat2. 
@@ -2205,7 +2293,7 @@ Qed.
   (*We need UIP, so we assume it directly (rather than something like
     excluded middle or proof irrelevance, which implies UIP)*)
   
-  Lemma scast_left: forall {A B A' B': Set} (H1: A = A') (H2: B = B') (H3: either A B = either A' B') x,
+  Lemma scast_left: forall {A B A' B': Set} (H1: A = A') (H2: B = B') (H3: Either A B = Either A' B') x,
     scast H3 (Left A B x) = Left A' B' (scast H1 x).
   Proof.
     intros. subst. unfold scast, eq_rec_r, eq_rec, eq_rect.
@@ -2213,7 +2301,7 @@ Qed.
     rewrite H. reflexivity.
   Qed.
   
-  Lemma scast_right: forall {A B A' B': Set} (H1: A = A') (H2: B = B') (H3: either A B = either A' B') x,
+  Lemma scast_right: forall {A B A' B': Set} (H1: A = A') (H2: B = B') (H3: Either A B = Either A' B') x,
   scast H3 (Right A B x) = Right A' B' (scast H2 x).
   Proof.
     intros. subst. unfold scast, eq_rec_r, eq_rec, eq_rect. simpl.
@@ -2294,15 +2382,15 @@ Notation triv_mut l :=
 
 (** Tactics *)
 
-Ltac destruct_either :=
+Ltac destruct_Either :=
   repeat match goal with
-  | x: either ?a ?b |- _ => destruct x 
+  | x: Either ?a ?b |- _ => destruct x 
   end; auto.
 
 (*Solves ADT equality*)
 Ltac solve_adt_eq :=
   vm_compute; f_equal; repeat(apply functional_extensionality_dep; intros);
-  intros; destruct_either.
+  intros; destruct_Either.
 
 (*Tactic for proving constructors equal*)
 Ltac revert_eqs:=
@@ -2365,7 +2453,7 @@ Definition bool_constrs := list_to_ne_list [fs_true; fs_false] erefl.
 
 Definition abool := triv_adt ts_bool bool_constrs.
 
-Lemma abool_correct: abool = W unit (fun i => either unit unit)
+Lemma abool_correct: abool = W unit (fun i => Either unit unit)
   (fun _ _ _ => empty) tt.
 Proof. solve_adt_eq. Qed. 
 
@@ -2392,8 +2480,8 @@ mk_fs "sun" nil nil ts_week nil] erefl.
 Definition aweek := triv_adt ts_week week_constrs.
 
 Lemma aweek_correct: aweek = 
-  W unit (fun _ => either unit (either unit (either unit (either unit 
-    (either unit (either unit unit)))))) (fun _ _ _ => empty) tt.
+  W unit (fun _ => Either unit (Either unit (Either unit (Either unit 
+    (Either unit (Either unit unit)))))) (fun _ _ _ => empty) tt.
 Proof. solve_adt_eq. Qed.
 
 (*Types with arguments*)
@@ -2413,7 +2501,7 @@ mk_fs "nzero" nil nil ts_num nil] erefl.
 Definition anum := triv_adt ts_num num_constrs.
 
 Lemma anum_correct: anum =
-  W unit (fun _ => either Z (either Z unit)) (fun _ _ _ => empty) tt.
+  W unit (fun _ => Either Z (Either Z unit)) (fun _ _ _ => empty) tt.
 Proof.
   solve_adt_eq.
 Qed.
@@ -2435,8 +2523,8 @@ Definition atest1 := triv_adt ts_test1 test1_constrs.
 
 Lemma atest1_correct : atest1 =
   W unit 
-  (fun _ =>either (Z * Z) 
-  (either unit (either (QArith_base.Q * Z) (QArith_base.Q * (QArith_base.Q * QArith_base.Q)))))
+  (fun _ =>Either (Z * Z) 
+  (Either unit (Either (QArith_base.Q * Z) (QArith_base.Q * (QArith_base.Q * QArith_base.Q)))))
     (fun _ _ _ => empty) tt.
 Proof.
   solve_adt_eq.
@@ -2456,7 +2544,7 @@ Definition nat_constrs := list_to_ne_list [fs_O; fs_S] erefl.
 Definition anat := mk_adt triv_vars triv_syms  ts_nat nat_constrs.
 
 Lemma anat_correct: anat =
-  W unit (fun _ => either unit unit) (fun _ _ (x: either unit unit) =>
+  W unit (fun _ => Either unit unit) (fun _ _ (x: Either unit unit) =>
     match x with
     | Left  _ => empty
     | Right _ => unit
@@ -2487,7 +2575,7 @@ Definition intlist_constrs := list_to_ne_list [ fs_intnil; fs_intcons] erefl.
 Definition aintlist := mk_adt triv_vars triv_syms ts_intlist intlist_constrs.
 
 Lemma aintlist_correct: aintlist =
-  W unit (fun _ => either unit Z) (fun _ _ x =>
+  W unit (fun _ => Either unit Z) (fun _ _ x =>
     match x with
     | Left _ => empty
     | Right _ => unit
@@ -2506,7 +2594,7 @@ Definition inttree_constrs := list_to_ne_list [fs_intleaf; fs_intnode] erefl.
 Definition ainttree := mk_adt triv_vars triv_syms ts_inttree inttree_constrs.
 
 Lemma ainttree_correct: ainttree =
-  W unit (fun _ => either unit Z) (fun _ _ x =>
+  W unit (fun _ => Either unit Z) (fun _ _ x =>
     match x with
     | Left _ => empty
     | Right _ => option unit
@@ -2534,7 +2622,7 @@ Definition test2_constrs := list_to_ne_list [ fs_test2a; fs_test2b; fs_test2c; f
 Definition atest2:= mk_adt triv_vars triv_syms ts_test2 test2_constrs.
 
 Lemma atest2_correct : atest2 =
-  W unit (fun _ => either Z (either unit (either QArith_base.Q (Z * Z))))
+  W unit (fun _ => Either Z (Either unit (Either QArith_base.Q (Z * Z))))
     (fun _ _ x =>
       match x with
       | Right (Left _) => unit
@@ -2564,24 +2652,24 @@ Definition aoption (A: Set) := mk_adt (one_var A) triv_syms ts_option
   option_constrs.
 
 Lemma aoption_correct: forall (A: Set),
-  aoption A = W unit (fun _ => either unit A) (fun _ _ _ => empty) tt.
+  aoption A = W unit (fun _ => Either unit A) (fun _ _ _ => empty) tt.
 Proof.
   intros. solve_adt_eq.
 Qed. 
 
 (*Either type*)
-Definition ts_either: typesym := mk_ts "either" [ta; tb].
-Definition fs_left := mk_fs "Left" [ta; tb] [vty_var ta] ts_either [ta; tb].
-Definition fs_right := mk_fs "Right" [ta; tb] [vty_var tb] ts_either [ta; tb].
-Definition either_cxt := [datatype_def 
-  (mk_mut [alg_def ts_either (mk_ne [fs_left; fs_right])] [ta; tb] erefl)].
-Definition either_constrs := list_to_ne_list [fs_left; fs_right] erefl.
+Definition ts_Either: typesym := mk_ts "Either" [ta; tb].
+Definition fs_left := mk_fs "Left" [ta; tb] [vty_var ta] ts_Either [ta; tb].
+Definition fs_right := mk_fs "Right" [ta; tb] [vty_var tb] ts_Either [ta; tb].
+Definition Either_cxt := [datatype_def 
+  (mk_mut [alg_def ts_Either (mk_ne [fs_left; fs_right])] [ta; tb] erefl)].
+Definition Either_constrs := list_to_ne_list [fs_left; fs_right] erefl.
 
-Definition aeither (A: Set) (B: Set) := mk_adt (two_var A B) triv_syms ts_either
-  either_constrs.
+Definition aEither (A: Set) (B: Set) := mk_adt (two_var A B) triv_syms ts_Either
+  Either_constrs.
   
-Lemma aeither_correct: forall (A: Set) (B: Set),
-  aeither A B = W unit (fun _ => either A B) (fun _ _ _ => empty) tt.
+Lemma aEither_correct: forall (A: Set) (B: Set),
+  aEither A B = W unit (fun _ => Either A B) (fun _ _ _ => empty) tt.
 Proof.
   intros. solve_adt_eq.
 Qed.
@@ -2598,7 +2686,7 @@ Definition alist (A: Set) := mk_adt (one_var A) triv_syms ts_list
   list_constrs.
 
 Lemma alist_correct: forall (A: Set),
-  alist A = W unit (fun _ => either unit A) (fun _ _ x =>
+  alist A = W unit (fun _ => Either unit A) (fun _ _ x =>
     match x with
     | Left _ => empty
     | Right _ => unit
@@ -2620,7 +2708,7 @@ Definition atree (A: Set) := mk_adt (one_var A) triv_syms ts_tree
   tree_constrs.
 
 Lemma atree_correct: forall (A: Set),
-  atree A = W unit (fun _ => either unit A)
+  atree A = W unit (fun _ => Either unit A)
     (fun _ _ x => match x with
               | Left _ => empty
               | Right _ => option unit
@@ -2693,7 +2781,7 @@ Ltac solve_mut_eq :=
         simpl; reflexivity |
       apply w_eq with (Heq:= He); intros;
       destruct_option; simpl; try reflexivity;
-      simpl_build_base; destruct_either;
+      simpl_build_base; destruct_Either;
       try(rewrite scast_left; try reflexivity);
       try (rewrite scast_right; try reflexivity);
       auto]
@@ -2735,7 +2823,7 @@ Definition amutB := amutAB (Some tt).
 
 Lemma amutAB_correct: amutAB =
   W (option unit) (fun x => match x with
-                    | None => either unit unit
+                    | None => Either unit unit
                     | Some _ => unit
                     end)
   (fun this other x =>
@@ -2813,8 +2901,8 @@ Definition afmla := atm_fmla (Some tt).
 
 Lemma atm_correct: atm_fmla = W (option unit) 
 (fun x => match x with
-  | None => either Z unit
-  | Some _ => either unit (either unit unit)
+  | None => Either Z unit
+  | Some _ => Either unit (Either unit unit)
   end)
 (fun this other x =>
   match this, x with
@@ -2911,7 +2999,7 @@ Lemma arose_correct (A: Set) : arose_treelist A =
   W (option unit)
   (fun x => match x with
   | None => A
-  | Some _ => either unit unit
+  | Some _ => Either unit unit
   end)
   (fun this other x =>
     match this, x with

@@ -1,6 +1,4 @@
-Require Import Common.
-Require Import Types.
-Require Import Syntax.
+Require Export Vars.
 Set Bullet Behavior "Strict Subproofs".
 
 (** Typechecking **)
@@ -1214,7 +1212,7 @@ Inductive decrease_fun (fs: list fn) (ps: list pn) :
   | Dec_notin_t: forall (small: list vsymbol) (hd: option vsymbol) (m: mut_adt)
     (vs: list vty) (t: term),
     (forall (f: fn), In f fs -> negb (funsym_in_tm (fn_sym f) t)) ->
-    (forall p, In p ps -> negb (predsym_in_term (pn_sym p) t)) ->
+    (forall p, In p ps -> negb (predsym_in_tm (pn_sym p) t)) ->
     decrease_fun fs ps small hd m vs t
   (*First, the recursive function call case*)
   | Dec_fun_in: forall (small: list vsymbol) (hd: option vsymbol) (m: mut_adt)
@@ -1231,7 +1229,7 @@ Inductive decrease_fun (fs: list fn) (ps: list pn) :
     (*None of [fs] of [ps] appear in the terms*) 
     (*TODO: will likely need this to show we can ignore function binding in interp for recursive cases*)
     Forall (fun t => forall f,  In f fs -> negb (funsym_in_tm (fn_sym f) t)) ts ->
-    Forall (fun t => forall p, In p ps -> negb (predsym_in_term (pn_sym p) t)) ts ->
+    Forall (fun t => forall p, In p ps -> negb (predsym_in_tm (pn_sym p) t)) ts ->
     (*Then this recursive call is valid*)
     decrease_fun fs ps small hd m vs (Tfun f l ts)
   (*Other function call*)
@@ -1300,7 +1298,7 @@ with decrease_pred (fs: list fn) (ps: list pn) :
   | Dec_notin_f: forall (small: list vsymbol) (hd: option vsymbol) (m: mut_adt)
   (vs: list vty) (fmla: formula),
   (forall f, In f fs -> negb (funsym_in_fmla (fn_sym f) fmla)) ->
-  (forall p, In p ps -> negb (predsym_in (pn_sym p) fmla)) ->
+  (forall p, In p ps -> negb (predsym_in_fmla (pn_sym p) fmla)) ->
   decrease_pred fs ps small hd m vs fmla
   (*First, the recursive predicate call case*)
   | Dec_pred_in: forall (small: list vsymbol) (hd: option vsymbol) m vs
@@ -1315,7 +1313,7 @@ with decrease_pred (fs: list fn) (ps: list pn) :
     l = map vty_var (s_params p) ->
     (*None of [fs] or[ps] appear in the terms*) 
     Forall (fun t => forall f,  In f fs -> negb (funsym_in_tm (fn_sym f) t)) ts ->
-    Forall (fun t => forall p, In p ps -> negb (predsym_in_term (pn_sym p) t)) ts ->
+    Forall (fun t => forall p, In p ps -> negb (predsym_in_tm (pn_sym p) t)) ts ->
     (*Then this recursive call is valid*)
     decrease_pred fs ps small hd m vs (Fpred p l ts)
   (*Other predicate call*)
@@ -1468,53 +1466,6 @@ Definition fd_d : funpred_def :=
   component is well-typed and well-formed, then do the termination
   checking*)
 
-(*TODO: move*)
-Check type_vars.
-
-Section GetTypeVars.
-
-Notation union := (union typevar_eq_dec).
-Notation big_union := (big_union typevar_eq_dec).
-
-Definition pat_type_vars (p: pattern) : list typevar :=
-  big_union type_vars (map snd (pat_fv p)).
-
-(*First, axiomatize*)
-Definition tm_type_vars (t: term) : list typevar.
-Admitted.
-
-Definition fmla_type_vars (f: formula) : list typevar.
-Admitted.
-(*
-Fixpoint tm_type_vars (t: term) : list typevar :=
-  match t with
-  | Tvar x => type_vars (snd x)
-  | Tfun f tys ts => (*union (big_union type_vars tys)*)
-    (*can ignore tys bc in well-typed term, nth i ts has type 
-      nth i (s_args f) with tys substituted, so free vars already
-      in term*) 
-    (big_union tm_type_vars ts)
-  | Tlet t1 x t2 => (*Same reason we don't need to add *) 
-    union (union (tm_type_vars t1) (tm_type_vars t2)) 
-    (type_vars (snd x))
-  | Tif f t1 t2 => union (fmla_type_vars f) 
-    (union (tm_type_vars t1) (tm_type_vars t2))
-  | Tmatch t ty ps =>
-    union (union (tm_type_vars t) 
-    (big_union tm_type_vars (map snd ps)))
-    (big_union pat_type_vars (map fst ps)) 
-  | Teps f x => union (fmla_type_vars f) (type_vars (snd x))
-  | Tconst c => nil
-  end
-with fmla_type_vars (f: formula) : list typevar :=
-  match f with
-  | Fpred p tys ts => big_union tm_type_vars ts
-  | Flet t1 x f2 => union (union (tm_type_vars t1) (fmla_type_vars f2))
-    (type_vars (snd x))
-  | _ => nil
-  end. *)
-End GetTypeVars.
-
 (*First, individual checking*)
 
 (*A function/pred symbol is well-typed if the term has the correct return type of
@@ -1526,13 +1477,13 @@ Definition funpred_def_valid_type (fd: funpred_def) : Prop :=
   match fd with
   | fun_def f vars t =>
     well_typed_term s gamma t (f_ret f) /\
-    sublist (term_fv t) vars /\
+    sublist (tm_fv t) vars /\
     (*TODO: need to add condition for type variables*)
     NoDup (map fst vars) /\
     map snd vars = s_args f (*types of args correct*)
   | pred_def p vars f =>
     well_typed_formula s gamma f /\
-    sublist (form_fv f) vars /\
+    sublist (fmla_fv f) vars /\
     NoDup (map fst vars) /\
     map snd vars = s_args p (*types of args correct*)
 
@@ -2087,16 +2038,16 @@ Definition indprop_valid_type (i: indpred_def) : Prop :=
   take a predicate as an argument (ie: can't have list x, where x : Prop)*)
 Inductive ind_strictly_positive (ps: list predsym) : formula -> Prop :=
   | ISP_notin: forall (f: formula),
-    (forall p, In p ps -> negb (predsym_in p f)) ->
+    (forall p, In p ps -> negb (predsym_in_fmla p f)) ->
     ind_strictly_positive ps f
   | ISP_pred: forall (p: predsym) 
     (vs: list vty) (ts: list term),
     In p ps ->
-    (forall x t, In t ts -> In x ps -> negb (predsym_in_term x t)) ->
+    (forall x t, In t ts -> In x ps -> negb (predsym_in_tm x t)) ->
     ind_strictly_positive ps (Fpred p vs ts)
   | ISP_impl: forall  (f1 f2: formula),
     ind_strictly_positive ps f2 ->
-    (forall p, In p ps -> negb(predsym_in p f1)) ->
+    (forall p, In p ps -> negb(predsym_in_fmla p f1)) ->
     ind_strictly_positive ps (Fbinop Timplies f1 f2)
   (*The rest of the cases are not too interesting*)
   | ISP_quant: forall (q: quant) (x: vsymbol) (f: formula),
@@ -2111,17 +2062,17 @@ Inductive ind_strictly_positive (ps: list predsym) : formula -> Prop :=
     ind_strictly_positive ps f2 ->
     ind_strictly_positive ps (Fbinop Tor f1 f2)
   | ISP_let: forall (t: term) (x: vsymbol) (f: formula),
-    (forall p, In p ps -> negb (predsym_in_term p t)) ->
+    (forall p, In p ps -> negb (predsym_in_tm p t)) ->
     ind_strictly_positive ps f -> (*TODO: is this too restrictive as well? Think OK*)
     ind_strictly_positive ps (Flet t x f)
   | ISP_if: forall f1 f2 f3,
     (*Cannot be in guard because get (essentially), f1 -> f2 /\ ~f1 -> f3*)
-    (forall p, In p ps -> negb(predsym_in p f1)) ->
+    (forall p, In p ps -> negb(predsym_in_fmla p f1)) ->
     ind_strictly_positive ps f2 ->
     ind_strictly_positive ps f3 ->
     ind_strictly_positive ps (Fif f1 f2 f3)
   | ISP_match: forall (t: term) ty (pats: list (pattern * formula)),
-    (forall p, In p ps -> negb (predsym_in_term p t)) ->
+    (forall p, In p ps -> negb (predsym_in_tm p t)) ->
     (forall f, In f (map snd pats) -> ind_strictly_positive ps f) ->
     ind_strictly_positive ps (Fmatch t ty pats) 
   (*eq, not, iff covered by case "notin" - these cannot have even strictly
@@ -2132,7 +2083,7 @@ Inductive ind_positive (ps: list predsym) : formula -> Prop :=
   | IP_pred: forall (p: predsym) 
     (vs: list vty) (ts: list term),
     In p ps ->
-    (forall x t, In t ts -> In x ps -> negb (predsym_in_term x t)) ->
+    (forall x t, In t ts -> In x ps -> negb (predsym_in_tm x t)) ->
     ind_positive ps (Fpred p vs ts)
   | IP_forall: forall (x: vsymbol) (f: formula),
     ind_positive ps f ->
@@ -2141,7 +2092,7 @@ Inductive ind_positive (ps: list predsym) : formula -> Prop :=
   | IP_let: forall (t: term) (x: vsymbol) (f: formula),
     (*TODO: is this the right condition? I think so, but should we allow this
       symbol to appear in terms in any cases?*)
-    (forall p, In p ps -> negb (predsym_in_term p t)) ->
+    (forall p, In p ps -> negb (predsym_in_tm p t)) ->
     ind_positive ps f ->
     ind_positive ps (Flet t x f)
   | IP_impl: forall (f1 f2: formula),

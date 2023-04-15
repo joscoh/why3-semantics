@@ -1,7 +1,5 @@
 (*Separate file to use ssreflect*)
-Require Import Syntax.
-Require Import Types.
-Require Import Typing.
+Require Export Typing.
 
 From mathcomp Require Import all_ssreflect.
 Set Bullet Behavior "Strict Subproofs".
@@ -906,12 +904,12 @@ Definition check_funpred_def_valid_type (fd: funpred_def) : bool :=
   match fd with
   | fun_def f vars t =>
     check_well_typed_tm t (f_ret f) &&
-    sublistb (term_fv t) vars &&
+    sublistb (tm_fv t) vars &&
     uniq (map fst vars) &&
     (map snd vars == s_args f)
   | pred_def p vars f =>
     check_well_typed_fmla f &&
-    sublistb (form_fv f) vars &&
+    sublistb (fmla_fv f) vars &&
     uniq (map fst vars) &&
     (map snd vars == s_args p)
   end.
@@ -958,7 +956,7 @@ Fixpoint check_decrease_fun (fs: list fn) (ps: list pn)
   (vs: list vty) (t: term) : bool :=
   (*Don't use any recursive instance*)
   (all (fun f => negb (funsym_in_tm (fn_sym f) t)) fs &&
-  all (fun p => negb (predsym_in_term (pn_sym p) t)) ps) ||
+  all (fun p => negb (predsym_in_tm (pn_sym p) t)) ps) ||
   match t with
   | Tfun f l ts =>
     (*Hard case:*)
@@ -971,7 +969,7 @@ Fixpoint check_decrease_fun (fs: list fn) (ps: list pn)
         (x \in small) &&
         (l == map vty_var (s_params f)) &&
         all (fun t => all (fun f => negb (funsym_in_tm (fn_sym f) t)) fs) ts &&
-        all (fun t => all (fun p => negb (predsym_in_term (pn_sym p) t)) ps) ts 
+        all (fun t => all (fun p => negb (predsym_in_tm (pn_sym p) t)) ps) ts 
       | _ => false
       end 
     else 
@@ -1019,7 +1017,7 @@ with check_decrease_pred (fs: list fn) (ps: list pn)
   (vs: list vty) (f: formula) : bool :=
   (*Don't use any recursive instance*)
   (all (fun f' => negb (funsym_in_fmla (fn_sym f') f)) fs &&
-  all (fun p => negb (predsym_in (pn_sym p) f)) ps) ||
+  all (fun p => negb (predsym_in_fmla (pn_sym p) f)) ps) ||
   match f with
   | Fpred p l ts =>
     (*Hard case:*)
@@ -1032,7 +1030,7 @@ with check_decrease_pred (fs: list fn) (ps: list pn)
         (x \in small) &&
         (l == map vty_var (s_params p)) &&
         all (fun t => all (fun f => negb (funsym_in_tm (fn_sym f) t)) fs) ts &&
-        all (fun t => all (fun p => negb (predsym_in_term (pn_sym p) t)) ps) ts 
+        all (fun t => all (fun p => negb (predsym_in_tm (pn_sym p) t)) ps) ts 
       | _ => false
       end 
     else 
@@ -1095,9 +1093,9 @@ Proof.
   apply idP.
 Qed.
 
-Lemma predsym_in_termP: forall ps (t: term),
-  reflect (forall p, In p ps -> negb (predsym_in_term (pn_sym p) t))
-    (all (fun p => negb (predsym_in_term (pn_sym p) t)) ps).
+Lemma predsym_in_tmP: forall ps (t: term),
+  reflect (forall p, In p ps -> negb (predsym_in_tm (pn_sym p) t))
+    (all (fun p => negb (predsym_in_tm (pn_sym p) t)) ps).
 Proof.
   move=> ps t.
   eapply equivP.
@@ -1120,8 +1118,8 @@ Proof.
 Qed.
 
 Lemma predsym_in_fmlaP: forall ps (fm: formula),
-  reflect (forall p, In p ps -> negb (predsym_in (pn_sym p) fm))
-    (all (fun p => negb (predsym_in (pn_sym p) fm)) ps).
+  reflect (forall p, In p ps -> negb (predsym_in_fmla (pn_sym p) fm))
+    (all (fun p => negb (predsym_in_fmla (pn_sym p) fm)) ps).
 Proof.
   move=> ps t.
   eapply equivP.
@@ -1141,13 +1139,13 @@ Canonical pn_eqType := EqType pn pn_eqMixin.
 (*Handle case at beginning of most*)
 Ltac not_in_tm_case fs ps t :=
   case: (all (fun (f: fn) => ~~ (funsym_in_tm (fn_sym f) t)) fs &&
-    all (fun (p: pn) => ~~ (predsym_in_term (pn_sym p) t)) ps)
-    /(andPP (funsym_in_tmP fs t) (predsym_in_termP ps t))=>/=;
+    all (fun (p: pn) => ~~ (predsym_in_tm (pn_sym p) t)) ps)
+    /(andPP (funsym_in_tmP fs t) (predsym_in_tmP ps t))=>/=;
   [move=> [Hnotf Hnotp]; apply ReflectT; by apply Dec_notin_t |].
 
 Ltac not_in_fmla_case fs ps fm :=
   case: (all (fun (f: fn) => ~~ (funsym_in_fmla (fn_sym f) fm)) fs &&
-    all (fun (p: pn) => ~~ (predsym_in (pn_sym p) fm)) ps)
+    all (fun (p: pn) => ~~ (predsym_in_fmla (pn_sym p) fm)) ps)
     /(andPP (funsym_in_fmlaP fs fm) (predsym_in_fmlaP ps fm))=>/=;
   [move=> [Hnotf Hnotp]; apply ReflectT; by apply Dec_notin_f |].
 
@@ -1255,7 +1253,7 @@ Proof.
     by false_triv_case Hnotfp.
     (*Hmm- this is annoying - do manually first*)
     case: ((all (fun t : term => all (fun f : fn => ~~ funsym_in_tm (fn_sym f) t) fs) tms &&
-    all (fun t : term => all (fun p : pn => ~~ predsym_in_term (pn_sym p) t) ps) tms))
+    all (fun t : term => all (fun p : pn => ~~ predsym_in_tm (pn_sym p) t) ps) tms))
     /(andPP allP allP).
     + (*The case where we actually say true*)
       move=> [Hall1 Hall2].
@@ -1448,7 +1446,7 @@ Proof.
     by false_triv_case Hnotfp.
     (*Hmm- this is annoying - do manually first*)
     case: ((all (fun t : term => all (fun f : fn => ~~ funsym_in_tm (fn_sym f) t) fs) tms &&
-    all (fun t : term => all (fun p : pn => ~~ predsym_in_term (pn_sym p) t) ps) tms))
+    all (fun t : term => all (fun p : pn => ~~ predsym_in_tm (pn_sym p) t) ps) tms))
     /(andPP allP allP).
     + (*The case where we actually say true*)
       move=> [Hall1 Hall2].
@@ -2348,8 +2346,6 @@ Proof.
   - rewrite Forall_forall => x /inP. rewrite nth_eq. by apply Hdecf.
   - rewrite Forall_forall => x /inP. rewrite nth_eq. by apply Hdecp.
 Qed.
-
-Check nth_take.
 
 (*For the converse, we show that if this function gives None,
   [funpred_def_term gamma l m params vs il] is always false*)

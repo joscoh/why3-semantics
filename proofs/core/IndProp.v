@@ -1,18 +1,8 @@
 (*Here we give the denotational semantics for inductive
   predicates and prove that they are the least fixpoint
   that makes all the constructors true*)
-Require Import Common.
-Require Import Syntax.
-Require Import Types.
-Require Import Typing.
-Require Import Substitution. (*for bnd_t - move? *)
-Require Import IndTypes.
-Require Import Semantics.
-Require Import Denotational.
-Require Import Alpha.
-Require Import Hlist.
-Require Import FunctionalExtensionality.
-Require Import Coq.Logic.Eqdep_dec.
+Require Export Denotational.
+Require Import Alpha. (*Don't need to export - only used in proofs*)
 Set Bullet Behavior "Strict Subproofs".
 
 Section IndPropRep.
@@ -533,13 +523,13 @@ Ltac triv_fls :=
     match goal with | H: False |- _ => destruct H end.
 
 Lemma indpred_decomp_bound (f: formula) :
-  (forall x, In x (tup_1 (indpred_decomp f)) -> In x (bnd_f f)) /\
-  (forall x, In x (tup_2 (indpred_decomp f)) -> In (fst x) (bnd_f f)).
+  (forall x, In x (tup_1 (indpred_decomp f)) -> In x (fmla_bnd f)) /\
+  (forall x, In x (tup_2 (indpred_decomp f)) -> In (fst x) (fmla_bnd f)).
 Proof.
   apply (term_formula_ind) with(P1:=fun _ => True) (P2:= fun f =>
-  (forall x : vsymbol, In x (tup_1 (indpred_decomp f)) -> In x (bnd_f f)) /\
+  (forall x : vsymbol, In x (tup_1 (indpred_decomp f)) -> In x (fmla_bnd f)) /\
   (forall x : vsymbol * term,
-   In x (tup_2 (indpred_decomp f)) -> In (fst x) (bnd_f f))); simpl; auto; intros;
+   In x (tup_2 (indpred_decomp f)) -> In (fst x) (fmla_bnd f))); simpl; auto; intros;
    try solve[triv_fls]. 
   - destruct q; simpl;[|triv_fls].
     split_all; intros.
@@ -571,7 +561,7 @@ Proof.
       unfold fmla_wf in H0.
       simpl in H0. split_all. inversion H0; subst.
       rewrite in_map_iff in H2. destruct H2 as [y [Hy Hiny]].
-      assert (In (fst y) (bnd_f f0)).  
+      assert (In (fst y) (fmla_bnd f0)).  
       apply indpred_decomp_bound. auto. subst. contradiction.
     + apply (H (wf_quant _ _ _ H0) x); auto.
   - destruct b; simpl; intro C; try triv_fls.
@@ -723,13 +713,13 @@ Proof.
     erewrite fmla_rep_irrel. reflexivity.
     (*These contradict wf*)
     intro C.
-    assert (In v (bnd_f f0)). {
+    assert (In v (fmla_bnd f0)). {
       apply indpred_decomp_bound; auto.
     }
     unfold fmla_wf in H1. split_all. simpl in H1. inversion H1; subst.
     apply H6. apply in_or_app; right; auto.
     intros y Hy C.
-    assert (In y (bnd_f f0)). {
+    assert (In y (fmla_bnd f0)). {
       apply indpred_decomp_bound; auto.
     }
     unfold fmla_wf in H1. split_all. simpl in H3.
@@ -774,7 +764,7 @@ Qed.
 Lemma positive_iter_flet (ps: list predsym) (l: list (vsymbol * term))
   (f: formula):
   ind_positive ps (iter_flet l f) <->
-  (Forall (fun x => (forall p, In p ps -> negb (predsym_in_term p (snd x)))) l) /\
+  (Forall (fun x => (forall p, In p ps -> negb (predsym_in_tm p (snd x)))) l) /\
   ind_positive ps f.
 Proof.
   split; intros.
@@ -865,7 +855,7 @@ Lemma indpred_decomp_let_notin (ps: list predsym) (f: formula)
   (Hpos: ind_positive ps f):
   Forall (fun x =>
     forall (p: predsym), In p ps -> 
-      negb (predsym_in_term p (snd x))) (tup_2 (indpred_decomp f)).
+      negb (predsym_in_tm p (snd x))) (tup_2 (indpred_decomp f)).
 Proof.
   apply indpred_transform_positive in Hpos.
   unfold indpred_transform in Hpos.
@@ -1074,7 +1064,7 @@ Lemma substi_mult_notin_eq (pf1 pf2: pi_funpred gamma_valid pd)
   (vt: val_typevar) (vv: val_vars pd vt) (l: list (vsymbol * term))
   (ps: list predsym) Hall
   (Hallnotin: Forall (fun x => (forall p, In p ps -> 
-    negb (predsym_in_term p (snd x)))) l) :
+    negb (predsym_in_tm p (snd x)))) l) :
   (forall p, ~ In p ps -> (preds gamma_valid pd pf1 p) = (preds gamma_valid pd pf2 p)) ->
   (forall f, funs gamma_valid pd pf1 f = funs gamma_valid pd pf2 f) ->
   substi_multi_let gamma_valid pd all_unif vt pf1 vv l Hall =

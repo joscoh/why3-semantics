@@ -1,13 +1,7 @@
 (*Induction for ADTs*)
-Require Import Common.
-Require Import Types.
-Require Import Syntax.
-Require Import Typing.
-Require Import Coq.Logic.Eqdep_dec. (*TODO: fix imports*)
-Require Import Hlist. (*for scast, change*)
-Require Import IndTypes.
-Require Import Semantics. (*TODO: require this so that
-  we can refer to Semantics.adts - could generalize for any proof*)
+Require Export Interp. (*TODO: require this so that
+  we can refer to Interp.adts - 
+  could generalize for any proof and just use IndTypes.v*)
 
 Section Induction.
 
@@ -455,11 +449,7 @@ Proof.
 Qed.
 
 (*TODO: move*)
-Lemma scast_scast {A B C: Set} (H1: B = A) (H2: C = B) x:
-  scast H1 (scast H2 x) = scast (eq_trans H2 H1) x.
-Proof.
-  subst. reflexivity.
-Qed.
+
 
 Notation domain := (domain (dom_aux pd)).
 
@@ -476,10 +466,10 @@ Theorem adt_rep_ind m m_in srts
   (forall t t_in (x: adt_rep m srts (dom_aux pd) t t_in) 
     (c: funsym) (Hc: constr_in_adt c t) (a: arg_list domain (sym_sigma_args c srts))
     (Hx: x = constr_rep gamma_valid m m_in srts Hlen (dom_aux pd) t t_in c
-      Hc (Semantics.adts pd m srts) a),
+      Hc (Interp.adts pd m srts) a),
     (forall i t' t_in' Heq, i < length (s_args c) ->
       (*If nth i a has type adt_rep ..., then P holds of it*)
-      P t' t_in' (scast (Semantics.adts pd m srts t' t_in') 
+      P t' t_in' (scast (Interp.adts pd m srts t' t_in') 
         (dom_cast _ Heq (hnth i a s_int (dom_int pd)))) 
       ) ->
     P t t_in x
@@ -546,7 +536,7 @@ Proof.
     *)
   destruct (find_constr_rep gamma_valid m m_in srts Hlen (dom_aux pd)
     (fin_nth (typs m) i) (In_in_bool adt_dec _ _ (fin_nth_in (typs m) i))
-    (Semantics.adts pd m srts) (all_unif m m_in) x') as [c [[c_in args] Hx']].
+    (Interp.adts pd m srts) (all_unif m m_in) x') as [c [[c_in args] Hx']].
   (*Here, we need info about a*)
   assert (Hnodupb: nodupb funsym_eq_dec
     (ne_list_to_list (adt_constrs (fin_nth (typs m) i)))). {
@@ -634,7 +624,7 @@ Proof.
     (cast_w (cast_i m m_in (get_idx adt_dec t' (typs m) t_in'))
       (f (get_idx adt_dec t' (typs m) t_in')
         br))) =
-            (scast (Semantics.adts pd m srts t' t_in')
+            (scast (Interp.adts pd m srts t' t_in')
             (dom_cast (dom_aux pd) Heq (hnth j args s_int (dom_int pd))))). {
     unfold cast_adt_rep. rewrite cast_w_twice. 2: apply finite_eq_dec.
     (*Now we need to know something about f, again by
@@ -754,7 +744,7 @@ Proof.
           subst.
           assert (Heqx = Logic.eq_refl). {
             (*rely on UIP here*)
-            apply IndTypes.UIP.
+            apply UIP.
           }
           subst. simpl.
           rewrite build_rec_finite_inv1. reflexivity.
@@ -779,7 +769,7 @@ Proof.
     unfold args_to_ind_base, args_to_ind_base_aux.
     subst fin.
     (*need a default adt*)
-    set (d_adt:= scast (Semantics.adts pd m srts t' t_in')
+    set (d_adt:= scast (Interp.adts pd m srts t' t_in')
     (dom_cast (dom_aux pd) Heq (hnth j args s_int (dom_int pd)))).
     (*1. Push through [tup_of_list]*)
     rewrite tnthS_tup_of_list with(d:=d_adt).
@@ -839,7 +829,7 @@ Proof.
       scast H1 (scast H2 (scast H3 (scast H4 x))) =
       scast H5 x). {
         clear. intros. subst. simpl.
-        assert (H5 = eq_refl). apply IndTypes.UIP. subst. reflexivity.
+        assert (H5 = eq_refl). apply UIP. subst. reflexivity.
     }
     generalize dependent (hnth j args s_int (dom_int pd)); intros d.
     unfold dom_cast.

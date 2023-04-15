@@ -2,9 +2,14 @@ Require Export Coq.Lists.List.
 Require Export Coq.Bool.Bool.
 Require Export Coq.Arith.PeanoNat.
 Export ListNotations.
-Require Import Coq.Logic.Eqdep_dec.
+Require Export Coq.Logic.Eqdep_dec.
 Require Export Lia.
 (** Generally useful definitions, lemmas, and tactics *)
+
+(*Why is this not in Coq stdlib?*)
+Inductive Either (A B: Set) : Set :=
+  | Left: A -> Either A B
+  | Right: B -> Either A B. 
 
 (** Working with bool/props **)
 
@@ -1520,6 +1525,41 @@ Proof.
   destruct (Nat.ltb_spec0 (S n1) (S n2)); auto; try lia.
 Qed.
 
+(*Disjpointness*)
+Section Disj.
+
+Definition disj {A B: Type} (f: A -> list B) (l: list A) : Prop :=
+  forall i j (d: A) (x: B),
+    i < j ->
+    j < length l ->
+    ~ (In x (f (nth i l d)) /\ In x (f (nth j l d))).
+
+Lemma disj_cons_iff {A B: Type} (f: A -> list B) (a: A) (l: list A):
+  disj f (a :: l) <->
+  disj f l /\ 
+  forall i d x, i < length l -> ~ (In x (f a) /\ In x (f (nth i l d))).
+Proof.
+  unfold disj. split; intros.
+  - split; intros.
+    + simpl in H. 
+      apply (H (S i) (S j) d x ltac:(lia) ltac:(lia)).
+    + simpl in H. 
+      apply (H 0 (S i) d x ltac:(lia) ltac:(lia)).
+  - destruct j; destruct i; try lia.
+    + simpl. apply (proj2 H). simpl in H1; lia.
+    + simpl in H1 |- *. apply (proj1 H); lia.
+Qed.
+
+Lemma disj_cons_impl {A B: Type} {f: A -> list B} {a: A} {l: list A}:
+  disj f (a :: l) ->
+  disj f l.
+Proof.
+  rewrite disj_cons_iff. 
+  intros H; apply H.
+Qed.
+
+End Disj.
+
 (*Tactics*)
 
 
@@ -1741,3 +1781,14 @@ Ltac solve_bool :=
   | |- ?z = ?b1 && ?b2 => destruct b2
   | |- ?z = ?b1 || ?b2 => destruct b2
   end; simpl_bool; try reflexivity).
+
+Ltac case_match_hyp :=
+  repeat match goal with 
+      |- (match ?p with |Some l => ?x | None => ?y end) = ?z -> ?q =>
+        let Hp := fresh "Hmatch" in 
+        destruct p eqn: Hp end.
+Ltac case_match_goal :=
+  repeat match goal with 
+        |- (match ?p with |Some l => ?x | None => ?y end) = ?z =>
+          let Hp := fresh "Hmatch" in 
+          destruct p eqn: Hp end; auto.

@@ -1,6 +1,5 @@
 Require Import Coq.QArith.QArith_base.
-Require Import Types.
-Require Import Common.
+Require Export Types.
 Set Bullet Behavior "Strict Subproofs".
 
 (** Function and Predicate Symbols **)
@@ -563,66 +562,6 @@ Definition term_formula_rect: forall (tm: term) (f: formula),
 
 End TermFormRect.
 
-
-Section FreeVars.
-
-Local Notation union' := (union vsymbol_eq_dec).
-Local Notation big_union' := (big_union vsymbol_eq_dec).
-Local Notation remove' := (remove vsymbol_eq_dec).
-Local Notation remove_all' := (remove_all vsymbol_eq_dec).
-
-(*Free variables of a pattern*)
-Fixpoint pat_fv (p: pattern) : list vsymbol :=
-  match p with
-  | Pvar x => [x]
-  | Pwild => []
-  | Pconstr _ _ ps => big_union' pat_fv ps
-  | Por p1 p2 => union' (pat_fv p1) (pat_fv p2)
-  | Pbind p x => union' (pat_fv p) [x]
-  end.
-
-(*Free variables of a term (all variables that appear free at least once)*)
-Fixpoint term_fv (t: term) : list vsymbol :=
-  match t with
-  | Tconst _ => nil
-  | Tvar x => [x]
-  | Tfun f vtys tms => big_union' term_fv tms
-  | Tlet t1 v t2 => union' (term_fv t1) (remove' v (term_fv t2))
-  | Tif f t1 t2 => union' (form_fv f) (union' (term_fv t1) (term_fv t2))
-  | Tmatch t ty l => union' (term_fv t) (big_union' (fun x => remove_all' (pat_fv (fst x)) (term_fv (snd x))) l)
-  | Teps f x  => remove' x (form_fv f)
-  end
-
-with form_fv (f: formula) : list vsymbol :=
-  match f with
-  | Fpred p tys tms => big_union' term_fv tms
-  | Fquant q v f => remove' v (form_fv f)
-  | Feq _ t1 t2 => union' (term_fv t1) (term_fv t2)
-  | Fbinop b f1 f2 => union' (form_fv f1) (form_fv f2)
-  | Fnot f => form_fv f
-  | Ftrue => nil
-  | Ffalse => nil
-  | Flet t v f => union' (term_fv t) (remove' v (form_fv f))
-  | Fif f1 f2 f3 => union' (form_fv f1) (union' (form_fv f2) (form_fv f3))
-  | Fmatch t ty l => union' (term_fv t) (big_union' (fun x => remove_all' (pat_fv (fst x)) (form_fv (snd x))) l)
-  end.
-
-Definition closed_term (t: term) : bool :=
-  null (term_fv t).
-Definition closed_formula (f: formula) : bool :=
-  null (form_fv f).
-
-Lemma NoDup_pat_fv (p: pattern) : NoDup (pat_fv p).
-Proof.
-  induction p; simpl; try constructor; auto.
-  - constructor.
-  - apply big_union_nodup.
-  - apply union_nodup; auto.
-  - apply union_nodup; auto. constructor; auto. constructor.
-Qed.
-
-End FreeVars.
-
 (*We have decidable equality on terms and formulas because
   we use rationals to model real numbers, as why3 does*)
 Section EqDec.
@@ -1046,57 +985,6 @@ Definition predsyms_of_def (d: def) : list predsym :=
   end.
 
 (*Some utilities we need:*)
-
-(*TODO: change name*)
-Fixpoint predsym_in (p: predsym) (f: formula) {struct f}  : bool :=
-  match f with
-  | Fpred ps tys tms => predsym_eq_dec p ps || existsb (predsym_in_term p) tms
-  | Fquant q x f' => predsym_in p f'
-  | Feq ty t1 t2 => predsym_in_term p t1 || predsym_in_term p t2
-  | Fbinop b f1 f2 => predsym_in p f1 || predsym_in p f2
-  | Fnot f' => predsym_in p f'
-  | Ftrue => false
-  | Ffalse => false
-  | Flet t x f' => predsym_in_term p t || predsym_in p f'
-  | Fif f1 f2 f3 => predsym_in p f1 || predsym_in p f2 || predsym_in p f3
-  | Fmatch t ty ps => predsym_in_term p t || existsb (fun x => predsym_in p (snd x)) ps
-  end
-  
-with predsym_in_term (p: predsym) (t: term) {struct t}  : bool :=
-  match t with
-  | Tconst _ => false
-  | Tvar _ => false
-  | Tfun fs tys tms => existsb (predsym_in_term p) tms
-  | Tlet t1 x t2 => predsym_in_term p t1 || predsym_in_term p t2
-  | Tif f t1 t2 => predsym_in p f || predsym_in_term p t1 || predsym_in_term p t2
-  | Tmatch t ty ps => predsym_in_term p t || existsb (fun x => predsym_in_term p (snd x)) ps
-  | Teps f x => predsym_in p f
-  end.
-
-Fixpoint funsym_in_tm (f: funsym) (t: term) : bool :=
-  match t with
-  | Tfun fs _ tms => funsym_eq_dec f fs || existsb (funsym_in_tm f) tms
-  | Tlet t1 _ t2 => funsym_in_tm f t1 || funsym_in_tm f t2
-  | Tif f1 t1 t2 => funsym_in_fmla f f1 || funsym_in_tm f t1 ||
-    funsym_in_tm f t2
-  | Tmatch t1 _ ps => funsym_in_tm f t1 ||
-    existsb (fun x => funsym_in_tm f (snd x)) ps
-  | Teps f1 _ => funsym_in_fmla f f1
-  | _ => false
-  end
-  with funsym_in_fmla (f: funsym) (f1: formula) : bool :=
-  match f1 with
-  | Fpred _ _ tms => existsb (funsym_in_tm f) tms
-  | Feq _ t1 t2 => funsym_in_tm f t1 || funsym_in_tm f t2
-  | Fbinop _ fm1 fm2 => funsym_in_fmla f fm1 || funsym_in_fmla f fm2
-  | Fquant _ _ f' | Fnot f' => funsym_in_fmla f f'
-  | Flet t _ f' => funsym_in_tm f t || funsym_in_fmla f f'
-  | Fif fm1 fm2 fm3 => funsym_in_fmla f fm1 || funsym_in_fmla f fm2 ||
-    funsym_in_fmla f fm3
-  | Fmatch t _ ps => funsym_in_tm f t ||
-    existsb (fun x => funsym_in_fmla f (snd x)) ps
-  | _ => false
-  end.
 
 Definition funpred_def_eqb (f1 f2: funpred_def) : bool :=
   match f1, f2 with

@@ -1,20 +1,9 @@
-Require Import Common.
-Require Import Syntax.
-Require Import IndTypes.
-Require Import Semantics.
-Require Import Types.
-Require Import Typing.
-Require Import Substitution.
-Require Import Denotational.
+Require Export Denotational.
 Require Import GenElts.
-Require Import Coq.Logic.Eqdep_dec.
-Require Import Hlist. (*for cast - TODO change?*)
 
 (*For a proof using induction on length of list*)
 Require Import Coq.Arith.Wf_nat.
 Require Import Wellfounded.
-
-Require Import FunctionalExtensionality.
 
 Set Bullet Behavior "Strict Subproofs".
 
@@ -132,17 +121,6 @@ Ltac nested_ind_case :=
 
 Ltac alpha_case x Heq :=
   destruct x; try solve[inversion Heq]; simpl; simpl in *.
-
-Ltac case_match_hyp :=
-  repeat match goal with 
-      |- (match ?p with |Some l => ?x | None => ?y end) = ?z -> ?q =>
-        let Hp := fresh "Hmatch" in 
-        destruct p eqn: Hp end.
-Ltac case_match_goal :=
-  repeat match goal with 
-        |- (match ?p with |Some l => ?x | None => ?y end) = ?z =>
-          let Hp := fresh "Hmatch" in 
-          destruct p eqn: Hp end; auto.
 
 (*Alpha Equivalence*)
 
@@ -1219,7 +1197,7 @@ Proof.
   - (*Tconst*)
     alpha_case t2 Heq. 
     rewrite simpl_all_dec in Heq. subst.
-    erewrite term_fv_agree. apply term_rep_irrel.
+    erewrite tm_fv_agree. apply term_rep_irrel.
     simpl. intros; destruct H.
   - (*Tvar - harder*) 
     alpha_case t2 Heq.
@@ -1240,7 +1218,7 @@ Proof.
       assert ((ty_var_inv Hty2) = eq_refl) by
         (apply UIP_dec; apply vty_eq_dec).
       rewrite H1. reflexivity.
-    + erewrite term_fv_agree. apply term_rep_irrel. simpl.
+    + erewrite tm_fv_agree. apply term_rep_irrel. simpl.
       intros. destruct H as [Heq | []]; subst.
       apply Hvals2. split; auto.
   - (*Tfun*)
@@ -1370,7 +1348,7 @@ Proof.
               eapply match_val_single_nodup in Hmatch2.
               apply Hmatch2.
             }
-            rewrite !extend_val_with_list_lookup with(t:=t'); auto.
+            rewrite !extend_val_lookup with(t:=t'); auto.
             (*Now handle all the casting*)
             destruct (sort_eq_dec (v_subst vt (snd x)) (projT1 t')).
             ** destruct (sort_eq_dec (v_subst vt (snd y)) (projT1 t')).
@@ -1406,14 +1384,14 @@ Proof.
               auto.
               apply Hmatch2 in C; contradiction.
             }
-            rewrite !extend_val_with_list_notin'; wf_tac.
+            rewrite !extend_val_notin; wf_tac.
         -- (*Here, we must show preservation of [Hvals2]*) 
           unfold add_vals.
           intros x. rewrite !map_app, !in_app_iff;
           intros [Hnotx1 Hnotx2].
           not_or Hnotx. rewrite map_fst_combine in Hnotx2; wf_tac.
           rewrite map_snd_combine in Hnotx; wf_tac.
-          rewrite !extend_val_with_list_notin'; wf_tac;
+          rewrite !extend_val_notin; wf_tac;
           intro C.
           ++ apply match_val_single_free_var with(x:=x) in Hmatch2;
             auto.
@@ -1651,7 +1629,7 @@ Proof.
               eapply match_val_single_nodup in Hmatch2.
               apply Hmatch2.
             }
-            rewrite !extend_val_with_list_lookup with(t:=t'); auto.
+            rewrite !extend_val_lookup with(t:=t'); auto.
             (*Now handle all the casting*)
             destruct (sort_eq_dec (v_subst vt (snd x)) (projT1 t')).
             ** destruct (sort_eq_dec (v_subst vt (snd y)) (projT1 t')).
@@ -1686,14 +1664,14 @@ Proof.
               auto.
               apply Hmatch2 in C; contradiction.
             }
-            rewrite !extend_val_with_list_notin'; wf_tac.
+            rewrite !extend_val_notin; wf_tac.
         -- (*Here, we must show preservation of [Hvals2]*) 
           unfold add_vals.
           intros x. rewrite !map_app, !in_app_iff;
           intros [Hnotx1 Hnotx2].
           not_or Hnotx. rewrite map_fst_combine in Hnotx2; wf_tac.
           rewrite map_snd_combine in Hnotx; wf_tac.
-          rewrite !extend_val_with_list_notin'; wf_tac;
+          rewrite !extend_val_notin; wf_tac;
           intro C.
           ++ apply match_val_single_free_var with(x:=x) in Hmatch2;
             auto.
@@ -2736,11 +2714,11 @@ Qed.
   annoying to prove*)
 Lemma alpha_equiv_dup (t: term) (f: formula):
   (forall t1 x y1 y2 v1 v2 v3
-    (Hfree: ~ In y2 (term_fv t1)),
+    (Hfree: ~ In y2 (tm_fv t1)),
     alpha_equiv_t (v1 ++ (x, y1) :: v2 ++ (x, y2) :: v3) t t1 =
     alpha_equiv_t (v1 ++ (x, y1) :: v2 ++ v3) t t1) /\
   (forall f1 x y1 y2 v1 v2 v3
-    (Hfree: ~ In y2 (form_fv f1)),
+    (Hfree: ~ In y2 (fmla_fv f1)),
     alpha_equiv_f (v1 ++ (x, y1) :: v2 ++ (x, y2) :: v3) f f1 =
     alpha_equiv_f (v1 ++ (x, y1) :: v2 ++ v3) f f1).
 Proof.
@@ -3229,8 +3207,8 @@ Definition same_in_f_refl f := proj_fmla same_in_refl f.
 Theorem alpha_equiv_sub (t: term) (f: formula):
   (forall (tm2: term) (x y: vsymbol) v1 v2
     (Htys: snd x = snd y)
-    (Hbnd: ~ In y (bnd_t tm2))
-    (Hfree: ~ In y (term_fv tm2))
+    (Hbnd: ~ In y (tm_bnd tm2))
+    (Hfree: ~ In y (tm_fv tm2))
     (Hsame: same_in_t t tm2 x)
     (Hv1a: ~In x (map fst v1))
     (Hv1b: ~ In y (map snd v1))
@@ -3238,8 +3216,8 @@ Theorem alpha_equiv_sub (t: term) (f: formula):
     alpha_equiv_t (v1 ++ (x, y) :: v2) t (sub_t x y tm2)) /\
   (forall (fm2: formula) (x y: vsymbol) v1 v2
     (Htys: snd x = snd y)
-    (Hbnd: ~ In y (bnd_f fm2))
-    (Hfree: ~ In y (form_fv fm2))
+    (Hbnd: ~ In y (fmla_bnd fm2))
+    (Hfree: ~ In y (fmla_fv fm2))
     (Hsame: same_in_f f fm2 x)
     (Hv1a: ~In x (map fst v1))
     (Hv1b: ~ In y (map snd v1))
@@ -3341,7 +3319,7 @@ Proof.
         -- rewrite map_app. wf_tac; intro C.
           destruct C; auto. apply Hbnd. simpl. wf_tac.
         -- rewrite <- app_assoc. auto.
-      * apply IHps; auto. (*TODO: use free_bnd_tac*)
+      * apply IHps; auto. (*TODO: use free_tm_bndac*)
         -- intro C. apply Hbnd. simpl. wf_tac.
         -- intro C. apply Hfree. simpl. simpl_set; wf_tac.
   - (*Teps*)
@@ -3465,7 +3443,7 @@ Proof.
         -- rewrite map_app. wf_tac; intro C.
           destruct C; auto. apply Hbnd. simpl. wf_tac.
         -- rewrite <- app_assoc. auto.
-      * apply IHps; auto. (*TODO: use free_bnd_tac*)
+      * apply IHps; auto. (*TODO: use free_tm_bndac*)
         -- intro C. apply Hbnd. simpl. wf_tac.
         -- intro C. apply Hfree. simpl. simpl_set; wf_tac.
 Qed.
@@ -3477,8 +3455,8 @@ Definition alpha_equiv_sub_f_full f := proj_fmla alpha_equiv_sub f.
 (*How a substitution changes alpha equivalence*)
 Corollary alpha_equiv_sub_t (t: term) (x y: vsymbol)
   (Htys: snd x = snd y)
-  (Hbnd: ~ In y (bnd_t t))
-  (Hfree: ~ In y (term_fv t)):
+  (Hbnd: ~ In y (tm_bnd t))
+  (Hfree: ~ In y (tm_fv t)):
   alpha_equiv_t [(x, y)] t (sub_t x y t).
 Proof.
   apply alpha_equiv_sub_t_full with(v1:=nil)(v2:=nil); simpl; auto.
@@ -3488,8 +3466,8 @@ Qed.
 
 Corollary alpha_equiv_sub_f (f: formula) (x y: vsymbol)
   (Htys: snd x = snd y)
-  (Hbnd: ~ In y (bnd_f f))
-  (Hfree: ~ In y (form_fv f)):
+  (Hbnd: ~ In y (fmla_bnd f))
+  (Hfree: ~ In y (fmla_fv f)):
   alpha_equiv_f [(x, y)] f (sub_f x y f).
 Proof.
   apply alpha_equiv_sub_f_full with(v1:=nil)(v2:=nil); simpl; auto.
@@ -3726,8 +3704,8 @@ Section API.
 (*These results, with all our work, are easy*)
 Lemma alpha_convert_quant
   (q: quant) (v1 v2: vsymbol) (Heq: snd v1 = snd v2) (f: formula)
-  (Hbnd: ~In v2 (bnd_f f))
-  (Hfree: ~In v2 (form_fv f)):
+  (Hbnd: ~In v2 (fmla_bnd f))
+  (Hfree: ~In v2 (fmla_fv f)):
   a_equiv_f (Fquant q v1 f) (Fquant q v2 (sub_f v1 v2 f)).
 Proof.
   unfold a_equiv_f. simpl.
@@ -3737,8 +3715,8 @@ Qed.
 
 Lemma alpha_convert_tlet 
   (v1 v2: vsymbol) (Heq: snd v1 = snd v2) (tm1 tm2: term)
-  (Hbnd: ~In v2 (bnd_t tm2))
-  (Hfree: ~In v2 (term_fv tm2)):
+  (Hbnd: ~In v2 (tm_bnd tm2))
+  (Hfree: ~In v2 (tm_fv tm2)):
   a_equiv_t (Tlet tm1 v1 tm2) (Tlet tm1 v2 (sub_t v1 v2 tm2)).
 Proof.
   unfold a_equiv_t.
@@ -3750,8 +3728,8 @@ Qed.
 
 Lemma alpha_convert_flet 
   (v1 v2: vsymbol) (Heq: snd v1 = snd v2) (t1: term) (f2: formula)
-  (Hbnd: ~In v2 (bnd_f f2))
-  (Hfree: ~In v2 (form_fv f2)):
+  (Hbnd: ~In v2 (fmla_bnd f2))
+  (Hfree: ~In v2 (fmla_fv f2)):
   a_equiv_f (Flet t1 v1 f2) (Flet t1 v2 (sub_f v1 v2 f2)).
 Proof.
   unfold a_equiv_f.
@@ -3763,8 +3741,8 @@ Qed.
 
 Lemma alpha_convert_teps
   (v1 v2: vsymbol) (Heq: snd v1 = snd v2) (f: formula)
-  (Hbnd: ~In v2 (bnd_f f))
-  (Hfree: ~In v2 (form_fv f)):
+  (Hbnd: ~In v2 (fmla_bnd f))
+  (Hfree: ~In v2 (fmla_fv f)):
   a_equiv_t (Teps f v1) (Teps (sub_f v1 v2 f) v2).
 Proof.
   unfold a_equiv_t. simpl.
@@ -3790,8 +3768,8 @@ Lemma alpha_convert_tlet':
 forall v1 v2 : vsymbol,
   snd v1 = snd v2 ->
   forall tm1 tm2 tm3 tm4 : term,
-  ~ In v2 (bnd_t tm4) ->
-  ~ In v2 (term_fv tm4) ->
+  ~ In v2 (tm_bnd tm4) ->
+  ~ In v2 (tm_fv tm4) ->
   a_equiv_t tm1 tm3 ->
   a_equiv_t tm2 tm4 ->
   a_equiv_t (Tlet tm1 v1 tm2) (Tlet tm3 v2 (sub_t v1 v2 tm4)).
@@ -3815,8 +3793,8 @@ Qed.
 Lemma alpha_convert_teps': forall v1 v2,
   snd v1 = snd v2 ->
   forall f1 f2: formula,
-  ~ In v2 (bnd_f f2) ->
-  ~ In v2 (form_fv f2) ->
+  ~ In v2 (fmla_bnd f2) ->
+  ~ In v2 (fmla_fv f2) ->
   a_equiv_f f1 f2 ->
   a_equiv_t (Teps f1 v1) (Teps (sub_f v1 v2 f2) v2).
 Proof.
@@ -3838,8 +3816,8 @@ Qed.
 Lemma alpha_convert_quant': forall q v1 v2,
   snd v1 = snd v2 ->
   forall f1 f2: formula,
-  ~ In v2 (bnd_f f2) ->
-  ~ In v2 (form_fv f2) ->
+  ~ In v2 (fmla_bnd f2) ->
+  ~ In v2 (fmla_fv f2) ->
   a_equiv_f f1 f2 ->
   a_equiv_f (Fquant q v1 f1) (Fquant q v2 (sub_f v1 v2 f2)).
 Proof.
@@ -3920,8 +3898,8 @@ Lemma alpha_convert_flet':
 forall v1 v2 : vsymbol,
   snd v1 = snd v2 ->
   forall tm1 tm2 f1 f2,
-  ~ In v2 (bnd_f f2) ->
-  ~ In v2 (form_fv f2) ->
+  ~ In v2 (fmla_bnd f2) ->
+  ~ In v2 (fmla_fv f2) ->
   a_equiv_t tm1 tm2 ->
   a_equiv_f f1 f2 ->
   a_equiv_f (Flet tm1 v1 f1) (Flet tm2 v2 (sub_f v1 v2 f2)).
@@ -4161,21 +4139,21 @@ Fixpoint alpha_t_aux (t: term) (l: list string) {struct t} : term :=
   | Tlet t1 x t2 => 
     match l with
     | str :: tl =>
-      let (l1, l2) := split tl (length (bnd_t t1)) in 
+      let (l1, l2) := split tl (length (tm_bnd t1)) in 
       Tlet (alpha_t_aux t1 l1) (str, snd x) (sub_t x (str, snd x) 
       (alpha_t_aux t2 l2))
     | _ => t
     end
   | Tfun fs tys tms =>
     (*Split up the list into pieces of appropriate lengths 
-      (size (bnd_t tm))*)
-    let lens := map (fun tm => length (bnd_t tm)) tms in
+      (size (tm_bnd tm))*)
+    let lens := map (fun tm => length (tm_bnd tm)) tms in
     let l_split := split_lens l lens in
     Tfun fs tys (map2 (fun (tm: term) (l': list string) =>
     alpha_t_aux tm l') tms l_split)
   | Tif f t1 t2 =>
-    let f_sz := length (bnd_f f) in
-    let t1_sz := length (bnd_t t1) in
+    let f_sz := length (fmla_bnd f) in
+    let t1_sz := length (tm_bnd t1) in
     let (l1, lrest) := split l f_sz in
     let (l2, l3) := split lrest t1_sz in
     Tif (alpha_f_aux f l1) 
@@ -4185,8 +4163,8 @@ Fixpoint alpha_t_aux (t: term) (l: list string) {struct t} : term :=
     (*First do the pattern substitutions, then do the terms
       recursively*)
     let lens := map (fun x => length (pat_fv (fst x)) + 
-      length (bnd_t (snd x))) ps in
-    let t1_sz := length (bnd_t t1) in
+      length (tm_bnd (snd x))) ps in
+    let t1_sz := length (tm_bnd t1) in
     let (l1, l2) := split l (t1_sz) in
     let l_split := split_lens l2 lens in
     
@@ -4210,8 +4188,8 @@ with alpha_f_aux (f: formula) (l: list string) {struct f} : formula :=
   match f with
   | Fpred ps tys tms =>
     (*Split up the list into pieces of appropriate lengths 
-      (size (bnd_t tm))*)
-    let lens := map (fun tm => length (bnd_t tm)) tms in
+      (size (tm_bnd tm))*)
+    let lens := map (fun tm => length (tm_bnd tm)) tms in
     let l_split := split_lens l lens in
     Fpred ps tys (map2 (fun (t: term) (l': list string) =>
       alpha_t_aux t l') tms l_split)
@@ -4223,12 +4201,12 @@ with alpha_f_aux (f: formula) (l: list string) {struct f} : formula :=
       | _ => f
       end
   | Feq ty t1 t2 =>
-    let t_sz := length (bnd_t t1) in
+    let t_sz := length (tm_bnd t1) in
     let (l1, l2) := split l t_sz in
     Feq ty (alpha_t_aux t1 l1)
       (alpha_t_aux t2 l2)
   | Fbinop b f1 f2 =>
-    let f_sz := length (bnd_f f1) in
+    let f_sz := length (fmla_bnd f1) in
     let (l1, l2) := split l f_sz in
     Fbinop b (alpha_f_aux f1 l1)
       (alpha_f_aux f2 l2)
@@ -4237,14 +4215,14 @@ with alpha_f_aux (f: formula) (l: list string) {struct f} : formula :=
   | Flet t v f1 =>
     match l with
     | str :: tl =>
-      let (l1, l2) := split tl (length (bnd_t t)) in 
+      let (l1, l2) := split tl (length (tm_bnd t)) in 
       Flet (alpha_t_aux t l1) (str, snd v) (sub_f v (str, snd v) 
       (alpha_f_aux f1 l2))
     | _ => f
     end
   | Fif f1 f2 f3 =>
-    let f1_sz := length (bnd_f f1) in
-    let f2_sz := length (bnd_f f2) in
+    let f1_sz := length (fmla_bnd f1) in
+    let f2_sz := length (fmla_bnd f2) in
     let (l1, lrest) := split l f1_sz in
     let (l2, l3) := split lrest f2_sz in
     Fif (alpha_f_aux f1 l1) 
@@ -4254,8 +4232,8 @@ with alpha_f_aux (f: formula) (l: list string) {struct f} : formula :=
     (*First do the pattern substitutions, then do the terms
       recursively*)
     let lens := map (fun x => length (pat_fv (fst x)) + 
-    length (bnd_f (snd x))) ps in
-    let t1_sz := length (bnd_t t1) in
+    length (fmla_bnd (snd x))) ps in
+    let t1_sz := length (tm_bnd t1) in
     let (l1, l2) := split l t1_sz in
     let l_split := split_lens l2 lens in
     
@@ -4336,14 +4314,14 @@ Qed.
 Lemma alpha_aux_bnd (t: term) (f: formula) :
   (forall (l: list string),
     NoDup l ->
-    length l = length (bnd_t t) ->
-    NoDup (bnd_t (alpha_t_aux t l)) /\
-    (forall x, In x (bnd_t (alpha_t_aux t l)) -> In (fst x) l)) /\
+    length l = length (tm_bnd t) ->
+    NoDup (tm_bnd (alpha_t_aux t l)) /\
+    (forall x, In x (tm_bnd (alpha_t_aux t l)) -> In (fst x) l)) /\
   (forall (l: list string),
     NoDup l ->
-    length l = length (bnd_f f) ->
-    NoDup (bnd_f (alpha_f_aux f l)) /\
-    (forall x, In x (bnd_f (alpha_f_aux f l)) -> In (fst x) l)).
+    length l = length (fmla_bnd f) ->
+    NoDup (fmla_bnd (alpha_f_aux f l)) /\
+    (forall x, In x (fmla_bnd (alpha_f_aux f l)) -> In (fst x) l)).
 Proof.
   revert t f.
   apply term_formula_ind; simpl; intros; auto.
@@ -4366,7 +4344,7 @@ Proof.
         rewrite Forall_forall in H.
         rewrite (map2_nth _ _ _ tm_d nil) in Hin1, Hin2; wf_tac.
         apply H in Hin1, Hin2; auto; wf_tac.
-        assert (NoDup (concat (split_lens l0 (map (fun t => length (bnd_t t)) l1)))) by
+        assert (NoDup (concat (split_lens l0 (map (fun t => length (tm_bnd t)) l1)))) by
           (rewrite <- split_lens_concat; wf_tac).
           rewrite NoDup_concat_iff in H5.
         split_all. apply (H6 i1 i2 nil (fst x)); wf_tac.
@@ -4377,7 +4355,7 @@ Proof.
       destruct Hint1 as [i [Hi Ht1]]; subst.
       rewrite Forall_forall in H.
       apply H in Hinx; auto; wf_tac.
-      rewrite (split_lens_concat l0 (map (fun t => length (bnd_t t)) l1));
+      rewrite (split_lens_concat l0 (map (fun t => length (tm_bnd t)) l1));
       [|wf_tac]. rewrite in_concat. eexists. split; [| apply Hinx]. wf_tac.
   - (*Tlet case*)
     destruct l; inversion H2; simpl.
@@ -4432,8 +4410,8 @@ Proof.
   - (*Tmatch case*)
     assert (Hsum: sum (map
         (fun x : pattern * term =>
-        Datatypes.length (pat_fv (fst x)) + Datatypes.length (bnd_t (snd x)))
-        ps) = Datatypes.length (skipn (Datatypes.length (bnd_t tm)) l)). {
+        Datatypes.length (pat_fv (fst x)) + Datatypes.length (tm_bnd (snd x)))
+        ps) = Datatypes.length (skipn (Datatypes.length (tm_bnd tm)) l)). {
           wf_tac. rewrite H2,length_concat, 
         map_map, Nat.add_comm, Nat.add_sub. f_equal. apply map_ext_in_iff; intros.
         rewrite app_length; auto.
@@ -4566,7 +4544,7 @@ Proof.
         rewrite Forall_forall in H.
         rewrite (map2_nth _ _ _ tm_d nil) in Hin1, Hin2; wf_tac.
         apply H in Hin1, Hin2; auto; wf_tac.
-        assert (NoDup (concat (split_lens l (map (fun t => length (bnd_t t)) tms)))) by
+        assert (NoDup (concat (split_lens l (map (fun t => length (tm_bnd t)) tms)))) by
           (rewrite <- split_lens_concat; wf_tac).
           rewrite NoDup_concat_iff in H5.
         split_all. apply (H6 i1 i2 nil (fst x)); wf_tac.
@@ -4577,7 +4555,7 @@ Proof.
       destruct Hint1 as [i [Hi Ht1]]; subst.
       rewrite Forall_forall in H.
       apply H in Hinx; auto; wf_tac.
-      rewrite (split_lens_concat l (map (fun t => length (bnd_t t)) tms));
+      rewrite (split_lens_concat l (map (fun t => length (tm_bnd t)) tms));
         [|wf_tac]. rewrite in_concat. eexists. split; [| apply Hinx]. wf_tac.
   - (*Fquant*)
     destruct l; inversion H1; subst; simpl.
@@ -4637,8 +4615,8 @@ Proof.
   - (*Fmatch case - very similar to Tmatch*)
     assert (Hsum: sum (map
       (fun x : pattern * formula =>
-      Datatypes.length (pat_fv (fst x)) + Datatypes.length (bnd_f (snd x)))
-      ps) = Datatypes.length (skipn (Datatypes.length (bnd_t tm)) l)). {
+      Datatypes.length (pat_fv (fst x)) + Datatypes.length (fmla_bnd (snd x)))
+      ps) = Datatypes.length (skipn (Datatypes.length (tm_bnd tm)) l)). {
         wf_tac. rewrite H2,length_concat, 
       map_map, Nat.add_comm, Nat.add_sub. f_equal. apply map_ext_in_iff; intros.
       rewrite app_length; auto.
@@ -4770,16 +4748,16 @@ Ltac vsym_eq2 x y z :=
 Lemma alpha_aux_fv (t: term) (f: formula) :
   (forall (l: list string)
     (Hnodupl: NoDup l)
-    (Hlen: length l = length (bnd_t t))
-    (Hfree: forall x, In (fst x) l -> ~ In x (term_fv t))
-    (Hbnd: forall x, In (fst x) l -> ~ In x (bnd_t t)),
+    (Hlen: length l = length (tm_bnd t))
+    (Hfree: forall x, In (fst x) l -> ~ In x (tm_fv t))
+    (Hbnd: forall x, In (fst x) l -> ~ In x (tm_bnd t)),
     forall x,
     free_in_t x (alpha_t_aux t l) = free_in_t x t) /\
   (forall (l: list string)  
     (Hnodupl: NoDup l)
-    (Hlen: length l = length (bnd_f f))
-    (Hfree: forall x, In (fst x) l -> ~ In x (form_fv f))
-    (Hbnd: forall x, In (fst x) l -> ~ In x (bnd_f f)),
+    (Hlen: length l = length (fmla_bnd f))
+    (Hfree: forall x, In (fst x) l -> ~ In x (fmla_fv f))
+    (Hbnd: forall x, In (fst x) l -> ~ In x (fmla_bnd f)),
     forall x,
     free_in_f x (alpha_f_aux f l) = free_in_f x f).
 Proof.
@@ -4793,7 +4771,7 @@ Proof.
     + apply (Hfree y); simpl_set; auto.
       exists (nth i l1 tm_d). split; wf_tac.
     + apply (Hbnd y); auto. rewrite in_concat.
-      exists (bnd_t (nth i l1 tm_d)). split; wf_tac.
+      exists (tm_bnd (nth i l1 tm_d)). split; wf_tac.
   - (*Let - this case is complicated because we are binding variables*) 
     destruct l; inversion Hlen.
     simpl. inversion Hnodupl; subst.
@@ -4804,7 +4782,7 @@ Proof.
       intro C; subst. apply (Hbnd v); try triv. 
       left; rewrite C; auto.
     }
-    specialize (H0 (skipn (Datatypes.length (bnd_t tm1)) l)).
+    specialize (H0 (skipn (Datatypes.length (tm_bnd tm1)) l)).
     prove_hyps 4 H0; wf_tac;
     try(intros y Hiny C); [apply (Hfree y) | apply (Hbnd y)|];
     try solve[simpl; right; wf_tac];
@@ -4839,7 +4817,7 @@ Proof.
     try (apply In_skipn in Hiny); try (apply In_firstn in Hiny);
     wf_tac; simpl_set; try (rewrite !in_app_iff); triv.
   - (*Match case - let's see*)
-    specialize (H (firstn (Datatypes.length (bnd_t tm)) l)).
+    specialize (H (firstn (Datatypes.length (tm_bnd tm)) l)).
     prove_hyps 4 H; wf_tac; try(intros y Hiny C);
     [apply (Hfree y) | apply (Hbnd y) |]; wf_tac;
     [simpl_set; triv | ].
@@ -4853,8 +4831,8 @@ Proof.
     assert (Hsum: sum
     (map
        (fun x0 : pattern * term =>
-        Datatypes.length (pat_fv (fst x0)) + Datatypes.length (bnd_t (snd x0)))
-       ps) = Datatypes.length l - Datatypes.length (bnd_t tm)). {
+        Datatypes.length (pat_fv (fst x0)) + Datatypes.length (tm_bnd (snd x0)))
+       ps) = Datatypes.length l - Datatypes.length (tm_bnd tm)). {
       rewrite Hlen, length_concat, map_map, Nat.add_comm, Nat.add_sub.
       f_equal. apply map_ext_in_iff; intros.
         rewrite app_length; auto.
@@ -4878,12 +4856,12 @@ Proof.
       assert (Hnotfree: forall x0 : string * vty,
       In (fst x0)
            (nth i
-              (split_lens (skipn (Datatypes.length (bnd_t tm)) l)
+              (split_lens (skipn (Datatypes.length (tm_bnd tm)) l)
                  (map
                     (fun x1 : pattern * term =>
                      Datatypes.length (pat_fv (fst x1)) +
-                     Datatypes.length (bnd_t (snd x1))) ps)) []) ->
-      ~ (In x0 (term_fv (snd (nth i ps (Pwild, tm_d)))) \/
+                     Datatypes.length (tm_bnd (snd x1))) ps)) []) ->
+      ~ (In x0 (tm_fv (snd (nth i ps (Pwild, tm_d)))) \/
         In x0 (pat_fv (fst (nth i ps (Pwild, tm_d)))))). {
         intros y Hy C.
         apply in_split_lens_ith in Hy; wf_tac.
@@ -4894,7 +4872,7 @@ Proof.
           intro Hnot.
           apply (Hbnd y); wf_tac. right.
           rewrite in_concat. exists (pat_fv (fst (nth i ps (Pwild, tm_d))) ++
-            bnd_t (snd (nth i ps (Pwild, tm_d)))). split; wf_tac.
+            tm_bnd (snd (nth i ps (Pwild, tm_d)))). split; wf_tac.
           exists (nth i ps (Pwild, tm_d)); split; wf_tac.
         }
         destruct C; try contradiction.
@@ -4919,7 +4897,7 @@ Proof.
             apply in_split_lens_ith in Hy; wf_tac.
             apply (Hbnd y); wf_tac. right.
             rewrite in_concat. exists (pat_fv (fst (nth i ps (Pwild, tm_d))) ++
-              bnd_t (snd (nth i ps (Pwild, tm_d)))). split; wf_tac.
+              tm_bnd (snd (nth i ps (Pwild, tm_d)))). split; wf_tac.
             exists (nth i ps (Pwild, tm_d)); split; wf_tac.
         -- intro C.
           apply n. simpl.
@@ -4967,7 +4945,7 @@ Proof.
     + apply (Hfree y); simpl_set; auto.
       exists (nth i tms tm_d). split; wf_tac.
     + apply (Hbnd y); auto. rewrite in_concat.
-      exists (bnd_t (nth i tms tm_d)). split; wf_tac.
+      exists (tm_bnd (nth i tms tm_d)). split; wf_tac.
   - (*Fquant -similar to let/eps*)
     destruct l; inversion Hlen.
     inversion Hnodupl;subst.
@@ -5021,7 +4999,7 @@ Proof.
       intro C; subst. apply (Hbnd v); try triv. 
       left; rewrite C; auto.
     }
-    specialize (H0 (skipn (Datatypes.length (bnd_t tm)) l)).
+    specialize (H0 (skipn (Datatypes.length (tm_bnd tm)) l)).
     prove_hyps 4 H0; wf_tac;
     try(intros y Hiny C); [apply (Hfree y) | apply (Hbnd y)|];
     try solve[simpl; right; wf_tac];
@@ -5055,7 +5033,7 @@ Proof.
     try (apply In_skipn in Hiny); try (apply In_firstn in Hiny);
     wf_tac; simpl_set; triv.
   - (*Fmatch - copied and pasted*)
-    specialize (H (firstn (Datatypes.length (bnd_t tm)) l)).
+    specialize (H (firstn (Datatypes.length (tm_bnd tm)) l)).
     prove_hyps 4 H; wf_tac; try(intros y Hiny C);
     [apply (Hfree y) | apply (Hbnd y) |]; wf_tac;
     [simpl_set; triv | ].
@@ -5069,8 +5047,8 @@ Proof.
     assert (Hsum: sum
     (map
       (fun x0 : pattern * formula =>
-        Datatypes.length (pat_fv (fst x0)) + Datatypes.length (bnd_f (snd x0)))
-      ps) = Datatypes.length l - Datatypes.length (bnd_t tm)). {
+        Datatypes.length (pat_fv (fst x0)) + Datatypes.length (fmla_bnd (snd x0)))
+      ps) = Datatypes.length l - Datatypes.length (tm_bnd tm)). {
       rewrite Hlen, length_concat, map_map, Nat.add_comm, Nat.add_sub.
       f_equal. apply map_ext_in_iff; intros.
         rewrite app_length; auto.
@@ -5094,12 +5072,12 @@ Proof.
       assert (Hnotfree: forall x0 : string * vty,
       In (fst x0)
           (nth i
-              (split_lens (skipn (Datatypes.length (bnd_t tm)) l)
+              (split_lens (skipn (Datatypes.length (tm_bnd tm)) l)
                 (map
                     (fun x1 : pattern * formula =>
                     Datatypes.length (pat_fv (fst x1)) +
-                    Datatypes.length (bnd_f (snd x1))) ps)) []) ->
-      ~ (In x0 (form_fv (snd (nth i ps (Pwild, Ftrue)))) \/
+                    Datatypes.length (fmla_bnd (snd x1))) ps)) []) ->
+      ~ (In x0 (fmla_fv (snd (nth i ps (Pwild, Ftrue)))) \/
         In x0 (pat_fv (fst (nth i ps (Pwild, Ftrue)))))). {
         intros y Hy C.
         apply in_split_lens_ith in Hy; wf_tac.
@@ -5110,7 +5088,7 @@ Proof.
           intro Hnot.
           apply (Hbnd y); wf_tac. right.
           rewrite in_concat. exists (pat_fv (fst (nth i ps (Pwild, Ftrue))) ++
-            bnd_f (snd (nth i ps (Pwild, Ftrue)))). split; wf_tac.
+            fmla_bnd (snd (nth i ps (Pwild, Ftrue)))). split; wf_tac.
           exists (nth i ps (Pwild, Ftrue)); split; wf_tac.
         }
         destruct C; try contradiction.
@@ -5136,7 +5114,7 @@ Proof.
             apply in_split_lens_ith in Hy; wf_tac.
             apply (Hbnd y); wf_tac. right.
             rewrite in_concat. exists (pat_fv (fst (nth i ps (Pwild, Ftrue))) ++
-              bnd_f (snd (nth i ps (Pwild, Ftrue)))). split; wf_tac.
+              fmla_bnd (snd (nth i ps (Pwild, Ftrue)))). split; wf_tac.
             exists (nth i ps (Pwild, Ftrue)); split; wf_tac.
         -- intro C.
           apply n. simpl.
@@ -5149,10 +5127,10 @@ Definition alpha_f_aux_fv f := proj_fmla alpha_aux_fv f.
 Corollary alpha_t_aux_fv' (t: term):
   (forall (l: list string)
   (Hnodupl: NoDup l)
-  (Hlen: length l = length (bnd_t t))
-  (Hfree: forall x, In (fst x) l -> ~ In x (term_fv t))
-  (Hbnd: forall x, In (fst x) l -> ~ In x (bnd_t t)),
-  forall x, In x (term_fv (alpha_t_aux t l)) <-> In x (term_fv t)).
+  (Hlen: length l = length (tm_bnd t))
+  (Hfree: forall x, In (fst x) l -> ~ In x (tm_fv t))
+  (Hbnd: forall x, In (fst x) l -> ~ In x (tm_bnd t)),
+  forall x, In x (tm_fv (alpha_t_aux t l)) <-> In x (tm_fv t)).
 Proof.
   intros. rewrite <- !free_in_t_spec, alpha_t_aux_fv; auto.
   reflexivity.
@@ -5161,10 +5139,10 @@ Qed.
 Corollary alpha_f_aux_fv' (f: formula):
   (forall (l: list string)
   (Hnodupl: NoDup l)
-  (Hlen: length l = length (bnd_f f))
-  (Hfree: forall x, In (fst x) l -> ~ In x (form_fv f))
-  (Hbnd: forall x, In (fst x) l -> ~ In x (bnd_f f)),
-  forall x, In x (form_fv (alpha_f_aux f l)) <-> In x (form_fv f)).
+  (Hlen: length l = length (fmla_bnd f))
+  (Hfree: forall x, In (fst x) l -> ~ In x (fmla_fv f))
+  (Hbnd: forall x, In (fst x) l -> ~ In x (fmla_bnd f)),
+  forall x, In x (fmla_fv (alpha_f_aux f l)) <-> In x (fmla_fv f)).
 Proof.
   intros. rewrite <- !free_in_f_spec, alpha_f_aux_fv; auto.
   reflexivity.
@@ -5335,7 +5313,7 @@ Lemma alpha_tmatch tm1 tm2 v ps (strs: list (list string))
   (Hlen1: length strs = length ps)
   (Hlen2: forall i, i < length ps ->
     length (pat_fv (fst (nth i ps (Pwild, tm_d)))) +
-    length (bnd_t (snd (nth i ps (Pwild, tm_d)))) = 
+    length (tm_bnd (snd (nth i ps (Pwild, tm_d)))) = 
     length (nth i strs nil))
   (Hf: forall i, i < length ps ->
     let x := nth i ps (Pwild, tm_d) in
@@ -5344,17 +5322,17 @@ Lemma alpha_tmatch tm1 tm2 v ps (strs: list (list string))
   (Hfbnd: forall i, i < length ps ->
     let x := nth i ps (Pwild, tm_d) in
     let l' := (skipn (length (pat_fv (fst x))) (nth i strs nil)) in
-    forall y, In y (bnd_t (f (snd x) l')) -> In (fst y) l'
+    forall y, In y (tm_bnd (f (snd x) l')) -> In (fst y) l'
   )
   (Hffree: forall i, i < length ps ->
     let x := nth i ps (Pwild, tm_d) in
     let l' := (skipn (length (pat_fv (fst x))) (nth i strs nil)) in
     forall y, free_in_t y (f (snd x) l') = free_in_t y (snd x))
   (Hnotfree: forall v l, In l strs -> In (fst v) l ->
-    ~ In v (big_union vsymbol_eq_dec term_fv (map snd ps)))
+    ~ In v (big_union vsymbol_eq_dec tm_fv (map snd ps)))
   (Hnotbnd: forall v l, In l strs -> In (fst v) l ->
     ~ In v (concat
-    (map (fun p : pattern * term => pat_fv (fst p) ++ bnd_t (snd p))
+    (map (fun p : pattern * term => pat_fv (fst p) ++ tm_bnd (snd p))
        ps)))
   (Hnodup: NoDup (concat strs)):
   a_equiv_t (Tmatch tm1 v ps)
@@ -5400,14 +5378,14 @@ Proof.
       (firstn (Datatypes.length (pat_fv p1)) l) Hlenl).
     assert (forall s : string * vty,
     In (fst s) (firstn (Datatypes.length (pat_fv p1)) l) ->
-    ~ In s (bnd_t t1)). {
+    ~ In s (tm_bnd t1)). {
       intros v' Hinvl Hinvb.
       apply (Hnotbnd v' l); simpl; wf_tac. 
     }
     specialize (H H1); clear H1.
     assert (forall s : string * vty,
     In (fst s) (firstn (Datatypes.length (pat_fv p1)) l) ->
-    ~ In s (term_fv t1)). {
+    ~ In s (tm_fv t1)). {
       intros v' Hinl Hinvf.
       apply (Hnotfree v' l); simpl; simpl_set; wf_tac.
     }
@@ -5487,7 +5465,7 @@ Lemma alpha_fmatch tm1 tm2 v ps (strs: list (list string))
   (Hlen1: length strs = length ps)
   (Hlen2: forall i, i < length ps ->
     length (pat_fv (fst (nth i ps (Pwild, Ftrue)))) +
-    length (bnd_f (snd (nth i ps (Pwild, Ftrue)))) = 
+    length (fmla_bnd (snd (nth i ps (Pwild, Ftrue)))) = 
     length (nth i strs nil))
   (Hf: forall i, i < length ps ->
     let x := nth i ps (Pwild, Ftrue) in
@@ -5496,17 +5474,17 @@ Lemma alpha_fmatch tm1 tm2 v ps (strs: list (list string))
   (Hfbnd: forall i, i < length ps ->
     let x := nth i ps (Pwild, Ftrue) in
     let l' := (skipn (length (pat_fv (fst x))) (nth i strs nil)) in
-    forall y, In y (bnd_f (f (snd x) l')) -> In (fst y) l'
+    forall y, In y (fmla_bnd (f (snd x) l')) -> In (fst y) l'
   )
   (Hffree: forall i, i < length ps ->
     let x := nth i ps (Pwild, Ftrue) in
     let l' := (skipn (length (pat_fv (fst x))) (nth i strs nil)) in
     forall y, free_in_f y (f (snd x) l') = free_in_f y (snd x))
   (Hnotfree: forall v l, In l strs -> In (fst v) l ->
-    ~ In v (big_union vsymbol_eq_dec form_fv (map snd ps)))
+    ~ In v (big_union vsymbol_eq_dec fmla_fv (map snd ps)))
   (Hnotbnd: forall v l, In l strs -> In (fst v) l ->
     ~ In v (concat
-    (map (fun p : pattern * formula => pat_fv (fst p) ++ bnd_f (snd p))
+    (map (fun p : pattern * formula => pat_fv (fst p) ++ fmla_bnd (snd p))
        ps)))
   (Hnodup: NoDup (concat strs)):
   a_equiv_f (Fmatch tm1 v ps)
@@ -5552,14 +5530,14 @@ Proof.
       (firstn (Datatypes.length (pat_fv p1)) l) Hlenl).
     assert (forall s : string * vty,
     In (fst s) (firstn (Datatypes.length (pat_fv p1)) l) ->
-    ~ In s (bnd_f t1)). {
+    ~ In s (fmla_bnd t1)). {
       intros v' Hinvl Hinvb.
       apply (Hnotbnd v' l); simpl; wf_tac. 
     }
     specialize (H H1); clear H1.
     assert (forall s : string * vty,
     In (fst s) (firstn (Datatypes.length (pat_fv p1)) l) ->
-    ~ In s (form_fv t1)). {
+    ~ In s (fmla_fv t1)). {
       intros v' Hinl Hinvf.
       apply (Hnotfree v' l); simpl; simpl_set; wf_tac.
     }
@@ -5641,10 +5619,10 @@ Ltac free_bnd Hfree Hbnd :=
   let Hinx2 := fresh "Hinx" in
   intros x Hinx1;
   match goal with
-    | |- ~ In ?x (form_fv ?f) => intros Hinx2; apply (Hfree x)
-    | |- ~ In ?x (bnd_f ?f) => intros Hinx2; apply (Hbnd x)
-    | |- ~ In ?x (term_fv ?t) => intros Hinx2; apply (Hfree x)
-    | |- ~ In ?x (bnd_t ?t) => intros Hinx2; apply (Hbnd x)
+    | |- ~ In ?x (fmla_fv ?f) => intros Hinx2; apply (Hfree x)
+    | |- ~ In ?x (fmla_bnd ?f) => intros Hinx2; apply (Hbnd x)
+    | |- ~ In ?x (tm_fv ?t) => intros Hinx2; apply (Hfree x)
+    | |- ~ In ?x (tm_bnd ?t) => intros Hinx2; apply (Hbnd x)
     end; simpl_set; wf_tac;
   repeat (match goal with
   | H: In ?x (nth ?i (split_lens ?l1 ?l2) ?d) |- In ?x ?l1 =>
@@ -5675,15 +5653,15 @@ Ltac free_bnd Hfree Hbnd :=
 Theorem alpha_aux_equiv (t: term) (f: formula):
   (forall l
     (Hn: NoDup l)
-    (Hlen: length l = length (bnd_t t))
-    (Hfree: forall x, In (fst x) l -> ~ In x (term_fv t))
-    (Hbnd: forall x, In (fst x) l -> ~ In x (bnd_t t)),
+    (Hlen: length l = length (tm_bnd t))
+    (Hfree: forall x, In (fst x) l -> ~ In x (tm_fv t))
+    (Hbnd: forall x, In (fst x) l -> ~ In x (tm_bnd t)),
     a_equiv_t t (alpha_t_aux t l)) /\
   (forall l
     (Hn: NoDup l)
-    (Hlen: length l = length (bnd_f f))
-    (Hfree: forall x, In (fst x) l -> ~ In x (form_fv f))
-    (Hbnd: forall x, In (fst x) l -> ~ In x (bnd_f f)),
+    (Hlen: length l = length (fmla_bnd f))
+    (Hfree: forall x, In (fst x) l -> ~ In x (fmla_fv f))
+    (Hbnd: forall x, In (fst x) l -> ~ In x (fmla_bnd f)),
     a_equiv_f f (alpha_f_aux f l)).
 Proof.
   revert t f. apply term_formula_ind; simpl; intros; auto;
@@ -5716,8 +5694,8 @@ Proof.
     wf_tac; free_bnd Hfree Hbnd.
   - (*Tmatch*)
     rewrite app_length, length_concat, map_map in Hlen.
-    assert (Hlen': length l = length (bnd_t tm) +
-      sum (map (fun x => length (pat_fv (fst x)) + length (bnd_t (snd x))) ps)). {
+    assert (Hlen': length l = length (tm_bnd tm) +
+      sum (map (fun x => length (pat_fv (fst x)) + length (tm_bnd (snd x))) ps)). {
       rewrite Hlen. f_equal. f_equal. apply map_ext.
       intros; rewrite app_length; auto.
     }
@@ -5730,18 +5708,18 @@ Proof.
       let y := nth i ps (Pwild, tm_d) in
       let l' := skipn (Datatypes.length (pat_fv (fst y)))
         (nth i
-           (split_lens (skipn (Datatypes.length (bnd_t tm)) l)
+           (split_lens (skipn (Datatypes.length (tm_bnd tm)) l)
               (map
                  (fun x : pattern * term =>
-                  Datatypes.length (pat_fv (fst x)) + Datatypes.length (bnd_t (snd x)))
+                  Datatypes.length (pat_fv (fst x)) + Datatypes.length (tm_bnd (snd x)))
                  ps)) []) in
-      forall x, In (fst x) l' -> ~ In x (term_fv (snd y))). {
+      forall x, In (fst x) l' -> ~ In x (tm_fv (snd y))). {
       intros i Hi y l' x Hinx1 Hinx2.
       destruct (in_dec vsymbol_eq_dec x (pat_fv (fst y))).
       -- apply (Hbnd x); wf_tac. apply In_skipn in Hinx1.
         apply in_split_lens_ith in Hinx1; wf_tac.
         right. rewrite in_concat.
-        exists (pat_fv (fst y) ++ bnd_t (snd y)). split; wf_tac.
+        exists (pat_fv (fst y) ++ tm_bnd (snd y)). split; wf_tac.
         exists y. split; auto. subst y; wf_tac.
       -- apply (Hfree x); wf_tac. apply In_skipn in Hinx1.
         apply in_split_lens_ith in Hinx1; wf_tac.
@@ -5753,17 +5731,17 @@ Proof.
       let y := nth i ps (Pwild, tm_d) in
       let l' := skipn (Datatypes.length (pat_fv (fst y)))
         (nth i
-           (split_lens (skipn (Datatypes.length (bnd_t tm)) l)
+           (split_lens (skipn (Datatypes.length (tm_bnd tm)) l)
               (map
                  (fun x : pattern * term =>
-                  Datatypes.length (pat_fv (fst x)) + Datatypes.length (bnd_t (snd x)))
+                  Datatypes.length (pat_fv (fst x)) + Datatypes.length (tm_bnd (snd x)))
                  ps)) []) in
-      forall x, In (fst x) l' -> ~ In x (bnd_t (snd y))). {
+      forall x, In (fst x) l' -> ~ In x (tm_bnd (snd y))). {
       intros i Hi y l' x Hinx1 Hinx2.
       apply In_skipn in Hinx1.
       apply in_split_lens_ith in Hinx1; wf_tac.
       apply (Hbnd x); wf_tac. right.
-      rewrite in_concat. exists (pat_fv (fst y) ++ bnd_t (snd y)).
+      rewrite in_concat. exists (pat_fv (fst y) ++ tm_bnd (snd y)).
       split; wf_tac. exists y. split; wf_tac. subst y; wf_tac.
     }
     apply alpha_tmatch; wf_tac.
@@ -5789,7 +5767,7 @@ Proof.
       destruct (in_dec vsymbol_eq_dec z (pat_fv (fst p))).
       * (*In this case, bound*)
         apply (Hbnd z); wf_tac. right.
-        rewrite in_concat. exists (pat_fv (fst p) ++ bnd_t (snd p)).
+        rewrite in_concat. exists (pat_fv (fst p) ++ tm_bnd (snd p)).
         split; wf_tac. exists p. split; wf_tac.
       * (*In this case, free*)
         apply (Hfree z); wf_tac. simpl_set.
@@ -5864,8 +5842,8 @@ Proof.
     wf_tac; free_bnd Hfree Hbnd.
   - (*Fmatch - TODO reduce duplication*)
     rewrite app_length, length_concat, map_map in Hlen.
-    assert (Hlen': length l = length (bnd_t tm) +
-      sum (map (fun x => length (pat_fv (fst x)) + length (bnd_f (snd x))) ps)). {
+    assert (Hlen': length l = length (tm_bnd tm) +
+      sum (map (fun x => length (pat_fv (fst x)) + length (fmla_bnd (snd x))) ps)). {
       rewrite Hlen. f_equal. f_equal. apply map_ext.
       intros; rewrite app_length; auto.
     }
@@ -5878,18 +5856,18 @@ Proof.
       let y := nth i ps (Pwild, Ftrue) in
       let l' := skipn (Datatypes.length (pat_fv (fst y)))
         (nth i
-          (split_lens (skipn (Datatypes.length (bnd_t tm)) l)
+          (split_lens (skipn (Datatypes.length (tm_bnd tm)) l)
               (map
                 (fun x : pattern * formula =>
-                  Datatypes.length (pat_fv (fst x)) + Datatypes.length (bnd_f (snd x)))
+                  Datatypes.length (pat_fv (fst x)) + Datatypes.length (fmla_bnd (snd x)))
                 ps)) []) in
-      forall x, In (fst x) l' -> ~ In x (form_fv (snd y))). {
+      forall x, In (fst x) l' -> ~ In x (fmla_fv (snd y))). {
       intros i Hi y l' x Hinx1 Hinx2.
       destruct (in_dec vsymbol_eq_dec x (pat_fv (fst y))).
       -- apply (Hbnd x); wf_tac. apply In_skipn in Hinx1.
         apply in_split_lens_ith in Hinx1; wf_tac.
         right. rewrite in_concat.
-        exists (pat_fv (fst y) ++ bnd_f (snd y)). split; wf_tac.
+        exists (pat_fv (fst y) ++ fmla_bnd (snd y)). split; wf_tac.
         exists y. split; auto. subst y; wf_tac.
       -- apply (Hfree x); wf_tac. apply In_skipn in Hinx1.
         apply in_split_lens_ith in Hinx1; wf_tac.
@@ -5901,17 +5879,17 @@ Proof.
       let y := nth i ps (Pwild, Ftrue) in
       let l' := skipn (Datatypes.length (pat_fv (fst y)))
         (nth i
-          (split_lens (skipn (Datatypes.length (bnd_t tm)) l)
+          (split_lens (skipn (Datatypes.length (tm_bnd tm)) l)
               (map
                 (fun x : pattern * formula =>
-                  Datatypes.length (pat_fv (fst x)) + Datatypes.length (bnd_f (snd x)))
+                  Datatypes.length (pat_fv (fst x)) + Datatypes.length (fmla_bnd (snd x)))
                 ps)) []) in
-      forall x, In (fst x) l' -> ~ In x (bnd_f (snd y))). {
+      forall x, In (fst x) l' -> ~ In x (fmla_bnd (snd y))). {
       intros i Hi y l' x Hinx1 Hinx2.
       apply In_skipn in Hinx1.
       apply in_split_lens_ith in Hinx1; wf_tac.
       apply (Hbnd x); wf_tac. right.
-      rewrite in_concat. exists (pat_fv (fst y) ++ bnd_f (snd y)).
+      rewrite in_concat. exists (pat_fv (fst y) ++ fmla_bnd (snd y)).
       split; wf_tac. exists y. split; wf_tac. subst y; wf_tac.
     }
     apply alpha_fmatch; wf_tac.
@@ -5936,7 +5914,7 @@ Proof.
       destruct (in_dec vsymbol_eq_dec z (pat_fv (fst p))).
       * (*In this case, bound*)
         apply (Hbnd z); wf_tac. right.
-        rewrite in_concat. exists (pat_fv (fst p) ++ bnd_f (snd p)).
+        rewrite in_concat. exists (pat_fv (fst p) ++ fmla_bnd (snd p)).
         split; wf_tac. exists p. split; wf_tac.
       * (*In this case, free*)
         apply (Hfree z); wf_tac. simpl_set.
@@ -6127,10 +6105,10 @@ Qed.
 Lemma shape_predsym_in t1 f1:
   (forall t2 p
     (Hshp: shape_t t1 t2),
-    predsym_in_term p t1 = predsym_in_term p t2) /\
+    predsym_in_tm p t1 = predsym_in_tm p t2) /\
   (forall f2 p
     (Hshp: shape_f f1 f2),
-    predsym_in p f1 = predsym_in p f2).
+    predsym_in_fmla p f1 = predsym_in_fmla p f2).
 Proof.
   revert t1 f1; apply term_formula_ind; simpl; intros.
   - alpha_case t2 Hshp; auto.
@@ -6250,18 +6228,18 @@ End Shape.
 Section ConvertFn.
 
 Definition a_convert_t (t: term) :=
-  alpha_t_aux t (gen_strs (length (bnd_t t)) (bnd_t t ++ term_fv t)).
+  alpha_t_aux t (gen_strs (length (tm_bnd t)) (tm_bnd t ++ tm_fv t)).
 Definition a_convert_f (f: formula) :=
-  alpha_f_aux f (gen_strs (length (bnd_f f)) (bnd_f f ++ form_fv f)).
+  alpha_f_aux f (gen_strs (length (fmla_bnd f)) (fmla_bnd f ++ fmla_fv f)).
 
 (*Correctness*)
 Theorem a_convert_t_wf t :
   term_wf (a_convert_t t).
 Proof.
   unfold term_wf.
-  pose proof (gen_strs_nodup (length (bnd_t t)) (bnd_t t ++ term_fv t)) as Hnodup.
-  pose proof (gen_strs_length (length (bnd_t t)) (bnd_t t ++ term_fv t)) as Hlen.
-  pose proof (gen_strs_notin (length (bnd_t t)) (bnd_t t ++ term_fv t)) as Hnotin.
+  pose proof (gen_strs_nodup (length (tm_bnd t)) (tm_bnd t ++ tm_fv t)) as Hnodup.
+  pose proof (gen_strs_length (length (tm_bnd t)) (tm_bnd t ++ tm_fv t)) as Hlen.
+  pose proof (gen_strs_notin (length (tm_bnd t)) (tm_bnd t ++ tm_fv t)) as Hnotin.
   split.
   - apply alpha_t_aux_bnd; auto.
   - intros x [Hinx1 Hinx2].
@@ -6303,9 +6281,9 @@ Theorem a_convert_f_wf f :
   fmla_wf (a_convert_f f).
 Proof.
   unfold fmla_wf.
-  pose proof (gen_strs_nodup (length (bnd_f f)) (bnd_f f ++ form_fv f)) as Hnodup.
-  pose proof (gen_strs_length (length (bnd_f f)) (bnd_f f ++ form_fv f)) as Hlen.
-  pose proof (gen_strs_notin (length (bnd_f f)) (bnd_f f ++ form_fv f)) as Hnotin.
+  pose proof (gen_strs_nodup (length (fmla_bnd f)) (fmla_bnd f ++ fmla_fv f)) as Hnodup.
+  pose proof (gen_strs_length (length (fmla_bnd f)) (fmla_bnd f ++ fmla_fv f)) as Hlen.
+  pose proof (gen_strs_notin (length (fmla_bnd f)) (fmla_bnd f ++ fmla_fv f)) as Hnotin.
   split.
   - apply alpha_f_aux_bnd; auto.
   - intros x [Hinx1 Hinx2].
