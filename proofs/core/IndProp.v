@@ -670,7 +670,7 @@ Proof.
       apply iter_flet_valid_inj in H2; split_all.
       inversion H2; subst. constructor; auto. 
     }
-    rewrite (distr_impl_let_forall _ _ _ vt pf vv f1) with(Hval2:=Hval3).
+    rewrite (distr_impl_let_forall _ _ _ pf vt vv f1) with(Hval2:=Hval3).
     + simpl_rep_full. rewrite bool_of_binop_impl.
       apply all_dec_eq. split; intros;
       erewrite fmla_rep_irrel;
@@ -1067,8 +1067,8 @@ Lemma substi_mult_notin_eq (pf1 pf2: pi_funpred gamma_valid pd)
     negb (predsym_in_tm p (snd x)))) l) :
   (forall p, ~ In p ps -> (preds gamma_valid pd pf1 p) = (preds gamma_valid pd pf2 p)) ->
   (forall f, funs gamma_valid pd pf1 f = funs gamma_valid pd pf2 f) ->
-  substi_multi_let gamma_valid pd all_unif vt pf1 vv l Hall =
-  substi_multi_let gamma_valid pd all_unif vt pf2 vv l Hall.
+  substi_multi_let gamma_valid pd all_unif pf1 vt vv l Hall =
+  substi_multi_let gamma_valid pd all_unif pf2 vt vv l Hall.
 Proof.
   revert Hall vv.
   induction l; simpl; auto; intros.
@@ -1212,10 +1212,10 @@ Proof.
   rewrite find_apply_pred_in with(Hinp:=Hinp').
   intros.
   (*Need this in multiple places*)
-  assert ((substi_multi_let gamma_valid pd all_unif vt (interp_with_Ps pf (map fst indpred) Ps)
-    (substi_mult pd vt vv (tup_1 (indpred_decomp (a_convert_f f))) h)
+  assert ((substi_multi_let gamma_valid pd all_unif (interp_with_Ps pf (map fst indpred) Ps)
+    vt (substi_mult pd vt vv (tup_1 (indpred_decomp (a_convert_f f))) h)
     (tup_2 (indpred_decomp (a_convert_f f))) Halltup2) =
-    (substi_multi_let gamma_valid pd all_unif vt pf
+    (substi_multi_let gamma_valid pd all_unif pf vt
      (substi_mult pd vt vv (tup_1 (indpred_decomp (a_convert_f f))) h)
      (tup_2 (indpred_decomp (a_convert_f f))) Halltup2)). {
       apply substi_mult_notin_eq with(ps:=map fst indpred); simpl; auto.
@@ -1246,7 +1246,7 @@ Proof.
   - rewrite <- H0. apply Hformf.
     clear H0 Hformf.
     rewrite H. clear H.
-    remember (substi_multi_let gamma_valid pd all_unif vt pf
+    remember (substi_multi_let gamma_valid pd all_unif pf vt
     (substi_mult pd vt vv (tup_1 (indpred_decomp (a_convert_f f))) h)
     (tup_2 (indpred_decomp (a_convert_f f))) Halltup2) as vv'.
     clear Heqvv'.

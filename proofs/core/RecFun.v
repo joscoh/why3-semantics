@@ -2836,7 +2836,7 @@ Proof.
     simpl in *.
     rewrite (extend_val_lookup _ _ _ _ _ y'); auto.
     2: {
-      apply (match_val_single_nodup _ _ _ _ _ _ _ _ _ Hmatch).
+      apply (match_val_single_nodup _ _ _ _ _ _ _ _ Hmatch).
     }
     assert (val (snd x') = projT1 y'). {
       symmetry.
