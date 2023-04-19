@@ -3657,6 +3657,24 @@ bool :=
     proj1_sig (term_rep_aux v t1 ty small hd Ht1 Hdec1 Hsmall Hhd) = 
     proj1_sig (term_rep_aux v t2 ty small hd Ht2 Hdec2 Hsmall Hhd))
 
+| Fif f1 f2 f3 => fun Hval' Hdec' =>
+  let Hf1 : valid_formula sigma f1 :=
+    proj1' (valid_if_inj Hval') in
+  let Hf2 : valid_formula sigma f2 :=
+    proj1' (proj2' (valid_if_inj Hval')) in
+  let Hf3 : valid_formula sigma f3 :=
+    proj2' (proj2' (valid_if_inj Hval')) in
+  let Hdec1 := proj1' (dec_inv_fif Hdec') in
+  let Hdec2 := proj1' (proj2' (dec_inv_fif Hdec')) in
+  let Hdec3 := proj2' (proj2' (dec_inv_fif Hdec')) in
+  
+    (*Need to unfold the dependent type and add a new one*)
+    if (formula_rep_aux v f1 small hd Hf1 Hdec1 Hsmall Hhd)
+    then 
+    formula_rep_aux v f2 small hd Hf2 Hdec2 Hsmall Hhd
+    else 
+    formula_rep_aux v f3 small hd Hf3 Hdec3 Hsmall Hhd
+
 (*Fmatch is similar to Tmatch*)
 | Fmatch t ty1 pats => fun Hval' Hdec' =>
   let Ht1 : term_has_type sigma t ty1 :=
@@ -3999,8 +4017,6 @@ bool :=
         ((preds gamma_valid pd pf p 
           (map (fun x => val x) l)) args)
   end
-
-| _ => fun _ _ => false
 end Hval Hdec.
 
 (*We give the Fixpoint. Coq does not accept this
@@ -4149,6 +4165,104 @@ Lemma func_smaller_case' (v:val_vars pd vt)  :
     - exact (dec_inv_tfun_arg Hdec' (proj1' (proj2_sig x)) f_fn).
 Qed.
 
+Lemma pred_smaller_case' (v:val_vars pd vt)  :
+let fa:= projT1 (projT1 input) in
+let f1:= proj1_sig (projT1 fa) in
+let y:= nth (sn_idx f1) (sn_args f1) vs_d in 
+let a1:= projT2 (projT2 fa) in
+let Hsrts:= snd (projT2 input) in
+let srts_len:= proj1' Hsrts in
+let vt_eq_srts:= proj2' Hsrts in
+let srts:= projT1 (projT2 fa) in
+let d:= hide_ty
+(dom_cast (dom_aux pd)
+   (arg_nth_eq srts (sn_sym f1) (sn_idx f1) (sn_idx_bound f1
+   (proj2_sig (projT1 fa))))
+   (hnth (sn_idx f1) a1 s_int (dom_int pd))) in
+forall (small: list vsymbol) hd
+  (p: predsym) (l: list vty) (ts: list term)
+  (Hty': valid_formula sigma (Fpred p l ts))
+  (Hdec': decrease_pred fs ps small hd m vs (Fpred p l ts))
+  (x: {p' : pn | In p' ps /\ p = pn_sym p'})
+  (Hsmall: forall x : vsymbol,
+    In x small ->
+    vty_in_m m vs (snd x) /\
+     adt_smaller_trans (hide_ty (v x)) d)
+  (Hhd: forall h, hd = Some h ->
+     vty_in_m m vs (snd h) /\
+     hide_ty (v h) = d),
+let Hinv:= pred_val_inv Hty' in
+
+
+let Hdec2:= dec_inv_fpred_rec Hdec' in
+let Hall:= proj2' (proj2' Hinv) in
+let Hargslen:= proj1' Hinv in
+let Hparamslen:= proj1' (proj2' Hinv) in
+let args := proj1_sig (get_arg_list_ext_aux' p Hsmall Hhd (term_rep_aux v) Hparamslen (s_args p) Hargslen
+Hall Hdec2) in
+
+let pn_def:= proj1_sig x in
+let p_pn:= proj2' (proj2_sig x) in
+let pn_in:= proj1' (proj2_sig x)  in
+let l_eq:= proj1' (dec_inv_fpred_in Hdec' pn_in p_pn) in
+let sn_def := pn_sn pn_def in
+let sn_in := in_ps_sns pn_in in
+let s2 := sn_sym sn_def in
+let s_eq := eq_trans (f_equal p_sym p_pn) (ps_wf_eq pn_def pn_in) in
+let srts_eq:= eq_trans
+(f_equal
+   (fun x : fpsym =>
+    map (fun x0 : vty => val x0) (map vty_var (s_params x)))
+   s_eq) (map_vals_srts' srts pn_def srts_len vt_eq_srts sn_in) in
+
+let l_eq2:= eq_trans (eq_sym srts_eq)
+(f_equal (fun x : list vty => map (fun x0 : vty => val x0) x)
+   (eq_sym l_eq)) in
+   let args':= scast
+   (f_equal
+      (fun x : list sort => arg_list domain (sym_sigma_args p x))
+      (eq_sym l_eq2)) args in
+let args'':= scast
+(f_equal
+(fun x : fpsym => arg_list domain (sym_sigma_args x srts))
+s_eq) args' in
+let ind_arg:= existT
+       (fun x : {s : sn | In s sns} =>
+        {srts : list sort &
+        arg_list domain (sym_sigma_args (sn_sym (proj1_sig x)) srts)})
+       (exist (fun s : sn => In s sns) sn_def sn_in)
+       (existT
+          (fun srts : list sort =>
+           arg_list domain
+             (sym_sigma_args
+                (sn_sym
+                   (proj1_sig (exist (fun s : sn => In s sns) sn_def sn_in)))
+                srts)) srts args'') : packed_args in
+let ind_comb := combine_args_pred ind_arg pn_def pn_in eq_refl in
+let ind_arg':= pack_args ind_comb v (conj srts_len vt_eq_srts) in
+R_projT1
+     (fun fa : combined_args =>
+      (val_vars pd vt *
+       (Datatypes.length (projT1 (projT2 (projT1 fa))) = Datatypes.length params /\
+        vt_eq (projT1 (projT2 (projT1 fa)))))%type)
+     (R_projT1
+        (fun pa : packed_args =>
+         Either {f : fn | In f fs /\ fn_sn f = proj1_sig (projT1 pa)}
+           {p : pn | In p ps /\ pn_sn p = proj1_sig (projT1 pa)}) arg_list_smaller) ind_arg' input.
+Proof.
+  intros.
+  apply smaller_case_gen with(small:=small)(hd:=hd)(ts:=ts).
+  - exact Hsmall.
+  - exact Hhd.
+  - intros. subst args. apply (proj2_sig ((@get_arg_list_ext_aux' _ _ _  p l ts _ Hsmall Hhd (term_rep_aux v) Hparamslen (s_args p) Hargslen Hall Hdec2)) i H0 vs_small). 
+      exact H.
+  - exact Hdec2.
+  - exact Hall.
+  - exact Hargslen.
+  - exact Hparamslen.
+  - exact (dec_inv_fpred_arg Hdec' (proj1' (proj2_sig x)) p_pn). 
+Qed.
+
 (*let dom_t := proj1_sig (term_rep_aux v t ty1 small hd Ht1 Hdec1 Hsmall Hhd) in
     let dom_t_pf := proj2_sig (term_rep_aux v t ty1 small hd Ht1 Hdec1 Hsmall Hhd) in*)
 
@@ -4195,6 +4309,46 @@ domain (val ty) :=
     end
   end Hall Hpats Hdec.
 
+Fixpoint match_rep_addvars' v t {ty1} {small} {hd} Ht1 Hdec1 Hsmall Hhd 
+  (z: {mvar : vsymbol | t = Tvar mvar /\ (hd = Some mvar \/ In mvar small)})
+  (pats: list (pattern * formula))
+  (Hall: Forall (fun x => valid_formula sigma (snd x)) pats)
+  (Hpats: Forall (fun x => pattern_has_type sigma (fst x) ty1) pats)
+  (Hdec: Forall (fun x => decrease_pred fs ps
+  (union vsymbol_eq_dec (vsyms_in_m m vs (pat_constr_vars m vs (fst x)))
+    (remove_all vsymbol_eq_dec (pat_fv (fst x)) small))
+  (upd_option_iter hd (pat_fv (fst x))) m vs (snd x)) pats):
+  bool :=
+    let dom_t := proj1_sig (term_rep_aux v t ty1 small hd Ht1 Hdec1 Hsmall Hhd) in
+        let dom_t_pf := proj2_sig (term_rep_aux v t ty1 small hd Ht1 Hdec1 Hsmall Hhd) in
+    match pats as l' return 
+      Forall (fun x => valid_formula sigma (snd x)) l' ->
+      Forall (fun x => pattern_has_type sigma (fst x) ty1) l' ->
+      Forall (fun x => decrease_pred fs ps
+      (union vsymbol_eq_dec (vsyms_in_m m vs (pat_constr_vars m vs (fst x)))
+        (remove_all vsymbol_eq_dec (pat_fv (fst x)) small))
+      (upd_option_iter hd (pat_fv (fst x))) m vs (snd x)) l' ->
+      bool
+    with
+    | (p , dat) :: ptl => fun Hall Hpats Hdec =>
+    (*We need info about [match_val_single] to know how the
+      valuation changes*)
+      match (match_val_single gamma_valid pd all_unif vt ty1 p (Forall_inv Hpats) dom_t) as o
+        return (match_val_single gamma_valid pd all_unif vt ty1 p (Forall_inv Hpats) dom_t) = o ->
+        bool 
+      with
+      | Some l => fun Hmatch => 
+        formula_rep_aux (extend_val_with_list pd vt v l) dat
+        _ _ (Forall_inv Hall) (Forall_inv Hdec) 
+        (small_match_lemma Hmatch Ht1 (proj2_sig z) (dom_t_pf _ (proj1' (proj2_sig z))) Hsmall Hhd)
+        (match_val_single_upd_option hd Hmatch Hhd)
+        
+      | None => fun _ => match_rep_addvars' v t Ht1 Hdec1 Hsmall Hhd z ptl (Forall_inv_tail Hall)
+        (Forall_inv_tail Hpats) (Forall_inv_tail Hdec)
+      end eq_refl
+    | _ =>  fun _ _ _ => false
+    end Hall Hpats Hdec.
+
 Fixpoint match_rep_rec v t {ty1} {small} {hd} Ht1 Hdec1 Hsmall Hhd {ty}
  (pats: list (pattern * term)) 
           (Hall: Forall (fun x => term_has_type sigma (snd x) ty) pats)
@@ -4232,58 +4386,39 @@ Fixpoint match_rep_rec v t {ty1} {small} {hd} Ht1 Hdec1 Hsmall Hhd {ty}
           end
         end Hall Hpats Hdec. 
 
-Check term_rep_aux.
-
-(*Lemma sig_false {A: Type} {Q: Prop} {P: A -> Q -> Prop}
-  (x y: {t: A | forall (q: Q), P t q}):
-  ~ Q ->
-  proj1_sig x = proj1_sig y ->
-  x = y.
-Proof.
-  intros.
-  destruct x, y. simpl in *.
-  subst. apply eq_exist_curried with(p:=eq_refl).
-  unfold eq_rect.
-  Search (exist ?P ?x ?y = exist ?P ?a ?b).
-
-  
-
-  EqdepFacts.eq_dep_eq_sig*)
-
-(*Here, we use proof irrelevance*)
-(*
-Lemma term_rep_res_inj: forall {v ty t Hty} (x y :
-{d : domain (val ty)
-| forall (x : vsymbol) (Heqx : t = Tvar x),
-  d =
-  dom_cast (dom_aux pd)
-    (f_equal (fun x0 : vty => val x0)
-       (eq_sym (ty_var_inv (term_has_type_cast Heqx Hty))))
-    (var_to_dom pd vt v x)}),
-proj1_sig x = proj1_sig y ->
-(forall v, t <> Tvar v) ->
-x = y.
-Proof.
-  intros.
-  destruct x. destruct y. simpl in *.
-  subst. f_equal.
-  
-  apply proof_irrelevance.
-  
-  simpl. f_equal.  apply UIP_dec.
-*)
-Check rec.
-
-Lemma rec_eq (y1 y2: packed_args2) Hsmall1 Hsmall2 (Heq: y2 = y1):
-  rec y1 Hsmall1 = scast (f_equal (fun x => funrep_ret (projT1 x)) Heq)
-    (rec y2 Hsmall2).
-Proof.
-  subst.
-  simpl. f_equal.
-  (*use proof irrel from LEM*)
-  apply ClassicalFacts.proof_irrelevance_cci.
-  apply Classical_Prop.classic.
-Qed.
+Fixpoint match_rep_rec' v t {ty1} {small} {hd} Ht1 Hdec1 Hsmall Hhd
+  (pats: list (pattern * formula)) 
+  (Hall: Forall (fun x => valid_formula sigma (snd x)) pats)
+  (Hpats: Forall (fun x => pattern_has_type sigma (fst x) ty1) pats)
+  (Hdec: Forall (fun x => decrease_pred fs ps 
+    (remove_all vsymbol_eq_dec (pat_fv (fst x)) small) 
+    (upd_option_iter hd (pat_fv (fst x))) m vs (snd x)) pats) :
+  bool :=
+let dom_t := proj1_sig (term_rep_aux v t ty1 small hd Ht1 Hdec1 Hsmall Hhd) in
+let dom_t_pf := proj2_sig (term_rep_aux v t ty1 small hd Ht1 Hdec1 Hsmall Hhd) in
+match pats as l' return 
+  Forall (fun x => valid_formula sigma (snd x)) l' ->
+  Forall (fun x => pattern_has_type sigma (fst x) ty1) l' ->
+  Forall (fun x => decrease_pred fs ps 
+    (remove_all vsymbol_eq_dec (pat_fv (fst x)) small) 
+    (upd_option_iter hd (pat_fv (fst x))) m vs (snd x)) l' ->
+  bool with
+| (p , dat) :: ptl => fun Hall Hpats Hdec =>
+  (*We need info about [match_val_single] to know how the
+    valuation changes*)
+  match (match_val_single gamma_valid pd all_unif vt ty1 p (Forall_inv Hpats) dom_t) as o
+    return (match_val_single gamma_valid pd all_unif vt ty1 p (Forall_inv Hpats) dom_t) = o ->
+    bool with
+  | Some l => fun Hmatch => 
+    formula_rep_aux (extend_val_with_list pd vt v l) dat
+    _ _ (Forall_inv Hall) (Forall_inv Hdec) 
+    (match_val_single_small1 Hmatch Hsmall)
+    (match_val_single_upd_option hd Hmatch Hhd)
+  | None => fun _ => match_rep_rec' v t Ht1 Hdec1 Hsmall Hhd ptl (Forall_inv_tail Hall)
+    (Forall_inv_tail Hpats) (Forall_inv_tail Hdec)
+  end eq_refl
+| _ =>  fun _ _ _ => false
+end Hall Hpats Hdec. 
 
 (*For the following theorems, we will need rewrite lemmas
   for [term_rep_aux] and [formula_rep_aux], as they are slow
@@ -4493,6 +4628,62 @@ Proof.
   reflexivity.
 Qed.
 
+Lemma match_rep_addvars_rewrite': forall
+v t {ty1} {small} {hd} Ht1 Hdec1 Hsmall Hhd 
+(z: {mvar : vsymbol | t = Tvar mvar /\ (hd = Some mvar \/ In mvar small)})
+(pats: list (pattern * formula))
+(Hall: Forall (fun x => valid_formula sigma (snd x)) pats)
+(Hpats: Forall (fun x => pattern_has_type sigma (fst x) ty1) pats)
+(Hdec: Forall (fun x => decrease_pred fs ps
+(union vsymbol_eq_dec (vsyms_in_m m vs (pat_constr_vars m vs (fst x)))
+  (remove_all vsymbol_eq_dec (pat_fv (fst x)) small))
+(upd_option_iter hd (pat_fv (fst x))) m vs (snd x)) pats),
+let dom_t := proj1_sig (term_rep_aux v t ty1 small hd Ht1 Hdec1 Hsmall Hhd) in
+let dom_t_pf := proj2_sig (term_rep_aux v t ty1 small hd Ht1 Hdec1 Hsmall Hhd) in
+  ( fix match_rep (pats: list (pattern * formula)) 
+  (Hall: Forall (fun x => valid_formula sigma (snd x)) pats)
+  (Hpats: Forall (fun x => pattern_has_type sigma (fst x) ty1) pats)
+  (Hdec: Forall (fun x => decrease_pred fs ps
+  (union vsymbol_eq_dec (vsyms_in_m m vs (pat_constr_vars m vs (fst x)))
+    (remove_all vsymbol_eq_dec (pat_fv (fst x)) small))
+  (upd_option_iter hd (pat_fv (fst x))) m vs (snd x)) pats) :
+  bool :=
+match pats as l' return 
+  Forall (fun x => valid_formula sigma (snd x)) l' ->
+  Forall (fun x => pattern_has_type sigma (fst x) ty1) l' ->
+  Forall (fun x => decrease_pred fs ps
+  (union vsymbol_eq_dec (vsyms_in_m m vs (pat_constr_vars m vs (fst x)))
+    (remove_all vsymbol_eq_dec (pat_fv (fst x)) small))
+  (upd_option_iter hd (pat_fv (fst x))) m vs (snd x)) l' ->
+  bool with
+| (p , dat) :: ptl => fun Hall Hpats Hdec =>
+  (*We need info about [match_val_single] to know how the
+    valuation changes*)
+  match (match_val_single gamma_valid pd all_unif vt ty1 p (Forall_inv Hpats) dom_t) as o
+    return (match_val_single gamma_valid pd all_unif vt ty1 p (Forall_inv Hpats) dom_t) = o ->
+    bool with
+  | Some l => fun Hmatch => 
+    formula_rep_aux (extend_val_with_list pd vt v l) dat
+    _ _ (Forall_inv Hall) (Forall_inv Hdec) 
+    (small_match_lemma Hmatch Ht1 (proj2_sig z) (dom_t_pf _ (proj1' (proj2_sig z))) Hsmall Hhd)
+    (match_val_single_upd_option hd Hmatch Hhd)
+  | None => fun _ => match_rep ptl (Forall_inv_tail Hall)
+    (Forall_inv_tail Hpats) (Forall_inv_tail Hdec)
+  end eq_refl
+| _ =>  fun _ _ _ =>
+  false
+end Hall Hpats Hdec) pats Hall Hpats Hdec
+  = match_rep_addvars' v t Ht1 Hdec1 Hsmall Hhd 
+  z pats Hall Hpats Hdec.
+Proof.
+  intros v t ty1 small hd Ht1 Hdec1 Hsmall Hhd z.
+  induction pats; intros; try reflexivity.
+  simpl. 
+  destruct a as [p tm].
+  rewrite <- IHpats.
+  reflexivity.
+Qed.
+
 Lemma match_rep_rec_rewrite: forall
 v t {ty1} {small} {hd} Ht1 Hdec1 Hsmall Hhd 
 ty
@@ -4544,293 +4735,190 @@ Proof.
   rewrite <- IHpats; reflexivity.
 Qed.
 
+Lemma match_rep_rec_rewrite': forall
+v t {ty1} {small} {hd} Ht1 Hdec1 Hsmall Hhd 
+(pats: list (pattern * formula))
+(Hall: Forall (fun x => valid_formula sigma (snd x)) pats)
+(Hpats: Forall (fun x => pattern_has_type sigma (fst x) ty1) pats)
+(Hdec: Forall (fun x => decrease_pred fs ps 
+             (remove_all vsymbol_eq_dec (pat_fv (fst x)) small) 
+             (upd_option_iter hd (pat_fv (fst x))) m vs (snd x)) pats),
+let dom_t := proj1_sig (term_rep_aux v t ty1 small hd Ht1 Hdec1 Hsmall Hhd) in
+let dom_t_pf := proj2_sig (term_rep_aux v t ty1 small hd Ht1 Hdec1 Hsmall Hhd) in
+ (fix match_rep (pats: list (pattern * formula)) 
+ (Hall: Forall (fun x => valid_formula sigma (snd x)) pats)
+ (Hpats: Forall (fun x => pattern_has_type sigma (fst x) ty1) pats)
+ (Hdec: Forall (fun x => decrease_pred fs ps 
+   (remove_all vsymbol_eq_dec (pat_fv (fst x)) small) 
+   (upd_option_iter hd (pat_fv (fst x))) m vs (snd x)) pats) :
+ bool :=
+ match pats as l' return 
+ Forall (fun x => valid_formula sigma (snd x)) l' ->
+ Forall (fun x => pattern_has_type sigma (fst x) ty1) l' ->
+ Forall (fun x => decrease_pred fs ps 
+   (remove_all vsymbol_eq_dec (pat_fv (fst x)) small) 
+   (upd_option_iter hd (pat_fv (fst x))) m vs (snd x)) l' ->
+ bool with
+ | (p , dat) :: ptl => fun Hall Hpats Hdec =>
+ (*We need info about [match_val_single] to know how the
+   valuation changes*)
+ match (match_val_single gamma_valid pd all_unif vt ty1 p (Forall_inv Hpats) dom_t) as o
+   return (match_val_single gamma_valid pd all_unif vt ty1 p (Forall_inv Hpats) dom_t) = o ->
+   bool with
+ | Some l => fun Hmatch => 
+   formula_rep_aux (extend_val_with_list pd vt v l) dat
+   _ _ (Forall_inv Hall) (Forall_inv Hdec) 
+   (match_val_single_small1 Hmatch Hsmall)
+   (match_val_single_upd_option hd Hmatch Hhd)
+ | None => fun _ => match_rep ptl (Forall_inv_tail Hall)
+   (Forall_inv_tail Hpats) (Forall_inv_tail Hdec)
+ end eq_refl
+ | _ => fun _ _ _ =>
+ false
+ end Hall Hpats Hdec) pats Hall Hpats Hdec =
+  match_rep_rec' v t Ht1 Hdec1 Hsmall Hhd
+  pats Hall Hpats Hdec.
+Proof.
+  induction pats; intros; try reflexivity; simpl; destruct a;
+  rewrite <- IHpats; reflexivity.
+Qed.
+
 (*In this rewrite lemma, we make 3 main changes
   1. We will no longer have to unfold anything
   2. The proofs of termination are opaque
   3. All nested fixes are rewritten as separate functions,
   making it easier to read and possible to reason about these
   functions separately*)
-  Lemma term_rep_aux_rewrite (v: val_vars pd vt)
-    (t: term) (ty: vty) (small: list vsymbol)
-    (hd: option vsymbol) Hty Hdec Hsmall Hhd:
-    term_rep_aux v t ty small hd Hty Hdec Hsmall Hhd =
-    let fa := (projT1 (projT1 input)) in
-    let Hsrts := (snd (projT2 input)) in
-    let srts := (projT1 (projT2 fa)) in
-    let srts_len := (proj1' Hsrts) in 
-    let vt_eq_srts := (proj2' Hsrts) in
-  
-    match t as tm return forall (Hty': term_has_type sigma tm ty),
-    decrease_fun fs ps small hd m vs tm -> 
-    {d: domain (val ty) | forall x (Heqx: tm = Tvar x),
-    d = dom_cast _ (f_equal (fun x => val x) 
-      (eq_sym (ty_var_inv (term_has_type_cast Heqx Hty'))))
-      (var_to_dom _ vt v x)} with
-  | Tconst (ConstInt z) => fun Hty' _ =>
-    let Htyeq : vty_int = ty :=
-      eq_sym (ty_constint_inv Hty') in
-  
-    exist _ (cast_dom_vty pd Htyeq z)
-      (fun x Heqx => False_rect _ (const_not_var Heqx)) 
-  | Tconst (ConstReal r) => fun Hty' _ =>
-    let Htyeq : vty_real = ty :=
-      eq_sym (ty_constreal_inv Hty') in
-  
-    exist _ (cast_dom_vty pd Htyeq r)
-      (fun x Heqx => False_rect _ (const_not_var Heqx)) 
-  | Tvar x => fun Hty' _ =>
-    let Heq : ty = snd x := ty_var_inv Hty' in
-    (exist _ 
-      (dom_cast _ (f_equal (fun x => val x) (eq_sym Heq)) 
-      (var_to_dom _ vt v x)) (var_case ty x v Hty' Heq))
-  (*The function case is one of the 2 interesting cases*)
-  | Tfun f l ts => fun Hty' Hdec' =>
-  
-    (*Some proof we need; we give types for clarity*)
-    let Htyeq : ty_subst (s_params f) l (f_ret f) = ty :=
-      eq_sym (ty_fun_ind_ret Hty') in
-    (*The main typecast: v(sigma(ty_ret)) = sigma'(ty_ret), where
-      sigma sends (s_params f)_i -> l_i and 
-      sigma' sends (s_params f) _i -> v(l_i)*)
-    let Heqret : v_subst vt (ty_subst (s_params f) l (f_ret f)) =
-      ty_subst_s (s_params f) (map (v_subst vt) l) (f_ret f) :=
-        funsym_subst_eq (s_params f) l vt (f_ret f) (s_params_Nodup f)
-        (tfun_params_length Hty') in
-  
-    let s1 : fpsym := f_sym f in
-  
-    let Hinv := fun_ty_inv Hty' in 
-    let Hall:= proj1' (proj2' (proj2' Hinv)) in
-    let Hargslen:= proj1' Hinv in
-    let Hparamslen:= proj1' (proj2' Hinv) in
-    let Hdec2 := dec_inv_tfun_rec Hdec' in
-  
-    (*Get argument to apply recursively*)
-    let args : arg_list domain (sym_sigma_args s1
-      (map (fun x => val x) l))  :=
-      proj1_sig (get_arg_list_ext_aux' f Hsmall Hhd (term_rep_aux v) Hparamslen (s_args f) Hargslen
-      Hall Hdec2) in
-  
-    (*If f is in fs, then we need to make a recursive call*)
-    match (find_fn f fs) with
-    | Left x =>
-      let fn_def : fn := proj1_sig x in
-      let fn_in: In fn_def fs := proj1' (proj2_sig x) in
-      let f_fn : f = fn_sym fn_def := proj2' (proj2_sig x) in
-  
-      let sn_def : sn := fn_sn fn_def in
-      let sn_in : In sn_def sns :=
-        in_fs_sns fn_in in
-  
-      
-      let s2 : fpsym := sn_sym sn_def in
-  
-      let s_eq: s1 = s2 := eq_trans (f_equal f_sym f_fn)
-        (fs_wf_eq fn_def fn_in) in
-  
-      let l_eq : l = map vty_var (s_params f) :=
-        proj1' (dec_inv_tfun_in Hdec' fn_in f_fn) in
-  
-      (*With l_eq, we can begin casting*)
-      let srts_eq : map (fun x => val x) (map vty_var (s_params s1)) =
-        srts :=
-        eq_trans (f_equal (fun (x: fpsym) => map (fun x => val x) (map vty_var (s_params x)))
-          s_eq)
-          (map_vals_srts' srts fn_def srts_len vt_eq_srts sn_in) in
-  
-      let l_eq2: srts = map (fun x => val x) l :=
-        eq_trans (eq_sym srts_eq) 
-          (f_equal (fun x => map (fun x => val x) x) (eq_sym l_eq)) in
-  
-      let args': arg_list domain (sym_sigma_args s1 srts) 
-        :=
-        scast (f_equal (fun x => arg_list domain (sym_sigma_args f x)) 
-          (eq_sym l_eq2)) args in
-      let args'' : arg_list domain (sym_sigma_args (sn_sym sn_def) srts) :=
-        scast (f_equal (fun x => arg_list domain (sym_sigma_args x srts))
-          s_eq) args' in
-  
-      let ind_arg : packed_args
-      
-      := existT _ (exist _ (sn_def) sn_in) 
-        (existT _ srts args'') in
-      let ind_comb: combined_args :=
-        combine_args_fun ind_arg fn_def fn_in eq_refl in
-      let ind_arg' : packed_args2 :=
-        pack_args ind_comb v (conj srts_len vt_eq_srts) in
-  
-      (*TODO: it is v, right? Because rec changes val*)
-      (*Here is our recursive call. We have to cast the result*)
-      let ret_val:  domain (funsym_sigma_ret (fn_sym fn_def) srts) :=
-      (rec ind_arg' 
-      (*Proof of smaller*)
-      (func_smaller_case' v small hd ty f l ts Hty' Hdec' x Hsmall Hhd) )
-      in
-  
-      (*Now we have to cast in the reverse direction*)
-      (*First, get in terms of f*)
-      let ret1 : domain (funsym_sigma_ret f srts) :=
-        dom_cast (dom_aux pd) 
-          (f_equal (fun x => funsym_sigma_ret x srts) (eq_sym f_fn)) ret_val in
-  
-      let ret2 : 
-        domain (ty_subst_s (s_params f) 
-          (map (v_subst vt) l) (f_ret f)) :=
-        dom_cast (dom_aux pd) 
-          (f_equal (fun x => ty_subst_s (s_params f) x (f_ret f))
-          l_eq2) ret1 in
-  
-      exist _ (cast_dom_vty pd Htyeq 
-        (dom_cast (dom_aux pd) (eq_sym Heqret) ret2)) (
-          fun x Heqx => False_rect _ (fun_not_var Heqx))
-      
-  
-    | Right Hnotin =>
-      (*Otherwise, use funs*)
-  
-    (* The final result is to apply [funs] to the [arg_list] created recursively
-      from the argument domain values. We need two casts to make the dependent
-      types work out*)
-  
-    (exist _ (cast_dom_vty pd Htyeq (
-      dom_cast (dom_aux pd)
-        (eq_sym Heqret)
-          ((funs gamma_valid pd pf f 
-            (map (fun x => val x) l)) args))) 
-            (fun x Heqx => False_rect _ (fun_not_var Heqx)))
-    end
-  
-  (*Tlet is pretty simple. We need a lemma to show that we mantain
-    the Hsmall invariant (holds because substi replaces the variable
-    that we substitute in)
-    We also have an awkward exist (proj1_sig _) H, because the inductive
-    proof is not quite right, though both are trivial*)
-  | Tlet tm1 v1 tm2 => fun Hty' Hdec' =>
-      let Ht1 : term_has_type sigma tm1 (snd v1) :=
-        proj1' (ty_let_inv Hty') in
-      let Ht2 : term_has_type sigma tm2 ty :=
-        proj2' (ty_let_inv Hty') in 
-      let Hdec1 : decrease_fun fs ps small hd m vs tm1 := 
-        proj1' (dec_inv_tlet Hdec') in
-      let Hdec2 : decrease_fun fs ps (remove vsymbol_eq_dec v1 small) (upd_option hd v1) m vs tm2 := 
-        proj2' (dec_inv_tlet Hdec') in
-  
-      (*This is [[tm2]]_(v->[[tm1]]), but we need [small_remove_lemma]
-      and [small_hd_lemma] to prove that the invariants are preserved*)
-      exist _ (proj1_sig (term_rep_aux (substi pd vt v v1 
-        (proj1_sig (term_rep_aux v tm1 (snd v1) small hd Ht1 Hdec1 Hsmall Hhd))) 
-      tm2 ty (remove vsymbol_eq_dec v1 small) (upd_option hd v1) Ht2 Hdec2 
-      (small_remove_lemma v v1 _ Hsmall)
-      (small_hd_lemma v v1 _ Hhd))) 
-      (fun x Heqx => False_rect _ (tlet_not_var Heqx))
-  
-  (*TIf is simple recursion*)
-  | Tif f1 t2 t3 => fun Hty' Hdec' =>
-    let Ht1 : term_has_type sigma t2 ty :=
-      (proj1' (ty_if_inv Hty')) in
-    let Ht2 : term_has_type sigma t3 ty :=
-      (proj1' (proj2' (ty_if_inv Hty'))) in
-    let Hf: valid_formula sigma f1 :=
-      (proj2' (proj2' (ty_if_inv Hty'))) in
-    let Hdec1 := proj1' (dec_inv_tif Hdec') in
-    let Hdec2 := proj1' (proj2' (dec_inv_tif Hdec')) in
-    let Hdec3 := proj2' (proj2' (dec_inv_tif Hdec')) in
-  
-    (*Need to unfold the dependent type and add a new one*)
-    if (formula_rep_aux v f1 small hd Hf Hdec1 Hsmall Hhd)
-    then 
-    exist _ (proj1_sig 
-    (term_rep_aux v t2 ty small hd Ht1 Hdec2 Hsmall Hhd))
-    (fun x Heqx => False_rect _ (tif_not_var Heqx))
-    else 
-    exist _ (proj1_sig 
-    (term_rep_aux v t3 ty small hd Ht2 Hdec3 Hsmall Hhd))
-    (fun x Heqx => False_rect _ (tif_not_var Heqx))
-  
-  (*Tmatch is the other interesting case, though most of
-    the work was done in the previous lemmas*)
-  | Tmatch t ty1 pats => fun Hty' Hdec' =>
-      let Ht1 : term_has_type sigma t ty1 :=
-        proj1' (ty_match_inv Hty') in
-      let Hall : Forall (fun x => term_has_type sigma (snd x) ty) pats :=
-        proj2' (proj2' (ty_match_inv Hty')) in
-      let Hpats: Forall (fun x => pattern_has_type sigma (fst x) ty1) pats :=
-        proj1' (proj2' (ty_match_inv Hty')) in
-  
-      let Hdec1 : decrease_fun fs ps small hd m vs t := 
-        dec_inv_tmatch_fst Hdec' in
-  
-      let dom_t := proj1_sig (term_rep_aux v t ty1 small hd Ht1 Hdec1 Hsmall Hhd) in
-      let dom_t_pf := proj2_sig (term_rep_aux v t ty1 small hd Ht1 Hdec1 Hsmall Hhd) in
-  
-      (*We have 2 different cases; we need to have 2
-      different inner recursive functions, 1 for each case*)
-      match tmatch_case t hd small with
-      | Left z =>
-        let mvar : vsymbol := proj1_sig z in
-        let tm_eq : t = Tvar mvar := proj1' (proj2_sig z) in
-        let mvar_small : hd = Some mvar \/ In mvar small :=
-          proj2' (proj2_sig z) in
-  
-        let Hdec2 : Forall (fun x => decrease_fun fs ps
-          (union vsymbol_eq_dec (vsyms_in_m m vs (pat_constr_vars m vs (fst x)))
-            (remove_all vsymbol_eq_dec (pat_fv (fst x)) small))
-          (upd_option_iter hd (pat_fv (fst x))) m vs (snd x)) pats :=
-          dec_inv_tmatch_var (proj2_sig z) Hdec' in
-  
-         (*For some reason, Coq needs the typing annotation here*)
-         exist (fun d => forall x Heqx, d = 
-         dom_cast (dom_aux pd)
-         (f_equal (fun x0 : vty => val x0)
-            (eq_sym (ty_var_inv (term_has_type_cast Heqx Hty')))) 
-         (var_to_dom pd vt v x)) (match_rep_addvars v t Ht1 Hdec1 Hsmall Hhd ty z pats Hall Hpats Hdec2)
-           (fun x Heqx => False_rect _ (tmatch_not_var Heqx))
-  
-      | Right Hnotvar =>
-        (*Easier, recursive case*)
-        let Hdec2 : 
-          Forall (fun x => decrease_fun fs ps 
-            (remove_all vsymbol_eq_dec (pat_fv (fst x)) small) 
-            (upd_option_iter hd (pat_fv (fst x))) m vs (snd x)) pats :=
-          dec_inv_tmatch_notvar Hnotvar Hdec' in
-        (*For some reason, Coq needs the typing annotation here*)
-        exist (fun d => forall x Heqx, d = 
-        dom_cast (dom_aux pd)
-        (f_equal (fun x0 : vty => val x0)
-           (eq_sym (ty_var_inv (term_has_type_cast Heqx Hty')))) 
-        (var_to_dom pd vt v x)) (match_rep_rec v t Ht1 Hdec1 Hsmall Hhd pats Hall Hpats Hdec2)
-          (fun x Heqx => False_rect _ (tmatch_not_var Heqx))
-      end
-  
-  | Teps f x => fun Hty' Hdec' =>
-    let Hval : valid_formula sigma f := proj1' (ty_eps_inv Hty') in
-    let Heq : ty = snd x := proj2' (ty_eps_inv Hty') in
-    let Hdec1 := dec_inv_teps Hdec' in
-    (*We need to show that domain (val v ty) is inhabited*)
-    let def : domain (val ty) :=
-    match (domain_ne pd (val ty)) with
-    | DE x => x 
-    end in
-  
-    exist _ 
-    (ClassicalEpsilon.epsilon (inhabits def) (fun (y: domain (val ty)) =>
-      is_true (formula_rep_aux 
-        (substi pd vt v x (dom_cast _ (f_equal (fun x => val x) Heq) y)) 
-        f (remove vsymbol_eq_dec x small) (upd_option hd x) Hval Hdec1
-        (small_remove_lemma v x _ Hsmall)
-        (small_hd_lemma v x _ Hhd))))
-    (fun x Heqx => False_rect _ (teps_not_var Heqx))
-  
-  end Hty Hdec.
+Lemma term_rep_aux_fun (v: val_vars pd vt)
+(f: funsym) (l: list vty) (ts: list term) (ty: vty) 
+(small: list vsymbol)
+(hd: option vsymbol) Hty Hdec Hsmall Hhd:
+term_rep_aux v (Tfun f l ts) ty small hd Hty Hdec Hsmall Hhd =
+let fa := (projT1 (projT1 input)) in
+let Hsrts := (snd (projT2 input)) in
+let srts := (projT1 (projT2 fa)) in
+let srts_len := (proj1' Hsrts) in 
+let vt_eq_srts := (proj2' Hsrts) in
+(*Some proof we need; we give types for clarity*)
+let Htyeq : ty_subst (s_params f) l (f_ret f) = ty :=
+eq_sym (ty_fun_ind_ret Hty) in
+(*The main typecast: v(sigma(ty_ret)) = sigma'(ty_ret), where
+sigma sends (s_params f)_i -> l_i and 
+sigma' sends (s_params f) _i -> v(l_i)*)
+let Heqret : v_subst vt (ty_subst (s_params f) l (f_ret f)) =
+ty_subst_s (s_params f) (map (v_subst vt) l) (f_ret f) :=
+  funsym_subst_eq (s_params f) l vt (f_ret f) (s_params_Nodup f)
+  (tfun_params_length Hty) in
+
+let s1 : fpsym := f_sym f in
+
+let Hinv := fun_ty_inv Hty in 
+let Hall:= proj1' (proj2' (proj2' Hinv)) in
+let Hargslen:= proj1' Hinv in
+let Hparamslen:= proj1' (proj2' Hinv) in
+let Hdec2 := dec_inv_tfun_rec Hdec in
+
+(*Get argument to apply recursively*)
+let args : arg_list domain (sym_sigma_args s1
+(map (fun x => val x) l))  :=
+proj1_sig (get_arg_list_ext_aux' f Hsmall Hhd (term_rep_aux v) Hparamslen (s_args f) Hargslen
+Hall Hdec2) in
+
+(*If f is in fs, then we need to make a recursive call*)
+match (find_fn f fs) with
+| Left x =>
+let fn_def : fn := proj1_sig x in
+let fn_in: In fn_def fs := proj1' (proj2_sig x) in
+let f_fn : f = fn_sym fn_def := proj2' (proj2_sig x) in
+
+let sn_def : sn := fn_sn fn_def in
+let sn_in : In sn_def sns :=
+  in_fs_sns fn_in in
+
+
+let s2 : fpsym := sn_sym sn_def in
+
+let s_eq: s1 = s2 := eq_trans (f_equal f_sym f_fn)
+  (fs_wf_eq fn_def fn_in) in
+
+let l_eq : l = map vty_var (s_params f) :=
+  proj1' (dec_inv_tfun_in Hdec fn_in f_fn) in
+
+(*With l_eq, we can begin casting*)
+let srts_eq : map (fun x => val x) (map vty_var (s_params s1)) =
+  srts :=
+  eq_trans (f_equal (fun (x: fpsym) => map (fun x => val x) (map vty_var (s_params x)))
+    s_eq)
+    (map_vals_srts' srts fn_def srts_len vt_eq_srts sn_in) in
+
+let l_eq2: srts = map (fun x => val x) l :=
+  eq_trans (eq_sym srts_eq) 
+    (f_equal (fun x => map (fun x => val x) x) (eq_sym l_eq)) in
+
+let args': arg_list domain (sym_sigma_args s1 srts) 
+  :=
+  scast (f_equal (fun x => arg_list domain (sym_sigma_args f x)) 
+    (eq_sym l_eq2)) args in
+let args'' : arg_list domain (sym_sigma_args (sn_sym sn_def) srts) :=
+  scast (f_equal (fun x => arg_list domain (sym_sigma_args x srts))
+    s_eq) args' in
+
+let ind_arg : packed_args
+
+:= existT _ (exist _ (sn_def) sn_in) 
+  (existT _ srts args'') in
+let ind_comb: combined_args :=
+  combine_args_fun ind_arg fn_def fn_in eq_refl in
+let ind_arg' : packed_args2 :=
+  pack_args ind_comb v (conj srts_len vt_eq_srts) in
+
+(*TODO: it is v, right? Because rec changes val*)
+(*Here is our recursive call. We have to cast the result*)
+let ret_val:  domain (funsym_sigma_ret (fn_sym fn_def) srts) :=
+(rec ind_arg' 
+(*Proof of smaller*)
+(func_smaller_case' v small hd ty f l ts Hty Hdec x Hsmall Hhd) )
+in
+
+(*Now we have to cast in the reverse direction*)
+(*First, get in terms of f*)
+let ret1 : domain (funsym_sigma_ret f srts) :=
+  dom_cast (dom_aux pd) 
+    (f_equal (fun x => funsym_sigma_ret x srts) (eq_sym f_fn)) ret_val in
+
+let ret2 : 
+  domain (ty_subst_s (s_params f) 
+    (map (v_subst vt) l) (f_ret f)) :=
+  dom_cast (dom_aux pd) 
+    (f_equal (fun x => ty_subst_s (s_params f) x (f_ret f))
+    l_eq2) ret1 in
+
+exist _ (cast_dom_vty pd Htyeq 
+  (dom_cast (dom_aux pd) (eq_sym Heqret) ret2)) (
+    fun x Heqx => False_rect _ (fun_not_var Heqx))
+
+
+| Right Hnotin =>
+(*Otherwise, use funs*)
+
+(* The final result is to apply [funs] to the [arg_list] created recursively
+from the argument domain values. We need two casts to make the dependent
+types work out*)
+
+(exist _ (cast_dom_vty pd Htyeq (
+dom_cast (dom_aux pd)
+  (eq_sym Heqret)
+    ((funs gamma_valid pd pf f 
+      (map (fun x => val x) l)) args))) 
+      (fun x Heqx => False_rect _ (fun_not_var Heqx)))
+end.
 Proof.
-  cbn zeta.
-  (*All cases except functions and match are trivial*)
-  destruct t; try reflexivity.
-  - cbn. destruct (find_fn f fs) eqn : Hf.
-    + (*This amounts to rewriting with our
+  cbn. 
+  destruct (find_fn f fs) eqn : Hf.
+  - (*This amounts to rewriting with our
       arg_list lemma but the dependent types and 
       huge proof terms make this painful*)
-      match goal with | |- exist ?P ?x ?p = exist ?P ?y ?q =>
+    match goal with | |- exist ?P ?x ?p = exist ?P ?y ?q =>
     let H := fresh in
       assert (H: x = y); [| rewrite H; reflexivity]
     end.
@@ -4842,9 +4930,9 @@ Proof.
       let H := fresh in
       assert (H: x = y); [|rewrite H; reflexivity]
     end.
-    generalize dependent (func_smaller_case' v small hd ty f l l0 Hty Hdec s Hsmall Hhd).
+    generalize dependent (func_smaller_case' v small hd ty f l ts Hty Hdec s Hsmall Hhd).
     cbn zeta.
-    rewrite <- (@get_arg_list_rewrite v small hd Hsmall Hhd f l l0
+    rewrite <- (@get_arg_list_rewrite v small hd Hsmall Hhd f l ts
       (proj1' (proj2' (fun_ty_inv Hty))) 
                           (s_args f) (proj1' (fun_ty_inv Hty))
                           (proj1' (proj2' (proj2' (fun_ty_inv Hty))))
@@ -4859,29 +4947,269 @@ Proof.
       rewrite H;
       reflexivity
     end.
-  + (*No rec here - much easier*)
-    rewrite <- (@get_arg_list_rewrite v small hd Hsmall Hhd f l l0
+  - (*No rec here - much easier*)
+    rewrite <- (@get_arg_list_rewrite v small hd Hsmall Hhd f l ts
     (proj1' (proj2' (fun_ty_inv Hty))) 
                         (s_args f) (proj1' (fun_ty_inv Hty))
                         (proj1' (proj2' (proj2' (fun_ty_inv Hty))))
                         (dec_inv_tfun_rec Hdec)).
     reflexivity.
-- (*Match case*)
-  simpl. destruct (tmatch_case t hd small).
-  +  match goal with | |- exist ?P ?x ?p = exist ?P ?y ?q =>
-  let H := fresh in
-    assert (H: x = y); [| rewrite H; reflexivity]
-  end.
-  (*Here, need to prove match_rep equiv*)
-  apply match_rep_addvars_rewrite.
-  + match goal with | |- exist ?P ?x ?p = exist ?P ?y ?q =>
-  let H := fresh in
-    assert (H: x = y); [| rewrite H; reflexivity]
-  end.
-  apply match_rep_rec_rewrite.
 Qed.
 
-(*TODO: formula rewrite*)
+Lemma term_rep_aux_match (v: val_vars pd vt)
+(t: term) (ty1: vty) pats (ty: vty) (small: list vsymbol)
+(hd: option vsymbol) Hty Hdec Hsmall Hhd:
+term_rep_aux v (Tmatch t ty1 pats) ty small hd Hty Hdec Hsmall Hhd =
+let fa := (projT1 (projT1 input)) in
+let Hsrts := (snd (projT2 input)) in
+let srts := (projT1 (projT2 fa)) in
+let srts_len := (proj1' Hsrts) in 
+let vt_eq_srts := (proj2' Hsrts) in
+let Ht1 : term_has_type sigma t ty1 :=
+  proj1' (ty_match_inv Hty) in
+let Hall : Forall (fun x => term_has_type sigma (snd x) ty) pats :=
+  proj2' (proj2' (ty_match_inv Hty)) in
+let Hpats: Forall (fun x => pattern_has_type sigma (fst x) ty1) pats :=
+  proj1' (proj2' (ty_match_inv Hty)) in
+
+let Hdec1 : decrease_fun fs ps small hd m vs t := 
+  dec_inv_tmatch_fst Hdec in
+
+let dom_t := proj1_sig (term_rep_aux v t ty1 small hd Ht1 Hdec1 Hsmall Hhd) in
+let dom_t_pf := proj2_sig (term_rep_aux v t ty1 small hd Ht1 Hdec1 Hsmall Hhd) in
+
+(*We have 2 different cases; we need to have 2
+different inner recursive functions, 1 for each case*)
+match tmatch_case t hd small with
+| Left z =>
+  let mvar : vsymbol := proj1_sig z in
+  let tm_eq : t = Tvar mvar := proj1' (proj2_sig z) in
+  let mvar_small : hd = Some mvar \/ In mvar small :=
+    proj2' (proj2_sig z) in
+
+  let Hdec2 : Forall (fun x => decrease_fun fs ps
+    (union vsymbol_eq_dec (vsyms_in_m m vs (pat_constr_vars m vs (fst x)))
+      (remove_all vsymbol_eq_dec (pat_fv (fst x)) small))
+    (upd_option_iter hd (pat_fv (fst x))) m vs (snd x)) pats :=
+    dec_inv_tmatch_var (proj2_sig z) Hdec in
+
+    (*For some reason, Coq needs the typing annotation here*)
+    exist (fun d => forall x Heqx, d = 
+    dom_cast (dom_aux pd)
+    (f_equal (fun x0 : vty => val x0)
+      (eq_sym (ty_var_inv (term_has_type_cast Heqx Hty)))) 
+    (var_to_dom pd vt v x)) (match_rep_addvars v t Ht1 Hdec1 Hsmall Hhd ty z pats Hall Hpats Hdec2)
+      (fun x Heqx => False_rect _ (tmatch_not_var Heqx))
+
+| Right Hnotvar =>
+  (*Easier, recursive case*)
+  let Hdec2 : 
+    Forall (fun x => decrease_fun fs ps 
+      (remove_all vsymbol_eq_dec (pat_fv (fst x)) small) 
+      (upd_option_iter hd (pat_fv (fst x))) m vs (snd x)) pats :=
+    dec_inv_tmatch_notvar Hnotvar Hdec in
+  (*For some reason, Coq needs the typing annotation here*)
+  exist (fun d => forall x Heqx, d = 
+  dom_cast (dom_aux pd)
+  (f_equal (fun x0 : vty => val x0)
+      (eq_sym (ty_var_inv (term_has_type_cast Heqx Hty)))) 
+  (var_to_dom pd vt v x)) (match_rep_rec v t Ht1 Hdec1 Hsmall Hhd pats Hall Hpats Hdec2)
+    (fun x Heqx => False_rect _ (tmatch_not_var Heqx))
+end.
+Proof.
+  simpl. destruct (tmatch_case t hd small).
+  - match goal with | |- exist ?P ?x ?p = exist ?P ?y ?q =>
+      let H := fresh in
+      assert (H: x = y); [| rewrite H; reflexivity]
+    end.
+    (*Work done in previous lemmas*)
+    apply match_rep_addvars_rewrite.
+  - match goal with | |- exist ?P ?x ?p = exist ?P ?y ?q =>
+    let H := fresh in
+      assert (H: x = y); [| rewrite H; reflexivity]
+    end.
+    apply match_rep_rec_rewrite.
+Qed.
+
+(*And the formula versions*)
+
+Lemma formula_rep_aux_pred (v: val_vars pd vt)
+(p: predsym) (l: list vty) (ts: list term)
+(small: list vsymbol)
+(hd: option vsymbol) Hval Hdec Hsmall Hhd:
+formula_rep_aux v (Fpred p l ts) small hd Hval Hdec Hsmall Hhd =
+let fa := (projT1 (projT1 input)) in
+let Hsrts := (snd (projT2 input)) in
+let srts := (projT1 (projT2 fa)) in
+let srts_len := (proj1' Hsrts) in 
+let vt_eq_srts := (proj2' Hsrts) in
+(*Some proof we need; we give types for clarity*)
+let s1 : fpsym := p_sym p in
+
+let Hinv := pred_val_inv Hval in 
+let Hall:= proj2' (proj2' Hinv) in
+let Hargslen:= proj1' Hinv in
+let Hparamslen:= proj1' (proj2' Hinv) in
+let Hdec2 := dec_inv_fpred_rec Hdec in
+
+(*Get argument to apply recursively*)
+let args : arg_list domain (sym_sigma_args s1
+(map (fun x => val x) l))  :=
+  proj1_sig (get_arg_list_ext_aux' p Hsmall Hhd (term_rep_aux v) Hparamslen (s_args p) Hargslen
+  Hall Hdec2) in
+
+(*If p is in ps, then we need to make a recursive call*)
+match (find_pn p ps) with
+| Left x =>
+  let pn_def : pn := proj1_sig x in
+  let pn_in: In pn_def ps := proj1' (proj2_sig x) in
+  let p_fn : p = pn_sym pn_def := proj2' (proj2_sig x) in
+
+  let sn_def : sn := pn_sn pn_def in
+  let sn_in : In sn_def sns :=
+    in_ps_sns pn_in in
+
+  
+  let s2 : fpsym := sn_sym sn_def in
+
+  let s_eq: s1 = s2 := eq_trans (f_equal p_sym p_fn)
+    (ps_wf_eq pn_def pn_in) in
+
+  let l_eq : l = map vty_var (s_params p) :=
+    proj1' (dec_inv_fpred_in Hdec pn_in p_fn) in
+
+  (*With l_eq, we can begin casting*)
+  let srts_eq : map (fun x => val x) (map vty_var (s_params s1)) =
+    srts :=
+    eq_trans (f_equal (fun (x: fpsym) => map (fun x => val x) (map vty_var (s_params x)))
+      s_eq)
+      (map_vals_srts' srts pn_def srts_len vt_eq_srts sn_in) in
+
+  let l_eq2: srts = map (fun x => val x) l :=
+    eq_trans (eq_sym srts_eq) 
+      (f_equal (fun x => map (fun x => val x) x) (eq_sym l_eq)) in
+
+  let args': arg_list domain (sym_sigma_args s1 srts) 
+    :=
+    scast (f_equal (fun x => arg_list domain (sym_sigma_args p x)) 
+      (eq_sym l_eq2)) args in
+  let args'' : arg_list domain (sym_sigma_args (sn_sym sn_def) srts) :=
+    scast (f_equal (fun x => arg_list domain (sym_sigma_args x srts))
+      s_eq) args' in
+
+  let ind_arg : packed_args
+  
+  := existT _ (exist _ (sn_def) sn_in) 
+    (existT _ srts args'') in
+  let ind_comb: combined_args :=
+    combine_args_pred ind_arg pn_def pn_in eq_refl in
+  let ind_arg' : packed_args2 :=
+    pack_args ind_comb v (conj srts_len vt_eq_srts) in
+
+  (*TODO: it is v, right? Because rec changes val*)
+  (*Here is our recursive call. We have to cast the result*)
+  let ret_val:  bool 
+  (*domain (funsym_sigma_ret (fn_sym fn_def) srts)*) :=
+  (rec ind_arg' 
+  (*Proof of smaller*)
+  (pred_smaller_case' v small hd p l ts Hval Hdec x Hsmall Hhd))
+  in
+
+  ret_val
+  
+
+| Right Hnotin =>
+  (*Otherwise, use preds*)
+
+(* The final result is to apply [preds] to the [arg_list] created recursively
+  from the argument domain values.
+  Don't need casting, unlike function case. *)
+
+      ((preds gamma_valid pd pf p 
+        (map (fun x => val x) l)) args)
+end.
+Proof.
+  cbn. 
+  destruct (find_pn p ps) eqn : Hf.
+  - (*No casting here - easier*)
+    generalize dependent (pred_smaller_case' v small hd p l ts Hval Hdec s Hsmall Hhd).
+    cbn zeta.
+    rewrite <- (@get_arg_list_rewrite v small hd Hsmall Hhd p l ts
+      (proj1' (proj2' (pred_val_inv Hval))) 
+                          (s_args p) (proj1' (pred_val_inv Hval))
+                          (proj2' (proj2' (pred_val_inv Hval)))
+                          (dec_inv_fpred_rec Hdec)).
+    intros.
+    match goal with
+    | |- rec ?y ?small1 = rec ?y2 ?small2 =>
+      let H := fresh in
+      assert (H: small1 = small2) by (
+        apply ClassicalFacts.proof_irrelevance_cci;
+      apply Classical_Prop.classic);
+      rewrite H;
+      reflexivity
+    end.
+  - (*No rec here - much easier*)
+    rewrite <- (@get_arg_list_rewrite v small hd Hsmall Hhd p l ts
+    (proj1' (proj2' (pred_val_inv Hval))) 
+                        (s_args p) (proj1' (pred_val_inv Hval))
+                        (proj2' (proj2' (pred_val_inv Hval)))
+                        (dec_inv_fpred_rec Hdec)).
+    reflexivity.
+Qed.
+
+Lemma formula_rep_aux_match (v: val_vars pd vt)
+(t: term) (ty1: vty) pats (small: list vsymbol)
+(hd: option vsymbol) Hval Hdec Hsmall Hhd:
+formula_rep_aux v (Fmatch t ty1 pats) small hd Hval Hdec Hsmall Hhd =
+let Ht1 : term_has_type sigma t ty1 :=
+proj1' (valid_match_inv Hval) in
+let Hall : Forall (fun x => valid_formula sigma (snd x)) pats :=
+proj2' (proj2' (valid_match_inv Hval)) in
+let Hpats: Forall (fun x => pattern_has_type sigma (fst x) ty1) pats :=
+proj1' (proj2' (valid_match_inv Hval)) in
+
+let Hdec1 : decrease_fun fs ps small hd m vs t := 
+dec_inv_fmatch_fst Hdec in
+
+(*let Hval : valid_type sigma ty1 :=
+has_type_valid gamma_valid _ _ Ht1 in*)
+
+let dom_t := proj1_sig (term_rep_aux v t ty1 small hd Ht1 Hdec1 Hsmall Hhd) in
+let dom_t_pf := proj2_sig (term_rep_aux v t ty1 small hd Ht1 Hdec1 Hsmall Hhd) in
+
+(*hmm, we have 2 different cases: we might need to have 2
+different inner recursive functions, 1 for each case*)
+match tmatch_case t hd small with
+| Left z =>
+let mvar : vsymbol := proj1_sig z in
+let tm_eq : t = Tvar mvar := proj1' (proj2_sig z) in
+let mvar_small : hd = Some mvar \/ In mvar small :=
+  proj2' (proj2_sig z) in
+
+let Hdec2 : Forall (fun x => decrease_pred fs ps
+  (union vsymbol_eq_dec (vsyms_in_m m vs (pat_constr_vars m vs (fst x)))
+    (remove_all vsymbol_eq_dec (pat_fv (fst x)) small))
+  (upd_option_iter hd (pat_fv (fst x))) m vs (snd x)) pats :=
+  dec_inv_fmatch_var (proj2_sig z) Hdec in
+
+  match_rep_addvars' v t Ht1 Hdec1 Hsmall Hhd z pats Hall Hpats Hdec2
+
+| Right Hnotvar =>
+(*Easier, recursive case*)
+let Hdec2 : 
+  Forall (fun x => decrease_pred fs ps 
+    (remove_all vsymbol_eq_dec (pat_fv (fst x)) small) 
+    (upd_option_iter hd (pat_fv (fst x))) m vs (snd x)) pats :=
+  dec_inv_fmatch_notvar Hnotvar Hdec in
+
+  (match_rep_rec' v t Ht1 Hdec1 Hsmall Hhd pats Hall Hpats Hdec2)
+end.
+Proof.
+  simpl. destruct (tmatch_case t hd small).
+  - apply match_rep_addvars_rewrite'.
+  - apply match_rep_rec_rewrite'.
+Qed.
 
 End TermFmlaRewrite.
 
@@ -4931,15 +5259,6 @@ Proof.
 Qed.
 (*The body of the outer function - calls [term_rep_aux]
   with appropriate arguments*)
-(*
-Lemma fn_sym_eq (f: fn):
-  In f fs ->
-  f_sym (fn_sym f) = sn_sym f.
-Proof.
-  intros.
-  rewrite fs_wf_eq; auto.
-  destruct f; auto.
-Qed.*)
 
 (*We define the full function body manually. We use the 
   list of "let"s rather than a deeper pattern match because
@@ -5421,6 +5740,127 @@ Proof.
   - reflexivity.
 Qed.
 
+(*Formula versions*)
+Lemma match_rep_addvars_eq' input rec (t: term) ty1 (pats: list (pattern * formula)):
+forall
+  v small hd (Hty1: term_has_type sigma t ty1) Hdec Hsmall Hhd z Hall Hpats Halldec,
+  proj1_sig
+      (term_rep_aux input rec v t ty1 small hd Hty1
+         Hdec Hsmall Hhd) = term_rep gamma_valid pd all_unif vt pf v t ty1 Hty1 ->
+  Forall
+(fun f : formula =>
+ forall (v: val_vars pd vt) 
+   (small : list vsymbol) (hd : option vsymbol) 
+   (Hval : valid_formula sigma f)
+   (Hdec : decrease_pred fs ps small hd m vs f) Hsmall Hhd,
+   formula_rep_aux input rec v f small hd Hval Hdec Hsmall Hhd =
+   formula_rep gamma_valid pd all_unif vt pf v f Hval) (map snd pats) ->
+  @match_rep_addvars' input rec v t _ small hd Hty1 Hdec Hsmall Hhd
+    z pats Hall Hpats Halldec =
+    let dom_t := (term_rep gamma_valid pd all_unif vt pf v t ty1 Hty1) in
+    (fix match_rep (ps: list (pattern * formula)) 
+    (Hps: Forall (fun x => pattern_has_type sigma (fst x) ty1) ps)
+    (Hall: Forall (fun x => valid_formula sigma (snd x)) ps) :
+      bool :=
+  match ps as l' return 
+    Forall (fun x => pattern_has_type sigma (fst x) ty1) l' ->
+    Forall (fun x => valid_formula sigma (snd x)) l' ->
+    bool with
+  | (p , dat) :: ptl => fun Hpats Hall =>
+    match (match_val_single gamma_valid pd all_unif vt ty1 p (Forall_inv Hpats) dom_t) with
+    | Some l => formula_rep gamma_valid pd all_unif vt pf (extend_val_with_list pd vt v l) dat
+      (Forall_inv Hall) 
+    | None => match_rep ptl (Forall_inv_tail Hpats) (Forall_inv_tail Hall)
+    end
+  | _ => (*TODO: show we cannot reach this*) fun _ _ => false
+  end Hps Hall) pats Hpats Hall.
+Proof.
+  induction pats; intros; simpl; auto.
+  destruct a; inversion H0; subst; rewrite IHpats; auto.
+  simpl.
+  generalize dependent (@eq_refl _ (match_val_single gamma_valid pd all_unif vt ty1 p (Forall_inv Hpats)
+  (proj1_sig (term_rep_aux input rec v t ty1 small hd Hty1 Hdec Hsmall Hhd)))).
+  generalize dependent (@small_match_lemma t v ty1 p (Forall_inv Hpats)
+  (proj1_sig (term_rep_aux input rec v t ty1 small hd Hty1 Hdec Hsmall Hhd))
+  small (hide_ty
+  (dom_cast (dom_aux pd)
+     (arg_nth_eq (projT1 (projT2 (projT1 (projT1 input))))
+        (sn_sym (proj1_sig (projT1 (projT1 (projT1 input)))))
+        (sn_idx (proj1_sig (projT1 (projT1 (projT1 input)))))
+        (sn_idx_bound (proj1_sig (projT1 (projT1 (projT1 input))))
+           (proj2_sig (projT1 (projT1 (projT1 input))))))
+     (hnth (sn_idx (proj1_sig (projT1 (projT1 (projT1 input)))))
+        (projT2 (projT2 (projT1 (projT1 input)))) s_int 
+        (dom_int pd))))).
+  rewrite <- H.
+  (*One more generalization*)
+  generalize dependent (@match_val_single_upd_option v ty1
+  (proj1_sig (term_rep_aux input rec v t ty1 small hd Hty1 Hdec Hsmall Hhd)) p
+    (Forall_inv Hpats)).
+  (*Finally, we can destruct*)
+  destruct ( match_val_single gamma_valid pd all_unif vt ty1 p (Forall_inv Hpats)
+  (proj1_sig (term_rep_aux input rec v t ty1 small hd Hty1 Hdec Hsmall Hhd)));
+  intros.
+  - apply H3.
+  - reflexivity.
+Qed.
+
+Lemma match_rep_rec_eq' input rec (t: term) ty1 pats:
+forall
+  v small hd (Hty1: term_has_type sigma t ty1) Hdec Hsmall Hhd Hall Hpats Halldec,
+  proj1_sig
+      (term_rep_aux input rec v t ty1 small hd Hty1
+         Hdec Hsmall Hhd) = term_rep gamma_valid pd all_unif vt pf v t ty1 Hty1 ->
+         Forall
+         (fun f : formula =>
+          forall (v: val_vars pd vt) 
+            (small : list vsymbol) (hd : option vsymbol) 
+            (Hval : valid_formula sigma f)
+            (Hdec : decrease_pred fs ps small hd m vs f) Hsmall Hhd,
+            formula_rep_aux input rec v f small hd Hval Hdec Hsmall Hhd =
+            formula_rep gamma_valid pd all_unif vt pf v f Hval) (map snd pats) ->
+  @match_rep_rec' input rec v t _ small hd Hty1 Hdec Hsmall Hhd
+   pats Hall Hpats Halldec =
+    let dom_t := (term_rep gamma_valid pd all_unif vt pf v t ty1 Hty1) in
+    (fix match_rep (ps: list (pattern * formula)) 
+    (Hps: Forall (fun x => pattern_has_type sigma (fst x) ty1) ps)
+    (Hall: Forall (fun x => valid_formula sigma (snd x)) ps) :
+      bool :=
+  match ps as l' return 
+    Forall (fun x => pattern_has_type sigma (fst x) ty1) l' ->
+    Forall (fun x => valid_formula sigma (snd x)) l' ->
+    bool with
+  | (p , dat) :: ptl => fun Hpats Hall =>
+    match (match_val_single gamma_valid pd all_unif vt ty1 p (Forall_inv Hpats) dom_t) with
+    | Some l => formula_rep gamma_valid pd all_unif vt pf (extend_val_with_list pd vt v l) dat
+      (Forall_inv Hall) 
+    | None => match_rep ptl (Forall_inv_tail Hpats) (Forall_inv_tail Hall)
+    end
+  | _ => (*TODO: show we cannot reach this*) fun _ _ => false
+  end Hps Hall) pats Hpats Hall.
+Proof.
+  induction pats; intros; simpl; auto.
+  destruct a; inversion H0; subst; rewrite IHpats; auto.
+  simpl.
+  generalize dependent (@eq_refl _ (match_val_single gamma_valid pd all_unif vt ty1 p (Forall_inv Hpats)
+  (proj1_sig (term_rep_aux input rec v t ty1 small hd Hty1 Hdec Hsmall Hhd)))).
+  generalize dependent (@match_val_single_small1 v ty1 
+   (*p (Forall_inv Hpats)*)
+  (proj1_sig (term_rep_aux input rec v t ty1 small hd Hty1 Hdec Hsmall Hhd))
+  p (Forall_inv Hpats)). 
+  rewrite <- H.
+  (*One more generalization*)
+  generalize dependent (@match_val_single_upd_option v ty1
+  (proj1_sig (term_rep_aux input rec v t ty1 small hd Hty1 Hdec Hsmall Hhd)) p
+    (Forall_inv Hpats)).
+  (*Finally, we can destruct*)
+  destruct ( match_val_single gamma_valid pd all_unif vt ty1 p (Forall_inv Hpats)
+  (proj1_sig (term_rep_aux input rec v t ty1 small hd Hty1 Hdec Hsmall Hhd)));
+  intros.
+  - apply H3.
+  - reflexivity.
+Qed.
+
 (*TODO: cannot assume pf, need to have term_rep input
   as [interp_with_funcs pf]*)
 Theorem term_fmla_rep_aux_eq (t: term) (f: formula) :
@@ -5520,7 +5960,7 @@ Proof.
   - destruct c;
     simpl_rep_full; reflexivity.
   - simpl_rep_full. reflexivity.
-  - rewrite term_rep_aux_rewrite. simpl_rep_full.
+  - rewrite term_rep_aux_fun. simpl_rep_full.
     destruct (find_fn f1 fs).
     + simpl.
       (*Faster than f_equal*)
@@ -5558,188 +5998,162 @@ Proof.
       unfold pack_args.
       unfold fun_arg_list.
       (*We need to rewrite [fun_arg_list] into [get_arg_list_ext_aux']*)
-      set (input := existT
-      (fun fa : combined_args =>
-       (val_vars pd vt *
-        (Datatypes.length
-           (projT1 (projT2 (projT1 fa))) =
-         Datatypes.length params /\
-         vt_eq (projT1 (projT2 (projT1 fa)))))%type)
-      (existT
-         (fun pa : packed_args =>
-          Either
-            {f : fn
-            | In f fs /\
-              fn_sn f = proj1_sig (projT1 pa)}
-            {p : pn
-            | In p ps /\
-              pn_sn p = proj1_sig (projT1 pa)})
-         (existT
-            (fun x : {s0 : sn | In s0 sns} =>
-             {srts : 
-             list sort &
-             arg_list domain
-               (sym_sigma_args
-                  (sn_sym (proj1_sig x)) srts)})
-            (exist (fun s0 : sn => In s0 sns) s
-               s_in)
-            (existT
-               (fun srts : list sort =>
-                arg_list domain
-                  (sym_sigma_args 
-                    (sn_sym s) srts))
-               (map (v_subst vt) l) a)) e)
-      (v', conj srts_len' vt_eq_srts')) in *.
-      rewrite <- (get_arg_list_aux_eq input l1 (fun (x : packed_args2)
-      (_ : R_projT1
-             (fun fa : combined_args =>
-              (val_vars pd vt *
-               (Datatypes.length
-                  (projT1 (projT2 (projT1 fa))) =
-                Datatypes.length params /\
-                vt_eq (projT1 (projT2 (projT1 fa)))))%type)
-             (R_projT1
-                (fun pa : packed_args =>
-                 Either
-                   {f : fn
-                   | In f fs /\ fn_sn f = proj1_sig (projT1 pa)}
-                   {p : pn
-                   | In p ps /\ pn_sn p = proj1_sig (projT1 pa)})
-                arg_list_smaller) x input) =>
-    funcs_rep_aux x) v (fn_sym f') small Hsmall hd Hhd l
-    (proj1' (proj2' (fun_ty_inv Hty)))
-    (*TODO: find where proj1 and proj2 come from*)
-      (proj1' (fun_ty_inv Hty))
-      ((proj1' (proj2' (proj2' (fun_ty_inv Hty)))))
-    (dec_inv_tfun_rec Hdec)).
-    rewrite dom_cast_refl.
-    simpl.
-    unfold cast_arg_list.
-    rewrite !scast_scast.
-    assert (Heq : (eq_trans
-    (f_equal
-       (fun x : list sort =>
-        arg_list domain (sym_sigma_args (fn_sym f') x))
-       (eq_sym
-          (eq_trans
-             (eq_sym
-                (eq_trans
-                   (f_equal
-                      (fun x : fpsym =>
-                       map (fun x0 : vty => val x0)
-                         (map vty_var (s_params x)))
-                      (eq_trans eq_refl (fs_wf_eq f' Hinf')))
-                   (map_vals_srts' (map (v_subst vt) l) f' srts_len'
-                      vt_eq_srts' (in_fs_sns Hinf'))))
-             (f_equal
-                (fun x : list vty => map (fun x0 : vty => val x0) x)
-                (eq_sym (proj1' (dec_inv_tfun_in Hdec Hinf' eq_refl)))))))
-    (f_equal
-       (fun x : fpsym =>
-        arg_list domain (sym_sigma_args x (map (v_subst vt) l)))
-       (eq_trans eq_refl (fs_wf_eq f' Hinf')))) =
-       (f_equal (fun x : list sort => arg_list domain x)
-       (f_equal (fun x : fpsym => sym_sigma_args x (map (v_subst vt) l))
-          (fs_wf_eq f' Hinf')))). {
-            apply UIP. (*Not sure if we need UIP here but ok*)
-          }
-    rewrite Heq.
+      unfold cast_arg_list.
+      rewrite !scast_scast.
+      rewrite dom_cast_refl.
+      (*We need to rewrite with several huge terms so we
+        use the following tactic, which remembers the input
+        and recursive function, rewrites with [get_arg_list_aux_eq],
+        proves the equalities equal with UIP (which we probably
+        don't need), then solves the trivial goals*)
+      match goal with
+      | |- funcs_rep_aux (existT _ (combine_args_fun 
+        (existT _ _ (existT _ _ (scast ?Heq 
+        (proj1_sig (get_arg_list_ext_aux' _ _ _ 
+        (term_rep_aux ?inp ?re _) _ _ _ _ _))))) _ _ _) _) = 
+        funcs_rep_aux (existT _ (combine_args_fun 
+        (existT _ _ (existT _ _ (scast ?Heq2 _))) _ _ _) _) => 
+        set (input := inp) in *;
+        set (rec := re) in *;
+        rewrite <- (get_arg_list_aux_eq input l1 rec v 
+        (fn_sym f') small Hsmall hd Hhd l
+        (proj1' (proj2' (fun_ty_inv Hty)))
+        (proj1' (fun_ty_inv Hty))
+        ((proj1' (proj2' (proj2' (fun_ty_inv Hty)))))
+        (dec_inv_tfun_rec Hdec));
+        [| revert H; rewrite !Forall_forall; intros; apply H; auto];
+        let H := fresh in
+        assert (H: Heq = Heq2) by apply UIP;
+        rewrite H;
+        reflexivity
+      end.
+    + (*Now on to easier case*)
+      simpl. f_equal.
+      f_equal. f_equal.
+      apply get_arg_list_aux_eq.
+      revert H; rewrite !Forall_forall; intros; apply H; auto.
+  - (*Tlet case*)
+    simpl_rep_full.
+    rewrite H.
+    apply H0.
+  - (*Tif*)
+    simpl_rep_full.
+    rewrite H.
+    destruct (formula_rep gamma_valid pd all_unif vt pf v f (proj2' (proj2' (ty_if_inv Hty))));
+    simpl; auto.
+  - (*Tmatch*)
+    rewrite term_rep_aux_match. simpl_rep_full.
+    destruct (tmatch_case tm hd small); simpl.
+    + (*addvars case*)
+      simpl.
+      apply match_rep_addvars_eq.
+      auto. 
+      revert H0; rewrite !Forall_forall; intros; apply H0; auto.
+    + (*match_rep_rec case*)
+      apply match_rep_rec_eq; auto.
+      revert H0; rewrite !Forall_forall; intros; apply H0; auto.
+  - (*Teps*)
+    simpl_rep_full. f_equal.
+    repeat (apply functional_extensionality_dep; intros).
+    rewrite H.
     reflexivity.
-    (*Now prove all*)
-    revert H; rewrite !Forall_forall; intros; apply H; auto.
-  + (*Now on to easier case*)
-    simpl. f_equal.
-    f_equal. f_equal.
-    apply get_arg_list_aux_eq.
-    revert H; rewrite !Forall_forall; intros; apply H; auto.
-- (*Tlet case*)
-  simpl_rep_full.
-  rewrite H.
-  apply H0.
-- (*Tif*)
-  simpl_rep_full.
-  rewrite H.
-  destruct (formula_rep gamma_valid pd all_unif vt pf v f (proj2' (proj2' (ty_if_inv Hty))));
-  simpl; auto.
-- (*Tmatch*)
-  rewrite term_rep_aux_rewrite. simpl_rep_full.
-  destruct (tmatch_case tm hd small); simpl.
-  + (*addvars case*)
-  simpl.
-  apply match_rep_addvars_eq.
-  auto. 
-  revert H0; rewrite !Forall_forall; intros; apply H0; auto.
-  + (*match_rep_rec case*)
-  apply match_rep_rec_eq; auto.
-  revert H0; rewrite !Forall_forall; intros; apply H0; auto.
-- (*Teps*)
-  simpl_rep_full. f_equal.
-  repeat (apply functional_extensionality_dep; intros).
-  rewrite H.
-  reflexivity.
-- (*Fpred case - TODO*)
-
-Admitted.
-      (*is there a problem here? IH gives term_rep of body,
-        assumption gives term_rep_aux of body*)
-        (*TODO: think about this*)
-      (*Now we can use the [pf_funs] assumption*)
-      (*rewrite (pf_funs _ Hinf' _ srts_len' vt_eq_srts').
-      unfold funs_rep_aux.
-      rewrite funcs_rep_aux_eq. simpl.
-      (*We also need the IH*)
-      rewrite IH. simpl.
-      rewrite !dom_cast_compose.
-      Unshelve.
-      2: {
-        
+  - (*Fpred case*)
+    rewrite formula_rep_aux_pred. simpl_rep_full.
+    destruct (find_pn p ps).
+    + simpl.
+      (*Now we use our funs assumption*)
+      destruct s as [p' [Hinp' Hp1]]; subst.
+      simpl.
+      destruct input as [fa [v' [srts_len' vt_eq_srts']]].
+      simpl in *.
+      destruct fa; simpl in *; subst.
+      destruct x as [[s s_in] [srts a]].
+      subst; simpl in *. 
+      assert ((map (v_subst vt) tys) = srts). {
+        symmetry.
+        exact ((eq_trans
+        (eq_sym
+            (eq_trans
+              (f_equal
+                  (fun x : fpsym =>
+                  map (fun x0 : vty => val x0) (map vty_var (s_params x)))
+                  (eq_trans eq_refl (ps_wf_eq p' Hinp')))
+              (map_vals_srts' srts p' srts_len' vt_eq_srts' (in_ps_sns Hinp'))))
+        (f_equal (fun x : list vty => map (fun x0 : vty => val x0) x)
+            (eq_sym (proj1' (dec_inv_fpred_in Hdec Hinp' eq_refl)))))).
       }
-      Search funs_rep_aux.
-      unfold cast_dom_vty.
-      rewrite !dom_cast_compose.
+      subst.
+      rewrite (pf_preds v _ Hinp' _ srts_len' vt_eq_srts').
+      unfold preds_rep_aux.
+      unfold pack_args.
+      unfold pred_arg_list.
+      (*We need to rewrite [fun_arg_list] into [get_arg_list_ext_aux']*)
+      (*First, get input and rec*)
+      unfold cast_arg_list.
+      rewrite !scast_scast.
+      (*Similar as fun case*)
+      match goal with
+      | |- funcs_rep_aux (existT _ (combine_args_pred 
+        (existT _ _ (existT _ _ (scast ?Heq 
+        (proj1_sig (get_arg_list_ext_aux' _ _ _ 
+        (term_rep_aux ?inp ?re _) _ _ _ _ _))))) _ _ _) _) = 
+        funcs_rep_aux (existT _ (combine_args_pred 
+        (existT _ _ (existT _ _ (scast ?Heq2 _))) _ _ _) _) => 
+        set (input := inp) in *;
+        set (rec := re) in *;
+        rewrite <- (get_arg_list_aux_eq input tms rec v (pn_sym p') small Hsmall hd Hhd tys
+          (proj1' (proj2' (pred_val_inv Hval)))
+            (proj1' (pred_val_inv Hval))
+            ((proj2' (proj2' (pred_val_inv Hval))))
+          (dec_inv_fpred_rec Hdec));
+        [| revert H; rewrite !Forall_forall; intros; apply H; auto];
+        let H := fresh in
+        assert (H: Heq = Heq2) by apply UIP;
+        rewrite H;
+        reflexivity
+      end.
+    + (*Now on to easier case*)
       f_equal.
-    
-    f_equal.
-     simpl_proj. admit. 
-    + simpl. f_equal. f_equal. f_equal.
-      (*Prove arg lists eq - TODO: really should be separate lemma*)
+      apply get_arg_list_aux_eq.
+      revert H; rewrite !Forall_forall; intros; apply H; auto.
+  - (*Fquant*)
+    destruct q;
+    simpl_rep_full; apply all_dec_eq; split;
+    [intros Hd d ; specialize (Hd d) | intros Hd d; specialize (Hd d)| 
+    intros [d Hd]; exists d | intros [d Hd];
+      exists d]; try (rewrite H in Hd); try (rewrite H); auto.
+  - simpl_rep_full.
+    rewrite H, H0. reflexivity.
+  - simpl_rep_full.
+    rewrite H, H0. reflexivity.
+  - simpl_rep_full.
+    rewrite H. reflexivity.
+  - reflexivity.
+  - reflexivity.
+  - simpl_rep_full.
+    rewrite H, H0. reflexivity.
+  - simpl_rep_full.
+    rewrite H, H0, H1. reflexivity.
+  - (*Fmatch*)
+    rewrite formula_rep_aux_match. simpl_rep_full.
+    destruct (tmatch_case tm hd small); simpl.
+    + (*addvars case*)
+      apply match_rep_addvars_eq'.
+      auto. 
+      revert H0; rewrite !Forall_forall; intros; apply H0; auto.
+    + (*match_rep_rec case*)
+      apply match_rep_rec_eq'; auto.
+      revert H0; rewrite !Forall_forall; intros; apply H0; auto.
+Qed.
 
-  
-  intros. simpl.
-Admitted.
-  (*This proof just uses [term_formula_ind], we do not need
-    any well-founded induction*)
-  (*TODO: why does this proof take so long - 
-    think because term_rep_aux is giant because of termination proof ugh *)
-(*  revert t f. apply term_formula_ind; intros.
-  (*TODO: prove rewrite lemma*)
-Admitted.*)
-  (*simpl_rep_full; auto.
-  - destruct c; simpl_rep_full; reflexivity.
-  - (*the function case will be hard and interesting
-    TODO: start*)
-
-  
-  
-  intros. simpl.*)
-*)
-(*We have to prove the version with packed_args to get an appropriate
-  induction hypothesis*)
-
-(*TODO: term_rep should be with *)
-
-(*HERE, we use well-founded induction and [term_fmla_rep_aux_eq]
-  to prove the equivalence *)
+(*HERE, we use [term_fmla_rep_aux_eq]
+  to prove the equivalence. We don't need induction *)
 Theorem funpred_rep_aux_eq:
   forall (pa: packed_args2),
     funcs_rep_aux pa =
     funcs_rep_aux_unfold pa.
 Proof.
-  (*Now we do induction on the well-founded relation*)
-  apply (well_founded_induction (wf_projT1 (wf_projT1 arg_list_smaller_wf): 
-  well_founded (fun (x y: packed_args2) =>
-    R_projT1 _ (R_projT1 _ arg_list_smaller) x y))).
-  intros pa IH.
+  intros pa.
   unfold funcs_rep_aux_unfold. simpl in *.
   (*We have to consider each case separately*)
   destruct pa as [[pa o] pa2].
