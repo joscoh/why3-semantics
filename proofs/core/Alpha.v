@@ -1267,9 +1267,9 @@ Proof.
     alpha_case t0 Heq.
     bool_hyps.
     simpl_rep_full.
-    rewrite (H _ _ _ v2 _ (proj2 (proj2 (ty_if_inv Hty2))) H2),
-      (H0 _ _ _ v2 _ _ (proj1 (ty_if_inv Hty2)) H4),
-      (H1 _ _ _ v2 _ _ (proj1 (proj2 (ty_if_inv Hty2))) H3); auto.
+    rewrite (H _ _ _ v2 _ (proj2' (proj2' (ty_if_inv Hty2))) H2),
+      (H0 _ _ _ v2 _ _ (proj1' (ty_if_inv Hty2)) H4),
+      (H1 _ _ _ v2 _ _ (proj1' (proj2' (ty_if_inv Hty2))) H3); auto.
   - (*Tmatch - predictably, this is the hard case*)
     alpha_case t2 Heq.
     rename t2 into tm2.
@@ -1432,8 +1432,8 @@ Proof.
         assert (e0 = eq_refl) by (apply UIP_dec; apply vsymbol_eq_dec).
         assert (e1 = eq_refl) by (apply UIP_dec; apply vsymbol_eq_dec).
         rewrite H0, H1. simpl. clear e0 e1 H0 H1.
-        generalize dependent (proj2 (ty_eps_inv Hty)).
-        generalize dependent (proj2 (ty_eps_inv Hty2)).
+        generalize dependent (proj2' (ty_eps_inv Hty)).
+        generalize dependent (proj2' (ty_eps_inv Hty2)).
         intros. subst. destruct v; simpl in *; subst; simpl.
         assert (e1 = eq_refl) by (apply UIP_dec; apply vty_eq_dec).
         assert (Heq0 = eq_refl) by (apply UIP_dec; apply vty_eq_dec).
@@ -1499,16 +1499,16 @@ Proof.
     alpha_case f2 Heq. bool_hyps; simpl_sumbool.
     simpl_rep_full.
     rewrite H with(t2:=t)(vars:=vars)(v2:=v2)
-    (Hty2:=(proj1 (valid_eq_inj Hval2))),
+    (Hty2:=(proj1' (valid_eq_inj Hval2))),
       H0 with(t2:=t0)(vars:=vars)(v2:=v2)
-    (Hty2:=(proj2 (valid_eq_inj Hval2))); auto.
+    (Hty2:=(proj2' (valid_eq_inj Hval2))); auto.
   - (*Fbinop*)
     alpha_case f0 Heq; bool_hyps; simpl_sumbool.
     simpl_rep_full.
     rewrite H with(f2:=f0_1)(vars:=vars)(v2:=v2)
-    (Hval2:=(proj1 (valid_binop_inj Hval2))),
+    (Hval2:=(proj1' (valid_binop_inj Hval2))),
     H0 with(f2:=f0_2)(vars:=vars)(v2:=v2)
-    (Hval2:=(proj2 (valid_binop_inj Hval2))); auto.
+    (Hval2:=(proj2' (valid_binop_inj Hval2))); auto.
   - (*Fnot*)
     alpha_case f2 Heq.
     simpl_rep_full. f_equal. apply H with(vars:=vars); auto.
@@ -1546,11 +1546,11 @@ Proof.
     alpha_case f0 Heq. bool_hyps.
     simpl_rep_full.
     rewrite H with(f2:=f0_1)(vars:=vars)(v2:=v2)
-      (Hval2:=(proj1 (valid_if_inj Hval2))),
+      (Hval2:=(proj1' (valid_if_inj Hval2))),
     H0 with (f2:=f0_2)(vars:=vars)(v2:=v2)
-      (Hval2:=(proj1 (proj2 (valid_if_inj Hval2)))),
+      (Hval2:=(proj1' (proj2' (valid_if_inj Hval2)))),
     H1 with (f2:=f0_3)(vars:=vars) (v2:=v2)
-      (Hval2:=(proj2 (proj2 (valid_if_inj Hval2)))); auto.
+      (Hval2:=(proj2' (proj2' (valid_if_inj Hval2)))); auto.
   - (*Fmatch - similar to Tmatch*)
     alpha_case f2 Heq.
     rename t into tm2.

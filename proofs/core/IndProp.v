@@ -565,7 +565,7 @@ Proof.
       apply indpred_decomp_bound. auto. subst. contradiction.
     + apply (H (wf_quant _ _ _ H0) x); auto.
   - destruct b; simpl; intro C; try triv_fls.
-    apply (H0 (proj2 (wf_binop _ _ _ H1)) x). auto.
+    apply (H0 (proj2' (wf_binop _ _ _ H1)) x). auto.
   - specialize (H0 (wf_let _ _ _ H1)).
     intro C. split_all.
     destruct H3; subst.
@@ -1013,9 +1013,9 @@ Proof.
   - (*First, know that [[f1]] eq in both cases because P cannot be
       present*)
     assert (Hf1: formula_rep gamma_valid pd all_unif vt pf vv f1
-    (proj1 (valid_if_inj Hvalf)) =
+    (proj1' (valid_if_inj Hvalf)) =
     formula_rep gamma_valid pd all_unif vt (interp_with_Ps pf (map fst ps) Ps) vv f1
-    (proj1 (valid_if_inj Hvalf))). {
+    (proj1' (valid_if_inj Hvalf))). {
       apply fmla_predsym_agree; auto; simpl; intros p' Hinp'.
       symmetry.
       destruct (in_bool_spec predsym_eq_dec p' (map fst ps));
@@ -1024,7 +1024,7 @@ Proof.
     }
     rewrite <- Hf1.
     destruct (formula_rep gamma_valid pd all_unif vt pf vv f1
-    (proj1 (valid_if_inj Hvalf)));
+    (proj1' (valid_if_inj Hvalf)));
     [apply IHHpos1 | apply IHHpos2]; auto.
   - (*Hmm, this is the hardest one - need rewrite lemma for match*)
     (*Here, we need a nested induction*)
