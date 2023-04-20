@@ -905,11 +905,13 @@ Definition check_funpred_def_valid_type (fd: funpred_def) : bool :=
   | fun_def f vars t =>
     check_well_typed_tm t (f_ret f) &&
     sublistb (tm_fv t) vars &&
+    sublistb (tm_type_vars t) (s_params f) &&
     uniq (map fst vars) &&
     (map snd vars == s_args f)
   | pred_def p vars f =>
     check_well_typed_fmla f &&
     sublistb (fmla_fv f) vars &&
+    sublistb (fmla_type_vars f) (s_params p) &&
     uniq (map fst vars) &&
     (map snd vars == s_args p)
   end.
@@ -920,13 +922,17 @@ Lemma check_funpred_def_valid_type_spec (fd: funpred_def):
 Proof.
   rewrite /funpred_def_valid_type/check_funpred_def_valid_type.
   case: fd => [f vars t | p vars f].
-  - rewrite -andbA -andbA. repeat (apply andPP; [|apply andPP; [| apply andPP]]).
+  - rewrite -andbA -andbA -andbA.
+    repeat (apply andPP; [| apply andPP]). 
     + apply check_well_typed_tm_spec.
+    + apply sublistbP.
     + apply sublistbP.
     + apply uniqP.
     + apply eqP.
-  - rewrite -andbA -andbA. repeat (apply andPP; [|apply andPP; [| apply andPP]]).
+  - rewrite -andbA -andbA -andbA.
+     repeat (apply andPP; [|apply andPP]).
     + apply check_well_typed_fmla_spec.
+    + apply sublistbP.
     + apply sublistbP.
     + apply uniqP.
     + apply eqP.
@@ -2475,21 +2481,42 @@ Proof.
       by rewrite nth_eq.
 Qed.
 
+(*For our purposes, we need something a bit more specific,
+  we need to know that a function creates these (so that they
+  are unique)*)
+(*TODO: name*)
+Lemma funpred_def_term_decide (l: list funpred_def):
+  In l (mutfuns_of_context gamma) ->
+  funpred_def_term_exists gamma l ->
+  match (find_funpred_def_term l) with
+  | Some (m, params, vs, il) =>
+    funpred_def_term gamma l m params vs il
+  | None => False
+  end.
+Proof.
+  move=>Hin Hex.
+  case Hfind: (find_funpred_def_term l) => [[[[m params] vs] il] |].
+  - apply find_funpred_def_term_some =>//.
+    by apply /inP.
+  - case: Hex => [m [params [vs [il Hterm]]]].
+    move: Hin => /inP Hin.
+    by apply (find_funpred_def_term_none l Hin Hfind m params vs il).
+Qed.
+
 (*And now we can prove the following theorem, which
   we need to define the recursive functions*)
-Lemma funpred_def_term_decide (l: list funpred_def) :
+(*TODO: do we need anymore? Loses info*)
+Lemma funpred_def_term_decide' (l: list funpred_def) :
   In l (mutfuns_of_context gamma) ->
   funpred_def_term_exists gamma l ->
   { x: (mut_adt * list typevar * list vty * list nat) |
     funpred_def_term gamma l x.1.1.1 x.1.1.2 x.1.2 x.2}.
 Proof.
   move=> Hin Hex.
-  case Hfind: (find_funpred_def_term l) => [[[[m params] vs] il] |].
-  - apply (exist _ (m, params, vs, il)). apply find_funpred_def_term_some =>//.
-    by apply /inP.
-  - exfalso. destruct Hex as [m [params [vs [il Hterm]]]].
-    move: Hin => /inP Hin.
-    by apply (find_funpred_def_term_none l Hin Hfind m params vs il).
+  have:=(funpred_def_term_decide l Hin Hex).
+  case Hfind: (find_funpred_def_term l) => [[[[m params] vs] il] |//].
+  move=> Hdec.
+  apply (exist _ (m, params, vs, il)). by apply Hdec.
 Qed.
 
 End ContextCheck.

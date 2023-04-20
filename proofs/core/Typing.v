@@ -1387,11 +1387,6 @@ Set Elimination Schemes.
 Scheme decrease_fun_ind := Minimality for decrease_fun Sort Prop
 with decrease_pred_ind := Minimality for decrease_pred Sort Prop.
 
-(*TODO: move*)
-Inductive Either (A B: Set) : Set :=
-  | Left: A -> Either A B
-  | Right: B -> Either A B. 
-
 (*Now we define how to convert a [funpred_def] to an fs or ps, given 
   an index*)
 
@@ -1478,12 +1473,13 @@ Definition funpred_def_valid_type (fd: funpred_def) : Prop :=
   | fun_def f vars t =>
     well_typed_term s gamma t (f_ret f) /\
     sublist (tm_fv t) vars /\
-    (*TODO: need to add condition for type variables*)
+    sublist (tm_type_vars t) (s_params f) /\
     NoDup (map fst vars) /\
     map snd vars = s_args f (*types of args correct*)
   | pred_def p vars f =>
     well_typed_formula s gamma f /\
     sublist (fmla_fv f) vars /\
+    sublist (fmla_type_vars f) (s_params p) /\
     NoDup (map fst vars) /\
     map snd vars = s_args p (*types of args correct*)
 
@@ -1830,7 +1826,7 @@ Proof.
     + specialize (Hall i ltac:(lia)).
       revert Hall. rewrite app_nth1 by (rewrite map_length; auto).
       rewrite map_nth_inbound with (d2:=(id_fs, nil, tm_d)); auto.
-    + apply NoDup_map_inv in H1; auto.
+    + apply NoDup_map_inv in H2; auto.
   - (*Very similar*)
     rewrite Forall_forall.
     intros p.
@@ -1856,7 +1852,7 @@ Proof.
       (firstn (Datatypes.length (fst (split_funpred_defs l))) is)))
       with (length (fst (split_funpred_defs l))); auto.
       rewrite combine_length, firstn_length. lia.
-    + apply (NoDup_map_inv) in H1. auto.
+    + apply (NoDup_map_inv) in H2. auto.
 Qed.
 
 
@@ -2205,6 +2201,23 @@ Proof.
    split; auto; apply (ssrbool.elimT adt_in_mut_alt); auto.
 Qed.
 
+Lemma in_mutfuns (l: list funpred_def) :
+  In l (mutfuns_of_context gamma) <->
+  In (recursive_def l) gamma.
+Proof.
+  clear gamma_wf.
+  induction gamma; simpl; auto; try reflexivity.
+  destruct a; simpl in *.
+  - split; intros; [right |]; apply IHc; auto.
+    destruct H; [inversion H |]; auto.
+  - split; intros; destruct_all; auto.
+    + right; apply IHc; auto.
+    + inversion H; subst. auto.
+    + right; apply IHc; auto.
+  - split; intros; [right |]; apply IHc; auto.
+    destruct H; [inversion H |]; auto.
+Qed.
+
 (*The syms in the [funpred_defs_to_sns] are unique*)
 Lemma funpred_defs_to_sns_NoDup (l: list funpred_def) il:
   In l (mutfuns_of_context gamma) ->
@@ -2227,15 +2240,62 @@ Proof.
   destruct Hwf1 as [Hwf1 _ ].
   destruct Hwf2 as [Hwf2 _].
   assert (Hin: In (recursive_def l) gamma). {
-    unfold mutfuns_of_context in Hlen. clear -Hlen.
-    induction gamma; simpl. inversion Hlen.
-    simpl in Hlen. destruct a; simpl in *; auto.
-    destruct Hlen; subst; auto.
+    apply in_mutfuns. auto.
   }
   split; [apply Hwf1 | apply Hwf2]; rewrite in_map_iff;
   exists (recursive_def l); split; auto; simpl; clear;
   induction l; simpl; auto; destruct a; simpl; auto;
   rewrite IHl; reflexivity.
+Qed.
+
+Lemma in_fun_def l f a b:
+  In (fun_def f a b) l ->
+  In f (funsyms_of_def (recursive_def l)).
+Proof.
+  simpl; induction l; simpl; auto; intros.
+  destruct H; subst; simpl; auto.
+  destruct a0; simpl; try right; auto.
+Qed.
+
+Lemma fundef_inj (l: list funpred_def) (f: funsym)
+  (a1 a2: list vsymbol) (b1 b2: term):
+  In l (mutfuns_of_context gamma) ->
+  In (fun_def f a1 b1) l ->
+  In (fun_def f a2 b2) l ->
+  a1 = a2 /\ b1 = b2.
+Proof.
+  unfold wf_context in gamma_wf.
+  intros l_in Hin1 Hin2.
+  destruct gamma_wf as [_ [_ [_ [_ [_ [Hwf1 _]]]]]].
+  unfold funsyms_of_context in Hwf1.
+  rewrite NoDup_concat_iff in Hwf1.
+  destruct Hwf1 as [Hwf _].
+  assert (Hin: In (recursive_def l) gamma). {
+    apply in_mutfuns; auto.
+  }
+  specialize (Hwf (funsyms_of_def (recursive_def l))).
+  assert (In (funsyms_of_def (recursive_def l)) (map funsyms_of_def gamma)).
+    rewrite in_map_iff. exists (recursive_def l); auto.
+  specialize (Hwf H); clear H.
+  (*TODO: separate lemma or induction?*)
+  simpl in Hwf.
+  clear -Hwf Hin1 Hin2.
+  induction l; [inversion Hin1 |].
+  simpl in Hin1, Hin2.
+  simpl in *. destruct a.
+  2: {
+    destruct Hin1; destruct Hin2; try solve[inversion H];
+    try solve[inversion H0]; auto.
+  }
+  inversion Hwf; subst.
+  destruct Hin1; destruct Hin2; auto.
+  - inversion H; inversion H0; subst; auto.
+  - exfalso. apply H1.
+    inversion H; subst.
+    apply (in_fun_def l _ _ _ H0).
+  - inversion H0; subst.
+    exfalso. apply H1.
+    apply (in_fun_def l _ _ _ H).
 Qed.
 
 End WFContextLemmas.
