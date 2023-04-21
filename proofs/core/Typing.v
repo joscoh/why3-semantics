@@ -2257,6 +2257,15 @@ Proof.
   destruct a0; simpl; try right; auto.
 Qed.
 
+Lemma in_pred_def l p a b:
+  In (pred_def p a b) l ->
+  In p (predsyms_of_def (recursive_def l)).
+Proof.
+  simpl; induction l; simpl; auto; intros.
+  destruct H; subst; simpl; auto.
+  destruct a0; simpl; try right; auto.
+Qed.
+
 Lemma fundef_inj (l: list funpred_def) (f: funsym)
   (a1 a2: list vsymbol) (b1 b2: term):
   In l (mutfuns_of_context gamma) ->
@@ -2296,6 +2305,47 @@ Proof.
   - inversion H0; subst.
     exfalso. apply H1.
     apply (in_fun_def l _ _ _ H).
+Qed.
+
+Lemma preddef_inj (l: list funpred_def) (p: predsym)
+  (a1 a2: list vsymbol) (b1 b2: formula):
+  In l (mutfuns_of_context gamma) ->
+  In (pred_def p a1 b1) l ->
+  In (pred_def p a2 b2) l ->
+  a1 = a2 /\ b1 = b2.
+Proof.
+  unfold wf_context in gamma_wf.
+  intros l_in Hin1 Hin2.
+  destruct gamma_wf as [_ [_ [_ [_ [_ [_ Hwf1]]]]]].
+  unfold predsyms_of_context in Hwf1.
+  rewrite NoDup_concat_iff in Hwf1.
+  destruct Hwf1 as [Hwf _].
+  assert (Hin: In (recursive_def l) gamma). {
+    apply in_mutfuns; auto.
+  }
+  specialize (Hwf (predsyms_of_def (recursive_def l))).
+  assert (In (predsyms_of_def (recursive_def l)) (map predsyms_of_def gamma)).
+    rewrite in_map_iff. exists (recursive_def l); auto.
+  specialize (Hwf H); clear H.
+  (*TODO: separate lemma or induction?*)
+  simpl in Hwf.
+  clear -Hwf Hin1 Hin2.
+  induction l; [inversion Hin1 |].
+  simpl in Hin1, Hin2.
+  simpl in *. destruct a.
+  {
+    destruct Hin1; destruct Hin2; try solve[inversion H];
+    try solve[inversion H0]; auto.
+  }
+  inversion Hwf; subst.
+  destruct Hin1; destruct Hin2; auto.
+  - inversion H; inversion H0; subst; auto.
+  - exfalso. apply H1.
+    inversion H; subst.
+    apply (in_pred_def l _ _ _ H0).
+  - inversion H0; subst.
+    exfalso. apply H1.
+    apply (in_pred_def l _ _ _ H).
 Qed.
 
 End WFContextLemmas.

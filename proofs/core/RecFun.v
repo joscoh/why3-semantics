@@ -4571,14 +4571,12 @@ with
     end Hlen Htys
 end) s vs' ts Hparamslen args Hargslen Hall Hdec =
 get_arg_list_ext_aux' s Hsmall Hhd (term_rep_aux v) Hparamslen args Hargslen Hall Hdec.
-Admitted.
-(*
 Proof.
   intros v small hd Hsmall Hhd s.
   induction ts; try reflexivity.
   intros; destruct args; try reflexivity.
   rewrite IHts. reflexivity.
-Qed.*)
+Qed.
 
 Lemma match_rep_addvars_rewrite: forall
 v t {ty1} {small} {hd} Ht1 Hdec1 Hsmall Hhd 
@@ -4629,8 +4627,6 @@ let dom_t_pf := proj2_sig (term_rep_aux v t ty1 small hd Ht1 Hdec1 Hsmall Hhd) i
       end Hall Hpats Hdec) pats Hall Hpats Hdec
   = match_rep_addvars v t Ht1 Hdec1 Hsmall Hhd 
   ty z pats Hall Hpats Hdec.
-Admitted.
-(*
 Proof.
   intros v t ty1 small hd Ht1 Hdec1 Hsmall Hhd ty z.
   induction pats; intros; try reflexivity.
@@ -4638,7 +4634,7 @@ Proof.
   destruct a as [p tm].
   rewrite <- IHpats.
   reflexivity.
-Qed.*)
+Qed.
 
 Lemma match_rep_addvars_rewrite': forall
 v t {ty1} {small} {hd} Ht1 Hdec1 Hsmall Hhd 
@@ -4687,8 +4683,6 @@ match pats as l' return
 end Hall Hpats Hdec) pats Hall Hpats Hdec
   = match_rep_addvars' v t Ht1 Hdec1 Hsmall Hhd 
   z pats Hall Hpats Hdec.
-Admitted.
-(*
 Proof.
   intros v t ty1 small hd Ht1 Hdec1 Hsmall Hhd z.
   induction pats; intros; try reflexivity.
@@ -4696,7 +4690,7 @@ Proof.
   destruct a as [p tm].
   rewrite <- IHpats.
   reflexivity.
-Qed.*)
+Qed.
 
 Lemma match_rep_rec_rewrite: forall
 v t {ty1} {small} {hd} Ht1 Hdec1 Hsmall Hhd 
@@ -4744,12 +4738,10 @@ let dom_t_pf := proj2_sig (term_rep_aux v t ty1 small hd Ht1 Hdec1 Hsmall Hhd) i
       end Hall Hpats Hdec) pats Hall Hpats Hdec =
   match_rep_rec v t Ht1 Hdec1 Hsmall Hhd
   pats Hall Hpats Hdec.
-Admitted.
-(*
 Proof.
   induction pats; intros; try reflexivity; simpl; destruct a;
   rewrite <- IHpats; reflexivity.
-Qed.*)
+Qed.
 
 Lemma match_rep_rec_rewrite': forall
 v t {ty1} {small} {hd} Ht1 Hdec1 Hsmall Hhd 
@@ -4794,12 +4786,10 @@ let dom_t_pf := proj2_sig (term_rep_aux v t ty1 small hd Ht1 Hdec1 Hsmall Hhd) i
  end Hall Hpats Hdec) pats Hall Hpats Hdec =
   match_rep_rec' v t Ht1 Hdec1 Hsmall Hhd
   pats Hall Hpats Hdec.
-Admitted.
-(*
 Proof.
   induction pats; intros; try reflexivity; simpl; destruct a;
   rewrite <- IHpats; reflexivity.
-Qed.*)
+Qed.
 
 (*In this rewrite lemma, we make 3 main changes
   1. We will no longer have to unfold anything
@@ -4930,8 +4920,6 @@ dom_cast (dom_aux pd)
       (map (fun x => val x) l)) args))) 
       (fun x Heqx => False_rect _ (fun_not_var Heqx)))
 end.
-Admitted.
-(*
 Proof.
   cbn. 
   destruct (find_fn f fs) eqn : Hf.
@@ -4974,7 +4962,7 @@ Proof.
                         (proj1' (proj2' (proj2' (fun_ty_inv Hty))))
                         (dec_inv_tfun_rec Hdec)).
     reflexivity.
-Qed.*)
+Qed.
 
 Lemma term_rep_aux_match (v: val_vars pd vt)
 (t: term) (ty1: vty) pats (ty: vty) (small: list vsymbol)
@@ -5036,8 +5024,6 @@ match tmatch_case t hd small with
   (var_to_dom pd vt v x)) (match_rep_rec v t Ht1 Hdec1 Hsmall Hhd pats Hall Hpats Hdec2)
     (fun x Heqx => False_rect _ (tmatch_not_var Heqx))
 end.
-Admitted.
-(*
 Proof.
   simpl. destruct (tmatch_case t hd small).
   - match goal with | |- exist ?P ?x ?p = exist ?P ?y ?q =>
@@ -5051,7 +5037,7 @@ Proof.
       assert (H: x = y); [| rewrite H; reflexivity]
     end.
     apply match_rep_rec_rewrite.
-Qed.*)
+Qed.
 
 (*And the formula versions*)
 
@@ -5150,8 +5136,6 @@ match (find_pn p ps) with
       ((preds gamma_valid pd pf p 
         (map (fun x => val x) l)) args)
 end.
-Admitted.
-(*
 Proof.
   cbn. 
   destruct (find_pn p ps) eqn : Hf.
@@ -5180,7 +5164,7 @@ Proof.
                         (proj2' (proj2' (pred_val_inv Hval)))
                         (dec_inv_fpred_rec Hdec)).
     reflexivity.
-Qed.*)
+Qed.
 
 Lemma formula_rep_aux_match (v: val_vars pd vt)
 (t: term) (ty1: vty) pats (small: list vsymbol)
@@ -5229,13 +5213,11 @@ let Hdec2 :
 
   (match_rep_rec' v t Ht1 Hdec1 Hsmall Hhd pats Hall Hpats Hdec2)
 end.
-Admitted.
-(*
 Proof.
   simpl. destruct (tmatch_case t hd small).
   - apply match_rep_addvars_rewrite'.
   - apply match_rep_rec_rewrite'.
-Qed.*)
+Qed.
 
 End TermFmlaRewrite.
 
@@ -5580,8 +5562,6 @@ Lemma get_arg_list_aux_eq: forall input ts rec v s small Hsmall hd Hhd vs Hparam
       proj1_sig (@get_arg_list_ext_aux' v hd _ s
         _ ts small Hsmall Hhd (term_rep_aux input rec v ) Hparamslen (s_args s) Hargslen Hall Hdec) =
       get_arg_list pd vt s vs ts (term_rep gamma_valid pd all_unif vt pf v) Hargslen Hparamslen Hall.
-Admitted.
-(*
 Proof.
   intros input ts rec v s.
   generalize dependent (s_args s). intros args; revert args.
@@ -5593,7 +5573,7 @@ Proof.
     rewrite H2.
     rewrite IHts. reflexivity.
     auto.
-Qed.*)
+Qed.
 
 Lemma match_rep_addvars_eq input rec (t: term) ty1 pats:
 forall
@@ -5655,8 +5635,6 @@ forall
     | None => match_rep ptl (Forall_inv_tail Hpats) (Forall_inv_tail Hall0)
     end
     end Hps Hall) pats Hpats Hall.
-Admitted.
-(*
 Proof.
   induction pats; intros; simpl; auto.
   destruct a; inversion H0; subst; rewrite IHpats; auto.
@@ -5686,7 +5664,7 @@ Proof.
   intros.
   - apply H3.
   - reflexivity.
-Qed.*)
+Qed.
 
 (*Proof almost identical*)
 Lemma match_rep_rec_eq input rec (t: term) ty1 pats:
@@ -5747,8 +5725,6 @@ forall
     | None => match_rep ptl (Forall_inv_tail Hpats) (Forall_inv_tail Hall0)
     end
     end Hps Hall) pats Hpats Hall.
-Admitted.
-(*
 Proof.
   induction pats; intros; simpl; auto.
   destruct a; inversion H0; subst; rewrite IHpats; auto.
@@ -5756,7 +5732,6 @@ Proof.
   generalize dependent (@eq_refl _ (match_val_single gamma_valid pd all_unif vt ty1 p (Forall_inv Hpats)
   (proj1_sig (term_rep_aux input rec v t ty1 small hd Hty1 Hdec Hsmall Hhd)))).
   generalize dependent (@match_val_single_small1 v ty1 
-   (*p (Forall_inv Hpats)*)
   (proj1_sig (term_rep_aux input rec v t ty1 small hd Hty1 Hdec Hsmall Hhd))
   p (Forall_inv Hpats)). 
   rewrite <- H.
@@ -5770,7 +5745,7 @@ Proof.
   intros.
   - apply H3.
   - reflexivity.
-Qed.*)
+Qed.
 
 (*Formula versions*)
 Lemma match_rep_addvars_eq' input rec (t: term) ty1 (pats: list (pattern * formula)):
@@ -5806,8 +5781,6 @@ forall
     end
   | _ => (*TODO: show we cannot reach this*) fun _ _ => false
   end Hps Hall) pats Hpats Hall.
-Admitted.
-(*
 Proof.
   induction pats; intros; simpl; auto.
   destruct a; inversion H0; subst; rewrite IHpats; auto.
@@ -5837,7 +5810,7 @@ Proof.
   intros.
   - apply H3.
   - reflexivity.
-Qed.*)
+Qed.
 
 Lemma match_rep_rec_eq' input rec (t: term) ty1 pats:
 forall
@@ -5872,8 +5845,6 @@ forall
     end
   | _ => (*TODO: show we cannot reach this*) fun _ _ => false
   end Hps Hall) pats Hpats Hall.
-Admitted.
-(*
 Proof.
   induction pats; intros; simpl; auto.
   destruct a; inversion H0; subst; rewrite IHpats; auto.
@@ -5881,7 +5852,6 @@ Proof.
   generalize dependent (@eq_refl _ (match_val_single gamma_valid pd all_unif vt ty1 p (Forall_inv Hpats)
   (proj1_sig (term_rep_aux input rec v t ty1 small hd Hty1 Hdec Hsmall Hhd)))).
   generalize dependent (@match_val_single_small1 v ty1 
-   (*p (Forall_inv Hpats)*)
   (proj1_sig (term_rep_aux input rec v t ty1 small hd Hty1 Hdec Hsmall Hhd))
   p (Forall_inv Hpats)). 
   rewrite <- H.
@@ -5895,25 +5865,16 @@ Proof.
   intros.
   - apply H3.
   - reflexivity.
-Qed.*)
+Qed.
 
-(*TODO: cannot assume pf, need to have term_rep input
-  as [interp_with_funcs pf]*)
 Theorem term_fmla_rep_aux_eq (t: term) (f: formula) :
   (forall (input: packed_args2)
-    (*(rec: (forall y : packed_args2,
-    R_projT1 _(R_projT1 _  arg_list_smaller) y input -> 
-    funrep_ret (projT1 y)))*)
-    (*(IH:forall (y: packed_args2)
-    (small: R_projT1 _ (R_projT1 _ arg_list_smaller) y input),
-    funcs_rep_aux y = funcs_rep_aux_unfold y)*)
-    (v: val_vars pd vt) (*TODO: I think we don't need a condition
-      here bc we prove equality*)
-    (*TODO: what conditions on the term?*)
+    (v: val_vars pd vt)
     (ty: vty) (small: list vsymbol) (hd: option vsymbol)
     (Hty: term_has_type sigma t ty)
     (Hdec: decrease_fun fs ps small hd m vs t)
-    (Hsmall: forall x : vsymbol,
+    Hsmall Hhd
+    (*(Hsmall: forall x : vsymbol,
         In x small ->
         vty_in_m m vs (snd x) /\
         adt_smaller_trans (hide_ty (v x))
@@ -5940,24 +5901,17 @@ Theorem term_fmla_rep_aux_eq (t: term) (f: formula) :
                   (proj2_sig (projT1 (projT1 (projT1 input))))))
              (hnth (sn_idx (proj1_sig (projT1 (projT1 (projT1 input)))))
                 (projT2 (projT2 (projT1 (projT1 input)))) s_int 
-                (dom_int pd)))),
+                (dom_int pd))))*),
 
     proj1_sig (term_rep_aux input (fun x _ => funcs_rep_aux x) v t ty small hd Hty Hdec Hsmall Hhd) =
     term_rep gamma_valid pd all_unif vt pf v t ty Hty
   ) /\
   (forall (input: packed_args2)
-    (*(rec: (forall y : packed_args2,
-    R_projT1 _(R_projT1 _  arg_list_smaller) y input -> 
-    funrep_ret (projT1 y)))*)
-    (*(IH:forall (y: packed_args2)
-    (small: R_projT1 _ (R_projT1 _ arg_list_smaller) y input),
-    rec y small = funcs_rep_aux_unfold y)*)
-    (v: val_vars pd vt) (*TODO: I think we don't need a condition
-      here bc we prove equality*)
-    (*TODO: what conditions on the term?*)
+    (v: val_vars pd vt)
     (small: list vsymbol) (hd: option vsymbol)
     (Hval: valid_formula sigma f)
     (Hdec: decrease_pred fs ps small hd m vs f)
+    Hsmall Hhd (*
     (Hsmall: forall x : vsymbol,
         In x small ->
         vty_in_m m vs (snd x) /\
@@ -5985,14 +5939,10 @@ Theorem term_fmla_rep_aux_eq (t: term) (f: formula) :
                   (proj2_sig (projT1 (projT1 (projT1 input))))))
              (hnth (sn_idx (proj1_sig (projT1 (projT1 (projT1 input)))))
                 (projT2 (projT2 (projT1 (projT1 input)))) s_int 
-                (dom_int pd)))),
+                (dom_int pd))))*),
 
     formula_rep_aux input (fun x _ => funcs_rep_aux x) v f small hd Hval Hdec Hsmall Hhd =
-    formula_rep gamma_valid pd all_unif vt pf v f Hval
-  )
-  .
-Admitted.
-(*
+    formula_rep gamma_valid pd all_unif vt pf v f Hval).
 Proof.
   revert t f. apply term_formula_ind; intros.
   - destruct c;
@@ -6182,16 +6132,14 @@ Proof.
     + (*match_rep_rec case*)
       apply match_rep_rec_eq'; auto.
       revert H0; rewrite !Forall_forall; intros; apply H0; auto.
-Qed.*)
+Qed.
 
-(*HERE, we use [term_fmla_rep_aux_eq]
+(*Here, we use [term_fmla_rep_aux_eq]
   to prove the equivalence. We don't need induction *)
 Theorem funpred_rep_aux_eq:
   forall (pa: packed_args2),
     funcs_rep_aux pa =
     funcs_rep_aux_unfold pa.
-Admitted.
-(*
 Proof.
   intros pa.
   unfold funcs_rep_aux_unfold. simpl in *.
@@ -6216,7 +6164,7 @@ Proof.
       destruct pinfo; simpl. destruct a; subst; auto.
     }
     apply val_with_args_cast_eq. f_equal. apply H; auto.
-Qed.*)
+Qed.
 
 End RepEq.
 
@@ -6242,8 +6190,6 @@ Lemma get_arg_list_aux_change_pf:
       _ ts small Hsmall Hhd (term_rep_aux vt pf1 input rec1 v ) Hparamslen (s_args s) Hargslen Hall Hdec) =
     proj1_sig (@get_arg_list_ext_aux' vt v hd _ s
     vs ts small Hsmall Hhd (term_rep_aux vt pf2 input rec2 v ) Hparamslen (s_args s) Hargslen Hall Hdec).
-Admitted.
-(*
 Proof.
   intros pf1 pf2 input ts rec1 rec2 v s.
   generalize dependent (s_args s). intros args; revert args.
@@ -6254,16 +6200,14 @@ Proof.
     rewrite H2.
     rewrite IHts. reflexivity.
     auto.
-Qed.*)
+Qed.
 
 
 Lemma match_rep_addvars_change_pf input pf1 pf2 rec1 rec2 (t: term) ty1 pats:
 forall
   v small hd (Hty1: term_has_type sigma t ty1) Hdec Hsmall Hhd (ty: vty) z Hall Hpats Halldec,
-  
   term_rep_aux vt pf1 input rec1 v t ty1 small hd Hty1 Hdec Hsmall Hhd =
   term_rep_aux vt pf2 input rec2 v t ty1 small hd Hty1 Hdec Hsmall Hhd ->
-
   Forall (fun tm : term =>
     forall (v: val_vars pd vt) (ty: vty)
       (small: list vsymbol) (hd: option vsymbol) (Hty: term_has_type sigma tm ty)
@@ -6275,8 +6219,6 @@ forall
     z pats Hall Hpats Halldec =
   @match_rep_addvars vt pf2 input rec2 v t _ small hd Hty1 Hdec Hsmall Hhd ty
     z pats Hall Hpats Halldec.
-Admitted.
-(*
 Proof.
   induction pats; intros; simpl; auto.
   destruct a; inversion H0; subst; rewrite IHpats; auto.
@@ -6322,15 +6264,13 @@ Proof.
     f_equal. f_equal;
     apply proof_irrel.
   - reflexivity.
-Qed.*)
+Qed.
 
 Lemma match_rep_rec_change_pf input pf1 pf2 rec1 rec2 (t: term) ty1 pats:
 forall
   v small hd (Hty1: term_has_type sigma t ty1) Hdec Hsmall Hhd (ty: vty) Hall Hpats Halldec,
-  
   term_rep_aux vt pf1 input rec1 v t ty1 small hd Hty1 Hdec Hsmall Hhd =
   term_rep_aux vt pf2 input rec2 v t ty1 small hd Hty1 Hdec Hsmall Hhd ->
-
   Forall (fun tm : term =>
     forall (v: val_vars pd vt) (ty: vty)
       (small: list vsymbol) (hd: option vsymbol) (Hty: term_has_type sigma tm ty)
@@ -6342,8 +6282,6 @@ forall
     pats Hall Hpats Halldec =
   @match_rep_rec vt pf2 input rec2 v t _ small hd Hty1 Hdec Hsmall Hhd ty
     pats Hall Hpats Halldec.
-Admitted.
-(*
 Proof.
   induction pats; intros; simpl; auto.
   destruct a; inversion H0; subst; rewrite IHpats; auto.
@@ -6371,7 +6309,7 @@ Proof.
     f_equal. f_equal;
     apply proof_irrel.
   - reflexivity.
-Qed.*)
+Qed.
 
 Lemma match_rep_addvars_change_pf' input pf1 pf2 rec1 rec2 (t: term) ty1 
   (pats: list (pattern * formula)):
@@ -6392,8 +6330,6 @@ forall
     z pats Hall Hpats Halldec =
   @match_rep_addvars' vt pf2 input rec2 v t _ small hd Hty1 Hdec Hsmall Hhd
     z pats Hall Hpats Halldec.
-Admitted.
-(*
 Proof.
   induction pats; intros; simpl; auto.
   destruct a; inversion H0; subst; rewrite IHpats; auto.
@@ -6439,7 +6375,7 @@ Proof.
     f_equal;
     apply proof_irrel.
   - reflexivity.
-Qed.*)
+Qed.
 
 Lemma match_rep_rec_change_pf' input pf1 pf2 rec1 rec2 (t: term) ty1 
 (pats: list (pattern * formula)):
@@ -6460,8 +6396,6 @@ forall
     pats Hall Hpats Halldec =
   @match_rep_rec' vt pf2 input rec2 v t _ small hd Hty1 Hdec Hsmall Hhd
     pats Hall Hpats Halldec.
-Admitted.
-(*
 Proof.
   induction pats; intros; simpl; auto.
   destruct a; inversion H0; subst; rewrite IHpats; auto.
@@ -6489,7 +6423,7 @@ Proof.
     f_equal;
     apply proof_irrel.
   - reflexivity.
-Qed.*)
+Qed.
 
 Theorem term_fmla_rep_change_pf (pf1 pf2: pi_funpred gamma_valid pd)
 (Hpf1: forall f srts a, ~ In f (map fn_sym fs) ->
@@ -6499,20 +6433,15 @@ Theorem term_fmla_rep_change_pf (pf1 pf2: pi_funpred gamma_valid pd)
 (t: term) (f: formula) :
 (forall 
   (input: packed_args2 vt)
-  (*(rec: (forall 
-  (y : packed_args2 vt),
-  R_projT1 _(R_projT1 _  (arg_list_smaller vt)) y input  -> 
-  funrep_ret (projT1 y)))*)
   (IH:forall (y: packed_args2 vt)
   (small: R_projT1 _ (R_projT1 _ (arg_list_smaller vt)) y input),
   funcs_rep_aux vt pf1 y = funcs_rep_aux vt pf2 y)
-  (v: val_vars pd vt) (*TODO: I think we don't need a condition
-    here bc we prove equality*)
-  (*TODO: what conditions on the term?*)
+  (v: val_vars pd vt) 
   (ty: vty) (small: list vsymbol) (hd: option vsymbol)
   (Hty: term_has_type sigma t ty)
   (Hdec: decrease_fun fs ps small hd m vs t)
-  (Hsmall: forall x : vsymbol,
+  Hsmall Hhd
+  (*(Hsmall: forall x : vsymbol,
       In x small ->
       vty_in_m m vs (snd x) /\
       adt_smaller_trans (hide_ty (v x))
@@ -6539,24 +6468,21 @@ Theorem term_fmla_rep_change_pf (pf1 pf2: pi_funpred gamma_valid pd)
                 (proj2_sig (projT1 (projT1 (projT1 input))))))
             (hnth (sn_idx (proj1_sig (projT1 (projT1 (projT1 input)))))
               (projT2 (projT2 (projT1 (projT1 input)))) s_int 
-              (dom_int pd)))),
+              (dom_int pd))))*),
 
   term_rep_aux vt pf1 input (fun x _ => funcs_rep_aux vt pf1 x) v t ty small hd Hty Hdec Hsmall Hhd =
   term_rep_aux vt pf2 input (fun x _ => funcs_rep_aux vt pf2 x) v t ty small hd Hty Hdec Hsmall Hhd
 ) /\
 (forall (input: packed_args2 vt)
-  (*(rec: (forall (y : packed_args2 vt),
-  R_projT1 _(R_projT1 _  (arg_list_smaller vt)) y input -> 
-  funrep_ret (projT1 y)))*)
   (IH:forall (y: packed_args2 vt)
   (small: R_projT1 _ (R_projT1 _ (arg_list_smaller vt)) y input),
   funcs_rep_aux vt pf1 y = funcs_rep_aux vt pf2 y)
-  (v: val_vars pd vt) (*TODO: I think we don't need a condition
-    here bc we prove equality*)
-  (*TODO: what conditions on the term?*)
+  (v: val_vars pd vt)
   (small: list vsymbol) (hd: option vsymbol)
   (Hval: valid_formula sigma f)
   (Hdec: decrease_pred fs ps small hd m vs f)
+  Hsmall Hhd
+  (*
   (Hsmall: forall x : vsymbol,
       In x small ->
       vty_in_m m vs (snd x) /\
@@ -6584,14 +6510,10 @@ Theorem term_fmla_rep_change_pf (pf1 pf2: pi_funpred gamma_valid pd)
                 (proj2_sig (projT1 (projT1 (projT1 input))))))
             (hnth (sn_idx (proj1_sig (projT1 (projT1 (projT1 input)))))
               (projT2 (projT2 (projT1 (projT1 input)))) s_int 
-              (dom_int pd)))),
+              (dom_int pd))))*),
 
   formula_rep_aux vt pf1 input (fun x _ => funcs_rep_aux vt pf1 x) v f small hd Hval Hdec Hsmall Hhd =
-  formula_rep_aux vt pf2 input (fun x _ => funcs_rep_aux vt pf2 x) v f small hd Hval Hdec Hsmall Hhd
-)
-.
-Admitted.
-(*
+  formula_rep_aux vt pf2 input (fun x _ => funcs_rep_aux vt pf2 x) v f small hd Hval Hdec Hsmall Hhd).
 Proof.
   revert t f.
   apply term_formula_ind; intros (*don't solve trivial,
@@ -6706,7 +6628,7 @@ Proof.
       revert H0; rewrite !Forall_forall; intros; apply H0; auto.
     + apply match_rep_rec_change_pf'; auto.
       revert H0; rewrite !Forall_forall; intros; apply H0; auto.
-Qed.*)
+Qed.
 
 Theorem funcs_rep_aux_change_pf 
   (pf1 pf2: pi_funpred gamma_valid pd)
@@ -6716,8 +6638,6 @@ Theorem funcs_rep_aux_change_pf
   (Hpf2: forall p srts a, ~ In p (map pn_sym ps) ->
     preds gamma_valid pd pf1 p srts a = preds gamma_valid pd pf2 p srts a):
   funcs_rep_aux vt pf1 pa = funcs_rep_aux vt pf2 pa.
-Admitted.
-(*
 Proof.
   revert pa.
   induction pa using (well_founded_induction (wf_projT1 (wf_projT1 (arg_list_smaller_wf vt)): 
@@ -6738,7 +6658,7 @@ Proof.
   - rewrite !funcs_rep_aux_eq. simpl.
     rewrite (proj2 (term_fmla_rep_change_pf pf1 pf2 Hpf1 Hpf2 tm_d _)).
     reflexivity. auto.
-Qed.*)
+Qed.
 
 End ChangePf.
 
@@ -6770,42 +6690,22 @@ Proof.
   - destruct args; simpl; auto. discriminate.
   - destruct args; simpl; [discriminate |].
     inversion H; subst.
-    idtac.
     rewrite H3 with(v2:=v2)(Hsmall2:=Hsmall2)(Hhd2:=Hhd2); auto.
     rewrite IHts with(Hsmall2:=Hsmall2)(Hhd2:=Hhd2). reflexivity.
     auto.
     intros; apply H0; simpl_set; auto.
     intros; apply H0; simpl_set; auto.
 Qed.
-Print tm_fv.
 
-(*TODO: back to Denotational*)
-Lemma extend_val_with_list_in_eq
-  (v1 v2: val_vars pd vt) l x
-  (Htys: forall (x : vsymbol) t,
-  In (x, t) l -> projT1 t = v_subst vt (snd x)):
-  In x (map fst l) ->
-  extend_val_with_list pd vt v1 l x =
-  extend_val_with_list pd vt v2 l x.
-Proof.
-  intros Hin.
-  unfold extend_val_with_list.
-  destruct (get_assoc_list vsymbol_eq_dec l x) eqn : Hassoc.
-  + apply get_assoc_list_some in Hassoc.
-    apply Htys in Hassoc.
-    destruct (sort_eq_dec (v_subst vt (snd x)) (projT1 s)); auto; try contradiction.
-    rewrite Hassoc in n; contradiction.
-  + rewrite get_assoc_list_none in Hassoc. contradiction.
-Qed.
-
+(*Coq takes a long time here (and the others) - it has
+  difficulty with destruct and generalize, so we need to
+  match on the goal, which is slow*)
 Lemma match_rep_addvars_change_vv in1 in2 pf (t: term) ty1 pats:
 forall
   v1 v2 small hd (Hty1: term_has_type sigma t ty1) Hdec Hsmall1
   Hsmall2 Hhd1 Hhd2 (ty: vty) z Hall Hpats Halldec,
-
   proj1_sig (term_rep_aux vt pf in1 (fun x _ => funcs_rep_aux vt pf x) v1 t ty1 small hd Hty1 Hdec Hsmall1 Hhd1) =
   proj1_sig (term_rep_aux vt pf in2 (fun x _ => funcs_rep_aux vt pf x) v2 t ty1 small hd Hty1 Hdec Hsmall2 Hhd2) ->
-
   Forall (fun tm: term =>
     forall (v1 v2: val_vars pd vt) (ty: vty)
     (small: list vsymbol) (hd: option vsymbol) (Hty: term_has_type sigma tm ty)
@@ -6824,12 +6724,10 @@ forall
   @match_rep_addvars vt pf in2 (fun x _ => funcs_rep_aux vt pf x) v2 t _ small hd Hty1 Hdec Hsmall2 Hhd2
     ty z pats Hall Hpats Halldec.
 Proof.
-  Admitted.
- (* induction pats; intros; simpl; auto.
+  induction pats; intros; simpl; auto.
   destruct a; inversion H0; subst; rewrite IHpats with
     (v2:=v2)(Hsmall2:=Hsmall2)(Hhd2:=Hhd2); auto.
   2: intros; apply H1; simpl; simpl_set; auto.
-  idtac.
   match goal with
   | |- match ?x with | Some l => ?e1 | None  => ?e end ?erefl = 
       match ?y with | Some r => ?e3 | None => ?e4 end ?erefl2 =>
@@ -6848,8 +6746,6 @@ Proof.
     generalize dependent (@small_match_lemma vt t v ty1 p all d small
     x)
   end.
- idtac.
- (*rewrite <- H.*)
   (*One more generalization*)
   match goal with
   | |- context [(@match_val_single_upd_option ?vt ?v ?ty ?t ?p ?all)] =>
@@ -6859,7 +6755,6 @@ Proof.
   | |- context [(@match_val_single_upd_option ?vt ?v ?ty ?t ?p ?all)] =>
     generalize dependent (@match_val_single_upd_option vt v ty t p all)
   end.
-  idtac.
   (*Coq is horrible at destructing the right things, need
     Ltac for everything*)
   do 2 match goal with
@@ -6869,7 +6764,6 @@ Proof.
   end.
   - (*Both some*)
     intros.
-    idtac.
     apply H4.
     (*Need to prove extend_val_with_list*)
     intros.
@@ -6881,11 +6775,11 @@ Proof.
     }
     subst.
     destruct (in_bool_spec vsymbol_eq_dec x (map fst l0)).
-    + apply extend_val_with_list_in_eq; auto.
+    + apply extend_val_in_agree; auto.
       apply (match_val_single_typs _ _ _ _ _ _ _ _ _ Hmatch).
     + (*Here notin, so equal*)
       rewrite !extend_val_notin; auto.
-      idtac. apply H1.
+      apply H1.
       simpl. simpl_set. left.
       split; auto.
       rewrite (match_val_single_free_var gamma_valid) with(l:=l0).
@@ -6904,17 +6798,14 @@ Proof.
   - (*Both None*)
     intros. 
     reflexivity.
-Qed.*)
-(*Long time for that theorem*)
+Qed.
 
 Lemma match_rep_rec_change_vv in1 in2 pf (t: term) ty1 pats:
 forall
   v1 v2 small hd (Hty1: term_has_type sigma t ty1) Hdec Hsmall1
   Hsmall2 Hhd1 Hhd2 (ty: vty) Hall Hpats Halldec,
-
   proj1_sig (term_rep_aux vt pf in1 (fun x _ => funcs_rep_aux vt pf x) v1 t ty1 small hd Hty1 Hdec Hsmall1 Hhd1) =
   proj1_sig (term_rep_aux vt pf in2 (fun x _ => funcs_rep_aux vt pf x) v2 t ty1 small hd Hty1 Hdec Hsmall2 Hhd2) ->
-
   Forall (fun tm: term =>
     forall (v1 v2: val_vars pd vt) (ty: vty)
     (small: list vsymbol) (hd: option vsymbol) (Hty: term_has_type sigma tm ty)
@@ -6933,13 +6824,10 @@ forall
   @match_rep_rec vt pf in2 (fun x _ => funcs_rep_aux vt pf x) v2 t _ small hd Hty1 Hdec Hsmall2 Hhd2
     ty pats Hall Hpats Halldec.
 Proof.
-  Admitted.
-  (*
   induction pats; intros; simpl; auto.
   destruct a; inversion H0; subst; rewrite IHpats with
     (v2:=v2)(Hsmall2:=Hsmall2)(Hhd2:=Hhd2); auto.
   2: intros; apply H1; simpl; simpl_set; auto.
-  idtac.
   match goal with
   | |- match ?x with | Some l => ?e1 | None  => ?e end ?erefl = 
       match ?y with | Some r => ?e3 | None => ?e4 end ?erefl2 =>
@@ -6950,7 +6838,6 @@ Proof.
   | |- context [(@match_val_single_small1 ?vt ?v ?ty1 ?t ?p ?all)] =>
     generalize dependent (@match_val_single_small1 vt v ty1 t p all)
   end.
- (*rewrite <- H.*)
   (*One more generalization*)
   do 2 match goal with
   | |- context [(@match_val_single_upd_option ?vt ?v ?ty ?t ?p ?all)] =>
@@ -6970,11 +6857,11 @@ Proof.
     (*Need to prove extend_val_with_list*)
     intros.
     destruct (in_bool_spec vsymbol_eq_dec x (map fst l)).
-    + apply extend_val_with_list_in_eq; auto.
+    + apply extend_val_in_agree; auto.
       apply (match_val_single_typs _ _ _ _ _ _ _ _ _ Hmatch).
     + (*Here notin, so equal*)
       rewrite !extend_val_notin; auto.
-      idtac. apply H1.
+      apply H1.
       simpl. simpl_set. left.
       split; auto.
       rewrite (match_val_single_free_var gamma_valid) with(l:=l).
@@ -6983,7 +6870,171 @@ Proof.
   - (*None*)
     intros. 
     reflexivity.
-Qed.*)
+Qed.
+
+Lemma match_rep_addvars_change_vv' in1 in2 pf (t: term) ty1 
+  (pats: list (pattern * formula)):
+forall
+  v1 v2 small hd (Hty1: term_has_type sigma t ty1) Hdec Hsmall1
+  Hsmall2 Hhd1 Hhd2 z Hall Hpats Halldec,
+  proj1_sig (term_rep_aux vt pf in1 (fun x _ => funcs_rep_aux vt pf x) v1 t ty1 small hd Hty1 Hdec Hsmall1 Hhd1) =
+  proj1_sig (term_rep_aux vt pf in2 (fun x _ => funcs_rep_aux vt pf x) v2 t ty1 small hd Hty1 Hdec Hsmall2 Hhd2) ->
+  Forall (fun f: formula =>
+    forall (v1 v2: val_vars pd vt)
+    (small: list vsymbol) (hd: option vsymbol) (Hval: valid_formula sigma f)
+    (Hdec : decrease_pred fs ps small hd m vs f) Hsmall1 Hsmall2 Hhd1 Hhd2
+    (Hv: forall x, In x (fmla_fv f) -> v1 x = v2 x),
+    formula_rep_aux vt pf in1 (fun x _ => funcs_rep_aux vt pf x) v1 f small hd Hval Hdec Hsmall1 Hhd1 =
+    formula_rep_aux vt pf in2 (fun x _ => funcs_rep_aux vt pf x) v2 f small hd Hval Hdec Hsmall2 Hhd2)
+  (map snd pats) ->
+  (forall x, In x (big_union vsymbol_eq_dec
+  (fun x : pattern * formula =>
+   remove_all vsymbol_eq_dec (pat_fv (fst x)) (fmla_fv (snd x))) pats) ->
+   v1 x = v2 x) ->
+  
+  @match_rep_addvars' vt pf in1 (fun x _ => funcs_rep_aux vt pf x) v1 t _ small hd Hty1 Hdec Hsmall1 Hhd1 
+    z pats Hall Hpats Halldec =
+  @match_rep_addvars' vt pf in2 (fun x _ => funcs_rep_aux vt pf x) v2 t _ small hd Hty1 Hdec Hsmall2 Hhd2
+    z pats Hall Hpats Halldec.
+Proof.
+  induction pats; intros; simpl; auto.
+  destruct a; inversion H0; subst; rewrite IHpats with
+    (v2:=v2)(Hsmall2:=Hsmall2)(Hhd2:=Hhd2); auto.
+  2: intros; apply H1; simpl; simpl_set; auto.
+  match goal with
+  | |- match ?x with | Some l => ?e1 | None  => ?e end ?erefl = 
+      match ?y with | Some r => ?e3 | None => ?e4 end ?erefl2 =>
+    generalize dependent erefl;
+    generalize dependent erefl2
+  end.
+  do 2 match goal with
+  | |- context [(@small_match_lemma ?vt ?t ?v ?ty1 ?p ?all ?d ?small
+    ?x)] =>
+    generalize dependent (@small_match_lemma vt t v ty1 p all d small
+    x)
+  end.
+  (*One more generalization*)
+  do 2 match goal with
+  | |- context [(@match_val_single_upd_option ?vt ?v ?ty ?t ?p ?all)] =>
+    generalize dependent (@match_val_single_upd_option vt v ty t p all)
+  end.
+  (*Coq is horrible at destructing the right things, need
+    Ltac for everything*)
+  do 2 match goal with
+  | |- context [(match_val_single ?val ?pd ?unif ?vt ?ty ?p ?Hall ?t)] =>
+    let H := fresh "Hmatch" in
+    destruct (match_val_single val pd unif vt ty p Hall t) eqn : H
+  end.
+  - (*Both some*)
+    intros.
+    apply H4.
+    (*Need to prove extend_val_with_list*)
+    intros.
+    assert (l = l0). {
+      clear -Hmatch Hmatch0 H.
+      rewrite H in Hmatch0.
+      rewrite Hmatch0 in Hmatch.
+      inversion Hmatch; reflexivity.
+    }
+    subst.
+    destruct (in_bool_spec vsymbol_eq_dec x (map fst l0)).
+    + apply extend_val_in_agree; auto.
+      apply (match_val_single_typs _ _ _ _ _ _ _ _ _ Hmatch).
+    + (*Here notin, so equal*)
+      rewrite !extend_val_notin; auto.
+      apply H1.
+      simpl. simpl_set. left.
+      split; auto.
+      rewrite (match_val_single_free_var gamma_valid) with(l:=l0).
+      exact n.
+      apply Hmatch.
+  - (*One Some, one None - contradicts H*)
+    exfalso.
+    rewrite H in Hmatch0;
+    rewrite Hmatch0 in Hmatch;
+    discriminate.
+  - (*same*)
+    exfalso.
+    rewrite H in Hmatch0;
+    rewrite Hmatch0 in Hmatch;
+    discriminate Hmatch.
+  - (*Both None*)
+    intros. 
+    reflexivity.
+Qed.
+
+Lemma match_rep_rec_change_vv' in1 in2 pf (t: term) ty1 
+  (pats: list (pattern * formula)):
+forall
+  v1 v2 small hd (Hty1: term_has_type sigma t ty1) Hdec Hsmall1
+  Hsmall2 Hhd1 Hhd2 Hall Hpats Halldec,
+  proj1_sig (term_rep_aux vt pf in1 (fun x _ => funcs_rep_aux vt pf x) v1 t ty1 small hd Hty1 Hdec Hsmall1 Hhd1) =
+  proj1_sig (term_rep_aux vt pf in2 (fun x _ => funcs_rep_aux vt pf x) v2 t ty1 small hd Hty1 Hdec Hsmall2 Hhd2) ->
+  Forall (fun f: formula =>
+    forall (v1 v2: val_vars pd vt)
+    (small: list vsymbol) (hd: option vsymbol) (Hval: valid_formula sigma f)
+    (Hdec : decrease_pred fs ps small hd m vs f) Hsmall1 Hsmall2 Hhd1 Hhd2
+    (Hv: forall x, In x (fmla_fv f) -> v1 x = v2 x),
+    formula_rep_aux vt pf in1 (fun x _ => funcs_rep_aux vt pf x) v1 f small hd Hval Hdec Hsmall1 Hhd1 =
+    formula_rep_aux vt pf in2 (fun x _ => funcs_rep_aux vt pf x) v2 f small hd Hval Hdec Hsmall2 Hhd2)
+  (map snd pats) ->
+  (forall x, In x (big_union vsymbol_eq_dec
+  (fun x : pattern * formula =>
+   remove_all vsymbol_eq_dec (pat_fv (fst x)) (fmla_fv (snd x))) pats) ->
+   v1 x = v2 x) ->
+  
+  @match_rep_rec' vt pf in1 (fun x _ => funcs_rep_aux vt pf x) v1 t _ small hd Hty1 Hdec Hsmall1 Hhd1 
+   pats Hall Hpats Halldec =
+  @match_rep_rec' vt pf in2 (fun x _ => funcs_rep_aux vt pf x) v2 t _ small hd Hty1 Hdec Hsmall2 Hhd2
+   pats Hall Hpats Halldec.
+Proof.
+  induction pats; intros; simpl; auto.
+  destruct a; inversion H0; subst; rewrite IHpats with
+    (v2:=v2)(Hsmall2:=Hsmall2)(Hhd2:=Hhd2); auto.
+  2: intros; apply H1; simpl; simpl_set; auto.
+  match goal with
+  | |- match ?x with | Some l => ?e1 | None  => ?e end ?erefl = 
+      match ?y with | Some r => ?e3 | None => ?e4 end ?erefl2 =>
+    generalize dependent erefl;
+    generalize dependent erefl2
+  end.
+  do 2 match goal with
+  | |- context [(@match_val_single_small1 ?vt ?v ?ty1 ?t ?p ?all)] =>
+    generalize dependent (@match_val_single_small1 vt v ty1 t p all)
+  end.
+  (*One more generalization*)
+  do 2 match goal with
+  | |- context [(@match_val_single_upd_option ?vt ?v ?ty ?t ?p ?all)] =>
+    generalize dependent (@match_val_single_upd_option vt v ty t p all)
+  end.
+  rewrite <- H. (*works this time*)
+  (*Coq is horrible at destructing the right things, need
+    Ltac for everything*)
+  match goal with
+  | |- context [(match_val_single ?val ?pd ?unif ?vt ?ty ?p ?Hall ?t)] =>
+    let H := fresh "Hmatch" in
+    destruct (match_val_single val pd unif vt ty p Hall t) eqn : H
+  end.
+  - (*some*)
+    intros.
+    apply H4.
+    (*Need to prove extend_val_with_list*)
+    intros.
+    destruct (in_bool_spec vsymbol_eq_dec x (map fst l)).
+    + apply extend_val_in_agree; auto.
+      apply (match_val_single_typs _ _ _ _ _ _ _ _ _ Hmatch).
+    + (*Here notin, so equal*)
+      rewrite !extend_val_notin; auto.
+      apply H1.
+      simpl. simpl_set. left.
+      split; auto.
+      rewrite (match_val_single_free_var gamma_valid) with(l:=l).
+      exact n.
+      apply Hmatch.
+  - (*None*)
+    intros. 
+    reflexivity.
+Qed.
 
 Theorem term_fmla_rep_change_val (pf: pi_funpred gamma_valid pd)
   (in1 in2: packed_args2 vt)
@@ -6995,9 +7046,6 @@ Theorem term_fmla_rep_change_val (pf: pi_funpred gamma_valid pd)
   (Heq: projT1 in1 = projT1 in2)
 (t: term) (f: formula) :
 (forall 
-   (*TODO: I think that
-    we don't actually use the val_vars in here during term_rep_aux
-    only at beginning*)
   (v1 v2: val_vars pd vt)
   (Hv: forall x, In x (tm_fv t) -> v1 x = v2 x)
   (ty: vty) (small: list vsymbol) (hd: option vsymbol)
@@ -7031,7 +7079,6 @@ Proof.
   - rewrite !term_rep_aux_fun. cbn zeta.
     destruct (find_fn f1 fs).
     + simpl. unfold cast_dom_vty.
-    idtac.
     (*The casting makes this very annoying*)
     repeat match goal with
     | |- dom_cast ?d ?Heq ?x = dom_cast ?d ?Heq ?y =>
@@ -7112,8 +7159,94 @@ Proof.
     destruct (vsymbol_eq_dec x0 v); auto.
     apply Hv. simpl; simpl_set; auto.
   - (*Fpred*)
-
-Admitted.
+    rewrite !formula_rep_aux_pred. cbn zeta.
+    destruct (find_pn p ps).
+    + simpl. 
+      (*get pa2 for IH*)
+      match goal with
+      | |- (funcs_rep_aux _ _ ?pd1) = 
+          (funcs_rep_aux _ _ ?pd2) =>
+          set (p1 := pd1) in *;
+          set (p2 := pd2) in *
+      end.
+      assert (Heq1: projT1 p2 = projT1 p1). {
+        subst p1; subst p2; simpl.
+        rewrite (get_arg_list_aux_change_val) with(v1:=v1)(v2:=v2)
+        (in2:=in2)(Hsmall2:=Hsmall2)(Hhd2:=Hhd2); auto.
+        2: revert H; rewrite !Forall_forall; intros; apply H; auto.
+        destruct in1 as [a1 a2];
+        destruct in2 as [b1 b2].
+        simpl in *; subst b1; simpl.
+        destruct a2 as [va a3];
+        destruct b2 as [vb b3].
+        simpl.
+        assert (a3 = b3). { apply proof_irrel. }
+        subst b3.
+        reflexivity.
+      }
+      rewrite IH with(pa2:=p2)(Heq1:=Heq1); auto. 2: apply pred_smaller_case'.
+      (*Now it is just a matter of proving the casts equivalent. We use UIP*)
+      assert (f_equal funrep_ret Heq1 = eq_refl). apply UIP.
+      rewrite H0; reflexivity.
+    + (*easier case*)
+      simpl.
+      rewrite (get_arg_list_aux_change_val) with(v1:=v1)(v2:=v2)
+      (in2:=in2)(Hsmall2:=Hsmall2)(Hhd2:=Hhd2); auto.
+      revert H; rewrite !Forall_forall; intros; apply H; auto.
+  - (*Fquant*)
+    simpl. destruct q; apply all_dec_eq; split;
+    [intros Hd d; specialize (Hd d) | intros Hd d; specialize (Hd d) |
+      intros [d Hd]; exists d | intros [d Hd]; exists d];
+      try (erewrite <- H; [apply Hd |]);
+      try (erewrite H; [apply Hd |]);
+    intros x Hinx; unfold substi;
+    destruct (vsymbol_eq_dec x v); auto;
+    apply Hv; simpl; simpl_set; auto.
+  - (*Feq*)
+    simpl.
+    rewrite H with (v2:=v2)(Hsmall2:=Hsmall2)(Hhd2:=Hhd2).
+    rewrite H0 with (v2:=v2)(Hsmall2:=Hsmall2)(Hhd2:=Hhd2).
+    reflexivity.
+    all: intros; apply Hv; simpl; simpl_set; auto.
+  - (*Fbinop*)
+    simpl.
+    rewrite H with (v2:=v2)(Hsmall2:=Hsmall2)(Hhd2:=Hhd2).
+    rewrite H0 with (v2:=v2)(Hsmall2:=Hsmall2)(Hhd2:=Hhd2).
+    reflexivity.
+    all: intros; apply Hv; simpl; simpl_set; auto.
+  - (*Fnot*)
+    simpl. rewrite H with (v2:=v2)(Hsmall2:=Hsmall2)(Hhd2:=Hhd2).
+    reflexivity. auto.
+  - (*Ftrue*) reflexivity.
+  - (*Ffalse*) reflexivity.
+  - (*Flet*) simpl.
+    apply H0.
+    intros. unfold substi.
+    destruct (vsymbol_eq_dec x v); auto.
+    + subst; rewrite H with(v2:=v2)(Hsmall2:=Hsmall2)(Hhd2:=Hhd2); auto.
+      intros; apply Hv; simpl; simpl_set; auto.
+    + apply Hv; simpl; simpl_set; auto.
+  - (*Fif*)
+    simpl.
+    rewrite H with (v2:=v2)(Hsmall2:=Hsmall2)(Hhd2:=Hhd2).
+    rewrite H0 with (v2:=v2)(Hsmall2:=Hsmall2)(Hhd2:=Hhd2).
+    rewrite H1 with (v2:=v2)(Hsmall2:=Hsmall2)(Hhd2:=Hhd2).
+    reflexivity.
+    all: intros; apply Hv; simpl; simpl_set; auto.
+  - (*Fmatch*)
+    rewrite !formula_rep_aux_match. cbn zeta.
+    destruct (tmatch_case tm hd small); simpl.
+    + apply match_rep_addvars_change_vv'. 
+      apply H. 
+      intros; apply Hv; simpl; simpl_set; auto.
+      revert H0; rewrite !Forall_forall; intros; apply H0; auto.
+      intros; apply Hv; simpl; simpl_set; auto.
+    + apply match_rep_rec_change_vv'.
+      apply H. 
+      intros; apply Hv; simpl; simpl_set; auto.
+      revert H0; rewrite !Forall_forall; intros; apply H0; auto.
+      intros; apply Hv; simpl; simpl_set; auto.
+Qed.
 
 (*Here, we need to know that all free vars are in args*)
 Variable fs_body_fv: forall f,
@@ -7147,8 +7280,6 @@ Proof.
   induction pa1 using (well_founded_induction (wf_projT1 (wf_projT1 (arg_list_smaller_wf vt)): 
   well_founded (fun (x y: packed_args2 vt) =>
     R_projT1 _ (R_projT1 _ (arg_list_smaller vt)) x y))).
-  (*We do NOT use funpred_rep_aux_eq - this requires that our pf
-    has the correct funs/preds for f in fs and p in ps*)
   rename H into IH.
   intros pa2 Heq1.
   (*We have to consider each case separately*)
@@ -7161,7 +7292,8 @@ Proof.
     (*Now we unfold all the casting until we get to
       a goal only about the [term_rep] and [term_rep_aux]*)
     f_equal. apply UIP_dec. apply sort_eq_dec.
-    apply (proj1 (term_fmla_rep_change_val pf _ Ftrue)); auto.
+    eapply (proj1 (term_fmla_rep_change_val pf _ _ _ _ _ Ftrue)); auto.
+    Unshelve. all: auto.
     intros.
     destruct finfo as [f [f_in f_eq]]; subst. simpl in H.
     apply fs_body_fv in H; auto.
@@ -7177,7 +7309,8 @@ Proof.
     apply arg_list_args_eq; auto.
     simpl in t1, t2. apply t2. apply t2.
   - rewrite !funcs_rep_aux_eq. simpl.
-    apply (proj2 (term_fmla_rep_change_val pf tm_d _)); auto.
+    eapply (proj2 (term_fmla_rep_change_val pf _ _ _ _ tm_d _)); auto.
+    Unshelve. all: auto.
     intros.
     destruct pinfo as [f [f_in f_eq]]; subst. simpl in H.
     apply ps_body_fv in H; auto.

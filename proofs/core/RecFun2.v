@@ -766,40 +766,6 @@ Proof.
   rewrite !vt_with_args_nth; auto.
 Qed.
 
-(*Lemma funpred_with_reps_pf_funs vt
-(pf: pi_funpred gamma_valid pd)
-  (l: list funpred_def)
-  (l_in: In l (mutfuns_of_context gamma)) :
-(forall (vv0 : val_vars pd vt) (f : fn) (f_in0 : In f fs)
-  (srts0 : list sort)
-  (srts_len0 : Datatypes.length srts0 = Datatypes.length params)
-  (vt_eq_srts : vt_eq vt0 params srts0)
-  (a0 : arg_list (IndTypes.domain (dom_aux pd0))
-          (sym_sigma_args (fn_sym f) srts0)),
-funs gamma_valid0 pd0 (funpred_with_reps pf l l_in) (fn_sym f) srts0 a0 =
-funs_rep_aux gamma_valid0 all_unif0 fs ps fs_wf ps_wf fs_uniq ps_uniq
-  fs_typed ps_typed params funs_params_eq preds_params_eq f_typevars
-  p_typevars m0 vs0 vs_len funs_recurse_on_adt preds_recurse_on_adt
-  fs_dec ps_dec m_in0 vt0 pf0 vv0 f f_in0 srts0 srts_len0 vt_eq_srts
-  (cast_arg_list
-      (f_equal (fun x : fpsym => sym_sigma_args x srts0)
-        (fs_wf_eq fs fs_wf f f_in0)) a0)).
-         Check funpred_rep_aux_eq.
-
-
-  Variable pf_funs: forall (vv: val_vars pd vt) (f: fn) (f_in: In f fs)
-  (srts: list sort)
-  (srts_len: length srts = length params)
-  (vt_eq_srts: vt_eq srts)
-  (a: arg_list domain (sym_sigma_args (fn_sym f) srts)),
-  (*Unfortunately, we need to cast a*)
-  funs gamma_valid pd pf (fn_sym f) srts a =
-  funs_rep_aux vv f f_in srts srts_len vt_eq_srts 
-    (cast_arg_list (f_equal (fun x => (sym_sigma_args x srts)) 
-    (fs_wf_eq f f_in)) a).
-        
-        *)
-
 Ltac irrel H1 H2 :=
   assert (H1 = H2) by (apply proof_irrel); subst.
 
@@ -1285,15 +1251,6 @@ Proof.
     subst. rewrite in_map_iff. exists f1. split; auto.
 Qed.
 
-(*TODO: prove in Typing*)
-Lemma preddef_inj (l: list funpred_def) (p: predsym)
-  (a1 a2: list vsymbol) (b1 b2: formula):
-  In l (mutfuns_of_context gamma) ->
-  In (pred_def p a1 b1) l ->
-  In (pred_def p a2 b2) l ->
-  a1 = a2 /\ b1 = b2.
-Admitted.
-
 (*Now, we can state and prove our full spec:*)
 Theorem funs_rep_spec (pf: pi_funpred gamma_valid pd)
   (l: list funpred_def)
@@ -1509,7 +1466,7 @@ Proof.
       different [val_typevar]s. We use [vt_fv_agree_tm]*)
     (*TODO: separate lemma I think*)
     assert (args= sn_args p' /\ body = pn_body p'). {
-      apply (preddef_inj (*(proj1' gamma_valid)*)) with(l:=l)(p:=pn_sym p'); auto.
+      apply (preddef_inj (proj1' gamma_valid)) with(l:=l)(p:=pn_sym p'); auto.
       apply (in_ps_def _ il); auto.
     }
     destruct H as [Hargs Hbody]; subst.

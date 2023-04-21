@@ -12,11 +12,11 @@ proofs/core/IndTypes.v
 proofs/core/Interp.v
 proofs/core/ADTInd.v
 proofs/core/Denotational.v
-#proofs/core/RecFun.v
 proofs/core/GenElts.v
 proofs/core/Alpha.v
 proofs/core/IndProp.v
 proofs/core/RecFun.v
+proofs/core/RecFun2.v
 #proofs/Util.v
 #proofs/Ty.v
 #proofs/Term.v
