@@ -845,16 +845,16 @@ Qed.
 
 Lemma pf_funs l 
 (l_in: In l (mutfuns_of_context gamma))
-(f': fn)
 (srts: list sort)
-(srts_len: length srts = length (s_params (fn_sym f')))
+(params: list typevar)
+(srts_len: length srts = length params)
 (pf: pi_funpred gamma_valid pd)
 (Hallval: Forall (funpred_def_valid_type sigma gamma) l)
 (m: mut_adt)
 (vs: list vty)
 (il: list nat)
 (Hterm: Typechecker.find_funpred_def_term gamma l =
-        Some (m, s_params (fn_sym f'), vs, il))
+        Some (m, params, vs, il))
 (Hnotnil: l <> [])
 (Hlenparams: Datatypes.length vs = Datatypes.length (m_params m))
 (m_in: mut_in_ctx m gamma)
@@ -877,10 +877,10 @@ Lemma pf_funs l
         vty_in_m m vs (snd (nth (sn_idx p) (sn_args p) vs_d)))
 (Hfparams: forall f : fn,
            In f (fst (funpred_defs_to_sns l il)) ->
-           s_params (fn_sym f) = s_params (fn_sym f'))
+           s_params (fn_sym f) = params)
 (Hpparams: forall p : pn,
            In p (snd (funpred_defs_to_sns l il)) ->
-           s_params (pn_sym p) = s_params (fn_sym f'))
+           s_params (pn_sym p) = params)
 (Hfdec: Forall
           (fun f : fn =>
            decrease_fun (fst (funpred_defs_to_sns l il))
@@ -892,9 +892,8 @@ Lemma pf_funs l
            decrease_pred (fst (funpred_defs_to_sns l il))
              (snd (funpred_defs_to_sns l il)) []
              (Some (nth (sn_idx p) (sn_args p) vs_d)) m vs 
-             (pn_body p)) (snd (funpred_defs_to_sns l il)))
-(Hinf': In f' (fst (funpred_defs_to_sns l il))):
-forall (vv0 : val_vars pd (vt_with_args triv_val_typevar (s_params (fn_sym f')) srts))
+             (pn_body p)) (snd (funpred_defs_to_sns l il))):
+forall (vv0 : val_vars pd (vt_with_args triv_val_typevar params srts))
   (f : fn)
   (f_in0 : In f
              (map
@@ -904,9 +903,9 @@ forall (vv0 : val_vars pd (vt_with_args triv_val_typevar (s_params (fn_sym f')) 
                 (combine (fst (split_funpred_defs l))
                    (firstn (Datatypes.length (fst (split_funpred_defs l))) il))))
   (srts0 : list sort)
-  (srts_len0 : Datatypes.length srts0 = Datatypes.length (s_params (fn_sym f')))
-  (vt_eq_srts : vt_eq (vt_with_args triv_val_typevar (s_params (fn_sym f')) srts)
-                  (s_params (fn_sym f')) srts0)
+  (srts_len0 : Datatypes.length srts0 = Datatypes.length params)
+  (vt_eq_srts : vt_eq (vt_with_args triv_val_typevar params srts)
+                  params srts0)
   (a0 : arg_list domain (sym_sigma_args (fn_sym f) srts0)),
 funs gamma_valid pd (funpred_with_reps pf l l_in) (fn_sym f) srts0 a0 =
 funs_rep_aux gamma_valid all_unif
@@ -925,10 +924,10 @@ funs_rep_aux gamma_valid all_unif
   (proj1' (funpred_defs_to_sns_NoDup (proj1' gamma_valid) l il l_in (eq_sym Hlen)))
   (proj2' (funpred_defs_to_sns_NoDup (proj1' gamma_valid) l il l_in (eq_sym Hlen)))
   (funpred_defs_to_sns_types l il (eq_sym Hlen) l_in)
-  (funpred_defs_to_sns_valid l il (eq_sym Hlen) l_in) (s_params (fn_sym f')) Hfparams
+  (funpred_defs_to_sns_valid l il (eq_sym Hlen) l_in) params Hfparams
   Hpparams (funpred_defs_to_sns_typevars1 l_in Hfparams (eq_sym Hlen))
   (funpred_defs_to_sns_typevars2 l_in Hpparams (eq_sym Hlen)) m vs Hlenparams Hfvty
-  Hpvty Hfdec Hpdec m_in (vt_with_args triv_val_typevar (s_params (fn_sym f')) srts)
+  Hpvty Hfdec Hpdec m_in (vt_with_args triv_val_typevar params srts)
   (funpred_with_reps pf l l_in) vv0 f f_in0 srts0 srts_len0 vt_eq_srts
   (cast_arg_list
      (f_equal (fun x : fpsym => sym_sigma_args x srts0)
@@ -951,11 +950,9 @@ Proof.
     apply in_fs_def in f_in0; auto.
     eapply in_fun_def. apply f_in0.
   }
-  (*Now we will eliminate f' entirely by replacing s_params (fn_sym f')*)
-  assert (Hparamseq: s_params (fn_sym f') = s_params (fn_sym f)). {
+  assert (Hparamseq: params = s_params (fn_sym f)). {
     symmetry. apply Hfparams. auto.
   }
-  generalize dependent (s_params (fn_sym f')); intros params; intros;
   subst.
   destruct (Nat.eq_dec (Datatypes.length srts0) 
     (Datatypes.length (s_params (fn_sym f)))); try contradiction.
@@ -1069,16 +1066,17 @@ Qed.
 
 Lemma pf_preds l 
 (l_in: In l (mutfuns_of_context gamma))
-(f': fn)
+(*(f': fn)*)
 (srts: list sort)
-(srts_len: length srts = length (s_params (fn_sym f')))
+(params: list typevar)
+(srts_len: length srts = length params)
 (pf: pi_funpred gamma_valid pd)
 (Hallval: Forall (funpred_def_valid_type sigma gamma) l)
 (m: mut_adt)
 (vs: list vty)
 (il: list nat)
 (Hterm: Typechecker.find_funpred_def_term gamma l =
-        Some (m, s_params (fn_sym f'), vs, il))
+        Some (m, params, vs, il))
 (Hnotnil: l <> [])
 (Hlenparams: Datatypes.length vs = Datatypes.length (m_params m))
 (m_in: mut_in_ctx m gamma)
@@ -1101,10 +1099,10 @@ Lemma pf_preds l
         vty_in_m m vs (snd (nth (sn_idx p) (sn_args p) vs_d)))
 (Hfparams: forall f : fn,
            In f (fst (funpred_defs_to_sns l il)) ->
-           s_params (fn_sym f) = s_params (fn_sym f'))
+           s_params (fn_sym f) = params)
 (Hpparams: forall p : pn,
            In p (snd (funpred_defs_to_sns l il)) ->
-           s_params (pn_sym p) = s_params (fn_sym f'))
+           s_params (pn_sym p) = params)
 (Hfdec: Forall
           (fun f : fn =>
            decrease_fun (fst (funpred_defs_to_sns l il))
@@ -1116,9 +1114,8 @@ Lemma pf_preds l
            decrease_pred (fst (funpred_defs_to_sns l il))
              (snd (funpred_defs_to_sns l il)) []
              (Some (nth (sn_idx p) (sn_args p) vs_d)) m vs 
-             (pn_body p)) (snd (funpred_defs_to_sns l il)))
-(Hinf': In f' (fst (funpred_defs_to_sns l il))):
-forall (vv0 : val_vars pd (vt_with_args triv_val_typevar (s_params (fn_sym f')) srts))
+             (pn_body p)) (snd (funpred_defs_to_sns l il))):
+forall (vv0 : val_vars pd (vt_with_args triv_val_typevar params srts))
   (p : pn)
   (p_in : In p
             (map
@@ -1128,9 +1125,9 @@ forall (vv0 : val_vars pd (vt_with_args triv_val_typevar (s_params (fn_sym f')) 
                (combine (snd (split_funpred_defs l))
                   (skipn (Datatypes.length (fst (split_funpred_defs l))) il))))
   (srts0 : list sort)
-  (srts_len0 : Datatypes.length srts0 = Datatypes.length (s_params (fn_sym f')))
-  (vt_eq_srts : vt_eq (vt_with_args triv_val_typevar (s_params (fn_sym f')) srts)
-                  (s_params (fn_sym f')) srts0)
+  (srts_len0 : Datatypes.length srts0 = Datatypes.length params)
+  (vt_eq_srts : vt_eq (vt_with_args triv_val_typevar params srts)
+                  params srts0)
   (a0 : arg_list domain (sym_sigma_args (pn_sym p) srts0)),
 preds gamma_valid pd (funpred_with_reps pf l l_in) (pn_sym p) srts0 a0 =
 preds_rep_aux gamma_valid all_unif
@@ -1149,10 +1146,10 @@ preds_rep_aux gamma_valid all_unif
   (proj1' (funpred_defs_to_sns_NoDup (proj1' gamma_valid) l il l_in (eq_sym Hlen)))
   (proj2' (funpred_defs_to_sns_NoDup (proj1' gamma_valid) l il l_in (eq_sym Hlen)))
   (funpred_defs_to_sns_types l il (eq_sym Hlen) l_in)
-  (funpred_defs_to_sns_valid l il (eq_sym Hlen) l_in) (s_params (fn_sym f')) Hfparams
+  (funpred_defs_to_sns_valid l il (eq_sym Hlen) l_in) params Hfparams
   Hpparams (funpred_defs_to_sns_typevars1 l_in Hfparams (eq_sym Hlen))
   (funpred_defs_to_sns_typevars2 l_in Hpparams (eq_sym Hlen)) m vs Hlenparams Hfvty
-  Hpvty Hfdec Hpdec m_in (vt_with_args triv_val_typevar (s_params (fn_sym f')) srts)
+  Hpvty Hfdec Hpdec m_in (vt_with_args triv_val_typevar params srts)
   (funpred_with_reps pf l l_in) vv0 p p_in srts0 srts_len0 vt_eq_srts
   (cast_arg_list
      (f_equal (fun x : fpsym => sym_sigma_args x srts0)
@@ -1175,12 +1172,9 @@ Proof.
     apply in_ps_def in p_in; auto.
     eapply in_pred_def. apply p_in.
   }
-  (*Now we will eliminate f' entirely by replacing s_params (fn_sym f')*)
-  assert (Hparamseq: s_params (fn_sym f') = s_params (pn_sym p)). {
+  assert (Hparamseq: params = s_params (pn_sym p)). {
     symmetry. apply Hpparams. auto.
-  }
-  generalize dependent (s_params (fn_sym f')); intros params; intros;
-  subst.
+  } subst.
   destruct (Nat.eq_dec (Datatypes.length srts0) 
     (Datatypes.length (s_params (pn_sym p)))); try contradiction.
   (*Now, the interesting case*)
@@ -1290,6 +1284,15 @@ Proof.
     destruct (get_predsym_pn l_in i0 (eq_sym Hlen1)) as [f1 [Hinf1 Hf0]].
     subst. rewrite in_map_iff. exists f1. split; auto.
 Qed.
+
+(*TODO: prove in Typing*)
+Lemma preddef_inj (l: list funpred_def) (p: predsym)
+  (a1 a2: list vsymbol) (b1 b2: formula):
+  In l (mutfuns_of_context gamma) ->
+  In (pred_def p a1 b1) l ->
+  In (pred_def p a2 b2) l ->
+  a1 = a2 /\ b1 = b2.
+Admitted.
 
 (*Now, we can state and prove our full spec:*)
 Theorem funs_rep_spec (pf: pi_funpred gamma_valid pd)
@@ -1464,7 +1467,105 @@ Theorem preds_rep_spec (pf: pi_funpred gamma_valid pd)
   (*Evaluating the function body*)
   body (p_body_type l_in p_in).
 Proof.
-Admitted.
+  intros.
+  unfold preds_rep. simpl.
+  destruct (funpred_def_valid l l_in) as [Hallval Hex].
+  generalize dependent (Typechecker.funpred_def_term_decide sigma gamma (proj1' gamma_valid) l l_in Hex).
+  destruct (Typechecker.find_funpred_def_term gamma l) as [[[[m params] vs] il] |] eqn : Hterm.
+  2: { intros []. }
+  intros Ht.
+  unfold funpred_def_term in Ht.
+  destruct Ht as [Hnotnil [Hlenparams [m_in [Hlen [Hidx [Hfvty [Hpvty [Hfparams [Hpparams [Hfdec Hpdec]]]]]]]]]].
+  (*First step: use [funpred_with_args pf l l_in] instead of pf.
+    we are allowed to do this by [funcs_rep_aux_change_pf]*)
+  unfold preds_rep_aux. simpl.
+  rewrite funcs_rep_aux_change_pf with (pf2:=(funpred_with_reps pf l l_in)).
+  2: {
+    apply funpred_with_reps_funs_notin. auto.
+  }
+  2: { apply funpred_with_reps_preds_notin. auto. }
 
+  (*Simplify p*)
+  assert (Hp: p = pn_sym (proj1_sig (get_predsym_pn l_in (pred_in_mutfun p_in) (eq_sym Hlen)))). {
+    destruct ((get_predsym_pn l_in (pred_in_mutfun p_in) (eq_sym Hlen))); simpl.
+    apply a0.
+  }
+  assert (Hparams: params = s_params p). {
+    rewrite Hp. 
+    erewrite <- Hpparams. reflexivity.
+    destruct (get_predsym_pn l_in (pred_in_mutfun p_in) (eq_sym Hlen)); simpl.
+    apply a0.
+  }
+  generalize dependent ((get_predsym_pn l_in (pred_in_mutfun p_in) (eq_sym Hlen))).
+  intros [p' [Hinp' Hp1]] Hp2. subst. clear Hp2.
+  simpl.
+  (*Now our pf's are the same, so we use [funpred_rep_aux_eq]*)
+  erewrite funpred_rep_aux_eq. simpl.
+  - (*No casting this time, just for arg list*) 
+    unfold cast_arg_list. rewrite !eq_trans_refl_l.
+    rewrite !scast_scast. rewrite <- !eq_sym_map_distr.
+    rewrite eq_trans_sym_inv_r.
+    (*Now we need to transform these, since they use
+      different [val_typevar]s. We use [vt_fv_agree_tm]*)
+    (*TODO: separate lemma I think*)
+    assert (args= sn_args p' /\ body = pn_body p'). {
+      apply (preddef_inj (*(proj1' gamma_valid)*)) with(l:=l)(p:=pn_sym p'); auto.
+      apply (in_ps_def _ il); auto.
+    }
+    destruct H as [Hargs Hbody]; subst.
+    (*Need lots of valid facts*)
+    rewrite Forall_forall in Hallval.
+    specialize (Hallval _ p_in).
+    simpl in Hallval.
+    destruct Hallval as [Hty [Hsub1 [Hsub2 [Hnodup Hargs]]]].
+    rewrite (fmla_rep_irrel) with(Hval2:=p_body_type l_in p_in).
+    apply vt_fv_agree_fmla.
+    + intros x Hinx.
+      assert (In x (s_params (pn_sym p'))) by auto. 
+      destruct (In_nth _ _ EmptyString H) as [i [Hi Hx]]; subst.
+      rewrite !vt_with_args_nth; auto; apply s_params_Nodup.
+    + intros x Hinx Heq.
+      (*Here, we prove that the valuations for all free vars
+        are equal*)
+      assert (In x (sn_args p')) by auto.
+      destruct (In_nth _ _ vs_d H) as [i [ Hi Hx]]; subst.
+      assert (Heq1: forall vt, nth i (sym_sigma_args (pn_sym p') srts) s_int =
+      v_subst (vt_with_args vt (s_params (pn_sym p')) srts) (snd (nth i (sn_args p') vs_d))). {
+        intros vt1.
+        unfold sym_sigma_args.  unfold ty_subst_list_s.
+        rewrite map_nth_inbound with(d2:=vty_int); [| rewrite <- Hargs, map_length; auto].
+        erewrite <- vt_with_args_cast with(vt:=vt1); auto.
+        - rewrite <- Hargs. rewrite map_nth_inbound with(d2:=vs_d); auto.
+        - intros. 
+          apply (@funpred_defs_to_sns_typevars2 l il) with(p:=p')(ty:=(nth i (s_args (pn_sym p')) vty_int));
+          auto. 
+          apply nth_In. rewrite <- Hargs, map_length; auto.
+        - apply s_params_Nodup.
+      }
+      rewrite val_with_args_in with (Heq:=Heq1 vt); auto.
+      2: {
+        apply NoDup_map_inv in Hnodup; auto. 
+      }
+      2: {
+        unfold sym_sigma_args, ty_subst_list_s.
+        rewrite map_length, <- Hargs, map_length.
+        reflexivity.
+      }
+      (*Now we need to rewrite the other one*)
+      rewrite val_with_args_in with(Heq:=Heq1 triv_val_typevar); auto.
+      (*TODO: separate out*)
+      2: {
+        apply NoDup_map_inv in Hnodup; auto. 
+      }
+      2: {
+        unfold sym_sigma_args, ty_subst_list_s.
+        rewrite map_length, <- Hargs, map_length.
+        reflexivity.
+      }
+      rewrite !dom_cast_compose.
+      simpl. apply dom_cast_eq.
+  - apply pf_funs; auto. 
+  - apply pf_preds; auto.
+Qed. 
 
 End Full.
