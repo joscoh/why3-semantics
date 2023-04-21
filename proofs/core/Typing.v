@@ -2021,7 +2021,7 @@ Qed.
 Definition indprop_valid_type (i: indpred_def) : Prop :=
   match i with
   | ind_def p lf => Forall (fun f => well_typed_formula s gamma f /\ 
-      closed_formula f /\ valid_ind_form p f) lf
+      closed_formula f /\ valid_ind_form p f) (map snd lf)
   end.
 
 (*Strict Positivity*)
@@ -2100,7 +2100,7 @@ Definition indpred_positive (l: list indpred_def) : Prop :=
   let ps : list predsym :=
     map (fun i => match i with |ind_def p fs => p end) l in
   let fs: list formula :=
-    concat (map (fun i => match i with |ind_def p fs => fs end) l) in
+    concat (map (fun i => match i with |ind_def p fs => map snd fs end) l) in
   Forall (ind_positive ps) fs.
 
 End FunPredSym.

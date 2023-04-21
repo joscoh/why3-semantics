@@ -885,7 +885,7 @@ Inductive funpred_def : Set :=
   | pred_def: predsym -> list vsymbol -> formula -> funpred_def.
 
 Inductive indpred_def : Set :=
-  | ind_def: predsym -> list formula -> indpred_def.
+  | ind_def: predsym -> list (predsym * formula) -> indpred_def.
 
 Record mut_adt := mk_mut {typs : list alg_datatype;
                           m_params: list typevar;
@@ -951,7 +951,7 @@ Definition indpreds_of_def (d: def) : list (predsym * list formula) :=
   | inductive_def li =>
     fold_right (fun x acc => 
     match x with
-    | ind_def p fs => (p, fs) :: acc
+    | ind_def p fs => (p, (map snd fs)) :: acc
     end) nil li
   | _ => nil
   end.
@@ -978,10 +978,10 @@ Definition predsyms_of_def (d: def) : list predsym :=
     | pred_def ps _ _ => ps :: acc
     | _ => acc
     end) nil lf
-  | inductive_def is => map (fun a =>
+  | inductive_def is => concat (map (fun a =>
     match a with
-    | ind_def ps _ => ps
-    end) is
+    | ind_def ps fs => ps :: map fst fs
+    end) is)
   end.
 
 (*Some utilities we need:*)
