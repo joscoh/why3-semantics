@@ -3,6 +3,8 @@
 Require Export RecFun2.
 Require Export IndProp.
 
+Set Bullet Behavior "Strict Subproofs".
+
 (*Now we can define the complete interpretation given
   a context - one that correctly interprets recursive functions
   and predicates as well as inductive propositions*)
@@ -120,185 +122,268 @@ Qed.
   valid_env e.
 Proof.*)
 
+(** Build initial pre-interpretation of functions and
+  predicates **)
 
-(*Here, we build up a pre-interpretation through a context,
-  adding function and predicate constraints as we go*)
+(*We have assumed all along that we have a pre-interp
+  which sets the constructor reps appropriately. Here
+  we actually construct it, given an initial
+  interpretation for all function and predicate
+  symbols*)
 
-(*Or what about this: use entire context (since we need that
-  anyway) - have additional constraint (which we have)
-  that says that everything in right order*)
-(*Let's try this - much easier than all dep types, weakening, etc*)
+Section BuildPreInterp.
 
-(*TODO: will likely need to prove lemma that
-  says these things stay same if we extend context*)
+(*Not the most efficient*)
+Definition constr_get_mut_adt gamma (f: funsym): option (mut_adt * alg_datatype) :=
+   let l := concat (map (fun m => combine (repeat m (length (typs m))) (typs m)) 
+    (mut_of_context gamma)) in
+   find (fun x => constr_in_adt f (snd x)) l.
 
-(*Need computable*)
-
-Definition constr_get_adt (f: funsym) (m: mut_adt) : option alg_datatype :=
-  find (fun x => constr_in_adt f x) (typs m).  
-
-Lemma constr_get_adt_some f m a:
-  constr_get_adt f m = Some a ->
-  adt_in_mut a m /\ constr_in_adt f a.
+Lemma constr_get_mut_adt_some gamma f m a:
+  constr_get_mut_adt gamma f = Some (m, a) ->
+  mut_in_ctx m gamma /\ adt_in_mut a m /\ constr_in_adt f a.
 Proof.
-  unfold constr_get_adt.
+  unfold constr_get_mut_adt.
   intros Hfind.
   apply find_some in Hfind.
-  destruct Hfind; split; auto.
-  apply In_in_bool; auto.
+  rewrite in_concat in Hfind.
+  simpl in Hfind.
+  destruct Hfind as [[l [Hinl Hinma]] f_in].
+  rewrite in_map_iff in Hinl.
+  destruct Hinl as [m' [Hl Hinm]]; subst.
+  assert (m = m'). {
+    apply in_combine_l in Hinma.
+    apply repeat_spec in Hinma. subst; auto.
+  }
+  subst.
+  apply in_combine_r in Hinma.
+  split_all; auto; apply In_in_bool; auto.
 Qed.
 
-Lemma constr_get_adt_none f m:
-  constr_get_adt f m = None ->
-  forall a, adt_in_mut a m -> ~ constr_in_adt f a.
+Lemma constr_get_mut_adt_none gamma f:
+  constr_get_mut_adt gamma f = None ->
+  forall m a, mut_in_ctx m gamma -> adt_in_mut a m -> ~ constr_in_adt f a.
 Proof.
-  intros Hfind a Hin.
-  apply find_none with(x:=a) in Hfind; auto.
-  rewrite Hfind; auto.
-  apply in_bool_In in Hin. auto.
-Qed.
-
-Set Bullet Behavior "Strict Subproofs".
+  unfold constr_get_mut_adt.
+  intros Hfind.
+  intros m a m_in a_in.
+  apply find_none with(x:=(m, a)) in Hfind; simpl in *; auto.
+  - rewrite Hfind; auto.
+  - rewrite in_concat. exists (combine (repeat m (length (typs m))) (typs m)).
+    split; [rewrite in_map_iff; exists m; split; auto |].
+    + apply in_bool_In in m_in; auto.
+    + rewrite in_combine_iff; rewrite repeat_length; auto.
+      apply in_bool_In in a_in.
+      destruct (In_nth _ _ a  a_in) as [i [Hi Ha]]; subst.
+      exists i. split; auto.
+      intros. f_equal.
+      * rewrite nth_indep with(d':=m); [| rewrite repeat_length]; auto. 
+        rewrite nth_repeat. auto.
+      * rewrite <- Ha. apply nth_indep. auto.
+Qed. 
 
 (*More convenient to have this type for function*)
-Definition constr_in_mut_dec (f: funsym) (m: mut_adt) :
-  Either ({a: alg_datatype | adt_in_mut a m /\ constr_in_adt f a})
-    (forall a, adt_in_mut a m -> ~ constr_in_adt f a).
+Definition constr_in_mut_dec gamma (f: funsym) :
+  Either ({x: mut_adt * alg_datatype | 
+    mut_in_ctx (fst x) gamma /\ adt_in_mut (snd x) (fst x) /\ 
+    constr_in_adt f (snd x)})
+    (forall m a, mut_in_ctx m gamma -> adt_in_mut a m -> ~ constr_in_adt f a).
 Proof.
-  destruct (constr_get_adt f m) eqn : Hconstr.
-  - apply Left. exists a. apply constr_get_adt_some; auto.
-  - apply Right. apply constr_get_adt_none. auto.
+  destruct (constr_get_mut_adt gamma f) eqn : Hconstr.
+  - apply Left. exists p. apply constr_get_mut_adt_some; auto.
+    destruct p; auto.
+  - apply Right. apply constr_get_mut_adt_none. auto.
 Qed.
 
-(*TODO: move probaly - need to add constrs*)
-(*TODO: don't take in pi_funpred because we need to build that
-  up: just take generic function, 
-  then build up for each m
-  
-  *)
+(*The definition - set each constructor to its rep*)
 Definition funs_with_constrs {sigma: sig} {gamma: context}
   (gamma_valid: valid_context sigma gamma) (pd: pi_dom) 
   (*(pf: pi_funpred gamma_valid pd)*)
   (funs: forall (f: funsym) (srts: list sort)
-  (a: arg_list (domain (dom_aux pd)) (sym_sigma_args f srts)),
-  domain (dom_aux pd) (funsym_sigma_ret f srts))
-  (m: mut_adt) (Hm: mut_in_ctx m gamma):
+  (arg: arg_list (domain (dom_aux pd)) (sym_sigma_args f srts)),
+  domain (dom_aux pd) (funsym_sigma_ret f srts)):
   forall (f: funsym) (srts: list sort)
-  (a: arg_list (domain (dom_aux pd)) (sym_sigma_args f srts)),
+  (arg: arg_list (domain (dom_aux pd)) (sym_sigma_args f srts)),
   domain (dom_aux pd) (funsym_sigma_ret f srts) :=
-  fun f srts a =>
-  (*Go through each adt in m, see if f in*)
-  match constr_in_mut_dec f m with
-  | Left a_dat =>
-    let adt := proj1_sig a_dat in
-    let a_in := proj1' (proj2_sig a_dat) in
-    let f_in := proj2' (proj2_sig a_dat) in
-    (*TODO: require srts_len always?*)
-    match (Nat.eq_dec (length srts) (length (m_params m))) with
-    | left srts_len =>
-      constr_rep_dom gamma_valid m Hm srts srts_len
-        (dom_aux pd) adt a_in f f_in (adts pd m srts) a
-    | right _ => funs f srts a
-    end
-  | Right f_notin => funs f srts a
+  fun f srts arg =>
+  match constr_in_mut_dec gamma f with
+  | Left adt_dat =>
+    let m := fst (proj1_sig adt_dat) in
+    let a := snd (proj1_sig adt_dat) in
+    let m_in := proj1' (proj2_sig adt_dat) in
+    let a_in := proj1' (proj2' (proj2_sig adt_dat)) in
+    let f_in := proj2' (proj2' (proj2_sig adt_dat)) in
+     (*TODO: require srts_len always?*)
+     match (Nat.eq_dec (length srts) (length (m_params m))) with
+     | left srts_len =>
+       constr_rep_dom gamma_valid m m_in srts srts_len
+         (dom_aux pd) a a_in f f_in (adts pd m srts) arg
+     | right _ => funs f srts arg
+     end
+  | Right f_notin => funs f srts arg
   end.
 
-Fixpoint funs_with_constrs_all_aux {sigma: sig} {gamma: context}
-(gamma_valid: valid_context sigma gamma) (pd: pi_dom) 
-(funs: forall (f: funsym) (srts: list sort)
-  (a: arg_list (domain (dom_aux pd)) (sym_sigma_args f srts)),
-  domain (dom_aux pd) (funsym_sigma_ret f srts))
-(l: list mut_adt)
-(Hall: Forall (fun m => mut_in_ctx m gamma) l):
-forall (f: funsym) (srts: list sort)
-  (a: arg_list (domain (dom_aux pd)) (sym_sigma_args f srts)),
-  domain (dom_aux pd) (funsym_sigma_ret f srts) :=
-  match l as l' return
-  Forall (fun m => mut_in_ctx m gamma) l' ->
-  forall (f: funsym) (srts: list sort)
-  (a: arg_list (domain (dom_aux pd)) (sym_sigma_args f srts)),
-  domain (dom_aux pd) (funsym_sigma_ret f srts)
-  with
-  | nil => fun Hall => funs
-  | m :: tl => fun Hall =>
-    funs_with_constrs gamma_valid pd
-      (funs_with_constrs_all_aux gamma_valid pd funs tl 
-        (Forall_inv_tail Hall))
-      m (Forall_inv Hall)
-  end Hall.
-
-Lemma mut_of_context_allin: forall gamma,
-Forall (fun m : mut_adt => mut_in_ctx m gamma) (mut_of_context gamma).
+(*TODO: move to typing*)
+Lemma constr_in_one_adt {sigma: sig} {gamma: context}
+  (gamma_wf: wf_context sigma gamma)
+  (c: funsym) (m1 m2: mut_adt) (a1 a2: alg_datatype)
+  (m_in1: mut_in_ctx m1 gamma)
+  (m_in2: mut_in_ctx m2 gamma)
+  (a_in1: adt_in_mut a1 m1)
+  (a_in2: adt_in_mut a2 m2)
+  (c_in1: constr_in_adt c a1)
+  (c_in2: constr_in_adt c a2):
+  a1 = a2 /\ m1 = m2.
 Proof.
-  intros.
-  rewrite Forall_forall; intros.
-  apply mut_in_ctx_eq. auto.
+  (*Handle easy case first*)
+  destruct (adt_dec a1 a2); subst.
+  {
+    split; auto. apply (@mut_adts_inj _ _ gamma_wf _ _ a2 a2); auto.
+  }
+  destruct gamma_wf as [_ [_ [_ [_ [_ [Hnodup _]]]]]].
+  unfold funsyms_of_context in Hnodup.
+  rewrite NoDup_concat_iff in Hnodup.
+  (*If m1 and m2 are the same, look within def, otherwise between defs*)
+  destruct (mut_adt_dec m1 m2); subst.
+  - split; auto.
+    destruct Hnodup as [Hnodup _].
+    assert (In (datatype_def m2) gamma) by (apply mut_in_ctx_eq2; auto).
+    specialize (Hnodup (funsyms_of_def (datatype_def m2))).
+    assert (In (funsyms_of_def (datatype_def m2)) (map funsyms_of_def gamma)).
+      rewrite in_map_iff. exists (datatype_def m2); auto.
+    specialize (Hnodup H0).
+    simpl in Hnodup.
+    rewrite NoDup_concat_iff in Hnodup.
+    rewrite map_length in Hnodup.
+    (*Look across, not in, adts*)
+    destruct Hnodup as [_ Hnodup].
+    exfalso.
+    assert (Hin1: In a1 (typs m2)) by (apply in_bool_In in a_in1; auto).
+    assert (Hin2: In a2 (typs m2)) by (apply in_bool_In in a_in2; auto).
+    destruct (In_nth _ _ a1 Hin1) as [i1 [Hi1 Ha1]].
+    destruct (In_nth _ _ a2 Hin2) as [i2 [Hi2 Ha2]].
+    (*Easy contradiction if i1 = i2*)
+    destruct (Nat.eq_dec i1 i2); subst.
+    {
+      apply n. rewrite <- Ha1. rewrite <- Ha2. apply nth_indep. auto.
+    }
+    apply (Hnodup i1 i2 nil c Hi1 Hi2 n0).
+    rewrite map_nth_inbound with(d2:=a1); auto.
+    rewrite map_nth_inbound with(d2:=a2); auto.
+    rewrite Ha1, Ha2.
+    unfold constr_in_adt in c_in1, c_in2.
+    destruct a1; destruct a2; simpl in *; split; apply in_bool_ne_In
+    with(eq_dec:=funsym_eq_dec); auto.
+  - (*This time in different m1 and m2*)
+    destruct Hnodup as [_ Hnodup].
+    rewrite map_length in Hnodup.
+    assert (Hin1: In (datatype_def m1) gamma) by (apply mut_in_ctx_eq2; auto).
+    assert (Hin2: In (datatype_def m2) gamma) by (apply mut_in_ctx_eq2; auto).
+    destruct (In_nth _ _ def_d Hin1) as [i1 [Hi1 Hm1]].
+    destruct (In_nth _ _ def_d Hin2) as [i2 [Hi2 Hm2]].
+    destruct (Nat.eq_dec i1 i2); subst.
+    {
+      rewrite Hm1 in Hm2. inversion Hm2; subst; contradiction.
+    }
+    exfalso.
+    apply (Hnodup i1 i2 nil c Hi1 Hi2 n1).
+    rewrite !map_nth_inbound with (d2:=def_d); auto.
+    rewrite Hm1, Hm2.
+    split; [apply constr_in_adt_def with(a:=a1) |
+    apply constr_in_adt_def with (a:=a2)]; auto.
 Qed.
 
-Definition funs_with_constrs_all {sigma: sig} {gamma: context}
-(gamma_valid: valid_context sigma gamma) (pd: pi_dom) 
-(funs: forall (f: funsym) (srts: list sort)
-  (a: arg_list (domain (dom_aux pd)) (sym_sigma_args f srts)),
-  domain (dom_aux pd) (funsym_sigma_ret f srts)):
-forall (f: funsym) (srts: list sort)
-  (a: arg_list (domain (dom_aux pd)) (sym_sigma_args f srts)),
-  domain (dom_aux pd) (funsym_sigma_ret f srts) :=
-  funs_with_constrs_all_aux gamma_valid pd funs (mut_of_context gamma) 
-  (mut_of_context_allin gamma).
-Print pi_funpred.
+(*Need 2 results: constrs are correct and everything else
+  is from [funs]*)
 
-(*Now we give the spec*)
-(*Aux version: any constrs in adts in l have the correct rep*)
-Lemma funs_with_constrs_all_aux_in {sigma: sig} {gamma: context}
-(gamma_valid: valid_context sigma gamma) (pd: pi_dom) 
-(funs: forall (f: funsym) (srts: list sort)
-  (a: arg_list (domain (dom_aux pd)) (sym_sigma_args f srts)),
-  domain (dom_aux pd) (funsym_sigma_ret f srts))
-(l: list mut_adt)
-(Hall: Forall (fun m => mut_in_ctx m gamma) l)
-(Hnodup: NoDup l):
-forall (m : mut_adt) (a : alg_datatype) 
-(c : funsym) (Hinl: In m l) (Hm : mut_in_ctx m gamma) 
-(Ha : adt_in_mut a m) (Hc : constr_in_adt c a)
-(srts : list sort)
-(Hlens : Datatypes.length srts =
-          Datatypes.length (m_params m))
-(args : arg_list (domain (dom_aux pd))
-          (sym_sigma_args c srts)),
-(funs_with_constrs_all_aux gamma_valid pd funs l Hall) c srts args =
-constr_rep_dom gamma_valid m Hm srts Hlens 
-(dom_aux pd) a Ha c Hc (adts pd m srts) args.
+(*First, all constrs are correct*)
+Lemma funs_with_constrs_constrs {sigma: sig} {gamma: context}
+  (gamma_valid: valid_context sigma gamma) (pd: pi_dom) 
+  (funs: forall (f: funsym) (srts: list sort)
+    (arg: arg_list (domain (dom_aux pd)) (sym_sigma_args f srts)),
+    domain (dom_aux pd) (funsym_sigma_ret f srts)):
+  forall (m : mut_adt) (a : alg_datatype) 
+  (c : funsym) (Hm : mut_in_ctx m gamma) 
+  (Ha : adt_in_mut a m) (Hc : constr_in_adt c a)
+  (srts : list sort)
+  (Hlens : Datatypes.length srts =
+            Datatypes.length (m_params m))
+  (args : arg_list (domain (dom_aux pd))
+            (sym_sigma_args c srts)),
+  (funs_with_constrs gamma_valid pd funs) c srts args =
+  constr_rep_dom gamma_valid m Hm srts Hlens 
+  (dom_aux pd) a Ha c Hc (adts pd m srts) args.
 Proof.
-  induction l; simpl; intros; auto.
-  destruct Hinl.
+  intros.
   unfold funs_with_constrs.
-  destruct Hinl; subst.
-  - destruct (constr_in_mut_dec c m).
-    + destruct s as [a' [a_in c_in]].
-      simpl.
-      (*mut adts and adts share constr, so we know that
-        m = a and
-        a0 = a' and*)
-      assert (a0 = a'). { admit. } subst.
-      destruct (Nat.eq_dec (Datatypes.length srts) (Datatypes.length (m_params m))).
-      * f_equal; try apply bool_irrelevance. apply UIP_dec. apply Nat.eq_dec.
-      * contradiction.
-    + exfalso. apply (n a0); auto.
-  - (*In this case, need to know that not in a - by same lemma*)
-    unfold funs_with_constrs.
-    destruct (constr_in_mut_dec c a).
-    + destruct s as [a' [a_in' c_in']].
-      exfalso. (*contradiction - a = m, contradicts NoDUp - need to prove*)
-      assert (a =m) by admit.
-      subst.
-      inversion Hnodup. auto.
-    + apply IHl; auto. inversion Hnodup; subst; auto.
+  destruct (constr_in_mut_dec gamma c).
+  2: {
+    exfalso. apply (n m a); auto.
+  }
+  destruct s as [[m' a'] [m_in [a_in c_in]]]. simpl in *.
+  (*Now we need to prove that m=m' and a=a'*)
+  assert (a' = a /\ m' = m). {
+    apply (constr_in_one_adt (proj1' gamma_valid)) with(c:=c); auto.
+  }
+  destruct H; subst.
+  destruct (Nat.eq_dec (Datatypes.length srts) (Datatypes.length (m_params m)));
+  [|contradiction].
+  assert (Hlens = e). apply UIP_dec. apply Nat.eq_dec. 
+  subst.
+  replace m_in with Hm by apply bool_irrelevance.
+  replace a_in with Ha by apply bool_irrelevance.
+  replace c_in with Hc by apply bool_irrelevance.
+  reflexivity.
+Qed.
 
-(*TODO: easier: find mut at same time as a, just do
-  single function instead of fixpoint
-  I think may not need injectivity lemma anymore
-  and dont need generalization*)
-(*Then proofs*)
+(*And for everything else, use funs*)
+Lemma funs_with_constrs_notin {sigma: sig} {gamma: context}
+  (gamma_valid: valid_context sigma gamma) (pd: pi_dom) 
+    (funs: forall (f: funsym) (srts: list sort)
+    (arg: arg_list (domain (dom_aux pd)) (sym_sigma_args f srts)),
+  domain (dom_aux pd) (funsym_sigma_ret f srts)):
+  forall (f: funsym) srts arg,
+    (forall (m: mut_adt) (a: alg_datatype),
+      mut_in_ctx m gamma ->
+      adt_in_mut a m ->
+      ~constr_in_adt f a) ->
+    funs_with_constrs gamma_valid pd funs f srts arg =
+  funs f srts arg.
+Proof.
+  intros.
+  unfold funs_with_constrs.
+  destruct (constr_in_mut_dec gamma f); auto.
+  destruct s as [[m a] [m_in [a_in f_in]]]; simpl in *.
+  exfalso. apply (H m a); auto.
+Qed.
+
+(*Now build a pi_funpred from a funs and preds function*)
+Definition mk_pi_funpred {sigma: sig} {gamma: context}
+  (gamma_valid: valid_context sigma gamma) (pd: pi_dom)
+  (funs: forall (f: funsym) (srts: list sort)
+    (arg: arg_list (domain (dom_aux pd)) (sym_sigma_args f srts)),
+    domain (dom_aux pd) (funsym_sigma_ret f srts))
+  (preds: forall (p: predsym) (srts: list sort)
+    (arg: arg_list (domain (dom_aux pd)) (sym_sigma_args p srts)),
+    bool):
+  pi_funpred gamma_valid pd :=
+  Build_pi_funpred gamma_valid pd (funs_with_constrs gamma_valid pd funs)
+    preds (funs_with_constrs_constrs gamma_valid pd funs).
+
+End BuildPreInterp.
+
+(*Now, we need to add reps for recursive functions and predicates
+  and inductive predicates. We need to do this in order so that
+  we mantain our invariants (since these defs can depend on previously-
+  defined function and predicates)*)
+Section BuildInterp.
+
+Context {sigma: sig} {gamma: context} (gamma_valid: valid_context gamma).
+
+(*TODO: add to IndProp: extend with*)
+Definition upd_pf (d: def) (pf: pi_funpred gamma_valid)
+
+
 (*Then do same for funs and preds - that one needs to be in
   order because we use pf in definition, will need to show that
   adding does not affect it
@@ -311,51 +396,8 @@ prove at the end that this all works
   are not correct - should be able to set uninterpreted functions to
   anything)*)
 
-(*Then use this to build initial pf from funs and preds*)
-(*Then, iterate through context, find *)
-
-
-Lemma funpred_with_constrs_constrs {sigma: sig} {gamma: context}
-(gamma_valid: valid_context sigma gamma) (pd: pi_dom) 
-(pf: pi_funpred gamma_valid pd)
-(m: mut_adt) (Hm: mut_in_ctx m gamma):
-forall (m : mut_adt) (a : alg_datatype) 
-(c : funsym) (Hm : mut_in_ctx m gamma) 
-(Ha : adt_in_mut a m) (Hc : constr_in_adt c a)
-(srts : list sort)
-(Hlens : Datatypes.length srts =
-          Datatypes.length (m_params m))
-(args : arg_list (domain (dom_aux pd))
-          (sym_sigma_args c srts)),
-funs c srts args =
-constr_rep_dom gamma_valid m Hm srts Hlens 
-  (dom_aux pd) a Ha c Hc (adts pd m srts) args
-
-
-
-  Definition funpred_with_reps_funs (pf: pi_funpred gamma_valid pd)
-  (l: list funpred_def)
-  (l_in: In l (mutfuns_of_context gamma)) :
-  forall (f: funsym) (srts: list sort)
-  (a: arg_list domain (sym_sigma_args f srts)),
-  domain (funsym_sigma_ret f srts) :=
-
-  (*Need to see if f in l and srts has right length*)
-  fun f srts a => 
-    match funsym_in_mutfun_dec f l with (*funsym_in_mutfun f l as b return funsym_in_mutfun f l = b -> 
-      domain (funsym_sigma_ret f srts) *)
-    | left f_in => 
-      (*TODO: should we require srts_len always?*)
-      match (Nat.eq_dec (length srts) (length (s_params f) )) with
-      | left srts_len =>
-        funs_rep pf f l f_in l_in srts srts_len a
-      | right srts_len => (funs gamma_valid pd pf) f srts a
-      end
-    | right f_notin => (funs gamma_valid pd pf) f srts a
-    end.
-
-Print funpred_with_reps.
-
+(*Should start again**)
+(*
 (*Let's build each piece individually*)
 Definition extend_funs pd (d: decl) 
   (funs: forall (f: funsym) (srts: list sort),
@@ -431,7 +473,7 @@ Print funs_rep.
 
 
 Definition build_pf (pf: pi_funpred) : pi_funpred.
-
+*)
 
 (*A task *)
 
