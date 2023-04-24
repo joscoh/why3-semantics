@@ -267,8 +267,17 @@ Definition mutfuns_of_context (c: context) : list (list funpred_def) :=
 Definition preddefs_of_context (c: context) : list (predsym * list vsymbol * formula) :=
   concat (map preddefs_of_def c).*)
 
-Definition indpreds_of_context (c: context) : list (predsym * list formula) :=
-  concat (map indpreds_of_def c).
+Definition indpreds_of_context (c: context) : 
+  list (list (predsym * list formula)) :=
+  fold_right (fun o acc =>
+    match o with
+    | inductive_def il => 
+      map (fun x => 
+        match x with
+        | ind_def p fs => (p, map snd fs)
+        end) il :: acc
+    | _ => acc
+    end) nil c.
 
 Definition typesyms_of_context (c: context) : list typesym :=
   map fst (datatypes_of_context c).
@@ -2020,8 +2029,17 @@ Qed.
 
 Definition indprop_valid_type (i: indpred_def) : Prop :=
   match i with
-  | ind_def p lf => Forall (fun f => well_typed_formula s gamma f /\ 
-      closed_formula f /\ valid_ind_form p f) (map snd lf)
+  | ind_def p lf => Forall (fun f => 
+    (*each formula is well-typed*)
+    well_typed_formula s gamma f /\
+    (*and closed (no free vars)*) 
+    closed_formula f /\ 
+    (*And has the correct form for an inductive predicate*)
+    valid_ind_form p f /\
+    (*And all type variables appearing in the formula appear
+      in the parameters of p*)
+    sublist (fmla_type_vars f) (s_params p)) 
+    (map snd lf)
   end.
 
 (*Strict Positivity*)
@@ -2103,6 +2121,37 @@ Definition indpred_positive (l: list indpred_def) : Prop :=
     concat (map (fun i => match i with |ind_def p fs => map snd fs end) l) in
   Forall (ind_positive ps) fs.
 
+(*Finally, for a mutually inductive proposition, all must have
+  the same parameters*)
+
+(*TODO: could use exists, try this*)
+Inductive Forall_eq {A B: Type} (f: A -> B): list A -> Prop :=
+  | Forall_eq_nil:
+    Forall_eq f nil
+  | Forall_eq_cons: forall hd tl,
+    Forall_eq f tl ->
+    Forall (fun x => f x = f hd) tl ->
+    Forall_eq f (hd :: tl).
+
+Lemma Forall_eq_iff {A B: Type} (f: A -> B) (l: list A):
+  Forall_eq f l <-> (forall x y, In x l -> In y l -> f x = f y).
+Proof.
+  induction l; simpl; intros; split; intros; auto. destruct H0.
+  constructor.
+  - inversion H; subst.
+    rewrite Forall_forall in H5.
+    destruct H0; destruct H1; subst; auto.
+    + symmetry. apply H5; auto.
+    + apply IHl; auto.
+  - constructor.
+    + apply IHl. intros. apply H; auto.
+    + rewrite Forall_forall; intros.
+      apply H; auto.
+Qed.
+
+Definition indpred_params_unif (l: list indpred_def) : Prop :=
+  Forall_eq (fun i => match i with |ind_def p fs => s_params p end) l.
+
 End FunPredSym.
 
 (*Put it all together*)
@@ -2117,7 +2166,8 @@ Definition valid_context (s : sig) (gamma: context) : Prop :=
     | recursive_def fs => (*awful hack that won't work, TODO fix*) 
                           funpred_valid_type s gamma fs
     | inductive_def is => Forall (indprop_valid_type s gamma) is /\
-                          indpred_positive is
+                          indpred_positive is /\
+                          indpred_params_unif is
     end) gamma.
 
 Lemma wf_context_expand: forall s d gamma,

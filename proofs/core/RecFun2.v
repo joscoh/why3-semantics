@@ -551,51 +551,7 @@ pi_funpred gamma_valid pd :=
 Build_pi_funpred gamma_valid pd (funpred_with_reps_funs pf l l_in)
   (funpred_with_reps_preds pf l l_in)
   (funpred_with_reps_constrs pf l l_in).
-
-Fixpoint ty_subst' params args (v: vty) : vty :=
-  match v with
-  | vty_int => vty_int
-  | vty_real => vty_real
-  | vty_var x => if in_dec typevar_eq_dec x params then
-    (ty_subst params args) (vty_var x) else vty_var x
-  | vty_cons ts vs =>
-    vty_cons ts (map (ty_subst' params args) vs)
-  end.
-
-(*Get new valuation for [vt_with_args]*)
-Definition upd_vv_args (vt: val_typevar) (vv: val_vars pd vt)
-  params args:
-  length params = length args ->
-  NoDup params ->
-  val_vars pd (vt_with_args vt params args).
-  unfold val_vars.
-  intros Hlen Hparams. unfold val_vars in vv.
-  (*TODO: separate lemma*)
-  (*Hmm this is not quite true because in var case, v_subst chooses
-    a default instead of leaving as is*)
-  assert (forall (v: vty), v_subst (vt_with_args vt params args) v =
-    v_subst vt (ty_subst' params (sorts_to_tys args) v)). {
-    intros. apply sort_inj. simpl.
-    induction v; simpl; auto.
-    - destruct (in_dec typevar_eq_dec v params).
-      + destruct (In_nth _ _ EmptyString i) as [j [Hj Hv]]; subst.
-        rewrite vt_with_args_nth; auto. unfold ty_subst. simpl.
-        rewrite ty_subst_fun_nth with(s:=s_int);
-        unfold sorts_to_tys; auto; [|rewrite map_length]; auto.
-        rewrite map_nth_inbound with(d2:=s_int); [| rewrite <- Hlen]; auto.
-        rewrite <- subst_is_sort_eq; auto.
-        destruct (nth j args s_int); auto.
-      + rewrite vt_with_args_notin; auto.
-    - f_equal. apply list_eq_ext'; rewrite !map_length; auto.
-      intros n d Hn. rewrite !map_nth_inbound with (d2:=vty_int); auto.
-      rewrite Forall_forall in H. apply H. apply nth_In. auto.
-      rewrite map_length; auto.
-  }
-  intros x. rewrite H.
-  (*Is this a hack? Kind of*) apply (vv 
-    (fst x, (ty_subst' params (sorts_to_tys args) (snd x)))).
-Defined.
-
+  
 Lemma fun_in_mutfun {f args body l}:
 In (fun_def f args body) l->
 funsym_in_mutfun f l.

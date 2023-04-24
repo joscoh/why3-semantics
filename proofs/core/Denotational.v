@@ -3807,36 +3807,42 @@ End Lemmas.
 (*This proof is not interesting, since we never adjust the
   pre-interp like we do the valuation. We just need to push through
   the induction*)
-Lemma pi_predsym_agree vt (t: term) (f: formula) :
+  (*TODO: add funs*)
+Lemma tm_fmla_change_pf vt (t: term) (f: formula) :
 (forall (p1 p2: pi_funpred gamma_valid pd) 
   (v: val_vars pd vt) (ty: vty) 
   (Hty: term_has_type sigma t ty),
   (forall p, predsym_in_tm p t -> 
     preds gamma_valid pd p1 p = preds gamma_valid pd p2 p) ->
-  (forall f, funs gamma_valid pd p1 f = funs gamma_valid pd p2 f) ->
+  (forall f, funsym_in_tm f t ->
+    funs gamma_valid pd p1 f = funs gamma_valid pd p2 f) ->
   term_rep vt p1 v t ty Hty = term_rep vt p2 v t ty Hty) /\
 (forall (p1 p2: pi_funpred gamma_valid pd) (v: val_vars pd vt) 
   (Hval: valid_formula sigma f),
   (forall p, predsym_in_fmla p f -> 
     preds gamma_valid pd p1 p = preds gamma_valid pd p2 p) ->
-  (forall f, funs gamma_valid pd p1 f = funs gamma_valid pd p2 f) ->
+  (forall fs, funsym_in_fmla fs f -> 
+    funs gamma_valid pd p1 fs = funs gamma_valid pd p2 fs) ->
   formula_rep vt p1 v f Hval = formula_rep vt p2 v f Hval).
 Proof.
   revert t f.
   apply term_formula_ind; intros; simpl_rep_full; auto.
-  - rewrite H1. f_equal. f_equal. f_equal.
+  - rewrite H1; [|simpl; destruct (funsym_eq_dec f1 f1); auto]. 
+    f_equal. f_equal. f_equal.
     apply get_arg_list_eq.
     revert H; rewrite !Forall_forall; intros.
     rewrite (term_rep_irrel) with(Hty2:=Hty2).
     apply H; auto.
-    intros p Hinp.
-    apply H0. apply existsb_exists. exists x; auto. 
-  - erewrite H. apply H0; auto. all: auto.
-    all: intros; apply H1; simpl; rewrite H3; auto.
-    rewrite orb_true_r. auto.
-  - erewrite H. erewrite H1. erewrite H0. reflexivity.
-    all: auto.
-    all: intros p Hinp; apply H2; simpl; rewrite Hinp; simpl; auto;
+    + intros p Hinp.
+      apply H0. simpl. apply existsb_exists. exists x; auto.
+    + intros fs Hinfs.
+      apply H1. simpl. bool_to_prop. right.
+      exists x; auto. 
+  - erewrite H. apply H0; auto.
+    all: intros; try (apply H1); try (apply H2); simpl; rewrite H3; auto;
+    rewrite orb_true_r; auto.
+  - rewrite (H _ p2), (H0 _ p2), (H1 _ p2); auto. 
+    all: intros p Hinp; try (apply H2); try(apply H3); simpl; rewrite Hinp; simpl; auto;
     rewrite orb_true_r; auto.
   - (*match*) 
     iter_match_gen Hty Htm Hpat Hty.
@@ -3844,72 +3850,84 @@ Proof.
     induction ps; simpl; intros; auto.
     destruct a as [pat1 t1]; simpl.
     rewrite H with(p2:=p2) at 1; auto.
-    destruct (match_val_single vt v pat1 (Forall_inv Hpat) 
-      (term_rep vt p2 v0 tm v Hty)) eqn : Hm.
-    + inversion H0; subst.
-      apply H5; auto.
-      intros. apply H1. simpl. rewrite H3; simpl. 
-      rewrite orb_true_r; auto.
-    + apply IHps; auto.
-      * inversion H0; subst; auto.
-      * intros. apply H1. simpl.
-        rewrite orb_assoc, (orb_comm (predsym_in_tm p tm)), <- orb_assoc, H3,
-        orb_true_r; auto.
-    + intros. apply H1. simpl. rewrite H3; auto.
+    + destruct (match_val_single vt v pat1 (Forall_inv Hpat) 
+        (term_rep vt p2 v0 tm v Hty)) eqn : Hm.
+      * inversion H0; subst.
+        apply H5; auto.
+        -- intros. apply H1. simpl. rewrite H3; simpl.
+          solve_bool. auto. 
+        -- intros. apply H2. simpl. rewrite H3.
+          solve_bool. auto.
+      * apply IHps; auto.
+        -- inversion H0; subst; auto.
+        -- intros. apply H1. simpl.
+          simpl in H3. unfold is_true. solve_bool.
+          revert H3. simpl_bool. auto.
+        -- intros. apply H2. simpl.
+          simpl in H3. unfold is_true. solve_bool.
+          revert H3. simpl_bool. auto.
+      + intros. apply H1. simpl. rewrite H3; auto.
+      + intros. apply H2. simpl. rewrite H3; auto.
   - f_equal. apply functional_extensionality_dep.
-    intros. erewrite H. reflexivity. all: auto.
-  - (*Here, we use fact that predsym in*)
-    rewrite H0; simpl; [|destruct (predsym_eq_dec p p); auto; contradiction].
+    intros. rewrite (H _ p2). reflexivity. all: auto.
+  - rewrite H0; simpl; [|destruct (predsym_eq_dec p p); auto; contradiction].
     f_equal.
     apply get_arg_list_eq.
     revert H; rewrite !Forall_forall; intros.
     rewrite (term_rep_irrel) with(Hty2:=Hty2).
     apply H; auto.
-    intros p' Hinp'.
-    apply H0. apply orb_true_iff. right. 
-    apply existsb_exists. exists x; auto. 
+    + intros p' Hinp'.
+      apply H0. simpl. bool_to_prop. right. exists x; auto.
+    + intros f' Hinf'.
+      apply H1. simpl. bool_to_prop. exists x; auto. 
   - destruct q; simpl_rep_full; apply all_dec_eq.
     + split; intros Hall d; specialize (Hall d);
       erewrite H; try apply Hall; auto.
       intros. rewrite H0; auto.
+      intros. rewrite H1; auto. 
     + split; intros [d Hall]; exists d;
       erewrite H; try apply Hall; auto.
       intros. rewrite H0; auto.
-  - erewrite H. erewrite H0. reflexivity.
-    all: auto. all: intros; apply H1; simpl; rewrite H3; auto;
-    rewrite orb_true_r; auto.
-  - erewrite H. erewrite H0. reflexivity.
-    all: auto. all: intros p Hinp; apply H1; simpl; rewrite Hinp; auto;
-    rewrite orb_true_r; auto.
+      intros. rewrite H1; auto.
+  - rewrite (H _ p2), (H0 _ p2). reflexivity.
+    all: intros; try apply H1; try apply H2; simpl; rewrite H3; 
+    simpl_bool; auto.
+  - rewrite (H _ p2), (H0 _ p2). reflexivity.
+    all: intros; try apply H1; try apply H2; simpl; rewrite H3; 
+    simpl_bool; auto.
   - erewrite H; auto.
   - erewrite H. apply H0.
-    all: auto. all: intros p Hinp; apply H1; simpl; rewrite Hinp; auto;
-    rewrite orb_true_r; auto.
-  - erewrite H. erewrite H0. erewrite H1. reflexivity.
-    all: auto. all: intros p Hinp; apply H2; simpl; rewrite Hinp; auto;
-    rewrite !orb_true_r; auto.
+    all: intros; try apply H1; try apply H2; simpl; rewrite H3; 
+    simpl_bool; auto.
+  - rewrite (H _ p2), (H0 _ p2), (H1 _ p2). reflexivity.
+    all: intros; try apply H2; try apply H3; simpl; rewrite H4; 
+    simpl_bool; auto.
   - (*match*) 
     iter_match_gen Hval Htm Hpat Hty.
     revert v0.
     induction ps; simpl; intros; auto.
     destruct a as [pat1 f1]; simpl.
     rewrite H with(p2:=p2) at 1; auto.
-    destruct (match_val_single vt v pat1 (Forall_inv Hpat) 
-      (term_rep vt p2 v0 tm v Hty)) eqn : Hm.
-    + inversion H0; subst.
-      apply H5; auto.
-      intros. apply H1. simpl. rewrite H3; simpl. 
-      rewrite orb_true_r; auto.
-    + apply IHps; auto.
-      * inversion H0; subst; auto.
-      * intros. apply H1. simpl.
-        rewrite orb_assoc, (orb_comm (predsym_in_tm p tm)), <- orb_assoc, H3,
-        orb_true_r; auto.
-    + intros. apply H1. simpl. rewrite H3; auto.
+    + destruct (match_val_single vt v pat1 (Forall_inv Hpat) 
+        (term_rep vt p2 v0 tm v Hty)) eqn : Hm.
+      * inversion H0; subst.
+        apply H5; auto.
+        all: intros; try apply H1; try apply H2; simpl; rewrite H3; 
+        simpl_bool; auto.
+      * apply IHps; auto.
+        -- inversion H0; subst; auto.
+        -- intros. apply H1. simpl.
+          simpl in H3. unfold is_true. solve_bool.
+          revert H3; simpl_bool; auto.
+        -- intros. apply H2. simpl.
+          simpl in H3. unfold is_true. solve_bool.
+          revert H3; simpl_bool; auto.
+      + intros. apply H1. simpl. rewrite H3; auto.
+      + intros. apply H2. simpl. rewrite H3; auto.
 Qed.
 
-Definition term_predsym_agree vt t := proj_tm (pi_predsym_agree vt) t.
-Definition fmla_predsym_agree vt f := proj_fmla (pi_predsym_agree vt) f.
+Definition tm_change_pf vt t := proj_tm (tm_fmla_change_pf vt) t.
+Definition fmla_change_pf vt f := proj_fmla (tm_fmla_change_pf vt) f.
 
 End Denot.
 

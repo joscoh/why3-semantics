@@ -378,10 +378,15 @@ End BuildPreInterp.
   defined function and predicates)*)
 Section BuildInterp.
 
-Context {sigma: sig} {gamma: context} (gamma_valid: valid_context gamma).
+Context {sigma: sig} {gamma: context} (gamma_valid: valid_context sigma gamma).
 
-(*TODO: add to IndProp: extend with*)
-Definition upd_pf (d: def) (pf: pi_funpred gamma_valid)
+(*TODO: add to IndProp: extend with - maybe use interp_with_Ps
+  or define separately, prove equiv - see*)
+Definition upd_pf (d: def) (pf: pi_funpred gamma_valid) : pi_funpred gamma_valid :=
+  match d with
+  | datatype_def _ => pf
+  | recursive_def fs => (funpred_with_reps pf fs _)
+  | inductive_def is => (inter)
 
 
 (*Then do same for funs and preds - that one needs to be in
