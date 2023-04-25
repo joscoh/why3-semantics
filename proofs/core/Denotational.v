@@ -481,11 +481,6 @@ Proof.
   inversion H; auto.
 Qed.
 
-(*We assume that all ADTs are uniform*)
-Variable all_unif: forall m,
-  mut_in_ctx m gamma ->
-  uniform m.
-
 (*Pattern matches are quite complicated. Rather than compiling down
   to elementary let statements, as in the paper, we instead build up
   the entire valuation (consisting of pairs of vsymbols and domain
@@ -695,7 +690,7 @@ Fixpoint match_val_single (v: val_typevar) (ty: vty)
           such that d = [[c(a)]]*)
       let Hrep := find_constr_rep gamma_valid m m_in srts lengths_eq 
         (dom_aux pd) a a_in (adts pd m srts) 
-        (all_unif m m_in) adt in
+        (gamma_all_unif gamma_valid m m_in) adt in
 
       (*The different parts of Hrep we need*)
       let c : funsym := projT1 Hrep in
@@ -873,7 +868,7 @@ Lemma match_val_single_rewrite  (v: val_typevar) (ty: vty)
 
       let Hrep := find_constr_rep gamma_valid m m_in srts lengths_eq 
         (dom_aux pd) a a_in (adts pd m srts) 
-        (all_unif m m_in) adt in
+        (gamma_all_unif gamma_valid m m_in) adt in
 
       let c : funsym := projT1 Hrep in
       let c_in : constr_in_adt c a :=
@@ -921,7 +916,7 @@ Proof.
             (Hvslen2 m adt vs2 eq_refl
               (pat_has_type_valid gamma_valid (Pconstr f l l0) ty Hp)))
         (dom_aux pd) adt Hinmut (adts pd m (map (val v) vs2)) 
-        (all_unif m Hinctx)
+        (gamma_all_unif gamma_valid m Hinctx)
         (scast (adts pd m (map (val v) vs2) adt Hinmut)
             (dom_cast (dom_aux pd)
               (eq_trans (f_equal (val v) Htyeq) (v_subst_cons (adt_name adt) vs2)) d))))
@@ -932,7 +927,7 @@ Proof.
       (Hvslen2 m adt vs2 eq_refl
         (pat_has_type_valid gamma_valid (Pconstr f l l0) ty Hp)))
   (dom_aux pd) adt Hinmut (adts pd m (map (val v) vs2)) 
-  (all_unif m Hinctx)
+  (gamma_all_unif gamma_valid m Hinctx)
   (scast (adts pd m (map (val v) vs2) adt Hinmut)
       (dom_cast (dom_aux pd)
         (eq_trans (f_equal (val v) Htyeq) (v_subst_cons (adt_name adt) vs2))
@@ -1000,7 +995,7 @@ Lemma match_val_single_ind
     (eq_trans (map_length (val v) vs2)
         (Hvslen2)) 
     (dom_aux pd) adt Hinmut (adts pd m (map (val v) vs2)) 
-    (all_unif m Hinctx)
+    (gamma_all_unif gamma_valid m Hinctx)
     (scast (adts pd m (map (val v) vs2) adt Hinmut)
         (dom_cast (dom_aux pd)
           (eq_trans (f_equal (val v) Htyeq) 
@@ -1113,7 +1108,7 @@ Proof.
              (Hvslen2 m adt vs2 eq_refl
                 (pat_has_type_valid gamma_valid (Pconstr f vs ps) ty Hp)))
           (dom_aux pd) adt Hinmut (adts pd m (map (val v) vs2)) 
-          (all_unif m Hinctx)
+          (gamma_all_unif gamma_valid m Hinctx)
           (scast (adts pd m (map (val v) vs2) adt Hinmut)
              (dom_cast (dom_aux pd)
                 (eq_trans (f_equal (val v) Htyeq) (v_subst_cons (adt_name adt) vs2)) d))))
@@ -1127,7 +1122,7 @@ Proof.
        (Hvslen2 m adt vs2 eq_refl
           (pat_has_type_valid gamma_valid (Pconstr f vs ps) ty Hp)))
     (dom_aux pd) adt Hinmut (adts pd m (map (val v) vs2)) 
-    (all_unif m Hinctx)
+    (gamma_all_unif gamma_valid m Hinctx)
     (scast (adts pd m (map (val v) vs2) adt Hinmut)
        (dom_cast (dom_aux pd)
           (eq_trans (f_equal (val v) Htyeq) (v_subst_cons (adt_name adt) vs2))
@@ -1247,7 +1242,7 @@ Proof.
           (eq_trans (map_length (val v) vs2)
              e0)
           (dom_aux pd) adt Hinmut (adts pd m (map (val v) vs2)) 
-          (all_unif m Hinctx)
+          (gamma_all_unif gamma_valid m Hinctx)
           (scast (adts pd m (map (val v) vs2) adt Hinmut)
              (dom_cast (dom_aux pd)
                 (eq_trans eq_refl (v_subst_cons (adt_name adt) vs2)) d))))
@@ -1258,7 +1253,7 @@ Proof.
     (eq_trans (map_length (val v) vs2)
        e0)
     (dom_aux pd) adt Hinmut (adts pd m (map (val v) vs2)) 
-    (all_unif m Hinctx)
+    (gamma_all_unif gamma_valid m Hinctx)
     (scast (adts pd m (map (val v) vs2) adt Hinmut)
        (dom_cast (dom_aux pd)
           (eq_trans eq_refl (v_subst_cons (adt_name adt) vs2))
@@ -2400,14 +2395,14 @@ Proof.
       maybe do in separate lemma but we need a lot*)
     generalize dependent (find_constr_rep gamma_valid m Hinctx (map (v_subst vt1) vs2)
       (eq_trans (map_length (v_subst vt1) vs2) e) (dom_aux pd) adt Hinmut
-      (adts pd m (map (v_subst vt1) vs2)) (all_unif m Hinctx)
+      (adts pd m (map (v_subst vt1) vs2)) (gamma_all_unif gamma_valid m Hinctx)
       (scast (adts pd m (map (v_subst vt1) vs2) adt Hinmut)
          (dom_cast (dom_aux pd)
             (eq_trans (f_equal (v_subst vt1) Htyeq) (v_subst_cons (adt_name adt) vs2))
             (dom_cast (dom_aux pd) Heq d)))).
     generalize dependent (find_constr_rep gamma_valid m Hinctx (map (v_subst vt2) vs2)
       (eq_trans (map_length (v_subst vt2) vs2) e) (dom_aux pd) adt Hinmut
-      (adts pd m (map (v_subst vt2) vs2)) (all_unif m Hinctx)
+      (adts pd m (map (v_subst vt2) vs2)) (gamma_all_unif gamma_valid m Hinctx)
       (scast (adts pd m (map (v_subst vt2) vs2) adt Hinmut)
          (dom_cast (dom_aux pd)
             (eq_trans (f_equal (v_subst vt2) Htyeq) (v_subst_cons (adt_name adt) vs2))
@@ -2461,6 +2456,7 @@ Proof.
         assert (e0 = e1) by (apply UIP_dec; apply Nat.eq_dec); subst.
         assert (x_in1 = x_in2) by apply bool_irrelevance; subst.
         apply (constr_rep_inj) in H0; auto.
+        apply (gamma_all_unif gamma_valid); auto.
       }
       subst.
       (*Now that we know all of this information, we can simplify for induction*)
@@ -2597,14 +2593,14 @@ Proof.
       maybe do in separate lemma but we need a lot*)
     generalize dependent (find_constr_rep gamma_valid m Hinctx (map (v_subst vt1) vs2)
       (eq_trans (map_length (v_subst vt1) vs2) e) (dom_aux pd) adt Hinmut
-      (adts pd m (map (v_subst vt1) vs2)) (all_unif m Hinctx)
+      (adts pd m (map (v_subst vt1) vs2)) (gamma_all_unif gamma_valid m Hinctx)
       (scast (adts pd m (map (v_subst vt1) vs2) adt Hinmut)
          (dom_cast (dom_aux pd)
             (eq_trans (f_equal (v_subst vt1) Htyeq) (v_subst_cons (adt_name adt) vs2))
             (dom_cast (dom_aux pd) Heq d)))).
     generalize dependent (find_constr_rep gamma_valid m Hinctx (map (v_subst vt2) vs2)
       (eq_trans (map_length (v_subst vt2) vs2) e) (dom_aux pd) adt Hinmut
-      (adts pd m (map (v_subst vt2) vs2)) (all_unif m Hinctx)
+      (adts pd m (map (v_subst vt2) vs2)) (gamma_all_unif gamma_valid m Hinctx)
       (scast (adts pd m (map (v_subst vt2) vs2) adt Hinmut)
          (dom_cast (dom_aux pd)
             (eq_trans (f_equal (v_subst vt2) Htyeq) (v_subst_cons (adt_name adt) vs2))
@@ -2658,6 +2654,7 @@ Proof.
         assert (e0 = e1) by (apply UIP_dec; apply Nat.eq_dec); subst.
         assert (x_in1 = x_in2) by apply bool_irrelevance; subst.
         apply (constr_rep_inj) in H0; auto.
+        apply (gamma_all_unif gamma_valid); auto.
       }
       subst.
       (*Now that we know all of this information, we can simplify for induction*)
@@ -3788,22 +3785,21 @@ End Lemmas.
 (*This proof is not interesting, since we never adjust the
   pre-interp like we do the valuation. We just need to push through
   the induction*)
-  (*TODO: add funs*)
 Lemma tm_fmla_change_pf vt (t: term) (f: formula) :
 (forall (p1 p2: pi_funpred gamma_valid pd) 
   (v: val_vars pd vt) (ty: vty) 
   (Hty: term_has_type sigma t ty),
-  (forall p, predsym_in_tm p t -> 
-    preds gamma_valid pd p1 p = preds gamma_valid pd p2 p) ->
-  (forall f, funsym_in_tm f t ->
-    funs gamma_valid pd p1 f = funs gamma_valid pd p2 f) ->
+  (forall p srts a, predsym_in_tm p t -> 
+    preds gamma_valid pd p1 p srts a = preds gamma_valid pd p2 p srts a) ->
+  (forall f srts a, funsym_in_tm f t ->
+    funs gamma_valid pd p1 f srts a = funs gamma_valid pd p2 f srts a) ->
   term_rep vt p1 v t ty Hty = term_rep vt p2 v t ty Hty) /\
 (forall (p1 p2: pi_funpred gamma_valid pd) (v: val_vars pd vt) 
   (Hval: valid_formula sigma f),
-  (forall p, predsym_in_fmla p f -> 
-    preds gamma_valid pd p1 p = preds gamma_valid pd p2 p) ->
-  (forall fs, funsym_in_fmla fs f -> 
-    funs gamma_valid pd p1 fs = funs gamma_valid pd p2 fs) ->
+  (forall p srts a, predsym_in_fmla p f -> 
+    preds gamma_valid pd p1 p srts a = preds gamma_valid pd p2 p srts a) ->
+  (forall fs srts a, funsym_in_fmla fs f -> 
+    funs gamma_valid pd p1 fs srts a = funs gamma_valid pd p2 fs srts a) ->
   formula_rep vt p1 v f Hval = formula_rep vt p2 v f Hval).
 Proof.
   revert t f.
@@ -3814,16 +3810,16 @@ Proof.
     revert H; rewrite !Forall_forall; intros.
     rewrite (term_rep_irrel) with(Hty2:=Hty2).
     apply H; auto.
-    + intros p Hinp.
+    + intros p srts a Hinp.
       apply H0. simpl. apply existsb_exists. exists x; auto.
-    + intros fs Hinfs.
+    + intros fs srts a Hinfs.
       apply H1. simpl. bool_to_prop. right.
       exists x; auto. 
   - erewrite H. apply H0; auto.
     all: intros; try (apply H1); try (apply H2); simpl; rewrite H3; auto;
     rewrite orb_true_r; auto.
   - rewrite (H _ p2), (H0 _ p2), (H1 _ p2); auto. 
-    all: intros p Hinp; try (apply H2); try(apply H3); simpl; rewrite Hinp; simpl; auto;
+    all: intros p srts a Hinp; try (apply H2); try(apply H3); simpl; rewrite Hinp; simpl; auto;
     rewrite orb_true_r; auto.
   - (*match*) 
     iter_match_gen Hty Htm Hpat Hty.
@@ -3857,9 +3853,9 @@ Proof.
     revert H; rewrite !Forall_forall; intros.
     rewrite (term_rep_irrel) with(Hty2:=Hty2).
     apply H; auto.
-    + intros p' Hinp'.
+    + intros p' srts a Hinp'.
       apply H0. simpl. bool_to_prop. right. exists x; auto.
-    + intros f' Hinf'.
+    + intros f' srts a Hinf'.
       apply H1. simpl. bool_to_prop. exists x; auto. 
   - destruct q; simpl_rep_full; apply all_dec_eq.
     + split; intros Hall d; specialize (Hall d);
@@ -3919,7 +3915,7 @@ End Denot.
 (*We want these in the rest of the file*)
 Ltac simpl_rep :=
   repeat match goal with
-  | |- context [term_rep ?valid ?pd ?unif ?vt ?pf ?v ?t ?ty ?Hty] =>
+  | |- context [term_rep ?valid ?pd ?vt ?pf ?v ?t ?ty ?Hty] =>
     lazymatch t with
     | Tconst (ConstInt ?z) => rewrite term_rep_equation_1
     | Tconst (ConstReal ?r) => rewrite term_rep_equation_2
@@ -3930,7 +3926,7 @@ Ltac simpl_rep :=
     | Tmatch ?t ?v ?ps => rewrite term_rep_equation_7
     | Teps ?f ?v => rewrite term_rep_equation_8
     end
-  | |- context [formula_rep ?valid ?pd ?unif ?vt ?pf ?v ?f ?Hval] =>
+  | |- context [formula_rep ?valid ?pd ?vt ?pf ?v ?f ?Hval] =>
     lazymatch f with
     | Fpred ?p ?vs ?ts => rewrite formula_rep_equation_1
     | Fquant Tforall ?x ?f' => rewrite formula_rep_equation_2

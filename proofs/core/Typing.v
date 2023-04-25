@@ -952,11 +952,52 @@ Definition adt_positive (l: list alg_datatype) : Prop :=
 
 End PosTypes.
 
-(* Recursive Functions and Predicates *)
-Section FunPredSym.
+(*We also require that all mutually recursive types are uniform.
+  Otherwise, inductive types become very difficult to define.
+  Similarly, we require recursive functions and inductive predicates
+  to be uniform; our semantics would get much more complicated if
+  we allowed non-uniformity*)
+Section UniformADT.
+
+
+(*TODO: see where to add assumption, maybe prop version*)
+Definition uniform_list (m: mut_adt) (l: list vty) : bool :=
+  (forallb (fun v =>
+        match v with
+        | vty_cons ts vs => implb (ts_in_mut_list ts (typs m))
+            (list_eq_dec vty_eq_dec vs 
+              (map vty_var (m_params m)))
+        | _ => true
+        end
+        )
+  ) l. 
+
+Lemma uniform_list_cons: forall {m hd tl},
+  uniform_list m (hd :: tl) ->
+  uniform_list m tl.
+Proof.
+  intros. clear -H. unfold uniform_list in *.
+  unfold is_true in *. rewrite forallb_forall.
+  rewrite forallb_forall in H.
+  intros. apply H. right; auto.
+Qed.
+  
+Definition uniform (m: mut_adt) : bool :=
+  forallb (fun a => 
+    forallb (fun (f: funsym) =>
+      uniform_list m (s_args f) 
+    ) (ne_list_to_list (adt_constrs a))
+  ) (typs m).
+
+End UniformADT.
+
+Section RecursiveDefs.
 
 Variable s: sig.
 Variable gamma: context.
+
+(* Recursive Functions and Predicates *)
+Section RecFun.
 
 (*This is complicated; we need to enforce a number of conditions.
   First, we bundle up the recursive function/predicate into a structure
@@ -2019,8 +2060,9 @@ Definition funpred_valid_type (l: list funpred_def) :=
 (*Definition funpred_valid_type (l: list funpred_def) : Prop :=
   exists (Hl: Forall funpred_def_valid_type l),
   funpred_def_term l Hl.*)
- 
+End RecFun.
 (*Inductive Predicates*)
+Section IndProp.
 
 (*Each clause must be a closed formula, well-typed, and belong to a restricted grammar, which
   we give both as an inductive definition and a computable Fixpoint below*)
@@ -2159,10 +2201,9 @@ Definition indpred_positive (l: list indpred_def) : Prop :=
     concat (map (fun i => match i with |ind_def p fs => map snd fs end) l) in
   Forall (ind_positive ps) fs.
 
-(*Finally, for a mutually inductive proposition, all must have
+(*For a mutually inductive proposition, all must have
   the same parameters*)
 
-(*TODO: could use exists, try this*)
 Inductive Forall_eq {A B: Type} (f: A -> B): list A -> Prop :=
   | Forall_eq_nil:
     Forall_eq f nil
@@ -2187,10 +2228,92 @@ Proof.
       apply H; auto.
 Qed.
 
-Definition indpred_params_unif (l: list indpred_def) : Prop :=
+Definition indpred_params_same (l: list indpred_def) : Prop :=
   Forall_eq (fun i => match i with |ind_def p fs => s_params p end) l.
+Print formula.
+(*Finally, all recursive instances must be uniform*)
 
-End FunPredSym.
+Fixpoint pred_with_params_fmla (ps: list predsym) (params: list typevar)
+  (f: formula) {struct f} : bool :=
+  match f with
+  | Fpred p tys tms =>
+    (implb (in_bool predsym_eq_dec p ps) 
+      (list_eq_dec vty_eq_dec tys (map vty_var params))) &&
+    forallb (pred_with_params_tm ps params) tms
+  (*Other cases are not interesting*)
+  | Fquant q v f =>
+    pred_with_params_fmla ps params f
+  | Feq ty t1 t2 =>
+    pred_with_params_tm ps params t1 &&
+    pred_with_params_tm ps params t2
+  | Fbinop b f1 f2 =>
+    pred_with_params_fmla ps params f1 &&
+    pred_with_params_fmla ps params f2
+  | Fnot f =>
+    pred_with_params_fmla ps params f
+  | Ftrue => true
+  | Ffalse => true
+  | Flet t v f =>
+    pred_with_params_tm ps params t &&
+    pred_with_params_fmla ps params f
+  | Fif f1 f2 f3 =>
+    pred_with_params_fmla ps params f1 &&
+    pred_with_params_fmla ps params f2 &&
+    pred_with_params_fmla ps params f3
+  | Fmatch t v pats =>
+    pred_with_params_tm ps params t &&
+    forallb id (map (fun x =>
+      pred_with_params_fmla ps params (snd x)) pats)
+  end
+(*No interesting cases, all recursive*)
+with pred_with_params_tm (ps: list predsym) (params: list typevar)
+  (t: term) {struct t} : bool :=
+  match t with
+  | Tvar v => true
+  | Tconst c => true
+  | Tfun _ _ tms => forallb (pred_with_params_tm ps params) tms
+  | Tlet t1 v t2 =>
+    pred_with_params_tm ps params t1 &&
+    pred_with_params_tm ps params t2
+  | Tif f t1 t2 =>
+    pred_with_params_fmla ps params f &&
+    pred_with_params_tm ps params t1 &&
+    pred_with_params_tm ps params t2
+  | Tmatch t v pats =>
+    pred_with_params_tm ps params t &&
+    forallb id (map (fun x =>
+      pred_with_params_tm ps params (snd x)) pats)
+  | Teps f v =>
+    pred_with_params_fmla ps params f
+  end.
+
+Definition indpred_uniform (ps: list predsym) (fs: list formula) : bool :=
+  match ps with
+  | nil => true
+  | p :: tl => 
+    let params := s_params p in
+    forallb (fun f => pred_with_params_fmla ps params f) fs
+  end.
+
+(*TODO: use elsewhere*)
+Definition indpred_def_pred (i: indpred_def) : predsym :=
+  match i with
+  | ind_def p _ => p
+  end.
+
+Definition indpred_def_constrs (i: indpred_def): list formula :=
+  match i with
+  | ind_def _ fs => map snd fs
+  end.
+
+Definition indpreds_uniform (l: list indpred_def) : bool :=
+  let ps := map indpred_def_pred l in
+  let fs := concat (map indpred_def_constrs l) in
+  indpred_uniform ps fs.
+
+End IndProp.
+
+End RecursiveDefs.
 
 (*Put it all together*)
 Definition valid_context (s : sig) (gamma: context) : Prop :=
@@ -2200,12 +2323,13 @@ Definition valid_context (s : sig) (gamma: context) : Prop :=
     | datatype_def m => Forall adt_valid_type (typs m) /\ 
                            Forall (adt_inhab s gamma) (typs m) /\
                            adt_positive gamma (typs m) /\
-                           valid_mut_rec m
-    | recursive_def fs => (*awful hack that won't work, TODO fix*) 
-                          funpred_valid_type s gamma fs
+                           valid_mut_rec m /\
+                           uniform m
+    | recursive_def fs => funpred_valid_type s gamma fs
     | inductive_def is => Forall (indprop_valid_type s gamma) is /\
                           indpred_positive is /\
-                          indpred_params_unif is
+                          indpred_params_same is /\
+                          indpreds_uniform is
     end) gamma.
 
 Lemma wf_context_expand: forall s d gamma,
@@ -2521,7 +2645,7 @@ Proof.
   unfold constr_in_adt in Hc.
   valid_context_tac.
   unfold valid_mut_rec in H2.
-  valid_context_tac. rewrite <- H3. reflexivity.
+  valid_context_tac. rewrite <- H4. reflexivity.
   rewrite in_bool_ne_equiv in Hc.
   apply (in_bool_In _ _ _ Hc).
 Qed.
@@ -2541,7 +2665,7 @@ Proof.
   rewrite in_bool_ne_equiv in Hc.
   apply in_bool_In in Hc.
   valid_context_tac.
-  rewrite H4. f_equal.
+  rewrite H5. f_equal.
   f_equal. replace t with (adt_name ((alg_def t n))) by auto.
   apply adt_args. auto.
 Qed. 
@@ -2766,7 +2890,7 @@ Proof.
       - split; auto. rewrite in_map_iff.
         exists a. split; auto. destruct a; reflexivity.
   }
-  destruct H3 as [l [l' [Hinl [Hl Hinl']]]]; subst.
+  destruct H4 as [l [l' [Hinl [Hl Hinl']]]]; subst.
   eapply NoDup_concat'. apply funsym_eq_dec. 
   3: apply Hinl'. 2: apply Hinl.
   apply Hnodup.
@@ -3154,6 +3278,18 @@ Proof.
 Qed.
 
 End UniqLemmas.
+
+Lemma gamma_all_unif: forall m, mut_in_ctx m gamma ->
+  uniform m.
+Proof.
+  destruct gamma_valid as [_ Hval].
+  intros m Hm.
+  apply mut_in_ctx_eq2 in Hm.
+  rewrite Forall_forall in Hval.
+  specialize (Hval _ Hm).
+  simpl in Hval.
+  destruct_all; auto.
+Qed.
 
 End ValidContextLemmas.
 

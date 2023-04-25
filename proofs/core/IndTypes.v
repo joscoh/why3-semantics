@@ -1448,36 +1448,6 @@ Definition constr_rep_dom (a: arg_list domain (sym_sigma_args c srts)) :
   to define and the inverse proof is not easy*)
 Section Inv.
 
-(*TODO: see where to add assumption, maybe prop version*)
-Definition uniform_list (m: mut_adt) (l: list vty) : bool :=
-  (forallb (fun v =>
-        match v with
-        | vty_cons ts vs => ts_in_mut_list ts (typs m) ==>
-            list_eq_dec vty_eq_dec vs 
-              [seq vty_var i | i <- m_params m]
-        | _ => true
-        end
-        )
-  ) l. 
-
-Lemma uniform_list_cons: forall {m hd tl},
-  uniform_list m (hd :: tl) ->
-  uniform_list m tl.
-Proof.
-  intros. clear -H. unfold uniform_list in *.
-  unfold is_true in *. rewrite forallb_forall.
-  rewrite forallb_forall in H.
-  intros. apply H. right; auto.
-Qed.
-  
-
-Definition uniform (m: mut_adt) : bool :=
-  forallb (fun a => 
-    forallb (fun (f: funsym) =>
-      uniform_list m (s_args f) 
-    ) (ne_list_to_list (adt_constrs a))
-  ) (typs m).
-
 Variable m_unif: uniform m.
 
 (*Lemmas and definitions we need for the inverse function:*)
@@ -2171,8 +2141,8 @@ Proof.
           exfalso. apply n. rewrite get_idx_correct.
           move: Hl => /andP[/implyP Hunif _].
           specialize (Hunif Hin').
-          simpl_sumbool. f_equal. symmetry. apply (adt_args gamma_valid).
-          split; auto.
+          simpl_sumbool.
+          rewrite -> (@adt_args _ _ gamma_valid) with (m:=m)=>//.
         }
         simpl. intros Hf.
         rewrite !cast_list_cons. intros Heq. inversion Heq.

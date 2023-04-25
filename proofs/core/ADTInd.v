@@ -6,8 +6,7 @@ Require Export Interp. (*TODO: require this so that
 Section Induction.
 
 Context {sigma: sig} {gamma: context} (gamma_valid: valid_context sigma gamma)
-{pd: pi_dom}
-(all_unif: forall m, mut_in_ctx m gamma -> IndTypes.uniform m).
+{pd: pi_dom}.
 
 
 
@@ -221,7 +220,7 @@ Proof.
     (*Use uniformity - just instantiate all hyps, takes a while
       should automate*)
     assert (Hunif: uniform m). {
-      apply all_unif. auto.
+      apply (gamma_all_unif gamma_valid). auto.
     }
     unfold uniform in Hunif. unfold is_true in Hunif. 
     rewrite forallb_forall in Hunif.
@@ -533,7 +532,7 @@ Proof.
     *)
   destruct (find_constr_rep gamma_valid m m_in srts Hlen (dom_aux pd)
     (fin_nth (typs m) i) (In_in_bool adt_dec _ _ (fin_nth_in (typs m) i))
-    (Interp.adts pd m srts) (all_unif m m_in) x') as [c [[c_in args] Hx']].
+    (Interp.adts pd m srts) (gamma_all_unif gamma_valid m m_in) x') as [c [[c_in args] Hx']].
   (*Here, we need info about a*)
   assert (Hnodupb: nodupb funsym_eq_dec
     (ne_list_to_list (adt_constrs (fin_nth (typs m) i)))). {
@@ -573,7 +572,6 @@ Proof.
   apply H.
   (*Now we need to show that the [forall i] condition
     corresponds to that in the IH. This is the hardest part*)
-  (*clear -IH Hlen c_in all_unif Ha.*)
   intros j t' t_in' Heq Hj.
   specialize (IH (get_idx adt_dec t' (typs m) t_in')).
   assert (Heq': nth j (s_args c) vty_int =

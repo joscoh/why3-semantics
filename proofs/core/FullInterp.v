@@ -325,18 +325,16 @@ End BuildPreInterp.
 Section BuildInterp.
 
 Context {sigma: sig} {gamma: context} (gamma_valid: valid_context sigma gamma)
-  (all_unif: forall m : mut_adt, mut_in_ctx m gamma -> uniform m) (pd: pi_dom).
+  (pd: pi_dom).
 
-(*TODO: add to IndProp: extend with - maybe use interp_with_Ps
-  or define separately, prove equiv - see*)
 (*Update a pf with reps for a single def*)
 Definition upd_pf (d: def) (pf: pi_funpred gamma_valid pd) (Hin: In d gamma) : 
   pi_funpred gamma_valid pd :=
   match d as d' return In d' gamma -> pi_funpred gamma_valid pd with
   | datatype_def _ => fun _ => pf
   | recursive_def fs => fun Hin => 
-    (funpred_with_reps gamma_valid all_unif pf fs ((proj2' (in_mutfuns fs)) Hin))
-  | inductive_def is => fun Hin =>  (pf_with_indprop gamma_valid pd all_unif pf 
+    (funpred_with_reps gamma_valid pf fs ((proj2' (in_mutfuns fs)) Hin))
+  | inductive_def is => fun Hin =>  (pf_with_indprop gamma_valid pd pf 
     (get_indpred is) (in_inductive_ctx _ is Hin))
   end Hin.
 
@@ -408,7 +406,8 @@ match d with
   existsb (predsym_in_fmla p) (concat (map snd (map indpred_def_to_indpred is)))
 end.
 
-(*TODO: what is the condition we need about contexts*)
+(*We need that the contexts are ordered; a definition cannot
+  refer to anything that comes later (mutual definitions do not count)*)
 Inductive ctx_ordered : list def -> Prop :=
   | ordered_nil : ctx_ordered nil
   | ordered_adt: forall m tl,
@@ -452,7 +451,7 @@ fs (fs_in: In (recursive_def fs) l)
 (vv: val_vars pd vt):
 funs gamma_valid pd (upd_pf_multi l pf Hallin) f srts a =
 dom_cast _ (funs_cast gamma_valid vt (recfun_in_funsyms (in_mutfuns_sub Hallin fs_in) (fun_in_mutfun f_in)) srts_len) (
-  term_rep gamma_valid pd all_unif (vt_with_args vt (s_params f) srts)
+  term_rep gamma_valid pd (vt_with_args vt (s_params f) srts)
     (upd_pf_multi l pf Hallin) 
     (val_with_args _ _ (upd_vv_args pd vt vv (s_params f) srts (eq_sym srts_len)
     (s_params_Nodup _)) args a)
@@ -489,7 +488,7 @@ Proof.
       inversion Hordl; auto.
     + (*Other recursive def*)
       inversion Hordl; subst.
-      rewrite funpred_with_reps_funs_notin. (*2: from typing TODO*)
+      rewrite funpred_with_reps_funs_notin.
       rewrite (IHl); auto.
       f_equal.
       apply tm_change_pf.
@@ -528,7 +527,7 @@ Proof.
       intro Hpin.
       apply (H5 p (recursive_def fs)); auto.
       unfold pred_in_indpred in Hpin.
-      unfold p_in_indpred. (*TODO: duplicate in*)
+      unfold p_in_indpred.
       apply in_bool_In in Hpin; auto.
       unfold predsym_in_def.
       bool_to_prop. exists (fun_def f args body). auto.
@@ -547,7 +546,7 @@ fs (fs_in: In (recursive_def fs) l)
 (vt: val_typevar)
 (vv: val_vars pd vt):
 preds gamma_valid pd (upd_pf_multi l pf Hallin) p srts a =
-formula_rep gamma_valid pd all_unif (vt_with_args vt (s_params p) srts)
+formula_rep gamma_valid pd (vt_with_args vt (s_params p) srts)
   (upd_pf_multi l pf Hallin) 
   (val_with_args _ _ (upd_vv_args pd vt vv (s_params p) srts (eq_sym srts_len)
   (s_params_Nodup _)) args a)
@@ -621,7 +620,7 @@ Proof.
       intro Hpin.
       apply (H5 p0 (recursive_def fs)); auto.
       unfold pred_in_indpred in Hpin.
-      unfold p_in_indpred. (*TODO: duplicate in*)
+      unfold p_in_indpred.
       apply in_bool_In in Hpin; auto.
       unfold predsym_in_def.
       bool_to_prop. exists (pred_def p args body). auto.
@@ -671,10 +670,34 @@ Proof.
   apply H; auto.
 Qed.
 
+(*TODO: move when finish*)
+(*Sort of trivial, but a well-formed context has no dups*)
+(*
+Lemma wf_ctx_Nodup:
+  NoDup gamma.
+Proof.
+  unfold wf_context in gamma_wf.
+  destruct gamma_wf as [_ [_ [_ [_ [Hn1 [Hn2 Hn3]]]]]].
+  clear -gamma Hn1 Hn2 Hn3.
+  unfold typesyms_of_context in Hn1.
+  unfold funsyms_of_context in Hn2.
+  unfold predsyms_of_context in Hn3.
+  induction gamma; simpl in *; constructor; auto.
+  - intros Hina. destruct a; simpl in *.
+    + rewrite NoDup_app_iff in Hn2.
+      destruct Hn2.
+      (*ugh, prob need assumption about non-trivial*)
+      (*TODO: elsehwere*)
+    
+    rewrite NoDup_concat_iff in Hn2.
+    
+    
+    intro
+*)
+
 (*We can define what it means for an interpretation to be complete*)
 Definition full_interp {sigma gamma} 
 (gamma_valid: valid_context sigma gamma)
-(all_unif: forall m : mut_adt, mut_in_ctx m gamma -> uniform m) 
 (pd: pi_dom)
 (pf: pi_funpred gamma_valid pd) : Prop :=
 (*Recursive functions are equal (with a cast) to their body, 
@@ -690,7 +713,7 @@ Definition full_interp {sigma gamma}
   (vv: val_vars pd vt),
   funs gamma_valid pd pf f srts a =
   dom_cast _ (funs_cast gamma_valid vt (recfun_in_funsyms fs_in (fun_in_mutfun f_in)) srts_len) (
-    term_rep gamma_valid pd all_unif (vt_with_args vt (s_params f) srts)
+    term_rep gamma_valid pd (vt_with_args vt (s_params f) srts)
       pf
       (val_with_args _ _ (upd_vv_args pd vt vv (s_params f) srts (eq_sym srts_len)
       (s_params_Nodup _)) args a)
@@ -709,7 +732,7 @@ Definition full_interp {sigma gamma}
   (vt: val_typevar)
   (vv: val_vars pd vt),
   preds gamma_valid pd pf p srts a =
-  formula_rep gamma_valid pd all_unif (vt_with_args vt (s_params p) srts)
+  formula_rep gamma_valid pd (vt_with_args vt (s_params p) srts)
     pf
     (val_with_args _ _ (upd_vv_args pd vt vv (s_params p) srts (eq_sym srts_len)
     (s_params_Nodup _)) args a)
@@ -726,7 +749,7 @@ Definition full_interp {sigma gamma}
   (vv: val_vars pd (vt_with_args vt (s_params p) srts))
   (f: formula)
   (f_in: In f fs),
-  formula_rep gamma_valid pd all_unif 
+  formula_rep gamma_valid pd 
     (vt_with_args vt (s_params p) srts) pf vv f 
     (*Typing proof*)
     (indprop_fmla_valid gamma_valid l_in p_in f_in)
@@ -754,7 +777,7 @@ Definition full_interp {sigma gamma}
   (forall (fs : list formula) (Hform : Forall (valid_formula sigma) fs),
     In fs (map snd l) ->
       iter_and (map is_true (dep_map
-        (formula_rep gamma_valid pd all_unif 
+        (formula_rep gamma_valid pd 
         (vt_with_args vt (s_params p) srts) 
         (interp_with_Ps gamma_valid pd pf (map fst l) Ps) vv) fs Hform))) ->
   (*Then preds p fs x -> P x*) 
@@ -773,26 +796,22 @@ Context {e: env} (e_val: valid_env e) (pd: pi_dom).
 Notation gamma := (ctx_of_env e).
 Notation gamma_valid := (valid_env_gamma e_val).
 
-(*TODO: really need to add to valid_context*)
-Variable (all_unif: forall m : mut_adt, mut_in_ctx m gamma -> uniform m).
-
-
 Definition full_pf funs preds : 
   pi_funpred gamma_valid pd :=
-  upd_pf_multi gamma_valid all_unif pd gamma
+  upd_pf_multi gamma_valid pd gamma
     (*start with the ADT constructors, add all defs in gamma*)
     (mk_pi_funpred gamma_valid pd funs preds)
     (all_in_refl gamma).
 
 (*And the spec: first, it is a full_interp*)
 Theorem full_pf_interp funs preds :
-  full_interp gamma_valid all_unif pd (full_pf funs preds).
+  full_interp gamma_valid pd (full_pf funs preds).
 Proof.
   assert (Hnodup: NoDup gamma). admit. (*TODO: preove*)
   assert (Hord: ctx_ordered gamma). admit. (*TODO: harder proof*)
   unfold full_interp. split_all.
   - intros. unfold full_pf.
-    rewrite (upd_pf_multi_recfun gamma_valid all_unif pd gamma
+    rewrite (upd_pf_multi_recfun gamma_valid pd gamma
     (mk_pi_funpred gamma_valid pd funs preds) (all_in_refl gamma) Hnodup
     Hord fs (proj1 (in_mutfuns_spec fs gamma) fs_in) f args
     body f_in srts srts_len a vt vv).
@@ -802,7 +821,7 @@ Proof.
     (apply proof_irrel).
     rewrite H. apply dom_cast_eq.
   - intros. unfold full_pf.
-    rewrite (upd_pf_multi_recpred gamma_valid all_unif pd gamma
+    rewrite (upd_pf_multi_recpred gamma_valid pd gamma
     (mk_pi_funpred gamma_valid pd funs preds) (all_in_refl gamma) Hnodup
     Hord fs (proj1 (in_mutfuns_spec fs gamma) fs_in) p args
     body p_in srts srts_len a vt vv).

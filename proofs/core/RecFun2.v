@@ -15,7 +15,7 @@ Section Full.
 
 
 Context {sigma: sig} {gamma: context} (gamma_valid: valid_context sigma gamma)
-{pd: pi_dom} (all_unif: forall m, mut_in_ctx m gamma -> IndTypes.uniform m).
+{pd: pi_dom}.
 
 Lemma funpred_def_valid (l: list funpred_def)
   (l_in: In l (mutfuns_of_context gamma)):
@@ -315,7 +315,7 @@ Proof.
   exact (dom_cast _ 
     (f_equal (fun x => funsym_sigma_ret x srts) (eq_sym (proj2' (proj2_sig fn_info))))
 
-  (@funs_rep_aux _ _ gamma_valid pd all_unif (fst sns) (snd sns)
+  (@funs_rep_aux _ _ gamma_valid pd (fst sns) (snd sns)
     (proj1' (funpred_def_to_sns_wf sigma gamma l il Hlen Hidx Hval))
     (proj2' (funpred_def_to_sns_wf sigma gamma l il Hlen Hidx Hval))
     (proj1' (funpred_defs_to_sns_NoDup (proj1' gamma_valid) _ _ l_in (eq_sym Hlen)))
@@ -373,7 +373,7 @@ Proof.
   (*Need to get the fn associated with this funsym*)
   (*We call [funs_rep_aux] with all of the proofs we need; we need
     to cast the result because it returns something basedon the funsym*)
-  exact (@preds_rep_aux _ _ gamma_valid pd all_unif (fst sns) (snd sns)
+  exact (@preds_rep_aux _ _ gamma_valid pd (fst sns) (snd sns)
     (proj1' (funpred_def_to_sns_wf sigma gamma l il Hlen Hidx Hval))
     (proj2' (funpred_def_to_sns_wf sigma gamma l il Hlen Hidx Hval))
     (proj1' (funpred_defs_to_sns_NoDup (proj1' gamma_valid) _ _ l_in (eq_sym Hlen)))
@@ -773,7 +773,7 @@ forall (vv0 : val_vars pd (vt_with_args triv_val_typevar params srts))
                   params srts0)
   (a0 : arg_list domain (sym_sigma_args (fn_sym f) srts0)),
 funs gamma_valid pd (funpred_with_reps pf l l_in) (fn_sym f) srts0 a0 =
-funs_rep_aux gamma_valid all_unif
+funs_rep_aux gamma_valid
   (map
      (fun x : funsym * list vsymbol * term * nat =>
       fundef_to_fn (fst (fst (fst x))) (snd (fst (fst x))) (snd (fst x)) (snd x))
@@ -880,7 +880,7 @@ Proof.
   unfold eq_ind_r.
   simpl.
   match goal with
-  | |- funs_rep_aux ?val ?unif ?fs ?ps _ _ _ _ _ _ _ _ _ _ _ _ 
+  | |- funs_rep_aux ?val ?fs ?ps _ _ _ _ _ _ _ _ _ _ _ _ 
     _ _ _ _ _ _ _ _ _ _ _ _ _ ?x _ _ = ?e => 
     let H := fresh in
     assert (H: x = srts_len0); [apply UIP_dec; apply Nat.eq_dec | rewrite H; clear H]
@@ -931,7 +931,6 @@ Qed.
 
 Lemma pf_preds l 
 (l_in: In l (mutfuns_of_context gamma))
-(*(f': fn)*)
 (srts: list sort)
 (params: list typevar)
 (srts_len: length srts = length params)
@@ -995,7 +994,7 @@ forall (vv0 : val_vars pd (vt_with_args triv_val_typevar params srts))
                   params srts0)
   (a0 : arg_list domain (sym_sigma_args (pn_sym p) srts0)),
 preds gamma_valid pd (funpred_with_reps pf l l_in) (pn_sym p) srts0 a0 =
-preds_rep_aux gamma_valid all_unif
+preds_rep_aux gamma_valid
   (map
      (fun x : funsym * list vsymbol * term * nat =>
       fundef_to_fn (fst (fst (fst x))) (snd (fst (fst x))) (snd (fst x)) (snd x))
@@ -1101,7 +1100,7 @@ Proof.
   unfold eq_ind_r.
   simpl.
   match goal with
-  | |- preds_rep_aux ?val ?unif ?fs ?ps _ _ _ _ _ _ _ _ _ _ _ _ 
+  | |- preds_rep_aux ?val ?fs ?ps _ _ _ _ _ _ _ _ _ _ _ _ 
     _ _ _ _ _ _ _ _ _ _ _ _ _ ?x _ _ = ?e => 
     let H := fresh in
     assert (H: x = srts_len0); [apply UIP_dec; apply Nat.eq_dec | rewrite H; clear H]
@@ -1224,9 +1223,6 @@ Proof.
     rewrite in_map_iff. exists p'. auto.
 Qed.
 
-(*TODO: see if we need this or more general (for any pf
-  with characteristics)*)
-
 (*Now, we can state and prove our full spec:*)
 Theorem funs_rep_spec (pf: pi_funpred gamma_valid pd)
   (l: list funpred_def)
@@ -1240,7 +1236,7 @@ Theorem funs_rep_spec (pf: pi_funpred gamma_valid pd)
   (*We need a cast because we change [val_typevar]*)
   dom_cast _ (funs_cast vt (recfun_in_funsyms l_in (fun_in_mutfun f_in)) srts_len) (
   (*The function is the same as evaluating the body*)
-  term_rep gamma_valid pd all_unif 
+  term_rep gamma_valid pd 
   (*Setting the function params to srts*)
   (vt_with_args vt (s_params f) srts)
   (*And recursively using [funs_rep] and [preds_rep]*)
@@ -1387,7 +1383,7 @@ Theorem preds_rep_spec (pf: pi_funpred gamma_valid pd)
   (vt: val_typevar) (vv: val_vars pd vt),
   preds_rep pf p l (pred_in_mutfun p_in) l_in srts srts_len a =
   (*The function is the same as evaluating the body*)
-  formula_rep gamma_valid pd all_unif 
+  formula_rep gamma_valid pd 
   (*Setting the function params to srts*)
   (vt_with_args vt (s_params p) srts)
   (*And recursively using [funs_rep] and [preds_rep]*)

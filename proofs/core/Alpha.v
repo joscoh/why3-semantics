@@ -127,11 +127,11 @@ Ltac alpha_case x Heq :=
 Section Alpha.
 
 Context {sigma: sig} {gamma: context} (gamma_valid: valid_context sigma gamma)
- {pd: pi_dom} (all_unif: forall m, mut_in_ctx m gamma -> IndTypes.uniform m)
+ {pd: pi_dom}
   {vt: val_typevar} {pf: pi_funpred gamma_valid pd}.
 
-Notation term_rep := (term_rep gamma_valid pd all_unif vt pf).
-Notation formula_rep := (formula_rep gamma_valid pd all_unif vt pf).
+Notation term_rep := (term_rep gamma_valid pd vt pf).
+Notation formula_rep := (formula_rep gamma_valid pd vt pf).
 
 (*Check that (x, y) binding is at the same point in the list.*)
 Definition eq_var (vars: list (vsymbol * vsymbol)) v1 v2 :=
@@ -731,8 +731,8 @@ Lemma match_val_single_alpha_p_none {ty: vty}
 (d: domain (dom_aux pd) (v_subst vt ty))
 (vars: list (vsymbol * vsymbol))
 (Heq: alpha_equiv_p vars p1 p2) :
-match_val_single gamma_valid pd all_unif vt ty p1 Hty1 d = None ->
-match_val_single gamma_valid pd all_unif vt ty p2 Hty2 d = None.
+match_val_single gamma_valid pd vt ty p1 Hty1 d = None ->
+match_val_single gamma_valid pd vt ty p2 Hty2 d = None.
 Proof.
   revert ty d Hty1 Hty2.
   generalize dependent p2. induction p1.
@@ -775,7 +775,7 @@ Proof.
        (find_constr_rep gamma_valid m Hinctx (map (v_subst vt) vs2)
           (eq_trans (map_length (v_subst vt) vs2) e0) 
           (dom_aux pd) adt Hinmut (adts pd m (map (v_subst vt) vs2))
-          (all_unif m Hinctx)
+          (gamma_all_unif gamma_valid m Hinctx)
           (scast (adts pd m (map (v_subst vt) vs2) adt Hinmut)
              (dom_cast (dom_aux pd) (eq_trans eq_refl (v_subst_cons (adt_name adt) vs2))
                 d)))) f); [|reflexivity].
@@ -783,7 +783,7 @@ Proof.
     generalize dependent (find_constr_rep gamma_valid m Hinctx (map (v_subst vt) vs2)
     (eq_trans (map_length (v_subst vt) vs2) e0) 
     (dom_aux pd) adt Hinmut (adts pd m (map (v_subst vt) vs2))
-    (all_unif m Hinctx)
+    (gamma_all_unif gamma_valid m Hinctx)
     (scast (adts pd m (map (v_subst vt) vs2) adt Hinmut)
        (dom_cast (dom_aux pd)
           (eq_trans eq_refl (v_subst_cons (adt_name adt) vs2)) d))).
@@ -984,8 +984,8 @@ Lemma match_val_single_alpha_p_none_iff {ty: vty}
   (d: domain (dom_aux pd) (v_subst vt ty))
   (vars: list (vsymbol * vsymbol))
   (Heq: alpha_equiv_p vars p1 p2):
-  match_val_single gamma_valid pd all_unif vt ty p1 Hty1 d = None <->
-  match_val_single gamma_valid pd all_unif vt ty p2 Hty2 d = None.
+  match_val_single gamma_valid pd vt ty p1 Hty1 d = None <->
+  match_val_single gamma_valid pd vt ty p2 Hty2 d = None.
 Proof.
   split; intros.
   - apply (match_val_single_alpha_p_none p1 p2 Hty1 _ _ _ Heq); auto.
@@ -1006,8 +1006,8 @@ Lemma match_val_single_alpha_p_some {ty: vty}
   (Hnodup1: NoDup (map fst vars))
   (Hnodup2: NoDup (map snd vars))
   l1 l2 x y t (def: vsymbol):
-  match_val_single gamma_valid pd all_unif vt ty p1 Hty1 d = Some l1 ->
-  match_val_single gamma_valid pd all_unif vt ty p2 Hty2 d = Some l2 ->
+  match_val_single gamma_valid pd vt ty p1 Hty1 d = Some l1 ->
+  match_val_single gamma_valid pd vt ty p2 Hty2 d = Some l2 ->
   In (x, y) vars ->
   In (x, t) l1 <-> In (y, t) l2.
 Proof.
@@ -1063,7 +1063,7 @@ Proof.
        (find_constr_rep gamma_valid m Hinctx (map (v_subst vt) vs2)
           (eq_trans (map_length (v_subst vt) vs2) e0) 
           (dom_aux pd) adt Hinmut (adts pd m (map (v_subst vt) vs2))
-          (all_unif m Hinctx)
+          (gamma_all_unif gamma_valid m Hinctx)
           (scast (adts pd m (map (v_subst vt) vs2) adt Hinmut)
              (dom_cast (dom_aux pd) (eq_trans eq_refl (v_subst_cons (adt_name adt) vs2))
                 d)))) f); [|discriminate].
@@ -1071,7 +1071,7 @@ Proof.
     generalize dependent (find_constr_rep gamma_valid m Hinctx (map (v_subst vt) vs2)
     (eq_trans (map_length (v_subst vt) vs2) e0) 
     (dom_aux pd) adt Hinmut (adts pd m (map (v_subst vt) vs2))
-    (all_unif m Hinctx)
+    (gamma_all_unif gamma_valid m Hinctx)
     (scast (adts pd m (map (v_subst vt) vs2) adt Hinmut)
        (dom_cast (dom_aux pd)
           (eq_trans eq_refl (v_subst_cons (adt_name adt) vs2)) d))).
@@ -1294,7 +1294,7 @@ Proof.
     rewrite <- (H _ _ v1 v2 _ Hty1 Hty2 Htm) at 1; auto.
     
     (*Now need to know [match_val_single] is same - separate lemmas*)
-    destruct ( match_val_single gamma_valid pd all_unif vt tys2 p1 (Forall_inv Hpat1)
+    destruct ( match_val_single gamma_valid pd vt tys2 p1 (Forall_inv Hpat1)
     (term_rep v1 tm tys2 Hty1)) eqn : Hmatch1.
     + (*In Some case, need to know how lists relate*)
 
@@ -1304,7 +1304,7 @@ Proof.
         bool_hyps; auto.
       }
       pose proof (alpha_equiv_p_fv_len_full _ _ Hpeq) as Hlen2.
-      destruct (  match_val_single gamma_valid pd all_unif vt tys2 p2 (Forall_inv Hpat2)
+      destruct (  match_val_single gamma_valid pd vt tys2 p2 (Forall_inv Hpat2)
       (term_rep v1 tm tys2 Hty1)) eqn : Hmatch2.
       * assert (A:=Hall). specialize (A 0 ltac:(lia)); simpl in A.
         bool_hyps. rename H1 into Hp; rename H3 into Ht12.
@@ -1325,7 +1325,7 @@ Proof.
             (*Now, we know that x is in l by 
               [match_val_single_free_var]*)
             assert (Hinxl: In x (map fst l)). {
-              apply (match_val_single_free_var _ _ _ _ _ _ _ _ _ x) in Hmatch1.
+              apply (match_val_single_free_var _ _ _ _ _ _ _ _ x) in Hmatch1.
               auto.
               apply Hmatch1. subst. wf_tac.
             }
@@ -1404,7 +1404,7 @@ Proof.
         rewrite <- match_val_single_alpha_p_none_iff in Hmatch2.
         rewrite Hmatch2 in Hmatch1. inversion Hmatch1. apply Hpeq.
     + (*In None case, both None, use IH*) 
-      assert (match_val_single gamma_valid pd all_unif vt tys2 p2 (Forall_inv Hpat2)
+      assert (match_val_single gamma_valid pd vt tys2 p2 (Forall_inv Hpat2)
       (term_rep v1 tm tys2 Hty1)
       = None). {
         eapply match_val_single_alpha_p_none. 2: apply Hmatch1.
@@ -1575,7 +1575,7 @@ Proof.
     destruct p as [p2 t2]. simpl.
     rewrite <- (H _ _ v1 v2 _ Hty1 Hty2 Htm) at 1; auto.
     (*Now need to know [match_val_single] is same - separate lemmas*)
-    destruct ( match_val_single gamma_valid pd all_unif vt tys2 p1 (Forall_inv Hpat1)
+    destruct ( match_val_single gamma_valid pd vt tys2 p1 (Forall_inv Hpat1)
     (term_rep v1 tm tys2 Hty1)) eqn : Hmatch1.
     + (*In Some case, need to know how lists relate*)
 
@@ -1584,7 +1584,7 @@ Proof.
         specialize (Hall 0 ltac:(lia)); simpl in Hall. bool_hyps; auto.
       }
       pose proof (alpha_equiv_p_fv_len_full _ _ Hpeq) as Hpfvs.
-      destruct ( match_val_single gamma_valid pd all_unif vt tys2 p2 (Forall_inv Hpat2)
+      destruct ( match_val_single gamma_valid pd vt tys2 p2 (Forall_inv Hpat2)
       (term_rep v1 tm tys2 Hty1)) eqn : Hmatch2.
       * assert (A:=Hall). specialize (A 0 ltac:(lia)); simpl in A.
         bool_hyps. rename H1 into Hp. rename H3 into Ht12.
@@ -1684,7 +1684,7 @@ Proof.
         rewrite <- match_val_single_alpha_p_none_iff in Hmatch2.
         rewrite Hmatch2 in Hmatch1. inversion Hmatch1. apply Hpeq.
     + (*In None case, both None, use IH*) 
-      assert (match_val_single gamma_valid pd all_unif vt tys2 p2 (Forall_inv Hpat2)
+      assert (match_val_single gamma_valid pd vt tys2 p2 (Forall_inv Hpat2)
       (term_rep v1 tm tys2 Hty1)
       = None). {
         eapply match_val_single_alpha_p_none. 2: apply Hmatch1.

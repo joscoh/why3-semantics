@@ -17,7 +17,7 @@ Section FunDef.
 
 
 Context {sigma: sig} {gamma: context} (gamma_valid: valid_context sigma gamma)
-{pd: pi_dom} (all_unif: forall m, mut_in_ctx m gamma -> IndTypes.uniform m).
+{pd: pi_dom}.
 
 (*First, we assume we have our fs and ps lists and that
   they satisfy all of the well-founded conditions which follow
@@ -307,7 +307,7 @@ Proof.
   (eq_trans (f_equal domain Hseq) (Interp.adts pd m srts a a_in)))).
   intros Heqadt Hd. subst d.
   (*Here, we use induction*)
-  apply (adt_rep_ind gamma_valid all_unif m m_in srts Hlen (fun t t_in x =>
+  apply (adt_rep_ind gamma_valid m m_in srts Hlen (fun t t_in x =>
     forall s Heq, s = typesym_to_sort (adt_name t) srts ->
     Acc adt_smaller (existT (fun s => domain s) s 
       (scast Heq x)))); auto.
@@ -366,7 +366,7 @@ Proof.
   }
   subst c0.
   assert (Hc = c_in). apply bool_irrelevance. subst Hc.
-  apply constr_rep_inj in Hadt2. 2: apply all_unif; auto.
+  apply constr_rep_inj in Hadt2. 2: apply (gamma_all_unif gamma_valid); auto.
   subst args0.
   (*Now, we can apply the IH*)
   specialize (IH _ _ a_in1 Heqith Hi (typesym_to_sort (adt_name a1) srts)
@@ -539,7 +539,7 @@ Theorem match_val_single_smaller (vt: val_typevar) (v: val_vars pd vt) (ty: vty)
   (Hty: vty_in_m m vs ty)
   (d: domain(v_subst vt ty))
   (l: list (vsymbol * {s: sort & domain s})):
-  match_val_single gamma_valid pd all_unif vt ty p Hp d = Some l ->
+  match_val_single gamma_valid pd vt ty p Hp d = Some l ->
     (*For [pat_constr_vars_inner], either same or smaller*)
     (forall x y, In (x, y) l ->
       In x (pat_constr_vars_inner m vs p) ->
@@ -605,7 +605,7 @@ Proof.
           (eq_trans (map_length (v_subst vt) vs2) Hvslen2) 
           (dom_aux pd) adt Hinmut
           (Interp.adts pd m (map (v_subst vt) vs2)) 
-          (all_unif m Hinctx)
+          (gamma_all_unif gamma_valid m Hinctx)
           (scast (Interp.adts pd m (map (v_subst vt) vs2) adt Hinmut)
              (dom_cast (dom_aux pd)
                 (eq_trans (f_equal (v_subst vt) Htyeq)
@@ -615,7 +615,7 @@ Proof.
     (eq_trans (map_length (v_subst vt) vs2) Hvslen2) 
     (dom_aux pd) adt Hinmut
     (Interp.adts pd m (map (v_subst vt) vs2))
-    (all_unif m Hinctx)
+    (gamma_all_unif gamma_valid m Hinctx)
     (scast
        (Interp.adts pd m (map (v_subst vt) vs2) adt Hinmut)
        (dom_cast (dom_aux pd)
@@ -774,13 +774,13 @@ Proof.
                   (fun x : pattern * vty => vty_in_m m (map vty_var (m_params m)) (snd x))
                   (combine ps0 l0)))) ->
             In (x', y) l ->
-            match_val_single gamma_valid pd all_unif vt (ty_subst (s_params f) vs2 a) p
+            match_val_single gamma_valid pd vt (ty_subst (s_params f) vs2 a) p
               (Forall_inv f0) (hlist_hd (cast_arg_list e a0)) = 
               Some l ->
             False). {
               intros x' y' Hlens Hinx1 Hinx2 l' Hmatch1.
               assert (Hinxfv1: In x' (pat_fv p)). {
-                apply (match_val_single_free_var _ _ _ _ _ _ _ _ _ _ Hmatch1).
+                apply (match_val_single_free_var _ _ _ _ _ _ _ _ _ Hmatch1).
                 rewrite in_map_iff. exists (x', y'). auto.
               }
               (*now we need to find the pattern in ps0 that it is in*)
@@ -915,7 +915,7 @@ Proof.
   - (*Por just by IH*)
     split; intros; simpl in H, H1;
     rewrite intersect_elts in H1; destruct H1 as [Hfv1 Hfv2];
-    destruct (match_val_single gamma_valid pd all_unif vt ty p1 (proj1' (pat_or_inv Hp)) d) eqn : Hmatch1.
+    destruct (match_val_single gamma_valid pd vt ty p1 (proj1' (pat_or_inv Hp)) d) eqn : Hmatch1.
     + inversion H; subst.
       apply (proj1' (IHp1 _ _ Hty _ _ Hmatch1) x y); auto.
     + apply (proj1' (IHp2 _ _ Hty _ _ H) x y); auto.
@@ -928,7 +928,7 @@ Proof.
     split; intros.
     + unfold vsym_in_m in H1. rewrite Hty in H1.
       rewrite union_elts in H1.
-      destruct (match_val_single gamma_valid pd all_unif vt (snd v) p (proj1' (pat_bind_inv Hp)) d) eqn: Hmatch1;
+      destruct (match_val_single gamma_valid pd vt (snd v) p (proj1' (pat_bind_inv Hp)) d) eqn: Hmatch1;
       [|discriminate].
       inversion H; subst.
       destruct H0 as [Hxy | Hinl0].
@@ -940,7 +940,7 @@ Proof.
           apply Hmatch1. rewrite in_map_iff. exists (x, y); auto.
         -- (*IH case*)
           apply (proj1' (IHp _ _ Hty _ _ Hmatch1) x y); auto.
-    + destruct (match_val_single gamma_valid pd all_unif vt (snd v) p (proj1' (pat_bind_inv Hp)) d) eqn : Hmatch1;
+    + destruct (match_val_single gamma_valid pd vt (snd v) p (proj1' (pat_bind_inv Hp)) d) eqn : Hmatch1;
       [|discriminate].
       inversion H; subst.
       destruct H0 as [Hxy | Hinx]; subst.
@@ -2781,7 +2781,7 @@ Qed.
   This is where we use [match_val_single_smaller].
   *)
 Lemma small_match_lemma { tm v ty1 p Hty dom_t small d l mvar hd}
-  (Hmatch: match_val_single gamma_valid pd all_unif vt ty1 p Hty dom_t =Some l)
+  (Hmatch: match_val_single gamma_valid pd vt ty1 p Hty dom_t =Some l)
   (Hty1: term_has_type sigma tm ty1)
   (Htm: tm = Tvar mvar /\ (hd = Some mvar \/ In mvar small))
   (Hdomt: dom_t = dom_cast _ (f_equal (fun x => val x) 
@@ -2810,18 +2810,18 @@ Proof.
     }
     (*Now we get the domain val in the list l mapped from x*)
     assert (Hinx: In x (map fst l)). {
-      apply (match_val_single_free_var _ _ _ _ _ _ _ _ _ _ Hmatch).
+      apply (match_val_single_free_var _ _ _ _ _ _ _ _ _ Hmatch).
       eapply pat_constr_vars_fv. apply H0.
     }
     rewrite in_map_iff in Hinx. destruct Hinx as [[x' y'] [Hfst Hinxy]]; subst.
     simpl in *.
     rewrite (extend_val_lookup _ _ _ _ _ y'); auto.
     2: {
-      apply (match_val_single_nodup _ _ _ _ _ _ _ _ Hmatch).
+      apply (match_val_single_nodup _ _ _ _ _ _ _ Hmatch).
     }
     assert (val (snd x') = projT1 y'). {
       symmetry.
-      apply (match_val_single_typs _ _ _ _ _ _ _ _ _ Hmatch). auto.
+      apply (match_val_single_typs _ _ _ _ _ _ _ _ Hmatch). auto.
     }
     destruct (sort_eq_dec (val (snd x')) (projT1 y')); try contradiction.
     apply (proj2' (match_val_single_smaller vt v _ _ Hty Hty1m _ _ Hmatch)) with(y:=y') in H0; auto.
@@ -2853,14 +2853,14 @@ Proof.
   - (*Otherwise, not in l, so follows from assumption*)
     simpl_set. destruct H.
     rewrite extend_val_notin; auto.
-    rewrite <- (match_val_single_free_var _ _ _ _ _ _ _ _ _ _ Hmatch).
+    rewrite <- (match_val_single_free_var _ _ _ _ _ _ _ _ _ Hmatch).
     auto.
 Qed.
 
 (*First (recursive) case for small lemma when we add valuations
   from [match_val_single]*)
 Lemma match_val_single_small1 { v ty1 dom_t p Hty l small d}:
-  match_val_single gamma_valid pd all_unif vt ty1 p Hty dom_t = Some l ->
+  match_val_single gamma_valid pd vt ty1 p Hty dom_t = Some l ->
   (forall x, In x small ->
     vty_in_m m vs (snd x) /\
     adt_smaller_trans (hide_ty (v x)) d) ->
@@ -2899,7 +2899,7 @@ Qed.
 (*hd invariant with upd_option and upd_option_iter*)
 Lemma match_val_single_upd_option
   { v ty1 dom_t p Hty l d} (hd: option vsymbol) 
-  (Hmatch: match_val_single gamma_valid pd all_unif vt ty1 p Hty dom_t 
+  (Hmatch: match_val_single gamma_valid pd vt ty1 p Hty dom_t 
     = Some l)
 (Hhd: forall h, hd = Some h ->
   vty_in_m m vs (snd h) /\
@@ -2912,7 +2912,7 @@ Proof.
   split; [apply Hhd; auto|].
   rewrite extend_val_notin; auto.
   apply Hhd; auto.
-  rewrite <- (match_val_single_free_var _ _ _ _ _ _ _ _ _ _ Hmatch).
+  rewrite <- (match_val_single_free_var _ _ _ _ _ _ _ _ _ Hmatch).
   auto.
 Qed.
 
@@ -3431,8 +3431,8 @@ bool)
       | (p , dat) :: ptl => fun Hall Hpats Hdec =>
         (*We need info about [match_val_single] to know how the
           valuation changes*)
-        match (match_val_single gamma_valid pd all_unif vt ty1 p (Forall_inv Hpats) dom_t) as o
-          return (match_val_single gamma_valid pd all_unif vt ty1 p (Forall_inv Hpats) dom_t) = o ->
+        match (match_val_single gamma_valid pd vt ty1 p (Forall_inv Hpats) dom_t) as o
+          return (match_val_single gamma_valid pd vt ty1 p (Forall_inv Hpats) dom_t) = o ->
           domain (val ty) with
         | Some l => fun Hmatch => 
           proj1_sig (term_rep_aux (extend_val_with_list pd vt v l) dat ty
@@ -3484,8 +3484,8 @@ bool)
       | (p , dat) :: ptl => fun Hall Hpats Hdec =>
         (*We need info about [match_val_single] to know how the
           valuation changes*)
-        match (match_val_single gamma_valid pd all_unif vt ty1 p (Forall_inv Hpats) dom_t) as o
-          return (match_val_single gamma_valid pd all_unif vt ty1 p (Forall_inv Hpats) dom_t) = o ->
+        match (match_val_single gamma_valid pd vt ty1 p (Forall_inv Hpats) dom_t) as o
+          return (match_val_single gamma_valid pd vt ty1 p (Forall_inv Hpats) dom_t) = o ->
           domain (val ty) with
         | Some l => fun Hmatch => 
           proj1_sig (term_rep_aux (extend_val_with_list pd vt v l) dat ty
@@ -3713,8 +3713,8 @@ bool :=
     | (p , dat) :: ptl => fun Hall Hpats Hdec =>
       (*We need info about [match_val_single] to know how the
         valuation changes*)
-      match (match_val_single gamma_valid pd all_unif vt ty1 p (Forall_inv Hpats) dom_t) as o
-        return (match_val_single gamma_valid pd all_unif vt ty1 p (Forall_inv Hpats) dom_t) = o ->
+      match (match_val_single gamma_valid pd vt ty1 p (Forall_inv Hpats) dom_t) as o
+        return (match_val_single gamma_valid pd vt ty1 p (Forall_inv Hpats) dom_t) = o ->
         bool with
       | Some l => fun Hmatch => 
         formula_rep_aux (extend_val_with_list pd vt v l) dat
@@ -3758,8 +3758,8 @@ bool :=
     | (p , dat) :: ptl => fun Hall Hpats Hdec =>
       (*We need info about [match_val_single] to know how the
         valuation changes*)
-      match (match_val_single gamma_valid pd all_unif vt ty1 p (Forall_inv Hpats) dom_t) as o
-        return (match_val_single gamma_valid pd all_unif vt ty1 p (Forall_inv Hpats) dom_t) = o ->
+      match (match_val_single gamma_valid pd vt ty1 p (Forall_inv Hpats) dom_t) as o
+        return (match_val_single gamma_valid pd vt ty1 p (Forall_inv Hpats) dom_t) = o ->
         bool with
       | Some l => fun Hmatch => 
         formula_rep_aux (extend_val_with_list pd vt v l) dat
@@ -4244,9 +4244,6 @@ Proof.
   - exact (dec_inv_fpred_arg Hdec' (proj1' (proj2_sig x)) p_pn). 
 Qed.
 
-(*let dom_t := proj1_sig (term_rep_aux v t ty1 small hd Ht1 Hdec1 Hsmall Hhd) in
-    let dom_t_pf := proj2_sig (term_rep_aux v t ty1 small hd Ht1 Hdec1 Hsmall Hhd) in*)
-
 (*The match inner functions*)
 Fixpoint match_rep_addvars v t {ty1} {small} {hd} Ht1 Hdec1 Hsmall Hhd 
 ty (z: {mvar : vsymbol | t = Tvar mvar /\ (hd = Some mvar \/ In mvar small)})
@@ -4272,8 +4269,8 @@ domain (val ty) :=
   | (p , dat) :: ptl => fun Hall Hpats Hdec =>
   (*We need info about [match_val_single] to know how the
     valuation changes*)
-    match (match_val_single gamma_valid pd all_unif vt ty1 p (Forall_inv Hpats) dom_t) as o
-      return (match_val_single gamma_valid pd all_unif vt ty1 p (Forall_inv Hpats) dom_t) = o ->
+    match (match_val_single gamma_valid pd vt ty1 p (Forall_inv Hpats) dom_t) as o
+      return (match_val_single gamma_valid pd vt ty1 p (Forall_inv Hpats) dom_t) = o ->
       domain (val ty) 
     with
     | Some l => fun Hmatch => 
@@ -4314,8 +4311,8 @@ Fixpoint match_rep_addvars' v t {ty1} {small} {hd} Ht1 Hdec1 Hsmall Hhd
     | (p , dat) :: ptl => fun Hall Hpats Hdec =>
     (*We need info about [match_val_single] to know how the
       valuation changes*)
-      match (match_val_single gamma_valid pd all_unif vt ty1 p (Forall_inv Hpats) dom_t) as o
-        return (match_val_single gamma_valid pd all_unif vt ty1 p (Forall_inv Hpats) dom_t) = o ->
+      match (match_val_single gamma_valid pd vt ty1 p (Forall_inv Hpats) dom_t) as o
+        return (match_val_single gamma_valid pd vt ty1 p (Forall_inv Hpats) dom_t) = o ->
         bool 
       with
       | Some l => fun Hmatch => 
@@ -4350,8 +4347,8 @@ Fixpoint match_rep_rec v t {ty1} {small} {hd} Ht1 Hdec1 Hsmall Hhd {ty}
         | (p , dat) :: ptl => fun Hall Hpats Hdec =>
           (*We need info about [match_val_single] to know how the
             valuation changes*)
-          match (match_val_single gamma_valid pd all_unif vt ty1 p (Forall_inv Hpats) dom_t) as o
-            return (match_val_single gamma_valid pd all_unif vt ty1 p (Forall_inv Hpats) dom_t) = o ->
+          match (match_val_single gamma_valid pd vt ty1 p (Forall_inv Hpats) dom_t) as o
+            return (match_val_single gamma_valid pd vt ty1 p (Forall_inv Hpats) dom_t) = o ->
             domain (val ty) with
           | Some l => fun Hmatch => 
             proj1_sig (term_rep_aux (extend_val_with_list pd vt v l) dat ty
@@ -4387,8 +4384,8 @@ match pats as l' return
 | (p , dat) :: ptl => fun Hall Hpats Hdec =>
   (*We need info about [match_val_single] to know how the
     valuation changes*)
-  match (match_val_single gamma_valid pd all_unif vt ty1 p (Forall_inv Hpats) dom_t) as o
-    return (match_val_single gamma_valid pd all_unif vt ty1 p (Forall_inv Hpats) dom_t) = o ->
+  match (match_val_single gamma_valid pd vt ty1 p (Forall_inv Hpats) dom_t) as o
+    return (match_val_single gamma_valid pd vt ty1 p (Forall_inv Hpats) dom_t) = o ->
     bool with
   | Some l => fun Hmatch => 
     formula_rep_aux (extend_val_with_list pd vt v l) dat
@@ -4582,8 +4579,8 @@ let dom_t_pf := proj2_sig (term_rep_aux v t ty1 small hd Ht1 Hdec1 Hsmall Hhd) i
       | (p , dat) :: ptl => fun Hall Hpats Hdec =>
         (*We need info about [match_val_single] to know how the
           valuation changes*)
-        match (match_val_single gamma_valid pd all_unif vt ty1 p (Forall_inv Hpats) dom_t) as o
-          return (match_val_single gamma_valid pd all_unif vt ty1 p (Forall_inv Hpats) dom_t) = o ->
+        match (match_val_single gamma_valid pd vt ty1 p (Forall_inv Hpats) dom_t) as o
+          return (match_val_single gamma_valid pd vt ty1 p (Forall_inv Hpats) dom_t) = o ->
           domain (val ty) with
         | Some l => fun Hmatch => 
           proj1_sig (term_rep_aux (extend_val_with_list pd vt v l) dat ty
@@ -4640,8 +4637,8 @@ match pats as l' return
 | (p , dat) :: ptl => fun Hall Hpats Hdec =>
   (*We need info about [match_val_single] to know how the
     valuation changes*)
-  match (match_val_single gamma_valid pd all_unif vt ty1 p (Forall_inv Hpats) dom_t) as o
-    return (match_val_single gamma_valid pd all_unif vt ty1 p (Forall_inv Hpats) dom_t) = o ->
+  match (match_val_single gamma_valid pd vt ty1 p (Forall_inv Hpats) dom_t) as o
+    return (match_val_single gamma_valid pd vt ty1 p (Forall_inv Hpats) dom_t) = o ->
     bool with
   | Some l => fun Hmatch => 
     formula_rep_aux (extend_val_with_list pd vt v l) dat
@@ -4693,8 +4690,8 @@ let dom_t_pf := proj2_sig (term_rep_aux v t ty1 small hd Ht1 Hdec1 Hsmall Hhd) i
       | (p , dat) :: ptl => fun Hall Hpats Hdec =>
         (*We need info about [match_val_single] to know how the
           valuation changes*)
-        match (match_val_single gamma_valid pd all_unif vt ty1 p (Forall_inv Hpats) dom_t) as o
-          return (match_val_single gamma_valid pd all_unif vt ty1 p (Forall_inv Hpats) dom_t) = o ->
+        match (match_val_single gamma_valid pd vt ty1 p (Forall_inv Hpats) dom_t) as o
+          return (match_val_single gamma_valid pd vt ty1 p (Forall_inv Hpats) dom_t) = o ->
           domain (val ty) with
         | Some l => fun Hmatch => 
           proj1_sig (term_rep_aux (extend_val_with_list pd vt v l) dat ty
@@ -4743,8 +4740,8 @@ let dom_t_pf := proj2_sig (term_rep_aux v t ty1 small hd Ht1 Hdec1 Hsmall Hhd) i
  | (p , dat) :: ptl => fun Hall Hpats Hdec =>
  (*We need info about [match_val_single] to know how the
    valuation changes*)
- match (match_val_single gamma_valid pd all_unif vt ty1 p (Forall_inv Hpats) dom_t) as o
-   return (match_val_single gamma_valid pd all_unif vt ty1 p (Forall_inv Hpats) dom_t) = o ->
+ match (match_val_single gamma_valid pd vt ty1 p (Forall_inv Hpats) dom_t) as o
+   return (match_val_single gamma_valid pd vt ty1 p (Forall_inv Hpats) dom_t) = o ->
    bool with
  | Some l => fun Hmatch => 
    formula_rep_aux (extend_val_with_list pd vt v l) dat
@@ -4922,9 +4919,7 @@ Proof.
     match goal with
     | |- rec ?y ?small1 = rec ?y2 ?small2 =>
       let H := fresh in
-      assert (H: small1 = small2) by (
-        apply ClassicalFacts.proof_irrelevance_cci;
-      apply Classical_Prop.classic);
+      assert (H: small1 = small2) by (apply proof_irrel);
       rewrite H;
       reflexivity
     end.
@@ -5124,9 +5119,7 @@ Proof.
     match goal with
     | |- rec ?y ?small1 = rec ?y2 ?small2 =>
       let H := fresh in
-      assert (H: small1 = small2) by (
-        apply ClassicalFacts.proof_irrelevance_cci;
-      apply Classical_Prop.classic);
+      assert (H: small1 = small2) by ( apply proof_irrel);
       rewrite H;
       reflexivity
     end.
@@ -5152,9 +5145,6 @@ proj1' (proj2' (valid_match_inv Hval)) in
 
 let Hdec1 : decrease_fun fs ps small hd m vs t := 
 dec_inv_fmatch_fst Hdec in
-
-(*let Hval : valid_type sigma ty1 :=
-has_type_valid gamma_valid _ _ Ht1 in*)
 
 let dom_t := proj1_sig (term_rep_aux v t ty1 small hd Ht1 Hdec1 Hsmall Hhd) in
 let dom_t_pf := proj2_sig (term_rep_aux v t ty1 small hd Ht1 Hdec1 Hsmall Hhd) in
@@ -5358,25 +5348,19 @@ Definition funcs_rep_aux (pa: packed_args2) :
 
   (*We have it!*)
 
-(*Now, we give a rewrite lemma.*)
-  Lemma funcs_rep_aux_eq (pa: packed_args2):
-  funcs_rep_aux pa = funcs_rep_aux_body pa
-    (fun (x: packed_args2) 
-      (p: R_projT1 _ (R_projT1 _ arg_list_smaller) x pa) => 
-      funcs_rep_aux x).
-  Proof.
-    unfold funcs_rep_aux. rewrite Init.Wf.Fix_eq; auto.
-    intros.
-    (*TODO: maybe can prove without but we use funext anyway*)
-    assert (f = g). repeat (apply functional_extensionality_dep; intros); auto.
-    subst; auto.
-  Qed.
-
-
-
-
-
-
+(*Now, we give a rewrite lemma with [Fix_eq]*)
+Lemma funcs_rep_aux_eq (pa: packed_args2):
+funcs_rep_aux pa = funcs_rep_aux_body pa
+  (fun (x: packed_args2) 
+    (p: R_projT1 _ (R_projT1 _ arg_list_smaller) x pa) => 
+    funcs_rep_aux x).
+Proof.
+  unfold funcs_rep_aux. rewrite Init.Wf.Fix_eq; auto.
+  intros.
+  (*TODO: maybe can prove without but we use funext anyway*)
+  assert (f = g). repeat (apply functional_extensionality_dep; intros); auto.
+  subst; auto.
+Qed.
 
 (*Plan: first write the definition and theorem with assumptions about
   fp, vt, vv, then define one with context and types to show
@@ -5401,7 +5385,6 @@ Definition funcs_rep_aux (pa: packed_args2) :
 
 Section FunRewrite.
 
-(*Variable vv: val_vars pd vt.*)
 
 (*Now a version for funsyms and predsyms that we can
   use for [funs] and [preds]*)
@@ -5498,7 +5481,7 @@ Definition funcs_rep_aux_unfold (pa: packed_args2) :
       (*Need a cast here*)
       dom_cast _ (fn_ret_cast_eq f f_in srts a srts_len vt_eq_srts) 
       (
-      term_rep gamma_valid pd all_unif vt pf
+      term_rep gamma_valid pd vt pf
         (*OK to use triv_val_vars here, later we will show equiv*)
         (val_with_args pd vt vv (sn_args f) a)
         (fn_body f) _
@@ -5515,7 +5498,7 @@ Definition funcs_rep_aux_unfold (pa: packed_args2) :
       (eq_trans (eq_sym (f_equal sn_sym (proj2' (proj2_sig pinfo)))) (eq_sym 
         (ps_wf_eq p p_in)))
       ) (projT2 (projT2 pa'))) in
-    formula_rep gamma_valid pd all_unif vt pf
+    formula_rep gamma_valid pd vt pf
       (*OK to use triv_val_vars here, later we will show equiv*)
       (val_with_args pd vt vv (sn_args p) a)
       (pn_body p)
@@ -5531,10 +5514,10 @@ Lemma get_arg_list_aux_eq: forall input ts rec v s small Hsmall hd Hhd vs Hparam
         Hargslen Hall Hdec,
       Forall (fun tm => forall ty small hd Hty Hdec Hsmall Hhd,
         proj1_sig (term_rep_aux input rec v tm ty small hd Hty Hdec Hsmall Hhd) =
-        term_rep gamma_valid pd all_unif vt pf v tm ty Hty) ts ->
+        term_rep gamma_valid pd vt pf v tm ty Hty) ts ->
       proj1_sig (@get_arg_list_ext_aux' v hd _ s
         _ ts small Hsmall Hhd (term_rep_aux input rec v ) Hparamslen (s_args s) Hargslen Hall Hdec) =
-      get_arg_list pd vt s vs ts (term_rep gamma_valid pd all_unif vt pf v) Hargslen Hparamslen Hall.
+      get_arg_list pd vt s vs ts (term_rep gamma_valid pd vt pf v) Hargslen Hparamslen Hall.
 Proof.
   intros input ts rec v s.
   generalize dependent (s_args s). intros args; revert args.
@@ -5553,7 +5536,7 @@ forall
   v small hd (Hty1: term_has_type sigma t ty1) Hdec Hsmall Hhd (ty: vty) z Hall Hpats Halldec,
   proj1_sig
       (term_rep_aux input rec v t ty1 small hd Hty1
-         Hdec Hsmall Hhd) = term_rep gamma_valid pd all_unif vt pf v t ty1 Hty1 ->
+         Hdec Hsmall Hhd) = term_rep gamma_valid pd vt pf v t ty1 Hty1 ->
   
   
   Forall
@@ -5563,11 +5546,11 @@ forall
    (Hdec : decrease_fun fs ps small hd m vs tm) Hsmall Hhd,
  proj1_sig
    (term_rep_aux input rec v tm ty small hd
-      Hty Hdec Hsmall Hhd) = term_rep gamma_valid pd all_unif vt pf v tm ty Hty)
+      Hty Hdec Hsmall Hhd) = term_rep gamma_valid pd vt pf v tm ty Hty)
 (map snd pats) ->
   @match_rep_addvars input rec v t _ small hd Hty1 Hdec Hsmall Hhd _
     z pats Hall Hpats Halldec =
-    let dom_t := (term_rep gamma_valid pd all_unif vt pf v t ty1 Hty1) in
+    let dom_t := (term_rep gamma_valid pd vt pf v t ty1 Hty1) in
     (fix match_rep
     (ps1 : list (pattern * term))
     (Hps : Forall (fun x : pattern * term => pattern_has_type sigma (fst x) ty1) ps1)
@@ -5600,10 +5583,10 @@ forall
       (Hall0 : Forall (fun x : pattern * term => term_has_type sigma (snd x) ty)
                  ((p, dat) :: ptl)) =>
     match
-      match_val_single gamma_valid pd all_unif vt ty1 p (Forall_inv Hpats) dom_t
+      match_val_single gamma_valid pd vt ty1 p (Forall_inv Hpats) dom_t
     with
     | Some l =>
-        term_rep gamma_valid pd all_unif vt pf (extend_val_with_list pd vt v l) dat
+        term_rep gamma_valid pd vt pf (extend_val_with_list pd vt v l) dat
           ty (Forall_inv Hall0)
     | None => match_rep ptl (Forall_inv_tail Hpats) (Forall_inv_tail Hall0)
     end
@@ -5612,7 +5595,7 @@ Proof.
   induction pats; intros; simpl; auto.
   destruct a; inversion H0; subst; rewrite IHpats; auto.
   simpl.
-  generalize dependent (@eq_refl _ (match_val_single gamma_valid pd all_unif vt ty1 p (Forall_inv Hpats)
+  generalize dependent (@eq_refl _ (match_val_single gamma_valid pd vt ty1 p (Forall_inv Hpats)
   (proj1_sig (term_rep_aux input rec v t ty1 small hd Hty1 Hdec Hsmall Hhd)))).
   generalize dependent (@small_match_lemma t v ty1 p (Forall_inv Hpats)
   (proj1_sig (term_rep_aux input rec v t ty1 small hd Hty1 Hdec Hsmall Hhd))
@@ -5632,7 +5615,7 @@ Proof.
   (proj1_sig (term_rep_aux input rec v t ty1 small hd Hty1 Hdec Hsmall Hhd)) p
     (Forall_inv Hpats)).
   (*Finally, we can destruct*)
-  destruct ( match_val_single gamma_valid pd all_unif vt ty1 p (Forall_inv Hpats)
+  destruct ( match_val_single gamma_valid pd vt ty1 p (Forall_inv Hpats)
   (proj1_sig (term_rep_aux input rec v t ty1 small hd Hty1 Hdec Hsmall Hhd)));
   intros.
   - apply H3.
@@ -5645,7 +5628,7 @@ forall
   v small hd (Hty1: term_has_type sigma t ty1) Hdec Hsmall Hhd (ty: vty) Hall Hpats Halldec,
   proj1_sig
       (term_rep_aux input rec v t ty1 small hd Hty1
-         Hdec Hsmall Hhd) = term_rep gamma_valid pd all_unif vt pf v t ty1 Hty1 ->
+         Hdec Hsmall Hhd) = term_rep gamma_valid pd vt pf v t ty1 Hty1 ->
   Forall
 (fun tm : term =>
  forall (v: val_vars pd vt) (ty : vty)
@@ -5653,11 +5636,11 @@ forall
    (Hdec : decrease_fun fs ps small hd m vs tm) Hsmall Hhd,
  proj1_sig
    (term_rep_aux input rec v tm ty small hd
-      Hty Hdec Hsmall Hhd) = term_rep gamma_valid pd all_unif vt pf v tm ty Hty)
+      Hty Hdec Hsmall Hhd) = term_rep gamma_valid pd vt pf v tm ty Hty)
 (map snd pats) ->
   @match_rep_rec input rec v t _ small hd Hty1 Hdec Hsmall Hhd _
    pats Hall Hpats Halldec =
-    let dom_t := (term_rep gamma_valid pd all_unif vt pf v t ty1 Hty1) in
+    let dom_t := (term_rep gamma_valid pd vt pf v t ty1 Hty1) in
     (fix match_rep
     (ps1 : list (pattern * term))
     (Hps : Forall (fun x : pattern * term => pattern_has_type sigma (fst x) ty1) ps1)
@@ -5690,10 +5673,10 @@ forall
       (Hall0 : Forall (fun x : pattern * term => term_has_type sigma (snd x) ty)
                  ((p, dat) :: ptl)) =>
     match
-      match_val_single gamma_valid pd all_unif vt ty1 p (Forall_inv Hpats) dom_t
+      match_val_single gamma_valid pd vt ty1 p (Forall_inv Hpats) dom_t
     with
     | Some l =>
-        term_rep gamma_valid pd all_unif vt pf (extend_val_with_list pd vt v l) dat
+        term_rep gamma_valid pd vt pf (extend_val_with_list pd vt v l) dat
           ty (Forall_inv Hall0)
     | None => match_rep ptl (Forall_inv_tail Hpats) (Forall_inv_tail Hall0)
     end
@@ -5702,7 +5685,7 @@ Proof.
   induction pats; intros; simpl; auto.
   destruct a; inversion H0; subst; rewrite IHpats; auto.
   simpl.
-  generalize dependent (@eq_refl _ (match_val_single gamma_valid pd all_unif vt ty1 p (Forall_inv Hpats)
+  generalize dependent (@eq_refl _ (match_val_single gamma_valid pd vt ty1 p (Forall_inv Hpats)
   (proj1_sig (term_rep_aux input rec v t ty1 small hd Hty1 Hdec Hsmall Hhd)))).
   generalize dependent (@match_val_single_small1 v ty1 
   (proj1_sig (term_rep_aux input rec v t ty1 small hd Hty1 Hdec Hsmall Hhd))
@@ -5713,7 +5696,7 @@ Proof.
   (proj1_sig (term_rep_aux input rec v t ty1 small hd Hty1 Hdec Hsmall Hhd)) p
     (Forall_inv Hpats)).
   (*Finally, we can destruct*)
-  destruct ( match_val_single gamma_valid pd all_unif vt ty1 p (Forall_inv Hpats)
+  destruct ( match_val_single gamma_valid pd vt ty1 p (Forall_inv Hpats)
   (proj1_sig (term_rep_aux input rec v t ty1 small hd Hty1 Hdec Hsmall Hhd)));
   intros.
   - apply H3.
@@ -5726,7 +5709,7 @@ forall
   v small hd (Hty1: term_has_type sigma t ty1) Hdec Hsmall Hhd z Hall Hpats Halldec,
   proj1_sig
       (term_rep_aux input rec v t ty1 small hd Hty1
-         Hdec Hsmall Hhd) = term_rep gamma_valid pd all_unif vt pf v t ty1 Hty1 ->
+         Hdec Hsmall Hhd) = term_rep gamma_valid pd vt pf v t ty1 Hty1 ->
   Forall
 (fun f : formula =>
  forall (v: val_vars pd vt) 
@@ -5734,10 +5717,10 @@ forall
    (Hval : valid_formula sigma f)
    (Hdec : decrease_pred fs ps small hd m vs f) Hsmall Hhd,
    formula_rep_aux input rec v f small hd Hval Hdec Hsmall Hhd =
-   formula_rep gamma_valid pd all_unif vt pf v f Hval) (map snd pats) ->
+   formula_rep gamma_valid pd vt pf v f Hval) (map snd pats) ->
   @match_rep_addvars' input rec v t _ small hd Hty1 Hdec Hsmall Hhd
     z pats Hall Hpats Halldec =
-    let dom_t := (term_rep gamma_valid pd all_unif vt pf v t ty1 Hty1) in
+    let dom_t := (term_rep gamma_valid pd vt pf v t ty1 Hty1) in
     (fix match_rep (ps: list (pattern * formula)) 
     (Hps: Forall (fun x => pattern_has_type sigma (fst x) ty1) ps)
     (Hall: Forall (fun x => valid_formula sigma (snd x)) ps) :
@@ -5747,8 +5730,8 @@ forall
     Forall (fun x => valid_formula sigma (snd x)) l' ->
     bool with
   | (p , dat) :: ptl => fun Hpats Hall =>
-    match (match_val_single gamma_valid pd all_unif vt ty1 p (Forall_inv Hpats) dom_t) with
-    | Some l => formula_rep gamma_valid pd all_unif vt pf (extend_val_with_list pd vt v l) dat
+    match (match_val_single gamma_valid pd vt ty1 p (Forall_inv Hpats) dom_t) with
+    | Some l => formula_rep gamma_valid pd vt pf (extend_val_with_list pd vt v l) dat
       (Forall_inv Hall) 
     | None => match_rep ptl (Forall_inv_tail Hpats) (Forall_inv_tail Hall)
     end
@@ -5758,7 +5741,7 @@ Proof.
   induction pats; intros; simpl; auto.
   destruct a; inversion H0; subst; rewrite IHpats; auto.
   simpl.
-  generalize dependent (@eq_refl _ (match_val_single gamma_valid pd all_unif vt ty1 p (Forall_inv Hpats)
+  generalize dependent (@eq_refl _ (match_val_single gamma_valid pd vt ty1 p (Forall_inv Hpats)
   (proj1_sig (term_rep_aux input rec v t ty1 small hd Hty1 Hdec Hsmall Hhd)))).
   generalize dependent (@small_match_lemma t v ty1 p (Forall_inv Hpats)
   (proj1_sig (term_rep_aux input rec v t ty1 small hd Hty1 Hdec Hsmall Hhd))
@@ -5778,7 +5761,7 @@ Proof.
   (proj1_sig (term_rep_aux input rec v t ty1 small hd Hty1 Hdec Hsmall Hhd)) p
     (Forall_inv Hpats)).
   (*Finally, we can destruct*)
-  destruct ( match_val_single gamma_valid pd all_unif vt ty1 p (Forall_inv Hpats)
+  destruct ( match_val_single gamma_valid pd vt ty1 p (Forall_inv Hpats)
   (proj1_sig (term_rep_aux input rec v t ty1 small hd Hty1 Hdec Hsmall Hhd)));
   intros.
   - apply H3.
@@ -5790,7 +5773,7 @@ forall
   v small hd (Hty1: term_has_type sigma t ty1) Hdec Hsmall Hhd Hall Hpats Halldec,
   proj1_sig
       (term_rep_aux input rec v t ty1 small hd Hty1
-         Hdec Hsmall Hhd) = term_rep gamma_valid pd all_unif vt pf v t ty1 Hty1 ->
+         Hdec Hsmall Hhd) = term_rep gamma_valid pd vt pf v t ty1 Hty1 ->
          Forall
          (fun f : formula =>
           forall (v: val_vars pd vt) 
@@ -5798,10 +5781,10 @@ forall
             (Hval : valid_formula sigma f)
             (Hdec : decrease_pred fs ps small hd m vs f) Hsmall Hhd,
             formula_rep_aux input rec v f small hd Hval Hdec Hsmall Hhd =
-            formula_rep gamma_valid pd all_unif vt pf v f Hval) (map snd pats) ->
+            formula_rep gamma_valid pd vt pf v f Hval) (map snd pats) ->
   @match_rep_rec' input rec v t _ small hd Hty1 Hdec Hsmall Hhd
    pats Hall Hpats Halldec =
-    let dom_t := (term_rep gamma_valid pd all_unif vt pf v t ty1 Hty1) in
+    let dom_t := (term_rep gamma_valid pd vt pf v t ty1 Hty1) in
     (fix match_rep (ps: list (pattern * formula)) 
     (Hps: Forall (fun x => pattern_has_type sigma (fst x) ty1) ps)
     (Hall: Forall (fun x => valid_formula sigma (snd x)) ps) :
@@ -5811,8 +5794,8 @@ forall
     Forall (fun x => valid_formula sigma (snd x)) l' ->
     bool with
   | (p , dat) :: ptl => fun Hpats Hall =>
-    match (match_val_single gamma_valid pd all_unif vt ty1 p (Forall_inv Hpats) dom_t) with
-    | Some l => formula_rep gamma_valid pd all_unif vt pf (extend_val_with_list pd vt v l) dat
+    match (match_val_single gamma_valid pd vt ty1 p (Forall_inv Hpats) dom_t) with
+    | Some l => formula_rep gamma_valid pd vt pf (extend_val_with_list pd vt v l) dat
       (Forall_inv Hall) 
     | None => match_rep ptl (Forall_inv_tail Hpats) (Forall_inv_tail Hall)
     end
@@ -5822,7 +5805,7 @@ Proof.
   induction pats; intros; simpl; auto.
   destruct a; inversion H0; subst; rewrite IHpats; auto.
   simpl.
-  generalize dependent (@eq_refl _ (match_val_single gamma_valid pd all_unif vt ty1 p (Forall_inv Hpats)
+  generalize dependent (@eq_refl _ (match_val_single gamma_valid pd vt ty1 p (Forall_inv Hpats)
   (proj1_sig (term_rep_aux input rec v t ty1 small hd Hty1 Hdec Hsmall Hhd)))).
   generalize dependent (@match_val_single_small1 v ty1 
   (proj1_sig (term_rep_aux input rec v t ty1 small hd Hty1 Hdec Hsmall Hhd))
@@ -5833,7 +5816,7 @@ Proof.
   (proj1_sig (term_rep_aux input rec v t ty1 small hd Hty1 Hdec Hsmall Hhd)) p
     (Forall_inv Hpats)).
   (*Finally, we can destruct*)
-  destruct ( match_val_single gamma_valid pd all_unif vt ty1 p (Forall_inv Hpats)
+  destruct ( match_val_single gamma_valid pd vt ty1 p (Forall_inv Hpats)
   (proj1_sig (term_rep_aux input rec v t ty1 small hd Hty1 Hdec Hsmall Hhd)));
   intros.
   - apply H3.
@@ -5846,76 +5829,18 @@ Theorem term_fmla_rep_aux_eq (t: term) (f: formula) :
     (ty: vty) (small: list vsymbol) (hd: option vsymbol)
     (Hty: term_has_type sigma t ty)
     (Hdec: decrease_fun fs ps small hd m vs t)
-    Hsmall Hhd
-    (*(Hsmall: forall x : vsymbol,
-        In x small ->
-        vty_in_m m vs (snd x) /\
-        adt_smaller_trans (hide_ty (v x))
-          (hide_ty
-             (dom_cast (dom_aux pd)
-                (arg_nth_eq (projT1 (projT2 (projT1 (projT1 input))))
-                   (sn_sym (proj1_sig (projT1 (projT1 (projT1 input)))))
-                   (sn_idx (proj1_sig (projT1 (projT1 (projT1 input)))))
-                   (sn_idx_bound (proj1_sig (projT1 (projT1 (projT1 input))))
-                    (proj2_sig (projT1 (projT1 (projT1 input))))))
-                (hnth (sn_idx (proj1_sig (projT1 (projT1 (projT1 input)))))
-                   (projT2 (projT2 (projT1 (projT1 input)))) s_int
-                   (dom_int pd)))))
-    (Hhd: forall h : vsymbol,
-        hd = Some h ->
-        vty_in_m m vs (snd h) /\
-        hide_ty (v h) =
-        hide_ty
-          (dom_cast (dom_aux pd)
-             (arg_nth_eq (projT1 (projT2 (projT1 (projT1 input))))
-                (sn_sym (proj1_sig (projT1 (projT1 (projT1 input)))))
-                (sn_idx (proj1_sig (projT1 (projT1 (projT1 input)))))
-                (sn_idx_bound (proj1_sig (projT1 (projT1 (projT1 input))))
-                  (proj2_sig (projT1 (projT1 (projT1 input))))))
-             (hnth (sn_idx (proj1_sig (projT1 (projT1 (projT1 input)))))
-                (projT2 (projT2 (projT1 (projT1 input)))) s_int 
-                (dom_int pd))))*),
-
+    Hsmall Hhd,
     proj1_sig (term_rep_aux input (fun x _ => funcs_rep_aux x) v t ty small hd Hty Hdec Hsmall Hhd) =
-    term_rep gamma_valid pd all_unif vt pf v t ty Hty
+    term_rep gamma_valid pd vt pf v t ty Hty
   ) /\
   (forall (input: packed_args2)
     (v: val_vars pd vt)
     (small: list vsymbol) (hd: option vsymbol)
     (Hval: valid_formula sigma f)
     (Hdec: decrease_pred fs ps small hd m vs f)
-    Hsmall Hhd (*
-    (Hsmall: forall x : vsymbol,
-        In x small ->
-        vty_in_m m vs (snd x) /\
-        adt_smaller_trans (hide_ty (v x))
-          (hide_ty
-             (dom_cast (dom_aux pd)
-                (arg_nth_eq (projT1 (projT2 (projT1 (projT1 input))))
-                   (sn_sym (proj1_sig (projT1 (projT1 (projT1 input)))))
-                   (sn_idx (proj1_sig (projT1 (projT1 (projT1 input)))))
-                   (sn_idx_bound (proj1_sig (projT1 (projT1 (projT1 input))))
-                    (proj2_sig (projT1 (projT1 (projT1 input))))))
-                (hnth (sn_idx (proj1_sig (projT1 (projT1 (projT1 input)))))
-                   (projT2 (projT2 (projT1 (projT1 input)))) s_int
-                   (dom_int pd)))))
-    (Hhd: forall h : vsymbol,
-        hd = Some h ->
-        vty_in_m m vs (snd h) /\
-        hide_ty (v h) =
-        hide_ty
-          (dom_cast (dom_aux pd)
-             (arg_nth_eq (projT1 (projT2 (projT1 (projT1 input))))
-                (sn_sym (proj1_sig (projT1 (projT1 (projT1 input)))))
-                (sn_idx (proj1_sig (projT1 (projT1 (projT1 input)))))
-                (sn_idx_bound (proj1_sig (projT1 (projT1 (projT1 input))))
-                  (proj2_sig (projT1 (projT1 (projT1 input))))))
-             (hnth (sn_idx (proj1_sig (projT1 (projT1 (projT1 input)))))
-                (projT2 (projT2 (projT1 (projT1 input)))) s_int 
-                (dom_int pd))))*),
-
+    Hsmall Hhd,
     formula_rep_aux input (fun x _ => funcs_rep_aux x) v f small hd Hval Hdec Hsmall Hhd =
-    formula_rep gamma_valid pd all_unif vt pf v f Hval).
+    formula_rep gamma_valid pd vt pf v f Hval).
 Proof.
   revert t f. apply term_formula_ind; intros.
   - destruct c;
@@ -6000,7 +5925,7 @@ Proof.
   - (*Tif*)
     simpl_rep_full.
     rewrite H.
-    destruct (formula_rep gamma_valid pd all_unif vt pf v f (proj2' (proj2' (ty_if_inv Hty))));
+    destruct (formula_rep gamma_valid pd vt pf v f (proj2' (proj2' (ty_if_inv Hty))));
     simpl; auto.
   - (*Tmatch*)
     rewrite term_rep_aux_match. simpl_rep_full.
@@ -6195,9 +6120,9 @@ forall
 Proof.
   induction pats; intros; simpl; auto.
   destruct a; inversion H0; subst; rewrite IHpats; auto.
-  generalize dependent (@eq_refl _ (match_val_single gamma_valid pd all_unif vt ty1 p (Forall_inv Hpats)
+  generalize dependent (@eq_refl _ (match_val_single gamma_valid pd vt ty1 p (Forall_inv Hpats)
   (proj1_sig (term_rep_aux vt pf1 input rec1 v t ty1 small hd Hty1 Hdec Hsmall Hhd)))).
-  generalize dependent (@eq_refl _ (match_val_single gamma_valid pd all_unif vt ty1 p (Forall_inv Hpats)
+  generalize dependent (@eq_refl _ (match_val_single gamma_valid pd vt ty1 p (Forall_inv Hpats)
   (proj1_sig (term_rep_aux vt pf2 input rec2 v t ty1 small hd Hty1 Hdec Hsmall Hhd)))).
   generalize dependent (@small_match_lemma vt t v ty1 p (Forall_inv Hpats)
   (proj1_sig (term_rep_aux vt pf1 input rec1 v t ty1 small hd Hty1 Hdec Hsmall Hhd))
@@ -6229,7 +6154,7 @@ Proof.
   (proj1_sig (term_rep_aux vt pf1 input rec1 v t ty1 small hd Hty1 Hdec Hsmall Hhd)) p
     (Forall_inv Hpats)).
   (*Finally, we can destruct*)
-  destruct ( match_val_single gamma_valid pd all_unif vt ty1 p (Forall_inv Hpats)
+  destruct ( match_val_single gamma_valid pd vt ty1 p (Forall_inv Hpats)
   (proj1_sig (term_rep_aux vt pf1 input rec1 v t ty1 small hd Hty1 Hdec Hsmall Hhd)));
   intros.
   - rewrite H3.
@@ -6258,9 +6183,9 @@ forall
 Proof.
   induction pats; intros; simpl; auto.
   destruct a; inversion H0; subst; rewrite IHpats; auto.
-  generalize dependent (@eq_refl _ (match_val_single gamma_valid pd all_unif vt ty1 p (Forall_inv Hpats)
+  generalize dependent (@eq_refl _ (match_val_single gamma_valid pd vt ty1 p (Forall_inv Hpats)
   (proj1_sig (term_rep_aux vt pf1 input rec1 v t ty1 small hd Hty1 Hdec Hsmall Hhd)))).
-  generalize dependent (@eq_refl _ (match_val_single gamma_valid pd all_unif vt ty1 p (Forall_inv Hpats)
+  generalize dependent (@eq_refl _ (match_val_single gamma_valid pd vt ty1 p (Forall_inv Hpats)
   (proj1_sig (term_rep_aux vt pf2 input rec2 v t ty1 small hd Hty1 Hdec Hsmall Hhd)))).
   generalize dependent (@match_val_single_small1 vt v ty1 
   (proj1_sig (term_rep_aux vt pf1 input rec1 v t ty1 small hd Hty1 Hdec Hsmall Hhd))
@@ -6274,7 +6199,7 @@ Proof.
   (proj1_sig (term_rep_aux vt pf1 input rec1 v t ty1 small hd Hty1 Hdec Hsmall Hhd)) p
     (Forall_inv Hpats)).
   (*Finally, we can destruct*)
-  destruct ( match_val_single gamma_valid pd all_unif vt ty1 p (Forall_inv Hpats)
+  destruct ( match_val_single gamma_valid pd vt ty1 p (Forall_inv Hpats)
   (proj1_sig (term_rep_aux vt pf1 input rec1 v t ty1 small hd Hty1 Hdec Hsmall Hhd)));
   intros.
   - rewrite H3.
@@ -6306,9 +6231,9 @@ forall
 Proof.
   induction pats; intros; simpl; auto.
   destruct a; inversion H0; subst; rewrite IHpats; auto.
-  generalize dependent (@eq_refl _ (match_val_single gamma_valid pd all_unif vt ty1 p (Forall_inv Hpats)
+  generalize dependent (@eq_refl _ (match_val_single gamma_valid pd vt ty1 p (Forall_inv Hpats)
   (proj1_sig (term_rep_aux vt pf1 input rec1 v t ty1 small hd Hty1 Hdec Hsmall Hhd)))).
-  generalize dependent (@eq_refl _ (match_val_single gamma_valid pd all_unif vt ty1 p (Forall_inv Hpats)
+  generalize dependent (@eq_refl _ (match_val_single gamma_valid pd vt ty1 p (Forall_inv Hpats)
   (proj1_sig (term_rep_aux vt pf2 input rec2 v t ty1 small hd Hty1 Hdec Hsmall Hhd)))).
   generalize dependent (@small_match_lemma vt t v ty1 p (Forall_inv Hpats)
   (proj1_sig (term_rep_aux vt pf1 input rec1 v t ty1 small hd Hty1 Hdec Hsmall Hhd))
@@ -6340,7 +6265,7 @@ Proof.
   (proj1_sig (term_rep_aux vt pf1 input rec1 v t ty1 small hd Hty1 Hdec Hsmall Hhd)) p
     (Forall_inv Hpats)).
   (*Finally, we can destruct*)
-  destruct ( match_val_single gamma_valid pd all_unif vt ty1 p (Forall_inv Hpats)
+  destruct ( match_val_single gamma_valid pd vt ty1 p (Forall_inv Hpats)
   (proj1_sig (term_rep_aux vt pf1 input rec1 v t ty1 small hd Hty1 Hdec Hsmall Hhd)));
   intros.
   - rewrite H3.
@@ -6372,9 +6297,9 @@ forall
 Proof.
   induction pats; intros; simpl; auto.
   destruct a; inversion H0; subst; rewrite IHpats; auto.
-  generalize dependent (@eq_refl _ (match_val_single gamma_valid pd all_unif vt ty1 p (Forall_inv Hpats)
+  generalize dependent (@eq_refl _ (match_val_single gamma_valid pd vt ty1 p (Forall_inv Hpats)
   (proj1_sig (term_rep_aux vt pf1 input rec1 v t ty1 small hd Hty1 Hdec Hsmall Hhd)))).
-  generalize dependent (@eq_refl _ (match_val_single gamma_valid pd all_unif vt ty1 p (Forall_inv Hpats)
+  generalize dependent (@eq_refl _ (match_val_single gamma_valid pd vt ty1 p (Forall_inv Hpats)
   (proj1_sig (term_rep_aux vt pf2 input rec2 v t ty1 small hd Hty1 Hdec Hsmall Hhd)))).
   generalize dependent (@match_val_single_small1 vt v ty1 
   (proj1_sig (term_rep_aux vt pf1 input rec1 v t ty1 small hd Hty1 Hdec Hsmall Hhd))
@@ -6388,7 +6313,7 @@ Proof.
   (proj1_sig (term_rep_aux vt pf1 input rec1 v t ty1 small hd Hty1 Hdec Hsmall Hhd)) p
     (Forall_inv Hpats)).
   (*Finally, we can destruct*)
-  destruct ( match_val_single gamma_valid pd all_unif vt ty1 p (Forall_inv Hpats)
+  destruct ( match_val_single gamma_valid pd vt ty1 p (Forall_inv Hpats)
   (proj1_sig (term_rep_aux vt pf1 input rec1 v t ty1 small hd Hty1 Hdec Hsmall Hhd)));
   intros.
   - rewrite H3.
@@ -6413,35 +6338,7 @@ Theorem term_fmla_rep_change_pf (pf1 pf2: pi_funpred gamma_valid pd)
   (ty: vty) (small: list vsymbol) (hd: option vsymbol)
   (Hty: term_has_type sigma t ty)
   (Hdec: decrease_fun fs ps small hd m vs t)
-  Hsmall Hhd
-  (*(Hsmall: forall x : vsymbol,
-      In x small ->
-      vty_in_m m vs (snd x) /\
-      adt_smaller_trans (hide_ty (v x))
-        (hide_ty
-            (dom_cast (dom_aux pd)
-              (arg_nth_eq vt (projT1 (projT2 (projT1 (projT1 input))))
-                  (sn_sym (proj1_sig (projT1 (projT1 (projT1 input)))))
-                  (sn_idx (proj1_sig (projT1 (projT1 (projT1 input)))))
-                  (sn_idx_bound (proj1_sig (projT1 (projT1 (projT1 input))))
-                  (proj2_sig (projT1 (projT1 (projT1 input))))))
-              (hnth (sn_idx (proj1_sig (projT1 (projT1 (projT1 input)))))
-                  (projT2 (projT2 (projT1 (projT1 input)))) s_int
-                  (dom_int pd)))))
-  (Hhd: forall h : vsymbol,
-      hd = Some h ->
-      vty_in_m m vs (snd h) /\
-      hide_ty (v h) =
-      hide_ty
-        (dom_cast (dom_aux pd)
-            (arg_nth_eq vt (projT1 (projT2 (projT1 (projT1 input))))
-              (sn_sym (proj1_sig (projT1 (projT1 (projT1 input)))))
-              (sn_idx (proj1_sig (projT1 (projT1 (projT1 input)))))
-              (sn_idx_bound (proj1_sig (projT1 (projT1 (projT1 input))))
-                (proj2_sig (projT1 (projT1 (projT1 input))))))
-            (hnth (sn_idx (proj1_sig (projT1 (projT1 (projT1 input)))))
-              (projT2 (projT2 (projT1 (projT1 input)))) s_int 
-              (dom_int pd))))*),
+  Hsmall Hhd,
 
   term_rep_aux vt pf1 input (fun x _ => funcs_rep_aux vt pf1 x) v t ty small hd Hty Hdec Hsmall Hhd =
   term_rep_aux vt pf2 input (fun x _ => funcs_rep_aux vt pf2 x) v t ty small hd Hty Hdec Hsmall Hhd
@@ -6454,36 +6351,7 @@ Theorem term_fmla_rep_change_pf (pf1 pf2: pi_funpred gamma_valid pd)
   (small: list vsymbol) (hd: option vsymbol)
   (Hval: valid_formula sigma f)
   (Hdec: decrease_pred fs ps small hd m vs f)
-  Hsmall Hhd
-  (*
-  (Hsmall: forall x : vsymbol,
-      In x small ->
-      vty_in_m m vs (snd x) /\
-      adt_smaller_trans (hide_ty (v x))
-        (hide_ty
-            (dom_cast (dom_aux pd)
-              (arg_nth_eq vt (projT1 (projT2 (projT1 (projT1 input))))
-                  (sn_sym (proj1_sig (projT1 (projT1 (projT1 input)))))
-                  (sn_idx (proj1_sig (projT1 (projT1 (projT1 input)))))
-                  (sn_idx_bound (proj1_sig (projT1 (projT1 (projT1 input))))
-                  (proj2_sig (projT1 (projT1 (projT1 input))))))
-              (hnth (sn_idx (proj1_sig (projT1 (projT1 (projT1 input)))))
-                  (projT2 (projT2 (projT1 (projT1 input)))) s_int
-                  (dom_int pd)))))
-  (Hhd: forall h : vsymbol,
-      hd = Some h ->
-      vty_in_m m vs (snd h) /\
-      hide_ty (v h) =
-      hide_ty
-        (dom_cast (dom_aux pd)
-            (arg_nth_eq vt (projT1 (projT2 (projT1 (projT1 input))))
-              (sn_sym (proj1_sig (projT1 (projT1 (projT1 input)))))
-              (sn_idx (proj1_sig (projT1 (projT1 (projT1 input)))))
-              (sn_idx_bound (proj1_sig (projT1 (projT1 (projT1 input))))
-                (proj2_sig (projT1 (projT1 (projT1 input))))))
-            (hnth (sn_idx (proj1_sig (projT1 (projT1 (projT1 input)))))
-              (projT2 (projT2 (projT1 (projT1 input)))) s_int 
-              (dom_int pd))))*),
+  Hsmall Hhd,
 
   formula_rep_aux vt pf1 input (fun x _ => funcs_rep_aux vt pf1 x) v f small hd Hval Hdec Hsmall Hhd =
   formula_rep_aux vt pf2 input (fun x _ => funcs_rep_aux vt pf2 x) v f small hd Hval Hdec Hsmall Hhd).
@@ -6731,9 +6599,9 @@ Proof.
   (*Coq is horrible at destructing the right things, need
     Ltac for everything*)
   do 2 match goal with
-  | |- context [(match_val_single ?val ?pd ?unif ?vt ?ty ?p ?Hall ?t)] =>
+  | |- context [(match_val_single ?val ?pd ?vt ?ty ?p ?Hall ?t)] =>
     let H := fresh "Hmatch" in
-    destruct (match_val_single val pd unif vt ty p Hall t) eqn : H
+    destruct (match_val_single val pd vt ty p Hall t) eqn : H
   end.
   - (*Both some*)
     intros.
@@ -6749,7 +6617,7 @@ Proof.
     subst.
     destruct (in_bool_spec vsymbol_eq_dec x (map fst l0)).
     + apply extend_val_in_agree; auto.
-      apply (match_val_single_typs _ _ _ _ _ _ _ _ _ Hmatch).
+      apply (match_val_single_typs _ _ _ _ _ _ _ _ Hmatch).
     + (*Here notin, so equal*)
       rewrite !extend_val_notin; auto.
       apply H1.
@@ -6820,9 +6688,9 @@ Proof.
   (*Coq is horrible at destructing the right things, need
     Ltac for everything*)
   match goal with
-  | |- context [(match_val_single ?val ?pd ?unif ?vt ?ty ?p ?Hall ?t)] =>
+  | |- context [(match_val_single ?val ?pd ?vt ?ty ?p ?Hall ?t)] =>
     let H := fresh "Hmatch" in
-    destruct (match_val_single val pd unif vt ty p Hall t) eqn : H
+    destruct (match_val_single val pd vt ty p Hall t) eqn : H
   end.
   - (*some*)
     intros.
@@ -6831,7 +6699,7 @@ Proof.
     intros.
     destruct (in_bool_spec vsymbol_eq_dec x (map fst l)).
     + apply extend_val_in_agree; auto.
-      apply (match_val_single_typs _ _ _ _ _ _ _ _ _ Hmatch).
+      apply (match_val_single_typs _ _ _ _ _ _ _ _ Hmatch).
     + (*Here notin, so equal*)
       rewrite !extend_val_notin; auto.
       apply H1.
@@ -6894,9 +6762,9 @@ Proof.
   (*Coq is horrible at destructing the right things, need
     Ltac for everything*)
   do 2 match goal with
-  | |- context [(match_val_single ?val ?pd ?unif ?vt ?ty ?p ?Hall ?t)] =>
+  | |- context [(match_val_single ?val ?pd ?vt ?ty ?p ?Hall ?t)] =>
     let H := fresh "Hmatch" in
-    destruct (match_val_single val pd unif vt ty p Hall t) eqn : H
+    destruct (match_val_single val pd vt ty p Hall t) eqn : H
   end.
   - (*Both some*)
     intros.
@@ -6912,7 +6780,7 @@ Proof.
     subst.
     destruct (in_bool_spec vsymbol_eq_dec x (map fst l0)).
     + apply extend_val_in_agree; auto.
-      apply (match_val_single_typs _ _ _ _ _ _ _ _ _ Hmatch).
+      apply (match_val_single_typs _ _ _ _ _ _ _ _ Hmatch).
     + (*Here notin, so equal*)
       rewrite !extend_val_notin; auto.
       apply H1.
@@ -6984,9 +6852,9 @@ Proof.
   (*Coq is horrible at destructing the right things, need
     Ltac for everything*)
   match goal with
-  | |- context [(match_val_single ?val ?pd ?unif ?vt ?ty ?p ?Hall ?t)] =>
+  | |- context [(match_val_single ?val ?pd ?vt ?ty ?p ?Hall ?t)] =>
     let H := fresh "Hmatch" in
-    destruct (match_val_single val pd unif vt ty p Hall t) eqn : H
+    destruct (match_val_single val pd vt ty p Hall t) eqn : H
   end.
   - (*some*)
     intros.
@@ -6995,7 +6863,7 @@ Proof.
     intros.
     destruct (in_bool_spec vsymbol_eq_dec x (map fst l)).
     + apply extend_val_in_agree; auto.
-      apply (match_val_single_typs _ _ _ _ _ _ _ _ _ Hmatch).
+      apply (match_val_single_typs _ _ _ _ _ _ _ _ Hmatch).
     + (*Here notin, so equal*)
       rewrite !extend_val_notin; auto.
       apply H1.

@@ -17,6 +17,7 @@ proofs/core/Alpha.v
 proofs/core/IndProp.v
 proofs/core/RecFun.v
 proofs/core/RecFun2.v
+proofs/core/FullInterp.v
 #proofs/Util.v
 #proofs/Ty.v
 #proofs/Term.v
