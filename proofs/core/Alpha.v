@@ -5148,9 +5148,6 @@ Proof.
   reflexivity.
 Qed. 
 
-(*TODO: move earlier*)
-
-
 (*TODO: move*)
 Lemma mk_fun_in_firstb_iff (l1 l2: list vsymbol) x y
   (Hlen: length l1 = length l2)

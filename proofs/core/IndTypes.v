@@ -396,7 +396,6 @@ Proof.
       * reflexivity.
 Qed.
 
-(*TODO: move above*)
 Definition tup_of_list {A: Type} {n: nat} {l: list A} (Hl: length l = n) :
   n.-tuple A := (Tuple (introT eqP Hl)).
 

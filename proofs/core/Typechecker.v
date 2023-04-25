@@ -1620,13 +1620,6 @@ Proof.
   try apply /inP; auto.
 Qed.
 
-
-(*TODO: move*)
-(*
-Lemma length_concat_rect {A: Type} (l: list (list A)) n:
-  Forall (fun x => length x = n) l ->
-  length (concat l) = *)
-
 Lemma length_size {A: Type} (l: list A):
   length l = size l.
 Proof.
@@ -2092,8 +2085,6 @@ Proof.
       by rewrite mem_head.
       by rewrite in_cons Hinx orbT.
 Qed. 
-
-(*TODO: move*)
 
 Definition fpsym_eqMixin := EqMixin fpsym_eqb_spec.
 Canonical fpsym_eqType := EqType fpsym fpsym_eqMixin.

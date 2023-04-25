@@ -567,15 +567,6 @@ Proof.
   apply (adt_constr_params gamma_valid H3 H2 H1).
 Qed.
 
-(*TODO: move*)
-Lemma ty_subst_cons (vars: list typevar) (params: list vty)
-  (ts: typesym) (vs: list vty):
-  ty_subst vars params (vty_cons ts vs) =
-  vty_cons ts (map (ty_subst vars params) vs).
-Proof.
-  reflexivity.
-Qed.
-
 (*TODO: maybe move*)
 Lemma adt_constr_subst_ret {params a m f}:
   mut_in_ctx m gamma ->
@@ -2371,16 +2362,6 @@ Lemma preds_cast_eq p {s1 s2: list sort} (Heq: s1 = s2)
   preds gamma_valid pd pf p s2 (cast_arg_list (f_equal (sym_sigma_args p) Heq) a).
 Proof.
   subst. reflexivity. 
-Qed.
-
-(*TODO: move*)
-Lemma map_inj {A B: Type} (f: A -> B) (l1 l2: list A)
-  (Hinj: forall x y, f x = f y -> x = y):
-  map f l1 = map f l2 ->
-  l1 = l2.
-Proof.
-  revert l2. induction l1; simpl; intros; destruct l2; inversion H; auto.
-  apply Hinj in H1; subst. erewrite IHl1; auto.
 Qed.
 
 (*The two lemmas for [match_val_single]*)

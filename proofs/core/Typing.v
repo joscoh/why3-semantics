@@ -521,6 +521,46 @@ Definition constr_in_m (f: funsym) (m: mut_adt) : bool :=
 
 End MutADTUtil.
 
+(*Similar defs for recursive functions and inductive predicates*)
+Section RecFunUtil.
+
+Definition funsym_in_mutfun (f: funsym) (l: list funpred_def) : bool :=
+  in_bool funsym_eq_dec f (funsyms_of_def (recursive_def l)).
+
+Definition get_mutfun_fun (f: funsym) (gamma': context) : option (list funpred_def) :=
+  find (funsym_in_mutfun f) (mutfuns_of_context gamma').
+
+Definition predsym_in_mutfun (p: predsym) (l: list funpred_def) : bool :=
+  in_bool predsym_eq_dec p (predsyms_of_def (recursive_def l)).
+
+Definition get_mutfun_pred (p: predsym) (gamma': context) : option (list funpred_def) :=
+  find (predsym_in_mutfun p) (mutfuns_of_context gamma').
+
+Definition pred_in_indpred (p: predsym) (l: list (predsym * list formula)) :=
+  in_bool predsym_eq_dec p (map fst l).
+
+Definition indpred_def_to_indpred (i: indpred_def) : 
+  predsym * list formula :=
+  match i with
+  | ind_def p l => (p, map snd l)
+  end.
+
+Definition get_indpred (l: list indpred_def) :
+  list (predsym * list formula) :=
+  map indpred_def_to_indpred l.
+
+Lemma in_inductive_ctx gamma l: In (inductive_def l) gamma ->
+  In (get_indpred l) (indpreds_of_context gamma).
+Proof.
+  clear.
+  intros. induction gamma; simpl in *; auto.
+  destruct a; destruct H; try discriminate; auto.
+  - inversion H; subst. simpl. left.
+    reflexivity.
+  - simpl. right. auto.
+Qed.
+
+End RecFunUtil.
 
 (*We also require that all type variables in mutually recursive types
   are correct: all component types and constructors have the same
@@ -543,8 +583,6 @@ Definition wf_context (s: sig) (gamma: context) :=
   NoDup (typesyms_of_context gamma) /\
   NoDup (funsyms_of_context gamma) /\
   NoDup (predsyms_of_context gamma).
-
-(*TODO: move this maybe*)
 
 (* Additional checks for pattern matches *)
 
@@ -2186,21 +2224,11 @@ Proof.
   end.
 Qed.
 
-(*TODO: move*)
-Lemma in_bool_In  {A : Type} 
-(eq_dec : forall x y : A, {x = y} + {x <> y}) 
-(x : A) (l : list A): in_bool eq_dec x l -> In x l.
-Proof.
-  intros Hin. apply (reflect_iff _ _ (in_bool_spec eq_dec x l)).
-  auto.
-Qed. 
-
 (*First, prove lemmas about wf_contexts (not valid)*)
 Section WFContextLemmas.
 
 Context {s: sig} {gamma: context} (gamma_wf: wf_context s gamma).
 
-(*TODO: move*)
 Lemma adt_in_mut_alt {m: mut_adt} {a: alg_datatype}:
   reflect (In (adt_name a, ne_list_to_list (adt_constrs a)) 
   (datatypes_of_def (datatype_def m))) (adt_in_mut a m).
@@ -2802,15 +2830,6 @@ Qed.
     apply (H3 p). left; auto. assumption. apply H8; left; auto.
 Qed.*)
 
-(*TODO: move*)
-Lemma in_bool_ne_In {A: Set} (eq_dec: forall (x y : A), {x = y} + {x <> y})
-  (x: A) (l: ne_list A):
-  in_bool_ne eq_dec x l ->
-  In x (ne_list_to_list l).
-Proof.
-  rewrite in_bool_ne_equiv. intros.
-  apply (in_bool_In _ _ _ H).
-Qed.
   
 (*All constrs are in [funsym_of_context gamma]*)
 Lemma constrs_in_funsyms: forall {gamma c a m},
@@ -2911,6 +2930,230 @@ Proof.
   specialize (Hall _ H). simpl in Hall.
   apply Hall.
 Qed. 
+
+Lemma constr_in_adt_def a m f:
+  adt_in_mut a m ->
+  constr_in_adt f a ->
+  In f (funsyms_of_def (datatype_def m)).
+Proof.
+  unfold mut_in_ctx. unfold adt_in_mut. unfold constr_in_adt.
+  intros a_in c_in.
+  apply in_bool_In in a_in.
+  apply in_bool_ne_In in c_in.
+  simpl. induction (typs m); simpl in *. destruct a_in.
+  destruct a0. destruct a_in; subst.
+  - rewrite in_app_iff. left. apply c_in.
+  - rewrite in_app_iff. right. apply IHl. auto.
+Qed. 
+
+(*Default def*)
+Definition def_d : def := recursive_def nil.
+
+(*Lemmas about NoDups/uniqueness*)
+Section UniqLemmas.
+
+(*NOTE: really, these only require wf_context. Maybe move later.*)
+
+(*A constructor and a recursive function cannot have
+  the same name*)
+Lemma constr_not_recfun (l: list funpred_def) (f: funsym) 
+  (a: alg_datatype)
+  (m: mut_adt) (l_in: In l (mutfuns_of_context gamma))
+  (m_in: mut_in_ctx m gamma) (a_in: adt_in_mut a m)
+  (f_in1: funsym_in_mutfun f l) (f_in2: constr_in_adt f a):
+  False.
+Proof.
+  destruct gamma_valid as [Hwf _].
+  destruct Hwf as [_ [_[_ [_ [ _ [Hnodup _]]]]]].
+  unfold funsyms_of_context in Hnodup.
+  rewrite NoDup_concat_iff in Hnodup.
+  destruct Hnodup as [_ Hnodup].
+  apply in_bool_In in m_in.
+  unfold funsym_in_mutfun in f_in1.
+  apply in_bool_In in f_in1.
+  pose proof (constr_in_adt_def _ _ _ a_in f_in2) as f_in2'.
+  assert (Hin1: In (recursive_def l) gamma). {
+    apply in_mutfuns_spec. apply l_in.
+  }
+  assert (Hin2: In (datatype_def m) gamma). {
+    apply mut_in_ctx_eq2. apply In_in_bool. apply m_in. 
+  }
+  destruct (In_nth _ _ def_d Hin1) as [i1 [Hi1 Hrecdef]].
+  destruct (In_nth _ _ def_d Hin2) as [i2 [Hi2 Hdatdef]].
+  destruct (Nat.eq_dec i1 i2).
+  - subst. rewrite Hdatdef in Hrecdef. inversion Hrecdef.
+  - apply (Hnodup i1 i2 nil f); try rewrite map_length; auto.
+    rewrite !map_nth_inbound with (d2:=def_d); auto.
+    rewrite Hrecdef, Hdatdef. auto.
+Qed.
+
+(*A recursive function name cannot appear in two different
+  mutually recursive function blocks*)
+Lemma recfun_not_twice f l1 l2:
+  In (recursive_def l1) gamma ->
+  In (recursive_def l2) gamma ->
+  funsym_in_mutfun f l1 ->
+  funsym_in_mutfun f l2 ->
+  l1 = l2.
+Proof.
+  intros.
+  destruct gamma_valid as [Hwf _].
+  unfold wf_context in Hwf.
+  destruct Hwf as [_ [_ [_ [_ [_ [Hnodup _]]]]]].
+  unfold funsyms_of_context in Hnodup.
+  rewrite NoDup_concat_iff in Hnodup.
+  destruct Hnodup as [_ Hn].
+  rewrite map_length in Hn.
+  destruct (In_nth _ _ def_d H) as [i1 [Hi1 Hl1]].
+  destruct (In_nth _ _ def_d H0) as [i2 [Hi2 Hl2]].
+  destruct (Nat.eq_dec i1 i2); subst.
+  {
+    rewrite Hl1 in Hl2. inversion Hl2; auto.
+  }
+  exfalso. apply (Hn _ _ nil f Hi1 Hi2 n).
+  rewrite !map_nth_inbound with(d2:=def_d); auto.
+  rewrite Hl1, Hl2.
+  split; apply in_bool_In with(eq_dec:=funsym_eq_dec); auto.
+Qed.
+
+(*Same for recursive preds*)
+Lemma recpred_not_twice p l1 l2:
+  In (recursive_def l1) gamma ->
+  In (recursive_def l2) gamma ->
+  predsym_in_mutfun p l1 ->
+  predsym_in_mutfun p l2 ->
+  l1 = l2.
+Proof.
+  intros.
+  destruct gamma_valid as [Hwf _].
+  unfold wf_context in Hwf.
+  destruct Hwf as [_ [_ [_ [_ [_ [_ Hnodup]]]]]].
+  unfold predsyms_of_context in Hnodup.
+  rewrite NoDup_concat_iff in Hnodup.
+  destruct Hnodup as [_ Hn].
+  rewrite map_length in Hn.
+  destruct (In_nth _ _ def_d H) as [i1 [Hi1 Hl1]].
+  destruct (In_nth _ _ def_d H0) as [i2 [Hi2 Hl2]].
+  destruct (Nat.eq_dec i1 i2); subst.
+  {
+    rewrite Hl1 in Hl2. inversion Hl2; auto.
+  }
+  exfalso. apply (Hn _ _ nil p Hi1 Hi2 n).
+  rewrite !map_nth_inbound with(d2:=def_d); auto.
+  rewrite Hl1, Hl2.
+  split; apply in_bool_In with(eq_dec:=predsym_eq_dec); auto.
+Qed.
+
+(*A recursive function cannot have the same name as an
+  inductive predicate*)
+Lemma recpred_not_indpred p l1 l2:
+  In (recursive_def l1) gamma ->
+  In (inductive_def l2) gamma ->
+  predsym_in_mutfun p l1 ->
+  ~ pred_in_indpred p (get_indpred l2).
+Proof.
+  intros. intros Hinp'.
+  destruct gamma_valid as [Hwf _].
+  unfold wf_context in Hwf.
+  destruct Hwf as [_ [_ [_ [_ [_ [_ Hnodup]]]]]].
+  unfold predsyms_of_context in Hnodup.
+  rewrite NoDup_concat_iff in Hnodup.
+  destruct Hnodup as [_ Hn].
+  rewrite map_length in Hn.
+  destruct (In_nth _ _ def_d H) as [i1 [Hi1 Hl1]].
+  destruct (In_nth _ _ def_d H0) as [i2 [Hi2 Hl2]].
+  destruct (Nat.eq_dec i1 i2); subst.
+  {
+    rewrite Hl1 in Hl2. inversion Hl2.
+  }
+  apply (Hn _ _ nil p Hi1 Hi2 n).
+  rewrite !map_nth_inbound with(d2:=def_d); auto.
+  rewrite Hl1, Hl2.
+  split. apply in_bool_In with(eq_dec:=predsym_eq_dec); auto.
+  simpl. rewrite in_map_iff.
+  unfold pred_in_indpred in Hinp'.
+  apply in_bool_In in Hinp'.
+  rewrite in_map_iff in Hinp'.
+  destruct Hinp' as [[p' fs] [Hp Hinp']];
+  simpl in *; subst.
+  unfold get_indpred in Hinp'.
+  rewrite in_map_iff in Hinp'.
+  destruct Hinp' as [d'[Hdx Hind]].
+  exists d'. 
+  destruct d'; simpl in *; inversion Hdx; subst; split; auto.
+Qed.
+
+(*A constructor cannot appear in two different adts*)
+Lemma constr_in_one_adt 
+  (c: funsym) (m1 m2: mut_adt) (a1 a2: alg_datatype)
+  (m_in1: mut_in_ctx m1 gamma)
+  (m_in2: mut_in_ctx m2 gamma)
+  (a_in1: adt_in_mut a1 m1)
+  (a_in2: adt_in_mut a2 m2)
+  (c_in1: constr_in_adt c a1)
+  (c_in2: constr_in_adt c a2):
+  a1 = a2 /\ m1 = m2.
+Proof.
+  (*Handle easy case first*)
+  destruct (adt_dec a1 a2); subst.
+  {
+    split; auto. apply (@mut_adts_inj _ _ (proj1 gamma_valid) _ _ a2 a2); auto.
+  }
+  destruct gamma_valid as [Hwf _].
+  destruct Hwf as [_ [_ [_ [_ [_ [Hnodup _]]]]]].
+  unfold funsyms_of_context in Hnodup.
+  rewrite NoDup_concat_iff in Hnodup.
+  (*If m1 and m2 are the same, look within def, otherwise between defs*)
+  destruct (mut_adt_dec m1 m2); subst.
+  - split; auto.
+    destruct Hnodup as [Hnodup _].
+    assert (In (datatype_def m2) gamma) by (apply mut_in_ctx_eq2; auto).
+    specialize (Hnodup (funsyms_of_def (datatype_def m2))).
+    assert (In (funsyms_of_def (datatype_def m2)) (map funsyms_of_def gamma)).
+      rewrite in_map_iff. exists (datatype_def m2); auto.
+    specialize (Hnodup H0).
+    simpl in Hnodup.
+    rewrite NoDup_concat_iff in Hnodup.
+    rewrite map_length in Hnodup.
+    (*Look across, not in, adts*)
+    destruct Hnodup as [_ Hnodup].
+    exfalso.
+    assert (Hin1: In a1 (typs m2)) by (apply in_bool_In in a_in1; auto).
+    assert (Hin2: In a2 (typs m2)) by (apply in_bool_In in a_in2; auto).
+    destruct (In_nth _ _ a1 Hin1) as [i1 [Hi1 Ha1]].
+    destruct (In_nth _ _ a2 Hin2) as [i2 [Hi2 Ha2]].
+    (*Easy contradiction if i1 = i2*)
+    destruct (Nat.eq_dec i1 i2); subst.
+    {
+      apply n. rewrite <- Ha1. rewrite <- Ha2. apply nth_indep. auto.
+    }
+    apply (Hnodup i1 i2 nil c Hi1 Hi2 n0).
+    rewrite map_nth_inbound with(d2:=a1); auto.
+    rewrite map_nth_inbound with(d2:=a2); auto.
+    rewrite Ha1, Ha2.
+    unfold constr_in_adt in c_in1, c_in2.
+    destruct a1; destruct a2; simpl in *; split; apply in_bool_ne_In
+    with(eq_dec:=funsym_eq_dec); auto.
+  - (*This time in different m1 and m2*)
+    destruct Hnodup as [_ Hnodup].
+    rewrite map_length in Hnodup.
+    assert (Hin1: In (datatype_def m1) gamma) by (apply mut_in_ctx_eq2; auto).
+    assert (Hin2: In (datatype_def m2) gamma) by (apply mut_in_ctx_eq2; auto).
+    destruct (In_nth _ _ def_d Hin1) as [i1 [Hi1 Hm1]].
+    destruct (In_nth _ _ def_d Hin2) as [i2 [Hi2 Hm2]].
+    destruct (Nat.eq_dec i1 i2); subst.
+    {
+      rewrite Hm1 in Hm2. inversion Hm2; subst; contradiction.
+    }
+    exfalso.
+    apply (Hnodup i1 i2 nil c Hi1 Hi2 n1).
+    rewrite !map_nth_inbound with (d2:=def_d); auto.
+    rewrite Hm1, Hm2.
+    split; [apply constr_in_adt_def with(a:=a1) |
+    apply constr_in_adt_def with (a:=a2)]; auto.
+Qed.
+
+End UniqLemmas.
 
 End ValidContextLemmas.
 

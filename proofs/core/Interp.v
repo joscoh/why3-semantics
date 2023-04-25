@@ -261,7 +261,6 @@ Fixpoint val_with_args (vv: val_vars pd vt) (vars: list vsymbol)
   | _, _ => vv x
   end.
 
-(*TODO: move, shouldn't depend on m*)
 Lemma val_with_args_in vv (vars: list vsymbol) (srts: list sort)
   (a: arg_list domain srts)
   (Hnodup: NoDup vars)

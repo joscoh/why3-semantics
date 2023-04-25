@@ -1039,6 +1039,15 @@ Proof.
   intros. induction l; simpl; [rewrite orb_false_r | rewrite IHl ]; reflexivity.
 Qed.
 
+Lemma in_bool_ne_In {A: Set} (eq_dec: forall (x y : A), {x = y} + {x <> y})
+  (x: A) (l: ne_list A):
+  in_bool_ne eq_dec x l ->
+  In x (ne_list_to_list l).
+Proof.
+  rewrite in_bool_ne_equiv. intros.
+  apply (in_bool_In _ _ _ H).
+Qed.
+
 Fixpoint lists_to_ne_lists {A: Set} (l: list (list A)) 
   (Hall: forallb (fun x => negb (null x)) l) :
   list (ne_list A) :=
@@ -1525,6 +1534,15 @@ Proof.
   destruct (Nat.ltb_spec0 (S n1) (S n2)); auto; try lia.
 Qed.
 
+Lemma map_inj {A B: Type} (f: A -> B) (l1 l2: list A)
+  (Hinj: forall x y, f x = f y -> x = y):
+  map f l1 = map f l2 ->
+  l1 = l2.
+Proof.
+  revert l2. induction l1; simpl; intros; destruct l2; inversion H; auto.
+  apply Hinj in H1; subst. erewrite IHl1; auto.
+Qed.
+
 (*Disjpointness*)
 Section Disj.
 
@@ -1559,6 +1577,35 @@ Proof.
 Qed.
 
 End Disj.
+
+Ltac dec H :=
+  destruct H; [ simpl | apply ReflectF; intro C; inversion C; subst; contradiction].
+
+Ltac refl_t := solve[apply ReflectT; subst; auto].
+
+Section Tup.
+
+Definition tuple_eqb {A B: Type}
+  (eq1: A -> A -> bool)
+  (eq2: B -> B -> bool)
+  (x y: A * B) : bool :=
+  eq1 (fst x) (fst y) &&
+  eq2 (snd x) (snd y).
+
+Lemma tuple_eqb_spec {A B: Type}
+  {eq1 eq2}
+  (Heq1: forall (x y: A), reflect (x = y) (eq1 x y))
+  (Heq2: forall (x y: B), reflect (x = y) (eq2 x y)):
+  forall (x y: A * B), reflect (x = y) (tuple_eqb eq1 eq2 x y).
+Proof.
+  intros.
+  unfold tuple_eqb. dec (Heq1 (fst x) (fst y)).
+  dec (Heq2 (snd x) (snd y)).
+  destruct x; destruct y; simpl in *; subst; refl_t.
+Qed.
+
+End Tup.
+
 
 (*Tactics*)
 

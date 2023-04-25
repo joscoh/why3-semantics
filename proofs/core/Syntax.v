@@ -141,11 +141,6 @@ Definition id_fs : funsym := Build_funsym id_sym id_ret eq_refl.
 
 End ID.
 
-Ltac dec H :=
-  destruct H; [ simpl | apply ReflectF; intro C; inversion C; subst; contradiction].
-
-Ltac refl_t := solve[apply ReflectT; subst; auto].
-
 Ltac destruct_triv p :=
   destruct p; try solve[apply ReflectF; intro C; inversion C].
 
@@ -242,26 +237,6 @@ Inductive binop : Set :=
     | Tiff.
 
 Definition vsymbol : Set := (string * vty).
-
-(*TODO: move*)
-Definition tuple_eqb {A B: Type}
-  (eq1: A -> A -> bool)
-  (eq2: B -> B -> bool)
-  (x y: A * B) : bool :=
-  eq1 (fst x) (fst y) &&
-  eq2 (snd x) (snd y).
-
-Lemma tuple_eqb_spec {A B: Type}
-  {eq1 eq2}
-  (Heq1: forall (x y: A), reflect (x = y) (eq1 x y))
-  (Heq2: forall (x y: B), reflect (x = y) (eq2 x y)):
-  forall (x y: A * B), reflect (x = y) (tuple_eqb eq1 eq2 x y).
-Proof.
-  intros.
-  unfold tuple_eqb. dec (Heq1 (fst x) (fst y)).
-  dec (Heq2 (snd x) (snd y)).
-  destruct x; destruct y; simpl in *; subst; refl_t.
-Qed.
 
 Definition vsymbol_eqb (x y: vsymbol) :=
   tuple_eqb String.eqb vty_eqb x y.
@@ -885,7 +860,7 @@ Inductive funpred_def : Set :=
   | pred_def: predsym -> list vsymbol -> formula -> funpred_def.
 
 Inductive indpred_def : Set :=
-  | ind_def: predsym -> list (predsym * formula) -> indpred_def.
+  | ind_def: predsym -> list (string * formula) -> indpred_def.
 
 Record mut_adt := mk_mut {typs : list alg_datatype;
                           m_params: list typevar;
@@ -978,9 +953,9 @@ Definition predsyms_of_def (d: def) : list predsym :=
     | pred_def ps _ _ => ps :: acc
     | _ => acc
     end) nil lf
-  | inductive_def is => concat (map (fun a =>
+  | inductive_def is => (map (fun a =>
     match a with
-    | ind_def ps fs => ps :: map fst fs
+    | ind_def ps fs => ps
     end) is)
   end.
 

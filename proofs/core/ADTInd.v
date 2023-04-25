@@ -448,9 +448,6 @@ Proof.
   apply (existT _ (Logic.eq_refl)). reflexivity.
 Qed.
 
-(*TODO: move*)
-
-
 Notation domain := (domain (dom_aux pd)).
 
 (*Finally, we define a generalized induction principle on ADTs: 

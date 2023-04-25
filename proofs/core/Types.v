@@ -634,3 +634,37 @@ Proof.
   apply sort_inj; simpl.
   apply v_ty_subst_eq_aux; auto.
 Qed.
+
+Lemma ty_subst_cons (vars: list typevar) (params: list vty)
+  (ts: typesym) (vs: list vty):
+  ty_subst vars params (vty_cons ts vs) =
+  vty_cons ts (map (ty_subst vars params) vs).
+Proof.
+  reflexivity.
+Qed.
+
+Lemma v_subst_aux_sort_eq (v: typevar -> vty) (t: vty):
+  (forall x, In x (type_vars t) -> is_sort (v x)) ->
+  is_sort (v_subst_aux v t).
+Proof.
+  intros. induction t; simpl; intros; auto.
+  apply H. left; auto.
+  apply is_sort_cons_iff.
+  intros. rewrite in_map_iff in H1.
+  destruct H1 as [y [Hy Hiny]]; subst.
+  rewrite Forall_forall in H0. apply H0; auto.
+  intros. apply H. simpl. simpl_set. exists y. split; auto.
+Qed.
+
+Lemma map_ty_subst_var (vars: list typevar) (vs2: list vty):
+  length vars = length vs2 ->
+  NoDup vars ->
+  map (ty_subst vars vs2) (map vty_var vars) = vs2.
+Proof.
+  intros.
+  apply list_eq_ext'; rewrite !map_length; auto.
+  intros n d Hn.
+  rewrite -> map_nth_inbound with (d2:=vty_int); [|rewrite map_length; auto].
+  rewrite -> map_nth_inbound with (d2:=EmptyString); auto.
+  unfold ty_subst. simpl. apply ty_subst_fun_nth; auto.
+Qed.
