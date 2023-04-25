@@ -629,12 +629,160 @@ Proof.
       apply (pred_in_mutfun p_in).
 Qed.
 
-(*Third, we need to prove for all indprops that all
-  constructors are true in the given interpretation (with any valuation)
-  and that these predicates are the least predicates such that the
-  constructor holds*)
+Lemma indpreds_of_sub {l1 l2} (Hall: Forall (fun x => In x l2) l1)
+  {ps}
+  (ps_in: In ps (indpreds_of_context l1)):
+  In ps (indpreds_of_context l2).
+Proof.
+  apply in_indpreds_of_context in ps_in.
+  destruct ps_in as [d [Hind Hps]]; subst.
+  apply in_inductive_ctx.
+  rewrite Forall_forall in Hall; apply Hall; auto.
+Qed.
 
-(*TODO (see what exact theorem we need in IndProp)*)
+(*TODO: move these 2 to typing*)
+Lemma pred_in_indpred_spec p l:
+  pred_in_indpred p (get_indpred l) <->
+  In p (predsyms_of_def (inductive_def l)).
+Proof.
+  simpl. unfold get_indpred, pred_in_indpred.
+  rewrite (reflect_iff _ _ (in_bool_spec predsym_eq_dec _ _)).
+  induction l; simpl; [split; intros; auto |].
+  unfold is_true in *. bool_to_prop.
+  rewrite IHl. split; intros [Hp | Htl]; auto; left;
+  destruct a; auto.
+Qed.
+
+Lemma indpred_not_twice p l1 l2:
+  In (inductive_def l1) gamma ->
+  In (inductive_def l2) gamma ->
+  pred_in_indpred p (get_indpred l1) ->
+  pred_in_indpred p (get_indpred l2) ->
+  l1 = l2.
+Proof.
+  intros.
+  destruct gamma_valid as [Hwf _].
+  unfold wf_context in Hwf.
+  destruct Hwf as [_ [_ [_ [_ [_ [_ Hnodup]]]]]].
+  unfold predsyms_of_context in Hnodup.
+  rewrite NoDup_concat_iff in Hnodup.
+  destruct Hnodup as [_ Hn].
+  rewrite map_length in Hn.
+  destruct (In_nth _ _ def_d H) as [i1 [Hi1 Hl1]].
+  destruct (In_nth _ _ def_d H0) as [i2 [Hi2 Hl2]].
+  destruct (Nat.eq_dec i1 i2); subst.
+  {
+    rewrite Hl1 in Hl2. inversion Hl2; auto.
+  }
+  exfalso. apply (Hn _ _ nil p Hi1 Hi2 n).
+  rewrite !map_nth_inbound with(d2:=def_d); auto.
+  rewrite Hl1, Hl2.
+  split; apply pred_in_indpred_spec; auto.
+Qed.
+
+(*NOTE: requires (only) [indpred_rep_change_pf]
+  and [pf_with_indprop_preds_notin]
+*)
+
+(*We handle IndProps a bit differently; showing that they
+  equal their rep instead. We do this because for recursive functions
+  and predicates, it is much easier to work with term/formula
+  rep than the funrep, which is big and complicated. We do not
+  have such an issue for inductive predicates*)
+Lemma upd_pf_multi_indprop (l: list def) (pf: pi_funpred gamma_valid pd)
+  (Hallin: Forall (fun x => In x gamma) l)
+  (Hnodupl: NoDup l)
+  (Hordl: ctx_ordered l)
+  (ps: list (predsym * list formula))
+  (ps_in: In ps (indpreds_of_context l))
+  (p: predsym)
+  (p_in: pred_in_indpred p ps)
+  (srts: list sort)
+  (srts_len: length srts = length (s_params p))
+  (a: arg_list (domain (dom_aux pd)) (sym_sigma_args p srts)):
+  preds gamma_valid pd (upd_pf_multi l pf Hallin) p srts a =
+  indpred_rep_full gamma_valid pd (upd_pf_multi l pf Hallin)
+    ps (indpreds_of_sub Hallin ps_in) p p_in srts a.
+Proof.
+  generalize dependent (indpreds_of_sub Hallin ps_in).
+  intros ps_in'.
+  generalize dependent Hallin.
+  induction l; simpl; intros; [destruct ps_in |].
+  simpl in ps_in.
+  inversion Hnodupl; subst; clear Hnodupl.
+  destruct a0; simpl in ps_in.
+  - (*if first is datatype, easy*)
+    simpl. inversion Hordl; subst. apply IHl; auto.
+  - (*If first is recursive, use valid context uniqueness*)
+    destruct (in_indpreds_of_context _ ps_in) as [d [d_in Hps]]; subst.
+    simpl. inversion Hordl; subst.
+    rewrite funpred_with_reps_preds_notin.
+    2: {
+      intros Hin.
+      apply (recpred_not_indpred gamma_valid p l0 d); auto;
+      rewrite Forall_forall in Hallin;
+      apply Hallin; simpl; auto.
+    }
+    rewrite IHl; auto.
+    apply indpred_rep_change_pf. (*TODO: vv*)
+    + apply triv_val_vars.
+    + (*Need to show that none of these functions show up
+      in pred definition, from ordered context*)
+      intros. simpl.
+      rewrite funpred_with_reps_funs_notin; auto.
+      intros Hin.
+      apply (H4 fs (inductive_def d)); auto.
+      simpl. bool_to_prop.
+      exists fmla. auto.
+    + (*and for preds*)
+      intros. simpl.
+      rewrite funpred_with_reps_preds_notin; auto.
+      intros Hin.
+      apply (H5 ps (inductive_def d)); auto.
+      simpl. bool_to_prop. exists fmla. auto.
+  - (*For inductive def, 2 cases*)
+    destruct ps_in.
+    + fold indpred_def_to_indpred in H. 
+      assert (ps = get_indpred l0). { subst; auto. }
+      clear H. subst.
+      simpl.
+      unfold pf_with_indprop_preds.
+      destruct (pred_in_indpred_dec p (get_indpred l0)); try contradiction.
+      destruct (Nat.eq_dec (Datatypes.length srts) (Datatypes.length (s_params p)));
+      try contradiction.
+      assert (i = p_in) by apply bool_irrelevance. subst.
+      assert (ps_in' = (in_inductive_ctx gamma l0 (Forall_inv Hallin))). {
+        apply proof_irrel. (*TODO: bool?*)
+      }
+      subst.
+      (*TODO: will prob remove vv, or see*)
+      apply indpred_rep_change_pf; auto. apply triv_val_vars.
+      (*Now prove that no predicate in the formula changes*)
+      intros. simpl.
+      rewrite pf_with_indprop_preds_notin; auto.
+      intros Hin. apply H3. apply in_bool_In in Hin; auto.
+    + (*Recursive case for indpreds*)
+      rename H into ps_in.
+      destruct (in_indpreds_of_context _ ps_in) as [d [d_in Hps]]; subst.
+      simpl. inversion Hordl; subst.
+      rewrite pf_with_indprop_preds_notin.
+      2: {
+        intros Hin.
+        assert (l0 = d); [|subst; contradiction].
+        apply (indpred_not_twice p l0 d); auto;
+        rewrite Forall_forall in Hallin;
+        apply Hallin; simpl; auto.
+      }
+      rewrite IHl; auto.
+      apply indpred_rep_change_pf; auto; [apply triv_val_vars |]. 
+      (*TODO: vv*)
+      (*Show no preds appear in body*)
+      intros. simpl.
+      rewrite pf_with_indprop_preds_notin; auto.
+      intros Hin.
+      apply (H4 ps (inductive_def d)); auto.
+      simpl. bool_to_prop. exists fmla. auto.
+Qed.
 
 End BuildInterp.
 
@@ -745,6 +893,7 @@ Definition full_interp {sigma gamma}
   (p: predsym) (fs: list formula)
   (p_in: In (p, fs) l)
   (srts: list sort)
+  (srts_len: length srts = length (s_params p))
   (vt: val_typevar)
   (vv: val_vars pd (vt_with_args vt (s_params p) srts))
   (f: formula)
@@ -763,6 +912,7 @@ Definition full_interp {sigma gamma}
   (p_in: In p (map fst l))
   (fs: list formula)
   (srts: list sort)
+  (srts_len: length srts = length (s_params p))
   (a: arg_list (domain (dom_aux pd)) (sym_sigma_args p srts))
   (vt: val_typevar)
   (vv: val_vars pd (vt_with_args vt (s_params p) srts)),
@@ -827,7 +977,18 @@ Proof.
     body p_in srts srts_len a vt vv).
     (*Again, proof irrel*)
     f_equal. f_equal. apply proof_irrel.
-  - (*TOOD*)
+  - intros. unfold full_pf.
+    eapply indprop_constrs_true. apply p_in. all: auto.
+    apply vt_with_args_vt_eq; auto. apply s_params_Nodup.
+    Unshelve. 2: exact l_in.
+    (*ok, this is problem - cannot be for all srts,
+      need lemma that says for these srts, true*)
+      (*TODO: start with indprop, refactor, make assumptions smaller*)
+      (*But basic approach should be correct*)
+    intros. 
+  
+  
+  (*TOOD*)
 Admitted.
 
 End FullInterp.
