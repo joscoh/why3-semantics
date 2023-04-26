@@ -724,8 +724,7 @@ Proof.
       apply Hallin; simpl; auto.
     }
     rewrite IHl; auto.
-    apply indpred_rep_change_pf. (*TODO: vv*)
-    + apply triv_val_vars.
+    apply indpred_rep_change_pf.
     + (*Need to show that none of these functions show up
       in pred definition, from ordered context*)
       intros. simpl.
@@ -755,8 +754,7 @@ Proof.
         apply proof_irrel. (*TODO: bool?*)
       }
       subst.
-      (*TODO: will prob remove vv, or see*)
-      apply indpred_rep_change_pf; auto. apply triv_val_vars.
+      apply indpred_rep_change_pf; auto. 
       (*Now prove that no predicate in the formula changes*)
       intros. simpl.
       rewrite pf_with_indprop_preds_notin; auto.
@@ -774,8 +772,7 @@ Proof.
         apply Hallin; simpl; auto.
       }
       rewrite IHl; auto.
-      apply indpred_rep_change_pf; auto; [apply triv_val_vars |]. 
-      (*TODO: vv*)
+      apply indpred_rep_change_pf; auto. 
       (*Show no preds appear in body*)
       intros. simpl.
       rewrite pf_with_indprop_preds_notin; auto.
@@ -977,18 +974,44 @@ Proof.
     body p_in srts srts_len a vt vv).
     (*Again, proof irrel*)
     f_equal. f_equal. apply proof_irrel.
-  - intros. unfold full_pf.
-    eapply indprop_constrs_true. apply p_in. all: auto.
-    apply vt_with_args_vt_eq; auto. apply s_params_Nodup.
-    Unshelve. 2: exact l_in.
-    (*ok, this is problem - cannot be for all srts,
-      need lemma that says for these srts, true*)
-      (*TODO: start with indprop, refactor, make assumptions smaller*)
-      (*But basic approach should be correct*)
-    intros. 
-  
-  
-  (*TOOD*)
+  - intros. unfold full_pf. 
+    eapply indpred_constrs_true_val with(indpred:=l).
+    + apply (in_indpred_valid_ind_form gamma_valid); auto.
+    + apply (in_indpred_positive gamma_valid); auto.
+    + apply (in_indpred_closed gamma_valid); auto.
+    + intros.
+      (*Here, use fact that preds sets all to indprop_rep*)
+      apply upd_pf_multi_indprop; auto.
+    + apply p_in.
+    + auto.
+    + apply srts_len.
+    + apply (in_indpred_params gamma_valid); auto.
+    + assert (Hinp: pred_in_indpred p l). {
+        apply In_in_bool. rewrite in_map_iff. exists (p, fs); auto.
+      }
+      pose proof (in_indpred_unif gamma_valid l_in Hinp).
+      rewrite Forall_concat in H.
+      rewrite Forall_map in H.
+      rewrite Forall_forall in H.
+      specialize (H _ p_in).
+      auto.
+    + apply (in_indpred_typevars gamma_valid); auto.
+      apply In_in_bool. rewrite in_map_iff. exists (p, fs); auto.
+    + apply vt_with_args_vt_eq; auto. apply s_params_Nodup.
+      Unshelve. auto.
+  - (*And the least predicate proof*)
+    intros.
+    eapply (indpred_least_pred_val gamma_valid _ _ 
+      (vt_with_args vt (s_params p) srts) vv); auto.
+    + apply vt_with_args_vt_eq; auto. apply s_params_Nodup.
+    + apply (in_indpred_typevars gamma_valid); auto.
+      apply In_in_bool; auto. 
+    + rewrite Forall_concat. apply (in_indpred_closed gamma_valid); auto.
+    + (*Here, use fact that preds sets all to indprop_rep*)
+      unfold full_pf in *.
+      rewrite upd_pf_multi_indprop with(ps:=l)(ps_in:=l_in)
+        (p_in:=(In_in_bool predsym_eq_dec p (map fst l) p_in)) in H0; auto.
+      apply H0.
 Admitted.
 
 End FullInterp.
