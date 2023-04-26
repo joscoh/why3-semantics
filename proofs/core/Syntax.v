@@ -868,10 +868,19 @@ Record mut_adt := mk_mut {typs : list alg_datatype;
 
 (*NOTE: we require that every mutually recursive type has the same
   type variable parameters. That simplifies some of the proofs.*)
+
+(*Our definitions can be abstract or concrete*)
 Inductive def : Set :=
-  | datatype_def : mut_adt -> def (*for mutual recursion*)
+  (*concrete defs*)
+  | datatype_def : mut_adt -> def
   | recursive_def: list funpred_def -> def
-  | inductive_def : list indpred_def -> def.
+  | inductive_def : list indpred_def -> def
+  (*abstract defs*)
+  | abs_type : typesym -> def
+  | abs_fun : funsym -> def
+  | abs_pred : predsym -> def.
+
+Definition context := list def.
 
 (*These definitions can be unwieldy, so we provide nicer functions*)
 
@@ -885,21 +894,446 @@ Definition adt_constrs (a: alg_datatype) : ne_list funsym :=
   | alg_def _ c => c
   end.
 
-Definition datatypes_of_def (d: def) : list (typesym * list funsym) :=
+Definition adt_constr_list (a: alg_datatype) : list funsym :=
+  ne_list_to_list (adt_constrs a).
+
+(*TODO: move*)
+
+Definition omap {A B: Type} (f: A -> option B) (l: list A):
+list B :=
+fold_right (fun x acc => 
+  match f x with
+  | None => acc
+  | Some y => y :: acc
+  end) nil l.
+
+Lemma in_omap_iff {A B: Type} (f: A -> option B) (l: list A) (y: B):
+  In y (omap f l) <-> exists x, In x l /\ f x = Some y.
+Proof.
+  split; intros; induction l; simpl in *.
+  - destruct H.
+  - destruct (f a) eqn : Hfa.
+    + simpl in H. destruct H as [Hby | ]; subst; auto.
+      * exists a; auto.
+      * destruct (IHl H) as [x [Hinx Hfx]]; exists x; auto.
+    + destruct (IHl H) as [x [Hinx Hfx]]; exists x; auto.
+  - destruct H as [_ [[] _]].
+  - destruct H as [x [[Hax | Hinx] Hfx]]; subst.
+    + rewrite Hfx. simpl; auto.
+    + specialize (IHl (ex_intro _ x (conj Hinx Hfx))).
+      destruct (f a); simpl; auto.
+Qed.
+
+Definition typesyms_of_mut (m: mut_adt) : list typesym :=
+  map adt_name (typs m).
+
+Definition funsyms_of_mut (m: mut_adt) : list funsym :=
+  (concat (map adt_constr_list (typs m))).
+
+Definition predsyms_of_indprop (l: list indpred_def) : list predsym :=
+  map (fun x => match x with | ind_def p _ => p end) l.
+
+Definition funsyms_of_rec (l: list funpred_def) : list funsym :=
+  omap (fun f =>
+    match f with
+    | fun_def fs _ _ => Some fs
+    | _ => None
+    end) l.
+
+Definition predsyms_of_rec (l: list funpred_def) : list predsym :=
+  omap (fun f =>
+    match f with
+    | pred_def ps _ _ => Some ps
+    | _ => None
+    end) l.
+
+Definition funsyms_of_def (d: def) : list funsym :=
+  match d with
+  | datatype_def m => funsyms_of_mut m
+  | recursive_def fs => funsyms_of_rec fs
+  | abs_fun f => [f]
+  | _ => nil
+  end.
+
+Definition predsyms_of_def (d: def) : list predsym :=
+  match d with
+  | inductive_def l => predsyms_of_indprop l
+  | recursive_def fs => predsyms_of_rec fs
+  | abs_pred p => [p]
+  | _ => nil
+  end.
+
+Definition typesyms_of_def (d: def) : list typesym :=
+  match d with
+  | datatype_def m => typesyms_of_mut m
+  | abs_type t => [t]
+  | _ => nil
+  end.
+
+(*The signature consists of all type symbols, function symbols,
+  and predicate symbols given in a context *)
+Definition sig_t (ctx: context) : list typesym :=
+  concat (map typesyms_of_def ctx).
+
+(*The funsyms in the signature are those from ADT constructors,
+  recursive function definitions, and abstract definitions*)
+Definition sig_f (ctx: context) : list funsym :=
+  concat (map funsyms_of_def ctx).
+
+(*Predsyms are similar, but include indprops instead of
+  ADT constructors*)
+Definition sig_p (ctx: context) : list predsym :=
+  concat (map predsyms_of_def ctx).
+
+(*Now we give some helpful utilities for the defined
+  funsyms, predsyms, and bodies*)
+
+(*TODO: should we just use this?*)
+Definition mut_of_context (c: context) : list mut_adt :=
+  omap (fun d =>
+    match d with
+    | datatype_def m => Some m
+    | _ => None
+    end) c.
+
+(*TODO: see if we can get rid of these*)
+Definition mutrec_datatypes_of_context (ctx: context) : 
+  list(list (typesym * list funsym)) :=
+  map (fun m => map (fun a => (adt_name a, adt_constr_list a)) (typs m))
+    (mut_of_context ctx).
+
+Definition datatypes_of_context (ctx: context) :=
+  concat (mutrec_datatypes_of_context ctx).
+
+Definition mutfuns_of_context (c: context) : list (list funpred_def) :=
+  fold_right (fun o acc =>
+    match o with
+    | recursive_def lf => lf :: acc
+    | _ => acc
+    end) nil c.
+
+Definition indpreds_of_context (c: context) : 
+list (list (predsym * list formula)) :=
+omap (fun d =>
+  match d with
+  |inductive_def il => 
+    Some (map (fun x => 
+      match x with
+      | ind_def p fs => (p, map snd fs)
+      end) il)
+  | _ => None
+  end) c. 
+
+(*The concrete list of typesyms, funsyms, and predsyms*)
+(*TODO: change names*)
+Definition typesyms_of_context (c: context) : list typesym :=
+  map fst (datatypes_of_context c).
+
+Definition funsyms_of_context (c: context) : list funsym :=
+  concat (omap (fun d =>
+    match d with
+    | datatype_def m => Some (funsyms_of_mut m)
+    | recursive_def l => Some (funsyms_of_rec l)
+    | _ => None
+    end) c).
+
+Definition predsyms_of_context (c: context) : list predsym :=
+  concat (omap (fun d =>
+    match d with
+    | inductive_def l => Some (predsyms_of_indprop l)
+    | recursive_def l => Some (predsyms_of_rec l)
+    | _ => None
+    end) c).
+
+(*Definition predsyms_of_context (c: context) : list predsym :=
+  concat (map predsyms_of_def c).*)
+(*TODO: will have to move most or all of this*)
+
+(*TODO: dont duplicate*)
+Ltac right_dec := 
+  solve[let C := fresh "C" in right; intro C; inversion C; try contradiction].
+
+Definition adt_dec: forall (x1 x2: alg_datatype), {x1 = x2} + {x1 <> x2}.
+intros [t1 c1] [t2 c2].
+destruct (typesym_eq_dec t1 t2); [|right_dec].
+destruct (ne_list_eq_dec funsym_eq_dec c1 c2); [|right_dec].
+left. rewrite e, e0; reflexivity.
+Defined.
+
+Definition mut_adt_dec: forall (m1 m2: mut_adt), {m1 = m2} + {m1 <> m2}.
+intros m1 m2. destruct m1, m2.
+destruct (list_eq_dec adt_dec typs0 typs1); subst; [|right_dec].
+destruct (list_eq_dec typevar_eq_dec m_params0 m_params1); subst;[|right_dec].
+left. f_equal. apply bool_irrelevance.
+Defined.
+
+(*Utilities for dealing with mutual types and context*)
+(*We want booleans for proof irrelevance*)
+Section MutADTUtil.
+
+Definition mut_in_ctx (m: mut_adt) (gamma: context) :=
+  in_bool mut_adt_dec m (mut_of_context gamma).
+
+Lemma mut_in_ctx_eq: forall m gamma,
+  mut_in_ctx m gamma <-> In m (mut_of_context gamma).
+Proof.
+  intros. symmetry. 
+  apply (reflect_iff _ _ (in_bool_spec mut_adt_dec m (mut_of_context gamma))).
+Qed.
+
+Lemma mut_in_ctx_eq2: forall m gamma,
+  mut_in_ctx m gamma <-> In (datatype_def m) gamma.
+Proof.
+  intros. rewrite mut_in_ctx_eq. symmetry.
+  unfold mut_of_context, mut_in_ctx.
+  rewrite in_omap_iff.
+  split; intros.
+  - exists (datatype_def m). auto.
+  - destruct H as [d [Hind Hm]].
+    destruct d; inversion Hm; subst; auto.
+Qed.
+
+Definition mut_typs_in_ctx (l: list alg_datatype) (gamma: context) :=
+  exists (vars: list typevar) (H: nodupb typevar_eq_dec vars), 
+  In (datatype_def (mk_mut l vars H)) gamma.
+
+(*For recursive functions, it is VERY helpful for this to be
+  a (proof irrelevant) boolean*)
+Definition adt_in_mut (a: alg_datatype) (m: mut_adt) :=
+  in_bool adt_dec a (typs m).
+
+Definition ts_in_mut_list (ts: typesym) (m: list alg_datatype) : bool :=
+  in_bool typesym_eq_dec ts (map adt_name m).
+
+Lemma ts_in_mut_list_ex: forall ts m,
+  ts_in_mut_list ts (typs m) -> { a | ts = adt_name a /\ 
+  adt_in_mut a m}.
+Proof.
+  unfold adt_in_mut, ts_in_mut_list; intros. induction (typs m); simpl.
+  - simpl in H. inversion H.
+  - simpl in H.
+    destruct (typesym_eq_dec ts (adt_name a)); subst.
+    + apply (exist _ a). rewrite eq_dec_refl. split; auto.
+    + specialize (IHl H).
+      destruct IHl as [a' [Ha' Hina']].
+      apply (exist _ a'). rewrite Hina'. subst; simpl_bool; split; auto.
+Qed.
+
+Lemma ts_in_mut_list_spec: forall ts m,
+  ts_in_mut_list ts (typs m) <-> exists a, ts = adt_name a /\ 
+  adt_in_mut a m.
+Proof.
+  intros. unfold adt_in_mut, ts_in_mut_list. induction (typs m); simpl.
+  - split; intros; auto. inversion H. destruct H as [a [H]]; inversion H0.
+  - split; intros.
+    + destruct (typesym_eq_dec ts (adt_name a)).
+      * subst. exists a. rewrite eq_dec_refl. split; auto.
+      * apply IHl in H. destruct H as [a' [Ha' Hina']].
+        subst. exists a'. rewrite Hina'. simpl_bool. split; auto.
+    + destruct H as [a' [Ha' Hina']]; subst.
+      destruct (adt_dec a' a); subst; simpl in Hina'.
+      * rewrite eq_dec_refl. reflexivity.
+      * apply orb_true_iff. right. apply IHl.
+        exists a'. split; auto.
+Qed.
+
+Definition adt_mut_in_ctx (a: alg_datatype) (m: mut_adt) (gamma: context) :=
+  adt_in_mut a m /\ mut_in_ctx m gamma.
+
+Definition adt_in_ctx (a: alg_datatype) (gamma: context) :=
+  exists (m: mut_adt), adt_mut_in_ctx a m gamma.
+
+Definition constr_in_adt (c: funsym) (a: alg_datatype) :=
+  in_bool_ne funsym_eq_dec c (adt_constrs a).
+
+Definition constr_adt_mut_in_ctx (c: funsym) (a: alg_datatype) 
+  (m: mut_adt) (gamma: context) :=
+  constr_in_adt c a /\ adt_mut_in_ctx a m gamma.
+
+Definition constr_adt_in_ctx (c: funsym) (a: alg_datatype) (gamma: context) :=
+  constr_in_adt c a /\ adt_in_ctx a gamma.
+
+(*Now we need utilities for finding the ADT/mutual adt that a
+  type belongs to*)
+
+(*For pattern matches (and for typing info), 
+  we need to look at an element of type s, 
+  determine if s is an ADT type, and if so,
+  extract the components (constructor and args). We need
+  a lot of machinery to do this; we do this here.*)
+
+Definition find_ts_in_mut (ts: typesym) (m: mut_adt) : option alg_datatype :=
+  find (fun a => typesym_eq_dec ts (adt_name a)) (typs m).
+
+Lemma find_ts_in_mut_none: forall ts m,
+  find_ts_in_mut ts m = None <->
+  forall a, adt_in_mut a m -> adt_name a <> ts.
+Proof.
+  intros. unfold find_ts_in_mut.
+  rewrite find_none_iff.
+  split; intros Hall x Hin.
+  - intro C; subst.
+    apply in_bool_In in Hin.
+    specialize (Hall _ Hin). simpl_sumbool. contradiction.
+  - apply (In_in_bool adt_dec) in Hin.
+    specialize (Hall _ Hin).
+    destruct (typesym_eq_dec ts (adt_name x)); auto; subst;
+    contradiction.
+Qed.
+
+Lemma find_ts_in_mut_some: forall ts m a,
+  find_ts_in_mut ts m = Some a ->
+  adt_in_mut a m /\ adt_name a = ts.
+Proof.
+  intros ts m a Hf. apply find_some in Hf.
+  destruct Hf as [Hin Heq].
+  split; auto. apply In_in_bool; auto.
+  simpl_sumbool.
+Qed.
+
+Lemma find_ts_in_mut_iff: forall ts m a,
+  NoDup (map adt_name (typs m)) ->
+  (find_ts_in_mut ts m = Some a) <-> (adt_in_mut a m /\ adt_name a = ts).
+Proof.
+  intros. eapply iff_trans. apply find_some_nodup.
+  - intros. repeat simpl_sumbool.
+    apply (NoDup_map_in H); auto.
+  - simpl. unfold adt_in_mut. split; intros [Hin Hname];
+    repeat simpl_sumbool; split; auto; try simpl_sumbool;
+    apply (reflect_iff _ _ (in_bool_spec adt_dec a (typs m))); auto.
+Qed.
+
+Definition vty_in_m (m: mut_adt) (vs: list vty) (v: vty) : bool :=
+  match v with
+  | vty_cons ts vs' => 
+    ssrbool.isSome (find_ts_in_mut ts m) &&
+    list_eq_dec vty_eq_dec vs' vs
+  | _ => false
+  end.
+
+Definition vty_m_adt (m: mut_adt) (vs: list vty) (v: vty) : option (alg_datatype) :=
+  match v with
+  | vty_cons ts vs' =>
+      if list_eq_dec vty_eq_dec vs' vs then
+         find_ts_in_mut ts m
+      else None
+  | _ => None
+  end.
+
+Lemma vty_in_m_spec (m: mut_adt) (vs: list vty) (v: vty):
+  reflect 
+  (exists a, adt_in_mut a m /\ v = vty_cons (adt_name a) vs)
+  (vty_in_m m vs v) .
+Proof.
+  unfold vty_in_m. destruct v; try solve[apply ReflectF; intros [a [Ha Heq]]; inversion Heq].
+  destruct (find_ts_in_mut t m) eqn : Hfind; simpl.
+  - apply find_ts_in_mut_some in Hfind.
+    destruct Hfind; subst.
+    destruct (list_eq_dec vty_eq_dec l vs); subst; simpl.
+    + apply ReflectT. exists a. split; auto.
+    + apply ReflectF. intros [a' [Ha' Heq]]; inversion Heq; subst;
+      contradiction.
+  - apply ReflectF. rewrite find_ts_in_mut_none in Hfind.
+    intros [a [Ha Heq]]; subst.
+    inversion Heq; subst.
+    apply (Hfind a Ha); auto.
+Qed. 
+
+Definition vsym_in_m (m: mut_adt) (vs: list vty) (x: vsymbol) : bool :=
+  vty_in_m m vs (snd x).
+
+
+(*From a list of vsymbols, keep those which have type vty_cons a ts
+  for some a in mut_adt m*)
+Definition vsyms_in_m (m: mut_adt) (vs: list vty) (l: list vsymbol) :
+  list vsymbol :=
+  filter (vsym_in_m m vs) l.
+
+(*A more useful formulation*)
+Lemma vsyms_in_m_in (m: mut_adt) (vs: list vty) (l: list vsymbol):
+  forall x, In x (vsyms_in_m m vs l) <-> In x l /\ exists a,
+    adt_in_mut a m /\ snd x = vty_cons (adt_name a) vs.
+Proof.
+  intros. unfold vsyms_in_m, vsym_in_m, vty_in_m.
+  rewrite in_filter. rewrite and_comm. bool_to_prop.
+  destruct x; simpl in *. destruct v; try (solve[split; [intro C; inversion C | 
+    intros [a [a_in Hty]]; inversion Hty]]).
+  unfold ssrbool.isSome.
+  destruct (find_ts_in_mut t m) eqn : Hts; simpl.
+  - destruct (list_eq_dec vty_eq_dec l0 vs); subst; simpl; split;
+    intros; auto; try tf.
+    + exists a. apply find_ts_in_mut_some in Hts. destruct Hts.
+      subst. split; auto.
+    + destruct H as [a' [Ha' Hty]]. inversion Hty; subst; auto.
+  - split; [intro C; inversion C | intros [a [Ha Hty]]].
+    rewrite find_ts_in_mut_none in Hts.
+    inversion Hty; subst.
+    apply Hts in Ha. contradiction.
+Qed.
+
+Definition constr_in_m (f: funsym) (m: mut_adt) : bool :=
+  existsb (fun a => constr_in_adt f a) (typs m).
+
+End MutADTUtil.
+
+(*Similar defs for recursive functions and inductive predicates*)
+Section RecFunUtil.
+
+Definition funsym_in_mutfun (f: funsym) (l: list funpred_def) : bool :=
+  in_bool funsym_eq_dec f (funsyms_of_rec l).
+
+Definition get_mutfun_fun (f: funsym) (gamma': context) : option (list funpred_def) :=
+  find (funsym_in_mutfun f) (mutfuns_of_context gamma').
+
+Definition predsym_in_mutfun (p: predsym) (l: list funpred_def) : bool :=
+  in_bool predsym_eq_dec p (predsyms_of_rec l).
+
+Definition get_mutfun_pred (p: predsym) (gamma': context) : option (list funpred_def) :=
+  find (predsym_in_mutfun p) (mutfuns_of_context gamma').
+
+Definition pred_in_indpred (p: predsym) (l: list (predsym * list formula)) :=
+  in_bool predsym_eq_dec p (map fst l).
+
+Definition indpred_def_to_indpred (i: indpred_def) : 
+  predsym * list formula :=
+  match i with
+  | ind_def p l => (p, map snd l)
+  end.
+
+Definition get_indpred (l: list indpred_def) :
+  list (predsym * list formula) :=
+  map indpred_def_to_indpred l.
+
+Lemma in_inductive_ctx gamma l: In (inductive_def l) gamma ->
+  In (get_indpred l) (indpreds_of_context gamma).
+Proof.
+  clear.
+  intros. induction gamma; simpl in *; auto.
+  destruct a; destruct H; try discriminate; auto.
+  - inversion H; subst. simpl. left.
+    reflexivity.
+  - simpl. right. auto.
+Qed.
+
+End RecFunUtil.
+
+(*Definition datatypes_of_def (d: def) : list (typesym * list funsym) :=
   match d with
   | datatype_def m => map (fun a =>
       match a with
       | alg_def ts fs => (ts, ne_list_to_list fs)
       end) (typs m)
+  | _ => nil
+  end.
   | recursive_def _ => nil
   | inductive_def _ => nil
-  end.
+  end.*)
 
-Definition funpreds_of_def (d: def) : option (list funpred_def) :=
+(*Definition funpreds_of_def (d: def) : option (list funpred_def) :=
   match d with
   | recursive_def lf => Some lf
   | _ => None
-  end.
+  end.*)
 
 (*Definition fundefs_of_def (d: def) : list (funsym * list vsymbol * term) :=
   match d with
@@ -921,7 +1355,7 @@ Definition preddefs_of_def (d: def) : list (predsym * list vsymbol * formula) :=
   | _ => nil
   end.*)
 
-Definition indpreds_of_def (d: def) : list (predsym * list formula) :=
+(*Definition indpreds_of_def (d: def) : list (predsym * list formula) :=
   match d with
   | inductive_def li =>
     fold_right (fun x acc => 
@@ -929,9 +1363,9 @@ Definition indpreds_of_def (d: def) : list (predsym * list formula) :=
     | ind_def p fs => (p, (map snd fs)) :: acc
     end) nil li
   | _ => nil
-  end.
+  end.*)
 
-Definition funsyms_of_def (d: def) : list funsym :=
+(*Definition funsyms_of_def (d: def) : list funsym :=
   match d with
   | datatype_def m => concat ((map (fun a =>
     match a with
@@ -943,9 +1377,9 @@ Definition funsyms_of_def (d: def) : list funsym :=
       | _ => acc
       end) nil lf
   | inductive_def _ => nil
-  end.
+  end.*)
 
-Definition predsyms_of_def (d: def) : list predsym :=
+(*Definition predsyms_of_def (d: def) : list predsym :=
   match d with
   | datatype_def _ => nil
   | recursive_def lf =>
@@ -957,7 +1391,7 @@ Definition predsyms_of_def (d: def) : list predsym :=
     match a with
     | ind_def ps fs => ps
     end) is)
-  end.
+  end.*)
 
 (*Some utilities we need:*)
 
