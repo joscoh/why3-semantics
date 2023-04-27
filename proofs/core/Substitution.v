@@ -169,7 +169,7 @@ Qed.
 Definition bnd_sub_t t := proj_tm sub_bound_eq t.
 Definition bnd_sub_f f := proj_fmla sub_bound_eq f.
 
-Context {sigma: sig} {gamma: context} (gamma_valid: valid_context sigma gamma).
+Context {gamma: context} (gamma_valid: valid_context gamma).
 
 (*Ltac sub_tac :=
   repeat match goal with
@@ -180,13 +180,13 @@ Context {sigma: sig} {gamma: context} (gamma_valid: valid_context sigma gamma).
 (*sub_t and sub_f preserve typing*)
 Lemma sub_valid (t: term) (f: formula):
   (forall (x y: vsymbol) (ty: vty), 
-    term_has_type sigma t ty ->
+    term_has_type gamma t ty ->
     snd x = snd y ->
-    term_has_type sigma (sub_t x y t) ty) /\
+    term_has_type gamma (sub_t x y t) ty) /\
   (forall (x y: vsymbol),
-    valid_formula sigma f ->
+    valid_formula gamma f ->
     snd x = snd y ->
-    valid_formula sigma (sub_f x y f)).
+    valid_formula gamma (sub_f x y f)).
 Proof.
   revert t f.
   apply term_formula_ind; simpl; auto; intros.
@@ -256,12 +256,12 @@ Proof.
   - (*Fmatch*)
     inversion H1; subst.
     constructor; auto.
-    + revert H8. rewrite !Forall_forall; intros Hallpat pt. 
+    + intros. revert H3. 
       rewrite in_map_iff.
       intros [pt' [Hpt Hinpt]].
       destruct (in_bool_spec vsymbol_eq_dec x (pat_fv (fst pt'))); subst;
       simpl; auto.
-    + revert H9. rewrite !Forall_forall; intros Hallval pt. 
+    + intros x0. 
       rewrite in_map_iff.
       intros [pt' [Hpt Hinpt]].
       destruct (in_bool_spec vsymbol_eq_dec x (pat_fv (fst pt'))); subst;

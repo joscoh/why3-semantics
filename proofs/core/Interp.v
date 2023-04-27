@@ -9,7 +9,7 @@ Inductive domain_nonempty (domain: sort -> Type) (s: sort) :=
 
 Section Interp.
 
-Context {sigma: sig} {gamma: context} (gamma_valid: valid_context sigma gamma).
+Context {gamma: context} (gamma_valid: valid_context gamma).
 
 (*A pre-interpretation includes a map from sorts to Set, the condition that
   all of these Sets are nonempty, interpretations for functions and predicates,

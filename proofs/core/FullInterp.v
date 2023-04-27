@@ -21,7 +21,7 @@ Inductive prop_kind : Set :=
   | Paxiom (** do not prove, use as a premise *)
   | Pgoal. (** prove, do not use as a premise *)
 
-Inductive abstract_decl : Set :=
+(*Inductive abstract_decl : Set :=
   | type_decl: typesym -> abstract_decl (*abstract types and aliases*)
   | fparam_decl : funsym -> abstract_decl (*abstract function*)
   | pparam_decl : predsym -> abstract_decl (*abstract predicate*).
@@ -144,7 +144,7 @@ Proof.*)
   which sets the constructor reps appropriately. Here
   we actually construct it, given an initial
   interpretation for all function and predicate
-  symbols*)
+  symbols*)*)
 
 Section BuildPreInterp.
 
@@ -211,8 +211,8 @@ Proof.
 Qed.
 
 (*The definition - set each constructor to its rep*)
-Definition funs_with_constrs {sigma: sig} {gamma: context}
-  (gamma_valid: valid_context sigma gamma) (pd: pi_dom) 
+Definition funs_with_constrs{gamma: context}
+  (gamma_valid: valid_context gamma) (pd: pi_dom) 
   (*(pf: pi_funpred gamma_valid pd)*)
   (funs: forall (f: funsym) (srts: list sort)
   (arg: arg_list (domain (dom_aux pd)) (sym_sigma_args f srts)),
@@ -243,8 +243,8 @@ Definition funs_with_constrs {sigma: sig} {gamma: context}
   is from [funs]*)
 
 (*First, all constrs are correct*)
-Lemma funs_with_constrs_constrs {sigma: sig} {gamma: context}
-  (gamma_valid: valid_context sigma gamma) (pd: pi_dom) 
+Lemma funs_with_constrs_constrs {gamma: context}
+  (gamma_valid: valid_context gamma) (pd: pi_dom) 
   (funs: forall (f: funsym) (srts: list sort)
     (arg: arg_list (domain (dom_aux pd)) (sym_sigma_args f srts)),
     domain (dom_aux pd) (funsym_sigma_ret f srts)):
@@ -283,8 +283,8 @@ Proof.
 Qed.
 
 (*And for everything else, use funs*)
-Lemma funs_with_constrs_notin {sigma: sig} {gamma: context}
-  (gamma_valid: valid_context sigma gamma) (pd: pi_dom) 
+Lemma funs_with_constrs_notin {gamma: context}
+  (gamma_valid: valid_context gamma) (pd: pi_dom) 
     (funs: forall (f: funsym) (srts: list sort)
     (arg: arg_list (domain (dom_aux pd)) (sym_sigma_args f srts)),
   domain (dom_aux pd) (funsym_sigma_ret f srts)):
@@ -304,8 +304,8 @@ Proof.
 Qed.
 
 (*Now build a pi_funpred from a funs and preds function*)
-Definition mk_pi_funpred {sigma: sig} {gamma: context}
-  (gamma_valid: valid_context sigma gamma) (pd: pi_dom)
+Definition mk_pi_funpred {gamma: context}
+  (gamma_valid: valid_context gamma) (pd: pi_dom)
   (funs: forall (f: funsym) (srts: list sort)
     (arg: arg_list (domain (dom_aux pd)) (sym_sigma_args f srts)),
     domain (dom_aux pd) (funsym_sigma_ret f srts))
@@ -324,18 +324,18 @@ End BuildPreInterp.
   defined function and predicates)*)
 Section BuildInterp.
 
-Context {sigma: sig} {gamma: context} (gamma_valid: valid_context sigma gamma)
+Context {gamma: context} (gamma_valid: valid_context gamma)
   (pd: pi_dom).
 
 (*Update a pf with reps for a single def*)
 Definition upd_pf (d: def) (pf: pi_funpred gamma_valid pd) (Hin: In d gamma) : 
   pi_funpred gamma_valid pd :=
   match d as d' return In d' gamma -> pi_funpred gamma_valid pd with
-  | datatype_def _ => fun _ => pf
   | recursive_def fs => fun Hin => 
-    (funpred_with_reps gamma_valid pf fs ((proj2' (in_mutfuns fs)) Hin))
+    (funpred_with_reps gamma_valid pf fs ((proj2' (in_mutfuns _ fs)) Hin))
   | inductive_def is => fun Hin =>  (pf_with_indprop gamma_valid pd pf 
     (get_indpred is) (in_inductive_ctx _ is Hin))
+  | _ => fun _ => pf
   end Hin.
 
 Fixpoint upd_pf_multi (l: list def) (pf: pi_funpred gamma_valid pd)
@@ -380,7 +380,7 @@ Definition ts_in_def (ts: typesym) (d: def) : bool :=
   | recursive_def 
   end.*)
 (*A funsym occurs in the body of a recursive function or constructor*)
-Definition funsym_in_def (f: funsym) (d: def) : bool :=
+(*Definition funsym_in_def (f: funsym) (d: def) : bool :=
   match d with
   | datatype_def _ => false
   | recursive_def fs => 
@@ -436,7 +436,7 @@ Inductive ctx_ordered : list def -> Prop :=
     ctx_ordered ((inductive_def is) :: tl).
   
     (*Neither the types nor constructors defined in
-      m occur in the tl*)
+      m occur in the tl*)*)
 
 Lemma upd_pf_multi_recfun (l: list def) (pf: pi_funpred gamma_valid pd)
 (Hallin: Forall (fun x => In x gamma) l)
@@ -476,7 +476,7 @@ Proof.
     rewrite H.
     rewrite funs_rep_spec with (vt:=vt)(vv:=vv).
     assert (srts_len = e) by (apply UIP_dec; apply Nat.eq_dec).
-    assert (fs_in' = (proj2' (in_mutfuns fs) (Forall_inv Hallin)))
+    assert (fs_in' = (proj2' (in_mutfuns _ fs) (Forall_inv Hallin)))
       by apply proof_irrel.
     subst.
     apply dom_cast_eq.
@@ -531,6 +531,9 @@ Proof.
       apply in_bool_In in Hpin; auto.
       unfold predsym_in_def.
       bool_to_prop. exists (fun_def f args body). auto.
+    + apply IHl; auto. inversion Hordl; auto.
+    + apply IHl; auto. inversion Hordl; auto.
+    + apply IHl; auto. inversion Hordl; auto.
 Qed.
 
 (*Now we can prove the spec for recursive predicates:*)
@@ -570,7 +573,7 @@ Proof.
     rewrite H.
     rewrite preds_rep_spec with (vt:=vt)(vv:=vv).
     assert (srts_len = e) by (apply UIP_dec; apply Nat.eq_dec).
-    assert (fs_in' = (proj2' (in_mutfuns fs) (Forall_inv Hallin)))
+    assert (fs_in' = (proj2' (in_mutfuns _ fs) (Forall_inv Hallin)))
       by apply proof_irrel.
     subst.
     reflexivity.
@@ -627,6 +630,9 @@ Proof.
       apply (recpred_not_indpred gamma_valid) with(l1:=fs); auto;
       try (rewrite Forall_forall in Hallin; apply Hallin; simpl; auto).
       apply (pred_in_mutfun p_in).
+    + apply IHl; auto. inversion Hordl; auto.
+    + apply IHl; auto. inversion Hordl; auto.
+    + apply IHl; auto. inversion Hordl; auto.
 Qed.
 
 Lemma indpreds_of_sub {l1 l2} (Hall: Forall (fun x => In x l2) l1)
@@ -653,6 +659,7 @@ Proof.
   destruct a; auto.
 Qed.
 
+(*TODO: move to typing*)
 Lemma indpred_not_twice p l1 l2:
   In (inductive_def l1) gamma ->
   In (inductive_def l2) gamma ->
@@ -661,9 +668,9 @@ Lemma indpred_not_twice p l1 l2:
   l1 = l2.
 Proof.
   intros.
-  destruct gamma_valid as [Hwf _].
-  unfold wf_context in Hwf.
-  destruct Hwf as [_ [_ [_ [_ [_ [_ Hnodup]]]]]].
+  apply valid_context_wf in gamma_valid.
+  apply wf_context_alt in gamma_valid.
+  destruct gamma_valid as [_ [_ [_ [_ Hnodup]]]].
   unfold predsyms_of_context in Hnodup.
   rewrite NoDup_concat_iff in Hnodup.
   destruct Hnodup as [_ Hn].
@@ -710,12 +717,11 @@ Proof.
   induction l; simpl; intros; [destruct ps_in |].
   simpl in ps_in.
   inversion Hnodupl; subst; clear Hnodupl.
-  destruct a0; simpl in ps_in.
-  - (*if first is datatype, easy*)
-    simpl. inversion Hordl; subst. apply IHl; auto.
+  destruct a0; simpl in ps_in; inversion Hordl; subst; 
+  try solve[apply IHl; auto].
   - (*If first is recursive, use valid context uniqueness*)
     destruct (in_indpreds_of_context _ ps_in) as [d [d_in Hps]]; subst.
-    simpl. inversion Hordl; subst.
+    simpl.
     rewrite funpred_with_reps_preds_notin.
     2: {
       intros Hin.
@@ -758,11 +764,11 @@ Proof.
       (*Now prove that no predicate in the formula changes*)
       intros. simpl.
       rewrite pf_with_indprop_preds_notin; auto.
-      intros Hin. apply H3. apply in_bool_In in Hin; auto.
+      intros Hin. apply H5. apply in_bool_In in Hin; auto.
     + (*Recursive case for indpreds*)
       rename H into ps_in.
       destruct (in_indpreds_of_context _ ps_in) as [d [d_in Hps]]; subst.
-      simpl. inversion Hordl; subst.
+      simpl.
       rewrite pf_with_indprop_preds_notin.
       2: {
         intros Hin.
@@ -796,15 +802,15 @@ Proof.
   rewrite Forall_forall; intros; auto.
 Qed.
 
-Lemma indprop_fmla_valid {sigma gamma}
-  (gamma_valid: valid_context sigma gamma) 
+Lemma indprop_fmla_valid { gamma}
+  (gamma_valid: valid_context gamma) 
   {l: list (predsym * list formula)}
   (l_in: In l (indpreds_of_context gamma))
   {p: predsym} {fs: list formula}
   (p_in: In (p, fs) l)
   {f: formula}
   (f_in: In f fs):
-  valid_formula sigma f.
+  valid_formula gamma f.
 Proof.
   pose proof (in_indpred_valid gamma_valid l_in).
   rewrite Forall_forall in H.
@@ -841,8 +847,8 @@ Proof.
 *)
 
 (*We can define what it means for an interpretation to be complete*)
-Definition full_interp {sigma gamma} 
-(gamma_valid: valid_context sigma gamma)
+Definition full_interp {gamma} 
+(gamma_valid: valid_context gamma)
 (pd: pi_dom)
 (pf: pi_funpred gamma_valid pd) : Prop :=
 (*Recursive functions are equal (with a cast) to their body, 
@@ -921,7 +927,7 @@ Definition full_interp {sigma gamma}
     arg_list (domain (dom_aux pd)) (sym_sigma_args p' srts) -> bool)
     (map fst l)),
   (*If the constructors hold when ps -> Ps (ith of ps -> ith of Ps)*)
-  (forall (fs : list formula) (Hform : Forall (valid_formula sigma) fs),
+  (forall (fs : list formula) (Hform : Forall (valid_formula gamma) fs),
     In fs (map snd l) ->
       iter_and (map is_true (dep_map
         (formula_rep gamma_valid pd 
@@ -936,12 +942,8 @@ Definition full_interp {sigma gamma}
 (*Now we construct the interpretation; we prove that
   it satisfies all of the conditions of [full_interp]*)
 
-(*Here, we use an env, because we need it to be correctly
-  ordered*)
-Context {e: env} (e_val: valid_env e) (pd: pi_dom).
-
-Notation gamma := (ctx_of_env e).
-Notation gamma_valid := (valid_env_gamma e_val).
+Context {gamma: context} (gamma_valid: valid_context gamma)
+(pd: pi_dom).
 
 Definition full_pf funs preds : 
   pi_funpred gamma_valid pd :=
@@ -954,23 +956,23 @@ Definition full_pf funs preds :
 Theorem full_pf_interp funs preds :
   full_interp gamma_valid pd (full_pf funs preds).
 Proof.
-  assert (Hnodup: NoDup gamma). admit. (*TODO: preove*)
-  assert (Hord: ctx_ordered gamma). admit. (*TODO: harder proof*)
+  assert (Hnodup: NoDup gamma). apply valid_context_Nodup; auto. 
+  assert (Hord: ctx_ordered gamma). apply valid_context_ordered; auto. 
   unfold full_interp. split_all.
   - intros. unfold full_pf.
     rewrite (upd_pf_multi_recfun gamma_valid pd gamma
     (mk_pi_funpred gamma_valid pd funs preds) (all_in_refl gamma) Hnodup
-    Hord fs (proj1 (in_mutfuns_spec fs gamma) fs_in) f args
+    Hord fs (proj1 (in_mutfuns gamma fs) fs_in) f args
     body f_in srts srts_len a vt vv).
     (*Need proof irrelevance - TODO: bool proofs?*)
     assert ((in_mutfuns_sub (all_in_refl gamma)
-    (proj1 (in_mutfuns_spec fs gamma) fs_in)) = fs_in) by
+    (proj1 (in_mutfuns gamma fs) fs_in)) = fs_in) by
     (apply proof_irrel).
     rewrite H. apply dom_cast_eq.
   - intros. unfold full_pf.
     rewrite (upd_pf_multi_recpred gamma_valid pd gamma
     (mk_pi_funpred gamma_valid pd funs preds) (all_in_refl gamma) Hnodup
-    Hord fs (proj1 (in_mutfuns_spec fs gamma) fs_in) p args
+    Hord fs (proj1 (in_mutfuns gamma fs) fs_in) p args
     body p_in srts srts_len a vt vv).
     (*Again, proof irrel*)
     f_equal. f_equal. apply proof_irrel.
@@ -1012,6 +1014,6 @@ Proof.
       rewrite upd_pf_multi_indprop with(ps:=l)(ps_in:=l_in)
         (p_in:=(In_in_bool predsym_eq_dec p (map fst l) p_in)) in H0; auto.
       apply H0.
-Admitted.
+Qed.
 
 End FullInterp.

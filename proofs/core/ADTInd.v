@@ -5,7 +5,7 @@ Require Export Interp. (*TODO: require this so that
 
 Section Induction.
 
-Context {sigma: sig} {gamma: context} (gamma_valid: valid_context sigma gamma)
+Context {gamma: context} (gamma_valid: valid_context gamma)
 {pd: pi_dom}.
 
 

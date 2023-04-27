@@ -1029,21 +1029,25 @@ omap (fun d =>
 Definition typesyms_of_context (c: context) : list typesym :=
   map fst (datatypes_of_context c).
 
+Definition def_concrete_funsyms (d: def) : list funsym :=
+  match d with
+  | datatype_def m => funsyms_of_mut m
+  | recursive_def l => funsyms_of_rec l
+  | _ => nil
+  end.
+
+Definition def_concrete_predsyms (d: def) : list predsym :=
+  match d with
+  | inductive_def l => predsyms_of_indprop l
+  | recursive_def l => predsyms_of_rec l
+  | _ => nil
+  end.
+
 Definition funsyms_of_context (c: context) : list funsym :=
-  concat (omap (fun d =>
-    match d with
-    | datatype_def m => Some (funsyms_of_mut m)
-    | recursive_def l => Some (funsyms_of_rec l)
-    | _ => None
-    end) c).
+  concat (map def_concrete_funsyms c). 
 
 Definition predsyms_of_context (c: context) : list predsym :=
-  concat (omap (fun d =>
-    match d with
-    | inductive_def l => Some (predsyms_of_indprop l)
-    | recursive_def l => Some (predsyms_of_rec l)
-    | _ => None
-    end) c).
+  concat (map def_concrete_predsyms c). 
 
 (*Definition predsyms_of_context (c: context) : list predsym :=
   concat (map predsyms_of_def c).*)

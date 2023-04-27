@@ -948,8 +948,8 @@ Section Build.
   specifics of W-types, finite types, etc, but rather we can work
   at the higher level of the context and function symbols and just have
   an API for working with ADT representations.*)
-Context {s: sig} {gamma: context}.
-Variable gamma_valid: valid_context s gamma.
+Context {gamma: context}.
+Variable gamma_valid: valid_context gamma.
 
 Variable m : mut_adt.
 Definition adts := typs m.
@@ -1327,7 +1327,7 @@ Proof.
     subst; try solve[inversion H1]. clear H1.
   rewrite sigma_cons. f_equal.
   assert (ts_args ts = m_params m). {
-    subst ts. apply (@adt_args s gamma gamma_valid).
+    subst ts. apply (@adt_args gamma gamma_valid).
     unfold adt_mut_in_ctx. split; auto.
     apply In_in_bool. apply fin_nth_in.
   }
@@ -2142,7 +2142,7 @@ Proof.
           move: Hl => /andP[/implyP Hunif _].
           specialize (Hunif Hin').
           simpl_sumbool.
-          rewrite -> (@adt_args _ _ gamma_valid) with (m:=m)=>//.
+          rewrite -> (@adt_args _ gamma_valid) with (m:=m)=>//.
         }
         simpl. intros Hf.
         rewrite !cast_list_cons. intros Heq. inversion Heq.

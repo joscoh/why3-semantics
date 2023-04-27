@@ -12,29 +12,28 @@ Section Full.
 
 (*First, we define when a mutual function body is in a context*)
 
-
-
-Context {sigma: sig} {gamma: context} (gamma_valid: valid_context sigma gamma)
+Context {gamma: context} (gamma_valid: valid_context gamma)
 {pd: pi_dom}.
 
 Lemma funpred_def_valid (l: list funpred_def)
   (l_in: In l (mutfuns_of_context gamma)):
-  funpred_valid_type sigma gamma l.
+  funpred_valid gamma l.
 Proof.
-  destruct gamma_valid.
-  rewrite Forall_forall in H0.
-  rewrite in_mutfuns_spec in l_in.
-  specialize (H0 _ l_in). exact H0.
+  apply valid_context_defs in gamma_valid.
+  apply in_mutfuns in l_in.
+  rewrite Forall_forall in gamma_valid.
+  specialize (gamma_valid _ l_in).
+  apply gamma_valid.
 Qed.
 
 Lemma funpred_defs_to_sns_types l il:
   length l = length il ->
   In l (mutfuns_of_context gamma) ->
-  Forall (fun f => term_has_type sigma (fn_body f) (f_ret (fn_sym f))) 
+  Forall (fun f => term_has_type gamma (fn_body f) (f_ret (fn_sym f))) 
     (fst (funpred_defs_to_sns l il)).
 Proof.
   intros. apply funpred_def_valid in H0.
-  unfold funpred_valid_type in H0.
+  unfold funpred_valid in H0.
   destruct H0.
   rewrite Forall_forall.
   intros x. rewrite funpred_defs_to_sns_in_fst; auto.
@@ -47,19 +46,17 @@ Proof.
     apply (split_funpred_defs_in_l l). subst y. apply nth_In. auto.
   }
   apply H0 in H2. simpl in H2.
-  destruct_all. unfold well_typed_term in H2.
-  destruct H2.
-  simpl. apply H2.
+  destruct_all. auto.
 Qed.
 
 Lemma funpred_defs_to_sns_valid l il:
   length l = length il ->
   In l (mutfuns_of_context gamma) ->
-  Forall (fun p => valid_formula sigma (pn_body p)) 
+  Forall (fun p => valid_formula gamma (pn_body p)) 
     (snd (funpred_defs_to_sns l il)).
 Proof.
   intros. apply funpred_def_valid in H0.
-  unfold funpred_valid_type in H0.
+  unfold funpred_valid in H0.
   destruct H0.
   rewrite Forall_forall.
   intros x. rewrite funpred_defs_to_sns_in_snd; auto.
@@ -72,8 +69,7 @@ Proof.
     apply (split_funpred_defs_in_l l). subst y. apply nth_In. auto.
   }
   apply H0 in H2. simpl in H2.
-  destruct_all. unfold well_typed_term in H2.
-  destruct H2. auto.
+  destruct_all. auto. 
 Qed.
 
 (*Prove the typevar condition
@@ -94,10 +90,9 @@ Lemma funpred_defs_to_sns_typevars1 {l: list funpred_def}
   forall x : typevar, In x (type_vars ty) -> In x params).
 Proof.
   intros Hlen. intros.
-  destruct gamma_valid as [Hwf _].
-  unfold wf_context in Hwf.
-  destruct Hwf as [Hwf [_ [Hallin _]]].
-  unfold wf_sig in Hwf. destruct Hwf as [Halltyp _].
+  apply valid_context_wf in gamma_valid.
+  apply wf_context_alt in gamma_valid.
+  destruct gamma_valid as [Hallin _].
   rewrite Forall_forall in Hallin.
   assert (Hin:=H).
   rewrite funpred_defs_to_sns_in_fst in H; auto.
@@ -110,20 +105,20 @@ Proof.
   }
   assert (Hinf: In (fst (fst y)) (funsyms_of_context gamma)). {
     unfold funsyms_of_context. rewrite in_concat.
-    exists (funsyms_of_def (recursive_def l)). split; auto.
+    exists (funsyms_of_rec l). split; auto.
     rewrite in_map_iff. exists (recursive_def l); split; auto.
-    apply in_mutfuns_spec; auto.
+    apply in_mutfuns; auto.
     clear -H. generalize dependent y; intros.
     simpl. induction l; simpl; [inversion H |]. destruct a; simpl; auto;
     destruct H; simpl; auto; inversion H; subst; auto.
   }
   specialize (Hallin _ Hinf).
-  rewrite Forall_forall in Halltyp.
-  specialize (Halltyp _ Hallin).
-  rewrite Forall_forall in Halltyp.
-  specialize (Halltyp ty H0). destruct Halltyp as [Hvalty Hallty].
-  rewrite Forall_forall in Hallty.
-  rewrite <- (Hparams _ Hin). simpl. apply Hallty. auto.
+  unfold wf_funsym in Hallin.
+  rewrite Forall_forall in Hallin.
+  specialize (Hallin _ H0).
+  rewrite <- (Hparams _ Hin); auto.
+  simpl. destruct Hallin. rewrite Forall_forall in H3.
+  apply H3; auto.
 Qed.
 
 Lemma funpred_defs_to_sns_typevars2 {l: list funpred_def} 
@@ -140,42 +135,35 @@ Lemma funpred_defs_to_sns_typevars2 {l: list funpred_def}
   forall x : typevar, In x (type_vars ty) -> In x params).
 Proof.
   intros Hlen. intros.
-  destruct gamma_valid as [Hwf _].
-  unfold wf_context in Hwf.
-  destruct Hwf as [Hwf [_ [_ [Hallin _]]]].
-  unfold wf_sig in Hwf. destruct Hwf as [_ Halltyp].
+  apply valid_context_wf in gamma_valid.
+  apply wf_context_alt in gamma_valid.
+  destruct gamma_valid as [_ [ Hallin _ ]].
   rewrite Forall_forall in Hallin.
   assert (Hin:=H).
   rewrite funpred_defs_to_sns_in_snd in H; auto.
   destruct H as [i [Hi Hf]].
   set (y:=nth i (snd (split_funpred_defs l)) (id_ps, [], Ftrue)) in *.
   simpl in Hf.
-  rewrite map_length in Hf.
-  replace (length (combine (fst (split_funpred_defs l))
-  (firstn (Datatypes.length (fst (split_funpred_defs l))) il))) with
-  (length (fst (split_funpred_defs l))) in Hf by
-    (rewrite combine_length, firstn_length;
-    pose proof (split_funpred_defs_length l); lia).
   subst. simpl in H0.
   assert (In (pred_def (fst (fst y)) (snd (fst y)) (snd y)) l). {
     apply (split_funpred_defs_in_l l). subst y. apply nth_In. auto.
   }
   assert (Hinf: In (fst (fst y)) (predsyms_of_context gamma)). {
     unfold predsyms_of_context. rewrite in_concat.
-    exists (predsyms_of_def (recursive_def l)). split; auto.
+    exists (predsyms_of_rec l). split; auto.
     rewrite in_map_iff. exists (recursive_def l); split; auto.
-    apply in_mutfuns_spec; auto.
+    apply in_mutfuns; auto.
     clear -H. generalize dependent y; intros.
     simpl. induction l; simpl; [inversion H |]. destruct a; simpl; auto;
     destruct H; simpl; auto; inversion H; subst; auto.
   }
   specialize (Hallin _ Hinf).
-  rewrite Forall_forall in Halltyp.
-  specialize (Halltyp _ Hallin).
-  rewrite Forall_forall in Halltyp.
-  specialize (Halltyp ty H0). destruct Halltyp as [Hvalty Hallty].
-  rewrite Forall_forall in Hallty.
-  rewrite <- (Hparams _ Hin). simpl. apply Hallty. auto.
+  unfold wf_predsym in Hallin.
+  rewrite Forall_forall in Hallin.
+  specialize (Hallin _ H0).
+  rewrite <- (Hparams _ Hin); auto.
+  simpl. destruct Hallin. rewrite Forall_forall in H3.
+  apply H3; auto.
 Qed.
 
 Lemma get_funsym_fn {l: list funpred_def} {il} {f: funsym}
@@ -192,12 +180,7 @@ Proof.
   apply n.
   clear n.
   apply in_bool_In in f_in.
-  assert ((fold_right
-  (fun (x : funpred_def) (acc : list funsym) =>
-   match x with
-   | fun_def f' _ _ => f' :: acc
-   | pred_def _ _ _ => acc
-   end) [] l) = (map fn_sym (fst (funpred_defs_to_sns l il)))). {
+  assert (funsyms_of_rec l = (map fn_sym (fst (funpred_defs_to_sns l il)))). {
     unfold funpred_defs_to_sns; simpl.
     pose proof (split_funpred_defs_length l).
     rewrite !map_map. simpl. rewrite map_fst_fst_fst_combine by
@@ -222,12 +205,7 @@ Proof.
   apply n.
   clear n.
   apply in_bool_In in p_in.
-  assert ((fold_right
-  (fun (x : funpred_def) (acc : list predsym) =>
-   match x with
-   | fun_def _ _ _ => acc
-   | pred_def p' _ _ => p' :: acc
-   end) [] l) = (map pn_sym (snd (funpred_defs_to_sns l il)))). {
+  assert ((predsyms_of_rec l) = (map pn_sym (snd (funpred_defs_to_sns l il)))). {
     unfold funpred_defs_to_sns; simpl.
     pose proof (split_funpred_defs_length l).
     rewrite !map_map. simpl. rewrite map_fst_fst_fst_combine by
@@ -244,11 +222,12 @@ Definition get_funpred_def_info (l: list funpred_def)
   (list fn * list pn).
 Proof.
   pose proof (funpred_def_valid _ l_in) as Hval.
-  unfold funpred_valid_type in Hval.
+  unfold funpred_valid in Hval.
   destruct Hval.
   (*Here, we use the typechecking result that it is
     decidable to find the list of indices*)
-  apply (Typechecker.funpred_def_term_decide sigma gamma (proj1' gamma_valid) _ l_in) 
+  apply (Typechecker.funpred_def_term_decide gamma 
+    (valid_context_wf _ gamma_valid) _ l_in) 
   in H0.
   destruct (Typechecker.find_funpred_def_term gamma l) as [[[[m params] vs] il ] |].
   - exact (funpred_defs_to_sns l il).
@@ -286,7 +265,7 @@ Definition funs_rep (pf: pi_funpred gamma_valid pd)
 Proof.
   pose proof (funpred_def_valid _ l_in) as Hval.
   destruct Hval as [Hval Hex].
-  apply (Typechecker.funpred_def_term_decide sigma gamma (proj1' gamma_valid) _ l_in) 
+  apply (Typechecker.funpred_def_term_decide gamma (valid_context_wf _ gamma_valid) _ l_in) 
   in Hex.
   destruct (Typechecker.find_funpred_def_term gamma l) as [[[[m params] vs] il]| ];
   [| exact (False_rect _ Hex)].
@@ -306,7 +285,7 @@ Proof.
   }
   set (Heqf :=
   eq_trans (f_equal f_sym (proj2' (proj2_sig fn_info)))
-  (fs_wf_eq _ (proj1' (funpred_def_to_sns_wf sigma gamma l il Hlen Hidx Hval))
+  (fs_wf_eq _ (proj1' (funpred_def_to_sns_wf gamma l il Hlen Hidx Hval))
   _ (proj1' (proj2_sig fn_info))) : f_sym f = sn_sym (proj1_sig fn_info) ).
   set (a':= (cast_arg_list (f_equal (fun x => sym_sigma_args x srts) Heqf) a)).
   (*Need to get the fn associated with this funsym*)
@@ -315,11 +294,11 @@ Proof.
   exact (dom_cast _ 
     (f_equal (fun x => funsym_sigma_ret x srts) (eq_sym (proj2' (proj2_sig fn_info))))
 
-  (@funs_rep_aux _ _ gamma_valid pd (fst sns) (snd sns)
-    (proj1' (funpred_def_to_sns_wf sigma gamma l il Hlen Hidx Hval))
-    (proj2' (funpred_def_to_sns_wf sigma gamma l il Hlen Hidx Hval))
-    (proj1' (funpred_defs_to_sns_NoDup (proj1' gamma_valid) _ _ l_in (eq_sym Hlen)))
-    (proj2' (funpred_defs_to_sns_NoDup (proj1' gamma_valid) _ _ l_in (eq_sym Hlen)))
+  (@funs_rep_aux _ gamma_valid pd (fst sns) (snd sns)
+    (proj1' (funpred_def_to_sns_wf gamma l il Hlen Hidx Hval))
+    (proj2' (funpred_def_to_sns_wf gamma l il Hlen Hidx Hval))
+    (proj1' (funpred_defs_to_sns_NoDup (valid_context_wf _ gamma_valid) _ _ l_in (eq_sym Hlen)))
+    (proj2' (funpred_defs_to_sns_NoDup (valid_context_wf _ gamma_valid) _ _ l_in (eq_sym Hlen)))
     (funpred_defs_to_sns_types _ _ (eq_sym Hlen) l_in)
     (funpred_defs_to_sns_valid _ _ (eq_sym Hlen) l_in)
     params Hfparams Hpparams
@@ -347,7 +326,7 @@ Definition preds_rep (pf: pi_funpred gamma_valid pd)
 Proof.
   pose proof (funpred_def_valid _ l_in) as Hval.
   destruct Hval as [Hval Hex].
-  apply (Typechecker.funpred_def_term_decide sigma gamma (proj1' gamma_valid) _ l_in) 
+  apply (Typechecker.funpred_def_term_decide gamma (valid_context_wf _ gamma_valid) _ l_in) 
   in Hex.
   destruct (Typechecker.find_funpred_def_term gamma l) as [[[[m params] vs] il]| ];
   [| exact (False_rect _ Hex)].
@@ -367,17 +346,17 @@ Proof.
   }
   set (Heqf :=
   eq_trans (f_equal p_sym (proj2' (proj2_sig pn_info)))
-  (ps_wf_eq _ (proj2' (funpred_def_to_sns_wf sigma gamma l il Hlen Hidx Hval))
+  (ps_wf_eq _ (proj2' (funpred_def_to_sns_wf gamma l il Hlen Hidx Hval))
   _ (proj1' (proj2_sig pn_info))) : p_sym p = sn_sym (proj1_sig pn_info) ).
   set (a':= (cast_arg_list (f_equal (fun x => sym_sigma_args x srts) Heqf) a)).
   (*Need to get the fn associated with this funsym*)
   (*We call [funs_rep_aux] with all of the proofs we need; we need
     to cast the result because it returns something basedon the funsym*)
-  exact (@preds_rep_aux _ _ gamma_valid pd (fst sns) (snd sns)
-    (proj1' (funpred_def_to_sns_wf sigma gamma l il Hlen Hidx Hval))
-    (proj2' (funpred_def_to_sns_wf sigma gamma l il Hlen Hidx Hval))
-    (proj1' (funpred_defs_to_sns_NoDup (proj1' gamma_valid) _ _ l_in (eq_sym Hlen)))
-    (proj2' (funpred_defs_to_sns_NoDup (proj1' gamma_valid) _ _ l_in (eq_sym Hlen)))
+  exact (@preds_rep_aux _ gamma_valid pd (fst sns) (snd sns)
+    (proj1' (funpred_def_to_sns_wf gamma l il Hlen Hidx Hval))
+    (proj2' (funpred_def_to_sns_wf gamma l il Hlen Hidx Hval))
+    (proj1' (funpred_defs_to_sns_NoDup (valid_context_wf _ gamma_valid) _ _ l_in (eq_sym Hlen)))
+    (proj2' (funpred_defs_to_sns_NoDup (valid_context_wf _ gamma_valid) _ _ l_in (eq_sym Hlen)))
     (funpred_defs_to_sns_types _ _ (eq_sym Hlen) l_in)
     (funpred_defs_to_sns_valid _ _ (eq_sym Hlen) l_in)
     params Hfparams Hpparams
@@ -505,13 +484,14 @@ Lemma f_body_type {l: list funpred_def}
   (l_in: In l (mutfuns_of_context gamma))
   {f: funsym} {args: list vsymbol} {body: term}
   (f_in: In (fun_def f args body) l):
-  term_has_type sigma body (f_ret f).
+  term_has_type gamma body (f_ret f).
 Proof.
-  destruct gamma_valid as [_ Hval].
+  apply valid_context_defs in gamma_valid.
+  rename gamma_valid into Hval.
   rewrite Forall_forall in Hval.
-  apply in_mutfuns_spec in l_in.
+  apply in_mutfuns in l_in.
   specialize (Hval _ l_in). simpl in Hval.
-  unfold funpred_valid_type in Hval.
+  unfold funpred_valid in Hval.
   destruct Hval as [Hall _].
   rewrite Forall_forall in Hall.
   specialize (Hall _ f_in).
@@ -523,13 +503,14 @@ Lemma p_body_type {l: list funpred_def}
   (l_in: In l (mutfuns_of_context gamma))
   {p: predsym} {args: list vsymbol} {body: formula}
   (p_in: In (pred_def p args body) l):
-  valid_formula sigma body.
+  valid_formula gamma body.
 Proof.
-  destruct gamma_valid as [_ Hval].
+  apply valid_context_defs in gamma_valid.
+  rename gamma_valid into Hval.
   rewrite Forall_forall in Hval.
-  apply in_mutfuns_spec in l_in.
+  apply in_mutfuns in l_in.
   specialize (Hval _ l_in). simpl in Hval.
-  unfold funpred_valid_type in Hval.
+  unfold funpred_valid in Hval.
   destruct Hval as [Hall _].
   rewrite Forall_forall in Hall.
   specialize (Hall _ p_in).
@@ -556,7 +537,7 @@ Proof.
   unfold funsyms_of_context. rewrite in_concat.
   exists (funsyms_of_def (recursive_def l)).
   split. rewrite in_map_iff. exists (recursive_def l).
-  split; auto. apply in_mutfuns_spec in l_in; auto.
+  split; auto. apply in_mutfuns in l_in; auto.
   apply in_bool_In in f_in. auto.
 Qed.
 
@@ -571,16 +552,15 @@ Proof.
   unfold funsym_sigma_ret.
   apply vt_with_args_cast; auto.
   2: apply s_params_Nodup.
+  apply valid_context_wf in gamma_valid.
+  apply wf_context_alt in gamma_valid.
   destruct gamma_valid as [Hwf _].
-  destruct Hwf as [Hwf [_ [Hfin _]]].
-  rewrite Forall_forall in Hfin.
-  specialize (Hfin _ f_in).
-  destruct Hwf as [Hwff _].
-  rewrite Forall_forall in Hwff.
-  specialize (Hwff _ Hfin). rewrite Forall_forall in Hwff.
-  specialize (Hwff (f_ret f) (ltac:(simpl; auto))).
-  destruct Hwff as [_ Hall].
-  rewrite Forall_forall in Hall. apply Hall.
+  rewrite Forall_forall in Hwf.
+  specialize (Hwf _ f_in).
+  unfold wf_funsym in Hwf.
+  rewrite Forall_forall in Hwf.
+  rewrite <- Forall_forall. 
+  apply Hwf; simpl; auto.
 Qed.
 
 Lemma funpred_with_reps_funs_in {pf} {l: list funpred_def}
@@ -714,7 +694,7 @@ Lemma pf_funs l
 (params: list typevar)
 (srts_len: length srts = length params)
 (pf: pi_funpred gamma_valid pd)
-(Hallval: Forall (funpred_def_valid_type sigma gamma) l)
+(Hallval: Forall (funpred_def_valid_type gamma) l)
 (m: mut_adt)
 (vs: list vty)
 (il: list nat)
@@ -784,10 +764,10 @@ funs_rep_aux gamma_valid
       preddef_to_pn (fst (fst (fst x))) (snd (fst (fst x))) (snd (fst x)) (snd x))
      (combine (snd (split_funpred_defs l))
         (skipn (Datatypes.length (fst (split_funpred_defs l))) il)))
-  (proj1' (funpred_def_to_sns_wf sigma gamma l il Hlen Hidx Hallval))
-  (proj2' (funpred_def_to_sns_wf sigma gamma l il Hlen Hidx Hallval))
-  (proj1' (funpred_defs_to_sns_NoDup (proj1' gamma_valid) l il l_in (eq_sym Hlen)))
-  (proj2' (funpred_defs_to_sns_NoDup (proj1' gamma_valid) l il l_in (eq_sym Hlen)))
+  (proj1' (funpred_def_to_sns_wf gamma l il Hlen Hidx Hallval))
+  (proj2' (funpred_def_to_sns_wf gamma l il Hlen Hidx Hallval))
+  (proj1' (funpred_defs_to_sns_NoDup (valid_context_wf _ gamma_valid) l il l_in (eq_sym Hlen)))
+  (proj2' (funpred_defs_to_sns_NoDup (valid_context_wf _ gamma_valid) l il l_in (eq_sym Hlen)))
   (funpred_defs_to_sns_types l il (eq_sym Hlen) l_in)
   (funpred_defs_to_sns_valid l il (eq_sym Hlen) l_in) params Hfparams
   Hpparams (funpred_defs_to_sns_typevars1 l_in Hfparams (eq_sym Hlen))
@@ -803,7 +783,7 @@ funs_rep_aux gamma_valid
                  (snd (fst x)) (snd x))
               (combine (fst (split_funpred_defs l))
                  (firstn (Datatypes.length (fst (split_funpred_defs l))) il)))
-           (proj1' (funpred_def_to_sns_wf sigma gamma l il Hlen Hidx Hallval)) f f_in0))
+           (proj1' (funpred_def_to_sns_wf gamma l il Hlen Hidx Hallval)) f f_in0))
      a0).
 Proof.
   intros. simpl.
@@ -824,7 +804,7 @@ Proof.
   (*Now, the interesting case*)
   unfold funs_rep. simpl.
   destruct (funpred_def_valid l l_in) as [Hallval' Hex'].
-  generalize dependent (Typechecker.funpred_def_term_decide sigma gamma (proj1' gamma_valid) l l_in Hex').
+  generalize dependent (Typechecker.funpred_def_term_decide gamma (valid_context_wf _ gamma_valid) l l_in Hex').
   rewrite Hterm. (*Now we get the same m, il, vs, and params*)
   simpl.
   intros Ht1.
@@ -838,7 +818,7 @@ Proof.
     destruct ((get_funsym_fn l_in i (eq_sym Hlen1))); simpl.
     (*Use uniqueness*)
     destruct a.
-    pose proof  (proj1' (funpred_defs_to_sns_NoDup (proj1' gamma_valid) _ _ l_in (eq_sym Hlen1))).
+    pose proof  (proj1' (funpred_defs_to_sns_NoDup (valid_context_wf _ gamma_valid) _ _ l_in (eq_sym Hlen1))).
     apply (NoDup_map_in H1); auto.
   }
   destruct ( (get_funsym_fn l_in i (eq_sym Hlen1))); simpl in *.
@@ -935,7 +915,7 @@ Lemma pf_preds l
 (params: list typevar)
 (srts_len: length srts = length params)
 (pf: pi_funpred gamma_valid pd)
-(Hallval: Forall (funpred_def_valid_type sigma gamma) l)
+(Hallval: Forall (funpred_def_valid_type gamma) l)
 (m: mut_adt)
 (vs: list vty)
 (il: list nat)
@@ -1005,10 +985,10 @@ preds_rep_aux gamma_valid
       preddef_to_pn (fst (fst (fst x))) (snd (fst (fst x))) (snd (fst x)) (snd x))
      (combine (snd (split_funpred_defs l))
         (skipn (Datatypes.length (fst (split_funpred_defs l))) il)))
-  (proj1' (funpred_def_to_sns_wf sigma gamma l il Hlen Hidx Hallval))
-  (proj2' (funpred_def_to_sns_wf sigma gamma l il Hlen Hidx Hallval))
-  (proj1' (funpred_defs_to_sns_NoDup (proj1' gamma_valid) l il l_in (eq_sym Hlen)))
-  (proj2' (funpred_defs_to_sns_NoDup (proj1' gamma_valid) l il l_in (eq_sym Hlen)))
+  (proj1' (funpred_def_to_sns_wf gamma l il Hlen Hidx Hallval))
+  (proj2' (funpred_def_to_sns_wf gamma l il Hlen Hidx Hallval))
+  (proj1' (funpred_defs_to_sns_NoDup (valid_context_wf _ gamma_valid) l il l_in (eq_sym Hlen)))
+  (proj2' (funpred_defs_to_sns_NoDup (valid_context_wf _ gamma_valid) l il l_in (eq_sym Hlen)))
   (funpred_defs_to_sns_types l il (eq_sym Hlen) l_in)
   (funpred_defs_to_sns_valid l il (eq_sym Hlen) l_in) params Hfparams
   Hpparams (funpred_defs_to_sns_typevars1 l_in Hfparams (eq_sym Hlen))
@@ -1024,7 +1004,7 @@ preds_rep_aux gamma_valid
                  (snd (fst x)) (snd x))
               (combine (snd (split_funpred_defs l))
                  (skipn (Datatypes.length (fst (split_funpred_defs l))) il)))
-           (proj2' (funpred_def_to_sns_wf sigma gamma l il Hlen Hidx Hallval)) p p_in))
+           (proj2' (funpred_def_to_sns_wf gamma l il Hlen Hidx Hallval)) p p_in))
      a0).
 Proof.
   intros. simpl.
@@ -1044,7 +1024,7 @@ Proof.
   (*Now, the interesting case*)
   unfold preds_rep. simpl.
   destruct (funpred_def_valid l l_in) as [Hallval' Hex'].
-  generalize dependent (Typechecker.funpred_def_term_decide sigma gamma (proj1' gamma_valid) l l_in Hex').
+  generalize dependent (Typechecker.funpred_def_term_decide gamma (valid_context_wf _ gamma_valid) l l_in Hex').
   rewrite Hterm. (*Now we get the same m, il, vs, and params*)
   simpl.
   intros Ht1.
@@ -1058,7 +1038,7 @@ Proof.
     destruct ((get_predsym_pn l_in i (eq_sym Hlen1))); simpl.
     (*Use uniqueness*)
     destruct a.
-    pose proof  (proj2' (funpred_defs_to_sns_NoDup (proj1' gamma_valid) _ _ l_in (eq_sym Hlen1))).
+    pose proof  (proj2' (funpred_defs_to_sns_NoDup (valid_context_wf _ gamma_valid) _ _ l_in (eq_sym Hlen1))).
     apply (NoDup_map_in H1); auto.
   }
   destruct ( (get_predsym_pn l_in i (eq_sym Hlen1))); simpl in *.
@@ -1149,7 +1129,6 @@ Proof.
     subst. rewrite in_map_iff. exists f1. split; auto.
 Qed.
 
-(*We need these later as well:*)
 Lemma funs_rep_change_pf pf1 pf2 {f l}
   (f_in: funsym_in_mutfun f l)
   (l_in: In l (mutfuns_of_context gamma))
@@ -1166,7 +1145,7 @@ Proof.
   intros.
   unfold funs_rep. simpl.
   destruct (funpred_def_valid l l_in) as [Hallval Hex].
-  generalize dependent (Typechecker.funpred_def_term_decide sigma gamma (proj1' gamma_valid) l l_in Hex).
+  generalize dependent (Typechecker.funpred_def_term_decide gamma (valid_context_wf _ gamma_valid) l l_in Hex).
   destruct (Typechecker.find_funpred_def_term gamma l) as [[[[m params] vs] il] |] eqn : Hterm.
   2: { intros []. }
   intros Ht.
@@ -1203,7 +1182,7 @@ Proof.
   intros.
   unfold preds_rep. simpl.
   destruct (funpred_def_valid l l_in) as [Hallval Hex].
-  generalize dependent (Typechecker.funpred_def_term_decide sigma gamma (proj1' gamma_valid) l l_in Hex).
+  generalize dependent (Typechecker.funpred_def_term_decide gamma (valid_context_wf _ gamma_valid) l l_in Hex).
   destruct (Typechecker.find_funpred_def_term gamma l) as [[[[m params] vs] il] |] eqn : Hterm.
   2: { intros []. }
   intros Ht.
@@ -1255,7 +1234,7 @@ Proof.
   2: intros; symmetry; apply funpred_with_reps_preds_notin; auto.
   unfold funs_rep. simpl.
   destruct (funpred_def_valid l l_in) as [Hallval Hex].
-  generalize dependent (Typechecker.funpred_def_term_decide sigma gamma (proj1' gamma_valid) l l_in Hex).
+  generalize dependent (Typechecker.funpred_def_term_decide gamma (valid_context_wf _ gamma_valid) l l_in Hex).
   destruct (Typechecker.find_funpred_def_term gamma l) as [[[[m params] vs] il] |] eqn : Hterm.
   2: { intros []. }
   intros Ht.
@@ -1312,7 +1291,7 @@ Proof.
       different [val_typevar]s. We use [vt_fv_agree_tm]*)
     (*TODO: separate lemma I think*)
     assert (args= sn_args f' /\ body = fn_body f'). {
-      apply (fundef_inj (proj1' gamma_valid)) with(l:=l)(f:=fn_sym f'); auto.
+      apply (fundef_inj (valid_context_wf _ gamma_valid)) with(l:=l)(f:=fn_sym f'); auto.
       apply (in_fs_def _ il); auto.
     }
     destruct H as [Hargs Hbody]; subst.
@@ -1402,7 +1381,7 @@ Proof.
   2: intros; symmetry; apply funpred_with_reps_preds_notin; auto.
   unfold preds_rep. simpl.
   destruct (funpred_def_valid l l_in) as [Hallval Hex].
-  generalize dependent (Typechecker.funpred_def_term_decide sigma gamma (proj1' gamma_valid) l l_in Hex).
+  generalize dependent (Typechecker.funpred_def_term_decide gamma (valid_context_wf _ gamma_valid) l l_in Hex).
   destruct (Typechecker.find_funpred_def_term gamma l) as [[[[m params] vs] il] |] eqn : Hterm.
   2: { intros []. }
   intros Ht.
@@ -1435,7 +1414,7 @@ Proof.
       different [val_typevar]s. We use [vt_fv_agree_tm]*)
     (*TODO: separate lemma I think*)
     assert (args= sn_args p' /\ body = pn_body p'). {
-      apply (preddef_inj (proj1' gamma_valid)) with(l:=l)(p:=pn_sym p'); auto.
+      apply (preddef_inj (valid_context_wf _ gamma_valid)) with(l:=l)(p:=pn_sym p'); auto.
       apply (in_ps_def _ il); auto.
     }
     destruct H as [Hargs Hbody]; subst.

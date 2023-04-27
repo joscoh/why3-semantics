@@ -7,18 +7,18 @@ Set Bullet Behavior "Strict Subproofs".
 (* Let's try to build a typechecker *)
 Section Typechecker.
 
-Fixpoint typecheck_type (s:sig) (v: vty) : bool :=
+Fixpoint typecheck_type (gamma:context) (v: vty) : bool :=
   match v with
   | vty_int => true
   | vty_real => true
-  | vty_var tv => false
+  | vty_var tv => true
   | vty_cons ts vs => 
-      (ts \in (sig_t s)) &&
+      (ts \in (sig_t gamma)) &&
       (length vs == length (ts_args ts)) &&
       (fix check_list (l: list vty) : bool :=
       match l with
       | nil => true
-      | x :: t => typecheck_type s x && check_list t
+      | x :: t => typecheck_type gamma x && check_list t
       end) vs
   end.
 
@@ -80,29 +80,29 @@ Canonical predsym_eqType := EqType predsym predsym_eqMixin.
 Definition seqI {A: eqType} (s1 s2: seq A) :=
   filter (fun x => x \in s2) s1.
 
-Fixpoint typecheck_pattern (s: sig) (p: pattern) (v: vty) : bool :=
+Fixpoint typecheck_pattern (gamma: context) (p: pattern) (v: vty) : bool :=
   match p with
-  | Pvar x => (v == (snd x)) && typecheck_type s (snd x)
-  | Pwild => typecheck_type s v
+  | Pvar x => (v == (snd x)) && typecheck_type gamma (snd x)
+  | Pwild => typecheck_type gamma v
   | Por p1 p2 => 
-    typecheck_pattern s p1 v &&
-    typecheck_pattern s p2 v &&
+    typecheck_pattern gamma p1 v &&
+    typecheck_pattern gamma p2 v &&
     (eq_memb (pat_fv p2) (pat_fv p1))
   | Pbind p x =>
     (v == (snd x)) &&
     (x \notin (pat_fv p)) &&
-    (typecheck_pattern s p v)
+    (typecheck_pattern gamma p v)
   | Pconstr f params ps => 
     (v == ty_subst (s_params f) params (f_ret f)) &&
-    (f \in (sig_f s)) &&
-    all (fun x => typecheck_type s x) params &&
-    (typecheck_type s (f_ret f)) &&
+    (f \in (sig_f gamma)) &&
+    all (fun x => typecheck_type gamma x) params &&
+    (typecheck_type gamma (f_ret f)) &&
     (length ps == length (s_args f)) &&
     (length params == length (s_params f)) &&
     ((fix check_list (l1: list pattern) (l2: list vty) : bool :=
       match l1, l2 with
       | nil, nil => true
-      | h1 :: t1, h2 :: t2 => typecheck_pattern s h1 h2 &&
+      | h1 :: t1, h2 :: t2 => typecheck_pattern gamma h1 h2 &&
         check_list t1 t2
       |  _, _ => false
        end) ps (map (ty_subst (s_params f) params) (s_args f))) &&
@@ -117,14 +117,14 @@ Fixpoint typecheck_pattern (s: sig) (p: pattern) (v: vty) : bool :=
 
 
 (*We would like to prove this correct*)
-Lemma typecheck_type_correct: forall (s: sig) (v: vty),
-  reflect (valid_type s v) (typecheck_type s v).
+Lemma typecheck_type_correct: forall (gamma: context) (v: vty),
+  reflect (valid_type gamma v) (typecheck_type gamma v).
 Proof.
-  move=> s. apply vty_rect=>//=.
+  move=> gamma. apply vty_rect=>//=.
   - apply ReflectT. constructor.
   - apply ReflectT. constructor.
-  - move=> v. apply ReflectF => C. inversion C.
-  - move=> ts vs Hty. case Hts: (ts \in sig_t s)=>/=; last first.
+  - move=> v. apply ReflectT. constructor.
+  - move=> ts vs Hty. case Hts: (ts \in sig_t gamma)=>/=; last first.
       apply ReflectF => C. inversion C; subst.
       move: H1 => /inP. by rewrite Hts.
     (*Annoyingly, we can't do a single induction because of the
@@ -132,7 +132,7 @@ Proof.
     apply iff_reflect. split.
     + move => Hty'. inversion Hty'; subst. rewrite {H1} (introT eqP H3)/=.
       move: Hty H4. clear. elim: vs => [// | v vs /= IH Hall Hval].
-      have->/=: typecheck_type s v by apply /(ForallT_hd _ _ _ Hall);
+      have->/=: typecheck_type gamma v by apply /(ForallT_hd _ _ _ Hall);
         apply Hval; left.
       apply IH. by apply (ForallT_tl _ _ _ Hall).
       move=> x Hinx. by apply Hval; right.
@@ -208,7 +208,7 @@ Proof.
 Qed.
 
 (*Let's start this*)
-Lemma typecheck_pattern_correct: forall (s: sig) (p: pattern) (v: vty),
+Lemma typecheck_pattern_correct: forall (s: context) (p: pattern) (v: vty),
   reflect (pattern_has_type s p v) (typecheck_pattern s p v).
 Proof.
   move=> s. apply 
@@ -275,7 +275,7 @@ Proof.
     (*Now we just have the nested induction left*)
     apply iff_reflect. split.
     + move=> Hty. inversion Hty; subst. clear -H8 H5 Hall.
-      move: H5 H8. subst sigma.
+      move: H5 H8.
       move: Hall (s_params f) (s_args f) vs.
       elim: ps =>[//= Hall params [|] vs //| phd ptl /= IH Hall params 
         [// | ahd atl/=] vs [Hlen] Hforall].
@@ -312,7 +312,7 @@ Proof.
 Qed.
 
 (*Terms and formulas*)
-Fixpoint typecheck_term (s: sig) (t: term) : option vty :=
+Fixpoint typecheck_term (s: context) (t: term) : option vty :=
   match t with
   | Tconst (ConstInt z) => Some vty_int
   | Tconst (ConstReal r) => Some vty_real
@@ -327,7 +327,7 @@ Fixpoint typecheck_term (s: sig) (t: term) : option vty :=
     | None => None
     end else None
   | Tmatch tm ty1 ps =>
-    if (typecheck_term s tm == Some ty1) &&
+    if is_vty_adt s ty1 && (typecheck_term s tm == Some ty1) &&
       all (fun x => typecheck_pattern s (fst x) ty1) ps
     then 
       match ps with
@@ -367,7 +367,7 @@ Fixpoint typecheck_term (s: sig) (t: term) : option vty :=
   | Teps f x => if typecheck_formula s f && typecheck_type s (snd x)
     then Some (snd x) else None
   end 
-with typecheck_formula (s: sig) (f: formula) : bool :=
+with typecheck_formula (s: context) (f: formula) : bool :=
   match f with
   | Ftrue => true
   | Ffalse => true
@@ -401,6 +401,7 @@ with typecheck_formula (s: sig) (f: formula) : bool :=
     (typecheck_term s t1 == Some ty) &&
     (typecheck_term s t2 == Some ty)
   | Fmatch tm ty ps =>
+    is_vty_adt s ty &&
     (typecheck_term s tm == Some ty) &&
     all (fun x => typecheck_pattern s (fst x) ty) ps &&
     (~~ (null ps)) &&
@@ -415,7 +416,7 @@ with typecheck_formula (s: sig) (f: formula) : bool :=
 Ltac reflT := apply ReflectT; constructor.
 
 (*Now we prove the correctness of this*)
-Lemma typecheck_term_fmla_spec (s: sig): 
+Lemma typecheck_term_fmla_spec (s: context): 
   forall (tm: term) (f: formula),
   (forall v, 
     reflect (term_has_type s tm v) (typecheck_term s tm == Some v)) *
@@ -523,6 +524,10 @@ Proof.
     + case: (None == Some v) /eqP=>//= _. reflF.
       move: H5 => /(IHt1 v). by rewrite Ht1'.
   - move=> tm ty ps IHtm HallT v.
+    case Hisadt: (is_vty_adt s ty) => [t |]/=; last first.
+      reflF. rewrite <- is_vty_adt_none_iff in Hisadt.
+      case: H2 => [a [m [args [m_in [a_in Hty]]]]].
+      apply (Hisadt a m args m_in a_in Hty).
     case: (typecheck_term s tm == Some ty) /(IHtm ty)=> Htm/=; last by reflF.
     (*Here things get trickier because terms and patterns are not
       eqTypes*)
@@ -542,7 +547,7 @@ Proof.
     + case Htm1': (typecheck_term s tm1) => [ty2 |]; last first.
         case: (None == Some v) /eqP=>// _. reflF.
         have: typecheck_term s tm1 == Some v. 
-        apply /(ForallT_hd _ _ _ HallT). apply H6. by left.
+        apply /(ForallT_hd _ _ _ HallT). apply H7. by left.
         by rewrite Htm1'.
       rewrite eq_refl/=.
       have Htm1: term_has_type s tm1 ty2 by
@@ -585,19 +590,24 @@ Proof.
       end) ptl) =>//=.
       * move=> /elimT /(_ isT) Hptl.
         case: (Some ty2 == Some v) /eqP => [[] <-| Hneq].
-        -- reflT=>//. move=> x [<-// | Hinx]. by apply Hptl.
+        -- reflT=>//.
+          ++ move: Hisadt. case: t => [[m a] vs] Hisadt.
+            apply is_vty_adt_some in Hisadt.
+            case: Hisadt => [Hty [a_in m_in]].
+            exists a. exists m. by exists vs. 
+          ++ move=> x [<-// | Hinx]. by apply Hptl.
         -- reflF. have /eqP : typecheck_term s tm1 == Some v by 
-            apply /(ForallT_hd _ _ _ HallT); apply H6; left.
+            apply /(ForallT_hd _ _ _ HallT); apply H7; left.
           by rewrite Htm1'.
       * move=> /elimF /(_ erefl) Hnotall.
         case: (None == Some v) /eqP=>// _. reflF.
         apply Hnotall. move=> x Hinx.
         have->:ty2 = v. {
           have /eqP: typecheck_term s tm1 == Some v by
-            apply /(ForallT_hd _ _ _ HallT); apply H6; left.
+            apply /(ForallT_hd _ _ _ HallT); apply H7; left.
           by rewrite Htm1' =>/= [[]].
         }
-        by apply H6; right.
+        by apply H7; right.
   - move=> f v IHf ty2.
     case: (typecheck_formula s f) /IHf => Hval; last by reflF.
     case: (typecheck_type s (snd v)) /typecheck_type_correct => /=Hty1;
@@ -619,7 +629,7 @@ Proof.
     last by reflF.
     apply iff_reflect. split.
     + move=> Hvalp. inversion Hvalp; subst.
-      clear -H7 HallT Hlentms. subst sigma.
+      clear -H7 HallT Hlentms.
       move: (s_args p) (ty_subst (s_params p) tys) Hlentms HallT H7 .
       elim: tms => [// [|]// | tmh tmtl /= IH [//|ah atl] sigma [Hlen]
         HallT /= Hall].
@@ -658,47 +668,47 @@ Proof.
   - (*The difficult case: patterns (easier than terms because
       we don't need to determine the type of the inner patterns)*)
     move=> tm ty ps Htm HallT.
+    case Hisadt: (is_vty_adt s ty) => [t |]/=; last first.
+      reflF. rewrite <- is_vty_adt_none_iff in Hisadt.
+      case: H2 => [a [m [args [m_in [a_in Hty]]]]].
+      apply (Hisadt a m args m_in a_in Hty).
     case: (typecheck_term s tm == Some ty) /Htm => Htm /=; last by reflF.
     have Hallt: (forall x, In x ps -> reflect (pattern_has_type s x.1 ty)
       (typecheck_pattern s x.1 ty)) by move=> x _; apply typecheck_pattern_correct.
-    case: (all (fun x => typecheck_pattern s x.1 ty) ps)
-      /(forallb_ForallP _ _ _ Hallt) => Hallps/=; last by reflF.
-    case Hnull: (null ps) =>/=. reflF. by rewrite Hnull in H6.
+    case: (all (fun x : pattern * formula => typecheck_pattern s x.1 ty) ps)
+      /(forallb_ForallP _ _ _ Hallt) => Hallps/=; last by
+      (reflF; rewrite Forall_forall in Hallps).
+    case Hnull: (null ps) =>/=. reflF. by rewrite Hnull in H7.
     apply iff_reflect. split.
     + move=> Hmatch. inversion Hmatch; subst.
-      move: HallT H5. clear. elim: ps => [// | [p1 f1] pt /= IH HallT Hall].
-      inversion Hall; subst.
-      case: (typecheck_formula s f1) /(ForallT_hd _ _ _ HallT)=>//=Hf1.
-      apply IH=>//. by inversion HallT.
-    + move=> Hcheck. constructor=>//; last by rewrite Hnull.
-      move: HallT Hcheck. clear. 
-      elim: ps => [// | [p1 f1] ptl /= IH HallT /andP[Hf1 Hcheck]].
-      inversion HallT; subst.
-      constructor. by apply /H1.
-      by apply IH.
+      move: HallT H6. clear. elim: ps => [// | [p1 f1] pt /= IH HallT Hall].
+      apply /andP; split.
+      * apply /(ForallT_hd _ _ _ HallT). by apply (Hall (p1, f1)); left. 
+      * apply IH=>//. by inversion HallT. move=> x Hinx.
+        by apply Hall; right.
+    + move=> Hcheck. rewrite Forall_forall in Hallps. 
+      constructor=>//; last by rewrite Hnull.
+      * move: Hisadt. case: t => [[m a] vs] Hisadt.
+        apply is_vty_adt_some in Hisadt.
+        case: Hisadt => [Hty [a_in m_in]].
+        exists a. exists m. by exists vs.
+      *  move: HallT Hcheck. clear. 
+        elim: ps => [// | [p1 f1] ptl /= IH HallT /andP[Hf1 Hcheck]].
+        inversion HallT; subst.
+        move=> x [Hx | Hinx]; subst=>//.
+        by apply /H1. by apply IH.
 Qed.
 
 (*Now a few easy corollaries*)
-Definition typecheck_term_correct (s: sig) (tm: term) (v: vty):
-  reflect (term_has_type s tm v) (typecheck_term s tm == Some v) :=
-  fst (typecheck_term_fmla_spec s tm Ftrue) v.
+Definition typecheck_term_correct (gamma: context) (tm: term) (v: vty):
+  reflect (term_has_type gamma tm v) (typecheck_term gamma tm == Some v) :=
+  fst (typecheck_term_fmla_spec gamma tm Ftrue) v.
 
-Definition typecheck_formula_correct (s: sig) (f: formula):
-  reflect (valid_formula s f) (typecheck_formula s f) :=
-  snd (typecheck_term_fmla_spec s tm_d f).
+Definition typecheck_formula_correct (gamma: context) (f: formula):
+  reflect (valid_formula gamma f) (typecheck_formula gamma f) :=
+  snd (typecheck_term_fmla_spec gamma tm_d f).
 
 (*TODO: separate module or something so we don't have imports?*)
-(*TODO: better name*)
-Lemma typecheck_dec: forall s t,
-(exists x, term_has_type s t x) ->
-{ x | term_has_type s t x}.
-Proof.
-  move=> s t Hex.
-  case Hcheck: (typecheck_term s t) => [ty |].
-  - apply (exist _ ty). apply /typecheck_term_correct. by apply /eqP.
-  - exfalso. case: Hex => [ty /typecheck_term_correct].
-    by rewrite Hcheck.
-Qed.
 
 Lemma term_has_type_unique: forall s t x y,
   term_has_type s t x ->
@@ -712,7 +722,6 @@ Qed.
 
 Section ContextCheck.
 
-Variable sigma: sig.
 Variable gamma: context.
 
 (*Here, we show that the context checks (some of them for now)
@@ -720,7 +729,7 @@ Variable gamma: context.
   We need this for some proofs; namely for recursive functions, 
   we need to be able to find the fs and ps to build our function*)
 
-Fixpoint check_valid_matches_tm (t: term) : bool :=
+(*Fixpoint check_valid_matches_tm (t: term) : bool :=
   match t with
   | Tfun f vs tms =>
     all check_valid_matches_tm tms
@@ -759,7 +768,7 @@ with check_valid_matches_fmla (f: formula) : bool :=
     is_vty_adt gamma v &&
     all (fun x => check_valid_matches_fmla (snd x)) ps
   | _ => true
-  end.
+  end.*)
 
 (*We could assume stuff, but let's just plow through
   this I guess*)
@@ -769,7 +778,7 @@ Definition term_eqMixin := EqMixin term_eqb_spec.
 Canonical term_eqType := EqType term term_eqMixin.
 Definition formula_eqMixin := EqMixin formula_eqb_spec.
 Canonical formula_eqType := EqType formula formula_eqMixin.
-
+(*
 Lemma iter_and_Forall {A: Type} {P: A -> Prop} {l: list A}:
   Forall P l <-> iter_and (List.map P l).
 Proof.
@@ -841,9 +850,10 @@ Qed.
 Definition check_valid_matches_tm_spec t := 
   fst (check_valid_matches_spec t Ftrue).
 Definition check_valid_matches_fmla_spec f := 
-  snd (check_valid_matches_spec tm_d f).
+  snd (check_valid_matches_spec tm_d f).*)
 
 (*Well-typed terms*)
+(*
 Definition check_well_typed_tm (t: term) (ty: vty) : bool :=
   (typecheck_term sigma t == Some ty) &&
   check_valid_matches_tm t.
@@ -866,7 +876,7 @@ Proof.
   apply andPP.
   apply typecheck_formula_correct.
   apply check_valid_matches_fmla_spec.
-Qed.
+Qed.*)
 
 (*TODO: [adt_valid_type], inhabited types, strict positivity
   for types (TODO: add uniformity)*)
@@ -903,13 +913,13 @@ Qed.
 Definition check_funpred_def_valid_type (fd: funpred_def) : bool :=
   match fd with
   | fun_def f vars t =>
-    check_well_typed_tm t (f_ret f) &&
+    (typecheck_term gamma t == Some (f_ret f)) &&
     sublistb (tm_fv t) vars &&
     sublistb (tm_type_vars t) (s_params f) &&
     uniq (map fst vars) &&
     (map snd vars == s_args f)
   | pred_def p vars f =>
-    check_well_typed_fmla f &&
+    (typecheck_formula gamma f) &&
     sublistb (fmla_fv f) vars &&
     sublistb (fmla_type_vars f) (s_params p) &&
     uniq (map fst vars) &&
@@ -917,21 +927,21 @@ Definition check_funpred_def_valid_type (fd: funpred_def) : bool :=
   end.
 
 Lemma check_funpred_def_valid_type_spec (fd: funpred_def):
-  reflect (funpred_def_valid_type sigma gamma fd) 
+  reflect (funpred_def_valid_type gamma fd) 
     (check_funpred_def_valid_type fd).
 Proof.
   rewrite /funpred_def_valid_type/check_funpred_def_valid_type.
   case: fd => [f vars t | p vars f].
   - rewrite -andbA -andbA -andbA.
     repeat (apply andPP; [| apply andPP]). 
-    + apply check_well_typed_tm_spec.
+    + apply typecheck_term_correct.
     + apply sublistbP.
     + apply sublistbP.
     + apply uniqP.
     + apply eqP.
   - rewrite -andbA -andbA -andbA.
      repeat (apply andPP; [|apply andPP]).
-    + apply check_well_typed_fmla_spec.
+    + apply typecheck_formula_correct.
     + apply sublistbP.
     + apply sublistbP.
     + apply uniqP.
@@ -2269,7 +2279,7 @@ Proof.
   - by rewrite -size_split_funpred_defs_fst.
 Qed.
 
-Variable gamma_wf: wf_context sigma gamma.
+Variable gamma_wf: wf_context gamma.
 
 
 (*We need 2 specs: if it is Some (m, p, vs, il), then these
@@ -2314,7 +2324,7 @@ Proof.
     rewrite -size_cat size_eq0. by apply /eqP.
   }
   have Hleneq: length l = length il by rewrite !length_size.
-  move: Hfind => /( _ Hsz2 (@mut_adts_inj _ _ gamma_wf)
+  move: Hfind => /( _ Hsz2 (@mut_adts_inj _ gamma_wf)
     (proj1 (funpred_defs_to_sns_NoDup gamma_wf l il (elimT (inP _ _) Hinl) Hleneq))
     (proj2 (funpred_defs_to_sns_NoDup gamma_wf l il (elimT (inP _ _) Hinl) Hleneq)))
   [ Hszvs [m_in [Hallvtyf [Hallvtyp [Hdecf Hdecp]]]]].
@@ -2455,7 +2465,7 @@ Proof.
   - have:=(funpred_defs_to_sns_length l il).
     rewrite !length_size plus_coq_nat => /(_ (esym Hlenil)) ->.
     rewrite size_eq0. by apply /eqP.
-  - apply (@mut_adts_inj _ _ gamma_wf).
+  - apply (@mut_adts_inj _ gamma_wf).
   - have Hleneq: length l = length il by rewrite !length_size.
     apply (funpred_defs_to_sns_NoDup gamma_wf l il (elimT (inP _ _) Hinl) Hleneq).
   - have Hleneq: length l = length il by rewrite !length_size.

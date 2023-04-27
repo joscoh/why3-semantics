@@ -126,7 +126,7 @@ Ltac alpha_case x Heq :=
 
 Section Alpha.
 
-Context {sigma: sig} {gamma: context} (gamma_valid: valid_context sigma gamma)
+Context {gamma: context} (gamma_valid: valid_context gamma)
  {pd: pi_dom}
   {vt: val_typevar} {pf: pi_funpred gamma_valid pd}.
 
@@ -726,8 +726,8 @@ Ltac simpl_proj :=
   though it is conceptually simple*)
 Lemma match_val_single_alpha_p_none {ty: vty}
 (p1 p2: pattern)
-(Hty1: pattern_has_type sigma p1 ty)
-(Hty2: pattern_has_type sigma p2 ty)
+(Hty1: pattern_has_type gamma p1 ty)
+(Hty2: pattern_has_type gamma p2 ty)
 (d: domain (dom_aux pd) (v_subst vt ty))
 (vars: list (vsymbol * vsymbol))
 (Heq: alpha_equiv_p vars p1 p2) :
@@ -754,8 +754,8 @@ Proof.
     (*The hard case: need lots of generalization for dependent types
     and need nested induction*) 
     generalize dependent (@is_vty_adt_some gamma ty).
-    generalize dependent (@adt_vty_length_eq _ _ gamma_valid ty).
-    generalize dependent (@constr_length_eq _ _ gamma_valid ty).
+    generalize dependent (@adt_vty_length_eq _ gamma_valid ty).
+    generalize dependent (@constr_length_eq _ gamma_valid ty).
     destruct (is_vty_adt gamma ty) eqn : Hisadt; [|reflexivity].
     intros Hvslen1 Hvslen2 Hadtspec.
     destruct p as [[m adt] vs2].
@@ -979,8 +979,8 @@ Qed.
   always both None or both Some*)
 Lemma match_val_single_alpha_p_none_iff {ty: vty}
   (p1 p2: pattern)
-  (Hty1: pattern_has_type sigma p1 ty)
-  (Hty2: pattern_has_type sigma p2 ty)
+  (Hty1: pattern_has_type gamma p1 ty)
+  (Hty2: pattern_has_type gamma p2 ty)
   (d: domain (dom_aux pd) (v_subst vt ty))
   (vars: list (vsymbol * vsymbol))
   (Heq: alpha_equiv_p vars p1 p2):
@@ -998,8 +998,8 @@ Qed.
   the bindings are the same, for the (x, y) pairs in vars*)
 Lemma match_val_single_alpha_p_some {ty: vty}
   (p1 p2: pattern)
-  (Hty1: pattern_has_type sigma p1 ty)
-  (Hty2: pattern_has_type sigma p2 ty)
+  (Hty1: pattern_has_type gamma p1 ty)
+  (Hty2: pattern_has_type gamma p2 ty)
   (d: domain (dom_aux pd) (v_subst vt ty))
   (vars: list (vsymbol * vsymbol))
   (Heq: alpha_equiv_p vars p1 p2)
@@ -1042,8 +1042,8 @@ Proof.
     (*The hard case: need lots of generalization for dependent types
     and need nested induction*) 
     generalize dependent (@is_vty_adt_some gamma ty).
-    generalize dependent (@adt_vty_length_eq _ _ gamma_valid ty).
-    generalize dependent (@constr_length_eq _ _ gamma_valid ty).
+    generalize dependent (@adt_vty_length_eq _ gamma_valid ty).
+    generalize dependent (@constr_length_eq _ gamma_valid ty).
     destruct (is_vty_adt gamma ty) eqn : Hisadt; [|discriminate].
     intros Hvslen1 Hvslen2 Hadtspec.
     destruct p as [[m adt] vs2].
@@ -1165,8 +1165,8 @@ End DenotPat.
 Lemma alpha_equiv_equiv (t: term) (f: formula) :
   (forall (t2: term) (vars: list (vsymbol * vsymbol)) 
   (v1 v2: val_vars pd vt) (ty: vty)
-  (Hty: term_has_type sigma t ty)
-  (Hty2: term_has_type sigma t2 ty)
+  (Hty: term_has_type gamma t ty)
+  (Hty2: term_has_type gamma t2 ty)
   (Heq: alpha_equiv_t vars t t2)
   (Hvals: forall x y (Heq: snd x = snd y),
     (*This is the first binding for x and for y*)
@@ -1180,8 +1180,8 @@ Lemma alpha_equiv_equiv (t: term) (f: formula) :
   term_rep v2 t2 ty Hty2) /\
   (forall (f2: formula) (vars: list (vsymbol * vsymbol))  
   (v1 v2: val_vars pd vt)
-  (Hval: valid_formula sigma f)
-  (Hval2: valid_formula sigma f2)
+  (Hval: valid_formula gamma f)
+  (Hval2: valid_formula gamma f2)
   (Heq: alpha_equiv_f vars f f2)
   (Hvals: forall x y (Heq: snd x = snd y),
     var_in_firstb (x, y) vars ->
@@ -1704,8 +1704,8 @@ Definition alpha_equiv_f_equiv f := proj_fmla alpha_equiv_equiv f.
 (*And the correctness theorems*)
 Corollary a_equiv_t_equiv (t1 t2: term) (v: val_vars pd vt)
   (ty: vty)
-  (Hty1: term_has_type sigma t1 ty)
-  (Hty2: term_has_type sigma t2 ty)
+  (Hty1: term_has_type gamma t1 ty)
+  (Hty2: term_has_type gamma t2 ty)
   (Heq: a_equiv_t t1 t2):
   term_rep v t1 ty Hty1 = term_rep v t2 ty Hty2.
 Proof.
@@ -1714,8 +1714,8 @@ Proof.
 Qed.
 
 Corollary a_equiv_f_equiv (f1 f2: formula) (v: val_vars pd vt)
-  (Hval1: valid_formula sigma f1)
-  (Hval2: valid_formula sigma f2)
+  (Hval1: valid_formula gamma f1)
+  (Hval2: valid_formula gamma f2)
   (Heq: a_equiv_f f1 f2):
   formula_rep v f1 Hval1 = formula_rep v f2 Hval2.
 Proof.
@@ -2243,8 +2243,8 @@ Lemma alpha_equiv_p_type (p1 p2: pattern)
   (Hn1: NoDup (map fst vars))
   (Hn2: NoDup (map snd vars))
   (Hallin: forall x, In x (pat_fv p1) -> In x (map fst vars))
-  (Hty: pattern_has_type sigma p1 ty):
-  pattern_has_type sigma p2 ty.
+  (Hty: pattern_has_type gamma p1 ty):
+  pattern_has_type gamma p2 ty.
 Proof.
   generalize dependent ty.
   generalize dependent p2.
@@ -2268,7 +2268,7 @@ Proof.
     + assert (length (map (ty_subst (s_params f0) l) (s_args f0)) = length ps2). {
         rewrite map_length; lia.
       }
-      subst sigma0.
+      subst sigma.
       generalize dependent ((map (ty_subst (s_params f0) l) (s_args f0))).
       intros a Hall2 Hlen2.
       revert Hall2 H.
@@ -2354,8 +2354,8 @@ Qed.
 Lemma alpha_equiv_p_type_full (p1 p2: pattern) (ty: vty)
   (Heq: alpha_equiv_p (combine (pat_fv p1) (pat_fv p2)) p1 p2)
   (Hlens: length (pat_fv p1) = length(pat_fv p2))
-  (Hty: pattern_has_type sigma p1 ty):
-  pattern_has_type sigma p2 ty.
+  (Hty: pattern_has_type gamma p1 ty):
+  pattern_has_type gamma p2 ty.
 Proof.
   apply alpha_equiv_p_type with(ty:=ty) in Heq; auto.
   - apply map_fst_combine_nodup; apply NoDup_pat_fv.
@@ -2368,13 +2368,13 @@ Lemma alpha_equiv_type (t: term) (f: formula):
   (forall t1 (vars: list (vsymbol * vsymbol)) (ty: vty)
     (Heq: alpha_equiv_t vars t t1)
     (Hvars: forall x y, In (x, y) vars -> snd x = snd y),
-    term_has_type sigma t ty ->
-    term_has_type sigma t1 ty) /\
+    term_has_type gamma t ty ->
+    term_has_type gamma t1 ty) /\
   (forall f1 (vars: list (vsymbol * vsymbol))
     (Heq: alpha_equiv_f vars f f1)
     (Hvars: forall x y, In (x, y) vars -> snd x = snd y),
-    valid_formula sigma f ->
-    valid_formula sigma f1).
+    valid_formula gamma f ->
+    valid_formula gamma f1).
 Proof.
   revert t f; apply term_formula_ind; simpl; intros.
   - alpha_case t1 Heq.
@@ -2415,15 +2415,15 @@ Proof.
     inversion H1; subst.
     rewrite fold_is_true in H3.
     rewrite all2_forall with(d1:=(Pwild, tm_d)) (d2:=(Pwild, tm_d)) in H3; auto.
-    constructor; [apply (H _ _ _ H2); auto | | |
-      destruct l; destruct ps; auto; inversion H5].
+    constructor; [apply H8 | apply (H _ _ _ H2); auto | | |
+    destruct l; destruct ps; auto; inversion H5].
     + intros. destruct (In_nth _ _ (Pwild, tm_d) H4) as [n [Hn Hx]]; 
       subst.
       specialize (H3 n ltac:(lia)). simpl in H3.
       bool_hyps. rename H3 into Heqp.
       apply alpha_equiv_p_type_full with(ty:=v0) in Heqp; auto.
       apply alpha_equiv_p_fv_len_full; auto.
-      apply H10. wf_tac.
+      apply H11. wf_tac.
     + intros. destruct (In_nth _ _ (Pwild, tm_d) H4) as [n [Hn Hx]]; 
       subst.
       specialize (H3 n ltac:(lia)).
@@ -2441,7 +2441,7 @@ Proof.
         rewrite map_nth_inbound with(d2:=vs_d); auto.
         rewrite mk_fun_vars_eq_full; auto.
         wf_tac.
-      * apply H12. wf_tac.
+      * apply H13. wf_tac.
   - (*Teps*)
     alpha_case t1 Heq.
     bool_hyps; simpl_sumbool.
@@ -2455,7 +2455,7 @@ Proof.
     bool_hyps; repeat simpl_sumbool.
     apply Nat.eqb_eq in H4.
     inversion H0; subst. constructor; auto; try lia.
-    clear -H11 H2 H H9 H4 Hvars. subst sigma0.
+    clear -H11 H2 H H9 H4 Hvars. 
     assert (length l0 = length (map (ty_subst (s_params p0) l) (s_args p0))) by wf_tac.
     generalize dependent (map (ty_subst (s_params p0) l) (s_args p0)).
     intros typs; revert typs.
@@ -2512,15 +2512,14 @@ Proof.
     rewrite all2_forall with(d1:=(Pwild, Ftrue))(d2:=(Pwild, Ftrue)) in H3; auto.
     constructor; auto; [apply (H _ _ _ H2); auto | | |
       destruct l; destruct ps; auto; inversion H5].
-    + rewrite Forall_forall; intros. 
+    + intros. 
       destruct (In_nth _ _ (Pwild, Ftrue) H4) as [n [Hn Hx]]; subst.
       specialize (H3 n ltac:(lia)).
       bool_hyps. rename H3 into Heqp.
       apply alpha_equiv_p_type_full with(ty:=v0) in Heqp; auto.
       apply alpha_equiv_p_fv_len_full; auto.
-      rewrite Forall_forall in H10.
-      apply H10. wf_tac.
-    + rewrite Forall_forall; intros. 
+      apply H11. wf_tac.
+    + intros. 
       destruct (In_nth _ _ (Pwild, Ftrue) H4) as [n [Hn Hx]]; subst.
       specialize (H3 n ltac:(lia)).
       bool_hyps; rename H3 into Heqp; rename H6 into Heqt.
@@ -2537,7 +2536,7 @@ Proof.
         rewrite map_nth_inbound with(d2:=vs_d); auto.
         rewrite mk_fun_vars_eq_full; auto.
         wf_tac.
-      * rewrite Forall_forall in H11. apply H11. wf_tac.
+      * apply H12. wf_tac.
 Qed. 
 
 Definition alpha_equiv_t_type t := proj_tm alpha_equiv_type t.
@@ -2545,8 +2544,8 @@ Definition alpha_equiv_f_valid f := proj_fmla alpha_equiv_type f.
 
 Corollary a_equiv_t_type (t1 t2: term) (ty: vty):
   a_equiv_t t1 t2 ->
-  term_has_type sigma t1 ty ->
-  term_has_type sigma t2 ty.
+  term_has_type gamma t1 ty ->
+  term_has_type gamma t2 ty.
 Proof.
   unfold a_equiv_t. intros Heq.
   apply alpha_equiv_t_type with(vars:=nil); auto.
@@ -2555,8 +2554,8 @@ Qed.
 
 Corollary a_equiv_f_valid (f1 f2: formula):
   a_equiv_f f1 f2 ->
-  valid_formula sigma f1 ->
-  valid_formula sigma f2.
+  valid_formula gamma f1 ->
+  valid_formula gamma f2.
 Proof.
   unfold a_equiv_f. intros Heq.
   apply alpha_equiv_f_valid with(vars:=nil); auto.
@@ -6245,15 +6244,15 @@ Qed.
 
 (*And the corollaries:*)
 Corollary a_convert_t_ty t ty:
-  term_has_type sigma t ty ->
-  term_has_type sigma (a_convert_t t) ty.
+  term_has_type gamma t ty ->
+  term_has_type gamma (a_convert_t t) ty.
 Proof.
   apply a_equiv_t_type.
   apply a_convert_t_equiv.
 Qed.
 
 Corollary a_convert_t_rep v t ty 
-  (Hty: term_has_type sigma t ty):
+  (Hty: term_has_type gamma t ty):
   term_rep v t ty Hty = 
   term_rep v (a_convert_t t) ty (a_convert_t_ty t ty Hty).
 Proof.
@@ -6289,15 +6288,15 @@ Qed.
 
 (*And the corollaries:*)
 Corollary a_convert_f_valid f:
-  valid_formula sigma f ->
-  valid_formula sigma (a_convert_f f).
+  valid_formula gamma f ->
+  valid_formula gamma (a_convert_f f).
 Proof.
   apply a_equiv_f_valid.
   apply a_convert_f_equiv.
 Qed.
 
 Corollary a_convert_f_rep v f 
-  (Hval: valid_formula sigma f):
+  (Hval: valid_formula gamma f):
   formula_rep v f Hval = 
   formula_rep v (a_convert_f f) (a_convert_f_valid f Hval).
 Proof.

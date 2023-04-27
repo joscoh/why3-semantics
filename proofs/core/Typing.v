@@ -569,6 +569,8 @@ Definition mut_valid gamma m :=
   valid_mut_rec m /\
   uniform m.
 
+End ValidMut.
+
 Section RecursiveDefs.
 
 Variable gamma: context.
@@ -1924,6 +1926,38 @@ End Expand.
   (which correspond to the old definitions)*)
 Section ContextGenLemmas.
 
+(*TODO: move to syntax*)
+Lemma concrete_in_def_funsym: forall x d,
+  In x (def_concrete_funsyms d) ->
+  In x (funsyms_of_def d).
+Proof.
+  unfold def_concrete_funsyms, funsyms_of_def.
+  intros. destruct d; auto. destruct H.
+Qed.
+
+Lemma concrete_in_def_predsym: forall x d,
+  In x (def_concrete_predsyms d) ->
+  In x (predsyms_of_def d).
+Proof.
+  unfold def_concrete_predsyms, predsyms_of_def.
+  intros. destruct d; auto. destruct H.
+Qed.
+
+Lemma concat_map_sublist {A B: Type} (f1 f2: A -> list B) l:
+  (forall x, In x l -> sublist (f1 x) (f2 x)) ->
+  sublist (concat (map f1 l)) (concat (map f2 l)).
+Proof.
+  unfold sublist; intros Hin x.
+  rewrite !in_concat.
+  intros [l2 [Hinl2 Hinx]].
+  rewrite in_map_iff in Hinl2.
+  destruct Hinl2 as [a [Hfa Hina]]; subst.
+  apply Hin in Hinx; auto.
+  exists (f2 a). split; auto. rewrite in_map_iff.
+  eexists; eauto.
+Qed.
+
+
 (*All concrete defs are in the sig*)
 Lemma concrete_in_sig gamma:
   Forall (fun t => In t (sig_t gamma)) (typesyms_of_context gamma) /\
@@ -1948,22 +1982,15 @@ Proof.
     destruct d; inversion Hd; subst. auto.
   - rewrite Forall_forall.
     intros x.
-    unfold funsyms_of_context, sig_f, funsyms_of_def.
-    (*TODO: not great to have omap and list versions*)
-    rewrite !in_concat. intros [fsl [Hinfsl Hinx]]; exists fsl;
-    split; auto.
-    rewrite in_omap_iff in Hinfsl. rewrite in_map_iff.
-    destruct Hinfsl as [d [Hind Hd]]; exists d;
-    destruct d; inversion Hd; subst; auto.
+    apply concat_map_sublist.
+    intros. unfold sublist.
+    intros. apply concrete_in_def_funsym; auto.
   - rewrite Forall_forall.
     intros x.
-    unfold predsyms_of_context, sig_p, predsyms_of_def.
-    rewrite !in_concat. intros [fsl [Hinfsl Hinx]]; exists fsl;
-    split; auto.
-    rewrite in_omap_iff in Hinfsl. rewrite in_map_iff.
-    destruct Hinfsl as [d [Hind Hd]]; exists d;
-    destruct d; inversion Hd; subst; auto.
-Qed.
+    apply concat_map_sublist.
+    intros. unfold sublist.
+    intros. apply concrete_in_def_predsym; auto.
+Qed. 
 
 (*This lets us reason about the whole context's uniqueness
   instead of having to reason inductively*)
@@ -2066,14 +2093,14 @@ Proof.
       apply H10. unfold funsyms_of_context.
       rewrite in_concat. exists (funsyms_of_rec (fun_def f l0 t :: l)).
       split; simpl; auto.
-      rewrite in_omap_iff. exists (recursive_def (fun_def f l0 t :: l)).
+      rewrite in_map_iff. exists (recursive_def (fun_def f l0 t :: l)).
       auto.
     + (*pred*)
       apply (H2 p); simpl; auto.
       apply H11. unfold predsyms_of_context.
       rewrite in_concat. exists (predsyms_of_rec (pred_def p l0 f :: l)).
       split; simpl; auto.
-      rewrite in_omap_iff. exists (recursive_def (pred_def p l0 f :: l));
+      rewrite in_map_iff. exists (recursive_def (pred_def p l0 f :: l));
       auto.
   - (*inductive def has a predsym*)
     destruct l; [inversion H7 |].
@@ -2081,7 +2108,7 @@ Proof.
     apply H11. unfold predsyms_of_context.
     rewrite in_concat. exists (predsyms_of_indprop (ind_def p l0 :: l)).
     split; simpl; auto.
-    rewrite in_omap_iff. exists (inductive_def (ind_def p l0 :: l));
+    rewrite in_map_iff. exists (inductive_def (ind_def p l0 :: l));
     auto.
   - apply (H3 t); auto.
     (*For abstract, use definition of sig_t*)
@@ -2476,10 +2503,10 @@ Proof.
   assert (Hin: In (recursive_def l) gamma). {
     apply in_mutfuns. auto.
   }
-  split; [apply Hwf1 | apply Hwf2]; rewrite in_omap_iff;
-  exists (recursive_def l); split; auto; f_equal; clear;
+  split; [apply Hwf1 | apply Hwf2]; rewrite in_map_iff;
+  exists (recursive_def l); split; auto; clear;
   induction l; simpl; auto; destruct a; simpl; auto;
-  rewrite IHl; reflexivity.
+  rewrite <- IHl; reflexivity.
 Qed.
 
 Lemma fundef_inj (l: list funpred_def) (f: funsym)
@@ -2500,9 +2527,7 @@ Proof.
   }
   specialize (Hwf (funsyms_of_rec l)).
   prove_hyp Hwf.
-  {
-    rewrite in_omap_iff. exists (recursive_def l); auto.
-  }
+  { rewrite in_map_iff. exists (recursive_def l); auto. }
   (*TODO: separate lemma or induction?*)
   simpl in Hwf.
   clear -Hwf Hin1 Hin2.
@@ -2541,7 +2566,7 @@ Proof.
   }
   specialize (Hwf (predsyms_of_rec l)).
   prove_hyp Hwf.
-  { rewrite in_omap_iff. exists (recursive_def l); auto. }
+  { rewrite in_map_iff. exists (recursive_def l); auto. }
   (*TODO: separate lemma or induction?*)
   clear -Hwf Hin1 Hin2.
   induction l; [inversion Hin1 |].
@@ -2622,6 +2647,8 @@ Ltac simpl_val :=
   | H: mut_valid ?g ?m |- _ => unfold mut_valid in H
   | H: valid_mut_rec ?m |- _ => unfold valid_mut_rec in H
   | H: adt_valid_type ?a |- _ => unfold adt_valid_type in H
+  | H: wf_funsym ?g ?c |- _ => unfold wf_funsym in H
+  | H: funpred_valid ?g ?l |- _ => unfold funpred_valid in H
   end.
 
 Ltac valid_context_tac :=
@@ -2760,7 +2787,7 @@ Proof.
   }
   eapply NoDup_concat'. apply funsym_eq_dec. apply Hn2.
   2: apply Hin.
-  rewrite in_omap_iff. exists (datatype_def m).
+  rewrite in_map_iff. exists (datatype_def m).
   split; auto. apply mut_in_ctx_eq2; auto.
 Qed.
 
@@ -2785,7 +2812,18 @@ Proof.
   apply (H3 p); auto. left; auto. 
 Qed.
 
-(*TODO: START*)
+Lemma constr_in_adt_def a m f:
+  adt_in_mut a m ->
+  constr_in_adt f a ->
+  In f (funsyms_of_mut m).
+Proof.
+  intros a_in c_in.
+  unfold funsyms_of_mut.
+  rewrite in_concat. exists (adt_constr_list a).
+  apply in_bool_In in a_in.
+  apply in_bool_ne_In in c_in.
+  split; auto. rewrite in_map_iff. exists a; auto.
+Qed.
   
 (*All constrs are in [funsym_of_context gamma]*)
 Lemma constrs_in_funsyms: forall {gamma c a m},
@@ -2795,43 +2833,33 @@ Lemma constrs_in_funsyms: forall {gamma c a m},
   In c (funsyms_of_context gamma).
 Proof.
   clear.
-  intros gamma c a m. unfold adt_in_mut, constr_in_adt.
-  intros m_in a_in c_in; induction gamma; simpl. inversion m_in.
-  simpl in m_in. unfold funsyms_of_context in *. simpl.
-  rewrite mut_in_ctx_eq2 in m_in.
-  destruct m_in as [Ha0 | m_in]; [| apply in_or_app; right; auto].
-  subst. apply in_or_app; left. simpl.
-  rewrite in_concat. exists (ne_list_to_list (adt_constrs a)).
-  rewrite in_map_iff. split; [| eapply in_bool_ne_In; apply c_in].
-  exists a. split; auto. destruct a. reflexivity.
-  apply (in_bool_In _ _ _ a_in).
-  apply IHc0. apply mut_in_ctx_eq2; auto.
-Qed. 
+  intros gamma c a m.
+  intros m_in a_in c_in.
+  apply mut_in_ctx_eq2 in m_in.
+  unfold funsyms_of_context.
+  rewrite in_concat.
+  exists (funsyms_of_mut m).
+  split.
+  - rewrite in_map_iff. exists (datatype_def m); auto.
+  - eapply constr_in_adt_def; eauto.
+Qed.
 
 (*All constr args types are valid*)
 Lemma constr_ret_valid: forall {c a m},
   mut_in_ctx m gamma ->
   adt_in_mut a m ->
   constr_in_adt c a ->
-  forall x, In x (s_args c) -> valid_type s x.
+  forall x, In x (s_args c) -> valid_type gamma x.
 Proof.
   intros c a m m_in a_in c_in x Hinx.
-  unfold valid_context in gamma_valid.
-  unfold wf_context in gamma_valid.
-  destruct gamma_valid as [[Hsig [_ [Hfuns _]]] _].
-  clear gamma_valid.
-  unfold wf_sig in Hsig.
-  destruct Hsig as [Hsig _].
-  rewrite Forall_forall in Hsig, Hfuns.
-  assert (Hinsig: In c (sig_f s)). {
-    apply Hfuns. apply (constrs_in_funsyms m_in a_in c_in).
+  valid_ctx_info.
+  assert (Hin: In c (funsyms_of_context gamma)). {
+    eapply constrs_in_funsyms. apply m_in. apply a_in. auto.
   }
-  clear Hfuns. specialize (Hsig _ Hinsig).
-  rewrite Forall_forall in Hsig. apply Hsig. right; auto.
-Qed. 
-
-
-
+  assert (In x ((f_ret c) :: (s_args c))) by (simpl; auto).
+  valid_context_tac.
+  auto.
+Qed.
 
 (*TODO: have similar lemma in IndTypes but for finite version*)
 Lemma adt_names_inj' {a1 a2: alg_datatype} {m: mut_adt}:
@@ -2848,59 +2876,18 @@ Proof.
   apply (in_bool_In _ _ _ H0).
 Qed.
 
-(*
-Definition constrs_ne: forall {l: list (typesym * list funsym)}
-  (Hin: In l (mutrec_datatypes_of_context gamma)),
-  forallb (fun b => negb (null b)) (map snd l).
-Proof.
-  intros. apply forallb_forall. intros.
-  valid_context_tac.
-  unfold adt_inhab in H1.
-  valid_context_tac. simpl.
-Qed.*)
-
 (*Stuff for recursive functions*)
-
-Lemma in_mutfuns_spec: forall l gamma',
-  In l (mutfuns_of_context gamma') <-> In (recursive_def l) gamma'.
-Proof.
-  intros. induction gamma'; simpl; intros; [split; auto |].
-  destruct a; simpl.
-  - split; intros; [apply IHgamma' in H; auto| 
-      destruct_all; try discriminate; apply IHgamma'; auto].
-  - split; intros; destruct_all; subst; auto; [apply IHgamma' in H; auto| 
-      destruct_all; try discriminate; inversion H; auto |
-      right; apply IHgamma'; auto].
-  - split; intros; [apply IHgamma' in H; auto| 
-      destruct_all; try discriminate; apply IHgamma'; auto].
-Qed.
 
 Lemma all_funpred_def_valid_type l:
   In l (mutfuns_of_context gamma) ->
-  Forall (funpred_def_valid_type s gamma) l.
+  Forall (funpred_def_valid_type gamma) l.
 Proof.
-  intros. unfold valid_context in gamma_valid.
-  destruct gamma_valid as [_ Hall].
-  rewrite in_mutfuns_spec in H.
-  rewrite Forall_forall in Hall.
-  specialize (Hall _ H). simpl in Hall.
-  apply Hall.
-Qed. 
-
-Lemma constr_in_adt_def a m f:
-  adt_in_mut a m ->
-  constr_in_adt f a ->
-  In f (funsyms_of_def (datatype_def m)).
-Proof.
-  unfold mut_in_ctx. unfold adt_in_mut. unfold constr_in_adt.
-  intros a_in c_in.
-  apply in_bool_In in a_in.
-  apply in_bool_ne_In in c_in.
-  simpl. induction (typs m); simpl in *. destruct a_in.
-  destruct a0. destruct a_in; subst.
-  - rewrite in_app_iff. left. apply c_in.
-  - rewrite in_app_iff. right. apply IHl. auto.
-Qed. 
+  intros.
+  valid_ctx_info.
+  rewrite in_mutfuns in H.
+  valid_context_tac.
+  auto.
+Qed.
 
 (*Default def*)
 Definition def_d : def := recursive_def nil.
@@ -2919,17 +2906,17 @@ Lemma constr_not_recfun (l: list funpred_def) (f: funsym)
   (f_in1: funsym_in_mutfun f l) (f_in2: constr_in_adt f a):
   False.
 Proof.
-  destruct gamma_valid as [Hwf _].
-  destruct Hwf as [_ [_[_ [_ [ _ [Hnodup _]]]]]].
-  unfold funsyms_of_context in Hnodup.
-  rewrite NoDup_concat_iff in Hnodup.
-  destruct Hnodup as [_ Hnodup].
+  valid_ctx_info.
+  clear -Hn2 l_in a_in m_in f_in1 f_in2. 
+  unfold funsyms_of_context in Hn2.
+  rewrite NoDup_concat_iff in Hn2.
+  destruct Hn2 as [_ Hnodup].
   apply in_bool_In in m_in.
   unfold funsym_in_mutfun in f_in1.
   apply in_bool_In in f_in1.
   pose proof (constr_in_adt_def _ _ _ a_in f_in2) as f_in2'.
   assert (Hin1: In (recursive_def l) gamma). {
-    apply in_mutfuns_spec. apply l_in.
+    apply in_mutfuns. apply l_in.
   }
   assert (Hin2: In (datatype_def m) gamma). {
     apply mut_in_ctx_eq2. apply In_in_bool. apply m_in. 
@@ -2952,14 +2939,13 @@ Lemma recfun_not_twice f l1 l2:
   funsym_in_mutfun f l2 ->
   l1 = l2.
 Proof.
-  intros.
-  destruct gamma_valid as [Hwf _].
-  unfold wf_context in Hwf.
-  destruct Hwf as [_ [_ [_ [_ [_ [Hnodup _]]]]]].
-  unfold funsyms_of_context in Hnodup.
-  rewrite NoDup_concat_iff in Hnodup.
-  destruct Hnodup as [_ Hn].
+  valid_ctx_info.
+  clear -Hn2.
+  unfold funsyms_of_context in Hn2.
+  rewrite NoDup_concat_iff in Hn2.
+  destruct Hn2 as [_ Hn].
   rewrite map_length in Hn.
+  intros.
   destruct (In_nth _ _ def_d H) as [i1 [Hi1 Hl1]].
   destruct (In_nth _ _ def_d H0) as [i2 [Hi2 Hl2]].
   destruct (Nat.eq_dec i1 i2); subst.
@@ -2980,13 +2966,12 @@ Lemma recpred_not_twice p l1 l2:
   predsym_in_mutfun p l2 ->
   l1 = l2.
 Proof.
+  valid_ctx_info.
+  clear -Hn3.
+  unfold predsyms_of_context in Hn3.
+  rewrite NoDup_concat_iff in Hn3.
+  destruct Hn3 as [_ Hn].
   intros.
-  destruct gamma_valid as [Hwf _].
-  unfold wf_context in Hwf.
-  destruct Hwf as [_ [_ [_ [_ [_ [_ Hnodup]]]]]].
-  unfold predsyms_of_context in Hnodup.
-  rewrite NoDup_concat_iff in Hnodup.
-  destruct Hnodup as [_ Hn].
   rewrite map_length in Hn.
   destruct (In_nth _ _ def_d H) as [i1 [Hi1 Hl1]].
   destruct (In_nth _ _ def_d H0) as [i2 [Hi2 Hl2]].
@@ -3008,13 +2993,12 @@ Lemma recpred_not_indpred p l1 l2:
   predsym_in_mutfun p l1 ->
   ~ pred_in_indpred p (get_indpred l2).
 Proof.
+  valid_ctx_info.
+  clear -Hn3.
+  unfold predsyms_of_context in Hn3.
+  rewrite NoDup_concat_iff in Hn3.
+  destruct Hn3 as [_ Hn].
   intros. intros Hinp'.
-  destruct gamma_valid as [Hwf _].
-  unfold wf_context in Hwf.
-  destruct Hwf as [_ [_ [_ [_ [_ [_ Hnodup]]]]]].
-  unfold predsyms_of_context in Hnodup.
-  rewrite NoDup_concat_iff in Hnodup.
-  destruct Hnodup as [_ Hn].
   rewrite map_length in Hn.
   destruct (In_nth _ _ def_d H) as [i1 [Hi1 Hl1]].
   destruct (In_nth _ _ def_d H0) as [i2 [Hi2 Hl2]].
@@ -3026,17 +3010,7 @@ Proof.
   rewrite !map_nth_inbound with(d2:=def_d); auto.
   rewrite Hl1, Hl2.
   split. apply in_bool_In with(eq_dec:=predsym_eq_dec); auto.
-  simpl. rewrite in_map_iff.
-  unfold pred_in_indpred in Hinp'.
-  apply in_bool_In in Hinp'.
-  rewrite in_map_iff in Hinp'.
-  destruct Hinp' as [[p' fs] [Hp Hinp']];
-  simpl in *; subst.
-  unfold get_indpred in Hinp'.
-  rewrite in_map_iff in Hinp'.
-  destruct Hinp' as [d'[Hdx Hind]].
-  exists d'. 
-  destruct d'; simpl in *; inversion Hdx; subst; split; auto.
+  simpl. apply pred_in_indpred_iff. auto.
 Qed.
 
 (*A constructor cannot appear in two different adts*)
@@ -3053,22 +3027,23 @@ Proof.
   (*Handle easy case first*)
   destruct (adt_dec a1 a2); subst.
   {
-    split; auto. apply (@mut_adts_inj _ _ (proj1 gamma_valid) _ _ a2 a2); auto.
+    split; auto. apply (@mut_adts_inj _ (valid_context_wf _ gamma_valid) _ _ a2 a2); auto.
   }
-  destruct gamma_valid as [Hwf _].
-  destruct Hwf as [_ [_ [_ [_ [_ [Hnodup _]]]]]].
-  unfold funsyms_of_context in Hnodup.
-  rewrite NoDup_concat_iff in Hnodup.
+  valid_ctx_info.
+  clear Hvalf Hvalp Hn1 Hn3 Hvald.
+  unfold funsyms_of_context in Hn2.
+  rewrite NoDup_concat_iff in Hn2.
   (*If m1 and m2 are the same, look within def, otherwise between defs*)
   destruct (mut_adt_dec m1 m2); subst.
   - split; auto.
-    destruct Hnodup as [Hnodup _].
+    destruct Hn2 as [Hnodup _].
     assert (In (datatype_def m2) gamma) by (apply mut_in_ctx_eq2; auto).
-    specialize (Hnodup (funsyms_of_def (datatype_def m2))).
-    assert (In (funsyms_of_def (datatype_def m2)) (map funsyms_of_def gamma)).
-      rewrite in_map_iff. exists (datatype_def m2); auto.
-    specialize (Hnodup H0).
-    simpl in Hnodup.
+    specialize (Hnodup (funsyms_of_mut m2)).
+    prove_hyp Hnodup.
+    {
+      rewrite in_map_iff. exists (datatype_def m2); auto. 
+    }
+    unfold funsyms_of_mut in Hnodup.
     rewrite NoDup_concat_iff in Hnodup.
     rewrite map_length in Hnodup.
     (*Look across, not in, adts*)
@@ -3091,7 +3066,7 @@ Proof.
     destruct a1; destruct a2; simpl in *; split; apply in_bool_ne_In
     with(eq_dec:=funsym_eq_dec); auto.
   - (*This time in different m1 and m2*)
-    destruct Hnodup as [_ Hnodup].
+    destruct Hn2 as [_ Hnodup].
     rewrite map_length in Hnodup.
     assert (Hin1: In (datatype_def m1) gamma) by (apply mut_in_ctx_eq2; auto).
     assert (Hin2: In (datatype_def m2) gamma) by (apply mut_in_ctx_eq2; auto).
@@ -3114,13 +3089,11 @@ End UniqLemmas.
 Lemma gamma_all_unif: forall m, mut_in_ctx m gamma ->
   uniform m.
 Proof.
-  destruct gamma_valid as [_ Hval].
-  intros m Hm.
-  apply mut_in_ctx_eq2 in Hm.
-  rewrite Forall_forall in Hval.
-  specialize (Hval _ Hm).
-  simpl in Hval.
-  destruct_all; auto.
+  valid_ctx_info.
+  intros m m_in.
+  apply mut_in_ctx_eq2 in m_in.
+  valid_context_tac.
+  auto.
 Qed.
 
 End ValidContextLemmas.
@@ -3268,28 +3241,6 @@ Qed.
 
 (*First, a weaker spec that does not rely on
   the context being well-formed*)
-(*
-Lemma find_ts_in_ctx_weak (ts: typesym):
-  reflect (exists (a: alg_datatype) (m: mut_adt),
-    mut_in_ctx m gamma /\ adt_in_mut a m /\
-    adt_name a = ts) (ssrbool.isSome (find_ts_in_ctx ts)).
-Proof.
-  destruct (find_ts_in_ctx ts) eqn : Hfind; simpl;
-  [apply ReflectT | apply ReflectF].
-  - destruct p as [m a]. apply find_ts_in_ctx_some in Hfind.
-    destruct_all; subst. exists a. exists m. auto.
-  - rewrite <- find_ts_in_ctx_none_iff in Hfind.
-    intros [a [m [m_in [a_in Hts]]]]; subst.
-    apply (Hfind a m); auto.
-Qed. 
-
-Lemma is_vty_adt_isSome ts tys:
-  ssrbool.isSome (is_vty_adt (vty_cons ts tys)) =
-  ssrbool.isSome (find_ts_in_ctx ts).
-Proof.
-  simpl. destruct (find_ts_in_ctx ts); simpl; auto.
-  destruct p; auto.
-Qed.*)
 
 Lemma is_vty_adt_weak (ty: vty):
   reflect (exists (a: alg_datatype) (m: mut_adt) (args: list vty),
@@ -3307,7 +3258,7 @@ Proof.
 Qed.
 
 (*Now, the stronger specs*)
-Context {sigma: sig} (gamma_valid: valid_context sigma gamma).
+Context (gamma_valid: valid_context gamma).
 
 
 Lemma no_adt_name_dups:
@@ -3323,7 +3274,8 @@ Proof.
     rewrite map_map.
     apply map_ext. intros a. destruct a; reflexivity.
   }
-  rewrite H. apply gamma_valid.
+  rewrite H. apply valid_context_wf in gamma_valid.
+  apply wf_context_alt in gamma_valid. apply gamma_valid.
 Qed.
 
 (*The real spec we want: *)
@@ -3391,20 +3343,9 @@ Proof.
     rewrite H. reflexivity.
 Qed.
 
-(*NOTE: this is now [is_vty_adt_some]*)
-(*
-Lemma is_vty_adt_spec {ty: vty} {m a vs}:
-  is_vty_adt ty = Some (m, a, vs) ->
-  ty = vty_cons (adt_name a) vs /\
-  adt_in_mut a m /\
-  mut_in_ctx m gamma.
-Proof.
-  apply is_vty_adt_iff.
-Qed.*)
-
 Lemma adt_vty_length_eq: forall {ty m a vs},
   is_vty_adt ty = Some (m, a, vs) ->
-  valid_type sigma ty ->
+  valid_type gamma ty ->
   length vs = length (m_params m).
 Proof.
   intros ty m a vs H Hval.

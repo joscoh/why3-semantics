@@ -16,7 +16,7 @@ Qed.
 Section FunDef.
 
 
-Context {sigma: sig} {gamma: context} (gamma_valid: valid_context sigma gamma)
+Context {gamma: context} (gamma_valid: valid_context gamma)
 {pd: pi_dom}.
 
 (*First, we assume we have our fs and ps lists and that
@@ -52,9 +52,9 @@ Qed.
 Variable fs_uniq: NoDup (map fn_sym fs).
 Variable ps_uniq: NoDup (map pn_sym ps).
 Variable fs_typed: Forall 
-  (fun f => term_has_type sigma (fn_body f) (f_ret (fn_sym f))) fs.
+  (fun f => term_has_type gamma (fn_body f) (f_ret (fn_sym f))) fs.
 Variable ps_typed: Forall
-  (fun p => valid_formula sigma (pn_body p)) ps.
+  (fun p => valid_formula gamma (pn_body p)) ps.
 
 Lemma args_agree: forall s, In s sns ->
   map snd (sn_args s) = s_args (sn_sym s).
@@ -237,7 +237,7 @@ Proof.
   intros m_in a_in.
   unfold is_sort_adt. simpl.
   assert (@find_ts_in_ctx gamma (adt_name a) = Some (m, a)). {
-    apply (@find_ts_in_ctx_iff gamma sigma); auto.
+    apply (@find_ts_in_ctx_iff gamma); auto.
   }
   rewrite H. simpl. 
   f_equal. f_equal.
@@ -326,7 +326,7 @@ Proof.
   destruct H;subst srts0.
   (*Now prove m equal*)
   assert (m = m0) by
-    (apply (@mut_adts_inj _ _ (proj1' gamma_valid)) with(a1:=t)(a2:=a2); auto).
+    (apply (@mut_adts_inj _ (valid_context_wf _ gamma_valid)) with(a1:=t)(a2:=a2); auto).
   subst m0.
   (*Now prove a2 and t equal*)
   assert (a2 = t) by
@@ -535,7 +535,7 @@ Qed.
   and [pat_constr_vars_inner] for induction *)
 Theorem match_val_single_smaller (vt: val_typevar) (v: val_vars pd vt) (ty: vty)
   (p: pattern)
-  (Hp: pattern_has_type sigma p ty)
+  (Hp: pattern_has_type gamma p ty)
   (Hty: vty_in_m m vs ty)
   (d: domain(v_subst vt ty))
   (l: list (vsymbol * {s: sort & domain s})):
@@ -568,8 +568,8 @@ Proof.
     rewrite pat_constr_vars_inner_eq.
     rewrite match_val_single_rewrite. cbn zeta.
     generalize dependent (@is_vty_adt_some gamma ty).
-    generalize dependent (@adt_vty_length_eq _ _ gamma_valid ty).
-    generalize dependent (@constr_length_eq _ _ gamma_valid ty).
+    generalize dependent (@adt_vty_length_eq _ gamma_valid ty).
+    generalize dependent (@constr_length_eq _ gamma_valid ty).
     destruct (is_vty_adt gamma ty) eqn : Hisadt.
     2: intros; discriminate.
     intros Hvslen1 Hvslen2 Hadtspec.
@@ -583,7 +583,7 @@ Proof.
       apply (reflect_iff _ _ (vty_in_m_spec _ _ _)) in Hty. 
       destruct Hty as [a' [Ha' Hty']]; subst.
       inversion Hty'; subst.
-      apply (mut_adts_inj (proj1' gamma_valid) m_in Hinctx Ha' Hinmut); auto.
+      apply (mut_adts_inj (valid_context_wf _ gamma_valid) m_in Hinctx Ha' Hinmut); auto.
     }
     subst m'.
     assert (vs2 = vs). {
@@ -1266,7 +1266,7 @@ Qed.
 
 (*TODO: remove or use eq_ind*)
 Definition term_has_type_cast {t1 t2: term} {ty: vty} (Heq: t1 = t2)
-  (Hty: term_has_type sigma t1 ty) : term_has_type sigma t2 ty :=
+  (Hty: term_has_type gamma t1 ty) : term_has_type gamma t2 ty :=
   match Heq with
   | eq_refl => Hty
   end.
@@ -1301,7 +1301,7 @@ Lemma arg_list_case_1
    hide_ty (v h) = d)
 (rep: forall (t : term) (ty : vty) (small : list vsymbol)
         (hd: option vsymbol)
-        (Hty : term_has_type sigma t ty),
+        (Hty : term_has_type gamma t ty),
       decrease_fun fs ps small hd m vs t ->
       (forall x : vsymbol, In x small ->
       vty_in_m m vs (snd x) /\
@@ -1323,12 +1323,12 @@ Lemma arg_list_case_1
 (ahd: vty)
 (atl: list vty)
 (Heq: Datatypes.length (thd :: ttl) = Datatypes.length (ahd :: atl))
-(Htys: Forall (fun x : term * vty => term_has_type sigma (fst x) (snd x))
+(Htys: Forall (fun x : term * vty => term_has_type gamma (fst x) (snd x))
          (combine (thd :: ttl) (map (ty_subst (s_params s) vs') (ahd :: atl))))
 (vs_small: vsymbol)
 (Hthd: nth 0 (thd :: ttl) tm_d = Tvar vs_small):
 exists
-(ty' : vty) (Hty' : term_has_type sigma (Tvar vs_small) ty') 
+(ty' : vty) (Hty' : term_has_type gamma (Tvar vs_small) ty') 
 (Heq0 : val ty' = ty_subst_s (s_params s) (map (fun x : vty => val x) vs') ahd),
 dom_cast (dom_aux pd)
   (funsym_subst_eq (s_params s) vs' vt ahd (s_params_Nodup s)
@@ -1343,7 +1343,7 @@ dom_cast (dom_aux pd) Heq0
 Proof.
   exists (ty_subst (s_params s) vs' ahd).
   exists (eq_ind (nth 0 (thd :: ttl) tm_d)
-  (fun t : term => term_has_type sigma t (ty_subst (s_params s) vs' ahd))
+  (fun t : term => term_has_type gamma t (ty_subst (s_params s) vs' ahd))
   (Forall_inv Htys) (Tvar vs_small) Hthd).
   exists (funsym_subst_eq (s_params s) vs' vt ahd
       (s_params_Nodup _) (eq_sym Hparamslen)) .
@@ -1367,7 +1367,7 @@ Fixpoint get_arg_list_ext_aux' {v : val_vars pd vt} {hd d} (s: fpsym)
     vty_in_m m vs (snd h) /\
     hide_ty (v h) = d)
   (rep: forall (t: term) (ty: vty) (small: list vsymbol) hd
-      (Hty: term_has_type sigma t ty)
+      (Hty: term_has_type gamma t ty)
       (Hdec: decrease_fun fs ps small hd m vs t)
       (Hsmall: forall x, In x small ->
       vty_in_m m vs (snd x) /\
@@ -1383,14 +1383,14 @@ Fixpoint get_arg_list_ext_aux' {v : val_vars pd vt} {hd d} (s: fpsym)
   {struct ts}:
   forall args
   (Hargslen: length ts = length args)
-  (Hall: Forall (fun x => term_has_type sigma (fst x) (snd x))
+  (Hall: Forall (fun x => term_has_type gamma (fst x) (snd x))
     (combine ts (map (ty_subst (s_params s) vs') args)))
   (Hdec: Forall (fun t => decrease_fun fs ps small hd m vs t) ts),
   {a: arg_list domain (ty_subst_list_s (s_params s) 
     (map (fun x => val x) vs') args) |
     forall (j: nat) (Hj: j < length ts) vs_small,
     nth j ts tm_d = Tvar vs_small ->
-    exists (ty': vty) (Hty': term_has_type sigma (Tvar vs_small) ty') 
+    exists (ty': vty) (Hty': term_has_type gamma (Tvar vs_small) ty') 
         Heq,
     (*Avoids the need to relate hnth to term_rep_aux (nth) by
     directly giving the result we need*)
@@ -1402,14 +1402,14 @@ Fixpoint get_arg_list_ext_aux' {v : val_vars pd vt} {hd d} (s: fpsym)
 match ts as ts'
   return forall args,
   length ts' = length args ->
-  Forall (fun x : term * vty => term_has_type sigma (fst x) (snd x))
+  Forall (fun x : term * vty => term_has_type gamma (fst x) (snd x))
     (combine ts' (map (ty_subst (s_params s) vs') args)) ->
   Forall (fun t : term => decrease_fun fs ps small hd m vs t) ts' ->
   {a: arg_list domain (ty_subst_list_s (s_params s) 
     (map (fun x => val x) vs') args) |
     forall (j: nat) (Hj: j < length ts') vs_small,
     nth j ts' tm_d = Tvar vs_small ->
-    exists (ty': vty) (Hty': term_has_type sigma (Tvar vs_small) ty') 
+    exists (ty': vty) (Hty': term_has_type gamma (Tvar vs_small) ty') 
         Heq,
     hnth j a s_int (dom_int pd) =
     dom_cast (dom_aux pd) Heq
@@ -1423,7 +1423,7 @@ match ts as ts'
         (map (fun x => val x) vs') a') |
         forall (j: nat) (Hj: j < length nil) vs_small,
         nth j nil tm_d = Tvar vs_small ->
-        exists (ty': vty) (Hty': term_has_type sigma (Tvar vs_small) ty') 
+        exists (ty': vty) (Hty': term_has_type gamma (Tvar vs_small) ty') 
             Heq,
         hnth j a s_int (dom_int pd) =
         dom_cast (dom_aux pd) Heq
@@ -1439,13 +1439,13 @@ match ts as ts'
   | thd :: ttl => 
     fun args Hlen Htys Hdecs => 
     match args as a' return length (thd :: ttl) = length a' ->
-      Forall (fun x : term * vty => term_has_type sigma (fst x) (snd x))
+      Forall (fun x : term * vty => term_has_type gamma (fst x) (snd x))
         (combine (thd :: ttl) (map (ty_subst (s_params s) vs') a')) ->
       {a: arg_list domain (ty_subst_list_s (s_params s) 
         (map (fun x => val x) vs') a') |
         forall (j: nat) (Hj: j < length (thd :: ttl)) vs_small,
         nth j (thd :: ttl) tm_d = Tvar vs_small ->
-        exists (ty': vty) (Hty': term_has_type sigma (Tvar vs_small) ty') 
+        exists (ty': vty) (Hty': term_has_type gamma (Tvar vs_small) ty') 
             Heq,
         hnth j a s_int (dom_int pd) =
         dom_cast (dom_aux pd) Heq
@@ -1469,7 +1469,7 @@ match ts as ts'
             forall (vs_small: vsymbol),
             nth j' (thd :: ttl) tm_d = Tvar vs_small ->
             exists
-              (ty' : vty) (Hty' : term_has_type sigma (Tvar vs_small) ty') 
+              (ty' : vty) (Hty' : term_has_type gamma (Tvar vs_small) ty') 
             (Heq0 : val ty' =
                     nth j'
                       (ty_subst_list_s (s_params s) (map (fun x : vty => val x) vs') (ahd :: atl))
@@ -2100,7 +2100,7 @@ forall (small: list vsymbol) hd
 (Hnth': forall (i: nat) vs_small,
   nth i ts tm_d = Tvar vs_small ->
   i < length ts ->
-  exists (ty': vty) (Hty': term_has_type sigma (Tvar vs_small) ty') 
+  exists (ty': vty) (Hty': term_has_type gamma (Tvar vs_small) ty') 
   Heq,
   hnth i args s_int (dom_int pd) =
 dom_cast (dom_aux pd) Heq
@@ -2109,7 +2109,7 @@ dom_cast (dom_aux pd) Heq
      (var_to_dom pd vt v vs_small)))
 
 (Hdec2: Forall (fun t => decrease_fun fs ps small hd m vs t) ts)
-(Hall:  Forall (fun x => term_has_type sigma (fst x) (snd x)) 
+(Hall:  Forall (fun x => term_has_type gamma (fst x) (snd x)) 
 (combine ts (map (ty_subst (s_params s1) l) (s_args s1))))
 (Hargslen: length ts = length (s_args s1))
 (Hparamslen: length l = length (s_params s1))
@@ -2212,7 +2212,7 @@ Proof.
     (*Now, this is just a casted version of the smaller assumption we
       have. So we can use [adt_smaller_trans_hide_cast]*)
     apply adt_smaller_trans_hide_cast.
-    assert (term_has_type sigma (Tvar vs_small) (snd (nth (sn_idx sn_def) (sn_args sn_def) vs_d))). {
+    assert (term_has_type gamma (Tvar vs_small) (snd (nth (sn_idx sn_def) (sn_args sn_def) vs_d))). {
       rewrite Forall_forall in Hall.
       specialize (Hall (nth (sn_idx sn_def) ts tm_d, nth (sn_idx sn_def) (s_args (sn_sym sn_def)) vty_int)).
       simpl in Hall. rewrite <- Hvar.
@@ -2262,7 +2262,7 @@ let d:= hide_ty
    (hnth (sn_idx f1) a1 s_int (dom_int pd))) in
 forall (small: list vsymbol) hd
   (ty: vty) (f: funsym) (l: list vty) (ts: list term)
-  (Hty': term_has_type sigma (Tfun f l ts) ty)
+  (Hty': term_has_type gamma (Tfun f l ts) ty)
   (Hdec': decrease_fun fs ps small hd m vs (Tfun f l ts))
   (x: {f' : fn | In f' fs /\ f = fn_sym f'})
   (Hsmall: forall x : vsymbol,
@@ -2274,7 +2274,7 @@ forall (small: list vsymbol) hd
      hide_ty (v h) = d)
   (term_rep_aux: forall v (t : term) 
       (ty : vty) (small : list vsymbol) hd
-      (Hty : term_has_type sigma t ty),
+      (Hty : term_has_type gamma t ty),
     decrease_fun fs ps small hd m vs t ->
     (forall x : vsymbol,
     In x small -> 
@@ -2296,14 +2296,14 @@ let get_arg_list_ext_aux':= fix get_arg_list_ext_aux' (s: fpsym)
 {struct ts}:
 forall args
 (Hargslen: length ts = length args)
-(Hall: Forall (fun x => term_has_type sigma (fst x) (snd x))
+(Hall: Forall (fun x => term_has_type gamma (fst x) (snd x))
   (combine ts (map (ty_subst (s_params s) vs') args)))
 (Hdec: Forall (fun t => decrease_fun fs ps small hd m vs t) ts),
 {a: arg_list domain (ty_subst_list_s (s_params s) 
   (map (fun x => val x) vs') args) |
   forall (j: nat) (Hj: j < length ts) vs_small,
   nth j ts tm_d = Tvar vs_small ->
-  exists (ty': vty) (Hty': term_has_type sigma (Tvar vs_small) ty') 
+  exists (ty': vty) (Hty': term_has_type gamma (Tvar vs_small) ty') 
       Heq,
   (*Avoids the need to relate hnth to term_rep_aux (nth) by
   directly giving the result we need*)
@@ -2315,14 +2315,14 @@ forall args
 match ts as ts'
 return forall args,
 length ts' = length args ->
-Forall (fun x : term * vty => term_has_type sigma (fst x) (snd x))
+Forall (fun x : term * vty => term_has_type gamma (fst x) (snd x))
   (combine ts' (map (ty_subst (s_params s) vs') args)) ->
 Forall (fun t : term => decrease_fun fs ps small hd m vs t) ts' ->
 {a: arg_list domain (ty_subst_list_s (s_params s) 
   (map (fun x => val x) vs') args) |
   forall (j: nat) (Hj: j < length ts') vs_small,
   nth j ts' tm_d = Tvar vs_small ->
-  exists (ty': vty) (Hty': term_has_type sigma (Tvar vs_small) ty') 
+  exists (ty': vty) (Hty': term_has_type gamma (Tvar vs_small) ty') 
       Heq,
   hnth j a s_int (dom_int pd) =
   dom_cast (dom_aux pd) Heq
@@ -2336,7 +2336,7 @@ with
       (map (fun x => val x) vs') a') |
       forall (j: nat) (Hj: j < length nil) vs_small,
       nth j nil tm_d = Tvar vs_small ->
-      exists (ty': vty) (Hty': term_has_type sigma (Tvar vs_small) ty') 
+      exists (ty': vty) (Hty': term_has_type gamma (Tvar vs_small) ty') 
           Heq,
       hnth j a s_int (dom_int pd) =
       dom_cast (dom_aux pd) Heq
@@ -2352,13 +2352,13 @@ with
 | thd :: ttl => 
   fun args Hlen Htys Hdecs => 
   match args as a' return length (thd :: ttl) = length a' ->
-    Forall (fun x : term * vty => term_has_type sigma (fst x) (snd x))
+    Forall (fun x : term * vty => term_has_type gamma (fst x) (snd x))
       (combine (thd :: ttl) (map (ty_subst (s_params s) vs') a')) ->
     {a: arg_list domain (ty_subst_list_s (s_params s) 
       (map (fun x => val x) vs') a') |
       forall (j: nat) (Hj: j < length (thd :: ttl)) vs_small,
       nth j (thd :: ttl) tm_d = Tvar vs_small ->
-      exists (ty': vty) (Hty': term_has_type sigma (Tvar vs_small) ty') 
+      exists (ty': vty) (Hty': term_has_type gamma (Tvar vs_small) ty') 
           Heq,
       hnth j a s_int (dom_int pd) =
       dom_cast (dom_aux pd) Heq
@@ -2382,7 +2382,7 @@ with
           forall (vs_small: vsymbol),
           nth j' (thd :: ttl) tm_d = Tvar vs_small ->
           exists
-            (ty' : vty) (Hty' : term_has_type sigma (Tvar vs_small) ty') 
+            (ty' : vty) (Hty' : term_has_type gamma (Tvar vs_small) ty') 
           (Heq0 : val ty' =
                   nth j'
                     (ty_subst_list_s (s_params s) (map (fun x : vty => val x) vs') (ahd :: atl))
@@ -2510,7 +2510,7 @@ let d:= hide_ty
    (hnth (sn_idx f1) a1 s_int (dom_int pd))) in
 forall (small: list vsymbol) hd
   (p: predsym) (l: list vty) (ts: list term)
-  (Hty': valid_formula sigma (Fpred p l ts))
+  (Hty': valid_formula gamma (Fpred p l ts))
   (Hdec': decrease_pred fs ps small hd m vs (Fpred p l ts))
   (x: {p' : pn | In p' ps /\ p = pn_sym p'})
   (Hsmall: forall x : vsymbol,
@@ -2522,7 +2522,7 @@ forall (small: list vsymbol) hd
      hide_ty (v h) = d)
   (term_rep_aux: forall v (t : term) 
       (ty : vty) (small : list vsymbol) hd
-      (Hty : term_has_type sigma t ty),
+      (Hty : term_has_type gamma t ty),
     decrease_fun fs ps small hd m vs t ->
     (forall x : vsymbol,
     In x small -> 
@@ -2544,14 +2544,14 @@ let get_arg_list_ext_aux':= fix get_arg_list_ext_aux' (s: fpsym)
 {struct ts}:
 forall args
 (Hargslen: length ts = length args)
-(Hall: Forall (fun x => term_has_type sigma (fst x) (snd x))
+(Hall: Forall (fun x => term_has_type gamma (fst x) (snd x))
   (combine ts (map (ty_subst (s_params s) vs') args)))
 (Hdec: Forall (fun t => decrease_fun fs ps small hd m vs t) ts),
 {a: arg_list domain (ty_subst_list_s (s_params s) 
   (map (fun x => val x) vs') args) |
   forall (j: nat) (Hj: j < length ts) vs_small,
   nth j ts tm_d = Tvar vs_small ->
-  exists (ty': vty) (Hty': term_has_type sigma (Tvar vs_small) ty') 
+  exists (ty': vty) (Hty': term_has_type gamma (Tvar vs_small) ty') 
       Heq,
   (*Avoids the need to relate hnth to term_rep_aux (nth) by
   directly giving the result we need*)
@@ -2563,14 +2563,14 @@ forall args
 match ts as ts'
 return forall args,
 length ts' = length args ->
-Forall (fun x : term * vty => term_has_type sigma (fst x) (snd x))
+Forall (fun x : term * vty => term_has_type gamma (fst x) (snd x))
   (combine ts' (map (ty_subst (s_params s) vs') args)) ->
 Forall (fun t : term => decrease_fun fs ps small hd m vs t) ts' ->
 {a: arg_list domain (ty_subst_list_s (s_params s) 
   (map (fun x => val x) vs') args) |
   forall (j: nat) (Hj: j < length ts') vs_small,
   nth j ts' tm_d = Tvar vs_small ->
-  exists (ty': vty) (Hty': term_has_type sigma (Tvar vs_small) ty') 
+  exists (ty': vty) (Hty': term_has_type gamma (Tvar vs_small) ty') 
       Heq,
   hnth j a s_int (dom_int pd) =
   dom_cast (dom_aux pd) Heq
@@ -2584,7 +2584,7 @@ with
       (map (fun x => val x) vs') a') |
       forall (j: nat) (Hj: j < length nil) vs_small,
       nth j nil tm_d = Tvar vs_small ->
-      exists (ty': vty) (Hty': term_has_type sigma (Tvar vs_small) ty') 
+      exists (ty': vty) (Hty': term_has_type gamma (Tvar vs_small) ty') 
           Heq,
       hnth j a s_int (dom_int pd) =
       dom_cast (dom_aux pd) Heq
@@ -2600,13 +2600,13 @@ with
 | thd :: ttl => 
   fun args Hlen Htys Hdecs => 
   match args as a' return length (thd :: ttl) = length a' ->
-    Forall (fun x : term * vty => term_has_type sigma (fst x) (snd x))
+    Forall (fun x : term * vty => term_has_type gamma (fst x) (snd x))
       (combine (thd :: ttl) (map (ty_subst (s_params s) vs') a')) ->
     {a: arg_list domain (ty_subst_list_s (s_params s) 
       (map (fun x => val x) vs') a') |
       forall (j: nat) (Hj: j < length (thd :: ttl)) vs_small,
       nth j (thd :: ttl) tm_d = Tvar vs_small ->
-      exists (ty': vty) (Hty': term_has_type sigma (Tvar vs_small) ty') 
+      exists (ty': vty) (Hty': term_has_type gamma (Tvar vs_small) ty') 
           Heq,
       hnth j a s_int (dom_int pd) =
       dom_cast (dom_aux pd) Heq
@@ -2630,7 +2630,7 @@ with
           forall (vs_small: vsymbol),
           nth j' (thd :: ttl) tm_d = Tvar vs_small ->
           exists
-            (ty' : vty) (Hty' : term_has_type sigma (Tvar vs_small) ty') 
+            (ty' : vty) (Hty' : term_has_type gamma (Tvar vs_small) ty') 
           (Heq0 : val ty' =
                   nth j'
                     (ty_subst_list_s (s_params s) (map (fun x : vty => val x) vs') (ahd :: atl))
@@ -2782,7 +2782,7 @@ Qed.
   *)
 Lemma small_match_lemma { tm v ty1 p Hty dom_t small d l mvar hd}
   (Hmatch: match_val_single gamma_valid pd vt ty1 p Hty dom_t =Some l)
-  (Hty1: term_has_type sigma tm ty1)
+  (Hty1: term_has_type gamma tm ty1)
   (Htm: tm = Tvar mvar /\ (hd = Some mvar \/ In mvar small))
   (Hdomt: dom_t = dom_cast _ (f_equal (fun x => val x) 
       (eq_sym (ty_var_inv (term_has_type_cast (proj1' Htm) Hty1))))
@@ -3012,7 +3012,7 @@ Notation y := (nth (sn_idx f1) (sn_args f1) vs_d).
 Definition term_rep_aux_body 
 (term_rep_aux: forall (v: val_vars pd vt) 
   (t: term) (ty: vty) (small: list vsymbol) (hd: option vsymbol)
-  (Hty: term_has_type sigma t ty)
+  (Hty: term_has_type gamma t ty)
   (Hdec: decrease_fun fs ps small hd m vs t)
   (Hsmall: forall x, In x small ->
     vty_in_m m vs (snd x) /\
@@ -3026,7 +3026,7 @@ Definition term_rep_aux_body
       (var_to_dom _ vt v x)})
 (formula_rep_aux: forall (v: val_vars pd vt) 
 (f: formula) (small: list vsymbol) (hd: option vsymbol)
-(Hval: valid_formula sigma f)
+(Hval: valid_formula gamma f)
 (Hdec: decrease_pred fs ps small hd m vs f)
 (Hsmall: forall x, In x small ->
   vty_in_m m vs (snd x) /\
@@ -3040,7 +3040,7 @@ bool)
 (ty: vty)
 (small: list vsymbol)
 (hd: option vsymbol)
-(Hty: term_has_type sigma t ty)
+(Hty: term_has_type gamma t ty)
 (Hdec: decrease_fun fs ps small hd m vs t)
 (Hsmall: forall x, In x small ->
   vty_in_m m vs (snd x) /\
@@ -3052,7 +3052,7 @@ bool)
   d = dom_cast _ (f_equal (fun x => val x) 
     (eq_sym (ty_var_inv (term_has_type_cast Heqx Hty))))
     (var_to_dom _ vt v x)} :=
-  match t as tm return forall (Hty': term_has_type sigma tm ty),
+  match t as tm return forall (Hty': term_has_type gamma tm ty),
   decrease_fun fs ps small hd m vs tm -> 
   {d: domain (val ty) | forall x (Heqx: tm = Tvar x),
   d = dom_cast _ (f_equal (fun x => val x) 
@@ -3099,14 +3099,14 @@ bool)
     {struct ts}:
     forall args
     (Hargslen: length ts = length args)
-    (Hall: Forall (fun x => term_has_type sigma (fst x) (snd x))
+    (Hall: Forall (fun x => term_has_type gamma (fst x) (snd x))
       (combine ts (map (ty_subst (s_params s) vs') args)))
     (Hdec: Forall (fun t => decrease_fun fs ps small hd m vs t) ts),
     {a: arg_list domain (ty_subst_list_s (s_params s) 
       (map (fun x => val x) vs') args) |
       forall (j: nat) (Hj: j < length ts) vs_small,
       nth j ts tm_d = Tvar vs_small ->
-      exists (ty': vty) (Hty': term_has_type sigma (Tvar vs_small) ty') 
+      exists (ty': vty) (Hty': term_has_type gamma (Tvar vs_small) ty') 
           Heq,
       (*Avoids the need to relate hnth to term_rep_aux (nth) by
       directly giving the result we need*)
@@ -3118,14 +3118,14 @@ bool)
   match ts as ts'
     return forall args,
     length ts' = length args ->
-    Forall (fun x : term * vty => term_has_type sigma (fst x) (snd x))
+    Forall (fun x : term * vty => term_has_type gamma (fst x) (snd x))
       (combine ts' (map (ty_subst (s_params s) vs') args)) ->
     Forall (fun t : term => decrease_fun fs ps small hd m vs t) ts' ->
     {a: arg_list domain (ty_subst_list_s (s_params s) 
       (map (fun x => val x) vs') args) |
       forall (j: nat) (Hj: j < length ts') vs_small,
       nth j ts' tm_d = Tvar vs_small ->
-      exists (ty': vty) (Hty': term_has_type sigma (Tvar vs_small) ty') 
+      exists (ty': vty) (Hty': term_has_type gamma (Tvar vs_small) ty') 
           Heq,
       hnth j a s_int (dom_int pd) =
       dom_cast (dom_aux pd) Heq
@@ -3139,7 +3139,7 @@ bool)
           (map (fun x => val x) vs') a') |
           forall (j: nat) (Hj: j < length nil) vs_small,
           nth j nil tm_d = Tvar vs_small ->
-          exists (ty': vty) (Hty': term_has_type sigma (Tvar vs_small) ty') 
+          exists (ty': vty) (Hty': term_has_type gamma (Tvar vs_small) ty') 
               Heq,
           hnth j a s_int (dom_int pd) =
           dom_cast (dom_aux pd) Heq
@@ -3155,13 +3155,13 @@ bool)
     | thd :: ttl => 
       fun args Hlen Htys Hdecs => 
       match args as a' return length (thd :: ttl) = length a' ->
-        Forall (fun x : term * vty => term_has_type sigma (fst x) (snd x))
+        Forall (fun x : term * vty => term_has_type gamma (fst x) (snd x))
           (combine (thd :: ttl) (map (ty_subst (s_params s) vs') a')) ->
         {a: arg_list domain (ty_subst_list_s (s_params s) 
           (map (fun x => val x) vs') a') |
           forall (j: nat) (Hj: j < length (thd :: ttl)) vs_small,
           nth j (thd :: ttl) tm_d = Tvar vs_small ->
-          exists (ty': vty) (Hty': term_has_type sigma (Tvar vs_small) ty') 
+          exists (ty': vty) (Hty': term_has_type gamma (Tvar vs_small) ty') 
               Heq,
           hnth j a s_int (dom_int pd) =
           dom_cast (dom_aux pd) Heq
@@ -3185,7 +3185,7 @@ bool)
               forall (vs_small: vsymbol),
               nth j' (thd :: ttl) tm_d = Tvar vs_small ->
               exists
-                (ty' : vty) (Hty' : term_has_type sigma (Tvar vs_small) ty') 
+                (ty' : vty) (Hty' : term_has_type gamma (Tvar vs_small) ty') 
               (Heq0 : val ty' =
                       nth j'
                         (ty_subst_list_s (s_params s) (map (fun x : vty => val x) vs') (ahd :: atl))
@@ -3335,9 +3335,9 @@ bool)
   We also have an awkward exist (proj1_sig _) H, because the inductive
   proof is not quite right, though both are trivial*)
 | Tlet tm1 v1 tm2 => fun Hty' Hdec' =>
-    let Ht1 : term_has_type sigma tm1 (snd v1) :=
+    let Ht1 : term_has_type gamma tm1 (snd v1) :=
       proj1' (ty_let_inv Hty') in
-    let Ht2 : term_has_type sigma tm2 ty :=
+    let Ht2 : term_has_type gamma tm2 ty :=
       proj2' (ty_let_inv Hty') in 
     let Hdec1 : decrease_fun fs ps small hd m vs tm1 := 
       proj1' (dec_inv_tlet Hdec') in
@@ -3355,11 +3355,11 @@ bool)
 
 (*TIf is simple recursion*)
 | Tif f1 t2 t3 => fun Hty' Hdec' =>
-  let Ht1 : term_has_type sigma t2 ty :=
+  let Ht1 : term_has_type gamma t2 ty :=
     (proj1' (ty_if_inv Hty')) in
-  let Ht2 : term_has_type sigma t3 ty :=
+  let Ht2 : term_has_type gamma t3 ty :=
     (proj1' (proj2' (ty_if_inv Hty'))) in
-  let Hf: valid_formula sigma f1 :=
+  let Hf: valid_formula gamma f1 :=
     (proj2' (proj2' (ty_if_inv Hty'))) in
   let Hdec1 := proj1' (dec_inv_tif Hdec') in
   let Hdec2 := proj1' (proj2' (dec_inv_tif Hdec')) in
@@ -3379,11 +3379,11 @@ bool)
 (*Tmatch is the other interesting case, though most of
   the work was done in the previous lemmas*)
 | Tmatch t ty1 pats => fun Hty' Hdec' =>
-    let Ht1 : term_has_type sigma t ty1 :=
+    let Ht1 : term_has_type gamma t ty1 :=
       proj1' (ty_match_inv Hty') in
-    let Hall : Forall (fun x => term_has_type sigma (snd x) ty) pats :=
+    let Hall : Forall (fun x => term_has_type gamma (snd x) ty) pats :=
       proj2' (proj2' (ty_match_inv Hty')) in
-    let Hpats: Forall (fun x => pattern_has_type sigma (fst x) ty1) pats :=
+    let Hpats: Forall (fun x => pattern_has_type gamma (fst x) ty1) pats :=
       proj1' (proj2' (ty_match_inv Hty')) in
 
     let Hdec1 : decrease_fun fs ps small hd m vs t := 
@@ -3413,16 +3413,16 @@ bool)
       (*Unfortunately, we need a different version for each
         pattern match*)
       let fix match_rep (pats: list (pattern * term)) 
-        (Hall: Forall (fun x => term_has_type sigma (snd x) ty) pats)
-        (Hpats: Forall (fun x => pattern_has_type sigma (fst x) ty1) pats)
+        (Hall: Forall (fun x => term_has_type gamma (snd x) ty) pats)
+        (Hpats: Forall (fun x => pattern_has_type gamma (fst x) ty1) pats)
         (Hdec: Forall (fun x => decrease_fun fs ps
         (union vsymbol_eq_dec (vsyms_in_m m vs (pat_constr_vars m vs (fst x)))
           (remove_all vsymbol_eq_dec (pat_fv (fst x)) small))
         (upd_option_iter hd (pat_fv (fst x))) m vs (snd x)) pats) :
         domain (val ty) :=
       match pats as l' return 
-        Forall (fun x => term_has_type sigma (snd x) ty) l' ->
-        Forall (fun x => pattern_has_type sigma (fst x) ty1) l' ->
+        Forall (fun x => term_has_type gamma (snd x) ty) l' ->
+        Forall (fun x => pattern_has_type gamma (fst x) ty1) l' ->
         Forall (fun x => decrease_fun fs ps
         (union vsymbol_eq_dec (vsyms_in_m m vs (pat_constr_vars m vs (fst x)))
           (remove_all vsymbol_eq_dec (pat_fv (fst x)) small))
@@ -3468,15 +3468,15 @@ bool)
       (*Can't make [match_rep] a separate function or else Coq
       cannot tell structurally decreasing. So we inline it*)
       let fix match_rep (pats: list (pattern * term)) 
-        (Hall: Forall (fun x => term_has_type sigma (snd x) ty) pats)
-        (Hpats: Forall (fun x => pattern_has_type sigma (fst x) ty1) pats)
+        (Hall: Forall (fun x => term_has_type gamma (snd x) ty) pats)
+        (Hpats: Forall (fun x => pattern_has_type gamma (fst x) ty1) pats)
         (Hdec: Forall (fun x => decrease_fun fs ps 
           (remove_all vsymbol_eq_dec (pat_fv (fst x)) small) 
           (upd_option_iter hd (pat_fv (fst x))) m vs (snd x)) pats) :
         domain (val ty) :=
       match pats as l' return 
-        Forall (fun x => term_has_type sigma (snd x) ty) l' ->
-        Forall (fun x => pattern_has_type sigma (fst x) ty1) l' ->
+        Forall (fun x => term_has_type gamma (snd x) ty) l' ->
+        Forall (fun x => pattern_has_type gamma (fst x) ty1) l' ->
         Forall (fun x => decrease_fun fs ps 
           (remove_all vsymbol_eq_dec (pat_fv (fst x)) small) 
           (upd_option_iter hd (pat_fv (fst x))) m vs (snd x)) l' ->
@@ -3510,7 +3510,7 @@ bool)
     end
 
 | Teps f x => fun Hty' Hdec' =>
-  let Hval : valid_formula sigma f := proj1' (ty_eps_inv Hty') in
+  let Hval : valid_formula gamma f := proj1' (ty_eps_inv Hty') in
   let Heq : ty = snd x := proj2' (ty_eps_inv Hty') in
   let Hdec1 := dec_inv_teps Hdec' in
   (*We need to show that domain (val v ty) is inhabited*)
@@ -3533,7 +3533,7 @@ end Hty Hdec.
 Definition formula_rep_aux_body 
 (term_rep_aux: forall (v: val_vars pd vt) 
   (t: term) (ty: vty) (small: list vsymbol) (hd: option vsymbol)
-  (Hty: term_has_type sigma t ty)
+  (Hty: term_has_type gamma t ty)
   (Hdec: decrease_fun fs ps small hd m vs t)
   (Hsmall: forall x, In x small ->
     vty_in_m m vs (snd x) /\
@@ -3547,7 +3547,7 @@ Definition formula_rep_aux_body
       (var_to_dom _ vt v x)})
 (formula_rep_aux: forall (v: val_vars pd vt) 
 (f: formula) (small: list vsymbol) (hd: option vsymbol)
-(Hval: valid_formula sigma f)
+(Hval: valid_formula gamma f)
 (Hdec: decrease_pred fs ps small hd m vs f)
 (Hsmall: forall x, In x small ->
   vty_in_m m vs (snd x) /\
@@ -3560,7 +3560,7 @@ bool)
 (f: formula)
 (small: list vsymbol)
 (hd: option vsymbol)
-(Hval: valid_formula sigma f)
+(Hval: valid_formula gamma f)
 (Hdec: decrease_pred fs ps small hd m vs f)
 (Hsmall: forall x, In x small ->
   vty_in_m m vs (snd x) /\
@@ -3569,21 +3569,21 @@ bool)
   vty_in_m m vs (snd h) /\
   hide_ty (v h) = d):
 bool :=
-  match f as fmla return forall (Hval': valid_formula sigma fmla),
+  match f as fmla return forall (Hval': valid_formula gamma fmla),
   decrease_pred fs ps small hd m vs fmla -> 
   bool with
 | Ftrue => fun _ _ => true
 | Ffalse => fun _ _ => false
 | Fnot f' => fun Hval' Hdec' =>
-  let Hf' : valid_formula sigma f' :=
+  let Hf' : valid_formula gamma f' :=
     valid_not_inj Hval' in
 
   negb (formula_rep_aux v f' small hd Hf' 
     (dec_inv_fnot Hdec') Hsmall Hhd)
 | Fbinop b f1 f2 => fun Hval' Hdec' =>
-  let Hf1 : valid_formula sigma f1 :=
+  let Hf1 : valid_formula gamma f1 :=
     proj1' (valid_binop_inj Hval') in
-  let Hf2 : valid_formula sigma f2 :=
+  let Hf2 : valid_formula gamma f2 :=
     proj2' (valid_binop_inj Hval') in
   let Hdec1 := proj1' (dec_inv_fbinop Hdec') in
   let Hdec2 := proj2' (dec_inv_fbinop Hdec') in
@@ -3592,9 +3592,9 @@ bool :=
     (formula_rep_aux v f1 small hd Hf1 Hdec1 Hsmall Hhd) 
     (formula_rep_aux v f2 small hd Hf2 Hdec2 Hsmall Hhd)
 | Flet t x f' => fun Hval' Hdec' =>
-  let Ht: term_has_type sigma t (snd x) :=
+  let Ht: term_has_type gamma t (snd x) :=
     (proj1' (valid_let_inj Hval')) in
-  let Hf': valid_formula sigma f' :=
+  let Hf': valid_formula gamma f' :=
     (proj2' (valid_let_inj Hval')) in
   let Hdec1 := proj1' (dec_inv_flet Hdec') in
   let Hdec2 := proj2' (dec_inv_flet Hdec') in
@@ -3607,7 +3607,7 @@ bool :=
   (small_remove_lemma v x _ Hsmall)
   (small_hd_lemma v x _ Hhd)
 | Fquant Tforall x f' => fun Hval' Hdec' =>
-  let Hf' : valid_formula sigma f' :=
+  let Hf' : valid_formula gamma f' :=
     valid_quant_inj Hval' in
   let Hdec1 := dec_inv_quant Hdec' in
   (*NOTE: HERE is where we need the classical axiom assumptions*)
@@ -3617,7 +3617,7 @@ bool :=
     (small_hd_lemma v x _ Hhd))
 
 | Fquant Texists x f' => fun Hval' Hdec' =>
-  let Hf' : valid_formula sigma f' :=
+  let Hf' : valid_formula gamma f' :=
     valid_quant_inj Hval' in
   let Hdec1 := dec_inv_quant Hdec' in
   (*NOTE: HERE is where we need the classical axiom assumptions*)
@@ -3627,9 +3627,9 @@ bool :=
     (small_hd_lemma v x _ Hhd))
 
 | Feq ty t1 t2 => fun Hval' Hdec' =>
-  let Ht1 : term_has_type sigma t1 ty := 
+  let Ht1 : term_has_type gamma t1 ty := 
     proj1' (valid_eq_inj Hval') in
-  let Ht2 : term_has_type sigma t2 ty :=
+  let Ht2 : term_has_type gamma t2 ty :=
     proj2' (valid_eq_inj Hval') in
   let Hdec1 := proj1' (dec_inv_eq Hdec') in
   let Hdec2 := proj2' (dec_inv_eq Hdec') in
@@ -3639,11 +3639,11 @@ bool :=
     proj1_sig (term_rep_aux v t2 ty small hd Ht2 Hdec2 Hsmall Hhd))
 
 | Fif f1 f2 f3 => fun Hval' Hdec' =>
-  let Hf1 : valid_formula sigma f1 :=
+  let Hf1 : valid_formula gamma f1 :=
     proj1' (valid_if_inj Hval') in
-  let Hf2 : valid_formula sigma f2 :=
+  let Hf2 : valid_formula gamma f2 :=
     proj1' (proj2' (valid_if_inj Hval')) in
-  let Hf3 : valid_formula sigma f3 :=
+  let Hf3 : valid_formula gamma f3 :=
     proj2' (proj2' (valid_if_inj Hval')) in
   let Hdec1 := proj1' (dec_inv_fif Hdec') in
   let Hdec2 := proj1' (proj2' (dec_inv_fif Hdec')) in
@@ -3658,11 +3658,11 @@ bool :=
 
 (*Fmatch is similar to Tmatch*)
 | Fmatch t ty1 pats => fun Hval' Hdec' =>
-  let Ht1 : term_has_type sigma t ty1 :=
+  let Ht1 : term_has_type gamma t ty1 :=
     proj1' (valid_match_inv Hval') in
-  let Hall : Forall (fun x => valid_formula sigma (snd x)) pats :=
+  let Hall : Forall (fun x => valid_formula gamma (snd x)) pats :=
     proj2' (proj2' (valid_match_inv Hval')) in
-  let Hpats: Forall (fun x => pattern_has_type sigma (fst x) ty1) pats :=
+  let Hpats: Forall (fun x => pattern_has_type gamma (fst x) ty1) pats :=
     proj1' (proj2' (valid_match_inv Hval')) in
 
   let Hdec1 : decrease_fun fs ps small hd m vs t := 
@@ -3695,16 +3695,16 @@ bool :=
     (*Unfortunately, we need a different version for each
       pattern match*)
     let fix match_rep (pats: list (pattern * formula)) 
-      (Hall: Forall (fun x => valid_formula sigma (snd x)) pats)
-      (Hpats: Forall (fun x => pattern_has_type sigma (fst x) ty1) pats)
+      (Hall: Forall (fun x => valid_formula gamma (snd x)) pats)
+      (Hpats: Forall (fun x => pattern_has_type gamma (fst x) ty1) pats)
       (Hdec: Forall (fun x => decrease_pred fs ps
       (union vsymbol_eq_dec (vsyms_in_m m vs (pat_constr_vars m vs (fst x)))
         (remove_all vsymbol_eq_dec (pat_fv (fst x)) small))
       (upd_option_iter hd (pat_fv (fst x))) m vs (snd x)) pats) :
       bool :=
     match pats as l' return 
-      Forall (fun x => valid_formula sigma (snd x)) l' ->
-      Forall (fun x => pattern_has_type sigma (fst x) ty1) l' ->
+      Forall (fun x => valid_formula gamma (snd x)) l' ->
+      Forall (fun x => pattern_has_type gamma (fst x) ty1) l' ->
       Forall (fun x => decrease_pred fs ps
       (union vsymbol_eq_dec (vsyms_in_m m vs (pat_constr_vars m vs (fst x)))
         (remove_all vsymbol_eq_dec (pat_fv (fst x)) small))
@@ -3742,15 +3742,15 @@ bool :=
     (*Can't make [match_rep] a separate function or else Coq
     cannot tell structurally decreasing. So we inline it*)
     let fix match_rep (pats: list (pattern * formula)) 
-      (Hall: Forall (fun x => valid_formula sigma (snd x)) pats)
-      (Hpats: Forall (fun x => pattern_has_type sigma (fst x) ty1) pats)
+      (Hall: Forall (fun x => valid_formula gamma (snd x)) pats)
+      (Hpats: Forall (fun x => pattern_has_type gamma (fst x) ty1) pats)
       (Hdec: Forall (fun x => decrease_pred fs ps 
         (remove_all vsymbol_eq_dec (pat_fv (fst x)) small) 
         (upd_option_iter hd (pat_fv (fst x))) m vs (snd x)) pats) :
       bool :=
     match pats as l' return 
-      Forall (fun x => valid_formula sigma (snd x)) l' ->
-      Forall (fun x => pattern_has_type sigma (fst x) ty1) l' ->
+      Forall (fun x => valid_formula gamma (snd x)) l' ->
+      Forall (fun x => pattern_has_type gamma (fst x) ty1) l' ->
       Forall (fun x => decrease_pred fs ps 
         (remove_all vsymbol_eq_dec (pat_fv (fst x)) small) 
         (upd_option_iter hd (pat_fv (fst x))) m vs (snd x)) l' ->
@@ -3787,14 +3787,14 @@ bool :=
     {struct ts}:
     forall args
     (Hargslen: length ts = length args)
-    (Hall: Forall (fun x => term_has_type sigma (fst x) (snd x))
+    (Hall: Forall (fun x => term_has_type gamma (fst x) (snd x))
       (combine ts (map (ty_subst (s_params s) vs') args)))
     (Hdec: Forall (fun t => decrease_fun fs ps small hd m vs t) ts),
     {a: arg_list domain (ty_subst_list_s (s_params s) 
       (map (fun x => val x) vs') args) |
       forall (j: nat) (Hj: j < length ts) vs_small,
       nth j ts tm_d = Tvar vs_small ->
-      exists (ty': vty) (Hty': term_has_type sigma (Tvar vs_small) ty') 
+      exists (ty': vty) (Hty': term_has_type gamma (Tvar vs_small) ty') 
           Heq,
       (*Avoids the need to relate hnth to term_rep_aux (nth) by
       directly giving the result we need*)
@@ -3806,14 +3806,14 @@ bool :=
   match ts as ts'
     return forall args,
     length ts' = length args ->
-    Forall (fun x : term * vty => term_has_type sigma (fst x) (snd x))
+    Forall (fun x : term * vty => term_has_type gamma (fst x) (snd x))
       (combine ts' (map (ty_subst (s_params s) vs') args)) ->
     Forall (fun t : term => decrease_fun fs ps small hd m vs t) ts' ->
     {a: arg_list domain (ty_subst_list_s (s_params s) 
       (map (fun x => val x) vs') args) |
       forall (j: nat) (Hj: j < length ts') vs_small,
       nth j ts' tm_d = Tvar vs_small ->
-      exists (ty': vty) (Hty': term_has_type sigma (Tvar vs_small) ty') 
+      exists (ty': vty) (Hty': term_has_type gamma (Tvar vs_small) ty') 
           Heq,
       hnth j a s_int (dom_int pd) =
       dom_cast (dom_aux pd) Heq
@@ -3827,7 +3827,7 @@ bool :=
           (map (fun x => val x) vs') a') |
           forall (j: nat) (Hj: j < length nil) vs_small,
           nth j nil tm_d = Tvar vs_small ->
-          exists (ty': vty) (Hty': term_has_type sigma (Tvar vs_small) ty') 
+          exists (ty': vty) (Hty': term_has_type gamma (Tvar vs_small) ty') 
               Heq,
           hnth j a s_int (dom_int pd) =
           dom_cast (dom_aux pd) Heq
@@ -3843,13 +3843,13 @@ bool :=
     | thd :: ttl => 
       fun args Hlen Htys Hdecs => 
       match args as a' return length (thd :: ttl) = length a' ->
-        Forall (fun x : term * vty => term_has_type sigma (fst x) (snd x))
+        Forall (fun x : term * vty => term_has_type gamma (fst x) (snd x))
           (combine (thd :: ttl) (map (ty_subst (s_params s) vs') a')) ->
         {a: arg_list domain (ty_subst_list_s (s_params s) 
           (map (fun x => val x) vs') a') |
           forall (j: nat) (Hj: j < length (thd :: ttl)) vs_small,
           nth j (thd :: ttl) tm_d = Tvar vs_small ->
-          exists (ty': vty) (Hty': term_has_type sigma (Tvar vs_small) ty') 
+          exists (ty': vty) (Hty': term_has_type gamma (Tvar vs_small) ty') 
               Heq,
           hnth j a s_int (dom_int pd) =
           dom_cast (dom_aux pd) Heq
@@ -3873,7 +3873,7 @@ bool :=
               forall (vs_small: vsymbol),
               nth j' (thd :: ttl) tm_d = Tvar vs_small ->
               exists
-                (ty' : vty) (Hty' : term_has_type sigma (Tvar vs_small) ty') 
+                (ty' : vty) (Hty' : term_has_type gamma (Tvar vs_small) ty') 
               (Heq0 : val ty' =
                       nth j'
                         (ty_subst_list_s (s_params s) (map (fun x : vty => val x) vs') (ahd :: atl))
@@ -4008,7 +4008,7 @@ Fixpoint term_rep_aux
 (ty: vty)
 (small: list vsymbol)
 (hd: option vsymbol)
-(Hty: term_has_type sigma t ty)
+(Hty: term_has_type gamma t ty)
 (Hdec: decrease_fun fs ps small hd m vs t)
 (Hsmall: forall x, In x small ->
 vty_in_m m vs (snd x) /\
@@ -4027,7 +4027,7 @@ with formula_rep_aux
 (f: formula)
 (small: list vsymbol)
 (hd: option vsymbol)
-(Hval: valid_formula sigma f)
+(Hval: valid_formula gamma f)
 (Hdec: decrease_pred fs ps small hd m vs f)
 (Hsmall: forall x, In x small ->
 vty_in_m m vs (snd x) /\
@@ -4064,7 +4064,7 @@ Lemma func_smaller_case' (v:val_vars pd vt)  :
      (hnth (sn_idx f1) a1 s_int (dom_int pd))) in
   forall (small: list vsymbol) hd
     (ty: vty) (f: funsym) (l: list vty) (ts: list term)
-    (Hty': term_has_type sigma (Tfun f l ts) ty)
+    (Hty': term_has_type gamma (Tfun f l ts) ty)
     (Hdec': decrease_fun fs ps small hd m vs (Tfun f l ts))
     (x: {f' : fn | In f' fs /\ f = fn_sym f'})
     (Hsmall: forall x : vsymbol,
@@ -4162,7 +4162,7 @@ let d:= hide_ty
    (hnth (sn_idx f1) a1 s_int (dom_int pd))) in
 forall (small: list vsymbol) hd
   (p: predsym) (l: list vty) (ts: list term)
-  (Hty': valid_formula sigma (Fpred p l ts))
+  (Hty': valid_formula gamma (Fpred p l ts))
   (Hdec': decrease_pred fs ps small hd m vs (Fpred p l ts))
   (x: {p' : pn | In p' ps /\ p = pn_sym p'})
   (Hsmall: forall x : vsymbol,
@@ -4248,8 +4248,8 @@ Qed.
 Fixpoint match_rep_addvars v t {ty1} {small} {hd} Ht1 Hdec1 Hsmall Hhd 
 ty (z: {mvar : vsymbol | t = Tvar mvar /\ (hd = Some mvar \/ In mvar small)})
 (pats: list (pattern * term))
-(Hall: Forall (fun x => term_has_type sigma (snd x) ty) pats)
-(Hpats: Forall (fun x => pattern_has_type sigma (fst x) ty1) pats)
+(Hall: Forall (fun x => term_has_type gamma (snd x) ty) pats)
+(Hpats: Forall (fun x => pattern_has_type gamma (fst x) ty1) pats)
 (Hdec: Forall (fun x => decrease_fun fs ps
 (union vsymbol_eq_dec (vsyms_in_m m vs (pat_constr_vars m vs (fst x)))
   (remove_all vsymbol_eq_dec (pat_fv (fst x)) small))
@@ -4258,8 +4258,8 @@ domain (val ty) :=
   let dom_t := proj1_sig (term_rep_aux v t ty1 small hd Ht1 Hdec1 Hsmall Hhd) in
       let dom_t_pf := proj2_sig (term_rep_aux v t ty1 small hd Ht1 Hdec1 Hsmall Hhd) in
   match pats as l' return 
-    Forall (fun x => term_has_type sigma (snd x) ty) l' ->
-    Forall (fun x => pattern_has_type sigma (fst x) ty1) l' ->
+    Forall (fun x => term_has_type gamma (snd x) ty) l' ->
+    Forall (fun x => pattern_has_type gamma (fst x) ty1) l' ->
     Forall (fun x => decrease_fun fs ps
     (union vsymbol_eq_dec (vsyms_in_m m vs (pat_constr_vars m vs (fst x)))
       (remove_all vsymbol_eq_dec (pat_fv (fst x)) small))
@@ -4290,8 +4290,8 @@ domain (val ty) :=
 Fixpoint match_rep_addvars' v t {ty1} {small} {hd} Ht1 Hdec1 Hsmall Hhd 
   (z: {mvar : vsymbol | t = Tvar mvar /\ (hd = Some mvar \/ In mvar small)})
   (pats: list (pattern * formula))
-  (Hall: Forall (fun x => valid_formula sigma (snd x)) pats)
-  (Hpats: Forall (fun x => pattern_has_type sigma (fst x) ty1) pats)
+  (Hall: Forall (fun x => valid_formula gamma (snd x)) pats)
+  (Hpats: Forall (fun x => pattern_has_type gamma (fst x) ty1) pats)
   (Hdec: Forall (fun x => decrease_pred fs ps
   (union vsymbol_eq_dec (vsyms_in_m m vs (pat_constr_vars m vs (fst x)))
     (remove_all vsymbol_eq_dec (pat_fv (fst x)) small))
@@ -4300,8 +4300,8 @@ Fixpoint match_rep_addvars' v t {ty1} {small} {hd} Ht1 Hdec1 Hsmall Hhd
     let dom_t := proj1_sig (term_rep_aux v t ty1 small hd Ht1 Hdec1 Hsmall Hhd) in
         let dom_t_pf := proj2_sig (term_rep_aux v t ty1 small hd Ht1 Hdec1 Hsmall Hhd) in
     match pats as l' return 
-      Forall (fun x => valid_formula sigma (snd x)) l' ->
-      Forall (fun x => pattern_has_type sigma (fst x) ty1) l' ->
+      Forall (fun x => valid_formula gamma (snd x)) l' ->
+      Forall (fun x => pattern_has_type gamma (fst x) ty1) l' ->
       Forall (fun x => decrease_pred fs ps
       (union vsymbol_eq_dec (vsyms_in_m m vs (pat_constr_vars m vs (fst x)))
         (remove_all vsymbol_eq_dec (pat_fv (fst x)) small))
@@ -4329,8 +4329,8 @@ Fixpoint match_rep_addvars' v t {ty1} {small} {hd} Ht1 Hdec1 Hsmall Hhd
 
 Fixpoint match_rep_rec v t {ty1} {small} {hd} Ht1 Hdec1 Hsmall Hhd {ty}
  (pats: list (pattern * term)) 
-          (Hall: Forall (fun x => term_has_type sigma (snd x) ty) pats)
-          (Hpats: Forall (fun x => pattern_has_type sigma (fst x) ty1) pats)
+          (Hall: Forall (fun x => term_has_type gamma (snd x) ty) pats)
+          (Hpats: Forall (fun x => pattern_has_type gamma (fst x) ty1) pats)
           (Hdec: Forall (fun x => decrease_fun fs ps 
             (remove_all vsymbol_eq_dec (pat_fv (fst x)) small) 
             (upd_option_iter hd (pat_fv (fst x))) m vs (snd x)) pats) :
@@ -4338,8 +4338,8 @@ Fixpoint match_rep_rec v t {ty1} {small} {hd} Ht1 Hdec1 Hsmall Hhd {ty}
           let dom_t := proj1_sig (term_rep_aux v t ty1 small hd Ht1 Hdec1 Hsmall Hhd) in
       let dom_t_pf := proj2_sig (term_rep_aux v t ty1 small hd Ht1 Hdec1 Hsmall Hhd) in
         match pats as l' return 
-          Forall (fun x => term_has_type sigma (snd x) ty) l' ->
-          Forall (fun x => pattern_has_type sigma (fst x) ty1) l' ->
+          Forall (fun x => term_has_type gamma (snd x) ty) l' ->
+          Forall (fun x => pattern_has_type gamma (fst x) ty1) l' ->
           Forall (fun x => decrease_fun fs ps 
             (remove_all vsymbol_eq_dec (pat_fv (fst x)) small) 
             (upd_option_iter hd (pat_fv (fst x))) m vs (snd x)) l' ->
@@ -4366,8 +4366,8 @@ Fixpoint match_rep_rec v t {ty1} {small} {hd} Ht1 Hdec1 Hsmall Hhd {ty}
 
 Fixpoint match_rep_rec' v t {ty1} {small} {hd} Ht1 Hdec1 Hsmall Hhd
   (pats: list (pattern * formula)) 
-  (Hall: Forall (fun x => valid_formula sigma (snd x)) pats)
-  (Hpats: Forall (fun x => pattern_has_type sigma (fst x) ty1) pats)
+  (Hall: Forall (fun x => valid_formula gamma (snd x)) pats)
+  (Hpats: Forall (fun x => pattern_has_type gamma (fst x) ty1) pats)
   (Hdec: Forall (fun x => decrease_pred fs ps 
     (remove_all vsymbol_eq_dec (pat_fv (fst x)) small) 
     (upd_option_iter hd (pat_fv (fst x))) m vs (snd x)) pats) :
@@ -4375,8 +4375,8 @@ Fixpoint match_rep_rec' v t {ty1} {small} {hd} Ht1 Hdec1 Hsmall Hhd
 let dom_t := proj1_sig (term_rep_aux v t ty1 small hd Ht1 Hdec1 Hsmall Hhd) in
 let dom_t_pf := proj2_sig (term_rep_aux v t ty1 small hd Ht1 Hdec1 Hsmall Hhd) in
 match pats as l' return 
-  Forall (fun x => valid_formula sigma (snd x)) l' ->
-  Forall (fun x => pattern_has_type sigma (fst x) ty1) l' ->
+  Forall (fun x => valid_formula gamma (snd x)) l' ->
+  Forall (fun x => pattern_has_type gamma (fst x) ty1) l' ->
   Forall (fun x => decrease_pred fs ps 
     (remove_all vsymbol_eq_dec (pat_fv (fst x)) small) 
     (upd_option_iter hd (pat_fv (fst x))) m vs (snd x)) l' ->
@@ -4415,14 +4415,14 @@ Lemma get_arg_list_rewrite: forall v
 {struct ts}:
 forall args
 (Hargslen: length ts = length args)
-(Hall: Forall (fun x => term_has_type sigma (fst x) (snd x))
+(Hall: Forall (fun x => term_has_type gamma (fst x) (snd x))
   (combine ts (map (ty_subst (s_params s) vs') args)))
 (Hdec: Forall (fun t => decrease_fun fs ps small hd m vs t) ts),
 {a: arg_list domain (ty_subst_list_s (s_params s) 
   (map (fun x => val x) vs') args) |
   forall (j: nat) (Hj: j < length ts) vs_small,
   nth j ts tm_d = Tvar vs_small ->
-  exists (ty': vty) (Hty': term_has_type sigma (Tvar vs_small) ty') 
+  exists (ty': vty) (Hty': term_has_type gamma (Tvar vs_small) ty') 
       Heq,
   (*Avoids the need to relate hnth to term_rep_aux (nth) by
   directly giving the result we need*)
@@ -4434,14 +4434,14 @@ forall args
 match ts as ts'
 return forall args,
 length ts' = length args ->
-Forall (fun x : term * vty => term_has_type sigma (fst x) (snd x))
+Forall (fun x : term * vty => term_has_type gamma (fst x) (snd x))
   (combine ts' (map (ty_subst (s_params s) vs') args)) ->
 Forall (fun t : term => decrease_fun fs ps small hd m vs t) ts' ->
 {a: arg_list domain (ty_subst_list_s (s_params s) 
   (map (fun x => val x) vs') args) |
   forall (j: nat) (Hj: j < length ts') vs_small,
   nth j ts' tm_d = Tvar vs_small ->
-  exists (ty': vty) (Hty': term_has_type sigma (Tvar vs_small) ty') 
+  exists (ty': vty) (Hty': term_has_type gamma (Tvar vs_small) ty') 
       Heq,
   hnth j a s_int (dom_int pd) =
   dom_cast (dom_aux pd) Heq
@@ -4455,7 +4455,7 @@ with
       (map (fun x => val x) vs') a') |
       forall (j: nat) (Hj: j < length nil) vs_small,
       nth j nil tm_d = Tvar vs_small ->
-      exists (ty': vty) (Hty': term_has_type sigma (Tvar vs_small) ty') 
+      exists (ty': vty) (Hty': term_has_type gamma (Tvar vs_small) ty') 
           Heq,
       hnth j a s_int (dom_int pd) =
       dom_cast (dom_aux pd) Heq
@@ -4471,13 +4471,13 @@ with
 | thd :: ttl => 
   fun args Hlen Htys Hdecs => 
   match args as a' return length (thd :: ttl) = length a' ->
-    Forall (fun x : term * vty => term_has_type sigma (fst x) (snd x))
+    Forall (fun x : term * vty => term_has_type gamma (fst x) (snd x))
       (combine (thd :: ttl) (map (ty_subst (s_params s) vs') a')) ->
     {a: arg_list domain (ty_subst_list_s (s_params s) 
       (map (fun x => val x) vs') a') |
       forall (j: nat) (Hj: j < length (thd :: ttl)) vs_small,
       nth j (thd :: ttl) tm_d = Tvar vs_small ->
-      exists (ty': vty) (Hty': term_has_type sigma (Tvar vs_small) ty') 
+      exists (ty': vty) (Hty': term_has_type gamma (Tvar vs_small) ty') 
           Heq,
       hnth j a s_int (dom_int pd) =
       dom_cast (dom_aux pd) Heq
@@ -4501,7 +4501,7 @@ with
           forall (vs_small: vsymbol),
           nth j' (thd :: ttl) tm_d = Tvar vs_small ->
           exists
-            (ty' : vty) (Hty' : term_has_type sigma (Tvar vs_small) ty') 
+            (ty' : vty) (Hty' : term_has_type gamma (Tvar vs_small) ty') 
           (Heq0 : val ty' =
                   nth j'
                     (ty_subst_list_s (s_params s) (map (fun x : vty => val x) vs') (ahd :: atl))
@@ -4552,8 +4552,8 @@ Lemma match_rep_addvars_rewrite: forall
 v t {ty1} {small} {hd} Ht1 Hdec1 Hsmall Hhd 
 ty (z: {mvar : vsymbol | t = Tvar mvar /\ (hd = Some mvar \/ In mvar small)})
 (pats: list (pattern * term))
-(Hall: Forall (fun x => term_has_type sigma (snd x) ty) pats)
-(Hpats: Forall (fun x => pattern_has_type sigma (fst x) ty1) pats)
+(Hall: Forall (fun x => term_has_type gamma (snd x) ty) pats)
+(Hpats: Forall (fun x => pattern_has_type gamma (fst x) ty1) pats)
 (Hdec: Forall (fun x => decrease_fun fs ps
 (union vsymbol_eq_dec (vsyms_in_m m vs (pat_constr_vars m vs (fst x)))
   (remove_all vsymbol_eq_dec (pat_fv (fst x)) small))
@@ -4561,16 +4561,16 @@ ty (z: {mvar : vsymbol | t = Tvar mvar /\ (hd = Some mvar \/ In mvar small)})
 let dom_t := proj1_sig (term_rep_aux v t ty1 small hd Ht1 Hdec1 Hsmall Hhd) in
 let dom_t_pf := proj2_sig (term_rep_aux v t ty1 small hd Ht1 Hdec1 Hsmall Hhd) in
   (fix match_rep (pats: list (pattern * term)) 
-        (Hall: Forall (fun x => term_has_type sigma (snd x) ty) pats)
-        (Hpats: Forall (fun x => pattern_has_type sigma (fst x) ty1) pats)
+        (Hall: Forall (fun x => term_has_type gamma (snd x) ty) pats)
+        (Hpats: Forall (fun x => pattern_has_type gamma (fst x) ty1) pats)
         (Hdec: Forall (fun x => decrease_fun fs ps
         (union vsymbol_eq_dec (vsyms_in_m m vs (pat_constr_vars m vs (fst x)))
           (remove_all vsymbol_eq_dec (pat_fv (fst x)) small))
         (upd_option_iter hd (pat_fv (fst x))) m vs (snd x)) pats) :
         domain (val ty) :=
       match pats as l' return 
-        Forall (fun x => term_has_type sigma (snd x) ty) l' ->
-        Forall (fun x => pattern_has_type sigma (fst x) ty1) l' ->
+        Forall (fun x => term_has_type gamma (snd x) ty) l' ->
+        Forall (fun x => pattern_has_type gamma (fst x) ty1) l' ->
         Forall (fun x => decrease_fun fs ps
         (union vsymbol_eq_dec (vsyms_in_m m vs (pat_constr_vars m vs (fst x)))
           (remove_all vsymbol_eq_dec (pat_fv (fst x)) small))
@@ -4610,8 +4610,8 @@ Lemma match_rep_addvars_rewrite': forall
 v t {ty1} {small} {hd} Ht1 Hdec1 Hsmall Hhd 
 (z: {mvar : vsymbol | t = Tvar mvar /\ (hd = Some mvar \/ In mvar small)})
 (pats: list (pattern * formula))
-(Hall: Forall (fun x => valid_formula sigma (snd x)) pats)
-(Hpats: Forall (fun x => pattern_has_type sigma (fst x) ty1) pats)
+(Hall: Forall (fun x => valid_formula gamma (snd x)) pats)
+(Hpats: Forall (fun x => pattern_has_type gamma (fst x) ty1) pats)
 (Hdec: Forall (fun x => decrease_pred fs ps
 (union vsymbol_eq_dec (vsyms_in_m m vs (pat_constr_vars m vs (fst x)))
   (remove_all vsymbol_eq_dec (pat_fv (fst x)) small))
@@ -4619,16 +4619,16 @@ v t {ty1} {small} {hd} Ht1 Hdec1 Hsmall Hhd
 let dom_t := proj1_sig (term_rep_aux v t ty1 small hd Ht1 Hdec1 Hsmall Hhd) in
 let dom_t_pf := proj2_sig (term_rep_aux v t ty1 small hd Ht1 Hdec1 Hsmall Hhd) in
   ( fix match_rep (pats: list (pattern * formula)) 
-  (Hall: Forall (fun x => valid_formula sigma (snd x)) pats)
-  (Hpats: Forall (fun x => pattern_has_type sigma (fst x) ty1) pats)
+  (Hall: Forall (fun x => valid_formula gamma (snd x)) pats)
+  (Hpats: Forall (fun x => pattern_has_type gamma (fst x) ty1) pats)
   (Hdec: Forall (fun x => decrease_pred fs ps
   (union vsymbol_eq_dec (vsyms_in_m m vs (pat_constr_vars m vs (fst x)))
     (remove_all vsymbol_eq_dec (pat_fv (fst x)) small))
   (upd_option_iter hd (pat_fv (fst x))) m vs (snd x)) pats) :
   bool :=
 match pats as l' return 
-  Forall (fun x => valid_formula sigma (snd x)) l' ->
-  Forall (fun x => pattern_has_type sigma (fst x) ty1) l' ->
+  Forall (fun x => valid_formula gamma (snd x)) l' ->
+  Forall (fun x => pattern_has_type gamma (fst x) ty1) l' ->
   Forall (fun x => decrease_pred fs ps
   (union vsymbol_eq_dec (vsyms_in_m m vs (pat_constr_vars m vs (fst x)))
     (remove_all vsymbol_eq_dec (pat_fv (fst x)) small))
@@ -4666,23 +4666,23 @@ Lemma match_rep_rec_rewrite: forall
 v t {ty1} {small} {hd} Ht1 Hdec1 Hsmall Hhd 
 ty
 (pats: list (pattern * term))
-(Hall: Forall (fun x => term_has_type sigma (snd x) ty) pats)
-(Hpats: Forall (fun x => pattern_has_type sigma (fst x) ty1) pats)
+(Hall: Forall (fun x => term_has_type gamma (snd x) ty) pats)
+(Hpats: Forall (fun x => pattern_has_type gamma (fst x) ty1) pats)
 (Hdec: Forall (fun x => decrease_fun fs ps 
              (remove_all vsymbol_eq_dec (pat_fv (fst x)) small) 
              (upd_option_iter hd (pat_fv (fst x))) m vs (snd x)) pats),
 let dom_t := proj1_sig (term_rep_aux v t ty1 small hd Ht1 Hdec1 Hsmall Hhd) in
 let dom_t_pf := proj2_sig (term_rep_aux v t ty1 small hd Ht1 Hdec1 Hsmall Hhd) in
  (fix match_rep (pats: list (pattern * term)) 
-        (Hall: Forall (fun x => term_has_type sigma (snd x) ty) pats)
-        (Hpats: Forall (fun x => pattern_has_type sigma (fst x) ty1) pats)
+        (Hall: Forall (fun x => term_has_type gamma (snd x) ty) pats)
+        (Hpats: Forall (fun x => pattern_has_type gamma (fst x) ty1) pats)
         (Hdec: Forall (fun x => decrease_fun fs ps 
           (remove_all vsymbol_eq_dec (pat_fv (fst x)) small) 
           (upd_option_iter hd (pat_fv (fst x))) m vs (snd x)) pats) :
         domain (val ty) :=
       match pats as l' return 
-        Forall (fun x => term_has_type sigma (snd x) ty) l' ->
-        Forall (fun x => pattern_has_type sigma (fst x) ty1) l' ->
+        Forall (fun x => term_has_type gamma (snd x) ty) l' ->
+        Forall (fun x => pattern_has_type gamma (fst x) ty1) l' ->
         Forall (fun x => decrease_fun fs ps 
           (remove_all vsymbol_eq_dec (pat_fv (fst x)) small) 
           (upd_option_iter hd (pat_fv (fst x))) m vs (snd x)) l' ->
@@ -4716,23 +4716,23 @@ Qed.
 Lemma match_rep_rec_rewrite': forall
 v t {ty1} {small} {hd} Ht1 Hdec1 Hsmall Hhd 
 (pats: list (pattern * formula))
-(Hall: Forall (fun x => valid_formula sigma (snd x)) pats)
-(Hpats: Forall (fun x => pattern_has_type sigma (fst x) ty1) pats)
+(Hall: Forall (fun x => valid_formula gamma (snd x)) pats)
+(Hpats: Forall (fun x => pattern_has_type gamma (fst x) ty1) pats)
 (Hdec: Forall (fun x => decrease_pred fs ps 
              (remove_all vsymbol_eq_dec (pat_fv (fst x)) small) 
              (upd_option_iter hd (pat_fv (fst x))) m vs (snd x)) pats),
 let dom_t := proj1_sig (term_rep_aux v t ty1 small hd Ht1 Hdec1 Hsmall Hhd) in
 let dom_t_pf := proj2_sig (term_rep_aux v t ty1 small hd Ht1 Hdec1 Hsmall Hhd) in
  (fix match_rep (pats: list (pattern * formula)) 
- (Hall: Forall (fun x => valid_formula sigma (snd x)) pats)
- (Hpats: Forall (fun x => pattern_has_type sigma (fst x) ty1) pats)
+ (Hall: Forall (fun x => valid_formula gamma (snd x)) pats)
+ (Hpats: Forall (fun x => pattern_has_type gamma (fst x) ty1) pats)
  (Hdec: Forall (fun x => decrease_pred fs ps 
    (remove_all vsymbol_eq_dec (pat_fv (fst x)) small) 
    (upd_option_iter hd (pat_fv (fst x))) m vs (snd x)) pats) :
  bool :=
  match pats as l' return 
- Forall (fun x => valid_formula sigma (snd x)) l' ->
- Forall (fun x => pattern_has_type sigma (fst x) ty1) l' ->
+ Forall (fun x => valid_formula gamma (snd x)) l' ->
+ Forall (fun x => pattern_has_type gamma (fst x) ty1) l' ->
  Forall (fun x => decrease_pred fs ps 
    (remove_all vsymbol_eq_dec (pat_fv (fst x)) small) 
    (upd_option_iter hd (pat_fv (fst x))) m vs (snd x)) l' ->
@@ -4941,11 +4941,11 @@ let Hsrts := (snd (projT2 input)) in
 let srts := (projT1 (projT2 fa)) in
 let srts_len := (proj1' Hsrts) in 
 let vt_eq_srts := (proj2' Hsrts) in
-let Ht1 : term_has_type sigma t ty1 :=
+let Ht1 : term_has_type gamma t ty1 :=
   proj1' (ty_match_inv Hty) in
-let Hall : Forall (fun x => term_has_type sigma (snd x) ty) pats :=
+let Hall : Forall (fun x => term_has_type gamma (snd x) ty) pats :=
   proj2' (proj2' (ty_match_inv Hty)) in
-let Hpats: Forall (fun x => pattern_has_type sigma (fst x) ty1) pats :=
+let Hpats: Forall (fun x => pattern_has_type gamma (fst x) ty1) pats :=
   proj1' (proj2' (ty_match_inv Hty)) in
 
 let Hdec1 : decrease_fun fs ps small hd m vs t := 
@@ -5136,11 +5136,11 @@ Lemma formula_rep_aux_match (v: val_vars pd vt)
 (t: term) (ty1: vty) pats (small: list vsymbol)
 (hd: option vsymbol) Hval Hdec Hsmall Hhd:
 formula_rep_aux v (Fmatch t ty1 pats) small hd Hval Hdec Hsmall Hhd =
-let Ht1 : term_has_type sigma t ty1 :=
+let Ht1 : term_has_type gamma t ty1 :=
 proj1' (valid_match_inv Hval) in
-let Hall : Forall (fun x => valid_formula sigma (snd x)) pats :=
+let Hall : Forall (fun x => valid_formula gamma (snd x)) pats :=
 proj2' (proj2' (valid_match_inv Hval)) in
-let Hpats: Forall (fun x => pattern_has_type sigma (fst x) ty1) pats :=
+let Hpats: Forall (fun x => pattern_has_type gamma (fst x) ty1) pats :=
 proj1' (proj2' (valid_match_inv Hval)) in
 
 let Hdec1 : decrease_fun fs ps small hd m vs t := 
@@ -5533,7 +5533,7 @@ Qed.
 
 Lemma match_rep_addvars_eq input rec (t: term) ty1 pats:
 forall
-  v small hd (Hty1: term_has_type sigma t ty1) Hdec Hsmall Hhd (ty: vty) z Hall Hpats Halldec,
+  v small hd (Hty1: term_has_type gamma t ty1) Hdec Hsmall Hhd (ty: vty) z Hall Hpats Halldec,
   proj1_sig
       (term_rep_aux input rec v t ty1 small hd Hty1
          Hdec Hsmall Hhd) = term_rep gamma_valid pd vt pf v t ty1 Hty1 ->
@@ -5542,7 +5542,7 @@ forall
   Forall
 (fun tm : term =>
  forall (v: val_vars pd vt) (ty : vty)
-   (small : list vsymbol) (hd : option vsymbol) (Hty : term_has_type sigma tm ty)
+   (small : list vsymbol) (hd : option vsymbol) (Hty : term_has_type gamma tm ty)
    (Hdec : decrease_fun fs ps small hd m vs tm) Hsmall Hhd,
  proj1_sig
    (term_rep_aux input rec v tm ty small hd
@@ -5553,19 +5553,19 @@ forall
     let dom_t := (term_rep gamma_valid pd vt pf v t ty1 Hty1) in
     (fix match_rep
     (ps1 : list (pattern * term))
-    (Hps : Forall (fun x : pattern * term => pattern_has_type sigma (fst x) ty1) ps1)
-    (Hall : Forall (fun x : pattern * term => term_has_type sigma (snd x) ty) ps1) {struct
+    (Hps : Forall (fun x : pattern * term => pattern_has_type gamma (fst x) ty1) ps1)
+    (Hall : Forall (fun x : pattern * term => term_has_type gamma (snd x) ty) ps1) {struct
     ps1} : domain (val ty) :=
     match
     ps1 as l'
     return
-    (Forall (fun x : pattern * term => pattern_has_type sigma (fst x) ty1) l' ->
-     Forall (fun x : pattern * term => term_has_type sigma (snd x) ty) l' ->
+    (Forall (fun x : pattern * term => pattern_has_type gamma (fst x) ty1) l' ->
+     Forall (fun x : pattern * term => term_has_type gamma (snd x) ty) l' ->
      domain (val ty))
     with
     | [] =>
-    fun (_ : Forall (fun x : pattern * term => pattern_has_type sigma (fst x) ty1) [])
-      (_ : Forall (fun x : pattern * term => term_has_type sigma (snd x) ty) []) =>
+    fun (_ : Forall (fun x : pattern * term => pattern_has_type gamma (fst x) ty1) [])
+      (_ : Forall (fun x : pattern * term => term_has_type gamma (snd x) ty) []) =>
     match domain_ne pd (val ty) with
     | @DE _ _ x => x
     end
@@ -5573,14 +5573,14 @@ forall
     let
       (p, dat) as p1
        return
-         (Forall (fun x : pattern * term => pattern_has_type sigma (fst x) ty1)
+         (Forall (fun x : pattern * term => pattern_has_type gamma (fst x) ty1)
             (p1 :: ptl) ->
-          Forall (fun x : pattern * term => term_has_type sigma (snd x) ty)
+          Forall (fun x : pattern * term => term_has_type gamma (snd x) ty)
             (p1 :: ptl) -> domain (val ty)) := p0 in
     fun
-      (Hpats : Forall (fun x : pattern * term => pattern_has_type sigma (fst x) ty1)
+      (Hpats : Forall (fun x : pattern * term => pattern_has_type gamma (fst x) ty1)
                  ((p, dat) :: ptl))
-      (Hall0 : Forall (fun x : pattern * term => term_has_type sigma (snd x) ty)
+      (Hall0 : Forall (fun x : pattern * term => term_has_type gamma (snd x) ty)
                  ((p, dat) :: ptl)) =>
     match
       match_val_single gamma_valid pd vt ty1 p (Forall_inv Hpats) dom_t
@@ -5625,14 +5625,14 @@ Qed.
 (*Proof almost identical*)
 Lemma match_rep_rec_eq input rec (t: term) ty1 pats:
 forall
-  v small hd (Hty1: term_has_type sigma t ty1) Hdec Hsmall Hhd (ty: vty) Hall Hpats Halldec,
+  v small hd (Hty1: term_has_type gamma t ty1) Hdec Hsmall Hhd (ty: vty) Hall Hpats Halldec,
   proj1_sig
       (term_rep_aux input rec v t ty1 small hd Hty1
          Hdec Hsmall Hhd) = term_rep gamma_valid pd vt pf v t ty1 Hty1 ->
   Forall
 (fun tm : term =>
  forall (v: val_vars pd vt) (ty : vty)
-   (small : list vsymbol) (hd : option vsymbol) (Hty : term_has_type sigma tm ty)
+   (small : list vsymbol) (hd : option vsymbol) (Hty : term_has_type gamma tm ty)
    (Hdec : decrease_fun fs ps small hd m vs tm) Hsmall Hhd,
  proj1_sig
    (term_rep_aux input rec v tm ty small hd
@@ -5643,19 +5643,19 @@ forall
     let dom_t := (term_rep gamma_valid pd vt pf v t ty1 Hty1) in
     (fix match_rep
     (ps1 : list (pattern * term))
-    (Hps : Forall (fun x : pattern * term => pattern_has_type sigma (fst x) ty1) ps1)
-    (Hall : Forall (fun x : pattern * term => term_has_type sigma (snd x) ty) ps1) {struct
+    (Hps : Forall (fun x : pattern * term => pattern_has_type gamma (fst x) ty1) ps1)
+    (Hall : Forall (fun x : pattern * term => term_has_type gamma (snd x) ty) ps1) {struct
     ps1} : domain (val ty) :=
     match
     ps1 as l'
     return
-    (Forall (fun x : pattern * term => pattern_has_type sigma (fst x) ty1) l' ->
-     Forall (fun x : pattern * term => term_has_type sigma (snd x) ty) l' ->
+    (Forall (fun x : pattern * term => pattern_has_type gamma (fst x) ty1) l' ->
+     Forall (fun x : pattern * term => term_has_type gamma (snd x) ty) l' ->
      domain (val ty))
     with
     | [] =>
-    fun (_ : Forall (fun x : pattern * term => pattern_has_type sigma (fst x) ty1) [])
-      (_ : Forall (fun x : pattern * term => term_has_type sigma (snd x) ty) []) =>
+    fun (_ : Forall (fun x : pattern * term => pattern_has_type gamma (fst x) ty1) [])
+      (_ : Forall (fun x : pattern * term => term_has_type gamma (snd x) ty) []) =>
     match domain_ne pd (val ty) with
     | @DE _ _ x => x
     end
@@ -5663,14 +5663,14 @@ forall
     let
       (p, dat) as p1
        return
-         (Forall (fun x : pattern * term => pattern_has_type sigma (fst x) ty1)
+         (Forall (fun x : pattern * term => pattern_has_type gamma (fst x) ty1)
             (p1 :: ptl) ->
-          Forall (fun x : pattern * term => term_has_type sigma (snd x) ty)
+          Forall (fun x : pattern * term => term_has_type gamma (snd x) ty)
             (p1 :: ptl) -> domain (val ty)) := p0 in
     fun
-      (Hpats : Forall (fun x : pattern * term => pattern_has_type sigma (fst x) ty1)
+      (Hpats : Forall (fun x : pattern * term => pattern_has_type gamma (fst x) ty1)
                  ((p, dat) :: ptl))
-      (Hall0 : Forall (fun x : pattern * term => term_has_type sigma (snd x) ty)
+      (Hall0 : Forall (fun x : pattern * term => term_has_type gamma (snd x) ty)
                  ((p, dat) :: ptl)) =>
     match
       match_val_single gamma_valid pd vt ty1 p (Forall_inv Hpats) dom_t
@@ -5706,7 +5706,7 @@ Qed.
 (*Formula versions*)
 Lemma match_rep_addvars_eq' input rec (t: term) ty1 (pats: list (pattern * formula)):
 forall
-  v small hd (Hty1: term_has_type sigma t ty1) Hdec Hsmall Hhd z Hall Hpats Halldec,
+  v small hd (Hty1: term_has_type gamma t ty1) Hdec Hsmall Hhd z Hall Hpats Halldec,
   proj1_sig
       (term_rep_aux input rec v t ty1 small hd Hty1
          Hdec Hsmall Hhd) = term_rep gamma_valid pd vt pf v t ty1 Hty1 ->
@@ -5714,7 +5714,7 @@ forall
 (fun f : formula =>
  forall (v: val_vars pd vt) 
    (small : list vsymbol) (hd : option vsymbol) 
-   (Hval : valid_formula sigma f)
+   (Hval : valid_formula gamma f)
    (Hdec : decrease_pred fs ps small hd m vs f) Hsmall Hhd,
    formula_rep_aux input rec v f small hd Hval Hdec Hsmall Hhd =
    formula_rep gamma_valid pd vt pf v f Hval) (map snd pats) ->
@@ -5722,12 +5722,12 @@ forall
     z pats Hall Hpats Halldec =
     let dom_t := (term_rep gamma_valid pd vt pf v t ty1 Hty1) in
     (fix match_rep (ps: list (pattern * formula)) 
-    (Hps: Forall (fun x => pattern_has_type sigma (fst x) ty1) ps)
-    (Hall: Forall (fun x => valid_formula sigma (snd x)) ps) :
+    (Hps: Forall (fun x => pattern_has_type gamma (fst x) ty1) ps)
+    (Hall: Forall (fun x => valid_formula gamma (snd x)) ps) :
       bool :=
   match ps as l' return 
-    Forall (fun x => pattern_has_type sigma (fst x) ty1) l' ->
-    Forall (fun x => valid_formula sigma (snd x)) l' ->
+    Forall (fun x => pattern_has_type gamma (fst x) ty1) l' ->
+    Forall (fun x => valid_formula gamma (snd x)) l' ->
     bool with
   | (p , dat) :: ptl => fun Hpats Hall =>
     match (match_val_single gamma_valid pd vt ty1 p (Forall_inv Hpats) dom_t) with
@@ -5770,7 +5770,7 @@ Qed.
 
 Lemma match_rep_rec_eq' input rec (t: term) ty1 pats:
 forall
-  v small hd (Hty1: term_has_type sigma t ty1) Hdec Hsmall Hhd Hall Hpats Halldec,
+  v small hd (Hty1: term_has_type gamma t ty1) Hdec Hsmall Hhd Hall Hpats Halldec,
   proj1_sig
       (term_rep_aux input rec v t ty1 small hd Hty1
          Hdec Hsmall Hhd) = term_rep gamma_valid pd vt pf v t ty1 Hty1 ->
@@ -5778,7 +5778,7 @@ forall
          (fun f : formula =>
           forall (v: val_vars pd vt) 
             (small : list vsymbol) (hd : option vsymbol) 
-            (Hval : valid_formula sigma f)
+            (Hval : valid_formula gamma f)
             (Hdec : decrease_pred fs ps small hd m vs f) Hsmall Hhd,
             formula_rep_aux input rec v f small hd Hval Hdec Hsmall Hhd =
             formula_rep gamma_valid pd vt pf v f Hval) (map snd pats) ->
@@ -5786,12 +5786,12 @@ forall
    pats Hall Hpats Halldec =
     let dom_t := (term_rep gamma_valid pd vt pf v t ty1 Hty1) in
     (fix match_rep (ps: list (pattern * formula)) 
-    (Hps: Forall (fun x => pattern_has_type sigma (fst x) ty1) ps)
-    (Hall: Forall (fun x => valid_formula sigma (snd x)) ps) :
+    (Hps: Forall (fun x => pattern_has_type gamma (fst x) ty1) ps)
+    (Hall: Forall (fun x => valid_formula gamma (snd x)) ps) :
       bool :=
   match ps as l' return 
-    Forall (fun x => pattern_has_type sigma (fst x) ty1) l' ->
-    Forall (fun x => valid_formula sigma (snd x)) l' ->
+    Forall (fun x => pattern_has_type gamma (fst x) ty1) l' ->
+    Forall (fun x => valid_formula gamma (snd x)) l' ->
     bool with
   | (p , dat) :: ptl => fun Hpats Hall =>
     match (match_val_single gamma_valid pd vt ty1 p (Forall_inv Hpats) dom_t) with
@@ -5827,7 +5827,7 @@ Theorem term_fmla_rep_aux_eq (t: term) (f: formula) :
   (forall (input: packed_args2)
     (v: val_vars pd vt)
     (ty: vty) (small: list vsymbol) (hd: option vsymbol)
-    (Hty: term_has_type sigma t ty)
+    (Hty: term_has_type gamma t ty)
     (Hdec: decrease_fun fs ps small hd m vs t)
     Hsmall Hhd,
     proj1_sig (term_rep_aux input (fun x _ => funcs_rep_aux x) v t ty small hd Hty Hdec Hsmall Hhd) =
@@ -5836,7 +5836,7 @@ Theorem term_fmla_rep_aux_eq (t: term) (f: formula) :
   (forall (input: packed_args2)
     (v: val_vars pd vt)
     (small: list vsymbol) (hd: option vsymbol)
-    (Hval: valid_formula sigma f)
+    (Hval: valid_formula gamma f)
     (Hdec: decrease_pred fs ps small hd m vs f)
     Hsmall Hhd,
     formula_rep_aux input (fun x _ => funcs_rep_aux x) v f small hd Hval Hdec Hsmall Hhd =
@@ -6103,12 +6103,12 @@ Qed.
 
 Lemma match_rep_addvars_change_pf input pf1 pf2 rec1 rec2 (t: term) ty1 pats:
 forall
-  v small hd (Hty1: term_has_type sigma t ty1) Hdec Hsmall Hhd (ty: vty) z Hall Hpats Halldec,
+  v small hd (Hty1: term_has_type gamma t ty1) Hdec Hsmall Hhd (ty: vty) z Hall Hpats Halldec,
   term_rep_aux vt pf1 input rec1 v t ty1 small hd Hty1 Hdec Hsmall Hhd =
   term_rep_aux vt pf2 input rec2 v t ty1 small hd Hty1 Hdec Hsmall Hhd ->
   Forall (fun tm : term =>
     forall (v: val_vars pd vt) (ty: vty)
-      (small: list vsymbol) (hd: option vsymbol) (Hty: term_has_type sigma tm ty)
+      (small: list vsymbol) (hd: option vsymbol) (Hty: term_has_type gamma tm ty)
       (Hdec : decrease_fun fs ps small hd m vs tm) Hsmall Hhd,
     term_rep_aux vt pf1 input rec1 v tm ty small hd Hty Hdec Hsmall Hhd =
     term_rep_aux vt pf2 input rec2 v tm ty small hd Hty Hdec Hsmall Hhd)
@@ -6166,12 +6166,12 @@ Qed.
 
 Lemma match_rep_rec_change_pf input pf1 pf2 rec1 rec2 (t: term) ty1 pats:
 forall
-  v small hd (Hty1: term_has_type sigma t ty1) Hdec Hsmall Hhd (ty: vty) Hall Hpats Halldec,
+  v small hd (Hty1: term_has_type gamma t ty1) Hdec Hsmall Hhd (ty: vty) Hall Hpats Halldec,
   term_rep_aux vt pf1 input rec1 v t ty1 small hd Hty1 Hdec Hsmall Hhd =
   term_rep_aux vt pf2 input rec2 v t ty1 small hd Hty1 Hdec Hsmall Hhd ->
   Forall (fun tm : term =>
     forall (v: val_vars pd vt) (ty: vty)
-      (small: list vsymbol) (hd: option vsymbol) (Hty: term_has_type sigma tm ty)
+      (small: list vsymbol) (hd: option vsymbol) (Hty: term_has_type gamma tm ty)
       (Hdec : decrease_fun fs ps small hd m vs tm) Hsmall Hhd,
     term_rep_aux vt pf1 input rec1 v tm ty small hd Hty Hdec Hsmall Hhd =
     term_rep_aux vt pf2 input rec2 v tm ty small hd Hty Hdec Hsmall Hhd)
@@ -6212,14 +6212,14 @@ Qed.
 Lemma match_rep_addvars_change_pf' input pf1 pf2 rec1 rec2 (t: term) ty1 
   (pats: list (pattern * formula)):
 forall
-  v small hd (Hty1: term_has_type sigma t ty1) Hdec Hsmall Hhd z Hall Hpats Halldec,
+  v small hd (Hty1: term_has_type gamma t ty1) Hdec Hsmall Hhd z Hall Hpats Halldec,
   
   term_rep_aux vt pf1 input rec1 v t ty1 small hd Hty1 Hdec Hsmall Hhd =
   term_rep_aux vt pf2 input rec2 v t ty1 small hd Hty1 Hdec Hsmall Hhd ->
 
   Forall (fun f : formula =>
     forall (v: val_vars pd vt) 
-      (small: list vsymbol) (hd: option vsymbol) (Hval: valid_formula sigma f)
+      (small: list vsymbol) (hd: option vsymbol) (Hval: valid_formula gamma f)
       (Hdec : decrease_pred fs ps small hd m vs f) Hsmall Hhd,
     formula_rep_aux vt pf1 input rec1 v f small hd Hval Hdec Hsmall Hhd =
     formula_rep_aux vt pf2 input rec2 v f small hd Hval Hdec Hsmall Hhd)
@@ -6278,14 +6278,14 @@ Qed.
 Lemma match_rep_rec_change_pf' input pf1 pf2 rec1 rec2 (t: term) ty1 
 (pats: list (pattern * formula)):
 forall
-  v small hd (Hty1: term_has_type sigma t ty1) Hdec Hsmall Hhd Hall Hpats Halldec,
+  v small hd (Hty1: term_has_type gamma t ty1) Hdec Hsmall Hhd Hall Hpats Halldec,
   
   term_rep_aux vt pf1 input rec1 v t ty1 small hd Hty1 Hdec Hsmall Hhd =
   term_rep_aux vt pf2 input rec2 v t ty1 small hd Hty1 Hdec Hsmall Hhd ->
 
   Forall (fun f : formula =>
     forall (v: val_vars pd vt)
-      (small: list vsymbol) (hd: option vsymbol) (Hval: valid_formula sigma f)
+      (small: list vsymbol) (hd: option vsymbol) (Hval: valid_formula gamma f)
       (Hdec : decrease_pred fs ps small hd m vs f) Hsmall Hhd,
     formula_rep_aux vt pf1 input rec1 v f small hd Hval Hdec Hsmall Hhd =
     formula_rep_aux vt pf2 input rec2 v f small hd Hval Hdec Hsmall Hhd)
@@ -6336,7 +6336,7 @@ Theorem term_fmla_rep_change_pf (pf1 pf2: pi_funpred gamma_valid pd)
   funcs_rep_aux vt pf1 y = funcs_rep_aux vt pf2 y)
   (v: val_vars pd vt) 
   (ty: vty) (small: list vsymbol) (hd: option vsymbol)
-  (Hty: term_has_type sigma t ty)
+  (Hty: term_has_type gamma t ty)
   (Hdec: decrease_fun fs ps small hd m vs t)
   Hsmall Hhd,
 
@@ -6349,7 +6349,7 @@ Theorem term_fmla_rep_change_pf (pf1 pf2: pi_funpred gamma_valid pd)
   funcs_rep_aux vt pf1 y = funcs_rep_aux vt pf2 y)
   (v: val_vars pd vt)
   (small: list vsymbol) (hd: option vsymbol)
-  (Hval: valid_formula sigma f)
+  (Hval: valid_formula gamma f)
   (Hdec: decrease_pred fs ps small hd m vs f)
   Hsmall Hhd,
 
@@ -6543,13 +6543,13 @@ Qed.
   match on the goal, which is slow*)
 Lemma match_rep_addvars_change_vv in1 in2 pf (t: term) ty1 pats:
 forall
-  v1 v2 small hd (Hty1: term_has_type sigma t ty1) Hdec Hsmall1
+  v1 v2 small hd (Hty1: term_has_type gamma t ty1) Hdec Hsmall1
   Hsmall2 Hhd1 Hhd2 (ty: vty) z Hall Hpats Halldec,
   proj1_sig (term_rep_aux vt pf in1 (fun x _ => funcs_rep_aux vt pf x) v1 t ty1 small hd Hty1 Hdec Hsmall1 Hhd1) =
   proj1_sig (term_rep_aux vt pf in2 (fun x _ => funcs_rep_aux vt pf x) v2 t ty1 small hd Hty1 Hdec Hsmall2 Hhd2) ->
   Forall (fun tm: term =>
     forall (v1 v2: val_vars pd vt) (ty: vty)
-    (small: list vsymbol) (hd: option vsymbol) (Hty: term_has_type sigma tm ty)
+    (small: list vsymbol) (hd: option vsymbol) (Hty: term_has_type gamma tm ty)
     (Hdec : decrease_fun fs ps small hd m vs tm) Hsmall1 Hsmall2 Hhd1 Hhd2
     (Hv: forall x, In x (tm_fv tm) -> v1 x = v2 x),
     proj1_sig (term_rep_aux vt pf in1 (fun x _ => funcs_rep_aux vt pf x) v1 tm ty small hd Hty Hdec Hsmall1 Hhd1) =
@@ -6643,13 +6643,13 @@ Qed.
 
 Lemma match_rep_rec_change_vv in1 in2 pf (t: term) ty1 pats:
 forall
-  v1 v2 small hd (Hty1: term_has_type sigma t ty1) Hdec Hsmall1
+  v1 v2 small hd (Hty1: term_has_type gamma t ty1) Hdec Hsmall1
   Hsmall2 Hhd1 Hhd2 (ty: vty) Hall Hpats Halldec,
   proj1_sig (term_rep_aux vt pf in1 (fun x _ => funcs_rep_aux vt pf x) v1 t ty1 small hd Hty1 Hdec Hsmall1 Hhd1) =
   proj1_sig (term_rep_aux vt pf in2 (fun x _ => funcs_rep_aux vt pf x) v2 t ty1 small hd Hty1 Hdec Hsmall2 Hhd2) ->
   Forall (fun tm: term =>
     forall (v1 v2: val_vars pd vt) (ty: vty)
-    (small: list vsymbol) (hd: option vsymbol) (Hty: term_has_type sigma tm ty)
+    (small: list vsymbol) (hd: option vsymbol) (Hty: term_has_type gamma tm ty)
     (Hdec : decrease_fun fs ps small hd m vs tm) Hsmall1 Hsmall2 Hhd1 Hhd2
     (Hv: forall x, In x (tm_fv tm) -> v1 x = v2 x),
     proj1_sig (term_rep_aux vt pf in1 (fun x _ => funcs_rep_aux vt pf x) v1 tm ty small hd Hty Hdec Hsmall1 Hhd1) =
@@ -6716,13 +6716,13 @@ Qed.
 Lemma match_rep_addvars_change_vv' in1 in2 pf (t: term) ty1 
   (pats: list (pattern * formula)):
 forall
-  v1 v2 small hd (Hty1: term_has_type sigma t ty1) Hdec Hsmall1
+  v1 v2 small hd (Hty1: term_has_type gamma t ty1) Hdec Hsmall1
   Hsmall2 Hhd1 Hhd2 z Hall Hpats Halldec,
   proj1_sig (term_rep_aux vt pf in1 (fun x _ => funcs_rep_aux vt pf x) v1 t ty1 small hd Hty1 Hdec Hsmall1 Hhd1) =
   proj1_sig (term_rep_aux vt pf in2 (fun x _ => funcs_rep_aux vt pf x) v2 t ty1 small hd Hty1 Hdec Hsmall2 Hhd2) ->
   Forall (fun f: formula =>
     forall (v1 v2: val_vars pd vt)
-    (small: list vsymbol) (hd: option vsymbol) (Hval: valid_formula sigma f)
+    (small: list vsymbol) (hd: option vsymbol) (Hval: valid_formula gamma f)
     (Hdec : decrease_pred fs ps small hd m vs f) Hsmall1 Hsmall2 Hhd1 Hhd2
     (Hv: forall x, In x (fmla_fv f) -> v1 x = v2 x),
     formula_rep_aux vt pf in1 (fun x _ => funcs_rep_aux vt pf x) v1 f small hd Hval Hdec Hsmall1 Hhd1 =
@@ -6807,13 +6807,13 @@ Qed.
 Lemma match_rep_rec_change_vv' in1 in2 pf (t: term) ty1 
   (pats: list (pattern * formula)):
 forall
-  v1 v2 small hd (Hty1: term_has_type sigma t ty1) Hdec Hsmall1
+  v1 v2 small hd (Hty1: term_has_type gamma t ty1) Hdec Hsmall1
   Hsmall2 Hhd1 Hhd2 Hall Hpats Halldec,
   proj1_sig (term_rep_aux vt pf in1 (fun x _ => funcs_rep_aux vt pf x) v1 t ty1 small hd Hty1 Hdec Hsmall1 Hhd1) =
   proj1_sig (term_rep_aux vt pf in2 (fun x _ => funcs_rep_aux vt pf x) v2 t ty1 small hd Hty1 Hdec Hsmall2 Hhd2) ->
   Forall (fun f: formula =>
     forall (v1 v2: val_vars pd vt)
-    (small: list vsymbol) (hd: option vsymbol) (Hval: valid_formula sigma f)
+    (small: list vsymbol) (hd: option vsymbol) (Hval: valid_formula gamma f)
     (Hdec : decrease_pred fs ps small hd m vs f) Hsmall1 Hsmall2 Hhd1 Hhd2
     (Hv: forall x, In x (fmla_fv f) -> v1 x = v2 x),
     formula_rep_aux vt pf in1 (fun x _ => funcs_rep_aux vt pf x) v1 f small hd Hval Hdec Hsmall1 Hhd1 =
@@ -6890,7 +6890,7 @@ Theorem term_fmla_rep_change_val (pf: pi_funpred gamma_valid pd)
   (v1 v2: val_vars pd vt)
   (Hv: forall x, In x (tm_fv t) -> v1 x = v2 x)
   (ty: vty) (small: list vsymbol) (hd: option vsymbol)
-  (Hty: term_has_type sigma t ty)
+  (Hty: term_has_type gamma t ty)
   (Hdec: decrease_fun fs ps small hd m vs t)
   Hsmall1 Hsmall2 Hhd1 Hhd2,
 
@@ -6903,7 +6903,7 @@ Theorem term_fmla_rep_change_val (pf: pi_funpred gamma_valid pd)
   (v1 v2: val_vars pd vt)
   (Hv: forall x, In x (fmla_fv f) -> v1 x = v2 x)
   (small: list vsymbol) (hd: option vsymbol)
-  (Hval: valid_formula sigma f)
+  (Hval: valid_formula gamma f)
   (Hdec: decrease_pred fs ps small hd m vs f)
   Hsmall1 Hsmall2 Hhd1 Hhd2,
 
