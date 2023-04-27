@@ -1839,3 +1839,14 @@ Ltac case_match_goal :=
         |- (match ?p with |Some l => ?x | None => ?y end) = ?z =>
           let Hp := fresh "Hmatch" in 
           destruct p eqn: Hp end; auto.
+
+Ltac prove_hyp H :=
+  match goal with
+  | H: ?P -> ?Q |- _ => let N := fresh in assert (N: P); [|specialize (H N); clear N]
+  end.
+
+Ltac prove_hyps n H :=
+  match constr:(n) with
+  | O => idtac
+  | (S ?m) => prove_hyp H; [|prove_hyps m H]
+  end.

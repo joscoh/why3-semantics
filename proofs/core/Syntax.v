@@ -1291,6 +1291,35 @@ Definition predsym_in_mutfun (p: predsym) (l: list funpred_def) : bool :=
 Definition get_mutfun_pred (p: predsym) (gamma': context) : option (list funpred_def) :=
   find (predsym_in_mutfun p) (mutfuns_of_context gamma').
 
+Lemma in_mutfuns gamma (l: list funpred_def) :
+  In l (mutfuns_of_context gamma) <->
+  In (recursive_def l) gamma.
+Proof.
+  induction gamma; simpl; auto; try reflexivity.
+  destruct a; simpl in *; split; intros; destruct_all;
+  try discriminate; try (rewrite IHgamma); auto;
+  try (rewrite <- IHgamma); auto.
+  inversion H; subst; auto.
+Qed.
+
+Lemma in_fun_def l f a b:
+  In (fun_def f a b) l ->
+  In f (funsyms_of_rec l).
+Proof.
+  simpl; induction l; simpl; auto; intros.
+  destruct H; subst; simpl; auto.
+  destruct a0; simpl; try right; auto.
+Qed.
+
+Lemma in_pred_def l p a b:
+  In (pred_def p a b) l ->
+  In p (predsyms_of_rec l).
+Proof.
+  simpl; induction l; simpl; auto; intros.
+  destruct H; subst; simpl; auto.
+  destruct a0; simpl; try right; auto.
+Qed.
+
 Definition pred_in_indpred (p: predsym) (l: list (predsym * list formula)) :=
   in_bool predsym_eq_dec p (map fst l).
 
@@ -1313,6 +1342,19 @@ Proof.
   - inversion H; subst. simpl. left.
     reflexivity.
   - simpl. right. auto.
+Qed.
+
+Lemma pred_in_indpred_iff p l:
+  pred_in_indpred p (get_indpred l) <->
+  In p (predsyms_of_indprop l).
+Proof.
+  unfold pred_in_indpred.
+  induction l; simpl; split; auto; try discriminate; bool_to_prop;
+  intros; destruct_all; auto.
+  - simpl_sumbool. destruct a; auto.
+  - apply IHl in H. auto.
+  - destruct a; simpl. left. destruct (predsym_eq_dec p p); auto.
+  - right. apply IHl; auto.
 Qed.
 
 End RecFunUtil.

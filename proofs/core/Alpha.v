@@ -4723,17 +4723,6 @@ Qed.
 Definition alpha_t_aux_bnd t := proj_tm alpha_aux_bnd t.
 Definition alpha_f_aux_bnd f := proj_fmla alpha_aux_bnd f.
 
-Ltac prove_hyp H :=
-  match goal with
-  | H: ?P -> ?Q |- _ => let N := fresh in assert (N: P); [|specialize (H N); clear N]
-  end.
-
-Ltac prove_hyps n H :=
-  match constr:(n) with
-  | O => idtac
-  | (S ?m) => prove_hyp H; [|prove_hyps m H]
-  end.
-
 Ltac vsym_eq2 x y z :=
   let H := fresh in
   assert (H: x = y \/ (x <> y /\ x = z) \/ (x <> y /\ x <> z)) by

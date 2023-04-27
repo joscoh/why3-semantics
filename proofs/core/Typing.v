@@ -50,7 +50,8 @@ Inductive pattern_has_type: context -> pattern -> vty -> Prop :=
     (* For all i, [nth i tms] has type [sigma(nth i (s_args f))], where
       sigma is the type substitution that maps f's type vars to [params] *)
     let sigma : vty -> vty := ty_subst (s_params f) params in
-    (forall x, In x (combine ps (map sigma (s_args f))) ->
+    (forall x, In x (combine ps (map (ty_subst (s_params f) params) 
+      (s_args f))) ->
       pattern_has_type s (fst x) (snd x)) ->
     (* No free variables in common *)
     (forall i j d x, i < length ps -> j < length ps -> i <> j ->
@@ -84,7 +85,6 @@ Inductive term_has_type: context -> term -> vty -> Prop :=
     length params = length (s_params f) ->
     (* For all i, [nth i tms] has type [sigma(nth i (s_args f))], where
       sigma is the type substitution that maps f's type vars to [params] *)
-    (*let sigma : vty -> vty := ty_subst (s_params f) params in*)
     Forall (fun x => term_has_type s (fst x) (snd x)) (combine tms
       (map (ty_subst (s_params f) params) (s_args f))) ->
     term_has_type s (Tfun f params tms) (ty_subst (s_params f) params (f_ret f))
@@ -143,9 +143,8 @@ with valid_formula: context -> formula -> Prop :=
     Forall (valid_type s) params ->
     length tms = length (s_args p) ->
     length params = length (s_params p) ->
-    let sigma : vty -> vty := ty_subst (s_params p) params in
     Forall (fun x => term_has_type s (fst x) (snd x))
-      (combine tms (map sigma (s_args p))) ->
+      (combine tms (map (ty_subst (s_params p) params) (s_args p))) ->
     valid_formula s (Fpred p params tms)
   | F_Let: forall s t x f,
     term_has_type s t (snd x) ->
@@ -165,8 +164,8 @@ with valid_formula: context -> formula -> Prop :=
     adt_in_mut a m /\
     ty = vty_cons (adt_name a) args) ->
     term_has_type s tm ty ->
-    Forall(fun x => pattern_has_type s (fst x) ty) ps ->
-    Forall (fun x => valid_formula s (snd x)) ps ->
+    (forall x, In x ps -> pattern_has_type s (fst x) ty) ->
+    (forall x, In x ps -> valid_formula s (snd x)) ->
     (*See comment in term*)
     negb (null ps) ->
     valid_formula s (Fmatch tm ty ps).
@@ -204,32 +203,33 @@ Proof.
   intros. inversion H; subst; repeat split; auto.
 Qed.
 
-(*Lemma valid_type_v_subst: forall s (f: typevar -> vty) (ty: vty),
-  valid_type s ty ->
-  (forall x, valid_type s (f x)) ->
-  valid_type s (v_subst_aux f ty).
-Proof.
-  intros.
-  induction H; simpl; constructor; auto.
-  rewrite map_length. apply H1.
-  intros x. rewrite in_map_iff. intros [x1 [Hx1 Hinx1]].
-  specialize (H3 _ Hinx1 H0). subst. apply H3.
-Qed.*)
-
-(*TODO: use previous lemma to prove*)
-(*TODO: see what we need*)
-(*
 Lemma valid_type_subst: forall s ty vars tys,
   valid_type s ty ->
   Forall (valid_type s) tys ->
   valid_type s (ty_subst vars tys ty).
 Proof.
   intros. induction H; unfold ty_subst; simpl; try constructor; auto.
-  - 
-  rewrite map_length. apply H1.
-  intros x. rewrite in_map_iff. intros [x1 [Hx1 Hinx1]].
-  specialize (H3 _ Hinx1 H0). subst. apply H3.
-Qed. *)
+  - destruct (in_dec typevar_eq_dec v vars).
+    + (*TODO: separate lemma (w no assumptions)*) 
+      assert (In (ty_subst_fun vars tys vty_int v) tys \/ 
+      (ty_subst_fun vars tys vty_int v) = vty_int
+        ). {
+        clear -i.
+        revert tys. induction vars; simpl; intros.
+        destruct i.
+        destruct tys; auto.
+        destruct (typevar_eq_dec v a); subst; simpl; auto.
+        rewrite or_assoc. simpl in i. destruct i;
+        subst; auto. contradiction.  
+      }
+      destruct H.
+      * rewrite Forall_forall in H0; apply H0; auto.
+      * rewrite H. constructor.
+    + rewrite ty_subst_fun_notin; auto. constructor.
+  - rewrite map_length. apply H1.
+  - intros x. rewrite in_map_iff. intros [x1 [Hx1 Hinx1]].
+    specialize (H3 _ Hinx1 H0). subst. apply H3.
+Qed.
 
 (*Now we define valid contexts. Unlike the paper,
   we combine signatures and contexts together so that
@@ -457,7 +457,7 @@ Section PosTypes.
 (*Adapted from https://coq.inria.fr/refman/language/core/inductive.html*)
 
 Variable gamma: context.
-
+Unset Elimination Schemes.
 Inductive strictly_positive : vty -> list typesym -> Prop :=
   | Strict_notin: forall (t: vty) (ts: list typesym),
     (forall x, In x ts -> negb(typesym_in x t)) ->
@@ -498,6 +498,10 @@ with nested_positive: funsym -> list typevar -> list vty ->
     (exists vs, (ty_subst params substs (f_ret T)) = vty_cons I vs /\
       (forall x v, In x ts -> In v vs -> negb (typesym_in x v))) ->
     nested_positive T params substs I ts.
+Set Elimination Schemes.
+
+Scheme strictly_positive_ind := Minimality for strictly_positive Sort Prop
+with nested_positive_ind := Minimality for nested_positive Sort Prop.
 
 Inductive positive : funsym -> list typesym -> Prop :=
   (*We combine into one case because of we don't have true function types*)
@@ -1698,7 +1702,11 @@ Proof.
   intros Hval. induction Hval; constructor; auto.
 Qed.
 
-(*TOOD: move*)
+(*We need to know that all parts of a context
+  remain well-typed and valid if the context is expanded.
+  This requires lots of lemmas, though really only the typing
+  one is somewhat interesting.*)
+Section Expand.
 
 Lemma valid_type_expand gamma d t:
   valid_type gamma t ->
@@ -1727,9 +1735,196 @@ Proof.
   apply valid_type_expand; auto.
 Qed.
 
-(*Then we prove some general lemmas about
-  well-formed/valid contexts which correspond to the
-  old definitions*)
+Lemma strictly_positive_expand d gamma t ts:
+  strictly_positive gamma t ts ->
+  strictly_positive (d :: gamma) t ts.
+Proof.
+  revert t ts.
+  apply (strictly_positive_ind gamma
+    (fun v l => strictly_positive (d :: gamma) v l)
+    (fun f vs tys ts syms =>
+      nested_positive (d :: gamma) f vs tys ts syms)); intros.
+  - apply Strict_notin. auto.
+  - apply Strict_constr. auto.
+  - eapply Strict_ind. 2: apply H0. 2: apply H1. 2: apply H3.
+    unfold mut_typs_in_ctx in *.
+    destruct H as [vars [H Hin]].
+    exists vars. exists H. simpl; auto.
+  - constructor; auto.
+Qed.
+
+Lemma adt_positive_expand d gamma fs ts:
+  positive gamma fs ts ->
+  positive (d :: gamma) fs ts.
+Proof.
+  intros Hpos. induction Hpos.
+  constructor; auto.
+  intros. apply strictly_positive_expand; auto.
+Qed.
+
+Lemma mut_valid_expand d gamma m:
+   mut_valid gamma m -> mut_valid (d :: gamma) m.
+Proof.
+  unfold mut_valid.
+  intros; destruct_all; split_all; auto.
+  - (*adt_inhab will change*) admit.
+  - revert H1. unfold adt_positive.
+    rewrite !Forall_concat, !Forall_map.
+    apply Forall_impl.
+    intros a.
+    apply Forall_impl.
+    intros fs.
+    apply adt_positive_expand.
+Admitted.
+
+Lemma mut_in_ctx_expand m d gamma:
+  mut_in_ctx m gamma ->
+  mut_in_ctx m (d :: gamma).
+Proof.
+  unfold mut_in_ctx. simpl. destruct d; simpl; auto.
+  intros Hin; rewrite Hin, orb_true_r; auto.
+Qed.
+
+(*This is the core: a term/formula cannot become ill-typed by
+  adding more to the context*)
+
+Lemma pattern_has_type_expand d gamma p ty:
+  pattern_has_type gamma p ty ->
+  pattern_has_type (d :: gamma) p ty.
+Proof.
+  intros Hty. induction Hty; constructor; auto;
+  try apply valid_type_expand; auto.
+  - clear -H. unfold sig_f in *. simpl. 
+    rewrite in_app_iff; auto.
+  - revert H0. apply Forall_impl. apply valid_type_expand.
+Qed.
+
+Lemma well_typed_expand d gamma t f:
+  (forall ty
+    (Hty: term_has_type gamma t ty),
+    term_has_type (d :: gamma) t ty) /\
+  ( forall (Hty: valid_formula gamma f),
+    valid_formula (d :: gamma) f).
+Proof.
+  revert t f.
+  apply term_formula_ind; intros; inversion Hty; subst;
+  try solve[constructor; auto].
+  - (*Tvar*)
+    constructor. apply valid_type_expand. auto.
+  - (*Tfun*)
+    constructor; auto.
+    + clear -H3. unfold sig_f in *. simpl. rewrite in_app_iff; auto.
+    + revert H4. apply Forall_impl. apply valid_type_expand.
+    + revert H5. apply valid_type_expand.
+    + clear -H10 H. generalize dependent  (map (ty_subst (s_params f1) l) (s_args f1)).
+      induction l1; simpl; intros; auto.
+      destruct l0; auto.
+      inversion H; subst.
+      inversion H10; subst. constructor; auto.
+  - (*Tmatch*)
+    constructor; auto.
+    + destruct H4 as [a [m [args [m_in [a_in Hv]]]]]; subst.
+      exists a. exists m. exists args. split_all; auto.
+      apply mut_in_ctx_expand; auto.
+    + intros. apply pattern_has_type_expand; auto.
+    + clear -H0 H9. induction ps; simpl; intros; auto;
+      destruct H; subst;
+      inversion H0; subst; simpl in H9; auto.
+  - (*Teps*)
+    constructor; auto. apply valid_type_expand; auto.
+  - (*Fpred*)
+    constructor; auto.
+    + clear -H3. unfold sig_p in *. simpl. rewrite in_app_iff; auto.
+    + revert H4. apply Forall_impl. apply valid_type_expand.
+    + clear -H8 H. generalize dependent  (map (ty_subst (s_params p) tys) (s_args p)).
+      induction tms; simpl; intros; auto.
+      destruct l; auto.
+      inversion H; subst.
+      inversion H8; subst. constructor; auto.
+  - (*Fquant*) constructor; auto. apply valid_type_expand; auto.
+  - (*Fmatch*)
+    constructor; auto.
+    + destruct H4 as [a [m [args [m_in [a_in Hv]]]]]; subst.
+      exists a. exists m. exists args. split_all; auto.
+      apply mut_in_ctx_expand; auto.
+    + intros. apply pattern_has_type_expand; auto.
+    + clear -H0 H8. induction ps; simpl; intros; auto;
+      destruct H; subst;
+      inversion H0; subst; simpl in H8; auto.
+Qed.
+
+Definition term_has_type_expand d gamma t :=
+  proj_tm (well_typed_expand d gamma) t.
+Definition valid_formula_expand d gamma f :=
+  proj_fmla (well_typed_expand d gamma) f.
+
+Lemma funpred_def_valid_expand d gamma f:
+  funpred_def_valid_type gamma f ->
+  funpred_def_valid_type (d :: gamma) f.
+Proof.
+  unfold funpred_def_valid_type.
+  destruct f; intros; destruct_all; split_all; auto.
+  - apply term_has_type_expand; auto.
+  - apply valid_formula_expand; auto.
+Qed.
+
+Lemma funpred_def_term_exists_expand d gamma fs:
+funpred_def_term_exists gamma fs -> funpred_def_term_exists (d :: gamma) fs.
+Proof.
+  unfold funpred_def_term_exists.
+  intros [m [params [vs [is Hdef]]]].
+  exists m. exists params. exists vs. exists is.
+  unfold funpred_def_term in *.
+  destruct_all; split_all; auto.
+  apply mut_in_ctx_expand; auto.
+Qed.
+
+Lemma funpred_valid_expand d gamma fs:
+  funpred_valid gamma fs ->
+  funpred_valid (d :: gamma) fs.
+Proof.
+  unfold funpred_valid; intros; split_all; intros.
+  - revert H. apply Forall_impl. apply funpred_def_valid_expand.
+  - revert H0. apply funpred_def_term_exists_expand.
+Qed. 
+
+Lemma indprop_valid_type_expand d gamma i:
+  indprop_valid_type gamma i ->
+  indprop_valid_type (d :: gamma) i.
+Proof.
+  unfold indprop_valid_type. destruct i.
+  apply Forall_impl. intros; destruct_all; split_all; auto.
+  apply valid_formula_expand; auto.
+Qed.
+
+Lemma indprop_valid_expand d gamma l:
+  indprop_valid gamma l ->
+  indprop_valid (d :: gamma) l.
+Proof.
+  unfold indprop_valid. intros; destruct_all; split_all; auto.
+  revert H. apply Forall_impl.
+  apply indprop_valid_type_expand.
+Qed.
+
+Lemma valid_def_expand d1 gamma d2:
+  valid_def gamma d2 ->
+  valid_def (d1 :: gamma) d2.
+Proof.
+  unfold valid_def. destruct d2; auto.
+  - apply mut_valid_expand.
+  - apply funpred_valid_expand.
+  - apply indprop_valid_expand.
+Qed.
+
+End Expand.
+
+(*Now we prove some very general lemmas about
+  well-formed and valid contexts, mainly about
+  diffrerent ways to use the conditions
+  (which correspond to the old definitions)*)
+Section ContextGenLemmas.
+
+(*All concrete defs are in the sig*)
 Lemma concrete_in_sig gamma:
   Forall (fun t => In t (sig_t gamma)) (typesyms_of_context gamma) /\
   Forall (fun f => In f (sig_f gamma)) (funsyms_of_context gamma) /\
@@ -1824,238 +2019,402 @@ Proof.
       apply (H3 x); auto.
 Qed.
 
-(*TODO: START, prove old [valid_context]*)
-
-
-Definition wf_context (s: sig) (gamma: context) :=
-  wf_sig s /\
-  Forall (fun t => In t (sig_t s)) (typesyms_of_context gamma) /\
-  Forall (fun f => In f (sig_f s)) (funsyms_of_context gamma) /\
-  Forall (fun p => In p (sig_p s)) (predsyms_of_context gamma) /\
-  NoDup (typesyms_of_context gamma) /\
-  NoDup (funsyms_of_context gamma) /\
-  NoDup (predsyms_of_context gamma).
-
-
-(*
-OLD DEFS
-(* Well-formed signmatures and Contexts *)
-
-(* A well-formed signature requires all types that appear in a function/predicate
-  symbol to be well-typed and for all free type variables in these types to appear
-  in the function/predicate type parameters*)
-Definition wf_sig (s: sig) : Prop :=
-  (*For function symbols:*)
-  Forall (fun (f: funsym) =>
-    Forall (fun (t: vty) => 
-      valid_type s t /\ Forall (fun (fv: typevar) => In fv (s_params f)) (type_vars t)
-    ) ((f_ret f) :: (s_args f))
-  ) (sig_f s) /\
-  (*Predicate symbols are quite similar*)
-  Forall (fun (p: predsym) =>
-    Forall (fun (t: vty) => 
-      valid_type s t /\ Forall (fun (fv: typevar) => In fv (s_params p)) (type_vars t)
-    ) (s_args p)
-  ) (sig_p s).
-
-(*A context includes definitions for some of the types/functions/predicates in
-  a signature*)
-Definition context := list def.
-
-
-
-
-
-(*Ways of dealing with adts and parts in context*)
-
-
-
-
-
-(*A context gamma extending signature s is well-formed if all type, function, and
-  predicate symbols in gamma appear in s, and none appear more than once*)
-(*Note: we do not check the type/function/pred symbols within the terms and formulas
-  in the definition - these will be checked for the validity check for each
-  definition.*)
-Definition wf_context (s: sig) (gamma: context) :=
-  wf_sig s /\
-  Forall (fun t => In t (sig_t s)) (typesyms_of_context gamma) /\
-  Forall (fun f => In f (sig_f s)) (funsyms_of_context gamma) /\
-  Forall (fun p => In p (sig_p s)) (predsyms_of_context gamma) /\
-  NoDup (typesyms_of_context gamma) /\
-  NoDup (funsyms_of_context gamma) /\
-  NoDup (predsyms_of_context gamma).
-
-(* Additional checks for pattern matches *)
-
-(*In addition to what we have above, we also need to know that pattern
-  matches operate on an algebraic data type and are exhaustive. We separate this
-  check from the main typing relation for 2 reasons:
-  1. The exhaustiveness check relies on well-typedness in a non-strictly-positive way
-  2. This check depends on the context, as opposed to the typing relation, which only
-    depends on the signature. *) 
-
-(*TODO: this does NOT work for exhaustiveness checking,
-  since we can never prove it, we do need to check
-  that the pattern match occurs on an ADT 
-*)
-
-Section MatchExhaustive.
-
-Variable sigma: sig.
-Variable gamma: context.
-
-(*
-(*Describes when a pattern matches a term*)
-Inductive matches : pattern -> term -> Prop :=
-  | M_Var: forall v t,
-    matches (Pvar v) t
-  | M_Constr: forall (m: mut_adt) (a: alg_datatype) 
-      (f: funsym) (vs: list vty) (ps: list pattern) (ts: list term),
-    mut_in_ctx m gamma ->
-    adt_in_mut a m ->
-    constr_in_adt f a ->
-    (forall x, In x (combine ps ts) -> matches (fst x) (snd x)) ->
-    matches (Pconstr f vs ps) (Tfun f vs ts)
-  | M_Wild: forall t,
-    matches Pwild t
-  | M_Or: forall p1 p2 t,
-    matches p1 t \/ matches p2 t ->
-    matches (Por p1 p2) t
-  | M_Bind: forall p x t,
-    matches p t ->
-    matches (Pbind p x) t.
-
-(*A match is exhaustive if for every instance of an alg_datatype,
-  some pattern matches it*)
-Definition exhaustive_match (a: alg_datatype) (args: list vty)
-  (ps: list pattern) : Prop :=
-  adt_in_ctx a gamma /\
-  forall t, term_has_type sigma t (vty_cons (adt_name a) args) ->
-    exists p, In p ps /\ matches p t.*)
-
-
-(*For now, we say that a valid pattern match is one that matches
-  on an ADT*)
-Fixpoint All {A: Type} (P: A -> Prop) (l: list A) {struct l} : Prop :=
-  match l with
-  | nil => True
-  | x :: xs => P x /\ All P xs
-  end.
-Definition iter_and (l: list Prop) : Prop :=
-  fold_right and True l.
-
-(*TODO: need to require somewhere that pattern constructors
-  have to actually be constructors*)
-Fixpoint valid_matches_tm (t: term) : Prop :=
-  match t with
-  | Tfun f vs tms => iter_and (map valid_matches_tm tms)
-  | Tlet tm1 v tm2 => valid_matches_tm tm1 /\ valid_matches_tm tm2
-  | Tif f1 t1 t2 => valid_matches_fmla f1 /\ valid_matches_tm t1 /\
-    valid_matches_tm t2
-  | Tmatch tm v ps =>
-    valid_matches_tm tm /\
-    (*the type v is an ADT applied to some valid arguments
-      (validity from typing)*)
-    (exists a m args, mut_in_ctx m gamma /\
-      adt_in_mut a m /\
-      v = vty_cons (adt_name a) args) /\
-    iter_and (map (fun x => valid_matches_tm (snd x)) ps)
-      (*iter_and (map valid_matches_tm (map snd ps))*)
-  | Teps f x => valid_matches_fmla f
-  | _ => True
-  end
-with valid_matches_fmla (f: formula) : Prop :=
-  match f with
-  | Fpred p vs tms => iter_and (map valid_matches_tm tms)
-  | Fquant q v f => valid_matches_fmla f
-  | Feq v t1 t2 => valid_matches_tm t1 /\ valid_matches_tm t2
-  | Fbinop b f1 f2 => valid_matches_fmla f1 /\
-    valid_matches_fmla f2
-  | Fnot f => valid_matches_fmla f
-  | Flet t v f => valid_matches_tm t /\ valid_matches_fmla f
-  | Fif f1 f2 f3 => valid_matches_fmla f1 /\
-    valid_matches_fmla f2 /\ valid_matches_fmla f3
-  | Fmatch t v ps =>
-    valid_matches_tm t /\
-    (*the type v is an ADT applied to some valid arguments
-      (validity from typing)*)
-    (exists a m args, mut_in_ctx m gamma /\
-      adt_in_mut a m /\
-      v = vty_cons (adt_name a) args) /\
-    iter_and (map (fun x => valid_matches_fmla (snd x)) ps)
-  | _ => True
-  end.
-
-End MatchExhaustive.
-
-(*The full typing judgement for terms and formulas*)
-Definition well_typed_term (s: sig) (gamma: context) (t: term) (ty: vty) : Prop :=
-  term_has_type s t ty /\ valid_matches_tm gamma t.
-
-Definition well_typed_formula (s: sig) (gamma: context) (f: formula) : Prop :=
-  valid_formula s f /\ valid_matches_fmla gamma f.
-
-(** Validity of definitions *)
-
-
-(*Put it all together*)
-Definition valid_context (s : sig) (gamma: context) : Prop :=
-  wf_context s gamma /\
-  Forall (fun d =>
-    match d with
-    | datatype_def m => Forall adt_valid_type (typs m) /\ 
-                           Forall (adt_inhab s gamma) (typs m) /\
-                           adt_positive gamma (typs m) /\
-                           valid_mut_rec m /\
-                           uniform m
-    | recursive_def fs => funpred_valid_type s gamma fs
-    | inductive_def is => Forall (indprop_valid_type s gamma) is /\
-                          indpred_positive is /\
-                          indpred_params_same is /\
-                          indpreds_uniform is
-    end) gamma.
-
-Lemma wf_context_expand: forall s d gamma,
-  wf_context s (d :: gamma) ->
-  wf_context s gamma.
+(*The expand lemmas allow us to prove that all defs
+  are valid with respect to the current context (not
+  a previous one)*)
+Lemma valid_context_defs gamma:
+  valid_context gamma ->
+  Forall (valid_def gamma) gamma.
 Proof.
-  intros s d gamma. unfold wf_context. intros.
-  unfold typesyms_of_context, datatypes_of_context, 
-  funsyms_of_context, predsyms_of_context in *; 
-  simpl in *; rewrite map_app in *.
-  repeat match goal with
-  | H: ?P /\ ?Q |- _ => destruct H
-  | H: Forall ?P (?l1 ++ ?l2) |- _ => apply Forall_app in H
-  | H: NoDup (?l1 ++ ?l2) |- _ => apply NoDup_app in H
-  | |- ?P /\ ?Q => split; auto
-  end.
+  intros Hval. induction Hval; auto.
+  constructor; auto.
+  revert IHHval. apply Forall_impl.
+  apply valid_def_expand.
 Qed.
-*)
+
+(*Now we prove that gamma has NoDups. This follows from the
+  uniqueness of each symbol type and the fact that no definition
+  is empty*)
+Lemma valid_context_Nodup gamma:
+  valid_context gamma ->
+  NoDup gamma.
+Proof.
+  intros Hval. induction Hval; constructor; auto.
+  intros Hin.
+  pose proof (concrete_in_sig gamma).
+  destruct_all.
+  rewrite !Forall_forall in *.
+  destruct d; auto; simpl in *.
+  - unfold typesyms_of_mut in H3.
+    destruct (typs m) eqn : Htyps; [inversion H7 |].
+    apply (H3 (adt_name a)); simpl; auto.
+    apply H9.
+    unfold typesyms_of_context,
+    datatypes_of_context, mutrec_datatypes_of_context.
+    rewrite concat_map, !map_map.
+    rewrite in_concat. exists (map adt_name (typs m)).
+    split; auto; [| rewrite in_map_iff; exists a; split; auto;
+    rewrite Htyps; simpl; auto].
+    rewrite in_map_iff. exists m. rewrite map_map. split; auto.
+    apply mut_in_ctx_eq.
+    apply mut_in_ctx_eq2. auto.
+  - (*function - has either function or predicate symbol*)
+    destruct l; [inversion H7 |].
+    destruct f.
+    + (*function case*)
+      apply (H1 f); simpl; auto.
+      apply H10. unfold funsyms_of_context.
+      rewrite in_concat. exists (funsyms_of_rec (fun_def f l0 t :: l)).
+      split; simpl; auto.
+      rewrite in_omap_iff. exists (recursive_def (fun_def f l0 t :: l)).
+      auto.
+    + (*pred*)
+      apply (H2 p); simpl; auto.
+      apply H11. unfold predsyms_of_context.
+      rewrite in_concat. exists (predsyms_of_rec (pred_def p l0 f :: l)).
+      split; simpl; auto.
+      rewrite in_omap_iff. exists (recursive_def (pred_def p l0 f :: l));
+      auto.
+  - (*inductive def has a predsym*)
+    destruct l; [inversion H7 |].
+    destruct i. apply (H2 p); simpl; auto.
+    apply H11. unfold predsyms_of_context.
+    rewrite in_concat. exists (predsyms_of_indprop (ind_def p l0 :: l)).
+    split; simpl; auto.
+    rewrite in_omap_iff. exists (inductive_def (ind_def p l0 :: l));
+    auto.
+  - apply (H3 t); auto.
+    (*For abstract, use definition of sig_t*)
+    unfold sig_t. rewrite in_concat. exists [t].
+    split; simpl; auto.
+    rewrite in_map_iff. exists (abs_type t); auto.
+  - apply (H1 f); auto. unfold sig_f. rewrite in_concat.
+    exists [f]. split; simpl; auto.
+    rewrite in_map_iff. exists (abs_fun f); auto.
+  - apply (H2 p); auto. unfold sig_p. rewrite in_concat.
+    exists [p]. split; simpl; auto.
+    rewrite in_map_iff. exists (abs_pred p); auto.
+Qed.
+
+End ContextGenLemmas.
+
+(*Now, we prove that a valid context is well-ordered:
+  the bodies of definitions only contain function and predicate
+  symbols from earlier definitions*)
+Section CtxOrder.
+
+(*A funsym occurs in the body of a recursive function or constructor*)
+Definition funsym_in_def (f: funsym) (d: def) : bool :=
+  match d with
+  | recursive_def fs => 
+    existsb (fun x =>
+      match x with
+      | fun_def _ _ t => funsym_in_tm f t
+      | pred_def _ _ fmla => funsym_in_fmla f fmla
+      end) fs
+  | inductive_def is =>
+    existsb (funsym_in_fmla f) (concat (map snd (map indpred_def_to_indpred is)))
+  | _ => false
+  end.
+
+Definition predsym_in_def (p: predsym) (d: def) : bool :=
+  match d with
+  | recursive_def fs => 
+    existsb (fun x =>
+      match x with
+      | fun_def _ _ t => predsym_in_tm p t
+      | pred_def _ _ fmla => predsym_in_fmla p fmla
+      end) fs
+  | inductive_def is =>
+    existsb (predsym_in_fmla p) (concat (map snd (map indpred_def_to_indpred is)))
+  | _ => false
+  end.
+
+(*We need that the contexts are ordered; a definition cannot
+  refer to anything that comes later (mutual definitions do not count)*)
+Inductive ctx_ordered : list def -> Prop :=
+| ordered_nil : ctx_ordered nil
+| ordered_rec: forall fs tl,
+  ctx_ordered tl ->
+  (forall f d,
+    funsym_in_mutfun f fs ->
+    In d tl ->
+    ~ funsym_in_def f d
+    ) ->
+  (forall p d,
+    predsym_in_mutfun p fs ->
+    In d tl ->
+    ~ predsym_in_def p d) ->
+  ctx_ordered (recursive_def fs :: tl)
+| ordered_indprop: forall (is: list indpred_def) tl,
+  ctx_ordered tl ->
+  (forall p d,
+    pred_in_indpred p (get_indpred is) ->
+    In d tl ->
+    ~ predsym_in_def p d
+  ) ->
+  ctx_ordered ((inductive_def is) :: tl)
+(*Other cases not interesting*)
+| ordered_adt: forall m tl,
+  ctx_ordered tl ->
+  ctx_ordered (datatype_def m :: tl)
+| ordered_abs_type: forall t tl,
+  ctx_ordered tl ->
+  ctx_ordered (abs_type t :: tl)
+| ordered_abs_fun: forall f tl,
+  ctx_ordered tl ->
+  ctx_ordered (abs_fun f :: tl)
+| ordered_abs_pred: forall p tl,
+  ctx_ordered tl ->
+  ctx_ordered (abs_pred p :: tl).
+
+(*To prove this, we use the fact that all intermediate
+  contexts are well-typed, so every symbol in them must be
+  in the signature. We prove this now*)
+
+Lemma well_typed_funsym_in_sig gamma fs t f:
+  (forall ty
+    (Hty: term_has_type gamma t ty) 
+    (Hinfs: funsym_in_tm fs t),
+    In fs (sig_f gamma)) /\
+  (forall (Hty: valid_formula gamma f)
+    (Hinfs: funsym_in_fmla fs f),
+    In fs (sig_f gamma)).
+Proof.
+  revert t f; apply term_formula_ind; intros;
+  inversion Hty; simpl in Hinfs;
+  try solve[inversion Hinfs]; subst; auto.
+  - bool_hyps. destruct Hinfs; try simpl_sumbool.
+    assert (length l1 = length (map (ty_subst (s_params f1) l) (s_args f1))). {
+      rewrite map_length; auto.
+    }
+    clear H4 H5 H7 H9 Hty H3. 
+    generalize dependent (map (ty_subst (s_params f1) l) (s_args f1));
+    induction l1; simpl; intros; destruct l0; inversion H1;
+    simpl in H0; try discriminate.
+    inversion H10; subst.
+    bool_hyps. inversion H; subst.
+    destruct H0; auto.
+    + eapply H7. apply H5. auto.
+    + apply (IHl1 H8 H0 l0); auto.
+  - bool_hyps. destruct Hinfs; [apply (H (snd v)) | apply (H0 ty)]; auto.
+  - repeat(bool_hyps; destruct_all); auto; [apply (H0 ty) | apply (H1 ty)]; auto.
+  - bool_hyps. destruct Hinfs; [apply (H v)|]; auto.
+    clear -H0 H9 H1.
+    induction ps; simpl in H1;[inversion H1 |].
+    bool_hyps. simpl in H9.
+    inversion H0; subst.
+    destruct H1; auto.
+    apply (H3 ty); auto.
+  - assert (length tms = length (map (ty_subst (s_params p) tys) 
+      (s_args p))) by (rewrite map_length; auto).
+    clear -H Hinfs H8 H0.
+    generalize dependent (map (ty_subst (s_params p) tys) (s_args p));
+    induction tms; simpl; intros; destruct l; inversion H0;
+    simpl in Hinfs; try discriminate.
+    inversion H8; inversion H; subst.
+    bool_hyps.
+    destruct Hinfs.
+    + eapply H9. apply H4. auto.
+    + apply (IHtms H10 H1 l); auto.
+  - bool_hyps; destruct Hinfs; [apply (H v) | apply (H0 v)]; auto.
+  - bool_hyps; destruct Hinfs; auto.
+  - bool_hyps; destruct Hinfs; auto.
+    apply (H (snd v)); auto.
+  - repeat(bool_hyps; destruct_all); auto.
+  - bool_hyps. destruct Hinfs; [apply (H v)|]; auto.
+    clear -H0 H8 H1.
+    induction ps; simpl in H1;[inversion H1 |].
+    bool_hyps.
+    simpl in H8; inversion H0; subst.
+    destruct H1; auto.
+Qed.
+
+(*And the predsym version, which is very similar.
+  TODO: reduce duplication somehow*)
+Lemma well_typed_predsym_in_sig gamma ps t f:
+  (forall ty
+    (Hty: term_has_type gamma t ty) 
+    (Hinfs: predsym_in_tm ps t),
+    In ps (sig_p gamma)) /\
+  (forall (Hty: valid_formula gamma f)
+    (Hinfs: predsym_in_fmla ps f),
+    In ps (sig_p gamma)).
+Proof.
+  revert t f; apply term_formula_ind; intros;
+  inversion Hty; simpl in Hinfs;
+  try solve[inversion Hinfs]; subst; auto.
+  - assert (length l1 = length (map (ty_subst (s_params f1) l) (s_args f1))). {
+      rewrite map_length; auto.
+    }
+    clear -H0 H Hinfs H10.
+    generalize dependent (map (ty_subst (s_params f1) l) (s_args f1));
+    induction l1; simpl; intros; destruct l0; inversion H0;
+    simpl in Hinfs; try discriminate.
+    inversion H10; inversion H; subst.
+    bool_hyps. 
+    destruct Hinfs; auto.
+    + eapply H8. apply H4. auto.
+    + apply (IHl1 H9 H1 l0); auto.
+  - bool_hyps. destruct Hinfs; [apply (H (snd v)) | apply (H0 ty)]; auto.
+  - repeat(bool_hyps; destruct_all); auto; [apply (H0 ty) | apply (H1 ty)]; auto.
+  - bool_hyps. destruct Hinfs; [apply (H v)|]; auto.
+    clear -H0 H9 H1.
+    induction ps0; simpl in H1;[inversion H1 |].
+    bool_hyps. simpl in H9; inversion H0; subst.
+    destruct H1; auto.
+    apply (H3 ty); auto.
+  - bool_hyps. destruct Hinfs as [? | Hinfs]; try simpl_sumbool.
+    assert (length tms = length (map (ty_subst (s_params p) tys) 
+      (s_args p))) by (rewrite map_length; auto).
+    clear -H Hinfs H8 H0.
+    generalize dependent (map (ty_subst (s_params p) tys) (s_args p));
+    induction tms; simpl; intros; destruct l; inversion H0;
+    simpl in Hinfs; try discriminate.
+    inversion H8; inversion H; subst.
+    bool_hyps.
+    destruct Hinfs.
+    + eapply H9. apply H4. auto.
+    + apply (IHtms H10 H1 l); auto.
+  - bool_hyps; destruct Hinfs; [apply (H v) | apply (H0 v)]; auto.
+  - bool_hyps; destruct Hinfs; auto.
+  - bool_hyps; destruct Hinfs; auto.
+    apply (H (snd v)); auto.
+  - repeat(bool_hyps; destruct_all); auto.
+  - bool_hyps. destruct Hinfs; [apply (H v)|]; auto.
+    clear -H0 H8 H1.
+    induction ps0; simpl in H1;[inversion H1 |].
+    bool_hyps. simpl in H8; inversion H0; subst.
+    destruct H1; auto.
+Qed.
+
+Definition term_has_type_funsym_in_sig gamma fs t :=
+  proj_tm (well_typed_funsym_in_sig gamma fs) t.
+Definition term_has_type_predsym_in_sig gamma ps t :=
+  proj_tm (well_typed_predsym_in_sig gamma ps) t.
+Definition valid_formula_funsym_in_sig gamma fs f :=
+  proj_fmla (well_typed_funsym_in_sig gamma fs) f.
+Definition valid_formula_predsym_in_sig gamma ps f :=
+  proj_fmla (well_typed_predsym_in_sig gamma ps) f.
+
+(*Any funsym or predsym in a def in a valid_context is
+  in the signature*)
+Definition funsym_in_def_in_sig gamma (f: funsym) d:
+  valid_context gamma ->
+  In d gamma ->
+  funsym_in_def f d ->
+  In f (sig_f gamma).
+Proof.
+  intros Hval Hind Hinf.
+  pose proof (valid_context_defs gamma Hval) as Hdefs.
+  rewrite Forall_forall in Hdefs.
+  specialize (Hdefs _ Hind).
+  destruct d; simpl in Hinf; try solve[inversion Hinf].
+  - unfold is_true in Hinf. rewrite existsb_exists in Hinf.
+    destruct Hinf as [fd [Hinfd Hfd]].
+    simpl in Hdefs.
+    unfold funpred_valid in Hdefs.
+    destruct Hdefs as [Hty _].
+    rewrite Forall_forall in Hty.
+    specialize (Hty _ Hinfd).
+    unfold funpred_def_valid_type in Hty.
+    destruct fd; destruct_all.
+    + eapply term_has_type_funsym_in_sig. apply H. auto.
+    + eapply valid_formula_funsym_in_sig. apply H. auto.
+  - unfold is_true in Hinf. rewrite existsb_exists in Hinf.
+    destruct Hinf as [fd [Hinfd Hfd]].
+    simpl in Hdefs.
+    unfold funpred_valid in Hdefs.
+    destruct Hdefs as [Hty _].
+    rewrite Forall_forall in Hty.
+    rewrite in_concat in Hinfd.
+    destruct Hinfd as [fs [Hinfs Hinfd]].
+    rewrite map_map in Hinfs.
+    rewrite in_map_iff in Hinfs.
+    destruct Hinfs as [d [Hfs Hind']]; subst.
+    specialize (Hty _ Hind').
+    unfold indprop_valid_type in Hty.
+    destruct d; simpl in *.
+    rewrite Forall_forall in Hty.
+    specialize (Hty _ Hinfd).
+    destruct_all.
+    eapply valid_formula_funsym_in_sig. apply H. apply Hfd.
+Qed.
+
+(*Predsym version: TODO: reduce duplication - exactly
+  the same except that we use the [term_has_type_predsym_in_sig]
+  instead of funsym lemma*)
+Definition predsym_in_def_in_sig gamma (p: predsym) d:
+  valid_context gamma ->
+  In d gamma ->
+  predsym_in_def p d ->
+  In p (sig_p gamma).
+Proof.
+  intros Hval Hind Hinf.
+  pose proof (valid_context_defs gamma Hval) as Hdefs.
+  rewrite Forall_forall in Hdefs.
+  specialize (Hdefs _ Hind).
+  destruct d; simpl in Hinf; try solve[inversion Hinf].
+  - unfold is_true in Hinf. rewrite existsb_exists in Hinf.
+    destruct Hinf as [fd [Hinfd Hfd]].
+    simpl in Hdefs.
+    unfold funpred_valid in Hdefs.
+    destruct Hdefs as [Hty _].
+    rewrite Forall_forall in Hty.
+    specialize (Hty _ Hinfd).
+    unfold funpred_def_valid_type in Hty.
+    destruct fd; destruct_all.
+    + eapply term_has_type_predsym_in_sig. apply H. auto.
+    + eapply valid_formula_predsym_in_sig. apply H. auto.
+  - unfold is_true in Hinf. rewrite existsb_exists in Hinf.
+    destruct Hinf as [fd [Hinfd Hfd]].
+    simpl in Hdefs.
+    unfold funpred_valid in Hdefs.
+    destruct Hdefs as [Hty _].
+    rewrite Forall_forall in Hty.
+    rewrite in_concat in Hinfd.
+    destruct Hinfd as [fs [Hinfs Hinfd]].
+    rewrite map_map in Hinfs.
+    rewrite in_map_iff in Hinfs.
+    destruct Hinfs as [d [Hfs Hind']]; subst.
+    specialize (Hty _ Hind').
+    unfold indprop_valid_type in Hty.
+    destruct d; simpl in *.
+    rewrite Forall_forall in Hty.
+    specialize (Hty _ Hinfd).
+    destruct_all.
+    eapply valid_formula_predsym_in_sig. apply H. apply Hfd.
+Qed.
+
+(*And therefore, a valid context is ordered*)
+Lemma valid_context_ordered gamma:
+  valid_context gamma ->
+  ctx_ordered gamma.
+Proof.
+  intros Hval. induction Hval; [| destruct d]; constructor; auto.
+  - intros f d Hfinl Hind Hinfd.
+    rewrite Forall_forall in H1.
+    apply (H1 f). simpl. apply in_bool_In in Hfinl; auto. 
+    eapply funsym_in_def_in_sig; auto. apply Hind. auto.
+  - intros p d Hpinl Hind Hinpd.
+    rewrite Forall_forall in H2.
+    apply (H2 p); simpl. apply in_bool_In in Hpinl; auto.
+    eapply predsym_in_def_in_sig; auto. apply Hind. auto.
+  - intros p d Hpinl Hind Hinpd.
+    rewrite Forall_forall in H2.
+    apply (H2 p). simpl. apply pred_in_indpred_iff; auto.
+    eapply predsym_in_def_in_sig; auto. apply Hind. auto.
+Qed. 
+ 
+End CtxOrder.
+
+(*Now we prove a variety of more specific lemmas we need
+  later that deal with specific parts of the context*)
 
 (*First, prove lemmas about wf_contexts (not valid)*)
 Section WFContextLemmas.
 
 Context {gamma: context} (gamma_wf: wf_context gamma).
-
-
-
-(*TODO: see what we need*)
-(*
-Lemma adt_in_mut_alt {m: mut_adt} {a: alg_datatype}:
-  reflect (In (adt_name a, ne_list_to_list (adt_constrs a)) 
-  (datatypes_of_def (datatype_def m))) (adt_in_mut a m).
-Proof.
-  unfold adt_in_mut.
-  destruct m. simpl. induction typs; simpl.
-  - apply ReflectF; auto.
-  - apply ssrbool.orPP; auto. destruct a0; simpl in *.
-    destruct (adt_dec a (alg_def t n)) eqn : Hadteq; simpl.
-    + apply ReflectT. subst. simpl. reflexivity.
-    + apply ReflectF. intro Ht. inversion Ht; subst.
-      apply ne_list_list_inj in H1. subst.
-      destruct a; simpl in n0; contradiction.
-Qed.*)
 
 (*If m1 and m2 have an ADT name in common, they are equal*)
 Lemma mut_adts_inj {m1 m2: mut_adt} {a1 a2: alg_datatype}:
@@ -2067,46 +2426,32 @@ Lemma mut_adts_inj {m1 m2: mut_adt} {a1 a2: alg_datatype}:
   m1 = m2.
 Proof.
   intros m_in1 m_in2 a_in1 a_in2 Heq.
-  destruct gamma_wf as [_ [_ [_ [_ [Hnodup _]]]]].
-  unfold typesyms_of_context, datatypes_of_context in Hnodup.
+  apply wf_context_alt in gamma_wf.
+  destruct gamma_wf as [_ [_ [Hnodup _]]].
+  (*Search wf_context.
+  destruct gamma_wf as [_ [_ [_ [_ [Hnodup _]]]]].*)
+  unfold typesyms_of_context, datatypes_of_context,
+  mutrec_datatypes_of_context in Hnodup.
   rewrite concat_map in Hnodup.
   rewrite map_map in Hnodup.
   rewrite NoDup_concat_iff in Hnodup.
-  destruct_all. clear H.
-  rewrite mut_in_ctx_eq2 in m_in1, m_in2.
-  destruct (In_nth _ _ (recursive_def nil) m_in1) as [i [Hi Hith]].
-  destruct (In_nth _ _ (recursive_def nil) m_in2) as [j [Hj Hjth]].
-  rewrite map_length in H0.
+  rewrite map_length in Hnodup.
+  destruct Hnodup as [_ Hnodup].
+  rewrite mut_in_ctx_eq in m_in1, m_in2.
+  assert (m: mut_adt) by (apply m1).
+  destruct (In_nth _ _ m m_in1) as [i [Hi Hith]].
+  destruct (In_nth _ _ m m_in2) as [j [Hj Hjth]].
   destruct (Nat.eq_dec i j). {
     (*If i=j, easy*)
-    subst. rewrite Hith in Hjth.
-    inversion Hjth; auto.
+    subst; auto.
   }
-  specialize (H0 i j nil (adt_name a1) Hi Hj n).
-  exfalso. apply H0; clear H0.
-  rewrite !map_nth_inbound with(d2:=(recursive_def [])); auto.
-  rewrite Hith, Hjth.
-  split; rewrite in_map_iff;
-  [exists (adt_name a1, ne_list_to_list (adt_constrs a1))| 
-   exists (adt_name a2, ne_list_to_list (adt_constrs a2))]; 
-   split; auto; apply (ssrbool.elimT adt_in_mut_alt); auto.
-Qed.
-
-Lemma in_mutfuns (l: list funpred_def) :
-  In l (mutfuns_of_context gamma) <->
-  In (recursive_def l) gamma.
-Proof.
-  clear gamma_wf.
-  induction gamma; simpl; auto; try reflexivity.
-  destruct a; simpl in *.
-  - split; intros; [right |]; apply IHc; auto.
-    destruct H; [inversion H |]; auto.
-  - split; intros; destruct_all; auto.
-    + right; apply IHc; auto.
-    + inversion H; subst. auto.
-    + right; apply IHc; auto.
-  - split; intros; [right |]; apply IHc; auto.
-    destruct H; [inversion H |]; auto.
+  specialize (Hnodup i j nil (adt_name a1) Hi Hj n).
+  exfalso. apply Hnodup; clear Hnodup.
+  rewrite !map_nth_inbound with(d2:=m); auto.
+  rewrite <- mut_in_ctx_eq in m_in1, m_in2.
+  rewrite Hith, Hjth, !map_map; simpl; split;
+  rewrite in_map_iff; [exists a1 | exists a2]; split; auto;
+  apply (in_bool_In adt_dec); auto.
 Qed.
 
 (*The syms in the [funpred_defs_to_sns] are unique*)
@@ -2116,16 +2461,14 @@ Lemma funpred_defs_to_sns_NoDup (l: list funpred_def) il:
   NoDup (map fn_sym (fst (funpred_defs_to_sns l il))) /\
   NoDup (map pn_sym (snd (funpred_defs_to_sns l il))).
 Proof.
-  unfold wf_context in gamma_wf.
-  intros Hlen.
-  destruct gamma_wf as [_ [_ [_ [_ [_ [Hwf1 Hwf2]]]]]].
-  intros.
+  apply wf_context_alt in gamma_wf.
+  intros Hinl Hlen.
+  destruct gamma_wf as [_ [_ [_ [Hwf1 Hwf2]]]].
   unfold funsyms_of_context in Hwf1.
   unfold predsyms_of_context in Hwf2.
   unfold funpred_defs_to_sns; simpl; rewrite !map_map; simpl.
   pose proof (split_funpred_defs_length l) as Hlenfstsnd.
   rewrite !map_fst_fst_fst_combine; [| rewrite skipn_length | rewrite firstn_length]; try lia.
-  (*TODO maybe prove equal to filter or seomthing*)
   rewrite !NoDup_concat_iff in Hwf1.
   rewrite !NoDup_concat_iff in Hwf2.
   destruct Hwf1 as [Hwf1 _ ].
@@ -2133,28 +2476,10 @@ Proof.
   assert (Hin: In (recursive_def l) gamma). {
     apply in_mutfuns. auto.
   }
-  split; [apply Hwf1 | apply Hwf2]; rewrite in_map_iff;
-  exists (recursive_def l); split; auto; simpl; clear;
+  split; [apply Hwf1 | apply Hwf2]; rewrite in_omap_iff;
+  exists (recursive_def l); split; auto; f_equal; clear;
   induction l; simpl; auto; destruct a; simpl; auto;
   rewrite IHl; reflexivity.
-Qed.
-
-Lemma in_fun_def l f a b:
-  In (fun_def f a b) l ->
-  In f (funsyms_of_def (recursive_def l)).
-Proof.
-  simpl; induction l; simpl; auto; intros.
-  destruct H; subst; simpl; auto.
-  destruct a0; simpl; try right; auto.
-Qed.
-
-Lemma in_pred_def l p a b:
-  In (pred_def p a b) l ->
-  In p (predsyms_of_def (recursive_def l)).
-Proof.
-  simpl; induction l; simpl; auto; intros.
-  destruct H; subst; simpl; auto.
-  destruct a0; simpl; try right; auto.
 Qed.
 
 Lemma fundef_inj (l: list funpred_def) (f: funsym)
@@ -2164,24 +2489,24 @@ Lemma fundef_inj (l: list funpred_def) (f: funsym)
   In (fun_def f a2 b2) l ->
   a1 = a2 /\ b1 = b2.
 Proof.
-  unfold wf_context in gamma_wf.
+  apply wf_context_alt in gamma_wf.
   intros l_in Hin1 Hin2.
-  destruct gamma_wf as [_ [_ [_ [_ [_ [Hwf1 _]]]]]].
+  destruct gamma_wf as [_ [_ [_ [Hwf1 _]]]].
   unfold funsyms_of_context in Hwf1.
   rewrite NoDup_concat_iff in Hwf1.
   destruct Hwf1 as [Hwf _].
   assert (Hin: In (recursive_def l) gamma). {
     apply in_mutfuns; auto.
   }
-  specialize (Hwf (funsyms_of_def (recursive_def l))).
-  assert (In (funsyms_of_def (recursive_def l)) (map funsyms_of_def gamma)).
-    rewrite in_map_iff. exists (recursive_def l); auto.
-  specialize (Hwf H); clear H.
+  specialize (Hwf (funsyms_of_rec l)).
+  prove_hyp Hwf.
+  {
+    rewrite in_omap_iff. exists (recursive_def l); auto.
+  }
   (*TODO: separate lemma or induction?*)
   simpl in Hwf.
   clear -Hwf Hin1 Hin2.
   induction l; [inversion Hin1 |].
-  simpl in Hin1, Hin2.
   simpl in *. destruct a.
   2: {
     destruct Hin1; destruct Hin2; try solve[inversion H];
@@ -2205,21 +2530,19 @@ Lemma preddef_inj (l: list funpred_def) (p: predsym)
   In (pred_def p a2 b2) l ->
   a1 = a2 /\ b1 = b2.
 Proof.
-  unfold wf_context in gamma_wf.
+  apply wf_context_alt in gamma_wf.
   intros l_in Hin1 Hin2.
-  destruct gamma_wf as [_ [_ [_ [_ [_ [_ Hwf1]]]]]].
+  destruct gamma_wf as [_ [_ [_ [_ Hwf1]]]].
   unfold predsyms_of_context in Hwf1.
   rewrite NoDup_concat_iff in Hwf1.
   destruct Hwf1 as [Hwf _].
   assert (Hin: In (recursive_def l) gamma). {
     apply in_mutfuns; auto.
   }
-  specialize (Hwf (predsyms_of_def (recursive_def l))).
-  assert (In (predsyms_of_def (recursive_def l)) (map predsyms_of_def gamma)).
-    rewrite in_map_iff. exists (recursive_def l); auto.
-  specialize (Hwf H); clear H.
+  specialize (Hwf (predsyms_of_rec l)).
+  prove_hyp Hwf.
+  { rewrite in_omap_iff. exists (recursive_def l); auto. }
   (*TODO: separate lemma or induction?*)
-  simpl in Hwf.
   clear -Hwf Hin1 Hin2.
   induction l; [inversion Hin1 |].
   simpl in Hin1, Hin2.
@@ -2243,11 +2566,11 @@ End WFContextLemmas.
 
 Section ValidContextLemmas.
 
-Context {s: sig} {gamma: context} (gamma_valid: valid_context s gamma).
+Context {gamma: context} (gamma_valid: valid_context gamma).
 
 (*These lemmas all have the same form: keep applying Forall_forall, in_map_iff,
   and similar, until we get what we want. Here we automate them*)
-Ltac valid_context_tac :=
+(*Ltac valid_context_tac :=
   let Hwf := fresh "Hwf" in
   let Hadts := fresh "Hadts" in
   destruct gamma_valid as [Hwf Hadts];
@@ -2274,54 +2597,59 @@ Ltac valid_context_tac :=
   | Hall: Forall ?P ?l |- _ => rewrite Forall_forall in Hall
   | Hin: In ?x ?l, Hall: forall x : ?t, In x ?l -> ?P |- _ =>
     specialize (Hall _ Hin)
-  end; auto.
+  end; auto.*)
 
-(*
-(a: typesym) (constrs: list funsym) (c: funsym),
-  In (a, constrs) (datatypes_of_context gamma) ->
-  In c constrs ->
-  s_ret c = vty_cons a (map vty_var (ts_args a)) /\
-  s_params c = ts_args a.
-Proof.
-  intros. valid_context_tac.
-  unfold adt_valid_type in H.
-  valid_context_tac.
-Qed.
+Ltac valid_ctx_info :=
+  let Hwf := fresh "Hwf" in
+  pose proof (valid_context_wf _ gamma_valid) as Hwf;
+  apply wf_context_alt in Hwf;
+  destruct Hwf as [Hvalf [Hvalp [Hn1 [Hn2 Hn3]]]];
+  let Hvald := fresh "Hvald" in
+  pose proof (valid_context_defs _ gamma_valid) as Hvald.
 
-Lemma adt_constr_ret_params_eq: forall {a: typesym} {constrs: list funsym} {c1 c2: funsym},
-  In (a, constrs) (datatypes_of_context gamma) ->
-  In c1 constrs -> In c2 constrs ->
-  s_ret c1 = s_ret c2 /\ s_params c1 = s_params c2.
-Proof.
-  intros.
-  pose proof (adt_constr_ret_params _ _ _ H H0).
-  pose proof (adt_constr_ret_params _ _ _ H H1).
-  destruct H2; destruct H3; split; congruence.
-Qed.*)
+Ltac apply_forall :=
+  match goal with
+  | H: Forall ?P ?l, H1: In ?x ?l |- _ =>
+    rewrite Forall_forall in H;
+    let H2 := fresh in
+    assert (H2: P x) by (apply H; apply H1);
+    simpl in H2
+  end.
 
-(*TODO: automate this: just a bunch of Forall_forall, in_map_iff, etc*)
-(*
-Definition args_params_eq: forall {l: list (typesym * list funsym)}
-  {c: funsym} {adt: typesym} {constrs: list funsym}
-  (Hin1: In l (mutrec_datatypes_of_context gamma))
-  (Hin2: In (adt, constrs) l)
-  (Hin3: In c constrs),
-  ts_args adt = s_params c.
-Proof.
-  intros. valid_context_tac.
-  unfold adt_valid_type in H.
-  valid_context_tac.
-Qed.
-*)
+Ltac simpl_val :=
+  repeat match goal with
+  | H: valid_def ?g ?d |- _ => unfold valid_def in H
+  | H: mut_valid ?g ?m |- _ => unfold mut_valid in H
+  | H: valid_mut_rec ?m |- _ => unfold valid_mut_rec in H
+  | H: adt_valid_type ?a |- _ => unfold adt_valid_type in H
+  end.
+
+Ltac valid_context_tac :=
+  repeat(repeat apply_forall;
+  simpl_val;
+  destruct_all).
+
 Lemma adt_args: forall {m: mut_adt} {a: alg_datatype}
   (Hin: adt_mut_in_ctx a m gamma),
   ts_args (adt_name a) = m_params m.
 Proof.
   intros. unfold adt_mut_in_ctx in Hin. destruct Hin.
+  valid_ctx_info.
+  rewrite mut_in_ctx_eq2 in H0.
   unfold adt_in_mut in H.
+  apply in_bool_In in H.
   valid_context_tac.
-  unfold valid_mut_rec in H2.
-  valid_context_tac.
+  auto.
+Qed.
+
+(*TODO: move*)
+Lemma constr_in_adt_eq c a:
+  constr_in_adt c a <-> In c (adt_constr_list a).
+Proof.
+  unfold constr_in_adt.
+  rewrite in_bool_ne_equiv.
+  rewrite (reflect_iff _ _ (in_bool_spec funsym_eq_dec _ _)).
+  reflexivity.
 Qed.
 
 Lemma adt_constr_params: forall {m: mut_adt} {a: alg_datatype}
@@ -2331,12 +2659,11 @@ Lemma adt_constr_params: forall {m: mut_adt} {a: alg_datatype}
   s_params c = m_params m.
 Proof.
   intros. unfold adt_in_mut in Ha.
-  unfold constr_in_adt in Hc.
-  valid_context_tac.
-  unfold valid_mut_rec in H2.
-  valid_context_tac. rewrite <- H4. reflexivity.
-  rewrite in_bool_ne_equiv in Hc.
-  apply (in_bool_In _ _ _ Hc).
+  valid_ctx_info.
+  rewrite mut_in_ctx_eq2 in Hm.
+  apply in_bool_In in Ha.
+  rewrite constr_in_adt_eq in Hc.
+  valid_context_tac. auto.
 Qed.
 
 Lemma adt_constr_ret: forall {m: mut_adt} {a: alg_datatype}
@@ -2345,47 +2672,33 @@ Lemma adt_constr_ret: forall {m: mut_adt} {a: alg_datatype}
   f_ret c = vty_cons (adt_name a) (map vty_var (m_params m)).
 Proof.
   intros.
-  (*This is an ugly hack, should change tactic so it leaves "in"
-  assumptions*)
-  assert (adt_mut_in_ctx a m gamma) by 
-    (unfold adt_mut_in_ctx; split; assumption). 
+  unfold adt_in_mut in Ha.
+  rewrite mut_in_ctx_eq2 in Hm.
+  apply in_bool_In in Ha.
+  apply in_bool_ne_In in Hc.
+  valid_ctx_info.
   valid_context_tac.
-  unfold adt_valid_type in H0.
-  rewrite in_bool_ne_equiv in Hc.
-  apply in_bool_In in Hc.
+  destruct a; simpl in *.
   valid_context_tac.
-  rewrite H5. f_equal.
-  f_equal. replace t with (adt_name ((alg_def t n))) by auto.
-  apply adt_args. auto.
-Qed. 
+  rewrite H8, H9. 
+  auto.
+Qed.
 
 Lemma adts_names_nodups: forall {m: mut_adt}
   (Hin: mut_in_ctx m gamma),
   NoDup (map adt_name (typs m)).
 Proof.
   intros. 
-  unfold valid_context in gamma_valid.
-  destruct gamma_valid as [Hwf _].
-  unfold wf_context in Hwf.
-  clear -Hin Hwf.
-  destruct Hwf as [_ [_ [_ [_ [Huniq _]]]]].
-  induction gamma.
-  - inversion Hin.
-  - simpl in *. unfold typesyms_of_context in *.
-    unfold datatypes_of_context in *. simpl in Huniq.
-    rewrite map_app in Huniq.
-    rewrite NoDup_app_iff in Huniq.
-    destruct Huniq as [Hn1 [Hn2 [Hi1 Hi2]]].
-    rewrite mut_in_ctx_eq2 in Hin.
-    simpl in Hin.
-    destruct Hin; subst.
-    + simpl in Hn1. rewrite map_map in Hn1.
-      unfold adt_name. 
-      assert (forall {A} (l1 l2: list A), NoDup l1 -> l1 = l2
-      -> NoDup l2) by (intros; subst; auto).
-      apply (H _ _ _ Hn1).
-      apply map_ext. intros. destruct a; reflexivity.
-    + apply IHc. rewrite mut_in_ctx_eq2. apply H. apply Hn2.
+  valid_ctx_info.
+  clear -Hn1 Hin.
+  unfold typesyms_of_context, datatypes_of_context,
+  mutrec_datatypes_of_context in Hn1.
+  rewrite concat_map, NoDup_concat_iff in Hn1.
+  destruct Hn1 as [Hn _].
+  apply Hn. rewrite !map_map. rewrite in_map_iff.
+  exists m. split.
+  - rewrite map_map. reflexivity.
+  - apply mut_in_ctx_eq; auto.
 Qed.
 
 Lemma adts_nodups: forall {m: mut_adt}
@@ -2396,121 +2709,7 @@ Proof.
   eapply NoDup_map_inv. apply adts_names_nodups. apply Hin.
 Qed.
 
-(*TODO: don't need these anymore but maybe useful later?*)
-
-Lemma NoDup_equiv: forall {A: Type} (l: list A),
-  NoDup l <-> (forall n1 n2 d1 d2, n1 < length l -> n2 < length l ->
-    nth n1 l d1 = nth n2 l d2 -> n1 = n2).
-Proof.
-  intros A l. induction l; simpl; split; intros.
-  - inversion H0.
-  - constructor.
-  - inversion H; subst.
-    destruct n1.
-    + destruct n2; auto.
-      exfalso. apply H5. subst. apply nth_In. lia.
-    + destruct n2. 
-      * exfalso. apply H5. subst. apply nth_In. lia.
-      * f_equal. rewrite IHl in H6.
-        apply (H6 _ _ d1 d2); auto; lia.
-  - constructor.
-    + intro C.
-      pose proof (In_nth l a a C).
-      destruct H0 as [n [Hn Ha]].
-      assert (0 = S n). {
-        apply (H _ _ a a); try lia.
-        auto.
-      }
-      inversion H0.
-    + apply IHl. intros n1 n2 d1 d2 Hn1 Hn2 Heq.
-      assert (S n1 = S n2). {
-        apply (H _ _ d1 d2); try lia; auto.
-      }
-      inversion H0; auto.
-Qed.
-(*
-Lemma nth_concat: forall {A: Type} {l: list (list A)} {l2: list A} 
-{n: nat}
-  {d} {n2 d2},
-  n2 < length l ->
-  n < length (concat l) ->
-  nth n2 l d2 = l2 ->
-  nth n (concat l) d =
-    nth (n - length (concat (firstn n2 l))) l2 d.
-Proof.
-  intros A l; induction l; simpl; intros.
-  - inversion H0.
-  - destruct n2.
-    + subst. simpl. 
-  
-  
-  destruct H0.
-  - induction l
-*)
-
-Lemma NoDup_not_cons: forall {A: Type} 
-(eq_dec: forall (x y : A), {x = y} + {x <> y}) {a : A} {l},
-  ~ NoDup (a :: l) <-> In a l \/ ~NoDup l.
-Proof.
-  intros.
-  rewrite (reflect_iff _ _ (nodup_NoDup eq_dec _)).
-  rewrite nodupb_cons.
-  rewrite (reflect_iff _ _ (nodup_NoDup eq_dec _)).
-  rewrite (reflect_iff _ _ (in_bool_spec eq_dec _ _)).
-  split; intros; auto.
-  - destruct (in_bool eq_dec a l); simpl. left; auto.
-    simpl in H. right; auto.
-  - destruct H.
-    + rewrite H. simpl; intro C; inversion C.
-    + intro C. destruct (nodupb eq_dec l). contradiction.
-      rewrite andb_false_r in C. inversion C.
-Qed. 
-
-Lemma in_exists: forall {A: Type} {x: A} {l: list A},
-  In x l <-> exists l1 l2, l = l1 ++ [x] ++ l2.
-Proof.
-  intros; induction l; simpl; split; intros.
-  - destruct H.
-  - destruct H as [l1 [l2 Hl]]. destruct l1; inversion Hl.
-  - destruct H; subst.
-    + exists nil. exists l. reflexivity.
-    + apply IHl in H. destruct H as [l1 [l2 Hl]]; rewrite Hl.
-      exists (a :: l1). exists l2. reflexivity.
-  - destruct H as [l1 [l2 Hl]]; subst.
-    destruct l1.
-    + inversion Hl; subst. left; auto.
-    + simpl in Hl. inversion Hl; subst.
-      right. apply IHl. exists l1. exists l2. reflexivity.
-Qed.
-
-Lemma not_NoDup: forall {A: Type}
-(eq_dec: forall (x y : A), {x = y} + {x <> y})
-  (l: list A),
-  ~NoDup l <->
-  exists x l1 l2 l3,
-    l = l1 ++ [x] ++ l2 ++ [x] ++ l3.
-Proof.
-  intros A eq_dec l; induction l; simpl; intros; split; intros.
-  - exfalso. apply H. constructor.
-  - intro C. destruct H as [x [l1 [l2 [l3 Hl]]]]; subst.
-    destruct l1; inversion Hl.
-  - apply (NoDup_not_cons eq_dec) in H.
-    destruct H.
-    + exists a. exists nil.
-      apply in_exists in H. destruct H as [l1 [l2 Hl]].
-      rewrite Hl. exists l1. exists l2. reflexivity.
-    + apply IHl in H. destruct H as [x [l1 [l2 [l3 Hl]]]].
-      rewrite Hl. exists x. exists (a :: l1). exists l2. exists l3.
-      reflexivity.
-  - rewrite NoDup_not_cons by apply eq_dec.
-    destruct H as [x [l1 [l2 [l3 Hl]]]]. destruct l1.
-    + inversion Hl; subst. left. apply in_or_app. right. left; auto.
-    + inversion Hl; subst.
-      right. apply IHl. exists x. exists l1. exists l2. exists l3.
-      reflexivity.
-Qed.
-
-(*Just need these*)
+(*TODO: move - some lemmas about NoDup and concat*)
 
 Lemma NoDup_concat: forall {A: Type}
   (eq_dec: forall (x y: A), {x = y} + {x <> y})
@@ -2544,9 +2743,6 @@ Proof.
   apply (NoDup_concat eq_dec H2 H1).
 Qed.
 
-(*awful hack - TODO fix*)
-Definition mut_in_ctx' := mut_in_ctx.
-
 Lemma constrs_nodups: forall {m: mut_adt} {constrs: ne_list funsym}
   {m_in: mut_in_ctx m gamma}
   (Hin: In constrs (map adt_constrs (typs m))),
@@ -2555,66 +2751,22 @@ Proof.
   intros.
   apply (reflect_iff _ _ (nodup_NoDup _ _)).
   rewrite in_map_iff in Hin. destruct Hin as [a [Ha Hina]]; subst.
-  assert (m_in': mut_in_ctx' m gamma) by auto.
-  valid_context_tac.
-  unfold wf_context in Hwf. destruct Hwf as [_ [_ [_ [_ [_ [Hnodup _]]]]]].
-  clear Hadts. unfold funsyms_of_context in Hnodup.
-  assert (exists l l', In l (map funsyms_of_def gamma) /\ l = concat l' /\
-    In (ne_list_to_list (adt_constrs a)) l'). {
-      unfold funsyms_of_def. unfold adt_constrs.
-      exists (concat
-      (map
-         (fun a0 : alg_datatype =>
-          match a0 with
-          | alg_def _ fs => ne_list_to_list fs
-          end) (typs m))).
-    exists ((map
-    (fun a0 : alg_datatype =>
-     match a0 with
-     | alg_def _ fs => ne_list_to_list fs
-     end) (typs m))).
-      split; auto.
-      - rewrite in_map_iff. exists (datatype_def m).
-        split; auto. apply mut_in_ctx_eq2; auto.
-      - split; auto. rewrite in_map_iff.
-        exists a. split; auto. destruct a; reflexivity.
+  valid_ctx_info.
+  clear -Hn2 m_in Hina.
+  unfold funsyms_of_context in Hn2.
+  assert (Hin: In (ne_list_to_list (adt_constrs a))
+  (map adt_constr_list (typs m))). {
+    rewrite in_map_iff. exists a. split; auto.
   }
-  destruct H4 as [l [l' [Hinl [Hl Hinl']]]]; subst.
-  eapply NoDup_concat'. apply funsym_eq_dec. 
-  3: apply Hinl'. 2: apply Hinl.
-  apply Hnodup.
+  eapply NoDup_concat'. apply funsym_eq_dec. apply Hn2.
+  2: apply Hin.
+  rewrite in_omap_iff. exists (datatype_def m).
+  split; auto. apply mut_in_ctx_eq2; auto.
 Qed.
 
-(*We want to know: when we have a valid context, a list of
-  patterns in a valid match is nonempty*)
-
-  (*TODO: we need to do this when we have a valid context, so that we
-    know that mut adt is nonempty
-    TODO: change to NOT datatypes_of_context*)
-(*
-Lemma valid_pattern_match_nil: forall s gamma,
-  valid_context s gamma ->
-  ~ valid_pattern_match s gamma nil.
-Proof.
-  clear gamma_valid s gamma.
-  intros s gamma gamma_valid. intro C. unfold valid_pattern_match in C.
-  destruct C as [a [args [Hlen [Hina Hex]]]].
-  assert (adt_inhab s gamma a). {
-    unfold adt_in_ctx in Hina. destruct Hina as [m Hm].
-    unfold adt_mut_in_ctx, adt_in_mut, mut_in_ctx in Hm.
-    valid_context_tac.
-  }
-  assert (Hinhab:=H).
-  unfold adt_inhab in H. destruct a. 
-  apply adt_inhab_inhab with (vs:=args) in Hinhab; auto.
-  2 : { apply gamma_valid. }
-  destruct Hinhab as [tm Htm].
-  specialize (Hex tm Htm). destruct Hex as [p [[] _]].
-Qed.*)
-
 Lemma pat_has_type_valid: forall p ty,
-  pattern_has_type s p ty ->
-  valid_type s ty.
+  pattern_has_type gamma p ty ->
+  valid_type gamma ty.
 Proof.
   intros. induction H; try assumption; auto.
   apply valid_type_subst; auto.
@@ -2624,25 +2776,16 @@ Qed.
   [valid_pat_fmla] or else we could have an empty pattern*)
 Lemma has_type_valid: forall (*s gamma*) t ty,
   (*well_typed_term s gamma t ty ->*)
-  term_has_type s t ty ->
-  valid_type s ty.
+  term_has_type gamma t ty ->
+  valid_type gamma ty.
 Proof.
   intros. induction H; try solve[constructor]; try assumption; auto.
   apply valid_type_subst; assumption.
-  destruct ps. inversion H3.
-  apply (H2 p); auto. left; auto. 
+  destruct ps. inversion H4.
+  apply (H3 p); auto. left; auto. 
 Qed.
-(*
-  - inversion H0; subst. auto.
-  - inversion H0; subst; auto.
-  - inversion H0; subst.
-    destruct ps.
-    simpl in H6. exfalso. apply (valid_pattern_match_nil _ _ gamma_valid H6).
-    simpl in H8. assert (valid_pat_tm s gamma (snd p)).
-      apply H8. left. auto.
-    apply (H3 p). left; auto. assumption. apply H8; left; auto.
-Qed.*)
 
+(*TODO: START*)
   
 (*All constrs are in [funsym_of_context gamma]*)
 Lemma constrs_in_funsyms: forall {gamma c a m},
