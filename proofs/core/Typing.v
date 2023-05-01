@@ -203,32 +203,54 @@ Proof.
   intros. inversion H; subst; repeat split; auto.
 Qed.
 
-Lemma valid_type_subst: forall s ty vars tys,
+Lemma ty_subst_fun_cases: forall params tys d v,
+  (In (ty_subst_fun params tys d v) tys) \/
+  (ty_subst_fun params tys d v = d).
+Proof.
+  intros. revert tys.
+  induction params; simpl; auto.
+  destruct tys; auto.
+  destruct (typevar_eq_dec v a); subst; simpl; auto.
+  specialize (IHparams tys). destruct IHparams; auto.
+Qed.
+
+Lemma valid_type_subst: forall s ty f,
+  valid_type s ty ->
+  (forall x, valid_type s (f x)) ->
+  valid_type s (v_subst_aux f ty).
+Proof.
+  intros. induction ty; simpl; auto.
+  inversion H; subst.
+  constructor; auto.
+  - rewrite map_length; auto.
+  - intros x Hinx.
+    rewrite in_map_iff in Hinx. 
+    destruct Hinx as [v [Hx Hinv]]; subst.
+    rewrite Forall_forall in H1.
+    apply H1; auto.
+Qed.
+
+Lemma valid_type_ty_subst_fun: forall s ty vars tys x,
+  valid_type s ty ->
+  Forall (valid_type s) tys ->
+  valid_type s (ty_subst_fun vars tys ty x).
+Proof.
+  intros.
+  destruct (ty_subst_fun_cases vars tys ty x).
+  - rewrite Forall_forall in H0; apply H0; auto.
+  - rewrite H1; auto.
+Qed.
+
+Lemma valid_type_ty_subst: forall s ty vars tys,
   valid_type s ty ->
   Forall (valid_type s) tys ->
   valid_type s (ty_subst vars tys ty).
 Proof.
-  intros. induction H; unfold ty_subst; simpl; try constructor; auto.
-  - destruct (in_dec typevar_eq_dec v vars).
-    + (*TODO: separate lemma (w no assumptions)*) 
-      assert (In (ty_subst_fun vars tys vty_int v) tys \/ 
-      (ty_subst_fun vars tys vty_int v) = vty_int
-        ). {
-        clear -i.
-        revert tys. induction vars; simpl; intros.
-        destruct i.
-        destruct tys; auto.
-        destruct (typevar_eq_dec v a); subst; simpl; auto.
-        rewrite or_assoc. simpl in i. destruct i;
-        subst; auto. contradiction.  
-      }
-      destruct H.
-      * rewrite Forall_forall in H0; apply H0; auto.
-      * rewrite H. constructor.
-    + rewrite ty_subst_fun_notin; auto. constructor.
-  - rewrite map_length. apply H1.
-  - intros x. rewrite in_map_iff. intros [x1 [Hx1 Hinx1]].
-    specialize (H3 _ Hinx1 H0). subst. apply H3.
+  intros.
+  apply valid_type_subst; auto.
+  intros.
+  apply valid_type_ty_subst_fun; auto.
+  constructor.
 Qed.
 
 (*Now we define valid contexts. Unlike the paper,
@@ -273,6 +295,7 @@ Definition valid_mut_rec (m: mut_adt) : Prop :=
 (*Types*)
 (*All constructors have the correct return type and the same parameters as
   the declaration*)
+(*TODO: need condition that args are valie*)
 Definition adt_valid_type (a : alg_datatype) : Prop :=
   match a with
   | alg_def ts constrs => 
@@ -286,157 +309,564 @@ Definition adt_valid_type (a : alg_datatype) : Prop :=
 Section Inhab.
 
 Variable gamma: context.
-(*Variable gamma_wf: wf_context gamma.*)
 
-(*TODO: do this for real*)
-(*This is more complicated than it seems, for 2 reasons:
-1. Whether a type symbol/type is inhabited depends on the current context. For
-  instance, we cannot assume that a recursive instance of a type is inhabited,
-  but we can assume that previously-declared types are. Similarly, if we know
-  that a type variable a is applied to a nonexistent type, we cannot assume
-  further instances of a are inhabited. So we need 2 lists representing the
-  known non-inhabited types in the current context.
-2. The cons case in vty_inhab involes a condition: In x new_tvs <-> ~ vty_inhab _ _ y.
-    This is not strictly positive, so we include an additional boolean parameter
-    to indicate truth or falsehood. Thus, we need to add all the "false" cases,
-    which otherwise would not be needed. It remains to show that this relation is
-    decidable and that the boolean parameter correctly shows whether 
-    *_inhab tss tvs x true is provable. *)
-Unset Elimination Schemes.
-Inductive typesym_inhab : list typesym -> list typevar -> typesym -> bool -> Prop :=
-  | ts_check_empty: forall tss tvs ts,
-    ~ In ts (sig_t gamma) ->
-    typesym_inhab tss tvs ts false
-  | ts_check_rec: forall tss tvs ts, (*recursive type*)
-    In ts tss ->
-    typesym_inhab tss tvs ts false
-  | ts_check_typeT: forall tss tvs ts, (*for abstract type*)
-    ~ In ts tss ->
-    ~ In ts (map fst (datatypes_of_context gamma)) ->
-    In ts (sig_t gamma) ->
-    (*no "bad" type variables in context - these are the uninhabited arguments of the
-      typesym (see vty_inhab below)*)
-    null tvs ->
-    typesym_inhab tss tvs ts true
-  | ts_check_typeF: forall tss tvs ts,
-    ~In ts tss  ->
-    ~ In ts (map fst (datatypes_of_context gamma)) ->
-    negb (null tvs) ->
-    typesym_inhab tss tvs ts false
-  | ts_check_adtT: forall tss tvs ts constrs c, (*for ADTs*)
-    In ts (sig_t gamma) ->
-    ~In ts tss ->
-    In (ts, constrs) (datatypes_of_context gamma) ->
-    negb (null constrs) ->
-    In c constrs ->
-    (constr_inhab (ts :: tss) tvs c true) ->
-    typesym_inhab tss tvs ts true
-  | ts_check_adtF1: forall tss tvs ts constrs,
-    ~In ts tss ->
-    In (ts, constrs) (datatypes_of_context gamma) ->
-    null constrs ->
-    typesym_inhab tss tvs ts false
-  | ts_check_adtF2: forall tss tvs ts constrs,
-    ~In ts tss ->
-    In (ts, constrs) (datatypes_of_context gamma) ->
-    negb( null constrs) ->
-    (forall c, In c constrs -> constr_inhab (ts :: tss) tvs c false) ->
-    typesym_inhab tss tvs ts false
-with constr_inhab: list typesym -> list typevar -> funsym -> bool -> Prop :=
-  | constr_checkT: forall tss tvs (c: funsym),
-    (forall x, In x (s_args c) -> vty_inhab tss tvs x true) ->
-    constr_inhab tss tvs c true
-  | constr_checkF: forall tss tvs (c: funsym) v,
-    In v (s_args c) ->
-    vty_inhab tss tvs v false ->
-    constr_inhab tss tvs c false
-(*Here, need bool to deal with strict positivity issues*)
-with vty_inhab: list typesym -> list typevar -> vty -> bool -> Prop :=
-  | vty_check_int: forall tss tvs,
-    vty_inhab tss tvs vty_int true
-  | vty_check_real: forall tss tvs,
-    vty_inhab tss tvs vty_real true
-  | vty_check_varT: forall tss tvs tv,
-    ~ In tv tvs ->
-    vty_inhab tss tvs (vty_var tv) true
-  | vty_check_varF: forall tss tvs tv,
-    In tv tvs ->
-    vty_inhab tss tvs (vty_var tv) false
-  | vty_check_consT: forall tss tvs new_tvs ts args,
-    (*making this condition strictly positive is not easy*)
-    (*Condition: for all x y, In (x, y) (combine (ts_args ts) args) ->
-    In x new_tvs <-> ~vty_inhab tss tvs y*)
-    (forall x y, In (x, y) (combine args (ts_args ts)) ->
-    ~ (In y new_tvs) -> vty_inhab tss tvs x true) ->
-    (forall x y, In (x, y) (combine args (ts_args ts)) ->
-      In y new_tvs -> vty_inhab tss tvs x false) ->
-    typesym_inhab tss new_tvs ts true ->
-    vty_inhab tss tvs (vty_cons ts args) true
-  | vty_check_consF: forall tss tvs new_tvs ts args,
-    (forall x y, In (x, y) (combine args (ts_args ts)) ->
-    ~ (In y new_tvs) -> vty_inhab tss tvs x true) ->
-    (forall x y, In (x, y) (combine args (ts_args ts)) ->
-      In y new_tvs -> vty_inhab tss tvs x false) ->
-    typesym_inhab tss new_tvs ts false ->
-    vty_inhab tss tvs (vty_cons ts args) false
-    .
+(*TODO: move this somewhere (contextUtils?)*)
+Definition find_ts_in_ctx (ts: typesym) : option (mut_adt * alg_datatype) :=
+  fold_right (fun m acc => 
+    match (find_ts_in_mut ts m) with
+    | Some a => Some (m, a)
+    | None => acc
+    end) None (mut_of_context gamma).
 
-Scheme typesym_inhab_ind := Minimality for typesym_inhab Sort Prop with
-constr_inhab_ind := Minimality for constr_inhab Sort Prop with
-vty_inhab_ind := Minimality for vty_inhab Sort Prop.
+(*Weaker specs - no well-formed context*)
+Lemma find_ts_in_ctx_none (ts: typesym):
+  reflect (forall (a: alg_datatype) (m: mut_adt),
+    mut_in_ctx m gamma -> adt_in_mut a m ->
+    adt_name a <> ts) (negb (ssrbool.isSome (find_ts_in_ctx ts))).
+Proof.
+  unfold find_ts_in_ctx, mut_in_ctx.
+  induction (mut_of_context gamma); simpl.
+  - apply ReflectT. intros a m H; inversion H.
+  - destruct (find_ts_in_mut ts a) eqn : Hinmut; simpl.
+    + apply ReflectF. intro C.
+      apply find_ts_in_mut_some in Hinmut.
+      destruct Hinmut. subst. apply (C a0 a); auto.
+      rewrite eq_dec_refl; auto. 
+    + rewrite find_ts_in_mut_none in Hinmut. 
+      destruct IHl.
+      * apply ReflectT. intros.
+        destruct (mut_adt_dec m a); simpl in H; subst.
+        apply (Hinmut _ H0); auto.
+        apply (n _ m); auto.
+      * apply ReflectF. intros C.
+        apply n. intros a' m Hin. apply C. 
+        rewrite Hin, orb_true_r. auto.
+Qed.
 
-Set Elimination Schemes.
+Lemma find_ts_in_ctx_none_iff (ts: typesym):
+  (forall (a: alg_datatype) (m: mut_adt),
+    mut_in_ctx m gamma -> adt_in_mut a m ->
+    adt_name a <> ts) <-> find_ts_in_ctx ts = None.
+Proof.
+  rewrite (reflect_iff _ _ (find_ts_in_ctx_none ts)).
+  destruct (find_ts_in_ctx ts); simpl; split; intros; auto; discriminate.
+Qed.
 
-(*An ADT is inhabited if its typesym is inhabited under the empty context*)
-Definition adt_inhab (a : alg_datatype) : Prop :=
-  match a with
-  | alg_def ts constrs => typesym_inhab nil nil ts true
+Lemma find_ts_in_ctx_some (ts: typesym) m a:
+  find_ts_in_ctx ts = Some (m, a) ->
+  mut_in_ctx m gamma /\ adt_in_mut a m /\
+  ts = adt_name a.
+Proof.
+  unfold find_ts_in_ctx, mut_in_ctx.
+  induction (mut_of_context gamma); simpl; auto; intros; try discriminate.
+  destruct (find_ts_in_mut ts a0) eqn : Hfind.
+  - inversion H; subst.
+    apply find_ts_in_mut_some in Hfind. destruct_all.
+    rewrite eq_dec_refl; auto.
+  - apply IHl in H. destruct_all; subst. split; auto.
+    rewrite H, orb_true_r; auto.
+Qed.
+
+(*We include a slightly different check than why3's, which is
+  very difficult to prove correct.
+  The difference occurs in the case when we want to check if
+  vty_cons ts vs is inhabited.
+  Why3's check keeps track of which type variables correspond
+  to types not known to be inhabited, and lets us conclude that 
+  the overall type is inhabited if we never use these bad type
+  variables. This is difficult to specify and prove correct.
+  Instead, we require that all types in vs are inhabited, which
+  ends up the same in the end (since in both cases, there are no
+  uninhabited types to apply to a type argument)
+*)
+
+(*We give this as a Fixpoint, not as an Inductive, since we need
+  decidable typechecking anyway, and proving the two equivalent
+  is a lot of work. But all we really care about is that
+  this implies the existence of a well-typed term of the given
+  type. We use fuel for termination, but prove that the
+  amount of fuel needed is bounded*)
+Fixpoint typesym_inhab_fun
+(seen_typesyms : list typesym) (ts: typesym) (n: nat) : bool :=
+match n with
+| O => false
+| S(n') =>
+  in_dec typesym_eq_dec ts (sig_t gamma) && 
+  negb (in_dec typesym_eq_dec ts seen_typesyms) &&
+  match (find_ts_in_ctx ts) with
+  | None => true
+  | Some (m, a) =>
+    let constrs := adt_constr_list a in
+    negb (null constrs) && 
+    (fix exists_constr (l: list funsym) : bool :=
+      match l with
+      | nil => false
+      | c :: tl => 
+        ((fix forall_ty (lt: list vty) : bool :=
+          match lt with
+          | nil => true
+          | t :: ttl =>
+            ((fix check_type (t: vty) : bool :=
+              match t with
+              | vty_int => true
+              | vty_real => true
+              | vty_var v => true  
+                (*We assume all type variables are inhabited*) 
+              | vty_cons ts' vtys =>
+                ((fix all_tys_inner (lt: list vty) : bool :=
+                  match lt with
+                  | nil => true
+                  | t :: ttl => check_type t && all_tys_inner ttl
+                  end) vtys) &&
+                typesym_inhab_fun (ts :: seen_typesyms) ts' n'
+              end) t) && forall_ty ttl
+          end) (s_args c)) || (exists_constr tl)
+      end) constrs
+    end
   end.
 
-(*We want to prove that this definition corresponds to (closed) types being inhabited.
-  TODO: is it actually equivalent?*)
+Section InhabRewrite.
 
-Definition find_constrs (gamma:context) (t: typesym) : option (list funsym) :=
-  fold_right (fun x acc => if typesym_eq_dec (fst x) t then Some (snd x) else acc)
-    None (datatypes_of_context gamma).
+(*Now we give a rewrite version to make this
+  nicer to use*)
+Fixpoint vty_inhab_fun (seen_typesyms: list typesym) (t: vty)
+  (n: nat) : bool :=
+  match t with
+  | vty_int => true
+  | vty_real => true
+  | vty_var v => true  
+  | vty_cons ts' vtys =>
+    forallb (fun t => vty_inhab_fun seen_typesyms t n) vtys &&
+    typesym_inhab_fun (seen_typesyms) ts' n
+  end.
 
-Lemma find_constrs_none: forall gamma t,
-  find_constrs gamma t = None <-> ~In t (map fst (datatypes_of_context gamma)).
-Proof.
-  intros. unfold find_constrs. induction (datatypes_of_context gamma0); simpl; split; intros; auto.
-  - destruct (typesym_eq_dec (fst a) t); [inversion H |].
-    apply IHl in H. intro C. destruct C; auto.
-  - destruct (typesym_eq_dec (fst a) t).
-    + exfalso. apply H. left; auto.
-    + apply IHl. intro C. apply H. right; auto.
+Lemma vty_inhab_fun_eq: forall seen_typesyms t n,
+  vty_inhab_fun seen_typesyms t n =
+  ((fix check_type (t: vty) : bool :=
+    match t with
+    | vty_int => true
+    | vty_real => true
+    | vty_var v => true  
+    | vty_cons ts' vtys =>
+      ((fix all_tys_inner (lt: list vty) : bool :=
+        match lt with
+        | nil => true
+        | t :: ttl => check_type t && all_tys_inner ttl
+        end) vtys) &&
+      typesym_inhab_fun (seen_typesyms) ts' n
+    end) t).
+  Proof.
+  intros. unfold vty_inhab_fun. induction t; try reflexivity.
+  f_equal.
+  induction vs as [| h tl IH]; intros; simpl; try reflexivity.
+  inversion H; subst.
+  rewrite H2. f_equal. rewrite IH; auto.
 Qed.
 
-Lemma find_constrs_some: forall gamma t cs,
-  NoDup (typesyms_of_context gamma) ->
-  find_constrs gamma t = Some cs <-> In (t, cs) (datatypes_of_context gamma).
+Definition constr_inhab_fun 
+(seen_typesyms : list typesym) (c: funsym) (n: nat) :=
+forallb (fun t => vty_inhab_fun seen_typesyms t n) (s_args c).
+
+Lemma constr_inhab_fun_eq: forall seen_typesyms c n,
+constr_inhab_fun seen_typesyms c n =
+((fix forall_ty (lt: list vty) : bool :=
+    match lt with
+    | nil => true
+    | t :: ttl => vty_inhab_fun seen_typesyms t n && forall_ty ttl
+    end) (s_args c)).
 Proof.
-  unfold typesyms_of_context, find_constrs. intros.
-  induction (datatypes_of_context gamma0); simpl; split; intros; auto; try (solve [inversion H0]).
-  - destruct (typesym_eq_dec (fst a) t); simpl; subst.
-    + inversion H0; subst. left. destruct a; reflexivity.
-    + apply IHl in H0. right; auto. simpl in H. inversion H; auto.
-  - destruct H0; subst; simpl.
-    + destruct (typesym_eq_dec t t); auto. contradiction.
-    + destruct (typesym_eq_dec (fst a) t); subst; simpl.
-      * simpl in H. inversion H; subst. exfalso. apply H3.
-        rewrite in_map_iff. exists (fst a, cs). split; auto.
-      * apply IHl; auto. inversion H; auto.
+intros. unfold constr_inhab_fun, forallb. reflexivity.
 Qed.
 
-(*For now, we assume this as an axiom*)
-(*
-Lemma adt_inhab_inhab: forall a,
-  adt_in_ctx a gamma ->
-  adt_inhab a ->
+Lemma existsb_ext: forall {A: Type} (f g: A -> bool) (l: list A),
+  (forall x, f x = g x) ->
+  existsb f l = existsb g l.
+Proof.
+  intros. induction l; simpl; auto; congruence.
+Qed.
+
+Lemma forallb_ext: forall {A: Type} (f g: A -> bool) (l: list A),
+  (forall x, f x = g x) ->
+  forallb f l = forallb g l.
+Proof.
+  intros. induction l; simpl; auto; congruence.
+Qed.
+
+Lemma typesym_inhab_fun_eq: forall
+(seen_typesyms : list typesym) (ts: typesym) (n: nat),
+typesym_inhab_fun seen_typesyms ts n =
+match n with
+| O => false
+| S(n') =>
+  in_dec typesym_eq_dec ts (sig_t gamma) && 
+  negb (in_dec typesym_eq_dec ts seen_typesyms) &&
+  match (find_ts_in_ctx ts) with
+  | None => true
+  | Some (m, a) =>
+    let constrs := adt_constr_list a in
+    negb (null constrs) && 
+    existsb (fun c => constr_inhab_fun (ts :: seen_typesyms) c n') constrs
+  end
+end.
+Proof.
+intros. unfold typesym_inhab_fun.
+destruct n; try reflexivity.
+destruct (in_dec typesym_eq_dec ts (sig_t gamma)); try reflexivity.
+destruct (in_dec typesym_eq_dec ts seen_typesyms); try reflexivity; simpl.
+destruct (find_ts_in_ctx ts) eqn : Hcon; try reflexivity.
+destruct p as [m a].
+destruct (null (adt_constr_list a)) eqn : Hnull; try reflexivity;
+simpl.
+apply existsb_ext. intros c.
+rewrite constr_inhab_fun_eq.
+apply forallb_ext. intros v.
+rewrite vty_inhab_fun_eq. reflexivity. 
+Qed.
+
+End InhabRewrite.
+
+(*Now we prove correctness*)
+Section InhabCorrect.
+
+(*What it means for a type to be inhabited:
+  there is a closed term of that type*)
+Definition type_inhab (ty: vty) : Prop :=
+  exists (t: term), closed_term t /\ term_has_type gamma t ty.
+
+(*NOTE; we assume that all type variables are inhabited - 
+  otherwise we cannot define (for example), the Either type*)
+
+(*First, prove vty_inhab_fun correct, assuming the IH for
+  typesym_inhab_fun. Note that we do NOT prove the natural
+  condition (vty_inhab_fun ty -> type_inhab ty),
+  but rather we prove that under any substitution mapping
+  type variables to inhabited types, (v_subst_aux f ty)
+  is inhabited. We need such a general result to prove the
+  type substitution for the constructor params in
+  [typesym_inhab_fun_aux]. Since v_subst_aux is defined
+  recursively on the structure of types, it is not too
+  hard to prove the more general result here.*)
+Lemma vty_inhab_fun_aux (v: vty)
+  (Habs: forall ts vs,
+    In ts (sig_t gamma) ->
+    find_ts_in_ctx ts = None ->
+    length vs = length (ts_args ts) ->
+    Forall type_inhab vs ->
+    type_inhab (vty_cons ts vs)):
+  valid_type gamma v ->
+  forall n seen,
+    (*NoDup seen ->
+    n >= length (sig_t gamma) - length seen ->
+    sublist seen (sig_t gamma) ->*)
+    (forall (ts: typesym) (m: mut_adt) (a: alg_datatype),
+    typesym_inhab_fun seen ts n ->
+    find_ts_in_ctx ts = Some (m, a) ->
+    exists c : funsym,
+      constr_in_adt c a /\
+      (forall vs : list vty,
+       Datatypes.length vs = Datatypes.length (ts_args ts) ->
+       Forall type_inhab vs ->
+       Forall (valid_type gamma) vs ->
+       exists tms : list term,
+         Forall (fun t : term => closed_term t) tms /\
+         term_has_type gamma (Tfun c vs tms) (vty_cons ts vs))) ->
+    forall f,
+    (forall x, type_inhab (f x)) ->
+    (forall x, valid_type gamma (f x)) ->
+    vty_inhab_fun seen v n ->
+    type_inhab (v_subst_aux f v).
+Proof.
+  intros. induction v; simpl in *; auto.
+  - exists (Tconst (ConstInt 0)). split; auto. constructor.
+  - exists (Tconst (ConstReal (QArith_base.Qmake 0 xH))). split.
+    reflexivity. constructor.
+  - bool_hyps.
+    rewrite forallb_forall in H3.
+    inversion H; subst.
+    destruct (find_ts_in_ctx tsym) as [p |] eqn : Hts.
+    2 : { apply Habs; auto. rewrite map_length; auto.
+      rewrite Forall_map. revert H4. rewrite !Forall_forall; intros.
+      apply H4; auto.
+    }
+    destruct p as [m a]. 
+    specialize (H0 tsym m a H5 Hts).
+    destruct H0 as [c [c_in Hallvs]].
+    specialize (Hallvs (map (v_subst_aux f) vs)).
+    prove_hyp Hallvs.
+    { rewrite map_length; auto. }
+    prove_hyp Hallvs.
+    { rewrite Forall_map. revert H4.
+      rewrite !Forall_forall; intros. apply H4; auto. }
+    prove_hyp Hallvs.
+    { rewrite Forall_map. rewrite Forall_forall; intros.
+      apply valid_type_subst. auto. apply H2. }
+    destruct Hallvs as [tms [Hclosed Hterm]].
+    exists (Tfun c (map (v_subst_aux f) vs) tms).
+    split; auto. unfold closed_term in *. simpl.
+    rewrite null_nil.
+    apply big_union_nil_eq. intros.
+    rewrite <- null_nil.
+    rewrite Forall_forall in Hclosed.
+    apply Hclosed; auto.
+Qed.
+
+(*TODO: move/combine with [map_vars_srts]*)
+Lemma map_ty_subst_same: forall params tys,
+  NoDup params ->
+  length params = length tys ->
+  map (ty_subst params tys) (map vty_var params) = tys.
+Proof.
+  intros params tys Hnodup Hlen.
+  unfold ty_subst.
+  rewrite !map_map. apply list_eq_ext'; rewrite map_length; auto.
+  intros n d Hn.
+  rewrite (map_nth_inbound) with(d2:=EmptyString); auto.
+  simpl. rewrite ty_subst_fun_nth with(s:=s_int); auto.
+  apply nth_indep. lia.
+Qed. 
+
+(*TODO: move prob*)
+
+Lemma constr_in_adt_def a m f:
+  adt_in_mut a m ->
+  constr_in_adt f a ->
+  In f (funsyms_of_mut m).
+Proof.
+  intros a_in c_in.
+  unfold funsyms_of_mut.
+  rewrite in_concat. exists (adt_constr_list a).
+  apply in_bool_In in a_in.
+  apply in_bool_ne_In in c_in.
+  split; auto. rewrite in_map_iff. exists a; auto.
+Qed.
+
+(*TODO: move*)
+Lemma constr_in_sig_f m a c:
+  mut_in_ctx m gamma ->
+  adt_in_mut a m ->
+  constr_in_adt c a ->
+  In c (sig_f gamma).
+Proof.
+  intros m_in a_in c_in.
+  unfold sig_f.
+  rewrite in_concat.
+  exists (funsyms_of_mut m).
+  split.
+  - rewrite in_map_iff. exists (datatype_def m); split; auto.
+    apply mut_in_ctx_eq2; auto.
+  - apply (constr_in_adt_def a m c); auto.
+Qed. 
+
+(*Now we prove that [typesym_inhab_fun] shows that ADTs
+  are inhabited. We need a very strong lemma: we can find
+  a constructor such that for any list vs of inhabited types,
+  we can find a list of tms such that (Tfun c vs tms)
+  has type (vty_cons ts vs). We need this stronger result,
+  instead of just (type_inhab (vty_cons ts vs)), to deal with
+  the substitution in the [vty_inhab_fun] lemma above*)
+Theorem inhab_fun_inhab_aux (ts: typesym)
+  (*We need to know that all adts have correct params and
+    return types*)
+  (Hadtval: forall m a,
+    mut_in_ctx m gamma ->
+    adt_in_mut a m -> adt_valid_type a)
+  (*And that all argument types are valid - TODO: add to [adt_valid_type]*)
+  (Hconstrargs: forall m a c x,
+    mut_in_ctx m gamma -> adt_in_mut a m ->
+    constr_in_adt c a -> In x (f_ret c :: (s_args c)) ->
+    valid_type gamma x)
+  (Hinhab: forall v, type_inhab (vty_var v))
+  (Habs: forall ts vs,
+    In ts (sig_t gamma) ->
+    (*TODO: change to abs*)
+    find_ts_in_ctx ts = None ->
+    length vs = length (ts_args ts) ->
+    Forall type_inhab vs ->
+    type_inhab (vty_cons ts vs)):
+  forall n seen,
+    (*NoDup seen ->
+    n >= length (sig_t gamma) - length seen ->
+    sublist seen (sig_t gamma) ->*)
+    typesym_inhab_fun seen ts n ->
+    forall m a,
+    find_ts_in_ctx ts = Some (m, a) ->
+    exists (c: funsym),
+      constr_in_adt c a /\
+      forall vs,
+        length vs = length (ts_args ts) ->
+        Forall type_inhab vs ->
+        Forall (valid_type gamma) vs ->
+        exists tms,
+          Forall closed_term tms /\
+          term_has_type gamma (Tfun c vs tms) (vty_cons ts vs).
+Proof.
+  intros n.
+  revert ts.
+  induction n; intros.
+  - inversion H. (*simpl in H2. inversion H2.*)
+  - rewrite typesym_inhab_fun_eq in H.
+    bool_hyps.
+    repeat simpl_sumbool.
+    destruct (find_ts_in_ctx ts) as [p|] eqn : Hts; [|discriminate].
+    inversion H0; subst. clear H0.
+    bool_hyps.
+    apply existsb_exists in H0.
+    destruct H0 as [c [c_in Hcinhab]].
+    exists c.
+    split.
+    { unfold constr_in_adt. rewrite in_bool_ne_equiv.
+      apply In_in_bool. apply c_in.
+    }
+    unfold constr_inhab_fun in Hcinhab.
+    rewrite forallb_forall in Hcinhab.
+    (*assert (Hn: n >= length (sig_t gamma) - length (ts :: seen))
+      by (simpl; lia).
+    assert (Hsub': sublist (ts :: seen) (sig_t gamma)). {
+      unfold sublist. simpl; intros. destruct H3; subst; auto.
+    }
+    assert (Hn': NoDup (ts :: seen)). {
+      constructor; auto.
+    }*)
+    assert (c_in': constr_in_adt c a). {
+      unfold constr_in_adt. rewrite in_bool_ne_equiv.
+      apply In_in_bool; auto.
+    }
+    intros vs Hvs Hvsinhab Hvsval.
+    (*Now, we use our previous lemma to build up the terms list*)
+    assert (exists tms: list term,
+      Forall closed_term tms /\
+      length tms = length (s_args c) /\
+      forall i, i < length tms ->
+        term_has_type gamma (nth i tms tm_d)
+          (ty_subst (s_params c) vs (nth i (s_args c) vty_int))). {
+      assert (Hval: forall x, In x (s_args c) -> valid_type gamma x). {
+        intros. apply find_ts_in_ctx_some in Hts.
+        destruct_all. apply (Hconstrargs m a c); simpl; auto.
+      }
+      induction (s_args c).
+      - exists nil. split_all; auto. intros. simpl in H0.
+        inversion H0. 
+      - assert (type_inhab (ty_subst (s_params c) vs a0)). {
+          apply vty_inhab_fun_aux with(n:=n)(seen:=ts:: seen); auto.
+          - apply Hval; simpl; auto. 
+          - intros. eapply IHn with(seen:=ts::seen); auto.
+            apply H1.
+          - intros. destruct (ty_subst_fun_cases (s_params c) vs vty_int x).
+            + rewrite Forall_forall in Hvsinhab. apply Hvsinhab; auto.
+            + rewrite H0.  
+              exists (Tconst (ConstInt 0)). split; auto. constructor.
+          - intros. apply valid_type_ty_subst_fun; auto. constructor. 
+          - apply Hcinhab. simpl; auto.
+      }
+      (*Now we get the head term, and rest by IH*)
+      destruct H0 as [thd [Hclose Hty]].
+      prove_hyp IHl.
+      {
+        intros. apply Hcinhab; simpl; auto.
+      }
+      prove_hyp IHl. { intros; apply Hval. simpl; auto. }
+      destruct IHl as [ttl [Hclose' [Hlen' Htys']]].
+      exists (thd :: ttl). split_all; simpl; auto.
+      intros j Hj.
+      destruct j; auto.
+      apply (Htys' j). lia.
+    }
+    (*Now we use this tms list to prove our goal*)
+    destruct H0 as [tms [Hclosed [Hlen Htys]]].
+    exists tms. split; auto.
+    (*We need to know that the constructor type is
+      (map vty_var (ts_params ts))*)
+    apply find_ts_in_ctx_some in Hts; destruct_all; subst.
+    specialize (Hadtval m a H0 H1).
+    unfold adt_valid_type in Hadtval.
+    destruct a as [a_name a_constrs]; simpl in *.
+    rewrite Forall_forall in Hadtval.
+    specialize (Hadtval _ c_in).
+    destruct Hadtval as [Hcparams Hcret].
+    assert (vty_cons a_name vs = ty_subst (s_params c) vs (f_ret c)). {
+      rewrite Hcret, Hcparams.
+      rewrite ty_subst_cons. f_equal.
+      rewrite map_ty_subst_same; auto.
+      rewrite <- Hcparams. apply s_params_Nodup.
+    }
+    rewrite H2.
+    apply T_Fun; auto.
+    + apply (constr_in_sig_f m _ c H0 H1); auto. 
+    + apply (Hconstrargs m _ c _ H0 H1); simpl; auto.
+    + rewrite Hcparams; lia.
+    + rewrite Forall_forall; intros x.
+      rewrite in_combine_iff; [| rewrite map_length; auto].
+      intros [j [Hj Hx]].
+      specialize (Hx tm_d vty_int).
+      subst. simpl. 
+      rewrite map_nth_inbound with (d2:=vty_int); auto. lia.
+Qed.
+
+(*The full check*)
+Definition typesym_inhab (ts: typesym) : bool :=
+  typesym_inhab_fun nil ts (length (sig_t gamma)).
+
+(*And the corollary - the theorem we really want*)
+Theorem typesym_inhab_inhab (ts: typesym)
+(*If all adts have correct params and
+  return types*)
+(Hadtval: forall m a,
+  mut_in_ctx m gamma ->
+  adt_in_mut a m -> adt_valid_type a)
+(*And all argument types are valid*)
+(Hconstrargs: forall m a c x,
+  mut_in_ctx m gamma -> adt_in_mut a m ->
+  constr_in_adt c a -> In x (f_ret c :: (s_args c)) ->
+  valid_type gamma x)
+(*Assume that all type variables and abstract type
+  symbols applied to inhabited types are inhabited*)
+(Hinhab: forall v, type_inhab (vty_var v))
+(Habs: forall ts vs,
+  In ts (sig_t gamma) ->
+  find_ts_in_ctx ts = None ->
+  length vs = length (ts_args ts) ->
+  Forall type_inhab vs ->
+  type_inhab (vty_cons ts vs)):
+(*If [typesym_inhab] gives true*)
+typesym_inhab ts ->
+(*Then if ts is an ADT*)
+forall m a,
+  find_ts_in_ctx ts = Some (m, a) ->
+  (*Then, for any valid, inhabited arguments, 
+    there is a closed term of this type*)
   forall vs,
-    length vs = length (ts_args (adt_name a)) ->
-    exists t, term_has_type s t (vty_cons (adt_name a) vs).
-Admitted.*)
+    length vs = length (ts_args ts) ->
+    Forall type_inhab vs ->
+    Forall (valid_type gamma) vs ->
+    type_inhab (vty_cons ts vs).
+Proof.
+  intros Hinhabts m a Hfind vs Hvslen Hvsinhab Hvsval.
+  (*assert (Hsub: sublist nil (sig_t gamma)) by
+    (unfold sublist; intros x []).*)
+  destruct (inhab_fun_inhab_aux ts Hadtval Hconstrargs Hinhab Habs 
+    (length (sig_t gamma)) nil
+    (*ltac:(constructor) (ltac:(simpl; lia)) (*Hsub*)
+    *) Hinhabts m a Hfind)
+  as [c [c_in Hallvs]].
+  specialize (Hallvs vs Hvslen Hvsinhab Hvsval).
+  destruct Hallvs as [tms [Hclosed Hty]].
+  exists (Tfun c vs tms); split; auto.
+  revert Hclosed.
+  unfold closed_term. intros. simpl.
+  rewrite !null_nil. apply big_union_nil_eq.
+  rewrite <- Forall_forall. revert Hclosed. apply Forall_impl.
+  intros y. rewrite null_nil. auto.
+Qed.
+
+(*TODO: prove that all ADTs inhabited in any
+  valid context (so we can remove assumptions and use
+  of [find_ts_in_ctx])*)
+
+End InhabCorrect.
+
+(*An ADT is inhabited if its typesym is inhabited under the empty context*)
+Definition adt_inhab (a : alg_datatype) : bool :=
+  typesym_inhab (adt_name a).
 
 End Inhab.
 
@@ -1710,13 +2140,18 @@ Qed.
   one is somewhat interesting.*)
 Section Expand.
 
+Lemma in_sig_t_expand d gamma ts:
+  In ts (sig_t gamma) ->
+  In ts (sig_t (d :: gamma)).
+Proof.
+  unfold sig_t. simpl. intros. rewrite in_app_iff; auto.
+Qed.
 Lemma valid_type_expand gamma d t:
   valid_type gamma t ->
   valid_type (d :: gamma) t.
 Proof.
   intros. induction H; try constructor; auto.
-  unfold sig_t in *.
-  simpl. rewrite in_app_iff. auto.
+  apply in_sig_t_expand; auto.
 Qed.
 
 Lemma wf_funsym_expand gamma d f:
@@ -1764,20 +2199,124 @@ Proof.
   intros. apply strictly_positive_expand; auto.
 Qed.
 
+
+Lemma find_ts_in_ctx_expand d gamma ts:
+Forall (fun ts : typesym => ~ In ts (sig_t gamma)) (typesyms_of_def d) ->
+In ts (sig_t gamma) ->
+find_ts_in_ctx (d :: gamma) ts = find_ts_in_ctx gamma ts.
+Proof.
+  intros Hall Hinsig.
+  rewrite Forall_forall in Hall.
+  unfold typesyms_of_def in Hall.
+  unfold find_ts_in_ctx at 1.
+  simpl. 
+  destruct d; auto.
+  simpl.
+  destruct (find_ts_in_mut ts m) eqn : Hfind; auto.
+  apply find_ts_in_mut_some in Hfind. destruct_all; auto.
+  assert (Ha: In (adt_name a) (typesyms_of_mut m)). {
+    apply in_bool_In in H; auto. unfold typesyms_of_mut.
+    rewrite in_map_iff. exists a; auto.
+  }
+  exfalso. apply (Hall (adt_name a)); auto.
+Qed.
+
+(*Proving the expansion property for the inhabited type check
+  is very tricky because our parameter n is based on the size
+  of the sig_t, which changes when the context is expanded.
+  We could instead use an Inductive version without an n parameter,
+  but this does not work: we cannot get a general enough IH
+  (we only have info about the current typesym, not any others
+  in the vty_inhab case). So instead we prove for our specific
+  values of n, carefully generalizing when needed.
+  *)
+
+(*We need the IH from the typesym case*)
+Lemma vty_inhab_fun_expand d gamma seen n1 n2
+  (IHts: forall ts' : typesym,
+    typesym_inhab_fun gamma seen ts' n1 ->
+    typesym_inhab_fun (d :: gamma) seen ts' n2):
+  forall v,
+    vty_inhab_fun gamma seen v n1 ->
+    vty_inhab_fun (d :: gamma) seen v n2.
+Proof.
+  induction v; simpl; auto.
+  intros; bool_hyps.
+  rewrite IHts; auto.
+  rewrite andb_true_r.
+  unfold is_true in *.
+  rewrite forallb_forall in H0 |- *.
+  intros x Hinx.
+  rewrite Forall_forall in H. apply H; auto.
+Qed.
+
+Lemma typesym_inhab_fun_expand d gamma seen ts:
+Forall (fun ts : typesym => ~ In ts (sig_t gamma)) (typesyms_of_def d) ->
+typesym_inhab_fun gamma seen ts (length (sig_t gamma) - length seen) ->
+typesym_inhab_fun (d :: gamma) seen ts (length (sig_t (d :: gamma)) - length seen).
+Proof.
+  remember  (Datatypes.length (sig_t (d :: gamma)) - Datatypes.length seen) as n2.
+  remember (Datatypes.length (sig_t gamma) - Datatypes.length seen) as n1.
+  generalize dependent seen. revert ts. revert n2.
+  induction n1; intros.
+  - inversion H0.
+  - (*Here, n2 must be S n3*)
+    assert (length (sig_t (d :: gamma)) >= length (sig_t gamma)). {
+      unfold sig_t. simpl. rewrite app_length; lia.
+    }
+    destruct n2; try lia.
+    rewrite typesym_inhab_fun_eq in *.
+    bool_hyps.
+    repeat simpl_sumbool.
+    simpl. bool_to_prop; split_all; auto.
+    + simpl_sumbool. exfalso; apply n0.
+      apply in_sig_t_expand; auto.
+    + rewrite find_ts_in_ctx_expand; auto.
+      destruct (find_ts_in_ctx gamma ts) eqn : Hts; auto.
+      destruct p as [m a].
+      bool_hyps. rewrite H0; simpl.
+      rewrite existsb_exists in H2.
+      destruct H2 as [c [c_in Hcinhab]].
+      rewrite existsb_exists. exists c. split; auto.
+      unfold constr_inhab_fun in *.
+      rewrite forallb_forall in Hcinhab.
+      rewrite forallb_forall.
+      assert (Halt: forall ts',
+        typesym_inhab_fun gamma (ts :: seen) ts' n1 ->
+        typesym_inhab_fun (d :: gamma) (ts :: seen) ts' n2). {
+        intros ts'. apply IHn1; simpl; try lia; auto.
+      }
+      intros x Hinx.
+      eapply vty_inhab_fun_expand. apply Halt. apply Hcinhab; auto.
+Qed.
+
+Lemma typesym_inhab_expand d gamma ts:
+Forall (fun ts : typesym => ~ In ts (sig_t gamma)) (typesyms_of_def d) ->
+typesym_inhab gamma ts  ->
+typesym_inhab (d :: gamma) ts.
+Proof.
+  intros.
+  unfold typesym_inhab in *.
+  pose proof (typesym_inhab_fun_expand d gamma nil ts H).
+  simpl in H1. rewrite !Nat.sub_0_r in H1. auto.
+Qed.
+
 Lemma mut_valid_expand d gamma m:
-   mut_valid gamma m -> mut_valid (d :: gamma) m.
+  Forall (fun ts : typesym => ~ In ts (sig_t gamma)) (typesyms_of_def d) ->
+  mut_valid gamma m -> mut_valid (d :: gamma) m.
 Proof.
   unfold mut_valid.
   intros; destruct_all; split_all; auto.
-  - (*adt_inhab will change*) admit.
-  - revert H1. unfold adt_positive.
+  - revert H1. rewrite !Forall_forall. intros.
+    apply typesym_inhab_expand; auto. apply H1. auto.
+  - revert H2. unfold adt_positive.
     rewrite !Forall_concat, !Forall_map.
     apply Forall_impl.
     intros a.
     apply Forall_impl.
     intros fs.
     apply adt_positive_expand.
-Admitted.
+Qed.
 
 Lemma mut_in_ctx_expand m d gamma:
   mut_in_ctx m gamma ->
@@ -1909,11 +2448,12 @@ Proof.
 Qed.
 
 Lemma valid_def_expand d1 gamma d2:
+Forall (fun ts : typesym => ~ In ts (sig_t gamma)) (typesyms_of_def d1) ->
   valid_def gamma d2 ->
   valid_def (d1 :: gamma) d2.
 Proof.
-  unfold valid_def. destruct d2; auto.
-  - apply mut_valid_expand.
+  unfold valid_def. intros Hall. destruct d2; auto.
+  - apply mut_valid_expand; auto.
   - apply funpred_valid_expand.
   - apply indprop_valid_expand.
 Qed.
@@ -2056,7 +2596,8 @@ Proof.
   intros Hval. induction Hval; auto.
   constructor; auto.
   revert IHHval. apply Forall_impl.
-  apply valid_def_expand.
+  intros.
+  apply valid_def_expand; auto.
 Qed.
 
 (*Now we prove that gamma has NoDups. This follows from the
@@ -2796,7 +3337,7 @@ Lemma pat_has_type_valid: forall p ty,
   valid_type gamma ty.
 Proof.
   intros. induction H; try assumption; auto.
-  apply valid_type_subst; auto.
+  apply valid_type_ty_subst; auto.
 Qed.
 
 (*If a term has a type, that type is well-formed. We need the 
@@ -2807,23 +3348,12 @@ Lemma has_type_valid: forall (*s gamma*) t ty,
   valid_type gamma ty.
 Proof.
   intros. induction H; try solve[constructor]; try assumption; auto.
-  apply valid_type_subst; assumption.
+  apply valid_type_ty_subst; assumption.
   destruct ps. inversion H4.
   apply (H3 p); auto. left; auto. 
 Qed.
 
-Lemma constr_in_adt_def a m f:
-  adt_in_mut a m ->
-  constr_in_adt f a ->
-  In f (funsyms_of_mut m).
-Proof.
-  intros a_in c_in.
-  unfold funsyms_of_mut.
-  rewrite in_concat. exists (adt_constr_list a).
-  apply in_bool_In in a_in.
-  apply in_bool_ne_In in c_in.
-  split; auto. rewrite in_map_iff. exists a; auto.
-Qed.
+
   
 (*All constrs are in [funsym_of_context gamma]*)
 Lemma constrs_in_funsyms: forall {gamma c a m},
@@ -3104,18 +3634,13 @@ Variable gamma: context.
 
 (*Get ADT of a type*)
 
-Definition find_ts_in_ctx (ts: typesym) : option (mut_adt * alg_datatype) :=
-  fold_right (fun m acc => 
-    match (find_ts_in_mut ts m) with
-    | Some a => Some (m, a)
-    | None => acc
-    end) None (mut_of_context gamma).
+
 
 Definition is_vty_adt (ty: vty) : 
   option (mut_adt * alg_datatype * list vty) :=
   match ty with
   | vty_cons ts tys =>
-    match (find_ts_in_ctx ts) with
+    match (find_ts_in_ctx gamma ts) with
     | Some (m, a) => Some (m, a, tys)
     | None => None
     end
@@ -3143,54 +3668,7 @@ Proof.
   apply (H _ H0); auto.
 Qed.
 
-(*Weaker specs - no well-formed context*)
-Lemma find_ts_in_ctx_none (ts: typesym):
-  reflect (forall (a: alg_datatype) (m: mut_adt),
-    mut_in_ctx m gamma -> adt_in_mut a m ->
-    adt_name a <> ts) (negb (ssrbool.isSome (find_ts_in_ctx ts))).
-Proof.
-  unfold find_ts_in_ctx, mut_in_ctx.
-  induction (mut_of_context gamma); simpl.
-  - apply ReflectT. intros a m H; inversion H.
-  - destruct (find_ts_in_mut ts a) eqn : Hinmut; simpl.
-    + apply ReflectF. intro C.
-      apply find_ts_in_mut_some in Hinmut.
-      destruct Hinmut. subst. apply (C a0 a); auto.
-      rewrite eq_dec_refl; auto. 
-    + rewrite find_ts_in_mut_none in Hinmut. 
-      destruct IHl.
-      * apply ReflectT. intros.
-        destruct (mut_adt_dec m a); simpl in H; subst.
-        apply (Hinmut _ H0); auto.
-        apply (n _ m); auto.
-      * apply ReflectF. intros C.
-        apply n. intros a' m Hin. apply C. 
-        rewrite Hin, orb_true_r. auto.
-Qed.
 
-Lemma find_ts_in_ctx_none_iff (ts: typesym):
-  (forall (a: alg_datatype) (m: mut_adt),
-    mut_in_ctx m gamma -> adt_in_mut a m ->
-    adt_name a <> ts) <-> find_ts_in_ctx ts = None.
-Proof.
-  rewrite (reflect_iff _ _ (find_ts_in_ctx_none ts)).
-  destruct (find_ts_in_ctx ts); simpl; split; intros; auto; discriminate.
-Qed.
-
-Lemma find_ts_in_ctx_some (ts: typesym) m a:
-  find_ts_in_ctx ts = Some (m, a) ->
-  mut_in_ctx m gamma /\ adt_in_mut a m /\
-  ts = adt_name a.
-Proof.
-  unfold find_ts_in_ctx, mut_in_ctx.
-  induction (mut_of_context gamma); simpl; auto; intros; try discriminate.
-  destruct (find_ts_in_mut ts a0) eqn : Hfind.
-  - inversion H; subst.
-    apply find_ts_in_mut_some in Hfind. destruct_all.
-    rewrite eq_dec_refl; auto.
-  - apply IHl in H. destruct_all; subst. split; auto.
-    rewrite H, orb_true_r; auto.
-Qed.
 
 Lemma is_vty_adt_none (ty: vty):
   reflect (forall a m vs,
@@ -3201,7 +3679,7 @@ Lemma is_vty_adt_none (ty: vty):
 Proof.
   unfold is_vty_adt.
   destruct ty; simpl; try (apply ReflectT; intros; discriminate).
-  destruct (find_ts_in_ctx t) eqn : Hfind.
+  destruct (find_ts_in_ctx gamma t) eqn : Hfind.
   - destruct p as [m a]. simpl. apply ReflectF.
     apply find_ts_in_ctx_some in Hfind.
     destruct_all.
@@ -3233,7 +3711,7 @@ Lemma is_vty_adt_some {ty: vty} {m a vs}:
 Proof.
   unfold is_vty_adt; intros.
   destruct ty; try discriminate.
-  destruct (find_ts_in_ctx t) eqn : Hfind; try discriminate.
+  destruct (find_ts_in_ctx gamma t) eqn : Hfind; try discriminate.
   destruct p as [m' a']. inversion H; subst.
   apply find_ts_in_ctx_some in Hfind.
   destruct_all; subst; auto.
@@ -3280,7 +3758,7 @@ Qed.
 
 (*The real spec we want: *)
 Lemma find_ts_in_ctx_iff: forall ts m a,
-  (find_ts_in_ctx ts = Some (m, a) <-> mut_in_ctx m gamma /\
+  (find_ts_in_ctx gamma ts = Some (m, a) <-> mut_in_ctx m gamma /\
     adt_in_mut a m /\ adt_name a = ts).
 Proof.
   intros. unfold find_ts_in_ctx. rewrite mut_in_ctx_eq.
@@ -3333,11 +3811,11 @@ Lemma is_vty_adt_iff {ty: vty} {m a vs}:
 Proof.
   unfold is_vty_adt. split.
   - destruct ty; intro C; inversion C.
-    destruct (find_ts_in_ctx t) eqn : Hts; inversion H0; subst.
+    destruct (find_ts_in_ctx gamma t) eqn : Hts; inversion H0; subst.
     destruct p. inversion C; subst.
     apply find_ts_in_ctx_iff in Hts. destruct_all; subst; auto.
   - intros. destruct_all; subst; simpl.
-    assert (find_ts_in_ctx (adt_name a) = Some (m, a)). {
+    assert (find_ts_in_ctx gamma (adt_name a) = Some (m, a)). {
       apply find_ts_in_ctx_iff. split; auto.
     }
     rewrite H. reflexivity.
