@@ -454,7 +454,6 @@ Proof.
       intro Hpin.
       apply (H5 p (recursive_def fs)); auto.
       unfold pred_in_indpred in Hpin.
-      unfold p_in_indpred.
       apply in_bool_In in Hpin; auto.
       unfold predsym_in_def.
       bool_to_prop. exists (fun_def f args body). auto.
@@ -550,7 +549,6 @@ Proof.
       intro Hpin.
       apply (H5 p0 (recursive_def fs)); auto.
       unfold pred_in_indpred in Hpin.
-      unfold p_in_indpred.
       apply in_bool_In in Hpin; auto.
       unfold predsym_in_def.
       bool_to_prop. exists (pred_def p args body). auto.
@@ -990,93 +988,8 @@ Proof.
 Qed.
 
 (*TOOD: move*)
-Lemma wf_context_sig_Nodup g:
-  wf_context g ->
-  NoDup (sig_f g) /\
-  NoDup (sig_p g) /\
-  NoDup (sig_t g).
-Proof.
-  clear.
-  intros. unfold sig_f, sig_p, sig_t. 
-  induction H; simpl; split_all; auto;
-  try solve[constructor];
-  rewrite Forall_forall in H2, H3, H4;
-  rewrite NoDup_app_iff; split_all; auto;
-  intros x Hinx1 Hinx2; 
-  [apply (H2 x) | apply (H3 x) | apply (H4 x)]; auto.
-Qed.
 
-(*TODO: move to typing*)
-Lemma abs_not_concrete_fun f:
-  In (abs_fun f) gamma ->
-  (forall m a, mut_in_ctx m gamma -> adt_in_mut a m ->
-    ~ constr_in_adt f a) /\
-  (forall fs, In fs (mutfuns_of_context gamma) ->
-    ~ In f (funsyms_of_rec fs)).
-Proof.
-  apply valid_context_wf in gamma_valid.
-  apply wf_context_sig_Nodup in gamma_valid.
-  destruct gamma_valid as [Hn _].
-  intros Hin.
-  unfold sig_f in Hn.
-  rewrite NoDup_concat_iff in Hn.
-  destruct Hn as [_ Hn].
-  destruct (In_nth _ _ def_d Hin) as [i1 [Hi1 Habsf]].
-  split; intros.
-  - intros c_in. apply mut_in_ctx_eq2 in H.
-    destruct (In_nth _ _ def_d H) as [i2 [Hi2 Hdatm]].
-    destruct (Nat.eq_dec i1 i2).
-    { subst. rewrite Habsf in Hdatm; discriminate. }
-    rewrite map_length in Hn.
-    apply (Hn i1 i2 nil f Hi1 Hi2 n).
-    rewrite !map_nth_inbound with(d2:=def_d); auto.
-    rewrite Habsf, Hdatm; simpl; split; auto.
-    eapply constr_in_adt_def; eauto.
-  - intros f_in. apply in_mutfuns in H. 
-    destruct (In_nth _ _ def_d H) as [i2 [Hi2 Hrecfs]].
-    destruct (Nat.eq_dec i1 i2).
-    { subst. rewrite Habsf in Hrecfs; discriminate. }
-    rewrite map_length in Hn.
-    apply (Hn i1 i2 nil f Hi1 Hi2 n).
-    rewrite !map_nth_inbound with(d2:=def_d); auto.
-    rewrite Habsf, Hrecfs; simpl; split; auto.
-Qed.
 
-Lemma abs_not_concrete_pred p:
-  In (abs_pred p) gamma ->
-  (forall fs, In fs (mutfuns_of_context gamma) ->
-    ~ In p (predsyms_of_rec fs)) /\
-  (forall l, In l (indpreds_of_context gamma) ->
-    ~ In p (map fst l)).
-Proof.
-  apply valid_context_wf in gamma_valid.
-  apply wf_context_sig_Nodup in gamma_valid.
-  destruct gamma_valid as [_ [Hn _]].
-  intros Hin.
-  unfold sig_p in Hn.
-  rewrite NoDup_concat_iff in Hn.
-  destruct Hn as [_ Hn].
-  destruct (In_nth _ _ def_d Hin) as [i1 [Hi1 Habsp]].
-  split; intros.
-  - intros p_in. apply in_mutfuns in H. 
-    destruct (In_nth _ _ def_d H) as [i2 [Hi2 Hrecfs]].
-    destruct (Nat.eq_dec i1 i2).
-    { subst. rewrite Habsp in Hrecfs; discriminate. }
-    rewrite map_length in Hn.
-    apply (Hn i1 i2 nil p Hi1 Hi2 n).
-    rewrite !map_nth_inbound with(d2:=def_d); auto.
-    rewrite Habsp, Hrecfs; simpl; split; auto.
-  - intros p_in. apply in_indpreds_of_context in H.
-    destruct H as [l2 [Hinl2 Hl]]; subst.
-    destruct (In_nth _ _ def_d Hinl2) as [i2 [Hi2 Hind]].
-    destruct (Nat.eq_dec i1 i2).
-    { subst. rewrite Habsp in Hind; discriminate. }
-    rewrite map_length in Hn.
-    apply (Hn i1 i2 nil p Hi1 Hi2 n).
-    rewrite !map_nth_inbound with(d2:=def_d); auto.
-    rewrite Habsp, Hind; simpl; split; auto.
-    apply pred_in_indpred_iff. apply In_in_bool. auto.
-Qed.
 
 (*And we prove the following: uninterpreted functions really are
   uninterpreted: for any possible assignment to uninterpreted functions

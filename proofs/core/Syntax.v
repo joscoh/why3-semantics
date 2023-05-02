@@ -1361,6 +1361,19 @@ Proof.
   - right. apply IHl; auto.
 Qed.
 
+Lemma in_indpreds_of_context c l:
+  In l (indpreds_of_context c) -> 
+  exists l2, In (inductive_def l2) c /\
+  get_indpred l2 = l.
+Proof.
+  clear. induction c; simpl; intros.
+  destruct H.
+  destruct a; try solve[ apply IHc in H; destruct H as [l2 H];
+    destruct_all; exists l2; auto].
+  simpl in H. destruct H; [| apply IHc in H; destruct_all; exists x; auto].
+  subst. exists l0. split; auto.
+Qed.
+
 End RecFunUtil.
 
 (*Definition datatypes_of_def (d: def) : list (typesym * list funsym) :=
