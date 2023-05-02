@@ -9,134 +9,6 @@ Set Bullet Behavior "Strict Subproofs".
   a context - one that correctly interprets recursive functions
   and predicates as well as inductive propositions*)
 
-(*To do this, we need the notion of an ordered context which
-  is iteratively constructed*)
-
-(*TODO: maybe merge this in with original context - our
-  current definition doesn't rule out using something before
-  it is defined*)
-(*We follow similar names as in why3's core/decl.mli*)
-Inductive prop_kind : Set :=
-  | Plemma  (** prove, use as a premise *)
-  | Paxiom (** do not prove, use as a premise *)
-  | Pgoal. (** prove, do not use as a premise *)
-
-(*Inductive abstract_decl : Set :=
-  | type_decl: typesym -> abstract_decl (*abstract types and aliases*)
-  | fparam_decl : funsym -> abstract_decl (*abstract function*)
-  | pparam_decl : predsym -> abstract_decl (*abstract predicate*).
-
-(*We define a decl to be a concrete or abstract definition
-  (TODO: use Either?)*)
-Definition decl : Set := Either def abstract_decl.
-(*Inductive decl : Set :=
-  | def_decl: def -> decl (*ADTs, recursive functions, inductive prediates*)
-  | abs_decl: abstract_decl -> decl.*)
-
-(*Finally a why3 file/theory consists of a list of statements, 
-  each of which is a decl or a lemma/axiom/goal*)
-
-Inductive stmt : Set := 
-  | decl_stmt : decl -> stmt
-  | prop_stmt : prop_kind -> string -> formula -> stmt.
-(*
-  | prop_decl : prop_kind -> string -> formula -> decl.
-  
-  | type_decl : typesym -> decl 
-  | data_decl : mut_adt -> decl (*recursive ADTs*)
-  | fparam_decl: funsym -> decl 
-  | pparam_decl: predsym -> decl 
-  | logic_decl : list funpred_def -> decl (*defined functions
-    and predicates (possibly recursive)*)
-  | ind_decl: list indpred_def -> decl (*inductive predicates*)
-  | prop_decl: prop_kind -> string (*TODO: do we need name?*) ->
-    formula -> decl.*)
-
-(*From this, we can get the environment - a list of decls
-  in a specific order - and the local context*)
-Definition env := list decl.
-(*TODO: do we need sring?*)
-Definition lctx := list (string * formula). 
-
-(*An ordered context (which we will call an environment)
-  is a list of decls, but each must be well-typed with respect
-  to only the previous definitions*)
-
-(*TODO: in core langugae in paper, no names for indprop
-  constrs. Why3 does have them, we should add *)
-(*Get the signature from the environment*)
-Definition sig_of_env_aux (e: env):
-  (list typesym * list funsym * list predsym) :=
-  fold_right (fun e acc =>
-  let t := acc in
-  let typs := fst (fst t) in
-  let funs := snd (fst t) in
-  let preds := snd t in
-  match e with
-  | Right (type_decl ty) => (ty :: typs, funs, preds)
-  | Left (datatype_def m) => 
-    let tys := map adt_name (Syntax.typs m) in
-    let constrs := concat (map (fun x => ne_list_to_list (adt_constrs x)) 
-      (Syntax.typs m)) in
-    (tys ++ typs, constrs ++ funs, preds)
-  | Right (fparam_decl f) => (typs, f :: funs, preds)
-  | Right (pparam_decl p) => (typs, funs, p :: preds)
-  | Left (recursive_def funpreds) =>
-    let newfuns := funsyms_of_def (recursive_def funpreds) in
-    let newpreds := predsyms_of_def (recursive_def funpreds) in
-    (typs, newfuns ++ funs, newpreds ++ preds)
-  | Left (inductive_def li) => 
-    let newpreds := predsyms_of_def (inductive_def li) in
-    (typs, funs, newpreds ++ preds)
-  end
-) (nil, nil, nil) e.
-
-Definition sig_of_env e : sig :=
-  let t := sig_of_env_aux e in
-  Build_sig (fst (fst t)) (snd (fst t)) (snd t).
-(*Then we define a context. This is easy*)
-
-Definition ctx_of_env (e: env) :context :=
-  fold_right (fun d acc =>
-    match d with
-    | Left x => x :: acc
-    | Right _ => acc
-    end) nil e.
-
-(*A valid environment has a valid context at each step.
-  This ensures that definitions only refer to things defined
-  earlier
-  TODO: give efficient want to check this (NOT with checking
-  everything each time)*)
-Inductive valid_env : env -> Prop :=
-  | VE_nil: valid_env nil
-  | VE_cons: forall d tl,
-    valid_env tl ->
-    valid_context (sig_of_env (d :: tl)) (ctx_of_env (d :: tl)) ->
-    valid_env (d :: tl).
-
-Lemma valid_env_gamma {e}:
-  valid_env e ->
-  valid_context (sig_of_env e) (ctx_of_env e).
-Proof.
-  intros. induction H; simpl; auto.
-  unfold valid_context, sig_of_env; simpl; split; auto.
-  unfold wf_context. split_all; simpl; auto.
-  unfold wf_sig. simpl. split; auto.
-  (*TODO: separate lemma that nil is valid ctx*)
-  unfold typesyms_of_context; simpl; auto.
-  unfold funsyms_of_context; simpl; auto.
-  unfold predsyms_of_context; simpl; auto.
-  unfold typesyms_of_context; simpl; constructor.
-  unfold funsyms_of_context; simpl; constructor.
-  unfold predsyms_of_context; simpl; constructor.
-Qed.
-
-(*Lemma valid_env_cons {d e}:
-  valid_env (d :: e) ->
-  valid_env e.
-Proof.*)
-
 (** Build initial pre-interpretation of functions and
   predicates **)
 
@@ -144,7 +16,7 @@ Proof.*)
   which sets the constructor reps appropriately. Here
   we actually construct it, given an initial
   interpretation for all function and predicate
-  symbols*)*)
+  symbols*)
 
 Section BuildPreInterp.
 
@@ -228,7 +100,6 @@ Definition funs_with_constrs{gamma: context}
     let m_in := proj1' (proj2_sig adt_dat) in
     let a_in := proj1' (proj2' (proj2_sig adt_dat)) in
     let f_in := proj2' (proj2' (proj2_sig adt_dat)) in
-     (*TODO: require srts_len always?*)
      match (Nat.eq_dec (length srts) (length (m_params m))) with
      | left srts_len =>
        constr_rep_dom gamma_valid m m_in srts srts_len
@@ -332,7 +203,7 @@ Definition upd_pf (d: def) (pf: pi_funpred gamma_valid pd) (Hin: In d gamma) :
   pi_funpred gamma_valid pd :=
   match d as d' return In d' gamma -> pi_funpred gamma_valid pd with
   | recursive_def fs => fun Hin => 
-    (funpred_with_reps gamma_valid pf fs ((proj2' (in_mutfuns _ fs)) Hin))
+    (pf_with_funpred gamma_valid pf fs ((proj2' (in_mutfuns _ fs)) Hin))
   | inductive_def is => fun Hin =>  (pf_with_indprop gamma_valid pd pf 
     (get_indpred is) (in_inductive_ctx _ is Hin))
   | _ => fun _ => pf
@@ -394,7 +265,7 @@ Proof.
   destruct fs_in; subst.
   - (*The result for the current addition follows from
       [funs_rep_spec]*) simpl.
-    unfold funpred_with_reps_funs.
+    unfold pf_with_funpred_funs.
     set (finm:=fun_in_mutfun f_in).
     destruct (funsym_in_mutfun_dec f fs); try contradiction.
     destruct (Nat.eq_dec (Datatypes.length srts) (Datatypes.length (s_params f)));
@@ -415,13 +286,13 @@ Proof.
       inversion Hordl; auto.
     + (*Other recursive def*)
       inversion Hordl; subst.
-      rewrite funpred_with_reps_funs_notin.
+      rewrite pf_with_funpred_funs_notin.
       rewrite (IHl); auto.
       f_equal.
       apply tm_change_pf.
       * intros. simpl.
         repeat (apply functional_extensionality_dep; intros).
-        rewrite funpred_with_reps_preds_notin; auto.
+        rewrite pf_with_funpred_preds_notin; auto.
         (*Here, we use the ordering assumption*)
         intro Hpin.
         apply (H6 p (recursive_def fs)); auto.
@@ -429,7 +300,7 @@ Proof.
         bool_to_prop. exists (fun_def f args body). auto.
       * intros. simpl.
         repeat (apply functional_extensionality_dep; intros).
-        rewrite funpred_with_reps_funs_notin; auto.
+        rewrite pf_with_funpred_funs_notin; auto.
         intro Hpin.
         apply (H5 f0 (recursive_def fs)); auto.
         unfold funsym_in_def.
@@ -490,7 +361,7 @@ Proof.
   destruct fs_in; subst.
   - (*The result for the current addition follows from
       [preds_rep_spec]*) simpl.
-    unfold funpred_with_reps_preds.
+    unfold pf_with_funpred_preds.
     set (pinm:=pred_in_mutfun p_in).
     destruct (predsym_in_mutfun_dec p fs); try contradiction.
     destruct (Nat.eq_dec (Datatypes.length srts) (Datatypes.length (s_params p)));
@@ -511,12 +382,12 @@ Proof.
       inversion Hordl; auto.
     + (*Other recursive def*)
       inversion Hordl; subst.
-      rewrite funpred_with_reps_preds_notin.
+      rewrite pf_with_funpred_preds_notin.
       rewrite (IHl); auto.
       apply fmla_change_pf.
       * intros. simpl.
         repeat (apply functional_extensionality_dep; intros).
-        rewrite funpred_with_reps_preds_notin; auto.
+        rewrite pf_with_funpred_preds_notin; auto.
         (*Here, we use the ordering assumption*)
         intro Hpin.
         apply (H6 p0 (recursive_def fs)); auto.
@@ -524,7 +395,7 @@ Proof.
         bool_to_prop. exists (pred_def p args body). auto.
       * intros. simpl.
         repeat (apply functional_extensionality_dep; intros).
-        rewrite funpred_with_reps_funs_notin; auto.
+        rewrite pf_with_funpred_funs_notin; auto.
         intro Hpin.
         apply (H5 fs0 (recursive_def fs)); auto.
         unfold funsym_in_def.
@@ -577,7 +448,7 @@ Proof.
   not_or Hinf.
   specialize (IHl Hinf0); clear Hinf0.
   destruct a0; simpl; auto.
-  rewrite funpred_with_reps_funs_notin; auto.
+  rewrite pf_with_funpred_funs_notin; auto.
   intro Hc.
   apply Hinf. simpl. apply in_bool_In in Hc; auto.
 Qed.
@@ -598,7 +469,7 @@ Proof.
   not_or Hinf.
   specialize (IHl Hinf0); clear Hinf0.
   destruct a0; simpl; auto.
-  - rewrite funpred_with_reps_preds_notin; auto.
+  - rewrite pf_with_funpred_preds_notin; auto.
     intro Hc.
     apply Hinf. simpl. apply in_bool_In in Hc; auto.
   - rewrite pf_with_indprop_preds_notin; auto.
@@ -615,47 +486,6 @@ Proof.
   destruct ps_in as [d [Hind Hps]]; subst.
   apply in_inductive_ctx.
   rewrite Forall_forall in Hall; apply Hall; auto.
-Qed.
-
-(*TODO: move these 2 to typing*)
-Lemma pred_in_indpred_spec p l:
-  pred_in_indpred p (get_indpred l) <->
-  In p (predsyms_of_def (inductive_def l)).
-Proof.
-  simpl. unfold get_indpred, pred_in_indpred.
-  rewrite (reflect_iff _ _ (in_bool_spec predsym_eq_dec _ _)).
-  induction l; simpl; [split; intros; auto |].
-  unfold is_true in *. bool_to_prop.
-  rewrite IHl. split; intros [Hp | Htl]; auto; left;
-  destruct a; auto.
-Qed.
-
-(*TODO: move to typing*)
-Lemma indpred_not_twice p l1 l2:
-  In (inductive_def l1) gamma ->
-  In (inductive_def l2) gamma ->
-  pred_in_indpred p (get_indpred l1) ->
-  pred_in_indpred p (get_indpred l2) ->
-  l1 = l2.
-Proof.
-  intros.
-  apply valid_context_wf in gamma_valid.
-  apply wf_context_alt in gamma_valid.
-  destruct gamma_valid as [_ [_ [_ [_ Hnodup]]]].
-  unfold predsyms_of_context in Hnodup.
-  rewrite NoDup_concat_iff in Hnodup.
-  destruct Hnodup as [_ Hn].
-  rewrite map_length in Hn.
-  destruct (In_nth _ _ def_d H) as [i1 [Hi1 Hl1]].
-  destruct (In_nth _ _ def_d H0) as [i2 [Hi2 Hl2]].
-  destruct (Nat.eq_dec i1 i2); subst.
-  {
-    rewrite Hl1 in Hl2. inversion Hl2; auto.
-  }
-  exfalso. apply (Hn _ _ nil p Hi1 Hi2 n).
-  rewrite !map_nth_inbound with(d2:=def_d); auto.
-  rewrite Hl1, Hl2.
-  split; apply pred_in_indpred_spec; auto.
 Qed.
 
 (*NOTE: requires (only) [indpred_rep_change_pf]
@@ -691,9 +521,9 @@ Proof.
   destruct a0; simpl in ps_in; inversion Hordl; subst; 
   try solve[apply IHl; auto].
   - (*If first is recursive, use valid context uniqueness*)
-    destruct (in_indpreds_of_context _ ps_in) as [d [d_in Hps]]; subst.
+    destruct (in_indpreds_of_context _ _ ps_in) as [d [d_in Hps]]; subst.
     simpl.
-    rewrite funpred_with_reps_preds_notin.
+    rewrite pf_with_funpred_preds_notin.
     2: {
       intros Hin.
       apply (recpred_not_indpred gamma_valid p l0 d); auto;
@@ -705,14 +535,14 @@ Proof.
     + (*Need to show that none of these functions show up
       in pred definition, from ordered context*)
       intros. simpl.
-      rewrite funpred_with_reps_funs_notin; auto.
+      rewrite pf_with_funpred_funs_notin; auto.
       intros Hin.
       apply (H4 fs (inductive_def d)); auto.
       simpl. bool_to_prop.
       exists fmla. auto.
     + (*and for preds*)
       intros. simpl.
-      rewrite funpred_with_reps_preds_notin; auto.
+      rewrite pf_with_funpred_preds_notin; auto.
       intros Hin.
       apply (H5 ps (inductive_def d)); auto.
       simpl. bool_to_prop. exists fmla. auto.
@@ -728,7 +558,7 @@ Proof.
       try contradiction.
       assert (i = p_in) by apply bool_irrelevance. subst.
       assert (ps_in' = (in_inductive_ctx gamma l0 (Forall_inv Hallin))). {
-        apply proof_irrel. (*TODO: bool?*)
+        apply proof_irrel.
       }
       subst.
       apply indpred_rep_change_pf; auto. 
@@ -738,13 +568,13 @@ Proof.
       intros Hin. apply H5. apply in_bool_In in Hin; auto.
     + (*Recursive case for indpreds*)
       rename H into ps_in.
-      destruct (in_indpreds_of_context _ ps_in) as [d [d_in Hps]]; subst.
+      destruct (in_indpreds_of_context _ _ ps_in) as [d [d_in Hps]]; subst.
       simpl.
       rewrite pf_with_indprop_preds_notin.
       2: {
         intros Hin.
         assert (l0 = d); [|subst; contradiction].
-        apply (indpred_not_twice p l0 d); auto;
+        apply (indpred_not_twice gamma_valid p l0 d); auto;
         rewrite Forall_forall in Hallin;
         apply Hallin; simpl; auto.
       }
@@ -781,7 +611,7 @@ Lemma indprop_fmla_valid { gamma}
   (p_in: In (p, fs) l)
   {f: formula}
   (f_in: In f fs):
-  valid_formula gamma f.
+  formula_typed gamma f.
 Proof.
   pose proof (in_indpred_valid gamma_valid l_in).
   rewrite Forall_forall in H.
@@ -791,31 +621,6 @@ Proof.
   rewrite Forall_forall in H.
   apply H; auto.
 Qed.
-
-(*TODO: move when finish*)
-(*Sort of trivial, but a well-formed context has no dups*)
-(*
-Lemma wf_ctx_Nodup:
-  NoDup gamma.
-Proof.
-  unfold wf_context in gamma_wf.
-  destruct gamma_wf as [_ [_ [_ [_ [Hn1 [Hn2 Hn3]]]]]].
-  clear -gamma Hn1 Hn2 Hn3.
-  unfold typesyms_of_context in Hn1.
-  unfold funsyms_of_context in Hn2.
-  unfold predsyms_of_context in Hn3.
-  induction gamma; simpl in *; constructor; auto.
-  - intros Hina. destruct a; simpl in *.
-    + rewrite NoDup_app_iff in Hn2.
-      destruct Hn2.
-      (*ugh, prob need assumption about non-trivial*)
-      (*TODO: elsehwere*)
-    
-    rewrite NoDup_concat_iff in Hn2.
-    
-    
-    intro
-*)
 
 (*We can define what it means for an interpretation to be complete*)
 Definition full_interp {gamma} 
@@ -879,7 +684,7 @@ Definition full_interp {gamma}
 ) /\
 (*Inductive predicates part 2: this is the least predicate
   such that the constructors hold
-  TODO: is there a better way to express this?*)
+  TODO: is this the right way to express this?*)
 (forall (l: list (predsym * list formula))
   (l_in: In l (indpreds_of_context gamma))
   (p: predsym)
@@ -898,7 +703,7 @@ Definition full_interp {gamma}
     arg_list (domain (dom_aux pd)) (sym_sigma_args p' srts) -> bool)
     (map fst l)),
   (*If the constructors hold when ps -> Ps (ith of ps -> ith of Ps)*)
-  (forall (fs : list formula) (Hform : Forall (valid_formula gamma) fs),
+  (forall (fs : list formula) (Hform : Forall (formula_typed gamma) fs),
     In fs (map snd l) ->
       iter_and (map is_true (dep_map
         (formula_rep gamma_valid pd 
@@ -935,7 +740,7 @@ Proof.
     (mk_pi_funpred gamma_valid pd funs preds) (all_in_refl gamma) Hnodup
     Hord fs (proj1 (in_mutfuns gamma fs) fs_in) f args
     body f_in srts srts_len a vt vv).
-    (*Need proof irrelevance - TODO: bool proofs?*)
+    (*Need proof irrelevance - should we use bools?*)
     assert ((in_mutfuns_sub (all_in_refl gamma)
     (proj1 (in_mutfuns gamma fs) fs_in)) = fs_in) by
     (apply proof_irrel).
@@ -1010,7 +815,7 @@ Proof.
     rewrite upd_pf_multi_fun_notin.
     + simpl. rewrite funs_with_constrs_notin; auto.
       intros m a' m_in a_in'.
-      apply ((proj1 (abs_not_concrete_fun f H)) m a' m_in a_in').
+      apply ((proj1 (abs_not_concrete_fun gamma_valid f H)) m a' m_in a_in').
     + intros Hinf.
       unfold funsyms_of_context in Hinf.
       rewrite in_concat in Hinf.
@@ -1025,12 +830,12 @@ Proof.
         destruct Hinf as [fs [Hinfs Hinf]]; subst.
         rewrite in_map_iff in Hinfs.
         destruct Hinfs as [a' [Hfs a_in']]; subst.
-        apply ((proj1 (abs_not_concrete_fun f H)) m a').
+        apply ((proj1 (abs_not_concrete_fun gamma_valid f H)) m a').
         -- apply mut_in_ctx_eq2; auto.
         -- apply In_in_bool; auto.
         -- unfold constr_in_adt. rewrite in_bool_ne_equiv.
           apply In_in_bool; auto.
-      * apply ((proj2 (abs_not_concrete_fun f H)) l); auto.
+      * apply ((proj2 (abs_not_concrete_fun gamma_valid f H)) l); auto.
         apply in_mutfuns; auto.
   - intros.
     unfold full_pf.
@@ -1043,9 +848,9 @@ Proof.
     destruct Hinps as[d [Hps Hind]]; subst.
     unfold def_concrete_predsyms in Hinp.
     destruct d; try solve[inversion Hinp].
-    + apply ((proj1 (abs_not_concrete_pred _ H) l)); auto.
+    + apply ((proj1 (abs_not_concrete_pred gamma_valid _ H) l)); auto.
       apply in_mutfuns; auto.
-    + apply ((proj2 (abs_not_concrete_pred _ H) (get_indpred l))); auto.
+    + apply ((proj2 (abs_not_concrete_pred gamma_valid _ H) (get_indpred l))); auto.
       * apply in_inductive_ctx; auto.
       * rewrite <- pred_in_indpred_iff in Hinp.
         apply in_bool_In in Hinp. auto.
@@ -1063,8 +868,7 @@ Context {gamma: context} (gamma_valid: valid_context gamma).
 Section Valid.
 
 Variable f: formula.
-(*TODO: name for valid_formula?*)
-Variable f_typed: valid_formula gamma f.
+Variable f_typed: formula_typed gamma f.
 Variable f_closed: closed_formula f.
 
 (*A full interpretation satisfies a formula f if for all valuations,
@@ -1093,10 +897,10 @@ End Valid.
 (*f is the logical consequence of formulas Delta if every
   interpretation that satisfies all of Delta also satisfies f*)
 Definition log_conseq (Delta: list formula) 
-  (Delta_ty: Forall (valid_formula gamma) Delta)
+  (Delta_ty: Forall (formula_typed gamma) Delta)
   (Delta_closed: Forall closed_formula Delta)
   (f: formula)
-  (f_ty: valid_formula gamma f)
+  (f_ty: formula_typed gamma f)
   (f_closed: closed_formula f) : Prop :=
   forall (pd: pi_dom) (pf: pi_funpred gamma_valid pd)
     (pf_full: full_interp gamma_valid pd pf),

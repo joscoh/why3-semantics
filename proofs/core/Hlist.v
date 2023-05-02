@@ -173,7 +173,6 @@ Proof.
   intros. apply hlist_to_list_nth_dec. apply eq_dec. apply Hi.
 Qed.
 
-(*TODO: Do we need the type version?*)
 Lemma hlist_to_list_nth_dec_set: forall {A: Set} {f: A -> Set} {l: list A}
   (eq_dec: forall (x y : A), {x = y} + {x <> y})
   (h: hlist f l) {a: A} (Hall: Forall (fun x => x = a) l) (i: nat)

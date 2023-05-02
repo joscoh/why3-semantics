@@ -83,3 +83,47 @@ Lemma dec_uip_diff {A: Set} {x1 x2: A}
 Proof.
   subst. apply UIP_dec. auto.
 Qed.
+
+Require Import Coq.Lists.List.
+Import ListNotations.
+
+(*Cast a list - can't use scast bc list is Type -> Type*)
+Definition cast_list {A B: Set} (l: list A) (Heq: A = B) : list B.
+Proof.
+  destruct Heq.
+  exact l.
+Defined.
+
+Lemma cast_list_length: forall {A B: Set} (l: list A) (Heq: A = B),
+  length (cast_list l Heq) = length l.
+Proof.
+  intros. unfold cast_list. destruct Heq. reflexivity.
+Qed.
+
+Lemma cast_nil: forall {A B} (H: A = B),
+  cast_list nil H = nil.
+Proof.
+  intros. unfold cast_list. destruct H. reflexivity.
+Qed. 
+
+Lemma cast_list_cons: forall {A B: Set} (x: A)(l: list A) (Heq: A = B),
+  cast_list (x :: l) Heq = scast Heq x :: cast_list l Heq.
+Proof.
+  intros. subst. reflexivity.
+Qed.
+
+Lemma cast_list_inj: forall {A B: Set} {l1 l2: list A}(Heq: A = B),
+  cast_list l1 Heq = cast_list l2 Heq ->
+  l1 = l2.
+Proof.
+  intros. destruct Heq. simpl in H. subst; auto.
+Qed.
+
+Lemma cast_list_nth: forall {A B: Set} (l: list A) (Heq: A = B)
+  (d': B)
+  (i: nat),
+  List.nth i (cast_list l Heq) d' = 
+    scast Heq (List.nth i l (scast (Logic.eq_sym Heq) d')).
+Proof.
+  intros. subst. reflexivity.
+Qed. 

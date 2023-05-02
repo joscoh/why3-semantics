@@ -428,6 +428,23 @@ Proof.
   intros. vsym_eq a0 a.
 Qed.
 
+Lemma mk_fun_in_firstb_iff (l1 l2: list vsymbol) x y
+  (Hlen: length l1 = length l2)
+  (Hn2: NoDup l2)
+  (Hin: In x l1):
+  var_in_firstb (x, y) (combine l1 l2) <-> mk_fun l1 l2 x = y.
+Proof.
+  generalize dependent l2. induction l1; simpl; intros. inversion Hin.
+  destruct l2; inversion Hlen; simpl.
+  vsym_eq x a; simpl.
+  - vsym_eq y v; simpl; split; intros; auto. inversion H.
+  - inversion Hn2; subst. destruct Hin; subst; try contradiction.
+    vsym_eq y v; simpl.
+    + split; intros; auto. inversion H1.
+      exfalso. apply H2. rewrite <- H1. apply mk_fun_in; auto; lia.
+    + apply IHl1; auto.
+Qed.
+
 (*map over a pattern, changing free vars according to map*)
 (*This is useful for considering how alpha equivalent patterns
   behave*)
@@ -866,8 +883,8 @@ Definition add_vals {A B: Type} (keys: list A) (vals: list B) (assoc: list (A * 
   or the variables are the same*)
 Fixpoint alpha_equiv_t (vars: list (vsymbol * vsymbol)) (t1 t2: term) : bool :=
   match t1, t2 with
-  | Tconst c1, Tconst c2 => (*TODO: not great - because of
-    equality of real numbers*) all_dec (c1 = c2)
+  | Tconst c1, Tconst c2 =>
+    const_eq_dec c1 c2
   | Tvar v1, Tvar v2 =>
     eq_var vars v1 v2
   | Tfun f1 ty1 tm1, Tfun f2 ty2 tm2 =>
@@ -1180,8 +1197,8 @@ Lemma alpha_equiv_equiv (t: term) (f: formula) :
   term_rep v2 t2 ty Hty2) /\
   (forall (f2: formula) (vars: list (vsymbol * vsymbol))  
   (v1 v2: val_vars pd vt)
-  (Hval: valid_formula gamma f)
-  (Hval2: valid_formula gamma f2)
+  (Hval: formula_typed gamma f)
+  (Hval2: formula_typed gamma f2)
   (Heq: alpha_equiv_f vars f f2)
   (Hvals: forall x y (Heq: snd x = snd y),
     var_in_firstb (x, y) vars ->
@@ -1195,8 +1212,8 @@ Lemma alpha_equiv_equiv (t: term) (f: formula) :
 Proof.
   revert t f. apply term_formula_ind; simpl; intros;auto.
   - (*Tconst*)
-    alpha_case t2 Heq. 
-    rewrite simpl_all_dec in Heq. subst.
+    alpha_case t2 Heq.
+    simpl_sumbool. 
     erewrite tm_fv_agree. apply term_rep_irrel.
     simpl. intros; destruct H.
   - (*Tvar - harder*) 
@@ -1714,8 +1731,8 @@ Proof.
 Qed.
 
 Corollary a_equiv_f_equiv (f1 f2: formula) (v: val_vars pd vt)
-  (Hval1: valid_formula gamma f1)
-  (Hval2: valid_formula gamma f2)
+  (Hval1: formula_typed gamma f1)
+  (Hval2: formula_typed gamma f2)
   (Heq: a_equiv_f f1 f2):
   formula_rep v f1 Hval1 = formula_rep v f2 Hval2.
 Proof.
@@ -1848,7 +1865,7 @@ Lemma alpha_equiv_sym (t: term) (f: formula):
 Proof.
   revert t f. apply term_formula_ind; simpl; intros; auto.
   - destruct t1; auto; simpl.
-    apply all_dec_eq; split; intros; subst; auto.
+    rewrite eq_dec_sym. auto.
   - destruct t1; auto; simpl.
     apply eq_var_flip.
   - destruct t1; auto; simpl.
@@ -2040,7 +2057,7 @@ Proof.
   revert t f; apply term_formula_ind; simpl; intros.
   - (*Tconst*) 
     alpha_case t1 Heq1; alpha_case t2 Heq2.
-    rewrite simpl_all_dec in Heq1, Heq2 |- *; subst; auto.
+    simpl_sumbool.
   - (*Tvar*)
     alpha_case t1 Heq1; alpha_case t2 Heq2.
     eapply eq_var_trans.
@@ -2373,12 +2390,12 @@ Lemma alpha_equiv_type (t: term) (f: formula):
   (forall f1 (vars: list (vsymbol * vsymbol))
     (Heq: alpha_equiv_f vars f f1)
     (Hvars: forall x y, In (x, y) vars -> snd x = snd y),
-    valid_formula gamma f ->
-    valid_formula gamma f1).
+    formula_typed gamma f ->
+    formula_typed gamma f1).
 Proof.
   revert t f; apply term_formula_ind; simpl; intros.
   - alpha_case t1 Heq.
-    rewrite simpl_all_dec in Heq; subst; auto.
+    simpl_sumbool.
   - alpha_case t1 Heq.
     rewrite eq_var_eq in Heq.
     bool_hyps; destruct Heq; bool_hyps; repeat simpl_sumbool.
@@ -2554,8 +2571,8 @@ Qed.
 
 Corollary a_equiv_f_valid (f1 f2: formula):
   a_equiv_f f1 f2 ->
-  valid_formula gamma f1 ->
-  valid_formula gamma f2.
+  formula_typed gamma f1 ->
+  formula_typed gamma f2.
 Proof.
   unfold a_equiv_f. intros Heq.
   apply alpha_equiv_f_valid with(vars:=nil); auto.
@@ -3318,7 +3335,7 @@ Proof.
         -- rewrite map_app. wf_tac; intro C.
           destruct C; auto. apply Hbnd. simpl. wf_tac.
         -- rewrite <- app_assoc. auto.
-      * apply IHps; auto. (*TODO: use free_tm_bndac*)
+      * apply IHps; auto.
         -- intro C. apply Hbnd. simpl. wf_tac.
         -- intro C. apply Hfree. simpl. simpl_set; wf_tac.
   - (*Teps*)
@@ -3442,7 +3459,7 @@ Proof.
         -- rewrite map_app. wf_tac; intro C.
           destruct C; auto. apply Hbnd. simpl. wf_tac.
         -- rewrite <- app_assoc. auto.
-      * apply IHps; auto. (*TODO: use free_tm_bndac*)
+      * apply IHps; auto.
         -- intro C. apply Hbnd. simpl. wf_tac.
         -- intro C. apply Hfree. simpl. simpl_set; wf_tac.
 Qed.
@@ -3948,7 +3965,6 @@ Variable bnd_sub : forall (t: A) (x y: vsymbol),
 
 (*The iterated version of [sub_fv_notin]. Awkward to state so
   that we can prove term and formula versions together*)
-(*TODO: move some of this to Substitution*)
 Lemma sub_mult_fv_notin
   (vars: list (vsymbol * string)) (t: A)
   (Hn: NoDup (map fst vars))
@@ -4361,8 +4377,7 @@ Proof.
     inversion H1; subst.
     split.
     + constructor.
-      * (*TODO: automate the "In" part*) 
-        intro Hin.
+      * intro Hin.
         apply in_app_or in Hin.
         destruct Hin.
         -- apply H in H3; wf_tac.
@@ -4787,7 +4802,6 @@ Proof.
       rewrite sub_t_fv_in; auto.
       * rewrite !H0.
         vsym_eq (s, snd v) v. simpl.
-        (*TODO: change Hfree to use [free_in_t]?*)
         symmetry. apply free_in_t_negb. intro Hin.
         apply (Hfree (s, snd v)). left; auto. 
         simpl_set. triv.
@@ -4959,7 +4973,6 @@ Proof.
       rewrite sub_f_fv_in; auto.
       * rewrite !H.
         vsym_eq (s, snd v) v. simpl.
-        (*TODO: change Hfree to use [free_in_t]?*)
         symmetry. apply free_in_f_negb. intro Hin.
         apply (Hfree (s, snd v)). left; auto. 
         simpl_set. triv.
@@ -5136,23 +5149,7 @@ Proof.
   reflexivity.
 Qed. 
 
-(*TODO: move*)
-Lemma mk_fun_in_firstb_iff (l1 l2: list vsymbol) x y
-  (Hlen: length l1 = length l2)
-  (Hn2: NoDup l2)
-  (Hin: In x l1):
-  var_in_firstb (x, y) (combine l1 l2) <-> mk_fun l1 l2 x = y.
-Proof.
-  generalize dependent l2. induction l1; simpl; intros. inversion Hin.
-  destruct l2; inversion Hlen; simpl.
-  vsym_eq x a; simpl.
-  - vsym_eq y v; simpl; split; intros; auto. inversion H.
-  - inversion Hn2; subst. destruct Hin; subst; try contradiction.
-    vsym_eq y v; simpl.
-    + split; intros; auto. inversion H1.
-      exfalso. apply H2. rewrite <- H1. apply mk_fun_in; auto; lia.
-    + apply IHl1; auto.
-Qed.
+
 
 (*Only need injectivity on the elts*)
 Lemma NoDup_map_inj {A B: Type} (f: A -> B) (l: list A)
@@ -5201,7 +5198,6 @@ Qed.
 
 (*Alpha equivalence with iterated substitution*)
 
-(*TODO: combine with other section?*)
 Section AlphaSubIter.
 
 Context {A: Type}.
@@ -6146,7 +6142,6 @@ Proof.
     rewrite <- (shape_f_predsym_in f f2); auto.
   - alpha_case f2 Hshp; bool_hyps; repeat simpl_sumbool.
     apply ISP_pred; auto.
-    (*TODO: improve nested_ind_case*)
     apply Nat.eqb_eq in H4. rename l0 into tms2.
     generalize dependent tms2.
     induction ts; simpl; intros; destruct tms2; inversion H4; auto.
@@ -6288,15 +6283,15 @@ Qed.
 
 (*And the corollaries:*)
 Corollary a_convert_f_valid f:
-  valid_formula gamma f ->
-  valid_formula gamma (a_convert_f f).
+  formula_typed gamma f ->
+  formula_typed gamma (a_convert_f f).
 Proof.
   apply a_equiv_f_valid.
   apply a_convert_f_equiv.
 Qed.
 
 Corollary a_convert_f_rep v f 
-  (Hval: valid_formula gamma f):
+  (Hval: formula_typed gamma f):
   formula_rep v f Hval = 
   formula_rep v (a_convert_f f) (a_convert_f_valid f Hval).
 Proof.

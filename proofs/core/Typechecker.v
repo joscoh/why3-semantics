@@ -4,6 +4,119 @@ Require Export Typing.
 From mathcomp Require Import all_ssreflect.
 Set Bullet Behavior "Strict Subproofs".
 
+(*Tactics*)
+Ltac reflT := apply ReflectT; constructor.
+
+Ltac reflF := let C := fresh "C" in apply ReflectF => C; inversion C; subst.
+
+(* General ssreflect helpful lemmas *)
+Lemma inP: forall {A: eqType} (x: A) (l: seq A),
+  reflect (In x l) (x \in l).
+Proof.
+  move=> A x l. elim: l => [//= | h t /= IH].
+  - by apply ReflectF.
+  - rewrite in_cons. apply orPP => //.
+    rewrite eq_sym. apply eqP.
+Qed.
+
+(*A similar result for In*)
+Lemma eq_mem_In {A: eqType} (s1 s2: seq A):
+  (forall x, In x s1 <-> In x s2) <-> s1 =i s2.
+Proof.
+  split.
+  - move=> Hin x. case: (x \in s1) /inP => Hin1.
+    symmetry. apply /inP. by apply Hin.
+    case: (x \in s2) /inP =>//= Hin2.
+    by apply Hin in Hin2.
+  - move=> Heq x. 
+    by split => /inP Hin; apply /inP; rewrite ?Heq // -Heq.
+Qed.
+
+Lemma forallb_ForallP {A: Type} (P: A -> Prop) (p: pred A) (s: seq A):
+  (forall x, In x s -> reflect (P x ) (p x)) ->
+  reflect (Forall P s) (all p s).
+Proof.
+  elim: s =>[//= Hall | h t /= IH Hall].
+  - apply ReflectT. constructor.
+  - case: (p h) /(Hall h (or_introl _)) => //= Hh; last by reflF.
+    have IHt: (forall x : A, In x t -> reflect (P x) (p x)) by
+      move=> x Hinx; apply Hall; right.
+    move: IH => /(_ IHt) IH.
+    case: (all p t) /IH => Ht/=; last by reflF.
+    apply ReflectT. by constructor.
+Qed. 
+
+(*Use this because we cannot assume eqType, so need In, not \in*)
+Lemma all_forallb: forall {A: Type} (p: A -> bool) (l: seq A),
+  all p l = forallb p l.
+Proof.
+  by [].
+Qed.
+
+Lemma all_Forall {A: eqType} (P: A -> Prop) (p: pred A) (s: seq A):
+  (forall x, x \in s -> reflect (P x ) (p x)) ->
+  reflect (Forall P s) (all p s).
+Proof.
+  move=> Hall. rewrite all_forallb.
+  apply forallb_ForallP => x /inP. by apply Hall.
+Qed.
+
+Lemma forallP' {T: finType} (P: T -> Prop) (p: pred T):
+  (forall x, reflect (P x) (p x)) ->
+  reflect (forall x, P x) [forall x, p x].
+Proof.
+  move=> Hallrefl.
+  have Halleq: (forall x, P x) <-> (forall x, p x). {
+    split=> Hall x. by apply: (introT (Hallrefl x)) (Hall x).
+    by apply: (elimT (Hallrefl x) (Hall x)).
+  }
+  case Hall: [forall x, p x].
+  - apply: ReflectT. rewrite Halleq. by apply /forallP.
+  - apply: ReflectF=>C. rewrite Halleq in C.
+    have: [forall x, p x] by apply /forallP.
+    by rewrite Hall.
+Qed.
+
+Lemma nullP {A: Type} (s: seq A):
+  reflect (s = nil) (null s).
+Proof.
+  case: s=>/= [| h t].
+  apply ReflectT=>//.
+  by apply ReflectF.
+Qed.
+
+Lemma nth_eq {A: Type} (n: nat) (s: seq A) (d: A):
+  List.nth n s d = nth d s n.
+Proof.
+  move: n. elim:s=>[// [|]// | h t /= IH [// | n' /=]].
+  by apply IH.
+Qed.
+
+Definition sublistb {A: eqType} (l1 l2: seq A) : bool :=
+  (all (fun x => x \in l2) l1).
+
+Lemma sublistbP {A: eqType} (l1 l2: seq A):
+  reflect (sublist l1 l2) (sublistb l1 l2).
+Proof.
+  rewrite /sublist/sublistb.
+  eapply equivP.
+  2: apply Forall_forall.
+  apply all_Forall. move=> x Hinx.
+  apply inP.
+Qed.
+
+(*maybe use instead of nodupb*)
+Lemma uniqP {A: eqType} (l: list A):
+  reflect (NoDup l) (uniq l).
+Proof.
+  elim: l => [//= | h t /= IH].
+  - reflT.
+  - eapply equivP. 2: symmetry; apply NoDup_cons_iff.
+    apply andPP=>//.
+    apply negPP. apply inP.
+Qed.
+
+
 (* Let's try to build a typechecker *)
 Section Typechecker.
 
@@ -44,29 +157,6 @@ Proof.
     + have: x \in s1 by rewrite C. by rewrite (negbTE Hnotinx).
     + have: x \in s2 by rewrite -C. by rewrite (negbTE Hnotinx).
 Qed. 
-
-(*TODO: move*)
-Lemma inP: forall {A: eqType} (x: A) (l: seq A),
-  reflect (In x l) (x \in l).
-Proof.
-  move=> A x l. elim: l => [//= | h t /= IH].
-  - by apply ReflectF.
-  - rewrite in_cons. apply orPP => //.
-    rewrite eq_sym. apply eqP.
-Qed.
-
-(*A similar result for In*)
-Lemma eq_mem_In {A: eqType} (s1 s2: seq A):
-  (forall x, In x s1 <-> In x s2) <-> s1 =i s2.
-Proof.
-  split.
-  - move=> Hin x. case: (x \in s1) /inP => Hin1.
-    symmetry. apply /inP. by apply Hin.
-    case: (x \in s2) /inP =>//= Hin2.
-    by apply Hin in Hin2.
-  - move=> Heq x. 
-    by split => /inP Hin; apply /inP; rewrite ?Heq // -Heq.
-Qed.
 
 (*Patterns can have many types, so we ask: can this pattern
   have this type? (ex: Pwild)*)
@@ -144,68 +234,9 @@ Proof.
       apply IH=>//. by apply (ForallT_tl _ _ _ Hall).
 Qed.
 
-Ltac reflF := let C := fresh "C" in apply ReflectF => C; inversion C; subst.
 
-(*TODO: move*)
-Lemma forallb_ForallP {A: Type} (P: A -> Prop) (p: pred A) (s: seq A):
-  (forall x, In x s -> reflect (P x ) (p x)) ->
-  reflect (Forall P s) (all p s).
-Proof.
-  elim: s =>[//= Hall | h t /= IH Hall].
-  - apply ReflectT. constructor.
-  - case: (p h) /(Hall h (or_introl _)) => //= Hh; last by reflF.
-    have IHt: (forall x : A, In x t -> reflect (P x) (p x)) by
-      move=> x Hinx; apply Hall; right.
-    move: IH => /(_ IHt) IH.
-    case: (all p t) /IH => Ht/=; last by reflF.
-    apply ReflectT. by constructor.
-Qed. 
 
-(*Use this because we cannot assume eqType, so need In, not \in*)
-Lemma all_forallb: forall {A: Type} (p: A -> bool) (l: seq A),
-  all p l = forallb p l.
-Proof.
-  by [].
-Qed.
 
-Lemma all_Forall {A: eqType} (P: A -> Prop) (p: pred A) (s: seq A):
-  (forall x, x \in s -> reflect (P x ) (p x)) ->
-  reflect (Forall P s) (all p s).
-Proof.
-  move=> Hall. rewrite all_forallb.
-  apply forallb_ForallP => x /inP. by apply Hall.
-Qed.
-
-Lemma forallP' {T: finType} (P: T -> Prop) (p: pred T):
-  (forall x, reflect (P x) (p x)) ->
-  reflect (forall x, P x) [forall x, p x].
-Proof.
-  move=> Hallrefl.
-  have Halleq: (forall x, P x) <-> (forall x, p x). {
-    split=> Hall x. by apply: (introT (Hallrefl x)) (Hall x).
-    by apply: (elimT (Hallrefl x) (Hall x)).
-  }
-  case Hall: [forall x, p x].
-  - apply: ReflectT. rewrite Halleq. by apply /forallP.
-  - apply: ReflectF=>C. rewrite Halleq in C.
-    have: [forall x, p x] by apply /forallP.
-    by rewrite Hall.
-Qed.
-
-Lemma nullP {A: Type} (s: seq A):
-  reflect (s = nil) (null s).
-Proof.
-  case: s=>/= [| h t].
-  apply ReflectT=>//.
-  by apply ReflectF.
-Qed.
-
-Lemma nth_eq {A: Type} (n: nat) (s: seq A) (d: A):
-  List.nth n s d = nth d s n.
-Proof.
-  move: n. elim:s=>[// [|]// | h t /= IH [// | n' /=]].
-  by apply IH.
-Qed.
 
 (*Let's start this*)
 Lemma typecheck_pattern_correct: forall (s: context) (p: pattern) (v: vty),
@@ -413,18 +444,16 @@ with typecheck_formula (s: context) (f: formula) : bool :=
       end) ps)
   end.
 
-Ltac reflT := apply ReflectT; constructor.
-
 (*Now we prove the correctness of this*)
 Lemma typecheck_term_fmla_spec (s: context): 
   forall (tm: term) (f: formula),
   (forall v, 
     reflect (term_has_type s tm v) (typecheck_term s tm == Some v)) *
-  reflect (valid_formula s f) (typecheck_formula s f).
+  reflect (formula_typed s f) (typecheck_formula s f).
 Proof.
   apply (term_formula_rect) with(P1:=fun tm => forall v,
     reflect (term_has_type s tm v) (typecheck_term s tm == Some v))
-  (P2:= fun f => reflect (valid_formula s f) (typecheck_formula s f))=>/=.
+  (P2:= fun f => reflect (formula_typed s f) (typecheck_formula s f))=>/=.
   - move=> c v. case: c => [z | r].
     + by case: (Some vty_int == Some v) /eqP=> [[Hv] | Hneq]; 
       subst; [reflT | reflF].
@@ -705,10 +734,8 @@ Definition typecheck_term_correct (gamma: context) (tm: term) (v: vty):
   fst (typecheck_term_fmla_spec gamma tm Ftrue) v.
 
 Definition typecheck_formula_correct (gamma: context) (f: formula):
-  reflect (valid_formula gamma f) (typecheck_formula gamma f) :=
+  reflect (formula_typed gamma f) (typecheck_formula gamma f) :=
   snd (typecheck_term_fmla_spec gamma tm_d f).
-
-(*TODO: separate module or something so we don't have imports?*)
 
 Lemma term_has_type_unique: forall s t x y,
   term_has_type s t x ->
@@ -883,32 +910,6 @@ Qed.*)
 
 (*Checks for recursive functions*)
 
-(*TODO: duplicates [check_sublist] in Syntax, but we don't use
-  ssreflect there*)
-
-Definition sublistb {A: eqType} (l1 l2: seq A) : bool :=
-  (all (fun x => x \in l2) l1).
-
-Lemma sublistbP {A: eqType} (l1 l2: seq A):
-  reflect (sublist l1 l2) (sublistb l1 l2).
-Proof.
-  rewrite /sublist/sublistb.
-  eapply equivP.
-  2: apply Forall_forall.
-  apply all_Forall. move=> x Hinx.
-  apply inP.
-Qed.
-
-(*TODO: move, maybe use instead of nodupb*)
-Lemma uniqP {A: eqType} (l: list A):
-  reflect (NoDup l) (uniq l).
-Proof.
-  elim: l => [//= | h t /= IH].
-  - reflT.
-  - eapply equivP. 2: symmetry; apply NoDup_cons_iff.
-    apply andPP=>//.
-    apply negPP. apply inP.
-Qed.
 
 Definition check_funpred_def_valid_type (fd: funpred_def) : bool :=
   match fd with
@@ -965,8 +966,8 @@ Definition pn_d : pn :=
 (*First, we need a decidable version of
   [decrease_fun] and [decrease_pred], assuming we already
   have fs and ps*)
-(*TODO: this is likely very inefficient, and we need
-  to ensure that everything is computable*)
+(*NOTE: hopefully this is efficient enough and everything is
+  computable.*)
 Fixpoint check_decrease_fun (fs: list fn) (ps: list pn)
   (small: list vsymbol) (hd: option vsymbol) (m: mut_adt)
   (vs: list vty) (t: term) : bool :=
@@ -1149,8 +1150,6 @@ Definition fn_eqMixin := EqMixin fn_eqb_spec.
 Canonical fn_eqType := EqType fn fn_eqMixin.
 Definition pn_eqMixin := EqMixin pn_eqb_spec.
 Canonical pn_eqType := EqType pn pn_eqMixin.
-
-(*TODO: 2 others*)
 
 (*Handle case at beginning of most*)
 Ltac not_in_tm_case fs ps t :=
@@ -1360,13 +1359,12 @@ Proof.
       apply H6. exists mvar. split=>//. 
       by case: Hmvar => Hcon; [left; apply /eqP | right; apply /inP].
     }
-    (*TODO: will the exists be a problem?*)
     case: (Hall (fun x =>  (union vsymbol_eq_dec (vsyms_in_m m vs (pat_constr_vars m vs x.1))
     (remove_all vsymbol_eq_dec (pat_fv x.1) small)))
     (fun x => (upd_option_iter hd (pat_fv x.1))))=> Hallin;
     last first.
     {
-      false_triv_case Hnotin. apply H6. (*TODO: write as lemma*)
+      false_triv_case Hnotin. apply H6.
       exists mvar. split=>//. 
       by case: Hmvar => Hcon; [left; apply /eqP | right; apply /inP].
     }
@@ -1571,13 +1569,12 @@ Proof.
       apply H6. exists mvar. split=>//. 
       by case: Hmvar => Hcon; [left; apply /eqP | right; apply /inP].
     }
-    (*TODO: will the exists be a problem?*)
     case: (Hall (fun x =>  (union vsymbol_eq_dec (vsyms_in_m m vs (pat_constr_vars m vs x.1))
     (remove_all vsymbol_eq_dec (pat_fv x.1) small)))
     (fun x => (upd_option_iter hd (pat_fv x.1))))=> Hallin;
     last first.
     {
-      false_triv_case Hnotin. apply H6. (*TODO: write as lemma*)
+      false_triv_case Hnotin. apply H6.
       exists mvar. split=>//. 
       by case: Hmvar => Hcon; [left; apply /eqP | right; apply /inP].
     }
@@ -1616,7 +1613,7 @@ Fixpoint get_lists_bound (f: nat -> nat) (n: nat) : list (list nat) :=
     (*Idea: take all lists of length n-1, make f(n) copies of each,
       each one with 1 element from 0 to f(n)
       *)
-    (*TODO: should really reverse at end instead of concat (or something)
+    (*NOTE: should really reverse at end instead of concat (or something)
     but oh well*)
     concat (map (fun l => (map (fun i => rcons l i) (iota 0 (f(n'))))) l_n')
   end.
@@ -1719,7 +1716,7 @@ Definition find_mut_args (fs: list fn) (ps: list pn) (il: list nat) :
     match (is_vty_adt gamma (snd (nth vs_d (sn_args hd) i))) with
     | Some (m, _, vs) => 
       (*Check if size vs = size (m_params m)*)
-      (*TODO: do we need to check this? Or is this implied by typing?*)
+      (*NOTE: may be implied by typing, but we check it anyway*)
       if (size vs =? size (m_params m)) &&
        (*Check using is list*)
        all (fun x =>
@@ -2234,8 +2231,6 @@ Lemma funpred_defs_to_sns_idx l il:
 Proof.
   move=> Hsz i Hi.
   rewrite nth_cat size_map. have Hleneq: length l = length il by rewrite !length_size.
-  (*have Hlen:=funpred_defs_to_sns_length l il Hleneq.
-  rewrite !length_size in Hlen.*)
   have Hlen: (size (split_funpred_defs l).1 + size (split_funpred_defs l).2) = size l
     by rewrite -!length_size -(split_funpred_defs_length l).
   rewrite /funpred_defs_to_sns/= !size_map size_split_funpred_defs_comb1 //.
@@ -2485,7 +2480,6 @@ Qed.
 (*For our purposes, we need something a bit more specific,
   we need to know that a function creates these (so that they
   are unique)*)
-(*TODO: name*)
 Lemma funpred_def_term_decide (l: list funpred_def):
   In l (mutfuns_of_context gamma) ->
   funpred_def_term_exists gamma l ->
@@ -2502,22 +2496,6 @@ Proof.
   - case: Hex => [m [params [vs [il Hterm]]]].
     move: Hin => /inP Hin.
     by apply (find_funpred_def_term_none l Hin Hfind m params vs il).
-Qed.
-
-(*And now we can prove the following theorem, which
-  we need to define the recursive functions*)
-(*TODO: do we need anymore? Loses info*)
-Lemma funpred_def_term_decide' (l: list funpred_def) :
-  In l (mutfuns_of_context gamma) ->
-  funpred_def_term_exists gamma l ->
-  { x: (mut_adt * list typevar * list vty * list nat) |
-    funpred_def_term gamma l x.1.1.1 x.1.1.2 x.1.2 x.2}.
-Proof.
-  move=> Hin Hex.
-  have:=(funpred_def_term_decide l Hin Hex).
-  case Hfind: (find_funpred_def_term l) => [[[[m params] vs] il] |//].
-  move=> Hdec.
-  apply (exist _ (m, params, vs, il)). by apply Hdec.
 Qed.
 
 End ContextCheck.

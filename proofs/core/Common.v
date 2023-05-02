@@ -707,6 +707,41 @@ Proof.
       apply (H0 0 (S i2) nil x); subst; auto; try lia.
 Qed.
 
+(*If NoDup (concat l), the inner lists also have NoDups*)
+Lemma in_concat_NoDup: forall {A: Type}
+(eq_dec: forall (x y: A), {x = y} + {x <> y})
+{l: list (list A)} 
+  {l1: list A},
+  NoDup (concat l) ->
+  In l1 l ->
+  NoDup l1.
+Proof.
+  intros A eq_dec; induction l; intros; simpl; auto.
+  - destruct H0. 
+  - simpl in H. simpl in H0.
+    rewrite NoDup_app_iff in H.
+    destruct H as [Hna [Hnc [Hina Hinc]]].
+    destruct H0; subst.
+    + assumption.
+    + apply IHl; assumption.
+Qed.
+
+(*A slightly different lemma: if (concat l1) is in l,
+  and concat l has nodups, then any list in l1 has nodups*)
+Lemma in_concat_NoDup': forall {A: Type}
+  (eq_dec: forall (x y: A), {x = y} + {x <> y})
+  {l: list (list A)} 
+  {l1: list (list A)} {l2: list A},
+  NoDup (concat l) ->
+  In (concat l1) l ->
+  In l2 l1 ->
+  NoDup l2.
+Proof.
+  intros.
+  assert (NoDup (concat l1)). apply (in_concat_NoDup eq_dec H H0).
+  apply (in_concat_NoDup eq_dec H2 H1).
+Qed.
+
 Lemma nodup_firstn_skipn {A: Type} {l: list A} {n} {x: A} :
   In x (firstn n l) ->
   In x (skipn n l) ->
@@ -731,7 +766,6 @@ Proof.
   - apply (H x); auto.
 Qed.
 
-(*TODO: prove [combine_NoDup_l] and r from this *)
 Lemma nodup_fst_inj {A B: Type} {l: list (A * B)} {x: A} {y1 y2: B} :
   NoDup (map fst l) ->
   In (x, y1) l ->
@@ -770,16 +804,9 @@ Lemma combine_NoDup_r: forall {A B: Type} (l1: list A) (l2: list B) (x1 x2 : A) 
   In (x2, y) (combine l1 l2) ->
   x1 = x2.
 Proof.
-  intros A B l1 l2 x1 x2 y. revert l2. induction l1; simpl; intros; auto.
-  inversion H0.
-  destruct l2; simpl in *. inversion H0.
-  inversion H; subst.
-  destruct H0; [inversion H0|]; subst.
-  destruct H1;[inversion H1|]; subst. reflexivity.
-  apply in_combine_r in H1. contradiction.
-  destruct H1;[inversion H1|]; subst. 
-  apply in_combine_r in H0; contradiction.
-  apply (IHl1 l2); auto.
+  intros.
+  eapply nodup_snd_inj. 2: apply H0. all: auto.
+  apply map_snd_combine_nodup; auto.
 Qed.
 
 Lemma combine_NoDup_l: forall {A B: Type} (l1: list A) (l2: list B) x y1 y2,
@@ -1062,7 +1089,7 @@ Fixpoint lists_to_ne_lists {A: Set} (l: list (list A))
 
 Ltac right_dec := solve[let C := fresh "C" in right; intro C; inversion C; try contradiction].
 
-(*TODO: hopefully we don't need to run this, if we do, make nicer*)
+(*hopefully we don't need to run this, if we do, make nicer*)
 Definition ne_list_eq_dec {A: Set} 
   (eq_dec: forall (x y : A), {x = y} + {x <> y})
   (l1 l2: ne_list A) :
@@ -1363,7 +1390,6 @@ Proof.
   rewrite !in_app_iff. apply or_iff; auto.
 Qed. 
 
-(*TODO: put this above In lemmas and put these in Combine section?*)
 Lemma in_combine_split_r {A B: Type} (l1: list A) (l2: list B) (d1: A) (d2: B) 
   (y: B) (Hiny: In y l2)
   (Hlen: length l1 = length l2):
@@ -1479,7 +1505,6 @@ Proof.
   contradiction.
 Qed.
 
-(*TODO: change proofs to use this*)
 Lemma eq_dec_refl {A: Type} {eq_dec: forall (x y: A), {x = y}+ {x <> y}}
   (x: A):
   (@eq bool (eq_dec x x) true).
@@ -1526,6 +1551,35 @@ Qed.
 
 End Existsb.
 
+Section OMap.
+
+Definition omap {A B: Type} (f: A -> option B) (l: list A):
+list B :=
+fold_right (fun x acc => 
+  match f x with
+  | None => acc
+  | Some y => y :: acc
+  end) nil l.
+
+Lemma in_omap_iff {A B: Type} (f: A -> option B) (l: list A) (y: B):
+  In y (omap f l) <-> exists x, In x l /\ f x = Some y.
+Proof.
+  split; intros; induction l; simpl in *.
+  - destruct H.
+  - destruct (f a) eqn : Hfa.
+    + simpl in H. destruct H as [Hby | ]; subst; auto.
+      * exists a; auto.
+      * destruct (IHl H) as [x [Hinx Hfx]]; exists x; auto.
+    + destruct (IHl H) as [x [Hinx Hfx]]; exists x; auto.
+  - destruct H as [_ [[] _]].
+  - destruct H as [x [[Hax | Hinx] Hfx]]; subst.
+    + rewrite Hfx. simpl; auto.
+    + specialize (IHl (ex_intro _ x (conj Hinx Hfx))).
+      destruct (f a); simpl; auto.
+Qed.
+
+End OMap.
+
 (*Other lemmas*)
 Lemma Nat_eqb_S (n1 n2: nat):
   S n1 <? S n2 = (n1 <? n2).
@@ -1541,6 +1595,14 @@ Lemma map_inj {A B: Type} (f: A -> B) (l1 l2: list A)
 Proof.
   revert l2. induction l1; simpl; intros; destruct l2; inversion H; auto.
   apply Hinj in H1; subst. erewrite IHl1; auto.
+Qed.
+
+Lemma Forall_In {A: Type} {P: A -> Prop} {l: list A} {x: A}:
+  Forall P l ->
+  In x l ->
+  P x.
+Proof.
+  induction l; simpl; intros; destruct H0; subst; inversion H; auto.
 Qed.
 
 (*Disjpointness*)
@@ -1622,7 +1684,7 @@ Ltac simpl_set_goal_small :=
   (*big union simpl*)
   | H: In ?x (big_union ?e ?f (?y :: ?l)) |- _ => simpl in H
   | |- context [In ?x (big_union ?e ?f (?y :: ?l))] => simpl
-  (*cons - TODO do without simpl*)
+  (*cons - should do without simpl*)
   | H: In ?x (?y :: ?t) |-_ => simpl in H
   | |- context [In ?x (?y :: ?t)] => simpl
   (*remove \/ False from In goals*)
@@ -1699,7 +1761,6 @@ Ltac in_tac :=
   | |- In ?x (?l1 ++ ?l2) => rewrite in_app_iff
   | |- In ?x ?l1 \/ In ?x ?l2 => solve[left; in_tac] + solve[right; in_tac]
   end; auto.
-
 
 Definition sum (l: list nat) : nat :=
   fold_right (fun x y => x + y) 0 l.

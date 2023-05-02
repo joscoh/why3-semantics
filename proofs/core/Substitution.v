@@ -6,7 +6,7 @@ Ltac list_tac2 :=
   repeat match goal with
   (*A special case*)
   | |- NoDup (pat_fv ?p) => apply NoDup_pat_fv
-  (*TODO: this is hacky*)
+  (*this is hacky*)
   | |- context [nth ?i (map ?f ?l) ?d] =>
     intros;
     (rewrite map_nth_inbound with(d2:=tm_d)) ||
@@ -184,9 +184,9 @@ Lemma sub_valid (t: term) (f: formula):
     snd x = snd y ->
     term_has_type gamma (sub_t x y t) ty) /\
   (forall (x y: vsymbol),
-    valid_formula gamma f ->
+    formula_typed gamma f ->
     snd x = snd y ->
-    valid_formula gamma (sub_f x y f)).
+    formula_typed gamma (sub_f x y f)).
 Proof.
   revert t f.
   apply term_formula_ind; simpl; auto; intros.

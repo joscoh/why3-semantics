@@ -1,5 +1,5 @@
 (*Induction for ADTs*)
-Require Export Interp. (*TODO: require this so that
+Require Export Interp. (*NOTE: require this so that
   we can refer to Interp.adts - 
   could generalize for any proof and just use IndTypes.v*)
 
@@ -101,7 +101,6 @@ Lemma map_map_eq {A B: Type} (f: A -> B) (l: list A):
   seq.map f l = map f l.
 Proof. reflexivity. Qed.
 
-(*TODO: maybe separate out into separate lemma*)
 (*We show that if the interpretation of a type is
   the ADT applied to sorts, the type of the constructor
   must have been the ADT name applied to the args.
@@ -246,12 +245,9 @@ Proof.
     }
     specialize (Hunif Htsin). simpl_sumbool.
     f_equal.
-    erewrite adt_args with(m:=m); [| apply gamma_valid |].
-    + reflexivity.
-    + unfold adt_mut_in_ctx. split; auto.
+    erewrite adt_args with(m:=m); eauto.
 Qed.
 
-(*TODO: move this*)
 (*Suppose we know that the ith element of a list satisfies a predicate.
   Then we can find a j such that nth j (filter p l) = nth i l;
   and moreover, we know exactly which j*)

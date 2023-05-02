@@ -1,7 +1,7 @@
 Require Export Typing.
 Require Import Coq.Lists.List.
 Require Export Hlist.
-(*For a test, TODO delete*)
+(*For a test only, could delete*)
 Require Import Coq.Reals.Reals.
 
 (*Need eq_rect_eq for injectivity of constructors and test cases*)
@@ -9,7 +9,7 @@ Require Import Coq.Program.Equality.
 (*Used for constructor existence, injectivity of constructors, and test cases*)
 Require Export Coq.Logic.FunctionalExtensionality.
 (*We assume [eq_rect_eq], equivalent to UIP, for some proofs*)
-Require Import Coq.Logic.EqdepFacts. (*TODO: do we need this*)
+Require Import Coq.Logic.EqdepFacts.
 
 (*Dealing with finite types*)
 
@@ -477,7 +477,6 @@ Variable m: list alg_datatype.
 (*Construct the base type*)
 
 (*Filter out the inductive types*)
-(*TODO: I think this should ONLY count types in current mut type*)
 Definition get_nonind_vtys (l: list vty) : list vty :=
   filter (fun v => match v with 
                     | vty_cons ts vs =>
@@ -703,22 +702,6 @@ Proof.
   intros. induction constrs; simpl in Hin; simpl in x; simpl;
   destruct (funsym_eq_dec f a); subst; auto. exfalso. apply (not_false Hin).
 Qed.
-(*TODO: change to cast*)
-(*
-Lemma build_rec_finite_inj: forall {ts ts': typesym} {constrs: ne_list funsym}
-{f: funsym} {Hin: in_bool_ne funsym_eq_dec f constrs}
-{c1 c2: build_constr_base f}
-(x1: build_rec ts' constrs (get_constr_type ts constrs f Hin c1))
-(x2: build_rec ts' constrs (get_constr_type ts constrs f Hin c2)),
-@build_rec_to_finite ts ts' constrs f Hin c1 x1 =
-@build_rec_to_finite ts ts' constrs f Hin c2 x2.
-Proof.
-  intros. induction constrs; simpl in Hin, x1, x2.
-  - simpl. destruct (funsym_eq_dec f a) ; subst; auto.
-    unfold eq_rec_r, eq_rec, eq_rect. simpl.
-    
-    reflexivity.
-    *)
 
 (*Finally, create the constructor encoding: given a mutually recursive type,
   an index into the type, a constructor in the constructors of that index,
@@ -1051,7 +1034,7 @@ Definition domain_sigma_int_Z (x: domain (sigma vty_int)) : Z.
 rewrite sigma_int in x. exact x.
 Defined.
 
-(*TODO: should we move this somewhere else?*)
+(*Casting domains - will be VERY useful*)
 Section DomCast.
 
 Definition dom_cast {v1 v2: Types.sort} (Heq: v1 = v2) (x: domain v1) : 
@@ -1150,48 +1133,7 @@ Qed.
 
 (*Now we need some intermediate results about casting (some are not
   used until later)*)
-(*TODO: move?*)
 Section Cast.
-(*Cast a list - can't use scast bc list is Type -> Type*)
-Definition cast_list {A B: Set} (l: list A) (Heq: A = B) : list B :=
-  match Heq with
-  | erefl => l
-  end.
-
-Lemma cast_list_length: forall {A B: Set} (l: list A) (Heq: A = B),
-  length (cast_list l Heq) = length l.
-Proof.
-  intros. unfold cast_list. destruct Heq. reflexivity.
-Qed.
-
-Lemma cast_nil: forall {A B} (H: A = B),
-  cast_list nil H = nil.
-Proof.
-  intros. unfold cast_list. destruct H. reflexivity.
-Qed. 
-
-Lemma cast_list_cons: forall {A B: Set} (x: A)(l: list A) (Heq: A = B),
-  cast_list (x :: l) Heq = scast Heq x :: cast_list l Heq.
-Proof.
-  intros. subst. reflexivity.
-Qed.
-
-Lemma cast_list_inj: forall {A B: Set} {l1 l2: seq A}(Heq: A = B),
-  cast_list l1 Heq = cast_list l2 Heq ->
-  l1 = l2.
-Proof.
-  intros. destruct Heq. simpl in H. subst; auto.
-Qed.
-
-Lemma cast_list_nth: forall {A B: Set} (l: list A) (Heq: A = B)
-  (d': B)
-  (i: nat),
-  List.nth i (cast_list l Heq) d' = 
-    scast Heq (List.nth i l (scast (Logic.eq_sym Heq) d')).
-Proof.
-  intros. subst. reflexivity.
-Qed. 
-
 
 (*Cast an [arg_list] - here we use a type with decidable equality*)
 Definition cast_arg_list {domain: Types.sort -> Set} {l1 l2}
@@ -1327,14 +1269,13 @@ Proof.
     subst; try solve[inversion H1]. clear H1.
   rewrite sigma_cons. f_equal.
   assert (ts_args ts = m_params m). {
-    subst ts. apply (@adt_args gamma gamma_valid).
-    unfold adt_mut_in_ctx. split; auto.
+    subst ts. apply (@adt_args gamma gamma_valid); auto.
     apply In_in_bool. apply fin_nth_in.
   }
   rewrite H.
-  rewrite <- map_comp. apply subst_same. 
+  rewrite <- map_comp. apply map_ty_subst_var_sort. 
   rewrite srts_len; reflexivity.
-  clear -m. (*TODO: separate lemma*)
+  clear -m.
   destruct m; simpl. apply /nodup_NoDup. apply m_nodup.
 Qed.
 
@@ -1376,13 +1317,11 @@ Definition args_to_ind_base (a: arg_list domain sigma_args) :
   an [adt_rep] to an element of the appropriate domain. We need
   a few lemmas to do this, mainly about substitution. *)
 
-(*TODO: where to put?*)
+(*Substitute fun/pred symbol args with sorts for its parameters*)
 Definition sym_sigma_args (sym: fpsym) (s: list Types.sort) : list Types.sort :=
   ty_subst_list_s (s_params sym) s (s_args sym).
-(*Definition funsym_sigma_args (f: funsym) (s: list Types.sort) : list Types.sort :=
-  ty_subst_list_s (s_params f) s (s_args f).*)
 
-(*More casting we need: TODO: should it go here or elsewhere?*)
+(*And likewise for function return type*)
 Definition funsym_sigma_ret (f: funsym) (s: list Types.sort) : Types.sort :=
   ty_subst_s (s_params f) s (f_ret f).
 
@@ -1393,7 +1332,7 @@ Proof.
   apply sort_inj; simpl.
   rewrite (adt_constr_ret gamma_valid m_in t_in); auto.
   simpl. f_equal.
-  rewrite <- subst_same at 1.
+  rewrite <- map_ty_subst_var_sort at 1.
   2: symmetry; apply srts_len.
   rewrite -!map_comp.
   apply map_ext_in_iff.
@@ -1503,7 +1442,7 @@ Proof.
     {
       subst. 
       rewrite get_idx_correct. f_equal. symmetry.
-      apply (adt_args gamma_valid). split; assumption.
+      apply (adt_args gamma_valid); auto.
     }
     rewrite get_idx_correct in H.
     destruct (list_eq_dec vty_eq_dec l0 [seq vty_var i | i <- ts_args (adt_name a)]); try contradiction.
@@ -1515,8 +1454,8 @@ Lemma split_arg_func_lemma2 (ts: typesym) l0
     [seq sigma i | i <- l0] = srts.
 Proof.
   unfold sigma. subst. rewrite -map_comp. unfold "\o".
-    apply subst_same. rewrite srts_len; auto.
-    clear -m. (*TODO: separate lemma*)
+    apply map_ty_subst_var_sort. rewrite srts_len; auto.
+    clear -m.
     destruct m; simpl. apply /nodup_NoDup. apply m_nodup.
 Qed.
 
@@ -1584,8 +1523,8 @@ Proof.
       *  subst. exfalso. apply n. rewrite get_idx_fin. reflexivity.
         apply (adts_nodups gamma_valid). apply m_in.
     + (*contradicts uniformity*)
-      subst. exfalso. apply n. f_equal. symmetry. apply (adt_args gamma_valid).
-      split; auto.
+      subst. exfalso. apply n. f_equal. symmetry. 
+      apply (adt_args gamma_valid); auto.
   - subst. destruct (finite_eq_dec (Datatypes.length adts) x
       (get_idx adt_dec x0 (typs m) i)).
     + subst. exfalso. apply n. rewrite get_idx_correct. reflexivity.
@@ -1859,8 +1798,8 @@ Proof.
             destruct (list_eq_dec vty_eq_dec l0
             [seq vty_var i | i <- ts_args (adt_name (fin_nth adts x'))]).
             2 : {
-              exfalso. apply n. subst. f_equal. symmetry. apply (adt_args gamma_valid).
-              split; auto.
+              exfalso. apply n. subst. f_equal. symmetry. 
+              apply (adt_args gamma_valid); auto.
             }
             simpl. unfold get_ind_arg. intros Hf.
             rewrite cast_list_cons.
@@ -1959,7 +1898,6 @@ Definition constr_ind_to_args
   args_to_constr_base a = b /\
   args_to_ind_base a = i}.
 Proof.
-  (*TODO: separate lemma?*)
   assert (Hunif: uniform_list m (s_args c)). {
     unfold uniform in m_unif.
     assert (Hu:=m_unif). unfold is_true in Hu.
@@ -2153,7 +2091,6 @@ Proof.
           ++ apply H.
           ++ clear -Hfeq H2. intros x.
              specialize (Hfeq x).
-             (*TODO: we need some other info I think*)
              unfold args_to_ind_base_aux in *.
              apply val_inj; simpl.
              apply (f_equal val) in Hfeq; simpl in Hfeq.
@@ -2224,7 +2161,6 @@ Proof.
   assert (cast_arg_list (sigma_args_eq f f_in) a1 =
   (cast_arg_list (sigma_args_eq f f_in) a2)). {
     eapply args_to_base_inj. 2: apply Hb. 2: apply Hi.
-    (*TODO: separate lemma*)
     unfold uniform in m_unif.
     assert (Hu:=m_unif). unfold is_true in Hu.
     rewrite forallb_forall in Hu.
@@ -2919,8 +2855,8 @@ Qed.
   Extending this to deal with more sophisticated calls is non-trivial, and can
   quickly extend into full-blown nonuniform recursion. For now, we assume this
   restriction.
-  TODO: is this actually restrictive, ie: can we always transform into something
-  of this form? Maybe not because of non-uniformity, take for example:
+  Note: this is actually restrictive; if we don't have this, we could
+  indeed have non uniformity. Take for example:
   type test5 'a 'b =
   Test5 (test6 'a) | Test5' (test6 'b)
   with test6 'a =

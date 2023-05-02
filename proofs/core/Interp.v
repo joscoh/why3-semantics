@@ -392,6 +392,20 @@ Proof.
   destruct (typevar_eq_dec x a); subst; auto; contradiction.
 Qed.
 
+Lemma map_vars_srts vt params srts: 
+length srts = length params ->
+vt_eq vt params srts ->
+map (v_subst vt) (map vty_var params) = srts.
+Proof.
+  intros srts_len vt_eq.
+  rewrite map_map. apply list_eq_ext'; rewrite map_length; auto;
+  intros n d Hn.
+  rewrite map_nth_inbound with(d2:= EmptyString); auto.
+  apply sort_inj. simpl.
+  rewrite vt_eq; auto. erewrite nth_indep; auto. 
+  rewrite srts_len; auto. 
+Qed.
+
 Fixpoint ty_subst' params args (v: vty) : vty :=
   match v with
   | vty_int => vty_int
@@ -402,6 +416,30 @@ Fixpoint ty_subst' params args (v: vty) : vty :=
     vty_cons ts (map (ty_subst' params args) vs)
   end.
 
+(*We need ty_subst' because in var case, v_subst chooses
+  a default instead of leaving as is*)
+Lemma v_subst_vt_with_args vt params args (v: vty):
+  length params = length args ->
+  NoDup params ->
+  v_subst (vt_with_args vt params args) v =
+  v_subst vt (ty_subst' params (sorts_to_tys args) v).
+Proof.
+  intros Hlen Hparams. apply sort_inj. simpl.
+  induction v; simpl; auto.
+  - destruct (in_dec typevar_eq_dec v params).
+    + destruct (In_nth _ _ EmptyString i) as [j [Hj Hv]]; subst.
+      rewrite vt_with_args_nth; auto. unfold ty_subst. simpl.
+      rewrite ty_subst_fun_nth with(s:=s_int);
+      unfold sorts_to_tys; auto; [|rewrite map_length]; auto.
+      rewrite map_nth_inbound with(d2:=s_int); [| rewrite <- Hlen]; auto.
+      rewrite <- subst_is_sort_eq; auto.
+      destruct (nth j args s_int); auto.
+    + rewrite vt_with_args_notin; auto.
+  - f_equal. apply list_eq_ext'; rewrite !map_length; auto.
+    intros n d Hn. rewrite !map_nth_inbound with (d2:=vty_int); auto.
+    rewrite Forall_forall in H. apply H. apply nth_In. auto.
+    rewrite map_length; auto.
+Qed.
 
 (*Get new valuation for [vt_with_args]*)
 Definition upd_vv_args pd (vt: val_typevar) (vv: val_vars pd vt)
@@ -411,120 +449,12 @@ Definition upd_vv_args pd (vt: val_typevar) (vv: val_vars pd vt)
   val_vars pd (vt_with_args vt params args).
   unfold val_vars.
   intros Hlen Hparams. unfold val_vars in vv.
-  (*TODO: separate lemma*)
-  (*Hmm this is not quite true because in var case, v_subst chooses
-    a default instead of leaving as is*)
-  assert (forall (v: vty), v_subst (vt_with_args vt params args) v =
-    v_subst vt (ty_subst' params (sorts_to_tys args) v)). {
-    intros. apply sort_inj. simpl.
-    induction v; simpl; auto.
-    - destruct (in_dec typevar_eq_dec v params).
-      + destruct (In_nth _ _ EmptyString i) as [j [Hj Hv]]; subst.
-        rewrite vt_with_args_nth; auto. unfold ty_subst. simpl.
-        rewrite ty_subst_fun_nth with(s:=s_int);
-        unfold sorts_to_tys; auto; [|rewrite map_length]; auto.
-        rewrite map_nth_inbound with(d2:=s_int); [| rewrite <- Hlen]; auto.
-        rewrite <- subst_is_sort_eq; auto.
-        destruct (nth j args s_int); auto.
-      + rewrite vt_with_args_notin; auto.
-    - f_equal. apply list_eq_ext'; rewrite !map_length; auto.
-      intros n d Hn. rewrite !map_nth_inbound with (d2:=vty_int); auto.
-      rewrite Forall_forall in H. apply H. apply nth_In. auto.
-      rewrite map_length; auto.
-  }
-  intros x. rewrite H.
+  intros x. rewrite (v_subst_vt_with_args vt params args); 
+    [| exact Hlen | exact Hparams].
   (*Is this a hack? Kind of*) apply (vv 
     (fst x, (ty_subst' params (sorts_to_tys args) (snd x)))).
 Defined.
 
 End VTUtil.
 
-(* Interpretation, Satisfiability, Validity *)
-(*
-Section Logic.
-
-TODO: delete once we have full interp
-
-(*A full interpretation is consistent with recursive and inductive definitions*)
-Definition full_interp (p_dom: pi_dom) (p_fun: pi_funpred p_dom) : Prop :=
-  (*For each function f(alpha)(x) = t, 
-    [[f(s)]](y) = [[t]]_v, where v maps alpha -> s and x -> y*)
-  (*Note that y_i has type [[sigma(tau_i)]], where sigma maps alpha -> s*)
-  (forall (f: funsym) (vs: list vsymbol) (t: term) (s: list sort) 
-    (Hs: length (s_params f) = length s)
-    (Halls: forall x, In x s -> valid_type sigma x),
-    In (f, vs, t) (fundefs_of_context gamma) ->
-   
-    forall ts,
-    let vt := make_val_typevar (s_params f) s 
-      Hs Halls in
-    let vv := make_val_vars p_dom (s_params f) s 
-    (funsym_sigma_args f s) Hs Halls vs ts in
-      term_interp p_dom p_fun vt vv t (s_ret f) ((funs p_dom p_fun) f s ts)) /\
-  (*For each predicate p(alpha)(x) = f, 
-    [[p(s)]](y) = [[f]]_v, where v maps alpha -> s and x -> y*)
-  (forall (pd: predsym) (vs: list vsymbol) (f: formula) (s: list sort)
-    (Hs: length (p_params pd) = length s)
-    (Halls: forall x, In x s -> valid_type sigma x),
-    In (pd, vs, f) (preddefs_of_context gamma) ->
-    
-    forall ts,
-    let vt := make_val_typevar (p_params pd) s 
-      Hs Halls in
-    let vv := make_val_vars p_dom (p_params pd) s 
-      (predsym_sigma_args pd s) Hs Halls vs ts in
-      formula_interp p_dom p_fun vt vv nil nil f ((preds p_dom p_fun) pd s ts) /\
-
-  (*Inductive preds: for p(alpha) = f1 | f2 | ... | fn, 
-    [[p(s)]] is the least predicate such that [[f_i]]_v holds where v maps
-    alpha to s*)
-  (forall (pd: predsym) (lf: list formula) (s: list sort) 
-    (vt: val_typevar) (vv: val_vars p_dom vt)
-    (bs: list bool) (ts: list term) b,
-    In (pd, lf) (indpreds_of_context gamma) ->
-    Forall (fun x => (v_typevar vt) (fst x) = (snd x)) (combine (p_params pd) s) ->
-
-      (*All of the constructor interpretations imply [[p]](ts)*)
-      Forall (fun x => formula_interp p_dom p_fun vt vv nil nil (fst x) (snd x))
-        (combine lf bs) /\
-      formula_interp p_dom p_fun vt vv nil nil (Fpred pd (sorts_to_tys s) ts) b /\
-      (*must be case that all f_i's together imply b*)
-      implb (fold_right andb true bs) b /\
-
-      (*this is the least predicate such that the constructors hold*)
-      forall (b': bool), 
-        implb (fold_right andb true bs) b' -> implb b b')
-  ).
-
-Definition closed (f: formula) : Prop := closed_formula f /\ valid_formula sigma f.
-
-Definition interp : Type := {pd: pi_dom & {pf: pi_funpred pd | full_interp pd pf}}.
-
-Coercion get_pi_dom (i: interp) : pi_dom := projT1 i.
-Coercion get_pi_funpred (i: interp) : pi_funpred i :=
-  proj1_sig (projT2 i).
-
-Definition satisfied_f (i: interp) (f: formula) : Prop :=
-  closed f /\ forall vt vv, formula_interp i i vt vv nil nil f true.
-
-Definition satisfied_l (i: interp) (l: list formula) : Prop :=
-  Forall (satisfied_f i) l.
-
-Definition sat_f (f: formula) :=
-  exists i, satisfied_f i f.
-    
-Definition sat_l (l: list formula) :=
-  exists i, satisfied_l i l.
-
-Definition valid_f (f: formula) :=
-  forall i, satisfied_f i f.
-
-Definition valid_l (l: list formula) :=
-  forall i, satisfied_l i l.
-
-Definition log_conseq (l: list formula) (f: formula) :=
-  forall i, satisfied_l i l -> satisfied_f i f.
-
-End Logic.
-*)
 End Interp.

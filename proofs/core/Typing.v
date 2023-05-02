@@ -1,20 +1,12 @@
 Require Export Vars.
+Require Export Context.
 Set Bullet Behavior "Strict Subproofs".
 
 (** Typechecking **)
 
-(*Signature*)
-(*
-Record sig :=
-  {
-    sig_t : list typesym;
-    sig_f: list funsym;
-    sig_p: list predsym
-  }.*)
-
 (* Typing rules for types *)
 
-(*NOTE (TODO): paper does not include vt_var case. This means
+(*NOTE: paper does not include vt_var case. This means
   that no types with type variables can ever be valid.
   Later, we rule out expressions with unbound type vars*)
 Inductive valid_type : context -> vty -> Prop :=
@@ -93,7 +85,7 @@ Inductive term_has_type: context -> term -> vty -> Prop :=
     term_has_type s t2 ty2 ->
     term_has_type s (Tlet t1 x t2) ty2
   | T_If: forall s f t1 t2 ty,
-    valid_formula s f ->
+    formula_typed s f ->
     term_has_type s t1 ty ->
     term_has_type s t2 ty ->
     term_has_type s (Tif f t1 t2) ty
@@ -105,38 +97,32 @@ Inductive term_has_type: context -> term -> vty -> Prop :=
     term_has_type s tm ty1 ->
     (forall x, In x ps -> pattern_has_type s (fst x) ty1) ->
     (forall x, In x ps -> term_has_type s (snd x) ty2) ->
-    (*Makes things MUCH simpler to include this - TODO: is this a problem?
-    If not, need to prove by knowing that pattern matching exhaustive, so
-    nonempty, so can take 1st element. But then we need a context
-    and additional hypotheses in semantics.*)
-    (*valid_type s ty2 ->*)
     (*need this to ensure that typing is decidable*)
     negb (null ps) ->
     term_has_type s (Tmatch tm ty1 ps) ty2
   | T_eps: forall s x f,
-    (*TODO: is this the right typing rule?*)
-    valid_formula s f ->
+    formula_typed s f ->
     valid_type s (snd x) ->
     term_has_type s (Teps f x) (snd x)
 
 
 (* Typing rules for formulas *)
-with valid_formula: context -> formula -> Prop :=
+with formula_typed: context -> formula -> Prop :=
   | F_True: forall s,
-    valid_formula s Ftrue
+    formula_typed s Ftrue
   | F_False: forall s,
-    valid_formula s Ffalse
+    formula_typed s Ffalse
   | F_Binop: forall s b f1 f2,
-    valid_formula s f1 ->
-    valid_formula s f2 ->
-    valid_formula s (Fbinop b f1 f2)
+    formula_typed s f1 ->
+    formula_typed s f2 ->
+    formula_typed s (Fbinop b f1 f2)
   | F_Not: forall s f,
-    valid_formula s f ->
-    valid_formula s (Fnot f)
+    formula_typed s f ->
+    formula_typed s (Fnot f)
   | F_Quant: forall s q x f,
     valid_type s (snd x) ->
-    valid_formula s f ->
-    valid_formula s (Fquant q x f)
+    formula_typed s f ->
+    formula_typed s (Fquant q x f)
   | F_Pred: forall s (params: list vty) (tms: list term) (p: predsym),
     (*Very similar to function case*)
     In p (sig_p s) ->
@@ -145,62 +131,38 @@ with valid_formula: context -> formula -> Prop :=
     length params = length (s_params p) ->
     Forall (fun x => term_has_type s (fst x) (snd x))
       (combine tms (map (ty_subst (s_params p) params) (s_args p))) ->
-    valid_formula s (Fpred p params tms)
+    formula_typed s (Fpred p params tms)
   | F_Let: forall s t x f,
     term_has_type s t (snd x) ->
-    valid_formula s f ->
-    valid_formula s (Flet t x f)
+    formula_typed s f ->
+    formula_typed s (Flet t x f)
   | F_If: forall s f1 f2 f3,
-    valid_formula s f1 ->
-    valid_formula s f2 ->
-    valid_formula s f3 ->
-    valid_formula s (Fif f1 f2 f3)
+    formula_typed s f1 ->
+    formula_typed s f2 ->
+    formula_typed s f3 ->
+    formula_typed s (Fif f1 f2 f3)
   | F_Eq: forall s ty t1 t2,
     term_has_type s t1 ty ->
     term_has_type s t2 ty ->
-    valid_formula s (Feq ty t1 t2)
+    formula_typed s (Feq ty t1 t2)
   | F_Match: forall s tm ty (ps: list (pattern * formula)),
     (exists a m args, mut_in_ctx m s /\
     adt_in_mut a m /\
     ty = vty_cons (adt_name a) args) ->
     term_has_type s tm ty ->
     (forall x, In x ps -> pattern_has_type s (fst x) ty) ->
-    (forall x, In x ps -> valid_formula s (snd x)) ->
+    (forall x, In x ps -> formula_typed s (snd x)) ->
     (*See comment in term*)
     negb (null ps) ->
-    valid_formula s (Fmatch tm ty ps).
+    formula_typed s (Fmatch tm ty ps).
 (*
 Notation "s '|-' t ':' ty" := (term_has_type s t ty) (at level 40).
-Notation "s '|-' f" := (valid_formula s f) (at level 40).*)
+Notation "s '|-' f" := (formula_typed s f) (at level 40).*)
 
 Lemma bool_dec: forall {A: Type} (f: A -> bool),
   (forall x : A, {is_true (f x)} + {~ is_true (f x)}).
 Proof.
   intros A f x. destruct (f x) eqn : Hfx; auto.
-Qed.
-
-(*First, try this: TODO move*)
-Lemma fun_ty_inversion: forall s (f: funsym) (vs: list vty) (tms: list term) ty_ret,
-  term_has_type s (Tfun f vs tms) ty_ret ->
-  In f (sig_f s) /\ Forall (valid_type s) vs /\
-  length tms = length (s_args f) /\
-  length vs = length (s_params f) /\
-  Forall (fun x => term_has_type s (fst x) (snd x)) 
-    (combine tms (map (ty_subst (s_params f) vs) (s_args f))) /\
-  ty_ret = ty_subst (s_params f) vs (f_ret f).
-Proof.
-  intros. inversion H; subst; repeat split; auto.
-Qed.
-
-Lemma pred_ty_inversion: forall s (p: predsym) (vs: list vty) (tms: list term),
-  valid_formula s (Fpred p vs tms) ->
-  In p (sig_p s) /\ Forall (valid_type s) vs /\
-  length tms = length (s_args p) /\
-  length vs = length (s_params p) /\
-  Forall (fun x => term_has_type s (fst x) (snd x)) 
-    (combine tms (map (ty_subst (s_params p) vs) (s_args p))).
-Proof.
-  intros. inversion H; subst; repeat split; auto.
 Qed.
 
 Lemma ty_subst_fun_cases: forall params tys d v,
@@ -309,63 +271,6 @@ Section Inhab.
 
 Variable gamma: context.
 
-(*TODO: move this somewhere (contextUtils?)*)
-Definition find_ts_in_ctx (ts: typesym) : option (mut_adt * alg_datatype) :=
-  fold_right (fun m acc => 
-    match (find_ts_in_mut ts m) with
-    | Some a => Some (m, a)
-    | None => acc
-    end) None (mut_of_context gamma).
-
-(*Weaker specs - no well-formed context*)
-Lemma find_ts_in_ctx_none (ts: typesym):
-  reflect (forall (a: alg_datatype) (m: mut_adt),
-    mut_in_ctx m gamma -> adt_in_mut a m ->
-    adt_name a <> ts) (negb (ssrbool.isSome (find_ts_in_ctx ts))).
-Proof.
-  unfold find_ts_in_ctx, mut_in_ctx.
-  induction (mut_of_context gamma); simpl.
-  - apply ReflectT. intros a m H; inversion H.
-  - destruct (find_ts_in_mut ts a) eqn : Hinmut; simpl.
-    + apply ReflectF. intro C.
-      apply find_ts_in_mut_some in Hinmut.
-      destruct Hinmut. subst. apply (C a0 a); auto.
-      rewrite eq_dec_refl; auto. 
-    + rewrite find_ts_in_mut_none in Hinmut. 
-      destruct IHl.
-      * apply ReflectT. intros.
-        destruct (mut_adt_dec m a); simpl in H; subst.
-        apply (Hinmut _ H0); auto.
-        apply (n _ m); auto.
-      * apply ReflectF. intros C.
-        apply n. intros a' m Hin. apply C. 
-        rewrite Hin, orb_true_r. auto.
-Qed.
-
-Lemma find_ts_in_ctx_none_iff (ts: typesym):
-  (forall (a: alg_datatype) (m: mut_adt),
-    mut_in_ctx m gamma -> adt_in_mut a m ->
-    adt_name a <> ts) <-> find_ts_in_ctx ts = None.
-Proof.
-  rewrite (reflect_iff _ _ (find_ts_in_ctx_none ts)).
-  destruct (find_ts_in_ctx ts); simpl; split; intros; auto; discriminate.
-Qed.
-
-Lemma find_ts_in_ctx_some (ts: typesym) m a:
-  find_ts_in_ctx ts = Some (m, a) ->
-  mut_in_ctx m gamma /\ adt_in_mut a m /\
-  ts = adt_name a.
-Proof.
-  unfold find_ts_in_ctx, mut_in_ctx.
-  induction (mut_of_context gamma); simpl; auto; intros; try discriminate.
-  destruct (find_ts_in_mut ts a0) eqn : Hfind.
-  - inversion H; subst.
-    apply find_ts_in_mut_some in Hfind. destruct_all.
-    rewrite eq_dec_refl; auto.
-  - apply IHl in H. destruct_all; subst. split; auto.
-    rewrite H, orb_true_r; auto.
-Qed.
-
 (*We include a slightly different check than why3's, which is
   very difficult to prove correct.
   The difference occurs in the case when we want to check if
@@ -392,7 +297,7 @@ match n with
 | S(n') =>
   in_dec typesym_eq_dec ts (sig_t gamma) && 
   negb (in_dec typesym_eq_dec ts seen_typesyms) &&
-  match (find_ts_in_ctx ts) with
+  match (find_ts_in_ctx gamma ts) with
   | None => true
   | Some (m, a) =>
     let constrs := adt_constr_list a in
@@ -499,7 +404,7 @@ match n with
 | S(n') =>
   in_dec typesym_eq_dec ts (sig_t gamma) && 
   negb (in_dec typesym_eq_dec ts seen_typesyms) &&
-  match (find_ts_in_ctx ts) with
+  match (find_ts_in_ctx gamma ts) with
   | None => true
   | Some (m, a) =>
     let constrs := adt_constr_list a in
@@ -512,7 +417,7 @@ intros. unfold typesym_inhab_fun.
 destruct n; try reflexivity.
 destruct (in_dec typesym_eq_dec ts (sig_t gamma)); try reflexivity.
 destruct (in_dec typesym_eq_dec ts seen_typesyms); try reflexivity; simpl.
-destruct (find_ts_in_ctx ts) eqn : Hcon; try reflexivity.
+destruct (find_ts_in_ctx gamma ts) eqn : Hcon; try reflexivity.
 destruct p as [m a].
 destruct (null (adt_constr_list a)) eqn : Hnull; try reflexivity;
 simpl.
@@ -548,7 +453,7 @@ Definition type_inhab (ty: vty) : Prop :=
 Lemma vty_inhab_fun_aux (v: vty)
   (Habs: forall ts vs,
     In ts (sig_t gamma) ->
-    find_ts_in_ctx ts = None ->
+    find_ts_in_ctx gamma ts = None ->
     length vs = length (ts_args ts) ->
     Forall (valid_type gamma) vs ->
     Forall type_inhab vs ->
@@ -560,7 +465,7 @@ Lemma vty_inhab_fun_aux (v: vty)
     sublist seen (sig_t gamma) ->*)
     (forall (ts: typesym) (m: mut_adt) (a: alg_datatype),
     typesym_inhab_fun seen ts n ->
-    find_ts_in_ctx ts = Some (m, a) ->
+    find_ts_in_ctx gamma ts = Some (m, a) ->
     exists c : funsym,
       constr_in_adt c a /\
       (forall vs : list vty,
@@ -583,7 +488,7 @@ Proof.
   - bool_hyps.
     rewrite forallb_forall in H3.
     inversion H; subst.
-    destruct (find_ts_in_ctx tsym) as [p |] eqn : Hts.
+    destruct (find_ts_in_ctx gamma tsym) as [p |] eqn : Hts.
     2 : { apply Habs; auto. rewrite map_length; auto.
       rewrite Forall_map, Forall_forall. intros.
       apply valid_type_subst; auto. 
@@ -612,53 +517,6 @@ Proof.
     apply Hclosed; auto.
 Qed.
 
-(*TODO: move/combine with [map_vars_srts]*)
-Lemma map_ty_subst_same: forall params tys,
-  NoDup params ->
-  length params = length tys ->
-  map (ty_subst params tys) (map vty_var params) = tys.
-Proof.
-  intros params tys Hnodup Hlen.
-  unfold ty_subst.
-  rewrite !map_map. apply list_eq_ext'; rewrite map_length; auto.
-  intros n d Hn.
-  rewrite (map_nth_inbound) with(d2:=EmptyString); auto.
-  simpl. rewrite ty_subst_fun_nth with(s:=s_int); auto.
-  apply nth_indep. lia.
-Qed. 
-
-(*TODO: move prob*)
-
-Lemma constr_in_adt_def a m f:
-  adt_in_mut a m ->
-  constr_in_adt f a ->
-  In f (funsyms_of_mut m).
-Proof.
-  intros a_in c_in.
-  unfold funsyms_of_mut.
-  rewrite in_concat. exists (adt_constr_list a).
-  apply in_bool_In in a_in.
-  apply in_bool_ne_In in c_in.
-  split; auto. rewrite in_map_iff. exists a; auto.
-Qed.
-
-(*TODO: move*)
-Lemma constr_in_sig_f m a c:
-  mut_in_ctx m gamma ->
-  adt_in_mut a m ->
-  constr_in_adt c a ->
-  In c (sig_f gamma).
-Proof.
-  intros m_in a_in c_in.
-  unfold sig_f.
-  rewrite in_concat.
-  exists (funsyms_of_mut m).
-  split.
-  - rewrite in_map_iff. exists (datatype_def m); split; auto.
-    apply mut_in_ctx_eq2; auto.
-  - apply (constr_in_adt_def a m c); auto.
-Qed. 
-
 (*Now we prove that [typesym_inhab_fun] shows that ADTs
   are inhabited. We need a very strong lemma: we can find
   a constructor such that for any list vs of inhabited types,
@@ -679,7 +537,7 @@ Theorem inhab_fun_inhab_aux (ts: typesym)
     valid_type gamma x)
   (Habs: forall ts vs,
     In ts (sig_t gamma) ->
-    find_ts_in_ctx ts = None ->
+    find_ts_in_ctx gamma ts = None ->
     length vs = length (ts_args ts) ->
     Forall (valid_type gamma) vs ->
     Forall type_inhab vs ->
@@ -687,7 +545,7 @@ Theorem inhab_fun_inhab_aux (ts: typesym)
   forall n seen,
     typesym_inhab_fun seen ts n ->
     forall m a,
-    find_ts_in_ctx ts = Some (m, a) ->
+    find_ts_in_ctx gamma ts = Some (m, a) ->
     exists (c: funsym),
       constr_in_adt c a /\
       forall vs,
@@ -705,7 +563,7 @@ Proof.
   - rewrite typesym_inhab_fun_eq in H.
     bool_hyps.
     repeat simpl_sumbool.
-    destruct (find_ts_in_ctx ts) as [p|] eqn : Hts; [|discriminate].
+    destruct (find_ts_in_ctx gamma ts) as [p|] eqn : Hts; [|discriminate].
     inversion H0; subst. clear H0.
     bool_hyps.
     apply existsb_exists in H0.
@@ -776,12 +634,12 @@ Proof.
     assert (vty_cons a_name vs = ty_subst (s_params c) vs (f_ret c)). {
       rewrite Hcret, Hcparams.
       rewrite ty_subst_cons. f_equal.
-      rewrite map_ty_subst_same; auto.
+      rewrite map_ty_subst_var; auto.
       rewrite <- Hcparams. apply s_params_Nodup.
     }
     rewrite H2.
     apply T_Fun; auto.
-    + apply (constr_in_sig_f m _ c H0 H1); auto. 
+    + apply (constr_in_sig_f _ m _ c H0 H1); auto. 
     + apply (Hconstrargs m _ c _ H0 H1); simpl; auto.
     + rewrite Hcparams; lia.
     + rewrite Forall_forall; intros x.
@@ -812,7 +670,7 @@ Theorem typesym_inhab_inhab (ts: typesym)
   symbols applied to inhabited types are inhabited*)
 (Habs: forall ts vs,
   In ts (sig_t gamma) ->
-  find_ts_in_ctx ts = None ->
+  find_ts_in_ctx gamma ts = None ->
   length vs = length (ts_args ts) ->
   Forall (valid_type gamma) vs ->
   Forall type_inhab vs ->
@@ -821,7 +679,7 @@ Theorem typesym_inhab_inhab (ts: typesym)
 typesym_inhab ts ->
 (*Then if ts is an ADT*)
 forall m a,
-  find_ts_in_ctx ts = Some (m, a) ->
+  find_ts_in_ctx gamma ts = Some (m, a) ->
   (*Then, for any valid, inhabited arguments, 
     there is a closed term of this type*)
   forall vs,
@@ -843,10 +701,6 @@ Proof.
   rewrite <- Forall_forall. revert Hclosed. apply Forall_impl.
   intros y. rewrite null_nil. auto.
 Qed.
-
-(*TODO: prove that all ADTs inhabited in any
-  valid context (so we can remove assumptions and use
-  of [find_ts_in_ctx])*)
 
 End InhabCorrect.
 
@@ -945,8 +799,6 @@ End PosTypes.
   we allowed non-uniformity*)
 Section UniformADT.
 
-
-(*TODO: see where to add assumption, maybe prop version*)
 Definition uniform_list (m: mut_adt) (l: list vty) : bool :=
   (forallb (fun v =>
         match v with
@@ -1294,11 +1146,9 @@ Inductive decrease_fun (fs: list fn) (ps: list pn) :
     (*The decreasing argument is a variable in our list of decreasing terms*)
     In x small ->
     nth (sn_idx f_decl) ts tm_d = Tvar x ->
-    (*Uniformity: we must be applying the function uniformly
-      (TODO: make this separate?)*)
+    (*Uniformity: we must be applying the function uniformly*)
     l = map vty_var (s_params f) ->
     (*None of [fs] of [ps] appear in the terms*) 
-    (*TODO: will likely need this to show we can ignore function binding in interp for recursive cases*)
     Forall (fun t => forall f,  In f fs -> negb (funsym_in_tm (fn_sym f) t)) ts ->
     Forall (fun t => forall p, In p ps -> negb (predsym_in_tm (pn_sym p) t)) ts ->
     (*Then this recursive call is valid*)
@@ -1309,7 +1159,7 @@ Inductive decrease_fun (fs: list fn) (ps: list pn) :
     (f: funsym) (l: list vty) (ts: list term),
     ~ In f (map fn_sym fs) ->
     (*In this case, just recursive*)
-    (*TODO: Forall doesn't give ind principle*)
+    (*Forall doesn't give ind principle*)
     (forall t, In t ts -> (decrease_fun fs ps small hd m vs t)) ->
     decrease_fun fs ps small hd m vs (Tfun f l ts)
   (*Pattern match on var - this is how we add new, smaller variables*)
@@ -1317,12 +1167,11 @@ Inductive decrease_fun (fs: list fn) (ps: list pn) :
     (m: mut_adt)
     (vs: list vty) (a: alg_datatype)
     (mvar: vsymbol) (v: vty) (pats: list (pattern * term)),
-    (*TODO: can we only match on a variable?*)
+    (*We can only match on a variable?*)
     (hd = Some mvar) \/ In mvar small ->
     adt_in_mut a m ->
     snd mvar = vty_cons (adt_name a) vs ->
-    (*TODO: don't allow repeated matches on same variable
-      TODO: now we do, makes things easier*)
+    (*Note: we allow repeated matches on the same variable*)
     (forall (x: pattern * term), In x pats ->
       decrease_fun fs ps 
       (*remove pat_fv's (bound), add back constr vars (smaller)*)
@@ -1379,8 +1228,7 @@ with decrease_pred (fs: list fn) (ps: list pn) :
     (*The decreasing argument must be in our list of decreasing terms*)
     In x small ->
     nth (sn_idx p_decl) ts tm_d = Tvar x ->
-    (*Uniformity: we must be applying the function uniformly
-    (TODO: make this separate?)*)
+    (*Uniformity: we must be applying the function uniformly*)
     l = map vty_var (s_params p) ->
     (*None of [fs] or[ps] appear in the terms*) 
     Forall (fun t => forall f,  In f fs -> negb (funsym_in_tm (fn_sym f) t)) ts ->
@@ -1398,11 +1246,9 @@ with decrease_pred (fs: list fn) (ps: list pn) :
   | Dec_fmatch: forall (small: list vsymbol) (hd: option vsymbol) m vs
     (a: alg_datatype)
     (mvar: vsymbol) (v: vty) (pats: list (pattern * formula)),
-    (*TODO: can we only match on a variable?*)
     hd = Some mvar \/ In mvar small ->
     adt_in_mut a m ->
     snd mvar = vty_cons (adt_name a) vs ->
-    (*TODO: don't allow repeated matches on same variable*)
     (forall x, In x pats -> decrease_pred fs ps 
       (*remove pat_fv's (bound), add back constr vars (smaller)*)
       (union vsymbol_eq_dec (vsyms_in_m m vs (pat_constr_vars m vs (fst x))) 
@@ -1494,7 +1340,6 @@ Proof.
 Qed.
 
 (*We need a default [funpred_def]*)
-(*TODO: shouldn't use id*)
 Definition fd_d : funpred_def :=
   fun_def id_fs nil tm_d.
 
@@ -1515,7 +1360,7 @@ Definition funpred_def_valid_type (fd: funpred_def) : Prop :=
     NoDup (map fst vars) /\
     map snd vars = s_args f (*types of args correct*)
   | pred_def p vars f =>
-    valid_formula gamma f /\
+    formula_typed gamma f /\
     sublist (fmla_fv f) vars /\
     sublist (fmla_type_vars f) (s_params p) /\
     NoDup (map fst vars) /\
@@ -1759,7 +1604,6 @@ Proof.
     + apply (NoDup_map_inv) in H2. auto.
 Qed.
 
-(*TODO: name (term is termination)*)
 (*The condition for termination*)
 Definition funpred_def_term (l: list funpred_def)
   (m: mut_adt) (params: list typevar) (vs: list vty)
@@ -1855,7 +1699,7 @@ Definition indprop_valid_type (i: indpred_def) : Prop :=
   match i with
   | ind_def p lf => Forall (fun f => 
     (*each formula is well-typed*)
-    valid_formula gamma f /\
+    formula_typed gamma f /\
     (*and closed (no free vars)*) 
     closed_formula f /\ 
     (*And has the correct form for an inductive predicate*)
@@ -1900,7 +1744,7 @@ Inductive ind_strictly_positive (ps: list predsym) : formula -> Prop :=
     ind_strictly_positive ps (Fbinop Tor f1 f2)
   | ISP_let: forall (t: term) (x: vsymbol) (f: formula),
     (forall p, In p ps -> negb (predsym_in_tm p t)) ->
-    ind_strictly_positive ps f -> (*TODO: is this too restrictive as well? Think OK*)
+    ind_strictly_positive ps f ->
     ind_strictly_positive ps (Flet t x f)
   | ISP_if: forall f1 f2 f3,
     (*Cannot be in guard because get (essentially), f1 -> f2 /\ ~f1 -> f3*)
@@ -2348,8 +2192,8 @@ Lemma well_typed_expand d gamma t f:
   (forall ty
     (Hty: term_has_type gamma t ty),
     term_has_type (d :: gamma) t ty) /\
-  ( forall (Hty: valid_formula gamma f),
-    valid_formula (d :: gamma) f).
+  ( forall (Hty: formula_typed gamma f),
+    formula_typed (d :: gamma) f).
 Proof.
   revert t f.
   apply term_formula_ind; intros; inversion Hty; subst;
@@ -2400,7 +2244,7 @@ Qed.
 
 Definition term_has_type_expand d gamma t :=
   proj_tm (well_typed_expand d gamma) t.
-Definition valid_formula_expand d gamma f :=
+Definition formula_typed_expand d gamma f :=
   proj_fmla (well_typed_expand d gamma) f.
 
 Lemma funpred_def_valid_expand d gamma f:
@@ -2410,7 +2254,7 @@ Proof.
   unfold funpred_def_valid_type.
   destruct f; intros; destruct_all; split_all; auto.
   - apply term_has_type_expand; auto.
-  - apply valid_formula_expand; auto.
+  - apply formula_typed_expand; auto.
 Qed.
 
 Lemma funpred_def_term_exists_expand d gamma fs:
@@ -2439,7 +2283,7 @@ Lemma indprop_valid_type_expand d gamma i:
 Proof.
   unfold indprop_valid_type. destruct i.
   apply Forall_impl. intros; destruct_all; split_all; auto.
-  apply valid_formula_expand; auto.
+  apply formula_typed_expand; auto.
 Qed.
 
 Lemma indprop_valid_expand d gamma l:
@@ -2470,72 +2314,6 @@ End Expand.
   (which correspond to the old definitions)*)
 Section ContextGenLemmas.
 
-(*TODO: move to syntax*)
-Lemma concrete_in_def_funsym: forall x d,
-  In x (def_concrete_funsyms d) ->
-  In x (funsyms_of_def d).
-Proof.
-  unfold def_concrete_funsyms, funsyms_of_def.
-  intros. destruct d; auto. destruct H.
-Qed.
-
-Lemma concrete_in_def_predsym: forall x d,
-  In x (def_concrete_predsyms d) ->
-  In x (predsyms_of_def d).
-Proof.
-  unfold def_concrete_predsyms, predsyms_of_def.
-  intros. destruct d; auto. destruct H.
-Qed.
-
-Lemma concat_map_sublist {A B: Type} (f1 f2: A -> list B) l:
-  (forall x, In x l -> sublist (f1 x) (f2 x)) ->
-  sublist (concat (map f1 l)) (concat (map f2 l)).
-Proof.
-  unfold sublist; intros Hin x.
-  rewrite !in_concat.
-  intros [l2 [Hinl2 Hinx]].
-  rewrite in_map_iff in Hinl2.
-  destruct Hinl2 as [a [Hfa Hina]]; subst.
-  apply Hin in Hinx; auto.
-  exists (f2 a). split; auto. rewrite in_map_iff.
-  eexists; eauto.
-Qed.
-
-
-(*All concrete defs are in the sig*)
-Lemma concrete_in_sig gamma:
-  Forall (fun t => In t (sig_t gamma)) (typesyms_of_context gamma) /\
-  Forall (fun f => In f (sig_f gamma)) (funsyms_of_context gamma) /\
-  Forall (fun p => In p (sig_p gamma)) (predsyms_of_context gamma).
-Proof.
-  split_all.
-  - rewrite Forall_forall.
-    intros x.
-    unfold typesyms_of_context, sig_t,
-    datatypes_of_context, mutrec_datatypes_of_context, 
-    typesyms_of_def, mut_of_context.
-    rewrite !concat_map, !map_map.
-    rewrite !in_concat; intros [tsl [Hintsl Hinx]].
-    rewrite in_map_iff in Hintsl. exists tsl.
-    destruct Hintsl as [m [Htsl Hinm]]; subst.
-    split; auto.
-    rewrite in_omap_iff in Hinm.
-    rewrite !map_map. rewrite in_map_iff.
-    destruct Hinm as [d [Hind Hd]].
-    exists d.
-    destruct d; inversion Hd; subst. auto.
-  - rewrite Forall_forall.
-    intros x.
-    apply concat_map_sublist.
-    intros. unfold sublist.
-    intros. apply concrete_in_def_funsym; auto.
-  - rewrite Forall_forall.
-    intros x.
-    apply concat_map_sublist.
-    intros. unfold sublist.
-    intros. apply concrete_in_def_predsym; auto.
-Qed. 
-
 (*This lets us reason about the whole context's uniqueness
   instead of having to reason inductively*)
 Lemma wf_context_alt gamma:
@@ -2561,10 +2339,8 @@ Proof.
       revert H9; apply Forall_impl; intros;
       apply wf_predsym_expand; auto.
     + clear -H10 H4 H7.
-      unfold typesyms_of_context, datatypes_of_context,
-      mutrec_datatypes_of_context, typesyms_of_def in *. simpl.
+      unfold typesyms_of_context, typesyms_of_def in *. simpl.
       destruct d; simpl; auto.
-      rewrite map_app, !map_map. 
       rewrite NoDup_app_iff. split_all; auto;
       (*Just need to show that these are disjoint - use previous lemma*)
       intros x Hinx1 Hinx2;
@@ -2621,13 +2397,11 @@ Proof.
     destruct (typs m) eqn : Htyps; [inversion H7 |].
     apply (H3 (adt_name a)); simpl; auto.
     apply H9.
-    unfold typesyms_of_context,
-    datatypes_of_context, mutrec_datatypes_of_context.
-    rewrite concat_map, !map_map.
+    unfold typesyms_of_context.
     rewrite in_concat. exists (map adt_name (typs m)).
     split; auto; [| rewrite in_map_iff; exists a; split; auto;
     rewrite Htyps; simpl; auto].
-    rewrite in_map_iff. exists m. rewrite map_map. split; auto.
+    rewrite in_map_iff. exists m. split; auto.
     apply mut_in_ctx_eq.
     apply mut_in_ctx_eq2. auto.
   - (*function - has either function or predicate symbol*)
@@ -2765,7 +2539,7 @@ Lemma well_typed_funsym_in_sig gamma fs t f:
     (Hty: term_has_type gamma t ty) 
     (Hinfs: funsym_in_tm fs t),
     In fs (sig_f gamma)) /\
-  (forall (Hty: valid_formula gamma f)
+  (forall (Hty: formula_typed gamma f)
     (Hinfs: funsym_in_fmla fs f),
     In fs (sig_f gamma)).
 Proof.
@@ -2825,7 +2599,7 @@ Lemma well_typed_predsym_in_sig gamma ps t f:
     (Hty: term_has_type gamma t ty) 
     (Hinfs: predsym_in_tm ps t),
     In ps (sig_p gamma)) /\
-  (forall (Hty: valid_formula gamma f)
+  (forall (Hty: formula_typed gamma f)
     (Hinfs: predsym_in_fmla ps f),
     In ps (sig_p gamma)).
 Proof.
@@ -2880,9 +2654,9 @@ Definition term_has_type_funsym_in_sig gamma fs t :=
   proj_tm (well_typed_funsym_in_sig gamma fs) t.
 Definition term_has_type_predsym_in_sig gamma ps t :=
   proj_tm (well_typed_predsym_in_sig gamma ps) t.
-Definition valid_formula_funsym_in_sig gamma fs f :=
+Definition formula_typed_funsym_in_sig gamma fs f :=
   proj_fmla (well_typed_funsym_in_sig gamma fs) f.
-Definition valid_formula_predsym_in_sig gamma ps f :=
+Definition formula_typed_predsym_in_sig gamma ps f :=
   proj_fmla (well_typed_predsym_in_sig gamma ps) f.
 
 (*Any funsym or predsym in a def in a valid_context is
@@ -2908,7 +2682,7 @@ Proof.
     unfold funpred_def_valid_type in Hty.
     destruct fd; destruct_all.
     + eapply term_has_type_funsym_in_sig. apply H. auto.
-    + eapply valid_formula_funsym_in_sig. apply H. auto.
+    + eapply formula_typed_funsym_in_sig. apply H. auto.
   - unfold is_true in Hinf. rewrite existsb_exists in Hinf.
     destruct Hinf as [fd [Hinfd Hfd]].
     simpl in Hdefs.
@@ -2926,7 +2700,7 @@ Proof.
     rewrite Forall_forall in Hty.
     specialize (Hty _ Hinfd).
     destruct_all.
-    eapply valid_formula_funsym_in_sig. apply H. apply Hfd.
+    eapply formula_typed_funsym_in_sig. apply H. apply Hfd.
 Qed.
 
 (*Predsym version: TODO: reduce duplication - exactly
@@ -2953,7 +2727,7 @@ Proof.
     unfold funpred_def_valid_type in Hty.
     destruct fd; destruct_all.
     + eapply term_has_type_predsym_in_sig. apply H. auto.
-    + eapply valid_formula_predsym_in_sig. apply H. auto.
+    + eapply formula_typed_predsym_in_sig. apply H. auto.
   - unfold is_true in Hinf. rewrite existsb_exists in Hinf.
     destruct Hinf as [fd [Hinfd Hfd]].
     simpl in Hdefs.
@@ -2971,7 +2745,7 @@ Proof.
     rewrite Forall_forall in Hty.
     specialize (Hty _ Hinfd).
     destruct_all.
-    eapply valid_formula_predsym_in_sig. apply H. apply Hfd.
+    eapply formula_typed_predsym_in_sig. apply H. apply Hfd.
 Qed.
 
 (*And therefore, a valid context is ordered*)
@@ -3016,12 +2790,7 @@ Proof.
   intros m_in1 m_in2 a_in1 a_in2 Heq.
   apply wf_context_alt in gamma_wf.
   destruct gamma_wf as [_ [_ [Hnodup _]]].
-  (*Search wf_context.
-  destruct gamma_wf as [_ [_ [_ [_ [Hnodup _]]]]].*)
-  unfold typesyms_of_context, datatypes_of_context,
-  mutrec_datatypes_of_context in Hnodup.
-  rewrite concat_map in Hnodup.
-  rewrite map_map in Hnodup.
+  unfold typesyms_of_context in Hnodup.
   rewrite NoDup_concat_iff in Hnodup.
   rewrite map_length in Hnodup.
   destruct Hnodup as [_ Hnodup].
@@ -3037,7 +2806,7 @@ Proof.
   exfalso. apply Hnodup; clear Hnodup.
   rewrite !map_nth_inbound with(d2:=m); auto.
   rewrite <- mut_in_ctx_eq in m_in1, m_in2.
-  rewrite Hith, Hjth, !map_map; simpl; split;
+  rewrite Hith, Hjth; simpl; split; unfold typesyms_of_mut;
   rewrite in_map_iff; [exists a1 | exists a2]; split; auto;
   apply (in_bool_In adt_dec); auto.
 Qed.
@@ -3089,7 +2858,6 @@ Proof.
   specialize (Hwf (funsyms_of_rec l)).
   prove_hyp Hwf.
   { rewrite in_map_iff. exists (recursive_def l); auto. }
-  (*TODO: separate lemma or induction?*)
   simpl in Hwf.
   clear -Hwf Hin1 Hin2.
   induction l; [inversion Hin1 |].
@@ -3128,7 +2896,6 @@ Proof.
   specialize (Hwf (predsyms_of_rec l)).
   prove_hyp Hwf.
   { rewrite in_map_iff. exists (recursive_def l); auto. }
-  (*TODO: separate lemma or induction?*)
   clear -Hwf Hin1 Hin2.
   induction l; [inversion Hin1 |].
   simpl in Hin1, Hin2.
@@ -3156,34 +2923,6 @@ Context {gamma: context} (gamma_valid: valid_context gamma).
 
 (*These lemmas all have the same form: keep applying Forall_forall, in_map_iff,
   and similar, until we get what we want. Here we automate them*)
-(*Ltac valid_context_tac :=
-  let Hwf := fresh "Hwf" in
-  let Hadts := fresh "Hadts" in
-  destruct gamma_valid as [Hwf Hadts];
-  rewrite Forall_forall in Hadts;
-  unfold adt_in_mut, constr_in_adt in *;
-  repeat match goal with
-  | Hin: is_true (mut_in_ctx ?m ?l) |- _ => 
-    rewrite mut_in_ctx_eq2 in Hin
-  | Hin: is_true (in_bool adt_dec ?x ?l) |- _ =>
-    let Hinx := fresh "Hin" in
-    assert (Hinx: In x l) by (apply (in_bool_In _  _ _ Hin));
-    clear Hin
-  | Hin: In ?x (?p gamma) |- _ => unfold p in Hin
-  | Hin: In ?x (concat ?l) |- _ => rewrite in_concat in Hin
-  | Hex: exists x, ?p |- _ => destruct Hex; subst
-  | Hconj: ?P /\ ?Q |- _ => destruct Hconj; subst
-  | Hmap: In ?x (map ?f ?l) |- _ => rewrite in_map_iff in Hmap
-  | Hgam: In ?x gamma |- _ => apply Hadts in Hgam
-  | Hdef: def |- _ => destruct Hdef; simpl in *
-  | Halg: match ?x with | alg_def ts fs => ?p end = ?q |- _ => 
-    destruct x; inversion Halg; subst; clear Halg
-  | Halg: match ?x with | alg_def ts fs => ?p end |- _ => destruct x
-  | Hf: False |- _ => destruct Hf
-  | Hall: Forall ?P ?l |- _ => rewrite Forall_forall in Hall
-  | Hin: In ?x ?l, Hall: forall x : ?t, In x ?l -> ?P |- _ =>
-    specialize (Hall _ Hin)
-  end; auto.*)
 
 Ltac valid_ctx_info :=
   let Hwf := fresh "Hwf" in
@@ -3218,26 +2957,17 @@ Ltac valid_context_tac :=
   destruct_all).
 
 Lemma adt_args: forall {m: mut_adt} {a: alg_datatype}
-  (Hin: adt_mut_in_ctx a m gamma),
+  (*(Hin: adt_mut_in_ctx a m gamma),*)
+  (m_in: mut_in_ctx m gamma)
+  (a_in: adt_in_mut a m),
   ts_args (adt_name a) = m_params m.
 Proof.
-  intros. unfold adt_mut_in_ctx in Hin. destruct Hin.
+  intros.
   valid_ctx_info.
-  rewrite mut_in_ctx_eq2 in H0.
-  unfold adt_in_mut in H.
-  apply in_bool_In in H.
+  rewrite mut_in_ctx_eq2 in m_in.
+  apply in_bool_In in a_in.
   valid_context_tac.
   auto.
-Qed.
-
-(*TODO: move*)
-Lemma constr_in_adt_eq c a:
-  constr_in_adt c a <-> In c (adt_constr_list a).
-Proof.
-  unfold constr_in_adt.
-  rewrite in_bool_ne_equiv.
-  rewrite (reflect_iff _ _ (in_bool_spec funsym_eq_dec _ _)).
-  reflexivity.
 Qed.
 
 Lemma adt_constr_params: forall {m: mut_adt} {a: alg_datatype}
@@ -3279,13 +3009,12 @@ Proof.
   intros. 
   valid_ctx_info.
   clear -Hn1 Hin.
-  unfold typesyms_of_context, datatypes_of_context,
-  mutrec_datatypes_of_context in Hn1.
-  rewrite concat_map, NoDup_concat_iff in Hn1.
+  unfold typesyms_of_context in Hn1.
+  rewrite NoDup_concat_iff in Hn1.
   destruct Hn1 as [Hn _].
-  apply Hn. rewrite !map_map. rewrite in_map_iff.
+  apply Hn. rewrite in_map_iff.
   exists m. split.
-  - rewrite map_map. reflexivity.
+  - reflexivity.
   - apply mut_in_ctx_eq; auto.
 Qed.
 
@@ -3295,40 +3024,6 @@ Lemma adts_nodups: forall {m: mut_adt}
 Proof.
   intros.
   eapply NoDup_map_inv. apply adts_names_nodups. apply Hin.
-Qed.
-
-(*TODO: move - some lemmas about NoDup and concat*)
-
-Lemma NoDup_concat: forall {A: Type}
-  (eq_dec: forall (x y: A), {x = y} + {x <> y})
-{l: list (list A)} 
-  {l1: list A},
-  NoDup (concat l) ->
-  In l1 l ->
-  NoDup l1.
-Proof.
-  intros A eq_dec; induction l; intros; simpl; auto.
-  - destruct H0. 
-  - simpl in H. simpl in H0.
-    rewrite NoDup_app_iff in H.
-    destruct H as [Hna [Hnc [Hina Hinc]]].
-    destruct H0; subst.
-    + assumption.
-    + apply IHl; assumption.
-Qed.
-
-Lemma NoDup_concat': forall {A: Type}
-  (eq_dec: forall (x y: A), {x = y} + {x <> y})
-{l: list (list A)} 
-  {l1: list (list A)} {l2: list A},
-  NoDup (concat l) ->
-  In (concat l1) l ->
-  In l2 l1 ->
-  NoDup l2.
-Proof.
-  intros.
-  assert (NoDup (concat l1)). apply (NoDup_concat eq_dec H H0).
-  apply (NoDup_concat eq_dec H2 H1).
 Qed.
 
 Lemma constrs_nodups: forall {m: mut_adt} {constrs: ne_list funsym}
@@ -3346,7 +3041,7 @@ Proof.
   (map adt_constr_list (typs m))). {
     rewrite in_map_iff. exists a. split; auto.
   }
-  eapply NoDup_concat'. apply funsym_eq_dec. apply Hn2.
+  eapply in_concat_NoDup'. apply funsym_eq_dec. apply Hn2.
   2: apply Hin.
   rewrite in_map_iff. exists (datatype_def m).
   split; auto. apply mut_in_ctx_eq2; auto.
@@ -3362,8 +3057,7 @@ Qed.
 
 (*If a term has a type, that type is well-formed. We need the 
   [valid_pat_fmla] or else we could have an empty pattern*)
-Lemma has_type_valid: forall (*s gamma*) t ty,
-  (*well_typed_term s gamma t ty ->*)
+Lemma has_type_valid: forall t ty,
   term_has_type gamma t ty ->
   valid_type gamma ty.
 Proof.
@@ -3373,8 +3067,6 @@ Proof.
   apply (H3 p); auto. left; auto. 
 Qed.
 
-
-  
 (*All constrs are in [funsym_of_context gamma]*)
 Lemma constrs_in_funsyms: forall {gamma c a m},
   mut_in_ctx m gamma ->
@@ -3411,7 +3103,7 @@ Proof.
   auto.
 Qed.
 
-(*TODO: have similar lemma in IndTypes but for finite version*)
+(*Note: have similar lemma in IndTypes but for finite version*)
 Lemma adt_names_inj' {a1 a2: alg_datatype} {m: mut_adt}:
   adt_in_mut a1 m ->
   adt_in_mut a2 m ->
@@ -3533,6 +3225,34 @@ Proof.
   rewrite !map_nth_inbound with(d2:=def_d); auto.
   rewrite Hl1, Hl2.
   split; apply in_bool_In with(eq_dec:=predsym_eq_dec); auto.
+Qed.
+
+(*And inductive propositions*)
+Lemma indpred_not_twice p l1 l2:
+  In (inductive_def l1) gamma ->
+  In (inductive_def l2) gamma ->
+  pred_in_indpred p (get_indpred l1) ->
+  pred_in_indpred p (get_indpred l2) ->
+  l1 = l2.
+Proof.
+  intros.
+  apply valid_context_wf in gamma_valid.
+  apply wf_context_alt in gamma_valid.
+  destruct gamma_valid as [_ [_ [_ [_ Hnodup]]]].
+  unfold predsyms_of_context in Hnodup.
+  rewrite NoDup_concat_iff in Hnodup.
+  destruct Hnodup as [_ Hn].
+  rewrite map_length in Hn.
+  destruct (In_nth _ _ def_d H) as [i1 [Hi1 Hl1]].
+  destruct (In_nth _ _ def_d H0) as [i2 [Hi2 Hl2]].
+  destruct (Nat.eq_dec i1 i2); subst.
+  {
+    rewrite Hl1 in Hl2. inversion Hl2; auto.
+  }
+  exfalso. apply (Hn _ _ nil p Hi1 Hi2 n).
+  rewrite !map_nth_inbound with(d2:=def_d); auto.
+  rewrite Hl1, Hl2.
+  split; apply pred_in_indpred_iff; auto.
 Qed.
 
 (*A recursive function cannot have the same name as an
@@ -3745,6 +3465,120 @@ Proof.
   auto.
 Qed.
 
+(*Finally, use above and prove that all types in
+  well-typed context are inhabited*)
+
+(*First, one result about [find_ts_in_ctx] - it is None iff
+  the ts is abstract for ts in the signature*)
+Lemma abs_ts_notin (ts: typesym):
+  In ts (sig_t gamma) ->
+  In (abs_type ts) gamma <-> find_ts_in_ctx gamma ts = None.
+Proof.
+  intros Hints.
+  split; intros.
+  - rewrite <- find_ts_in_ctx_none_iff.
+    intros a m m_in a_in.
+    apply not_eq_sym.
+    apply (abs_not_concrete_ty _ H m a); auto.
+  - apply ts_in_cases in Hints.
+    destruct Hints; auto.
+    destruct H0 as [m [a [m_in [a_in Hts]]]]; subst.
+    rewrite <- find_ts_in_ctx_none_iff in H.
+    exfalso. apply (H a m); auto.
+Qed.
+
+(*From our inhabited types results, we know that if all abstract
+  types are assumed to be inhabited when given
+  inhabited arguments, then any valid sort is inhabited*)
+(*Note: it is also the case that if we assume all vars are
+  inhabited, then any valid type is inhabited. Not sure it is
+  worth it to show*)
+Theorem all_sorts_inhab
+  (Habs: forall t,
+    In (abs_type t) gamma ->
+    forall vs,
+      length vs = length (ts_args t) ->
+      Forall (valid_type gamma) vs ->
+      Forall (type_inhab gamma) vs ->
+      type_inhab gamma (vty_cons t vs)):
+  forall (s: sort),
+    valid_type gamma s ->
+    type_inhab gamma s.
+Proof.
+  intros [v Hsort] Hval. simpl in *.
+  revert v Hsort Hval.
+  apply (vty_rect (fun v => 
+    forall (Hsort: is_sort v) (Hval: valid_type gamma v),
+      type_inhab gamma v));
+  intros; inversion Hval; subst.
+  - exists (Tconst (ConstInt 0)).
+    split; auto. constructor.
+  - exists (Tconst (ConstReal (QArith_base.Qmake 0 xH))).
+    split; auto. constructor.
+  - inversion Hsort.
+  - rename tsym into ts. 
+    destruct (find_ts_in_ctx gamma ts) eqn : Hts.
+    2: {
+      apply Habs; auto.
+      - apply abs_ts_notin; auto.
+      - rewrite Forall_forall; auto.
+      - rewrite Forall_forall; intros.
+        apply ForallT_In with(x:=x) in H; auto; [| apply vty_eq_dec].
+        apply H; auto.
+        apply is_sort_cons with(x:=x) in Hsort; auto.
+    }
+    (*constr case from valid context*)
+    assert (Hdefs:=gamma_valid).
+    apply valid_context_defs in Hdefs.
+    destruct p as [m a].
+    assert (Hts':=Hts).
+    apply find_ts_in_ctx_some in Hts.
+    destruct Hts as [m_in [a_in Hts]]; subst.
+    apply mut_in_ctx_eq2 in m_in.
+    rewrite Forall_forall in Hdefs.
+    assert (Hdefs':=Hdefs).
+    specialize (Hdefs _ m_in).
+    simpl in Hdefs.
+    unfold mut_valid in Hdefs.
+    destruct Hdefs as [_ [_ [Hinhab _]]].
+    rewrite Forall_forall in Hinhab.
+    specialize (Hinhab _ (in_bool_In _ _ _ a_in)).
+    unfold adt_inhab in Hinhab.
+    apply typesym_inhab_inhab with(m:=m)(a:=a); auto.
+    + (*All adts in gamma are valid*)
+      intros m' a' m_in' a_in'.
+      apply mut_in_ctx_eq2 in m_in'.
+      specialize (Hdefs' _ m_in').
+      simpl in Hdefs'.
+      unfold mut_valid in Hdefs'.
+      destruct_all.
+      rewrite Forall_forall in H0.
+      apply H0. apply in_bool_In in a_in'; auto.
+    + (*All types in constrs are valid*)
+      intros m' a' c' x m_in' a_in' c_in'.
+      apply mut_in_ctx_eq2 in m_in'.
+      specialize (Hdefs' _ m_in').
+      simpl in Hdefs'.
+      unfold mut_valid in Hdefs'.
+      destruct_all.
+      rewrite Forall_forall in H1.
+      specialize (H1 _ (in_bool_In _ _ _ a_in')).
+      unfold adt_constrs_valid in H1.
+      rewrite Forall_forall in H1.
+      apply constr_in_adt_eq in c_in'.
+      specialize (H1 _ c_in').
+      rewrite Forall_forall in H1; auto.
+    + (*all abstract types inhabited*)
+      intros ts vs' Hints Htsnone Hlenvs Hallinhab.
+      apply Habs; auto.
+      apply abs_ts_notin; auto.
+    + (*From IH*)
+      rewrite Forall_forall; intros.
+      apply ForallT_In with(x:=x) in H; auto; [| apply vty_eq_dec].
+      apply H; auto. apply is_sort_cons with(x:=x) in Hsort; auto.
+    + rewrite Forall_forall; auto.
+Qed.
+
 End ValidContextLemmas.
 
 Section GetADT.
@@ -3856,18 +3690,11 @@ Context (gamma_valid: valid_context gamma).
 Lemma no_adt_name_dups:
   NoDup (map adt_name (concat (map typs (mut_of_context gamma)))).
 Proof.
-  assert (forall g, 
-    (map adt_name (concat (map typs (mut_of_context g)))) =
-  typesyms_of_context g). {
-    induction g; unfold typesyms_of_context in *; simpl; auto.
-    unfold datatypes_of_context in *.
-    destruct a; simpl; auto.
-    rewrite !map_app, IHg. f_equal.
-    rewrite map_map.
-    apply map_ext. intros a. destruct a; reflexivity.
-  }
-  rewrite H. apply valid_context_wf in gamma_valid.
-  apply wf_context_alt in gamma_valid. apply gamma_valid.
+  replace (map adt_name (concat (map typs (mut_of_context gamma)))) with
+    (typesyms_of_context gamma).
+  - apply valid_context_wf, wf_context_alt in gamma_valid.
+    apply gamma_valid.
+  - rewrite concat_map, map_map. reflexivity.
 Qed.
 
 (*The real spec we want: *)
@@ -3910,7 +3737,6 @@ Proof.
         rewrite in_map_iff. exists a. split; auto.
         rewrite in_concat. exists (typs m). split; auto.
         rewrite in_map_iff. exists m; split; auto.
-        (*TODO: automate this or at least fix lemma w args*)
         apply (in_bool_In _ _ _ Ha).
       * apply IHl; auto.
         intros. apply H. right; auto.
@@ -3943,158 +3769,101 @@ Proof.
   intros ty m a vs H Hval.
   apply is_vty_adt_some in H. destruct_all; subst.
   inversion Hval; subst. rewrite H5.
-  f_equal. apply (adt_args gamma_valid). split; auto.
+  f_equal. apply (adt_args gamma_valid); auto.
 Qed.
+
+(*Getting ADT instances*)
+Section GetADTSort.
+
+Definition is_sort_cons_sorts (*(ts: typesym)*) (l: list vty) 
+  (Hall: forall x, In x l -> is_sort x):
+  {s: list sort | sorts_to_tys s = l}.
+Proof.
+  induction l.
+  - apply (exist _ nil). reflexivity.
+  - simpl in Hall.
+    assert (is_sort a). apply Hall. left; auto.
+    assert (forall x : vty, In x l -> is_sort x). {
+      intros. apply Hall; right; auto.
+    }
+    specialize (IHl H0). destruct IHl as [tl Htl].
+    apply (exist _ ((exist _ a H) :: tl)).
+    simpl. rewrite Htl. reflexivity.
+Defined.
+
+Lemma is_sort_cons_sorts_eq (l: list sort)
+  (Hall: forall x, In x (sorts_to_tys l) -> is_sort x):
+  proj1_sig (is_sort_cons_sorts (sorts_to_tys l) Hall) = l.
+Proof.
+  induction l; simpl; auto.
+  destruct (is_sort_cons_sorts (sorts_to_tys l)
+  (fun (x : vty) (H0 : In x (sorts_to_tys l)) => Hall x (or_intror H0))) eqn : ind;
+  simpl.
+  apply (f_equal (@proj1_sig _ _)) in ind.
+  simpl in ind.
+  rewrite IHl in ind. subst. f_equal.
+  destruct a; simpl. 
+  f_equal. apply bool_irrelevance.
+Qed.
+
+(*A function that tells us if a sort is an ADT and if so,
+  get its info*)
+
+Definition is_sort_adt (s: sort) : 
+  option (mut_adt * alg_datatype * typesym * list sort).
+Proof.
+  destruct s.
+  destruct x.
+  - exact None.
+  - exact None.
+  - exact None.
+  - destruct (find_ts_in_ctx gamma t);[|exact None].
+    exact (Some (fst p, snd p, t, 
+      proj1_sig (is_sort_cons_sorts l (is_sort_cons t l i)))).
+Defined.
+
+(*And its proof of correctness*)
+Lemma is_sort_adt_spec: forall s m a ts srts,
+  is_sort_adt s = Some (m, a, ts, srts) ->
+  s = typesym_to_sort (adt_name a) srts /\
+  adt_in_mut a m /\ mut_in_ctx m gamma /\ ts = adt_name a.
+Proof.
+  intros. unfold is_sort_adt in H.
+  destruct s. destruct x; try solve[inversion H].
+  destruct (find_ts_in_ctx gamma t) eqn : Hf.
+  - inversion H; subst. destruct p as [m a]. simpl.
+    apply (find_ts_in_ctx_iff) in Hf. 
+    destruct Hf as [Hmg [Ham Hat]]; 
+    repeat split; auto; subst.
+    apply sort_inj. simpl. f_equal. clear H. 
+    generalize dependent (is_sort_cons (adt_name a) l i).
+    intros H.
+    destruct (is_sort_cons_sorts l H). simpl.
+    rewrite <- e; reflexivity.
+  - inversion H.
+Qed.
+
+(*We show that [is_sort_adt] is Some for adts*)
+Lemma is_sort_adt_adt a srts m:
+  mut_in_ctx m gamma ->
+  adt_in_mut a m ->
+  @is_sort_adt (typesym_to_sort (adt_name a) srts) =
+    Some (m, a, (adt_name a), srts).
+Proof.
+  intros m_in a_in.
+  unfold is_sort_adt. simpl.
+  assert (@find_ts_in_ctx gamma (adt_name a) = Some (m, a)). {
+    apply (@find_ts_in_ctx_iff); auto.
+  }
+  rewrite H. simpl. 
+  f_equal. f_equal.
+  apply is_sort_cons_sorts_eq.
+Qed.
+
+End GetADTSort.
 
 End GetADT.
 
-(*Finally, use above and prove that all types in
-  well-typed context are inhabited*)
-(*Theorem all_types_inhab {gamma} (gamma_valid: valid_context gamma)
-  (Habs: forall t,
-    In (abs_type t) gamma ->
-    forall vs,
-      length vs = length (ts_args t) ->
-      Forall (valid_type gamma) vs ->
-      Forall (type_inhab gamma) vs ->
-      type_inhab gamma (vty_cons t vs)):
-  forall (v: vty),
-    valid_type gamma v ->
-    type_inhab gamma v.
-Proof.
-  intros v Hvalv.
-  induction Hvalv.
-  - exists (Tconst (ConstInt 0)).
-    split; auto. constructor.
-  - exists (Tconst (ConstReal (QArith_base.Qmake 0 xH))).
-    split; auto. constructor.
-  - *)
-
-Lemma ts_in_cases {gamma}
-(ts: typesym):
-In ts (sig_t gamma) ->
-In (abs_type ts) gamma \/
-exists m a, mut_in_ctx m gamma /\ adt_in_mut a m /\
-  ts = adt_name a.
-Proof.
-  intros Hts.
-  unfold sig_t in Hts.
-  rewrite in_concat in Hts.
-  destruct Hts as [l [Hinl Hints]].
-  rewrite in_map_iff in Hinl.
-  destruct Hinl as [d [Hl Hind]]; subst.
-  destruct d; simpl in Hints; try solve[inversion Hints].
-  - right. exists m. unfold typesyms_of_mut in Hints.
-    rewrite in_map_iff in Hints.
-    destruct Hints as [a [Hts Hina]]; subst.
-    exists a. split_all; auto.
-    apply mut_in_ctx_eq2; auto.
-    apply In_in_bool; auto.
-  - destruct Hints as [Ht | []]; subst. auto.
-Qed.
-
-Lemma abs_ts_notin {gamma} (gamma_valid: valid_context gamma)
-  (ts: typesym):
-  In ts (sig_t gamma) ->
-  In (abs_type ts) gamma <-> find_ts_in_ctx gamma ts = None.
-Proof.
-  intros Hints.
-  split; intros.
-  - rewrite <- find_ts_in_ctx_none_iff.
-    intros a m m_in a_in.
-    apply not_eq_sym.
-    apply (abs_not_concrete_ty gamma_valid _ H m a); auto.
-  - apply ts_in_cases in Hints.
-    destruct Hints; auto.
-    destruct H0 as [m [a [m_in [a_in Hts]]]]; subst.
-    rewrite <- find_ts_in_ctx_none_iff in H.
-    exfalso. apply (H a m); auto.
-Qed.
-
-(*From our inhabited types results, we know that if all abstract
-  types are assumed to be inhabited when given
-  inhabited arguments, then any valid sort is inhabited*)
-(*TODO: it is also the case that if we assume all vars are
-  inhabited, then any valid type is inhabited. Not sure it is
-  worth it to show*)
-(*TODO: move*)
-Theorem all_sorts_inhab {gamma} (gamma_valid: valid_context gamma)
-  (Habs: forall t,
-    In (abs_type t) gamma ->
-    forall vs,
-      length vs = length (ts_args t) ->
-      Forall (valid_type gamma) vs ->
-      Forall (type_inhab gamma) vs ->
-      type_inhab gamma (vty_cons t vs)):
-  forall (s: sort),
-    valid_type gamma s ->
-    type_inhab gamma s.
-Proof.
-  intros [v Hsort] Hval. simpl in *. induction Hval.
-  - exists (Tconst (ConstInt 0)).
-    split; auto. constructor.
-  - exists (Tconst (ConstReal (QArith_base.Qmake 0 xH))).
-    split; auto. constructor.
-  - inversion Hsort.
-  - destruct (find_ts_in_ctx s ts) eqn : Hts.
-    2: {
-      apply Habs; auto.
-      - apply abs_ts_notin; auto.
-      - rewrite Forall_forall; auto.
-      - rewrite Forall_forall; intros. apply H2; auto.
-        rewrite is_sort_cons_iff in Hsort.
-        apply Hsort; auto.
-    }
-    (*constr case from valid context*)
-    assert (Hdefs:=gamma_valid).
-    apply valid_context_defs in Hdefs.
-    destruct p as [m a].
-    assert (Hts':=Hts).
-    apply find_ts_in_ctx_some in Hts.
-    destruct Hts as [m_in [a_in Hts]]; subst.
-    apply mut_in_ctx_eq2 in m_in.
-    rewrite Forall_forall in Hdefs.
-    assert (Hdefs':=Hdefs).
-    specialize (Hdefs _ m_in).
-    simpl in Hdefs.
-    unfold mut_valid in Hdefs.
-    destruct Hdefs as [_ [_ [Hinhab _]]].
-    rewrite Forall_forall in Hinhab.
-    specialize (Hinhab _ (in_bool_In _ _ _ a_in)).
-    unfold adt_inhab in Hinhab.
-    apply typesym_inhab_inhab with(m:=m)(a:=a); auto.
-    + (*All adts in gamma are valid*)
-      intros m' a' m_in' a_in'.
-      apply mut_in_ctx_eq2 in m_in'.
-      specialize (Hdefs' _ m_in').
-      simpl in Hdefs'.
-      unfold mut_valid in Hdefs'.
-      destruct_all.
-      rewrite Forall_forall in H3.
-      apply H3. apply in_bool_In in a_in'; auto.
-    + (*All types in constrs are valid*)
-      intros m' a' c' x m_in' a_in' c_in'.
-      apply mut_in_ctx_eq2 in m_in'.
-      specialize (Hdefs' _ m_in').
-      simpl in Hdefs'.
-      unfold mut_valid in Hdefs'.
-      destruct_all.
-      rewrite Forall_forall in H4.
-      specialize (H4 _ (in_bool_In _ _ _ a_in')).
-      unfold adt_constrs_valid in H4.
-      rewrite Forall_forall in H4.
-      apply constr_in_adt_eq in c_in'.
-      specialize (H4 _ c_in').
-      rewrite Forall_forall in H4; auto.
-    + (*all abstract types inhabited*)
-      intros ts vs' Hints Htsnone Hlenvs Hallinhab.
-      apply Habs; auto.
-      apply abs_ts_notin; auto.
-    + (*From IH*)
-      rewrite Forall_forall; intros. apply H2; auto.
-      rewrite is_sort_cons_iff in Hsort; auto.
-    + rewrite Forall_forall; auto.
-Qed.
 
 (*TODO: will move, but this shows that we can actually
   write decreasing recursive functions*)

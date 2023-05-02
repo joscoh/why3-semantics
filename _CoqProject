@@ -2,6 +2,7 @@
 proofs/core/Common.v
 proofs/core/Types.v
 proofs/core/Syntax.v
+proofs/core/Context.v
 proofs/core/Vars.v
 proofs/core/Typing.v
 proofs/core/Substitution.v
@@ -17,6 +18,7 @@ proofs/core/Alpha.v
 proofs/core/IndProp.v
 proofs/core/RecFun.v
 proofs/core/RecFun2.v
+#proofs/core/IndProp.v
 proofs/core/FullInterp.v
 #proofs/Util.v
 #proofs/Ty.v
