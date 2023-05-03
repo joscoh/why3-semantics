@@ -711,7 +711,7 @@ Definition adt_inhab (a : alg_datatype) : bool :=
 End Inhab.
 
 (*Strict Positivity for Types*)
-
+(*
 Fixpoint typesym_in (t: typesym) (v: vty) : bool :=
   match v with
   | vty_int => false
@@ -790,7 +790,7 @@ Definition adt_positive (l: list alg_datatype) : Prop :=
     concat (map (fun a => match a with | alg_def _ constrs => ne_list_to_list constrs end) l) in
   Forall (fun f => positive f ts) fs.
 
-End PosTypes.
+End PosTypes.*)
 
 (*We also require that all mutually recursive types are uniform.
   Otherwise, inductive types become very difficult to define.
@@ -830,18 +830,18 @@ Definition uniform (m: mut_adt) : bool :=
 End UniformADT.
 
 (*Finally, all types in the constructors must be valid*)
-Definition adt_constrs_valid gamma (a: alg_datatype) :=
+(*Definition adt_constrs_valid gamma (a: alg_datatype) :=
   Forall (fun (c: funsym) =>
     Forall (fun v => valid_type gamma v) 
     ((f_ret c) :: (s_args c))
-  ) (adt_constr_list a).
+  ) (adt_constr_list a).*)
 
 (*And the final condition for mutual types*)
 Definition mut_valid gamma m :=
   Forall adt_valid_type (typs m) /\ 
-  Forall (adt_constrs_valid gamma) (typs m) /\
+  (*Forall (adt_constrs_valid gamma) (typs m) /\*)
   Forall (adt_inhab gamma) (typs m) /\
-  adt_positive gamma (typs m) /\
+  (*adt_positive gamma (typs m) /\*)
   valid_mut_rec m /\
   uniform m.
 
@@ -2010,7 +2010,7 @@ Proof.
   apply valid_type_expand; auto.
 Qed.
 
-Lemma strictly_positive_expand d gamma t ts:
+(*Lemma strictly_positive_expand d gamma t ts:
   strictly_positive gamma t ts ->
   strictly_positive (d :: gamma) t ts.
 Proof.
@@ -2026,8 +2026,8 @@ Proof.
     destruct H as [vars [H Hin]].
     exists vars. exists H. simpl; auto.
   - constructor; auto.
-Qed.
-
+Qed.*)
+(*
 Lemma adt_positive_expand d gamma fs ts:
   positive gamma fs ts ->
   positive (d :: gamma) fs ts.
@@ -2035,7 +2035,7 @@ Proof.
   intros Hpos. induction Hpos.
   constructor; auto.
   intros. apply strictly_positive_expand; auto.
-Qed.
+Qed.*)
 
 
 Lemma find_ts_in_ctx_expand d gamma ts:
@@ -2139,14 +2139,14 @@ Proof.
   simpl in H1. rewrite !Nat.sub_0_r in H1. auto.
 Qed.
 
-Lemma adt_constrs_valid_expand d gamma a:
+(*Lemma adt_constrs_valid_expand d gamma a:
   adt_constrs_valid gamma a ->
   adt_constrs_valid (d :: gamma) a.
 Proof.
   unfold adt_constrs_valid.
   apply Forall_impl. intros c.
   apply Forall_impl. apply valid_type_expand.
-Qed.
+Qed.*)
 
 Lemma mut_valid_expand d gamma m:
   Forall (fun ts : typesym => ~ In ts (sig_t gamma)) (typesyms_of_def d) ->
@@ -2154,16 +2154,8 @@ Lemma mut_valid_expand d gamma m:
 Proof.
   unfold mut_valid.
   intros; destruct_all; split_all; auto.
-  - revert H1. apply Forall_impl. apply adt_constrs_valid_expand.
-  - revert H2. apply Forall_impl. intros a.
-    apply typesym_inhab_expand; auto.
-  - revert H3. unfold adt_positive.
-    rewrite !Forall_concat, !Forall_map.
-    apply Forall_impl.
-    intros a.
-    apply Forall_impl.
-    intros fs.
-    apply adt_positive_expand.
+  revert H1. apply Forall_impl. intros a.
+  apply typesym_inhab_expand; auto.
 Qed.
 
 Lemma mut_in_ctx_expand m d gamma:
@@ -2998,7 +2990,7 @@ Proof.
   valid_context_tac.
   destruct a; simpl in *.
   valid_context_tac.
-  rewrite H10, H11. 
+  rewrite H7, H8. 
   auto.
 Qed.
 
@@ -3540,7 +3532,7 @@ Proof.
     specialize (Hdefs _ m_in).
     simpl in Hdefs.
     unfold mut_valid in Hdefs.
-    destruct Hdefs as [_ [_ [Hinhab _]]].
+    destruct Hdefs as [_ [Hinhab _]].
     rewrite Forall_forall in Hinhab.
     specialize (Hinhab _ (in_bool_In _ _ _ a_in)).
     unfold adt_inhab in Hinhab.
@@ -3563,11 +3555,20 @@ Proof.
       destruct_all.
       rewrite Forall_forall in H1.
       specialize (H1 _ (in_bool_In _ _ _ a_in')).
-      unfold adt_constrs_valid in H1.
-      rewrite Forall_forall in H1.
-      apply constr_in_adt_eq in c_in'.
-      specialize (H1 _ c_in').
-      rewrite Forall_forall in H1; auto.
+      apply valid_context_wf in gamma_valid.
+      apply wf_context_alt in gamma_valid.
+      destruct gamma_valid as [Hwf _].
+      rewrite Forall_forall in Hwf.
+      assert (Hinc: In c' (funsyms_of_context gamma)). {
+        eapply constrs_in_funsyms; eauto.
+        apply mut_in_ctx_eq2 in m_in'; auto.
+      }
+      specialize (Hwf _ Hinc).
+      unfold wf_funsym in Hwf.
+      rewrite Forall_forall in Hwf.
+      intros Hinx.
+      specialize (Hwf _ Hinx).
+      apply Hwf.
     + (*all abstract types inhabited*)
       intros ts vs' Hints Htsnone Hlenvs Hallinhab.
       apply Habs; auto.

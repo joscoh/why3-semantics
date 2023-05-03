@@ -751,165 +751,117 @@ Section ContextCheck.
 
 Variable gamma: context.
 
-(*Here, we show that the context checks (some of them for now)
-  are decidable.
-  We need this for some proofs; namely for recursive functions, 
-  we need to be able to find the fs and ps to build our function*)
+(*Part 1: wf_funsym and wf_predsym*)
 
-(*Fixpoint check_valid_matches_tm (t: term) : bool :=
-  match t with
-  | Tfun f vs tms =>
-    all check_valid_matches_tm tms
-  | Tlet tm1 v tm2 =>
-    check_valid_matches_tm tm1 &&
-    check_valid_matches_tm tm2
-  | Tif f1 t1 t2 =>
-    check_valid_matches_fmla f1 &&
-    check_valid_matches_tm t1 &&
-    check_valid_matches_tm t2
-  | Tmatch t1 v ps =>
-    check_valid_matches_tm t1 &&
-    is_vty_adt gamma v &&
-    all (fun x => check_valid_matches_tm (snd x)) ps
-  | Teps f v =>
-    check_valid_matches_fmla f
-  | _ => true
-  end
-with check_valid_matches_fmla (f: formula) : bool :=
-  match f with
-  | Fpred p vs tms => all check_valid_matches_tm tms
-  | Fquant q v f => check_valid_matches_fmla f
-  | Feq v t1 t2 => check_valid_matches_tm t1 &&
-    check_valid_matches_tm t2
-  | Fbinop b f1 f2 => check_valid_matches_fmla f1 &&
-    check_valid_matches_fmla f2
-  | Fnot f => check_valid_matches_fmla f
-  | Flet t v f => check_valid_matches_tm t &&
-    check_valid_matches_fmla f
-  | Fif f1 f2 f3 =>
-    check_valid_matches_fmla f1 &&
-    check_valid_matches_fmla f2 &&
-    check_valid_matches_fmla f3
-  | Fmatch t v ps =>
-    check_valid_matches_tm t &&
-    is_vty_adt gamma v &&
-    all (fun x => check_valid_matches_fmla (snd x)) ps
-  | _ => true
-  end.*)
+Definition check_wf_funsym (f: funsym) : bool :=
+  all (fun t => typecheck_type gamma t &&
+    all (fun x => x \in (s_params f)) (type_vars t))
+  (f_ret f :: s_args f).
 
-(*We could assume stuff, but let's just plow through
-  this I guess*)
+Lemma check_wf_funsym_spec (f: funsym):
+  reflect (wf_funsym gamma f) (check_wf_funsym f).
+Proof.
+  rewrite /check_wf_funsym/wf_funsym.
+  apply all_Forall=> x Hinx.
+  apply andPP; first by apply typecheck_type_correct.
+  apply all_Forall=> v Hinv.
+  apply /inP.
+Qed.
+
+Definition check_wf_predsym (p: predsym) : bool :=
+  all (fun t => typecheck_type gamma t &&
+    all (fun x => x \in (s_params p)) (type_vars t))
+  (s_args p).
+
+Lemma check_wf_predsym_spec (p: predsym):
+  reflect (wf_predsym gamma p) (check_wf_predsym p).
+Proof.
+  rewrite /check_wf_predsym/wf_predsym.
+  apply all_Forall => x Hinx.
+  apply andPP; first by apply typecheck_type_correct.
+  apply all_Forall => v Hinv.
+  apply /inP.
+Qed.
+
+(*Part 2: definition check*)
+
+(*Checks for datatypes*)
+
+Section Datatype.
+
+Definition adt_valid_type_check (a: alg_datatype) : bool :=
+  match a with
+  | alg_def ts constrs =>
+    all (fun (c: funsym) => ((s_params c) == (ts_args ts)) &&
+      ((f_ret c) == vty_cons ts (map vty_var (ts_args ts))))
+      (ne_list_to_list constrs)
+  end.
+
+Lemma adt_valid_type_check_spec (a: alg_datatype) :
+  reflect (adt_valid_type a) (adt_valid_type_check a).
+Proof.
+  rewrite /adt_valid_type /adt_valid_type_check.
+  case: a => [ts constrs].
+  apply all_Forall => x Hinx.
+  by apply andPP; apply eqP.
+Qed.
+
+Definition valid_mut_rec_check (m: mut_adt) : bool :=
+  all (fun a => ((m_params m) == (ts_args (adt_name a))) &&
+    all (fun (f: funsym) => m_params m == s_params f)
+      (adt_constr_list a))
+  (typs m).
+
+Lemma valid_mut_rec_check_spec m :
+  reflect (valid_mut_rec m) (valid_mut_rec_check m).
+Proof.
+  rewrite /valid_mut_rec /valid_mut_rec_check.
+  apply forallb_ForallP => x Hinx.
+  apply andPP; first by apply eqP.
+  apply all_Forall => y Hiny.
+  by apply eqP.
+Qed.
+
+(*The whole check is easy, since the most difficult check
+  (inhab) is a boolean already
+  TODO: strictly positive or something?*)
+Definition mut_valid_check (m: mut_adt) : bool :=
+  all (adt_valid_type_check) (typs m) &&
+  all (adt_inhab gamma) (typs m) &&
+  valid_mut_rec_check m &&
+  uniform m.
+
+Lemma mut_valid_check_spec (m: mut_adt) :
+  reflect (mut_valid gamma m) (mut_valid_check m).
+Proof.
+  rewrite /mut_valid/mut_valid_check.
+  rewrite - !andbA.
+  repeat (apply andPP).
+  - apply forallb_ForallP => x Hinx. 
+    by apply adt_valid_type_check_spec.
+  - apply forallb_ForallP=> y Hiny.
+    by apply idP.
+  - by apply valid_mut_rec_check_spec.
+  - by apply idP.
+Qed.
+
+End Datatype.
+
+(*Recursive functions *)
+
+Section RecFun.
+
+(*This is much harder, since we need to find the decreasing arguments
+  (and prove that the decreasing check itself is decidable).
+  We also need this typechecking to define the full recursive
+  function implementation in RecFun2.v*)
+
 Definition pattern_eqMixin := EqMixin pattern_eqb_spec.
 Canonical pattern_eqType := EqType pattern pattern_eqMixin.
 Definition term_eqMixin := EqMixin term_eqb_spec.
 Canonical term_eqType := EqType term term_eqMixin.
 Definition formula_eqMixin := EqMixin formula_eqb_spec.
 Canonical formula_eqType := EqType formula formula_eqMixin.
-(*
-Lemma iter_and_Forall {A: Type} {P: A -> Prop} {l: list A}:
-  Forall P l <-> iter_and (List.map P l).
-Proof.
-  elim: l=>//= h t IH/=.
-  split =>[Hall | [Hh Ht]].
-  - split.
-    + exact (Forall_inv Hall).
-    + rewrite -IH. exact (Forall_inv_tail Hall).
-  - constructor=>//. by apply IH.
-Qed.
-
-Lemma check_valid_matches_spec (t: term) (f: formula):
-  reflect (valid_matches_tm gamma t) (check_valid_matches_tm t) *
-  reflect (valid_matches_fmla gamma f) (check_valid_matches_fmla f).
-Proof.
-  revert t f; apply term_formula_rect =>//=;
-  (try by (intros; apply ReflectT));
-  try by (intros; apply andPP).
-  (*Only 3 nontrivial cases for each: fun/pred, if (basically trivial),
-  and match*)
-  - move=> f1 tys tms Hall.
-    eapply equivP. 2: apply iter_and_Forall.
-    apply all_Forall. 
-    move: Hall; elim: tms => [//=| thd ttl IH /= Hall x].
-    rewrite in_cons. (*Can't destruct on or*)
-    case: (x == thd) /eqP => [Hxh _ | Hneq]/=; subst.
-    + exact (ForallT_hd _ _ _ Hall).
-    + apply IH. exact (ForallT_tl _ _ _ Hall).
-  - move=> f t1 t2 IH1 IH2 IH3.
-    rewrite -andbA.
-    repeat apply andPP=>//.
-  - move=> tm v ps IH1 Hall. cbn.
-    rewrite -andbA.
-    repeat apply andPP=>//.
-    + apply is_vty_adt_weak.
-    + eapply equivP. 2: apply iter_and_Forall.
-      apply all_Forall.
-      move: Hall.
-      elim: ps => //= [[p1 t1]] tl IH Hall x.
-      rewrite in_cons.
-      case: (x == (p1, t1)) /eqP => /=[Hxp1 _ | Hneq ]; subst=>/=.
-      * exact (ForallT_hd _ _ _ Hall).
-      * apply IH. exact (ForallT_tl _ _ _ Hall).
-  - move=> p tys tms Hall.
-    eapply equivP. 2: apply iter_and_Forall.
-    apply all_Forall. 
-    move: Hall; elim: tms => [//=| thd ttl IH /= Hall x].
-    rewrite in_cons. (*Can't destruct on or*)
-    case: (x == thd) /eqP => [Hxh _ | Hneq]/=; subst.
-    + exact (ForallT_hd _ _ _ Hall).
-    + apply IH. exact (ForallT_tl _ _ _ Hall).
-  - move=> f1 f2 f3 IH1 IH2 IH3.
-    rewrite -andbA.
-    repeat apply andPP=>//.
-  - move=> tm v ps IH1 Hall. cbn.
-    rewrite -andbA.
-    repeat apply andPP=>//.
-    + apply is_vty_adt_weak.
-    + eapply equivP. 2: apply iter_and_Forall.
-      apply all_Forall.
-      move: Hall.
-      elim: ps => //= [[p1 t1]] tl IH Hall x.
-      rewrite in_cons.
-      case: (x == (p1, t1)) /eqP => /=[Hxp1 _ | Hneq ]; subst=>/=.
-      * exact (ForallT_hd _ _ _ Hall).
-      * apply IH. exact (ForallT_tl _ _ _ Hall).
-Qed.
-
-Definition check_valid_matches_tm_spec t := 
-  fst (check_valid_matches_spec t Ftrue).
-Definition check_valid_matches_fmla_spec f := 
-  snd (check_valid_matches_spec tm_d f).*)
-
-(*Well-typed terms*)
-(*
-Definition check_well_typed_tm (t: term) (ty: vty) : bool :=
-  (typecheck_term sigma t == Some ty) &&
-  check_valid_matches_tm t.
-
-Definition check_well_typed_fmla (f: formula) : bool :=
-  (typecheck_formula sigma f) &&
-  check_valid_matches_fmla f.
-
-Lemma check_well_typed_tm_spec (t: term) (ty: vty):
-  reflect (well_typed_term sigma gamma t ty) (check_well_typed_tm t ty).
-Proof.
-  apply andPP.
-  apply typecheck_term_correct.
-  apply check_valid_matches_tm_spec.
-Qed.
-
-Lemma check_well_typed_fmla_spec (f: formula):
-  reflect (well_typed_formula sigma gamma f) (check_well_typed_fmla f).
-Proof.
-  apply andPP.
-  apply typecheck_formula_correct.
-  apply check_valid_matches_fmla_spec.
-Qed.*)
-
-(*TODO: [adt_valid_type], inhabited types, strict positivity
-  for types (TODO: add uniformity)*)
-
-(*Checks for recursive functions*)
-
 
 Definition check_funpred_def_valid_type (fd: funpred_def) : bool :=
   match fd with
@@ -2274,6 +2226,7 @@ Proof.
   - by rewrite -size_split_funpred_defs_fst.
 Qed.
 
+Section WFCtx.
 Variable gamma_wf: wf_context gamma.
 
 
@@ -2498,6 +2451,525 @@ Proof.
     by apply (find_funpred_def_term_none l Hin Hfind m params vs il).
 Qed.
 
+End WFCtx.
+
+(*The other half: funpred_def_valid_type*)
+
+Definition funpred_def_valid_type_check (fd: funpred_def): bool :=
+  match fd with
+  | fun_def f vars t =>
+    (typecheck_term gamma t == Some (f_ret f)) &&
+    (sublistb (tm_fv t) vars) &&
+    (sublistb (tm_type_vars t) (s_params f)) &&
+    (uniq (map fst vars)) &&
+    (map snd vars == (s_args f))
+  | pred_def p vars f =>
+    (typecheck_formula gamma f) &&
+    (sublistb (fmla_fv f) vars) &&
+    (sublistb (fmla_type_vars f) (s_params p)) &&
+    (uniq (map fst vars)) &&
+    ((map snd vars) == (s_args p))
+  end.
+
+Lemma funpred_def_valid_type_check_spec (fd: funpred_def) :
+  reflect (funpred_def_valid_type gamma fd) 
+    (funpred_def_valid_type_check fd).
+Proof.
+  rewrite /funpred_def_valid_type/funpred_def_valid_type_check.
+  case: fd => [f vars t | p vars f];
+  rewrite -!andbA; repeat (apply andPP);
+  try (apply sublistbP);
+  try (apply uniqP);
+  try (apply eqP).
+  - apply typecheck_term_correct.
+  - apply typecheck_formula_correct.
+Qed.
+
+(*And now the full check for functions*)
+Definition funpred_valid_check (l: list funpred_def) : bool :=
+  all (funpred_def_valid_type_check) l &&
+  (isSome (find_funpred_def_term l)).
+
+Lemma funpred_valid_check_spec (l: list funpred_def) :
+  wf_context gamma ->
+  l \in mutfuns_of_context gamma ->
+  reflect (funpred_valid gamma l) (funpred_valid_check l).
+Proof.
+  move=> Hwf l_in.
+  rewrite /funpred_valid/funpred_valid_check.
+  apply andPP.
+  - apply all_Forall=> x Hinx.
+    apply funpred_def_valid_type_check_spec.
+  - (*This one is a bit tougher*)
+    rewrite /funpred_def_term_exists.
+    case Hfind: (find_funpred_def_term l) => [[[[m params] vs] il] |]/=.
+    + apply ReflectT.
+      exists m. exists params. exists vs. exists il.
+      by apply find_funpred_def_term_some.
+    + apply ReflectF.
+      move=> [m [params [vs [il Hdef]]]].
+      by apply (find_funpred_def_term_none Hwf l l_in Hfind m params vs il).
+Qed.
+
+End RecFun.
+
+(*Inductive predicates*)
+Print valid_def.
+
+
+Print indprop_valid.
+
+Print indprop_valid_type.
+
+Print valid_ind_form.
+
+(*[valid_ind_form]*)
+Fixpoint valid_ind_form_check (p: predsym) (f: formula) : bool :=
+  match f with
+  | Fpred p' tys tms =>
+    (p == p') && (tys == map vty_var (s_params p)) &&
+    (length (s_args p) == length tms)
+  | Fbinop Timplies f1 f2 =>
+    valid_ind_form_check p f2
+  | Fquant Tforall x f =>
+    valid_ind_form_check p f
+  | Flet t x f =>
+    valid_ind_form_check p f
+  | _ => false
+  end.
+
+Lemma valid_ind_form_check_spec (p: predsym) (f: formula):
+  reflect (valid_ind_form p f) (valid_ind_form_check p f).
+Proof.
+  move: f.
+  apply (formula_rect (fun _ => True) (fun f => 
+  reflect (valid_ind_form p f) (valid_ind_form_check p f) ))=>//=;
+  intros; try by reflF.
+  - case: (p == p0) /eqP=>/= Hpp0; last by reflF.
+    rewrite -Hpp0.
+    case: (tys == [seq vty_var i | i <- s_params p]) /eqP => /= Htys;
+    last by reflF.
+    case: (length (s_args p) == length tms) /eqP => /= Hlens;
+    last by reflF.
+    by reflT.
+  - case: q; last by reflF. 
+    case: H => Hval; last by reflF. by reflT.
+  - case: b; try by reflF.
+    case: H0 => Hval; last by reflF. by reflT.
+  - case: H0 => Hval; last by reflF. by reflT.
+Qed.
+
+Print indprop_valid_type.
+
+Definition indprop_valid_type_check (i: indpred_def) : bool :=
+  match i with
+  | ind_def p lf =>
+    all (fun (f: formula) =>
+      typecheck_formula gamma f &&
+      closed_formula f &&
+      valid_ind_form_check p f &&
+      sublistb (fmla_type_vars f) (s_params p)
+      ) (map snd lf)
+  end.
+
+Lemma indprop_valid_type_check_spec (i: indpred_def) :
+  reflect (indprop_valid_type gamma i) (indprop_valid_type_check i).
+Proof.
+  rewrite /indprop_valid_type/indprop_valid_type_check.
+  case: i => [p lf].
+  apply all_Forall=> x Hinx.
+  rewrite - !andbA. repeat (apply andPP).
+  - apply typecheck_formula_correct.
+  - apply idP.
+  - apply valid_ind_form_check_spec.
+  - apply sublistbP.
+Qed.
+
+(*Now [indpred_positive]*)
+Print indpred_positive.
+
+Print ind_positive.
+
+Print ind_strictly_positive.
+
+Fixpoint ind_strictly_positive_check (ps: seq predsym) (f: formula)
+  {struct f} : bool :=
+  (all (fun p => ~~ predsym_in_fmla p f) ps) ||
+  match f with
+  | Fpred p vs ts =>
+    (p \in ps) &&
+    all (fun t => all (fun x => ~~ predsym_in_tm x t) ps ) ts
+  | Fbinop Timplies f1 f2 =>
+    ind_strictly_positive_check ps f2 &&
+    all (fun p => ~~ predsym_in_fmla p f1) ps
+  | Fquant q x f =>
+    ind_strictly_positive_check ps f
+  | Fbinop Tand f1 f2 =>
+    ind_strictly_positive_check ps f1 &&
+    ind_strictly_positive_check ps f2
+  | Fbinop Tor f1 f2 =>
+    ind_strictly_positive_check ps f1 &&
+    ind_strictly_positive_check ps f2
+  | Flet t x f =>
+    all (fun p => ~~ predsym_in_tm p t) ps &&
+    ind_strictly_positive_check ps f
+  | Fif f1 f2 f3 =>
+    all (fun p => ~~ predsym_in_fmla p f1) ps &&
+    ind_strictly_positive_check ps f2 &&
+    ind_strictly_positive_check ps f3
+  | Fmatch t ty pats =>
+    all (fun p => ~~ predsym_in_tm p t) ps &&
+    (*to satisfy positivity checker*)
+    all id (map (fun x => ind_strictly_positive_check ps (snd x)) pats)
+  | _ => false
+  end.
+
+(*Want to handle notin case at beginning*)
+Ltac not_in_pos_case ps f :=
+  let Hallin := fresh "Hallin" in
+  case: (all (fun p => ~~ predsym_in_fmla p f) ps) 
+    /(all_Forall _ _ _ (fun x Hin => idP))=>/= Hallin;
+    rewrite -> Forall_forall in Hallin; first by
+      apply ReflectT; constructor.
+
+Lemma all_id_map {A: Type} {p: pred A} {s: seq A}:
+  all id (map p s) = all p s.
+Proof.
+  by elim: s => [// | h t /= ->].
+Qed.
+  
+
+Lemma ind_strictly_positive_check_spec (ps: seq predsym) (f: formula) :
+  reflect (ind_strictly_positive ps f) (ind_strictly_positive_check ps f).
+Proof.
+  move: f.
+  apply (formula_rect (fun _ => true) (fun f => 
+  reflect (ind_strictly_positive ps f) (ind_strictly_positive_check ps f)))=>//=;
+  intros.
+  - not_in_pos_case ps (Fpred p tys tms).
+    case:(p \in ps) /inP => Hinp/=; last by reflF.
+    case: (all (fun t : term => all (fun x : predsym => ~~ predsym_in_tm x t) ps) tms)
+      /(all_Forall (fun t => Forall (fun x => ~~ predsym_in_tm x t) ps)).
+    + move=>x Hinx. apply all_Forall=> y Hiny. apply idP.
+    + move=> Hall2. apply ReflectT. apply ISP_pred=>//.
+      move=> x t Hint Hinx.
+      move: Hall2.
+      rewrite -> Forall_forall => /(_ _ Hint).
+      by rewrite -> Forall_forall => /(_ _ Hinx).
+    + move=> Hnotall. apply ReflectF. move=> C; inversion C; subst=>//.
+      apply Hnotall.
+      rewrite Forall_forall => t Hint.
+      rewrite Forall_forall=> x. by apply H4.
+  - not_in_pos_case ps (Fquant q v f).
+    case: H => Hpos. by reflT. by reflF.
+  - not_in_pos_case ps (Feq v t1 t2).
+    by reflF.
+  - not_in_pos_case ps (Fbinop b f1 f2).
+    case: b; try by reflF.
+    + case: H => Hpos1; last by reflF.
+      case: H0 => Hpos2; last by reflF.
+      by reflT.
+    + case: H => Hpos1; last by reflF.
+      case: H0 => Hpos2; last by reflF.
+      by reflT.
+    + case: H0 => Hpos; last by reflF.
+      case: (all (fun p : predsym => ~~ predsym_in_fmla p f1) ps) 
+        /(all_Forall _ _ _ (fun _ _ => idP)) => Hall;
+      rewrite -> Forall_forall in Hall;
+      last by reflF.
+      by reflT.
+  - not_in_pos_case ps (Fnot f). by reflF.
+  - not_in_pos_case ps Ftrue. by reflF.
+  - not_in_pos_case ps Ffalse. by reflF.
+  - not_in_pos_case ps (Flet tm v f).
+    case: (all (fun p : predsym => ~~ predsym_in_tm p tm) ps)
+    /(all_Forall _ _ _ (fun _ _ => idP)) => Hall;
+    rewrite -> Forall_forall in Hall;
+    last by reflF.
+    case: H0 => Hpos; last by reflF.
+    by reflT.
+  - not_in_pos_case ps (Fif f1 f2 f3).
+    case: (all (fun p : predsym => ~~ predsym_in_fmla p f1) ps) 
+    /(all_Forall _ _ _ (fun _ _ => idP)) => Hall;
+    rewrite -> Forall_forall in Hall;
+    last by reflF.
+    case: H0=> Hpos1; last by reflF.
+    case: H1=> Hpos2; last by reflF.
+    by reflT.
+  - not_in_pos_case ps (Fmatch tm v ps0).
+    case: (all (fun p : predsym => ~~ predsym_in_tm p tm) ps)
+    /(all_Forall _ _ _ (fun _ _ => idP)) => Hall;
+    rewrite -> Forall_forall in Hall;
+    last by reflF.
+    have Hrefl: reflect (forall f : formula,
+    In f (List.map snd ps0) -> ind_strictly_positive ps f)
+    (all id [seq ind_strictly_positive_check ps x.2 | x <- ps0]). {
+      eapply equivP. 2: apply Forall_forall.
+      rewrite all_id_map.
+      eapply equivP. 2: symmetry; apply Forall_map.
+      apply all_Forall.
+      move=> x /inP Hinx.
+      apply (ForallT_In _ formula_eq_dec _ H0).
+      rewrite in_map_iff. by exists x.
+    }
+    case: Hrefl => Hallpos; last by reflF.
+    by reflT.
+Qed.
+
+Fixpoint ind_positive_check (ps: seq predsym) (f: formula) : bool :=
+  match f with
+  | Fpred p vs ts =>
+    (p \in ps) &&
+    all (fun t => all (fun x => ~~ predsym_in_tm x t) ps ) ts
+  | Fquant Tforall x f =>
+    ind_positive_check ps f
+  | Flet t x f =>
+    all (fun p => ~~ predsym_in_tm p t) ps &&
+    ind_positive_check ps f
+  | Fbinop Timplies f1 f2 =>
+    ind_strictly_positive_check ps f1 &&
+    ind_positive_check ps f2
+  | _ => false
+  end.
+
+(*Some duplication with previous proof*)
+Lemma ind_positive_check_spec (ps: seq predsym) (f: formula) : 
+  reflect (ind_positive ps f) (ind_positive_check ps f).
+Proof.
+  apply (formula_rect (fun _ => True) (fun f =>
+  reflect (ind_positive ps f) (ind_positive_check ps f)))=>//=;
+  intros; try by reflF.
+  - case:(p \in ps) /inP => Hinp/=; last by reflF.
+    case: (all (fun t : term => all (fun x : predsym => ~~ predsym_in_tm x t) ps) tms)
+      /(all_Forall (fun t => Forall (fun x => ~~ predsym_in_tm x t) ps)).
+    + move=>x Hinx. apply all_Forall=> y Hiny. apply idP.
+    + move=> Hall2. apply ReflectT. apply IP_pred=>//.
+      move=> x t Hint Hinx.
+      move: Hall2.
+      rewrite -> Forall_forall => /(_ _ Hint).
+      by rewrite -> Forall_forall => /(_ _ Hinx).
+    + move=> Hnotall. apply ReflectF. move=> C; inversion C; subst=>//.
+      apply Hnotall.
+      rewrite Forall_forall => t Hint.
+      rewrite Forall_forall=> x. by apply H4.
+  - case: q; last by reflF.
+    case: H=> Hpos; last by reflF.
+    by reflT.
+  - case: b; try by reflF.
+    case: (ind_strictly_positive_check_spec ps f1) => Hpos1;
+    last by reflF.
+    case: H0 => Hpos2; last by reflF.
+    by reflT.
+  - case: (all (fun p : predsym => ~~ predsym_in_tm p tm) ps)
+    /(all_Forall _ _ _ (fun _ _ => idP)) => Hall;
+    rewrite -> Forall_forall in Hall;
+    last by reflF.
+    case: H0 => Hpos; last by reflF.
+    by reflT.
+Qed.
+
+Definition indpred_positive_check (l: seq indpred_def) : bool :=
+  let ps :=
+    map (fun i => match i with | ind_def p _ => p end) l in
+  let fs :=
+    concat (map (fun i => match i with | ind_def _ fs => map snd fs end) l)
+  in
+  all (ind_positive_check ps) fs.
+
+Lemma indpred_positive_check_spec (l: seq indpred_def) :
+  reflect (indpred_positive l) (indpred_positive_check l).
+Proof.
+  rewrite /indpred_positive/indpred_positive_check.
+  apply all_Forall.
+  move=> x Hinx.
+  apply ind_positive_check_spec.
+Qed.
+
+Print Forall_eq.
+(*[indpred_params_same]*)
+
+(*A faster check than using "all" at each iteration (from the
+  definition)*)
+
+Definition all_eq {A: Type} {B: eqType} (f: A -> B) (l: seq A) : bool :=
+  match l with
+  | nil => true
+  | h :: t => all (fun x => f x == f h) t
+  end.
+
+Lemma all_eq_spec {A: Type} {B: eqType}(f: A -> B) (l: seq A)  :
+  reflect (forall x y, In x l -> In y l -> f x = f y)
+    (all_eq f l).
+Proof.
+  rewrite /all_eq.
+  case: l=>[| h t]; first by apply ReflectT.
+  eapply equivP.
+  apply (forallb_ForallP (fun y => f y = f h));
+  first by move=> x Hinx; apply eqP.
+  rewrite -> Forall_forall. split=> Hallin x.
+  - move=> y [Hxh | Hxt] [Hyh | Hyt]; subst=>//;
+    try (by apply Hallin);
+    try (symmetry; by apply Hallin).
+    rewrite Hallin //. symmetry.
+    by rewrite Hallin.
+  - move=> Hinx. by apply Hallin=>/=; auto.
+Qed.
+
+Lemma all_eq_Forall_eq {A: Type} {B: eqType} (f: A -> B) (l: seq A):
+  reflect (Forall_eq f l) (all_eq f l).
+Proof.
+  apply iff_reflect.
+  rewrite -(reflect_iff _ _ (all_eq_spec f l)).
+  by apply Forall_eq_iff.
+Qed.
+
+Definition indpred_params_same_check (l: seq indpred_def) : bool :=
+  all_eq (fun i => match i with | ind_def p _ => s_params p end) l.
+
+Lemma indpred_params_same_check_spec (l: seq indpred_def) :
+  reflect (indpred_params_same l) (indpred_params_same_check l).
+Proof.
+  rewrite /indpred_params_same/indpred_params_same_check.
+  apply all_eq_Forall_eq.
+Qed.
+
+(*Now, full indprop def*)
+Definition indprop_valid_check (il: seq indpred_def) : bool :=
+  all indprop_valid_type_check il &&
+  indpred_positive_check il &&
+  indpred_params_same_check il &&
+  indpreds_uniform il.
+
+Lemma indprop_valid_check_spec (il: seq indpred_def) :
+  reflect (indprop_valid gamma il) (indprop_valid_check il).
+Proof.
+  rewrite /indprop_valid/indprop_valid_check.
+  rewrite -!andbA.
+  repeat (apply andPP).
+  - apply forallb_ForallP. move=> x Hinx.
+    apply indprop_valid_type_check_spec.
+  - apply indpred_positive_check_spec.
+  - apply indpred_params_same_check_spec.
+  - apply idP.
+Qed.
+
+(*And now, we can check an entire definition*)
+
+Definition valid_def_check (d: def) : bool :=
+  match d with
+  | datatype_def m => mut_valid_check m
+  | recursive_def fs => funpred_valid_check fs
+  | inductive_def l => indprop_valid_check l
+  | _ => true
+  end.
+
+Lemma valid_def_check_spec (d: def) :
+  wf_context gamma ->
+  In d gamma ->
+  reflect (valid_def gamma d) (valid_def_check d).
+Proof.
+  move=> Hwf.
+  rewrite /valid_def/valid_def_check.
+  case: d; try by (move=> _ _; apply ReflectT).
+  - move=> m _. apply mut_valid_check_spec.
+  - move=> l l_in. apply funpred_valid_check_spec=>//.
+    apply /inP.
+    by apply in_mutfuns.
+  - move=> l _. apply indprop_valid_check_spec.
+Qed.
+
 End ContextCheck.
+
+(*Now we show that we can incrementally check the context,
+  since we don't want to have to check it each time*)
+
+Definition check_context_cons (d: def) (gamma: context) : bool :=
+  let funs := funsyms_of_def d in
+  let preds := predsyms_of_def d in
+  let tys := typesyms_of_def d in
+  all (check_wf_funsym (d :: gamma)) funs &&
+  all (check_wf_predsym (d :: gamma)) preds &&
+  all (fun f => f \notin (sig_f gamma)) funs &&
+  all (fun p => p \notin (sig_p gamma)) preds &&
+  all (fun t => t \notin (sig_t gamma)) tys &&
+  uniq funs &&
+  uniq preds &&
+  uniq tys &&
+  nonempty_def d &&
+  valid_def_check (d :: gamma) d.
+
+(*If we start with a valid context, this check means that
+  our additional context is still valid*)
+Theorem check_context_cons_correct (d: def) (gamma: context) :
+  valid_context gamma ->
+  reflect (valid_context (d :: gamma)) (check_context_cons d gamma).
+Proof.
+  move=> Hval.
+  rewrite /check_context_cons.
+  (*First, wf_funsym and predsym*)
+  case: (all (check_wf_funsym (d :: gamma)) (funsyms_of_def d))
+    /(all_Forall (fun f => wf_funsym (d :: gamma) f)); 
+  last by move=> Hall; reflF.
+    by move=> x Hinx; apply check_wf_funsym_spec.
+  move=> Hfunswf.
+
+  case: (all (check_wf_predsym (d :: gamma)) (predsyms_of_def d))
+    /(all_Forall (fun p => wf_predsym (d :: gamma) p));
+  last by move=> Hall; reflF.
+    by move=> x Hinx; apply check_wf_predsym_spec.
+  move=> Hpredswf.
+
+  (*Now, sig_t checks*)
+  case: (all (fun f => f \notin sig_f gamma) (funsyms_of_def d))
+    /(all_Forall (fun f => ~ In f (sig_f gamma)));
+  last by move=> Hall; reflF.
+    by move=> x Hinx; apply negPP, inP.
+  move=> Hsigf.
+
+  case: (all (fun p => p \notin sig_p gamma) (predsyms_of_def d))
+    /(all_Forall (fun p => ~ In p (sig_p gamma)));
+  last by move=> Hall; reflF.
+    by move=> x Hinx; apply negPP, inP.
+  move=> Hsigp.
+
+  case: (all (fun t => t \notin sig_t gamma) (typesyms_of_def d))
+    /(all_Forall (fun t => ~ In t (sig_t gamma)));
+  last by move=> Hall; reflF.
+    by move=> x Hinx; apply negPP, inP.
+  move=> Hsigt.
+
+  (*Now NoDups checks for new definitions*)
+  case: (uniq (funsyms_of_def d)) /uniqP => Hnodupf; last by reflF.
+  case: (uniq (predsyms_of_def d)) /uniqP => Hnodupp; last by reflF.
+  case: (uniq (typesyms_of_def d)) /uniqP => Hnodupt; last by reflF.
+  case Hemp: (nonempty_def d); last 
+    by (apply ReflectF => C; inversion C; subst; rewrite Hemp in H10).
+  (*At this point, wf_context holds, so we can use the
+    def check lemma (the recfun case needs a wf_context)*)
+  have Hwf: wf_context (d :: gamma). {
+    apply valid_context_wf in Hval. by constructor.
+  }
+  case: (valid_def_check_spec (d :: gamma) d Hwf ltac:(simpl; auto))
+  => Hvald; last by reflF.
+  by reflT.
+Qed.
+
+(*A corollary: we can typecheck an entire context*)
+Fixpoint check_context (gamma: context) : bool :=
+  match gamma with
+  | nil => true
+  | d :: g => check_context g && check_context_cons d g
+  end.
+
+Theorem check_context_correct (gamma: context) :
+  reflect (valid_context gamma) (check_context gamma).
+Proof.
+  elim: gamma => [| d g /= IH].
+  - by reflT.
+  - case: IH => g_val; last by reflF.
+    case: (check_context_cons_correct d g g_val) => Hval;
+      last by apply ReflectF.
+    by apply ReflectT.
+Qed.
 
 End Typechecker.
