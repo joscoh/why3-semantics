@@ -2514,14 +2514,6 @@ Qed.
 End RecFun.
 
 (*Inductive predicates*)
-Print valid_def.
-
-
-Print indprop_valid.
-
-Print indprop_valid_type.
-
-Print valid_ind_form.
 
 (*[valid_ind_form]*)
 Fixpoint valid_ind_form_check (p: predsym) (f: formula) : bool :=
@@ -2559,8 +2551,6 @@ Proof.
   - case: H0 => Hval; last by reflF. by reflT.
 Qed.
 
-Print indprop_valid_type.
-
 Definition indprop_valid_type_check (i: indpred_def) : bool :=
   match i with
   | ind_def p lf =>
@@ -2586,11 +2576,6 @@ Proof.
 Qed.
 
 (*Now [indpred_positive]*)
-Print indpred_positive.
-
-Print ind_positive.
-
-Print ind_strictly_positive.
 
 Fixpoint ind_strictly_positive_check (ps: seq predsym) (f: formula)
   {struct f} : bool :=
@@ -2785,7 +2770,6 @@ Proof.
   apply ind_positive_check_spec.
 Qed.
 
-Print Forall_eq.
 (*[indpred_params_same]*)
 
 (*A faster check than using "all" at each iteration (from the
