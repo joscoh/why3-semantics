@@ -1214,7 +1214,7 @@ Proof.
   - (*Tconst*)
     alpha_case t2 Heq.
     simpl_sumbool. 
-    erewrite tm_fv_agree. apply term_rep_irrel.
+    erewrite tm_change_vv. apply term_rep_irrel.
     simpl. intros; destruct H.
   - (*Tvar - harder*) 
     alpha_case t2 Heq.
@@ -1235,7 +1235,7 @@ Proof.
       assert ((ty_var_inv Hty2) = eq_refl) by
         (apply UIP_dec; apply vty_eq_dec).
       rewrite H1. reflexivity.
-    + erewrite tm_fv_agree. apply term_rep_irrel. simpl.
+    + erewrite tm_change_vv. apply term_rep_irrel. simpl.
       intros. destruct H as [Heq | []]; subst.
       apply Hvals2. split; auto.
   - (*Tfun*)

@@ -1273,7 +1273,7 @@ Proof.
     rewrite !scast_scast. rewrite <- !eq_sym_map_distr.
     rewrite eq_trans_sym_inv_r.
     (*Now we need to transform these, since they use
-      different [val_typevar]s. We use [vt_fv_agree_tm]*)
+      different [val_typevar]s. We use [tm_change_vt]*)
     assert (args= sn_args f' /\ body = fn_body f'). {
       apply (fundef_inj (valid_context_wf _ gamma_valid)) with(l:=l)(f:=fn_sym f'); auto.
       apply (in_fs_def _ il); auto.
@@ -1285,7 +1285,7 @@ Proof.
     simpl in Hallval.
     destruct Hallval as [Hty [Hsub1 [Hsub2 [Hnodup Hargs]]]].
     rewrite (term_rep_irrel) with(Hty2:=f_body_type l_in f_in).
-    apply vt_fv_agree_tm.
+    apply tm_change_vt.
     + intros x Hinx.
       assert (In x (s_params (fn_sym f'))) by auto. 
       destruct (In_nth _ _ EmptyString H) as [i [Hi Hx]]; subst.
@@ -1394,7 +1394,7 @@ Proof.
     rewrite !scast_scast. rewrite <- !eq_sym_map_distr.
     rewrite eq_trans_sym_inv_r.
     (*Now we need to transform these, since they use
-      different [val_typevar]s. We use [vt_fv_agree_tm]*)
+      different [val_typevar]s. We use [tm_change_vt]*)
     assert (args= sn_args p' /\ body = pn_body p'). {
       apply (preddef_inj (valid_context_wf _ gamma_valid)) with(l:=l)(p:=pn_sym p'); auto.
       apply (in_ps_def _ il); auto.
@@ -1406,7 +1406,7 @@ Proof.
     simpl in Hallval.
     destruct Hallval as [Hty [Hsub1 [Hsub2 [Hnodup Hargs]]]].
     rewrite (fmla_rep_irrel) with(Hval2:=p_body_type l_in p_in).
-    apply vt_fv_agree_fmla.
+    apply fmla_change_vt.
     + intros x Hinx.
       assert (In x (s_params (pn_sym p'))) by auto. 
       destruct (In_nth _ _ EmptyString H) as [i [Hi Hx]]; subst.

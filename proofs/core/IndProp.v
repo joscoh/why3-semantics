@@ -462,7 +462,7 @@ Proof.
   intros.
   erewrite dep_map_eq. apply (Hall fs Hform0). auto.
   intros.
-  apply vt_fv_agree_fmla.
+  apply fmla_change_vt.
   - intros.
     rewrite Forall_concat in Hsub.
     rewrite Forall_forall in Hsub.
@@ -1609,7 +1609,7 @@ Theorem indpred_constrs_true_val
   (Hvt: vt_eq vt (s_params p) srts):
   formula_rep gamma_valid pd vt pf vv f Hvalf.
 Proof.
-  erewrite vt_fv_agree_fmla.
+  erewrite fmla_change_vt.
   apply (indpred_constrs_true pf indpred Hform 
     Hvalind Hpos Hclosed Hindpred p fs); auto.
   apply srts_len.

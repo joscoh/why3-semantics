@@ -2736,7 +2736,7 @@ Qed.
    
 (*Now we can prove the theorem. This is complicated
   due to all the casting*)
-Theorem vt_fv_agree (t: term) (f: formula):
+Theorem tm_fmla_change_vt (t: term) (f: formula):
   (forall (vt1 vt2: val_typevar) (vv1: val_vars pd vt1)
     (vv2: val_vars pd vt2)
     (Hvt: forall x, In x (tm_type_vars t) -> vt1 x = vt2 x)
@@ -3182,8 +3182,8 @@ Proof.
       * apply match_val_single_nodup in Hmatch1; auto.
 Qed.
 
-Definition vt_fv_agree_tm t := proj_tm vt_fv_agree t.
-Definition vt_fv_agree_fmla f := proj_fmla vt_fv_agree f.
+Definition tm_change_vt t := proj_tm tm_fmla_change_vt t.
+Definition fmla_change_vt f := proj_fmla tm_fmla_change_vt f.
 
 End ValExt.
 
@@ -3195,26 +3195,26 @@ Variable vt: val_typevar.
 
 (* A term/formula is interpreted the
   same on all valuations that agree on the free variables *)
-Corollary tm_fv_agree (t: term) :
+Corollary tm_change_vv (t: term) :
 (forall (v1 v2: val_vars pd vt) (ty: vty) 
   (Hty: term_has_type gamma t ty),
   (forall x, In x (tm_fv t) -> v1 x = v2 x) ->
   term_rep vt pf v1 t ty Hty = term_rep vt pf v2 t ty Hty).
 Proof.
   intros.
-  rewrite vt_fv_agree_tm with(vt2:=vt)(vv2:=v2)(Heq:=eq_refl); auto.
+  rewrite tm_change_vt with(vt2:=vt)(vv2:=v2)(Heq:=eq_refl); auto.
   intros. assert (Heq = eq_refl). apply UIP_dec. apply sort_eq_dec.
   rewrite H, H0; auto.
 Qed.
 
-Corollary fmla_fv_agree f:
+Corollary fmla_change_vv f:
 (forall (v1 v2: val_vars pd vt) 
   (Hval: formula_typed gamma f),
   (forall x, In x (fmla_fv f) -> v1 x = v2 x) ->
   formula_rep vt pf v1 f Hval = formula_rep vt pf v2 f Hval).
 Proof.
   intros.
-  apply (vt_fv_agree_fmla) with(vt2:=vt) (vv2:=v2); auto.
+  apply (fmla_change_vt) with(vt2:=vt) (vv2:=v2); auto.
   intros.
   assert (Heq=eq_refl) by (apply UIP_dec; apply sort_eq_dec).
   rewrite H, H0; auto.
@@ -3229,7 +3229,7 @@ Corollary term_closed_val (t: term)
   term_rep vt pf v1 t ty Hty = term_rep vt pf v2 t ty Hty.
 Proof.
   unfold closed_term. intros.
-  apply tm_fv_agree; intros.
+  apply tm_change_vv; intros.
   destruct (tm_fv t); inversion H; inversion H0.
 Qed.
 
@@ -3240,7 +3240,7 @@ Corollary fmla_closed_val (f: formula)
   formula_rep vt pf v1 f Hval = formula_rep vt pf v2 f Hval.
 Proof.
   unfold closed_formula; intros.
-  apply fmla_fv_agree; intros.
+  apply fmla_change_vv; intros.
   destruct (fmla_fv f); inversion H; inversion H0.
 Qed.
 
@@ -3561,7 +3561,7 @@ Proof.
   - simpl_rep_full. rewrite bool_of_binop_impl, simpl_all_dec.
     intros. 
     assert (formula_rep vt pf vv f1 (proj1' (valid_binop_inj Hval1))). {
-      erewrite fmla_fv_agree. erewrite fmla_rep_irrel. apply H0.
+      erewrite fmla_change_vv. erewrite fmla_rep_irrel. apply H0.
       intros. unfold substi.
       destruct (vsymbol_eq_dec x0 x); subst; auto. contradiction.
     }
@@ -3575,7 +3575,7 @@ Proof.
     rewrite bool_of_binop_impl, simpl_all_dec;
     intros.
     erewrite fmla_rep_irrel.
-    apply H. erewrite fmla_fv_agree. erewrite fmla_rep_irrel. apply H0.
+    apply H. erewrite fmla_change_vv. erewrite fmla_rep_irrel. apply H0.
     intros. unfold substi. destruct (vsymbol_eq_dec x0 x); subst; auto.
     contradiction.
 Qed.
@@ -3594,8 +3594,8 @@ formula_rep vt pf vv
 Proof.
   intros. simpl_rep_full. rewrite !bool_of_binop_impl.
   apply all_dec_eq.
-  erewrite fmla_fv_agree.
-  erewrite (fmla_fv_agree vt f2).
+  erewrite fmla_change_vv.
+  erewrite (fmla_change_vv vt f2).
   erewrite fmla_rep_irrel.
   erewrite (fmla_rep_irrel vt f2).
   reflexivity.
@@ -3735,7 +3735,7 @@ Proof.
       rewrite substi_diff.
       rewrite term_rep_irrel with(Hty2:=(proj1' (valid_let_inj Hval3))).
       rewrite fmla_rep_irrel with (Hval2:=(proj2' (valid_let_inj Hval3))).
-      erewrite tm_fv_agree in Hrep. apply Hrep.
+      erewrite tm_change_vv in Hrep. apply Hrep.
       intros. unfold substi. destruct (vsymbol_eq_dec x0 a); subst; auto.
       exfalso. apply (H0 a); auto. left; auto.
       intro; subst. apply H. left; auto.
@@ -3745,7 +3745,7 @@ Proof.
       rewrite term_rep_irrel with(Hty2:=(proj1' (valid_let_inj Hval2))).
       rewrite fmla_rep_irrel with (Hval2:=(valid_quant_inj
          (proj2' (valid_let_inj Hval2)))).
-      erewrite tm_fv_agree in Hrep. apply Hrep.
+      erewrite tm_change_vv in Hrep. apply Hrep.
       intros. unfold substi. destruct (vsymbol_eq_dec x0 a); subst; auto.
       exfalso. apply (H0 a); auto. left; auto.
       intro; subst. apply H. left; auto.
