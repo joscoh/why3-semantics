@@ -1839,17 +1839,17 @@ Lemma get_arg_list_sub x y s tys tms
     forall (ty:vty) Hty1 Hty2,
     ~ In y (tm_bnd tm) ->
     reps1 tm ty Hty1 =
-    reps2 (sub_t x y tm) ty Hty2) tms)
+    reps2 (sub_var_t x y tm) ty Hty2) tms)
   (Hfree: ~In y (concat (map tm_bnd tms)))
   (Hlents1: length tms = length (s_args s))
-  (Hlents2: length (map (sub_t x y) tms) = length (s_args s))
+  (Hlents2: length (map (sub_var_t x y) tms) = length (s_args s))
   (Hlenvs1 Hlenvs2: length tys = length (s_params s))
   (Hall1: Forall (fun x => term_has_type gamma (fst x) (snd x))
     (combine tms (map (ty_subst (s_params s) tys) (s_args s))))
   (Hall2: Forall (fun x => term_has_type gamma (fst x) (snd x))
-    (combine (map (sub_t x y) tms) (map (ty_subst (s_params s) tys) (s_args s)))):
+    (combine (map (sub_var_t x y) tms) (map (ty_subst (s_params s) tys) (s_args s)))):
   get_arg_list vt s tys tms reps1 Hlents1 Hlenvs1 Hall1 =
-  get_arg_list vt s tys (map (sub_t x y) tms) reps2 Hlents2 Hlenvs2 Hall2.
+  get_arg_list vt s tys (map (sub_var_t x y) tms) reps2 Hlents2 Hlenvs2 Hall2.
 Proof.
   apply get_arg_list_ext.
   - rewrite map_length; auto.
@@ -1871,21 +1871,21 @@ Lemma sub_correct (t: term) (f: formula) :
   (forall (x y: vsymbol) (Heq: snd x = snd y) 
     (v: val_vars pd vt) (ty: vty) 
     (Hty1: term_has_type gamma t ty)
-    (Hty2: term_has_type gamma (sub_t x y t) ty)
+    (Hty2: term_has_type gamma (sub_var_t x y t) ty)
     (Hfree: ~In y (tm_bnd t)),
     term_rep vt pf (substi vt v x 
     (dom_cast _ (f_equal (val vt) (eq_sym Heq))
       (v y))) t ty Hty1 =
-    term_rep vt pf v (sub_t x y t) ty Hty2) /\
+    term_rep vt pf v (sub_var_t x y t) ty Hty2) /\
   (forall (x y: vsymbol) (Heq: snd x = snd y) 
     (v: val_vars pd vt)
     (Hval1: formula_typed gamma f)
-    (Hval2: formula_typed gamma (sub_f x y f))
+    (Hval2: formula_typed gamma (sub_var_f x y f))
     (Hfree: ~In y (fmla_bnd f)),
     formula_rep vt pf (substi vt v x 
     (dom_cast _ (f_equal (val vt) (eq_sym Heq))
       (v y))) f Hval1 =
-    formula_rep vt pf v (sub_f x y f) Hval2).
+    formula_rep vt pf v (sub_var_f x y f) Hval2).
 Proof.
   revert t f.
   apply term_formula_ind; intros; simpl_rep_full; auto.
@@ -1935,7 +1935,7 @@ Proof.
       apply UIP_dec. apply vty_eq_dec.
     }
     rewrite H0. simpl.
-    assert ((@ty_fun_ind_ret f1 l (@map term term (sub_t x y) l1)
+    assert ((@ty_fun_ind_ret f1 l (@map term term (sub_var_t x y) l1)
       (ty_subst (s_params f1) l (f_ret f1)) Hty2) = eq_refl). {
       apply UIP_dec. apply vty_eq_dec.
     }
@@ -1952,7 +1952,7 @@ Proof.
     (tfun_params_length Hty2)).
     generalize dependent (funsym_subst_eq (s_params f1) l vt 
     (f_ret f1) (s_params_Nodup f1)
-    (@tfun_params_length gamma f1 l (@map term term (sub_t x y) l1)
+    (@tfun_params_length gamma f1 l (@map term term (sub_var_t x y) l1)
       (ty_subst (s_params f1) l (f_ret f1)) Hty2)).
     simpl.
     (*To eliminate eqs*)
@@ -2226,13 +2226,13 @@ Proof.
 Qed.
 
 (*The useful versions:*)
-Corollary sub_t_correct (t: term) (x y: vsymbol)
+Corollary sub_var_t_correct (t: term) (x y: vsymbol)
   (Heq: snd x = snd y)
   (v: val_vars pd vt) (ty: vty)
   (Hty1: term_has_type gamma t ty)
-  (Hty2: term_has_type gamma (sub_t x y t) ty)
+  (Hty2: term_has_type gamma (sub_var_t x y t) ty)
   (Hfree: ~In y (tm_bnd t)):
-  term_rep vt pf v (sub_t x y t) ty Hty2 =
+  term_rep vt pf v (sub_var_t x y t) ty Hty2 =
   term_rep vt pf (substi vt v x 
   (dom_cast _ (f_equal (val vt) (eq_sym Heq))
     (v y))) t ty Hty1.
@@ -2240,13 +2240,13 @@ Proof.
   symmetry. apply sub_correct; auto. apply Ffalse.
 Qed.
 
-Corollary sub_f_correct (f: formula)
+Corollary sub_var_f_correct (f: formula)
   (x y: vsymbol) (Heq: snd x = snd y) 
   (v: val_vars pd vt)
   (Hval1: formula_typed gamma f)
-  (Hval2: formula_typed gamma (sub_f x y f))
+  (Hval2: formula_typed gamma (sub_var_f x y f))
   (Hfree: ~In y (fmla_bnd f)):
-  formula_rep vt pf v (sub_f x y f) Hval2 =
+  formula_rep vt pf v (sub_var_f x y f) Hval2 =
   formula_rep vt pf (substi vt v x 
     (dom_cast _ (f_equal (val vt) (eq_sym Heq))
       (v y))) f Hval1.

@@ -3229,7 +3229,7 @@ Theorem alpha_equiv_sub (t: term) (f: formula):
     (Hv1a: ~In x (map fst v1))
     (Hv1b: ~ In y (map snd v1))
     (Heq: alpha_equiv_t (v1 ++ v2) t tm2),
-    alpha_equiv_t (v1 ++ (x, y) :: v2) t (sub_t x y tm2)) /\
+    alpha_equiv_t (v1 ++ (x, y) :: v2) t (sub_var_t x y tm2)) /\
   (forall (fm2: formula) (x y: vsymbol) v1 v2
     (Htys: snd x = snd y)
     (Hbnd: ~ In y (fmla_bnd fm2))
@@ -3238,7 +3238,7 @@ Theorem alpha_equiv_sub (t: term) (f: formula):
     (Hv1a: ~In x (map fst v1))
     (Hv1b: ~ In y (map snd v1))
     (Heq: alpha_equiv_f (v1 ++ v2) f fm2),
-    alpha_equiv_f (v1 ++ (x, y):: v2) f (sub_f x y fm2)).
+    alpha_equiv_f (v1 ++ (x, y):: v2) f (sub_var_f x y fm2)).
 Proof.
   revert t f; apply term_formula_ind; simpl; auto; intros.
   - (*Tconst*) alpha_case tm2 Heq; auto.
@@ -3465,28 +3465,28 @@ Proof.
 Qed.
 
 (*Corollaries*)
-Definition alpha_equiv_sub_t_full t := proj_tm alpha_equiv_sub t.
-Definition alpha_equiv_sub_f_full f := proj_fmla alpha_equiv_sub f.
+Definition alpha_equiv_sub_var_t_full t := proj_tm alpha_equiv_sub t.
+Definition alpha_equiv_sub_var_f_full f := proj_fmla alpha_equiv_sub f.
 
 (*How a substitution changes alpha equivalence*)
-Corollary alpha_equiv_sub_t (t: term) (x y: vsymbol)
+Corollary alpha_equiv_sub_var_t (t: term) (x y: vsymbol)
   (Htys: snd x = snd y)
   (Hbnd: ~ In y (tm_bnd t))
   (Hfree: ~ In y (tm_fv t)):
-  alpha_equiv_t [(x, y)] t (sub_t x y t).
+  alpha_equiv_t [(x, y)] t (sub_var_t x y t).
 Proof.
-  apply alpha_equiv_sub_t_full with(v1:=nil)(v2:=nil); simpl; auto.
+  apply alpha_equiv_sub_var_t_full with(v1:=nil)(v2:=nil); simpl; auto.
   - apply same_in_t_refl.
   - apply a_equiv_t_refl.
 Qed.
 
-Corollary alpha_equiv_sub_f (f: formula) (x y: vsymbol)
+Corollary alpha_equiv_sub_var_f (f: formula) (x y: vsymbol)
   (Htys: snd x = snd y)
   (Hbnd: ~ In y (fmla_bnd f))
   (Hfree: ~ In y (fmla_fv f)):
-  alpha_equiv_f [(x, y)] f (sub_f x y f).
+  alpha_equiv_f [(x, y)] f (sub_var_f x y f).
 Proof.
-  apply alpha_equiv_sub_f_full with(v1:=nil)(v2:=nil); simpl; auto.
+  apply alpha_equiv_sub_var_f_full with(v1:=nil)(v2:=nil); simpl; auto.
   - apply same_in_f_refl.
   - apply a_equiv_f_refl.
 Qed.
@@ -3498,11 +3498,11 @@ Lemma same_in_sub (t: term) (f: formula):
   (forall (x y z: vsymbol),
   z <> x ->
   z <> y ->
-  same_in_t t (sub_t x y t) z) /\
+  same_in_t t (sub_var_t x y t) z) /\
   (forall (x y z: vsymbol),
   z <> x ->
   z <> y ->
-  same_in_f f (sub_f x y f) z).
+  same_in_f f (sub_var_f x y f) z).
 Proof.
   revert t f. apply term_formula_ind; simpl; intros; auto.
   - vsym_eq v z.
@@ -3550,8 +3550,8 @@ Proof.
     + rewrite H5, IHps; auto.
 Qed. 
 
-Definition same_in_sub_t t := proj_tm same_in_sub t.
-Definition same_in_sub_f f := proj_fmla same_in_sub f.
+Definition same_in_sub_var_t t := proj_tm same_in_sub t.
+Definition same_in_sub_var_f f := proj_fmla same_in_sub f.
 
 Lemma same_in_p_trans (p1 p2 p3: pattern) x:
   same_in_p p1 p2 x ->
@@ -3683,29 +3683,29 @@ Qed.
 Definition same_in_t_trans t := proj_tm same_in_trans t.
 Definition same_in_f_trans f := proj_fmla same_in_trans f. 
 
-Lemma same_in_sub_ts (t: term) vs z:
+Lemma same_in_sub_var_ts (t: term) vs z:
   ~ In z (map fst vs) ->
   ~ In (fst z) (map snd vs) ->
-  same_in_t t (sub_ts vs t) z.
+  same_in_t t (sub_var_ts vs t) z.
 Proof.
   intros; induction vs; simpl in *.
   - apply same_in_t_refl.
   - not_or Hz. eapply same_in_t_trans.
     apply IHvs; auto.
-    apply same_in_sub_t; auto. intro Heq.
+    apply same_in_sub_var_t; auto. intro Heq.
     subst. contradiction.
 Qed. 
 
-Lemma same_in_sub_fs (f: formula) vs z:
+Lemma same_in_sub_var_fs (f: formula) vs z:
   ~ In z (map fst vs) ->
   ~ In (fst z) (map snd vs) ->
-  same_in_f f (sub_fs vs f) z.
+  same_in_f f (sub_var_fs vs f) z.
 Proof.
   intros; induction vs; simpl in *.
   - apply same_in_f_refl.
   - not_or Hz. eapply same_in_f_trans.
     apply IHvs; auto.
-    apply same_in_sub_f; auto. intro Heq.
+    apply same_in_sub_var_f; auto. intro Heq.
     subst. contradiction.
 Qed.
 
@@ -3722,48 +3722,48 @@ Lemma alpha_convert_quant
   (q: quant) (v1 v2: vsymbol) (Heq: snd v1 = snd v2) (f: formula)
   (Hbnd: ~In v2 (fmla_bnd f))
   (Hfree: ~In v2 (fmla_fv f)):
-  a_equiv_f (Fquant q v1 f) (Fquant q v2 (sub_f v1 v2 f)).
+  a_equiv_f (Fquant q v1 f) (Fquant q v2 (sub_var_f v1 v2 f)).
 Proof.
   unfold a_equiv_f. simpl.
   bool_to_prop; split_all; try solve[simpl_sumbool].
-  apply alpha_equiv_sub_f; auto.
+  apply alpha_equiv_sub_var_f; auto.
 Qed.
 
 Lemma alpha_convert_tlet 
   (v1 v2: vsymbol) (Heq: snd v1 = snd v2) (tm1 tm2: term)
   (Hbnd: ~In v2 (tm_bnd tm2))
   (Hfree: ~In v2 (tm_fv tm2)):
-  a_equiv_t (Tlet tm1 v1 tm2) (Tlet tm1 v2 (sub_t v1 v2 tm2)).
+  a_equiv_t (Tlet tm1 v1 tm2) (Tlet tm1 v2 (sub_var_t v1 v2 tm2)).
 Proof.
   unfold a_equiv_t.
   simpl. destruct (vty_eq_dec (snd v1) (snd v2)); simpl; auto.
   bool_to_prop. split.
   - apply alpha_t_equiv_same; simpl; intros. destruct H.
-  - apply alpha_equiv_sub_t; auto.
+  - apply alpha_equiv_sub_var_t; auto.
 Qed.
 
 Lemma alpha_convert_flet 
   (v1 v2: vsymbol) (Heq: snd v1 = snd v2) (t1: term) (f2: formula)
   (Hbnd: ~In v2 (fmla_bnd f2))
   (Hfree: ~In v2 (fmla_fv f2)):
-  a_equiv_f (Flet t1 v1 f2) (Flet t1 v2 (sub_f v1 v2 f2)).
+  a_equiv_f (Flet t1 v1 f2) (Flet t1 v2 (sub_var_f v1 v2 f2)).
 Proof.
   unfold a_equiv_f.
   simpl. destruct (vty_eq_dec (snd v1) (snd v2)); simpl; auto.
   bool_to_prop. split.
   - apply alpha_t_equiv_same; simpl; intros. destruct H.
-  - apply alpha_equiv_sub_f; auto.
+  - apply alpha_equiv_sub_var_f; auto.
 Qed.
 
 Lemma alpha_convert_teps
   (v1 v2: vsymbol) (Heq: snd v1 = snd v2) (f: formula)
   (Hbnd: ~In v2 (fmla_bnd f))
   (Hfree: ~In v2 (fmla_fv f)):
-  a_equiv_t (Teps f v1) (Teps (sub_f v1 v2 f) v2).
+  a_equiv_t (Teps f v1) (Teps (sub_var_f v1 v2 f) v2).
 Proof.
   unfold a_equiv_t. simpl.
   rewrite Heq, eq_dec_refl; simpl.
-  apply alpha_equiv_sub_f; auto.
+  apply alpha_equiv_sub_var_f; auto.
 Qed.
 
 (*Congruences*)
@@ -3788,7 +3788,7 @@ forall v1 v2 : vsymbol,
   ~ In v2 (tm_fv tm4) ->
   a_equiv_t tm1 tm3 ->
   a_equiv_t tm2 tm4 ->
-  a_equiv_t (Tlet tm1 v1 tm2) (Tlet tm3 v2 (sub_t v1 v2 tm4)).
+  a_equiv_t (Tlet tm1 v1 tm2) (Tlet tm3 v2 (sub_var_t v1 v2 tm4)).
 Proof.
   intros.
   eapply a_equiv_t_trans.
@@ -3812,7 +3812,7 @@ Lemma alpha_convert_teps': forall v1 v2,
   ~ In v2 (fmla_bnd f2) ->
   ~ In v2 (fmla_fv f2) ->
   a_equiv_f f1 f2 ->
-  a_equiv_t (Teps f1 v1) (Teps (sub_f v1 v2 f2) v2).
+  a_equiv_t (Teps f1 v1) (Teps (sub_var_f v1 v2 f2) v2).
 Proof.
   intros. eapply a_equiv_t_trans.
   2: apply alpha_convert_teps; auto.
@@ -3835,7 +3835,7 @@ Lemma alpha_convert_quant': forall q v1 v2,
   ~ In v2 (fmla_bnd f2) ->
   ~ In v2 (fmla_fv f2) ->
   a_equiv_f f1 f2 ->
-  a_equiv_f (Fquant q v1 f1) (Fquant q v2 (sub_f v1 v2 f2)).
+  a_equiv_f (Fquant q v1 f1) (Fquant q v2 (sub_var_f v1 v2 f2)).
 Proof.
   intros. eapply a_equiv_f_trans.
   2: apply alpha_convert_quant; auto.
@@ -3918,7 +3918,7 @@ forall v1 v2 : vsymbol,
   ~ In v2 (fmla_fv f2) ->
   a_equiv_t tm1 tm2 ->
   a_equiv_f f1 f2 ->
-  a_equiv_f (Flet tm1 v1 f1) (Flet tm2 v2 (sub_f v1 v2 f2)).
+  a_equiv_f (Flet tm1 v1 f1) (Flet tm2 v2 (sub_var_f v1 v2 f2)).
 Proof.
   intros.
   eapply a_equiv_f_trans.
@@ -3963,7 +3963,7 @@ Variable bnd: A -> list vsymbol.
 Variable bnd_sub : forall (t: A) (x y: vsymbol),
   bnd (sub x y t) = bnd t.
 
-(*The iterated version of [sub_fv_notin]. Awkward to state so
+(*The iterated version of [sub_var_fv_notin]. Awkward to state so
   that we can prove term and formula versions together*)
 Lemma sub_mult_fv_notin
   (vars: list (vsymbol * string)) (t: A)
@@ -4115,25 +4115,25 @@ End Iter.
 
 (*Now we specialize these results for terms and formulas*)
 
-Definition sub_ts_fv_notin := sub_mult_fv_notin _ _ 
-sub_t_fv_notin sub_t_fv_diff.
-Definition sub_fs_fv_notin := sub_mult_fv_notin _ _
-sub_f_fv_notin sub_f_fv_diff.
-Definition sub_ts_fv_diff := sub_mult_fv_diff _ _
-sub_t_fv_diff.
-Definition sub_fs_fv_diff := sub_mult_fv_diff _ _
-sub_f_fv_diff.
-Definition bnd_sub_ts := bnd_subs _ _ bnd_sub_t.
-Definition bnd_sub_fs := bnd_subs _ _ bnd_sub_f.
+Definition sub_var_ts_fv_notin := sub_mult_fv_notin _ _ 
+sub_var_t_fv_notin sub_var_t_fv_diff.
+Definition sub_var_fs_fv_notin := sub_mult_fv_notin _ _
+sub_var_f_fv_notin sub_var_f_fv_diff.
+Definition sub_var_ts_fv_diff := sub_mult_fv_diff _ _
+sub_var_t_fv_diff.
+Definition sub_var_fs_fv_diff := sub_mult_fv_diff _ _
+sub_var_f_fv_diff.
+Definition bnd_sub_var_ts := bnd_subs _ _ bnd_sub_var_t.
+Definition bnd_sub_var_fs := bnd_subs _ _ bnd_sub_var_f.
 
-Definition a_equiv_t_sub_ts_congr :=
-a_equiv_subs_congr _ _ sub_t_fv_notin sub_t_fv_diff _ 
-bnd_sub_t sub_t_eq _ _  alpha_t_equiv_sym alpha_equiv_t_redundant
-alpha_equiv_t_trans alpha_equiv_sub_t free_in_t_spec.
-Definition a_equiv_f_sub_fs_congr :=
-a_equiv_subs_congr _ _ sub_f_fv_notin sub_f_fv_diff _ 
-bnd_sub_f sub_f_eq _ _  alpha_f_equiv_sym alpha_equiv_f_redundant
-alpha_equiv_f_trans alpha_equiv_sub_f free_in_f_spec.
+Definition a_equiv_t_sub_var_ts_congr :=
+a_equiv_subs_congr _ _ sub_var_t_fv_notin sub_var_t_fv_diff _ 
+bnd_sub_var_t sub_var_t_eq _ _  alpha_t_equiv_sym alpha_equiv_t_redundant
+alpha_equiv_t_trans alpha_equiv_sub_var_t free_in_t_spec.
+Definition a_equiv_f_sub_var_fs_congr :=
+a_equiv_subs_congr _ _ sub_var_f_fv_notin sub_var_f_fv_diff _ 
+bnd_sub_var_f sub_var_f_eq _ _  alpha_f_equiv_sym alpha_equiv_f_redundant
+alpha_equiv_f_trans alpha_equiv_sub_var_f free_in_f_spec.
 
 (*Now we want to define a function to rename bound variables to unique
   values such that terms and formulas have no duplicate bound
@@ -4155,7 +4155,7 @@ Fixpoint alpha_t_aux (t: term) (l: list string) {struct t} : term :=
     match l with
     | str :: tl =>
       let (l1, l2) := split tl (length (tm_bnd t1)) in 
-      Tlet (alpha_t_aux t1 l1) (str, snd x) (sub_t x (str, snd x) 
+      Tlet (alpha_t_aux t1 l1) (str, snd x) (sub_var_t x (str, snd x) 
       (alpha_t_aux t2 l2))
     | _ => t
     end
@@ -4189,13 +4189,13 @@ Fixpoint alpha_t_aux (t: term) (l: list string) {struct t} : term :=
         let (l1, l2) := split strs p_sz in
         let t2 := alpha_t_aux (snd x) l2 in
         let vars := combine (pat_fv (fst x)) l1 in
-        (map_pat (mk_fun_str (pat_fv (fst x)) l1) (fst x), sub_ts vars t2)) ps l_split)
+        (map_pat (mk_fun_str (pat_fv (fst x)) l1) (fst x), sub_var_ts vars t2)) ps l_split)
   | Teps f v =>
     match l with
     | nil => t
     | str :: tl =>
       let v' := (str, snd v) in
-      Teps (sub_f v v' (alpha_f_aux f tl)) v'
+      Teps (sub_var_f v v' (alpha_f_aux f tl)) v'
     end
   | _ => t (*no other bound variables/recursive cases*)
   end
@@ -4212,7 +4212,7 @@ with alpha_f_aux (f: formula) (l: list string) {struct f} : formula :=
       match l with
       | str :: tl =>
         let v' := (str, snd v) in
-        Fquant q v' (sub_f v v' (alpha_f_aux f1 tl))
+        Fquant q v' (sub_var_f v v' (alpha_f_aux f1 tl))
       | _ => f
       end
   | Feq ty t1 t2 =>
@@ -4231,7 +4231,7 @@ with alpha_f_aux (f: formula) (l: list string) {struct f} : formula :=
     match l with
     | str :: tl =>
       let (l1, l2) := split tl (length (tm_bnd t)) in 
-      Flet (alpha_t_aux t l1) (str, snd v) (sub_f v (str, snd v) 
+      Flet (alpha_t_aux t l1) (str, snd v) (sub_var_f v (str, snd v) 
       (alpha_f_aux f1 l2))
     | _ => f
     end
@@ -4258,7 +4258,7 @@ with alpha_f_aux (f: formula) (l: list string) {struct f} : formula :=
         let (l1, l2) := split strs p_sz in
         let f2 := alpha_f_aux (snd x) l2 in
         let vars := combine (pat_fv (fst x)) l1 in
-        (map_pat (mk_fun_str (pat_fv (fst x)) l1) (fst x), sub_fs vars f2)) ps l_split)
+        (map_pat (mk_fun_str (pat_fv (fst x)) l1) (fst x), sub_var_fs vars f2)) ps l_split)
   | _ => f (*No other bound/recursive cases*)
   end.
 
@@ -4381,14 +4381,14 @@ Proof.
         apply in_app_or in Hin.
         destruct Hin.
         -- apply H in H3; wf_tac.
-        -- rewrite bnd_sub_t in H3.
+        -- rewrite bnd_sub_var_t in H3.
           apply H0 in H3; wf_tac. 
       * rewrite NoDup_app_iff'.
         split_all.
         -- apply H; wf_tac.
-        -- rewrite bnd_sub_t. apply H0; wf_tac.
+        -- rewrite bnd_sub_var_t. apply H0; wf_tac.
         -- intros x.
-          rewrite bnd_sub_t.
+          rewrite bnd_sub_var_t.
           intros [Hinx1 Hinx2].
           apply H in Hinx1; wf_tac.
           apply H0 in Hinx2; wf_tac.
@@ -4397,7 +4397,7 @@ Proof.
       apply in_app_or in Hinx.
       destruct Hinx as [Hinx | Hinx].
       * apply H in Hinx; wf_tac.
-      * rewrite bnd_sub_t in Hinx. apply H0 in Hinx; wf_tac.
+      * rewrite bnd_sub_var_t in Hinx. apply H0 in Hinx; wf_tac.
   - (*Tif case*)
     split.
     + rewrite !NoDup_app_iff'.
@@ -4440,11 +4440,11 @@ Proof.
           destruct Hinx as [i [Hi Hpt1]].
           rewrite NoDup_app_iff'.
           split_all; subst; wf_tac.
-          ++ simpl. rewrite bnd_sub_ts.
+          ++ simpl. rewrite bnd_sub_var_ts.
             rewrite Forall_forall in H0.
             apply H0; auto; wf_tac.
           ++ intros x. simpl.
-            rewrite bnd_sub_ts. 
+            rewrite bnd_sub_var_ts. 
             intros [Hinx1 Hinx2].
             (*Need this a lot even though it's ugly*)
             apply in_map_pat_str_fv in Hinx1; wf_tac.
@@ -4466,14 +4466,14 @@ Proof.
               apply H5.
               apply (in_nth_concat_nodup Hini1 Hini2); wf_tac.
             ** simpl in Hini2.
-              rewrite bnd_sub_ts in Hini2.
+              rewrite bnd_sub_var_ts in Hini2.
               rewrite Forall_forall in H0.
               apply H0 in Hini2; wf_tac.
               apply In_skipn in Hini2.
               apply H5.
               apply (in_nth_concat_nodup Hini1 Hini2); wf_tac.
           ++ simpl in Hini1. 
-            rewrite bnd_sub_ts in Hini1.
+            rewrite bnd_sub_var_ts in Hini1.
             rewrite Forall_forall in H0.
             apply H0 in Hini1; wf_tac.
             apply In_skipn in Hini1.
@@ -4484,7 +4484,7 @@ Proof.
               apply H5.
               apply (in_nth_concat_nodup Hini1 Hini2); wf_tac.
             ** simpl in Hini2.
-              rewrite bnd_sub_ts in Hini2.
+              rewrite bnd_sub_var_ts in Hini2.
               apply H0 in Hini2; wf_tac.
               apply In_skipn in Hini2.
               apply H5.
@@ -4505,7 +4505,7 @@ Proof.
           apply in_split_lens_ith in Hinx2; wf_tac.
           apply (nodup_firstn_skipn Hinx1 Hinx2); wf_tac.
         -- simpl in Hinx2.
-          rewrite bnd_sub_ts in Hinx2.
+          rewrite bnd_sub_var_ts in Hinx2.
           rewrite Forall_forall in H0; apply H0 in Hinx2; wf_tac.
           apply In_skipn in Hinx2.
           apply in_split_lens_ith in Hinx2; wf_tac.
@@ -4528,14 +4528,14 @@ Proof.
           revert Hinx; wf_tac; intros.
           apply in_split_lens_ith in Hinx; wf_tac.
         -- simpl in Hinx.
-          rewrite bnd_sub_ts in Hinx.
+          rewrite bnd_sub_var_ts in Hinx.
           rewrite Forall_forall in H0; apply H0 in Hinx; wf_tac.
           apply In_skipn in Hinx.
           apply in_split_lens_ith in Hinx; wf_tac.
   - (*Epsilon case*)
     destruct l; inversion H1; subst; simpl.
     inversion H0; subst.
-    rewrite bnd_sub_f.
+    rewrite bnd_sub_var_f.
     split.
     + constructor; [|apply H; wf_tac].
       intro Hin. apply H in Hin; wf_tac.
@@ -4574,7 +4574,7 @@ Proof.
   - (*Fquant*)
     destruct l; inversion H1; subst; simpl.
     inversion H0; subst.
-    rewrite bnd_sub_f.
+    rewrite bnd_sub_var_f.
     split.
     + constructor; [intro C; apply H in C |apply H]; wf_tac.
     + intros. destruct H2; subst;[left | right]; auto.
@@ -4602,7 +4602,7 @@ Proof.
   - split;[constructor | intros x []].
   - (*Flet*)
     destruct l; inversion H2; subst.
-    inversion H1; subst; simpl; rewrite bnd_sub_f.
+    inversion H1; subst; simpl; rewrite bnd_sub_var_f.
     split.
     + constructor.
       * intro C. apply in_app_or in C.
@@ -4645,11 +4645,11 @@ Proof.
           destruct Hinx as [i [Hi Hpt1]].
           rewrite NoDup_app_iff'.
           split_all; subst; wf_tac.
-          ++ simpl. rewrite bnd_sub_fs.
+          ++ simpl. rewrite bnd_sub_var_fs.
             rewrite Forall_forall in H0.
             apply H0; auto; wf_tac.
           ++ intros x.
-            simpl. rewrite bnd_sub_fs.
+            simpl. rewrite bnd_sub_var_fs.
             intros [Hinx1 Hinx2].
             (*Need this a lot even though it's ugly*)
             apply in_map_pat_str_fv in Hinx1; wf_tac.
@@ -4670,13 +4670,13 @@ Proof.
               apply In_firstn in Hini2.
               apply H5.
               apply (in_nth_concat_nodup Hini1 Hini2); wf_tac.
-            ** simpl in Hini2; rewrite bnd_sub_fs in Hini2. 
+            ** simpl in Hini2; rewrite bnd_sub_var_fs in Hini2. 
               rewrite Forall_forall in H0.
               apply H0 in Hini2; wf_tac.
               apply In_skipn in Hini2.
               apply H5.
               apply (in_nth_concat_nodup Hini1 Hini2); wf_tac.
-          ++ simpl in Hini1; rewrite bnd_sub_fs in Hini1. 
+          ++ simpl in Hini1; rewrite bnd_sub_var_fs in Hini1. 
             rewrite Forall_forall in H0.
             apply H0 in Hini1; wf_tac.
             apply In_skipn in Hini1.
@@ -4686,7 +4686,7 @@ Proof.
               apply In_firstn in Hini2.
               apply H5.
               apply (in_nth_concat_nodup Hini1 Hini2); wf_tac.
-            ** simpl in Hini2; rewrite bnd_sub_fs in Hini2. 
+            ** simpl in Hini2; rewrite bnd_sub_var_fs in Hini2. 
               apply H0 in Hini2; wf_tac.
               apply In_skipn in Hini2.
               apply H5.
@@ -4706,7 +4706,7 @@ Proof.
         apply In_firstn in Hinx2.
         apply in_split_lens_ith in Hinx2; wf_tac.
         apply (nodup_firstn_skipn Hinx1 Hinx2); wf_tac.
-      -- simpl in Hinx2; rewrite bnd_sub_fs in Hinx2. 
+      -- simpl in Hinx2; rewrite bnd_sub_var_fs in Hinx2. 
         rewrite Forall_forall in H0; apply H0 in Hinx2; wf_tac.
         apply In_skipn in Hinx2.
         apply in_split_lens_ith in Hinx2; wf_tac.
@@ -4728,7 +4728,7 @@ Proof.
       -- apply in_map_pat_str_fv in Hinx; wf_tac.
         revert Hinx; wf_tac; intros.
         apply in_split_lens_ith in Hinx; wf_tac.
-      -- simpl in Hinx; rewrite bnd_sub_fs in Hinx. 
+      -- simpl in Hinx; rewrite bnd_sub_var_fs in Hinx. 
         rewrite Forall_forall in H0; apply H0 in Hinx; wf_tac.
         apply In_skipn in Hinx.
         apply in_split_lens_ith in Hinx; wf_tac.
@@ -4795,11 +4795,11 @@ Proof.
     (*Now we proceed by cases depending on whether x = v,
       x = (s, snd v), or none of the above*)
     vsym_eq2 x v (s, snd v).
-    + subst. rewrite sub_t_fv_notin; auto. simpl_bool.
+    + subst. rewrite sub_var_t_fv_notin; auto. simpl_bool.
       vsym_eq v v.
     + (*If x = (s, snd v)*)
       subst. vsym_eq (s, snd v) (s, snd v).
-      rewrite sub_t_fv_in; auto.
+      rewrite sub_var_t_fv_in; auto.
       * rewrite !H0.
         vsym_eq (s, snd v) v. simpl.
         symmetry. apply free_in_t_negb. intro Hin.
@@ -4807,7 +4807,7 @@ Proof.
         simpl_set. triv.
       * intro Hin. apply alpha_t_aux_bnd in Hin; wf_tac.
     + (*The last case is quite easy, nothing changes*) 
-      rewrite sub_t_fv_diff; auto.
+      rewrite sub_var_t_fv_diff; auto.
       vsym_eq x (s, snd v); simpl.
       vsym_eq x v; simpl.
       apply H0.
@@ -4884,12 +4884,12 @@ Proof.
         auto; simpl_set; wf_tac. 
       }
       destruct (in_bool_spec vsymbol_eq_dec x (pat_fv (fst (nth i ps (Pwild, tm_d))))); simpl.
-      * apply sub_ts_fv_notin; wf_tac.
+      * apply sub_var_ts_fv_notin; wf_tac.
         intros y Hiny Hiny2.
         apply In_firstn in Hiny2. apply Hnotfree in Hiny2.
         not_or Hiny. contradiction.
       * simpl in n.
-        rewrite sub_ts_fv_diff; wf_tac. 
+        rewrite sub_var_ts_fv_diff; wf_tac. 
         -- rewrite H0; wf_tac.
           ++ intros y Hy C.
             apply In_skipn in Hy.
@@ -4921,11 +4921,11 @@ Proof.
     (*Now we proceed by cases depending on whether x = v,
       x = (s, snd v), or none of the above*)
     vsym_eq2 x v (s, snd v).
-    + subst. rewrite sub_f_fv_notin; auto. simpl_bool.
+    + subst. rewrite sub_var_f_fv_notin; auto. simpl_bool.
       vsym_eq v v.
     + (*If x = (s, snd v)*)
       subst. vsym_eq (s, snd v) (s, snd v).
-      rewrite sub_f_fv_in; auto.
+      rewrite sub_var_f_fv_in; auto.
       * rewrite !H.
         vsym_eq (s, snd v) v. simpl.
         symmetry. apply free_in_f_negb. intro Hin.
@@ -4933,7 +4933,7 @@ Proof.
         simpl_set. triv.
       * intro Hin. apply alpha_f_aux_bnd in Hin; wf_tac.
     + (*The last case is quite easy, nothing changes*) 
-      rewrite sub_f_fv_diff; auto.
+      rewrite sub_var_f_fv_diff; auto.
       vsym_eq x (s, snd v); simpl.
       vsym_eq x v; simpl.
       apply H.
@@ -4966,11 +4966,11 @@ Proof.
     (*Now we proceed by cases depending on whether x = v,
       x = (s, snd v), or none of the above*)
     vsym_eq2 x v (s, snd v).
-    + subst. rewrite sub_f_fv_notin; auto. simpl_bool.
+    + subst. rewrite sub_var_f_fv_notin; auto. simpl_bool.
       vsym_eq v v.
     + (*If x = (s, snd v)*)
       subst. vsym_eq (s, snd v) (s, snd v).
-      rewrite sub_f_fv_in; auto.
+      rewrite sub_var_f_fv_in; auto.
       * rewrite !H.
         vsym_eq (s, snd v) v. simpl.
         symmetry. apply free_in_f_negb. intro Hin.
@@ -4978,7 +4978,7 @@ Proof.
         simpl_set. triv.
       * intro Hin. apply alpha_f_aux_bnd in Hin; wf_tac.
     + (*The last case is quite easy, nothing changes*) 
-      rewrite sub_f_fv_diff; auto.
+      rewrite sub_var_f_fv_diff; auto.
       vsym_eq x (s, snd v); simpl.
       vsym_eq x v; simpl.
       apply H.
@@ -5010,11 +5010,11 @@ Proof.
     (*Now we proceed by cases depending on whether x = v,
       x = (s, snd v), or none of the above*)
     vsym_eq2 x v (s, snd v).
-    + subst. rewrite sub_f_fv_notin; auto. simpl_bool.
+    + subst. rewrite sub_var_f_fv_notin; auto. simpl_bool.
       vsym_eq v v.
     + (*If x = (s, snd v)*)
       subst. vsym_eq (s, snd v) (s, snd v).
-      rewrite sub_f_fv_in; auto.
+      rewrite sub_var_f_fv_in; auto.
       * rewrite !H0.
         vsym_eq (s, snd v) v. simpl.
         symmetry. apply free_in_f_negb. intro Hin.
@@ -5022,7 +5022,7 @@ Proof.
         simpl_set. triv.
       * intro Hin. apply alpha_f_aux_bnd in Hin; wf_tac.
     + (*The last case is quite easy, nothing changes*) 
-      rewrite sub_f_fv_diff; auto.
+      rewrite sub_var_f_fv_diff; auto.
       vsym_eq x (s, snd v); simpl.
       vsym_eq x v; simpl.
       apply H0.
@@ -5100,12 +5100,12 @@ Proof.
       }
       destruct (in_bool_spec vsymbol_eq_dec x (pat_fv (fst (nth i ps (Pwild, Ftrue))))); simpl.
       * (*If x in orig pattern free vars, need to show false*)
-        apply sub_fs_fv_notin; wf_tac.
+        apply sub_var_fs_fv_notin; wf_tac.
         intros y Hiny Hiny2.
         apply In_firstn in Hiny2. apply Hnotfree in Hiny2.
         not_or Hiny. contradiction.
       * simpl in n.
-        rewrite sub_fs_fv_diff; wf_tac. 
+        rewrite sub_var_fs_fv_diff; wf_tac. 
         -- rewrite H0; wf_tac.
           ++ intros y Hy C.
             apply In_skipn in Hy.
@@ -5210,7 +5210,7 @@ Variable alpha: list (vsymbol * vsymbol) -> A -> A -> bool.
 Variable same: A -> A -> vsymbol -> bool.
 
 Variable alpha_refl: forall t, alpha nil t t.
-Variable alpha_sub_full: forall (t tm2 : A) (x y : vsymbol)
+Variable alpha_sub_var_full: forall (t tm2 : A) (x y : vsymbol)
   (v1 v2 : list (vsymbol * vsymbol)),
   snd x = snd y ->
   ~ In y (bnd tm2) ->
@@ -5250,7 +5250,7 @@ Proof.
   - apply alpha_refl.
   - simpl. inversion Hn1; subst.
     inversion Hnodup; subst.
-    apply (alpha_sub_full _ _ a (s, snd a) nil _); auto.
+    apply (alpha_sub_var_full _ _ a (s, snd a) nil _); auto.
     + rewrite bnd_subs. intro C.
       apply (Hnotbnd (s, snd a)); simpl; auto.
     + rewrite <- free_in_negb.
@@ -5276,12 +5276,12 @@ Qed.
 
 End AlphaSubIter.
 
-Definition alpha_equiv_sub_ts :=
-  alpha_equiv_subs _ _ _ _ _ _ a_equiv_t_refl alpha_equiv_sub_t_full
-  bnd_sub_ts free_in_t_negb sub_ts_fv_diff same_in_sub_ts.
-Definition alpha_equiv_sub_fs :=
-  alpha_equiv_subs _ _ _ _ _ _ a_equiv_f_refl alpha_equiv_sub_f_full
-  bnd_sub_fs free_in_f_negb sub_fs_fv_diff same_in_sub_fs.
+Definition alpha_equiv_sub_var_ts :=
+  alpha_equiv_subs _ _ _ _ _ _ a_equiv_t_refl alpha_equiv_sub_var_t_full
+  bnd_sub_var_ts free_in_t_negb sub_var_ts_fv_diff same_in_sub_var_ts.
+Definition alpha_equiv_sub_var_fs :=
+  alpha_equiv_subs _ _ _ _ _ _ a_equiv_f_refl alpha_equiv_sub_var_f_full
+  bnd_sub_var_fs free_in_f_negb sub_var_fs_fv_diff same_in_sub_var_fs.
 
 (*Before our final result, we handle the match cases separately
   using a sort-of-congruence lemma. These proofs are
@@ -5324,7 +5324,7 @@ Lemma alpha_tmatch tm1 tm2 v ps (strs: list (list string))
             (mk_fun_str (pat_fv (fst x))
                (firstn (length (pat_fv (fst x))) strs)) 
             (fst x),
-          sub_ts
+          sub_var_ts
             (combine (pat_fv (fst x))
                (firstn (length (pat_fv (fst x))) strs))
             (f (snd x)
@@ -5355,7 +5355,7 @@ Proof.
   }
   bool_to_prop; split.
   - (*We need transitivity, which is annoying because we have to go forward*) 
-    pose proof (alpha_equiv_sub_ts t1 (pat_fv p1) 
+    pose proof (alpha_equiv_sub_var_ts t1 (pat_fv p1) 
       (firstn (Datatypes.length (pat_fv p1)) l) Hlenl).
     assert (forall s : string * vty,
     In (fst s) (firstn (Datatypes.length (pat_fv p1)) l) ->
@@ -5380,10 +5380,10 @@ Proof.
     specialize (H H1); clear H1.
     specialize (Hf 0 ltac:(lia)); simpl in Hf.
     assert (Heq2: a_equiv_t
-    (sub_ts (combine (pat_fv p1) (firstn (Datatypes.length (pat_fv p1)) l)) t1)
-    (sub_ts (combine (pat_fv p1) (firstn (Datatypes.length (pat_fv p1)) l))
+    (sub_var_ts (combine (pat_fv p1) (firstn (Datatypes.length (pat_fv p1)) l)) t1)
+    (sub_var_ts (combine (pat_fv p1) (firstn (Datatypes.length (pat_fv p1)) l))
        (f t1 (skipn (Datatypes.length (pat_fv p1)) l)))). {
-        apply a_equiv_t_sub_ts_congr; auto.
+        apply a_equiv_t_sub_var_ts_congr; auto.
         - intros x. rewrite map_snd_combine; auto.
           intros. intro C.
           apply (Hnotbnd x l); simpl; wf_tac.
@@ -5476,7 +5476,7 @@ Lemma alpha_fmatch tm1 tm2 v ps (strs: list (list string))
             (mk_fun_str (pat_fv (fst x))
                (firstn (length (pat_fv (fst x))) strs)) 
             (fst x),
-          sub_fs
+          sub_var_fs
             (combine (pat_fv (fst x))
                (firstn (length (pat_fv (fst x))) strs))
             (f (snd x)
@@ -5507,7 +5507,7 @@ Proof.
   }
   bool_to_prop; split.
   - (*We need transitivity, which is annoying because we have to go forward*) 
-    pose proof (alpha_equiv_sub_fs t1 (pat_fv p1) 
+    pose proof (alpha_equiv_sub_var_fs t1 (pat_fv p1) 
       (firstn (Datatypes.length (pat_fv p1)) l) Hlenl).
     assert (forall s : string * vty,
     In (fst s) (firstn (Datatypes.length (pat_fv p1)) l) ->
@@ -5532,10 +5532,10 @@ Proof.
     specialize (H H1); clear H1.
     specialize (Hf 0 ltac:(lia)); simpl in Hf.
     assert (Heq2: a_equiv_f
-    (sub_fs (combine (pat_fv p1) (firstn (Datatypes.length (pat_fv p1)) l)) t1)
-    (sub_fs (combine (pat_fv p1) (firstn (Datatypes.length (pat_fv p1)) l))
+    (sub_var_fs (combine (pat_fv p1) (firstn (Datatypes.length (pat_fv p1)) l)) t1)
+    (sub_var_fs (combine (pat_fv p1) (firstn (Datatypes.length (pat_fv p1)) l))
        (f t1 (skipn (Datatypes.length (pat_fv p1)) l)))). {
-        apply a_equiv_f_sub_fs_congr; auto.
+        apply a_equiv_f_sub_var_fs_congr; auto.
         - intros x. rewrite map_snd_combine; auto.
           intros. intro C.
           apply (Hnotbnd x l); simpl; wf_tac.

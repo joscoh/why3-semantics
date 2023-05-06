@@ -17,124 +17,67 @@ Ltac list_tac2 :=
 
 Ltac vsym_eq x y :=
   destruct (vsymbol_eq_dec x y); subst; auto; try contradiction.
- 
-
 
 (*Substitution*)
 Section Sub.
-(*
-(*t2[t1/x]*)
-Fixpoint sub_t (t1: term) (x: vsymbol) (t2: term) : term :=
-  match t2 with
-  | Tconst c => Tconst c
-  | Tvar v  => 
-    (*The base case*)
-    if vsymbol_eq_dec x v then t1 else Tvar v
-  | Tfun fs tys tms =>
-    Tfun fs tys (map (sub_t t1 x) tms)
-  | Tlet tm1 v tm2 =>
-    Tlet (sub_t t1 x tm1) v
-    (if vsymbol_eq_dec x v then tm2 else (sub_t t1 x tm2))
-  | Tif f1 tm1 tm2 =>
-    Tif (sub_f t1 x f1) (sub_t t1 x tm1) (sub_t t1 x tm2)
-  | Tmatch tm ty ps =>
-    Tmatch (sub_t t1 x tm) ty
-    (map (fun p => if in_bool vsymbol_eq_dec x (pat_fv (fst p)) then
-      p else (fst p, sub_t t1 x (snd p))) ps)
-  | Teps f1 v =>
-    if vsymbol_eq_dec x v then t2 else
-    Teps (sub_f t1 x f1) v
-  end
-with sub_f (t1: term) (x: vsymbol) (f: formula) : formula :=
-  match f with
-  | Fpred p tys tms => Fpred p tys (map (sub_t t1 x) tms)
-  | Fquant q v f' =>
-    if vsymbol_eq_dec x v then f else
-    Fquant q v (sub_f t1 x f')
-  | Feq ty tm1 tm2 =>
-    Feq ty (sub_t t1 x tm1) (sub_t t1 x tm2)
-  | Fbinop b f1 f2 =>
-    Fbinop b (sub_f t1 x f1) (sub_f t1 x f2)
-  | Fnot f' => Fnot (sub_f t1 x f')
-  | Ftrue => Ftrue
-  | Ffalse => Ffalse
-  | Flet tm v f' =>
-    Flet (sub_t t1 x tm) v 
-      (if vsymbol_eq_dec x v then f' else
-      sub_f t1 x f')
-  | Fif f1 f2 f3 =>
-    Fif (sub_f t1 x f1) (sub_f t1 x f2) (sub_f t1 x f3)
-  | Fmatch tm ty ps =>
-    Fmatch (sub_t t1 x tm) ty
-      (map (fun p => if in_bool vsymbol_eq_dec x (pat_fv (fst p)) then
-        p else (fst p, sub_f t1 x (snd p))) ps)
-  end.
-
-  (*t[y/x]*)
-Definition vsub_t (x y: vsymbol) (t: term) : term :=
-  sub_t (Tvar y) x t.
-Definition vsub_f (x y: vsymbol) (f: formula) : formula :=
-  sub_f (Tvar y) x f.*)
-
-
 
 
 (*Substitute variable y for all free ocurrences of x*)
 
-Fixpoint sub_f (x y: vsymbol) (f: formula) : formula :=
+Fixpoint sub_var_f (x y: vsymbol) (f: formula) : formula :=
   match f with
-  | Fpred p tys tms => Fpred p tys (map (sub_t x y) tms)
+  | Fpred p tys tms => Fpred p tys (map (sub_var_t x y) tms)
   | Fquant q v f' =>
     if vsymbol_eq_dec x v then f else
-    Fquant q v (sub_f x y f')
+    Fquant q v (sub_var_f x y f')
   | Feq ty t1 t2 =>
-    Feq ty (sub_t x y t1) (sub_t x y t2)
+    Feq ty (sub_var_t x y t1) (sub_var_t x y t2)
   | Fbinop b f1 f2 =>
-    Fbinop b (sub_f x y f1) (sub_f x y f2)
-  | Fnot f' => Fnot (sub_f x y f')
+    Fbinop b (sub_var_f x y f1) (sub_var_f x y f2)
+  | Fnot f' => Fnot (sub_var_f x y f')
   | Ftrue => Ftrue
   | Ffalse => Ffalse
   | Flet tm v f' =>
-    Flet (sub_t x y tm) v 
+    Flet (sub_var_t x y tm) v 
       (if vsymbol_eq_dec x v then f' else
-      sub_f x y f')
+      sub_var_f x y f')
   | Fif f1 f2 f3 =>
-    Fif (sub_f x y f1) (sub_f x y f2) (sub_f x y f3)
+    Fif (sub_var_f x y f1) (sub_var_f x y f2) (sub_var_f x y f3)
   | Fmatch tm ty ps =>
-    Fmatch (sub_t x y tm) ty
+    Fmatch (sub_var_t x y tm) ty
       (map (fun p => if in_bool vsymbol_eq_dec x (pat_fv (fst p)) then
-        p else (fst p, sub_f x y (snd p))) ps)
+        p else (fst p, sub_var_f x y (snd p))) ps)
   end
-with sub_t (x y: vsymbol) (t: term) : term :=
+with sub_var_t (x y: vsymbol) (t: term) : term :=
   match t with
   | Tconst c => Tconst c
   | Tvar v  => 
     (*The base case*)
     Tvar (if vsymbol_eq_dec x v then y else v)
   | Tfun fs tys tms =>
-    Tfun fs tys (map (sub_t x y) tms)
+    Tfun fs tys (map (sub_var_t x y) tms)
   | Tlet tm1 v tm2 =>
-    Tlet (sub_t x y tm1) v
-    (if vsymbol_eq_dec x v then tm2 else (sub_t x y tm2))
+    Tlet (sub_var_t x y tm1) v
+    (if vsymbol_eq_dec x v then tm2 else (sub_var_t x y tm2))
   | Tif f1 t1 t2 =>
-    Tif (sub_f x y f1) (sub_t x y t1) (sub_t x y t2)
+    Tif (sub_var_f x y f1) (sub_var_t x y t1) (sub_var_t x y t2)
   | Tmatch tm ty ps =>
-    Tmatch (sub_t x y tm) ty
+    Tmatch (sub_var_t x y tm) ty
     (map (fun p => if in_bool vsymbol_eq_dec x (pat_fv (fst p)) then
-      p else (fst p, sub_t x y (snd p))) ps)
+      p else (fst p, sub_var_t x y (snd p))) ps)
   | Teps f1 v =>
     if vsymbol_eq_dec x v then t else
-    Teps (sub_f x y f1) v
+    Teps (sub_var_f x y f1) v
   end.
 
 (*TODO: define full substitution*)
 
-(*Need to know that sub_t and sub_f do not change bound variables*)
+(*Need to know that sub_var_t and sub_var_f do not change bound variables*)
 Lemma sub_bound_eq (t: term) (f: formula) :
   (forall x y,
-    tm_bnd (sub_t x y t) = tm_bnd t) /\
+    tm_bnd (sub_var_t x y t) = tm_bnd t) /\
   (forall x y,
-    fmla_bnd (sub_f x y f) = fmla_bnd f).
+    fmla_bnd (sub_var_f x y f) = fmla_bnd f).
 Proof.
   revert t f. apply term_formula_ind; simpl; auto; intros.
   - f_equal. rewrite map_map. apply map_ext_in_iff.
@@ -166,27 +109,27 @@ Proof.
     rewrite H0; auto. rewrite in_map_iff. exists a; auto.
 Qed.
 
-Definition bnd_sub_t t := proj_tm sub_bound_eq t.
-Definition bnd_sub_f f := proj_fmla sub_bound_eq f.
+Definition bnd_sub_var_t t := proj_tm sub_bound_eq t.
+Definition bnd_sub_var_f f := proj_fmla sub_bound_eq f.
 
 Context {gamma: context} (gamma_valid: valid_context gamma).
 
-(*Ltac sub_tac :=
+(*Ltac sub_var_tac :=
   repeat match goal with
   | |- context [length (map ?f ?l)] => rewrite map_length
   | H: ?i < length ?l |- In (nth ?i ?l ?d) ?l => apply nth_In
   end; auto; try lia.*)
 
-(*sub_t and sub_f preserve typing*)
+(*sub_var_t and sub_var_f preserve typing*)
 Lemma sub_valid (t: term) (f: formula):
   (forall (x y: vsymbol) (ty: vty), 
     term_has_type gamma t ty ->
     snd x = snd y ->
-    term_has_type gamma (sub_t x y t) ty) /\
+    term_has_type gamma (sub_var_t x y t) ty) /\
   (forall (x y: vsymbol),
     formula_typed gamma f ->
     snd x = snd y ->
-    formula_typed gamma (sub_f x y f)).
+    formula_typed gamma (sub_var_f x y f)).
 Proof.
   revert t f.
   apply term_formula_ind; simpl; auto; intros.
@@ -271,11 +214,11 @@ Proof.
     + rewrite null_map; auto.
 Qed.
 
-Definition sub_t_valid t := proj_tm sub_valid t.
-Definition sub_f_valid f := proj_fmla sub_valid f.
+Definition sub_var_t_valid t := proj_tm sub_valid t.
+Definition sub_var_f_valid f := proj_fmla sub_valid f.
 
 (*Substitution for patterns - needed for bound variable
-  substitution, not free var subs like [sub_t] and [sub_f]*)
+  substitution, not free var subs like [sub_var_t] and [sub_var_f]*)
 Fixpoint sub_p (x y: vsymbol) (p: pattern) :=
   match p with
   | Pvar v =>
@@ -294,26 +237,26 @@ Definition sub_mult {A: Type} (sub: vsymbol -> vsymbol -> A -> A)
   fold_right (fun x acc => sub (fst x) ((snd x), snd (fst x)) acc) x l.
   
 (*Substitute multiple vars in term according to map*)
-Definition sub_ts: list (vsymbol * string) -> term -> term:=
-  sub_mult sub_t.
+Definition sub_var_ts: list (vsymbol * string) -> term -> term:=
+  sub_mult sub_var_t.
 
 (*Substitite multiple vars in formula according to map*)
-Definition sub_fs: list (vsymbol * string) -> formula -> formula :=
-  sub_mult sub_f.
+Definition sub_var_fs: list (vsymbol * string) -> formula -> formula :=
+  sub_mult sub_var_f.
 
 (*We need a lot of results about how substition affects free
   variables*)
 
-(*A few easy results about sub_t/f and free vars:*)
+(*A few easy results about sub_var_t/f and free vars:*)
 
 (*If the free var to sub is not in the term, substitution does nothing*)
 Lemma sub_notin (t: term) (f: formula) :
   (forall (x y: vsymbol),
     ~ In x (tm_fv t) ->
-    sub_t x y t = t) /\
+    sub_var_t x y t = t) /\
     (forall (x y: vsymbol),
     ~ In x (fmla_fv f) ->
-    sub_f x y f = f).
+    sub_var_f x y f = f).
 Proof.
   revert t f. apply term_formula_ind; simpl; auto; intros; simpl_set; not_or Hinx.
   - destruct (vsymbol_eq_dec x v); subst; auto; contradiction.
@@ -363,15 +306,15 @@ Proof.
     split; list_tac2. simpl_set. split; auto.
 Qed.
 
-Definition sub_t_notin t := proj_tm sub_notin t.
-Definition sub_f_notin f := proj_fmla sub_notin f.
+Definition sub_var_t_notin t := proj_tm sub_notin t.
+Definition sub_var_f_notin f := proj_fmla sub_notin f.
 
 (*If we substitute x with itself, then nothing changes*)
 Lemma sub_eq (t: term) (f: formula) :
   (forall (x: vsymbol),
-    sub_t x x t = t) /\
+    sub_var_t x x t = t) /\
     (forall (x: vsymbol),
-    sub_f x x f = f).
+    sub_var_f x x f = f).
 Proof.
   revert t f; apply term_formula_ind; simpl; auto; intros.
   - destruct (vsymbol_eq_dec x v); subst; auto.
@@ -401,8 +344,8 @@ Proof.
     case_in; auto. destruct (nth n ps d); auto.
 Qed.
 
-Definition sub_t_eq t := proj_tm sub_eq t. 
-Definition sub_f_eq f := proj_fmla sub_eq f. 
+Definition sub_var_t_eq t := proj_tm sub_eq t. 
+Definition sub_var_f_eq f := proj_fmla sub_eq f. 
 
 (*It is easier to prove some of the lemmas with an alternate
   approach: define when a variable is free rather than show
@@ -510,16 +453,16 @@ End FreeNegb.
 Definition free_in_t_negb := free_in_negb _ _ _ free_in_t_spec.
 Definition free_in_f_negb := free_in_negb _ _ _ free_in_f_spec.
 
-(*3 lemmas about free vars and [sub_t]*)
+(*3 lemmas about free vars and [sub_var_t]*)
   
-(*1. For any variables which are not x or y, sub_t doesn't change anything*)
-Lemma sub_fv_diff (t: term) (f: formula):
+(*1. For any variables which are not x or y, sub_var_t doesn't change anything*)
+Lemma sub_var_fv_diff (t: term) (f: formula):
   (forall (x y z: vsymbol),
     z <> x -> z <> y ->
-    free_in_t z (sub_t x y t) = free_in_t z t) /\
+    free_in_t z (sub_var_t x y t) = free_in_t z t) /\
   (forall (x y z: vsymbol),
     z <> x -> z <> y ->
-    free_in_f z (sub_f x y f) = free_in_f z f).
+    free_in_f z (sub_var_f x y f) = free_in_f z f).
 Proof.
   revert t f.
   apply term_formula_ind; simpl; auto; intros.
@@ -568,18 +511,18 @@ Proof.
     simpl; rewrite H0; list_tac2.
 Qed.
 
-Definition sub_t_fv_diff t := proj_tm sub_fv_diff t. 
-Definition sub_f_fv_diff f := proj_fmla sub_fv_diff f.
+Definition sub_var_t_fv_diff t := proj_tm sub_var_fv_diff t. 
+Definition sub_var_f_fv_diff f := proj_fmla sub_var_fv_diff f.
 
 
 (*2: If we replace x with y, x is NOT in the resulting free variables*)
-Lemma sub_fv_notin (t: term) (f: formula):
+Lemma sub_var_fv_notin (t: term) (f: formula):
   (forall (x y: vsymbol),
     x <> y ->
-    free_in_t x (sub_t x y t) = false) /\
+    free_in_t x (sub_var_t x y t) = false) /\
   (forall (x y: vsymbol),
     x <> y ->
-    free_in_f x (sub_f x y f) = false).
+    free_in_f x (sub_var_f x y f) = false).
 Proof.
   revert t f. apply term_formula_ind; simpl; auto; intros.
   - vsym_eq x v. vsym_eq v y. vsym_eq x v.
@@ -617,8 +560,8 @@ Proof.
     apply H0; list_tac2.
 Qed.
 
-Definition sub_t_fv_notin t := proj_tm sub_fv_notin t.
-Definition sub_f_fv_notin f := proj_fmla sub_fv_notin f.
+Definition sub_var_t_fv_notin t := proj_tm sub_var_fv_notin t.
+Definition sub_var_f_fv_notin f := proj_fmla sub_var_fv_notin f.
 
 
 
@@ -628,15 +571,15 @@ Definition sub_f_fv_notin f := proj_fmla sub_fv_notin f.
 (*Need the Hbnd assumption for the following: in let t1 = v in t2,
   if y =v, then y will not be in the free variables of
   the substituted term even if x is a free variable in t2*)
-  Lemma sub_fv_in (t: term) (f: formula):
+  Lemma sub_var_fv_in (t: term) (f: formula):
   (forall (x y: vsymbol)
     (Hbnd: ~ In y (tm_bnd t)),
     x <> y ->
-    free_in_t y (sub_t x y t) = (free_in_t x t) || (free_in_t y t)) /\
+    free_in_t y (sub_var_t x y t) = (free_in_t x t) || (free_in_t y t)) /\
   (forall (x y: vsymbol)
     (Hbnd: ~ In y (fmla_bnd f)),
     x <> y ->
-    free_in_f y (sub_f x y f) = (free_in_f x f) || (free_in_f y f)).
+    free_in_f y (sub_var_f x y f) = (free_in_f x f) || (free_in_f y f)).
 Proof.
   revert t f. apply term_formula_ind; simpl; auto; intros.
   - vsym_eq x v; simpl.
@@ -734,7 +677,7 @@ Proof.
       split; list_tac2. exists (nth i ps (Pwild, Ftrue)). split; list_tac2.
 Qed. 
 
-Definition sub_t_fv_in t := proj_tm sub_fv_in t. 
-Definition sub_f_fv_in f := proj_fmla sub_fv_in f.
+Definition sub_var_t_fv_in t := proj_tm sub_var_fv_in t. 
+Definition sub_var_f_fv_in f := proj_fmla sub_var_fv_in f.
 
 End Sub.
