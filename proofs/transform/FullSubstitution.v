@@ -90,6 +90,42 @@ Context {gamma: context} (gamma_valid: valid_context gamma)
   (vt : val_typevar).
 
 (*TODO: prove that sub preserves typing*)
+Check term_rep.
+
+(*Substitution over [get_arg_list]*)
+Lemma get_arg_list_sub x tm1 s tys tms 
+  (reps1 reps2: forall (t: term) (ty: vty),
+  term_has_type gamma t ty ->
+  domain (dom_aux pd) (v_subst vt ty))
+  (Hreps: Forall (fun tm =>
+    forall (ty:vty) Hty1 Hty2
+      (Hfree: forall x, In x (tm_fv tm1) -> ~ In x (tm_bnd tm)),
+    reps1 tm ty Hty1 =
+    reps2 (sub_t tm1 x tm) ty Hty2) tms)
+  (Hfree: forall x, In x (tm_fv tm1) -> ~ In x (concat (map tm_bnd tms)))
+  (Hlents1: length tms = length (s_args s))
+  (Hlents2: length (map (sub_t tm1 x) tms) = length (s_args s))
+  (Hlenvs1 Hlenvs2: length tys = length (s_params s))
+  (Hall1: Forall (fun x => term_has_type gamma (fst x) (snd x))
+    (combine tms (map (ty_subst (s_params s) tys) (s_args s))))
+  (Hall2: Forall (fun x => term_has_type gamma (fst x) (snd x))
+    (combine (map (sub_t tm1 x) tms) (map (ty_subst (s_params s) tys) (s_args s)))):
+  get_arg_list pd vt s tys tms reps1 Hlents1 Hlenvs1 Hall1 =
+  get_arg_list pd vt s tys (map (sub_t tm1 x) tms) reps2 Hlents2 Hlenvs2 Hall2.
+Proof.
+  apply get_arg_list_ext.
+  - rewrite map_length; auto.
+  - intros. rewrite Forall_forall in Hreps.
+    revert Hty2.
+    rewrite (map_nth_inbound) with(d2:=tm_d); auto; intros.
+    apply Hreps; auto.
+    apply nth_In; auto.
+    intros y Hiny C.
+    apply (Hfree y); auto.
+    rewrite in_concat. exists (tm_bnd (nth i tms tm_d)).
+    split; auto. rewrite in_map_iff. exists (nth i tms tm_d); split;
+    auto. apply nth_In; auto.
+Qed.
 
 Lemma sub_correct (t: term) (f: formula):
   (forall (t1: term) (x: string) (ty1 ty2: vty)
@@ -119,7 +155,7 @@ Lemma sub_correct (t: term) (f: formula):
       (substi pd vt v (x, ty1) (term_rep gamma_valid pd vt pf v t1 ty1 Hty1))
       f Hval2).
 Proof.
-  revert t f. apply term_formula_ind; intros; simpl.
+  revert t f. apply term_formula_ind; intros; simpl; auto.
   - destruct c; simpl_rep_full; auto;
     unfold cast_dom_vty; simpl; do 3 f_equal;
     apply UIP_dec; apply vty_eq_dec.
@@ -139,7 +175,24 @@ Proof.
       unfold var_to_dom, substi. 
       vsym_eq v (x, ty1). 
       f_equal. f_equal. apply UIP_dec. apply vty_eq_dec.
-  - (*Tfun - need other*) admit.
+  - (*Tfun*)
+    revert Hty3. simpl. intros.
+    simpl_rep_full.
+    unfold cast_dom_vty, dom_cast.
+    inversion Hty2; subst.
+    inversion Hty3; subst.
+    assert (ty_fun_ind_ret Hty3 = eq_refl) by (apply UIP_dec, vty_eq_dec);
+    rewrite H0; clear H0.
+    assert (ty_fun_ind_ret Hty2 = eq_refl) by (apply UIP_dec, vty_eq_dec);
+    rewrite H0; clear H0.
+    simpl.
+    assert (tfun_params_length Hty3 = tfun_params_length Hty2) by
+      (apply UIP_dec, Nat.eq_dec); rewrite H0; clear H0.
+    f_equal. f_equal.
+    (*And now prove arg lists equivalent*)
+    symmetry. apply get_arg_list_sub; auto.
+    eapply Forall_impl. 2: apply H. simpl.
+    intros. symmetry. apply H0. auto.
   - (*Tlet - interesting case*)
     simpl_rep_full.
     simpl in Hfree.
@@ -161,30 +214,10 @@ Proof.
   - simpl in Hfree. simpl_rep_full. erewrite H, H0, H1; auto;
     intros; intro C; apply (Hfree x0); auto; rewrite !in_app_iff; auto.
   - (*Tmatch*)
+    simpl in Hty3.
     simpl_rep_full.
     iter_match_gen Hty2 Htm2 Hpat2 Hty2.
-    (*We need the implicit arg for map or else Coq cannot figure
-      it out*)
-    generalize dependent (proj1'
-      (@ty_match_inv _  (sub_t t1 (x, ty1) tm) _ _
-      (map (fun p : pattern * term =>
-        if in_bool vsymbol_eq_dec (x, ty1) (pat_fv (fst p))
-        then p
-        else (fst p, sub_t t1 (x, ty1) (snd p))) ps) Hty3)).
-    generalize dependent (proj1' (proj2'
-      (@ty_match_inv _  (sub_t t1 (x, ty1) tm) _ _
-      (map (fun p : pattern * term =>
-        if in_bool vsymbol_eq_dec (x, ty1) (pat_fv (fst p))
-        then p
-        else (fst p, sub_t t1 (x, ty1) (snd p))) ps) Hty3))).
-    generalize dependent (proj2' (proj2'
-      (@ty_match_inv _  (sub_t t1 (x, ty1) tm) _ _
-      (map (fun p : pattern * term =>
-        if in_bool vsymbol_eq_dec (x, ty1) (pat_fv (fst p))
-        then p
-        else (fst p, sub_t t1 (x, ty1) (snd p))) ps) Hty3))).
-    clear Hty3.
-    intros Htm3 Hpat3 Hty3; revert Htm3 Hpat3 Hty3.
+    iter_match_gen Hty3 Htm3 Hpat3 Hty3.
     induction ps; simpl; intros; auto.
     destruct a as [phd thd]; simpl.
     rewrite H with(Hty1:=Hty1)(Hty2:=Hty2). simpl.
@@ -260,7 +293,238 @@ Proof.
       intros; intro C; apply (Hfree x0); simpl; auto;
       rewrite !in_app_iff in *; auto;
       destruct C; auto.
-  - (*Teps*)
+  - (*Teps - slightly easier than Tlet, similar*)
+    revert Hty3; simpl.
+    destruct (vsymbol_eq_dec (x, ty1) v); intros; subst; simpl_rep_full.
+    + f_equal. apply functional_extensionality_dep; intros.
+      rewrite substi_same.
+      rewrite fmla_rep_irrel with (Hval2:= (proj1' (ty_eps_inv Hty2))).
+      simpl. do 4 f_equal. apply UIP_dec. apply sort_eq_dec.
+    + f_equal. apply functional_extensionality_dep; intros.
+      rewrite substi_diff; auto.
+      rewrite H with(Hty1:=Hty1)(Hval2:=(proj1' (ty_eps_inv Hty2))).
+      2: { intros; intro C; apply (Hfree x1); simpl; auto. }
+      f_equal. f_equal.
+      assert (proj2' (ty_eps_inv Hty3) = proj2' (ty_eps_inv Hty2)). {
+        apply UIP_dec. apply vty_eq_dec.
+      }
+      rewrite H0. f_equal.
+      apply tm_change_vv.
+      intros.
+      (*This works only because v does not appear free in t1*)
+      unfold substi. destruct (vsymbol_eq_dec x1 v); auto; subst.
+      exfalso. apply (Hfree v); simpl; auto.
+  - (*Fpred - easy*) 
+    revert Hval3. simpl. intros.
+    simpl_rep_full.
+    f_equal. f_equal.
+    symmetry. apply get_arg_list_sub; auto.
+    eapply Forall_impl. 2: apply H. simpl.
+    intros. symmetry. apply H0. auto.
+  - (*Fquant - similar to Teps but we need explicit lemmas
+      to avoid repetition*)
+    revert Hval3; simpl.
+    vsym_eq (x, ty1) v; intros.
+    + (*Need for both cases*)
+      assert (Hd: forall d,
+      formula_rep gamma_valid pd vt pf (substi pd vt v0 (x, ty1) d) f
+      (valid_quant_inj Hval3) =
+      formula_rep gamma_valid pd vt pf
+      (substi pd vt
+        (substi pd vt v0 (x, ty1) (term_rep gamma_valid pd vt pf v0 t1 ty1 Hty1))
+        (x, ty1) d) f (valid_quant_inj Hval2)).
+      {
+        intros. rewrite substi_same. apply fmla_rep_irrel.
+      }
+      destruct q; simpl_rep_full; apply all_dec_eq; split;
+      try (intros Hall d; specialize (Hall d));
+      try (intros [d Hex]; exists d);
+      specialize (Hd d); congruence.
+    + assert (Hd: forall d,
+      formula_rep gamma_valid pd vt pf (substi pd vt v0 v d) 
+        (sub_f t1 (x, ty1) f) (valid_quant_inj Hval3) =
+      formula_rep gamma_valid pd vt pf
+        (substi pd vt
+            (substi pd vt v0 (x, ty1) (term_rep gamma_valid pd vt pf v0 t1 ty1 Hty1)) v d)
+        f (valid_quant_inj Hval2)).
+      {
+        intros. rewrite substi_diff; auto.
+        rewrite H with(Hty1:=Hty1)(Hval2:=valid_quant_inj Hval2).
+        2: { intros y Hy C; apply (Hfree y); simpl; auto. }
+        f_equal. f_equal. apply tm_change_vv.
+        intros. unfold substi. vsym_eq x0 v.
+        exfalso. apply (Hfree v); simpl; auto.
+      }
+      destruct q; simpl_rep_full; apply all_dec_eq;
+      split;
+      try (intros Hall d; specialize (Hall d));
+      try (intros [d Hex]; exists d);
+      specialize (Hd d); congruence.
+  - (*Feq - easy*)
+    simpl in Hval3.  
+    simpl_rep_full.
+    erewrite H, H0.
+    reflexivity.
+    all: intros y Hy C; apply (Hfree y); simpl; auto;
+    rewrite in_app_iff; auto.
+  - (*Fbinop - same*)
+    simpl in Hval3.  
+    simpl_rep_full.
+    erewrite H, H0.
+    reflexivity.
+    all: intros y Hy C; apply (Hfree y); simpl; auto;
+    rewrite in_app_iff; auto.
+  - (*Fnot*)
+    simpl in Hval3.
+    simpl_rep_full.
+    erewrite H. reflexivity.
+    intros y Hy C; apply (Hfree y); simpl; auto.
+  - (*Flet*)
+    simpl_rep_full.
+    simpl in Hfree.
+    rewrite H with (Hty1:=Hty1)(Hty2:=proj1' (valid_let_inj Hval2)).
+    2: { intros y Hiny C; apply (Hfree y); auto; rewrite in_app_iff; auto. } 
+    revert Hval3; simpl.
+    vsym_eq (x, ty1) v; intros.
+    + simpl_rep_full.
+      rewrite !substi_same.
+      apply fmla_rep_irrel.
+    + rewrite substi_diff; auto.
+      rewrite H0 with(Hty1:=Hty1)(Hval2:=proj2' (valid_let_inj Hval2)).
+      2: intros y Hiny C; apply (Hfree y); auto; rewrite in_app_iff; auto.
+      f_equal. f_equal. apply tm_change_vv.
+      intros.
+      (*This works only because v does not appear free in t1*)
+      unfold substi. destruct (vsymbol_eq_dec x0 v); auto; subst.
+      exfalso. apply (Hfree v); auto.
+  - (*Fif*)
+    simpl in Hval3. simpl_rep_full.
+    erewrite H, H0, H1. reflexivity.
+    all: intros y Hiny C; apply (Hfree y); simpl; auto;
+    rewrite !in_app_iff; auto.
+  - (*Fmatch*)
+    simpl in Hval3.
+    simpl_rep_full.
+    iter_match_gen Hval2 Htm2 Hpat2 Hval2.
+    iter_match_gen Hval3 Htm3 Hpat3 Hval3.
+    induction ps; simpl; intros; auto.
+    destruct a as [phd thd]; simpl.
+    rewrite H with(Hty1:=Hty1)(Hty2:=Hval2). simpl.
+    2: {
+      intros; intro C; apply (Hfree x0); auto; simpl;
+      rewrite !in_app_iff; auto.
+    }
+    (*Want to say that [match_val_single] is same for both,
+      but we need to destruct [in_bool ...] to allow the dependent
+      types to match*)
+    destruct (match_val_single gamma_valid pd vt v phd (Forall_inv Hpat2)
+    (term_rep gamma_valid pd vt pf
+      (substi pd vt v0 (x, ty1) (term_rep gamma_valid pd vt pf v0 t1 ty1 Hty1)) tm v
+      Hval2)) as [newval |] eqn : Hmatch.
+    + revert Hpat3 Htm3. simpl.
+      (*Need to see if (x, ty1) is in the pat_fv of phd*)
+      destruct (in_bool_spec vsymbol_eq_dec (x, ty1) (pat_fv phd)).
+      * intros.
+        rewrite match_val_single_irrel with (Hval2:=(Forall_inv Hpat2)).
+        simpl.
+        rewrite Hmatch.
+        (*Now, we just have to reason about the two valuations*) 
+        assert (In (x, ty1) (map fst newval)). {
+          apply (match_val_single_free_var) with(x:=(x, ty1))in Hmatch.
+          apply Hmatch; auto. 
+        }
+        rewrite extend_val_substi_in; auto.
+        apply fmla_rep_irrel.
+        eapply match_val_single_typs.
+        apply Hmatch.
+      * (*If not in free vars, have substitution, use other IH *)
+        intros.
+        rewrite match_val_single_irrel with 
+          (Hval2:=(Forall_inv Hpat2)).
+        simpl.
+        rewrite Hmatch.
+        assert (~In (x, ty1) (map fst newval)). {
+          apply (match_val_single_free_var) with(x:=(x, ty1)) in Hmatch.
+          intro C.
+          apply Hmatch in C; auto. 
+        }
+        rewrite extend_val_substi_notin; auto.
+        2: {
+          eapply match_val_single_typs. apply Hmatch.
+        }
+        inversion H0; subst.
+        rewrite H4 with(Hty1:=Hty1)(Hval2:=Forall_inv Htm2); auto.
+        2: { intros; intro C; apply (Hfree x0); simpl; auto;
+          rewrite !in_app_iff; auto. }
+        f_equal. f_equal. 
+        (*Since we know no free vars are bound, they are not in
+          the list*)
+        apply tm_change_vv; intros.
+        rewrite extend_val_notin; auto.
+        intros Hin.
+        apply (Hfree x0); auto. simpl.
+        rewrite !in_app_iff.
+        apply (match_val_single_free_var) with(x:=x0) in Hmatch.
+        apply Hmatch in Hin. auto.
+    + (*Here, match is none, need to show equiv (easier)*)
+      revert Hpat3 Htm3. simpl.
+      (*Cases are the same (and not very interesting, just from IH)*)
+      destruct (in_bool_spec vsymbol_eq_dec (x, ty1) (pat_fv phd));
+      intros; 
+      rewrite match_val_single_irrel with 
+          (Hval2:=(Forall_inv Hpat2));
+      simpl;
+      rewrite Hmatch;
+      inversion H0; subst;
+      erewrite <- IHps with(Hpat2:=Forall_inv_tail Hpat2)
+        (Htm2:=(Forall_inv_tail Htm2))(Hval2:=Hval2); auto;
+      try (erewrite H); try reflexivity; simpl;
+      intros; intro C; apply (Hfree x0); simpl; auto;
+      rewrite !in_app_iff in *; auto;
+      destruct C; auto.
+  Unshelve.
+  all: auto.
+Qed.
+
+
+
+
+
+
+    reflexivity.
+  -  
+  simpl_rep_full.
+
+    rewrite H with(Hty1:=Hty1)(Hval2:=(proj1' (valid_binop_inj Hval2)).
+    rewrite H0 with (Hty2:=(proj2' (valid_eq_inj Hval3))).
+      
+        )
+      specialize (Hd d); 
+        congruence);
+      try (intros [d Hd]; exists d; specialize (Hd d))
+        
+        
+        auto.
+      try (intros Hall d; )
+      
+      )
+    
+    rewrite substi_same. apply fmla_change_vv.
+
+      apply H.
+    
+    simpl.
+    
+      
+      e
+      rewrite <- H0.
+      apply fmla_rep_irrel.
+      erewrite fmla_rep_irrel.
+      erewrite fmla_change_vv. reflexivity.
+      intros.
+      unfold substi.
+      rewrite H.
+      apply H.
       * erewrite H. reflexivity.
         intros; intro C; apply (Hfree x0); simpl; auto;
         rewrite !in_app_iff; auto.
