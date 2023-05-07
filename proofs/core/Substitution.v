@@ -21,8 +21,55 @@ Ltac vsym_eq x y :=
 (*Substitution*)
 Section Sub.
 
+(*t2[t1/x]*)
+Fixpoint sub_t (t1: term) (x: vsymbol) (t2: term) : term :=
+  match t2 with
+  | Tconst c => Tconst c
+  | Tvar v  => 
+    (*The base case*)
+    if vsymbol_eq_dec x v then t1 else Tvar v
+  | Tfun fs tys tms =>
+    Tfun fs tys (map (sub_t t1 x) tms)
+  | Tlet tm1 v tm2 =>
+    Tlet (sub_t t1 x tm1) v
+    (if vsymbol_eq_dec x v then tm2 else (sub_t t1 x tm2))
+  | Tif f1 tm1 tm2 =>
+    Tif (sub_f t1 x f1) (sub_t t1 x tm1) (sub_t t1 x tm2)
+  | Tmatch tm ty ps =>
+    Tmatch (sub_t t1 x tm) ty
+    (map (fun p => if in_bool vsymbol_eq_dec x (pat_fv (fst p)) then
+      p else (fst p, sub_t t1 x (snd p))) ps)
+  | Teps f1 v =>
+    if vsymbol_eq_dec x v then t2 else
+    Teps (sub_f t1 x f1) v
+  end
+with sub_f (t1: term) (x: vsymbol) (f: formula) : formula :=
+  match f with
+  | Fpred p tys tms => Fpred p tys (map (sub_t t1 x) tms)
+  | Fquant q v f' =>
+    if vsymbol_eq_dec x v then f else
+    Fquant q v (sub_f t1 x f')
+  | Feq ty tm1 tm2 =>
+    Feq ty (sub_t t1 x tm1) (sub_t t1 x tm2)
+  | Fbinop b f1 f2 =>
+    Fbinop b (sub_f t1 x f1) (sub_f t1 x f2)
+  | Fnot f' => Fnot (sub_f t1 x f')
+  | Ftrue => Ftrue
+  | Ffalse => Ffalse
+  | Flet tm v f' =>
+    Flet (sub_t t1 x tm) v 
+      (if vsymbol_eq_dec x v then f' else
+      sub_f t1 x f')
+  | Fif f1 f2 f3 =>
+    Fif (sub_f t1 x f1) (sub_f t1 x f2) (sub_f t1 x f3)
+  | Fmatch tm ty ps =>
+    Fmatch (sub_t t1 x tm) ty
+      (map (fun p => if in_bool vsymbol_eq_dec x (pat_fv (fst p)) then
+        p else (fst p, sub_f t1 x (snd p))) ps)
+  end.
 
-(*Substitute variable y for all free ocurrences of x*)
+(*Substitution for variables -
+  substitute variable y for all free ocurrences of x*)
 
 Fixpoint sub_var_f (x y: vsymbol) (f: formula) : formula :=
   match f with
@@ -70,7 +117,30 @@ with sub_var_t (x y: vsymbol) (t: term) : term :=
     Teps (sub_var_f x y f1) v
   end.
 
-(*TODO: define full substitution*)
+(*This is a generalized version of [sub_var_t] and [sub_var_f]*)
+Lemma sub_var_equiv (t: term) (f: formula) :
+  (forall (x y: vsymbol), 
+    sub_var_t x y t = sub_t (Tvar y) x t) /\
+  (forall (x y: vsymbol),
+    sub_var_f x y f = sub_f (Tvar y) x f).
+Proof.
+  revert t f; apply term_formula_ind; simpl; auto; intros;
+  try solve[rewrite H; auto];
+  try solve[rewrite H, H0; auto];
+  try solve[rewrite H, H0, H1; auto].
+  - vsym_eq x v.
+  - f_equal. induction l1; simpl; auto.
+    inversion H; subst; auto. f_equal; auto.
+  - rewrite H. f_equal. clear H. induction ps; simpl; auto.
+    inversion H0; subst. rewrite H2, IHps; auto.
+  - f_equal. induction tms; simpl; auto.
+    inversion H; subst; auto. f_equal; auto.
+  - rewrite H. f_equal. clear H. induction ps; simpl; auto.
+    inversion H0; subst. rewrite H2, IHps; auto.
+Qed.
+
+Definition sub_var_t_equiv t := proj_tm sub_var_equiv t.
+Definition sub_var_f_equiv f := proj_fmla sub_var_equiv f.
 
 (*Need to know that sub_var_t and sub_var_f do not change bound variables*)
 Lemma sub_bound_eq (t: term) (f: formula) :
@@ -114,108 +184,73 @@ Definition bnd_sub_var_f f := proj_fmla sub_bound_eq f.
 
 Context {gamma: context} (gamma_valid: valid_context gamma).
 
-(*Ltac sub_var_tac :=
-  repeat match goal with
-  | |- context [length (map ?f ?l)] => rewrite map_length
-  | H: ?i < length ?l |- In (nth ?i ?l ?d) ?l => apply nth_In
-  end; auto; try lia.*)
-
-(*sub_var_t and sub_var_f preserve typing*)
-Lemma sub_valid (t: term) (f: formula):
-  (forall (x y: vsymbol) (ty: vty), 
-    term_has_type gamma t ty ->
-    snd x = snd y ->
-    term_has_type gamma (sub_var_t x y t) ty) /\
-  (forall (x y: vsymbol),
-    formula_typed gamma f ->
-    snd x = snd y ->
-    formula_typed gamma (sub_var_f x y f)).
+(*sub_t and sub_f preserve typing*)
+Lemma sub_well_typed (t: term) (f: formula):
+  (forall (t1: term) (x: string) (ty1 ty2: vty)
+    (Hty1: term_has_type gamma t1 ty1)
+    (Hty2: term_has_type gamma t ty2),
+    term_has_type gamma (sub_t t1 (x, ty1) t) ty2) /\
+  (forall (t1: term) (x: string) (ty1: vty)
+    (Hty1: term_has_type gamma t1 ty1)
+    (Hval2: formula_typed gamma f),
+    formula_typed gamma (sub_f t1 (x, ty1) f)).
 Proof.
-  revert t f.
-  apply term_formula_ind; simpl; auto; intros.
-  - destruct (vsymbol_eq_dec x v); subst; auto.
-    inversion H; subst. rewrite H0. constructor.
-    rewrite <- H0; assumption.
-  - (*Tfun*) 
-    inversion H0; subst.
-    constructor; list_tac2.
-    revert H H12; rewrite !Forall_forall; intros.
-    rewrite in_combine_iff in H2; list_tac2.
-    destruct H2 as [i [Hi Hx0]].
-    revert Hi; list_tac2. intros.
-    specialize (Hx0 tm_d vty_int); subst; simpl.
-    rewrite map_nth_inbound with(d2:=tm_d); auto.
-    apply H; list_tac2. 
-    apply (H12 (nth i l1 tm_d, (nth i (map (ty_subst (s_params f1) l) (s_args f1)) vty_int))).
-    rewrite in_combine_iff; list_tac2.
-    exists i. split; auto. intros.
-    f_equal; apply nth_indep; list_tac2.
-  - (*Tlet*)
-    inversion H1; subst.
-    destruct (vsymbol_eq_dec x v); subst; auto; constructor; auto.
-  - (*Tif*)
-    inversion H2; subst.
+  revert t f; apply term_formula_ind; simpl; intros; auto;
+  try solve[try (inversion Hty2); try (inversion Hval2); 
+    subst; try(vsym_eq (x, ty1) v); 
+    constructor; auto].
+  (*Only 4 nontrivial cases - fun/pred and match (nested induction)*)
+  - inversion Hty2; subst.
     constructor; auto.
-  - (*Tmatch*)
-    inversion H1; subst.
+    rewrite map_length; auto.
+    assert (length l1 = length (map (ty_subst (s_params f1) l) 
+      (s_args f1))) by (rewrite map_length; auto).
+    generalize dependent (map (ty_subst (s_params f1) l) (s_args f1)).
+    clear -H Hty1. induction l1; simpl; intros; auto.
+    destruct l; inversion H0. inversion H10; subst.
+    inversion H; subst.
+    constructor; simpl; auto.
+  - inversion Hty2; subst.
     constructor; auto.
-    + intros pt. rewrite in_map_iff.
-      intros [pt' [Hpt Hinpt]].
-      destruct (in_bool_spec vsymbol_eq_dec x (pat_fv (fst pt'))); subst;
+    + intros t. rewrite in_map_iff.
+      intros [t1' [Ht1' Hint1']].
+      subst. destruct (in_bool vsymbol_eq_dec (x, ty1) (pat_fv (fst t1')));
       simpl; auto.
-    + intros pt. rewrite in_map_iff.
-      intros [pt' [Hpt Hinpt]].
-      destruct (in_bool_spec vsymbol_eq_dec x (pat_fv (fst pt'))); subst;
+    + (*The case we need induction for*)
+      clear -H9 H0 Hty1. induction ps; simpl; auto; intros.
+      inversion H0; subst.
+      simpl in *.
+      destruct H; subst; auto.
+      destruct (in_bool vsymbol_eq_dec (x, ty1) (pat_fv (fst a)));
       simpl; auto.
-      rewrite Forall_forall in H0.
-      apply H0; auto. rewrite in_map_iff. exists pt'; auto.
     + rewrite null_map; auto.
-  - (*Teps*) inversion H0; subst.
-    destruct (vsymbol_eq_dec x v); subst; constructor; auto.
-  - (*Fpred*)
-    inversion H0; subst.
-    constructor; list_tac2.
-    revert H H10; rewrite !Forall_forall; intros.
-    rewrite in_combine_iff in H2; list_tac2.
-    destruct H2 as [i [Hi Hx0]].
-    revert Hi; list_tac2. intros.
-    specialize (Hx0 tm_d vty_int); subst; simpl.
-    rewrite map_nth_inbound with(d2:=tm_d); auto.
-    apply H; list_tac2.
-    apply (H10 (nth i tms tm_d, (nth i (map (ty_subst (s_params p) tys) (s_args p)) vty_int))).
-    rewrite in_combine_iff; list_tac2.
-    exists i. split; auto. intros.
-    f_equal; apply nth_indep; list_tac2.
-  - (*Fquant*)
-    inversion H0; subst.
-    destruct (vsymbol_eq_dec x v); subst; simpl; constructor; auto.
-  - (*Feq*) inversion H1; subst.
+  - inversion Hval2; subst. constructor; auto.
+    rewrite map_length; auto.
+    assert (length tms = 
+      length (map (ty_subst (s_params p) tys) (s_args p))) by (rewrite map_length; auto).
+    generalize dependent ((map (ty_subst (s_params p) tys) (s_args p))).
+    clear -H Hty1. induction tms; simpl; intros; auto.
+    destruct l; inversion H0. inversion H8; subst.
+    inversion H; subst.
+    constructor; simpl; auto.
+  - inversion Hval2; subst.
     constructor; auto.
-  - (*Fbinop*) inversion H1; subst. constructor; auto.
-  - (*Fnot*) inversion H0; subst. constructor; auto.
-  - (*Flet*) inversion H1; subst.
-    destruct (vsymbol_eq_dec x v); subst; auto; constructor; auto.
-  - (*Fif*) inversion H2; subst. constructor; auto.
-  - (*Fmatch*)
-    inversion H1; subst.
-    constructor; auto.
-    + intros. revert H3. 
-      rewrite in_map_iff.
-      intros [pt' [Hpt Hinpt]].
-      destruct (in_bool_spec vsymbol_eq_dec x (pat_fv (fst pt'))); subst;
+    + intros t. rewrite in_map_iff.
+      intros [t1' [Ht1' Hint1']].
+      subst. destruct (in_bool vsymbol_eq_dec (x, ty1) (pat_fv (fst t1')));
       simpl; auto.
-    + intros x0. 
-      rewrite in_map_iff.
-      intros [pt' [Hpt Hinpt]].
-      destruct (in_bool_spec vsymbol_eq_dec x (pat_fv (fst pt'))); subst;
+    + (*The case we need induction for*)
+      clear -H8 H0 Hty1. induction ps; simpl; auto; intros.
+      inversion H0; subst.
+      simpl in *.
+      destruct H; subst; auto.
+      destruct (in_bool vsymbol_eq_dec (x, ty1) (pat_fv (fst a)));
       simpl; auto.
-      rewrite Forall_forall in H0.
-      apply H0; auto. rewrite in_map_iff. exists pt'. auto.
     + rewrite null_map; auto.
-Qed.
+Qed. 
 
-Definition sub_var_t_valid t := proj_tm sub_valid t.
-Definition sub_var_f_valid f := proj_fmla sub_valid f.
+Definition sub_t_typed t := proj_tm sub_well_typed t.
+Definition sub_f_typed f := proj_tm sub_well_typed f.
 
 (*Substitution for patterns - needed for bound variable
   substitution, not free var subs like [sub_var_t] and [sub_var_f]*)

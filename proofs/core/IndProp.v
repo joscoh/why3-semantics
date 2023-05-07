@@ -562,7 +562,7 @@ Fixpoint indpred_decomp (f: formula) :
 (*A few results about [indpred_decomp]*)
 
 (*First, validity results we need - this proof is very easy*)
-Lemma indpred_decomp_valid (f: formula) (Hval: formula_typed gamma f) :
+Lemma indpred_decomp_typed (f: formula) (Hval: formula_typed gamma f) :
   Forall (fun x : string * vty => valid_type gamma (snd x)) (tup_1 (indpred_decomp f)) /\
   Forall (fun x : string * vty * term => term_has_type gamma (snd x) (snd (fst x)))
     (tup_2 (indpred_decomp f)) /\
@@ -657,11 +657,11 @@ Lemma indpred_transform_valid (f: formula) (Hval: formula_typed gamma f) :
   formula_typed gamma (indpred_transform f).
 Proof.
   unfold indpred_transform.
-  apply fforalls_valid;[|apply indpred_decomp_valid; auto].
-  apply iter_flet_valid; [| apply indpred_decomp_valid; auto].
-  constructor; [|apply indpred_decomp_valid; auto].
-  apply iter_fand_valid; auto.
-  apply indpred_decomp_valid; auto.
+  apply fforalls_typed;[|apply indpred_decomp_typed; auto].
+  apply iter_flet_typed; [| apply indpred_decomp_typed; auto].
+  constructor; [|apply indpred_decomp_typed; auto].
+  apply iter_fand_typed; auto.
+  apply indpred_decomp_typed; auto.
 Qed.
 
 (*Now, we prove that any formula which is valid and whose bound
@@ -689,7 +689,7 @@ Proof.
     simpl in v0.
     simpl_rep_full. apply all_dec_eq.
     split; intros Hall d.
-    + rewrite <- H with (Hval:=(valid_quant_inj Hval)). 
+    + rewrite <- H with (Hval:=(typed_quant_inv Hval)). 
       apply (Hall d).
       apply wf_quant in H0; auto.
     + erewrite H. apply (Hall d).
@@ -706,10 +706,10 @@ Proof.
         (iter_flet (tup_2 (indpred_decomp f2))
           (Fbinop Timplies (iter_fand (tup_3 (indpred_decomp f2)))
               (tup_4 (indpred_decomp f2)))))). {
-      apply fforalls_valid_inj in v. split_all.
-      apply fforalls_valid; auto.
-      apply iter_flet_valid_inj in H2. split_all.
-      apply iter_flet_valid; auto.
+      apply fforalls_typed_inv  in v. split_all.
+      apply fforalls_typed; auto.
+      apply iter_flet_typed_inj in H2. split_all.
+      apply iter_flet_typed; auto.
       inversion H2; subst.
       constructor; auto.
       inversion H8; subst. auto.
@@ -722,11 +722,11 @@ Proof.
             (iter_fand (tup_3 (indpred_decomp f2))) 
             (tup_4 (indpred_decomp f2))))))). {
       inversion Hval; subst.
-      apply fforalls_valid_inj in Hval1. split_all.
-      apply iter_flet_valid_inj in H2. split_all.
+      apply fforalls_typed_inv  in Hval1. split_all.
+      apply iter_flet_typed_inj in H2. split_all.
       inversion H2; subst.
-      apply fforalls_valid; auto.
-      apply iter_flet_valid; auto.
+      apply fforalls_typed; auto.
+      apply iter_flet_typed; auto.
       constructor; auto.
     }
     rewrite and_impl_bound with(Hval2:=Hval2).
@@ -735,8 +735,8 @@ Proof.
       (iter_flet (tup_2 (indpred_decomp f2))
             (Fbinop Timplies (iter_fand (tup_3 (indpred_decomp f2)))
                 (tup_4 (indpred_decomp f2))))))). {
-      apply fforalls_valid_inj in Hval2; split_all.
-      apply iter_flet_valid_inj in H2; split_all.
+      apply fforalls_typed_inv  in Hval2; split_all.
+      apply iter_flet_typed_inj in H2; split_all.
       inversion H2; subst. constructor; auto. 
     }
     rewrite (distr_impl_let_forall _ _ pf vt vv f1) with(Hval2:=Hval3).
@@ -760,9 +760,9 @@ Proof.
         (iter_flet (tup_2 (indpred_decomp f0))
           (Fbinop Timplies (iter_fand (tup_3 (indpred_decomp f0)))
               (tup_4 (indpred_decomp f0)))))). {
-      apply fforalls_valid_inj in v0; split_all.
+      apply fforalls_typed_inv  in v0; split_all.
       inversion H2; subst.
-      apply fforalls_valid; auto.
+      apply fforalls_typed; auto.
     }
     rewrite H0 with(v:=Hval1); [| apply (wf_let _ _ _ H1)].
     (*We showed that we can push a let through a fforalls as long
@@ -772,7 +772,7 @@ Proof.
         (iter_flet (tup_2 (indpred_decomp f0))
           (Fbinop Timplies (iter_fand (tup_3 (indpred_decomp f0)))
               (tup_4 (indpred_decomp f0))))))). {
-      apply fforalls_valid_inj in v0; split_all.
+      apply fforalls_typed_inv  in v0; split_all.
       inversion H2; subst.
       constructor; auto.
     } 
@@ -1118,9 +1118,9 @@ Proof.
   - (*First, know that [[f1]] eq in both cases because P cannot be
       present*)
     assert (Hf1: formula_rep gamma_valid pd (mk_vt (s_params p) srts) pf vv f1
-    (proj1' (valid_if_inj Hvalf)) =
+    (proj1' (typed_if_inv Hvalf)) =
     formula_rep gamma_valid pd (mk_vt (s_params p) srts) (interp_with_Ps pf (map fst ps) Ps) vv f1
-    (proj1' (valid_if_inj Hvalf))). {
+    (proj1' (typed_if_inv Hvalf))). {
       apply fmla_change_pf; auto; simpl; intros p' srts' a' Hinp'.
       symmetry.
       destruct (in_bool_spec predsym_eq_dec p' (map fst ps));
@@ -1129,7 +1129,7 @@ Proof.
     }
     rewrite <- Hf1.
     destruct (formula_rep gamma_valid pd (mk_vt (s_params p) srts) pf vv f1
-    (proj1' (valid_if_inj Hvalf))); simpl in Hunif; bool_hyps;
+    (proj1' (typed_if_inv Hvalf))); simpl in Hunif; bool_hyps;
     [apply IHHpos1 | apply IHHpos2]; auto.
   - (*Hmm, this is the hardest one - need rewrite lemma for match*)
     (*Here, we need a nested induction*)
@@ -1439,16 +1439,16 @@ Proof.
   (*Then we can unfold manually*)
   unfold indpred_transform in *.
   assert (A:=Hvaldec).
-  apply fforalls_valid_inj in A.
+  apply fforalls_typed_inv  in A.
   destruct A as [Hval1 Halltup1].
   rewrite fmla_rep_irrel with
-    (Hval2:= (fforalls_valid (tup_1 (indpred_decomp (a_convert_f f))) _ Hval1 Halltup1)).
-  rewrite fforalls_val. rewrite simpl_all_dec. intros h.
+    (Hval2:= (fforalls_typed (tup_1 (indpred_decomp (a_convert_f f))) _ Hval1 Halltup1)).
+  rewrite fforalls_rep. rewrite simpl_all_dec. intros h.
   assert (A:=Hval1).
-  apply iter_flet_valid_inj in A.
+  apply iter_flet_typed_inj in A.
   destruct A as [Hval2 Halltup2].
-  rewrite (fmla_rep_irrel) with(Hval2:=(iter_flet_valid _ _ Hval2 Halltup2)).
-  rewrite iter_flet_val. simpl_rep_full.
+  rewrite (fmla_rep_irrel) with(Hval2:=(iter_flet_typed _ _ Hval2 Halltup2)).
+  rewrite iter_flet_rep. simpl_rep_full.
   rewrite bool_of_binop_impl, simpl_all_dec.
   intros Hconstrs.
   (*Might need lemma about equality of fmlas*)
@@ -1503,12 +1503,12 @@ Proof.
   rewrite a_convert_f_rep, indpred_decomp_equiv; auto.
   unfold indpred_transform.
   rewrite fmla_rep_irrel with
-    (Hval2:= (fforalls_valid _ _ Hval1 Halltup1)).
-  rewrite fforalls_val, simpl_all_dec.
+    (Hval2:= (fforalls_typed _ _ Hval1 Halltup1)).
+  rewrite fforalls_rep, simpl_all_dec.
   intros. specialize (Hformf h).
   revert Hformf.
-  rewrite (fmla_rep_irrel) with(Hval2:=(iter_flet_valid _ _ Hval2 Halltup2)).
-  rewrite iter_flet_val; simpl_rep_full.
+  rewrite (fmla_rep_irrel) with(Hval2:=(iter_flet_typed _ _ Hval2 Halltup2)).
+  rewrite iter_flet_rep; simpl_rep_full.
   rewrite bool_of_binop_impl, simpl_all_dec.
   rewrite fmla_rewrite with(f1:=(tup_4 _))(Hval2:=Hval3); [|apply ind_form_decomp; auto].
   simpl_rep_full.

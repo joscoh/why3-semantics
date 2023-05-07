@@ -3478,15 +3478,15 @@ bool :=
 | Ffalse => fun _ _ => false
 | Fnot f' => fun Hval' Hdec' =>
   let Hf' : formula_typed gamma f' :=
-    valid_not_inj Hval' in
+    typed_not_inv Hval' in
 
   negb (formula_rep_aux v f' small hd Hf' 
     (dec_inv_fnot Hdec') Hsmall Hhd)
 | Fbinop b f1 f2 => fun Hval' Hdec' =>
   let Hf1 : formula_typed gamma f1 :=
-    proj1' (valid_binop_inj Hval') in
+    proj1' (typed_binop_inv Hval') in
   let Hf2 : formula_typed gamma f2 :=
-    proj2' (valid_binop_inj Hval') in
+    proj2' (typed_binop_inv Hval') in
   let Hdec1 := proj1' (dec_inv_fbinop Hdec') in
   let Hdec2 := proj2' (dec_inv_fbinop Hdec') in
 
@@ -3495,9 +3495,9 @@ bool :=
     (formula_rep_aux v f2 small hd Hf2 Hdec2 Hsmall Hhd)
 | Flet t x f' => fun Hval' Hdec' =>
   let Ht: term_has_type gamma t (snd x) :=
-    (proj1' (valid_let_inj Hval')) in
+    (proj1' (typed_let_inv Hval')) in
   let Hf': formula_typed gamma f' :=
-    (proj2' (valid_let_inj Hval')) in
+    (proj2' (typed_let_inv Hval')) in
   let Hdec1 := proj1' (dec_inv_flet Hdec') in
   let Hdec2 := proj2' (dec_inv_flet Hdec') in
 
@@ -3510,7 +3510,7 @@ bool :=
   (small_hd_lemma v x _ Hhd)
 | Fquant Tforall x f' => fun Hval' Hdec' =>
   let Hf' : formula_typed gamma f' :=
-    valid_quant_inj Hval' in
+    typed_quant_inv Hval' in
   let Hdec1 := dec_inv_quant Hdec' in
   (*NOTE: HERE is where we need the classical axiom assumptions*)
   all_dec (forall d, formula_rep_aux (substi pd vt v x d) f'
@@ -3520,7 +3520,7 @@ bool :=
 
 | Fquant Texists x f' => fun Hval' Hdec' =>
   let Hf' : formula_typed gamma f' :=
-    valid_quant_inj Hval' in
+    typed_quant_inv Hval' in
   let Hdec1 := dec_inv_quant Hdec' in
   (*NOTE: HERE is where we need the classical axiom assumptions*)
   all_dec (exists d, formula_rep_aux (substi pd vt v x d) f' 
@@ -3530,9 +3530,9 @@ bool :=
 
 | Feq ty t1 t2 => fun Hval' Hdec' =>
   let Ht1 : term_has_type gamma t1 ty := 
-    proj1' (valid_eq_inj Hval') in
+    proj1' (typed_eq_inv Hval') in
   let Ht2 : term_has_type gamma t2 ty :=
-    proj2' (valid_eq_inj Hval') in
+    proj2' (typed_eq_inv Hval') in
   let Hdec1 := proj1' (dec_inv_eq Hdec') in
   let Hdec2 := proj2' (dec_inv_eq Hdec') in
 
@@ -3542,11 +3542,11 @@ bool :=
 
 | Fif f1 f2 f3 => fun Hval' Hdec' =>
   let Hf1 : formula_typed gamma f1 :=
-    proj1' (valid_if_inj Hval') in
+    proj1' (typed_if_inv Hval') in
   let Hf2 : formula_typed gamma f2 :=
-    proj1' (proj2' (valid_if_inj Hval')) in
+    proj1' (proj2' (typed_if_inv Hval')) in
   let Hf3 : formula_typed gamma f3 :=
-    proj2' (proj2' (valid_if_inj Hval')) in
+    proj2' (proj2' (typed_if_inv Hval')) in
   let Hdec1 := proj1' (dec_inv_fif Hdec') in
   let Hdec2 := proj1' (proj2' (dec_inv_fif Hdec')) in
   let Hdec3 := proj2' (proj2' (dec_inv_fif Hdec')) in
@@ -3561,11 +3561,11 @@ bool :=
 (*Fmatch is similar to Tmatch*)
 | Fmatch t ty1 pats => fun Hval' Hdec' =>
   let Ht1 : term_has_type gamma t ty1 :=
-    proj1' (valid_match_inv Hval') in
+    proj1' (typed_match_inv Hval') in
   let Hall : Forall (fun x => formula_typed gamma (snd x)) pats :=
-    proj2' (proj2' (valid_match_inv Hval')) in
+    proj2' (proj2' (typed_match_inv Hval')) in
   let Hpats: Forall (fun x => pattern_has_type gamma (fst x) ty1) pats :=
-    proj1' (proj2' (valid_match_inv Hval')) in
+    proj1' (proj2' (typed_match_inv Hval')) in
 
   let Hdec1 : decrease_fun fs ps small hd m vs t := 
     dec_inv_fmatch_fst Hdec' in
@@ -5036,11 +5036,11 @@ Lemma formula_rep_aux_match (v: val_vars pd vt)
 (hd: option vsymbol) Hval Hdec Hsmall Hhd:
 formula_rep_aux v (Fmatch t ty1 pats) small hd Hval Hdec Hsmall Hhd =
 let Ht1 : term_has_type gamma t ty1 :=
-proj1' (valid_match_inv Hval) in
+proj1' (typed_match_inv Hval) in
 let Hall : Forall (fun x => formula_typed gamma (snd x)) pats :=
-proj2' (proj2' (valid_match_inv Hval)) in
+proj2' (proj2' (typed_match_inv Hval)) in
 let Hpats: Forall (fun x => pattern_has_type gamma (fst x) ty1) pats :=
-proj1' (proj2' (valid_match_inv Hval)) in
+proj1' (proj2' (typed_match_inv Hval)) in
 
 let Hdec1 : decrease_fun fs ps small hd m vs t := 
 dec_inv_fmatch_fst Hdec in

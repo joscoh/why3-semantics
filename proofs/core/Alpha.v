@@ -1481,9 +1481,9 @@ Proof.
     (*So we don't have to repeat proofs*)
     assert (Halleq: forall d,
       formula_rep (substi pd vt v1 (s, v0) d) f
-        (valid_quant_inj Hval) =
+        (typed_quant_inv Hval) =
       formula_rep (substi pd vt v2 (s0, v0) d) f2
-        (valid_quant_inj Hval2)). {
+        (typed_quant_inv Hval2)). {
       intros. eapply H. apply Heq.
       - (*Prove Hval*) 
         intros. simpl in H0. bool_hyps; destruct H0; bool_hyps;
@@ -1516,16 +1516,16 @@ Proof.
     alpha_case f2 Heq. bool_hyps; simpl_sumbool.
     simpl_rep_full.
     rewrite H with(t2:=t)(vars:=vars)(v2:=v2)
-    (Hty2:=(proj1' (valid_eq_inj Hval2))),
+    (Hty2:=(proj1' (typed_eq_inv Hval2))),
       H0 with(t2:=t0)(vars:=vars)(v2:=v2)
-    (Hty2:=(proj2' (valid_eq_inj Hval2))); auto.
+    (Hty2:=(proj2' (typed_eq_inv Hval2))); auto.
   - (*Fbinop*)
     alpha_case f0 Heq; bool_hyps; simpl_sumbool.
     simpl_rep_full.
     rewrite H with(f2:=f0_1)(vars:=vars)(v2:=v2)
-    (Hval2:=(proj1' (valid_binop_inj Hval2))),
+    (Hval2:=(proj1' (typed_binop_inv Hval2))),
     H0 with(f2:=f0_2)(vars:=vars)(v2:=v2)
-    (Hval2:=(proj2' (valid_binop_inj Hval2))); auto.
+    (Hval2:=(proj2' (typed_binop_inv Hval2))); auto.
   - (*Fnot*)
     alpha_case f2 Heq.
     simpl_rep_full. f_equal. apply H with(vars:=vars); auto.
@@ -1563,11 +1563,11 @@ Proof.
     alpha_case f0 Heq. bool_hyps.
     simpl_rep_full.
     rewrite H with(f2:=f0_1)(vars:=vars)(v2:=v2)
-      (Hval2:=(proj1' (valid_if_inj Hval2))),
+      (Hval2:=(proj1' (typed_if_inv Hval2))),
     H0 with (f2:=f0_2)(vars:=vars)(v2:=v2)
-      (Hval2:=(proj1' (proj2' (valid_if_inj Hval2)))),
+      (Hval2:=(proj1' (proj2' (typed_if_inv Hval2)))),
     H1 with (f2:=f0_3)(vars:=vars) (v2:=v2)
-      (Hval2:=(proj2' (proj2' (valid_if_inj Hval2)))); auto.
+      (Hval2:=(proj2' (proj2' (typed_if_inv Hval2)))); auto.
   - (*Fmatch - similar to Tmatch*)
     alpha_case f2 Heq.
     rename t into tm2.

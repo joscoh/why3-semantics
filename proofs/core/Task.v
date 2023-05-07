@@ -64,9 +64,9 @@ Lemma task_alt_typed (gamma: context) (w:task gamma)
 formula_typed gamma 
 (fforalls (task_vars w) (Fbinop Timplies (iter_fand (task_delta w)) (task_goal w))).
 Proof.
-  apply fforalls_valid.
+  apply fforalls_typed.
   - constructor.
-    + apply iter_fand_valid. apply w_wf.
+    + apply iter_fand_typed. apply w_wf.
     + apply w_wf.
   - apply w_wf.
 Qed.
@@ -114,13 +114,13 @@ Proof.
   unfold valid, task_valid.
   unfold satisfies. split; intros.
   - erewrite fmla_rep_irrel.
-    rewrite fforalls_val.
+    rewrite fforalls_rep.
     rewrite simpl_all_dec.
     intros h.
     Unshelve.
     2: {
       constructor.
-      apply iter_fand_valid.
+      apply iter_fand_typed.
       all: apply w_wf.
     }
     2: apply w_wf.
@@ -135,7 +135,7 @@ Proof.
     unfold satisfies in H.
     specialize (H vt vv).
     erewrite fmla_rep_irrel in H.
-    erewrite fforalls_val in H.
+    erewrite fforalls_rep in H.
     rewrite simpl_all_dec in H.
     (*We have to choose an hlist such that (substi_mult)
       agrees with vv on all vars*)
@@ -150,7 +150,7 @@ Proof.
     rewrite iter_fand_rep. intros.
     erewrite fmla_rep_irrel; apply H1.
     Unshelve.
-    + constructor; try apply w_wf. apply iter_fand_valid, w_wf.
+    + constructor; try apply w_wf. apply iter_fand_typed, w_wf.
     + apply w_wf.
     + auto.
 Qed.
