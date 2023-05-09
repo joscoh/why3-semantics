@@ -47,6 +47,14 @@ Proof.
   destruct H1. apply UIP_dec. apply Nat.eq_dec.
 Qed.
 
+Lemma is_true_eq (b1 b2: bool):
+  b1 <-> b2 ->
+  b1 = b2.
+Proof.
+  destruct b1; destruct b2; simpl; auto; intros;
+  assert (false) by (apply H; auto); auto.
+Qed.
+
 (** Union on lists with decidable equality **)
 
 Section Union.

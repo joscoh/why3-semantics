@@ -1418,7 +1418,7 @@ Proof.
     rewrite in_map_iff. exists (p, fs); auto.
   }
   (*Part 1: work with alpha conversion to get wf*)
-  rewrite a_convert_f_rep.
+  rewrite (a_convert_all_f_rep gamma_valid _ _ nil).
   assert (Hvalindf: valid_ind_form p f). {
     rewrite Forall_forall in Hvalind.
     specialize (Hvalind (p, fs) Hinfs). simpl in Hvalind.
@@ -1430,19 +1430,19 @@ Proof.
     rewrite Forall_forall in Hpos.
     apply Hpos; auto.
   } 
-  assert (Hvalinda:=(a_convert_f_valid_ind_form p f Hvalindf)).
-  assert (Hwfa:=(a_convert_f_wf f)).
-  assert (Hposa:=(a_convert_f_pos (map fst indpred) f Hposf)).
+  assert (Hvalinda:=(a_convert_all_f_valid_ind_form p f nil Hvalindf)).
+  assert (Hwfa:=(a_convert_all_f_wf f nil)).
+  assert (Hposa:=(a_convert_all_f_pos (map fst indpred) f nil Hposf)).
   (*Part 2: Work with [indpred_transform] *)
   rewrite indpred_decomp_equiv; auto.
-  assert (Hvaldec:=(indpred_transform_valid _ (a_convert_f_valid _ Hvalf))).
+  assert (Hvaldec:=(indpred_transform_valid _ (a_convert_all_f_typed _ nil Hvalf))).
   (*Then we can unfold manually*)
   unfold indpred_transform in *.
   assert (A:=Hvaldec).
   apply fforalls_typed_inv  in A.
   destruct A as [Hval1 Halltup1].
   rewrite fmla_rep_irrel with
-    (Hval2:= (fforalls_typed (tup_1 (indpred_decomp (a_convert_f f))) _ Hval1 Halltup1)).
+    (Hval2:= (fforalls_typed (tup_1 (indpred_decomp (a_convert_all_f f nil))) _ Hval1 Halltup1)).
   rewrite fforalls_rep. rewrite simpl_all_dec. intros h.
   assert (A:=Hval1).
   apply iter_flet_typed_inj in A.
@@ -1452,7 +1452,8 @@ Proof.
   rewrite bool_of_binop_impl, simpl_all_dec.
   intros Hconstrs.
   (*Might need lemma about equality of fmlas*)
-  assert (Hval3: formula_typed gamma (Fpred p (map vty_var (s_params p)) (snd (get_indprop_args (a_convert_f f))))). {
+  assert (Hval3: formula_typed gamma (Fpred p (map vty_var (s_params p)) 
+    (snd (get_indprop_args (a_convert_all_f f nil))))). {
     rewrite <- ind_form_decomp; auto.
     inversion Hval2; subst; auto.
   }
@@ -1500,7 +1501,7 @@ Proof.
   }
   (*Now we repeat the process again (alpha, [indpred_transform, etc])*)
   revert Hformf.
-  rewrite a_convert_f_rep, indpred_decomp_equiv; auto.
+  rewrite a_convert_all_f_rep with(l:=nil), indpred_decomp_equiv; auto.
   unfold indpred_transform.
   rewrite fmla_rep_irrel with
     (Hval2:= (fforalls_typed _ _ Hval1 Halltup1)).
@@ -1519,11 +1520,13 @@ Proof.
   intros.
   (*Need this in multiple places*)
   assert ((substi_multi_let gamma_valid pd (interp_with_Ps pf (map fst indpred) Ps)
-    (mk_vt (s_params p) srts) (substi_mult pd (mk_vt (s_params p) srts) (mk_vv _) (tup_1 (indpred_decomp (a_convert_f f))) h)
-    (tup_2 (indpred_decomp (a_convert_f f))) Halltup2) =
+    (mk_vt (s_params p) srts) (substi_mult pd (mk_vt (s_params p) srts) (mk_vv _) 
+    (tup_1 (indpred_decomp (a_convert_all_f f nil))) h)
+    (tup_2 (indpred_decomp (a_convert_all_f f nil))) Halltup2) =
     (substi_multi_let gamma_valid pd pf (mk_vt (s_params p) srts)
-      (substi_mult pd (mk_vt (s_params p) srts) (mk_vv _) (tup_1 (indpred_decomp (a_convert_f f))) h)
-      (tup_2 (indpred_decomp (a_convert_f f))) Halltup2)). {
+      (substi_mult pd (mk_vt (s_params p) srts) (mk_vv _) 
+      (tup_1 (indpred_decomp (a_convert_all_f f nil))) h)
+      (tup_2 (indpred_decomp (a_convert_all_f f nil))) Halltup2)). {
       apply substi_mult_notin_eq with(ps:=map fst indpred); simpl; auto.
       - apply indpred_decomp_let_notin with(ps:=map fst indpred); auto.
       - intros. rewrite find_apply_pred_notin; auto.
@@ -1542,7 +1545,7 @@ Proof.
     destruct (in_bool_spec predsym_eq_dec p1 (map fst indpred)); 
     [|rewrite find_apply_pred_notin; auto].
     (*Use fact that p1 not in x*)
-    assert (Hindt: ind_positive (map fst indpred) (tup_4 (indpred_decomp (a_convert_f f)))).
+    assert (Hindt: ind_positive (map fst indpred) (tup_4 (indpred_decomp (a_convert_all_f f nil)))).
       apply indpred_decomp_last_pos; auto.
     rewrite ind_form_decomp with(p:=p) in Hindt; auto.
     inversion Hindt; subst.
@@ -1553,8 +1556,8 @@ Proof.
     rewrite H. clear H.
     remember (substi_multi_let gamma_valid pd pf (mk_vt (s_params p) srts)
     (substi_mult pd (mk_vt (s_params p) srts) (mk_vv (mk_vt (s_params p) srts))
-       (tup_1 (indpred_decomp (a_convert_f f))) h)
-    (tup_2 (indpred_decomp (a_convert_f f))) Halltup2) as vv'.
+       (tup_1 (indpred_decomp (a_convert_all_f f nil))) h)
+    (tup_2 (indpred_decomp (a_convert_all_f f nil))) Halltup2) as vv'.
     clear Heqvv'.
     (*Now, we just need to prove that the [iter_and] of all of 
       these constructors is true, when we interpre p with P
@@ -1571,9 +1574,9 @@ Proof.
     + (*Need to show that this is preserved*)
       assert (pred_with_params_fmla (map fst indpred) (s_params p) f).
       rewrite Forall_forall in Hunif; apply Hunif; auto.
-      apply indpred_decomp_and_pred_with_params with(f:=a_convert_f f); auto.
+      apply indpred_decomp_and_pred_with_params with(f:=a_convert_all_f f nil); auto.
       eapply pred_with_params_fmla_alpha with(f1:=f).
-      apply a_convert_f_equiv.
+      apply a_convert_all_f_equiv.
       apply H.
     + intros. erewrite constrs_val_eq; auto. 
       rewrite Forall_forall in Hclosed. apply Hclosed; auto.
