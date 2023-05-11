@@ -68,6 +68,550 @@ with sub_f (t1: term) (x: vsymbol) (f: formula) : formula :=
         p else (fst p, sub_f t1 x (snd p))) ps)
   end.
 
+(*Substitution and free variables*)
+
+(*1. If x (the variable to sub) does not occur free in
+  t/f, then substitution does nothing*)
+Lemma sub_notin (tm: term) (x: vsymbol) (t: term) (f: formula):
+  (~ In x (tm_fv t) -> sub_t tm x t = t) /\
+  (~ In x (fmla_fv f) -> sub_f tm x f = f).
+Proof.
+  revert t f; apply term_formula_ind; simpl; intros; auto.
+  - vsym_eq x v. exfalso. apply H; auto.
+  - simpl_set. f_equal.
+    apply list_eq_ext'; rewrite map_length; auto.
+    intros n d Hn.
+    rewrite map_nth_inbound with (d2:=d); auto.
+    rewrite Forall_forall in H. apply H; [apply nth_In |]; auto.
+    intro C.
+    apply H0. exists (nth n l1 d). split; auto.
+    apply nth_In; auto.
+  - simpl_set. not_or Hv. vsym_eq x v.
+    + simpl_set. not_or Hv. rewrite H; auto.
+    + rewrite H, H0; auto.
+  - simpl_set. rewrite H, H0, H1; auto.
+  - simpl_set_small. not_or Hx.
+    rewrite H; auto. f_equal. clear H Hx.
+    apply list_eq_ext'; rewrite map_length; auto.
+    intros n d Hn.
+    rewrite map_nth_inbound with (d2:=d); auto.
+    case_in; auto.
+    rewrite Forall_map in H0.
+    rewrite Forall_forall in H0.
+    rewrite H0;[ destruct (nth n ps d); auto | |].
+    + apply nth_In; auto.
+    + intro C. apply Hx0. simpl_set.
+      exists (nth n ps d). split; [ apply nth_In |]; auto.
+      simpl_set. auto.
+  - simpl_set. vsym_eq x v. rewrite H; auto.
+  - simpl_set. f_equal.
+    apply list_eq_ext'; rewrite map_length; auto.
+    intros n d Hn.
+    rewrite map_nth_inbound with (d2:=d); auto.
+    rewrite Forall_forall in H. apply H; [apply nth_In |]; auto.
+    intro C.
+    apply H0. exists (nth n tms d). split; auto.
+    apply nth_In; auto.
+  - simpl_set. vsym_eq x v. rewrite H; auto.
+  - simpl_set. rewrite H, H0; auto.
+  - simpl_set. rewrite H, H0; auto.
+  - rewrite H; auto.
+  - simpl_set. not_or Hx. rewrite H; auto.
+    vsym_eq x v. rewrite H0; auto.
+  - simpl_set. rewrite H, H0, H1; auto.
+  - simpl_set_small. not_or Hx.
+    rewrite H; auto. f_equal. clear H Hx.
+    apply list_eq_ext'; rewrite map_length; auto.
+    intros n d Hn.
+    rewrite map_nth_inbound with (d2:=d); auto.
+    case_in; auto.
+    rewrite Forall_map in H0.
+    rewrite Forall_forall in H0.
+    rewrite H0;[ destruct (nth n ps d); auto | |].
+    + apply nth_In; auto.
+    + intro C. apply Hx0. simpl_set.
+      exists (nth n ps d). split; [ apply nth_In |]; auto.
+      simpl_set. auto.
+Qed.
+
+Definition sub_t_notin (tm: term) (x: vsymbol) (t: term) :=
+  proj_tm (sub_notin tm x) t.
+Definition sub_f_notin (tm: term) (x: vsymbol) (f: formula) :=
+  proj_fmla (sub_notin tm x) f.
+
+
+(*It is easier to prove some of the lemmas with an alternate
+  approach: define when a variable is free rather than show
+  the sets of free vars are equal:*)
+Fixpoint free_in_t (x: vsymbol) (t: term) {struct t} : bool :=
+  match t with
+  | Tconst _ => false
+  | Tvar v => vsymbol_eq_dec x v
+  | Tfun f tys tms => existsb (fun t => free_in_t x t) tms
+  | Tlet t1 v t2 =>
+    free_in_t x t1 || (negb (vsymbol_eq_dec x v) && free_in_t x t2)
+  | Tif f t1 t2 =>
+    free_in_f x f || free_in_t x t1 || free_in_t x t2
+  | Tmatch tm ty ps =>
+    free_in_t x tm ||
+    existsb (fun p => negb (in_bool vsymbol_eq_dec x (pat_fv (fst p))) &&
+      free_in_t x (snd p)) ps
+  | Teps f v => negb (vsymbol_eq_dec x v) && free_in_f x f
+  end
+with free_in_f (x: vsymbol) (f: formula) {struct f} : bool :=
+  match f with
+  | Fpred p tys tms => existsb (fun t => free_in_t x t) tms
+  | Fquant q v f1 => negb (vsymbol_eq_dec x v) && free_in_f x f1
+  | Feq ty t1 t2 => free_in_t x t1 || free_in_t x t2
+  | Fbinop b f1 f2 => free_in_f x f1 || free_in_f x f2
+  | Fnot f1 => free_in_f x f1
+  | Flet tm v f1 => free_in_t x tm || (negb (vsymbol_eq_dec x v) &&
+    free_in_f x f1)
+  | Fif f1 f2 f3 => free_in_f x f1 || free_in_f x f2 ||
+    free_in_f x f3
+  | Fmatch tm ty ps =>
+    free_in_t x tm ||
+    (existsb (fun p => negb (in_bool vsymbol_eq_dec x (pat_fv (fst p)))
+      && free_in_f x (snd p)) ps)
+  | _ => false
+  end.
+
+
+(*This is equivalent to the other formulation*)
+(*TODO: would be easier with ssreflect*)
+Lemma free_in_spec (t: term) (f: formula) :
+  (forall x, free_in_t x t <-> In x (tm_fv t)) /\
+  (forall x, free_in_f x f <-> In x (fmla_fv f)).
+Proof.
+  revert t f.
+  apply term_formula_ind; simpl; intros; auto; simpl_set; auto;
+  try solve[split; auto].
+  - rewrite (eq_sym_iff v x), dec_iff; reflexivity. 
+  - bool_to_prop. apply ex_in_eq.
+    eapply Forall_impl. 2: apply H. simpl; intros; auto. apply H0; auto.
+  - rewrite <- H, <- H0. bool_to_prop.
+    apply dec_negb_iff.
+  - rewrite<- H, <- H0, <- H1.
+    bool_to_prop.
+  - rewrite <- H. bool_to_prop.
+    apply ex_in_eq.
+    revert H0. rewrite !Forall_forall; intros. simpl_set.
+    bool_to_prop.
+    rewrite <- H0; list_tac2. bool_to_prop.
+    rewrite <- in_bool_dec.
+    apply dec_negb_iff.
+  - rewrite <- H; bool_to_prop.
+    apply dec_negb_iff.
+  - bool_to_prop. apply ex_in_eq.
+    eapply Forall_impl. 2: apply H. simpl; intros; auto. apply H0; auto.
+  - rewrite <- H; bool_to_prop. apply dec_negb_iff.
+  - rewrite <- H, <- H0. bool_to_prop.
+  - rewrite <- H, <- H0; bool_to_prop.
+  - rewrite <- H, <- H0; bool_to_prop.
+    apply dec_negb_iff.
+  - rewrite <- H, <- H0, <- H1; bool_to_prop.
+  - rewrite <- H. bool_to_prop.
+    apply ex_in_eq.
+    revert H0. rewrite !Forall_forall; intros. simpl_set.
+    bool_to_prop.
+    rewrite <- H0; list_tac2. bool_to_prop.
+    rewrite <- in_bool_dec.
+    apply dec_negb_iff.
+Qed.
+
+Definition free_in_t_spec t := proj_tm free_in_spec t. 
+Definition free_in_f_spec f := proj_fmla free_in_spec f. 
+
+
+
+Section FreeNegb.
+Variable (A: Type).
+Variable free_in: vsymbol -> A -> bool.
+Variable fv : A -> list vsymbol.
+Variable free_in_spec: forall t,
+  (forall x, free_in x t <-> In x (fv t)).
+
+Lemma free_in_negb t:
+  forall x, free_in x t = false <-> ~ In x (fv t).
+Proof.
+  intros. destruct (free_in x t) eqn : Hfree; split; intros; auto.
+  - rewrite fold_is_true in Hfree.
+    apply free_in_spec in Hfree; contradiction.
+  - intro Hin. apply free_in_spec in Hin.
+    rewrite Hin in Hfree. tf.
+Qed.
+
+End FreeNegb.
+
+Definition free_in_t_negb := free_in_negb _ _ _ free_in_t_spec.
+Definition free_in_f_negb := free_in_negb _ _ _ free_in_f_spec.
+
+(*Reasoning about substitution and free vars is complicated.
+  We prove 3 lemmas before giving the full spec:*)
+
+(*TODO: move*)
+
+Lemma Forall_combine_map {A: Type} (f: A -> A) (P: A * A -> Prop) (l: list A):
+  Forall P (combine (map f l) l) <->
+  Forall (fun x => P (f x, x)) l.
+Proof.
+  induction l; simpl; split; intros; auto;
+  inversion H; subst; constructor; auto;
+  apply IHl; auto.
+Qed.
+
+(*1. For any y, if y is not in the free vars of tm and y is not x,
+  then sub_t does not change whether y appears free*)
+Lemma sub_fv_diff y tm x (Hnot: y <> x) (Hnoty: ~ In y (tm_fv tm)) 
+  (t: term) (f: formula) :
+  (free_in_t y (sub_t tm x t) = free_in_t y t) /\
+  (free_in_f y (sub_f tm x f) = free_in_f y f).
+Proof.
+  revert t f; apply term_formula_ind; simpl; intros; auto.
+  - vsym_eq x v. vsym_eq y v. simpl. apply free_in_t_negb; auto.
+  - apply existsb_eq; [ rewrite map_length |]; auto.
+    rewrite Forall_combine_map. auto.
+  - rewrite H. f_equal. vsym_eq x v. rewrite H0; auto.
+  - rewrite H, H0, H1; auto.
+  - rewrite H. f_equal. apply existsb_eq; [rewrite map_length|]; auto.
+    rewrite Forall_combine_map; simpl.
+    rewrite Forall_map in H0.
+    revert H0. apply Forall_impl.
+    intros. destruct (in_bool_spec vsymbol_eq_dec x (pat_fv (fst a)));
+    simpl; auto.
+    rewrite H0; auto.
+  - vsym_eq x v; simpl. rewrite H; auto.
+  - apply existsb_eq; [ rewrite map_length |]; auto.
+    rewrite Forall_combine_map. auto.
+  - vsym_eq x v; simpl. rewrite H; auto.
+  - rewrite H, H0; auto.
+  - rewrite H, H0; auto.
+  - rewrite H. f_equal. vsym_eq x v. rewrite H0; auto.
+  - rewrite H, H0, H1; auto.
+  - rewrite H. f_equal. apply existsb_eq; [rewrite map_length|]; auto.
+    rewrite Forall_combine_map; simpl.
+    rewrite Forall_map in H0.
+    revert H0. apply Forall_impl.
+    intros. destruct (in_bool_spec vsymbol_eq_dec x (pat_fv (fst a)));
+    simpl; auto.
+    rewrite H0; auto.
+Qed.
+
+Definition sub_t_fv_diff tm x t y Hnot Hnoty :=
+  proj_tm (sub_fv_diff y tm x Hnot Hnoty) t.
+Definition sub_f_fv_diff tm x f y Hnot Hnoty :=
+  proj_fmla (sub_fv_diff y tm x Hnot Hnoty) f.
+
+(*2: If x is not in the free vars of the term we substitute, it
+  no longer occurs as a free var*)
+Lemma sub_fv_notin tm x (Hnotx: ~ In x (tm_fv tm)) t f:
+  (free_in_t x (sub_t tm x t) = false) /\
+  (free_in_f x (sub_f tm x f) = false).
+Proof.
+  revert t f; apply term_formula_ind; simpl; intros; auto.
+  - vsym_eq x v; simpl.
+    + apply free_in_t_negb; auto.
+    + vsym_eq x v.
+  - apply existsb_false; rewrite Forall_map; auto.
+  - rewrite H; simpl. vsym_eq x v.
+  - rewrite H, H0, H1; auto.
+  - rewrite H; simpl.
+    apply existsb_false.
+    revert H0. rewrite !Forall_map.
+    apply Forall_impl; intros.
+    destruct (in_bool_spec vsymbol_eq_dec x (pat_fv (fst a)));
+    simpl.
+    + destruct (in_bool_spec vsymbol_eq_dec x (pat_fv (fst a))); auto;
+      contradiction.
+    + rewrite H0; simpl_bool; auto.
+  - vsym_eq x v; simpl; [vsym_eq v v | vsym_eq x v].
+  - apply existsb_false; rewrite Forall_map; auto.
+  - vsym_eq x v; simpl; [vsym_eq v v | vsym_eq x v].
+  - rewrite H, H0; auto.
+  - rewrite H, H0; auto.
+  - rewrite H. simpl. vsym_eq x v.
+  - rewrite H, H0, H1; auto.
+  - rewrite H; simpl.
+    apply existsb_false.
+    revert H0. rewrite !Forall_map.
+    apply Forall_impl; intros.
+    destruct (in_bool_spec vsymbol_eq_dec x (pat_fv (fst a)));
+    simpl.
+    + destruct (in_bool_spec vsymbol_eq_dec x (pat_fv (fst a))); auto;
+      contradiction.
+    + rewrite H0; simpl_bool; auto.
+Qed.
+
+Definition sub_t_fv_notin tm x t Hnotx :=
+  proj_tm (sub_fv_notin tm x Hnotx) t.
+Definition sub_f_fv_notin tm x f Hnotx :=
+  proj_fmla (sub_fv_notin tm x Hnotx) f.
+
+(*TODO: move*)
+Lemma Forall_impl_strong {A: Type} {P Q: A -> Prop} {l: list A}:
+  (forall a, In a l -> P a -> Q a) ->
+  Forall P l ->
+  Forall Q l.
+Proof.
+  induction l; simpl; auto; intros.
+  inversion H0; subst.
+  constructor; auto.
+Qed.
+  
+
+(*3. If y is in the free vars of tm, then y is free in
+  the substituted term iff either x or y were already free in t
+  We need the bnd condition: the result fails on the following:
+  (let y = z in x)[y/x] -> let y = z in y
+  So y is not free in the result even though x is free initially.
+  This is OK; we will alpha-convert later to remove this case
+  *)
+Lemma sub_fv_in tm x y (Hy: In y (tm_fv tm)) t f :
+  (forall (Hbnd: forall z, In z (tm_bnd t) -> ~ In z (tm_fv tm)),
+    free_in_t y (sub_t tm x t) = free_in_t x t || free_in_t y t) /\
+  (forall (Hbnd: forall z, In z (fmla_bnd f) -> ~ In z (tm_fv tm)),
+    free_in_f y (sub_f tm x f) = free_in_f x f || free_in_f y f).
+Proof.
+  revert t f;
+  apply term_formula_ind; simpl; intros; auto.
+  - vsym_eq x v; simpl.
+    apply free_in_t_spec; auto.
+  - rewrite existsb_orb.
+    apply existsb_eq; [rewrite map_length |]; auto.
+    rewrite Forall_combine_map.
+    revert H.
+    apply Forall_impl_strong; simpl; intros.
+    apply H0. intros z Hinz1. apply Hbnd.
+    rewrite in_concat. 
+    exists (tm_bnd a). split; auto.
+    rewrite in_map_iff. exists a; auto.
+  - rewrite H; [| intros; apply Hbnd; rewrite in_app_iff; auto].
+    vsym_eq x v; simpl; simpl_bool; auto.
+    vsym_eq y v; simpl; simpl_bool; auto; [| rewrite H0; auto].
+    (*Why we need the assumption: y<> v *)
+    + exfalso. apply (Hbnd v); auto.
+    + solve_bool.
+    + intros; apply Hbnd; rewrite in_app_iff; auto.
+  - rewrite H, H0, H1; try(
+      intros; apply Hbnd; rewrite !in_app_iff; auto);
+    solve_bool.
+  - rewrite H by (intros; apply Hbnd; rewrite in_app_iff; auto).
+    simpl_bool. rewrite (orb_comm (_ || _) (free_in_t y tm0)).
+    rewrite orb_assoc, (orb_comm (free_in_t y tm0)).
+    rewrite <- !orb_assoc. f_equal. f_equal.
+    rewrite existsb_orb.
+    apply existsb_eq; [rewrite map_length |]; auto.
+    rewrite Forall_combine_map; simpl.
+    revert H0. rewrite Forall_map.
+    apply Forall_impl_strong; intros.
+    destruct (in_bool_spec vsymbol_eq_dec x (pat_fv (fst a)));
+    simpl; simpl_bool; auto.
+    (*To reduce repetition*)
+    assert (Hbnd': forall z, In z (pat_fv (fst a)) \/ In z (tm_bnd (snd a)) ->
+      ~ In z (tm_fv tm)).
+    {
+      intros. rewrite <- in_app_iff in H2.
+      apply Hbnd. rewrite in_app_iff. right.
+      rewrite in_concat. eexists; split; [| apply H2].
+      rewrite in_map_iff; eexists; split; [reflexivity|]; auto.
+    }
+    destruct  (in_bool_spec vsymbol_eq_dec y (pat_fv (fst a)));
+    simpl; [| rewrite H1; auto].
+    exfalso. apply (Hbnd' y); auto.
+  - vsym_eq x v; simpl; vsym_eq y v; simpl.
+    exfalso; apply (Hbnd v); auto.
+  - rewrite existsb_orb.
+    apply existsb_eq; [rewrite map_length |]; auto.
+    rewrite Forall_combine_map.
+    revert H.
+    apply Forall_impl_strong; simpl; intros.
+    apply H0. intros z Hinz1. apply Hbnd.
+    rewrite in_concat. 
+    exists (tm_bnd a). split; auto.
+    rewrite in_map_iff. exists a; auto.
+  - vsym_eq x v; simpl; vsym_eq y v; simpl.
+    exfalso; apply (Hbnd v); auto.
+  - rewrite H, H0; try(
+    intros; apply Hbnd; rewrite !in_app_iff; auto);
+    solve_bool.
+  - rewrite H, H0; try(
+    intros; apply Hbnd; rewrite !in_app_iff; auto);
+    solve_bool.
+  - rewrite H; [| intros; apply Hbnd; rewrite in_app_iff; auto].
+    vsym_eq x v; simpl; simpl_bool; auto.
+    vsym_eq y v; simpl; simpl_bool; auto; [| rewrite H0; auto].
+    + exfalso. apply (Hbnd v); auto.
+    + solve_bool.
+    + intros; apply Hbnd; rewrite in_app_iff; auto.
+  - rewrite H, H0, H1; try(
+    intros; apply Hbnd; rewrite !in_app_iff; auto);
+    solve_bool.
+  - rewrite H by (intros; apply Hbnd; rewrite in_app_iff; auto).
+    simpl_bool. rewrite (orb_comm (_ || _) (free_in_t y tm0)).
+    rewrite orb_assoc, (orb_comm (free_in_t y tm0)).
+    rewrite <- !orb_assoc. f_equal. f_equal.
+    rewrite existsb_orb.
+    apply existsb_eq; [rewrite map_length |]; auto.
+    rewrite Forall_combine_map; simpl.
+    revert H0. rewrite Forall_map.
+    apply Forall_impl_strong; intros.
+    destruct (in_bool_spec vsymbol_eq_dec x (pat_fv (fst a)));
+    simpl; simpl_bool; auto.
+    (*To reduce repetition*)
+    assert (Hbnd': forall z, In z (pat_fv (fst a)) \/ In z (fmla_bnd (snd a)) ->
+      ~ In z (tm_fv tm)).
+    {
+      intros. rewrite <- in_app_iff in H2.
+      apply Hbnd. rewrite in_app_iff. right.
+      rewrite in_concat. eexists; split; [| apply H2].
+      rewrite in_map_iff; eexists; split; [reflexivity|]; auto.
+    }
+    destruct  (in_bool_spec vsymbol_eq_dec y (pat_fv (fst a)));
+    simpl; [| rewrite H1; auto].
+    exfalso. apply (Hbnd' y); auto.
+Qed.
+
+(*Lemma sub_fv_in tm x y (Hy: In y (tm_fv tm)) t f :
+  (forall (Hbnd: ~ In y (tm_bnd t)),
+    free_in_t y (sub_t tm x t) = free_in_t x t || free_in_t y t) /\
+  (forall (Hbnd: ~ In y (fmla_bnd f)),
+    free_in_f y (sub_f tm x f) = free_in_f x f || free_in_f y f).
+Proof.
+  revert t f;
+  apply term_formula_ind; simpl; intros; auto.
+  - vsym_eq x v; simpl.
+    apply free_in_t_spec; auto.
+  - rewrite in_concat in Hbnd. rewrite existsb_orb.
+    apply existsb_eq; [rewrite map_length |]; auto.
+    rewrite Forall_combine_map.
+    revert H.
+    apply Forall_impl_strong; simpl; intros.
+    apply H0. intro C. apply Hbnd.
+    exists (tm_bnd a). split; auto.
+    rewrite in_map_iff. exists a; auto.
+  - rewrite in_app_iff in Hbnd. not_or Hy. 
+    rewrite H; auto. vsym_eq x v; simpl; simpl_bool; auto.
+    vsym_eq y v. rewrite H0; simpl; simpl_bool; auto.
+    solve_bool.
+  - rewrite !in_app_iff in Hbnd.
+    not_or Hy. rewrite H, H0, H1; auto. solve_bool.
+  - rewrite in_app_iff in Hbnd. not_or Hy.
+    rewrite H; auto.
+    simpl_bool. rewrite (orb_comm (_ || _) (free_in_t y tm0)).
+    rewrite orb_assoc, (orb_comm (free_in_t y tm0)).
+    rewrite <- !orb_assoc. f_equal. f_equal.
+    rewrite existsb_orb.
+    apply existsb_eq; [rewrite map_length |]; auto.
+    rewrite Forall_combine_map; simpl.
+    revert H0. rewrite Forall_map.
+    apply Forall_impl_strong; intros.
+    destruct (in_bool_spec vsymbol_eq_dec x (pat_fv (fst a)));
+    simpl; simpl_bool; auto.
+    assert (~ In y (pat_fv (fst a) ++ tm_bnd (snd a))). {
+      intros C. apply Hy1. rewrite in_concat.
+      eexists. split; [| apply C]. rewrite in_map_iff.
+      eexists; split; [reflexivity |]; auto.
+    }
+    rewrite in_app_iff in H2. not_or Hy.
+    rewrite H1; auto.
+    destruct (in_bool_spec vsymbol_eq_dec y (pat_fv (fst a)));
+    simpl; simpl_bool; auto; contradiction.
+  - not_or Hy. vsym_eq x v; simpl; vsym_eq y v.
+  - rewrite in_concat in Hbnd. rewrite existsb_orb.
+    apply existsb_eq; [rewrite map_length |]; auto.
+    rewrite Forall_combine_map.
+    revert H.
+    apply Forall_impl_strong; simpl; intros.
+    apply H0. intro C. apply Hbnd.
+    exists (tm_bnd a). split; auto.
+    rewrite in_map_iff. exists a; auto.
+  - not_or Hy. vsym_eq x v; simpl; vsym_eq y v.
+  - rewrite in_app_iff in Hbnd. not_or Hy.
+    rewrite H, H0; auto; solve_bool.
+  - rewrite in_app_iff in Hbnd. not_or Hy.
+    rewrite H, H0; auto; solve_bool.
+  - rewrite in_app_iff in Hbnd. not_or Hy. 
+    rewrite H; auto. vsym_eq x v; simpl; simpl_bool; auto.
+    vsym_eq y v. rewrite H0; simpl; simpl_bool; auto.
+    solve_bool.
+  - rewrite !in_app_iff in Hbnd.
+    not_or Hy. rewrite H, H0, H1; auto. solve_bool.
+  - rewrite in_app_iff in Hbnd. not_or Hy.
+    rewrite H; auto.
+    simpl_bool. rewrite (orb_comm (_ || _) (free_in_t y tm0)).
+    rewrite orb_assoc, (orb_comm (free_in_t y tm0)).
+    rewrite <- !orb_assoc. f_equal. f_equal.
+    rewrite existsb_orb.
+    apply existsb_eq; [rewrite map_length |]; auto.
+    rewrite Forall_combine_map; simpl.
+    revert H0. rewrite Forall_map.
+    apply Forall_impl_strong; intros.
+    destruct (in_bool_spec vsymbol_eq_dec x (pat_fv (fst a)));
+    simpl; simpl_bool; auto.
+    assert (~ In y (pat_fv (fst a) ++ fmla_bnd (snd a))). {
+      intros C. apply Hy1. rewrite in_concat.
+      eexists. split; [| apply C]. rewrite in_map_iff.
+      eexists; split; [reflexivity |]; auto.
+    }
+    rewrite in_app_iff in H2. not_or Hy.
+    rewrite H1; auto.
+    destruct (in_bool_spec vsymbol_eq_dec y (pat_fv (fst a)));
+    simpl; simpl_bool; auto; contradiction.
+Qed.*)
+
+Definition sub_t_fv_in tm x t y Hy :=
+  proj_tm (sub_fv_in tm x y Hy) t.
+Definition sub_f_fv_in tm x f y Hy :=
+  proj_fmla (sub_fv_in tm x y Hy) f.
+
+(*Now we can prove the main theorem: the free variables of t[tm/x]
+  are (fv tm) union (fv t - x)*)
+Theorem sub_t_fv (tm: term) (x: vsymbol) (t: term):
+  In x (tm_fv t) ->
+  (forall z, In z (tm_bnd t) -> ~ In z (tm_fv tm)) ->
+  forall y, 
+    In y (tm_fv (sub_t tm x t)) <->
+    (In y (tm_fv tm)) \/ ((In y (tm_fv t)) /\ y <> x).
+Proof.
+  intros.
+  destruct (in_dec vsymbol_eq_dec y (tm_fv tm)).
+  - split; intros; auto.
+    apply free_in_t_spec.
+    rewrite sub_t_fv_in; auto.
+    apply free_in_t_spec in H.
+    rewrite H; auto.
+  - vsym_eq x y.
+    + split; intros; destruct_all; try contradiction.
+      apply free_in_t_spec in H1.
+      rewrite sub_t_fv_notin in H1; auto.
+    + rewrite <- free_in_t_spec. rewrite sub_t_fv_diff; auto.
+      rewrite free_in_t_spec. split; intros; auto;
+      destruct_all; auto; contradiction.
+Qed.
+
+Theorem sub_f_fv (tm: term) (x: vsymbol) (f: formula):
+  In x (fmla_fv f) ->
+  (forall z, In z (fmla_bnd f) -> ~ In z (tm_fv tm)) ->
+  forall y, 
+    In y (fmla_fv (sub_f tm x f)) <->
+    (In y (tm_fv tm)) \/ ((In y (fmla_fv f)) /\ y <> x).
+Proof.
+  intros.
+  destruct (in_dec vsymbol_eq_dec y (tm_fv tm)).
+  - split; intros; auto.
+    apply free_in_f_spec.
+    rewrite sub_f_fv_in; auto.
+    apply free_in_f_spec in H.
+    rewrite H; auto.
+  - vsym_eq x y.
+    + split; intros; destruct_all; try contradiction.
+      apply free_in_f_spec in H1.
+      rewrite sub_f_fv_notin in H1; auto.
+    + rewrite <- free_in_f_spec. rewrite sub_f_fv_diff; auto.
+      rewrite free_in_f_spec. split; intros; auto;
+      destruct_all; auto; contradiction.
+Qed.
+
 (*Substitution for variables -
   substitute variable y for all free ocurrences of x*)
 
@@ -250,7 +794,7 @@ Proof.
 Qed. 
 
 Definition sub_t_typed t := proj_tm sub_well_typed t.
-Definition sub_f_typed f := proj_tm sub_well_typed f.
+Definition sub_f_typed f := proj_fmla sub_well_typed f.
 
 (*Substitution for patterns - needed for bound variable
   substitution, not free var subs like [sub_var_t] and [sub_var_f]*)
@@ -281,68 +825,6 @@ Definition sub_var_fs: list (vsymbol * string) -> formula -> formula :=
 
 (*We need a lot of results about how substition affects free
   variables*)
-
-(*A few easy results about sub_var_t/f and free vars:*)
-
-(*If the free var to sub is not in the term, substitution does nothing*)
-Lemma sub_notin (t: term) (f: formula) :
-  (forall (x y: vsymbol),
-    ~ In x (tm_fv t) ->
-    sub_var_t x y t = t) /\
-    (forall (x y: vsymbol),
-    ~ In x (fmla_fv f) ->
-    sub_var_f x y f = f).
-Proof.
-  revert t f. apply term_formula_ind; simpl; auto; intros; simpl_set; not_or Hinx.
-  - destruct (vsymbol_eq_dec x v); subst; auto; contradiction.
-  - f_equal. apply list_eq_ext';
-    rewrite map_length; auto.
-    intros.
-    rewrite (map_nth_inbound) with(d2:=d); auto.
-    rewrite Forall_forall in H. apply H; list_tac2.
-    intro C. apply H0. exists (nth n l1 d); split; list_tac2.
-  - rewrite H; auto.
-    destruct (vsymbol_eq_dec x v); subst; auto.
-    rewrite H0; auto.
-  - rewrite H, H0, H1; auto.
-  - rewrite H; auto. f_equal.
-    apply list_eq_ext'; rewrite map_length; auto; intros.
-    rewrite map_nth_inbound with (d2:=d); auto.
-    case_in; auto.
-    rewrite Forall_forall in H0. rewrite H0; list_tac2.
-    destruct (nth n ps d); auto.
-    intro Hinx'. apply Hinx0. exists (nth n ps d).
-    split; list_tac2. simpl_set. split; auto.
-  - destruct (vsymbol_eq_dec x v); subst; auto.
-    rewrite H; auto.
-  - f_equal. apply list_eq_ext';
-    rewrite map_length; auto.
-    intros.
-    rewrite (map_nth_inbound) with(d2:=d); auto.
-    rewrite Forall_forall in H. apply H; list_tac2.
-    intro C. apply H0.  exists (nth n tms d); split; list_tac2.
-  - destruct (vsymbol_eq_dec x v); subst; auto.
-    rewrite H; auto.
-  - rewrite H, H0; auto.
-  - rewrite H, H0; auto.
-  - rewrite H; auto.
-  - rewrite H; auto.
-    destruct (vsymbol_eq_dec x v); subst; auto.
-    rewrite H0; auto.
-  - rewrite H, H0, H1; auto.
-  - rewrite H; auto.
-    f_equal.
-    apply list_eq_ext'; rewrite map_length; auto; intros.
-    rewrite map_nth_inbound with (d2:=d); auto.
-    case_in; auto.
-    rewrite Forall_forall in H0. rewrite H0; list_tac2.
-    destruct (nth n ps d); auto.
-    intro Hinx'. apply Hinx0. exists (nth n ps d).
-    split; list_tac2. simpl_set. split; auto.
-Qed.
-
-Definition sub_var_t_notin t := proj_tm sub_notin t.
-Definition sub_var_f_notin f := proj_fmla sub_notin f.
 
 (*If we substitute x with itself, then nothing changes*)
 Lemma sub_eq (t: term) (f: formula) :
@@ -382,337 +864,79 @@ Qed.
 Definition sub_var_t_eq t := proj_tm sub_eq t. 
 Definition sub_var_f_eq f := proj_fmla sub_eq f. 
 
-(*It is easier to prove some of the lemmas with an alternate
-  approach: define when a variable is free rather than show
-  the sets of free vars are equal:*)
-Fixpoint free_in_t (x: vsymbol) (t: term) {struct t} : bool :=
-  match t with
-  | Tconst _ => false
-  | Tvar v => vsymbol_eq_dec x v
-  | Tfun f tys tms => existsb (fun t => free_in_t x t) tms
-  | Tlet t1 v t2 =>
-    free_in_t x t1 || (negb (vsymbol_eq_dec x v) && free_in_t x t2)
-  | Tif f t1 t2 =>
-    free_in_f x f || free_in_t x t1 || free_in_t x t2
-  | Tmatch tm ty ps =>
-    free_in_t x tm ||
-    existsb (fun p => negb (in_bool vsymbol_eq_dec x (pat_fv (fst p))) &&
-      free_in_t x (snd p)) ps
-  | Teps f v => negb (vsymbol_eq_dec x v) && free_in_f x f
-  end
-with free_in_f (x: vsymbol) (f: formula) {struct f} : bool :=
-  match f with
-  | Fpred p tys tms => existsb (fun t => free_in_t x t) tms
-  | Fquant q v f1 => negb (vsymbol_eq_dec x v) && free_in_f x f1
-  | Feq ty t1 t2 => free_in_t x t1 || free_in_t x t2
-  | Fbinop b f1 f2 => free_in_f x f1 || free_in_f x f2
-  | Fnot f1 => free_in_f x f1
-  | Flet tm v f1 => free_in_t x tm || (negb (vsymbol_eq_dec x v) &&
-   free_in_f x f1)
-  | Fif f1 f2 f3 => free_in_f x f1 || free_in_f x f2 ||
-    free_in_f x f3
-  | Fmatch tm ty ps =>
-    free_in_t x tm ||
-    (existsb (fun p => negb (in_bool vsymbol_eq_dec x (pat_fv (fst p)))
-      && free_in_f x (snd p)) ps)
-  | _ => false
-  end.
+(*The rest are corollaries of above*)
 
-
-(*This is equivalent to the other formulation*)
-(*TODO: would be easier with ssreflect*)
-Lemma free_in_spec (t: term) (f: formula) :
-  (forall x, free_in_t x t <-> In x (tm_fv t)) /\
-  (forall x, free_in_f x f <-> In x (fmla_fv f)).
-Proof.
-  revert t f.
-  apply term_formula_ind; simpl; intros; auto; simpl_set; auto;
-  try solve[split; auto].
-  - rewrite (eq_sym_iff v x), dec_iff; reflexivity. 
-  - bool_to_prop. apply ex_in_eq.
-    eapply Forall_impl. 2: apply H. simpl; intros; auto. apply H0; auto.
-  - rewrite <- H, <- H0. bool_to_prop.
-    apply dec_negb_iff.
-  - rewrite<- H, <- H0, <- H1.
-    bool_to_prop.
-  - rewrite <- H. bool_to_prop.
-    apply ex_in_eq.
-    revert H0. rewrite !Forall_forall; intros. simpl_set.
-    bool_to_prop.
-    rewrite <- H0; list_tac2. bool_to_prop.
-    rewrite <- in_bool_dec.
-    apply dec_negb_iff.
-  - rewrite <- H; bool_to_prop.
-    apply dec_negb_iff.
-  - bool_to_prop. apply ex_in_eq.
-    eapply Forall_impl. 2: apply H. simpl; intros; auto. apply H0; auto.
-  - rewrite <- H; bool_to_prop. apply dec_negb_iff.
-  - rewrite <- H, <- H0. bool_to_prop.
-  - rewrite <- H, <- H0; bool_to_prop.
-  - rewrite <- H, <- H0; bool_to_prop.
-    apply dec_negb_iff.
-  - rewrite <- H, <- H0, <- H1; bool_to_prop.
-  - rewrite <- H. bool_to_prop.
-    apply ex_in_eq.
-    revert H0. rewrite !Forall_forall; intros. simpl_set.
-    bool_to_prop.
-    rewrite <- H0; list_tac2. bool_to_prop.
-    rewrite <- in_bool_dec.
-    apply dec_negb_iff.
-Qed.
-
-Definition free_in_t_spec t := proj_tm free_in_spec t. 
-Definition free_in_f_spec f := proj_fmla free_in_spec f. 
-
-
-
-Section FreeNegb.
-Variable (A: Type).
-Variable free_in: vsymbol -> A -> bool.
-Variable fv : A -> list vsymbol.
-Variable free_in_spec: forall t,
-  (forall x, free_in x t <-> In x (fv t)).
-
-Lemma free_in_negb t:
-  forall x, free_in x t = false <-> ~ In x (fv t).
-Proof.
-  intros. destruct (free_in x t) eqn : Hfree; split; intros; auto.
-  - rewrite fold_is_true in Hfree.
-    apply free_in_spec in Hfree; contradiction.
-  - intro Hin. apply free_in_spec in Hin.
-    rewrite Hin in Hfree. tf.
-Qed.
-
-End FreeNegb.
-
-Definition free_in_t_negb := free_in_negb _ _ _ free_in_t_spec.
-Definition free_in_f_negb := free_in_negb _ _ _ free_in_f_spec.
-
-(*3 lemmas about free vars and [sub_var_t]*)
-  
 (*1. For any variables which are not x or y, sub_var_t doesn't change anything*)
-Lemma sub_var_fv_diff (t: term) (f: formula):
-  (forall (x y z: vsymbol),
-    z <> x -> z <> y ->
-    free_in_t z (sub_var_t x y t) = free_in_t z t) /\
-  (forall (x y z: vsymbol),
-    z <> x -> z <> y ->
-    free_in_f z (sub_var_f x y f) = free_in_f z f).
+Lemma sub_var_t_fv_diff (t: term):
+forall (x y z: vsymbol),
+  z <> x -> z <> y ->
+  free_in_t z (sub_var_t x y t) = free_in_t z t.
 Proof.
-  revert t f.
-  apply term_formula_ind; simpl; auto; intros.
-  - vsym_eq x v. vsym_eq z y. vsym_eq z v.
-  - apply existsb_eq; list_tac2.
-    revert H. rewrite !Forall_forall; intros.
-    revert H2. 
-    rewrite in_combine_iff; list_tac2.
-    intros [i [Hi Hx]]. specialize (Hx tm_d tm_d); subst; simpl.
-    list_tac2.
-    apply H; list_tac2.
-  - rewrite H; auto. f_equal. f_equal.
-    vsym_eq x v.
-  - rewrite H, H0, H1; auto.
-  - rewrite H; auto. f_equal.
-    apply existsb_eq; list_tac2.
-    revert H0.
-    rewrite !Forall_forall; intros.
-    revert H3.
-    rewrite in_combine_iff; list_tac2.
-    intros [i [Hi Hx]]; specialize (Hx (Pwild, tm_d) (Pwild, tm_d)); subst; simpl.
-    list_tac2. case_in; auto.
-    simpl; rewrite H0; list_tac2.
-  - vsym_eq x v. simpl. rewrite H; auto.
-  - apply existsb_eq; list_tac2.
-    revert H. rewrite !Forall_forall; intros.
-    revert H2. 
-    rewrite in_combine_iff; list_tac2.
-    intros [i [Hi Hx]]. specialize (Hx tm_d tm_d); subst; simpl.
-    list_tac2.
-    apply H; list_tac2.
-  - vsym_eq x v; simpl; rewrite H; auto.
-  - rewrite H, H0; auto.
-  - rewrite H, H0; auto.
-  - rewrite H; auto. f_equal. f_equal.
-    vsym_eq x v.
-  - rewrite H, H0, H1; auto.
-  - rewrite H; auto. f_equal.
-    apply existsb_eq; list_tac2.
-    revert H0.
-    rewrite !Forall_forall; intros.
-    revert H3.
-    rewrite in_combine_iff; list_tac2.
-    intros [i [Hi Hx]]; specialize (Hx (Pwild, Ftrue) (Pwild, Ftrue)); subst; simpl.
-    list_tac2. case_in; auto.
-    simpl; rewrite H0; list_tac2.
-Qed.
+  intros.
+  rewrite sub_var_t_equiv.
+  rewrite sub_t_fv_diff; auto.
+  simpl; auto. 
+  intros [Heq | []]; subst; contradiction.
+Qed. 
 
-Definition sub_var_t_fv_diff t := proj_tm sub_var_fv_diff t. 
-Definition sub_var_f_fv_diff f := proj_fmla sub_var_fv_diff f.
-
+Lemma sub_var_f_fv_diff f :
+forall (x y z: vsymbol),
+z <> x -> z <> y ->
+free_in_f z (sub_var_f x y f) = free_in_f z f.
+Proof.
+  intros.
+  rewrite sub_var_f_equiv.
+  rewrite sub_f_fv_diff; auto.
+  simpl; auto. 
+  intros [Heq | []]; subst; contradiction.
+Qed. 
 
 (*2: If we replace x with y, x is NOT in the resulting free variables*)
-Lemma sub_var_fv_notin (t: term) (f: formula):
-  (forall (x y: vsymbol),
-    x <> y ->
-    free_in_t x (sub_var_t x y t) = false) /\
-  (forall (x y: vsymbol),
-    x <> y ->
-    free_in_f x (sub_var_f x y f) = false).
+Lemma sub_var_t_fv_notin t:
+forall (x y: vsymbol),
+x <> y ->
+free_in_t x (sub_var_t x y t) = false.
 Proof.
-  revert t f. apply term_formula_ind; simpl; auto; intros.
-  - vsym_eq x v. vsym_eq v y. vsym_eq x v.
-  - apply existsb_false.
-    revert H. rewrite !Forall_forall; intros.
-    revert H1. rewrite in_map_iff; intros [t [Ht Hint]]; subst.
-    apply H; auto.
-  - rewrite !orb_false_iff. split; [apply H; auto|].
-    vsym_eq x v. simpl. apply H0; auto.
-  - rewrite H, H0, H1; auto.
-  - rewrite H; simpl; auto.
-    apply existsb_false. revert H0. rewrite !Forall_forall; intros.
-    revert H2. rewrite in_map_iff; intros [p1 [Hp1 Hinp1]]; subst.
-    case_in; simpl; destruct (in_bool_spec vsymbol_eq_dec x (pat_fv (fst p1))); simpl; auto;
-    try contradiction.
-    apply H0; list_tac2.
-  - vsym_eq x v; simpl; auto. vsym_eq v v.
-    vsym_eq x v; simpl. apply H; auto.
-  - apply existsb_false.
-    revert H. rewrite !Forall_forall; intros.
-    revert H1. rewrite in_map_iff; intros [t [Ht Hint]]; subst.
-    apply H; auto.
-  - vsym_eq x v; simpl. vsym_eq v v. vsym_eq x v; simpl.
-    apply H; auto.
-  - rewrite H, H0; auto.
-  - rewrite H, H0; auto.
-  - rewrite H; auto; simpl. vsym_eq x v; simpl.
-    apply H0; auto.
-  - rewrite H, H0, H1; auto.
-  - rewrite H; simpl; auto.
-    apply existsb_false. revert H0. rewrite !Forall_forall; intros.
-    revert H2. rewrite in_map_iff; intros [p1 [Hp1 Hinp1]]; subst.
-    case_in; simpl; destruct (in_bool_spec vsymbol_eq_dec x (pat_fv (fst p1))); simpl; auto;
-    try contradiction.
-    apply H0; list_tac2.
+  intros. rewrite sub_var_t_equiv.
+  apply sub_t_fv_notin; simpl; 
+  intros [? | []]; subst; contradiction.
 Qed.
 
-Definition sub_var_t_fv_notin t := proj_tm sub_var_fv_notin t.
-Definition sub_var_f_fv_notin f := proj_fmla sub_var_fv_notin f.
-
-
-
+Lemma sub_var_f_fv_notin f:
+forall (x y: vsymbol),
+    x <> y ->
+    free_in_f x (sub_var_f x y f) = false.
+Proof.
+  intros. rewrite sub_var_f_equiv.
+  apply sub_f_fv_notin; simpl; 
+  intros [? | []]; subst; contradiction.
+Qed.
 
 (*3. When we substitute x with y, y is in the free variables
   iff either y was before or x was before*)
-(*Need the Hbnd assumption for the following: in let t1 = v in t2,
-  if y =v, then y will not be in the free variables of
-  the substituted term even if x is a free variable in t2*)
-  Lemma sub_var_fv_in (t: term) (f: formula):
-  (forall (x y: vsymbol)
-    (Hbnd: ~ In y (tm_bnd t)),
-    x <> y ->
-    free_in_t y (sub_var_t x y t) = (free_in_t x t) || (free_in_t y t)) /\
-  (forall (x y: vsymbol)
-    (Hbnd: ~ In y (fmla_bnd f)),
-    x <> y ->
-    free_in_f y (sub_var_f x y f) = (free_in_f x f) || (free_in_f y f)).
+(*Need the Hbnd assumption as before*)
+Lemma sub_var_t_fv_in t:
+forall (x y: vsymbol)
+(Hbnd: ~ In y (tm_bnd t)),
+x <> y ->
+free_in_t y (sub_var_t x y t) = (free_in_t x t) || (free_in_t y t).
 Proof.
-  revert t f. apply term_formula_ind; simpl; auto; intros.
-  - vsym_eq x v; simpl.
-    vsym_eq y y.
-  - rewrite existsb_orb.
-    apply existsb_eq; list_tac2.
-    revert H. rewrite !Forall_forall; intros.
-    revert H1. rewrite in_combine_iff; list_tac2.
-    intros [i [Hi Hx]]. specialize (Hx tm_d tm_d); subst; simpl.
-    list_tac2. apply H; list_tac2. intro C.
-    apply Hbnd. rewrite in_concat. exists (tm_bnd (nth i l1 tm_d)); 
-    split; list_tac2.
-  - rewrite H; auto; [|intro C; apply Hbnd; right; apply in_or_app; triv]. 
-    rewrite <- !orb_assoc. f_equal.
-    rewrite !orb_andb_distrib_r.
-    vsym_eq x v.
-    rewrite H0; auto; [|intro C; apply Hbnd; right; apply in_or_app; triv].
-    vsym_eq y v. exfalso. apply Hbnd; triv.
-    simpl. solve_bool.
-  - rewrite H, H0, H1; auto;[solve_bool| | |]; intro C; apply Hbnd;
-    rewrite !in_app_iff; triv.
-  - (*match is hard case not surprisingly*)
-    rewrite H; auto; [|intro C; apply Hbnd; rewrite in_app_iff; triv].
-    simpl_bool. rewrite (orb_comm (_ || _) (free_in_t y tm)).
-    rewrite orb_assoc, (orb_comm (free_in_t y tm)).
-    rewrite <- !orb_assoc. f_equal. f_equal.
-    (*Now just have the exists goal*)
-    rewrite existsb_orb.
-    apply existsb_eq; list_tac2.
-    revert H0. rewrite !Forall_forall; intros.
-    revert H2. rewrite in_combine_iff; list_tac2; intros [i [Hi Hx]].
-    specialize (Hx (Pwild, tm_d) (Pwild, tm_d)); subst; simpl.
-    list_tac2. case_in; simpl; auto.
-    destruct (in_bool_spec vsymbol_eq_dec y (pat_fv (fst (nth i ps (Pwild, tm_d))))); simpl.
-    + (*contradiction: y not in bound vars*)
-      exfalso. apply Hbnd. rewrite in_app_iff. right.
-      rewrite in_concat. exists ((pat_fv (fst (nth i ps (Pwild, tm_d))))
-      ++ (tm_bnd (snd (nth i ps (Pwild, tm_d))))).
-      split; list_tac2. exists (nth i ps (Pwild, tm_d)). split; list_tac2.
-    + rewrite H0; list_tac2. intro C.
-      apply Hbnd. rewrite in_app_iff. right. 
-      rewrite in_concat. exists ((pat_fv (fst (nth i ps (Pwild, tm_d))))
-      ++ (tm_bnd (snd (nth i ps (Pwild, tm_d))))).
-      split; list_tac2. exists (nth i ps (Pwild, tm_d)). split; list_tac2.
-  - vsym_eq x v; simpl.
-    vsym_eq y v; simpl.
-    + exfalso; apply Hbnd; triv.
-    + rewrite H; auto.
-  - rewrite existsb_orb.
-    apply existsb_eq; list_tac2.
-    revert H. rewrite !Forall_forall; intros.
-    revert H1. rewrite in_combine_iff; list_tac2.
-    intros [i [Hi Hx]]. specialize (Hx tm_d tm_d); subst; simpl.
-    list_tac2. apply H; list_tac2. intro C.
-    apply Hbnd. rewrite in_concat. exists (tm_bnd (nth i tms tm_d)); 
-    split; list_tac2.
-  - vsym_eq x v; simpl.
-    vsym_eq y v; simpl.
-    + exfalso; apply Hbnd; triv.
-    + rewrite H; auto.
-  - rewrite H, H0; auto; [solve_bool | |]; intro C; apply Hbnd;
-    rewrite in_app_iff; triv.
-  - rewrite H, H0; auto; [solve_bool | |]; intro C; apply Hbnd;
-    rewrite in_app_iff; triv.
-  - rewrite H; auto; [|intro C; apply Hbnd; right; apply in_or_app; triv]. 
-    rewrite <- !orb_assoc. f_equal.
-    rewrite !orb_andb_distrib_r.
-    vsym_eq x v.
-    rewrite H0; auto; [|intro C; apply Hbnd; right; apply in_or_app; triv].
-    vsym_eq y v. exfalso. apply Hbnd; triv.
-    simpl. solve_bool.
-  - rewrite H, H0, H1; auto;[solve_bool | | |]; intro C;
-    apply Hbnd; rewrite !in_app_iff; triv.
-  - rewrite H; auto; [|intro C; apply Hbnd; rewrite in_app_iff; triv].
-    simpl_bool. rewrite (orb_comm (_ || _) (free_in_t y tm)).
-    rewrite orb_assoc, (orb_comm (free_in_t y tm)).
-    rewrite <- !orb_assoc. f_equal. f_equal.
-    (*Now just have the exists goal*)
-    rewrite existsb_orb.
-    apply existsb_eq; list_tac2.
-    revert H0. rewrite !Forall_forall; intros.
-    revert H2. rewrite in_combine_iff; list_tac2; intros [i [Hi Hx]].
-    specialize (Hx (Pwild, Ftrue) (Pwild, Ftrue)); subst; simpl.
-    list_tac2. case_in; simpl; auto.
-    destruct (in_bool_spec vsymbol_eq_dec y (pat_fv (fst (nth i ps (Pwild, Ftrue))))); simpl.
-    + (*contradiction: y not in bound vars*)
-      exfalso. apply Hbnd. rewrite in_app_iff. right.
-      rewrite in_concat. exists ((pat_fv (fst (nth i ps (Pwild, Ftrue))))
-      ++ (fmla_bnd (snd (nth i ps (Pwild, Ftrue))))).
-      split; list_tac2. exists (nth i ps (Pwild, Ftrue)). split; list_tac2.
-    + rewrite H0; list_tac2. intro C.
-      apply Hbnd. rewrite in_app_iff. right. 
-      rewrite in_concat. exists ((pat_fv (fst (nth i ps (Pwild, Ftrue))))
-      ++ (fmla_bnd (snd (nth i ps (Pwild, Ftrue))))).
-      split; list_tac2. exists (nth i ps (Pwild, Ftrue)). split; list_tac2.
-Qed. 
+  intros. rewrite sub_var_t_equiv.
+  apply sub_t_fv_in; simpl; auto.
+  intros.
+  intros [Heq | []]; subst; contradiction.
+Qed.
 
-Definition sub_var_t_fv_in t := proj_tm sub_var_fv_in t. 
-Definition sub_var_f_fv_in f := proj_fmla sub_var_fv_in f.
+Lemma sub_var_f_fv_in f:
+forall (x y: vsymbol)
+(Hbnd: ~ In y (fmla_bnd f)),
+x <> y ->
+free_in_f y (sub_var_f x y f) = (free_in_f x f) || (free_in_f y f).
+Proof.
+  intros. rewrite sub_var_f_equiv.
+  apply sub_f_fv_in; simpl; auto.
+  intros.
+  intros [Heq | []]; subst; contradiction.
+Qed.
 
 End Sub.

@@ -45,7 +45,7 @@ Arguments task_goal_fv {_} {_}.
 
 (*A task is valid if delta |= f. But these formulas are closed,
   so we write it a bit differently*)
-Definition task_valid (gamma: context) (w: task gamma)
+Definition task_valid {gamma: context} (w: task gamma)
   (w_wf: task_wf w) : Prop :=
   forall (pd: pi_dom) (pf: pi_funpred (task_gamma_valid w_wf) pd) (vt: val_typevar)
     (vv: val_vars pd vt),
@@ -106,7 +106,7 @@ Qed.
 (*The theorem we want*)
 Theorem task_valid_equiv (gamma: context) (w:task gamma)
   (w_wf: task_wf w) :
-  task_valid gamma w w_wf <->
+  task_valid w w_wf <->
   valid (task_gamma_valid w_wf) (fforalls (task_vars w) 
     (Fbinop Timplies (iter_fand (task_delta w)) (task_goal w)))
   (task_alt_typed gamma w w_wf).
@@ -169,8 +169,8 @@ Definition sound_trans {gamma: context} (T: trans gamma) : Prop :=
   forall (t: task gamma) (t_wf: task_wf t),
     Forall task_wf (T t) /\
     ((forall (tr: task gamma) (tr_wf: task_wf tr), In tr (T t) ->
-      task_valid gamma tr tr_wf) ->
-    task_valid gamma t t_wf).
+      task_valid tr tr_wf) ->
+    task_valid t t_wf).
 
 (*As a trivial example, the identity transformation is sound*)
 Definition trans_id (gamma: context) : trans gamma := fun x => [x].
@@ -181,3 +181,91 @@ Proof.
   - unfold trans_id. constructor; auto.
   - intros. apply H. simpl. auto.
 Qed.
+
+(*Utilities for transformations (TODO: maybe separate)*)
+Section TransUtil.
+
+(*Transformation which creates a single new task*)
+Definition single_trans {gamma: context} (t: task gamma -> task gamma) :
+  trans gamma :=
+  fun x => [t x].
+
+(*Prove a single_trans sound*)
+Lemma single_trans_sound (gamma: context) (f: task gamma -> task gamma):
+  (forall (t: task gamma) (t_wf: task_wf t), task_wf (f t) /\
+    (forall (t': task_wf (f t)), task_valid (f t) t' -> task_valid t t_wf)) ->
+  sound_trans (single_trans f).
+Proof.
+  intros. unfold sound_trans, single_trans. simpl.
+  intros. split.
+  - constructor; auto. apply H. auto.
+  - intros. eapply (proj2 (H t t_wf)).
+    apply H0. left; auto.
+    Unshelve. apply H. auto.
+Qed.
+
+(*Some transformations only transform the goal or one
+  of the hypotheses. Proving these sound only requires
+  local reasoning*)
+
+(*TODO: should we generalize to more than 1 goal*)
+Definition trans_goal (gamma: context) (f: formula -> formula) :
+  trans gamma :=
+  fun x => [mk_task gamma (task_delta x) (task_vars x) (f (task_goal x))].
+
+(*TODO: move*)
+Lemma sublist_trans {A: Type} (l2 l1 l3: list A):
+  sublist l1 l2 ->
+  sublist l2 l3 ->
+  sublist l1 l3.
+Proof.
+  unfold sublist; auto.
+Qed.
+
+(*The only thing we need to reason about is the new goal*)
+(*We also need to ensure that the new term does not have any
+  new free variables (TODO: this is more restrictive than we need - see
+  reall just need that new free vars still in context)*)
+Lemma trans_goal_sound {gamma: context} 
+  (f: formula -> formula) :
+  (forall (gamma_valid: valid_context gamma) 
+    fmla (Hfmla: formula_typed gamma fmla),
+    formula_typed gamma (f fmla) /\
+    sublist (fmla_fv (f fmla)) (fmla_fv fmla) /\
+    forall pd vt pf vv (Hf: formula_typed gamma (f fmla)), 
+      formula_rep gamma_valid pd vt pf vv (f fmla) Hf -> 
+      formula_rep gamma_valid pd vt pf vv fmla Hfmla)->
+  sound_trans (trans_goal gamma f).
+Proof.
+  intros.
+  unfold sound_trans, trans_goal. simpl.
+  intros.
+  destruct t; simpl in *.
+  destruct t_wf; simpl in *.
+  set (tsk :={| task_delta := task_delta0; 
+    task_vars := task_vars0; task_goal := f task_goal0 |}) in *.
+  assert (Hwf: task_wf tsk). {
+    subst tsk. apply mk_task_wf; simpl; auto.
+    + apply H; auto.
+    + apply (sublist_trans (fmla_fv task_goal0)); auto.
+      apply H; auto.
+  }
+  split.
+  - constructor; auto. 
+  - intros.
+    assert (Hval: task_valid tsk Hwf). {
+      apply H0; auto.
+    }
+    unfold task_valid in *; simpl in *.
+    intros.
+    erewrite fmla_rep_irrel.
+    eapply (proj2 (proj2 (H task_gamma_valid0 task_goal0 task_goal_typed0))).
+    (*TODO: not great*)
+    assert (task_gamma_valid0 = task_gamma_valid Hwf) by (apply proof_irrel).
+    subst.
+    apply Hval. auto.
+    intros. erewrite fmla_rep_irrel. apply H2.
+    Unshelve. auto.
+Qed.
+  
+End TransUtil.

@@ -7262,7 +7262,7 @@ Qed.
 
 (*And likewise for formulas*)
 
-Corollary a_convert_f_typed' f l:
+Corollary a_convert_f_typed f l:
   formula_typed gamma f ->
   formula_typed gamma (a_convert_f f l).
 Proof.
@@ -7270,15 +7270,163 @@ Proof.
   apply a_convert_f_equiv.
 Qed.
 
-Corollary a_convert_f_rep' v f l 
+Corollary a_convert_f_rep v f l 
   (Hval: formula_typed gamma f):
   formula_rep v f Hval = 
-  formula_rep v (a_convert_f f l) (a_convert_f_typed' f l Hval).
+  formula_rep v (a_convert_f f l) (a_convert_f_typed f l Hval).
 Proof.
   apply a_equiv_f_equiv.
   apply a_convert_f_equiv.
 Qed.
 
 End ConvertMap.
+
+(*Safe substitution*)
+Section SafeSub.
+
+(*t2[t1/x], renaming bound vars if needed*)
+Definition safe_sub_t (t1: term) (x: vsymbol) (t2: term) : term :=
+  sub_t t1 x
+  (if (existsb (fun x => in_bool vsymbol_eq_dec x (tm_bnd t2)) (tm_fv t1)) then
+     (a_convert_t t2 (tm_fv t1)) else t2).
+
+Lemma safe_sub_t_typed (t1: term) (x: string) (t2: term) (ty1 ty2: vty):
+  term_has_type gamma t1 ty1 ->
+  term_has_type gamma t2 ty2 ->
+  term_has_type gamma (safe_sub_t t1 (x, ty1) t2) ty2.
+Proof.
+  intros.
+  unfold safe_sub_t. 
+  destruct (existsb (fun x0 : vsymbol => in_bool vsymbol_eq_dec x0 (tm_bnd t2)) (tm_fv t1));
+  apply sub_t_typed; auto.
+  apply a_convert_t_ty; auto.
+Qed.
+
+(*We no longer need assumptions about free/bound vars*)
+Lemma safe_sub_t_rep (t1 t2: term) (x: string)
+  (ty1 ty2: vty) (v: val_vars pd vt)
+  (Hty1: term_has_type gamma t1 ty1)
+  (Hty2: term_has_type gamma t2 ty2)
+  (Hty3: term_has_type gamma (safe_sub_t t1 (x, ty1) t2) ty2):
+  term_rep v (safe_sub_t t1 (x, ty1) t2) ty2 Hty3 =
+  term_rep (substi pd vt v (x, ty1)
+    (term_rep v t1 ty1 Hty1)) t2 ty2 Hty2.
+Proof.
+  revert Hty3.
+  unfold safe_sub_t.
+  destruct (existsb (fun x0 : vsymbol => in_bool vsymbol_eq_dec x0 (tm_bnd t2)) (tm_fv t1)) eqn : Hex;
+  intros.
+  - erewrite sub_t_rep with(Hty1:=Hty1).
+    rewrite <- a_convert_t_rep.
+    reflexivity.
+    intros y Hiny1 Hiny2.
+    apply (a_convert_t_bnd _ _ _ Hiny1 Hiny2).
+  - erewrite sub_t_rep with(Hty1:=Hty1). reflexivity.
+    rewrite existsb_false in Hex.
+    rewrite Forall_forall in Hex.
+    intros. intro C. specialize (Hex x0 H).
+    destruct (in_bool_spec vsymbol_eq_dec x0 (tm_bnd t2)); auto.
+Qed.
+
+(*We can also prove a nicer theorem about free vars*)
+Lemma safe_sub_t_fv (tm: term) (x: vsymbol) (t: term):
+  In x (tm_fv t) ->
+  forall y,
+  In y (tm_fv (safe_sub_t tm x t)) <->
+    (In y (tm_fv tm)) \/ ((In y (tm_fv t)) /\ y <> x).
+Proof.
+  intros.
+  unfold safe_sub_t.
+  destruct (existsb (fun x0 : vsymbol => in_bool vsymbol_eq_dec x0 (tm_bnd t)) (tm_fv tm)) eqn : Hex.
+  - rewrite sub_t_fv.
+    + rewrite (alpha_equiv_t_fv t). reflexivity.
+      apply a_convert_t_equiv.
+    + rewrite (alpha_equiv_t_fv). apply H.
+      rewrite a_equiv_t_sym.
+      apply a_convert_t_equiv.
+    + intros.
+      intro C.
+      apply (a_convert_t_bnd _ _ _ C H0).
+  - rewrite sub_t_fv; auto; try reflexivity.
+    intros z Hz1 Hz2.
+    rewrite existsb_false in Hex.
+    rewrite Forall_forall in Hex.
+    specialize (Hex _ Hz2).
+    destruct (in_bool_spec vsymbol_eq_dec z (tm_bnd t)); auto.
+Qed.
+
+(*And for formulas*)
+
+(*f[t1/x], renaming bound vars if needed*)
+Definition safe_sub_f (t1: term) (x: vsymbol) (f: formula) : formula :=
+  sub_f t1 x
+  (if (existsb (fun x => in_bool vsymbol_eq_dec x (fmla_bnd f)) (tm_fv t1)) then
+     (a_convert_f f (tm_fv t1)) else f).
+
+Lemma safe_sub_f_typed (t1: term) (x: string) (f: formula) (ty1: vty):
+  term_has_type gamma t1 ty1 ->
+  formula_typed gamma f ->
+  formula_typed gamma (safe_sub_f t1 (x, ty1) f).
+Proof.
+  intros.
+  unfold safe_sub_f. 
+  destruct (existsb (fun x0 : vsymbol => in_bool vsymbol_eq_dec x0 (fmla_bnd f)) (tm_fv t1));
+  apply sub_f_typed; auto.
+  apply a_convert_f_typed; auto.
+Qed.
+
+(*We no longer need assumptions about free/bound vars*)
+Lemma safe_sub_f_rep (t1: term) (x: string) (f: formula)
+  (ty1: vty) (v: val_vars pd vt)
+  (Hty1: term_has_type gamma t1 ty1)
+  (Hty2: formula_typed gamma f)
+  (Hty3: formula_typed gamma (safe_sub_f t1 (x, ty1) f)):
+  formula_rep v (safe_sub_f t1 (x, ty1) f) Hty3 =
+  formula_rep (substi pd vt v (x, ty1)
+    (term_rep v t1 ty1 Hty1)) f Hty2.
+Proof.
+  revert Hty3.
+  unfold safe_sub_f.
+  destruct (existsb (fun x0 : vsymbol => in_bool vsymbol_eq_dec x0 (fmla_bnd f)) (tm_fv t1)) eqn : Hex;
+  intros.
+  - erewrite sub_f_rep with(Hty1:=Hty1).
+    rewrite <- a_convert_f_rep.
+    reflexivity.
+    intros y Hiny1 Hiny2.
+    apply (a_convert_f_bnd _ _ _ Hiny1 Hiny2).
+  - erewrite sub_f_rep with(Hty1:=Hty1). reflexivity.
+    rewrite existsb_false in Hex.
+    rewrite Forall_forall in Hex.
+    intros. intro C. specialize (Hex x0 H).
+    destruct (in_bool_spec vsymbol_eq_dec x0 (fmla_bnd f)); auto.
+Qed.
+
+Lemma safe_sub_f_fv (tm: term) (x: vsymbol) (f: formula):
+  In x (fmla_fv f) ->
+  forall y,
+  In y (fmla_fv (safe_sub_f tm x f)) <->
+    (In y (tm_fv tm)) \/ ((In y (fmla_fv f)) /\ y <> x).
+Proof.
+  intros.
+  unfold safe_sub_f.
+  destruct (existsb (fun x0 : vsymbol => in_bool vsymbol_eq_dec x0 (fmla_bnd f)) (tm_fv tm)) eqn : Hex.
+  - rewrite sub_f_fv.
+    + rewrite (alpha_equiv_f_fv f). reflexivity.
+      apply a_convert_f_equiv.
+    + rewrite (alpha_equiv_f_fv). apply H.
+      rewrite a_equiv_f_sym.
+      apply a_convert_f_equiv.
+    + intros.
+      intro C.
+      apply (a_convert_f_bnd _ _ _ C H0).
+  - rewrite sub_f_fv; auto; try reflexivity.
+    intros z Hz1 Hz2.
+    rewrite existsb_false in Hex.
+    rewrite Forall_forall in Hex.
+    specialize (Hex _ Hz2).
+    destruct (in_bool_spec vsymbol_eq_dec z (fmla_bnd f)); auto.
+Qed.
+
+End SafeSub.
 
 End Alpha.
