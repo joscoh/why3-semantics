@@ -50,3 +50,4 @@ time-of-build-pretty.log
 proofs/core/TypeInhab.v
 proofs/core/SSRex.v
 proofs/core/old/
+proofs/core/SubAlt.v
