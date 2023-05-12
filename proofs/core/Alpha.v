@@ -7286,9 +7286,12 @@ Section SafeSub.
 
 (*t2[t1/x], renaming bound vars if needed*)
 Definition safe_sub_t (t1: term) (x: vsymbol) (t2: term) : term :=
+  (*Don't do alpha conversion if the variable isn't even in the term*)
+  if in_bool vsymbol_eq_dec x (tm_fv t2) then
   sub_t t1 x
   (if (existsb (fun x => in_bool vsymbol_eq_dec x (tm_bnd t2)) (tm_fv t1)) then
-     (a_convert_t t2 (tm_fv t1)) else t2).
+     (a_convert_t t2 (tm_fv t1)) else t2)
+  else t2.
 
 Lemma safe_sub_t_typed (t1: term) (x: string) (t2: term) (ty1 ty2: vty):
   term_has_type gamma t1 ty1 ->
@@ -7296,7 +7299,8 @@ Lemma safe_sub_t_typed (t1: term) (x: string) (t2: term) (ty1 ty2: vty):
   term_has_type gamma (safe_sub_t t1 (x, ty1) t2) ty2.
 Proof.
   intros.
-  unfold safe_sub_t. 
+  unfold safe_sub_t.
+  destruct (in_bool vsymbol_eq_dec (x, ty1) (tm_fv t2)); auto. 
   destruct (existsb (fun x0 : vsymbol => in_bool vsymbol_eq_dec x0 (tm_bnd t2)) (tm_fv t1));
   apply sub_t_typed; auto.
   apply a_convert_t_ty; auto.
@@ -7314,18 +7318,24 @@ Lemma safe_sub_t_rep (t1 t2: term) (x: string)
 Proof.
   revert Hty3.
   unfold safe_sub_t.
-  destruct (existsb (fun x0 : vsymbol => in_bool vsymbol_eq_dec x0 (tm_bnd t2)) (tm_fv t1)) eqn : Hex;
-  intros.
-  - erewrite sub_t_rep with(Hty1:=Hty1).
-    rewrite <- a_convert_t_rep.
-    reflexivity.
-    intros y Hiny1 Hiny2.
-    apply (a_convert_t_bnd _ _ _ Hiny1 Hiny2).
-  - erewrite sub_t_rep with(Hty1:=Hty1). reflexivity.
-    rewrite existsb_false in Hex.
-    rewrite Forall_forall in Hex.
-    intros. intro C. specialize (Hex x0 H).
-    destruct (in_bool_spec vsymbol_eq_dec x0 (tm_bnd t2)); auto.
+  destruct (in_bool_spec vsymbol_eq_dec (x, ty1) (tm_fv t2)).
+  - destruct (existsb (fun x0 : vsymbol => in_bool vsymbol_eq_dec x0 (tm_bnd t2)) (tm_fv t1)) eqn : Hex;
+    intros.
+    + erewrite sub_t_rep with(Hty1:=Hty1).
+      rewrite <- a_convert_t_rep.
+      reflexivity.
+      intros y Hiny1 Hiny2.
+      apply (a_convert_t_bnd _ _ _ Hiny1 Hiny2).
+    + erewrite sub_t_rep with(Hty1:=Hty1). reflexivity.
+      rewrite existsb_false in Hex.
+      rewrite Forall_forall in Hex.
+      intros. intro C. specialize (Hex x0 H).
+      destruct (in_bool_spec vsymbol_eq_dec x0 (tm_bnd t2)); auto.
+  - intros.
+    erewrite term_rep_irrel.
+    apply tm_change_vv.
+    intros.
+    unfold substi. vsym_eq x0 (x, ty1).
 Qed.
 
 (*We can also prove a nicer theorem about free vars*)
@@ -7337,6 +7347,7 @@ Lemma safe_sub_t_fv (tm: term) (x: vsymbol) (t: term):
 Proof.
   intros.
   unfold safe_sub_t.
+  destruct (in_bool_spec vsymbol_eq_dec x (tm_fv t)); try contradiction.
   destruct (existsb (fun x0 : vsymbol => in_bool vsymbol_eq_dec x0 (tm_bnd t)) (tm_fv tm)) eqn : Hex.
   - rewrite sub_t_fv.
     + rewrite (alpha_equiv_t_fv t). reflexivity.
@@ -7355,13 +7366,24 @@ Proof.
     destruct (in_bool_spec vsymbol_eq_dec z (tm_bnd t)); auto.
 Qed.
 
+Lemma safe_sub_t_notin (tm: term) (x: vsymbol) (t: term):
+  ~ In x (tm_fv t) ->
+  safe_sub_t tm x t = t.
+Proof.
+  intros. unfold safe_sub_t.
+  destruct (in_bool_spec vsymbol_eq_dec x (tm_fv t)); auto;
+  contradiction.
+Qed.
+
 (*And for formulas*)
 
 (*f[t1/x], renaming bound vars if needed*)
 Definition safe_sub_f (t1: term) (x: vsymbol) (f: formula) : formula :=
+  if in_bool vsymbol_eq_dec x (fmla_fv f) then
   sub_f t1 x
   (if (existsb (fun x => in_bool vsymbol_eq_dec x (fmla_bnd f)) (tm_fv t1)) then
-     (a_convert_f f (tm_fv t1)) else f).
+     (a_convert_f f (tm_fv t1)) else f)
+  else f.
 
 Lemma safe_sub_f_typed (t1: term) (x: string) (f: formula) (ty1: vty):
   term_has_type gamma t1 ty1 ->
@@ -7369,7 +7391,8 @@ Lemma safe_sub_f_typed (t1: term) (x: string) (f: formula) (ty1: vty):
   formula_typed gamma (safe_sub_f t1 (x, ty1) f).
 Proof.
   intros.
-  unfold safe_sub_f. 
+  unfold safe_sub_f.
+  destruct (in_bool vsymbol_eq_dec (x, ty1) (fmla_fv f)); auto. 
   destruct (existsb (fun x0 : vsymbol => in_bool vsymbol_eq_dec x0 (fmla_bnd f)) (tm_fv t1));
   apply sub_f_typed; auto.
   apply a_convert_f_typed; auto.
@@ -7387,18 +7410,24 @@ Lemma safe_sub_f_rep (t1: term) (x: string) (f: formula)
 Proof.
   revert Hty3.
   unfold safe_sub_f.
-  destruct (existsb (fun x0 : vsymbol => in_bool vsymbol_eq_dec x0 (fmla_bnd f)) (tm_fv t1)) eqn : Hex;
-  intros.
-  - erewrite sub_f_rep with(Hty1:=Hty1).
-    rewrite <- a_convert_f_rep.
-    reflexivity.
-    intros y Hiny1 Hiny2.
-    apply (a_convert_f_bnd _ _ _ Hiny1 Hiny2).
-  - erewrite sub_f_rep with(Hty1:=Hty1). reflexivity.
-    rewrite existsb_false in Hex.
-    rewrite Forall_forall in Hex.
-    intros. intro C. specialize (Hex x0 H).
-    destruct (in_bool_spec vsymbol_eq_dec x0 (fmla_bnd f)); auto.
+  destruct (in_bool_spec vsymbol_eq_dec (x, ty1) (fmla_fv f)).
+  - destruct (existsb (fun x0 : vsymbol => in_bool vsymbol_eq_dec x0 (fmla_bnd f)) (tm_fv t1)) eqn : Hex;
+    intros.
+    + erewrite sub_f_rep with(Hty1:=Hty1).
+      rewrite <- a_convert_f_rep.
+      reflexivity.
+      intros y Hiny1 Hiny2.
+      apply (a_convert_f_bnd _ _ _ Hiny1 Hiny2).
+    + erewrite sub_f_rep with(Hty1:=Hty1). reflexivity.
+      rewrite existsb_false in Hex.
+      rewrite Forall_forall in Hex.
+      intros. intro C. specialize (Hex x0 H).
+      destruct (in_bool_spec vsymbol_eq_dec x0 (fmla_bnd f)); auto.
+  - intros.
+    erewrite fmla_rep_irrel.
+    apply fmla_change_vv.
+    intros.
+    unfold substi. vsym_eq x0 (x, ty1).
 Qed.
 
 Lemma safe_sub_f_fv (tm: term) (x: vsymbol) (f: formula):
@@ -7409,6 +7438,7 @@ Lemma safe_sub_f_fv (tm: term) (x: vsymbol) (f: formula):
 Proof.
   intros.
   unfold safe_sub_f.
+  destruct (in_bool_spec vsymbol_eq_dec x (fmla_fv f)); try contradiction.
   destruct (existsb (fun x0 : vsymbol => in_bool vsymbol_eq_dec x0 (fmla_bnd f)) (tm_fv tm)) eqn : Hex.
   - rewrite sub_f_fv.
     + rewrite (alpha_equiv_f_fv f). reflexivity.
@@ -7425,6 +7455,15 @@ Proof.
     rewrite Forall_forall in Hex.
     specialize (Hex _ Hz2).
     destruct (in_bool_spec vsymbol_eq_dec z (fmla_bnd f)); auto.
+Qed.
+
+Lemma safe_sub_f_notin (tm: term) (x: vsymbol) (f: formula):
+  ~ In x (fmla_fv f) ->
+  safe_sub_f tm x f = f.
+Proof.
+  intros. unfold safe_sub_f.
+  destruct (in_bool_spec vsymbol_eq_dec x (fmla_fv f)); auto;
+  contradiction.
 Qed.
 
 End SafeSub.
