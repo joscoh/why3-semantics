@@ -21,6 +21,8 @@ proofs/core/RecFun2.v
 #proofs/core/IndProp.v
 proofs/core/FullInterp.v
 proofs/core/Task.v
+proofs/transform/eliminate_let.v
+proofs/proofsystem/Notations.v
 #proofs/Util.v
 #proofs/Ty.v
 #proofs/Term.v
