@@ -94,6 +94,7 @@ Declare Custom Entry ty.
 Declare Custom Entry adt.
 Declare Custom Entry adtconstr.
 Declare Custom Entry tylist.
+Declare Custom Entry mutadt.
 Declare Scope tm_scope.
 (*Types*)
 (*Definition vty_var' : string -> vty := vty_var.
@@ -110,12 +111,14 @@ Notation "( x )" := x (in custom ty, x at level 99).
 Notation "( x )" := x (in custom adt, x at level 99).
 Notation "( x )" := x (in custom adtconstr, x at level 99).
 Notation "( x )" := x (in custom tylist, x at level 99).
+Notation "( x )" := x (in custom mutadt, x at level 99).
 Notation "x" := x (in custom tm at level 0, x constr at level 0).
 Notation "x" := x
   (in custom ty at level 0, x constr at level 0).
 Notation "x" := x (in custom adt at level 0, x constr at level 0).
 Notation "x" := x (in custom adtconstr at level 0, x constr at level 0).
 Notation "x" := x (in custom tylist at level 0, x constr at level 0).
+Notation "x" := x (in custom mutadt at level 0, x constr at level 0).
 
 (*Type symbols  (type: str_map typesym -> vty)*)
 
@@ -182,32 +185,34 @@ Notation "'type' a vs = l" :=
   (mk_ts a vs, fun (ts_m: str_map typesym) => list_to_ne_list 
     (map (fun x => x (vty_cons (mk_ts a vs) (map vty_var vs)) ts_m) l) 
     eq_refl)
-  (in custom tm at level 10,
-    a custom tm at level 10,
-    vs custom tm at level 10,
+  (in custom adt at level 10,
+    (*a custom tm at level 10,
+    vs custom tm at level 10,*)
     l custom adt at level 10).
 
 Notation "'type' a = l" :=
   (mk_ts a nil, fun (ts_m: str_map typesym) => list_to_ne_list 
     (map (fun x => x (vty_cons (mk_ts a nil) nil) ts_m) l) 
     eq_refl)
-  (in custom tm at level 10,
-    a custom tm at level 10,
+  (in custom adt at level 10,
+    (*a custom tm at level 10,*)
     l custom adt at level 10).
 
 
 (*Lists of ADTs*)
-Notation "x 'endmut'" := (@cons alg_datatype x nil)
-  (in custom tm at level 20,
+Notation "x 'endmut'" := (cons x nil)
+  (in custom mutadt at level 20,
     x custom adt at level 15).
 Notation "x 'with' l" :=
-  (@cons alg_datatype x l)
-  (in custom tm at level 25,
+  (cons x l)
+  (in custom mutadt at level 25,
     x custom adt at level 15,
-    l custom tm at level 20).
+    l custom mutadt at level 20).
 
 (*TODO: move*)
 Definition ts_d: typesym := mk_ts EmptyString nil.
+
+(*Mutual ADTs*)
 
 (*Make a mutual ADT from a list of adts - does not
   guarantee well-typed*)
@@ -236,9 +241,15 @@ Definition build_mut (l: list (typesym * (str_map typesym -> ne_list funsym))) :
   let adts := map (fun t => alg_def (fst t) ((snd t) m)) l in
   mut_from_adts adts.
 
-Notation "`mut' l" := (build_mut l)
+(*This is not great, but OK for now - have to tag adt as "adt" or 
+  "mut t1 with t2 with ... tn endmut"*)
+Notation "'adt' x" := (build_mut [x])
   (in custom tm at level 30,
-    l custom tm at level 25).
+  x custom adt at level 25).
+
+Notation "'mut' l" := (build_mut l)
+  (in custom tm at level 30,
+    l custom mutadt at level 25).
 
 (*Some tests*)
 Open Scope tm_scope.
@@ -248,42 +259,66 @@ Open Scope tm_scope.
 (*Not the most beautiful syntax (need underscores,
   lots of quotes), but much better than raw AST*)
 
-Definition bool_adt := <{
+Definition bool_adt := <{{{
   type "bool" =
   | "true" _
   | "false" _
   end
-}>.
+}}}>.
 
-Definition nat_adt := <{
+Definition nat_adt := <{{{
   type "Nat" =
   | "O" _
   | "S" [ "Nat" _ ]
   end
-}>.
+}}}>.
 
-Definition list_adt := <{
+Definition list_adt := <{{{
   type "List" ["a"] =
     | "Nil" _
     | "Cons" [ '"a" ; "List" [ '"a" ]]
     end
-}>.
+}}}>.
 
-Definition tree_adt := <{
+Definition tree_adt := <{{{
   type "tree" ["a"] =
     | "Leaf" _
     | "Node" ['"a"; "tree" ['"a"]; "tree" ['"a"]]
   end
-}>.
+}}}>.
 
-Definition lam_adt := <{
+Definition lam_adt := <{{{
   type "tm" =
   | "Var" [ int ]
   | "Lam" [ int; "tm" _]
   | "App" ["tm" _; "tm" _]
   end
+}}}>.
+
+(*Mutually inductive types*)
+
+(*First, just an ADT embedded*)
+Definition natmut := <{
+  adt
+  (type "nat" =
+  | "O" _
+  | "S" [ "nat" _ ]
+  end)
 }>.
 
+Definition rosetree := <{
+  mut
+    type "Tree" ["a"] =
+    | "Leaf" _
+    | "Node" ['"a"; "Forest" ['"a"]]
+    end
+  with
+    type "Forest" ["a"] =
+    | "Nil" _
+    | "Cons" ['"a"; "Tree" ['"a"]]
+    end
+  endmut
+}>.
 
 (*Test bool - why we need to remove proofs*)
 Require Import IndTypes.
@@ -317,6 +352,22 @@ Proof.
     unfold fs_false.
     f_equal. apply bool_irrelevance.
 Qed.
+
+(*Tests for mut adt*)
+Lemma natmut_eq: natmut = 
+  mk_mut [alg_def ts_nat (mk_ne [fs_O; fs_S])] nil eq_refl.
+Proof.
+  unfold natmut. simpl. unfold build_mut. simpl.
+  f_equal. f_equal. f_equal; try reflexivity.
+  f_equal.
+  - unfold fs_O. simpl.
+    unfold funsym_noty. simpl.
+    unfold ts_nat.
+    (*Yup, same thing - need to fix proofs in fun/predsyms*)
+Abort.
+
+
+
 
 (*Old stuff - TODO: see what we need*)
 (*
