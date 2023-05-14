@@ -88,14 +88,22 @@ Module *)
 
 (*Part 1: Types*)
 
-
-Declare Custom Entry tm.
+(*This is probably not the way to do it - kind of seems
+  like we are re-inventing a type system*)
+Declare Custom Entry why3.
 Declare Custom Entry ty.
+Declare Custom Entry tylist.
 Declare Custom Entry adt.
 Declare Custom Entry adtconstr.
-Declare Custom Entry tylist.
 Declare Custom Entry mutadt.
-Declare Scope tm_scope.
+Declare Custom Entry pat.
+Declare Custom Entry patlist.
+Declare Custom Entry tm.
+Declare Custom Entry tmlist.
+Declare Custom Entry tmpat.
+Declare Custom Entry tmpatlist.
+Declare Custom Entry fmla.
+Declare Scope why3_scope.
 (*Types*)
 (*Definition vty_var' : string -> vty := vty_var.
 Coercion vty_var' : string >-> vty.*)
@@ -103,71 +111,83 @@ Coercion Pvar : vsymbol >-> pattern.
 
 (*Maybe we want to do this in a context*)
 
-Notation "<{ e }>" := e (at level 0, e custom tm at level 99) : tm_scope.
-Notation "<{{ e }}>" := e (e custom ty at level 99) : tm_scope.
-Notation "<{{{ e }}}>" := e (e custom adt at level 99) : tm_scope.
-Notation "( x )" := x (in custom tm, x at level 99).
+Notation "<{ e }>" := e (at level 0, e custom why3 at level 99) : why3_scope.
+Notation "<{{ e }}>" := e (e custom ty at level 99) : why3_scope.
+Notation "<{{{ e }}}>" := e (e custom adt at level 99) : why3_scope.
+(*For testing, remove maybe*)
+(*Notation "'<p' e 'p>'" := e (e custom pat at level 99) : why3_scope.*)
+Notation "'<t' e 't>'" := e (e custom tm at level 99) : why3_scope. 
+Notation "( x )" := x (in custom why3, x at level 99).
 Notation "( x )" := x (in custom ty, x at level 99).
 Notation "( x )" := x (in custom adt, x at level 99).
 Notation "( x )" := x (in custom adtconstr, x at level 99).
 Notation "( x )" := x (in custom tylist, x at level 99).
 Notation "( x )" := x (in custom mutadt, x at level 99).
-Notation "x" := x (in custom tm at level 0, x constr at level 0).
+Notation "( x )" := x (in custom pat, x at level 99).
+(*Notation "( x )" := x (in custom patlist, x at level 99).*)
+Notation "( x )" := x (in custom tm, x at level 99).
+Notation "( x )" := x (in custom tmlist, x at level 99).
+Notation "( x )" := x (in custom tmpat, x at level 99).
+Notation "( x )" := x (in custom tmpatlist, x at level 99).
+Notation "( x )" := x (in custom fmla, x at level 99).
+Notation "x" := x (in custom why3 at level 0, x constr at level 0).
 Notation "x" := x
   (in custom ty at level 0, x constr at level 0).
 Notation "x" := x (in custom adt at level 0, x constr at level 0).
 Notation "x" := x (in custom adtconstr at level 0, x constr at level 0).
 Notation "x" := x (in custom tylist at level 0, x constr at level 0).
 Notation "x" := x (in custom mutadt at level 0, x constr at level 0).
+Notation "x" := x (in custom pat at level 0, x constr at level 0).
+Notation "x" := x (in custom patlist at level 0, x constr at level 0).
+Notation "x" := x (in custom tm at level 0, x constr at level 0).
+Notation "x" := x (in custom tmlist at level 0, x constr at level 0).
+Notation "x" := x (in custom tmpat at level 0, x constr at level 0).
+Notation "x" := x (in custom tmpatlist at level 0, x constr at level 0).
+Notation "x" := x (in custom fmla at level 0, x constr at level 0).
+
+(*Parse strings as strings*)
+String Notation string string_of_list_byte list_byte_of_string : why3_scope.
 
 (*Type symbols  (type: str_map typesym -> vty)*)
-
-(*For now, require types to be in angle brackets - or else
-  things are ambiguous*)
-  String Notation string string_of_list_byte list_byte_of_string : tm_scope.
 
 Notation "ts vs" := (fun (m_ts : str_map typesym) => 
   (vty_cons (get m_ts ts) (map (fun x => x m_ts) vs)))
   (in custom ty at level 0,
-    vs custom ty at level 0).
-Notation "ts '_'" := (fun (m_ts : str_map typesym) => 
+    vs custom tylist at level 0).
+(*Notation "ts '_'" := (fun (m_ts : str_map typesym) => 
 (vty_cons (get m_ts ts) nil))
-(in custom ty at level 0).
+(in custom ty at level 0).*)
 Notation "' x " := (fun (m_ts: str_map typesym) => vty_var x)
   (in custom ty at level 0).
 Notation "'int'" := (fun (m_ts : str_map typesym) => vty_int)
   (in custom ty at level 0).
 
-(*Algebraic Datatypes*)
 
-(*First, an alternate notation for lists as:
-  [ x1 | x2 | ... | xn ]*)
-(*Notation "[ x | y | .. | z ]" :=
-  (cons x (cons y .. (cons z nil) ..))
-  (format "[ '[' x | '/' y | '/' .. | '/' z ']' ]") : tm_scope.*)
+(*List of tys*)
+Notation "<>" := (@nil (str_map typesym -> vty)) 
+  (in custom tylist at level 0). 
+Notation "< x >" := (cons x nil) (in custom tylist at level 0,
+  x custom ty at level 0).
+Notation "< x ; y ; .. ; z >" := (cons x (cons y .. (cons z nil) ..))
+  (in custom tylist at level 0,
+    x custom ty at level 0,
+    y custom ty at level 0,
+    z custom ty at level 0,
+    format "< '[' x ; '/' y ; '/' .. ; '/' z ']' >"
+  ).
+
+(*Algebraic Datatypes*)
 
 (*We will represent a single ADT as 
   (typesym, (str_map typesym -> ne_list funsym))*)
 
 (*First, notation for funsyms when we know the return type
   (function ty -> funsym)*)
-(*List of tys*)
-Notation "[ ]" := (@nil (str_map typesym -> vty)) 
-  (in custom ty at level 0). 
-Notation "[ x ]" := (cons x nil) (in custom ty at level 0,
-  x custom ty at level 0).
-Notation "[ x ; y ; .. ; z ]" := (cons x (cons y .. (cons z nil) ..))
-  (in custom ty at level 0,
-    x custom ty at level 0,
-    y custom ty at level 0,
-    z custom ty at level 0,
-    format "[ '[' x ; '/' y ; '/' .. ; '/' z ']' ]"
-  ).
 
 Notation "fs tys" := (fun (ret: vty) (ts_map: str_map typesym) => 
   funsym_noty fs (map (fun x => x ts_map) tys) ret)
   (in custom adtconstr at level 5,
-    tys custom ty at level 5).
+    tys custom tylist at level 5).
 
 Notation "fs '_'" := (fun (ret: vty) (ts_map: str_map typesym) => 
 funsym_noty fs nil ret)
@@ -197,7 +217,6 @@ Notation "'type' a = l" :=
   (in custom adt at level 10,
     (*a custom tm at level 10,*)
     l custom adt at level 10).
-
 
 (*Lists of ADTs*)
 Notation "x 'endmut'" := (cons x nil)
@@ -243,16 +262,203 @@ Definition build_mut (l: list (typesym * (str_map typesym -> ne_list funsym))) :
 
 (*This is not great, but OK for now - have to tag adt as "adt" or 
   "mut t1 with t2 with ... tn endmut"*)
-Notation "'adt' x" := (build_mut [x])
-  (in custom tm at level 30,
+Notation "'adt' x" := (datatype_def (build_mut [x]))
+  (in custom why3 at level 30,
   x custom adt at level 25).
 
-Notation "'mut' l" := (build_mut l)
-  (in custom tm at level 30,
+Notation "'mut' l" := (datatype_def (build_mut l))
+  (in custom why3 at level 30,
     l custom mutadt at level 25).
 
+(** Terms and formulas*)
+
+(*Here, we represent terms and formulas
+  as (str_map typesym -> str_map funsym -> str_map predsym ->
+    str_map vsymbol -> term/formula)*)
+
+(*First, patterns*)
+(*Patterns only use the funsym map (for constrs) 
+  and typesym map (for types)
+  variables must be annotated with a type because we
+  are binding them*)
+
+(*TODO: : and :: reserved I think - see*)
+(*Pvar*)
+Notation " x ::: t " := 
+    (fun (m_t: str_map typesym) (m_f: str_map funsym) =>  
+      Pvar (x, t m_t)) 
+  (in custom pat at level 0,
+  t custom ty at level 0).
+(*Pwild*)
+Notation " '_' " := (fun (m_t: str_map typesym) (m_f: str_map funsym) =>
+  Pwild) (in custom pat at level 80).
+(*Por*)
+Notation " p1 | p2 " := (fun (m_t: str_map typesym) 
+  (m_f: str_map funsym) =>
+  Por (p1 m_t m_f) (p2 m_t m_f))
+  (in custom pat at level 80,
+  p1 custom pat,
+  p2 custom pat,
+  right associativity).
+(*Pbind*)
+Notation "p as x ::: t" := (fun (m_t: str_map typesym) 
+  (m_f: str_map funsym) => Pbind (x, t m_t) (p m_t m_f))
+  (in custom pat at level 80,
+  p custom pat,
+  t custom ty).
+(*List of patterns (for constr)*)
+(*TODO: add nil notation*)
+(*START*)
+Notation "[ ]" := nil
+  (in custom patlist at level 80). 
+Notation "( p )" :=
+  (cons p nil)
+  (in custom patlist at level 80,
+    p custom pat).
+Notation "( p1 , p2 , .. , pn )" :=
+  (cons p1 (cons p2 .. (cons pn nil) ..))
+  (in custom patlist at level 80,
+  p1 custom pat,
+  p2 custom pat,
+  pn custom pat).
+(*Pconstr*)
+(*With type args - TODO: put type args in angle brackets?
+  Could do this, but maybe parse problems*)
+Notation " f tys ps " :=
+  (fun (m_t: str_map typesym)
+    (m_f: str_map funsym) =>
+    Pconstr (get m_f f) (map (fun x => x m_t) tys)
+      (map (fun x => x m_t m_f) ps))
+  (in custom pat at level 80,
+    tys custom tylist, 
+    ps custom patlist).
+(*Without type args*)
+Notation " f ps " :=
+  (fun (m_t: str_map typesym)
+    (m_f: str_map funsym) =>
+    Pconstr (get m_f f) nil
+      (map (fun x => x m_t m_f) ps))
+  (in custom pat at level 80,
+    ps custom patlist).
+    
+
+(*Terms*)
+
+(*Type is: (str_map typesym -> str_map funsym -> str_map predsym ->
+    str_map vsymbol -> term) *)
+
+(*Term notations*)
+Definition tm_int (z: Z) : term := Tconst (ConstInt z).
+Coercion tm_int : Z >-> term.
+
+(*List of terms (for funsym)*)
+Notation "( t1 , t2 , .. , tn )" :=
+  (cons t1 (cons t2 .. (cons tn nil) ..))
+  (in custom tmlist at level 80,
+  t1 custom tm,
+  t2 custom tm,
+  tn custom tm).
+
+(*Tfun*)
+Notation "f tys tms" := (fun 
+  (m_t: str_map typesym) (m_f: str_map funsym)
+  (m_p: str_map predsym) (m_v: str_map vsymbol) =>
+  Tfun (get m_f f) (map (fun x => x m_t) tys)
+    (map (fun x => x m_t m_f m_p m_v) tms)
+  )
+  (in custom tm at level 75,
+  tys custom tylist,
+  tms custom tmlist).
+Notation "f tms" := (fun 
+  (m_t: str_map typesym) (m_f: str_map funsym)
+  (m_p: str_map predsym) (m_v: str_map vsymbol) =>
+  Tfun (get m_f f) nil
+    (map (fun x => x m_t m_f m_p m_v) tms)
+  )
+  (in custom tm at level 75,
+  tms custom tmlist).
+(*Tvar - for now, angle brackets*)
+Notation "< x >" := (fun 
+  (m_t: str_map typesym) (m_f: str_map funsym)
+  (m_p: str_map predsym) (m_v: str_map vsymbol) =>
+  Tvar (m_v x))
+  (in custom tm at level 60).
+(*Tlet*)
+Notation "'let' x ::: ty = t1 'in' t2" := (fun 
+  (m_t: str_map typesym) (m_f: str_map funsym)
+  (m_p: str_map predsym) (m_v: str_map vsymbol) =>
+  Tlet (t1 m_t m_f m_p m_v)
+    (x, ty m_t)
+    (*Need to adjust bound vars*)
+    (t2 m_t m_f m_p (set m_v x (x, ty m_t))))
+  (in custom tm at level 75,
+  t1 custom tm,
+  ty custom ty,
+  t2 custom tm,
+  right associativity).
+(*Tif*)
+Notation "'if' f 'then' t1 'else' t2" :=(fun 
+  (m_t: str_map typesym) (m_f: str_map funsym)
+  (m_p: str_map predsym) (m_v: str_map vsymbol) =>
+  Tif (f m_t m_f m_p m_v)
+    (t1 m_t m_f m_p m_v)
+    (t2 m_t m_f m_p m_v))
+  (in custom tm at level 75,
+    f custom fmla,
+    t1 custom tm,
+    t2 custom tm).
+(*Teps*)
+Notation "'eps' x ::: ty , f" := (fun 
+  (m_t: str_map typesym) (m_f: str_map funsym)
+  (m_p: str_map predsym) (m_v: str_map vsymbol) =>
+  (*Again, adjust bound vars*)
+  Teps (x, ty m_t) (f m_t m_f m_p (set m_v x (x, ty m_t))))
+  (in custom tm at level 75,
+  f custom fmla,
+  ty custom ty).
+(*Single pattern match for terms*)
+
+(*TODO: move*)
+Definition bind_vars (m: str_map vsymbol) (l: list vsymbol) :=
+  fold_right (fun x acc => set acc (fst x) x) m l.
+(*TODO: maybe should be its own grammar - not any term here*)
+Notation " p -> t " :=
+  (fun (m_t: str_map typesym) (m_f: str_map funsym)
+    (m_p: str_map predsym) (m_v: str_map vsymbol) =>
+    let pat := p m_t m_f in
+    (*Set all pattern variables*)
+    (pat, t m_t m_f m_p (bind_vars m_v (pat_fv pat)))
+    )
+  (in custom tmpat at level 75,
+  p custom pat,
+  t custom tm).
+(*Pattern matching list*)
+(*Type: list (t -> f -> p -> v -> (pattern * term))*)
+Notation " | x 'end'" := (cons x nil)
+  (in custom tmpatlist at level 75,
+  (*TODO: level for pattern match? - cant be any term*)
+  x custom tmpat).
+Notation " | x l" := (cons x l)
+  (in custom tmpatlist at level 75,
+  x custom tmpat,
+  l custom tmpatlist,
+  right associativity).
+
+(*Tmatch*)
+Notation "'match' t ::: ty 'with' l" := (fun 
+  (m_t: str_map typesym) (m_f: str_map funsym)
+  (m_p: str_map predsym) (m_v: str_map vsymbol) =>
+  Tmatch (t m_t m_f m_p m_v) (ty m_t)
+    (*Variable binding handled above*)
+    (map (fun x => x m_t m_f m_p m_v) l))
+  (in custom tm at level 75,
+  t custom tm,
+  ty custom ty,
+  l custom tmpatlist).
+
+
 (*Some tests*)
-Open Scope tm_scope.
+Open Scope why3_scope.
 
 (*Part 1: ADTs (no mutual)*)
 
@@ -268,30 +474,30 @@ Definition bool_adt := <{{{
 
 Definition nat_adt := <{{{
   type "Nat" =
-  | "O" _
-  | "S" [ "Nat" _ ]
+  | "O" <>
+  | "S" < "Nat" <> >
   end
 }}}>.
 
 Definition list_adt := <{{{
   type "List" ["a"] =
-    | "Nil" _
-    | "Cons" [ '"a" ; "List" [ '"a" ]]
+    | "Nil" <>
+    | "Cons" < '"a" ; "List" <'"a" >>
     end
 }}}>.
 
 Definition tree_adt := <{{{
   type "tree" ["a"] =
-    | "Leaf" _
-    | "Node" ['"a"; "tree" ['"a"]; "tree" ['"a"]]
+    | "Leaf" <>
+    | "Node" <'"a"; "tree" <'"a">; "tree"<'"a">>
   end
 }}}>.
 
 Definition lam_adt := <{{{
   type "tm" =
-  | "Var" [ int ]
-  | "Lam" [ int; "tm" _]
-  | "App" ["tm" _; "tm" _]
+  | "Var"<int>
+  | "Lam"<int; "tm"<>>
+  | "App"<"tm"<>; "tm"<>>
   end
 }}}>.
 
@@ -301,21 +507,21 @@ Definition lam_adt := <{{{
 Definition natmut := <{
   adt
   (type "nat" =
-  | "O" _
-  | "S" [ "nat" _ ]
+  | "O"<>
+  | "S" <"nat"<>>
   end)
 }>.
 
 Definition rosetree := <{
   mut
     type "Tree" ["a"] =
-    | "Leaf" _
-    | "Node" ['"a"; "Forest" ['"a"]]
+    | "Leaf" <>
+    | "Node" <'"a"; "Forest"<'"a">>
     end
   with
     type "Forest" ["a"] =
-    | "Nil" _
-    | "Cons" ['"a"; "Tree" ['"a"]]
+    | "Nil" <>
+    | "Cons"<'"a"; "Tree"<'"a">>
     end
   endmut
 }>.
@@ -355,17 +561,59 @@ Qed.
 
 (*Tests for mut adt*)
 Lemma natmut_eq: natmut = 
-  mk_mut [alg_def ts_nat (mk_ne [fs_O; fs_S])] nil eq_refl.
+  datatype_def (mk_mut [alg_def ts_nat (mk_ne [fs_O; fs_S])] nil eq_refl).
 Proof.
   unfold natmut. simpl. unfold build_mut. simpl.
-  f_equal. f_equal. f_equal; try reflexivity.
+  f_equal. f_equal. f_equal. f_equal; try reflexivity.
   f_equal.
   - unfold fs_O. simpl.
     unfold funsym_noty. simpl.
     unfold ts_nat.
     (*Yup, same thing - need to fix proofs in fun/predsyms*)
+    admit.
+  - unfold fs_S, funsym_noty. simpl.
+    unfold Notations.get, set.
+    simpl.
+    unfold ts_nat.
 Abort.
 
+(*Test terms*)
+
+(*TODO: add ints*)
+(*x*)
+Definition tm_var := 
+  <t <"x"> t>.
+
+(*x + y*)
+Definition tm_plus :=
+  <t "add" (<"x">, <"y">) t>.
+
+(*let x = y in x + x*)
+Definition test_let :=
+  <t let "x" ::: int = <"y"> in "add"<int> (<"x">, <"y">) t>.
+
+(*test pattern match - no semantic meaning for now,
+  obviously this match makes no sense*)
+(*This shows: we can have constructors with and without
+  type arguments - dont think we can have without both*)
+Definition test_match :=
+  <t
+  match <"x"> ::: "List" <int> with
+  | "x" ::: int -> <"z">
+  | _ -> <"w">
+  | "Nil" [] -> <"y">
+  | "Cons" ("h" ::: int , "t" ::: "List"<int>) -> <"z">
+  | "Foo" < int > ( "X" ::: int ) -> <"w">
+  end
+  t>. 
+
+(*TODO: handle numbers*)
+
+(*TODO: angle brackets kind of ugly (esp for variables), 
+  see if we can do better?*)
+
+(*Definition tm_num : term :=
+  <t 0 t>.*)
 
 
 
