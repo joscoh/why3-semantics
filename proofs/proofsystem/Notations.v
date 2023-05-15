@@ -110,6 +110,8 @@ Declare Custom Entry indpredelt.
 Declare Custom Entry indpredlist.
 Declare Custom Entry funargelt.
 Declare Custom Entry funarglist.
+Declare Custom Entry mutfunelt.
+Declare Custom Entry mutfunlist.
 Declare Scope why3_scope.
 (*Types*)
 (*Definition vty_var' : string -> vty := vty_var.
@@ -143,6 +145,8 @@ Notation "( x )" := x (in custom fmlapatlist, x at level 99).
 Notation "( x )" := x (in custom indpredelt, x at level 99).
 Notation "( x )" := x (in custom indpredlist, x at level 99).
 Notation "( x )" := x (in custom funargelt, x at level 99).
+Notation "( x )" := x (in custom mutfunelt, x at level 99).
+Notation "( x )" := x (in custom mutfunlist, x at level 99).
 Notation "x" := x (in custom why3 at level 0, x constr at level 0).
 Notation "x" := x
   (in custom ty at level 0, x constr at level 0).
@@ -164,7 +168,8 @@ Notation "x" := x (in custom indpredelt at level 0, x constr at level 0).
 Notation "x" := x (in custom indpredlist at level 0, x constr at level 0).
 Notation "x" := x (in custom funargelt at level 0, x constr at level 0).
 Notation "x" := x (in custom funarglist at level 0, x constr at level 0).
-
+Notation "x" := x (in custom mutfunelt at level 0, x constr at level 0).
+Notation "x" := x (in custom mutfunlist at level 0, x constr at level 0).
 
 (*Parse strings as strings*)
 Number Notation Z Z.of_num_int Z.to_num_int : why3_scope.
@@ -708,8 +713,11 @@ Notation " | x l" := (cons x l)
 Notation "'inductive' p tys = l" := ( fun
   (m_t: str_map typesym) (m_f: str_map funsym)
   (m_p: str_map predsym) (m_v: str_map vsymbol) =>
-  (inductive_def [ind_def (predsym_noty p (map (fun x => x m_t) tys))
-    (map (fun x => x m_t m_f m_p m_v) l)
+  let ps := (predsym_noty p (map (fun x => x m_t) tys)) in
+  (*update m_p with this predsym*)
+  let m_p' := (set m_p p ps) in
+  (inductive_def [ind_def ps
+    (map (fun x => x m_t m_f m_p' m_v) l)
   ]))
   (in custom why3 at level 200,
   tys custom tylist at level 99,
@@ -723,11 +731,7 @@ Notation "'inductive' p tys = l" := ( fun
   and "function foo = ..." to define a concrete one.
   Here we allow mutually recursive functions with the syntax
   "mutfun (function foo = ... with function bar = ..., etc) endmutfun"
-  And likewise for predicates
-  We do NOT (currently) have notations for combining mutually
-  recursive functions and predicates, which why3 allows (and our
-  semantics supports). It is unknown if this is ever used in why3.
-  *)
+  And likewise for predicates *)
 Notation "'abstract' 'function' foo tys : ret" :=
   (fun (m_t: str_map typesym) =>
     abs_fun (funsym_noty foo (map (fun x => x m_t) tys) 
@@ -760,10 +764,10 @@ Notation "'function' foo args : ret = body" :=
   (m_t: str_map typesym) (m_f: str_map funsym)
   (m_p: str_map predsym) (m_v: str_map vsymbol) =>
   let inputs := map (fun x => x m_t) args in
-    recursive_def [fun_def 
-      (funsym_noty foo (map snd inputs) (ret m_t))
-      inputs
-      (body m_t m_f m_p 
+  let f :=  (funsym_noty foo (map snd inputs) (ret m_t)) in
+    recursive_def [fun_def f inputs
+      (*Need to adjust m_f to bind the new symbol*)
+      (body m_t (set m_f foo f) m_p 
         (bind_vars m_v inputs))
     ])
   (in custom why3 at level 200,
@@ -784,16 +788,103 @@ Notation "'predicate' foo args = body" :=
   (m_t: str_map typesym) (m_f: str_map funsym)
   (m_p: str_map predsym) (m_v: str_map vsymbol) =>
   let inputs := map (fun x => x m_t) args in
+  let p := (predsym_noty foo (map snd inputs)) in
     recursive_def [pred_def 
-      (predsym_noty foo (map snd inputs))
+      p
       inputs
-      (body m_t m_f m_p 
+      (body m_t m_f (set m_p foo p) 
         (bind_vars m_v inputs))
     ])
   (in custom why3 at level 200,
   args custom funarglist,
   body custom fmla).
 
+(*Mutually recursive functions and predicates - TODO later*)
+(*Not great because of duplication*)
+(*Problem: allowing both means that we either have to duplicate
+all of the above in a new grammar (but without the outer
+  [recursive_def], or we have to wrap the single
+  ones)*)
+
+Notation "x 'endmutfun'" := (cons x nil)
+  (in custom mutfunlist at level 25,
+    x custom mutfunelt at level 15).
+Notation "x 'with' l" :=
+  (cons x l)
+  (in custom mutfunlist at level 25,
+    right associativity,
+    x custom mutfunelt at level 15,
+    l custom mutfunlist at level 25).
+
+(*Is there a way to not duplicate? Not sure*)
+(*funpred_def NOT recursive_def*)
+(*We give the function symbol because using the other
+  maps, because we will modify these maps using this funsym*)
+Notation "'function' foo args : ret = body" :=
+  (fun
+  (m_t: str_map typesym) =>
+  let inputs := map (fun x => x m_t) args in
+  let f := (funsym_noty foo (map snd inputs) (ret m_t)) in
+  (Left funsym predsym f, fun
+  (m_f: str_map funsym)
+  (m_p: str_map predsym) (m_v: str_map vsymbol) =>
+    fun_def f inputs
+      (*Need to adjust m_f to bind the new symbol*)
+      (body m_t (set m_f foo f) m_p 
+        (bind_vars m_v inputs))
+    ))
+  (in custom mutfunelt at level 15,
+  args custom funarglist,
+  ret custom ty,
+  body custom tm).
+
+
+Notation "'predicate' foo args = body" :=
+  (fun
+  (m_t: str_map typesym) =>
+  let inputs := map (fun x => x m_t) args in
+  let p := (predsym_noty foo (map snd inputs)) in
+  (Right funsym predsym p, fun
+  (m_f: str_map funsym)
+  (m_p: str_map predsym) (m_v: str_map vsymbol) =>
+    pred_def 
+      p
+      inputs
+      (body m_t m_f (set m_p foo p) 
+        (bind_vars m_v inputs))
+    ))
+  (in custom mutfunelt at level 15,
+  args custom funarglist,
+  body custom fmla).
+
+(*TODO: move*)
+Definition split_either {A B: Set} (l: list (Either A B)) : 
+  (list A * list B) :=
+  fold_right (fun x acc =>
+    let t1 := fst acc in
+    let t2 := snd acc in
+    match x with
+    | Left y => (y :: t1, t2)
+    | Right y => (t1, y :: t2)
+    end) (nil, nil) l.
+
+Notation "'mutfun' l" := (fun
+(m_t: str_map typesym) (m_f: str_map funsym)
+(m_p: str_map predsym) (m_v: str_map vsymbol) =>
+  (*Get funs and preds*)
+  let l': list (Either funsym predsym *
+    (str_map funsym -> str_map predsym -> str_map vsymbol ->
+    funpred_def))
+  := map (fun x => x m_t) l in
+  let (funs, preds) :=  split_either (map fst l') in
+  (*New fun and pred maps*)
+  let m_f' := set_all m_f s_name funs in
+  let m_p' := set_all m_p s_name preds in
+  recursive_def 
+    (map (fun x => x m_f' m_p' m_v) (map snd l'))
+  )
+  (in custom why3 at level 200,
+  l custom mutfunlist).
 
 (*Some tests*)
 (*Sort of hacky - need this for ints, can't parse strings
@@ -1117,4 +1208,48 @@ Definition test_mem := <{
   | Nil <'a> [] -> Ffalse()
   | Cons <'a> ({y}, {r}) -> ([ 'a ] _ x = _ y) || mem(_ x, _ r)
   end
+}>.
+
+(*Mutually recursive functions and predicates*)
+Definition size_forest : string := "size_forest".
+Definition size_tree : string := "size_tree".
+Definition f : string := "f".
+Definition t : string := "t".
+Definition Forest : string := "Forest".
+Definition Tree : string := "Tree".
+Definition Node : string := "Node".
+(*From why3 stdlib Tree*)
+Definition test_size_forest := <{
+  mutfun 
+  function size_forest(f : Forest<'a>) : int =
+  match _ f : Forest<'a> with
+  | Nil <'a> [] -> {0}
+  | Cons <'a>({t}, {f}) -> plus (size_tree(_ t), size_forest(_ f))
+  end
+  with
+  function size_tree(t: Tree<'a>) : int =
+  match _ t : Tree<'a> with
+  | Node<'a>(_, {f}) -> plus ({1}, size_forest(_ f))
+  end
+  endmutfun
+}>.
+
+(*An example that mixes functions and predicates*)
+Definition Foo : string := "Foo".
+Definition Bar : string := "Bar".
+
+Definition test_mutfunpred := <{
+  mutfun
+  function Foo (l: List<'a>) : int =
+  match _ l: List<'a> with
+  | Nil<'a> [] -> {1}
+  | Cons<'a>(_, {t}) -> if Bar(_ t) then {1} else (Foo(_ t))
+  end
+  with
+  predicate Bar (l: List<'a>) =
+  match _ l: List<'a> with
+  | Nil<'a>[] -> Ttrue()
+  | Cons<'a>(_, {t}) -> [int] (Foo(_ t)) = {1}
+  end
+  endmutfun
 }>.
