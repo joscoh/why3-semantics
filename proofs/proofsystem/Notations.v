@@ -108,6 +108,8 @@ Declare Custom Entry fmlapat.
 Declare Custom Entry fmlapatlist.
 Declare Custom Entry indpredelt.
 Declare Custom Entry indpredlist.
+Declare Custom Entry funargelt.
+Declare Custom Entry funarglist.
 Declare Scope why3_scope.
 (*Types*)
 (*Definition vty_var' : string -> vty := vty_var.
@@ -140,6 +142,7 @@ Notation "( x )" := x (in custom fmlapat, x at level 99).
 Notation "( x )" := x (in custom fmlapatlist, x at level 99).
 Notation "( x )" := x (in custom indpredelt, x at level 99).
 Notation "( x )" := x (in custom indpredlist, x at level 99).
+Notation "( x )" := x (in custom funargelt, x at level 99).
 Notation "x" := x (in custom why3 at level 0, x constr at level 0).
 Notation "x" := x
   (in custom ty at level 0, x constr at level 0).
@@ -159,6 +162,8 @@ Notation "x" := x (in custom fmlapat at level 0, x constr at level 0).
 Notation "x" := x (in custom fmlapatlist at level 0, x constr at level 0).
 Notation "x" := x (in custom indpredelt at level 0, x constr at level 0).
 Notation "x" := x (in custom indpredlist at level 0, x constr at level 0).
+Notation "x" := x (in custom funargelt at level 0, x constr at level 0).
+Notation "x" := x (in custom funarglist at level 0, x constr at level 0).
 
 
 (*Parse strings as strings*)
@@ -710,6 +715,86 @@ Notation "'inductive' p tys = l" := ( fun
   tys custom tylist at level 99,
   l custom indpredlist at level 99).
 
+(*Recursive functions and predicates*)
+
+(*NOTE: we break compatibility (loosely defined) with
+  why3 here:
+  we use "abstract function foo" to define an abstract function
+  and "function foo = ..." to define a concrete one.
+  Here we allow mutually recursive functions with the syntax
+  "mutfun (function foo = ... with function bar = ..., etc) endmutfun"
+  And likewise for predicates
+  We do NOT (currently) have notations for combining mutually
+  recursive functions and predicates, which why3 allows (and our
+  semantics supports). It is unknown if this is ever used in why3.
+  *)
+Notation "'abstract' 'function' foo tys : ret" :=
+  (fun (m_t: str_map typesym) =>
+    abs_fun (funsym_noty foo (map (fun x => x m_t) tys) 
+      (ret m_t)))
+  (in custom why3 at level 200,
+  tys custom tylist at level 99,
+  ret custom ty at level 99).
+
+(*Arg list for function/predicate*)
+Notation "x : t" := (fun (m_t: str_map typesym) =>
+  (x, t m_t))
+  (in custom funargelt at level 80,
+  t custom ty).
+
+Notation "()" := nil
+  (in custom funarglist at level 80). 
+Notation "( t )" :=
+  (cons t nil)
+  (in custom funarglist at level 80,
+    t custom funargelt).
+Notation "( t1 , t2 , .. , tn )" :=
+  (cons t1 (cons t2 .. (cons tn nil) ..))
+  (in custom funarglist at level 80,
+  t1 custom funargelt,
+  t2 custom funargelt,
+  tn custom funargelt).
+
+Notation "'function' foo args : ret = body" :=
+  (fun
+  (m_t: str_map typesym) (m_f: str_map funsym)
+  (m_p: str_map predsym) (m_v: str_map vsymbol) =>
+  let inputs := map (fun x => x m_t) args in
+    recursive_def [fun_def 
+      (funsym_noty foo (map snd inputs) (ret m_t))
+      inputs
+      (body m_t m_f m_p 
+        (bind_vars m_v inputs))
+    ])
+  (in custom why3 at level 200,
+  args custom funarglist,
+  ret custom ty,
+  body custom tm).
+
+(*Predicates*)
+
+Notation "'abstract' 'predicate' foo tys" :=
+  (fun (m_t: str_map typesym) =>
+    abs_pred (predsym_noty foo (map (fun x => x m_t) tys)))
+  (in custom why3 at level 200,
+  tys custom tylist at level 99).
+
+Notation "'predicate' foo args = body" :=
+  (fun
+  (m_t: str_map typesym) (m_f: str_map funsym)
+  (m_p: str_map predsym) (m_v: str_map vsymbol) =>
+  let inputs := map (fun x => x m_t) args in
+    recursive_def [pred_def 
+      (predsym_noty foo (map snd inputs))
+      inputs
+      (body m_t m_f m_p 
+        (bind_vars m_v inputs))
+    ])
+  (in custom why3 at level 200,
+  args custom funarglist,
+  body custom fmla).
+
+
 (*Some tests*)
 (*Sort of hacky - need this for ints, can't parse strings
   and ints at same scope for some reason*)
@@ -974,3 +1059,62 @@ Definition test_indpred :=
       distinct(Cons(_ x, _ l))
     end
   }>.
+
+(*Abstract functions*)
+Definition bar : string := "bar".
+Definition test_abs_fun :=
+  <{
+    abstract function bar<'a; int> : int
+  }>.
+
+(*Defined functions*)
+Definition andb : string := "andb".
+Definition y : string := "y".
+Definition Bool : string := "Bool".
+Definition Ttrue : string := "True".
+Definition Ffalse: string := "False".
+
+Definition test_andb := <{
+  function andb (x : Bool<>, y : Bool<>) : Bool<> =
+  match _ x : Bool<> with
+  | Ttrue [] -> _ y
+  | Ffalse [] -> Ffalse()
+  end
+}>.
+
+(*Recursive functions*)
+Definition length : string := "length".
+Definition r : string := "r".
+Definition plus : string := "plus".
+
+Definition test_length := <{
+  function length (l: List<'a>) : int =
+  match _ l : List<'a> with
+  | Nil<'a> [] -> {0}
+  | Cons<'a> (_, {r}) -> plus({1}, length(_ r))
+  end
+}>.
+
+(*Abstract predicate*)
+Definition test_abs_pred := <{
+  abstract predicate bar<'a; int>
+}>.
+
+(*Concrete (non-recursive) predicate*)
+Definition is_nil : string := "is_nil".
+Definition test_is_nil := <{
+  predicate is_nil (l: List<'a>) =
+  match _ l : List<'a> with
+  | Nil<'a> [] -> Ttrue()
+  | Cons<'a>(_, _) -> Ffalse()
+  end
+}>.
+
+(*Recursive predicate*)
+Definition test_mem := <{
+  predicate mem (x: 'a, l: List<'a>) =
+  match _ l : List<'a> with
+  | Nil <'a> [] -> Ffalse()
+  | Cons <'a> ({y}, {r}) -> ([ 'a ] _ x = _ y) || mem(_ x, _ r)
+  end
+}>.
