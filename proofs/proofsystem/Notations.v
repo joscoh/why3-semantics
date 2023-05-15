@@ -104,6 +104,8 @@ Declare Custom Entry tmlist.
 Declare Custom Entry tmpat.
 Declare Custom Entry tmpatlist.
 Declare Custom Entry fmla.
+Declare Custom Entry fmlapat.
+Declare Custom Entry fmlapatlist.
 Declare Scope why3_scope.
 (*Types*)
 (*Definition vty_var' : string -> vty := vty_var.
@@ -128,10 +130,12 @@ Notation "( x )" := x (in custom pat, x at level 99).
 (*Notation "( x )" := x (in custom patlist, x at level 99).*)
 Notation "( x )" := x (in custom tm, x at level 99).
 (*Notation "( x )" := x (in custom num, x at level 99).*)
-Notation "( x )" := x (in custom tmlist, x at level 99).
+(*Notation "( x )" := x (in custom tmlist, x at level 99).*)
 Notation "( x )" := x (in custom tmpat, x at level 99).
 Notation "( x )" := x (in custom tmpatlist, x at level 99).
 Notation "( x )" := x (in custom fmla, x at level 99).
+Notation "( x )" := x (in custom fmlapat, x at level 99).
+Notation "( x )" := x (in custom fmlapatlist, x at level 99).
 Notation "x" := x (in custom why3 at level 0, x constr at level 0).
 Notation "x" := x
   (in custom ty at level 0, x constr at level 0).
@@ -142,11 +146,13 @@ Notation "x" := x (in custom mutadt at level 0, x constr at level 0).
 Notation "x" := x (in custom pat at level 0, x constr at level 0).
 Notation "x" := x (in custom patlist at level 0, x constr at level 0).
 Notation "x" := x (in custom tm at level 0, x constr at level 0).
-(*Notation "x" := x (in custom num at level 0, x constr at level 0).*)
+(*Notation "x" := x (in custom num at level 0, x ). at level 0).*)
 Notation "x" := x (in custom tmlist at level 0, x constr at level 0).
 Notation "x" := x (in custom tmpat at level 0, x constr at level 0).
 Notation "x" := x (in custom tmpatlist at level 0, x constr at level 0).
 Notation "x" := x (in custom fmla at level 0, x constr at level 0).
+Notation "x" := x (in custom fmlapat at level 0, x constr at level 0).
+Notation "x" := x (in custom fmlapatlist at level 0, x constr at level 0).
 
 (*Parse strings as strings*)
 Number Notation Z Z.of_num_int Z.to_num_int : why3_scope.
@@ -188,15 +194,16 @@ Notation "< x ; y ; .. ; z >" := (cons x (cons y .. (cons z nil) ..))
 
 (*First, notation for funsyms when we know the return type
   (function ty -> funsym)*)
+Notation "fs '_'" := (fun (ret: vty) (ts_map: str_map typesym) => 
+  funsym_noty fs nil ret)
+  (in custom adtconstr at level 5).
 
 Notation "fs tys" := (fun (ret: vty) (ts_map: str_map typesym) => 
   funsym_noty fs (map (fun x => x ts_map) tys) ret)
   (in custom adtconstr at level 5,
     tys custom tylist at level 5).
 
-Notation "fs '_'" := (fun (ret: vty) (ts_map: str_map typesym) => 
-funsym_noty fs nil ret)
-(in custom adtconstr at level 5).
+
 
 (*List of constrs*)
 Notation "| x | y | .. | z 'end'":=
@@ -386,6 +393,12 @@ Notation " { x }" :=
   (in custom tm at level 80).
 
 (*List of terms (for funsym)*)
+Notation "()" := nil
+  (in custom tmlist at level 80). 
+Notation "( t )" :=
+  (cons t nil)
+  (in custom tmlist at level 80,
+    t custom tm).
 Notation "( t1 , t2 , .. , tn )" :=
   (cons t1 (cons t2 .. (cons tn nil) ..))
   (in custom tmlist at level 80,
@@ -400,7 +413,7 @@ Notation "f tys tms" := (fun
   Tfun (get m_f f) (map (fun x => x m_t) tys)
     (map (fun x => x m_t m_f m_p m_v) tms)
   )
-  (in custom tm at level 75,
+  (in custom tm at level 90,
   tys custom tylist,
   tms custom tmlist).
 Notation "f tms" := (fun 
@@ -409,7 +422,7 @@ Notation "f tms" := (fun
   Tfun (get m_f f) nil
     (map (fun x => x m_t m_f m_p m_v) tms)
   )
-  (in custom tm at level 75,
+  (in custom tm at level 90,
   tms custom tmlist).
 (*Tvar - for now, angle brackets*)
 Notation "'_' x " := (fun 
@@ -418,14 +431,14 @@ Notation "'_' x " := (fun
   Tvar (m_v x))
   (in custom tm at level 60).
 (*Tlet*)
-Notation "'let' x ::: ty = t1 'in' t2" := (fun 
+Notation "'let' x : ty = t1 'in' t2" := (fun 
   (m_t: str_map typesym) (m_f: str_map funsym)
   (m_p: str_map predsym) (m_v: str_map vsymbol) =>
   Tlet (t1 m_t m_f m_p m_v)
     (x, ty m_t)
     (*Need to adjust bound vars*)
     (t2 m_t m_f m_p (set m_v x (x, ty m_t))))
-  (in custom tm at level 75,
+  (in custom tm at level 90,
   t1 custom tm,
   ty custom ty,
   t2 custom tm,
@@ -437,17 +450,17 @@ Notation "'if' f 'then' t1 'else' t2" :=(fun
   Tif (f m_t m_f m_p m_v)
     (t1 m_t m_f m_p m_v)
     (t2 m_t m_f m_p m_v))
-  (in custom tm at level 75,
+  (in custom tm at level 90,
     f custom fmla,
     t1 custom tm,
     t2 custom tm).
 (*Teps*)
-Notation "'eps' x ::: ty , f" := (fun 
+Notation "'eps' x : ty , f" := (fun 
   (m_t: str_map typesym) (m_f: str_map funsym)
   (m_p: str_map predsym) (m_v: str_map vsymbol) =>
   (*Again, adjust bound vars*)
-  Teps (x, ty m_t) (f m_t m_f m_p (set m_v x (x, ty m_t))))
-  (in custom tm at level 75,
+  Teps (f m_t m_f m_p (set m_v x (x, ty m_t))) (x, ty m_t) )
+  (in custom tm at level 90,
   f custom fmla,
   ty custom ty).
 (*Single pattern match for terms*)
@@ -455,7 +468,7 @@ Notation "'eps' x ::: ty , f" := (fun
 (*TODO: move*)
 Definition bind_vars (m: str_map vsymbol) (l: list vsymbol) :=
   fold_right (fun x acc => set acc (fst x) x) m l.
-(*TODO: maybe should be its own grammar - not any term here*)
+
 Notation " p -> t " :=
   (fun (ty: vty) (m_t: str_map typesym) (m_f: str_map funsym)
     (m_p: str_map predsym) (m_v: str_map vsymbol) =>
@@ -463,32 +476,182 @@ Notation " p -> t " :=
     (*Set all pattern variables*)
     (pat, t m_t m_f m_p (bind_vars m_v (pat_fv pat)))
     )
-  (in custom tmpat at level 75,
+  (in custom tmpat at level 90,
   p custom pat,
   t custom tm).
 (*Pattern matching list*)
 (*Type: list (t -> f -> p -> v -> (pattern * term))*)
 Notation " | x 'end'" := (cons x nil)
-  (in custom tmpatlist at level 75,
+  (in custom tmpatlist at level 90,
   (*TODO: level for pattern match? - cant be any term*)
   x custom tmpat).
 Notation " | x l" := (cons x l)
-  (in custom tmpatlist at level 75,
+  (in custom tmpatlist at level 90,
   x custom tmpat,
   l custom tmpatlist,
   right associativity).
 
 (*Tmatch*)
-Notation "'match' t ::: ty 'with' l" := (fun 
+Notation "'match' t : ty 'with' l" := (fun 
   (m_t: str_map typesym) (m_f: str_map funsym)
   (m_p: str_map predsym) (m_v: str_map vsymbol) =>
   Tmatch (t m_t m_f m_p m_v) (ty m_t)
     (*Variable binding handled above*)
     (map (fun x => x (ty m_t)  m_t m_f m_p m_v) l))
-  (in custom tm at level 75,
+  (in custom tm at level 90,
   t custom tm,
   ty custom ty,
   l custom tmpatlist).
+
+(** Formulas*)
+
+(*This is very similar to terms*)
+(*Ftrue*)
+Notation "'true'" := (fun 
+  (m_t: str_map typesym) (m_f: str_map funsym)
+  (m_p: str_map predsym) (m_v: str_map vsymbol) =>
+  Ftrue)
+  (in custom fmla at level 0).
+(*Ffalse*)
+Notation "'false'" := (fun 
+  (m_t: str_map typesym) (m_f: str_map funsym)
+  (m_p: str_map predsym) (m_v: str_map vsymbol) =>
+  Ffalse)
+  (in custom fmla at level 0).
+(*Feq - TODO kind of ugly*)
+Notation " [ ty ] t1 = t2 " := (fun 
+  (m_t: str_map typesym) (m_f: str_map funsym)
+  (m_p: str_map predsym) (m_v: str_map vsymbol) =>
+  Feq (ty m_t) (t1 m_t m_f m_p m_v) (t2 m_t m_f m_p m_v))
+  (in custom fmla at level 90,
+  t1 custom tm,
+  t2 custom tm,
+  ty custom ty).
+(*Basic connectives*)
+Notation " f1 && f2 " := (fun 
+  (m_t: str_map typesym) (m_f: str_map funsym)
+  (m_p: str_map predsym) (m_v: str_map vsymbol) =>
+  Fbinop Tand (f1 m_t m_f m_p m_v) (f2 m_t m_f m_p m_v))
+  (in custom fmla at level 90, right associativity,
+  f1 custom fmla,
+  f2 custom fmla).
+Notation " f1 || f2 " := (fun 
+  (m_t: str_map typesym) (m_f: str_map funsym)
+  (m_p: str_map predsym) (m_v: str_map vsymbol) =>
+  Fbinop Tor (f1 m_t m_f m_p m_v) (f2 m_t m_f m_p m_v))
+  (in custom fmla at level 90, right associativity,
+  f1 custom fmla,
+  f2 custom fmla).
+Notation " f1 ==> f2 " := (fun 
+  (m_t: str_map typesym) (m_f: str_map funsym)
+  (m_p: str_map predsym) (m_v: str_map vsymbol) =>
+  Fbinop Timplies (f1 m_t m_f m_p m_v) (f2 m_t m_f m_p m_v))
+  (in custom fmla at level 90, right associativity,
+  f1 custom fmla,
+  f2 custom fmla).
+Notation " f1 <==> f2 " := (fun 
+  (m_t: str_map typesym) (m_f: str_map funsym)
+  (m_p: str_map predsym) (m_v: str_map vsymbol) =>
+  Fbinop Tiff (f1 m_t m_f m_p m_v) (f2 m_t m_f m_p m_v))
+  (in custom fmla at level 90, right associativity,
+  f1 custom fmla,
+  f2 custom fmla).
+(*Quantifiers*)
+Notation "'forall' v : t , f" := (fun 
+  (m_t: str_map typesym) (m_f: str_map funsym)
+  (m_p: str_map predsym) (m_v: str_map vsymbol) =>
+  Fquant Tforall (v, t m_t) (f m_t m_f m_p m_v))
+  (in custom fmla at level 90, right associativity,
+  t custom ty,
+  f custom fmla).
+Notation "'exists' v : t , f" := (fun 
+  (m_t: str_map typesym) (m_f: str_map funsym)
+  (m_p: str_map predsym) (m_v: str_map vsymbol) =>
+  Fquant Texists (v, t m_t) (f m_t m_f m_p m_v))
+  (in custom fmla at level 90, right associativity,
+  t custom ty,
+  f custom fmla).
+(*Fif*)
+Notation "'if' f1 'then' f2 'else' f3" :=(fun 
+  (m_t: str_map typesym) (m_f: str_map funsym)
+  (m_p: str_map predsym) (m_v: str_map vsymbol) =>
+  Fif (f1 m_t m_f m_p m_v)
+    (f2 m_t m_f m_p m_v)
+    (f3 m_t m_f m_p m_v))
+  (in custom fmla at level 90,
+    f1 custom fmla,
+    f2 custom fmla,
+    f3 custom fmla).
+(*Flet*)
+Notation "'let' x : ty = t1 'in' f" := (fun 
+  (m_t: str_map typesym) (m_f: str_map funsym)
+  (m_p: str_map predsym) (m_v: str_map vsymbol) =>
+  Flet (t1 m_t m_f m_p m_v)
+    (x, ty m_t)
+    (*Need to adjust bound vars*)
+    (f m_t m_f m_p (set m_v x (x, ty m_t))))
+  (in custom fmla at level 90,
+  t1 custom tm,
+  ty custom ty,
+  f custom fmla,
+  right associativity).
+(*Fpred*)
+Notation "f tys tms" := (fun 
+  (m_t: str_map typesym) (m_f: str_map funsym)
+  (m_p: str_map predsym) (m_v: str_map vsymbol) =>
+  Fpred (get m_p f) (map (fun x => x m_t) tys)
+    (map (fun x => x m_t m_f m_p m_v) tms)
+  )
+  (in custom fmla at level 90,
+  tys custom tylist,
+  tms custom tmlist).
+Notation "f tms" := (fun 
+  (m_t: str_map typesym) (m_f: str_map funsym)
+  (m_p: str_map predsym) (m_v: str_map vsymbol) =>
+  Fpred (get m_p f) nil
+    (map (fun x => x m_t m_f m_p m_v) tms)
+  )
+  (in custom fmla at level 90,
+  tms custom tmlist).
+(*Fmatch*)
+
+(*Once again, have custom grammar for single match
+  and list of matches*)
+
+Notation " p -> f " :=
+  (fun (ty: vty) (m_t: str_map typesym) (m_f: str_map funsym)
+    (m_p: str_map predsym) (m_v: str_map vsymbol) =>
+    let pat := p ty m_t m_f in
+    (*Set all pattern variables*)
+    (pat, f m_t m_f m_p (bind_vars m_v (pat_fv pat)))
+    )
+  (in custom fmlapat at level 75,
+  p custom pat,
+  f custom fmla).
+(*Pattern matching list*)
+(*Type: list (t -> f -> p -> v -> (pattern * term))*)
+Notation " | x 'end'" := (cons x nil)
+  (in custom fmlapatlist at level 75,
+  (*TODO: level for pattern match? - cant be any term*)
+  x custom fmlapat).
+Notation " | x l" := (cons x l)
+  (in custom fmlapatlist at level 75,
+  x custom fmlapat,
+  l custom fmlapatlist,
+  right associativity).
+
+(*Fmatch*)
+Notation "'match' t : ty 'with' l" := (fun 
+  (m_t: str_map typesym) (m_f: str_map funsym)
+  (m_p: str_map predsym) (m_v: str_map vsymbol) =>
+  Fmatch (t m_t m_f m_p m_v) (ty m_t)
+    (*Variable binding handled above*)
+    (map (fun x => x (ty m_t)  m_t m_f m_p m_v) l))
+  (in custom fmla at level 75,
+  t custom tm,
+  ty custom ty,
+  l custom fmlapatlist).
+
 
 
 (*Some tests*)
@@ -501,11 +664,10 @@ Open Scope why3_scope.
 
 (*Not the most beautiful syntax (need underscores,
   lots of quotes), but much better than raw AST*)
-
 Definition bool_adt := <{{{
   type "bool" =
-  | "true" _
-  | "false" _
+  | "true"_
+  | "false"_
   end
 }}}>.
 
@@ -627,19 +789,23 @@ Definition test_tm_var :=
 Definition test_tm_plus :=
   <t "add" (_"x", _"y") t>.
 
+(*function with no args*)
+Definition test_noop :=
+  <t "foo"() t>.
+
+(*Function with 1 arg*)
+Definition test_negb :=
+  <t "negb"(_"b") t>.
+
 (*let x = y in x + x*)
 Definition test_let :=
-  <t let "x" ::: int = _"y" in "add"<int> (_"x", {0}) t>.
+  <t let "x" : int = _"y" in "add"<int> (_"x", {0}) t>.
 
-(*Definition pat_typ: Type :=
-  (forall (ty: vty) 
-    (m_t: str_map typesym) (m_f: str_map funsym), pattern).
+Definition test_tif  :=
+  <t if true then {0} else {1} t>.
 
-Definition pvar_to_notation (x: string) : pat_typ
- :=
-fun ty m_t m_f => Pvar (x, ty).
-Coercion  pvar_to_notation : string >-> pat_typ.*)
-
+Definition test_teps := 
+  <t eps "x" : int , true t>.
 
 (*test pattern match - no semantic meaning for now,
   obviously this match makes no sense*)
@@ -647,7 +813,7 @@ Coercion  pvar_to_notation : string >-> pat_typ.*)
   type arguments - dont think we can have without both*)
 Definition test_match :=
   <t
-  match _"x" ::: "List" <int> with
+  match _"x" : "List" <int> with
   (*Pvar*)
   | {"x"} -> _"z"
   (*Pwild*)
@@ -665,134 +831,63 @@ Definition test_match :=
   end
   t>. 
 
+(*Test formulas - don't have formal way to write formulas
+  yet, so put in trivial if*)
 
+Definition test_true :=
+  <t if true then {1} else {0} t>.
 
-(*Old stuff - TODO: see what we need*)
-(*
-(*Utilities to create datatypes*)
-Print datatype_def.
-Print mut_adt.
-Print alg_datatype.
-Print typesym.
+Definition test_false :=
+  <t if false then {1} else {0} t>.
 
-Definition mk_adt (name: string) (params: list typevar) 
-  (l: ne_list funsym) : 
-  alg_datatype :=
-  alg_def (mk_ts name params) l.
+Definition test_and :=
+  <t if true && false then {1} else {0} t>.
 
-Definition adt_args (a: alg_datatype) : list typevar :=
-  match a with
-  | alg_def (mk_ts _ params) _ => params
-  end.
+Definition test_or :=
+  <t if false || true then {4} else _"x" t>.
 
-(*This is not great - should do better*)
-(*Do as notation so we can use [eq_refl] - TODO: should
-  have better error messages*)
-Notation mk_mut l :=
-  (match l with
-    | nil => mk_mut nil nil eq_refl
-    | a :: tl =>
-      mk_mut l (adt_args a) eq_refl
-  end).
+Definition test_implies :=
+  <t if true ==> false then {1} else {0} t>.
 
-(*Function and predate symbols - TODO make better*)
-(*Lists for args*)
-Notation " x : t ')'" := ((x, t) :: nil) 
-(in custom tm at level 80).
-Notation "x : t , tl" := ((x, t) :: tl)
-(in custom tm at level 80, right associativity).
+Definition test_iff :=
+  <t if false <==> false then {1} else {0} t>.
 
-(*TODO: Coq will probably have problems with this*)
-Notation "name ( args : ret" := (funsym_noty name args ret)
-(in custom tm at level 85).
-Notation "name ( args" := (predsym_noty name args)
-(in custom tm at level 85).
+Definition test_forall :=
+  <t if forall "x" : int , [int] _"x" = {1} then {1} else {0} t>.
 
-(*Pattern notations*)
-Notation " x : t " := (x, t) (in custom tm at level 0).
-Notation " '_' " := Pwild (in custom tm at level 80).
-Notation " p1 'or' p2 " := (Por p1 p2) (in custom tm at level 70,
-  right associativity).
-Notation " p as x : t" := (Pbind p (x, t)) (in custom tm
-  at level 80).
-(*Lists for constrs - TODO?*)
-(*TODO: dont want tys - can we infer?*)
-Notation "f tys ( ps )" := (Pconstr f tys ps) (in custom tm
-at level 80).
+Definition test_exists :=
+  <t if exists "x" : int, "foo"(_"x") then {1} else {0} t>.
 
-(*Lists of patterns for pattern matching*)
-(*TODO: level*)
-Notation " p -> x end" := ([(p, x)]) (in custom tm at level 80).
-Notation " | p -> x | t" := ((p, x) :: t) (in custom tm at level 80,
-  right associativity). 
+Definition test_feq :=
+  <t if [int] {1} = {0} then {1} else {0} t>.
 
-(*Formula notations*)
-Notation "'true'" := Ftrue (in custom tm at level 0).
-Notation "'false'" := Ffalse (in custom tm at level 0).
-Notation "'forall' v : t , f" := (Fquant Tforall (v, t) f) 
-  (in custom tm at level 70, left associativity).
-Notation "'exists v : t , f" := (Fquant Texists (v, t) f)
-  (in custom tm at level 70, left associativity).
-Notation "f1 && f2" := (Fbinop Tand f1 f2)
-  (in custom tm at level 80, right associativity).
-Notation "f1 || f2" := (Fbinop Tor f1 f2)
-  (in custom tm at level 81, right associativity).
-Notation "f1 ==> f2" := (Fbinop Timplies f1 f2)
-  (in custom tm at level 90, right associativity).
-Notation "f1 <==> f2" := (Fbinop Tiff f1 f2)
-  (in custom tm at level 90).
-Notation "'if' f1 'then' f2 'else' f3" := (Fif f1 f2 f3)
-  (in custom tm at level 90).
-Notation "'let' t1 = x : ty 'in' f1" := (Flet t1 (x, ty) f1)
-  (in custom tm at level 85).
-(*TODO: this is kind of ugly*)
-Notation "t1 = t2 ( ty )" := (Feq ty t1 t2)
-  (in custom tm at level 99).
-Notation "'match' t : ty 'with' ps" := (Fmatch t ty ps)
-  (in custom tm at level 90).
-Notation "p tys tms" := (Fpred p tys tms)
-  (in custom tm at level 75).
+(*TODO: this is a good test case to prove*)
+Definition test_flet :=
+  <t if let "x" : int = {0} in [int] _"x" = {0} then {1} else {0} t>.
 
-(*Term notations*)
-Definition tm_int (z: Z) : term := Tconst (ConstInt z).
-Coercion tm_int : Z >-> term.
+Definition test_fif :=
+  <t if (if true then true else false) then {1} else {0} t>.
 
-Notation "f tys tms" := (Tfun f tys tms)
-(in custom tm at level 75).
-Notation "'let' t1 = x : ty 'in' t2" := (Tlet t1 (x, ty) t2)
-(in custom tm at level 85).
-Notation "'if' f1 'then' t1 'else' t2" := (Tif f1 t1 t2)
-(in custom tm at level 90).
-Notation "'eps' x : ty , f" := (Teps f (x, ty))
-(in custom tm at level 80).
-Notation "'match' t : ty 'with' ps" := (Tmatch t ty ps)
-  (in custom tm at level 90).
+Definition test_fmatch :=
+  <t if
+    (match _"x" : "List" <int> with
+    (*Pvar*)
+    | {"x"} -> true
+    (*Pwild*)
+    | _ -> false
+    (*Constr with no args*)
+    | "Nil" [] -> [int] {1} = {0}
+    (*Constr with args, no polymorphism*)
+    | "Cons" ({"h"} , {"t"}) -> false
+    (*Constr with args and poly*)
+    | "Foo" < int > ( {"X"} ) -> true && false
+    (*Pbind*)
+    | "Cons" ({"h"}, {"x"}) as "y" -> 
+      [int] (if true then {1} else {0}) = {1}
+    (*Por*)
+    | "Nil" [] | "Foo" < int > [] -> true
+    end) then {1} else {0} t>.
 
-(*Definitions*)
-
-(*ADTs*)
-(*Lists for type arguments*)
-(*NOTE: there is no way this is going to work*)
-(*TODO: might have to make things a bit uglier than why3, see*)
-Notation " f | tl" := (ne_cons f tl) 
-(in custom tm at level 70, right associativity).
-Notation "f 'end'" := (ne_hd f)
-(in custom tm at level 70).
-Notation "'type' name args = constrs" :=
-  (mk_adt name args constrs)
-  (in custom tm at level 70).
-(*TODO: has to be better way to do lists*)
-Notation "x 'with' y" := (x :: y)
-  (in custom tm at level 75).
-(*ugly*)
-Notation "`endmut'" := (@nil alg_datatype).
-Notation "`mut' l" := (mk_mut l)
-  (in custom tm at level 80).
-
-(*TODO: functions, predicates, indpreds*)
-
-Open Scope tm_scope.
-
-Definition x : string := "x"%string.
-Check <{ forall x : vty_int, true }>.
-*)
+Definition foo : string := "foo".
+Definition test_fpred :=
+  <t if foo({1}) then {1} else {0} t>.
