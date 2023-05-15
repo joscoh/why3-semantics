@@ -257,9 +257,6 @@ Notation "x 'with' l" :=
     x custom adt at level 15,
     l custom mutadt at level 20).
 
-(*TODO: move*)
-Definition ts_d: typesym := mk_ts EmptyString nil.
-
 (*Mutual ADTs*)
 
 (*Make a mutual ADT from a list of adts - does not
@@ -316,7 +313,6 @@ Notation "'mut' l" := (fun (m_t: str_map typesym) =>
   We also take in a type (of the pattern) so that we don't
   need to annotate variables with a type*)
 
-(*TODO: : and :: reserved I think - see*)
 (*Pvar*)
 Notation "{ x }" :=
   (fun (ty: vty) 
@@ -344,14 +340,9 @@ Notation "p 'as' x" := (fun (ty: vty) (m_t: str_map typesym)
   (m_f: str_map funsym) => Pbind (p ty m_t m_f) (x, ty))
   (in custom pat at level 80,
   p custom pat).
-(*Notation "p as x ::: t" := (fun (m_t: str_map typesym) 
-  (m_f: str_map funsym) => Pbind (x, t m_t) (p m_t m_f))
-  (in custom pat at level 80,
-  p custom pat,
-  t custom ty).*)
+
 (*List of patterns (for constr)*)
-(*TODO: add nil notation*)
-(*START*)
+
 Notation "[ ]" := nil
   (in custom patlist at level 80). 
 Notation "( p )" :=
@@ -365,8 +356,6 @@ Notation "( p1 , p2 , .. , pn )" :=
   p2 custom pat,
   pn custom pat).
 (*Pconstr*)
-(*With type args - TODO: put type args in angle brackets?
-  Could do this, but maybe parse problems*)
 Notation " f tys ps " :=
   (fun (ty: vty) (m_t: str_map typesym)
     (m_f: str_map funsym) =>
@@ -487,16 +476,12 @@ Notation "'eps' x : ty , f" := (fun
   ty custom ty).
 (*Single pattern match for terms*)
 
-(*TODO: move*)
-Definition bind_vars (m: str_map vsymbol) (l: list vsymbol) :=
-  fold_right (fun x acc => set acc (fst x) x) m l.
-
 Notation " p -> t " :=
   (fun (ty: vty) (m_t: str_map typesym) (m_f: str_map funsym)
     (m_p: str_map predsym) (m_v: str_map vsymbol) =>
     let pat := p ty m_t m_f in
     (*Set all pattern variables*)
-    (pat, t m_t m_f m_p (bind_vars m_v (pat_fv pat)))
+    (pat, t m_t m_f m_p (set_all m_v fst (pat_fv pat)))
     )
   (in custom tmpat at level 90,
   p custom pat,
@@ -660,7 +645,6 @@ Notation " p -> f " :=
 (*Type: list (t -> f -> p -> v -> (pattern * term))*)
 Notation " | x 'end'" := (cons x nil)
   (in custom fmlapatlist at level 75,
-  (*TODO: level for pattern match? - cant be any term*)
   x custom fmlapat).
 Notation " | x l" := (cons x l)
   (in custom fmlapatlist at level 75,
@@ -709,7 +693,7 @@ Notation " | x l" := (cons x l)
   this of course, but it would be very difficult to
   make this reasonably nice, and the stdlib doesn't seem
   to have mutually recursive inductive predicates
-  (TODO: maybe add, need mutind or something)*)
+  (TODO: maybe add, can do similar to functions)*)
 Notation "'inductive' p tys = l" := ( fun
   (m_t: str_map typesym) (m_f: str_map funsym)
   (m_p: str_map predsym) (m_v: str_map vsymbol) =>
@@ -799,12 +783,8 @@ Notation "'predicate' foo args = body" :=
   args custom funarglist,
   body custom fmla).
 
-(*Mutually recursive functions and predicates - TODO later*)
+(*Mutually recursive functions and predicates*)
 (*Not great because of duplication*)
-(*Problem: allowing both means that we either have to duplicate
-all of the above in a new grammar (but without the outer
-  [recursive_def], or we have to wrap the single
-  ones)*)
 
 Notation "x 'endmutfun'" := (cons x nil)
   (in custom mutfunlist at level 25,
@@ -885,6 +865,14 @@ Notation "'mutfun' l" := (fun
   )
   (in custom why3 at level 200,
   l custom mutfunlist).
+
+(*Abstract types*)
+(*TODO: should unify notation of these lists to be
+  in angle brackets (new grammar?)*)
+Notation "'abstract' 'type' t vs" :=
+  (fun (m_t: str_map typesym) =>
+    abs_type (mk_ts t vs))
+  (in custom why3 at level 200).
 
 (*Some tests*)
 (*Sort of hacky - need this for ints, can't parse strings
@@ -1012,7 +1000,6 @@ Abort.*)
 Definition test_tm_int : term :=
   <t 0 t>.
 
-(*TODO: add ints*)
 (*x*)
 Definition test_tm_var := 
   <t _"x" t>.
@@ -1253,3 +1240,12 @@ Definition test_mutfunpred := <{
   end
   endmutfun
 }>.
+
+(*Abstract type*)
+Definition abs_type := <{
+  abstract type Foo [a]
+}>.
+
+(*TODO: should make syntax more consistent, maybe
+  put all vars in curly braces (kind of ugly but better
+  than underscores)*)
