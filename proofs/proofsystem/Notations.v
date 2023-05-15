@@ -66,8 +66,8 @@ Definition set {A: Type} (m: str_map A) (s: string) (val: A) : str_map A :=
 Definition def_map {A: Type} (x: A) : str_map A :=
   fun _ => x.
 
-Definition mk_str_map {A: Type} (d: A) (f: A -> string) (l: list A) :=
-  fold_right (fun x acc => set acc (f x) x) (def_map d) l.
+Definition set_all {A: Type} (m: str_map A) (f: A -> string) (l: list A) :=
+  fold_right (fun x acc => set acc (f x) x) m l.
 
 Inductive mapval : Set :=
   | F_val : funsym -> mapval
@@ -106,6 +106,8 @@ Declare Custom Entry tmpatlist.
 Declare Custom Entry fmla.
 Declare Custom Entry fmlapat.
 Declare Custom Entry fmlapatlist.
+Declare Custom Entry indpredelt.
+Declare Custom Entry indpredlist.
 Declare Scope why3_scope.
 (*Types*)
 (*Definition vty_var' : string -> vty := vty_var.
@@ -136,6 +138,8 @@ Notation "( x )" := x (in custom tmpatlist, x at level 99).
 Notation "( x )" := x (in custom fmla, x at level 99).
 Notation "( x )" := x (in custom fmlapat, x at level 99).
 Notation "( x )" := x (in custom fmlapatlist, x at level 99).
+Notation "( x )" := x (in custom indpredelt, x at level 99).
+Notation "( x )" := x (in custom indpredlist, x at level 99).
 Notation "x" := x (in custom why3 at level 0, x constr at level 0).
 Notation "x" := x
   (in custom ty at level 0, x constr at level 0).
@@ -153,6 +157,9 @@ Notation "x" := x (in custom tmpatlist at level 0, x constr at level 0).
 Notation "x" := x (in custom fmla at level 0, x constr at level 0).
 Notation "x" := x (in custom fmlapat at level 0, x constr at level 0).
 Notation "x" := x (in custom fmlapatlist at level 0, x constr at level 0).
+Notation "x" := x (in custom indpredelt at level 0, x constr at level 0).
+Notation "x" := x (in custom indpredlist at level 0, x constr at level 0).
+
 
 (*Parse strings as strings*)
 Number Notation Z Z.of_num_int Z.to_num_int : why3_scope.
@@ -264,21 +271,26 @@ Definition mut_from_adts (l: list alg_datatype) : mut_adt :=
 (*TODO: move*)
 (*make a mut adt from a list (typesym, str_map typesym -> ne_list funsym)*)
 Definition build_mut (l: list (typesym * (str_map typesym -> ne_list funsym))) :
-  mut_adt :=
+  str_map typesym -> mut_adt :=
+  (fun (m_t: str_map typesym) =>
   let names := map fst l in
   (*Need whole list so we can assign correct typesym to all constrs 
     in all ADTs in mutual type*)
-  let m := mk_str_map ts_d ts_name names in
+  let m := set_all m_t ts_name names in
   let adts := map (fun t => alg_def (fst t) ((snd t) m)) l in
-  mut_from_adts adts.
+  mut_from_adts adts
+  ).
+  
 
 (*This is not great, but OK for now - have to tag adt as "adt" or 
   "mut t1 with t2 with ... tn endmut"*)
-Notation "'adt' x" := (datatype_def (build_mut [x]))
+Notation "'adt' x" := (fun (m_t: str_map typesym) =>
+  datatype_def (build_mut [x] m_t))
   (in custom why3 at level 30,
   x custom adt at level 25).
 
-Notation "'mut' l" := (datatype_def (build_mut l))
+Notation "'mut' l" := (fun (m_t: str_map typesym) =>
+  datatype_def (build_mut l m_t))
   (in custom why3 at level 30,
     l custom mutadt at level 25).
 
@@ -542,20 +554,26 @@ Notation " f1 || f2 " := (fun
   (in custom fmla at level 90, right associativity,
   f1 custom fmla,
   f2 custom fmla).
-Notation " f1 ==> f2 " := (fun 
+Notation " f1 -> f2 " := (fun 
   (m_t: str_map typesym) (m_f: str_map funsym)
   (m_p: str_map predsym) (m_v: str_map vsymbol) =>
   Fbinop Timplies (f1 m_t m_f m_p m_v) (f2 m_t m_f m_p m_v))
   (in custom fmla at level 90, right associativity,
   f1 custom fmla,
   f2 custom fmla).
-Notation " f1 <==> f2 " := (fun 
+Notation " f1 <-> f2 " := (fun 
   (m_t: str_map typesym) (m_f: str_map funsym)
   (m_p: str_map predsym) (m_v: str_map vsymbol) =>
   Fbinop Tiff (f1 m_t m_f m_p m_v) (f2 m_t m_f m_p m_v))
   (in custom fmla at level 90, right associativity,
   f1 custom fmla,
   f2 custom fmla).
+Notation " 'not' f" := (fun
+  (m_t: str_map typesym) (m_f: str_map funsym)
+  (m_p: str_map predsym) (m_v: str_map vsymbol) =>
+  Fnot (f m_t m_f m_p m_v))
+  (in custom fmla at level 90,
+  f custom fmla).
 (*Quantifiers*)
 Notation "'forall' v : t , f" := (fun 
   (m_t: str_map typesym) (m_f: str_map funsym)
@@ -652,7 +670,45 @@ Notation "'match' t : ty 'with' l" := (fun
   ty custom ty,
   l custom fmlapatlist).
 
+(** Top-level Definitions *)
 
+(*Now that we have terms and formulas, we can define top level
+  definitions: recursive functions, inductive predicates, etc*)
+
+(*Inductive predicates*)
+
+(*List of (string * formula)*)
+Notation "s : f" :=
+  (fun (m_t: str_map typesym) (m_f: str_map funsym)
+  (m_p: str_map predsym) (m_v: str_map vsymbol) =>
+  (s, f m_t m_f m_p m_v)
+  )
+  (in custom indpredelt at level 90,
+  f custom fmla at level 99).
+Notation " | x 'end'" := (cons x nil)
+  (in custom indpredlist at level 90,
+  x custom indpredelt).
+Notation " | x l" := (cons x l)
+  (in custom indpredlist at level 90,
+  x custom indpredelt,
+  l custom indpredlist,
+  right associativity).
+
+(*NOTE: for now, our notations do not allow
+  mutually inductive predicates. Our semantics handle
+  this of course, but it would be very difficult to
+  make this reasonably nice, and the stdlib doesn't seem
+  to have mutually recursive inductive predicates
+  (TODO: maybe add, need mutind or something)*)
+Notation "'inductive' p tys = l" := ( fun
+  (m_t: str_map typesym) (m_f: str_map funsym)
+  (m_p: str_map predsym) (m_v: str_map vsymbol) =>
+  (inductive_def [ind_def (predsym_noty p (map (fun x => x m_t) tys))
+    (map (fun x => x m_t m_f m_p m_v) l)
+  ]))
+  (in custom why3 at level 200,
+  tys custom tylist at level 99,
+  l custom indpredlist at level 99).
 
 (*Some tests*)
 (*Sort of hacky - need this for ints, can't parse strings
@@ -757,7 +813,7 @@ Proof.
     unfold fs_false.
     f_equal. apply bool_irrelevance.
 Qed.
-
+(*
 (*Tests for mut adt*)
 Lemma natmut_eq: natmut = 
   datatype_def (mk_mut [alg_def ts_nat (mk_ne [fs_O; fs_S])] nil eq_refl).
@@ -774,7 +830,7 @@ Proof.
     unfold Notations.get, set.
     simpl.
     unfold ts_nat.
-Abort.
+Abort.*)
 
 (*Test terms*)
 Definition test_tm_int : term :=
@@ -847,10 +903,10 @@ Definition test_or :=
   <t if false || true then {4} else _"x" t>.
 
 Definition test_implies :=
-  <t if true ==> false then {1} else {0} t>.
+  <t if true -> false then {1} else {0} t>.
 
 Definition test_iff :=
-  <t if false <==> false then {1} else {0} t>.
+  <t if false <-> false then {1} else {0} t>.
 
 Definition test_forall :=
   <t if forall "x" : int , [int] _"x" = {1} then {1} else {0} t>.
@@ -891,3 +947,30 @@ Definition test_fmatch :=
 Definition foo : string := "foo".
 Definition test_fpred :=
   <t if foo({1}) then {1} else {0} t>.
+
+
+(*Inductive Predicates*)
+Definition distinct : string := "distinct".
+Definition Nil : string := "Nil".
+Definition Cons : string := "Cons".
+Definition List : string := "List".
+Definition mem : string := "mem".
+Definition a : string := "a".
+Definition x : string := "x".
+Definition l : string := "l".
+(*From why3 list*)
+(*This is not horrible. Would be nice to get rid of
+  underscores before vars, but otherwise OK*)
+Definition test_indpred :=
+  <{
+    inductive distinct <List<'a>> =
+    | "distinct_zero" : distinct(Nil <List<'a>> [])
+    | "distinct_one" : forall x : 'a , 
+        distinct (Cons(_ x, Nil()))
+    | "distinct_many" : forall x: 'a,
+      forall l: List<'a>,
+      not (mem(_ x, _ l)) ->
+      distinct(_ l) ->
+      distinct(Cons(_ x, _ l))
+    end
+  }>.
