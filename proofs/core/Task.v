@@ -45,9 +45,10 @@ Arguments task_goal_fv {_} {_}.
 
 (*A task is valid if delta |= f. But these formulas are closed,
   so we write it a bit differently*)
-Definition task_valid {gamma: context} (w: task gamma)
-  (w_wf: task_wf w) : Prop :=
-  forall (pd: pi_dom) (pf: pi_funpred (task_gamma_valid w_wf) pd) (vt: val_typevar)
+Definition task_valid {gamma: context} (w: task gamma) : Prop :=
+  task_wf w /\
+  forall (w_wf: task_wf w)
+    (pd: pi_dom) (pf: pi_funpred (task_gamma_valid w_wf) pd) (vt: val_typevar)
     (vv: val_vars pd vt),
     full_interp (task_gamma_valid w_wf) pd pf ->
     (forall (f: formula) (f_in: In f (task_delta w)),
@@ -104,14 +105,15 @@ Proof.
 Qed. 
 
 (*The theorem we want*)
-Theorem task_valid_equiv (gamma: context) (w:task gamma)
-  (w_wf: task_wf w) :
-  task_valid w w_wf <->
+Theorem task_valid_equiv (gamma: context) (w:task gamma):
+  task_valid w <->
+  task_wf w /\
+  forall (w_wf: task_wf w),
   valid (task_gamma_valid w_wf) (fforalls (task_vars w) 
     (Fbinop Timplies (iter_fand (task_delta w)) (task_goal w)))
   (task_alt_typed gamma w w_wf).
 Proof.
-  unfold valid, task_valid.
+  unfold valid, task_valid. apply and_iff_compat_l. 
   unfold satisfies. split; intros.
   - erewrite fmla_rep_irrel.
     rewrite fforalls_rep.
@@ -131,7 +133,7 @@ Proof.
     intros Hall.
     erewrite fmla_rep_irrel.
     apply H; auto.
-  - specialize (H pd pf H0).
+  - specialize (H w_wf pd pf H0).
     unfold satisfies in H.
     specialize (H vt vv).
     erewrite fmla_rep_irrel in H.
@@ -167,19 +169,16 @@ Definition trans (gamma: context) := task gamma -> list (task gamma).
   but it makes it easier to use*)
 Definition sound_trans {gamma: context} (T: trans gamma) : Prop :=
   forall (t: task gamma) (t_wf: task_wf t),
-    Forall task_wf (T t) /\
-    ((forall (tr: task gamma) (tr_wf: task_wf tr), In tr (T t) ->
-      task_valid tr tr_wf) ->
-    task_valid t t_wf).
+  (forall (tr: task gamma), In tr (T t) -> task_valid tr) ->
+  task_valid t.
 
 (*As a trivial example, the identity transformation is sound*)
 Definition trans_id (gamma: context) : trans gamma := fun x => [x].
 
 Lemma sound_trans_id (gamma: context) : sound_trans (trans_id gamma).
 Proof.
-  unfold sound_trans. intros. split.
-  - unfold trans_id. constructor; auto.
-  - intros. apply H. simpl. auto.
+  unfold sound_trans. intros.
+  apply H. simpl. auto.
 Qed.
 
 (*Utilities for transformations (TODO: maybe separate)*)
@@ -192,16 +191,10 @@ Definition single_trans {gamma: context} (t: task gamma -> task gamma) :
 
 (*Prove a single_trans sound*)
 Lemma single_trans_sound (gamma: context) (f: task gamma -> task gamma):
-  (forall (t: task gamma) (t_wf: task_wf t), task_wf (f t) /\
-    (forall (t': task_wf (f t)), task_valid (f t) t' -> task_valid t t_wf)) ->
+  (forall (t: task gamma), task_valid (f t) -> task_valid t) ->
   sound_trans (single_trans f).
 Proof.
-  intros. unfold sound_trans, single_trans. simpl.
-  intros. split.
-  - constructor; auto. apply H. auto.
-  - intros. eapply (proj2 (H t t_wf)).
-    apply H0. left; auto.
-    Unshelve. apply H. auto.
+  intros. unfold sound_trans, single_trans. simpl. auto.
 Qed.
 
 (*Some transformations only transform the goal or one
@@ -241,31 +234,68 @@ Proof.
   unfold sound_trans, trans_goal. simpl.
   intros.
   destruct t; simpl in *.
+  specialize (H0 _ (ltac:(left; auto))).
+  unfold task_valid in H0. simpl in *.
+  destruct H0 as [Hwf Hval].
+  specialize (Hval Hwf).
   destruct t_wf; simpl in *.
   set (tsk :={| task_delta := task_delta0; 
     task_vars := task_vars0; task_goal := f task_goal0 |}) in *.
-  assert (Hwf: task_wf tsk). {
-    subst tsk. apply mk_task_wf; simpl; auto.
-    + apply H; auto.
-    + apply (sublist_trans (fmla_fv task_goal0)); auto.
-      apply H; auto.
-  }
   split.
   - constructor; auto. 
   - intros.
-    assert (Hval: task_valid tsk Hwf). {
+    (*assert (Hval: task_valid tsk). {
       apply H0; auto.
-    }
+    }*)
     unfold task_valid in *; simpl in *.
-    intros.
     erewrite fmla_rep_irrel.
-    eapply (proj2 (proj2 (H task_gamma_valid0 task_goal0 task_goal_typed0))).
-    (*TODO: not great*)
-    assert (task_gamma_valid0 = task_gamma_valid Hwf) by (apply proof_irrel).
-    subst.
-    apply Hval. auto.
-    intros. erewrite fmla_rep_irrel. apply H2.
+    eapply (proj2 (proj2 (H (task_gamma_valid w_wf) task_goal0 
+      task_goal_typed0))).
+    remember (task_gamma_valid w_wf) as gamma_valid.
+    assert (gamma_valid = task_gamma_valid Hwf) by apply proof_irrel.
+    clear Heqgamma_valid. subst.
+    apply Hval; auto.
+    intros. erewrite fmla_rep_irrel. apply H1.
     Unshelve. auto.
 Qed.
   
 End TransUtil.
+
+(*Prove task_wf automatically*)
+From mathcomp Require Import all_ssreflect.
+Set Bullet Behavior "Strict Subproofs".
+Require Import Typechecker.
+
+(*Prove task_wf automatically*)
+Definition check_task_wf (gamma: context) (w: task gamma): bool :=
+  check_context gamma &&
+  all (typecheck_formula gamma) (task_delta w) &&
+  all (fun f => sublistb (fmla_fv f) (task_vars w)) (task_delta w) &&
+  all (fun x => typecheck_type gamma (snd x)) (task_vars w) &&
+  typecheck_formula gamma (task_goal w) &&
+  sublistb (fmla_fv (task_goal w)) (task_vars w).
+
+Lemma check_task_wf_correct gamma w:
+  reflect (task_wf w) (check_task_wf gamma w).
+Proof.
+  rewrite /check_task_wf.
+  (*Each follows from previous results - just case on each
+    reflected bool*)
+  case: (check_context_correct gamma) => Hval/=; last by reflF.
+  case: (all (typecheck_formula gamma) (task_delta w)) 
+  /(forallb_ForallP (fun x => formula_typed gamma x)) => [| Hallty | Hallty]; try (by reflF);
+  first by move=> x Hinx; apply typecheck_formula_correct.
+  case: (all _ (task_delta w)) 
+    /(forallb_ForallP (fun x => sublist (fmla_fv x) (task_vars w))) => [| Hallsub | Hallsub];
+  try (by reflF);
+  first by move=> x Hinx; apply sublistbP.
+  case: (all _ (task_vars w)) /(forallb_ForallP (fun x => valid_type gamma (snd x)))
+  => [| Hvarty | Hvarty]; try (by reflF); first by move=> x Hinx; apply typecheck_type_correct.
+  case: (typecheck_formula_correct gamma (task_goal w)) => Hty; last by reflF.
+  case: (sublistbP (fmla_fv (task_goal w)) (task_vars w)) => Hsub; last by reflF.
+  by reflT.
+Qed.
+
+Ltac prove_task_wf :=
+  apply /check_task_wf_correct;
+  reflexivity.

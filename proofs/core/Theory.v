@@ -8,7 +8,6 @@ Require Export FullInterp.
   use/clone of another theory*)
 
 (*Syntax*)
-Print vty.
 (*From why3/core/decl.ml*)
   Inductive prop_kind : Set :=
   | Plemma    (* prove, use as a premise *)
@@ -164,7 +163,6 @@ Definition sub_in_mut (m: mut_adt) : mut_adt :=
   mk_mut (map sub_in_adt (typs m)) (m_params m) (m_nodup m).
 
 (*Substitute in term - now we can substitute all 3*)
-Print term.
 
 Definition sub_in_vs (x: vsymbol) : vsymbol :=
   (fst x, sub_in_vty (snd x)).
@@ -348,13 +346,13 @@ Definition qual_funsym (f: funsym) : funsym :=
     (check_sublist_qual (f_ret_wf f)).
 
 Definition qual_funsym_n (f: funsym) : funsym :=
-  if fs_in_ns f n then f else qual_funsym f.
+  if fs_in_ns f n then qual_funsym f else f.
 
 Definition qual_predsym (p: predsym) : predsym :=
   Build_predsym (qual_fpsym p).
 
 Definition qual_predsym_n (p: predsym) : predsym :=
-  if ps_in_ns p n then p else qual_predsym p.
+  if ps_in_ns p n then qual_predsym p else p.
 
 Definition qual_alg_datatype (a: alg_datatype) : alg_datatype :=
   match a with
@@ -465,6 +463,18 @@ End QualNames.
 *)
 
 
+(*We take a somewhat lazy approach to implementing theories:
+  we see theories as simply some preprocessing that produces
+  a context and a series of goals. We then typecheck the
+  context and prove the goals separately.
+  This means that we have no checks within the theory 
+  (for example, for duplicates), relying on the later
+  typechecking.
+
+  There are more efficient ways to do this to avoid 
+  re-typechecking things we have already done, but 
+  we do not implement that for the moment.
+*)
 
 (*
 Unset Elimination Schemes.
@@ -477,7 +487,7 @@ Inductive tdecl : Set :=
   | tuse : list tdecl -> bool -> tdecl
   (*Clone a theory - instantiating some parameters and giving
     a qualified name*)
-  | tclone: list tdecl -> string -> list (typesym * typesym) ->
+  | tclone: list tdecl -> option string -> list (typesym * typesym) ->
     list (funsym * funsym) -> list (predsym * predsym) -> tdecl.
 
 Definition theory := list tdecl.
@@ -576,8 +586,11 @@ get_exported_names (tprop _ _ _ :: tl) := get_exported_names tl;
 get_exported_names (tuse th true :: tl) := 
   merge_ns (get_exported_names th) (get_exported_names tl);
 get_exported_names (tuse th false :: tl) := get_exported_names tl;
-get_exported_names (tclone th s tys funs preds :: tl) :=
-  merge_ns (qualify_all s (get_exported_names th)) (get_exported_names tl)
+get_exported_names (tclone th (Some s) tys funs preds :: tl) :=
+  merge_ns (qualify_all s (get_exported_names th)) (get_exported_names tl);
+(*If None, do not qualify*)
+get_exported_names (tclone th None tys funs preds :: tl) :=
+  merge_ns (get_exported_names th) (get_exported_names tl)
 .
 
 Definition add_qual (s1 s2: string) :=
@@ -593,7 +606,7 @@ qualify_theory s n nil := nil;
 qualify_theory s n (tdef d :: tl) := 
   tdef (qual_def s n d) :: qualify_theory s n tl;
 qualify_theory s n (tprop k name f :: tl) :=
-  (tprop k (add_prefix s name) (qual_fmla s n f)) :: tl;
+  (tprop k (add_prefix s name) (qual_fmla s n f)) :: qualify_theory s n tl;
 (*A used theory that is exported is qualified - we add all qualified
   defs to our theory*)
 qualify_theory s n (tuse th true :: tl) :=
@@ -601,8 +614,11 @@ qualify_theory s n (tuse th true :: tl) :=
 (*If not used, don't add*)
 qualify_theory s n (tuse th false :: tl) := qualify_theory s n tl;
 (*Cloned theories are qualified first, then qualified again (see)*)
-qualify_theory s n (tclone th name tys funs preds :: tl) :=
-  tclone (qualify_theory (add_qual s name) n th) name (*TODO: qualify name?*)
+qualify_theory s n (tclone th (Some name) tys funs preds :: tl) :=
+  tclone (qualify_theory (add_qual s name) n th) (Some name) (*TODO: qualify name?*)
+    tys funs preds :: qualify_theory s n tl;
+qualify_theory s n (tclone th None tys funs preds :: tl) :=
+  tclone (qualify_theory s n th) None 
     tys funs preds :: qualify_theory s n tl
   .
 
@@ -626,17 +642,18 @@ theory_ctx_ext (tdef d :: tl) := d :: theory_ctx_ext tl;
 theory_ctx_ext (tuse l true :: tl) :=
   (*Not structurally recursive*)
   theory_ctx_ext l ++ theory_ctx_ext tl;
-theory_ctx_ext (tclone l name tys funs preds :: tl) :=
+theory_ctx_ext (tclone l o tys funs preds :: tl) :=
   (*for a clone, we first get the exported names to qualify, then
     we qualify, then we sub in (so the sub takes the qualified names)*)
   let n := get_exported_names l in
-  let qual := qualify_theory name n l in 
+  let qual := 
+  match o with | Some name => qualify_theory name n l | None => l end in 
   sub_ctx_map tys funs preds (theory_ctx_ext qual) ++ theory_ctx_ext tl;
 theory_ctx_ext (_ :: tl) := theory_ctx_ext tl;
 theory_ctx_ext nil := nil.
 Next Obligation.
-subst qual.
-pose proof (qualify_theory_size name n l). 
+subst qual. destruct o; simpl; try lia.
+pose proof (qualify_theory_size s n l). 
 unfold theory_size in *. lia.
 Defined.
 
@@ -645,15 +662,25 @@ Defined.
 Fixpoint theory_ctx_int (t: theory) : context :=
   match t with
   | tdef d :: tl => d :: theory_ctx_int tl
-  | tuse l true :: tl =>
+  | tuse l _ :: tl =>
       theory_ctx_ext l ++ theory_ctx_int tl
-  | tclone l name tys funs preds  :: tl =>
+  | tclone l o tys funs preds  :: tl =>
     let n := get_exported_names l in
-    let qual := qualify_theory name n l in 
+    let qual := 
+      match o with | Some name => qualify_theory name n l | None => l end in
     sub_ctx_map tys funs preds (theory_ctx_ext qual) ++ theory_ctx_int tl
   | _ :: tl => theory_ctx_int tl
   | nil => nil
   end.
+
+(*Unfolding the theory*)
+
+(*We can unfold the "use" and "clone" definitions to get
+  a simple theory with only definitions and goals/lemmas/axioms.
+  We use a preprocessing step to turn all lemmas into
+  axioms and remove goals
+  TODO: do we still need context functions?
+  TODO: do we need this?*)
 
 (*Typing*)
 
@@ -670,9 +697,7 @@ Fixpoint theory_ctx_int (t: theory) : context :=
   give as Inductive and Fixpoint (for generating goals) most likely
   *)
 
-(*Well-typed theory*)
-Definition typed_theory (t: theory) : Prop :=
-  valid_context (theory_ctx_int t).
+
 
 (*Typechecking*)
 
@@ -687,7 +712,7 @@ Print tdecl.
   Then, we don't want to typecheck them again*)
 
 (*TODO: for now, just typecheck things again. But
-  we should REALLY go back and implement this fully*)
+  we should REALLY go back and implemEquationsent this fully*)
 
 
 Fixpoint check_typed_theory (t: theory) : bool :=
@@ -732,18 +757,19 @@ theory_axioms_ext (tprop Plemma name f :: tl) :=
 theory_axioms_ext (tuse th true :: tl) :=
   theory_axioms_ext th ++ theory_axioms_ext tl;
 (*Add all from cloning, after qualifying and substituting*)
-theory_axioms_ext (tclone th name tys funs preds :: tl) :=
+theory_axioms_ext (tclone th o tys funs preds :: tl) :=
   let n := get_exported_names th in
   (*This also qualifies props*)
-  let qual := qualify_theory name n th in
+  let qual := 
+    match o with | Some name => qualify_theory name n th | None => th end in
   sub_props_map tys funs preds (theory_axioms_ext qual) ++
   theory_axioms_ext tl;
 (*No other lemmas/axioms*)
 theory_axioms_ext nil := nil;
 theory_axioms_ext (_ :: tl) := theory_axioms_ext tl.
 Next Obligation.
-subst qual.
-pose proof (qualify_theory_size name n th). 
+subst qual. destruct o; try lia.
+pose proof (qualify_theory_size s n th). 
 unfold theory_size in *. lia.
 Defined.
 
@@ -756,15 +782,89 @@ Fixpoint theory_axioms_int (t: theory) : list (string * formula) :=
     (name, f) :: theory_axioms_int tl
   | tuse th _ :: tl =>
     theory_axioms_ext th ++ theory_axioms_ext tl
-  | tclone th name tys funs preds :: tl =>
+  | tclone th o tys funs preds :: tl =>
     let n := get_exported_names th in
-    let qual := qualify_theory name n th in 
+    let qual := 
+      match o with | Some name => qualify_theory name n th | None => th end in
     sub_props_map tys funs preds (theory_axioms_ext qual) ++ 
     theory_axioms_int tl
   | _ :: tl => theory_axioms_int tl
   | nil => nil
   end.
-Print tdecl.
+
+(*Well-typed theory*)
+
+(*Well-typed propositions*)
+(*TODO: repeats existing, just like typing. OK for now*)
+Equations typed_theory_p (t: theory) : Prop
+by wf (theory_size t) lt :=
+typed_theory_p nil := True;
+typed_theory_p (tprop _ _ f :: tl) :=
+  formula_typed (theory_ctx_int tl) f /\
+  typed_theory_p tl;
+typed_theory_p (tuse th _ :: tl) :=
+  typed_theory_p th /\
+  typed_theory_p tl;
+typed_theory_p (tclone th _ _ _ _ :: tl) :=
+  typed_theory_p th /\
+  typed_theory_p tl;
+typed_theory_p (tdef _ :: tl) := typed_theory_p tl.
+
+(*A decidable version*)
+Require Import Typechecker.
+Equations check_typed_theory_p (t: theory) : bool
+by wf (theory_size t) lt :=
+check_typed_theory_p nil := true;
+check_typed_theory_p (tprop _ _ f :: tl) :=
+  typecheck_formula (theory_ctx_int tl) f &&
+  check_typed_theory_p tl;
+check_typed_theory_p (tuse th _ :: tl) :=
+  check_typed_theory_p th &&
+  check_typed_theory_p tl;
+check_typed_theory_p (tclone th _ _ _ _ :: tl) :=
+  check_typed_theory_p th &&
+  check_typed_theory_p tl;
+check_typed_theory_p (tdef _ :: tl) := check_typed_theory_p tl.
+
+From mathcomp Require Import all_ssreflect.
+
+Lemma check_typed_theory_p_spec t:
+  reflect (typed_theory_p t) (check_typed_theory_p t) .
+Proof.
+  move: t.
+  apply (typed_theory_p_elim (fun t1 P => reflect P (check_typed_theory_p t1)));
+  rewrite /=; intros.
+  - by apply ReflectT.
+  - by rewrite check_typed_theory_p_equation_2.
+  - rewrite check_typed_theory_p_equation_3.
+    apply andPP =>//.
+    by apply typecheck_formula_correct.
+  - rewrite check_typed_theory_p_equation_4.
+    by apply andPP.
+  - rewrite check_typed_theory_p_equation_5.
+    by apply andPP.
+Qed.
+
+Definition typed_theory (t: theory) : Prop :=
+  valid_context (theory_ctx_int t) /\
+  typed_theory_p t.
+
+Definition check_typed_theory (t: theory) : bool :=
+  check_context (theory_ctx_int t) && check_typed_theory_p t.
+
+Lemma check_typed_theory_correct (t: theory) :
+  reflect (typed_theory t) (check_typed_theory t).
+Proof.
+  apply andPP.
+  - apply check_context_correct.
+  - apply check_typed_theory_p_spec.
+Qed.
+
+(*Really, could give more useful error messages by looking
+  at which part fails*)
+Ltac check_theory :=
+  apply /check_typed_theory_correct;
+  reflexivity.
 
 (*This defines what it means for a theory
   to be valid.
@@ -779,12 +879,36 @@ Print tdecl.
     then (theory_ctx_int t, theory_axioms t) |= f
     and as a corollary, if no axioms, then gamma, . |= f
     (more of a sanity check than anything else)*)
-Inductive valid_theory : theory -> Prop :=
+
+(*Produce proof goals for lemmas and goals*)
+Fixpoint valid_theory (t: theory) : Prop :=
+  match t with
+  | nil => True
+  | (tprop k _ f :: tl) =>
+    match k with 
+    | Paxiom => (*we only require that the task is wf, not
+      valid*) task_wf (mk_task (theory_ctx_int tl) 
+        (map snd (theory_axioms_int tl)) nil f) 
+      /\ valid_theory tl
+    | _ =>
+      task_valid (mk_task (theory_ctx_int tl)
+        (map snd (theory_axioms_int tl)) nil f) /\
+      valid_theory tl
+    end
+  | _ :: tl => valid_theory tl
+  end.
+
+(*An alternate approach that is more efficient and 
+  (hopefully) avoids some opaque issues*)
+
+
+
+(*Inductive valid_theory : theory -> Prop :=
   | valid_th_emp: valid_theory nil
   | valid_th_def: forall d t,
     valid_theory t ->
-    (*The context with this def is well-typed*)
-    valid_context (d :: theory_ctx_int t) ->
+    (*(*The context with this def is well-typed*)
+    valid_context (d :: theory_ctx_int t) ->*)
     valid_theory (tdef d :: t)
   (*For axioms, only need to check type I think*)
   | valid_th_axiom: forall name f t,
@@ -796,13 +920,8 @@ Inductive valid_theory : theory -> Prop :=
     (*We build the task consisting of the context
       of the theory, the assumptions so far, and the 
       goal*)
-    let tsk := mk_task (theory_ctx_int t)
-      (map snd (theory_axioms_int t)) nil f in
-    (*The task must be well-typed*)
-    task_wf tsk ->
-    (*The task must be valid*)
-    (forall (wf: task_wf tsk),
-      task_valid tsk wf) ->
+    task_valid (mk_task (theory_ctx_int t)
+    (map snd (theory_axioms_int t)) nil f) ->
     valid_theory (tprop Plemma name f :: t)
   (*goals are identical*)
   | valid_th_goal: forall name f t,
@@ -810,13 +929,8 @@ Inductive valid_theory : theory -> Prop :=
     (*We build the task consisting of the context
       of the theory, the assumptions so far, and the 
       goal*)
-    let tsk := mk_task (theory_ctx_int t)
-      (map snd (theory_axioms_int t)) nil f in
-    (*The task must be well-typed*)
-    task_wf tsk ->
-    (*The task must be valid*)
-    (forall (wf: task_wf tsk),
-      task_valid tsk wf) ->
+    task_valid (mk_task (theory_ctx_int t)
+      (map snd (theory_axioms_int t)) nil f) ->
     valid_theory (tprop Pgoal name f :: t)
   (*For "use", just need existing theory to be valid*)
   | valid_th_use: forall th b t,
@@ -834,3 +948,25 @@ Inductive valid_theory : theory -> Prop :=
     (forall p, In p (map snd preds) -> In p (sig_p gamma)) ->
     valid_theory (tclone th name tys funs preds :: t).
 
+    (*
+    Require Import Typechecker.
+(*Here, we will build a list of props that together imply
+  that the theory is well-typed and valid (which we prove).
+  All are decidable and can thus be solved by "reflexivity"
+  except for the [task_valid] ones*)
+(*TODO: maybe combine, for now only valid*)
+Fixpoint get_theory_tasks (t: theory) : list Prop :=
+  match t with
+  | nil => True
+  | tdecl d :: tl => get_theory_tasks tl
+  | 
+
+
+  valid_th_axiom: forall name f t,
+    valid_theory t ->
+    formula_typed (theory_ctx_int t) f ->
+    valid_theory (tprop Paxiom name f :: t)
+    (*TODO: inefficient to get entire context here*)
+
+
+*)*)
