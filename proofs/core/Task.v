@@ -11,56 +11,62 @@ Set Bullet Behavior "Strict Subproofs".
   so we can define transformations purely
   syntactically *)
 
-Record task (gamma: context) : Set :=
+Definition task: Set :=
+  (context * list formula * formula).
+
+Definition mk_task (gamma: context) (delta: list formula)
+  (goal: formula) : task :=
+  (gamma, delta, goal).
+
+(*Record task (gamma: context) : Set :=
   mk_task {task_delta: list formula;
     task_vars: list vsymbol;
-    task_goal: formula}.
+    task_goal: formula}.*)
+Definition task_gamma (t: task) : context :=
+  fst (fst t).
+Definition task_delta (t: task) : list formula :=
+  snd (fst t).
+Definition task_goal (t: task) : formula :=
+  snd t.
 
-Arguments task_delta { _ }.
+(*Arguments task_delta { _ }.
 Arguments task_vars { _ }.
-Arguments task_goal { _ }.
+Arguments task_goal { _ }.*)
 
 (*We make this a record so we can refer to the hypotheses by name*)
-Record task_wf {gamma: context} (w: task gamma) :=
+Record task_wf (*{gamma: context}*) (w: task) (*(w: task gamma)*) :=
   mk_task_wf
   (*Context is well-typed*)
-  {task_gamma_valid: valid_context gamma;
+  {task_gamma_valid: valid_context (task_gamma w);
   (*Local context is well-typed*)
-  task_delta_typed: Forall (formula_typed gamma) (task_delta w);
+  task_delta_typed: Forall (formula_typed (task_gamma w)) (task_delta w);
   (*All free vars in var list*)
-  task_delta_fv: Forall (fun f => sublist (fmla_fv f) (task_vars w)) (task_delta w);
+  (*task_delta_fv: Forall (fun f => sublist (fmla_fv f) (task_vars w)) (task_delta w);*)
   (*All variable types are valid*)
-  task_vars_valid: Forall (fun x => valid_type gamma (snd x)) (task_vars w);
+  (*task_vars_valid: Forall (fun x => valid_type gamma (snd x)) (task_vars w);*)
   (*goal is well-typed*)
-  task_goal_typed: formula_typed gamma (task_goal w);
+  task_goal_typed: formula_typed (task_gamma w) (task_goal w);
   (*All free vars in goal in var list*)
-  task_goal_fv: sublist (fmla_fv (task_goal w)) (task_vars w)}.
+  (*task_goal_fv: sublist (fmla_fv (task_goal w)) (task_vars w)*)}.
 
-Arguments task_gamma_valid {_} {_}.
-Arguments task_delta_typed {_} {_}.
-Arguments task_delta_fv {_} {_}.
-Arguments task_vars_valid {_} {_}.
-Arguments task_goal_typed {_} {_}.
-Arguments task_goal_fv {_} {_}.
+Arguments task_gamma_valid {_}.
+Arguments task_delta_typed {_}.
+(*Arguments task_delta_fv {_} {_}.*)
+(*Arguments task_vars_valid {_} {_}.*)
+Arguments task_goal_typed {_}.
+(*Arguments task_goal_fv {_} {_}.*)
 
-(*A task is valid if delta |= f. But these formulas are closed,
-  so we write it a bit differently*)
-Definition task_valid {gamma: context} (w: task gamma) : Prop :=
+(*A task is valid if delta |= f.*)
+Definition task_valid (*{gamma: context}*) (w: task) : Prop :=
   task_wf w /\
-  forall (w_wf: task_wf w)
-    (pd: pi_dom) (pf: pi_funpred (task_gamma_valid w_wf) pd) (vt: val_typevar)
-    (vv: val_vars pd vt),
-    full_interp (task_gamma_valid w_wf) pd pf ->
-    (forall (f: formula) (f_in: In f (task_delta w)),
-      formula_rep (task_gamma_valid w_wf) 
-      pd vt pf vv f (Forall_In (task_delta_typed w_wf) f_in)) ->
-    formula_rep (task_gamma_valid w_wf) pd vt pf vv (task_goal w) 
-      (task_goal_typed w_wf).
+  forall (gamma_valid: valid_context (task_gamma w)) (w_wf: task_wf w),
+    log_conseq gamma_valid (task_delta w) 
+      (task_delta_typed w_wf) (task_goal w) (task_goal_typed w_wf).
 
 (*What this means: gamma, delta, vars |= f iff
   gamma |= forall vars, delta -> f*)
 
-Lemma task_alt_typed (gamma: context) (w:task gamma)
+(*Lemma task_alt_typed (gamma: context) (w:task gamma)
 (w_wf: task_wf w):
 formula_typed gamma 
 (fforalls (task_vars w) (Fbinop Timplies (iter_fand (task_delta w)) (task_goal w))).
@@ -102,9 +108,14 @@ Proof.
   rewrite substi_mult_base with(v2:=vv); auto.
   intros. unfold substi. destruct (vsymbol_eq_dec x0 a); auto.
   subst. reflexivity.
-Qed. 
+Qed. *)
 
 (*The theorem we want*)
+(*TODO: this theorem is wrong (our notion of task
+  validity fixes the valuation - it was not strong enough)
+  Really, says something about logical consequence - fix this
+  (a bit complicated with free vars)*)
+  (*
 Theorem task_valid_equiv (gamma: context) (w:task gamma):
   task_valid w <->
   task_wf w /\
@@ -155,11 +166,11 @@ Proof.
     + constructor; try apply w_wf. apply iter_fand_typed, w_wf.
     + apply w_wf.
     + auto.
-Qed.
+Qed.*)
 
 (*Now we define a task transformation: a function that
   produces 0 or more tasks from a task - called "tlist" in why3*)
-Definition trans (gamma: context) := task gamma -> list (task gamma).
+Definition trans := task -> list task.
 
 (*What does it mean for a transformation to be sound?
   1. All resulting tasks are well-formed
@@ -167,15 +178,15 @@ Definition trans (gamma: context) := task gamma -> list (task gamma).
 
 (*The definition is a little awkward because of the double wf proof,
   but it makes it easier to use*)
-Definition sound_trans {gamma: context} (T: trans gamma) : Prop :=
-  forall (t: task gamma) (t_wf: task_wf t),
-  (forall (tr: task gamma), In tr (T t) -> task_valid tr) ->
+Definition sound_trans (T: trans) : Prop :=
+  forall (t: task) (t_wf: task_wf t),
+  (forall (tr: task), In tr (T t) -> task_valid tr) ->
   task_valid t.
 
 (*As a trivial example, the identity transformation is sound*)
-Definition trans_id (gamma: context) : trans gamma := fun x => [x].
+Definition trans_id: trans := fun x => [x].
 
-Lemma sound_trans_id (gamma: context) : sound_trans (trans_id gamma).
+Lemma sound_trans_id: sound_trans trans_id.
 Proof.
   unfold sound_trans. intros.
   apply H. simpl. auto.
@@ -185,13 +196,12 @@ Qed.
 Section TransUtil.
 
 (*Transformation which creates a single new task*)
-Definition single_trans {gamma: context} (t: task gamma -> task gamma) :
-  trans gamma :=
+Definition single_trans (t: task -> task) :trans :=
   fun x => [t x].
 
 (*Prove a single_trans sound*)
-Lemma single_trans_sound (gamma: context) (f: task gamma -> task gamma):
-  (forall (t: task gamma), task_valid (f t) -> task_valid t) ->
+Lemma single_trans_sound (f: task -> task):
+  (forall (t: task), task_valid (f t) -> task_valid t) ->
   sound_trans (single_trans f).
 Proof.
   intros. unfold sound_trans, single_trans. simpl. auto.
@@ -202,9 +212,9 @@ Qed.
   local reasoning*)
 
 (*TODO: should we generalize to more than 1 goal*)
-Definition trans_goal (gamma: context) (f: formula -> formula) :
-  trans gamma :=
-  fun x => [mk_task gamma (task_delta x) (task_vars x) (f (task_goal x))].
+Definition trans_goal (f: formula -> formula) :
+  trans :=
+  fun x => [(task_gamma x, task_delta x, (f (task_goal x)))].
 
 (*TODO: move*)
 Lemma sublist_trans {A: Type} (l2 l1 l3: list A):
@@ -224,11 +234,13 @@ Lemma trans_goal_sound {gamma: context}
   (forall (gamma_valid: valid_context gamma) 
     fmla (Hfmla: formula_typed gamma fmla),
     formula_typed gamma (f fmla) /\
-    sublist (fmla_fv (f fmla)) (fmla_fv fmla) /\
-    forall pd vt pf vv (Hf: formula_typed gamma (f fmla)), 
-      formula_rep gamma_valid pd vt pf vv (f fmla) Hf -> 
+    (*sublist (fmla_fv (f fmla)) (fmla_fv fmla) /\*)
+    forall pd pf (Hf: formula_typed gamma (f fmla)), 
+      (forall vt vv,
+      formula_rep gamma_valid pd vt pf vv (f fmla) Hf) ->
+      forall vt vv,
       formula_rep gamma_valid pd vt pf vv fmla Hfmla)->
-  sound_trans (trans_goal gamma f).
+  sound_trans (trans_goal f).
 Proof.
   intros.
   unfold sound_trans, trans_goal. simpl.
@@ -237,26 +249,20 @@ Proof.
   specialize (H0 _ (ltac:(left; auto))).
   unfold task_valid in H0. simpl in *.
   destruct H0 as [Hwf Hval].
-  specialize (Hval Hwf).
+  unfold task_valid. split; auto. intros.
+  specialize (Hval gamma_valid Hwf).
   destruct t_wf; simpl in *.
-  set (tsk :={| task_delta := task_delta0; 
+  set (tsk := (l, f0)) in *.
+  (*set (tsk :={| task_delta := task_delta0; 
     task_vars := task_vars0; task_goal := f task_goal0 |}) in *.
-  split.
-  - constructor; auto. 
-  - intros.
-    (*assert (Hval: task_valid tsk). {
-      apply H0; auto.
-    }*)
-    unfold task_valid in *; simpl in *.
-    erewrite fmla_rep_irrel.
-    eapply (proj2 (proj2 (H (task_gamma_valid w_wf) task_goal0 
-      task_goal_typed0))).
-    remember (task_gamma_valid w_wf) as gamma_valid.
-    assert (gamma_valid = task_gamma_valid Hwf) by apply proof_irrel.
-    clear Heqgamma_valid. subst.
-    apply Hval; auto.
-    intros. erewrite fmla_rep_irrel. apply H1.
-    Unshelve. auto.
+  intros.*)
+  unfold log_conseq, satisfies in *. intros.
+  erewrite fmla_rep_irrel.
+  eapply  (proj2 (H _ f0 
+    task_goal_typed0)). intros.
+  apply Hval; intros; auto.
+  erewrite fmla_rep_irrel. apply H0.
+  Unshelve. auto.
 Qed.
   
 End TransUtil.
@@ -270,10 +276,10 @@ Require Import Typechecker.
 Definition check_task_wf (gamma: context) (w: task gamma): bool :=
   check_context gamma &&
   all (typecheck_formula gamma) (task_delta w) &&
-  all (fun f => sublistb (fmla_fv f) (task_vars w)) (task_delta w) &&
-  all (fun x => typecheck_type gamma (snd x)) (task_vars w) &&
-  typecheck_formula gamma (task_goal w) &&
-  sublistb (fmla_fv (task_goal w)) (task_vars w).
+  (*all (fun f => sublistb (fmla_fv f) (task_vars w)) (task_delta w) &&*)
+  (*all (fun x => typecheck_type gamma (snd x)) (task_vars w) &&*)
+  typecheck_formula gamma (task_goal w) (*&&
+  sublistb (fmla_fv (task_goal w)) (task_vars w)*).
 
 Lemma check_task_wf_correct gamma w:
   reflect (task_wf w) (check_task_wf gamma w).
@@ -285,14 +291,14 @@ Proof.
   case: (all (typecheck_formula gamma) (task_delta w)) 
   /(forallb_ForallP (fun x => formula_typed gamma x)) => [| Hallty | Hallty]; try (by reflF);
   first by move=> x Hinx; apply typecheck_formula_correct.
-  case: (all _ (task_delta w)) 
+  (*case: (all _ (task_delta w)) 
     /(forallb_ForallP (fun x => sublist (fmla_fv x) (task_vars w))) => [| Hallsub | Hallsub];
   try (by reflF);
-  first by move=> x Hinx; apply sublistbP.
-  case: (all _ (task_vars w)) /(forallb_ForallP (fun x => valid_type gamma (snd x)))
-  => [| Hvarty | Hvarty]; try (by reflF); first by move=> x Hinx; apply typecheck_type_correct.
+  first by move=> x Hinx; apply sublistbP.*)
+  (*case: (all _ (task_vars w)) /(forallb_ForallP (fun x => valid_type gamma (snd x)))
+  => [| Hvarty | Hvarty]; try (by reflF); first by move=> x Hinx; apply typecheck_type_correct.*)
   case: (typecheck_formula_correct gamma (task_goal w)) => Hty; last by reflF.
-  case: (sublistbP (fmla_fv (task_goal w)) (task_vars w)) => Hsub; last by reflF.
+  (*case: (sublistbP (fmla_fv (task_goal w)) (task_vars w)) => Hsub; last by reflF.*)
   by reflT.
 Qed.
 

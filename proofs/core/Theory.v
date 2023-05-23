@@ -180,7 +180,7 @@ Fixpoint sub_in_p (p: pattern) : pattern :=
 Fixpoint sub_in_t (t: term) : term :=
   match t with
   | Tconst c => Tconst c
-  | Tvar v => Tvar v
+  | Tvar v => Tvar (sub_in_vs v)
   | Tfun fs tys tms =>
     Tfun (sub_funs fs) (map sub_in_vty tys)
       (map sub_in_t tms)
@@ -888,11 +888,11 @@ Fixpoint valid_theory (t: theory) : Prop :=
     match k with 
     | Paxiom => (*we only require that the task is wf, not
       valid*) task_wf (mk_task (theory_ctx_int tl) 
-        (map snd (theory_axioms_int tl)) nil f) 
+        (map snd (theory_axioms_int tl)) f) 
       /\ valid_theory tl
     | _ =>
       task_valid (mk_task (theory_ctx_int tl)
-        (map snd (theory_axioms_int tl)) nil f) /\
+        (map snd (theory_axioms_int tl)) f) /\
       valid_theory tl
     end
   | _ :: tl => valid_theory tl

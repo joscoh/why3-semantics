@@ -867,30 +867,32 @@ Context {gamma: context} (gamma_valid: valid_context gamma).
 
 Section Valid.
 
-Variable f: formula.
-Variable f_typed: formula_typed gamma f.
-Variable f_closed: closed_formula f.
 
 (*A full interpretation satisfies a formula f if for all valuations,
   f evaluates to true under this interpretation and valuation*)
+(*Note that we treat non-closed formulas as implicitly
+  universally quantified by quantifying over valuations.
+  We prove this (TODO!)*)
 Definition satisfies (pd: pi_dom) (pf: pi_funpred gamma_valid pd)
-  (pf_full: full_interp gamma_valid pd pf) : Prop :=
+  (pf_full: full_interp gamma_valid pd pf) (f: formula)
+  (f_typed: formula_typed gamma f) : Prop :=
   forall (vt: val_typevar) (vv: val_vars pd vt),
   formula_rep gamma_valid pd vt pf vv f f_typed.
 
 (*A formula is satisfiable if there exists an interpretation
   that satisfies it*)
-Definition sat := exists (pd: pi_dom) 
+Definition sat (f: formula) (f_typed: formula_typed gamma f) := 
+  exists (pd: pi_dom) 
   (pf: pi_funpred gamma_valid pd) 
   (pf_full: full_interp gamma_valid pd pf),
-  satisfies pd pf pf_full.
+  satisfies pd pf pf_full f f_typed.
 
 (*A formula is valid if all (full) interpretations satisfy it*)
-Definition valid : Prop :=
+Definition valid (f: formula) (f_typed: formula_typed gamma f) : Prop :=
   forall (pd: pi_dom) 
   (pf: pi_funpred gamma_valid pd) 
   (pf_full: full_interp gamma_valid pd pf),
-  satisfies pd pf pf_full.
+  satisfies pd pf pf_full f f_typed.
 
 End Valid.
 
@@ -898,15 +900,14 @@ End Valid.
   interpretation that satisfies all of Delta also satisfies f*)
 Definition log_conseq (Delta: list formula) 
   (Delta_ty: Forall (formula_typed gamma) Delta)
-  (Delta_closed: Forall closed_formula Delta)
+  (*(Delta_closed: Forall closed_formula Delta)*)
   (f: formula)
   (f_ty: formula_typed gamma f)
-  (f_closed: closed_formula f) : Prop :=
+  (*(f_closed: closed_formula f)*) : Prop :=
   forall (pd: pi_dom) (pf: pi_funpred gamma_valid pd)
     (pf_full: full_interp gamma_valid pd pf),
     (forall d (Hd: In d Delta),
-      satisfies d (Forall_In Delta_ty Hd)
-        pd pf pf_full) ->
-    satisfies f f_ty pd pf pf_full.
+      satisfies pd pf pf_full d (Forall_In Delta_ty Hd)) ->
+    satisfies pd pf pf_full f f_ty.
 
 End Logic.

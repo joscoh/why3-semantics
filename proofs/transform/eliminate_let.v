@@ -325,8 +325,8 @@ Proof.
   apply trans_goal_sound.
   intros. split_all.
   - apply elim_let_f_typed; auto.
-  - apply elim_let_f_fv.
-  - intros. erewrite elim_let_f_rep in H.
+  (*- apply elim_let_f_fv.*)
+  - intros. specialize (H vt vv). erewrite elim_let_f_rep in H.
     apply H.
 Qed.
 
@@ -1318,8 +1318,9 @@ Proof.
   apply trans_goal_sound.
   intros. split_all.
   - apply elim_let_fmla_typed; auto.
-  - apply elim_let_fmla_fv.
-  - intros. erewrite elim_let_fmla_rep in H.
+  (*- apply elim_let_fmla_fv.*)
+  - intros. specialize (H vt vv). 
+    erewrite elim_let_fmla_rep in H.
     apply H.
 Qed.
 

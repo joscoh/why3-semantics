@@ -465,17 +465,56 @@ Qed.
 Lemma ring_theory_typed: typed_theory ring_theory.
 Proof. check_theory. Qed.
 
+Require Import ProofSystem.
+Require Import Alpha.
 
+Ltac prove_fmla_ty :=
+  apply /typecheck_formula_correct; reflexivity.
 
 (*Now, we prove these lemmas (manually, from the semantics)
   *)
-  (*
 Lemma ring_theory_valid: valid_theory ring_theory.
 Proof.
   simpl. split_all; auto.
   - (*First lemma*)
     unfold task_valid. simpl. split.
-    +  apply /check_task_wf_correct.
+    + prove_task_wf.
+    + intros.
+      unfold log_conseq. intros. simpl in H.
+      assert (L2 := H).
+      assert (L1 := H).
+      specialize (L1 _ (ltac:(left; reflexivity))).
+      specialize (L2 _ (ltac:(right; left; reflexivity))).
+      rewrite !tforall_rewrite. simpl.
+      intros.
+      (*TODO: how to avoid needing to unfold*) 
+      unfold safe_sub_f; simpl.
+      (*Let's see*)
+      (*assert: (x * (0+0) = x * 0)*)
+      assert (satisfies (task_gamma_valid w_wf) pd pf pf_full
+        (Feq t_ty (Tfun Ring.mult nil [Tvar (y0, t_ty); 
+          Tfun Ring.plus nil [Tfun Ring.zero nil nil; Tfun Ring.zero nil nil]])
+          (Tfun Ring.mult nil [Tvar x; Tfun Ring.zero nil nil])) ltac:(prove_fmla_ty)).
+      {
+        admit.
+      }
+      
+
+
+      }  Ring.zero nil nil])))
+      
+      simpl in *.
+
+      
+      simpl.
+      
+      simpl in L2.
+
+      
+      specialize (H0 _ ltac:(right; right)).
+    
+    
+    apply /check_task_wf_correct.
 
       unfold check_task_wf.  
       assert (check_context (theory_ctx_ext Ring.ring ++ [::])%list).
@@ -655,14 +694,189 @@ Proof.
   Definition theory3 : theory :=
     rev [
       tdef (abs_type t);
-      tdef (abs_fun Ring.plus);
-      tdef (abs_fun Ring.mult);
-      tclone theory2 (Some "T"%string) [(tt, t)] [(top, plus)] nil;
-      tclone theory2 (Some "A"%string) []
+      tdef (abs_fun op);
       tprop Paxiom "foo" (fforalls [x; y] (Feq t_ty
         (Tfun op nil [Tvar x; Tvar y])
         (Tfun op nil [Tvar y; Tvar x])
       ))
+    ].
+
+    Definition at' : typesym := mk_ts "A.t" nil.
+    Definition at_ty' : vty := vty_cons at' nil.
+    Definition aop : funsym := Build_funsym (Build_fpsym "A.op" nil [at_ty'; at_ty'] erefl erefl)
+      at_ty' erefl.
+
+  Definition theory4 : theory :=
+    rev [
+      tdef (abs_type t);
+      tdef (abs_fun Ring.plus);
+      tdef (abs_fun Ring.mult);
+      tclone theory3 (Some "T"%string) [(tt, t)] [(top, Ring.plus)] nil;
+      tclone theory3 (Some "A"%string) [(at', t)] [(aop, Ring.mult)] nil;
+      tprop Paxiom "Mul_distr_l" (fforalls [x; y; z] (Feq t_ty
+        (Tfun Ring.mult nil [Tvar x; Tfun Ring.plus nil [Tvar y; Tvar z]])
+        (Tfun Ring.plus nil [Tfun Ring.mult nil [Tvar x; Tvar y]; Tfun Ring.mult nil [Tvar x; Tvar z]])
+      ))
+    ].
+
+  Lemma theory4_ctx: theory_ctx_int theory4 =
+    rev [abs_type t; abs_fun Ring.plus; abs_fun Ring.mult].
+  Proof. reflexivity. Qed.
+  
+  (*Typed*)
+  Lemma theory4_typed: typed_theory theory4.
+  Proof.
+    check_theory.
+  Qed.
+  
+  (*Well-formed*)
+  Lemma theory4_valid: valid_theory theory4.
+  Proof.
+    simpl. split; auto.
+    apply /check_task_wf_correct.
+    reflexivity.
+  Qed.
+    unfold check_task_wf.
+    apply /andP; split; auto.
+    apply /andP; split; auto.
+    apply /andP; split; auto.
+    apply /andP; split; auto.
+    apply /andP; split; auto.
+    2: {
+      simpl.
+      unfold theory3, rev, catrev.
+      rewrite !get_exported_names_equation_3.
+      rewrite !get_exported_names_equation_2.
+      rewrite !get_exported_names_equation_1.
+      rewrite !qualify_theory_equation_3.
+      rewrite !qualify_theory_equation_2.
+      rewrite !qualify_theory_equation_1.
+      simpl.
+      rewrite !theory_axioms_ext_equation_4.
+      rewrite !theory_axioms_ext_equation_2.
+      rewrite !theory_axioms_ext_equation_1.
+      unfold sub_props_map. Print sub_in_f.
+
+      simpl.
+      simpl.
+
+
+    } simpl.
+    
+    
+    2: reflexivity.
+    + simpl task_delta.
+      rewrite all_cons. apply /andP. split; auto.
+      unfold Assoc.assoc, rev, catrev.
+      rewrite !get_exported_names_equation_3.
+      rewrite !get_exported_names_equation_2.
+      rewrite get_exported_names_equation_1.
+      rewrite qualify_theory_equation_3.
+      rewrite !qualify_theory_equation_2.
+      rewrite qualify_theory_equation_1.
+      simpl.
+      rewrite theory_axioms_ext_equation_4.
+      rewrite !theory_axioms_ext_equation_2.
+      rewrite theory_axioms_ext_equation_1.
+      unfold sub_props_map. simpl List.map.
+      simpl map.
+      rewrite all_cons.
+      apply /andP; split; auto.
+      (*Aha, so this one is the problem*)
+      apply /typecheck_formula_correct.
+      apply F_Quant; auto.
+      {
+        apply /typecheck_type_correct. reflexivity.
+      }
+      simpl. apply F_Quant; auto.
+      {
+        apply /typecheck_type_correct. reflexivity.
+      }
+      simpl. apply F_Quant; auto.
+      {
+        apply /typecheck_type_correct. reflexivity.
+      }
+      apply F_Eq.
+      {
+        (*A problem here - why is everything op?*)
+        apply T_Fun; simpl; auto.
+        - apply /inP. reflexivity.
+        - apply /typecheck_type_correct. reflexivity.
+        -
+        
+        
+        repeat constructor; auto. apply /forallb_ForallP. reflexivity. unfold CommGroup.comm_group, Group.group, Comm.comm, Monoid.monoid, Assoc.assoc,
+        rev, catrev. 
+          simpl. rewrite !theory_ctx_ext_equation_3.
+          rewrite !theory_ctx_ext_equation_2.
+          rewrite theory_ctx_ext_equation_1.
+          simpl.
+          rewrite !theory_ctx_ext_equation_6.
+          simpl.
+          rewrite theory_ctx_ext_equation_1.
+          simpl.
+          rewrite !theory_ctx_ext_equation_3.
+          rewrite !theory_ctx_ext_equation_2.
+          rewrite !theory_ctx_ext_equation_6. simpl.
+          rewrite !theory_ctx_ext_equation_3.
+          rewrite !theory_ctx_ext_equation_2.
+          rewrite !theory_ctx_ext_equation_6. simpl.
+          rewrite !theory_ctx_ext_equation_3.
+          rewrite !theory_ctx_ext_equation_2.
+          rewrite !theory_ctx_ext_equation_1.
+          rewrite !app_nil_r.
+
+          simpl sig_f. unfold sig_f. simpl List.map.
+          unfold sub_funs.
+          unfold sub_from_map.
+          simpl get_assoc_list. simpl. auto.
+          (*WTF, this is true. What is going on?*)
+          simpl sub_funs.
+          unfold sub_funs. simpl.
+          unfold sub_ctx_map. simpl.
+          unfold Group.grou
+          simpl.
+          unfold sub_ctx_map.
+
+
+    simpl.
+    simpl.
+    Print Ltac prove_task_wf.
+    
+    prove_task_wf.
+  Qed.
+
+  Definition theory5 : theory :=
+    rev [
+      tdef (abs_type t);
+      tdef (abs_fun Ring.plus);
+      tdef (abs_fun Ring.mult);
+      tclone theory3 (Some "T"%string) [(tt, t)] [(top, Ring.plus)] nil;
+      tclone theory3 None [(t, t)] [(op, Ring.mult)] nil;
+      tprop Paxiom "Mul_distr_l" (fforalls [x; y; z] (Feq t_ty
+        (Tfun Ring.mult nil [Tvar x; Tfun Ring.plus nil [Tvar y; Tvar z]])
+        (Tfun Ring.plus nil [Tfun Ring.mult nil [Tvar x; Tvar y]; Tfun Ring.mult nil [Tvar x; Tvar z]])
+      ))
+    ].
+
+  Lemma theory5_ctx: theory_ctx_int theory5 =
+    rev [abs_type t; abs_fun Ring.plus; abs_fun Ring.mult].
+  Proof. reflexivity. Qed.
+  
+  (*Typed*)
+  Lemma theory4_typed: typed_theory theory4.
+  Proof.
+    check_theory.
+  Qed.
+  
+  (*Well-formed*)
+  Lemma theory4_valid: valid_theory theory2.
+  Proof.
+    simpl. split; auto. prove_task_wf.
+  Qed.
+
+      
+      
     ].
   
   End Test.
