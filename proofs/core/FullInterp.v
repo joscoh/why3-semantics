@@ -909,12 +909,16 @@ Definition mono (f: formula) : bool :=
   null (fmla_type_vars f).
 
 (*Makes the theorem statements nicer*)
-Class closed (gamma: context) (f: formula) := 
-{
+Record closed (gamma: context) (f: formula) := 
+mk_closed {
   f_ty: formula_typed gamma f;
   f_closed: closed_formula f;
   f_mono: mono f
 }.
+
+Arguments f_ty {_} {_}.
+Arguments f_closed {_} {_}.
+Arguments f_mono {_} {_}.
 
 
 (*f is the logical consequence of formulas Delta if every
@@ -924,7 +928,7 @@ Class closed (gamma: context) (f: formula) :=
   by removing polymorphism*)
 
 Definition log_conseq (Delta: list formula) (f: formula)
-  `{f_closed: closed gamma f}
+  (Hc: closed gamma f)
   (Delta_ty: Forall (formula_typed gamma) Delta)
   (*(Delta_closed: Forall closed_formula Delta)*)
   (*(f_ty: formula_typed gamma f)
@@ -934,7 +938,7 @@ Definition log_conseq (Delta: list formula) (f: formula)
     (pf_full: full_interp gamma_valid pd pf),
     (forall d (Hd: In d Delta),
       satisfies pd pf pf_full d (Forall_In Delta_ty Hd)) ->
-    satisfies pd pf pf_full f f_ty.
+    satisfies pd pf pf_full f (f_ty Hc).
 
 (*Theorems*)
 Section Thm.
@@ -947,13 +951,11 @@ Proof.
   unfold satisfies; split; intros; erewrite fmla_rep_irrel; auto.
 Qed.
 
-(*Lemma log_conseq_irrel (Delta: list formula) (f: formula)
-  (Delta_ty1 Delta_ty2: Forall (formula_typed gamma) Delta)
-(f_ty1 f_ty2: formula_typed gamma f)
-(f_closed1 f_closed2: closed_formula f)
-(f_mono1 f_mono2: mono f):
-log_conseq Delta f Delta_ty1 f_ty1 f_closed1 f_mono1 <->
-log_conseq Delta f Delta_ty2 f_ty2 f_closed2 f_mono2.
+Lemma log_conseq_irrel (Delta: list formula) (f: formula)
+  (Hc1 Hc2: closed gamma f)
+  (Delta_ty1 Delta_ty2: Forall (formula_typed gamma) Delta):
+log_conseq Delta f Hc1 Delta_ty1 <->
+log_conseq Delta f Hc2 Delta_ty2.
 Proof.
   unfold log_conseq, satisfies; split; intros.
   - erewrite fmla_rep_irrel. apply H; auto.
@@ -962,7 +964,7 @@ Proof.
   - erewrite fmla_rep_irrel. apply H; auto; intros.
     erewrite fmla_rep_irrel. apply H0; auto. 
     Unshelve. auto.
-Qed.*)
+Qed.
 
 (*Theorems about the logic*)
 
@@ -990,74 +992,77 @@ Qed.
   (really true for any vt and vv, but easier to give triv) *)
 Theorem closed_satisfies_equiv (pd: pi_dom) (pf: pi_funpred gamma_valid pd)
 (pf_full: full_interp gamma_valid pd pf) (f: formula)
-`{closed gamma f}:
-reflect (satisfies pd pf pf_full f f_ty)
+(Hc: closed gamma f):
+reflect (satisfies pd pf pf_full f (f_ty Hc))
   (formula_rep gamma_valid pd triv_val_typevar pf (triv_val_vars _ _) 
-   f f_ty).
+   f (f_ty Hc)).
 Proof.
   apply iff_reflect. unfold satisfies. split; intros.
-  - apply H0. (*trivial*)
-  - erewrite fmla_change_vt. apply H0.
-    + pose proof f_mono. unfold mono in H1. rewrite null_nil in H1.
-      rewrite H1. simpl. intros x [].
-    + pose proof f_closed. unfold closed_formula in H1.
-      rewrite null_nil in H1. rewrite H1.
+  - apply H. (*trivial*)
+  - erewrite fmla_change_vt. apply H.
+    + pose proof (f_mono Hc). unfold mono in H0. rewrite null_nil in H0.
+      rewrite H0. simpl. intros x [].
+    + pose proof (f_closed Hc). unfold closed_formula in H0.
+      rewrite null_nil in H0. rewrite H0.
       intros x [].
 Qed.
 
 (*As an immediate corollary, satisfaction is decidable*)
 Corollary closed_satisfies_dec (pd: pi_dom) (pf: pi_funpred gamma_valid pd)
-(pf_full: full_interp gamma_valid pd pf) (f: formula) `{closed gamma f}:
-{ satisfies pd pf pf_full f f_ty } +
-{~ satisfies pd pf pf_full f f_ty}.
+(pf_full: full_interp gamma_valid pd pf) (f: formula)
+(Hc: closed gamma f):
+{ satisfies pd pf pf_full f (f_ty Hc) } +
+{~ satisfies pd pf pf_full f (f_ty Hc)}.
 Proof.
-  destruct (closed_satisfies_equiv pd pf pf_full f);
+  destruct (closed_satisfies_equiv pd pf pf_full f Hc);
   [left | right]; auto.
 Qed.
 
-Instance closed_not (f: formula) `{closed gamma f}:
+Lemma closed_not {f: formula} (Hc: closed gamma f):
   closed gamma (Fnot f).
 constructor.
-- apply F_Not; auto. apply f_ty.
-- pose proof f_closed. unfold closed_formula in *; simpl; auto.
-- pose proof f_mono. unfold mono in *; simpl; auto.
+- apply F_Not; auto. apply f_ty; auto.
+- pose proof (f_closed Hc). unfold closed_formula in *; simpl; auto.
+- pose proof (f_mono Hc). unfold mono in *; simpl; auto.
 Qed.
 
 (*For every formula f and every interpretation I,
   either I |= f or I |= ~f. This relies on f being
   closed and monomorphic*)
 Theorem semantic_lem (pd: pi_dom) (pf: pi_funpred gamma_valid pd)
-(pf_full: full_interp gamma_valid pd pf) (f: formula) `{closed gamma f}:
-satisfies pd pf pf_full f f_ty \/
-satisfies pd pf pf_full (Fnot f) f_ty.
+(pf_full: full_interp gamma_valid pd pf) (f: formula) 
+(Hc: closed gamma f):
+satisfies pd pf pf_full f (f_ty Hc) \/
+satisfies pd pf pf_full (Fnot f) (f_ty (closed_not Hc)).
 Proof.
-  rewrite (reflect_iff _ _ (closed_satisfies_equiv pd pf pf_full f )),
-    (reflect_iff _ _ (closed_satisfies_equiv pd pf pf_full (Fnot f))).
+  rewrite (reflect_iff _ _ (closed_satisfies_equiv pd pf pf_full f _)),
+    (reflect_iff _ _ (closed_satisfies_equiv pd pf pf_full (Fnot f) _)).
   simpl_rep_full.
-  rewrite fmla_rep_irrel with(Hval1:= (typed_not_inv f_ty))
-    (Hval2:=f_ty).
+  rewrite fmla_rep_irrel with(Hval1:= (typed_not_inv (f_ty (closed_not Hc))))
+    (Hval2:=f_ty Hc).
   destruct (formula_rep gamma_valid pd triv_val_typevar pf 
-    (triv_val_vars pd triv_val_typevar) f f_ty); auto.
+    (triv_val_vars pd triv_val_typevar) f (f_ty Hc)); auto.
 Qed.
 
 (*Logical consequence is equivalent to saying that
   Delta, not f is unsat
 *)
 Theorem log_conseq_equiv (Delta: list formula) (f: formula)
-(Delta_ty: Forall (formula_typed gamma) Delta) `{Hclosed: closed gamma f}:
-log_conseq Delta f Delta_ty <->
-~ (sat_set (Fnot f :: Delta) (Forall_cons _ f_ty Delta_ty)).
+(Delta_ty: Forall (formula_typed gamma) Delta) 
+(Hc: closed gamma f):
+log_conseq Delta f Hc Delta_ty <->
+~ (sat_set (Fnot f :: Delta) (Forall_cons _ (f_ty (closed_not Hc)) Delta_ty)).
 Proof.
   unfold log_conseq, sat_set.
   split.
   - intros. intros [pd [pf [pf_full Hsat]]].
-    apply (consistent pd pf pf_full f f_ty).
+    apply (consistent pd pf pf_full f (f_ty Hc)).
     split.
     + apply H; intros. erewrite satisfies_irrel. apply Hsat.
       Unshelve. simpl; auto.
     + erewrite satisfies_irrel. apply Hsat. Unshelve. simpl; auto.
   - intros.
-    destruct (semantic_lem pd pf pf_full f); auto.
+    destruct (semantic_lem pd pf pf_full f Hc); auto.
     exfalso. apply H. exists pd. exists pf. exists pf_full.
     intros. simpl in f_in. destruct f_in; subst.
     + erewrite satisfies_irrel. apply H1.
@@ -1066,18 +1071,28 @@ Qed.
 
 (*Semantic Deduction Theorem: f :: Delta |= g <-> Delta |= f -> g*)
 
-Instance closed_binop {b f g} `{Hc1: closed gamma f} `{Hc2: closed gamma g}:
+Lemma closed_binop {b f g} (Hc1: closed gamma f) (Hc2: closed gamma g):
   closed gamma (Fbinop b f g).
 constructor.
 - apply F_Binop; [apply Hc1|apply Hc2].
-- pose proof (@f_closed _ _ Hc1).
-  pose proof (@f_closed _ _ Hc2).
+- pose proof (f_closed Hc1).
+  pose proof (f_closed Hc2).
   unfold closed_formula in *; simpl;
   rewrite null_nil in *; rewrite H, H0; auto.
-- pose proof (@f_mono _ _ Hc1).
-  pose proof (@f_mono _ _ Hc2).
+- pose proof (f_mono Hc1).
+  pose proof (f_mono Hc2).
   unfold mono in *; simpl;
   rewrite null_nil in *; rewrite H, H0; auto.
+Qed.
+
+Lemma closed_binop_inv { b f1 f2} (Hc: closed gamma (Fbinop b f1 f2)):
+  closed gamma f1 /\ closed gamma f2.
+Proof.
+  inversion Hc; split; constructor;
+  try (solve[inversion f_ty0; auto]);
+  unfold closed_formula, mono in *; rewrite null_nil in *; 
+  try solve[apply union_nil in f_closed0; apply f_closed0];
+  apply union_nil in f_mono0; apply f_mono0.
 Qed.
 
 (*A key lemma for the theorem: I |= (f -> g)
@@ -1085,27 +1100,27 @@ Qed.
 Lemma satisfies_impl
   (pd: pi_dom) (pf: pi_funpred gamma_valid pd)
   (pf_full: full_interp gamma_valid pd pf) 
-  (f g: formula) `{Hc1: closed gamma f} `{Hc2: closed gamma g}:
-  satisfies pd pf pf_full (Fbinop Timplies f g) f_ty <->
-  (satisfies pd pf pf_full f f_ty -> satisfies pd pf pf_full g f_ty).
+  (f g: formula) (Hc1: closed gamma f) (Hc2: closed gamma g):
+  satisfies pd pf pf_full (Fbinop Timplies f g) (f_ty (closed_binop Hc1 Hc2)) <->
+  (satisfies pd pf pf_full f (f_ty Hc1) -> satisfies pd pf pf_full g (f_ty Hc2)).
 Proof.
-  (*Typeclasses let Coq infer all of this magically*)
-  rewrite !(ssrbool.rwP (closed_satisfies_equiv pd pf pf_full _)).
+  rewrite (ssrbool.rwP (closed_satisfies_equiv pd pf pf_full f _)),
+  (ssrbool.rwP (closed_satisfies_equiv pd pf pf_full g _)),
+  (ssrbool.rwP (closed_satisfies_equiv pd pf pf_full (Fbinop Timplies f g) _)).
   simpl_rep_full.
   rewrite bool_of_binop_impl, simpl_all_dec.
-  rewrite (fmla_rep_irrel) with(Hval2:=f_ty).
-  rewrite fmla_rep_irrel with (Hval1:=(proj2' (typed_binop_inv f_ty)))
-    (Hval2:=f_ty). reflexivity.
+  rewrite (fmla_rep_irrel) with(Hval2:=f_ty Hc1).
+  rewrite fmla_rep_irrel with (Hval2:=f_ty Hc2). reflexivity.
 Qed.
 
 Theorem semantic_deduction (Delta: list formula)
   (f g: formula)
   (Delta_ty: Forall (formula_typed gamma) Delta)
-  `{Hc1: closed gamma f} `{Hc2: closed gamma g}:
-  log_conseq (f :: Delta) g 
-    (Forall_cons _ f_ty Delta_ty) <->
+  (Hc1: closed gamma f) (Hc2: closed gamma g):
+  log_conseq (f :: Delta) g Hc2
+    (Forall_cons _ (f_ty Hc1) Delta_ty) <->
   log_conseq Delta (Fbinop Timplies f g)
-    Delta_ty .
+    (closed_binop Hc1 Hc2) Delta_ty .
 Proof.
   split.
   - intros Hcon.
@@ -1117,7 +1132,7 @@ Proof.
     + erewrite satisfies_irrel. apply H.
       Unshelve. auto.
   - unfold log_conseq. intros.
-    assert (satisfies pd pf pf_full (Fbinop Timplies f g) f_ty). {
+    assert (satisfies pd pf pf_full (Fbinop Timplies f g) (f_ty (closed_binop Hc1 Hc2))). {
       apply H. intros. erewrite satisfies_irrel. apply H0.
       Unshelve. simpl; auto.
     }
@@ -1126,6 +1141,34 @@ Proof.
     Unshelve. simpl; auto.
 Qed.
 
+(*If Delta |= f, then D :: Delta |= f (we can always add hypotheses)*)
+Theorem log_conseq_weaken
+  (D1: formula) (Delta: list formula) (f: formula) (Hc: closed gamma f)
+  (Delta_ty1: Forall (formula_typed gamma) Delta)
+  (Delta_ty2: Forall (formula_typed gamma) (D1:: Delta)):
+  log_conseq Delta f Hc Delta_ty1 ->
+  log_conseq (D1 :: Delta) f Hc Delta_ty2.
+Proof.
+  unfold log_conseq. intros.
+  apply H. intros. erewrite satisfies_irrel. apply H0.
+  Unshelve. simpl; auto.
+Qed.
+
+Lemma log_conseq_rewrite_goal
+  (Delta: list formula) (f g: formula)
+  (Delta_ty: Forall (formula_typed gamma) Delta)
+  (Hc1: closed gamma f)
+  (Heq: f = g):
+  log_conseq Delta f Hc1 Delta_ty <->
+  @log_conseq Delta g (eq_ind _ (closed gamma) Hc1 _ Heq) Delta_ty.
+Proof.
+  unfold log_conseq. subst. reflexivity.
+Qed.
+
 End Thm.
 
 End Logic.
+
+Arguments f_ty {_} {_}.
+Arguments f_closed {_} {_}.
+Arguments f_mono {_} {_}.

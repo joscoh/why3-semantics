@@ -4,10 +4,8 @@ Require Import FullInterp.
 Require Import Alpha.
 Set Bullet Behavior "Strict Subproofs".
 
-(*We work at the level of satisfying interpretations, since
-  we need to quantify over valuations. If we fix valuations,
-  some of this (like the quantifier equivalence) does not
-  hold*)
+(*Lemmas about satisfying interpretations. TODO: some are legacy
+  and should be removed*)
 
 (*Quantifiers*)
 
@@ -58,7 +56,30 @@ Proof.
     + intros. erewrite fmla_rep_irrel. apply H.
 Qed.
 
-(*Alternate approach: natural deduction*)
+(*I |= f1 /\ f2 iff I |= f1 and I |= f2. If only all connectives
+  were so nice*)
+Lemma satisfies_and {gamma} (gamma_valid: valid_context gamma)
+  (pd: pi_dom) (pf: pi_funpred gamma_valid pd)
+  (pf_full: full_interp gamma_valid pd pf)
+  (A B: formula) (A_ty: formula_typed gamma A) 
+  (B_ty: formula_typed gamma B):
+  satisfies gamma_valid pd pf pf_full (Fbinop Tand A B) 
+    (F_Binop _ _ _ _ A_ty B_ty)
+  <-> 
+  satisfies gamma_valid pd pf pf_full A A_ty /\
+  satisfies gamma_valid pd pf pf_full B B_ty.
+Proof.
+  unfold satisfies. split; intros.
+  - split; intros vt vv; specialize (H vt vv); revert H;
+    simpl_rep_full; bool_to_prop; intros [C1 C2]; 
+    erewrite fmla_rep_irrel; [apply C1 | apply C2].
+  - destruct H as [F1 F2]; specialize (F1 vt vv);
+    specialize (F2 vt vv); simpl_rep_full;
+    rewrite fmla_rep_irrel with(Hval2:=A_ty),
+      fmla_rep_irrel with (Hval2:=B_ty), F1, F2; auto.
+Qed.
+
+(*Natural deduction*)
 
 (*The other method does not work, since it implicitly involves
   proving (essentially) both soundness and completeness.
@@ -67,10 +88,18 @@ Qed.
 Require Import Task.
 (*Reserved Notation "g ; d '|--' f" (at level 90).*)
 
-(*All of the sound transformations can be derived*)
-Inductive derives {gamma: context}: task gamma -> Prop :=
-  | D_trans: forall (tr: trans gamma) (t: task gamma) 
-    (l: list (task gamma)),
+(*TODO: move to task?*)
+Definition task_with_goal (t: task) (goal: formula) : task :=
+  mk_task (task_gamma t) (task_delta t) goal.
+
+Ltac simpl_task :=
+  unfold task_with_goal, mk_task, task_gamma, task_delta, task_goal in *; simpl in *.
+
+(*Our proof system is very simple:
+  All of the sound transformations can be derived*)
+Inductive derives: task -> Prop :=
+  | D_trans: forall (tr: trans) (t: task) 
+    (l: list task),
     task_wf t ->
     sound_trans tr ->
     tr t = l ->
@@ -78,7 +107,7 @@ Inductive derives {gamma: context}: task gamma -> Prop :=
     derives t.
 
 (*Soundness is trivial*)
-Theorem soundness {gamma: context} (t: task gamma):
+Theorem soundness (t: task):
   derives t ->
   task_valid t.
 Proof.
@@ -92,10 +121,8 @@ Qed.
 
 Section NatDed.
 
-Context {gamma: context}.
-
 (*Axiom rule*)
-Definition axiom_trans (t: task gamma) : list (task gamma) :=
+Definition axiom_trans (t: task) : list (task) :=
   if in_bool formula_eq_dec (task_goal t) (task_delta t)
   then nil else [t].
 
@@ -112,7 +139,7 @@ Proof.
 Qed.
 
 (*And now the deduction rule*)
-Theorem D_axiom (t: task gamma) :
+Theorem D_axiom (t: task) :
   task_wf t ->
   In (task_goal t) (task_delta t) ->
   derives t.
@@ -125,40 +152,81 @@ Proof.
   auto; try contradiction.
 Qed.
 
-(*And*)
-(*TODO: move*)
-(*TODO: maybe get rid of vars in task*)
-Definition task_change_goal (t: task gamma) (goal: formula) : task gamma :=
-  mk_task gamma (task_delta t) goal.
+(*Weakening*)
 
-Definition andI_trans : trans gamma :=
+(*Remove the first hypothesis*)
+Definition weaken_trans: trans :=
+  fun t =>
+  match task_delta t with
+  | nil => [t]
+  | B :: delta => [mk_task (task_gamma t) delta (task_goal t)]
+  end.
+
+Lemma weaken_trans_sound: sound_trans weaken_trans.
+Proof.
+  unfold sound_trans, weaken_trans. intros.
+  destruct t as [[gam del] goal]. simpl_task.
+  destruct del as [| d1 dtl].
+  - apply H; left; auto.
+  - unfold task_valid. split; auto. intros.
+    specialize (H _ (ltac:(simpl; left; reflexivity))).
+    unfold task_valid in H.
+    destruct H as [Hwf Hval].
+    specialize (Hval gamma_valid Hwf).
+    simpl_task.
+    eapply log_conseq_weaken.
+    erewrite log_conseq_irrel. apply Hval.
+    Unshelve. apply Hwf.
+Qed. 
+
+Theorem D_weaken gamma delta A B:
+  formula_typed gamma A ->
+  derives (gamma, delta, B) ->
+  derives (gamma, A :: delta, B).
+Proof.
+  intros. eapply (D_trans weaken_trans); auto.
+  - inversion H0; subst. destruct H1.
+    constructor; simpl_task; auto.
+  - apply weaken_trans_sound.
+  - intros x [Hx | []]; subst; simpl_task; auto.
+Qed. 
+
+(*And*)
+
+(*And intro*)
+Definition andI_trans : trans :=
   fun t =>
   match (task_goal t) with
-  | Fbinop Tand f1 f2 => [task_change_goal t f1; task_change_goal t f2]
+  | Fbinop Tand f1 f2 => [task_with_goal t f1; task_with_goal t f2]
   | _ => [t]
   end.
 
-Lemma andT_trans_sound: sound_trans andI_trans.
+Ltac gen_ty :=
+  match goal with
+  | |- is_true (formula_rep ?val ?pd ?vt ?pf ?vv ?goal ?ty) =>
+    generalize dependent ty
+  end.
+
+Lemma andI_trans_sound: sound_trans andI_trans.
 Proof.
   unfold sound_trans, andI_trans. intros.
   destruct (task_goal t) eqn : Ht; simpl in H; try solve[apply H; auto].
   destruct b; simpl in H; try solve[apply H; auto].
   unfold task_valid. split; auto.
   intros.
-  unfold log_conseq, satisfies. intros.
-  generalize dependent (task_goal_typed w_wf).
-  rewrite Ht; intros. simpl_rep_full.
+  unfold log_conseq, satisfies. intros. gen_ty.
+  rewrite Ht. intros. simpl_rep_full.
   bool_to_prop.
   split.
-  - specialize (H (task_change_goal t f1) (ltac:(auto))).
-    unfold task_valid, task_change_goal in H; simpl in H.
+  - specialize (H (task_with_goal t f1) (ltac:(auto))).
+    unfold task_valid, task_with_goal in H; simpl in H.
     destruct H. specialize (H1 gamma_valid H).
     unfold log_conseq, satisfies in H1.
     erewrite fmla_rep_irrel. apply H1; auto.
     intros. erewrite fmla_rep_irrel. apply H0.
     Unshelve. auto.
-  - specialize (H (task_change_goal t f2) (ltac:(auto))).
-    unfold task_valid, task_change_goal in H; simpl in H.
+  - specialize (H (task_with_goal t f2) (ltac:(auto))).
+    unfold task_valid, task_with_goal in H; simpl in H.
     destruct H. specialize (H1 gamma_valid H).
     unfold log_conseq, satisfies in H1.
     erewrite fmla_rep_irrel. apply H1; auto.
@@ -167,47 +235,292 @@ Proof.
 Qed.
 
 (*And now the deduction rule*)
-Theorem D_andI (delta: list formula)
+Theorem D_andI gamma (delta: list formula)
   (f1 f2: formula):
-  task_wf (delta, (Fbinop Tand f1 f2)) ->
-  derives (delta, f1) ->
-  derives (delta, f2) ->
-  derives (delta, Fbinop Tand f1 f2).
-  task_wf (mk_tasn delta vars ())
-
-Theorem D_axiom (t: task gamma) :
-  task_wf t ->
-  In (task_goal t) (task_delta t) ->
-  derives t.
+  task_wf (gamma, delta, (Fbinop Tand f1 f2)) ->
+  derives (gamma, delta, f1) ->
+  derives (gamma, delta, f2) ->
+  derives (gamma, delta, Fbinop Tand f1 f2).
 Proof.
-  intros. eapply (D_trans axiom_trans). auto.
-  apply axiom_trans_sound. 
-  unfold axiom_trans.
-  reflexivity. intros.
-  destruct (in_bool_spec formula_eq_dec (task_goal t) (task_delta t));
-  auto; try contradiction.
+  intros. eapply (D_trans andI_trans); auto.
+  apply andI_trans_sound.
+  unfold andI_trans. simpl.
+  intros x [Hx | [Hx | []]]; subst; unfold task_with_goal; simpl; auto.
+Qed.
+ 
+(*And elimination*)
+
+(*To prove A, we can prove A /\ B*)
+Definition andE1_trans (B: formula) : trans :=
+  fun t => [task_with_goal t (Fbinop Tand (task_goal t) B)].
+
+Lemma andE1_trans_sound: forall B, sound_trans (andE1_trans B).
+Proof.
+  intros. unfold sound_trans, andE1_trans.
+  intros. specialize (H _ (ltac:(simpl; left; auto))).
+  destruct t as [[gamma delta] A].
+  unfold task_valid in *; simpl_task.
+  destruct H as [Hwf Hval].
+  split; auto. intros.
+  specialize (Hval gamma_valid Hwf).
+  unfold log_conseq in *.
+  intros. specialize (Hval pd pf pf_full). 
+  prove_hyp Hval.
+  {
+    intros. erewrite satisfies_irrel. apply H. Unshelve. auto.
+  }
+  assert (formula_typed gamma B). {
+    destruct Hwf. simpl_task. destruct task_goal_typed.
+    inversion f_ty; auto.
+  }
+  erewrite satisfies_irrel in Hval.
+  rewrite satisfies_and with (B_ty:=H0) in Hval.
+  apply Hval.
 Qed.
 
+Theorem D_andE1 {gamma delta A B}:
+  derives (gamma, delta, Fbinop Tand A B) ->
+  derives (gamma, delta, A).
+Proof.
+  intros. eapply (D_trans (andE1_trans B)); auto.
+  - inversion H; subst. destruct H0; simpl_task.
+    constructor; auto; simpl_task. apply closed_binop_inv in task_goal_typed.
+    apply task_goal_typed.
+  - apply andE1_trans_sound.
+  - intros x [Hx | []]; subst; auto.
+Qed.
 
-    
+(*And the other elimination rule*)
+
+(*To prove B, we can prove A /\ B*)
+Definition andE2_trans (A: formula) : trans :=
+  fun t => [task_with_goal t (Fbinop Tand A (task_goal t))].
+
+Lemma andE2_trans_sound: forall A, sound_trans (andE2_trans A).
+Proof.
+  intros. unfold sound_trans, andE2_trans.
+  intros. specialize (H _ (ltac:(simpl; left; auto))).
+  destruct t as [[gamma delta] B].
+  unfold task_valid in *; simpl_task.
+  destruct H as [Hwf Hval].
+  split; auto. intros.
+  specialize (Hval gamma_valid Hwf).
+  unfold log_conseq in *.
+  intros. specialize (Hval pd pf pf_full). 
+  prove_hyp Hval.
+  {
+    intros. erewrite satisfies_irrel. apply H. Unshelve. auto.
+  }
+  assert (formula_typed gamma A). {
+    destruct Hwf. simpl_task. destruct task_goal_typed.
+    inversion f_ty; auto.
+  }
+  erewrite satisfies_irrel in Hval.
+  rewrite satisfies_and with (A_ty:=H0) in Hval.
+  apply Hval.
+Qed.
+
+Theorem D_andE2 {gamma delta A B}:
+  derives (gamma, delta, Fbinop Tand A B) ->
+  derives (gamma, delta, B).
+Proof.
+  intros. eapply (D_trans (andE2_trans A)); auto.
+  - inversion H; subst. destruct H0; simpl_task.
+    constructor; auto; simpl_task. apply closed_binop_inv in task_goal_typed.
+    apply task_goal_typed.
+  - apply andE2_trans_sound.
+  - intros x [Hx | []]; subst; auto.
+Qed.
+
+(*Note: prob should do in form for tactic: if H: A /\ B in gamma,
+  then we can instead say that H1 : A and H2 : B in gamma*)
+(*TODO: add once we add names to context*)
+
+(*Implication*)
+
+(*If A, Delta |- B, then Delta |- A -> B*)
+Definition implI_trans: trans :=
+  fun t => 
+  match (task_goal t) with
+  | Fbinop Timplies A B => [mk_task (task_gamma t) (A :: task_delta t) B]
+  | _ => [t]
+  end.
+
+(*Soundness follows directly from the semantic deduction theorem*)
+Lemma implI_trans_sound: sound_trans implI_trans.
+Proof.
+  unfold sound_trans, implI_trans. intros.
+  destruct (task_goal t) eqn : Ht; simpl in H; try solve[apply H; auto].
+  destruct b; simpl in H; try solve[apply H; auto].
+  unfold task_valid. split; auto.
+  intros.
+  rewrite log_conseq_rewrite_goal with (Heq:=Ht). simpl.
+  erewrite log_conseq_irrel.
+  rewrite <- semantic_deduction.
+  specialize (H _ (ltac:(left; reflexivity))).
+  unfold task_valid in H. simpl in H.
+  destruct H.
+  specialize (H0 gamma_valid H).
+  erewrite log_conseq_irrel. apply H0.
+  Unshelve.
+  all: (destruct w_wf; auto; rewrite Ht in task_goal_typed;
+    apply closed_binop_inv in task_goal_typed; apply task_goal_typed).
+Qed.
+
+(*And now the deduction rule*)
+Theorem D_implI gamma (delta: list formula) (A B: formula)
+  (*Here, need A to be closed and monomorphic*)
+  (Hc: closed gamma A):
+  derives (gamma, A :: delta, B) ->
+  derives (gamma, delta, Fbinop Timplies A B).
+Proof.
+  intros. eapply (D_trans implI_trans); auto.
+  - inversion H; subst.
+    destruct H0.
+    constructor; auto; simpl_task.
+    + inversion task_delta_typed; auto.
+    + apply closed_binop; auto.
+  - apply implI_trans_sound.
+  - unfold implI_trans. intros. simpl_task.
+    destruct H0 as [Hx | []]; subst; auto.
+Qed.
+
+(*And the implication elimination rule:
+  If Delta |- A -> B and Delta |- A, then Delta |- B*)
+
+(*To prove B, we can prove A -> B and A*)
+Definition implE_trans (A: formula): trans :=
+  fun t =>
+  [task_with_goal t (Fbinop Timplies A (task_goal t));
+    task_with_goal t A].
+
+Lemma implE_trans_sound: forall A, sound_trans (implE_trans A).
+Proof.
+  unfold sound_trans, implE_trans. intros.
+  unfold task_valid. split; auto.
+  intros.
+  assert (E1:=H). assert (E2:=H).
+  specialize (E1 _ (ltac:(simpl; left; reflexivity))).
+  specialize (E2 _ (ltac:(simpl; right; left; reflexivity))).
+  destruct t as [[gamma delta] B].
+  simpl_task. clear H.
+  unfold task_valid in *.
+  destruct E1 as [Hwf1 E1].
+  destruct E2 as [Hwf2 E2]. simpl_task.
+  specialize (E1 gamma_valid Hwf1).
+  specialize (E2 gamma_valid Hwf2).
+  erewrite log_conseq_irrel in E1.
+  rewrite <- semantic_deduction in E1.
+  Unshelve.
+  2: { apply t_wf. } simpl in E1.
+  2: { apply Hwf2. }
+  2: { apply t_wf. } simpl in E1.
+  unfold log_conseq in *; intros.
+  specialize (E1 pd pf pf_full).
+  prove_hyp E1.
+  {
+    intros. destruct Hd; subst.
+    - erewrite satisfies_irrel. apply E2. intros.
+      erewrite satisfies_irrel. apply H. Unshelve. auto.
+    - erewrite satisfies_irrel. apply H. Unshelve. auto.
+  }
+  erewrite satisfies_irrel.
+  apply E1.
+Qed.
+
+(*The derivation form*)
+Theorem D_implE gamma delta A B:
+  derives (gamma, delta, Fbinop Timplies A B) ->
+  derives (gamma, delta, A) ->
+  derives (gamma, delta, B).
+Proof.
+  intros. eapply (D_trans (implE_trans A)); auto.
+  - inversion H; subst.
+    destruct H1. simpl_task.
+    constructor; simpl_task; auto.
+    apply closed_binop_inv in task_goal_typed. apply task_goal_typed.
+  - apply implE_trans_sound.
+  - unfold implE_trans. simpl_task.
+    intros x [Hx | [Hx | []]]; subst; auto.
+Qed.
+
+(*A more useful version: if we can prove
+  that Delta |- A and that Delta, A |- B, then
+  we can prove Delta |- B.
+  This is essentially "assert" in Coq*)
+
+Definition assert_trans (A: formula) : trans :=
+  fun t => [task_with_goal t A;
+    mk_task (task_gamma t) (A :: task_delta t) (task_goal t)].
+
+(*Essentially the same proof*)
+Lemma assert_trans_sound (A: formula) : sound_trans (assert_trans A).
+Proof.
+  unfold sound_trans, implE_trans. intros.
+  unfold task_valid. split; auto.
+  intros.
+  assert (E1:=H). assert (E2:=H).
+  specialize (E1 _ (ltac:(simpl; left; reflexivity))).
+  specialize (E2 _ (ltac:(simpl; right; left; reflexivity))).
+  destruct t as [[gamma delta] B].
+  simpl_task. clear H.
+  unfold task_valid in *.
+  destruct E1 as [Hwf1 E1].
+  destruct E2 as [Hwf2 E2]. simpl_task.
+  specialize (E1 gamma_valid Hwf1).
+  specialize (E2 gamma_valid Hwf2).
+  unfold log_conseq in *; intros.
+  specialize (E2 pd pf pf_full).
+  prove_hyp E2.
+  {
+    intros. destruct Hd; subst.
+    - erewrite satisfies_irrel. apply E1. intros.
+      erewrite satisfies_irrel. apply H. Unshelve. auto.
+    - erewrite satisfies_irrel. apply H. Unshelve. auto.
+  }
+  erewrite satisfies_irrel.
+  apply E2.
+Qed.
+
+(*Derives version*)
+Theorem D_assert gamma delta A B:
+  derives (gamma, delta, A) ->
+  derives (gamma, A :: delta, B) ->
+  derives (gamma, delta, B).
+Proof.
+  intros. eapply (D_trans (assert_trans A)); auto.
+  - inversion H0; subst. destruct H1. simpl_task.
+    constructor; auto. simpl_task.
+    inversion task_delta_typed; auto.
+  - apply assert_trans_sound.
+  - simpl_task. intros x [Hx | [Hx | []]]; subst; auto.
+Qed.
+
+(*As this suggests, we can prove the deduction theorem:
+  Delta |- A -> B iff Delta, A |- B*)
+Theorem derives_deduction gamma delta A B:
+  closed gamma A ->
+  derives (gamma, delta, Fbinop Timplies A B) <->
+  derives (gamma, A :: delta, B).
+Proof.
+  intros.
+  split; intros.
+  2: {
+    apply D_implI; auto.
+  }
+  assert (derives (gamma, A :: delta, Fbinop Timplies A B)). {
+    apply D_weaken; auto. apply H.
+  }
+  assert (derives (gamma, A :: delta, A)). apply D_axiom; simpl; auto.
+  - inversion H0; subst.
+    destruct H2. simpl_task. constructor; auto.
+    simpl_task. constructor; auto.
+    destruct task_goal_typed. inversion f_ty; auto.
+  - apply D_implE with(A:=A); auto.
+Qed.
   
-  split; [apply H |].
-  apply /andP.
 
-  
-  
-  constructor.
-
-
-
-
-intros. apply H2; subst; auto.
-
-
-  subst.
-
-
-
+(* old: mostly wrong
   | D_axiom : forall delta f,
     In f delta ->
     gamma ; delta |-- f
@@ -331,5 +644,6 @@ Lemma tforall_rewrite {gamma: context} {gamma_valid: valid_context gamma}
   satisfies gamma_valid pd pf Hfull (Fquant Tforall x f) Hty <->
   (forall (y: string), satisfies gamma_valid pd pf Hfull
     (safe_sub_f (Tvar (y, snd x)) x f) (tforall_rewrite_ty Hty y)).
-
+*)
   
+End NatDed.

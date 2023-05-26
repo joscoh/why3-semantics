@@ -307,19 +307,19 @@ Definition elim_let_f_rep bt bf f :=
 End Rep.
 
 (*Define the transformation*)
-Definition eliminate_let_term (gamma: context) : trans gamma :=
-  trans_goal gamma (elim_let_f true false).
+Definition eliminate_let_term: trans :=
+  trans_goal (elim_let_f true false).
   
-Definition eliminate_let_fmla (gamma: context) : trans gamma :=
-  trans_goal gamma (elim_let_f false true).
+Definition eliminate_let_fmla : trans :=
+  trans_goal (elim_let_f false true).
 
-Definition eliminate_let (gamma: context) : trans gamma :=
-  trans_goal gamma (elim_let_f true true).
+Definition eliminate_let : trans :=
+  trans_goal (elim_let_f true true).
 
 (*Now we prove soundness*)
-Lemma eliminate_let_sound_gen (gamma: context) :
+Lemma eliminate_let_sound_gen :
   forall b1 b2,
-  sound_trans (trans_goal gamma (elim_let_f b1 b2)).
+  sound_trans (trans_goal (elim_let_f b1 b2)).
 Proof.
   intros.
   apply trans_goal_sound.
@@ -330,20 +330,20 @@ Proof.
     apply H.
 Qed.
 
-Theorem eliminate_let_term_sound gamma:
-  sound_trans (eliminate_let_term gamma).
+Theorem eliminate_let_term_sound:
+  sound_trans (eliminate_let_term).
 Proof.
   apply eliminate_let_sound_gen.
 Qed.
 
-Theorem eliminate_let_fmla_sound gamma:
-  sound_trans (eliminate_let_fmla gamma).
+Theorem eliminate_let_fmla_sound:
+  sound_trans (eliminate_let_fmla).
 Proof.
   apply eliminate_let_sound_gen.
 Qed.
 
-Theorem elim_let_sound gamma:
-  sound_trans (eliminate_let gamma).
+Theorem elim_let_sound:
+  sound_trans (eliminate_let).
 Proof.
   apply eliminate_let_sound_gen.
 Qed.
@@ -1300,19 +1300,19 @@ End Rep.
 End ElimLetWhy3.
 
 (*Define the transformation*)
-Definition eliminate_let_term2 (gamma: context) : trans gamma :=
-  trans_goal gamma (elim_let_fmla true false).
+Definition eliminate_let_term2: trans :=
+  trans_goal (elim_let_fmla true false).
   
-Definition eliminate_let_fmla2 (gamma: context) : trans gamma :=
-  trans_goal gamma (elim_let_fmla false true).
+Definition eliminate_let_fmla2 : trans :=
+  trans_goal (elim_let_fmla false true).
 
-Definition eliminate_let2 (gamma: context) : trans gamma :=
-  trans_goal gamma (elim_let_fmla true true).
+Definition eliminate_let2 : trans :=
+  trans_goal (elim_let_fmla true true).
 
 (*Now we prove soundness*)
-Lemma eliminate_let_sound_gen2 (gamma: context) :
+Lemma eliminate_let_sound_gen2 :
   forall b1 b2,
-  sound_trans (trans_goal gamma (elim_let_fmla b1 b2)).
+  sound_trans (trans_goal (elim_let_fmla b1 b2)).
 Proof.
   intros.
   apply trans_goal_sound.
@@ -1324,20 +1324,20 @@ Proof.
     apply H.
 Qed.
 
-Theorem eliminate_let_term_sound2 gamma:
-  sound_trans (eliminate_let_term2 gamma).
+Theorem eliminate_let_term_sound2:
+  sound_trans eliminate_let_term2.
 Proof.
   apply eliminate_let_sound_gen2.
 Qed.
 
-Theorem eliminate_let_fmla_sound2 gamma:
-  sound_trans (eliminate_let_fmla2 gamma).
+Theorem eliminate_let_fmla_sound2:
+  sound_trans eliminate_let_fmla2.
 Proof.
   apply eliminate_let_sound_gen2.
 Qed.
 
-Theorem elim_let_sound2 gamma:
-  sound_trans (eliminate_let2 gamma).
+Theorem elim_let_sound2:
+  sound_trans eliminate_let2.
 Proof.
   apply eliminate_let_sound_gen2.
 Qed.
