@@ -780,6 +780,15 @@ Proof.
       * apply (existT _ Hinf). apply (exist _ b1). f_equal. apply Hb1.
 Qed.
 
+Lemma constrs_in_list
+  (i: finite (length m)):
+  let constrs := fin_nth m i in
+  In (adt_constrs constrs) [seq adt_constrs i | i <- m].
+Proof.
+  intros. rewrite in_map_iff. exists constrs; split; auto.
+  subst constrs. apply fin_nth_in.
+Qed. 
+
 (*1. Every ADT created by constructor*)
 (*A key lemma/function: Every instance of an ADT was created by a constructor, and
   moreover, we can find which constructor and the arguments to which that
@@ -798,15 +807,14 @@ Definition find_constr: forall (n: finite (length m))
      | 
       x = make_constr m n f (fst (fst t)) (snd (fst t)) (snd t)}}.
 Proof.
-  intros. unfold mk_adts in x. dependent destruction x.
+  intros. unfold mk_adts in x. destruct x. (*dependent destruction x.*)
   unfold make_constr.
   set (constrs:= (fin_nth m i)) in *.
   assert (Huniqc: nodupb funsym_eq_dec (ne_list_to_list (adt_constrs constrs))). {
-    apply Huniq. rewrite in_map_iff. exists constrs. split; auto.
-    subst constrs. apply fin_nth_in.
+    apply Huniq. apply constrs_in_list. 
   }
-  pose proof (get_funsym_base (adt_name constrs) (adt_constrs constrs) Huniqc a).
-  destruct H as [f' [Hin [b1 Ha]]].
+  destruct (get_funsym_base (adt_name constrs) (adt_constrs constrs) Huniqc a)
+    as [f' [Hin [b1 Ha]]].
   apply (existT _ f').
   (*construct the function we need*)
   unshelve epose (g:=_ : forall j: finite (Datatypes.length m),
@@ -827,7 +835,7 @@ Proof.
   rewrite <- (Hhg x _).
   subst g. simpl. f_equal. unfold eq_rec_r. simpl.
   rewrite build_rec_finite_inv1. reflexivity.
-Qed.
+Defined.
 
 (*2. Constructors are disjoint *)
 
@@ -1958,8 +1966,8 @@ Proof.
   unfold adt_rep in x.
   specialize (X x).
   destruct X as [f Hf].
-  destruct Hf as [[[Hinf base] inds] Hx]. subst.
-  apply (existT _ f).
+  destruct Hf as [[[Hinf base] inds] Hx]. (*subst.*)
+  apply (existT _ f). subst.
   assert (f_in: constr_in_adt f t). {
     rewrite get_idx_correct in Hinf. apply Hinf. 
   }
@@ -1972,7 +1980,7 @@ Proof.
   - apply bool_irrelevance.
   - rewrite cast_arg_list_twice. subst. reflexivity.
   - rewrite cast_arg_list_twice. subst. reflexivity.
-Qed.
+Defined.
 
 (*Constructors are disjoint (axiom-free)*)
 Lemma constr_rep_disjoint: forall {f1 f2: funsym}
@@ -2176,6 +2184,111 @@ Proof.
 Qed.
 
 End Build.
+
+(*Change gamma*)
+
+Lemma tup_of_list_eq {A : Type} (n: nat) (l1 l2: list A)
+  (Hl1: length l1 = n) (Hl2: length l2 = n):
+  l1 = l2 ->
+  tup_of_list Hl1 = tup_of_list Hl2.
+Proof.
+  intros. subst. unfold tup_of_list.
+  f_equal. apply bool_irrelevance.
+Qed. 
+
+Lemma constr_rep_change_gamma {gamma1 gamma2: context}
+  (gamma_valid1: valid_context gamma1)
+  (gamma_valid2: valid_context gamma2)
+  (m: mut_adt)
+  (m_in1: mut_in_ctx m gamma1)
+  (m_in2: mut_in_ctx m gamma2)
+  (srts: list Types.sort)
+  (srts_len : Datatypes.length srts = Datatypes.length (m_params m))
+  (domain_aux : Types.sort -> Set) (t : alg_datatype)
+  (t_in : adt_in_mut t m)
+  (c: funsym)
+  (c_in: constr_in_adt c t)
+  (adts: forall (a : alg_datatype) (Hin : adt_in_mut a m),
+  domain domain_aux (typesym_to_sort (adt_name a) srts) =
+  adt_rep m srts domain_aux a Hin)
+  (a: arg_list (domain domain_aux) (sym_sigma_args c srts)):
+  constr_rep gamma_valid1 m m_in1 srts srts_len domain_aux t t_in c c_in adts a =
+  constr_rep gamma_valid2 m m_in2 srts srts_len domain_aux t t_in c c_in adts a.
+Proof.
+  unfold constr_rep.
+  f_equal.
+  - f_equal. f_equal. apply UIP_dec. apply list_eq_dec. apply sort_eq_dec.
+  - unfold args_to_ind_base. unfold args_to_ind_base_aux.
+    apply functional_extensionality_dep; intros.
+    apply tup_of_list_eq. f_equal.
+    2: apply UIP.
+    erewrite hlist_to_list_irrel.
+    f_equal. f_equal. f_equal. apply UIP_dec.
+    apply list_eq_dec. all: apply sort_eq_dec.
+Qed.
+
+(*We can change gamma and the funsym doesn't change*)
+Lemma find_constr_rep_change_gamma {gamma1 gamma2: context}
+  (gamma_valid1: valid_context gamma1)
+  (gamma_valid2: valid_context gamma2)
+  (m: mut_adt) (m_in1: mut_in_ctx m gamma1) (m_in2: mut_in_ctx m gamma2)
+  (srts: list Types.sort)
+  (srts_len : Datatypes.length srts = Datatypes.length (m_params m))
+  (domain_aux : Types.sort -> Set) (t : alg_datatype)
+  (t_in : adt_in_mut t m)
+  (dom_adts : forall (a : alg_datatype) (Hin : adt_in_mut a m),
+              domain domain_aux (typesym_to_sort (adt_name a) srts) =
+              adt_rep m srts domain_aux a Hin)
+  (m_unif: uniform m)
+  (x: adt_rep m srts domain_aux t t_in):
+  projT1 (find_constr_rep gamma_valid1 m m_in1 
+    srts srts_len domain_aux t t_in dom_adts m_unif x) =
+  projT1 (find_constr_rep gamma_valid2 m m_in2 
+    srts srts_len domain_aux t t_in dom_adts m_unif x).
+Proof.
+  unfold find_constr_rep.
+  simpl.
+  assert (projT1 (find_constr (var_map m srts domain_aux) (typesym_map m srts domain_aux) 
+  (typs m) (get_idx adt_dec t (typs m) t_in)
+  (fun (constrs : ne_list funsym)
+     (H : In constrs (map (fun i : alg_datatype => adt_constrs i) (typs m))) =>
+   @constrs_nodups gamma1 gamma_valid1 m constrs m_in1 H) x) =
+   projT1 (find_constr (var_map m srts domain_aux) (typesym_map m srts domain_aux) 
+          (typs m) (get_idx adt_dec t (typs m) t_in)
+          (fun (constrs : ne_list funsym)
+             (H : In constrs (map (fun i : alg_datatype => adt_constrs i) (typs m))) =>
+           @constrs_nodups gamma2 gamma_valid2 m constrs m_in2 H) x)).
+  2: {
+    destruct (find_constr (var_map m srts domain_aux) (typesym_map m srts domain_aux) 
+    (typs m) (get_idx adt_dec t (typs m) t_in)
+    (fun constrs : ne_list funsym => [eta constrs_nodups gamma_valid1]) x);
+    destruct (find_constr (var_map m srts domain_aux) (typesym_map m srts domain_aux) 
+    (typs m) (get_idx adt_dec t (typs m) t_in)
+    (fun constrs : ne_list funsym => [eta constrs_nodups gamma_valid2]) x);
+    simpl in H. subst. destruct s, s0. destruct x0, x2.
+    destruct p, p0. reflexivity.
+  }
+  unfold find_constr. simpl.
+  unfold adt_rep in x.
+  dependent destruction x.
+  idtac.
+  assert ((@constrs_nodups gamma2 gamma_valid2
+  m (adt_constrs (fin_nth (typs m) (get_idx adt_dec t (adts m) t_in)))
+  m_in2 (constrs_in_list (typs m) (get_idx adt_dec t (adts m) t_in))) =
+  (@constrs_nodups gamma1 gamma_valid1 m
+  (adt_constrs (fin_nth (typs m) (get_idx adt_dec t (adts m) t_in)))
+    m_in1 (constrs_in_list (typs m) (get_idx adt_dec t (adts m) t_in)))).
+  2: {
+    rewrite H. 
+    destruct (get_funsym_base (var_map m srts domain_aux) (typesym_map m srts domain_aux) 
+    (typs m) (adt_name (fin_nth (typs m) (get_idx adt_dec t (adts m) t_in)))
+    (adt_constrs (fin_nth (typs m) (get_idx adt_dec t (adts m) t_in)))
+    (constrs_nodups gamma_valid1
+       (constrs_in_list (typs m) (get_idx adt_dec t (adts m) t_in))) a).
+    destruct s; destruct s; reflexivity.
+  }
+  apply bool_irrelevance.
+Qed.
 
 (** Testing **)
 

@@ -1154,17 +1154,6 @@ Proof.
   Unshelve. simpl; auto.
 Qed.
 
-Lemma log_conseq_rewrite_goal
-  (Delta: list formula) (f g: formula)
-  (Delta_ty: Forall (formula_typed gamma) Delta)
-  (Hc1: closed gamma f)
-  (Heq: f = g):
-  log_conseq Delta f Hc1 Delta_ty <->
-  @log_conseq Delta g (eq_ind _ (closed gamma) Hc1 _ Heq) Delta_ty.
-Proof.
-  unfold log_conseq. subst. reflexivity.
-Qed.
-
 End Thm.
 
 End Logic.
