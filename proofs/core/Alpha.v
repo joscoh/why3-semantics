@@ -787,24 +787,9 @@ Proof.
     intros e e0.
     assert (e = e0) by (apply UIP_dec, Nat.eq_dec). subst.
     simpl.
-    destruct (funsym_eq_dec
-    (projT1
-       (find_constr_rep gamma_valid m Hinctx (map (v_subst vt) vs2)
-          (eq_trans (map_length (v_subst vt) vs2) e0) 
-          (dom_aux pd) adt Hinmut (adts pd m (map (v_subst vt) vs2))
-          (gamma_all_unif gamma_valid m Hinctx)
-          (scast (adts pd m (map (v_subst vt) vs2) adt Hinmut)
-             (dom_cast (dom_aux pd) (eq_trans eq_refl (v_subst_cons (adt_name adt) vs2))
-                d)))) f); [|reflexivity].
-    (*Need nested induction, simplify first*)
-    generalize dependent (find_constr_rep gamma_valid m Hinctx (map (v_subst vt) vs2)
-    (eq_trans (map_length (v_subst vt) vs2) e0) 
-    (dom_aux pd) adt Hinmut (adts pd m (map (v_subst vt) vs2))
-    (gamma_all_unif gamma_valid m Hinctx)
-    (scast (adts pd m (map (v_subst vt) vs2) adt Hinmut)
-       (dom_cast (dom_aux pd)
-          (eq_trans eq_refl (v_subst_cons (adt_name adt) vs2)) d))).
-    intros constr. destruct constr as [f' Hf']. simpl. intros Hf; subst.
+    case_find_constr. intros constr.
+    destruct (funsym_eq_dec (projT1 constr) f); [| reflexivity].
+    destruct constr as [f' Hf']. simpl in *. subst.
     simpl.
     (*Now remove Hvslen1*)
     generalize dependent (Hvslen1 m adt vs2 f eq_refl
@@ -1075,24 +1060,9 @@ Proof.
     intros e e0.
     assert (e = e0) by (apply UIP_dec, Nat.eq_dec). subst.
     simpl.
-    destruct (funsym_eq_dec
-    (projT1
-       (find_constr_rep gamma_valid m Hinctx (map (v_subst vt) vs2)
-          (eq_trans (map_length (v_subst vt) vs2) e0) 
-          (dom_aux pd) adt Hinmut (adts pd m (map (v_subst vt) vs2))
-          (gamma_all_unif gamma_valid m Hinctx)
-          (scast (adts pd m (map (v_subst vt) vs2) adt Hinmut)
-             (dom_cast (dom_aux pd) (eq_trans eq_refl (v_subst_cons (adt_name adt) vs2))
-                d)))) f); [|discriminate].
-    (*Need nested induction, simplify first*)
-    generalize dependent (find_constr_rep gamma_valid m Hinctx (map (v_subst vt) vs2)
-    (eq_trans (map_length (v_subst vt) vs2) e0) 
-    (dom_aux pd) adt Hinmut (adts pd m (map (v_subst vt) vs2))
-    (gamma_all_unif gamma_valid m Hinctx)
-    (scast (adts pd m (map (v_subst vt) vs2) adt Hinmut)
-       (dom_cast (dom_aux pd)
-          (eq_trans eq_refl (v_subst_cons (adt_name adt) vs2)) d))).
-    intros constr. destruct constr as [f' Hf']. simpl. intros Hf; subst.
+    case_find_constr. intros constr.
+    destruct (funsym_eq_dec (projT1 constr) f); [|discriminate].
+    destruct constr as [f' Hf']. simpl in *. subst.
     simpl.
     (*Now remove Hvslen1*)
     generalize dependent (Hvslen1 m adt vs2 f eq_refl

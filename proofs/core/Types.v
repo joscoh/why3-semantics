@@ -628,5 +628,15 @@ Proof.
   intros. apply H. simpl. simpl_set. exists y. split; auto.
 Qed.
 
-End TySubstLemmas.
+Lemma v_subst_cons {f} ts vs:
+  v_subst f (vty_cons ts vs) =
+  typesym_to_sort ts (map (v_subst f) vs).
+Proof.
+  apply sort_inj. simpl.
+  f_equal. apply list_eq_ext'; rewrite !map_length; auto.
+  intros n d Hn.
+  rewrite -> !map_nth_inbound with (d2:=s_int); [|rewrite map_length; auto].
+  rewrite -> !map_nth_inbound with (d2:=vty_int); auto.
+Qed.
 
+End TySubstLemmas.

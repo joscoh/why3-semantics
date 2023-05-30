@@ -1,4 +1,4 @@
-Require Export FullInterp.
+Require Export Logic.
 Set Bullet Behavior "Strict Subproofs".
 
 (*A why3 task consists of
@@ -292,7 +292,7 @@ Definition check_closed gamma (f: formula) : bool :=
   mono f.
 
 Lemma check_closed_correct gamma f:
-  reflect (FullInterp.closed gamma f) (check_closed gamma f).
+  reflect (Logic.closed gamma f) (check_closed gamma f).
 Proof.
   rewrite /check_closed.
   case: (typecheck_formula_correct gamma f) => Hty; last by reflF.
@@ -340,3 +340,12 @@ Qed.*)
 Ltac prove_task_wf :=
   apply /check_task_wf_correct;
   reflexivity.
+
+(*Helpful utilities*)
+
+Definition task_with_goal (t: task) (goal: formula) : task :=
+  mk_task (task_gamma t) (task_delta t) goal.
+
+Ltac simpl_task :=
+  unfold task_with_goal, mk_task, task_gamma, task_delta, task_goal in *; simpl in *.
+  

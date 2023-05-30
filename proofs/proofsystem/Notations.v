@@ -1,5 +1,6 @@
 Require Import Syntax.
 Require Import Typechecker.
+Require Import ProofSystem.
 (*We want a nicer way to represent terms and formulas*)
 
 (*First, utilities to prevent us from having to write the type
@@ -636,7 +637,7 @@ Notation " p -> f " :=
     (m_p: str_map predsym) (m_v: str_map vsymbol) =>
     let pat := p ty m_t m_f in
     (*Set all pattern variables*)
-    (pat, f m_t m_f m_p (bind_vars m_v (pat_fv pat)))
+    (pat, f m_t m_f m_p (set_all m_v fst (pat_fv pat)))
     )
   (in custom fmlapat at level 75,
   p custom pat,
@@ -752,7 +753,7 @@ Notation "'function' foo args : ret = body" :=
     recursive_def [fun_def f inputs
       (*Need to adjust m_f to bind the new symbol*)
       (body m_t (set m_f foo f) m_p 
-        (bind_vars m_v inputs))
+        (set_all m_v fst inputs))
     ])
   (in custom why3 at level 200,
   args custom funarglist,
@@ -777,7 +778,7 @@ Notation "'predicate' foo args = body" :=
       p
       inputs
       (body m_t m_f (set m_p foo p) 
-        (bind_vars m_v inputs))
+        (set_all m_v fst inputs))
     ])
   (in custom why3 at level 200,
   args custom funarglist,
@@ -811,7 +812,7 @@ Notation "'function' foo args : ret = body" :=
     fun_def f inputs
       (*Need to adjust m_f to bind the new symbol*)
       (body m_t (set m_f foo f) m_p 
-        (bind_vars m_v inputs))
+        (set_all m_v fst inputs))
     ))
   (in custom mutfunelt at level 15,
   args custom funarglist,
@@ -831,7 +832,7 @@ Notation "'predicate' foo args = body" :=
       p
       inputs
       (body m_t m_f (set m_p foo p) 
-        (bind_vars m_v inputs))
+        (set_all m_v fst inputs))
     ))
   (in custom mutfunelt at level 15,
   args custom funarglist,

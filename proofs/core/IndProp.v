@@ -5,35 +5,14 @@ Require Export Denotational.
 Require Import Alpha. (*Don't need to export - only used in proofs*)
 Set Bullet Behavior "Strict Subproofs".
 
-Section IndPropRep.
+(*We need the following utility:*)
+Section FindApplyPred.
+
+Section Def.
 
 Context {gamma: context} 
   (gamma_valid: valid_context  gamma)
   (pd: pi_dom).
-
-Section Def.
-
-(*First, define interpretations*)
-
-(*An interpretation where we substitute p with P*)
-
-Definition interp_with_P (pi: pi_funpred gamma_valid pd) (p: predsym) 
-  (P: forall srts, 
-    arg_list (domain (dom_aux pd)) (sym_sigma_args p srts) -> bool) :
-  pi_funpred gamma_valid pd :=
-  {|
-  funs := funs gamma_valid pd pi;
-  preds :=
-    fun pr : predsym =>
-    match predsym_eq_dec p pr with
-    | left Heq =>
-        match Heq with
-        | eq_refl => P
-        end
-    | _ => preds gamma_valid pd pi pr
-    end;
-  constrs := constrs gamma_valid pd pi
-|}.
 
 (*For the list of predsyms, we need to search through the list
   to apply the correct pred. The dependent types make this
@@ -66,21 +45,6 @@ of type (srts -> arg_list pi srts -> bool)*)
     | right _ => (find_apply_pred pi ptl (hlist_tl Hp) p)
     end
   end) Ps.
-
-(*Do the same for a list of predsyms*)
-Definition interp_with_Ps (pi: pi_funpred gamma_valid pd)
-  (ps: list predsym)
-  (*Our props are an hlist, where we have a Pi for each pi
-  of type (srts -> arg_list pi srts -> bool)*)
-  (Ps: hlist (fun (p: predsym) => forall srts, 
-    arg_list (domain (dom_aux pd)) 
-    (sym_sigma_args p srts) -> bool) ps) :
-  pi_funpred gamma_valid pd :=
-  {|
-  funs := funs gamma_valid pd pi;
-  preds := find_apply_pred pi ps Ps;
-  constrs := constrs gamma_valid pd pi
-|}.
 
 Lemma find_apply_pred_in (pf: pi_funpred gamma_valid pd)
   (ps: list predsym)
@@ -115,6 +79,76 @@ Proof.
   intros Hnot. destruct (predsym_eq_dec p a); subst; auto.
   exfalso. apply Hnot; auto.
 Qed.
+
+End Def.
+
+(*And we will need the following extensionality lemma
+  (for our proof system)*)
+Lemma find_apply_pred_ext {gamma1 gamma2: context}
+  (gamma_valid1: valid_context gamma1)
+  (gamma_valid2: valid_context gamma2)
+  (pd: pi_dom) 
+  (pf1 : pi_funpred gamma_valid1 pd)
+  (pf2 : pi_funpred gamma_valid2 pd)
+  (Hext: forall p srts a,
+    preds gamma_valid1 pd pf1 p srts a =
+    preds gamma_valid2 pd pf2 p srts a)
+  l Ps p srts a:
+  find_apply_pred gamma_valid1 pd pf1 l Ps p srts a =
+  find_apply_pred gamma_valid2 pd pf2 l Ps p srts a.
+Proof.
+  induction l; simpl; auto.
+  destruct (predsym_eq_dec p a0); subst; auto.
+Qed.
+
+End FindApplyPred.
+
+Section IndPropRep.
+
+Context {gamma: context} 
+  (gamma_valid: valid_context  gamma)
+  (pd: pi_dom).
+
+Section Def.
+
+(*First, define interpretations*)
+
+(*An interpretation where we substitute p with P*)
+
+Definition interp_with_P (pi: pi_funpred gamma_valid pd) (p: predsym) 
+  (P: forall srts, 
+    arg_list (domain (dom_aux pd)) (sym_sigma_args p srts) -> bool) :
+  pi_funpred gamma_valid pd :=
+  {|
+  funs := funs gamma_valid pd pi;
+  preds :=
+    fun pr : predsym =>
+    match predsym_eq_dec p pr with
+    | left Heq =>
+        match Heq with
+        | eq_refl => P
+        end
+    | _ => preds gamma_valid pd pi pr
+    end;
+  constrs := constrs gamma_valid pd pi
+|}.
+
+Notation find_apply_pred := (find_apply_pred gamma_valid pd).
+
+(*Do the same for a list of predsyms*)
+Definition interp_with_Ps (pi: pi_funpred gamma_valid pd)
+  (ps: list predsym)
+  (*Our props are an hlist, where we have a Pi for each pi
+  of type (srts -> arg_list pi srts -> bool)*)
+  (Ps: hlist (fun (p: predsym) => forall srts, 
+    arg_list (domain (dom_aux pd)) 
+    (sym_sigma_args p srts) -> bool) ps) :
+  pi_funpred gamma_valid pd :=
+  {|
+  funs := funs gamma_valid pd pi;
+  preds := find_apply_pred pi ps Ps;
+  constrs := constrs gamma_valid pd pi
+|}.
 
 Lemma interp_with_Ps_single (pi: pi_funpred gamma_valid pd)
   (p: predsym)
@@ -183,16 +217,26 @@ Proof.
     destruct IHl as [Hx Hinx]. exists Hx. right. assumption.
 Qed.
 
+Lemma dep_map_ext {A B: Type} {P1 P2: A -> Prop} 
+  (f1: forall x, P1 x -> B)
+  (f2: forall x, P2 x -> B)
+  (l: list A)
+  (Hall1: Forall P1 l)
+  (Hall2: Forall P2 l)
+  (Hext: forall (x: A) (y1: P1 x) (y2: P2 x), In x l -> f1 x y1 = f2 x y2):
+  dep_map f1 l Hall1 = dep_map f2 l Hall2.
+Proof.
+  revert Hall1 Hall2. induction l; simpl; intros; auto;
+  simpl in *; f_equal; auto.
+Qed.
+
 Lemma dep_map_irrel {A B: Type} {P: A -> Prop} (f: forall x, P x -> B)
   (l: list A) (Hall1 Hall2: Forall P l):
   (forall x H1 H2, f x H1 = f x H2) ->
   dep_map f l Hall1 = dep_map f l Hall2.
 Proof.
-  intros Hirrel.
-  revert Hall1 Hall2.
-  induction l; intros; simpl; auto.
-  erewrite IHl. f_equal. apply Hirrel.
-Qed. 
+  intros. apply dep_map_ext; auto.
+Qed.
 
 Definition mk_vt srts params :=
   vt_with_args triv_val_typevar srts params.
@@ -418,17 +462,6 @@ Proof.
   auto.
 Qed.
 
-Lemma dep_map_eq {A B: Type} {P: A -> Prop} (f1 f2: forall x: A, P x -> B)
-  (l: list A) (Hall: Forall P l):
-  (forall x y, In x l -> f1 x y = f2 x y) ->
-  dep_map f1 l Hall = dep_map f2 l Hall.
-Proof.
-  intros Hf12.
-  revert Hall. induction l; simpl; intros; auto.
-  rewrite Hf12, IHl; auto. intros; apply Hf12; simpl; auto.
-  simpl; auto.
-Qed.
-
 (*And the version with any val*)
 Theorem indpred_least_pred_val (pf: pi_funpred gamma_valid pd) 
   (vt: val_typevar) (vv: val_vars pd vt)
@@ -460,8 +493,9 @@ Proof.
   intros Ps p Hinp srts srts_len Hvt Hsub Hclosed a Hall.
   apply indpred_least_pred.
   intros.
-  erewrite dep_map_eq. apply (Hall fs Hform0). auto.
+  erewrite dep_map_ext. apply (Hall fs Hform0). auto.
   intros.
+  erewrite fmla_rep_irrel.
   apply fmla_change_vt.
   - intros.
     rewrite Forall_concat in Hsub.
@@ -1725,17 +1759,17 @@ Proof.
     assert (e=eq_refl) by (apply UIP_dec; apply predsym_eq_dec).
     rewrite H. auto.
   - intros fs' Hform' [Hfs | []]; subst.
-    erewrite dep_map_irrel.
-    erewrite dep_map_eq. apply Hand.
-    2: intros; apply fmla_rep_irrel.
+    erewrite dep_map_ext.
+    apply Hand.
     intros.
+    erewrite fmla_rep_irrel.
     f_equal. unfold interp_with_P, interp_with_Ps. simpl.
     f_equal. apply functional_extensionality_dep; intros.
     destruct (predsym_eq_dec x0 p); subst; auto.
     + destruct (predsym_eq_dec p p); try contradiction.
       assert (e = eq_refl) by (apply UIP_dec; apply predsym_eq_dec).
       subst. reflexivity.
-    + destruct (predsym_eq_dec p x0); subst; auto; try contradiction.
+    + destruct (predsym_eq_dec p x0); subst; auto; try contradiction. 
 Qed.
 
 End Single.
@@ -1778,8 +1812,9 @@ Proof.
       (interp_with_Ps pf2 preds Ps) (mk_vv _)) a
         Hform)).
   { intros.
-    apply dep_map_eq.
+    apply dep_map_ext.
     intros.
+    erewrite fmla_rep_irrel.
     apply fmla_change_pf.
     - intros.
       simpl.
