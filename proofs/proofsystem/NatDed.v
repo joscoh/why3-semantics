@@ -1053,6 +1053,12 @@ Proof.
   unfold eq_mem. intros. simpl_set. rewrite H, H0; reflexivity.
 Qed.
 
+Lemma eq_mem_union_comm (l1 l2: list A):
+  eq_mem (union eq_dec l1 l2) (union eq_dec l2 l1).
+Proof.
+  unfold eq_mem. intros. simpl_set. apply or_comm.
+Qed.
+
 Lemma eq_mem_null (l1 l2: list A):
   eq_mem l1 l2 ->
   null l1 = null l2.
@@ -1068,6 +1074,7 @@ End EqMem.
 Ltac eq_mem_tac :=
   repeat match goal with
   | |- eq_mem ?l ?l => apply eq_mem_refl
+  | |- eq_mem (union ?dec ?l1 ?l2) (union ?dec ?l2 ?l1) => apply eq_mem_union_comm
   | |- eq_mem (union ?dec ?l1 ?l2) (union ?dec ?l3 ?l4) => apply eq_mem_union
   end; auto.
 
@@ -1350,7 +1357,581 @@ Proof.
     intros [Heq | []]; subst; auto.
 Qed.
 
+Print Permutation.
+
+(*TODO: move these*)
+
+
+Definition indpred_def_eqb (i1 i2: indpred_def) : bool :=
+  match i1, i2 with
+  | ind_def p1 l1, ind_def p2 l2 =>
+    predsym_eqb p1 p2 &&
+    list_eqb (tuple_eqb String.eqb formula_eqb) l1 l2
+  end.
+
+Lemma indpred_def_eqb_spec i1 i2:
+  reflect (i1 = i2) (indpred_def_eqb i1 i2).
+Proof.
+  unfold indpred_def_eqb.
+  destruct i1; destruct i2.
+  dec (predsym_eqb_spec p p0). subst.
+  dec (list_eqb_spec _ (tuple_eqb_spec String.eqb_spec formula_eqb_spec) l l0).
+  subst. apply ReflectT. reflexivity.
+Qed.
+
+Definition indpred_def_eq_dec (i1 i2: indpred_def):
+  {i1 = i2} + {i1 <> i2} := reflect_dec' (indpred_def_eqb_spec i1 i2).
+
+Definition def_eqb (d1 d2: def) : bool :=
+  match d1, d2 with
+  | datatype_def m1, datatype_def m2 => mut_adt_dec m1 m2
+  | recursive_def l1, recursive_def l2 =>
+    list_eqb funpred_def_eqb l1 l2
+  | inductive_def l1, inductive_def l2 =>
+    list_eqb indpred_def_eqb l1 l2
+  | abs_type t1, abs_type t2 => typesym_eqb t1 t2
+  | abs_fun f1, abs_fun f2 => funsym_eqb f1 f2
+  | abs_pred p1, abs_pred p2 => predsym_eqb p1 p2
+  | _, _ => false
+  end.
+
+Ltac by_dec H := dec H; subst; apply ReflectT; reflexivity.
+
+Lemma def_eqb_spec (d1 d2: def):
+  reflect (d1 = d2) (def_eqb d1 d2).
+Proof.
+  unfold def_eqb.
+  destruct d1; destruct d2; try solve[apply ReflectF; intro C; inversion C].
+  - by_dec (mut_adt_dec m m0).
+  - by_dec (list_eqb_spec _ funpred_def_eqb_spec l l0).
+  - by_dec (list_eqb_spec _ indpred_def_eqb_spec l l0). 
+  - by_dec (typesym_eqb_spec t t0).
+  - by_dec (funsym_eqb_spec f f0). 
+  - by_dec (predsym_eqb_spec p p0).
+Qed.
+
+Definition def_eq_dec (d1 d2: def) : {d1 = d2} + {d1 <> d2} :=
+  reflect_dec' (def_eqb_spec d1 d2).
+
+
+
 (*Exists elim: give exists x, f, we can prove f[c/x] for some new
   constant symbol c. This one will be awkward to state*)
+Definition existsE_trans name (f: formula) (x: vsymbol) : trans :=
+  let c := constsym name (snd x) in
+  let t_c := t_constsym name (snd x) in
+  fun t =>
+    if formula_eqb (task_goal t) (safe_sub_f t_c x f) &&
+    (*New symbol does not appear in delta, and does not appear in f*)
+    negb (funsym_in_fmla c f) &&
+    forallb (fun x => negb (funsym_in_fmla c x)) (task_delta t)
+    then 
+    [mk_task (remove def_eq_dec (abs_fun c) (task_gamma t)) (task_delta t) 
+      (Fquant Texists x f)]
+    else [t].
+
+(*TODO: do this later, complicated because we need to remove
+  c from the context*)
+(*
+Lemma existsE_trans_sound: forall name f x,
+  sound_trans (existsE_trans name f x).
+Proof.
+  intros.
+  unfold sound_trans, existsE_trans. intros.
+  destruct t as [[gamma delta] goal]. simpl_task.
+  destruct (formula_eqb_spec goal (safe_sub_f (t_constsym name (snd x)) x f));
+  [| apply H; simpl; auto].
+  subst. simpl in H.
+  destruct (funsym_in_fmla (constsym name (snd x)) f) eqn : Hincf;
+  [apply H; simpl; auto |].
+  destruct (forallb (fun x0 : formula => negb (funsym_in_fmla (constsym name (snd x)) x0))
+  delta) eqn : Hincd; [| apply H; simpl; auto].
+  simpl in H.
+  specialize (H _ (ltac:(left; reflexivity))).
+  unfold task_valid in *. simpl_task.
+  destruct H as [Hwf Hval]. split; auto.
+  intros.
+  (*First, prove new context valid*)
+  assert (gamma_valid': valid_context 
+  (remove def_eq_dec (abs_fun (constsym name (snd x))) gamma)).
+  {
+    destruct Hwf; auto.
+  }
+  specialize (Hval gamma_valid' Hwf).
+  unfold log_conseq in *. intros.
+  (*TODO: need to know c not used anywhere else, then
+    we can move to front
+    or assume it is at the front*)
+  specialize (Hval gamma_valid Hwf).
+*)
+
+(*Equality*)
+
+(*We first prove that Equality is an equivalence
+  relation, then prove congruence, giving rewrite
+  and f_equal derivations*)
+
+(*First, reflexivity*)
+Definition refl_trans: trans :=
+  fun t =>
+    match (task_goal t) with
+    | Feq ty t1 t2 => if term_eqb t1 t2 then [] else [t]
+    | _ => [t]
+    end.
+
+Lemma refl_trans_sound : sound_trans refl_trans.
+Proof.
+  unfold sound_trans, refl_trans.
+  intros.
+  destruct t as [[gamma delta] goal]; simpl_task.
+  destruct goal; try solve[apply H; simpl; auto].
+  destruct (term_eqb_spec t t0); try solve[apply H; simpl; auto].
+  subst. unfold task_valid. split; auto. simpl_task.
+  intros. unfold log_conseq.
+  intros.
+  unfold satisfies. intros. simpl_rep_full.
+  rewrite simpl_all_dec. apply term_rep_irrel.
+Qed.
+
+Lemma type_vars_ty_subst (l: list typevar) (tys: list vty) (t: vty):
+  (forall x, In x (type_vars t) -> In x l) ->
+  length tys = length l ->
+  NoDup l ->
+  forall y, In y (type_vars (ty_subst l tys t)) ->
+  In y (big_union typevar_eq_dec type_vars tys).
+Proof.
+  intros.
+  unfold ty_subst in H2.
+  induction t; simpl in *; auto.
+  - destruct H2.
+  - destruct H2.
+  - simpl_set.
+    specialize (H _ ltac:(left; auto)).
+    destruct (In_nth _ _ EmptyString H) as [n [Hn Hv]]; subst.
+    rewrite ty_subst_fun_nth with(s:=s_int) in H2; auto.
+    exists (nth n tys vty_int). split; auto.
+    apply nth_In; auto. rewrite H0; auto.
+  - simpl_set.
+    destruct H2 as [ty [Hinty Hiny]].
+    rewrite in_map_iff in Hinty.
+    destruct Hinty as [ty2 [Hty Hinty2]]; subst.
+    rewrite Forall_forall in H3.
+    apply H3 in Hiny; simpl_set; auto.
+    intros. apply H. simpl_set. exists ty2. split; auto.
+Qed.
+
+(*All type vars in the return type are included in
+  the type variables*)
+Lemma ty_type_vars_in (gamma: context) (tm: term)
+  (ty: vty) (Hty: term_has_type gamma tm ty):
+  (forall y, In y (type_vars ty) -> In y (tm_type_vars tm)).
+Proof.
+  intros. induction Hty; simpl in *; auto;
+  try solve[simpl_set; auto].
+  - apply type_vars_ty_subst in H; auto.
+    2: {
+      intros. destruct f; simpl in *.
+      destruct f_sym; simpl in *.
+      assert (A:=f_ret_wf).
+      apply check_sublist_prop in A. auto.
+    }
+    2: { apply s_params_Nodup. }
+    simpl_set; auto.
+  - simpl_set.
+    right. left.
+    destruct ps. inversion H4.
+    destruct p as [p1 t1].
+    simpl in *. simpl_set. left. 
+    specialize (H3 _ (ltac:(left; auto)) H); auto.
+Qed.
+
+Theorem D_eq_refl gamma delta (ty: vty) (t: term):
+  (*We need the context to be wf*)
+  valid_context gamma ->
+  Forall (formula_typed gamma) delta ->
+  closed_tm t ->
+  term_has_type gamma t ty ->
+  derives (gamma, delta, Feq ty t t).
+Proof.
+  intros.
+  eapply (D_trans refl_trans); auto.
+  - constructor; simpl_task; auto.
+    destruct H1.
+    constructor; auto.
+    + constructor; auto.
+    + unfold closed_formula. simpl.
+      unfold closed_term in t_closed.
+      rewrite null_nil in *.
+      rewrite t_closed; reflexivity.
+    + unfold mono; simpl. unfold mono_t in t_mono.
+      rewrite null_nil in *. rewrite t_mono. simpl.
+      destruct (type_vars ty) eqn : Hvars; auto.
+      pose proof (ty_type_vars_in gamma _ _ H2 t0).
+      prove_hyp H1.
+      rewrite Hvars; simpl; auto.
+      rewrite t_mono in H1; inversion H1.
+  - apply refl_trans_sound.
+  - unfold refl_trans. simpl_task. destruct (term_eqb_spec t t);
+    try contradiction.
+Qed.
+
+(*Symmetry*)
+
+Definition sym_trans: trans :=
+  fun t =>
+  match (task_goal t) with
+  | Feq ty t1 t2 => [task_with_goal t (Feq ty t2 t1)]
+  | _ => [t]
+  end.
+
+Lemma sym_trans_sound: sound_trans sym_trans.
+Proof.
+  unfold sound_trans, sym_trans. intros.
+  destruct t as [[gamma delta] goal]; simpl_task.
+  destruct goal; try solve[apply H; simpl; auto].
+  specialize (H _ (ltac:(left; auto))).
+  unfold task_valid in *. destruct H as [Hwf Hval].
+  split; auto; intros.
+  specialize (Hval gamma_valid Hwf).
+  simpl_task. unfold log_conseq in *.
+  intros. specialize (Hval pd pf pf_full).
+  prove_hyp Hval.
+  {
+    intros. erewrite satisfies_irrel. apply (H _ Hd).
+  }
+  unfold satisfies in Hval |- *. intros.
+  specialize (Hval vt vv).
+  revert Hval. simpl_rep_full.
+  rewrite !simpl_all_dec. intros.
+  erewrite term_rep_irrel. rewrite <- Hval.
+  apply term_rep_irrel.
+Qed.
+
+Lemma D_eq_sym: forall gamma delta t1 t2 ty,
+  derives (gamma, delta, Feq ty t1 t2) ->
+  derives (gamma, delta, Feq ty t2 t1).
+Proof.
+  intros. eapply (D_trans sym_trans); auto.
+  - inversion H; subst.
+    destruct H0. constructor; simpl_task; auto.
+    destruct task_goal_typed. constructor.
+    + inversion f_ty; subst. constructor; auto.
+    + unfold closed_formula in *. simpl in *.
+      erewrite eq_mem_null. apply f_closed.
+      eq_mem_tac.
+    + unfold mono in *. simpl in *.
+      erewrite eq_mem_null. apply f_mono.
+      eq_mem_tac.
+  - apply sym_trans_sound.
+  - unfold sym_trans. simpl_task. intros x [<- | []]; auto.
+Qed.
+
+(*Transitivity*)
+Definition trans_trans t2 : trans :=
+  fun t =>
+  match (task_goal t) with
+  | Feq ty t1 t3 => [task_with_goal t (Feq ty t1 t2);
+    task_with_goal t (Feq ty t2 t3)]
+  | _ => [t]
+  end.
+
+Lemma trans_trans_sound t2: sound_trans (trans_trans t2).
+Proof.
+  unfold sound_trans, trans_trans. intros.
+  destruct t as [[gamma delta] goal]; simpl_task.
+  destruct goal; try solve[apply H; simpl; auto].
+  pose proof (H _ (ltac:(simpl; left; auto))) as E1.
+  pose proof (H _ (ltac: (simpl; right; left; auto))) as E2.
+  clear H.
+  unfold task_valid in *. simpl_task. 
+  destruct E1 as [Hwf1 Hval1]. destruct E2 as [Hwf2 Hval2].
+  split; auto.
+  intros.
+  specialize (Hval1 gamma_valid Hwf1).
+  specialize (Hval2 gamma_valid Hwf2).
+  unfold log_conseq in *.
+  intros.
+  specialize (Hval1 pd pf pf_full).
+  specialize (Hval2 pd pf pf_full).
+  prove_hyp Hval1; [|prove_hyp Hval2];
+  try (intros; erewrite satisfies_irrel; apply (H _ Hd)).
+  unfold satisfies in Hval1, Hval2 |- *.
+  intros.
+  specialize (Hval1 vt vv).
+  specialize (Hval2 vt vv).
+  revert Hval1 Hval2.
+  simpl_rep_full.
+  rewrite !simpl_all_dec.
+  intros Heq1 Heq2.
+  erewrite term_rep_irrel. rewrite Heq1.
+  erewrite term_rep_irrel. rewrite Heq2.
+  apply term_rep_irrel.
+Qed.
+
+Lemma D_eq_trans gamma delta t1 t2 t3 ty:
+  derives (gamma, delta, Feq ty t1 t2) ->
+  derives (gamma, delta, Feq ty t2 t3) ->
+  derives (gamma, delta, Feq ty t1 t3).
+Proof.
+  intros. eapply (D_trans (trans_trans t2)); auto.
+  - inversion H; inversion H0; subst.
+    destruct H1, H6.
+    constructor; simpl_task; auto.
+    destruct task_goal_typed, task_goal_typed0.
+    constructor; auto.
+    + inversion f_ty; inversion f_ty0; subst; constructor; auto.
+    + unfold closed_formula in *; simpl in *.
+      rewrite !null_nil in *.
+      apply union_nil in f_closed, f_closed0; destruct_all.
+      rewrite H5, H3. reflexivity.
+    + unfold mono in *; simpl in *.
+      rewrite !null_nil in *.
+      apply union_nil in f_mono, f_mono0; destruct_all;
+      apply union_nil in H6, H3; destruct_all.
+      rewrite H1, H6, H8. reflexivity.
+  - apply trans_trans_sound.
+  - unfold trans_trans. simpl_task.
+    intros x [<- | [<- | []]]; auto.
+Qed.
+
+(*Now congruence lemmas*)
+
+(*We have 2 forms:
+  1. If t1 = t1', t2 = t2'... tn = tn', then
+    f t1 ...tn = f tn ... tn'
+    (f_equal in Coq)
+  2. If we know that t1 = t2, then 
+    f[t2/t1] is equivalent to f (rewrite in Coq)
+    *)
+
+(*f_equal*)
+Definition f_equal_trans : trans :=
+  fun t =>
+  match (task_goal t) with
+  | Feq ty (Tfun f1 tys1 tms1) (Tfun f2 tys2 tms2) =>
+    if funsym_eqb f1 f2 && list_eqb vty_eqb tys1 tys2 &&
+    Nat.eqb (length tms1) (length tms2) then
+    (*We need to get the type for each term*)
+    map2 (fun tms x => task_with_goal t (Feq x (fst tms) (snd tms)))
+      (combine tms1 tms2) (map (ty_subst (s_params f1) tys1) (s_args f1))
+    else [t]
+  | _ => [t]
+  end.
+
+Lemma f_equal_trans_sound: sound_trans f_equal_trans.
+Proof.
+  unfold sound_trans, f_equal_trans.
+  intros.
+  destruct t as[[gamma delta] goal]. simpl_task.
+  destruct goal; try solve[apply H; simpl; auto].
+  destruct t; try solve[apply H; simpl; auto].
+  destruct t0; try solve[apply H; simpl; auto].
+  destruct (funsym_eqb_spec f f0); [|apply H; simpl; auto].
+  destruct (list_eqb_spec _ vty_eq_spec l l1); [| apply H; simpl; auto].
+  destruct (Nat.eqb_spec (length l0) (length l2)); [| apply H; simpl; auto].
+  simpl in H. subst.
+  unfold task_valid. split; auto; simpl_task; intros.
+  unfold log_conseq.
+  intros.
+  unfold satisfies. intros.
+  simpl_rep_full.
+  rewrite simpl_all_dec.
+  f_equal. apply UIP_dec. apply vty_eq_dec.
+  f_equal. apply UIP_dec. apply sort_eq_dec.
+  f_equal. apply get_arg_list_ext; auto.
+  intros.
+  (*Need typing info about function application *)
+  assert (Htyf1: term_has_type gamma (Tfun f0 l1 l0) 
+    (ty_subst (s_params f0) l1 (f_ret f0))). {
+    inversion w_wf. simpl_task.
+    inversion task_goal_typed. inversion f_ty; subst; auto.
+    inversion H5; subst. constructor; auto.
+  }
+  assert (Htyf2: term_has_type gamma (Tfun f0 l1 l2) 
+    (ty_subst (s_params f0) l1 (f_ret f0))). {
+    inversion w_wf. simpl_task.
+    inversion task_goal_typed. inversion f_ty; subst; auto.
+    inversion H7; subst. constructor; auto.
+  }
+  inversion Htyf1; inversion Htyf2; subst.
+  (*Now we use the map2 assumption to get the ith element*)
+  specialize (H (nth i (map2
+  (fun (tms : term * term) (x : vty) =>
+   (gamma, delta, Feq x (fst tms) (snd tms))) (combine l0 l2)
+  (map (ty_subst (s_params f0) l1) (s_args f0)))(nil, nil, Ftrue))).
+  prove_hyp H.
+  {
+    apply nth_In; rewrite map2_length, map_length, combine_length. lia.
+  }
+  unfold task_valid in H.
+  (*We need to make H nicer*)
+  rewrite map2_nth with(d1:=(tm_d, tm_d))(d2:=vty_int) in H; 
+  try (rewrite combine_length, ?map_length; lia).
+  simpl_task.
+  rewrite map_nth_inbound with(d2:=vty_int) in H; try lia.
+  rewrite combine_nth in H; auto. simpl in H.
+  (*Now we can finish the proof*)
+  destruct H as [Hwf Hval].
+  specialize (Hval gamma_valid Hwf).
+  unfold log_conseq in Hval.
+  specialize (Hval pd pf pf_full).
+  prove_hyp Hval.
+  {
+    intros. erewrite satisfies_irrel. apply (H0 _ Hd).
+  }
+  unfold satisfies in Hval.
+  specialize (Hval vt vv).
+  revert Hval. simpl_rep_full.
+  rewrite simpl_all_dec. intros.
+  (*Now we prove the types equivalent*)
+  assert (ty = (ty_subst (s_params f0) l1 (nth i (s_args f0) vty_int))). {
+    eapply Typechecker.term_has_type_unique. apply Hty1.
+    rewrite Forall_forall in H11.
+    specialize (H11 (nth i (combine l0 (map (ty_subst (s_params f0) l1) (s_args f0))) (tm_d, vty_int))).
+    rewrite combine_nth in H11; [|rewrite map_length; auto].
+    simpl in H11.
+    prove_hyp H11.
+    {
+      rewrite in_combine_iff; [| rewrite map_length; auto].
+      exists i. split; auto. intros. f_equal; apply nth_indep; auto;
+      rewrite map_length; auto. lia.
+    }
+    rewrite map_nth_inbound with(d2:=vty_int) in H11; auto.
+    lia.
+  }
+  (*Now we can really finish*)
+  subst. erewrite term_rep_irrel. rewrite Hval. apply term_rep_irrel.
+Qed.
+
+(*This one is very complicated because proving
+  well-formedness of the resulting context is hard*)
+Lemma D_f_equal gamma delta (f: funsym) (tys: list vty) 
+  (tms1 tms2: list term) (ty: vty)
+  (*tys must be closed*)
+  (Htys: forallb (fun x => null (type_vars x)) tys):
+  length tms1 = length tms2 ->
+  term_has_type gamma (Tfun f tys tms1) ty ->
+  term_has_type gamma (Tfun f tys tms2) ty -> 
   
+  (*We require that lists are not empty: otherwise
+    one can just use D_eq_refl*)
+  negb (null tms1) ->
+  (*TODO: is this better or is forall i, ... better?*)
+  Forall (fun x => derives (gamma, delta, x))
+    (map2 (fun tms x => Feq x (fst tms) (snd tms))
+      (combine tms1 tms2) (map (ty_subst (s_params f) tys) (s_args f))) ->
+  derives (gamma, delta, 
+    Feq ty (Tfun f tys tms1) (Tfun f tys tms2)).
+Proof.
+  intros. eapply (D_trans f_equal_trans); auto.
+  - (*For first two goals:*) 
+    assert (exists f, derives (gamma, delta, f)). {
+      destruct tms1. inversion H2. destruct tms2.
+      inversion H. simpl in H3. 
+      inversion H0; subst. destruct (s_args f).
+      inversion H11. simpl in H3.
+      inversion H3; subst.
+      exists (Feq (ty_subst (s_params f) tys v) t t0).
+      auto.
+    }
+    destruct H4 as [f' Hder].
+    inversion Hder; subst. 
+    destruct H4;
+    constructor; simpl_task; auto.
+    (*Now only need to prove closed*)
+    (*TODO: maybe forall i.... is better, see*)
+    (*These lemmas enable us to reason about the Forall part*)
+    assert (Hall: forall i, i < length tms1 ->
+    derives (gamma, delta, (Feq (ty_subst (s_params f) tys (nth i (s_args f) vty_int))
+      (nth i tms1 tm_d) (nth i tms2 tm_d)))).
+    {
+      intros. rewrite Forall_forall in H3.
+      specialize (H3 (nth i (map2 (fun (tms : term * term) (x0 : vty) => Feq x0 (fst tms) (snd tms))
+      (combine tms1 tms2) (map (ty_subst (s_params f) tys) (s_args f))) Ftrue)).
+      inversion H0; inversion H1; subst.
+      prove_hyp H3.
+      {
+        apply nth_In. rewrite map2_length, map_length, combine_length;
+        lia.
+      } 
+      rewrite map2_nth with(d1:=(tm_d, tm_d))(d2:=vty_int) in H3;
+      try rewrite combine_length, ?map_length; try lia.
+      rewrite combine_nth in H3; auto. simpl in H3.
+      rewrite map_nth_inbound with(d2:=vty_int) in H3; try lia.
+      auto.
+    }
+    assert (Hclosed: forall t, In t tms1 \/ In t tms2 -> closed_tm t).
+    {
+      intros.
+      destruct H4; destruct (In_nth _ _ tm_d H4) as [n [Hn Ht]]; subst;
+      specialize (Hall n (ltac:(lia)));
+      inversion Hall; subst; inversion H6; simpl_task;
+      destruct task_goal_typed0; constructor;
+      try (unfold closed_term; unfold closed_formula in f_closed;
+      simpl in f_closed);
+      try (unfold mono_t; unfold mono in f_mono; simpl in f_mono);
+      rewrite !null_nil in *;
+      try (apply union_nil in f_closed);
+      try (apply union_nil in f_mono);
+      destruct_all; auto;
+      apply union_nil in H11; destruct_all; auto.
+    }
+    constructor.
+    + constructor; auto.
+    + unfold closed_formula. rewrite null_nil.
+      simpl. apply union_nil_eq; apply big_union_nil_eq;
+      intros; rewrite <- null_nil; apply Hclosed; auto.
+    + unfold mono. simpl. rewrite null_nil.
+      assert (Hclosed1: (big_union typevar_eq_dec type_vars tys) = nil). {
+        apply big_union_nil_eq.
+        intros.
+        unfold is_true in Htys.
+        rewrite forallb_forall in Htys.
+        apply Htys in H4.
+        destruct (type_vars x); auto. inversion H4. 
+      }
+      assert (Hclosed2: (big_union typevar_eq_dec tm_type_vars tms1) = nil). {
+        apply big_union_nil_eq.
+        intros.
+        specialize (Hclosed _ ltac:(left; apply H4)).
+        destruct Hclosed.
+        unfold mono_t in t_mono.
+        rewrite null_nil in t_mono. auto.
+      }
+      assert (Hclosed3: (big_union typevar_eq_dec tm_type_vars tms2) = nil). {
+        apply big_union_nil_eq.
+        intros.
+        specialize (Hclosed _ ltac:(right; apply H4)).
+        destruct Hclosed.
+        unfold mono_t in t_mono.
+        rewrite null_nil in t_mono. auto.
+      }
+      apply union_nil_eq.
+      * destruct (type_vars ty) eqn : Hvars; auto.
+        assert (In t (tm_type_vars (Tfun f tys tms1))). {
+          eapply ty_type_vars_in. apply H0. rewrite Hvars;
+          simpl; auto.
+        }
+        simpl in H4. simpl_set.
+        destruct H4.
+        -- rewrite Hclosed1 in H4. inversion H4.
+        -- rewrite Hclosed2 in H4. inversion H4.
+      * rewrite Hclosed1, Hclosed2, Hclosed3. reflexivity.
+  - apply f_equal_trans_sound.
+  - unfold f_equal_trans. simpl. destruct (funsym_eqb_spec f f); try contradiction.
+    destruct (list_eqb_spec _ (vty_eq_spec) tys tys); try contradiction.
+    rewrite H, Nat.eqb_refl. simpl.
+    rewrite Forall_forall in H3.
+    intros.
+    rewrite in_map2_iff with(d1:=(tm_d, tm_d))(d2:=vty_int) in H4; 
+    [| inversion H0; subst; rewrite combine_length, map_length; lia].
+    destruct H4 as [i [Hi Hx]]; subst; simpl_task.
+    apply H3.
+    rewrite in_map2_iff with(d1:=(tm_d, tm_d))(d2:=vty_int) ; 
+    [| inversion H0; subst; rewrite combine_length, map_length; lia].
+    exists i. auto.
+Qed. 
+
+(*TODO: maybe prove f_equal in terms of rewrite, prob not*)
+
 End NatDed.
