@@ -1287,5 +1287,70 @@ Proof.
     destruct (check_tm_ty_spec gamma t (snd x)); try contradiction.
     intros y [Hy | []]; subst; auto.
 Qed.
+
+(*Exists*)
+
+(*Exists intro (like forall elim)*)
+(*If gamma |- f [t/x], then gamma |- exists x, f*)
+Definition existsI_trans (tm: term) : trans :=
+  fun t =>
+    match (task_goal t) with
+    | Fquant Texists x f =>
+      if check_tm_ty (task_gamma t) tm (snd x) then
+      [task_with_goal t (safe_sub_f tm x f)] else [t]
+    | _ => [t]
+    end.
+
+Lemma existsI_trans_sound: forall tm, sound_trans (existsI_trans tm).
+Proof.
+  intros.
+  unfold sound_trans, existsI_trans. intros.
+  destruct t as [[gamma delta] goal]; simpl_task.
+  destruct goal; try solve[apply H; simpl; auto].
+  destruct q; try solve[apply H; simpl; auto].
+  destruct (check_tm_ty_spec gamma tm (snd v)); try solve[apply H; simpl; auto].
+  specialize (H _ ltac:(simpl; left; auto)).
+  unfold task_valid in *; simpl_task.
+  destruct H as [Hwf Hval].
+  split; auto. intros.
+  specialize (Hval gamma_valid Hwf).
+  unfold log_conseq in *.
+  intros.
+  specialize (Hval pd pf pf_full).
+  prove_hyp Hval.
+  {
+    intros. erewrite satisfies_irrel. apply (H _ Hd).
+  }
+  unfold satisfies in Hval |- *.
+  intros.
+  simpl_rep_full. rewrite simpl_all_dec.
+  specialize (Hval vt vv).
+  destruct v as [xn xt]; simpl in *.
+  erewrite safe_sub_f_rep in Hval.
+  eexists. apply Hval.
+  Unshelve. auto.
+Qed.
+
+(*Not great because we have typing obligation but going
+  backwards from sub is hard*)
+Theorem D_existsI gamma delta (tm: term) (x: vsymbol) (f: formula):
+  term_has_type gamma tm (snd x) ->
+  closed gamma (Fquant Texists x f) ->
+  derives (gamma, delta, safe_sub_f tm x f) ->
+  derives (gamma, delta, Fquant Texists x f).
+Proof.
+  intros.
+  eapply (D_trans (existsI_trans tm)); auto.
+  - inversion H1; subst. destruct H2.
+    constructor; simpl_task; auto.
+  - apply existsI_trans_sound.
+  - unfold existsI_trans. 
+    intros tsk. simpl_task.
+    destruct (check_tm_ty_spec gamma tm (snd x)); try contradiction.
+    intros [Heq | []]; subst; auto.
+Qed.
+
+(*Exists elim: give exists x, f, we can prove f[c/x] for some new
+  constant symbol c. This one will be awkward to state*)
   
 End NatDed.
