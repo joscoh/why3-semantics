@@ -6,14 +6,15 @@ Require Export Alpha.
 Require Export Task.
 Require Export Util.
 Require Export Shallow.
+Require Export Typechecker.
+From mathcomp Require all_ssreflect.
 Set Bullet Behavior "Strict Subproofs".
 
 (*See if a term has a type (without ssreflect, for external use
   (TODO: add to typechecker))*)
 Module CheckTy.
 
-Require Import Typechecker.
-From mathcomp Require Import all_ssreflect.
+Import all_ssreflect.
 
 Definition check_tm_ty (gamma: context) (t: term) (v: vty) : bool :=
   typecheck_term gamma t == Some v.
@@ -828,6 +829,31 @@ Proof.
   - apply formula_typed_expand. auto.
 Qed.
 
+(*Derivation version: c :: gamma |- f and c not in gamma,
+  then gamma |- forall x, f*)
+Theorem D_forallI gamma delta x f c:
+  (*c is not used*)
+  negb (in_bool string_dec c (map (fun (x: funsym) => s_name x) 
+    (sig_f gamma))) ->
+  (*delta and f are typed under gamma (they do not use the new symbol)*)
+  Forall (formula_typed gamma) delta ->
+  closed gamma (Fquant Tforall x f) ->
+  derives (abs_fun (constsym c (snd x)) :: gamma, delta, 
+    safe_sub_f (t_constsym c (snd x)) x f) ->
+  derives (gamma, delta, Fquant Tforall x f).
+Proof.
+  intros. eapply (D_trans (forallI_trans c)); auto.
+  - inversion H2; subst.
+    destruct H3. simpl_task.
+    inversion task_gamma_valid; subst.
+    constructor; simpl_task; auto.
+  - apply forallI_trans_sound.
+  - unfold forallI_trans. simpl_task.
+    apply ssrbool.negbTE in H.
+    rewrite H.
+    intros y [<- | []]; auto.
+Qed.
+
 (*Forall elimination*)
 
 (*This is an awkward transformation to state; we really just
@@ -892,8 +918,6 @@ Ltac simpl_set_nil :=
   | H: ?P -> ?x = nil |- context [?x] =>
     rewrite H by auto
   end; simpl; auto).
-
-Search (union ?e ?l1 ?l2 = nil).
 
 Lemma union_nil_eq {A: Type} eq_dec (l1 l2: list A):
   l1 = nil ->
@@ -1356,8 +1380,6 @@ Proof.
     destruct (check_tm_ty_spec gamma tm (snd x)); try contradiction.
     intros [Heq | []]; subst; auto.
 Qed.
-
-Print Permutation.
 
 (*TODO: move these*)
 
@@ -1935,7 +1957,7 @@ Qed.
 (*TODO: maybe prove f_equal in terms of rewrite, prob not*)
 
 (*Rewrite*)
-Print term.
+
 (*Substitute a term for a term in a term or formula*)
 Section ReplaceTm.
 
@@ -1996,9 +2018,6 @@ End ReplaceTm.
 
 
 Ltac tm_eq t1 t2 := destruct (term_eq_dec t1 t2).
-
-(*TODO: move*)
-Require Import Typechecker.
 
 Ltac simpl_tys :=
   subst; auto;

@@ -3,6 +3,7 @@
 Require Import Task.
 Require Import Theory.
 Require Import Typechecker.
+Require Import NatDed.
 From mathcomp Require Import all_ssreflect.
 Set Bullet Behavior "Strict Subproofs".
 
@@ -465,18 +466,187 @@ Qed.
 Lemma ring_theory_typed: typed_theory ring_theory.
 Proof. check_theory. Qed.
 
-Require Import ProofSystem.
 Require Import Alpha.
 
 Ltac prove_fmla_ty :=
   apply /typecheck_formula_correct; reflexivity.
 
+Ltac prove_tm_ty :=
+  apply /check_tm_ty_spec; reflexivity.
+
+Definition check_formulas_typed (gamma: context) (l: list formula): bool :=
+  all (typecheck_formula gamma) l.
+
+Lemma check_formulas_typed_correct gamma l:
+  reflect (Forall (formula_typed gamma) l) (check_formulas_typed gamma l).
+Proof.
+  unfold check_formulas_typed.
+  apply forallb_ForallP. intros.
+  apply typecheck_formula_correct.
+Qed.
+
+Ltac prove_fmlas_ty :=
+  apply /check_formulas_typed_correct; reflexivity.
+
+Ltac prove_valid_context :=
+  apply /check_context_correct; reflexivity.
+
 (*Now, we prove these lemmas (manually, from the semantics)
   *)
+Notation "0r" :=(Tfun Ring.zero nil nil).
+Notation "x '+r' y" := (Tfun Ring.plus nil [x; y])
+  (at level 60).
+Notation "'-r' x" := (Tfun Ring.neg nil x)
+  (at level 70).
+Notation "x '*r' y" := (Tfun Ring.mult nil [x;y])
+  (at level 50).
+Notation "x '==' y" := (Feq _ x y).
+(*A complete hack*)
+Notation xt := (t_constsym ("x"%string) t_ty).
+(*TODO: get some real notations*)
 Lemma ring_theory_valid: valid_theory ring_theory.
 Proof.
   simpl. split_all; auto.
   - (*First lemma*)
+    apply soundness.
+    simpl_task.
+    rewrite theory_axioms_ext_equation_1.
+    rewrite !app_nil_r.
+    (*1.intros*)
+    apply D_forallI with(c:="x"%string).
+    reflexivity.
+    (*TODO: automate these*)
+    prove_fmlas_ty.
+    prove_closed.
+    (*TODO: safe_sub_f does not evaluate*)
+    unfold safe_sub_f; simpl.
+    (*So now we have to prove for a specific x, that x * 0 = 0 *)
+    (*2. assert (0 + 0 = 0)*)
+    apply (D_assert _ _ (Feq t_ty (0r +r 0r) 0r)).
+    {
+      (*Prove the assertion*)
+      (*We need a better way to do this*)
+      apply (D_assert _ _ (Fquant Tforall x 
+        (Feq t_ty (0r +r (Tvar x)) (Tvar x)))).
+      {
+        apply D_axiom.
+        prove_task_wf.
+        apply /inP. reflexivity.
+      }
+      (*Now we specialize*)
+      (*TODO: this is awful*)
+      apply (D_assert _ _ (safe_sub_f 0r x (Feq t_ty 
+        (0r +r Tvar x) (Tvar x)))).
+      {
+        apply D_forallE. prove_tm_ty.
+        (*TODO: decidable closed term*)
+        constructor; reflexivity.
+        apply D_axiom; [prove_task_wf | apply /inP; reflexivity].
+      }
+      unfold safe_sub_f; simpl. 
+      apply D_axiom; [prove_task_wf | apply /inP; reflexivity].
+    }
+    (*3. From this and f_equal, we can prove that x * (0 + 0) = x * 0*)
+    apply (D_assert _ _ (Feq t_ty (xt *r (0r +r 0r)) (xt *r 0r))).
+    {
+      apply D_f_equal; try reflexivity; try prove_tm_ty.
+      simpl. (*Need better way to do this*) constructor.
+      - apply D_eq_refl; auto.
+        prove_valid_context.
+        prove_fmlas_ty.
+        constructor; reflexivity.
+        prove_tm_ty.
+      - constructor; [|constructor].
+        apply D_axiom; [prove_task_wf | apply /inP; reflexivity].
+    }
+    (*4. we have that x * (0 + 0) = 0 + x * 0*)
+    apply (D_assert _ _ (Feq t_ty (xt *r (0r +r 0r)) (0r +r (xt *r 0r)))).
+    {
+      apply D_rewrite with(t1:=0r +r (xt *r 0r))(t2:=xt *r 0r)(ty:=t_ty).
+      prove_closed.
+      - apply (D_assert _ _ (Fquant Tforall x 
+          (Feq t_ty (0r +r (Tvar x)) (Tvar x)))).
+        {
+          apply D_axiom.
+          prove_task_wf.
+          apply /inP. reflexivity.
+        }
+        (*Now we specialize*)
+        apply (D_assert _ _ (safe_sub_f (xt *r 0r) x (Feq t_ty 
+          (0r +r Tvar x) (Tvar x)))).
+        {
+          apply D_forallE. prove_tm_ty.
+          (*TODO: decidable closed term*)
+          constructor; reflexivity.
+          apply D_axiom; [prove_task_wf | apply /inP; reflexivity].
+        }
+        unfold safe_sub_f; simpl. apply D_axiom; [prove_task_wf | apply /inP; reflexivity].
+      - unfold replace_tm_f; simpl. apply D_axiom; [prove_task_wf | apply /inP; reflexivity].
+    }
+    (*5. we can distribute and rewrite so that x * 0 + x * 0 = 0 + x * 0*)
+    apply (D_assert _ _ (Feq t_ty ((xt *r 0r) +r (xt *r 0r)) 
+      (0r +r (xt *r 0r)))).
+    {
+      (*need to rewrite, use symmetry, etc*)
+      admit.
+    }
+    (*Now, use cancellation*)
+    (*TODO: finish this (or make nicer with hypotheses)
+    This really isn't usable
+    what I should do 
+    1. name the hypotheses
+    2. make "derived derivations" - from core
+      that allow us to modify the hypotheses
+      (ex: specialize: 
+        if we have H: forall x, f in delta, 
+        then we can replace with H (f[t/x]))
+    3. On top of this, write tactics that
+      handle the reflexivity goals
+    *)
+    Check D_forallE.
+    apply (D_assert _ _ (safe_sub_f ))
+
+    (*4: we also have that x * 0 = 0 + x * 0*)
+    apply 
+
+
+        reflexivity.
+    }
+
+        admit.
+
+        Search check_closed_tm.
+        
+        apply check_ty.
+      }
+      Check D_forallE.
+      apply D_forallE.
+
+      (Fquant Tforall x (Feq t_ty 
+      (Tfun op nil [Tfun unit nil nil; Tvar x]) (Tvar x)))
+
+
+      unfold Ring.ring. simpl.
+      assert (D_assert _ _ ())
+    }
+
+    apply /all_forallP.
+    2: prove_closed.
+
+
+
+    2: check_closed.
+    Search Logic.closed.
+    (*We want to prove that x * 0 = 0*)
+    (*First step: show that 0 + 0 = 0*)
+    apply D_assert (Feq t_ty (Tfun Ring.plus nil 
+      [Tfun Ring.zero nil nil; Tfun Ring.))
+    Check D_assert.
+    apply D_assert.
+
+
+
+    simpl.
     unfold task_valid. simpl. split.
     + prove_task_wf.
     + intros.

@@ -337,6 +337,10 @@ Qed.
   by reflT.
 Qed.*)
 
+Ltac prove_closed :=
+  apply /check_closed_correct;
+  reflexivity.
+
 Ltac prove_task_wf :=
   apply /check_task_wf_correct;
   reflexivity.
