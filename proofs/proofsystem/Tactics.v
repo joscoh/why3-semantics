@@ -1,6 +1,7 @@
 (*On top of the natural deduction proof system, we build a nicer
   tactic-based version*)
 Require Export NatDed.
+Require Export Theory.
 From mathcomp Require Export all_ssreflect.
 Set Bullet Behavior "Strict Subproofs".
 
@@ -31,23 +32,94 @@ Ltac prove_valid_context :=
 
 Ltac prove_closed_tm := constructor; reflexivity.
 
+(*Simplify context and start proof by converting
+  from task_valid to derivation*)
+Ltac expand_ctx :=
+repeat match goal with
+| |- context [get_exported_names ?a] =>
+  try (unfold a; try unfold seq.rev; simpl);
+  rewrite !get_exported_names_unfold_eq; simpl
+| |- context [qualify_theory ?q ?n ?a] =>
+  rewrite !qualify_theory_unfold_eq; simpl
+| |- context [theory_axioms_ext ?a] =>
+  try (unfold a; try unfold seq.rev; simpl);
+  rewrite !theory_axioms_ext_unfold_eq; simpl
+| |- context [theory_ctx_ext ?a] =>
+  rewrite !theory_ctx_ext_unfold_eq; simpl
+end.
+
+Ltac simpl_sub :=
+  try rewrite !app_nil_r; 
+  try unfold add_prefix;
+  simpl;
+  try unfold sub_in_f;
+  try unfold sub_in_vs;
+  try unfold sub_funs;
+  simpl;
+  try unfold sub_tys;
+  try unfold sub_from_map;
+  simpl.
+
+(*NOTE: extra_simpl allows the user to define a custom
+  simplification tactic that occurs after each w* tactic.
+  This can be for folding up local constants, for example*)
+Ltac extra_simpl := idtac.
+
+Ltac simpl_ctx :=
+  expand_ctx;
+  simpl_sub;
+  extra_simpl.
+
+Ltac wstart :=
+  try apply soundness; simpl_task; simpl_ctx.
+
 (*Intros*)
 
-(*This is basically just [D_forallI]*)
-Ltac wintros c :=
+(*This is basically just [D_forallI] and [D_implI]*)
+Ltac wintros_tac c :=
   match goal with
   | |- derives (?g, ?d, (Fquant Tforall ?x ?f)) =>
     apply (D_forallI g d x f c);
     [reflexivity | prove_fmlas_ty | prove_closed |];
-    unfold safe_sub_f; simpl
-  | |- _ => fail "wintros requires goal to be (Fquant Tforall x f)"
+    unfold safe_sub_f; simpl; extra_simpl
+  | |- derives (?g, ?d, (Fbinop Timplies ?f1 ?f2)) =>
+    apply (D_implI g d c f1 f2);
+    [prove_closed | apply /inP; reflexivity |];
+    extra_simpl
+  | |- _ => fail "wintros requires goal to be Forall or Implies"
   end.
+
+(*We (arbitrarily) allow intros-ing up to 5 things at once*)
+(*TODO: this could be done more efficiently by taking in a list
+or something and then doing a recursive tactic. But this is easier*)
+Tactic Notation "wintros" constr(c1) :=
+  wintros_tac c1.
+Tactic Notation "wintros" constr(c1) constr(c2) :=
+  wintros_tac c1;
+  wintros_tac c2.
+Tactic Notation "wintros" constr(c1) constr(c2) constr(c3) :=
+  wintros_tac c1;
+  wintros_tac c2;
+  wintros_tac c3.
+Tactic Notation "wintros" constr(c1) constr(c2) constr(c3) constr(c4) :=
+  wintros_tac c1;
+  wintros_tac c2;
+  wintros_tac c3;
+  wintros_tac c4.
+Tactic Notation "wintros" constr(c1) constr(c2) constr(c3) constr(c4) constr(c5) :=
+  wintros_tac c1;
+  wintros_tac c2;
+  wintros_tac c3;
+  wintros_tac c4;
+  wintros_tac c5.
+
 
 (*Assert*)
 Ltac wassert name f :=
   match goal with
   | |- derives (?g, ?d, ?goal) =>
-    apply (D_assert g d name f goal)
+    apply (D_assert g d name f goal);
+    extra_simpl
   | |- _ => fail "Can only assert for a derivation"
   end.
 
@@ -254,31 +326,6 @@ Proof.
   unfold rename_hyp. rewrite map_map. reflexivity.
 Qed.
 
-
-(*Definition rename_trans name1 name2 : trans :=
-  fun t =>
-  [mk_task (task_gamma t) 
-    (rename_hyp (task_delta t) name1 name2) (task_goal t)].
-
-Lemma rename_trans_sound name1 name2: sound_trans (rename_trans name1 name2).
-Proof.
-  unfold sound_trans, rename_trans.
-  intros.
-  specialize (H _ ltac:(left; auto)).
-  destruct t as [[gamma delta] goal].
-  simpl_task.
-  unfold task_valid in *. 
-  destruct H as [Hwf Hval]. split; auto.
-  intros. simpl_task.
-  specialize (Hval gamma_valid Hwf).
-  unfold log_conseq in *. intros.
-  specialize (Hval pd pf pf_full).
-  erewrite satisfies_irrel. apply Hval.
-  intros. erewrite satisfies_irrel. apply H.
-  Unshelve.
-  rewrite map_snd_rename_hyp in Hd. auto.
-Qed.*)
-
 (*TODO: move*)
 Lemma rename_hyp_same delta n: 
   rename_hyp delta n n = delta.
@@ -404,8 +451,6 @@ Proof.
   - rewrite -list_map_map map_snd_rename_hyp.
     apply sublist_refl.
 Qed.
-
-(*TDOO: autoate - make task_with_delta, single trans, etc*)
 
 (*TODO: move to GenElts*)
 Require Import GenElts.
@@ -535,15 +580,36 @@ Qed.
 
 (*And now the tactic*)
 
-Ltac wspecialize name tm :=
+Ltac wspecialize_tac name tm :=
   eapply (derives_specialize _ _ _ name tm);
   [reflexivity | prove_tm_ty | prove_closed_tm | prove_task_wf |];
   unfold replace_hyp; simpl;
-  unfold safe_sub_f; simpl.
+  unfold safe_sub_f; simpl;
+  extra_simpl.
+
+Ltac wspecialize_tac2 name tms :=
+  match tms with
+  | nil => idtac
+  | ?tm :: ?tl => wspecialize_tac name tm; wspecialize_tac2 name tl
+  end.
+
+Tactic Notation "wspecialize" constr(name) constr(tm) :=
+  wspecialize_tac2 name [tm].
+  (*wspecialize_tac name tm.*)
+Tactic Notation "wspecialize" constr(name) constr(tm1) constr(tm2) :=
+  wspecialize_tac2 name [tm1; tm2].
+  (*wspecialize_tac name tm1;
+  wspecialize_tac name tm2.*)
+Tactic Notation "wspecialize" constr(name) constr(tm1) constr(tm2) constr(tm3) :=
+  wspecialize_tac2 name [tm1; tm2; tm3].
+  (*wspecialize_tac name tm1;
+  wspecialize_tac name tm2;
+  wspecialize_tac name tm3.*)
 
 (*Assumption*)
 Ltac wassumption :=
-  apply D_axiom; [prove_task_wf | apply /inP; reflexivity].
+  apply D_axiom; [prove_task_wf | apply /inP; reflexivity];
+  extra_simpl.
 
 (*f_equal*)
 Ltac wf_equal :=
@@ -552,7 +618,8 @@ Ltac wf_equal :=
     apply (D_f_equal g d f tys tms1 tms2 ty);
     [reflexivity | reflexivity | prove_tm_ty | prove_tm_ty |
       reflexivity |];
-    simpl; repeat constructor
+    simpl; repeat constructor;
+    extra_simpl
   | _ => fail "f_equal requires goal in form derives (gamma, delta, f xn = f yn)"
   end.
 
@@ -563,7 +630,8 @@ Ltac wreflexivity :=
       apply (D_eq_refl g d ty t);
       [prove_valid_context | prove_fmlas_ty |
       apply /Typechecker.uniqP; reflexivity |
-      prove_closed_tm | prove_tm_ty ]
+      prove_closed_tm | prove_tm_ty ];
+      extra_simpl
   | _ => fail "reflexivity requires goal of form (x = x)"
   end.
 
@@ -589,7 +657,7 @@ Ltac wrewrite H :=
   | |- derives (?g, ?d, ?f) =>
     eapply (derives_rewrite g d f H);
     [reflexivity | prove_closed | prove_closed |];
-    unfold replace_tm_f; simpl
+    unfold replace_tm_f; simpl; extra_simpl
   | _ => fail "Usage: rewrite H, where H : t1 = t2"
   end.
 
@@ -602,53 +670,6 @@ Lemma map_fst_replace_hyp delta name f_new:
 Proof.
   unfold replace_hyp. rewrite map_map. reflexivity.
 Qed.
-
-(*Lemma replace_hyp_snd {P: formula -> Prop} delta name f:
-  NoDup (map fst delta) ->
-  Forall P (List.map snd (replace_hyp delta name f)) ->
-  P f ->
-  Forall P (List.map snd delta).
-Proof.
-  intros Hn Hall Hf.
-  destruct (in_dec string_dec name (map fst delta)).
-  2: {
-    rewrite replace_hyp_notin in Hall; auto.
-  }
-  (*
-  rewrite in_map_iff in i.
-  destruct i as [e [Hname Hine]]; subst.
-  apply in_split in Hine.
-  destruct Hine as [l1 [l2 Hdelta]]; subst.
-  revert Hall.
-  rewrite replace_hyp_cat; simpl;
-  rewrite !map_app; simpl.
-  rewrite String.eqb_refl.
-  rewrite !replace_hyp_notin. simpl.
-  rewrite replace_hyp_cat in Hall.
-  rewrite map_cat in Hall.*)
-  eapply Forall_perm in Hall.
-  2: apply perm_map; apply replace_hyp_perm.
-  all: auto.
-  revert Hall. rewrite !Forall_forall; intros.
-  simpl in Hall. rewrite in_map_iff in H.
-  destruct H as [e [Hx Hine]]; subst.
-  rewrite in_map_iff in i.
-  destruct i as [e2 [Hname Hine2]]; subst.
-  destruct (String.eqb_spec e.1 e2.1).
-  - apply Hall. left.
-    eapply nodup_fst_inj.
-    apply Hn. apply Hin
-  
-  Search NoDup List.map fst.
-  unfold remove_hyp in Hall.
-  specialize (Hall e.2).
-
-  2: apply perm_eq_map.
-  Search replace_hyp perm_eq.
-  Search Forall perm_eq.
-  unfold replace_hyp in Hall.
-
-*)
 
 (*rewrite in*)
 Lemma derives_rewrite_in gamma delta goal name1 name2 ty t1 t2 f:
@@ -684,7 +705,13 @@ Ltac wrewrite_in H1 H2 :=
   eapply derives_rewrite_in with(name1:=H1)(name2:=H2);
   [reflexivity | reflexivity | prove_closed | prove_closed
     | prove_closed | prove_fmlas_ty |];
-  unfold replace_tm_f; simpl.
+  unfold replace_tm_f; simpl;
+  extra_simpl.
+
+Tactic Notation "wrewrite" constr(H) :=
+  wrewrite H.
+Tactic Notation "wrewrite" constr(H1) "in" constr(H2) :=
+  wrewrite_in H1 H2.
 
 (*Symmetry in*)
 Lemma derives_symmetry_in gamma delta goal name t1 t2 ty:
@@ -707,7 +734,7 @@ Qed.
 Ltac wsymmetry_in H :=
   eapply (derives_symmetry_in) with (name:=H);
   [reflexivity | prove_closed | prove_fmlas_ty |];
-  unfold replace_hyp; simpl.
+  unfold replace_hyp; simpl; extra_simpl.
 
 (*TODO: maybe add custom simpl tactic after all of these?*)
 
@@ -733,23 +760,124 @@ Qed.
 
 Ltac wapply H :=
   eapply (derives_apply) with(name:=H);
-  [reflexivity | prove_closed |].
+  [reflexivity | prove_closed |]; extra_simpl.
 
+(*More rewriting*)
 
-(*TODO: apply (for impl), apply in*)
+(*Rewrite in opposite direction*)
+Tactic Notation "wrewrite<-" constr(H) :=
+  wsymmetry_in H; wrewrite H; wsymmetry_in H.
 
+Tactic Notation "wrewrite<-" constr (H1) "in" constr(H2) :=
+wsymmetry_in H1; wrewrite H1 in H2; wsymmetry_in H1.
 
-(*Specialize _ as _*)
+(*copy a hypothesis (like assert (H2:=H1) in Coq)*)
+Definition derives_copy gamma delta goal n1 n2 f:
+  find_hyp delta n1 = Some f ->
+  ~ In n2 (map fst delta) ->
+  derives (gamma, (n2, f) :: delta, goal) ->
+  derives (gamma, delta, goal).
+Proof.
+  intros Hf Hnotin Hd.
+  assert (A:=Hd). revert A.
+  inversion Hd; subst. destruct H; subst.
+  apply D_weaken.
+  - inversion task_hyp_nodup; auto.
+  - inversion task_delta_typed; auto.
+  - apply get_assoc_list_some in Hf.
+    apply incl_cons; [|apply incl_refl].
+    rewrite in_map_iff. exists (n1, f); auto.
+Qed.
 
+Ltac wcopy H1 H2 :=
+  eapply derives_copy with(n1:=H1)(n2:=H2);
+  [reflexivity | apply /inP; reflexivity |];
+  extra_simpl.
 
-
-  (*Theorem D_forallI gamma delta x f c:
-  (*c is not used*)
-  negb (in_bool string_dec c (map (fun (x: funsym) => s_name x) 
-    (sig_f gamma))) ->
-  (*delta and f are typed under gamma (they do not use the new symbol)*)
+(*Clear a hypothesis*)
+Definition derives_clear gamma delta goal n:
+  NoDup (map fst delta) ->
   Forall (formula_typed gamma) (map snd delta) ->
-  closed gamma (Fquant Tforall x f) ->
-  derives (abs_fun (constsym c (snd x)) :: gamma, delta, 
-    safe_sub_f (t_constsym c (snd x)) x f) ->
-  derives (gamma, delta, Fquant Tforall x f).*)
+  derives (gamma, remove_hyp delta n, goal) ->
+  derives (gamma, delta, goal).
+Proof.
+  intros Hnodup Hty Hd. assert (A:=Hd); revert A.
+  apply D_weaken; auto.
+  eapply sublist_trans. apply sublist_map. 
+  apply remove_rename_sublist.
+  rewrite <- list_map_map, map_snd_rename_hyp.
+  apply sublist_refl.
+  Unshelve. apply n.
+Qed.
+
+Ltac wclear H :=
+  eapply derives_clear with (n:=H);
+  [apply /Typechecker.uniqP; reflexivity |
+    prove_fmlas_ty |];
+    unfold remove_hyp; simpl; extra_simpl.
+
+(*Now we can simulate rewrite (H x1 ... xn) -
+  create a new copy of H (say H1), specialize H1,
+  then rewrite with H1 and clear it*)
+
+(*Copy to a new, unused hypothesis*)
+Ltac wcopy_new H :=
+  match goal with
+  | |- derives (?g, ?d, ?goal) =>
+    wcopy H (gen_name (map fst d))
+  end.
+
+(*o: optional hyp to rewrite in
+  b: bool - if true, then reverse the rewrite*)
+Ltac wrewrite_with_tac H o b args :=
+  (*First, generate new hypothesis*)
+  match goal with
+  | |- derives (?g, ?d, ?goal) =>
+    let new := constr:(gen_name (map fst d)) in
+    wcopy H new;
+    wspecialize_tac2 new args;
+    match o with
+    | Some ?H2 =>
+      match b with
+      | true => wrewrite<- new in H2
+      | false => wrewrite new in H2
+      end
+    | None =>
+      match b with
+      | true => wrewrite<- new
+      | false => wrewrite new
+      end
+    end;
+    wclear new;
+    extra_simpl
+  end.
+
+(*We will have versions for 1, 2, and 3 arguments. Unfortunately,
+  this means we need 12 cases*)
+Tactic Notation "wrewrite[" constr(H) constr(t1) "]" :=
+  wrewrite_with_tac H (@None string) false [t1].
+Tactic Notation "wrewrite[" constr(H) constr(t1) constr(t2) "]" :=
+  wrewrite_with_tac H (@None string) false [t1; t2].
+Tactic Notation "wrewrite[" constr(H) constr(t1) constr(t2) constr(t3) "]" :=
+  wrewrite_with_tac H (@None string) false [t1; t2; t3].
+
+Tactic Notation "wrewrite<-[" constr(H) constr(t1) "]" :=
+  wrewrite_with_tac H (@None string) true [t1].
+Tactic Notation "wrewrite<-[" constr(H) constr(t1) constr(t2) "]" :=
+  wrewrite_with_tac H (@None string) true [t1; t2].
+Tactic Notation "wrewrite<-[" constr(H) constr(t1) constr(t2) constr(t3) "]" :=
+  wrewrite_with_tac H (@None string) true [t1; t2; t3].
+
+Tactic Notation "wrewrite[" constr(H) constr(t1) "] in " constr(H2) :=
+  wrewrite_with_tac H (Some H2) false [t1].
+Tactic Notation "wrewrite[" constr(H) constr(t1) constr(t2) "] in" constr(H2) :=
+  wrewrite_with_tac H (Some H2) false [t1; t2].
+Tactic Notation "wrewrite[" constr(H) constr(t1) constr(t2) constr(t3) "] in" constr(H2) :=
+  wrewrite_with_tac H (Some H2) false [t1; t2; t3].
+
+Tactic Notation "wrewrite<-[" constr(H) constr(t1) "] in" constr(H2) :=
+  wrewrite_with_tac H (Some H2) true [t1].
+Tactic Notation "wrewrite<-[" constr(H) constr(t1) constr(t2) "] in" constr(H2) :=
+  wrewrite_with_tac H (Some H2) true [t1; t2].
+Tactic Notation "wrewrite<-[" constr(H) constr(t1) constr(t2) constr(t3) "] in" constr(H2) :=
+  wrewrite_with_tac H (Some H2) true [t1; t2; t3].
