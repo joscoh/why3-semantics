@@ -12,9 +12,9 @@ Set Bullet Behavior "Strict Subproofs".
   syntactically *)
 
 Definition task: Set :=
-  (context * list formula * formula).
+  (context * list (string * formula) * formula).
 
-Definition mk_task (gamma: context) (delta: list formula)
+Definition mk_task (gamma: context) (delta: list (string * formula))
   (goal: formula) : task :=
   (gamma, delta, goal).
 
@@ -24,7 +24,7 @@ Definition mk_task (gamma: context) (delta: list formula)
     task_goal: formula}.*)
 Definition task_gamma (t: task) : context :=
   fst (fst t).
-Definition task_delta (t: task) : list formula :=
+Definition task_delta (t: task) : list (string * formula) :=
   snd (fst t).
 Definition task_goal (t: task) : formula :=
   snd t.
@@ -38,7 +38,10 @@ Class task_wf (w: task) :=
     (*Context is well-typed*)
   task_gamma_valid: valid_context (task_gamma w);
   (*Local context is well-typed*)
-  task_delta_typed: Forall (formula_typed (task_gamma w)) (task_delta w);
+  task_delta_typed: Forall (formula_typed (task_gamma w)) 
+    (map snd (task_delta w));
+  (*No duplicate hypothesis names*)
+  task_hyp_nodup: NoDup (map fst (task_delta w));
   (**)
   task_goal_typed : closed (task_gamma w) (task_goal w)
   }.
@@ -71,7 +74,7 @@ Arguments task_goal_typed {_}.
 Definition task_valid (*{gamma: context}*) (w: task)  : Prop :=
   task_wf w /\
   forall (gamma_valid: valid_context (task_gamma w)) (w_wf: task_wf w),
-    @log_conseq _ gamma_valid (task_delta w) (task_goal w)
+    @log_conseq _ gamma_valid (map snd (task_delta w)) (task_goal w)
       (task_goal_typed) (task_delta_typed).
 
 (*What this means: gamma, delta, vars |= f iff
@@ -305,7 +308,8 @@ Qed.
 
 Definition check_task_wf (w: task): bool :=
   check_context (task_gamma w)  &&
-  all (typecheck_formula (task_gamma w)) (task_delta w) &&
+  all (typecheck_formula (task_gamma w)) (map snd (task_delta w)) &&
+  uniq (map fst (task_delta w)) &&
   check_closed (task_gamma w) (task_goal w).
   (*all (fun f => sublistb (fmla_fv f) (task_vars w)) (task_delta w) &&*)
   (*all (fun x => typecheck_type gamma (snd x)) (task_vars w) &&
@@ -319,9 +323,10 @@ Proof.
   (*Each follows from previous results - just case on each
     reflected bool*)
   case: (check_context_correct (task_gamma w)) => Hval/=; last by reflF.
-  case: (all (typecheck_formula(task_gamma w)) (task_delta w)) 
+  case: (all (typecheck_formula(task_gamma w)) (map snd (task_delta w))) 
   /(forallb_ForallP (fun x => formula_typed (task_gamma w) x)) => [| Hallty | Hallty]; try (by reflF);
   first by move=> x Hinx; apply typecheck_formula_correct.
+  case: (uniqP (map fst (task_delta w))) => Huniq; last by reflF.
   case: (check_closed_correct (task_gamma w) (task_goal w)) => Hclosed;
   last by reflF.
   by reflT.

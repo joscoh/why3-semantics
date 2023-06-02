@@ -888,11 +888,11 @@ Fixpoint valid_theory (t: theory) : Prop :=
     match k with 
     | Paxiom => (*we only require that the task is wf, not
       valid*) task_wf (mk_task (theory_ctx_int tl) 
-        (map snd (theory_axioms_int tl)) f) 
+        (theory_axioms_int tl) f) 
       /\ valid_theory tl
     | _ =>
       task_valid (mk_task (theory_ctx_int tl)
-        (map snd (theory_axioms_int tl)) f) /\
+        (theory_axioms_int tl) f) /\
       valid_theory tl
     end
   | _ :: tl => valid_theory tl

@@ -28,6 +28,7 @@ proofs/proofsystem/Util.v
 proofs/proofsystem/Shallow.v
 proofs/proofsystem/NatDed.v
 proofs/proofsystem/Notations.v
+proofs/proofsystem/Tactics.v
 #proofs/Util.v
 #proofs/Ty.v
 #proofs/Term.v
