@@ -558,9 +558,150 @@ Proof.
     rewrite Forall_forall in H; auto.
 Qed.
 
+Lemma T_Var' gamma (x: vsymbol) ty:
+  valid_type gamma ty ->
+  snd x = ty ->
+  term_has_type gamma (Tvar x) ty.
+Proof.
+  intros. subst. constructor; auto.
+Qed. 
+
+Lemma map_join_left_or_typed {A: Type} gamma d (f: A * formula -> formula) 
+  (fs: list (A * formula)):
+  formula_typed gamma d ->
+  Forall (formula_typed gamma) (map f fs) ->
+  formula_typed gamma (map_join_left d f t_or fs).
+Proof.
+  intros Hbase Hallty. unfold map_join_left.
+  destruct fs; auto.
+  inversion Hallty; subst.
+  generalize dependent (f p).
+  clear -H2. induction fs; simpl; auto; intros.
+  inversion H2; subst.
+  apply IHfs; auto. constructor; auto.
+Qed.
+
 (*TODO: START
   prove that inv_aux is well-typed*)
+Lemma inv_aux_typed {A: Type} {gamma: context} (gamma_valid: valid_context gamma)
+  (x: predsym * list (A * formula))
+  (Hinp: In (fst x) (sig_p gamma))
+  (Hallval: Forall (valid_type gamma) (s_args (fst x)))
+  (Hindform: Forall (valid_ind_form (fst x)) (map snd (snd x)))
+  (Htys: Forall (formula_typed gamma) (map snd (snd x))):
+  formula_typed gamma (snd (inv_aux x)).
+Proof.
+  unfold inv_aux. simpl.
+  apply fforalls_typed.
+  2: {
+    rewrite <- Forall_map with (f:=snd).
+    unfold create_vsymbols.
+    rewrite map_snd_combine; auto.
+    rewrite gen_strs_length; auto.
+  }
+  assert (Hlen: length
+    (create_vsymbols (concat (map fmla_bnd (map snd (snd x)))) (s_args (fst x))) =
+    length (s_args (fst x))).
+  {
+    unfold create_vsymbols.
+    unfold vsymbol. rewrite combine_length.
+    rewrite gen_strs_length, Nat.min_id. auto.
+  }
+  constructor.
+  - (*Prove that p vs is well-typed*) 
+    constructor; auto; try (rewrite map_length; auto).
+    + rewrite Forall_map. rewrite Forall_forall. intros.
+      constructor.
+    + rewrite Forall_forall.
+      intros t. rewrite in_combine_iff; rewrite !map_length; auto.
+      rewrite Hlen. intros [i [Hi Ht]].
+      specialize (Ht tm_d vty_int); subst; simpl.
+      rewrite map_nth_inbound with (d2:=vs_d); try lia.
+      rewrite map_nth_inbound with (d2:=vty_int); auto.
+      unfold create_vsymbols.
+      unfold vsymbol.
+      unfold vs_d.
+      rewrite combine_nth; [| rewrite gen_strs_length; auto].
+      rewrite ty_subst_params_id.
+      2: {
+        intros.
+        (*TODO: separate lemma - do I have this?*)
+        destruct (fst x); simpl in *.
+        destruct p_sym; simpl in *.
+        assert (Hwf:=s_args_wf).
+        apply check_args_prop with(x:=(nth i s_args vty_int)) in Hwf;
+        auto.
+        apply nth_In; auto.
+      }
+      apply T_Var'; auto.
+      rewrite Forall_forall in Hallval; apply Hallval.
+      apply nth_In; auto.
+  - (*Prove "or" portion well typed*)
+    apply map_join_left_or_typed. constructor.
+    rewrite Forall_map.
+    rewrite Forall_forall. intros y Hy.
+    unfold exi. apply descend_typed with(p:=fst x); auto.
+    + rewrite Forall_forall in Hindform.
+      apply Hindform. rewrite in_map_iff. exists y; auto.
+    + rewrite Forall_forall in Htys; apply Htys.
+      rewrite in_map_iff; exists y; auto.
+    + unfold create_vsymbols; rewrite map_snd_combine; auto.
+      rewrite gen_strs_length; auto.
+Qed.
 
+(*TODO: can we prove this?*)
+
+(*Another version with more convenient premises for us*)
+Lemma inv_aux_typed' {gamma: context} (gamma_valid: valid_context gamma)
+  (l: list indpred_def)
+  (Hl: In (inductive_def l) gamma)
+  (x: predsym * list (string * formula)) 
+  (Hinx: In x (map get_ind_data l)):
+  formula_typed gamma (snd (inv_aux x)).
+Proof.
+  rewrite in_map_iff in Hinx.
+  destruct Hinx as [ind [Hx Hinind]]; subst.
+  assert (Hlgamma := Hl).
+  apply in_inductive_ctx in Hl.
+  unfold get_ind_data.
+  destruct ind as [p fs].
+  (*This is actually difficult to prove, but it is derivable - 
+    separate lemma? - no, need to add*)
+  assert (Forall (valid_type gamma) (s_args p)). {
+    pose proof (valid_context_defs _ gamma_valid).
+    rewrite Forall_forall in H.
+    specialize (H _ Hlgamma).
+    simpl in H.
+    unfold indprop_valid in H.
+    destruct_all.
+    rewrite Forall_forall in H.
+    specialize (H _ Hinind).
+    simpl in H.
+    destruct fs; simpl in *.
+    (*TODO: just add this*)
+    admit.
+  }
+  assert (Hp: In p (predsyms_of_indprop l)). {
+    unfold predsyms_of_indprop. rewrite in_map_iff.
+      exists (ind_def p fs); auto.
+  }
+  assert (Hinpfs: In (p, map snd fs) (get_indpred l)). {
+    unfold get_indpred. rewrite in_map_iff.
+    exists (ind_def p fs); auto.
+  }
+  apply inv_aux_typed; auto.
+  - simpl.
+    unfold sig_p. rewrite in_concat.
+    exists (predsyms_of_def (inductive_def l)); simpl; split; auto.
+    rewrite in_map_iff. exists (inductive_def l); auto.
+  - simpl. pose proof (in_indpred_valid_ind_form gamma_valid Hl).
+    rewrite Forall_forall in H0.
+    specialize (H0 _ Hinpfs). auto.
+  - simpl. pose proof (in_indpred_valid gamma_valid Hl).
+    rewrite Forall_map, Forall_forall in H0.
+    specialize (H0 _ Hinpfs).
+    rewrite Forall_forall in H; auto.
+Admitted.
 
 (*TODO: name this?*)
 (*No, we do not want to prove closed. Can we do without?*)
@@ -600,45 +741,11 @@ Proof.
     rewrite Forall_forall in Hd.
     apply Hd. rewrite in_map_iff. exists ax; auto.
   - (*Now, we need to prove that [inv_aux] produces well-typed formulas*)
-      rewrite in_map_iff. exists ()
-    }
-    
-    Search indpreds_of_context inductive_def.
-
-
-
-    indprop_fmla_valid:
-  forall {gamma : context},
-  valid_context gamma ->
-  forall l : list (predsym * list formula),
-  In l (indpreds_of_context gamma) ->
-  forall (p : predsym) (fs : list formula),
-  In (p, fs) l -> forall f : formula, In f fs -> formula_typed gamma f
-    Search indpreds_of_context
-    Search indpreds_of_context formula_typed.
-
-    in_indpred_valid:
-    forall {gamma : context},
-    valid_context gamma ->
-    forall l : list (predsym * list formula),
-    In l (indpreds_of_context gamma) ->
-    Forall (Forall (formula_typed gamma)) (map snd l)
-
-
-    Search inductive_def.
-    Search formula_typed ind_def.
-
-
-    constructor.
-
-
-
-
-  Check in_rev.
-  Check In_rev.
-  Search In rev.
-  rewrite <- in_rev.
-  rewrite in_rev_iff.
+    rewrite in_map_iff in Hax.
+    destruct Hax as [p_ax [Hax Hinp_ax]]; subst.
+    apply inv_aux_typed' with(l:=l); auto.
+    destruct t_wf. auto.
+Qed.
 
 (*Will need to prove:
   gen_axioms produces well-formed task
@@ -647,4 +754,39 @@ Proof.
 Theorem gen_axioms_sound : sound_trans (single_trans gen_axioms).
 Proof.
   apply add_axioms_sound.
-  -
+  - apply gen_axioms_typed.
+  - intros.
+    (*Now the hard part - show log conseq*)
+    unfold log_conseq_gen.
+    intros.
+    destruct pf_full as [Hrecfun [Hrecpred [Hindc Hindlf]]].
+    unfold satisfies.
+    intros.
+    (*First, get more info about fmla*)
+    rewrite in_map_iff in H.
+    destruct H as [ax [Hfmla Hinax]]; subst.
+    rewrite in_concat in Hinax.
+    destruct Hinax as [constrs [Hinconstrs Hinax]]; subst.
+    rewrite in_map_iff in Hinconstrs.
+    destruct Hinconstrs as [d [Hconstrs Hind]]; subst.
+    destruct d; try solve[inversion Hinax].
+    rewrite <- In_rev in Hinax.
+    unfold build_ind_axioms in Hinax.
+    rewrite in_app_iff in Hinax.
+    destruct Hinax as [Hinconstr | Hinax].
+    + (*Case 1, this is a constructor. Use fact (from full_interp)
+      that all constrs are true*)
+      (*Again, first simplify*)
+      rewrite in_concat in Hinconstr.
+      destruct Hinconstr as [constrs [Hinconstr Hinax]]; subst.
+      rewrite map_map in Hinconstr.
+      rewrite in_map_iff in Hinconstr.
+      destruct Hinconstr as [ind_d [Hconstrs Hind_d]]; subst.
+      unfold get_ind_data in Hinax.
+      destruct ind_d; simpl in Hinax.
+      (*TODO: START*)
+      specialize (Hindc l).
+      erewrite fmla_rep_irrel. apply Hindc.
+
+
+    destruct pf_full
