@@ -61,26 +61,24 @@ Qed.
   and variable y produce the formula
   (exists n, even n /\ y = S (S n))
   *)
-Fixpoint descend (vs: list term) (f: formula) :=
+(*We make 1 difference: we take in the list of
+  vsymbols rather than the list (map Tvar vs); 
+  this gives us the types and makes things easier*)
+Fixpoint descend (vs: list vsymbol) (f: formula) :=
   match f with
   | Fquant Tforall x f => 
-    (*Only difference is in how we handle binders
-      TODO: need to handle the case when a variable is
-      in the arguments is bound here - do alpha renaming before?*)
+    (*Only difference is in how we handle binders*)
     Fquant Texists x (descend vs f)
   | Fbinop Timplies g f =>
     Fbinop Tand g (descend vs f)
   | Fpred p tys tms =>
     (*We need an additional parameter for the types*)
-    let marry acc v x := t_and_simp acc (Feq (fst x) v (snd x)) in
-    fold_left2 marry Ftrue vs (combine 
-      (*The types map is a bit complicated - they do
-        typechecking on the fly*)
-      (map (ty_subst (s_params p) tys) (s_args p)) tms)
+    let marry acc v t := t_and_simp acc (Feq (snd v) (Tvar v) t) in
+    fold_left2 marry Ftrue vs tms
   | Flet t v f => Flet t v (descend vs f)
   | _ => f (*cannot be reached*)
   end.
-Definition exi {A: Type} (vs: list term) (x: A * formula) :=
+Definition exi {A: Type} (vs: list vsymbol) (x: A * formula) :=
   descend vs (snd x).
 
 Require Import GenElts.
@@ -121,9 +119,9 @@ Definition inv_aux {A: Type}
   (*Get the disjunction of the all of the inversion 
     cases given above
     Ex: even gives: (y = 0 \/ exists n, even n /\ y = S (S n))*)
-  let dj := map_join_left Ftrue (exi tl) t_or al in
+  let dj := map_join_left Ftrue (exi vl) t_or al in
   (*NOTE: we do not yet simplify by removing quantifiers*)
-  let hsdj := dj in
+  let hsdj := (Fbinop Timplies hd dj) in
   (*Then make this forall y, ...*)
   let ax := fforalls vl hsdj in
   (*Create the name for the inversion axiom*)
@@ -173,7 +171,7 @@ Definition eliminate_inductive : trans :=
   fun t => [trans_decl elim t].
 
 (*Proofs*)
-
+Section Proofs.
 (*Step 1: Reasoning about gamma and delta together is hard.
   We can compose this into 2 separate transformations and
   prove each one sound independently*)
@@ -183,8 +181,7 @@ Definition eliminate_inductive : trans :=
 
 (*We consider the transformation as acting on each
   individual indprop separately, then combining at the end*)
-Print imp.
-Check inv_aux.
+
 (*We use map instead of fold_left*)
 Definition build_ind_axioms (il: list indpred_def) :
   list (string * formula) :=
@@ -199,6 +196,10 @@ Definition get_indpred_defs (il: list indpred_def) : list def :=
 
 (*We have two transformations: one that generates axioms, one that
   changes gamma*)
+
+Definition add_axioms (t: task) (l: list (string * formula)) :=
+  mk_task (task_gamma t) (l ++ task_delta t) (task_goal t).
+
 Definition gen_axioms (t: task) : task :=
   let new_d :=
   concat (map (fun x =>
@@ -206,7 +207,7 @@ Definition gen_axioms (t: task) : task :=
     | inductive_def il => rev (build_ind_axioms il)
     | _ => []
     end) (task_gamma t)) in
-  mk_task (task_gamma t) (new_d ++ task_delta t) (task_goal t).
+  add_axioms t new_d.
 
 Definition gen_new_ctx (t: task) : task :=
   let new_g :=
@@ -241,8 +242,6 @@ Definition eliminate_inductive_alt : trans :=
 
 (*Prove equivalence*)
 Set Bullet Behavior "Strict Subproofs".
-
-Check concat.
 
 Lemma rev_app {A: Type} (l1 l2: list A):
   rev (l1 ++ l2) = rev l2 ++ rev l1.
@@ -331,14 +330,17 @@ Proof.
   [], []))); simpl. f_equal. f_equal.
   - (*Prove gamma equivalent*)
     (*Eliminate fold_left*)
-    rewrite <- fold_left_rev_right.
+    rewrite <- fold_left_rev_right. simpl_task. 
     rewrite <- (rev_involutive gamma) at 2.
-    rewrite map_rev.
     induction (rev gamma); simpl; auto.
     rewrite (surjective_pairing (elim a)); simpl.
     rewrite rev_app.
-    destruct a; simpl; try rewrite IHl, concat_app; auto.
-    rewrite get_indpred_defs_eq; simpl; rewrite app_nil_r; auto.
+    destruct a; simpl; try 
+    (rewrite IHl, map_app; simpl; rewrite concat_app; reflexivity).
+    rewrite map_app; simpl. 
+    rewrite get_indpred_defs_eq; simpl.
+    rewrite concat_app, IHl; simpl. 
+    rewrite app_nil_r; auto.
   - (*Prove delta part*)
     f_equal. rewrite <- fold_left_rev_right.
     rewrite <- (rev_involutive gamma) at 2.
@@ -354,6 +356,295 @@ Qed.
 
 (*Part 2: Prove that the axioms are correct*)
 
+
+(*A version of log_conseq that does not require the
+  formula to be closed. Used in intermediate goals*)
+  Definition log_conseq_gen {gamma} (gamma_valid: valid_context gamma) 
+  (Delta: list formula) (f: formula)
+  (Hty: formula_typed gamma f)
+  (Delta_ty: Forall (formula_typed gamma) Delta): Prop :=
+  forall (pd: pi_dom) (pf: pi_funpred gamma_valid pd)
+    (pf_full: full_interp gamma_valid pd pf),
+    (forall d (Hd: In d Delta),
+      satisfies gamma_valid pd pf pf_full d (Forall_In Delta_ty Hd)) ->
+    satisfies gamma_valid pd pf pf_full f Hty.
+
+(*If the formula is closed, then this is exactly the same
+  as logical consequence*)
+Lemma log_conseq_open_equiv {gamma} (gamma_valid: valid_context gamma) 
+(Delta: list formula) (f: formula)
+(Hc: closed gamma f)
+(Delta_ty: Forall (formula_typed gamma) Delta):
+log_conseq_gen gamma_valid Delta f (f_ty Hc) Delta_ty =
+log_conseq gamma_valid Delta f Hc Delta_ty.
+Proof.
+  reflexivity.
+Qed.
+
 (*First, a version of the deduction theorem:
   it suffices to show that all of the axioms we add to delta
   are implied by delta*)
+Lemma add_axioms_sound (f: task -> list (string * formula))
+  (Hallty: forall (t: task) (t_wf: task_wf t) (fmla: formula),
+    In fmla (map snd (f t)) -> formula_typed (task_gamma t) fmla):
+  (forall (t: task) (t_wf: task_wf t)
+    (fmla: formula)
+    (gamma_valid: valid_context (task_gamma t))
+    (Hallty: Forall (formula_typed (task_gamma t)) (map snd (task_delta t)))
+    (Hty: formula_typed (task_gamma t) fmla), 
+    In fmla (map snd (f t)) -> 
+    log_conseq_gen gamma_valid (map snd (task_delta t)) 
+    fmla Hty Hallty) ->
+  sound_trans (single_trans (fun t => add_axioms t (f t))).
+Proof.
+  intros. unfold sound_trans, single_trans; simpl.
+  intros.
+  specialize (H0 _ (ltac:(left; auto))).
+  unfold add_axioms in H0.
+  unfold task_valid in *.
+  destruct t as [[gamma delta] goal]; simpl_task.
+  split; auto.
+  destruct H0 as [Hwf Hval].
+  intros.
+  specialize (Hval gamma_valid Hwf).
+  unfold log_conseq in *.
+  intros.
+  specialize (Hval pd pf pf_full).
+  erewrite satisfies_irrel.
+  apply Hval. intros.
+  assert (A:=Hd).
+  rewrite map_app, in_app_iff in A.
+  destruct A.
+  - erewrite satisfies_irrel.
+    apply (H (gamma, delta, goal) t_wf d gamma_valid) 
+    with(Hallty:=task_delta_typed); auto.
+    Unshelve.
+    apply (Hallty (gamma, delta, goal)); auto.
+  - erewrite satisfies_irrel. apply (H0 _ H1).
+Qed.
+
+(*Now we want to prove the first transformation
+  (the axiom generation) sound by showing that all
+  of the axioms are implied by the context. This is
+  the hard part, where we have to use detailed
+  info about the inductive predicates and
+  the properties of the least fixpoint*)
+
+(*First, we need to prove that the outputs are well-formed and closed*)
+
+(*TODO: well-formed*)
+
+(*TODO: move?*)
+
+(*simplify the [fold_left2] in [descend]*)
+Definition iter_and_simp (fs: list formula) : formula :=
+  fold_right t_and_simp Ftrue fs.
+
+Lemma t_and_simp_true_r: forall f,
+  t_and_simp f Ftrue = f.
+Proof.
+  intros f. destruct f; reflexivity.
+Qed.
+
+(*This is NOT true - only has same meaning
+
+Lemma t_and_simp_assoc f1 f2 f3:
+  t_and_simp (t_and_simp f1 f2) f3 =
+  t_and_simp f1 (t_and_simp f2 f3).
+Proof.
+  destruct f1; simpl.
+  - destruct f2; simpl.
+    + destruct f3; simpl.
+      * repeat match goal with
+          |- context [formula_eq_dec ?f1 ?f2] => destruct (formula_eq_dec f1 f2); simpl;
+          auto; try contradiction; try congruence
+      end.
+  unfold t_and_simp; auto destruct f1.
+  destruct f1; destruct f2; destruct f3; simpl; reflexivity.
+
+Opaque t_and_simp.
+also NOT true
+Lemma fold_and_simp_eq base (vs: list vsymbol) (tms: list term):
+  fold_left2 (fun acc v t => t_and_simp acc (Feq (snd v) (Tvar v) t)) 
+    base vs tms =
+  t_and_simp base (iter_and_simp 
+    (map2 (fun v t => (Feq (snd v) (Tvar v) t)) vs tms)).
+Proof.
+  revert base tms. induction vs; simpl; intros.
+  rewrite t_and_simp_true_r; auto.
+  destruct tms; simpl.
+  rewrite t_and_simp_true_r; auto.
+  rewrite IHvs.
+  
+  
+  reflexivity.
+
+  simpl.
+
+  unfold fold_left2. *)
+
+Lemma t_and_simp_typed gamma (f1 f2: formula):
+  formula_typed gamma f1 ->
+  formula_typed gamma f2 ->
+  formula_typed gamma (t_and_simp f1 f2).
+Proof.
+  intros. unfold t_and_simp.
+  destruct f1; destruct f2; auto;
+  match goal with
+  | |- context [formula_eq_dec ?f1 ?f2] =>
+    destruct (formula_eq_dec f1 f2); subst; try solve[assumption];
+    try solve[constructor; auto]
+  end.
+Qed.
+
+(*Descend is well-typed if called on a well-typed formula
+  which is a valid indprop form and for which the
+  variables agree with the indprop args*)
+Lemma descend_typed {gamma: context} (gamma_valid: valid_context gamma)
+  (p: predsym) (vs: list vsymbol) (f: formula)
+  (Hindf: valid_ind_form p f)
+  (Hty: formula_typed gamma f)
+  (Hvs: map snd vs = s_args p):
+  formula_typed gamma (descend vs f).
+Proof.
+  induction Hindf; simpl; inversion Hty; subst; try(constructor; auto).
+  (*Only 1 interesting case*)
+  assert (Hmap:
+    (map (ty_subst (s_params p) (map vty_var (s_params p))) (s_args p)) =
+  s_args p). {
+    apply map_id'.
+    rewrite Forall_forall. intros.
+    apply ty_subst_params_id. intros.
+    destruct p; simpl in *. destruct p_sym; simpl in *.
+    assert (A:=s_args_wf).
+    apply check_args_prop with(x:=x) in A; auto.
+  }
+  rewrite Hmap in H9.
+  rewrite <- Hvs in H9.
+  rewrite <- Hvs in H0.
+  rewrite map_length in H0. clear -gamma_valid H0 H9.
+  assert (formula_typed gamma Ftrue) by constructor.
+  generalize dependent Ftrue; intros base Hbase.
+  revert base Hbase.
+  generalize dependent tms. induction vs; simpl; intros; auto;
+  try constructor.
+  destruct tms; inversion H0. inversion H9; subst.
+  apply IHvs; auto.
+  apply t_and_simp_typed; auto.
+  constructor; auto. constructor; auto. simpl in H3.
+  apply (has_type_valid gamma_valid _ _ H3).
+Qed.
+
+(*TODO: maybe remove, have similar lemma about [ind_aux]*)
+Lemma descend_typed' {gamma: context} (gamma_valid: valid_context gamma)
+  (l: list (predsym * list formula))
+  (Hl: In l (indpreds_of_context gamma))
+  (p: predsym) (fs: list formula)
+  (Hp: In (p, fs) l)
+  (vs: list vsymbol) (f: formula)
+  (Hf: In f fs)
+  (Hvs: map snd vs = s_args p):
+  formula_typed gamma (descend vs f).
+Proof.
+  apply descend_typed with(p:=p); auto.
+  - pose proof (in_indpred_valid_ind_form gamma_valid Hl).
+    rewrite Forall_forall in H.
+    specialize (H _ Hp); simpl in H.
+    rewrite Forall_forall in H.
+    apply H; auto.
+  - pose proof (in_indpred_valid gamma_valid Hl).
+    rewrite Forall_map, Forall_forall in H.
+    specialize (H _ Hp).
+    rewrite Forall_forall in H; auto.
+Qed.
+
+(*TODO: START
+  prove that inv_aux is well-typed*)
+
+
+(*TODO: name this?*)
+(*No, we do not want to prove closed. Can we do without?*)
+Lemma gen_axioms_typed (t: task) (t_wf: task_wf t):
+forall fmla : formula,
+In fmla (map snd (concat (map
+    (fun x : def =>
+    match x with
+    | inductive_def il => rev (build_ind_axioms il)
+    | _ => []
+    end) (task_gamma t)))) -> formula_typed (task_gamma t) fmla.
+Proof.
+  rewrite <- Forall_forall, Forall_map, Forall_concat, Forall_map.
+  rewrite Forall_forall; intros d Hd.
+  rewrite Forall_forall; intros ax.
+  destruct d; try solve[intros []].
+  rewrite <- In_rev.
+  unfold build_ind_axioms. rewrite in_app_iff; intros [Hconstr | Hax].
+  - (*Constructors are well-typed by well-typed of context*)   
+    rewrite in_concat in Hconstr.
+    destruct Hconstr as [constrs [Hinconstrs Hinax]]; subst.
+    rewrite map_map in Hinconstrs.
+    rewrite in_map_iff in Hinconstrs.
+    destruct Hinconstrs as [ind [Hconstrs Hinind]]; subst.
+    unfold get_ind_data in Hinax.
+    destruct ind; simpl in *.
+    destruct t_wf. destruct t as [[gamma delta] goal]; simpl_task.
+    apply in_inductive_ctx in Hd.
+    apply in_indpred_valid in Hd; auto.
+    rewrite Forall_forall in Hd.
+    specialize (Hd (map snd l0)). prove_hyp Hd.
+    { 
+      unfold get_indpred, indpred_def_to_indpred.
+      rewrite map_map. rewrite in_map_iff. exists (ind_def p l0).
+      auto.
+    }
+    rewrite Forall_forall in Hd.
+    apply Hd. rewrite in_map_iff. exists ax; auto.
+  - (*Now, we need to prove that [inv_aux] produces well-typed formulas*)
+      rewrite in_map_iff. exists ()
+    }
+    
+    Search indpreds_of_context inductive_def.
+
+
+
+    indprop_fmla_valid:
+  forall {gamma : context},
+  valid_context gamma ->
+  forall l : list (predsym * list formula),
+  In l (indpreds_of_context gamma) ->
+  forall (p : predsym) (fs : list formula),
+  In (p, fs) l -> forall f : formula, In f fs -> formula_typed gamma f
+    Search indpreds_of_context
+    Search indpreds_of_context formula_typed.
+
+    in_indpred_valid:
+    forall {gamma : context},
+    valid_context gamma ->
+    forall l : list (predsym * list formula),
+    In l (indpreds_of_context gamma) ->
+    Forall (Forall (formula_typed gamma)) (map snd l)
+
+
+    Search inductive_def.
+    Search formula_typed ind_def.
+
+
+    constructor.
+
+
+
+
+  Check in_rev.
+  Check In_rev.
+  Search In rev.
+  rewrite <- in_rev.
+  rewrite in_rev_iff.
+
+(*Will need to prove:
+  gen_axioms produces well-formed task
+  gen axioms produces all closed formulas*)
+
+Theorem gen_axioms_sound : sound_trans (single_trans gen_axioms).
+Proof.
+  apply add_axioms_sound.
+  -
