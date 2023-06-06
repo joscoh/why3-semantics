@@ -766,6 +766,10 @@ Qed.
   ).
 Defined.
 
+(*TODO: move, see if good*)
+(*
+Definition hlist_map 
+*)
 Theorem gen_axioms_sound : sound_trans (single_trans gen_axioms).
 Proof.
   apply add_axioms_sound.
@@ -834,3 +838,131 @@ Proof.
       specialize (Hcon f_in).
       erewrite fmla_rep_irrel. apply Hcon.
     + (*Inversion axiom case (much harder)*)
+      (*First, simplify In*)
+      rewrite in_map_iff in Hinax.
+      destruct Hinax as [ind [Hax Hinind]]; subst.
+      rewrite in_map_iff in Hinind.
+      rename Hind into l_in.
+      destruct Hinind as [ind_d [Heq Hind]]; subst.
+      destruct ind_d. simpl in *.
+      (*We need this and it is much nicer to have it opaque*)
+      assert (Hty1: formula_typed (task_gamma t)
+      (Fbinop Timplies
+         (Fpred p (map vty_var (s_params p))
+            (map Tvar (create_vsymbols (concat (map fmla_bnd (map snd l0))) (s_args p))))
+         (map_join_left Ftrue
+            (exi (create_vsymbols (concat (map fmla_bnd (map snd l0))) (s_args p))) t_or l0))).
+      { exact (proj1' (fforalls_typed_inv _ _ Hty)). }
+      (*We can simplify the fforalls and implies*)
+      erewrite fmla_rep_irrel.
+      rewrite fforalls_rep.
+      Unshelve.
+      2: { exact Hty1. }
+      2: { (*same as before, need separate lemma after assumption*) admit. }
+      rewrite simpl_all_dec.
+      intros h.
+      simpl_rep_full. rewrite bool_of_binop_impl, simpl_all_dec.
+      intros Hp.
+      (*So we have the first part of our assumption
+        (and we know the arg_list)*)
+      (*We have to construct our hlist of appropriate preds*)
+      assert (Hleast:=Hindlf).
+      specialize (Hleast (get_indpred l) (in_inductive_ctx _ _ l_in) p).
+      assert (p_in: In p (map fst (get_indpred l))). {
+        unfold get_indpred. rewrite map_map, in_map_iff.
+        exists (ind_def p l0); auto.
+      }
+      specialize (Hleast p_in nil
+      (map (v_subst vt) (map vty_var (s_params p)))).
+      assert (Hparamslen: length (map (v_subst vt) (map vty_var (s_params p))) =
+      length (s_params p)) by (rewrite !map_length; auto).
+      specialize (Hleast Hparamslen).
+      (*Some simplification on the [pred_arg_list] and h we have:*)
+      Check (pred_arg_list pd vt p (map vty_var (s_params p))
+      (map Tvar (create_vsymbols (concat (map fmla_bnd (map snd l0))) (s_args p)))
+      (term_rep gamma_valid pd vt pf
+         (substi_mult pd vt vv
+            (create_vsymbols (concat (map fmla_bnd (map snd l0))) (s_args p)) h))
+      (proj1' (typed_binop_inv Hty1))).
+      assert (Hsigma: sym_sigma_args p (map (v_subst vt) (map vty_var (s_params p))) =
+        map (v_subst vt) (s_args p)).
+      {
+        unfold sym_sigma_args.
+        unfold ty_subst_list_s.
+        apply list_eq_ext'; rewrite !map_length; auto.
+        intros n d Hn.
+        rewrite !map_nth_inbound with (d2:=vty_int); auto.
+        apply sort_inj; simpl.
+        apply v_subst_aux_ext. intros.
+        assert (Hinx: In x (s_params p)). {
+          destruct p; simpl in *.
+          destruct p_sym; simpl in *.
+          assert (Hwf:=s_args_wf).
+          apply check_args_prop with(x:=(nth n s_args vty_int)) in Hwf; auto.
+          apply nth_In; auto.
+        }
+        destruct (In_nth _ _ EmptyString Hinx) as [j [Hj Hx]].
+        subst. rewrite ty_subst_fun_nth with(s:=s_int); auto;
+        try unfold sorts_to_tys.
+        rewrite !map_map.
+        rewrite map_nth_inbound with(d2:=EmptyString); auto.
+        try rewrite !map_length; auto.
+        apply s_params_Nodup.
+      }
+      (*So the plan
+        1. prove that we can cast h (or redefine/reprove for now
+          fforalls_rep) to something of type
+          arg_list (dom_aux pd) (map (v_subst vt) (s_args p))
+        2. Prove that when we cast h' under Hsigma, we get 
+          [pred_arg_list...], can rewrite in Hp
+        3. Specialize Hleast with this casted h/h'/h''
+        4. Again, prove vt_with_args the same and rewrite (hope it works)
+        5. Define Ps - I believe we should have it so
+          that the ith element is fun a => 
+            formula_rep of (join exi ... )
+            under valuation where vs are sent to a (substi_mult, as above)
+            so exactly as given here just generalized
+        6. Easy to show then that this is [get_hlist_elt]
+        7. Remaining, show constructors are satisfied
+          *)
+      rewrite Hsigma in Hleast.
+        
+        rewrite !map_length; auto.
+
+        2: {}
+        2: { rewrite ty_subst_fun_notin; auto. }
+
+        rewrite ty_subst_fun_params_id.
+        rewrite ty_subst_s_nth.
+        Search map vty_var.
+
+      }
+      Check cast_arg_list.
+      assert (Hheq: )
+
+      generalize dependent h.
+      unfold create_vsymbols. rewrite map_snd_combine.
+      unfold create_vsymbols in h.
+      rewrite map_snd_combine in h.
+      assert (Hargseq: forall Heq, (pred_arg_list pd vt p (map vty_var (s_params p))
+      (map Tvar (create_vsymbols (concat (map fmla_bnd (map snd l0))) (s_args p)))
+      (term_rep gamma_valid pd vt pf
+         (substi_mult pd vt vv
+            (create_vsymbols (concat (map fmla_bnd (map snd l0))) (s_args p)) h))
+      (proj1' (typed_binop_inv Hty1))) = scast Heq h).
+
+      (*We already know the arg list a*)
+      
+      (*TODO: remove fs from this*)
+      (map snd l0)).
+      
+      apply fforalls_typed_inv in Hty.
+        apply Hty. }
+      simpl. Search fforalls formula_typed. }
+      Unshelve.
+      2: {
+        apply gen_axioms_typed. auto.
+
+      }
+      rewrite fforalls_rep.
+      Unshelve.
