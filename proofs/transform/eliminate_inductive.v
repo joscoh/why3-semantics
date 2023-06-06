@@ -750,6 +750,21 @@ Qed.
 (*Will need to prove:
   gen_axioms produces well-formed task
   gen axioms produces all closed formulas*)
+(*Temp*)
+  Definition upd_vv_args pd (vt: val_typevar) (vv: val_vars pd vt)
+  params args:
+  length params = length args ->
+  NoDup params ->
+  val_vars pd (vt_with_args vt params args).
+  unfold val_vars.
+  intros Hlen Hparams. unfold val_vars in vv.
+  intros x.
+  exact (dom_cast (dom_aux pd)
+  (eq_sym (v_subst_vt_with_args vt params args _ Hlen Hparams))
+  (vv 
+    (fst x, (ty_subst' params (sorts_to_tys args) (snd x))))
+  ).
+Defined.
 
 Theorem gen_axioms_sound : sound_trans (single_trans gen_axioms).
 Proof.
@@ -784,9 +799,38 @@ Proof.
       destruct Hinconstr as [ind_d [Hconstrs Hind_d]]; subst.
       unfold get_ind_data in Hinax.
       destruct ind_d; simpl in Hinax.
-      (*TODO: START*)
-      specialize (Hindc l).
-      erewrite fmla_rep_irrel. apply Hindc.
-
-
-    destruct pf_full
+      (*Now, use the contruct fact*)
+      assert (Hcon := Hindc).
+      specialize (Hcon (get_indpred l) (in_inductive_ctx _ _ Hind) p
+        (map snd l0)).
+      assert (p_in: In (p, map snd l0) (get_indpred l)). {
+        unfold get_indpred. rewrite in_map_iff.
+        exists (ind_def p l0); auto.
+      }
+      specialize (Hcon p_in).
+      (*The sorts we use are just mapping vt over the params*)
+      specialize (Hcon (map vt (s_params p))).
+      assert (Hlenparams: length (map vt (s_params p)) = length (s_params p)).
+      { rewrite map_length; auto. }
+      specialize (Hcon Hlenparams vt).
+      (*We create a val_vars for this new (but really identical) 
+        val_typevar*)
+      assert (Hnodup: NoDup (s_params p)) by
+        (apply s_params_Nodup).
+       (*Let us prove that these val_typevars are really equal*)
+      assert (vt = (vt_with_args vt (s_params p) (map vt (s_params p)))). {
+        apply functional_extensionality_dep; intros.
+        symmetry.
+        destruct (in_dec typevar_eq_dec x (s_params p)).
+        -- destruct (In_nth _ _ EmptyString i) as [n [Hn Hx]]; subst.
+          rewrite vt_with_args_nth; auto.
+          rewrite map_nth_inbound with(d2:=EmptyString); auto.
+        -- apply vt_with_args_notin; auto.
+      }
+      rewrite <- H in Hcon.
+      specialize (Hcon vv (snd ax)).
+      assert (f_in: In (snd ax) (map snd l0)).
+      { rewrite in_map_iff. exists ax; auto. }
+      specialize (Hcon f_in).
+      erewrite fmla_rep_irrel. apply Hcon.
+    + (*Inversion axiom case (much harder)*)
