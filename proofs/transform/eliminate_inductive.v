@@ -2357,6 +2357,48 @@ Proof.
   rewrite H in H2. auto.
 Qed.
 
+Lemma iter_fand_fv fs:
+  fmla_fv (iter_fand fs) = big_union vsymbol_eq_dec fmla_fv fs.
+Proof.
+  induction fs; simpl; auto.
+  rewrite IHfs; auto.
+Qed.
+
+Lemma tup_3_fv (f: formula):
+  forall (f1: formula) (x: vsymbol), 
+  In f1 (tup_3 (indpred_decomp f)) ->
+  In x (fmla_fv f1) ->
+  In x (fmla_fv f ++ fmla_bnd f).
+Proof.
+  intros f1 x. rewrite in_app_iff. revert f.
+  apply (formula_ind (fun _ => True)
+    (fun f => In f1 (tup_3 (indpred_decomp f)) ->
+    In x (fmla_fv f1) -> In x (fmla_fv f) \/ In x (fmla_bnd f)));
+  auto; simpl; intros; try contradiction.
+  - destruct q; try contradiction.
+    simpl in H0.
+    apply H in H0; auto. simpl_set. vsym_eq x v. destruct_all; auto.
+  - destruct b; try contradiction.
+    rewrite in_app_iff. simpl_set. simpl in H1.
+    destruct H1; subst; auto.
+    apply H0 in H1; auto. destruct_all; auto.
+  - simpl_set. rewrite in_app_iff.
+    apply H0 in H1; auto.
+    vsym_eq x v. destruct_all; auto.
+Qed.
+
+Lemma tup_3_fv_closed (f: formula):
+  closed_formula f ->
+  forall (f1: formula) (x: vsymbol), 
+  In f1 (tup_3 (indpred_decomp f)) ->
+  In x (fmla_fv f1) ->
+  In x (fmla_bnd f).
+Proof.
+  unfold closed_formula. rewrite null_nil. intros.
+  pose proof (tup_3_fv f f1 x H0 H1).
+  rewrite H in H2. auto.
+Qed.
+
 Lemma tup_4_fv (f: formula):
   forall (x: vsymbol),
   In x (fmla_fv (tup_4 (indpred_decomp f))) ->
@@ -2625,6 +2667,132 @@ Proof.
   simpl in H. rewrite Forall_forall in H.
   apply H; auto.
 Qed.
+
+(*Now, we need to show that [f]_(p->Ps) -> [f]_(p->IP)
+          if p appears strictly positively in f*)
+        (*We will prove this in a separate lemma*)
+Lemma Ps_implies_indpred {gamma} (gamma_valid: valid_context gamma)
+  (pd: pi_dom) (vt: val_typevar) (vv: val_vars pd vt) (vv': val_vars pd vt)
+  (pf: pi_funpred gamma_valid pd)
+  (pf_full: full_interp gamma_valid pd pf) {l: list indpred_def}
+  (l_in: In (inductive_def l) gamma)
+  (f: formula)
+  (Htyf: formula_typed gamma f)
+  (Hpos: ind_strictly_positive (map fst (get_indpred l)) f):
+  formula_rep gamma_valid pd vt 
+    (interp_with_Ps gamma_valid pd pf (map fst (get_indpred l))
+      (inv_Ps gamma_valid pd vt vv' pf l_in))
+    vv f Htyf ->
+  formula_rep gamma_valid pd vt pf vv f Htyf.
+Proof.
+  revert vv.
+  induction Hpos; intros vv.
+  - (*Easy case: p not in, same same rep*)
+    rewrite fmla_change_pf with (p2:=pf); simpl; auto.
+    intros. rewrite find_apply_pred_notin; auto.
+    intro Hinp. apply H in Hinp. rewrite H0 in Hinp.
+    discriminate.
+  - (*Hard case: pred*)
+    simpl_rep_full.
+    unfold inv_Ps at 1.
+    assert (Hinp': in_bool predsym_eq_dec p (map fst (get_indpred l))).
+    {
+      apply In_in_bool. auto. 
+    }
+    rewrite find_apply_pred_in with(Hinp:=Hinp').
+    rewrite gen_hlist_get_elt.
+    (*A bunch of simplification*)
+    destruct (list_eq_dec sort_eq_dec (map (v_subst vt) vs)
+    (map (v_subst vt) (map vty_var (s_params p)))); auto.
+    rewrite in_map_iff in H.
+    destruct H as [[p' fs] [Hp p_in]]; simpl in *; subst.
+    assert (Hin:=p_in).
+    unfold get_indpred in Hin.
+    rewrite in_map_iff in Hin.
+    destruct Hin as [[p' fs'] [Hpfs Hini_d]]; simpl in *; subst.
+    inversion Hpfs; subst. clear Hpfs.
+    assert (Hin: In (p, fs') (map get_ind_data l)). {
+      unfold get_ind_data. rewrite in_map_iff.
+      exists (ind_def p fs'); auto.
+    }
+    assert (Hnodup: NoDup (map fst (map get_ind_data l))). {
+      replace (map fst (map get_ind_data l)) with
+        (predsyms_of_indprop l).
+      - apply (predsyms_of_indprop_Nodup gamma_valid); auto.
+      - unfold predsyms_of_indprop.
+        rewrite !map_map.
+        apply map_ext; intros [x1 x2]; auto.
+    }
+    rewrite get_assoc_list_nodup with(y:=fs'); auto.
+    destruct (in_dec
+    (tuple_eq_dec predsym_eq_dec
+       (list_eq_dec (tuple_eq_dec string_dec formula_eq_dec))) (
+    p, fs') (map get_ind_data l)); auto.
+    
+    (*TODO:START*)
+    (*Need inverse of [formula_rep_map_join_left_t_or]*)
+    (*And need to know that fs nonempty
+      TODO: just prove something that says:
+      fmla_rep (map_join_left t_or) = fmla_rep (iter_or fs)
+      where iter_or is a more reasonable definition
+      like did before with and
+    *)
+
+  - simpl_rep_full.
+    rewrite !bool_of_binop_impl, !simpl_all_dec.
+    intros.
+    (*Here, strict positivity means it does not occur to
+      the left of the arrow, so we can change interp*)
+    apply IHHpos.
+    apply H0.
+    rewrite fmla_change_pf with (p2:=pf); simpl; auto.
+    intros. rewrite find_apply_pred_notin; auto.
+    intro Hinp. apply H in Hinp. rewrite H2 in Hinp.
+    discriminate.
+  (*Rest of cases easy*)
+  - destruct q; simpl_rep_full; rewrite !simpl_all_dec.
+    + intros Hall d; specialize (Hall d).
+      apply IHHpos; auto.
+    + intros [d Hall]; exists d; apply IHHpos; auto.
+  - simpl_rep_full. intros; bool_hyps; bool_to_prop; split; 
+    [apply IHHpos1 |apply IHHpos2]; auto.
+  - simpl_rep_full. intros; bool_hyps; bool_to_prop.
+    destruct H; [left; apply IHHpos1 | right; apply IHHpos2]; auto.
+  - simpl_rep_full. (*For let, just need fact that p not in term*)
+    intros. apply IHHpos.
+    erewrite fmla_change_vv. apply H0.
+    intros. unfold substi. vsym_eq x0 x.
+    simpl. apply tm_change_pf; simpl; auto; intros.
+    rewrite find_apply_pred_notin; auto.
+    intro Hinp. apply H in Hinp. rewrite H2 in Hinp.
+    discriminate.
+  - simpl_rep_full.
+    (*same as implication*)
+    rewrite fmla_change_pf with (p2:=pf); simpl; auto.
+    2: {
+      intros. rewrite find_apply_pred_notin; auto.
+      intro Hinp. apply H in Hinp. rewrite H0 in Hinp.
+      discriminate.
+    }
+    destruct (formula_rep gamma_valid pd vt pf vv f1 (proj1' (typed_if_inv Htyf)));
+    auto.
+  - (*similar to Tlet, but with induction*) simpl_rep_full.
+    iter_match_gen Htyf Htms Hps Htyf.
+    induction pats; simpl; auto.
+    intros. destruct a as [fh ph]. revert H2.
+    (*Show that [term_rep] is equal because P cannot appear*)
+    rewrite tm_change_pf with (p2:=pf) at 1; auto.
+    2: {
+      intros. simpl. rewrite find_apply_pred_notin; auto.
+      intro Hinp. apply H in Hinp. rewrite H2 in Hinp.
+      discriminate.
+    }
+    destruct (match_val_single gamma_valid pd vt ty fh (Forall_inv Hps)
+    (term_rep gamma_valid pd vt pf vv t ty Htyf)).
+    + apply H1; simpl; auto.
+    + simpl in *; apply IHpats; auto.
+Qed.
+  
 
 Theorem gen_axioms_sound : sound_trans (single_trans gen_axioms).
 Proof.
@@ -2982,6 +3150,9 @@ Proof.
         rewrite fexists_rep.
         Unshelve. all: auto.
         rewrite simpl_all_dec.
+        assert (Hincfs: In constr fs). {
+          unfold fs. rewrite in_map_iff. exists (name, constr); auto.
+        }
         (*NOTE: this is CRUCIAL: we use the same h' here.
           It is vital that we have the same decomposition as
           with the original constructor, so we can match
@@ -2995,6 +3166,80 @@ Proof.
         Unshelve. all: auto.
         (*Now unfold the and*)
         simpl_rep_full.
+        (*We will need to change the valuation twice.
+          We prove the free variable equivalence here.
+          The idea is that no variable in vs can be bound in
+          alpha_convert constr and that p cannot appear in
+          any let-bound terms*)
+        assert (Hvveq: forall j
+        (Hj': j < Datatypes.length (s_args p')),
+        forall x : vsymbol,
+          In x (fmla_bnd (a_convert_all_f constr vs)) ->
+          (*In x (tm_fv (nth j (snd (get_indprop_args (a_convert_all_f constr vs))) tm_d)) ->*)
+          substi_multi_let gamma_valid pd pf vt
+            (substi_mult' vt
+              (substi_mult' vt vv vs
+                  (cast_arg_list
+                    (inv_Ps_cast vt p' fs' (map (v_subst vt) (map vty_var (s_params p'))) e)
+                    (pred_arg_list pd vt p' (map vty_var (s_params p'))
+                        (snd (get_indprop_args (a_convert_all_f constr vs)))
+                        (term_rep gamma_valid pd vt pf
+                          (substi_multi_let gamma_valid pd pf vt
+                              (substi_mult' vt vv
+                                (tup_1 (indpred_decomp (a_convert_all_f constr vs))) h')
+                              (tup_2 (indpred_decomp (a_convert_all_f constr vs))) Halltup2))
+                        Hty4))) (tup_1 (indpred_decomp (a_convert_all_f constr vs))) h')
+            (tup_2 (indpred_decomp (a_convert_all_f constr vs))) Hallval2 x =
+          substi_multi_let gamma_valid pd pf vt
+            (substi_mult' vt vv (tup_1 (indpred_decomp (a_convert_all_f constr vs))) h')
+            (tup_2 (indpred_decomp (a_convert_all_f constr vs))) Halltup2 x).
+        {
+          intros j Hj x Hinxai.
+          (*See whether x occurs in let-bound vars or not*)
+          destruct (in_dec vsymbol_eq_dec x 
+            (map fst (tup_2 (indpred_decomp (a_convert_all_f constr vs))))).
+          + (*Case 1: x is in the let-bound vars*)
+            apply substi_multi_let_ext; auto.
+            apply tup_2_NoDup; auto.
+            (*Now prove that, for any free var in a 
+              let-bound term from tup_2,
+              the valuations are the same*)
+            intros y t1 Hint1 Hiny.
+            (*Again, see if y is in quantified vars or not
+              (either way similar)*)
+            destruct (in_dec vsymbol_eq_dec y (tup_1 (indpred_decomp (a_convert_all_f constr vs)))).
+            * (*If y in quantified vars, easy (bceause h' used both times!)*)
+              destruct (In_nth _ _ vs_d i1) as [k [Hk Hy]]; subst.
+              rewrite !substi_mult_nth' with(Hi:=Hk); auto;
+              apply tup_1_NoDup; auto.
+            * (*If not, push through to next layer, use fact that
+                y CANNOT be in vs because vs not in constr*)
+              rewrite !substi_mult_notin; auto.
+              (*TODO: prove that all free vars in decomp
+                are bound or free in original*)
+              intros Hiny2.
+              assert (Hinybnd: In y (fmla_bnd (a_convert_all_f constr vs))).
+              {
+                apply tup_2_fv_closed with(t:=t1); auto.
+                rewrite <- (alpha_closed constr) by
+                  apply a_convert_all_f_equiv.
+                apply (constr_closed gamma_valid l_in Hinfs Hincfs).
+              }
+              apply (Hnotinvs y); auto.
+          + (*If x not in the the let-bound vars, we ignore
+            this binding and got to the next one*)
+            rewrite !substi_multi_let_notin; auto.
+            (*This time, see if x is in the quantified vars*)
+            destruct (in_dec vsymbol_eq_dec x (tup_1 (indpred_decomp (a_convert_all_f constr vs)))).
+            * (*If it is, we simplify and it is easy*)
+              destruct (In_nth _ _ vs_d i0) as [k [Hk Hy]]; subst.
+              rewrite !substi_mult_nth' with(Hi:=Hk); auto;
+              apply tup_1_NoDup; auto.
+            * (*Otherwise, we just need to show that x not in vs*)
+              rewrite !substi_mult_notin; auto.
+              intros Hinx2.
+              apply (Hnotinvs x); auto.
+        }
         (*First, prove the second part*)
         bool_to_prop; split.
         2: {
@@ -3139,69 +3384,98 @@ Proof.
               subst. unfold dom_cast; simpl.
               apply term_rep_irrel.
             }
-            assert (Hincfs: In constr fs). {
-              unfold fs. rewrite in_map_iff. exists (name, constr); auto.
-            }
-            (*Now we prove that these valuations agree on the free
-              variables of a_i.
-              The key ideas: no var in vs occur in the original formula*)
+            (*Now we use the lemma from before, just needing
+              that all free vars in a_i are bound in constr originally*)
             intros x Hinxai.
-            (*See whether x occurs in let-bound vars or not*)
-            destruct (in_dec vsymbol_eq_dec x 
-              (map fst (tup_2 (indpred_decomp (a_convert_all_f constr vs))))).
-            + (*Case 1: x is in the let-bound vars*)
-              apply substi_multi_let_ext; auto.
-              apply tup_2_NoDup; auto.
-              (*Now prove that, for any free var in a 
-                let-bound term from tup_2,
-                the valuations are the same*)
-              intros y t1 Hint1 Hiny.
-              (*Again, see if y is in quantified vars or not
-                (either way similar)*)
-              destruct (in_dec vsymbol_eq_dec y (tup_1 (indpred_decomp (a_convert_all_f constr vs)))).
-              * (*If y in quantified vars, easy (bceause h' used both times!)*)
-                destruct (In_nth _ _ vs_d i1) as [k [Hk Hy]]; subst.
+            apply Hvveq with(j:=j); auto.
+            apply (tup_4_fv_closed (a_convert_all_f constr vs)).
+            + rewrite <- (alpha_closed constr) by
+                apply a_convert_all_f_equiv.
+              apply (constr_closed gamma_valid l_in Hinfs Hincfs).
+            + rewrite (ind_form_decomp p' _ Hinda). simpl.
+              simpl_set. exists ((nth j (snd (get_indprop_args (a_convert_all_f constr vs))) tm_d)).
+              split; auto. apply nth_In; auto.
+              inversion Hty4; subst.
+              rewrite H5; auto.
+        }
+        (*Now we are just left with proving all of the
+          antecedents, for which we need a separate lemma*)
+        (*First, we simplify the valuation (here and in Hconstrs) because vs do not appear
+          in the formula and p does not appear in the let-bound terms*)
+        erewrite fmla_change_vv with (v2:=
+        (substi_multi_let gamma_valid pd pf vt
+          (substi_mult' vt vv (tup_1 (indpred_decomp (a_convert_all_f constr vs))) h')
+          (tup_2 (indpred_decomp (a_convert_all_f constr vs))) Hallval2)
+        ).
+        2: {
+          intros x Hinx.
+          (*TODO: doesn't quite match Hvveq, ugh*)
+          (*We follow a similar process as above - TODO proof is
+            very similar should factor out*)
+          destruct (in_dec vsymbol_eq_dec x 
+          (map fst (tup_2 (indpred_decomp (a_convert_all_f constr vs))))).
+          - apply substi_multi_let_ext; auto.
+            apply tup_2_NoDup; auto.
+            intros y t1 Hint1 Hiny.
+            destruct (in_dec vsymbol_eq_dec y (tup_1 (indpred_decomp (a_convert_all_f constr vs)))).
+            + destruct (In_nth _ _ vs_d i1) as [k [Hk Hy]]; subst.
+              rewrite !substi_mult_nth' with(Hi:=Hk); auto;
+              apply tup_1_NoDup; auto.
+            + rewrite !substi_mult_notin; auto.
+              intros Hiny2.
+              assert (Hinybnd: In y (fmla_bnd (a_convert_all_f constr vs))).
+              {
+                apply tup_2_fv_closed with(t:=t1); auto.
+                rewrite <- (alpha_closed constr) by
+                  apply a_convert_all_f_equiv.
+                apply (constr_closed gamma_valid l_in Hinfs Hincfs).
+              }
+              apply (Hnotinvs y); auto.
+            - rewrite !substi_multi_let_notin; auto.
+              destruct (in_dec vsymbol_eq_dec x (tup_1 (indpred_decomp (a_convert_all_f constr vs)))).
+              * destruct (In_nth _ _ vs_d i0) as [k [Hk Hy]]; subst.
                 rewrite !substi_mult_nth' with(Hi:=Hk); auto;
                 apply tup_1_NoDup; auto.
-              * (*If not, push through to next layer, use fact that
-                  y CANNOT be in vs because vs not in constr*)
-                rewrite !substi_mult_notin; auto.
-                (*TODO: prove that all free vars in decomp
-                  are bound or free in original*)
-                intros Hiny2.
-                assert (Hinybnd: In y (fmla_bnd (a_convert_all_f constr vs))).
+              * rewrite !substi_mult_notin; auto.
+                intros Hinx2.
+                assert (Hinxbnd: In x (fmla_bnd (a_convert_all_f constr vs))).
                 {
-                  apply tup_2_fv_closed with(t:=t1); auto.
+                  rewrite iter_fand_fv in Hinx.
+                  simpl_set.
+                  destruct Hinx as [f1 [Hinf1 Hinx]].
+                  apply (tup_3_fv_closed) with(x:=x) in Hinf1; auto.
                   rewrite <- (alpha_closed constr) by
                     apply a_convert_all_f_equiv.
                   apply (constr_closed gamma_valid l_in Hinfs Hincfs).
                 }
-                apply (Hnotinvs y); auto.
-            + (*If x not in the the let-bound vars, we ignore
-              this binding and got to the next one*)
-              rewrite !substi_multi_let_notin; auto.
-              (*This time, see if x is in the quantified vars*)
-              destruct (in_dec vsymbol_eq_dec x (tup_1 (indpred_decomp (a_convert_all_f constr vs)))).
-              * (*If it is, we simplify and it is easy*)
-                destruct (In_nth _ _ vs_d i0) as [k [Hk Hy]]; subst.
-                rewrite !substi_mult_nth' with(Hi:=Hk); auto;
-                apply tup_1_NoDup; auto.
-              * (*Otherwise, we just need to show that x not in vs*)
-                rewrite !substi_mult_notin; auto.
-                intros Hinx2.
-                assert (Hinxbnd: In x (fmla_bnd (a_convert_all_f constr vs))).
-                {
-                  apply tup_4_fv_closed.
-                  -  rewrite <- (alpha_closed constr) by
-                    apply a_convert_all_f_equiv.
-                    apply (constr_closed gamma_valid l_in Hinfs Hincfs).
-                  - rewrite (ind_form_decomp p' _ Hinda). simpl.
-                    simpl_set. exists ((nth j (snd (get_indprop_args (a_convert_all_f constr vs))) tm_d)).
-                    split; auto. apply nth_In; auto.
-                    inversion Hty4; subst.
-                    rewrite H5; auto.
-                }
                 apply (Hnotinvs x); auto.
         }
-        (*Now we are just left with proving all of the
-          antecedents, for which we need a separate lemma*)
+        (*And similarly, simplify Hconstrs. This is simpler*)
+        rewrite fmla_change_vv with (v2:=
+          (substi_multi_let gamma_valid pd pf vt
+          (substi_mult' vt vv (tup_1 (indpred_decomp (a_convert_all_f constr vs))) h')
+          (tup_2 (indpred_decomp (a_convert_all_f constr vs))) Hallval2))
+        in Hconstrs.
+        2: {
+          intros x Hinx.
+          destruct (in_dec vsymbol_eq_dec x 
+          (map fst (tup_2 (indpred_decomp (a_convert_all_f constr vs))))).
+          - (*Here, we first need to change pf in substi_multi_let*)
+            (*TODO: prove irrelevance maybe*)
+            assert (Halltup2 = Hallval2) by (apply proof_irrel); subst.
+            apply substi_multi_let_change_pf.
+            apply tup_2_NoDup; auto.
+            + (*p does not appear let bound*)
+              intros. simpl. rewrite find_apply_pred_notin; auto.
+              pose proof (indpred_decomp_let_notin _ _ Hposa).
+              rewrite Forall_forall in H1.
+              rewrite in_map_iff in H. destruct H as [y [Ht1 Hiny]]; subst.
+              intro C.
+              specialize (H1 _ Hiny p0 C).
+              rewrite H0 in H1. inversion H1.
+            + auto.
+          - rewrite !substi_multi_let_notin; auto.
+        }
+        
+
+        apply Hconstrs.
