@@ -781,9 +781,9 @@ Proof.
     simpl.
     (*Simplify equality proofs*)
     generalize dependent (Hvslen2 m adt vs2 eq_refl
-    (pat_has_type_valid gamma_valid (Pconstr f tys ps) ty Hty1)).
+    (pat_has_type_valid gamma (Pconstr f tys ps) ty Hty1)).
     generalize dependent (Hvslen2 m adt vs2 eq_refl
-    (pat_has_type_valid gamma_valid (Pconstr f tys ps2) ty Hty2)).
+    (pat_has_type_valid gamma (Pconstr f tys ps2) ty Hty2)).
     intros e e0.
     assert (e = e0) by (apply UIP_dec, Nat.eq_dec). subst.
     simpl.
@@ -793,10 +793,10 @@ Proof.
     simpl.
     (*Now remove Hvslen1*)
     generalize dependent (Hvslen1 m adt vs2 f eq_refl
-    (pat_has_type_valid gamma_valid (Pconstr f tys ps)
+    (pat_has_type_valid gamma (Pconstr f tys ps)
        (vty_cons (adt_name adt) vs2) Hty1) (fst (proj1_sig Hf'))).
     generalize dependent (Hvslen1 m adt vs2 f eq_refl
-    (pat_has_type_valid gamma_valid (Pconstr f tys ps2)
+    (pat_has_type_valid gamma (Pconstr f tys ps2)
        (vty_cons (adt_name adt) vs2) Hty2) (fst (proj1_sig Hf'))).
     intros e e1. assert (e = e1) by (apply UIP_dec, Nat.eq_dec); subst.
     generalize dependent (pat_constr_ind gamma_valid Hty1 Hinctx Hinmut eq_refl (fst (proj1_sig Hf'))).
@@ -1054,9 +1054,9 @@ Proof.
     simpl.
     (*Simplify equality proofs*)
     generalize dependent (Hvslen2 m adt vs2 eq_refl
-    (pat_has_type_valid gamma_valid (Pconstr f tys ps) ty Hty1)).
+    (pat_has_type_valid gamma (Pconstr f tys ps) ty Hty1)).
     generalize dependent (Hvslen2 m adt vs2 eq_refl
-    (pat_has_type_valid gamma_valid (Pconstr f tys ps2) ty Hty2)).
+    (pat_has_type_valid gamma (Pconstr f tys ps2) ty Hty2)).
     intros e e0.
     assert (e = e0) by (apply UIP_dec, Nat.eq_dec). subst.
     simpl.
@@ -1066,10 +1066,10 @@ Proof.
     simpl.
     (*Now remove Hvslen1*)
     generalize dependent (Hvslen1 m adt vs2 f eq_refl
-    (pat_has_type_valid gamma_valid (Pconstr f tys ps)
+    (pat_has_type_valid gamma (Pconstr f tys ps)
        (vty_cons (adt_name adt) vs2) Hty1) (fst (proj1_sig Hf'))).
     generalize dependent (Hvslen1 m adt vs2 f eq_refl
-    (pat_has_type_valid gamma_valid (Pconstr f tys ps2)
+    (pat_has_type_valid gamma (Pconstr f tys ps2)
        (vty_cons (adt_name adt) vs2) Hty2) (fst (proj1_sig Hf'))).
     intros e e1. assert (e = e1) by (apply UIP_dec, Nat.eq_dec); subst.
     generalize dependent (pat_constr_ind gamma_valid Hty1 Hinctx Hinmut eq_refl (fst (proj1_sig Hf'))).
@@ -6518,6 +6518,43 @@ Proof.
   intros. eapply shape_ind_positive. 2: apply H.
   apply alpha_shape_f with (vars:=nil).
   apply a_convert_all_f_equiv.
+Qed.
+
+(*And a few other lemmas*)
+Lemma alpha_closed (f1 f2: formula):
+  a_equiv_f f1 f2 ->
+  closed_formula f1 = closed_formula f2.
+Proof.
+  intros.
+  unfold closed_formula.
+  apply is_true_eq.
+  rewrite !null_nil.
+  pose proof (alpha_equiv_f_fv f1 f2 H).
+  split; intros Hfv; rewrite Hfv in H0; simpl in H0.
+  - destruct (fmla_fv f2); auto. exfalso. apply (H0 v); simpl; auto.
+  - destruct (fmla_fv f1); auto. exfalso. apply (H0 v); simpl; auto.
+Qed.
+
+Lemma a_convert_all_f_bnd_NoDup f vs:
+NoDup (fmla_bnd (a_convert_all_f f vs)).
+Proof.
+  unfold a_convert_all_f.
+  apply alpha_f_aux_bnd.
+  apply gen_strs_nodup.
+  rewrite gen_strs_length. auto.
+Qed.
+
+Lemma a_convert_all_f_bnd f vs:
+  forall x, In x (fmla_bnd (a_convert_all_f f vs)) ->
+  ~ In x vs.
+Proof.
+  intros x Hinx1 Hinx2.
+  apply alpha_f_aux_bnd in Hinx1.
+  - apply gen_strs_notin in Hinx1.
+    rewrite !in_app_iff in Hinx1. not_or Hinx.
+    contradiction.
+  - apply gen_strs_nodup.
+  - rewrite gen_strs_length; auto.
 Qed.
 
 End ConvertFn.

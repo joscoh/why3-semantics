@@ -1093,6 +1093,15 @@ Proof.
   intros. reflexivity.
 Qed.
 
+Lemma move_dom_cast (v1 v2 v3: Types.sort)
+  (H1: v1 = v3) (H2: v2 = v3) (x1: domain v1) (x2: domain v2):
+  x1 = dom_cast (eq_trans H2 (Logic.eq_sym H1)) x2 ->
+  dom_cast H1 x1 = dom_cast H2 x2.
+Proof.
+  intros.
+  subst. reflexivity.
+Qed.
+
 End DomCast.
 
 Definition args_to_constr_base_aux (l: list vty) 
@@ -1147,13 +1156,6 @@ Section Cast.
 Definition cast_arg_list {domain: Types.sort -> Set} {l1 l2}
   (Heq: l1 = l2) (x: arg_list domain l1) : arg_list domain l2 :=
   scast (f_equal (fun x => arg_list domain x) Heq) x.
-
-Lemma cast_arg_list_twice {domain: Types.sort -> Set} {l1 l2}
-  (Heq: l1 = l2) (x: arg_list domain l2) :
-  cast_arg_list Heq (cast_arg_list (esym Heq) x) = x.
-Proof.
-  destruct Heq. reflexivity.
-Qed.
 
 Lemma cast_arg_list_eq {d: Types.sort -> Set} {l1 l2: list Types.sort} (Heq1 Heq2: l1 = l2) 
   (a: arg_list d l1):
@@ -1244,6 +1246,22 @@ Lemma cast_arg_list_compose {d: Types.sort -> Set}
 Proof.
   unfold cast_arg_list. rewrite scast_scast.
   rewrite eq_trans_map_distr. reflexivity.
+Qed.
+
+Lemma cast_arg_list_same {d: Types.sort -> Set} {l: list Types.sort}
+  (Heq: l = l) (a: arg_list d l):
+  cast_arg_list Heq a = a.
+Proof.
+  assert (Heq = Logic.eq_refl). apply UIP_dec. apply list_eq_dec.
+  apply sort_eq_dec.
+  subst. reflexivity.
+Qed.
+
+Lemma cast_arg_list_twice {domain: Types.sort -> Set} {l1 l2}
+  (Heq: l1 = l2) (x: arg_list domain l2) :
+  cast_arg_list Heq (cast_arg_list (esym Heq) x) = x.
+Proof.
+  rewrite cast_arg_list_compose. apply cast_arg_list_same.
 Qed.
 
 End Cast.

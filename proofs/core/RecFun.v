@@ -501,7 +501,7 @@ Proof.
     (*A few more generalizations to make the goal nicer*)
     simpl.
     generalize dependent (Hvslen2 m adt vs2 eq_refl
-    (pat_has_type_valid gamma_valid (Pconstr f vs0 ps0) ty Hp)).
+    (pat_has_type_valid gamma (Pconstr f vs0 ps0) ty Hp)).
     clear Hvslen2.
     intros Hvslen2.
     case_find_constr.
@@ -611,7 +611,7 @@ Proof.
     end.
     { (*Need to generalize cast proof*)
       generalize dependent (Hvslen1 m adt vs2 f eq_refl
-        (pat_has_type_valid gamma_valid (Pconstr f vs0 ps0)
+        (pat_has_type_valid gamma (Pconstr f vs0 ps0)
           (vty_cons (adt_name adt) vs2) Hp) (fst x)).
       clear Hvslen1.
       intros.
@@ -1780,14 +1780,6 @@ Proof.
   intros. induction params0. inversion H.
   simpl. simpl in H. destruct (typevar_eq_dec v a); subst; auto.
   simpl. destruct H; subst; auto. contradiction.
-Qed.
-
-Lemma map_id' {A : Type} (f: A -> A) l:
-  Forall (fun x => f x = x) l ->
-  map f l = l.
-Proof.
-  induction l; simpl; intros; auto. inversion H; subst; auto.
-  rewrite H2. f_equal; auto.
 Qed.
 
 Lemma ty_subst_params_id: forall params x,

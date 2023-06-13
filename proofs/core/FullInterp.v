@@ -603,6 +603,7 @@ Proof.
   rewrite Forall_forall; intros; auto.
 Qed.
 
+(*TODO: copy of [in_indpred_valid] in Indprop, remove*)
 Lemma indprop_fmla_valid { gamma}
   (gamma_valid: valid_context gamma) 
   {l: list (predsym * list formula)}

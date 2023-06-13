@@ -159,6 +159,14 @@ with formula_typed: context -> formula -> Prop :=
 Notation "s '|-' t ':' ty" := (term_has_type s t ty) (at level 40).
 Notation "s '|-' f" := (formula_typed s f) (at level 40).*)
 
+Lemma T_Var' gamma (x: vsymbol) ty:
+  valid_type gamma ty ->
+  snd x = ty ->
+  term_has_type gamma (Tvar x) ty.
+Proof.
+  intros. subst. constructor; auto.
+Qed. 
+
 Lemma bool_dec: forall {A: Type} (f: A -> bool),
   (forall x : A, {is_true (f x)} + {~ is_true (f x)}).
 Proof.
@@ -213,6 +221,26 @@ Proof.
   intros.
   apply valid_type_ty_subst_fun; auto.
   constructor.
+Qed.
+
+Lemma pat_has_type_valid: forall gamma p ty,
+  pattern_has_type gamma p ty ->
+  valid_type gamma ty.
+Proof.
+  intros. induction H; try assumption; auto.
+  apply valid_type_ty_subst; auto.
+Qed.
+
+(*If a term has a type, that type is well-formed. We need the 
+  [valid_pat_fmla] or else we could have an empty pattern*)
+Lemma has_type_valid: forall gamma t ty,
+  term_has_type gamma t ty ->
+  valid_type gamma ty.
+Proof.
+  intros. induction H; try solve[constructor]; try assumption; auto.
+  apply valid_type_ty_subst; assumption.
+  destruct ps. inversion H4.
+  apply (H3 p); auto. left; auto. 
 Qed.
 
 (*Now we define valid contexts. Unlike the paper,
@@ -1914,7 +1942,8 @@ Definition valid_def gamma (d: def) : Prop :=
 Definition nonempty_def (d: def) : bool :=
   match d with
   | datatype_def m => negb (null (typs m))
-  | inductive_def l => negb (null l)
+  | inductive_def l => negb (null l) &&
+    forallb (fun f => negb (null (indpred_def_constrs f))) l
   | recursive_def fs => negb (null fs)
   | _ => true
   end.
@@ -2370,6 +2399,13 @@ Proof.
   revert IHHval. apply Forall_impl.
   intros.
   apply valid_def_expand; auto.
+Qed.
+
+Lemma valid_context_nonemp gamma:
+  valid_context gamma ->
+  Forall nonempty_def gamma.
+Proof.
+  intros Hval; induction Hval; auto.
 Qed.
 
 (*Now we prove that gamma has NoDups. This follows from the
@@ -2922,7 +2958,9 @@ Ltac valid_ctx_info :=
   apply wf_context_alt in Hwf;
   destruct Hwf as [Hvalf [Hvalp [Hn1 [Hn2 Hn3]]]];
   let Hvald := fresh "Hvald" in
-  pose proof (valid_context_defs _ gamma_valid) as Hvald.
+  pose proof (valid_context_defs _ gamma_valid) as Hvald;
+  let Hnonemp := fresh "Hnonemp" in
+  pose proof (valid_context_nonemp _ gamma_valid) as Hnonemp.
 
 Ltac apply_forall :=
   match goal with
@@ -2990,7 +3028,7 @@ Proof.
   valid_context_tac.
   destruct a; simpl in *.
   valid_context_tac.
-  rewrite H7, H8. 
+  rewrite H8, H9. 
   auto.
 Qed.
 
@@ -3037,26 +3075,6 @@ Proof.
   2: apply Hin.
   rewrite in_map_iff. exists (datatype_def m).
   split; auto. apply mut_in_ctx_eq2; auto.
-Qed.
-
-Lemma pat_has_type_valid: forall p ty,
-  pattern_has_type gamma p ty ->
-  valid_type gamma ty.
-Proof.
-  intros. induction H; try assumption; auto.
-  apply valid_type_ty_subst; auto.
-Qed.
-
-(*If a term has a type, that type is well-formed. We need the 
-  [valid_pat_fmla] or else we could have an empty pattern*)
-Lemma has_type_valid: forall t ty,
-  term_has_type gamma t ty ->
-  valid_type gamma ty.
-Proof.
-  intros. induction H; try solve[constructor]; try assumption; auto.
-  apply valid_type_ty_subst; assumption.
-  destruct ps. inversion H4.
-  apply (H3 p); auto. left; auto. 
 Qed.
 
 (*All constrs are in [funsym_of_context gamma]*)
@@ -3455,6 +3473,33 @@ Proof.
   apply mut_in_ctx_eq2 in m_in.
   valid_context_tac.
   auto.
+Qed.
+
+Lemma indprop_constrs_nonempty
+{l: list indpred_def} {p: predsym} {fs: list (string * formula)}
+(l_in: In (inductive_def l) gamma)
+(def_in: In (ind_def p fs) l):
+negb (null fs).
+Proof.
+  valid_ctx_info.
+  valid_context_tac.
+  bool_hyps.
+  rewrite forallb_forall in H1.
+  specialize (H1 _ def_in); simpl in H1.
+  rewrite null_map in H1. auto.
+Qed.
+
+Lemma predsyms_of_indprop_Nodup
+  (l: list indpred_def) (l_in: In (inductive_def l) gamma):
+  NoDup (predsyms_of_indprop l).
+Proof.
+  apply valid_context_wf in gamma_valid.
+  apply wf_context_sig_Nodup in gamma_valid.
+  destruct gamma_valid as [_ [Hn _ ]].
+  unfold sig_p in Hn.
+  rewrite NoDup_concat_iff in Hn.
+  destruct Hn as [Hn _]; apply Hn.
+  rewrite in_map_iff. exists (inductive_def l); auto.
 Qed.
 
 (*Finally, use above and prove that all types in

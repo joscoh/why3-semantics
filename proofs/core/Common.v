@@ -1219,12 +1219,49 @@ Proof.
   auto; inversion H.
 Qed.
 
-Lemma combine_map2: forall {A B C: Type} (l1 : list A) (l2: list B) (f: B -> C),
+Lemma combine_map: forall {A B C: Type} (l1 : list A) (l2: list B) (f: B -> C),
   combine l1 (map f l2) = map (fun x => (fst x, f (snd x))) (combine l1 l2).
 Proof.
   intros. revert l2. induction l1; simpl; intros; auto.
   destruct l2; simpl in *; auto.
   rewrite IHl1. reflexivity.
+Qed.
+
+Lemma combine_map2 {A B: Type} (l1: list A) (l2: list B):
+  combine l1 l2 = map2 (fun x y => (x, y)) l1 l2.
+Proof.
+  revert l2; induction l1; simpl; intros; auto.
+  destruct l2; auto.
+  rewrite IHl1; auto.
+Qed.
+
+Lemma Forall_map2 {A B C: Type} (f: A -> B -> C) (P: C -> Prop) 
+  (l1: list A) (l2: list B):
+  length l1 = length l2 ->
+  Forall P (map2 f l1 l2) <->
+  (forall i d1 d2, i < length l1 ->
+    P (f (nth i l1 d1) (nth i l2 d2))).
+Proof.
+  revert l2. induction l1; simpl; intros.
+  - destruct l2; inversion H.
+    split; intros; auto.
+    lia.
+  - destruct l2; inversion H.
+    split; intros.
+    + inversion H0; subst.
+      destruct i; simpl; auto.
+      apply IHl1; auto. lia.
+    + constructor.
+      * specialize (H0 0 a b ltac:(lia)); auto.
+      * apply IHl1; auto. intros.
+        apply (H0 (S i)); lia.
+Qed.
+
+Lemma map2_combine {A B C: Type} (f: A -> B -> C) (l1 : list A) (l2: list B):
+  map2 f l1 l2 = map (fun t => f (fst t) (snd t)) (combine l1 l2).
+Proof.
+  revert l2. induction l1; simpl; intros; auto.
+  destruct l2; auto. simpl. rewrite IHl1; auto.
 Qed.
 
 End Map2.
@@ -1313,6 +1350,23 @@ Proof.
     apply IHl; auto.
   - destruct (eq_dec x (fst a)); subst. exfalso. apply H. left; auto.
     apply IHl. intro C. apply H. right; assumption.
+Qed.
+
+Lemma get_assoc_list_nodup {A B: Set} 
+  (eq_dec: forall (x y: A), {x=y} +{x<> y})
+  (l: list (A * B)) (x: A) (y: B)
+  (Hnodup: NoDup (map fst l))
+  (Hin: In (x, y) l):
+  get_assoc_list eq_dec l x = Some y.
+Proof.
+  unfold get_assoc_list. induction l; simpl; auto.
+  inversion Hin.
+  inversion Hnodup; subst.
+  destruct Hin as [Heq | Hin]; subst; auto; simpl in *.
+  destruct (eq_dec x x); try contradiction; auto.
+  destruct a as [h1 h2]; subst; simpl in *.
+  destruct (eq_dec x h1); subst; auto.
+  exfalso. apply H1. rewrite in_map_iff. exists (h1, y); auto.
 Qed.
 
 End AssocList.
@@ -1611,6 +1665,14 @@ Lemma Forall_In {A: Type} {P: A -> Prop} {l: list A} {x: A}:
   P x.
 Proof.
   induction l; simpl; intros; destruct H0; subst; inversion H; auto.
+Qed.
+
+Lemma map_id' {A : Type} (f: A -> A) l:
+  Forall (fun x => f x = x) l ->
+  map f l = l.
+Proof.
+  induction l; simpl; intros; auto. inversion H; subst; auto.
+  rewrite H2. f_equal; auto.
 Qed.
 
 (*Disjpointness*)

@@ -287,3 +287,36 @@ Fixpoint get_hlist_elt {A: Type} (eq_dec: forall x y, {x = y} + {x <> y})
       get_hlist_elt eq_dec (hlist_tl h') x Hin'
     end) Hin
   end) Hinx h.
+
+Section Gen.
+
+Fixpoint gen_hlist {A: Type} (f: A -> Type) (g: forall (a: A), f a)
+  (l: list A) :
+  hlist f l :=
+  match l as l' return hlist f l' with
+  | nil => HL_nil _
+  | x :: xs => HL_cons _ x xs (g x) (gen_hlist f g xs)
+  end.
+
+Lemma gen_hlist_get_elt {A: Type}
+  (eq_dec: forall x y, {x = y} + {x <> y}) 
+  {f: A -> Type} {g: forall (a: A), f a} {l: list A} (x: A)
+  (Hinx: in_bool eq_dec x l):
+  get_hlist_elt eq_dec (gen_hlist f g l) x Hinx = g x.
+Proof.
+  induction l; simpl. inversion Hinx.
+  simpl in Hinx.
+  destruct (eq_dec x a); subst; auto.
+Qed.
+
+Lemma gen_hlist_hnth {A: Type} {f: A -> Type} {g: forall a, f a}
+  {l: list A} (d1: A) (d2: f d1) (i: nat) (Hi: i < length l):
+  hnth i (gen_hlist f g l) d1 d2 =
+  g (nth i l d1).
+Proof.
+  generalize dependent i.
+  induction l; simpl; intros; destruct i; auto; try lia.
+  apply IHl. lia.
+Qed.
+
+End Gen.

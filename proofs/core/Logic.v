@@ -300,6 +300,30 @@ Proof.
   Unshelve. simpl; auto.
 Qed.
 
+(*A version of log_conseq that does not require the
+  formula to be closed. Used in intermediate goals*)
+Definition log_conseq_gen
+  (Delta: list formula) (f: formula)
+  (Hty: formula_typed gamma f)
+  (Delta_ty: Forall (formula_typed gamma) Delta): Prop :=
+  forall (pd: pi_dom) (pf: pi_funpred gamma_valid pd)
+    (pf_full: full_interp gamma_valid pd pf),
+    (forall d (Hd: In d Delta),
+      satisfies pd pf pf_full d (Forall_In Delta_ty Hd)) ->
+    satisfies pd pf pf_full f Hty.
+
+(*If the formula is closed, then this is exactly the same
+  as logical consequence*)
+Lemma log_conseq_open_equiv
+(Delta: list formula) (f: formula)
+(Hc: closed gamma f)
+(Delta_ty: Forall (formula_typed gamma) Delta):
+log_conseq_gen Delta f (f_ty Hc) Delta_ty =
+log_conseq Delta f Hc Delta_ty.
+Proof.
+  reflexivity.
+Qed.
+
 End Thm.
 
 End Logic.

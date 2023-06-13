@@ -14,14 +14,14 @@ induction l as [| hd tl IHl].
   + exact (hd :: IHl).
 Defined.
 
-Fixpoint testlist {A: Type} (x: list A) : list A :=
+(*Fixpoint testlist {A: Type} (x: list A) : list A :=
   match x with
   | hd :: hd2 :: tl => hd :: testlist tl
   | _ => nil
   end.
 
 Print testlist.
-Print fix.
+Print fix.*)
 
 Inductive even : nat -> Prop :=
   | ev0: even 0
@@ -56,9 +56,50 @@ Lemma least_fp : forall (P: nat -> Prop),
   P 0 ->
   (forall n, P n -> P(S (S n))) ->
   (forall m, test1 m -> P m).
-Proof.
+Proof.  
   intros P H0 Hs m. unfold test1; intros. apply H; auto.
 Qed.
+
+
+(*Test constructors being true*)
+
+Lemma constr_test1: test1 0.
+Proof.
+  unfold test1. intros. apply H.
+Qed.
+
+Lemma constr_test2: forall n, test1 n -> test1 (S (S n)).
+Proof.
+  intros n Hn. unfold test1. intros P Hp0 Hpss.
+  apply Hpss.
+  apply least_fp; assumption.
+Qed.
+
+(*Inversion lemma*)
+Lemma even_inv: forall n, even n -> n = 0 \/ exists m, even m /\ n = S (S m).
+Proof.
+  intros n Hev. inversion Hev.
+  - left; auto.
+  - right. exists n0. split; auto.
+Qed.
+
+Check even_ind.
+Print test1.
+
+Lemma even_inv': forall n, test1 n -> n = 0 \/ exists m, test1 m /\ n = S (S m).
+Proof.
+  apply least_fp with (P:= (fun z => z = 0 \/ (exists m, test1 m /\ z = S (S m)))).
+  - left; auto.
+  - intros. right. exists n.
+    (*Ah*)
+    split; auto.
+    destruct H.
+    + subst. apply constr_test1.
+    + destruct H as [m [Htestm Hn]]. subst.
+      apply constr_test2. auto.
+Qed. 
+
+Definition even_inv n := 
 
 (*Other direction does not hold (as it shouldn't)*)
 Lemma not_greatest_ft : ~(forall (P: nat -> Prop),
@@ -74,19 +115,6 @@ Proof.
   inversion H0.
 Qed.
 
-(*Test constructors being true*)
-
-Lemma constr_test1: test1 0.
-Proof.
-  unfold test1. intros. apply H.
-Qed.
-
-Lemma constr_test2: forall n, test1 n -> test1 (S (S n)).
-Proof.
-  intros n Hn. unfold test1. intros P Hp0 Hpss.
-  apply Hpss.
-  apply least_fp; assumption.
-Qed.
 
 (*What if we had something non strictly positive?*)
 Fail Inductive bad : nat -> Prop :=

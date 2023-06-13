@@ -1168,7 +1168,7 @@ Proof.
       unfold add_vals in H5. rewrite in_app_iff in H5.
       destruct H5; auto.
       rewrite (alpha_equiv_p_fv_full p1 p2 H) in H5.
-      rewrite combine_map2 in H5.
+      rewrite combine_map in H5.
       rewrite in_map_iff in H5.
       destruct H5 as [vt [Hxy Hinvt]].
       destruct vt as [v1 v2]; simpl in *.
@@ -1221,7 +1221,7 @@ Proof.
       unfold add_vals in H5. rewrite in_app_iff in H5.
       destruct H5; auto.
       rewrite (alpha_equiv_p_fv_full p1 p2 H) in H5.
-      rewrite combine_map2 in H5.
+      rewrite combine_map in H5.
       rewrite in_map_iff in H5.
       destruct H5 as [vt [Hxy Hinvt]].
       destruct vt as [v1 v2]; simpl in *.

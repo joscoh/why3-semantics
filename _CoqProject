@@ -13,6 +13,7 @@ proofs/core/IndTypes.v
 proofs/core/Interp.v
 proofs/core/ADTInd.v
 proofs/core/Denotational.v
+proofs/core/Denotational2.v
 proofs/core/GenElts.v
 proofs/core/Alpha.v
 proofs/core/IndProp.v
@@ -24,12 +25,13 @@ proofs/core/Logic.v
 proofs/core/Task.v
 proofs/core/Theory.v
 proofs/transform/eliminate_let.v
+proofs/transform/eliminate_inductive.v
 proofs/proofsystem/Util.v
 proofs/proofsystem/Shallow.v
 proofs/proofsystem/NatDed.v
-proofs/proofsystem/Notations.v
+#proofs/proofsystem/Notations.v
 proofs/proofsystem/Tactics.v
-proofs/test/TheoryTest.v
+test/TheoryTest.v
 #proofs/Util.v
 #proofs/Ty.v
 #proofs/Term.v

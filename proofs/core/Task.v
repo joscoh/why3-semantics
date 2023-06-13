@@ -279,7 +279,70 @@ Proof.
   erewrite fmla_rep_irrel. apply H0.
   Unshelve. auto.
 Qed.
-  
+
+Definition compose_single_trans (f1 f2: task -> task) :=
+  single_trans (fun x => f2 (f1 x)).
+
+(*This decomposition is justified in the following lemma:*)
+Lemma compose_single_trans_sound f1 f2:
+  sound_trans (single_trans f1) ->
+  sound_trans (single_trans f2) ->
+  (forall x, task_wf x -> task_wf (f1 x)) ->
+  sound_trans (compose_single_trans f1 f2).
+Proof.
+  unfold sound_trans, compose_single_trans, single_trans. 
+  intros. simpl in *.
+  apply H; auto. intros t2 [Heq | []]; subst.
+  apply H0; auto.
+Qed.
+
+Definition add_axioms (t: task) (l: list (string * formula)) :=
+  mk_task (task_gamma t) (l ++ task_delta t) (task_goal t).
+
+(*First, a version of the deduction theorem:
+  it suffices to show that all of the axioms we add to delta
+  are implied by delta*)
+Lemma add_axioms_sound (f: task -> list (string * formula))
+  (Hallty: forall (t: task) (t_wf: task_wf t) (fmla: formula),
+    In fmla (map snd (f t)) -> formula_typed (task_gamma t) fmla):
+  (forall (t: task) (t_wf: task_wf t)
+    (fmla: formula)
+    (gamma_valid: valid_context (task_gamma t))
+    (Hallty: Forall (formula_typed (task_gamma t)) (map snd (task_delta t)))
+    (Hty: formula_typed (task_gamma t) fmla), 
+    In fmla (map snd (f t)) -> 
+    log_conseq_gen gamma_valid (map snd (task_delta t)) 
+    fmla Hty Hallty) ->
+  sound_trans (single_trans (fun t => add_axioms t (f t))).
+Proof.
+  intros. unfold sound_trans, single_trans; simpl.
+  intros.
+  specialize (H0 _ (ltac:(left; auto))).
+  unfold add_axioms in H0.
+  unfold task_valid in *.
+  destruct t as [[gamma delta] goal]; unfold mk_task, task_gamma,
+  task_delta, task_goal in *;
+  simpl in *. 
+  split; auto.
+  destruct H0 as [Hwf Hval].
+  intros.
+  specialize (Hval gamma_valid Hwf).
+  unfold log_conseq in *.
+  intros.
+  specialize (Hval pd pf pf_full).
+  erewrite satisfies_irrel.
+  apply Hval. intros.
+  assert (A:=Hd).
+  rewrite map_app, in_app_iff in A.
+  destruct A.
+  - erewrite satisfies_irrel.
+    apply (H (gamma, delta, goal) t_wf d gamma_valid) 
+    with(Hallty:=task_delta_typed); auto.
+    Unshelve.
+    apply (Hallty (gamma, delta, goal)); auto.
+  - erewrite satisfies_irrel. apply (H0 _ H1).
+Qed.
+
 End TransUtil.
 
 (*Prove task_wf automatically*)
