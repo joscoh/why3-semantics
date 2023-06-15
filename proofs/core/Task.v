@@ -41,7 +41,7 @@ Class task_wf (w: task) :=
   task_delta_typed: Forall (formula_typed (task_gamma w)) 
     (map snd (task_delta w));
   (*No duplicate hypothesis names*)
-  task_hyp_nodup: NoDup (map fst (task_delta w));
+  (*task_hyp_nodup: NoDup (map fst (task_delta w));*)
   (**)
   task_goal_typed : closed (task_gamma w) (task_goal w)
   }.
@@ -372,7 +372,7 @@ Qed.
 Definition check_task_wf (w: task): bool :=
   check_context (task_gamma w)  &&
   all (typecheck_formula (task_gamma w)) (map snd (task_delta w)) &&
-  uniq (map fst (task_delta w)) &&
+  (*uniq (map fst (task_delta w)) &&*)
   check_closed (task_gamma w) (task_goal w).
   (*all (fun f => sublistb (fmla_fv f) (task_vars w)) (task_delta w) &&*)
   (*all (fun x => typecheck_type gamma (snd x)) (task_vars w) &&
@@ -389,7 +389,7 @@ Proof.
   case: (all (typecheck_formula(task_gamma w)) (map snd (task_delta w))) 
   /(forallb_ForallP (fun x => formula_typed (task_gamma w) x)) => [| Hallty | Hallty]; try (by reflF);
   first by move=> x Hinx; apply typecheck_formula_correct.
-  case: (uniqP (map fst (task_delta w))) => Huniq; last by reflF.
+  (*case: (uniqP (map fst (task_delta w))) => Huniq; last by reflF.*)
   case: (check_closed_correct (task_gamma w) (task_goal w)) => Hclosed;
   last by reflF.
   by reflT.

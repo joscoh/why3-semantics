@@ -2614,7 +2614,6 @@ Proof.
     match goal with
     | |- context [dom_cast ?d ?H ?x] => generalize dependent H end.
     intros Hcasteq.
-    (*TODO: see what simplification we need*)
     (*Now we use our Halleq hypothesis*)
     set (feq:=Feq (snd (nth j zs vs_d)) (Tvar (nth j zs vs_d))
     (nth j (snd (get_indprop_args (a_convert_all_f constr zs))) tm_d)).
@@ -2716,7 +2715,6 @@ Proof.
       eapply H0 in Hinp. rewrite H in Hinp; inversion Hinp.
       apply nth_In; auto. inversion Htyf; subst. lia.
     + (*And now we show that the valuations are equal*)
-      (*TODO: way too many similar results*)
       intros x Hinx.
       assert (Hinxb: In x (fmla_bnd (a_convert_all_f constr zs))). {
         assert (Hinx1: In x (fmla_fv (tup_4 (indpred_decomp (a_convert_all_f constr zs))))).
@@ -3351,7 +3349,6 @@ Proof.
           destruct (in_dec vsymbol_eq_dec x 
           (map fst (tup_2 (indpred_decomp (a_convert_all_f constr vs))))).
           - (*Here, we first need to change pf in substi_multi_let*)
-            (*TODO: prove irrelevance maybe*)
             assert (Halltup2 = Hallval2) by (apply proof_irrel); subst.
             apply substi_multi_let_change_pf.
             apply tup_2_NoDup; auto.
@@ -3379,9 +3376,10 @@ Qed.
 
 End AxiomsTrue.
 
-Search eliminate_inductive.
-Print eliminate_inductive_alt.
-Search compose_single_trans.
+(*Changing the context is pretty simple. The main part is
+  to prove that the new context is still valid*)
+
+Section ChangeContext.
 
 (*Idea: if defs are a subset and all symbols appear, context is 
   still valid*)
@@ -3393,63 +3391,11 @@ Definition concrete_def (d: def) : bool :=
   | _ => false
   end.
 
-(*Lemma sigs_nil_iff gamma:
-  (sig_t gamma = nil /\ sig_f gamma = nil /\ sig_p gamma = nil) <->
-  gamma = nil.
-Proof.
-  split; intros; subst; auto.
-  destruct gamma; auto.
-  unfold sig_t, sig_f, sig_p in H.
-  destruct d; simpl in H; *)
-
-Lemma sublist_false {A: Type} (l: list A):
-  sublist l nil -> l = nil.
-Proof.
-  unfold sublist. simpl. intros.
-  destruct l; auto. exfalso. apply (H a); simpl; auto.
-Qed.
-(*Hmm maybe this isn't great - instead of sublist maybe we want
-  someething stronger?
-  See*)
-
-(*Lemma remove_defs_ctx_valid {gamma1 gamma2}:
-  valid_context gamma2 ->
-  sig_t gamma1 = sig_t gamma2 ->
-  sig_f gamma1 = sig_f gamma2 ->
-  sig_p gamma1 = sig_p gamma2 ->
-  (sublist (filter concrete_def gamma1) (filter concrete_def gamma2)) ->
-  valid_context gamma1.
-Proof.
-  intros. generalize dependent gamma1.
-  revert H.
-  (*Induction on length of gamma2*)
-  induction H; simpl; intros.
-  - destruct gamma1; auto. constructor.
-    unfold sig_t in H0; unfold sig_f in H1; unfold sig_p in H2;
-    destruct d; simpl in *; try discriminate;
-    apply sublist_false in H3; discriminate.
-  - destruct gamma1; [constructor |].
-    simpl in H13. destruct (concrete_def d) eqn : Hcond.
-    + 
-    simpl in H3.
-    (*Ugh, is there a better way than destructing?*)
-    destruct d; destruct d0; simpl in *.
-    {
-
-    }
-*)
-
 Definition is_ind (d: def) : option (list indpred_def) :=
   match d with
   | inductive_def il => Some il
   | _ => None
   end.
-
-(*If we add a bunch of abstract defs to a context, then the
-  only conditions we have to check are nodups and wf fun/predsyms*)
-(*Lemma valid_ctx_abstract_app {gamma} (l: list def):
-  Forall (fun x => concrete_def x = false) l ->
-  Forall (fun x => wf_funsym (funsyms_of_def ))*)
 
 Lemma get_indpred_defs_typesyms: forall l,
   concat (map typesyms_of_def (get_indpred_defs l)) = nil.
@@ -3489,129 +3435,12 @@ Proof.
   apply map_ext. intros. destruct a; auto.
 Qed.
 
-
-(*Lemma gen_new_ctx_sig_t {gamma}:
-  sig_t (concat
-  (map
-    (fun x : def =>
-      match x with
-      | inductive_def il => get_indpred_defs il
-      | _ => [x]
-      end) gamma)) = sig_t gamma.
-Proof.
-  unfold sig_t.
-  induction gamma; simpl; auto; destruct a; simpl; auto;
-  try rewrite IHgamma; auto.
-  rewrite map_app, concat_app. rewrite IHgamma.
-  rewrite get_indpred_defs_typesyms; auto.
-Qed.
-
-Lemma gen_new_ctx_valid {gamma}:
-  valid_context gamma ->
-  valid_context
-  (concat
-      (map
-        (fun x : def =>
-          match x with
-          | inductive_def il => get_indpred_defs il
-          | _ => [x]
-          end) gamma)).
-Proof.
-  intros.
-  assert ((map (fun x => match x with | inductive_def il => get_indpred_defs il
-    | _ => [x] end) gamma) =
-  (map (fun x => match (is_ind x) with | Some il => get_indpred_defs il
-    | None => [x] end) gamma)).
-  {
-    apply map_ext. intros. destruct a; simpl; auto.
-  }
-  rewrite H0; clear H0.
-  (*Now, we don't need to deal with all cases, just indpred*)
-  induction H; simpl; [constructor|].
-  destruct (is_ind d) eqn : Hind.
-  - unfold get_indpred_defs.
-    admit.
-  - simpl. constructor; auto.
-  
-  constructor.
-  destruct (def_eq_dec d )
-  Print valid_context.
-  destruct d; simpl; try constructor; auto. try constructor; auto.
-  - (*TODO: prove wf is same if sigs are the same*) constructor.
-*)
-
 (*wf_predsym and wf_predsym is invariant under changes in the
   context as long as the signatures have the same elements*)
 Definition eq_sig (g1 g2: context) : Prop :=
   (forall x, In x (sig_t g1) <-> In x (sig_t g2)) /\
   (forall x, In x (sig_f g1) <-> In x (sig_f g2)) /\
   (forall x, In x (sig_p g1) <-> In x (sig_p g2)).
-
-Definition sublist_sig (g1 g2: context) : Prop :=
-  sublist (sig_t g1) (sig_t g2) /\
-  sublist (sig_f g1) (sig_f g2) /\
-  sublist (sig_p g1) (sig_p g2).
-
-Lemma valid_type_sublist (g1 g2: context) (t: vty):
-  sublist (sig_t g1) (sig_t g2) ->
-  valid_type g1 t ->
-  valid_type g2 t.
-Proof.
-  intros. induction H0; try constructor; auto.
-Qed.
-
-(*Lemma valid_type_eq_sig (g1 g2: context) (t: vty):
-(forall x, In x (sig_t g1) <-> In x (sig_t g2)) ->
-  valid_type g1 t ->
-  valid_type g2 t.
-Proof.
-  intros. induction H0; try constructor; auto.
-  apply H. auto.
-Qed.*)
-
-Lemma wf_funsym_sublist (g1 g2: context) (f: funsym):
-  sublist (sig_t g1) (sig_t g2) ->
-  wf_funsym g1 f ->
-  wf_funsym g2 f.
-Proof.
-  intros Heq. unfold wf_funsym.
-  apply Forall_impl; intros.
-  destruct_all; split; auto.
-  apply (valid_type_sublist _ _ _ Heq H).
-Qed.
-
-(*Lemma wf_funsym_eq_sig (g1 g2: context) (f: funsym):
-(forall x, In x (sig_t g1) <-> In x (sig_t g2)) ->
-  wf_funsym g1 f ->
-  wf_funsym g2 f.
-Proof.
-  intros Heq. unfold wf_funsym.
-  apply Forall_impl; intros.
-  destruct_all; split; auto.
-  apply (valid_type_eq_sig _ _ _ Heq H).
-Qed.*)
-
-Lemma wf_predsym_sublist (g1 g2: context) (p: predsym):
-  sublist (sig_t g1) (sig_t g2) ->
-  wf_predsym g1 p ->
-  wf_predsym g2 p.
-Proof.
-  intros Heq. unfold wf_predsym.
-  apply Forall_impl; intros.
-  destruct_all; split; auto.
-  apply (valid_type_sublist _ _ _ Heq H).
-Qed.
-
-(*Lemma wf_predsym_eq_sig (g1 g2: context) (p: predsym):
-(forall x, In x (sig_t g1) <-> In x (sig_t g2)) ->
-  wf_predsym g1 p ->
-  wf_predsym g2 p.
-Proof.
-  intros Heq. unfold wf_predsym.
-  apply Forall_impl; intros.
-  destruct_all; split; auto.
-  apply (valid_type_eq_sig _ _ _ Heq H).
-Qed.*)
 
 Lemma eq_sig_refl: forall l, eq_sig l l.
 Proof.
@@ -3760,274 +3589,6 @@ Proof.
   - destruct a; inversion H16; auto; simpl; auto.
 Qed.
 
-(*NOTE: this is different than the *)
-
-(*Need to prove [adt_inhab] still holds. This is complicated
-  and different than previous expand lemma, because we need the 
-  mutual adts to be the same and the lengths of the type signatures*)
-
-Lemma find_ts_in_ctx_expand g1 g2 ts:
-mut_of_context g1 = mut_of_context g2 ->
-find_ts_in_ctx g1 ts = find_ts_in_ctx g2 ts.
-Proof.
-  intros. unfold find_ts_in_ctx. rewrite H; auto.
-Qed.
-
-(*TODO: replace in Typing?*)
-Lemma vty_inhab_fun_expand g2 g1 seen n1 n2
-  (IHts: forall ts' : typesym,
-    typesym_inhab_fun g1 seen ts' n1 ->
-    typesym_inhab_fun g2 seen ts' n2):
-  forall v,
-    vty_inhab_fun g1 seen v n1 ->
-    vty_inhab_fun g2 seen v n2.
-Proof.
-  induction v; simpl; auto.
-  intros; bool_hyps.
-  rewrite IHts; auto.
-  rewrite andb_true_r.
-  unfold is_true in *.
-  rewrite forallb_forall in H0 |- *.
-  intros x Hinx.
-  rewrite Forall_forall in H. apply H; auto.
-Qed.
-
-Lemma existsb_impl {A: Type} (p1 p2: A -> bool) (l: list A):
-  (forall x, In x l -> p1 x -> p2 x) ->
-  existsb p1 l ->
-  existsb p2 l.
-Proof.
-  induction l; simpl; intros; auto.
-  bool_hyps. destruct H0.
-  - rewrite H; auto.
-  - rewrite IHl; auto. simpl_bool; auto.
-Qed.
-
-Lemma forallb_impl {A: Type} (p1 p2: A -> bool) (l: list A):
-(forall x, In x l -> p1 x -> p2 x) ->
-forallb p1 l ->
-forallb p2 l.
-Proof.
-  induction l; simpl; intros; auto.
-  bool_hyps. rewrite H; auto.
-Qed.
-
-Lemma typesym_inhab_fun_expand g1 g2 seen ts:
-mut_of_context g1 = mut_of_context g2 ->
-sig_t g1 = sig_t g2 ->
-typesym_inhab_fun g1 seen ts (length (sig_t g1) - length seen) ->
-typesym_inhab_fun g2 seen ts (length (sig_t g2) - length seen).
-Proof.
-  intros Hmuteq Htseq.
-  rewrite Htseq. remember (length (sig_t g2) - length seen) as n.
-  generalize dependent seen. revert ts.
-  induction n; intros.
-  - inversion H.
-  - rewrite typesym_inhab_fun_eq in *.
-    bool_hyps. repeat simpl_sumbool.
-    simpl. bool_to_prop; split_all; auto; try simpl_sumbool.
-    + rewrite Htseq in i; contradiction.
-    + rewrite (find_ts_in_ctx_expand _ g1); auto.
-      destruct (find_ts_in_ctx g1 ts) eqn : Hts; auto.
-      destruct p. bool_hyps. rewrite H; simpl.
-      revert H0. apply existsb_impl.
-      intros x Hinx.
-      unfold constr_inhab_fun.
-      apply forallb_impl.
-      intros y Hiny.
-      apply vty_inhab_fun_expand.
-      intros ts'. apply IHn.
-      simpl. lia.
-Qed.
-
-Lemma typesym_inhab_expand g1 g2 ts:
-mut_of_context g1 = mut_of_context g2 ->
-sig_t g1 = sig_t g2 ->
-typesym_inhab g1 ts  ->
-typesym_inhab g2 ts.
-Proof.
-  intros.
-  unfold typesym_inhab in *.
-  pose proof (typesym_inhab_fun_expand g1 g2 nil ts H).
-  simpl in H2. rewrite !Nat.sub_0_r in H2. auto.
-Qed.
-
-(*TODO: replace stuff in Typing with this *)
-(*This is the core: a term/formula cannot become ill-typed by
-  adding more to the context*)
-
-Lemma mut_in_ctx_sublist m g1 g2:
-  sublist (mut_of_context g1) (mut_of_context g2) ->
-  mut_in_ctx m g1 ->
-  mut_in_ctx m g2.
-Proof.
-  unfold mut_in_ctx.
-  intros. apply in_bool_In in H0.
-  apply In_in_bool. auto.
-Qed.
-
-Lemma pattern_has_type_sublist g1 g2 p ty:
-  sublist_sig g1 g2 ->
-  pattern_has_type g1 p ty ->
-  pattern_has_type g2 p ty.
-Proof.
-  intros Hsub Hty. induction Hty; constructor; auto;
-  try apply valid_type_expand; auto.
-  - revert H. apply valid_type_sublist; apply Hsub.
-  - revert H; apply valid_type_sublist; apply Hsub.
-  - apply Hsub; auto.
-  - revert H0. apply Forall_impl. intros a. 
-    apply valid_type_sublist, Hsub.
-  - revert H1; apply valid_type_sublist, Hsub.
-Qed.
-
-Lemma well_typed_sublist g1 g2 (Hsub: sublist_sig g1 g2)
-  (Hmut: sublist (mut_of_context g1) (mut_of_context g2)) t f:
-  (forall ty
-    (Hty: term_has_type g1 t ty),
-    term_has_type g2 t ty) /\
-  ( forall (Hty: formula_typed g1 f),
-    formula_typed g2 f).
-Proof.
-  revert t f.
-  apply term_formula_ind; intros; inversion Hty; subst;
-  try solve[constructor; auto].
-  - (*Tvar*)
-    constructor. revert H1. apply valid_type_sublist, Hsub.
-  - (*Tfun*)
-    constructor; auto.
-    + revert H3. apply Hsub. 
-    + revert H4. apply Forall_impl. intros a.
-      apply valid_type_sublist, Hsub.
-    + revert H5. apply valid_type_sublist, Hsub.
-    + clear -H10 H. generalize dependent  (map (ty_subst (s_params f1) l) (s_args f1)).
-      induction l1; simpl; intros; auto.
-      destruct l0; auto.
-      inversion H; subst.
-      inversion H10; subst. constructor; auto.
-  - (*Tmatch*)
-    constructor; auto.
-    + destruct H4 as [a [m [args [m_in [a_in Hv]]]]]; subst.
-      exists a. exists m. exists args. split_all; auto.
-      revert m_in. apply mut_in_ctx_sublist; auto.
-    + intros. eapply pattern_has_type_sublist; auto. auto.
-    + clear -H0 H9. induction ps; simpl; intros; auto;
-      destruct H; subst;
-      inversion H0; subst; simpl in H9; auto.
-  - (*Teps*)
-    constructor; auto. revert H5. apply valid_type_sublist, Hsub.
-  - (*Fpred*)
-    constructor; auto.
-    + revert H3. apply Hsub.
-    + revert H4. apply Forall_impl; intros x. 
-      apply valid_type_sublist, Hsub.
-    + clear -H8 H. generalize dependent  (map (ty_subst (s_params p) tys) (s_args p)).
-      induction tms; simpl; intros; auto.
-      destruct l; auto.
-      inversion H; subst.
-      inversion H8; subst. constructor; auto.
-  - (*Fquant*) constructor; auto. revert H3.
-    apply valid_type_sublist, Hsub.
-  - (*Fmatch*)
-    constructor; auto.
-    + destruct H4 as [a [m [args [m_in [a_in Hv]]]]]; subst.
-      exists a. exists m. exists args. split_all; auto.
-      revert m_in.
-      apply mut_in_ctx_sublist; auto.
-    + intros. eapply pattern_has_type_sublist; auto. auto.
-    + clear -H0 H8. induction ps; simpl; intros; auto;
-      destruct H; subst;
-      inversion H0; subst; simpl in H8; auto.
-Qed.
-
-Definition term_has_type_sublist g1 g2
-  (Hsub: sublist_sig g1 g2)
-  (Hmut: sublist (mut_of_context g1) (mut_of_context g2)) t :=
-  proj_tm (well_typed_sublist g1 g2 Hsub Hmut) t.
-
-Definition formula_typed_sublist g1 g2
-  (Hsub: sublist_sig g1 g2)
-  (Hmut: sublist (mut_of_context g1) (mut_of_context g2)) f :=
-  proj_fmla (well_typed_sublist g1 g2 Hsub Hmut) f.
-
-Lemma funpred_def_valid_sublist g1 g2 f
-  (Hsub: sublist_sig g1 g2)
-  (Hmut: sublist (mut_of_context g1) (mut_of_context g2)):
-  funpred_def_valid_type g1 f ->
-  funpred_def_valid_type g2 f.
-Proof.
-  unfold funpred_def_valid_type.
-  destruct f; intros; destruct_all; split_all; auto.
-  - revert H. apply term_has_type_sublist; auto.
-  - revert H. apply formula_typed_sublist; auto.
-Qed.
-
-Lemma funpred_def_term_exists_sublist g1 g2 fs
-  (Hmut: sublist (mut_of_context g1) (mut_of_context g2)):
-funpred_def_term_exists g1 fs -> funpred_def_term_exists g2 fs.
-Proof.
-  unfold funpred_def_term_exists.
-  intros [m [params [vs [is Hdef]]]].
-  exists m. exists params. exists vs. exists is.
-  unfold funpred_def_term in *.
-  destruct_all; split_all; auto. revert H1.
-  apply mut_in_ctx_sublist; auto.
-Qed.
-
-Lemma funpred_valid_sublist g1 g2 fs
-  (Hsub: sublist_sig g1 g2)
-  (Hmut: sublist (mut_of_context g1) (mut_of_context g2)):
-  funpred_valid g1 fs ->
-  funpred_valid g2 fs.
-Proof.
-  unfold funpred_valid; intros; split_all; intros.
-  - revert H. apply Forall_impl. intros a. 
-    apply funpred_def_valid_sublist; auto.
-  - revert H0. apply funpred_def_term_exists_sublist; auto.
-Qed. 
-
-Lemma indprop_valid_type_sublist g1 g2 i
-  (Hsub: sublist_sig g1 g2)
-  (Hmut: sublist (mut_of_context g1) (mut_of_context g2)):
-  indprop_valid_type g1 i ->
-  indprop_valid_type g2 i.
-Proof.
-  unfold indprop_valid_type. destruct i.
-  apply Forall_impl. intros; destruct_all; split_all; auto.
-  revert H. apply formula_typed_sublist; auto.
-Qed.
-
-Lemma indprop_valid_sublist g1 g2 l
-  (Hsub: sublist_sig g1 g2)
-  (Hmut: sublist (mut_of_context g1) (mut_of_context g2)):
-  indprop_valid g1 l ->
-  indprop_valid g2 l.
-Proof.
-  unfold indprop_valid. intros; destruct_all; split_all; auto.
-  revert H. apply Forall_impl. intros a.
-  apply indprop_valid_type_sublist; auto.
-Qed.
-
-Lemma valid_def_sublist d gamma1 gamma2:
-  sublist_sig gamma1 gamma2 ->
-  sig_t gamma1 = sig_t gamma2 ->
-  mut_of_context gamma1 = mut_of_context gamma2 ->
-  valid_def gamma1 d ->
-  valid_def gamma2 d.
-Proof.
-  (*unfold eq_sig, valid_def; intros [Hts [Hfs Hps]] Hsigt Hmut.*)
-  intros Hsub Hsigt Hmut.
-  destruct d; auto.
-  - simpl. unfold mut_valid.
-    intros; destruct_all; split_all; auto.
-    revert H0. apply Forall_impl. intros a. 
-    apply typesym_inhab_expand; auto.
-  - apply funpred_valid_sublist; auto.
-    rewrite Hmut. apply incl_refl.
-  - simpl. apply indprop_valid_sublist; auto.
-    rewrite Hmut. apply incl_refl.
-Qed. 
-
 Lemma eq_sig_sym g1 g2:
   eq_sig g1 g2 ->
   eq_sig g2 g1.
@@ -4036,6 +3597,7 @@ Proof.
   symmetry; auto.
 Qed.
 
+(*And finally, the new context is valid*)
 Lemma gen_new_ctx_valid gamma:
   valid_context gamma ->
   valid_context (gen_new_ctx_gamma gamma).
@@ -4048,8 +3610,6 @@ Proof.
   destruct (is_ind d) eqn : Hind.
   - destruct d; inversion Hind; subst.
     simpl in *.
-    (*pose proof (gen_new_ctx_gamma_eq_sig (inductive_def l :: gamma)).
-    unfold gen_new_ctx_gamma in H11. simpl in H11.*)
     (*Now we must simplify the wf_predsym/funsym context *)
     assert (Hallwfp: Forall (wf_predsym gamma) (predsyms_of_indprop l)).
     {
@@ -4072,7 +3632,7 @@ Proof.
     + rewrite Forall_forall; intros p Hinp.
       rewrite Hpseq.
       rewrite Forall_forall in H3; auto.
-  - (*The easier case*)
+  - (*No change in context*)
     pose proof (gen_new_ctx_gamma_eq_sig (d :: gamma)) as Heq2.
     unfold gen_new_ctx_gamma in Heq2.
     simpl in Heq2. rewrite Hind in Heq2.
@@ -4107,7 +3667,8 @@ Proof.
 Qed.
 
 (*Convert an interpretation from gamma into one onto
-  [gen_new_ctx_gamma gamma]*)
+  [gen_new_ctx_gamma gamma].
+  This is very simple; we use the same funs and preds*)
 
 Lemma gen_new_ctx_funs_constrs  {gamma} (gamma_valid: valid_context gamma) 
 (pd: pi_dom) (pf: pi_funpred gamma_valid pd):
@@ -4257,7 +3818,6 @@ Proof.
     rewrite gen_new_ctx_gamma_indpreds in Hin. contradiction.
 Qed.
 
-
 Lemma satisfies_gen_new_ctx_pf 
 {gamma} (gamma_valid: valid_context gamma) 
 (pd: pi_dom) (pf: pi_funpred gamma_valid pd)
@@ -4279,6 +3839,7 @@ Proof.
   erewrite fmla_gen_new_ctx_pf. apply H.
 Qed.
 
+(*And therefore, this transformation is sound*)
 Lemma gen_new_ctx_sound: sound_trans (single_trans gen_new_ctx).
 Proof.
   rewrite gen_new_ctx_rewrite. unfold sound_trans, single_trans.
@@ -4316,89 +3877,21 @@ Proof.
   apply H0; auto. rewrite <- H; auto.
 Qed.
 
-(*A conditionally sound transformation*)
-Definition sound_trans_if (P: task -> Prop) (T: trans) : Prop :=
-  forall t, P t -> task_wf t ->
-  (forall tr : task, In tr (T t) -> task_valid tr) -> task_valid t.
+End ChangeContext.
 
-Lemma sound_trans_if_equiv t: sound_trans t <->
-  sound_trans_if (fun _ => True) t.
-Proof.
-  unfold sound_trans, sound_trans_if; split; intros; auto.
-Qed.
-
-(*1 final result: [gen_axioms] produces well-formed goals*)
+(*1 final result: [gen_axioms] produces well-formed goals.
+  We essentially proved this with [gen_axioms_typed]*)
 Lemma gen_axioms_wf: forall t, task_wf t -> task_wf (gen_axioms t).
 Proof.
   intros. destruct t as [[gamma delta] goal];
   unfold gen_axioms, add_axioms; simpl_task.
   inversion H. constructor; simpl_task; auto.
-  - (*We already proved typing*) 
-    rewrite !map_app.
-    rewrite Forall_app. split; auto.
-    rewrite Forall_forall.
-    apply (gen_axioms_typed (gamma, delta, goal)). auto.
-  - (*Need to prove no name clashes - ugh*)
-    (*How to deal with this? What if someone stupidly
-      uses even_inversion as a lemma name already?*)
-    (*Probably - edit the transformation to ensure
-      unique names - get version of gen_name that
-      tries first name, then progressively adds numbers
-      to it until it finds one that works (and do on
-      whole delta of course)
-      But this really isn't great and really does deviate
-      Alternative: allow name clashes?
-      Other alternative: have notion of soundness under
-      assumption: ie, sound_if P trans means
-      (forall t, P t -> sound....)
-      (*this seems best way to go*)
-      (*TODO: see if we can remove nodup hypothesis
-      (really, just there to be helpful/readable/tactics)
-      see if anything breaks, otherwise do _if*)
-      *)
-
-  
-    rewrite !map_app, NoDup_app_iff. split_all; auto.
-    + Print build_ind_axioms. Print get_ind_data. Print elim.
-    
-    
-    Search build_ind_axioms. Print build_ind_axioms.
-
-    
-    
-    rewrite NoDup_map.
-  
-  
-  Forall_app.
-    
-
-
-    build_ind_axioms_eq:
-    forall il : list indpred_def,
-    build_ind_axioms il = snd (elim (inductive_def il))
-  gen_axioms_typed:
-    forall t : task,
-    task_wf t ->
-    forall fmla : formula,
-    In fmla
-    (map snd
-         (concat
-            (map
-               (fun x : def =>
-                match x with
-                | inductive_def il => rev (build_ind_axioms il)
-                | _ => []
-                end) (task_gamma t)))) -> formula_typed (task_gamma t) fmla
-
-
-
-    rewrite Forall
-  rewrite concat_app.
-    rewrite map_app.
-  
-  concat_app.
-  Search gen_axioms.
-  
+  (*We already proved typing*) 
+  rewrite !map_app.
+  rewrite Forall_app. split; auto.
+  rewrite Forall_forall.
+  apply (gen_axioms_typed (gamma, delta, goal)). auto.
+Qed.
 
 (*And finally, the proof that the entire transformation is sound*)
 Theorem eliminate_inductive_sound:
@@ -4412,28 +3905,7 @@ Proof.
   apply compose_single_trans_sound.
   - (*The very hard part:*) apply gen_axioms_sound.
   - (*The easier part*) apply gen_new_ctx_sound.
-  - (*All axioms are well-formed*)
-    intros. unfold gen_axioms. 
-    unfold add_axioms.
-
-  
-  Search sound_trans gen_axioms.
-  Search sound_trans compose_single_trans.
-  assert (eliminate_indu)
-  unfold sound_trans. intros t t_wf. 
-  rewrite eliminate_inductive_split.
-  intros Hval.
-Print eliminate_inductive_alt.
-
-
-  Search eliminate_inductive.
-
-  gen_new_ctx_pf_full
-
-
-  Check term_change_context.
-
-
-(*TODO: prove context part*)
+  - (*All axioms are well-formed*) apply gen_axioms_wf.
+Qed.
 
 End Proofs.

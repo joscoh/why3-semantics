@@ -84,7 +84,7 @@ Ltac wintros_tac c :=
     unfold safe_sub_f; simpl; extra_simpl
   | |- derives (?g, ?d, (Fbinop Timplies ?f1 ?f2)) =>
     apply (D_implI g d c f1 f2);
-    [prove_closed | apply /inP; reflexivity |];
+    [prove_closed (*| apply /inP; reflexivity*) |];
     extra_simpl
   | |- _ => fail "wintros requires goal to be Forall or Implies"
   end.
@@ -180,11 +180,11 @@ Proof.
   eapply (D_trans (perm_trans delta')); auto.
   - inversion H0; subst. destruct H1.
     constructor; simpl_task; auto.
-    + apply (Forall_perm task_delta_typed).
-      apply perm_map. by rewrite perm_sym.
-    + move: task_hyp_nodup => /Typechecker.uniqP Huniq. 
+    apply (Forall_perm task_delta_typed).
+    apply perm_map. by rewrite perm_sym.
+    (*+ move: task_hyp_nodup => /Typechecker.uniqP Huniq. 
       apply /Typechecker.uniqP.
-      by rewrite (perm_uniq (perm_map fst H)).
+      by rewrite (perm_uniq (perm_map fst H)).*)
   - apply perm_trans_sound.
   - unfold perm_trans. simpl_task. rewrite H.
     by intros x [<- | []].
@@ -239,13 +239,48 @@ Proof.
   - clear. by case: x.
 Qed.
 
-Lemma replace_hyp_perm delta name f_new :
-  NoDup (map fst delta) ->
+Lemma replace_hyp_eq_elts delta name f_new:
+  In name (map fst delta) ->
+  (replace_hyp delta name f_new) =i
+  (name, f_new) :: (remove_hyp delta name).
+Proof.
+  move=>Hin.
+  rewrite in_map_iff in Hin.
+  destruct Hin as [[n1 f1] [Hname Hinelt]]; subst =>/=.
+  move=> [nx fx].
+  rewrite in_cons /replace_hyp /remove_hyp mem_filter/=.
+  case : ((nx, fx) \in [seq (x.1, if (x.1 =? n1)%string then f_new else x.2) | x <- delta]) /mapP
+  => [[[ny fy]] Hiny /= []->->| Hnotin].
+  - case: (ny =? n1)%string /eqP=>[->|].
+    + by rewrite eq_refl.
+    + by rewrite /= Hiny orbT.
+  - case: ((nx, fx) == (n1, f_new)) /eqP => [[] Heq1 Heq2| Hneq/=]; subst.
+    + exfalso. apply Hnotin.
+      exists (n1, f1). by apply /inP.
+      by rewrite /= String.eqb_refl.
+    + case Hx1: (nx =? n1)%string=>//=.
+      case Hinx: ((nx, fx) \in delta) =>//=.
+      exfalso. apply Hnotin. exists (nx, fx)=>//=.
+      by rewrite Hx1.
+Qed.
+
+Lemma replace_hyp_sublist delta name f_new:
+  In name (map fst delta) ->
+  sublist ((replace_hyp delta name f_new))
+  ((name, f_new) :: (remove_hyp delta name)).
+Proof.
+  move=>Hin.
+  rewrite /sublist => x /inP Hx. apply /inP.
+  by rewrite -replace_hyp_eq_elts.
+Qed.
+
+(*Lemma replace_hyp_perm delta name f_new :
+  (*NoDup (map fst delta) ->*)
   In name (map fst delta) ->
   perm_eq (replace_hyp delta name f_new)
     ((name, f_new) :: (remove_hyp delta name)).
 Proof.
-  move=> Huniq Hin.
+  move=> (*Huniq*) Hin.
   (*rewrite /replace_hyp/remove_hyp.*)
   rewrite in_map_iff in Hin.
   destruct Hin as [elt [Hname Hinelt]]; subst.
@@ -258,7 +293,7 @@ Proof.
   move=> Hnotelt. inversion Hn2; subst.
   rewrite !remove_hyp_notin // !replace_hyp_notin //.
   apply perm_eq_middle.
-Qed.
+Qed.*)
 
 (*TODO: replace - stronger weaken*)
 Definition weaken_trans delta' : trans :=
@@ -297,13 +332,13 @@ Qed.
 
 (*We can always add new hypotheses*)
 Theorem D_weaken gamma delta delta' goal:
-  NoDup (map fst delta) ->
+  (*NoDup (map fst delta) ->*)
   Forall (formula_typed gamma) (map snd delta) ->
   sublist (map snd delta') (map snd delta) ->
   derives (gamma, delta', goal) ->
   derives (gamma, delta, goal).
 Proof.
-  intros Hn Hsub Htys Hder.
+  intros (*Hn*) Hsub Htys Hder.
   eapply (D_trans (weaken_trans delta')); auto.
   - inversion Hder; subst.
     destruct H. constructor; auto.
@@ -441,11 +476,6 @@ Theorem D_rename gamma delta name1 name2 goal:
 Proof.
   intros.
   apply (D_weaken _ _ (rename_hyp delta name1 name2)); auto.
-  - inversion H0; subst.
-    destruct H1; simpl_task.
-    destruct H; subst.
-    + rewrite rename_hyp_same in task_hyp_nodup; auto.
-    + rewrite rename_hyp_nodup_iff. apply task_hyp_nodup. auto.
   - inversion H0; subst. destruct H1; simpl_task.
     rewrite map_snd_rename_hyp in task_delta_typed; auto.
   - rewrite -list_map_map map_snd_rename_hyp.
@@ -503,6 +533,17 @@ Proof.
   rewrite Hneq. clear. by case: x.
 Qed.
 
+Lemma sublist_remove_hyp delta n1:
+  sublist (remove_hyp delta n1) delta.
+Proof.
+  unfold sublist, remove_hyp. 
+  move=> x /inP.
+  by rewrite mem_filter => /andP [] _ /inP. 
+Qed.
+
+(*The names do not actually matter: they are just for
+  convenience*)
+
 (*A meta-theorem about derivations: if we can prove some
   goal f_new, then we can replace any hypothesis with
   this goal and prove what we originally wanted*)
@@ -519,42 +560,26 @@ Proof.
   2: {
     rewrite replace_hyp_notin in H0; auto.
   }
-  (*TODO: replace D_perm with D_weaken*)
-  eapply D_perm in H0.
-  2: {
-    rewrite perm_sym.
-    apply replace_hyp_perm; auto.
-    inversion H; subst.
-    destruct H1. auto.
+  eapply D_weaken in H0.
+  3: {
+    apply sublist_map. apply replace_hyp_sublist. auto.
   }
-  (*Need to weaken by adding old fmla, so we rename new name*)
-  (*Get a string not in the list*)
-  assert (exists s, ~ In s (map fst delta)). {
-    exists (gen_name (map fst delta)). apply gen_name_notin.
-  }
-  destruct H1 as [name2 Hnotin].
-  (*We will rename the old hyp name to name2*)
-  apply D_rename with(name1:=name)(name2:=name2); auto.
-  assert (Hneq: name <> name2). {
-    intro C; subst; contradiction.
-  }
-  apply D_assert with(name:=name)(A:=f_new).
-  - apply D_rename with (name1:=name2)(name2:=name).
-    { right. apply renamed_notin. auto. }
-    rewrite rename_hyp_idem; auto.
-  - assert (A:=H0). revert H0. apply D_weaken; auto.
+  - apply D_assert with (name:=name)(A:=f_new); auto.
+    apply D_weaken with(delta':=(name, f_new) :: remove_hyp delta name); auto.
     + simpl. constructor.
-      * apply renamed_notin; auto.
-      * rewrite <- rename_hyp_nodup_iff; auto.
-        destruct Hwf. auto.
-    + simpl. rewrite <- list_map_map, map_snd_rename_hyp.
-      destruct Hwf; simpl_task.
-      destruct task_goal_typed; simpl_task.
-      constructor; auto.
-    + simpl. unfold sublist.
-      simpl.
-      intros x [Hx | Hinx]; subst; auto. right.
-      revert Hinx. apply sublist_map. apply remove_rename_sublist.
+      * destruct Hwf; apply task_goal_typed.
+      * destruct Hwf; apply task_delta_typed.
+    + simpl. apply incl_cons; simpl; auto.
+      apply incl_tl.
+      apply sublist_map, sublist_remove_hyp.
+  - simpl. constructor.
+    * destruct Hwf; apply task_goal_typed.
+    * destruct Hwf. simpl_task.
+      revert task_delta_typed.
+      rewrite !Forall_forall; intros.
+      apply task_delta_typed.
+      revert H1. apply sublist_map.
+      apply sublist_remove_hyp.
 Qed.
 
 Definition find_hyp (delta: list (string * formula)) name :=
@@ -691,12 +716,12 @@ Proof.
   - inversion Hd; subst.
     destruct H; subst.
     constructor; auto; simpl_task.
-    rewrite map_fst_replace_hyp in task_hyp_nodup. auto.
+    (*rewrite map_fst_replace_hyp in task_hyp_nodup. auto.*)
   - rewrite in_map_iff. exists (name1, Feq ty t1 t2); auto.
   - inversion Hd; subst.
     inversion H; subst.
     constructor; auto; simpl_task.
-    rewrite map_fst_replace_hyp in task_hyp_nodup. auto.
+    (*rewrite map_fst_replace_hyp in task_hyp_nodup. auto.*)
   - rewrite in_map_iff. exists (name2, f). auto.
 Qed.
 
@@ -727,7 +752,7 @@ Proof.
   apply D_eq_sym. apply D_axiom.
   - inversion Hd; subst. destruct H; subst;
     constructor; auto; simpl_task.
-    rewrite map_fst_replace_hyp in task_hyp_nodup. auto.
+    (*rewrite map_fst_replace_hyp in task_hyp_nodup. auto.*)
   - rewrite in_map_iff. exists (name, Feq ty t1 t2); auto.
 Qed.
 
@@ -782,7 +807,7 @@ Proof.
   assert (A:=Hd). revert A.
   inversion Hd; subst. destruct H; subst.
   apply D_weaken.
-  - inversion task_hyp_nodup; auto.
+  (*- inversion task_hyp_nodup; auto.*)
   - inversion task_delta_typed; auto.
   - apply get_assoc_list_some in Hf.
     apply incl_cons; [|apply incl_refl].

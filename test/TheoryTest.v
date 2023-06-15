@@ -466,7 +466,7 @@ Qed.
 Lemma ring_theory_typed: typed_theory ring_theory.
 Proof. check_theory. Qed.
 
-Require Import Alpha.
+(*Require Import Alpha.*)
 
 
 (*Now, we prove these lemmas (manually, from the semantics)

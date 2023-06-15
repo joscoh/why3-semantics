@@ -137,7 +137,7 @@ Proof.
   intros. eapply (D_trans weaken_trans); auto.
   - inversion H2; subst. destruct H3.
     constructor; simpl_task; auto.
-    constructor; auto.
+    (*constructor; auto.*)
   - apply weaken_trans_sound.
   - intros x [Hx | []]; subst; simpl_task; auto.
 Qed. 
@@ -325,7 +325,7 @@ Theorem D_implI gamma (delta: list (string * formula))
   (name: string) (A B: formula)
   (*Here, need A to be closed and monomorphic*)
   (Hc: closed gamma A)
-  (Hnotin: ~ In name (map fst delta)):
+  (*(Hnotin: ~ In name (map fst delta))*):
   derives (gamma, (name, A) :: delta, B) ->
   derives (gamma, delta, Fbinop Timplies A B).
 Proof.
@@ -334,7 +334,7 @@ Proof.
     destruct H0.
     constructor; auto; simpl_task.
     + inversion task_delta_typed; auto.
-    + inversion task_hyp_nodup; auto.
+    (*+ inversion task_hyp_nodup; auto.*)
     + apply closed_binop; auto.
   - apply implI_trans_sound.
   - unfold implI_trans. intros. simpl_task.
@@ -449,7 +449,7 @@ Proof.
   - inversion H0; subst. destruct H1. simpl_task.
     constructor; auto. simpl_task.
     inversion task_delta_typed; auto.
-    simpl_task. inversion task_hyp_nodup; auto.
+    (*simpl_task. inversion task_hyp_nodup; auto.*)
   - apply assert_trans_sound.
   - simpl_task. intros x [Hx | [Hx | []]]; subst; auto.
 Qed.
@@ -473,7 +473,7 @@ Proof.
   assert (derives (gamma, (name, A) :: delta, A)). apply D_axiom; simpl; auto.
   - inversion H1; subst.
     destruct H3. simpl_task. constructor; auto.
-    simpl_task. constructor; auto.
+    (*simpl_task. constructor; auto.*)
     destruct task_goal_typed. inversion f_ty; auto.
     constructor; auto.
   - apply D_implE with(A:=A); auto.
@@ -672,7 +672,10 @@ Proof.
     intros.
     assert (Hform1 : 
       Forall (formula_typed (abs_fun (constsym name s) :: gamma)) fs0). {
-      revert Hform. apply Forall_impl. apply formula_typed_expand.
+      revert Hform. apply Forall_impl. intros f.
+      apply formula_typed_sublist.
+      apply expand_sublist_sig.
+      apply expand_mut_sublist.
     }
     specialize (H _ Hform1 H1).
     assert ((dep_map
@@ -738,7 +741,8 @@ Proof.
     constructor; simpl; auto; constructor; auto; try solve[constructor].
     unfold wf_funsym. simpl. constructor; auto.
     split.
-    + apply valid_type_expand; auto.
+    + revert Htyval. apply valid_type_sublist.
+      apply expand_sublist_sig.
     + rewrite Hsort; auto.
   }
   specialize (Hval gamma_valid' Hwf).
@@ -806,7 +810,7 @@ Proof.
     }
     rewrite H2 at 3.
     constructor; simpl; auto.
-    apply valid_type_expand; auto.
+    revert Htyval. apply valid_type_sublist, expand_sublist_sig. 
     rewrite Hsort; reflexivity.
   }
   assert (f_ty: formula_typed gamma f). {
@@ -837,7 +841,9 @@ Proof.
   - unfold funsym_sigma_ret. simpl.
     rewrite Hsort. simpl.  apply sort_inj. simpl.
     rewrite <- subst_is_sort_eq; auto.
-  - apply formula_typed_expand. auto.
+  - revert f_ty. apply formula_typed_sublist.
+    apply expand_sublist_sig.
+    apply expand_mut_sublist.
 Qed.
 
 (*Derivation version: c :: gamma |- f and c not in gamma,
