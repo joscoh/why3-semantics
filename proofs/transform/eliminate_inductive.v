@@ -4106,6 +4106,179 @@ Proof.
         simpl in H9. rewrite Hind in H9. auto.
 Qed.
 
+(*Convert an interpretation from gamma into one onto
+  [gen_new_ctx_gamma gamma]*)
+
+Lemma gen_new_ctx_funs_constrs  {gamma} (gamma_valid: valid_context gamma) 
+(pd: pi_dom) (pf: pi_funpred gamma_valid pd):
+  forall (m : mut_adt) (a : alg_datatype) 
+    (c : funsym) (Hm : mut_in_ctx m (gen_new_ctx_gamma gamma)) 
+    (Ha : adt_in_mut a m) (Hc : constr_in_adt c a)
+    (srts : list sort)
+    (Hlens : Datatypes.length srts =
+              Datatypes.length (m_params m))
+    (args : arg_list (domain (dom_aux pd))
+              (sym_sigma_args c srts)),
+  funs gamma_valid pd pf c srts args =
+  constr_rep_dom (gen_new_ctx_valid _ gamma_valid) m Hm srts Hlens 
+    (dom_aux pd) a Ha c Hc (adts pd m srts) args.
+Proof.
+  intros.
+  assert (m_in: mut_in_ctx m gamma). {
+    revert Hm. apply mut_in_ctx_sublist.
+    rewrite gen_new_ctx_gamma_mut. apply incl_refl.
+  }
+  rewrite (constrs _ pd pf m a c m_in Ha Hc srts Hlens).
+  unfold constr_rep_dom.
+  f_equal. f_equal. f_equal. apply UIP_dec. apply sort_eq_dec.
+  apply constr_rep_change_gamma.
+Qed.
+
+Definition gen_new_ctx_pf {gamma} (gamma_valid: valid_context gamma) 
+(pd: pi_dom) (pf: pi_funpred gamma_valid pd):
+pi_funpred (gen_new_ctx_valid _ gamma_valid) pd :=
+Build_pi_funpred (gen_new_ctx_valid _ gamma_valid) pd
+  (funs gamma_valid pd pf)
+  (preds gamma_valid pd pf)
+  (gen_new_ctx_funs_constrs gamma_valid pd pf).
+
+(*And we prove that every formula true under this pf in gamma'
+  is true under the original in gamma, and vice versa.
+  This is trivial*)
+Lemma tm_gen_new_ctx_pf {gamma} (gamma_valid: valid_context gamma) 
+(pd: pi_dom) (pf: pi_funpred gamma_valid pd)
+(vt: val_typevar) (vv: val_vars pd vt) (t: term) (ty: vty)
+(Hty1: term_has_type gamma t ty)
+(Hty2: term_has_type (gen_new_ctx_gamma gamma) t ty):
+term_rep (gen_new_ctx_valid _ gamma_valid) pd vt
+  (gen_new_ctx_pf gamma_valid pd pf) vv t ty Hty2 =
+term_rep gamma_valid pd vt pf vv t ty Hty1.
+Proof.
+  apply term_change_gamma_pf; simpl; auto.
+  rewrite gen_new_ctx_gamma_mut; auto.
+Qed.
+
+Lemma fmla_gen_new_ctx_pf {gamma} (gamma_valid: valid_context gamma) 
+(pd: pi_dom) (pf: pi_funpred gamma_valid pd)
+(vt: val_typevar) (vv: val_vars pd vt) (f: formula)
+(Hty1: formula_typed gamma f)
+(Hty2: formula_typed (gen_new_ctx_gamma gamma) f):
+formula_rep (gen_new_ctx_valid _ gamma_valid) pd vt
+  (gen_new_ctx_pf gamma_valid pd pf) vv f Hty2 =
+formula_rep gamma_valid pd vt pf vv f Hty1.
+Proof.
+  apply fmla_change_gamma_pf; simpl; auto.
+  rewrite gen_new_ctx_gamma_mut; auto.
+Qed.
+
+Lemma mutfuns_of_context_app l1 l2:
+  mutfuns_of_context (l1 ++ l2) =
+  mutfuns_of_context l1 ++
+  mutfuns_of_context l2.
+Proof.
+  induction l1; simpl; auto; 
+  destruct a; auto; simpl; f_equal; auto.
+Qed.
+
+Lemma get_indpred_defs_mutfuns l:
+  mutfuns_of_context (get_indpred_defs l) = nil.
+Proof.
+  induction l; auto.
+Qed.
+
+Lemma gen_new_ctx_gamma_mutfuns gamma:
+  mutfuns_of_context (gen_new_ctx_gamma gamma) =
+  mutfuns_of_context gamma.
+Proof.
+  induction gamma; simpl; auto.
+  destruct a; simpl; auto.
+  f_equal; auto.
+  unfold gen_new_ctx_gamma; simpl.
+  rewrite mutfuns_of_context_app.
+  rewrite get_indpred_defs_mutfuns; auto.
+Qed.
+
+Lemma indpreds_of_context_app l1 l2:
+  indpreds_of_context (l1 ++ l2) =
+  indpreds_of_context l1 ++ indpreds_of_context l2.
+Proof.
+  induction l1; simpl; auto. destruct a; auto. simpl.
+  f_equal; auto.
+Qed.
+
+Lemma get_indpred_defs_indpreds l:
+  indpreds_of_context (get_indpred_defs l) = nil.
+Proof.
+  induction l; auto.
+Qed.
+
+Lemma gen_new_ctx_gamma_indpreds gamma:
+  indpreds_of_context (gen_new_ctx_gamma gamma) = nil.
+Proof.
+  induction gamma; simpl; auto.
+  unfold gen_new_ctx_gamma; simpl.
+  destruct (is_ind a) eqn : Hind.
+  - destruct a; inversion Hind; subst.
+    rewrite indpreds_of_context_app.
+    rewrite get_indpred_defs_indpreds; auto.
+  - simpl; destruct a; auto; inversion Hind.
+Qed. 
+
+(*And now we prove that if pf is full, so is
+  [gen_new_ctx_pf] (not true in the other direction of course -
+  indpreds wont necessarily hold)*)
+Lemma gen_new_ctx_pf_full  {gamma} (gamma_valid: valid_context gamma) 
+(pd: pi_dom) (pf: pi_funpred gamma_valid pd):
+full_interp gamma_valid pd pf ->
+full_interp (gen_new_ctx_valid _ gamma_valid) pd 
+  (gen_new_ctx_pf gamma_valid pd pf).
+Proof.
+  unfold full_interp; intros [Hfun [Hpred [Hconstr Hleast]]]; split_all.
+  - clear -Hfun.
+    intros. simpl.
+    assert (fs_in': In fs (mutfuns_of_context gamma)). {
+      rewrite gen_new_ctx_gamma_mutfuns in fs_in. auto.
+    }
+    erewrite (Hfun fs fs_in' f args body f_in srts srts_len a vt vv).
+    erewrite tm_gen_new_ctx_pf.
+    apply dom_cast_eq.
+  - clear -Hpred.
+    intros. simpl.
+    assert (fs_in': In fs (mutfuns_of_context gamma)). {
+      rewrite gen_new_ctx_gamma_mutfuns in fs_in. auto.
+    }
+    erewrite (Hpred fs fs_in' p args body p_in srts srts_len a vt vv).
+    symmetry.
+    apply fmla_gen_new_ctx_pf.
+  - (*Trivial*) clear.
+    intros. assert (Hin:=l_in). 
+    rewrite gen_new_ctx_gamma_indpreds in Hin. contradiction.
+  - clear.  intros. assert (Hin:=l_in). 
+    rewrite gen_new_ctx_gamma_indpreds in Hin. contradiction.
+Qed.
+
+
+Lemma satisfies_gen_new_ctx_pf 
+{gamma} (gamma_valid: valid_context gamma) 
+(pd: pi_dom) (pf: pi_funpred gamma_valid pd)
+(pf_full: full_interp gamma_valid pd pf)
+(pf_full2: full_interp (gen_new_ctx_valid _ gamma_valid) pd
+  (gen_new_ctx_pf gamma_valid pd pf))
+(f: formula)
+(Hty1: formula_typed gamma f)
+(Hty2: formula_typed (gen_new_ctx_gamma gamma) f):
+satisfies (gen_new_ctx_valid gamma gamma_valid) pd 
+  (gen_new_ctx_pf gamma_valid pd pf) pf_full2 f
+  Hty2 <->
+satisfies gamma_valid pd pf pf_full f Hty1.
+Proof.
+  unfold satisfies. split; intros.
+  specialize (H vt vv).
+  erewrite fmla_gen_new_ctx_pf in H.
+  apply H.
+  erewrite fmla_gen_new_ctx_pf. apply H.
+Qed.
+
 Lemma gen_new_ctx_sound: sound_trans (single_trans gen_new_ctx).
 Proof.
   rewrite gen_new_ctx_rewrite. unfold sound_trans, single_trans.
@@ -4122,6 +4295,142 @@ Proof.
   intros.
   (*Now, need to show that we can convert an interpretation
     for the full context into one of the weakened context*)
+  specialize (Hval pd (gen_new_ctx_pf gamma_valid pd pf)
+    (gen_new_ctx_pf_full gamma_valid pd pf pf_full)).
+  prove_hyp Hval.
+  {
+    intros d Hd.
+    erewrite satisfies_gen_new_ctx_pf. apply H.
+    Unshelve. auto.
+  }
+  erewrite satisfies_gen_new_ctx_pf in Hval.
+  apply Hval.
+Qed.
+
+Lemma sound_trans_ext (t1 t2: trans):
+  (forall x, t1 x = t2 x) ->
+  sound_trans t1 <-> sound_trans t2.
+Proof.
+  intros. unfold sound_trans; split; intros.
+  apply H0; auto. rewrite H; auto.
+  apply H0; auto. rewrite <- H; auto.
+Qed.
+
+(*A conditionally sound transformation*)
+Definition sound_trans_if (P: task -> Prop) (T: trans) : Prop :=
+  forall t, P t -> task_wf t ->
+  (forall tr : task, In tr (T t) -> task_valid tr) -> task_valid t.
+
+Lemma sound_trans_if_equiv t: sound_trans t <->
+  sound_trans_if (fun _ => True) t.
+Proof.
+  unfold sound_trans, sound_trans_if; split; intros; auto.
+Qed.
+
+(*1 final result: [gen_axioms] produces well-formed goals*)
+Lemma gen_axioms_wf: forall t, task_wf t -> task_wf (gen_axioms t).
+Proof.
+  intros. destruct t as [[gamma delta] goal];
+  unfold gen_axioms, add_axioms; simpl_task.
+  inversion H. constructor; simpl_task; auto.
+  - (*We already proved typing*) 
+    rewrite !map_app.
+    rewrite Forall_app. split; auto.
+    rewrite Forall_forall.
+    apply (gen_axioms_typed (gamma, delta, goal)). auto.
+  - (*Need to prove no name clashes - ugh*)
+    (*How to deal with this? What if someone stupidly
+      uses even_inversion as a lemma name already?*)
+    (*Probably - edit the transformation to ensure
+      unique names - get version of gen_name that
+      tries first name, then progressively adds numbers
+      to it until it finds one that works (and do on
+      whole delta of course)
+      But this really isn't great and really does deviate
+      Alternative: allow name clashes?
+      Other alternative: have notion of soundness under
+      assumption: ie, sound_if P trans means
+      (forall t, P t -> sound....)
+      (*this seems best way to go*)
+      (*TODO: see if we can remove nodup hypothesis
+      (really, just there to be helpful/readable/tactics)
+      see if anything breaks, otherwise do _if*)
+      *)
+
+  
+    rewrite !map_app, NoDup_app_iff. split_all; auto.
+    + Print build_ind_axioms. Print get_ind_data. Print elim.
+    
+    
+    Search build_ind_axioms. Print build_ind_axioms.
+
+    
+    
+    rewrite NoDup_map.
+  
+  
+  Forall_app.
+    
+
+
+    build_ind_axioms_eq:
+    forall il : list indpred_def,
+    build_ind_axioms il = snd (elim (inductive_def il))
+  gen_axioms_typed:
+    forall t : task,
+    task_wf t ->
+    forall fmla : formula,
+    In fmla
+    (map snd
+         (concat
+            (map
+               (fun x : def =>
+                match x with
+                | inductive_def il => rev (build_ind_axioms il)
+                | _ => []
+                end) (task_gamma t)))) -> formula_typed (task_gamma t) fmla
+
+
+
+    rewrite Forall
+  rewrite concat_app.
+    rewrite map_app.
+  
+  concat_app.
+  Search gen_axioms.
+  
+
+(*And finally, the proof that the entire transformation is sound*)
+Theorem eliminate_inductive_sound:
+  sound_trans eliminate_inductive.
+Proof.
+  (*First, split into two parts*)
+  rewrite sound_trans_ext.
+  2: apply eliminate_inductive_split.
+  unfold eliminate_inductive_alt.
+  (*Prove sound by composition*)
+  apply compose_single_trans_sound.
+  - (*The very hard part:*) apply gen_axioms_sound.
+  - (*The easier part*) apply gen_new_ctx_sound.
+  - (*All axioms are well-formed*)
+    intros. unfold gen_axioms. 
+    unfold add_axioms.
+
+  
+  Search sound_trans gen_axioms.
+  Search sound_trans compose_single_trans.
+  assert (eliminate_indu)
+  unfold sound_trans. intros t t_wf. 
+  rewrite eliminate_inductive_split.
+  intros Hval.
+Print eliminate_inductive_alt.
+
+
+  Search eliminate_inductive.
+
+  gen_new_ctx_pf_full
+
+
   Check term_change_context.
 
 
