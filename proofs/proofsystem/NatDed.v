@@ -285,10 +285,6 @@ Proof.
   - intros x [Hx | []]; subst; auto.
 Qed.
 
-(*Note: prob should do in form for tactic: if H: A /\ B in gamma,
-  then we can instead say that H1 : A and H2 : B in gamma*)
-(*TODO: add once we add names to context*)
-
 (*Implication*)
 
 (*If A, Delta |- B, then Delta |- A -> B*)
@@ -1335,6 +1331,174 @@ Proof.
     destruct (check_tm_ty_spec gamma t (snd x)); try contradiction.
     intros y [Hy | []]; subst; auto.
 Qed.
+
+(*Negation*)
+
+(*We represent ~f as f -> False, but we give the derived
+  intro and elim rules, plus DNE*)
+(*If f :: Delta |- False, then Delta  |- ~ f*)
+Definition negI_trans name : trans :=
+  fun t => match (task_goal t) with 
+            | Fnot f => [mk_task (task_gamma t) ((name, f) :: task_delta t) Ffalse]
+            | _ => [t]
+  end.
+
+Lemma impl_false (b: bool):
+  (b -> false) ->
+  b = false.
+Proof.
+  destruct b; simpl; auto.
+  intros. assert (false) by (apply H; auto).
+  inversion H0.
+Qed.
+
+Lemma closed_not_inv {gamma} {f: formula} (Hc: closed gamma (Fnot f)):
+  closed gamma f.
+Proof.
+  inversion Hc. constructor.
+- inversion f_ty; auto.
+- unfold closed_formula in *. simpl in f_closed. auto.
+- unfold mono in *. simpl in *. auto.
+Qed.
+
+Lemma negI_trans_sound: forall name,
+  sound_trans (negI_trans name).
+Proof.
+  intros. unfold sound_trans, negI_trans.
+  intros.
+  destruct t as [[gamma delta ] goal]; simpl_task.
+  destruct goal; simpl in H; try solve[apply H; auto].
+  specialize (H _ (ltac:(left; auto))).
+  unfold task_valid in *; simpl_task.
+  destruct H as [Hwf Hval].
+  split; auto.
+  intros.
+  specialize (Hval gamma_valid Hwf).
+  erewrite log_conseq_irrel in Hval.
+  rewrite semantic_deduction in Hval.
+  unfold log_conseq in *.
+  intros.
+  specialize (Hval pd pf pf_full H).
+  clear H.
+  unfold satisfies in *.
+  intros.
+  specialize (Hval vt vv). revert Hval.
+  simpl_rep_full. rewrite bool_of_binop_impl, simpl_all_dec.
+  intros.
+  apply ssrbool.negbT.
+  apply impl_false in Hval.
+  erewrite fmla_rep_irrel. apply Hval.
+  Unshelve.
+  inversion t_wf. simpl_task. 
+  apply closed_not_inv in task_goal_typed; auto.
+  constructor; auto. constructor.
+Qed.
+
+Lemma D_negI {gamma delta name f}
+  (Hc: closed gamma f):
+  derives (gamma, (name, f) :: delta, Ffalse) ->
+  derives (gamma, delta, Fnot f).
+Proof.
+  intros.
+  eapply (D_trans (negI_trans name)); auto.
+  - inversion H; subst. destruct H0; simpl_task.
+    constructor; auto; simpl_task.
+    inversion task_delta_typed; auto.
+    apply closed_not; auto.
+  - apply negI_trans_sound.
+  - simpl. simpl_task. intros x [<- | []]; auto.
+Qed.
+
+(*The negation elimination rule is modus ponens
+   for (f -> False): if Delta |- ~ f and Delta |- f, then Delta |- False*)
+Definition negE_trans (f: formula): trans := fun t =>
+  match (task_goal t) with
+  | Ffalse => [task_with_goal t (Fnot f); task_with_goal t f]
+  | _ => [t]
+  end.
+
+Lemma negE_trans_sound f:
+  sound_trans (negE_trans f).
+Proof.
+  unfold sound_trans, negE_trans. intros.
+  destruct t as [[gamma delta] goal]; simpl_task.
+  destruct goal; simpl in H; try solve[apply H; auto].
+  assert (H':=H).
+  specialize (H _ (ltac:(left; auto))).
+  specialize (H' _ (ltac:(right; left; auto))).
+  unfold task_valid in *. simpl_task.
+  destruct H as [Hwf1 Hval1]; destruct H' as [Hwf2 Hval2].
+  split; auto.
+  intros.
+  specialize (Hval1 gamma_valid Hwf1).
+  specialize (Hval2 gamma_valid Hwf2).
+  unfold log_conseq in *. intros.
+  specialize (Hval1 pd pf pf_full).
+  specialize (Hval2 pd pf pf_full).
+  prove_hyp Hval1; [|prove_hyp Hval2]; 
+  try (intros d Hd; erewrite satisfies_irrel; apply (H d Hd)).
+  clear H. unfold satisfies in *.
+  intros.
+  specialize (Hval1 vt vv). specialize (Hval2 vt vv).
+  revert Hval1 Hval2. simpl_rep_full.
+  erewrite fmla_rep_irrel. intros Hneg Hf.
+  rewrite Hf in Hneg.
+  inversion Hneg.
+Qed.
+
+Lemma D_negE {gamma delta f} (Hc: closed gamma f):
+  derives (gamma, delta, Fnot f) ->
+  derives (gamma, delta, f) ->
+  derives (gamma, delta, Ffalse).
+Proof.
+  intros.
+  eapply (D_trans (negE_trans f)); auto.
+  - inversion H; subst. inversion H0; subst.
+    inversion H1; inversion H3; subst.
+    constructor; simpl_task; auto.
+    constructor; auto. constructor.
+  - apply negE_trans_sound.
+  - simpl. intros x [<- | [<- | []]]; auto.
+Qed.
+
+(*Double negation elimination - we show that our logic
+  is classical*)
+Definition DNE_trans : trans :=
+  fun t => [task_with_goal t (Fnot (Fnot (task_goal t)))].
+
+Lemma DNE_trans_sound: sound_trans DNE_trans.
+Proof.
+  unfold sound_trans, DNE_trans. intros.
+  destruct t as [[gamma delta] f]; simpl_task.
+  specialize (H _ (ltac:(left; auto))).
+  unfold task_valid in *.
+  destruct H as [Hwf Hval]. simpl_task. split; auto.
+  intros.
+  specialize (Hval gamma_valid Hwf).
+  unfold log_conseq in *. intros.
+  specialize (Hval pd pf pf_full).
+  prove_hyp Hval.
+  {
+    intros d Hd. erewrite satisfies_irrel. apply (H d Hd).
+  }
+  unfold satisfies in *. intros.
+  specialize (Hval vt vv). revert Hval. simpl_rep_full.
+  rewrite negb_involutive. erewrite fmla_rep_irrel. intros ->.
+  auto.
+Qed.
+
+Lemma D_DNE {gamma delta f}:
+  derives (gamma, delta, Fnot (Fnot f)) ->
+  derives (gamma, delta, f).
+Proof.
+  intros. eapply (D_trans (DNE_trans)); auto.
+  - inversion H; subst. inversion H0; subst; simpl_task.
+    constructor; auto. simpl_task.
+    repeat (apply closed_not_inv in task_goal_typed); auto.
+  - apply DNE_trans_sound.
+  - simpl. intros x [<- | []]; auto.
+Qed.
+
 
 (*Exists*)
 
