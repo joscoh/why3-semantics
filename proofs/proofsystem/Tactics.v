@@ -906,3 +906,172 @@ Tactic Notation "wrewrite<-[" constr(H) constr(t1) constr(t2) "] in" constr(H2) 
   wrewrite_with_tac H (Some H2) true [t1; t2].
 Tactic Notation "wrewrite<-[" constr(H) constr(t1) constr(t2) constr(t3) "] in" constr(H2) :=
   wrewrite_with_tac H (Some H2) true [t1; t2; t3].
+
+(*Working with existentials*)
+Lemma replace_hyp_in delta name f_new:
+  In name (map fst delta) ->
+  In f_new (map snd (replace_hyp delta name f_new)).
+Proof.
+  unfold replace_hyp. intros. rewrite in_map_iff.
+  rewrite in_map_iff in H.
+  destruct H as [[n f_old]]; simpl in *.
+  destruct H; subst.
+  exists (name, f_new); split; auto.
+  rewrite in_map_iff.
+  exists (name, f_old); split; auto.
+  simpl. rewrite String.eqb_refl; auto.
+Qed.
+
+Lemma sublist_cons {A: Type} (x: A) (l1 l2: list A):
+  sublist l1 l2 ->
+  sublist (x :: l1) (x :: l2).
+Proof.
+  intros.
+  unfold sublist. simpl. intros. destruct H0; subst; auto.
+Qed.
+
+(*Let's see*)
+(*We can remove an abstract function symbol from the context if it
+  is unused*)
+Definition remove_ctx_trans : trans :=
+  fun t =>
+  match (task_gamma t) with
+  | (abs_fun c) :: gamma =>
+    if negb (in_bool string_dec (s_name c) (map (fun (x: funsym) => s_name x) 
+    (sig_f gamma)))
+    then [mk_task gamma (task_delta t) (task_goal t)]
+    else [t]
+  | _ => [t]
+  end.
+
+Lemma remove_ctx_trans_sound: sound_trans remove_ctx_trans.
+Proof.
+  unfold sound_trans, remove_ctx_trans.
+  intros. destruct t as[[gamma delta] goal]; simpl_task.
+  destruct gamma; simpl in *; try solve[apply H; auto].
+  destruct d; simpl in *; try solve[apply H; auto].
+  destruct (in_bool_spec string_dec (s_name f) (map (fun (x: funsym) => s_name x) 
+  (sig_f gamma))); simpl in H; try solve[apply H; auto].
+  specialize (H _ ltac:(left; auto)).
+  unfold task_valid in *.
+  split; auto.
+  destruct H as [Hwf Hval]. simpl_task; intros.
+  inversion gamma_valid; subst.
+  specialize (Hval H1 Hwf). simpl in *. clear H3 H5 H6 H7 H8 H9 H10 H11 H4.
+  unfold log_conseq in *.
+  intros.
+  (*Need a pf for a smaller context (same as before?)*)
+
+(*A more useful form of existential elimination for our proof system:*)
+Lemma derives_destruct_ex gamma delta goal name c x f:
+  find_hyp delta name = Some (Fquant Texists x f) ->
+  negb (in_bool string_dec c (map (fun (x: funsym) => s_name x) 
+  (sig_f gamma))) ->
+  negb (funsym_in_fmla )
+  task_wf (gamma, delta, Fquant Texists x f) ->
+  derives (abs_fun (constsym c (snd x)) :: gamma, 
+    replace_hyp delta name (safe_sub_f (t_constsym c (snd x)) x f), goal) ->
+  derives (gamma, delta, goal).
+Proof.
+  unfold find_hyp. intros Hget Hnotin Hwf Hder.
+  apply get_assoc_list_some in Hget.
+  assert (Hdex: derives (gamma, delta, Fquant Texists x f)). {
+    apply D_axiom; simpl_task; auto.
+    rewrite in_map_iff. exists (name, Fquant Texists x f). auto.
+  }
+  eapply D_existsE in Hdex.
+  2: apply Hnotin.
+  (*Need to reorder*)
+  assert (Hdgoal: derives (abs_fun (constsym c x.2) :: gamma, delta, goal)). {
+    eapply D_assert.
+    apply Hdex.
+    Unshelve. 2: exact name.
+    eapply D_weaken.
+    3: apply Hder.
+    - simpl. inversion Hdex; subst. destruct H; simpl_task; subst.
+      constructor; auto.
+      inversion Hder; subst. destruct H; simpl_task; subst.
+      rewrite Forall_forall in task_delta_typed0.
+      apply task_delta_typed0.
+      apply replace_hyp_in.
+      rewrite in_map_iff. exists (name, Fquant Texists x f); auto.
+    - apply sublist_map. eapply sublist_trans. apply replace_hyp_sublist.
+      rewrite in_map_iff. exists (name, Fquant Texists x f); auto.
+      apply sublist_cons. apply sublist_remove_hyp.
+  }
+
+
+
+      Search remove_hyp sublist. apply remove_hyp_sublist.
+      Search sublist cons.
+      apply incl_cons.
+      rewrite in_map_iff.
+      eexists (name, _). split; auto. reflexivity. 
+      apply replace_hyp_sublist.
+      Search replace_hyp.
+
+
+      replace_hyp_sublist:
+  forall (delta : seq (string * formula)) (name : string) (f_new : formula),
+  In name [seq i.1 | i <- delta] ->
+  sublist (replace_hyp delta name f_new)
+	((name, f_new) :: remove_hyp delta name)
+      
+  }
+  Search replace_hyp cons.
+
+  replace_hyp_sublist:
+  forall (delta : seq (string * formula)) (name : string) (f_new : formula),
+  In name [seq i.1 | i <- delta] ->
+  sublist (replace_hyp delta name f_new)
+	((name, f_new) :: remove_hyp delta name)
+
+
+  pose proof (D_assert _ _ _ _ _ Hder Hdex).
+  Check D_assert.
+
+  Check D_existsE.
+  eapply derives_replace_hyp.
+  apply D_forallE; auto.
+  apply D_axiom; simpl_task; auto.
+  rewrite in_map_iff. exists (name, Fquant Tforall x f); auto.
+
+
+Lemma D_existsE' {gamma delta x f c g}:
+  negb (in_bool string_dec c (map (fun (x: funsym) => s_name x) 
+      (sig_f gamma))) ->
+  derives (abs_fun (constsym c (snd x)) :: gamma, 
+    safe_sub_f (t_constsym c (snd x)) x f :: delta,
+    g) ->
+  derives (gamma, Fquant Texists )
+  delta, 
+      )
+
+  derives (gamma, delta, Fquant Texists x f) ->
+  derives (abs_fun (constsym c (snd x)) :: gamma, delta, 
+  safe_sub_f (t_constsym c (snd x)) x f).
+
+
+
+  Lemma derives_replace_hyp gamma delta goal name f_new:
+  derives (gamma, delta, f_new) ->
+  derives (gamma, replace_hyp delta name f_new, goal) ->
+  derives (gamma, delta, goal).
+
+
+  Lemma derives_specialize gamma delta goal name (t: term) x f:
+  find_hyp delta name = Some (Fquant Tforall x f) ->
+  term_has_type gamma t (snd x) ->
+  closed_tm t ->
+  task_wf (gamma, delta, Fquant Tforall x f) ->
+  derives (gamma, replace_hyp delta name (safe_sub_f t x f), goal) ->
+  derives (gamma, delta, goal).
+Proof.
+  unfold find_hyp.
+  intros Hget Hty Hclosed Hwf.
+  apply get_assoc_list_some in Hget.
+  apply derives_replace_hyp.
+  apply D_forallE; auto.
+  apply D_axiom; simpl_task; auto.
+  rewrite in_map_iff. exists (name, Fquant Tforall x f); auto.
+Qed.
