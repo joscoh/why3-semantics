@@ -285,6 +285,307 @@ Proof.
   - intros x [Hx | []]; subst; auto.
 Qed.
 
+(*Or*)
+
+(*Or intro 1*)
+Definition orI1_trans : trans := fun t =>
+  match (task_goal t) with
+  | Fbinop Tor g1 g2 => [task_with_goal t g1]
+  | _ => [t]
+  end.
+
+Lemma orI1_trans_sound: sound_trans orI1_trans.
+Proof.
+  unfold sound_trans, orI1_trans; intros.
+  destruct t as [[gamma delta] goal]; simpl_task.
+  destruct goal; simpl in H; try solve[apply H; auto].
+  destruct b; simpl in H; try solve[apply H; auto].
+  specialize (H _ ltac:(left; auto)).
+  unfold task_valid in *. simpl_task.
+  destruct H as [Hwf Hval].
+  split; auto.
+  intros.
+  specialize (Hval gamma_valid Hwf).
+  unfold log_conseq in *.
+  intros.
+  specialize (Hval pd pf pf_full).
+  prove_hyp Hval.
+  {
+    intros d Hd. erewrite satisfies_irrel; apply (H d Hd).
+  }
+  clear H. unfold satisfies in *.
+  intros.
+  specialize (Hval vt vv).
+  simpl_rep_full. erewrite fmla_rep_irrel. rewrite Hval.
+  auto.
+Qed.
+
+Theorem D_orI1 gamma delta f g:
+  closed gamma g ->
+  derives (gamma, delta, f) ->
+  derives (gamma, delta, Fbinop Tor f g).
+Proof.
+  intros Hclosedg Hd.
+  eapply (D_trans orI1_trans); auto.
+  - inversion Hd; subst. destruct H; simpl_task.
+    constructor; auto. simpl_task.
+    apply closed_binop; auto.
+  - apply orI1_trans_sound.
+  - simpl. intros x [<- | []]; auto.
+Qed.
+
+(*And the second one, symmetric:*)
+Definition orI2_trans : trans := fun t =>
+  match (task_goal t) with
+  | Fbinop Tor g1 g2 => [task_with_goal t g2]
+  | _ => [t]
+  end.
+
+Lemma orI2_trans_sound: sound_trans orI2_trans.
+Proof.
+  unfold sound_trans, orI2_trans; intros.
+  destruct t as [[gamma delta] goal]; simpl_task.
+  destruct goal; simpl in H; try solve[apply H; auto].
+  destruct b; simpl in H; try solve[apply H; auto].
+  specialize (H _ ltac:(left; auto)).
+  unfold task_valid in *. simpl_task.
+  destruct H as [Hwf Hval].
+  split; auto.
+  intros.
+  specialize (Hval gamma_valid Hwf).
+  unfold log_conseq in *.
+  intros.
+  specialize (Hval pd pf pf_full).
+  prove_hyp Hval.
+  {
+    intros d Hd. erewrite satisfies_irrel; apply (H d Hd).
+  }
+  clear H. unfold satisfies in *.
+  intros.
+  specialize (Hval vt vv).
+  simpl_rep_full. bool_to_prop; right. 
+  erewrite fmla_rep_irrel. rewrite Hval.
+  auto.
+Qed.
+
+Theorem D_orI2 gamma delta f g:
+  closed gamma f ->
+  derives (gamma, delta, g) ->
+  derives (gamma, delta, Fbinop Tor f g).
+Proof.
+  intros Hclosedf Hd.
+  eapply (D_trans orI2_trans); auto.
+  - inversion Hd; subst. destruct H; simpl_task.
+    constructor; auto. simpl_task.
+    apply closed_binop; auto.
+  - apply orI2_trans_sound.
+  - simpl. intros x [<- | []]; auto.
+Qed.
+
+(*Or elimination rule: if delta |- f \/ g, delta, g |- c, and 
+  delta, f |- c, then delta |- c*)
+Definition orE_trans f g n1 n2 : trans := 
+  fun t =>
+  [task_with_goal t (Fbinop Tor f g);
+    mk_task (task_gamma t) ((n1, f) :: (task_delta t)) (task_goal t);
+    mk_task (task_gamma t) ((n2, g) :: (task_delta t)) (task_goal t)].
+
+(*TODO: move*)
+Lemma closed_satisfies_rep {gamma : context} (gamma_valid : valid_context gamma) 
+(pd : pi_dom) (pf : pi_funpred gamma_valid pd)
+(pf_full : full_interp gamma_valid pd pf) (f : formula)
+(Hc : closed gamma f)
+(Hty1: formula_typed gamma f):
+satisfies gamma_valid pd pf pf_full f Hty1 <->
+formula_rep gamma_valid pd triv_val_typevar pf
+(triv_val_vars pd triv_val_typevar) f Hty1.
+Proof.
+  erewrite satisfies_irrel.
+  rewrite (reflect_iff _ _ (closed_satisfies_equiv gamma_valid pd pf pf_full f Hc)).
+  erewrite fmla_rep_irrel. unfold is_true. reflexivity.
+Qed.
+
+Lemma orE_trans_sound: forall f g n1 n2,
+  sound_trans (orE_trans f g n1 n2).
+Proof.
+  intros. unfold sound_trans, orE_trans.
+  intros.
+  assert (H1:=H). assert (H2:=H).
+  specialize (H _ (ltac:(left; auto))).
+  specialize (H1 _ (ltac:(right; left; auto))).
+  specialize (H2 _ (ltac:(right; right; left; auto))).
+  unfold task_valid in *.
+  simpl_task.
+  destruct H as [Hwf1 Hval1].
+  destruct H1 as [Hwf2 Hval2].
+  destruct H2 as [Hwf3 Hval3].
+  split; auto.
+  destruct t as [[gamma delta] C]; simpl_task.
+  intros.
+  specialize (Hval1 gamma_valid Hwf1).
+  specialize (Hval2 gamma_valid Hwf2).
+  specialize (Hval3 gamma_valid Hwf3).
+  unfold log_conseq in *.
+  intros.
+  specialize (Hval1 pd pf pf_full).
+  specialize (Hval2 pd pf pf_full).
+  specialize (Hval3 pd pf pf_full).
+  assert (Hor:  satisfies gamma_valid pd pf pf_full (Fbinop Tor f g) (f_ty (@task_goal_typed _ Hwf1))).
+  { apply Hval1. intros d Hd. erewrite satisfies_irrel. apply (H d Hd). }
+  clear Hval1.
+  revert Hor.
+  (*satisfies iff equiv to triv val rep because closed*)
+  rewrite !closed_satisfies_rep; auto.
+  2: apply t_wf.
+  2: apply Hwf1.
+  simpl_rep_full.
+  intros. bool_hyps. destruct Hor as [Hfrep | Hgrep].
+  - (*Case where f is true*)
+    clear -Hval2 Hfrep H.
+    prove_hyp Hval2.
+    { intros d [Hdf | Hind]; subst.
+      - rewrite closed_satisfies_rep.
+        + erewrite fmla_rep_irrel; apply Hfrep.
+        + inversion Hwf1. simpl_task. apply closed_binop_inv in task_goal_typed;
+          apply task_goal_typed.
+      - erewrite satisfies_irrel. apply (H d Hind).
+    }
+    revert Hval2. rewrite closed_satisfies_rep by (apply w_wf).
+    erewrite fmla_rep_irrel. intros ->. auto.
+  - (*Symmetric case*)
+    clear -Hval3 Hgrep H.
+    prove_hyp Hval3.
+    { intros d [Hdg | Hind]; subst.
+      - rewrite closed_satisfies_rep.
+        + erewrite fmla_rep_irrel; apply Hgrep.
+        + inversion Hwf1. simpl_task. apply closed_binop_inv in task_goal_typed;
+          apply task_goal_typed.
+      - erewrite satisfies_irrel. apply (H d Hind).
+    }
+    revert Hval3. rewrite closed_satisfies_rep by (apply w_wf).
+    erewrite fmla_rep_irrel. intros ->. auto.
+Qed.
+
+Theorem D_orE gamma delta f g n1 n2 C:
+  derives (gamma, delta, Fbinop Tor f g) ->
+  derives (gamma, (n1, f) :: delta, C) ->
+  derives (gamma, (n2, g) :: delta, C) ->
+  derives (gamma, delta, C).
+Proof.
+  intros Hdor Hdf Hdg.
+  eapply (D_trans (orE_trans f g n1 n2)); auto.
+  - inversion Hdf; subst. destruct H; constructor; auto; simpl_task.
+    inversion task_delta_typed; auto.
+  - apply orE_trans_sound.
+  - simpl. intros x [<- |[<- |[<- | []]]]; auto.
+Qed.
+
+(*We can also prove the LEM*)
+Definition LEM_trans : trans :=
+  fun t =>
+  match (task_goal t) with
+  | Fbinop Tor f (Fnot g) => if formula_eq_dec f g then
+    [] else [t]
+  | _ => [t]
+  end.
+
+Lemma LEM_trans_sound: sound_trans LEM_trans.
+Proof.
+  unfold sound_trans, LEM_trans. intros.
+  destruct t as [[gamma delta] goal]; simpl_task.
+  destruct goal; simpl in H; try solve[apply H; auto].
+  destruct b; simpl in H; try solve[apply H; auto].
+  destruct goal2; simpl in H; try solve[apply H; auto].
+  destruct (formula_eq_dec goal1 goal2); simpl in H;
+  try solve[apply H; auto].
+  subst. 
+  unfold task_valid. split; auto. simpl_task.
+  intros.
+  unfold log_conseq. intros. unfold satisfies.
+  intros. simpl_rep_full.
+  erewrite fmla_rep_irrel. apply orb_negb_r.
+Qed.
+
+Theorem D_LEM gamma delta f:
+  valid_context gamma ->
+  Forall (formula_typed gamma) (map snd delta) ->
+  closed gamma f ->
+  derives (gamma, delta, (Fbinop Tor f (Fnot f))).
+Proof.
+  intros gamma_valid Hdelta Hc.
+  eapply (D_trans LEM_trans); auto.
+  - constructor; auto. simpl_task.
+    apply closed_binop; auto.
+    apply closed_not; auto.
+  - apply LEM_trans_sound.
+  - unfold LEM_trans. simpl. destruct (formula_eq_dec f f); contradiction.
+Qed.
+
+(*True and False*)
+
+(*True is always derivable*)
+Definition tI_trans : trans :=
+  fun t => match (task_goal t) with | Ftrue => [] | _ => [t] end.
+
+Lemma tI_trans_sound: sound_trans tI_trans.
+Proof.
+  unfold sound_trans, tI_trans. intros.
+  destruct t as [[gamma delta] goal].
+  simpl_task.
+  destruct goal; simpl in H; try solve[apply H; auto].
+  unfold task_valid. split; auto. intros.
+  simpl_task. unfold log_conseq. intros.
+  unfold satisfies. intros. reflexivity.
+Qed.
+
+Theorem D_trueI gamma delta:
+  valid_context gamma ->
+  Forall (formula_typed gamma) (map snd delta) ->
+  derives (gamma, delta, Ftrue).
+Proof.
+  intros gamma_valid Hdelta.
+  eapply (D_trans tI_trans); auto.
+  - constructor; simpl_task; auto.
+    constructor; auto.
+    constructor.
+  - apply tI_trans_sound.
+  - simpl. intros x [].
+Qed.
+
+(*False can eliminate to give anything*)
+Definition falseE_trans : trans :=
+  fun t => [task_with_goal t Ffalse].
+
+Lemma falseE_trans_sound: sound_trans falseE_trans.
+Proof.
+  unfold sound_trans, falseE_trans; intros.
+  specialize (H _ (ltac:(left; auto))).
+  destruct t as [[gamma delta] goal]; simpl_task.
+  unfold task_valid in *.
+  simpl_task. split; auto. destruct H as [Hwf Hval].
+  intros.
+  specialize (Hval gamma_valid Hwf).
+  unfold log_conseq in *.
+  intros.
+  specialize (Hval pd pf pf_full).
+  prove_hyp Hval.
+  { intros d Hd; erewrite satisfies_irrel; apply (H d Hd); auto. }
+  revert Hval. unfold satisfies. intros.
+  specialize (Hval vt vv). revert Hval. simpl_rep_full. auto.
+Qed.
+
+Lemma D_falseE gamma delta f:
+  closed gamma f ->
+  derives (gamma, delta, Ffalse) ->
+  derives (gamma, delta, f).
+Proof.
+  intros Hc Hd. eapply (D_trans falseE_trans); auto.
+  - inversion Hd; subst. destruct H; simpl_task.
+    constructor; auto.
+  - apply falseE_trans_sound.
+  - simpl. intros x [<- | []]; auto.
+Qed.
+
 (*Implication*)
 
 (*If A, Delta |- B, then Delta |- A -> B*)
