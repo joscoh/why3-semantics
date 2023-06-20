@@ -1616,273 +1616,24 @@ Qed.
 Definition def_eq_dec (d1 d2: def) : {d1 = d2} + {d1 <> d2} :=
   reflect_dec' (def_eqb_spec d1 d2).
 
-
-
-(*Exists elim: give exists x, f, we can prove f[c/x] for some new
-  constant symbol c. This one will be awkward to state*)
-Definition existsE_trans name (f: formula) (x: vsymbol) : trans :=
+(*Exists elim: If we can prove (exists x, f), and we can
+  prove C assuming f[c/x] for some new constant symbol c,
+  then we can prove C*)
+Definition existsE_trans name (f: formula) (x: vsymbol) hyp :
+  trans := 
   let c := constsym name (snd x) in
-  let t_c := t_constsym name (snd x) in
+  let t_c := t_constsym name (snd x) in 
   fun t =>
-    if formula_eqb (task_goal t) (safe_sub_f t_c x f) &&
-    (*New symbol does not appear in delta, and does not appear in f*)
-    negb (funsym_in_fmla c f) &&
-    forallb (fun x => negb (funsym_in_fmla c x)) (map snd (task_delta t))
-    (*Assume new symbol is at the front (we will use in hypotheses anyway)*)
-    then
-    match (task_gamma t) with
-    | abs_fun c' :: gamma =>
-      if funsym_eq_dec c c' then
-      [mk_task gamma (task_delta t) (Fquant Texists x f)]
-      else [t]
-    | _ => [t]
-    end
-    else [t].
-
-(*Build a pf when we remove a constant funsym from the context*)
-
-(*TODO: just assume this is at the front of the context. We will
-  use it in hypotheses anyway*)
-Lemma gamma_valid_remove {d gamma}:
-  valid_context (d :: gamma) ->
-  valid_context gamma.
-Proof.
-  intros. inversion H; auto.
-Qed.
-(*Simpler than forall - remove instead of add*)
-Lemma pf_remove_constrs (gamma: context) (f: funsym)
-  (gamma_valid: valid_context ((abs_fun f) :: gamma))
-  (pd: pi_dom) (pf: pi_funpred gamma_valid pd) :
-  forall (m: mut_adt) (a: alg_datatype)
-  (c : funsym) (Hm : mut_in_ctx m gamma) 
-  (Ha : adt_in_mut a m) (Hc : constr_in_adt c a)
-  (srts : list sort)
-  (Hlens : Datatypes.length srts =
-            Datatypes.length (m_params m))
-  (args : arg_list (domain (dom_aux pd))
-            (sym_sigma_args c srts)),
-  funs gamma_valid pd pf c srts args =
-  constr_rep_dom (gamma_valid_remove gamma_valid) m Hm srts Hlens 
-    (dom_aux pd) a Ha c Hc (adts pd m srts) args.
-Proof.
-  intros.
-  rewrite (constrs gamma_valid pd pf m a c Hm Ha Hc srts Hlens).
-  unfold constr_rep_dom.
-  f_equal. f_equal. f_equal. apply UIP_dec. apply sort_eq_dec.
-  apply constr_rep_change_gamma.
-Qed.
-
-Definition pf_remove (gamma: context) (f: funsym)
-(gamma_valid: valid_context ((abs_fun f) :: gamma))
-(pd: pi_dom) (pf: pi_funpred gamma_valid pd):
-pi_funpred (gamma_valid_remove gamma_valid) pd :=
-Build_pi_funpred (gamma_valid_remove gamma_valid) pd 
-  (funs gamma_valid pd pf)
-  (preds gamma_valid pd pf)
-  (pf_remove_constrs gamma f gamma_valid pd pf).
-
-(*2 lemmas: this is full if pf is full, and 
-  evaluates the same on all formulas*)
-
-(*Trivial*)
-Lemma tm_pf_remove  (gamma: context) (f: funsym)
-(gamma_valid: valid_context ((abs_fun f) :: gamma))
-(pd: pi_dom) (pf: pi_funpred gamma_valid pd)
-(t: term) (ty: vty)
-(Hty1: term_has_type ((abs_fun f) :: gamma) t ty)
-(Hty2: term_has_type gamma t ty)
-vt vv:
-term_rep (gamma_valid_remove gamma_valid) pd vt
-  (pf_remove gamma f gamma_valid pd pf) vv t ty Hty2 =
-term_rep gamma_valid pd vt pf vv t ty Hty1.
-Proof.
-  apply term_change_gamma_pf; simpl; auto.
-Qed.
-
-Lemma fmla_pf_remove  (gamma: context) (f: funsym)
-(gamma_valid: valid_context ((abs_fun f) :: gamma))
-(pd: pi_dom) (pf: pi_funpred gamma_valid pd)
-(f1: formula)
-(Hty1: formula_typed ((abs_fun f) :: gamma) f1)
-(Hty2: formula_typed gamma f1)
-vt vv:
-formula_rep (gamma_valid_remove gamma_valid) pd vt
-  (pf_remove gamma f gamma_valid pd pf) vv f1 Hty2 =
-formula_rep gamma_valid pd vt pf vv f1 Hty1.
-Proof.
-  apply fmla_change_gamma_pf; simpl; auto.
-Qed.
-
-Lemma find_apply_pred_ext {g1 g2} (gamma_valid1: valid_context g1)
-(gamma_valid2: valid_context g2)
-  (pd: pi_dom) (pf1: pi_funpred gamma_valid1 pd)
-  (pf2: pi_funpred gamma_valid2 pd):
-  (forall p srts a, 
-  preds gamma_valid1 pd pf1 p srts a =
-  preds gamma_valid2 pd pf2 p srts a) ->
-  forall l Ps p srts a, find_apply_pred gamma_valid1 pd pf1 l Ps p srts a =
-  find_apply_pred gamma_valid2 pd pf2 l Ps p srts a.
-Proof.
-  intros.
-  induction l; simpl; auto.
-  destruct (predsym_eq_dec p a0); auto.
-Qed.
-
-Lemma pf_remove_full (gamma: context) (f: funsym)
-(gamma_valid: valid_context ((abs_fun f) :: gamma))
-(pd: pi_dom) (pf: pi_funpred gamma_valid pd):
-full_interp gamma_valid pd pf ->
-full_interp (gamma_valid_remove gamma_valid) pd 
-  (pf_remove gamma f gamma_valid pd pf).
-Proof.
-  unfold full_interp; intros [Hfuns [Hpreds [Hconstr Hfp]]]; split_all; simpl in *; auto.
-  - intros.
-    rewrite (Hfuns fs fs_in f0 args body f_in srts srts_len a vt vv).
-    erewrite tm_pf_remove.
-    apply dom_cast_eq.
-  - intros.
-    rewrite (Hpreds fs fs_in p args body p_in srts srts_len a vt vv).
-    erewrite fmla_pf_remove. reflexivity.
-  - intros. erewrite fmla_pf_remove. apply Hconstr. auto.
-    Unshelve. all: auto.
-  - intros. apply Hfp with(vt:=vt)(vv:=vv); auto.
-    intros.
-    assert (Hform': Forall (formula_typed gamma) fs0). {
-      (*Idea: indpred def in gamma*)
-      pose proof (in_indpred_valid (gamma_valid_remove gamma_valid) l_in).
-      rewrite Forall_forall in H2. specialize (H2 _ H1). auto.
-    }
-    specialize (H _ Hform' H1).
-    rewrite <- prove_iter_and in H |- *.
-    intros. apply (H x).
-    rewrite in_map_iff in H2 |- *.
-    destruct H2 as [b [Hb Hinb]]; subst.
-    exists b; split; auto.
-    erewrite dep_map_ext. apply Hinb.
-    intros. erewrite <- fmla_pf_remove.
-    apply fmla_change_pf; simpl; auto.
-    intros. apply find_apply_pred_ext. auto.
-Qed.
-
-
-Lemma satisfies_pf_remove (gamma: context) (f: funsym)
-(gamma_valid: valid_context ((abs_fun f) :: gamma))
-(pd: pi_dom) (pf: pi_funpred gamma_valid pd)
-(pf_full: full_interp gamma_valid pd pf)
-(pf_full2: full_interp (gamma_valid_remove gamma_valid) pd 
-(pf_remove gamma f gamma_valid pd pf))
-(f1: formula)
-(Hty1: formula_typed ((abs_fun f) :: gamma) f1)
-(Hty2: formula_typed gamma f1):
-satisfies (gamma_valid_remove gamma_valid) pd 
-  (pf_remove gamma f gamma_valid pd pf) pf_full2 f1 Hty2 <->
-satisfies gamma_valid pd pf pf_full f1 Hty1.
-Proof.
-  unfold satisfies. split; intros.
-  - specialize (H vt vv).
-    erewrite fmla_pf_remove in H.
-    apply H.
-  - erewrite fmla_pf_remove. apply H.
-Qed.
-
-Lemma existsE_trans_sound: forall name f x,
-  sound_trans (existsE_trans name f x).
-Proof.
-  intros.
-  unfold sound_trans, existsE_trans. intros.
-  destruct t as [[gamma delta] goal]. simpl_task.
-  destruct (formula_eqb_spec goal (safe_sub_f (t_constsym name (snd x)) x f));
-  [| apply H; simpl; auto].
-  subst. simpl in H.
-  destruct (funsym_in_fmla (constsym name (snd x)) f) eqn : Hincf;
-  [apply H; simpl; auto |].
-  destruct (forallb (fun x0 : formula => negb (funsym_in_fmla (constsym name (snd x)) x0))
-  (map snd delta)) eqn : Hincd; [| apply H; simpl; auto].
-  simpl in H.
-  destruct gamma; simpl in H; try solve[apply H; auto].
-  destruct d; simpl in H; try solve[apply H; auto].
-  destruct (funsym_eq_dec (constsym name (snd x)) f0); simpl in H;
-  try solve[apply H; auto]; subst.
-  specialize (H _ (ltac:(left; reflexivity))).
-  unfold task_valid in *. simpl_task.
-  destruct H as [Hwf Hval]. split; auto.
-  intros.
-  specialize (Hval (gamma_valid_remove gamma_valid) Hwf).
-  unfold log_conseq in *.
-  intros.
-  (*Hmm, a bit confused - how to get d?*)
-  specialize (Hval pd (pf_remove _ _ gamma_valid pd pf)
-    (pf_remove_full _ _ gamma_valid pd pf pf_full)).
-  (*Now prove equiv, then use exists*)
-  prove_hyp Hval.
-  {
-    intros d Hd.
-    rewrite satisfies_pf_remove.
-    apply (H d Hd).
-  }
-  (*Maybe need separate rule: exists x, f and f[c/x] |-  means
-    that delta |- C - think about this*)
-  rewrite satisfies_pf_remove in Hval.
-  revert Hval. Unshelve.
-  2: { exact pf_full. }
-  - unfold satisfies. intros.
-    (*Hmm, this is harder*)
-    specialize (Hval vt vv).
-    revert Hval. simpl_rep_full.
-    rewrite simpl_all_dec. intros [d Hd].
-    destruct x; simpl in *.
-    erewrite safe_sub_f_rep.
-    erewrite fmla_rep_irrel. apply Hd.
-
-
-  simpl_rep_full.
-  2: {}
-  
-  apply pf_remove_full. }
-  
-  simpl_rep_full.
-
-
-
-  (*First, prove new context valid*)
-  assert (gamma_valid': valid_context 
-  (remove def_eq_dec (abs_fun (constsym name (snd x))) gamma)).
-  {
-    destruct Hwf; auto.
-  }
-  specialize (Hval gamma_valid' Hwf).
-  unfold log_conseq in *. intros.
-  (*TODO: need to know c not used anywhere else, then
-    we can move to front
-    or assume it is at the front*)
-  specialize (Hval gamma_valid Hwf).
-Admitted.
-
-Lemma forallb_false {A: Type} (p: A -> bool) (l: list A):
-  forallb p l = false <-> (exists x, In x l /\ negb (p x)).
-Proof.
-  induction l; simpl; split; intros; auto; try discriminate;
-  try solve[destruct_all; contradiction].
-  - bool_hyps. destruct H.
-    + exists a. rewrite H; auto.
-    + apply IHl in H. destruct_all. exists x; auto.
-  - destruct_all.
-    + destruct (p x); auto; inversion H0.
-    + replace (forallb p l) with false; simpl_bool; auto.
-      symmetry; apply IHl. exists x; auto.
-Qed.
-
-Lemma constsym_wf: forall gamma name ty,
-  valid_type gamma ty ->
-  wf_funsym gamma (constsym name ty).
-Proof.
-  intros.
-  unfold wf_funsym, constsym.
-  simpl. constructor; auto.
-  split; auto.
-  rewrite Forall_forall.
-  intros x Hinx. simpl_set. left; auto.
-Qed.
+  (*New symbol not in signature*)
+  (*New symbol does not appear in delta, and does not appear in f*)
+  if in_bool string_dec name 
+  (map (fun (x: funsym) => s_name x) (sig_f (task_gamma t)))
+  then [t]
+  else
+    [task_with_goal t (Fquant Texists x f);
+      mk_task (abs_fun c :: (task_gamma t)) 
+        ((hyp, safe_sub_f t_c x f) :: (task_delta t))
+        (task_goal t) ].
 
 Lemma t_constsym_ty gamma name ty:
   type_vars ty = nil ->
@@ -1902,112 +1653,216 @@ Proof.
   - constructor.
 Qed. 
 
-Lemma D_existsE {gamma delta x f c}:
-  (*wf_funsym gamma (constsym c (snd x)) ->*)
-  negb (in_bool string_dec c (map (fun (x: funsym) => s_name x) 
-      (sig_f gamma))) ->
-  derives (gamma, delta, Fquant Texists x f) ->
-  derives (abs_fun (constsym c (snd x)) :: gamma, delta, 
-  safe_sub_f (t_constsym c (snd x)) x f).
+(*This is a tricky proof, trickier than forallI*)
+Lemma existsE_trans_sound: forall name f x n2,
+  sound_trans (existsE_trans name f x n2).
 Proof.
   intros.
-  assert (Hnotin: ~ In (constsym c (snd x)) (sig_f gamma)). {
-      intro Hinc.
-      apply ssrbool.negbTE in H.
-      destruct (in_bool_spec string_dec c (map (fun x : funsym => s_name x) (sig_f gamma)));
-      inversion H. apply n. rewrite in_map_iff.
-      exists (constsym c (snd x)); auto.
+  unfold sound_trans, existsE_trans. intros.
+  destruct t as [[gamma delta] goal]. simpl_task.
+  destruct (in_bool_spec string_dec name (map (fun x : funsym => s_name x) (sig_f gamma)));
+  [apply H; simpl; auto |]. simpl in H.
+  assert (H':=H).
+  specialize (H _ ltac:(left; auto)).
+  specialize (H' _ ltac:(right; left; auto)).
+  unfold task_valid in *. simpl_task.
+  destruct H as [Hwf1 Hval1].
+  destruct H' as [Hwf2 Hval2].
+  split; auto.
+  intros.
+  specialize (Hval1 gamma_valid Hwf1).
+  assert (Hsort: type_vars (snd x) = nil). {
+    destruct Hwf1; simpl_task.
+    destruct task_goal_typed.
+    unfold mono in f_mono. simpl in f_mono.
+    clear -f_mono.
+    rewrite null_nil in f_mono.
+    apply union_nil in f_mono. apply f_mono.
   }
-  eapply (D_trans (existsE_trans c f x)); auto.
-  - inversion H0; subst.
-    destruct H1; simpl_task.
-    constructor; auto; simpl_task.
-    + apply valid_ctx_cons; simpl; auto; try solve[repeat (constructor; auto)].
-      constructor; auto.
-      apply wf_funsym_expand. auto.
-      apply constsym_wf. inversion task_goal_typed.
-      inversion f_ty; subst; auto.
-    + revert task_delta_typed. apply Forall_impl.
-      intros fa. apply formula_typed_sublist; simpl; auto.
-      * apply expand_sublist_sig.
-      * apply sublist_refl.
-    + destruct task_goal_typed.
-      apply safe_sub_f_closed; auto.
-      * constructor.
-        -- unfold closed_term. rewrite t_constsym_fv; auto.
-        -- apply t_constsym_mono.
-      * unfold closed_formula in f_closed.
-        simpl in f_closed.
-        rewrite null_nil in f_closed.
-        intros y Hiny.
-        vsym_eq x y; simpl; auto. 
-        assert (In y nil). rewrite <- f_closed; simpl_set; auto.
-        inversion H1.
-      * unfold mono in *. simpl in f_mono.
-        rewrite !null_nil in *.
-        apply union_nil in f_mono.
-        destruct f_mono; auto.
-      * inversion f_ty; subst. unfold mono in f_mono. simpl in f_mono.
-        rewrite null_nil in f_mono. apply union_nil in f_mono. destruct f_mono.
+  assert (Hnotused: ~ In (constsym name (snd x)) (sig_f gamma)). {
+   intro C. apply n. rewrite in_map_iff. exists (constsym name (snd x)).
+    split; auto.
+  }
+  assert (Htyval: valid_type gamma (snd x)). {
+    destruct Hwf1; simpl_task.
+    destruct task_goal_typed.
+    inversion f_ty; subst. auto.
+  }
+  (*First, prove new context is valid*)
+  assert (gamma_valid': valid_context (abs_fun (constsym name (snd x)) :: gamma)). {
+    constructor; simpl; auto; constructor; auto; try solve[constructor].
+    unfold wf_funsym. simpl. constructor; auto.
+    split.
+    + revert Htyval. apply valid_type_sublist.
+      apply expand_sublist_sig.
+    + rewrite Hsort; auto.
+  }
+  specialize (Hval2 gamma_valid' Hwf2).
+  unfold log_conseq in *.
+  intros.
+  (*First, specialize exists hyp*)
+  specialize (Hval1 pd pf pf_full).
+  prove_hyp Hval1.
+  {
+    intros d Hd; erewrite satisfies_irrel; apply (H d Hd).
+  }
+  (*Get the domain elt d such that f is true*)
+  revert Hval1. unfold satisfies. intros.
+  specialize (Hval1 vt vv). revert Hval1.
+  simpl_rep_full. rewrite simpl_all_dec. intros [d Hrepd].
+  (*Now instantiate Hval2 with the interp that sends c to d*)
+  assert (is_sort (snd x)). {
+    unfold is_sort. rewrite Hsort; auto.
+  }
+  destruct x as [xn xty]; simpl in *.
+  (*Cast d to sort*)
+  assert (Hsubst: v_subst vt xty = exist _ xty H0). {
+    apply sort_inj; simpl.
+    symmetry. apply subst_is_sort_eq; auto.
+  }
+  set (d' := dom_cast (dom_aux pd) Hsubst d).
+  (*assert (xty = sort_to_ty (exist _ xty H0)). reflexivity.*)
+  specialize (Hval2 pd (pf_with_const gamma_valid _ (exist _ xty H0) gamma_valid' pd pf d')
+    (interp_with_const_full gamma_valid _ _ _ pd pf pf_full d')).
+  prove_hyp Hval2.
+  {
+    (*Idea: if we have new goal, true because of how we set c to d.
+      Otherwise true because c doesn't appear*)
+    intros d1 Hd1.
+    destruct Hd1; subst.
+    - unfold satisfies. intros.
+      assert (Htyc: term_has_type (abs_fun (constsym name xty) :: gamma) (t_constsym name xty) xty). {
         apply t_constsym_ty; simpl; auto.
-        revert H6. apply valid_type_sublist.
+        revert Htyval.
+        apply valid_type_sublist.
         apply expand_sublist_sig.
-      * inversion f_ty; subst.
-        revert H8.  apply formula_typed_sublist; simpl; auto.
+      }
+      assert (Htyf: formula_typed (abs_fun (constsym name xty) :: gamma) f). {
+        destruct Hwf1. simpl_task. destruct task_goal_typed; simpl_task.
+        inversion f_ty; subst.
+        revert H6.
+        apply formula_typed_sublist.
         apply expand_sublist_sig.
-        apply sublist_refl.
-  - admit.
-  - unfold existsE_trans. simpl_task.
-    destruct (formula_eqb_spec (safe_sub_f (t_constsym c (snd x)) x f)
-    (safe_sub_f (t_constsym c (snd x)) x f)); try contradiction.
-    simpl.
-    destruct (funsym_in_fmla (constsym c (snd x)) f) eqn : Hinf; simpl.
-    {
-      exfalso. apply Hnotin.
-      eapply formula_typed_funsym_in_sig. 2: apply Hinf.
-      inversion H0; subst. inversion H1; subst.
-      simpl_task. inversion task_goal_typed; subst. 
-      inversion f_ty; subst; auto.
-    }
-    destruct (forallb (fun x1 : formula => negb (funsym_in_fmla (constsym c (snd x)) x1))
-    (map snd delta)) eqn : Hall.
-    2: {
-      exfalso. apply Hnotin.
-      apply forallb_false in Hall.
-      destruct Hall as [f' [Hinf' Hinc]].
-      rewrite negb_involutive in Hinc.
-      eapply formula_typed_funsym_in_sig. 2: apply Hinc.
-      inversion H0; subst. inversion H1; subst.
-      simpl_task. rewrite Forall_forall in task_delta_typed.
+        simpl; apply sublist_refl.
+      }
+      erewrite safe_sub_f_rep. Unshelve. all: auto.
+      (*Why we chose c -> d*)
+      (*Very annoyingly, we need another cast because vt and vt0
+        are not the same. But the formulas are monomorphic and closed
+        so we are fine*)
+        erewrite fmla_change_vt. 
+        erewrite fmla_change_gamma_pf.
+        apply Hrepd.
+        (*Now to prove that all these casts were OK*)
+        all: simpl; auto.
+        + (*First, c does not appear in f*) 
+          intros.
+          rewrite funs_with_const_diff; auto.
+          intro C; subst.
+          simpl in *.
+          apply Hnotused.
+          revert H1. apply formula_typed_funsym_in_sig.
+          destruct Hwf1. simpl_task.
+          destruct task_goal_typed; auto.
+          inversion f_ty;auto.
+        + (*monomorphic so we can change vt*) intros.
+          destruct Hwf1. simpl_task.
+          destruct task_goal_typed.
+          unfold mono in f_mono.
+          clear -f_mono H1.
+          rewrite null_nil in f_mono.
+          simpl in f_mono.
+          apply union_nil in f_mono. destruct f_mono.
+          rewrite H0 in H1. inversion H1.
+        + (*Now prove that the change of vv is OK. This is because we
+            set c to go to d'*)
+            intros.
+            (*Only fv of f is (xn, xty)*)
+            assert (Hfvs: sublist (fmla_fv f) [(xn, xty)]). {
+              destruct Hwf1. simpl_task. destruct task_goal_typed.
+              clear -f_closed.
+              unfold closed_formula in f_closed.
+              rewrite null_nil in f_closed; simpl in f_closed.
+              intros y Hiny. simpl.
+              vsym_eq (xn, xty) y.
+              exfalso. assert (In y nil). { 
+                rewrite <- f_closed; simpl_set; auto. }
+              inversion H.
+            }
+            unfold substi.
+            unfold sublist in Hfvs. simpl in Hfvs.
+            assert ((xn, xty) = x). {
+              apply Hfvs in Hinx; destruct_all; auto. contradiction.
+            } subst.
+            vsym_eq (xn, xty) (xn, xty).
+            assert (e = eq_refl). {
+              apply UIP_dec. apply vsymbol_eq_dec.
+            } subst. simpl.
+            unfold t_constsym. simpl_rep.
+            simpl.
+            unfold fun_arg_list; simpl.
+            (*assert (Heq: exist (fun t : vty => is_sort t) xty H0 =
+              funsym_sigma_ret (constsym name (exist (fun t : vty => is_sort t) xty H0)) [])).*)
+            erewrite funs_with_const_same.
+            unfold cast_dom_vty. unfold d'. rewrite !dom_cast_compose.
+            rewrite dom_cast_refl; auto.
+            Unshelve.
+            simpl. apply sort_inj. simpl.
+            apply subst_is_sort_eq; auto.
+    - (*Otherwise, the same because c not in Delta*)
+      erewrite satisfies_ext. apply (H d1 i). all: simpl; auto.
+      intros. rewrite funs_with_const_diff; auto.
+      intro C; subst.
+      simpl in *.
+      apply Hnotused.
+      revert H1. apply formula_typed_funsym_in_sig.
+      destruct w_wf. simpl_task.
+      clear -task_delta_typed i.
+      rewrite Forall_forall in task_delta_typed.
       apply task_delta_typed; auto.
-     }
-     destruct (funsym_eq_dec (constsym c (snd x)) (constsym c (snd x)));
-     try contradiction.
-     intros y [<- | []]; auto.
-Admitted.
-
-(*TODO: do this later, complicated because we need to remove
-  c from the context*)
-
-
-Lemma existsE_trans_sound: forall name f x,
-  sound_trans (existsE_trans name f x).
-Proof.
-  
-*)
-
-
-Definition DNE_Coq : Prop:= forall (P: Prop), ~ ~ P -> P.
-Lemma Coq_forall_exists {X: Type} (P: X -> Prop):
-  DNE_Coq ->
-  (~ (forall x, ~ P x)) ->
-  exists x, P x.
-Proof.
-  unfold DNE_Coq. intros.
-  apply H. intro Hex.
-  apply H0. intros x Hp. apply Hex. exists x; auto.
+  }
+  revert Hval2. unfold satisfies. intros.
+  specialize (Hval2 vt vv).
+  (*Now we can prove the goal, since c does not appear in the goal*)
+  revert Hval2. erewrite fmla_change_gamma_pf. intros->. all: auto.
+  intros. simpl.
+  rewrite funs_with_const_diff; auto.
+  intro C; subst.
+  simpl in *.
+  apply Hnotused.
+  revert H1. apply formula_typed_funsym_in_sig.
+  destruct w_wf. simpl_task.
+  destruct task_goal_typed; auto.
 Qed.
 
+(*If gamma, delta |- exists x, f and 
+  c :: gamma, f[c/x] :: delta |- g (c not in gamma),
+  then gamma, delta |- g*)
+Theorem D_existsE gamma delta x f c g hyp:
+  (*c is not used*)
+  negb (in_bool string_dec c (map (fun (x: funsym) => s_name x) 
+    (sig_f gamma))) ->
+  (*g must be typed under gamma*)
+  formula_typed gamma g ->
+  derives (gamma, delta, Fquant Texists x f) ->
+  derives (abs_fun (constsym c (snd x)) :: gamma, 
+    (hyp, safe_sub_f (t_constsym c (snd x)) x f) :: delta,
+    g) ->
+  derives (gamma, delta, g).
+Proof.
+  intros Hnotin Htyg Hd1 Hd2.
+  eapply (D_trans (existsE_trans c f x hyp)); auto.
+  - inversion Hd1; subst. inversion Hd2; subst.
+    destruct H, H1; simpl_task.
+    constructor; simpl_task; auto.
+    destruct task_goal_typed0.
+    constructor; simpl_task; auto.
+  - apply existsE_trans_sound.
+  - unfold existsE_trans.
+    simpl_task. apply ssrbool.negbTE in Hnotin.
+    rewrite Hnotin. simpl.
+    intros y [<- | [<- | []]]; auto.
+Qed.
 
 (*Equality*)
 
