@@ -4919,6 +4919,31 @@ Proof.
   wf_tac.
 Qed.
 
+Lemma NoDup_map_inj {A B: Type} (f: A -> B) (l: list A)
+  (Hinj: forall x y, In x l -> In y l -> f x = f y -> x = y):
+  NoDup l ->
+  NoDup (map f l).
+Proof.
+  induction l; simpl; intros; constructor; auto; inversion H; subst; 
+  simpl in *; auto.
+  intro C. simpl in *. rewrite in_map_iff in C.
+  destruct C as [b [Hab Hinb]].
+  assert (a = b) by (apply Hinj; auto).
+  subst. contradiction.
+Qed.
+
+Lemma NoDup_mk_fun_str l1 l:
+  length l = length l1 ->
+  NoDup l ->
+  NoDup l1 ->
+  NoDup (map fst (map (mk_fun_str l1 l) l1)).
+Proof.
+  intros. unfold mk_fun_str.
+  rewrite map_mk_fun; wf_tac.
+  unfold vsymbol in *.
+  rewrite combine_length. wf_tac.
+Qed.
+
 (*1. The bound variables, after conversion,
   are unique and all from the input list.
   This proof is very tedious and should be improved*)
@@ -4926,12 +4951,12 @@ Lemma alpha_aux_bnd (t: term) (f: formula) :
   (forall (l: list string),
     NoDup l ->
     length l = length (tm_bnd t) ->
-    NoDup (tm_bnd (alpha_t_aux t l)) /\
+    NoDup (map fst (tm_bnd (alpha_t_aux t l))) /\
     (forall x, In x (tm_bnd (alpha_t_aux t l)) -> In (fst x) l)) /\
   (forall (l: list string),
     NoDup l ->
     length l = length (fmla_bnd f) ->
-    NoDup (fmla_bnd (alpha_f_aux f l)) /\
+    NoDup (map fst (fmla_bnd (alpha_f_aux f l))) /\
     (forall x, In x (fmla_bnd (alpha_f_aux f l)) -> In (fst x) l)).
 Proof.
   revert t f.
@@ -4940,9 +4965,11 @@ Proof.
   - split; [constructor | intros x []].
   - (*Tfun case*) 
     split.
-    + rewrite NoDup_concat_iff. split.
+    + rewrite concat_map. rewrite NoDup_concat_iff. split.
       * intros x. rewrite in_map_iff.
-        intros [t1 [Hbndt1 Hint1]]. subst.
+        intros [vs [Hx Hinvs]]; subst.
+        rewrite in_map_iff in Hinvs.
+        destruct Hinvs as [t1 [Hbndt1 Hint1]]. subst.
         rewrite in_map2_iff with(d1:=tm_d)(d2:=nil) in Hint1;
         wf_tac.
         destruct Hint1 as [i [Hi Ht1]]; subst.
@@ -4953,12 +4980,18 @@ Proof.
         (*Idea: suppose in both, then by IH (twice), in 2 different
           parts of l - contradicts NoDup l*)
         rewrite Forall_forall in H.
+        rewrite !map_map in Hin1, Hin2.
+        rewrite !map_nth_inbound with (d2:=tm_d) in Hin1, Hin2; wf_tac.
         rewrite (map2_nth _ _ _ tm_d nil) in Hin1, Hin2; wf_tac.
+        rewrite in_map_iff in Hin1, Hin2.
+        destruct Hin1 as [v1 [Hx Hin1]]; subst.
+        destruct Hin2 as [v2 [Hx Hin2]]; subst.
         apply H in Hin1, Hin2; auto; wf_tac.
         assert (NoDup (concat (split_lens l0 (map (fun t => length (tm_bnd t)) l1)))) by
           (rewrite <- split_lens_concat; wf_tac).
           rewrite NoDup_concat_iff in H5.
-        split_all. apply (H6 i1 i2 nil (fst x)); wf_tac.
+        split_all. apply (H6 i1 i2 nil (fst v1)); wf_tac. split; auto.
+        rewrite <- Hx; auto.
     + intros x. rewrite in_concat. intros [bl [Hinbl Hinx]].
       rewrite in_map_iff in Hinbl.
       destruct Hinbl as [t1 [Ht1 Hint1]]; subst.
@@ -4973,22 +5006,26 @@ Proof.
     inversion H1; subst.
     split.
     + constructor.
-      * intro Hin.
+      * rewrite map_app. intro Hin.
         apply in_app_or in Hin.
         destruct Hin.
-        -- apply H in H3; wf_tac.
+        -- rewrite in_map_iff in H3. destruct_all; subst. 
+          apply H in H5; wf_tac.
         -- rewrite bnd_sub_var_t in H3.
-          apply H0 in H3; wf_tac. 
-      * rewrite NoDup_app_iff'.
+          rewrite in_map_iff in H3; destruct_all; subst.
+          apply H0 in H5; wf_tac. 
+      * rewrite map_app. rewrite NoDup_app_iff'.
         split_all.
         -- apply H; wf_tac.
         -- rewrite bnd_sub_var_t. apply H0; wf_tac.
         -- intros x.
           rewrite bnd_sub_var_t.
           intros [Hinx1 Hinx2].
-          apply H in Hinx1; wf_tac.
-          apply H0 in Hinx2; wf_tac.
-          apply (nodup_firstn_skipn Hinx1 Hinx2); auto.
+          rewrite in_map_iff in Hinx1, Hinx2; destruct_all; subst.
+          apply H in H9; wf_tac.
+          apply H0 in H5; wf_tac.
+          rewrite H3 in H5.
+          apply (nodup_firstn_skipn H9 H5); auto.
     + intros x [Hx | Hinx]; subst;[left; auto|].
       apply in_app_or in Hinx.
       destruct Hinx as [Hinx | Hinx].
@@ -4996,22 +5033,26 @@ Proof.
       * rewrite bnd_sub_var_t in Hinx. apply H0 in Hinx; wf_tac.
   - (*Tif case*)
     split.
-    + rewrite !NoDup_app_iff'.
+    + rewrite !map_app. rewrite !NoDup_app_iff'.
       split_all.
       * apply H; wf_tac.
       * apply H0; wf_tac.
       * apply H1; wf_tac.
       * intros x [Hinx1 Hinx2].
-        apply H0 in Hinx1; wf_tac.
-        apply H1 in Hinx2; wf_tac.
-        apply (nodup_firstn_skipn Hinx1 Hinx2); wf_tac. 
+        rewrite in_map_iff in Hinx1, Hinx2; destruct_all; subst.
+        apply H0 in H7; wf_tac.
+        apply H1 in H5; wf_tac.
+        rewrite H4 in H5.
+        apply (nodup_firstn_skipn H7 H5); wf_tac. 
       * intros x [Hinx1 Hinx2].
-        apply H in Hinx1; wf_tac.
-        apply in_app_or in Hinx2. destruct Hinx2.
-        -- apply H0 in H4; wf_tac.
-          apply (nodup_firstn_skipn Hinx1); wf_tac. 
-        -- apply H1 in H4; wf_tac.
-          apply (nodup_firstn_skipn Hinx1); wf_tac.
+        rewrite in_map_iff in Hinx1. destruct_all; subst.
+        apply H in H5; wf_tac.
+        apply in_app_or in Hinx2. destruct Hinx2;
+        rewrite in_map_iff in H4; destruct_all; subst.
+        -- apply H0 in H6; wf_tac. rewrite H4 in H6.
+          apply (nodup_firstn_skipn H5); wf_tac. 
+        -- apply H1 in H6; wf_tac. rewrite H4 in H6.
+          apply (nodup_firstn_skipn H5); wf_tac.
     + intros x Hinx.
       repeat (apply in_app_or in Hinx; destruct Hinx as [Hinx | Hinx]).
       * apply H in Hinx; wf_tac.
@@ -5027,84 +5068,118 @@ Proof.
         rewrite app_length; auto.
     }
     split.
-    + rewrite NoDup_app_iff'; split_all.
+    + rewrite !map_app. rewrite NoDup_app_iff'; split_all.
       * apply H; wf_tac.
-      * rewrite NoDup_concat_iff; split_all.
+      * rewrite concat_map. rewrite NoDup_concat_iff; split_all.
         -- intros x. rewrite in_map_iff.
-          intros [pt1 [Hx Hinx]]; subst.
+          intros [l2 [Hx Hinl2]]; subst.
+          rewrite in_map_iff in Hinl2.
+          destruct Hinl2 as [pt1 [Hx Hinx]]; subst.
           rewrite (in_map2_iff _ _ _ (Pwild, tm_d) nil) in Hinx; wf_tac.
           destruct Hinx as [i [Hi Hpt1]].
+          rewrite map_app.
           rewrite NoDup_app_iff'.
           split_all; subst; wf_tac.
+          ++ simpl.  rewrite map_pat_str_fv; wf_tac.
+            apply NoDup_mk_fun_str; wf_tac.
           ++ simpl. rewrite bnd_sub_var_ts.
             rewrite Forall_forall in H0.
             apply H0; auto; wf_tac.
           ++ intros x. simpl.
             rewrite bnd_sub_var_ts. 
             intros [Hinx1 Hinx2].
+            rewrite in_map_iff in Hinx1, Hinx2.
+            destruct Hinx1 as [v1 [Hx Hinx1]]; subst.
+            destruct Hinx2 as [v2 [Hfst Hinx2]]; subst.
             (*Need this a lot even though it's ugly*)
             apply in_map_pat_str_fv in Hinx1; wf_tac.
             rewrite Forall_forall in H0.
             apply H0 in Hinx2; wf_tac.
+            rewrite Hfst in Hinx2.
             apply (nodup_firstn_skipn Hinx1 Hinx2); wf_tac.
         -- intros i1 i2 d x. wf_tac.
+          rewrite !map_map.
+          rewrite !map_nth_inbound with (d2:=(Pwild, tm_d)); wf_tac.
           rewrite !map2_nth with(d1:=(Pwild, tm_d)) (d2:=nil); wf_tac.
+          rewrite !map_app, !in_app_iff.
           intros [Hini1 Hini2].
           (*Now we get 4 cases need to show each is impossible*)
           destruct Hini1 as [Hini1 | Hini1].
-          ++ apply in_map_pat_str_fv in Hini1; wf_tac.
+          ++ rewrite in_map_iff in Hini1.
+            destruct Hini1 as [v1 [Hx Hini1]]; subst. 
+            apply in_map_pat_str_fv in Hini1; wf_tac.
             revert Hini1. wf_tac. intros Hini1.
             apply In_firstn in Hini1.
             destruct Hini2 as [Hini2 | Hini2].
-            ** apply in_map_pat_str_fv in Hini2; wf_tac.
+            ** rewrite in_map_iff in Hini2.
+              destruct Hini2 as [v2 [Hfst Hini2]]; subst. 
+              apply in_map_pat_str_fv in Hini2; wf_tac.
               revert Hini2. wf_tac. intros Hini2.
               apply In_firstn in Hini2.
-              apply H5.
+              apply H5. rewrite Hfst in Hini2.
               apply (in_nth_concat_nodup Hini1 Hini2); wf_tac.
             ** simpl in Hini2.
               rewrite bnd_sub_var_ts in Hini2.
               rewrite Forall_forall in H0.
+              rewrite in_map_iff in Hini2.
+              destruct Hini2 as [v2 [Hfst Hini2]].
               apply H0 in Hini2; wf_tac.
               apply In_skipn in Hini2.
-              apply H5.
+              apply H5. rewrite Hfst in Hini2.
               apply (in_nth_concat_nodup Hini1 Hini2); wf_tac.
           ++ simpl in Hini1. 
             rewrite bnd_sub_var_ts in Hini1.
             rewrite Forall_forall in H0.
+            rewrite in_map_iff in Hini1.
+            destruct Hini1 as [v1 [Hx Hini1]]; subst.
             apply H0 in Hini1; wf_tac.
             apply In_skipn in Hini1.
             destruct Hini2 as [Hini2 | Hini2].
-            ** apply in_map_pat_str_fv in Hini2; wf_tac.
+            ** rewrite in_map_iff in Hini2.
+              destruct Hini2 as [v2 [Hfst Hini2]]. 
+              apply in_map_pat_str_fv in Hini2; wf_tac.
               revert Hini2; wf_tac. intros Hini2.
               apply In_firstn in Hini2.
-              apply H5.
+              apply H5. rewrite Hfst in Hini2.
               apply (in_nth_concat_nodup Hini1 Hini2); wf_tac.
             ** simpl in Hini2.
               rewrite bnd_sub_var_ts in Hini2.
+              rewrite in_map_iff in Hini2.
+              destruct Hini2 as [v2 [Hfst Hini2]].
               apply H0 in Hini2; wf_tac.
               apply In_skipn in Hini2.
-              apply H5.
+              apply H5. rewrite Hfst in Hini2.
               apply (in_nth_concat_nodup Hini1 Hini2); wf_tac.
-      * intros x.
+      * intros x. rewrite concat_map.
         rewrite in_concat. intros [Hinx1 [l1 [Hinl1 Hinxl1]]].
+        rewrite in_map_iff in Hinx1.
+        destruct Hinx1 as [v1 [Hx Hinx1]]; subst.
         apply H in Hinx1; wf_tac.
+        rewrite map_map in Hinl1.
         rewrite in_map_iff in Hinl1. destruct Hinl1 as [p1 [Hl1 Hinp1]].
         subst.
         rewrite in_map2_iff with(d1:=(Pwild, tm_d))(d2:=nil) in Hinp1; wf_tac.
         destruct Hinp1 as [i [Hi Hp1]]; subst.
         (*And now we have to show these are distinct, will be similar*)
+        rewrite map_app in Hinxl1.
         apply in_app_or in Hinxl1.
         destruct Hinxl1 as [Hinx2 | Hinx2].
-        -- apply in_map_pat_str_fv in Hinx2; wf_tac.
+        -- rewrite in_map_iff in Hinx2.
+          destruct Hinx2 as [v2 [Hfst Hinx2]]. 
+          apply in_map_pat_str_fv in Hinx2; wf_tac.
           revert Hinx2; wf_tac; intros.
           apply In_firstn in Hinx2.
           apply in_split_lens_ith in Hinx2; wf_tac.
+          rewrite Hfst in Hinx2.
           apply (nodup_firstn_skipn Hinx1 Hinx2); wf_tac.
         -- simpl in Hinx2.
           rewrite bnd_sub_var_ts in Hinx2.
+          rewrite in_map_iff in Hinx2.
+          destruct Hinx2 as [v2 [Hfst Hinx2]].
           rewrite Forall_forall in H0; apply H0 in Hinx2; wf_tac.
           apply In_skipn in Hinx2.
           apply in_split_lens_ith in Hinx2; wf_tac.
+          rewrite Hfst in Hinx2.
           apply (nodup_firstn_skipn Hinx1 Hinx2); wf_tac.
     + (*Second part - TODO very similar to previous*)
       intros x Hinx.
@@ -5134,14 +5209,17 @@ Proof.
     rewrite bnd_sub_var_f.
     split.
     + constructor; [|apply H; wf_tac].
-      intro Hin. apply H in Hin; wf_tac.
+      intro Hin. rewrite in_map_iff in Hin.
+      destruct Hin as [v1 [Hv1 Hin]]; subst. apply H in Hin; wf_tac.
     + intros. destruct H2; subst; [left; auto | right].
       apply H in H2; wf_tac.
   - (*Fpred case - same as Tfun*)
     split.
-    + rewrite NoDup_concat_iff. split.
+    + rewrite concat_map. rewrite NoDup_concat_iff. split.
       * intros x. rewrite in_map_iff.
-        intros [t1 [Hbndt1 Hint1]]. subst.
+        intros [vs [Hx Hinvs]]; subst.
+        rewrite in_map_iff in Hinvs.
+        destruct Hinvs as [t1 [Hbndt1 Hint1]]. subst.
         rewrite in_map2_iff with(d1:=tm_d)(d2:=nil) in Hint1;
         wf_tac.
         destruct Hint1 as [i [Hi Ht1]]; subst.
@@ -5152,12 +5230,18 @@ Proof.
         (*Idea: suppose in both, then by IH (twice), in 2 different
           parts of l - contradicts NoDup l*)
         rewrite Forall_forall in H.
+        rewrite !map_map in Hin1, Hin2.
+        rewrite !map_nth_inbound with (d2:=tm_d) in Hin1, Hin2; wf_tac.
         rewrite (map2_nth _ _ _ tm_d nil) in Hin1, Hin2; wf_tac.
+        rewrite in_map_iff in Hin1, Hin2.
+        destruct Hin1 as [v1 [Hx Hin1]]; subst.
+        destruct Hin2 as [v2 [Hx Hin2]]; subst.
         apply H in Hin1, Hin2; auto; wf_tac.
         assert (NoDup (concat (split_lens l (map (fun t => length (tm_bnd t)) tms)))) by
-          (rewrite <- split_lens_concat; wf_tac).
-          rewrite NoDup_concat_iff in H5.
-        split_all. apply (H6 i1 i2 nil (fst x)); wf_tac.
+        (rewrite <- split_lens_concat; wf_tac).
+        rewrite NoDup_concat_iff in H5.
+        split_all. apply (H6 i1 i2 nil (fst v1)); wf_tac. split; auto.
+        rewrite <- Hx; auto.
     + intros x. rewrite in_concat. intros [bl [Hinbl Hinx]].
       rewrite in_map_iff in Hinbl.
       destruct Hinbl as [t1 [Ht1 Hint1]]; subst.
@@ -5172,23 +5256,31 @@ Proof.
     inversion H0; subst.
     rewrite bnd_sub_var_f.
     split.
-    + constructor; [intro C; apply H in C |apply H]; wf_tac.
+    + constructor; [intro C |apply H]; wf_tac.
+      rewrite in_map_iff in C. destruct C as [v1 [Hv1 Hinv1]]; subst.
+      apply H in Hinv1; wf_tac.
     + intros. destruct H2; subst;[left | right]; auto.
       apply H in H2; wf_tac.
   - (*Feq*)
     split.
-    + rewrite NoDup_app_iff'; split_all;[apply H | apply H0 |]; wf_tac.
+    + rewrite map_app. rewrite NoDup_app_iff'; split_all;[apply H | apply H0 |]; wf_tac.
       intros x [Hinx1 Hinx2].
+      rewrite in_map_iff in Hinx1, Hinx2.
+      destruct Hinx1 as [v1 [Hv1 Hinx1]]; destruct Hinx2 as [v2 [Hfst Hinx2]]; subst.
       apply H in Hinx1; wf_tac; apply H0 in Hinx2; wf_tac.
+      rewrite Hfst in Hinx2.
       apply (nodup_firstn_skipn Hinx1); wf_tac.
     + intros x Hinx.
       apply in_app_or in Hinx. destruct Hinx as [Hinx | Hinx]; 
       [apply H in Hinx | apply H0 in Hinx];wf_tac.
   - (*Fbinop*)
-    split.
-    + rewrite NoDup_app_iff'; split_all;[apply H|apply H0|]; wf_tac.
+    split. 
+    + rewrite map_app. rewrite NoDup_app_iff'; split_all;[apply H|apply H0|]; wf_tac.
       intros x [Hinx1 Hinx2].
+      rewrite in_map_iff in Hinx1, Hinx2.
+      destruct Hinx1 as [v1 [Hv1 Hinx1]]; destruct Hinx2 as [v2 [Hfst Hinx2]]; subst.
       apply H in Hinx1; wf_tac; apply H0 in Hinx2; wf_tac.
+      rewrite Hfst in Hinx2.
       apply (nodup_firstn_skipn Hinx1); wf_tac.
     + intros x Hinx.
       apply in_app_or in Hinx; destruct Hinx as [Hinx | Hinx];
@@ -5201,23 +5293,29 @@ Proof.
     inversion H1; subst; simpl; rewrite bnd_sub_var_f.
     split.
     + constructor.
-      * intro C. apply in_app_or in C.
+      * intro C. rewrite map_app in C. apply in_app_or in C.
         destruct C as [Hins | Hins];
+        rewrite in_map_iff in Hins; destruct Hins as [v1 [Hv1 Hins]]; subst;
         [apply H in Hins | apply H0 in Hins]; wf_tac.
-      * rewrite NoDup_app_iff'; split_all; [apply H | apply H0 |];wf_tac.
-        intros x [Hinx1 Hinx2]; apply H in Hinx1; apply H0 in Hinx2; wf_tac.
+      * rewrite map_app. rewrite NoDup_app_iff'; split_all; [apply H | apply H0 |];wf_tac.
+        intros x [Hinx1 Hinx2]; rewrite in_map_iff in Hinx1, Hinx2;
+        destruct Hinx1 as [v1 [Hv1 Hinx1]]; destruct Hinx2 as [v2 [Hv2 Hinx2]]; subst;
+        apply H in Hinx1; apply H0 in Hinx2; wf_tac. rewrite Hv2 in Hinx2.
         apply (nodup_firstn_skipn Hinx1); wf_tac.
     + intros x [Hx | Hinx]; subst;[left | right]; auto.
       apply in_app_or in Hinx; destruct Hinx as [Hinx | Hinx];
       [apply H in Hinx | apply H0 in Hinx]; wf_tac.
   - (*Fif*)
     split.
-    + rewrite !NoDup_app_iff'; split_all;
+    + rewrite !map_app. rewrite !NoDup_app_iff'; split_all;
       [apply H | apply H0 | apply H1 | |]; wf_tac;
       intros x; [| rewrite in_app_iff];
       intros [Hinx1 Hinx2];[|destruct Hinx2 as [Hinx2 | Hinx2]];
+      rewrite in_map_iff in Hinx1, Hinx2; 
+      destruct Hinx1 as [v1 [Hv1 Hinx1]]; destruct Hinx2 as [v2 [Hfst Hinx2]]; subst;
       [apply H0 in Hinx1; apply H1 in Hinx2 | apply H in Hinx1; 
         apply H0 in Hinx2 | apply H in Hinx1; apply H1 in Hinx2]; wf_tac;
+      rewrite Hfst in Hinx2;
       apply (nodup_firstn_skipn Hinx1); wf_tac.
     + intros x.
       rewrite ! in_app_iff; intros [Hinx | [Hinx | Hinx]];
@@ -5232,102 +5330,141 @@ Proof.
       rewrite app_length; auto.
     }
     split.
-    + rewrite NoDup_app_iff'; split_all.
+    + rewrite !map_app. rewrite NoDup_app_iff'; split_all.
       * apply H; wf_tac.
-      * rewrite NoDup_concat_iff; split_all.
+      * rewrite concat_map. rewrite NoDup_concat_iff; split_all.
         -- intros x. rewrite in_map_iff.
-          intros [pt1 [Hx Hinx]]; subst.
+          intros [l2 [Hx Hinl2]]; subst.
+          rewrite in_map_iff in Hinl2.
+          destruct Hinl2 as [pt1 [Hx Hinx]]; subst.
           rewrite (in_map2_iff _ _ _ (Pwild, Ftrue) nil) in Hinx; wf_tac.
           destruct Hinx as [i [Hi Hpt1]].
+          rewrite map_app.
           rewrite NoDup_app_iff'.
           split_all; subst; wf_tac.
+          ++ simpl.  rewrite map_pat_str_fv; wf_tac.
+            apply NoDup_mk_fun_str; wf_tac.
           ++ simpl. rewrite bnd_sub_var_fs.
             rewrite Forall_forall in H0.
             apply H0; auto; wf_tac.
-          ++ intros x.
-            simpl. rewrite bnd_sub_var_fs.
+          ++ intros x. simpl.
+            rewrite bnd_sub_var_fs. 
             intros [Hinx1 Hinx2].
+            rewrite in_map_iff in Hinx1, Hinx2.
+            destruct Hinx1 as [v1 [Hx Hinx1]]; subst.
+            destruct Hinx2 as [v2 [Hfst Hinx2]]; subst.
             (*Need this a lot even though it's ugly*)
             apply in_map_pat_str_fv in Hinx1; wf_tac.
             rewrite Forall_forall in H0.
             apply H0 in Hinx2; wf_tac.
+            rewrite Hfst in Hinx2.
             apply (nodup_firstn_skipn Hinx1 Hinx2); wf_tac.
         -- intros i1 i2 d x. wf_tac.
+          rewrite !map_map.
+          rewrite !map_nth_inbound with (d2:=(Pwild, Ftrue)); wf_tac.
           rewrite !map2_nth with(d1:=(Pwild, Ftrue)) (d2:=nil); wf_tac.
+          rewrite !map_app, !in_app_iff.
           intros [Hini1 Hini2].
           (*Now we get 4 cases need to show each is impossible*)
           destruct Hini1 as [Hini1 | Hini1].
-          ++ apply in_map_pat_str_fv in Hini1; wf_tac.
+          ++ rewrite in_map_iff in Hini1.
+            destruct Hini1 as [v1 [Hx Hini1]]; subst. 
+            apply in_map_pat_str_fv in Hini1; wf_tac.
             revert Hini1. wf_tac. intros Hini1.
             apply In_firstn in Hini1.
             destruct Hini2 as [Hini2 | Hini2].
-            ** apply in_map_pat_str_fv in Hini2; wf_tac.
+            ** rewrite in_map_iff in Hini2.
+              destruct Hini2 as [v2 [Hfst Hini2]]; subst. 
+              apply in_map_pat_str_fv in Hini2; wf_tac.
               revert Hini2. wf_tac. intros Hini2.
               apply In_firstn in Hini2.
-              apply H5.
+              apply H5. rewrite Hfst in Hini2.
               apply (in_nth_concat_nodup Hini1 Hini2); wf_tac.
-            ** simpl in Hini2; rewrite bnd_sub_var_fs in Hini2. 
+            ** simpl in Hini2.
+              rewrite bnd_sub_var_fs in Hini2.
               rewrite Forall_forall in H0.
+              rewrite in_map_iff in Hini2.
+              destruct Hini2 as [v2 [Hfst Hini2]].
               apply H0 in Hini2; wf_tac.
               apply In_skipn in Hini2.
-              apply H5.
+              apply H5. rewrite Hfst in Hini2.
               apply (in_nth_concat_nodup Hini1 Hini2); wf_tac.
-          ++ simpl in Hini1; rewrite bnd_sub_var_fs in Hini1. 
+          ++ simpl in Hini1. 
+            rewrite bnd_sub_var_fs in Hini1.
             rewrite Forall_forall in H0.
+            rewrite in_map_iff in Hini1.
+            destruct Hini1 as [v1 [Hx Hini1]]; subst.
             apply H0 in Hini1; wf_tac.
             apply In_skipn in Hini1.
             destruct Hini2 as [Hini2 | Hini2].
-            ** apply in_map_pat_str_fv in Hini2; wf_tac.
+            ** rewrite in_map_iff in Hini2.
+              destruct Hini2 as [v2 [Hfst Hini2]]. 
+              apply in_map_pat_str_fv in Hini2; wf_tac.
               revert Hini2; wf_tac. intros Hini2.
               apply In_firstn in Hini2.
-              apply H5.
+              apply H5. rewrite Hfst in Hini2.
               apply (in_nth_concat_nodup Hini1 Hini2); wf_tac.
-            ** simpl in Hini2; rewrite bnd_sub_var_fs in Hini2. 
+            ** simpl in Hini2.
+              rewrite bnd_sub_var_fs in Hini2.
+              rewrite in_map_iff in Hini2.
+              destruct Hini2 as [v2 [Hfst Hini2]].
               apply H0 in Hini2; wf_tac.
               apply In_skipn in Hini2.
-              apply H5.
+              apply H5. rewrite Hfst in Hini2.
               apply (in_nth_concat_nodup Hini1 Hini2); wf_tac.
-    * intros x.
-      rewrite in_concat. intros [Hinx1 [l1 [Hinl1 Hinxl1]]].
-      apply H in Hinx1; wf_tac.
-      rewrite in_map_iff in Hinl1. destruct Hinl1 as [p1 [Hl1 Hinp1]].
-      subst.
-      rewrite in_map2_iff with(d1:=(Pwild, Ftrue))(d2:=nil) in Hinp1; wf_tac.
-      destruct Hinp1 as [i [Hi Hp1]]; subst.
-      (*And now we have to show these are distinct, will be similar*)
-      apply in_app_or in Hinxl1.
-      destruct Hinxl1 as [Hinx2 | Hinx2].
-      -- apply in_map_pat_str_fv in Hinx2; wf_tac.
-        revert Hinx2; wf_tac; intros.
-        apply In_firstn in Hinx2.
-        apply in_split_lens_ith in Hinx2; wf_tac.
-        apply (nodup_firstn_skipn Hinx1 Hinx2); wf_tac.
-      -- simpl in Hinx2; rewrite bnd_sub_var_fs in Hinx2. 
-        rewrite Forall_forall in H0; apply H0 in Hinx2; wf_tac.
-        apply In_skipn in Hinx2.
-        apply in_split_lens_ith in Hinx2; wf_tac.
-        apply (nodup_firstn_skipn Hinx1 Hinx2); wf_tac.
+      * intros x. rewrite concat_map.
+        rewrite in_concat. intros [Hinx1 [l1 [Hinl1 Hinxl1]]].
+        rewrite in_map_iff in Hinx1.
+        destruct Hinx1 as [v1 [Hx Hinx1]]; subst.
+        apply H in Hinx1; wf_tac.
+        rewrite map_map in Hinl1.
+        rewrite in_map_iff in Hinl1. destruct Hinl1 as [p1 [Hl1 Hinp1]].
+        subst.
+        rewrite in_map2_iff with(d1:=(Pwild, Ftrue))(d2:=nil) in Hinp1; wf_tac.
+        destruct Hinp1 as [i [Hi Hp1]]; subst.
+        (*And now we have to show these are distinct, will be similar*)
+        rewrite map_app in Hinxl1.
+        apply in_app_or in Hinxl1.
+        destruct Hinxl1 as [Hinx2 | Hinx2].
+        -- rewrite in_map_iff in Hinx2.
+          destruct Hinx2 as [v2 [Hfst Hinx2]]. 
+          apply in_map_pat_str_fv in Hinx2; wf_tac.
+          revert Hinx2; wf_tac; intros.
+          apply In_firstn in Hinx2.
+          apply in_split_lens_ith in Hinx2; wf_tac.
+          rewrite Hfst in Hinx2.
+          apply (nodup_firstn_skipn Hinx1 Hinx2); wf_tac.
+        -- simpl in Hinx2.
+          rewrite bnd_sub_var_fs in Hinx2.
+          rewrite in_map_iff in Hinx2.
+          destruct Hinx2 as [v2 [Hfst Hinx2]].
+          rewrite Forall_forall in H0; apply H0 in Hinx2; wf_tac.
+          apply In_skipn in Hinx2.
+          apply in_split_lens_ith in Hinx2; wf_tac.
+          rewrite Hfst in Hinx2.
+          apply (nodup_firstn_skipn Hinx1 Hinx2); wf_tac.
     + (*Second part - TODO very similar to previous*)
-    intros x Hinx.
-    apply in_app_or in Hinx.
-    destruct Hinx as [Hinx | Hinx].
-    * apply H in Hinx; wf_tac.
-    * rewrite in_concat in Hinx.
-      destruct Hinx as [l1 [Hinl1 Hinxl1]].
-      rewrite in_map_iff in Hinl1.
-      destruct Hinl1 as [p1 [Hl1 Hinp1]].
-      subst.
-      rewrite in_map2_iff with (d1:=(Pwild, Ftrue))(d2:=nil) in Hinp1; wf_tac.
-      destruct Hinp1 as [i [Hi Hp1]]; subst.
-      apply in_app_or in Hinxl1.
-      destruct Hinxl1 as [Hinx | Hinx].
-      -- apply in_map_pat_str_fv in Hinx; wf_tac.
-        revert Hinx; wf_tac; intros.
-        apply in_split_lens_ith in Hinx; wf_tac.
-      -- simpl in Hinx; rewrite bnd_sub_var_fs in Hinx. 
-        rewrite Forall_forall in H0; apply H0 in Hinx; wf_tac.
-        apply In_skipn in Hinx.
-        apply in_split_lens_ith in Hinx; wf_tac.
+      intros x Hinx.
+      apply in_app_or in Hinx.
+      destruct Hinx as [Hinx | Hinx].
+      * apply H in Hinx; wf_tac.
+      * rewrite in_concat in Hinx.
+        destruct Hinx as [l1 [Hinl1 Hinxl1]].
+        rewrite in_map_iff in Hinl1.
+        destruct Hinl1 as [p1 [Hl1 Hinp1]].
+        subst.
+        rewrite in_map2_iff with (d1:=(Pwild, Ftrue))(d2:=nil) in Hinp1; wf_tac.
+        destruct Hinp1 as [i [Hi Hp1]]; subst.
+        apply in_app_or in Hinxl1.
+        destruct Hinxl1 as [Hinx | Hinx].
+        -- apply in_map_pat_str_fv in Hinx; wf_tac.
+          revert Hinx; wf_tac; intros.
+          apply in_split_lens_ith in Hinx; wf_tac.
+        -- simpl in Hinx.
+          rewrite bnd_sub_var_fs in Hinx.
+          rewrite Forall_forall in H0; apply H0 in Hinx; wf_tac.
+          apply In_skipn in Hinx.
+          apply in_split_lens_ith in Hinx; wf_tac.
 Qed.
 
 Definition alpha_t_aux_bnd t := proj_tm alpha_aux_bnd t.
@@ -5338,21 +5475,6 @@ Ltac vsym_eq2 x y z :=
   assert (H: x = y \/ (x <> y /\ x = z) \/ (x <> y /\ x <> z)) by
   (vsym_eq x y; right; vsym_eq x z);
   destruct H as [? | [[? ?]|[? ?]]].
-
-(*Only need injectivity on the elts*)
-Lemma NoDup_map_inj {A B: Type} (f: A -> B) (l: list A)
-  (Hinj: forall x y, In x l -> In y l -> f x = f y -> x = y):
-  NoDup l ->
-  NoDup (map f l).
-Proof.
-  induction l; simpl; intros; inversion H; constructor; subst.
-  - intro C.
-    rewrite in_map_iff in C.
-    destruct C as [y [Hy Hiny]].
-    assert (a = y) by (apply Hinj; simpl; auto).
-    subst. contradiction.
-  - apply IHl; auto. intros; apply Hinj; simpl; auto.
-Qed. 
 
 (*mapping [mk_fun_str] over a pattern results in an
   alpha-equivalent pattern under the valuation mapping
@@ -6434,7 +6556,7 @@ Proof.
   pose proof (gen_strs_length (length (tm_bnd t)) (l ++ tm_bnd t ++ tm_fv t)) as Hlen.
   pose proof (gen_strs_notin (length (tm_bnd t)) (l ++ tm_bnd t ++ tm_fv t)) as Hnotin.
   split.
-  - apply alpha_t_aux_bnd; auto.
+  - eapply NoDup_map_inv. apply alpha_t_aux_bnd; auto.
   - intros x [Hinx1 Hinx2].
     apply alpha_t_aux_bnd in Hinx2; auto.
     rewrite <- alpha_equiv_t_fv in Hinx1; [| apply a_convert_all_t_equiv].
@@ -6459,6 +6581,28 @@ Proof.
   apply a_convert_all_t_equiv.
 Qed.
 
+Lemma a_convert_all_t_bnd_nodup t l:
+  NoDup (map fst (tm_bnd (a_convert_all_t t l))).
+Proof.
+  apply alpha_t_aux_bnd.
+  apply gen_strs_nodup.
+  rewrite gen_strs_length; auto.
+Qed.
+
+Lemma a_convert_all_t_bnd_notin t l:
+  forall s, In s (map fst (tm_bnd (a_convert_all_t t l))) ->
+    ~ In s (map fst (tm_fv t)) /\ ~ In s (map fst l).
+Proof.
+  intros. rewrite in_map_iff in H.
+  destruct H as [v1 [Hv1 Hinv1]]; subst.
+  apply alpha_t_aux_bnd in Hinv1.
+  - apply gen_strs_notin' in Hinv1.
+    rewrite !map_app, !in_app_iff in Hinv1.
+    not_or Hinv1; auto.
+  - apply gen_strs_nodup.
+  - apply gen_strs_length.
+Qed.
+
 (*And likewise for formulas*)
 
 Theorem a_convert_all_f_equiv f l:
@@ -6477,7 +6621,7 @@ Proof.
   pose proof (gen_strs_length (length (fmla_bnd f)) (l ++ fmla_bnd f ++ fmla_fv f)) as Hlen.
   pose proof (gen_strs_notin (length (fmla_bnd f)) (l ++ fmla_bnd f ++ fmla_fv f)) as Hnotin.
   split.
-  - apply alpha_f_aux_bnd; auto.
+  - eapply NoDup_map_inv. apply alpha_f_aux_bnd; auto.
   - intros x [Hinx1 Hinx2].
     apply alpha_f_aux_bnd in Hinx2; auto.
     rewrite <- alpha_equiv_f_fv in Hinx1; [| apply a_convert_all_f_equiv].
@@ -6500,6 +6644,28 @@ Corollary a_convert_all_f_rep v f l
 Proof.
   apply a_equiv_f_equiv.
   apply a_convert_all_f_equiv.
+Qed.
+
+Lemma a_convert_all_f_bnd_nodup f l:
+  NoDup (map fst (fmla_bnd (a_convert_all_f f l))).
+Proof.
+  apply alpha_f_aux_bnd.
+  apply gen_strs_nodup.
+  rewrite gen_strs_length; auto.
+Qed.
+
+Lemma a_convert_all_f_bnd_notin f l:
+  forall s, In s (map fst (fmla_bnd (a_convert_all_f f l))) ->
+    ~ In s (map fst (fmla_fv f)) /\ ~ In s (map fst l).
+Proof.
+  intros. rewrite in_map_iff in H.
+  destruct H as [v1 [Hv1 Hinv1]]; subst.
+  apply alpha_f_aux_bnd in Hinv1.
+  - apply gen_strs_notin' in Hinv1.
+    rewrite !map_app, !in_app_iff in Hinv1.
+    not_or Hinv1; auto.
+  - apply gen_strs_nodup.
+  - apply gen_strs_length.
 Qed.
 
 Corollary a_convert_all_f_valid_ind_form p f l:

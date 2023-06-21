@@ -469,3 +469,56 @@ Proof.
   rewrite in_map_iff in H. intro Hin.
   apply H. exists x. split; auto.
 Qed.
+
+Lemma gen_strs_notin' (n: nat) (l: list vsymbol):
+forall (s: string), In s (gen_strs n l) -> ~ In s (map fst l).
+Proof.
+  intros. apply gen_notin_notin in H. auto.
+Qed.
+
+(*No variables, just names with a prefix*)
+Definition gen_names (n: nat) (pref: string) (l: list string) : list string :=
+  gen_notin (fun x => (pref ++ nth_str x)%string) string_dec n l.
+
+Lemma gen_names_inj pref: forall (n1 n2: nat),
+  (pref ++ nth_str n1)%string =
+  (pref ++ nth_str n2)%string ->
+  n1 = n2.
+Proof.
+  intros. apply append_inj in H; auto. destruct H; subst.
+  apply nth_str_inj in H0; auto.
+Qed.
+
+Lemma gen_names_length n p l:
+  List.length (gen_names n p l) = n.
+Proof.
+  apply gen_notin_length, gen_names_inj.
+Qed.
+
+Lemma gen_names_nodup n p l:
+  NoDup (gen_names n p l).
+Proof.
+  apply gen_notin_nodup, gen_names_inj. 
+Qed.
+
+Lemma gen_names_notin (n: nat) p (l: list string):
+  forall x, In x (gen_names n p l) -> ~ In x l.
+Proof.
+  intros. apply gen_notin_notin in H. auto.
+Qed.
+
+Definition gen_name (p: string) (l: list string) : string :=
+  List.nth 0 (gen_names 1 p l) EmptyString.
+
+Lemma gen_name_notin p (l: list string):
+  ~ In (gen_name p l) l.
+Proof.
+  unfold gen_name.
+  pose proof (gen_names_length 1 p l).
+  destruct (gen_names 1 p l) eqn : Heqs;
+  inversion H.
+  destruct l0; inversion H1.
+  simpl. 
+  pose proof (gen_names_notin 1 p l s).
+  apply H0. rewrite Heqs; simpl; auto.
+Qed.
