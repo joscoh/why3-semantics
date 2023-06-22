@@ -48,6 +48,9 @@ Inductive pattern_has_type: context -> pattern -> vty -> Prop :=
     (* No free variables in common *)
     (forall i j d x, i < length ps -> j < length ps -> i <> j ->
       ~(In x (pat_fv (nth i ps d)) /\ In x (pat_fv (nth j ps d)))) ->
+    (*A constructor must belong to an ADT*)
+    (exists m a, mut_in_ctx m s /\
+      adt_in_mut a m /\ constr_in_adt f a) ->
         pattern_has_type s (Pconstr f params ps) (sigma (f_ret f))
   | P_Or: forall s p1 p2 ty,
     pattern_has_type s p1 ty ->
@@ -2242,10 +2245,11 @@ Qed.
 
 Lemma pattern_has_type_sublist g1 g2 p ty:
   sublist_sig g1 g2 ->
+  sublist (mut_of_context g1) (mut_of_context g2) ->
   pattern_has_type g1 p ty ->
   pattern_has_type g2 p ty.
 Proof.
-  intros Hsub Hty. induction Hty; constructor; auto;
+  intros Hsub Hmut Hty. induction Hty; constructor; auto;
   try apply valid_type_expand; auto.
   - revert H. apply valid_type_sublist; apply Hsub.
   - revert H; apply valid_type_sublist; apply Hsub.
@@ -2253,6 +2257,9 @@ Proof.
   - revert H0. apply Forall_impl. intros a. 
     apply valid_type_sublist, Hsub.
   - revert H1; apply valid_type_sublist, Hsub.
+  - destruct H7 as [a [m [m_in [a_in c_in]]]].
+    exists a. exists m. split_all; auto.
+    eapply mut_in_ctx_sublist. apply Hmut. auto.
 Qed.
 
 Lemma well_typed_sublist g1 g2 (Hsub: sublist_sig g1 g2)
@@ -2284,7 +2291,7 @@ Proof.
     + destruct H4 as [a [m [args [m_in [a_in Hv]]]]]; subst.
       exists a. exists m. exists args. split_all; auto.
       revert m_in. apply mut_in_ctx_sublist; auto.
-    + intros. eapply pattern_has_type_sublist; auto. auto.
+    + intros. eapply pattern_has_type_sublist; auto. auto. auto.
     + clear -H0 H9. induction ps; simpl; intros; auto;
       destruct H; subst;
       inversion H0; subst; simpl in H9; auto.
@@ -2308,7 +2315,7 @@ Proof.
       exists a. exists m. exists args. split_all; auto.
       revert m_in.
       apply mut_in_ctx_sublist; auto.
-    + intros. eapply pattern_has_type_sublist; auto. auto.
+    + intros. eapply pattern_has_type_sublist; auto. auto. auto.
     + clear -H0 H8. induction ps; simpl; intros; auto;
       destruct H; subst;
       inversion H0; subst; simpl in H8; auto.

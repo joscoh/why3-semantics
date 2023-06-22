@@ -170,6 +170,45 @@ Canonical predsym_eqType := EqType predsym predsym_eqMixin.
 Definition seqI {A: eqType} (s1 s2: seq A) :=
   filter (fun x => x \in s2) s1.
 
+Definition is_funsym_constr (gamma: context) (f: funsym) : bool :=
+  existsb (fun (m: mut_adt) =>
+    existsb (fun (a: alg_datatype) => constr_in_adt f a)
+     (typs m)) (mut_of_context gamma).
+
+Lemma has_existsP {A: Type} (b: A -> bool) (P: A -> Prop) {l: list A}:
+  (forall x, In x l -> reflect (P x) (b x)) ->
+  reflect (exists x, In x l /\ P x) (existsb b l).
+Proof.
+  elim: l => //=[_ |h t /= IH Hrefl].
+  { reflF. by case: H. }
+  case: (Hrefl h (ltac:(auto))) => Hph/=.
+  { apply ReflectT. exists h. by auto. }
+  prove_hyp IH.
+  { move=> x Hinx. by apply Hrefl; auto. }
+  case: IH => Hex.
+  - apply ReflectT. case: Hex => [y [Hiny Hy]].
+    by exists y; auto.
+  - reflF.
+    case: H => [[Hxh | Hinx]] Hpx; subst=>//.
+    apply Hex. by exists x.
+Qed.
+
+(*Not very ssreflect-like but much easier to prove this way*)
+Lemma is_funsym_constr_correct gamma f:
+  reflect (exists m a, mut_in_ctx m gamma /\ adt_in_mut a m /\
+    constr_in_adt f a) (is_funsym_constr gamma f).
+Proof.
+  apply iff_reflect.
+  rewrite /is_funsym_constr.
+  rewrite existsb_exists.
+  setoid_rewrite existsb_exists.
+  split; intros; destruct_all.
+  - exists x. split; first by apply mut_in_ctx_eq.
+    exists x0. split=>//; by apply in_bool_In in H0.
+  - exists x. exists x0. split_all=>//; [by apply mut_in_ctx_eq |
+    by apply In_in_bool].
+Qed.
+
 Fixpoint typecheck_pattern (gamma: context) (p: pattern) (v: vty) : bool :=
   match p with
   | Pvar x => (v == (snd x)) && typecheck_type gamma (snd x)
@@ -199,7 +238,8 @@ Fixpoint typecheck_pattern (gamma: context) (p: pattern) (v: vty) : bool :=
     (*Kind of an awkward encoding*)
     [forall x in 'I_(length ps), forall y in 'I_(length ps),
       (x != y) ==>  
-      null (seqI (pat_fv (nth Pwild ps x)) (pat_fv (nth Pwild ps y)))]
+      null (seqI (pat_fv (nth Pwild ps x)) (pat_fv (nth Pwild ps y)))] &&
+    (is_funsym_constr gamma f)
   end.
 
 (*Proofs of correctness*)
@@ -303,6 +343,9 @@ Proof.
     }
     case: Hfvs => Hfreevars;[rewrite andbT | rewrite andbF]; last by
     reflF.
+    rewrite andbC.
+    case: (is_funsym_constr s f) /is_funsym_constr_correct => Hisadt/=;
+    last by reflF.
     (*Now we just have the nested induction left*)
     apply iff_reflect. split.
     + move=> Hty. inversion Hty; subst. clear -H8 H5 Hall.
