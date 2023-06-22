@@ -6704,7 +6704,7 @@ Qed.
 Lemma a_convert_all_f_bnd_NoDup f vs:
 NoDup (fmla_bnd (a_convert_all_f f vs)).
 Proof.
-  unfold a_convert_all_f.
+  eapply NoDup_map_inv.
   apply alpha_f_aux_bnd.
   apply gen_strs_nodup.
   rewrite gen_strs_length. auto.
