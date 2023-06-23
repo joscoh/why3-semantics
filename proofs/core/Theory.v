@@ -2683,6 +2683,9 @@ Qed.
 (*First:if we cast d, it does not change whether the
   match succeeds or not. The dependent types make this
   very difficult to prove*)   
+(*NEED to use regular rewrite (rewrite ->) - ssreflect
+  rewrite gives additional shelved goals and leads to Qed that
+  doesn't work*)
 Lemma match_val_single_vt_none pd vt (ty: vty) 
   (p: pattern)
   (Hp1: pattern_has_type gamma p ty)
@@ -2700,7 +2703,7 @@ Proof.
   induction p; intros; auto; try reflexivity.
   - split; intros C; inversion C.
   - (*constructor case is hard*)
-    rewrite !match_val_single_rewrite.
+    rewrite -> !match_val_single_rewrite.
     revert Hp2. cbn. intros.
     generalize dependent (@is_vty_adt_some gamma (ty_subst' params tys ty)).
     generalize dependent (@is_vty_adt_some gamma ty).
@@ -2711,7 +2714,7 @@ Proof.
     destruct (is_vty_adt gamma ty) eqn : Hisadt1.
     2: {
       (*Show that both are none from constr assumption*)
-      assert (Hisadt2: is_vty_adt gamma (ty_subst' params tys ty) = None); [|rewrite Hisadt2; intros; reflexivity].
+      assert (Hisadt2: is_vty_adt gamma (ty_subst' params tys ty) = None); [|rewrite -> Hisadt2; intros; reflexivity].
       apply (constr_pat_is_vty_adt_none Hp1 Hp2). apply Hisadt1.
     }
     destruct p as [[m1 a1] vs1].
@@ -2721,7 +2724,7 @@ Proof.
     (*Now show that other is Some with same m , a, related vs*)
     assert (Hisadt2:=Hisadt1).
     apply (constr_pat_is_vty_adt_some _ _ _ Hp1 Hp2) in Hisadt2.
-    rewrite Hisadt2.
+    rewrite -> Hisadt2.
     intros Hvslen1 Hvslen2 Hvslen3 Hvslen4 Hadtspec1 Hadtspec2.
     destruct (Hadtspec1 m1 a1 vs1 Logic.eq_refl) as [Hty1 [a_in m_in]].
     destruct (Hadtspec2 m1 a1 (ty_subst_list' params tys vs1) Logic.eq_refl)
@@ -2746,13 +2749,14 @@ Proof.
     intros [f1 [[x_in1 args1] Hcast1]] [f2 [[x_in2 args2] Hcast2]]; simpl in *;
     subst.
     (*Finally, a reasonable goal*)
-    rewrite !eq_trans_refl_l in Hcast1, Hcast2.
+    rewrite dom_cast_compose in Hcast2.
+    rewrite -> !eq_trans_refl_l in Hcast1.
     assert (Heq2: map (v_subst vt) (ty_subst_list' params tys vs) =
     map (v_subst (vt_with_args vt params (map (v_subst vt) tys))) vs). {
-      apply list_eq_ext'; rewrite !map_length; auto.
       unfold ty_subst_list'.
+      apply list_eq_ext'; rewrite -> !map_length; auto.
       intros n d' Hn.
-      rewrite -> !map_nth_inbound with (d2:=vty_int); try rewrite map_length; auto.
+      rewrite -> !map_nth_inbound with (d2:=vty_int); try rewrite -> map_length; auto.
       apply v_subst_vt_with_args'.
     }
     (*Now we can relate the two constr_reps*)
@@ -2772,7 +2776,7 @@ Proof.
     ).
     {
       rewrite <- Hcast1, <- Hcast2. unfold dom_cast.
-      rewrite !scast_scast.
+      rewrite -> !scast_scast.
       apply scast_eq_uip.
     }
     clear Hcast1 Hcast2.
@@ -2812,15 +2816,15 @@ Proof.
     end.
     intros.
     clear Hvslen1 Hvslen2. simpl.
-    rewrite cast_arg_list_compose.
+    rewrite -> cast_arg_list_compose.
     (*Only want 1 cast in induction*)
     repeat match goal with
     | |- context [cast_arg_list ?H ?a] => generalize dependent H
     end.
     intros.
     assert (cast_arg_list e4 args2 = cast_arg_list (eq_trans (Logic.eq_sym e3) e4) (cast_arg_list e3 args2)).
-    {  rewrite !cast_arg_list_compose. apply cast_arg_list_eq. }
-    rewrite H1. clear H1.
+    {  rewrite -> !cast_arg_list_compose. apply cast_arg_list_eq. }
+    rewrite -> H1. clear H1.
     generalize dependent (cast_arg_list e3 args2).
     generalize dependent (eq_trans (Logic.eq_sym e3) e4).
     clear e3 e4 e1 e2. intros ? a3. clear H0 args2.
@@ -2847,155 +2851,88 @@ Proof.
       inversion H; subst.
       symmetry. split; case_match_hyp; try solve[intro C; inversion C];
       intros _; case_match_goal.
-      * exfalso. rewrite hlist_tl_cast in Hmatch2.
+      * exfalso. rewrite -> hlist_tl_cast in Hmatch2.
         inversion f0; subst.
-        rewrite <- IHl in Hmatch0; auto. rewrite Hmatch0 in Hmatch2.
-        inversion Hmatch2.
-        Unshelve.
-        { unfold ty_subst_list, ty_subst_list'.
+        (*Cannot leave as existential or else Qed fails*)
+        (*assert (Hmapeq: map (v_subst (vt_with_args vt params (map (v_subst vt) tys)))
+          (ty_subst_list (s_params f) vs l) =
+          map (v_subst vt) (ty_subst_list (s_params f) (ty_subst_list' params tys vs) l)).
+        {
+          unfold ty_subst_list, ty_subst_list'.
           rewrite !map_map. apply map_ext_in.
           intros. rewrite <- v_subst_vt_with_args'.
           rewrite ty_subst_twice; auto. apply s_params_Nodup.
-        }
-        {
-          inversion f1; subst; auto.
-        }
+        }*)
+        (*Why doesn't Coq let me name this: has f and*)
+        rewrite <- (IHl (cons_inj_tl e1) (hlist_tl a3) ps (Forall_inv_tail H)
+          (Forall_inv_tail f0) (Forall_inv_tail f1)) in Hmatch0.
+        assert (Some l2 = None); [|discriminate].
+        rewrite <- Hmatch2, <- Hmatch0. (*rewriting directly doesn't work*) 
+        reflexivity.
+        
       * exfalso.
         rewrite -> hlist_hd_cast with (Heq2:=cons_inj_hd e1) in Hmatch0.
-        rewrite rewrite_dom_cast in Hmatch0.
+        rewrite -> rewrite_dom_cast in Hmatch0.
         (*Need one more typecast*)
         assert (Heqty: (ty_subst' params tys (ty_subst (s_params f) vs a)) =
         (ty_subst (s_params f) (ty_subst_list' params tys vs) a) ). {
           apply ty_subst_twice; auto. apply s_params_Nodup.
         }
-        erewrite -> match_val_single_change_ty with 
-          (Heq:=(Logic.eq_sym (Heqty))) in Hmatch0.
-        rewrite <- H2 in Hmatch.
-        rewrite !dom_cast_compose in Hmatch0.
-        rewrite Hmatch in Hmatch0.
-        inversion Hmatch0.
-        Unshelve.
-        { inversion f1; subst; auto. simpl in *.
-          rewrite ty_subst_twice; auto. apply s_params_Nodup.
+        assert (Htyp: pattern_has_type gamma (ty_subst_p p)
+        (ty_subst' params tys (ty_subst (s_params f) vs a))).
+        {
+          inversion f1; subst; auto. simpl in *.
+          rewrite -> ty_subst_twice; auto. apply s_params_Nodup.
         }
-        { inversion f1; subst; auto; simpl in *.
-          rewrite ty_subst_twice; auto. apply s_params_Nodup.
-        }
-        { rewrite Heqty. rewrite <- v_subst_vt_with_args'.
-          rewrite ty_subst_twice; auto. apply s_params_Nodup.
-        }
-      * (*TODO: START*)
-       
-        rewrite Hmatch in Hmatch0. inversion Hmatch0.
+        rewrite <- H2 with(Heq:=
+        (eq_trans (cons_inj_hd e1) (f_equal (v_subst vt) 
+          (Logic.eq_sym Heqty)))) (Hp2:=Htyp) in Hmatch.
+        rewrite -> match_val_single_change_ty with 
+          (Heq:=(Logic.eq_sym (Heqty)))(Hp2:=Htyp) in Hmatch0.
+        rewrite -> !dom_cast_compose in Hmatch0.
+        assert (Some l0 = None);[|discriminate].
+        rewrite <- Hmatch0, <- Hmatch; reflexivity.
       * exfalso. 
-        rewrite hlist_tl_cast in Hmatch0.
+        rewrite -> hlist_tl_cast in Hmatch0.
         inversion f0; subst.
-        rewrite IHl in Hmatch0; auto.
+        rewrite -> IHl in Hmatch0; auto.
         assert (C: Some l2 = None); [|inversion C].
         rewrite <- Hmatch2, <- Hmatch0. (*Why can't I rewrite directly?*) 
         reflexivity.
-      * exfalso. rewrite hlist_hd_cast with (Heq2:=cons_inj_hd e) in Hmatch.
-        rewrite rewrite_dom_cast in Hmatch.
-        rewrite H2 in Hmatch.
-        assert (C: Some l0 = None); [|inversion C].
-        rewrite <- Hmatch0, <- Hmatch. reflexivity.
-
-    generalize dependent
-    assert ((cast_arg_list (sym_sigma_args_map vt f (ty_subst_list' params tys vs1) e2) args2) =
-    )
-
-
-
-
-      subst.
-      (*Now that we know all of this information, we can simplify for induction*)
-    destruct (funsym_eq_dec f2 f); try reflexivity. subst.
-    (*Deal with Hvslen1*)
-    repeat match goal with
-    | |- context [sym_sigma_args_map ?vt ?f ?vs ?H] => generalize dependent H
-    end.
-    intros.
-    assert (e0 = e1) by (apply UIP_dec; apply Nat.eq_dec); subst.
-    simpl.
-    assert (x_in2 = x_in1) by (apply bool_irrelevance); subst.
-    assert (Heq3: map (v_subst vt1) (ty_subst_list (s_params f) vs2 (s_args f)) =
-    map (v_subst vt2) (ty_subst_list (s_params f) vs2 (s_args f))). {
-      apply list_eq_ext'; rewrite !map_length; auto.
-      intros n d'. unfold ty_subst_list; rewrite map_length; intros.
-      rewrite !map_nth_inbound with(d2:=vty_int); auto;
-      try rewrite map_length; auto.
-      rewrite !funsym_subst_eq; auto; try apply s_params_Nodup.
-      rewrite Heq2. reflexivity.
-    }
-    (*Only want 1 cast*)
-    assert ( (cast_arg_list (sym_sigma_args_map vt1 f vs2 e1) a2) =
-      cast_arg_list (eq_sym Heq3) 
-      (cast_arg_list (sym_sigma_args_map vt2 f vs2 e1)
-      (cast_arg_list (f_equal (sym_sigma_args f) (eq_sym Heq2)) a2))
-    ). {
-      rewrite !cast_arg_list_compose. apply cast_arg_list_eq.
-    }
-    rewrite H1. clear H1.
-    generalize dependent (cast_arg_list (sym_sigma_args_map vt2 f vs2 e1)
-    (cast_arg_list (f_equal (sym_sigma_args f) (eq_sym Heq2)) a2)).
-    intros a3. clear H0. clear a2.
-    (*Now generalize for induction*)
-    match goal with
-    | |- (iter_arg_list ?val ?pd ?l ?a1 ?ps ?H = None) <->
-      iter_arg_list ?val ?pd ?l ?a2 ?ps ?H = None =>
-      generalize dependent H
-    end.
-    (*already use UIP so ok to forget f_equal - need this to
-      generalize (s_args f)*)
-    generalize dependent (eq_sym Heq3). clear Heq3.
-    (*generalize dependent (f_equal (fun x : list sort => arg_list (domain (dom_aux pd)) x) Heq3).*)
-    unfold sym_sigma_args in *.
-    clear Hadtspec Hvslen2 Hvslen1 Hisadt Hp.
-    generalize dependent ps.
-    generalize dependent a3.
-    clear.
-    generalize dependent (s_args f).
-    induction l; intros; simpl.
-    + destruct ps; reflexivity.
-    + destruct ps; try reflexivity.
-      simpl.
-      inversion H; subst.
-      symmetry. split; case_match_hyp; try solve[intro C; inversion C];
-      intros _; case_match_goal.
-      * exfalso. rewrite hlist_tl_cast in Hmatch2.
-        inversion f0; subst.
-        rewrite <- IHl in Hmatch0; auto. rewrite Hmatch0 in Hmatch2.
-        inversion Hmatch2.
-      * exfalso.
-        rewrite hlist_hd_cast with (Heq2:=cons_inj_hd e) in Hmatch0.
-        rewrite rewrite_dom_cast in Hmatch0.
-        rewrite <- H2 in Hmatch.
-        rewrite Hmatch in Hmatch0. inversion Hmatch0.
-      * exfalso. 
-        rewrite hlist_tl_cast in Hmatch0.
-        inversion f0; subst.
-        rewrite IHl in Hmatch0; auto.
-        assert (C: Some l2 = None); [|inversion C].
-        rewrite <- Hmatch2, <- Hmatch0. (*Why can't I rewrite directly?*) 
-        reflexivity.
-      * exfalso. rewrite hlist_hd_cast with (Heq2:=cons_inj_hd e) in Hmatch.
-        rewrite rewrite_dom_cast in Hmatch.
-        rewrite H2 in Hmatch.
+      * exfalso. rewrite -> hlist_hd_cast with (Heq2:=cons_inj_hd e1) in Hmatch.
+        rewrite -> rewrite_dom_cast in Hmatch.
+        assert (Heqty: (ty_subst' params tys (ty_subst (s_params f) vs a)) =
+        (ty_subst (s_params f) (ty_subst_list' params tys vs) a) ). {
+          apply ty_subst_twice; auto. apply s_params_Nodup.
+        }
+        assert (Hpty: pattern_has_type gamma (ty_subst_p p)
+        (ty_subst' params tys (ty_subst (s_params f) vs a))).
+        {
+          inversion f1; subst; simpl in H4.
+          rewrite -> ty_subst_twice; auto.
+          apply s_params_Nodup.
+        }
+        rewrite -> match_val_single_change_ty with 
+          (Heq:=(Logic.eq_sym (Heqty)))(Hp2:=Hpty) in Hmatch.
+        rewrite -> !dom_cast_compose in Hmatch.
+        rewrite -> H2 with(Hp2:=Hpty) in Hmatch.
         assert (C: Some l0 = None); [|inversion C].
         rewrite <- Hmatch0, <- Hmatch. reflexivity.
   - (*Por case*)
     simpl. 
     split; case_match_hyp; try solve[intro C; inversion C].
-    + rewrite IHp2. intros Hm; rewrite Hm.
-      rewrite IHp1 in Hmatch. rewrite Hmatch. reflexivity.
-    + rewrite <- IHp2. intros Hm; rewrite Hm.
-      rewrite <- IHp1 in Hmatch. rewrite Hmatch. reflexivity.
+    + rewrite -> IHp2. intros Hm; rewrite -> Hm.
+      rewrite -> IHp1 in Hmatch. rewrite -> Hmatch. reflexivity.
+      Unshelve. all: inversion Hp1; subst; auto.
+    + rewrite <- IHp2. intros Hm; rewrite -> Hm.
+      rewrite <- IHp1 in Hmatch. rewrite -> Hmatch. reflexivity.
+      Unshelve. all: inversion Hp2; subst; auto.
   - (*Pbind case*)
     simpl.
     split; case_match_hyp; try solve[intro C; inversion C]; intros _.
-    + rewrite IHp in Hmatch. rewrite Hmatch. reflexivity.
-    + rewrite <- IHp in Hmatch. rewrite Hmatch. reflexivity.
-Qed.  *)
+    + rewrite -> IHp in Hmatch. rewrite -> Hmatch. reflexivity.
+    + rewrite <- IHp in Hmatch. rewrite -> Hmatch. reflexivity.
+Qed. 
 
 (*TODO: do NOT generalize ty2*)
 (*The above works because v is bound and x is free, so
@@ -3169,6 +3106,9 @@ Proof.
   - (*Tmatch*)
     iter_match_gen Hty1 Htm1 Hpat1 Hty1.
     iter_match_gen Hty2 Htm2 Hpat2 Hty2.
+    cbn in Hwf. destruct Hwf as [Hwf [Hptm Hpall]].
+    (*TODO: we probably need Hwf - see what we need and prove here*)
+    clear Hwf. rewrite Forall_map in Hpall.
     induction ps; simpl; intros.
     {
       (*Trivial case*)
@@ -3185,9 +3125,78 @@ Proof.
     }
     erewrite -> H with(vv2:=vv2)(ty1:=v)(Hty1:=Hty1)(Heq:=Heq1);
     auto.
-    2: { revert Hwf. cbn. intros A; apply A. }
     2: { intros; rewrite Hvv; auto; simpl_set; auto. }
     simpl.
+    case_match_goal.
+    2: {
+      (*TODO: naming*)
+      rewrite -> match_val_single_vt_none in Hmatch.
+      rewrite -> Hmatch.
+      rewrite <- H with(vv1:=vv1)(Hty2:=Hty2). auto. simpl. 
+      apply IHps. all: auto.
+      - intros. apply Hvv. simpl; simpl_set_small; auto.
+        destruct H1; auto.
+      - inversion Hpall; subst; auto.
+      - intros. apply Hvv. simpl; simpl_set_small; auto.
+    }
+    symmetry.
+    destruct (match_val_single gamma_valid pd (vt_with_args vt params (map (v_subst vt) tys)) v p
+    (Forall_inv Hpat1)
+    (term_rep gamma_valid pd (vt_with_args vt params (map (v_subst vt) tys)) pf vv2
+       tm v Hty1)) eqn : Hmatch1.
+    2: {
+      rewrite <- match_val_single_vt_none in Hmatch1.
+      rewrite -> Hmatch1 in Hmatch. inversion Hmatch.
+      (*Contradiction from [match_val_single_vt_none]*)
+    }
+    symmetry.
+    apply H3.
+    { apply (Forall_inv Hpall). }
+    intros x Hinx Heq'.
+    (*TODO: START*)
+      destruct (in_dec vsymbol_eq_dec x (pat_fv p)).
+    2: {
+      (*Not in: follows from Hvv*)
+      rewrite !extend_val_notin; auto.
+      - erewrite Hvv. reflexivity.
+        simpl. simpl_set; auto.
+      - rewrite <- (match_val_single_free_var gamma_valid pd vt1). apply n.
+        apply Hmatch.
+      - rewrite <- (match_val_single_free_var gamma_valid pd vt2). apply n.
+        apply Hmatch1.
+    }
+      assert (In x (map fst l0)). {
+        rewrite <- (match_val_single_free_var gamma_valid pd vt2). apply i.
+        apply Hmatch1.
+      }
+      rewrite in_map_iff in H1.
+      destruct H1 as [[x1 y1] [Hx Hinx1]]; simpl in *; subst.
+      rewrite extend_val_lookup with(t:=y1); auto.
+      assert (exists z (Heq: projT1 y1 = projT1 z), In (x, z) l /\
+      projT2 z = dom_cast (dom_aux pd) Heq (projT2 y1)). {
+        eapply match_val_single_vt_some.
+        apply Hmatch. apply Hmatch1. auto. 
+      }
+      destruct H1 as [z [Hz1 [Hinz Hz2]]].
+      rewrite extend_val_lookup with(t:=z); auto.
+      * assert (projT1 y1 = v_subst vt2 (snd x)). {
+          eapply match_val_single_typs.
+          apply Hmatch1. auto.
+        }
+        assert (projT1 z = v_subst vt1 (snd x)). {
+          eapply match_val_single_typs.
+          apply Hmatch. auto.
+        }
+        destruct (sort_eq_dec (v_subst vt2 (snd x)) (projT1 y1) ); auto. 
+        2: { exfalso. apply n; auto. }
+        destruct (sort_eq_dec (v_subst vt1 (snd x)) (projT1 z)); auto.
+        2: { exfalso. apply n; auto. }
+        rewrite Hz2.
+        rewrite !dom_cast_compose.
+        apply dom_cast_eq.
+      * apply match_val_single_nodup in Hmatch; auto.
+      * apply match_val_single_nodup in Hmatch1; auto.
+
 
 
     match_val_single gamma_valid pd vt (ty_subst' params tys v) 
