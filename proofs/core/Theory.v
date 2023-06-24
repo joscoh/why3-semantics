@@ -2150,83 +2150,6 @@ Proof.
   - intros [Ht [Hf Hp]]. apply (proj_fmla P_sub_equiv2 f); auto.
 Qed.
 
-(*All variables free in subterms or subformulas
-  are free or bound in original term*)
-(*Subterm formulation makes it easier to reason about
-  free variables*)
-
-Ltac simpl_in :=
-  repeat(match goal with
-  | H: In ?x (concat ?l) |- _ => rewrite in_concat in H
-  | H: In ?x (map ?f ?l) |- _ => rewrite in_map_iff in H
-  | H: In ?x ?l |- In (?f ?x) (map ?f ?l) => rewrite in_map_iff;
-    exists x; auto
-  end; destruct_all; subst); try rewrite -> !in_app_iff in *.
-
-Ltac auto_hyp :=
-  repeat match goal with
-  | H: ?P -> ?Q, H1 : ?P |- _ => specialize (H H1)
-  end; auto.
-
-Lemma subterm_fv_in x tm t f:
-  (In tm (subterms_t t) -> 
-    In x (tm_fv tm) -> In x (tm_fv t) \/
-    In x (tm_bnd t)) /\
-  (In tm (subterms_f f) -> 
-  In x (tm_fv tm) -> In x (fmla_fv f) \/
-  In x (fmla_bnd f)).
-Proof.
-  revert t f. apply term_formula_ind; simpl; intros; 
-  destruct_all; try contradiction; simpl in *;
-  destruct_all; try contradiction; subst; auto.
-  - simpl_in. simpl_set. rewrite in_concat.
-    rewrite Forall_forall in H. specialize (H _ H3 H2 H1).
-    destruct H; [left | right]; [exists x1 | exists (tm_bnd x1) ]; split; auto.
-    simpl_in.
-  - simpl_set. simpl_in. vsym_eq x v. 
-    repeat (destruct_all; auto_hyp).
-  - simpl_in. simpl_set.
-    repeat (destruct_all; auto_hyp).
-  - simpl_set. simpl_in.
-    rewrite in_concat.
-    destruct H1; [auto_hyp; destruct_all; auto_hyp| simpl_in].
-    simpl_forall. rewrite Forall_forall in H0.
-    specialize (H0 _ H4).
-    destruct (in_dec vsymbol_eq_dec x (pat_fv x1.1)).
-    + right. right. eexists. rewrite in_map_iff.
-      split. eexists. split;[reflexivity |]. apply H4.
-      simpl_in; auto.
-    + repeat (destruct_all; auto_hyp); [left | right]; right.
-      * exists x1. split; auto. simpl_set. auto.
-      * eexists. split. rewrite in_map_iff.
-        eexists. split;[reflexivity |]. apply H4.
-        simpl_in; auto.
-  - simpl_set. vsym_eq x v. repeat (destruct_all; auto_hyp).
-  - simpl_in. simpl_set. rewrite in_concat.
-    rewrite Forall_forall in H. specialize (H _ H3 H2 H1).
-    destruct H; [left | right]; [exists x1 | exists (tm_bnd x1) ]; split; auto.
-    simpl_in.
-  - simpl_set. vsym_eq x v. repeat (destruct_all; auto_hyp).
-  - simpl_in. simpl_set. repeat (destruct_all; auto_hyp).
-  - simpl_in. simpl_set. repeat (destruct_all; auto_hyp).
-  - simpl_in. simpl_set. vsym_eq x v. repeat (destruct_all; auto_hyp).
-  - simpl_in. simpl_set. repeat (destruct_all; auto_hyp).
-  - simpl_set. simpl_in.
-    rewrite in_concat.
-    destruct H1; [auto_hyp; destruct_all; auto_hyp| simpl_in].
-    simpl_forall. rewrite Forall_forall in H0.
-    specialize (H0 _ H4).
-    destruct (in_dec vsymbol_eq_dec x (pat_fv x1.1)).
-    + right. right. eexists. rewrite in_map_iff.
-      split. eexists. split;[reflexivity |]. apply H4.
-      simpl_in; auto.
-    + repeat (destruct_all; auto_hyp); [left | right]; right.
-      * exists x1. split; auto. simpl_set. auto.
-      * eexists. split. rewrite in_map_iff.
-        eexists. split;[reflexivity |]. apply H4.
-        simpl_in; auto.
-Qed.
-
 (*TODO: reflection?*)
 End RecHolds.
 
@@ -4525,14 +4448,527 @@ Qed.
 Section StrongWfRec.
 
 (*Plan
-  1. Prove if Nodup names of bnd, then NoDup names of bnd for all subterms/fmlas
-  2. Prove that all bnd in subterms/fmlas are in t
+  x - 1. Prove if Nodup names of bnd, then NoDup names of bnd for all subterms/fmlas
+  x - 2. Prove that all bnd in subterms/fmlas are in t
   3. Use the above (plus fv lemma) to show that
     no overlap in subterms (or else overlap in t)
   4. Prove that if strong condition holds, no free variable dups in any
     subterm
   5. put together (no induction)
   *)
+
+(*0. All free vars in subterms and subfmlas are 
+  free or bound in the original term*)
+
+(*Subterm formulation makes it easier to reason about
+  free variables*)
+
+Ltac simpl_in :=
+  repeat(match goal with
+  | H: In ?x (concat ?l) |- _ => rewrite in_concat in H
+  | H: In ?x (map ?f ?l) |- _ => rewrite in_map_iff in H
+  | H: In ?x ?l |- In (?f ?x) (map ?f ?l) => rewrite in_map_iff;
+    exists x; auto
+  end; destruct_all; subst); try rewrite -> !in_app_iff in *.
+
+(*Ltac auto_hyp :=
+  repeat match goal with
+  | H: ?P -> ?Q, H1 : ?P |- _ => specialize (H H1)
+  end; auto.*)
+
+Lemma subterm_fv_in x tm t f:
+  (In tm (subterms_t t) -> 
+    In x (tm_fv tm) -> In x (tm_fv t) \/
+    In x (tm_bnd t)) /\
+  (In tm (subterms_f f) -> 
+  In x (tm_fv tm) -> In x (fmla_fv f) \/
+  In x (fmla_bnd f)).
+Proof.
+  revert t f. apply term_formula_ind; simpl; intros; 
+  destruct_all; try contradiction; simpl in *;
+  destruct_all; try contradiction; subst; auto.
+  - simpl_in. simpl_set. rewrite in_concat.
+    rewrite Forall_forall in H. specialize (H _ H3 H2 H1).
+    destruct H; [left | right]; [exists x1 | exists (tm_bnd x1) ]; split; auto.
+    simpl_in.
+  - simpl_set. simpl_in. vsym_eq x v. 
+    repeat (destruct_all; auto_hyp).
+  - simpl_in. simpl_set.
+    repeat (destruct_all; auto_hyp).
+  - simpl_set. simpl_in.
+    rewrite in_concat.
+    destruct H1; [auto_hyp; destruct_all; auto_hyp| simpl_in].
+    simpl_forall. rewrite Forall_forall in H0.
+    specialize (H0 _ H4).
+    destruct (in_dec vsymbol_eq_dec x (pat_fv x1.1)).
+    + right. right. eexists. rewrite in_map_iff.
+      split. eexists. split;[reflexivity |]. apply H4.
+      simpl_in; auto.
+    + repeat (destruct_all; auto_hyp); [left | right]; right.
+      * exists x1. split; auto. simpl_set. auto.
+      * eexists. split. rewrite in_map_iff.
+        eexists. split;[reflexivity |]. apply H4.
+        simpl_in; auto.
+  - simpl_set. vsym_eq x v. repeat (destruct_all; auto_hyp).
+  - simpl_in. simpl_set. rewrite in_concat.
+    rewrite Forall_forall in H. specialize (H _ H3 H2 H1).
+    destruct H; [left | right]; [exists x1 | exists (tm_bnd x1) ]; split; auto.
+    simpl_in.
+  - simpl_set. vsym_eq x v. repeat (destruct_all; auto_hyp).
+  - simpl_in. simpl_set. repeat (destruct_all; auto_hyp).
+  - simpl_in. simpl_set. repeat (destruct_all; auto_hyp).
+  - simpl_in. simpl_set. vsym_eq x v. repeat (destruct_all; auto_hyp).
+  - simpl_in. simpl_set. repeat (destruct_all; auto_hyp).
+  - simpl_set. simpl_in.
+    rewrite in_concat.
+    destruct H1; [auto_hyp; destruct_all; auto_hyp| simpl_in].
+    simpl_forall. rewrite Forall_forall in H0.
+    specialize (H0 _ H4).
+    destruct (in_dec vsymbol_eq_dec x (pat_fv x1.1)).
+    + right. right. eexists. rewrite in_map_iff.
+      split. eexists. split;[reflexivity |]. apply H4.
+      simpl_in; auto.
+    + repeat (destruct_all; auto_hyp); [left | right]; right.
+      * exists x1. split; auto. simpl_set. auto.
+      * eexists. split. rewrite in_map_iff.
+        eexists. split;[reflexivity |]. apply H4.
+        simpl_in; auto.
+Qed.
+
+Definition subterm_t_fv_in t tm x := proj_tm (subterm_fv_in x tm) t.
+Definition subterm_f_fv_in f tm x := proj_fmla (subterm_fv_in x tm) f.
+
+(*And for subformulas (TODO: literally the same proof)*)
+Lemma subfmla_fv_in x f1 t f:
+  (In f1 (subfmla_t t) -> 
+    In x (fmla_fv f1) -> In x (tm_fv t) \/
+    In x (tm_bnd t)) /\
+  (In f1 (subfmla_f f) -> 
+  In x (fmla_fv f1) -> In x (fmla_fv f) \/
+  In x (fmla_bnd f)).
+Proof.
+  revert t f. apply term_formula_ind; simpl; intros; 
+  destruct_all; try contradiction; simpl in *;
+  destruct_all; try contradiction; subst; auto.
+  - simpl_in. simpl_set. rewrite in_concat.
+    rewrite Forall_forall in H. specialize (H _ H3 H2 H1).
+    destruct H; [left | right]; [exists x1 | exists (tm_bnd x1) ]; split; auto.
+    simpl_in.
+  - simpl_set. simpl_in. vsym_eq x v. 
+    repeat (destruct_all; auto_hyp).
+  - simpl_in. simpl_set.
+    repeat (destruct_all; auto_hyp).
+  - simpl_set. simpl_in.
+    rewrite in_concat.
+    destruct H1; [auto_hyp; destruct_all; auto_hyp| simpl_in].
+    simpl_forall. rewrite Forall_forall in H0.
+    specialize (H0 _ H4).
+    destruct (in_dec vsymbol_eq_dec x (pat_fv x1.1)).
+    + right. right. eexists. rewrite in_map_iff.
+      split. eexists. split;[reflexivity |]. apply H4.
+      simpl_in; auto.
+    + repeat (destruct_all; auto_hyp); [left | right]; right.
+      * exists x1. split; auto. simpl_set. auto.
+      * eexists. split. rewrite in_map_iff.
+        eexists. split;[reflexivity |]. apply H4.
+        simpl_in; auto.
+  - simpl_set. vsym_eq x v. repeat (destruct_all; auto_hyp).
+  - simpl_in. simpl_set. rewrite in_concat.
+    rewrite Forall_forall in H. specialize (H _ H3 H2 H1).
+    destruct H; [left | right]; [exists x1 | exists (tm_bnd x1) ]; split; auto.
+    simpl_in.
+  - simpl_set. vsym_eq x v. repeat (destruct_all; auto_hyp).
+  - simpl_in. simpl_set. repeat (destruct_all; auto_hyp).
+  - simpl_in. simpl_set. repeat (destruct_all; auto_hyp).
+  - simpl_in. simpl_set. vsym_eq x v. repeat (destruct_all; auto_hyp).
+  - simpl_in. simpl_set. repeat (destruct_all; auto_hyp).
+  - simpl_set. simpl_in.
+    rewrite in_concat.
+    destruct H1; [auto_hyp; destruct_all; auto_hyp| simpl_in].
+    simpl_forall. rewrite Forall_forall in H0.
+    specialize (H0 _ H4).
+    destruct (in_dec vsymbol_eq_dec x (pat_fv x1.1)).
+    + right. right. eexists. rewrite in_map_iff.
+      split. eexists. split;[reflexivity |]. apply H4.
+      simpl_in; auto.
+    + repeat (destruct_all; auto_hyp); [left | right]; right.
+      * exists x1. split; auto. simpl_set. auto.
+      * eexists. split. rewrite in_map_iff.
+        eexists. split;[reflexivity |]. apply H4.
+        simpl_in; auto.
+Qed.
+
+Definition subfmla_t_fv_in t f1 x := proj_tm (subfmla_fv_in x f1) t.
+Definition subfmla_f_fv_in f f1 x := proj_fmla (subfmla_fv_in x f1) f.
+
+(*1. If the names of bound variables are unique,
+  then the names of all bound vars in all subterms are unique*)
+Lemma bnd_nodup_subterm t f:
+  (forall (Hbnd: NoDup (map fst (tm_bnd t))),
+    forall tm, In tm (subterms_t t) ->
+      NoDup (map fst (tm_bnd tm))) /\
+  (forall (Hbnd: NoDup (map fst (fmla_bnd f))),
+    forall tm, In tm (subterms_f f) ->
+      NoDup (map fst (tm_bnd tm))).
+Proof.
+  revert t f; apply term_formula_ind; simpl; intros; auto.
+  - destruct H; try contradiction. subst. auto.
+  - destruct H; try contradiction. subst. auto.
+  - destruct H0; subst; auto.
+    rewrite Forall_forall in H.
+    rewrite in_concat in H0.
+    destruct_all. rewrite in_map_iff in H0. destruct_all.
+    eapply H. apply H2. all: auto.
+    rewrite concat_map in Hbnd.
+    rewrite map_map in Hbnd.
+    rewrite NoDup_concat_iff in Hbnd.
+    destruct Hbnd as [Hnodup _].
+    apply Hnodup. rewrite in_map_iff.
+    exists x0; auto.
+  - destruct H1; subst; auto.
+    rewrite in_app_iff in H1.
+    inversion Hbnd; subst.
+    rewrite map_app in H5.
+    rewrite NoDup_app_iff in H5. destruct_all; auto.
+  - destruct H2; subst; auto.
+    rewrite !in_app_iff in H2.
+    rewrite !map_app in Hbnd.
+    rewrite NoDup_app_iff in Hbnd.
+    destruct Hbnd as [Hn1 [Hn2 _]].
+    rewrite NoDup_app_iff in Hn2. destruct_all; auto.
+  - destruct H1; subst; auto.
+    rewrite map_app in Hbnd.
+    rewrite NoDup_app_iff in Hbnd. destruct Hbnd as [Hn1 [Hn2 _]].
+    rewrite in_app_iff in H1. destruct H1; auto.
+    rewrite -> concat_map, map_map in Hn2.
+    rewrite NoDup_concat_iff in Hn2.
+    destruct Hn2 as [Hn2 _].
+    rewrite in_concat in H1; destruct_all.
+    rewrite in_map_iff in H1; destruct_all.
+    rewrite -> Forall_map, Forall_forall in H0.
+    eapply H0. apply H3. all: auto.
+    specialize (Hn2 (map fst (pat_fv (fst x0) ++ tm_bnd (snd x0)))).
+    prove_hyp Hn2.
+    { rewrite in_map_iff. exists x0; auto. }
+    rewrite -> map_app, NoDup_app_iff in Hn2.
+    apply Hn2.
+  - destruct H0; subst; auto.
+    inversion Hbnd; subst. auto.
+  - rewrite Forall_forall in H.
+    rewrite in_concat in H0.
+    destruct_all. rewrite in_map_iff in H0. destruct_all.
+    eapply H. apply H2. all: auto.
+    rewrite concat_map in Hbnd.
+    rewrite map_map in Hbnd.
+    rewrite NoDup_concat_iff in Hbnd.
+    destruct Hbnd as [Hnodup _].
+    apply Hnodup. rewrite in_map_iff.
+    exists x0; auto.
+  - inversion Hbnd; auto.
+  - rewrite -> map_app, NoDup_app_iff in Hbnd.
+    destruct Hbnd as [Hn1 [Hn2 _]].
+    rewrite in_app_iff in H1. destruct_all; auto.
+  - rewrite -> map_app, NoDup_app_iff in Hbnd.
+    destruct Hbnd as [Hn1 [Hn2 _]].
+    rewrite in_app_iff in H1. destruct_all; auto.
+  - contradiction.
+  - contradiction.
+  - inversion Hbnd; subst.
+    rewrite -> map_app, NoDup_app_iff in H5.
+    destruct H5 as [Hn1 [Hn2 _]].
+    rewrite in_app_iff in H1; destruct_all; auto.
+  - rewrite -> !map_app, NoDup_app_iff in Hbnd.
+    destruct Hbnd as [Hn1 [Hn2 _]].
+    rewrite NoDup_app_iff in Hn2.
+    destruct Hn2 as [Hn2 [Hn3 _]].
+    rewrite !in_app_iff in H2.
+    destruct_all; auto.
+  - rewrite map_app in Hbnd.
+    rewrite NoDup_app_iff in Hbnd. destruct Hbnd as [Hn1 [Hn2 _]].
+    rewrite in_app_iff in H1. destruct H1; auto.
+    rewrite -> concat_map, map_map in Hn2.
+    rewrite NoDup_concat_iff in Hn2.
+    destruct Hn2 as [Hn2 _].
+    rewrite in_concat in H1; destruct_all.
+    rewrite in_map_iff in H1; destruct_all.
+    rewrite -> Forall_map, Forall_forall in H0.
+    eapply H0. apply H3. all: auto.
+    specialize (Hn2 (map fst (pat_fv (fst x0) ++ fmla_bnd (snd x0)))).
+    prove_hyp Hn2.
+    { rewrite in_map_iff. exists x0; auto. }
+    rewrite -> map_app, NoDup_app_iff in Hn2.
+    apply Hn2.
+Qed.
+
+Definition bnd_nodup_subterm_t t := proj_tm bnd_nodup_subterm t.
+Definition bnd_nodup_subterm_f f := proj_fmla bnd_nodup_subterm f.
+
+(*subformula version (this really isn't very good - the same proof)*)
+Lemma bnd_nodup_subfmla t f:
+  (forall (Hbnd: NoDup (map fst (tm_bnd t))),
+    forall f1, In f1 (subfmla_t t) ->
+      NoDup (map fst (fmla_bnd f1))) /\
+  (forall (Hbnd: NoDup (map fst (fmla_bnd f))),
+    forall f1, In f1 (subfmla_f f) ->
+      NoDup (map fst (fmla_bnd f1))).
+Proof.
+  revert t f; apply term_formula_ind; simpl; intros; auto; try contradiction.
+  - rewrite Forall_forall in H.
+    rewrite in_concat in H0.
+    destruct_all. rewrite in_map_iff in H0. destruct_all.
+    eapply H. apply H2. all: auto.
+    rewrite concat_map in Hbnd.
+    rewrite map_map in Hbnd.
+    rewrite NoDup_concat_iff in Hbnd.
+    destruct Hbnd as [Hnodup _].
+    apply Hnodup. rewrite in_map_iff.
+    exists x0; auto.
+  - rewrite in_app_iff in H1.
+    inversion Hbnd; subst.
+    rewrite map_app in H5.
+    rewrite NoDup_app_iff in H5. destruct_all; auto.
+  - rewrite !in_app_iff in H2.
+    rewrite !map_app in Hbnd.
+    rewrite NoDup_app_iff in Hbnd.
+    destruct Hbnd as [Hn1 [Hn2 _]].
+    rewrite NoDup_app_iff in Hn2. destruct_all; auto.
+  - rewrite map_app in Hbnd.
+    rewrite NoDup_app_iff in Hbnd. destruct Hbnd as [Hn1 [Hn2 _]].
+    rewrite in_app_iff in H1. destruct H1; auto.
+    rewrite -> concat_map, map_map in Hn2.
+    rewrite NoDup_concat_iff in Hn2.
+    destruct Hn2 as [Hn2 _].
+    rewrite in_concat in H1; destruct_all.
+    rewrite in_map_iff in H1; destruct_all.
+    rewrite -> Forall_map, Forall_forall in H0.
+    eapply H0. apply H3. all: auto.
+    specialize (Hn2 (map fst (pat_fv (fst x0) ++ tm_bnd (snd x0)))).
+    prove_hyp Hn2.
+    { rewrite in_map_iff. exists x0; auto. }
+    rewrite -> map_app, NoDup_app_iff in Hn2.
+    apply Hn2.
+  - inversion Hbnd; subst. auto.
+  - destruct H0; subst; auto. 
+    rewrite Forall_forall in H.
+    rewrite in_concat in H0.
+    destruct_all. rewrite in_map_iff in H0. destruct_all.
+    eapply H. apply H2. all: auto.
+    rewrite concat_map in Hbnd.
+    rewrite map_map in Hbnd.
+    rewrite NoDup_concat_iff in Hbnd.
+    destruct Hbnd as [Hnodup _].
+    apply Hnodup. rewrite in_map_iff.
+    exists x0; auto.
+  - destruct H0; subst; auto. inversion Hbnd; auto.
+  - destruct H1; subst; auto. rewrite -> map_app, NoDup_app_iff in Hbnd.
+    destruct Hbnd as [Hn1 [Hn2 _]].
+    rewrite in_app_iff in H1. destruct_all; auto.
+  - destruct H1; subst; auto. rewrite -> map_app, NoDup_app_iff in Hbnd.
+    destruct Hbnd as [Hn1 [Hn2 _]].
+    rewrite in_app_iff in H1. destruct_all; auto.
+  - destruct H0; subst; auto.
+  - destruct H; subst; auto. contradiction.
+  - destruct H; subst; auto. contradiction.
+  - destruct H1; subst; auto. inversion Hbnd; subst.
+    rewrite -> map_app, NoDup_app_iff in H5.
+    destruct H5 as [Hn1 [Hn2 _]].
+    rewrite in_app_iff in H1; destruct_all; auto.
+  - destruct H2; subst; auto. rewrite -> !map_app, NoDup_app_iff in Hbnd.
+    destruct Hbnd as [Hn1 [Hn2 _]].
+    rewrite NoDup_app_iff in Hn2.
+    destruct Hn2 as [Hn2 [Hn3 _]].
+    rewrite !in_app_iff in H2.
+    destruct_all; auto.
+  - destruct H1; subst; auto. rewrite map_app in Hbnd.
+    rewrite NoDup_app_iff in Hbnd. destruct Hbnd as [Hn1 [Hn2 _]].
+    rewrite in_app_iff in H1. destruct H1; auto.
+    rewrite -> concat_map, map_map in Hn2.
+    rewrite NoDup_concat_iff in Hn2.
+    destruct Hn2 as [Hn2 _].
+    rewrite in_concat in H1; destruct_all.
+    rewrite in_map_iff in H1; destruct_all.
+    rewrite -> Forall_map, Forall_forall in H0.
+    eapply H0. apply H3. all: auto.
+    specialize (Hn2 (map fst (pat_fv (fst x0) ++ fmla_bnd (snd x0)))).
+    prove_hyp Hn2.
+    { rewrite in_map_iff. exists x0; auto. }
+    rewrite -> map_app, NoDup_app_iff in Hn2.
+    apply Hn2.
+Qed.
+
+(*TODO: lemma for subformulas*)
+Definition bnd_nodup_subfmla_t t := proj_tm bnd_nodup_subfmla t.
+Definition bnd_nodup_subfmla_f f := proj_fmla bnd_nodup_subfmla f.
+
+(*2. All bound vars in subterms are bound in the
+  original term*)
+(*This time, prove both together - ugly proof but much
+  shorter - TODO go back and fix above*)
+Lemma bnd_subterm tm f1 x t f:
+  ((forall (Hsub: In tm (subterms_t t))
+    (Hbnd: In x (tm_bnd tm)), In x (tm_bnd t)) /\
+  (forall (Hsub: In f1 (subfmla_t t))
+    (Hbnd: In x (fmla_bnd f1)), In x (tm_bnd t))) /\
+  ((forall (Hsub: In tm (subterms_f f))
+    (Hbnd: In x (tm_bnd tm)), In x (fmla_bnd f)) /\
+  (forall (Hsub: In f1 (subfmla_f f))
+    (Hbnd: In x (fmla_bnd f1)), In x (fmla_bnd f))).
+Proof.
+  revert t f; apply term_formula_ind; simpl; intros; auto;
+  try solve[split; intros; auto; destruct_all; subst; auto;
+    try rewrite -> !in_app_iff in *; destruct_all; auto].
+  (*Only 4 nontrivial cases*)
+  - split; intros; auto; [destruct Hsub as [Hsub | Hsub]; subst; auto |];
+    rewrite in_concat in Hsub; destruct Hsub as [ts [Hints Hin]];
+    rewrite in_map_iff in Hints; destruct Hints as [t [Hts Hint]]; subst;
+    rewrite Forall_forall in H; rewrite in_concat; exists (tm_bnd t);
+    split; auto; try solve[rewrite in_map_iff; exists t; auto];
+    specialize (H _ Hint); destruct_all; auto.
+  - split; intros; auto; [destruct Hsub as [Hsub | Hsub]; subst; auto |];
+    rewrite !in_app_iff in Hsub |- *; destruct_all; auto; right;
+    rewrite in_concat in H2; destruct H2 as [ts [Hints Hin]];
+    rewrite in_map_iff in Hints; destruct Hints as [pt [Hts Hinpt]]; subst;
+    rewrite -> Forall_map, Forall_forall in H0;
+    rewrite in_concat; exists (pat_fv pt.1 ++ tm_bnd pt.2);
+    split; try solve[rewrite in_map_iff; exists pt; auto];
+    rewrite in_app_iff; right; 
+    specialize (H0 _ Hinpt); destruct H0 as [IH1 IH2]; auto.
+  - split; intros; auto; [|destruct Hsub as [Hsub | Hsub]; subst; auto];
+    rewrite in_concat in Hsub; destruct Hsub as [ts [Hints Hin]];
+    rewrite in_map_iff in Hints; destruct Hints as [t [Hts Hint]]; subst;
+    rewrite Forall_forall in H; rewrite in_concat; exists (tm_bnd t);
+    split; auto; try solve[rewrite in_map_iff; exists t; auto];
+    specialize (H _ Hint); destruct_all; auto.
+  - split; intros; auto; [|destruct Hsub as [Hsub | Hsub]; subst; auto];
+    rewrite !in_app_iff in Hsub |- *; destruct_all; auto; right;
+    rewrite in_concat in H2; destruct H2 as [ts [Hints Hin]];
+    rewrite in_map_iff in Hints; destruct Hints as [pt [Hts Hinpt]]; subst;
+    rewrite -> Forall_map, Forall_forall in H0;
+    rewrite in_concat; exists (pat_fv pt.1 ++ fmla_bnd pt.2);
+    split; try solve[rewrite in_map_iff; exists pt; auto];
+    rewrite in_app_iff; right; 
+    specialize (H0 _ Hinpt); destruct H0 as [IH1 IH2]; auto.
+Qed.
+
+Definition bnd_subterm_t t tm x :=
+  (proj1' (proj_tm (bnd_subterm tm Ftrue x) t)).
+Definition bnd_subterm_f f tm x :=
+  (proj1' (proj_fmla (bnd_subterm tm Ftrue x) f)).
+Definition bnd_subfmla_t t f1 x :=
+  (proj2' (proj_tm (bnd_subterm tm_d f1 x) t)).
+Definition bnd_subfmla_f f f1 x :=
+  (proj2' (proj_fmla (bnd_subterm tm_d f1 x) f)).
+
+(*3. From these, we show that there is no overlap in subterms*)
+
+(*This is harder than I thought - try induction briefly*)
+Lemma subterm_disj tm t f:
+  (forall (Hn: NoDup (map fst (tm_bnd t)))
+    (Hd: disj (map fst (tm_fv t)) (map fst (tm_bnd t)))
+    (Hsub: In tm (subterms_t t)),
+    disj (map fst (tm_fv tm)) (map fst (tm_bnd tm))) /\
+  (forall (Hn: NoDup (map fst (fmla_bnd f)))
+    (Hd: disj (map fst (fmla_fv f)) (map fst (fmla_bnd f)))
+    (Hsub: In tm (subterms_f f)),
+    disj (map fst (tm_fv tm)) (map fst (tm_bnd tm))).
+Proof.
+  revert t f; apply term_formula_ind; simpl; intros.
+  - destruct_all; subst; auto. contradiction.
+  - destruct_all; subst; auto. contradiction.
+  - destruct Hsub as [Hsub | Hsub]; subst; auto.
+    rewrite in_concat in Hsub.
+    destruct Hsub as [ts [Hints Hin]].
+    rewrite in_map_iff in Hints.
+    destruct Hints as [t1 [Hts Hint1]]; subst.
+    rewrite Forall_forall in H.
+    rewrite -> concat_map, map_map in Hn, Hd.
+    apply (H _ Hint1); auto.
+    + rewrite -> NoDup_concat_iff in Hn.
+      destruct Hn as [Hn _].
+      apply Hn; rewrite in_map_iff. exists t1; auto.
+    + unfold disj in *. intros x [Hinx1 Hinx2].
+      rewrite -> !in_map_iff in Hinx1, Hinx2.
+      destruct Hinx1 as [v1 [Hx Hinv1]]; subst.
+      destruct Hinx2 as [v2 [Hv Hinv2]]; subst.
+      apply (Hd (fst v1)).
+      split.
+      * rewrite in_map_iff. exists v1. split; auto.
+        simpl_set. exists t1; auto.
+      * rewrite in_concat. exists (map fst (tm_bnd t1)).
+        split; rewrite in_map_iff; [exists t1 | exists v2]; auto.
+  - destruct Hsub as [Hsub | Hsub]; subst; auto.
+    inversion Hn; subst.
+    rewrite -> map_app, NoDup_app_iff in H4.
+    destruct H4 as [Hn1 [Hn2 _]].
+    rewrite in_app_iff in Hsub; destruct Hsub;
+    [apply H | apply H0]; auto.
+    + clear -Hd.
+      unfold disj in *.
+      intros x [Hinx1 Hinx2].
+      rewrite -> !in_map_iff in Hinx1 , Hinx2.
+      destruct Hinx1 as [v1 [Hx Hinv1]]; subst.
+      destruct Hinx2 as [v2 [Hv Hinv2]]; subst.
+      apply (Hd (fst v1)).
+      split.
+      * rewrite in_map_iff. exists v1. split; auto. simpl_set; auto.
+      * simpl. right. rewrite -> map_app, in_app_iff; left.
+        rewrite in_map_iff; exists v2; auto.
+    + clear -Hd H3. (*need nodups for bound vars*)
+      unfold disj in *.
+      intros x [Hinx1 Hinx2].
+      rewrite -> !in_map_iff in Hinx1 , Hinx2.
+      destruct Hinx1 as [v1 [Hx Hinv1]]; subst.
+      destruct Hinx2 as [v2 [Hv Hinv2]]; subst.
+      apply (Hd (fst v1)).
+      split.
+      * rewrite in_map_iff. exists v1. split; auto. simpl_set; auto.
+        vsym_eq v1 v.
+        exfalso. apply H3. rewrite -> map_app, in_app_iff.
+        right. rewrite in_map_iff. exists v2; auto.
+      * simpl. right. rewrite -> map_app, in_app_iff; right.
+        rewrite in_map_iff; exists v2; auto.
+  - (*Tif*)
+    (*Rest of cases should be provable*)
+
+      eapply disj_sublist.
+      2: apply sublist_union_ 
+      apply disj_union_l.
+      
+      eapply disj_trans.
+
+
+      split; rewrite in_map_iff.
+      split; rewrite in_ma
+
+
+Lemma subterm_t_disj (t: term):
+  NoDup (map fst (tm_bnd t)) ->
+  disj (map fst (tm_fv t)) (map fst (tm_bnd t)) ->
+  forall tm,
+  In tm (subterms_t t) ->
+  disj (map fst (tm_fv tm)) (map fst (tm_bnd tm)).
+Proof.
+  intros Hn Hd. unfold disj in *.
+  intros. intros [Hinx1 Hinx2].
+  rewrite -> !in_map_iff in Hinx1, Hinx2.
+  destruct Hinx1 as [v1 [Hx Hinv1]]; subst.
+  destruct Hinx2 as [v2 [Hvs Hinv2]]; subst.
+  apply subterm_t_fv_in with(t:=t) in Hinv1; auto.
+  destruct Hinv1.
+
+
+
+  apply (H (fst v1)); split; rewrite in_map_iff;
+  [exists v1 | exists v2]; split; auto.
+  Search subterms_t tm_fv.
+  []
+
+  forall tm,
+Print tm_wf_strong.
+
+  3. Use the above (plus fv lemma) to show that
+  no overlap in subterms (or else overlap in t)
+
 
 (*Want to show: if we have a term satisfying this condition,
   then it satisfies it recursively*)
