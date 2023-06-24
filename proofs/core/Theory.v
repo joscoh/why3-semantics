@@ -4442,15 +4442,34 @@ Proof.
     apply H0.
     apply a_convert_all_t_equiv.
 Qed.
-   
-(*TODO: start with this, then go back to alpha lemma*)
+
+Lemma a_convert_all_f_strong_wf f l:
+  NoDup (map fst (fmla_fv f)) ->
+  fmla_wf_strong (a_convert_all_f f l).
+Proof.
+  intros Hnodup.
+  unfold fmla_wf_strong.
+  split_all.
+  - erewrite <- a_equiv_f_fv. apply Hnodup.
+    apply a_convert_all_f_equiv.
+  - apply a_convert_all_f_bnd_nodup.
+  - intros. intros [Hinfv Hinbnd].
+    apply a_convert_all_f_bnd_notin in Hinbnd.
+    destruct Hinbnd.
+    apply H. clear -Hinfv.
+    rewrite -> !in_map_iff in *.
+    destruct_all. exists x0. split; auto.
+    erewrite alpha_equiv_f_fv.
+    apply H0.
+    apply a_convert_all_f_equiv.
+Qed.
 
 Section StrongWfRec.
 
 (*Plan
   x - 1. Prove if Nodup names of bnd, then NoDup names of bnd for all subterms/fmlas
   x - 2. Prove that all bnd in subterms/fmlas are in t
-  3. Use the above (plus fv lemma) to show that
+  X - 3. Use the above (plus fv lemma) to show that
     no overlap in subterms (or else overlap in t)
   4. Prove that if strong condition holds, no free variable dups in any
     subterm
@@ -4861,7 +4880,24 @@ Definition bnd_subfmla_f f f1 x :=
 
 (*3. From these, we show that there is no overlap in subterms*)
 
-(*This is harder than I thought - try induction briefly*)
+Lemma disj_sublist_lr {A: Type} {l1 l2 l3 l4: list A}:
+  disj l2 l4 ->
+  sublist l1 l2 ->
+  sublist l3 l4 ->
+  disj l1 l3.
+Proof.
+  unfold sublist, disj; intros Hd Hin1 Hin2 x [Hinx1 Hinx2].
+  apply (Hd x); split; auto.
+Qed.
+
+Lemma union_sublist_r {A: Type} eq_dec (l1 l2: list A):
+  sublist l2 (union eq_dec l1 l2).
+Proof.
+  intros x. simpl_set. intros; auto.
+Qed.
+
+(*This is tricky to prove, and actually does not
+  follow from previous - we need induction*)
 Lemma subterm_disj tm t f:
   (forall (Hn: NoDup (map fst (tm_bnd t)))
     (Hd: disj (map fst (tm_fv t)) (map fst (tm_bnd t)))
@@ -4872,7 +4908,8 @@ Lemma subterm_disj tm t f:
     (Hsub: In tm (subterms_f f)),
     disj (map fst (tm_fv tm)) (map fst (tm_bnd tm))).
 Proof.
-  revert t f; apply term_formula_ind; simpl; intros.
+  revert t f; apply term_formula_ind; simpl; intros; auto;
+  try contradiction.
   - destruct_all; subst; auto. contradiction.
   - destruct_all; subst; auto. contradiction.
   - destruct Hsub as [Hsub | Hsub]; subst; auto.
@@ -4881,38 +4918,22 @@ Proof.
     rewrite in_map_iff in Hints.
     destruct Hints as [t1 [Hts Hint1]]; subst.
     rewrite Forall_forall in H.
-    rewrite -> concat_map, map_map in Hn, Hd.
+    rewrite -> concat_map, map_map in Hn.
     apply (H _ Hint1); auto.
     + rewrite -> NoDup_concat_iff in Hn.
       destruct Hn as [Hn _].
       apply Hn; rewrite in_map_iff. exists t1; auto.
-    + unfold disj in *. intros x [Hinx1 Hinx2].
-      rewrite -> !in_map_iff in Hinx1, Hinx2.
-      destruct Hinx1 as [v1 [Hx Hinv1]]; subst.
-      destruct Hinx2 as [v2 [Hv Hinv2]]; subst.
-      apply (Hd (fst v1)).
-      split.
-      * rewrite in_map_iff. exists v1. split; auto.
-        simpl_set. exists t1; auto.
-      * rewrite in_concat. exists (map fst (tm_bnd t1)).
-        split; rewrite in_map_iff; [exists t1 | exists v2]; auto.
-  - destruct Hsub as [Hsub | Hsub]; subst; auto.
+    + apply (disj_sublist_lr Hd); apply sublist_map;
+      [apply sublist_big_union | apply sublist_concat_map]; auto. 
+  - (*Tlet*) destruct Hsub as [Hsub | Hsub]; subst; auto.
     inversion Hn; subst.
     rewrite -> map_app, NoDup_app_iff in H4.
     destruct H4 as [Hn1 [Hn2 _]].
     rewrite in_app_iff in Hsub; destruct Hsub;
     [apply H | apply H0]; auto.
-    + clear -Hd.
-      unfold disj in *.
-      intros x [Hinx1 Hinx2].
-      rewrite -> !in_map_iff in Hinx1 , Hinx2.
-      destruct Hinx1 as [v1 [Hx Hinv1]]; subst.
-      destruct Hinx2 as [v2 [Hv Hinv2]]; subst.
-      apply (Hd (fst v1)).
-      split.
-      * rewrite in_map_iff. exists v1. split; auto. simpl_set; auto.
-      * simpl. right. rewrite -> map_app, in_app_iff; left.
-        rewrite in_map_iff; exists v2; auto.
+    + apply (disj_sublist_lr Hd).
+      * apply sublist_map. apply union_sublist_l.
+      * apply incl_tl. apply sublist_map. apply sublist_app_l.
     + clear -Hd H3. (*need nodups for bound vars*)
       unfold disj in *.
       intros x [Hinx1 Hinx2].
@@ -4928,88 +4949,775 @@ Proof.
       * simpl. right. rewrite -> map_app, in_app_iff; right.
         rewrite in_map_iff; exists v2; auto.
   - (*Tif*)
-    (*Rest of cases should be provable*)
+    destruct Hsub as [Hsub | Hsub]; subst; auto.
+    rewrite !in_app_iff in Hsub.
+    rewrite -> !map_app, !NoDup_app_iff in Hn.
+    destruct Hn as [Hn1 [[Hn2 [Hn3 _]] _]].
+    destruct_all; [apply H | apply H0 | apply H1]; auto;
+    apply (disj_sublist_lr Hd); apply sublist_map.
+    + apply union_sublist_l.
+    + apply sublist_app_l.
+    + eapply sublist_trans. apply union_sublist_l.
+      apply union_sublist_r.
+    + eapply sublist_trans. apply sublist_app_l.
+      apply sublist_app_r.
+    + eapply sublist_trans. apply union_sublist_r.
+      apply union_sublist_r.
+    + eapply sublist_trans. apply sublist_app_r.
+      apply sublist_app_r.
+  - (*Tmatch case*)
+    destruct Hsub as [Hsub | Hsub]; subst; auto.
+    rewrite in_app_iff in Hsub.
+    rewrite -> !map_app, NoDup_app_iff in Hn.
+    destruct Hn as [Hn1 [Hn2 _]].
+    destruct Hsub as [Hsub | Hsub].
+    + apply H; auto.
+      apply (disj_sublist_lr Hd); apply sublist_map.
+      * apply union_sublist_l.
+      * apply sublist_app_l.
+    + clear H Hn1. rewrite in_concat in Hsub.
+      rewrite -> Forall_map, Forall_forall in H0.
+      destruct Hsub as [ts [Hints Hintm]].
+      rewrite in_map_iff in Hints.
+      destruct Hints as [pt [Hts Hinpt]]; subst.
+      rewrite -> concat_map, !map_map, NoDup_concat_iff in Hn2.
+      destruct Hn2 as [Hn2 _].
+      specialize (Hn2 (map fst (pat_fv pt.1 ++ tm_bnd pt.2))).
+      prove_hyp Hn2.
+      {  rewrite in_map_iff. exists pt; auto. }
+      rewrite -> map_app, NoDup_app_iff in Hn2.
+      destruct Hn2 as [Hn1 [Hn2 [Hnotin _]]]. 
+      apply (H0 _ Hinpt); auto.
+      (*Prove manually*)
+      intros x [Hinxfv Hinxbnd].
+      destruct (in_dec string_dec x (map fst (pat_fv pt.1))).
+      * (*If in pat_fv contradicts nodup*)
+        apply (Hnotin _ i Hinxbnd).
+      * (*Otherwise, use disj assumption*)
+        apply (Hd x).
+        rewrite -> !in_map_iff in Hinxfv, Hinxbnd.
+        destruct Hinxfv as [v1 [Hx Hinv1]]; subst.
+        destruct Hinxbnd as [v2 [Hvs Hinv2]].
+        split.
+        -- rewrite in_map_iff. exists v1. split; auto.
+          simpl_set. right. exists pt. split; auto.
+          simpl_set. split; auto. intro C.
+          apply n. rewrite in_map_iff. exists v1. auto.
+        -- rewrite in_map_iff. exists v2. split; auto.
+          rewrite in_app_iff. right. rewrite in_concat.
+          exists (pat_fv pt.1 ++ tm_bnd pt.2).
+          split; auto.
+          ++ rewrite in_map_iff. exists pt; auto.
+          ++ rewrite in_app_iff; auto.
+  - (*Teps*)
+    destruct Hsub as [Hsub | Hsub]; subst; auto.
+    inversion Hn; subst.
+    apply H; auto.
+    intros x [Hinx1 Hinx2].
+    rewrite -> !in_map_iff in Hinx1, Hinx2.
+    destruct Hinx1 as [v1 [Hx Hinv1]]; subst.
+    destruct Hinx2 as [v2 [Hv Hinv2]].
+    destruct (string_dec v2.1 v.1).
+    + apply H2. rewrite in_map_iff. exists v2; auto.
+    + apply (Hd (v1.1)); simpl; split; auto.
+      * rewrite in_map_iff. exists v1; split; auto.
+        simpl_set. split; auto. intro C; subst; contradiction.
+      * right. rewrite in_map_iff. exists v2; auto.
+  - (*Fpred - same as Tfun*)
+    rewrite in_concat in Hsub.
+    destruct Hsub as [ts [Hints Hin]].
+    rewrite in_map_iff in Hints.
+    destruct Hints as [t1 [Hts Hint1]]; subst.
+    rewrite Forall_forall in H.
+    rewrite -> concat_map, map_map in Hn.
+    apply (H _ Hint1); auto.
+    + rewrite -> NoDup_concat_iff in Hn.
+      destruct Hn as [Hn _].
+      apply Hn; rewrite in_map_iff. exists t1; auto.
+    + apply (disj_sublist_lr Hd); apply sublist_map;
+      [apply sublist_big_union | apply sublist_concat_map]; auto. 
+  - (*Fquant - same as Teps*)
+    inversion Hn; subst.
+    apply H; auto.
+    intros x [Hinx1 Hinx2].
+    rewrite -> !in_map_iff in Hinx1, Hinx2.
+    destruct Hinx1 as [v1 [Hx Hinv1]]; subst.
+    destruct Hinx2 as [v2 [Hv Hinv2]].
+    destruct (string_dec v2.1 v.1).
+    + apply H2. rewrite in_map_iff. exists v2; auto.
+    + apply (Hd (v1.1)); simpl; split; auto.
+      * rewrite in_map_iff. exists v1; split; auto.
+        simpl_set. split; auto. intro C; subst; contradiction.
+      * right. rewrite in_map_iff. exists v2; auto.
+  - (*Feq*)
+    rewrite -> map_app, NoDup_app_iff in Hn.
+    destruct Hn as [Hn1 [Hn2 _]].
+    rewrite in_app_iff in Hsub.
+    destruct Hsub; [apply H | apply H0]; auto;
+    apply (disj_sublist_lr Hd); apply sublist_map;
+    [apply union_sublist_l | apply sublist_app_l |
+     apply union_sublist_r | apply sublist_app_r].
+  - (*Fbinop*)
+    rewrite -> map_app, NoDup_app_iff in Hn.
+    destruct Hn as [Hn1 [Hn2 _]].
+    rewrite in_app_iff in Hsub.
+    destruct Hsub; [apply H | apply H0]; auto;
+    apply (disj_sublist_lr Hd); apply sublist_map;
+    [apply union_sublist_l | apply sublist_app_l |
+    apply union_sublist_r | apply sublist_app_r].
+  - (*Flet*)
+    inversion Hn; subst.
+    rewrite -> map_app, NoDup_app_iff in H4.
+    destruct H4 as [Hn1 [Hn2 _]].
+    rewrite in_app_iff in Hsub; destruct Hsub;
+    [apply H | apply H0]; auto.
+    + apply (disj_sublist_lr Hd).
+      * apply sublist_map. apply union_sublist_l.
+      * apply incl_tl. apply sublist_map. apply sublist_app_l.
+    + clear -Hd H3. (*need nodups for bound vars*)
+      unfold disj in *.
+      intros x [Hinx1 Hinx2].
+      rewrite -> !in_map_iff in Hinx1 , Hinx2.
+      destruct Hinx1 as [v1 [Hx Hinv1]]; subst.
+      destruct Hinx2 as [v2 [Hv Hinv2]]; subst.
+      apply (Hd (fst v1)).
+      split.
+      * rewrite in_map_iff. exists v1. split; auto. simpl_set; auto.
+        vsym_eq v1 v.
+        exfalso. apply H3. rewrite -> map_app, in_app_iff.
+        right. rewrite in_map_iff. exists v2; auto.
+      * simpl. right. rewrite -> map_app, in_app_iff; right.
+        rewrite in_map_iff; exists v2; auto.
+  - (*Fif*)
+    rewrite !in_app_iff in Hsub.
+    rewrite -> !map_app, !NoDup_app_iff in Hn.
+    destruct Hn as [Hn1 [[Hn2 [Hn3 _]] _]].
+    destruct_all; [apply H | apply H0 | apply H1]; auto;
+    apply (disj_sublist_lr Hd); apply sublist_map.
+    + apply union_sublist_l.
+    + apply sublist_app_l.
+    + eapply sublist_trans. apply union_sublist_l.
+      apply union_sublist_r.
+    + eapply sublist_trans. apply sublist_app_l.
+      apply sublist_app_r.
+    + eapply sublist_trans. apply union_sublist_r.
+      apply union_sublist_r.
+    + eapply sublist_trans. apply sublist_app_r.
+      apply sublist_app_r.
+  - (*Tmatch case*)
+    rewrite in_app_iff in Hsub.
+    rewrite -> !map_app, NoDup_app_iff in Hn.
+    destruct Hn as [Hn1 [Hn2 _]].
+    destruct Hsub as [Hsub | Hsub].
+    + apply H; auto.
+      apply (disj_sublist_lr Hd); apply sublist_map.
+      * apply union_sublist_l.
+      * apply sublist_app_l.
+    + clear H Hn1. rewrite in_concat in Hsub.
+      rewrite -> Forall_map, Forall_forall in H0.
+      destruct Hsub as [ts [Hints Hintm]].
+      rewrite in_map_iff in Hints.
+      destruct Hints as [pt [Hts Hinpt]]; subst.
+      rewrite -> concat_map, !map_map, NoDup_concat_iff in Hn2.
+      destruct Hn2 as [Hn2 _].
+      specialize (Hn2 (map fst (pat_fv pt.1 ++ fmla_bnd pt.2))).
+      prove_hyp Hn2.
+      {  rewrite in_map_iff. exists pt; auto. }
+      rewrite -> map_app, NoDup_app_iff in Hn2.
+      destruct Hn2 as [Hn1 [Hn2 [Hnotin _]]]. 
+      apply (H0 _ Hinpt); auto.
+      (*Prove manually*)
+      intros x [Hinxfv Hinxbnd].
+      destruct (in_dec string_dec x (map fst (pat_fv pt.1))).
+      * (*If in pat_fv contradicts nodup*)
+        apply (Hnotin _ i Hinxbnd).
+      * (*Otherwise, use disj assumption*)
+        apply (Hd x).
+        rewrite -> !in_map_iff in Hinxfv, Hinxbnd.
+        destruct Hinxfv as [v1 [Hx Hinv1]]; subst.
+        destruct Hinxbnd as [v2 [Hvs Hinv2]].
+        split.
+        -- rewrite in_map_iff. exists v1. split; auto.
+          simpl_set. right. exists pt. split; auto.
+          simpl_set. split; auto. intro C.
+          apply n. rewrite in_map_iff. exists v1. auto.
+        -- rewrite in_map_iff. exists v2. split; auto.
+          rewrite in_app_iff. right. rewrite in_concat.
+          exists (pat_fv pt.1 ++ fmla_bnd pt.2).
+          split; auto.
+          ++ rewrite in_map_iff. exists pt; auto.
+          ++ rewrite in_app_iff; auto.
+Qed.
 
-      eapply disj_sublist.
-      2: apply sublist_union_ 
-      apply disj_union_l.
-      
-      eapply disj_trans.
+Definition subterm_t_disj t Hn Hd tm :=
+  (proj_tm (subterm_disj tm) t) Hn Hd.
+Definition subterm_f_disj f Hn Hd tm :=
+  (proj_fmla (subterm_disj tm) f) Hn Hd.
 
-
-      split; rewrite in_map_iff.
-      split; rewrite in_ma
-
-
-Lemma subterm_t_disj (t: term):
-  NoDup (map fst (tm_bnd t)) ->
-  disj (map fst (tm_fv t)) (map fst (tm_bnd t)) ->
-  forall tm,
-  In tm (subterms_t t) ->
-  disj (map fst (tm_fv tm)) (map fst (tm_bnd tm)).
+(*Subformula (lots of repetition bad)*)
+Lemma subfmla_disj f1 t f:
+  (forall (Hn: NoDup (map fst (tm_bnd t)))
+    (Hd: disj (map fst (tm_fv t)) (map fst (tm_bnd t)))
+    (Hsub: In f1 (subfmla_t t)),
+    disj (map fst (fmla_fv f1)) (map fst (fmla_bnd f1))) /\
+  (forall (Hn: NoDup (map fst (fmla_bnd f)))
+    (Hd: disj (map fst (fmla_fv f)) (map fst (fmla_bnd f)))
+    (Hsub: In f1 (subfmla_f f)),
+    disj (map fst (fmla_fv f1)) (map fst (fmla_bnd f1))).
 Proof.
-  intros Hn Hd. unfold disj in *.
-  intros. intros [Hinx1 Hinx2].
-  rewrite -> !in_map_iff in Hinx1, Hinx2.
-  destruct Hinx1 as [v1 [Hx Hinv1]]; subst.
-  destruct Hinx2 as [v2 [Hvs Hinv2]]; subst.
-  apply subterm_t_fv_in with(t:=t) in Hinv1; auto.
-  destruct Hinv1.
+  revert t f; apply term_formula_ind; simpl; intros; auto;
+  try contradiction.
+  - rewrite in_concat in Hsub.
+    destruct Hsub as [ts [Hints Hin]].
+    rewrite in_map_iff in Hints.
+    destruct Hints as [t1 [Hts Hint1]]; subst.
+    rewrite Forall_forall in H.
+    rewrite -> concat_map, map_map in Hn.
+    apply (H _ Hint1); auto.
+    + rewrite -> NoDup_concat_iff in Hn.
+      destruct Hn as [Hn _].
+      apply Hn; rewrite in_map_iff. exists t1; auto.
+    + apply (disj_sublist_lr Hd); apply sublist_map;
+      [apply sublist_big_union | apply sublist_concat_map]; auto. 
+  - (*Tlet*)
+    inversion Hn; subst.
+    rewrite -> map_app, NoDup_app_iff in H4.
+    destruct H4 as [Hn1 [Hn2 _]].
+    rewrite in_app_iff in Hsub; destruct Hsub;
+    [apply H | apply H0]; auto.
+    + apply (disj_sublist_lr Hd).
+      * apply sublist_map. apply union_sublist_l.
+      * apply incl_tl. apply sublist_map. apply sublist_app_l.
+    + clear -Hd H3. (*need nodups for bound vars*)
+      unfold disj in *.
+      intros x [Hinx1 Hinx2].
+      rewrite -> !in_map_iff in Hinx1 , Hinx2.
+      destruct Hinx1 as [v1 [Hx Hinv1]]; subst.
+      destruct Hinx2 as [v2 [Hv Hinv2]]; subst.
+      apply (Hd (fst v1)).
+      split.
+      * rewrite in_map_iff. exists v1. split; auto. simpl_set; auto.
+        vsym_eq v1 v.
+        exfalso. apply H3. rewrite -> map_app, in_app_iff.
+        right. rewrite in_map_iff. exists v2; auto.
+      * simpl. right. rewrite -> map_app, in_app_iff; right.
+        rewrite in_map_iff; exists v2; auto.
+  - (*Tif*)
+    rewrite !in_app_iff in Hsub.
+    rewrite -> !map_app, !NoDup_app_iff in Hn.
+    destruct Hn as [Hn1 [[Hn2 [Hn3 _]] _]].
+    destruct_all; [apply H | apply H0 | apply H1]; auto;
+    apply (disj_sublist_lr Hd); apply sublist_map.
+    + apply union_sublist_l.
+    + apply sublist_app_l.
+    + eapply sublist_trans. apply union_sublist_l.
+      apply union_sublist_r.
+    + eapply sublist_trans. apply sublist_app_l.
+      apply sublist_app_r.
+    + eapply sublist_trans. apply union_sublist_r.
+      apply union_sublist_r.
+    + eapply sublist_trans. apply sublist_app_r.
+      apply sublist_app_r.
+  - (*Tmatch case*)
+    rewrite in_app_iff in Hsub.
+    rewrite -> !map_app, NoDup_app_iff in Hn.
+    destruct Hn as [Hn1 [Hn2 _]].
+    destruct Hsub as [Hsub | Hsub].
+    + apply H; auto.
+      apply (disj_sublist_lr Hd); apply sublist_map.
+      * apply union_sublist_l.
+      * apply sublist_app_l.
+    + clear H Hn1. rewrite in_concat in Hsub.
+      rewrite -> Forall_map, Forall_forall in H0.
+      destruct Hsub as [ts [Hints Hintm]].
+      rewrite in_map_iff in Hints.
+      destruct Hints as [pt [Hts Hinpt]]; subst.
+      rewrite -> concat_map, !map_map, NoDup_concat_iff in Hn2.
+      destruct Hn2 as [Hn2 _].
+      specialize (Hn2 (map fst (pat_fv pt.1 ++ tm_bnd pt.2))).
+      prove_hyp Hn2.
+      {  rewrite in_map_iff. exists pt; auto. }
+      rewrite -> map_app, NoDup_app_iff in Hn2.
+      destruct Hn2 as [Hn1 [Hn2 [Hnotin _]]]. 
+      apply (H0 _ Hinpt); auto.
+      (*Prove manually*)
+      intros x [Hinxfv Hinxbnd].
+      destruct (in_dec string_dec x (map fst (pat_fv pt.1))).
+      * (*If in pat_fv contradicts nodup*)
+        apply (Hnotin _ i Hinxbnd).
+      * (*Otherwise, use disj assumption*)
+        apply (Hd x).
+        rewrite -> !in_map_iff in Hinxfv, Hinxbnd.
+        destruct Hinxfv as [v1 [Hx Hinv1]]; subst.
+        destruct Hinxbnd as [v2 [Hvs Hinv2]].
+        split.
+        -- rewrite in_map_iff. exists v1. split; auto.
+          simpl_set. right. exists pt. split; auto.
+          simpl_set. split; auto. intro C.
+          apply n. rewrite in_map_iff. exists v1. auto.
+        -- rewrite in_map_iff. exists v2. split; auto.
+          rewrite in_app_iff. right. rewrite in_concat.
+          exists (pat_fv pt.1 ++ tm_bnd pt.2).
+          split; auto.
+          ++ rewrite in_map_iff. exists pt; auto.
+          ++ rewrite in_app_iff; auto.
+  - (*Teps*)
+    inversion Hn; subst.
+    apply H; auto.
+    intros x [Hinx1 Hinx2].
+    rewrite -> !in_map_iff in Hinx1, Hinx2.
+    destruct Hinx1 as [v1 [Hx Hinv1]]; subst.
+    destruct Hinx2 as [v2 [Hv Hinv2]].
+    destruct (string_dec v2.1 v.1).
+    + apply H2. rewrite in_map_iff. exists v2; auto.
+    + apply (Hd (v1.1)); simpl; split; auto.
+      * rewrite in_map_iff. exists v1; split; auto.
+        simpl_set. split; auto. intro C; subst; contradiction.
+      * right. rewrite in_map_iff. exists v2; auto.
+  - (*Fpred - same as Tfun*)
+    destruct Hsub as [Hsub | Hsub]; subst; auto.
+    rewrite in_concat in Hsub.
+    destruct Hsub as [ts [Hints Hin]].
+    rewrite in_map_iff in Hints.
+    destruct Hints as [t1 [Hts Hint1]]; subst.
+    rewrite Forall_forall in H.
+    rewrite -> concat_map, map_map in Hn.
+    apply (H _ Hint1); auto.
+    + rewrite -> NoDup_concat_iff in Hn.
+      destruct Hn as [Hn _].
+      apply Hn; rewrite in_map_iff. exists t1; auto.
+    + apply (disj_sublist_lr Hd); apply sublist_map;
+      [apply sublist_big_union | apply sublist_concat_map]; auto. 
+  - (*Fquant - same as Teps*)
+    destruct Hsub as [Hsub | Hsub]; subst; auto.
+    inversion Hn; subst.
+    apply H; auto.
+    intros x [Hinx1 Hinx2].
+    rewrite -> !in_map_iff in Hinx1, Hinx2.
+    destruct Hinx1 as [v1 [Hx Hinv1]]; subst.
+    destruct Hinx2 as [v2 [Hv Hinv2]].
+    destruct (string_dec v2.1 v.1).
+    + apply H2. rewrite in_map_iff. exists v2; auto.
+    + apply (Hd (v1.1)); simpl; split; auto.
+      * rewrite in_map_iff. exists v1; split; auto.
+        simpl_set. split; auto. intro C; subst; contradiction.
+      * right. rewrite in_map_iff. exists v2; auto.
+  - (*Feq*)
+    destruct Hsub as [Hsub | Hsub]; subst; auto.
+    rewrite -> map_app, NoDup_app_iff in Hn.
+    destruct Hn as [Hn1 [Hn2 _]].
+    rewrite in_app_iff in Hsub.
+    destruct Hsub; [apply H | apply H0]; auto;
+    apply (disj_sublist_lr Hd); apply sublist_map;
+    [apply union_sublist_l | apply sublist_app_l |
+     apply union_sublist_r | apply sublist_app_r].
+  - (*Fbinop*)
+    destruct Hsub as [Hsub | Hsub]; subst; auto.
+    rewrite -> map_app, NoDup_app_iff in Hn.
+    destruct Hn as [Hn1 [Hn2 _]].
+    rewrite in_app_iff in Hsub.
+    destruct Hsub; [apply H | apply H0]; auto;
+    apply (disj_sublist_lr Hd); apply sublist_map;
+    [apply union_sublist_l | apply sublist_app_l |
+    apply union_sublist_r | apply sublist_app_r].
+  - destruct Hsub; subst; auto.
+  - destruct Hsub; subst; auto; contradiction.
+  - destruct Hsub; subst; auto; contradiction.
+  - (*Flet*)
+    destruct Hsub as [Hsub | Hsub]; subst; auto.
+    inversion Hn; subst.
+    rewrite -> map_app, NoDup_app_iff in H4.
+    destruct H4 as [Hn1 [Hn2 _]].
+    rewrite in_app_iff in Hsub; destruct Hsub;
+    [apply H | apply H0]; auto.
+    + apply (disj_sublist_lr Hd).
+      * apply sublist_map. apply union_sublist_l.
+      * apply incl_tl. apply sublist_map. apply sublist_app_l.
+    + clear -Hd H3. (*need nodups for bound vars*)
+      unfold disj in *.
+      intros x [Hinx1 Hinx2].
+      rewrite -> !in_map_iff in Hinx1 , Hinx2.
+      destruct Hinx1 as [v1 [Hx Hinv1]]; subst.
+      destruct Hinx2 as [v2 [Hv Hinv2]]; subst.
+      apply (Hd (fst v1)).
+      split.
+      * rewrite in_map_iff. exists v1. split; auto. simpl_set; auto.
+        vsym_eq v1 v.
+        exfalso. apply H3. rewrite -> map_app, in_app_iff.
+        right. rewrite in_map_iff. exists v2; auto.
+      * simpl. right. rewrite -> map_app, in_app_iff; right.
+        rewrite in_map_iff; exists v2; auto.
+  - (*Fif*)
+    destruct Hsub as [Hsub | Hsub]; subst; auto.
+    rewrite !in_app_iff in Hsub.
+    rewrite -> !map_app, !NoDup_app_iff in Hn.
+    destruct Hn as [Hn1 [[Hn2 [Hn3 _]] _]].
+    destruct_all; [apply H | apply H0 | apply H1]; auto;
+    apply (disj_sublist_lr Hd); apply sublist_map.
+    + apply union_sublist_l.
+    + apply sublist_app_l.
+    + eapply sublist_trans. apply union_sublist_l.
+      apply union_sublist_r.
+    + eapply sublist_trans. apply sublist_app_l.
+      apply sublist_app_r.
+    + eapply sublist_trans. apply union_sublist_r.
+      apply union_sublist_r.
+    + eapply sublist_trans. apply sublist_app_r.
+      apply sublist_app_r.
+  - (*Tmatch case*)
+    destruct Hsub as [Hsub | Hsub]; subst; auto.
+    rewrite in_app_iff in Hsub.
+    rewrite -> !map_app, NoDup_app_iff in Hn.
+    destruct Hn as [Hn1 [Hn2 _]].
+    destruct Hsub as [Hsub | Hsub].
+    + apply H; auto.
+      apply (disj_sublist_lr Hd); apply sublist_map.
+      * apply union_sublist_l.
+      * apply sublist_app_l.
+    + clear H Hn1. rewrite in_concat in Hsub.
+      rewrite -> Forall_map, Forall_forall in H0.
+      destruct Hsub as [ts [Hints Hintm]].
+      rewrite in_map_iff in Hints.
+      destruct Hints as [pt [Hts Hinpt]]; subst.
+      rewrite -> concat_map, !map_map, NoDup_concat_iff in Hn2.
+      destruct Hn2 as [Hn2 _].
+      specialize (Hn2 (map fst (pat_fv pt.1 ++ fmla_bnd pt.2))).
+      prove_hyp Hn2.
+      {  rewrite in_map_iff. exists pt; auto. }
+      rewrite -> map_app, NoDup_app_iff in Hn2.
+      destruct Hn2 as [Hn1 [Hn2 [Hnotin _]]]. 
+      apply (H0 _ Hinpt); auto.
+      (*Prove manually*)
+      intros x [Hinxfv Hinxbnd].
+      destruct (in_dec string_dec x (map fst (pat_fv pt.1))).
+      * (*If in pat_fv contradicts nodup*)
+        apply (Hnotin _ i Hinxbnd).
+      * (*Otherwise, use disj assumption*)
+        apply (Hd x).
+        rewrite -> !in_map_iff in Hinxfv, Hinxbnd.
+        destruct Hinxfv as [v1 [Hx Hinv1]]; subst.
+        destruct Hinxbnd as [v2 [Hvs Hinv2]].
+        split.
+        -- rewrite in_map_iff. exists v1. split; auto.
+          simpl_set. right. exists pt. split; auto.
+          simpl_set. split; auto. intro C.
+          apply n. rewrite in_map_iff. exists v1. auto.
+        -- rewrite in_map_iff. exists v2. split; auto.
+          rewrite in_app_iff. right. rewrite in_concat.
+          exists (pat_fv pt.1 ++ fmla_bnd pt.2).
+          split; auto.
+          ++ rewrite in_map_iff. exists pt; auto.
+          ++ rewrite in_app_iff; auto.
+Qed.
+
+Definition subfmla_t_disj t Hn Hd f1 :=
+  (proj_tm (subfmla_disj f1) t) Hn Hd.
+Definition subfmla_f_disj f Hn Hd f1 :=
+  (proj_fmla (subfmla_disj f1) f) Hn Hd.
 
 
+(*4. Finally, want to show that no free variable duplicate
+  names in all subterms (assuming previous conditions).
+  This is easy because of previous lemmas*)
 
-  apply (H (fst v1)); split; rewrite in_map_iff;
-  [exists v1 | exists v2]; split; auto.
-  Search subterms_t tm_fv.
-  []
+Lemma fv_nodup_subterm tm t f:
+  (forall (Hbnd: NoDup (map fst (tm_bnd t))) 
+    (Hfv: NoDup (map fst (tm_fv t)))
+    (Hdisj: disj (map fst (tm_fv t)) (map fst (tm_bnd t)))
+    (Hsub: In tm (subterms_t t)),
+    NoDup (map fst (tm_fv tm))) /\
+  (forall (Hbnd: NoDup (map fst (fmla_bnd f))) 
+    (Hfv: NoDup (map fst (fmla_fv f)))
+    (Hdisj: disj (map fst (fmla_fv f)) (map fst (fmla_bnd f)))
+    (Hsub: In tm (subterms_f f)),
+    NoDup (map fst (tm_fv tm))).
+Proof.
+  (*Maybe don't need induction*)split; intros;
+  apply NoDup_map_inj; try apply tm_fv_nodup;
+  intros x y Hinx Hiny Hxy;
+  [apply subterm_t_fv_in with(t:=t) in Hinx, Hiny |
+    apply subterm_f_fv_in with(f:=f) in Hinx, Hiny]; auto;
+  destruct Hinx; destruct Hiny;
+  try solve[apply (NoDup_map_in Hbnd); auto];
+  try solve[apply (NoDup_map_in Hfv); auto];
+  exfalso; apply (Hdisj (fst x));
+  split; rewrite in_map_iff;
+  try solve[exists x; auto];
+  solve[exists y; auto].
+Qed.
 
-  forall tm,
-Print tm_wf_strong.
+Definition fv_nodup_subterm_t t Hbnd Hfv Hdisj tm :=
+  (proj_tm (fv_nodup_subterm tm) t) Hbnd Hfv Hdisj.
+Definition fv_nodup_subterm_f f Hbnd Hfv Hdisj tm :=
+  (proj_fmla (fv_nodup_subterm tm) f) Hbnd Hfv Hdisj.
 
-  3. Use the above (plus fv lemma) to show that
-  no overlap in subterms (or else overlap in t)
+Lemma fv_nodup_subfmla f1 t f:
+  (forall (Hbnd: NoDup (map fst (tm_bnd t))) 
+    (Hfv: NoDup (map fst (tm_fv t)))
+    (Hdisj: disj (map fst (tm_fv t)) (map fst (tm_bnd t)))
+    (Hsub: In f1 (subfmla_t t)),
+    NoDup (map fst (fmla_fv f1))) /\
+  (forall (Hbnd: NoDup (map fst (fmla_bnd f))) 
+    (Hfv: NoDup (map fst (fmla_fv f)))
+    (Hdisj: disj (map fst (fmla_fv f)) (map fst (fmla_bnd f)))
+    (Hsub: In f1 (subfmla_f f)),
+    NoDup (map fst (fmla_fv f1))).
+Proof.
+  (*Maybe don't need induction*)split; intros;
+  apply NoDup_map_inj; try apply fmla_fv_nodup;
+  intros x y Hinx Hiny Hxy;
+  [apply subfmla_t_fv_in with(t:=t) in Hinx, Hiny |
+    apply subfmla_f_fv_in with(f:=f) in Hinx, Hiny]; auto;
+  destruct Hinx; destruct Hiny;
+  try solve[apply (NoDup_map_in Hbnd); auto];
+  try solve[apply (NoDup_map_in Hfv); auto];
+  exfalso; apply (Hdisj (fst x));
+  split; rewrite in_map_iff;
+  try solve[exists x; auto];
+  solve[exists y; auto].
+Qed.
 
+Definition fv_nodup_subfmla_t t Hbnd Hfv Hdisj tm :=
+  (proj_tm (fv_nodup_subfmla tm) t) Hbnd Hfv Hdisj.
+Definition fv_nodup_subfmla_f f Hbnd Hfv Hdisj tm :=
+  (proj_fmla (fv_nodup_subfmla tm) f) Hbnd Hfv Hdisj.
 
-(*Want to show: if we have a term satisfying this condition,
-  then it satisfies it recursively*)
-  (*
-Lemma wf_strong_rec_holds t f:
+(*And now, finally, we can prove the result that we want*)
+Theorem wf_strong_rec_holds t f:
   (forall (Hwf: tm_wf_strong t), tm_wf_strong_rec t) /\
   (forall (Hwf: fmla_wf_strong f), fmla_wf_strong_rec f).
 Proof.
   unfold tm_wf_strong_rec, fmla_wf_strong_rec.
-  rewrite -> P_subterms_equiv, P_subfmlas_equiv. split.
-  - intros. split_all; auto. 3: rewrite Forall_forall; auto.
-    + unfold tm_wf_strong in *.
-      destruct_all.
+  rewrite -> P_subterms_equiv, P_subfmlas_equiv. split;
+  intros; unfold tm_wf_strong, fmla_wf_strong in *;
+  destruct Hwf as [Hfv [Hbnd Hdisj]];
+  split_all; auto; rewrite Forall_forall; auto.
+  - intros tm Hsub. split_all.
+    + apply (fv_nodup_subterm_t t); auto.
+    + apply (bnd_nodup_subterm_t t); auto.
+    + apply (subterm_t_disj t); auto.
+  - intros f1 Hsub. split_all.
+    + apply (fv_nodup_subfmla_t t); auto.
+    + apply (bnd_nodup_subfmla_t t); auto.
+    + apply (subfmla_t_disj t); auto.
+  - intros tm Hsub. split_all.
+    + apply (fv_nodup_subterm_f f); auto.
+    + apply (bnd_nodup_subterm_f f); auto.
+    + apply (subterm_f_disj f); auto.
+  - intros f1 Hsub. split_all.
+    + apply (fv_nodup_subfmla_f f); auto.
+    + apply (bnd_nodup_subfmla_f f); auto.
+    + apply (subfmla_f_disj f); auto.
+Qed.
 
-  
-  split; intros. unfold tm_wf_strong;
-  revert t f. unfold tm_wf_strong_rec, fmla_wf_strong_rec. 
-  apply term_formula_ind; simpl; intros.
-  - cbn. split; auto.
-  - cbn. split; auto.
-  - cbn. split; auto.
-    simpl_forall.
-    revert H. apply Forall_impl_in.
-    intros. apply H0.
-    clear -Hwf H.
-    unfold tm_wf_strong in *.
-    simpl in *. split_all.
-    + induction l1; simpl in *; try contradiction.
-      destruct H; subst.
-      * erewrite -> map_union  with(eq_dec2:=string_dec) in H0.
+Definition tm_wf_strong_rec_holds t :=
+  proj_tm wf_strong_rec_holds t.
+Definition fmla_wf_strong_rec_holds f :=
+  proj_fmla wf_strong_rec_holds f.
+(*And therefore, the recursive structure adds nothing - but it
+  helps us in our proofs*)
+
+(*Decide disjointness*)
+Definition disjb {A: eqType} (l1 l2: list A) : bool :=
+  (all (fun x => x \notin l2) l1).
+
+Lemma disjP {A: eqType} (l1 l2: list A) :
+  reflect (disj l1 l2) (disjb l1 l2).
+Proof.
+  rewrite /disjb/disj.
+  case: (all (fun x : A => x \notin l2) l1) /allP => Hl1/=; last first.
+  - move: Hl1 => /allP. rewrite -has_predC => /hasP/= Hex.
+    apply ReflectF => C.
+    case: Hex => [x] /inP Hinl1. rewrite negbK => /inP Hinl2.
+    by apply (C x).
+  - apply ReflectT => x [/inP Hinx1 /inP Hinx2].
+    move: Hl1 => /(_ _ Hinx1). by rewrite Hinx2.
+Qed.
+
+(*Now, we give a function that transforms a term, alpha converting
+  if needed if we don't already have new and distinct bound variables*)
+Definition make_tm_wf (t: term) : term :=
+  if uniq (map fst (tm_bnd t)) && disjb (map fst (tm_fv t)) (map fst (tm_bnd t))
+  then t else a_convert_all_t t nil.
+
+Lemma make_tm_wf_wf t:
+  NoDup (map fst (tm_fv t)) ->
+  tm_wf_strong (make_tm_wf t).
+Proof.
+  intros.
+  unfold make_tm_wf.
+  case: (uniq (map fst (tm_bnd t))) /Typechecker.uniqP => Hbnd/=;
+  last by apply a_convert_all_t_strong_wf.
+  case: (disjb (map fst (tm_fv t)) (map fst (tm_bnd t))) /disjP => Hdisj/=;
+  last by apply a_convert_all_t_strong_wf.
+  rewrite /tm_wf_strong; split_all; auto.
+Qed.
+
+(*And this is well-typed and has the same rep*)
+Lemma make_tm_wf_typed {t ty}:
+  term_has_type gamma t ty ->
+  term_has_type gamma (make_tm_wf t) ty.
+Proof.
+  unfold make_tm_wf.
+  destruct (uniq (map fst (tm_bnd t)) && disjb (map fst (tm_fv t)) (map fst (tm_bnd t))); auto.
+  intros. apply a_convert_all_t_ty; auto.
+Qed.
+
+Lemma make_tm_wf_rep (pd: pi_dom) (pf: pi_funpred gamma_valid pd)
+  (vt: val_typevar) (vv: val_vars pd vt) t ty
+  (Hty1: term_has_type gamma t ty)
+  (Hty2: term_has_type gamma (make_tm_wf t) ty):
+  term_rep gamma_valid pd vt pf vv (make_tm_wf t) ty Hty2 =
+  term_rep gamma_valid pd vt pf vv t ty Hty1.
+Proof.
+  revert Hty2.
+  unfold make_tm_wf.
+  destruct (uniq (map fst (tm_bnd t)) && disjb (map fst (tm_fv t)) (map fst (tm_bnd t)));
+  intros.
+  apply term_rep_irrel.
+  erewrite term_rep_irrel.
+  erewrite <- a_convert_all_t_rep. reflexivity.
+Qed.
+
+(*And finally, we can type substitute for a term*)
+
+Definition ty_subst_wf_tm (t: term) : term :=
+  ty_subst_tm (make_tm_wf t).
+
+Lemma ty_subst_wf_tm_typed t ty:
+  NoDup (map fst (tm_fv t)) ->
+  term_has_type gamma t ty ->
+  term_has_type gamma (ty_subst_wf_tm t) (ty_subst' params tys ty).
+Proof.
+  intros Hn Hty. unfold ty_subst_wf_tm.
+  apply ty_subst_t_ty.
+  apply make_tm_wf_typed. auto.
+  eapply wf_strong_pat_names_t.
+  apply make_tm_wf_typed. apply Hty.
+  apply tm_wf_strong_rec_holds.
+  apply make_tm_wf_wf. auto.
+Qed.
+
+(*And now the full spec: given a term with no duplicate
+  free variables, if we substitute with the given type
+  substitution, this is the same as changing the type
+  variable valuation accordingly and evaluating the original term*)
+Theorem ty_subst_wf_tm_rep (pd: pi_dom) (pf: pi_funpred gamma_valid pd)
+  (vt: val_typevar) (vv: val_vars pd vt) t ty
+  (Hty1: term_has_type gamma t ty)
+  (Hty2: term_has_type gamma (ty_subst_wf_tm t) (ty_subst' params tys ty)):
+  NoDup (map fst (tm_fv t)) ->
+  term_rep gamma_valid pd vt pf vv (ty_subst_wf_tm t) 
+    (ty_subst' params tys ty) Hty2 =
+  dom_cast (dom_aux pd) (Logic.eq_sym (v_subst_vt_with_args' vt ty))
+    (term_rep gamma_valid pd 
+      (vt_with_args vt params (map (v_subst vt) tys))
+      pf (upd_vv_args'' pd vt vv) t ty Hty1).
+Proof.
+  intros Hn.
+  unfold ty_subst_wf_tm.
+  erewrite ty_subst_t_rep.
+  - rewrite make_tm_wf_rep. apply Hty1.
+    intros. erewrite term_rep_irrel. reflexivity.
+    Unshelve. apply make_tm_wf_typed; auto.
+  - apply tm_wf_strong_rec_holds.  apply make_tm_wf_wf. auto.
+  - intros. unfold upd_vv_args''. 
+    apply dom_cast_eq.
+Qed.
+
+(*And the formula version*)
+
+Definition make_fmla_wf (f: formula) : formula :=
+  if uniq (map fst (fmla_bnd f)) && 
+    disjb (map fst (fmla_fv f)) (map fst (fmla_bnd f))
+  then f else a_convert_all_f f nil.
+
+Lemma make_fmla_wf_wf f:
+  NoDup (map fst (fmla_fv f)) ->
+  fmla_wf_strong (make_fmla_wf f).
+Proof.
+  intros.
+  unfold make_fmla_wf.
+  case: (uniq (map fst (fmla_bnd f))) /Typechecker.uniqP => Hbnd/=;
+  last by apply a_convert_all_f_strong_wf.
+  case: (disjb (map fst (fmla_fv f)) (map fst (fmla_bnd f))) /disjP => Hdisj/=;
+  last by apply a_convert_all_f_strong_wf.
+  rewrite /fmla_wf_strong; split_all; auto.
+Qed.
+
+(*And this is well-typed and has the same rep*)
+Lemma make_fmla_wf_typed {f}:
+  formula_typed gamma f ->
+  formula_typed gamma (make_fmla_wf f).
+Proof.
+  unfold make_fmla_wf.
+  destruct (uniq (map fst (fmla_bnd f)) && 
+    disjb (map fst (fmla_fv f)) (map fst (fmla_bnd f))); auto.
+  intros. apply a_convert_all_f_typed; auto.
+Qed.
+
+Lemma make_fmla_wf_rep (pd: pi_dom) (pf: pi_funpred gamma_valid pd)
+  (vt: val_typevar) (vv: val_vars pd vt) f
+  (Hty1: formula_typed gamma f)
+  (Hty2: formula_typed gamma (make_fmla_wf f)):
+  formula_rep gamma_valid pd vt pf vv (make_fmla_wf f) Hty2 =
+  formula_rep gamma_valid pd vt pf vv f Hty1.
+Proof.
+  revert Hty2.
+  unfold make_fmla_wf.
+  destruct (uniq (map fst (fmla_bnd f)) &&
+  disjb (map fst (fmla_fv f)) (map fst (fmla_bnd f)));
+  intros.
+  apply fmla_rep_irrel.
+  erewrite fmla_rep_irrel.
+  erewrite <- a_convert_all_f_rep. reflexivity.
+Qed.
+
+(*And finally, we can type substitute for a formula*)
+
+Definition ty_subst_wf_fmla (f: formula) : formula :=
+  ty_subst_fmla (make_fmla_wf f).
+
+Lemma ty_subst_wf_fmla_typed f:
+  NoDup (map fst (fmla_fv f)) ->
+  formula_typed gamma f ->
+  formula_typed gamma (ty_subst_wf_fmla f).
+Proof.
+  intros Hn Hty. unfold ty_subst_wf_fmla.
+  apply ty_subst_f_ty.
+  apply make_fmla_wf_typed. auto.
+  eapply wf_strong_pat_names_f.
+  apply make_fmla_wf_typed. apply Hty.
+  apply fmla_wf_strong_rec_holds.
+  apply make_fmla_wf_wf. auto.
+Qed.
+
+(*And now the full spec: given a formula with no duplicate
+  free variables, if we substitute with the given type
+  substitution, this is the same as changing the type
+  variable valuation accordingly and evaluating the original term*)
+Theorem ty_subst_wf_fmla_rep (pd: pi_dom) (pf: pi_funpred gamma_valid pd)
+  (vt: val_typevar) (vv: val_vars pd vt) f 
+  (Hty1: formula_typed gamma f)
+  (Hty2: formula_typed gamma (ty_subst_wf_fmla f)):
+  NoDup (map fst (fmla_fv f)) ->
+  formula_rep gamma_valid pd vt pf vv (ty_subst_wf_fmla f) Hty2 =
+  formula_rep gamma_valid pd 
+    (vt_with_args vt params (map (v_subst vt) tys))
+    pf (upd_vv_args'' pd vt vv) f Hty1.
+Proof.
+  intros Hn.
+  unfold ty_subst_wf_fmla.
+  erewrite ty_subst_f_rep.
+  - apply make_fmla_wf_rep.
+    Unshelve. apply make_fmla_wf_typed; auto.
+  - apply fmla_wf_strong_rec_holds. apply make_fmla_wf_wf. auto.
+  - intros. unfold upd_vv_args''. 
+    apply dom_cast_eq.
+Qed.
 
 
-    
-    rewrite Forall_forall; intros.
-    
-    simpl.
-
-*)
-
-Print tm_wf_strong_rec.
-
+(*And now, finally, we can deal with polymorphism*)
 
 (*TODO: 
   X push this fv stuff through terms and fmlas
@@ -5020,36 +5728,6 @@ Print tm_wf_strong_rec.
   Test case?
   
   Then unfolding*)
-
-
-  simpl.
-
-
-
-      apply (H11 i j Pwild x0 H0 H1 H2); split; auto. 
-
-
-
-  ty_subst_twice
-
-  
-  Check P_Constr.
-  
-  
-  constructor.
-  
-  
-
-  induction p.
-
-  
-    | _ => t
-  end.
-
-
-Print ty_subst.
-Print ty_subst_list.
-
 
 (*Produce proof goals for lemmas and goals*)
 Fixpoint valid_theory (t: theory) : Prop :=
