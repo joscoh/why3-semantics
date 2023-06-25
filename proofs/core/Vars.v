@@ -60,6 +60,29 @@ Proof.
   - apply union_nodup; auto. constructor; auto. constructor.
 Qed.
 
+Lemma remove_nodup {A} (eq_dec: forall (x y: A), {x = y} + {x <> y}) x l:
+  NoDup l ->
+  NoDup (remove eq_dec x l).
+Proof.
+  intros. induction l; simpl; auto.
+  inversion H; subst.
+  destruct (eq_dec x a); auto. constructor; auto.
+  simpl_set. intros [Hina Hax].
+  contradiction.
+Qed.
+
+Lemma fv_nodup t f:
+  NoDup (tm_fv t) /\ NoDup (fmla_fv f).
+Proof.
+  revert t f; apply term_formula_ind; simpl; intros;
+  try solve[repeat(constructor; auto)];
+  repeat (apply big_union_nodup +
+  apply union_nodup + apply remove_nodup); auto.
+Qed.
+
+Definition tm_fv_nodup t := proj_tm fv_nodup t.
+Definition fmla_fv_nodup f := proj_fmla fv_nodup f.
+
 End FreeVars.
 
 Section BoundVars.

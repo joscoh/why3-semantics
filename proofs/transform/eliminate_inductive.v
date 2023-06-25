@@ -703,7 +703,7 @@ Lemma get_arg_list_hnth_unif {gamma: context}
 (i: nat)
 (Hi: i < length args):
 hnth i
-  (get_arg_list pd v s (map vty_var (s_params s)) ts reps Hlents Hlenvs Hall) s_int (dom_int pd) =
+  (get_arg_list pd v s (map vty_var (s_params s)) ts reps (s_params_Nodup s) Hlents Hlenvs Hall) s_int (dom_int pd) =
   dom_cast (dom_aux pd) (arg_list_hnth_eq s Hi v)
   (reps (nth i ts tm_d) (ty_subst (s_params s) 
     (map vty_var (s_params s)) (nth i args vty_int))
@@ -1654,56 +1654,6 @@ Proof.
   induction Hind; inversion Hty; subst; simpl in *; auto.
 Qed.
 
-(*Disjoint lists*)
-Section Disj.
-Context {A: Type}.
-Definition disj (l1 l2: list A) : Prop :=
-  forall x, ~ (In x l1 /\ In x l2).
-Lemma disj_l12_iff (l1 l2: list A):
-  disj l1 l2 <-> (forall x, In x l1 -> ~ In x l2).
-Proof.
-  unfold disj.
-  split; intros.
-  - intro C. apply (H _ (conj H0 C)).
-  - intro C. destruct C.
-    apply (H _ H0 H1).
-Qed.
-
-Lemma disj_l12 {l1 l2: list A}:
-  disj l1 l2 -> (forall x, In x l1 -> ~ In x l2).
-Proof.
-  apply disj_l12_iff.
-Qed.
-
-Lemma disj_comm (l1 l2: list A):
-  disj l1 l2 <-> disj l2 l1.
-Proof.
-  unfold disj. split; intros; rewrite and_comm; auto.
-Qed.
-
-Lemma disj_l21_iff (l1 l2: list A):
-  disj l1 l2 <-> (forall x, In x l2 -> ~ In x l1).
-Proof.
-  rewrite disj_comm. apply disj_l12_iff.
-Qed.
-
-Lemma disj_l21 {l1 l2: list A}:
-  disj l1 l2 -> (forall x, In x l2 -> ~ In x l1).
-Proof.
-  apply disj_l21_iff.
-Qed.
-
-Lemma disj_sublist {l1 l2 l3: list A}:
-  disj l1 l2 ->
-  sublist l3 l2 ->
-  disj l1 l3.
-Proof.
-  unfold disj, sublist; intros Hsub Hdisj x [Hinx1 Hinx2].
-  apply (Hsub x); split; auto.
-Qed.
-
-End Disj.
-
 (*Lemmas about the parts of [indpred_decomp]*)
 Section Decomp.
 
@@ -2581,7 +2531,7 @@ Proof.
       apply arg_list_hnth_ty; auto.
     }
     erewrite (get_arg_list_hnth pd vt p vs ts
-    (term_rep gamma_valid pd vt pf vv) (ltac:(intros; apply term_rep_irrel))
+    (term_rep gamma_valid pd vt pf vv) (ltac:(intros; apply term_rep_irrel)) (s_params_Nodup p)
     (proj1' (pred_val_inv Htyf)) (proj1' (proj2' (pred_val_inv Htyf))))
     with(Heq:=Heq1)(Hty:=Hty1); auto.
     (*And the other side*)
@@ -2605,7 +2555,7 @@ Proof.
         (substi_multi_let gamma_valid pd vt pf
            (substi_mult pd vt vv (tup_1 (indpred_decomp (a_convert_all_f constr zs))) h)
            (tup_2 (indpred_decomp (a_convert_all_f constr zs))) Hallval2))
-    (ltac:(intros; apply term_rep_irrel))
+    (ltac:(intros; apply term_rep_irrel)) (s_params_Nodup p)
     (proj1' (pred_val_inv Htypred))) with(Heq:=Heq2)(Hty:=Hty2); auto.
     (*A bit of cast simplification*)
     rewrite rewrite_dom_cast, !dom_cast_compose.
@@ -2702,7 +2652,7 @@ Proof.
       (term_rep gamma_valid pd vt
               (interp_with_Ps gamma_valid pd pf (map fst (get_indpred l))
                  (inv_Ps gamma_valid pd vt vv pf l_in)) vv) 
-      (ltac:(intros; apply term_rep_irrel)) (proj1' (pred_val_inv Htyf))).
+      (ltac:(intros; apply term_rep_irrel)) (s_params_Nodup p) (proj1' (pred_val_inv Htyf))).
       Unshelve.
       all: auto.
       rewrite rewrite_dom_cast, !dom_cast_compose.

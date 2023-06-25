@@ -1206,8 +1206,8 @@ Theorem funs_rep_spec (pf: pi_funpred gamma_valid pd)
   (*And recursively using [funs_rep] and [preds_rep]*)
   (pf_with_funpred pf l l_in)
   (*And setting the function arguments to a*)
-  (val_with_args _ _ (upd_vv_args pd vt vv (s_params f) srts (eq_sym srts_len)
-    (s_params_Nodup _)) args a)
+  (val_with_args _ _ (upd_vv_args_srts (s_params f) srts (eq_sym srts_len)
+    (s_params_Nodup _) pd vt vv) args a)
   (*Evaluating the function body*)
   body (f_ret f) (f_body_type l_in f_in)).
 Proof.
@@ -1351,8 +1351,8 @@ Theorem preds_rep_spec (pf: pi_funpred gamma_valid pd)
   (*And recursively using [funs_rep] and [preds_rep]*)
   (pf_with_funpred pf l l_in)
   (*And setting the function arguments to a*)
-  (val_with_args _ _ (upd_vv_args pd vt vv (s_params p) srts (eq_sym srts_len)
-    (s_params_Nodup _)) args a)
+  (val_with_args _ _ (upd_vv_args_srts (s_params p) srts (eq_sym srts_len)
+    (s_params_Nodup _) pd vt vv) args a)
   (*Evaluating the function body*)
   body (p_body_type l_in p_in).
 Proof.

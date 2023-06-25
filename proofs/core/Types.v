@@ -639,4 +639,68 @@ Proof.
   rewrite -> !map_nth_inbound with (d2:=vty_int); auto.
 Qed.
 
+Lemma v_subst_aux_twice f ty:
+  (forall x, is_sort (f x)) ->
+  v_subst_aux f (v_subst_aux f ty) =
+  v_subst_aux f ty.
+Proof.
+  intros Hsort.
+  induction ty; simpl; auto.
+  rewrite <- subst_is_sort_eq; auto.
+  f_equal. rewrite <- map_comp.
+  apply list_eq_ext'; rewrite !map_length; auto.
+  intros n d Hn.
+  rewrite -> !map_nth_inbound with (d2:=vty_int); auto.
+  rewrite Forall_forall in H. apply H.
+  apply nth_In; auto.
+Qed.
+
 End TySubstLemmas.
+
+(*A version of [ty_subst] that only changes the mapped
+  variables, leaving everything else as in.
+  Needed for type substitutions that do not change
+  all type variables*)
+Section TySubstAlt.
+
+Fixpoint ty_subst' params args (v: vty) : vty :=
+  match v with
+  | vty_int => vty_int
+  | vty_real => vty_real
+  | vty_var x => if in_dec typevar_eq_dec x params then
+    (ty_subst params args) (vty_var x) else vty_var x
+  | vty_cons ts vs =>
+    vty_cons ts (map (ty_subst' params args) vs)
+  end.
+
+Definition ty_subst_list' (vs: list typevar) (ts: list vty) (l: list vty) :=
+  map (ty_subst' vs ts) l.
+
+
+(*Needed in many places: substituting tys1 for params1, 
+  then tys2 for params2 is the same as substituing
+  params1 with the result of substituting tys2 for params2 in tys1*)
+Lemma ty_subst_twice params1 tys1 params2 tys2 ty:
+  NoDup params1 ->
+  length params1 = length tys1 ->
+  ty_subst' params2 tys2 (ty_subst params1 tys1 ty) =
+  ty_subst params1 (ty_subst_list' params2 tys2 tys1) ty.
+Proof.
+  intros Hn1 Hlen1.
+  unfold ty_subst_list', ty_subst.
+  induction ty; simpl; auto.
+  - destruct (in_dec typevar_eq_dec v params1).
+    + destruct (In_nth _ _ EmptyString i) as [j [Hj Hv]]; subst.
+      rewrite -> !ty_subst_fun_nth with (s:=s_int); auto; [| rewrite map_length; auto].
+      rewrite -> map_nth_inbound with(d2:=vty_int); [| rewrite <- Hlen1; auto].
+      reflexivity.
+    + rewrite !ty_subst_fun_notin; auto. 
+  - f_equal.
+    apply list_eq_ext'; rewrite !map_length; auto.
+    intros n d Hn'.
+    rewrite -> !map_nth_inbound with (d2:=vty_int); auto;
+    [| rewrite map_length; auto].
+    rewrite Forall_forall in H. apply H. apply nth_In; auto.
+Qed.
+
+End TySubstAlt.

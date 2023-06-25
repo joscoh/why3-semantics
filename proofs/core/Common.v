@@ -55,6 +55,81 @@ Proof.
   assert (false) by (apply H; auto); auto.
 Qed.
 
+(*Results about filter*)
+Section Filter.
+
+Lemma filter_length_le {B: Type} (g: B -> bool) (l: list B):
+  length (filter g l) <= length l.
+Proof.
+  induction l; simpl; auto. destruct (g a); simpl; auto.
+  apply le_n_S; auto.
+Qed.
+
+Lemma all_filter {B: Type} (g: B -> bool) (l: list B):
+  forallb g l <-> filter g l = l.
+Proof.
+  induction l; simpl; split; intros; auto.
+  - destruct (g a) eqn : Hg; try solve[inversion H].
+    apply IHl in H. rewrite H; auto.
+  - destruct (g a) eqn : Hg; simpl; auto. 
+    + inversion H. rewrite H1. apply IHl in H1; auto.
+    + assert (length (a :: l) <= length l). {
+        rewrite <- H. apply filter_length_le.
+      }
+      simpl in H0. lia.
+Qed.
+
+Lemma filter_cons {A: Type} (g: A -> bool) (x: A) (l: list A):
+  filter g (x :: l) = if g x then x :: filter g l else filter g l.
+Proof.
+  reflexivity.
+Qed.
+
+Lemma filter_in_notin {A: Type} 
+  (eq_dec: forall (x y: A), {x = y} + {x <> y}) (l1 l2: list A) (x: A):
+  ~ In x l2 ->
+  filter (fun y => negb (in_dec eq_dec y (x :: l1))) l2 =
+  filter (fun y => negb (in_dec eq_dec y l1)) l2.
+Proof.
+  intros.
+  apply filter_ext_in; intros.
+  destruct (in_dec eq_dec a l1); simpl;
+  destruct (eq_dec x a); subst; auto;
+  destruct (in_dec eq_dec a l1); auto;
+  contradiction.
+Qed.
+
+Lemma filter_filter {A: Type} (f1: A -> bool) (f2: A -> bool) (l: list A):
+  filter f2 (filter f1 l) = filter (fun x => f1 x && f2 x) l.
+Proof.
+  induction l; simpl; auto.
+  destruct (f2 a) eqn : Hf2; auto;
+  destruct (f1 a) eqn : Hf1; simpl; auto;
+  try rewrite Hf2; simpl; auto; f_equal; auto.
+Qed.
+
+Lemma in_filter: forall {A: Type}
+  (f: A -> bool) (l: list A) (x: A),
+  In x (filter f l) <-> f x /\ In x l.
+Proof.
+  intros. induction l; simpl; auto.
+  - split; auto. intros [_ Hf]; destruct Hf.
+  - destruct (f a) eqn : Hfa; subst.
+    + simpl. split; intros.
+      * destruct H; subst.
+        -- split; auto.
+        -- split; auto. apply IHl. auto.
+           right. apply IHl. apply H.
+      * destruct H. destruct H0; auto.
+        right. apply IHl. auto.
+    + split; intros.
+      * split; auto. apply IHl; auto. right. apply IHl. auto.
+      * destruct H. destruct H0; subst. rewrite Hfa in H. inversion H.
+        apply IHl. split; auto.
+Qed.
+
+End Filter.
+
 (** Union on lists with decidable equality **)
 
 Section Union.
@@ -124,6 +199,24 @@ Proof.
   - inversion H.
 Qed.
 
+Lemma filter_union (l1 l2: list A)
+  (f: A -> bool):
+  filter f (union l1 l2) =
+  union (filter f l1) (filter f l2).
+Proof.
+  induction l1; simpl; auto.
+  destruct (in_dec eq_dec a (union l1 l2)).
+  - destruct (f a) eqn : Hf.
+    + simpl. rewrite <- IHl1.
+      destruct (in_dec eq_dec a (filter f (union l1 l2))); auto.
+      exfalso. apply n. rewrite in_filter. split; auto.
+    + apply IHl1.
+  - simpl. destruct (f a) eqn : Hf; auto.
+    simpl. rewrite <- IHl1.
+    destruct (in_dec eq_dec a (filter f (union l1 l2))); auto.
+    exfalso. rewrite in_filter in i. destruct_all; contradiction.
+Qed.
+
 (*Iterated union*)
 Definition big_union {B: Type} (f: B -> list A) (l: list B) :=
   fold_right (fun x acc => union (f x) acc) nil l.
@@ -172,6 +265,28 @@ Proof.
     + apply IHl in H.
       destruct H as [y [Hiny Hinx]]. exists y. split; auto.
 Qed. 
+
+Lemma filter_big_union {B: Type} (l: list B)
+  (f: B -> list A) (g: A -> bool):
+  filter g (big_union f l) =
+  big_union (fun x => filter g (f x)) l.
+Proof.
+  induction l; simpl; auto.
+  rewrite filter_union.
+  rewrite IHl; auto.
+Qed.
+
+Lemma big_union_ext {B: Type} (l1 l2: list B)
+  (f1 f2: B -> list A):
+  length l1 = length l2 ->
+  Forall (fun t => f1 (fst t) = f2 (snd t)) (combine l1 l2) ->
+  big_union f1 l1 = big_union f2 l2.
+Proof.
+  revert l2. induction l1; simpl; intros; destruct l2; inversion H; auto.
+  simpl.
+  inversion H0; subst. simpl in H4.
+  rewrite H4. simpl. rewrite -> IHl1 with(l2:=l2); auto.
+Qed.
 
 (*When the two lists are disjoint, union is append*)
 Lemma union_app_disjoint
@@ -580,6 +695,18 @@ Proof.
   apply in_combine_l in Hin. contradiction.
 Qed.
 
+Lemma specialize_combine {A B: Type} {l1: list A} {l2: list B}
+  {P: A * B -> Prop} (d1: A) (d2: B)
+  (Hp: forall x, In x (combine l1 l2) -> P x)
+  (Hlen: length l1 = length l2):
+  forall i, (i < length l1) ->
+  P (List.nth i l1 d1, List.nth i l2 d2).
+Proof.
+  intros. apply Hp. rewrite in_combine_iff; auto.
+  exists i; split; auto. intros.
+  f_equal; apply nth_indep; auto. lia.
+Qed.
+
 End CombineLemmas.
 
 (*Flip: switch tuples in list*)
@@ -897,6 +1024,13 @@ Proof.
   destruct (in_dec eq_dec x l); simpl; auto.
 Qed.
 
+Lemma in_bool_app {A: Type} eq_dec (x: A) l1 l2:
+  in_bool eq_dec x (l1 ++ l2) =
+  in_bool eq_dec x l1 || in_bool eq_dec x l2.
+Proof.
+  induction l1; simpl; auto. rewrite IHl1, orb_assoc; auto.
+Qed.
+
 (*Note: in ssreflect*)
 Lemma reflect_or: forall {b1 b2: bool} {p1 p2: Prop},
   reflect p1 b1 ->
@@ -1112,25 +1246,6 @@ Defined.
 
 End NEList.
 
-Lemma in_filter: forall {A: Type}
-  (f: A -> bool) (l: list A) (x: A),
-  In x (filter f l) <-> f x /\ In x l.
-Proof.
-  intros. induction l; simpl; auto.
-  - split; auto. intros [_ Hf]; destruct Hf.
-  - destruct (f a) eqn : Hfa; subst.
-    + simpl. split; intros.
-      * destruct H; subst.
-        -- split; auto.
-        -- split; auto. apply IHl. auto.
-           right. apply IHl. apply H.
-      * destruct H. destruct H0; auto.
-        right. apply IHl. auto.
-    + split; intros.
-      * split; auto. apply IHl; auto. right. apply IHl. auto.
-      * destruct H. destruct H0; subst. rewrite Hfa in H. inversion H.
-        apply IHl. split; auto.
-Qed.
 
 Lemma In_firstn {A: Type} (l: list A) (n: nat) x :
   In x (firstn n l) ->
@@ -1370,52 +1485,6 @@ Proof.
 Qed.
 
 End AssocList.
-
-(*Results about filter*)
-Section Filter.
-
-Lemma filter_length_le {B: Type} (g: B -> bool) (l: list B):
-  length (filter g l) <= length l.
-Proof.
-  induction l; simpl; auto. destruct (g a); simpl; auto.
-  apply le_n_S; auto.
-Qed.
-
-Lemma all_filter {B: Type} (g: B -> bool) (l: list B):
-  forallb g l <-> filter g l = l.
-Proof.
-  induction l; simpl; split; intros; auto.
-  - destruct (g a) eqn : Hg; try solve[inversion H].
-    apply IHl in H. rewrite H; auto.
-  - destruct (g a) eqn : Hg; simpl; auto. 
-    + inversion H. rewrite H1. apply IHl in H1; auto.
-    + assert (length (a :: l) <= length l). {
-        rewrite <- H. apply filter_length_le.
-      }
-      simpl in H0. lia.
-Qed.
-
-Lemma filter_cons {A: Type} (g: A -> bool) (x: A) (l: list A):
-  filter g (x :: l) = if g x then x :: filter g l else filter g l.
-Proof.
-  reflexivity.
-Qed.
-
-Lemma filter_in_notin {A: Type} 
-  (eq_dec: forall (x y: A), {x = y} + {x <> y}) (l1 l2: list A) (x: A):
-  ~ In x l2 ->
-  filter (fun y => negb (in_dec eq_dec y (x :: l1))) l2 =
-  filter (fun y => negb (in_dec eq_dec y l1)) l2.
-Proof.
-  intros.
-  apply filter_ext_in; intros.
-  destruct (in_dec eq_dec a l1); simpl;
-  destruct (eq_dec x a); subst; auto;
-  destruct (in_dec eq_dec a l1); auto;
-  contradiction.
-Qed.
-
-End Filter.
 
 (*Results about [in]*)
 Section In.
@@ -1677,19 +1746,78 @@ Qed.
 
 (*Disjpointness*)
 Section Disj.
+Context {A: Type}.
+Definition disj (l1 l2: list A) : Prop :=
+  forall x, ~ (In x l1 /\ In x l2).
+Lemma disj_l12_iff (l1 l2: list A):
+  disj l1 l2 <-> (forall x, In x l1 -> ~ In x l2).
+Proof.
+  unfold disj.
+  split; intros.
+  - intro C. apply (H _ (conj H0 C)).
+  - intro C. destruct C.
+    apply (H _ H0 H1).
+Qed.
 
-Definition disj {A B: Type} (f: A -> list B) (l: list A) : Prop :=
+Lemma disj_l12 {l1 l2: list A}:
+  disj l1 l2 -> (forall x, In x l1 -> ~ In x l2).
+Proof.
+  apply disj_l12_iff.
+Qed.
+
+Lemma disj_comm (l1 l2: list A):
+  disj l1 l2 <-> disj l2 l1.
+Proof.
+  unfold disj. split; intros; rewrite and_comm; auto.
+Qed.
+
+Lemma disj_l21_iff (l1 l2: list A):
+  disj l1 l2 <-> (forall x, In x l2 -> ~ In x l1).
+Proof.
+  rewrite disj_comm. apply disj_l12_iff.
+Qed.
+
+Lemma disj_l21 {l1 l2: list A}:
+  disj l1 l2 -> (forall x, In x l2 -> ~ In x l1).
+Proof.
+  apply disj_l21_iff.
+Qed.
+
+Lemma disj_sublist {l1 l2 l3: list A}:
+  disj l1 l2 ->
+  sublist l3 l2 ->
+  disj l1 l3.
+Proof.
+  unfold disj, sublist; intros Hsub Hdisj x [Hinx1 Hinx2].
+  apply (Hsub x); split; auto.
+Qed.
+
+Lemma disj_sublist_lr{l1 l2 l3 l4: list A}:
+  disj l2 l4 ->
+  sublist l1 l2 ->
+  sublist l3 l4 ->
+  disj l1 l3.
+Proof.
+  unfold sublist, disj; intros Hd Hin1 Hin2 x [Hinx1 Hinx2].
+  apply (Hd x); split; auto.
+Qed.
+
+End Disj.
+(*Another notion - disjointness of mapped lists*)
+Section DisjMap.
+
+Definition disj_map {A B: Type} (f: A -> list B) (l: list A) : Prop :=
   forall i j (d: A) (x: B),
     i < j ->
     j < length l ->
     ~ (In x (f (nth i l d)) /\ In x (f (nth j l d))).
 
-Lemma disj_cons_iff {A B: Type} (f: A -> list B) (a: A) (l: list A):
-  disj f (a :: l) <->
-  disj f l /\ 
+Lemma disj_map_cons_iff {A B: Type} (f: A -> list B) (a: A) (l: list A):
+  disj_map f (a :: l) <->
+  disj_map f l /\ 
   forall i d x, i < length l -> ~ (In x (f a) /\ In x (f (nth i l d))).
 Proof.
-  unfold disj. split; intros.
+  unfold disj_map. split; intros.
   - split; intros.
     + simpl in H. 
       apply (H (S i) (S j) d x ltac:(lia) ltac:(lia)).
@@ -1700,15 +1828,15 @@ Proof.
     + simpl in H1 |- *. apply (proj1 H); lia.
 Qed.
 
-Lemma disj_cons_impl {A B: Type} {f: A -> list B} {a: A} {l: list A}:
-  disj f (a :: l) ->
-  disj f l.
+Lemma disj_map_cons_impl {A B: Type} {f: A -> list B} {a: A} {l: list A}:
+  disj_map f (a :: l) ->
+  disj_map f l.
 Proof.
-  rewrite disj_cons_iff. 
+  rewrite disj_map_cons_iff. 
   intros H; apply H.
 Qed.
 
-End Disj.
+End DisjMap.
 
 Ltac dec H :=
   destruct H; [ simpl | apply ReflectF; intro C; inversion C; subst; contradiction].
@@ -1737,7 +1865,6 @@ Proof.
 Qed.
 
 End Tup.
-
 
 (*Tactics*)
 
@@ -1981,3 +2108,191 @@ Ltac prove_hyps n H :=
   | O => idtac
   | (S ?m) => prove_hyp H; [|prove_hyps m H]
   end.
+
+
+(*Nodup, map, and union*)
+Section NoDupMapUnion.
+
+Lemma nodup_map_union_inv {A B: Type} (eq_dec: forall (x y: A), {x = y} + {x <> y})
+  (f: A -> B) (l1 l2: list A):
+  NoDup l1 ->
+  NoDup l2 ->
+  NoDup (map f (union eq_dec l1 l2)) ->
+  NoDup (map f l1) /\ NoDup (map f l2).
+Proof.
+  induction l1; simpl; intros; auto.
+  - split; auto. constructor.
+  - inversion H; subst. 
+    destruct (in_dec eq_dec a (union eq_dec l1 l2)).
+    + split; auto; [|apply IHl1; auto].
+      constructor; [| apply IHl1; auto].
+      intro C.
+      rewrite in_map_iff in C.
+      destruct C as [y [Hy Hiny]]; subst.
+      simpl_set. destruct i; try contradiction.
+      destruct (eq_dec y a); subst; try contradiction.
+      apply n. eapply NoDup_map_in.
+      apply H1. all: simpl_set; auto.
+    + simpl in H1.
+      inversion H1; subst.
+      split;[|apply IHl1; auto].
+      constructor;[|apply IHl1; auto].
+      intro C.
+      rewrite -> in_map_iff in *.
+      destruct C as [y [Hy Hiny]].
+      apply H6. exists y; simpl_set; auto.
+Qed.
+
+Lemma nodup_map_big_union_inv {A B C: Type} (eq_dec: forall (x y: B), {x = y} + {x <> y})
+  (f: B -> C) (g: A -> list B) (l: list A)
+  (Hg: forall x, In x l -> NoDup (g x)):
+  NoDup (map f (big_union eq_dec g l)) ->
+  forall x, In x l ->
+  NoDup (map f (g x)).
+  Proof.
+    induction l; simpl; intros; try contradiction.
+    simpl in *.
+    eapply nodup_map_union_inv in H; auto.
+    - destruct H. destruct H0; subst. apply H. apply IHl; auto.
+    - apply big_union_nodup.
+  Qed.
+
+Lemma nodup_map_union_inv' {A B: Type} (eq_dec: forall (x y: A), {x = y} + {x <> y})
+  (f: A -> B) (l1 l2: list A):
+  NoDup l1 ->
+  NoDup l2 ->
+  (forall x, ~ (In x l1 /\ In x l2)) ->
+  NoDup (map f (union eq_dec l1 l2)) ->
+  forall x, ~ (In x (map f l1) /\ In x (map f l2)).
+Proof.
+  induction l1; simpl; intros; auto; intro C.
+  - destruct C as [[] _].
+  - inversion H; subst. 
+    destruct (in_dec eq_dec a (union eq_dec l1 l2)).
+    + simpl_set.
+      destruct i; try contradiction.
+      apply (H1 a); auto.
+    + inversion H2; subst; clear H2.
+      simpl_set. not_or Hnotina.
+      destruct C.
+      destruct H2; subst.
+      * rewrite in_map_iff in H3.
+        destruct H3 as [y [Hxy Hiny]].
+        apply H7. 
+        rewrite in_map_iff. exists y. simpl_set; auto.
+      * apply (IHl1 H6 H0) with(x:=x); auto.
+        intros. intro C; destruct_all; apply (H1 x0); auto.
+Qed.
+
+Lemma nodup_map_big_union_inv' {A B C: Type} (eq_dec: forall (x y: B), {x = y} + {x <> y})
+(f: B -> C) (g: A -> list B) (l: list A)
+(Hg: forall x, In x l -> NoDup (g x))
+(Hdisj: forall i j, (i < length l) -> (j < length l) ->
+  i <> j ->
+  forall d x, ~ (In x (g (List.nth i l d)) /\ In x (g (List.nth j l d)))):
+NoDup (map f (big_union eq_dec g l)) ->
+forall i j, (i < length l) -> (j < length l) -> i <> j ->
+forall d x, ~(In x (map f (g (List.nth i l d))) /\ 
+  In x (map f (g (List.nth j l d)))).
+Proof.
+  induction l; simpl; intros; try lia.
+  destruct i; destruct j; simpl in *; try lia.
+  - apply nodup_map_union_inv' with(x:=x) in H; 
+    intros; auto; [| apply big_union_nodup |].
+    + intro C1; destruct_all. 
+      apply H; split; auto. rewrite !in_map_iff in H4 |- *.
+      destruct H4 as [y [Hx Hiny]]; subst.
+      exists y. split; simpl_set; auto.
+      exists (List.nth j l d); split; auto. apply nth_In; auto. lia.
+    + intros C1; destruct_all; simpl_set.
+      destruct H4 as [z [Hinz Hinx0]].
+      destruct (In_nth _ _ d Hinz) as [i [Hi Hz]]; subst.
+      specialize (Hdisj 0 (S i) (ltac:(lia)) (ltac:(lia)) (ltac:(auto))).
+      simpl in Hdisj.
+      apply (Hdisj d x0); split; auto.
+  - (*Similar case*)
+    apply nodup_map_union_inv' with(x:=x) in H; 
+    intros; auto; [| apply big_union_nodup |].
+    + intro C1; destruct_all. 
+      apply H; split; auto. rewrite !in_map_iff in H3 |- *.
+      destruct H3 as [y [Hx Hiny]]; subst.
+      exists y. split; simpl_set; auto.
+      exists (List.nth i l d); split; auto. apply nth_In; auto. lia.
+    + intros C1; destruct_all; simpl_set.
+      destruct H4 as [z [Hinz Hinx0]].
+      destruct (In_nth _ _ d Hinz) as [j [Hj Hz]]; subst.
+      specialize (Hdisj 0 (S j) (ltac:(lia)) (ltac:(lia)) (ltac:(auto))).
+      simpl in Hdisj.
+      apply (Hdisj d x0); split; auto.
+  - (*inductive case*)
+    apply IHl; auto; try lia.
+    + intros. apply (Hdisj (S i0) (S j0)); try lia.
+    + apply nodup_map_union_inv in H; destruct_all; auto.
+      apply big_union_nodup.
+Qed.
+
+End NoDupMapUnion.
+
+(*More results about sublist*)
+Section Sublist.
+
+Lemma union_sublist_r {A: Type} eq_dec (l1 l2: list A):
+  sublist l2 (union eq_dec l1 l2).
+Proof.
+  intros x. simpl_set. intros; auto.
+Qed.
+
+Lemma union_sublist_l {A: Type} eq_dec (l1 l2: list A):
+  sublist l1 (union eq_dec l1 l2).
+Proof.
+  intros x. simpl_set. intros; auto.
+Qed.
+
+Lemma sublist_app_l {A: Type} (l1 l2: list A):
+  sublist l1 (l1 ++ l2).
+Proof.
+  intros x. rewrite in_app_iff. intros; auto.
+Qed.
+
+Lemma sublist_app_r {A: Type} (l1 l2: list A):
+  sublist l2 (l1 ++ l2).
+Proof.
+  intros x. rewrite in_app_iff. intros; auto.
+Qed.
+
+Lemma sublist_map {A B: Type} (f: A -> B) (l1 l2: list A):
+  sublist l1 l2 ->
+  sublist (map f l1) (map f l2).
+Proof.
+  apply incl_map.
+Qed.
+
+Lemma sublist_big_union {A B: Type} (eq_dec: forall x y: A, {x = y} + {x <> y})
+(f: B -> list A) (l: list B)
+(x: B):
+In x l ->
+sublist (f x) (big_union eq_dec f l).
+Proof.
+  intros. unfold sublist. intros.
+  simpl_set. exists x; auto.
+Qed.
+
+Lemma sublist_concat_map {A B: Type} (f: A -> list B) x (l: list A):
+  In x l ->
+  sublist (f x) (concat (map f l)).
+Proof.
+  intros. unfold sublist. intros.
+  rewrite in_concat. exists (f x); split; auto.
+  rewrite in_map_iff. exists x; auto.
+Qed.
+
+(*Copied from Task - TODO move and delete there*)
+Lemma sublist_trans {A: Type} (l2 l1 l3: list A):
+  sublist l1 l2 ->
+  sublist l2 l3 ->
+  sublist l1 l3.
+Proof.
+  unfold sublist; auto.
+Qed.
+
+End Sublist.

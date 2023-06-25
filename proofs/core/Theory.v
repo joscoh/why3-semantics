@@ -908,6 +908,8 @@ Definition tyconst_s (n: string) : Types.sort :=
   
   Then unfolding*)
 
+End Mono.
+
 (*Produce proof goals for lemmas and goals*)
 Fixpoint valid_theory (t: theory) : Prop :=
   match t with

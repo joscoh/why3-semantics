@@ -621,7 +621,7 @@ Proof.
       generalize dependent ((pat_constr_ind gamma_valid Hp Hinctx Hinmut eq_refl (fst x))).
       destruct x. simpl.
       generalize dependent a.
-      apply pat_constr_disj in Hp.
+      apply pat_constr_disj_map in Hp.
       generalize dependent ps0.
       assert (length (sym_sigma_args f srts) = length (s_args f)). {
         unfold sym_sigma_args, ty_subst_list_s. rewrite map_length; reflexivity.
@@ -684,7 +684,7 @@ Proof.
                 apply pat_constr_vars_inner_fv in Hinx0; auto.
               }
               (*Contradicts disjointness*)
-              rewrite disj_cons_iff in Hp.
+              rewrite disj_map_cons_iff in Hp.
               destruct Hp as [Hp Hdisj].
               exfalso.
               apply (Hdisj i' Pwild x'); auto.
@@ -764,7 +764,7 @@ Proof.
             -- intros.
               apply (Hithcast (S i0) ltac:(lia)).
             -- inversion H1; subst; auto.
-            -- apply disj_cons_impl in Hp; auto.
+            -- apply disj_map_cons_impl in Hp; auto.
             -- rewrite Hconds. auto.
             -- intros. apply (Hsmall (S i0) ltac:(lia) Hithcast0). auto.
           }
@@ -782,13 +782,13 @@ Proof.
             apply iter_arg_list_free_var with(x:=x0) in Hmatch0.
             - apply Hmatch0. rewrite in_map_iff.
               exists (x0, y). split; auto.
-            - apply disj_cons_impl in Hp; auto.
+            - apply disj_map_cons_impl in Hp; auto.
             - rewrite Forall_forall; intros.
               apply match_val_single_perm in H5; auto.
           }
           simpl_set. destruct Hinx2 as [p' [Hinp' Hinx2]].
           destruct (In_nth _ _ Pwild Hinp') as [j [Hj Hp']]; subst.
-          exfalso. rewrite disj_cons_iff in Hp.
+          exfalso. rewrite disj_map_cons_iff in Hp.
           destruct Hp as [_ Hp]. apply (Hp j Pwild x0 Hj); auto.
     }
     (*Now, we can prove these cases easily*)
@@ -5383,7 +5383,7 @@ Lemma get_arg_list_aux_eq: forall input ts rec v s small Hsmall hd Hhd vs Hparam
         term_rep gamma_valid pd vt pf v tm ty Hty) ts ->
       proj1_sig (@get_arg_list_recfun v hd _ s
         _ ts small Hsmall Hhd (term_rep_aux input rec v ) Hparamslen (s_args s) Hargslen Hall Hdec) =
-      get_arg_list pd vt s vs ts (term_rep gamma_valid pd vt pf v) Hargslen Hparamslen Hall.
+      get_arg_list pd vt s vs ts (term_rep gamma_valid pd vt pf v) (s_params_Nodup s) Hargslen Hparamslen Hall.
 Proof.
   intros input ts rec v s.
   generalize dependent (s_args s). intros args; revert args.

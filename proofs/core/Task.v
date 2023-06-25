@@ -230,15 +230,6 @@ Definition trans_goal (f: formula -> formula) :
   trans :=
   fun x => [(task_gamma x, task_delta x, (f (task_goal x)))].
 
-(*TODO: move*)
-Lemma sublist_trans {A: Type} (l2 l1 l3: list A):
-  sublist l1 l2 ->
-  sublist l2 l3 ->
-  sublist l1 l3.
-Proof.
-  unfold sublist; auto.
-Qed.
-
 (*The only thing we need to reason about is the new goal*)
 (*We also need to ensure that the new term does not have any
   new free variables (TODO: this is more restrictive than we need - see

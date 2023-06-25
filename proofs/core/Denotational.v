@@ -1,5 +1,6 @@
 (*Here we give a denotational semantics for Why3, assuming some classical axioms*)
 Require Export Substitution.
+Require Import Typechecker. (*For unique types*)
 Require Export Interp.
 Require Import Coq.Sorting.Permutation.
 Set Bullet Behavior "Strict Subproofs".
@@ -127,15 +128,17 @@ Definition get_arg_list (v: val_typevar)
   (s: fpsym) (vs: list vty) (ts: list term) 
   (reps: forall (t: term) (ty: vty),
     term_has_type gamma t ty ->
-    domain (val v ty))
+    domain (v_subst v ty))
   {args: list vty}
+  {params: list typevar}
+  (Hp: NoDup params)
   (Hlents: length ts = length args)
-  (Hlenvs: length vs = length (s_params s))
+  (Hlenvs: length vs = length params)
   (Hall: Forall (fun x => term_has_type gamma (fst x) (snd x))
-    (combine ts (map (ty_subst (s_params s) vs) args))):
-    arg_list domain
-    (ty_subst_list_s (s_params s)
-      (map (val v) vs) args).
+    (combine ts (map (ty_subst params vs) args))):
+    arg_list (domain )
+    (ty_subst_list_s params
+      (map (v_subst v) vs) args).
 Proof.
   generalize dependent args. induction ts; simpl; intros.
   - destruct args.
@@ -144,8 +147,8 @@ Proof.
   - destruct args as [| a1 atl].
     + exact ( False_rect _ (Nat.neq_succ_0 (length ts) Hlents)).
     + exact ((HL_cons _ _ _ (dom_cast (dom_aux pd)
-    (funsym_subst_eq (s_params s) vs v a1
-    (s_params_Nodup _) (eq_sym Hlenvs))
+    (funsym_subst_eq params vs v a1
+    Hp (Logic.eq_sym Hlenvs))
       (reps _ _ (Forall_inv Hall)))
        (IHts atl (*atl*) 
         (Nat.succ_inj (length ts) (length atl) Hlents)
@@ -161,17 +164,19 @@ Lemma get_arg_list_hnth (v: val_typevar)
   (Hty1 Hty2: term_has_type gamma t ty),
   reps t ty Hty1 = reps t ty Hty2)
 {args: list vty}
+{params: list typevar}
+(Hp: NoDup params)
 (Hlents: length ts = length args)
-(Hlenvs: length vs = length (s_params s))
+(Hlenvs: length vs = length params)
 (Hall: Forall (fun x => term_has_type gamma (fst x) (snd x))
-  (combine ts (map (ty_subst (s_params s) vs) args)))
+  (combine ts (map (ty_subst params vs) args)))
 (i: nat)
 (Hi: i < length args):
 forall Heq Hty,
 hnth i
-  (get_arg_list v s vs ts reps Hlents Hlenvs Hall) s_int (dom_int pd) =
+  (get_arg_list v s vs ts reps Hp Hlents Hlenvs Hall) s_int (dom_int pd) =
   dom_cast (dom_aux pd) Heq
-  (reps (nth i ts tm_d) (ty_subst (s_params s) vs (nth i args vty_int))
+  (reps (nth i ts tm_d) (ty_subst params vs (nth i args vty_int))
   Hty).
 Proof.
   revert i Hi.
@@ -209,7 +214,7 @@ Definition fun_arg_list {ty} (v: val_typevar)
 arg_list domain
   (sym_sigma_args f
     (map (v_subst v) vs)) :=
-get_arg_list v f vs ts reps
+get_arg_list v f vs ts reps (s_params_Nodup f)
   (proj1' (fun_ty_inv Hty))
   (proj1' (proj2' (fun_ty_inv Hty)))
   (proj1' (proj2' (proj2' (fun_ty_inv Hty)))).
@@ -236,7 +241,7 @@ Definition pred_arg_list (v: val_typevar)
 arg_list domain
   (sym_sigma_args p
     (map (v_subst v) vs)) :=
-get_arg_list v p vs ts reps
+get_arg_list v p vs ts reps (s_params_Nodup p)
   (proj1' (pred_val_inv Hval))
   (proj1' (proj2' (pred_val_inv Hval)))
   (proj2' (proj2' (pred_val_inv Hval))).
@@ -781,12 +786,12 @@ Proof.
     rewrite IHa. reflexivity.
 Qed.
 
-Lemma pat_constr_disj {s f vs ps ty}:
+Lemma pat_constr_disj_map {s f vs ps ty}:
   pattern_has_type s (Pconstr f vs ps) ty ->
-  disj pat_fv ps.
+  disj_map pat_fv ps.
 Proof.
   intros. inversion H; subst.
-  unfold disj.
+  unfold disj_map.
   intros.
   apply H11; lia.
 Qed.
@@ -869,7 +874,7 @@ Lemma match_val_single_ind
   (Hval: valid_type gamma (vty_cons (adt_name adt) vs2))
   (l: list vty)
   (ps: list pattern)
-  (Hps: disj pat_fv ps) 
+  (Hps: disj_map pat_fv ps) 
   (*Here, we generalize a but assume it satisfies Q, so we can
     retain some info*)
   (Hall: Forall
@@ -960,7 +965,7 @@ Proof.
     intros.
     apply (Hconstr3 v f vs adt vs2 m Hisadt 
       d Hinmut Hinctx i Hval); auto.
-    apply (pat_constr_disj Hp).
+    apply (pat_constr_disj_map Hp).
     eapply Hq. apply Hisadt. apply e.
   - apply (Hwild v ty); auto.
   - apply Hor. apply IHp1. apply IHp2.
@@ -1007,7 +1012,7 @@ Proof.
         apply H2 with(x:=x) (t:=t) in Hmatch; auto.
       * rewrite hlist_tl_cast in Hmatch0.
         apply IHl with(x:=x)(t:=t) in Hmatch0; auto.
-        apply (disj_cons_impl Hps).
+        apply (disj_map_cons_impl Hps).
         inversion Hall; auto.
   - intros. inversion H; subst. inversion H0.
   - intros. destruct (match_val_single v ty p1 (proj1' (pat_or_inv Hty')) d) eqn : Hm.
@@ -1030,7 +1035,7 @@ Lemma iter_arg_list_perm:
 forall (v : val_typevar) (f : funsym)
 (vs2 : list vty),
 forall (l : list vty) (ps : list pattern),
-disj pat_fv ps ->
+disj_map pat_fv ps ->
 Forall
 (fun p : pattern =>
  forall (ty : vty) (Hp : pattern_has_type gamma p ty) (d0 : domain (val v ty))
@@ -1065,7 +1070,7 @@ Proof.
     apply H3 in Hmatch.
     rewrite map_app, union_app_disjoint.
     * apply Permutation_app; auto.
-    * rewrite disj_cons_iff in H.
+    * rewrite disj_map_cons_iff in H.
       destruct_all. intros.
       intro C.
       destruct_all. simpl_set.
@@ -1073,7 +1078,7 @@ Proof.
       destruct (In_nth _ _ Pwild Hinp') as [i[ Hi Hp']]; subst.
       apply (H1 i Pwild x Hi); auto.
     * apply NoDup_pat_fv.
-    * apply (disj_cons_impl H).
+    * apply (disj_map_cons_impl H).
 Qed.
 
 Lemma match_val_single_perm {vt} ty d p l
@@ -1142,7 +1147,7 @@ Lemma iter_arg_list_free_var:
 forall (v : val_typevar) (f : funsym)
 (vs2 : list vty),
 forall (l : list vty) (ps : list pattern),
-disj pat_fv ps ->
+disj_map pat_fv ps ->
 Forall
 (fun p : pattern =>
  forall (ty : vty) (Hp : pattern_has_type gamma p ty) (d0 : domain (val v ty))
@@ -1465,15 +1470,17 @@ Lemma get_arg_list_ext {gamma1 gamma2 pd} (v: val_typevar)
     forall (ty : vty) Hty1 Hty2,
     reps1 (nth i ts1 tm_d) ty Hty1 = reps2 (nth i ts2 tm_d) ty Hty2)
   {args: list vty}
+  {params: list typevar}
+  (Hp1 Hp2: NoDup params)
   (Hlents1: length ts1 = length args)
   (Hlents2: length ts2 = length args)
-  (Hlenvs1 Hlenvs2: length vs = length (s_params s))
+  (Hlenvs1 Hlenvs2: length vs = length params)
   (Hall1: Forall (fun x => term_has_type gamma1 (fst x) (snd x))
-    (combine ts1 (map (ty_subst (s_params s) vs) args)))
+    (combine ts1 (map (ty_subst params vs) args)))
   (Hall2: Forall (fun x => term_has_type gamma2 (fst x) (snd x))
-    (combine ts2 (map (ty_subst (s_params s) vs) args))):
-  get_arg_list pd v s vs ts1 reps1 Hlents1 Hlenvs1 Hall1 =
-  get_arg_list pd v s vs ts2 reps2 Hlents2 Hlenvs2 Hall2.
+    (combine ts2 (map (ty_subst params vs) args))):
+  get_arg_list pd v s vs ts1 reps1 Hp1 Hlents1 Hlenvs1 Hall1 =
+  get_arg_list pd v s vs ts2 reps2 Hp2 Hlents2 Hlenvs2 Hall2.
 Proof.
   unfold get_arg_list. simpl.
   assert (Hlenvs1 = Hlenvs2). apply UIP_dec. apply Nat.eq_dec.
@@ -1487,7 +1494,7 @@ Proof.
     destruct args.
     + inversion Hlents2.
     + simpl in Hlenvs2. simpl. f_equal.
-      * f_equal.
+      * f_equal. apply UIP_dec. apply sort_eq_dec.
         apply (Hreps 0). lia.
       * apply IHts1; auto.
         intros j Hj ty Hty1 Hty2.
@@ -1505,12 +1512,14 @@ Lemma get_arg_list_eq {gamma} pd (v: val_typevar)
  forall (ty : vty) (Hty1 Hty2: term_has_type gamma tm ty),
  reps1 tm ty Hty1 = reps2 tm ty Hty2) ts)
 {args: list vty}
+{params: list typevar}
+(Hp1 Hp2: NoDup params)
 (Hlents1 Hlents2: length ts = length args)
-(Hlenvs1 Hlenvs2: length vs = length (s_params s))
+(Hlenvs1 Hlenvs2: length vs = length params)
 (Hall1 Hall2: Forall (fun x => term_has_type gamma (fst x) (snd x))
-  (combine ts (map (ty_subst (s_params s) vs) args))):
-get_arg_list pd v s vs ts reps1 Hlents1 Hlenvs1 Hall1 =
-get_arg_list pd v s vs ts reps2 Hlents2 Hlenvs2 Hall2.
+  (combine ts (map (ty_subst params vs) args))):
+get_arg_list pd v s vs ts reps1 Hp1 Hlents1 Hlenvs1 Hall1 =
+get_arg_list pd v s vs ts reps2 Hp2 Hlents2 Hlenvs2 Hall2.
 Proof.
   apply get_arg_list_ext; auto.
   intros i Hi ty H1 H2.
@@ -2010,45 +2019,48 @@ Qed.
   than above (particularly with how reps are handled).
   This allows us to modify the val_typevar, val_vars, 
   reps, and proofs.*)
-  
-Lemma get_arg_list_vt_ext (vt1 vt2: val_typevar) (s: fpsym)
-  (vs: list vty) (ts1 ts2: list term) vv1 vv2
+
+Lemma get_arg_list_vt_ext
+(vt1 vt2: val_typevar) (s: fpsym)
+  (vs1 vs2: list vty) (ts1 ts2: list term) vv1 vv2
   (reps1 reps2: forall (vt: val_typevar) (pf: pi_funpred gamma_valid pd) 
     (vv: val_vars pd vt)
     (t: term) (ty: vty) (Hty: term_has_type gamma t ty),
     domain (v_subst vt ty))
   (Hts: length ts1 = length ts2)
   (Hreps: forall (i: nat),
-    i < length ts1 ->
-    forall (ty: vty) Hty1 Hty2 Heq,
+    (i < length ts1) ->
+    forall (ty1 ty2: vty) Hty1 Hty2 Heq,
       dom_cast (dom_aux pd) Heq 
-        (reps1 vt1 pf vv1 (nth i ts1 tm_d) ty Hty1) =
-      reps2 vt2 pf vv2 (nth i ts2 tm_d) ty Hty2)
+        (reps1 vt1 pf vv1 (List.nth i ts1 tm_d) ty1 Hty1) =
+      reps2 vt2 pf vv2 (List.nth i ts2 tm_d) ty2 Hty2)
   {args: list vty}
+  {params: list typevar}
+  (Hp: NoDup params)
   (Hlents1: length ts1 = length args)
   (Hlents2: length ts2 = length args)
-  (Hlenvs1 Hlenvs2: length vs = length (s_params s))
+  (Hlenvs1: length vs1 = length params)
+  (Hlenvs2: length vs2 = length params)
   (Hall1: Forall (fun x => term_has_type gamma (fst x) (snd x))
-    (combine ts1 (map (ty_subst (s_params s) vs) args)))
+    (combine ts1 (map (ty_subst params vs1) args)))
   (Hall2: Forall (fun x => term_has_type gamma (fst x) (snd x))
-    (combine ts2 (map (ty_subst (s_params s) vs) args)))
-  (Heq: map (v_subst vt2) vs = map (v_subst vt1) vs):
+    (combine ts2 (map (ty_subst params vs2) args)))
+  (Heq: map (v_subst vt1) vs1 = map (v_subst vt2) vs2):
   cast_arg_list 
-    (f_equal (fun x => ty_subst_list_s (s_params s) x args) (eq_sym Heq))
-    (get_arg_list pd vt1 s vs ts1 (reps1 vt1 pf vv1) Hlents1 Hlenvs1 Hall1) =
-  get_arg_list pd vt2 s vs ts2 (reps2 vt2 pf vv2) Hlents2 Hlenvs2 Hall2.
+    (f_equal (fun x => ty_subst_list_s params x args) Heq)
+    (get_arg_list pd vt1 s vs1 ts1 (reps1 vt1 pf vv1) Hp Hlents1 Hlenvs1 Hall1) =
+  get_arg_list pd vt2 s vs2 ts2 (reps2 vt2 pf vv2) Hp Hlents2 Hlenvs2 Hall2.
 Proof.
-  generalize dependent (f_equal (fun x : list sort => ty_subst_list_s (s_params s) x args) (eq_sym Heq)).
+  match goal with
+  | |- cast_arg_list ?H ?a = _ => generalize dependent H end.
   clear Heq.
-  unfold get_arg_list. simpl.
-  assert (Hlenvs1 = Hlenvs2). apply UIP_dec. apply Nat.eq_dec.
-  subst.
+  unfold get_arg_list.
   generalize dependent args.
   generalize dependent ts2. 
   induction ts1; simpl; intros. 
   - destruct ts2; [|subst; inversion Hts].
     destruct args; simpl; auto; [|inversion Hlents1].
-    assert (e = eq_refl). apply UIP_dec. apply list_eq_dec.
+    assert (e = Logic.eq_refl). apply UIP_dec. apply list_eq_dec.
     apply sort_eq_dec. 
     subst. reflexivity.
   - destruct ts2; inversion Hts.
@@ -2058,13 +2070,12 @@ Proof.
       simpl in e.
       rewrite (cast_arg_list_cons e).
       f_equal.
-      * rewrite rewrite_dom_cast, !dom_cast_compose.
-        erewrite <- (Hreps 0) with(Hty1:=Forall_inv Hall1) (Heq:=
-        (eq_trans 
-          ((eq_trans (funsym_subst_eq (s_params s) vs vt1 v (s_params_Nodup s) (eq_sym Hlenvs2))
-          (cons_inj_hd e)))
-          (eq_sym ((funsym_subst_eq (s_params s) vs vt2 v (s_params_Nodup s) (eq_sym Hlenvs2)))))
-        ); try lia.
+      * rewrite -> rewrite_dom_cast, !dom_cast_compose.
+        assert (Heq': v_subst vt1 (ty_subst params vs1 v) = v_subst vt2 (ty_subst params vs2 v)). {
+          rewrite !funsym_subst_eq; auto.
+          apply (cons_inj_hd e).
+        }
+        erewrite <- (Hreps 0) with(Hty1:=Forall_inv Hall1)(Heq:=Heq'); try lia.
         rewrite !dom_cast_compose. apply dom_cast_eq.
       * apply IHts1; auto.
         intros i Hi ty Hty1 Hty2 Heq.
@@ -2087,16 +2098,21 @@ Lemma get_arg_list_vt_eq (vt1 vt2: val_typevar) (s: fpsym)
         reps vt1 pf vv1 tm ty Hty1 =
         dom_cast (dom_aux pd) Heq (reps vt2 pf vv2 tm ty Hty2)
       ) ts)
-  Hlents Hlenvs Hall
+  Hp Hlents Hlenvs Hall
   (Heq: map (v_subst vt2) vs = map (v_subst vt1) vs):
   cast_arg_list (f_equal (sym_sigma_args s) (eq_sym Heq))
-    (get_arg_list pd vt1 s vs ts (reps vt1 pf vv1) Hlents Hlenvs Hall) =
-  get_arg_list pd vt2 s vs ts (reps vt2 pf vv2) Hlents Hlenvs Hall.
+    (get_arg_list pd vt1 s vs ts (reps vt1 pf vv1) Hp Hlents Hlenvs Hall) =
+  get_arg_list pd vt2 s vs ts (reps vt2 pf vv2) Hp Hlents Hlenvs Hall.
 Proof.
   apply get_arg_list_vt_ext; auto. 
   rewrite Forall_forall in Hreps.
   intros.
-  symmetry. rewrite Hreps with(Heq:=eq_sym Heq0)(Hty2:=Hty2).
+  symmetry.
+  assert (ty1 = ty2). {
+    apply (term_has_type_unique _ _ _ _ Hty1 Hty2).
+  }
+  subst.
+  rewrite Hreps with(Heq:=eq_sym Heq0)(Hty2:=Hty2).
   rewrite !dom_cast_twice. reflexivity.
   apply nth_In. auto.
 Qed. 
@@ -3002,8 +3018,8 @@ Lemma get_arg_list_sub x tm1 s tys tms
     (combine tms (map (ty_subst (s_params s) tys) (s_args s))))
   (Hall2: Forall (fun x => term_has_type gamma (fst x) (snd x))
     (combine (map (sub_t tm1 x) tms) (map (ty_subst (s_params s) tys) (s_args s)))):
-  get_arg_list pd vt s tys tms reps1 Hlents1 Hlenvs1 Hall1 =
-  get_arg_list pd vt s tys (map (sub_t tm1 x) tms) reps2 Hlents2 Hlenvs2 Hall2.
+  get_arg_list pd vt s tys tms reps1 (s_params_Nodup s) Hlents1 Hlenvs1 Hall1 =
+  get_arg_list pd vt s tys (map (sub_t tm1 x) tms) reps2 (s_params_Nodup s) Hlents2 Hlenvs2 Hall2.
 Proof.
   apply get_arg_list_ext.
   - rewrite map_length; auto.

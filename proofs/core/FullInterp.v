@@ -251,8 +251,8 @@ funs gamma_valid pd (upd_pf_multi l pf Hallin) f srts a =
 dom_cast _ (funs_cast gamma_valid vt (recfun_in_funsyms (in_mutfuns_sub Hallin fs_in) (fun_in_mutfun f_in)) srts_len) (
   term_rep gamma_valid pd (vt_with_args vt (s_params f) srts)
     (upd_pf_multi l pf Hallin) 
-    (val_with_args _ _ (upd_vv_args pd vt vv (s_params f) srts (eq_sym srts_len)
-    (s_params_Nodup _)) args a)
+    (val_with_args _ _ (upd_vv_args_srts (s_params f) srts (eq_sym srts_len)
+    (s_params_Nodup _) pd vt vv) args a)
     body (f_ret f) (f_body_type gamma_valid (in_mutfuns_sub Hallin fs_in) f_in)
 ).
 Proof.
@@ -348,8 +348,8 @@ fs (fs_in: In (recursive_def fs) l)
 preds gamma_valid pd (upd_pf_multi l pf Hallin) p srts a =
 formula_rep gamma_valid pd (vt_with_args vt (s_params p) srts)
   (upd_pf_multi l pf Hallin) 
-  (val_with_args _ _ (upd_vv_args pd vt vv (s_params p) srts (eq_sym srts_len)
-  (s_params_Nodup _)) args a)
+  (val_with_args _ _ (upd_vv_args_srts (s_params p) srts (eq_sym srts_len)
+    (s_params_Nodup _) pd vt vv) args a)
   body (p_body_type gamma_valid (in_mutfuns_sub Hallin fs_in) p_in).
 Proof.
   generalize dependent (in_mutfuns_sub Hallin fs_in).
@@ -643,8 +643,8 @@ Definition full_interp {gamma}
   dom_cast _ (funs_cast gamma_valid vt (recfun_in_funsyms fs_in (fun_in_mutfun f_in)) srts_len) (
     term_rep gamma_valid pd (vt_with_args vt (s_params f) srts)
       pf
-      (val_with_args _ _ (upd_vv_args pd vt vv (s_params f) srts (eq_sym srts_len)
-      (s_params_Nodup _)) args a)
+      (val_with_args _ _ (upd_vv_args_srts (s_params f) srts (eq_sym srts_len)
+      (s_params_Nodup _) pd vt vv) args a)
       body (f_ret f) (f_body_type gamma_valid fs_in f_in)
     )
 ) /\
@@ -662,8 +662,8 @@ Definition full_interp {gamma}
   preds gamma_valid pd pf p srts a =
   formula_rep gamma_valid pd (vt_with_args vt (s_params p) srts)
     pf
-    (val_with_args _ _ (upd_vv_args pd vt vv (s_params p) srts (eq_sym srts_len)
-    (s_params_Nodup _)) args a)
+    (val_with_args _ _ (upd_vv_args_srts (s_params p) srts (eq_sym srts_len)
+    (s_params_Nodup _) pd vt vv) args a)
     body (p_body_type gamma_valid fs_in p_in)
 ) /\
 (*Inductive predicates part 1: all constructors are true under all 

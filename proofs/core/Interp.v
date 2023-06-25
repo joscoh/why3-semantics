@@ -1,4 +1,5 @@
 Require Export IndTypes.
+Set Bullet Behavior "Strict Subproofs".
 
 (* Definition of Pre-Interpretation and utilities
   related to interpretations and valuations*)
@@ -406,15 +407,20 @@ Proof.
   rewrite srts_len; auto. 
 Qed.
 
-Fixpoint ty_subst' params args (v: vty) : vty :=
-  match v with
-  | vty_int => vty_int
-  | vty_real => vty_real
-  | vty_var x => if in_dec typevar_eq_dec x params then
-    (ty_subst params args) (vty_var x) else vty_var x
-  | vty_cons ts vs =>
-    vty_cons ts (map (ty_subst' params args) vs)
-  end.
+Lemma valid_type_ty_subst': forall s ty vars tys,
+  valid_type s ty ->
+  Forall (valid_type s) tys ->
+  valid_type s (ty_subst' vars tys ty).
+Proof.
+  intros.
+  induction ty; simpl; auto.
+  - destruct (in_dec typevar_eq_dec v vars); auto.
+    apply valid_type_ty_subst; auto.
+  - inversion H; subst. constructor; auto.
+    rewrite map_length; auto.
+    intros x. rewrite in_map_iff. intros [y [Hx Hiny]]; subst.
+    rewrite Forall_forall in H1. apply H1; auto.
+Qed.
 
 (*We need ty_subst' because in var case, v_subst chooses
   a default instead of leaving as is*)
@@ -440,20 +446,84 @@ Proof.
     rewrite Forall_forall in H. apply H. apply nth_In. auto.
     rewrite map_length; auto.
 Qed.
+  
+(*A very important lemma that we need*)
+Lemma v_subst_vt_with_args' params tys (params_len: length params = length tys)
+  (params_nodup: NoDup params) vt (v: vty):
+  v_subst vt (ty_subst' params tys v) =
+  v_subst (vt_with_args vt params (map (v_subst vt) tys)) v.
+Proof.
+  rewrite v_subst_vt_with_args; auto. 2: rewrite map_length; auto.
+  simpl.
+  (*Idea: typevars assigned vt, either now or later*)
+  induction v; simpl; auto.
+  - destruct (in_dec typevar_eq_dec v params); auto.
+    destruct (In_nth _ _ EmptyString i) as [j [Hj Hx]]; subst.
+    apply sort_inj; simpl.
+    unfold ty_subst. simpl.
+    rewrite -> !ty_subst_fun_nth with(s:=s_int); auto;
+    unfold sorts_to_tys;
+    [| rewrite !map_length; auto].
+    rewrite -> !map_nth_inbound with (d2:=s_int);
+    [| rewrite map_length, <- params_len; auto].
+    rewrite -> map_nth_inbound with (d2:=vty_int);
+    [| rewrite <- params_len; auto].
+    simpl.
+    rewrite v_subst_aux_twice; auto.
+    intros. destruct (vt x); auto.
+  - apply sort_inj; simpl. f_equal.
+    rewrite !map_map.
+    apply list_eq_ext'; rewrite !map_length; auto.
+    intros n d Hn.
+    rewrite -> !map_nth_inbound with (d2:=vty_int); auto.
+    rewrite Forall_forall in H.
+    simpl.
+    specialize (H (List.nth n vs vty_int) (ltac:(apply nth_In; auto))).
+    inversion H; auto.
+Qed.
+  
+Definition ty_subst_var params tys (v: vsymbol) : vsymbol :=
+  (fst v, ty_subst' params tys (snd v)).
 
 (*Get new valuation for [vt_with_args]*)
-Definition upd_vv_args pd (vt: val_typevar) (vv: val_vars pd vt)
-  params args:
-  length params = length args ->
-  NoDup params ->
-  val_vars pd (vt_with_args vt params args).
-  unfold val_vars.
-  intros Hlen Hparams. unfold val_vars in vv.
-  intros x. rewrite (v_subst_vt_with_args vt params args); 
-    [| exact Hlen | exact Hparams].
-  (*Is this a hack? Kind of*) apply (vv 
-    (fst x, (ty_subst' params (sorts_to_tys args) (snd x)))).
-Defined.
+
+Definition upd_vv_args params tys params_len params_nodup 
+pd (vt: val_typevar) (vv: val_vars pd vt)
+: val_vars pd (vt_with_args vt params (map (v_subst vt) tys)) :=
+  fun x => 
+  (dom_cast (dom_aux pd) (v_subst_vt_with_args' params tys params_len params_nodup
+    vt (snd x)) 
+    (vv (ty_subst_var params tys x))).
+
+Lemma map_v_subst_sorts vt srts:
+  map (v_subst vt) (sorts_to_tys srts) = srts.
+Proof.
+  unfold sorts_to_tys.
+  apply list_eq_ext'; rewrite !map_length; auto.
+  intros n d Hn.
+  rewrite -> !map_nth_inbound with (d2:=vty_int); auto;
+  [| rewrite map_length; auto].
+  rewrite -> map_nth_inbound with (d2:=s_int); auto.
+  apply sort_inj; simpl.
+  rewrite <- subst_is_sort_eq; auto.
+  f_equal.
+  apply nth_indep. auto.
+  destruct (List.nth n srts s_int); auto.
+Qed.
+
+(*And a version for substituting with sorts instead of vtys*)
+Definition upd_vv_args_srts params srts
+(lengths_eq: length params = length srts)
+(nodup_params: NoDup params)
+pd vt (vv: val_vars pd vt):
+val_vars pd (vt_with_args vt params srts) :=
+fun x =>
+dom_cast (dom_aux pd) 
+  (f_equal (fun y => v_subst (vt_with_args vt params y) (snd x)) 
+    (map_v_subst_sorts vt srts))
+  (upd_vv_args params (sorts_to_tys srts) 
+    (eq_trans lengths_eq (Logic.eq_sym (map_length _ _))) 
+    nodup_params pd vt vv x).
 
 End VTUtil.
 
