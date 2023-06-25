@@ -70,8 +70,18 @@ Ltac simpl_ctx :=
   simpl_sub;
   extra_simpl.
 
+
+Ltac simpl_ty_subst := unfold TySubst.ty_subst_fmla,
+  ty_subst_var, ty_subst', ty_subst; simpl;
+  extra_simpl.
+
+Ltac simpl_mono := unfold mk_mono, TySubst.ty_subst_wf_fmla,
+  TySubst.make_fmla_wf; simpl; simpl_ty_subst;
+  extra_simpl.
+
 Ltac wstart :=
-  try apply soundness; simpl_task; simpl_ctx.
+  try apply soundness; simpl_task; simpl_ctx;
+  try simpl_mono.
 
 (*Intros*)
 
@@ -969,3 +979,8 @@ Proof.
 Qed.
 
 (*TODO: make wexists and wdestruct_ex tactics*)
+(*For theories - shouldn't be here, move prove_fmlas_ty*)
+Ltac prove_axiom_wf :=
+  split_all;
+  [apply /check_context_correct; reflexivity | prove_fmlas_ty |
+    prove_fmla_ty | reflexivity].

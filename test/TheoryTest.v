@@ -50,7 +50,7 @@ Qed.
 
 Lemma assoc_valid: valid_theory assoc.
 Proof.
-  simpl. split; auto. prove_task_wf.
+  simpl. split; auto. prove_axiom_wf.
 Qed.
 
 End Assoc.
@@ -77,7 +77,7 @@ Qed.
 
 Lemma comm_valid: valid_theory comm.
 Proof.
-  simpl. split; auto. prove_task_wf.
+  simpl. split; auto. prove_axiom_wf.
 Qed.
 
 End Comm.
@@ -109,7 +109,7 @@ Qed.
 
 Lemma monoid_valid: valid_theory monoid.
 Proof.
-  simpl; split_all; auto; prove_task_wf.
+  simpl. split; [|split]; auto; prove_axiom_wf.
 Qed.
 
 Lemma monoid_typed: typed_theory monoid.
@@ -180,9 +180,8 @@ Proof. check_theory. Qed.
 
 Lemma group_valid: valid_theory group.
 Proof.
-  simpl; split_all; auto; prove_task_wf.
+  simpl; split; [|split]; auto; prove_axiom_wf.
 Qed.
-
 
 End Group.
 

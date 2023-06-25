@@ -33,6 +33,7 @@ proofs/proofsystem/NatDed.v
 #proofs/proofsystem/Notations.v
 proofs/proofsystem/Tactics.v
 test/TheoryTest.v
+test/PolyTest.v
 #proofs/Util.v
 #proofs/Ty.v
 #proofs/Term.v

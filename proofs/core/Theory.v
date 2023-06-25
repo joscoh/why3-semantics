@@ -1,3 +1,4 @@
+Require Import TySubst.
 Require Export FullInterp.
 (*Why3 Theories*)
 
@@ -896,7 +897,517 @@ Definition tyconst (n: string) : vty :=
 Definition tyconst_s (n: string) : Types.sort :=
   exist _ (tyconst n) Logic.eq_refl.
 
+Definition tyconst_def (n: string) : def :=
+  abs_type (tyconstsym n).
+
+(*TOOD: move*)
+Lemma type_vars_subst_sort params args ty:
+  (forall x, In x (type_vars ty) -> In x params) ->
+  (forall t, In t args -> is_sort t) ->
+  null (type_vars (ty_subst' params args ty)).
+Proof.
+  intros. induction ty; simpl; auto.
+  - simpl in H. specialize (H _ (ltac:(auto))).
+    destruct (in_dec typevar_eq_dec v params); try contradiction.
+    simpl. unfold ty_subst; simpl.
+    destruct (ty_subst_fun_cases params args vty_int v).
+    + apply H0. auto.
+    + rewrite H1. reflexivity.
+  - rewrite null_nil. apply big_union_nil_eq.
+    rewrite Forall_forall in H1.
+    intros. rewrite in_map_iff in H2.
+    destruct H2 as [ty [Hx Hinty]]; subst.
+    rewrite <- null_nil. apply H1; auto.
+    intros. apply H. simpl.
+    simpl_set. exists ty; auto.
+Qed.
+
+Lemma big_union_null_eq {A B: Type} eq_dec (f: B -> list A) (l: list B):
+  (forall x, In x l -> null (f x)) ->
+  null (big_union eq_dec f l).
+Proof.
+  intros.
+  rewrite !null_nil. apply big_union_nil_eq. intros.
+  rewrite <- null_nil; auto.
+Qed.
+
+Lemma union_null_eq {A: Type} (eq_dec: forall x y: A, {x = y} + {x <> y})
+  (l1 l2: list A):
+  null l1 -> null l2 -> null (union eq_dec l1 l2).
+Proof.
+  rewrite !null_nil. intros. subst. reflexivity.
+Qed.
+
+Lemma union_nil_r {A: Type} eq_dec (l1: list A):
+  NoDup l1 ->
+  union eq_dec l1 nil = l1.
+Proof.
+  induction l1; simpl; auto.
+  intros. inversion H; subst.
+  rewrite IHl1; auto.
+  destruct (in_dec eq_dec a l1); auto; contradiction.
+Qed.
+
+(*[pat_type_vars] is not useful for induction.
+  We give an alternate version. We don't necessarily
+  have equality unless elements are distinct.
+  But we just prove equal elements*)
+Lemma pat_type_vars_rewrite (p: pattern):
+  forall x, In x (pat_type_vars p) <-> In x
+  match p with
+  | Pvar v => type_vars (snd v)
+  | Pconstr f tys ps => big_union typevar_eq_dec pat_type_vars ps
+  | Por p1 p2 => union typevar_eq_dec (pat_type_vars p1) (pat_type_vars p2)
+  | Pwild => nil
+  | Pbind p x => union typevar_eq_dec (pat_type_vars p) (type_vars (snd x))
+  end.
+Proof.
+  intros x.
+  destruct p; try reflexivity.
+  - unfold pat_type_vars; simpl.
+    rewrite union_nil_r; try reflexivity.
+    apply type_vars_unique.
+  - unfold pat_type_vars; simpl.
+    induction l0; simpl; try reflexivity.
+    revert IHl0.
+    simpl_set; intros; split; intros.
+    + destruct H as [y [Hiny Hinx]].
+      rewrite in_map_iff in Hiny.
+      destruct Hiny as [v [Hy Hinv]]; subst.
+      simpl_set.
+      destruct Hinv; [left | right].
+      * exists (snd v). split; auto.
+        rewrite in_map_iff. exists v; auto.
+      * simpl_set. destruct H as [p [Hinp Hinv]].
+        exists p. split; auto. simpl_set. exists (snd v). 
+        split; auto. rewrite in_map_iff; exists v; auto.
+    + destruct H.
+      * destruct H as [y [Hiny Hinx]]. 
+        rewrite in_map_iff in Hiny.
+        destruct Hiny as [v [Hy Hinv]]; subst.
+        exists (snd v). split; auto.
+        rewrite in_map_iff. exists v; split; auto.
+        simpl_set. auto.
+      * destruct H as [p [Hinp Hinx]].
+        simpl_set. destruct Hinx as [y [Hiny Hinx]].
+        rewrite in_map_iff in Hiny. 
+        destruct Hiny as [v [Hy Hinv]]; subst.
+        exists (snd v). split; auto.
+        rewrite in_map_iff. exists v; split; auto.
+        simpl_set. right.
+        exists p; auto.
+  - unfold pat_type_vars; simpl; split; intros.
+    + simpl_set. destruct H as [y [Hiny Hinx]].
+      rewrite in_map_iff in Hiny.
+      destruct Hiny as [v [Hy Hinv]]; subst.
+      simpl_set.
+      destruct Hinv; [left | right]; exists (snd v);
+      split; auto; rewrite in_map_iff; exists v; auto.
+    + simpl_set. destruct H as [H | H];
+      simpl_set; destruct H as [y [Hiny Hinx]];
+      rewrite in_map_iff in Hiny; destruct Hiny as
+      [v [Hy Hinv]]; subst; exists (snd v);
+      split; auto; rewrite in_map_iff; exists v; simpl_set; auto.
+  - unfold pat_type_vars; simpl; split; simpl_set; intros.
+    + destruct H as [y [Hiny Hinx]].
+      rewrite in_map_iff in Hiny. destruct Hiny as [v1 [Hy Hinv1]]; subst.
+      simpl_set. simpl in Hinv1.
+      destruct_all; try contradiction; subst; auto.
+      left. exists (snd v1). split; auto. rewrite in_map_iff.
+      exists v1; auto.
+    + destruct H.
+      * destruct H as [y [Hiny Hinx]].
+        rewrite in_map_iff in Hiny.
+        destruct Hiny as [v1 [Hy Hinv1 ]]; subst.
+        exists (snd v1); split; auto.
+        rewrite in_map_iff. exists v1; simpl_set; auto.
+      * exists (snd v). split; auto. 
+        rewrite in_map_iff. exists v; simpl_set; auto.
+Qed.
+
+(*Two lists with the same elements have equal null*)
+Lemma same_elts_null {A: Type} (l1 l2: list A):
+  (forall x, In x l1 <-> In x l2) ->
+  null l1 = null l2.
+Proof.
+  intros. destruct l1; destruct l2; simpl in *; auto; exfalso;
+  apply (H a); auto.
+Qed.
+
+(*And a version for null*)
+Lemma pat_type_vars_null p:
+  null (pat_type_vars p) =
+  null (match p with
+| Pvar v => type_vars (snd v)
+| Pconstr f tys ps => big_union typevar_eq_dec pat_type_vars ps
+| Por p1 p2 => union typevar_eq_dec (pat_type_vars p1) (pat_type_vars p2)
+| Pwild => nil
+| Pbind p x => union typevar_eq_dec (pat_type_vars p) (type_vars (snd x))
+end).
+Proof.
+  apply same_elts_null, pat_type_vars_rewrite.
+Qed.
+
+Lemma ty_subst_srts_vars_p params args p
+  (Hallin: forall x, In x (pat_type_vars p) -> In x params)
+  (Hsrts: forall t, In t args -> is_sort t):
+  null (pat_type_vars (ty_subst_p params args p)).
+Proof.
+  induction p; simpl; auto.
+  - rewrite pat_type_vars_null. 
+    apply type_vars_subst_sort; auto.
+    intros. apply Hallin.
+    apply pat_type_vars_rewrite. auto.
+  - rewrite pat_type_vars_null.
+    apply big_union_null_eq.
+    intros p.
+    rewrite in_map_iff.
+    intros [p1 [Hp Hinp1]]; subst.
+    rewrite Forall_forall in H.
+    apply H; auto.
+    intros.
+    apply Hallin.
+    apply pat_type_vars_rewrite. simpl_set.
+    exists p1; auto.
+  - rewrite pat_type_vars_null.
+    apply union_null_eq; 
+    [apply IHp1 | apply IHp2]; intros; apply Hallin, pat_type_vars_rewrite;
+    simpl_set; auto.
+  - rewrite pat_type_vars_null.
+    apply union_null_eq.
+    + apply IHp; intros; apply Hallin, pat_type_vars_rewrite;
+      simpl_set; auto.
+    + apply type_vars_subst_sort; auto; intros; apply Hallin,
+      pat_type_vars_rewrite; simpl_set; auto.
+Qed.
+
+Lemma tm_type_vars_tmatch t ty ps:
+  tm_type_vars (Tmatch t ty ps) =
+  union typevar_eq_dec 
+    (union typevar_eq_dec (tm_type_vars t)
+      (big_union typevar_eq_dec pat_type_vars (map fst ps)))
+    (union typevar_eq_dec (big_union typevar_eq_dec (fun x => tm_type_vars (snd x)) ps)
+      (type_vars ty)).
+Proof.
+  simpl.
+  f_equal.
+  f_equal. induction ps; simpl; auto.
+  destruct a; simpl. f_equal. auto.
+Qed.
+
+Lemma tm_type_vars_fmatch t ty ps:
+  fmla_type_vars (Fmatch t ty ps) =
+  union typevar_eq_dec 
+    (union typevar_eq_dec (tm_type_vars t)
+      (big_union typevar_eq_dec pat_type_vars (map fst ps)))
+    (union typevar_eq_dec (big_union typevar_eq_dec (fun x => fmla_type_vars (snd x)) ps)
+      (type_vars ty)).
+Proof.
+  simpl.
+  f_equal.
+  f_equal. induction ps; simpl; auto.
+  destruct a; simpl. f_equal. auto.
+Qed.
+
+(*TODO: move to ty_subst
+  Could prove stronger theorem but this is ok*)
+Lemma ty_subst_srts_vars params args
+  (Hsrts: forall t, In t args -> is_sort t) t f:
+  (forall (Hallin: forall x, In x (tm_type_vars t) -> In x params),
+    null (tm_type_vars (ty_subst_tm params args t))) /\
+  (forall (Hallin: forall x, In x (fmla_type_vars f) -> In x params),
+    null (fmla_type_vars (ty_subst_fmla params args f))).
+Proof.
+  revert t f; apply term_formula_ind; intros; auto.
+  - apply type_vars_subst_sort; auto.
+  - cbn. apply union_null_eq.
+    + apply big_union_null_eq.
+      unfold ty_subst_list'.
+      intros ty. rewrite in_map_iff.
+      intros [ty' [Hty Hinty']]; subst.
+      apply type_vars_subst_sort; auto.
+      intros. apply Hallin. simpl. simpl_set.
+      left. exists ty'; auto.
+    + apply big_union_null_eq.
+      intros tm. rewrite in_map_iff.
+      intros [tm1 [Htm Hintm1]]; subst.
+      rewrite Forall_forall in H.
+      apply H; auto.
+      intros.
+      apply Hallin; simpl; simpl_set.
+      right. exists tm1; auto.
+  - apply union_null_eq; [apply union_null_eq |];
+    [apply H | apply H0 | apply type_vars_subst_sort]; auto;
+    intros; apply Hallin; simpl; simpl_set; auto.
+  - apply union_null_eq; [| apply union_null_eq];
+    [apply H | apply H0 | apply H1]; intros;
+    apply Hallin; simpl; simpl_set; auto.
+  - setoid_rewrite tm_type_vars_tmatch in Hallin.
+    rewrite tm_type_vars_tmatch. 
+    apply union_null_eq.
+    + apply union_null_eq.
+      * apply H; auto; intros; apply Hallin; intros; simpl_set; auto.
+      * apply big_union_null_eq.
+        intros p.
+        rewrite in_map_iff.
+        intros [p1 [Hp1 Hinp1]]; subst.
+        rewrite in_map_iff in Hinp1.
+        destruct Hinp1 as [pt [Hp1 Hinpt]]; subst; simpl.
+        apply ty_subst_srts_vars_p; auto.
+        intros; apply Hallin; simpl_set; left.
+        right. exists (fst pt); split; auto.
+        rewrite in_map_iff. exists pt; auto.
+    + apply union_null_eq.
+      * apply big_union_null_eq.
+        intros pt.
+        rewrite in_map_iff.
+        intros [pt1 [Hpt Inpt1]]; subst; simpl.
+        rewrite -> Forall_map, Forall_forall in H0.
+        apply H0; auto.
+        intros. apply Hallin; simpl_set.
+        right. left. exists pt1. auto.
+      * apply type_vars_subst_sort; auto.
+        intros. apply Hallin; simpl_set; auto.
+  - cbn in *.
+    apply union_null_eq.
+    + apply H. intros; apply Hallin; simpl_set; auto.
+    + apply type_vars_subst_sort; auto; intros; apply Hallin;
+      simpl_set; auto.
+  - cbn. apply union_null_eq.
+    + apply big_union_null_eq.
+      unfold ty_subst_list'.
+      intros ty. rewrite in_map_iff.
+      intros [ty' [Hty Hinty']]; subst.
+      apply type_vars_subst_sort; auto.
+      intros. apply Hallin. simpl. simpl_set.
+      left. exists ty'; auto.
+    + apply big_union_null_eq.
+      intros tm. rewrite in_map_iff.
+      intros [tm1 [Htm Hintm1]]; subst.
+      rewrite Forall_forall in H.
+      apply H; auto.
+      intros.
+      apply Hallin; simpl; simpl_set.
+      right. exists tm1; auto.
+  - apply union_null_eq.
+    + apply type_vars_subst_sort; auto;
+      intros; apply Hallin; simpl; simpl_set; auto.
+    + apply H; intros; apply Hallin; simpl; simpl_set; auto.
+  - apply union_null_eq; [| apply union_null_eq];
+    [apply type_vars_subst_sort | apply H | apply H0];
+    auto; intros; apply Hallin; simpl; simpl_set; auto.
+  - apply union_null_eq; [apply H | apply H0]; auto;
+    intros; apply Hallin; simpl; simpl_set; auto.
+  - apply union_null_eq; [apply union_null_eq |];
+    [apply H | apply H0 | apply type_vars_subst_sort];
+    auto; intros; apply Hallin; simpl; simpl_set; auto.
+  - apply union_null_eq; [|apply union_null_eq];
+    [apply H | apply H0 | apply H1]; intros;
+    apply Hallin; simpl; simpl_set; auto.
+  - setoid_rewrite tm_type_vars_fmatch in Hallin.
+    rewrite tm_type_vars_fmatch. 
+    apply union_null_eq.
+    + apply union_null_eq.
+      * apply H; auto; intros; apply Hallin; intros; simpl_set; auto.
+      * apply big_union_null_eq.
+        intros p.
+        rewrite in_map_iff.
+        intros [p1 [Hp1 Hinp1]]; subst.
+        rewrite in_map_iff in Hinp1.
+        destruct Hinp1 as [pt [Hp1 Hinpt]]; subst; simpl.
+        apply ty_subst_srts_vars_p; auto.
+        intros; apply Hallin; simpl_set; left.
+        right. exists (fst pt); split; auto.
+        rewrite in_map_iff. exists pt; auto.
+    + apply union_null_eq.
+      * apply big_union_null_eq.
+        intros pt.
+        rewrite in_map_iff.
+        intros [pt1 [Hpt Inpt1]]; subst; simpl.
+        rewrite -> Forall_map, Forall_forall in H0.
+        apply H0; auto.
+        intros. apply Hallin; simpl_set.
+        right. left. exists pt1. auto.
+      * apply type_vars_subst_sort; auto.
+        intros. apply Hallin; simpl_set; auto.
+Qed.
+
+Definition ty_subst_srts_vars_t params args Hsrts t :=
+  proj_tm (ty_subst_srts_vars params args Hsrts) t.
+Definition ty_subst_srts_vars_f params args Hsrts f :=
+  proj_fmla (ty_subst_srts_vars params args Hsrts) f.
+
+  (*TODO: move*)
+Require Import Alpha.
+
+
+(*Don't need induction here, from previous lemmas*)
+Lemma alpha_equiv_p_snd p1 p2
+(Heq: alpha_equiv_p (combine (pat_fv p1) (pat_fv p2)) p1 p2):
+map snd (pat_fv p1) = map snd (pat_fv p2).
+Proof.
+  rewrite (alpha_equiv_p_fv_full _ _ Heq).
+  apply list_eq_ext'; rewrite !map_length; auto.
+  intros n d Hn.
+  rewrite -> !map_map, !map_nth_inbound with (d2:=vs_d); auto.
+  rewrite mk_fun_vars_eq_full; auto.
+  apply nth_In; auto.
+Qed.
+
+Lemma alpha_equiv_p_type_vars p1 p2
+  (Heq: alpha_equiv_p (combine (pat_fv p1) (pat_fv p2)) p1 p2):
+  pat_type_vars p1 = pat_type_vars p2.
+Proof.
+  unfold pat_type_vars. f_equal. apply alpha_equiv_p_snd; auto.
+Qed.
+
+
+Lemma alpha_equiv_type_vars t1 f1:
+  (forall t2 vars (Hvars: forall x y, In (x, y) vars -> snd x = snd y) 
+    (Heq: alpha_equiv_t vars t1 t2),
+    tm_type_vars t1 = tm_type_vars t2) /\
+  (forall f2 vars (Hvars: forall x y, In (x, y) vars -> snd x = snd y) 
+    (Heq: alpha_equiv_f vars f1 f2),
+    fmla_type_vars f1 = fmla_type_vars f2).
+Proof.
+  revert t1 f1; apply term_formula_ind; simpl; intros.
+  - alpha_case t2 Heq. auto.
+  - alpha_case t2 Heq. rewrite eq_var_eq in Heq.
+    destruct (in_firstb vsymbol_eq_dec vsymbol_eq_dec (v, v0) vars) eqn : Hin;
+    simpl in Heq.
+    + apply in_firstb_in in Hin.
+      apply Hvars in Hin. rewrite Hin. reflexivity.
+    + bool_hyps. repeat simpl_sumbool.
+  - alpha_case t2 Heq. bool_hyps. repeat simpl_sumbool.
+    f_equal. nested_ind_case.
+    rewrite all2_cons in H1. bool_hyps.
+    rewrite -> Hp with(t2:=t) (vars:=vars); auto. f_equal. auto.
+  - alpha_case t2 Heq. bool_hyps. repeat simpl_sumbool.
+    rewrite -> e, (H t2_1 vars), (H0 t2_2 ((v, v0) :: vars)); auto;
+    simpl; intros; destruct_all; auto. inversion H1; subst; auto. 
+  - alpha_case t0 Heq. bool_hyps.
+    rewrite -> (H f0 vars), (H0 t0_1 vars), (H1 t0_2 vars); auto.
+  - alpha_case t2 Heq. bool_hyps. repeat simpl_sumbool.
+    rewrite (H t2 vars); auto.
+    f_equal.
+    + f_equal. 
+      nested_ind_case.
+      rewrite all2_cons in H2.
+      bool_hyps.
+      rewrite (alpha_equiv_p_type_vars _ _ H2). f_equal. auto.
+    + f_equal. nested_ind_case. destruct a; destruct p.
+      rewrite all2_cons in H2.
+      bool_hyps.
+      rewrite (Hp t0 (add_vals (pat_fv (p0, t).1) (pat_fv (p, t0).1) vars));
+      auto. f_equal; auto.
+      unfold add_vals.
+      simpl. intros x y.
+      rewrite in_app_iff; intros [Hinxy | Hinxy]; auto.
+      rewrite in_combine_iff in Hinxy;
+      [| apply alpha_equiv_p_fv_len_full; auto].
+      destruct Hinxy as [i [Hi Hxy]].
+      specialize (Hxy vs_d vs_d); inversion Hxy; subst; auto.
+      rewrite (alpha_equiv_p_fv_full _ _ H2).
+      simpl. rewrite -> map_nth_inbound with (d2:=vs_d); auto.
+      erewrite <- mk_fun_vars_eq_full; auto. apply nth_In; auto.
+  - alpha_case t2 Heq. bool_hyps; repeat simpl_sumbool.
+    rewrite -> e, (H f0 ((v, v0) :: vars)); auto; simpl; intros;
+    destruct_all; auto. inversion H0; subst; auto.
+  - alpha_case f2 Heq. bool_hyps. repeat simpl_sumbool.
+    f_equal. nested_ind_case.
+    rewrite all2_cons in H1. bool_hyps.
+    rewrite -> Hp with(t2:=t) (vars:=vars); auto. f_equal. auto.
+  - alpha_case f2 Heq. bool_hyps; repeat simpl_sumbool.
+    rewrite -> e, (H f2 ((v, v0) :: vars)); auto; simpl; intros;
+    destruct_all; auto. inversion H0; subst; auto.
+  - alpha_case f2 Heq. bool_hyps; repeat simpl_sumbool.
+    rewrite -> (H t vars), (H0 t0 vars); auto.
+  - alpha_case f0 Heq. bool_hyps.
+    rewrite -> (H f0_1 vars), (H0 f0_2 vars); auto.
+  - alpha_case f2 Heq. apply (H _ vars); auto.
+  - alpha_case f2 Heq. auto.
+  - alpha_case f2 Heq; auto.
+  - alpha_case f2 Heq. bool_hyps; repeat simpl_sumbool.
+    rewrite -> e, (H t vars), (H0 f2 ((v, v0) :: vars)); auto;
+    simpl; intros; destruct_all; auto. inversion H1; subst; auto.
+  - alpha_case f0 Heq. bool_hyps.
+    rewrite -> (H f0_1 vars), (H0 f0_2 vars), (H1 f0_3 vars); auto.
+  - alpha_case f2 Heq. bool_hyps. repeat simpl_sumbool.
+    rewrite (H t vars); auto.
+    f_equal.
+    + f_equal. 
+      nested_ind_case.
+      rewrite all2_cons in H2.
+      bool_hyps.
+      rewrite (alpha_equiv_p_type_vars _ _ H2). f_equal. auto.
+    + f_equal. nested_ind_case. destruct a; destruct p.
+      rewrite all2_cons in H2.
+      bool_hyps.
+      rewrite (Hp f0 (add_vals (pat_fv (p0, f).1) (pat_fv (p, f0).1) vars));
+      auto. f_equal; auto.
+      unfold add_vals.
+      simpl. intros x y.
+      rewrite in_app_iff; intros [Hinxy | Hinxy]; auto.
+      rewrite in_combine_iff in Hinxy;
+      [| apply alpha_equiv_p_fv_len_full; auto].
+      destruct Hinxy as [i [Hi Hxy]].
+      specialize (Hxy vs_d vs_d); inversion Hxy; subst; auto.
+      rewrite (alpha_equiv_p_fv_full _ _ H2).
+      simpl. rewrite -> map_nth_inbound with (d2:=vs_d); auto.
+      erewrite <- mk_fun_vars_eq_full; auto. apply nth_In; auto.
+Qed.
+
+Definition alpha_equiv_t_type_vars t1 := proj_tm alpha_equiv_type_vars t1.
+Definition alpha_equiv_f_type_vars f1 := proj_fmla 
+  alpha_equiv_type_vars f1.
+
+Corollary a_equiv_t_type_vars t1 t2:
+  a_equiv_t t1 t2 ->
+  tm_type_vars t1 = tm_type_vars t2.
+Proof.
+  intros. apply alpha_equiv_t_type_vars with (vars:=nil); simpl; auto;
+  intros; contradiction.
+Qed.
+
+Corollary a_equiv_f_type_vars f1 f2:
+  a_equiv_f f1 f2 ->
+  fmla_type_vars f1 = fmla_type_vars f2.
+Proof.
+  intros. apply alpha_equiv_f_type_vars with (vars:=nil); simpl; auto;
+  intros; contradiction.
+Qed.
+
+Lemma make_fmla_wf_type_vars f:
+  fmla_type_vars (make_fmla_wf f) = fmla_type_vars f.
+Proof.
+  unfold make_fmla_wf.
+  destruct ( uniq (map fst (fmla_bnd f)) && disjb (map fst (fmla_fv f)) (map fst (fmla_bnd f)));
+  auto.
+  symmetry.
+  apply a_equiv_f_type_vars.
+  apply a_convert_all_f_equiv.
+Qed.
+
 (*And now, finally, we can deal with polymorphism*)
+(*Get the type variables, substitute each with a fresh type constant*)
+Definition mk_mono (names: list string) (f: formula) : formula :=
+  if null (fmla_type_vars f) then f else
+  ty_subst_wf_fmla (fmla_type_vars f) (map tyconst names) f.
+
+Lemma mk_mono_mono (names: list string) f:
+  length names = length (fmla_type_vars f) ->
+  closed_formula f ->
+  mono (mk_mono names f).
+Proof.
+  intros.
+  unfold mono, mk_mono.
+  destruct (null (fmla_type_vars f)) eqn : Hvars; auto.
+  apply ty_subst_srts_vars_f.
+  - intros ty. rewrite in_map_iff. intros [n [Hty Hinn]]; subst.
+    reflexivity.
+  - intros x.
+    rewrite make_fmla_wf_type_vars; auto.
+Qed.
 
 (*TODO: 
   X push this fv stuff through terms and fmlas
@@ -917,12 +1428,25 @@ Fixpoint valid_theory (t: theory) : Prop :=
   | (tprop k _ f :: tl) =>
     match k with 
     | Paxiom => (*we only require that the task is wf, not
-      valid*) task_wf (mk_task (theory_ctx_int tl) 
-        (theory_axioms_int tl) f) 
+      valid*)
+      (*For axioms, we do not need to monomorphize; we just
+        need everything well-typed*)
+      (let gamma := theory_ctx_int tl in
+      let delta := theory_axioms_int tl in
+      valid_context gamma /\
+      Forall (formula_typed gamma) (List.map snd delta) /\
+      formula_typed gamma f /\
+      closed_formula f )
       /\ valid_theory tl
     | _ =>
-      task_valid (mk_task (theory_ctx_int tl)
-        (theory_axioms_int tl) f) /\
+      (*If the formula is already monomorphic, dont do anything*)
+      (if null (fmla_type_vars f) then
+      task_valid (mk_task (theory_ctx_int tl) (theory_axioms_int tl)
+      f) else
+      (*Use exists so that the user can choose good names*)
+      exists (names: list string),
+      task_valid (mk_task (map tyconst_def names ++ theory_ctx_int tl)
+        (theory_axioms_int tl) (mk_mono names f))) /\
       valid_theory tl
     end
   | _ :: tl => valid_theory tl
