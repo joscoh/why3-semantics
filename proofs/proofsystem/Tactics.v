@@ -71,7 +71,8 @@ Ltac simpl_ctx :=
   extra_simpl.
 
 
-Ltac simpl_ty_subst := unfold TySubst.ty_subst_fmla,
+Ltac simpl_ty_subst := unfold TySubst.ty_subst_wf_fmla, 
+  TySubst.ty_subst_fmla,
   ty_subst_var, ty_subst', ty_subst; simpl;
   extra_simpl.
 
@@ -985,54 +986,13 @@ Ltac prove_axiom_wf :=
   [apply /check_context_correct; reflexivity | prove_fmlas_ty |
     prove_fmla_ty | reflexivity].
 
-Require Import TySubst.
-
 (*Specialize a polymorphic hypothesis*)
 
 (*[derives_replace_hyp] is not strong enough: what if f_new is
   not monomorphic?*)
 
-(*An alternate version of derives (see)*)
-Definition soundif_trans (P: task -> Prop) (T: trans) : Prop :=
-  forall (t: task),
-    P t -> task_wf t -> (forall tr: task, In tr (T t) -> task_valid tr) ->
-    task_valid t.
-
-Inductive derives_alt : task -> Prop :=
-  | D_transif : forall (tr: trans) (t: task) (l: seq task)
-    (P: task -> Prop),
-    P t ->
-    task_wf t -> 
-    soundif_trans P tr ->
-    tr t = l -> (forall x: task, In x l -> derives_alt x) -> derives_alt t.
-
-
-Lemma soundif_trans_true (tr: trans):
-  soundif_trans (fun _ => True) tr <-> sound_trans tr.
-Proof.
-  unfold sound_trans, soundif_trans. split; intros; auto.
-Qed. 
-
-(*Our original notion is stronger*)
-Lemma derives_to_alt: forall t,
-  derives t -> derives_alt t.
-Proof.
-  intros. induction H; subst.
-  eapply D_transif. apply I. auto.
-  rewrite soundif_trans_true. apply H0.
-  reflexivity. auto.
-Qed.
-
-(*But this is still sound*)
-Lemma sound_alt (t: task):
-  derives_alt t ->
-  task_valid t.
-Proof.
-  intros Hd.
-  induction Hd; subst.
-  apply (H1 _ H); auto.
-Qed.
-
+(*An alternate way to prove [replace_hyp] where the
+  formula that we replace is not necessarily monomorphic*)
 Definition replace_hyp_trans name f_new : trans :=
   fun t => [mk_task (task_gamma t) 
     (replace_hyp (task_delta t) name f_new) (task_goal t)].
@@ -1090,7 +1050,6 @@ Proof.
   erewrite satisfies_irrel. apply Hval.
 Qed.
 
-
 Lemma derives_replace_hyp' gamma delta goal name f_new:
   (forall (gamma_valid: valid_context gamma) 
     (Htyf: formula_typed gamma f_new)
@@ -1098,8 +1057,8 @@ Lemma derives_replace_hyp' gamma delta goal name f_new:
     log_conseq_gen gamma_valid (map snd delta) f_new Htyf Hallty) ->
   formula_typed gamma f_new ->
   Forall (formula_typed gamma) (map snd delta) ->
-  derives_alt (gamma, replace_hyp delta name f_new, goal) ->
-  derives_alt (gamma, delta, goal).
+  derives (gamma, replace_hyp delta name f_new, goal) ->
+  derives (gamma, delta, goal).
 Proof.
   intros. eapply D_transif.
   3: exact (replace_hyp_trans_soundif name f_new).
@@ -1109,26 +1068,27 @@ Proof.
     unfold replace_hyp_trans; simpl. intros x [<- | []]; auto.
   }
   inversion H2; subst.
-  destruct H4; subst; simpl_task.
+  destruct H3; subst; simpl_task.
   constructor; auto.
 Qed.
 
+(*And so we can specialize a hypothesis with a given map*)
+Require Import TySubst.
+Definition vty_map : Set := list (typevar * vty).
 Lemma D_specialize_hyp gamma delta goal name (v: vty_map) f:
   NoDup (map fst v) ->
   Forall (valid_type gamma) (map snd v) ->
-  sublist (fmla_type_vars f) (map fst v) ->
-  Forall is_sort (map snd v) ->
   find_hyp delta name = Some f ->
   closed_formula f ->
   Forall (formula_typed gamma) (map snd delta) ->
-  derives_alt (gamma, 
+  derives (gamma, 
     replace_hyp delta name (ty_subst_wf_fmla (map fst v) (map snd v) f),
     goal) ->
-  derives_alt (gamma, delta, goal).
+  derives (gamma, delta, goal).
 Proof.
-  intros Hnodup Hvalty Hvars Hsorts Hhyp Hclosed Hallty Hd.
+  intros Hnodup Hvalty Hhyp Hclosed Hallty Hd.
   assert (task_wf (gamma, delta, goal)). {
-    inversion Hd; subst. destruct H0; simpl_task.
+    inversion Hd; subst. destruct H; simpl_task.
     constructor; auto.
   }
   assert (Hwfvar: NoDup (List.map fst (fmla_fv f))). {
@@ -1161,3 +1121,25 @@ Proof.
     Unshelve. all: auto. rewrite !map_length; auto.
   - apply ty_subst_wf_fmla_typed; auto.
 Qed.
+
+(*And then we give a tactic for this*)
+From mathcomp Require Import all_ssreflect.
+Require Import Typechecker. (*not great*)
+Definition check_valid_tys gamma (l: list vty) : bool :=
+  all (typecheck_type gamma) l.
+
+Lemma check_valid_tysP gamma l:
+  reflect (Forall (valid_type gamma) l) (check_valid_tys gamma l).
+Proof.
+  rewrite /check_valid_tys.
+  apply forallb_ForallP => x _.
+  apply typecheck_type_correct.
+Qed.
+
+Ltac wspecialize_ty n m :=
+  eapply D_specialize_hyp with(name:=n)(v:=m);
+  [apply /Typechecker.uniqP; reflexivity |
+    apply /check_valid_tysP; reflexivity |
+    reflexivity |
+    reflexivity |
+    prove_fmlas_ty | ]; simpl_ty_subst; extra_simpl.
