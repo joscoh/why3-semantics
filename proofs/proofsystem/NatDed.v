@@ -3033,5 +3033,275 @@ Proof.
     intros x [<- | [<- | []]]; auto.
 Qed.
 
+(*Polymorphism*)
+
+Require Import TySubst.
+
+(*Specialization for types (instantite polymoprhic type
+  arguments with concrete types)*)
+Definition vty_map : Set := list (typevar * vty).
+Definition specialize_ty_trans (f: formula) (v: vty_map) : trans :=
+  fun t =>
+  (*Awkward because we go in the reverse direction*)
+  if formula_eq_dec (task_goal t)
+    (ty_subst_wf_fmla (map fst v) (map snd v) f) &&
+    (*Should be true but annoying to prove*)
+    closed_formula f &&
+    (*same*)
+    typecheck_formula (task_gamma t) f &&
+    (*And make sure the map is OK*)
+    forallb (typecheck_type (task_gamma t)) (map snd v) then
+  [task_with_goal t f] else [t].
+
+Lemma specialize_ty_trans_sound: forall f v,
+  NoDup (map fst v) ->
+  sound_trans (specialize_ty_trans f v).
+Proof.
+  intros f v Hn. unfold sound_trans, specialize_ty_trans;
+  intros.
+  destruct t as [[gamma delta] g]; simpl_task.
+  destruct (formula_eq_dec g (ty_subst_wf_fmla (map fst v) (map snd v) f));
+  simpl in H; try solve[apply H; auto].
+  destruct (closed_formula f) eqn : Hclosed;
+  simpl in H; try solve[apply H; auto].
+  destruct (typecheck_formula_correct gamma f);
+  simpl in H; try solve[apply H; auto].
+  destruct (forallb (typecheck_type gamma) (map snd v)) eqn : Hall;
+  simpl in H; try solve[apply H; auto].
+  specialize (H _ (ltac:(left; auto))).
+  subst.
+  destruct H as [Hwf Hval].
+  simpl_task. constructor; auto.
+  simpl_task. intros.
+  specialize (Hval gamma_valid Hwf).
+  unfold log_conseq in *.
+  intros.
+  specialize (Hval pd pf pf_full).
+  prove_hyp Hval.
+  { intros d Hd. erewrite satisfies_irrel. apply (H d Hd). }
+  clear H.
+  unfold satisfies in *.
+  intros.
+  (*Now we use type sub result*)
+  erewrite ty_subst_wf_fmla_rep; auto.
+  - rewrite forallb_forall in Hall.
+    rewrite Forall_forall.
+    intros. specialize (Hall _ H).
+    destruct (typecheck_type_correct gamma x); auto; discriminate.
+  - (*because f is closed, everything is OK with variable names*)
+    unfold closed_formula in Hclosed.
+    rewrite fold_is_true, null_nil in Hclosed.
+    rewrite Hclosed. constructor.
+    Unshelve. 
+    rewrite !map_length; auto. auto.
+Qed.
+
+(*TODO: MOVE*)
+
+(*We only need this direction, though the other direction
+  is simpler (TODO: prove?)*)
+Lemma ty_subst_tf_vars params args x ty t f:
+  (In (x, ty) (tm_fv (ty_subst_tm params args t)) ->
+    exists ty', In (x, ty') (tm_fv t) /\
+    ty = ty_subst' params args ty') /\
+  (In (x, ty) (fmla_fv (ty_subst_fmla params args f)) ->
+    exists ty', In (x, ty') (fmla_fv f) /\
+    ty = ty_subst' params args ty').
+Proof.
+  revert t f; apply term_formula_ind; simpl; intros; try contradiction.
+  - destruct H; try contradiction.
+    unfold ty_subst_var in H; inversion H; subst.
+    exists (snd v). split; auto. destruct v; auto.
+  - simpl_set. destruct H0 as [t [Hint Hinx]].
+    rewrite in_map_iff in Hint.
+    destruct Hint as [t1 [Ht Hint1]]; subst.
+    rewrite Forall_forall in H.
+    specialize (H _ Hint1 Hinx); clear Hinx.
+    destruct H as [ty' [Hinty' Hty]]; subst.
+    exists ty'. split; auto. simpl_set.
+    exists t1; auto.
+  - simpl_set. destruct H1.
+    + apply H in H1.
+      destruct H1 as [ty' [Hinty' Hty]]; subst.
+      exists ty'. split; auto. simpl_set; auto.
+    + simpl_set.
+      destruct H1.
+      apply H0 in H1.
+      destruct H1 as [ty' [Hinty' Hty]]; subst.
+      exists ty'. split; auto. simpl_set. right.
+      split; auto.
+      intro C; subst. apply H2. reflexivity.
+  - repeat (simpl_set; destruct H2);
+    [apply H in H2 | apply H0 in H2 | apply H1 in H2];
+    destruct H2 as [ty1 [Hinty1 Hty]]; subst;
+    exists ty1; simpl_set; auto.
+  - simpl_set. destruct H1.
+    + apply H in H1. destruct H1 as [ty1 [Hinty1 Hty]]; subst.
+      exists ty1. simpl_set. auto.
+    + simpl_set. destruct H1 as [pt [Hinpt Hinx]].
+      rewrite in_map_iff in Hinpt.
+      destruct Hinpt as [pt1 [Hpt Hinpt1]]; subst.
+      simpl_set.
+      destruct Hinx as [Hinfv Hnotinpat].
+      rewrite Forall_map, Forall_forall in H0.
+      specialize (H0 _ Hinpt1 Hinfv); clear Hinfv.
+      destruct H0 as [ty1 [Hty1 Hty]]; subst.
+      exists ty1. simpl_set. split; auto.
+      right. exists pt1. split; auto.
+      simpl_set. split; auto.
+      intro Hc.
+      apply Hnotinpat. simpl.
+      rewrite ty_subst_p_fv.
+      rewrite in_map_iff.
+      exists (x, ty1). split; auto.
+  - simpl_set. destruct H0.
+    apply H in H0. destruct H0 as [ty1 [Hinty1 Hty]]; subst.
+    exists ty1; split; auto.
+    simpl_set. split; auto. intro C; subst; auto.
+  - simpl_set. destruct H0 as [t [Hint Hinx]].
+    rewrite in_map_iff in Hint.
+    destruct Hint as [t1 [Ht Hint1]]; subst.
+    rewrite Forall_forall in H.
+    specialize (H _ Hint1 Hinx); clear Hinx.
+    destruct H as [ty' [Hinty' Hty]]; subst.
+    exists ty'. split; auto. simpl_set.
+    exists t1; auto.
+  - simpl_set. destruct H0.
+    apply H in H0. destruct H0 as [ty1 [Hinty1 Hty]]; subst.
+    exists ty1; split; auto.
+    simpl_set. split; auto. intro C; subst; auto.
+  - simpl_set; destruct H1; [apply H in H1 | apply H0 in H1];
+    destruct H1 as [ty1 [Hty1 Hty]]; subst;
+    exists ty1; simpl_set; auto.
+  - simpl_set; destruct H1; [apply H in H1 | apply H0 in H1];
+    destruct H1 as [ty1 [Hty1 Hty]]; subst;
+    exists ty1; simpl_set; auto.
+  - apply H in H0. destruct H0 as [ty1 [Hty1 Hty]]; subst.
+    exists ty1; auto.
+  - simpl_set. destruct H1.
+    + apply H in H1.
+      destruct H1 as [ty' [Hinty' Hty]]; subst.
+      exists ty'. split; auto. simpl_set; auto.
+    + simpl_set.
+      destruct H1.
+      apply H0 in H1.
+      destruct H1 as [ty' [Hinty' Hty]]; subst.
+      exists ty'. split; auto. simpl_set. right.
+      split; auto.
+      intro C; subst. apply H2. reflexivity.
+  - repeat (simpl_set; destruct H2);
+    [apply H in H2 | apply H0 in H2 | apply H1 in H2];
+    destruct H2 as [ty1 [Hinty1 Hty]]; subst;
+    exists ty1; simpl_set; auto.
+  - simpl_set. destruct H1.
+    + apply H in H1. destruct H1 as [ty1 [Hinty1 Hty]]; subst.
+      exists ty1. simpl_set. auto.
+    + simpl_set. destruct H1 as [pt [Hinpt Hinx]].
+      rewrite in_map_iff in Hinpt.
+      destruct Hinpt as [pt1 [Hpt Hinpt1]]; subst.
+      simpl_set.
+      destruct Hinx as [Hinfv Hnotinpat].
+      rewrite Forall_map, Forall_forall in H0.
+      specialize (H0 _ Hinpt1 Hinfv); clear Hinfv.
+      destruct H0 as [ty1 [Hty1 Hty]]; subst.
+      exists ty1. simpl_set. split; auto.
+      right. exists pt1. split; auto.
+      simpl_set. split; auto.
+      intro Hc.
+      apply Hnotinpat. simpl.
+      rewrite ty_subst_p_fv.
+      rewrite in_map_iff.
+      exists (x, ty1). split; auto.
+Qed.
+
+Definition ty_subst_t_vars params args t x ty:=
+  proj_tm (ty_subst_tf_vars params args x ty) t.
+Definition ty_subst_f_vars params args f x ty :=
+  proj_fmla (ty_subst_tf_vars params args x ty) f.
+
+(*And as a corollary, if f is closed, so is
+  (ty_subst_fmla f)*)
+Lemma ty_subst_fmla_closed params args f:
+  closed_formula f ->
+  closed_formula (ty_subst_fmla params args f).
+Proof.
+  unfold closed_formula.
+  rewrite !null_nil; intros.
+  destruct (fmla_fv (ty_subst_fmla params args f)) eqn : Hfv; auto.
+  exfalso.
+  destruct v as [x ty].
+  assert (In (x, ty) (fmla_fv (ty_subst_fmla params args f))). {
+    rewrite Hfv; simpl; auto.
+  }
+  apply ty_subst_f_vars in H0.
+  destruct H0 as [ty1 [Hty1 Hty]]; subst.
+  rewrite H in Hty1. inversion Hty1.
+Qed.
+
+Lemma make_fmla_wf_closed f:
+  closed_formula f ->
+  closed_formula (make_fmla_wf f).
+Proof.
+  unfold closed_formula; rewrite !null_nil; intros.
+  unfold make_fmla_wf.
+  destruct (seq.uniq (map fst (fmla_bnd f)) &&
+  disjb (map fst (fmla_fv f)) (map fst (fmla_bnd f))); auto.
+  erewrite <- a_equiv_f_fv. apply H.
+  apply a_convert_all_f_equiv.
+Qed.
+
+(*TODO:remove*)
+Require Import Theory.
+(*In order to result in a well-formed task, we need to 
+  substitute all type variables with sorts*)
+Lemma D_specialize_ty gamma delta f (v: vty_map):
+  derives (gamma, delta, f) ->
+  NoDup (map fst v) ->
+  Forall (valid_type gamma) (map snd v) ->
+  Forall (fun x => In x (map fst v)) (fmla_type_vars f) ->
+  Forall is_sort (map snd v) ->
+  derives (gamma, delta, (ty_subst_wf_fmla (map fst v) (map snd v) f)).
+Proof.
+  intros Hd Hn Hval Hallin Hsort.
+  eapply (D_trans (specialize_ty_trans f v)); auto.
+  - inversion Hd; subst. destruct H. simpl_task.
+    constructor; auto. simpl_task.
+    inversion task_goal_typed; subst.
+    constructor; auto.
+    + apply ty_subst_wf_fmla_typed; auto.
+      unfold closed_formula in f_closed.
+      rewrite null_nil in f_closed.
+      rewrite f_closed; constructor.
+    + unfold ty_subst_wf_fmla.
+      apply ty_subst_fmla_closed.
+      apply make_fmla_wf_closed. auto.
+    + unfold ty_subst_wf_fmla.
+      apply ty_subst_srts_vars_f; auto.
+      * rewrite Forall_forall in Hsort; auto.
+      * intros x. rewrite make_fmla_wf_type_vars.
+        rewrite Forall_forall in Hallin; auto.
+  - apply specialize_ty_trans_sound. auto.
+  - unfold specialize_ty_trans; simpl_task.
+    intros x.
+    destruct (formula_eq_dec (ty_subst_wf_fmla (map fst v) (map snd v) f)
+    (ty_subst_wf_fmla (map fst v) (map snd v) f)); try contradiction.
+    simpl.
+    assert (closed_formula f). {
+      inversion Hd; subst. destruct H; auto. apply task_goal_typed.
+    }
+    rewrite H. simpl.
+    assert (formula_typed gamma f). {
+      inversion Hd; subst. destruct H0; auto. apply task_goal_typed.
+    }
+    destruct (typecheck_formula_correct gamma f); simpl; try contradiction.
+    assert (forallb (typecheck_type gamma) (map snd v)). {
+      unfold is_true. rewrite forallb_forall.
+      intros y Hiny.
+      rewrite Forall_forall in Hval.
+      specialize (Hval _ Hiny).
+      destruct (typecheck_type_correct gamma y); auto.
+    }
+    rewrite H1. intros [<- | []]; auto.
+Qed.
 
 End NatDed.
