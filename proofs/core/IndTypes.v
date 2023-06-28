@@ -1,8 +1,7 @@
 Require Export Typing.
 Require Import Coq.Lists.List.
 Require Export Hlist.
-(*For a test only, could delete*)
-Require Import Coq.Reals.Reals.
+Require Export Coq.Reals.Reals.
 
 (*Need eq_rect_eq for injectivity of constructors and test cases*)
 Require Import Coq.Program.Equality.
@@ -494,7 +493,7 @@ Fixpoint big_sprod (l: list Set) : Set :=
 Definition vty_to_set (v: vty) : Set :=
   match v with
   | vty_int => Z
-  | vty_real => QArith_base.Q
+  | vty_real => R
   | vty_var x => vars x
   | vty_cons ts vs => abstract ts vs
   end.
@@ -959,7 +958,7 @@ Variable domain_aux: Types.sort -> Set.
 Definition domain (s: Types.sort) : Set :=
   match sort_to_ty s with
   | vty_int => Z
-  | vty_real => QArith_base.Q
+  | vty_real => R
   | _ => domain_aux s
   end.
 
@@ -2546,8 +2545,8 @@ Qed.
 Inductive test1 : Set :=
   | test1a : Z -> Z -> test1
   | test1b: test1
-  | test1c : QArith_base.Q -> Z -> test1
-  | test1d: QArith_base.Q -> QArith_base.Q -> QArith_base.Q -> test1.
+  | test1c : R -> Z -> test1
+  | test1d: R -> R -> R -> test1.
 
 Definition ts_test1 : typesym := mk_ts "test1" nil.
 Definition test1_constrs := list_to_ne_list
@@ -2560,7 +2559,7 @@ Definition atest1 := triv_adt ts_test1 test1_constrs.
 Lemma atest1_correct : atest1 =
   W unit 
   (fun _ =>Either (Z * Z) 
-  (Either unit (Either (QArith_base.Q * Z) (QArith_base.Q * (QArith_base.Q * QArith_base.Q)))))
+  (Either unit (Either (R * Z) (R * (R * R)))))
     (fun _ _ _ => empty) tt.
 Proof.
   solve_adt_eq.
@@ -2641,7 +2640,7 @@ Proof. reflexivity. Qed.
 Inductive test2 : Set :=
   | test2a: Z -> test2
   | test2b: test2 -> test2
-  | test2c: test2 -> QArith_base.Q -> test2 -> test2 -> test2
+  | test2c: test2 -> R -> test2 -> test2 -> test2
   | test2d: Z -> Z -> test2 -> test2.
 
 Definition ts_test2 : typesym := mk_ts "test2" nil.
@@ -2658,7 +2657,7 @@ Definition test2_constrs := list_to_ne_list [ fs_test2a; fs_test2b; fs_test2c; f
 Definition atest2:= mk_adt triv_vars triv_syms ts_test2 test2_constrs.
 
 Lemma atest2_correct : atest2 =
-  W unit (fun _ => Either Z (Either unit (Either QArith_base.Q (Z * Z))))
+  W unit (fun _ => Either Z (Either unit (Either R (Z * Z))))
     (fun _ _ x =>
       match x with
       | Right (Left _) => unit

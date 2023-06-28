@@ -2943,7 +2943,7 @@ bool)
   let Htyeq : vty_real = ty :=
     eq_sym (ty_constreal_inv Hty') in
 
-  exist _ (cast_dom_vty pd Htyeq r)
+  exist _ (cast_dom_vty pd Htyeq (Q2R r))
     (fun x Heqx => False_rect _ (const_not_var Heqx)) 
 | Tvar x => fun Hty' _ =>
   let Heq : ty = snd x := ty_var_inv Hty' in

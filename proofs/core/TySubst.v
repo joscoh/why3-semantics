@@ -278,7 +278,6 @@ End PatUniq.
 
 Require Import Alpha.
 
-
 Section TySubst.
 
 Variable (params: list typevar) (tys: list vty).
@@ -613,6 +612,8 @@ Ltac simpl_forall :=
     destruct H
   | |- Forall ?P (map ?f ?l) => rewrite Forall_map
   end.
+
+Notation id := Datatypes.id.
 
 Section RecHolds.
   

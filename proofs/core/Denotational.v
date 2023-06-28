@@ -1183,7 +1183,6 @@ Definition bool_of_binop (b: binop) : bool -> bool -> bool :=
 
 Variable (pf: pi_funpred gamma_valid pd).
 Notation funs := (funs gamma_valid pd pf).
-
 (*NOTE: we do not (yet?) prove we never hit None on well-typed pattern
   match by exhaustivenss - need to give exhaustiveness check,
   use ADT rep to show that pattern matches all cases*)  
@@ -1210,7 +1209,7 @@ term_rep v (Tconst (ConstInt z)) ty Hty :=
 term_rep v (Tconst (ConstReal r)) ty Hty :=
   let Htyeq : vty_real = ty :=
   eq_sym (ty_constreal_inv Hty) in
-  cast_dom_vty Htyeq r;
+  cast_dom_vty Htyeq (Q2R r);
 
 term_rep v (Tvar x) ty Hty :=
   let Heq : ty = snd x := ty_var_inv Hty in
