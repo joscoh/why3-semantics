@@ -24,7 +24,7 @@ Definition remove_bindings (subs: list (vsymbol * term)) (vs: list vsymbol) :=
 Definition remove_binding subs v :=
   remove_bindings subs [v].
 
-Fixpoint sub_ts (subs: list (vsymbol * term)) (t: term) : term :=
+Fixpoint sub_ts (subs: list (vsymbol * term)) (t: term) {struct t} : term :=
   match t with
   | Tconst c => Tconst c
   | Tvar v => match (get_assoc_list vsymbol_eq_dec subs v) with
@@ -34,7 +34,7 @@ Fixpoint sub_ts (subs: list (vsymbol * term)) (t: term) : term :=
   | Tfun fs tys tms => Tfun fs tys (map (sub_ts subs) tms)
   | Tlet tm1 v tm2 =>
     Tlet (sub_ts subs tm1) v
-      (*Substitute all except possible for v*)
+      (*Substitute all except possibly for v*)
       (sub_ts (remove_binding subs v) tm2)
   | Tif f1 tm1 tm2 => Tif (sub_fs subs f1) (sub_ts subs tm1) (sub_ts subs tm2)
   | Tmatch tm ty ps =>
@@ -45,28 +45,25 @@ Fixpoint sub_ts (subs: list (vsymbol * term)) (t: term) : term :=
   | Teps f1 v => Teps  (sub_fs (remove_binding subs v) f1) v
   end
 (*TODO: fix with remove_binding*)
-with sub_fs (subs: list (vsymbol * term)) (f : formula): formula :=
+with sub_fs (subs: list (vsymbol * term)) (f : formula) {struct f}: formula :=
   match f with
   | Fpred p tys tms => Fpred p tys (map (sub_ts subs) tms)
   | Fquant q v f' =>
-      if in_dec vsymbol_eq_dec v (map fst subs) then f 
-      else Fquant q v (sub_fs subs f')
+      Fquant q v (sub_fs (remove_binding subs v) f')
   | Feq ty tm1 tm2 => Feq ty (sub_ts subs tm1) (sub_ts subs tm2)
   | Fbinop b f1 f2 => Fbinop b (sub_fs subs f1) (sub_fs subs f2)
   | Fnot f' => Fnot (sub_fs subs f')
   | Ftrue => Ftrue
   | Ffalse => Ffalse
   | Flet tm v f' =>
-      Flet (sub_ts subs tm) v
-        (if in_dec vsymbol_eq_dec v (map fst subs) then f' else sub_fs subs f')
+    Flet (sub_ts subs tm) v
+      (sub_fs (remove_binding subs v) f')
   | Fif f1 f2 f3 => Fif (sub_fs subs f1) (sub_fs subs f2) (sub_fs subs f3)
   | Fmatch tm ty ps =>
       Fmatch (sub_ts subs tm) ty
         (map
             (fun p : pattern * formula =>
-            if existsb (fun x => in_bool vsymbol_eq_dec x (pat_fv (fst p))) (map fst subs)
-            then p
-            else (fst p, sub_fs subs (snd p))) ps)
+            (fst p, sub_fs (remove_bindings subs (pat_fv (fst p))) (snd p))) ps)
   end.
 
 (*Create an [arg_list] by mapping [term_rep]*)
@@ -711,19 +708,591 @@ Proof.
       pose proof (notin_remove_binding _ _ _ C n).
       simpl in H1. destruct_all; subst; contradiction.
   - (*Fpred*)
-    
-
-
-
-
+    simpl_rep_full. f_equal.
+    apply get_arg_list_ext; [rewrite map_length; auto |].
+    intros i Hi. rewrite map_length in Hi.
+    rewrite !map_nth_inbound with (d2:=tm_d); auto.
+    intros.
+    rewrite Forall_forall in H. apply H; auto. apply nth_In; auto.
+    eapply disj_sublist_lr. apply Hfreebnd.
+    apply sublist_refl.
+    apply sublist_concat_map, nth_In; auto.
+  - (*Fquant*)
+    (*Core of the proof*)
+    assert (Hd: forall d,
+    formula_rep gamma_valid pd vt pf (substi pd vt vv v d)
+    (sub_fs (remove_binding subs v) f) (typed_quant_inv Hty1) =
+    formula_rep gamma_valid pd vt pf
+    (substi pd vt
+       (val_with_args pd vt vv (map fst subs)
+          (map_arg_list gamma_valid pd vt pf vv (map snd subs)
+             (map snd (map fst subs)) (map_snd_fst_len subs) Hall)) v d) f
+    (typed_quant_inv Hty2)).
+    {
+      intros d.
+      (*TODO: lots of repetitition*)
+      assert (NoDup (map fst (remove_binding subs v))) by
+      (apply remove_bindings_nodup; auto).
+      erewrite H with(Hty2:=typed_quant_inv Hty2); auto.
+      Unshelve. 3: apply remove_bindings_forall; auto.
+      2: {
+        apply (disj_sublist_lr Hfreebnd); [| apply incl_tl, sublist_refl].
+        apply sublist_big_union_ext, sublist_map, remove_bindings_sublist.
+      }
+      apply fmla_change_vv.
+      intros x' Hinx'.
+      (*See if x is in the remainder of the bindings*)
+      destruct (in_dec vsymbol_eq_dec x' (map fst (remove_binding subs v))).
+      + (*First, simplify LHS*)
+        destruct (In_nth _ _ vs_d i) as [j [Hj Hx]]; subst.
+        rewrite map_length in Hj.
+        assert (Heq1: nth j (map (v_subst vt) (map snd (map fst (remove_binding subs v)))) s_int =
+        v_subst vt (snd (nth j (map fst (remove_binding subs v)) vs_d))).
+        {
+          rewrite !map_map.
+          rewrite !map_nth_inbound with (d2:=(vs_d, tm_d)); auto.
+        }
+        rewrite val_with_args_in with(Heq:=Heq1); auto; try rewrite !map_length; auto.
+        (*simplify substi*)
+        unfold substi at 2.
+        vsym_eq (nth j (map fst (remove_binding subs v)) vs_d) v.
+        * (*contradiction*)
+          exfalso. eapply remove_bindings_notin with(vs:=[v])(v:=v).
+          simpl; auto. rewrite <- e at 1. apply nth_In.
+          rewrite map_length; auto.
+        * destruct (find_remove_bindings subs [v] j Hj) as [i' [Hi' Hntheq]].
+          assert (Hnthmap: (nth j (map fst (remove_binding subs v)) vs_d) =
+            nth i' (map fst subs) vs_d).
+          {
+            rewrite !map_nth_inbound with (d2:=(vs_d, tm_d)); auto.
+            unfold remove_binding.
+            rewrite Hntheq; auto.
+          }
+          (*Can't rewrite, need to generalize*)
+          generalize dependent (nth j (map fst (remove_binding subs v)) vs_d).
+          intros; subst.
+          (*Now we simplify with [val_with_args_in]*)
+          assert (Heq2: nth i' (map (v_subst vt) (map snd (map fst subs))) s_int =
+          v_subst vt (snd (nth i' (map fst subs) vs_d))).
+          {
+            rewrite !map_map.
+            rewrite !map_nth_inbound with (d2:=(vs_d, tm_d)); auto.
+          }
+          rewrite val_with_args_in with(Heq:=Heq2); auto; try rewrite !map_length; auto.
+          (*Now we can simplify the hnth*)
+          assert (Hj1: j < Datatypes.length (map snd (map fst (remove_binding subs v))))
+          by (rewrite !map_length; auto).
+          rewrite !map_arg_list_nth with(Hi:=Hj1).
+          assert (Hi2: i' < Datatypes.length (map snd (map fst subs))) by
+            (rewrite !map_length; auto). 
+          erewrite map_arg_list_nth with(Hi:=Hi2).
+          rewrite !dom_cast_compose.
+          assert (Hcast: (nth j (map snd (map fst (remove_binding subs v))) vty_int) =
+          (nth i' (map snd (map fst subs)) vty_int)).
+          {
+            rewrite !map_map, !map_nth_inbound with (d2:=(vs_d, tm_d)); auto.
+            unfold remove_binding; rewrite Hntheq; auto.
+          }
+          (*Simplify to single cast*)
+          match goal with
+          | |- dom_cast ?d ?H1 ?x1 = dom_cast ?d ?H2 ?x2 =>
+            replace x2 with (dom_cast (dom_aux pd) 
+              (f_equal (v_subst vt) Hcast) x1); [rewrite !dom_cast_compose;
+              apply dom_cast_eq |]
+          end.
+          repeat match goal with 
+          | |- context [term_rep ?v ?pd ?vt ?pf ?vv ?t ?ty ?Hty] =>
+            generalize dependent Hty
+          end.
+          assert (Htmseq:  (nth j (map snd (remove_binding subs v)) tm_d) =
+          (nth i' (map snd subs) tm_d)).
+          {
+            rewrite !map_nth_inbound with (d2:=(vs_d, tm_d)); auto.
+            unfold remove_binding; rewrite Hntheq; auto.
+          }
+          generalize dependent (nth j (map snd (map fst (remove_binding subs v))) vty_int).
+          generalize dependent (nth j (map snd (remove_binding subs v)) tm_d).
+          intros; subst. simpl. unfold dom_cast; simpl.
+          (*And finally, just prove [term_rep] equivalent*)
+          erewrite term_rep_irrel.
+          apply tm_change_vv.
+          intros.
+          unfold substi.
+          vsym_eq x v.
+          (*Use fact that bound vars cannot be free in terms*)
+          exfalso. apply (Hfreebnd v).
+          split; simpl; auto. simpl_set.
+          exists (nth i' (map snd subs) tm_d).
+          split; auto.
+          apply nth_In; auto.
+          rewrite map_length; auto.
+      + (*Otherwise, much simpler*)
+        rewrite val_with_args_notin; auto.
+        unfold substi. vsym_eq x' v.
+        rewrite val_with_args_notin; auto.
+        intro C.
+        pose proof (notin_remove_binding _ _ _ C n).
+        simpl in H1. destruct_all; subst; contradiction. 
     }
-
-    rewrite H with(Hty1:=Hty1)(Hty2:=Hty2). simpl.
+    destruct q; simpl_rep_full; apply all_dec_eq.
+    + split; intros Halld d.
+      * rewrite <- Hd; auto.
+      * rewrite Hd; auto.
+    + split; intros [d Halld]; exists d.
+      * rewrite <- Hd; auto.
+      * rewrite Hd; auto.
+  - (*Feq*)
+    simpl_rep_full.
+    erewrite (H subs), (H0 subs); [reflexivity | | | |]; auto;
+    apply (disj_sublist_lr Hfreebnd); try apply sublist_refl;
+    [apply sublist_app_r | apply sublist_app_l].
+  - (*Fbinop*)
+    simpl_rep_full.
+    erewrite (H subs), (H0 subs); [reflexivity | | | |]; auto;
+    apply (disj_sublist_lr Hfreebnd); try apply sublist_refl;
+    [apply sublist_app_r | apply sublist_app_l].
+  - (*Fnot*) simpl_rep_full. f_equal. apply H; auto.
+  - (*Ftrue*) reflexivity.
+  - (*Ffalse*) reflexivity.
+  - (*Flet*)
+    simpl_rep_full.
+    assert (Hn: NoDup (map fst (remove_binding subs v)))
+    by (apply remove_bindings_nodup; auto).
+    rewrite H with(Hty2:= (proj1' (typed_let_inv Hty2)))(Hall:=Hall); auto.
+    erewrite term_rep_irrel.
+    erewrite H0; auto.
     2: {
-      intros; intro C; apply (Hfree x0); auto; simpl;
-      rewrite !in_app_iff; auto.
+      apply (disj_sublist_lr Hfreebnd).
+      apply sublist_big_union_ext, sublist_map, remove_bindings_sublist.
+      apply incl_tl. apply sublist_app_r.
     }
-    [apply sublist]
+    2: {
+      apply (disj_sublist_lr Hfreebnd).
+      apply sublist_refl.
+      apply incl_tl, sublist_app_l.
+    } 
+    Unshelve.
+    2: exact (proj1' (typed_let_inv Hty2)).
+    2: apply remove_bindings_forall; auto.
+    2: exact (proj2' (typed_let_inv Hty2)).
+    apply fmla_change_vv.
+    intros.
+    (*See if x is in the remainder of the bindings*)
+    destruct (in_dec vsymbol_eq_dec x (map fst (remove_binding subs v))).
+    + (*First, simplify LHS*)
+      destruct (In_nth _ _ vs_d i) as [j [Hj Hx]]; subst.
+      rewrite map_length in Hj.
+      assert (Heq1: nth j (map (v_subst vt) (map snd (map fst (remove_binding subs v)))) s_int =
+      v_subst vt (snd (nth j (map fst (remove_binding subs v)) vs_d))).
+      {
+        rewrite !map_map.
+        rewrite !map_nth_inbound with (d2:=(vs_d, tm_d)); auto.
+      }
+      rewrite val_with_args_in with(Heq:=Heq1); auto; try rewrite !map_length; auto.
+      (*simplify substi*)
+      unfold substi at 2.
+      vsym_eq (nth j (map fst (remove_binding subs v)) vs_d) v.
+      * (*contradiction*)
+        exfalso. eapply remove_bindings_notin with(vs:=[v])(v:=v).
+        simpl; auto. rewrite <- e at 1. apply nth_In.
+        rewrite map_length; auto.
+      * destruct (find_remove_bindings subs [v] j Hj) as [i' [Hi' Hntheq]].
+        assert (Hnthmap: (nth j (map fst (remove_binding subs v)) vs_d) =
+          nth i' (map fst subs) vs_d).
+        {
+          rewrite !map_nth_inbound with (d2:=(vs_d, tm_d)); auto.
+          unfold remove_binding.
+          rewrite Hntheq; auto.
+        }
+        (*Can't rewrite, need to generalize*)
+        generalize dependent (nth j (map fst (remove_binding subs v)) vs_d).
+        intros; subst.
+        (*Now we simplify with [val_with_args_in]*)
+        assert (Heq2: nth i' (map (v_subst vt) (map snd (map fst subs))) s_int =
+        v_subst vt (snd (nth i' (map fst subs) vs_d))).
+        {
+          rewrite !map_map.
+          rewrite !map_nth_inbound with (d2:=(vs_d, tm_d)); auto.
+        }
+        rewrite val_with_args_in with(Heq:=Heq2); auto; try rewrite !map_length; auto.
+        (*Now we can simplify the hnth*)
+        assert (Hj1: j < Datatypes.length (map snd (map fst (remove_binding subs v))))
+        by (rewrite !map_length; auto).
+        rewrite !map_arg_list_nth with(Hi:=Hj1).
+        assert (Hi2: i' < Datatypes.length (map snd (map fst subs))) by
+          (rewrite !map_length; auto). 
+        erewrite map_arg_list_nth with(Hi:=Hi2).
+        rewrite !dom_cast_compose.
+        assert (Hcast: (nth j (map snd (map fst (remove_binding subs v))) vty_int) =
+        (nth i' (map snd (map fst subs)) vty_int)).
+        {
+          rewrite !map_map, !map_nth_inbound with (d2:=(vs_d, tm_d)); auto.
+          unfold remove_binding; rewrite Hntheq; auto.
+        }
+        (*Simplify to single cast*)
+        match goal with
+        | |- dom_cast ?d ?H1 ?x1 = dom_cast ?d ?H2 ?x2 =>
+          replace x2 with (dom_cast (dom_aux pd) 
+            (f_equal (v_subst vt) Hcast) x1); [rewrite !dom_cast_compose;
+            apply dom_cast_eq |]
+        end.
+        repeat match goal with 
+        | |- context [term_rep ?v ?pd ?vt ?pf ?vv ?t ?ty ?Hty] =>
+          generalize dependent Hty
+        end.
+        assert (Htmseq:  (nth j (map snd (remove_binding subs v)) tm_d) =
+        (nth i' (map snd subs) tm_d)).
+        {
+          rewrite !map_nth_inbound with (d2:=(vs_d, tm_d)); auto.
+          unfold remove_binding; rewrite Hntheq; auto.
+        }
+        generalize dependent (nth j (map snd (map fst (remove_binding subs v))) vty_int).
+        generalize dependent (nth j (map snd (remove_binding subs v)) tm_d).
+        intros; subst. simpl. unfold dom_cast; simpl.
+        (*And finally, just prove [term_rep] equivalent*)
+        erewrite term_rep_irrel.
+        apply tm_change_vv.
+        intros.
+        unfold substi.
+        vsym_eq x v.
+        (*Use fact that bound vars cannot be free in terms*)
+        exfalso. apply (Hfreebnd v).
+        split; simpl; auto. simpl_set.
+        exists (nth i' (map snd subs) tm_d).
+        split; auto.
+        apply nth_In; auto.
+        rewrite map_length; auto.
+    + (*Otherwise, much simpler*)
+      rewrite val_with_args_notin; auto.
+      unfold substi. vsym_eq x v.
+      rewrite val_with_args_notin; auto.
+      intro C.
+      pose proof (notin_remove_binding _ _ _ C n).
+      simpl in H2. destruct_all; subst; contradiction.
+  - (*Fif*)
+    simpl_rep_full.
+    erewrite (H subs), (H0 subs), (H1 subs); [reflexivity | | | | | |];
+    auto; apply (disj_sublist_lr Hfreebnd); try apply sublist_refl.
+    + eapply sublist_trans. apply sublist_app_r. apply sublist_app_r.
+    + eapply sublist_trans. apply sublist_app_l. apply sublist_app_r.
+    + apply sublist_app_l.
+  - (*Fmatch*)
+    simpl_rep_full.
+    iter_match_gen Hty1 Htm1 Hpat1 Hty1.
+    iter_match_gen Hty2 Htm2 Hpat2 Hty2.
+    induction ps; simpl; intros; auto.
+    destruct a as [phd thd]; simpl.
+    rewrite H with (Hall:=Hall)(Hty2:=Hty2); auto. simpl.
+    2: {
+      apply (disj_sublist_lr Hfreebnd).
+      apply sublist_refl. apply sublist_app_l.
+    }
+    (*Need to show that these [match_val_single] are equal*)
+    rewrite match_val_single_irrel with (Hval2:=Forall_inv Hpat2).
+    simpl.
+    destruct ( match_val_single gamma_valid pd vt v phd (Forall_inv Hpat2)
+    (term_rep gamma_valid pd vt pf
+      (val_with_args pd vt vv (map fst subs)
+          (map_arg_list gamma_valid pd vt pf vv (map snd subs) (map snd (map fst subs))
+            (map_snd_fst_len subs) Hall)) tm v Hty2)) eqn : Hmatch.
+    + (*Hard case*)
+      inversion H0; subst; clear H4.
+      assert (Hn: NoDup (map fst (remove_bindings subs (pat_fv phd))))
+        by (apply remove_bindings_nodup; auto).
+      erewrite H3; auto.
+      apply fmla_change_vv.
+      Unshelve.
+      3: apply remove_bindings_forall; auto.
+      2: {
+        apply (disj_sublist_lr Hfreebnd).
+        apply sublist_big_union_ext, sublist_map, remove_bindings_sublist.
+        simpl. eapply sublist_trans. 2: apply sublist_app_r.
+        eapply sublist_trans. 2: apply sublist_app_l.
+        apply sublist_app_r.
+      }
+      intros x Hinx.
+      (*Again, see if x is in list after we remove bindings*)
+      destruct (in_dec vsymbol_eq_dec x (map fst (remove_bindings subs (pat_fv phd)))).
+      * destruct (In_nth _ _ vs_d i) as [j [Hj Hx]]; subst.
+        rewrite map_length in Hj.
+        assert (Heq1: nth j (map (v_subst vt) (map snd (map fst (remove_bindings subs (pat_fv phd))))) s_int =
+        v_subst vt (snd (nth j (map fst (remove_bindings subs (pat_fv phd))) vs_d))).
+        {
+          rewrite !map_map, !map_nth_inbound with (d2:=(vs_d, tm_d)); auto.
+        }
+        rewrite val_with_args_in with(Heq:=Heq1); auto; try rewrite !map_length; auto.
+        (*By assumption, not in list l*)
+        rewrite extend_val_notin.
+        2: {
+          rewrite <- (match_val_single_free_var _ _ _ _ _ _ _ _ _ Hmatch).
+          intro C.
+          apply (remove_bindings_notin subs (pat_fv phd) _ C).
+          apply nth_In; auto. rewrite map_length; auto.
+        }
+        destruct (find_remove_bindings subs (pat_fv phd) j Hj) as 
+          [i' [Hi' Hntheq]].
+        assert (Hfsteq: nth j (map fst (remove_bindings subs (pat_fv phd))) vs_d =
+          nth i' (map fst subs) vs_d).
+        {
+          rewrite !map_nth_inbound with (d2:=(vs_d, tm_d)); auto.
+          rewrite Hntheq; auto.
+        }
+        generalize dependent ( nth j (map fst (remove_bindings subs (pat_fv phd))) vs_d);
+        intros; subst.
+        assert (Heq2: nth i' (map (v_subst vt) (map snd (map fst subs))) s_int =
+        v_subst vt (snd (nth i' (map fst subs) vs_d))).
+        {
+          rewrite !map_map. rewrite !map_nth_inbound with (d2:=(vs_d, tm_d));
+          auto.
+        }
+        rewrite val_with_args_in with(Heq:=Heq2); auto; try rewrite !map_length; auto.
+        assert (Hj1: j < length (map snd (map fst (remove_bindings subs (pat_fv phd))))).
+        {
+          rewrite !map_length; auto.
+        }
+        rewrite map_arg_list_nth with(Hi:=Hj1).
+        assert (Hi2: i' < Datatypes.length (map snd (map fst subs))). {
+          rewrite !map_length; auto.
+        }
+        rewrite map_arg_list_nth with(Hi:=Hi2).
+        rewrite !dom_cast_compose.
+        assert (Hcast: (nth j (map snd (map fst (remove_bindings subs (pat_fv phd)))) vty_int) =
+        (nth i' (map snd (map fst subs)) vty_int)).
+        {
+          rewrite !map_map, !map_nth_inbound with (d2:=(vs_d, tm_d)); auto.
+          rewrite Hntheq; auto.
+        }
+        (*Simplify to single cast*)
+        match goal with
+        | |- dom_cast ?d ?H1 ?x1 = dom_cast ?d ?H2 ?x2 =>
+          replace x2 with (dom_cast (dom_aux pd) 
+            (f_equal (v_subst vt) Hcast) x1); [rewrite !dom_cast_compose;
+            apply dom_cast_eq |]
+        end.
+        repeat match goal with 
+        | |- context [term_rep ?v ?pd ?vt ?pf ?vv ?t ?ty ?Hty] =>
+          generalize dependent Hty
+        end.
+        assert (Htmseq:  (nth j (map snd (remove_bindings subs (pat_fv phd))) tm_d) =
+        (nth i' (map snd subs) tm_d)).
+        {
+          rewrite !map_nth_inbound with (d2:=(vs_d, tm_d)); auto.
+          rewrite Hntheq; auto.
+        }
+        generalize dependent (nth j (map snd (map fst (remove_bindings subs (pat_fv phd)))) vty_int).
+        generalize dependent (nth j (map snd (remove_bindings subs (pat_fv phd))) tm_d).
+        intros; subst. simpl. unfold dom_cast; simpl.
+        (*And finally, just prove [term_rep] equivalent*)
+        erewrite term_rep_irrel.
+        apply tm_change_vv.
+        intros.
+        rewrite extend_val_notin; auto.
+        (*Use fact that bound vars cannot be free in terms*)
+        rewrite <- (match_val_single_free_var _ _ _ _ _ _ _ _ _ Hmatch).
+        intro Hinx'.
+        apply (Hfreebnd x).
+        split; simpl.
+        {
+          simpl_set. exists (nth i' (map snd subs) tm_d); split; auto.
+          apply nth_In; auto.
+          rewrite map_length; auto.
+        }
+        rewrite in_app_iff. right.
+        rewrite in_app_iff. left.
+        rewrite in_app_iff. auto.
+      * (*If not in, then easier*)
+        rewrite val_with_args_notin; auto.
+        destruct (in_dec vsymbol_eq_dec x (pat_fv phd)).
+        -- apply extend_val_in_agree; auto.
+          apply (match_val_single_typs _ _ _ _ _ _ _ _ Hmatch).
+          rewrite <- (match_val_single_free_var _ _ _ _ _ _ _ _ _ Hmatch); auto.
+        -- rewrite !extend_val_notin; auto;
+          try solve[rewrite <- (match_val_single_free_var _ _ _ _ _ _ _ _ _ Hmatch); auto].
+          rewrite val_with_args_notin; auto.
+          intro C.
+          apply n0. eapply notin_remove_binding. apply C. auto.
+    + (*induction case, use H again*)
+      inversion H0; auto.
+      erewrite <- IHps; auto. 
+      rewrite H with (Hall:=Hall)(Hty2:=Hty2); auto. 
+      * apply (disj_sublist_lr Hfreebnd).
+        apply sublist_refl. apply sublist_app_l.
+      * eapply (disj_sublist_lr Hfreebnd).
+        apply sublist_refl. simpl.
+        apply app_sublist.
+        apply sublist_app_l.
+        eapply sublist_trans. apply sublist_app_r.
+        apply sublist_app_r.
+        Unshelve.
+        auto.
+Qed.
+
+Definition sub_ts_rep (t: term)
+(subs: list (vsymbol * term))
+(Hnodup: NoDup (map fst subs))
+(Hfreebnd: disj (big_union vsymbol_eq_dec tm_fv (map snd subs)) (tm_bnd t))
+{gamma} (gamma_valid: valid_context gamma)
+(pd: pi_dom) (vt: val_typevar) (pf: pi_funpred gamma_valid pd) :=
+(proj_tm (subs_rep gamma_valid pd vt pf) t) subs Hnodup Hfreebnd.
+
+Definition sub_fs_rep (f: formula)
+(subs: list (vsymbol * term))
+(Hnodup: NoDup (map fst subs))
+(Hfreebnd: disj (big_union vsymbol_eq_dec tm_fv (map snd subs)) (fmla_bnd f))
+{gamma} (gamma_valid: valid_context gamma)
+(pd: pi_dom) (vt: val_typevar) (pf: pi_funpred gamma_valid pd) :=
+(proj_fmla (subs_rep gamma_valid pd vt pf) f) subs Hnodup Hfreebnd.
+
+(*TODO: define safe substitution*)
+
+(*Prove previous substitution result*)
+
+Lemma subs_empty t f:
+  (sub_ts nil t = t) /\
+  (sub_fs nil f = f).
+Proof.
+  revert t f. apply term_formula_ind; simpl; intros; auto;
+  try rewrite H; try rewrite H0; try rewrite H1; auto; f_equal.
+  - induction l1; simpl; auto. inversion H; subst.
+    rewrite H2; f_equal; auto.
+  - induction ps; simpl in *; auto.
+    inversion H0; subst. rewrite H3. destruct a; f_equal. auto.
+  - induction tms; simpl; auto. inversion H; subst.
+    rewrite H2; f_equal; auto.
+  - induction ps; simpl in *; auto.
+    inversion H0; subst. rewrite H3. destruct a; f_equal. auto.
+Qed.
+
+Definition sub_ts_nil t := proj_tm subs_empty t.
+Definition sub_fs_nil f := proj_fmla subs_empty f.
+
+Lemma sub_equiv t1 x t f:
+  (sub_t t1 x t = sub_ts [(x, t1)] t) /\
+  (sub_f t1 x f = sub_fs [(x, t1)] f).
+Proof.
+  revert t f; apply term_formula_ind; simpl; auto; intros;
+  try (rewrite H; try (rewrite H0; try rewrite H1)); auto.
+  - vsym_eq v x. vsym_eq x x. vsym_eq x v.
+  - f_equal. apply map_ext_in. rewrite Forall_forall in H; auto.
+  - f_equal. vsym_eq v x; simpl.
+    + vsym_eq x x. rewrite sub_ts_nil. reflexivity.
+    + vsym_eq x v.
+  - f_equal. apply map_ext_in.
+    rewrite Forall_map, Forall_forall in H0.
+    intros.
+    rewrite in_bool_dec.
+    destruct (in_bool_spec vsymbol_eq_dec x (pat_fv (fst a))); simpl.
+    + rewrite sub_ts_nil. destruct a; auto.
+    + rewrite H0; auto.
+  - vsym_eq x v.
+    + vsym_eq v v. simpl. rewrite sub_fs_nil; auto.
+    + vsym_eq v x.
+  - f_equal. apply map_ext_in. rewrite Forall_forall in H; auto.
+  - vsym_eq x v.
+    + vsym_eq v v; simpl. rewrite sub_fs_nil; auto.
+    + vsym_eq v x. 
+  - f_equal. vsym_eq x v.
+    + vsym_eq v v; simpl. rewrite sub_fs_nil; auto.
+    + vsym_eq v x.
+  - f_equal. apply map_ext_in.
+    rewrite Forall_map, Forall_forall in H0.
+    intros.
+    rewrite in_bool_dec.
+    destruct (in_bool_spec vsymbol_eq_dec x (pat_fv (fst a))); simpl.
+    + rewrite sub_fs_nil. destruct a; auto.
+    + rewrite H0; auto.
+Qed.
+
+Definition sub_t_equiv t1 x t := proj_tm (sub_equiv t1 x) t.
+Definition sub_f_equiv t1 x f := proj_fmla (sub_equiv t1 x) f.
+
+(*Previous substitution lemma comes out as corollary
+  (TODO: replace in Denotational or other file)*)
+Lemma sub_t_rep' {gamma}  (gamma_valid : valid_context gamma) 
+(pd : pi_dom) (pf : pi_funpred gamma_valid pd) 
+(vt : val_typevar) (t t1 : term) (x : string) 
+(ty1 ty2 : vty) (v : val_vars pd vt)
+(Hty1 : term_has_type gamma t1 ty1)
+(Hty2 : term_has_type gamma t ty2)
+(Hty3 : term_has_type gamma (sub_t t1 (x, ty1) t) ty2):
+(forall x0 : vsymbol, In x0 (tm_fv t1) -> ~ In x0 (tm_bnd t)) ->
+term_rep gamma_valid pd vt pf v (sub_t t1 (x, ty1) t) ty2 Hty3 =
+term_rep gamma_valid pd vt pf
+(substi pd vt v (x, ty1)
+   (term_rep gamma_valid pd vt pf v t1 ty1 Hty1)) t ty2 Hty2.
+Proof.
+  revert Hty3.
+  rewrite sub_t_equiv.
+  intros.
+  erewrite sub_ts_rep.
+  simpl. 
+  Unshelve.
+  5: exact Hty2.
+  2: repeat (constructor; auto).
+  3: repeat (constructor; auto).
+  - simpl. apply tm_change_vv.
+    intros. unfold substi. 
+    destruct (vty_eq_dec (v_subst_aux (fun x1 : typevar => vt x1) (snd x0))
+    (v_subst_aux (fun x1 : typevar => vt x1) ty1)).
+    + vsym_eq x0 (x, ty1).
+      * vsym_eq (x, ty1) (x, ty1). 
+        simpl.
+        match goal with 
+        | |- dom_cast ?d ?H ?t = _ => assert (H = eq_refl)
+        end.
+        apply UIP_dec. apply sort_eq_dec.
+        rewrite H1. unfold dom_cast; simpl.
+        apply term_rep_irrel.
+      * vsym_eq (x, ty1) x0.
+    + vsym_eq x0 (x, ty1).
+  - simpl. apply disj_l12_iff. intros. apply H.
+    simpl_set. destruct H0; auto. contradiction.
+Qed.
+
+Check sub_f_rep.
+
+Lemma sub_f_rep' {gamma}  (gamma_valid : valid_context gamma) 
+(pd : pi_dom) (pf : pi_funpred gamma_valid pd) 
+(vt : val_typevar) (f: formula) (t1 : term) (x : string) 
+(ty1 ty2 : vty) (v : val_vars pd vt)
+(Hty1 : term_has_type gamma t1 ty1)
+(Hval2 : formula_typed gamma f)
+(Hval3 : formula_typed gamma (sub_f t1 (x, ty1) f)):
+(forall x0 : vsymbol, In x0 (tm_fv t1) -> ~ In x0 (fmla_bnd f)) ->
+formula_rep gamma_valid pd vt pf v (sub_f t1 (x, ty1) f) Hval3 =
+       formula_rep gamma_valid pd vt pf
+         (substi pd vt v (x, ty1)
+            (term_rep gamma_valid pd vt pf v t1 ty1 Hty1)) f Hval2.
+Proof.
+  revert Hval3.
+  rewrite sub_f_equiv.
+  intros.
+  erewrite sub_fs_rep.
+  simpl. 
+  Unshelve.
+  5: exact Hval2.
+  2: repeat (constructor; auto).
+  3: repeat (constructor; auto).
+  - simpl. apply fmla_change_vv.
+    intros. unfold substi. 
+    destruct (vty_eq_dec (v_subst_aux (fun x1 : typevar => vt x1) (snd x0))
+    (v_subst_aux (fun x1 : typevar => vt x1) ty1)).
+    + vsym_eq x0 (x, ty1).
+      * vsym_eq (x, ty1) (x, ty1). 
+        simpl.
+        match goal with 
+        | |- dom_cast ?d ?H ?t = _ => assert (H = eq_refl)
+        end.
+        apply UIP_dec. apply sort_eq_dec.
+        rewrite H1. unfold dom_cast; simpl.
+        apply term_rep_irrel.
+      * vsym_eq (x, ty1) x0.
+    + vsym_eq x0 (x, ty1).
+  - simpl. apply disj_l12_iff. intros. apply H.
+    simpl_set. destruct H0; auto. contradiction.
+Qed.
+
+(*TODO: typing lemmas, safe substitution*)
 
 
 (*Iterated safe substitution*)
