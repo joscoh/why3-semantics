@@ -1143,8 +1143,6 @@ Definition sub_fs_rep (f: formula)
 (pd: pi_dom) (vt: val_typevar) (pf: pi_funpred gamma_valid pd) :=
 (proj_fmla (subs_rep gamma_valid pd vt pf) f) subs Hnodup Hfreebnd.
 
-(*TODO: define safe substitution*)
-
 (*Prove previous substitution result*)
 
 Lemma subs_empty t f:
@@ -1292,7 +1290,6 @@ Qed.
 
 (*TODO: typing lemmas, safe substitution*)
 (*TODO: not good, repetitive*)
-Print disjb.
 Definition disjb' {A : Type} eq_dec (l1 l2: list A): bool :=
   forallb (fun x => negb (in_dec eq_dec x l2)) l1.
 
@@ -1431,7 +1428,7 @@ Definition sub_body_t (args: list vsymbol) (body: term) tys tms :=
 Definition sub_fun_body_f (args: list vsymbol) (body: term) tys tms (f1: formula) :=
   replace_tm_f (Tfun f tys tms) (sub_body_t args body tys tms) f1.
 
-Definition unfold_f (f1: formula) (args: list vsymbol) (body: term) :=
+Definition unfold_f_aux (f1: formula) (args: list vsymbol) (body: term) :=
   let apps := find_fun_app_f f1 in
   fold_left (fun (acc: formula) x => let tys := fst x in
     let tms := snd x in
@@ -1703,3 +1700,359 @@ Proof.
   subst. assert (e = e0). apply UIP_dec. apply sort_eq_dec.
   subst. f_equal. apply term_rep_irrel.
 Qed.
+Print funpred_def.
+(*Get the function body and arguments for a funsym*)
+Definition get_fun_body_args (gamma: context) (f: funsym) :
+  option (term * list vsymbol) :=
+  fold_right (fun x acc =>
+    match x with
+    | fun_def f1 args t => if funsym_eq_dec f f1 then Some (t, args) else acc 
+    | _ => acc
+    end) None (concat (mutfuns_of_context gamma)).
+
+Lemma get_fun_body_args_some_aux gamma f t args:
+  get_fun_body_args gamma f = Some (t, args) ->
+  In (fun_def f args t) (concat (mutfuns_of_context gamma)).
+Proof.
+  unfold get_fun_body_args.
+  induction (concat (mutfuns_of_context gamma)); simpl; try discriminate.
+  destruct a; auto.
+  destruct (funsym_eq_dec f f0); subst; auto.
+  intros C; inversion C; subst. auto.
+Qed.
+
+Lemma get_fun_body_args_some gamma f t args:
+  get_fun_body_args gamma f = Some (t, args) ->
+  exists fs,
+  In fs (mutfuns_of_context gamma) /\
+  In (fun_def f args t) fs.
+Proof.
+  intros.
+  apply get_fun_body_args_some_aux in H.
+  rewrite in_concat in H.
+  auto.
+Qed.
+
+Definition unfold_f (gamma: context) (f: funsym) (fmla: formula) :=
+  match (get_fun_body_args gamma f) with
+  | Some (t, args) => unfold_f_aux f fmla args t
+  | None => fmla
+  end.
+
+Lemma remove_bindings_forall' (P: vsymbol * term -> Prop) (l: list (vsymbol * term)) vs:
+  Forall P l ->
+  Forall P (remove_bindings l vs).
+Proof.
+  unfold remove_bindings. rewrite !Forall_forall; intros.
+  rewrite in_filter in H0.
+  destruct_all; auto.
+Qed.
+
+Lemma subs_ty gamma t f:
+  (forall ty (Hty1: term_has_type gamma t ty)
+    (subs: list (vsymbol * term))
+    (Hsubs: Forall (fun x => term_has_type gamma (snd x) (snd (fst x)))
+      subs),
+    term_has_type gamma (sub_ts subs t) ty) /\
+  (forall (Hty1: formula_typed gamma f)
+    (subs: list (vsymbol * term))
+    (Hsubs: Forall (fun x => term_has_type gamma (snd x) (snd (fst x)))
+      subs),
+    formula_typed gamma (sub_fs subs f)).
+Proof.
+  revert t f; apply term_formula_ind; simpl; intros; auto;
+  try solve[inversion Hty1; subst; constructor; auto].
+  - destruct (get_assoc_list vsymbol_eq_dec subs v) eqn : Ha; auto.
+    rewrite Forall_forall in Hsubs.
+    apply get_assoc_list_some in Ha.
+    specialize (Hsubs _ Ha).
+    simpl in Hsubs.
+    inversion Hty1; subst.
+    auto.
+  - inversion Hty1; subst.
+    constructor; auto; try rewrite !map_length; auto.
+    revert H H10. rewrite !Forall_forall; intros.
+    rewrite in_combine_iff in H0; try rewrite !map_length; auto.
+    destruct H0 as [i [Hi Hx]].
+    specialize (Hx tm_d vty_int); subst; simpl in *.
+    rewrite map_length in Hi.
+    rewrite map_nth_inbound with (d2:=tm_d); auto.
+    apply H; auto. apply nth_In; auto.
+    apply specialize_combine with (d1:=tm_d) (d2:=vty_int)(i:=i) in H10;
+    auto; rewrite map_length; auto.
+  - inversion Hty1; subst.
+    constructor; auto. apply H0; auto.
+    apply remove_bindings_forall'; auto.
+  - inversion Hty1; subst. constructor; auto.
+    3: rewrite null_map; auto.
+    + intros x. rewrite in_map_iff.
+      intros [pt [Hx Hinpt]]; subst; simpl. auto.
+    + intros x. rewrite in_map_iff.
+      intros [pt [Hx Hinpt]]; subst; simpl.
+      rewrite Forall_map, Forall_forall in H0.
+      apply H0; auto. apply remove_bindings_forall'; auto.
+  - inversion Hty1; subst. constructor; auto.
+    apply H; auto. apply remove_bindings_forall'; auto.
+  - inversion Hty1; subst.
+    constructor; auto; try rewrite !map_length; auto.
+    revert H H8. rewrite !Forall_forall; intros.
+    rewrite in_combine_iff in H0; try rewrite !map_length; auto.
+    destruct H0 as [i [Hi Hx]].
+    specialize (Hx tm_d vty_int); subst; simpl in *.
+    rewrite map_length in Hi.
+    rewrite map_nth_inbound with (d2:=tm_d); auto.
+    apply H; auto. apply nth_In; auto.
+    apply specialize_combine with (d1:=tm_d) (d2:=vty_int)(i:=i) in H8;
+    auto; rewrite map_length; auto.
+  - inversion Hty1; subst. constructor; auto.
+    apply H; auto. apply remove_bindings_forall'; auto.
+  - inversion Hty1; subst. constructor; auto.
+    apply H0; auto. apply remove_bindings_forall'; auto.
+  - inversion Hty1; subst. constructor; auto.
+    3: rewrite null_map; auto.
+    + intros x. rewrite in_map_iff.
+      intros [pt [Hx Hinpt]]; subst; simpl. auto.
+    + intros x. rewrite in_map_iff.
+      intros [pt [Hx Hinpt]]; subst; simpl.
+      rewrite Forall_map, Forall_forall in H0.
+      apply H0; auto. apply remove_bindings_forall'; auto.
+Qed.
+
+Definition sub_ts_ty gamma t := proj_tm (subs_ty gamma) t.
+Definition sub_fs_ty gamma f := proj_fmla (subs_ty gamma) f.
+
+Lemma safe_sub_ts_ty gamma t ty (Hty1: term_has_type gamma t ty)
+  (subs: list (vsymbol * term))
+  (Hsubs: Forall (fun x => term_has_type gamma (snd x) (snd (fst x)))
+    subs):
+  term_has_type gamma (safe_sub_ts subs t) ty.
+Proof.
+  unfold safe_sub_ts.
+  destruct (disjb' vsymbol_eq_dec (big_union vsymbol_eq_dec tm_fv (map snd subs)) (tm_bnd t)).
+  - apply sub_ts_ty; auto.
+  - apply sub_ts_ty; auto. apply a_convert_t_ty; auto.
+Qed.
+
+Lemma safe_sub_fs_ty gamma f (Hty1: formula_typed gamma f)
+  (subs: list (vsymbol * term))
+  (Hsubs: Forall (fun x => term_has_type gamma (snd x) (snd (fst x)))
+    subs):
+  formula_typed gamma (safe_sub_fs subs f).
+Proof.
+  unfold safe_sub_fs.
+  destruct (disjb' vsymbol_eq_dec (big_union vsymbol_eq_dec tm_fv (map snd subs)) (fmla_bnd f)).
+  - apply sub_fs_ty; auto.
+  - apply sub_fs_ty; auto. apply a_convert_f_typed; auto.
+Qed.
+
+Lemma sub_body_t_ty (f: funsym) gamma args body tys tms ty:
+  Forall (valid_type gamma) tys ->
+  NoDup (map fst (tm_fv body)) ->
+  Forall (fun x : string * vty * term => term_has_type gamma (snd x) (snd (fst x)))
+  (combine (map (ty_subst_var (s_params f) tys) args) tms) ->
+  term_has_type gamma body ty ->
+  term_has_type gamma (sub_body_t f args body tys tms) (ty_subst' (s_params f) tys ty).
+Proof.
+  intros.
+  unfold sub_body_t.
+  apply safe_sub_ts_ty.
+  - apply ty_subst_wf_tm_typed; auto.
+  - auto.
+Qed. 
+
+Lemma sub_fun_body_f_typed gamma f args body tys tms f1 ty:
+  term_has_type gamma (Tfun f tys tms) ty ->
+  term_has_type gamma (sub_body_t f args body tys tms) ty ->
+  formula_typed gamma f1 ->
+  formula_typed gamma (sub_fun_body_f f args body tys tms f1).
+Proof.
+  intros. unfold sub_fun_body_f. 
+  apply (proj_fmla (replace_tm_ty _ _ _ H H0) f1); auto.
+Qed.
+
+Lemma find_fun_app_tys gamma (f1: funsym) x y t f:
+  (forall ty (Hty: term_has_type gamma t ty) 
+    (Hin: In (x, y) (find_fun_app_t f1 t)),
+    exists ty, term_has_type gamma (Tfun f1 x y) ty) /\
+  (forall (Hty: formula_typed gamma f) 
+    (Hin: In (x, y) (find_fun_app_f f1 f)),
+    exists ty, term_has_type gamma (Tfun f1 x y) ty).
+Proof.
+  revert t f; apply term_formula_ind; simpl; intros; auto;
+  try contradiction.
+  - cbn in Hin.
+    rewrite in_app_iff in Hin. destruct Hin.
+    + destruct (funsym_eq_dec f0 f1); subst; auto; try contradiction.
+      simpl in H0. destruct H0 as [Heq | []]; inversion Heq; subst.
+      exists ty; auto.
+    + inversion Hty; subst.
+      rewrite in_concat in H0.
+      destruct H0 as [l' [Hinl' Hinxy]].
+      rewrite in_map_iff in Hinl'.
+      destruct Hinl' as [tm [Hl' Hintm]]; subst.
+      rewrite Forall_forall in H.
+      destruct (In_nth _ _ tm_d Hintm) as [j [Hj Hx]]; subst.
+      eapply H. apply Hintm. auto.
+      rewrite Forall_forall in H11.
+      eapply (H11 (nth j l1 tm_d, (nth j (map (ty_subst (s_params f0) l) (s_args f0)) vty_int))).
+      rewrite in_combine_iff; try rewrite map_length; auto.
+      exists j. split; auto. intros. f_equal; apply nth_indep; try rewrite map_length; auto. lia.
+      auto.
+  - inversion Hty; subst. cbn in Hin.
+    rewrite in_app_iff in Hin. destruct Hin; [apply (H (snd v)) | apply (H0 ty)]; auto.
+  - cbn in Hin. inversion Hty; subst.
+    rewrite !in_app_iff in Hin; destruct_all;
+    [apply H | apply (H0 ty) | apply (H1 ty)]; auto.
+  - cbn in Hin. inversion Hty; subst.
+    rewrite in_app_iff in Hin.
+    destruct Hin.
+    + apply (H v); auto.
+    + rewrite in_concat in H1.
+      destruct H1 as [l' [Hinl' Hinxy]].
+      rewrite in_map_iff in Hinl'.
+      destruct Hinl' as [pt [Hl' Hpt]]; subst.
+      rewrite Forall_map, Forall_forall in H0.
+      apply (H0 pt Hpt ty); auto.
+  - cbn in Hin. inversion Hty; subst. apply H; auto.
+  - cbn in Hin.
+    inversion Hty; subst.
+    rewrite in_concat in Hin.
+    destruct Hin as [l' [Hinl' Hinxy]].
+    rewrite in_map_iff in Hinl'.
+    destruct Hinl' as [tm [Hl' Hintm]]; subst.
+    rewrite Forall_forall in H.
+    destruct (In_nth _ _ tm_d Hintm) as [j [Hj Hx]]; subst.
+    eapply H. apply Hintm. all: auto.
+    rewrite Forall_forall in H8.
+    eapply (H8 (nth j tms tm_d, (nth j (map (ty_subst (s_params p) tys) (s_args p)) vty_int))).
+    rewrite in_combine_iff; try rewrite map_length; auto.
+    exists j. split; auto. intros. f_equal; apply nth_indep; try rewrite map_length; auto. lia.
+  - cbn in Hin. inversion Hty; subst. apply H; auto.
+  - cbn in Hin. rewrite in_app_iff in Hin. inversion Hty; subst.
+    destruct Hin; [apply (H v) | apply (H0 v)]; auto.
+  - cbn in Hin. rewrite in_app_iff in Hin. inversion Hty; subst.
+    destruct Hin; [apply H | apply H0]; auto.
+  - inversion Hty; subst. cbn in Hin.
+    rewrite in_app_iff in Hin. destruct Hin; 
+    [apply (H (snd v)) | apply H0]; auto.
+  - cbn in Hin. inversion Hty; subst.
+    rewrite !in_app_iff in Hin; destruct_all; auto.
+  - cbn in Hin. inversion Hty; subst.
+    rewrite in_app_iff in Hin.
+    destruct Hin.
+    + apply (H v); auto.
+    + rewrite in_concat in H1.
+      destruct H1 as [l' [Hinl' Hinxy]].
+      rewrite in_map_iff in Hinl'.
+      destruct Hinl' as [pt [Hl' Hpt]]; subst.
+      rewrite Forall_map, Forall_forall in H0.
+      apply (H0 pt Hpt); auto.
+Qed.
+
+Definition find_fun_app_t_ty gamma t ty Hty f1 x y:=
+  (proj_tm (find_fun_app_tys gamma f1 x y) t) ty Hty.
+Definition find_fun_app_f_ty gamma f  Hty f1 x y:=
+  (proj_fmla (find_fun_app_tys gamma f1 x y) f) Hty.
+
+(*And now we prove the correctness*)
+(*TODO: typing (prove [unfold_f_gamma f fmla] well-typed if
+  fmla is (prob did most of proof))*)
+Lemma unfold_f_rep {gamma} (gamma_valid: valid_context gamma) 
+  (f: funsym) (fmla: formula)
+  (pd: pi_dom) (pf: pi_funpred gamma_valid pd)
+  (pf_full: full_interp gamma_valid pd pf)
+  (vt: val_typevar) (vv: val_vars pd vt)
+  (Hty1: formula_typed gamma fmla)
+  (Hty2: formula_typed gamma (unfold_f gamma f fmla)):
+  formula_rep gamma_valid pd vt pf vv (unfold_f gamma f fmla) Hty2 =
+  formula_rep gamma_valid pd vt pf vv fmla Hty1.
+Proof.
+  revert Hty2.
+  unfold unfold_f.
+  destruct (get_fun_body_args gamma f) eqn : Hfunbody;
+  [|intros; apply fmla_rep_irrel].
+  destruct p as [body args]. intros.
+  (*Typing info*)
+  apply get_fun_body_args_some in Hfunbody.
+  destruct Hfunbody as [fs [Hinfs Hinf]].
+  pose proof (funpred_def_valid gamma_valid _ Hinfs).
+  unfold funpred_valid in H.
+  destruct H as [Hdef _].
+  rewrite Forall_forall in Hdef.
+  specialize (Hdef _ Hinf).
+  simpl in Hdef.
+  destruct Hdef as [Htyb [Hfvargs [Hsubvars [Hnargs Hargs]]]].
+  (*TODO: other typing info*)
+  revert Hty2. unfold unfold_f_aux.
+  (*Because fold_left, we ned to generalize base*)
+  assert (forall l base Hty2 Hty3
+    (Hl: forall x y, In (x, y) l -> exists ty, 
+      term_has_type gamma (Tfun f x y) ty),
+    formula_rep gamma_valid pd vt pf vv base Hty2 =
+    formula_rep gamma_valid pd vt pf vv fmla Hty1 ->
+    formula_rep gamma_valid pd vt pf vv
+      (fold_left (fun acc x => sub_fun_body_f f args body (fst x) (snd x) acc) l base)
+    Hty3 =
+    formula_rep gamma_valid pd vt pf vv fmla Hty1).
+  {
+    induction l; simpl; intros.
+    - erewrite fmla_rep_irrel. rewrite H. apply fmla_rep_irrel.
+    -  assert (exists ty, term_has_type gamma (Tfun f (fst a) (snd a)) ty).
+        { apply Hl. left; destruct a; auto. }
+      destruct H0 as [ty1 Htya].
+      (*Hardest part: proving typing*)
+      assert (Hty4: term_has_type gamma (sub_body_t f args body (fst a) (snd a)) ty1). {
+        inversion Htya; subst.
+        assert (Hsub: sublist (type_vars (f_ret f)) (s_params f)). {
+          pose proof (f_ret_wf f).
+          apply check_sublist_prop in H0; auto.
+        }
+        rewrite ty_subst_equiv; auto.
+        apply sub_body_t_ty; auto.
+        + eapply NoDup_map_sublist. apply Hnargs. all: auto.
+          apply tm_fv_nodup.
+        + rewrite !Forall_forall. intros x.
+          assert (length (snd a) = length args). {
+            rewrite H7, <- Hargs, map_length; auto.
+          }
+          rewrite in_combine_iff; try rewrite !map_length; auto.
+          intros [i [Hi Hx]].
+          specialize (Hx vs_d tm_d); subst; simpl.
+          rewrite !map_nth_inbound with (d2:=vs_d); auto.
+          simpl.
+          revert H10. rewrite !Forall_forall. intros.
+          apply specialize_combine with(d1:=tm_d)(d2:=vty_int)(i:=i) in H10;
+          auto; try rewrite !map_length; auto; try lia.
+          simpl in H10.
+          rewrite map_nth_inbound with (d2:=vty_int) in H10; try lia.
+          rewrite <- Hargs in H10.
+          rewrite map_nth_inbound with (d2:=vs_d) in H10; auto.
+          rewrite <- ty_subst_equiv; auto.
+          pose proof (s_args_wf f).
+          apply check_args_prop with (x:=snd (nth i args vs_d)) in H1;
+          auto. rewrite <- Hargs. rewrite in_map_iff.
+          exists (nth i args vs_d). split; auto. apply nth_In; auto.
+      }
+      assert (Hty5: formula_typed gamma (sub_fun_body_f f args body (fst a) (snd a) base)).
+      { eapply sub_fun_body_f_typed. apply Htya. all: auto. } 
+      apply IHl with (Hty2:=Hty5).
+      { intros; apply Hl; auto. }
+      revert Hty4.
+      unfold sub_fun_body_f.
+      intros.
+      erewrite replace_tm_f_rep.
+      apply H. apply Htya. apply Hty4.
+      intros.
+      erewrite sub_body_t_rep. reflexivity.
+      apply Hinfs. auto.
+      + inversion Hty0; subst. 
+        rewrite H7. rewrite <- Hargs, !map_length; auto.
+      + inversion Hty0; subst. auto.
+      + auto.
+  }
+  intros.
+  eapply H. 2: reflexivity.
+  (*Need that [find_fun_app_f] well_typed*)
+  intros. eapply find_fun_app_f_ty. 2: apply H0. auto.
+Qed.
+
