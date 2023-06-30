@@ -2,6 +2,7 @@
   tactic-based version*)
 Require Export NatDed.
 Require Export Theory.
+Require Export Unfold.
 From mathcomp Require Export all_ssreflect.
 Set Bullet Behavior "Strict Subproofs".
 
@@ -1143,3 +1144,75 @@ Ltac wspecialize_ty n m :=
     reflexivity |
     reflexivity |
     prove_fmlas_ty | ]; simpl_ty_subst; extra_simpl.
+
+(*Function unfolding*)
+
+Definition trans_goal' (f: context -> formula -> formula) (x: task) :=
+  [task_with_goal x (f (task_gamma x) (task_goal x))].
+Definition trans_goal_sound'
+  (f: context -> formula -> formula) :
+  (forall gamma (gamma_valid: valid_context gamma) 
+  fmla (Hfmla: formula_typed gamma fmla),
+  formula_typed gamma (f gamma fmla) /\
+  forall pd pf (pf_full: full_interp gamma_valid pd pf) 
+    (Hf: formula_typed gamma (f gamma fmla)), 
+    (forall vt vv,
+    formula_rep gamma_valid pd vt pf vv (f gamma fmla) Hf) ->
+    forall vt vv,
+    formula_rep gamma_valid pd vt pf vv fmla Hfmla)->
+sound_trans (trans_goal' f).
+Proof.
+  intros.
+  unfold sound_trans, trans_goal'. simpl.
+  intros.
+  destruct t as [[g d] goal]; simpl in *.
+  specialize (H0 _ (ltac:(left; auto))).
+  unfold task_valid in H0. simpl in *. simpl_task.
+  destruct H0 as [Hwf Hval].
+  unfold task_valid. split; auto. intros.
+  simpl_task.
+  specialize (Hval gamma_valid Hwf).
+  destruct t_wf; simpl in *.
+  unfold log_conseq, satisfies in *. intros.
+  erewrite fmla_rep_irrel.
+  specialize (H _ gamma_valid goal (f_ty task_goal_typed)).
+  eapply (proj2 H). auto. intros.
+  apply Hval; intros; auto.
+  erewrite fmla_rep_irrel. apply H0.
+  Unshelve. auto.
+Qed.
+
+Definition unfold_trans (f: funsym) : trans :=
+  trans_goal' (fun g => unfold_f g f).
+
+Lemma unfold_trans_sound: forall f, 
+  sound_trans (unfold_trans f).
+Proof.
+  intros. apply trans_goal_sound';
+  intros.
+  split.
+  apply unfold_f_ty; auto.
+  intros.
+  specialize (H vt vv).
+  erewrite unfold_f_rep in H. apply H. auto.
+Qed.
+
+Lemma D_unfold gamma delta goal f:
+  Logic.closed gamma goal ->
+  derives (gamma, delta, unfold_f gamma f goal) ->
+  derives (gamma, delta, goal).
+Proof.
+  intros Hclosed Hd. eapply (D_trans (unfold_trans f)); auto.
+  - inversion Hd; subst.
+    inversion H; subst. constructor; auto.
+  - apply unfold_trans_sound.
+  - unfold unfold_trans. simpl. simpl_task.
+    intros x [<- | []]; auto.
+Qed.
+
+(*And the tactic version (only for goals right now):*)
+Ltac wunfold x :=
+  apply D_unfold with(f:=x); [prove_closed |];
+  unfold unfold_f; simpl; unfold unfold_f_aux; simpl;
+  unfold sub_fun_body_f, replace_tm_f, sub_body_t, safe_sub_ts; simpl;
+  extra_simpl.

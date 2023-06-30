@@ -29,11 +29,13 @@ proofs/transform/eliminate_let.v
 proofs/transform/eliminate_inductive.v
 proofs/proofsystem/Util.v
 proofs/proofsystem/Shallow.v
+proofs/proofsystem/Unfold.v
 proofs/proofsystem/NatDed.v
 #proofs/proofsystem/Notations.v
 proofs/proofsystem/Tactics.v
 test/TheoryTest.v
 test/PolyTest.v
+test/UnfoldTest.v
 #proofs/Util.v
 #proofs/Ty.v
 #proofs/Term.v
