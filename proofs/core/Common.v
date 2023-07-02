@@ -2236,6 +2236,12 @@ End NoDupMapUnion.
 (*More results about sublist*)
 Section Sublist.
 
+Lemma sublist_refl {A: Type}: forall (l: list A),
+  sublist l l.
+Proof.
+  intros. unfold sublist. auto.
+Qed.
+
 Lemma union_sublist_r {A: Type} eq_dec (l1 l2: list A):
   sublist l2 (union eq_dec l1 l2).
 Proof.

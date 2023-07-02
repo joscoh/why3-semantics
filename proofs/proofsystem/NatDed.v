@@ -1251,12 +1251,6 @@ Proof.
   auto.
 Qed.
 
-Lemma sublist_refl {A: Type}: forall (l: list A),
-  sublist l l.
-Proof.
-  intros. unfold sublist. auto.
-Qed.
-
 Ltac simpl_set_nil :=
   repeat (match goal with
   | H: union ?eq_dec ?l1 ?l2 = nil |- _ =>

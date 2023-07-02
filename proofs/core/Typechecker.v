@@ -209,6 +209,56 @@ Proof.
     by apply In_in_bool].
 Qed.
 
+Definition all_in_range (bound: nat) (p: nat -> bool) : bool :=
+  forallb p (iota 0 bound).
+
+Lemma iota_plus_1: forall x y,
+  iota x (y.+1) = iota x y ++ [ :: (x + y)%N].
+Proof.
+  move => x y. by rewrite -addn1 iotaD /=.
+Qed.
+
+Lemma all_in_range_spec bound p P:
+  (forall n, n < bound -> reflect (P n) (p n)) ->
+  reflect (forall n, n < bound -> P n) (all_in_range bound p).
+Proof.
+  rewrite /all_in_range.
+  elim: bound => [/=| n' IHn] => [Hrefl | Hrefl].
+  - by apply ReflectT.
+  - rewrite iota_plus_1 forallb_app/= andbT add0n.
+    prove_hyp IHn.
+    { move=> n Hn. apply Hrefl.
+      by apply (ltn_trans Hn).
+    }
+    case: IHn=>//= Hall.
+    + have Hr: reflect (P n') (p n') by apply Hrefl.
+      case: Hr => Hn'/=.
+      * apply ReflectT. move=> n. rewrite ltnS.
+        rewrite leq_eqVlt => /orP[/eqP -> | Hlt]//=.
+        by apply Hall.
+      * apply ReflectF=> C.
+        apply Hn'. by apply C.
+    + apply ReflectF. move=> C.
+      apply Hall. move=> x Hn. apply C.
+      by apply (leq_trans Hn).
+Qed.
+(*Check forallP.
+(*What about this?*)
+Lemma all_in_range_equiv bound p:
+  all_in_range bound p =
+  [forall x in 'I_bound, p x].
+Proof.
+  case: [forall x0 in 'I_bound, p x0] /forallP => Hall.
+  - apply /(all_in_range_spec _ p p).
+    + move=> x Hx. apply idP.
+    + move=> n Hn.
+      by move: Hall => /(_ (Ordinal Hn))/=.
+  - apply /(all_in_range_spec _ p p).
+    + move=> x Hx. apply idP.
+    + move=> C. apply Hall => x/=.
+      by apply C.
+Qed.*)
+
 Fixpoint typecheck_pattern (gamma: context) (p: pattern) (v: vty) : bool :=
   match p with
   | Pvar x => (v == (snd x)) && typecheck_type gamma (snd x)
@@ -236,9 +286,10 @@ Fixpoint typecheck_pattern (gamma: context) (p: pattern) (v: vty) : bool :=
       |  _, _ => false
        end) ps (map (ty_subst (s_params f) params) (s_args f))) &&
     (*Kind of an awkward encoding*)
-    [forall x in 'I_(length ps), forall y in 'I_(length ps),
-      (x != y) ==>  
-      null (seqI (pat_fv (nth Pwild ps x)) (pat_fv (nth Pwild ps y)))] &&
+    (all_in_range (length ps) (fun x =>
+      all_in_range (length ps) (fun y =>
+      (x != y) ==>
+      null (seqI (pat_fv (nth Pwild ps x)) (pat_fv (nth Pwild ps y)))))) &&
     (is_funsym_constr gamma f)
   end.
 
@@ -274,11 +325,6 @@ Proof.
       apply IH=>//. by apply (ForallT_tl _ _ _ Hall).
 Qed.
 
-
-
-
-
-(*Let's start this*)
 Lemma typecheck_pattern_correct: forall (s: context) (p: pattern) (v: vty),
   reflect (pattern_has_type s p v) (typecheck_pattern s p v).
 Proof.
@@ -309,38 +355,39 @@ Proof.
       ~
       (In x (pat_fv (List.nth i ps d)) /\
       In x (pat_fv (List.nth j ps d)))))
-    ([forall x in 'I_(Datatypes.length ps),
-      forall y in 'I_(Datatypes.length ps),
-      (x != y) ==>
-      null (seqI (pat_fv (nth Pwild ps x)) (pat_fv (nth Pwild ps y)))]). {
+    (all_in_range (Datatypes.length ps)
+    (fun x : nat =>
+     all_in_range (Datatypes.length ps)
+       (fun y : nat =>
+        (x != y) ==> null (seqI (pat_fv (nth Pwild ps x)) (pat_fv (nth Pwild ps y)))))). {
         (*Have to prove manually*)
-        case: [forall x in 'I_(Datatypes.length ps),
-        forall y in 'I_(Datatypes.length ps),
-        (x != y) ==>
-        null (seqI (pat_fv (nth Pwild ps x)) (pat_fv (nth Pwild ps y)))] 
-        /forallP => Hforallx/=; last first.
-        - apply ReflectF => C. apply Hforallx. move=> x.
-          apply /implyP => _. apply /forallP => y.
-          apply /implyP=>_. apply /implyP => Hneq.
-          apply /nullP. apply /eqP. 
-          rewrite /seqI -(negbK (_ == _)) -has_filter. 
-          apply /negP => /hasP [z] /inP Hzin1 /inP Hzin2.
-          apply (C x y Pwild z).
-          + by apply /ltP.
-          + by apply /ltP.
-          + by apply /eqP.
-          + by rewrite !nth_eq.
-        - apply ReflectT. move => i j d x /ltP Hi /ltP Hj /eqP Hij [].
-          rewrite !nth_eq => Hinxi Hinxj.
-          move: Hforallx => /(_ (Ordinal Hi))/= /forallP 
-            /(_ (Ordinal Hj))/= /implyP.
-          have Hneq: (Ordinal (n:=Datatypes.length ps) (m:=i) Hi
-            != Ordinal (n:=Datatypes.length ps) (m:=j) Hj).
-          apply /eqP=> C. inversion C; subst. by rewrite eq_refl in Hij.
-          move=>/(_ Hneq) /nullP /eqP. 
-          rewrite /seqI -(negbK (_ == _)) -has_filter => /hasP.
-          apply. by exists x; rewrite (set_nth_default d)//; apply /inP.
-    }
+        case: (all_in_range_spec (length ps) _
+          (fun i => forall j, (j < length ps) ->
+            i <> j -> forall d x, ~ (In x (pat_fv (List.nth i ps d)) /\ In x (pat_fv (List.nth j ps d))))).
+        - move=> n Hn.
+          apply all_in_range_spec.
+          move=> m Hm.
+          apply implyPP. apply negPP. apply eqP.
+          case: (nullP (seqI (pat_fv (nth Pwild ps n)) (pat_fv (nth Pwild ps m)))).
+          + move=> /eqP. rewrite /seqI -(negbK (_ == _)) -has_filter => Hnone.
+            apply ReflectT => d x [Hinx1 Hinx2].
+            apply /negP. apply Hnone.
+            apply /hasP. 
+            by exists x; apply /inP; rewrite -nth_eq (nth_indep _ _ d) //;
+            apply /ltP.
+          + move /eqP. rewrite /seqI -has_filter => /hasP Hhas.
+            apply ReflectF => C.
+            case: Hhas => [x /inP Hinx1 /inP Hinx2].
+            apply (C Pwild x);
+            by rewrite !nth_eq.
+        - move=> Hall1.
+          apply ReflectT.
+          move=> i j d x /ltP Hi /ltP Hj Hij. by apply Hall1.
+        - move=> Hnotall.
+          apply ReflectF => C.
+          by apply Hnotall => x /ltP Hn j /ltP Hj Hneq d y;
+          apply C.
+    }        
     case: Hfvs => Hfreevars;[rewrite andbT | rewrite andbF]; last by
     reflF.
     rewrite andbC.

@@ -15,6 +15,7 @@ proofs/core/ADTInd.v
 proofs/core/Denotational.v
 proofs/core/Denotational2.v
 proofs/core/GenElts.v
+proofs/core/SubMulti.v
 proofs/core/Alpha.v
 proofs/core/IndProp.v
 proofs/core/RecFun.v
@@ -30,12 +31,14 @@ proofs/transform/eliminate_inductive.v
 proofs/proofsystem/Util.v
 proofs/proofsystem/Shallow.v
 proofs/proofsystem/Unfold.v
+proofs/proofsystem/MatchSimpl.v
 proofs/proofsystem/NatDed.v
 #proofs/proofsystem/Notations.v
 proofs/proofsystem/Tactics.v
 test/TheoryTest.v
 test/PolyTest.v
 test/UnfoldTest.v
+test/SimplMatchTest.v
 #proofs/Util.v
 #proofs/Ty.v
 #proofs/Term.v

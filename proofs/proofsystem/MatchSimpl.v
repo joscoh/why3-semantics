@@ -1,7 +1,8 @@
 (*Simplify pattern match*)
 Require Import Denotational.
-Require Import Unfold. (*For multiple sub - TODO move*)
+Require Import Alpha.
 Require Import Typechecker.
+Require Import Unfold. (*For [val_with-args_in'] TODO fix*)
 Set Bullet Behavior "Strict Subproofs".
 (*This only simplifies the outermost pattern matches; it does not
   recursive inside.*)
@@ -11,8 +12,6 @@ Inductive match_result : Set :=
   | DontKnow : match_result
   | NoMatch : match_result
   | Matches : list (vsymbol * term) -> match_result.
-
-Print pattern.
 
 (*We need the "don't know" case because [match_val_single]
   will always say yes or no, but we don't know which one
@@ -858,6 +857,7 @@ Qed.
 (*2 different ways of extending a valuation with multiple
   arguments are equivalent (from [match_val_single] and from
     multiple substitution)*)
+
 Lemma extend_val_with_args_eq {gamma} (gamma_valid: valid_context gamma)
   (pd: pi_dom) (vt: val_typevar) (pf: pi_funpred gamma_valid pd)
   (vv: val_vars pd vt)
@@ -874,18 +874,14 @@ Lemma extend_val_with_args_eq {gamma} (gamma_valid: valid_context gamma)
       dom_cast (dom_aux pd) Heq (term_rep gamma_valid pd vt pf vv (snd x) ty Hty))
     (combine (map snd l1) (map snd l2)))
   (Hall: Forall (fun x : term * vty => term_has_type gamma (fst x) (snd x))
-    (combine (map snd l2) (map snd (map fst l2))))
-  (t: term)
-  (ty: vty)
-  (Hty: term_has_type gamma t ty):
-  term_rep gamma_valid pd vt pf
+    (combine (map snd l2) (map snd (map fst l2)))):
+  forall x, 
     (val_with_args pd vt vv (map fst l2)
     (map_arg_list gamma_valid pd vt pf vv (map snd l2) (map snd (map fst l2))
-      (map_snd_fst_len l2) Hall)) t ty Hty =
-  term_rep gamma_valid pd vt pf (extend_val_with_list pd vt vv l1) t ty Hty.
+      (map_snd_fst_len l2) Hall)) x =
+  (extend_val_with_list pd vt vv l1) x.
 Proof.
-  apply tm_change_vv.
-  intros.
+  intros x.
   destruct (in_dec vsymbol_eq_dec x (map fst l1)).
   2: {
     rewrite extend_val_notin; auto.
@@ -1057,7 +1053,197 @@ Proof.
       all: auto.
       2: exact (Forall_inv Htm2).
       unfold vsymbol in *.
+      apply tm_change_vv. intros.
       apply extend_val_with_args_eq; auto.
       unfold vsymbol in *.
       rewrite Hfstl1. auto.
-  -
+  - (*Teps*)
+    simpl_rep_full. f_equal. apply functional_extensionality_dep;
+    intros. replace (proj2' (ty_eps_inv Hty1)) with
+    (proj2' (ty_eps_inv Hty2)) by (apply UIP_dec, vty_eq_dec).
+    erewrite H. reflexivity.
+  - (*Fpred*)
+    simpl_rep_full.
+    f_equal. apply get_arg_list_ext; rewrite !map_length; auto.
+    intros i Hi.
+    rewrite map_nth_inbound with (d2:=tm_d); auto; intros.
+    rewrite Forall_forall in H; apply H. apply nth_In; auto.
+  - (*Fquant*)
+    assert (Hd: forall d,
+    formula_rep gamma_valid pd vt pf (substi pd vt vv v d) (simpl_match_f gamma f)
+    (typed_quant_inv Hty1) =
+    formula_rep gamma_valid pd vt pf (substi pd vt vv v d) f (typed_quant_inv Hty2)).
+    {
+      intros d. apply H.
+    }
+    destruct q; simpl_rep_full; apply all_dec_eq;
+    setoid_rewrite Hd; reflexivity.
+  - (*Feq*) simpl_rep_full.
+    erewrite H, H0. reflexivity.
+  - (*Fbinop*) simpl_rep_full.
+    erewrite H, H0. reflexivity.
+  - (*Flet*) simpl_rep_full. 
+    erewrite fmla_change_vv. apply H0.
+    intros.
+    erewrite H. reflexivity.
+  - (*Fif*) simpl_rep_full.
+    erewrite H, H0, H1; reflexivity.
+  - (*Fmatch*)
+      destruct (formula_eq_dec (check_match gamma safe_sub_fs tm (Fmatch tm v ps) ps)
+      (Fmatch tm v ps)).
+    {
+      revert Hty1.
+      rewrite e. intros. apply fmla_rep_irrel.
+    }
+    simpl_rep_full.
+    iter_match_gen Hty2 Htm2 Hpat2 Hty2.
+    generalize dependent (Fmatch tm v ps).
+    intros t Hty1 Hcheck.
+    induction ps; simpl; intros.
+    { (*trivial case *) simpl in Hcheck. contradiction. }
+    revert Hty1 Hcheck. simpl.
+    destruct (matches gamma (fst a) tm) eqn : Hmatches.
+    {(*if DontKnow, trivial*) contradiction. }
+    + (*Case 1: None - we show that [match_val_single] gives None*)
+      destruct a as [p1 t1]; simpl in *.
+      assert (match_val_single gamma_valid pd vt v p1 (Forall_inv Hpat2)
+        (term_rep gamma_valid pd vt pf vv tm v Hty2) = None).
+      { 
+        apply match_val_single_matches_none; auto.
+      }
+      rewrite H1. intros. apply IHps; auto. inversion H0; subst; auto.
+    + (*Case 2: Some*)
+      destruct a as [p1 t1]; simpl in *. intros.
+      (*Let's see lemma*)
+      assert (exists l1,
+        match_val_single gamma_valid pd vt v p1 (Forall_inv Hpat2)
+          (term_rep gamma_valid pd vt pf vv tm v Hty2) = Some l1 /\
+        map fst l1 = map fst l /\
+        Forall (fun x => exists ty Hty Heq ,
+          projT2 (fst x) = dom_cast (dom_aux pd) Heq 
+            (term_rep gamma_valid pd vt pf vv (snd x) ty Hty) 
+        ) (combine (map snd l1) (map snd l))
+      )  .
+      {
+        apply match_val_single_matches_some'.
+        auto.
+      }
+      destruct H1 as [l1 [Hmatch [Hfstl1 Hl1]]].
+      rewrite Hmatch.
+      assert (Hall: Forall (fun x : term * vty => term_has_type gamma (fst x) (snd x))
+      (combine (map snd l) (map snd (map fst l)))).
+      {
+        apply (matches_tys p1 tm v); auto.
+        inversion Hpat2; subst; auto.
+      }
+      assert (Hnodup: NoDup (map fst l)). {
+        rewrite <- Hfstl1.
+        apply (match_val_single_nodup _ _ _ _ _ _ _ Hmatch).
+      }
+      erewrite safe_sub_fs_rep; auto.
+      Unshelve.
+      all: auto.
+      2: exact (Forall_inv Htm2).
+      unfold vsymbol in *.
+      apply fmla_change_vv; intros.
+      apply extend_val_with_args_eq; auto.
+      unfold vsymbol in *.
+      rewrite Hfstl1. auto.
+Qed.
+
+Definition simpl_match_t_rep {gamma} (gamma_valid: valid_context gamma)
+  pd vt pf vv t :=
+  (proj_tm (simpl_match_rep gamma_valid pd vt pf) t) vv.
+Definition simpl_match_f_rep {gamma} (gamma_valid: valid_context gamma)
+  pd vt pf vv f :=
+  (proj_fmla (simpl_match_rep gamma_valid pd vt pf) f) vv.
+
+(*Last piece: typing*)
+Lemma simpl_match_ty gamma t f:
+  (forall (ty: vty) (Hty: term_has_type gamma t ty),
+    term_has_type gamma (simpl_match_t gamma t) ty) /\
+  (forall (Hty: formula_typed gamma f),
+    formula_typed gamma (simpl_match_f gamma f)).
+Proof.
+  revert t f; apply term_formula_ind; simpl; intros; auto;
+  try solve[inversion Hty; subst; constructor; auto].
+  - inversion Hty; subst. constructor; auto.
+    rewrite !map_length; auto.
+    revert H10 H.
+    rewrite !Forall_forall; intros.
+    rewrite in_combine_iff in H0; [| rewrite !map_length; auto].
+    destruct H0 as [i [Hi Hx]].
+    rewrite map_length in Hi.
+    specialize (Hx tm_d vty_int); subst; simpl.
+    rewrite map_nth_inbound with (d2:=tm_d); auto.
+    apply H; [apply nth_In; auto |].
+    apply specialize_combine with (d1:=tm_d)(d2:=vty_int)(i:=i) in H10;
+    auto; rewrite !map_length; auto.
+  - destruct (term_eq_dec (check_match gamma safe_sub_ts tm (Tmatch tm v ps) ps)
+      (Tmatch tm v ps)).
+    {
+      rewrite e. auto.
+    }
+    clear H H0. (*No recursion here*)
+    iter_match_gen Hty Htm Hpat Hty.
+    generalize dependent (Tmatch tm v ps).
+    intros t Hcheck.
+    induction ps; simpl; intros; try contradiction.
+    inversion Htm; inversion Hpat; subst.
+    simpl in Hcheck.
+    destruct (matches gamma (fst a) tm) eqn : Hmatcha; try contradiction; auto.
+    apply safe_sub_ts_ty; auto.
+    pose proof (matches_tys _ _ _ _ H5 Hty Hmatcha).
+    revert H.
+    rewrite !Forall_forall; intros.
+    destruct x as [[n1 ty1] tm1]; simpl.
+    specialize (H (tm1, ty1)). apply H.
+    rewrite in_combine_iff; rewrite !map_length; auto.
+    destruct (In_nth _ _ (vs_d, tm_d) H0) as [i [Hi Heq]].
+    exists i. split; auto.
+    intros.
+    rewrite !map_map, !map_nth_inbound with (d2:=(vs_d, tm_d));
+    auto; rewrite Heq; auto.
+  - inversion Hty; subst. constructor; auto.
+    rewrite !map_length; auto.
+    revert H8 H.
+    rewrite !Forall_forall; intros.
+    rewrite in_combine_iff in H0; [| rewrite !map_length; auto].
+    destruct H0 as [i [Hi Hx]].
+    rewrite map_length in Hi.
+    specialize (Hx tm_d vty_int); subst; simpl.
+    rewrite map_nth_inbound with (d2:=tm_d); auto.
+    apply H; [apply nth_In; auto |].
+    apply specialize_combine with (d1:=tm_d)(d2:=vty_int)(i:=i) in H8;
+    auto; rewrite !map_length; auto.
+  - destruct (formula_eq_dec (check_match gamma safe_sub_fs tm (Fmatch tm v ps) ps)
+      (Fmatch tm v ps)).
+    {
+      rewrite e. auto.
+    }
+    clear H H0. (*No recursion here*)
+    iter_match_gen Hty Htm Hpat Hty.
+    generalize dependent (Fmatch tm v ps).
+    intros t Hcheck.
+    induction ps; simpl; intros; try contradiction.
+    inversion Htm; inversion Hpat; subst.
+    simpl in Hcheck.
+    destruct (matches gamma (fst a) tm) eqn : Hmatcha; try contradiction; auto.
+    apply safe_sub_fs_ty; auto.
+    pose proof (matches_tys _ _ _ _ H5 Hty Hmatcha).
+    revert H.
+    rewrite !Forall_forall; intros.
+    destruct x as [[n1 ty1] tm1]; simpl.
+    specialize (H (tm1, ty1)). apply H.
+    rewrite in_combine_iff; rewrite !map_length; auto.
+    destruct (In_nth _ _ (vs_d, tm_d) H0) as [i [Hi Heq]].
+    exists i. split; auto.
+    intros.
+    rewrite !map_map, !map_nth_inbound with (d2:=(vs_d, tm_d));
+    auto; rewrite Heq; auto.
+Qed.
+
+Definition simpl_match_t_ty gamma t :=
+  proj_tm (simpl_match_ty gamma) t.
+Definition simpl_match_f_ty gamma f :=
+  proj_fmla (simpl_match_ty gamma) f.

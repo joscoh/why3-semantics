@@ -1,4 +1,4 @@
-Require Export Denotational.
+Require Export SubMulti.
 Require Import GenElts.
 
 (*For a proof using induction on length of list*)
@@ -7074,6 +7074,94 @@ End ConvertMap.
 
 (*Safe substitution*)
 Section SafeSub.
+
+(*Multiple safe substitution - TODO combine into one*)
+Definition safe_sub_ts (subs: list (vsymbol * term)) (t: term) :=
+  if disjb' vsymbol_eq_dec (big_union vsymbol_eq_dec tm_fv (map snd subs)) (tm_bnd t)
+  then sub_ts subs t else
+  sub_ts subs (a_convert_t t (big_union vsymbol_eq_dec tm_fv (map snd subs))).
+
+Lemma safe_sub_ts_rep subs t
+  (Hn: NoDup (map fst subs))
+  (Hall : Forall (fun x => term_has_type gamma (fst x) (snd x))
+    (combine (map snd subs) (map snd (map fst subs))))
+  (vv : val_vars pd vt) (ty : vty)
+  (Hty1 : term_has_type gamma (safe_sub_ts subs t) ty)
+  (Hty2 : term_has_type gamma t ty):
+  term_rep vv (safe_sub_ts subs t) ty Hty1 =
+  term_rep (val_with_args pd vt vv (map fst subs)
+      (map_arg_list gamma_valid pd vt pf vv 
+          (map snd subs) (map snd (map fst subs)) 
+          (map_snd_fst_len subs) Hall)) t ty Hty2.
+Proof.
+  revert Hty1.
+  unfold safe_sub_ts.
+  match goal with
+  | |- context [if (disjb' ?d ?l1 ?l2) then ?c else ?e] =>
+    destruct (disjP' d l1 l2)
+  end.
+  - intros. apply sub_ts_rep; auto.
+  - intros. erewrite sub_ts_rep; auto.
+    rewrite <- a_convert_t_rep; auto.
+    intros x [Hinx1 Hinx2].
+    apply (a_convert_t_bnd t _ _ Hinx1); auto.
+Qed.
+
+Definition safe_sub_fs (subs: list (vsymbol * term)) (f: formula) :=
+  if disjb' vsymbol_eq_dec (big_union vsymbol_eq_dec tm_fv (map snd subs)) (fmla_bnd f)
+  then sub_fs subs f else
+  sub_fs subs (a_convert_f f (big_union vsymbol_eq_dec tm_fv (map snd subs))).
+
+Lemma safe_sub_fs_rep subs f
+  (Hn: NoDup (map fst subs))
+  (Hall : Forall (fun x => term_has_type gamma (fst x) (snd x))
+    (combine (map snd subs) (map snd (map fst subs))))
+  (vv : val_vars pd vt)
+  (Hty1 : formula_typed gamma (safe_sub_fs subs f))
+  (Hty2 : formula_typed gamma f):
+  formula_rep vv (safe_sub_fs subs f) Hty1 =
+  formula_rep (val_with_args pd vt vv (map fst subs)
+      (map_arg_list gamma_valid pd vt pf vv 
+          (map snd subs) (map snd (map fst subs)) 
+          (map_snd_fst_len subs) Hall)) f Hty2.
+Proof.
+  revert Hty1.
+  unfold safe_sub_fs.
+  match goal with
+  | |- context [if (disjb' ?d ?l1 ?l2) then ?c else ?e] =>
+    destruct (disjP' d l1 l2)
+  end.
+  - intros. apply sub_fs_rep; auto.
+  - intros. erewrite sub_fs_rep; auto.
+    rewrite <- a_convert_f_rep; auto.
+    intros x [Hinx1 Hinx2].
+    apply (a_convert_f_bnd f _ _ Hinx1); auto.
+Qed.
+
+
+Lemma safe_sub_ts_ty t ty (Hty1: term_has_type gamma t ty)
+  (subs: list (vsymbol * term))
+  (Hsubs: Forall (fun x => term_has_type gamma (snd x) (snd (fst x)))
+    subs):
+  term_has_type gamma (safe_sub_ts subs t) ty.
+Proof.
+  unfold safe_sub_ts.
+  destruct (disjb' vsymbol_eq_dec (big_union vsymbol_eq_dec tm_fv (map snd subs)) (tm_bnd t)).
+  - apply sub_ts_ty; auto.
+  - apply sub_ts_ty; auto. apply a_convert_t_ty; auto.
+Qed.
+
+Lemma safe_sub_fs_ty f (Hty1: formula_typed gamma f)
+  (subs: list (vsymbol * term))
+  (Hsubs: Forall (fun x => term_has_type gamma (snd x) (snd (fst x)))
+    subs):
+  formula_typed gamma (safe_sub_fs subs f).
+Proof.
+  unfold safe_sub_fs.
+  destruct (disjb' vsymbol_eq_dec (big_union vsymbol_eq_dec tm_fv (map snd subs)) (fmla_bnd f)).
+  - apply sub_fs_ty; auto.
+  - apply sub_fs_ty; auto. apply a_convert_f_typed; auto.
+Qed.
 
 (*t2[t1/x], renaming bound vars if needed*)
 Definition safe_sub_t (t1: term) (x: vsymbol) (t2: term) : term :=

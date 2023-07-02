@@ -1216,3 +1216,38 @@ Ltac wunfold x :=
   unfold unfold_f; simpl; unfold unfold_f_aux; simpl;
   unfold sub_fun_body_f, replace_tm_f, sub_body_t, safe_sub_ts; simpl;
   extra_simpl.
+
+(*Simplify pattern match*)
+Require Import MatchSimpl.
+Definition simpl_match_trans : trans :=
+  trans_goal' (fun g => simpl_match_f g).
+
+Lemma simpl_match_trans_sound: 
+  sound_trans simpl_match_trans.
+Proof.
+  apply trans_goal_sound'; intros.
+  split. apply simpl_match_f_ty; auto.
+  intros.
+  specialize (H vt vv).
+  erewrite simpl_match_f_rep in H. apply H.
+Qed.
+
+Lemma D_simpl_match gamma delta goal:
+  Logic.closed gamma goal ->
+  derives (gamma, delta, simpl_match_f gamma goal) ->
+  derives (gamma, delta, goal).
+Proof.
+  intros Hclosed Hd. eapply (D_trans simpl_match_trans); auto.
+  - inversion Hd; subst.
+    inversion H; subst. constructor; auto.
+  - apply simpl_match_trans_sound.
+  - unfold simpl_match_trans. simpl. simpl_task.
+    intros x [<- | []]; auto.
+Qed.
+
+(*And the tactic version (only for goals right now):*)
+Ltac wsimpl_match :=
+  apply D_simpl_match; [prove_closed |];
+  unfold simpl_match_f; simpl;
+  unfold safe_sub_ts, safe_sub_fs; simpl;
+  extra_simpl.
