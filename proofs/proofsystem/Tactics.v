@@ -1251,3 +1251,18 @@ Ltac wsimpl_match :=
   unfold simpl_match_f; simpl;
   unfold safe_sub_ts, safe_sub_fs; simpl;
   extra_simpl.
+
+(*Induction tactic*)
+Require Import Induction.
+Ltac winduction :=
+  match goal with
+  | |- derives (?g, ?d, Fquant Tforall ?x ?f) =>
+    eapply D_induction;
+    [reflexivity | reflexivity | reflexivity | prove_closed | ];
+    simpl; split_all; auto;
+    unfold constr_case; simpl; unfold safe_sub_f; simpl;
+    try extra_simpl
+  | |- _ => fail "Induction requires generalization:
+    goal must be in form (Forall (x: a(vs)), f
+    where a is a non-mutual ADT"
+  end.

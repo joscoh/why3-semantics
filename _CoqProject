@@ -33,12 +33,14 @@ proofs/proofsystem/Shallow.v
 proofs/proofsystem/Unfold.v
 proofs/proofsystem/MatchSimpl.v
 proofs/proofsystem/NatDed.v
+proofs/proofsystem/Induction.v
 #proofs/proofsystem/Notations.v
 proofs/proofsystem/Tactics.v
 test/TheoryTest.v
 test/PolyTest.v
 test/UnfoldTest.v
 test/SimplMatchTest.v
+test/InductionTest.v
 #proofs/Util.v
 #proofs/Ty.v
 #proofs/Term.v
