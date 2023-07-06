@@ -36,6 +36,10 @@ proofs/proofsystem/NatDed.v
 proofs/proofsystem/Induction.v
 #proofs/proofsystem/Notations.v
 proofs/proofsystem/Tactics.v
+proofs/proofsystem/Notations.v
+#TODO: maybe tests before?
+lib/Algebra.v
+lib/Verif_Algebra.v
 test/TheoryTest.v
 test/PolyTest.v
 test/UnfoldTest.v

@@ -1,12 +1,91 @@
 Require Import Syntax.
 Require Import Typechecker.
-Require Import Util.
+Require Import ProofSystem.
 (*We want a nicer way to represent terms and formulas*)
 
-(*For now, variables and symbols are not represented very nicely,
-  we will rely on ad-hoc definitions. But we can at least have
-  nicer notations for terms and formulas*)
+(*First, utilities to prevent us from having to write the type
+  variables in a function/predicate symbol*)
 
+Definition find_args (l: list vty) : list typevar :=
+  big_union typevar_eq_dec type_vars l.
+
+Lemma find_args_nodup l:
+  nodupb typevar_eq_dec (find_args l).
+Proof.
+  apply (ssrbool.introT (nodup_NoDup _ _)).
+  apply big_union_nodup.
+Qed.
+
+Lemma find_args_check_args_l l1 l2:
+  (forall x, In x l1 -> In x l2) ->
+  check_args (find_args l2) l1.
+Proof.
+  intros.
+  apply (ssrbool.introT (check_args_correct _ _)).
+  intros.
+  unfold find_args, sublist. intros.
+  simpl_set. exists x. split; auto.
+Qed.
+
+Lemma find_args_check_args_in x l:
+  In x l ->
+  check_sublist (type_vars x) (find_args l).
+Proof.
+  intros. apply (ssrbool.introT (check_sublist_correct _ _)).
+  unfold sublist. intros. unfold find_args. simpl_set.
+  exists x; auto.
+Qed.
+
+(*TODO: want to remove proofs from fun, predsym*)
+Definition funsym_noty (name: string) (args: list vty) 
+  (ret: vty) : funsym :=
+  Build_funsym (Build_fpsym name (find_args (ret :: args)) args
+    (find_args_check_args_l _ _ (fun x => in_cons _ x _)) (find_args_nodup _)) 
+    ret (find_args_check_args_in _ _ (in_eq _ _)).
+
+Definition predsym_noty (name: string) (args: list vty) : predsym :=
+  Build_predsym (Build_fpsym name (find_args args) args
+    (find_args_check_args_l _ _ (fun x H => H))
+    (find_args_nodup _)).
+
+
+(*ALT APPROACH*)
+
+(*Represent things using functions - from
+  map of string -> typesym, map of string -> fun/predsym,
+  map of string -> vsymbol*)
+
+(*TODO: change to a real map data structure later;
+  for now, just use functions*)
+(*We will give default values - not great, see*)
+Definition str_map (A: Type) := string -> A.
+Definition get {A: Type} (m: str_map A) (s: string) : A :=
+  m s.
+Definition set {A: Type} (m: str_map A) (s: string) (val: A) : str_map A :=
+  fun x => if string_dec s x then val else m x.
+
+Definition def_map {A: Type} (x: A) : str_map A :=
+  fun _ => x.
+
+Definition set_all {A: Type} (m: str_map A) (f: A -> string) (l: list A) :=
+  fold_right (fun x acc => set acc (f x) x) m l.
+
+Inductive mapval : Set :=
+  | F_val : funsym -> mapval
+  | P_val : predsym -> mapval
+  | T_val : typesym -> mapval
+  | V_val : vsymbol -> mapval.
+
+(*We will use a single map: string -> option mapval*)
+
+
+(*Require Import Coq.FSets.FMapAVL.
+Require Import Coq.Structures.OrdersEx.
+Require Import Coq.Structures.OrdersAlt.
+Module String_as_OT := Update_OT String_as_OT. Module Str := Make String_as_OT.
+Module String_as_OT' := Update_OT String_as_OT.
+Module TypeSymMap := FMapAVL.Make(Update_OT String_as_OT).
+Module *)
 
 (*Part 1: Types*)
 
@@ -38,7 +117,7 @@ Declare Scope why3_scope.
 (*Types*)
 (*Definition vty_var' : string -> vty := vty_var.
 Coercion vty_var' : string >-> vty.*)
-(*Coercion Pvar : vsymbol >-> pattern.*)
+Coercion Pvar : vsymbol >-> pattern.
 
 (*Maybe we want to do this in a context*)
 
@@ -48,8 +127,6 @@ Notation "<{{{ e }}}>" := e (e custom adt at level 99) : why3_scope.
 (*For testing, remove maybe*)
 (*Notation "'<p' e 'p>'" := e (e custom pat at level 99) : why3_scope.*)
 Notation "'<t' e 't>'" := e (e custom tm at level 99) : why3_scope. 
-(*TODO: should we just use <{}> for this?*)
-Notation "'<f' e 'f>'" := e (e custom fmla at level 99) : why3_scope. 
 Notation "( x )" := x (in custom why3, x at level 99).
 Notation "( x )" := x (in custom ty, x at level 99).
 Notation "( x )" := x (in custom adt, x at level 99).
@@ -99,17 +176,24 @@ Notation "x" := x (in custom mutfunlist at level 0, x constr at level 0).
 Number Notation Z Z.of_num_int Z.to_num_int : why3_scope.
 String Notation string string_of_list_byte list_byte_of_string : why3_scope.
 
-(*Types*)
 
-(*User should define typesym and vty for ADT/type symbols and function for args
-  also variables
-  (TODO: make better?)*)
-Notation "'int'" := vty_int (in custom ty at level 0).
-Notation "'real'" := vty_real (in custom ty at level 0).
+(*Type symbols  (type: str_map typesym -> vty)*)
+
+Notation "ts vs" := (fun (m_ts : str_map typesym) => 
+  (vty_cons (get m_ts ts) (map (fun x => x m_ts) vs)))
+  (in custom ty at level 0,
+    vs custom tylist at level 0).
+(*Notation "ts '_'" := (fun (m_ts : str_map typesym) => 
+(vty_cons (get m_ts ts) nil))
+(in custom ty at level 0).*)
+Notation "' x " := (fun (m_ts: str_map typesym) => vty_var x)
+  (in custom ty at level 0).
+Notation "'int'" := (fun (m_ts : str_map typesym) => vty_int)
+  (in custom ty at level 0).
 
 
 (*List of tys*)
-Notation "<>" := (@nil vty) 
+Notation "<>" := (@nil (str_map typesym -> vty)) 
   (in custom tylist at level 0). 
 Notation "< x >" := (cons x nil) (in custom tylist at level 0,
   x custom ty at level 0).
@@ -121,8 +205,21 @@ Notation "< x ; y ; .. ; z >" := (cons x (cons y .. (cons z nil) ..))
     format "< '[' x ; '/' y ; '/' .. ; '/' z ']' >"
   ).
 
-(*ADTs*)
-(*Again, user should define funsyms and functions*)
+(*Algebraic Datatypes*)
+
+(*We will represent a single ADT as 
+  (typesym, (str_map typesym -> ne_list funsym))*)
+
+(*First, notation for funsyms when we know the return type
+  (function ty -> funsym)*)
+Notation "fs '_'" := (fun (ret: vty) (ts_map: str_map typesym) => 
+  funsym_noty fs nil ret)
+  (in custom adtconstr at level 5).
+
+Notation "fs tys" := (fun (ret: vty) (ts_map: str_map typesym) => 
+  funsym_noty fs (map (fun x => x ts_map) tys) ret)
+  (in custom adtconstr at level 5,
+    tys custom tylist at level 5).
 
 
 
@@ -134,9 +231,19 @@ Notation "| x | y | .. | z 'end'":=
   y custom adtconstr at level 5,
   z custom adtconstr at level 5).
 
-(*Construct ADT *)
+Notation "'type' a vs = l" :=
+  (mk_ts a vs, fun (ts_m: str_map typesym) => list_to_ne_list 
+    (map (fun x => x (vty_cons (mk_ts a vs) (map vty_var vs)) ts_m) l) 
+    eq_refl)
+  (in custom adt at level 10,
+    (*a custom tm at level 10,
+    vs custom tm at level 10,*)
+    l custom adt at level 10).
+
 Notation "'type' a = l" :=
-  (alg_def a (list_to_ne_list l eq_refl))
+  (mk_ts a nil, fun (ts_m: str_map typesym) => list_to_ne_list 
+    (map (fun x => x (vty_cons (mk_ts a nil) nil) ts_m) l) 
+    eq_refl)
   (in custom adt at level 10,
     (*a custom tm at level 10,*)
     l custom adt at level 10).
@@ -169,16 +276,22 @@ Definition mut_from_adts (l: list alg_datatype) : mut_adt :=
     end eq_refl
   end.
 
-(*Mut from single ADT*)
-Notation mut_from_adt a :=
-  (mk_mut [a] (ts_args (adt_name a)) eq_refl).
-
-
+(*TODO: move*)
+(*make a mut adt from a list (typesym, str_map typesym -> ne_list funsym)*)
+Definition build_mut (l: list (typesym * (str_map typesym -> ne_list funsym))) :
+  str_map typesym -> mut_adt :=
+  (fun (m_t: str_map typesym) =>
+  let names := map fst l in
+  (*Need whole list so we can assign correct typesym to all constrs 
+    in all ADTs in mutual type*)
+  let m := set_all m_t ts_name names in
+  let adts := map (fun t => alg_def (fst t) ((snd t) m)) l in
+  mut_from_adts adts
+  ).
+  
 
 (*This is not great, but OK for now - have to tag adt as "adt" or 
   "mut t1 with t2 with ... tn endmut"*)
-(*TODO: do we need?*)
-(*
 Notation "'adt' x" := (fun (m_t: str_map typesym) =>
   datatype_def (build_mut [x] m_t))
   (in custom why3 at level 30,
@@ -187,25 +300,45 @@ Notation "'adt' x" := (fun (m_t: str_map typesym) =>
 Notation "'mut' l" := (fun (m_t: str_map typesym) =>
   datatype_def (build_mut l m_t))
   (in custom why3 at level 30,
-    l custom mutadt at level 25).*)
+    l custom mutadt at level 25).
 
-(*Patterns*)
+(** Terms and formulas*)
 
+(*Here, we represent terms and formulas
+  as (str_map typesym -> str_map funsym -> str_map predsym ->
+    str_map vsymbol -> term/formula)*)
+
+(*First, patterns*)
+(*Patterns only use the funsym map (for constrs) 
+  and typesym map (for types)
+  We also take in a type (of the pattern) so that we don't
+  need to annotate variables with a type*)
 
 (*Pvar*)
 Notation "{ x }" :=
-    (Pvar x)(in custom pat at level 0).
-
+  (fun (ty: vty) 
+    (m_t: str_map typesym) (m_f: str_map funsym) =>
+    Pvar (x, ty))
+  (in custom pat at level 0).
+  (*Notation " x ::: t " := 
+    (fun (m_t: str_map typesym) (m_f: str_map funsym) =>  
+      Pvar (x, t m_t)) 
+  (in custom pat at level 0,
+  t custom ty at level 0).*)
 (*Pwild*)
-Notation " '_' " := Pwild (in custom pat at level 80).
+Notation " '_' " := (fun (ty: vty) (m_t: str_map typesym) (m_f: str_map funsym) =>
+  Pwild) (in custom pat at level 80).
 (*Por*)
-Notation " p1 | p2 " := (Por p1 p2)
+Notation " p1 | p2 " := (fun (ty: vty) (m_t: str_map typesym)
+  (m_f: str_map funsym) =>
+  Por (p1 ty m_t m_f) (p2 ty m_t m_f))
   (in custom pat at level 80,
   p1 custom pat,
   p2 custom pat,
   right associativity).
 (*Pbind*)
-Notation "p 'as' x" := (Pbind p x)
+Notation "p 'as' x" := (fun (ty: vty) (m_t: str_map typesym)
+  (m_f: str_map funsym) => Pbind (p ty m_t m_f) (x, ty))
   (in custom pat at level 80,
   p custom pat).
 
@@ -224,27 +357,52 @@ Notation "( p1 , p2 , .. , pn )" :=
   p2 custom pat,
   pn custom pat).
 (*Pconstr*)
-Notation " f tys ps " := (Pconstr f tys ps)
+Notation " f tys ps " :=
+  (fun (ty: vty) (m_t: str_map typesym)
+    (m_f: str_map funsym) =>
+    (*Get list of types of args*)
+    let c := get m_f f in
+    let tys' := map (fun x => x m_t) tys in
+    let argtys := map (ty_subst (s_params c) tys') (s_args c) in
+    Pconstr c tys'
+      (map (fun x => (fst x) (snd x) m_t m_f) (combine ps argtys)))
   (in custom pat at level 80,
     tys custom tylist, 
     ps custom patlist).
 (*Without type args*)
-Notation " f ps " := (Pconstr f nil ps)
+Notation " f ps " :=
+  (fun (ty: vty) (m_t: str_map typesym)
+    (m_f: str_map funsym) =>
+    let c := get m_f f in
+    let ps' : list (forall (ty: vty) (m_t: str_map typesym)
+      (m_f: str_map funsym), pattern) := ps in
+    Pconstr c nil
+      (map (fun x => (fst x) (snd x) m_t m_f) (combine ps' (s_args c))))
   (in custom pat at level 80,
     ps custom patlist).
     
 
 (*Terms*)
 
+(*Type is: (str_map typesym -> str_map funsym -> str_map predsym ->
+    str_map vsymbol -> term) *)
+
 (*Term notations*)
 Definition tm_int (z: Z) : term := Tconst (ConstInt z).
 Coercion tm_int : Z >-> term.
-Definition tm_real q : term := Tconst (ConstReal q).
-Coercion tm_real : QArith_base.Q >-> term.
 
-(*For funsym, user should manually create functions*)
+(*Notation " x " :=
+  (fun (m_t: str_map typesym) (m_f: str_map funsym)
+  (m_p: str_map predsym) (m_v: str_map vsymbol) =>
+  Tconst (ConstInt x))
+  (in custom num at level 80).*)
 
-(*TODO: maybe require definitions for these?*)
+(*ints*)
+Notation " { x }" :=
+  (fun (m_t: str_map typesym) (m_f: str_map funsym)
+  (m_p: str_map predsym) (m_v: str_map vsymbol) =>
+  Tconst (ConstInt x))
+  (in custom tm at level 80).
 
 (*List of terms (for funsym)*)
 Notation "()" := nil
@@ -261,39 +419,71 @@ Notation "( t1 , t2 , .. , tn )" :=
   tn custom tm).
 
 (*Tfun*)
-Notation "f tys tms" := (Tfun f tys tms) 
+Notation "f tys tms" := (fun 
+  (m_t: str_map typesym) (m_f: str_map funsym)
+  (m_p: str_map predsym) (m_v: str_map vsymbol) =>
+  Tfun (get m_f f) (map (fun x => x m_t) tys)
+    (map (fun x => x m_t m_f m_p m_v) tms)
+  )
   (in custom tm at level 90,
   tys custom tylist,
   tms custom tmlist).
-Notation "f tms" := (Tfun f nil tms) 
+Notation "f tms" := (fun 
+  (m_t: str_map typesym) (m_f: str_map funsym)
+  (m_p: str_map predsym) (m_v: str_map vsymbol) =>
+  Tfun (get m_f f) nil
+    (map (fun x => x m_t m_f m_p m_v) tms)
+  )
   (in custom tm at level 90,
   tms custom tmlist).
-
-(*Tvar*)
-Notation "{ x }" :=
-    (Tvar x)(in custom tm at level 60).
-
+(*Tvar - for now, angle brackets*)
+Notation "'_' x " := (fun 
+  (m_t: str_map typesym) (m_f: str_map funsym)
+  (m_p: str_map predsym) (m_v: str_map vsymbol) =>
+  Tvar (m_v x))
+  (in custom tm at level 60).
 (*Tlet*)
-Notation "'let' x = t1 'in' t2" :=
-    (Tlet t1 x t2) (in custom tm at level 90,
-    t1 custom tm,
-    t2 custom tm,
-    right associativity).
-
+Notation "'let' x : ty = t1 'in' t2" := (fun 
+  (m_t: str_map typesym) (m_f: str_map funsym)
+  (m_p: str_map predsym) (m_v: str_map vsymbol) =>
+  Tlet (t1 m_t m_f m_p m_v)
+    (x, ty m_t)
+    (*Need to adjust bound vars*)
+    (t2 m_t m_f m_p (set m_v x (x, ty m_t))))
+  (in custom tm at level 90,
+  t1 custom tm,
+  ty custom ty,
+  t2 custom tm,
+  right associativity).
 (*Tif*)
-Notation "'if' f 'then' t1 'else' t2" := (Tif f t1 t2)
+Notation "'if' f 'then' t1 'else' t2" :=(fun 
+  (m_t: str_map typesym) (m_f: str_map funsym)
+  (m_p: str_map predsym) (m_v: str_map vsymbol) =>
+  Tif (f m_t m_f m_p m_v)
+    (t1 m_t m_f m_p m_v)
+    (t2 m_t m_f m_p m_v))
   (in custom tm at level 90,
     f custom fmla,
     t1 custom tm,
     t2 custom tm).
-
 (*Teps*)
-Notation "'eps' x , f" := (Teps f x)
+Notation "'eps' x : ty , f" := (fun 
+  (m_t: str_map typesym) (m_f: str_map funsym)
+  (m_p: str_map predsym) (m_v: str_map vsymbol) =>
+  (*Again, adjust bound vars*)
+  Teps (f m_t m_f m_p (set m_v x (x, ty m_t))) (x, ty m_t) )
   (in custom tm at level 90,
-  f custom fmla).
+  f custom fmla,
+  ty custom ty).
 (*Single pattern match for terms*)
 
-Notation " p -> t " := (p, t)
+Notation " p -> t " :=
+  (fun (ty: vty) (m_t: str_map typesym) (m_f: str_map funsym)
+    (m_p: str_map predsym) (m_v: str_map vsymbol) =>
+    let pat := p ty m_t m_f in
+    (*Set all pattern variables*)
+    (pat, t m_t m_f m_p (set_all m_v fst (pat_fv pat)))
+    )
   (in custom tmpat at level 90,
   p custom pat,
   t custom tm).
@@ -310,8 +500,13 @@ Notation " | x l" := (cons x l)
   right associativity).
 
 (*Tmatch*)
-Notation "'match' t : ty 'with' l" :=
-    (Tmatch t ty l)(in custom tm at level 90,
+Notation "'match' t : ty 'with' l" := (fun 
+  (m_t: str_map typesym) (m_f: str_map funsym)
+  (m_p: str_map predsym) (m_v: str_map vsymbol) =>
+  Tmatch (t m_t m_f m_p m_v) (ty m_t)
+    (*Variable binding handled above*)
+    (map (fun x => x (ty m_t)  m_t m_f m_p m_v) l))
+  (in custom tm at level 90,
   t custom tm,
   ty custom ty,
   l custom tmpatlist).
@@ -320,73 +515,102 @@ Notation "'match' t : ty 'with' l" :=
 
 (*This is very similar to terms*)
 (*Ftrue*)
-Notation "'true'" := Ftrue 
+Notation "'true'" := (fun 
+  (m_t: str_map typesym) (m_f: str_map funsym)
+  (m_p: str_map predsym) (m_v: str_map vsymbol) =>
+  Ftrue)
   (in custom fmla at level 0).
 (*Ffalse*)
-Notation "'false'" := Ffalse 
+Notation "'false'" := (fun 
+  (m_t: str_map typesym) (m_f: str_map funsym)
+  (m_p: str_map predsym) (m_v: str_map vsymbol) =>
+  Ffalse)
   (in custom fmla at level 0).
 (*Feq - TODO kind of ugly*)
-Notation " [ ty ] t1 = t2 " := (Feq ty t1 t2) 
+Notation " [ ty ] t1 = t2 " := (fun 
+  (m_t: str_map typesym) (m_f: str_map funsym)
+  (m_p: str_map predsym) (m_v: str_map vsymbol) =>
+  Feq (ty m_t) (t1 m_t m_f m_p m_v) (t2 m_t m_f m_p m_v))
   (in custom fmla at level 90,
-  (*TODO: bad*)
   t1 custom tm,
   t2 custom tm,
   ty custom ty).
 (*Basic connectives*)
-Notation " f1 && f2 " := (Fbinop Tand f1 f2) 
+Notation " f1 && f2 " := (fun 
+  (m_t: str_map typesym) (m_f: str_map funsym)
+  (m_p: str_map predsym) (m_v: str_map vsymbol) =>
+  Fbinop Tand (f1 m_t m_f m_p m_v) (f2 m_t m_f m_p m_v))
   (in custom fmla at level 90, right associativity,
   f1 custom fmla,
   f2 custom fmla).
-Notation " f1 || f2 " := (Fbinop Tor f1 f2)
+Notation " f1 || f2 " := (fun 
+  (m_t: str_map typesym) (m_f: str_map funsym)
+  (m_p: str_map predsym) (m_v: str_map vsymbol) =>
+  Fbinop Tor (f1 m_t m_f m_p m_v) (f2 m_t m_f m_p m_v))
   (in custom fmla at level 90, right associativity,
   f1 custom fmla,
   f2 custom fmla).
-Notation " f1 -> f2 " := (Fbinop Timplies f1 f2)
+Notation " f1 -> f2 " := (fun 
+  (m_t: str_map typesym) (m_f: str_map funsym)
+  (m_p: str_map predsym) (m_v: str_map vsymbol) =>
+  Fbinop Timplies (f1 m_t m_f m_p m_v) (f2 m_t m_f m_p m_v))
   (in custom fmla at level 90, right associativity,
   f1 custom fmla,
   f2 custom fmla).
-Notation " f1 <-> f2 " := (Fbinop Tiff f1 f2)
+Notation " f1 <-> f2 " := (fun 
+  (m_t: str_map typesym) (m_f: str_map funsym)
+  (m_p: str_map predsym) (m_v: str_map vsymbol) =>
+  Fbinop Tiff (f1 m_t m_f m_p m_v) (f2 m_t m_f m_p m_v))
   (in custom fmla at level 90, right associativity,
   f1 custom fmla,
   f2 custom fmla).
-Notation " 'not' f" := (Fnot f) 
+Notation " 'not' f" := (fun
+  (m_t: str_map typesym) (m_f: str_map funsym)
+  (m_p: str_map predsym) (m_v: str_map vsymbol) =>
+  Fnot (f m_t m_f m_p m_v))
   (in custom fmla at level 90,
   f custom fmla).
 (*Quantifiers*)
-Notation "'forall' x , f" := (Fquant Tforall x f) 
+Notation "'forall' v : t , f" := (fun 
+  (m_t: str_map typesym) (m_f: str_map funsym)
+  (m_p: str_map predsym) (m_v: str_map vsymbol) =>
+  Fquant Tforall (v, t m_t) (f m_t m_f m_p m_v))
   (in custom fmla at level 90, right associativity,
+  t custom ty,
   f custom fmla).
-(*Not great*)
-Notation "'forall' x y , f" := (fforalls [x; y] f)
+Notation "'exists' v : t , f" := (fun 
+  (m_t: str_map typesym) (m_f: str_map funsym)
+  (m_p: str_map predsym) (m_v: str_map vsymbol) =>
+  Fquant Texists (v, t m_t) (f m_t m_f m_p m_v))
   (in custom fmla at level 90, right associativity,
-    f custom fmla).
-Notation "'forall' x y z , f" := (fforalls [x; y; z] f)
-(in custom fmla at level 90, right associativity,
+  t custom ty,
   f custom fmla).
-
-Notation "'exists' x , f" := (Fquant Texists x f)
-  (in custom fmla at level 90, right associativity,
-  f custom fmla).
-Notation "'exists' x y , f" := (fexists [x; y] f)
-(in custom fmla at level 90, right associativity,
-f custom fmla).
-Notation "'exists' x y z , f" := (fexists [x; y; z] f)
-(in custom fmla at level 90, right associativity,
-f custom fmla).
 (*Fif*)
-Notation "'if' f1 'then' f2 'else' f3" := (Fif f1 f2 f3) 
+Notation "'if' f1 'then' f2 'else' f3" :=(fun 
+  (m_t: str_map typesym) (m_f: str_map funsym)
+  (m_p: str_map predsym) (m_v: str_map vsymbol) =>
+  Fif (f1 m_t m_f m_p m_v)
+    (f2 m_t m_f m_p m_v)
+    (f3 m_t m_f m_p m_v))
   (in custom fmla at level 90,
     f1 custom fmla,
     f2 custom fmla,
     f3 custom fmla).
 (*Flet*)
-Notation "'let' x = t1 'in' f" := (Flet t1 x f) 
+Notation "'let' x : ty = t1 'in' f" := (fun 
+  (m_t: str_map typesym) (m_f: str_map funsym)
+  (m_p: str_map predsym) (m_v: str_map vsymbol) =>
+  Flet (t1 m_t m_f m_p m_v)
+    (x, ty m_t)
+    (*Need to adjust bound vars*)
+    (f m_t m_f m_p (set m_v x (x, ty m_t))))
   (in custom fmla at level 90,
   t1 custom tm,
+  ty custom ty,
   f custom fmla,
   right associativity).
 (*Fpred*)
-(*Notation "f tys tms" := (fun 
+Notation "f tys tms" := (fun 
   (m_t: str_map typesym) (m_f: str_map funsym)
   (m_p: str_map predsym) (m_v: str_map vsymbol) =>
   Fpred (get m_p f) (map (fun x => x m_t) tys)
@@ -402,14 +626,13 @@ Notation "f tms" := (fun
     (map (fun x => x m_t m_f m_p m_v) tms)
   )
   (in custom fmla at level 90,
-  tms custom tmlist).*)
+  tms custom tmlist).
 (*Fmatch*)
 
 (*Once again, have custom grammar for single match
   and list of matches*)
-(*TODO: delete fmlapat and fmlapatlist*)
-(*
-Notation " p -> f " := (p, f)
+
+Notation " p -> f " :=
   (fun (ty: vty) (m_t: str_map typesym) (m_f: str_map funsym)
     (m_p: str_map predsym) (m_v: str_map vsymbol) =>
     let pat := p ty m_t m_f in
@@ -428,14 +651,19 @@ Notation " | x l" := (cons x l)
   (in custom fmlapatlist at level 75,
   x custom fmlapat,
   l custom fmlapatlist,
-  right associativity).*)
+  right associativity).
 
 (*Fmatch*)
-Notation "'match' t : ty 'with' l" := (Fmatch t ty l) 
+Notation "'match' t : ty 'with' l" := (fun 
+  (m_t: str_map typesym) (m_f: str_map funsym)
+  (m_p: str_map predsym) (m_v: str_map vsymbol) =>
+  Fmatch (t m_t m_f m_p m_v) (ty m_t)
+    (*Variable binding handled above*)
+    (map (fun x => x (ty m_t)  m_t m_f m_p m_v) l))
   (in custom fmla at level 75,
   t custom tm,
   ty custom ty,
-  l custom tmpatlist).
+  l custom fmlapatlist).
 
 (** Top-level Definitions *)
 
@@ -445,7 +673,11 @@ Notation "'match' t : ty 'with' l" := (Fmatch t ty l)
 (*Inductive predicates*)
 
 (*List of (string * formula)*)
-Notation "s : f" := (s, f)
+Notation "s : f" :=
+  (fun (m_t: str_map typesym) (m_f: str_map funsym)
+  (m_p: str_map predsym) (m_v: str_map vsymbol) =>
+  (s, f m_t m_f m_p m_v)
+  )
   (in custom indpredelt at level 90,
   f custom fmla at level 99).
 Notation " | x 'end'" := (cons x nil)
@@ -463,8 +695,17 @@ Notation " | x l" := (cons x l)
   make this reasonably nice, and the stdlib doesn't seem
   to have mutually recursive inductive predicates
   (TODO: maybe add, can do similar to functions)*)
-Notation "'inductive' p = l" := (inductive_def [ind_def p l]) 
+Notation "'inductive' p tys = l" := ( fun
+  (m_t: str_map typesym) (m_f: str_map funsym)
+  (m_p: str_map predsym) (m_v: str_map vsymbol) =>
+  let ps := (predsym_noty p (map (fun x => x m_t) tys)) in
+  (*update m_p with this predsym*)
+  let m_p' := (set m_p p ps) in
+  (inductive_def [ind_def ps
+    (map (fun x => x m_t m_f m_p' m_v) l)
+  ]))
   (in custom why3 at level 200,
+  tys custom tylist at level 99,
   l custom indpredlist at level 99).
 
 (*Recursive functions and predicates*)
@@ -476,12 +717,17 @@ Notation "'inductive' p = l" := (inductive_def [ind_def p l])
   Here we allow mutually recursive functions with the syntax
   "mutfun (function foo = ... with function bar = ..., etc) endmutfun"
   And likewise for predicates *)
-Notation "'abstract' 'function' foo" :=
-  (abs_fun foo)
-  (in custom why3 at level 200).
+Notation "'abstract' 'function' foo tys : ret" :=
+  (fun (m_t: str_map typesym) =>
+    abs_fun (funsym_noty foo (map (fun x => x m_t) tys) 
+      (ret m_t)))
+  (in custom why3 at level 200,
+  tys custom tylist at level 99,
+  ret custom ty at level 99).
 
 (*Arg list for function/predicate*)
-Notation "x : t" := (x, t)
+Notation "x : t" := (fun (m_t: str_map typesym) =>
+  (x, t m_t))
   (in custom funargelt at level 80,
   t custom ty).
 
@@ -498,27 +744,49 @@ Notation "( t1 , t2 , .. , tn )" :=
   t2 custom funargelt,
   tn custom funargelt).
 
-Notation "'function' foo args = body" :=
-  (recursive_def [fun_def foo args body])
+Notation "'function' foo args : ret = body" :=
+  (fun
+  (m_t: str_map typesym) (m_f: str_map funsym)
+  (m_p: str_map predsym) (m_v: str_map vsymbol) =>
+  let inputs := map (fun x => x m_t) args in
+  let f :=  (funsym_noty foo (map snd inputs) (ret m_t)) in
+    recursive_def [fun_def f inputs
+      (*Need to adjust m_f to bind the new symbol*)
+      (body m_t (set m_f foo f) m_p 
+        (set_all m_v fst inputs))
+    ])
   (in custom why3 at level 200,
   args custom funarglist,
+  ret custom ty,
   body custom tm).
 
 (*Predicates*)
 
-Notation "'abstract' 'predicate' foo" :=
-  (abs_pred foo)
-  (in custom why3 at level 200).
+Notation "'abstract' 'predicate' foo tys" :=
+  (fun (m_t: str_map typesym) =>
+    abs_pred (predsym_noty foo (map (fun x => x m_t) tys)))
+  (in custom why3 at level 200,
+  tys custom tylist at level 99).
 
 Notation "'predicate' foo args = body" :=
-  (recursive_def [pred_def foo args body])
+  (fun
+  (m_t: str_map typesym) (m_f: str_map funsym)
+  (m_p: str_map predsym) (m_v: str_map vsymbol) =>
+  let inputs := map (fun x => x m_t) args in
+  let p := (predsym_noty foo (map snd inputs)) in
+    recursive_def [pred_def 
+      p
+      inputs
+      (body m_t m_f (set m_p foo p) 
+        (set_all m_v fst inputs))
+    ])
   (in custom why3 at level 200,
   args custom funarglist,
   body custom fmla).
 
 (*Mutually recursive functions and predicates*)
 (*Not great because of duplication*)
-(*
+
 Notation "x 'endmutfun'" := (cons x nil)
   (in custom mutfunlist at level 25,
     x custom mutfunelt at level 15).
@@ -597,24 +865,21 @@ Notation "'mutfun' l" := (fun
     (map (fun x => x m_f' m_p' m_v) (map snd l'))
   )
   (in custom why3 at level 200,
-  l custom mutfunlist).*)
+  l custom mutfunlist).
 
 (*Abstract types*)
 (*TODO: should unify notation of these lists to be
   in angle brackets (new grammar?)*)
-Notation "'abstract' 'type' t" :=
-  (abs_type t)
+Notation "'abstract' 'type' t vs" :=
+  (fun (m_t: str_map typesym) =>
+    abs_type (mk_ts t vs))
   (in custom why3 at level 200).
-
-
 
 (*Some tests*)
 (*Sort of hacky - need this for ints, can't parse strings
   and ints at same scope for some reason*)
 Open Scope Z_scope.
 Open Scope why3_scope.
-
-(*
 
 (*Part 1: ADTs (no mutual)*)
 
@@ -985,4 +1250,3 @@ Definition abs_type := <{
 (*TODO: should make syntax more consistent, maybe
   put all vars in curly braces (kind of ugly but better
   than underscores)*)
-*)
