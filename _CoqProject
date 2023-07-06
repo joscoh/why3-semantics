@@ -38,7 +38,10 @@ proofs/proofsystem/Induction.v
 proofs/proofsystem/Tactics.v
 proofs/proofsystem/Notations.v
 #TODO: maybe tests before?
-lib/Algebra.v
+lib/StdLib.v
+lib/Lib_Relations.v
+lib/Lib_Algebra.v
+lib/Verif_Relations.v
 lib/Verif_Algebra.v
 test/TheoryTest.v
 test/PolyTest.v

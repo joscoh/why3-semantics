@@ -1,5 +1,5 @@
-Require Import Tactics.
-Require Import Algebra.
+Require Import StdLib.
+Require Import Lib_Algebra.
 
 (*All of the "valid_theory" proofs are trivial; there is just typing info to check
   because there are only axioms*)
@@ -101,6 +101,15 @@ Proof.
   check_theory. 
 Qed.
 Lemma comm_unitring_valid: valid_theory Algebra.UnitaryCommutativeRing.
+Proof.
+  simpl. repeat(split; [prove_axiom_wf| auto]).
+Qed.
+
+Lemma orderedunitarycommunitring_typed: typed_theory Algebra.OrderedUnitaryCommutativeRing.
+Proof.
+  check_theory.
+Qed.
+Lemma orderedunitarycommunitring_valid: valid_theory Algebra.OrderedUnitaryCommutativeRing.
 Proof.
   simpl. repeat(split; [prove_axiom_wf| auto]).
 Qed.

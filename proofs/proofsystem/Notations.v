@@ -332,12 +332,18 @@ Notation " [ ty ] t1 = t2 " := (Feq ty t1 t2)
   t1 custom tm,
   t2 custom tm,
   ty custom ty).
+Notation " [ ty ] t1 != t2 " := (Fnot(Feq ty t1 t2)) 
+(in custom fmla at level 90,
+(*TODO: bad*)
+t1 custom tm,
+t2 custom tm,
+ty custom ty).
 (*Basic connectives*)
-Notation " f1 && f2 " := (Fbinop Tand f1 f2) 
+Notation " f1 /\ f2 " := (Fbinop Tand f1 f2) 
   (in custom fmla at level 90, right associativity,
   f1 custom fmla,
   f2 custom fmla).
-Notation " f1 || f2 " := (Fbinop Tor f1 f2)
+Notation " f1 \/ f2 " := (Fbinop Tor f1 f2)
   (in custom fmla at level 90, right associativity,
   f1 custom fmla,
   f2 custom fmla).
@@ -386,6 +392,13 @@ Notation "'let' x = t1 'in' f" := (Flet t1 x f)
   f custom fmla,
   right associativity).
 (*Fpred*)
+Notation "f tys tms" := (Fpred f tys tms) 
+  (in custom fmla at level 90,
+  tys custom tylist,
+  tms custom tmlist).
+Notation "f tms" := (Fpred f nil tms) 
+  (in custom fmla at level 90,
+  tms custom tmlist).
 (*Notation "f tys tms" := (fun 
   (m_t: str_map typesym) (m_f: str_map funsym)
   (m_p: str_map predsym) (m_v: str_map vsymbol) =>

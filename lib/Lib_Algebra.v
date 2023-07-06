@@ -1,22 +1,10 @@
-(*TODO: fix imports to reduce duplication*)
-Require Import Task.
-Require Import Theory.
-Require Import Typechecker.
-Require Import Tactics.
-Require Import Notations.
-From mathcomp Require Import all_ssreflect.
+Require Import StdLib.
+Require Import Lib_Relations.
 Set Bullet Behavior "Strict Subproofs".
 
 (*TODO: maybe change TheoryTest, see*)
 
-(*TODO: different than other version because we use [funsym_noty]
-  instead of writing manually*)
-Definition const name ty := funsym_noty name nil ty.
-Definition binop name ty : funsym := funsym_noty name [ty;ty] ty.
-Definition unop name ty : funsym := funsym_noty name [ty] ty.
-
 Module Algebra.
-Local Open Scope string_scope.
 Local Open Scope why3_scope.
 
 (*Generic definitions*)
@@ -45,7 +33,7 @@ Definition Assoc : theory :=
     tdef (abs_type t_ts);
     tdef (abs_fun op);
     tprop Paxiom "Assoc"
-      <f forall x y z, 
+      <f forall x, forall y, forall z, 
         [t] (op (op ({x}, {y}), {z})) = (op ({x}, (op({y}, {z})))) f>
   ].
 
@@ -55,7 +43,7 @@ Definition Comm : theory :=
     tdef (abs_type t_ts);
     tdef (abs_fun op);
     tprop Paxiom "Comm" <f
-     forall x y, [t] op({x}, {y}) = op({y}, {x}) f>
+     forall x, forall y, [t] op({x}, {y}) = op({y}, {x}) f>
   ].
 
 (*Associativity and Commutativity*)
@@ -121,10 +109,12 @@ Definition Ring : theory :=
       [(unit, zero); (op, plus); (inv, neg)] nil;
     tclone Assoc (Some "MulAssoc")  [(MA_t_ts, t_ts)] [(MA_op, mult)] nil;
     tprop Paxiom "Mul_distr_l" <f
-      forall x y z, [t] mult({x}, plus({y}, {z})) = plus(mult({x}, {y}), mult({x}, {z}))
+      forall x, forall y, forall z, 
+        [t] mult({x}, plus({y}, {z})) = plus(mult({x}, {y}), mult({x}, {z}))
     f>;
     tprop Paxiom "Mul_distr_r" <f
-      forall x y z, [t] mult(plus({y}, {z}), {x}) = plus(mult({y}, {x}), mult({z}, {x}))
+      forall x, forall y, forall z,
+        [t] mult(plus({y}, {z}), {x}) = plus(mult({y}, {x}), mult({z}, {x}))
     f>
   ].
 
@@ -145,10 +135,41 @@ Definition UnitaryCommutativeRing : theory :=
     tclone CommutativeRing None nil nil nil;
     tdef (abs_fun one);
     tprop Paxiom "Unitary" <f forall x, [t] mult(one(), {x}) = {x} f>;
-    tprop Paxiom "NonTrivialRing" <f not ([t] zero() = one()) f>
+    tprop Paxiom "NonTrivialRing" <f ([t] zero() != one()) f>
   ].
 
 (*Ordered Commutative Rings*)
+Definition le : predsym := binpred "le" t.
+Definition OrderedUnitaryCommutativeRing : theory :=
+  rev [
+    tclone UnitaryCommutativeRing None nil nil nil;
+    tdef (abs_pred le);
+    tclone Relations.TotalOrder None [(Relations.t_ts, t_ts)] nil [(Relations.rel, le)];
+    tprop Paxiom "ZeroLessOne" <f le (zero(), one()) f>;
+    tprop Paxiom "CompatOrderAdd" <f forall x, forall y, forall z,
+      le({x}, {y}) -> le(plus({x}, {z}), plus({y}, {z})) f>;
+    tprop Paxiom "CompatOrderMult" <f 
+      forall x, forall y, forall z,
+      le({x}, {y}) -> le(zero(), {z}) -> 
+      le(mult({x}, {z}), mult({y}, {z})) f>
+  ].
+
+(*Fields*)
+Definition sub : funsym := binop "sub" t.
+Definition div: funsym := binop "div" t.
+(*TODO: non-recursive functions*)
+(*Definition Field : theory :=
+  rev [
+    tclone UnitaryCommutativeRing None nil nil nil;
+    tdef (abs_fun inv);
+    tprop Paxiom "Inverse" <f forall x,
+      [t] {x} != zero() -> [t] mult({x}, inv({x})) = one() f>;
+    (*TODO: non-recursive functions*)
+    tdef (abs_fun sub)
+  ].*)
+
+
+
 (*TODO: need to do Relations and Orders - good because we 
   can do some inductive predicates
   start with this*)
