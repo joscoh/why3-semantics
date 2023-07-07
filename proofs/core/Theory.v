@@ -1,5 +1,6 @@
 Require Import TySubst.
 Require Export FullInterp.
+Set Bullet Behavior "Strict Subproofs".
 (*Why3 Theories*)
 
 
@@ -71,8 +72,20 @@ better - define size of tdecl, lift to list, use as measure*)
 
 Section Sub.
 
-Variable (tys: list (typesym * typesym))
+Variable (tys: list (vty * vty))
 (funs: list (funsym * funsym)) (preds: list (predsym * predsym)).
+
+Variable tys_srts: forallb is_sort (map snd tys).
+Lemma tys_sorts: forall x, In x (map snd tys) -> type_vars x = nil.
+Proof.
+  unfold is_true in tys_srts.
+  rewrite forallb_forall in tys_srts.
+  auto.
+  intros. unfold is_sort in tys_srts.
+  specialize (tys_srts _ H).
+  rewrite fold_is_true in tys_srts.
+  rewrite null_nil in tys_srts. auto.
+Qed.
 
 Definition sub_from_map {A: Set} (eq_dec: forall (x y: A), {x=y} +{x<>y})
   (m: list (A * A)) (x: A) :=
@@ -81,27 +94,67 @@ Definition sub_from_map {A: Set} (eq_dec: forall (x y: A), {x=y} +{x<>y})
   | None => x
   end.
 
-Definition sub_tys := sub_from_map typesym_eq_dec tys.
+Definition sub_tys := sub_from_map vty_eq_dec tys.
 Definition sub_funs := sub_from_map funsym_eq_dec funs.
 Definition sub_preds := sub_from_map predsym_eq_dec preds.
 
-(*Sub in vty - only typesyms substituted*)
+(*Sub in vty*)
 Fixpoint sub_in_vty (t: vty) :=
+  (*Should make more efficient and only need 1 lookup*)
+  if in_dec vty_eq_dec t  (map fst tys) then 
+  sub_tys t else
   match t with
-  | vty_int => vty_int
-  | vty_real => vty_real
-  | vty_var x => vty_var x
-  | vty_cons ts vs =>
-    vty_cons (sub_tys ts) (map sub_in_vty vs)
+  | vty_cons ts vs => vty_cons ts (map sub_in_vty vs)
+  | _ => t
   end.
 
-Lemma sub_in_vty_vars t:
-  type_vars (sub_in_vty t) = type_vars t.
+Lemma sub_tys_vars: forall x,
+  sublist (type_vars (sub_tys x)) (type_vars x).
 Proof.
-  induction t; simpl; auto.
-  induction vs; simpl; auto.
+  intros.
+  unfold sub_tys, sub_from_map.
+  destruct (get_assoc_list vty_eq_dec tys x) eqn : Ha;
+  [| apply sublist_refl].
+  apply get_assoc_list_some in Ha.
+  rewrite tys_sorts; [intros y [] | rewrite in_map_iff].
+  exists (x, v); auto.
+Qed.
+
+Lemma sub_tys_sort: forall x,
+  type_vars x = nil ->
+  type_vars (sub_tys x) = nil.
+Proof.
+  intros. unfold sub_tys, sub_from_map.
+  destruct (get_assoc_list vty_eq_dec tys x) eqn : Ha.
+  - apply get_assoc_list_some in Ha.
+    apply tys_sorts. rewrite in_map_iff. exists (x, v); auto.
+  - auto.
+Qed.
+
+(*TODO: copied from [eliminate_let]*)
+
+Lemma sublist_union {A: Type} (eq_dec: forall (x y: A), {x=y}+{x<>y})
+  (l1 l2 l3 l4: list A):
+  sublist l1 l2 ->
+  sublist l3 l4 ->
+  sublist (union eq_dec l1 l3) (union eq_dec l2 l4).
+Proof.
+  unfold sublist. intros. simpl_set.
+  destruct H1; auto.
+Qed.
+
+Lemma sub_in_vty_vars t:
+  sublist (type_vars (sub_in_vty t)) (type_vars t).
+Proof.
+  induction t; simpl; auto;
+  match goal with
+  | |- context [if ?b then ?c else ?d] => destruct b
+  end; simpl; try apply sublist_refl;
+  try apply sub_tys_vars.
+  clear n.
+  induction vs; simpl in *; try apply sublist_refl.
   inversion H; subst.
-  rewrite H2. f_equal. auto.
+  apply sublist_union; auto.
 Qed.
 
 Lemma check_args_sub {params args}:
@@ -110,19 +163,19 @@ Lemma check_args_sub {params args}:
 Proof.
   unfold is_true.
   rewrite <- !(reflect_iff _ _ (check_args_correct _ _)); intros.
-  unfold sublist in *.
-  intros.
   rewrite in_map_iff in H0.
   destruct H0 as [t [Ht Hint]]; subst.
-  rewrite sub_in_vty_vars in H1.
-  apply (H _ Hint); auto.
+  eapply sublist_trans.
+  apply sub_in_vty_vars. auto.
 Qed.
 
 Lemma check_sublist_sub {t params}:
   check_sublist (type_vars t) params ->
   check_sublist (type_vars (sub_in_vty t)) params.
 Proof.
-  rewrite sub_in_vty_vars; auto.
+  unfold is_true.
+  rewrite <- !(reflect_iff _ _ (check_sublist_correct _ _)); intros.
+  eapply sublist_trans. apply sub_in_vty_vars. auto.
 Qed.
 
 (*Sub in fpsym*)
@@ -228,12 +281,21 @@ Definition sub_in_indpred_def (x: indpred_def) : indpred_def :=
 
 (*Substitute according to map in context*)
 
+(*See if a typesyms is substituted*)
+(*TODO: this ignores type arguments*)
+Definition is_ts_sub (ts: typesym) : bool :=
+  existsb (fun v =>
+    match v with
+    | vty_cons ts' _ => typesym_eq_dec ts ts'
+    | _ => false
+    end) (map fst tys).
+
 Definition sub_ctx_map (c: context)  :
   context :=
   fold_right (fun x (acc: list def) =>
     match x with
     (*Abstract: remove iff instantiate*)
-    | abs_type ts => if in_dec typesym_eq_dec ts (map fst tys) then acc
+    | abs_type ts => if is_ts_sub ts then acc
       else x :: acc
     | abs_fun f => if in_dec funsym_eq_dec f (map fst funs) then acc
       else x :: acc
@@ -483,6 +545,10 @@ End QualNames.
 (*
 Unset Elimination Schemes.
 *)
+
+Definition ty_map : Set := {l: list (vty * vty) |
+  forallb is_sort (map snd l)}.
+
 Inductive tdecl : Set :=
   | tdef : def -> tdecl
   | tprop : prop_kind -> string -> formula -> tdecl
@@ -491,7 +557,7 @@ Inductive tdecl : Set :=
   | tuse : list tdecl -> bool -> tdecl
   (*Clone a theory - instantiating some parameters and giving
     a qualified name*)
-  | tclone: list tdecl -> option string -> list (typesym * typesym) ->
+  | tclone: list tdecl -> option string -> ty_map ->
     list (funsym * funsym) -> list (predsym * predsym) -> tdecl.
 
 Definition theory := list tdecl.
@@ -652,7 +718,8 @@ theory_ctx_ext (tclone l o tys funs preds :: tl) :=
   let n := get_exported_names l in
   let qual := 
   match o with | Some name => qualify_theory name n l | None => l end in 
-  sub_ctx_map tys funs preds (theory_ctx_ext qual) ++ theory_ctx_ext tl;
+  sub_ctx_map (proj1_sig tys) funs preds (proj2_sig tys) 
+  (theory_ctx_ext qual) ++ theory_ctx_ext tl;
 theory_ctx_ext (_ :: tl) := theory_ctx_ext tl;
 theory_ctx_ext nil := nil.
 Next Obligation.
@@ -672,7 +739,8 @@ Fixpoint theory_ctx_int (t: theory) : context :=
     let n := get_exported_names l in
     let qual := 
       match o with | Some name => qualify_theory name n l | None => l end in
-    sub_ctx_map tys funs preds (theory_ctx_ext qual) ++ theory_ctx_int tl
+    sub_ctx_map (proj1_sig tys) funs preds  (proj2_sig tys) 
+    (theory_ctx_ext qual) ++ theory_ctx_int tl
   | _ :: tl => theory_ctx_int tl
   | nil => nil
   end.
@@ -766,7 +834,7 @@ theory_axioms_ext (tclone th o tys funs preds :: tl) :=
   (*This also qualifies props*)
   let qual := 
     match o with | Some name => qualify_theory name n th | None => th end in
-  sub_props_map tys funs preds (theory_axioms_ext qual) ++
+  sub_props_map (proj1_sig tys) funs preds (theory_axioms_ext qual) ++
   theory_axioms_ext tl;
 (*No other lemmas/axioms*)
 theory_axioms_ext nil := nil;
@@ -790,7 +858,7 @@ Fixpoint theory_axioms_int (t: theory) : list (string * formula) :=
     let n := get_exported_names th in
     let qual := 
       match o with | Some name => qualify_theory name n th | None => th end in
-    sub_props_map tys funs preds (theory_axioms_ext qual) ++ 
+    sub_props_map (proj1_sig tys) funs preds (theory_axioms_ext qual) ++ 
     theory_axioms_int tl
   | _ :: tl => theory_axioms_int tl
   | nil => nil

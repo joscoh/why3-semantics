@@ -42,8 +42,14 @@ proofs/proofsystem/Notations.v
 lib/StdLib.v
 lib/Lib_Relations.v
 lib/Lib_Algebra.v
+lib/Lib_Int.v
+lib/Lib_Option.v
+lib/Lib_List.v
 lib/Verif_Relations.v
 lib/Verif_Algebra.v
+lib/Verif_Int.v
+lib/Verif_Option.v
+lib/Verif_List.v
 test/TheoryTest.v
 test/PolyTest.v
 test/UnfoldTest.v

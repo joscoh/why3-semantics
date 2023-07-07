@@ -420,35 +420,28 @@ Notation "f tms" := (fun
 
 (*Once again, have custom grammar for single match
   and list of matches*)
-(*TODO: delete fmlapat and fmlapatlist*)
-(*
-Notation " p -> f " := (p, f)
-  (fun (ty: vty) (m_t: str_map typesym) (m_f: str_map funsym)
-    (m_p: str_map predsym) (m_v: str_map vsymbol) =>
-    let pat := p ty m_t m_f in
-    (*Set all pattern variables*)
-    (pat, f m_t m_f m_p (set_all m_v fst (pat_fv pat)))
-    )
-  (in custom fmlapat at level 75,
+  Notation " p -> t " := (p, t)
+  (in custom fmlapat at level 90,
   p custom pat,
-  f custom fmla).
+  t custom fmla).
 (*Pattern matching list*)
 (*Type: list (t -> f -> p -> v -> (pattern * term))*)
 Notation " | x 'end'" := (cons x nil)
-  (in custom fmlapatlist at level 75,
+  (in custom fmlapatlist at level 90,
+  (*TODO: level for pattern match? - cant be any term*)
   x custom fmlapat).
 Notation " | x l" := (cons x l)
-  (in custom fmlapatlist at level 75,
+  (in custom fmlapatlist at level 90,
   x custom fmlapat,
   l custom fmlapatlist,
-  right associativity).*)
+  right associativity).
 
 (*Fmatch*)
 Notation "'match' t : ty 'with' l" := (Fmatch t ty l) 
   (in custom fmla at level 75,
   t custom tm,
   ty custom ty,
-  l custom tmpatlist).
+  l custom fmlapatlist).
 
 (** Top-level Definitions *)
 

@@ -21,90 +21,90 @@ Definition EndoRelation : theory :=
 
 Definition Reflexive : theory :=
   rev [
-    tclone EndoRelation None nil nil nil;
+    tclone EndoRelation None emp_typemap nil nil;
     tprop Paxiom "Refl" <f forall x, rel({x}, {x}) f>
   ].
 
 Definition Irreflexive : theory :=
   rev [
-    tclone EndoRelation None nil nil nil;
+    tclone EndoRelation None emp_typemap nil nil;
     tprop Paxiom "Strict" <f forall x, not (rel({x}, {x})) f>
   ].
 
 Definition Transitive : theory :=
   rev [
-    tclone EndoRelation None nil nil nil;
+    tclone EndoRelation None emp_typemap nil nil;
     tprop Paxiom "Trans" <f forall x, forall y, forall z, 
       rel ({x}, {y}) -> rel ({y}, {z}) -> rel({x}, {z}) f>
   ].
 
 Definition Symmetric : theory :=
   rev [
-    tclone EndoRelation None nil nil nil;
+    tclone EndoRelation None emp_typemap nil nil;
     tprop Paxiom "Symm" <f forall x, forall y,
       rel({x}, {y}) -> rel({y}, {x}) f>
   ].
 
 Definition Asymmetric : theory :=
   rev [
-    tclone EndoRelation None nil nil nil;
+    tclone EndoRelation None emp_typemap nil nil;
     tprop Paxiom "Asymm" <f forall x, forall y,
       rel({x}, {y}) -> not (rel({y}, {x})) f>
   ].
 
 Definition Antisymmetric: theory :=
   rev [
-    tclone EndoRelation None nil nil nil;
+    tclone EndoRelation None emp_typemap nil nil;
     tprop Paxiom "Antisymm" <f forall x, forall y,
       rel({x}, {y}) -> rel({y}, {x}) -> [t] {x} = {y} f>
   ].
 
 Definition Total : theory :=
   rev [
-    tclone EndoRelation None nil nil nil;
+    tclone EndoRelation None emp_typemap nil nil;
     tprop Paxiom "Total" <f forall x, forall y,
       rel({x}, {y}) \/ rel({y}, {x}) f>
   ].
 
 Definition PreOrder : theory :=
   rev [
-    tclone Reflexive None nil nil nil;
-    tclone Transitive None [(t_ts, t_ts)] nil [(rel, rel)]
+    tclone Reflexive None emp_typemap nil nil;
+    tclone Transitive None (mk_typemap [(t, t)]) nil [(rel, rel)]
   ].
 
 Definition Equivalence : theory :=
   rev [
-    tclone PreOrder None nil nil nil;
-    tclone Symmetric None [(t_ts, t_ts)] nil [(rel, rel)]
+    tclone PreOrder None emp_typemap nil nil;
+    tclone Symmetric None (mk_typemap [(t, t)]) nil [(rel, rel)]
   ].
 
 Definition TotalPreOrder : theory :=
   rev [
-    tclone PreOrder None nil nil nil;
-    tclone Total None [(t_ts, t_ts)] nil [(rel, rel)]
+    tclone PreOrder None emp_typemap nil nil;
+    tclone Total None (mk_typemap [(t, t)]) nil [(rel, rel)]
   ].
 
 Definition PartialOrder : theory :=
   rev [
-    tclone PreOrder None nil nil nil;
-    tclone Antisymmetric None [(t_ts, t_ts)] nil [(rel, rel)]
+    tclone PreOrder None emp_typemap nil nil;
+    tclone Antisymmetric None (mk_typemap [(t, t)]) nil [(rel, rel)]
   ].
 
 Definition TotalOrder : theory :=
   rev [
-    tclone PartialOrder None nil nil nil;
-    tclone Total None [(t_ts, t_ts)] nil [(rel, rel)]
+    tclone PartialOrder None emp_typemap nil nil;
+    tclone Total None (mk_typemap [(t, t)]) nil [(rel, rel)]
   ].
 
 Definition PartialStrictOrder : theory :=
   rev [
-    tclone Transitive None nil nil nil;
-    tclone Asymmetric None [(t_ts, t_ts)] nil [(rel, rel)]
+    tclone Transitive None emp_typemap nil nil;
+    tclone Asymmetric None (mk_typemap [(t, t)]) nil [(rel, rel)]
   ].
 
 Definition TotalStrictOrder : theory :=
   rev [
-    tclone PartialStrictOrder None nil nil nil;
+    tclone PartialStrictOrder None emp_typemap nil nil;
     tprop Paxiom "Trichotomy" <f forall x, forall y,
       rel({x}, {y}) \/ rel({y}, {x}) \/ [t] {x} = {y} f>
   ].
@@ -112,7 +112,7 @@ Definition TotalStrictOrder : theory :=
 Definition inv_rel : predsym := binpred "inv_rel" t.
 Definition Inverse : theory :=
   rev [
-    tclone EndoRelation None nil nil nil;
+    tclone EndoRelation None emp_typemap nil nil;
     tdef (nonrec_pred inv_rel [x; y] <f rel({y}, {x}) f>)
   ].
 
@@ -137,7 +137,7 @@ Definition relTR : predsym := binpred "relTR" t.
 
 Definition ReflClosure : theory :=
   rev [
-    tclone EndoRelation None nil nil nil;
+    tclone EndoRelation None emp_typemap nil nil;
     tdef <{ 
       inductive relR =
       | "BaseRefl" : forall x, relR({x}, {x})
@@ -147,7 +147,7 @@ Definition ReflClosure : theory :=
 
 Definition TransClosure : theory :=
   rev [
-    tclone EndoRelation None nil nil nil;
+    tclone EndoRelation None emp_typemap nil nil;
     tdef <{
       inductive relT =
       | "BaseTrans" : forall x, forall y, rel({x}, {y}) -> relT({x}, {y})
@@ -161,7 +161,7 @@ Definition TransClosure : theory :=
 
 Definition ReflTransClosure : theory :=
   rev [
-    tclone EndoRelation None nil nil nil;
+    tclone EndoRelation None emp_typemap nil nil;
     tdef <{
       inductive relTR =
       | "BaseTransRefl" : forall x, relTR({x}, {x})
@@ -224,7 +224,7 @@ Definition MinMax : theory :=
   rev [
     tdef (abs_type t_ts);
     tdef (abs_pred le);
-    tclone TotalOrder (Some "TO") [(TOt_ts, t_ts)] nil [(TO_rel, le)];
+    tclone TotalOrder (Some "TO") (mk_typemap [(TO_t, t)]) nil [(TO_rel, le)];
     tdef (nonrec_fun min [x; y] <t if le({x}, {y}) then {x} else {y} t>);
     tdef (nonrec_fun max [x; y] <t if le({x}, {y}) then {y} else {x} t>);
     tprop Plemma "Min_r" <f forall x, forall y,

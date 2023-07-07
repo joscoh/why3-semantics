@@ -128,7 +128,7 @@ Lemma field_ctx:
 [:: nonrec_fun div [:: x; y] <t mult [:: <t {x} t>; <t inv [:: <t {y} t>] t>] t>,
          nonrec_fun sub [:: x; y] <t plus [:: <t {x} t>; <t neg [:: <t {y} t>] t>] t>,
          abs_fun inv
-       & (sub_ctx_map [::] [::] [::] (theory_ctx_ext UnitaryCommutativeRing) ++ [::])%list] =
+       & (sub_ctx_map [::] [::] [::] erefl (theory_ctx_ext UnitaryCommutativeRing) ++ [::])%list] =
        [:: nonrec_fun div [:: x; y] <t mult [:: <t {x} t>; <t inv [:: <t {y} t>] t>] t>;
        nonrec_fun sub [:: x; y] <t plus [:: <t {x} t>; <t neg [:: <t {y} t>] t>] t>;
        abs_fun inv; abs_fun one; abs_fun mult; abs_fun neg; 

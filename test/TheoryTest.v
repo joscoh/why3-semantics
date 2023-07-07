@@ -13,6 +13,9 @@ Set Bullet Behavior "Strict Subproofs".
 Definition mk_constant (name: string) (ty: vty):=
   Build_funsym (Build_fpsym name nil nil erefl erefl) ty.
 
+Notation mk_typemap l := (exist _ l erefl).
+Definition emp_typemap : ty_map := (exist _ nil erefl).
+
 
 (*Here, we first use some examples from why3/stdlib/algebra*)
 
@@ -90,7 +93,7 @@ Definition unit : funsym := mk_constant "unit" t_ty erefl.
 Definition monoid : theory :=
   rev [
     (*clone export Assoc*)
-    tclone Assoc.assoc None nil nil nil;
+    tclone Assoc.assoc None emp_typemap nil nil;
     (*constant unit : t*)
     tdef (abs_fun unit);
     (*axiom Unit_def_l : forall x:t. op unit x = x*)
@@ -124,9 +127,9 @@ Module CommutativeMonoid.
 Definition comm_monoid : theory :=
   rev [
     (*clone export Monoid*)
-    tclone Monoid.monoid None nil nil nil;
+    tclone Monoid.monoid None emp_typemap nil nil;
     (*clone export Comm with type t = t, function op = op*)
-    tclone Comm.comm None [(t, t)] [(op, op)] nil
+    tclone Comm.comm None (mk_typemap [(t_ty, t_ty)]) [(op, op)] nil
   ].
 
 (*Still same context*)
@@ -156,7 +159,7 @@ Definition inv : funsym := Build_funsym
 Definition group : theory :=
   rev [
     (*clone export Monoid*)
-    tclone Monoid.monoid None nil nil nil;
+    tclone Monoid.monoid None emp_typemap nil nil;
     (*function inv t : t*)
     tdef (abs_fun inv);
     (*axiom Inv_def_l : forall x:t. op (inv x) x = unit*)
@@ -191,9 +194,9 @@ Module CommGroup.
 Definition comm_group : theory :=
   rev [
     (*clone export Group*)
-    tclone Group.group None nil nil nil;
+    tclone Group.group None emp_typemap nil nil;
     (*clone export Comm with type t = t, function op = op*)
-    tclone Comm.comm None [(t, t)] [(op, op)] nil
+    tclone Comm.comm None (mk_typemap [(t_ty, t_ty)]) [(op, op)] nil
   ].
 
 Lemma comm_group_ctx : theory_ctx_int comm_group =
@@ -256,10 +259,10 @@ Definition ring : theory :=
                                 constant unit = zero,
                                 function op = (+),
                                 function inv = (-_)*)
-    tclone CommGroup.comm_group None [(t, t)] [(Monoid.unit, zero); 
+    tclone CommGroup.comm_group None (mk_typemap [(t_ty, t_ty)]) [(Monoid.unit, zero); 
       (op, plus); (Group.inv, neg)] nil;
     (*clone Assoc as MulAssoc with type t = t, function op = ( * )*)
-    tclone Assoc.assoc (Some "MulAssoc"%string) [(MA_t, t)] [(MA_op, mult)] nil;
+    tclone Assoc.assoc (Some "MulAssoc"%string) (mk_typemap [(MA_t_ty, t_ty)]) [(MA_op, mult)] nil;
     (*axiom Mul_distr_l : forall x y z : t. x * (y + z) = x * y + x * z*)
     tprop Paxiom "Mul_distr_l" (fforalls [x; y; z] (Feq t_ty
       (Tfun mult nil [Tvar x; Tfun plus nil [Tvar y; Tvar z]])

@@ -37,8 +37,10 @@ Definition Int : theory :=
       <f lt({x}, {y}) \/ [vty_int] {x} = {y} f>);
     tdef (nonrec_pred ge [x;y] <f le({y}, {x}) f>);
     tclone Algebra.OrderedUnitaryCommutativeRing None
-      (*TODO: sub for types, not just typesyms*)
-      [(Algebra.t_ts, (*vty_int*) Algebra.t_ts)]
-      [(Algebra.neg, neg); (Algebra.plus, plus); (Algebra.mult, mult)]
+      (mk_typemap [(Algebra.t, vty_int)])
+      [(Algebra.zero, zero); (Algebra.one, one); 
+        (Algebra.neg, neg); (Algebra.plus, plus); (Algebra.mult, mult)]
       [(Algebra.le, le)]
   ].
+
+End Int.

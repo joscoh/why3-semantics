@@ -50,14 +50,14 @@ Definition Comm : theory :=
 (*Associativity and Commutativity*)
 Definition AC : theory :=
   rev [
-    tclone Assoc None nil nil nil;
-    tclone Comm None [(t_ts, t_ts)] [(op, op)] nil
+    tclone Assoc None emp_typemap nil nil;
+    tclone Comm None (mk_typemap [(t, t)]) [(op, op)] nil
   ].
 
 (*Monoids*)
 Definition Monoid : theory :=
   rev [
-    tclone Assoc None nil nil nil;
+    tclone Assoc None emp_typemap nil nil;
     tdef (abs_fun unit);
     tprop Paxiom "Unit_def_l" <f
       forall x, [t] op (unit(), {x}) = {x} f>
@@ -66,14 +66,14 @@ Definition Monoid : theory :=
 (*Commutative monoids*)
 Definition CommutativeMonoid : theory :=
   rev [
-    tclone Monoid None nil nil nil;
-    tclone Comm None [(t_ts, t_ts)] [(op, op)] nil
+    tclone Monoid None emp_typemap nil nil;
+    tclone Comm None (mk_typemap [(t, t)]) [(op, op)] nil
   ].
 
 (*Groups*)
 Definition Group : theory :=
   rev [
-    tclone Monoid None nil nil nil;
+    tclone Monoid None emp_typemap nil nil;
     tdef (abs_fun inv);
     tprop Paxiom "Inv_def_l" <f
       forall x, [t] op (inv({x}), {x}) = unit() f>;
@@ -84,8 +84,8 @@ Definition Group : theory :=
 (*Commutative groups*)
 Definition CommutativeGroup : theory :=
   rev [
-    tclone Group None nil nil nil;
-    tclone Comm None [(t_ts, t_ts)] [(op, op)] nil
+    tclone Group None emp_typemap nil nil;
+    tclone Comm None (mk_typemap [(t, t)]) [(op, op)] nil
   ].
 
 (*Rings*)
@@ -106,9 +106,9 @@ Definition Ring : theory :=
     tdef (abs_fun plus);
     tdef (abs_fun neg);
     tdef (abs_fun mult);
-    tclone CommutativeGroup None [(t_ts, t_ts)] 
+    tclone CommutativeGroup None (mk_typemap [(t, t)]) 
       [(unit, zero); (op, plus); (inv, neg)] nil;
-    tclone Assoc (Some "MulAssoc")  [(MA_t_ts, t_ts)] [(MA_op, mult)] nil;
+    tclone Assoc (Some "MulAssoc")  (mk_typemap [(MA_t, t)]) [(MA_op, mult)] nil;
     tprop Paxiom "Mul_distr_l" <f
       forall x, forall y, forall z, 
         [t] mult({x}, plus({y}, {z})) = plus(mult({x}, {y}), mult({x}, {z}))
@@ -125,15 +125,15 @@ Definition MC_t : vty := vty_cons MC_t_ts nil.
 Definition MC_op: funsym := binop "MulComm.op" MC_t.
 Definition CommutativeRing : theory :=
   rev [
-    tclone Ring None nil nil nil;
-    tclone Comm (Some "MulComm") [(MC_t_ts, t_ts)] [(MC_op, mult)] nil
+    tclone Ring None emp_typemap nil nil;
+    tclone Comm (Some "MulComm") (mk_typemap [(MC_t, t)]) [(MC_op, mult)] nil
   ].
 
 (*Commutative Rings With Unit*)
 Definition one : funsym := const "one" t.
 Definition UnitaryCommutativeRing : theory :=
   rev [
-    tclone CommutativeRing None nil nil nil;
+    tclone CommutativeRing None emp_typemap nil nil;
     tdef (abs_fun one);
     tprop Paxiom "Unitary" <f forall x, [t] mult(one(), {x}) = {x} f>;
     tprop Paxiom "NonTrivialRing" <f ([t] zero() != one()) f>
@@ -143,9 +143,9 @@ Definition UnitaryCommutativeRing : theory :=
 Definition le : predsym := binpred "le" t.
 Definition OrderedUnitaryCommutativeRing : theory :=
   rev [
-    tclone UnitaryCommutativeRing None nil nil nil;
+    tclone UnitaryCommutativeRing None emp_typemap nil nil;
     tdef (abs_pred le);
-    tclone Relations.TotalOrder None [(Relations.t_ts, t_ts)] nil [(Relations.rel, le)];
+    tclone Relations.TotalOrder None (mk_typemap [(Relations.t, t)]) nil [(Relations.rel, le)];
     tprop Paxiom "ZeroLessOne" <f le (zero(), one()) f>;
     tprop Paxiom "CompatOrderAdd" <f forall x, forall y, forall z,
       le({x}, {y}) -> le(plus({x}, {z}), plus({y}, {z})) f>;
@@ -161,7 +161,7 @@ Definition div: funsym := binop "div" t.
 
 Definition Field : theory :=
   rev [
-    tclone UnitaryCommutativeRing None nil nil nil;
+    tclone UnitaryCommutativeRing None emp_typemap nil nil;
     tdef (abs_fun inv);
     tprop Paxiom "Inverse" <f forall x,
       [t] {x} != zero() -> [t] mult({x}, inv({x})) = one() f>;
@@ -189,9 +189,9 @@ Definition Field : theory :=
 
 Definition OrderedField : theory :=
   rev [
-    tclone Field None nil nil nil;
+    tclone Field None emp_typemap nil nil;
     tdef (abs_pred le);
-    tclone Relations.TotalOrder None [(Relations.t_ts, t_ts)] nil [(Relations.rel, le)];
+    tclone Relations.TotalOrder None (mk_typemap [(Relations.t, t)]) nil [(Relations.rel, le)];
     tprop Paxiom "ZeroLessOne" <f le (zero(), one()) f>;
     tprop Paxiom "CompatOrderAdd" <f forall x, forall y, forall z,
       le({x}, {y}) -> le(plus({x}, {z}), plus({y}, {z})) f>;
