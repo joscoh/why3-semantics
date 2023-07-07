@@ -85,3 +85,57 @@ Proof.
 Qed.
 
 End FunUnfold.
+
+(*Now a version without the silly trick*)
+Module NonRecFunUnfold.
+
+Local Open Scope string_scope.
+
+Definition a : vty := vty_var "a".
+Definition b: vty := vty_var "b".
+Definition x : vsymbol := ("x", a).
+Definition y: vsymbol := ("y", b).
+
+Definition fst_fs : funsym :=
+  funsym_noty "fst" [a; b] a.
+Definition snd_fs : funsym :=
+  funsym_noty "snd" [a; b] b.
+
+Definition fst_fun : funpred_def :=
+  fun_def fst_fs [x;y] (Tvar x).
+Definition snd_fun : funpred_def :=
+  fun_def snd_fs [x;y] (Tvar y).
+
+Definition thalf : term := Tconst (ConstReal half).
+Definition tfive : term := Tconst (ConstInt five).
+
+Definition unfold_theory : theory :=
+  rev [
+    tdef (nonrec_def fst_fun);
+    tdef (nonrec_def snd_fun);
+    tprop Pgoal "fst_lemma" (Feq vty_int 
+    (Tfun fst_fs [vty_int; vty_real] [tfive; thalf])
+    tfive);
+    tprop Pgoal "snd_lemma" (Feq vty_real
+    (Tfun snd_fs [vty_int; vty_real] [tfive; thalf])
+    thalf)].
+
+Lemma unfold_theory_typed : typed_theory unfold_theory.
+Proof.
+  check_theory.
+Qed.
+
+Ltac extra_simpl ::= fold thalf; fold tfive.
+
+Lemma unfold_theory_valid: valid_theory unfold_theory.
+Proof.
+  simpl. split_all; auto.
+  - wstart. 
+    wunfold snd_fs.
+    wreflexivity.
+  - wstart.
+    wunfold fst_fs.
+    wreflexivity.
+Qed.
+
+End NonRecFunUnfold.

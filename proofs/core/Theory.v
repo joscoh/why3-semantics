@@ -246,6 +246,8 @@ Definition sub_ctx_map (c: context)  :
       recursive_def (map sub_in_funpred_def l) :: acc
     | inductive_def l =>
       inductive_def (map sub_in_indpred_def l) :: acc
+    | nonrec_def f =>
+      nonrec_def (sub_in_funpred_def f) :: acc
     end
   ) nil c.
 
@@ -423,6 +425,7 @@ Definition qual_def (d: def) : def :=
   | datatype_def m => datatype_def (qual_mut_adt m)
   | recursive_def l => recursive_def (map qual_funpred_def l)
   | inductive_def i => inductive_def (map qual_indpred_def i)
+  | nonrec_def f => nonrec_def (qual_funpred_def f)
   | abs_type ts => abs_type (qual_ts_n ts)
   | abs_fun f => abs_fun (qual_funsym_n f)
   | abs_pred p => abs_pred (qual_predsym_n p)

@@ -943,6 +943,22 @@ Build_pi_funpred gamma_valid' pd
   (preds gamma_valid pd pf)
   (funs_with_const_constrs gamma_valid name s gamma_valid' pd pf d).
 
+(*TODO: move*)
+(*Lemma fun_defined_in_sig {gamma f args body}:
+  fun_defined gamma f args body ->
+  In f (sig_f gamma).
+Proof.
+  unfold fun_defined.
+  intros. unfold sig_f. rewrite in_concat.
+  destruct H as [[fs [fs_in f_in]] | f_in].
+  - exists (funsyms_of_rec fs). split; auto.
+    + rewrite in_map_iff. exists (recursive_def fs); split; auto.
+      apply in_mutfuns; auto.
+    + apply in_fun_def in f_in; auto.
+  - exists (funsyms_of_nonrec (fun_def f args body)); split; simpl; auto.
+    rewrite in_map_iff. eexists. split; [| apply f_in]. reflexivity.
+Qed.*)
+
 (*This interpretation is still a [full_interp].
   This is very annoying to show, because the context changes
   everywhere*)
@@ -966,29 +982,42 @@ Proof.
   - rewrite funs_with_const_diff.
     2: {
       intro C. subst.
-      assert (~In (constsym name s) (funsyms_of_rec fs)). {
-        apply (abs_not_concrete_fun gamma_valid' _ ltac:(simpl; left; auto)).
-        apply fs_in.
-      }
-      apply in_fun_def in f_in. contradiction.
+      destruct f_in; destruct_all; subst.
+      - assert (~In (constsym name s) (funsyms_of_rec x)). {
+         apply (abs_not_concrete_fun gamma_valid' _ ltac:(simpl; left; auto)).
+         auto.
+        }
+        apply in_fun_def in H0. contradiction.
+      - apply (nonrecfun_not_abs gamma_valid' (fun_def (constsym name s) args body)
+        (constsym name s)); simpl; auto.
     }
-    rewrite (full_fun fs fs_in f args body f_in srts srts_len a vt vv).
+    assert (f_in': fun_defined gamma f args body). {
+      destruct f_in; destruct_all; subst; [left | right]; auto.
+      - exists x. split; auto.
+      - simpl in H. destruct H; auto; discriminate.
+    }
+    rewrite (full_fun f args body f_in' srts srts_len a vt vv).
     f_equal. apply UIP_dec. apply sort_eq_dec.
     apply term_change_gamma_pf; auto.
     intros.
     simpl. rewrite funs_with_const_diff; auto.
     intro C; subst.
     assert (In (constsym name s) (sig_f gamma)); try contradiction. 
-    eapply term_has_type_funsym_in_sig. 2: apply H.
-    eapply f_body_type; auto. apply fs_in. apply f_in.
+    eapply term_has_type_funsym_in_sig.
+    apply fun_defined_ty in f_in'; auto. apply f_in'. auto.
   - (*Predicate very similar*)
-    rewrite (full_pred fs fs_in p args body p_in srts srts_len a vt vv).
+    assert (p_in': pred_defined gamma p args body). {
+      destruct p_in; destruct_all; subst; [left | right]; auto.
+      - exists x. split; auto.
+      - simpl in H. destruct H; auto; discriminate.
+    }
+    rewrite (full_pred p args body p_in' srts srts_len a vt vv).
     apply fmla_change_gamma_pf; auto.
     intros. simpl. rewrite funs_with_const_diff; auto.
     intro C; subst.
     assert (In (constsym name s) (sig_f gamma)); try contradiction. 
-    eapply formula_typed_funsym_in_sig. 2: apply H.
-    eapply p_body_type; auto. apply fs_in. apply p_in.
+    eapply formula_typed_funsym_in_sig.
+    apply pred_defined_typed in p_in'; auto. apply p_in'. auto.
   - (*First indprop easy*)
     rewrite fmla_change_gamma_pf with(gamma_valid2:=gamma_valid) 
       (pf2:=pf) (Hval2:= (indprop_fmla_valid gamma_valid l_in p_in f_in)); auto.
@@ -1921,6 +1950,7 @@ Definition def_eqb (d1 d2: def) : bool :=
     list_eqb funpred_def_eqb l1 l2
   | inductive_def l1, inductive_def l2 =>
     list_eqb indpred_def_eqb l1 l2
+  | nonrec_def f1, nonrec_def f2 => funpred_def_eqb f1 f2
   | abs_type t1, abs_type t2 => typesym_eqb t1 t2
   | abs_fun f1, abs_fun f2 => funsym_eqb f1 f2
   | abs_pred p1, abs_pred p2 => predsym_eqb p1 p2
@@ -1937,6 +1967,7 @@ Proof.
   - by_dec (mut_adt_dec m m0).
   - by_dec (list_eqb_spec _ funpred_def_eqb_spec l l0).
   - by_dec (list_eqb_spec _ indpred_def_eqb_spec l l0). 
+  - by_dec (funpred_def_eqb_spec f f0). 
   - by_dec (typesym_eqb_spec t t0).
   - by_dec (funsym_eqb_spec f f0). 
   - by_dec (predsym_eqb_spec p p0).

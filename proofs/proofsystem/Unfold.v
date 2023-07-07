@@ -109,12 +109,28 @@ Proof.
   intros. subst. apply val_with_args_in; auto.
 Qed.
 
+(*TODO: move*)
+Lemma fun_defined_valid {gamma f args body}:
+  valid_context gamma ->
+  fun_defined gamma f args body ->
+  funpred_def_valid_type gamma (fun_def f args body).
+Proof.
+  unfold fun_defined.
+  intros gamma_valid f_in.
+  destruct f_in as [[fs [fs_in f_in]] | f_in].
+  - pose proof (funpred_def_valid gamma_valid _ fs_in).
+    unfold funpred_valid in H. destruct H as [Hval _].
+    rewrite Forall_forall in Hval; auto.
+  - pose proof (valid_context_defs _ gamma_valid).
+    rewrite Forall_forall in H. specialize (H _ f_in).
+    apply H.
+Qed.
+
 (*The theorem we want: substituting the types and terms into the
   function body is the same as evaluating the function on the arguments*)
 Theorem sub_body_t_rep {gamma} (gamma_valid: valid_context gamma)
-  (fs: list funpred_def) (fs_in: In fs (mutfuns_of_context gamma))
   (f: funsym) (args: list vsymbol) (body: term) 
-  (f_in: In (fun_def f args body) fs)
+  (f_in: fun_defined gamma f args body)
   (tms: list term) (tys: list vty)
   (Hlenat: length args = length tms)
   (Htysval: Forall (valid_type gamma) tys)
@@ -126,11 +142,7 @@ Theorem sub_body_t_rep {gamma} (gamma_valid: valid_context gamma)
   term_rep gamma_valid pd vt pf vv (Tfun f tys tms) ty Hty2.
 Proof.
   (*Get some info from typing*)
-  pose proof (funpred_def_valid gamma_valid _ fs_in).
-  unfold funpred_valid in H.
-  destruct H as [Hdef _].
-  rewrite Forall_forall in Hdef.
-  specialize (Hdef _ f_in).
+  pose proof (fun_defined_valid gamma_valid f_in) as Hdef.
   simpl in Hdef.
   destruct Hdef as [Htyb [Hfvargs [Hsubvars [Hnargs Hargs]]]].
   (*First, simplify RHS*)
@@ -142,7 +154,7 @@ Proof.
   assert (Hmaplen: length (map (v_subst vt) tys) = length (s_params f)). {
     rewrite map_length; auto.
   }
-  rewrite (Hfuns fs fs_in f args body f_in (map (v_subst vt) tys) Hmaplen
+  rewrite (Hfuns f args body f_in (map (v_subst vt) tys) Hmaplen
   (fun_arg_list pd vt f tys tms (term_rep gamma_valid pd vt pf vv) Hty2) vt vv).
   unfold cast_dom_vty.
   rewrite !dom_cast_compose.
@@ -318,8 +330,11 @@ Proof.
   subst. f_equal. apply term_rep_irrel.
 Qed.
 
-(*Get the function body and arguments for a funsym*)
-Definition get_fun_body_args (gamma: context) (f: funsym) :
+(*TODO: preds*)
+
+(*Get the function body and arguments for a funsym. We do in 2 parts, even though this
+  is less efficient (should implement 1-pass version)*)
+Definition get_rec_fun_body_args (gamma: context) (f: funsym) :
   option (term * list vsymbol) :=
   fold_right (fun x acc =>
     match x with
@@ -327,27 +342,63 @@ Definition get_fun_body_args (gamma: context) (f: funsym) :
     | _ => acc
     end) None (concat (mutfuns_of_context gamma)).
 
-Lemma get_fun_body_args_some_aux gamma f t args:
-  get_fun_body_args gamma f = Some (t, args) ->
+Lemma get_rec_fun_body_args_some_aux gamma f t args:
+  get_rec_fun_body_args gamma f = Some (t, args) ->
   In (fun_def f args t) (concat (mutfuns_of_context gamma)).
 Proof.
-  unfold get_fun_body_args.
+  unfold get_rec_fun_body_args.
   induction (concat (mutfuns_of_context gamma)); simpl; try discriminate.
   destruct a; auto.
   destruct (funsym_eq_dec f f0); subst; auto.
   intros C; inversion C; subst. auto.
 Qed.
 
-Lemma get_fun_body_args_some gamma f t args:
-  get_fun_body_args gamma f = Some (t, args) ->
+Lemma get_rec_fun_body_args_some gamma f t args:
+  get_rec_fun_body_args gamma f = Some (t, args) ->
   exists fs,
   In fs (mutfuns_of_context gamma) /\
   In (fun_def f args t) fs.
 Proof.
   intros.
-  apply get_fun_body_args_some_aux in H.
+  apply get_rec_fun_body_args_some_aux in H.
   rewrite in_concat in H.
   auto.
+Qed.
+
+Definition get_nonrec_fun_body_args gamma f : option (term * list vsymbol) :=
+  fold_right (fun x acc =>
+    match x with
+    | nonrec_def (fun_def f1 args body) => if funsym_eq_dec f f1 then Some (body, args)
+      else acc
+    | _ => acc
+    end) None gamma.
+
+Lemma get_nonrec_fun_body_args_some gamma f body args :
+  get_nonrec_fun_body_args gamma f = Some (body, args) ->
+  In (nonrec_def (fun_def f args body)) gamma.
+Proof.
+  induction gamma; simpl; try discriminate.
+  destruct a; auto. destruct f0; auto.
+  destruct (funsym_eq_dec f f0); subst; auto.
+  intro C; inversion C; subst. auto.
+Qed.
+
+Definition get_fun_body_args gamma f : option (term * list vsymbol) :=
+  match (get_rec_fun_body_args gamma f) with
+  | None => get_nonrec_fun_body_args gamma f
+  | x => x
+  end.
+
+Lemma get_fun_body_args_some gamma f body args:
+  get_fun_body_args gamma f = Some (body, args) ->
+  fun_defined gamma f args body.
+Proof.
+  intros. unfold get_fun_body_args in H.
+  unfold fun_defined.
+  destruct (get_rec_fun_body_args gamma f) eqn : Hrec.
+  - inversion H; subst.
+    apply get_rec_fun_body_args_some in Hrec. auto.
+  - apply get_nonrec_fun_body_args_some in H; auto.
 Qed.
 
 Definition unfold_f (gamma: context) (f: funsym) (fmla: formula) :=
@@ -572,12 +623,7 @@ Proof.
   destruct p as [body args].
   (*Typing info*)
   apply get_fun_body_args_some in Hfunbody.
-  destruct Hfunbody as [fs [Hinfs Hinf]].
-  pose proof (funpred_def_valid gamma_valid _ Hinfs).
-  unfold funpred_valid in H.
-  destruct H as [Hdef _].
-  rewrite Forall_forall in Hdef.
-  specialize (Hdef _ Hinf).
+  pose proof (fun_defined_valid gamma_valid Hfunbody) as Hdef.
   simpl in Hdef.
   destruct Hdef as [Htyb [Hfvargs [Hsubvars [Hnargs Hargs]]]].
   apply unfold_f_ty_aux; auto.
@@ -602,12 +648,7 @@ Proof.
   destruct p as [body args]. intros.
   (*Typing info*)
   apply get_fun_body_args_some in Hfunbody.
-  destruct Hfunbody as [fs [Hinfs Hinf]].
-  pose proof (funpred_def_valid gamma_valid _ Hinfs).
-  unfold funpred_valid in H.
-  destruct H as [Hdef _].
-  rewrite Forall_forall in Hdef.
-  specialize (Hdef _ Hinf).
+  pose proof (fun_defined_valid gamma_valid Hfunbody) as Hdef.
   simpl in Hdef.
   destruct Hdef as [Htyb [Hfvargs [Hsubvars [Hnargs Hargs]]]].
   revert Hty2. unfold unfold_f_aux.
@@ -650,12 +691,10 @@ Proof.
       erewrite replace_tm_f_rep.
       apply H. apply Htya. apply Hty4.
       intros.
-      erewrite sub_body_t_rep. reflexivity.
-      apply Hinfs. auto.
+      erewrite sub_body_t_rep. reflexivity. all: auto.
       + inversion Hty0; subst. 
         rewrite H7. rewrite <- Hargs, !map_length; auto.
       + inversion Hty0; subst. auto.
-      + auto.
   }
   intros.
   eapply H. 2: reflexivity.

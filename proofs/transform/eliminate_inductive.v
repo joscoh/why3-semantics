@@ -3338,6 +3338,7 @@ Definition concrete_def (d: def) : bool :=
   | recursive_def _ => true
   | inductive_def _ => true
   | datatype_def _ => true
+  | nonrec_def _ => true
   | _ => false
   end.
 
@@ -3709,6 +3710,19 @@ Proof.
   rewrite get_indpred_defs_mutfuns; auto.
 Qed.
 
+Lemma gen_new_ctx_nonrec fd gamma:
+  In (nonrec_def fd) (gen_new_ctx_gamma gamma) <->
+  In (nonrec_def fd) gamma.
+Proof.
+  induction gamma; simpl; auto; try reflexivity; destruct a; simpl;
+  try apply or_iff_compat_l; auto.
+  unfold gen_new_ctx_gamma. simpl. rewrite in_app_iff.
+  split; intros; destruct_all; auto; try discriminate;
+  try solve[right; apply IHgamma; auto].
+  unfold get_indpred_defs in H. rewrite in_map_iff in H.
+  destruct_all. inversion H.
+Qed.
+
 Lemma indpreds_of_context_app l1 l2:
   indpreds_of_context (l1 ++ l2) =
   indpreds_of_context l1 ++ indpreds_of_context l2.
@@ -3747,18 +3761,22 @@ Proof.
   unfold full_interp; intros [Hfun [Hpred [Hconstr Hleast]]]; split_all.
   - clear -Hfun.
     intros. simpl.
-    assert (fs_in': In fs (mutfuns_of_context gamma)). {
-      rewrite gen_new_ctx_gamma_mutfuns in fs_in. auto.
+    assert (f_in': fun_defined gamma f args body). {
+      destruct f_in; destruct_all; subst; auto.
+      - left. rewrite gen_new_ctx_gamma_mutfuns in H; exists x; auto.
+      - right. apply gen_new_ctx_nonrec; auto. 
     }
-    erewrite (Hfun fs fs_in' f args body f_in srts srts_len a vt vv).
+    erewrite (Hfun f args body f_in' srts srts_len a vt vv).
     erewrite tm_gen_new_ctx_pf.
     apply dom_cast_eq.
   - clear -Hpred.
     intros. simpl.
-    assert (fs_in': In fs (mutfuns_of_context gamma)). {
-      rewrite gen_new_ctx_gamma_mutfuns in fs_in. auto.
+    assert (p_in': pred_defined gamma p args body). {
+      destruct p_in; destruct_all; subst; auto.
+      - left. rewrite gen_new_ctx_gamma_mutfuns in H; exists x; auto.
+      - right. apply gen_new_ctx_nonrec; auto.
     }
-    erewrite (Hpred fs fs_in' p args body p_in srts srts_len a vt vv).
+    erewrite (Hpred p args body p_in' srts srts_len a vt vv).
     symmetry.
     apply fmla_gen_new_ctx_pf.
   - (*Trivial*) clear.
