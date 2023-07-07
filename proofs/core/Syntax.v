@@ -894,6 +894,7 @@ Inductive def : Set :=
   | datatype_def : mut_adt -> def
   | recursive_def: list funpred_def -> def
   | inductive_def : list indpred_def -> def
+  | nonrec_def : funpred_def -> def (*non-recursive function or predicate def*)
   (*abstract defs*)
   | abs_type : typesym -> def
   | abs_fun : funsym -> def
@@ -923,6 +924,18 @@ Definition funsyms_of_mut (m: mut_adt) : list funsym :=
 Definition predsyms_of_indprop (l: list indpred_def) : list predsym :=
   map (fun x => match x with | ind_def p _ => p end) l.
 
+Definition funsyms_of_nonrec (f: funpred_def) : list funsym :=
+  match f with
+  | fun_def fs _ _ => [fs]
+  | _ => nil
+  end.
+
+Definition predsyms_of_nonrec (f: funpred_def) : list predsym :=
+  match f with
+  | pred_def ps _ _ => [ps]
+  | _ => nil
+  end.
+  
 Definition funsyms_of_rec (l: list funpred_def) : list funsym :=
   omap (fun f =>
     match f with
@@ -942,6 +955,7 @@ Definition funsyms_of_def (d: def) : list funsym :=
   | datatype_def m => funsyms_of_mut m
   | recursive_def fs => funsyms_of_rec fs
   | abs_fun f => [f]
+  | nonrec_def f => funsyms_of_nonrec f
   | _ => nil
   end.
 
@@ -950,6 +964,7 @@ Definition predsyms_of_def (d: def) : list predsym :=
   | inductive_def l => predsyms_of_indprop l
   | recursive_def fs => predsyms_of_rec fs
   | abs_pred p => [p]
+  | nonrec_def p => predsyms_of_nonrec p
   | _ => nil
   end.
 
@@ -966,6 +981,7 @@ Definition def_concrete_funsyms (d: def) : list funsym :=
   match d with
   | datatype_def m => funsyms_of_mut m
   | recursive_def l => funsyms_of_rec l
+  | nonrec_def f => funsyms_of_nonrec f
   | _ => nil
   end.
 
@@ -973,6 +989,7 @@ Definition def_concrete_predsyms (d: def) : list predsym :=
   match d with
   | inductive_def l => predsyms_of_indprop l
   | recursive_def l => predsyms_of_rec l
+  | nonrec_def f => predsyms_of_nonrec f
   | _ => nil
   end.
 

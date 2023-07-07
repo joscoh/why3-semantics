@@ -2928,12 +2928,13 @@ Proof.
 Qed.
 
 (*And now, we can check an entire definition*)
-
 Definition valid_def_check (d: def) : bool :=
   match d with
   | datatype_def m => mut_valid_check m
   | recursive_def fs => funpred_valid_check fs
   | inductive_def l => indprop_valid_check l
+  | nonrec_def f => funpred_def_valid_type_check f &&
+      nonrec_def_nonrec f
   | _ => true
   end.
 
@@ -2950,6 +2951,9 @@ Proof.
     apply /inP.
     by apply in_mutfuns.
   - move=> l _. apply indprop_valid_check_spec.
+  - move=> f _. apply andPP.
+    apply funpred_def_valid_type_check_spec.
+    apply idP.
 Qed.
 
 End ContextCheck.

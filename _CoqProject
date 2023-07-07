@@ -20,6 +20,7 @@ proofs/core/Alpha.v
 proofs/core/IndProp.v
 proofs/core/RecFun.v
 proofs/core/RecFun2.v
+proofs/core/NonRecFun.v
 proofs/core/TySubst.v
 #proofs/core/IndProp.v
 proofs/core/FullInterp.v

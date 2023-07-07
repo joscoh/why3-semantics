@@ -1934,11 +1934,21 @@ Definition indprop_valid (is: list indpred_def) : Prop :=
 
 End RecursiveDefs.
 
+(*One additional condition for non-recursive defs*)
+Definition nonrec_def_nonrec (f: funpred_def) : bool :=
+  match f with
+  | fun_def f _ body => negb (funsym_in_tm f body)
+  | pred_def p _ body => negb (predsym_in_fmla p body)
+  end.
+
+
 Definition valid_def gamma (d: def) : Prop :=
   match d with
   | datatype_def m => mut_valid gamma m
   | inductive_def l => indprop_valid gamma l
   | recursive_def fs => funpred_valid gamma fs
+  | nonrec_def f => funpred_def_valid_type gamma f /\
+    nonrec_def_nonrec f
   | _ => True
   end.
 
@@ -2425,6 +2435,10 @@ Proof.
   - apply indprop_valid_sublist.
     apply expand_sublist_sig.
     apply expand_mut_sublist.
+  - intros [Hval Hnonrec]; split;[|apply Hnonrec].
+    revert Hval. apply funpred_def_valid_sublist.
+    apply expand_sublist_sig.
+    apply expand_mut_sublist.
 Qed.
 
 (*An alternate approach if the contexts agree on types*)
@@ -2442,9 +2456,12 @@ Proof.
     revert H0. apply Forall_impl. intros a. 
     apply typesym_inhab_sublist; auto.
   - apply funpred_valid_sublist; auto.
-    rewrite Hmut. apply incl_refl.
+    rewrite Hmut. apply sublist_refl.
   - simpl. apply indprop_valid_sublist; auto.
-    rewrite Hmut. apply incl_refl.
+    rewrite Hmut. apply sublist_refl.
+  - simpl. intros [Hval Hnonrec]; split;[|apply Hnonrec].
+    revert Hval. apply funpred_def_valid_sublist; auto. 
+    rewrite Hmut. apply sublist_refl.
 Qed. 
 
 End Expand.
@@ -2590,6 +2607,18 @@ Proof.
     split; simpl; auto.
     rewrite in_map_iff. exists (inductive_def (ind_def p l0 :: l));
     auto.
+  - (*non-recursive def has a funsym or predsym*)
+    destruct f.
+    + simpl in H1. apply (H1 f); auto.
+      unfold sig_f.
+      rewrite in_concat. exists (funsyms_of_nonrec (fun_def f l t)).
+      split; simpl; auto.
+      rewrite in_map_iff. exists (nonrec_def (fun_def f l t)); auto.
+    + simpl in H2. apply (H2 p); auto.
+      unfold sig_p.
+      rewrite in_concat. exists (predsyms_of_nonrec (pred_def p l f)).
+      split; simpl; auto.
+      rewrite in_map_iff. exists (nonrec_def (pred_def p l f)); auto.
   - apply (H3 t); auto.
     (*For abstract, use definition of sig_t*)
     unfold sig_t. rewrite in_concat. exists [t].
@@ -2637,6 +2666,11 @@ Definition funsym_in_def (f: funsym) (d: def) : bool :=
       end) fs
   | inductive_def is =>
     existsb (funsym_in_fmla f) (concat (map snd (map indpred_def_to_indpred is)))
+  | nonrec_def fs =>
+    match fs with
+    | fun_def _ _ t => funsym_in_tm f t
+    | pred_def _ _ fmla => funsym_in_fmla f fmla
+    end 
   | _ => false
   end.
 
@@ -2650,6 +2684,11 @@ Definition predsym_in_def (p: predsym) (d: def) : bool :=
       end) fs
   | inductive_def is =>
     existsb (predsym_in_fmla p) (concat (map snd (map indpred_def_to_indpred is)))
+  | nonrec_def fs =>
+    match fs with
+    | fun_def _ _ t => predsym_in_tm p t
+    | pred_def _ _ fmla => predsym_in_fmla p fmla
+    end 
   | _ => false
   end.
 
@@ -2677,6 +2716,16 @@ Inductive ctx_ordered : list def -> Prop :=
     ~ predsym_in_def p d
   ) ->
   ctx_ordered ((inductive_def is) :: tl)
+| ordered_nonrec: forall (fd: funpred_def) tl,
+  ctx_ordered tl ->
+  (forall f d,
+    In f (funsyms_of_nonrec fd) ->
+    In d tl -> ~ funsym_in_def f d) ->
+  (forall p d,
+    In p (predsyms_of_nonrec fd) ->
+    In d tl ->
+    ~ predsym_in_def p d) ->
+  ctx_ordered (nonrec_def fd :: tl)
 (*Other cases not interesting*)
 | ordered_adt: forall m tl,
   ctx_ordered tl ->
@@ -2862,6 +2911,9 @@ Proof.
     specialize (Hty _ Hinfd).
     destruct_all.
     eapply formula_typed_funsym_in_sig. apply H. apply Hfd.
+  - destruct f0; simpl in *; destruct_all.
+    + eapply term_has_type_funsym_in_sig. apply H. auto.
+    + eapply formula_typed_funsym_in_sig. apply H. auto.
 Qed.
 
 (*Predsym version: TODO: reduce duplication - exactly
@@ -2907,6 +2959,9 @@ Proof.
     specialize (Hty _ Hinfd).
     destruct_all.
     eapply formula_typed_predsym_in_sig. apply H. apply Hfd.
+  - destruct f; simpl in *; destruct_all.
+    + eapply term_has_type_predsym_in_sig. apply H. auto.
+    + eapply formula_typed_predsym_in_sig. apply H. auto.
 Qed.
 
 (*And therefore, a valid context is ordered*)
@@ -2926,6 +2981,13 @@ Proof.
   - intros p d Hpinl Hind Hinpd.
     rewrite Forall_forall in H2.
     apply (H2 p). simpl. apply pred_in_indpred_iff; auto.
+    eapply predsym_in_def_in_sig; auto. apply Hind. auto.
+  - intros fs d Hinf Hind Hinfsd.
+    rewrite Forall_forall in H1.
+    apply (H1 fs); auto.
+    eapply funsym_in_def_in_sig; auto. apply Hind. auto.
+  - intros p d Hinp Hind Hinpd.
+    rewrite Forall_forall in H2; apply (H2 p); auto.
     eapply predsym_in_def_in_sig; auto. apply Hind. auto.
 Qed. 
  

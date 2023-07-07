@@ -1,6 +1,7 @@
 (*Constructing a complete interpretation - maybe call this semantics?*)
 
 Require Export RecFun2.
+Require Export NonRecFun.
 Require Export IndProp.
 
 Set Bullet Behavior "Strict Subproofs".
@@ -206,6 +207,8 @@ Definition upd_pf (d: def) (pf: pi_funpred gamma_valid pd) (Hin: In d gamma) :
     (pf_with_funpred gamma_valid pf fs ((proj2' (in_mutfuns _ fs)) Hin))
   | inductive_def is => fun Hin =>  (pf_with_indprop gamma_valid pd pf 
     (get_indpred is) (in_inductive_ctx _ is Hin))
+  | nonrec_def fd => fun Hin =>
+    (pf_with_nonrec gamma_valid pf fd Hin)
   | _ => fun _ => pf
   end Hin.
 
@@ -236,6 +239,150 @@ Proof.
   apply Hallin; auto.
 Qed.
 
+Lemma in_nonrec_sub {fd} {l: list def}
+(Hallin: Forall (fun x => In x gamma) l)
+(f_in: In (nonrec_def fd) l):
+In (nonrec_def fd) gamma.
+Proof.
+  rewrite Forall_forall in Hallin. auto.
+Qed.
+
+(*TODO: move*)
+Lemma nonrec_notin_fun {f args body}:
+  In (nonrec_def (fun_def f args body)) gamma ->
+  ~ (funsym_in_tm f body).
+Proof.
+  intros.
+  pose proof (valid_context_defs _ gamma_valid).
+  rewrite Forall_forall in H0.
+  specialize (H0 _ H).
+  simpl in H0.
+  destruct_all.
+  destruct (funsym_in_tm f body); simpl; auto.
+Qed.
+
+Lemma nonrec_notin_pred {p args body}:
+  In (nonrec_def (pred_def p args body)) gamma ->
+  ~ (predsym_in_fmla p body).
+Proof.
+  intros.
+  pose proof (valid_context_defs _ gamma_valid).
+  rewrite Forall_forall in H0.
+  specialize (H0 _ H).
+  simpl in H0.
+  destruct_all.
+  destruct (predsym_in_fmla p body); simpl; auto.
+Qed.
+
+(*TODO: move this*)
+Lemma dom_cast_eq' {d: sort -> Set} (s1 s2: sort)
+  (H1 H2: s1 = s2) (x y: domain d s1):
+  x = y ->
+  dom_cast d H1 x = dom_cast d H2 y.
+Proof.
+  intros; subst. apply dom_cast_eq.
+Qed.
+
+(*TODO: lots of duplication in the below proofs, improve*)
+
+(*Non recursive function - can we combine with recfun?*)
+Lemma upd_pf_multi_nonrecfun (l: list def) (pf: pi_funpred gamma_valid pd)
+(Hallin: Forall (fun x => In x gamma) l)
+(Hnodupl: NoDup l)
+(Hordl: ctx_ordered l)
+(f: funsym) (args: list vsymbol) (body: term)
+(f_in: In (nonrec_def (fun_def f args body)) l)
+(srts: list sort) (srts_len: length srts = length (s_params f))
+(a: arg_list (domain (dom_aux pd)) (sym_sigma_args f srts))
+(vt: val_typevar)
+(vv: val_vars pd vt):
+funs gamma_valid pd (upd_pf_multi l pf Hallin) f srts a =
+dom_cast _ (funs_cast gamma_valid vt (nonrec_in_funsyms (in_nonrec_sub Hallin f_in)) srts_len) (
+  term_rep gamma_valid pd (vt_with_args vt (s_params f) srts)
+    (upd_pf_multi l pf Hallin) 
+    (val_with_args _ _ (upd_vv_args_srts (s_params f) srts (eq_sym srts_len)
+    (s_params_Nodup _) pd vt vv) args a)
+    body (f_ret f) (nonrec_body_ty gamma_valid (in_nonrec_sub Hallin f_in))
+).
+Proof.
+  generalize dependent (in_nonrec_sub Hallin f_in).
+  intros f_in'.
+  generalize dependent Hallin.
+  induction l; simpl; intros; [destruct f_in |].
+  simpl in f_in.
+  inversion Hnodupl; subst; clear Hnodupl.
+  destruct f_in; subst.
+  - (*The result for the current addition follows from
+      [nonrec_fun_rep_spec]*) simpl.
+    rewrite pf_with_nonrec_fun_same with(srts_len:=srts_len).
+    rewrite nonrec_fun_rep_spec with(vt:=vt)(vv:=vv).
+    apply dom_cast_eq'.
+    (*And now we have to show that the pf is equal, because f cannot appear*)
+    erewrite term_rep_irrel.
+    apply tm_change_pf; auto; simpl; intros.
+    rewrite pf_with_nonrec_fun_diff; auto.
+    intros C; subst. apply (nonrec_notin_fun (Forall_inv Hallin)); auto.
+  - (*Now we show the inductive case - here, we need to know
+    that we haven't modified any fun or pred definition already
+    used*)
+    destruct a0; simpl; auto; inversion Hordl; subst; auto.
+    + (*Recursive def*)
+      rewrite pf_with_funpred_funs_notin.
+      rewrite IHl; auto.
+      f_equal.
+      apply tm_change_pf.
+      * intros. simpl.
+        rewrite pf_with_funpred_preds_notin; auto.
+        (*Here, we use the ordering assumption*)
+        intro Hpin.
+        apply (H6 p (nonrec_def (fun_def f args body))); auto.
+      * intros. simpl.
+        rewrite pf_with_funpred_funs_notin; auto.
+        intro Hpin.
+        apply (H5 f0 (nonrec_def (fun_def f args body))); auto.
+      * intros Hinf.
+        apply (recfun_not_nonrec gamma_valid (fun_def f args body) l0 f);
+        simpl; auto.
+        inversion Hallin; subst; auto.
+        apply in_bool_In in Hinf; auto.
+    + (*inductive def*)
+      rewrite IHl; auto.
+      f_equal.
+      apply tm_change_pf; simpl; auto.
+      (*Only the preds case is interesting*)
+      intros. simpl.
+      rewrite pf_with_indprop_preds_notin; auto.
+      (*Here, we use the ordering assumption*)
+      intro Hpin.
+      apply (H5 p (nonrec_def (fun_def f args body))); auto.
+    + (*other nonrec def case - TODO: would be nice to do this as 1 case*)
+      destruct f0; simpl.
+      * rewrite pf_with_nonrec_fun_diff; auto.
+        -- inversion Hordl; subst. rewrite IHl; auto.
+          f_equal. apply tm_change_pf; auto.
+          intros. simpl.
+          rewrite pf_with_nonrec_fun_diff; auto.
+          intro C; subst.
+          apply (H5 f1  (nonrec_def (fun_def f args body))); simpl; auto.
+        -- intro C; subst.
+          (*Violates no funsyms in common*)
+          assert (fun_def f l0 t = fun_def f args body). {
+            apply (nonrecfun_not_twice gamma_valid (fun_def f l0 t) (fun_def f args body) f); simpl; auto.
+            inversion Hallin; auto.
+          }
+          inversion H0; subst.
+          (*Violates NoDup*) contradiction.
+      * (*pred def - a bit simpler *)
+        inversion Hordl; subst;
+        rewrite IHl; auto.
+        f_equal. apply tm_change_pf; auto.
+        intros. simpl.
+        rewrite pf_with_nonrec_pred_diff; auto.
+        intro C; subst.
+        apply (H6 p0 (nonrec_def (fun_def f args body))); simpl; auto.
+Qed.
+
+(*Recursive functions*)
 Lemma upd_pf_multi_recfun (l: list def) (pf: pi_funpred gamma_valid pd)
 (Hallin: Forall (fun x => In x gamma) l)
 (Hnodupl: NoDup l)
@@ -328,9 +475,128 @@ Proof.
       apply in_bool_In in Hpin; auto.
       unfold predsym_in_def.
       bool_to_prop. exists (fun_def f args body). auto.
+    + (*nonrec def case*)
+      destruct f0; simpl.
+      * rewrite pf_with_nonrec_fun_diff; auto.
+        -- inversion Hordl; subst. rewrite IHl; auto.
+          f_equal. apply tm_change_pf; auto.
+          intros. simpl.
+          rewrite pf_with_nonrec_fun_diff; auto.
+          intro C; subst.
+          apply (H5 f1 (recursive_def fs)); try solve[simpl; auto].
+          simpl. apply existsb_exists. exists (fun_def f args body); auto.
+        -- intro C; subst.
+          (*Violates no funsyms in common*)
+          apply (recfun_not_nonrec gamma_valid (fun_def f l0 t) fs f); simpl; auto.
+          apply (Forall_inv Hallin).
+          2: apply (in_fun_def _ _ _ _ f_in).
+          inversion Hallin; subst.
+          rewrite Forall_forall in H5; auto. 
+      * (*pred def - a bit simpler *)
+        inversion Hordl; subst;
+        rewrite IHl; auto.
+        f_equal. apply tm_change_pf; auto.
+        intros. simpl.
+        rewrite pf_with_nonrec_pred_diff; auto.
+        intro C; subst.
+        apply (H6 p0 (recursive_def fs)); try solve[simpl; auto].
+        simpl. apply existsb_exists. exists (fun_def f args body); auto.
     + apply IHl; auto. inversion Hordl; auto.
     + apply IHl; auto. inversion Hordl; auto.
     + apply IHl; auto. inversion Hordl; auto.
+Qed.
+
+(*Non-recursive predicates*)
+Lemma upd_pf_multi_nonrecpred (l: list def) (pf: pi_funpred gamma_valid pd)
+(Hallin: Forall (fun x => In x gamma) l)
+(Hnodupl: NoDup l)
+(Hordl: ctx_ordered l)
+(p: predsym) (args: list vsymbol) (body: formula)
+(p_in: In (nonrec_def (pred_def p args body)) l)
+(srts: list sort) (srts_len: length srts = length (s_params p))
+(a: arg_list (domain (dom_aux pd)) (sym_sigma_args p srts))
+(vt: val_typevar)
+(vv: val_vars pd vt):
+preds gamma_valid pd (upd_pf_multi l pf Hallin) p srts a =
+formula_rep gamma_valid pd (vt_with_args vt (s_params p) srts)
+  (upd_pf_multi l pf Hallin) 
+  (val_with_args _ _ (upd_vv_args_srts (s_params p) srts (eq_sym srts_len)
+    (s_params_Nodup _) pd vt vv) args a)
+  body (nonrec_body_typed gamma_valid (in_nonrec_sub Hallin p_in)).
+Proof.
+  generalize dependent (in_nonrec_sub Hallin p_in).
+  intros p_in'.
+  generalize dependent Hallin.
+  induction l; simpl; intros; [destruct p_in |].
+  simpl in p_in.
+  inversion Hnodupl; subst; clear Hnodupl.
+  destruct p_in; subst.
+  - (*The result for the current addition follows from
+      [nonrec_pred_rep_spec]*) simpl.
+    rewrite pf_with_nonrec_pred_same with(srts_len:=srts_len).
+    rewrite nonrec_pred_rep_spec with(vt:=vt)(vv:=vv).
+    (*And now we have to show that the pf is equal, because p cannot appear*)
+    erewrite fmla_rep_irrel.
+    apply fmla_change_pf; auto; simpl; intros.
+    rewrite pf_with_nonrec_pred_diff; auto.
+    intros C; subst. apply (nonrec_notin_pred (Forall_inv Hallin)); auto.
+  - (*Now we show the inductive case - here, we need to know
+    that we haven't modified any fun or pred definition already
+    used*)
+    destruct a0; simpl; auto; inversion Hordl; subst; auto.
+    + (*Recursive def*)
+      rewrite pf_with_funpred_preds_notin.
+      rewrite IHl; auto.
+      apply fmla_change_pf.
+      * intros. simpl.
+        rewrite pf_with_funpred_preds_notin; auto.
+        (*Here, we use the ordering assumption*)
+        intro Hpin.
+        apply (H6 p0 (nonrec_def (pred_def p args body))); auto.
+      * intros. simpl.
+        rewrite pf_with_funpred_funs_notin; auto.
+        intro Hpin.
+        apply (H5 fs (nonrec_def (pred_def p args body))); auto.
+      * intros Hinf.
+        apply (recpred_not_nonrec gamma_valid (pred_def p args body) l0 p);
+        simpl; auto.
+        inversion Hallin; subst; auto.
+        apply in_bool_In in Hinf; auto.
+    + (*inductive def*)
+      rewrite pf_with_indprop_preds_notin.
+      rewrite IHl; auto.
+      apply fmla_change_pf; simpl; auto.
+      (*Only the preds case is interesting*)
+      intros. simpl.
+      rewrite pf_with_indprop_preds_notin; auto.
+      (*Here, we use the ordering assumption*)
+      intro Hpin.
+      apply (H5 p0 (nonrec_def (pred_def p args body))); auto.
+      unfold not.
+      apply (indprop_not_nonrec gamma_valid (pred_def p args body)); simpl; auto.
+      inversion Hallin; auto.
+    + (*other nonrec def case - TODO: would be nice to do this as 1 case*)
+      destruct f; simpl.
+      * rewrite IHl; auto.
+        apply fmla_change_pf; auto.
+        intros. simpl.
+        rewrite pf_with_nonrec_fun_diff; auto.
+        intro C; subst.
+        apply (H5 fs (nonrec_def (pred_def p args body))); simpl;auto.
+      * rewrite pf_with_nonrec_pred_diff; auto.
+        -- rewrite IHl; auto.
+          apply fmla_change_pf; auto.
+          intros. simpl.
+          rewrite pf_with_nonrec_pred_diff; auto.
+          intro C; subst.
+          apply (H6 p1(nonrec_def (pred_def p args body))); simpl; auto.
+        -- intro C; subst.
+          (*Violates no predsyms in common*)
+          assert (pred_def p l0 f = pred_def p args body). {
+            apply (nonrecpred_not_twice gamma_valid (pred_def p l0 f) (pred_def p args body) p); simpl; auto.
+            inversion Hallin; auto.
+          }
+          inversion H0; subst; contradiction.
 Qed.
 
 (*Now we can prove the spec for recursive predicates:*)
@@ -426,6 +692,30 @@ Proof.
       apply (recpred_not_indpred gamma_valid) with(l1:=fs); auto;
       try (rewrite Forall_forall in Hallin; apply Hallin; simpl; auto).
       apply (pred_in_mutfun p_in).
+    + destruct f; simpl.
+      * inversion Hordl; subst;
+        rewrite IHl; auto.
+        apply fmla_change_pf; auto.
+        intros. simpl.
+        rewrite pf_with_nonrec_fun_diff; auto.
+        intro C; subst.
+        apply (H5 fs0 (recursive_def fs)); try solve[simpl; auto].
+        simpl. apply existsb_exists. exists(pred_def p args body); auto.
+      * rewrite pf_with_nonrec_pred_diff; auto.
+        -- inversion Hordl; subst. rewrite IHl; auto.
+          apply fmla_change_pf; auto.
+          intros. simpl.
+          rewrite pf_with_nonrec_pred_diff; auto.
+          intro C; subst.
+          apply (H6 p1 (recursive_def fs)); try solve[simpl; auto].
+          simpl. apply existsb_exists. exists (pred_def p args body); auto.
+        -- intro C; subst.
+          (*Violates no predsyms in common*)
+          apply (recpred_not_nonrec gamma_valid (pred_def p l0 f) fs p); simpl; auto.
+          apply (Forall_inv Hallin).
+          2: apply (in_pred_def _ _ _ _ p_in).
+          inversion Hallin; subst.
+          rewrite Forall_forall in H5; auto. 
     + apply IHl; auto. inversion Hordl; auto.
     + apply IHl; auto. inversion Hordl; auto.
     + apply IHl; auto. inversion Hordl; auto.
@@ -448,9 +738,13 @@ Proof.
   not_or Hinf.
   specialize (IHl Hinf0); clear Hinf0.
   destruct a0; simpl; auto.
-  rewrite pf_with_funpred_funs_notin; auto.
-  intro Hc.
-  apply Hinf. simpl. apply in_bool_In in Hc; auto.
+  - rewrite pf_with_funpred_funs_notin; auto.
+    intro Hc.
+    apply Hinf. simpl. apply in_bool_In in Hc; auto.
+  - destruct f0; simpl; auto. 
+    rewrite pf_with_nonrec_fun_diff; auto.
+    intro C; subst.
+    apply Hinf. simpl. auto.
 Qed.
 
 Lemma upd_pf_multi_pred_notin (l: list def) (pf: pi_funpred gamma_valid pd)
@@ -474,7 +768,9 @@ Proof.
     apply Hinf. simpl. apply in_bool_In in Hc; auto.
   - rewrite pf_with_indprop_preds_notin; auto.
     intro Hc.
-    apply Hinf. simpl. apply pred_in_indpred_iff; auto. 
+    apply Hinf. simpl. apply pred_in_indpred_iff; auto.
+  - destruct f; simpl; auto. rewrite pf_with_nonrec_pred_diff; auto.
+    intro Hc; subst. apply Hinf; simpl; auto. 
 Qed.
 
 Lemma indpreds_of_sub {l1 l2} (Hall: Forall (fun x => In x l2) l1)
@@ -586,6 +882,28 @@ Proof.
       intros Hin.
       apply (H4 ps (inductive_def d)); auto.
       simpl. bool_to_prop. exists fmla. auto.
+  - (*Nonrecursive*)
+    destruct (in_indpreds_of_context _ _ ps_in) as [d [d_in Hps]]; subst.
+    destruct f; simpl; auto.
+    + rewrite IHl; auto.
+      apply indpred_rep_change_pf; simpl; auto.
+      intros.
+      rewrite pf_with_nonrec_fun_diff; auto.
+      intro C; subst.
+      apply (H4 fs (inductive_def d)); simpl; auto.
+      bool_to_prop. exists fmla; auto.
+    + rewrite pf_with_nonrec_pred_diff.
+      * rewrite IHl; auto.
+        apply indpred_rep_change_pf; simpl; auto.
+        intros.
+        rewrite pf_with_nonrec_pred_diff; auto.
+        intro C; subst.
+        apply (H5 ps (inductive_def d)); simpl; auto.
+        bool_to_prop. exists fmla; auto.
+      * intro C; subst.
+        inversion Hallin; subst.
+        apply (indprop_not_nonrec gamma_valid (pred_def p l0 f) d p); simpl; auto.
+        rewrite Forall_forall in H7; auto.
 Qed.
 
 End BuildInterp.
@@ -623,38 +941,87 @@ Proof.
   apply H; auto.
 Qed.
 
+(*A function is defined concretely (either recursively or non-recursively)*)
+Definition fun_defined gamma (f: funsym) (args: list vsymbol) (body: term) :=
+  (*Recursively*)
+  (exists fs, In fs (mutfuns_of_context gamma) /\
+    In (fun_def f args body) fs) \/
+  (*Non-recursively*)
+  (In (nonrec_def (fun_def f args body)) gamma).
+
+Lemma fun_defined_in_funsyms {gamma f args body}:
+  fun_defined gamma f args body ->
+  In f (funsyms_of_context gamma).
+Proof.
+  intros.
+  unfold fun_defined in H; destruct_all; subst.
+  - eapply recfun_in_funsyms. apply H.
+    eapply fun_in_mutfun. apply H0.
+  - apply nonrec_in_funsyms in H; auto.
+Qed.
+
+Lemma fun_defined_ty {gamma f args body}:
+  valid_context gamma ->
+  fun_defined gamma f args body ->
+  term_has_type gamma body (f_ret f).
+Proof.
+  intros gamma_valid f_in.
+  unfold fun_defined in f_in.
+  destruct_all; subst.
+  - eapply f_body_type. auto. apply H. apply H0.
+  - apply nonrec_body_ty in H; auto. 
+Qed.
+
+Definition pred_defined gamma (p: predsym) (args: list vsymbol) (body: formula) :=
+  (*Recursively*)
+  (exists fs, In fs (mutfuns_of_context gamma) /\
+    In (pred_def p args body) fs) \/
+  (*Non-recursively*)
+  (In (nonrec_def (pred_def p args body)) gamma).
+
+Lemma pred_defined_typed {gamma p args body}:
+  valid_context gamma ->
+  pred_defined gamma p args body ->
+  formula_typed gamma body.
+Proof.
+  intros gamma_valid p_in.
+  unfold pred_defined in p_in.
+  destruct_all; subst.
+  - eapply p_body_type. auto. apply H. apply H0.
+  - apply nonrec_body_typed in H; auto. 
+Qed.
+
+
 (*We can define what it means for an interpretation to be complete*)
 Definition full_interp {gamma} 
 (gamma_valid: valid_context gamma)
 (pd: pi_dom)
 (pf: pi_funpred gamma_valid pd) : Prop :=
-(*Recursive functions are equal (with a cast) to their body, 
+(*Defined functions are equal (with a cast) to their body, 
   under the valuation where the type arguments are mapped to srts 
   and the arguments are mapped to a, the arg list*)
-(forall (fs: list funpred_def)
-  (fs_in: In fs (mutfuns_of_context gamma))
+(forall 
   (f: funsym) (args: list vsymbol) (body: term)
-  (f_in: In (fun_def f args body) fs)
+  (f_in: fun_defined gamma f args body)
   (srts: list sort) (srts_len: length srts = length (s_params f))
   (a: arg_list (domain (dom_aux pd)) (sym_sigma_args f srts))
   (vt: val_typevar)
   (vv: val_vars pd vt),
   funs gamma_valid pd pf f srts a =
-  dom_cast _ (funs_cast gamma_valid vt (recfun_in_funsyms fs_in (fun_in_mutfun f_in)) srts_len) (
+  dom_cast _ (funs_cast gamma_valid vt (fun_defined_in_funsyms f_in) srts_len) (
     term_rep gamma_valid pd (vt_with_args vt (s_params f) srts)
       pf
       (val_with_args _ _ (upd_vv_args_srts (s_params f) srts (eq_sym srts_len)
       (s_params_Nodup _) pd vt vv) args a)
-      body (f_ret f) (f_body_type gamma_valid fs_in f_in)
+      body (f_ret f) (fun_defined_ty gamma_valid f_in)
     )
 ) /\
-(*Recursive predicates are equal to their body, under the valuation
+(*Defined predicates are equal to their body, under the valuation
   where the type arguments are mapped to srts and the arguments
   are mapped to a, the arg list*)
-(forall (fs: list funpred_def)
-  (fs_in: In fs (mutfuns_of_context gamma))
+(forall 
   (p: predsym) (args: list vsymbol) (body: formula)
-  (p_in: In (pred_def p args body) fs)
+  (p_in: pred_defined gamma p args body)
   (srts: list sort) (srts_len: length srts = length (s_params p))
   (a: arg_list (domain (dom_aux pd)) (sym_sigma_args p srts))
   (vt: val_typevar)
@@ -664,7 +1031,7 @@ Definition full_interp {gamma}
     pf
     (val_with_args _ _ (upd_vv_args_srts (s_params p) srts (eq_sym srts_len)
     (s_params_Nodup _) pd vt vv) args a)
-    body (p_body_type gamma_valid fs_in p_in)
+    body (pred_defined_typed gamma_valid p_in)
 ) /\
 (*Inductive predicates part 1: all constructors are true under all 
   valuations sending the type parameters to the srts*)
@@ -716,6 +1083,69 @@ Definition full_interp {gamma}
     (In_in_bool predsym_eq_dec _ _ p_in) srts a
 ).
 
+(*Prove versions (old) that ONLy relate to recursive defs*)
+Lemma full_interp_recfun {gamma} (gamma_valid: valid_context gamma)
+  (pd: pi_dom) (pf: pi_funpred gamma_valid pd)
+  (pf_full: full_interp gamma_valid pd pf):
+  (forall (fs: list funpred_def)
+  (fs_in: In fs (mutfuns_of_context gamma))
+  (f: funsym) (args: list vsymbol) (body: term)
+  (f_in: In (fun_def f args body) fs)
+  (srts: list sort) (srts_len: length srts = length (s_params f))
+  (a: arg_list (domain (dom_aux pd)) (sym_sigma_args f srts))
+  (vt: val_typevar)
+  (vv: val_vars pd vt),
+  funs gamma_valid pd pf f srts a =
+  dom_cast _ (funs_cast gamma_valid vt (recfun_in_funsyms fs_in (fun_in_mutfun f_in)) srts_len) (
+    term_rep gamma_valid pd (vt_with_args vt (s_params f) srts)
+      pf
+      (val_with_args _ _ (upd_vv_args_srts (s_params f) srts (eq_sym srts_len)
+      (s_params_Nodup _) pd vt vv) args a)
+      body (f_ret f) (f_body_type gamma_valid fs_in f_in)
+    )
+  ).
+Proof.
+  intros.
+  destruct pf_full as [Hfun _].
+  assert (f_def: fun_defined gamma f args body). {
+    left. exists fs. auto.
+  }
+  specialize (Hfun f args body f_def srts srts_len a vt vv).
+  rewrite Hfun.
+  apply dom_cast_eq'.
+  apply term_rep_irrel.
+Qed.
+
+Lemma full_interp_recpred {gamma} (gamma_valid: valid_context gamma)
+  (pd: pi_dom) (pf: pi_funpred gamma_valid pd)
+  (pf_full: full_interp gamma_valid pd pf):
+  (forall (fs: list funpred_def)
+  (fs_in: In fs (mutfuns_of_context gamma))
+  (p: predsym) (args: list vsymbol) (body: formula)
+  (p_in: In (pred_def p args body) fs)
+  (srts: list sort) (srts_len: length srts = length (s_params p))
+  (a: arg_list (domain (dom_aux pd)) (sym_sigma_args p srts))
+  (vt: val_typevar)
+  (vv: val_vars pd vt),
+  preds gamma_valid pd pf p srts a =
+  formula_rep gamma_valid pd (vt_with_args vt (s_params p) srts)
+    pf
+    (val_with_args _ _ (upd_vv_args_srts (s_params p) srts (eq_sym srts_len)
+    (s_params_Nodup _) pd vt vv) args a)
+    body (p_body_type gamma_valid fs_in p_in)
+  ).
+Proof.
+  intros.
+  destruct pf_full as [_ [Hpred _]].
+  assert (p_def: pred_defined gamma p args body). {
+    left. exists fs. auto.
+  }
+  specialize (Hpred p args body p_def srts srts_len a vt vv).
+  rewrite Hpred.
+  apply fmla_rep_irrel.
+Qed.
+  
+
 (*Now we construct the interpretation; we prove that
   it satisfies all of the conditions of [full_interp]*)
 
@@ -737,22 +1167,32 @@ Proof.
   assert (Hord: ctx_ordered gamma). apply valid_context_ordered; auto. 
   unfold full_interp. split_all.
   - intros. unfold full_pf.
-    rewrite (upd_pf_multi_recfun gamma_valid pd gamma
-    (mk_pi_funpred gamma_valid pd funs preds) (all_in_refl gamma) Hnodup
-    Hord fs (proj1 (in_mutfuns gamma fs) fs_in) f args
-    body f_in srts srts_len a vt vv).
-    (*Need proof irrelevance - should we use bools?*)
-    assert ((in_mutfuns_sub (all_in_refl gamma)
-    (proj1 (in_mutfuns gamma fs) fs_in)) = fs_in) by
-    (apply proof_irrel).
-    rewrite H. apply dom_cast_eq.
-  - intros. unfold full_pf.
-    rewrite (upd_pf_multi_recpred gamma_valid pd gamma
-    (mk_pi_funpred gamma_valid pd funs preds) (all_in_refl gamma) Hnodup
-    Hord fs (proj1 (in_mutfuns gamma fs) fs_in) p args
-    body p_in srts srts_len a vt vv).
-    (*Again, proof irrel*)
-    f_equal. f_equal. apply proof_irrel.
+    (*2 cases: recursive and non-recursive*)
+    assert (Hin':=f_in).
+    unfold fun_defined in Hin'.
+    destruct Hin' as [ [fs [fs_in f_in']]|f_in'].
+    + rewrite (upd_pf_multi_recfun gamma_valid pd gamma
+      (mk_pi_funpred gamma_valid pd funs preds) (all_in_refl gamma) Hnodup
+      Hord fs (proj1 (in_mutfuns gamma fs) fs_in) f args
+      body f_in' srts srts_len a vt vv).
+      apply dom_cast_eq'.
+      apply term_rep_irrel.
+    + rewrite (upd_pf_multi_nonrecfun gamma_valid pd gamma _ (all_in_refl gamma) Hnodup
+      Hord f args body f_in' _ srts_len a vt vv).
+      apply dom_cast_eq'.
+      apply term_rep_irrel.
+  - (*Same for preds*)
+    intros. unfold full_pf.
+    assert (Hin':=p_in).
+    unfold pred_defined in Hin'.
+    destruct Hin' as [ [fs [fs_in p_in']]|p_in'].
+    + rewrite (upd_pf_multi_recpred gamma_valid pd gamma _ (all_in_refl gamma) Hnodup
+      Hord fs (proj1 (in_mutfuns gamma fs) fs_in) p args
+      body p_in' srts srts_len a vt vv).
+      apply fmla_rep_irrel.
+    + rewrite (upd_pf_multi_nonrecpred gamma_valid pd gamma _ (all_in_refl gamma) Hnodup
+      Hord p args body p_in' _ srts_len a vt vv).
+      apply fmla_rep_irrel.
   - intros. unfold full_pf. 
     eapply indpred_constrs_true_val with(indpred:=l).
     + apply (in_indpred_valid_ind_form gamma_valid); auto.
@@ -838,6 +1278,7 @@ Proof.
           apply In_in_bool; auto.
       * apply ((proj2 (abs_not_concrete_fun gamma_valid f H)) l); auto.
         apply in_mutfuns; auto.
+      * apply (nonrecfun_not_abs gamma_valid f0 f); simpl; auto. 
   - intros.
     unfold full_pf.
     rewrite upd_pf_multi_pred_notin; auto.
@@ -855,6 +1296,7 @@ Proof.
       * apply in_inductive_ctx; auto.
       * rewrite <- pred_in_indpred_iff in Hinp.
         apply in_bool_In in Hinp. auto.
+    + apply (nonrecpred_not_abs gamma_valid f p); auto.
 Qed. 
 
 End FullInterp.
