@@ -11,3 +11,6 @@ Definition const name ty := funsym_noty name nil ty.
 Definition binop name ty : funsym := funsym_noty name [ty;ty] ty.
 Definition unop name ty : funsym := funsym_noty name [ty] ty.
 Definition binpred name ty : predsym := predsym_noty name [ty; ty].
+
+Definition nonrec_fun f args body : def := nonrec_def (fun_def f args body).
+Definition nonrec_pred p args body : def := nonrec_def (pred_def p args body).

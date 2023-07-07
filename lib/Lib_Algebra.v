@@ -4,6 +4,7 @@ Set Bullet Behavior "Strict Subproofs".
 
 (*TODO: maybe change TheoryTest, see*)
 
+
 Module Algebra.
 Local Open Scope why3_scope.
 
@@ -157,21 +158,47 @@ Definition OrderedUnitaryCommutativeRing : theory :=
 (*Fields*)
 Definition sub : funsym := binop "sub" t.
 Definition div: funsym := binop "div" t.
-(*TODO: non-recursive functions*)
-(*Definition Field : theory :=
+
+Definition Field : theory :=
   rev [
     tclone UnitaryCommutativeRing None nil nil nil;
     tdef (abs_fun inv);
     tprop Paxiom "Inverse" <f forall x,
       [t] {x} != zero() -> [t] mult({x}, inv({x})) = one() f>;
-    (*TODO: non-recursive functions*)
-    tdef (abs_fun sub)
-  ].*)
+    tdef (nonrec_fun sub [x;y] <t plus({x}, neg({y})) t>);
+    tdef (nonrec_fun div [x;y] <t mult({x}, inv({y})) t>);
+    tprop Plemma "add_div" <f forall x, forall y, forall z,
+      [t] z != zero() -> 
+      [t] div(plus({x}, {y}), {z}) = plus(div({x}, {z}), div({y}, {z})) f>;
+    tprop Plemma "sub_div" <f forall x, forall y, forall z,
+      [t] z != zero() -> 
+      [t] div(sub({x}, {y}), {z}) = sub(div({x}, {z}), div({y}, {z})) f>;
+    tprop Plemma "neg_div" <f forall x, forall y,
+      [t] y != zero() -> 
+      [t] div(neg({x}), {z}) = neg(div({x}, {z})) f>;
+    tprop Plemma "assoc_mul_div" <f forall x, forall y, forall z,
+      [t] z != zero() ->
+      [t] div(mult({x}, {y}), {z}) = mult({x}, div({y}, {z})) f>;
+    tprop Plemma "assoc_div_mul" <f forall x, forall y, forall z,
+      ([t] y != zero() /\ [t] z != zero()) -> (*TODO: change after notations*)
+      [t] div(div({x}, {y}), {z}) = div({x}, mult({y}, {z})) f>;
+    tprop Plemma "assoc_div_div" <f forall x, forall y, forall z,
+      ([t] y != zero() /\ [t] z != zero()) -> (*TODO: change after notations*)
+      [t] div({x}, div({y}, {z})) = div(mult({x}, {z}), {y}) f>
+  ].
 
-
-
-(*TODO: need to do Relations and Orders - good because we 
-  can do some inductive predicates
-  start with this*)
+Definition OrderedField : theory :=
+  rev [
+    tclone Field None nil nil nil;
+    tdef (abs_pred le);
+    tclone Relations.TotalOrder None [(Relations.t_ts, t_ts)] nil [(Relations.rel, le)];
+    tprop Paxiom "ZeroLessOne" <f le (zero(), one()) f>;
+    tprop Paxiom "CompatOrderAdd" <f forall x, forall y, forall z,
+      le({x}, {y}) -> le(plus({x}, {z}), plus({y}, {z})) f>;
+    tprop Paxiom "CompatOrderMult" <f 
+      forall x, forall y, forall z,
+      le({x}, {y}) -> le(zero(), {z}) -> 
+      le(mult({x}, {z}), mult({y}, {z})) f>
+  ].
 
 End Algebra.

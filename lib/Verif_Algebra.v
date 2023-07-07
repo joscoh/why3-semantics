@@ -113,3 +113,112 @@ Lemma orderedunitarycommunitring_valid: valid_theory Algebra.OrderedUnitaryCommu
 Proof.
   simpl. repeat(split; [prove_axiom_wf| auto]).
 Qed.
+
+Lemma field_typed: typed_theory Algebra.Field.
+Proof. check_theory. Qed.
+
+Module ProveField.
+
+Import Lib_Algebra.Algebra.
+
+(*Unfolding the context is slow. We can prove these lemmas
+  easily with reflexivity to make it faster*)
+
+Lemma field_ctx: 
+[:: nonrec_fun div [:: x; y] <t mult [:: <t {x} t>; <t inv [:: <t {y} t>] t>] t>,
+         nonrec_fun sub [:: x; y] <t plus [:: <t {x} t>; <t neg [:: <t {y} t>] t>] t>,
+         abs_fun inv
+       & (sub_ctx_map [::] [::] [::] (theory_ctx_ext UnitaryCommutativeRing) ++ [::])%list] =
+       [:: nonrec_fun div [:: x; y] <t mult [:: <t {x} t>; <t inv [:: <t {y} t>] t>] t>;
+       nonrec_fun sub [:: x; y] <t plus [:: <t {x} t>; <t neg [:: <t {y} t>] t>] t>;
+       abs_fun inv; abs_fun one; abs_fun mult; abs_fun neg; 
+      abs_fun plus; abs_fun zero; abs_type t_ts].
+Proof.
+  reflexivity.
+Qed.
+
+Lemma field_delta:
+  theory_axioms_ext UnitaryCommutativeRing =
+  [:: ("NonTrivialRing"%string, <f [t] zero [::] != one [::] f>);
+       ("Unitary"%string, <f forall x, [t] mult [:: <t one [::] t>; <t {x} t>] = {x} f>);
+       ("MulComm.Comm"%string,
+        <f
+        forall x,
+        forall y, [t] mult [:: <t {x} t>; <t {y} t>] = mult [:: <t {y} t>; <t {x} t>]
+        f>);
+       ("Mul_distr_r"%string,
+        <f
+        forall x,
+        forall y,
+        forall z,
+        [t] mult [:: <t plus [:: <t {y} t>; <t {z} t>] t>; <t {x} t>] =
+        plus
+        [:: <t mult [:: <t {y} t>; <t {x} t>] t>; <t mult [:: <t {z} t>; <t {x} t>] t>]
+        f>);
+       ("Mul_distr_l"%string,
+        <f
+        forall x,
+        forall y,
+        forall z,
+        [t] mult [:: <t {x} t>; <t plus [:: <t {y} t>; <t {z} t>] t>] =
+        plus
+        [:: <t mult [:: <t {x} t>; <t {y} t>] t>; <t mult [:: <t {x} t>; <t {z} t>] t>]
+        f>);
+       ("MulAssoc.Assoc"%string,
+        <f
+        forall x,
+        forall y,
+        forall z,
+        [t] mult [:: <t mult [:: <t {x} t>; <t {y} t>] t>; <t {z} t>] =
+        mult [:: <t {x} t>; <t mult [:: <t {y} t>; <t {z} t>] t>] f>);
+       ("Comm"%string,
+        <f
+        forall x,
+        forall y, [t] plus [:: <t {x} t>; <t {y} t>] = plus [:: <t {y} t>; <t {x} t>]
+        f>);
+       ("Inv_def_r"%string,
+        <f forall x, [t] plus [:: <t {x} t>; <t neg [:: <t {x} t>] t>] = zero [::] f>);
+       ("Inv_def_l"%string,
+        <f forall x, [t] plus [:: <t neg [:: <t {x} t>] t>; <t {x} t>] = zero [::] f>);
+       ("Unit_def_l"%string,
+        <f forall x, [t] plus [:: <t zero [::] t>; <t {x} t>] = {x} f>);
+       ("Assoc"%string,
+        <f
+        forall x,
+        forall y,
+        forall z,
+        [t] plus [:: <t plus [:: <t {x} t>; <t {y} t>] t>; <t {z} t>] =
+        plus [:: <t {x} t>; <t plus [:: <t {y} t>; <t {z} t>] t>] f>)].
+Proof.
+  reflexivity.
+Qed.
+
+Definition x_ := Tfun (constsym "x" t) nil nil.
+Definition y_ := Tfun (constsym "y" t) nil nil.
+Definition z_ := Tfun (constsym "z" t) nil nil.
+
+Ltac extra_simpl ::= fold t; fold x; fold y; fold z;
+  unfold t_constsym; fold x_; fold y_; fold z_.
+
+Lemma field_valid: valid_theory Field.
+Proof.
+  simpl. (*TODO: avoids slow tactics but ugly*) 
+  rewrite !field_ctx.
+  rewrite !field_delta. simpl.
+  (*TODO: separate lemma about context*)
+  (*TODO: automation is bad so we do this here*)
+  split; [|split; [|split; [|split; [| split; [| split]]]]].
+  7: split; auto; prove_axiom_wf.
+  (**)
+  6: {
+    wstart.
+    wintros "x" "y" "z" "Hnotzero".
+    wunfold div.
+    wspecialize "Mul_distr_r" (<t inv(z_) t>) x_ y_.
+    wrewrite "Mul_distr_r".
+    wreflexivity.
+  }
+(*TODO: prove the rest later (annoying, need some intermediate lemmas)*)
+Abort.
+
+End ProveField.

@@ -109,13 +109,12 @@ Definition TotalStrictOrder : theory :=
       rel({x}, {y}) \/ rel({y}, {x}) \/ [t] {x} = {y} f>
   ].
 
-(*TODO: need non-ADT defs for predicates for inverse*)
-(*Maybe just add other def, interpret as term/formula, easy to show*)
-(*Definition Inverse : theory :=
+Definition inv_rel : predsym := binpred "inv_rel" t.
+Definition Inverse : theory :=
   rev [
-    tclone EndoRelation None nil nil;
-    tdef ()
-  ]*)
+    tclone EndoRelation None nil nil nil;
+    tdef (nonrec_pred inv_rel [x; y] <f rel({y}, {x}) f>)
+  ].
 
 (*Inductive relT {A: Type} (R: A -> A -> Prop) : A -> A -> Prop :=
 | BaseTrans: forall x y, R x y -> relT R x y
@@ -214,6 +213,32 @@ Definition Lex : theory :=
     }>
   ].
 
-(*TODO: min and max most likely (good demo) after non-recursive funs*)
-
+(*Minimum and Maximum for Total Orders*)
+Definition le :predsym := binpred "le" t.
+Definition TOt_ts : typesym := mk_ts "TO.t" nil.
+Definition TO_t : vty := vty_cons TOt_ts nil.
+Definition TO_rel : predsym := binpred "TO.rel" TO_t.
+Definition min : funsym := binop "min" t.
+Definition max : funsym := binop "max" t.
+Definition MinMax : theory :=
+  rev [
+    tdef (abs_type t_ts);
+    tdef (abs_pred le);
+    tclone TotalOrder (Some "TO") [(TOt_ts, t_ts)] nil [(TO_rel, le)];
+    tdef (nonrec_fun min [x; y] <t if le({x}, {y}) then {x} else {y} t>);
+    tdef (nonrec_fun max [x; y] <t if le({x}, {y}) then {y} else {x} t>);
+    tprop Plemma "Min_r" <f forall x, forall y,
+      le({y}, {x}) -> [t] min({x}, {y}) = {y} f>;
+    tprop Plemma "Max_l" <f forall x, forall y,
+      le({y}, {x}) -> [t] max({x}, {y}) = {x} f>;
+    tprop Plemma "Min_comm" <f forall x, forall y,
+      [t] min({x}, {y}) = min({y}, {x}) f>;
+    tprop Plemma "Max_comm" <f forall x, forall y,
+      [t] max({x}, {y}) = max({y}, {x}) f>;
+    tprop Plemma "Min_assoc" <f forall x, forall y, forall z,
+      [t] min(min({x}, {y}), {z}) = min({x}, min({y}, {z})) f>;
+    tprop Plemma "Max_assoc" <f forall x, forall y, forall z,
+      [t] max(max({x}, {y}), {z}) = max({x}, max({y}, {z})) f>
+  ].
+  
 End Relations.
