@@ -63,7 +63,7 @@ Proof.
 Qed.
 Lemma group_valid: valid_theory Algebra.Group.
 Proof.
-  simpl. repeat(split; [prove_axiom_wf| auto]). 
+  simpl. repeat(split; [auto |prove_axiom_wf]). 
 Qed.
 
 (*Commutative groups*)
@@ -83,7 +83,7 @@ Proof.
 Qed.
 Lemma ring_valid: valid_theory Algebra.Ring.
 Proof.
-  simpl. repeat(split; [prove_axiom_wf| auto]). 
+  simpl. repeat(split; [auto |prove_axiom_wf]). 
 Qed.
 
 (*Commutative Rings*)
@@ -103,7 +103,7 @@ Proof.
 Qed.
 Lemma comm_unitring_valid: valid_theory Algebra.UnitaryCommutativeRing.
 Proof.
-  simpl. repeat(split; [prove_axiom_wf| auto]).
+  simpl. repeat(split; [auto |prove_axiom_wf]).
 Qed.
 
 Lemma orderedunitarycommunitring_typed: typed_theory Algebra.OrderedUnitaryCommutativeRing.
@@ -112,7 +112,7 @@ Proof.
 Qed.
 Lemma orderedunitarycommunitring_valid: valid_theory Algebra.OrderedUnitaryCommutativeRing.
 Proof.
-  simpl. repeat(split; [prove_axiom_wf| auto]).
+  simpl. repeat(split; [auto |prove_axiom_wf]). 
 Qed.
 
 (*Get the context: useful for avoiding unfolding*)

@@ -1214,6 +1214,7 @@ Qed.
 Ltac wunfold x :=
   apply D_unfold with(f:=x); [prove_closed |];
   unfold unfold_f; simpl; unfold unfold_f_aux; simpl;
+  unfold unfold_f_single_aux; simpl;
   unfold sub_fun_body_f, replace_tm_f, sub_body_t, safe_sub_ts; simpl;
   extra_simpl.
 
@@ -1248,10 +1249,10 @@ Proof.
 Qed.
 
 Ltac wunfold_at x n :=
-  apply D_unfold_single with (f:=x)(i:=n);
+  apply D_unfold_single with (f:=x)(i:=n); [prove_closed |];
   unfold unfold_f_single; simpl; unfold unfold_f_single_aux; simpl;
   unfold sub_fun_body_f, replace_tm_f, sub_body_t, safe_sub_ts; simpl;
-  extra_simpl.
+  repeat (progress(extra_simpl)).
 
 
 (*Simplify pattern match*)

@@ -85,44 +85,38 @@ Qed.
 Lemma induction_theory_valid : valid_theory induction_theory.
 Proof.
   simpl. split_all; auto.
-  3:  {
-    (*Prove "add_0_r"*)
+  - (*Prove "add_0_r"*)
     wstart.
     winduction.
-    - wunfold add_fs. wsimpl_match. wreflexivity.
-    - wintros "n" "IH".
+    + wunfold add_fs. wsimpl_match. wreflexivity.
+    + wintros "n" "IH".
       wunfold add_fs.
       wsimpl_match.
       wrewrite "IH".
       wreflexivity.
-  }
-  2: {
-    (*Prove "plus_n_Sm"*)
+  - (*Prove "plus_n_Sm"*)
     wstart.
     winduction.
-    - wintros "m".
+    + wintros "m".
       wunfold add_fs.
       wsimpl_match.
       wreflexivity.
-    - wintros "n" "IH" "m".
+    + wintros "n" "IH" "m".
       wunfold add_fs.
       wsimpl_match.
       wrewrite["IH" m_].
       wreflexivity.
-  }
-  (*And the main theorem*)
-  wstart.
-  winduction.
-  - wintros "m". wrewrite["add_0_r" m_]. 
-    wunfold add_fs. wsimpl_match.
-    wreflexivity.
-  - wintros "n" "IH" "m".
-    wunfold add_fs. (*Can't do single unfold*)
-    wsimpl_match.
-    wrewrite["IH" m_].
-    wrewrite["plus_n_Sm" m_ n_].
-    wunfold add_fs.
-    wreflexivity.
+  - (*And the main theorem*)
+    wstart.
+    winduction.
+    + wintros "m". wrewrite["add_0_r" m_]. 
+      wunfold add_fs. wsimpl_match.
+      wreflexivity.
+    + wintros "n" "IH" "m".
+      wunfold_at add_fs 0%N; wsimpl_match.
+      wrewrite["IH" m_].
+      wrewrite["plus_n_Sm" m_ n_].
+      wreflexivity.
 Qed.
 
 End InductionTest.

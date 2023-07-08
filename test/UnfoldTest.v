@@ -76,11 +76,11 @@ Ltac extra_simpl ::= fold thalf; fold tfive.
 Lemma unfold_theory_valid: valid_theory unfold_theory.
 Proof.
   simpl. split_all; auto.
-  - wstart. 
-    wunfold snd_fs.
-    wreflexivity.
   - wstart.
     wunfold fst_fs.
+    wreflexivity. 
+  - wstart. 
+    wunfold snd_fs.
     wreflexivity.
 Qed.
 
@@ -131,10 +131,10 @@ Lemma unfold_theory_valid: valid_theory unfold_theory.
 Proof.
   simpl. split_all; auto.
   - wstart. 
-    wunfold snd_fs.
+    wunfold fst_fs.
     wreflexivity.
   - wstart.
-    wunfold fst_fs.
+    wunfold snd_fs.
     wreflexivity.
 Qed.
 

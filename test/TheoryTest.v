@@ -112,7 +112,7 @@ Qed.
 
 Lemma monoid_valid: valid_theory monoid.
 Proof.
-  simpl. split; [|split]; auto; prove_axiom_wf.
+  simpl. split; [split|]; auto; prove_axiom_wf. 
 Qed.
 
 Lemma monoid_typed: typed_theory monoid.
@@ -183,7 +183,7 @@ Proof. check_theory. Qed.
 
 Lemma group_valid: valid_theory group.
 Proof.
-  simpl; split; [|split]; auto; prove_axiom_wf.
+  simpl; split; [split|]; auto; prove_axiom_wf.
 Qed.
 
 End Group.
@@ -504,11 +504,38 @@ Ltac extra_simpl ::=
   try rewrite !yt_eq;
   try rewrite !zt_eq.
 
-(*TODO: get some real notations*)
+(*TODO: this is slow, the stuff in stdlib is better
+  (no rewriting in hypotheses, no wstart)*)
 Lemma ring_theory_valid: valid_theory ring_theory.
 Proof.
   simpl. split_all; auto.
-  - (*First lemma*)
+  - wstart.
+    wintros "x" "y" "Hxy".
+    (*TODO: tactic for this (easy with f_equal)*)
+    wassert "Heq" (Feq t_ty ((xt +r (-r yt)) +r yt) (0r +r yt)).
+    {
+      wf_equal. wassumption. wreflexivity.
+    }
+    wrewrite["Assoc" xt (-r yt) yt]in "Heq".
+    wrewrite["Inv_def_l" yt]in "Heq".
+    wrewrite["Unit_def_r" xt]in "Heq".
+    wrewrite["Unit_def_l" yt]in "Heq".
+    wassumption.
+  - (*Cancellation*)
+    wstart.
+    wintros "x" "y" "z" "Heq".
+    wassert "Hsub" (Feq t_ty ((-r xt) +r (xt +r yt)) ((-r xt) +r (xt +r zt))).
+    {
+      wf_equal. wreflexivity. wassumption.
+    }
+    (*rewrite with associativity*)
+    wrewrite<-["Assoc" (-r xt) xt yt]in "Hsub".
+    wrewrite<-["Assoc" (-r xt) xt zt]in "Hsub".
+    wrewrite["Inv_def_l" xt]in "Hsub".
+    wrewrite["Unit_def_l" yt]in "Hsub".
+    wrewrite["Unit_def_l" zt]in "Hsub".
+    wassumption. 
+  - (*Main result: 0 * x = 0*)
     wstart.  
     (*1.intros*)
     wintros "x".
@@ -548,34 +575,6 @@ Proof.
     (*Now we use cancellation*)
     wspecialize "add_cancel_l" (xt *r 0r) (xt *r 0r) 0r.
     wapply "add_cancel_l".
-    wassumption.
-    (*Yay!*)
-  - (*Now we want to prove cancellation*)
-    wstart.
-    wintros "x" "y" "z" "Heq".
-    wassert "Hsub" (Feq t_ty ((-r xt) +r (xt +r yt)) ((-r xt) +r (xt +r zt))).
-    {
-      wf_equal. wreflexivity. wassumption.
-    }
-    (*rewrite with associativity*)
-    wrewrite<-["Assoc" (-r xt) xt yt]in "Hsub".
-    wrewrite<-["Assoc" (-r xt) xt zt]in "Hsub".
-    wrewrite["Inv_def_l" xt]in "Hsub".
-    wrewrite["Unit_def_l" yt]in "Hsub".
-    wrewrite["Unit_def_l" zt]in "Hsub".
-    wassumption.
-  - (*And an even easier goal*)
-    wstart.
-    wintros "x" "y" "Hxy".
-    (*TODO: tactic for this (easy with f_equal)*)
-    wassert "Heq" (Feq t_ty ((xt +r (-r yt)) +r yt) (0r +r yt)).
-    {
-      wf_equal. wassumption. wreflexivity.
-    }
-    wrewrite["Assoc" xt (-r yt) yt]in "Heq".
-    wrewrite["Inv_def_l" yt]in "Heq".
-    wrewrite["Unit_def_r" xt]in "Heq".
-    wrewrite["Unit_def_l" yt]in "Heq".
     wassumption.
 Qed.
 

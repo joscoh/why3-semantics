@@ -70,13 +70,12 @@ Qed.
 
 Lemma spec_theory_valid: valid_theory spec_theory.
 Proof.
-  simpl. split.
-  - wstart. wspecialize_ty "fg_eq" [("a", vty_int)].
-    unfold TySubst.ty_subst_wf_fmla. simpl_ty_subst.
-    simpl_ty_subst.
-    wspecialize "fg_eq" zero.
-    wassumption.
-  - split; auto. prove_axiom_wf.
+  simpl. split; [split; auto; prove_axiom_wf|].
+  wstart. wspecialize_ty "fg_eq" [("a", vty_int)].
+  unfold TySubst.ty_subst_wf_fmla. simpl_ty_subst.
+  simpl_ty_subst.
+  wspecialize "fg_eq" zero.
+  wassumption.
 Qed.
 
 End TestSpecialize.
@@ -121,7 +120,7 @@ unfold t_constsym ; fold y''; fold x1; fold y1.
 
 Lemma inj_theory_valid: valid_theory inj_theory.
 Proof.
-  simpl. split; [| split; auto; prove_axiom_wf].
+  simpl. split; [split; auto; prove_axiom_wf|].
   exists ["a"].
   wstart.
   (*First, specialize f_inv to a*)
@@ -135,8 +134,7 @@ Proof.
   wrewrite<- "f_inv".
   wrewrite "Heq".
   wspecialize "f_inv2" y1.
-  wrewrite "f_inv2".
-  wreflexivity.
+  wassumption.
 Qed.
 
 End InjTest.

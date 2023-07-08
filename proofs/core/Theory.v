@@ -1502,14 +1502,15 @@ Fixpoint valid_theory (t: theory) : Prop :=
       valid*)
       (*For axioms, we do not need to monomorphize; we just
         need everything well-typed*)
+      valid_theory tl /\
       (let gamma := theory_ctx_int tl in
       let delta := theory_axioms_int tl in
       valid_context gamma /\
       Forall (formula_typed gamma) (List.map snd delta) /\
       formula_typed gamma f /\
       closed_formula f )
-      /\ valid_theory tl
     | _ =>
+      valid_theory tl /\
       (*If the formula is already monomorphic, dont do anything*)
       (if null (fmla_type_vars f) then
       task_valid (mk_task (theory_ctx_int tl) (theory_axioms_int tl)
@@ -1517,8 +1518,8 @@ Fixpoint valid_theory (t: theory) : Prop :=
       (*Use exists so that the user can choose good names*)
       exists (names: list string),
       task_valid (mk_task (map tyconst_def names ++ theory_ctx_int tl)
-        (theory_axioms_int tl) (mk_mono names f))) /\
-      valid_theory tl
+        (theory_axioms_int tl) (mk_mono names f)))
+      
     end
   | _ :: tl => valid_theory tl
   end.

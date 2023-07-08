@@ -73,12 +73,12 @@ Proof.
   simpl. split_all; auto.
   - exists ["a"].
     wstart.
-    wintros "x".
     wunfold isSome.
     wsimpl_match.
     wreflexivity.
   - exists ["a"].
     wstart.
+    wintros "x".
     wunfold isSome.
     wsimpl_match.
     wreflexivity.
