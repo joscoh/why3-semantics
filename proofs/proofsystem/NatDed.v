@@ -7,6 +7,7 @@ Require Export Task.
 Require Export Util.
 Require Export Shallow.
 Require Export Typechecker.
+Require Export Rewrite.
 From mathcomp Require all_ssreflect.
 Set Bullet Behavior "Strict Subproofs".
 
@@ -30,6 +31,21 @@ Lemma check_tm_ty_iff gamma t v:
 Proof.
   symmetry.
   apply reflect_iff. apply check_tm_ty_spec.
+Qed.
+
+Definition check_fmla_ty (gamma: context) (f: formula) : bool :=
+  typecheck_formula gamma f.
+
+Lemma check_fmla_ty_spec gamma f:
+  reflect (formula_typed gamma f) (check_fmla_ty gamma f).
+Proof.
+  apply typecheck_formula_correct.
+Qed.
+
+Lemma check_fmla_ty_iff gamma f:
+  check_fmla_ty gamma f <-> formula_typed gamma f.
+Proof.
+  symmetry. apply reflect_iff, check_fmla_ty_spec.
 Qed.
 
 End CheckTy.
@@ -2692,318 +2708,93 @@ Proof.
     exists i. auto.
 Qed. 
 
-(*TODO: maybe prove f_equal in terms of rewrite, prob not*)
+(*Rewriting*)
 
-(*Rewrite*)
+(*TODO: can do previous ones with this:
+  prove a transformation sound that only produces new goals*)
 
-(*Substitute a term for a term in a term or formula*)
-Section ReplaceTm.
+  Definition goals_trans (b: context -> formula -> bool) 
+  (f: context -> formula -> list formula) : trans :=
+  fun t =>
+  if (b (task_gamma t) (task_goal t)) then
+  map (task_with_goal t) (f (task_gamma t) (task_goal t)) 
+  else [t].
 
-Variable tm_o tm_n: term.
-
-Fixpoint replace_tm_t (t: term) :=
-  if term_eq_dec tm_o t then tm_n else
-  (*Just a bunch of recursive cases*)
-  match t with
-  | Tfun f tys tms => Tfun f tys (map replace_tm_t tms)
-  | Tlet t1 v t2 =>
-    Tlet (replace_tm_t t1) v 
-    (*Avoid capture -*)
-    (if in_bool vsymbol_eq_dec v (tm_fv tm_o) then t2
-    else (replace_tm_t t2))
-  | Tif f t1 t2 =>
-    Tif (replace_tm_f f) (replace_tm_t t1) (replace_tm_t t2)
-  | Tmatch tm ty ps =>
-    Tmatch (replace_tm_t tm) ty
-    (map (fun x => (fst x, 
-      if existsb (fun v => in_bool vsymbol_eq_dec v (tm_fv tm_o))
-       (pat_fv (fst x))
-         then
-      snd x else (replace_tm_t (snd x)))) ps)
-  | Teps f v =>
-    Teps (if in_bool vsymbol_eq_dec v (tm_fv tm_o) then f else
-      replace_tm_f f) v
-  | _ => t
-  end
-with replace_tm_f (f: formula) :=
-  match f with
-  | Fpred p tys tms =>
-    Fpred p tys (map replace_tm_t tms)
-  | Fquant q v f =>
-    Fquant q v (if in_bool vsymbol_eq_dec v (tm_fv tm_o) then f else
-      replace_tm_f f)
-  | Feq ty t1 t2 => Feq ty (replace_tm_t t1) (replace_tm_t t2)
-  | Fbinop b f1 f2 => Fbinop b (replace_tm_f f1) (replace_tm_f f2)
-  | Fnot f => Fnot (replace_tm_f f)
-  | Flet t v f => Flet (replace_tm_t t) v
-    (if in_bool vsymbol_eq_dec v (tm_fv tm_o) then f 
-      else (replace_tm_f f))
-  | Fif f1 f2 f3 => Fif (replace_tm_f f1) (replace_tm_f f2)
-    (replace_tm_f f3)
-  | Fmatch tm ty ps =>
-    Fmatch (replace_tm_t tm) ty
-    (map (fun x => (fst x, 
-      if existsb (fun v => in_bool vsymbol_eq_dec v (tm_fv tm_o))
-      (pat_fv (fst x))
-        then
-      snd x else (replace_tm_f (snd x)))) ps)
-  | _ => f
-  end.
-
-End ReplaceTm.
-
-(*Typing lemma*)
-
-
-Ltac tm_eq t1 t2 := destruct (term_eq_dec t1 t2).
-
-Ltac simpl_tys :=
-  subst; auto;
-  match goal with
-  | H: term_has_type ?g ?t ?v1, H2: term_has_type ?g ?t ?v2 |- _ =>
-    let Heq := fresh "Heq" in
-    assert (Heq: v1 = v2) by (apply (term_has_type_unique _ _ _ _ H H2));
-    subst; auto
-  end.
-
-Ltac destruct_if :=
-  match goal with
-  | |- context [if ?b then ?c else ?d] =>
-    destruct b
-  end.
-
-Ltac tm_case :=
-  match goal with
-  | |- context [term_eq_dec ?t1 ?t2] =>
-    destruct (term_eq_dec t1 t2)
-  end.
-
-Lemma replace_tm_ty {gamma: context} tm_o tm_n
-  ty1 (Hty1: term_has_type gamma tm_o ty1)
-  (Hty2: term_has_type gamma tm_n ty1) t f:
-  (forall (ty2: vty) (Hty: term_has_type gamma t ty2),
-    term_has_type gamma (replace_tm_t tm_o tm_n t) ty2
-  ) /\
-  (forall (Hty: formula_typed gamma f),
-    formula_typed gamma (replace_tm_f tm_o tm_n f)).
-Proof.
-  revert t f. apply term_formula_ind; intros; cbn;
-  try tm_case; try simpl_tys; inversion Hty; subst;
-  try case_in; constructor; auto;
-  (*solve some easy ones*)
-  try solve[rewrite map_length; auto];
-  try solve[rewrite null_map; auto];
-  (*Deal with pattern match cases*)
-  try(intros x Hx; rewrite in_map_iff in Hx;
-    destruct Hx as [t [Hx Hint]]; subst; simpl; auto;
-    destruct (existsb _ _); auto; 
-    rewrite Forall_map, Forall_forall in H0; auto).
-  (*Only function and pred cases left - these are the same
-    but annoying*)
-  - revert H10 H. rewrite !Forall_forall; intros.
-    (*Annoying because of combine*)
-    rewrite in_combine_iff in H0 by (rewrite !map_length; auto).
-    destruct H0 as [i [Hi Hx]].
-    specialize (Hx tm_d vty_int). subst. simpl.
-    rewrite map_length in Hi.
-    rewrite map_nth_inbound with (d2:=tm_d); auto.
-    apply H. apply nth_In. auto.
-    specialize (H10 ((nth i l1 tm_d), (nth i (map (ty_subst (s_params f1) l) (s_args f1)) vty_int))).
-    apply H10.
-    rewrite in_combine_iff by (rewrite map_length; auto).
-    exists i. split; auto. intros.
-    f_equal; apply nth_indep; rewrite ?map_length; lia.
-  - revert H8 H. rewrite !Forall_forall; intros.
-    (*Annoying because of combine*)
-    rewrite in_combine_iff in H0 by (rewrite !map_length; auto).
-    destruct H0 as [i [Hi Hx]].
-    specialize (Hx tm_d vty_int). subst. simpl.
-    rewrite map_length in Hi.
-    rewrite map_nth_inbound with (d2:=tm_d); auto.
-    apply H. apply nth_In. auto.
-    specialize (H8 ((nth i tms tm_d), (nth i (map (ty_subst (s_params p) tys) (s_args p)) vty_int))).
-    apply H8.
-    rewrite in_combine_iff by (rewrite map_length; auto).
-    exists i. split; auto. intros.
-    f_equal; apply nth_indep; rewrite ?map_length; lia.
-Qed.
-
-(*And now we reason about the semantics:
-  if the term_reps of these two terms are equal, 
-  then substituting in one for the other does not
-  change the semantics*)
-Lemma replace_tm_rep {gamma: context} 
-  (gamma_valid: valid_context gamma)
-  (tm_o tm_n: term) (ty1: vty)
-  (Hty1: term_has_type gamma tm_o ty1)
-  (Hty2: term_has_type gamma tm_n ty1)
+Lemma goals_trans_sound (b: context -> formula -> bool) f:
+  (forall {gamma: context} (gamma_valid: valid_context gamma)
   (pd: pi_dom) (pf: pi_funpred gamma_valid pd)
-  (vt: val_typevar)
-  (*Need to be the same for all vals, not under a
-    particular one*)
-  (Hrep: forall (vv: val_vars pd vt) Hty1 Hty2,
-    term_rep gamma_valid pd vt pf vv tm_o ty1 Hty1 =
-    term_rep gamma_valid pd vt pf vv tm_n ty1 Hty2)
-  (t: term) (f: formula) :
-  (forall (vv: val_vars pd vt) (ty2: vty)
-    (Htyt: term_has_type gamma t ty2)
-    (Htysub: term_has_type gamma (replace_tm_t tm_o tm_n t) ty2),
-    term_rep gamma_valid pd vt pf vv (replace_tm_t tm_o tm_n t) ty2 Htysub =
-    term_rep gamma_valid pd vt pf vv t ty2 Htyt
-  ) /\
-  (forall (vv: val_vars pd vt) 
-    (Hvalf: formula_typed gamma f)
-    (Hvalsub: formula_typed gamma (replace_tm_f tm_o tm_n f)),
-    formula_rep gamma_valid pd vt pf vv (replace_tm_f tm_o tm_n f) Hvalsub =
-    formula_rep gamma_valid pd vt pf vv f Hvalf).
+  (pf_full: full_interp gamma_valid pd pf)
+  (vt: val_typevar) (vv: val_vars pd vt)
+  (goal: formula) (Hty: formula_typed gamma goal)
+  (Hb: (b gamma goal))
+  (Hall: Forall (fun x =>
+    exists (Htyx: formula_typed gamma x),
+      forall vv,
+      formula_rep gamma_valid pd vt pf vv x Htyx) (f gamma goal)),
+
+  formula_rep gamma_valid pd vt pf vv goal Hty) ->
+  sound_trans (goals_trans b f).
 Proof.
-  revert t f; apply term_formula_ind; simpl; intros;
-  try revert Htysub; try revert Hvalsub; cbn;
-  try tm_case; subst; auto; intros;
-  try simpl_tys; try apply term_rep_irrel.
-  - simpl_rep_full. f_equal. apply UIP_dec. apply vty_eq_dec.
-    f_equal. apply UIP_dec. apply sort_eq_dec.
-    f_equal. apply get_arg_list_ext; rewrite map_length; auto.
-    intros.
-    revert Hty0.
-    rewrite map_nth_inbound with (d2:=tm_d); auto; intros.
-    rewrite Forall_forall in H. apply H. apply nth_In; auto.
-  - simpl_rep_full. (*Tlet*) case_in.
-    + erewrite H. apply term_rep_irrel.
-    + erewrite H. apply H0. (*Um, why don't we need 
-      to know about capture? - aha, because we assert
-      (through the Hrep assumption) that these terms are closed,
-      or at least that the val is irrelevant. So we really could
-      substitute under binders*)
-  - (*Tif*)
-    simpl_rep_full. erewrite H, H0, H1. reflexivity.
-  - (*Tmatch*)
-    simpl_rep_full.
-    iter_match_gen Htysub Htmsub Hpatsub Htysub.
-    iter_match_gen Htyt Htmt Hpatt Htyt.
-    clear n. induction ps; simpl; intros; try reflexivity.
-    destruct a as[p1 t1]; simpl in *.
-    rewrite H with (Htyt:=Htyt) at 1.
-    rewrite match_val_single_irrel with(Hval2:=Forall_inv Hpatt).
-    simpl.
-    inversion H0; subst. inversion Htmt; subst.
-    inversion Hpatt; subst.
-    destruct (match_val_single gamma_valid pd vt v p1 (Forall_inv Hpatt)
-    (term_rep gamma_valid pd vt pf vv tm v Htyt)) eqn : Hmatch; auto.
-    destruct (existsb _ _); auto.
-    apply term_rep_irrel.
-  - (*Teps*)
-    simpl_rep_full. f_equal.
-    apply functional_extensionality_dep; intros.
-    replace (f_equal (v_subst vt) (proj2' (ty_eps_inv Htysub))) with
-      (f_equal (v_subst vt) (proj2' (ty_eps_inv Htyt))) by
-      (apply UIP_dec; apply sort_eq_dec).
-    case_in. 
-    + erewrite fmla_rep_irrel. reflexivity.
-    + erewrite H. reflexivity. 
-  - (*Fpred*)
-    simpl_rep_full. f_equal. 
-    apply get_arg_list_ext; rewrite map_length; auto.
-    intros.
-    revert Hty0.
-    rewrite map_nth_inbound with (d2:=tm_d); auto; intros.
-    rewrite Forall_forall in H. apply H. apply nth_In; auto.
-  - (*Fquant*)
-    destruct q; apply all_dec_eq; case_in;
-    split; try (intros [d Hall]; exists d); try (intros Hall d;
-      specialize (Hall d));
-    try solve[erewrite fmla_rep_irrel; apply Hall];
-    erewrite H + erewrite <- H; try apply Hall.
-  - (*Feq*) erewrite H, H0; reflexivity.
-  - (*Fbinop*) erewrite H, H0; reflexivity.
-  - (*Fnot*) erewrite H; reflexivity.
-  - (*Flet*) case_in.
-    + erewrite H. apply fmla_rep_irrel.
-    + erewrite H. apply H0.
-  - (*Fif*) erewrite H, H0, H1; reflexivity.
-  - (*Fmatch*)  
-    iter_match_gen Hvalsub Htmsub Hpatsub Hvalsub.
-    iter_match_gen Hvalf Htmf Hpatf Hvalf.
-    induction ps; simpl; intros; try reflexivity.
-    destruct a as[p1 t1]; simpl in *.
-    rewrite H with (Htyt:=Hvalf) at 1.
-    rewrite match_val_single_irrel with(Hval2:=Forall_inv Hpatf).
-    simpl.
-    inversion H0; subst. inversion Htmf; subst.
-    inversion Hpatf; subst. simpl. simpl_rep_full.
-    (*What is going on here?*)
-    match goal with
-    | |- match ?p1 with | Some l1 => _ | None => _ end =
-      match ?p2 with | Some l2 => _ | None => _ end =>
-      replace p2 with p1 by reflexivity
-    end.
-    destruct (match_val_single gamma_valid pd vt v p1 (Forall_inv Hpatf)
-    (term_rep gamma_valid pd vt pf vv tm v Hvalf)) eqn : Hmatch; auto.
-    destruct (existsb _ _); auto.
-    apply fmla_rep_irrel.
+  intros.
+  unfold sound_trans, goals_trans.
+  intros.
+  destruct t as [[gamma delta] goal]; simpl_task.
+  destruct (b gamma goal) eqn : Hb; [|apply H0; simpl; auto].
+  unfold task_valid.
+  split; auto. simpl_task.
+  intros.
+  unfold log_conseq.
+  intros.
+  unfold satisfies. intros.
+  apply H; auto.
+  rewrite Forall_forall.
+  intros x Hinx.
+  specialize (H0 (gamma, delta, x)).
+  prove_hyp H0.
+  rewrite in_map_iff. exists x; auto.
+  unfold task_valid in H0.
+  simpl_task.
+  destruct H0 as [Hwf Hval].
+  assert (Htyx: formula_typed gamma x).
+  { inversion Hwf; subst; destruct task_goal_typed; auto. }
+  exists Htyx.
+  specialize (Hval gamma_valid Hwf).
+  unfold log_conseq in Hval.
+  specialize (Hval pd pf pf_full).
+  prove_hyp Hval.
+  intros d Hd.
+  erewrite satisfies_irrel.
+  apply (H1 d Hd).
+  intros.
+  erewrite fmla_rep_irrel.
+  apply Hval.
 Qed.
 
-Definition replace_tm_f_rep {gamma: context} 
-(gamma_valid: valid_context gamma)
-(tm_o tm_n: term) (ty1: vty)
-(Hty1: term_has_type gamma tm_o ty1)
-(Hty2: term_has_type gamma tm_n ty1)
-(pd: pi_dom) (pf: pi_funpred gamma_valid pd)
-(vt: val_typevar)
-(Hrep: forall (vv: val_vars pd vt) Hty1 Hty2,
-    term_rep gamma_valid pd vt pf vv tm_o ty1 Hty1 =
-    term_rep gamma_valid pd vt pf vv tm_n ty1 Hty2)
-(f: formula) :=
-proj_fmla (replace_tm_rep gamma_valid tm_o tm_n ty1 Hty1 Hty2
-  pd pf vt Hrep) f.
-
-
-(*Now we can define rewriting*)
-(*A bit of an awkward definition*)
-
-(*Want to know: If we can prove f, and we can prove
-  that t1 = t2, then we can prove that f[t2/t1]*)
-(*Or do we want: if we can prove f[t2/t1], then we can prove f?
-Probably better*)
 (*Idea: if we can prove t1 = t2 and we can prove f[t2/t1],
   then we can prove f.
   In other words, if we know t1 = t2, we can instead prove
   f [t2/t1] instead of f*)
 Definition rewrite_trans (tm_o tm_n: term) (ty: vty) : trans :=
-  fun t =>
-  if (check_tm_ty (task_gamma t) tm_o ty) && (check_tm_ty (task_gamma t) tm_n ty) then
-  [task_with_goal t (Feq ty tm_o tm_n);
-  task_with_goal t (replace_tm_f tm_o tm_n (task_goal t))] else [t].
+  goals_trans (fun gamma _ => check_tm_ty gamma tm_o ty &&
+    check_tm_ty gamma tm_n ty)
+    (fun _ goal => [Feq ty tm_o tm_n; replace_tm_f tm_o tm_n goal]).
 
 Lemma rewrite_trans_sound tm_o tm_n ty:
   sound_trans (rewrite_trans tm_o tm_n ty).
 Proof.
-  unfold sound_trans, rewrite_trans. intros.
-  destruct t as [[gamma delta] goal]; simpl_task.
-  destruct (check_tm_ty_spec gamma tm_o ty); [|apply H; simpl; auto].
-  destruct (check_tm_ty_spec gamma tm_n ty); [|apply H; simpl; auto].
-  pose proof (H _ (ltac:(left; reflexivity))) as [Hwf1 Hval1].
-  pose proof (H _ (ltac:(right; left; reflexivity))) as [Hwf2 Hval2].
-  clear H.
-  unfold task_valid. split; auto; intros.
-  specialize (Hval1 gamma_valid Hwf1).
-  specialize (Hval2 gamma_valid Hwf2).
-  simpl_task.
-  unfold log_conseq in *. intros.
-  specialize (Hval1 pd pf pf_full).
-  specialize (Hval2 pd pf pf_full).
-  prove_hyp Hval1; [|prove_hyp Hval2];
-  try (intros; erewrite satisfies_irrel; apply (H _ Hd)).
-  unfold satisfies in Hval1, Hval2 |- *.
+  apply goals_trans_sound.
   intros.
-  specialize (Hval2 vt vv).
-  revert Hval2.
-  erewrite replace_tm_f_rep. 2: apply t.
-  intros ->. auto. auto. intros.
-  specialize (Hval1 vt vv0).
-  revert Hval1. simpl_rep_full.
-  rewrite simpl_all_dec. intros.
-  erewrite term_rep_irrel. rewrite Hval1. apply term_rep_irrel.
+  inversion Hall; subst; clear Hall.
+  inversion H2; subst; clear H2 H4.
+  destruct H1 as [Hty1 Hrep1].
+  destruct H3 as [Hty2 Hrep2].
+  bool_hyps.
+  destruct (check_tm_ty_spec gamma tm_o ty); try discriminate.
+  destruct (check_tm_ty_spec gamma tm_n ty); try discriminate.
+  erewrite <- replace_tm_f_rep; auto. apply t. apply t0.
+  intros. specialize (Hrep1 vv0). revert Hrep1.
+  simpl_rep_full. rewrite simpl_all_dec. intros Heq.
+  erewrite term_rep_irrel. rewrite Heq. apply term_rep_irrel.
 Qed.
 
 (*Exactly what we want:
@@ -3019,59 +2810,36 @@ Proof.
   intros. eapply (D_trans (rewrite_trans t1 t2 ty)); auto.
   - inversion H0; subst. destruct H2; constructor; simpl_task; auto.
   - apply rewrite_trans_sound.
-  - unfold rewrite_trans. simpl_task.
-    destruct (check_tm_ty_spec gamma t1 ty); [
-      | inversion H0; subst; destruct H2; destruct task_goal_typed; 
-      inversion f_ty; subst; contradiction].
-    destruct (check_tm_ty_spec gamma t2 ty); [
-      | inversion H0; subst; destruct H2; destruct task_goal_typed; 
-      inversion f_ty; subst; contradiction].
-    simpl. intros x [<- | [<- |[]]]; auto.
+  - unfold rewrite_trans, goals_trans.
+    inversion H0; subst. destruct H2. simpl_task.
+    destruct task_goal_typed; inversion f_ty; subst.
+    destruct (check_tm_ty_spec gamma t1 ty); 
+    destruct (check_tm_ty_spec gamma t2 ty);
+    try contradiction; simpl.
+    intros x [<- | [<- |[]]]; auto.
 Qed.
 
 (*The other direction*)
 Definition rewrite2_trans (tm_o tm_n: term) (ty: vty) f : trans :=
-  fun t =>
-  if formula_eq_dec (replace_tm_f tm_o tm_n f) (task_goal t)
-  then [task_with_goal t (Feq ty tm_o tm_n); task_with_goal t f] else [t].
+  goals_trans (fun _ goal => formula_eq_dec (replace_tm_f tm_o tm_n f) goal)
+    (fun _ goal => [Feq ty tm_o tm_n; f]).
 
 Lemma rewrite2_trans_sound tm_o tm_n ty f:
   sound_trans (rewrite2_trans tm_o tm_n ty f).
 Proof.
-  unfold sound_trans, rewrite2_trans. intros.
-  destruct t as [[gamma delta] goal]; simpl_task.
-  destruct (formula_eq_dec (replace_tm_f tm_o tm_n f) goal);
-  [| apply H; simpl; auto].
-  simpl in H.
-  subst. 
-  pose proof (H _ ltac:(left; auto)) as [Hwf1 Hval1].
-  pose proof (H _ ltac:(right; left; auto)) as [Hwf2 Hval2].
-  simpl_task.
-  unfold task_valid; split; auto; intros; simpl_task.
-  specialize (Hval1 gamma_valid Hwf1).
-  specialize (Hval2 gamma_valid Hwf2).
-  unfold log_conseq in *; intros.
-  specialize (Hval1 pd pf pf_full).
-  specialize (Hval2 pd pf pf_full).
-  prove_hyp Hval1; [|prove_hyp Hval2];
-  try (intros; erewrite satisfies_irrel; apply (H0 _ Hd)).
-  unfold satisfies in Hval1, Hval2 |- *.
+  apply goals_trans_sound.
   intros.
-  specialize (Hval2 vt vv).
-  assert (Hty: term_has_type gamma tm_o ty /\
-    term_has_type gamma tm_n ty). {
-    destruct Hwf1. destruct task_goal_typed.
-    simpl_task. inversion f_ty; subst; auto.
-  }
-  destruct Hty as [Hty1 Hty2].
-  erewrite replace_tm_f_rep. apply Hval2.
-  apply Hty1. apply Hty2.
-  intros.
-  specialize (Hval1 vt vv0).
-  revert Hval1. simpl_rep_full.
-  rewrite simpl_all_dec. intros Heq.
+  inversion Hall; subst; clear Hall.
+  inversion H2; subst; clear H2 H4.
+  destruct H1 as [Hty1 Hrep1].
+  destruct H3 as [Hty2 Hrep2].
+  simpl_sumbool.
+  inversion Hty1; subst.
+  erewrite replace_tm_f_rep; auto. apply H2. apply H4. 
+  intros. specialize (Hrep1 vv0). revert Hrep1.
+  simpl_rep_full. rewrite simpl_all_dec. intros Heq.
   erewrite term_rep_irrel. rewrite Heq. apply term_rep_irrel.
-Qed. 
+Qed.
 
 Theorem D_rewrite2 gamma delta t1 t2 ty f:
   (*Could prove theorem, for now just require closed*)
@@ -3085,11 +2853,216 @@ Proof.
     destruct H2; destruct H7; subst; simpl_task.
     constructor; auto.
   - apply rewrite2_trans_sound.
-  - unfold rewrite2_trans.
+  - unfold rewrite2_trans, goals_trans.
     simpl_task.
     destruct (formula_eq_dec (replace_tm_f t1 t2 f) (replace_tm_f t1 t2 f));
     try contradiction.
     intros x [<- | [<- | []]]; auto.
+Qed.
+
+(*3 other forms of rewriting (for predicates)*)
+
+(*1. We can rewrite with an iff*)
+Definition rewrite_iff_trans (fo fn: formula) : trans :=
+  goals_trans (fun gamma _ => check_fmla_ty gamma fo &&
+    check_fmla_ty gamma fn)
+    (fun _ goal => [Fbinop Tiff fo fn; replace_fmla_f fo fn goal]).
+
+Lemma rewrite_iff_trans_sound fo fn:
+  sound_trans (rewrite_iff_trans fo fn).
+Proof.
+  apply goals_trans_sound.
+  intros.
+  inversion Hall; subst; clear Hall.
+  inversion H2; subst; clear H2 H4.
+  destruct H1 as [Hty1 Hrep1].
+  destruct H3 as [Hty2 Hrep2].
+  bool_hyps.
+  destruct (check_fmla_ty_spec gamma fo); try discriminate.
+  destruct (check_fmla_ty_spec gamma fn); try discriminate.
+  erewrite <- replace_fmla_f_rep; auto.
+  intros. specialize (Hrep1 vv0). revert Hrep1.
+  simpl_rep_full. intros Heq. apply eqb_prop in Heq.
+  erewrite fmla_rep_irrel. rewrite Heq. apply fmla_rep_irrel.
+Qed.
+
+(*If fo <-> fn, then, to prove f, we can prove
+  f [fn/fo]*)
+Theorem D_rewrite_iff gamma delta fo fn f:
+  closed gamma f ->
+  derives (gamma, delta, Fbinop Tiff fo fn) ->
+  derives (gamma, delta, replace_fmla_f fo fn f) ->
+  derives (gamma, delta, f).
+Proof.
+  intros Hc Hdiff Hdf.
+  eapply (D_trans (rewrite_iff_trans fo fn)); auto.
+  - inversion Hdiff; subst. destruct H; constructor; auto. 
+  - apply rewrite_iff_trans_sound.
+  - unfold rewrite_iff_trans, goals_trans; intros x Hinx.
+    simpl_task.
+    inversion Hdiff; subst. destruct H; simpl_task.
+    destruct task_goal_typed. inversion f_ty; subst.
+    destruct (check_fmla_ty_spec gamma fo);
+    destruct (check_fmla_ty_spec gamma fn); simpl in Hinx;
+    try contradiction.
+    destruct_all; subst; auto. contradiction.
+Qed.
+
+(*2. If we can prove p, we can replace p with "true"
+  in the goal*)
+Definition rewrite_true_trans (f: formula) : trans :=
+  goals_trans (fun gamma _ => check_fmla_ty gamma f)
+    (fun _ goal => [f; replace_fmla_f f Ftrue goal]).
+
+Lemma rewrite_true_trans_sound f:
+  sound_trans (rewrite_true_trans f).
+Proof.
+  apply goals_trans_sound.
+  intros.
+  inversion Hall; subst; clear Hall.
+  inversion H2; subst; clear H2 H4.
+  destruct H1 as [Hty1 Hrep1].
+  destruct H3 as [Hty2 Hrep2].
+  erewrite <- replace_fmla_f_rep; auto.
+  constructor.
+  intros. erewrite fmla_rep_irrel.
+  rewrite Hrep1. reflexivity.
+Qed.
+
+Theorem D_rewrite_true gamma delta goal f:
+  closed gamma goal ->
+  derives (gamma, delta, f) ->
+  derives (gamma, delta, replace_fmla_f f Ftrue goal) ->
+  derives (gamma, delta, goal).
+Proof.
+  intros Hc Hd1 Hd2.
+  eapply (D_trans (rewrite_true_trans f)); auto.
+  - inversion Hd1; destruct H. constructor; auto.
+  - apply rewrite_true_trans_sound.
+  - unfold rewrite_true_trans, goals_trans; simpl.
+    simpl_task. intros x Hinx.
+    inversion Hd1; subst.
+    destruct H; simpl_task. destruct task_goal_typed.
+    destruct (check_fmla_ty_spec gamma f);
+    try contradiction.
+    simpl in Hinx; destruct_all; subst; auto; contradiction.
+Qed.
+
+(*3: If we can prove ~p, we can replace p with "false"
+  in the goal*)
+
+Definition rewrite_false_trans (f: formula) : trans :=
+  goals_trans (fun gamma _ => check_fmla_ty gamma f)
+    (fun _ goal => [Fnot f; replace_fmla_f f Ffalse goal]).
+
+Lemma rewrite_false_trans_sound f:
+  sound_trans (rewrite_false_trans f).
+Proof.
+  apply goals_trans_sound.
+  intros.
+  inversion Hall; subst; clear Hall.
+  inversion H2; subst; clear H2 H4.
+  destruct H1 as [Hty1 Hrep1].
+  destruct H3 as [Hty2 Hrep2].
+  erewrite <- replace_fmla_f_rep; auto.
+  inversion Hty1; subst; auto.
+  constructor.
+  intros.
+  specialize (Hrep1 vv0). revert Hrep1.
+  simpl_rep_full.
+  intros Hrep. apply ssrbool.negbTE in Hrep.
+  erewrite fmla_rep_irrel. apply Hrep.
+Qed.
+
+Theorem D_rewrite_false gamma delta goal f:
+  closed gamma goal ->
+  derives (gamma, delta, Fnot f) ->
+  derives (gamma, delta, replace_fmla_f f Ffalse goal) ->
+  derives (gamma, delta, goal).
+Proof.
+  intros Hc Hd1 Hd2.
+  eapply (D_trans (rewrite_false_trans f)); auto.
+  - inversion Hd1; destruct H. constructor; auto.
+  - apply rewrite_false_trans_sound.
+  - unfold rewrite_false_trans, goals_trans; simpl.
+    simpl_task. intros x Hinx.
+    inversion Hd1; subst.
+    destruct H; simpl_task. destruct task_goal_typed.
+    inversion f_ty; subst.
+    destruct (check_fmla_ty_spec gamma f);
+    try contradiction.
+    simpl in Hinx; destruct_all; subst; auto; contradiction.
+Qed.
+
+(*Working with "iff"*)
+
+(*We prove an equivalence (for now we only prove
+  the derivation rule for goals)*)
+
+(*We phrase this a bit awkwardly so that we can use
+  goals_trans*)
+
+Definition iff_trans p q : trans :=
+  goals_trans (fun _ goal => formula_eq_dec goal (Fbinop Tiff p q))
+    (fun _ _ => [Fbinop Tand (Fbinop Timplies p q) (Fbinop Timplies q p)]).
+
+(*TODO: move maybe*)
+
+Lemma implb_eqb b1 b2:
+  eqb b1 b2 =
+  (implb b1 b2) && (implb b2 b1).
+Proof.
+  destruct b1; destruct b2; reflexivity.
+Qed.
+
+Lemma iff_equiv_rep {gamma} (gamma_valid: valid_context gamma)
+  (pd: pi_dom) (pf: pi_funpred gamma_valid pd)
+  (vt: val_typevar) (vv: val_vars pd vt)
+  (p q: formula) Hty1 Hty2:
+  formula_rep gamma_valid pd vt pf vv (Fbinop Tiff p q) Hty1 =
+  formula_rep gamma_valid pd vt pf vv (Fbinop Tand 
+    (Fbinop Timplies p q) (Fbinop Timplies q p)) Hty2.
+Proof.
+  simpl_rep_full.
+  rewrite implb_eqb.
+  f_equal; f_equal; apply fmla_rep_irrel.
+Qed.
+
+Lemma iff_trans_sound: forall p q,
+  sound_trans (iff_trans p q).
+Proof.
+  intros.
+  apply goals_trans_sound.
+  intros.
+  inversion Hall; subst; clear Hall H2.
+  destruct H1 as [Hty1 Hrep1].
+  simpl_sumbool.
+  specialize (Hrep1 vv).
+  erewrite iff_equiv_rep. apply Hrep1.
+Qed.
+
+Lemma D_iff gamma delta p q:
+  derives (gamma, delta,
+    (Fbinop Tand (Fbinop Timplies p q) (Fbinop Timplies q p))) ->
+  derives (gamma, delta, Fbinop Tiff p q).
+Proof.
+  intros Hd.
+  eapply (D_trans (iff_trans p q)); auto.
+  - inversion Hd; subst.
+    destruct H.
+    simpl_task.
+    apply closed_binop_inv in task_goal_typed.
+    destruct task_goal_typed.
+    apply closed_binop_inv in H. destruct_all.
+    constructor; auto.
+    apply closed_binop; simpl_task; auto.
+  - apply iff_trans_sound.
+  - unfold iff_trans, goals_trans; simpl.
+    intros x Hinx.
+    destruct (formula_eq_dec (Fbinop Tiff p q) (Fbinop Tiff p q));
+    try contradiction.
+    simpl in Hinx.
+    destruct_all; subst; auto. contradiction.
 Qed.
 
 End NatDed.
