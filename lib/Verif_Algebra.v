@@ -1,5 +1,6 @@
 Require Import StdLib.
 Require Import Lib_Algebra.
+Require Import Verif_Relations.
 
 (*All of the "valid_theory" proofs are trivial; there is just typing info to check
   because there are only axioms*)
@@ -114,9 +115,75 @@ Proof.
   simpl. repeat(split; [prove_axiom_wf| auto]).
 Qed.
 
+(*Get the context: useful for avoiding unfolding*)
+Module UnfoldCtx.
+
+Import Lib_Relations.Relations.
+Import Lib_Algebra.Algebra.
+
+
+Lemma orderedunitarycommunitring_ctx: 
+  theory_ctx_ext OrderedUnitaryCommutativeRing = 
+  [:: abs_pred le; abs_fun one; abs_fun mult; abs_fun neg; abs_fun plus; 
+   abs_fun zero; abs_type t_ts].
+Proof.
+  reflexivity.
+Qed.
+
+Lemma orderedunitarycommunitring_axioms:
+  theory_axioms_ext OrderedUnitaryCommutativeRing = 
+  [("CompatOrderMult", <f 
+    forall x, forall y, forall z,
+    le({x}, {y}) -> le(zero(), {z}) -> 
+    le(mult({x}, {z}), mult({y}, {z})) f>);
+  ("CompatOrderAdd", <f forall x, forall y, forall z,
+      le({x}, {y}) -> le(plus({x}, {z}), plus({y}, {z})) f>);
+  ("ZeroLessOne", <f le (zero(), one()) f>);
+  ("Total", <f forall x, forall y,
+    le({x}, {y}) \/ le({y}, {x}) f>);
+  ("Antisymm", <f forall x, forall y,
+      le({x}, {y}) -> le({y}, {x}) -> [t] {x} = {y} f>);
+  ("Trans", <f forall x, forall y, forall z, 
+      le ({x}, {y}) -> le ({y}, {z}) -> le({x}, {z}) f>);
+  ("Refl", <f forall x, le({x}, {x}) f>);
+  ("NonTrivialRing", <f ([t] zero() != one()) f>);
+  ("Unitary", <f forall x, [t] mult(one(), {x}) = {x} f>);
+  ("MulComm.Comm", <f
+    forall x, forall y, [t] mult({x}, {y}) = mult({y}, {x}) f>);
+  ("Mul_distr_r", <f
+      forall x, forall y, forall z,
+        [t] mult(plus({y}, {z}), {x}) = plus(mult({y}, {x}), mult({z}, {x}))
+    f>);
+  ("Mul_distr_l", <f
+    forall x, forall y, forall z, 
+      [t] mult({x}, plus({y}, {z})) = plus(mult({x}, {y}), mult({x}, {z}))
+  f>);
+  ("MulAssoc.Assoc",
+      <f forall x, forall y, forall z, 
+        [t] (mult (mult ({x}, {y}), {z})) = (mult ({x}, (mult({y}, {z})))) f>);
+  ("Comm", <f
+    forall x, forall y, [t] plus({x}, {y}) = plus({y}, {x}) f>);
+  ("Inv_def_r", <f
+      forall x, [t] plus ({x}, neg({x})) = zero() f>);
+  ("Inv_def_l", <f
+      forall x, [t] plus (neg({x}), {x}) = zero() f>);
+  ("Unit_def_l", <f
+      forall x, [t] plus (zero(), {x}) = {x} f>);
+  ("Assoc",
+      <f forall x, forall y, forall z, 
+        [t] (plus (plus ({x}, {y}), {z})) = 
+          (plus ({x}, (plus({y}, {z})))) f>)
+  ].
+Proof.
+  reflexivity.
+Qed.
+
+End UnfoldCtx.
+
+
 Lemma field_typed: typed_theory Algebra.Field.
 Proof. check_theory. Qed.
-
+(*
 Module ProveField.
 
 Import Lib_Algebra.Algebra.
@@ -221,4 +288,4 @@ Proof.
 (*TODO: prove the rest later (annoying, need some intermediate lemmas)*)
 Abort.
 
-End ProveField.
+End ProveField.*)

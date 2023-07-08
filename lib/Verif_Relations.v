@@ -118,6 +118,19 @@ Proof.
   simpl. auto. 
 Qed.
 
+(*Total order context*)
+Module TotalOrderCtx.
+
+Import Lib_Relations.Relations.
+
+Lemma totalorder_ctx: theory_ctx_ext TotalOrder = [:: abs_pred rel; abs_type t_ts].
+Proof.
+  reflexivity.
+Qed.
+
+End TotalOrderCtx.
+
+
 Lemma partialstrictorder_typed : typed_theory Relations.PartialStrictOrder.
 Proof.
   check_theory. 

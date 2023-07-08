@@ -45,11 +45,19 @@ Definition sub_body_t (args: list vsymbol) (body: term) tys tms :=
 Definition sub_fun_body_f (args: list vsymbol) (body: term) tys tms (f1: formula) :=
   replace_tm_f (Tfun f tys tms) (sub_body_t args body tys tms) f1.
 
+Definition unfold_f_single_aux (f1: formula) (args: list vsymbol) (body: term)
+  (x: (list vty * list term)) :=
+  let tys := fst x in
+  let tms := snd x in
+  sub_fun_body_f args body tys tms f1.
+
 Definition unfold_f_aux (f1: formula) (args: list vsymbol) (body: term) :=
-  let apps := find_fun_app_f f1 in
+  fold_left (fun acc x =>
+    unfold_f_single_aux acc args body x) (find_fun_app_f f1) f1.
+ (* let apps := find_fun_app_f f1 in
   fold_left (fun (acc: formula) x => let tys := fst x in
     let tms := snd x in
-    sub_fun_body_f args body tys tms acc) apps f1.
+    sub_fun_body_f args body tys tms acc) apps f1.*)
 
 End FindFun.
 (*TODO: typing*)
@@ -407,6 +415,17 @@ Definition unfold_f (gamma: context) (f: funsym) (fmla: formula) :=
   | None => fmla
   end.
 
+Definition unfold_f_single (gamma: context) (f: funsym) (i: nat) 
+  (fmla: formula)
+   :=
+  match (get_fun_body_args gamma f) with
+  | Some (t, args) =>
+    let l := find_fun_app_f f fmla in
+    if Nat.ltb i (length l) then
+      unfold_f_single_aux f fmla args t (nth i l (nil, nil))
+    else fmla
+  | _ => fmla
+  end.
 
 
 Lemma sub_body_t_ty (f: funsym) gamma args body tys tms ty:
@@ -587,6 +606,7 @@ Proof.
 Qed.
 
 (*Typing for [unfold_f]*)
+
 Lemma unfold_f_ty_aux {gamma} (gamma_valid: valid_context gamma)
 (f: funsym) l base args body
 (Hnargs : NoDup (map fst args))
@@ -700,5 +720,97 @@ Proof.
   eapply H. 2: reflexivity.
   (*Need that [find_fun_app_f] well_typed*)
   intros. eapply find_fun_app_f_ty. 2: apply H0. auto.
+Qed.
+
+(*And the results for [unfold_f_single]*)
+Lemma unfold_f_single_rep {gamma} (gamma_valid: valid_context gamma) 
+  (f: funsym) (fmla: formula)
+  (pd: pi_dom) (pf: pi_funpred gamma_valid pd)
+  (pf_full: full_interp gamma_valid pd pf)
+  (vt: val_typevar) (vv: val_vars pd vt)
+  (i: nat)
+  (Hty1: formula_typed gamma fmla)
+  (Hty2: formula_typed gamma (unfold_f_single gamma f i fmla)):
+  formula_rep gamma_valid pd vt pf vv (unfold_f_single gamma f i fmla) Hty2 =
+  formula_rep gamma_valid pd vt pf vv fmla Hty1.
+Proof.
+  revert Hty2.
+  unfold unfold_f_single.
+  destruct (get_fun_body_args gamma f) eqn : Hfunbody;
+  [|intros; apply fmla_rep_irrel].
+  destruct p as [body args].
+  destruct (Nat.ltb_spec0 i (length (find_fun_app_f f fmla)));
+  [|intros; apply fmla_rep_irrel].
+  intros.
+  apply get_fun_body_args_some in Hfunbody.
+  pose proof (fun_defined_valid gamma_valid Hfunbody) as Hdef.
+  simpl in Hdef.
+  destruct Hdef as [Htyb [Hfvargs [Hsubvars [Hnargs Hargs]]]].
+  unfold unfold_f_single_aux, sub_fun_body_f.
+  set (vs := (fst (nth i (find_fun_app_f f fmla) ([], [])))).
+  set (ts := (snd (nth i (find_fun_app_f f fmla) ([], [])))).
+  pose proof (find_fun_app_f_ty gamma fmla Hty1 f vs ts) as Htyi.
+  prove_hyp Htyi.
+  {
+    assert ((vs, ts) = nth i (find_fun_app_f f fmla) (nil,nil)). {
+      unfold vs, ts.
+      destruct (nth i (find_fun_app_f f fmla) (nil,nil)); auto.
+    }
+    rewrite H. apply nth_In; auto.
+  }
+  destruct Htyi as [tyi Htyi].
+   (*Hardest part: proving typing*)
+   assert (Hsub: sublist (type_vars (f_ret f)) (s_params f)). {
+    pose proof (f_ret_wf f).
+    apply check_sublist_prop in H; auto.
+  }
+  assert (Hty4: term_has_type gamma (sub_body_t f args body vs ts) tyi). {
+    inversion Htyi; subst.
+    rewrite ty_subst_equiv; auto.
+    apply sub_body_t_ty'; auto.
+  }
+  erewrite replace_tm_f_rep.
+  reflexivity. apply Htyi.
+  apply Hty4.
+  intros.
+  erewrite sub_body_t_rep. reflexivity. all: auto.
+  + inversion Hty0; subst. 
+    rewrite H6. rewrite <- Hargs, !map_length; auto.
+  + inversion Hty0; subst. auto.
+Qed.
+
+(*And typing*)
+
+Lemma unfold_f_single_ty {gamma} (gamma_valid: valid_context gamma)
+  (f: funsym) (fmla: formula)
+  (Hty1: formula_typed gamma fmla) (i: nat):
+  formula_typed gamma (unfold_f_single gamma f i fmla).
+Proof.
+  unfold unfold_f_single.
+  destruct (get_fun_body_args gamma f) eqn : Hfunbody; auto.
+  destruct p as [body args].
+  destruct (Nat.ltb_spec0 i (length (find_fun_app_f f fmla))); auto.
+  (*Typing info*)
+  apply get_fun_body_args_some in Hfunbody.
+  pose proof (fun_defined_valid gamma_valid Hfunbody) as Hdef.
+  simpl in Hdef.
+  destruct Hdef as [Htyb [Hfvargs [Hsubvars [Hnargs Hargs]]]].
+  unfold unfold_f_single_aux.
+  set (vs := (fst (nth i (find_fun_app_f f fmla) ([], [])))).
+  set (ts := (snd (nth i (find_fun_app_f f fmla) ([], [])))).
+  pose proof (find_fun_app_f_ty gamma fmla Hty1 f vs ts) as Htyi.
+  prove_hyp Htyi.
+  {
+    assert ((vs, ts) = nth i (find_fun_app_f f fmla) (nil,nil)). {
+      unfold vs, ts.
+      destruct (nth i (find_fun_app_f f fmla) (nil,nil)); auto.
+    }
+    rewrite H. apply nth_In; auto.
+  }
+  destruct Htyi as [tyi Htyi].
+  inversion Htyi; subst.
+  apply sub_fun_body_f_ty; auto.
+  pose proof (f_ret_wf f).
+  apply check_sublist_prop in H; auto.
 Qed.
 

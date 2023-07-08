@@ -21,6 +21,12 @@ Definition ge : predsym := binpred "ge" vty_int.
 Definition x : vsymbol := ("x", vty_int).
 Definition y : vsymbol := ("y", vty_int).
 
+(*Function bodies to make the context nicer*)
+Definition sub_body : term :=  <t plus({x}, neg({y})) t>.
+Definition gt_body : formula :=  <f lt({y}, {x}) f>.
+Definition le_body : formula :=  <f lt({x}, {y}) \/ [vty_int] {x} = {y} f>.
+Definition ge_body : formula := <f le({y}, {x}) f>.
+
 (*For now, we ignore the equality in the theory because
   in our semantics we have decidable equality anyway*)
 Definition Int : theory :=
@@ -31,11 +37,10 @@ Definition Int : theory :=
     tdef (abs_fun plus);
     tdef (abs_fun mult);
     tdef (abs_pred lt);
-    tdef (nonrec_fun sub [x;y] <t plus({x}, neg({y})) t>);
-    tdef (nonrec_pred gt [x;y] <f lt({y}, {x}) f>);
-    tdef (nonrec_pred le [x;y] 
-      <f lt({x}, {y}) \/ [vty_int] {x} = {y} f>);
-    tdef (nonrec_pred ge [x;y] <f le({y}, {x}) f>);
+    tdef (nonrec_fun sub [x;y] sub_body);
+    tdef (nonrec_pred gt [x;y] gt_body);
+    tdef (nonrec_pred le [x;y] le_body);
+    tdef (nonrec_pred ge [x;y] ge_body);
     tclone Algebra.OrderedUnitaryCommutativeRing None
       (mk_typemap [(Algebra.t, vty_int)])
       [(Algebra.zero, zero); (Algebra.one, one); 

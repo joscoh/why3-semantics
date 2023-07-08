@@ -853,7 +853,7 @@ Fixpoint theory_axioms_int (t: theory) : list (string * formula) :=
   | tprop Plemma name f :: tl =>
     (name, f) :: theory_axioms_int tl
   | tuse th _ :: tl =>
-    theory_axioms_ext th ++ theory_axioms_ext tl
+    theory_axioms_ext th ++ theory_axioms_int tl
   | tclone th o tys funs preds :: tl =>
     let n := get_exported_names th in
     let qual := 

@@ -1217,6 +1217,43 @@ Ltac wunfold x :=
   unfold sub_fun_body_f, replace_tm_f, sub_body_t, safe_sub_ts; simpl;
   extra_simpl.
 
+(*Unfold at a specific occurence*)
+
+Definition unfold_single_trans (f: funsym) (i: nat) : trans :=
+  trans_goal' (fun g => unfold_f_single g f i).
+
+Lemma unfold_single_trans_sound: forall f i, 
+  sound_trans (unfold_single_trans f i).
+Proof.
+  intros. apply trans_goal_sound';
+  intros.
+  split.
+  apply unfold_f_single_ty; auto.
+  intros.
+  specialize (H vt vv).
+  erewrite unfold_f_single_rep in H. apply H. auto.
+Qed.
+
+Lemma D_unfold_single gamma delta goal f i:
+  Logic.closed gamma goal ->
+  derives (gamma, delta, unfold_f_single gamma f i goal) ->
+  derives (gamma, delta, goal).
+Proof.
+  intros Hclosed Hd. eapply (D_trans (unfold_single_trans f i)); auto.
+  - inversion Hd; subst.
+    inversion H; subst. constructor; auto.
+  - apply unfold_single_trans_sound.
+  - unfold unfold_single_trans. simpl. simpl_task.
+    intros x [<- | []]; auto.
+Qed.
+
+Ltac wunfold_at x n :=
+  apply D_unfold_single with (f:=x)(i:=n);
+  unfold unfold_f_single; simpl; unfold unfold_f_single_aux; simpl;
+  unfold sub_fun_body_f, replace_tm_f, sub_body_t, safe_sub_ts; simpl;
+  extra_simpl.
+
+
 (*Simplify pattern match*)
 Require Import MatchSimpl.
 Definition simpl_match_trans : trans :=
