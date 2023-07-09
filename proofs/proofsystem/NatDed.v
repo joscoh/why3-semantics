@@ -2729,7 +2729,7 @@ Lemma goals_trans_sound (b: context -> formula -> bool) f:
   (Hb: (b gamma goal))
   (Hall: Forall (fun x =>
     exists (Htyx: formula_typed gamma x),
-      forall vv,
+      forall vt vv,
       formula_rep gamma_valid pd vt pf vv x Htyx) (f gamma goal)),
 
   formula_rep gamma_valid pd vt pf vv goal Hty) ->
@@ -2792,7 +2792,7 @@ Proof.
   destruct (check_tm_ty_spec gamma tm_o ty); try discriminate.
   destruct (check_tm_ty_spec gamma tm_n ty); try discriminate.
   erewrite <- replace_tm_f_rep; auto. apply t. apply t0.
-  intros. specialize (Hrep1 vv0). revert Hrep1.
+  intros. specialize (Hrep1 vt vv0). revert Hrep1.
   simpl_rep_full. rewrite simpl_all_dec. intros Heq.
   erewrite term_rep_irrel. rewrite Heq. apply term_rep_irrel.
 Qed.
@@ -2836,7 +2836,7 @@ Proof.
   simpl_sumbool.
   inversion Hty1; subst.
   erewrite replace_tm_f_rep; auto. apply H2. apply H4. 
-  intros. specialize (Hrep1 vv0). revert Hrep1.
+  intros. specialize (Hrep1 vt vv0). revert Hrep1.
   simpl_rep_full. rewrite simpl_all_dec. intros Heq.
   erewrite term_rep_irrel. rewrite Heq. apply term_rep_irrel.
 Qed.
@@ -2881,7 +2881,7 @@ Proof.
   destruct (check_fmla_ty_spec gamma fo); try discriminate.
   destruct (check_fmla_ty_spec gamma fn); try discriminate.
   erewrite <- replace_fmla_f_rep; auto.
-  intros. specialize (Hrep1 vv0). revert Hrep1.
+  intros. specialize (Hrep1 vt vv0). revert Hrep1.
   simpl_rep_full. intros Heq. apply eqb_prop in Heq.
   erewrite fmla_rep_irrel. rewrite Heq. apply fmla_rep_irrel.
 Qed.
@@ -2968,7 +2968,7 @@ Proof.
   inversion Hty1; subst; auto.
   constructor.
   intros.
-  specialize (Hrep1 vv0). revert Hrep1.
+  specialize (Hrep1 vt vv0). revert Hrep1.
   simpl_rep_full.
   intros Hrep. apply ssrbool.negbTE in Hrep.
   erewrite fmla_rep_irrel. apply Hrep.
@@ -3037,7 +3037,7 @@ Proof.
   inversion Hall; subst; clear Hall H2.
   destruct H1 as [Hty1 Hrep1].
   simpl_sumbool.
-  specialize (Hrep1 vv).
+  specialize (Hrep1 vt vv).
   erewrite iff_equiv_rep. apply Hrep1.
 Qed.
 

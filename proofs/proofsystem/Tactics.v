@@ -139,8 +139,8 @@ Ltac wassert name f :=
 (*If hypothesis H has form Fquant Tforall x f,
   then wspecialize H t replaces H with hypothesis f[t/x]*)
 
-Definition add_hyp (delta : list (string * formula)) name f_new :=
-  (name, f_new) :: delta.
+(*Definition add_hyp (delta : list (string * formula)) name f_new :=
+  (name, f_new) :: delta.*)
 
 Definition remove_hyp (delta: list (string * formula)) name :=
   filter (fun x => negb (String.eqb (fst x) name)) delta.
@@ -1147,8 +1147,8 @@ Ltac wspecialize_ty n m :=
 
 (*Function unfolding*)
 
-Definition trans_goal' (f: context -> formula -> formula) (x: task) :=
-  [task_with_goal x (f (task_gamma x) (task_goal x))].
+Definition trans_goal' (f: context -> formula -> formula)  :=
+  goals_trans (fun _ _ => true) (fun x y => [f x y]).
 Definition trans_goal_sound'
   (f: context -> formula -> formula) :
   (forall gamma (gamma_valid: valid_context gamma) 
@@ -1163,23 +1163,12 @@ Definition trans_goal_sound'
 sound_trans (trans_goal' f).
 Proof.
   intros.
-  unfold sound_trans, trans_goal'. simpl.
-  intros.
-  destruct t as [[g d] goal]; simpl in *.
-  specialize (H0 _ (ltac:(left; auto))).
-  unfold task_valid in H0. simpl in *. simpl_task.
-  destruct H0 as [Hwf Hval].
-  unfold task_valid. split; auto. intros.
-  simpl_task.
-  specialize (Hval gamma_valid Hwf).
-  destruct t_wf; simpl in *.
-  unfold log_conseq, satisfies in *. intros.
-  erewrite fmla_rep_irrel.
-  specialize (H _ gamma_valid goal (f_ty task_goal_typed)).
-  eapply (proj2 H). auto. intros.
-  apply Hval; intros; auto.
-  erewrite fmla_rep_irrel. apply H0.
-  Unshelve. auto.
+  apply goals_trans_sound. intros.
+  inversion Hall; subst; clear Hall H3.
+  destruct H2 as [Htyx Hvalx].
+  specialize (H gamma gamma_valid goal Hty).
+  destruct H as [_ Hrep].
+  apply (Hrep pd pf pf_full Htyx); intros; apply Hvalx.
 Qed.
 
 Definition unfold_trans (f: funsym) : trans :=
@@ -1254,6 +1243,45 @@ Ltac wunfold_at x n :=
   unfold sub_fun_body_f, replace_tm_f, sub_body_t, safe_sub_ts; simpl;
   repeat (progress(extra_simpl)).
 
+(*Unfold for predicates*)
+(*Could make this into one tactic by matching on type,
+  not sure which is better*)
+(*Only single for now*)
+
+Definition unfold_p_single_trans (p: predsym) (i: nat) : trans :=
+  trans_goal' (fun g => unfold_p_single g p i).
+
+Lemma unfold_p_single_trans_sound: forall p i, 
+  sound_trans (unfold_p_single_trans p i).
+Proof.
+  intros. apply trans_goal_sound';
+  intros.
+  split.
+  apply unfold_p_single_ty; auto.
+  intros.
+  specialize (H vt vv).
+  erewrite unfold_p_single_rep in H. apply H. auto.
+Qed.
+
+Lemma D_unfold_p_single gamma delta goal p i:
+  Logic.closed gamma goal ->
+  derives (gamma, delta, unfold_p_single gamma p i goal) ->
+  derives (gamma, delta, goal).
+Proof.
+  intros Hclosed Hd. eapply (D_trans (unfold_p_single_trans p i)); auto.
+  - inversion Hd; subst.
+    inversion H; subst. constructor; auto.
+  - apply unfold_p_single_trans_sound.
+  - unfold unfold_p_single_trans. simpl. simpl_task.
+    intros x [<- | []]; auto.
+Qed.
+
+Ltac wunfold_p_at x n :=
+  apply D_unfold_p_single with (p:=x)(i:=n); [prove_closed |];
+  unfold unfold_p_single; simpl; unfold unfold_p_single_aux; simpl;
+  unfold sub_pred_body_f, replace_fmla_f, sub_body_f, safe_sub_fs; simpl;
+  repeat (progress(extra_simpl)).
+
 
 (*Simplify pattern match*)
 Require Import MatchSimpl.
@@ -1304,3 +1332,233 @@ Ltac winduction :=
     goal must be in form (Forall (x: a(vs)), f
     where a is a non-mutual ADT"
   end.
+
+(*Other tactics (should order more reasonably)*)
+
+(*split (for "and" and "iff" goals)*)
+Ltac wsplit :=
+  (*First, try to separate an iff*)
+  try (apply D_iff);
+  apply D_andI; extra_simpl.
+
+(*"exists"*)
+Ltac wexists y :=
+  apply (D_existsI) with (tm:=y);
+  [prove_tm_ty | prove_closed |];
+  unfold safe_sub_f; simpl; extra_simpl.
+
+(*"destruct" for and, exists, (maybe or, maybe not)*)
+(*destruct (H: exists x, f) as [y H]*)
+Ltac wdestruct_ex H y :=
+  eapply (derives_destruct_ex) with (name:=H) (c:=y);
+  [reflexivity | reflexivity | prove_fmla_ty | prove_task_wf |];
+  unfold safe_sub_f; simpl; extra_simpl.
+
+(*Destruct and*)
+
+(*We can always add hypotheses if they follow from delta,
+  even if not closed*)
+Definition add_hyp_trans name f : trans :=
+  fun t => [mk_task (task_gamma t) 
+    ((name, f) :: (task_delta t))
+    (task_goal t)].
+
+Definition add_hyp_trans_soundif name f_new:
+soundif_trans (fun t =>
+formula_typed (task_gamma t) f_new /\
+forall (gamma_valid: valid_context (task_gamma t))
+  (Htyf: formula_typed (task_gamma t) f_new)
+  (Hallty: Forall (formula_typed (task_gamma t)) (map snd (task_delta t))),
+  log_conseq_gen gamma_valid (map snd (task_delta t)) f_new Htyf Hallty)
+(add_hyp_trans name f_new).
+Proof.
+  unfold soundif_trans; intros. destruct H as [Htyf Hhyp].
+  destruct t as [[gamma delta] goal]; simpl_task.
+  simpl_task. specialize (H1 _ ltac:(left; auto)).
+  destruct H1 as [Hwf Hval].
+  simpl_task. constructor; auto.
+  simpl_task. intros.
+  specialize (Hval gamma_valid Hwf).
+  assert (Hallty: Forall (formula_typed gamma) (map snd delta)). {
+    inversion w_wf; auto.
+  }
+  specialize (Hhyp gamma_valid Htyf Hallty).
+  unfold log_conseq in *.
+  unfold log_conseq_gen in *.
+  intros.
+  specialize (Hval pd pf pf_full).
+  specialize (Hhyp pd pf pf_full).
+  prove_hyp Hval.
+  {
+    intros d Hd.
+    assert (Hd':=Hd).
+    destruct Hd'; subst; auto.
+    - erewrite satisfies_irrel. apply Hhyp.
+      intros d' Hd'. erewrite satisfies_irrel.
+      apply (H d' Hd').
+    - erewrite satisfies_irrel. apply (H d H1).
+  }
+  erewrite satisfies_irrel. apply Hval.
+Qed.
+
+Lemma derives_add_hyp gamma delta goal name f_new:
+  (forall (gamma_valid: valid_context gamma) 
+    (Htyf: formula_typed gamma f_new)
+    (Hallty: Forall (formula_typed gamma) (map snd delta)),
+    log_conseq_gen gamma_valid (map snd delta) f_new Htyf Hallty) ->
+  formula_typed gamma f_new ->
+  Forall (formula_typed gamma) (map snd delta) ->
+  derives (gamma, ((name, f_new) :: delta), goal) ->
+  derives (gamma, delta, goal).
+Proof.
+  intros. eapply D_transif.
+  3: exact (add_hyp_trans_soundif name f_new).
+  all: auto.
+  simpl. simpl_task. split; auto.
+  inversion H2; subst. destruct H3.
+  constructor; auto.
+  unfold add_hyp_trans. simpl. simpl_task. 
+  intros; destruct_all; subst; auto; contradiction.
+Qed.
+
+Lemma derives_destruct_and gamma delta goal name f1 f2 
+  name1 name2:
+  find_hyp delta name = Some (Fbinop Tand f1 f2) ->
+  derives (gamma, (name1, f1) :: (name2, f2) :: delta, goal) ->
+  derives (gamma, delta, goal).
+Proof.
+  intros Hhyp Hd.
+  unfold find_hyp in Hhyp.
+  apply get_assoc_list_some in Hhyp.
+  assert (Hhyp': In (Fbinop Tand f1 f2) (map snd delta)). {
+    rewrite in_map_iff. exists (name, Fbinop Tand f1 f2); auto.
+  }
+  assert (Hall: Forall (formula_typed gamma) (map snd delta)). {
+    inversion Hd; subst.
+    destruct H; simpl_task. inversion task_delta_typed; subst.
+    inversion H4; subst. auto.
+  }
+  assert (formula_typed gamma (Fbinop Tand f1 f2)). {
+    rewrite Forall_forall in Hall. auto.
+  }
+  inversion H; subst.
+  eapply (derives_add_hyp _ _ _ name2 f2); auto.
+  - intros.
+    (*TODO: can we use D_andE, or does this require closed?
+      Not that it matters, everything is closed anyway.
+      But this is more general*)
+    unfold log_conseq_gen.
+    intros.
+    specialize (H0 _ Hhyp').
+    clear -H0.
+    unfold satisfies in *.
+    intros.
+    specialize (H0 vt vv).
+    revert H0.
+    simpl_rep_full.
+    bool_to_prop.
+    intros [_ Hf2].
+    erewrite fmla_rep_irrel. apply Hf2.
+  - eapply (derives_add_hyp _ _ _ name1 f1); auto.
+    + intros.
+      unfold log_conseq_gen.
+      intros.
+      specialize (H0 (Fbinop Tand f1 f2) ltac:(simpl; right; auto));
+      simpl in H0.
+      clear -H0.
+      unfold satisfies in *.
+      intros.
+      specialize (H0 vt vv).
+      revert H0.
+      simpl_rep_full.
+      bool_to_prop.
+      intros [Hf1 _].
+      erewrite fmla_rep_irrel. apply Hf1.
+    + inversion Hd; subst.
+      destruct H0; simpl_task.
+      inversion task_delta_typed; auto.
+Qed.
+
+Ltac wdestruct_and H n1 n2 :=
+  eapply (derives_destruct_and) with (name:=H) (name1:=n1)
+    (name2:=n2);
+  [reflexivity |]; extra_simpl.
+
+(*Rewrite for iff*)
+
+(*TODO: see if we need other directions/versions*)
+
+Lemma derives_rewrite_iff gamma delta goal name f1 f2:
+  find_hyp delta name = Some (Fbinop Tiff f1 f2) ->
+  Logic.closed gamma goal ->
+  Logic.closed gamma (Fbinop Tiff f1 f2) ->
+  derives (gamma, delta, replace_fmla_f f1 f2 goal) ->
+  derives (gamma, delta, goal).
+Proof.
+  unfold find_hyp; intros Hget Hclosed Hc2 Hd.
+  apply get_assoc_list_some in Hget.
+  apply (D_rewrite_iff _ _ f1 f2); auto.
+  apply D_axiom; simpl_task. 
+  - inversion Hd; subst. destruct H; subst; constructor;
+    auto.
+  - rewrite in_map_iff. exists (name, Fbinop Tiff f1 f2); auto.
+Qed.
+
+Ltac wrewrite_iff H :=
+  eapply derives_rewrite_iff with (name:=H);
+  [reflexivity | prove_closed | prove_closed |];
+  unfold replace_fmla_f; simpl; extra_simpl.
+
+(*Working with "or" goals*)
+
+(*Left and right*)
+Ltac wleft :=
+  apply D_orI1; [prove_closed |]; extra_simpl.
+Ltac wright :=
+  apply D_orI2; [prove_closed|]; extra_simpl.
+
+
+(*Destruct or goals*)
+(*This time, require closed so we don't have to prove everything
+  again*)
+Lemma derives_destruct_or gamma delta goal name f1 f2 
+  name1 name2:
+  find_hyp delta name = Some (Fbinop Tor f1 f2) ->
+  (*Don't need to check typing*)
+  closed_formula f1 ->
+  closed_formula f2 ->
+  mono f1 ->
+  mono f2 ->
+  derives (gamma, (name1, f1) :: delta, goal) ->
+  derives (gamma, (name2, f2) :: delta, goal) ->
+  derives (gamma, delta, goal).
+Proof.
+  intros Hhyp Hc1 Hc2 Hm1 Hm2 Hd1 Hd2.
+  apply (D_orE gamma delta f1 f2 name1 name2 goal); auto.
+  apply get_assoc_list_some in Hhyp.
+  apply D_axiom; simpl_task.
+  2: {
+    rewrite in_map_iff. exists (name, Fbinop Tor f1 f2); auto.
+  }
+  inversion Hd1; inversion Hd2; subst; auto.
+  destruct H; destruct H4; simpl_task.
+  inversion task_delta_typed; inversion task_delta_typed0; subst.
+  constructor; auto; simpl_task.
+  apply closed_binop; constructor; auto.
+Qed.
+
+(*Destruct H: f1 \/ f2 as [n1 | n2]*)
+Ltac wdestruct_or H n1 n2 :=
+  eapply derives_destruct_or with (name := H)
+    (name1:=n1)(name2:=n2);
+  [reflexivity |reflexivity | reflexivity | 
+  reflexivity | reflexivity | |]; extra_simpl.
+
+(*exfalso*)
+Ltac wexfalso :=
+  apply D_falseE; [prove_closed |].
+
+(*Prove "true" (apply I in Coq)*)
+Ltac wtrue :=
+  apply D_trueI; [prove_valid_context |
+  prove_fmlas_ty].

@@ -231,11 +231,89 @@ Proof.
         <t length<a_>(l2__) t>.
       wrewrite "Assoc".
       wreflexivity.
-  (*We do not (yet) do the mem goals*)
-  (*TODO: do predicate unfolding then this*)
-  - admit.
-  - admit.
-Admitted.
+  - (*Prove mem_app*)
+    (*This proof is annoying because of our
+      lack of automation - we cannot simplify iff or
+      or expressions very well, so we need to split
+      and destruct*)
+    rewrite ListCtx.length_ctx 
+    Verif_Int.IntCtx.int_ctx
+    ListCtx.mem_ctx 
+    ListAxioms.length_axioms
+    ListAxioms.mem_axioms
+    Verif_Int.IntCtx.int_axioms; simpl.
+    simpl_mono.
+    wintros "x".
+    winduction.
+    + wintros "l2".
+      wunfold_at app 0%N; wsimpl_match.
+      wunfold_p_at mem 1%N;wsimpl_match.
+      (*TODO: could have tactic to simplify*)
+      wsplit.
+      * wintros "Hmem". wright. wassumption.
+      * wintros "Hmem". wdestruct_or "Hmem" "Hfalse" "Hmem".
+        -- wexfalso. wassumption.
+        -- wassumption.
+    + wintros "y" "l" "IH" "l2".
+      wunfold_at app 0%N; wsimpl_match.
+      wunfold_p_at mem 0%N; wsimpl_match.
+      wunfold_p_at mem 1%N; wsimpl_match.
+      wspecialize "IH" l2__.
+      wrewrite_iff "IH".
+      (*TODO: we need or assoc*)
+      (*TODO: should really have reflexivity for iff*)
+      (*But we can prove manually for now*)
+      wsplit; wintros "Hmem".
+      * wdestruct_or "Hmem" "Hmem1" "Hmem1".
+        -- wleft. wleft. wassumption.
+        -- wdestruct_or "Hmem1" "Hmem2" "Hmem2".
+          ++ wleft. wright. wassumption.
+          ++ wright. wassumption.
+      * (*And the other side*)
+        wdestruct_or "Hmem" "Hmem1" "Hmem1".
+        -- wdestruct_or "Hmem1" "Hmem2" "Hmem2".
+          ++ wleft. wassumption.
+          ++ wright. wleft. wassumption.
+        -- wright. wright. wassumption.
+  - (*Last lemma - here, we use "exists" for the first time*)
+    rewrite ListCtx.length_ctx 
+    Verif_Int.IntCtx.int_ctx
+    ListCtx.mem_ctx 
+    ListAxioms.length_axioms
+    ListAxioms.mem_axioms
+    Verif_Int.IntCtx.int_axioms; simpl.
+    simpl_mono.
+    wintros "x".
+    winduction.
+    + wunfold_p_at mem 0%N; wsimpl_match.
+      wintros "Hfalse".
+      wexfalso. wassumption.
+    + wintros "y" "l" "IH".
+      wunfold_p_at mem 0%N; wsimpl_match.
+      wintros "Hmem".
+      wdestruct_or "Hmem" "Heqxy" "Hmem1".
+      * wexists <t Nil<a_>() t>.
+      (*TODO*)
+        wexists l__.
+        wunfold_at app 0%N; wsimpl_match.
+        wrewrite "Heqxy".
+        wreflexivity.
+      * (*We do not have a way to specialize hypotheses
+          for now, so we assert*)
+        wassert "Hex" <f  exists l2_, exists l3_,
+        [list_a] l__ = app<a_> ({l2_}, Cons<a_>(x__, {l3_})) f>.
+        {
+          wapply "IH". wassumption.
+        }
+        wdestruct_ex "Hex" "l2".
+        wdestruct_ex "Hex" "l3".
+        (*Use the lists from the existential*)
+        wexists (<t Cons<a_>(y__, l2__) t>).
+        wexists l3__.
+        wunfold_at app 0%N; wsimpl_match.
+        wrewrite "Hex".
+        wreflexivity.
+Qed.
 
 (*Reverse*)
 Lemma rev_valid: valid_theory Reverse.
@@ -302,7 +380,35 @@ Proof.
       wrewrite<- "cons_reverse".
       wrewrite "IH".
       wreflexivity.
-  - (*TODO: mem*) admit.
+  - (*mem of reverse*)
+    simpl_mono.
+    winduction.
+    + wintros "x".
+      wunfold_p_at mem 0%N; wsimpl_match.
+      wunfold reverse; wsimpl_match.
+      wunfold_p_at mem 0%N; wsimpl_match.
+      wsplit; wintros "H"; wassumption.
+    + wintros "x" "l" "IH" "y".
+      wunfold_p_at mem 0%N; wsimpl_match.
+      wunfold reverse; wsimpl_match.
+      (*Need mem_append*)
+      wspecialize_ty "mem_append" [("a", a_)].
+      wspecialize "mem_append" y__ <t reverse<a_>(l__) t>
+        <t Cons<a_>(x__, Nil<a_>()) t>.
+      wrewrite_iff "mem_append".
+      wunfold_p_at mem 2%N; wsimpl_match.
+      wunfold_p_at mem 2%N; wsimpl_match.
+      wspecialize "IH" y__.
+      wrewrite_iff "IH".
+      (*Again, have to destruct everything because limited
+        automation*)
+      wsplit; wintros "Hmem"; wdestruct_or "Hmem" "Hmem1" "Hmem1".
+      * wright. wleft. wassumption.
+      * wleft. wassumption.
+      * wright. wassumption.
+      * wdestruct_or "Hmem1" "Hmem2" "Hfalse".
+        -- wleft. wassumption.
+        -- wexfalso. wassumption.
   - (*length of reverse - from length_app*)
     simpl_mono.
     winduction.
@@ -329,6 +435,6 @@ Proof.
       wspecialize "Comm"  <t length<a_>(l__) t>
         <t one() t>.
       wassumption.
-Admitted.
+Qed.
 
 End ListProofs.
