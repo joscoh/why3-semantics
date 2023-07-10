@@ -125,9 +125,8 @@ Proof.
   wstart.
   (*First, specialize f_inv to a*)
   wspecialize_ty "f_inv" [("a", tyconst "a")].
-  (*? Why didn't this run*)
   simpl_ty_subst.
-  wcopy "f_inv" "f_inv2". simpl. (*TODO: add to copy*)
+  wcopy "f_inv" "f_inv2". simpl.
   wintros "x" "y".
   wintros "Heq".
   wspecialize "f_inv" x1.

@@ -3,13 +3,6 @@ Require Export Denotational.
 Require Import RecFun2. (*For cast*)
 Set Bullet Behavior "Strict Subproofs".
 
-(*TODO: move*)
-Definition nonrec_of_context gamma : list funpred_def :=
-  fold_right (fun o acc =>
-    match o with
-    | nonrec_def f => f :: acc
-    | _ => acc
-    end) nil gamma.
 
 Section NonRecFun.
 
@@ -374,144 +367,6 @@ Definition pf_with_nonrec_preds (pf: pi_funpred gamma_valid pd)
   | _ => fun p_in => preds gamma_valid pd pf p1 srts a
   end f_in.
 
-(*TODO: replace duplicate lemmas with this one*)
-Lemma funsym_multiple_defs (d1 d2: def) (f: funsym)
-  (Hneq: d1 <> d2)
-  (d1_in: In d1 gamma) (d2_in: In d2 gamma) 
-  (f_in1: In f (funsyms_of_def d1)) (f_in2: In f (funsyms_of_def d2)):
-  False.
-Proof.
-  apply valid_context_wf in gamma_valid.
-  apply wf_context_sig_Nodup in gamma_valid.
-  destruct gamma_valid as [Hn _].
-  unfold sig_f in Hn.
-  rewrite NoDup_concat_iff in Hn.
-  destruct Hn as [_ Hn].
-  destruct (In_nth _ _ def_d d1_in) as [i1 [Hi1 Hd1]]; subst.
-  destruct (In_nth _ _ def_d d2_in) as [i2 [Hi2 Hd2]]; subst.
-  rewrite map_length in Hn.
-  destruct (Nat.eq_dec i1 i2); subst; auto.
-  apply (Hn _ _ nil f Hi1 Hi2 n).
-  rewrite !map_nth_inbound with (d2:=def_d); auto.
-Qed.
-
-Lemma predsym_multiple_defs (d1 d2: def) (p: predsym)
-  (Hneq: d1 <> d2)
-  (d1_in: In d1 gamma) (d2_in: In d2 gamma) 
-  (p_in1: In p (predsyms_of_def d1)) (p_in2: In p (predsyms_of_def d2)):
-  False.
-Proof.
-  apply valid_context_wf in gamma_valid.
-  apply wf_context_sig_Nodup in gamma_valid.
-  destruct gamma_valid as [_ [Hn _]].
-  unfold sig_p in Hn.
-  rewrite NoDup_concat_iff in Hn.
-  destruct Hn as [_ Hn].
-  destruct (In_nth _ _ def_d d1_in) as [i1 [Hi1 Hd1]]; subst.
-  destruct (In_nth _ _ def_d d2_in) as [i2 [Hi2 Hd2]]; subst.
-  rewrite map_length in Hn.
-  destruct (Nat.eq_dec i1 i2); subst; auto.
-  apply (Hn _ _ nil p Hi1 Hi2 n).
-  rewrite !map_nth_inbound with (d2:=def_d); auto.
-Qed.
-
-(*TODO: move*)
-Lemma constr_not_nonrecfun (fd: funpred_def) (f: funsym) 
-  (a: alg_datatype)
-  (m: mut_adt)
-  (m_in: mut_in_ctx m gamma) (a_in: adt_in_mut a m)
-  (fd_in: In (nonrec_def fd) gamma)
-  (f_in1: In f (funsyms_of_nonrec fd)) (f_in2: constr_in_adt f a):
-  False.
-Proof.
-  apply (funsym_multiple_defs (datatype_def m) (nonrec_def fd) f); auto;
-  try discriminate.
-  - apply mut_in_ctx_eq2; auto.
-  - simpl. eapply constr_in_adt_def. apply a_in. auto.
-Qed.
-
-Lemma recfun_not_nonrec (fd: funpred_def) (l: list funpred_def)
-  (f: funsym)
-  (fd_in: In (nonrec_def fd) gamma)
-  (l_in: In (recursive_def l) gamma)
-  (f_in1: In f (funsyms_of_nonrec fd))
-  (f_in2: In f (funsyms_of_rec l)):
-  False.
-Proof.
-  apply (funsym_multiple_defs (nonrec_def fd) (recursive_def l) f); auto;
-  intro C; inversion C.
-Qed.
-
-Lemma recpred_not_nonrec (fd: funpred_def) (l: list funpred_def)
-  (p: predsym)
-  (fd_in: In (nonrec_def fd) gamma)
-  (l_in: In (recursive_def l) gamma)
-  (f_in1: In p (predsyms_of_nonrec fd))
-  (f_in2: In p (predsyms_of_rec l)):
-  False.
-Proof.
-  apply (predsym_multiple_defs (nonrec_def fd) (recursive_def l) p); auto;
-  intro C; inversion C.
-Qed.
-
-Lemma indprop_not_nonrec (fd: funpred_def) (d: list indpred_def)
-  (p: predsym)
-  (fd_in: In (nonrec_def fd) gamma)
-  (d_in: In (inductive_def d) gamma)
-  (p_in1: In p (predsyms_of_nonrec fd))
-  (p_in2: pred_in_indpred p (get_indpred d)):
-  False.
-Proof.
-  apply (predsym_multiple_defs (nonrec_def fd) (inductive_def d) p); auto.
-  - intro C; inversion C.
-  - simpl. apply pred_in_indpred_iff; auto.
-Qed.
-
-Lemma nonrecfun_not_twice fd1 fd2 f
-  (fd_in1: In (nonrec_def fd1) gamma)
-  (fd_in2: In (nonrec_def fd2) gamma)
-  (f_in1: In f (funsyms_of_nonrec fd1))
-  (f_in2: In f (funsyms_of_nonrec fd2)):
-  fd1 = fd2.
-Proof.
-  destruct (funpred_def_eq_dec fd1 fd2); subst; auto.
-  exfalso. apply (funsym_multiple_defs (nonrec_def fd1) (nonrec_def fd2) f); auto.
-  intro C. inversion C; subst; auto.
-Qed.
-
-Lemma nonrecpred_not_twice fd1 fd2 p
-  (fd_in1: In (nonrec_def fd1) gamma)
-  (fd_in2: In (nonrec_def fd2) gamma)
-  (p_in1: In p (predsyms_of_nonrec fd1))
-  (p_in2: In p (predsyms_of_nonrec fd2)):
-  fd1 = fd2.
-Proof.
-  destruct (funpred_def_eq_dec fd1 fd2); subst; auto.
-  exfalso. apply (predsym_multiple_defs (nonrec_def fd1) (nonrec_def fd2) p); auto.
-  intro C. inversion C; subst; auto.
-Qed.
-
-Lemma nonrecfun_not_abs fd f
-  (fd_in: In (nonrec_def fd) gamma)
-  (abs_in: In (abs_fun f) gamma)
-  (f_in: In f (funsyms_of_nonrec fd)):
-  False.
-Proof.
-  apply (funsym_multiple_defs (nonrec_def fd) (abs_fun f) f); simpl; auto;
-  intro C; inversion C.
-Qed.
-
-Lemma nonrecpred_not_abs fd p
-  (fd_in: In (nonrec_def fd) gamma)
-  (abs_in: In (abs_pred p) gamma)
-  (p_in: In p (predsyms_of_nonrec fd)):
-  False.
-Proof.
-  apply (predsym_multiple_defs (nonrec_def fd) (abs_pred p) p); simpl; auto;
-  intro C; inversion C.
-Qed.
-
-
 (*Constrs lemma*)
 Lemma pf_with_nonrec_constrs (pf: pi_funpred gamma_valid pd)
   (fd: funpred_def) (f_in: In (nonrec_def fd) gamma):
@@ -536,7 +391,7 @@ Proof.
   [| destruct pf; apply constrs].
   (*Here, we need a contradiction*)
   exfalso.
-  apply (constr_not_nonrecfun (fun_def f l t) f a m); simpl; auto.
+  apply (constr_not_nonrecfun gamma_valid (fun_def f l t) f a m); simpl; auto.
 Qed.
 
 (*Now we can give the whole definition*)

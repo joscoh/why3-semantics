@@ -120,7 +120,6 @@ Proof.
   reflexivity.
 Qed.
 
-(*TODO: reverse axioms*)
 End ListAxioms.
 
 (*Helpful for lemmas*)
@@ -248,7 +247,7 @@ Proof.
     + wintros "l2".
       wunfold_at app 0%N; wsimpl_match.
       wunfold_p_at mem 1%N;wsimpl_match.
-      (*TODO: could have tactic to simplify*)
+      (*could have tactic to simplify "or false"*)
       wsplit.
       * wintros "Hmem". wright. wassumption.
       * wintros "Hmem". wdestruct_or "Hmem" "Hfalse" "Hmem".
@@ -260,9 +259,9 @@ Proof.
       wunfold_p_at mem 1%N; wsimpl_match.
       wspecialize "IH" l2__.
       wrewrite_iff "IH".
-      (*TODO: we need or assoc*)
-      (*TODO: should really have reflexivity for iff*)
-      (*But we can prove manually for now*)
+      (*Note: we should really have better automation/
+        lemmas for or (comm, assoc, refl) but for now,
+        prove manually*)
       wsplit; wintros "Hmem".
       * wdestruct_or "Hmem" "Hmem1" "Hmem1".
         -- wleft. wleft. wassumption.
@@ -293,7 +292,6 @@ Proof.
       wintros "Hmem".
       wdestruct_or "Hmem" "Heqxy" "Hmem1".
       * wexists <t Nil<a_>() t>.
-      (*TODO*)
         wexists l__.
         wunfold_at app 0%N; wsimpl_match.
         wrewrite "Heqxy".

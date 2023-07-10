@@ -47,12 +47,6 @@ Definition valid (f: formula) (f_typed: formula_typed gamma f) : Prop :=
 
 End Valid.
 
-Definition mono (f: formula) : bool :=
-  null (fmla_type_vars f).
-
-Definition mono_t tm : bool :=
-  null (tm_type_vars tm).
-
 (*Makes the theorem statements nicer*)
 Record closed (gamma: context) (f: formula) := 
 mk_closed {
@@ -72,7 +66,7 @@ Record closed_tm (t: term) : Prop :=
 (*f is the logical consequence of formulas Delta if every
   interpretation that satisfies all of Delta also satisfies f.
   We define this only for closed, monomorphic formulas f.
-  Later (TODO) we will define a way to generalize this
+  Later (in Theory.v) we will define a way to generalize this
   by removing polymorphism*)
 
 Definition log_conseq (Delta: list formula) (f: formula)
@@ -150,6 +144,20 @@ Proof.
       intros x [].
 Qed.
 
+Lemma closed_satisfies_rep
+(pd : pi_dom) (pf : pi_funpred gamma_valid pd)
+(pf_full : full_interp gamma_valid pd pf) (f : formula)
+(Hc : closed gamma f)
+(Hty1: formula_typed gamma f):
+satisfies pd pf pf_full f Hty1 <->
+formula_rep gamma_valid pd triv_val_typevar pf
+(triv_val_vars pd triv_val_typevar) f Hty1.
+Proof.
+  erewrite satisfies_irrel.
+  rewrite (reflect_iff _ _ (closed_satisfies_equiv pd pf pf_full f Hc)).
+  erewrite fmla_rep_irrel. unfold is_true. reflexivity.
+Qed.
+
 (*As an immediate corollary, satisfaction is decidable*)
 Corollary closed_satisfies_dec (pd: pi_dom) (pf: pi_funpred gamma_valid pd)
 (pf_full: full_interp gamma_valid pd pf) (f: formula)
@@ -178,13 +186,13 @@ Theorem semantic_lem (pd: pi_dom) (pf: pi_funpred gamma_valid pd)
 satisfies pd pf pf_full f (f_ty Hc) \/
 satisfies pd pf pf_full (Fnot f) (f_ty (closed_not Hc)).
 Proof.
-  rewrite (reflect_iff _ _ (closed_satisfies_equiv pd pf pf_full f _)),
-    (reflect_iff _ _ (closed_satisfies_equiv pd pf pf_full (Fnot f) _)).
+  rewrite !closed_satisfies_rep.
   simpl_rep_full.
   rewrite fmla_rep_irrel with(Hval1:= (typed_not_inv (f_ty (closed_not Hc))))
     (Hval2:=f_ty Hc).
   destruct (formula_rep gamma_valid pd triv_val_typevar pf 
     (triv_val_vars pd triv_val_typevar) f (f_ty Hc)); auto.
+  apply closed_not. all: auto.
 Qed.
 
 (*Logical consequence is equivalent to saying that
@@ -359,4 +367,27 @@ Proof.
   unfold satisfies. split; intros.
   - erewrite <- fmla_change_gamma_pf. apply H. all: auto.
   - erewrite fmla_change_gamma_pf. apply H. all: auto.
+Qed.
+
+(*I |= f1 /\ f2 iff I |= f1 and I |= f2. If only all connectives
+  were so nice*)
+Lemma satisfies_and {gamma} (gamma_valid: valid_context gamma)
+  (pd: pi_dom) (pf: pi_funpred gamma_valid pd)
+  (pf_full: full_interp gamma_valid pd pf)
+  (A B: formula) (A_ty: formula_typed gamma A) 
+  (B_ty: formula_typed gamma B):
+  satisfies gamma_valid pd pf pf_full (Fbinop Tand A B) 
+    (F_Binop _ _ _ _ A_ty B_ty)
+  <-> 
+  satisfies gamma_valid pd pf pf_full A A_ty /\
+  satisfies gamma_valid pd pf pf_full B B_ty.
+Proof.
+  unfold satisfies. split; intros.
+  - split; intros vt vv; specialize (H vt vv); revert H;
+    simpl_rep_full; bool_to_prop; intros [C1 C2]; 
+    erewrite fmla_rep_irrel; [apply C1 | apply C2].
+  - destruct H as [F1 F2]; specialize (F1 vt vv);
+    specialize (F2 vt vv); simpl_rep_full;
+    rewrite fmla_rep_irrel with(Hval2:=A_ty),
+      fmla_rep_irrel with (Hval2:=B_ty), F1, F2; auto.
 Qed.

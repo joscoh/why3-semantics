@@ -26,7 +26,6 @@ Definition zero : term := Tconst (ConstInt 0).
 Definition one : term := Tconst (ConstInt 1).
 
 (*First, define option type (we will do for real later)*)
-(*TODO: make this nicer*)
 Definition avar : typevar := "a".
 Definition a : vty := vty_var avar.
 Definition option_ts : typesym := mk_ts "option" [avar].

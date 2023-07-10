@@ -49,6 +49,13 @@ omap (fun d =>
   | _ => None
   end) c. 
 
+Definition nonrec_of_context gamma : list funpred_def :=
+  fold_right (fun o acc =>
+    match o with
+    | nonrec_def f => f :: acc
+    | _ => acc
+    end) nil gamma.
+
 (*The concrete list of typesyms, funsyms, and predsyms*)
 Definition typesyms_of_context (c: context) : list typesym :=
   concat (map typesyms_of_mut (mut_of_context c)).

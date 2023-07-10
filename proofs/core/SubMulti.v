@@ -34,7 +34,6 @@ Fixpoint sub_ts (subs: list (vsymbol * term)) (t: term) {struct t} : term :=
             (fst p, sub_ts (remove_bindings subs (pat_fv (fst p))) (snd p))) ps)
   | Teps f1 v => Teps  (sub_fs (remove_binding subs v) f1) v
   end
-(*TODO: fix with remove_binding*)
 with sub_fs (subs: list (vsymbol * term)) (f : formula) {struct f}: formula :=
   match f with
   | Fpred p tys tms => Fpred p tys (map (sub_ts subs) tms)
@@ -96,7 +95,6 @@ Proof.
   lia.
 Qed.
 
-(*TODO*)
 Lemma map_arg_list_nth {gamma: context} (gamma_valid: valid_context gamma)
 (pd: pi_dom) (vt: val_typevar) (pf: pi_funpred gamma_valid pd)
 (vv: val_vars pd vt)
@@ -176,24 +174,6 @@ Proof.
   intros. induction subs; simpl in *; auto.
   destruct (in_dec vsymbol_eq_dec (fst a) vs); simpl; auto.
   intro C. destruct C; subst; auto.
-Qed.
-
-Lemma sublist_big_union_ext {A B: Type} eq_dec (f: B -> list A)
-  (l1 l2: list B):
-  sublist l1 l2 ->
-  sublist (big_union eq_dec f l1) (big_union eq_dec f l2).
-Proof.
-  unfold sublist; intros; simpl_set.
-  destruct_all; subst.
-  exists x0. auto.
-Qed. 
-
-Lemma dom_cast_eq' {d: sort -> Set} (s1 s2: sort)
-  (H1 H2: s1 = s2) (x y: domain d s1):
-  x = y ->
-  dom_cast d H1 x = dom_cast d H2 x.
-Proof.
-  intros; subst. apply dom_cast_eq.
 Qed.
 
 Lemma notin_remove_binding subs vs x:
@@ -720,7 +700,7 @@ Proof.
     (typed_quant_inv Hty2)).
     {
       intros d.
-      (*TODO: lots of repetitition*)
+      (*lots of repetitition*)
       assert (NoDup (map fst (remove_binding subs v))) by
       (apply remove_bindings_nodup; auto).
       erewrite H with(Hty2:=typed_quant_inv Hty2); auto.
@@ -1277,8 +1257,7 @@ Proof.
     simpl_set. destruct H0; auto. contradiction.
 Qed.
 
-(*TODO: typing lemmas, safe substitution*)
-(*TODO: not good, repetitive*)
+(* repetitive*)
 Definition disjb' {A : Type} eq_dec (l1 l2: list A): bool :=
   forallb (fun x => negb (in_dec eq_dec x l2)) l1.
 
@@ -1392,4 +1371,22 @@ Qed.
 Definition sub_ts_ty gamma t := proj_tm (subs_ty gamma) t.
 Definition sub_fs_ty gamma f := proj_fmla (subs_ty gamma) f.
 
-(*TODO: remove old sub typing lemmas*)
+(*Corollaries for single substitution version*)
+Corollary sub_t_typed {gamma} (t: term) (t1: term) (x: string) (ty1 ty2: vty)
+  (Hty1: term_has_type gamma t1 ty1)
+  (Hty2: term_has_type gamma t ty2):
+  term_has_type gamma (sub_t t1 (x, ty1) t) ty2.
+Proof.
+  rewrite sub_t_equiv.
+  apply sub_ts_ty; auto. 
+Qed.
+
+Corollary sub_f_typed {gamma} (f: formula) 
+  (t1: term) (x: string) (ty1: vty)
+  (Hty1: term_has_type gamma t1 ty1)
+  (Hval2: formula_typed gamma f) :
+  formula_typed gamma (sub_f t1 (x, ty1) f).
+Proof.
+  rewrite sub_f_equiv.
+  apply sub_fs_ty; auto.
+Qed. 

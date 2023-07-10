@@ -879,7 +879,7 @@ Proof.
     intros i d1 d2 Hi.
     unfold vsymbol in *.
     rewrite H0 in Hi.
-    (*TODO: separate lemma?*)
+    (*separate lemma?*)
     assert (Hmap: (map (ty_subst (s_params p) (map vty_var (s_params p))) (s_args p)) 
       = s_args p).
     {
@@ -1108,7 +1108,7 @@ Proof.
           ++ unfold substi. vsym_eq x v. vsym_eq y v0.
         -- intros. destruct_all. not_or Hx.
           unfold substi. vsym_eq x v. vsym_eq x v0.
-      * (*TODO: this is almost the exact same proof*)
+      * (*this is almost the exact same proof*)
         exists (dom_cast (dom_aux pd) (f_equal (v_subst vt) (eq_sym e)) d).
         (*Use IH*)
         erewrite H with(vars:=(v, v0) :: vars). apply Hd. 
@@ -1278,7 +1278,6 @@ Proof.
   rewrite iter_fand_app_rep.
   (*Generalize typing proofs to keep context reasonable*)
   simpl. 
-  (*Just want to rewrite with binop - TODO not great*)
   rewrite !formula_rep_equation_5; simpl.
   rewrite IHl with(Hval2:=(proj1' (iter_fand_app_inv Hval2))).
   rewrite formula_rep_equation_7, andb_true_r. f_equal.
@@ -2403,7 +2402,7 @@ Proof.
     rewrite descend_transform_equiv with(p:=p)(Hind:=Hinda)(Hty:=Htya)
     (Hvs:=Hmapeq) in Hinvrep; auto.
     generalize dependent (descend_transform_valid zs p (a_convert_all_f constr zs) Hinda Htya Hmapeq).
-    (*Now simplify the transformation - TODO: lots of repeated boilerplate*)
+    (*Now simplify the transformation - lots of repeated boilerplate, should fix*)
     unfold descend_transform.
     intros Hdestransty.
     assert (A:=Hdestransty).
@@ -2477,7 +2476,7 @@ Proof.
       (tup_2 (indpred_decomp (a_convert_all_f constr zs))) Hallval2)); auto.
       { intros. erewrite fmla_rep_irrel; apply Handrep. }
       (*And we must simply prove that these valuations are equal*)
-      (*TODO: very similar to next lemma - has to be better way*)
+      (*Note: very similar to next lemma - has to be better way*)
       intros x Hinx.
       assert (Hinxb: In x (fmla_bnd (a_convert_all_f constr zs))). {
         rewrite iter_fand_fv in Hinx. simpl_set. destruct Hinx as [f1 [Hinf1 Hinx]].
@@ -3125,7 +3124,7 @@ Proof.
           (*Before proving the equality, we can simplify
             the inner interpretation to remove [interp_with_ps..]
             because p cannot appear in the arguments*)
-          (*TODO: better method than writing whole thing*)
+          (*better method than writing whole thing?*)
           replace (pred_arg_list pd vt p' (map vty_var (s_params p'))
           (snd (get_indprop_args (a_convert_all_f constr vs)))
           (term_rep gamma_valid pd vt

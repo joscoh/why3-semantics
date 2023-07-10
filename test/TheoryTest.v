@@ -504,14 +504,13 @@ Ltac extra_simpl ::=
   try rewrite !yt_eq;
   try rewrite !zt_eq.
 
-(*TODO: this is slow, the stuff in stdlib is better
+(*Note: this is slow, the stuff in stdlib is better
   (no rewriting in hypotheses, no wstart)*)
 Lemma ring_theory_valid: valid_theory ring_theory.
 Proof.
   simpl. split_all; auto.
   - wstart.
     wintros "x" "y" "Hxy".
-    (*TODO: tactic for this (easy with f_equal)*)
     wassert "Heq" (Feq t_ty ((xt +r (-r yt)) +r yt) (0r +r yt)).
     {
       wf_equal. wassumption. wreflexivity.

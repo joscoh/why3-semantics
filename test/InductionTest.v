@@ -9,8 +9,7 @@ Module InductionTest.
 
 Local Open Scope string_scope.
 
-(*First, define nat type (we will do this for real later)
-  TODO: Notations*)
+(*First, define nat type*)
 Definition nat_ts : typesym := mk_ts "nat" nil.
 Definition wnat : vty := vty_cons nat_ts nil.
 Definition O_fs : funsym := funsym_noty "O" nil wnat.

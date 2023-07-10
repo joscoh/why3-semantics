@@ -199,6 +199,24 @@ Proof.
   - inversion H.
 Qed.
 
+Lemma union_nil_eq (l1 l2: list A):
+  l1 = nil ->
+  l2 = nil ->
+  union l1 l2 = nil.
+Proof.
+  intros ->->. reflexivity.
+Qed.
+
+Lemma union_nil_r (l1: list A):
+  NoDup l1 ->
+  union l1 nil = l1.
+Proof.
+  induction l1; simpl; auto.
+  intros. inversion H; subst.
+  rewrite IHl1; auto.
+  destruct (in_dec eq_dec a l1); auto; contradiction.
+Qed.
+
 Lemma filter_union (l1 l2: list A)
   (f: A -> bool):
   filter f (union l1 l2) =
@@ -407,6 +425,22 @@ Lemma null_nil: forall {A: Type} (l: list A),
   null l <-> l = nil.
 Proof.
   intros; destruct l; split; intros; auto; inversion H.
+Qed.
+
+Lemma big_union_null_eq {A B: Type} eq_dec (f: B -> list A) (l: list B):
+  (forall x, In x l -> null (f x)) ->
+  null (big_union eq_dec f l).
+Proof.
+  intros.
+  rewrite !null_nil. apply big_union_nil_eq. intros.
+  rewrite <- null_nil; auto.
+Qed.
+
+Lemma union_null_eq {A: Type} (eq_dec: forall x y: A, {x = y} + {x <> y})
+  (l1 l2: list A):
+  null l1 -> null l2 -> null (union eq_dec l1 l2).
+Proof.
+  rewrite !null_nil. intros. subst. reflexivity.
 Qed.
 
 (** Lemmas about [remove] **)
@@ -1244,6 +1278,19 @@ Proof.
   - destruct (IH tl2); [|right_dec]. rewrite e. left; reflexivity.
 Defined.
 
+Fixpoint map_ne_list {A B: Set} (f: A -> B) (l: ne_list A) : ne_list B :=
+  match l with
+  | ne_hd x => ne_hd (f x)
+  | ne_cons x tl => ne_cons (f x) (map_ne_list f tl)
+  end.
+
+Lemma map_ne_list_spec {A B: Set} (f: A -> B) (l: ne_list A):
+  ne_list_to_list (map_ne_list f l) = map f (ne_list_to_list l).
+Proof.
+  induction l; simpl; auto.
+  rewrite IHl; auto.
+Qed.
+
 End NEList.
 
 
@@ -1994,7 +2041,7 @@ Ltac list_tac :=
     rewrite Nat.min_id
   | |- context [In ?x (?l1 ++ ?l2)] =>
     rewrite in_app_iff
-  (*Deal with some "In" goals - TODO improve*)
+  (*Deal with some "In" goals*)
   | |- In ?x (map ?g ?l) => rewrite in_map_iff
   | H: In ?x (firstn ?n ?l) |- In ?x ?l => apply In_firstn in H
   | H: In ?x (skipn ?n ?l) |- In ?x ?l => apply In_skipn in H
@@ -2292,7 +2339,6 @@ Proof.
   rewrite in_map_iff. exists x; auto.
 Qed.
 
-(*Copied from Task - TODO move and delete there*)
 Lemma sublist_trans {A: Type} (l2 l1 l3: list A):
   sublist l1 l2 ->
   sublist l2 l3 ->
@@ -2301,4 +2347,142 @@ Proof.
   unfold sublist; auto.
 Qed.
 
+Lemma NoDup_map_sublist {A B: Type} (f: A -> B)
+  (l1 l2: list A):
+  NoDup (map f l2) ->
+  NoDup l1 ->
+  sublist l1 l2 ->
+  NoDup (map f l1).
+Proof.
+  induction l1; simpl; intros; auto. constructor.
+  inversion H0; subst.
+  constructor; auto.
+  - intro C. rewrite in_map_iff in C.
+    destruct C as [y [Hfy Hiny]].
+    (*Idea: both a and y in l2 with same f, so same*)
+    assert (y = a).
+    { 
+      assert (In a l2). apply H1; simpl; auto.
+      assert (In y l2). apply H1; simpl; auto.
+      eapply NoDup_map_in. apply H. all: auto.
+    }
+    subst. contradiction.
+  - apply IHl1; auto. intros x Hinx; apply H1; simpl; auto.
+Qed.
+
+Lemma sublist_big_union_ext {A B: Type} eq_dec (f: B -> list A)
+  (l1 l2: list B):
+  sublist l1 l2 ->
+  sublist (big_union eq_dec f l1) (big_union eq_dec f l2).
+Proof.
+  unfold sublist; intros; simpl_set.
+  destruct_all; subst.
+  exists x0. auto.
+Qed. 
+
+Lemma sublist_big_union_map {A B: Type} 
+  (eq_dec: forall (x y: A), {x=y} + {x<>y})
+  (f: B -> list A) (l: list B) (g: B -> B):
+  Forall (fun x => sublist (f (g x)) (f x)) l ->
+  sublist (big_union eq_dec f (map g l)) (big_union eq_dec f l).
+Proof.
+  intros.
+  unfold sublist.
+  intros. simpl_set.
+  rewrite Forall_forall in H.
+  destruct H0 as [y [Hiny Hinx]].
+  rewrite in_map_iff in Hiny.
+  destruct Hiny as [z [Hy Hinz]]; subst.
+  exists z. split; auto.
+  apply H in Hinz.
+  apply Hinz; auto.
+Qed.
+
+Lemma sublist_union {A: Type} (eq_dec: forall (x y: A), {x=y}+{x<>y})
+  (l1 l2 l3 l4: list A):
+  sublist l1 l2 ->
+  sublist l3 l4 ->
+  sublist (union eq_dec l1 l3) (union eq_dec l2 l4).
+Proof.
+  unfold sublist. intros. simpl_set.
+  destruct H1; auto.
+Qed.
+
+Lemma sublist_remove {A: Type} (eq_dec: forall (x y: A), {x=y}+{x<>y})
+  v l1 l2:
+  sublist l1 l2 ->
+  sublist (remove eq_dec v l1) (remove eq_dec v l2).
+Proof.
+  unfold sublist; intros; simpl_set; destruct_all; split; auto.
+Qed.
+
+Lemma sublist_remove_all  {A: Type} (eq_dec: forall (x y: A), {x=y}+{x<>y})
+  l1 l2 l3:
+  sublist l2 l3 ->
+  sublist (remove_all eq_dec l1 l2) (remove_all eq_dec l1 l3).
+Proof.
+  unfold sublist; intros; simpl_set; destruct_all; auto.
+Qed.
+
 End Sublist.
+
+Ltac solve_subset :=
+  repeat match goal with
+  | |- sublist ?x ?x => apply sublist_refl
+  | |- sublist (Common.union ?eq_dec ?l1 ?l2) (Common.union ?eq_dec ?l3 ?l4) =>
+    apply sublist_union; auto
+  | |- sublist (remove ?eq_dec ?x ?l1) (remove ?eq_dec ?x ?l2) =>
+    apply sublist_remove; auto
+  | |- sublist (big_union ?eq_dec ?f (map ?g ?l)) (big_union ?eq_dec ?f ?l) =>
+    apply sublist_big_union_map; auto
+  | |- sublist (remove_all ?eq_dec ?l1 ?l2) (remove_all ?eq_dec ?l1 ?l3) =>
+    apply sublist_remove_all; auto
+  | H: Forall ?P (map ?f ?l) |- Forall ?Q ?l => rewrite Forall_map in H; 
+    revert H; apply Forall_impl; auto; simpl; intros
+  | |- Forall ?P ?l => rewrite Forall_forall; auto; simpl; intros; simpl
+  end.
+
+Section EqMem.
+
+Context {A: Type} (eq_dec: forall (x y: A), {x = y} + {x <> y}).
+
+Definition eq_mem (l1 l2: list A) : Prop :=
+  forall x, In x l1 <-> In x l2.
+
+Lemma eq_mem_refl l:
+  eq_mem l l.
+Proof.
+  unfold eq_mem; intros; reflexivity.
+Qed. 
+Lemma eq_mem_union (l1 l2 l3 l4: list A) :
+  eq_mem l1 l2 ->
+  eq_mem l3 l4 ->
+  eq_mem (union eq_dec l1 l3) (union eq_dec l2 l4).
+Proof.
+  unfold eq_mem. intros. simpl_set. rewrite H, H0; reflexivity.
+Qed.
+
+Lemma eq_mem_union_comm (l1 l2: list A):
+  eq_mem (union eq_dec l1 l2) (union eq_dec l2 l1).
+Proof.
+  unfold eq_mem. intros. simpl_set. apply or_comm.
+Qed.
+
+Lemma eq_mem_null (l1 l2: list A):
+  eq_mem l1 l2 ->
+  null l1 = null l2.
+Proof.
+  unfold eq_mem, null. intros.
+  destruct l1; destruct l2; auto; exfalso.
+  - specialize (H a). destruct H. apply H0; simpl; auto.
+  - specialize (H a); destruct H. apply H; simpl; auto.
+Qed.
+
+End EqMem.
+
+Ltac eq_mem_tac :=
+  repeat match goal with
+  | |- eq_mem ?l ?l => apply eq_mem_refl
+  | |- eq_mem (union ?dec ?l1 ?l2) (union ?dec ?l2 ?l1) => apply eq_mem_union_comm
+  | |- eq_mem (union ?dec ?l1 ?l2) (union ?dec ?l3 ?l4) => apply eq_mem_union
+  end; auto.

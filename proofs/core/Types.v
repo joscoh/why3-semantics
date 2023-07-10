@@ -703,4 +703,19 @@ Proof.
     rewrite Forall_forall in H. apply H. apply nth_In; auto.
 Qed.
 
+Lemma ty_subst_equiv params tys ty:
+  (sublist (type_vars ty) params) ->
+  ty_subst params tys ty = ty_subst' params tys ty.
+Proof.
+  intros. unfold ty_subst. induction ty; simpl; auto.
+  - destruct (in_dec typevar_eq_dec v params); simpl; auto.
+    exfalso. simpl in H.
+    apply n, H; simpl; auto.
+  - f_equal. apply map_ext_in.
+    intros. rewrite Forall_forall in H0.
+    apply H0; auto.
+    simpl in H. intros x Hinx.
+    apply H. simpl_set. exists a; auto.
+Qed.
+
 End TySubstAlt.

@@ -544,7 +544,7 @@ Proof.
       assert (Hvalntheq: v_subst vt 
         (nth i (sym_sigma_args f srts) s_int) =
       typesym_to_sort (adt_name adt2) srts). {
-        (*TODO: maybe separate lemma or something - inverse of
+        (*Note: maybe separate lemma or something - inverse of
           [adts_from_constrs] or whatever it is*)
         apply (reflect_iff _ _ (vty_in_m_spec m vs2 _)) in Hty.
         destruct Hty as [a' [Ha' Hty]].
@@ -5227,7 +5227,7 @@ funcs_rep_aux pa = funcs_rep_aux_body pa
 Proof.
   unfold funcs_rep_aux. rewrite Init.Wf.Fix_eq; auto.
   intros.
-  (*TODO: maybe can prove without but we use funext anyway*)
+  (*Note: maybe can prove without but we use funext anyway*)
   assert (f = g). repeat (apply functional_extensionality_dep; intros); auto.
   subst; auto.
 Qed.

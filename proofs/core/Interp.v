@@ -294,6 +294,22 @@ Proof.
         -- erewrite IHvars; auto. lia.
 Qed.
 
+(*Helps with dependent type stuff*)
+Lemma val_with_args_in' (vv : val_vars pd vt)
+	(vars : list vsymbol) (srts : list sort) x
+    (a : arg_list domain srts):
+  NoDup vars ->
+  Datatypes.length vars = Datatypes.length srts ->
+  forall i : nat,
+  i < Datatypes.length vars ->
+  x = nth i vars vs_d ->
+  forall Heq : nth i srts s_int = v_subst vt (snd x),
+  val_with_args vv vars a x =
+  dom_cast (dom_aux pd) Heq (hnth i a s_int (dom_int pd)).
+Proof.
+  intros. subst. apply val_with_args_in; auto.
+Qed.
+
 (*The other case is much easier*)
 Lemma val_with_args_notin vv (vars: list vsymbol) (srts: list sort)
   (a: arg_list domain srts) (x : vsymbol)

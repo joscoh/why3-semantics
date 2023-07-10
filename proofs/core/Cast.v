@@ -75,6 +75,13 @@ Proof.
   subst. reflexivity.
 Qed.
 
+Lemma scast_refl_uip {A: Set} (H: A = A) x:
+  scast H x = x.
+Proof.
+  assert (H = eq_refl) by apply UIP.
+  subst. reflexivity.
+Qed.
+
 (*Basically UIP for x = y instead of x = x*)
 Lemma dec_uip_diff {A: Set} {x1 x2: A} 
   (eq_dec: forall (x y: A), {x= y} + {x <> y}) 

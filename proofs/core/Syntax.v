@@ -84,27 +84,6 @@ Record predsym: Set :=
 
 Coercion p_sym : predsym >-> fpsym.
 
-(*Record funsym : Set :=
-  {
-    s_name : string;
-    s_params : list typevar;
-    s_args: list vty;
-    s_ret: vty;
-    
-    s_ret_wf: check_sublist (type_vars s_ret) s_params;
-    s_args_wf: check_args s_params s_args;
-    s_params_nodup: nodupb typevar_eq_dec s_params
-  }.
-
-Record predsym : Set :=
-  {
-    p_name: string;
-    p_params: list typevar;
-    p_args : list vty;
-    p_args_wf: check_args p_params p_args;
-    p_params_nodup: nodupb typevar_eq_dec p_params
-  }.*)
-
 Lemma s_params_Nodup: forall (s: fpsym),
   NoDup (s_params s).
 Proof.
@@ -804,7 +783,7 @@ Proof.
     dec (list_eqb_spec _ vty_eq_spec tys l).
     dec (Nat.eqb_spec (length tms) (length l0)).
     subst.
-    (*TODO: generalize this - maybe write list_eqb with all2*)
+    (*could generalize this - maybe write list_eqb with all2*)
     assert ((all2 (fun t1 t2 : term => term_eqb t1 t2) tms l0) <-> tms = l0). {
       generalize dependent l0. induction tms; simpl; intros; destruct l0;
       inversion e1; auto. split; auto.
@@ -1056,3 +1035,56 @@ Qed.
 
 Definition funpred_def_eq_dec (f1 f2: funpred_def) :
   {f1 = f2} + {f1 <> f2} := reflect_dec' (funpred_def_eqb_spec f1 f2).
+
+Definition indpred_def_eqb (f1 f2: indpred_def) : bool :=
+  match f1, f2 with
+  | ind_def p1 f1, ind_def p2 f2 =>
+    predsym_eqb p1 p2 &&
+    list_eqb (tuple_eqb String.eqb formula_eqb) f1 f2
+  end.
+
+Lemma indpred_def_eqb_spec f1 f2:
+  reflect (f1 = f2) (indpred_def_eqb f1 f2).
+Proof.
+  destruct f1; destruct_triv f2; simpl.
+  dec (predsym_eqb_spec p p0).
+  dec (list_eqb_spec (tuple_eqb String.eqb formula_eqb) 
+    (tuple_eqb_spec String.eqb_spec formula_eqb_spec) l l0).
+  subst. apply ReflectT. reflexivity.
+Qed.
+
+Definition indpred_def_eq_dec (f1 f2: indpred_def) :
+  {f1 = f2} + {f1 <> f2} := reflect_dec' (indpred_def_eqb_spec f1 f2).
+
+Definition def_eqb (d1 d2: def) : bool :=
+  match d1, d2 with
+  | datatype_def m1, datatype_def m2 => mut_adt_dec m1 m2
+  | recursive_def l1, recursive_def l2 =>
+    list_eqb funpred_def_eqb l1 l2
+  | inductive_def l1, inductive_def l2 =>
+    list_eqb indpred_def_eqb l1 l2
+  | nonrec_def f1, nonrec_def f2 => funpred_def_eqb f1 f2
+  | abs_type t1, abs_type t2 => typesym_eqb t1 t2
+  | abs_fun f1, abs_fun f2 => funsym_eqb f1 f2
+  | abs_pred p1, abs_pred p2 => predsym_eqb p1 p2
+  | _, _ => false
+  end.
+
+Ltac by_dec H := dec H; subst; apply ReflectT; reflexivity.
+
+Lemma def_eqb_spec (d1 d2: def):
+  reflect (d1 = d2) (def_eqb d1 d2).
+Proof.
+  unfold def_eqb.
+  destruct d1; destruct d2; try solve[apply ReflectF; intro C; inversion C].
+  - by_dec (mut_adt_dec m m0).
+  - by_dec (list_eqb_spec _ funpred_def_eqb_spec l l0).
+  - by_dec (list_eqb_spec _ indpred_def_eqb_spec l l0). 
+  - by_dec (funpred_def_eqb_spec f f0). 
+  - by_dec (typesym_eqb_spec t t0).
+  - by_dec (funsym_eqb_spec f f0). 
+  - by_dec (predsym_eqb_spec p p0).
+Qed.
+  
+Definition def_eq_dec (d1 d2: def) : {d1 = d2} + {d1 <> d2} :=
+  reflect_dec' (def_eqb_spec d1 d2).

@@ -102,7 +102,7 @@ Ltac wintros_tac c :=
   end.
 
 (*We (arbitrarily) allow intros-ing up to 5 things at once*)
-(*TODO: this could be done more efficiently by taking in a list
+(*This could be done more efficiently by taking in a list
 or something and then doing a recursive tactic. But this is easier*)
 Tactic Notation "wintros" constr(c1) :=
   wintros_tac c1.
@@ -139,68 +139,8 @@ Ltac wassert name f :=
 (*If hypothesis H has form Fquant Tforall x f,
   then wspecialize H t replaces H with hypothesis f[t/x]*)
 
-(*Definition add_hyp (delta : list (string * formula)) name f_new :=
-  (name, f_new) :: delta.*)
-
 Definition remove_hyp (delta: list (string * formula)) name :=
   filter (fun x => negb (String.eqb (fst x) name)) delta.
-
-(*TODO: move*)
-(*We can permute the hypotheses*)
-Definition perm_trans (delta': list (string * formula)) : trans :=
-  fun t =>
-  if perm_eq (task_delta t) delta' then 
-  [mk_task (task_gamma t) delta' (task_goal t)] else [t].
-
-Lemma perm_trans_sound delta': sound_trans (perm_trans delta').
-Proof.
-  unfold sound_trans, perm_trans. intros.
-  destruct (perm_eq (task_delta t) delta') eqn : Hperm;
-  [| apply H; simpl; auto].
-  specialize (H _ (ltac:(left; reflexivity))).
-  destruct t as [[gamma delta] goal]; simpl_task.
-  unfold task_valid in *. destruct H as [Hwf Hval].
-  split; auto. intros. simpl_task.
-  specialize (Hval gamma_valid Hwf).
-  unfold log_conseq in *.
-  intros. specialize (Hval pd pf pf_full).
-  erewrite satisfies_irrel. apply Hval.
-  intros. erewrite satisfies_irrel. apply H.
-  Unshelve.
-  apply (perm_map snd) in Hperm.
-  apply perm_mem in Hperm.
-  apply /inP. rewrite Hperm. by apply /inP.
-Qed.
-
-Lemma Forall_perm {A: eqType} {s1 s2: seq A} {p: A -> Prop}:
-  Forall p s1 ->
-  perm_eq s1 s2 ->
-  Forall p s2.
-Proof.
-  rewrite !Forall_forall.
-  move=>Hall Hperm x /inP.
-  rewrite -(perm_mem Hperm) => /inP.
-  by apply Hall.
-Qed.
-
-Theorem D_perm gamma delta delta' goal:
-  perm_eq delta delta' ->
-  derives (gamma, delta', goal) ->
-  derives (gamma, delta, goal).
-Proof.
-  intros.
-  eapply (D_trans (perm_trans delta')); auto.
-  - inversion H0; subst. destruct H1.
-    constructor; simpl_task; auto.
-    apply (Forall_perm task_delta_typed).
-    apply perm_map. by rewrite perm_sym.
-    (*+ move: task_hyp_nodup => /Typechecker.uniqP Huniq. 
-      apply /Typechecker.uniqP.
-      by rewrite (perm_uniq (perm_map fst H)).*)
-  - apply perm_trans_sound.
-  - unfold perm_trans. simpl_task. rewrite H.
-    by intros x [<- | []].
-Qed.
 
 Definition replace_hyp (delta: list (string * formula)) (name: string)
   (f_new: formula): list (string * formula) :=
@@ -286,80 +226,6 @@ Proof.
   by rewrite -replace_hyp_eq_elts.
 Qed.
 
-(*Lemma replace_hyp_perm delta name f_new :
-  (*NoDup (map fst delta) ->*)
-  In name (map fst delta) ->
-  perm_eq (replace_hyp delta name f_new)
-    ((name, f_new) :: (remove_hyp delta name)).
-Proof.
-  move=> (*Huniq*) Hin.
-  (*rewrite /replace_hyp/remove_hyp.*)
-  rewrite in_map_iff in Hin.
-  destruct Hin as [elt [Hname Hinelt]]; subst.
-  apply in_split in Hinelt.
-  destruct Hinelt as [l1 [l2 Heql]]; subst.
-  rewrite replace_hyp_cat remove_hyp_cat /= String.eqb_refl/=.
-  rewrite perm_sym.
-  (*Now need to simplify these lists because elt does not appear*)
-  move: Huniq. rewrite map_cat NoDup_app_iff /= => [[Hn1 [Hn2 [_ /( _ elt.1 ltac:(auto))]]]].
-  move=> Hnotelt. inversion Hn2; subst.
-  rewrite !remove_hyp_notin // !replace_hyp_notin //.
-  apply perm_eq_middle.
-Qed.*)
-
-(*TODO: replace - stronger weaken*)
-Definition weaken_trans delta' : trans :=
-  fun t =>
-  if sublistb (map snd delta') (map snd (task_delta t)) (*&&
-    uniq delta'*) then
-  [mk_task (task_gamma t) delta' (task_goal t)]
-  else [t].
-
-  (*TODO: use incl?*)
-Lemma sublist_map {A B: Type} (f: A -> B) (l1 l2: list A):
-  sublist l1 l2 ->
-  sublist (map f l1) (map f l2).
-Proof.
-  apply incl_map.
-Qed.
-
-Lemma weaken_trans_sound delta': sound_trans (weaken_trans delta').
-Proof.
-  unfold sound_trans, weaken_trans.
-  intros.
-  revert H.
-  case: (sublistb [seq i.2 | i <- delta'] [seq i.2 | i <- task_delta t]) /sublistbP => Hsub;
-  intros;[| apply H; simpl; auto].
-  specialize (H _ ltac:(left; auto)).
-  destruct t as[[gamma delta] goal]; simpl_task.
-  unfold task_valid in *. destruct H as [Hwf Hval]; split; auto; simpl_task.
-  intros.
-  specialize (Hval gamma_valid Hwf).
-  unfold log_conseq in *. intros.
-  specialize (Hval pd pf pf_full). erewrite satisfies_irrel.
-  apply Hval. intros. erewrite satisfies_irrel. apply H.
-  Unshelve.
-  revert Hd. apply Hsub.
-Qed.
-
-(*We can always add new hypotheses*)
-Theorem D_weaken gamma delta delta' goal:
-  (*NoDup (map fst delta) ->*)
-  Forall (formula_typed gamma) (map snd delta) ->
-  sublist (map snd delta') (map snd delta) ->
-  derives (gamma, delta', goal) ->
-  derives (gamma, delta, goal).
-Proof.
-  intros (*Hn*) Hsub Htys Hder.
-  eapply (D_trans (weaken_trans delta')); auto.
-  - inversion Hder; subst.
-    destruct H. constructor; auto.
-  - apply weaken_trans_sound.
-  - unfold weaken_trans. simpl_task.
-    case: (sublistb [seq i.2 | i <- delta'] [seq i.2 | i <- delta])
-    /sublistbP => Hsubl; try contradiction.
-    intros x [<- | []]; auto.
-Qed.
 
 (*Rename a hypothesis to an unused name*)
 
@@ -373,7 +239,6 @@ Proof.
   unfold rename_hyp. rewrite map_map. reflexivity.
 Qed.
 
-(*TODO: move*)
 Lemma rename_hyp_same delta n: 
   rename_hyp delta n n = delta.
 Proof.
@@ -481,7 +346,6 @@ Proof.
 Qed.
 
 Theorem D_rename gamma delta name1 name2 goal:
-  (*NoDup (map fst delta) ->*)
   (name1 = name2 \/ ~ In name2 (map fst delta)) ->
   derives (gamma, rename_hyp delta name1 name2, goal) ->
   derives (gamma, delta, goal).
@@ -490,48 +354,8 @@ Proof.
   apply (D_weaken _ _ (rename_hyp delta name1 name2)); auto.
   - inversion H0; subst. destruct H1; simpl_task.
     rewrite map_snd_rename_hyp in task_delta_typed; auto.
-  - rewrite -list_map_map map_snd_rename_hyp.
+  - rewrite map_snd_rename_hyp.
     apply sublist_refl.
-Qed.
-
-(*TODO: move to GenElts*)
-Require Import GenElts.
-
-Definition gen_names (n: nat) (l: list string) : list string :=
-  gen_notin nth_str string_dec n l.
-
-Lemma gen_names_length n l:
-  List.length (gen_names n l) = n.
-Proof.
-  apply gen_notin_length. apply nth_str_inj.
-Qed.
-
-Lemma gen_names_nodup n l:
-  NoDup (gen_names n l).
-Proof.
-  apply gen_notin_nodup. apply nth_str_inj.
-Qed.
-
-Lemma gen_names_notin (n: nat) (l: list string):
-  forall x, In x (gen_names n l) -> ~ In x l.
-Proof.
-  intros. apply gen_notin_notin in H. auto.
-Qed.
-
-Definition gen_name (l: list string) : string :=
-  List.nth 0 (gen_names 1 l) EmptyString.
-
-Lemma gen_name_notin (l: list string):
-  ~ In (gen_name l) l.
-Proof.
-  unfold gen_name.
-  pose proof (gen_names_length 1 l).
-  destruct (gen_names 1 l) eqn : Heqs;
-  inversion H.
-  destruct l0; inversion H1.
-  simpl. 
-  pose proof (gen_names_notin 1 l s).
-  apply H0. rewrite Heqs; simpl; auto.
 Qed.
 
 Lemma remove_rename_sublist delta n1 n2:
@@ -558,40 +382,112 @@ Qed.
 
 (*A meta-theorem about derivations: if we can prove some
   goal f_new, then we can replace any hypothesis with
-  this goal and prove what we originally wanted*)
+  this goal and prove what we originally wanted.
+  But we give a separate transformation because the
+  formula need not be closed*)
+
+Definition replace_hyp_trans name f_new : trans :=
+  fun t => [mk_task (task_gamma t) 
+    (replace_hyp (task_delta t) name f_new) (task_goal t)].
+
+Lemma replace_hyp_trans_soundif name f_new:
+  soundif_trans (fun t =>
+    formula_typed (task_gamma t) f_new /\
+    forall (gamma_valid: valid_context (task_gamma t))
+      (Htyf: formula_typed (task_gamma t) f_new)
+      (Hallty: Forall (formula_typed (task_gamma t)) (map snd (task_delta t))),
+      log_conseq_gen gamma_valid (map snd (task_delta t)) f_new Htyf Hallty)
+  (replace_hyp_trans name f_new).
+Proof.
+  unfold soundif_trans; intros. destruct H as [Htyf Hhyp].
+  destruct t as [[gamma delta] goal]; simpl_task.
+  simpl_task. specialize (H1 _ ltac:(left; auto)).
+  destruct H1 as [Hwf Hval].
+  simpl_task. constructor; auto.
+  simpl_task. intros.
+  specialize (Hval gamma_valid Hwf).
+  assert (Hallty: Forall (formula_typed gamma) (map snd delta)). {
+    inversion w_wf; auto.
+  }
+  specialize (Hhyp gamma_valid Htyf Hallty).
+  unfold log_conseq in *.
+  unfold log_conseq_gen in *.
+  intros.
+  specialize (Hval pd pf pf_full).
+  specialize (Hhyp pd pf pf_full).
+  prove_hyp Hval.
+  {
+    intros d Hd.
+    destruct (in_dec string_dec name (map fst delta)).
+    2: {
+      assert (In d (map snd delta)). {
+        rewrite replace_hyp_notin in Hd; auto.
+      }
+      erewrite satisfies_irrel. apply (H d H1).
+    }
+    assert (Hd':=Hd).
+    eapply sublist_map in Hd'.
+    2: apply replace_hyp_sublist; auto.
+    simpl in Hd'.
+    destruct Hd'; subst.
+    (*Here, use property we assumed*)
+    - erewrite satisfies_irrel. apply Hhyp.
+      intros d1 Hd1. erewrite satisfies_irrel.
+      apply (H d1 Hd1).
+    - (*Otherwise, in delta*)
+      eapply sublist_map in H1.
+      2: apply sublist_remove_hyp; auto.
+      erewrite satisfies_irrel.
+      apply (H d H1).
+  }
+  erewrite satisfies_irrel. apply Hval.
+Qed.
+
+Lemma derives_replace_hyp' gamma delta goal name f_new:
+  (forall (gamma_valid: valid_context gamma) 
+    (Htyf: formula_typed gamma f_new)
+    (Hallty: Forall (formula_typed gamma) (map snd delta)),
+    log_conseq_gen gamma_valid (map snd delta) f_new Htyf Hallty) ->
+  formula_typed gamma f_new ->
+  Forall (formula_typed gamma) (map snd delta) ->
+  derives (gamma, replace_hyp delta name f_new, goal) ->
+  derives (gamma, delta, goal).
+Proof.
+  intros. eapply D_transif.
+  3: exact (replace_hyp_trans_soundif name f_new).
+  simpl. simpl_task. split; auto.
+  all: auto.
+  2: {
+    unfold replace_hyp_trans; simpl. intros x [<- | []]; auto.
+  }
+  inversion H2; subst.
+  destruct H3; subst; simpl_task.
+  constructor; auto.
+Qed.
+
+(*If the formula is closed, a nice form*)
 Lemma derives_replace_hyp gamma delta goal name f_new:
   derives (gamma, delta, f_new) ->
   derives (gamma, replace_hyp delta name f_new, goal) ->
   derives (gamma, delta, goal).
 Proof.
   intros.
-  assert (Hwf: task_wf (gamma, delta, f_new)). {
-    inversion H; subst; auto.
-  }
-  destruct (in_dec string_dec name (map fst delta)).
-  2: {
-    rewrite replace_hyp_notin in H0; auto.
-  }
-  eapply D_weaken in H0.
-  3: {
-    apply sublist_map. apply replace_hyp_sublist. auto.
-  }
-  - apply D_assert with (name:=name)(A:=f_new); auto.
-    apply D_weaken with(delta':=(name, f_new) :: remove_hyp delta name); auto.
-    + simpl. constructor.
-      * destruct Hwf; apply task_goal_typed.
-      * destruct Hwf; apply task_delta_typed.
-    + simpl. apply incl_cons; simpl; auto.
-      apply incl_tl.
-      apply sublist_map, sublist_remove_hyp.
-  - simpl. constructor.
-    * destruct Hwf; apply task_goal_typed.
-    * destruct Hwf. simpl_task.
-      revert task_delta_typed.
-      rewrite !Forall_forall; intros.
-      apply task_delta_typed.
-      revert H1. apply sublist_map.
-      apply sublist_remove_hyp.
+  revert H0. apply derives_replace_hyp'.
+  - intros. apply soundness in H.
+    unfold task_valid in H.
+    destruct H as [Hwf Hval].
+    specialize (Hval gamma_valid Hwf). simpl_task.
+    rewrite <- log_conseq_open_equiv in Hval.
+    clear -Hval.
+    (*Because we don't have irrel lemma*) 
+    unfold log_conseq_gen in *.
+    intros.
+    specialize (Hval pd pf pf_full).
+    prove_hyp Hval.
+    { intros d Hd. erewrite satisfies_irrel. apply (H d Hd). }
+    erewrite satisfies_irrel. apply Hval.
+  - inversion H; subst. destruct H0. destruct task_goal_typed; auto.
+  - inversion H; subst. destruct H0; auto.
 Qed.
 
 Definition find_hyp (delta: list (string * formula)) name :=
@@ -701,7 +597,6 @@ Ltac wrewrite H :=
 (*Symmetry*)
 Ltac wsymmetry := apply D_eq_sym.
 
-(*TODO: move*)
 Lemma map_fst_replace_hyp delta name f_new:
   List.map fst (replace_hyp delta name f_new) = List.map fst delta.
 Proof.
@@ -773,8 +668,6 @@ Ltac wsymmetry_in H :=
   [reflexivity | prove_closed | prove_fmlas_ty |];
   unfold replace_hyp; simpl; extra_simpl.
 
-(*TODO: maybe add custom simpl tactic after all of these?*)
-
 (*Apply (only for hypotheses)*)
 
 (*Note: right now, this only works for 1 hypothesis. Should make
@@ -842,7 +735,7 @@ Proof.
   apply D_weaken; auto.
   eapply sublist_trans. apply sublist_map. 
   apply remove_rename_sublist.
-  rewrite <- list_map_map, map_snd_rename_hyp.
+  rewrite  map_snd_rename_hyp.
   apply sublist_refl.
   Unshelve. apply n.
 Qed.
@@ -856,12 +749,13 @@ Ltac wclear H :=
 (*Now we can simulate rewrite (H x1 ... xn) -
   create a new copy of H (say H1), specialize H1,
   then rewrite with H1 and clear it*)
+Require Import GenElts.
 
 (*Copy to a new, unused hypothesis*)
 Ltac wcopy_new H :=
   match goal with
   | |- derives (?g, ?d, ?goal) =>
-    wcopy H (gen_name (map fst d))
+    wcopy H (gen_name EmptyString (map fst d))
   end.
 
 (*o: optional hyp to rewrite in
@@ -870,7 +764,7 @@ Ltac wrewrite_with_tac H o b args :=
   (*First, generate new hypothesis*)
   match goal with
   | |- derives (?g, ?d, ?goal) =>
-    let new := constr:(gen_name (map fst d)) in
+    let new := constr:(gen_name EmptyString (map fst d)) in
     wcopy H new;
     wspecialize_tac2 new args;
     match o with
@@ -980,7 +874,6 @@ Proof.
       simpl; apply sublist_refl.
 Qed.
 
-(*TODO: make wexists and wdestruct_ex tactics*)
 (*For theories - shouldn't be here, move prove_fmlas_ty*)
 Ltac prove_axiom_wf :=
   split_all;
@@ -989,91 +882,6 @@ Ltac prove_axiom_wf :=
 
 (*Specialize a polymorphic hypothesis*)
 
-(*[derives_replace_hyp] is not strong enough: what if f_new is
-  not monomorphic?*)
-
-(*An alternate way to prove [replace_hyp] where the
-  formula that we replace is not necessarily monomorphic*)
-Definition replace_hyp_trans name f_new : trans :=
-  fun t => [mk_task (task_gamma t) 
-    (replace_hyp (task_delta t) name f_new) (task_goal t)].
-
-Lemma replace_hyp_trans_soundif name f_new:
-  soundif_trans (fun t =>
-    formula_typed (task_gamma t) f_new /\
-    forall (gamma_valid: valid_context (task_gamma t))
-      (Htyf: formula_typed (task_gamma t) f_new)
-      (Hallty: Forall (formula_typed (task_gamma t)) (map snd (task_delta t))),
-      log_conseq_gen gamma_valid (map snd (task_delta t)) f_new Htyf Hallty)
-  (replace_hyp_trans name f_new).
-Proof.
-  unfold soundif_trans; intros. destruct H as [Htyf Hhyp].
-  destruct t as [[gamma delta] goal]; simpl_task.
-  simpl_task. specialize (H1 _ ltac:(left; auto)).
-  destruct H1 as [Hwf Hval].
-  simpl_task. constructor; auto.
-  simpl_task. intros.
-  specialize (Hval gamma_valid Hwf).
-  assert (Hallty: Forall (formula_typed gamma) (map snd delta)). {
-    inversion w_wf; auto.
-  }
-  specialize (Hhyp gamma_valid Htyf Hallty).
-  unfold log_conseq in *.
-  unfold log_conseq_gen in *.
-  intros.
-  specialize (Hval pd pf pf_full).
-  specialize (Hhyp pd pf pf_full).
-  prove_hyp Hval.
-  {
-    intros d Hd.
-    destruct (in_dec string_dec name (map fst delta)).
-    2: {
-      assert (In d (map snd delta)). {
-        rewrite replace_hyp_notin in Hd; auto.
-      }
-      erewrite satisfies_irrel. apply (H d H1).
-    }
-    assert (Hd':=Hd).
-    eapply sublist_map in Hd'.
-    2: apply replace_hyp_sublist; auto.
-    simpl in Hd'.
-    destruct Hd'; subst.
-    (*Here, use property we assumed*)
-    - erewrite satisfies_irrel. apply Hhyp.
-      intros d1 Hd1. erewrite satisfies_irrel.
-      apply (H d1 Hd1).
-    - (*Otherwise, in delta*)
-      eapply sublist_map in H1.
-      2: apply sublist_remove_hyp; auto.
-      erewrite satisfies_irrel.
-      apply (H d H1).
-  }
-  erewrite satisfies_irrel. apply Hval.
-Qed.
-
-Lemma derives_replace_hyp' gamma delta goal name f_new:
-  (forall (gamma_valid: valid_context gamma) 
-    (Htyf: formula_typed gamma f_new)
-    (Hallty: Forall (formula_typed gamma) (map snd delta)),
-    log_conseq_gen gamma_valid (map snd delta) f_new Htyf Hallty) ->
-  formula_typed gamma f_new ->
-  Forall (formula_typed gamma) (map snd delta) ->
-  derives (gamma, replace_hyp delta name f_new, goal) ->
-  derives (gamma, delta, goal).
-Proof.
-  intros. eapply D_transif.
-  3: exact (replace_hyp_trans_soundif name f_new).
-  simpl. simpl_task. split; auto.
-  all: auto.
-  2: {
-    unfold replace_hyp_trans; simpl. intros x [<- | []]; auto.
-  }
-  inversion H2; subst.
-  destruct H3; subst; simpl_task.
-  constructor; auto.
-Qed.
-
-(*And so we can specialize a hypothesis with a given map*)
 Require Import TySubst.
 Definition vty_map : Set := list (typevar * vty).
 Lemma D_specialize_hyp gamma delta goal name (v: vty_map) f:
@@ -1125,7 +933,7 @@ Qed.
 
 (*And then we give a tactic for this*)
 From mathcomp Require Import all_ssreflect.
-Require Import Typechecker. (*not great*)
+Require Import Typechecker. 
 Definition check_valid_tys gamma (l: list vty) : bool :=
   all (typecheck_type gamma) l.
 
@@ -1147,40 +955,13 @@ Ltac wspecialize_ty n m :=
 
 (*Function unfolding*)
 
-Definition trans_goal' (f: context -> formula -> formula)  :=
-  goals_trans (fun _ _ => true) (fun x y => [f x y]).
-Definition trans_goal_sound'
-  (f: context -> formula -> formula) :
-  (forall gamma (gamma_valid: valid_context gamma) 
-  fmla (Hfmla: formula_typed gamma fmla),
-  formula_typed gamma (f gamma fmla) /\
-  forall pd pf (pf_full: full_interp gamma_valid pd pf) 
-    (Hf: formula_typed gamma (f gamma fmla)), 
-    (forall vt vv,
-    formula_rep gamma_valid pd vt pf vv (f gamma fmla) Hf) ->
-    forall vt vv,
-    formula_rep gamma_valid pd vt pf vv fmla Hfmla)->
-sound_trans (trans_goal' f).
-Proof.
-  intros.
-  apply goals_trans_sound. intros.
-  inversion Hall; subst; clear Hall H3.
-  destruct H2 as [Htyx Hvalx].
-  specialize (H gamma gamma_valid goal Hty).
-  destruct H as [_ Hrep].
-  apply (Hrep pd pf pf_full Htyx); intros; apply Hvalx.
-Qed.
-
 Definition unfold_trans (f: funsym) : trans :=
-  trans_goal' (fun g => unfold_f g f).
+  trans_goal (fun g => unfold_f g f).
 
 Lemma unfold_trans_sound: forall f, 
   sound_trans (unfold_trans f).
 Proof.
-  intros. apply trans_goal_sound';
-  intros.
-  split.
-  apply unfold_f_ty; auto.
+  intros. apply trans_goal_sound;
   intros.
   specialize (H vt vv).
   erewrite unfold_f_rep in H. apply H. auto.
@@ -1210,15 +991,12 @@ Ltac wunfold x :=
 (*Unfold at a specific occurence*)
 
 Definition unfold_single_trans (f: funsym) (i: nat) : trans :=
-  trans_goal' (fun g => unfold_f_single g f i).
+  trans_goal (fun g => unfold_f_single g f i).
 
 Lemma unfold_single_trans_sound: forall f i, 
   sound_trans (unfold_single_trans f i).
 Proof.
-  intros. apply trans_goal_sound';
-  intros.
-  split.
-  apply unfold_f_single_ty; auto.
+  intros. apply trans_goal_sound;
   intros.
   specialize (H vt vv).
   erewrite unfold_f_single_rep in H. apply H. auto.
@@ -1249,15 +1027,12 @@ Ltac wunfold_at x n :=
 (*Only single for now*)
 
 Definition unfold_p_single_trans (p: predsym) (i: nat) : trans :=
-  trans_goal' (fun g => unfold_p_single g p i).
+  trans_goal (fun g => unfold_p_single g p i).
 
 Lemma unfold_p_single_trans_sound: forall p i, 
   sound_trans (unfold_p_single_trans p i).
 Proof.
-  intros. apply trans_goal_sound';
-  intros.
-  split.
-  apply unfold_p_single_ty; auto.
+  intros. apply trans_goal_sound;
   intros.
   specialize (H vt vv).
   erewrite unfold_p_single_rep in H. apply H. auto.
@@ -1286,14 +1061,12 @@ Ltac wunfold_p_at x n :=
 (*Simplify pattern match*)
 Require Import MatchSimpl.
 Definition simpl_match_trans : trans :=
-  trans_goal' (fun g => simpl_match_f g).
+  trans_goal (fun g => simpl_match_f g).
 
 Lemma simpl_match_trans_sound: 
   sound_trans simpl_match_trans.
 Proof.
-  apply trans_goal_sound'; intros.
-  split. apply simpl_match_f_ty; auto.
-  intros.
+  apply trans_goal_sound; intros.
   specialize (H vt vv).
   erewrite simpl_match_f_rep in H. apply H.
 Qed.
@@ -1357,7 +1130,8 @@ Ltac wdestruct_ex H y :=
 (*Destruct and*)
 
 (*We can always add hypotheses if they follow from delta,
-  even if not closed*)
+even if not closed*)
+(*Should unify with add_axiom but slightly different*)
 Definition add_hyp_trans name f : trans :=
   fun t => [mk_task (task_gamma t) 
     ((name, f) :: (task_delta t))
@@ -1442,11 +1216,11 @@ Proof.
     rewrite Forall_forall in Hall. auto.
   }
   inversion H; subst.
+  
   eapply (derives_add_hyp _ _ _ name2 f2); auto.
   - intros.
-    (*TODO: can we use D_andE, or does this require closed?
-      Not that it matters, everything is closed anyway.
-      But this is more general*)
+    (*Note: we could instead require closed and use D_andE, but this is
+      more general. Not that it matters, everything is closed anyway.*)
     unfold log_conseq_gen.
     intros.
     specialize (H0 _ Hhyp').
@@ -1486,7 +1260,7 @@ Ltac wdestruct_and H n1 n2 :=
 
 (*Rewrite for iff*)
 
-(*TODO: see if we need other directions/versions*)
+(*For now, only 1 direction and version*)
 
 Lemma derives_rewrite_iff gamma delta goal name f1 f2:
   find_hyp delta name = Some (Fbinop Tiff f1 f2) ->

@@ -100,7 +100,7 @@ Ltac wf_tac :=
 Ltac nested_ind_case :=
   repeat match goal with
   | H: length ?l1 =? length ?l2 |- _ => unfold is_true in H
-  (*TODO: reduce duplication*)
+  (*should reduce duplication*)
   | H: Forall ?f ?tms1, Hlen: (length ?tms1 =? length ?tms2) = true |- _ =>
     let x1 := fresh "x" in
     let l1 := fresh "l" in
@@ -4799,7 +4799,7 @@ Proof.
           apply in_split_lens_ith in Hinx2; wf_tac.
           rewrite Hfst in Hinx2.
           apply (nodup_firstn_skipn Hinx1 Hinx2); wf_tac.
-    + (*Second part - TODO very similar to previous*)
+    + (*Second part - very similar to previous*)
       intros x Hinx.
       apply in_app_or in Hinx.
       destruct Hinx as [Hinx | Hinx].
@@ -5061,7 +5061,7 @@ Proof.
           apply in_split_lens_ith in Hinx2; wf_tac.
           rewrite Hfst in Hinx2.
           apply (nodup_firstn_skipn Hinx1 Hinx2); wf_tac.
-    + (*Second part - TODO very similar to previous*)
+    + (*Second part - very similar to previous*)
       intros x Hinx.
       apply in_app_or in Hinx.
       destruct Hinx as [Hinx | Hinx].
@@ -5374,7 +5374,7 @@ Proof.
     + intros. apply (Hffree (S i) (ltac:(lia))).
 Qed.
 
-(*TODO: bad to duplicate, should combine somehow*)
+(*bad to duplicate, should combine somehow*)
 Lemma alpha_fmatch tm1 tm2 v ps (strs: list (list string))
   (f: formula -> list string -> formula)
   (Heq1: a_equiv_t tm1 tm2)
@@ -5765,7 +5765,7 @@ Proof.
   - (*Fif*)
     apply alpha_fif_congr; [apply H | apply H0 | apply H1];
     wf_tac; free_bnd Hfree Hbnd.
-  - (*Fmatch - TODO reduce duplication*)
+  - (*Fmatch - reduce duplication*)
     rewrite app_length, length_concat, map_map in Hlen.
     assert (Hlen': length l = length (tm_bnd tm) +
       sum (map (fun x => length (pat_fv (fst x)) + length (fmla_bnd (snd x))) ps)). {
@@ -7075,7 +7075,9 @@ End ConvertMap.
 (*Safe substitution*)
 Section SafeSub.
 
-(*Multiple safe substitution - TODO combine into one*)
+(*Multiple safe substitution - should combine into one,
+  but nicer to have single to define alpha conversion.
+  Keep both for now with lemma relating them*)
 Definition safe_sub_ts (subs: list (vsymbol * term)) (t: term) :=
   if disjb' vsymbol_eq_dec (big_union vsymbol_eq_dec tm_fv (map snd subs)) (tm_bnd t)
   then sub_ts subs t else
@@ -7346,5 +7348,165 @@ Proof.
 Qed.
 
 End SafeSub.
+
+(*Type vars*)
+Section TypeVars.
+
+(*Don't need induction here, from previous lemmas*)
+Lemma alpha_equiv_p_snd p1 p2
+(Heq: alpha_equiv_p (combine (pat_fv p1) (pat_fv p2)) p1 p2):
+map snd (pat_fv p1) = map snd (pat_fv p2).
+Proof.
+  rewrite (alpha_equiv_p_fv_full _ _ Heq).
+  apply list_eq_ext'; rewrite !map_length; auto.
+  intros n d Hn.
+  rewrite -> !map_map, !map_nth_inbound with (d2:=vs_d); auto.
+  rewrite mk_fun_vars_eq_full; auto.
+  apply nth_In; auto.
+Qed.
+
+Lemma alpha_equiv_p_type_vars p1 p2
+  (Heq: alpha_equiv_p (combine (pat_fv p1) (pat_fv p2)) p1 p2):
+  pat_type_vars p1 = pat_type_vars p2.
+Proof.
+  unfold pat_type_vars. f_equal. apply alpha_equiv_p_snd; auto.
+Qed.
+
+Lemma alpha_equiv_type_vars t1 f1:
+  (forall t2 vars (Hvars: forall x y, In (x, y) vars -> snd x = snd y) 
+    (Heq: alpha_equiv_t vars t1 t2),
+    tm_type_vars t1 = tm_type_vars t2) /\
+  (forall f2 vars (Hvars: forall x y, In (x, y) vars -> snd x = snd y) 
+    (Heq: alpha_equiv_f vars f1 f2),
+    fmla_type_vars f1 = fmla_type_vars f2).
+Proof.
+  revert t1 f1; apply term_formula_ind; simpl; intros.
+  - alpha_case t2 Heq. auto.
+  - alpha_case t2 Heq. rewrite eq_var_eq in Heq.
+    destruct (in_firstb vsymbol_eq_dec vsymbol_eq_dec (v, v0) vars) eqn : Hin;
+    simpl in Heq.
+    + apply in_firstb_in in Hin.
+      apply Hvars in Hin. rewrite Hin. reflexivity.
+    + bool_hyps. repeat simpl_sumbool.
+  - alpha_case t2 Heq. bool_hyps. repeat simpl_sumbool.
+    f_equal. nested_ind_case.
+    rewrite all2_cons in H1. bool_hyps.
+    rewrite -> Hp with(t2:=t) (vars:=vars); auto. f_equal. auto.
+  - alpha_case t2 Heq. bool_hyps. repeat simpl_sumbool.
+    rewrite -> e, (H t2_1 vars), (H0 t2_2 ((v, v0) :: vars)); auto;
+    simpl; intros; destruct_all; auto. inversion H1; subst; auto. 
+  - alpha_case t0 Heq. bool_hyps.
+    rewrite -> (H f0 vars), (H0 t0_1 vars), (H1 t0_2 vars); auto.
+  - alpha_case t2 Heq. bool_hyps. repeat simpl_sumbool.
+    rewrite (H t2 vars); auto.
+    f_equal.
+    + f_equal. 
+      nested_ind_case.
+      rewrite all2_cons in H2.
+      bool_hyps.
+      rewrite (alpha_equiv_p_type_vars _ _ H2). f_equal. auto.
+    + f_equal. nested_ind_case. destruct a; destruct p.
+      rewrite all2_cons in H2.
+      bool_hyps.
+      simpl in Hp.
+      rewrite (Hp t0 (add_vals (pat_fv (fst (p0, t))) (pat_fv (fst (p, t0))) vars));
+      auto. f_equal; auto.
+      unfold add_vals.
+      simpl. intros x y.
+      rewrite in_app_iff; intros [Hinxy | Hinxy]; auto.
+      rewrite in_combine_iff in Hinxy;
+      [| apply alpha_equiv_p_fv_len_full; auto].
+      destruct Hinxy as [i [Hi Hxy]].
+      specialize (Hxy vs_d vs_d); inversion Hxy; subst; auto.
+      simpl in H2.
+      rewrite (alpha_equiv_p_fv_full _ _ H2).
+      simpl. rewrite -> map_nth_inbound with (d2:=vs_d); auto.
+      erewrite <- mk_fun_vars_eq_full; auto. apply nth_In; auto.
+  - alpha_case t2 Heq. bool_hyps; repeat simpl_sumbool.
+    rewrite -> e, (H f0 ((v, v0) :: vars)); auto; simpl; intros;
+    destruct_all; auto. inversion H0; subst; auto.
+  - alpha_case f2 Heq. bool_hyps. repeat simpl_sumbool.
+    f_equal. nested_ind_case.
+    rewrite all2_cons in H1. bool_hyps.
+    rewrite -> Hp with(t2:=t) (vars:=vars); auto. f_equal. auto.
+  - alpha_case f2 Heq. bool_hyps; repeat simpl_sumbool.
+    rewrite -> e, (H f2 ((v, v0) :: vars)); auto; simpl; intros;
+    destruct_all; auto. inversion H0; subst; auto.
+  - alpha_case f2 Heq. bool_hyps; repeat simpl_sumbool.
+    rewrite -> (H t vars), (H0 t0 vars); auto.
+  - alpha_case f0 Heq. bool_hyps.
+    rewrite -> (H f0_1 vars), (H0 f0_2 vars); auto.
+  - alpha_case f2 Heq. apply (H _ vars); auto.
+  - alpha_case f2 Heq. auto.
+  - alpha_case f2 Heq; auto.
+  - alpha_case f2 Heq. bool_hyps; repeat simpl_sumbool.
+    rewrite -> e, (H t vars), (H0 f2 ((v, v0) :: vars)); auto;
+    simpl; intros; destruct_all; auto. inversion H1; subst; auto.
+  - alpha_case f0 Heq. bool_hyps.
+    rewrite -> (H f0_1 vars), (H0 f0_2 vars), (H1 f0_3 vars); auto.
+  - alpha_case f2 Heq. bool_hyps. repeat simpl_sumbool.
+    rewrite (H t vars); auto.
+    f_equal.
+    + f_equal. 
+      nested_ind_case.
+      rewrite all2_cons in H2.
+      bool_hyps.
+      rewrite (alpha_equiv_p_type_vars _ _ H2). f_equal. auto.
+    + f_equal. nested_ind_case. destruct a; destruct p.
+      rewrite all2_cons in H2.
+      bool_hyps. simpl in Hp.
+      rewrite (Hp f0 (add_vals (pat_fv p0) (pat_fv p) vars));
+      auto. f_equal; auto.
+      unfold add_vals.
+      simpl. intros x y.
+      rewrite in_app_iff; intros [Hinxy | Hinxy]; auto.
+      rewrite in_combine_iff in Hinxy;
+      [| apply alpha_equiv_p_fv_len_full; auto].
+      destruct Hinxy as [i [Hi Hxy]].
+      specialize (Hxy vs_d vs_d); inversion Hxy; subst; auto.
+      simpl in H2.
+      rewrite (alpha_equiv_p_fv_full _ _ H2).
+      simpl. rewrite -> map_nth_inbound with (d2:=vs_d); auto.
+      erewrite <- mk_fun_vars_eq_full; auto. apply nth_In; auto.
+Qed.
+
+Definition alpha_equiv_t_type_vars t1 := proj_tm alpha_equiv_type_vars t1.
+Definition alpha_equiv_f_type_vars f1 := proj_fmla 
+  alpha_equiv_type_vars f1.
+
+Corollary a_equiv_t_type_vars t1 t2:
+  a_equiv_t t1 t2 ->
+  tm_type_vars t1 = tm_type_vars t2.
+Proof.
+  intros. apply alpha_equiv_t_type_vars with (vars:=nil); simpl; auto;
+  intros; contradiction.
+Qed.
+
+Corollary a_equiv_f_type_vars f1 f2:
+  a_equiv_f f1 f2 ->
+  fmla_type_vars f1 = fmla_type_vars f2.
+Proof.
+  intros. apply alpha_equiv_f_type_vars with (vars:=nil); simpl; auto;
+  intros; contradiction.
+Qed.
+
+Lemma safe_sub_f_mono tm x f:
+  mono_t tm ->
+  mono f ->
+  mono (safe_sub_f tm x f).
+Proof.
+  intros. unfold safe_sub_f.
+  destruct (in_bool_spec vsymbol_eq_dec x (fmla_fv f)); auto.
+  destruct ( existsb (fun x0 : vsymbol => in_bool vsymbol_eq_dec x0 (fmla_bnd f)) (tm_fv tm));
+  apply sub_f_mono; auto.
+  unfold mono.
+  (*rewrite eq_mem_null with(l2:=fmla_type_vars f); auto.*)
+  erewrite <- alpha_equiv_f_type_vars with(vars:=nil).
+  3: apply a_convert_f_equiv.
+  apply H0.
+  simpl. intros; contradiction. 
+Qed.
+
+End TypeVars.
 
 End Alpha.

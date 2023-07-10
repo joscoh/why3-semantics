@@ -608,35 +608,6 @@ Proof.
   - apply Right. apply (IHconstrs Hin).
 Defined.
 
-(*The by-hand version (TODO: do we need this?)*)
-Fixpoint get_constr_type' (ts: typesym) (constrs: ne_list funsym) (f: funsym)
-  (Hin: in_bool_ne funsym_eq_dec f constrs)
-  (c: build_constr_base f):
-  build_base constrs :=
-  (match constrs as cs return in_bool_ne funsym_eq_dec f cs -> build_base cs with
-  | ne_hd a => fun Hin' =>
-    match (funsym_eq_dec f a) as b return b -> build_base (ne_hd a) with
-    | left Heq => fun _ => (ltac:(rewrite <- Heq; apply c))
-    | right Hneq => fun b => False_rect _ (not_false b)
-    end Hin'
-  | ne_cons a tl => fun Hin' =>
-    (match (funsym_eq_dec f a) as b 
-      return b || in_bool_ne funsym_eq_dec f tl -> build_base (ne_cons a tl)
-    with
-    | left Heq => fun _ =>Left _ _ (ltac:(rewrite <- Heq; apply c))
-    | right Hneq => fun Hin'' => Right _ _ (get_constr_type' ts tl f Hin'' c)
-    end) Hin' 
-  end) Hin.
-
-Lemma get_constr_type_eq: forall ts constrs f (Hin: in_bool_ne funsym_eq_dec f constrs)
-  (c: build_constr_base f),
-    get_constr_type ts constrs f Hin c = get_constr_type' ts constrs f Hin c.
-Proof.
-  intros. induction constrs; simpl; auto;
-  simpl in Hin;
-  destruct (funsym_eq_dec f a); auto. rewrite IHconstrs; auto.
-Qed.
-
 (*Now, we show that if we get the type corresponding to some
   constructor f, it is really just the type that counts the number
   of recursive instances in f*)
@@ -1076,6 +1047,14 @@ Proof.
   assert (H2 = erefl). apply UIP_dec. apply sort_eq_dec.
   rewrite H.
   reflexivity.
+Qed.
+
+Lemma dom_cast_eq'(s1 s2: Types.sort)
+  (H1 H2: s1 = s2) (x y: domain s1):
+  x = y ->
+  dom_cast H1 x = dom_cast H2 y.
+Proof.
+  intros; subst. apply dom_cast_eq.
 Qed.
 
 Lemma dom_cast_refl {s1} (H: s1 = s1) x:
@@ -2087,7 +2066,7 @@ Proof.
         apply (f_equal val) in H0. generalize dependent H0.
         simpl. generalize dependent (filter_args_same (vty_cons (adt_name a) l0 :: l)
         (get_idx adt_dec a adts Hina)). simpl.
-        (*Once again, lots of annoying cases - TODO: is there better way?*)
+        (*Once again, lots of annoying cases - is there better way?*)
         destruct (typesym_eq_dec (adt_name a)
         (adt_name (fin_nth adts (get_idx adt_dec a adts Hina)))).
         2 : {
@@ -2821,15 +2800,6 @@ Ltac solve_mut_eq :=
       try (rewrite scast_right; try reflexivity);
       auto]
   end.
-(*
-  - apply functional_extensionality_dep; intros.
-    destruct x; simpl; reflexivity.
-  - apply w_eq with(Heq:=H).
-    intros.
-    destruct i; destruct j; simpl; try reflexivity;
-    destruct a; try(rewrite cast_left; try reflexivity);
-    try (rewrite cast_right; try reflexivity).
-*)
 
 (*A very simple mutually recursive type*)
 Inductive mutA : Set :=

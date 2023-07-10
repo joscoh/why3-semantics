@@ -115,6 +115,40 @@ Proof.
   unfold substi. vsym_eq v v0.
 Qed. 
 
+(*Should rename*)
+Lemma substi_mult_nth'' (vv: val_vars pd vt) 
+(vs: list vsymbol)
+(vals: arg_list domain (map (v_subst vt) (map snd vs)))
+(i: nat)
+(Hi: i < length vs)
+(Hnodup: NoDup vs) x (Heqx: x = nth i vs vs_d):
+(*Doesn't work without type annotation*)
+let H : v_subst vt (snd (nth i vs vs_d)) = v_subst vt (snd x) 
+  := (f_equal (fun y => (v_subst vt (snd y))) (eq_sym Heqx)) in
+substi_mult vv vs vals x = 
+dom_cast (dom_aux pd) 
+  (eq_trans
+    (substi_mult_nth_lemma _ _ vs i Hi s_int vs_d) 
+    H)
+  (hnth i vals s_int (dom_int pd)).
+Proof.
+  simpl.
+  match goal with
+  | |- _ = dom_cast (dom_aux ?pd) ?Heq ?d => generalize dependent Heq
+  end.
+  generalize dependent i.
+  revert vv.
+  induction vs; simpl in *; try lia.
+  inversion Hnodup; subst. destruct i; simpl in *.
+  - intros. subst. rewrite substi_mult_notin; auto.
+    unfold substi. vsym_eq a a.
+    assert (e0 = eq_refl) by (apply UIP_dec; apply vsymbol_eq_dec).
+    rewrite H; simpl.
+    assert (e = eq_refl) by (apply UIP_dec; apply sort_eq_dec).
+    rewrite H0; reflexivity.
+  - intros. erewrite IHvs. reflexivity. auto. lia. auto.
+Qed.
+
 (*This is more complicated because the valuation changes each
   time, so we cannot give a straightforward [nth] lemma.
   We instead need extensionality lemmas*)
@@ -487,5 +521,68 @@ Proof.
 Qed.
 
 End Or.
+
+(*f1 -> f2 -> ... fn -> P is equivalent to
+  f1 /\ ... /\ fn -> p*)
+Section Implies.
+
+Definition iter_fimplies (l: list formula) (f: formula) :=
+  fold_right (Fbinop Timplies) f l.
+
+Lemma iter_fimplies_ty l f:
+  Forall (formula_typed gamma) l ->
+  formula_typed gamma f ->
+  formula_typed gamma (iter_fimplies l f).
+Proof.
+  intros. induction l; simpl in *; auto.
+  inversion H; subst. constructor; auto.
+Qed.
+
+Lemma iter_fimplies_ty_inv {l: list formula} {f: formula}:
+formula_typed gamma (iter_fimplies l f) ->
+Forall (formula_typed gamma) l /\ formula_typed gamma f.
+Proof.
+  induction l; simpl; intros; try solve[split; auto].
+  inversion H; subst. apply IHl in H5. destruct_all.
+  split; auto; constructor; auto.
+Qed.
+
+Lemma iter_fimplies_alt_ty{l: list formula} {f: formula}:
+  formula_typed gamma (iter_fimplies l f) ->
+  formula_typed gamma (Fbinop Timplies (iter_fand l) f).
+Proof.
+  intros. apply iter_fimplies_ty_inv in H.
+  destruct H.
+  constructor; auto.
+  apply iter_fand_typed; auto.
+Qed.
+
+
+Lemma iter_fimplies_rep
+  (vv: val_vars pd vt) 
+  (l: list formula) (f: formula) 
+  Hty:
+  formula_rep pf vv (iter_fimplies l f) Hty =
+  formula_rep pf vv (Fbinop Timplies (iter_fand l) f) 
+    (iter_fimplies_alt_ty Hty).
+Proof.
+  generalize dependent (iter_fimplies_alt_ty Hty).
+  revert Hty.
+  induction l; simpl; intros.
+  - simpl_rep_full. apply fmla_rep_irrel.
+  - simpl_rep_full.
+    erewrite IHl.
+    simpl_rep_full.
+    rewrite implb_curry.
+    f_equal. apply fmla_rep_irrel.
+    f_equal. apply fmla_rep_irrel.
+    apply fmla_rep_irrel.
+    Unshelve.
+    inversion f0; subst.
+    inversion H2; subst.
+    constructor; auto.
+Qed.
+
+End Implies.
 
 End Iter.

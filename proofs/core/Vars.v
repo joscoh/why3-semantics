@@ -250,6 +250,89 @@ with fmla_type_vars (f: formula) : list typevar :=
   | Ffalse => nil
   end.
 
+Definition mono (f: formula) : bool :=
+  null (fmla_type_vars f).
+
+Definition mono_t tm : bool :=
+  null (tm_type_vars tm).
+
+(*[pat_type_vars] is not useful for induction.
+  We give an alternate version. We don't necessarily
+  have equality unless elements are distinct.
+  But we just prove equal elements*)
+Lemma pat_type_vars_rewrite (p: pattern):
+  forall x, In x (pat_type_vars p) <-> In x
+  match p with
+  | Pvar v => type_vars (snd v)
+  | Pconstr f tys ps => big_union pat_type_vars ps
+  | Por p1 p2 => union (pat_type_vars p1) (pat_type_vars p2)
+  | Pwild => nil
+  | Pbind p x => union (pat_type_vars p) (type_vars (snd x))
+  end.
+Proof.
+  intros x.
+  destruct p; try reflexivity.
+  - unfold pat_type_vars; simpl.
+    rewrite union_nil_r; try reflexivity.
+    apply type_vars_unique.
+  - unfold pat_type_vars; simpl.
+    induction l0; simpl; try reflexivity.
+    revert IHl0.
+    simpl_set; intros; split; intros.
+    + destruct H as [y [Hiny Hinx]].
+      rewrite in_map_iff in Hiny.
+      destruct Hiny as [v [Hy Hinv]]; subst.
+      simpl_set.
+      destruct Hinv; [left | right].
+      * exists (snd v). split; auto.
+        rewrite in_map_iff. exists v; auto.
+      * simpl_set. destruct H as [p [Hinp Hinv]].
+        exists p. split; auto. simpl_set. exists (snd v). 
+        split; auto. rewrite in_map_iff; exists v; auto.
+    + destruct H.
+      * destruct H as [y [Hiny Hinx]]. 
+        rewrite in_map_iff in Hiny.
+        destruct Hiny as [v [Hy Hinv]]; subst.
+        exists (snd v). split; auto.
+        rewrite in_map_iff. exists v; split; auto.
+        simpl_set. auto.
+      * destruct H as [p [Hinp Hinx]].
+        simpl_set. destruct Hinx as [y [Hiny Hinx]].
+        rewrite in_map_iff in Hiny. 
+        destruct Hiny as [v [Hy Hinv]]; subst.
+        exists (snd v). split; auto.
+        rewrite in_map_iff. exists v; split; auto.
+        simpl_set. right.
+        exists p; auto.
+  - unfold pat_type_vars; simpl; split; intros.
+    + simpl_set. destruct H as [y [Hiny Hinx]].
+      rewrite in_map_iff in Hiny.
+      destruct Hiny as [v [Hy Hinv]]; subst.
+      simpl_set.
+      destruct Hinv; [left | right]; exists (snd v);
+      split; auto; rewrite in_map_iff; exists v; auto.
+    + simpl_set. destruct H as [H | H];
+      simpl_set; destruct H as [y [Hiny Hinx]];
+      rewrite in_map_iff in Hiny; destruct Hiny as
+      [v [Hy Hinv]]; subst; exists (snd v);
+      split; auto; rewrite in_map_iff; exists v; simpl_set; auto.
+  - unfold pat_type_vars; simpl; split; simpl_set; intros.
+    + destruct H as [y [Hiny Hinx]].
+      rewrite in_map_iff in Hiny. destruct Hiny as [v1 [Hy Hinv1]]; subst.
+      simpl_set. simpl in Hinv1.
+      destruct_all; try contradiction; subst; auto.
+      left. exists (snd v1). split; auto. rewrite in_map_iff.
+      exists v1; auto.
+    + destruct H.
+      * destruct H as [y [Hiny Hinx]].
+        rewrite in_map_iff in Hiny.
+        destruct Hiny as [v1 [Hy Hinv1 ]]; subst.
+        exists (snd v1); split; auto.
+        rewrite in_map_iff. exists v1; simpl_set; auto.
+      * exists (snd v). split; auto. 
+        rewrite in_map_iff. exists v; simpl_set; auto.
+Qed.
+
 (*One theorem we need: all typevars in free vars of a term
   or formula are in [tm/fmla_type_vars] t/f*)
 Lemma fv_vars_type_vars x y (t: term) (f: formula):

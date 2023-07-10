@@ -178,7 +178,7 @@ with free_in_f (x: vsymbol) (f: formula) {struct f} : bool :=
 
 
 (*This is equivalent to the other formulation*)
-(*TODO: would be easier with ssreflect*)
+(*NOTE: would be easier with ssreflect*)
 Lemma free_in_spec (t: term) (f: formula) :
   (forall x, free_in_t x t <-> In x (tm_fv t)) /\
   (forall x, free_in_f x f <-> In x (fmla_fv f)).
@@ -248,8 +248,6 @@ Definition free_in_f_negb := free_in_negb _ _ _ free_in_f_spec.
 
 (*Reasoning about substitution and free vars is complicated.
   We prove 3 lemmas before giving the full spec:*)
-
-(*TODO: move*)
 
 Lemma Forall_combine_map {A: Type} (f: A -> A) (P: A * A -> Prop) (l: list A):
   Forall P (combine (map f l) l) <->
@@ -347,7 +345,6 @@ Definition sub_t_fv_notin tm x t Hnotx :=
 Definition sub_f_fv_notin tm x f Hnotx :=
   proj_fmla (sub_fv_notin tm x Hnotx) f.
 
-(*TODO: move*)
 Lemma Forall_impl_strong {A: Type} {P Q: A -> Prop} {l: list A}:
   (forall a, In a l -> P a -> Q a) ->
   Forall P l ->
@@ -358,7 +355,6 @@ Proof.
   constructor; auto.
 Qed.
   
-
 (*3. If y is in the free vars of tm, then y is free in
   the substituted term iff either x or y were already free in t
   We need the bnd condition: the result fails on the following:
@@ -470,94 +466,6 @@ Proof.
     simpl; [| rewrite H1; auto].
     exfalso. apply (Hbnd' y); auto.
 Qed.
-
-(*Lemma sub_fv_in tm x y (Hy: In y (tm_fv tm)) t f :
-  (forall (Hbnd: ~ In y (tm_bnd t)),
-    free_in_t y (sub_t tm x t) = free_in_t x t || free_in_t y t) /\
-  (forall (Hbnd: ~ In y (fmla_bnd f)),
-    free_in_f y (sub_f tm x f) = free_in_f x f || free_in_f y f).
-Proof.
-  revert t f;
-  apply term_formula_ind; simpl; intros; auto.
-  - vsym_eq x v; simpl.
-    apply free_in_t_spec; auto.
-  - rewrite in_concat in Hbnd. rewrite existsb_orb.
-    apply existsb_eq; [rewrite map_length |]; auto.
-    rewrite Forall_combine_map.
-    revert H.
-    apply Forall_impl_strong; simpl; intros.
-    apply H0. intro C. apply Hbnd.
-    exists (tm_bnd a). split; auto.
-    rewrite in_map_iff. exists a; auto.
-  - rewrite in_app_iff in Hbnd. not_or Hy. 
-    rewrite H; auto. vsym_eq x v; simpl; simpl_bool; auto.
-    vsym_eq y v. rewrite H0; simpl; simpl_bool; auto.
-    solve_bool.
-  - rewrite !in_app_iff in Hbnd.
-    not_or Hy. rewrite H, H0, H1; auto. solve_bool.
-  - rewrite in_app_iff in Hbnd. not_or Hy.
-    rewrite H; auto.
-    simpl_bool. rewrite (orb_comm (_ || _) (free_in_t y tm0)).
-    rewrite orb_assoc, (orb_comm (free_in_t y tm0)).
-    rewrite <- !orb_assoc. f_equal. f_equal.
-    rewrite existsb_orb.
-    apply existsb_eq; [rewrite map_length |]; auto.
-    rewrite Forall_combine_map; simpl.
-    revert H0. rewrite Forall_map.
-    apply Forall_impl_strong; intros.
-    destruct (in_bool_spec vsymbol_eq_dec x (pat_fv (fst a)));
-    simpl; simpl_bool; auto.
-    assert (~ In y (pat_fv (fst a) ++ tm_bnd (snd a))). {
-      intros C. apply Hy1. rewrite in_concat.
-      eexists. split; [| apply C]. rewrite in_map_iff.
-      eexists; split; [reflexivity |]; auto.
-    }
-    rewrite in_app_iff in H2. not_or Hy.
-    rewrite H1; auto.
-    destruct (in_bool_spec vsymbol_eq_dec y (pat_fv (fst a)));
-    simpl; simpl_bool; auto; contradiction.
-  - not_or Hy. vsym_eq x v; simpl; vsym_eq y v.
-  - rewrite in_concat in Hbnd. rewrite existsb_orb.
-    apply existsb_eq; [rewrite map_length |]; auto.
-    rewrite Forall_combine_map.
-    revert H.
-    apply Forall_impl_strong; simpl; intros.
-    apply H0. intro C. apply Hbnd.
-    exists (tm_bnd a). split; auto.
-    rewrite in_map_iff. exists a; auto.
-  - not_or Hy. vsym_eq x v; simpl; vsym_eq y v.
-  - rewrite in_app_iff in Hbnd. not_or Hy.
-    rewrite H, H0; auto; solve_bool.
-  - rewrite in_app_iff in Hbnd. not_or Hy.
-    rewrite H, H0; auto; solve_bool.
-  - rewrite in_app_iff in Hbnd. not_or Hy. 
-    rewrite H; auto. vsym_eq x v; simpl; simpl_bool; auto.
-    vsym_eq y v. rewrite H0; simpl; simpl_bool; auto.
-    solve_bool.
-  - rewrite !in_app_iff in Hbnd.
-    not_or Hy. rewrite H, H0, H1; auto. solve_bool.
-  - rewrite in_app_iff in Hbnd. not_or Hy.
-    rewrite H; auto.
-    simpl_bool. rewrite (orb_comm (_ || _) (free_in_t y tm0)).
-    rewrite orb_assoc, (orb_comm (free_in_t y tm0)).
-    rewrite <- !orb_assoc. f_equal. f_equal.
-    rewrite existsb_orb.
-    apply existsb_eq; [rewrite map_length |]; auto.
-    rewrite Forall_combine_map; simpl.
-    revert H0. rewrite Forall_map.
-    apply Forall_impl_strong; intros.
-    destruct (in_bool_spec vsymbol_eq_dec x (pat_fv (fst a)));
-    simpl; simpl_bool; auto.
-    assert (~ In y (pat_fv (fst a) ++ fmla_bnd (snd a))). {
-      intros C. apply Hy1. rewrite in_concat.
-      eexists. split; [| apply C]. rewrite in_map_iff.
-      eexists; split; [reflexivity |]; auto.
-    }
-    rewrite in_app_iff in H2. not_or Hy.
-    rewrite H1; auto.
-    destruct (in_bool_spec vsymbol_eq_dec y (pat_fv (fst a)));
-    simpl; simpl_bool; auto; contradiction.
-Qed.*)
 
 Definition sub_t_fv_in tm x t y Hy :=
   proj_tm (sub_fv_in tm x y Hy) t.
@@ -726,76 +634,6 @@ Qed.
 Definition bnd_sub_var_t t := proj_tm sub_bound_eq t.
 Definition bnd_sub_var_f f := proj_fmla sub_bound_eq f.
 
-Context {gamma: context} (gamma_valid: valid_context gamma).
-
-(*sub_t and sub_f preserve typing*)
-Lemma sub_well_typed (t: term) (f: formula):
-  (forall (t1: term) (x: string) (ty1 ty2: vty)
-    (Hty1: term_has_type gamma t1 ty1)
-    (Hty2: term_has_type gamma t ty2),
-    term_has_type gamma (sub_t t1 (x, ty1) t) ty2) /\
-  (forall (t1: term) (x: string) (ty1: vty)
-    (Hty1: term_has_type gamma t1 ty1)
-    (Hval2: formula_typed gamma f),
-    formula_typed gamma (sub_f t1 (x, ty1) f)).
-Proof.
-  revert t f; apply term_formula_ind; simpl; intros; auto;
-  try solve[try (inversion Hty2); try (inversion Hval2); 
-    subst; try(vsym_eq (x, ty1) v); 
-    constructor; auto].
-  (*Only 4 nontrivial cases - fun/pred and match (nested induction)*)
-  - inversion Hty2; subst.
-    constructor; auto.
-    rewrite map_length; auto.
-    assert (length l1 = length (map (ty_subst (s_params f1) l) 
-      (s_args f1))) by (rewrite map_length; auto).
-    generalize dependent (map (ty_subst (s_params f1) l) (s_args f1)).
-    clear -H Hty1. induction l1; simpl; intros; auto.
-    destruct l; inversion H0. inversion H10; subst.
-    inversion H; subst.
-    constructor; simpl; auto.
-  - inversion Hty2; subst.
-    constructor; auto.
-    + intros t. rewrite in_map_iff.
-      intros [t1' [Ht1' Hint1']].
-      subst. destruct (in_bool vsymbol_eq_dec (x, ty1) (pat_fv (fst t1')));
-      simpl; auto.
-    + (*The case we need induction for*)
-      clear -H9 H0 Hty1. induction ps; simpl; auto; intros.
-      inversion H0; subst.
-      simpl in *.
-      destruct H; subst; auto.
-      destruct (in_bool vsymbol_eq_dec (x, ty1) (pat_fv (fst a)));
-      simpl; auto.
-    + rewrite null_map; auto.
-  - inversion Hval2; subst. constructor; auto.
-    rewrite map_length; auto.
-    assert (length tms = 
-      length (map (ty_subst (s_params p) tys) (s_args p))) by (rewrite map_length; auto).
-    generalize dependent ((map (ty_subst (s_params p) tys) (s_args p))).
-    clear -H Hty1. induction tms; simpl; intros; auto.
-    destruct l; inversion H0. inversion H8; subst.
-    inversion H; subst.
-    constructor; simpl; auto.
-  - inversion Hval2; subst.
-    constructor; auto.
-    + intros t. rewrite in_map_iff.
-      intros [t1' [Ht1' Hint1']].
-      subst. destruct (in_bool vsymbol_eq_dec (x, ty1) (pat_fv (fst t1')));
-      simpl; auto.
-    + (*The case we need induction for*)
-      clear -H8 H0 Hty1. induction ps; simpl; auto; intros.
-      inversion H0; subst.
-      simpl in *.
-      destruct H; subst; auto.
-      destruct (in_bool vsymbol_eq_dec (x, ty1) (pat_fv (fst a)));
-      simpl; auto.
-    + rewrite null_map; auto.
-Qed. 
-
-Definition sub_t_typed t := proj_tm sub_well_typed t.
-Definition sub_f_typed f := proj_fmla sub_well_typed f.
-
 (*Substitution for patterns - needed for bound variable
   substitution, not free var subs like [sub_var_t] and [sub_var_f]*)
 Fixpoint sub_p (x y: vsymbol) (p: pattern) :=
@@ -937,6 +775,103 @@ Proof.
   apply sub_f_fv_in; simpl; auto.
   intros.
   intros [Heq | []]; subst; contradiction.
+Qed.
+
+(*Type variables and substitution*)
+
+Ltac simpl_set_nil :=
+  repeat (match goal with
+  | H: union ?eq_dec ?l1 ?l2 = nil |- _ =>
+    apply union_nil in H; destruct H
+  | H: ?x = nil |- context [?x] =>
+    rewrite H
+  | H: ?P -> ?x = nil |- context [?x] =>
+    rewrite H by auto
+  end; simpl; auto).
+
+Lemma sub_type_vars tm x (Htm: tm_type_vars tm = nil) t f:
+  (tm_type_vars t = nil ->
+    tm_type_vars (sub_t tm x t) = nil) /\
+  (fmla_type_vars f = nil ->
+    fmla_type_vars (sub_f tm x f) = nil).
+Proof.
+  revert t f; apply term_formula_ind; simpl; auto; intros;
+  simpl_set_nil; auto.
+  - vsym_eq x v.
+  - apply big_union_nil_eq.
+    intros.
+    rewrite in_map_iff in H2.
+    destruct H2 as [tm2 [Hx0 Hintm2]]; subst.
+    rewrite Forall_forall in H.
+    apply H; auto.
+    eapply big_union_nil in H1.
+    apply H1. auto.
+  - vsym_eq x v; simpl_set_nil.
+  - rewrite big_union_nil_eq; simpl.
+    2: {
+      intros p. rewrite !map_map. intros Hp.
+      rewrite in_map_iff in Hp.
+      destruct Hp as [pt [Hp Hinpt]]; subst.
+      assert (Hfv: pat_type_vars (fst pt) = []). {
+        eapply big_union_nil in H4. apply H4. rewrite in_map_iff.
+        exists pt; auto.
+      }
+      destruct (in_bool_spec vsymbol_eq_dec x (pat_fv (fst pt))); auto.
+    }
+    apply union_nil_eq; auto.
+    induction ps; simpl; auto.
+    inversion H0; subst.
+    destruct (in_bool_spec vsymbol_eq_dec x (pat_fv (fst a)));
+    destruct a as [p1 t1]; simpl in *;
+    apply union_nil_eq; auto; simpl_set_nil.
+  - vsym_eq x v; simpl; simpl_set_nil.
+  - apply big_union_nil_eq.
+    intros.
+    rewrite in_map_iff in H2.
+    destruct H2 as [tm2 [Hx0 Hintm2]]; subst.
+    rewrite Forall_forall in H.
+    apply H; auto.
+    eapply big_union_nil in H1.
+    apply H1. auto.
+  - vsym_eq x v; simpl; simpl_set_nil.
+  - vsym_eq x v; simpl_set_nil.
+  - rewrite big_union_nil_eq; simpl.
+    2: {
+      intros p. rewrite !map_map. intros Hp.
+      rewrite in_map_iff in Hp.
+      destruct Hp as [pt [Hp Hinpt]]; subst.
+      assert (Hfv: pat_type_vars (fst pt) = []). {
+        eapply big_union_nil in H4. apply H4. rewrite in_map_iff.
+        exists pt; auto.
+      }
+      destruct (in_bool_spec vsymbol_eq_dec x (pat_fv (fst pt))); auto.
+    }
+    apply union_nil_eq; auto.
+    induction ps; simpl; auto.
+    inversion H0; subst.
+    destruct (in_bool_spec vsymbol_eq_dec x (pat_fv (fst a)));
+    destruct a as [p1 t1]; simpl in *;
+    apply union_nil_eq; auto; simpl_set_nil.
+Qed.
+
+Corollary sub_t_mono tm x t:
+  mono_t tm ->
+  mono_t t ->
+  mono_t (sub_t tm x t).
+Proof.
+  unfold mono_t. rewrite !null_nil.
+  intros Htm.
+  apply (sub_type_vars tm x Htm t Ftrue).
+Qed.
+
+Corollary sub_f_mono tm x f:
+  mono_t tm ->
+  mono f ->
+  mono (sub_f tm x f).
+Proof.
+  unfold mono_t, mono. rewrite !null_nil.
+  intros Htm.
+  apply (sub_type_vars tm x Htm tm_d).
 Qed.
 
 End Sub.

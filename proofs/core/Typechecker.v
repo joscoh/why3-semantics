@@ -913,8 +913,7 @@ Proof.
 Qed.
 
 (*The whole check is easy, since the most difficult check
-  (inhab) is a boolean already
-  TODO: strictly positive or something?*)
+  (inhab) is a boolean already*)
 Definition mut_valid_check (m: mut_adt) : bool :=
   all (adt_valid_type_check) (typs m) &&
   all (adt_inhab gamma) (typs m) &&
@@ -1008,8 +1007,6 @@ Definition pn_d : pn :=
 (*First, we need a decidable version of
   [decrease_fun] and [decrease_pred], assuming we already
   have fs and ps*)
-(*NOTE: hopefully this is efficient enough and everything is
-  computable.*)
 Fixpoint check_decrease_fun (fs: list fn) (ps: list pn)
   (small: list vsymbol) (hd: option vsymbol) (m: mut_adt)
   (vs: list vty) (t: term) : bool :=
@@ -1342,7 +1339,7 @@ Proof.
     case: (IH2 (remove vsymbol_eq_dec v small) (upd_option hd v))=> 
       Hdec2/=; last by false_triv_case Hnotin.
     apply ReflectT. by apply Dec_tlet.
-  - (*TODO: automate these cases more*)
+  - (*should automate these cases more*)
     move=> f t1 t2 IH1 IH2 IH3 small hd.
     not_in_tm_case fs ps (Tif f t1 t2).
     move=> Hnotin.
@@ -1785,7 +1782,6 @@ Definition find_mut_args (fs: list fn) (ps: list pn) (il: list nat) :
     end
   end.
 
-(*TODO: make this for real so we can compute*)
 Definition mut_adt_eqb (m1 m2: mut_adt) : bool :=
   mut_adt_dec m1 m2.
 
@@ -2202,16 +2198,6 @@ Lemma size_skipn {A: Type} (n: nat) (l: list A) :
 Proof.
   by rewrite skipn_drop size_drop.
 Qed.
-(*
-Lemma size_firstn {A: Type} (n: nat) (l: list A) :
-size (firstn n l) = min n (size l).
-Proof.
-  rewrite firstn_take size_take.
-  case: (n < size l) /ltP => Hlt.
-  - rewrite min_l =>//. lia.
-  - rewrite min_r //. lia.
-Qed.*)
-
 
   (*Need a bunch of size results*)
 Lemma size_split_funpred_defs_fst l (il: list nat):
@@ -2260,7 +2246,7 @@ Proof.
   by rewrite size_combine // (size_split_funpred_defs_snd _ il).
 Qed. 
 
-(*TODO: should be in typing, but in terms of ssreflect*)
+(*NOTE: should be in typing, but in terms of ssreflect*)
 Lemma funpred_defs_to_sns_idx l il:
   size l = size il ->
   forall i,

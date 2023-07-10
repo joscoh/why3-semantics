@@ -2,7 +2,6 @@
 Require Import Denotational.
 Require Import Alpha.
 Require Import Typechecker.
-Require Import Unfold. (*For [val_with-args_in'] TODO fix*)
 Set Bullet Behavior "Strict Subproofs".
 (*This only simplifies the outermost pattern matches; it does not
   recursive inside.*)
@@ -34,7 +33,6 @@ Fixpoint matches gamma (p: pattern) (t: term) : match_result :=
   | Pconstr f1 tys1 ps, Tfun f2 tys2 tms =>
     (*Idea: if funsyms, types, and list lengths are the same, check all
       arguments*)
-    (*TODO: is this how to handle tys? Do we need to handle it at all?*)
     if funsym_eq_dec f1 f2 && list_eq_dec vty_eq_dec tys1 tys2 &&
       (length ps =? length tms) then
     (fix nested_matches (p1: list pattern) (t1: list term) : match_result :=
@@ -119,14 +117,6 @@ Proof.
   rewrite ty_subst_fun_nth with (s:=d); auto.
 Qed. 
 
-Lemma scast_refl_uip {A: Set} (H: A = A) x:
-  scast H x = x.
-Proof.
-  assert (H = eq_refl) by apply UIP.
-  subst. reflexivity.
-Qed.
-
-(*TODO: I think this direction is sufficient because we match on [matches]*)
 Lemma match_val_single_matches_none {gamma} (gamma_valid: valid_context gamma)
   (pd: pi_dom) (vt: val_typevar) (ty: vty) (p: pattern) 
     (Hty: pattern_has_type gamma p ty) (t: term) (pf: pi_funpred gamma_valid pd) 
@@ -995,7 +985,6 @@ Proof.
     intros. erewrite H. reflexivity.
   - simpl_rep_full. erewrite H, H0, H1. reflexivity.
   - (*The interesting case: match*)
-    (*TODO: is this the right way to do it?*)
     (*This is a bit of a hack, but we want to handle the case
       when we give t separately because we lose info with induction*)
     destruct (term_eq_dec (check_match gamma safe_sub_ts tm (Tmatch tm v ps) ps)

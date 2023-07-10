@@ -72,16 +72,11 @@ Definition inorder_body : term := <t
       List.Cons<a>({x}, inorder<a>({r})))
   end
 t>.
-(*TODO: do we need Int or Mem for Append?
-  Append should really be separated*)
+(*Note: Append should really be separated*)
 Definition Inorder : theory :=
   rev [
     tuse Tree false;
     tuse List.List false;
-    (*NOTE: we need these 3 for Append*)
-    (*tuse Int.Int false;*)
-    (*tuse List.Length false;*)
-    (*tuse List.Mem false;*)
     tuse List.Append false;
     tdef (rec_fun inorder [t] inorder_body)
   ].

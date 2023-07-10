@@ -32,7 +32,6 @@ Proof.
   exists x; auto.
 Qed.
 
-(*TODO: want to remove proofs from fun, predsym*)
 Definition funsym_noty (name: string) (args: list vty) 
   (ret: vty) : funsym :=
   Build_funsym (Build_fpsym name (find_args (ret :: args)) args

@@ -54,85 +54,8 @@ Definition unfold_f_single_aux (f1: formula) (args: list vsymbol) (body: term)
 Definition unfold_f_aux (f1: formula) (args: list vsymbol) (body: term) :=
   fold_left (fun acc x =>
     unfold_f_single_aux acc args body x) (find_fun_app_f f1) f1.
- (* let apps := find_fun_app_f f1 in
-  fold_left (fun (acc: formula) x => let tys := fst x in
-    let tms := snd x in
-    sub_fun_body_f args body tys tms acc) apps f1.*)
 
 End FindFun.
-(*TODO: typing*)
-
-Lemma ty_subst_equiv params tys ty:
-  (sublist (type_vars ty) params) ->
-  ty_subst params tys ty = ty_subst' params tys ty.
-Proof.
-  intros. unfold ty_subst. induction ty; simpl; auto.
-  - destruct (in_dec typevar_eq_dec v params); simpl; auto.
-    exfalso. simpl in H.
-    apply n, H; simpl; auto.
-  - f_equal. apply map_ext_in.
-    intros. rewrite Forall_forall in H0.
-    apply H0; auto.
-    simpl in H. intros x Hinx.
-    apply H. simpl_set. exists a; auto.
-Qed.
-
-Lemma NoDup_map_sublist {A B: Type} (f: A -> B)
-  (l1 l2: list A):
-  NoDup (map f l2) ->
-  NoDup l1 ->
-  sublist l1 l2 ->
-  NoDup (map f l1).
-Proof.
-  induction l1; simpl; intros; auto. constructor.
-  inversion H0; subst.
-  constructor; auto.
-  - intro C. rewrite in_map_iff in C.
-    destruct C as [y [Hfy Hiny]].
-    (*Idea: both a and y in l2 with same f, so same*)
-    assert (y = a).
-    { 
-      assert (In a l2). apply H1; simpl; auto.
-      assert (In y l2). apply H1; simpl; auto.
-      eapply NoDup_map_in. apply H. all: auto.
-    }
-    subst. contradiction.
-  - apply IHl1; auto. intros x Hinx; apply H1; simpl; auto.
-Qed.
-
-(*Helps with dependent type stuff*)
-Lemma val_with_args_in' 
-  (pd : pi_dom) (vt : val_typevar) (vv : val_vars pd vt)
-	(vars : list vsymbol) (srts : list sort) x
-    (a : arg_list (domain (dom_aux pd)) srts):
-  NoDup vars ->
-  Datatypes.length vars = Datatypes.length srts ->
-  forall i : nat,
-  i < Datatypes.length vars ->
-  x = nth i vars vs_d ->
-  forall Heq : nth i srts s_int = v_subst vt (snd x),
-  val_with_args pd vt vv vars a x =
-  dom_cast (dom_aux pd) Heq (hnth i a s_int (dom_int pd)).
-Proof.
-  intros. subst. apply val_with_args_in; auto.
-Qed.
-
-(*TODO: move*)
-Lemma fun_defined_valid {gamma f args body}:
-  valid_context gamma ->
-  fun_defined gamma f args body ->
-  funpred_def_valid_type gamma (fun_def f args body).
-Proof.
-  unfold fun_defined.
-  intros gamma_valid f_in.
-  destruct f_in as [[fs [fs_in f_in]] | f_in].
-  - pose proof (funpred_def_valid gamma_valid _ fs_in).
-    unfold funpred_valid in H. destruct H as [Hval _].
-    rewrite Forall_forall in Hval; auto.
-  - pose proof (valid_context_defs _ gamma_valid).
-    rewrite Forall_forall in H. specialize (H _ f_in).
-    apply H.
-Qed.
 
 (*The theorem we want: substituting the types and terms into the
   function body is the same as evaluating the function on the arguments*)
@@ -274,7 +197,6 @@ Proof.
   }
   erewrite val_with_args_in' with(i:=i)(Heq:=Heq2); auto;
   try rewrite !map_length; auto.
-  (*TODO: put goals together*)
   2: rewrite map_fst_combine; try rewrite !map_length; auto;
     apply (NoDup_map_inv fst); rewrite !map_map; simpl; auto.
   2: rewrite combine_length, map_length; lia.
@@ -306,7 +228,6 @@ Proof.
     rewrite map_nth_inbound with (d2:=vs_d); auto.
     unfold ty_subst_var in Hall. simpl in Hall.
     erewrite ty_subst_equiv; auto.
-    (*TODO: repetitive*)
     intros y Hiny.
     pose proof (s_args_wf f).
     apply check_args_prop with (x:=snd (nth i args vs_d)) in H0; auto.
@@ -577,8 +498,6 @@ Proof.
     auto. rewrite <- Hargs. rewrite in_map_iff.
     exists (nth i args vs_d). split; auto. apply nth_In; auto.
 Qed.
-
-
 
 Lemma sub_fun_body_f_ty gamma (f: funsym)
 (a: list vty * list term)
@@ -860,28 +779,8 @@ Definition unfold_p_single_aux (f1: formula) (args: list vsymbol) (body: formula
 Definition unfold_p_aux (f1: formula) (args: list vsymbol) (body: formula) :=
   fold_left (fun acc x =>
     unfold_p_single_aux acc args body x) (find_pred_app_f f1) f1.
-  (* let apps := find_fun_app_f f1 in
-  fold_left (fun (acc: formula) x => let tys := fst x in
-    let tms := snd x in
-    sub_fun_body_f args body tys tms acc) apps f1.*)
 
 End FindPred.
-
-Lemma pred_defined_valid {gamma p args body}:
-  valid_context gamma ->
-  pred_defined gamma p args body ->
-  funpred_def_valid_type gamma (pred_def p args body).
-Proof.
-  unfold pred_defined.
-  intros gamma_valid p_in.
-  destruct p_in as [[fs [fs_in p_in]] | p_in].
-  - pose proof (funpred_def_valid gamma_valid _ fs_in).
-    unfold funpred_valid in H. destruct H as [Hval _].
-    rewrite Forall_forall in Hval; auto.
-  - pose proof (valid_context_defs _ gamma_valid).
-    rewrite Forall_forall in H. specialize (H _ p_in).
-    apply H.
-Qed.
 
 (*Almost the same proof as before, can we generalize?
   Don't think so because [term_rep] and [formula_rep] are different*)
@@ -1004,7 +903,6 @@ Proof.
   }
   erewrite val_with_args_in' with(i:=i)(Heq:=Heq2); auto;
   try rewrite !map_length; auto.
-  (*TODO: put goals together*)
   2: rewrite map_fst_combine; try rewrite !map_length; auto;
     apply (NoDup_map_inv fst); rewrite !map_map; simpl; auto.
   2: rewrite combine_length, map_length; lia.
@@ -1036,7 +934,6 @@ Proof.
     rewrite map_nth_inbound with (d2:=vs_d); auto.
     unfold ty_subst_var in Hall. simpl in Hall.
     erewrite ty_subst_equiv; auto.
-    (*TODO: repetitive*)
     intros y Hiny.
     pose proof (s_args_wf p).
     apply check_args_prop with (x:=snd (nth i args vs_d)) in H0; auto.
@@ -1305,31 +1202,8 @@ Proof.
     exists (nth i args vs_d). split; auto. apply nth_In; auto.
 Qed.
 
-(*Lemma sub_pred_body_f_ty gamma (p: predsym)
-(a: list vty * list term)
-(args: list (string * vty))
-(body: term)
-(Hnargs: NoDup (map fst args))
-(Htyb: term_has_type gamma body)
-(Hfvargs: sublist (tm_fv body) args)
-(Hargs: map snd args = s_args f)
-(base: formula)
-(Htya: term_has_type gamma (Tfun f (fst a) (snd a)) (ty_subst (s_params f) (fst a) (f_ret f)))
-(H: formula_typed gamma base)
-(Hall: Forall (valid_type gamma) (fst a))
-(Halen1: Datatypes.length (snd a) = Datatypes.length (s_args f))
-(Hallty: Forall (fun x : term * vty => term_has_type gamma (fst x) (snd x))
-        (combine (snd a) (map (ty_subst (s_params f) (fst a)) (s_args f))))
-(Hsub: sublist (type_vars (f_ret f)) (s_params f)):
-formula_typed gamma (sub_fun_body_f f args body (fst a) (snd a) base).
-Proof.
-  eapply sub_fun_body_f_typed. apply Htya. all: auto. 
-  rewrite ty_subst_equiv; auto.
-  apply sub_body_t_ty'; auto.
-Qed.*)
-(*
 (*Typing for [unfold_p]*)
-*)
+
 Lemma unfold_p_ty_aux {gamma} (gamma_valid: valid_context gamma)
 (p: predsym) l base args body
 (Hnargs : NoDup (map fst args))
@@ -1406,11 +1280,6 @@ Proof.
     - erewrite fmla_rep_irrel. rewrite H. apply fmla_rep_irrel.
     - assert (Htya: formula_typed gamma (Fpred p (fst a) (snd a))).
         { apply Hl. left; destruct a; auto. }
-      (*Hardest part: proving typing*)
-      (*assert (Hsub: sublist (type_vars (f_ret )) (s_params f)). {
-        pose proof (f_ret_wf f).
-        apply check_sublist_prop in H0; auto.
-      }*)
       assert (Hty4: formula_typed gamma (sub_body_f p args body (fst a) (snd a))). {
         inversion Htya; subst.
         apply sub_body_f_ty'; auto.
@@ -1435,7 +1304,6 @@ Proof.
   }
   intros.
   eapply H. 2: reflexivity.
-  (*Need that [find_fun_app_f] well_typed*)
   intros. eapply find_pred_app_f_ty. 2: apply H0. auto.
 Qed.
 
@@ -1475,11 +1343,6 @@ Proof.
     }
     rewrite H. apply nth_In; auto.
   }
-   (*Hardest part: proving typing*)
-   (*assert (Hsub: sublist (type_vars (f_ret f)) (s_params f)). {
-    pose proof (f_ret_wf f).
-    apply check_sublist_prop in H; auto.
-  }*)
   assert (Hty4: formula_typed gamma (sub_body_f p args body vs ts)). {
     inversion Htyi; subst.
     apply sub_body_f_ty'; auto.

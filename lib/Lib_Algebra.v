@@ -2,9 +2,6 @@ Require Import StdLib.
 Require Import Lib_Relations.
 Set Bullet Behavior "Strict Subproofs".
 
-(*TODO: maybe change TheoryTest, see*)
-
-
 Module Algebra.
 Local Open Scope why3_scope.
 
@@ -12,7 +9,6 @@ Local Open Scope why3_scope.
 Definition t_ts : typesym := mk_ts "t" nil.
 Definition t : vty := vty_cons t_ts nil.
 
-(*TODO: move, make more general*)
 Definition op: funsym := binop "op" t. 
 Definition unit : funsym := const "Unit" t.
 
@@ -26,7 +22,7 @@ Definition z : vsymbol := ("z"%string, t).
 
 Coercion Tvar : vsymbol >-> term.
 
-(*TODO: the brackets for variables are ugly, but Coq will not convert appropriately*)
+(*Note: the brackets for variables are ugly, but Coq will not convert appropriately*)
 
 (*Associativity*)
 Definition Assoc : theory :=
@@ -93,7 +89,7 @@ Definition zero : funsym := const "zero" t.
 Definition plus : funsym := binop "plus" t.
 Definition mult : funsym := binop "mult" t.
 Definition neg : funsym := unop "neg" t.
-(*Qualified names - TODO: improve*)
+(*Qualified names*)
 Definition MA_t_ts : typesym := mk_ts "MulAssoc.t" nil.
 Definition MA_t : vty := vty_cons MA_t_ts nil.
 Definition MA_op: funsym := binop "MulAssoc.op" MA_t.
@@ -180,10 +176,10 @@ Definition Field : theory :=
       [t] z != zero() ->
       [t] div(mult({x}, {y}), {z}) = mult({x}, div({y}, {z})) f>;
     tprop Plemma "assoc_div_mul" <f forall x, forall y, forall z,
-      ([t] y != zero() /\ [t] z != zero()) -> (*TODO: change after notations*)
+      ([t] y != zero() /\ [t] z != zero()) -> 
       [t] div(div({x}, {y}), {z}) = div({x}, mult({y}, {z})) f>;
     tprop Plemma "assoc_div_div" <f forall x, forall y, forall z,
-      ([t] y != zero() /\ [t] z != zero()) -> (*TODO: change after notations*)
+      ([t] y != zero() /\ [t] z != zero()) ->
       [t] div({x}, div({y}, {z})) = div(mult({x}, {z}), {y}) f>
   ].
 

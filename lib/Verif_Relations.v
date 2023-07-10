@@ -198,25 +198,3 @@ Lemma minmax_typed: typed_theory Relations.MinMax.
 Proof.
   check_theory.
 Qed.
-
-(*TODO: prove this later*)
-Module MinMaxValid.
-
-Import Lib_Relations.Relations.
-
-Definition x_ := Tfun (constsym "x" Relations.t) nil nil.
-Definition y_ := Tfun (constsym "y" Relations.t) nil nil.
-Definition z_ := Tfun (constsym "z" Relations.t) nil nil.
-
-Ltac extra_simpl ::= fold t; fold x; fold y; fold z;
-  unfold t_constsym; fold x_; fold y_; fold z_.
-
-(*Lemma minmax_valid: valid_theory MinMax.
-Proof.
-  simpl. split_all.
-  - wstart. unfold sub_preds, sub_from_map; simpl.
-    wintros "x" "y" "z".
-    wunfold Relations.max.
-    (*TODO: destruct bool, simpl if*)
-Abort.*)
-End MinMaxValid.

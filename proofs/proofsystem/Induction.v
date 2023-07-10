@@ -19,80 +19,6 @@ Require Import Task.
 Require Import ADTInd.
 Set Bullet Behavior "Strict Subproofs".
 
-(*TODO: copied*)
-Lemma ty_subst_equiv params tys ty:
-  (sublist (type_vars ty) params) ->
-  ty_subst params tys ty = ty_subst' params tys ty.
-Proof.
-  intros. unfold ty_subst. induction ty; simpl; auto.
-  - destruct (in_dec typevar_eq_dec v params); simpl; auto.
-    exfalso. simpl in H.
-    apply n, H; simpl; auto.
-  - f_equal. apply map_ext_in.
-    intros. rewrite Forall_forall in H0.
-    apply H0; auto.
-    simpl in H. intros x Hinx.
-    apply H. simpl_set. exists a; auto.
-Qed.
-
-(*TODO: move*)
-Definition iter_fimplies (l: list formula) (f: formula) :=
-  fold_right (Fbinop Timplies) f l.
-
-Lemma iter_fimplies_ty gamma l f:
-  Forall (formula_typed gamma) l ->
-  formula_typed gamma f ->
-  formula_typed gamma (iter_fimplies l f).
-Proof.
-  intros. induction l; simpl in *; auto.
-  inversion H; subst. constructor; auto.
-Qed.
-
-Lemma iter_fimplies_ty_inv {gamma} {l: list formula} {f: formula}:
-formula_typed gamma (iter_fimplies l f) ->
-Forall (formula_typed gamma) l /\ formula_typed gamma f.
-Proof.
-  induction l; simpl; intros; try solve[split; auto].
-  inversion H; subst. apply IHl in H5. destruct_all.
-  split; auto; constructor; auto.
-Qed.
-
-Lemma iter_fimplies_alt_ty {gamma} {l: list formula} {f: formula}:
-  formula_typed gamma (iter_fimplies l f) ->
-  formula_typed gamma (Fbinop Timplies (iter_fand l) f).
-Proof.
-  intros. apply iter_fimplies_ty_inv in H.
-  destruct H.
-  constructor; auto.
-  apply iter_fand_typed; auto.
-Qed.
-
-
-Lemma iter_fimplies_rep {gamma: context} (gamma_valid: valid_context gamma)
-  (pd: pi_dom) (pf: pi_funpred gamma_valid pd)
-  (vt: val_typevar) (vv: val_vars pd vt) 
-  (l: list formula) (f: formula) 
-  Hty:
-  formula_rep gamma_valid pd vt pf vv (iter_fimplies l f) Hty =
-  formula_rep gamma_valid pd vt pf vv (Fbinop Timplies (iter_fand l) f) 
-    (iter_fimplies_alt_ty Hty).
-Proof.
-  generalize dependent (iter_fimplies_alt_ty Hty).
-  revert Hty.
-  induction l; simpl; intros.
-  - simpl_rep_full. apply fmla_rep_irrel.
-  - simpl_rep_full.
-    erewrite IHl.
-    simpl_rep_full.
-    rewrite implb_curry.
-    f_equal. apply fmla_rep_irrel.
-    f_equal. apply fmla_rep_irrel.
-    apply fmla_rep_irrel.
-    Unshelve.
-    inversion f0; subst.
-    inversion H2; subst.
-    constructor; auto.
-Qed.
 
 (*First, construct the transformation*)
 
@@ -211,9 +137,7 @@ Lemma constr_case_ty {gamma} (gamma_valid: valid_context gamma)
   constr_in_adt f a ->
   Forall (valid_type gamma) vs ->
   length vs = length (m_params m) ->
-  (*Forall (valid_type gamma) (s_args f) ->*)
   snd x = vty_cons (adt_name a) vs ->
-  (*valid_type gamma (vty_cons a vs) ->*)
   formula_typed gamma goal ->
   formula_typed gamma (constr_case (adt_name a) vs f goal x).
 Proof.
@@ -277,14 +201,6 @@ Definition induction_trans : trans :=
   | _ => [t]
     end.
 
-(*TODO: copied*)
-Lemma scast_refl_uip {A: Set} (H: A = A) x:
-  scast H x = x.
-Proof.
-  assert (H = eq_refl) by apply UIP.
-  subst. reflexivity.
-Qed.
-
 (*A bit of a silly lemma*)
 Lemma prove_impl_bool (P: Prop) (b1 b2: bool):
   b1 = b2 ->
@@ -310,40 +226,6 @@ Proof.
   intros. subst.
   assert (H2 = eq_refl) by apply UIP.
   subst; reflexivity.
-Qed.
-
-(*TODO: move (and rename previous)*)
-Lemma substi_mult_nth'' {pd vt} (vv: val_vars pd vt) 
-(vs: list vsymbol)
-(vals: arg_list (domain (dom_aux pd)) (map (v_subst vt) (map snd vs)))
-(i: nat)
-(Hi: i < length vs)
-(Hnodup: NoDup vs) x (Heqx: x = nth i vs vs_d):
-(*Doesn't work without type annotation*)
-let H : v_subst vt (snd (nth i vs vs_d)) = v_subst vt (snd x) 
-  := (f_equal (fun y => (v_subst vt (snd y))) (eq_sym Heqx)) in
-substi_mult pd vt vv vs vals x = 
-dom_cast (dom_aux pd) 
-  (eq_trans
-    (substi_mult_nth_lemma _ _ vs i Hi s_int vs_d) 
-    H)
-  (hnth i vals s_int (dom_int pd)).
-Proof.
-  simpl.
-  match goal with
-  | |- _ = dom_cast (dom_aux ?pd) ?Heq ?d => generalize dependent Heq
-  end.
-  generalize dependent i.
-  revert vv.
-  induction vs; simpl in *; try lia.
-  inversion Hnodup; subst. destruct i; simpl in *.
-  - intros. subst. rewrite substi_mult_notin; auto.
-    unfold substi. vsym_eq a a.
-    assert (e0 = eq_refl) by (apply UIP_dec; apply vsymbol_eq_dec).
-    rewrite H; simpl.
-    assert (e = eq_refl) by (apply UIP_dec; apply sort_eq_dec).
-    rewrite H0; reflexivity.
-  - intros. erewrite IHvs. reflexivity. auto. lia. auto.
 Qed.
 
 (*Prove soundness*)
@@ -478,7 +360,6 @@ Proof.
     unfold sym_sigma_args, ty_subst_list_s, ty_subst_list'.
     rewrite !map_map.
     apply map_ext_in. intros.
-    (*TODO: seems similar to other lemmas*)
     rewrite <- funsym_subst_eq; auto.
     rewrite ty_subst_equiv; auto.
     pose proof (s_args_wf c).
@@ -583,7 +464,7 @@ Proof.
              (ty_subst_list' (s_params c) vs (s_args c)))) tm_d)
     (ty_subst (s_params c) vs (nth i (s_args c) vty_int))).
     {
-      (*TODO: repetitive with above*)
+      (*repetitive with above*)
       rewrite map_nth_inbound with (d2:=vs_d); unfold vsymbol,
       ty_subst_list'; [|rewrite combine_length, gen_strs_length, map_length; lia].
       unfold vs_d.
@@ -671,7 +552,6 @@ Proof.
          rewrite <- Hlen, map_length; auto.
       rewrite ty_subst_equiv.
       2: {
-        (*TODO: generalize*)
         pose proof (s_args_wf c).
         apply check_args_prop with (x:=nth i (s_args c) vty_int) in H;
         auto. apply nth_In; auto.
@@ -692,7 +572,7 @@ Proof.
         vty_cons (adt_name a) vs)) (vty_cons (adt_name a) vs)).
     {
       apply T_Var. simpl. 
-      (*TODO: separate lemma*)
+      (*separate lemma?*)
       constructor.
       + unfold sig_t. rewrite in_concat.
         exists (typesyms_of_def (datatype_def m)).

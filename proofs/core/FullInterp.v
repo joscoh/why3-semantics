@@ -247,43 +247,7 @@ Proof.
   rewrite Forall_forall in Hallin. auto.
 Qed.
 
-(*TODO: move*)
-Lemma nonrec_notin_fun {f args body}:
-  In (nonrec_def (fun_def f args body)) gamma ->
-  ~ (funsym_in_tm f body).
-Proof.
-  intros.
-  pose proof (valid_context_defs _ gamma_valid).
-  rewrite Forall_forall in H0.
-  specialize (H0 _ H).
-  simpl in H0.
-  destruct_all.
-  destruct (funsym_in_tm f body); simpl; auto.
-Qed.
-
-Lemma nonrec_notin_pred {p args body}:
-  In (nonrec_def (pred_def p args body)) gamma ->
-  ~ (predsym_in_fmla p body).
-Proof.
-  intros.
-  pose proof (valid_context_defs _ gamma_valid).
-  rewrite Forall_forall in H0.
-  specialize (H0 _ H).
-  simpl in H0.
-  destruct_all.
-  destruct (predsym_in_fmla p body); simpl; auto.
-Qed.
-
-(*TODO: move this*)
-Lemma dom_cast_eq' {d: sort -> Set} (s1 s2: sort)
-  (H1 H2: s1 = s2) (x y: domain d s1):
-  x = y ->
-  dom_cast d H1 x = dom_cast d H2 y.
-Proof.
-  intros; subst. apply dom_cast_eq.
-Qed.
-
-(*TODO: lots of duplication in the below proofs, improve*)
+(*lots of duplication in the below proofs, improve*)
 
 (*Non recursive function - can we combine with recfun?*)
 Lemma upd_pf_multi_nonrecfun (l: list def) (pf: pi_funpred gamma_valid pd)
@@ -321,7 +285,7 @@ Proof.
     erewrite term_rep_irrel.
     apply tm_change_pf; auto; simpl; intros.
     rewrite pf_with_nonrec_fun_diff; auto.
-    intros C; subst. apply (nonrec_notin_fun (Forall_inv Hallin)); auto.
+    intros C; subst. apply (nonrec_notin_fun gamma_valid (Forall_inv Hallin)); auto.
   - (*Now we show the inductive case - here, we need to know
     that we haven't modified any fun or pred definition already
     used*)
@@ -355,7 +319,7 @@ Proof.
       (*Here, we use the ordering assumption*)
       intro Hpin.
       apply (H5 p (nonrec_def (fun_def f args body))); auto.
-    + (*other nonrec def case - TODO: would be nice to do this as 1 case*)
+    + (*other nonrec def case - would be nice to do this as 1 case*)
       destruct f0; simpl.
       * rewrite pf_with_nonrec_fun_diff; auto.
         -- inversion Hordl; subst. rewrite IHl; auto.
@@ -539,7 +503,7 @@ Proof.
     erewrite fmla_rep_irrel.
     apply fmla_change_pf; auto; simpl; intros.
     rewrite pf_with_nonrec_pred_diff; auto.
-    intros C; subst. apply (nonrec_notin_pred (Forall_inv Hallin)); auto.
+    intros C; subst. apply (nonrec_notin_pred gamma_valid (Forall_inv Hallin)); auto.
   - (*Now we show the inductive case - here, we need to know
     that we haven't modified any fun or pred definition already
     used*)
@@ -575,7 +539,7 @@ Proof.
       unfold not.
       apply (indprop_not_nonrec gamma_valid (pred_def p args body)); simpl; auto.
       inversion Hallin; auto.
-    + (*other nonrec def case - TODO: would be nice to do this as 1 case*)
+    + (*other nonrec def case - would be nice to do this as 1 case*)
       destruct f; simpl.
       * rewrite IHl; auto.
         apply fmla_change_pf; auto.
@@ -921,7 +885,6 @@ Proof.
   rewrite Forall_forall; intros; auto.
 Qed.
 
-(*TODO: copy of [in_indpred_valid] in Indprop, remove*)
 Lemma indprop_fmla_valid { gamma}
   (gamma_valid: valid_context gamma) 
   {l: list (predsym * list formula)}
@@ -972,6 +935,22 @@ Proof.
   - apply nonrec_body_ty in H; auto. 
 Qed.
 
+Lemma fun_defined_valid {gamma f args body}:
+  valid_context gamma ->
+  fun_defined gamma f args body ->
+  funpred_def_valid_type gamma (fun_def f args body).
+Proof.
+  unfold fun_defined.
+  intros gamma_valid f_in.
+  destruct f_in as [[fs [fs_in f_in]] | f_in].
+  - pose proof (funpred_def_valid gamma_valid _ fs_in).
+    unfold funpred_valid in H. destruct H as [Hval _].
+    rewrite Forall_forall in Hval; auto.
+  - pose proof (valid_context_defs _ gamma_valid).
+    rewrite Forall_forall in H. specialize (H _ f_in).
+    apply H.
+Qed.
+
 Definition pred_defined gamma (p: predsym) (args: list vsymbol) (body: formula) :=
   (*Recursively*)
   (exists fs, In fs (mutfuns_of_context gamma) /\
@@ -989,6 +968,22 @@ Proof.
   destruct_all; subst.
   - eapply p_body_type. auto. apply H. apply H0.
   - apply nonrec_body_typed in H; auto. 
+Qed.
+
+Lemma pred_defined_valid {gamma p args body}:
+  valid_context gamma ->
+  pred_defined gamma p args body ->
+  funpred_def_valid_type gamma (pred_def p args body).
+Proof.
+  unfold pred_defined.
+  intros gamma_valid p_in.
+  destruct p_in as [[fs [fs_in p_in]] | p_in].
+  - pose proof (funpred_def_valid gamma_valid _ fs_in).
+    unfold funpred_valid in H. destruct H as [Hval _].
+    rewrite Forall_forall in Hval; auto.
+  - pose proof (valid_context_defs _ gamma_valid).
+    rewrite Forall_forall in H. specialize (H _ p_in).
+    apply H.
 Qed.
 
 
@@ -1051,8 +1046,7 @@ Definition full_interp {gamma}
     (indprop_fmla_valid gamma_valid l_in p_in f_in)
 ) /\
 (*Inductive predicates part 2: this is the least predicate
-  such that the constructors hold
-  TODO: is this the right way to express this?*)
+  such that the constructors hold*)
 (forall (l: list (predsym * list formula))
   (l_in: In l (indpreds_of_context gamma))
   (p: predsym)
@@ -1232,10 +1226,6 @@ Proof.
         (p_in:=(In_in_bool predsym_eq_dec p (map fst l) p_in)) in H0; auto.
       apply H0.
 Qed.
-
-(*TOOD: move*)
-
-
 
 (*And we prove the following: uninterpreted functions really are
   uninterpreted: for any possible assignment to uninterpreted functions

@@ -5,7 +5,7 @@ Require Export Tactics.
 Require Export Notations.
 From mathcomp Require Export all_ssreflect.
 
-(*TODO: different than other version because we use [funsym_noty]
+(*Different than other version because we use [funsym_noty]
   instead of writing manually*)
 Definition const name ty := funsym_noty name nil ty.
 Definition binop name ty : funsym := funsym_noty name [ty;ty] ty.
@@ -19,3 +19,6 @@ Definition rec_pred p args body : def := recursive_def [pred_def p args body].
 
 Notation mk_typemap l := (exist _ l erefl).
 Definition emp_typemap : ty_map := (exist _ nil erefl).
+
+Open Scope string_scope.
+Open Scope why3_scope.

@@ -5,73 +5,6 @@ Require Import Task.
 From Equations Require Import Equations.
 Set Bullet Behavior "Strict Subproofs".
 
-(*Utilities for sublists (TODO: move?)*)
-Lemma sublist_refl {A: Type} (l: list A):
-  sublist l l.
-Proof.
-  unfold sublist. auto.
-Qed.
-
-Lemma sublist_big_union {A B: Type} 
-  (eq_dec: forall (x y: A), {x=y} + {x<>y})
-  (f: B -> list A) (l: list B) (g: B -> B):
-  Forall (fun x => sublist (f (g x)) (f x)) l ->
-  sublist (big_union eq_dec f (map g l)) (big_union eq_dec f l).
-Proof.
-  intros.
-  unfold sublist.
-  intros. simpl_set.
-  rewrite Forall_forall in H.
-  destruct H0 as [y [Hiny Hinx]].
-  rewrite in_map_iff in Hiny.
-  destruct Hiny as [z [Hy Hinz]]; subst.
-  exists z. split; auto.
-  apply H in Hinz.
-  apply Hinz; auto.
-Qed.
-
-Lemma sublist_union {A: Type} (eq_dec: forall (x y: A), {x=y}+{x<>y})
-  (l1 l2 l3 l4: list A):
-  sublist l1 l2 ->
-  sublist l3 l4 ->
-  sublist (union eq_dec l1 l3) (union eq_dec l2 l4).
-Proof.
-  unfold sublist. intros. simpl_set.
-  destruct H1; auto.
-Qed.
-
-Lemma sublist_remove {A: Type} (eq_dec: forall (x y: A), {x=y}+{x<>y})
-  v l1 l2:
-  sublist l1 l2 ->
-  sublist (remove eq_dec v l1) (remove eq_dec v l2).
-Proof.
-  unfold sublist; intros; simpl_set; destruct_all; split; auto.
-Qed.
-
-Lemma sublist_remove_all  {A: Type} (eq_dec: forall (x y: A), {x=y}+{x<>y})
-  l1 l2 l3:
-  sublist l2 l3 ->
-  sublist (remove_all eq_dec l1 l2) (remove_all eq_dec l1 l3).
-Proof.
-  unfold sublist; intros; simpl_set; destruct_all; auto.
-Qed.
-
-Ltac solve_subset :=
-  repeat match goal with
-  | |- sublist ?x ?x => apply sublist_refl
-  | |- sublist (Common.union ?eq_dec ?l1 ?l2) (Common.union ?eq_dec ?l3 ?l4) =>
-    apply sublist_union; auto
-  | |- sublist (remove ?eq_dec ?x ?l1) (remove ?eq_dec ?x ?l2) =>
-    apply sublist_remove; auto
-  | |- sublist (big_union ?eq_dec ?f (map ?g ?l)) (big_union ?eq_dec ?f ?l) =>
-    apply sublist_big_union; auto
-  | |- sublist (remove_all ?eq_dec ?l1 ?l2) (remove_all ?eq_dec ?l1 ?l3) =>
-    apply sublist_remove_all; auto
-  | H: Forall ?P (map ?f ?l) |- Forall ?Q ?l => rewrite Forall_map in H; 
-    revert H; apply Forall_impl; auto; simpl; intros
-  | |- Forall ?P ?l => rewrite Forall_forall; auto; simpl; intros; simpl
-  end.
-
 (*First version (not why3's)*)
 Section ElimLetAlt.
 
@@ -110,8 +43,6 @@ with elim_let_f (bt: bool) (bf: bool) (f: formula) : formula :=
       (map (fun x => (fst x, elim_let_f bt bf (snd x))) ps)
   | _ => f
   end.
-
-(*TODO: we should really generalize to some kind of mapping*)
 
 Lemma elim_let_typed gamma bt bf (t: term) (f: formula) :
   (forall ty (Hty: term_has_type gamma t ty),
@@ -230,9 +161,7 @@ Proof.
   try solve[simpl_rep_full; apply fmla_rep_irrel];
   try reflexivity;
   simpl in *; simpl_rep_full.
-  - (*TODO: need better way to do this - maybe sep
-      extensionality lemma for these*)
-    assert (ty_fun_ind_ret Hty2 = ty_fun_ind_ret Hty1).
+  - assert (ty_fun_ind_ret Hty2 = ty_fun_ind_ret Hty1).
       apply UIP_dec. apply vty_eq_dec.
     rewrite H0. f_equal. f_equal. apply UIP_dec. apply sort_eq_dec.
     f_equal. apply get_arg_list_ext; rewrite map_length; auto.
@@ -308,26 +237,23 @@ End Rep.
 
 (*Define the transformation*)
 Definition eliminate_let_term: trans :=
-  trans_goal (elim_let_f true false).
+  trans_goal (fun _ => elim_let_f true false).
   
 Definition eliminate_let_fmla : trans :=
-  trans_goal (elim_let_f false true).
+  trans_goal (fun _ => elim_let_f false true).
 
 Definition eliminate_let : trans :=
-  trans_goal (elim_let_f true true).
+  trans_goal (fun _ => elim_let_f true true).
 
 (*Now we prove soundness*)
 Lemma eliminate_let_sound_gen :
   forall b1 b2,
-  sound_trans (trans_goal (elim_let_f b1 b2)).
+  sound_trans (trans_goal (fun _ => elim_let_f b1 b2)).
 Proof.
   intros.
   apply trans_goal_sound.
-  intros. split_all.
-  - apply elim_let_f_typed; auto.
-  (*- apply elim_let_f_fv.*)
-  - intros. specialize (H vt vv). erewrite elim_let_f_rep in H.
-    apply H.
+  intros. specialize (H vt vv). erewrite elim_let_f_rep in H.
+  apply H.
 Qed.
 
 Theorem eliminate_let_term_sound:
@@ -1205,8 +1131,7 @@ elim_let_tm_fmla_rep_eq x (proj1_sig (elim_let_tm_fmla x b1 b2 Heq1 Heq2)).
 Proof.
   apply elim_let_tm_fmla_elim; intros; simpl; intros; auto; simpl in *;
   try apply term_rep_irrel; simpl_rep_full.
-  - (*TODO: fix*)
-    assert (ty_fun_ind_ret Hty2 = ty_fun_ind_ret Hty1).
+  - assert (ty_fun_ind_ret Hty2 = ty_fun_ind_ret Hty1).
       apply UIP_dec. apply vty_eq_dec.
     rewrite H1. f_equal. f_equal. apply UIP_dec. apply sort_eq_dec.
     f_equal. clear H1. revert Hty2.
@@ -1301,27 +1226,23 @@ End ElimLetWhy3.
 
 (*Define the transformation*)
 Definition eliminate_let_term2: trans :=
-  trans_goal (elim_let_fmla true false).
+  trans_goal (fun _ => elim_let_fmla true false).
   
 Definition eliminate_let_fmla2 : trans :=
-  trans_goal (elim_let_fmla false true).
+  trans_goal (fun _ => elim_let_fmla false true).
 
 Definition eliminate_let2 : trans :=
-  trans_goal (elim_let_fmla true true).
+  trans_goal (fun _ => elim_let_fmla true true).
 
 (*Now we prove soundness*)
 Lemma eliminate_let_sound_gen2 :
   forall b1 b2,
-  sound_trans (trans_goal (elim_let_fmla b1 b2)).
+  sound_trans (trans_goal (fun _ => elim_let_fmla b1 b2)).
 Proof.
   intros.
   apply trans_goal_sound.
-  intros. split_all.
-  - apply elim_let_fmla_typed; auto.
-  (*- apply elim_let_fmla_fv.*)
-  - intros. specialize (H vt vv). 
-    erewrite elim_let_fmla_rep in H.
-    apply H.
+  intros. specialize (H vt vv). 
+  erewrite elim_let_fmla_rep in H. apply H.
 Qed.
 
 Theorem eliminate_let_term_sound2:

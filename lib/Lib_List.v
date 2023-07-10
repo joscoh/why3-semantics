@@ -28,7 +28,6 @@ Definition is_nil_body : formula := <f
 
 Definition List : theory :=
   rev [
-    (*TODO: notations would be nice*)
     tdef (datatype_def list_mut);
     tdef (nonrec_pred is_nil [l] is_nil_body);
     (*We don't have "ensures"*)
@@ -102,7 +101,6 @@ Definition Append : theory :=
       f>;
     tprop Plemma "Append_l_nil" <f forall l1,
       [list] app<a>({l1}, Nil<a>()) = {l1} f>;
-    (*TODO: change so import order doesn't matter as much*)
     tuse Int.Int false;
     tuse Length false;
     tprop Plemma "Append_length" <f forall l1, forall l2,

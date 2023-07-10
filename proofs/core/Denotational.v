@@ -799,7 +799,7 @@ Qed.
 (*Now we want a generic way to prove things about
   [match_val_single] so we don't have to do all of the very
   tedious generalization and nested induction every time*)
-(*TODO: this is not very useful, we cannot use in many places*)
+(*NOTE: this is not very useful, we cannot use in many places*)
 Lemma match_val_single_ind 
 (P : forall (v : val_typevar) (ty : vty) (p : pattern)
   (d: domain (val v ty)),
@@ -1357,7 +1357,6 @@ with formula_rep (v: val_vars pd vt) (f: formula)
       proj1' (typed_eq_inv Hval) in
     let Ht2 : term_has_type gamma t2 ty :=
       proj2' (typed_eq_inv Hval) in
-    (*TODO: require decidable equality for all domains?*)
     all_dec (term_rep v t1 ty Ht1 = term_rep v t2 ty Ht2);
 
   formula_rep v (Fmatch t ty1 xs) Hval :=
@@ -1729,10 +1728,8 @@ revert t f; apply term_formula_ind; simpl; intros; simpl_rep_full; auto.
     * apply H3; intros; [apply Hpext | apply Hfext]; 
       simpl; rewrite H1; simpl_bool; auto.
     * apply IHps; auto; intros; [apply Hpext | apply Hfext];
-      simpl; 
-      (*TODO: ugly proof script here*)
-      revert H1; simpl_bool; unfold is_true; intros; solve_bool;
-      revert H1; simpl_bool; auto.
+      simpl; bool_hyps; destruct H1 as [H1 | H1]; rewrite H1;
+      simpl_bool; auto.
   + intros. apply Hpext; simpl; rewrite H1; simpl_bool; auto.
   + intros. apply Hfext; simpl; rewrite H1; simpl_bool; auto.
 - f_equal. repeat (apply functional_extensionality_dep; intros).
@@ -1802,10 +1799,8 @@ revert t f; apply term_formula_ind; simpl; intros; simpl_rep_full; auto.
     * apply H3; intros; [apply Hpext | apply Hfext]; 
       simpl; rewrite H1; simpl_bool; auto.
     * apply IHps; auto; intros; [apply Hpext | apply Hfext];
-      simpl; 
-      (*TODO: ugly proof script here*)
-      revert H1; simpl_bool; unfold is_true; intros; solve_bool;
-      revert H1; simpl_bool; auto.
+      simpl; bool_hyps; destruct H1 as [H1 | H1];
+      rewrite H1; simpl_bool; auto.
   + intros. apply Hpext; simpl; rewrite H1; simpl_bool; auto.
   + intros. apply Hfext; simpl; rewrite H1; simpl_bool; auto.
 Qed.
@@ -1890,8 +1885,6 @@ Proof.
   apply match_val_single_ext; auto.
 Qed.
 
-(*TODO: maybe move corollaries below (after)*)
-
 Corollary term_rep_irrel {gamma} (gamma_valid: valid_context gamma)
   (pd: pi_dom) (pf: pi_funpred gamma_valid pd)
   (vt: val_typevar) (vv: val_vars pd vt)
@@ -1921,7 +1914,6 @@ Section FixedInterp.
 
 Context {gamma: context} (gamma_valid: valid_context gamma)
   (pd: pi_dom).
-(*TODO: can we fix pf?*)
 Variable (pf: pi_funpred gamma_valid pd).
 Notation funs := (funs gamma_valid pd pf).
 Notation domain := (domain (dom_aux pd)).

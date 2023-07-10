@@ -1319,7 +1319,6 @@ Proof.
       }
       (*Now we need to rewrite the other one*)
       rewrite val_with_args_in with(Heq:=Heq1 triv_val_typevar); auto.
-      (*TODO: separate out*)
       2: {
         apply NoDup_map_inv in Hnodup; auto. 
       }
@@ -1440,7 +1439,6 @@ Proof.
       }
       (*Now we need to rewrite the other one*)
       rewrite val_with_args_in with(Heq:=Heq1 triv_val_typevar); auto.
-      (*TODO: separate out*)
       2: {
         apply NoDup_map_inv in Hnodup; auto. 
       }
