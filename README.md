@@ -116,12 +116,12 @@ for example, `wintros`, `wreflexivity`, etc.
 for function/predicate unfolding, pattern match simplification, and induction
 over non-mutual ADTs, respectively.
 
-`proofs/lib/` gives the parts of the Why3 standard library we have translated 
-to Coq and proved correct. `/proofs/lib/Lib_List.v` defines the List library,
-and `/proofs/lib/Verif_List.v` gives `app_valid` and `rev_valid` where we prove
+`lib/` gives the parts of the Why3 standard library we have translated 
+to Coq and proved correct. `Lib_List.v` defines the List library,
+and `Verif_List.v` gives `app_valid` and `rev_valid` where we prove
 that the Append and Reverse theories in Why3 are valid.
-`/proofs/lib/Lib_Bintree.v` defines the Bintree library, and 
-`proofs/lib/Verif_Bintree.v` gives `inorder_length_valid` which proves that
+`Lib_Bintree.v` defines the Bintree library, and 
+`Verif_Bintree.v` gives `inorder_length_valid` which proves that
 the InorderLength theory is correct.
 Other theories provide definitions and axioms used in these proofs but we do not
 prove them valid directly; they are only typechecked.
