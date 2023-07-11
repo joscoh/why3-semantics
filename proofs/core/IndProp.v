@@ -499,7 +499,6 @@ Definition mk_vv vt :=
   for each such predsym*)
 
 Definition indpred_rep (pf: pi_funpred gamma_valid pd) 
-  (*(vt: val_typevar) (vv: val_vars pd vt)*)
   (indpred : list (predsym * list formula))
   (Hform: Forall (Forall (formula_typed gamma)) (map snd indpred)) 
   (p: predsym)

@@ -202,8 +202,7 @@ Inductive constant : Set :=
   | ConstInt : Z -> constant
   (*Only rational numbers can be represented by why3 - represent
     using whole part, decimal part, and exponent*)
-  | ConstReal : Q -> constant
-  (*| ConstStr : string -> constant*).
+  | ConstReal : Q -> constant.
 
 Inductive quant : Set :=
     | Tforall
