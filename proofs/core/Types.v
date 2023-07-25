@@ -101,6 +101,7 @@ Unset Elimination Schemes.
 Inductive vty : Set :=
   | vty_int : vty
   | vty_real : vty
+  | vty_fun : vty -> vty -> vty
   | vty_var: typevar -> vty
   | vty_cons: typesym -> list vty -> vty.
 Set Elimination Schemes.
@@ -110,6 +111,7 @@ Section TyInd.
 Variable P : vty -> Prop.
 Variable Hint: P vty_int.
 Variable Hreal: P vty_real.
+Variable Hfun: forall t1 t2, P t1 -> P t2 -> P (vty_fun t1 t2).
 Variable Hvar: forall v, P (vty_var v).
 Variable Hcons: forall tsym vs,
   Forall P vs -> P (vty_cons tsym vs).
@@ -118,6 +120,7 @@ Fixpoint vty_ind (t: vty) : P t :=
   match t with
   | vty_int => Hint
   | vty_real => Hreal
+  | vty_fun t1 t2 => Hfun t1 t2 (vty_ind t1) (vty_ind t2)
   | vty_var t => Hvar t
   | vty_cons tsym vs => Hcons tsym vs
     ((fix vty_ind_list (l: list vty) : Forall P l :=
@@ -167,6 +170,7 @@ Section TyIndType.
 Variable P : vty -> Type.
 Variable Hint: P vty_int.
 Variable Hreal: P vty_real.
+Variable Hfun: forall t1 t2, P t1 -> P t2 -> P (vty_fun t1 t2).
 Variable Hvar: forall v, P (vty_var v).
 Variable Hcons: forall tsym vs,
   ForallT P vs -> P (vty_cons tsym vs).
@@ -175,6 +179,7 @@ Fixpoint vty_rect (t: vty) : P t :=
   match t with
   | vty_int => Hint
   | vty_real => Hreal
+  | vty_fun t1 t2 => Hfun t1 t2 (vty_rect t1) (vty_rect t2)
   | vty_var t => Hvar t
   | vty_cons tsym vs => Hcons tsym vs
     ((fix vty_ind_list (l: list vty) : ForallT P l :=
@@ -192,6 +197,7 @@ Fixpoint vty_eqb (t1 t2: vty) : bool :=
   match t1, t2 with
   | vty_int, vty_int => true
   | vty_real, vty_real => true
+  | vty_fun t1 t2, vty_fun t3 t4 => vty_eqb t1 t3 && vty_eqb t2 t4
   | vty_var t1, vty_var t2 => t1 == t2
   | vty_cons ts1 vs1, vty_cons ts2 vs2 =>
     (ts1 == ts2) &&
@@ -207,8 +213,11 @@ Fixpoint vty_eqb (t1 t2: vty) : bool :=
 Lemma vty_eqb_eq: forall t1 t2,
   vty_eqb t1 t2 -> t1 = t2.
 Proof.
-  move=> t1; elim: t1 =>/=[t2 | t2 | v t2 | ts vs Hall t2];
+  move=> t1; elim: t1 =>/=[t2 | t2 | ta tb IH1 IH2 t2 | v t2 | ts vs Hall t2];
   case: t2 =>//.
+  - move=>tc td /andP[Heq1 Heq2].
+    apply IH1 in Heq1; apply IH2 in Heq2.
+    by rewrite Heq1 Heq2.
   - by move=> v2 => /eqP ->.
   - move=> ts2 vs2 => /andP[/eqP Hts Hlist].
     subst. f_equal. rewrite {ts2}.
@@ -222,8 +231,10 @@ Lemma vty_eq_eqb: forall t1 t2,
   t1 = t2 ->
   vty_eqb t1 t2.
 Proof.
-  move=> t1; elim: t1 =>/=[t2 | t2 | v t2 | ts vs Hall t2];
+  move=> t1; elim: t1 =>/=[t2 | t2 | ta tb IH1 IH2 t2| v t2 | ts vs Hall t2];
   case: t2 => //.
+  - move=>tc td [] <-<-.
+    by rewrite IH1 // IH2.
   - by move=> v2 [] /eqP.
   - move=> ts1 vs1 [] Hts Hvs; subst. rewrite eq_refl/=.
     rewrite {ts1}. move: Hall. elim: vs1 => [// | h t /= IH Hall].
@@ -254,6 +265,7 @@ Fixpoint type_vars (t: vty) : list typevar :=
   match t with
   | vty_int => nil
   | vty_real => nil
+  | vty_fun t1 t2 => union typevar_eq_dec (type_vars t1) (type_vars t2)
   | vty_var v => [v]
   | vty_cons sym ts => big_union typevar_eq_dec type_vars ts
   end.
@@ -261,7 +273,8 @@ Fixpoint type_vars (t: vty) : list typevar :=
 Lemma type_vars_unique: forall t,
   NoDup (type_vars t).
 Proof.
-  destruct t; simpl; try solve[constructor].
+  induction t; simpl; try solve[constructor]; auto.
+  - apply union_nodup; auto.
   - constructor; auto. constructor.
   - apply big_union_nodup.
 Qed.  
@@ -363,6 +376,7 @@ Fixpoint v_subst_aux (v: typevar -> vty) (t: vty) : vty :=
   match t with
   | vty_int => vty_int
   | vty_real => vty_real
+  | vty_fun t1 t2 => vty_fun (v_subst_aux v t1) (v_subst_aux v t2)
   | vty_var tv => v tv
   | vty_cons ts vs => vty_cons ts (map (v_subst_aux v) vs)
   end.
@@ -373,10 +387,11 @@ Proof.
   intros v t. unfold is_sort.
   assert (H: type_vars (v_subst_aux v t) = nil); [|rewrite H; auto].
   induction t; simpl; intros; auto.
-  apply sort_type_vars.
-  induction vs; simpl; intros; auto.
-  inversion H; subst.
-  rewrite H2. auto.
+  - rewrite IHt1 IHt2. auto. 
+  - apply sort_type_vars.
+  - induction vs; simpl; intros; auto.
+    inversion H; subst.
+    rewrite H2. auto.
 Qed. 
 
 Definition v_subst (v: typevar -> sort) (t: vty) : sort :=
@@ -520,15 +535,43 @@ Proof.
   auto.
 Qed.
 
+Lemma is_true_andb b1 b2:
+  b1 && b2 <-> b1 /\ b2.
+Proof.
+  unfold is_true. apply andb_true_iff.
+Qed.
+
+Lemma null_union_eq {A: Type} eq_dec (l1 l2: list A):
+  null (union eq_dec l1 l2) = null l1 && null l2.
+Proof.
+  apply is_true_eq.
+  rewrite -> is_true_andb, !null_nil.
+  split; intros.
+  - apply union_nil in H; auto.
+  - apply union_nil_eq; apply H.
+Qed.
+
+(*move*)
+Lemma is_sort_fun t1 t2:
+  is_sort (vty_fun t1 t2) = is_sort t1 && is_sort t2.
+Proof.
+  unfold is_sort. simpl.
+  apply null_union_eq.
+Qed.
+
 (* If we have a sort, then substituting a valuation does nothing *)
 Lemma subst_is_sort_eq (t: vty) (Ht: is_sort t) (v: typevar -> vty):
   t = v_subst_aux v t.
 Proof.
-  induction t; simpl in *; auto. inversion Ht.
-  f_equal. apply list_eq_ext'; [rewrite map_length|]; auto; intros.
-  rewrite -> map_nth_inbound with (d2:=d); auto.
-  rewrite Forall_nth in H. apply H; auto.
-  apply (is_sort_cons _ _ Ht). apply nth_In; auto.
+  induction t; simpl in *; auto.
+  - rewrite is_sort_fun in Ht.
+    bool_hyps.
+    rewrite <- IHt1, <- IHt2; auto.
+  - inversion Ht.
+  - f_equal. apply list_eq_ext'; [rewrite map_length|]; auto; intros.
+    rewrite -> map_nth_inbound with (d2:=d); auto.
+    rewrite Forall_nth in H. apply H; auto.
+    apply (is_sort_cons _ _ Ht). apply nth_In; auto.
 Qed. 
 
 Lemma subst_sort_eq: forall (s: sort) (v: typevar -> sort),
@@ -545,12 +588,13 @@ Lemma v_subst_aux_ext (v1 v2: typevar -> vty) ty:
   v_subst_aux v1 ty = v_subst_aux v2 ty.
 Proof.
   intros. induction ty; simpl; auto.
-  rewrite H; simpl; auto.
-  f_equal. simpl in H. induction vs; simpl in *; auto.
-  inversion H0; subst.
-  f_equal.
-  - apply H3. intros; apply H. simpl_set; triv.
-  - apply IHvs; auto. intros. apply H; simpl_set; auto.
+  - simpl in H. f_equal; [apply IHty1 | apply IHty2]; 
+    intros; apply H; simpl_set; auto.
+  - rewrite H; simpl; auto.
+  - f_equal. simpl in H. induction vs; simpl in *; auto.
+    inversion H0; subst.
+    f_equal; [apply H3 | apply IHvs]; auto; intros; apply H;
+    simpl_set; auto.
 Qed.
 
 Lemma v_subst_ext (v1 v2: typevar -> sort) ty:
@@ -620,12 +664,14 @@ Lemma v_subst_aux_sort_eq (v: typevar -> vty) (t: vty):
   is_sort (v_subst_aux v t).
 Proof.
   intros. induction t; simpl; intros; auto.
-  apply H. left; auto.
-  apply is_sort_cons_iff.
-  intros. rewrite in_map_iff in H1.
-  destruct H1 as [y [Hy Hiny]]; subst.
-  rewrite Forall_forall in H0. apply H0; auto.
-  intros. apply H. simpl. simpl_set. exists y. split; auto.
+  - rewrite -> is_sort_fun, IHt1, IHt2; auto;
+    intros; apply H; simpl; simpl_set; auto.
+  - apply H. left; auto.
+  - apply is_sort_cons_iff.
+    intros. rewrite in_map_iff in H1.
+    destruct H1 as [y [Hy Hiny]]; subst.
+    rewrite Forall_forall in H0. apply H0; auto.
+    intros. apply H. simpl. simpl_set. exists y. split; auto.
 Qed.
 
 Lemma v_subst_cons {f} ts vs:
@@ -646,13 +692,14 @@ Lemma v_subst_aux_twice f ty:
 Proof.
   intros Hsort.
   induction ty; simpl; auto.
-  rewrite <- subst_is_sort_eq; auto.
-  f_equal. rewrite <- map_comp.
-  apply list_eq_ext'; rewrite !map_length; auto.
-  intros n d Hn.
-  rewrite -> !map_nth_inbound with (d2:=vty_int); auto.
-  rewrite Forall_forall in H. apply H.
-  apply nth_In; auto.
+  - rewrite -> IHty1, IHty2; auto.
+  - rewrite <- subst_is_sort_eq; auto.
+  - f_equal. rewrite <- map_comp.
+    apply list_eq_ext'; rewrite !map_length; auto.
+    intros n d Hn.
+    rewrite -> !map_nth_inbound with (d2:=vty_int); auto.
+    rewrite Forall_forall in H. apply H.
+    apply nth_In; auto.
 Qed.
 
 End TySubstLemmas.
@@ -667,6 +714,7 @@ Fixpoint ty_subst' params args (v: vty) : vty :=
   match v with
   | vty_int => vty_int
   | vty_real => vty_real
+  | vty_fun t1 t2 => vty_fun (ty_subst' params args t1) (ty_subst' params args t2)
   | vty_var x => if in_dec typevar_eq_dec x params then
     (ty_subst params args) (vty_var x) else vty_var x
   | vty_cons ts vs =>
@@ -689,6 +737,7 @@ Proof.
   intros Hn1 Hlen1.
   unfold ty_subst_list', ty_subst.
   induction ty; simpl; auto.
+  - rewrite -> IHty1, IHty2; auto.
   - destruct (in_dec typevar_eq_dec v params1).
     + destruct (In_nth _ _ EmptyString i) as [j [Hj Hv]]; subst.
       rewrite -> !ty_subst_fun_nth with (s:=s_int); auto; [| rewrite map_length; auto].
@@ -708,6 +757,8 @@ Lemma ty_subst_equiv params tys ty:
   ty_subst params tys ty = ty_subst' params tys ty.
 Proof.
   intros. unfold ty_subst. induction ty; simpl; auto.
+  - simpl in H. rewrite -> IHty1, IHty2; auto;
+    unfold sublist; intros; apply H; simpl_set; auto.
   - destruct (in_dec typevar_eq_dec v params); simpl; auto.
     exfalso. simpl in H.
     apply n, H; simpl; auto.

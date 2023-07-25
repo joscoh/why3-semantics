@@ -30,6 +30,8 @@ Fixpoint tm_fv (t: term) : list vsymbol :=
   | Tif f t1 t2 => union' (fmla_fv f) (union' (tm_fv t1) (tm_fv t2))
   | Tmatch t ty l => union' (tm_fv t) (big_union' (fun x => remove_all' (pat_fv (fst x)) (tm_fv (snd x))) l)
   | Teps f x  => remove' x (fmla_fv f)
+  | Tlam x t => remove' x (tm_fv t)
+  | Tapp t1 t2 => union' (tm_fv t1) (tm_fv t2)
   end
 
 with fmla_fv (f: formula) : list vsymbol :=
@@ -121,8 +123,9 @@ with tm_bnd (t: term) : list vsymbol :=
   | Tmatch tm ty ps =>
     tm_bnd tm ++ concat (map
       (fun p => pat_fv (fst p) ++ tm_bnd (snd p)) ps)
-  | Teps f1 v =>
-    v :: fmla_bnd f1
+  | Teps f1 v => v :: fmla_bnd f1
+  | Tlam x t => x :: tm_bnd t
+  | Tapp t1 t2 => tm_bnd t1 ++ tm_bnd t2
   end.
 
 End BoundVars.
@@ -152,6 +155,8 @@ with predsym_in_tm (p: predsym) (t: term) {struct t}  : bool :=
   | Tif f t1 t2 => predsym_in_fmla p f || predsym_in_tm p t1 || predsym_in_tm p t2
   | Tmatch t ty ps => predsym_in_tm p t || existsb (fun x => predsym_in_tm p (snd x)) ps
   | Teps f x => predsym_in_fmla p f
+  | Tlam x t => predsym_in_tm p t
+  | Tapp t1 t2 => predsym_in_tm p t1 || predsym_in_tm p t2
   end.
 
 Fixpoint funsym_in_tm (f: funsym) (t: term) : bool :=
@@ -163,6 +168,8 @@ Fixpoint funsym_in_tm (f: funsym) (t: term) : bool :=
   | Tmatch t1 _ ps => funsym_in_tm f t1 ||
     existsb (fun x => funsym_in_tm f (snd x)) ps
   | Teps f1 _ => funsym_in_fmla f f1
+  | Tlam x t => funsym_in_tm f t
+  | Tapp t1 t2 => funsym_in_tm f t1 || funsym_in_tm f t2
   | _ => false
   end
   with funsym_in_fmla (f: funsym) (f1: formula) : bool :=
@@ -216,6 +223,8 @@ Fixpoint tm_type_vars (t: term) {struct t} : list typevar :=
     (union (ps_vars ps) (type_vars ty) (*easier to include, though we shouldn't technically need it*))
   | Teps f x => union (fmla_type_vars f) (type_vars (snd x))
   | Tconst c => nil
+  | Tlam x t => union (type_vars (snd x)) (tm_type_vars t)
+  | Tapp t1 t2 => union (tm_type_vars t1) (tm_type_vars t2)
   end
 with fmla_type_vars (f: formula) : list typevar :=
   match f with

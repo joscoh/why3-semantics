@@ -14,6 +14,10 @@ Inductive valid_type : context -> vty -> Prop :=
     valid_type s vty_int
   | vt_real: forall s,
     valid_type s vty_real
+  | vt_fun: forall s ty1 ty2,
+    valid_type s ty1 ->
+    valid_type s ty2 ->
+    valid_type s (vty_fun ty1 ty2)
   | vt_var: forall s v,
     valid_type s (vty_var v)
   | vt_tycons: forall s ts vs,
@@ -107,6 +111,16 @@ Inductive term_has_type: context -> term -> vty -> Prop :=
     formula_typed s f ->
     valid_type s (snd x) ->
     term_has_type s (Teps f x) (snd x)
+  | T_lam: forall s x t ty1 ty2,
+    term_has_type s t ty2 ->
+    valid_type s (snd x) ->
+    snd x = ty1 ->
+    term_has_type s (Tlam x t) (vty_fun ty1 ty2)
+  | T_app: forall s t1 t2 ty1 ty2,
+    term_has_type s t1 (vty_fun ty1 ty2) ->
+    term_has_type s t2 ty1 ->
+    term_has_type s (Tapp t1 t2) ty2
+
 
 
 (* Typing rules for formulas *)
@@ -192,9 +206,8 @@ Lemma valid_type_subst: forall s ty f,
   (forall x, valid_type s (f x)) ->
   valid_type s (v_subst_aux f ty).
 Proof.
-  intros. induction ty; simpl; auto.
-  inversion H; subst.
-  constructor; auto.
+  intros. induction ty; simpl; auto;
+  inversion H; subst; constructor; auto.
   - rewrite map_length; auto.
   - intros x Hinx.
     rewrite in_map_iff in Hinx. 
@@ -243,7 +256,9 @@ Proof.
   intros. induction H; try solve[constructor]; try assumption; auto.
   apply valid_type_ty_subst; assumption.
   destruct ps. inversion H4.
-  apply (H3 p); auto. left; auto. 
+  apply (H3 p); auto. left; auto.
+  - subst. constructor; auto.
+  - inversion IHterm_has_type1; auto. 
 Qed.
 
 (*Now we define valid contexts. Unlike the paper,
@@ -345,6 +360,9 @@ match n with
               match t with
               | vty_int => true
               | vty_real => true
+              | vty_fun t1 t2 => (*Only t2 must be inhabited,
+                since False -> A is inhabited for all A*) 
+                check_type t2
               | vty_var v => true  
                 (*We assume all type variables are inhabited*) 
               | vty_cons ts' vtys =>
@@ -369,6 +387,8 @@ Fixpoint vty_inhab_fun (seen_typesyms: list typesym) (t: vty)
   match t with
   | vty_int => true
   | vty_real => true
+  | vty_fun t1 t2 => 
+    vty_inhab_fun seen_typesyms t2 n
   | vty_var v => true  
   | vty_cons ts' vtys =>
     forallb (fun t => vty_inhab_fun seen_typesyms t n) vtys &&
@@ -381,6 +401,7 @@ Lemma vty_inhab_fun_eq: forall seen_typesyms t n,
     match t with
     | vty_int => true
     | vty_real => true
+    | vty_fun t1 t2 => check_type t2
     | vty_var v => true  
     | vty_cons ts' vtys =>
       ((fix all_tys_inner (lt: list vty) : bool :=
@@ -392,10 +413,11 @@ Lemma vty_inhab_fun_eq: forall seen_typesyms t n,
     end) t).
   Proof.
   intros. unfold vty_inhab_fun. induction t; try reflexivity.
-  f_equal.
-  induction vs as [| h tl IH]; intros; simpl; try reflexivity.
-  inversion H; subst.
-  rewrite H2. f_equal. rewrite IH; auto.
+  - rewrite IHt2. reflexivity.
+  - f_equal.
+    induction vs as [| h tl IH]; intros; simpl; try reflexivity.
+    inversion H; subst.
+    rewrite H2. f_equal. rewrite IH; auto.
 Qed.
 
 Definition constr_inhab_fun 
@@ -516,6 +538,18 @@ Proof.
   - exists (Tconst (ConstInt 0)). split; auto. constructor.
   - exists (Tconst (ConstReal (QArith_base.Qmake 0 xH))). split.
     reflexivity. constructor.
+  - (*Idea: construct lambda of the given term*)
+    bool_hyps.
+    inversion H; subst.
+    specialize (IHv2 H8 H3).
+    destruct IHv2 as [t [Hclosed Htty]].
+    exists (Tlam ("x"%string, (v_subst_aux f v1)) t).
+    split.
+    + unfold closed_term in Hclosed |- *. simpl.
+      rewrite !null_nil in Hclosed.
+      rewrite Hclosed. reflexivity.
+    + constructor; auto. simpl.
+      apply valid_type_subst; auto.
   - bool_hyps.
     rewrite forallb_forall in H3.
     inversion H; subst.
@@ -1818,6 +1852,9 @@ with pred_with_params_tm (ps: list predsym) (params: list typevar)
       pred_with_params_tm ps params (snd x)) pats)
   | Teps f v =>
     pred_with_params_fmla ps params f
+  | Tlam x t => pred_with_params_tm ps params t
+  | Tapp t1 t2 => pred_with_params_tm ps params t1 &&
+    pred_with_params_tm ps params t2
   end.
 
 Definition indpred_uniform (ps: list predsym) (fs: list formula) : bool :=
@@ -2222,6 +2259,10 @@ Proof.
       inversion H0; subst; simpl in H9; auto.
   - (*Teps*)
     constructor; auto. revert H5. apply valid_type_sublist, Hsub.
+  - (*Tlam*)
+    constructor; auto. revert H4. apply valid_type_sublist, Hsub.
+  - (*Tapp*)
+    apply T_app with(ty1:=ty1); auto.  
   - (*Fpred*)
     constructor; auto.
     + revert H3. apply Hsub.
@@ -2693,6 +2734,10 @@ Proof.
     inversion H0; subst.
     destruct H1; auto.
     apply (H3 ty); auto.
+  - apply (H _ H2); auto.
+  - bool_hyps. destruct Hinfs.
+    + apply (H _ H4); auto.
+    + apply (H0 _ H6); auto.
   - assert (length tms = length (map (ty_subst (s_params p) tys) 
       (s_args p))) by (rewrite map_length; auto).
     clear -H Hinfs H8 H0.
@@ -2751,6 +2796,10 @@ Proof.
     bool_hyps. simpl in H9; inversion H0; subst.
     destruct H1; auto.
     apply (H3 ty); auto.
+  - apply (H _ H2); auto.
+  - bool_hyps. destruct Hinfs.
+    + apply (H _ H4); auto.
+    + apply (H0 _ H6); auto.
   - bool_hyps. destruct Hinfs as [? | Hinfs]; try simpl_sumbool.
     assert (length tms = length (map (ty_subst (s_params p) tys) 
       (s_args p))) by (rewrite map_length; auto).
@@ -3713,6 +3762,13 @@ Proof.
     split; auto. constructor.
   - exists (Tconst (ConstReal (QArith_base.Qmake 0 xH))).
     split; auto. constructor.
+  - rewrite is_sort_fun in Hsort.
+    bool_hyps. specialize (H0 H2 H5).
+    destruct H0 as [t [Htc Htty]].
+    exists (Tlam ("x"%string, t1) t). split.
+    + unfold closed_term in Htc |- *; simpl.
+      rewrite null_nil in Htc. rewrite Htc. reflexivity.
+    + constructor; auto.
   - inversion Hsort.
   - rename tsym into ts. 
     destruct (find_ts_in_ctx gamma ts) eqn : Hts.
@@ -4050,6 +4106,7 @@ Proof.
   - exact None.
   - exact None.
   - exact None.
+  - exact None.
   - destruct (find_ts_in_ctx gamma t);[|exact None].
     exact (Some (fst p, snd p, t, 
       proj1_sig (is_sort_cons_sorts l (is_sort_cons t l i)))).
@@ -4096,3 +4153,6 @@ Qed.
 End GetADTSort.
 
 End GetADT.
+
+(*TODO: need strict positivity for types
+  or at least (for now) no function types in ADT args*)

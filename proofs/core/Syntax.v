@@ -246,7 +246,9 @@ Inductive term : Set :=
   | Tlet: term -> vsymbol -> term -> term
   | Tif: formula -> term -> term -> term
   | Tmatch: term -> vty -> list (pattern * term) -> term
-  | Teps: formula -> vsymbol ->term
+  | Teps: formula -> vsymbol -> term
+  | Tlam: vsymbol -> term -> term
+  | Tapp: term -> term -> term
 with formula : Set :=
   | Fpred: predsym -> list vty -> list term -> formula
   | Fquant: quant -> vsymbol -> formula -> formula
@@ -344,6 +346,10 @@ Variable tmatch: forall (tm: term) (v: vty) (ps: list (pattern * term)),
   P1 tm -> Forall P1 (map snd ps) -> P1 (Tmatch tm v ps).
 Variable teps: forall (f: formula) (v: vsymbol),
   P2 f -> P1 (Teps f v).
+Variable tlam: forall (x: vsymbol) (body: term),
+  P1 body -> P1 (Tlam x body).
+Variable tapp: forall (t1 t2: term),
+  P1 t1 -> P1 t2 -> P1 (Tapp t1 t2).
 
 Variable fpred: forall (p: predsym) (tys: list vty) (tms: list term),
   Forall P1 tms -> P2 (Fpred p tys tms).
@@ -385,6 +391,8 @@ Fixpoint term_ind (tm: term) : P1 tm :=
     | (x, y) :: t => Forall_cons _ (term_ind y) (snd_ind t)
     end) ps)
   | Teps f v => teps f v (formula_ind f)
+  | Tlam x t => tlam x t (term_ind t)
+  | Tapp t1 t2 => tapp t1 t2 (term_ind t1) (term_ind t2)
   end
 with formula_ind (f: formula) : P2 f :=
   match f with
@@ -442,6 +450,10 @@ Variable tmatch: forall (tm: term) (v: vty) (ps: list (pattern * term)),
   P1 tm -> ForallT P1 (map snd ps) -> P1 (Tmatch tm v ps).
 Variable teps: forall (f: formula) (v: vsymbol),
   P2 f -> P1 (Teps f v).
+Variable tlam: forall (x: vsymbol) (body: term),
+  P1 body -> P1 (Tlam x body).
+Variable tapp: forall (t1 t2: term),
+  P1 t1 -> P1 t2 -> P1 (Tapp t1 t2).
 
 Variable fpred: forall (p: predsym) (tys: list vty) (tms: list term),
   ForallT P1 tms -> P2 (Fpred p tys tms).
@@ -483,6 +495,8 @@ Fixpoint term_rect (tm: term) : P1 tm :=
     | (x, y) :: t => ForallT_cons _ (term_rect y) (snd_rect t)
     end) ps)
   | Teps f v => teps f v (formula_rect f)
+  | Tlam x t => tlam x t (term_rect t)
+  | Tapp t1 t2 => tapp t1 t2 (term_rect t1) (term_rect t2)
   end
 with formula_rect (f: formula) : P2 f :=
   match f with
@@ -674,6 +688,12 @@ Fixpoint term_eqb (t1 t2: term) {struct t1} : bool :=
   | Teps f1 v1, Teps f2 v2 =>
     formula_eqb f1 f2 &&
     vsymbol_eqb v1 v2
+  | Tlam x1 t1, Tlam x2 t2 =>
+    vsymbol_eqb x1 x2 &&
+    term_eqb t1 t2
+  | Tapp t1 t2, Tapp t3 t4 =>
+    term_eqb t1 t3 &&
+    term_eqb t2 t4
   | _, _ => false
   end
 with formula_eqb (f1 f2: formula) {struct f1} : bool :=
@@ -778,6 +798,12 @@ Proof.
   - destruct_triv t2.
     dec (H f0).
     dec (vsymbol_eqb_spec v v0). refl_t.
+  - destruct_triv t2.
+    dec (vsymbol_eqb_spec x v). subst.
+    dec (H t2). refl_t.
+  - destruct_triv t0.
+    dec (H t0_1). dec (H0 t0_2).
+    refl_t.
   - destruct_triv f2.
     dec (predsym_eqb_spec p p0).
     dec (list_eqb_spec _ vty_eq_spec tys l).
