@@ -124,6 +124,7 @@ Fixpoint typecheck_type (gamma:context) (v: vty) : bool :=
   match v with
   | vty_int => true
   | vty_real => true
+  | vty_fun t1 t2 => typecheck_type gamma t1 && typecheck_type gamma t2
   | vty_var tv => true
   | vty_cons ts vs => 
       (ts \in (sig_t gamma)) &&
@@ -296,14 +297,16 @@ Fixpoint typecheck_pattern (gamma: context) (p: pattern) (v: vty) : bool :=
 (*Proofs of correctness*)
 
 
-
-(*We would like to prove this correct*)
 Lemma typecheck_type_correct: forall (gamma: context) (v: vty),
   reflect (valid_type gamma v) (typecheck_type gamma v).
 Proof.
   move=> gamma. apply vty_rect=>//=.
   - apply ReflectT. constructor.
   - apply ReflectT. constructor.
+  - move=>t1 t2 IH1 IH2.
+    case: IH1 => Hval1/=; last by reflF.
+    case: IH2=> Hval2/=; last by reflF.
+    by reflT.
   - move=> v. apply ReflectT. constructor.
   - move=> ts vs Hty. case Hts: (ts \in sig_t gamma)=>/=; last first.
       apply ReflectF => C. inversion C; subst.
@@ -432,6 +435,13 @@ Proof.
     apply ReflectT. by constructor.
 Qed.
 
+(*So we don't go through all cases*)
+Definition is_fun (t: vty) : option (vty * vty) :=
+  match t with
+  | vty_fun t1 t2 => Some (t1, t2)
+  | _ => None
+  end.
+
 (*Terms and formulas*)
 Fixpoint typecheck_term (s: context) (t: term) : option vty :=
   match t with
@@ -483,10 +493,25 @@ Fixpoint typecheck_term (s: context) (t: term) : option vty :=
       end) tms (List.map (ty_subst (s_params f) params) (s_args f)))
     then Some (ty_subst (s_params f) params (f_ret f))
     else None
-  (*Function case*)
-
   | Teps f x => if typecheck_formula s f && typecheck_type s (snd x)
     then Some (snd x) else None
+  | Tlam x t => if typecheck_type s (snd x) then
+    match (typecheck_term s t) with
+    | Some ty2 => Some (vty_fun (snd x) ty2)
+    | None => None
+    end
+    else None
+  | Tapp t1 t2 =>
+    match (typecheck_term s t1) with
+    | Some ty =>
+      match (is_fun ty) with
+      | Some (ty1, ty2) =>
+        if typecheck_term s t2 == Some ty1 then Some ty2 else None
+      | None => None
+      end
+    | None => None
+    end
+
   end 
 with typecheck_formula (s: context) (f: formula) : bool :=
   match f with
@@ -533,6 +558,8 @@ with typecheck_formula (s: context) (f: formula) : bool :=
       | nil => true
       end) ps)
   end.
+
+
 
 (*Now we prove the correctness of this*)
 Lemma typecheck_term_fmla_spec (s: context): 
@@ -734,6 +761,52 @@ Proof.
     case: (Some (snd v) == Some ty2) /eqP => [[] Heq| Hneq].
     + subst. by reflT.
     + by reflF.
+  - move=> x t IH v.
+    case: (typecheck_type_correct s (snd x)) => Hval/=; last by reflF.
+    case Hcheck: (typecheck_term s t) => [v1 |]/=.
+    + case: (Some (vty_fun x.2 v1) == Some v) /eqP.
+      * move=>[] <-. apply ReflectT. apply T_lam=>//.
+        apply /(IH v1). by apply /eqP.
+      * move=> Hneq. apply ReflectF=> C. inversion C; subst.
+        have/eqP Hty2: typecheck_term s t == Some ty2 by
+          apply /(IH ty2).
+        rewrite Hty2 in Hcheck.
+        move: Hcheck => [] Heq. by subst.
+    + apply ReflectF => C. inversion C; subst.
+      have/eqP: typecheck_term s t == Some ty2 by apply /(IH ty2).
+      by rewrite Hcheck.
+  - move=>t1 t2 IH1 IH2 v.
+    case Hcheck1: (typecheck_term s t1) => [ty1 |].
+    2: {
+      apply ReflectF=> C. inversion C; subst.
+      have: typecheck_term s t1 == Some (vty_fun ty1 v)
+        by apply /(IH1 _).
+      by rewrite Hcheck1. 
+    }
+    have Hty1: term_has_type s t1 ty1 by apply /(IH1 _) /eqP.
+    case Hfun: (is_fun ty1) => [[ty2 ty3] |].
+    2: {
+      apply ReflectF => C. inversion C; subst.
+      have: typecheck_term s t1 = Some (vty_fun ty0 v)
+        by apply /eqP /(IH1 _).
+      by rewrite Hcheck1 => [] [] Heq; subst.
+    }
+    (*Now, destruct ty1, didn't want 5 cases*)
+    move: Hcheck1 Hty1 Hfun.
+    case: ty1 =>//= ty4 ty5 Hcheck1 Hty1 [] Heq1 Heq2; subst.
+    case: (IH2 ty2) => Hty2.
+    2: {
+      apply ReflectF => C; inversion C; subst.
+      have: typecheck_term s t1 = Some (vty_fun ty1 v)
+        by apply /eqP /(IH1 _).
+      by rewrite Hcheck1 => [] [] Heq1 Heq2; subst.
+    }
+    case: (Some ty3 == Some v) /eqP => [[] Heq | Hneq]; subst.
+    + apply ReflectT. by apply T_app with(ty1:=ty2).
+    + apply ReflectF => C; inversion C; subst.
+      have: typecheck_term s t1 = Some (vty_fun ty1 v)
+        by apply /eqP /(IH1 _).
+      by rewrite Hcheck1 => [] [] Heq1 Heq2; subst.
   - (*Now for formulas*)
     move=> p tys tms HallT.
     case: (p \in (sig_p s)) /inP => Hinp/=; last by reflF.
@@ -1065,6 +1138,11 @@ Fixpoint check_decrease_fun (fs: list fn) (ps: list pn)
     check_decrease_fun fs ps small hd m vs t2
   | Teps f v =>
     check_decrease_pred fs ps (remove vsymbol_eq_dec v small) (upd_option hd v) m vs f
+  | Tlam x t =>
+    check_decrease_fun fs ps (remove vsymbol_eq_dec x small) (upd_option hd x) m vs t
+  | Tapp t1 t2 =>
+    check_decrease_fun fs ps small hd m vs t1 &&
+    check_decrease_fun fs ps small hd m vs t2
   | _ => true
   end
 
@@ -1286,7 +1364,7 @@ Proof.
       there are a lot of trivial ones*)
     case Hntht: (nth tm_d tms
     (sn_idx (nth fn_d fs (find (fun f' : fn => fn_sym f' == f1) fs))))
-    => [| v | | | | |];
+    => [| v | | | | | | |];
     try (apply ReflectF; intros C; inversion C; subst;
     try (by apply Hnotfp);
     try (rewrite -(Hntheq f_decl ltac:(assumption) erefl) in
@@ -1417,6 +1495,18 @@ Proof.
     case: (IH (remove vsymbol_eq_dec v small) (upd_option hd v))=> 
       Hdec2/=; last by false_triv_case Hnotin.
     apply ReflectT. by apply Dec_eps.
+  - move=> x t IH small hd.
+    not_in_tm_case fs ps (Tlam x t). 
+    move => Hnotin.
+    case: (IH (remove vsymbol_eq_dec x small) (upd_option hd x))=> 
+      Hdec2/=; last by false_triv_case Hnotin.
+    apply ReflectT. by apply Dec_lam.
+  - move=> t1 t2 IH1 IH2 small hd.
+    not_in_tm_case fs ps (Tapp t1 t2).
+    move=> Hnotin.
+    case: (IH1 small hd)=> Hdec1/=; last by false_triv_case Hnotin.
+    case: (IH2 small hd)=> Hdec2/=; last by false_triv_case Hnotin.
+    apply ReflectT. by apply Dec_app.
   - (*Now, formula proof*)
     (*copy Tfun for now*)
     move=> p1 tys tms IHall small hd.
@@ -1478,7 +1568,7 @@ Proof.
       there are a lot of trivial ones*)
     case Hntht: (nth tm_d tms
     (sn_idx (nth pn_d ps (find (fun p' : pn => pn_sym p' == p1) ps))))
-    => [| v | | | | |];
+    => [| v | | | | | | |];
     try (apply ReflectF; intros C; inversion C; subst;
     try (by apply Hnotfp);
     try (rewrite -(Hntheq p_decl ltac:(assumption) erefl) in

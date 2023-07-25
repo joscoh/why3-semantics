@@ -42,6 +42,10 @@ Fixpoint sub_t (t1: term) (x: vsymbol) (t2: term) : term :=
   | Teps f1 v =>
     if vsymbol_eq_dec x v then t2 else
     Teps (sub_f t1 x f1) v
+  | Tlam v t =>
+    if vsymbol_eq_dec x v then t2 else
+    Tlam v (sub_t t1 x t)
+  | Tapp tm1 tm2 => Tapp (sub_t t1 x tm1) (sub_t t1 x tm2)
   end
 with sub_f (t1: term) (x: vsymbol) (f: formula) : formula :=
   match f with
@@ -104,6 +108,8 @@ Proof.
       exists (nth n ps d). split; [ apply nth_In |]; auto.
       simpl_set. auto.
   - simpl_set. vsym_eq x v. rewrite H; auto.
+  - simpl_set. vsym_eq x x0. rewrite H; auto.
+  - simpl_set. rewrite H, H0; auto.
   - simpl_set. f_equal.
     apply list_eq_ext'; rewrite map_length; auto.
     intros n d Hn.
@@ -157,6 +163,8 @@ Fixpoint free_in_t (x: vsymbol) (t: term) {struct t} : bool :=
     existsb (fun p => negb (in_bool vsymbol_eq_dec x (pat_fv (fst p))) &&
       free_in_t x (snd p)) ps
   | Teps f v => negb (vsymbol_eq_dec x v) && free_in_f x f
+  | Tlam v t => negb (vsymbol_eq_dec x v) && free_in_t x t
+  | Tapp t1 t2 => free_in_t x t1 || free_in_t x t2
   end
 with free_in_f (x: vsymbol) (f: formula) {struct f} : bool :=
   match f with
@@ -202,6 +210,9 @@ Proof.
     apply dec_negb_iff.
   - rewrite <- H; bool_to_prop.
     apply dec_negb_iff.
+  - rewrite <- H, andb_comm; bool_to_prop.
+    apply dec_negb_iff.
+  - rewrite <- H, <- H0. bool_to_prop.
   - bool_to_prop. apply ex_in_eq.
     eapply Forall_impl. 2: apply H. simpl; intros; auto. apply H0; auto.
   - rewrite <- H; bool_to_prop. apply dec_negb_iff.
@@ -265,12 +276,12 @@ Lemma sub_fv_diff y tm x (Hnot: y <> x) (Hnoty: ~ In y (tm_fv tm))
   (free_in_t y (sub_t tm x t) = free_in_t y t) /\
   (free_in_f y (sub_f tm x f) = free_in_f y f).
 Proof.
-  revert t f; apply term_formula_ind; simpl; intros; auto.
+  revert t f; apply term_formula_ind; simpl; intros; auto;
+  try solve[rewrite H; try rewrite H0; try rewrite H1; auto].
   - vsym_eq x v. vsym_eq y v. simpl. apply free_in_t_negb; auto.
   - apply existsb_eq; [ rewrite map_length |]; auto.
     rewrite Forall_combine_map. auto.
   - rewrite H. f_equal. vsym_eq x v. rewrite H0; auto.
-  - rewrite H, H0, H1; auto.
   - rewrite H. f_equal. apply existsb_eq; [rewrite map_length|]; auto.
     rewrite Forall_combine_map; simpl.
     rewrite Forall_map in H0.
@@ -279,13 +290,11 @@ Proof.
     simpl; auto.
     rewrite H0; auto.
   - vsym_eq x v; simpl. rewrite H; auto.
+  - vsym_eq x x0; simpl. rewrite H; auto.
   - apply existsb_eq; [ rewrite map_length |]; auto.
     rewrite Forall_combine_map. auto.
   - vsym_eq x v; simpl. rewrite H; auto.
-  - rewrite H, H0; auto.
-  - rewrite H, H0; auto.
   - rewrite H. f_equal. vsym_eq x v. rewrite H0; auto.
-  - rewrite H, H0, H1; auto.
   - rewrite H. f_equal. apply existsb_eq; [rewrite map_length|]; auto.
     rewrite Forall_combine_map; simpl.
     rewrite Forall_map in H0.
@@ -306,13 +315,13 @@ Lemma sub_fv_notin tm x (Hnotx: ~ In x (tm_fv tm)) t f:
   (free_in_t x (sub_t tm x t) = false) /\
   (free_in_f x (sub_f tm x f) = false).
 Proof.
-  revert t f; apply term_formula_ind; simpl; intros; auto.
+  revert t f; apply term_formula_ind; simpl; intros; auto;
+  try solve[rewrite H; try rewrite H0; try rewrite H1; auto].
   - vsym_eq x v; simpl.
     + apply free_in_t_negb; auto.
     + vsym_eq x v.
   - apply existsb_false; rewrite Forall_map; auto.
   - rewrite H; simpl. vsym_eq x v.
-  - rewrite H, H0, H1; auto.
   - rewrite H; simpl.
     apply existsb_false.
     revert H0. rewrite !Forall_map.
@@ -323,12 +332,10 @@ Proof.
       contradiction.
     + rewrite H0; simpl_bool; auto.
   - vsym_eq x v; simpl; [vsym_eq v v | vsym_eq x v].
+  - vsym_eq x x0; simpl; [vsym_eq x0 x0 |vsym_eq x x0].
   - apply existsb_false; rewrite Forall_map; auto.
   - vsym_eq x v; simpl; [vsym_eq v v | vsym_eq x v].
-  - rewrite H, H0; auto.
-  - rewrite H, H0; auto.
   - rewrite H. simpl. vsym_eq x v.
-  - rewrite H, H0, H1; auto.
   - rewrite H; simpl.
     apply existsb_false.
     revert H0. rewrite !Forall_map.
@@ -416,6 +423,10 @@ Proof.
     exfalso. apply (Hbnd' y); auto.
   - vsym_eq x v; simpl; vsym_eq y v; simpl.
     exfalso; apply (Hbnd v); auto.
+  - vsym_eq x x0; simpl; vsym_eq y x0; simpl.
+    exfalso; apply (Hbnd x0); auto.
+  - setoid_rewrite in_app_iff in Hbnd. 
+    rewrite H, H0; auto. solve_bool.
   - rewrite existsb_orb.
     apply existsb_eq; [rewrite map_length |]; auto.
     rewrite Forall_combine_map.
@@ -567,6 +578,10 @@ with sub_var_t (x y: vsymbol) (t: term) : term :=
   | Teps f1 v =>
     if vsymbol_eq_dec x v then t else
     Teps (sub_var_f x y f1) v
+  | Tlam v tm =>
+    if vsymbol_eq_dec x v then t else
+    Tlam v (sub_var_t x y tm)
+  | Tapp t1 t2 => Tapp (sub_var_t x y t1) (sub_var_t x y t2)
   end.
 
 (*This is a generalized version of [sub_var_t] and [sub_var_f]*)
@@ -605,8 +620,7 @@ Proof.
   - f_equal. rewrite map_map. apply map_ext_in_iff.
     rewrite Forall_forall in H.
     intros. apply H; auto.
-  - f_equal. destruct (vsymbol_eq_dec x v); subst; simpl;
-    rewrite H; f_equal; apply H0.
+  - rewrite H. vsym_eq x v. rewrite H0; auto. 
   - rewrite H, H0, H1; auto.
   - rewrite H. f_equal.
     f_equal. rewrite map_map.
@@ -615,14 +629,15 @@ Proof.
     auto.
     rewrite Forall_forall in H0. rewrite H0; auto.
     rewrite in_map_iff. exists a. auto.
-  - destruct (vsymbol_eq_dec x v); subst; simpl; f_equal; apply H.
+  - vsym_eq x v; simpl; rewrite H; auto. 
+  - vsym_eq x0 x. simpl. rewrite H; auto.
+  - rewrite H, H0; auto. 
   - f_equal. rewrite map_map. apply map_ext_in_iff. intros.
     rewrite Forall_forall in H. apply H; auto.
-  - destruct (vsymbol_eq_dec x v); simpl; auto; f_equal; apply H.
+  - vsym_eq x v; simpl; rewrite H; auto. 
   - rewrite H, H0; reflexivity.
   - rewrite H, H0; reflexivity.
-  - rewrite H; f_equal; f_equal. destruct (vsymbol_eq_dec x v); auto;
-    apply H0.
+  - rewrite H. vsym_eq x v; rewrite H0; auto. 
   - rewrite H, H0, H1; reflexivity.
   - rewrite H. f_equal. f_equal. rewrite map_map.
     apply map_ext_in_iff; intros.
@@ -672,26 +687,27 @@ Lemma sub_eq (t: term) (f: formula) :
     sub_var_f x x f = f).
 Proof.
   revert t f; apply term_formula_ind; simpl; auto; intros.
-  - destruct (vsymbol_eq_dec x v); subst; auto.
+  - vsym_eq x v.
   - f_equal. apply list_eq_ext'; rewrite map_length; auto; intros.
     rewrite map_nth_inbound with(d2:=d); auto.
     rewrite Forall_forall in H; apply H; list_tac2.
-  - rewrite H. destruct (vsymbol_eq_dec x v); subst; auto.
-    rewrite H0; auto.
+  - rewrite H. vsym_eq x v. rewrite H0; auto. 
   - rewrite H, H0, H1; auto.
   - rewrite H. f_equal. apply list_eq_ext'; rewrite map_length; auto;
     intros. rewrite map_nth_inbound with(d2:=d); auto.
     rewrite Forall_forall in H0; rewrite H0; list_tac2.
     case_in; auto. destruct (nth n ps d); auto.
-  - destruct (vsymbol_eq_dec x v); subst; auto. rewrite H; auto.
+  - vsym_eq x v. rewrite H; auto. 
+  - vsym_eq x0 x. rewrite H; auto.
+  - rewrite H, H0; auto.
   - f_equal. apply list_eq_ext'; rewrite map_length; auto; intros.
     rewrite map_nth_inbound with(d2:=d); auto.
     rewrite Forall_forall in H; apply H; list_tac2.
-  - destruct (vsymbol_eq_dec x v); subst; auto. rewrite H; auto.
+  - vsym_eq x v; rewrite H; auto. 
   - rewrite H, H0; auto.
   - rewrite H, H0; auto.
   - rewrite H; auto.
-  - rewrite H, H0. destruct (vsymbol_eq_dec x v); auto.
+  - rewrite H, H0. vsym_eq x v. 
   - rewrite H, H0, H1; auto.
   - rewrite H. f_equal. apply list_eq_ext'; rewrite map_length; auto;
     intros. rewrite map_nth_inbound with(d2:=d); auto.
@@ -825,6 +841,7 @@ Proof.
     destruct a as [p1 t1]; simpl in *;
     apply union_nil_eq; auto; simpl_set_nil.
   - vsym_eq x v; simpl; simpl_set_nil.
+  - vsym_eq x x0; simpl; simpl_set_nil.
   - apply big_union_nil_eq.
     intros.
     rewrite in_map_iff in H2.

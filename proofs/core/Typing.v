@@ -1178,7 +1178,7 @@ Inductive decrease_fun (fs: list fn) (ps: list pn) :
     decrease_fun fs ps small hd m vs (Tvar v)
   | Dec_const: forall (small : list vsymbol) (hd: option vsymbol) m vs (c: constant),
     decrease_fun fs ps small hd m vs (Tconst c)
-  (*Recursive cases: let, if, eps*)
+  (*Recursive cases: let, if, eps, lam, app*)
   | Dec_tlet: forall (small: list vsymbol) (hd: option vsymbol) m vs (t1: term)
     (v: vsymbol) (t2: term),
     decrease_fun fs ps small hd m vs t1 ->
@@ -1195,6 +1195,13 @@ Inductive decrease_fun (fs: list fn) (ps: list pn) :
     (v: vsymbol),
     decrease_pred fs ps (remove vsymbol_eq_dec v small) (upd_option hd v) m vs f ->
     decrease_fun fs ps small hd m vs (Teps f v)
+  | Dec_lam: forall small hd m vs x t,
+    decrease_fun fs ps (remove vsymbol_eq_dec x small) (upd_option hd x) m vs t ->
+    decrease_fun fs ps small hd m vs (Tlam x t)
+  | Dec_app: forall small hd m vs t1 t2,
+    decrease_fun fs ps small hd m vs t1 ->
+    decrease_fun fs ps small hd m vs t2 ->
+    decrease_fun fs ps small hd m vs (Tapp t1 t2)
 (*This is very similar*)
 with decrease_pred (fs: list fn) (ps: list pn) : 
   list vsymbol -> option vsymbol -> mut_adt -> list vty -> formula -> Prop :=
