@@ -381,9 +381,10 @@ Definition nat_to_string (n: nat) : string :=
   digits_to_string (rev (nat_to_digits n)).
 
 (*Some tests*)
+(*
 Eval compute in (nat_to_string 654).
 Eval compute in (nat_to_string 0).
-Eval compute in (nat_to_string 1000).
+Eval compute in (nat_to_string 1000).*)
 
 Lemma nat_to_string_inj n1 n2:
   nat_to_string n1 = nat_to_string n2 ->
