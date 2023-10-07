@@ -8,9 +8,9 @@ It accompanies the paper "A Formalization of Core Why3 in Coq" by Cohen and John
 ## Download and Installation Instructions
 
 1. Download Virtualbox (this was tested using Virtualbox 6.1 on Linux Mint 20, but any Virtualbox should work)
-2. Load the VM image into Virtualbox and start the VM.
+2. Load the VM image (popl24-ae.ova) into Virtualbox and start the VM. (To load the VM, File -> Import Appliance, locate the file, click Next and then Import)
 3. If prompted, log in with the username and password "popl24-ae".
-4. Start a terminal from `~/Desktop/why3-semantics`.
+4. In the VM, start a terminal from `~/Desktop/why3-semantics`.
 5. From here, you can run the commands to build the code below (see "Building the Code").
 All dependencies (e.g. Coq) are installed on the VM.
 
