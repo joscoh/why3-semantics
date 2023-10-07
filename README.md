@@ -1,15 +1,99 @@
 # why3-semantics
 Formal Semantics for Why3
 
-This repo contains a formalization of the logic fragment of the [why3](https://why3.lri.fr/) language, 
+This artifact contains a formalization of the logic fragment of the [why3](https://why3.lri.fr/) language, 
 used as a backend for many verification tools, including [Frama-C](https://frama-c.com/).
-It accompanies the paper "A Formalization of Core Why3 in Coq".
+It accompanies the paper "A Formalization of Core Why3 in Coq" by Cohen and Johnson-Freyd.
+
+## Download and Installation Instructions
+
+1. Download Virtualbox (this was tested using Virtualbox 6.1 on Linux Mint 20, but any Virtualbox should work)
+2. Load the VM image into Virtualbox and start the VM.
+3. If prompted, log in with the username and password "popl24-ae".
+4. Start a terminal from `~/Desktop/why3-semantics`.
+5. From here, you can run the commands to build the code below (see "Building the Code").
+All dependencies (e.g. Coq) are installed on the VM.
+
+This repository is also located at https://github.com/joscoh/why3-semantics/tree/popl24-ae
+
+## Dependencies
 
 This repo builds under Coq 8.16.1 and depends on Mathematical Components 1.15.0 and Equations 1.3.
 All of this is included in the Coq Platform, September 2022 Version.
-The proofs can be built with "make" from the main directory.
+The VM includes all of the above dependencies, though the proofs build a bit slower on the VM.
 
-We highlight some key definitions and theorems from the paper by section:
+## Building the Code and Evaluation
+
+From the main directory, run `make`. This will compile all of the Coq proofs.
+On the VM, the overall build takes about 40 minutes, of this nearly 32 minutes is spent on the file `proofs/core/RecFun.v`.
+The underlying machine used was a Lenovo X1 Carbon 7th gen, with a Intel Core i7-8565U CPU @ 1.80GHz processor and 16 GB of RAM
+running Linux Mint.
+To delete the generated files, run `make clean`.
+
+The last file, `AxiomEval.v` will print the axioms used in arguably the main overall theorem, that we can construct a model of
+Why3's logic in Coq. `AxiomEval.v` also contains proofs that two of the axioms follow from the other three.
+The three axioms used are classical logic, indefinite description (Hilbert's epsilon operator), and functional extensionality,
+which are all known to be consistent with Coq and each other.
+
+
+## Repository Structure
+
+Here we give an overview of the repository structure and the purpose of the various Coq files.
+In section "List of Claims" we give the locations of specific definitions and theorems from the paper.
+
+-  `proofs/core/` - The definitions of the semantics
+    - `Common.v` - Generic utilities, including list operations and tactics
+    - `Types.v` - Why3 type definitions
+    - `Syntax.v` - Why3 term/formula/definition syntax
+    - `Context.v`- Definition and utilities for Why3 context (list of definitions)
+    - `Vars.v` - Free and bound vars, type variables, symbols appearing in terms and formulas
+    - `Typing.v` - Why3 type system, definition checks, and theorems about well-typed contexts
+    - `Substitution.v` - Variable substitution
+    - `Typechecker.v` - A verified typechecker for core Why3
+    - `Cast.v` - Utilities for dependent type casts
+    - `Hlist.v` -  Generic heterogenous lists
+    - `IndTypes.v` - Encoding of ADTs as W-types and proofs
+    - `Interp.v` - Definition of interpretation and valuation
+    - `ADTInd.v` - Induction over ADT representation
+    - `Denotational.v` - Semantics for terms and formulas + extensionality lemmas
+    - `Denotational2.v` - Derived semantics for iterated operators
+    - `GenElts.v` - Generate distinct elements (for naming)
+    - `SubMulti.v` - Multi-variable substitution
+    - `Alpha.v` - Alpha equivalence and conversion
+    - `IndProp.v` - Encoding of inductive predicates
+    - `RecFun.v` - Encoding of recursive functions (takes a long time to build)
+    - `RecFun2.v` - Theorems about recursive function representation
+    - `NonRecFun` - Encoding of non-recursive functions
+    - `TySubst.v` - Type substitution
+    - `FullInterp.v` - Define full interpretation (consistent with recursive defs)
+    - `Logic.v` - Logic of Why3 - satisfiability, validity, logical consequence
+    - `Task.v` - Definition of Why3 task (context + local assumptions + goal) and utilities
+    - `Theory.v` - Partial implementation of Why3 theories
+- `proofs/proofsystem/` - Implementation of proof system
+    - `Util.v` - Some utilities to construct certain terms more easily
+    - `Unfold.v` - Transformation for unfolding function and predicate definitions
+    - `MatchSimpl.v` - Transformation to simplify match statements applied to ADT constructor
+    - `Induction.v` - Transformation for induction over ADTs
+    - `Rewrite.v` - Rewriting transformation
+    - `NatDed.v` - Natural deduction proof system, sound by construction
+    - `Tactics.v` - Tactics built on top of proof system
+    - `Notations.v` - Nicer way to represent Why3 terms and formulas
+- `proofs/transform/` - Provably sound Why3 transformations
+    - `eliminate_let.v` - Eliminate let by substitution
+    - `eliminate_inductive.v` - Replace inductive predicates with axiomatization
+- `test/` - Tests of tactics in proof system, not relevant for artifact
+- `lib/` - Use of proof system to verify goals from Why3's standard library (List and Bintree are the interesting ones)
+    - `Lib_Relations.v` and `Verif_Relations.v` - Relations
+    - `Lib_Algebra.v` and `Verif_Algebra.v` - Algebraic structures (groups, rings, fields, etc)
+    - `Lib_Int.v` and `Verif_Int.v` - Integers
+    - `Lib_Option.v` and `Verif_Option.v` - Polymorphic options
+    - `Lib_List.v` and `Verif_List.v` - Polymorphic lists
+    - `Lib_Bintree.v` and `Verif_Bintree.v` - Polymorphic binary trees
+- `AxiomEval.v` - Shows axioms used in main theorem
+
+## List of Claims
+
+We highlight the key definitions and theorems from the paper by section:
 
 3. Syntax and Typing
 
@@ -85,7 +169,8 @@ hold in a context where the inductive predicates are interpreted correctly.
 6. Putting it all Together: The Logic of Why3
 
 `proofs/core/FullInterp.v` gives the definition of a full interpretation (`full_interp`)
-and the proof that full interpretations exist (`full_interp_exists`).
+and the proof that full interpretations exist (`full_interp_exists`) - this is arguably
+the most important overall result.
 
 `proofs/core/Logic.v` gives the definitions of satisfaction, logical implication, etc,
 and proves metatheorems whose names we give in the paper.
