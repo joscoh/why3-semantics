@@ -116,19 +116,6 @@ Definition Inverse : theory :=
     tdef (nonrec_pred inv_rel [x; y] <f rel({y}, {x}) f>)
   ].
 
-(*Inductive relT {A: Type} (R: A -> A -> Prop) : A -> A -> Prop :=
-| BaseTrans: forall x y, R x y -> relT R x y
-| StepTrans: forall x y z, relT R x y -> R y z -> relT R x z.
-
-Lemma relT_trans: forall {A: Type} (R: A -> A -> Prop) x y z, 
-  relT R x y -> relT R y z -> relT R x z.
-Proof.
-  intros.
-  induction H0.
-  - eapply StepTrans. apply H. auto.
-  eapply StepTrans. apply IHrelT. auto. auto.
-Qed.*)
-
 (*Closures*)
 
 Definition relR : predsym := binpred "relR" t.

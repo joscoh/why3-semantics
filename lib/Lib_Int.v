@@ -1,7 +1,7 @@
 Require Import StdLib.
 Require Import Lib_Algebra.
 
-(*For now, we only define the main Int module. Maybe do more later*)
+(*For now, we only define the main Int module.*)
 Module Int.
 
 Definition zero : funsym := const "zero" vty_int.

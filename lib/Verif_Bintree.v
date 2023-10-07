@@ -94,25 +94,20 @@ Import Lib_Bintree.Tree.
 
 Definition a_ : vty := tyconst "a".
 Definition x_ : vsymbol := ("x", a_).
-(*Definition y_ : vsymbol := ("y", a_).*)
 Definition tree_a : vty := vty_cons tree_ts [a_].
 Definition r_: vsymbol := ("r", tree_a).
 Definition t1_ : vsymbol := ("t1", tree_a).
 Definition t2_ : vsymbol := ("t2", tree_a).
-(*Definition t3_ : vsymbol := ("t3", tree_a).*)
 
 Definition t1__ : term := Tfun (constsym "t1" tree_a) nil nil.
 Definition t2__ : term := Tfun (constsym "t2" tree_a) nil nil.
-(*Definition l3__ : term := Tfun (constsym "l3" list_a) nil nil.
-Definition l__ : term := Tfun (constsym "l" list_a) nil nil.*)
 Definition x__ : term := Tfun (constsym "x" a_) nil nil.
 Definition y__ : term := Tfun (constsym "y" a_) nil nil.
 
-Ltac extra_simpl ::= fold a_; fold x_; (*fold y_;*) 
+Ltac extra_simpl ::= fold a_; fold x_;
   fold tree_a; fold t1_; fold t2_;
-  (*fold l1_; fold l2_; fold l3_; fold r_;*)
   unfold t_constsym;
-  fold t1__; fold t2__; (*fold l3__; fold l__;*)
+  fold t1__; fold t2__;
   fold x__; fold y__;
   repeat (tryif progress(unfold ty_subst; try unfold ty_subst_var)
     then simpl else idtac).
