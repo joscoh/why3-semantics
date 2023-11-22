@@ -4,6 +4,8 @@ Formal Semantics for Why3
 This repo contains a formalization of the logic fragment of the [why3](https://why3.lri.fr/) language, 
 used as a backend for many verification tools, including [Frama-C](https://frama-c.com/).
 
+Our formalization is described in detail in the POPL24 paper [A Formalization of Core Why3 in Coq](https://www.cs.princeton.edu/~jmc16/docs/Why3Formalization.pdf) by Joshua M. Cohen and Philip Johnson-Freyd. The "popl-24" branch discusses which parts of the repo correspond to parts of the paper.
+
 Why3's logic is a classical first-order logic with polymoprhism, let-binding, if-expressions,  (mutually recursive) algebraic data types, pattern matching, (mutually) recursive functions, (mutually) inductive predicates, and Hilbert's epsilon operator. This logic is described in Jean-Christophe Filliâtre's 2013 paper [One Logic To Use Them All](https://why3.lri.fr/download/cade2013.pdf).
 
 We formalize (core) Why3's syntax and type system (including syntactic checks on definitions, e.g. strict positivity for inductive predicates) and then give a denotational semantics for Why3 terms and formulas, interpreting them as objects in Coq's logic.
@@ -38,21 +40,34 @@ The structure of the repo is as follows:
     - `Denotational.v` - Semantics for terms and formulas + extensionality lemmas
     - `Denotational2.v` - Derived semantics for iterated operators
     - `GenElts.v` - Generate distinct elements (for naming)
+    - `SubMulti.v` - Multi-variable substitution
     - `Alpha.v` - Alpha equivalence and conversion
     - `IndProp.v` - Encoding of inductive predicates
-    - `RecFun.v` - Encoding of recursive functions (takes about 20 mins to build)
+    - `RecFun.v` - Encoding of recursive functions (takes a long time to build)
     - `RecFun2.v` - Theorems about recursive function representation
+    - `NonRecFun` - Encoding of non-recursive functions
+    - `TySubst.v` - Type substitution
     - `FullInterp.v` - Define full interpretation (consistent with recursive defs)
     - `Logic.v` - Logic of Why3 - satisfiability, validity, logical consequence
     - `Task.v` - Definition of Why3 task (context + local assumptions + goal) and utilities
     - `Theory.v` - Partial implementation of Why3 theories
 - `proofs/proofsystem/` - Implementation of proof system
     - `Util.v` - Some utilities to construct certain terms more easily
-    - `Shallow.v` - Some theorems about shallowly embedding Why3 operations into Coq
-    - `NatDed.v` - Natural deduction proof system
+    - `Unfold.v` - Transformation for unfolding function and predicate definitions
+    - `MatchSimpl.v` - Transformation to simplify match statements applied to ADT constructor
+    - `Induction.v` - Transformation for induction over ADTs
+    - `Rewrite.v` - Rewriting transformation
+    - `NatDed.v` - Natural deduction proof system, sound by construction
     - `Tactics.v` - Tactics built on top of proof system
+    - `Notations.v` - Nicer way to represent Why3 terms and formulas
 - `proofs/transform/` - Provably sound Why3 transformations
     - `eliminate_let.v` - Eliminate let by substitution
     - `eliminate_inductive.v` - Replace inductive predicates with axiomatization
-- `test/` - Proofs of Why3 goals in Coq
-   - `TheoryTest.v` - Part of Why3's algebra library and some proofs about rings
+- `test/` - Tests of tactics in proof system
+- `lib/` - Use of proof system to verify goals from Why3's standard library (List and Bintree are the interesting ones)
+    - `Lib_Relations.v` and `Verif_Relations.v` - Relations
+    - `Lib_Algebra.v` and `Verif_Algebra.v` - Algebraic structures (groups, rings, fields, etc)
+    - `Lib_Int.v` and `Verif_Int.v` - Integers
+    - `Lib_Option.v` and `Verif_Option.v` - Polymorphic options
+    - `Lib_List.v` and `Verif_List.v` - Polymorphic lists
+    - `Lib_Bintree.v` and `Verif_Bintree.v` - Polymorphic binary trees
