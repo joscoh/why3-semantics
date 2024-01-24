@@ -314,6 +314,9 @@ Proof.
   by apply ReflectT.
 Qed.
 
+Definition mut_eq_dec (m1 m2: mut): {m1 = m2} + {m1 <> m2} :=
+  reflect_dec' (mut_eqb_spec m1 m2).
+
 End Eq.
 
 
@@ -324,14 +327,17 @@ Section W.
   P gives the information for (uniform) polymorphism
   A is the non-recursive data for each constructor
   B tells the number of recursive arguments for each constructor*)
+(*Note: to add non-uniformity, P is no longer a parameter, instead
+  B will take in a (list Set) as well, W will have type I -> (list Set) -> Set,
+  and f will take in such a list *)
 Variable (I: Set).
-Variable (P: Set).
-Variable (A: P -> I -> Set).
-Variable (B: forall (p: P) (i: I) (j: I), A p i -> Set).
+Variable (P: list Set).
+Variable (A: (list Set) -> I -> Set).
+Variable (B: forall (i: I) (j: I), A P i -> Set).
 (*TODO: see about argument order*)
 
 Inductive W : I -> Set :=
-  | mkW : forall (p: P) (i: I) (a: A p i) (f: forall j, B p i j a -> W j), W i.
+  | mkW : forall (i: I) (a: A P i) (f: forall j, B i j a -> W j), W i.
 
 End W.
 
@@ -398,6 +404,44 @@ Definition build_base (vars: list Set) (cs: list constr) : Set :=
   in_type_extra _ constr_eq_dec cs (build_constr_base vars).
 
 End ADef.
+
+(*Now construct B*)
+Section B.
+
+(*There are several ways we could encode B. But the easiest one will be
+  to use as our type {i | i < length (c_args) && 
+    ts_name (nth i (c_args)) = a}, where a 
+  is the ADT we are interested in. This type has as many elements are there are
+  recursive instances. But knowing each index in the arg list that each recursive
+  instance corresponds to will be helpful later.
+  *)
+
+(*A default constructor*)
+Definition c_d: constr := Build_constr "" nil. 
+
+Definition build_rec (P: list Set) (a: adt) (cs: list constr) :
+  build_base P cs -> Set :=
+  fun (b: build_base P cs) =>
+    (*Get the constructor b belongs to*)
+    let c : constr := proj1_sig (projT1 b) in  
+    {i: nat | Nat.ltb i (length cs) && 
+      String.eqb (c_name (nth i cs c_d)) (a_name a)}.
+
+End B.
+
+(*I and P are easy: I is just a type with |m| elements
+  (we use {a | a in m}), and P *)
+
+(*Our encoding*)
+Definition mut_in_type : Set := in_type adt adt_eq_dec (m_adts m).
+
+(*This handles mutual recursion (but not nested recursion at the moment).
+  Mutual recursion is not too bad, we just need to be careful to call [build_rec]
+  with the correct typesym to count.*)
+Definition mk_adts (P: list Set) : mut_in_type -> Set :=
+  W mut_in_type P (fun p n => build_base p (a_constrs (proj1_sig n)))
+  (fun this i => build_rec P (proj1_sig i) (a_constrs (proj1_sig this))).
+
 
 End Encode.
 
