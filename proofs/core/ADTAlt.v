@@ -66,8 +66,15 @@ Definition inb (x: T) (l: list T) : bool :=
 Definition in_type (l: list T) : Set :=
   { x : T | inb x l }.
 
+Definition build_in_type {x: T} {l: list T} (x_in: inb x l): in_type l :=
+  exist _ x x_in.
+
 Definition in_type_extra (l: list T) (f: T -> Set) : Set :=
   {t: in_type l & f (proj1_sig t)}.
+
+Definition build_extra {l: list T} (x: in_type l) {f: T -> Set} (y: f (proj1_sig x)) :
+  in_type_extra l f :=
+  existT _ x y.
 
 (*TODO: prove finite and stuff? If so, need ssreflect*)
 End InTypeDef.
@@ -81,6 +88,7 @@ Section ADT.
 (*The base types (with decidable equality - we may be able to remove
   this restriction but likely not, and it would make things MUCH worse)*)
 Variable base: Set.
+Variable base_inhab: base.
 Variable base_dec: forall (x y: base), {x = y} + {x <> y}.
 
 
@@ -418,15 +426,27 @@ Section B.
 
 (*A default constructor*)
 Definition c_d: constr := Build_constr "" nil. 
+Definition ty_d : ty := ty_base base_inhab.
+
+(*The type in question: how many recursive instances of adt a appear in
+  a list tys*)
+Definition num_rec_ty (P: list Set) (a: adt) (tys: list ty)  : Set :=
+  {i: nat | Nat.ltb i (length tys) && 
+    is_ind_occ (a_name a) (nth i tys ty_d)}.
 
 Definition build_rec (P: list Set) (a: adt) (cs: list constr) :
   build_base P cs -> Set :=
   fun (b: build_base P cs) =>
     (*Get the constructor b belongs to*)
     let c : constr := proj1_sig (projT1 b) in  
-    {i: nat | Nat.ltb i (length cs) && 
-      String.eqb (c_name (nth i cs c_d)) (a_name a)}.
+    num_rec_ty P a (c_args c).
 
+(*Get the index of the *)
+(*
+Definition build_rec_idx {P: list Set} {a: adt} {cs: list constr}
+  {b: build_base P cs} (r: build_rec P a cs b) : nat :=
+  proj1_sig r.
+*)
 End B.
 
 (*I and P are easy: I is just a type with |m| elements
@@ -442,6 +462,29 @@ Definition mk_adts (P: list Set) : mut_in_type -> Set :=
   W mut_in_type P (fun p n => build_base p (a_constrs (proj1_sig n)))
   (fun this i => build_rec P (proj1_sig i) (a_constrs (proj1_sig this))).
 
+
+(*Constructors*)
+
+(*From a given constructor and the non-recursive data, build the type A*)
+Definition get_constr_type (P: list Set) (a: adt) (cs: list constr) (c: constr)
+  (c_in: inb _ constr_eq_dec c cs)
+  (data: build_constr_base P c):
+  build_base P cs :=
+  build_extra _ constr_eq_dec (build_in_type _ constr_eq_dec c_in) data.
+
+(*Note the weird type of [recs]. This says that we have n instances of 
+  [mk_adts P t], where n is the number of times t occurs recursively in
+  c's constructor list. ([num_rec_ty] just lifts n to the type level)
+  But we don't just give a list, or an n-tuple/vector, because we need
+  to keep track of which index in c's arg list each instance comes from.
+  This will be extremely helpful later*)
+Definition make_constr (P: list Set) (a: mut_in_type) (c: constr)
+  (c_in: inb _ constr_eq_dec c (a_constrs (proj1_sig a)))
+  (data: build_constr_base P c)
+  (recs : forall (t: mut_in_type), 
+    num_rec_ty P (proj1_sig t) (c_args c) -> mk_adts P t) : mk_adts P a :=
+  mkW mut_in_type P _ _
+  a (get_constr_type P (proj1_sig a) _ c c_in data) recs.
 
 End Encode.
 
