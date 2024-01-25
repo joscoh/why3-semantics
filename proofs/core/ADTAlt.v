@@ -607,6 +607,46 @@ Proof.
   subst. apply recs_eq.
 Qed.
 
+(*Induction*)
+
+(*An induction principle for this encoding*)
+Lemma w_induction
+  (P: forall (a: mut_in_type) (p: list Set), mk_adts p a -> Prop):
+  (*For every ADT and every constructor, *)
+  (forall (a: mut_in_type) (p: list Set) (x: mk_adts p a)
+    (c: constr) (c_in:  inb _ constr_eq_dec c (a_constrs (proj1_sig a)))
+    (b: build_constr_base p c)
+    (recs: forall (t: mut_in_type), 
+      num_rec_type p (proj1_sig t) (c_args c) -> mk_adts p t)
+    (x_eq: x = make_constr p a c c_in b recs),
+    (*if whenever P holds on all recursive instances*)
+    (forall t r, P t p (recs t r)) ->
+    (*then it holds for the constructor*)
+    P a p x) ->
+
+(*P holds for all instances of m*)
+(forall (a: mut_in_type) (p: list Set) (x: mk_adts p a), P a p x).
+Proof.
+  intros IH a p.
+  induction x.
+  remember (mkW mut_in_type p
+  (fun (p0 : list Set) (n : mut_in_type) =>
+   build_base p0 (a_constrs (proj1_sig n)))
+  (fun this i0 : mut_in_type =>
+   build_rec p (proj1_sig i0)
+     (a_constrs (proj1_sig this))) i a f) as y.
+  destruct (find_constr _ _ y) as [c [[[c_in b] rec] y_eq]].
+  rewrite y_eq. simpl.
+  eapply IH.
+  reflexivity.
+  simpl in y_eq. subst. unfold make_constr in y_eq.
+  apply mkW_inj in y_eq; [| apply in_type_dec].
+  destruct y_eq as [a_eq rec_eq].
+  subst. simpl in *.
+  intros.
+  rewrite <- rec_eq. apply H.
+Qed.
+
 End Theorems.
 
 End Encode.
