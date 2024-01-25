@@ -1,6 +1,9 @@
 Require Import Coq.Strings.String.
 Require Import Coq.Lists.List.
 Require Import Coq.Bool.Bool.
+Require Import Coq.Logic.Eqdep.
+Require Import Coq.Logic.Eqdep_dec.
+(*Require Import Coq.Logic.EqdepFacts.*)
 Import ListNotations.
 
 From mathcomp Require all_ssreflect. (*fintype finfun.*)
@@ -48,6 +51,11 @@ Qed.
           end
         end.
 
+Lemma bool_irrelevance (b: bool) (p1 p2: b): p1 = p2.
+Proof.
+  apply UIP_dec, bool_dec.
+Qed.
+
 End Util.
 
 (*TODO: move*)
@@ -75,6 +83,22 @@ Definition in_type_extra (l: list T) (f: T -> Set) : Set :=
 Definition build_extra {l: list T} (x: in_type l) {f: T -> Set} (y: f (proj1_sig x)) :
   in_type_extra l f :=
   existT _ x y.
+
+Lemma in_type_eq (l: list T) (x y: in_type l):
+  x = y <-> proj1_sig x = proj1_sig y.
+Proof.
+  destruct x as [x inx]; destruct y as [y iny]; simpl.
+  split; intros.
+  - apply EqdepFacts.eq_sig_fst in H; assumption.
+  - subst. assert (inx = iny) by (apply bool_irrelevance); subst; reflexivity.
+Qed.
+
+Lemma in_type_dec (l: list T) (x y: in_type l): {x = y} + {x <> y}.
+Proof.
+  destruct (T_dec (proj1_sig x) (proj1_sig y)).
+  - left. apply in_type_eq in e; auto.
+  - right. intro C; subst; contradiction.
+Qed.
 
 (*TODO: prove finite and stuff? If so, need ssreflect*)
 End InTypeDef.
@@ -430,7 +454,7 @@ Definition ty_d : ty := ty_base base_inhab.
 
 (*The type in question: how many recursive instances of adt a appear in
   a list tys*)
-Definition num_rec_ty (P: list Set) (a: adt) (tys: list ty)  : Set :=
+Definition num_rec_type (P: list Set) (a: adt) (tys: list ty)  : Set :=
   {i: nat | Nat.ltb i (length tys) && 
     is_ind_occ (a_name a) (nth i tys ty_d)}.
 
@@ -439,7 +463,7 @@ Definition build_rec (P: list Set) (a: adt) (cs: list constr) :
   fun (b: build_base P cs) =>
     (*Get the constructor b belongs to*)
     let c : constr := proj1_sig (projT1 b) in  
-    num_rec_ty P a (c_args c).
+    num_rec_type P a (c_args c).
 
 (*Get the index of the *)
 (*
@@ -474,7 +498,7 @@ Definition get_constr_type (P: list Set) (a: adt) (cs: list constr) (c: constr)
 
 (*Note the weird type of [recs]. This says that we have n instances of 
   [mk_adts P t], where n is the number of times t occurs recursively in
-  c's constructor list. ([num_rec_ty] just lifts n to the type level)
+  c's constructor list. ([pe] just lifts n to the type level)
   But we don't just give a list, or an n-tuple/vector, because we need
   to keep track of which index in c's arg list each instance comes from.
   This will be extremely helpful later*)
@@ -482,9 +506,108 @@ Definition make_constr (P: list Set) (a: mut_in_type) (c: constr)
   (c_in: inb _ constr_eq_dec c (a_constrs (proj1_sig a)))
   (data: build_constr_base P c)
   (recs : forall (t: mut_in_type), 
-    num_rec_ty P (proj1_sig t) (c_args c) -> mk_adts P t) : mk_adts P a :=
+    num_rec_type P (proj1_sig t) (c_args c) -> mk_adts P t) : mk_adts P a :=
   mkW mut_in_type P _ _
   a (get_constr_type P (proj1_sig a) _ c c_in data) recs.
+
+(*Now that the core encoding is finished, we prove some theorems
+  (maybe helpful to prove induction here instead of later)*)
+
+Section Theorems.
+
+(*Inversion: For any instance of [mk_adts], we can find the constructor
+  and the arguments used to create it*)
+
+(*MUCH easier than before AND no axioms needed*)
+Definition find_constr: forall (a: mut_in_type) (P: list Set) (x: mk_adts P a),
+  {c: constr & {t: inb _ constr_eq_dec c (a_constrs (proj1_sig a)) *
+    build_constr_base P c * 
+    forall (t: mut_in_type), 
+    num_rec_type P (proj1_sig t) (c_args c) -> mk_adts P t |
+  x = make_constr P a c (fst (fst t)) (snd (fst t)) (snd t) }}.
+Proof.
+  intros a P x.
+  unfold mk_adts in x.
+  destruct x.
+  apply (existT _ (proj1_sig (projT1 a))).
+  apply (exist _ ( pair (pair (proj2_sig (projT1 a)) (projT2 a)) f)).
+  destruct a; destruct x; reflexivity.
+Qed.
+
+(*Disjointness: Any 2 different constructors, no matter the
+  arguments they are applied to, are never equal*)
+
+Lemma constrs_disjoint: forall (a: mut_in_type) (P: list Set) 
+  (c1 c2: constr) 
+  (c1_in: inb _ constr_eq_dec c1 (a_constrs (proj1_sig a)))
+  (c2_in: inb _ constr_eq_dec c2 (a_constrs (proj1_sig a)))
+  (b1: build_constr_base P c1)
+  (b2: build_constr_base P c2)
+  (recs1: forall (t: mut_in_type), 
+    num_rec_type P (proj1_sig t) (c_args c1) -> mk_adts P t)
+  (recs2: forall (t: mut_in_type), 
+    num_rec_type P (proj1_sig t) (c_args c2) -> mk_adts P t),
+  c1 <> c2 ->
+  make_constr P a c1 c1_in b1 recs1 <> make_constr P a c2 c2_in b2 recs2.
+Proof.
+  intros. intro constr_eq. inversion constr_eq. subst; contradiction.
+Qed.
+
+(*Injectivity: Constructor_rep is injective*)
+
+
+
+(*Relies on [eq_rect_eq] for case when A does not have decidable equality*)
+Lemma mkW_inj (I: Set) (eqI: forall (x y: I), {x = y} + {x <> y}) 
+(P: list Set) (A: list Set -> I -> Set)
+  (B: forall i, I -> A P i -> Set) (i: I) (a1 a2: A P i)
+  (b1: forall j, B i j a1 -> W I P A B j) (b2: forall j, B i j a2 -> W I P A B j):
+  mkW I P A B i a1 b1 = mkW I P A B i a2 b2 ->
+  exists (Heq: a1 = a2),
+    (forall j (x: B i j a1), b1 j x = b2 j (eq_rect _ (B i j) x _ Heq)).
+Proof.
+intros Heq.
+inversion Heq.
+apply inj_pair2_eq_dec in H1; auto.
+apply inj_pair2_eq_dec in H0; auto.
+subst. exists eq_refl. intros. simpl.
+(*NOTE: if A has decidable equality, then we don't need [eq_rect_eq].
+  But we cannot assume this in general: the base types may include
+  real numbers, for instance*)
+apply inj_pair2 in H1; subst; reflexivity.
+Qed.
+
+(*Relies on UIP for case when A does not have decidable equality*)
+Lemma constrs_inj: forall (a: mut_in_type) (P: list Set) 
+(c: constr) 
+(c_in: inb _ constr_eq_dec c (a_constrs (proj1_sig a)))
+(b1: build_constr_base P c)
+(b2: build_constr_base P c)
+(recs1: forall (t: mut_in_type), 
+  num_rec_type P (proj1_sig t) (c_args c) -> mk_adts P t)
+(recs2: forall (t: mut_in_type), 
+  num_rec_type P (proj1_sig t) (c_args c) -> mk_adts P t),
+make_constr P a c c_in b1 recs1 = make_constr P a c c_in b2 recs2 ->
+b1 = b2 /\ (forall t x, recs1 t x = recs2 t x).
+Proof.
+  intros.
+  unfold make_constr in H.
+  apply mkW_inj in H; [| apply in_type_dec].
+  destruct H as [Heq recs_eq].
+  unfold get_constr_type in Heq.
+  unfold build_extra in Heq.
+  assert (A:=Heq).
+  apply inj_pair2_eq_dec in A; subst;
+  [| apply in_type_dec].
+  split; auto.
+  (*Again, since A does not have decidable equality, we need UIP*)
+  assert (Heq = eq_refl). {
+    apply UIP.
+  }
+  subst. apply recs_eq.
+Qed.
+
+End Theorems.
 
 End Encode.
 
