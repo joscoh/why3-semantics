@@ -56,6 +56,31 @@ Proof.
   apply UIP_dec, bool_dec.
 Qed.
 
+Lemma is_false {P: Type}: false -> P.
+Proof.
+discriminate.
+Qed.
+
+Definition proj2_bool {b1 b2: bool} (x: b1 && b2) : b2 :=
+  proj2 (andb_prop _ _ x).
+
+Lemma NoDup_map_in: forall {A B: Type} {f: A -> B} {l: list A} {x1 x2: A},
+  NoDup (map f l) ->
+  In x1 l -> In x2 l ->
+  f x1 = f x2 ->
+  x1 = x2.
+Proof.
+  intros A B f l x1 x2 Hn Hin1 Hin2 Hfeq.
+  induction l; simpl.
+  - destruct Hin1.
+  - simpl in *. destruct Hin1; destruct Hin2; subst; auto;
+    inversion Hn; subst;
+    try solve[exfalso; apply H2; 
+      (rewrite Hfeq + rewrite <- Hfeq); rewrite in_map_iff; 
+      (solve[exists x2; auto] + solve[exists x1; auto])].
+    apply IHl; assumption.
+Qed.
+
 End Util.
 
 (*TODO: move*)
@@ -70,6 +95,15 @@ Variable (T_dec: forall (x y: T), {x = y} + {x <> y}).
 
 Definition inb (x: T) (l: list T) : bool :=
   fold_right (fun y acc => ((T_dec x y) || acc)) false l.
+
+Lemma inb_spec (x: T) (l: list T): reflect (In x l) (inb x l).
+Proof.
+  induction l; simpl.
+  - apply ReflectF; auto.
+  - apply ssr.ssrbool.orPP; auto.
+    destruct (T_dec x a); subst; simpl;
+    [apply ReflectT | apply ReflectF]; auto.
+Qed.
 
 Definition in_type (l: list T) : Set :=
   { x : T | inb x l }.
@@ -114,7 +148,6 @@ Section ADT.
 Variable base: Set.
 Variable base_inhab: base.
 Variable base_dec: forall (x y: base), {x = y} + {x <> y}.
-
 
 (*TODO: use ssreflect? and eqType*)
 
@@ -386,6 +419,8 @@ Variable (typs: typesym -> list Set -> Set).
 (*The user also specifies how base types (e.g. unit, bool, etc) are
   interpreted*)
 Variable (bases: base -> Set).
+(*It must be the case that the domain of the inhabited base type is inhabited*)
+Variable bases_inhab: bases base_inhab.
 
 (*We encode a particular mutual type:*)
 Variable (m: mut).
@@ -405,32 +440,90 @@ Section ADef.
 (*TODO: move*)
 (*TODO: when we add functions, this will become more complicated*)
 (*NOTE: this does NOT handle nested types (ex: tree = node of list tree)*)
+
+(*This is a bit of overkill for now (we only want to know if a type symbol
+  is an ADT/mut occurrence), but it will be useful later*)
+Definition typesym_get_adt_aux (ts: typesym) : option adt :=
+  fold_right (fun a acc => if string_dec (ts_name ts) (a_name a) then Some a 
+    else acc) None (m_adts m).
+
+Lemma typesym_get_adt_aux_some {ts a}:
+  typesym_get_adt_aux ts = Some a ->
+  inb _ adt_eq_dec a (m_adts m) /\
+  ts_name ts = a_name a.
+Proof.
+  unfold typesym_get_adt_aux.
+  induction (m_adts m); simpl; [discriminate| ].
+  destruct (string_dec (ts_name ts) (a_name a0)).
+  - intros eq_a; inversion eq_a; subst. destruct (adt_eq_dec a a); auto.
+  - intros Htl. apply IHl in Htl. destruct Htl as [in_al eq_name];
+    rewrite in_al, orb_true_r; auto.
+Qed.
+
+Lemma typesym_get_adt_aux_none ts:
+  typesym_get_adt_aux ts = None ->
+  forall a, inb _ adt_eq_dec a (m_adts m) ->
+  ts_name ts <> a_name a.
+Proof.
+  unfold typesym_get_adt_aux.
+  induction (m_adts m); simpl; auto.
+  destruct (string_dec (ts_name ts) (a_name a)); [discriminate|].
+  intros Htl a'.
+  destruct (adt_eq_dec a' a); subst; auto.
+Qed.
+
+(*More convenient in proofs - we can destruct this without
+  dependent pattern matching issues*)
+Definition typesym_get_adt ts : 
+  {a : adt | inb _ adt_eq_dec a (m_adts m) /\ ts_name ts = a_name a } +
+  {forall a, inb _ adt_eq_dec a (m_adts m) ->
+  ts_name ts <> a_name a}.
+Proof.
+  destruct (typesym_get_adt_aux ts) eqn : Hty.
+  - left. apply (exist _ a). apply typesym_get_adt_aux_some, Hty.
+  - right. apply typesym_get_adt_aux_none, Hty.
+Defined.
+
 Definition is_ind_occ (ind: string) (t: ty) : bool :=
   match t with
-  | ty_app ts tys => string_dec ind (ts_name ts)
+  | ty_app ts tys =>
+    match (typesym_get_adt ts) with
+    | inleft a => string_dec (a_name (proj1_sig a)) ind
+    | inright _ => false
+    end
   | _ => false
   end.
 
-(*Get all declared ADT names in a mutual block*)
-Definition mut_names (m: mut) : list string :=
-  map a_name (m_adts m).
-
-(*Filter out the recursive instances*)
-Definition get_nonind_vtys (l: list ty) : list ty :=
-  filter (fun v =>
-    forallb (fun ind => is_ind_occ ind v) (mut_names m)) l.
+(*Is the type an occurence of any ADT in the mutual block?*)
+Definition is_mut_occ (t: ty) : bool :=
+  match t with
+  | ty_app ts tys =>
+    match (typesym_get_adt ts) with
+    | inleft _ => true
+    | inright _ => false
+    end
+  | _ => false
+  end.
 
 (*Iterated tuple*)
 Fixpoint big_sprod (l: list Set) : Set :=
   match l with
   | nil => unit
-  | [x] => x
   | x :: xs => (x * (big_sprod xs))%type
   end.
 
+(*The type for a single constructor is an iterated product of the
+  representations (ty_to_set) of each of the argument types.
+  We add extra units for each recursive instance. This does not
+  affect the size/arguments of the type (since there is only 1
+  instance of unit), but it means that the ith element of the tuple
+  corresponds to the ith element of the constructor args. This will
+  make the proofs later much simpler*)
+
 (*The type for a single constructor*)
 Definition build_constr_base (vars: list Set) (c: constr) : Set :=
-  big_sprod (map (ty_to_set vars) (get_nonind_vtys (c_args c))).
+  big_sprod (map (fun x => if is_mut_occ x then unit else ty_to_set vars x) 
+  (c_args c)).
 
 Definition build_base (vars: list Set) (cs: list constr) : Set :=
   in_type_extra _ constr_eq_dec cs (build_constr_base vars).
@@ -465,12 +558,6 @@ Definition build_rec (P: list Set) (a: adt) (cs: list constr) :
     let c : constr := proj1_sig (projT1 b) in  
     num_rec_type P a (c_args c).
 
-(*Get the index of the *)
-(*
-Definition build_rec_idx {P: list Set} {a: adt} {cs: list constr}
-  {b: build_base P cs} (r: build_rec P a cs b) : nat :=
-  proj1_sig r.
-*)
 End B.
 
 (*I and P are easy: I is just a type with |m| elements
@@ -648,6 +735,144 @@ Proof.
 Qed.
 
 End Theorems.
+
+(*Higher-Level Encoding*)
+
+(*The previous encoding uses awkward dependent types (ex: for recs in
+  the constructor). Instead we want the constructor encoding to be
+  a constructor applied to arguments. To ensure well-typed argumets, 
+  we use a heterogenous list*)
+Require Import Hlist. (*TODO factor out Hlist*)
+
+(*The full mapping from types to Sets, where ADT instances are interpreted
+  as the corresponding [mk_adts]*)
+(*NOTE: (remove) unlike before, domain of ADT is definitionally equal to
+  mk_adts, not propositionally equal. This reduces need for casts*)
+Definition domain (p: list Set) (t: ty) : Set :=
+  match t with
+  | ty_app ts tys =>
+    (*If ts is in m, then map to appropriate ADT*)
+    match (typesym_get_adt ts) with
+    | inleft a =>
+      mk_adts p (build_in_type _ adt_eq_dec (proj1 (proj2_sig a)))
+    | inright _ => ty_to_set p t
+    end
+  | _ => ty_to_set p t
+  end. 
+
+(*First, from an hlist of the arguments, build the [build_constr_base].
+  Conceptually this is very simple: just go through and build the tuple with
+  each non-recursive type found*)
+(*It turns out to be better to mostly write this manually; we do not run into
+  dependent pattern matching issues when destructing [typesym_get_adt]*)
+Fixpoint args_to_constr_base_aux p (l: list ty)
+  (a: hlist (domain p) l):
+  big_sprod (map (fun x : ty => if is_mut_occ x then unit else ty_to_set p x) l).
+refine(
+  match l as l' return hlist (domain p) l' -> 
+  big_sprod (map (fun x : ty => if is_mut_occ x then unit else ty_to_set p x) l') with
+  | nil => fun _ => tt
+  | thd :: ttl => fun a => 
+    let l' := thd :: ttl in 
+    match a in (hlist _ l1) with
+    | HL_nil => tt
+    | HL_cons x tl ahd atl =>
+      match x as x' return (domain p x') -> 
+      big_sprod (map (fun x : ty => if is_mut_occ x then unit else ty_to_set p x) (x' :: tl)) with
+      | ty_base b => fun ahd => (ahd, args_to_constr_base_aux p tl atl)
+      | ty_var n => fun ahd => (ahd, args_to_constr_base_aux p tl atl)
+      | ty_app ts tys => _
+      end ahd
+    end
+  end a).
+  simpl in *.
+  case (typesym_get_adt ts).
+  - intros _ _. exact (tt, args_to_constr_base_aux p tl atl).
+  - intros _ y. exact (y, args_to_constr_base_aux p tl atl).
+Defined.
+
+Definition args_to_constr_base (p: list Set) (c: constr)
+  (a: hlist (domain p) (c_args c)): build_constr_base p c :=
+  args_to_constr_base_aux p (c_args c) a.
+
+(*And build the recursive arguments*)
+
+Definition dom_d: forall p, domain p ty_d := fun p =>
+  bases_inhab.
+
+(*TODO: move*)
+(*We require that all ADT names are unique*)
+(*TODO: change to decidable version*)
+Variable adt_names_uniq: NoDup (map a_name (m_adts m)).
+
+Lemma adt_names_eq {a1 a2: adt}:
+  inb _ adt_eq_dec a1 (m_adts m) ->
+  inb _ adt_eq_dec a2 (m_adts m) ->
+  a_name a1 = a_name a2 ->
+  a1 = a2.
+Proof.
+  intros a1_in a2_in name_eq.
+  apply (@NoDup_map_in _ _ _ _ a1 a2) in adt_names_uniq; auto.
+  - apply (ssrbool.elimT (inb_spec _ _ _ _) a1_in).
+  - apply (ssrbool.elimT (inb_spec _ _ _ _) a2_in).
+Qed.
+
+(*This is conceptually simple as well: the [num_rec_type]
+  gives us the index of l that has the correct type, so we just
+  identify that element of a. There is a bit of work to make the
+  types work out and avoid dependent pattern matching errors*)
+Definition args_to_ind_base_aux (p: list Set) (l: list ty)
+  (a: hlist (domain p) l):
+  forall t: mut_in_type,
+    num_rec_type p (proj1_sig t) l -> mk_adts p t.
+intros t.
+intros i.
+(*What we want: to use hnth and to use the [is_ind_occ] hypothesis
+  in i to prove that the types work out. But if we just introduce
+  [hnth i a] and destruct, we get dependent pattern matching errors.
+  If we are more clever, we can avoid this, as follows:*)
+refine
+  ((match (nth (proj1_sig i) l ty_d) as t' return
+    is_ind_occ (a_name (proj1_sig t)) t' ->
+    domain p t' ->  mk_adts p t with
+  | ty_base b => fun f _ => is_false f
+  | ty_var v => fun f _ => is_false f
+  | ty_app ts tys => _
+  end) (proj2_bool (proj2_sig i)) (hnth (proj1_sig i) a ty_d (dom_d _))) ; simpl.
+case (typesym_get_adt ts).
+- intros s.
+  (*We know that these two are the same, but they are only propositionally equal,
+    so we will unfortunately need a cast.*)
+  (*Avoid destruct here*)
+  refine (match (string_dec (a_name (proj1_sig s)) (a_name (proj1_sig t))) as b
+    return b -> _ with
+    | left aname_eq => _
+    | right _ => fun f => is_false f
+    end).
+  intros _.
+  set (a_eq  :=
+  adt_names_eq (proj1 (proj2_sig s)) (proj2_sig t) aname_eq : proj1_sig s = proj1_sig t).
+  intros rep.
+  set (t':=build_in_type adt adt_eq_dec (proj1 (proj2_sig s))).
+  set (pack_eq := (proj2 (in_type_eq _ adt_eq_dec (m_adts m) t' t)) a_eq :
+  (build_in_type adt adt_eq_dec (proj1 (proj2_sig s))) = t).
+  exact (eq_rect _ (mk_adts p) rep _ pack_eq).
+- intros _ f. exact (is_false f).
+Defined.
+
+Definition args_to_ind_base (p: list Set) (c: constr)
+  (a: hlist (domain p) (c_args c)):
+  forall t: mut_in_type,
+    num_rec_type p (proj1_sig t) (c_args c) -> mk_adts p t :=
+  args_to_ind_base_aux p (c_args c) a.
+
+Definition constr_rep (p: list Set) (a: mut_in_type) (c: constr)
+  (c_in: inb _ constr_eq_dec c (a_constrs (proj1_sig a)))
+  (args: hlist (domain p) (c_args c)):
+  mk_adts p a :=
+  make_constr p a c c_in
+  (args_to_constr_base p c args)
+  (args_to_ind_base p c args).
 
 End Encode.
 
