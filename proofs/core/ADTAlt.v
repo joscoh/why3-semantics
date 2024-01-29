@@ -1002,7 +1002,8 @@ case (typesym_get_adt ts).
   set (t':=build_in_type adt adt_eq_dec (proj1 (proj2_sig s))).
   set (pack_eq := (proj2 (in_type_eq _ adt_eq_dec (m_adts m) t' t)) a_eq :
   (build_in_type adt adt_eq_dec (proj1 (proj2_sig s))) = t).
-  exact (eq_rect _ (mk_adts p) rep _ pack_eq).
+  exact (scast (f_equal (mk_adts p) pack_eq) rep).
+  (*exact (eq_rect _ (mk_adts p) rep _ pack_eq).*)
 - intros _ f. exact (is_false f).
 Defined.
 
@@ -1130,8 +1131,9 @@ match t as t' return
 
 | ty_base b' => fun _ bse => bse
 | ty_var v => fun _ bse => bse
-end Heq (eq_rect _ (fun x => ty_to_set p x) 
-  (big_sprod_ith b i ty_d (dom_d p)) _ (eq_sym Heq))) (nth i l ty_d) eq_refl).
+end Heq (scast (f_equal (ty_to_set p) (eq_sym Heq))
+  (big_sprod_ith b i ty_d (dom_d p))))
+ (nth i l ty_d) eq_refl).
 (*Handle the ty_app case here*)
 simpl in bse |- *.
 revert bse.
@@ -1149,9 +1151,23 @@ case (typesym_get_adt ts).
 
 Defined.
 
+Ltac gen_scast :=
+  match goal with
+  | |- context [scast ?H ?x] => generalize dependent H
+  end.
+
+  (*If we have [scast Heq1 x] and [scast Heq2 x], write the first
+    in terms of the second*)
+Lemma scast_switch {A B C: Set} (x: A) (Heq1: A = B) (Heq2: A = C):
+  scast Heq1 x = scast (eq_trans (eq_sym Heq2) Heq1) (scast Heq2 x).
+Proof.
+  subst. reflexivity.
+Qed.
 
 
-(*Can we prove this?*)
+(*One of the main lemmas we need: if the ith element of l is non-recursive,
+  the the ith element of the constructed hlist is the same as the
+  ith element of the original tuple*)
 Lemma constr_ind_to_args_aux_nonrec {p: list Set} {l: list ty}
 (b: build_constr_base_aux p l)
 (recs: forall t : mut_in_type, num_rec_type (proj1_sig t) l -> mk_adts p t)
@@ -1164,149 +1180,56 @@ Proof.
       Nat.ltb i (Datatypes.length l)).
   rewrite gen_hlist_i_nth with (Hi:=Hi').
   generalize dependent (@eq_refl ty (@nth ty i l ty_d)).
-  (*This is incredibly awkward, but let's see*)
-  (*TODO: try to factor into match*)
-  assert (forall (t: ty) (Heq: t = nth i l ty_d),
-    match t as t' return (t' = nth i l ty_d -> ty_to_set p t' -> domain p t')
-    with | ty_base b' =>
-    fun (_ : ty_base b' = nth i l ty_d)
-      (bse : ty_to_set p (ty_base b')) => bse
-| ty_var v =>
-    fun (_ : ty_var v = nth i l ty_d)
-      (bse : ty_to_set p (ty_var v)) => bse
-| ty_app ts tys =>
-    fun (Heq : ty_app ts tys = nth i l ty_d)
-      (bse : ty_to_set p (ty_app ts tys)) =>
-    match
-      typesym_get_adt ts as s
-      return
-        ((forall
-            a : {a : adt
-                | inb adt adt_eq_dec a (m_adts m) /\
-                  ts_name ts = a_name a},
-          s = inleft a ->
-          is_ind_occ (a_name (proj1_sig a)) (nth i l ty_d)) ->
-         (if s
-          then unit
-          else typs ts (map (ty_to_set p) tys)) ->
-         match s with
-         | inleft a =>
-             mk_adts p
-               (build_in_type adt adt_eq_dec
-                  (proj1 (proj2_sig a)))
-         | inright _ =>
-             if s
-             then unit
-             else typs ts (map (ty_to_set p) tys)
-         end)
-    with
-    | inleft a =>
-        fun
-          (Hindocc : forall
-                       a0 : {a0 : adt
-                            | inb adt adt_eq_dec a0
-                                (m_adts m) /\
-                              ts_name ts = a_name a0},
-                     inleft a = inleft a0 ->
-                     is_ind_occ (a_name (proj1_sig a0))
-                       (nth i l ty_d)) (_ : unit) =>
-        recs
-          (build_in_type adt adt_eq_dec
-             (proj1 (proj2_sig a)))
-          (exist
-             (fun i0 : nat =>
-              Nat.ltb i0 (Datatypes.length l) &&
-              is_ind_occ
-                (a_name
-                   (proj1_sig
-                      (build_in_type adt adt_eq_dec
-                         (proj1 (proj2_sig a)))))
-                (nth i0 l ty_d)) i
-             (andb_conj Hi' (Hindocc a eq_refl)))
-    | inright b0 =>
-        fun
-          (_ : forall
-                 a : {a : adt
-                     | inb adt adt_eq_dec a (m_adts m) /\
-                       ts_name ts = a_name a},
-               inright b0 = inleft a ->
-               is_ind_occ (a_name (proj1_sig a))
-                 (nth i l ty_d))
-          (bse0 : typs ts (map (ty_to_set p) tys)) => bse0
-    end
-      (typesym_get_adt_ind_occ ts tys (nth i l ty_d)
-         (eq_sym Heq)) bse
-end Heq 
-  (eq_rect _ (fun x : ty => ty_to_set p x)
-     (big_sprod_ith b i ty_d (dom_d p)) 
-     t (eq_sym Heq)) =
-     scast 
+  intros e.
+  (*The core problem is that we cannot destruct [nth i l ty_d]
+    because it is needed in the proof to build the [num_rec_type].
+    We have to generalize our goal to match on any t which is equal
+    to [nth i l ty_d]. The goal is large, so we do this in the following
+    match:*)
+  match goal with
+  | |- match nth i l ty_d as t' in ty return (t' = nth i l ty_d -> ty_to_set p t' -> domain p t')
+      with
+      | ty_base b' => ?aa
+      | ty_var v => ?bb
+      | ty_app ts tys => ?cc
+      end ?f ?g = ?y =>
+    assert (forall (t: ty) (Heq: t = nth i l ty_d),
+      match t as t' return (t' = nth i l ty_d -> ty_to_set p t' -> domain p t')
+      with
+      | ty_base b' => aa
+      | ty_var v => bb
+      | ty_app ts tys => cc
+      end Heq 
+      (scast (f_equal (ty_to_set p) (eq_sym Heq)) (big_sprod_ith b i ty_d (dom_d p)))
+      = 
+      scast 
      (eq_trans  (eq_sym (is_rec_ty_eq Hnonrec p))
         (eq_sym (f_equal (domain p) Heq)))
-      (big_sprod_ith b i ty_d (dom_d p))).
-(*eq_rect _ (fun x => domain p x) 
-  (scast (eq_sym (is_rec_ty_eq Hnonrec p))
-  (big_sprod_ith b i ty_d (dom_d p))) _ (eq_sym Heq)).*)
-{
-  (*Finally, we can destruct*)
-  intros t.
-  destruct t.
-  - intros Heq.
-    (*A bunch of dependent type stuff*)
-    match goal with |- context [scast ?H ?x] => generalize dependent H
-    end.
-    generalize dependent (big_sprod_ith b i ty_d (dom_d p)).
-    generalize dependent (eq_sym Heq).
-    generalize dependent (nth i l ty_d).
-    intros. subst.
-    assert (e = eq_refl). apply UIP_dec. apply ty_eq_dec.
-    subst; simpl.
-    uip_subst e0. reflexivity.
-  - intros Heq.
-    (*A bunch of dependent type stuff*)
-    match goal with |- context [scast ?H ?x] => generalize dependent H
-    end.
-    generalize dependent (big_sprod_ith b i ty_d (dom_d p)).
-    generalize dependent (eq_sym Heq).
-    generalize dependent (nth i l ty_d).
-    intros. subst.
-    assert (e = eq_refl). apply UIP_dec. apply ty_eq_dec.
-    subst; simpl.
-    uip_subst e0. reflexivity.
-  - intros Heq.
-    match goal with |- context [scast ?H ?x] => generalize dependent H
-    end.
-    generalize dependent  (big_sprod_ith b i ty_d (dom_d p)) .
-    intros t0 e.
-    assert ( (eq_rect (nth i l ty_d) (fun x : ty => ty_to_set p x) t0
-    (ty_app t l0) (eq_sym Heq)) = scast 
-    (is_rec_ty_eq (eq_trans (f_equal is_rec_ty Heq) Hnonrec) p) (scast e t0)).
-    {
-      rewrite scast_scast.
-      (*TODO: unify casts*)
-      match goal with |- context [scast ?H ?x] => generalize dependent H
-      end.
-      generalize dependent (eq_sym Heq).
-      clear. generalize dependent (ty_app t l0).
-      intros. subst. simpl.
+      (big_sprod_ith b i ty_d (dom_d p))
+    
+    )
+  end.
+  {
+    intros t.
+    destruct t; intros Heq.
+    - apply scast_eq_uip.
+    - apply scast_eq_uip. 
+    - (*Get both [scasts] in terms of a single value, so we can
+        generalize (needed to destruct [typesym_get_adt t])*) 
+      match goal with
+      |- _ = scast ?H ?x =>
+        rewrite scast_switch with (Heq2:=H);
+        generalize dependent (scast H x)
+      end. intros d.
+      gen_scast.
+      revert d.
+      generalize dependent (typesym_get_adt_ind_occ t l0 (nth i l ty_d) (eq_sym Heq)).
+      (*Need all this so we can destruct [typesym_get_adt t]*)
+      rewrite <- Heq in Hnonrec. revert Hnonrec. simpl.
+      destruct (typesym_get_adt t); try discriminate.
+      intros.
       uip_subst e0. reflexivity.
-    }
-    rewrite H. clear H.
-    (*Now we can generalize*)
-    match goal with |- context [scast ?H ?x] => generalize dependent H
-    end.
-    generalize dependent (scast e t0).
-    generalize dependent (typesym_get_adt_ind_occ t l0 (nth i l ty_d) (eq_sym Heq)).
-    (*Need all this so we can destruct [typesym_get_adt t]*)
-    simpl.
-    rewrite <- Heq in Hnonrec.
-    simpl in Hnonrec.
-    revert Hnonrec.
-    destruct (typesym_get_adt t); try discriminate.
-    intros.
-    uip_subst e0. reflexivity.
   }
-  intros e.
   specialize (H (nth i l ty_d) e).
   simpl in H |- *.
   rewrite H.
