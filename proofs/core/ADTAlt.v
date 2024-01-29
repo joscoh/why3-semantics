@@ -64,6 +64,9 @@ Qed.
 Definition proj2_bool {b1 b2: bool} (x: b1 && b2) : b2 :=
   proj2 (andb_prop _ _ x).
 
+Definition proj1_bool {b1 b2: bool} (x: b1 && b2) : b1 :=
+  proj1 (andb_prop _ _ x).
+
 Lemma NoDup_map_in: forall {A B: Type} {f: A -> B} {l: list A} {x1 x2: A},
   NoDup (map f l) ->
   In x1 l -> In x2 l ->
@@ -559,6 +562,16 @@ Definition ty_d : ty := ty_base base_inhab.
 Definition num_rec_type (a: adt) (tys: list ty)  : Set :=
   {i: nat | Nat.ltb i (length tys) && 
     is_ind_occ (a_name a) (nth i tys ty_d)}.
+
+(*TODO: generalize to bool pred like ssr?*)
+Lemma num_rec_type_eq {a: adt} {tys: list ty}
+  (x1 x2: num_rec_type a tys):
+  proj1_sig x1 = proj1_sig x2 ->
+  x1 = x2.
+Proof.
+  intros. destruct x1; destruct x2; simpl in *.
+  subst. f_equal. apply bool_irrelevance.
+Qed.
 
 Definition build_rec (P: list Set) (a: adt) (cs: list constr) :
   build_base P cs -> Set :=
@@ -1165,6 +1178,21 @@ Proof.
 Qed.
 
 
+Lemma is_ind_occ_domain p (a: mut_in_type) (t: ty) 
+  (Hind: is_ind_occ (a_name (proj1_sig a)) t):
+  domain p t = mk_adts p a.
+Proof.
+  unfold is_ind_occ in Hind.
+  destruct t; simpl; try solve [apply (is_false Hind)].
+  destruct (typesym_get_adt t).
+  - f_equal. apply in_type_eq; simpl.
+    apply adt_names_eq.
+    + apply (proj1 (proj2_sig s)).
+    + apply (proj2_sig a).
+    + destruct (string_dec _ _); auto. discriminate.
+  - apply (is_false Hind).
+Qed.
+
 (*One of the main lemmas we need: if the ith element of l is non-recursive,
   the the ith element of the constructed hlist is the same as the
   ith element of the original tuple*)
@@ -1236,6 +1264,113 @@ Proof.
   apply scast_eq_uip.
 Qed.
 
+(*And the lemma for recursive arguments*)
+Lemma constr_ind_to_args_aux_rec {p: list Set} {l: list ty}
+(b: build_constr_base_aux p l)
+(recs: forall t, num_rec_type (proj1_sig t) l -> mk_adts p t)
+(t: mut_in_type) (x: num_rec_type (proj1_sig t) l):
+hnth (proj1_sig x)(constr_ind_to_args_aux p l b recs) ty_d
+(dom_d p) =
+scast (eq_sym (is_ind_occ_domain p t (nth (proj1_sig x) l ty_d) 
+  (proj2_bool (proj2_sig x))))
+  (recs t x).
+Proof.
+  generalize dependent (eq_sym
+    (is_ind_occ_domain p t (nth (proj1_sig x) l ty_d)
+       (proj2_bool (proj2_sig x)))).
+  unfold constr_ind_to_args_aux.
+  intros e.
+  assert (Hi: Nat.ltb (proj1_sig x) (length l)). {
+    exact (proj1_bool (proj2_sig x)).
+  }
+  rewrite gen_hlist_i_nth with(Hi:=Hi).
+  simpl.
+  (*Again, we need a more generic lemma*)
+  match goal with
+  | |- match nth (proj1_sig x) l ty_d as t' in ty return 
+    (t' = nth (proj1_sig x) l ty_d -> ty_to_set p t' -> domain p t')
+      with
+      | ty_base b' => ?aa
+      | ty_var v => ?bb
+      | ty_app ts tys => ?cc
+      end ?f ?g = ?y =>
+    assert (forall (t1: ty) (Heq: t1 = nth (proj1_sig x) l ty_d),
+      match t1 as t' return (t' = nth (proj1_sig x) l ty_d -> ty_to_set p t' -> domain p t')
+      with
+      | ty_base b' => aa
+      | ty_var v => bb
+      | ty_app ts tys => cc
+      end Heq 
+      (scast (f_equal (ty_to_set p) (eq_sym Heq)) 
+    (big_sprod_ith b (proj1_sig x) ty_d (dom_d p))) =
+    scast (f_equal (domain p) (eq_sym Heq)) (scast e (recs t x))
+    
+    )
+  end.
+  {
+    (*Now we can destruct*)
+    destruct t1; intros.
+    - (*Most cases are contradictions*)
+      exfalso.
+      destruct x; simpl in *.
+      rewrite <- Heq, andb_false_r in i.
+      apply (is_false i).
+    - exfalso.
+      destruct x; simpl in *.
+      rewrite <- Heq, andb_false_r in i.
+      apply (is_false i).
+    - (*Here, we don't care about the [big_sprod] because we are not using it*)
+      generalize dependent (typesym_get_adt_ind_occ t0 l0 (nth (proj1_sig x) l ty_d)
+      (eq_sym Heq)).
+      generalize dependent (scast (f_equal (ty_to_set p) (eq_sym Heq))
+      (big_sprod_ith b (proj1_sig x) ty_d (dom_d p))).
+      simpl.
+      rewrite scast_scast.
+      gen_scast.
+      (*Now we can destruct*)
+      destruct (typesym_get_adt t0) eqn : Hgetadt.
+      + intros e0 _ Hind.
+        (*Now we just need to prove that these pairs are equal*)
+        match goal with 
+        |- recs ?t1 ?x1 = scast ?H (recs ?t2 ?x2) =>
+          assert (t1 = t2)
+        end.
+        {
+          apply in_type_eq; simpl.
+          apply adt_names_eq.
+          - apply (proj1 (proj2_sig s)).
+          - apply (proj2_sig t).
+          - specialize (Hind s eq_refl).
+            clear -Heq x Hgetadt.
+            destruct x; simpl in *.
+            rewrite <- Heq in i. simpl in i.
+            rewrite Hgetadt in i.
+            destruct (string_dec _ _); auto; simpl in i;
+            rewrite andb_false_r in i; apply (is_false i).
+        }
+        subst.
+        (*For some reason, need to do this here, not before,
+          or else we get "uncaught exception"*)
+        match goal with 
+        |- recs ?t1 ?x1 = scast ?H (recs ?t2 ?x2) =>
+          replace x1 with x2 by (apply num_rec_type_eq; reflexivity)
+        end.
+        uip_subst e0.
+        reflexivity.
+      + (*Contradiction case*)
+        intros e0 t1 _.
+        exfalso.
+        destruct x; simpl in *.
+        rewrite <- Heq in i.
+        simpl in i.
+        rewrite Hgetadt, andb_false_r in i.
+        apply (is_false i).
+  }
+  specialize (H _ eq_refl). simpl in *.
+  rewrite H.
+  reflexivity.
+Qed.
+
 Lemma big_sprod_ext {A: Set} {f: A -> Set} (l: list A) 
   (x1 x2: big_sprod (map f l)) (d1: A) (d2: f d1)
   (Hext: forall i, i < length l -> big_sprod_ith x1 i d1 d2 = big_sprod_ith x2 i d1 d2):
@@ -1282,6 +1417,34 @@ Proof.
     (is_rec_ty_eq Hrec p)).
     intros e. uip_subst e.
     reflexivity.
+Qed.
+
+
+Lemma constr_ind_args_inv_aux2 {p: list Set} {l: list ty}
+(b: build_constr_base_aux p l)
+(recs: forall t : mut_in_type, num_rec_type (proj1_sig t) l -> mk_adts p t):
+forall t x,
+  args_to_ind_base_aux p l (constr_ind_to_args_aux p l b recs) t x =
+  recs t x.
+Proof.
+  intros.
+  unfold args_to_ind_base_aux.
+  (*Did bulk of work in previous lemma - this lets us destruct
+    without dependent type issues*)
+  rewrite constr_ind_to_args_aux_rec.
+  gen_scast.
+  generalize dependent (proj2_bool (proj2_sig x)).
+  simpl.
+  destruct (nth (proj1_sig x) l ty_d).
+  - intros. exact (is_false i).
+  - intros. exact (is_false i).
+  - simpl. destruct (typesym_get_adt t0).
+    + destruct (string_dec (a_name (proj1_sig s)) (a_name (proj1_sig t)));
+      try discriminate.
+      intros.
+      rewrite scast_scast.
+      apply scast_refl_uip.
+    + intros. exact (is_false i).
 Qed.
 
 End Inverse.
