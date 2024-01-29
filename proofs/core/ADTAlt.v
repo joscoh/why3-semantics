@@ -1447,6 +1447,63 @@ Proof.
     + intros. exact (is_false i).
 Qed.
 
+Lemma is_rec_ty_get_info {i l} (Hi: i < length l) (Hrec: is_rec_ty (nth i l ty_d)):
+  {t: mut_in_type & {x: num_rec_type (proj1_sig t) l | proj1_sig x = i}}.
+Proof.
+  unfold is_rec_ty in Hrec.
+  destruct (nth i l ty_d) eqn : Hnth;
+  try solve[apply (is_false Hrec)].
+  destruct (typesym_get_adt t) eqn : Hget; try solve[apply (is_false Hrec)].
+  destruct s as [a [a_in a_nameq]].
+  apply (existT _ (build_in_type _ adt_eq_dec a_in)).
+  simpl.
+  assert (Hind: is_ind_occ (a_name a) (nth i l ty_d)). {
+    unfold is_ind_occ.
+    rewrite Hnth. rewrite Hget.
+    simpl. destruct (string_dec _ _); auto.
+  }
+  assert (Hi': Nat.ltb i (length l)). {
+    apply (ssrbool.introT (PeanoNat.Nat.ltb_spec0 i _) Hi).
+  }
+  set (x := exist _ i (andb_conj Hi' Hind) : num_rec_type a l).
+  apply (exist _ x). reflexivity.
+Qed.
+
+(*And the third result: the other direction*)
+Lemma constr_ind_args_inv_aux3 {p: list Set} {l: list ty}
+(h: hlist (domain p) l):
+constr_ind_to_args_aux p l 
+  (args_to_constr_base_aux p l h) (args_to_ind_base_aux p l h) = h.
+Proof.
+  apply hlist_ext_eq with (d:=ty_d)(d':=dom_d p).
+  intros i Hi.
+  destruct (is_rec_ty (nth i l ty_d)) eqn : Hrec.
+  - (*This is a bit trickier because we need to construct the dependent types*)
+    destruct (is_rec_ty_get_info Hi Hrec) as [t [x Hix]].
+    subst.
+    rewrite (constr_ind_to_args_aux_rec _ _ t x).
+    generalize dependent (eq_sym
+    (is_ind_occ_domain p t (nth (proj1_sig x) l ty_d)
+       (proj2_bool (proj2_sig x)))).
+    unfold args_to_ind_base_aux.
+    generalize dependent (proj2_bool (proj2_sig x)).
+    (*Now both sides refer to the same hnth*)
+    generalize dependent (hnth (proj1_sig x) h ty_d (dom_d p)).
+    (*And so we can destruct*)
+    destruct (nth (proj1_sig x) l ty_d); simpl; intros;
+    try solve[apply (is_false i)].
+    destruct (typesym_get_adt t0); try solve[apply (is_false i)].
+    destruct (string_dec (a_name (proj1_sig s)) (a_name (proj1_sig t)));
+    try discriminate.
+    rewrite scast_scast. apply scast_refl_uip.
+  - (*Easier - just use existing lemmas*)
+    rewrite (constr_ind_to_args_aux_nonrec _ _ Hi Hrec).
+    unfold args_to_constr_base_aux, big_sprod_ith.
+    rewrite big_sprod_to_hlist_inv,
+    (hlist_dom_to_set_ith_nonrec _ _ _ _ (dom_d p) Hrec Hi), scast_scast.
+    apply scast_refl_uip.
+Qed.
+
 End Inverse.
 
 End Encode.
