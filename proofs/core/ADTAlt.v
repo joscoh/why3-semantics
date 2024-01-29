@@ -425,15 +425,6 @@ Variable bases_inhab: bases base_inhab.
 (*We encode a particular mutual type:*)
 Variable (m: mut).
 
-(*A (non-recursive) type is interpreted according to these functions.
-  Type variables are defined by a function to be given later*)
-Fixpoint ty_to_set (vars: list Set) (t: ty) : Set :=
-  match t with
-  | ty_base b => bases b
-  | ty_var v => nth v vars empty
-  | ty_app ts tys => typs ts (map (ty_to_set vars) tys)
-  end.
-
 (*We now define the type A (build_base):*)
 Section ADef.
 
@@ -482,7 +473,7 @@ Proof.
   destruct (typesym_get_adt_aux ts) eqn : Hty.
   - left. apply (exist _ a). apply typesym_get_adt_aux_some, Hty.
   - right. apply typesym_get_adt_aux_none, Hty.
-Defined.
+Qed. (*TODO: see if need to be Defined*)
 
 Definition is_ind_occ (ind: string) (t: ty) : bool :=
   match t with
@@ -495,6 +486,7 @@ Definition is_ind_occ (ind: string) (t: ty) : bool :=
   end.
 
 (*Is the type an occurence of any ADT in the mutual block?*)
+(*
 Definition is_mut_occ (t: ty) : bool :=
   match t with
   | ty_app ts tys =>
@@ -503,6 +495,19 @@ Definition is_mut_occ (t: ty) : bool :=
     | inright _ => false
     end
   | _ => false
+  end.*)
+
+(*A (non-recursive) type is interpreted according to these functions.
+  Type variables are defined by a function to be given later*)
+Fixpoint ty_to_set (vars: list Set) (t: ty) : Set :=
+  match t with
+  | ty_base b => bases b
+  | ty_var v => nth v vars empty
+  | ty_app ts tys =>
+    match (typesym_get_adt ts) with
+    | inleft _ => unit
+    | inright _ => typs ts (map (ty_to_set vars) tys)
+    end
   end.
 
 (*Iterated tuple*)
@@ -511,6 +516,8 @@ Fixpoint big_sprod (l: list Set) : Set :=
   | nil => unit
   | x :: xs => (x * (big_sprod xs))%type
   end.
+
+  (*maybe change [ty_to_set] to include the unit part*)
 
 (*The type for a single constructor is an iterated product of the
   representations (ty_to_set) of each of the argument types.
@@ -521,7 +528,7 @@ Fixpoint big_sprod (l: list Set) : Set :=
   make the proofs later much simpler*)
 
 Definition build_constr_base_aux (vars: list Set) (l: list ty) : Set :=
-  big_sprod (map (fun x => if is_mut_occ x then unit else ty_to_set vars x) l).
+  big_sprod (map (ty_to_set vars) l).
 
 (*The type for a single constructor*)
 Definition build_constr_base (vars: list Set) (c: constr) : Set :=
@@ -762,12 +769,148 @@ Definition domain (p: list Set) (t: ty) : Set :=
   | _ => ty_to_set p t
   end. 
 
+(*Convert between a [big_sprod] and an [hlist]*)
+
+Fixpoint big_sprod_to_hlist {A: Set} {f: A -> Set} {l: list A} (x: big_sprod (map f l))
+  {struct l} : hlist f l :=
+  match l as l' return big_sprod (map f l') -> hlist f l' with
+  | nil => fun _ => HL_nil _
+  | x :: xs => fun p => HL_cons _ x xs (fst p) (big_sprod_to_hlist (snd p))
+  end x.
+
+Fixpoint hlist_to_big_sprod {A: Set} {f: A -> Set} {l: list A} (h: hlist f l) :
+  big_sprod (map f l) :=
+  match l as l' return hlist f l' -> big_sprod (map f l') with
+  | nil => fun _ => tt
+  | x :: xs => fun h => (hlist_hd h, hlist_to_big_sprod (hlist_tl h))
+  end h.
+
+Lemma hlist_to_big_sprod_inv {A: Set} {f: A -> Set} {l: list A} (x: big_sprod (map f l)):
+  hlist_to_big_sprod (big_sprod_to_hlist x) = x.
+Proof.
+  induction l; simpl; [| rewrite IHl]; destruct x; reflexivity.
+Qed.
+
+Lemma big_sprod_to_hlist_inv {A: Set} {f: A -> Set} {l: list A} (h: hlist f l):
+  big_sprod_to_hlist (hlist_to_big_sprod h) = h.
+Proof.
+  induction l; simpl.
+  - symmetry. apply hlist_nil.
+  - rewrite IHl. symmetry. apply hlist_inv.
+Qed.
+
+(*Now convert an [hlist] on [domains] to one on [ty_to_set] (ie: remove
+  recursive information)*)
+Fixpoint hlist_dom_to_set {p: list Set} {l: list ty} (h: hlist (domain p) l):
+  hlist (ty_to_set p) l.
+
+  refine (match l as l' return hlist (domain p) l' -> hlist (ty_to_set p) l' with
+  | nil => fun _ => HL_nil _
+  | x :: xs => fun h => 
+    HL_cons _ x xs (match x as t return domain p t -> ty_to_set p t with
+    | ty_base b => fun y => y
+    | ty_var v => fun y => y
+    | ty_app ts tys => _
+    end (hlist_hd h)) (hlist_dom_to_set p xs (hlist_tl h))
+  end h).
+(*Handle [ty_app] case with tactics*)
+simpl.
+case (typesym_get_adt ts).
+- intros _ _. exact tt.
+- intros _ y. exact y.
+Defined.
+
+Definition is_rec_ty (t: ty) : bool :=
+  match t with
+  | ty_app ts tys => if typesym_get_adt ts then true else false
+  | _ => false
+  end.
+
+Lemma is_rec_ty_eq {t: ty} (Hrec: is_rec_ty t = false) p:
+  domain p t = ty_to_set p t.
+Proof.
+  destruct t; simpl in *; auto.
+  destruct (typesym_get_adt t); simpl in *; auto.
+  discriminate.
+Qed.
+
+Ltac uip_subst e := assert (e = eq_refl) by (apply UIP); subst.
+
+(*Now we prove that, if the ith element of l is non-recursive,
+  [hlist_dom_to_set] is the same as the original list*)
+(*Needs UIP*)
+Lemma hlist_dom_to_set_ith_nonrec {p: list Set} {l: list ty} 
+  (h: hlist (domain p) l) (i: nat) (d1: ty) (d2: ty_to_set p d1)
+  (d3: domain p d1) (Hrec: is_rec_ty (nth i l d1) = false):
+  i < length l ->
+  hnth i (hlist_dom_to_set h) d1 d2 =
+    scast (is_rec_ty_eq Hrec p) (hnth i h d1 d3).
+Proof.
+  generalize dependent (is_rec_ty_eq Hrec p).
+  generalize dependent i.
+  induction l; simpl; intros.
+  - inversion H.
+  - destruct i.
+    + destruct a.
+      * uip_subst e. reflexivity.
+      * uip_subst e. reflexivity. 
+      * simpl in *.
+        generalize dependent (hlist_hd h).
+        simpl.
+        destruct (typesym_get_adt t).
+        -- discriminate.
+        -- intros. uip_subst e. reflexivity.
+    + apply IHl; auto.
+      apply Arith_prebase.lt_S_n_stt in H; auto.
+Qed.
+
+Lemma is_rec_ty_unit {t: ty} (Hrec: is_rec_ty t) p:
+  unit = ty_to_set p t.
+Proof.
+  destruct t; simpl in *; try discriminate.
+  destruct (typesym_get_adt t); simpl in *; auto.
+  discriminate.
+Qed.
+
+(*And likewise, if the ith element is recursive, [hlist_dom_to_set]
+  gives unit*)
+Lemma hlist_dom_to_set_ith_rec {p: list Set} {l: list ty} 
+  (h: hlist (domain p) l) (i: nat) (d1: ty) (d2: ty_to_set p d1)
+  (Hrec: is_rec_ty (nth i l d1)):
+  i < length l ->
+  hnth i (hlist_dom_to_set h) d1 d2 = scast (is_rec_ty_unit Hrec p) tt.
+Proof.
+  generalize dependent (is_rec_ty_unit Hrec p).
+  generalize dependent i.
+  induction l; simpl; intros.
+  - inversion H.
+  - destruct i.
+    + destruct a; try discriminate.
+      simpl in *.
+      generalize dependent (hlist_hd h).
+      simpl.
+      destruct (typesym_get_adt t).
+      -- intros _. uip_subst e. reflexivity.
+      -- discriminate.
+    + apply IHl; auto.
+      apply Arith_prebase.lt_S_n_stt in H; auto.
+Qed.
+
+(*The first step is the build the [build_constr_base] from the hlist.
+  This is conceptually simple: we just bundle the non-recursive types
+  into a tuple, adding units appropriately. But we will build it in
+  several smaller steps to make later proofs easier*)
+Definition args_to_constr_base_aux p (l: list ty)
+  (a: hlist (domain p) l): build_constr_base_aux p l :=
+  hlist_to_big_sprod (hlist_dom_to_set a).
+
+
 (*First, from an hlist of the arguments, build the [build_constr_base].
   Conceptually this is very simple: just go through and build the tuple with
   each non-recursive type found*)
 (*It turns out to be better to mostly write this manually; we do not run into
   dependent pattern matching issues when destructing [typesym_get_adt]*)
-Fixpoint args_to_constr_base_aux p (l: list ty)
+(*Fixpoint args_to_constr_base_aux p (l: list ty)
   (a: hlist (domain p) l):
   build_constr_base_aux p l.
 refine(
@@ -790,7 +933,7 @@ refine(
   case (typesym_get_adt ts).
   - intros _ _. exact (tt, args_to_constr_base_aux p tl atl).
   - intros _ y. exact (y, args_to_constr_base_aux p tl atl).
-Defined.
+Defined.*)
 
 Definition args_to_constr_base (p: list Set) (c: constr)
   (a: hlist (domain p) (c_args c)): build_constr_base p c :=
@@ -799,6 +942,8 @@ Definition args_to_constr_base (p: list Set) (c: constr)
 (*And build the recursive arguments*)
 
 Definition dom_d: forall p, domain p ty_d := fun p =>
+  bases_inhab.
+Definition ty_set_d: forall p, ty_to_set p ty_d := fun p =>
   bases_inhab.
 
 (*TODO: move*)
@@ -908,25 +1053,24 @@ Qed.
 (*It is easier to convert to an hlist and use hnth than to find the ith
   element of a big_tuple directly*)
 
-Fixpoint big_sprod_to_hlist (l: list Set) (x: big_sprod l) {struct l}: 
+(*Fixpoint big_sprod_to_hlist (l: list Set) (x: big_sprod l) {struct l}: 
   hlist (fun (x: Set) => (x: Type)) l :=
   match l as l' return big_sprod l' -> hlist (fun (x: Set) => (x: Type)) l' with
   | nil => fun _ => HL_nil _
   | x :: xs => fun p => HL_cons _ x xs (fst p) (big_sprod_to_hlist xs (snd p))
-  end x.
+  end x.*)
 
 
 (*Get the ith element of a [big_sprod]*)
-Definition big_sprod_ith (l: list Set) (x: big_sprod l) (i: nat) : (nth i l unit) :=
-  hnth i (big_sprod_to_hlist l x) unit tt.
+Definition big_sprod_ith {A: Set} {f: A -> Set} {l: list A} 
+  (x: big_sprod (map f l)) (i: nat) (d1: A) (d2: f d1) : f (nth i l d1) :=
+  hnth i (big_sprod_to_hlist x) d1 d2.
 
 Lemma build_constr_base_aux_nth_eq (p: list Set) (l: list ty) (i: nat)
   (Hi: Nat.ltb i (length l))
  (d: Set) (t_d: ty):
-  nth i (map
-       (fun x : ty =>
-        if is_mut_occ x then unit else ty_to_set p x) l) d =
-  if is_mut_occ (nth i l t_d) then unit else ty_to_set p (nth i l t_d).
+  nth i (map (ty_to_set p) l) d =
+  ty_to_set p (nth i l t_d).
 Proof.
   (*TODO: move*)
   erewrite Common.map_nth_inbound.
@@ -947,13 +1091,12 @@ intros C. injection C; intros Heq; subst.
 destruct (string_dec _ _); auto.
 Qed.
 
-Lemma typesym_get_adt_mut_occ ts tys ty (Heq: ty = ty_app ts tys) x
-  (bse: if is_mut_occ (ty_app ts tys) then unit else x) b:
+Lemma typesym_get_adt_mut_occ {p} ts tys (*ty (Heq: ty = ty_app ts tys)*)
+  (bse: ty_to_set p (ty_app ts tys)) b:
   typesym_get_adt ts = inright b ->
-  x.
+  typs ts (map (ty_to_set p) tys).
 Proof.
-subst.
-unfold is_mut_occ in bse.
+simpl in bse |- *.
 destruct (typesym_get_adt ts); try discriminate.
 intros; exact bse.
 Qed.
@@ -965,50 +1108,259 @@ rewrite x, y. reflexivity.
 Qed.
 
 
-(*TODO: shouldn't use scast*)
-
+(*Think we need dependent type*)
 Definition constr_ind_to_args_aux (p: list Set) (l: list ty)
   (b: build_constr_base_aux p l)
   (recs: forall t : mut_in_type, num_rec_type (proj1_sig t) l -> mk_adts p t):
-  hlist (domain p) l.
-refine (gen_hlist_i (domain p) l ty_d
-(*The function: get the ith elt of the base tuple if non recursive,
-  and the corresponding element of recs if recursive*)
-(fun i (Hi: Nat.ltb i (length l)) =>
-  match (nth i l ty_d) as t' return 
-    nth i l ty_d = t' ->
-    (*non-recursive ith element*)
-    (if is_mut_occ t' then unit else ty_to_set p t') ->
-     domain p t' with
+  hlist (domain p) l 
+
+  
+  .
+refine (gen_hlist_i (domain p) l ty_d _).
+(*Not sure if this will work*)
+refine ( fun i Hi =>
+
+(fun (t: ty) (Heq: t = nth i l ty_d) =>
+match t as t' return
+  t' = nth i l ty_d ->
+  ty_to_set p t' ->
+  domain p t' with
   | ty_app ts tys => fun Heq bse => 
-    _
+  _
 
-  | ty_base b' => fun _ bse => bse
-  | ty_var v => fun _ bse => bse
-  
-  
-  (*scast (build_constr_base_aux_nth_eq p l i Hi unit ty_d) 
-    (big_sprod_ith _ b i)*)
-  end eq_refl (scast (build_constr_base_aux_nth_eq p l i Hi unit ty_d) 
-  (big_sprod_ith _ b i)))
-
-).
+| ty_base b' => fun _ bse => bse
+| ty_var v => fun _ bse => bse
+end Heq (eq_rect _ (fun x => ty_to_set p x) 
+  (big_sprod_ith b i ty_d (dom_d p)) _ (eq_sym Heq))) (nth i l ty_d) eq_refl).
 (*Handle the ty_app case here*)
-simpl.
+simpl in bse |- *.
+revert bse.
 (*Need info about [ind_occ] later*)
-pose proof (typesym_get_adt_ind_occ ts tys _ Heq). revert H.
-pose proof (typesym_get_adt_mut_occ ts tys _ Heq _ bse). revert H.
+pose proof (typesym_get_adt_ind_occ ts tys _ (eq_sym Heq)). revert H.
+(*pose proof (typesym_get_adt_mut_occ ts tys bse). revert H.*)
 case (typesym_get_adt ts).
-- intros s Hnonind Hindocc.
+- intros s Hindocc _.
   (*Have all the info for recs (why we needed Heq)*)
-  set (t:= (build_in_type adt adt_eq_dec (proj1 (proj2_sig s)))).
-  set (n:= exist _ i (andb_conj Hi (Hindocc  s eq_refl)) : num_rec_type (proj1_sig t) l).
-  exact (recs t n).
-- intros n Hnonind _.
-  exact (Hnonind n eq_refl).
+  set (t':= (build_in_type adt adt_eq_dec (proj1 (proj2_sig s)))).
+  set (n:= exist _ i (andb_conj Hi (Hindocc  s eq_refl)) : num_rec_type (proj1_sig t') l).
+  exact (recs t' n).
+- intros _ _ bse.
+  exact bse.
+
 Defined.
 
-(*Now prove inverse*)
+
+
+(*Can we prove this?*)
+Lemma constr_ind_to_args_aux_nonrec {p: list Set} {l: list ty}
+(b: build_constr_base_aux p l)
+(recs: forall t : mut_in_type, num_rec_type (proj1_sig t) l -> mk_adts p t)
+{i: nat} (Hi: i < length l) (Hnonrec: is_rec_ty (nth i l ty_d) = false):
+hnth i (constr_ind_to_args_aux p l b recs) ty_d (dom_d p) = 
+(scast (eq_sym (is_rec_ty_eq Hnonrec p)) (big_sprod_ith b i ty_d (dom_d p))).
+Proof.
+  unfold constr_ind_to_args_aux.
+  set (Hi':=ssrbool.introT (PeanoNat.Nat.ltb_spec0 _ _) Hi :
+      Nat.ltb i (Datatypes.length l)).
+  rewrite gen_hlist_i_nth with (Hi:=Hi').
+  generalize dependent (@eq_refl ty (@nth ty i l ty_d)).
+  (*This is incredibly awkward, but let's see*)
+  (*TODO: try to factor into match*)
+  assert (forall (t: ty) (Heq: t = nth i l ty_d),
+    match t as t' return (t' = nth i l ty_d -> ty_to_set p t' -> domain p t')
+    with | ty_base b' =>
+    fun (_ : ty_base b' = nth i l ty_d)
+      (bse : ty_to_set p (ty_base b')) => bse
+| ty_var v =>
+    fun (_ : ty_var v = nth i l ty_d)
+      (bse : ty_to_set p (ty_var v)) => bse
+| ty_app ts tys =>
+    fun (Heq : ty_app ts tys = nth i l ty_d)
+      (bse : ty_to_set p (ty_app ts tys)) =>
+    match
+      typesym_get_adt ts as s
+      return
+        ((forall
+            a : {a : adt
+                | inb adt adt_eq_dec a (m_adts m) /\
+                  ts_name ts = a_name a},
+          s = inleft a ->
+          is_ind_occ (a_name (proj1_sig a)) (nth i l ty_d)) ->
+         (if s
+          then unit
+          else typs ts (map (ty_to_set p) tys)) ->
+         match s with
+         | inleft a =>
+             mk_adts p
+               (build_in_type adt adt_eq_dec
+                  (proj1 (proj2_sig a)))
+         | inright _ =>
+             if s
+             then unit
+             else typs ts (map (ty_to_set p) tys)
+         end)
+    with
+    | inleft a =>
+        fun
+          (Hindocc : forall
+                       a0 : {a0 : adt
+                            | inb adt adt_eq_dec a0
+                                (m_adts m) /\
+                              ts_name ts = a_name a0},
+                     inleft a = inleft a0 ->
+                     is_ind_occ (a_name (proj1_sig a0))
+                       (nth i l ty_d)) (_ : unit) =>
+        recs
+          (build_in_type adt adt_eq_dec
+             (proj1 (proj2_sig a)))
+          (exist
+             (fun i0 : nat =>
+              Nat.ltb i0 (Datatypes.length l) &&
+              is_ind_occ
+                (a_name
+                   (proj1_sig
+                      (build_in_type adt adt_eq_dec
+                         (proj1 (proj2_sig a)))))
+                (nth i0 l ty_d)) i
+             (andb_conj Hi' (Hindocc a eq_refl)))
+    | inright b0 =>
+        fun
+          (_ : forall
+                 a : {a : adt
+                     | inb adt adt_eq_dec a (m_adts m) /\
+                       ts_name ts = a_name a},
+               inright b0 = inleft a ->
+               is_ind_occ (a_name (proj1_sig a))
+                 (nth i l ty_d))
+          (bse0 : typs ts (map (ty_to_set p) tys)) => bse0
+    end
+      (typesym_get_adt_ind_occ ts tys (nth i l ty_d)
+         (eq_sym Heq)) bse
+end Heq 
+  (eq_rect _ (fun x : ty => ty_to_set p x)
+     (big_sprod_ith b i ty_d (dom_d p)) 
+     t (eq_sym Heq)) =
+     scast 
+     (eq_trans  (eq_sym (is_rec_ty_eq Hnonrec p))
+        (eq_sym (f_equal (domain p) Heq)))
+      (big_sprod_ith b i ty_d (dom_d p))).
+(*eq_rect _ (fun x => domain p x) 
+  (scast (eq_sym (is_rec_ty_eq Hnonrec p))
+  (big_sprod_ith b i ty_d (dom_d p))) _ (eq_sym Heq)).*)
+{
+  (*Finally, we can destruct*)
+  intros t.
+  destruct t.
+  - intros Heq.
+    (*A bunch of dependent type stuff*)
+    match goal with |- context [scast ?H ?x] => generalize dependent H
+    end.
+    generalize dependent (big_sprod_ith b i ty_d (dom_d p)).
+    generalize dependent (eq_sym Heq).
+    generalize dependent (nth i l ty_d).
+    intros. subst.
+    assert (e = eq_refl). apply UIP_dec. apply ty_eq_dec.
+    subst; simpl.
+    uip_subst e0. reflexivity.
+  - intros Heq.
+    (*A bunch of dependent type stuff*)
+    match goal with |- context [scast ?H ?x] => generalize dependent H
+    end.
+    generalize dependent (big_sprod_ith b i ty_d (dom_d p)).
+    generalize dependent (eq_sym Heq).
+    generalize dependent (nth i l ty_d).
+    intros. subst.
+    assert (e = eq_refl). apply UIP_dec. apply ty_eq_dec.
+    subst; simpl.
+    uip_subst e0. reflexivity.
+  - intros Heq.
+    match goal with |- context [scast ?H ?x] => generalize dependent H
+    end.
+    generalize dependent  (big_sprod_ith b i ty_d (dom_d p)) .
+    intros t0 e.
+    assert ( (eq_rect (nth i l ty_d) (fun x : ty => ty_to_set p x) t0
+    (ty_app t l0) (eq_sym Heq)) = scast 
+    (is_rec_ty_eq (eq_trans (f_equal is_rec_ty Heq) Hnonrec) p) (scast e t0)).
+    {
+      rewrite scast_scast.
+      (*TODO: unify casts*)
+      match goal with |- context [scast ?H ?x] => generalize dependent H
+      end.
+      generalize dependent (eq_sym Heq).
+      clear. generalize dependent (ty_app t l0).
+      intros. subst. simpl.
+      uip_subst e0. reflexivity.
+    }
+    rewrite H. clear H.
+    (*Now we can generalize*)
+    match goal with |- context [scast ?H ?x] => generalize dependent H
+    end.
+    generalize dependent (scast e t0).
+    generalize dependent (typesym_get_adt_ind_occ t l0 (nth i l ty_d) (eq_sym Heq)).
+    (*Need all this so we can destruct [typesym_get_adt t]*)
+    simpl.
+    rewrite <- Heq in Hnonrec.
+    simpl in Hnonrec.
+    revert Hnonrec.
+    destruct (typesym_get_adt t); try discriminate.
+    intros.
+    uip_subst e0. reflexivity.
+  }
+  intros e.
+  specialize (H (nth i l ty_d) e).
+  simpl in H |- *.
+  rewrite H.
+  apply scast_eq_uip.
+Qed.
+
+Lemma big_sprod_ext {A: Set} {f: A -> Set} (l: list A) 
+  (x1 x2: big_sprod (map f l)) (d1: A) (d2: f d1)
+  (Hext: forall i, i < length l -> big_sprod_ith x1 i d1 d2 = big_sprod_ith x2 i d1 d2):
+  x1 = x2.
+Proof.
+  (*Use inverse functions*)
+  rewrite <- (hlist_to_big_sprod_inv x1), <- (hlist_to_big_sprod_inv x2).
+  f_equal.
+  apply hlist_ext_eq with (d:=d1)(d':=d2).
+  apply Hext.
+Qed.
+
+Lemma ty_to_set_rec p {t: ty}:
+  is_rec_ty t ->
+  ty_to_set p t = unit.
+Proof.
+  destruct t; simpl; try discriminate.
+  destruct (typesym_get_adt); auto; discriminate.
+Qed.
+
+(*Now, the proofs of the inverse:*)
+Lemma constr_ind_args_inv_aux1 {p: list Set} {l: list ty}
+(b: build_constr_base_aux p l)
+(recs: forall t : mut_in_type, num_rec_type (proj1_sig t) l -> mk_adts p t):
+args_to_constr_base_aux p l (constr_ind_to_args_aux p l b recs) = b.
+Proof.
+  (*We want to prove that the ith elements are equal*)
+  eapply big_sprod_ext with (d1:=ty_d)(d2:=ty_set_d p).
+  intros i Hi.
+  unfold args_to_constr_base_aux, big_sprod_ith.
+  rewrite big_sprod_to_hlist_inv.
+  destruct (is_rec_ty (nth i l ty_d)) eqn : Hrec.
+  - (*If recursive, unit*) 
+    rewrite (hlist_dom_to_set_ith_rec _ i _ _ Hrec Hi).
+    generalize dependent (is_rec_ty_unit Hrec p). 
+    generalize dependent (hnth i (big_sprod_to_hlist b) ty_d (ty_set_d p)).
+    rewrite (ty_to_set_rec p Hrec).
+    intros. uip_subst e. destruct t. reflexivity.
+  - (*If non-recursive, use previous result*)
+    rewrite (hlist_dom_to_set_ith_nonrec _ i _ _ (dom_d p) Hrec Hi).
+    rewrite constr_ind_to_args_aux_nonrec with (Hnonrec:=Hrec); auto.
+    rewrite scast_scast.
+    generalize dependent (eq_trans (eq_sym (is_rec_ty_eq Hrec p))
+    (is_rec_ty_eq Hrec p)).
+    intros e. uip_subst e.
+    reflexivity.
+Qed.
+
 End Inverse.
 
 End Encode.
