@@ -82,14 +82,28 @@ Fixpoint ty_rect (t: ty) : P t :=
 
 End TyRect.
 
+(*We will allow additional metadata for all of the datatypes,
+  provided that this metadata has decidable equality.
+  It is not used in the encoding but makes things more
+  convenient for users.*)
+Variable constr_data: Set.
+Variable constr_data_dec: forall (x y: constr_data), {x = y} + {x <> y}.
+
 (*Constructors have names and a list of types*)
-Record constr : Set := {c_name: string; c_args: list ty}.
+Record constr : Set := {c_name: string; c_args: list ty; c_data: constr_data}.
+
+Variable adt_data: Set.
+Variable adt_data_dec: forall (x y: adt_data), {x = y} + {x <> y}.
 
 (*ADTs have names, a number of type paramters, and a list of constructors*)
-Record adt : Set := {a_name: string; a_params: nat; a_constrs: list constr}.
+Record adt : Set := {a_name: string; a_params: nat; a_constrs: list constr;
+  a_data: adt_data}.
+
+Variable mut_data: Set.
+Variable mut_data_dec: forall (x y: mut_data), {x = y} + {x <> y}.
 
 (*Mutual blocks consist of a list of ADTs*)
-Record mut : Set := {m_adts: list adt}.
+Record mut : Set := {m_adts: list adt; m_data: mut_data}.
 
 (*Decidable Equality*)
 Section Eq.
@@ -163,13 +177,15 @@ Definition ty_eq_dec (t1 t2: ty): {t1 = t2} + {t1 <> t2} :=
 
 Definition constr_eqb (c1 c2: constr) : bool :=
   String.eqb (c_name c1) (c_name c2) &&
-  list_eqb ty_eq_dec (c_args c1) (c_args c2).
+  list_eqb ty_eq_dec (c_args c1) (c_args c2) &&
+  constr_data_dec (c_data c1) (c_data c2).
 
 Lemma constr_eqb_spec (c1 c2: constr) : reflect (c1 = c2) (constr_eqb c1 c2).
 Proof.
-  case: c1; case: c2 => n1 a1 n2 a2; rewrite /constr_eqb/=.
+  case: c1; case: c2 => n1 a1 d1 n2 a2 d2; rewrite /constr_eqb/=.
   case: String.eqb_spec=>//=[->|]; last by reflF.
   case: list_eqb_spec=>[->|]; last by reflF.
+  case: constr_data_dec =>/=[->| Hneq]; last by reflF.
   by apply ReflectT.
 Qed.
 
@@ -179,14 +195,16 @@ Definition constr_eq_dec (c1 c2: constr): {c1 = c2} + {c1 <> c2} :=
 Definition adt_eqb (a1 a2: adt) : bool :=
   String.eqb (a_name a1) (a_name a2) &&
   Nat.eqb (a_params a1) (a_params a2) &&
-  list_eqb constr_eq_dec (a_constrs a1) (a_constrs a2).
+  list_eqb constr_eq_dec (a_constrs a1) (a_constrs a2) &&
+  adt_data_dec (a_data a1) (a_data a2).
 
 Lemma adt_eqb_spec (a1 a2: adt) : reflect (a1 = a2) (adt_eqb a1 a2).
 Proof.
-  case: a1; case: a2 => n1 p1 c1 n2 p2 c2; rewrite /adt_eqb/=.
+  case: a1; case: a2 => n1 p1 c1 d1 n2 p2 c2 d2; rewrite /adt_eqb/=.
   case: String.eqb_spec=>//=[->|]; last by reflF.
   case: PeanoNat.Nat.eqb_spec=>//=[->|]; last by reflF.
   case: list_eqb_spec=>[->|]; last by reflF.
+  case: adt_data_dec =>/=[->|]; last by reflF.
   by apply ReflectT.
 Qed.
 
@@ -194,12 +212,14 @@ Definition adt_eq_dec (a1 a2: adt): {a1 = a2} + {a1 <> a2} :=
   reflect_dec' (adt_eqb_spec a1 a2).
 
 Definition mut_eqb (m1 m2: mut) : bool :=
-  list_eqb adt_eq_dec (m_adts m1) (m_adts m2).
+  list_eqb adt_eq_dec (m_adts m1) (m_adts m2) &&
+  mut_data_dec (m_data m1) (m_data m2).
 
 Lemma mut_eqb_spec (m1 m2: mut) : reflect (m1 = m2) (mut_eqb m1 m2).
 Proof.
-  rewrite /mut_eqb. case: m1; case: m2 => a1 a2/=.
+  rewrite /mut_eqb. case: m1; case: m2 => a1 d1 a2 d2/=.
   case: list_eqb_spec=>[->|]; last by reflF.
+  case: mut_data_dec=>/=[->|]; last by reflF.
   by apply ReflectT.
 Qed.
 
