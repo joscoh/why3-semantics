@@ -10,11 +10,20 @@ Set Bullet Behavior "Strict Subproofs".
 
 Section ADT.
 
+(*Type variables - we use a nominal encoding*)
+Variable typevar: Set.
+Variable typevar_dec: forall (x y: typevar), {x = y} + {x <> y}.
+
 (*The base types (with decidable equality - we may be able to remove
   this restriction but likely not, and it would make things MUCH worse)*)
 Variable base: Set.
 Variable base_inhab: base.
 Variable base_dec: forall (x y: base), {x = y} + {x <> y}.
+(*The user also specifies how base types (e.g. unit, bool, etc) are
+  interpreted*)
+Variable (bases: base -> Set).
+(*It must be the case that the domain of the inhabited base type is inhabited*)
+Variable bases_inhab: bases base_inhab.
 
 (*Type variables are represented by nats, representing their position in
   the list of arguments: ex, for (either A B), we have Left, which takes
@@ -23,12 +32,12 @@ Variable base_dec: forall (x y: base), {x = y} + {x <> y}.
 (*Type symbol names are represented by strings*)
 (*For now (until maybe we add dependent types), just take in number of
   polymoprhic arguments *)
-Record typesym : Set := {ts_name: string; ts_args: nat}.
+Record typesym : Set := {ts_name: string; ts_args: list typevar}.
 
 Unset Elimination Schemes.
 Inductive ty : Set :=
   | ty_base: base -> ty
-  | ty_var: nat -> ty (*Problem: nat can be too large maybe? defaults or what?*)
+  | ty_var: typevar -> ty
   | ty_app: typesym -> list ty -> ty
   (*TODO: add functions*).
 Set Elimination Schemes.
@@ -38,7 +47,7 @@ Section TyInd.
 
 Variable (P: ty -> Prop).
 Variable (Pbase: forall (b: base), P (ty_base b)).
-Variable (Pvar: forall (n: nat), P (ty_var n)).
+Variable (Pvar: forall (v: typevar), P (ty_var v)).
 Variable (Papp: forall (ts: typesym) (tys: list ty),
   Forall P tys -> P (ty_app ts tys)).
 
@@ -63,7 +72,7 @@ Section TyRect.
 
 Variable (P: ty -> Type).
 Variable (Pbase: forall (b: base), P (ty_base b)).
-Variable (Pvar: forall (n: nat), P (ty_var n)).
+Variable (Pvar: forall (v: typevar), P (ty_var v)).
 Variable (Papp: forall (ts: typesym) (tys: list ty),
   ForallT P tys -> P (ty_app ts tys)).
 
@@ -111,15 +120,15 @@ Import all_ssreflect.
 
 Definition typesym_eqb (t1 t2: typesym) : bool :=
   String.eqb (ts_name t1) (ts_name t2) &&
-  Nat.eqb (ts_args t1) (ts_args t2).
+  list_eqb typevar_dec (ts_args t1) (ts_args t2).
   
 Lemma typesym_eqb_spec (t1 t2: typesym) : reflect (t1 = t2) (typesym_eqb t1 t2).
 Proof.
-  rewrite /typesym_eqb.
-  case: (String.eqb_spec _ _); last by reflF.
-  case: (PeanoNat.Nat.eqb_spec _ _); last by reflF. 
-  move=> args_eq names_eq; apply ReflectT; move: args_eq names_eq.
-  by case: t1; case: t2 => n1 a1 n2 a2/=->->.
+  case: t1; case: t2 => n1 a1 n2 a2.
+  rewrite /typesym_eqb/=.
+  case: (String.eqb_spec _ _)=>[->|]; last by reflF.
+  case: list_eqb_spec=> [->|]; last by reflF.
+  by apply ReflectT.
 Qed.
 
 Definition typesym_eq_dec (t1 t2: typesym) : {t1 = t2} + {t1 <> t2} :=
@@ -128,7 +137,7 @@ Definition typesym_eq_dec (t1 t2: typesym) : {t1 = t2} + {t1 <> t2} :=
 Fixpoint ty_eqb (t1 t2: ty) {struct t1} : bool :=
   match t1, t2 with
   | ty_base b1, ty_base b2 => base_dec b1 b2
-  | ty_var n1, ty_var n2 => Nat.eqb n1 n2
+  | ty_var v1, ty_var v2 => typevar_dec v1 v2
   | ty_app ts1 tys1, ty_app ts2 tys2 =>
     typesym_eqb ts1 ts2 &&
     (Nat.eqb (length tys1) (length tys2)) && 
@@ -142,7 +151,7 @@ Proof.
   move=> t1; elim: t1 =>/=[ b1 t2 | n1 t2 | ts1 tys1 Hall t2];
   case: t2 =>[b2 | n2 | ts2 tys2]//.
   - by case: (base_dec b1 b2)=>//=->.
-  - by move=>/PeanoNat.Nat.eqb_spec ->.
+  - by case: typevar_dec=>//=->.
   - case: (typesym_eqb_spec _ _)=>//= ->.
     case: (PeanoNat.Nat.eqb_spec _ _)=>//=.
     move=> len_eq all_eq. f_equal.
@@ -158,7 +167,7 @@ Lemma ty_eq_eqb: forall t1 t2,
 Proof.
   elim =>/=[b t2 <-| n t2 <- |ts tys Hall t2 <-].
   - by case: (base_dec b b).
-  - by apply /PeanoNat.Nat.eqb_spec.
+  - by case: typevar_dec.
   - case: (typesym_eqb_spec) =>//= _.
     case: (PeanoNat.Nat.eqb_spec)=>//=_.
     move: Hall. elim: tys => [//|x tl IH Hall/=].
@@ -238,9 +247,10 @@ Section W.
 (*Note: to add non-uniformity, P is no longer a parameter, instead
   B will take in a (list Set) as well, W will have type I -> (list Set) -> Set,
   and f will take in such a list *)
+Definition poly_map : Type := typevar -> Set.
 Variable (I: Set).
-Variable (P: list Set).
-Variable (A: (list Set) -> I -> Set).
+Variable (P: poly_map).
+Variable (A: poly_map -> I -> Set).
 Variable (B: forall (i: I) (j: I), A P i -> Set).
 (*TODO: see about argument order*)
 
@@ -255,11 +265,6 @@ Section Encode.
   are given by a function typs.
   This is allows to return anything when the length of the list is wrong*)
 Variable (typs: typesym -> list Set -> Set).
-(*The user also specifies how base types (e.g. unit, bool, etc) are
-  interpreted*)
-Variable (bases: base -> Set).
-(*It must be the case that the domain of the inhabited base type is inhabited*)
-Variable bases_inhab: bases base_inhab.
 
 (*We encode a particular mutual type:*)
 Variable (m: mut).
@@ -343,10 +348,10 @@ Section ADef.
 
 (*A (non-recursive) type is interpreted according to these functions.
   Type variables are defined by a function to be given later*)
-Fixpoint ty_to_set (vars: list Set) (t: ty) : Set :=
+Fixpoint ty_to_set (vars: poly_map) (t: ty) : Set :=
   match t with
   | ty_base b => bases b
-  | ty_var v => nth v vars empty
+  | ty_var v => vars v (*nth v vars empty*)
   | ty_app ts tys =>
     match (typesym_get_adt ts) with
     | inleft _ => unit
@@ -362,14 +367,14 @@ Fixpoint ty_to_set (vars: list Set) (t: ty) : Set :=
   corresponds to the ith element of the constructor args. This will
   make the proofs later much simpler*)
 
-Definition build_constr_base_aux (vars: list Set) (l: list ty) : Set :=
+Definition build_constr_base_aux (vars: poly_map) (l: list ty) : Set :=
   big_sprod (map (ty_to_set vars) l).
 
 (*The type for a single constructor*)
-Definition build_constr_base (vars: list Set) (c: constr) : Set :=
+Definition build_constr_base (vars: poly_map) (c: constr) : Set :=
   build_constr_base_aux vars (c_args c).
 
-Definition build_base (vars: list Set) (cs: list constr) : Set :=
+Definition build_base (vars: poly_map) (cs: list constr) : Set :=
   in_type_extra _ constr_eq_dec cs (build_constr_base vars).
 
 End ADef.
@@ -385,8 +390,7 @@ Section B.
   instance corresponds to will be helpful later.
   *)
 
-(*A default constructor*)
-Definition c_d: constr := Build_constr "" nil. 
+(*A default constructor*) 
 Definition ty_d : ty := ty_base base_inhab.
 
 (*The type in question: how many recursive instances of adt a appear in
@@ -405,7 +409,7 @@ Proof.
   subst. f_equal. apply bool_irrelevance.
 Qed.
 
-Definition build_rec (P: list Set) (a: adt) (cs: list constr) :
+Definition build_rec (P: poly_map) (a: adt) (cs: list constr) :
   build_base P cs -> Set :=
   fun (b: build_base P cs) =>
     (*Get the constructor b belongs to*)
@@ -423,7 +427,7 @@ Definition mut_in_type : Set := in_type adt adt_eq_dec (m_adts m).
 (*This handles mutual recursion (but not nested recursion at the moment).
   Mutual recursion is not too bad, we just need to be careful to call [build_rec]
   with the correct typesym to count.*)
-Definition mk_adts (P: list Set) : mut_in_type -> Set :=
+Definition mk_adts (P: poly_map) : mut_in_type -> Set :=
   W mut_in_type P (fun p n => build_base p (a_constrs (proj1_sig n)))
   (fun this i => build_rec P (proj1_sig i) (a_constrs (proj1_sig this))).
 
@@ -431,7 +435,7 @@ Definition mk_adts (P: list Set) : mut_in_type -> Set :=
 (*Constructors*)
 
 (*From a given constructor and the non-recursive data, build the type A*)
-Definition get_constr_type (P: list Set) (a: adt) (cs: list constr) (c: constr)
+Definition get_constr_type (P: poly_map) (a: adt) (cs: list constr) (c: constr)
   (c_in: inb _ constr_eq_dec c cs)
   (data: build_constr_base P c):
   build_base P cs :=
@@ -443,7 +447,7 @@ Definition get_constr_type (P: list Set) (a: adt) (cs: list constr) (c: constr)
   But we don't just give a list, or an n-tuple/vector, because we need
   to keep track of which index in c's arg list each instance comes from.
   This will be extremely helpful later*)
-Definition make_constr (P: list Set) (a: mut_in_type) (c: constr)
+Definition make_constr (P: poly_map) (a: mut_in_type) (c: constr)
   (c_in: inb _ constr_eq_dec c (a_constrs (proj1_sig a)))
   (data: build_constr_base P c)
   (recs : forall (t: mut_in_type), 
@@ -459,7 +463,7 @@ Section Theorems.
   and the arguments used to create it*)
 
 (*No axioms needed*)
-Definition find_constr: forall (a: mut_in_type) (P: list Set) (x: mk_adts P a),
+Definition find_constr: forall (a: mut_in_type) (P: poly_map) (x: mk_adts P a),
   {c: constr & {t: inb _ constr_eq_dec c (a_constrs (proj1_sig a)) *
     build_constr_base P c * 
     forall (t: mut_in_type), 
@@ -477,7 +481,7 @@ Qed.
 (*Disjointness: Any 2 different constructors, no matter the
   arguments they are applied to, are never equal*)
 
-Lemma constrs_disjoint: forall (a: mut_in_type) (P: list Set) 
+Lemma constrs_disjoint: forall (a: mut_in_type) (P: poly_map) 
   (c1 c2: constr) 
   (c1_in: inb _ constr_eq_dec c1 (a_constrs (proj1_sig a)))
   (c2_in: inb _ constr_eq_dec c2 (a_constrs (proj1_sig a)))
@@ -497,7 +501,7 @@ Qed.
 
 (*Relies on [eq_rect_eq] for case when A does not have decidable equality*)
 Lemma mkW_inj (I: Set) (eqI: forall (x y: I), {x = y} + {x <> y}) 
-(P: list Set) (A: list Set -> I -> Set)
+(P: poly_map) (A: poly_map -> I -> Set)
   (B: forall i, I -> A P i -> Set) (i: I) (a1 a2: A P i)
   (b1: forall j, B i j a1 -> W I P A B j) (b2: forall j, B i j a2 -> W I P A B j):
   mkW I P A B i a1 b1 = mkW I P A B i a2 b2 ->
@@ -516,7 +520,7 @@ apply inj_pair2 in H1; subst; reflexivity.
 Qed.
 
 (*Relies on UIP*)
-Lemma constrs_inj: forall (a: mut_in_type) (P: list Set) 
+Lemma constrs_inj: forall (a: mut_in_type) (P: poly_map) 
 (c: constr) 
 (c_in: inb _ constr_eq_dec c (a_constrs (proj1_sig a)))
 (b1: build_constr_base P c)
@@ -549,9 +553,9 @@ Qed.
 
 (*An induction principle for this encoding*)
 Lemma w_induction
-  (P: forall (a: mut_in_type) (p: list Set), mk_adts p a -> Prop):
+  (P: forall (a: mut_in_type) (p: poly_map), mk_adts p a -> Prop):
   (*For every ADT and every constructor, *)
-  (forall (a: mut_in_type) (p: list Set) (x: mk_adts p a)
+  (forall (a: mut_in_type) (p: poly_map) (x: mk_adts p a)
     (c: constr) (c_in:  inb _ constr_eq_dec c (a_constrs (proj1_sig a)))
     (b: build_constr_base p c)
     (recs: forall (t: mut_in_type), 
@@ -563,16 +567,13 @@ Lemma w_induction
     P a p x) ->
 
 (*P holds for all instances of m*)
-(forall (a: mut_in_type) (p: list Set) (x: mk_adts p a), P a p x).
+(forall (a: mut_in_type) (p: poly_map) (x: mk_adts p a), P a p x).
 Proof.
   intros IH a p.
   induction x.
-  remember (mkW mut_in_type p
-  (fun (p0 : list Set) (n : mut_in_type) =>
-   build_base p0 (a_constrs (proj1_sig n)))
-  (fun this i0 : mut_in_type =>
-   build_rec p (proj1_sig i0)
-     (a_constrs (proj1_sig this))) i a f) as y.
+  match goal with 
+  | |- ?P ?i ?p ?x => remember x as y
+  end.
   destruct (find_constr _ _ y) as [c [[[c_in b] rec] y_eq]].
   rewrite y_eq. simpl.
   eapply IH.
@@ -598,7 +599,7 @@ End Theorems.
   as the corresponding [mk_adts]*)
 (*NOTE: unlike previous version, domain of ADT is definitionally equal to
   mk_adts, not propositionally equal. This reduces need for casts*)
-Definition domain (p: list Set) (t: ty) : Set :=
+Definition domain (p: poly_map) (t: ty) : Set :=
   match t with
   | ty_app ts tys =>
     (*If ts is in m, then map to appropriate ADT*)
@@ -629,7 +630,7 @@ Qed.
 
 (*Now convert an [hlist] on [domains] to one on [ty_to_set] (ie: remove
   recursive information)*)
-Fixpoint hlist_dom_to_set {p: list Set} {l: list ty} (h: hlist (domain p) l):
+Fixpoint hlist_dom_to_set {p: poly_map} {l: list ty} (h: hlist (domain p) l):
   hlist (ty_to_set p) l.
 Proof.
   refine (match l as l' return hlist (domain p) l' -> hlist (ty_to_set p) l' with
@@ -653,7 +654,7 @@ Defined.
 
 (*If the ith element of l is non-recursive,
   [hlist_dom_to_set] is the same as the original list (UIP)*)
-Lemma hlist_dom_to_set_ith_nonrec {p: list Set} {l: list ty} 
+Lemma hlist_dom_to_set_ith_nonrec {p: poly_map} {l: list ty} 
   (h: hlist (domain p) l) (i: nat) (d1: ty) (d2: ty_to_set p d1)
   (d3: domain p d1) (Hrec: is_rec_ty (nth i l d1) = false):
   i < length l ->
@@ -680,7 +681,7 @@ Qed.
 
 (*And likewise, if the ith element is recursive, [hlist_dom_to_set]
   gives unit*)
-Lemma hlist_dom_to_set_ith_rec {p: list Set} {l: list ty} 
+Lemma hlist_dom_to_set_ith_rec {p: poly_map} {l: list ty} 
   (h: hlist (domain p) l) (i: nat) (d1: ty) (d2: ty_to_set p d1)
   (Hrec: is_rec_ty (nth i l d1)):
   i < length l ->
@@ -710,7 +711,7 @@ Definition args_to_constr_base_aux p (l: list ty)
   (a: hlist (domain p) l): build_constr_base_aux p l :=
   hlist_to_big_sprod (hlist_dom_to_set a).
 
-Definition args_to_constr_base (p: list Set) (c: constr)
+Definition args_to_constr_base (p: poly_map) (c: constr)
   (a: hlist (domain p) (c_args c)): build_constr_base p c :=
   args_to_constr_base_aux p (c_args c) a.
 
@@ -741,7 +742,7 @@ Qed.
   gives us the index of l that has the correct type, so we just
   identify that element of a. There is a bit of work to make the
   types work out and avoid dependent pattern matching errors*)
-Definition args_to_ind_base_aux (p: list Set) (l: list ty)
+Definition args_to_ind_base_aux (p: poly_map) (l: list ty)
   (a: hlist (domain p) l):
   forall t: mut_in_type,
     num_rec_type (proj1_sig t) l -> mk_adts p t.
@@ -780,13 +781,13 @@ case (typesym_get_adt ts).
 - intros _ f. exact (is_false f).
 Defined.
 
-Definition args_to_ind_base (p: list Set) (c: constr)
+Definition args_to_ind_base (p: poly_map) (c: constr)
   (a: hlist (domain p) (c_args c)):
   forall t: mut_in_type,
     num_rec_type (proj1_sig t) (c_args c) -> mk_adts p t :=
   args_to_ind_base_aux p (c_args c) a.
 
-Definition constr_rep (p: list Set) (a: mut_in_type) (c: constr)
+Definition constr_rep (p: poly_map) (a: mut_in_type) (c: constr)
   (c_in: inb _ constr_eq_dec c (a_constrs (proj1_sig a)))
   (args: hlist (domain p) (c_args c)):
   mk_adts p a :=
@@ -813,7 +814,7 @@ destruct (string_dec _ _); auto.
 Qed.
 
 (*Generate the [hlist] from the [build_constr_base] and recs*)
-Definition constr_ind_to_args_aux (p: list Set) (l: list ty)
+Definition constr_ind_to_args_aux (p: poly_map) (l: list ty)
   (b: build_constr_base_aux p l)
   (recs: forall t : mut_in_type, num_rec_type (proj1_sig t) l -> mk_adts p t):
   hlist (domain p) l.
@@ -848,7 +849,7 @@ case (typesym_get_adt ts).
   exact bse.
 Defined.
 
-Definition constr_ind_to_args (p: list Set) (c: constr)
+Definition constr_ind_to_args (p: poly_map) (c: constr)
   (b: build_constr_base p c)
   (recs: forall t : mut_in_type, num_rec_type (proj1_sig t) (c_args c) -> mk_adts p t):
   hlist (domain p) (c_args c) :=
@@ -879,7 +880,7 @@ Qed.
 (*One of the main lemmas we need: if the ith element of l is non-recursive,
   the the ith element of the constructed hlist is the same as the
   ith element of the original tuple*)
-Lemma constr_ind_to_args_aux_nonrec {p: list Set} {l: list ty}
+Lemma constr_ind_to_args_aux_nonrec {p: poly_map} {l: list ty}
 (b: build_constr_base_aux p l)
 (recs: forall t : mut_in_type, num_rec_type (proj1_sig t) l -> mk_adts p t)
 {i: nat} (Hi: i < length l) (Hnonrec: is_rec_ty (nth i l ty_d) = false):
@@ -948,7 +949,7 @@ Proof.
 Qed.
 
 (*And the lemma for recursive arguments*)
-Lemma constr_ind_to_args_aux_rec {p: list Set} {l: list ty}
+Lemma constr_ind_to_args_aux_rec {p: poly_map} {l: list ty}
 (b: build_constr_base_aux p l)
 (recs: forall t, num_rec_type (proj1_sig t) l -> mk_adts p t)
 (t: mut_in_type) (x: num_rec_type (proj1_sig t) l):
@@ -1055,7 +1056,7 @@ Proof.
 Qed.
 
 (*Now, the proofs of the inverse:*)
-Lemma constr_ind_args_inv_aux1 {p: list Set} {l: list ty}
+Lemma constr_ind_args_inv_aux1 {p: poly_map} {l: list ty}
 (b: build_constr_base_aux p l)
 (recs: forall t : mut_in_type, num_rec_type (proj1_sig t) l -> mk_adts p t):
 args_to_constr_base_aux p l (constr_ind_to_args_aux p l b recs) = b.
@@ -1083,7 +1084,7 @@ Proof.
 Qed.
 
 
-Lemma constr_ind_args_inv_aux2 {p: list Set} {l: list ty}
+Lemma constr_ind_args_inv_aux2 {p: poly_map} {l: list ty}
 (b: build_constr_base_aux p l)
 (recs: forall t : mut_in_type, num_rec_type (proj1_sig t) l -> mk_adts p t):
 forall t x,
@@ -1135,7 +1136,7 @@ Proof.
 Qed.
 
 (*And the third result: the other direction*)
-Lemma constr_ind_args_inv_aux3 {p: list Set} {l: list ty}
+Lemma constr_ind_args_inv_aux3 {p: poly_map} {l: list ty}
 (h: hlist (domain p) l):
 constr_ind_to_args_aux p l 
   (args_to_constr_base_aux p l h) (args_to_ind_base_aux p l h) = h.
@@ -1170,7 +1171,7 @@ Proof.
 Qed.
 
 (*And the corollaries:*)
-Corollary constr_ind_args_inv1 {p: list Set} {c: constr}
+Corollary constr_ind_args_inv1 {p: poly_map} {c: constr}
 (b: build_constr_base p c)
 (recs: forall t : mut_in_type, num_rec_type (proj1_sig t) (c_args c) -> mk_adts p t):
 args_to_constr_base p c (constr_ind_to_args p c b recs) = b.
@@ -1178,7 +1179,7 @@ Proof.
 apply constr_ind_args_inv_aux1.
 Qed.
 
-Corollary constr_ind_args_inv2 {p: list Set} {c: constr}
+Corollary constr_ind_args_inv2 {p: poly_map} {c: constr}
 (b: build_constr_base p c)
 (recs: forall t : mut_in_type, num_rec_type (proj1_sig t) (c_args c) -> mk_adts p t):
 forall t x,
@@ -1188,7 +1189,7 @@ Proof.
 apply constr_ind_args_inv_aux2.
 Qed.
 
-Lemma constr_ind_args_inv3 {p: list Set} {c: constr}
+Lemma constr_ind_args_inv3 {p: poly_map} {c: constr}
 (h: hlist (domain p) (c_args c)):
 constr_ind_to_args p c 
   (args_to_constr_base p c h) (args_to_ind_base p c h) = h.
@@ -1202,7 +1203,7 @@ End Inverse.
 Section Theorems.
 
 (*Needs funext and UIP*)
-Theorem find_constr_rep {p: list Set} {t: mut_in_type} (x: mk_adts p t):
+Theorem find_constr_rep {p: poly_map} {t: mut_in_type} (x: mk_adts p t):
   {c: constr & {Hf: inb _ constr_eq_dec c (a_constrs (proj1_sig t)) *
     hlist (domain p) (c_args c) |
     x = constr_rep p t c (fst Hf) (snd Hf)}}.
@@ -1220,7 +1221,7 @@ Proof.
 Qed.
 
 (*Axiom-free*)
-Theorem constr_rep_disjoint {p: list Set} {t: mut_in_type} {c1 c2: constr}
+Theorem constr_rep_disjoint {p: poly_map} {t: mut_in_type} {c1 c2: constr}
   {c1_in: inb _ constr_eq_dec c1 (a_constrs (proj1_sig t))}
   {c2_in: inb _ constr_eq_dec c2 (a_constrs (proj1_sig t))}
   (h1: hlist (domain p) (c_args c1))
@@ -1233,7 +1234,7 @@ Qed.
 
 (*One more lemma about [constr_ind_to_args_aux] 
   allowing us to replace recs without requiring funext*)
-Lemma constr_ind_to_args_recs_ext {p: list Set} {l: list ty}
+Lemma constr_ind_to_args_recs_ext {p: poly_map} {l: list ty}
   {b} {recs1 recs2}
   (Hext: forall t x, recs1 t x = recs2 t x):
   constr_ind_to_args_aux p l b recs1 =
@@ -1291,7 +1292,7 @@ Proof.
 Qed.
   
 (*Requires UIP*)
-Theorem constr_rep_inj {p: list Set} {t: mut_in_type}  {c: constr}
+Theorem constr_rep_inj {p: poly_map} {t: mut_in_type}  {c: constr}
   {c_in: inb _ constr_eq_dec c (a_constrs (proj1_sig t))}
   (h1 h2: hlist (domain p) (c_args c)):
   constr_rep p t c c_in h1 = constr_rep p t c c_in h2 ->
@@ -1326,8 +1327,8 @@ Proof.
 Qed.
 
 (*Induction - requires funext and UIP*)
-Theorem adt_rep_ind (P: forall (t: mut_in_type) (p: list Set), mk_adts p t -> Prop):
-  (forall (t: mut_in_type) (p: list Set) (x: mk_adts p t)
+Theorem adt_rep_ind (P: forall (t: mut_in_type) (p: poly_map), mk_adts p t -> Prop):
+  (forall (t: mut_in_type) (p: poly_map) (x: mk_adts p t)
     (c: constr) (c_in:  inb _ constr_eq_dec c (a_constrs (proj1_sig t)))
     (h: hlist (domain p) (c_args c))
     (Hx: x = constr_rep p t c c_in h),
@@ -1340,7 +1341,7 @@ Theorem adt_rep_ind (P: forall (t: mut_in_type) (p: list Set), mk_adts p t -> Pr
     ) ->
     P t p x
   ) ->
-  forall (a: mut_in_type) (p: list Set) (x: mk_adts p a), P a p x.
+  forall (a: mut_in_type) (p: poly_map) (x: mk_adts p a), P a p x.
 Proof.
   intros Hind a p x.
   apply w_induction.
