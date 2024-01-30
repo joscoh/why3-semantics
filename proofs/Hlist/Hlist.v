@@ -320,3 +320,92 @@ Proof.
 Qed.
 
 End Gen.
+
+Section GenI.
+
+Fixpoint gen_hlist_i {A: Type} (f: A -> Type) (l: list A) (d: A)
+  (g: forall (i: nat), Nat.ltb i (length l) -> f (nth i l d)) : hlist f l :=
+  match l as l' return (forall (i: nat), Nat.ltb i (length l') -> f (nth i l' d)) -> hlist f l' with
+  | nil => fun _ => HL_nil _
+  | x :: xs => fun g => HL_cons _ x xs (g 0 eq_refl) (gen_hlist_i f xs d 
+    (fun i Hi => g (S i) Hi))
+  end g.
+
+Lemma gen_hlist_i_nth {A: Type} {f: A -> Type} {l: list A} {d: A}
+  {g: forall (i: nat), Nat.ltb i (length l) -> f (nth i l d)} {i: nat} d2 
+  (Hi: Nat.ltb i (length l)):
+  hnth i (gen_hlist_i f l d g) d d2 = g i Hi.
+Proof.
+  revert g.
+  generalize dependent i. induction l; simpl; intros.
+  - assert (i < 0) by (apply Nat.ltb_lt; auto).
+    inversion H.
+  - destruct i; auto.
+    + (*Booleans help us to get proof irrelevance here*)
+      f_equal. apply bool_irrelevance.
+    + erewrite IHl. reflexivity.
+Qed. 
+
+End GenI.
+
+(*Convert between tuples and hlists*)
+Section Tup.
+
+(*Iterated tuple*)
+Fixpoint big_sprod (l: list Set) : Set :=
+  match l with
+  | nil => unit
+  | x :: xs => (x * (big_sprod xs))%type
+  end.
+
+(*Convert between a [big_sprod] and an [hlist]*)
+
+Fixpoint big_sprod_to_hlist {A: Set} {f: A -> Set} {l: list A} (x: big_sprod (map f l))
+  {struct l} : hlist f l :=
+  match l as l' return big_sprod (map f l') -> hlist f l' with
+  | nil => fun _ => HL_nil _
+  | x :: xs => fun p => HL_cons _ x xs (fst p) (big_sprod_to_hlist (snd p))
+  end x.
+
+Fixpoint hlist_to_big_sprod {A: Set} {f: A -> Set} {l: list A} (h: hlist f l) :
+  big_sprod (map f l) :=
+  match l as l' return hlist f l' -> big_sprod (map f l') with
+  | nil => fun _ => tt
+  | x :: xs => fun h => (hlist_hd h, hlist_to_big_sprod (hlist_tl h))
+  end h.
+
+Lemma hlist_to_big_sprod_inv {A: Set} {f: A -> Set} {l: list A} (x: big_sprod (map f l)):
+  hlist_to_big_sprod (big_sprod_to_hlist x) = x.
+Proof.
+  induction l; simpl; [| rewrite IHl]; destruct x; reflexivity.
+Qed.
+
+Lemma big_sprod_to_hlist_inv {A: Set} {f: A -> Set} {l: list A} (h: hlist f l):
+  big_sprod_to_hlist (hlist_to_big_sprod h) = h.
+Proof.
+  induction l; simpl.
+  - symmetry. apply hlist_nil.
+  - rewrite IHl. symmetry. apply hlist_inv.
+Qed.
+
+
+(*It is easier to convert to an hlist and use hnth than to find the ith
+  element of a big_tuple directly*)
+(*Get the ith element of a [big_sprod]*)
+Definition big_sprod_ith {A: Set} {f: A -> Set} {l: list A} 
+  (x: big_sprod (map f l)) (i: nat) (d1: A) (d2: f d1) : f (nth i l d1) :=
+  hnth i (big_sprod_to_hlist x) d1 d2.
+
+Lemma big_sprod_ext {A: Set} {f: A -> Set} (l: list A) 
+  (x1 x2: big_sprod (map f l)) (d1: A) (d2: f d1)
+  (Hext: forall i, i < length l -> big_sprod_ith x1 i d1 d2 = big_sprod_ith x2 i d1 d2):
+  x1 = x2.
+Proof.
+  (*Use inverse functions*)
+  rewrite <- (hlist_to_big_sprod_inv x1), <- (hlist_to_big_sprod_inv x2).
+  f_equal.
+  apply hlist_ext_eq with (d:=d1)(d':=d2).
+  apply Hext.
+Qed.
+
+End Tup.

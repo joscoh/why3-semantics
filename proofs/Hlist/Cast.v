@@ -3,15 +3,6 @@ Require Import Coq.Logic.Eqdep.
 
 (*We mark with "-uip" any lemmas which depend on UIP*)
 
-Definition UIP: forall {A: Type}, UIP_ A.
-intros.
-apply eq_dep_eq__UIP.
-apply eq_rect_eq__eq_dep_eq.
-unfold Eq_rect_eq. intros.
-unfold Eq_rect_eq_on. intros.
-apply Eqdep.Eq_rect_eq.eq_rect_eq.
-Qed.
-
 Definition cast {A1 A2: Type} (H: A1 = A2) (x: A1) : A2 :=
   match H with
   | eq_refl => x
@@ -82,6 +73,14 @@ Proof.
   subst. reflexivity.
 Qed.
 
+(*If we have [scast Heq1 x] and [scast Heq2 x], write the first
+  in terms of the second*)
+Lemma scast_switch {A B C: Set} (x: A) (Heq1: A = B) (Heq2: A = C):
+  scast Heq1 x = scast (eq_trans (eq_sym Heq2) Heq1) (scast Heq2 x).
+Proof.
+  subst. reflexivity.
+Qed.
+
 (*Basically UIP for x = y instead of x = x*)
 Lemma dec_uip_diff {A: Set} {x1 x2: A} 
   (eq_dec: forall (x y: A), {x= y} + {x <> y}) 
@@ -95,6 +94,7 @@ Require Import Coq.Lists.List.
 Import ListNotations.
 
 (*Cast a list - can't use scast bc list is Type -> Type*)
+(*TODO: probably delete this see*)
 Definition cast_list {A B: Set} (l: list A) (Heq: A = B) : list B.
 Proof.
   destruct Heq.
@@ -134,3 +134,11 @@ Lemma cast_list_nth: forall {A B: Set} (l: list A) (Heq: A = B)
 Proof.
   intros. subst. reflexivity.
 Qed. 
+
+(*A few tactics*)
+Ltac uip_subst e := assert (e = eq_refl) by (apply UIP); subst.
+
+Ltac gen_scast :=
+  match goal with
+  | |- context [scast ?H ?x] => generalize dependent H
+  end.

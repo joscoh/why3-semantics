@@ -1,4 +1,9 @@
 -R . why3_sem 
+proofs/Hlist/Cast.v
+proofs/Hlist/HlistUtil.v
+proofs/Hlist/Hlist.v
+proofs/ADT/ADTUtil.v
+proofs/ADT/ADT.v
 proofs/core/Common.v
 proofs/core/Types.v
 proofs/core/Syntax.v
@@ -7,8 +12,8 @@ proofs/core/Vars.v
 proofs/core/Typing.v
 proofs/core/Substitution.v
 proofs/core/Typechecker.v
-proofs/core/Cast.v
-proofs/core/Hlist.v
+#proofs/core/Cast.v
+#proofs/core/Hlist.v
 proofs/core/IndTypes.v
 proofs/core/Interp.v
 proofs/core/ADTInd.v
