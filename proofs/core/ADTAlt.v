@@ -1164,6 +1164,12 @@ case (typesym_get_adt ts).
 
 Defined.
 
+Definition constr_ind_to_args (p: list Set) (c: constr)
+  (b: build_constr_base p c)
+  (recs: forall t : mut_in_type, num_rec_type (proj1_sig t) (c_args c) -> mk_adts p t):
+  hlist (domain p) (c_args c) :=
+  constr_ind_to_args_aux p (c_args c) b recs.
+
 Ltac gen_scast :=
   match goal with
   | |- context [scast ?H ?x] => generalize dependent H
@@ -1504,7 +1510,224 @@ Proof.
     apply scast_refl_uip.
 Qed.
 
+(*And the corollaries:*)
+Corollary constr_ind_args_inv1 {p: list Set} {c: constr}
+(b: build_constr_base p c)
+(recs: forall t : mut_in_type, num_rec_type (proj1_sig t) (c_args c) -> mk_adts p t):
+args_to_constr_base p c (constr_ind_to_args p c b recs) = b.
+Proof.
+apply constr_ind_args_inv_aux1.
+Qed.
+
+Corollary constr_ind_args_inv2 {p: list Set} {c: constr}
+(b: build_constr_base p c)
+(recs: forall t : mut_in_type, num_rec_type (proj1_sig t) (c_args c) -> mk_adts p t):
+forall t x,
+  args_to_ind_base p c (constr_ind_to_args p c b recs) t x =
+  recs t x.
+Proof.
+apply constr_ind_args_inv_aux2.
+Qed.
+
+Lemma constr_ind_args_inv3 {p: list Set} {c: constr}
+(h: hlist (domain p) (c_args c)):
+constr_ind_to_args p c 
+  (args_to_constr_base p c h) (args_to_ind_base p c h) = h.
+Proof.
+apply constr_ind_args_inv_aux3.
+Qed.
+
 End Inverse.
+
+(*And now the 4 conditions, fully:*)
+Section Theorems.
+
+Require Import Coq.Logic.FunctionalExtensionality.
+
+(*Needs funext and UIP*)
+Theorem find_constr_rep {p: list Set} {t: mut_in_type} (x: mk_adts p t):
+  {c: constr & {Hf: inb _ constr_eq_dec c (a_constrs (proj1_sig t)) *
+    hlist (domain p) (c_args c) |
+    x = constr_rep p t c (fst Hf) (snd Hf)}}.
+Proof.
+  destruct (find_constr t p x) as [c [[[c_in b] recs] Hx]]; subst.
+  apply (existT _ c).
+  apply (exist _ (c_in, constr_ind_to_args p c b recs)).
+  simpl.
+  unfold constr_rep.
+  rewrite constr_ind_args_inv1.
+  (*Here, we need functional extensionality*)
+  f_equal.
+  repeat (apply functional_extensionality_dep; intros).
+  rewrite constr_ind_args_inv2; reflexivity.
+Qed.
+
+(*Axiom-free*)
+Theorem constr_rep_disjoint {p: list Set} {t: mut_in_type} {c1 c2: constr}
+  {c1_in: inb _ constr_eq_dec c1 (a_constrs (proj1_sig t))}
+  {c2_in: inb _ constr_eq_dec c2 (a_constrs (proj1_sig t))}
+  (h1: hlist (domain p) (c_args c1))
+  (h2: hlist (domain p) (c_args c2)):
+  c1 <> c2 ->
+  constr_rep p t c1 c1_in h1 <> constr_rep p t c2 c2_in h2.
+Proof.
+  apply constrs_disjoint.
+Qed.
+
+(*One more structural lemma (TODO: move) allowing us to replace recs
+  without requiring funext*)
+Lemma constr_ind_to_args_recs_ext {p: list Set} {l: list ty}
+  {b} {recs1 recs2}
+  (Hext: forall t x, recs1 t x = recs2 t x):
+  constr_ind_to_args_aux p l b recs1 =
+  constr_ind_to_args_aux p l b recs2.
+Proof.
+  apply hlist_ext_eq with(d:=ty_d)(d':=dom_d p).
+  intros i Hi.
+  set (Hi':=ssrbool.introT (PeanoNat.Nat.ltb_spec0 _ _) Hi :
+      Nat.ltb i (Datatypes.length l)).
+  unfold constr_ind_to_args_aux.
+  rewrite !gen_hlist_i_nth with (Hi:=Hi').
+  simpl.
+  (*generalize dependent (@eq_refl _ (nth i l ty_d)).*)
+  generalize dependent (big_sprod_ith b i ty_d (dom_d p)).
+  intros t.
+  (*Generalize again*)
+  (*Again, we need a more generic lemma*)
+  match goal with
+  | |- (match nth i l ty_d as t1 in ty return (t1 = nth i l ty_d -> ty_to_set p t1 -> domain p t1)
+      with
+      | ty_base b1 => ?aa
+      | ty_var v1 => ?bb
+      | ty_app ts1 tys1 => ?cc
+      end ?f ?g) = 
+      (match nth i l ty_d as t2 in ty return (t2 = nth i l ty_d -> ty_to_set p t2 -> domain p t2)
+      with
+      | ty_base b2 => ?aaa
+      | ty_var v2 => ?bbb
+      | ty_app ts2 tys2 => ?ccc
+      end ?f ?g)
+      =>
+    assert (forall (t: ty) (Heq: t = nth i l ty_d),
+      (match t as t3 return (t3 = nth i l ty_d -> ty_to_set p t3 -> domain p t3)
+      with
+      | ty_base b1 => aa
+      | ty_var v1 => bb
+      | ty_app ts1 tys1 => cc
+      end Heq (scast (f_equal (ty_to_set p) (eq_sym Heq)) g)) =
+      (match t as t4 return (t4 = nth i l ty_d -> ty_to_set p t4 -> domain p t4)
+      with
+      | ty_base b2 => aaa
+      | ty_var v2 => bbb
+      | ty_app ts2 tys2 => ccc
+      end Heq (scast (f_equal (ty_to_set p) (eq_sym Heq)) g)))
+  end.
+  {
+    (*The proof is easy if we generalize appropriately*)
+    destruct t0; auto.
+    intros Heq.
+    generalize dependent (typesym_get_adt_ind_occ t0 l0 (nth i l ty_d) (eq_sym Heq)).
+    generalize dependent (scast (f_equal (ty_to_set p) (eq_sym Heq)) t).
+    simpl.
+    destruct (typesym_get_adt t0); auto.
+  }
+  specialize (H _ eq_refl); simpl in H.
+  apply H.
+Qed.
+  
+(*Requires UIP*)
+Theorem constr_rep_inj {p: list Set} {t: mut_in_type}  {c: constr}
+  {c_in: inb _ constr_eq_dec c (a_constrs (proj1_sig t))}
+  (h1 h2: hlist (domain p) (c_args c)):
+  constr_rep p t c c_in h1 = constr_rep p t c c_in h2 ->
+  h1 = h2.
+Proof.
+  intros Hrepeq.
+  apply constrs_inj in Hrepeq.
+  destruct Hrepeq as [Hargs Hrec].
+  rewrite <- constr_ind_args_inv3 with (h:=h1),
+  <- constr_ind_args_inv3 with (h:=h2).
+  rewrite Hargs.
+  apply constr_ind_to_args_recs_ext.
+  assumption.
+Qed.
+
+Lemma ind_occ_is_rec_ty {a} {t: ty}:
+  is_ind_occ a t ->
+  is_rec_ty t.
+Proof.
+  unfold is_ind_occ, is_rec_ty.
+  destruct t; auto.
+  destruct (typesym_get_adt t); auto.
+Qed.
+
+Lemma is_ind_occ_twice {a1 a2: mut_in_type} (t: ty):
+  is_ind_occ (a_name (proj1_sig a1)) t ->
+  is_ind_occ (a_name (proj1_sig a2)) t ->
+  a1 = a2.
+Proof.
+  intros Hind1 Hind2.
+  apply in_type_eq.
+  apply adt_names_eq.
+  - apply (proj2_sig a1).
+  - apply (proj2_sig a2).
+  - unfold is_ind_occ in *.
+    destruct t; try discriminate.
+    destruct (typesym_get_adt t); try discriminate.
+    destruct (string_dec _ _); try discriminate.
+    destruct (string_dec _ _); try discriminate.
+    congruence.
+Qed.
+
+(*Induction*)
+Theorem adt_rep_ind (P: forall (t: mut_in_type) (p: list Set), mk_adts p t -> Prop):
+  (forall (t: mut_in_type) (p: list Set) (x: mk_adts p t)
+    (c: constr) (c_in:  inb _ constr_eq_dec c (a_constrs (proj1_sig t)))
+    (h: hlist (domain p) (c_args c))
+    (Hx: x = constr_rep p t c c_in h),
+    (forall i (t': mut_in_type) 
+      (Hind: is_ind_occ (a_name (proj1_sig t')) (nth i (c_args c) ty_d)), 
+       i < length (c_args c) ->
+       (*If nth i a has type adt_rep ..., then P holds of it*)
+       P t' p (scast (is_ind_occ_domain _ _ _ Hind) 
+       (hnth i h ty_d (dom_d p))) 
+    ) ->
+    P t p x
+  ) ->
+  forall (a: mut_in_type) (p: list Set) (x: mk_adts p a), P a p x.
+Proof.
+  intros Hind a p x.
+  apply w_induction.
+  intros.
+  apply (Hind _ _ _ c c_in (constr_ind_to_args _ c b recs)).
+  - subst. unfold constr_rep.
+    rewrite constr_ind_args_inv1.
+    f_equal.
+    repeat(apply functional_extensionality_dep; intros).
+    symmetry. apply constr_ind_args_inv2.
+  - intros.
+    (*Build the [num_rec_type] and apply the other IH*)
+    specialize (H t').
+    generalize dependent (is_ind_occ_domain p0 t' (nth i (c_args c) ty_d) Hind0).
+    assert (Hrec:=ind_occ_is_rec_ty Hind0).
+    destruct (is_rec_ty_get_info H0 Hrec) as [t1 [y Hiy]]. subst i.
+    intros e.
+    unfold constr_ind_to_args.
+    rewrite constr_ind_to_args_aux_rec.
+    rewrite scast_scast.
+    assert (t' = t1). {
+      apply (is_ind_occ_twice  (nth (proj1_sig y) (c_args c) ty_d)); auto.
+      clear -y.
+      destruct y; simpl. 
+      apply (proj2_bool i).
+    }
+    subst.
+    specialize (H y).
+    rewrite scast_refl_uip.
+    apply H.
+Qed.
+
+End Theorems.
 
 End Encode.
 
