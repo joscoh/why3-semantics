@@ -9,6 +9,7 @@ Require Import Coq.Program.Equality.
 Require Export Coq.Logic.FunctionalExtensionality.
 (*We assume [eq_rect_eq], equivalent to UIP, for some proofs*)
 Require Import Coq.Logic.EqdepFacts.
+Require Export Coq.Logic.Eqdep.
 
 (*Dealing with finite types*)
 

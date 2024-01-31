@@ -1,28 +1,15 @@
 Require Export Coq.Lists.List.
 Require Export Coq.Bool.Bool.
 Require Export Coq.Logic.Eqdep.
-Require Export Coq.Logic.Eqdep_dec.
+(*Require Export Coq.Logic.Eqdep_dec.*)
 Require Export Lia.
 From mathcomp Require all_ssreflect.
 Export ListNotations.
+Require Export HlistUtil.
 
 Set Bullet Behavior "Strict Subproofs".
 
 (*Working with Boolean Predicates*)
-
-Coercion proj_sumbool (A B: Prop) (H: {A} + {B}) : bool :=
-  if H then true else false.
-Coercion is_true : bool >-> Sortclass.
-
-Lemma bool_irrelevance (b: bool) (p1 p2: b): p1 = p2.
-Proof.
-  apply UIP_dec, bool_dec.
-Qed.
-
-Lemma is_false {P: Type}: false -> P.
-Proof.
-discriminate.
-Qed.
 
 Lemma andb_conj {b1 b2: bool} (x: b1) (y: b2): b1 && b2.
 Proof.
@@ -110,25 +97,13 @@ Inductive empty := .
 decidable. We give utilities here for this type*)
 
 Section InTypeDef.
-Variable (T: Set).
+Context {T: Set}.
 Variable (T_dec: forall (x y: T), {x = y} + {x <> y}).
 
-Definition inb (x: T) (l: list T) : bool :=
-  fold_right (fun y acc => ((T_dec x y) || acc)) false l.
-
-Lemma inb_spec (x: T) (l: list T): reflect (In x l) (inb x l).
-Proof.
-  induction l; simpl.
-  - apply ReflectF; auto.
-  - apply ssr.ssrbool.orPP; auto.
-    destruct (T_dec x a); subst; simpl;
-    [apply ReflectT | apply ReflectF]; auto.
-Qed.
-
 Definition in_type (l: list T) : Set :=
-  { x : T | inb x l }.
+  { x : T | inb T_dec x l }.
 
-Definition build_in_type {x: T} {l: list T} (x_in: inb x l): in_type l :=
+Definition build_in_type {x: T} {l: list T} (x_in: inb T_dec x l): in_type l :=
   exist _ x x_in.
 
 Definition in_type_extra (l: list T) (f: T -> Set) : Set :=

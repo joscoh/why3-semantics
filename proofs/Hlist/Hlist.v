@@ -1,4 +1,5 @@
 Require Import Coq.Lists.List.
+Require Import Coq.Arith.PeanoNat.
 Require Import Lia.
 Require Export Cast.
 (*Heterogenous list*)
@@ -80,6 +81,7 @@ Fixpoint hnth {A: Type} {f: A -> Type} {l: list A} (i: nat) (h: hlist f l)
   end h.
 
 (*filter*)
+(*
 Fixpoint hfilter {A: Type} {f: A -> Type} {l: list A} (g: A -> bool) (h: hlist f l)  :
   hlist f (filter g l) :=
   match l as l' return hlist f l' -> hlist f (filter g l') with
@@ -232,7 +234,7 @@ Proof.
     simpl in H0. inversion H0; subst.
     f_equal. apply cast_inj in H2; auto.
     eapply IHl. apply H3.
-Qed.
+Qed.*)
 
 (*extensional equality for hlists*)
 Lemma hlist_ext_eq {A: Type} {f: A -> Type} {l: list A}
@@ -255,7 +257,7 @@ Proof.
 Qed.
 
 (*One specialized definition we need*)
-Fixpoint hlist_map_filter {A B: Type} {f: A -> Type} {l: list B}
+(*Fixpoint hlist_map_filter {A B: Type} {f: A -> Type} {l: list B}
   (f1: B -> A) (h: hlist f (map f1 l)) (g: B -> bool) :
   hlist f (map f1 (filter g l)) :=
   match l as l' return hlist f (map f1 l') -> 
@@ -267,20 +269,20 @@ Fixpoint hlist_map_filter {A B: Type} {f: A -> Type} {l: list B}
     | true => HL_cons _ _ _ (hlist_hd hmap) (hlist_map_filter f1 (hlist_tl hmap) g)
     | false => (hlist_map_filter f1 (hlist_tl hmap) g)
     end
-  end h.
+  end h.*)
 
-Require Import Common.
+Require Export HlistUtil.
 
 (*Given an element in a list and an hlist, get the corresponding element
   of the hlist*)
 Fixpoint get_hlist_elt {A: Type} (eq_dec: forall x y, {x = y} + {x <> y}) 
   {f: A -> Type} {l: list A}
   (h: hlist f l) (x: A)
-  (Hinx: in_bool eq_dec x l) : f x :=
-  (match l as l' return in_bool eq_dec x l' -> hlist f l' -> f x with
-  | nil => fun Hin _ => False_rect _ (not_false Hin)
+  (Hinx: inb eq_dec x l) : f x :=
+  (match l as l' return inb eq_dec x l' -> hlist f l' -> f x with
+  | nil => fun Hin _ => is_false Hin
   | y :: tl => fun Hin h' =>
-    (match (eq_dec x y) as b return b || in_bool eq_dec x tl ->
+    (match (eq_dec x y) as b return b || inb eq_dec x tl ->
       f x with
     | left Heq => fun _ => ltac:(rewrite Heq; exact (hlist_hd h'))
     | right Hneq => fun Hin' => 
@@ -301,7 +303,7 @@ Fixpoint gen_hlist {A: Type} (f: A -> Type) (g: forall (a: A), f a)
 Lemma gen_hlist_get_elt {A: Type}
   (eq_dec: forall x y, {x = y} + {x <> y}) 
   {f: A -> Type} {g: forall (a: A), f a} {l: list A} (x: A)
-  (Hinx: in_bool eq_dec x l):
+  (Hinx: inb eq_dec x l):
   get_hlist_elt eq_dec (gen_hlist f g l) x Hinx = g x.
 Proof.
   induction l; simpl. inversion Hinx.

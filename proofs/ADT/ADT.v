@@ -281,7 +281,7 @@ Definition typesym_get_adt_aux (ts: typesym) : option adt :=
 
 Lemma typesym_get_adt_aux_some {ts a}:
   typesym_get_adt_aux ts = Some a ->
-  inb _ adt_eq_dec a (m_adts m) /\
+  inb adt_eq_dec a (m_adts m) /\
   ts_name ts = a_name a.
 Proof.
   unfold typesym_get_adt_aux.
@@ -294,7 +294,7 @@ Qed.
 
 Lemma typesym_get_adt_aux_none ts:
   typesym_get_adt_aux ts = None ->
-  forall a, inb _ adt_eq_dec a (m_adts m) ->
+  forall a, inb adt_eq_dec a (m_adts m) ->
   ts_name ts <> a_name a.
 Proof.
   unfold typesym_get_adt_aux.
@@ -307,8 +307,8 @@ Qed.
 (*More convenient in proofs - we can destruct this without
   dependent pattern matching issues*)
 Definition typesym_get_adt ts : 
-  {a : adt | inb _ adt_eq_dec a (m_adts m) /\ ts_name ts = a_name a } +
-  {forall a, inb _ adt_eq_dec a (m_adts m) ->
+  {a : adt | inb adt_eq_dec a (m_adts m) /\ ts_name ts = a_name a } +
+  {forall a, inb adt_eq_dec a (m_adts m) ->
   ts_name ts <> a_name a}.
 Proof.
   destruct (typesym_get_adt_aux ts) eqn : Hty.
@@ -375,7 +375,7 @@ Definition build_constr_base (vars: poly_map) (c: constr) : Set :=
   build_constr_base_aux vars (c_args c).
 
 Definition build_base (vars: poly_map) (cs: list constr) : Set :=
-  in_type_extra _ constr_eq_dec cs (build_constr_base vars).
+  in_type_extra constr_eq_dec cs (build_constr_base vars).
 
 End ADef.
 
@@ -422,7 +422,7 @@ End B.
   (we use {a | a in m}), and P *)
 
 (*Our encoding*)
-Definition mut_in_type : Set := in_type adt adt_eq_dec (m_adts m).
+Definition mut_in_type : Set := in_type adt_eq_dec (m_adts m).
 
 (*This handles mutual recursion (but not nested recursion at the moment).
   Mutual recursion is not too bad, we just need to be careful to call [build_rec]
@@ -436,10 +436,10 @@ Definition mk_adts (P: poly_map) : mut_in_type -> Set :=
 
 (*From a given constructor and the non-recursive data, build the type A*)
 Definition get_constr_type (P: poly_map) (a: adt) (cs: list constr) (c: constr)
-  (c_in: inb _ constr_eq_dec c cs)
+  (c_in: inb constr_eq_dec c cs)
   (data: build_constr_base P c):
   build_base P cs :=
-  build_extra _ constr_eq_dec (build_in_type _ constr_eq_dec c_in) data.
+  build_extra constr_eq_dec (build_in_type constr_eq_dec c_in) data.
 
 (*Note the weird type of [recs]. This says that we have n instances of 
   [mk_adts P t], where n is the number of times t occurs recursively in
@@ -448,7 +448,7 @@ Definition get_constr_type (P: poly_map) (a: adt) (cs: list constr) (c: constr)
   to keep track of which index in c's arg list each instance comes from.
   This will be extremely helpful later*)
 Definition make_constr (P: poly_map) (a: mut_in_type) (c: constr)
-  (c_in: inb _ constr_eq_dec c (a_constrs (proj1_sig a)))
+  (c_in: inb constr_eq_dec c (a_constrs (proj1_sig a)))
   (data: build_constr_base P c)
   (recs : forall (t: mut_in_type), 
     num_rec_type (proj1_sig t) (c_args c) -> mk_adts P t) : mk_adts P a :=
@@ -464,7 +464,7 @@ Section Theorems.
 
 (*No axioms needed*)
 Definition find_constr: forall (a: mut_in_type) (P: poly_map) (x: mk_adts P a),
-  {c: constr & {t: inb _ constr_eq_dec c (a_constrs (proj1_sig a)) *
+  {c: constr & {t: inb constr_eq_dec c (a_constrs (proj1_sig a)) *
     build_constr_base P c * 
     forall (t: mut_in_type), 
     num_rec_type (proj1_sig t) (c_args c) -> mk_adts P t |
@@ -483,8 +483,8 @@ Qed.
 
 Lemma constrs_disjoint: forall (a: mut_in_type) (P: poly_map) 
   (c1 c2: constr) 
-  (c1_in: inb _ constr_eq_dec c1 (a_constrs (proj1_sig a)))
-  (c2_in: inb _ constr_eq_dec c2 (a_constrs (proj1_sig a)))
+  (c1_in: inb constr_eq_dec c1 (a_constrs (proj1_sig a)))
+  (c2_in: inb constr_eq_dec c2 (a_constrs (proj1_sig a)))
   (b1: build_constr_base P c1)
   (b2: build_constr_base P c2)
   (recs1: forall (t: mut_in_type), 
@@ -522,7 +522,7 @@ Qed.
 (*Relies on UIP*)
 Lemma constrs_inj: forall (a: mut_in_type) (P: poly_map) 
 (c: constr) 
-(c_in: inb _ constr_eq_dec c (a_constrs (proj1_sig a)))
+(c_in: inb constr_eq_dec c (a_constrs (proj1_sig a)))
 (b1: build_constr_base P c)
 (b2: build_constr_base P c)
 (recs1: forall (t: mut_in_type), 
@@ -556,7 +556,7 @@ Lemma w_induction
   (P: forall (a: mut_in_type) (p: poly_map), mk_adts p a -> Prop):
   (*For every ADT and every constructor, *)
   (forall (a: mut_in_type) (p: poly_map) (x: mk_adts p a)
-    (c: constr) (c_in:  inb _ constr_eq_dec c (a_constrs (proj1_sig a)))
+    (c: constr) (c_in:  inb constr_eq_dec c (a_constrs (proj1_sig a)))
     (b: build_constr_base p c)
     (recs: forall (t: mut_in_type), 
       num_rec_type (proj1_sig t) (c_args c) -> mk_adts p t)
@@ -605,7 +605,7 @@ Definition domain (p: poly_map) (t: ty) : Set :=
     (*If ts is in m, then map to appropriate ADT*)
     match (typesym_get_adt ts) with
     | inleft a =>
-      mk_adts p (build_in_type _ adt_eq_dec (proj1 (proj2_sig a)))
+      mk_adts p (build_in_type adt_eq_dec (proj1 (proj2_sig a)))
     | inright _ => ty_to_set p t
     end
   | _ => ty_to_set p t
@@ -727,15 +727,15 @@ Definition ty_set_d: forall p, ty_to_set p ty_d := fun p =>
 Variable adt_names_uniq: NoDup (map a_name (m_adts m)).
 
 Lemma adt_names_eq {a1 a2: adt}:
-  inb _ adt_eq_dec a1 (m_adts m) ->
-  inb _ adt_eq_dec a2 (m_adts m) ->
+  inb adt_eq_dec a1 (m_adts m) ->
+  inb adt_eq_dec a2 (m_adts m) ->
   a_name a1 = a_name a2 ->
   a1 = a2.
 Proof.
   intros a1_in a2_in name_eq.
   apply (@NoDup_map_in _ _ _ _ a1 a2) in adt_names_uniq; auto.
-  - apply (ssrbool.elimT (inb_spec _ _ _ _) a1_in).
-  - apply (ssrbool.elimT (inb_spec _ _ _ _) a2_in).
+  - apply (ssrbool.elimT (inb_spec _ _ _) a1_in).
+  - apply (ssrbool.elimT (inb_spec _ _ _) a2_in).
 Qed.
 
 (*This is conceptually simple as well: the [num_rec_type]
@@ -774,9 +774,9 @@ case (typesym_get_adt ts).
   set (a_eq  :=
   adt_names_eq (proj1 (proj2_sig s)) (proj2_sig t) aname_eq : proj1_sig s = proj1_sig t).
   intros rep.
-  set (t':=build_in_type adt adt_eq_dec (proj1 (proj2_sig s))).
-  set (pack_eq := (proj2 (in_type_eq _ adt_eq_dec (m_adts m) t' t)) a_eq :
-  (build_in_type adt adt_eq_dec (proj1 (proj2_sig s))) = t).
+  set (t':=build_in_type adt_eq_dec (proj1 (proj2_sig s))).
+  set (pack_eq := (proj2 (in_type_eq adt_eq_dec (m_adts m) t' t)) a_eq :
+  (build_in_type adt_eq_dec (proj1 (proj2_sig s))) = t).
   exact (scast (f_equal (mk_adts p) pack_eq) rep).
 - intros _ f. exact (is_false f).
 Defined.
@@ -788,7 +788,7 @@ Definition args_to_ind_base (p: poly_map) (c: constr)
   args_to_ind_base_aux p (c_args c) a.
 
 Definition constr_rep (p: poly_map) (a: mut_in_type) (c: constr)
-  (c_in: inb _ constr_eq_dec c (a_constrs (proj1_sig a)))
+  (c_in: inb constr_eq_dec c (a_constrs (proj1_sig a)))
   (args: hlist (domain p) (c_args c)):
   mk_adts p a :=
   make_constr p a c c_in
@@ -842,7 +842,7 @@ pose proof (typesym_get_adt_ind_occ ts tys _ (eq_sym Heq)). revert H.
 case (typesym_get_adt ts).
 - intros s Hindocc _.
   (*Have all the info for recs (why we needed Heq)*)
-  set (t':= (build_in_type adt adt_eq_dec (proj1 (proj2_sig s)))).
+  set (t':= (build_in_type adt_eq_dec (proj1 (proj2_sig s)))).
   set (n:= exist _ i (andb_conj Hi (Hindocc  s eq_refl)) : num_rec_type (proj1_sig t') l).
   exact (recs t' n).
 - intros _ _ bse.
@@ -1121,7 +1121,7 @@ Proof.
   try solve[apply (is_false Hrec)].
   destruct (typesym_get_adt t) eqn : Hget; try solve[apply (is_false Hrec)].
   destruct s as [a [a_in a_nameq]].
-  apply (existT _ (build_in_type _ adt_eq_dec a_in)).
+  apply (existT _ (build_in_type adt_eq_dec a_in)).
   simpl.
   assert (Hind: is_ind_occ (a_name a) (nth i l ty_d)). {
     unfold is_ind_occ.
@@ -1204,7 +1204,7 @@ Section Theorems.
 
 (*Needs funext and UIP*)
 Theorem find_constr_rep {p: poly_map} {t: mut_in_type} (x: mk_adts p t):
-  {c: constr & {Hf: inb _ constr_eq_dec c (a_constrs (proj1_sig t)) *
+  {c: constr & {Hf: inb constr_eq_dec c (a_constrs (proj1_sig t)) *
     hlist (domain p) (c_args c) |
     x = constr_rep p t c (fst Hf) (snd Hf)}}.
 Proof.
@@ -1222,8 +1222,8 @@ Qed.
 
 (*Axiom-free*)
 Theorem constr_rep_disjoint {p: poly_map} {t: mut_in_type} {c1 c2: constr}
-  {c1_in: inb _ constr_eq_dec c1 (a_constrs (proj1_sig t))}
-  {c2_in: inb _ constr_eq_dec c2 (a_constrs (proj1_sig t))}
+  {c1_in: inb constr_eq_dec c1 (a_constrs (proj1_sig t))}
+  {c2_in: inb constr_eq_dec c2 (a_constrs (proj1_sig t))}
   (h1: hlist (domain p) (c_args c1))
   (h2: hlist (domain p) (c_args c2)):
   c1 <> c2 ->
@@ -1293,7 +1293,7 @@ Qed.
   
 (*Requires UIP*)
 Theorem constr_rep_inj {p: poly_map} {t: mut_in_type}  {c: constr}
-  {c_in: inb _ constr_eq_dec c (a_constrs (proj1_sig t))}
+  {c_in: inb constr_eq_dec c (a_constrs (proj1_sig t))}
   (h1 h2: hlist (domain p) (c_args c)):
   constr_rep p t c c_in h1 = constr_rep p t c c_in h2 ->
   h1 = h2.
@@ -1329,7 +1329,7 @@ Qed.
 (*Induction - requires funext and UIP*)
 Theorem adt_rep_ind (P: forall (t: mut_in_type) (p: poly_map), mk_adts p t -> Prop):
   (forall (t: mut_in_type) (p: poly_map) (x: mk_adts p t)
-    (c: constr) (c_in:  inb _ constr_eq_dec c (a_constrs (proj1_sig t)))
+    (c: constr) (c_in:  inb constr_eq_dec c (a_constrs (proj1_sig t)))
     (h: hlist (domain p) (c_args c))
     (Hx: x = constr_rep p t c c_in h),
     (forall i (t': mut_in_type) 
