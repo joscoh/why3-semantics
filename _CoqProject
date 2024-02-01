@@ -4,6 +4,7 @@ proofs/Hlist/HlistUtil.v
 proofs/Hlist/Hlist.v
 proofs/ADT/ADTUtil.v
 proofs/ADT/ADT.v
+proofs/ADT/ADTTest.v
 proofs/core/Common.v
 proofs/core/Types.v
 proofs/core/Syntax.v

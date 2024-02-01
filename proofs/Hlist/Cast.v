@@ -66,6 +66,14 @@ Proof.
   subst. reflexivity.
 Qed.
 
+Lemma scast_eq_sym':
+  forall {A B : Set} (Heq : B = A) (x : A),
+  scast Heq (scast (eq_sym Heq) x) = x.
+Proof.
+intros. subst. reflexivity.
+Qed.
+
+
 Lemma scast_refl_uip {A: Set} (H: A = A) x:
   scast H x = x.
 Proof.

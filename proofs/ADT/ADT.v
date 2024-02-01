@@ -105,7 +105,7 @@ Variable adt_data: Set.
 Variable adt_data_dec: forall (x y: adt_data), {x = y} + {x <> y}.
 
 (*ADTs have names, a number of type paramters, and a list of constructors*)
-Record adt : Set := {a_name: string; a_params: nat; a_constrs: list constr;
+Record adt : Set := {a_name: string; a_params: list typevar; a_constrs: list constr;
   a_data: adt_data}.
 
 Variable mut_data: Set.
@@ -203,7 +203,7 @@ Definition constr_eq_dec (c1 c2: constr): {c1 = c2} + {c1 <> c2} :=
 
 Definition adt_eqb (a1 a2: adt) : bool :=
   String.eqb (a_name a1) (a_name a2) &&
-  Nat.eqb (a_params a1) (a_params a2) &&
+  list_eqb typevar_dec (a_params a1) (a_params a2) &&
   list_eqb constr_eq_dec (a_constrs a1) (a_constrs a2) &&
   adt_data_dec (a_data a1) (a_data a2).
 
@@ -211,7 +211,7 @@ Lemma adt_eqb_spec (a1 a2: adt) : reflect (a1 = a2) (adt_eqb a1 a2).
 Proof.
   case: a1; case: a2 => n1 p1 c1 d1 n2 p2 c2 d2; rewrite /adt_eqb/=.
   case: String.eqb_spec=>//=[->|]; last by reflF.
-  case: PeanoNat.Nat.eqb_spec=>//=[->|]; last by reflF.
+  case: list_eqb_spec=>[->|]; last by reflF.
   case: list_eqb_spec=>[->|]; last by reflF.
   case: adt_data_dec =>/=[->|]; last by reflF.
   by apply ReflectT.
@@ -279,6 +279,7 @@ Definition typesym_get_adt_aux (ts: typesym) : option adt :=
   fold_right (fun a acc => if string_dec (ts_name ts) (a_name a) then Some a 
     else acc) None (m_adts m).
 
+    (*Avoid "auto" here; we need to make sure everything reduces*)
 Lemma typesym_get_adt_aux_some {ts a}:
   typesym_get_adt_aux ts = Some a ->
   inb adt_eq_dec a (m_adts m) /\
@@ -287,10 +288,13 @@ Proof.
   unfold typesym_get_adt_aux.
   induction (m_adts m); simpl; [discriminate| ].
   destruct (string_dec (ts_name ts) (a_name a0)).
-  - intros eq_a; inversion eq_a; subst. destruct (adt_eq_dec a a); auto.
+  - intros eq_a; injection eq_a; intros; subst. 
+    destruct (adt_eq_dec a a); simpl; try assumption.
+    + split; [reflexivity | assumption].
+    + split; try assumption. contradiction. 
   - intros Htl. apply IHl in Htl. destruct Htl as [in_al eq_name];
-    rewrite in_al, orb_true_r; auto.
-Qed.
+    rewrite in_al, orb_true_r. split;[reflexivity | exact eq_name].
+Defined.
 
 Lemma typesym_get_adt_aux_none ts:
   typesym_get_adt_aux ts = None ->
@@ -314,7 +318,7 @@ Proof.
   destruct (typesym_get_adt_aux ts) eqn : Hty.
   - left. apply (exist _ a). apply typesym_get_adt_aux_some, Hty.
   - right. apply typesym_get_adt_aux_none, Hty.
-Qed.
+Defined.
 
 Definition is_ind_occ (ind: string) (t: ty) : bool :=
   match t with
@@ -605,7 +609,7 @@ Definition domain (p: poly_map) (t: ty) : Set :=
     (*If ts is in m, then map to appropriate ADT*)
     match (typesym_get_adt ts) with
     | inleft a =>
-      mk_adts p (build_in_type adt_eq_dec (proj1 (proj2_sig a)))
+      mk_adts p (build_in_type adt_eq_dec (proj1' (proj2_sig a)))
     | inright _ => ty_to_set p t
     end
   | _ => ty_to_set p t
@@ -772,11 +776,11 @@ case (typesym_get_adt ts).
     end).
   intros _.
   set (a_eq  :=
-  adt_names_eq (proj1 (proj2_sig s)) (proj2_sig t) aname_eq : proj1_sig s = proj1_sig t).
+  adt_names_eq (proj1' (proj2_sig s)) (proj2_sig t) aname_eq : proj1_sig s = proj1_sig t).
   intros rep.
-  set (t':=build_in_type adt_eq_dec (proj1 (proj2_sig s))).
-  set (pack_eq := (proj2 (in_type_eq adt_eq_dec (m_adts m) t' t)) a_eq :
-  (build_in_type adt_eq_dec (proj1 (proj2_sig s))) = t).
+  set (t':=build_in_type adt_eq_dec (proj1' (proj2_sig s))).
+  set (pack_eq := (proj2' (in_type_eq adt_eq_dec (m_adts m) t' t)) a_eq :
+  (build_in_type adt_eq_dec (proj1' (proj2_sig s))) = t).
   exact (scast (f_equal (mk_adts p) pack_eq) rep).
 - intros _ f. exact (is_false f).
 Defined.
@@ -842,7 +846,7 @@ pose proof (typesym_get_adt_ind_occ ts tys _ (eq_sym Heq)). revert H.
 case (typesym_get_adt ts).
 - intros s Hindocc _.
   (*Have all the info for recs (why we needed Heq)*)
-  set (t':= (build_in_type adt_eq_dec (proj1 (proj2_sig s)))).
+  set (t':= (build_in_type adt_eq_dec (proj1' (proj2_sig s)))).
   set (n:= exist _ i (andb_conj Hi (Hindocc  s eq_refl)) : num_rec_type (proj1_sig t') l).
   exact (recs t' n).
 - intros _ _ bse.
@@ -871,7 +875,7 @@ Proof.
   destruct (typesym_get_adt t).
   - f_equal. apply in_type_eq; simpl.
     apply adt_names_eq.
-    + apply (proj1 (proj2_sig s)).
+    + apply (proj1' (proj2_sig s)).
     + apply (proj2_sig a).
     + destruct (string_dec _ _); auto. discriminate.
   - apply (is_false Hind).
@@ -1022,7 +1026,7 @@ Proof.
         {
           apply in_type_eq; simpl.
           apply adt_names_eq.
-          - apply (proj1 (proj2_sig s)).
+          - apply (proj1' (proj2_sig s)).
           - apply (proj2_sig t).
           - specialize (Hind s eq_refl).
             clear -Heq x Hgetadt.
@@ -1374,8 +1378,116 @@ Proof.
     apply H.
 Qed.
 
+
+(*Another version of induction for uniform parameters
+  Not hard to prove, but we need a clever use of impredicativity to 
+  get the right IH*)
+Theorem adt_rep_ind_unif (p: poly_map) (P: forall (t: mut_in_type), mk_adts p t -> Prop):
+  (forall (t: mut_in_type) (x: mk_adts p t)
+    (c: constr) (c_in:  inb constr_eq_dec c (a_constrs (proj1_sig t)))
+    (h: hlist (domain p) (c_args c))
+    (Hx: x = constr_rep p t c c_in h),
+    (forall i (t': mut_in_type) 
+      (Hind: is_ind_occ (a_name (proj1_sig t')) (nth i (c_args c) ty_d)), 
+       i < length (c_args c) ->
+       (*If nth i a has type adt_rep ..., then P holds of it*)
+       P t' (scast (is_ind_occ_domain _ _ _ Hind) 
+       (hnth i h ty_d (dom_d p))) 
+    ) ->
+    P t x
+  ) ->
+  forall (a: mut_in_type) (x: mk_adts p a), P a x.
+Proof.
+  intros Hind a x.
+  pose proof (adt_rep_ind 
+    (fun (t: mut_in_type) (p: poly_map) (y: mk_adts p t) =>
+    (forall (P: forall t, mk_adts p t -> Prop),
+      (forall (t: mut_in_type) (x: mk_adts p t)
+      (c: constr) (c_in:  inb constr_eq_dec c (a_constrs (proj1_sig t)))
+      (h: hlist (domain p) (c_args c))
+      (Hx: x = constr_rep p t c c_in h),
+      (forall i (t': mut_in_type) 
+        (Hind: is_ind_occ (a_name (proj1_sig t')) (nth i (c_args c) ty_d)), 
+        i < length (c_args c) ->
+        (*If nth i a has type adt_rep ..., then P holds of it*)
+        P t' (scast (is_ind_occ_domain _ _ _ Hind) 
+        (hnth i h ty_d (dom_d p))) 
+      ) ->
+      P t x) ->
+    P t y))).
+  simpl in H. apply H;
+  clear H; intros.
+  - eapply H0.
+    apply Hx.
+    intros. apply H; auto.
+  - eapply Hind.
+    apply Hx. auto.
+Qed. 
+
+(*Version for non-mutual types*)
+Lemma non_mut_eq (Hm: Nat.eqb (length (m_adts m)) 1) (t1 t2: mut_in_type):
+  t1 = t2.
+Proof.
+  destruct t1; destruct t2; simpl in *.
+  assert (x = x0). {
+    destruct (m_adts m); simpl in *; try discriminate.
+    destruct l; simpl in *; try discriminate.
+    do 2 (destruct adt_eq_dec; subst; auto; try discriminate).
+  }
+  subst.
+  assert (i = i0) by apply bool_irrelevance.
+  subst. reflexivity.
+Qed.
+
+(*First, do uniform one - see if we need non-uniform*)
+Theorem adt_rep_ind_single (Hm: Nat.eqb (length (m_adts m)) 1) 
+  (p: poly_map) (t: mut_in_type) 
+  (P: mk_adts p t -> Prop):
+  (forall (x: mk_adts p t)
+    (c: constr) (c_in:  inb constr_eq_dec c (a_constrs (proj1_sig t)))
+    (h: hlist (domain p) (c_args c))
+    (Hx: x = constr_rep p t c c_in h),
+    (forall i
+      (Hind: is_ind_occ (a_name (proj1_sig t)) (nth i (c_args c) ty_d)), 
+       i < length (c_args c) ->
+       (*If nth i a has type adt_rep ..., then P holds of it*)
+       P (scast (is_ind_occ_domain _ _ _ Hind) 
+       (hnth i h ty_d (dom_d p))) 
+    ) ->
+    P x
+  ) ->
+  forall (x: mk_adts p t), P x.
+Proof.
+  intros IH.
+  (*Need a cast from equality*)
+  pose proof (adt_rep_ind_unif p (fun t x =>
+    P (scast (f_equal (mk_adts p) (non_mut_eq Hm _ _)) x))) as Hind.
+  intros x.
+  (*Now we need an scast*)
+  rewrite <- (scast_eq_sym' (f_equal (mk_adts p) (non_mut_eq Hm t _)) x).
+  apply Hind; clear Hind.
+  intros.
+  assert (t0 = t). {
+    apply (non_mut_eq Hm).
+  }
+  subst.
+  apply (IH _ c c_in h).
+  - rewrite scast_refl_uip. reflexivity.
+  - intros.
+    specialize (H i t Hind H0).
+    revert H.
+    rewrite scast_scast.
+    do 2 (gen_scast; intros).
+    assert (e = e0) by apply UIP.
+    subst. auto.
+Qed.
+
 End Theorems.
 
 End Encode.
 
 End ADT.
+
+Arguments ty_base {typevar} {base}. 
+Arguments ty_var {typevar base}.
+Arguments ty_app {typevar base}. 

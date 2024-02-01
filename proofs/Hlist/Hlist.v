@@ -34,12 +34,35 @@ Definition hlist_tl {A: Type} {f: A -> Type} {hd: A} {tl: list A}
   | HL_cons _ _ _ hd tl => tl
   end.
 
+Lemma hlist_tl_cons {A: Type} (f: A -> Type) {hd: A} {tl: list A}
+  (hhd: f hd) (htl: hlist f tl):
+  hlist_tl (HL_cons f hd tl hhd htl) = htl.
+Proof.
+  reflexivity.
+Qed.
+
 Definition hlist_inv {A: Type} {f: A -> Type} {hd: A} {tl: list A}
   (h: hlist f (hd :: tl)) : h = HL_cons f hd tl (hlist_hd h) (hlist_tl h) :=
   match h with
   | HL_nil _ => idProp
   | HL_cons _ _ _ _ _ => eq_refl
   end.
+
+(*Need to prove awkwardly because "inversion" requires UIP; we want
+  axiom-free*)
+Lemma hlist_cons_inj {A: Type} (f: A -> Type) {hd: A} {tl: list A}
+  (hhd1 hhd2: f hd) (htl1 htl2: hlist f tl)
+  (Heq: HL_cons f hd tl hhd1 htl1 = HL_cons f hd tl hhd2 htl2):
+  hhd1 = hhd2 /\ htl1 = htl2.
+Proof.
+  assert (Hhd:=Heq).
+  apply (f_equal hlist_hd) in Hhd.
+  rewrite !hlist_hd_cons in Hhd.
+  subst; split; auto.
+  apply (f_equal hlist_tl) in Heq.
+  rewrite !hlist_tl_cons in Heq.
+  auto.
+Qed.
 
 Definition hlist_nil {A: Type} {f: A -> Type}
   (h: hlist f nil) : h = HL_nil f :=

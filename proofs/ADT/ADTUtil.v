@@ -16,11 +16,22 @@ Proof.
 rewrite x, y. reflexivity.
 Qed.
 
+(*Transparent versions*) 
+Definition proj1' {P Q: Prop} (H: P /\ Q) : P :=
+  match H with
+  | conj x1 x2 => x1
+  end.
+
+Definition proj2' {P Q: Prop} (H: P /\ Q) : Q :=
+  match H with
+  | conj x1 x2 => x2
+  end.
+
 Definition proj2_bool {b1 b2: bool} (x: b1 && b2) : b2 :=
-  proj2 (andb_prop _ _ x).
+  proj2' (andb_prop _ _ x).
 
 Definition proj1_bool {b1 b2: bool} (x: b1 && b2) : b1 :=
-  proj1 (andb_prop _ _ x).
+  proj1' (andb_prop _ _ x).
 
 (*Forall for Type*)
 
