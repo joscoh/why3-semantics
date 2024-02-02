@@ -264,7 +264,7 @@ Section Encode.
 (*All encodings for previously-declared (or abstract) type symbols
   are given by a function typs.
   This is allows to return anything when the length of the list is wrong*)
-Variable (typs: typesym -> list Set -> Set).
+Variable (typs: typesym -> list ty -> Set).
 
 (*We encode a particular mutual type:*)
 Variable (m: mut).
@@ -330,9 +330,12 @@ Definition is_ind_occ (ind: string) (t: ty) : bool :=
   | _ => false
   end.
 
+Definition is_rec_ts (ts: typesym) : bool :=
+  if typesym_get_adt ts then true else false.
+
 Definition is_rec_ty (t: ty) : bool :=
   match t with
-  | ty_app ts tys => if typesym_get_adt ts then true else false
+  | ty_app ts _ => is_rec_ts ts
   | _ => false
   end.
 
@@ -340,7 +343,7 @@ Lemma ind_occ_is_rec_ty {a} {t: ty}:
   is_ind_occ a t ->
   is_rec_ty t.
 Proof.
-  unfold is_ind_occ, is_rec_ty.
+  unfold is_ind_occ, is_rec_ty, is_rec_ts.
   destruct t; auto.
   destruct (typesym_get_adt t); auto.
 Qed.
@@ -352,14 +355,14 @@ Section ADef.
 
 (*A (non-recursive) type is interpreted according to these functions.
   Type variables are defined by a function to be given later*)
-Fixpoint ty_to_set (vars: poly_map) (t: ty) : Set :=
+Definition ty_to_set (vars: poly_map) (t: ty) : Set :=
   match t with
   | ty_base b => bases b
   | ty_var v => vars v (*nth v vars empty*)
   | ty_app ts tys =>
     match (typesym_get_adt ts) with
     | inleft _ => unit
-    | inright _ => typs ts (map (ty_to_set vars) tys)
+    | inright _ => typs ts tys (*(map (ty_to_set vars) tys)*)
     end
   end.
 
@@ -381,7 +384,7 @@ Definition build_constr_base (vars: poly_map) (c: constr) : Set :=
 Definition build_base (vars: poly_map) (cs: list constr) : Set :=
   in_type_extra constr_eq_dec cs (build_constr_base vars).
 
-End ADef.
+End ADef. 
 
 (*Now construct B*)
 Section B.
@@ -599,10 +602,12 @@ End Theorems.
   a constructor applied to arguments. To ensure well-typed argumets, 
   we use a heterogenous list*)
 
+
 (*The full mapping from types to Sets, where ADT instances are interpreted
   as the corresponding [mk_adts]*)
 (*NOTE: unlike previous version, domain of ADT is definitionally equal to
   mk_adts, not propositionally equal. This reduces need for casts*)
+(*NOTE: will need to fix later to change p to handle non-uniformity*)
 Definition domain (p: poly_map) (t: ty) : Set :=
   match t with
   | ty_app ts tys =>
@@ -619,7 +624,7 @@ Definition domain (p: poly_map) (t: ty) : Set :=
 Lemma is_rec_ty_eq {t: ty} (Hrec: is_rec_ty t = false) p:
   domain p t = ty_to_set p t.
 Proof.
-  destruct t; simpl in *; auto.
+  destruct t; simpl in *; unfold is_rec_ts in Hrec; auto.
   destruct (typesym_get_adt t); simpl in *; auto.
   discriminate.
 Qed.
@@ -627,7 +632,7 @@ Qed.
 Lemma is_rec_ty_unit {t: ty} (Hrec: is_rec_ty t) p:
   unit = ty_to_set p t.
 Proof.
-  destruct t; simpl in *; try discriminate.
+  destruct t; simpl in *; unfold is_rec_ts in Hrec; try discriminate.
   destruct (typesym_get_adt t); simpl in *; auto.
   discriminate.
 Qed.
@@ -673,7 +678,7 @@ Proof.
     + destruct a.
       * uip_subst e. reflexivity.
       * uip_subst e. reflexivity. 
-      * simpl in *.
+      * simpl in *. unfold is_rec_ts in Hrec.
         generalize dependent (hlist_hd h).
         simpl.
         destruct (typesym_get_adt t).
@@ -697,7 +702,7 @@ Proof.
   - inversion H.
   - destruct i.
     + destruct a; try discriminate.
-      simpl in *.
+      simpl in *. unfold is_rec_ts in Hrec.
       generalize dependent (hlist_hd h).
       simpl.
       destruct (typesym_get_adt t).
@@ -942,6 +947,7 @@ Proof.
       generalize dependent (typesym_get_adt_ind_occ t l0 (nth i l ty_d) (eq_sym Heq)).
       (*Need all this so we can destruct [typesym_get_adt t]*)
       rewrite <- Heq in Hnonrec. revert Hnonrec. simpl.
+      unfold is_rec_ts.
       destruct (typesym_get_adt t); try discriminate.
       intros.
       uip_subst e0. reflexivity.
@@ -1123,6 +1129,7 @@ Proof.
   unfold is_rec_ty in Hrec.
   destruct (nth i l ty_d) eqn : Hnth;
   try solve[apply (is_false Hrec)].
+  unfold is_rec_ts in Hrec.
   destruct (typesym_get_adt t) eqn : Hget; try solve[apply (is_false Hrec)].
   destruct s as [a [a_in a_nameq]].
   apply (existT _ (build_in_type adt_eq_dec a_in)).
@@ -1486,6 +1493,228 @@ End Theorems.
 
 End Encode.
 
+(*Handle multiple ADTs in context*)
+Section Context.
+
+Definition ctx := list mut.
+
+(*Build up [typs]*)
+
+(*TODO: use existing/fix*)
+Definition map_from_list {A B: Type} (eq_dec: forall (x y: A), {x = y} + {x <> y}) 
+  (d: B) (l: list (A * B)) (x: A) : B :=
+  fold_right (fun y acc => if eq_dec (fst y) x then (snd y) else acc) d l.
+
+Definition build_poly_map (l: list typevar) (l2: list Set) :=
+  map_from_list typevar_dec empty (combine l l2).
+
+Definition ts_find_mut (t: typesym) (c: ctx) : option mut :=
+  fold_right (fun m acc => if is_rec_ts m t then Some m else acc) None c.
+
+Lemma ts_find_mut_some t c m:
+  ts_find_mut t c = Some m ->
+  is_rec_ts m t /\ inb mut_eq_dec m c.
+Proof.
+  induction c; simpl; try discriminate.
+  destruct (is_rec_ts a t) eqn : Hrec.
+  - intros C; inversion C; subst. destruct mut_eq_dec; auto.
+  - intros Hmut. apply IHc in Hmut.
+    destruct Hmut as [Hr Hinb]; rewrite Hr, Hinb, orb_true_r; auto.
+Qed. 
+
+(*Question: should we just do this in a context?
+  and define domain based on the context?
+  that might be the way to go, honestly
+  current definitions are special case with 1 mutual type
+  should try that and see - would avoid this issue
+  problem is that ty_to_set defined for single mut (because we need
+  to tie the knot somewhow)
+  could do as before and just axiomatize domain but that is not great
+
+  but this means that typs actually does need to account for recursive
+  types (for previously declared)
+  this is trickier than i thought
+
+  domain 
+
+  *)
+
+(*Does this work? Why is there no recursion?
+  I think: we have to modify p
+  
+  Ex dom_full c (fun _ _ => empty) p (list (list unit))
+  gives mk_adts typs (list_mut) p (list_adt)
+  completely ignores tys
+  should be:
+  p maps (ts_args ts) to (map (dom_full c typs p) tys)
+
+  do ex:
+  mk_adts typs list_mut (a -> dom_full c tys p (list unit))
+  mk_adts typs list_mut (a -> mk_adts typs list_mut (a -> unit))
+
+  *)
+
+(*Ah, but the problem is that we cannot map - is it OK to use [domain] here?
+  No, we need domain with [typs_full]
+  ex: list (tree int) or whatever - when evaluating list, we need tree to be
+  evaluated correctly
+
+  so we need to iterate - rely on only using things before unforunately
+  *)
+
+(*It is extremely tricky to deal with an entire context of types.
+  While we do not (yet) handle nested recursive types, we could have
+  a non-recursive constructor that uses a previously declared ADT,
+  and these can be nested (including with abstract types).
+  For example, we can have
+  data bar A (abstract)
+  data foo A = | fst of (list (list unit)) | snd of (list (bar unit))
+
+  How should the [typs] function work?
+  Clearly we want to send each ADT to its [domain] (i.e. mk_adts)
+  but mk_adts depends on the poly_map p.
+  Whenever we see ts_app ts tys of mutual type (m, a), 
+  we should therefore return
+  mk_adts tys p m a, where p maps (ts_args ts) to the evaluation of tys.
+  But what is this evaluation? [tys] may also include ADTs, and so on.
+
+  In the example above, we should interpret list (list unit) as
+  mk_adts tys list_m ('a -> mk_adts tys list_m ('a -> unit) list_a) list_a
+  As we can see, the process of constructing p is recursive, and it must
+  eventually hit a base type/empty list. So we have a separate recursive
+  function to build this p, which is the difficult part
+*)
+
+Fixpoint build_p (c: ctx) (p: poly_map) (typs: typesym -> list ty -> Set) 
+  (t: ty) : Set :=
+  match t with
+  | ty_app ts tys =>
+    match (ts_find_mut ts c) with
+    | Some m =>
+        match (typesym_get_adt m ts) with
+        | inleft a =>
+          let newp := build_poly_map (ts_args ts) (map (build_p c p typs) tys) in
+          (*let p := build_poly_map (ts_args ts) (map (domain acc m p) tys) in*)
+          (*mk_adts?*)
+          mk_adts typs m newp (build_in_type adt_eq_dec (proj1' (proj2_sig a)))
+          (*domain (typs_full c p (*buildP?*)) m (build_p p)  
+          mk_adts acc m p (build_in_type adt_eq_dec (proj1' (proj2_sig a)))*)
+        | inright _ => typs ts tys
+        end 
+      | None => typs ts tys
+      end
+  | ty_base b => bases b
+  | ty_var v => p v
+  end.
+
+Fixpoint typs_full (c: ctx) (p: poly_map) (typs: typesym -> list ty -> Set) {struct c}
+  : typesym -> list ty -> Set :=
+    match c with
+    | nil => typs
+    | m :: ms =>
+      
+      (*aha, this is the key: everything in ms is set correctly in mk_adts,
+        and m doesnt matter because it is recursive!*)
+        (* fun ts tys => build_p c (typs_full ms p typs) (ty_app ts tys) *)
+        (*Don't know if this is better*)
+
+
+      let acc := typs_full ms p typs in 
+      fun ts tys =>
+        match (typesym_get_adt m ts) with
+        | inleft a =>
+          let p' := build_poly_map (ts_args ts) (map (build_p c p acc) tys) in
+          mk_adts acc m p' (build_in_type adt_eq_dec (proj1' (proj2_sig a)))
+        | inright _ => acc ts tys
+        end 
+    end.
+(*I think we are going to need an ordering, and the above may work with
+  an ordering.
+  Basically, suppose we have:
+  list A = | nil | cons of (tree A)
+
+  and (non-mut)
+  tree A = | leaf | node of (list A)
+
+  Then we cannot construct an interpretation of A without already assigning
+  an interp for tree, and vice versa - we will have a series of approximations
+  and no gauarntee of convergence
+
+  So the plan is: 
+  1. define ordering on context
+  2. use [typs_full], which populates each context in order
+  3. close the knot by proving that if typs agrees on all typesyms present
+    in type, then equal, and using ordering to show that future ones don't impact
+  *)
+(*Lemma typs_full_adt (c: ctx) (p: poly_map) (typs: typesym -> list ty -> Set)
+  (ts: typesym) (tys: list ty) (m: mut) (a: adt)
+  (m_in: inb mut_eq_dec m c) (a_in: inb adt_eq_dec a (m_adts m))
+  (ts_eq: ts_name ts = a_name a):
+  typs_full c p typs ts tys =
+  (*Or maybe mk_adts*)
+  build_p c p (typs_full c p typs) (ty_app ts tys).
+Proof.
+(*Need to think about how to prove this because just induction on c
+  not good idea*)
+  induction c; simpl; auto.
+  simpl in m_in.
+  destruct mut_eq_dec; simpl in *; subst.
+  - clear IHc.
+    unfold is_rec_ts.
+    destruct (typesym_get_adt a0 ts) eqn : Hget.
+    rewrite Hget.
+
+
+  mk_adts (typs_full c p typs) 
+  
+  
+  typs ts tys.
+*)
+Definition dom_full (c: ctx) (p: poly_map) (tys: typesym -> list ty -> Set)
+  (t: ty) : Set :=
+  build_p c p (typs_full c p tys) t.
+
+
+Lemma build_p_dom (c: ctx) (p: poly_map) (tys: typesym -> list ty -> Set)
+(m: mut) (m_in: inb mut_eq_dec m c) (t: ty):
+dom_full c p tys t = domain (typs_full c p tys) m p t.
+Proof.
+unfold dom_full.
+destruct t; simpl; auto.
+destruct (ts_find_mut t c) as [m1 |] eqn : Hfindmut.
+- pose proof (ts_find_mut_some _ _ _ Hfindmut). 
+  destruct H as [Hrecm1 m1_in].
+  unfold is_rec_ts in Hrecm1.
+  destruct (typesym_get_adt m1 t) eqn : Hget1;
+  [|discriminate].
+  destruct (typesym_get_adt m t) eqn : Hget.
+  * destruct s as [a1 [a1_in a1_name]].
+    destruct s0 as [a [a_in a_name]]. 
+    simpl in *. 
+    assert (m1 = m /\ a1 = a). admit.
+    destruct H; subst.
+    assert (a_in = a1_in) by apply bool_irrelevance.
+    subst.
+    
+    (*TODO: from uniformity*)
+    assert (l = map ty_var (ts_args t)) by admit.
+    subst.
+    rewrite map_map.
+    unfold build_poly_map. simpl.
+    assert ( (map_from_list typevar_dec empty
+    (combine (ts_args t)
+       (map (fun x : typevar => p x) (ts_args t)))) = p) by admit.
+    rewrite <- H at 3.
+    reflexivity.
+  * (*TODO: start here (and earlier) see what we need*)
+    unfold typs_full at 3. simpl.
+  
+  
+  unfold typs_full at 3.
+    simpl. rewrite Hfindmut.
+    rewrite Hget1.
+
+End Context.
 End ADT.
 
 Arguments ty_base {typevar} {base}. 
