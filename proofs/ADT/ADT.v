@@ -1617,17 +1617,134 @@ Fixpoint typs_full (c: ctx) (p: poly_map) (typs: typesym -> list ty -> Set) {str
         and m doesnt matter because it is recursive!*)
         (* fun ts tys => build_p c (typs_full ms p typs) (ty_app ts tys) *)
         (*Don't know if this is better*)
+        (*Maybe we do want build_p to take in ms - it should not matter
+          (i.e. we will have to prove that it doesn't matter)
+          but will make proofs easier*)
 
 
       let acc := typs_full ms p typs in 
       fun ts tys =>
         match (typesym_get_adt m ts) with
         | inleft a =>
-          let p' := build_poly_map (ts_args ts) (map (build_p c p acc) tys) in
+          let p' := build_poly_map (ts_args ts) (map (build_p ms p acc) tys) in
           mk_adts acc m p' (build_in_type adt_eq_dec (proj1' (proj2_sig a)))
         | inright _ => acc ts tys
         end 
     end.
+
+(*Lemma typs_full_change (c1 c2: ctx) (p: poly_map) (typs: typesym -> list ty -> Set):*)
+Check mk_adts.
+Check is_rec_ts.
+Check W.
+
+Ltac funext :=
+  repeat (apply functional_extensionality_dep; intros).
+Print build_base.
+Print in_type_extra.
+Lemma W_change (I: Set) (p: poly_map) (A1 A2: poly_map -> I -> Set)
+  (B1: forall i, I -> A1 p i -> Set) (B2: forall i, I -> A2 p i -> Set)
+  (i: I)
+  (Ha: forall p i, A1 p i = A2 p i)
+  (Hb: forall i j (x: A1 p i) (x2: A2 p i),
+    (forall Heq, x = scast Heq x2) ->
+  B1 i j x = B2 i j x2):
+  W I p A1 B1 i = W I p A2 B2 i.
+Proof.
+  assert (A1 = A2) by (funext; apply Ha).
+  subst.
+  f_equal.
+  funext.
+  apply Hb.
+  intros. rewrite scast_refl_uip.
+  reflexivity.
+Qed.
+(*  rewrite Hb.
+  f_equal.
+  apply scast_refl_uip.
+Qed.*)
+
+
+(*TODO: move*)
+Lemma in_type_extra_change_f {T : Set} (T_dec : forall x y : T, {x = y} + {x <> y}) 
+{l : list T} {f1 f2 : T -> Set}
+(*TODO: can we only require on list?*)
+(*(Heq: forall x, inb T_dec x l -> f1 x = f2 x)*)
+(Heq: forall x, f1 x = f2 x)
+:
+in_type_extra T_dec l f1 = in_type_extra T_dec l f2.
+Proof.
+assert (f1 = f2). {
+  funext. auto.
+}
+subst. reflexivity.
+Qed.
+
+
+
+Lemma ty_to_set_change_typs (tys1 tys2: typesym -> list ty -> Set)
+  (m: mut) (p: poly_map) (t: ty)
+  (Heq: forall ts tys, ~ is_rec_ts m ts -> tys1 ts tys = tys2 ts tys):
+  ty_to_set tys1 m p t = ty_to_set tys2 m p t.
+Proof.
+  destruct t; simpl; auto.
+  unfold is_rec_ts in Heq.
+  specialize (Heq t l).
+  destruct (typesym_get_adt m t); auto.
+Qed.
+
+
+Definition bool_typ {A: Set} (P: A -> bool) : Set :=
+  {x : A | P x}.
+
+Lemma bool_typ_eq {A: Set} (P1 P2: A -> bool) (Heq: forall a, P1 a = P2 a):
+  bool_typ P1 = bool_typ P2.
+Proof.
+f_equal.
+funext. auto.
+Qed.
+
+Lemma mk_adts_change_typs (tys1 tys2: typesym -> list ty -> Set) (m: mut)
+  (p: poly_map) (t: mut_in_type m)
+  (Heq: forall ts tys, ~ is_rec_ts m ts -> tys1 ts tys = tys2 ts tys):
+  mk_adts tys1 m p t = mk_adts tys2 m p t.
+Proof.
+  unfold mk_adts.
+  assert (Hconstrbase: forall (p: poly_map) (x : constr),
+  build_constr_base tys1 m p x =
+  build_constr_base tys2 m p x).
+  {
+    intros.
+    unfold build_constr_base, build_constr_base_aux.
+    induction (c_args x); simpl; auto.
+    rewrite ty_to_set_change_typs with (tys2:=tys2); auto.
+    rewrite IHl. reflexivity.
+  }
+  assert (Hbase: forall (p0 : poly_map) (i : mut_in_type m),
+  build_base tys1 m p0 (a_constrs (proj1_sig i)) =
+  build_base tys2 m p0 (a_constrs (proj1_sig i))).
+  {
+    intros.
+    unfold build_base.
+    apply in_type_extra_change_f. auto.
+  }
+  apply W_change.
+  apply Hbase.
+  intros i.
+  unfold build_rec.
+  unfold num_rec_type.
+  intros.
+  apply bool_typ_eq.
+  intros.
+  (*Need to transform cast to [eq_refl]*)
+  assert (build_constr_base tys2 m p = build_constr_base tys1 m p) by
+    (funext; auto).
+  unfold build_base in *.
+  generalize dependent x2.
+  rewrite H0.
+  intros.
+  specialize (H eq_refl). subst. reflexivity.
+Qed.
+
 (*I think we are going to need an ordering, and the above may work with
   an ordering.
   Basically, suppose we have:
@@ -1646,7 +1763,7 @@ Fixpoint typs_full (c: ctx) (p: poly_map) (typs: typesym -> list ty -> Set) {str
   3. close the knot by proving that if typs agrees on all typesyms present
     in type, then equal, and using ordering to show that future ones don't impact
   *)
-(*Lemma typs_full_adt (c: ctx) (p: poly_map) (typs: typesym -> list ty -> Set)
+Lemma typs_full_adt (c: ctx) (p: poly_map) (typs: typesym -> list ty -> Set)
   (ts: typesym) (tys: list ty) (m: mut) (a: adt)
   (m_in: inb mut_eq_dec m c) (a_in: inb adt_eq_dec a (m_adts m))
   (ts_eq: ts_name ts = a_name a):
@@ -1654,6 +1771,71 @@ Fixpoint typs_full (c: ctx) (p: poly_map) (typs: typesym -> list ty -> Set) {str
   (*Or maybe mk_adts*)
   build_p c p (typs_full c p typs) (ty_app ts tys).
 Proof.
+  simpl.
+  assert (ts_find_mut ts c = Some m) by admit.
+  rewrite H.
+  destruct (typesym_get_adt m ts) eqn : Hget; auto.
+  destruct s as [a1 [a1_in a1_name]]; simpl in *.
+  assert (a = a1) by admit. subst.
+  assert (a1_in = a_in) by apply bool_irrelevance. subst.
+  (*This is really the lemma we want - maybe just change it*)
+  clear Hget a1_name.
+  induction c as [| mhd ctl IH]; [discriminate|].
+  simpl in m_in.
+  destruct mut_eq_dec; simpl in m_in; subst.
+  - simpl typs_full at 1.
+    destruct (typesym_get_adt mhd ts) eqn : Hget.
+    + destruct s as [a2 [a2_in a2_name]].
+      clear Hget.
+      assert (a1 = a2) by admit. subst.
+      simpl proj1'.
+      assert (a2_in = a_in) by apply bool_irrelevance.
+      subst. assert (a2_name = ts_eq). apply UIP_dec. apply string_dec.
+      subst. 
+      (*So here is where we need to prove this stuff*)
+      (*First, we change [typs_full] to remove the extra context because
+        it does not affect non-adts*)
+      rewrite mk_adts_change_typs with (tys1:=(typs_full (mhd :: ctl) p typs))
+        (tys2:=((typs_full ctl p typs))).
+      2: {
+        intros. simpl.
+        unfold is_rec_ts in H0.
+        destruct (typesym_get_adt mhd ts0); auto.
+        contradiction.
+      }
+      (*Is this true? Need to make sure
+        Does this not work if something tys contains something in mhd?
+        Ugh need to see*)
+      (*Next step: prove result for [build_p]
+        2 parts: 
+        1. prove that we can change typs in build_p 
+          as long as they agree on all *)
+      
+      string_eq_dec. apply bool_irrelevance. clear a2_name.
+  
+  simpl. 
+
+  
+  
+  clear a1_name.
+
+
+
+
+  (*Ideas
+  1. prove that [typs_full] is ONLY affected by adts in context, everything else
+    equal to tys
+  2. prove that we can change typs in [mk_adts] as long as it agrees on
+    all typesyms in mutual adt (will be casting, funext, etc)
+  3. prove in [build_poly_map] that we can change context as long as all mutual
+    types in the argument type are in both
+    (basically build_p c1 tys1 ty = build_p c2 tys2 ty 
+    if c1 and c2 agree on all muts in ty
+    and tys1 and tys2 agree on all typesyms in ty)
+  4. then we should be able to prove this lemma by induction on c
+    *)
+Admitted.
+  (*destruct (typesym_get_adt)
 (*Need to think about how to prove this because just induction on c
   not good idea*)
   induction c; simpl; auto.
@@ -1662,7 +1844,8 @@ Proof.
   - clear IHc.
     unfold is_rec_ts.
     destruct (typesym_get_adt a0 ts) eqn : Hget.
-    rewrite Hget.
+    + rewrite Hget.
+      unfold typs_full at 1.
 
 
   mk_adts (typs_full c p typs) 
@@ -1707,6 +1890,17 @@ destruct (ts_find_mut t c) as [m1 |] eqn : Hfindmut.
     rewrite <- H at 3.
     reflexivity.
   * (*TODO: start here (and earlier) see what we need*)
+    rewrite typs_full_adt with (m:=m1)(a:=(proj1_sig s)); auto.
+    simpl.
+    rewrite Hfindmut.
+    rewrite Hget1. auto.
+    apply (proj2_sig s).
+    apply (proj2_sig s).
+  - destruct (typesym_get_adt m t) eqn : Hget; auto.
+    (*contradiction*) admit.
+    + auto.
+    rewrite Hget.
+    unfold build_p.
     unfold typs_full at 3. simpl.
   
   
