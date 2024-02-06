@@ -608,6 +608,12 @@ End Theorems.
 (*NOTE: unlike previous version, domain of ADT is definitionally equal to
   mk_adts, not propositionally equal. This reduces need for casts*)
 (*NOTE: will need to fix later to change p to handle non-uniformity*)
+(*JOSH - need to modify p here if we want the theorem to hold whenever
+  we use types in a different context - otherwise, will not work
+  Because we will only use typs for this, only can use previously defined
+  so issue with circularity - we will tie the knot by using
+  dom_full later - but does this give problems with the proof?
+  is it even possible to restrict to non-uniform types?*)
 Definition domain (p: poly_map) (t: ty) : Set :=
   match t with
   | ty_app ts tys =>
@@ -1502,11 +1508,11 @@ Definition ctx := list mut.
 
 (*TODO: use existing/fix*)
 Definition map_from_list {A B: Type} (eq_dec: forall (x y: A), {x = y} + {x <> y}) 
-  (d: B) (l: list (A * B)) (x: A) : B :=
-  fold_right (fun y acc => if eq_dec (fst y) x then (snd y) else acc) d l.
+  (d: A -> B) (l: list (A * B)) (x: A) : B :=
+  fold_right (fun y acc => if eq_dec (fst y) x then (snd y) else acc) (d x) l.
 
-Definition build_poly_map (l: list typevar) (l2: list Set) :=
-  map_from_list typevar_dec empty (combine l l2).
+Definition build_poly_map (p: poly_map) (l: list typevar) (l2: list Set) :=
+  map_from_list typevar_dec p (combine l l2).
 
 Definition ts_find_mut (t: typesym) (c: ctx) : option mut :=
   fold_right (fun m acc => if is_rec_ts m t then Some m else acc) None c.
@@ -1593,7 +1599,7 @@ Fixpoint build_p (c: ctx) (p: poly_map) (typs: typesym -> list ty -> Set)
     | Some m =>
         match (typesym_get_adt m ts) with
         | inleft a =>
-          let newp := build_poly_map (ts_args ts) (map (build_p c p typs) tys) in
+          let newp := build_poly_map p (ts_args ts) (map (build_p c p typs) tys) in
           (*let p := build_poly_map (ts_args ts) (map (domain acc m p) tys) in*)
           (*mk_adts?*)
           mk_adts typs m newp (build_in_type adt_eq_dec (proj1' (proj2_sig a)))
@@ -1607,6 +1613,7 @@ Fixpoint build_p (c: ctx) (p: poly_map) (typs: typesym -> list ty -> Set)
   | ty_var v => p v
   end.
 
+(*TODO: may need to change this see*)
 Fixpoint typs_full (c: ctx) (p: poly_map) (typs: typesym -> list ty -> Set) {struct c}
   : typesym -> list ty -> Set :=
     match c with
@@ -1626,16 +1633,15 @@ Fixpoint typs_full (c: ctx) (p: poly_map) (typs: typesym -> list ty -> Set) {str
       fun ts tys =>
         match (typesym_get_adt m ts) with
         | inleft a =>
-          let p' := build_poly_map (ts_args ts) (map (build_p ms p acc) tys) in
+          (*Should not be build_poly_map here by uniformity*)
+          let p' := build_poly_map p (ts_args ts) (map (build_p ms p acc) tys) in
           mk_adts acc m p' (build_in_type adt_eq_dec (proj1' (proj2_sig a)))
-        | inright _ => acc ts tys
+        | inright _ =>
+           acc ts tys
         end 
     end.
 
 (*Lemma typs_full_change (c1 c2: ctx) (p: poly_map) (typs: typesym -> list ty -> Set):*)
-Check mk_adts.
-Check is_rec_ts.
-Check W.
 
 Ltac funext :=
   repeat (apply functional_extensionality_dep; intros).
@@ -1763,11 +1769,124 @@ Qed.
   3. close the knot by proving that if typs agrees on all typesyms present
     in type, then equal, and using ordering to show that future ones don't impact
   *)
+
+(*NOTE: we need a positivity restriction on types (even without functions).
+  We CANNOT have the type (for example)*)
+
+(*When does an ADT a occur non-positively in type t?*)
+(*We don't need to implement the whole check, just for now
+  check that the above situation does not occur*)
+Fixpoint name_in (n: string) (t: ty) : bool :=
+  match t with
+  | ty_app ts tys => String.eqb (ts_name ts) n || 
+    existsb (name_in n) tys
+  | _ => false
+  end.
+
+Definition adt_nonpos (a: adt) (t: ty) : bool :=
+  match t with
+  | ty_app ts tys => implb (String.eqb (ts_name ts) (a_name a))
+    (forallb (fun x => negb (name_in (a_name a) x)) tys)
+  | _ => true
+  end.
+
+  (*TODO: bool, better*)
+(*Definition nonpos (m: mut) (a: adt) (ts: typesym) (tys: list ty): Prop :=
+  inb adt_eq_dec a (m_adts m) ->
+  ts_name ts = a_name a ->
+  forall (a': adt) (a_in': inb adt_eq_dec a (m_adts m)) (tys: list ty), 
+    adt_nonpos a 
+
+  ts_name ts = a_name a -> forall (a': adt)*)
+
+
 Lemma typs_full_adt (c: ctx) (p: poly_map) (typs: typesym -> list ty -> Set)
   (ts: typesym) (tys: list ty) (m: mut) (a: adt)
   (m_in: inb mut_eq_dec m c) (a_in: inb adt_eq_dec a (m_adts m))
-  (ts_eq: ts_name ts = a_name a):
+  (ts_eq: ts_name ts = a_name a)
+  (tys_pos: forall (a: adt) (a_in: inb adt_eq_dec a (m_adts m)) (t: ty)
+    (t_in: inb ty_eq_dec t tys),
+    adt_nonpos a t):
   typs_full c p typs ts tys =
+  mk_adts (typs_full c p typs) m 
+    (build_poly_map p (ts_args ts)
+      (map (build_p c p (typs_full c p typs)) tys))
+    (build_in_type adt_eq_dec a_in).
+Proof.
+  (*This won't work but let's see*)
+  induction c.
+  - simpl in *. discriminate.
+  - simpl in m_in.
+    destruct mut_eq_dec.
+    + subst a0. simpl in m_in.
+      rewrite mk_adts_change_typs with (tys2:=typs_full c p typs).
+      2: {
+        intros. simpl.
+        unfold is_rec_ts in H.
+        destruct (typesym_get_adt m ts0); auto; contradiction.
+      }
+      simpl typs_full at 1.
+      destruct (typesym_get_adt m ts).
+      2: {
+        exfalso.
+        exact (n _ a_in ts_eq).
+      }
+      (*So we need to show that these p maps are equal*)
+      f_equal.
+      * (*So here, by positivity, m cannot affect meaning of tys,
+          so we will show that we can safely replace these (TODO)*)
+        f_equal.
+        (*Lemmas we need
+          1. If c1 and c2 agree on all mutual types
+            found inside type ty, then build_p is equal
+          2. If typs1 and typs2 agree on all nonrec types
+            (maybe) in ty, then can switch in build_p
+            (not sure about this one)*)
+        admit.
+      * apply in_type_eq. simpl.
+        (*relies on well-formed context*) admit.
+    + simpl in m_in.
+      simpl typs_full at 1.
+      destruct (typesym_get_adt a0 ts).
+      {
+        (*contradiction becaues cant be in 2 mut at once*)
+        admit.
+      }
+      (*We still have a problem: what if context is 
+      list, foo A = g of A * (list unit)
+      and then we look at list (foo nat)
+      we cannot assume well-ordering here
+      we are proving something too strong I think
+      TODO: see*)
+      rewrite mk_adts_change_typs with (tys2:=typs_full c p typs).
+      2: {
+        intros.
+        simpl.
+        unfold
+      }
+      rewrite (IHc m_in).
+      
+      simpl in typs_full at 1.
+      (*Here, by well-ordering, NOTHING in *)
+Admitted.
+(* 
+      2: apply in_type_eq; simpl.
+      simpl.
+
+
+      Search mk_adts.
+    
+    
+    subst.
+  
+  
+  simpl in *.
+
+  
+  
+  simpl typs_full. simpl in *.
+
+  simpl.
   (*Or maybe mk_adts*)
   build_p c p (typs_full c p typs) (ty_app ts tys).
 Proof.
@@ -1834,7 +1953,7 @@ Proof.
     and tys1 and tys2 agree on all typesyms in ty)
   4. then we should be able to prove this lemma by induction on c
     *)
-Admitted.
+Admitted.*)
   (*destruct (typesym_get_adt)
 (*Need to think about how to prove this because just induction on c
   not good idea*)
@@ -1853,11 +1972,129 @@ Admitted.
   
   typs ts tys.
 *)
+(*AHA, this isn't even strictly positive*)
+Fail Inductive foo : Type -> Type :=
+  | foot: forall (A: Type), foo (foo A) -> foo A.
+
+(*I think: for lemma we want restriction that m occurs uniformly in t
+  and this will be true for constructor args (by assumptions)
+  Do we need uniformity or just no nesting (which can be ruled out by
+    strict positivity?)
+  *)
+(*No, dont want to adjust p
+  ex: if I am interpreteing list(list (unit * a)), have single map
+    mapping a to something, stull want to interpret as this
+  is the problem in [domain] - maybe because we do actually want
+  to adjust p
+  let's see if that helps*)
+
 Definition dom_full (c: ctx) (p: poly_map) (tys: typesym -> list ty -> Set)
   (t: ty) : Set :=
   build_p c p (typs_full c p tys) t.
 
+(*2 lemmas*)
+Print typs_full.
+(*easy*)
+Lemma dom_full_adt (c: ctx) (p: poly_map) (typs: typesym -> list ty -> Set)
+  (m: mut) (m_in: inb mut_eq_dec m c) (a: adt) (a_in: inb adt_eq_dec a (m_adts m))
+  (ts: typesym) (ts_eq: ts_name ts = a_name a) (tys: list ty):
+  dom_full c p typs (ty_app ts tys) =
+  domain (typs_full c p typs) m 
+    (build_poly_map p (ts_args ts) (map (build_p c p (typs_full c p typs)) 
+      tys)) (ty_app ts tys)
+    (*todo: maybe typs should be typs_full either way ok*).
+Proof.
+  unfold dom_full.
+  simpl.
+  assert (Hfindm: ts_find_mut ts c = Some m) by admit.
+  rewrite Hfindm.
+  destruct (typesym_get_adt m ts); auto.
+Admitted.
 
+(*Can we prove this without funext?*)
+(*Lemma ty_to_set_change_p typs m p1 p2 t:
+(forall x, p1 x = p2 x) ->
+ty_to_set typs m p1 t = ty_to_set typs m p2 t.
+Proof.
+intros Heq.
+destruct t; simpl; auto.
+Qed.
+
+Lemma domain_change_p typs m p1 p2 t:
+  (forall x, p1 x = p2 x) ->
+  domain typs m p1 t = domain typs m p2 t.
+Proof.
+  intros Heq.
+  unfold domain. destruct t; auto.
+  - apply ty_to_set_change_p; auto.
+  - destruct (typesym_get_adt m t); auto.
+    Check mk_adts.*)
+
+
+(*Corollary: if tys = map ty_var (ts_args ts), then we can replace
+  build_poly_map ... with p*)
+Lemma dom_full_adt_unif (c: ctx) (p: poly_map) (typs: typesym -> list ty -> Set)
+(m: mut) (m_in: inb mut_eq_dec m c) (a: adt) (a_in: inb adt_eq_dec a (m_adts m))
+(ts: typesym) (ts_eq: ts_name ts = a_name a):
+dom_full c p typs (ty_app ts (map ty_var (ts_args ts))) =
+domain (typs_full c p typs) m p (ty_app ts (map ty_var (ts_args ts))).
+Proof.
+  rewrite dom_full_adt with (m:=m)(a:=a); auto.
+  f_equal.
+  rewrite map_map. simpl.
+  (*Need funext unfortunately*)
+  funext.
+  (*TODO: separate lemma?*)
+  unfold build_poly_map.
+  induction (ts_args ts); simpl; auto.
+  destruct (typevar_dec a0 x); subst; auto.
+Qed.
+
+(*TODO: one more that just leaves it generic and gives unif maybe or not*)
+
+(*The harder case*)
+Lemma dom_full_non_adt (c: ctx) (p: poly_map) (tys: typesym -> list ty -> Set)
+(m: mut) (m_in: inb mut_eq_dec m c) (t: ty)
+(Hnty: forall (a: adt) (a_in: inb adt_eq_dec a (m_adts m)) (ts: typesym)
+  (ts_eq: ts_name ts = a_name a) (tys: list ty), t <> ty_app ts tys):
+dom_full c p tys t = domain (typs_full c p tys) m p t.
+Proof.
+  unfold dom_full.
+  destruct t; simpl; auto.
+  destruct (ts_find_mut t c) as [m1|] eqn : Hfindmut.
+  2: {
+    destruct (typesym_get_adt m t); auto.
+    (*TODO: contradiction*)
+    admit.
+  }
+  (*Here, show m1 <> m, first is inleft, second is inright
+    and will need to prove result about typs_full for sure*)
+  apply ts_find_mut_some in Hfindmut.
+  destruct Hfindmut as [t_rec m1_in].
+  unfold is_rec_ts in t_rec.
+  destruct (typesym_get_adt m1 t); try discriminate.
+  clear t_rec.
+  (*So t = a(ts) for a in m1 (which cannot be m)*)
+  destruct (typesym_get_adt m t).
+  - (*Contradiction: contracts Hnty*)
+    exfalso.
+    exact (Hnty (proj1_sig s0) (proj1 (proj2_sig s0))
+      t (proj2 (proj2_sig s0)) l eq_refl).
+  - (*Here, need to know about [typs_full]*)
+    rewrite typs_full_adt with (m:=m1)(a:=proj1_sig s)(a_in:=proj1'(proj2_sig s)); auto.
+    apply (proj2_sig s).
+
+
+  Search ts_find_mut.
+  assert (m <> m1) by admit.
+
+   
+
+Lemma build_p_dom (c: ctx) (p: poly_map) (tys: typesym -> list ty -> Set)
+(m: mut) (m_in: inb mut_eq_dec m c) (t: ty):
+dom_full c p tys t = domain (typs_full c p tys) m p t.
+
+(*Maybe we need to modify p to be full?*)
 Lemma build_p_dom (c: ctx) (p: poly_map) (tys: typesym -> list ty -> Set)
 (m: mut) (m_in: inb mut_eq_dec m c) (t: ty):
 dom_full c p tys t = domain (typs_full c p tys) m p t.
