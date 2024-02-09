@@ -739,7 +739,8 @@ Definition ty_set_d: forall p, ty_to_set p ty_d := fun p =>
 
 (*We require that all ADT names are unique*)
 (*TODO: change to decidable version*)
-Variable adt_names_uniq: NoDup (map a_name (m_adts m)).
+Definition adt_names_uniq m := NoDup (map a_name (m_adts m)).
+Variable m_names_uniq: adt_names_uniq m.
 
 Lemma adt_names_eq {a1 a2: adt}:
   inb adt_eq_dec a1 (m_adts m) ->
@@ -748,7 +749,7 @@ Lemma adt_names_eq {a1 a2: adt}:
   a1 = a2.
 Proof.
   intros a1_in a2_in name_eq.
-  apply (@NoDup_map_in _ _ _ _ a1 a2) in adt_names_uniq; auto.
+  apply (@NoDup_map_in _ _ _ _ a1 a2) in m_names_uniq; auto.
   - apply (ssrbool.elimT (inb_spec _ _ _) a1_in).
   - apply (ssrbool.elimT (inb_spec _ _ _) a2_in).
 Qed.
@@ -1528,6 +1529,109 @@ Proof.
     destruct Hmut as [Hr Hinb]; rewrite Hr, Hinb, orb_true_r; auto.
 Qed. 
 
+Lemma ts_find_mut_none t c:
+  ts_find_mut t c = None ->
+  forall m, inb mut_eq_dec m c -> is_rec_ts m t = false.
+Proof.
+  induction c; simpl; try discriminate.
+  intros. destruct (is_rec_ts a t) eqn : Hrec; try discriminate.
+  destruct mut_eq_dec; subst; simpl in *; auto.
+Qed.
+
+(*TODO: boolean*)
+Definition ctx_uniq (c: ctx) : Prop :=
+  NoDup (concat (map (fun m => map a_name (m_adts m)) c)).
+
+Ltac inP H :=
+  apply (ssrbool.elimT (inb_spec _ _ _) H).
+
+Lemma ctx_uniq_names (c: ctx) (c_uniq: ctx_uniq c) (m: mut)
+  (m_in: inb mut_eq_dec m c):
+  adt_names_uniq m.
+Proof.
+  unfold ctx_uniq in c_uniq.
+  unfold adt_names_uniq.
+  eapply in_concat_NoDup in c_uniq.
+  - apply c_uniq.
+  - apply string_dec.
+  - rewrite in_map_iff. exists m. split; auto.
+    inP m_in.
+Qed.
+
+Lemma mut_names_eq (c: ctx) {m1 m2: mut} {a1 a2: adt}
+  (c_uniq: ctx_uniq c):
+  inb mut_eq_dec m1 c ->
+  inb mut_eq_dec m2 c ->
+  inb adt_eq_dec a1 (m_adts m1) ->
+  inb adt_eq_dec a2 (m_adts m2) ->
+  a_name a1 = a_name a2 ->
+  m1 = m2 /\ a1 = a2.
+Proof.
+  unfold ctx_uniq in c_uniq.
+  induction c; simpl; [discriminate|].
+  destruct mut_eq_dec; simpl; subst.
+  - intros _. destruct mut_eq_dec; simpl; subst.
+    + intros _ a_in1 a_in2 a_eq.
+      split; auto.
+      apply adt_names_eq with (m:=a); try assumption.
+      apply ctx_uniq_names with (c:=(a:: c)); auto.
+      simpl. destruct mut_eq_dec; auto.
+    + simpl in c_uniq.
+      intros m2_in a1_in a2_in a_eq.
+      apply NoDup_app_iff in c_uniq.
+      destruct c_uniq as [_ [_ [Huniq _]]].
+      exfalso.
+      apply (Huniq (a_name a1)).
+      * rewrite in_map_iff. exists a1; split; auto.
+        inP a1_in.
+      * rewrite in_concat. eexists.
+        split.
+        -- rewrite in_map_iff. exists m2.
+          split; [reflexivity |inP m2_in].
+        -- rewrite in_map_iff. exists a2; split; auto.
+          inP a2_in.
+  - intros m1_in.
+    destruct mut_eq_dec; subst; simpl in *.
+    + (*Identical to last case*)
+      intros _ a1_in a2_in a_eq.
+      apply NoDup_app_iff in c_uniq.
+      destruct c_uniq as [_ [_ [Huniq _]]].
+      exfalso.
+      apply (Huniq (a_name a2)).
+      * rewrite in_map_iff. exists a2; split; auto.
+        inP a2_in.
+      * rewrite in_concat. eexists.
+        split.
+        -- rewrite in_map_iff. exists m1.
+          split; [reflexivity |inP m1_in].
+        -- rewrite in_map_iff. exists a1; split; auto.
+          inP a1_in.
+    + apply IHc; auto. 
+      apply NoDup_app in c_uniq; apply c_uniq.
+Qed.
+
+Lemma ts_find_mut_some_iff t c m:
+  ctx_uniq c ->
+  is_rec_ts m t -> 
+  inb mut_eq_dec m c ->
+  ts_find_mut t c = Some m.
+Proof.
+  intros ctx_uniq Hrec m_in.
+  destruct (ts_find_mut t c) as [m2|] eqn : Hfind.
+  - apply ts_find_mut_some in Hfind.
+    destruct Hfind as [t_rec m2_in].
+    unfold is_rec_ts in *.
+    destruct (typesym_get_adt m t); try discriminate.
+    destruct (typesym_get_adt m2 t); try discriminate.
+    destruct s as [a1 [a1_in t_name1]].
+    destruct s0 as [a2 [a2_in t_name2]].
+    destruct (mut_names_eq _ ctx_uniq m_in m2_in a1_in a2_in ltac:(congruence))
+    as [m_eq a_eq]; subst; reflexivity.
+  - apply ts_find_mut_none with (m:=m) in Hfind; auto.
+    rewrite Hrec in Hfind. discriminate.
+Qed.
+  
+
 (*Question: should we just do this in a context?
   and define domain based on the context?
   that might be the way to go, honestly
@@ -1645,8 +1749,7 @@ Fixpoint typs_full (c: ctx) (p: poly_map) (typs: typesym -> list ty -> Set) {str
 
 Ltac funext :=
   repeat (apply functional_extensionality_dep; intros).
-Print build_base.
-Print in_type_extra.
+
 Lemma W_change (I: Set) (p: poly_map) (A1 A2: poly_map -> I -> Set)
   (B1: forall i, I -> A1 p i -> Set) (B2: forall i, I -> A2 p i -> Set)
   (i: I)
@@ -1798,6 +1901,20 @@ Definition adt_nonpos (a: adt) (t: ty) : bool :=
     adt_nonpos a 
 
   ts_name ts = a_name a -> forall (a': adt)*)
+
+(*Cases for [typs_full]:
+  1. If ts is NOT an ADT, then this is just equal to typs ts tys
+  2. If ts = a for ADT a in mut m, then
+    IF all type symbols in ts occur before m in the context c,
+    then [typs_full c p typs ts tys = mk_adts .... a]
+
+  Plan (informal):
+  By well-ordering, this means that all ADTs are set correctly.
+  Then, we feel this into [build_p] to handle polymorphism correctly.
+  We will show that with this final dom_full function, every
+  ts and tys is interpreted as the mk_adts
+  *)
+(*
 
 
 Lemma typs_full_adt (c: ctx) (p: poly_map) (typs: typesym -> list ty -> Set)
@@ -1987,15 +2104,24 @@ Fail Inductive foo : Type -> Type :=
   is the problem in [domain] - maybe because we do actually want
   to adjust p
   let's see if that helps*)
+*)
 
+(*The extended version of [typs_full] also handles polymorphism
+  correctly (which we will show)*)
+Definition typs_full_poly (c: ctx) (p: poly_map) (typs: typesym -> list ty -> Set)
+  (ts: typesym) (tys: list ty) : Set :=
+  build_p c p (typs_full c p typs) (ty_app ts tys).
+
+(*TODO: see if the full domain needs this *)
 Definition dom_full (c: ctx) (p: poly_map) (tys: typesym -> list ty -> Set)
   (t: ty) : Set :=
   build_p c p (typs_full c p tys) t.
 
 (*2 lemmas*)
-Print typs_full.
+
 (*easy*)
-Lemma dom_full_adt (c: ctx) (p: poly_map) (typs: typesym -> list ty -> Set)
+(*TODO: don't think I will need this?*)
+(*Lemma dom_full_adt (c: ctx) (p: poly_map) (typs: typesym -> list ty -> Set)
   (m: mut) (m_in: inb mut_eq_dec m c) (a: adt) (a_in: inb adt_eq_dec a (m_adts m))
   (ts: typesym) (ts_eq: ts_name ts = a_name a) (tys: list ty):
   dom_full c p typs (ty_app ts tys) =
@@ -2048,102 +2174,157 @@ Proof.
   unfold build_poly_map.
   induction (ts_args ts); simpl; auto.
   destruct (typevar_dec a0 x); subst; auto.
-Qed.
+Qed.*)
 
 (*TODO: one more that just leaves it generic and gives unif maybe or not*)
 
 (*The harder case*)
-Lemma dom_full_non_adt (c: ctx) (p: poly_map) (tys: typesym -> list ty -> Set)
-(m: mut) (m_in: inb mut_eq_dec m c) (t: ty)
-(Hnty: forall (a: adt) (a_in: inb adt_eq_dec a (m_adts m)) (ts: typesym)
-  (ts_eq: ts_name ts = a_name a) (tys: list ty), t <> ty_app ts tys):
-dom_full c p tys t = domain (typs_full c p tys) m p t.
+(*Maybe this isn't what we want exactly*)
+
+(*TODO: move*)
+Lemma typs_full_non_adt (c: ctx) (p: poly_map) (typs: typesym -> list ty -> Set)
+  (ts: typesym) (tys: list ty)
+  (ts_none: forall m, inb mut_eq_dec m c -> is_rec_ts m ts = false ):
+  typs_full c p typs ts tys = typs ts tys.
+Proof.
+  induction c; simpl; auto.
+  assert (Hrec: is_rec_ts a ts = false) by 
+    (apply ts_none; simpl; destruct mut_eq_dec; auto).
+  unfold is_rec_ts in Hrec. 
+  destruct (typesym_get_adt a ts); try discriminate.
+  apply IHc. intros. apply ts_none; simpl.
+  rewrite H, orb_true_r; auto.
+Qed.
+
+(*The easy case*)
+Lemma dom_full_non_adt (c: ctx) (p: poly_map) (typs: typesym -> list ty -> Set)
+  (ts: typesym) (tys: list ty)
+  (ts_none: forall m, inb mut_eq_dec m c -> is_rec_ts m ts = false ):
+  dom_full c p typs (ty_app ts tys) = typs ts tys.
 Proof.
   unfold dom_full.
-  destruct t; simpl; auto.
-  destruct (ts_find_mut t c) as [m1|] eqn : Hfindmut.
-  2: {
-    destruct (typesym_get_adt m t); auto.
-    (*TODO: contradiction*)
-    admit.
-  }
-  (*Here, show m1 <> m, first is inleft, second is inright
-    and will need to prove result about typs_full for sure*)
-  apply ts_find_mut_some in Hfindmut.
-  destruct Hfindmut as [t_rec m1_in].
-  unfold is_rec_ts in t_rec.
-  destruct (typesym_get_adt m1 t); try discriminate.
-  clear t_rec.
-  (*So t = a(ts) for a in m1 (which cannot be m)*)
-  destruct (typesym_get_adt m t).
-  - (*Contradiction: contracts Hnty*)
-    exfalso.
-    exact (Hnty (proj1_sig s0) (proj1 (proj2_sig s0))
-      t (proj2 (proj2_sig s0)) l eq_refl).
-  - (*Here, need to know about [typs_full]*)
-    rewrite typs_full_adt with (m:=m1)(a:=proj1_sig s)(a_in:=proj1'(proj2_sig s)); auto.
-    apply (proj2_sig s).
+  simpl.
+  destruct (ts_find_mut ts c) as [m|] eqn : Hfind.
+  - apply ts_find_mut_some in Hfind.  
+    destruct Hfind as [ts_rec m_in].
+    rewrite (ts_none _ m_in) in ts_rec.
+    discriminate.
+  - apply typs_full_non_adt; auto.
+Qed.
+
+Fixpoint ts_in (ts: typesym) (t: ty) : bool :=
+  match t with
+  | ty_app ts' tys => typesym_eq_dec ts ts' || existsb (ts_in ts) tys
+  | _ => false
+  end.
+
+(*Well ordered: all types appears before m in the context c*)
+(*TODO: boolean, or see what the best way for this is*)
+Definition well_ordered (c: ctx) (m: mut) (t: ty) : Prop :=
+  exists l1 l2, c = l1 ++ m :: l2 /\
+  forall ts m', ts_in ts t -> is_rec_ts m' ts -> inb mut_eq_dec m' l2.
+
+(*The harder case*)
+Lemma typs_full_adt (c: ctx) (p: poly_map) (typs: typesym -> list ty -> Set)
+  (c_uniq: ctx_uniq c)
+  (m: mut) (m_in: inb mut_eq_dec m c) 
+  (a: adt) (a_in: inb adt_eq_dec a (m_adts m))
+  (ts: typesym) (tys: list ty)
+  (ts_eq: ts_name ts = a_name a)
+  (tys_ordered: forall t, inb ty_eq_dec t tys -> well_ordered c m t)
+  :
+  typs_full_poly c p typs ts tys =
+  mk_adts (typs_full c p typs) m
+    (*The map sending alpha to [[tys]]*)
+    (build_poly_map p (ts_args ts)
+      (map (build_p c p (typs_full c p typs)) tys))
+    (build_in_type adt_eq_dec a_in).
+Admitted.
+
+(*What we need here is a lemma like:
+  if [typs] satisfies the condition for every well-ordered pair,
+  then [build_p] does in general*)
+(*Lemma build_p_bootstrap (c: ctx) (p: poly_map) (typs: typesym -> list ty -> Set)
+(c_uniq: ctx_uniq c)
+(typs_cond: forall (m: mut) (m_in: inb mut_eq_dec m c) 
+  (ts : typesym) (tys: list ty)
+  (ts_rec: is_rec_ts m ts)
+  (tys_ordered: forall t, inb ty_eq_dec t tys -> well_ordered c m t),
+  typs_full c p typs ts tys =
+  mk_adts (typs_full c p typs) m
+    (*The map sending alpha to [[tys]]*)
+    (build_poly_map p (ts_args ts)
+      (map (build_p c p (typs_full c p typs)) tys))
+    (build_in_type adt_eq_dec a_in)):
+
+forall (m: mut) (m_in: inb mut_eq_dec m c) (ts: typesym)
+  (tys: list ty) (ts_rec: is_rec_ty m ts):
+  build_p c p typs (ty_app ts tys) =*)
 
 
-  Search ts_find_mut.
-  assert (m <> m1) by admit.
-
-   
-
-Lemma build_p_dom (c: ctx) (p: poly_map) (tys: typesym -> list ty -> Set)
-(m: mut) (m_in: inb mut_eq_dec m c) (t: ty):
-dom_full c p tys t = domain (typs_full c p tys) m p t.
-
-(*Maybe we need to modify p to be full?*)
-Lemma build_p_dom (c: ctx) (p: poly_map) (tys: typesym -> list ty -> Set)
-(m: mut) (m_in: inb mut_eq_dec m c) (t: ty):
-dom_full c p tys t = domain (typs_full c p tys) m p t.
+Lemma dom_full_adt (c: ctx) (p: poly_map) (typs: typesym -> list ty -> Set)
+(c_uniq: ctx_uniq c)
+(m1 m2: mut) (m1_in: inb mut_eq_dec m1 c) 
+(m2_in: inb mut_eq_dec m2 c) 
+(ts: typesym) (tys: list ty)
+(ts_rec: is_rec_ts m1 ts)
+(tys_ordered: forall t, inb ty_eq_dec t tys -> well_ordered c m1 t):
+dom_full c p typs (ty_app ts tys) =
+domain (typs_full_poly c p typs) m2
+   (*The map sending alpha to [[tys]]*)
+   (*TODO: poly here or not?*)
+   (build_poly_map p (ts_args ts)
+   (map (build_p c p (typs_full_poly c p typs)) tys))
+   (ty_app ts tys).
 Proof.
-unfold dom_full.
-destruct t; simpl; auto.
-destruct (ts_find_mut t c) as [m1 |] eqn : Hfindmut.
-- pose proof (ts_find_mut_some _ _ _ Hfindmut). 
-  destruct H as [Hrecm1 m1_in].
-  unfold is_rec_ts in Hrecm1.
-  destruct (typesym_get_adt m1 t) eqn : Hget1;
-  [|discriminate].
-  destruct (typesym_get_adt m t) eqn : Hget.
-  * destruct s as [a1 [a1_in a1_name]].
-    destruct s0 as [a [a_in a_name]]. 
-    simpl in *. 
-    assert (m1 = m /\ a1 = a). admit.
-    destruct H; subst.
-    assert (a_in = a1_in) by apply bool_irrelevance.
+  simpl.
+  unfold is_rec_ts in ts_rec.
+  destruct (typesym_get_adt m1 ts); try discriminate.
+  destruct s as [a1 [a1_in ts_name]].
+  destruct (typesym_get_adt m2 ts) eqn : Hgetm2.
+  - (*Case 1: m1 = m2*)
+    assert (m1 = m2). {
+      apply (mut_names_eq _ c_uniq m1_in m2_in a1_in (proj1 (proj2_sig s))).
+      rewrite <- (proj2 (proj2_sig s)). auto.
+    }
     subst.
-    
-    (*TODO: from uniformity*)
-    assert (l = map ty_var (ts_args t)) by admit.
+    unfold dom_full; simpl.
+    assert (Hfind: ts_find_mut ts c = Some m2). {
+      apply ts_find_mut_some_iff; auto.
+      unfold is_rec_ts. rewrite Hgetm2; auto.
+    }
+    rewrite Hfind, Hgetm2.
+    (*TODO: here, we need to use the fact that 
+    the context is well-ordered, so typs_full sets the types
+    correctly already, so typs_full_poly adds nothing*)
+    admit.
+  - (*Case 2: m1 <> m2*) 
+    unfold dom_full.
+    unfold dom_full; simpl.
+    assert (Hfind: ts_find_mut ts c = Some m1). {
+      apply ts_find_mut_some_iff; auto.
+      unfold is_rec_ts.
+      destruct (typesym_get_adt m1 ts); auto.
+      exfalso. apply (n0 a1 a1_in ts_name).
+    }
+    rewrite Hfind.
+    destruct (typesym_get_adt m1 ts); auto.
+    destruct s as [a2 [a2_in ts_eq2]]. simpl.
+    2: {
+      exfalso. apply (n0 _ a1_in); auto.
+    }
+    assert (a1 = a2). {
+      apply adt_names_eq with (m:=m1); auto; try congruence.
+      apply ctx_uniq_names with (c:=c); assumption.
+    }
     subst.
-    rewrite map_map.
-    unfold build_poly_map. simpl.
-    assert ( (map_from_list typevar_dec empty
-    (combine (ts_args t)
-       (map (fun x : typevar => p x) (ts_args t)))) = p) by admit.
-    rewrite <- H at 3.
-    reflexivity.
-  * (*TODO: start here (and earlier) see what we need*)
-    rewrite typs_full_adt with (m:=m1)(a:=(proj1_sig s)); auto.
-    simpl.
-    rewrite Hfindmut.
-    rewrite Hget1. auto.
-    apply (proj2_sig s).
-    apply (proj2_sig s).
-  - destruct (typesym_get_adt m t) eqn : Hget; auto.
-    (*contradiction*) admit.
-    + auto.
-    rewrite Hget.
-    unfold build_p.
-    unfold typs_full at 3. simpl.
-  
-  
-  unfold typs_full at 3.
-    simpl. rewrite Hfindmut.
-    rewrite Hget1.
+    assert (a1_in = a2_in) by apply bool_irrelevance.
+    assert (ts_name = ts_eq2) by apply UIP_dec, string_dec.
+    subst. 
+    (*So this is the theorem that we need*)
+    (*Again, need to think if we need typs_full_poly for dom_full or not*)
+    (*Start here*)
+
 
 End Context.
 End ADT.

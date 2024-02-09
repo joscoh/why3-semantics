@@ -102,7 +102,7 @@ Proof.
   apply IH. lia.
 Qed. 
 
-Inductive empty := .
+Inductive empty : Set := .
 
 (*In many places, we need the type {x : T | in x l} and the type T is
 decidable. We give utilities here for this type*)
@@ -179,3 +179,67 @@ Definition list_eq_dec {A: Type} (eq_dec: forall (x y: A), {x = y} + {x <> y})
 (l1 l2: list A) : {l1 = l2} + {l1 <> l2} := reflect_dec' (list_eqb_spec eq_dec l1 l2).
 
 End Eq.
+
+(*TODO: see (probably move, use uniq, see)*)
+Lemma not_in_app: forall {A: Type} {l1 l2 : list A} {x: A},
+  ~ (In x (l1 ++ l2)) ->
+  ~ In x l1 /\ ~ In x l2.
+Proof.
+  intros. split; intro C; apply H; apply in_or_app; [left | right]; auto.
+Qed.
+
+Lemma NoDup_app_iff: forall {A: Type} (l1 l2: list A),
+  NoDup (l1 ++ l2) <->
+  NoDup l1 /\ NoDup l2 /\ (forall x, In x l1 -> ~In x l2) /\
+  (forall x, In x l2 -> ~ In x l1).
+Proof.
+  intros A l1. induction l1; simpl; intros; auto; split; intros.
+  - repeat split; auto. constructor.
+  - apply H.
+  - inversion H; subst.
+    apply IHl1 in H3. destruct H3 as [Hn1 [Hn2 [Hi1 Hi2]]].
+    repeat split; auto.
+    + constructor; auto.
+      apply (not_in_app H2).
+    + intros x [Hx | Hx]; subst.
+      * apply (not_in_app H2).
+      * apply Hi1. auto.
+    + intros x Hinx [Hx | Hx]; subst.
+      * revert Hinx. apply (not_in_app H2).
+      * revert Hx. apply Hi2. auto.
+  - destruct H as [Hn1 [Hn2 [Hi1 Hi2]]].
+    inversion Hn1; subst.
+    constructor.
+    + intro C. apply in_app_or in C. destruct C; try contradiction.
+      apply (Hi1 a); auto.
+    + apply IHl1. repeat split; auto.
+      intros x Hx. apply Hi2 in Hx. intro C.
+      apply Hx. right; auto.
+Qed.
+
+Lemma NoDup_app: forall {A: Type} (l1 l2: list A),
+  NoDup (l1 ++ l2) ->
+  NoDup l1 /\ NoDup l2.
+Proof.
+  intros. rewrite NoDup_app_iff in H.
+  split; apply H.
+Qed.
+
+(*If NoDup (concat l), the inner lists also have NoDups*)
+Lemma in_concat_NoDup: forall {A: Type}
+(eq_dec: forall (x y: A), {x = y} + {x <> y})
+{l: list (list A)} 
+  {l1: list A},
+  NoDup (concat l) ->
+  In l1 l ->
+  NoDup l1.
+Proof.
+  intros A eq_dec; induction l; intros; simpl; auto.
+  - destruct H0. 
+  - simpl in H. simpl in H0.
+    rewrite NoDup_app_iff in H.
+    destruct H as [Hna [Hnc [Hina Hinc]]].
+    destruct H0; subst.
+    + assumption.
+    + apply IHl; assumption.
+Qed.
