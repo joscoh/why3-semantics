@@ -11,13 +11,13 @@ Require Export Coq.Logic.FunctionalExtensionality.
 Require Import Coq.Logic.EqdepFacts.
 
 (*Dealing with finite types*)
-
+From HB Require structures.
 From mathcomp Require all_ssreflect fintype finfun.
 Set Bullet Behavior "Strict Subproofs".
 
 Section SSReflect.
 
-Import all_ssreflect fintype finfun.
+Import all_ssreflect fintype finfun structures.
 
 Section Finite.
 
@@ -191,15 +191,9 @@ Notation finm := (finite m).
 Notation finite_ord_cancel' := (@finite_ord_cancel m).
 Notation ord_finite_cancel' := (@ord_finite_cancel m).
 
-Definition finite_eqMixin := CanEqMixin finite_ord_cancel'.
-Canonical finite_eqType := EqType finm finite_eqMixin.
-Definition finite_choiceMixin := CanChoiceMixin finite_ord_cancel'.
-Canonical finite_choiceType := ChoiceType finm finite_choiceMixin.
-Definition finite_countMixin := CanCountMixin finite_ord_cancel'.
-Canonical finite_countType := CountType finm finite_countMixin.
-
-Definition finite_finMixin := CanFinMixin finite_ord_cancel'.
-Canonical finite_finType := FinType finm finite_finMixin.
+(*TODO: gives warnings for redudant canonical projections, but
+  needed for eq_dec proof below (really just need Equality)*)
+HB.instance Definition _ := Finite.copy finm (can_type finite_ord_cancel').
 
 End Mixins.
 

@@ -487,7 +487,7 @@ Definition theory_size (t: theory) : nat :=
   recursive (or at least Coq cannot tell that they are)*)
 From Equations Require Import Equations.
   (*Solves all goals*)
-  Obligation Tactic := intros; try (unfold theory_size); simpl; try lia.
+  #[local] Obligation  Tactic := intros; try (unfold theory_size); simpl; try lia.
   
   (*We need a bunch of utilities*)
 (*Utilities for namespace (move)*)

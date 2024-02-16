@@ -644,8 +644,7 @@ Proof.
     + destruct l0; simpl; try inversion e0.
       destruct ps; simpl; try inversion Hlenpsl0.
       simpl in H0. inversion H0. subst.
-      simpl in H1. inversion H1; subst. split; auto.
-      constructor.
+      simpl in H1. inversion H1; subst. auto.
     + destruct l0; simpl; try inversion e0.
       destruct ps; simpl in *; try inversion Hlenpsl0.
       revert H1.
@@ -680,8 +679,7 @@ Proof.
           ++ rewrite !map_length, <- (map_length fst), Hmap1, 
             map_length; auto.
   - (*Pwild*)
-    simpl in *. inversion H; inversion H0; subst; split; auto.
-    constructor.
+    simpl in *. inversion H; inversion H0; subst; auto. 
   - (*Por*)
     simpl in *. revert H0. destruct (matches gamma p1 t) eqn : Hmatch1;
     try solve[inversion H].

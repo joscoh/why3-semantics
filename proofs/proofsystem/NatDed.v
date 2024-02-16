@@ -1339,9 +1339,9 @@ Proof.
   apply impl_false in Hval.
   erewrite fmla_rep_irrel. apply Hval.
   Unshelve.
-  inversion t_wf. simpl_task. 
-  apply closed_not_inv in task_goal_typed; auto.
-  constructor; auto. constructor.
+  - constructor; auto. constructor.
+  - inversion t_wf. simpl_task. 
+    apply closed_not_inv in task_goal_typed; auto.
 Qed.
 
 Lemma D_negI {gamma delta name f}
@@ -1533,8 +1533,7 @@ Proof.
   }
   rewrite H2 at 2.
   constructor; auto; simpl.
-  - rewrite H; reflexivity.
-  - constructor.
+  rewrite H; reflexivity.
 Qed. 
 
 (*This is a tricky proof, trickier than forallI*)

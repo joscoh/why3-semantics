@@ -4,7 +4,7 @@ Require Export Coq.Arith.PeanoNat.
 Require Export Lia.
 
 Require Export Common.
-
+From HB Require Import structures.
 From mathcomp Require Import all_ssreflect.
 Set Bullet Behavior "Strict Subproofs".
 
@@ -20,9 +20,17 @@ Definition reflect_dec' {P} {b} (H: reflect P b): {P} + {~P} :=
 (*Type variable (ex: a)*)
 Definition typevar : Set := string. 
 
-Definition string_eqMixin := EqMixin String.eqb_spec.
-Canonical string_eqType := EqType string string_eqMixin.
-Canonical typevar_eqType := EqType typevar string_eqMixin.
+(*TODO: figure this out from Zulip*)
+
+(*Need this to remove "redundant-canonical-projections" warning
+  that still cannot recognize (in Typechecker) *)
+Definition typevar_eqb (x y: typevar) : bool := String.eqb x y.
+
+Definition typevar_eqb_spec (x y: typevar) : reflect (x = y) (typevar_eqb x y) :=
+  String.eqb_spec x y.
+
+HB.instance Definition _ := hasDecEq.Build string String.eqb_spec.
+HB.instance Definition _ := hasDecEq.Build typevar typevar_eqb_spec.
 
 Definition typevar_eq_dec (t1 t2: typevar):
   {t1 = t2} + {t1 <> t2} := reflect_dec' (String.eqb_spec t1 t2).
@@ -87,8 +95,7 @@ Proof.
   apply ReflectT. by rewrite Hn Ha.
 Qed.
 
-Definition typesym_eqMixin := EqMixin typesym_eqb_spec.
-Canonical typesym_eqType := EqType typesym typesym_eqMixin.
+HB.instance Definition _ := hasDecEq.Build typesym typesym_eqb_spec.
 
 Definition typesym_eq_dec (t1 t2: typesym) : {t1 = t2} + {t1 <> t2} :=
   reflect_dec' (typesym_eqb_spec t1 t2).
@@ -241,8 +248,7 @@ Proof.
     by rewrite Heq.
 Qed.
 
-Definition vty_eqMixin := EqMixin vty_eq_spec.
-Canonical vty_eqType := EqType vty vty_eqMixin.
+HB.instance Definition _ := hasDecEq.Build vty vty_eq_spec.
 
 Definition vty_eq_dec (v1 v2: vty): {v1 = v2} + {v1 <> v2} :=
   reflect_dec' (vty_eq_spec v1 v2).
@@ -304,9 +310,6 @@ Proof.
   - by apply sort_inj.
   - by move=> C; subst.
 Qed.
-
-Definition sort_eqMixin := EqMixin sort_eqb_spec.
-Canonical sort_eqType := EqType sort sort_eqMixin.
 
 Definition sort_eq_dec (s1 s2: sort) :
   {s1 = s2} + {s1 <> s2} :=

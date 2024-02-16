@@ -1872,8 +1872,7 @@ Proof.
     rewrite eq_dec_sym, H, H0; reflexivity.
   - destruct f0; auto; simpl.
     rewrite eq_dec_sym, H, H0; reflexivity.
-  - destruct f1; auto; simpl.
-    apply H.
+  - destruct f1; auto.
   - destruct f1; auto.
   - destruct f1; auto.
   - destruct f1; auto; simpl.

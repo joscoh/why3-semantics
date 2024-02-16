@@ -1,6 +1,7 @@
 (*Separate file to use ssreflect*)
 Require Export Typing.
 
+From HB Require Import structures.
 From mathcomp Require Import all_ssreflect.
 Set Bullet Behavior "Strict Subproofs".
 
@@ -161,23 +162,21 @@ Qed.
 (*Patterns can have many types, so we ask: can this pattern
   have this type? (ex: Pwild)*)
 
-Definition funsym_eqMixin := EqMixin funsym_eqb_spec.
-Canonical funsym_eqType := EqType funsym funsym_eqMixin.
-Definition predsym_eqMixin := EqMixin predsym_eqb_spec.
-Canonical predsym_eqType := EqType predsym predsym_eqMixin.
+HB.instance Definition _ := hasDecEq.Build funsym funsym_eqb_spec.
+HB.instance Definition _ := hasDecEq.Build predsym predsym_eqb_spec.
 
 (*Decidable list intersection, may have duplicates*)
 Definition seqI {A: eqType} (s1 s2: seq A) :=
   filter (fun x => x \in s2) s1.
 
 Definition is_funsym_constr (gamma: context) (f: funsym) : bool :=
-  existsb (fun (m: mut_adt) =>
-    existsb (fun (a: alg_datatype) => constr_in_adt f a)
+  List.existsb (fun (m: mut_adt) =>
+    List.existsb (fun (a: alg_datatype) => constr_in_adt f a)
      (typs m)) (mut_of_context gamma).
 
 Lemma has_existsP {A: Type} (b: A -> bool) (P: A -> Prop) {l: list A}:
   (forall x, In x l -> reflect (P x) (b x)) ->
-  reflect (exists x, In x l /\ P x) (existsb b l).
+  reflect (exists x, In x l /\ P x) (List.existsb b l).
 Proof.
   elim: l => //=[_ |h t /= IH Hrefl].
   { reflF. by case: H. }
@@ -758,8 +757,7 @@ Proof.
     + move=> Hargs. constructor=>//.
       move: (s_args p) (ty_subst (s_params p) tys) Hlentms HallT Hargs. clear.
       elim: tms => [[|]// | tmh tmtl /= IH [//| ah atl] sigma [Hlen]
-        HallT /= /andP[/(ForallT_hd _ _ _ HallT) Hh Hargs]]; 
-        first by constructor.
+        HallT /= /andP[/(ForallT_hd _ _ _ HallT) Hh Hargs]].
       constructor=>//. apply IH=>//. by inversion HallT.
   - move=> q v f IHf.
     case: (typecheck_type s (snd v)) /typecheck_type_correct => Hty/=; 
@@ -945,12 +943,9 @@ Section RecFun.
   We also need this typechecking to define the full recursive
   function implementation in RecFun2.v*)
 
-Definition pattern_eqMixin := EqMixin pattern_eqb_spec.
-Canonical pattern_eqType := EqType pattern pattern_eqMixin.
-Definition term_eqMixin := EqMixin term_eqb_spec.
-Canonical term_eqType := EqType term term_eqMixin.
-Definition formula_eqMixin := EqMixin formula_eqb_spec.
-Canonical formula_eqType := EqType formula formula_eqMixin.
+HB.instance Definition _ := hasDecEq.Build pattern pattern_eqb_spec.
+HB.instance Definition _ := hasDecEq.Build term term_eqb_spec.
+HB.instance Definition _ := hasDecEq.Build formula formula_eqb_spec.
 
 Definition check_funpred_def_valid_type (fd: funpred_def) : bool :=
   match fd with
@@ -1185,10 +1180,8 @@ Proof.
   apply idP.
 Qed.
 
-Definition fn_eqMixin := EqMixin fn_eqb_spec.
-Canonical fn_eqType := EqType fn fn_eqMixin.
-Definition pn_eqMixin := EqMixin pn_eqb_spec.
-Canonical pn_eqType := EqType pn pn_eqMixin.
+HB.instance Definition _ := hasDecEq.Build fn fn_eqb_spec.
+HB.instance Definition _ := hasDecEq.Build pn pn_eqb_spec.
 
 (*Handle case at beginning of most*)
 Ltac not_in_tm_case fs ps t :=
@@ -1312,7 +1305,7 @@ Proof.
     + (*The case where we actually say true*)
       move=> [Hall1 Hall2].
       apply ReflectT.
-      apply Dec_fun_in with(x:=v)(f_decl:=(nth fn_d fs (find (fun x : fn_eqType => fn_sym x == f1) fs))) =>//.
+      apply Dec_fun_in with(x:=v)(f_decl:=(nth fn_d fs (find (fun x => fn_sym x == f1) fs))) =>//.
       * apply /inP. apply mem_nth. by rewrite -has_find.
       * by rewrite nth_eq.
       * rewrite Forall_forall. move=> x /inP Hinx.
@@ -1324,7 +1317,7 @@ Proof.
     + (*One final contradiction case*)
       move=> /(andPP allP allP).
       rewrite negb_and.
-      case: (all (fun x : term_eqType => all (fun f : fn => ~~ funsym_in_tm (fn_sym f) x) fs) tms)
+      case: (all (fun x  => all (fun f : fn => ~~ funsym_in_tm (fn_sym f) x) fs) tms)
       /allP =>//= [Hall1 Hnotall2 | Hnotall _];
       false_triv_case Hnotfp. 
       * move: Hnotall2 => /negP C1. apply C1. apply /allP.
@@ -1504,7 +1497,7 @@ Proof.
     + (*The case where we actually say true*)
       move=> [Hall1 Hall2].
       apply ReflectT.
-      apply Dec_pred_in with(x:=v)(p_decl:=(nth pn_d ps (find (fun x : pn_eqType => pn_sym x == p1) ps))) =>//.
+      apply Dec_pred_in with(x:=v)(p_decl:=(nth pn_d ps (find (fun x => pn_sym x == p1) ps))) =>//.
       * apply /inP. apply mem_nth. by rewrite -has_find.
       * by rewrite nth_eq.
       * rewrite Forall_forall. move=> x /inP Hinx.
@@ -1516,7 +1509,7 @@ Proof.
     + (*One final contradiction case*)
       move=> /(andPP allP allP).
       rewrite negb_and.
-      case: (all (fun x : term_eqType => all (fun f : fn => ~~ funsym_in_tm (fn_sym f) x) fs) tms)
+      case: (all (fun x => all (fun f : fn => ~~ funsym_in_tm (fn_sym f) x) fs) tms)
       /allP =>//= [Hall1 Hnotall2 | Hnotall _];
       false_triv_case Hnotfp. 
       * move: Hnotall2 => /negP C1. apply C1. apply /allP.
@@ -1756,7 +1749,7 @@ Definition find_mut_args (fs: list fn) (ps: list pn) (il: list nat) :
     | Some (m, _, vs) => 
       (*Check if size vs = size (m_params m)*)
       (*NOTE: may be implied by typing, but we check it anyway*)
-      if (size vs =? size (m_params m)) &&
+      if (size vs =? size (m_params m))%nat &&
        (*Check using is list*)
        all (fun x =>
        let i := fst x in
@@ -1792,10 +1785,8 @@ Proof.
   [apply ReflectT | apply ReflectF]; auto.
 Qed.
 
-Definition mut_eqMixin := EqMixin mut_adt_eqb_spec.
-Canonical mut_eqType := EqType mut_adt mut_eqMixin.
-Definition sn_eqMixin := EqMixin sn_eqb_spec.
-Canonical sn_eqType := EqType sn sn_eqMixin.
+HB.instance Definition _ := hasDecEq.Build mut_adt mut_adt_eqb_spec.
+HB.instance Definition _ := hasDecEq.Build sn sn_eqb_spec.
 
 Lemma list_map_map {A B: Type} (f: A -> B) (l: list A):
   List.map f l = map f l.
@@ -1874,9 +1865,9 @@ Proof.
   rewrite {Hlen}. move: Hlen' => Hlen.
   (*First, we make a simplification: we don't want to consider
     fs and ps separately for vty_in_m*)
-  have Hvtymeq: ((forall f : fn_eqType,
+  have Hvtymeq: ((forall f,
     f \in fs -> vty_in_m m vs (nth vs_d (sn_args f) (sn_idx f)).2) /\
-  (forall p : pn_eqType,
+  (forall p ,
     p \in ps -> vty_in_m m vs (nth vs_d (sn_args p) (sn_idx p)).2) <->
   (forall s, s \in [seq fn_sn i | i <- fs] ++ [seq pn_sn i | i <- ps] ->
     vty_in_m m vs (nth vs_d (sn_args s) (sn_idx s)).2)). {
@@ -1910,7 +1901,7 @@ Proof.
     it must be this m' and vs'*)
   have Hsuffices: ( forall m,
     mut_in_ctx m gamma ->
-    (forall s : sn_eqType,
+    (forall s,
            s \in [seq fn_sn i | i <- fs] ++ [seq pn_sn i | i <- ps] ->
            vty_in_m m vs (nth vs_d (sn_args s) (sn_idx s)).2) ->
     m = m' /\ vs = vs').
@@ -1923,7 +1914,7 @@ Proof.
     split=>//. by apply (Hadtsuniq m1 m' a' a).
   }
   (*Now, we continue*)
-  case: (size vs' =? size (m_params m')) /eqP=>/= Hszvs; last first.
+  case: (size vs' =? size (m_params m'))%nat /eqP=>/= Hszvs; last first.
   {
     apply ReflectF => [[Hlenvs [m_in' [Hfsm [Hpsm _]]]]].
     (*Now from our previous results, m=m' and vs=vs'*)
@@ -2006,7 +1997,7 @@ Proof.
   apply ReflectT.
   subst.
   (*We prove both vy_in_m's together*)
-  have Hallvtys: (forall s : sn_eqType,
+  have Hallvtys: (forall s ,
     s \in [seq fn_sn i | i <- fs] ++ [seq pn_sn i | i <- ps] ->
     vty_in_m m vs (nth vs_d (sn_args s) (sn_idx s)).2).
   {
@@ -2131,11 +2122,8 @@ Proof.
       by rewrite in_cons Hinx orbT.
 Qed. 
 
-Definition fpsym_eqMixin := EqMixin fpsym_eqb_spec.
-Canonical fpsym_eqType := EqType fpsym fpsym_eqMixin.
-
-Definition funpred_def_eqMixin := EqMixin funpred_def_eqb_spec.
-Canonical funpred_def_eqType := EqType funpred_def funpred_def_eqMixin.
+HB.instance Definition _ := hasDecEq.Build fpsym fpsym_eqb_spec.
+HB.instance Definition _ := hasDecEq.Build funpred_def funpred_def_eqb_spec.
 
 
 (*Now we can define the fill function*)

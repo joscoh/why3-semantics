@@ -1862,7 +1862,6 @@ Forall (formula_typed gamma) (map f fs).
 Proof.
   unfold map_join_left.
   intros Hd. destruct fs; auto.
-  { intros; constructor. }
   assert (forall l base,
   formula_typed gamma
   (fold_left (fun (acc : formula) (x : A) => t_or acc (f x)) l base) ->

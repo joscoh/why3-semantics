@@ -463,7 +463,7 @@ Proof.
   revert t f; apply term_formula_ind; simpl; intros; auto;
   inversion Hty; subst; try solve[unfold ty_subst; simpl; constructor];
   try solve[destruct_all; constructor; auto;
-    try apply ty_subst_var_valid; auto; solve[intuition]].
+    try apply ty_subst_var_valid; auto; solve[intuition auto with *]].
   (*Only Fun/Pred, Match are nontrivial*)
   - (*Function is tricky case, but simpler than pattern constr*) 
     rewrite ty_subst_twice; auto; [| apply s_params_Nodup].
