@@ -1,1 +1,0 @@
-COQEXTRAFLAGS=-w "-ambiguous-paths, -notation-overridden, -hiding-delimiting-key, -redundant-canonical-projection"

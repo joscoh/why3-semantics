@@ -1,15 +1,16 @@
-KNOWNFILES   := Makefile _CoqProject
+VERBOSE=-j1 --no-buffer --verbose
 
-.DEFAULT_GOAL := invoke-coqmakefile
+all:
+	dune build $(VERBOSE)
 
-CoqMakefile: Makefile _CoqProject
-				$(COQBIN)coq_makefile -f _CoqProject -o CoqMakefile
+proofs:
+	dune build Proofs Lib Test $(VERBOSE)
 
-invoke-coqmakefile: CoqMakefile
-				$(MAKE) --no-print-directory -f CoqMakefile $(filter-out $(KNOWNTARGETS),$(MAKECMDGOALS))
+src:
+	dune build Src $(VERBOSE)
 
-.PHONY: invoke-coqmakefile $(KNOWNFILES)
+proofs-silent:
+	dune build Proofs Lib Test
 
-clean:
-				if [ -e CoqMakefile ]; then $(MAKE) -f CoqMakefile cleanall; fi
-				$(RM) $(wildcard CoqMakefile CoqMakefile.conf) 
+src-silent:
+	dune build Src
