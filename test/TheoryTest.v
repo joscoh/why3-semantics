@@ -1,9 +1,7 @@
 (*Here, we manually instantiate a few theories to test
   that (especially) the cloning/qualifying works*)
-Require Import Task.
-Require Import Theory.
-Require Import Typechecker.
-Require Import Tactics.
+From Proofs.core Require Import Task Theory Typechecker.
+From Proofs.proofsystem Require Import Tactics.
 From mathcomp Require Import all_ssreflect.
 Set Bullet Behavior "Strict Subproofs".
 

@@ -14,7 +14,7 @@
   (we don't do with prop because we didn't implement predicate
     unfolding yet, though we could easily)
   *)
-Require Import Tactics.
+From Proofs.proofsystem Require Import Tactics.
 From mathcomp Require Import all_ssreflect.
 Set Bullet Behavior "Strict Subproofs".
 

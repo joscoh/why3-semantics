@@ -1,7 +1,7 @@
 (*Test for induction - we define natural numbers and prove that
   addition is commutative*)
 
-Require Import Tactics.
+From Proofs.proofsystem Require Import Tactics.
 From mathcomp Require Import all_ssreflect.
 Set Bullet Behavior "Strict Subproofs".
 

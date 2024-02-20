@@ -1,0 +1,10 @@
+(coq.extraction
+ (prelude Extract)
+ (extracted_modules BinNums gmap String Ascii Bool Ty Ident)
+ (theories Src stdpp)
+ )
+
+(library
+ (name Why3Coq)
+ (flags (:standard -w -33)))
+
