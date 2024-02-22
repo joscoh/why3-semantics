@@ -1,6 +1,6 @@
 (coq.extraction
  (prelude Extract)
- (extracted_modules BinNums gmap String Ascii Bool Ty Ident)
+ (extracted_modules BinNums gmap String Ascii Bool Datatypes Specif Ty Ident)
  (theories Src stdpp)
  )
 
