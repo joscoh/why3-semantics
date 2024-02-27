@@ -1,5 +1,5 @@
 From Src.core Require Import Ident Ty.
-From Src.util Require Import Extmap.
+From Src.util Require Import Extmap Extset.
 From stdpp Require Import gmap.
 From Coq Require Extraction.
 
@@ -28,6 +28,8 @@ Extract Inlined Constant ret => "".
 Extract Inlined Constant throw => " raise ".
 (*TODO: see*)
 Extract Inlined Constant bnd => "".
+Extract Inlined Constant errorM_bind => "(@@)".
+(*Extract Inlined Constant mbind => "".*)
 
 (*Maps - inline some things to reduce dependent types, Obj.magic
   and unecessary functions*)
@@ -41,7 +43,7 @@ Extraction Inline ty_build_simpl'.
 Extraction Inline Decision RelDecision.
 
 Separate Extraction
-  Extmap Ty.ty Ty.ty_v_map Ident.
+  Extmap Extset Ty.ty Ty.ty_v_map Ident.
 (*Separate Extraction Extmap.
 Separate Extraction Ty.ty Ty.ty_v_map Ident.*)
 

@@ -1,43 +1,8 @@
 (*An implementation of association lists satisfying the same
   interface as Why3 OCaml extmap. We use binary tries (gmap)
   instead of balanced binary trees*)
-Require Import Coq.Strings.String.
+Require Export ErrorMonad.
 From stdpp Require Import gmap.  
-
-(*TODO: move*)
-Coercion proj_sumbool (A B: Prop) (H: {A} + {B}) : bool :=
-  if H then true else false.
-
-(*TODO: move*)
-Section ErrorMonad.
-
-(*TODO: change*)
-Variant errtype : Set :=
-  | Not_found
-  | Invalid_argument : string -> errtype.
-
-Unset Elimination Schemes.
-Inductive errorM (A: Type) : Type :=
-  | Normal :  A -> errorM A
-  | Error:  errtype -> errorM A.
-Set Elimination Schemes.
-
-Arguments Normal {_}.
-Arguments Error {_}.
-
-Definition throw : forall {A: Type} (e: errtype), errorM A :=
-  fun A e => Error e.
-
-Definition ret {A: Type} (x: A) : errorM A :=
-  Normal x.
-
-Definition bnd {A B: Type} (f: A -> errorM B) (x: errorM A) : errorM B :=
-  match x with
-  | Normal y => f y
-  | Error m => Error m
-  end.
- 
-End ErrorMonad.
 
 (*We implement the [extmap] interface from Why3, with the following
   exceptions
@@ -57,10 +22,7 @@ Parameter t : Type -> Type.
 
 Section Types.
 
-Variable a: Type.
-Variable b: Type.
-Variable c: Type.
-Variable acc: Type.
+Context {a: Type} {b: Type} {c: Type} {acc: Type}.
 
 Parameter empty: t a.
 Parameter is_empty: t a -> bool.
@@ -143,7 +105,7 @@ Parameter tag: t -> positive.
 (*NOTE: we need a form of decidable equality: this
   is different from the OCaml implementation, which takes in
   an ordered type*)
-Parameter eq_dec : EqDecision t. 
+Parameter eq : EqDecision t. 
 End TaggedType.
 
 Module Make (T: TaggedType) <: S.
@@ -220,7 +182,7 @@ Definition union (f: key -> a -> a -> option a) (m1: t a) (m2: t a):
 
 
 Definition equal (eq: EqDecision a) (m1: t a) (m2: t a) : bool :=
-   (gmap_eq_dec (@prod_eq_dec _ T.eq_dec _ eq)) m1 m2. 
+   (gmap_eq_dec (@prod_eq_dec _ T.eq _ eq)) m1 m2. 
 
 (*Ignore positive argument in fold because invariant that
   always encode (fst x) = p*)
