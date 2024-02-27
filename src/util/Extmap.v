@@ -7,45 +7,32 @@ From stdpp Require Import gmap.
 (*TODO: move*)
 Section ErrorMonad.
 
+(*TODO: change*)
+Variant errtype : Set :=
+  | Not_found
+  | Invalid_argument : string -> errtype.
+
 Unset Elimination Schemes.
 Inductive errorM (A: Type) : Type :=
   | Normal :  A -> errorM A
-  | Error:  String.string -> errorM A.
+  | Error:  errtype -> errorM A.
 Set Elimination Schemes.
-
-(*Arguments Normal {_}.
-Arguments Error {_}.*)
 
 Arguments Normal {_}.
 Arguments Error {_}.
 
-Definition throw : forall {A: Type} (msg: string), errorM A :=
-  fun A m => Error m.
+Definition throw : forall {A: Type} (e: errtype), errorM A :=
+  fun A e => Error e.
 
 Definition ret {A: Type} (x: A) : errorM A :=
   Normal x.
 
-(*Unfortunately need dependent types here*)
 Definition bnd {A B: Type} (f: A -> errorM B) (x: errorM A) : errorM B :=
   match x with
   | Normal y => f y
   | Error m => Error m
   end.
- (* match x as x' in (errorM T) return (T -> errorM B) -> errorM B with
-  | Normal y => fun f => f y
-  | Error m => fun _ => Error m
-  end f.
-induction x.
-- exact (f a).
-- exact (Error s).
-Defined.*)
-
-(* :=
-  match x with
-  | Normal y => f y
-  | Error msg => Error msg
-  end.*)
-
+ 
 End ErrorMonad.
 
 (*Let's see*)
@@ -401,7 +388,7 @@ Fixpoint choose_aux {A P} (t : gmap_dep_ne A P) : A :=
 
 Definition choose (m: t a) : errorM (key * a) :=
   match (gmap_car m) with
-  | GEmpty => throw "Not_found"
+  | GEmpty => throw Not_found
   | GNodes n => ret (choose_aux n)
   end.
 

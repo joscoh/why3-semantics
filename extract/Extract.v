@@ -18,11 +18,12 @@ Extract Inlined Constant Datatypes.snd => "snd".
 
 (*Handle exception monad*)
 
-Extract Inductive errorM => "  " ["Normal" "Error"] "(fun fn fe x -> x)".  
-Extract Constant ret => " ".
-(*TODO: fix to include custom exception*)
-(*TODO: start here*)
-Extract Constant throw  => " raise Not_found".
+Extract Inductive errorM => "  " ["Normal" "Error"] .  
+Extract Inductive errtype => exn ["Not_found" "Invalid_argument"].
+Extract Inlined Constant ret => "".
+Extract Inlined Constant throw => " raise ".
+(*TODO: see*)
+Extract Inlined Constant bnd => "".
 
 Extraction Inline ty_build.
 Extraction Inline ty_build'.
