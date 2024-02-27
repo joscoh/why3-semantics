@@ -150,17 +150,17 @@ Parameter merge: (key -> option a -> option b -> option c) ->
 Parameter union: (key -> a -> a -> option a) -> t a -> t a -> t a.
 (*TODO: to OCaml int? and do we need in general?*)
 (*Parameter compare: (a -> a -> Z) -> t a -> t a -> Z.*)
-(*START*)
 (*Parameter equal: (a -> a -> bool) -> t a -> t a -> bool.*)
 Parameter equal: EqDecision a -> t a -> t a -> bool.
-(*Parameter iter: (key -> a -> unit) -> t a -> unit.
+(*TODO: implement with fold*)
+Parameter iter: (key -> a -> unit) -> t a -> unit.
 Parameter fold: (key -> a -> b -> b) -> t a -> b -> b.
 Parameter for_all: (key -> a -> bool) -> t a -> bool.
 (*Note: reserved keyword*)
 Parameter exists_: (key -> a -> bool) -> t a -> bool.
 Parameter filter: (key -> a -> bool) -> t a -> t a.
 Parameter partition: (key -> a -> bool) -> t a -> (t a * t a).
-Parameter cardinal: t a -> positive.
+(*Parameter cardinal: t a -> positive.
 Parameter bindings: t a -> list (key * a).
 (*NOTE: need to change - throws exception*)
 Parameter min_binding: t a -> (key * a).
@@ -272,7 +272,7 @@ Definition remove (k: key) (m: t a) : t a :=
 (*TODO: clean up*)
 (*Need true polymorphism here for union*)
 Definition merge {a b c: Type} (f: key -> option a -> option b -> option c)
-  (m1: t a) (m2: t b) : t c := @merge _ (gmap_merge) _ _ _
+  (m1: t a) (m2: t b) : t c := merge
     (*NOTE: k1 and k2 are always the same by the correctness of
       the merge operation and our invariants*)
     (fun (x: option (key * a)) (y: option (key * b)) =>
@@ -304,20 +304,46 @@ Definition equal (eq: EqDecision a) (m1: t a) (m2: t a) : bool :=
   if (gmap_eq_dec (@prod_eq_dec _ T.eq_dec _ eq)) m1 m2 
   then true else false.
 
+(*Ignore positive argument in fold because invariant that
+  always encode (fst x) = p*)
+Definition fold {a b: Type} (f: key -> a -> b -> b) (m: t a) (base: b) : b :=
+  gmap_fold _ (fun (p: positive) (x: key * a) (y: b) =>
+    f (fst x) (snd x) y) base m.
+
+(*The next few are easy in terms of fold*)
+Definition iter (f: key -> a -> unit) (m: t a): unit :=
+  fold (fun x y z => f x y) m tt.
+
+Definition for_all (f: key -> a -> bool) (m: t a) : bool :=
+  fold (fun k v acc => f k v && acc) m true.
+
+Definition exists_ (f: key -> a -> bool) (m: t a) : bool :=
+  fold (fun k v acc => f k v || acc) m false.
+
+(*Let's implement with merge - merge function will
+  keep all which satisfy predicate*)
+Definition filter (f: key -> a -> bool) (m: t a) : t a :=
+  merge (fun k o1 o2 => match o1 with
+                        | Some v => if f k v then Some v else None
+                        | None => None
+                        end) m empty. 
+
+(*Inefficient partition*)
+Definition partition (f: key -> a -> bool) (m: t a) : (t a * t a) :=
+  (filter f m, filter (fun x y => negb (f x y)) m).
+
+(*NOTE: using "nat" is not great for OCaml code, maybe implement new
+  size function, maybe not*)
+Definition cardinal (m: t a) : positive :=
+  Pos.of_nat (map_size m).
+
+Definition bindings (m: t a) : list (key * a) :=
+  (map snd (map_to_list m)).
+
 End Types.
 End Make.
 
-(*Parameter is_empty: t a -> bool.
-Parameter mem: key -> t a -> bool.
-Parameter add: key -> a -> t a -> t a.
-Parameter singleton: key -> a -> t a.
-Parameter remove: key -> t a -> t a.
-Parameter merge: (key -> option a -> option b -> option c) ->
-  t a -> t b -> t c.
-Parameter union: (key -> a -> a -> option a) -> t a -> t a -> t a.
-(*TODO: to OCaml int?*)
-Parameter compare: (a -> a -> Z) -> t a -> t a -> Z.
-Parameter equal: (a -> a -> bool) -> t a -> t a -> bool.
+(*
 Parameter iter: (key -> a -> unit) -> t a -> unit.
 Parameter fold: (key -> a -> b -> b) -> t a -> b -> b.
 Parameter for_all: (key -> a -> bool) -> t a -> bool.
