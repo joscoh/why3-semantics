@@ -1,7 +1,52 @@
 (*An implementation of association lists satisfying the same
   interface as Why3 OCaml extmap. We use binary tries (gmap)
   instead of balanced binary trees*)
+Require Import Coq.Strings.String.
 From stdpp Require Import gmap.  
+
+(*TODO: move*)
+Section ErrorMonad.
+
+Unset Elimination Schemes.
+Inductive errorM (A: Type) : Type :=
+  | Normal :  A -> errorM A
+  | Error:  String.string -> errorM A.
+Set Elimination Schemes.
+
+(*Arguments Normal {_}.
+Arguments Error {_}.*)
+
+Arguments Normal {_}.
+Arguments Error {_}.
+
+Definition throw : forall {A: Type} (msg: string), errorM A :=
+  fun A m => Error m.
+
+Definition ret {A: Type} (x: A) : errorM A :=
+  Normal x.
+
+(*Unfortunately need dependent types here*)
+Definition bnd {A B: Type} (f: A -> errorM B) (x: errorM A) : errorM B :=
+  match x with
+  | Normal y => f y
+  | Error m => Error m
+  end.
+ (* match x as x' in (errorM T) return (T -> errorM B) -> errorM B with
+  | Normal y => fun f => f y
+  | Error m => fun _ => Error m
+  end f.
+induction x.
+- exact (f a).
+- exact (Error s).
+Defined.*)
+
+(* :=
+  match x with
+  | Normal y => f y
+  | Error msg => Error msg
+  end.*)
+
+End ErrorMonad.
 
 (*Let's see*)
 (*
@@ -160,13 +205,13 @@ Parameter for_all: (key -> a -> bool) -> t a -> bool.
 Parameter exists_: (key -> a -> bool) -> t a -> bool.
 Parameter filter: (key -> a -> bool) -> t a -> t a.
 Parameter partition: (key -> a -> bool) -> t a -> (t a * t a).
-(*Parameter cardinal: t a -> positive.
+Parameter cardinal: t a -> positive.
 Parameter bindings: t a -> list (key * a).
-(*NOTE: need to change - throws exception*)
-Parameter min_binding: t a -> (key * a).
-Parameter max_binding: t a -> (key * a).
-Parameter choose: t a -> (key * a).
-Parameter split: key -> t a -> t a * option a * t a.
+(*NOTE: can we avoid these?*)
+(*Parameter min_binding: t a -> errorM (key * a).
+Parameter max_binding: t a -> (key * a).*)
+Parameter choose: t a -> errorM (key * a).
+(*Parameter split: key -> t a -> t a * option a * t a.
 Parameter find: key -> t a -> a.
 Parameter map: (a -> b) -> t a -> t b.
 Parameter mapi: (key -> a -> b) -> t a -> t b.
@@ -339,6 +384,26 @@ Definition cardinal (m: t a) : positive :=
 
 Definition bindings (m: t a) : list (key * a) :=
   (map snd (map_to_list m)).
+
+(*This is NOT guaranteed to get the minimum element.
+  TODO: fix (or just don't include this)*)
+
+Fixpoint choose_aux {A P} (t : gmap_dep_ne A P) : A :=
+  match t with
+  | GNode001 r => choose_aux r
+  | GNode010 p x => x
+  | GNode011 p x r => x
+  | GNode100 l => choose_aux l
+  | GNode101 l r => choose_aux l
+  | GNode110 l p x => x
+  | GNode111 l p x r => x
+  end.
+
+Definition choose (m: t a) : errorM (key * a) :=
+  match (gmap_car m) with
+  | GEmpty => throw "Not_found"
+  | GNodes n => ret (choose_aux n)
+  end.
 
 End Types.
 End Make.

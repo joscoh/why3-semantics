@@ -15,6 +15,15 @@ Extract Inductive unit => "unit" [ "()" ].
 Extract Inductive prod => "(*)"  [ "(,)" ].*)
 Extract Inlined Constant Datatypes.fst => "fst".
 Extract Inlined Constant Datatypes.snd => "snd".
+
+(*Handle exception monad*)
+
+Extract Inductive errorM => "  " ["Normal" "Error"] "(fun fn fe x -> x)".  
+Extract Constant ret => " ".
+(*TODO: fix to include custom exception*)
+(*TODO: start here*)
+Extract Constant throw  => " raise Not_found".
+
 Extraction Inline ty_build.
 Extraction Inline ty_build'.
 Extraction Inline ty_build_simpl.
