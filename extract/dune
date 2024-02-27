@@ -1,7 +1,7 @@
 (coq.extraction
  (prelude Extract)
  (extracted_modules 
-  BinNums BinPos String Ascii Bool Datatypes Specif  
+  BinNums BinPos Ascii Bool Datatypes Specif  List0 String0
   base gmap countable fin_maps numbers option decidable
   Extmap Ty Ident)
  (theories Src stdpp)
