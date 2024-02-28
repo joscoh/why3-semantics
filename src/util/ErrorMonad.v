@@ -1,10 +1,6 @@
 Require Import Coq.Strings.String.
+Require Export CoqUtil.
 From stdpp Require Import base.
-
-
-(*TODO: move*)
-Coercion proj_sumbool (A B: Prop) (H: {A} + {B}) : bool :=
-  if H then true else false.
 
 Section ErrorMonad.
 

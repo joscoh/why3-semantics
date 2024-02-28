@@ -14,8 +14,8 @@ Parameter add : elt -> t -> t.
 Parameter singleton: elt -> t.
 Parameter remove: elt -> t -> t.
 Parameter merge : (elt -> bool -> bool -> bool) -> t -> t -> t.
-(*Parameter compare: t -> t -> int.
-Paramter equal: t -> t -> bool.*)
+(*Parameter compare: t -> t -> int.*)
+Parameter equal: t -> t -> bool.
 Parameter subset: t -> t -> bool.
 Parameter disjoint: t -> t -> bool.
 Parameter iter: (elt -> unit) -> t -> unit.
@@ -73,6 +73,7 @@ Definition isSome {A: Type} (o: option A) : bool :=
 Definition merge (f: elt -> bool -> bool -> bool) (s1: t) (s2: t) : t :=
   M.merge (fun e a b => is_true_o (f e (isSome a) (isSome b))) s1 s2.
 
+Definition equal := @M.set_equal unit unit.
 Definition subset := @M.set_submap unit unit.
 Definition disjoint := @M.set_disjoint unit unit.
 Definition iter f s := @M.iter unit (fun e _ => f e) s.
@@ -109,17 +110,8 @@ Definition remove_left s e := @M.remove unit e s.
 
 End MakeOfMap.
 
-
-(*Module Make (X: TaggedType) : S := MakeOfMap (Extmap.Make(X)).*)
-
-
-(*
-module MakeOfMap (M : Extmap.S) : S with module M = M
-(** Functor building an implementation of the set structure
-    given a totally ordered type. *)
-
-module Make (Ord : OrderedType) : S with type M.key = Ord.t
-(** Functor building an implementation of the set structure
-    given a totally ordered type. *)*)
-
-    
+Module Make (X: TaggedType).
+Module M := Extmap.Make(X).
+Module St := Extset.MakeOfMap(M).
+Include St.
+End Make.

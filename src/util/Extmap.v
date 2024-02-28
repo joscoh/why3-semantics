@@ -34,7 +34,8 @@ Parameter merge: (key -> option a -> option b -> option c) ->
   t a -> t b -> t c.
 Parameter union: (key -> a -> a -> option a) -> t a -> t a -> t a.
 (*Parameter compare: (a -> a -> Z) -> t a -> t a -> Z.*)
-(*Parameter equal: (a -> a -> bool) -> t a -> t a -> bool.*)
+(*TODO: do we want to just use (a -> a -> bool) and have separate
+  erased proof?*)
 Parameter equal: EqDecision a -> t a -> t a -> bool.
 Parameter iter: (key -> a -> unit) -> t a -> unit.
 Parameter fold: (key -> a -> b -> b) -> t a -> b -> b.
@@ -64,8 +65,8 @@ Parameter set_inter: t a -> t b -> t a.
 Parameter set_diff: t a -> t b -> t a.
 Parameter set_submap: t a -> t b -> bool.
 Parameter set_disjoint: t a -> t b -> bool.
-(*Parameter set_compare: t a -> t b -> Z.
-Parameter set_equal: t a -> t b -> bool.*)
+(*Parameter set_compare: t a -> t b -> Z.*)
+Parameter set_equal: t a -> t b -> bool.
 Parameter find_def: a -> key -> t a -> a.
 Parameter find_opt: key -> t a -> option a.
 Parameter find_exn: errtype -> key -> t a -> errorM a.
@@ -307,6 +308,12 @@ Definition set_submap (m1: t a) (m2: t b) : bool :=
 
 Definition set_disjoint (m1: t a) (m2: t b) : bool :=
   disjoint (fun _ _ _ => false) m1 m2.
+
+(*This is not particularly efficient, but we use the
+  canonicity property to say that if the key lists are equal,
+  so are the sets*)
+Definition set_equal (m1: t a) (m2: t b) : bool :=
+  list_eqb T.eq (List.map fst (bindings m1)) (List.map fst (bindings m2)).
 
 (*Variants of find*)
 
