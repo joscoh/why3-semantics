@@ -159,3 +159,20 @@ Fixpoint list_eqb {A: Type} (eq: A -> A -> bool) (l1 l2: list A) : bool :=
   | nil, nil => true
   | _, _ => false
   end.
+
+Lemma list_eqb_eq {A: Type} {eq: A -> A -> bool} 
+  (Heq: forall x y, x = y <-> eq x y = true)
+  l1 l2:
+  l1 = l2 <-> list_eqb eq l1 l2 = true.
+Proof.
+  revert l2. induction l1 as [|h1 t1]; simpl;
+  intros [| h2 t2]; simpl; auto; try solve[split; auto; discriminate].
+  rewrite andb_true_iff, <- Heq, <- IHt1.
+  split; intros Hht; inversion Hht; subst; auto.
+Qed.
+
+Definition isSome {A: Type} (o: option A) : bool :=
+  match o with
+  | Some _ => true
+  | _ => false
+  end.

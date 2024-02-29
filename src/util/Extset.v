@@ -47,6 +47,10 @@ Parameter remove_left: t -> elt -> t.
 (*Parameter print: (Format.formatter -> elt -> unit) ->
                Format.formatter -> t -> unit. *)
 
+(*Proofs: TODO add as needed*)
+Parameter equal_eq: forall (m1 m2: t),
+  m1 = m2 <-> equal m1 m2 = true.
+
 End S.
 
 (*This is almost verbatim from the OCaml*)
@@ -63,12 +67,6 @@ Definition mem := @M.mem unit.
 Definition add e s := @M.add unit e tt s.
 Definition singleton e := @M.singleton unit e tt.
 Definition remove := @M.remove unit.
-
-Definition isSome {A: Type} (o: option A) : bool :=
-  match o with
-  | Some _ => true
-  | _ => false
-  end.
 
 Definition merge (f: elt -> bool -> bool -> bool) (s1: t) (s2: t) : t :=
   M.merge (fun e a b => is_true_o (f e (isSome a) (isSome b))) s1 s2.
@@ -107,6 +105,22 @@ Definition of_list (l: list elt) : t :=
 Definition contains := @M.contains unit.
 Definition add_left s e := M.add e tt s.
 Definition remove_left s e := @M.remove unit e s.
+
+Lemma equal_eq: forall (m1 m2: t),
+  m1 = m2 <-> equal m1 m2 = true.
+Proof.
+  intros. unfold equal.
+  rewrite M.set_equal_spec.
+  rewrite (M.canonical _ m1 m2), M.equal_spec.
+  (*Now just compare [find_opt] and [contains]*)
+  setoid_rewrite M.find_opt_contains.
+  split; intros Heq k; specialize (Heq k).
+  - rewrite Heq; reflexivity.
+  - destruct (M.find_opt k m1) as [u|]; destruct (M.find_opt k m2) as [u1|];
+    simpl in Heq; auto; try discriminate.
+    (*All units are equal*)
+    destruct u; destruct u1; reflexivity.
+Qed.
 
 End MakeOfMap.
 

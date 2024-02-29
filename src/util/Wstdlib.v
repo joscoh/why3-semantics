@@ -11,14 +11,6 @@ Definition stdlib_compare_int (x y: positive) : Z :=
   end.
 
 (* Set, Map, Hashtbl on structures with a unique tag *)
-Module Type TaggedType.
-
-Parameter t : Type.
-Parameter tag: t -> positive.
-(*We also require decidable equality*)
-Parameter eq: EqDecision t.
-
-End TaggedType.
 
 Module Type OrderedHashedType.
 
