@@ -97,20 +97,30 @@ Parameter next_ge_enum: key -> enumeration a -> enumeration a.*)
 End Types.
 
 (*Lemmas - TODO: add as needed*)
-Parameter equal_spec: forall {a: Type} (eqb: EqDecision a) (m1 m2: t a),
-  equal eqb m1 m2 = true <-> (forall k, find_opt k m1 = find_opt k m2).
+(*Parameter equal_spec: forall {a: Type} (eqb: EqDecision a) 
+  (tag_inj: Inj eq eq T.tag) (m1 m2: t a),
+  equal eqb m1 m2 = true <-> (forall k, find_opt k m1 = find_opt k m2).*)
 
-Parameter set_equal_spec: forall {a b: Type} (m1: t a) (m2: t b),
-  set_equal m1 m2 = true <-> (forall k, contains m1 k = contains m2 k).
+(*Parameter set_equal_spec: forall {a b: Type} (m1: t a) (m2: t b),
+  set_equal m1 m2 = true <-> (forall k, contains m1 k = contains m2 k).*)
+
+(*Here, we do not prove that equal holds iff all elements are the
+  same (in fact we need some injectivity properties). For our
+  purposes, equal is just a boolean decision procedure for
+  structural equality*)
+Parameter eqb_eq: forall {a: Type} (eqb: EqDecision a) (m1 m2: t a),
+  m1 = m2 <-> equal eqb m1 m2 = true.
+
+Parameter set_equal_eq: forall {a b: Type} (m1: t a) (m2: t b),
+  set_equal m1 m2 = true <-> map (fun _ => tt) m1 = map (fun _ => tt) m2.
+
+Parameter map_inj_eq: forall {A B: Type} (f: A -> B) (m1 m2: t A)
+  (f_inj: Inj eq eq f),
+  map f m1 = map f m2 ->
+  m1 = m2.
 
 Parameter find_opt_contains: forall {a: Type} (m: t a) (k: key),
   contains m k = isSome (find_opt k m).
-
-(*Canonicity is not necessarily a requirement of all maps,
-  but in our case, we need to know that equal (which denotes if the
-  elements are the same) is equivalent to Leibnitz equality*)
-Parameter canonical: forall {a: Type} (eqb: EqDecision a) (m1 m2: t a),
-  m1 = m2 <-> equal eqb m1 m2 = true.
 
 End S.
 
@@ -124,12 +134,6 @@ Parameter tag: t -> positive.
   is different from the OCaml implementation, which takes in
   an ordered type*)
 Parameter eq : EqDecision t. 
-(*We need this for canonicity (Countable implies this, but we 
-  want something in Prop, not in Type)*)
-Parameter tag_inj: forall x y, tag x = tag y -> x = y.
-(*TODO: can we hide these? Only need in proofs*)
-(*Parameter untag: positive -> option t.
-Parameter tag_untag: forall x, untag (tag x) = Some x.*)
 End TaggedType.
 
 Module Make (T: TaggedType) <: S.
@@ -567,7 +571,8 @@ Definition is_num_elt (p: positive) (m: t a) : bool :=
 
 End Types.
 
-Lemma equal_spec: forall {a: Type} (eqb: EqDecision a) (m1 m2: t a),
+Lemma equal_spec: forall {a: Type} (eqb: EqDecision a)
+  (tag_inj: Inj eq eq T.tag) (m1 m2: t a),
   equal eqb m1 m2 = true <-> (forall k, find_opt _ k m1 = find_opt _ k m2).
 Proof.
   intros.
@@ -600,7 +605,7 @@ Proof.
           apply m2_wf in Hmk2. rewrite Hmk2; auto.
         }
         (*Need injectivity of tag*)
-        apply T.tag_inj in Htag.
+        apply tag_inj in Htag.
         subst; reflexivity.
       - destruct (m2 !! k) as [v2 |] eqn : Hmk2; [|reflexivity].
         assert (Hmk2':=Hmk2).
@@ -616,8 +621,50 @@ Proof.
     apply map_eq. auto.
 Qed.
 
+(*Canonicity is not necessarily a requirement of all maps,
+  but in our case, we need to know that equal (which denotes if the
+  elements are the same) is equivalent to Leibnitz equality*)
+Lemma eqb_eq: forall {a: Type} (eqb: EqDecision a) (m1 m2: t a),
+  m1 = m2 <-> equal eqb m1 m2 = true.
+Proof.
+  intros. unfold equal.
+  destruct (gmap_eq_dec); simpl; subst; split; intros; subst; auto;
+  try discriminate.
+  destruct m1 as [m1 m1_wf]; destruct m2 as [m2 m2_wf]; simpl in *;
+  subst. f_equal. apply bool_irrelevance.
+Qed.
 
-Lemma set_equal_spec: forall {a b: Type} (m1: t a) (m2: t b),
+Lemma set_equal_eq: forall {a b: Type} (m1: t a) (m2: t b),
+  set_equal _ _ m1 m2 = true <-> map (fun _ => tt) m1 = map (fun _ => tt) m2.
+Proof.
+  intros. unfold set_equal.
+  rewrite <- eqb_eq. reflexivity.
+Qed.
+
+Lemma map_inj_eq {A B: Type} (f: A -> B) (m1 m2: t A)
+  (f_inj: Inj eq eq f):
+  map f m1 = map f m2 ->
+  m1 = m2.
+Proof.
+  unfold map.
+  unfold build_wf.
+  intros Heq.
+  apply (f_equal proj1_sig) in Heq.
+  simpl in Heq.
+  destruct m1 as [m1 m1_wf];
+  destruct m2 as [m2 m2_wf];
+  simpl in *.
+  assert (m1 = m2). {
+    revert Heq.
+    apply map_fmap_inj.
+    intros [k1 v1] [k2 v2] Heq; simpl in *; inversion Heq; subst.
+    f_equal. apply f_inj; auto.
+  }
+  subst. f_equal. apply bool_irrelevance.
+Qed.
+
+
+(*Lemma set_equal_spec: forall {a b: Type} (m1: t a) (m2: t b),
   set_equal _ _ m1 m2 = true <-> (forall k, contains _ m1 k = contains _ m2 k).
 Proof.
   intros.
@@ -638,7 +685,7 @@ Proof.
     destruct (mp m1 !! T.tag k); 
     destruct (mp m2 !! T.tag k); simpl in *; auto;
     discriminate.
-Qed.
+Qed.*)
 
 Lemma find_opt_contains: forall {a: Type} (m: t a) (k: key),
   contains _ m k = isSome (find_opt _ k m).
@@ -647,17 +694,6 @@ Proof.
   destruct (mp m !! T.tag k); auto.
 Qed.
 
-(*Canonicity is not necessarily a requirement of all maps,
-  but in our case, we need to know that equal (which denotes if the
-  elements are the same) is equivalent to Leibnitz equality*)
-Lemma canonical: forall {a: Type} (eqb: EqDecision a) (m1 m2: t a),
-  m1 = m2 <-> equal eqb m1 m2 = true.
-Proof.
-  intros. unfold equal.
-  destruct (gmap_eq_dec); simpl; subst; split; intros; subst; auto;
-  try discriminate.
-  destruct m1 as [m1 m1_wf]; destruct m2 as [m2 m2_wf]; simpl in *;
-  subst. f_equal. apply bool_irrelevance.
-Qed.
+
 
 End Make.

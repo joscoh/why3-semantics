@@ -127,14 +127,6 @@ Record ident := {
   id_tag_eq: Pos.eqb id_tag (str_to_pos id_string)
 }.
 
-(*TODO: move*)
-Definition option_eqb {A: Type} (eq: A -> A -> bool) (o1 o2: option A): bool :=
-  match o1, o2 with
-  | Some x, Some y => eq x y
-  | None, None => true
-  | _, _ => false
-  end.
-
 (*Decidable equality*)
 Definition ident_eqb (i1 i2: ident) : bool :=
   String.eqb i1.(id_string) i2.(id_string) &&
@@ -149,70 +141,59 @@ Proof.
   revert i1 i2.
   intros [s1 a1 l1 p1 e1] [s2 a2 l2 p2 e2]; simpl.
   unfold is_true.
-  rewrite !andb_true_iff, String.eqb_eq.
+  rewrite !andb_true_iff, String.eqb_eq, 
+  <- (option_eqb_eq Loc.position_eqb_eq), <- Sattr.equal_eq.
+  split; [intros Heq; inversion Heq; subst | intros; destruct_all; subst];
+  auto.
+  assert (p1 = p2). {
+    apply Pos.eqb_eq in e1, e2; subst; auto.
+  }
+  subst. f_equal. apply bool_irrelevance.
+Qed.
+
+Definition ident_eq : base.EqDecision ident :=
+  dec_from_eqb ident_eqb ident_eqb_eq.
 
 
 Module IdentTag <: TaggedType.
 Definition t := ident.
 Definition tag x := x.(id_tag).
-Definition eq := 
+Definition eq := ident_eq.
 
+End IdentTag.
 
-Module AttrTag <: TaggedType.
-Definition t := attribute.
-Definition tag x := x.(attr_tag).
-Definition eq := attr_eq.
-End AttrTag.
+(*NOTE: we do not have weak hash tables, so we ignore the W.
+  This seems to be used for sharing and optimizations, we may
+  need to add something similar later (maybe with PTrees)*)
+Module Id := Wstdlib.MakeMSH IdentTag.
+Module Sid := Id.S.
+Module Mid := Id.M.
+(*module Hid = Id.H
+module Wid = Id.W*)
 
-Module Mid : Extmap.S.
-Definition key := ident.
-End Mid.
-
-Definition list_attributes 
-
-
-
-Definition tag : Set := positive.
-
-
-(*
-(*TODO: are modules right way to do this?*)
-Module Type Ident.
-
-Record attribute := {
-  attr_string : string;
-  attr_tag: positive
+Record preid := {
+  pre_name : string;
+  pre_attrs : Sattr.t;
+  pre_loc : option Loc.position
 }.
 
-Record ident := {
-  id_string: string;
-  id_attrs: gmap positive unit;
-  id_loc: option position;
-  id_tag: tag
-}.
+(*In OCaml, this is reference equality (==).
+  TODO: we could axiomatize and assume x == y -> x = y
+  (and nothing about false). But for now, OK to do
+  structural equality I think*)
+Definition id_equal (i1 i2: ident) : bool := ident_eqb i1 i2.
+Definition id_hash (i: ident) : positive := i.(id_tag).
+(*Skip id_compare*) 
 
-Parameter id_equal : ident -> ident -> bool.
-
-End Ident.
-
-Module IdentImpl <: Ident.*)
-
-Record attribute := {
-  attr_string : string;
-  attr_tag: positive
-}.
-
-Record ident := {
-  id_string: string;
-  id_attrs: gmap positive unit;
-  id_loc: option position;
-  id_tag: tag
-}.
-
-(*Reference equality in OCaml impl*)
-Definition id_equal (i1 i2: ident) : bool :=
-  String.eqb (id_string i1) (id_string i2).
-  (*TODO: more of course*)
-
-(*End IdentImpl.*)
-
+(*Constructors*)
+(*NOTE: for us, registering just calculates the tag
+  instead of changing state. We need to see if this is
+  a problem.
+  If the same id string is used multiple times, they
+  will have the same tag*)
+Definition id_register (p: preid) : ident :=
+  {| id_string := p.(pre_name);
+    id_attrs := p.(pre_attrs);
+    id_loc := p.(pre_loc);
+    id_tag := str_to_pos p.(pre_name);
+    id_tag_eq := Pos.eqb_refl _  |}.
