@@ -114,6 +114,7 @@ Parameter canonical: forall {a: Type} (eqb: EqDecision a) (m1 m2: t a),
 
 End S.
 
+
 (*Different from theirs: use hashed type instead of
   ordered*)
 Module Type TaggedType.
@@ -123,26 +124,29 @@ Parameter tag: t -> positive.
   is different from the OCaml implementation, which takes in
   an ordered type*)
 Parameter eq : EqDecision t. 
+(*We need this for canonicity (Countable implies this, but we 
+  want something in Prop, not in Type)*)
+Parameter tag_inj: forall x y, tag x = tag y -> x = y.
 (*TODO: can we hide these? Only need in proofs*)
-Parameter untag: positive -> option t.
-Parameter tag_untag: forall x, untag (tag x) = Some x.
+(*Parameter untag: positive -> option t.
+Parameter tag_untag: forall x, untag (tag x) = Some x.*)
 End TaggedType.
 
 Module Make (T: TaggedType) <: S.
 
 Definition key := T.t.
 
-Local Instance key_eq : EqDecision key := T.eq.
+(*Local Instance key_eq : EqDecision key := T.eq.
 Local Instance key_count : Countable key :=
-  Build_Countable T.t key_eq T.tag T.untag T.tag_untag.
+  Build_Countable T.t key_eq T.tag T.untag T.tag_untag.*)
 
 (*Union, merge, etc need to know key for function, so 
   we store it as well. We could modify gmap, maybe we will
   do that later*)
 (*For proofs of canonicity, we need to know this invariant, so
   we need a sigma type*)
-Definition gmap_wf {A: Type} (g: gmap key (key * A)) : bool :=
-  map_fold (fun k v acc => T.eq k (fst v) && acc) true g.
+Definition gmap_wf {A: Type} (g: gmap positive (key * A)) : bool :=
+  map_fold (fun k v acc => Pos.eqb k (T.tag (fst v)) && acc) true g.
 
 Lemma and_true_r (P: Prop) : P <-> P /\ true.
 Proof.
@@ -150,24 +154,24 @@ Proof.
 Qed.
 
 (*Rewrite in terms of Map_forall*)
-Lemma gmap_wf_iff {A: Type} (g: gmap key (key * A)):
-  gmap_wf g <-> map_Forall (fun k v => k = fst v) g.
+Lemma gmap_wf_iff {A: Type} (g: gmap positive (key * A)):
+  gmap_wf g <-> map_Forall (fun k v => k = T.tag (fst v)) g.
 Proof.
   unfold gmap_wf.
   apply (map_fold_ind (fun r m =>
-    is_true r <-> map_Forall (fun k (v: key * A) => k = fst v) m
+    is_true r <-> map_Forall (fun k (v: key * A) => k = T.tag (fst v)) m
   )).
   - split; auto. intros. apply map_Forall_empty.
   - intros k v m b Hnot Hb.
     unfold is_true.
     rewrite andb_true_iff, Hb, map_Forall_insert; auto.
     apply and_iff_compat_r.
-    destruct T.eq; subst; simpl; split; auto; discriminate.
+    destruct (Pos.eqb_spec k (T.tag v.1)); subst; simpl; split; auto; discriminate.
 Qed.
 
-Definition t (A: Type) : Type := { g : gmap key (key * A) | gmap_wf g}.
+Definition t (A: Type) : Type := { g : gmap positive (key * A) | gmap_wf g}.
 
-Definition mp {A: Type} (m: t A) : gmap key (key * A) := proj1_sig m.
+Definition mp {A: Type} (m: t A) : gmap positive (key * A) := proj1_sig m.
 
 Section Types.
 
@@ -185,13 +189,13 @@ Definition is_empty (m: t a): bool :=
   end.
 
 Definition mem (k: key) (m: t a) : bool :=
-  match (mp m) !! k with
+  match (mp m) !! T.tag k with
   | None => false
   | Some _ => true
   end.
 
 Lemma add_wf {A: Type} (k: key) (v: A) (m: t A) :
-  gmap_wf (<[k:=(k, v)]> (mp m)).
+  gmap_wf (<[T.tag k:=(k, v)]> (mp m)).
 Proof.
   apply gmap_wf_iff.
   apply map_Forall_insert_2; auto.
@@ -199,13 +203,13 @@ Proof.
 Qed.
 
 (*TODO: inline*)
-Definition build_wf {A: Type} {m: gmap key (key * A)} (m_wf: gmap_wf m) : t A :=
+Definition build_wf {A: Type} {m: gmap positive (key * A)} (m_wf: gmap_wf m) : t A :=
   exist _ m m_wf.
 
 Definition add {a: Type} (k: key) (v: a) (m: t a) : t a :=
   build_wf (add_wf k v m).
 
-Lemma singleton_wf (k: key) (v: a): gmap_wf {[k:=(k, v)]}.
+Lemma singleton_wf (k: key) (v: a): gmap_wf {[T.tag k:=(k, v)]}.
 Proof.
   apply gmap_wf_iff.
   apply map_Forall_singleton.
@@ -216,7 +220,7 @@ Definition singleton (k: key) (v: a) : t a :=
   build_wf (singleton_wf k v).
 
 Lemma remove_wf (k: key) (m: t a) : 
-  gmap_wf (delete k (mp m)).
+  gmap_wf (delete (T.tag k) (mp m)).
 Proof.
   apply gmap_wf_iff, map_Forall_delete, gmap_wf_iff.
   destruct m; auto.
@@ -266,7 +270,7 @@ Proof.
   - apply m1_wf in Hm1k; subst.
     destruct v1 as [k1 a1]; simpl.
     unfold option_map.
-    destruct (m2 !! k1) as [v1|] eqn : Hm2k.
+    destruct (m2 !! T.tag k1) as [v1|] eqn : Hm2k.
     + apply m2_wf in Hm2k. subst.
       destruct (f _ _ _); [|discriminate].
       intros Heq; inversion Heq; subst; reflexivity.
@@ -301,7 +305,7 @@ Definition equal {a: Type} (eq: EqDecision a) (m1: t a) (m2: t a) : bool :=
 (*Ignore positive argument in fold because invariant that
   always encode (fst x) = p*)
 Definition fold {a b: Type} (f: key -> a -> b -> b) (m: t a) (base: b) : b :=
-  gmap_fold _ (fun (p: key) (x: key * a) (y: b) =>
+  gmap_fold _ (fun (p: positive) (x: key * a) (y: b) =>
     f (fst x) (snd x) y) base (mp m).
 
 (*The next few are easy in terms of fold*)
@@ -355,7 +359,7 @@ Definition choose (m: t a) : errorM (key * a) :=
   end.
 
 Definition find (k: key) (m: t a) : errorM a :=
-  match (mp m )!! k with
+  match (mp m )!! T.tag k with
   | None => throw Not_found
   | Some v => ret (snd v)
   end.
@@ -380,9 +384,9 @@ Definition mapi (f: key -> a -> b) (m: t a) : t b :=
 
 (*Not particularly efficient*)
 Definition change_wf (f: option a -> option a) (k: key) (m: t a):
-  gmap_wf  match (f (option_map snd ((mp m) !! k))) with
+  gmap_wf  match (f (option_map snd ((mp m) !! T.tag k))) with
   | None => mp m
-  | Some v => <[k := (k, v)]>(mp m)
+  | Some v => <[T.tag k := (k, v)]>(mp m)
   end.
 Proof.
   destruct f.
@@ -453,20 +457,20 @@ Definition set_equal (m1: t a) (m2: t b) : bool :=
 (*Variants of find*)
 
 Definition find_def (d: a) (k: key) (m: t a) : a :=
-  match (mp m) !! k with
+  match (mp m) !! T.tag k with
   | None => d
   | Some v => snd v
   end.
 
 Definition find_opt (k: key) (m: t a) : option a :=
-  option_map snd ((mp m) !! k).
+  option_map snd ((mp m) !! T.tag k).
 
 (*NOTE: this is potentially NOT sound! User can pass in
   any exception into OCaml code. Don't think this causes
   any problems though, because exception is just thrown
   and we don't reason about exceptions*)
 Definition find_exn (e: errtype) (k: key) (m: t a) : errorM a :=
-  match (mp m) !! k with
+  match (mp m) !! T.tag k with
   | None => throw e
   | Some v => ret (snd v)
   end.
@@ -575,23 +579,36 @@ Proof.
     unfold find_opt.
     rewrite Heq; reflexivity.
   - intros Halleq.
-    assert (Heq: forall (k: key), (mp m1) !! k = (mp m2) !! k). {
+    assert (Heq: forall k, (mp m1) !! k = (mp m2) !! k). {
       intros.
       unfold find_opt in Halleq.
-      specialize (Halleq k).
-      unfold option_map in Halleq.
-      destruct (mp m1 !! k) as [[k1 v1] | ] eqn : Hm1k.
-      - destruct (mp m2 !! k) as [[k2 v2] |] eqn : Hm2k; try discriminate.
-        simpl in Halleq; inversion Halleq; subst.
-        (*Here, use well-formed*)
-        destruct m1 as [m1 m1_wf].
-        destruct m2 as [m2 m2_wf].
-        simpl in *.
-        apply gmap_wf_iff in m1_wf, m2_wf.
-        apply m1_wf in Hm1k.
-        apply m2_wf in Hm2k.
-        simpl in *; subst; reflexivity.
-      - destruct (mp m2 !! k); auto; discriminate.
+      destruct m1 as [m1 m1_wf];
+      destruct m2 as [m2 m2_wf]; simpl in *.
+      apply gmap_wf_iff in m1_wf, m2_wf.
+      destruct (m1 !! k) as [v1 |] eqn : Hmk1.
+      - assert (Hmk1':=Hmk1).
+        apply m1_wf in Hmk1'; subst.
+        assert (Halleq':=Halleq).
+        specialize (Halleq v1.1).
+        unfold option_map in Halleq.
+        unfold key in *. rewrite Hmk1 in Halleq.
+        destruct (m2 !! T.tag v1.1) as [v2|] eqn : Hmk2;
+        [|discriminate].
+        destruct v1 as [k1 v1]; destruct v2 as [k2 v2]; simpl in *.
+        inversion Halleq; subst.
+        assert (Htag: T.tag k1 = T.tag k2). {
+          apply m2_wf in Hmk2. rewrite Hmk2; auto.
+        }
+        (*Need injectivity of tag*)
+        apply T.tag_inj in Htag.
+        subst; reflexivity.
+      - destruct (m2 !! k) as [v2 |] eqn : Hmk2; [|reflexivity].
+        assert (Hmk2':=Hmk2).
+        apply m2_wf in Hmk2; subst.
+        specialize (Halleq v2.1).
+        unfold key in *.
+        rewrite Hmk1, Hmk2' in Halleq.
+        discriminate.
     }
     (*Use canonicity*)
     exfalso.
@@ -612,14 +629,14 @@ Proof.
   - intros Hopt k.
     specialize (Hopt k).
     rewrite !lookup_fmap in Hopt.
-    destruct (mp m1 !! k); 
-    destruct (mp m2 !! k); simpl in *; auto;
+    destruct (mp m1 !! T.tag k); 
+    destruct (mp m2 !! T.tag k); simpl in *; auto;
     discriminate.
   - intros Hopt k.
     specialize (Hopt k).
     rewrite !lookup_fmap.
-    destruct (mp m1 !! k); 
-    destruct (mp m2 !! k); simpl in *; auto;
+    destruct (mp m1 !! T.tag k); 
+    destruct (mp m2 !! T.tag k); simpl in *; auto;
     discriminate.
 Qed.
 
@@ -627,7 +644,7 @@ Lemma find_opt_contains: forall {a: Type} (m: t a) (k: key),
   contains _ m k = isSome (find_opt _ k m).
 Proof.
   intros. unfold contains, mem, find_opt, isSome, option_map.
-  destruct (mp m !! k); auto.
+  destruct (mp m !! T.tag k); auto.
 Qed.
 
 (*Canonicity is not necessarily a requirement of all maps,

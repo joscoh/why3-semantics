@@ -176,3 +176,23 @@ Definition isSome {A: Type} (o: option A) : bool :=
   | Some _ => true
   | _ => false
   end.
+
+(*TODO: Common?*)
+Definition option_eqb {A: Type}(eq: A -> A -> bool) (o1 o2: option A): bool :=
+  match o1, o2 with
+  | Some x, Some y => eq x y
+  | None, None => true
+  | _, _ => false
+  end.
+
+Lemma option_eqb_eq {A: Type} {eqb: A -> A -> bool}
+  (eqb_eq: forall x y, x = y <-> eqb x y = true)
+  o1 o2: o1 = o2 <-> option_eqb eqb o1 o2 = true.
+Proof.
+  unfold option_eqb.
+  destruct o1 as [x|]; destruct o2 as [y|]; auto;
+  try solve[split; auto; discriminate].
+  rewrite <- eqb_eq.
+  split; intros Heq; subst; auto.
+  inversion Heq; subst; auto.
+Qed.
