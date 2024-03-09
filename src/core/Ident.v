@@ -3,10 +3,12 @@ Require Export Coq.Bool.Bool.
 Require Export Coq.ZArith.ZArith.
 Require Export CoqUtil.
 Require Export Coq.Lists.List.
+Require CoqBigInt.
 Export ListNotations.
 (*From stdpp Require Export gmap.*)
 Require Import Wstdlib.
 Require Loc.
+Require Export StateMonad.
 
 (*We include another prop-valued field (erased) during extraction
   asserting equality for 2 reasons:
@@ -15,12 +17,13 @@ Require Loc.
   We use boolean equality for proof irrelevance*)
 Record attribute := {
   attr_string : string;
-  attr_tag : positive;
-  attr_tag_eq: Pos.eqb attr_tag (str_to_pos attr_string)
+  attr_tag : CoqBigInt.t;
+  (*attr_tag_eq: Pos.eqb attr_tag (str_to_pos attr_string)*)
 }.
 
 Definition attr_eqb (a1 a2: attribute) : bool :=
-  String.eqb (attr_string a1) (attr_string a2).
+  String.eqb (attr_string a1) (attr_string a2) &&
+  CoqBigInt.eq (attr_tag a1) (attr_tag a2).
   (*Pos.eqb (attr_tag a1) (attr_tag a2).*)
 
 (*NOTE: don't use reflect because we want all proofs to be
@@ -39,19 +42,20 @@ Defined.
 Lemma attr_eqb_eq (a1 a2: attribute) : a1 = a2 <-> attr_eqb a1 a2 = true.
 Proof.
   unfold attr_eqb.
-  destruct a1 as [s1 p1 e1]; destruct a2 as [s2 p2 e2]; simpl.
-  unfold is_true in e1, e2.
+  destruct a1 as [s1 p1]; destruct a2 as [s2 p2]; simpl.
   destruct (String.eqb_spec s1 s2); subst; auto.
   2: {
     split;try discriminate;
     intro C; inversion C; subst; auto.
   }
-  assert (p1 = p2). {
-    rewrite Pos.eqb_eq in e1, e2; subst; reflexivity.
-  }
-  subst.
-  assert (e1 = e2) by (apply bool_irrelevance); subst.
-  split; reflexivity.
+  destruct (CoqBigInt.eq p1 p2) eqn : Heqp.
+  - simpl. split; auto; intros _.
+    apply CoqBigInt.eq_spec in Heqp; subst; auto.
+  - split; intros Heq; inversion Heq; subst; auto.
+    assert (Hp: CoqBigInt.eq p2 p2 = true). {
+      apply CoqBigInt.eq_spec; auto.
+    }
+    rewrite Hp in Heqp; discriminate.
 Qed.
 
 Definition attr_eq : base.EqDecision attribute :=
@@ -72,15 +76,16 @@ Module Mattr := Attr.M.
   so why would we ever need same attribute with same name but different
   tag?*)
 
+(*NOTE: in Why3, have -1 (TODO: make sure this is OK)*)
 Definition create_attribute (s: string) : attribute :=
-  Build_attribute s (str_to_pos s) (Pos.eqb_refl _).
+  Build_attribute s (CoqBigInt.zero).
 
 (*NOTE: NO list_attributes because we don't store state*)
 
 Definition attr_equal (a1 a2: attribute) : bool := attr_eqb a1 a2.
-Definition attr_hash (a: attribute) : positive := a.(attr_tag).
-Definition attr_compare (a1 a2: attribute) : comparison :=
-  Pos.compare a1.(attr_tag) a2.(attr_tag).
+Definition attr_hash (a: attribute) : CoqBigInt.t := a.(attr_tag).
+Definition attr_compare (a1 a2: attribute) : int :=
+  CoqBigInt.compare a1.(attr_tag) a2.(attr_tag).
 
 (*NOTE: anything we don't need we will put in a separate OCaml file*)
 
@@ -123,15 +128,15 @@ Record ident := {
   id_string : string;
   id_attrs: Sattr.t;
   id_loc: option Loc.position;
-  id_tag: positive;
-  id_tag_eq: Pos.eqb id_tag (str_to_pos id_string)
+  id_tag: CoqBigInt.t; (*TODO: weakhtbl i think*)
 }.
 
 (*Decidable equality*)
 Definition ident_eqb (i1 i2: ident) : bool :=
   String.eqb i1.(id_string) i2.(id_string) &&
   Sattr.equal i1.(id_attrs) i2.(id_attrs) &&
-  option_eqb Loc.position_eqb i1.(id_loc) i2.(id_loc).
+  option_eqb Loc.position_eqb i1.(id_loc) i2.(id_loc) &&
+  CoqBigInt.eq i1.(id_tag) i2.(id_tag).
 
 (*TODO: prove equality for Sets, options
   Need this to use as keys in sets and maps*)
@@ -139,16 +144,13 @@ Lemma ident_eqb_eq (i1 i2: ident): i1 = i2 <-> ident_eqb i1 i2.
 Proof.
   unfold ident_eqb.
   revert i1 i2.
-  intros [s1 a1 l1 p1 e1] [s2 a2 l2 p2 e2]; simpl.
+  intros [s1 a1 l1 p1] [s2 a2 l2 p2]; simpl.
   unfold is_true.
   rewrite !andb_true_iff, String.eqb_eq, 
-  <- (option_eqb_eq Loc.position_eqb_eq), <- Sattr.equal_eq.
+  <- (option_eqb_eq Loc.position_eqb_eq), <- Sattr.equal_eq, 
+  <- CoqBigInt.eq_spec.
   split; [intros Heq; inversion Heq; subst | intros; destruct_all; subst];
   auto.
-  assert (p1 = p2). {
-    apply Pos.eqb_eq in e1, e2; subst; auto.
-  }
-  subst. f_equal. apply bool_irrelevance.
 Qed.
 
 Definition ident_eq : base.EqDecision ident :=
@@ -182,18 +184,30 @@ Record preid := {
   (and nothing about false). But for now, OK to do
   structural equality I think*)
 Definition id_equal (i1 i2: ident) : bool := ident_eqb i1 i2.
-Definition id_hash (i: ident) : positive := i.(id_tag).
+Definition id_hash (i: ident) : CoqBigInt.t := i.(id_tag).
 (*Skip id_compare*) 
 
+Require Import stdpp.base.
 (*Constructors*)
 (*NOTE: for us, registering just calculates the tag
   instead of changing state. We need to see if this is
   a problem.
   If the same id string is used multiple times, they
   will have the same tag*)
-Definition id_register (p: preid) : ident :=
-  {| id_string := p.(pre_name);
+Definition id_register : preid -> ctr ident :=
+  fun p =>
+  x ← incr;
+  i ← ctr_get;
+  ctr_ret (
+    {| id_string := p.(pre_name);
     id_attrs := p.(pre_attrs);
     id_loc := p.(pre_loc);
-    id_tag := str_to_pos p.(pre_name);
-    id_tag_eq := Pos.eqb_refl _  |}.
+    id_tag := i |}
+  ).
+
+Definition create_ident name attrs loc :=
+  {| pre_name := name; pre_attrs := attrs; pre_loc := loc|}.
+
+(*NOTE: different signature than OCaml, which uses optional args*)
+Definition id_fresh (s: string) : preid :=
+  create_ident s Sattr.empty None.

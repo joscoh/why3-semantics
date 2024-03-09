@@ -2,6 +2,7 @@
   interface as Why3 OCaml extmap. We use binary tries (gmap)
   instead of balanced binary trees*)
 Require Export ErrorMonad.
+Require CoqBigInt.
 From stdpp Require Import gmap.  
 
 (*We implement the [extmap] interface from Why3, with the following
@@ -44,7 +45,7 @@ Parameter for_all: (key -> a -> bool) -> t a -> bool.
 Parameter exists_: (key -> a -> bool) -> t a -> bool.
 Parameter filter: (key -> a -> bool) -> t a -> t a.
 Parameter partition: (key -> a -> bool) -> t a -> (t a * t a).
-Parameter cardinal: t a -> positive.
+Parameter cardinal: t a -> CoqBigInt.t.
 Parameter bindings: t a -> list (key * a).
 (*NOTE: can we avoid these?*)
 (*Parameter min_binding: t a -> errorM (key * a).
@@ -86,7 +87,7 @@ Parameter of_list: list (key * a) -> t a.
 Parameter contains: t a -> key -> bool.
 Parameter domain: t a -> t unit.
 Parameter subdomain: (key -> a -> bool) -> t a -> t unit.
-Parameter is_num_elt: positive -> t a -> bool.
+Parameter is_num_elt: CoqBigInt.t -> t a -> bool.
 (*Parameter enumeration: Type -> Type.
 Parameter val_enum: enumeration a -> option (key * a).
 Parameter start_enum: t a -> enumeration a.
@@ -129,7 +130,7 @@ End S.
   ordered*)
 Module Type TaggedType.
 Parameter t : Type.
-Parameter tag: t -> positive.
+Parameter tag: t -> CoqBigInt.t.
 (*NOTE: we need a form of decidable equality: this
   is different from the OCaml implementation, which takes in
   an ordered type*)
@@ -139,6 +140,8 @@ End TaggedType.
 Module Make (T: TaggedType) <: S.
 
 Definition key := T.t.
+
+Definition tag x := CoqBigInt.to_pos (T.tag x).
 
 (*Local Instance key_eq : EqDecision key := T.eq.
 Local Instance key_count : Countable key :=
@@ -150,7 +153,8 @@ Local Instance key_count : Countable key :=
 (*For proofs of canonicity, we need to know this invariant, so
   we need a sigma type*)
 Definition gmap_wf {A: Type} (g: gmap positive (key * A)) : bool :=
-  map_fold (fun k v acc => Pos.eqb k (T.tag (fst v)) && acc) true g.
+  map_fold (fun k v acc => Pos.eqb k 
+    (tag (fst v)) && acc) true g.
 
 Lemma and_true_r (P: Prop) : P <-> P /\ true.
 Proof.
@@ -159,18 +163,18 @@ Qed.
 
 (*Rewrite in terms of Map_forall*)
 Lemma gmap_wf_iff {A: Type} (g: gmap positive (key * A)):
-  gmap_wf g <-> map_Forall (fun k v => k = T.tag (fst v)) g.
+  gmap_wf g <-> map_Forall (fun k v => k =tag (fst v)) g.
 Proof.
   unfold gmap_wf.
   apply (map_fold_ind (fun r m =>
-    is_true r <-> map_Forall (fun k (v: key * A) => k = T.tag (fst v)) m
+    is_true r <-> map_Forall (fun k (v: key * A) => k = tag (fst v)) m
   )).
   - split; auto. intros. apply map_Forall_empty.
   - intros k v m b Hnot Hb.
     unfold is_true.
     rewrite andb_true_iff, Hb, map_Forall_insert; auto.
     apply and_iff_compat_r.
-    destruct (Pos.eqb_spec k (T.tag v.1)); subst; simpl; split; auto; discriminate.
+    destruct (Pos.eqb_spec k (tag v.1)); subst; simpl; split; auto; discriminate.
 Qed.
 
 Definition t (A: Type) : Type := { g : gmap positive (key * A) | gmap_wf g}.
@@ -193,13 +197,13 @@ Definition is_empty (m: t a): bool :=
   end.
 
 Definition mem (k: key) (m: t a) : bool :=
-  match (mp m) !! T.tag k with
+  match (mp m) !! tag k with
   | None => false
   | Some _ => true
   end.
 
 Lemma add_wf {A: Type} (k: key) (v: A) (m: t A) :
-  gmap_wf (<[T.tag k:=(k, v)]> (mp m)).
+  gmap_wf (<[tag k:=(k, v)]> (mp m)).
 Proof.
   apply gmap_wf_iff.
   apply map_Forall_insert_2; auto.
@@ -213,7 +217,7 @@ Definition build_wf {A: Type} {m: gmap positive (key * A)} (m_wf: gmap_wf m) : t
 Definition add {a: Type} (k: key) (v: a) (m: t a) : t a :=
   build_wf (add_wf k v m).
 
-Lemma singleton_wf (k: key) (v: a): gmap_wf {[T.tag k:=(k, v)]}.
+Lemma singleton_wf (k: key) (v: a): gmap_wf {[tag k:=(k, v)]}.
 Proof.
   apply gmap_wf_iff.
   apply map_Forall_singleton.
@@ -224,7 +228,7 @@ Definition singleton (k: key) (v: a) : t a :=
   build_wf (singleton_wf k v).
 
 Lemma remove_wf (k: key) (m: t a) : 
-  gmap_wf (delete (T.tag k) (mp m)).
+  gmap_wf (delete (tag k) (mp m)).
 Proof.
   apply gmap_wf_iff, map_Forall_delete, gmap_wf_iff.
   destruct m; auto.
@@ -274,7 +278,7 @@ Proof.
   - apply m1_wf in Hm1k; subst.
     destruct v1 as [k1 a1]; simpl.
     unfold option_map.
-    destruct (m2 !! T.tag k1) as [v1|] eqn : Hm2k.
+    destruct (m2 !! tag k1) as [v1|] eqn : Hm2k.
     + apply m2_wf in Hm2k. subst.
       destruct (f _ _ _); [|discriminate].
       intros Heq; inversion Heq; subst; reflexivity.
@@ -336,8 +340,8 @@ Definition partition (f: key -> a -> bool) (m: t a) : (t a * t a) :=
 
 (*NOTE: using "nat" is not great for OCaml code, maybe implement new
   size function, maybe not*)
-Definition cardinal (m: t a) : positive :=
-  Pos.of_nat (map_size (mp m)).
+Definition cardinal (m: t a) : CoqBigInt.t :=
+  CoqBigInt.of_pos (Pos.of_nat (map_size (mp m))).
 
 Definition bindings {a: Type} (m: t a) : list (key * a) :=
   (map snd (map_to_list (mp m))).
@@ -363,7 +367,7 @@ Definition choose (m: t a) : errorM (key * a) :=
   end.
 
 Definition find (k: key) (m: t a) : errorM a :=
-  match (mp m )!! T.tag k with
+  match (mp m )!! tag k with
   | None => throw Not_found
   | Some v => ret (snd v)
   end.
@@ -388,9 +392,9 @@ Definition mapi (f: key -> a -> b) (m: t a) : t b :=
 
 (*Not particularly efficient*)
 Definition change_wf (f: option a -> option a) (k: key) (m: t a):
-  gmap_wf  match (f (option_map snd ((mp m) !! T.tag k))) with
+  gmap_wf  match (f (option_map snd ((mp m) !! tag k))) with
   | None => mp m
-  | Some v => <[T.tag k := (k, v)]>(mp m)
+  | Some v => <[tag k := (k, v)]>(mp m)
   end.
 Proof.
   destruct f.
@@ -461,20 +465,20 @@ Definition set_equal (m1: t a) (m2: t b) : bool :=
 (*Variants of find*)
 
 Definition find_def (d: a) (k: key) (m: t a) : a :=
-  match (mp m) !! T.tag k with
+  match (mp m) !! tag k with
   | None => d
   | Some v => snd v
   end.
 
 Definition find_opt (k: key) (m: t a) : option a :=
-  option_map snd ((mp m) !! T.tag k).
+  option_map snd ((mp m) !! tag k).
 
 (*NOTE: this is potentially NOT sound! User can pass in
   any exception into OCaml code. Don't think this causes
   any problems though, because exception is just thrown
   and we don't reason about exceptions*)
 Definition find_exn (e: errtype) (k: key) (m: t a) : errorM a :=
-  match (mp m) !! T.tag k with
+  match (mp m) !! tag k with
   | None => throw e
   | Some v => ret (snd v)
   end.
@@ -566,8 +570,8 @@ Definition domain (m: t a) : t unit :=
 Definition subdomain (f: key -> a -> bool) (m: t a) : t unit :=
   mapi_filter (fun k v => if f k v then Some tt else None) m.
 
-Definition is_num_elt (p: positive) (m: t a) : bool :=
-  Pos.eq_dec (cardinal m) p.
+Definition is_num_elt (p: CoqBigInt.t) (m: t a) : bool :=
+  CoqBigInt.eq (cardinal m) p.
 
 End Types.
 
@@ -597,14 +601,15 @@ Proof.
         specialize (Halleq v1.1).
         unfold option_map in Halleq.
         unfold key in *. rewrite Hmk1 in Halleq.
-        destruct (m2 !! T.tag v1.1) as [v2|] eqn : Hmk2;
+        destruct (m2 !! tag v1.1) as [v2|] eqn : Hmk2;
         [|discriminate].
         destruct v1 as [k1 v1]; destruct v2 as [k2 v2]; simpl in *.
         inversion Halleq; subst.
-        assert (Htag: T.tag k1 = T.tag k2). {
+        assert (Htag: tag k1 = tag k2). {
           apply m2_wf in Hmk2. rewrite Hmk2; auto.
         }
         (*Need injectivity of tag*)
+        apply CoqBigInt.to_pos_inj in Htag.
         apply tag_inj in Htag.
         subst; reflexivity.
       - destruct (m2 !! k) as [v2 |] eqn : Hmk2; [|reflexivity].
@@ -691,7 +696,7 @@ Lemma find_opt_contains: forall {a: Type} (m: t a) (k: key),
   contains _ m k = isSome (find_opt _ k m).
 Proof.
   intros. unfold contains, mem, find_opt, isSome, option_map.
-  destruct (mp m !! T.tag k); auto.
+  destruct (mp m !! tag k); auto.
 Qed.
 
 

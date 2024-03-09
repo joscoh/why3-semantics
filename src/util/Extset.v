@@ -24,7 +24,7 @@ Parameter for_all: (elt -> bool) -> t -> bool.
 Parameter exists_: (elt -> bool) -> t -> bool.
 Parameter filter: (elt -> bool) -> t -> t.
 Parameter partition: (elt -> bool) -> t -> t * t.
-Parameter cardinal: t -> positive.
+Parameter cardinal: t -> CoqBigInt.t.
 Parameter elements: t -> list elt.
 (*Parameter min_elt: t -> elt.
 Parameter max_elt: t -> elt.*)
@@ -39,7 +39,7 @@ Parameter fold2_inter: forall {a: Type}, (elt -> a -> a) -> t -> t -> a -> a.
 Parameter fold2_union: forall {a: Type}, (elt -> a -> a) -> t -> t -> a -> a.
 (*Parameter translate: (elt -> elt) -> t -> t.*)
 Parameter add_new: errtype -> elt -> t -> errorM t.
-Parameter is_num_elt: positive -> t -> bool.
+Parameter is_num_elt: CoqBigInt.t -> t -> bool.
 Parameter of_list: list elt -> t.
 Parameter contains: t -> elt -> bool.
 Parameter add_left: t -> elt -> t.
@@ -110,16 +110,10 @@ Lemma equal_eq: forall (m1 m2: t),
   m1 = m2 <-> equal m1 m2 = true.
 Proof.
   intros. unfold equal.
-  rewrite M.set_equal_spec.
-  rewrite (M.canonical _ m1 m2), M.equal_spec.
-  (*Now just compare [find_opt] and [contains]*)
-  setoid_rewrite M.find_opt_contains.
-  split; intros Heq k; specialize (Heq k).
-  - rewrite Heq; reflexivity.
-  - destruct (M.find_opt k m1) as [u|]; destruct (M.find_opt k m2) as [u1|];
-    simpl in Heq; auto; try discriminate.
-    (*All units are equal*)
-    destruct u; destruct u1; reflexivity.
+  rewrite M.set_equal_eq.
+  split; intros Heq; subst; auto.
+  apply M.map_inj_eq in Heq; auto.
+  intros [] []; auto.
 Qed.
 
 End MakeOfMap.

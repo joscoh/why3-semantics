@@ -2,14 +2,9 @@
 Require Import Coq.Numbers.BinNums.
 Require Import Coq.Bool.Bool.
 Require Import Setoid.
+Require Import CoqInt.
 (*TODO: will likely need a layer on top to interface with existing Loc*)
 
-(*Here, we use bounded ints so that we can extract directly
-  to OCaml's int type*)
-Parameter int : Type.
-Parameter int_eqb : int -> int -> bool.
-Parameter Abs : int -> Z.
-Parameter int_eqb_eq: forall (i1 i2: int), i1 = i2 <-> int_eqb i1 i2 = true.
 
 Record position := {
   pos_file_tag : int;

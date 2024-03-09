@@ -8,8 +8,7 @@ Extraction Blacklist String List.
 Require Import Coq.extraction.ExtrOcamlBasic.
 
 Unset Extraction KeepSingleton.
-(*Of course TODO*)
-Extract Constant position => "int".
+
 (*Extract Inductive bool => "bool" [ "true" "false" ].
 Extract Inductive list => "list" [ "[]" "(::)" ].
 Extract Inductive option => "option" [ "Some" "None" ].
@@ -36,14 +35,21 @@ Extract Inlined Constant errorM_bind => "(@@)".
 Extraction Inline gmap_car.
 Extraction Inline gmap_empty.
 
-Extraction Inline ty_build.
+(*Let's try*)
+Extract Inductive ty => "ty'" [ "" ].
+Extract Inductive tysymbol => "tysymbol'" [""].
+Extract Inductive ty_node__ => "ty_node_" ["Tyvar" "Tyapp"].
+(*Extraction Inline ty'.
+Extraction Inline tysymbol'.*)
+
+(*Extraction Inline ty_build.
 Extraction Inline ty_build'.
 Extraction Inline ty_build_simpl.
-Extraction Inline ty_build_simpl'.
+Extraction Inline ty_build_simpl'.*)
 Extraction Inline Decision RelDecision.
 
 Separate Extraction
-  Extmap Extset Ty.ty Ty.ty_v_map Ident.
+  Extmap Extset Ty Ident. (*Ty.ty_v_map Ident.*)
 (*Separate Extraction Extmap.
 Separate Extraction Ty.ty Ty.ty_v_map Ident.*)
 

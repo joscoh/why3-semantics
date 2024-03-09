@@ -1,23 +1,23 @@
 Require Import Coq.ZArith.ZArith.
 From stdpp Require Import base.
-Require Export Extmap Extset.
+Require Export CoqInt Extmap Extset.
 
 (*TODO: see*)
-Definition stdlib_compare_int (x y: positive) : Z :=
+(*Definition stdlib_compare_int (x y: positive) : Z :=
   match Pos.compare x y with
   | Eq => 0
   | Lt => -1
   | Gt => 1
-  end.
+  end.*)
 
 (* Set, Map, Hashtbl on structures with a unique tag *)
 
 Module Type OrderedHashedType.
 
 Parameter t : Type.
-Parameter hash: t -> positive.
+Parameter hash: t -> CoqBigInt.t.
 Parameter equal: t -> t -> bool.
-Parameter compare: t -> t -> comparison. (*Really, just need 3 values*)
+Parameter compare: t -> t -> int. (*Really, just need 3 values*)
 
 End OrderedHashedType.
 
@@ -25,8 +25,8 @@ Module OrderedHashed (X: TaggedType) <: OrderedHashedType.
 
 Definition t:= X.t.
 Definition hash := X.tag.
-Definition equal ts1 ts2 := Pos.eqb (X.tag ts1) (X.tag ts2).
-Definition compare ts1 ts2 := Pos.compare (X.tag ts1) (X.tag ts2).
+Definition equal ts1 ts2 := CoqBigInt.eq (X.tag ts1) (X.tag ts2).
+Definition compare ts1 ts2 := CoqBigInt.compare (X.tag ts1) (X.tag ts2).
 
 End OrderedHashed.
 
