@@ -55,39 +55,21 @@ Definition tv_of_string (s: string) : ctr tvsymbol :=
 (*For Now*)
 Unset Elimination Schemes.
 
-
-Inductive type_def_ (A: Type) : Type :=
-  | NoDef_
-  | Alias_: A -> type_def_ A
-  | Range_: Number.int_range -> type_def_ A
-  | Float_: Number.float_format -> type_def_ A.
-
-Record ty_ (A: Type) := 
+Record ty_caml (A: Type) := 
   { ty_node: A;
     ty_tag: CoqBigInt.t}.
 
-Arguments ty_ {A}.
-Arguments ty_node {A}.
-Arguments ty_tag {A}.
-
-Record tysymbol_ (A: Type) := {
+Inductive type_def_caml (A: Type) : Type :=
+  | NoDef_caml
+  | Alias_caml: A -> type_def_caml A
+  | Range_caml: Number.int_range -> type_def_caml A
+  | Float_caml: Number.float_format -> type_def_caml A.
+    
+Record tysymbol_caml (A: Type) := {
   ts_name : ident;
   ts_args : list tvsymbol;
-  ts_def : type_def_ (@ty_ A)
+  ts_def : type_def_caml A
 }.
-
-Arguments tysymbol_ {A}.
-Arguments ts_name {A}.
-Arguments ts_args {A}.
-Arguments ts_def {A}.
-
-Inductive ty_node__ : Type :=
-  | Tyvar_ : tvsymbol -> ty_node__
-  | Tyapp_ : @tysymbol_ ty_node__ -> list (@ty_ ty_node__) -> ty_node__.
-
-Definition ty' := @ty_ ty_node__.
-
-Definition tysymbol' := @tysymbol_ ty_node__.
 
 Inductive type_def : Type :=
   | NoDef
@@ -101,6 +83,83 @@ with tysymbol : Type :=
 with ty_node_ : Type :=
   | Tyvar : tvsymbol -> ty_node_
   | Tyapp: tysymbol -> list ty -> ty_node_.
+
+(*IMPORTANT: ONLY use these functions so we can extract*)
+Definition node_of_ty (t: ty) : ty_node_ :=
+  match t with
+  | mk_ty n _ => n
+  end.
+
+Definition tag_of_ty (t: ty) : CoqBigInt.t :=
+  match t with
+  | mk_ty _ n => n
+  end.
+
+Definition ident_of_tysym (t: tysymbol) : ident :=
+  match t with
+  | mk_ts t _ _ => t
+  end.
+
+Definition vars_of_tysym (t: tysymbol) : list tvsymbol :=
+  match t with
+  | mk_ts _ t _ => t
+  end.
+
+Definition type_def_of_tysym (t: tysymbol) : type_def :=
+  match t with
+  | mk_ts _ _ t => t
+  end.
+
+
+
+(*Test with equality on ty*)
+Fixpoint ty_eqb (t1 t2: ty) : bool :=
+  CoqBigInt.eq (tag_of_ty t1) (tag_of_ty t2) &&
+  ty_node_eqb (node_of_ty t1) (node_of_ty t2)
+with ty_node_eqb (t1 t2: ty_node_) : bool :=
+  match t1, t2 with
+  | Tyvar v1, Tyvar v2 => tvsymbol_eqb v1 v2
+  | Tyapp ts1 tys1, Tyapp ts2 tys2 =>
+    tysymbol_eqb ts1 ts2 &&
+    ((fix tys_eqb (l1 l2: list ty) : bool :=
+      match l1, l2 with
+      | h1 :: t1, h2 :: t2 => ty_eqb h1 h2 && tys_eqb t1 t2
+      | nil,nil => true
+      | _, _ => false
+      end) tys1 tys2)
+  | _, _ => false
+  end
+with tysymbol_eqb (t1 t2: tysymbol) : bool :=
+  ident_eqb (ident_of_tysym t1) (ident_of_tysym t2) &&
+  list_eqb tvsymbol_eqb (vars_of_tysym t1) (vars_of_tysym t2) &&
+  match type_def_of_tysym t1, type_def_of_tysym t2 with
+  | NoDef, Nodef => true
+  | Alias a1, Alias a2 => ty_eqb a1 a2
+  | Range n1, Range n2 => Number.int_range_eqb n1 n2
+  | Float f1, Float f2 => Number.float_format_eqb f1 f2
+  | _, _ => false
+  end.
+
+
+(*Arguments ty_rec {A}.
+Arguments ty_node {A}.
+Arguments ty_tag {A}.*)
+
+
+
+(*Arguments tysymbol_ {A}.
+Arguments ts_name {A}.
+Arguments ts_args {A}.
+Arguments ts_def {A}.
+
+Inductive ty_node__ : Type :=
+  | Tyvar_ : tvsymbol -> ty_node__
+  | Tyapp_ : @tysymbol_ ty_node__ -> list (@ty_ ty_node__) -> ty_node__.
+*)
+(*Definition ty' := @ty_ ty_node__.
+
+Definition tysymbol' := @tysymbol_ ty_node__.*)
+
 
 
 

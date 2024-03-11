@@ -19,6 +19,17 @@ Extract Inlined Constant Datatypes.snd => "snd".
 
 Extract Inlined Constant proj_sumbool => "".
 
+(*Axiomatize OCaml ints and BigInts*)
+(*TODO: move to approprate files?*)
+Extract Inlined Constant CoqBigInt.t => "Z.t".
+Extract Inlined Constant CoqBigInt.zero => "Z.zero" (*TODO: change to BigInt when put in Why3*).
+Extract Inlined Constant CoqBigInt.one => "Z.one" (*TODO*).
+Extract Inlined Constant CoqBigInt.succ => "Z.succ".
+Extract Inlined Constant CoqBigInt.eq => "Z.equal".
+
+Extract Inlined Constant CoqInt.int => "Int.t".
+Extract Inlined Constant CoqInt.int_eqb => "Int.equal".
+
 (*Handle exception monad*)
 
 Extract Inductive errorM => "  " ["Normal" "Error"] .  
@@ -35,10 +46,18 @@ Extract Inlined Constant errorM_bind => "(@@)".
 Extraction Inline gmap_car.
 Extraction Inline gmap_empty.
 
-(*Let's try*)
-Extract Inductive ty => "ty'" [ "" ].
-Extract Inductive tysymbol => "tysymbol'" [""].
-Extract Inductive ty_node__ => "ty_node_" ["Tyvar" "Tyapp"].
+(*Let's try TODO constrs*)
+Extract Inductive ty => " ty_node_ ty_caml" [ "" ].
+Extract Inductive tysymbol => "(ty_node_ ty_caml) tysymbol_caml" [""].
+Extract Inductive type_def => "(ty_node_ ty_caml) type_def_caml" ["NoDef_caml" "Alias_caml" "Range_caml" "Float_caml"].
+Extract Inlined Constant node_of_ty => "ty_node".
+Extract Inlined Constant tag_of_ty => "ty_tag".
+Extract Inlined Constant ident_of_tysym => "ts_name".
+Extract Inlined Constant vars_of_tysym => "ts_args".
+Extract Inlined Constant type_def_of_tysym => "ts_def".
+
+
+(*Extract Inductive ty_node__ => "ty_node_" ["Tyvar" "Tyapp"].*)
 (*Extraction Inline ty'.
 Extraction Inline tysymbol'.*)
 

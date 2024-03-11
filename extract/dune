@@ -3,11 +3,13 @@
  (extracted_modules 
   BinNums BinPos Ascii Bool Datatypes Specif  List0 String0
   base gmap countable fin_maps numbers option decidable
-  ErrorMonad Extmap Extset Ty Ident)
- (theories Src stdpp)
+  ErrorMonad CoqUtil CoqInt CoqBigInt Loc StateMonad 
+  Extmap Extset Wstdlib Number Ty Ident)
+ (theories Src stdpp Proofs)
  )
 
 (library
  (name Why3Coq)
- (flags (:standard -w -33)))
+ (flags (:standard -w -33))
+ (libraries zarith))
 
