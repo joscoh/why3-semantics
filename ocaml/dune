@@ -1,0 +1,4 @@
+(library
+ (name Why3OCaml)
+ (flags (:standard -w -33))
+ (libraries zarith))

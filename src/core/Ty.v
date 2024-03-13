@@ -41,8 +41,7 @@ Definition tv_hash tv := id_hash tv.(tv_name).
 
 (*Not stateful, unlike OCaml*)
 Definition create_tvsymbol (n: preid) : ctr tvsymbol :=
-  i ← id_register n;
-  ctr_ret {| tv_name := i|}.
+  ctr_bnd (fun i => ctr_ret {|tv_name := i|}) (id_register n).
 
 (*In OCaml, this is a stateful function that stores variables
   in hash table and looks up to see if any have been
@@ -52,76 +51,88 @@ Definition tv_of_string (s: string) : ctr tvsymbol :=
   create_tvsymbol (id_fresh s).
 
 (** Type Symbols and Types **)
-(*For Now*)
 Unset Elimination Schemes.
 
-Record ty_caml (A: Type) := 
+(*Here is the first of several places where we have different
+  types between Coq and OCaml. In Coq we use a mutually recursive
+  Inductive; in OCaml, we have a mutually recursive mix of 
+  Records and recursive types. This is for compatibility with
+  existing OCaml code; Coq does not support this natively.
+  We name the Coq types with a _c suffix, the OCaml ones with
+  a _o suffix, and keep the extracted names the same as the
+  existing API*)
+
+Record ty_o (A: Type) := 
   { ty_node: A;
     ty_tag: CoqBigInt.t}.
 
-Inductive type_def_caml (A: Type) : Type :=
-  | NoDef_caml
-  | Alias_caml: A -> type_def_caml A
-  | Range_caml: Number.int_range -> type_def_caml A
-  | Float_caml: Number.float_format -> type_def_caml A.
+Inductive type_def_o (A: Type) : Type :=
+  | NoDef
+  | Alias: A -> type_def_o A
+  | Range: Number.int_range -> type_def_o A
+  | Float: Number.float_format -> type_def_o A.
     
-Record tysymbol_caml (A: Type) := {
+Record tysymbol_o (A: Type) := {
   ts_name : ident;
   ts_args : list tvsymbol;
-  ts_def : type_def_caml A
+  ts_def : type_def_o A
 }.
 
-Inductive type_def : Type :=
-  | NoDef
-  | Alias : ty -> type_def
-  | Range: Number.int_range -> type_def
-  | Float: Number.float_format -> type_def
-with ty : Type :=
-  | mk_ty : ty_node_ -> CoqBigInt.t -> ty
-with tysymbol : Type :=
-  | mk_ts : ident -> list tvsymbol -> type_def -> tysymbol
-with ty_node_ : Type :=
-  | Tyvar : tvsymbol -> ty_node_
-  | Tyapp: tysymbol -> list ty -> ty_node_.
+(*Coq types - we append with _c for coq*)
+Inductive type_def_c : Type :=
+  | NoDef_c
+  | Alias_c : ty_c -> type_def_c
+  | Range_c: Number.int_range -> type_def_c
+  | Float_c: Number.float_format -> type_def_c
+with ty_c : Type :=
+  | mk_ty : ty_node_c -> CoqBigInt.t -> ty_c
+with tysymbol_c : Type :=
+  | mk_ts : ident -> list tvsymbol -> type_def_c -> tysymbol_c
+with ty_node_c : Type :=
+  | Tyvar : tvsymbol -> ty_node_c
+  | Tyapp: tysymbol_c -> list ty_c -> ty_node_c.
+
+(*OCaml names for extraction*)
+Definition ty := ty_o ty_node_c.
+Definition tysymbol := tysymbol_o ty.
+Definition type_def := type_def_o ty.
 
 (*IMPORTANT: ONLY use these functions so we can extract*)
-Definition node_of_ty (t: ty) : ty_node_ :=
+Definition node_of_ty (t: ty_c) : ty_node_c :=
   match t with
   | mk_ty n _ => n
   end.
 
-Definition tag_of_ty (t: ty) : CoqBigInt.t :=
+Definition tag_of_ty (t: ty_c) : CoqBigInt.t :=
   match t with
   | mk_ty _ n => n
   end.
 
-Definition ident_of_tysym (t: tysymbol) : ident :=
+Definition ident_of_tysym (t: tysymbol_c) : ident :=
   match t with
   | mk_ts t _ _ => t
   end.
 
-Definition vars_of_tysym (t: tysymbol) : list tvsymbol :=
+Definition vars_of_tysym (t: tysymbol_c) : list tvsymbol :=
   match t with
   | mk_ts _ t _ => t
   end.
 
-Definition type_def_of_tysym (t: tysymbol) : type_def :=
+Definition type_def_of_tysym (t: tysymbol_c) : type_def_c :=
   match t with
   | mk_ts _ _ t => t
   end.
 
-
-
 (*Test with equality on ty*)
-Fixpoint ty_eqb (t1 t2: ty) : bool :=
+Fixpoint ty_eqb (t1 t2: ty_c) : bool :=
   CoqBigInt.eq (tag_of_ty t1) (tag_of_ty t2) &&
   ty_node_eqb (node_of_ty t1) (node_of_ty t2)
-with ty_node_eqb (t1 t2: ty_node_) : bool :=
+with ty_node_eqb (t1 t2: ty_node_c) : bool :=
   match t1, t2 with
   | Tyvar v1, Tyvar v2 => tvsymbol_eqb v1 v2
   | Tyapp ts1 tys1, Tyapp ts2 tys2 =>
     tysymbol_eqb ts1 ts2 &&
-    ((fix tys_eqb (l1 l2: list ty) : bool :=
+    ((fix tys_eqb (l1 l2: list ty_c) : bool :=
       match l1, l2 with
       | h1 :: t1, h2 :: t2 => ty_eqb h1 h2 && tys_eqb t1 t2
       | nil,nil => true
@@ -129,17 +140,16 @@ with ty_node_eqb (t1 t2: ty_node_) : bool :=
       end) tys1 tys2)
   | _, _ => false
   end
-with tysymbol_eqb (t1 t2: tysymbol) : bool :=
+with tysymbol_eqb (t1 t2: tysymbol_c) : bool :=
   ident_eqb (ident_of_tysym t1) (ident_of_tysym t2) &&
   list_eqb tvsymbol_eqb (vars_of_tysym t1) (vars_of_tysym t2) &&
   match type_def_of_tysym t1, type_def_of_tysym t2 with
-  | NoDef, Nodef => true
-  | Alias a1, Alias a2 => ty_eqb a1 a2
-  | Range n1, Range n2 => Number.int_range_eqb n1 n2
-  | Float f1, Float f2 => Number.float_format_eqb f1 f2
+  | NoDef_c, Nodef_c => true
+  | Alias_c a1, Alias_c a2 => ty_eqb a1 a2
+  | Range_c n1, Range_c n2 => Number.int_range_eqb n1 n2
+  | Float_c f1, Float_c f2 => Number.float_format_eqb f1 f2
   | _, _ => false
   end.
-
 
 (*Arguments ty_rec {A}.
 Arguments ty_node {A}.

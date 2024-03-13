@@ -194,8 +194,23 @@ Require Import stdpp.base.
   a problem.
   If the same id string is used multiple times, they
   will have the same tag*)
+(*A vile hack*)
+Definition ctr_unit := ctr unit.
+Definition id_ctr : ctr_unit :=
+  new_ctr. (*For extraction*)
+
 Definition id_register : preid -> ctr ident :=
   fun p =>
+  ctr_bnd (fun _ => ctr_bnd (fun i => ctr_ret 
+    {| id_string := p.(pre_name);
+    id_attrs := p.(pre_attrs);
+    id_loc := p.(pre_loc);
+    id_tag := i |}) ctr_get) incr.
+
+
+  (*let r := new_ctr in (*For extraction*)
+  fun p =>
+  y ← r;
   x ← incr;
   i ← ctr_get;
   ctr_ret (
@@ -203,7 +218,7 @@ Definition id_register : preid -> ctr ident :=
     id_attrs := p.(pre_attrs);
     id_loc := p.(pre_loc);
     id_tag := i |}
-  ).
+  ).*)
 
 Definition create_ident name attrs loc :=
   {| pre_name := name; pre_attrs := attrs; pre_loc := loc|}.

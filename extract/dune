@@ -7,9 +7,10 @@
   Extmap Extset Wstdlib Number Ty Ident)
  (theories Src stdpp Proofs)
  )
-
+ 
 (library
  (name Why3Coq)
  (flags (:standard -w -33))
- (libraries zarith))
+ (libraries zarith Why3OCaml))
+
 
