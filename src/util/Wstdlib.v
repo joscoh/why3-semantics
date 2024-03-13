@@ -25,7 +25,7 @@ Module OrderedHashed (X: TaggedType) <: OrderedHashedType.
 
 Definition t:= X.t.
 Definition hash := X.tag.
-Definition equal ts1 ts2 := CoqBigInt.eq (X.tag ts1) (X.tag ts2).
+Definition equal ts1 ts2 := CoqBigInt.eqb (X.tag ts1) (X.tag ts2).
 Definition compare ts1 ts2 := CoqBigInt.compare (X.tag ts1) (X.tag ts2).
 
 End OrderedHashed.

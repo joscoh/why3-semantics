@@ -571,7 +571,7 @@ Definition subdomain (f: key -> a -> bool) (m: t a) : t unit :=
   mapi_filter (fun k v => if f k v then Some tt else None) m.
 
 Definition is_num_elt (p: CoqBigInt.t) (m: t a) : bool :=
-  CoqBigInt.eq (cardinal m) p.
+  CoqBigInt.eqb (cardinal m) p.
 
 End Types.
 

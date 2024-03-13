@@ -6,6 +6,8 @@ From Coq Require Extraction.
 Extraction Blacklist String List.
 
 Require Import Coq.extraction.ExtrOcamlBasic.
+(*Extract to native OCaml strings*)
+Require Import Coq.extraction.ExtrOcamlNativeString.
 
 Set Extraction KeepSingleton.
 
@@ -27,10 +29,14 @@ Extract Inlined Constant CoqBigInt.t => "Why3OCaml.BigInt.t".
 Extract Inlined Constant CoqBigInt.zero => "Why3OCaml.BigInt.zero" (*TODO: change to BigInt when put in Why3*).
 Extract Inlined Constant CoqBigInt.one => "BigInt.one" (*TODO*).
 Extract Inlined Constant CoqBigInt.succ => "Why3OCaml.BigInt.succ".
-Extract Inlined Constant CoqBigInt.eq => "Why3OCaml.BigInt.eq".
+Extract Inlined Constant CoqBigInt.eqb => "Why3OCaml.BigInt.eq".
 
 Extract Inlined Constant CoqInt.int => "Int.t".
 Extract Inlined Constant CoqInt.int_eqb => "Int.equal".
+
+(*TODO: this is BAD - figure out better*)
+Extract Inlined Constant length => "List.length".
+Extract Inlined Constant Coq.Arith.PeanoNat.Nat.eqb => "Int.equal".
 
 (*Handle exception monad*)
 

@@ -2,19 +2,21 @@
   We provide 2 different types, one for nonnegative ints
   and one for general ints (which we need less)*)
 (*TODO: add general: for now, just positive*)
+(*For Coercion (TODO: move?)*)
 Require Export Coq.ZArith.BinInt.
 Require Export CoqInt.
+From Proofs Require Import core.Common.
 
 Axiom t : Type.
 Axiom one : t.
 Axiom zero : t.
 Axiom add : t -> t -> t.
 Axiom succ : t -> t.
-Axiom eq : t -> t -> bool.
+Axiom eqb : t -> t -> bool.
 Axiom compare: t -> t -> int.
 
 (*Assumption: equality corresponds to Leibnitz equality*)
-Axiom eq_spec : forall (x y: t), x = y <-> eq x y = true.
+Axiom eqb_eq : forall (x y: t), x = y <-> eqb x y.
 
 Axiom to_pos : t -> positive.
 (*OCaml function to_pos - gives positive of (x+1) because

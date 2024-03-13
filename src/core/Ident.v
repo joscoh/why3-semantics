@@ -23,7 +23,7 @@ Record attribute := {
 
 Definition attr_eqb (a1 a2: attribute) : bool :=
   String.eqb (attr_string a1) (attr_string a2) &&
-  CoqBigInt.eq (attr_tag a1) (attr_tag a2).
+  CoqBigInt.eqb (attr_tag a1) (attr_tag a2).
   (*Pos.eqb (attr_tag a1) (attr_tag a2).*)
 
 (*NOTE: don't use reflect because we want all proofs to be
@@ -39,23 +39,13 @@ Proof.
   - right. intro C. apply H in C. discriminate.
 Defined.
 
-Lemma attr_eqb_eq (a1 a2: attribute) : a1 = a2 <-> attr_eqb a1 a2 = true.
+Lemma attr_eqb_eq (a1 a2: attribute) : a1 = a2 <-> attr_eqb a1 a2.
 Proof.
   unfold attr_eqb.
   destruct a1 as [s1 p1]; destruct a2 as [s2 p2]; simpl.
-  destruct (String.eqb_spec s1 s2); subst; auto.
-  2: {
-    split;try discriminate;
-    intro C; inversion C; subst; auto.
-  }
-  destruct (CoqBigInt.eq p1 p2) eqn : Heqp.
-  - simpl. split; auto; intros _.
-    apply CoqBigInt.eq_spec in Heqp; subst; auto.
-  - split; intros Heq; inversion Heq; subst; auto.
-    assert (Hp: CoqBigInt.eq p2 p2 = true). {
-      apply CoqBigInt.eq_spec; auto.
-    }
-    rewrite Hp in Heqp; discriminate.
+  rewrite andb_true, <- CoqBigInt.eqb_eq.
+  unfold is_true. rewrite String.eqb_eq.
+  solve_eqb_eq.
 Qed.
 
 Definition attr_eq : base.EqDecision attribute :=
@@ -136,7 +126,7 @@ Definition ident_eqb (i1 i2: ident) : bool :=
   String.eqb i1.(id_string) i2.(id_string) &&
   Sattr.equal i1.(id_attrs) i2.(id_attrs) &&
   option_eqb Loc.position_eqb i1.(id_loc) i2.(id_loc) &&
-  CoqBigInt.eq i1.(id_tag) i2.(id_tag).
+  CoqBigInt.eqb i1.(id_tag) i2.(id_tag).
 
 (*TODO: prove equality for Sets, options
   Need this to use as keys in sets and maps*)
@@ -145,17 +135,15 @@ Proof.
   unfold ident_eqb.
   revert i1 i2.
   intros [s1 a1 l1 p1] [s2 a2 l2 p2]; simpl.
+  rewrite !andb_true, <- (option_eqb_eq Loc.position_eqb_eq),
+    <- CoqBigInt.eqb_eq.
   unfold is_true.
-  rewrite !andb_true_iff, String.eqb_eq, 
-  <- (option_eqb_eq Loc.position_eqb_eq), <- Sattr.equal_eq, 
-  <- CoqBigInt.eq_spec.
-  split; [intros Heq; inversion Heq; subst | intros; destruct_all; subst];
-  auto.
+  rewrite String.eqb_eq,  <- Sattr.equal_eq.
+  solve_eqb_eq.
 Qed.
 
 Definition ident_eq : base.EqDecision ident :=
   dec_from_eqb ident_eqb ident_eqb_eq.
-
 
 Module IdentTag <: TaggedType.
 Definition t := ident.

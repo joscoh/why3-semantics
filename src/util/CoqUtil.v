@@ -1,4 +1,4 @@
-From stdpp Require Import numbers.
+From stdpp Require Import -(coercions) numbers.
 Require Export Coq.Strings.String.
 Require Export Coq.Lists.List.
 Require Import Coq.Init.Byte.
@@ -152,6 +152,11 @@ Qed.
 
 End StrPos.
 
+Ltac solve_eqb_eq :=
+  solve[let Heq := fresh "Heq" in
+  split; intros Heq; inversion Heq; destruct_all; subst;
+  auto; try discriminate; contradiction].
+
 (*TODO: move from Types to Common*)
 Fixpoint list_eqb {A: Type} (eq: A -> A -> bool) (l1 l2: list A) : bool :=
   match l1, l2 with
@@ -160,15 +165,20 @@ Fixpoint list_eqb {A: Type} (eq: A -> A -> bool) (l1 l2: list A) : bool :=
   | _, _ => false
   end.
 
+Lemma andb_true (b1 b2: bool) :
+  b1 && b2 <-> b1 /\ b2.
+Proof.
+  unfold is_true. apply andb_true_iff.
+Qed.
+
 Lemma list_eqb_eq {A: Type} {eq: A -> A -> bool} 
-  (Heq: forall x y, x = y <-> eq x y = true)
+  (Heq: forall x y, x = y <-> eq x y)
   l1 l2:
-  l1 = l2 <-> list_eqb eq l1 l2 = true.
+  l1 = l2 <-> list_eqb eq l1 l2.
 Proof.
   revert l2. induction l1 as [|h1 t1]; simpl;
-  intros [| h2 t2]; simpl; auto; try solve[split; auto; discriminate].
-  rewrite andb_true_iff, <- Heq, <- IHt1.
-  split; intros Hht; inversion Hht; subst; auto.
+  intros [| h2 t2]; simpl; auto; try solve_eqb_eq.
+  rewrite andb_true, <- Heq, <- IHt1. solve_eqb_eq.
 Qed.
 
 Definition isSome {A: Type} (o: option A) : bool :=
@@ -186,13 +196,25 @@ Definition option_eqb {A: Type}(eq: A -> A -> bool) (o1 o2: option A): bool :=
   end.
 
 Lemma option_eqb_eq {A: Type} {eqb: A -> A -> bool}
-  (eqb_eq: forall x y, x = y <-> eqb x y = true)
-  o1 o2: o1 = o2 <-> option_eqb eqb o1 o2 = true.
+  (eqb_eq: forall x y, x = y <-> eqb x y)
+  o1 o2: o1 = o2 <-> option_eqb eqb o1 o2.
 Proof.
-  unfold option_eqb.
-  destruct o1 as [x|]; destruct o2 as [y|]; auto;
-  try solve[split; auto; discriminate].
-  rewrite <- eqb_eq.
-  split; intros Heq; subst; auto.
-  inversion Heq; subst; auto.
+  destruct o1 as [x|]; destruct o2 as [y|]; simpl; auto;
+  try rewrite <- eqb_eq; solve_eqb_eq.
 Qed.
+
+(*TODO: dont repeat with Common*)
+(*This awkward definition satisfies Coq's positivity checker
+  for nested induction, unlike the normal one*)
+Definition map2 {A B C: Type} :=
+  fun (f: A -> B -> C) =>
+    fix map2 (l1: list A) : list B -> list C :=
+      match l1 with
+      | nil => fun l2 => nil
+      | x1 :: t1 =>
+        fun l2 =>
+        match l2 with
+        | nil => nil
+        | x2 :: t2 => f x1 x2 :: map2 t1 t2
+        end
+      end.

@@ -1,7 +1,7 @@
 (coq.extraction
  (prelude Extract)
  (extracted_modules 
-  BinNums BinPos Ascii Bool Datatypes Specif  List0 String0
+  BinNums BinPos Datatypes Specif  List0 String0
   base gmap countable fin_maps numbers option decidable
   ErrorMonad CoqUtil CoqInt CoqBigInt Loc StateMonad 
   Extmap Extset Wstdlib Number Ty Ident)
