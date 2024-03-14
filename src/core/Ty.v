@@ -63,32 +63,32 @@ Unset Elimination Schemes.
   a _o suffix, and keep the extracted names the same as the
   existing API*)
 
+Inductive type_def (A: Type) : Type :=
+  | NoDef
+  | Alias: A -> type_def A
+  | Range: Number.int_range -> type_def A
+  | Float: Number.float_format -> type_def A.
+
+Arguments NoDef {_}.
+Arguments Alias {_}.
+Arguments Range {_}.
+Arguments Float {_}.
+
 Record ty_o (A: Type) := 
   mk_ty_o { ty_node: A;
     ty_tag: Weakhtbl.tag}.
-
-Inductive type_def_o (A: Type) : Type :=
-  | NoDef
-  | Alias: A -> type_def_o A
-  | Range: Number.int_range -> type_def_o A
-  | Float: Number.float_format -> type_def_o A.
     
 Record tysymbol_o (A: Type) := mk_ts_o {
   ts_name : ident;
   ts_args : list tvsymbol;
-  ts_def : type_def_o A
+  ts_def : type_def A
 }.
 
 (*Coq types - we append with _c for coq*)
-Inductive type_def_c : Type :=
-  | NoDef_c
-  | Alias_c : ty_c -> type_def_c
-  | Range_c: Number.int_range -> type_def_c
-  | Float_c: Number.float_format -> type_def_c
-with ty_c : Type :=
+Inductive ty_c : Type :=
   | mk_ty_c : ty_node_c -> Weakhtbl.tag -> ty_c
 with tysymbol_c : Type :=
-  | mk_ts_c : ident -> list tvsymbol -> type_def_c -> tysymbol_c
+  | mk_ts_c : ident -> list tvsymbol -> type_def ty_c -> tysymbol_c
 with ty_node_c : Type :=
   | Tyvar : tvsymbol -> ty_node_c
   | Tyapp: tysymbol_c -> list ty_c -> ty_node_c.
@@ -96,7 +96,6 @@ with ty_node_c : Type :=
 (*OCaml names for extraction*)
 Definition ty := ty_o ty_node_c.
 Definition tysymbol := tysymbol_o ty.
-Definition type_def := type_def_o ty.
 
 (*To ensure that extraction results in correct code, we 
   should ONLY interact with record _c types through this interface*)
@@ -122,27 +121,19 @@ Definition vars_of_tysym (t: tysymbol_c) : list tvsymbol :=
   | mk_ts_c _ t _ => t
   end.
 
-Definition type_def_of_tysym (t: tysymbol_c) : type_def_c :=
+Definition type_def_of_tysym (t: tysymbol_c) : type_def ty_c :=
   match t with
   | mk_ts_c _ _ t => t
   end.
 
 (*Finally, we need to extract a constructor, since
   the Record constructors are erased during extraction:*)
-(*Trivial after extraction*)
-Definition type_def_trans (x: type_def_c) : type_def_o ty_c :=
-  match x with
-  | NoDef_c => NoDef _
-  | Alias_c  a => Alias _ a
-  | Range_c  n => Range _ n
-  | Float_c  f => Float _ f
-  end.
 
 (*What we extract build_ts_c to:*)
-Definition build_tysym_o (i: ident) (l: list tvsymbol) (t: type_def_c) :
+Definition build_tysym_o (i: ident) (l: list tvsymbol) 
+  (t: type_def ty_c) :
   tysymbol_o _ :=
-  {| ts_name := i; ts_args := l; 
-    ts_def := type_def_trans t |}.
+  {| ts_name := i; ts_args := l;  ts_def := t |}.
 
 Definition build_ty_o (n: ty_node_c) (i: Weakhtbl.tag) : ty_o _ :=
   {| ty_node := n; ty_tag := i |}.
@@ -166,7 +157,7 @@ Variable (Happ: forall (ts: tysymbol_c) (tys: list ty_c),
 
 Variable (Htysym: forall (t: tysymbol_c),
   match (type_def_of_tysym t) with
-  | Alias_c a => P1 a
+  | Alias a => P1 a
   | _ => True
   end -> P3 t).
 
@@ -185,10 +176,10 @@ with ty_node_c_ind (t: ty_node_c) : P2 t :=
 with tysymbol_c_ind (t: tysymbol_c) : P3 t :=
   Htysym t (match type_def_of_tysym t as t' return
               (match t' with 
-              | Alias_c a => P1 a
+              | Alias a => P1 a
               | _ => True
               end) with
-            | Alias_c a => ty_c_ind a
+            | Alias a => ty_c_ind a
             | _ => I
   end).
 
@@ -221,10 +212,10 @@ with tysymbol_eqb (t1 t2: tysymbol_c) : bool :=
   ident_eqb (ident_of_tysym t1) (ident_of_tysym t2) &&
   list_eqb tvsymbol_eqb (vars_of_tysym t1) (vars_of_tysym t2) &&
   match type_def_of_tysym t1, type_def_of_tysym t2 with
-  | NoDef_c, NoDef_c => true
-  | Alias_c a1, Alias_c a2 => ty_eqb a1 a2
-  | Range_c n1, Range_c n2 => Number.int_range_eqb n1 n2
-  | Float_c f1, Float_c f2 => Number.float_format_eqb f1 f2
+  | NoDef, NoDef => true
+  | Alias a1, Alias a2 => ty_eqb a1 a2
+  | Range n1, Range n2 => Number.int_range_eqb n1 n2
+  | Float f1, Float f2 => Number.float_format_eqb f1 f2
   | _, _ => false
   end.
 
@@ -338,7 +329,7 @@ End TyHash.
 
 Module Hsty := Hashcons.Make TyHash.
 
-Definition mk_ts (name: preid) (args: list tvsymbol) (d: type_def_c) : 
+Definition mk_ts (name: preid) (args: list tvsymbol) (d: type_def ty_c) : 
   ctr tysymbol_c :=
   ctr_bnd (fun i => ctr_ret (mk_ts_c i args d)) (id_register name).
 
@@ -378,4 +369,16 @@ Definition ty_fold {A: Type} (fn: A -> ty_c -> A) (acc: A) (t: ty_c) : A :=
   match node_of_ty t with
   | Tyvar _ => acc
   | Tyapp _ tl => List.fold_left fn tl acc
+  end.
+
+Definition ty_all (pr: ty_c -> bool) (t: ty_c) : bool :=
+  ty_fold (fun acc x => acc && (pr x)) true t.
+
+Definition ty_any (pr: ty_c -> bool) (t: ty_c) : bool :=
+  ty_fold (fun acc x => acc || (pr x)) false t.
+
+Definition type_def_map {A: Type} (fn: A -> A) (x: type_def A) : type_def A :=
+  match x with
+  | Alias t => Alias (fn t)
+  | _ => x
   end.
