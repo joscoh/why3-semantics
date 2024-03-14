@@ -14,6 +14,8 @@ Axiom add : t -> t -> t.
 Axiom succ : t -> t.
 Axiom eqb : t -> t -> bool.
 Axiom compare: t -> t -> int.
+Axiom hash : t -> int.
+Axiom mul_int : int -> t -> t.
 
 (*Assumption: equality corresponds to Leibnitz equality*)
 Axiom eqb_eq : forall (x y: t), x = y <-> eqb x y.
@@ -37,6 +39,8 @@ Axiom to_pos_inj: forall (x y: t), to_pos x = to_pos y -> x = y.
 
 (*This one we can implement in Coq (TODO)*)
 Axiom of_pos : positive -> t.
+
+
 
 (*TODO: general ints*)
 

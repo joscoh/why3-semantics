@@ -1,5 +1,5 @@
 From Src.core Require Import Ident Ty.
-From Src.util Require Import Extmap Extset.
+From Src.util Require Import Extmap Extset Hashcons.
 From stdpp Require Import gmap.
 From Coq Require Extraction.
 
@@ -30,9 +30,12 @@ Extract Inlined Constant CoqBigInt.zero => "Why3OCaml.BigInt.zero" (*TODO: chang
 Extract Inlined Constant CoqBigInt.one => "BigInt.one" (*TODO*).
 Extract Inlined Constant CoqBigInt.succ => "Why3OCaml.BigInt.succ".
 Extract Inlined Constant CoqBigInt.eqb => "Why3OCaml.BigInt.eq".
+Extract Inlined Constant CoqBigInt.mul_int => "Why3OCaml.BigInt.mul_int".
+Extract Inlined Constant CoqBigInt.add => "Why3OCaml.BigInt.add".
 
 Extract Inlined Constant CoqInt.int => "Int.t".
 Extract Inlined Constant CoqInt.int_eqb => "Int.equal".
+Extract Inlined Constant Hashcons.int_65599 => "65599".
 
 (*TODO: this is BAD - figure out better*)
 Extract Inlined Constant length => "List.length".
@@ -59,14 +62,25 @@ Extract Inlined Constant new_ctr => "ref Why3OCaml.BigInt.one".
 Extract Inlined Constant incr => "(id_ctr := Why3OCaml.BigInt.succ !id_ctr)".
 Extract Inlined Constant ctr_get => "!id_ctr".
 
-Extract Constant hashctr "'ty" => "'ty".
-Extract Inlined Constant hashctr_ret => "".
-Extract Inlined Constant hashctr_bnd => "(@@)".
-Extract Inlined Constant new_hashctr => "ref Why3OCaml.BigInt.one".
-Extract Inlined Constant incr_hashctr => 
-  "(next_tag := Why3OCaml.BigInt.succ !next_tag)".
-Extract Inlined Constant hashctr_get => "!next_tag".
+(*Handle hashcons*)
 
+Extract Constant hashcons_unit "'k" => 
+  "(Why3OCaml.BigInt.t * 'k Hashtbl.hashtbl) ref".
+Extract Constant hashcons_st "'ty" "'ty2" => "'ty2".
+Extract Inlined Constant hashcons_ret => "".
+Extract Inlined Constant hashcons_bnd => "(@@)".
+Extract Inlined Constant hashcons_new => 
+  "ref (Why3OCaml.BigInt.one, Hashtbl.create_hashtbl)".
+Extract Inlined Constant hashcons_incr => 
+  "(let old = !hash_st in
+    hash_st := (Why3OCaml.BigInt.succ (fst old), (snd old)))".
+Extract Inlined Constant hashcons_get_ctr =>
+  "(fst !hash_st)".
+Extract Inlined Constant hashcons_lookup =>
+  "(fun _ _ k -> Hashtbl.find_opt_hashtbl H.hash H.equal (snd !hash_st) k)".
+Extract Inlined Constant hashcons_add =>
+  "(fun _ k -> let old = !hash_st in
+              hash_st := (fst old, Hashtbl.add_hashtbl H.hash (snd old) k))".
 
 
 (*Maps - inline some things to reduce dependent types, Obj.magic
@@ -107,7 +121,7 @@ Extraction Inline Decision RelDecision.
 (*Unset Extraction Optimize.*)
 
 Separate Extraction
-  Extmap Extset Ty Ident. (*Ty.ty_v_map Ident.*)
+  Extmap Extset Hashtbl Ty Ident. (*Ty.ty_v_map Ident.*)
 (*Separate Extraction Extmap.
 Separate Extraction Ty.ty Ty.ty_v_map Ident.*)
 

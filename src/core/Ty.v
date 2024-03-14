@@ -305,9 +305,34 @@ Definition ts_hash (ts: tysymbol_c) := id_hash (ident_of_tysym ts).
 Definition ty_hash (t: ty_c) := Weakhtbl.tag_hash (tag_of_ty t).
 (*For now, skip ts_compare and ty_compare*)
 
+(*Hash-consing equality is weaker*)
+(*NOTE: in OCaml, ts_equal and ty_equal are reference equality
+  because of hash consing - TODO: maybe change*)
+Definition ty_equal_hash (ty1 ty2: ty_c) : bool :=
+  match node_of_ty ty1, node_of_ty ty2 with
+  | Tyvar n1, Tyvar n2 => tv_equal n1 n2
+  | Tyapp s1 l1, Tyapp s2 l2 => 
+    ts_equal s1 s2 && forallb id (map2 ty_equal l1 l2)
+  | _, _ => false
+  end.
+
 Module TyHash <: Hashcons.HashedType.
 Definition t := ty_c.
-Definition equal := ty_eqb.
+Definition equal (ty1 ty2: ty_c) : bool :=
+  match node_of_ty ty1, node_of_ty ty2 with
+  | Tyvar n1, Tyvar n2 => tv_equal n1 n2
+  | Tyapp s1 l1, Tyapp s2 l2 => 
+    ts_equal s1 s2 && forallb id (map2 ty_equal l1 l2)
+  | _, _ => false
+  end.
+Definition hash (t: ty_c) : CoqBigInt.t :=
+(*Note: in OCaml, we need to hash here bc we need an int,
+  but ptree vs hash table makes it OK (though numbers are large!)*)
+  match node_of_ty t with
+    | Tyvar v => tv_hash v
+    | Tyapp s tl => Hashcons.combine_big_list ty_hash (ts_hash s) tl
+  end.
+
 Definition tag n ty := mk_ty_c (node_of_ty ty) (Weakhtbl.create_tag n).
 End TyHash.
 
@@ -335,10 +360,22 @@ Module Mty := TyM.M.
 Definition mk_ty (n: ty_node_c) : ty_c :=
   mk_ty_c n Weakhtbl.dummy_tag.
 
-(*NOTE: we do NOT have hash-consing (yet?)
-  So we just assign a new tag from the counter*)
-
-Definition ty_var (n: tvsymbol) : hashctr ty_c :=
+Definition ty_var (n: tvsymbol) : hashcons_st ty_c :=
   Hsty.hashcons (mk_ty (Tyvar n)).
-Definition ty_app (s: tysymbol_c) (tl: list ty_c) : hashctr ty_c :=
+Definition ty_app (s: tysymbol_c) (tl: list ty_c) : hashcons_st ty_c :=
   Hsty.hashcons (mk_ty (Tyapp s tl)).
+
+(*Generic Traversal Functions*)
+(*The reason we actually do want hash consing, or else
+  the counter grows every time we call one of these functions*)
+Definition ty_map (fn: ty_c -> ty_c) (t: ty_c) : hashcons_st ty_c :=
+  match node_of_ty t with
+  | Tyvar _ => hashcons_ret t
+  | Tyapp f tl => ty_app f (map fn tl)
+  end.
+
+Definition ty_fold {A: Type} (fn: A -> ty_c -> A) (acc: A) (t: ty_c) : A :=
+  match node_of_ty t with
+  | Tyvar _ => acc
+  | Tyapp _ tl => List.fold_left fn tl acc
+  end.
