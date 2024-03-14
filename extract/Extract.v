@@ -88,8 +88,9 @@ Extraction Inline gmap_car.
 Extraction Inline gmap_empty.
 
 (*Let's try TODO constrs*)
-Extract Inductive ty_c => "ty_node_c ty_o" [ "" ].
-Extract Inductive tysymbol_c => "(ty_node_c ty_o) tysymbol_o" [""].
+Extract Inductive ty_c => "ty_node_c ty_o" [ "mk_ty_o" ].
+Extract Inductive tysymbol_c => "(ty_node_c ty_o) tysymbol_o" 
+  ["(fun (a,b,c) -> build_tysym_o a b c)"]. (*need this for differences between Coq and Ocaml records, as per Zulip*)
 Extract Inductive type_def_c => "(ty_node_c ty_o) type_def_o" 
   ["NoDef" "Alias" "Range" "Float"].
 Extract Inlined Constant node_of_ty => "ty_node".
@@ -97,6 +98,7 @@ Extract Inlined Constant tag_of_ty => "ty_tag".
 Extract Inlined Constant ident_of_tysym => "ts_name".
 Extract Inlined Constant vars_of_tysym => "ts_args".
 Extract Inlined Constant type_def_of_tysym => "ts_def".
+Extract Inlined Constant type_def_trans => "". (*trivial id function*)
 
 
 (*Definition ty := ty_o ty_node_c.

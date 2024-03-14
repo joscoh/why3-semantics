@@ -63,7 +63,7 @@ Unset Elimination Schemes.
   existing API*)
 
 Record ty_o (A: Type) := 
-  { ty_node: A;
+  mk_ty_o { ty_node: A;
     ty_tag: CoqBigInt.t}.
 
 Inductive type_def_o (A: Type) : Type :=
@@ -72,11 +72,14 @@ Inductive type_def_o (A: Type) : Type :=
   | Range: Number.int_range -> type_def_o A
   | Float: Number.float_format -> type_def_o A.
     
-Record tysymbol_o (A: Type) := {
+Record tysymbol_o (A: Type) := mk_ts_o {
   ts_name : ident;
   ts_args : list tvsymbol;
   ts_def : type_def_o A
 }.
+
+Definition test_o : ty_o CoqBigInt.t :=
+  mk_ty_o _ CoqBigInt.zero CoqBigInt.zero.
 
 (*Coq types - we append with _c for coq*)
 Inductive type_def_c : Type :=
@@ -97,7 +100,10 @@ Definition ty := ty_o ty_node_c.
 Definition tysymbol := tysymbol_o ty.
 Definition type_def := type_def_o ty.
 
-(*IMPORTANT: ONLY use these functions so we can extract*)
+(*To ensure that extraction results in correct code, we 
+  should ONLY interact with record _c types through this interface*)
+Section ExtractInterface.
+
 Definition node_of_ty (t: ty_c) : ty_node_c :=
   match t with
   | mk_ty n _ => n
@@ -123,7 +129,26 @@ Definition type_def_of_tysym (t: tysymbol_c) : type_def_c :=
   | mk_ts_c _ _ t => t
   end.
 
-(*Induction principle for types (TODO move)*)
+(*Finally, we need to extract a constructor, since
+  the Record constructors are erased during extraction:*)
+(*Trivial after extraction*)
+Definition type_def_trans (x: type_def_c) : type_def_o ty_c :=
+  match x with
+  | NoDef_c => NoDef _
+  | Alias_c  a => Alias _ a
+  | Range_c  n => Range _ n
+  | Float_c  f => Float _ f
+  end.
+
+(*What we extract build_ts_c to:*)
+Definition build_tysym_o (i: ident) (l: list tvsymbol) (t: type_def_c) :
+  tysymbol_o _ :=
+  {| ts_name := i; ts_args := l; 
+    ts_def := type_def_trans t |}.
+
+End ExtractInterface.
+
+(*Induction principle for types*)
 Section TyInd.
 
 Variable (P1: ty_c -> Prop).
@@ -281,10 +306,9 @@ Definition ty_hash (t: ty_c) := tag_of_ty t.
 
 (*Skip Hsty = HashCons.Make...*)
 
-(*TODO: figure out how to extract this*)
-(*Definition mk_ts (name: preid) (args: list tvsymbol) (d: type_def_c) : 
+Definition mk_ts (name: preid) (args: list tvsymbol) (d: type_def_c) : 
   ctr tysymbol_c :=
-  ctr_bnd (fun i => ctr_ret (mk_ts_c i args d)) (id_register name).*)
+  ctr_bnd (fun i => ctr_ret (mk_ts_c i args d)) (id_register name).
 
 Definition ty_eq : base.EqDecision ty_c :=
   dec_from_eqb _ ty_eqb_eq.
