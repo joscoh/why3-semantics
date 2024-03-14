@@ -50,45 +50,33 @@ Extract Inlined Constant errorM_bind => "(@@)".
 Extract Inlined Constant mbind => "(@@)".
 
 (*Handle state monad*)
-Extraction NoInline new_ctr.
 Extract Constant ctr_unit => "Why3OCaml.BigInt.t ref".
 Extract Constant ctr "'ty" => "'ty".
 Extract Inlined Constant ctr_ret => "".
 Extract Inlined Constant ctr_bnd' => "(@@)".
 Extract Inlined Constant ctr_bnd => "(@@)".
-Extract Inlined Constant new_ctr => "ref Why3OCaml.BigInt.zero".
+Extract Inlined Constant new_ctr => "ref Why3OCaml.BigInt.one".
 Extract Inlined Constant incr => "(id_ctr := Why3OCaml.BigInt.succ !id_ctr)".
 Extract Inlined Constant ctr_get => "!id_ctr".
-(*Extract Inlined Constant extract_ctr => "
-  (fun f => let (i, x) = f !r in r:= i; x)".*)
 
-(*NOTE: ctr a = int -> (int, a), say we have f,
-  want let (i, x) = f !r in
-    r := i;
-    x*)
+Extract Constant hashctr "'ty" => "'ty".
+Extract Inlined Constant hashctr_ret => "".
+Extract Inlined Constant hashctr_bnd => "(@@)".
+Extract Inlined Constant new_hashctr => "ref Why3OCaml.BigInt.one".
+Extract Inlined Constant incr_hashctr => 
+  "(next_tag := Why3OCaml.BigInt.succ !next_tag)".
+Extract Inlined Constant hashctr_get => "!next_tag".
 
 
-(*Definition ctr (a: Type) : Type := CoqBigInt.t -> CoqBigInt.t * a.
-
-(*Note: should not be used directly*)
-Definition ctr_get : ctr CoqBigInt.t := fun x => (x, x).
-
-Definition ctr_ret {a: Type} (x: a) : ctr a := fun s => (s, x).
-Definition ctr_bnd {a b: Type} (f: a -> ctr b) (x: ctr a) : ctr b :=
-  fun i =>
-    let t := x i in
-    f (snd t) (fst t).
-
-Definition new_ctr : ctr unit := fun _ => (CoqBigInt.zero, tt).
-Definition incr : ctr unit := fun i => (CoqBigInt.succ i, tt).*)
 
 (*Maps - inline some things to reduce dependent types, Obj.magic
   and unecessary functions*)
 Extraction Inline gmap_car.
 Extraction Inline gmap_empty.
 
-(*Let's try TODO constrs*)
-Extract Inductive ty_c => "ty_node_c ty_o" [ "mk_ty_o" ].
+(*Extract ty to mixed record-inductive*)
+Extract Inductive ty_c => "ty_node_c ty_o" 
+  [ "(fun (a, b) -> build_ty_o a b)" ].
 Extract Inductive tysymbol_c => "(ty_node_c ty_o) tysymbol_o" 
   ["(fun (a,b,c) -> build_tysym_o a b c)"]. (*need this for differences between Coq and Ocaml records, as per Zulip*)
 Extract Inductive type_def_c => "(ty_node_c ty_o) type_def_o" 

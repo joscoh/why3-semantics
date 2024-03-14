@@ -1,6 +1,7 @@
 Require Import Wstdlib.
 Require Import Ident.
 Require Number.
+Require Hashcons Weakhtbl. 
 Require Import stdpp.base.
 Require Import Coq.Wellfounded.Inverse_Image.
 
@@ -64,7 +65,7 @@ Unset Elimination Schemes.
 
 Record ty_o (A: Type) := 
   mk_ty_o { ty_node: A;
-    ty_tag: CoqBigInt.t}.
+    ty_tag: Weakhtbl.tag}.
 
 Inductive type_def_o (A: Type) : Type :=
   | NoDef
@@ -78,9 +79,6 @@ Record tysymbol_o (A: Type) := mk_ts_o {
   ts_def : type_def_o A
 }.
 
-Definition test_o : ty_o CoqBigInt.t :=
-  mk_ty_o _ CoqBigInt.zero CoqBigInt.zero.
-
 (*Coq types - we append with _c for coq*)
 Inductive type_def_c : Type :=
   | NoDef_c
@@ -88,7 +86,7 @@ Inductive type_def_c : Type :=
   | Range_c: Number.int_range -> type_def_c
   | Float_c: Number.float_format -> type_def_c
 with ty_c : Type :=
-  | mk_ty : ty_node_c -> CoqBigInt.t -> ty_c
+  | mk_ty_c : ty_node_c -> Weakhtbl.tag -> ty_c
 with tysymbol_c : Type :=
   | mk_ts_c : ident -> list tvsymbol -> type_def_c -> tysymbol_c
 with ty_node_c : Type :=
@@ -106,12 +104,12 @@ Section ExtractInterface.
 
 Definition node_of_ty (t: ty_c) : ty_node_c :=
   match t with
-  | mk_ty n _ => n
+  | mk_ty_c n _ => n
   end.
 
-Definition tag_of_ty (t: ty_c) : CoqBigInt.t :=
+Definition tag_of_ty (t: ty_c) : Weakhtbl.tag:=
   match t with
-  | mk_ty _ n => n
+  | mk_ty_c _ n => n
   end.
 
 Definition ident_of_tysym (t: tysymbol_c) : ident :=
@@ -145,6 +143,9 @@ Definition build_tysym_o (i: ident) (l: list tvsymbol) (t: type_def_c) :
   tysymbol_o _ :=
   {| ts_name := i; ts_args := l; 
     ts_def := type_def_trans t |}.
+
+Definition build_ty_o (n: ty_node_c) (i: Weakhtbl.tag) : ty_o _ :=
+  {| ty_node := n; ty_tag := i |}.
 
 End ExtractInterface.
 
@@ -230,7 +231,7 @@ with tysymbol_eqb (t1 t2: tysymbol_c) : bool :=
 Lemma ty_eqb_rewrite t1 t2:
   ty_eqb t1 t2 =
   match t1, t2 with
-  | mk_ty n1 i1, mk_ty n2 i2 =>
+  | mk_ty_c n1 i1, mk_ty_c n2 i2 =>
     CoqBigInt.eqb i1 i2 && ty_node_eqb n1 n2
   end.
 Proof.
@@ -301,10 +302,16 @@ Definition ts_equal (t1 t2: tysymbol_c) : bool := tysymbol_eqb t1 t2.
 Definition ty_equal (t1 t2: ty_c) : bool := ty_eqb t1 t2.
 
 Definition ts_hash (ts: tysymbol_c) := id_hash (ident_of_tysym ts).
-Definition ty_hash (t: ty_c) := tag_of_ty t.
+Definition ty_hash (t: ty_c) := Weakhtbl.tag_hash (tag_of_ty t).
 (*For now, skip ts_compare and ty_compare*)
 
-(*Skip Hsty = HashCons.Make...*)
+Module TyHash <: Hashcons.HashedType.
+Definition t := ty_c.
+Definition equal := ty_eqb.
+Definition tag n ty := mk_ty_c (node_of_ty ty) (Weakhtbl.create_tag n).
+End TyHash.
+
+Module Hsty := Hashcons.Make TyHash.
 
 Definition mk_ts (name: preid) (args: list tvsymbol) (d: type_def_c) : 
   ctr tysymbol_c :=
@@ -324,3 +331,14 @@ Module Sty := TyM.S.
 Module Mty := TyM.M.
 (*Module Hty := Ty.H
   Module Wty := Ty.W*)
+
+Definition mk_ty (n: ty_node_c) : ty_c :=
+  mk_ty_c n Weakhtbl.dummy_tag.
+
+(*NOTE: we do NOT have hash-consing (yet?)
+  So we just assign a new tag from the counter*)
+
+Definition ty_var (n: tvsymbol) : hashctr ty_c :=
+  Hsty.hashcons (mk_ty (Tyvar n)).
+Definition ty_app (s: tysymbol_c) (tl: list ty_c) : hashctr ty_c :=
+  Hsty.hashcons (mk_ty (Tyapp s tl)).

@@ -67,8 +67,9 @@ Module Mattr := Attr.M.
   tag?*)
 
 (*NOTE: in Why3, have -1 (TODO: make sure this is OK)*)
+(*TODO: see if we need
 Definition create_attribute (s: string) : attribute :=
-  Build_attribute s (CoqBigInt.zero).
+  Build_attribute s (CoqBigInt.zero).*)
 
 (*NOTE: NO list_attributes because we don't store state*)
 
@@ -182,8 +183,6 @@ Require Import stdpp.base.
   a problem.
   If the same id string is used multiple times, they
   will have the same tag*)
-(*A vile hack*)
-Definition ctr_unit := ctr unit.
 Definition id_ctr : ctr_unit :=
   new_ctr. (*For extraction*)
 
