@@ -16,6 +16,7 @@ Axiom eqb : t -> t -> bool.
 Axiom compare: t -> t -> int.
 Axiom hash : t -> int.
 Axiom mul_int : int -> t -> t.
+Axiom lt : t -> t -> bool.
 
 (*Assumption: equality corresponds to Leibnitz equality*)
 Axiom eqb_eq : forall (x y: t), x = y <-> eqb x y.

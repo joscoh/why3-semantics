@@ -218,3 +218,13 @@ Definition map2 {A B C: Type} :=
         | x2 :: t2 => f x1 x2 :: map2 t1 t2
         end
       end.
+
+(*Unlike OCaml, this gives option, not exception*)
+Fixpoint fold_right2 {A B C: Type} (f: A -> B -> C -> C) (l1: list A)
+  (l2: list B) (accu: C) : option C :=
+  match l1, l2 with
+  | nil, nil => Some accu
+  | a1 :: l1, a2 :: l2 => 
+    option_map (f a1 a2) (fold_right2 f l1 l2 accu)
+  | _, _ => None
+  end.

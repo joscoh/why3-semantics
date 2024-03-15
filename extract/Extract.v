@@ -32,6 +32,7 @@ Extract Inlined Constant CoqBigInt.succ => "BigInt.succ".
 Extract Inlined Constant CoqBigInt.eqb => "BigInt.eq".
 Extract Inlined Constant CoqBigInt.mul_int => "BigInt.mul_int".
 Extract Inlined Constant CoqBigInt.add => "BigInt.add".
+Extract Inlined Constant CoqBigInt.lt => "BigInt.lt".
 
 Extract Inlined Constant CoqInt.int => "Int.t".
 Extract Inlined Constant CoqInt.int_eqb => "Int.equal".
@@ -43,12 +44,12 @@ Extract Inlined Constant Coq.Arith.PeanoNat.Nat.eqb => "Int.equal".
 
 (*Handle exception monad*)
 
-Extract Inductive errorM => "  " ["Normal" "Error"] .  
+Extract Inductive errorM => " " ["Normal" "Error"] .  
 Extract Inductive errtype => exn [""].
 Extract Inlined Constant Not_found => "Not_found".
 Extract Inlined Constant Invalid_argument => "Invalid_argument".
 Extract Inlined Constant ret => "".
-Extract Inlined Constant throw => " raise ".
+Extract Inlined Constant throw => "raise".
 (*TODO: see*)
 Extract Inlined Constant bnd => "".
 Extract Inlined Constant errorM_bind => "(@@)".
@@ -118,6 +119,11 @@ Extraction Inline Decision RelDecision.
 
 (*Other exceptions*)
 Extract Inlined Constant BadTypeArity => "TyExn.BadTypeArity".
+Extract Inlined Constant DuplicateTypeVar => "TyExn.DuplicateTypeVar".
+Extract Inlined Constant UnboundTypeVar => "TyExn.UnboundTypeVar".
+Extract Inlined Constant IllegalTypeParameters => "TyExn.IllegalTypeParameters".
+Extract Inlined Constant EmptyRange => "TyExn.EmptyRange".
+Extract Inlined Constant BadFloatSpec => "TyExn.BadFloatSpec".
 (*Extract Inlined Constant BadTypeArity_reg => "exception Exceptions.BadTypeArity of tysymbol * int".*)
 
 (*Unset Extraction Optimize.*)
