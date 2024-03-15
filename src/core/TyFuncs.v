@@ -122,16 +122,53 @@ Definition ty_v_all (pr: tvsymbol -> bool) (t: ty_c) : bool :=
 Definition ty_v_any (pr: tvsymbol -> bool) (t: ty_c) : bool :=
   ty_v_fold (fun acc v => acc || (pr v)) false t.
 
-Fixpoint ty_v_map_err (fn: tvsymbol -> errorM ty_c) (t: ty_c) : 
-  errorM (hashcons_st ty_c) :=
+(*Monad transformers (kind of)*)
+(*TODO: move*)
+
+(*Ok, we do want a monad instance for (errorM (hashcons_st A))
+  so we can use listM
+  also this is annoying haha*)
+(*Problem is doing it generically means OCaml code is bad*)
+(*For now, do 1 by 1*)
+(*Choose this order: state still exists, may have result*)
+(*Basically ExceptT on state monad*)
+Definition errorHashT {K : Type} (A: Type) : Type :=
+  @hashcons_st K (errorM A).
+
+Definition errorHash_ret {K A: Type} (x: A) : @errorHashT K A :=
+  hashcons_ret (ret x).
+
+Definition errorHash_bnd {K A B: Type} (f: A -> errorHashT B) (x: errorHashT A) : 
+  @errorHashT K B :=
+  hashcons_bnd (fun y =>
+    match y with
+    | Normal _ z => f z
+    | Error _ e => hashcons_ret (Error _ e)
+    end) x.
+
+Definition errorHash_lift {K A: Type} (x: @hashcons_st K A) :
+  @errorHashT K A :=
+  hashcons_bnd (fun s => (hashcons_ret (ret s))) x.
+
+(*TODO: am I doing this right?*)
+Definition errorHash_lift2 {K A: Type} (x: errorM A) :
+  @errorHashT K A :=
+  fun s => (s, x). 
+
+Definition errorHash_list {K A: Type} (l: list (@errorHashT K A)) :
+ @errorHashT K (list A) :=
+  listM errorHash_ret errorHash_bnd l.
+
+Fixpoint ty_v_map_err (fn: tvsymbol -> errorM ty_c) (t: ty_c) :
+  errorHashT ty_c :=
   match ty_node_of t with
-  | Tyvar v => bnd (fun x => ret (hashcons_ret x)) (fn v)
-  | Tyapp f tl => bnd (fun l => ret (hashcons_bnd (fun l1 => 
-    ty_app1 f l1)(hashcons_list l))) 
-      (errorM_list (map (ty_v_map_err fn) tl))
+  | Tyvar v => errorHash_lift2 (fn v)
+  | Tyapp f tl => errorHash_bnd (fun l =>
+      errorHash_lift (ty_app1 f l)
+  ) (errorHash_list (map (ty_v_map_err fn) tl))
   end.
 
-Definition ty_full_inst (m: Mtv.t ty_c) (t: ty_c) : errorM (hashcons_st ty_c):=
+Definition ty_full_inst (m: Mtv.t ty_c) (t: ty_c) : errorHashT ty_c:=
   ty_v_map_err (fun v => Mtv.find _ v m) t.
 
 Definition ty_freevars (s: Stv.t) (t: ty_c) : Stv.t :=
@@ -238,11 +275,33 @@ Definition ty_match_args (t: ty_c) : errorM (Mtv.t ty_c) :=
   | _ => throw (Invalid_argument "Ty.ty_match_args")
   end.
 
-Definition ty_app (s: tysymbol_c) (tl: list ty_c) : errorM (hashcons_st ty_c) :=
+Definition ty_app (s: tysymbol_c) (tl: list ty_c) : errorHashT ty_c :=
   match ts_def_of s with
-  | Alias t => bnd (fun m => ty_full_inst m t) (ts_match_args s tl)
+  | Alias t => errorHash_bnd 
+    (fun m => ty_full_inst m t) 
+    (errorHash_lift2 (ts_match_args s tl))
   | _ =>
     if negb (CoqBigInt.eqb (int_length (ts_args_of s)) (int_length tl)) then
-      throw (BadTypeArity (s, int_length tl))
-    else ret (ty_app1 s tl)
+      errorHash_lift2 (throw (BadTypeArity (s, int_length tl)))
+    else errorHash_lift (ty_app1 s tl)
   end.
+
+
+(* symbol-wise map/fold *)
+Fixpoint ty_s_map (fn: tysymbol_c -> tysymbol_c) (t: ty_c) : errorHashT ty_c :=
+  match ty_node_of t with
+  | Tyvar _ => errorHash_ret t
+  | Tyapp f tl => errorHash_bnd (fun l => ty_app (fn f) l)
+    (errorHash_list (map (ty_s_map fn) tl))
+  end.
+
+Fixpoint ty_s_fold {A: Type} (fn: A -> tysymbol_c -> A) (acc: A) (t: ty_c) : A :=
+  match ty_node_of t with
+  | Tyvar _ => acc
+  | Tyapp f tl => List.fold_left (ty_s_fold fn) tl (fn acc f)
+  end.
+
+Definition ty_s_all (pr: tysymbol_c -> bool) (t: ty_c) : bool :=
+  ty_s_fold (fun x y => x && (pr y)) true t.
+Definition ty_s_any (pr: tysymbol_c -> bool) (t: ty_c) : bool :=
+  ty_s_fold (fun x y => x || (pr y)) false t.

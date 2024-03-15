@@ -85,6 +85,12 @@ Extract Inlined Constant hashcons_add =>
   "(fun _ k -> let old = !hash_st in
               hash_st := (fst old, Hashtbl.add_hashtbl H.hash (snd old) k))".
 
+(*Hashcons + Exception Monad Transformer*)
+Extract Constant errorHashT "'ty" "'ty2" => "'ty2".
+Extract Inlined Constant errorHash_ret => "".
+Extract Inlined Constant errorHash_bnd => "(@@)".
+Extract Inlined Constant errorHash_lift => "".
+Extract Inlined Constant errorHash_lift2 => "".
 
 (*Maps - inline some things to reduce dependent types, Obj.magic
   and unecessary functions*)
