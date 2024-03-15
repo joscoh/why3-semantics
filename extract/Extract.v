@@ -96,11 +96,11 @@ Extract Inductive ty_c => "ty_node_c ty_o"
   [ "(fun (a, b) -> build_ty_o a b)" ].
 Extract Inductive tysymbol_c => "(ty_node_c ty_o) tysymbol_o" 
   ["(fun (a,b,c) -> build_tysym_o a b c)"]. (*need this for differences between Coq and Ocaml records, as per Zulip*)
-Extract Inlined Constant node_of_ty => "ty_node".
-Extract Inlined Constant tag_of_ty => "ty_tag".
-Extract Inlined Constant ident_of_tysym => "ts_name".
-Extract Inlined Constant vars_of_tysym => "ts_args".
-Extract Inlined Constant type_def_of_tysym => "ts_def".
+Extract Inlined Constant ty_node_of => "ty_node".
+Extract Inlined Constant ty_tag_of => "ty_tag".
+Extract Inlined Constant ts_name_of => "ts_name".
+Extract Inlined Constant ts_args_of => "ts_args".
+Extract Inlined Constant ts_def_of => "ts_def".
 
 (*Definition ty := ty_o ty_node_c.
 Definition tysymbol := tysymbol_o ty.

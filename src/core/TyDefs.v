@@ -101,27 +101,27 @@ Definition tysymbol := tysymbol_o ty.
   should ONLY interact with record _c types through this interface*)
 Section ExtractInterface.
 
-Definition node_of_ty (t: ty_c) : ty_node_c :=
+Definition ty_node_of (t: ty_c) : ty_node_c :=
   match t with
   | mk_ty_c n _ => n
   end.
 
-Definition tag_of_ty (t: ty_c) : Weakhtbl.tag:=
+Definition ty_tag_of (t: ty_c) : Weakhtbl.tag:=
   match t with
   | mk_ty_c _ n => n
   end.
 
-Definition ident_of_tysym (t: tysymbol_c) : ident :=
+Definition ts_name_of (t: tysymbol_c) : ident :=
   match t with
   | mk_ts_c t _ _ => t
   end.
 
-Definition vars_of_tysym (t: tysymbol_c) : list tvsymbol :=
+Definition ts_args_of (t: tysymbol_c) : list tvsymbol :=
   match t with
   | mk_ts_c _ t _ => t
   end.
 
-Definition type_def_of_tysym (t: tysymbol_c) : type_def ty_c :=
+Definition ts_def_of (t: tysymbol_c) : type_def ty_c :=
   match t with
   | mk_ts_c _ _ t => t
   end.
@@ -148,7 +148,7 @@ Variable (P2: ty_node_c -> Prop).
 Variable (P3: tysymbol_c -> Prop).
 
 Variable (Hty: forall (t: ty_c),
-  P2 (node_of_ty t) ->
+  P2 (ty_node_of t) ->
   P1 t).
 
 Variable (Hvar: forall (v: tvsymbol), P2 (Tyvar v)).
@@ -156,13 +156,13 @@ Variable (Happ: forall (ts: tysymbol_c) (tys: list ty_c),
   P3 ts -> Forall P1 tys -> P2 (Tyapp ts tys)).
 
 Variable (Htysym: forall (t: tysymbol_c),
-  match (type_def_of_tysym t) with
+  match (ts_def_of t) with
   | Alias a => P1 a
   | _ => True
   end -> P3 t).
 
 Fixpoint ty_c_ind (t: ty_c) : P1 t :=
-  Hty t (ty_node_c_ind (node_of_ty t))
+  Hty t (ty_node_c_ind (ty_node_of t))
 with ty_node_c_ind (t: ty_node_c) : P2 t :=
   match t with
   | Tyvar v => Hvar v
@@ -174,7 +174,7 @@ with ty_node_c_ind (t: ty_node_c) : P2 t :=
       end) tys)
   end
 with tysymbol_c_ind (t: tysymbol_c) : P3 t :=
-  Htysym t (match type_def_of_tysym t as t' return
+  Htysym t (match ts_def_of t as t' return
               (match t' with 
               | Alias a => P1 a
               | _ => True
@@ -196,8 +196,8 @@ End TyInd.
 (* Decidable Equality *)
 
 Fixpoint ty_eqb (t1 t2: ty_c) : bool :=
-  CoqBigInt.eqb (tag_of_ty t1) (tag_of_ty t2) &&
-  ty_node_eqb (node_of_ty t1) (node_of_ty t2)
+  CoqBigInt.eqb (ty_tag_of t1) (ty_tag_of t2) &&
+  ty_node_eqb (ty_node_of t1) (ty_node_of t2)
 with ty_node_eqb (t1 t2: ty_node_c) : bool :=
   match t1, t2 with
   | Tyvar v1, Tyvar v2 => tvsymbol_eqb v1 v2
@@ -209,9 +209,9 @@ with ty_node_eqb (t1 t2: ty_node_c) : bool :=
   | _, _ => false
   end
 with tysymbol_eqb (t1 t2: tysymbol_c) : bool :=
-  ident_eqb (ident_of_tysym t1) (ident_of_tysym t2) &&
-  list_eqb tvsymbol_eqb (vars_of_tysym t1) (vars_of_tysym t2) &&
-  match type_def_of_tysym t1, type_def_of_tysym t2 with
+  ident_eqb (ts_name_of t1) (ts_name_of t2) &&
+  list_eqb tvsymbol_eqb (ts_args_of t1) (ts_args_of t2) &&
+  match ts_def_of t1, ts_def_of t2 with
   | NoDef, NoDef => true
   | Alias a1, Alias a2 => ty_eqb a1 a2
   | Range n1, Range n2 => Number.int_range_eqb n1 n2
@@ -279,7 +279,7 @@ Definition tysymbol_eq : base.EqDecision tysymbol_c :=
 
 Module TsymTagged <: TaggedType.
 Definition t := tysymbol_c.
-Definition tag (ts: tysymbol_c) := (ident_of_tysym ts).(id_tag).
+Definition tag (ts: tysymbol_c) := (ts_name_of ts).(id_tag).
 Definition eq := tysymbol_eq.
 End TsymTagged.
 
@@ -292,15 +292,15 @@ Module Mts := Tsym.M.
 Definition ts_equal (t1 t2: tysymbol_c) : bool := tysymbol_eqb t1 t2.
 Definition ty_equal (t1 t2: ty_c) : bool := ty_eqb t1 t2.
 
-Definition ts_hash (ts: tysymbol_c) := id_hash (ident_of_tysym ts).
-Definition ty_hash (t: ty_c) := Weakhtbl.tag_hash (tag_of_ty t).
+Definition ts_hash (ts: tysymbol_c) := id_hash (ts_name_of ts).
+Definition ty_hash (t: ty_c) := Weakhtbl.tag_hash (ty_tag_of t).
 (*For now, skip ts_compare and ty_compare*)
 
 (*Hash-consing equality is weaker*)
 (*NOTE: in OCaml, ts_equal and ty_equal are reference equality
   because of hash consing - TODO: maybe change*)
 Definition ty_equal_hash (ty1 ty2: ty_c) : bool :=
-  match node_of_ty ty1, node_of_ty ty2 with
+  match ty_node_of ty1, ty_node_of ty2 with
   | Tyvar n1, Tyvar n2 => tv_equal n1 n2
   | Tyapp s1 l1, Tyapp s2 l2 => 
     ts_equal s1 s2 && forallb id (map2 ty_equal l1 l2)
@@ -310,7 +310,7 @@ Definition ty_equal_hash (ty1 ty2: ty_c) : bool :=
 Module TyHash <: Hashcons.HashedType.
 Definition t := ty_c.
 Definition equal (ty1 ty2: ty_c) : bool :=
-  match node_of_ty ty1, node_of_ty ty2 with
+  match ty_node_of ty1, ty_node_of ty2 with
   | Tyvar n1, Tyvar n2 => tv_equal n1 n2
   | Tyapp s1 l1, Tyapp s2 l2 => 
     ts_equal s1 s2 && forallb id (map2 ty_equal l1 l2)
@@ -319,12 +319,12 @@ Definition equal (ty1 ty2: ty_c) : bool :=
 Definition hash (t: ty_c) : CoqBigInt.t :=
 (*Note: in OCaml, we need to hash here bc we need an int,
   but ptree vs hash table makes it OK (though numbers are large!)*)
-  match node_of_ty t with
+  match ty_node_of t with
     | Tyvar v => tv_hash v
     | Tyapp s tl => Hashcons.combine_big_list ty_hash (ts_hash s) tl
   end.
 
-Definition tag n ty := mk_ty_c (node_of_ty ty) (Weakhtbl.create_tag n).
+Definition tag n ty := mk_ty_c (ty_node_of ty) (Weakhtbl.create_tag n).
 End TyHash.
 
 Module Hsty := Hashcons.Make TyHash.
@@ -338,7 +338,7 @@ Definition ty_eq : base.EqDecision ty_c :=
 
 Module TyTagged <: TaggedType.
 Definition t := ty_c.
-Definition tag (t: ty_c) := tag_of_ty t.
+Definition tag (t: ty_c) := ty_tag_of t.
 Definition eq := ty_eq.
 End TyTagged.
 
