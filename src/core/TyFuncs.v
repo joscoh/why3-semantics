@@ -60,33 +60,53 @@ Definition is_float_type_def {A: Type} (t: type_def A) : bool :=
   | _ => false
   end.
 
-(*State monad makes some things more annoying
-  TODO: see if this is right way to do it*)
+(*We want to lift a (list (m A)) to a m (list A) for a monad m.
+  We can do this in 3 ways:
+  1. Use typeclasses
+  2. Give a generic function that takes in bind and return
+  3. Write the same function for each monad
+  Unfortunately, the first 2 ways give horrible OCaml code
+  full of Object.magic and that can easily not compile
+  (we need non-prenex polymorphism).
+  So we do the third (for now)*)
+(*Just so we don't have to write it 3 times*)
+(*Of course in OCaml, these all reduce to the identity function*)
+Notation listM ret bnd l :=
+  (fold_right (fun x acc =>
+    bnd (fun h => bnd (fun t => ret (h :: t)) acc) x)
+    (ret nil) l).
 
-(*Need to do it this way because if l is nil, cannot produce
-  state necessarily*)
-Definition hashcons_list { K A B: Type} 
-  (f: list A -> @hashcons_st K B) 
-    (l: list (@hashcons_st K A)) : @hashcons_st K B :=
-  match l with
-  | nil => f nil
-  | x :: xs =>
-    let st : @hashcons_st K (list A) :=
-      (*NOTE: folding right, not left - order matters for
-        stateful things*)
-      List.fold_right (fun shd sacc =>
-        hashcons_bnd (fun hd => 
-          hashcons_bnd (fun tl => hashcons_ret (hd :: tl)) sacc
-        ) shd
-      ) (hashcons_bnd (fun h => hashcons_ret [h]) x) xs
-    in hashcons_bnd (fun z => (f z)) st
-  end.
+Definition hashcons_list {K A : Type} (l: list (@hashcons_st K A)) :
+  @hashcons_st K (list A) :=
+  listM hashcons_ret hashcons_bnd l.
+
+Definition errorM_list {A: Type} (l: list (errorM A)) : errorM (list A) :=
+  listM ret bnd l.
+
+(*NOTE: we do not use a typeclass because the resulting
+  OCaml code is not good*)
+(*TODO: this will give horrible OCaml code*)
+(*Definition listM {m: Type -> Type}
+  (ret: forall A, A -> m A)
+  (bnd: forall A B, (A -> m B) -> m A -> m B)
+  {A : Type} (l: list (m A)) : m (list A) :=
+  fold_right (fun x acc =>
+    bnd _ _ (fun h => bnd _ _ (fun t => ret _ (h :: t)) acc) x
+  ) (ret _ nil) l.
+
+Definition hashcons_list {K A : Type} (l: list (@hashcons_st K A)) :
+  @hashcons_st K (list A) :=
+  listM (@hashcons_ret K) (@hashcons_bnd K) l.
+
+Definition errorM_list {A: Type} (l: list (errorM A)) : errorM (list A) :=
+  listM (@ret) (@bnd) l.*)
 
 (*Traversal Functions on Type Variables*)
 Fixpoint ty_v_map (fn: tvsymbol -> ty_c) (t: ty_c) : hashcons_st ty_c :=
   match ty_node_of t with
   | Tyvar v => hashcons_ret (fn v)
-  | Tyapp f tl => hashcons_list (ty_app1 f) (map (ty_v_map fn) tl)
+  | Tyapp f tl => hashcons_bnd (fun l => ty_app1 f l)
+    (hashcons_list (map (ty_v_map fn) tl))
   end.
 
 Fixpoint ty_v_fold {A: Type} (fn: A -> tvsymbol -> A) (acc: A)
@@ -102,17 +122,12 @@ Definition ty_v_all (pr: tvsymbol -> bool) (t: ty_c) : bool :=
 Definition ty_v_any (pr: tvsymbol -> bool) (t: ty_c) : bool :=
   ty_v_fold (fun acc v => acc || (pr v)) false t.
 
-Fixpoint errorM_list {A: Type} (l: list (errorM A)) : errorM (list A) :=
-  match l with
-  | nil => ret nil
-  | h :: t => bnd (fun hd => bnd (fun htl => ret (hd :: htl)) (errorM_list t)) h
-  end.
-
 Fixpoint ty_v_map_err (fn: tvsymbol -> errorM ty_c) (t: ty_c) : 
   errorM (hashcons_st ty_c) :=
   match ty_node_of t with
   | Tyvar v => bnd (fun x => ret (hashcons_ret x)) (fn v)
-  | Tyapp f tl => bnd (fun l => ret (hashcons_list (ty_app1 f) l)) 
+  | Tyapp f tl => bnd (fun l => ret (hashcons_bnd (fun l1 => 
+    ty_app1 f l1)(hashcons_list l))) 
       (errorM_list (map (ty_v_map_err fn) tl))
   end.
 
@@ -145,14 +160,8 @@ Require Import Ident.
 Definition DuplicateTypeVar (t: tvsymbol) : errtype := 
   mk_errtype t.
 
-(*NOTE: fold right, not left*)
-Fixpoint fold_errorM {A B: Type} (f: A -> B -> errorM A) (x: A) (l: list B) : errorM A :=
-  match l with
-  | nil => ret x
-  | h :: t => bnd (fun i => f i h) (fold_errorM f x t)
-  end.
-
-(*Version that can be used in nested recursion*)
+(*Note: fold right, not left*)
+(*Version that can be used in nested recursive defs*)
 Definition fold_errorM' := fun {A B: Type} (f: A -> B -> errorM A) =>
   fix fold_errorM (l: list B) (x: A) {struct l} :=
   match l with
@@ -187,14 +196,11 @@ Definition null {A: Type} (l: list A) : bool :=
 Definition IllegalTypeParameters : errtype := mk_errtype tt.
 Definition EmptyRange : errtype := mk_errtype tt.
 Definition BadFloatSpec : errtype := mk_errtype tt.
-(*TODO: monad transformers*)
-
-(*Need EitherT transformer*)
 
 Definition create_tysymbol (name: preid) (args: list tvsymbol) (d: type_def ty_c) (*: tysymbol_c*)
   : errorM (ctr tysymbol_c) :=
   let add (s: Stv.t) (v: tvsymbol) := Stv.add_new (DuplicateTypeVar v) v s in
-  let s1 := fold_errorM add Stv.empty args in
+  let s1 := fold_errorM' add args Stv.empty in
   let check (v: tvsymbol) : errorM bool := bnd 
     (fun m => if Stv.mem v m then ret true 
       else throw (UnboundTypeVar v)) s1 in
