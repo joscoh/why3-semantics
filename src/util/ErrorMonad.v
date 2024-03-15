@@ -2,11 +2,13 @@ Require Import Coq.Strings.String.
 Require Export CoqUtil.
 From stdpp Require Import base.
 
-Section ErrorMonad.
+Record errtype : Type := { errargs: Type; errdata : errargs}.
 
-Variant errtype : Set :=
-  | Not_found
-  | Invalid_argument : string -> errtype.
+Definition Not_found : errtype := {| errargs:= unit; errdata := tt|}.
+Definition Invalid_argument (s: string) : errtype :=
+  {| errargs := string; errdata := s|}.
+
+Section ErrorMonad.
 
 Unset Elimination Schemes.
 Inductive errorM (A: Type) : Type :=

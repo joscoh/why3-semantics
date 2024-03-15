@@ -382,3 +382,78 @@ Definition type_def_map {A: Type} (fn: A -> A) (x: type_def A) : type_def A :=
   | Alias t => Alias (fn t)
   | _ => x
   end.
+
+Definition type_def_fold {A B: Type} (fn: A -> B -> A) (acc: A) 
+  (t: type_def B) : A :=
+  match t with
+  | Alias t => fn acc t
+  | _ => acc
+  end.
+
+Definition is_alias_type_def {A: Type} (t: type_def A) : bool :=
+  match t with
+  | Alias _ => true
+  | _ => false
+  end.
+
+Definition is_range_type_def {A: Type} (t: type_def A) : bool :=
+  match t with
+  | Range _ => true
+  | _ => false
+  end.
+
+Definition is_float_type_def {A: Type} (t: type_def A) : bool :=
+  match t with
+  | Float _ => true
+  | _ => false
+  end.
+
+(*State monad makes some things more annoying
+  TODO: see if this is right way to do it*)
+
+(*Need to do it this way because if l is nil, cannot produce
+  state necessarily*)
+Definition hashcons_list { K A B: Type} 
+  (f: list A -> @hashcons_st K B) 
+    (l: list (@hashcons_st K A)) : @hashcons_st K B :=
+  match l with
+  | nil => f nil
+  | x :: xs =>
+    let st : @hashcons_st K (list A) :=
+      (*NOTE: folding right, not left - order matters for
+        stateful things*)
+      List.fold_right (fun shd sacc =>
+        hashcons_bnd (fun hd => 
+          hashcons_bnd (fun tl => hashcons_ret (hd :: tl)) sacc
+        ) shd
+      ) (hashcons_bnd (fun h => hashcons_ret [h]) x) xs
+    in hashcons_bnd (fun z => (f z)) st
+  end.
+
+(*Traversal Functions on Type Variables*)
+Fixpoint ty_v_map (fn: tvsymbol -> ty_c) (t: ty_c) : hashcons_st ty_c :=
+  match node_of_ty t with
+  | Tyvar v => hashcons_ret (fn v)
+  | Tyapp f tl => hashcons_list (ty_app f) (map (ty_v_map fn) tl)
+  end.
+
+Fixpoint ty_v_fold {A: Type} (fn: A -> tvsymbol -> A) (acc: A)
+  (t: ty_c) : A :=
+  match node_of_ty t with
+  | Tyvar v => fn acc v
+  | Tyapp _ tl => List.fold_left (ty_v_fold fn) tl acc
+  end.
+
+Definition ty_v_all (pr: tvsymbol -> bool) (t: ty_c) : bool :=
+  ty_v_fold (fun acc v => acc && (pr v)) true t.
+
+Definition ty_v_any (pr: tvsymbol -> bool) (t: ty_c) : bool :=
+  ty_v_fold (fun acc v => acc || (pr v)) false t.
+
+(*Skip ty_full_inst for moment*)
+
+Definition ty_freevars (s: Stv.t) (t: ty_c) : Stv.t :=
+  ty_v_fold Stv.add_left s t.
+
+Definition ty_closed (t: ty_c) : bool :=
+  ty_v_all (fun _ => false) t.

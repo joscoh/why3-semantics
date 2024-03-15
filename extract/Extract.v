@@ -1,4 +1,4 @@
-From Src.core Require Import Ident Ty.
+From Src.core Require Import Ident TyDefs TyFuncs.
 From Src.util Require Import Extmap Extset Hashcons.
 From stdpp Require Import gmap.
 From Coq Require Extraction.
@@ -25,13 +25,13 @@ Extract Inlined Constant proj_sumbool => "".
 (*TODO: move to approprate files?*)
 (*TODO: We need this module stuff for now because dune does not
   support (include_subdirs unqualified) with Coq*)
-Extract Inlined Constant CoqBigInt.t => "Why3OCaml.BigInt.t".
-Extract Inlined Constant CoqBigInt.zero => "Why3OCaml.BigInt.zero" (*TODO: change to BigInt when put in Why3*).
+Extract Inlined Constant CoqBigInt.t => "BigInt.t".
+Extract Inlined Constant CoqBigInt.zero => "BigInt.zero" (*TODO: change to BigInt when put in Why3*).
 Extract Inlined Constant CoqBigInt.one => "BigInt.one" (*TODO*).
-Extract Inlined Constant CoqBigInt.succ => "Why3OCaml.BigInt.succ".
-Extract Inlined Constant CoqBigInt.eqb => "Why3OCaml.BigInt.eq".
-Extract Inlined Constant CoqBigInt.mul_int => "Why3OCaml.BigInt.mul_int".
-Extract Inlined Constant CoqBigInt.add => "Why3OCaml.BigInt.add".
+Extract Inlined Constant CoqBigInt.succ => "BigInt.succ".
+Extract Inlined Constant CoqBigInt.eqb => "BigInt.eq".
+Extract Inlined Constant CoqBigInt.mul_int => "BigInt.mul_int".
+Extract Inlined Constant CoqBigInt.add => "BigInt.add".
 
 Extract Inlined Constant CoqInt.int => "Int.t".
 Extract Inlined Constant CoqInt.int_eqb => "Int.equal".
@@ -44,7 +44,9 @@ Extract Inlined Constant Coq.Arith.PeanoNat.Nat.eqb => "Int.equal".
 (*Handle exception monad*)
 
 Extract Inductive errorM => "  " ["Normal" "Error"] .  
-Extract Inductive errtype => exn ["Not_found" "Invalid_argument"].
+Extract Inductive errtype => exn [""].
+Extract Inlined Constant Not_found => "Not_found".
+Extract Inlined Constant Invalid_argument => "Invalid_argument".
 Extract Inlined Constant ret => "".
 Extract Inlined Constant throw => " raise ".
 (*TODO: see*)
@@ -53,27 +55,27 @@ Extract Inlined Constant errorM_bind => "(@@)".
 Extract Inlined Constant mbind => "(@@)".
 
 (*Handle state monad*)
-Extract Constant ctr_unit => "Why3OCaml.BigInt.t ref".
+Extract Constant ctr_unit => "BigInt.t ref".
 Extract Constant ctr "'ty" => "'ty".
 Extract Inlined Constant ctr_ret => "".
 Extract Inlined Constant ctr_bnd' => "(@@)".
 Extract Inlined Constant ctr_bnd => "(@@)".
-Extract Inlined Constant new_ctr => "ref Why3OCaml.BigInt.one".
-Extract Inlined Constant incr => "(id_ctr := Why3OCaml.BigInt.succ !id_ctr)".
+Extract Inlined Constant new_ctr => "ref BigInt.one".
+Extract Inlined Constant incr => "(id_ctr := BigInt.succ !id_ctr)".
 Extract Inlined Constant ctr_get => "!id_ctr".
 
 (*Handle hashcons*)
 
 Extract Constant hashcons_unit "'k" => 
-  "(Why3OCaml.BigInt.t * 'k Hashtbl.hashtbl) ref".
+  "(BigInt.t * 'k Hashtbl.hashtbl) ref".
 Extract Constant hashcons_st "'ty" "'ty2" => "'ty2".
 Extract Inlined Constant hashcons_ret => "".
 Extract Inlined Constant hashcons_bnd => "(@@)".
 Extract Inlined Constant hashcons_new => 
-  "ref (Why3OCaml.BigInt.one, Hashtbl.create_hashtbl)".
+  "ref (BigInt.one, Hashtbl.create_hashtbl)".
 Extract Inlined Constant hashcons_incr => 
   "(let old = !hash_st in
-    hash_st := (Why3OCaml.BigInt.succ (fst old), (snd old)))".
+    hash_st := (BigInt.succ (fst old), (snd old)))".
 Extract Inlined Constant hashcons_get_ctr =>
   "(fst !hash_st)".
 Extract Inlined Constant hashcons_lookup =>
@@ -114,10 +116,14 @@ Extraction Inline ty_build_simpl.
 Extraction Inline ty_build_simpl'.*)
 Extraction Inline Decision RelDecision.
 
+(*Other exceptions*)
+Extract Inlined Constant BadTypeArity => "TyExn.BadTypeArity".
+(*Extract Inlined Constant BadTypeArity_reg => "exception Exceptions.BadTypeArity of tysymbol * int".*)
+
 (*Unset Extraction Optimize.*)
 
 Separate Extraction
-  Extmap Extset Hashtbl Ty Ident. (*Ty.ty_v_map Ident.*)
+  Extmap Extset Hashtbl Ident TyDefs TyFuncs. (*Ty.ty_v_map Ident.*)
 (*Separate Extraction Extmap.
 Separate Extraction Ty.ty Ty.ty_v_map Ident.*)
 
