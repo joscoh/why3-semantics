@@ -139,6 +139,7 @@ Extract Inlined Constant UnboundTypeVar => "TyExn.UnboundTypeVar".
 Extract Inlined Constant IllegalTypeParameters => "TyExn.IllegalTypeParameters".
 Extract Inlined Constant EmptyRange => "TyExn.EmptyRange".
 Extract Inlined Constant BadFloatSpec => "TyExn.BadFloatSpec".
+Extract Inlined Constant UnexpectedProp => "TyExn.UnexpectedProp".
 (*Extract Inlined Constant BadTypeArity_reg => "exception Exceptions.BadTypeArity of tysymbol * int".*)
 
 (*Unset Extraction Optimize.*)

@@ -6,3 +6,4 @@ exception UnboundTypeVar of tvsymbol
 exception IllegalTypeParameters
 exception BadFloatSpec
 exception EmptyRange
+exception UnexpectedProp

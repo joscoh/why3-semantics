@@ -319,6 +319,7 @@ Definition ty_mapM (fn: ty_c -> hashcons_st ty_c) (t: ty_c) : hashcons_st ty_c :
   end.
 
 (*TODO: why does this pass Coq's termination checker?*)
+(*Idea: instantiate type variables from the map*)
 Fixpoint ty_inst (s: Mtv.t ty_c) (t: ty_c) : hashcons_st ty_c :=
   match ty_node_of t with
   | Tyvar n => hashcons_ret (Mtv.find_def _ t n s)
@@ -415,10 +416,7 @@ Definition ty_pred (ty_a : ty_c) : hashcons_st ty_c :=
   hashcons_bnd (fun t =>
     ty_app1 ts_func [ty_a; t]) ty_bool.
 
-(*No memoization for us (yet?)*)
-(*Generate a list from 1 to n*)
-
-(*Generate a list of length n*)
+(*For now, skip tuples*)
 
 (*Again, know that [create_tysymbol] succeds so use [mk_ts]*)
 (*NOTE: no memoization so this will increase counter each time
@@ -426,30 +424,58 @@ Definition ty_pred (ty_a : ty_c) : hashcons_st ty_c :=
 (*TODO: maybe just build in tuples up to 17 elements or
   so (what they assume) - this would avoid state issues and
   make things just as fast*)
-Definition ts_tuple (n: CoqInt.int) :=
+(*Definition ts_tuple (n: CoqBigInt.t) :=
   (*Create symbols a1, a2, ..., an*)
   let vl := map (fun _ => create_tvsymbol (id_fresh "a")) (CoqInt.list_init n (fun _ => tt)) in
   let ts := ctr_bnd (fun l => mk_ts (id_fresh ("tuple" ++ CoqInt.string_of_int n)) l NoDef)
     (ctr_list vl) in
-  ts.
-
-(*TODO*)
-Axiom int_length2: forall A, list A -> CoqInt.int.
-
-(*TODO: have to combine hashcons and ctr here
-  Probably build in tuples*)
+  ts.*)
 (*
 Definition ty_tuple (tyl: list ty_c) :=
   ctr_bnd (fun ts => ty_app1 ts tyl)
-    (ts_tuple (int_length2 _ tyl)).
-  (*ty_app1  tyl.
-
-let ty_tuple tyl = ty_app (ts_tuple (List.length tyl)) tyl*)
+    (ts_tuple (int_length2 _ tyl)).*)
 
 
-(*Probably want the above: this function should NOT
-  be stateful*)
-(*Definition is_ts_tuple (ts: tysymbol_c) : bool :=
-  ts_equal ts (ts_tuple (int_length (ts_args_of ts))).*)
+(** {2 Operations on [ty option]} *)
+Definition UnexpectedProp := mk_errtype tt.
 
-let is_ts_tuple ts = ts_equal ts (ts_tuple (List.length ts.ts_args))*)
+(*Skip [oty_type]*)
+
+Definition oty_equal (o1 o2: option ty_c) : bool :=
+  option_eqb ty_equal o1 o2.
+
+Definition option_fold {A B: Type} (none: A) (some: B -> A) (o: option B) : A :=
+  match o with
+  | None => none
+  | Some x => some x
+  end.
+
+Definition oty_hash (o: option ty_c) : CoqBigInt.t :=
+  option_fold CoqBigInt.one ty_hash o.
+
+(*Skip [oty_compare]*)
+Definition oty_match (m: Mtv.t ty_c) (o1 o2: option ty_c) : errorHashT (Mtv.t ty_c) :=
+  match o1, o2 with
+  | Some ty1, Some ty2 => ty_match m ty1 ty2
+  | None, None => errorHash_ret m
+  | _, _ => errorHash_lift2 (throw UnexpectedProp)
+  end.
+
+Definition oty_inst (m: Mtv.t ty_c) (o: option ty_c) : option (hashcons_st ty_c) :=
+  option_map (ty_inst m) o.
+
+Definition opt_fold {A B: Type} (f: A -> B -> A) (d: A) (o: option B) : A :=
+  match o with
+  | None => d
+  | Some x => f d x
+  end.
+
+Definition oty_freevars : Stv.t -> option ty_c -> Stv.t := 
+  opt_fold ty_freevars.
+
+Definition oty_cons : list ty_c -> option ty_c -> list ty_c :=
+  opt_fold (fun tl t => t :: tl).
+
+Definition ty_equal_check ty1 ty2 : errorM unit :=
+  if negb (ty_equal ty1 ty2) then throw (TypeMismatch (ty1, ty2))
+  else ret tt.
