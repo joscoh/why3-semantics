@@ -1,5 +1,6 @@
 (*A mutable counter to register identifiers*)
 Require CoqBigInt.
+Require Import Monad.
 
 (*We offer a restricted subset of the state monad interface
   so that we can extract to OCaml mutable references soundly*)
@@ -26,6 +27,9 @@ Global Instance ctr_bnd': MBind ctr := @ctr_bnd.
 (*A vile hack - for extraction, we need a type that does not
   get erased when creating a counter*)
 Definition ctr_unit := ctr unit.
+
+Definition ctr_list {A: Type} (l: list (ctr A)) : ctr (list A) :=
+  listM ctr_ret ctr_bnd l.
 
 (*Hash Consing*)
 Require Import Hashtbl.
@@ -61,14 +65,50 @@ Definition hashcons_unit := hashcons_st unit.
 
 End HashconsST.
 
+Definition hashcons_list {K A : Type} (l: list (@hashcons_st K A)) :
+  @hashcons_st K (list A) :=
+  listM hashcons_ret hashcons_bnd l.
 
-(*We in fact need 2 counters: one for identifiers and one
-  for hash consing. Can we reduce duplication and still extract OK?*)
-(*This is a little trick for extraction*)
-(*Definition hashctr := ctr.
-Definition hashctr_get: hashctr CoqBigInt.t := ctr_get.
-Definition hashctr_ret {a: Type} (x: a) : hashctr a := ctr_ret x.
-Definition hashctr_bnd {a b: Type} (f: a -> ctr b) (x: ctr a) := 
-  ctr_bnd f x.
-Definition new_hashctr : hashctr unit := new_ctr.
-Definition incr_hashctr : hashctr unit := incr.*)
+
+(*Monad transformers (kind of)*)
+Require Import ErrorMonad.
+
+(*Ok, we do want a monad instance for (errorM (hashcons_st A))
+  so we can use listM
+  also this is annoying haha*)
+(*Problem is doing it generically means OCaml code is bad*)
+(*For now, do 1 by 1*)
+(*Choose this order: state still exists, may have result*)
+(*Basically ExceptT on state monad*)
+Definition errorHashT {K : Type} (A: Type) : Type :=
+  @hashcons_st K (errorM A).
+
+Definition errorHash_ret {K A: Type} (x: A) : @errorHashT K A :=
+  hashcons_ret (ret x).
+
+Definition errorHash_bnd {K A B: Type} (f: A -> errorHashT B) (x: errorHashT A) : 
+  @errorHashT K B :=
+  hashcons_bnd (fun y =>
+    match y with
+    | Normal _ z => f z
+    | Error _ e => hashcons_ret (Error _ e)
+    end) x.
+
+Definition errorHash_lift {K A: Type} (x: @hashcons_st K A) :
+  @errorHashT K A :=
+  hashcons_bnd (fun s => (hashcons_ret (ret s))) x.
+
+(*TODO: am I doing this right?*)
+Definition errorHash_lift2 {K A: Type} (x: errorM A) :
+  @errorHashT K A :=
+  fun s => (s, x). 
+
+Definition errorHash_list {K A: Type} (l: list (@errorHashT K A)) :
+ @errorHashT K (list A) :=
+  listM errorHash_ret errorHash_bnd l.
+
+
+
+
+
+

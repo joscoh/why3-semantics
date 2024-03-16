@@ -133,13 +133,15 @@ Extraction Inline ty_build_simpl'.*)
 Extraction Inline Decision RelDecision.
 
 (*Other exceptions*)
-Extract Inlined Constant BadTypeArity => "TyExn.BadTypeArity".
-Extract Inlined Constant DuplicateTypeVar => "TyExn.DuplicateTypeVar".
-Extract Inlined Constant UnboundTypeVar => "TyExn.UnboundTypeVar".
-Extract Inlined Constant IllegalTypeParameters => "TyExn.IllegalTypeParameters".
-Extract Inlined Constant EmptyRange => "TyExn.EmptyRange".
-Extract Inlined Constant BadFloatSpec => "TyExn.BadFloatSpec".
-Extract Inlined Constant UnexpectedProp => "TyExn.UnexpectedProp".
+Extract Inlined Constant BadTypeArity => "BadTypeArity".
+Extract Inlined Constant DuplicateTypeVar => "DuplicateTypeVar".
+Extract Inlined Constant UnboundTypeVar => "UnboundTypeVar".
+Extract Inlined Constant IllegalTypeParameters => "IllegalTypeParameters".
+Extract Inlined Constant EmptyRange => "EmptyRange".
+Extract Inlined Constant BadFloatSpec => "BadFloatSpec".
+Extract Inlined Constant UnexpectedProp => "UnexpectedProp".
+Extract Inlined Constant TypeMismatch => "TypeMismatch".
+Extraction Inline mk_errtype.
 (*Extract Inlined Constant BadTypeArity_reg => "exception Exceptions.BadTypeArity of tysymbol * int".*)
 
 (*Unset Extraction Optimize.*)

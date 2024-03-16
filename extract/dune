@@ -8,10 +8,25 @@
   TyDefs TyFuncs Ident)
  (theories Src stdpp Proofs)
  )
- 
+
+;Create Ty.ml by concatenation Defs, Exn, Funcs
+ (rule
+  (deps TyDefs.ml TyExn.ml TyFuncs.ml)
+  (targets Ty.ml)
+  (action 
+  (with-stdout-to Ty.ml
+    (pipe-stdout
+     (cat TyDefs.ml TyExn.ml TyFuncs.ml)
+     (run sed -e "s/open TyDefs//g")
+    )
+   )
+  )
+ )
+
 (library
  (name Why3Coq)
- (flags (:standard -w -33))
+ (modules (:standard \ TyExn TyDefs TyFuncs))
+ (flags (:standard -w -33 -w -32)) ;32 is unused value - extraction results in values we don't want in mli file
  (libraries zarith))
 
 

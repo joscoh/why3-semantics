@@ -60,50 +60,6 @@ Definition is_float_type_def {A: Type} (t: type_def A) : bool :=
   | _ => false
   end.
 
-(*We want to lift a (list (m A)) to a m (list A) for a monad m.
-  We can do this in 3 ways:
-  1. Use typeclasses
-  2. Give a generic function that takes in bind and return
-  3. Write the same function for each monad
-  Unfortunately, the first 2 ways give horrible OCaml code
-  full of Object.magic and that can easily not compile
-  (we need non-prenex polymorphism).
-  So we do the third (for now)*)
-(*Just so we don't have to write it 3 times*)
-(*Of course in OCaml, these all reduce to the identity function*)
-Notation listM ret bnd l :=
-  (fold_right (fun x acc =>
-    bnd (fun h => bnd (fun t => ret (h :: t)) acc) x)
-    (ret nil) l).
-
-Definition hashcons_list {K A : Type} (l: list (@hashcons_st K A)) :
-  @hashcons_st K (list A) :=
-  listM hashcons_ret hashcons_bnd l.
-
-Definition errorM_list {A: Type} (l: list (errorM A)) : errorM (list A) :=
-  listM ret bnd l.
-
-Definition ctr_list {A: Type} (l: list (ctr A)) : ctr (list A) :=
-  listM ctr_ret ctr_bnd l.
-
-(*NOTE: we do not use a typeclass because the resulting
-  OCaml code is not good*)
-(*TODO: this will give horrible OCaml code*)
-(*Definition listM {m: Type -> Type}
-  (ret: forall A, A -> m A)
-  (bnd: forall A B, (A -> m B) -> m A -> m B)
-  {A : Type} (l: list (m A)) : m (list A) :=
-  fold_right (fun x acc =>
-    bnd _ _ (fun h => bnd _ _ (fun t => ret _ (h :: t)) acc) x
-  ) (ret _ nil) l.
-
-Definition hashcons_list {K A : Type} (l: list (@hashcons_st K A)) :
-  @hashcons_st K (list A) :=
-  listM (@hashcons_ret K) (@hashcons_bnd K) l.
-
-Definition errorM_list {A: Type} (l: list (errorM A)) : errorM (list A) :=
-  listM (@ret) (@bnd) l.*)
-
 (*Traversal Functions on Type Variables*)
 Fixpoint ty_v_map (fn: tvsymbol -> ty_c) (t: ty_c) : hashcons_st ty_c :=
   match ty_node_of t with
@@ -124,43 +80,6 @@ Definition ty_v_all (pr: tvsymbol -> bool) (t: ty_c) : bool :=
 
 Definition ty_v_any (pr: tvsymbol -> bool) (t: ty_c) : bool :=
   ty_v_fold (fun acc v => acc || (pr v)) false t.
-
-(*Monad transformers (kind of)*)
-(*TODO: move*)
-
-(*Ok, we do want a monad instance for (errorM (hashcons_st A))
-  so we can use listM
-  also this is annoying haha*)
-(*Problem is doing it generically means OCaml code is bad*)
-(*For now, do 1 by 1*)
-(*Choose this order: state still exists, may have result*)
-(*Basically ExceptT on state monad*)
-Definition errorHashT {K : Type} (A: Type) : Type :=
-  @hashcons_st K (errorM A).
-
-Definition errorHash_ret {K A: Type} (x: A) : @errorHashT K A :=
-  hashcons_ret (ret x).
-
-Definition errorHash_bnd {K A B: Type} (f: A -> errorHashT B) (x: errorHashT A) : 
-  @errorHashT K B :=
-  hashcons_bnd (fun y =>
-    match y with
-    | Normal _ z => f z
-    | Error _ e => hashcons_ret (Error _ e)
-    end) x.
-
-Definition errorHash_lift {K A: Type} (x: @hashcons_st K A) :
-  @errorHashT K A :=
-  hashcons_bnd (fun s => (hashcons_ret (ret s))) x.
-
-(*TODO: am I doing this right?*)
-Definition errorHash_lift2 {K A: Type} (x: errorM A) :
-  @errorHashT K A :=
-  fun s => (s, x). 
-
-Definition errorHash_list {K A: Type} (l: list (@errorHashT K A)) :
- @errorHashT K (list A) :=
-  listM errorHash_ret errorHash_bnd l.
 
 Fixpoint ty_v_map_err (fn: tvsymbol -> errorM ty_c) (t: ty_c) :
   errorHashT ty_c :=
@@ -346,29 +265,29 @@ Definition TypeMismatch (t: ty_c * ty_c) : errtype := mk_errtype t.
 (*We add an extra parameter in a bit of a hack so that 
   we throw the exception that the higher-level interface
   expects (since we don't have try/catch)*)
-Fixpoint ty_match_aux (onerr: ty_c * ty_c) 
+Fixpoint ty_match_aux (err1 err2: ty_c) 
   (s: Mtv.t ty_c) (ty1 ty2: ty_c) 
    : errorM (Mtv.t ty_c) :=
 
   match ty_node_of ty1, ty_node_of ty2 with
   | Tyapp f1 l1, Tyapp f2 l2 =>
     if ts_equal f1 f2 then
-    fold_right2_error (ty_match_aux onerr) l1 l2 s
-    else throw (TypeMismatch onerr)
+    fold_right2_error (ty_match_aux err1 err2) l1 l2 s
+    else throw (TypeMismatch (err1, err2))
   | Tyvar n1, _ => 
     (*We are not using Mtv.change because there is an
       exception in the function (so the types do not match)
       Instead, we will search manually and throw an exception if needed*)
     match Mtv.find_opt _ n1 s with
     | Some ty3 => if ty_equal ty3 ty2 then ret s else
-      throw (TypeMismatch onerr)
+      throw (TypeMismatch (err1, err2))
     | None => ret (Mtv.add n1 ty2 s)
     end
-  | _, _ => throw (TypeMismatch onerr)
+  | _, _ => throw (TypeMismatch (err1, err2))
   end.
 
 Definition ty_match  (s: Mtv.t ty_c) (ty1 ty2: ty_c) : errorHashT (Mtv.t ty_c) :=
-  hashcons_bnd (fun t1 => hashcons_ret (ty_match_aux (t1, ty2) s ty1 ty2)) (ty_inst s ty1).
+  hashcons_bnd (fun t1 => hashcons_ret (ty_match_aux t1 ty2 s ty1 ty2)) (ty_inst s ty1).
 
 
 (* built-in symbols *)
@@ -473,8 +392,8 @@ Definition opt_fold {A B: Type} (f: A -> B -> A) (d: A) (o: option B) : A :=
 Definition oty_freevars : Stv.t -> option ty_c -> Stv.t := 
   opt_fold ty_freevars.
 
-Definition oty_cons : list ty_c -> option ty_c -> list ty_c :=
-  opt_fold (fun tl t => t :: tl).
+Definition oty_cons (l: list ty_c) (o: option ty_c) : list ty_c :=
+  opt_fold (fun tl t => t :: tl) l o.
 
 Definition ty_equal_check ty1 ty2 : errorM unit :=
   if negb (ty_equal ty1 ty2) then throw (TypeMismatch (ty1, ty2))

@@ -298,13 +298,6 @@ Definition ty_hash (t: ty_c) := Weakhtbl.tag_hash (ty_tag_of t).
 (*Hash-consing equality is weaker*)
 (*NOTE: in OCaml, ts_equal and ty_equal are reference equality
   because of hash consing - TODO: maybe change*)
-Definition ty_equal_hash (ty1 ty2: ty_c) : bool :=
-  match ty_node_of ty1, ty_node_of ty2 with
-  | Tyvar n1, Tyvar n2 => tv_equal n1 n2
-  | Tyapp s1 l1, Tyapp s2 l2 => 
-    ts_equal s1 s2 && forallb id (map2 ty_equal l1 l2)
-  | _, _ => false
-  end.
 
 Module TyHash <: Hashcons.HashedType.
 Definition t := ty_c.

@@ -35,3 +35,8 @@ Global Instance errorM_ret: MRet errorM := @ret.
 Global Instance errorM_bind: MBind errorM := @bnd.
 
 End ErrorMonad.
+
+Require Import Monad.
+
+Definition errorM_list {A: Type} (l: list (errorM A)) : errorM (list A) :=
+  listM ret bnd l.

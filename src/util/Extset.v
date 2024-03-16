@@ -2,10 +2,11 @@ Require Export ErrorMonad.
 Require Import Extmap.
 From stdpp Require Import base gmap.  
 
-Module Type S (M: Extmap.S).
+(*Slightly different than OCaml: doesnt depend on map*)
+Module Type S.
 
-Definition elt := M.key.
-Definition t := M.t unit.
+Parameter elt : Type.
+Parameter t : Type.
 
 Parameter empty : t.
 Parameter is_empty : t -> bool.
@@ -54,7 +55,7 @@ Parameter equal_eq: forall (m1 m2: t),
 End S.
 
 (*This is almost verbatim from the OCaml*)
-Module MakeOfMap (M: Extmap.S) <: S M.
+Module MakeOfMap (M: Extmap.S) <: S.
 
 Definition elt := M.key.
 Definition t := M.t unit.

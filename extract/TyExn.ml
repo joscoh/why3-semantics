@@ -7,3 +7,4 @@ exception IllegalTypeParameters
 exception BadFloatSpec
 exception EmptyRange
 exception UnexpectedProp
+exception TypeMismatch of ty * ty
