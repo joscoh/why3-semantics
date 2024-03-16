@@ -83,6 +83,9 @@ Definition hashcons_list {K A : Type} (l: list (@hashcons_st K A)) :
 Definition errorM_list {A: Type} (l: list (errorM A)) : errorM (list A) :=
   listM ret bnd l.
 
+Definition ctr_list {A: Type} (l: list (ctr A)) : ctr (list A) :=
+  listM ctr_ret ctr_bnd l.
+
 (*NOTE: we do not use a typeclass because the resulting
   OCaml code is not good*)
 (*TODO: this will give horrible OCaml code*)
@@ -411,3 +414,42 @@ Definition ty_func (ty_a ty_b: ty_c) : hashcons_st ty_c :=
 Definition ty_pred (ty_a : ty_c) : hashcons_st ty_c := 
   hashcons_bnd (fun t =>
     ty_app1 ts_func [ty_a; t]) ty_bool.
+
+(*No memoization for us (yet?)*)
+(*Generate a list from 1 to n*)
+
+(*Generate a list of length n*)
+
+(*Again, know that [create_tysymbol] succeds so use [mk_ts]*)
+(*NOTE: no memoization so this will increase counter each time
+  tuple is called (not ideal maybe implement TODO)*)
+(*TODO: maybe just build in tuples up to 17 elements or
+  so (what they assume) - this would avoid state issues and
+  make things just as fast*)
+Definition ts_tuple (n: CoqInt.int) :=
+  (*Create symbols a1, a2, ..., an*)
+  let vl := map (fun _ => create_tvsymbol (id_fresh "a")) (CoqInt.list_init n (fun _ => tt)) in
+  let ts := ctr_bnd (fun l => mk_ts (id_fresh ("tuple" ++ CoqInt.string_of_int n)) l NoDef)
+    (ctr_list vl) in
+  ts.
+
+(*TODO*)
+Axiom int_length2: forall A, list A -> CoqInt.int.
+
+(*TODO: have to combine hashcons and ctr here
+  Probably build in tuples*)
+(*
+Definition ty_tuple (tyl: list ty_c) :=
+  ctr_bnd (fun ts => ty_app1 ts tyl)
+    (ts_tuple (int_length2 _ tyl)).
+  (*ty_app1  tyl.
+
+let ty_tuple tyl = ty_app (ts_tuple (List.length tyl)) tyl*)
+
+
+(*Probably want the above: this function should NOT
+  be stateful*)
+(*Definition is_ts_tuple (ts: tysymbol_c) : bool :=
+  ts_equal ts (ts_tuple (int_length (ts_args_of ts))).*)
+
+let is_ts_tuple ts = ts_equal ts (ts_tuple (List.length ts.ts_args))*)
