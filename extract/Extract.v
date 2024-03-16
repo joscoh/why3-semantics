@@ -33,6 +33,14 @@ Extract Inlined Constant CoqBigInt.eqb => "BigInt.eq".
 Extract Inlined Constant CoqBigInt.mul_int => "BigInt.mul_int".
 Extract Inlined Constant CoqBigInt.add => "BigInt.add".
 Extract Inlined Constant CoqBigInt.lt => "BigInt.lt".
+Extract Inlined Constant CoqBigInt.two => "(BigInt.of_int 2)".
+Extract Inlined Constant CoqBigInt.three => "(BigInt.of_int 3)".
+Extract Inlined Constant CoqBigInt.four => "(BigInt.of_int 4)".
+Extract Inlined Constant CoqBigInt.five => "(BigInt.of_int 5)".
+Extract Inlined Constant CoqBigInt.six => "(BigInt.of_int 6)".
+Extract Inlined Constant CoqBigInt.seven => "(BigInt.of_int 7)".
+Extract Inlined Constant CoqBigInt.eight => "(BigInt.of_int 8)".
+Extract Inlined Constant CoqBigInt.nine => "(BigInt.of_int 9)".
 
 Extract Inlined Constant CoqInt.int => "Int.t".
 Extract Inlined Constant CoqInt.int_eqb => "Int.equal".
@@ -62,7 +70,7 @@ Extract Constant ctr "'ty" => "'ty".
 Extract Inlined Constant ctr_ret => "".
 Extract Inlined Constant ctr_bnd' => "(@@)".
 Extract Inlined Constant ctr_bnd => "(@@)".
-Extract Inlined Constant new_ctr => "ref BigInt.one".
+Extract Inlined Constant new_ctr => "ref (BigInt.of_int 8)".
 Extract Inlined Constant incr => "(id_ctr := BigInt.succ !id_ctr)".
 Extract Inlined Constant ctr_get => "!id_ctr".
 

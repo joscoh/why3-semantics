@@ -40,7 +40,6 @@ Definition tv_equal (t1 t2: tvsymbol) : bool := tvsymbol_eqb t1 t2.
 Definition tv_hash tv := id_hash tv.(tv_name).
 (*Skip tv_compare*)
 
-(*Not stateful, unlike OCaml*)
 Definition create_tvsymbol (n: preid) : ctr tvsymbol :=
   ctr_bnd (fun i => ctr_ret {|tv_name := i|}) (id_register n).
 

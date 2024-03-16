@@ -194,18 +194,34 @@ Definition id_register : preid -> ctr ident :=
     id_loc := p.(pre_loc);
     id_tag := i |}) ctr_get) incr.
 
+(*1st 7 values of the counter correspond to builtin symbols
+  (so that we don't need state)*)
+Definition id_builtin (name: string) (tag: CoqBigInt.t) : ident :=
+  {| id_string := name;
+     id_attrs := Sattr.empty;
+     id_loc := None;
+     id_tag := tag |}.
+  
+Definition id_int : ident :=
+  id_builtin "int" CoqBigInt.one.
 
-  (*let r := new_ctr in (*For extraction*)
-  fun p =>
-  y ← r;
-  x ← incr;
-  i ← ctr_get;
-  ctr_ret (
-    {| id_string := p.(pre_name);
-    id_attrs := p.(pre_attrs);
-    id_loc := p.(pre_loc);
-    id_tag := i |}
-  ).*)
+Definition id_real : ident :=
+  id_builtin "real" CoqBigInt.two.
+
+Definition id_bool : ident :=
+  id_builtin "bool" CoqBigInt.three.
+
+Definition id_str : ident :=
+  id_builtin "string" CoqBigInt.four.
+
+Definition id_a : ident :=
+  id_builtin "a" CoqBigInt.five.
+
+Definition id_b : ident :=
+  id_builtin "b" CoqBigInt.six.
+
+Definition id_fun : ident :=
+  id_builtin (op_infix "->") CoqBigInt.seven.
 
 Definition create_ident name attrs loc :=
   {| pre_name := name; pre_attrs := attrs; pre_loc := loc|}.

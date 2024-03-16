@@ -335,23 +335,79 @@ Definition fold_right2_error := fun {A B C: Type} (f: C -> A -> B -> errorM C) =
   | _, _ => throw (Invalid_argument "fold_right2")
   end.
 
+Definition TypeMismatch (t: ty_c * ty_c) : errtype := mk_errtype t.
+
 (*Idea: when we have variable: check to see if it is in map
   If so, must be mapped to ty2 or else throw exception*)
-Fixpoint ty_match (s: Mtv.t ty_c) (ty1 ty2: ty_c) : errorM (Mtv.t ty_c) :=
+(*We add an extra parameter in a bit of a hack so that 
+  we throw the exception that the higher-level interface
+  expects (since we don't have try/catch)*)
+Fixpoint ty_match_aux (onerr: ty_c * ty_c) 
+  (s: Mtv.t ty_c) (ty1 ty2: ty_c) 
+   : errorM (Mtv.t ty_c) :=
 
   match ty_node_of ty1, ty_node_of ty2 with
   | Tyapp f1 l1, Tyapp f2 l2 =>
     if ts_equal f1 f2 then
-    fold_right2_error ty_match l1 l2 s
-    else throw Exit
+    fold_right2_error (ty_match_aux onerr) l1 l2 s
+    else throw (TypeMismatch onerr)
   | Tyvar n1, _ => 
     (*We are not using Mtv.change because there is an
       exception in the function (so the types do not match)
       Instead, we will search manually and throw an exception if needed*)
     match Mtv.find_opt _ n1 s with
     | Some ty3 => if ty_equal ty3 ty2 then ret s else
-      throw Exit
+      throw (TypeMismatch onerr)
     | None => ret (Mtv.add n1 ty2 s)
     end
-  | _, _ => throw Exit
+  | _, _ => throw (TypeMismatch onerr)
   end.
+
+Definition ty_match  (s: Mtv.t ty_c) (ty1 ty2: ty_c) : errorHashT (Mtv.t ty_c) :=
+  hashcons_bnd (fun t1 => hashcons_ret (ty_match_aux (t1, ty2) s ty1 ty2)) (ty_inst s ty1).
+
+
+(* built-in symbols *)
+
+
+Definition mk_ts_builtin (name: ident) (args: list tvsymbol) (d: type_def ty_c) : 
+  tysymbol_c := mk_ts_c name args d.
+
+
+(*TODO: should probably change create_tysymbol to different
+  monad order*)
+(*NOTE: for these, we actually know that they will not fail,
+  so we define manually, not with [create_tysymbol].
+  TODO (maybe): reserve counter values for builtins so that
+  we don't need ctr state here either*)
+Definition ts_int := mk_ts_builtin id_int nil NoDef.
+Definition ts_real := mk_ts_builtin id_real nil NoDef.
+Definition ts_bool := mk_ts_builtin id_bool nil NoDef.
+Definition ts_str := mk_ts_builtin id_str nil NoDef.
+
+(*Similarly, we know that ty_app will succeed,
+  but we still need hashconsing*)
+(*NOTE: if we want, we could add these values to the
+  hashcons map at the beginning; then we would not need
+  state here
+  TODO see if this is needed/helpful*)
+Definition ty_int := ty_app1 ts_int nil.
+Definition ty_real := ty_app1 ts_real nil.
+Definition ty_bool := ty_app1 ts_bool nil.
+Definition ty_str := ty_app1 ts_str nil.
+
+Definition create_builtin_tvsymbol (i: ident) : tvsymbol :=
+  {| tv_name := i|}.
+
+Definition ts_func :=
+  let tv_a := create_builtin_tvsymbol id_a in
+  let tv_b := create_builtin_tvsymbol id_b in
+  mk_ts_builtin id_fun [tv_a; tv_b] NoDef.
+
+(*We know that [ty_app] always succeeds here*)
+Definition ty_func (ty_a ty_b: ty_c) : hashcons_st ty_c :=
+  ty_app1 ts_func [ty_a; ty_b].
+
+Definition ty_pred (ty_a : ty_c) : hashcons_st ty_c := 
+  hashcons_bnd (fun t =>
+    ty_app1 ts_func [ty_a; t]) ty_bool.

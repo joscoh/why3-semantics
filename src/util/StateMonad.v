@@ -14,7 +14,8 @@ Definition ctr_bnd {a b: Type} (f: a -> ctr b) (x: ctr a) : ctr b :=
     let t := x i in
     f (snd t) (fst t).
 
-Definition new_ctr : ctr unit := fun _ => (CoqBigInt.one, tt).
+(*Counter starts at 8- 1st 7 numbers are reserved*)
+Definition new_ctr : ctr unit := fun _ => (CoqBigInt.eight, tt).
 Definition incr : ctr unit := fun i => (CoqBigInt.succ i, tt).
 
 (*TODO: remove*)

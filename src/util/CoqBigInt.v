@@ -18,6 +18,16 @@ Axiom hash : t -> int.
 Axiom mul_int : int -> t -> t.
 Axiom lt : t -> t -> bool.
 
+(*Single digit numbers*)
+Axiom two : t.
+Axiom three : t.
+Axiom four :t.
+Axiom five : t.
+Axiom six : t.
+Axiom seven : t.
+Axiom eight : t.
+Axiom nine : t.
+
 (*Assumption: equality corresponds to Leibnitz equality*)
 Axiom eqb_eq : forall (x y: t), x = y <-> eqb x y.
 
