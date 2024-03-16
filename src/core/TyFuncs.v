@@ -305,3 +305,53 @@ Definition ty_s_all (pr: tysymbol_c -> bool) (t: ty_c) : bool :=
   ty_s_fold (fun x y => x && (pr y)) true t.
 Definition ty_s_any (pr: tysymbol_c -> bool) (t: ty_c) : bool :=
   ty_s_fold (fun x y => x || (pr y)) false t.
+
+(* type matching *)
+
+(*TODO: very bad*)
+Definition ty_mapM (fn: ty_c -> hashcons_st ty_c) (t: ty_c) : hashcons_st ty_c :=
+  match ty_node_of t with
+  | Tyvar _ => hashcons_ret t
+  | Tyapp f tl => hashcons_bnd (fun l => ty_app1 f l) (hashcons_list (map fn tl))
+  end.
+
+(*TODO: why does this pass Coq's termination checker?*)
+Fixpoint ty_inst (s: Mtv.t ty_c) (t: ty_c) : hashcons_st ty_c :=
+  match ty_node_of t with
+  | Tyvar n => hashcons_ret (Mtv.find_def _ t n s)
+  | _ => ty_mapM (ty_inst s) t
+  end.
+
+Definition Exit : errtype := mk_errtype tt.
+
+(*Version with exceptions*)
+(*Write in strange way so Coq can use in nested recursion*)
+Definition fold_right2_error := fun {A B C: Type} (f: C -> A -> B -> errorM C) =>
+  fix fold_right2_error (l1: list A) (l2: list B) (accu: C) {struct l1} : errorM C :=
+  match l1, l2 with
+  | nil, nil => ret accu
+  | a1 :: l1, a2 :: l2 => 
+    bnd (fun x => f x a1 a2) (fold_right2_error l1 l2 accu)
+  | _, _ => throw (Invalid_argument "fold_right2")
+  end.
+
+(*Idea: when we have variable: check to see if it is in map
+  If so, must be mapped to ty2 or else throw exception*)
+Fixpoint ty_match (s: Mtv.t ty_c) (ty1 ty2: ty_c) : errorM (Mtv.t ty_c) :=
+
+  match ty_node_of ty1, ty_node_of ty2 with
+  | Tyapp f1 l1, Tyapp f2 l2 =>
+    if ts_equal f1 f2 then
+    fold_right2_error ty_match l1 l2 s
+    else throw Exit
+  | Tyvar n1, _ => 
+    (*We are not using Mtv.change because there is an
+      exception in the function (so the types do not match)
+      Instead, we will search manually and throw an exception if needed*)
+    match Mtv.find_opt _ n1 s with
+    | Some ty3 => if ty_equal ty3 ty2 then ret s else
+      throw Exit
+    | None => ret (Mtv.add n1 ty2 s)
+    end
+  | _, _ => throw Exit
+  end.

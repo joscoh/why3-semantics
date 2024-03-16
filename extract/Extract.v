@@ -48,6 +48,7 @@ Extract Inductive errorM => " " ["Normal" "Error"] .
 Extract Inductive errtype => exn [""].
 Extract Inlined Constant Not_found => "Not_found".
 Extract Inlined Constant Invalid_argument => "Invalid_argument".
+Extract Inlined Constant Exit => "Exit".
 Extract Inlined Constant ret => "".
 Extract Inlined Constant throw => "raise".
 (*TODO: see*)
