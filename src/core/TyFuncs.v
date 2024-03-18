@@ -1,4 +1,4 @@
-Require Import ErrorMonad StateMonad TyDefs.
+Require Import ErrorMonad StateMonad TyDefs IntFuncs.
 
 Definition mk_ty (n: ty_node_c) : ty_c :=
   mk_ty_c n Weakhtbl.dummy_tag.
@@ -107,13 +107,6 @@ Definition mk_errtype {A: Type} (x: A) : errtype :=
 Definition BadTypeArity (t: tysymbol_c * CoqBigInt.t) : errtype := 
   mk_errtype t.
 
-(*TODO: replace before*)
-Fixpoint int_length {A: Type} (l: list A) : CoqBigInt.t :=
-  match l with
-  | nil => CoqBigInt.zero
-  | _ :: t => CoqBigInt.succ (int_length t)
-  end.
-
 Require Import Ident.
 
 Definition DuplicateTypeVar (t: tvsymbol) : errtype := 
@@ -142,15 +135,6 @@ Definition ty_v_all_err (pr: tvsymbol -> errorM bool) (t: ty_c) :
 
 Definition UnboundTypeVar (t: tvsymbol) : errtype := 
   mk_errtype t.
-
-Definition ignore {A: Type} (x: errorM A) : errorM unit :=
-  bnd (fun _ => ret tt) x.
-
-Definition null {A: Type} (l: list A) : bool :=
-  match l with
-  | nil => true
-  | _ => false
-  end.
 
 Definition IllegalTypeParameters : errtype := mk_errtype tt.
 Definition EmptyRange : errtype := mk_errtype tt.
@@ -363,16 +347,12 @@ Definition UnexpectedProp := mk_errtype tt.
 Definition oty_equal (o1 o2: option ty_c) : bool :=
   option_eqb ty_equal o1 o2.
 
-Definition option_fold {A B: Type} (none: A) (some: B -> A) (o: option B) : A :=
-  match o with
-  | None => none
-  | Some x => some x
-  end.
-
 Definition oty_hash (o: option ty_c) : CoqBigInt.t :=
   option_fold CoqBigInt.one ty_hash o.
 
-(*Skip [oty_compare]*)
+Definition oty_compare (o1 o2: option ty_c) : CoqInt.int :=
+  option_compare ty_compare o1 o2.
+
 Definition oty_match (m: Mtv.t ty_c) (o1 o2: option ty_c) : errorHashT (Mtv.t ty_c) :=
   match o1, o2 with
   | Some ty1, Some ty2 => ty_match m ty1 ty2

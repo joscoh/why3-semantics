@@ -1,37 +1,50 @@
-(*Here, we axiomatize OCaml's big ints (Z.t) in Coq.
-  We provide 2 different types, one for nonnegative ints
-  and one for general ints (which we need less)*)
-(*TODO: add general: for now, just positive*)
-(*For Coercion (TODO: move?)*)
 Require Export Coq.ZArith.BinInt.
 Require Export CoqInt.
-From Proofs Require Import core.Common.
+From Proofs Require Import core.Common. (*For [is_true]*)
+Require Import Integer.
 
-Axiom t : Type.
-Axiom one : t.
-Axiom zero : t.
-Axiom add : t -> t -> t.
-Axiom succ : t -> t.
-Axiom eqb : t -> t -> bool.
-Axiom compare: t -> t -> int.
-Axiom hash : t -> int.
-Axiom mul_int : int -> t -> t.
-Axiom lt : t -> t -> bool.
+Local Open Scope Z_scope.
+
+(*Here, we provide an interface for big integers.
+  In Coq, we implement them using [Z]. We extract
+  to OCaml's Zarith.t.
+  Any code using BigInt.t should ONLY use this interface
+  to ensure that the extracted code is valid OCaml and does
+  not rely on Coq's Z type*)
+Definition compare_to_int (c: comparison) : CoqInt.int :=
+  match c with
+  | Eq => CoqInt.zero
+  | Lt => CoqInt.neg_one
+  | Gt => CoqInt.one
+  end.
+
+Definition t : Type := Z.
+Definition one : t := 1.
+Definition zero : t := 0.
+Definition add : t -> t -> t := Z.add.
+Definition succ : t -> t := Z.succ.
+Definition eqb : t -> t -> bool := Z.eqb.
+Definition compare : t -> t -> CoqInt.int :=
+  fun x y => compare_to_int (Z.compare x y).
+(*Axiom hash : t -> int.*)
+Definition mul_int : CoqInt.int -> t -> t :=
+  fun i z => Z.mul (Integer.int_val _ i) z.
+Definition lt : t -> t -> bool := Z.ltb.
 
 (*Single digit numbers*)
-Axiom two : t.
-Axiom three : t.
-Axiom four :t.
-Axiom five : t.
-Axiom six : t.
-Axiom seven : t.
-Axiom eight : t.
-Axiom nine : t.
+Definition two : t := 2.
+Definition three : t := 3.
+Definition four : t := 4.
+Definition five : t := 5.
+Definition six : t := 6.
+Definition seven : t := 7.
+Definition eight : t := 8.
+Definition nine : t := 9.
 
-(*Assumption: equality corresponds to Leibnitz equality*)
-Axiom eqb_eq : forall (x y: t), x = y <-> eqb x y.
+(*For Zmap, we implement these functions manually in OCaml*)
+Definition to_Z : t -> Z := id.
+Definition of_Z: Z -> t := id.
 
-Axiom to_pos : t -> positive.
 (*OCaml function to_pos - gives positive of (x+1) because
   we allow 0 values
   (*Go from [numbits x]-1 down to 0*)
@@ -43,91 +56,42 @@ Axiom to_pos : t -> positive.
       else build_pos (n-1) (xO base)
     in build_pos (Z.numbits x - 2) (Z.succ x) xH
 *)
-(*NOTE: this is true ONLY because we only consider nonnegative
-  values
-  TODO: implement to_pos with primitives, prove this*)
-Axiom to_pos_inj: forall (x y: t), to_pos x = to_pos y -> x = y.
 
-(*This one we can implement in Coq (TODO)*)
-Axiom of_pos : positive -> t.
+(*Specs - These are axioms of the OCaml int implementation*)
 
+(*Equality corresponds to Leibnitz equality*)
+Definition eqb_eq : forall (x y: t), x = y <-> eqb x y :=
+  fun x y => iff_sym (Z.eqb_eq x y).
 
+Lemma to_Z_inj (t1 t2: t) : to_Z t1 = to_Z t2 -> t1 = t2.
+Proof. auto. Qed.
 
-(*TODO: general ints*)
+Lemma zero_spec: to_Z zero = 0.
+Proof. reflexivity. Qed.
 
+Lemma succ_spec z: to_Z (succ z) = Z.succ (to_Z z).
+Proof. reflexivity. Qed.
 
+Lemma eqb_spec z1 z2: eqb z1 z2 = Z.eqb (to_Z z1) (to_Z z2).
+Proof. reflexivity. Qed.
 
-(*Instead of the standard library, which uses modules, we use a
-  record which can be instantiated either with Z/positive 
-  (for computation inside of Coq) or with OCaml Z.t*)
-(*Require Export Coq.ZArith.BinInt.
-(*The operations a type must have for it to be
-  a "BigInt"*)
-Record BigIntTy (A: Type) := {
-  big_int_zero : A;
-  big_int_one: A;
-  big_int_succ: A -> A;
-  big_int_add : A -> A -> A;
-  big_int_eq : A -> A -> bool
-}.
-
-Definition BigInt_Z : BigIntTy Z := 
-{|big_int_zero := 0%Z; big_int_one := 1%Z; big_int_succ := Z.succ;
-big_int_add := Z.add; big_int_eq := Z.eqb|}.
-
-(*Not quite right: BigInt is module, t is type*)
-(*We just want a type along with operations
-  (i.e. field should be type, NOT module )*)
-
-(*How do they extract module currentlY?
-  Probably - extract to module type, implement with Big_int 
-    (manually)
-  what we want - maybe just axioms
-  But then we cannot instantiate with Z, right?
-  Is it so important to instantiate with Z?
-  Would be nice*)
-(*Instead, what we want is this:
-  Axiom obigint : Type
-  *)
-(*Idea: extract BigInt to BigInt.t
-  extract t to BigInt.t (really, really bad)
-  extract zero to BigInt.zero*)
-(*Maybe typeclass? Say that a type has property BigInt
-  if it contains all the needed functions?
-  But problem is that this is axiom - instead, we want to
-  have each as axioms that can be instantiated (or defined)
-  separately*)
-(*For now, axiomatize?*)
-(*basically, record/typeclass of functions should work, but
-  then we have to instantiate
-  
-  AHA, this is how we will do it (clunkily) *)
-
-(*Not the most elegant but OK*)
-
-(*Axiomatize OCaml BigInts for now
-  TODO: see if nice way to abstract (without modules)
-  *)
-Axiom t : Type.
-Axiom one : t.
-Axiom zero : t.
-Axiom add : t -> t -> t.
-Axiom succ : t -> t.
-Axiom eq : t -> t -> bool.
-
-(*Assumption: equality corresponds to Leibnitz equality*)
-Axiom eq_spec : forall (x y: t), x = y <-> eq x y = true.
-
-(*We will write this function in OCaml (TODO)*)
-Axiom to_Z : t -> Z.
-(*Question: how to deal with positive values?
-  Should we have 2 types in Coq, extract both to OCaml big_int?
-  maybe
-  TODO: start*)
-
-Definition OcamlBigInt : BigIntTy t := 
-{|big_int_zero := zero; big_int_one := one;
-  big_int_succ := succ; big_int_add := add;
-  big_int_eq := eq|}.
-
-  *)
+(*These are all opaque outside of this file*)
+Global Opaque t.
+Global Opaque zero.
+Global Opaque one.
+Global Opaque add.
+Global Opaque succ.
+Global Opaque eqb.
+Global Opaque compare.
+Global Opaque mul_int.
+Global Opaque lt.
+Global Opaque two.
+Global Opaque three.
+Global Opaque four.
+Global Opaque five.
+Global Opaque six.
+Global Opaque seven.
+Global Opaque eight.
+Global Opaque nine.
+Global Opaque to_Z.
+Global Opaque of_Z.

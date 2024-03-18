@@ -228,3 +228,16 @@ Fixpoint fold_right2 {A B C: Type} (f: A -> B -> C -> C) (l1: list A)
     option_map (f a1 a2) (fold_right2 f l1 l2 accu)
   | _, _ => None
   end.
+
+Definition null {A: Type} (l: list A) : bool :=
+  match l with
+  | nil => true
+  | _ => false
+  end.
+
+(*Options*)
+Definition option_fold {A B: Type} (none: A) (some: B -> A) (o: option B) : A :=
+  match o with
+  | None => none
+  | Some x => some x
+  end.

@@ -3,7 +3,7 @@
   instead of balanced binary trees*)
 Require Export ErrorMonad.
 Require CoqBigInt.
-From stdpp Require Import gmap.  
+From stdpp Require Import pmap zmap.  
 
 (*We implement the [extmap] interface from Why3, with the following
   exceptions
@@ -141,7 +141,7 @@ Module Make (T: TaggedType) <: S.
 
 Definition key := T.t.
 
-Definition tag x := CoqBigInt.to_pos (T.tag x).
+Definition tag x := CoqBigInt.to_Z (T.tag x).
 
 (*Local Instance key_eq : EqDecision key := T.eq.
 Local Instance key_count : Countable key :=
@@ -152,8 +152,8 @@ Local Instance key_count : Countable key :=
   do that later*)
 (*For proofs of canonicity, we need to know this invariant, so
   we need a sigma type*)
-Definition gmap_wf {A: Type} (g: gmap positive (key * A)) : bool :=
-  map_fold (fun k v acc => Pos.eqb k 
+Definition gmap_wf {A: Type} (g: Zmap (key * A)) : bool :=
+  map_fold (fun k v acc => Z.eqb k 
     (tag (fst v)) && acc) true g.
 
 Lemma and_true_r (P: Prop) : P <-> P /\ true.
@@ -162,7 +162,7 @@ Proof.
 Qed.
 
 (*Rewrite in terms of Map_forall*)
-Lemma gmap_wf_iff {A: Type} (g: gmap positive (key * A)):
+Lemma gmap_wf_iff {A: Type} (g: Zmap (key * A)):
   gmap_wf g <-> map_Forall (fun k v => k =tag (fst v)) g.
 Proof.
   unfold gmap_wf.
@@ -174,12 +174,12 @@ Proof.
     unfold is_true.
     rewrite andb_true_iff, Hb, map_Forall_insert; auto.
     apply and_iff_compat_r.
-    destruct (Pos.eqb_spec k (tag v.1)); subst; simpl; split; auto; discriminate.
+    destruct (Z.eqb_spec k (tag v.1)); subst; simpl; split; auto; discriminate.
 Qed.
 
-Definition t (A: Type) : Type := { g : gmap positive (key * A) | gmap_wf g}.
+Definition t (A: Type) : Type := { g : Zmap (key * A) | gmap_wf g}.
 
-Definition mp {A: Type} (m: t A) : gmap positive (key * A) := proj1_sig m.
+Definition mp {A: Type} (m: t A) : Zmap (key * A) := proj1_sig m.
 
 Section Types.
 
@@ -188,12 +188,12 @@ Variable b: Type.
 Variable c: Type.
 Variable acc: Type.
 
-Definition empty {a: Type} : t a := exist _ gmap_empty eq_refl.
+Definition empty {a: Type} : t a := exist _ Zmap_empty eq_refl.
 
 Definition is_empty (m: t a): bool :=
-  match (gmap_car (mp m)) with
-  | GEmpty => true
-  | _ => false
+  match Zmap_0 (mp m), Zmap_pos (mp m), Zmap_neg (mp m) with
+  | None, PEmpty, PEmpty => true
+  | _, _, _ => false
   end.
 
 Definition mem (k: key) (m: t a) : bool :=
@@ -211,7 +211,7 @@ Proof.
 Qed.
 
 (*TODO: inline*)
-Definition build_wf {A: Type} {m: gmap positive (key * A)} (m_wf: gmap_wf m) : t A :=
+Definition build_wf {A: Type} {m: Zmap (key * A)} (m_wf: gmap_wf m) : t A :=
   exist _ m m_wf.
 
 Definition add {a: Type} (k: key) (v: a) (m: t a) : t a :=
@@ -308,12 +308,12 @@ Definition union (f: key -> a -> a -> option a) (m1: t a) (m2: t a):
 
 
 Definition equal {a: Type} (eq: EqDecision a) (m1: t a) (m2: t a) : bool :=
-   (gmap_eq_dec (@prod_eq_dec _ T.eq _ eq)) (mp m1) (mp m2). 
+   @Zmap_eq_dec _ (@prod_eq_dec _ T.eq _ eq) (mp m1) (mp m2). 
 
 (*Ignore positive argument in fold because invariant that
   always encode (fst x) = p*)
 Definition fold {a b: Type} (f: key -> a -> b -> b) (m: t a) (base: b) : b :=
-  gmap_fold _ (fun (p: positive) (x: key * a) (y: b) =>
+  Zmap_fold _ (fun (z: Z) (x: key * a) (y: b) =>
     f (fst x) (snd x) y) base (mp m).
 
 (*The next few are easy in terms of fold*)
@@ -341,7 +341,7 @@ Definition partition (f: key -> a -> bool) (m: t a) : (t a * t a) :=
 (*NOTE: using "nat" is not great for OCaml code, maybe implement new
   size function, maybe not*)
 Definition cardinal (m: t a) : CoqBigInt.t :=
-  CoqBigInt.of_pos (Pos.of_nat (map_size (mp m))).
+  CoqBigInt.of_Z (Z.of_nat (map_size (mp m))).
 
 Definition bindings {a: Type} (m: t a) : list (key * a) :=
   (map snd (map_to_list (mp m))).
@@ -349,21 +349,23 @@ Definition bindings {a: Type} (m: t a) : list (key * a) :=
 (*This is NOT guaranteed to get the minimum element.
   TODO: fix (or just don't include this)*)
 
-Fixpoint choose_aux {A P} (t : gmap_dep_ne A P) : A :=
+Fixpoint choose_aux {A} (t : Pmap_ne A) : A :=
   match t with
-  | GNode001 r => choose_aux r
-  | GNode010 p x => x
-  | GNode011 p x r => x
-  | GNode100 l => choose_aux l
-  | GNode101 l r => choose_aux l
-  | GNode110 l p x => x
-  | GNode111 l p x r => x
+  | PNode001 r => choose_aux r
+  | PNode010 x => x
+  | PNode011 x r => x
+  | PNode100 l => choose_aux l
+  | PNode101 l r => choose_aux l
+  | PNode110 l x => x
+  | PNode111 l x r => x
   end.
 
 Definition choose (m: t a) : errorM (key * a) :=
-  match (gmap_car (mp m)) with
-  | GEmpty => throw Not_found
-  | GNodes n => ret (choose_aux n)
+  match Zmap_neg (mp m), Zmap_0 (mp m), Zmap_pos (mp m) with
+  | PNodes n, _, _ => ret (choose_aux n)
+  | _, Some t, _ => ret t
+  | _, _, PNodes n => ret (choose_aux n)
+  | _, _, _ => throw Not_found
   end.
 
 Definition find (k: key) (m: t a) : errorM a :=
@@ -581,7 +583,7 @@ Lemma equal_spec: forall {a: Type} (eqb: EqDecision a)
 Proof.
   intros.
   unfold equal.
-  destruct gmap_eq_dec as [Heq | Hneq]; simpl; subst; auto; split; auto;
+  destruct Zmap_eq_dec as [Heq | Hneq]; simpl; subst; auto; split; auto;
   try discriminate.
   - intros _.
     intros k.
@@ -609,7 +611,7 @@ Proof.
           apply m2_wf in Hmk2. rewrite Hmk2; auto.
         }
         (*Need injectivity of tag*)
-        apply CoqBigInt.to_pos_inj in Htag.
+        apply CoqBigInt.to_Z_inj in Htag.
         apply tag_inj in Htag.
         subst; reflexivity.
       - destruct (m2 !! k) as [v2 |] eqn : Hmk2; [|reflexivity].
@@ -633,7 +635,7 @@ Lemma eqb_eq: forall {a: Type} (eqb: EqDecision a) (m1 m2: t a),
   m1 = m2 <-> equal eqb m1 m2 = true.
 Proof.
   intros. unfold equal.
-  destruct (gmap_eq_dec); simpl; subst; split; intros; subst; auto;
+  destruct (Zmap_eq_dec); simpl; subst; split; intros; subst; auto;
   try discriminate.
   destruct m1 as [m1 m1_wf]; destruct m2 as [m2 m2_wf]; simpl in *;
   subst. f_equal. apply bool_irrelevance.

@@ -4,6 +4,7 @@ Require Number.
 Require Hashcons Weakhtbl. 
 Require Import stdpp.base.
 Require Import Coq.Wellfounded.Inverse_Image.
+Require Import IntFuncs.
 
 Record tvsymbol := {
   tv_name : ident
@@ -38,7 +39,8 @@ Module Mtv := Tvar.M.
 (*== in OCaml*)
 Definition tv_equal (t1 t2: tvsymbol) : bool := tvsymbol_eqb t1 t2.
 Definition tv_hash tv := id_hash tv.(tv_name).
-(*Skip tv_compare*)
+Definition tv_compare (tv1 tv2: tvsymbol) : CoqInt.int :=
+  id_compare tv1.(tv_name) tv2.(tv_name).
 
 Definition create_tvsymbol (n: preid) : ctr tvsymbol :=
   ctr_bnd (fun i => ctr_ret {|tv_name := i|}) (id_register n).
@@ -203,7 +205,8 @@ with ty_node_eqb (t1 t2: ty_node_c) : bool :=
   | Tyapp ts1 tys1, Tyapp ts2 tys2 =>
     tysymbol_eqb ts1 ts2 &&
     (*TODO: not great - use OCaml length?*)
-    Nat.eqb (length tys1) (length tys2) &&
+    CoqBigInt.eqb (int_length tys1) (int_length tys2) &&
+    (*Nat.eqb (length tys1) (length tys2) &&*)
     forallb id (map2 ty_eqb tys1 tys2)
   | _, _ => false
   end
@@ -228,6 +231,12 @@ Proof.
   destruct t1; destruct t2; reflexivity.
 Qed.
 
+Lemma destruct_bool (b: bool) :
+  b \/ ~ b.
+Proof.
+  destruct b; [left | right]; auto; discriminate.
+Qed.
+
 Lemma ty_eqb_eq_aux: 
   (forall t1 t2, t1 = t2 <-> ty_eqb t1 t2) /\
   (forall t1 t2, t1 = t2 <-> ty_node_eqb t1 t2) /\
@@ -244,7 +253,7 @@ Proof.
   - intros ts tys IHsym IHl.
     simpl.
     destruct t2 as [v2 | ts1 tys2]; [split;discriminate |].
-    rewrite !andb_true, <- IHsym.
+    rewrite !andb_true, <- IHsym, int_length_eq.
     destruct (Nat.eqb_spec (length tys) (length tys2)) as [Hlen| Hlen];
     [| solve_eqb_eq].
     (*TODO: maybe separate lemma*)
@@ -293,7 +302,10 @@ Definition ty_equal (t1 t2: ty_c) : bool := ty_eqb t1 t2.
 
 Definition ts_hash (ts: tysymbol_c) := id_hash (ts_name_of ts).
 Definition ty_hash (t: ty_c) := Weakhtbl.tag_hash (ty_tag_of t).
-(*For now, skip ts_compare and ty_compare*)
+Definition ts_compare (ts1 ts2: tysymbol_c) : int :=
+  id_compare (ts_name_of ts1) (ts_name_of ts2).
+Definition ty_compare (ty1 ty2: ty_c) : int :=
+  CoqBigInt.compare (ty_hash ty1) (ty_hash ty2).
 
 (*Hash-consing equality is weaker*)
 (*NOTE: in OCaml, ts_equal and ty_equal are reference equality

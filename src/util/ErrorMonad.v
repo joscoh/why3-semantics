@@ -40,3 +40,6 @@ Require Import Monad.
 
 Definition errorM_list {A: Type} (l: list (errorM A)) : errorM (list A) :=
   listM ret bnd l.
+
+Definition ignore {A: Type} (x: errorM A) : errorM unit :=
+  bnd (fun _ => ret tt) x.

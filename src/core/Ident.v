@@ -174,7 +174,8 @@ Record preid := {
   structural equality I think*)
 Definition id_equal (i1 i2: ident) : bool := ident_eqb i1 i2.
 Definition id_hash (i: ident) : CoqBigInt.t := i.(id_tag).
-(*Skip id_compare*) 
+Definition id_compare (id1 id2: ident) : CoqInt.int :=
+  CoqBigInt.compare (id_hash id1) (id_hash id2).
 
 Require Import stdpp.base.
 (*Constructors*)
