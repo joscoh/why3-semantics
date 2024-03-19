@@ -1,6 +1,5 @@
 (*A functional implementation of hash tables, including
-  a very limited set of operations; implemented as record,
-  not module type so we can include it as parameter*)
+  a very limited set of operations*)
 From stdpp Require Export zmap.
 Require CoqBigInt.
 

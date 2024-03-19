@@ -1,5 +1,3 @@
-(*The file name is a lie: we don't (yet?) implement hash consing.
-  But we provide such a (partial) interface*)
 Require Import StateMonad.
 
 Module Type HashedType.

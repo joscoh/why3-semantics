@@ -166,11 +166,11 @@ val ts_func : tysymbol
 val ty_func : ty -> ty -> ty
 val ty_pred : ty -> ty (* ty_pred 'a == ty_func 'a bool *)
 
-(*val ts_tuple : int -> tysymbol
+val ts_tuple : int -> tysymbol
 val ty_tuple : ty list -> ty
 
 val is_ts_tuple : tysymbol -> bool
-val is_ts_tuple_id : ident -> int option*)
+val is_ts_tuple_id : ident -> int option
 
 (** {2 Operations on [ty option]} *)
 
@@ -180,7 +180,7 @@ val oty_compare : ty option -> ty option -> int
 val oty_equal : ty option -> ty option -> bool
 val oty_hash  : ty option -> BigInt.t
 
-(*val oty_type : ty option -> ty*)
+val oty_type : ty option -> ty
 val oty_cons : ty list -> ty option -> ty list
 
 val oty_match : ty Mtv.t -> ty option -> ty option -> ty Mtv.t
