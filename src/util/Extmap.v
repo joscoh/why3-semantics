@@ -362,16 +362,16 @@ Fixpoint choose_aux {A} (t : Pmap_ne A) : A :=
 
 Definition choose (m: t a) : errorM (key * a) :=
   match Zmap_neg (mp m), Zmap_0 (mp m), Zmap_pos (mp m) with
-  | PNodes n, _, _ => ret (choose_aux n)
-  | _, Some t, _ => ret t
-  | _, _, PNodes n => ret (choose_aux n)
+  | PNodes n, _, _ => err_ret (choose_aux n)
+  | _, Some t, _ => err_ret t
+  | _, _, PNodes n => err_ret (choose_aux n)
   | _, _, _ => throw Not_found
   end.
 
 Definition find (k: key) (m: t a) : errorM a :=
   match (mp m )!! tag k with
   | None => throw Not_found
-  | Some v => ret (snd v)
+  | Some v => err_ret (snd v)
   end.
 
 Lemma mapi_wf {A B: Type} (f: key -> A -> B) (m: t A) :
@@ -482,7 +482,7 @@ Definition find_opt (k: key) (m: t a) : option a :=
 Definition find_exn (e: errtype) (k: key) (m: t a) : errorM a :=
   match (mp m) !! tag k with
   | None => throw e
-  | Some v => ret (snd v)
+  | Some v => err_ret (snd v)
   end.
 
 Definition map_filter (p: a -> option b) (m: t a) : t b :=
@@ -544,14 +544,14 @@ Definition fold2_union (f: key -> option a -> option b -> c -> c)
 (*Not the most efficient: need 2 accesses*)
 Definition add_new (e: errtype) (k: key) (v: a) (m: t a) : errorM (t a) :=
   match (find_opt k m) with
-  | None => ret (add k v m)
+  | None => err_ret (add k v m)
   | _ => throw e
   end.
 
 Definition replace (e: errtype) (k: key) (v: a) (m: t a) : errorM (t a) :=
   match (find_opt k m) with
   | None => throw e 
-  | _ => ret (add k v m)
+  | _ => err_ret (add k v m)
   end.
 
 Definition keys (m: t a) : list key :=

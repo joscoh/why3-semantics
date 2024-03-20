@@ -1,4 +1,6 @@
 Require Import ErrorMonad StateMonad TyDefs IntFuncs.
+From ExtLib Require Import Monads.
+Import MonadNotation.
 
 Definition mk_ty (n: ty_node_c) : ty_c :=
   mk_ty_c n Weakhtbl.dummy_tag.
@@ -82,15 +84,15 @@ Definition ty_v_any (pr: tvsymbol -> bool) (t: ty_c) : bool :=
   ty_v_fold (fun acc v => acc || (pr v)) false t.
 
 Fixpoint ty_v_map_err (fn: tvsymbol -> errorM ty_c) (t: ty_c) :
-  errorHashT _ ty_c :=
+  errorHashT ty_c ty_c :=
   match ty_node_of t with
-  | Tyvar v => st_ret (fn v)
+  | Tyvar v => errorHash_lift2 (fn v)
   | Tyapp f tl => errorHash_bnd (fun l =>
       errorHash_lift (ty_app1 f l)
   ) (errorHash_list (map (ty_v_map_err fn) tl))
   end.
 
-Definition ty_full_inst (m: Mtv.t ty_c) (t: ty_c) : errorHashT _ ty_c:=
+Definition ty_full_inst (m: Mtv.t ty_c) (t: ty_c) : errorHashT ty_c ty_c:=
   ty_v_map_err (fun v => Mtv.find _ v m) t.
 
 Definition ty_freevars (s: Stv.t) (t: ty_c) : Stv.t :=
@@ -117,8 +119,8 @@ Definition DuplicateTypeVar (t: tvsymbol) : errtype :=
 Definition fold_errorM' := fun {A B: Type} (f: A -> B -> errorM A) =>
   fix fold_errorM (l: list B) (x: A) {struct l} :=
   match l with
-  | nil => ret x
-  | h :: t => bnd (fun i => f i h) (fold_errorM t x)
+  | nil => err_ret x
+  | h :: t => err_bnd (fun i => f i h) (fold_errorM t x)
   end.
 
 (*TODO: replace with this?*)
@@ -131,7 +133,7 @@ Fixpoint ty_v_fold_err {A: Type} (fn: A -> tvsymbol -> errorM A) (acc: A)
 
 Definition ty_v_all_err (pr: tvsymbol -> errorM bool) (t: ty_c) : 
   errorM bool :=
-  ty_v_fold_err (fun acc v => bnd (fun i => ret (i && acc)) (pr v)) true t.
+  ty_v_fold_err (fun acc v => err_bnd (fun i => err_ret (i && acc)) (pr v)) true t.
 
 Definition UnboundTypeVar (t: tvsymbol) : errtype := 
   mk_errtype t.
@@ -144,12 +146,12 @@ Definition create_tysymbol (name: preid) (args: list tvsymbol) (d: type_def ty_c
   : errorM (ctr tysymbol_c) :=
   let add (s: Stv.t) (v: tvsymbol) := Stv.add_new (DuplicateTypeVar v) v s in
   let s1 := fold_errorM' add args Stv.empty in
-  let check (v: tvsymbol) : errorM bool := bnd 
-    (fun m => if Stv.mem v m then ret true 
+  let check (v: tvsymbol) : errorM bool := err_bnd 
+    (fun m => if Stv.mem v m then err_ret true 
       else throw (UnboundTypeVar v)) s1 in
   let c: errorM unit :=
     match d with
-    | NoDef => ret tt
+    | NoDef => err_ret tt
     | Alias d' => 
       ignore (ty_v_all_err check d')
     | Range ir =>
@@ -157,21 +159,21 @@ Definition create_tysymbol (name: preid) (args: list tvsymbol) (d: type_def ty_c
         throw IllegalTypeParameters
       else if CoqBigInt.lt ir.(Number.ir_upper) ir.(Number.ir_lower)
         then throw EmptyRange
-      else ret tt
+      else err_ret tt
     | Float fp => if negb (null args) then
         throw IllegalTypeParameters
       else if CoqBigInt.lt fp.(Number.fp_exponent_digits) CoqBigInt.one ||
         CoqBigInt.lt (fp.(Number.fp_significand_digits)) CoqBigInt.one then
         throw BadFloatSpec
-      else ret tt
+      else err_ret tt
     end in
-  bnd (fun _ => ret (mk_ts name args d)) c.
+  err_bnd (fun _ => err_ret (mk_ts name args d)) c.
 
 (*Returns map of type variables to elements in list tl*)
 Definition ts_match_args {A: Type} (s: tysymbol_c) (tl: list A) : 
   errorM (Mtv.t A) :=
   match fold_right2 Mtv.add (ts_args_of s) tl Mtv.empty with
-  | Some m => ret m
+  | Some m => err_ret m
   | None => throw (BadTypeArity (s, int_length tl))
   end.
 
@@ -181,20 +183,20 @@ Definition ty_match_args (t: ty_c) : errorM (Mtv.t ty_c) :=
   | _ => throw (Invalid_argument "Ty.ty_match_args")
   end.
 
-Definition ty_app (s: tysymbol_c) (tl: list ty_c) : errorHashT _ ty_c :=
+Definition ty_app (s: tysymbol_c) (tl: list ty_c) : errorHashT ty_c ty_c :=
   match ts_def_of s with
   | Alias t => errorHash_bnd 
     (fun m => ty_full_inst m t) 
-    (st_ret (ts_match_args s tl))
+    (errorHash_lift2 (ts_match_args s tl))
   | _ =>
     if negb (CoqBigInt.eqb (int_length (ts_args_of s)) (int_length tl)) then
-      st_ret (throw (BadTypeArity (s, int_length tl)))
+      (errorHash_lift2 (throw (BadTypeArity (s, int_length tl))))
     else errorHash_lift (ty_app1 s tl)
   end.
 
 
 (* symbol-wise map/fold *)
-Fixpoint ty_s_map (fn: tysymbol_c -> tysymbol_c) (t: ty_c) : errorHashT _ ty_c :=
+Fixpoint ty_s_map (fn: tysymbol_c -> tysymbol_c) (t: ty_c) : errorHashT ty_c ty_c :=
   match ty_node_of t with
   | Tyvar _ => errorHash_ret t
   | Tyapp f tl => errorHash_bnd (fun l => ty_app (fn f) l)
@@ -236,9 +238,9 @@ Definition Exit : errtype := mk_errtype tt.
 Definition fold_right2_error := fun {A B C: Type} (f: C -> A -> B -> errorM C) =>
   fix fold_right2_error (l1: list A) (l2: list B) (accu: C) {struct l1} : errorM C :=
   match l1, l2 with
-  | nil, nil => ret accu
+  | nil, nil => err_ret accu
   | a1 :: l1, a2 :: l2 => 
-    bnd (fun x => f x a1 a2) (fold_right2_error l1 l2 accu)
+    err_bnd (fun x => f x a1 a2) (fold_right2_error l1 l2 accu)
   | _, _ => throw (Invalid_argument "fold_right2")
   end.
 
@@ -263,15 +265,15 @@ Fixpoint ty_match_aux (err1 err2: ty_c)
       exception in the function (so the types do not match)
       Instead, we will search manually and throw an exception if needed*)
     match Mtv.find_opt _ n1 s with
-    | Some ty3 => if ty_equal ty3 ty2 then ret s else
+    | Some ty3 => if ty_equal ty3 ty2 then err_ret s else
       throw (TypeMismatch (err1, err2))
-    | None => ret (Mtv.add n1 ty2 s)
+    | None => err_ret (Mtv.add n1 ty2 s)
     end
   | _, _ => throw (TypeMismatch (err1, err2))
   end.
 
 Definition ty_match  (s: Mtv.t ty_c) (ty1 ty2: ty_c) : errorHashT _ (Mtv.t ty_c) :=
-  hashcons_bnd (fun t1 => hashcons_ret (ty_match_aux t1 ty2 s ty1 ty2)) (ty_inst s ty1).
+  errorHash_bnd (fun t1 => errorHash_lift2 (ty_match_aux t1 ty2 s ty1 ty2)) (errorHash_lift (ty_inst s ty1)).
 
 
 (* built-in symbols *)
@@ -357,7 +359,7 @@ Definition oty_match (m: Mtv.t ty_c) (o1 o2: option ty_c) : errorHashT _ (Mtv.t 
   match o1, o2 with
   | Some ty1, Some ty2 => ty_match m ty1 ty2
   | None, None => errorHash_ret m
-  | _, _ => st_ret (throw UnexpectedProp)
+  | _, _ => errorHash_lift2 (throw UnexpectedProp)
   end.
 
 Definition oty_inst (m: Mtv.t ty_c) (o: option ty_c) : option (hashcons_st _ ty_c) :=
@@ -377,4 +379,4 @@ Definition oty_cons (l: list ty_c) (o: option ty_c) : list ty_c :=
 
 Definition ty_equal_check ty1 ty2 : errorM unit :=
   if negb (ty_equal ty1 ty2) then throw (TypeMismatch (ty1, ty2))
-  else ret tt.
+  else err_ret tt.

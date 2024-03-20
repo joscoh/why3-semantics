@@ -1,6 +1,9 @@
 Require Export ErrorMonad.
 Require Import Extmap.
-From stdpp Require Import base gmap.  
+From ExtLib Require Import Monads.
+Import MonadNotation.
+
+Local Open Scope monad_scope.
 
 (*Slightly different than OCaml: doesnt depend on map*)
 Module Type S.
@@ -84,10 +87,8 @@ Definition filter f s := @M.filter unit (fun e _ => f e) s.
 Definition partition f s := @M.partition unit (fun e _ => f e) s.
 Definition cardinal := @M.cardinal unit.
 Definition elements := @M.keys unit.
-(*We can use stdpp's monad notations*)
 Definition choose (s: t) : errorM elt :=
-  y ← (@M.choose unit s);
-  ret (fst y).
+  err_bnd (fun y => err_ret (fst y)) (@M.choose unit s).
 Definition change (f: bool -> bool) (x: elt) (s: t) : t :=
   M.change (fun a => is_true_o (f (isSome a))) x s.
 Definition union := @M.set_union unit.

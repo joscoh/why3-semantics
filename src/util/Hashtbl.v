@@ -1,6 +1,6 @@
 (*A functional implementation of hash tables, including
   a very limited set of operations*)
-From stdpp Require Export zmap.
+From stdpp Require Import zmap.
 Require CoqBigInt.
 
 Module Type HashedType.

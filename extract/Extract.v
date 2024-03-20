@@ -2,6 +2,7 @@ From Src.core Require Import Ident TyDefs TyFuncs.
 From Src.util Require Import Extmap Extset Hashcons.
 From stdpp Require Import gmap.
 From Coq Require Extraction.
+From ExtLib Require Import Monads EitherMonad.
 
 Extraction Blacklist String List.
 
@@ -59,31 +60,34 @@ Extract Inlined Constant Coq.Arith.PeanoNat.Nat.eqb => "Int.equal".*)
 
 (*Handle exception monad*)
 
-Extract Inductive errorM => " " ["Normal" "Error"] .  
+Extract Constant errorM "'a" => "'a".
+(*Extract Inductive errorM => " " ["Normal" "Error"] .  *)
 Extract Inductive errtype => exn [""].
 Extract Inlined Constant Not_found => "Not_found".
 Extract Inlined Constant Invalid_argument => "Invalid_argument".
 Extract Inlined Constant Exit => "Exit".
-Extract Inlined Constant ret => "".
+Extract Inlined Constant err_ret => "".
 Extract Inlined Constant throw => "raise".
+Extract Inlined Constant err_bnd => "(@@)".
+Extraction Inline Monad_errorM.
+(*Extraction Inline Monad_either.*)
+(*Extract Inlined Constant ExtLib.MonadExn.raise => "raise".*)
 (*TODO: see*)
-Extract Inlined Constant bnd => "".
-Extract Inlined Constant errorM_bind => "(@@)".
+
 Extract Inlined Constant mbind => "(@@)".
 
 (*Handle state monad*)
-Extract Constant ctr_ty => "BigInt.t ref".
-Extract Constant state "'a" "'ty" => "'ty".
-Extract Inlined Constant st_ret => "".
-Extract Inlined Constant st_bnd => "(@@)".
+Extract Inlined Constant ctr_ty => "BigInt.t ref".
+(*Extract Constant state "'a" "'ty" => "'ty".*) (*TODO: ExtLib*)
+(*Extract Inlined Constant st_ret => "".
+Extract Inlined Constant st_bnd => "(@@)".*)
 (*NOTE: we cannot extract get, set directly because
   they refer to different references each time*)
-Extract Inlined Constant st_multi_ret => "".
-Extract Inlined Constant exceptT_bnd => "(@@)".
-(*Extract Constant ctr "'ty" => "'ty".*)
-(*Extract Inlined Constant ctr_ret => "".
-Extract Inlined Constant ctr_bnd' => "(@@)".
-Extract Inlined Constant ctr_bnd => "(@@)".*)
+(*Extract Inlined Constant st_multi_ret => "".
+Extract Inlined Constant exceptT_bnd => "(@@)".*)
+Extract Constant ctr "'ty" => "'ty".
+Extract Inlined Constant ctr_ret => "".
+Extract Inlined Constant ctr_bnd => "(@@)".
 Extract Inlined Constant new_ctr => "ref".
 Extract Inlined Constant ctr_incr => "(id_ctr := BigInt.succ !id_ctr)".
 (*Extract Inlined Constant incr => "(id_ctr := BigInt.succ !id_ctr)".*)
@@ -93,9 +97,9 @@ Extract Inlined Constant ctr_get => "!id_ctr".
 (*TODO: change this*)
 Extract Constant hashcons_unit "'k" => 
   "(BigInt.t * 'k Hashtbl.hashset) ref".
-(*Extract Constant hashcons_st "'ty" "'ty2" => "'ty2".*)
-(*Extract Inlined Constant hashcons_ret => "".
-Extract Inlined Constant hashcons_bnd => "(@@)".*)
+Extract Constant hashcons_st "'ty" "'ty2" => "'ty2".
+Extract Inlined Constant hashcons_ret => "".
+Extract Inlined Constant hashcons_bnd => "(@@)".
 Extract Inlined Constant hashcons_new => 
   "ref (BigInt.one, Hashtbl.create_hashset)".
 Extract Inlined Constant hashcons_get_ctr =>
@@ -110,11 +114,13 @@ Extract Inlined Constant hashcons_add =>
               hash_st := (fst old, Hashtbl.add_hashset H.hash (snd old) k))".
 
 (*Hashcons + Exception Monad Transformer*)
-(*Extract Constant errorHashT "'ty" "'ty2" => "'ty2".
+Extract Constant errorHashT "'ty" "'ty2" => "'ty2".
 Extract Inlined Constant errorHash_ret => "".
-Extract Inlined Constant errorHash_bnd => "(@@)".*)
+Extract Inlined Constant errorHash_bnd => "(@@)".
 Extract Inlined Constant errorHash_lift => "".
-(*Extract Inlined Constant errorHash_lift2 => "".*)
+Extraction Inline Monad_errorHashT.
+Extraction Inline Exception_errorHashT.
+Extract Inlined Constant errorHash_lift2 => "".
 
 (*Maps - inline some things to reduce dependent types, Obj.magic
   and unecessary functions*)

@@ -207,7 +207,7 @@ with ty_node_eqb (t1 t2: ty_node_c) : bool :=
     (*TODO: not great - use OCaml length?*)
     CoqBigInt.eqb (int_length tys1) (int_length tys2) &&
     (*Nat.eqb (length tys1) (length tys2) &&*)
-    forallb id (map2 ty_eqb tys1 tys2)
+    forallb (fun x => x) (map2 ty_eqb tys1 tys2)
   | _, _ => false
   end
 with tysymbol_eqb (t1 t2: tysymbol_c) : bool :=
@@ -257,7 +257,7 @@ Proof.
     destruct (Nat.eqb_spec (length tys) (length tys2)) as [Hlen| Hlen];
     [| solve_eqb_eq].
     (*TODO: maybe separate lemma*)
-    assert (Hl: tys = tys2 <-> forallb id (map2 ty_eqb tys tys2)). {
+    assert (Hl: tys = tys2 <-> forallb (fun x => x) (map2 ty_eqb tys tys2)). {
       clear -IHl Hlen.
       generalize dependent tys2.
       induction tys as [| thd ttl IHtys]; simpl; intros [|th2 ttl2];
@@ -317,7 +317,7 @@ Definition equal (ty1 ty2: ty_c) : bool :=
   match ty_node_of ty1, ty_node_of ty2 with
   | Tyvar n1, Tyvar n2 => tv_equal n1 n2
   | Tyapp s1 l1, Tyapp s2 l2 => 
-    ts_equal s1 s2 && forallb id (map2 ty_equal l1 l2)
+    ts_equal s1 s2 && forallb (fun x => x) (map2 ty_equal l1 l2)
   | _, _ => false
   end.
 Definition hash (t: ty_c) : CoqBigInt.t :=

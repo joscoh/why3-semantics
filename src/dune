@@ -1,6 +1,6 @@
 (include_subdirs qualified)
 (coq.theory
  (name Src)
- (theories Proofs stdpp)
+ (theories Proofs stdpp ExtLib)
  (flags :standard -w 
  "-ambiguous-paths -notation-overridden -hiding-delimiting-key -redundant-canonical-projection"))
