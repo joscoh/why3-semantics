@@ -1,5 +1,5 @@
 From Src.core Require Import Ident TyDefs TyFuncs.
-From Src.util Require Import Extmap Extset Hashcons.
+From Src.util Require Import Extmap Extset Hashcons Ctr.
 From stdpp Require Import gmap.
 From Coq Require Extraction.
 From ExtLib Require Import Monads EitherMonad.
@@ -89,9 +89,10 @@ Extract Constant ctr "'ty" => "'ty".
 Extract Inlined Constant ctr_ret => "".
 Extract Inlined Constant ctr_bnd => "(@@)".
 Extract Inlined Constant new_ctr => "ref".
-Extract Inlined Constant ctr_incr => "(id_ctr := BigInt.succ !id_ctr)".
+Extract Inlined Constant ctr_incr => "(ctr_ref := BigInt.succ !ctr_ref)".
 (*Extract Inlined Constant incr => "(id_ctr := BigInt.succ !id_ctr)".*)
-Extract Inlined Constant ctr_get => "!id_ctr".
+Extract Inlined Constant ctr_get => "!ctr_ref".
+Extract Inlined Constant ctr_set => "fun x -> ctr_ref := x".
 
 (*Handle hashcons*)
 (*TODO: change this*)

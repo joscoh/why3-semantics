@@ -9,6 +9,7 @@ Export ListNotations.
 Require Import Wstdlib.
 Require Loc.
 Require Export StateMonad.
+Require Import Ctr.
 
 (*We include another prop-valued field (erased) during extraction
   asserting equality for 2 reasons:
@@ -177,15 +178,18 @@ Definition id_hash (i: ident) : CoqBigInt.t := i.(id_tag).
 Definition id_compare (id1 id2: ident) : CoqInt.int :=
   CoqBigInt.compare (id_hash id1) (id_hash id2).
 
-Require Import stdpp.base.
+Module IdCtr := MakeCtr.
+Definition id_ctr : ctr unit := IdCtr.create CoqBigInt.eight.
+
+(*Require Import stdpp.base.*)
 (*Constructors*)
 (*NOTE: for us, registering just calculates the tag
   instead of changing state. We need to see if this is
   a problem.
   If the same id string is used multiple times, they
   will have the same tag*)
-Definition id_ctr : ctr_ty :=
-  new_ctr CoqBigInt.eight. (*For extraction*)
+(*Definition id_ctr : ctr_ty :=
+  new_ctr CoqBigInt.eight. (*For extraction*)*)
 
 Definition id_register : preid -> ctr ident :=
   fun p =>
@@ -193,7 +197,7 @@ Definition id_register : preid -> ctr ident :=
     {| id_string := p.(pre_name);
     id_attrs := p.(pre_attrs);
     id_loc := p.(pre_loc);
-    id_tag := i |}) ctr_get) ctr_incr.
+    id_tag := i |}) IdCtr.get) IdCtr.incr.
 
 (*1st 7 values of the counter correspond to builtin symbols
   (so that we don't need state)*)

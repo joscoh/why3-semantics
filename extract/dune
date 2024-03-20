@@ -4,7 +4,7 @@
   BinNums BinPos Datatypes Specif  List0 String0
   base Basics BinInt zmap pmap fin_maps numbers option decidable
   ErrorMonad CoqUtil CoqBigInt Loc StateMonad
-  Extmap Extset Wstdlib Weakhtbl Hashtbl Hashcons Number 
+  Extmap Extset Wstdlib Weakhtbl Hashtbl Hashcons Number Ctr
   IntFuncs TyDefs TyFuncs Ident)
  (theories Src stdpp Proofs ExtLib)
  )
