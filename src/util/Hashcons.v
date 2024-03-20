@@ -1,4 +1,5 @@
 Require Import StateMonad.
+Require CoqHashtbl.
 
 Module Type HashedType.
 Parameter t : Type.
@@ -13,6 +14,7 @@ End HashedType.
 Module Type S (H: HashedType).
 Parameter t : Type.
 Parameter hashcons : t -> @hashcons_st H.t t.
+Parameter iter : (t -> unit) -> @hashcons_st H.t unit.
 End S.
 
 Module Make (H: HashedType) <: S H.
@@ -47,6 +49,13 @@ Definition hashcons (d: t) : @hashcons_st H.t t :=
       hashcons_get_ctr
     end
   ) (hashcons_lookup H.hash H.equal d).
+
+(*Using [iter_hashset_unsafe] is OK here because we are in a monad
+  extracted to a mutable reference*)
+Definition iter (f: t -> unit) : @hashcons_st H.t unit :=
+  hashcons_bnd (fun h => 
+    hashcons_ret (CoqHashtbl.iter_hashset_unsafe f h)
+  ) hashcons_getset.
 
 End Make.
 

@@ -25,3 +25,5 @@ Proof.
   split; intros Heq; [inversion Heq |]; subst; auto.
   do 2 (destruct Heq as [Heq ?]); subst; auto.
 Qed.
+
+Definition equal (p1 p2: position) : bool := position_eqb p1 p2.

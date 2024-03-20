@@ -6,8 +6,8 @@ Require Export Coq.Lists.List.
 Require CoqBigInt.
 Export ListNotations.
 (*From stdpp Require Export gmap.*)
-Require Import Wstdlib.
-Require Loc.
+Require Import CoqWstdlib.
+Require LocTy.
 Require Export StateMonad.
 Require Import Ctr.
 
@@ -26,19 +26,6 @@ Definition attr_eqb (a1 a2: attribute) : bool :=
   String.eqb (attr_string a1) (attr_string a2) &&
   CoqBigInt.eqb (attr_tag a1) (attr_tag a2).
   (*Pos.eqb (attr_tag a1) (attr_tag a2).*)
-
-(*NOTE: don't use reflect because we want all proofs to be
-  erased*)
-Definition dec_from_eqb {A: Type} (f: A -> A -> bool) 
-  (H: forall (x y: A), x = y <-> f x y = true) :
-  forall (x y: A), {x = y} + {x <> y}.
-Proof.
-  intros x y.
-  specialize (H x y).
-  destruct (f x y).
-  - left. apply H. reflexivity.
-  - right. intro C. apply H in C. discriminate.
-Defined.
 
 Lemma attr_eqb_eq (a1 a2: attribute) : a1 = a2 <-> attr_eqb a1 a2.
 Proof.
@@ -119,7 +106,7 @@ End Encode.
 Record ident := {
   id_string : string;
   id_attrs: Sattr.t;
-  id_loc: option Loc.position;
+  id_loc: option LocTy.position;
   id_tag: CoqBigInt.t; (*TODO: weakhtbl i think*)
 }.
 
@@ -127,7 +114,7 @@ Record ident := {
 Definition ident_eqb (i1 i2: ident) : bool :=
   String.eqb i1.(id_string) i2.(id_string) &&
   Sattr.equal i1.(id_attrs) i2.(id_attrs) &&
-  option_eqb Loc.position_eqb i1.(id_loc) i2.(id_loc) &&
+  option_eqb LocTy.equal i1.(id_loc) i2.(id_loc) &&
   CoqBigInt.eqb i1.(id_tag) i2.(id_tag).
 
 (*TODO: prove equality for Sets, options
@@ -137,7 +124,7 @@ Proof.
   unfold ident_eqb.
   revert i1 i2.
   intros [s1 a1 l1 p1] [s2 a2 l2 p2]; simpl.
-  rewrite !andb_true, <- (option_eqb_eq Loc.position_eqb_eq),
+  rewrite !andb_true, <- (option_eqb_eq LocTy.position_eqb_eq),
     <- CoqBigInt.eqb_eq.
   unfold is_true.
   rewrite String.eqb_eq,  <- Sattr.equal_eq.
@@ -157,7 +144,7 @@ End IdentTag.
 (*NOTE: we do not have weak hash tables, so we ignore the W.
   This seems to be used for sharing and optimizations, we may
   need to add something similar later (maybe with PTrees)*)
-Module Id := Wstdlib.MakeMSH IdentTag.
+Module Id := CoqWstdlib.MakeMSH IdentTag.
 Module Sid := Id.S.
 Module Mid := Id.M.
 (*module Hid = Id.H
@@ -166,7 +153,7 @@ module Wid = Id.W*)
 Record preid := {
   pre_name : string;
   pre_attrs : Sattr.t;
-  pre_loc : option Loc.position
+  pre_loc : option LocTy.position
 }.
 
 (*In OCaml, this is reference equality (==).
@@ -232,5 +219,6 @@ Definition create_ident name attrs loc :=
   {| pre_name := name; pre_attrs := attrs; pre_loc := loc|}.
 
 (*NOTE: different signature than OCaml, which uses optional args*)
-Definition id_fresh (s: string) : preid :=
+(*For that reason, we give it a different name*)
+Definition id_fresh1 (s: string) : preid :=
   create_ident s Sattr.empty None.

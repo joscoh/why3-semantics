@@ -70,6 +70,9 @@ Definition hashcons_ret {key a} (x: a) : hashcons_st key a := ret x.
 Section HashCons.
 Context {key: Type} (hash: key -> CoqBigInt.t) 
   (eqb: key -> key -> bool).
+Definition hashcons_getset : hashcons_st key (hashset key) :=
+  t <- get;;
+  ret (snd t).
 Definition hashcons_lookup (k: key) : hashcons_st key (option key) :=
   t <- get;;
   ret (find_opt_hashset hash eqb (snd t) k).

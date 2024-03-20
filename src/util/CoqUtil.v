@@ -241,3 +241,16 @@ Definition option_fold {A B: Type} (none: A) (some: B -> A) (o: option B) : A :=
   | None => none
   | Some x => some x
   end.
+
+(*NOTE: don't use reflect because we want all proofs to be
+  erased*)
+Definition dec_from_eqb {A: Type} (f: A -> A -> bool) 
+  (H: forall (x y: A), x = y <-> f x y = true) :
+  forall (x y: A), {x = y} + {x <> y}.
+Proof.
+  intros x y.
+  specialize (H x y).
+  destruct (f x y).
+  - left. apply H. reflexivity.
+  - right. intro C. apply H in C. discriminate.
+Defined.

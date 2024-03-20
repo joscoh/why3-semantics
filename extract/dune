@@ -2,13 +2,41 @@
  (prelude Extract)
  (extracted_modules 
   BinNums BinPos Datatypes Specif  List0 String0
-  base Basics BinInt zmap pmap fin_maps numbers option decidable
-  ErrorMonad CoqUtil CoqBigInt Loc StateMonad
-  Extmap Extset Wstdlib Weakhtbl CoqHashtbl Hashcons Number Ctr
+  base Basics BinInt zmap pmap fin_maps numbers option0 decidable
+  ErrorMonad CoqUtil CoqBigInt LocTy StateMonad
+  Extmap Extset CoqWstdlib Weakhtbl CoqHashtbl Hashcons Number Ctr
   IntFuncs 
   IdentDefs
   TyDefs TyFuncs)
  (theories Src stdpp Proofs ExtLib)
+ )
+
+;create Loc.ml (only for testing)
+ (rule
+  (deps LocTy.ml LocExtra.ml)
+  (targets loc.ml)
+  (action 
+  (with-stdout-to loc.ml
+    (pipe-stdout
+     (cat locpre.ml LocTy.ml LocExtra.ml)
+     (run sed -e "s/open LocTy//g")
+    )
+   )
+  )
+ )
+
+;create Wstdlib.ml (only for testing)
+(rule
+  (deps CoqWstdlib.ml Wstdlibextra.ml)
+  (targets Wstdlib.ml)
+  (action 
+  (with-stdout-to Wstdlib.ml
+    (pipe-stdout
+     (cat CoqWstdlib.ml Wstdlibextra.ml)
+     (run sed -e "s/open CoqWstdlib//g")
+    )
+   )
+  )
  )
 
 ;create Ident.ml
@@ -20,6 +48,8 @@
     (pipe-stdout
      (cat IdentDefs.ml IdentExtra.ml)
      (run sed -e "s/open IdentDefs//g")
+     (run sed -e "s/open LocTy/open Loc/g")
+     (run sed -e "s/open CoqWstdlib/open Wstdlib/g")
     )
    )
   )
@@ -35,6 +65,7 @@
      (cat TyDefs.ml TyExn.ml TyFuncs.ml TyExtra.ml)
      (run sed -e "s/open TyDefs//g")
      (run sed -e "s/open IdentDefs/open Ident/g")
+     (run sed -e "s/open CoqWstdlib/open Wstdlib/g")
     )
    )
   )
@@ -42,8 +73,9 @@
 
 (library
  (name Why3Coq)
- (modules (:standard \ TyExn TyDefs TyFuncs TyExtra IdentDefs IdentExtra))
+ (modules (:standard \ TyExn TyDefs TyFuncs TyExtra IdentDefs IdentExtra 
+  LocTy LocExtra Locpre CoqWstdlib Wstdlibextra))
  (flags (:standard -w -33 -w -32)) ;32 is unused value - extraction results in values we don't want in mli file
- (libraries zarith))
+ (libraries zarith sexplib re))
 
 

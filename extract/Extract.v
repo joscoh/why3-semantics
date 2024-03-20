@@ -4,7 +4,7 @@ From stdpp Require Import gmap.
 From Coq Require Extraction.
 From ExtLib Require Import Monads EitherMonad StateMonad.
 
-Extraction Blacklist String List.
+Extraction Blacklist String List Option.
 
 Require Import Coq.extraction.ExtrOcamlBasic.
 (*Extract to native OCaml strings*)
@@ -104,6 +104,8 @@ Extract Inlined Constant hashcons_ret => "".
 Extract Inlined Constant hashcons_bnd => "(@@)".
 Extract Inlined Constant hashcons_new => 
   "ref (BigInt.one, CoqHashtbl.create_hashset)".
+Extract Inlined Constant hashcons_getset =>
+  "(snd !hash_st)".
 Extract Inlined Constant hashcons_get_ctr =>
   "(fst !hash_st)".
 Extract Inlined Constant hashcons_incr => 

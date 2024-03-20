@@ -1,4 +1,4 @@
-Require Import Wstdlib.
+Require Import CoqWstdlib.
 Require Import IdentDefs.
 Require Number.
 Require Hashcons Weakhtbl. 
@@ -11,7 +11,7 @@ Record tvsymbol := {
 }.
 
 Definition tvsymbol_eqb (t1 t2: tvsymbol) : bool :=
-  ident_eqb t1.(tv_name) t2.(tv_name).
+  id_equal t1.(tv_name) t2.(tv_name).
 
 Lemma tvsymbol_eqb_eq (t1 t2: tvsymbol): t1 = t2 <-> 
   tvsymbol_eqb t1 t2.
@@ -50,7 +50,7 @@ Definition create_tvsymbol (n: preid) : ctr tvsymbol :=
   created with same name already.
   Here, we just give a new one - NOTE: is this a problem?*)
 Definition tv_of_string (s: string) : ctr tvsymbol :=
-  create_tvsymbol (id_fresh s).
+  create_tvsymbol (id_fresh1 s).
 
 (** Type Symbols and Types **)
 Unset Elimination Schemes.
@@ -211,7 +211,7 @@ with ty_node_eqb (t1 t2: ty_node_c) : bool :=
   | _, _ => false
   end
 with tysymbol_eqb (t1 t2: tysymbol_c) : bool :=
-  ident_eqb (ts_name_of t1) (ts_name_of t2) &&
+  id_equal (ts_name_of t1) (ts_name_of t2) &&
   list_eqb tvsymbol_eqb (ts_args_of t1) (ts_args_of t2) &&
   match ts_def_of t1, ts_def_of t2 with
   | NoDef, NoDef => true
