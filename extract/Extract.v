@@ -1,8 +1,8 @@
-From Src.core Require Import Ident TyDefs TyFuncs.
+From Src.core Require Import IdentDefs TyDefs TyFuncs.
 From Src.util Require Import Extmap Extset Hashcons Ctr.
 From stdpp Require Import gmap.
 From Coq Require Extraction.
-From ExtLib Require Import Monads EitherMonad.
+From ExtLib Require Import Monads EitherMonad StateMonad.
 
 Extraction Blacklist String List.
 
@@ -35,6 +35,7 @@ Extract Inlined Constant CoqBigInt.mul_int => "BigInt.mul_int".
 Extract Inlined Constant CoqBigInt.add => "BigInt.add".
 Extract Inlined Constant CoqBigInt.lt => "BigInt.lt".
 Extract Inlined Constant CoqBigInt.compare => "BigInt.compare".
+Extract Inlined Constant CoqBigInt.hash => "BigInt.hash".
 Extract Inlined Constant CoqBigInt.two => "(BigInt.of_int 2)".
 Extract Inlined Constant CoqBigInt.three => "(BigInt.of_int 3)".
 Extract Inlined Constant CoqBigInt.four => "(BigInt.of_int 4)".
@@ -97,31 +98,59 @@ Extract Inlined Constant ctr_set => "fun x -> ctr_ref := x".
 (*Handle hashcons*)
 (*TODO: change this*)
 Extract Constant hashcons_unit "'k" => 
-  "(BigInt.t * 'k Hashtbl.hashset) ref".
+  "(BigInt.t * 'k CoqHashtbl.hashset) ref".
 Extract Constant hashcons_st "'ty" "'ty2" => "'ty2".
 Extract Inlined Constant hashcons_ret => "".
 Extract Inlined Constant hashcons_bnd => "(@@)".
 Extract Inlined Constant hashcons_new => 
-  "ref (BigInt.one, Hashtbl.create_hashset)".
+  "ref (BigInt.one, CoqHashtbl.create_hashset)".
 Extract Inlined Constant hashcons_get_ctr =>
   "(fst !hash_st)".
 Extract Inlined Constant hashcons_incr => 
   "(let old = !hash_st in
     hash_st := (BigInt.succ (fst old), (snd old)))".
 Extract Inlined Constant hashcons_lookup =>
-  "(fun _ _ k -> Hashtbl.find_opt_hashset H.hash H.equal (snd !hash_st) k)".
+  "(fun _ _ k -> CoqHashtbl.find_opt_hashset H.hash H.equal (snd !hash_st) k)".
 Extract Inlined Constant hashcons_add =>
   "(fun _ k -> let old = !hash_st in
-              hash_st := (fst old, Hashtbl.add_hashset H.hash (snd old) k))".
+              hash_st := (fst old, CoqHashtbl.add_hashset H.hash (snd old) k))".
 
 (*Hashcons + Exception Monad Transformer*)
-Extract Constant errorHashT "'ty" "'ty2" => "'ty2".
+Extract Constant errorHashconsT "'ty" "'ty2" => "'ty2".
+Extract Inlined Constant errorHashcons_ret => "".
+Extract Inlined Constant errorHashcons_bnd => "(@@)".
+Extract Inlined Constant errorHashcons_lift => "".
+Extraction Inline Monad_errorHashconsT.
+Extraction Inline Exception_errorHashconsT.
+Extract Inlined Constant errorHashcons_lift2 => "".
+(*Print state.
+(*TEMP*)
+Definition snd_ty (A B: Type) : Type := B.
+Extract Inductive state => "snd_ty" [""].*)
+
+(*Hash table state monad*)
+Extract Constant hash_st "'ty" "'ty2" "'ty3" => "'ty3".
+(*Extraction Inline hash_st.*)
+(*TODO: for all ret and bnd, inline and extract to 1 (if that works)*)
+Extract Inlined Constant hash_ret => "".
+Extract Inlined Constant hash_bnd => "(@@)".
+Extract Constant hash_unit "'k" "'v" => "(('k, 'v) CoqHashtbl.hashtbl) ref".
+Extract Inlined Constant hash_set => "(fun x -> hash_ref := x)".
+Extract Inlined Constant hash_get => "!hash_ref".
+Extract Inlined Constant new_hash => "ref CoqHashtbl.create_hashtbl".
+
+
+
+(*Hash table + Exception Monad Transformer*)
+Extract Constant errorHashT "'ty" "'ty2" "'ty3" => "'ty3".
 Extract Inlined Constant errorHash_ret => "".
 Extract Inlined Constant errorHash_bnd => "(@@)".
 Extract Inlined Constant errorHash_lift => "".
 Extraction Inline Monad_errorHashT.
 Extraction Inline Exception_errorHashT.
 Extract Inlined Constant errorHash_lift2 => "".
+
+
 
 (*Maps - inline some things to reduce dependent types, Obj.magic
   and unecessary functions*)
@@ -169,7 +198,7 @@ Extraction Inline mk_errtype.
 (*Unset Extraction Optimize.*)
 
 Separate Extraction
-  Extmap Extset Hashtbl Ident TyDefs TyFuncs. (*Ty.ty_v_map Ident.*)
+  Extmap Extset CoqHashtbl IdentDefs TyDefs TyFuncs. (*Ty.ty_v_map Ident.*)
 (*Separate Extraction Extmap.
 Separate Extraction Ty.ty Ty.ty_v_map Ident.*)
 

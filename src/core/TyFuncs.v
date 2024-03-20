@@ -84,15 +84,15 @@ Definition ty_v_any (pr: tvsymbol -> bool) (t: ty_c) : bool :=
   ty_v_fold (fun acc v => acc || (pr v)) false t.
 
 Fixpoint ty_v_map_err (fn: tvsymbol -> errorM ty_c) (t: ty_c) :
-  errorHashT ty_c ty_c :=
+  errorHashconsT ty_c ty_c :=
   match ty_node_of t with
-  | Tyvar v => errorHash_lift2 (fn v)
-  | Tyapp f tl => errorHash_bnd (fun l =>
-      errorHash_lift (ty_app1 f l)
-  ) (errorHash_list (map (ty_v_map_err fn) tl))
+  | Tyvar v => errorHashcons_lift2 (fn v)
+  | Tyapp f tl => errorHashcons_bnd (fun l =>
+      errorHashcons_lift (ty_app1 f l)
+  ) (errorHashcons_list (map (ty_v_map_err fn) tl))
   end.
 
-Definition ty_full_inst (m: Mtv.t ty_c) (t: ty_c) : errorHashT ty_c ty_c:=
+Definition ty_full_inst (m: Mtv.t ty_c) (t: ty_c) : errorHashconsT ty_c ty_c:=
   ty_v_map_err (fun v => Mtv.find _ v m) t.
 
 Definition ty_freevars (s: Stv.t) (t: ty_c) : Stv.t :=
@@ -109,7 +109,7 @@ Definition mk_errtype {A: Type} (x: A) : errtype :=
 Definition BadTypeArity (t: tysymbol_c * CoqBigInt.t) : errtype := 
   mk_errtype t.
 
-Require Import Ident.
+Require Import IdentDefs.
 
 Definition DuplicateTypeVar (t: tvsymbol) : errtype := 
   mk_errtype t.
@@ -183,24 +183,24 @@ Definition ty_match_args (t: ty_c) : errorM (Mtv.t ty_c) :=
   | _ => throw (Invalid_argument "Ty.ty_match_args")
   end.
 
-Definition ty_app (s: tysymbol_c) (tl: list ty_c) : errorHashT ty_c ty_c :=
+Definition ty_app (s: tysymbol_c) (tl: list ty_c) : errorHashconsT ty_c ty_c :=
   match ts_def_of s with
-  | Alias t => errorHash_bnd 
+  | Alias t => errorHashcons_bnd 
     (fun m => ty_full_inst m t) 
-    (errorHash_lift2 (ts_match_args s tl))
+    (errorHashcons_lift2 (ts_match_args s tl))
   | _ =>
     if negb (CoqBigInt.eqb (int_length (ts_args_of s)) (int_length tl)) then
-      (errorHash_lift2 (throw (BadTypeArity (s, int_length tl))))
-    else errorHash_lift (ty_app1 s tl)
+      (errorHashcons_lift2 (throw (BadTypeArity (s, int_length tl))))
+    else errorHashcons_lift (ty_app1 s tl)
   end.
 
 
 (* symbol-wise map/fold *)
-Fixpoint ty_s_map (fn: tysymbol_c -> tysymbol_c) (t: ty_c) : errorHashT ty_c ty_c :=
+Fixpoint ty_s_map (fn: tysymbol_c -> tysymbol_c) (t: ty_c) : errorHashconsT ty_c ty_c :=
   match ty_node_of t with
-  | Tyvar _ => errorHash_ret t
-  | Tyapp f tl => errorHash_bnd (fun l => ty_app (fn f) l)
-    (errorHash_list (map (ty_s_map fn) tl))
+  | Tyvar _ => errorHashcons_ret t
+  | Tyapp f tl => errorHashcons_bnd (fun l => ty_app (fn f) l)
+    (errorHashcons_list (map (ty_s_map fn) tl))
   end.
 
 Fixpoint ty_s_fold {A: Type} (fn: A -> tysymbol_c -> A) (acc: A) (t: ty_c) : A :=
@@ -272,8 +272,8 @@ Fixpoint ty_match_aux (err1 err2: ty_c)
   | _, _ => throw (TypeMismatch (err1, err2))
   end.
 
-Definition ty_match  (s: Mtv.t ty_c) (ty1 ty2: ty_c) : errorHashT _ (Mtv.t ty_c) :=
-  errorHash_bnd (fun t1 => errorHash_lift2 (ty_match_aux t1 ty2 s ty1 ty2)) (errorHash_lift (ty_inst s ty1)).
+Definition ty_match  (s: Mtv.t ty_c) (ty1 ty2: ty_c) : errorHashconsT _ (Mtv.t ty_c) :=
+  errorHashcons_bnd (fun t1 => errorHashcons_lift2 (ty_match_aux t1 ty2 s ty1 ty2)) (errorHashcons_lift (ty_inst s ty1)).
 
 
 (* built-in symbols *)
@@ -355,11 +355,11 @@ Definition oty_hash (o: option ty_c) : CoqBigInt.t :=
 Definition oty_compare (o1 o2: option ty_c) : CoqInt.int :=
   option_compare ty_compare o1 o2.
 
-Definition oty_match (m: Mtv.t ty_c) (o1 o2: option ty_c) : errorHashT _ (Mtv.t ty_c) :=
+Definition oty_match (m: Mtv.t ty_c) (o1 o2: option ty_c) : errorHashconsT _ (Mtv.t ty_c) :=
   match o1, o2 with
   | Some ty1, Some ty2 => ty_match m ty1 ty2
-  | None, None => errorHash_ret m
-  | _, _ => errorHash_lift2 (throw UnexpectedProp)
+  | None, None => errorHashcons_ret m
+  | _, _ => errorHashcons_lift2 (throw UnexpectedProp)
   end.
 
 Definition oty_inst (m: Mtv.t ty_c) (o: option ty_c) : option (hashcons_st _ ty_c) :=

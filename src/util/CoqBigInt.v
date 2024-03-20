@@ -30,6 +30,8 @@ Definition compare : t -> t -> CoqInt.int :=
 Definition mul_int : CoqInt.int -> t -> t :=
   fun i z => Z.mul (Integer.int_val _ i) z.
 Definition lt : t -> t -> bool := Z.ltb.
+(*TODO: implement this - we don't need a good hash function for Coq*)
+Axiom hash : t -> CoqInt.int.
 
 (*Single digit numbers*)
 Definition two : t := 2.

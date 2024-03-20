@@ -4,9 +4,25 @@
   BinNums BinPos Datatypes Specif  List0 String0
   base Basics BinInt zmap pmap fin_maps numbers option decidable
   ErrorMonad CoqUtil CoqBigInt Loc StateMonad
-  Extmap Extset Wstdlib Weakhtbl Hashtbl Hashcons Number Ctr
-  IntFuncs TyDefs TyFuncs Ident)
+  Extmap Extset Wstdlib Weakhtbl CoqHashtbl Hashcons Number Ctr
+  IntFuncs 
+  IdentDefs
+  TyDefs TyFuncs)
  (theories Src stdpp Proofs ExtLib)
+ )
+
+;create Ident.ml
+ (rule
+  (deps IdentDefs.ml IdentExtra.ml)
+  (targets Ident.ml)
+  (action 
+  (with-stdout-to Ident.ml
+    (pipe-stdout
+     (cat IdentDefs.ml IdentExtra.ml)
+     (run sed -e "s/open IdentDefs//g")
+    )
+   )
+  )
  )
 
 ;Create Ty.ml by concatenation Defs, Exn, Funcs
@@ -18,6 +34,7 @@
     (pipe-stdout
      (cat TyDefs.ml TyExn.ml TyFuncs.ml TyExtra.ml)
      (run sed -e "s/open TyDefs//g")
+     (run sed -e "s/open IdentDefs/open Ident/g")
     )
    )
   )
@@ -25,7 +42,7 @@
 
 (library
  (name Why3Coq)
- (modules (:standard \ TyExn TyDefs TyFuncs TyExtra))
+ (modules (:standard \ TyExn TyDefs TyFuncs TyExtra IdentDefs IdentExtra))
  (flags (:standard -w -33 -w -32)) ;32 is unused value - extraction results in values we don't want in mli file
  (libraries zarith))
 

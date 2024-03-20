@@ -15,16 +15,16 @@ Require Export CoqInt Extmap Extset.
 Module Type OrderedHashedType.
 
 Parameter t : Type.
-Parameter hash: t -> CoqBigInt.t.
+Parameter hash: t -> CoqInt.int. (*For external compatibility*)
 Parameter equal: t -> t -> bool.
-Parameter compare: t -> t -> int. (*Really, just need 3 values*)
+Parameter compare: t -> t -> CoqInt.int. (*Really, just need 3 values*)
 
 End OrderedHashedType.
 
 Module OrderedHashed (X: TaggedType) <: OrderedHashedType.
 
 Definition t:= X.t.
-Definition hash := X.tag.
+Definition hash x := CoqBigInt.hash (X.tag x).
 Definition equal ts1 ts2 := CoqBigInt.eqb (X.tag ts1) (X.tag ts2).
 Definition compare ts1 ts2 := CoqBigInt.compare (X.tag ts1) (X.tag ts2).
 
@@ -36,7 +36,6 @@ Module T := OrderedHashed(X).
 Module M := Extmap.Make(X).
 Module S := Extset.MakeOfMap(M).
 (*TODO: see if we need hash tables*)
-
 End MakeMSH.
 
 (*module MakeMSH (X : TaggedType) =

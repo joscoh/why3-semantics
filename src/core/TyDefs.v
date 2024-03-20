@@ -1,5 +1,5 @@
 Require Import Wstdlib.
-Require Import Ident.
+Require Import IdentDefs.
 Require Number.
 Require Hashcons Weakhtbl. 
 Require Import stdpp.base.
