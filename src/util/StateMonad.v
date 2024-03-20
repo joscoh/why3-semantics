@@ -2,6 +2,7 @@
   to mutable references in OCaml*)
 Require CoqBigInt.
 Require Import Monad.
+From stdpp Require Import base.
 
 (*Generalized state monad*)
 Definition state (s a: Type) : Type := s -> (s * a).
@@ -12,6 +13,10 @@ Definition st_bnd {s a b: Type} (f: a -> state s b) (m: state s a) : state s b :
   fun i =>
     let t := m i in
     f (snd t) (fst t).
+Definition st_listM {s a: Type} (l: list (state s a)) := listM st_ret st_bnd l.
+
+Global Instance st_ret' s : MRet (state s) := @st_ret s.
+Global Instance st_bnd' s : MBind (state s) := @st_bnd s.
 
 (*Combine multiple states*)
 (*NOTE: this is not a very good implementation, but
@@ -56,7 +61,7 @@ Definition exceptT_lift2 {s a: Type} (x: errorM a) : exceptT s a :=
 
 (*And now we include several kinds of state:*)
 (* 1. A mutable counter*)
-Definition ctr (a: Type) : Type := state CoqBigInt.t a.
+(*Definition ctr (a: Type) : Type := state CoqBigInt.t a.
 Definition ctr_get : ctr CoqBigInt.t := st_get.
 Definition ctr_ret {a: Type} (x: a) : ctr a := st_ret x.
 Definition ctr_bnd {a b: Type} (f: a -> ctr b) (m: ctr a) : ctr b := st_bnd f m.
@@ -68,31 +73,66 @@ Definition incr : ctr unit := ctr_bnd
   (fun i => st_set (CoqBigInt.succ i)) ctr_get.
 Definition ctr_unit := ctr unit.
 Definition ctr_list {A: Type} (l: list (ctr A)) : ctr (list A) :=
-  listM ctr_ret ctr_bnd l.
+  listM ctr_ret ctr_bnd l.*)
+Notation ctr a := (state CoqBigInt.t a).
+Notation ctr_bnd := st_bnd.
+Notation ctr_ret := st_ret.
+Notation ctr_get := st_get.
+Notation ctr_set := st_set.
+Definition ctr_ty := ctr unit.
+Definition new_ctr (i: CoqBigInt.t) : ctr unit := st_set i.
+(*TODO: see if notation/inlined/whatever*)
+Definition ctr_incr : ctr unit :=
+  ctr_bnd (fun i => ctr_set (CoqBigInt.succ i)) ctr_get.
 
 (*2. Hash table*)
 Require Import Hashtbl.
 Section HashTbl.
-Definition hash_st (key a: Type) : Type := state (@hashtbl key) a.
+Definition hash_st (key value a: Type) : Type := state (hashtbl key value) a.
 
-Context {key: Type} (hash: key -> CoqBigInt.t) 
+Context {key value: Type} (hash: key -> CoqBigInt.t) 
   (eqb: key -> key -> bool).
 
-Definition hash_get (a: Type) : hash_st key (@hashtbl key):= st_get.
-Definition hash_set (a: Type) (x: @hashtbl key) : hash_st key unit :=
+Definition hash_get (a: Type) : hash_st key value (hashtbl key value):= st_get.
+Definition hash_set (a: Type) (x: hashtbl key value) : hash_st key value unit :=
   st_set x.
-Definition hash_ret {a: Type} (x: a) : hash_st key a := st_ret x.
-Definition hash_bnd {a b: Type} (f: a -> hash_st key b) (m: hash_st key a) : hash_st key b :=
+Definition hash_ret {a: Type} (x: a) : hash_st key value a := st_ret x.
+Definition hash_bnd {a b: Type} (f: a -> hash_st key value b) 
+  (m: hash_st key value a) : hash_st key value b :=
   st_bnd f m.
-Definition new_hash : hash_st key unit := st_set create_hashtbl.
-Definition hash_unit := hash_st key unit.
-Definition hash_listM {A: Type} (l: list (hash_st key A))
+Definition new_hash : hash_st key value unit := st_set (create_hashtbl value).
+Definition hash_unit := hash_st key value unit.
+Definition hash_listM {A: Type} (l: list (hash_st key value A))
  := listM hash_ret hash_bnd l.
+End HashTbl.
 
 (*3. Hash consing - combine 2 states*)
-Section HashconsST.
+Notation hashcons_st key a :=
+  (state_multi CoqBigInt.t (hashset key) a).
+Definition hashcons_new key : hashcons_st key unit :=
+  fun _ => (CoqBigInt.one, create_hashset, tt).
 
-Definition hashcons_st (a: Type) : Type :=
+Notation hashcons_bnd := st_multi_bnd.
+Notation hashcons_ret := st_multi_ret.
+(*TODO: if we do definitions, can we inline?*)
+Section HashCons.
+Context {key: Type} (hash: key -> CoqBigInt.t) 
+  (eqb: key -> key -> bool).
+Definition hashcons_lookup (k: key) : hashcons_st key (option key) :=
+  hashcons_bnd (fun h => hashcons_ret (find_opt_hashset hash eqb h k)) 
+    st_get2.
+Definition hashcons_get_ctr : hashcons_st key CoqBigInt.t :=
+  st_get1.
+Definition hashcons_add (k: key) : hashcons_st key unit :=
+  hashcons_bnd (fun h => st_set2 (add_hashset hash h k)) st_get2.
+Definition hashcons_incr : hashcons_st key unit :=
+  hashcons_bnd (fun i => st_set1 (CoqBigInt.succ i)) st_get1.
+Definition hashcons_list {K A : Type} (l: list (@hashcons_st K A)) :
+  @hashcons_st K (list A) := st_listM l.
+End HashCons.
+(*TODO: for now, notations*)
+
+(*Definition hashcons_st (a: Type) : Type :=
   state_multi CoqBigInt.t (@hashtbl key) a.
 Definition hashcons_get_ctr : hashcons_st CoqBigInt.t :=
   st_get1.
@@ -107,6 +147,8 @@ Definition hashcons_ret {a: Type} (d: a) : hashcons_st a :=
 Definition hashcons_bnd {A B: Type} (f: A -> hashcons_st B) 
   (h: hashcons_st A) : hashcons_st B :=
   st_multi_bnd f h.
+Definition hashcons_new : hashcons_st unit :=
+  fun _ => (CoqBigInt.one, create_hashtbl, tt).*)
 
 (*Because modules cannot be passed as parameters ugh*)
 (*Definition hashcons_st (a: Type) : Type :=
@@ -130,14 +172,10 @@ Definition hashcons_bnd {A B: Type} (f: A -> hashcons_st B)
     let t := h x in
     f (snd t) (fst t).*)
 (*The hack again*)
-Definition hashcons_unit := hashcons_st unit.
-
-End HashconsST.
-End HashTbl.
-
-Definition hashcons_list {K A : Type} (l: list (@hashcons_st K A)) :
+Definition hashcons_unit key := hashcons_st key unit.
+(*Definition hashcons_list {K A : Type} (l: list (@hashcons_st K A)) :
   @hashcons_st K (list A) :=
-  listM hashcons_ret hashcons_bnd l.
+  listM hashcons_ret hashcons_bnd l.*)
 
 (*Combine error handling and hashcons*)
 (*TODO: combine with above*)
@@ -156,7 +194,18 @@ Require Import ErrorMonad.
 (*For now, do 1 by 1*)
 (*Choose this order: state still exists, may have result*)
 (*Basically ExceptT on state monad*)
-Definition errorHashT {K : Type} (A: Type) : Type :=
+Notation errorHashT K A := (exceptT (CoqBigInt.t * (@hashset K)) A).
+(*Names for compatibility*)
+Notation errorHash_bnd := exceptT_bnd.
+Notation errorHash_ret := exceptT_ret.
+Notation errorHash_lift := exceptT_lift.
+Definition errorHash_list {K A: Type} (l: list (@errorHashT K A)) :
+ @errorHashT K (list A) :=
+  listM errorHash_ret errorHash_bnd l.
+
+(*Definitions again - see about inline/notations*)
+
+(*Definition errorHashT {K : Type} (A: Type) : Type :=
   @hashcons_st K (errorM A).
 
 Definition errorHash_ret {K A: Type} (x: A) : @errorHashT K A :=
@@ -182,8 +231,7 @@ Definition errorHash_lift2 {K A: Type} (x: errorM A) :
 Definition errorHash_list {K A: Type} (l: list (@errorHashT K A)) :
  @errorHashT K (list A) :=
   listM errorHash_ret errorHash_bnd l.
-
-
+*)
 
 
 

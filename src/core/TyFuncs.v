@@ -3,15 +3,15 @@ Require Import ErrorMonad StateMonad TyDefs IntFuncs.
 Definition mk_ty (n: ty_node_c) : ty_c :=
   mk_ty_c n Weakhtbl.dummy_tag.
 
-Definition ty_var (n: tvsymbol) : hashcons_st ty_c :=
+Definition ty_var (n: tvsymbol) : hashcons_st _ ty_c :=
   Hsty.hashcons (mk_ty (Tyvar n)).
-Definition ty_app1 (s: tysymbol_c) (tl: list ty_c) : hashcons_st ty_c :=
+Definition ty_app1 (s: tysymbol_c) (tl: list ty_c) : hashcons_st _ ty_c :=
   Hsty.hashcons (mk_ty (Tyapp s tl)).
 
 (*Generic Traversal Functions*)
 (*The reason we actually do want hash consing, or else
   the counter grows every time we call one of these functions*)
-Definition ty_map (fn: ty_c -> ty_c) (t: ty_c) : hashcons_st ty_c :=
+Definition ty_map (fn: ty_c -> ty_c) (t: ty_c) : hashcons_st _ ty_c :=
   match ty_node_of t with
   | Tyvar _ => hashcons_ret t
   | Tyapp f tl => ty_app1 f (map fn tl)
@@ -61,7 +61,7 @@ Definition is_float_type_def {A: Type} (t: type_def A) : bool :=
   end.
 
 (*Traversal Functions on Type Variables*)
-Fixpoint ty_v_map (fn: tvsymbol -> ty_c) (t: ty_c) : hashcons_st ty_c :=
+Fixpoint ty_v_map (fn: tvsymbol -> ty_c) (t: ty_c) : hashcons_st _ ty_c :=
   match ty_node_of t with
   | Tyvar v => hashcons_ret (fn v)
   | Tyapp f tl => hashcons_bnd (fun l => ty_app1 f l)
@@ -82,15 +82,15 @@ Definition ty_v_any (pr: tvsymbol -> bool) (t: ty_c) : bool :=
   ty_v_fold (fun acc v => acc || (pr v)) false t.
 
 Fixpoint ty_v_map_err (fn: tvsymbol -> errorM ty_c) (t: ty_c) :
-  errorHashT ty_c :=
+  errorHashT _ ty_c :=
   match ty_node_of t with
-  | Tyvar v => errorHash_lift2 (fn v)
+  | Tyvar v => st_ret (fn v)
   | Tyapp f tl => errorHash_bnd (fun l =>
       errorHash_lift (ty_app1 f l)
   ) (errorHash_list (map (ty_v_map_err fn) tl))
   end.
 
-Definition ty_full_inst (m: Mtv.t ty_c) (t: ty_c) : errorHashT ty_c:=
+Definition ty_full_inst (m: Mtv.t ty_c) (t: ty_c) : errorHashT _ ty_c:=
   ty_v_map_err (fun v => Mtv.find _ v m) t.
 
 Definition ty_freevars (s: Stv.t) (t: ty_c) : Stv.t :=
@@ -181,20 +181,20 @@ Definition ty_match_args (t: ty_c) : errorM (Mtv.t ty_c) :=
   | _ => throw (Invalid_argument "Ty.ty_match_args")
   end.
 
-Definition ty_app (s: tysymbol_c) (tl: list ty_c) : errorHashT ty_c :=
+Definition ty_app (s: tysymbol_c) (tl: list ty_c) : errorHashT _ ty_c :=
   match ts_def_of s with
   | Alias t => errorHash_bnd 
     (fun m => ty_full_inst m t) 
-    (errorHash_lift2 (ts_match_args s tl))
+    (st_ret (ts_match_args s tl))
   | _ =>
     if negb (CoqBigInt.eqb (int_length (ts_args_of s)) (int_length tl)) then
-      errorHash_lift2 (throw (BadTypeArity (s, int_length tl)))
+      st_ret (throw (BadTypeArity (s, int_length tl)))
     else errorHash_lift (ty_app1 s tl)
   end.
 
 
 (* symbol-wise map/fold *)
-Fixpoint ty_s_map (fn: tysymbol_c -> tysymbol_c) (t: ty_c) : errorHashT ty_c :=
+Fixpoint ty_s_map (fn: tysymbol_c -> tysymbol_c) (t: ty_c) : errorHashT _ ty_c :=
   match ty_node_of t with
   | Tyvar _ => errorHash_ret t
   | Tyapp f tl => errorHash_bnd (fun l => ty_app (fn f) l)
@@ -215,7 +215,7 @@ Definition ty_s_any (pr: tysymbol_c -> bool) (t: ty_c) : bool :=
 (* type matching *)
 
 (*TODO: very bad*)
-Definition ty_mapM (fn: ty_c -> hashcons_st ty_c) (t: ty_c) : hashcons_st ty_c :=
+Definition ty_mapM (fn: ty_c -> hashcons_st _ ty_c) (t: ty_c) : hashcons_st _ ty_c :=
   match ty_node_of t with
   | Tyvar _ => hashcons_ret t
   | Tyapp f tl => hashcons_bnd (fun l => ty_app1 f l) (hashcons_list (map fn tl))
@@ -223,7 +223,7 @@ Definition ty_mapM (fn: ty_c -> hashcons_st ty_c) (t: ty_c) : hashcons_st ty_c :
 
 (*TODO: why does this pass Coq's termination checker?*)
 (*Idea: instantiate type variables from the map*)
-Fixpoint ty_inst (s: Mtv.t ty_c) (t: ty_c) : hashcons_st ty_c :=
+Fixpoint ty_inst (s: Mtv.t ty_c) (t: ty_c) : hashcons_st _ ty_c :=
   match ty_node_of t with
   | Tyvar n => hashcons_ret (Mtv.find_def _ t n s)
   | _ => ty_mapM (ty_inst s) t
@@ -270,7 +270,7 @@ Fixpoint ty_match_aux (err1 err2: ty_c)
   | _, _ => throw (TypeMismatch (err1, err2))
   end.
 
-Definition ty_match  (s: Mtv.t ty_c) (ty1 ty2: ty_c) : errorHashT (Mtv.t ty_c) :=
+Definition ty_match  (s: Mtv.t ty_c) (ty1 ty2: ty_c) : errorHashT _ (Mtv.t ty_c) :=
   hashcons_bnd (fun t1 => hashcons_ret (ty_match_aux t1 ty2 s ty1 ty2)) (ty_inst s ty1).
 
 
@@ -312,10 +312,10 @@ Definition ts_func :=
   mk_ts_builtin id_fun [tv_a; tv_b] NoDef.
 
 (*We know that [ty_app] always succeeds here*)
-Definition ty_func (ty_a ty_b: ty_c) : hashcons_st ty_c :=
+Definition ty_func (ty_a ty_b: ty_c) : hashcons_st _ ty_c :=
   ty_app1 ts_func [ty_a; ty_b].
 
-Definition ty_pred (ty_a : ty_c) : hashcons_st ty_c := 
+Definition ty_pred (ty_a : ty_c) : hashcons_st _ ty_c := 
   hashcons_bnd (fun t =>
     ty_app1 ts_func [ty_a; t]) ty_bool.
 
@@ -353,14 +353,14 @@ Definition oty_hash (o: option ty_c) : CoqBigInt.t :=
 Definition oty_compare (o1 o2: option ty_c) : CoqInt.int :=
   option_compare ty_compare o1 o2.
 
-Definition oty_match (m: Mtv.t ty_c) (o1 o2: option ty_c) : errorHashT (Mtv.t ty_c) :=
+Definition oty_match (m: Mtv.t ty_c) (o1 o2: option ty_c) : errorHashT _ (Mtv.t ty_c) :=
   match o1, o2 with
   | Some ty1, Some ty2 => ty_match m ty1 ty2
   | None, None => errorHash_ret m
-  | _, _ => errorHash_lift2 (throw UnexpectedProp)
+  | _, _ => st_ret (throw UnexpectedProp)
   end.
 
-Definition oty_inst (m: Mtv.t ty_c) (o: option ty_c) : option (hashcons_st ty_c) :=
+Definition oty_inst (m: Mtv.t ty_c) (o: option ty_c) : option (hashcons_st _ ty_c) :=
   option_map (ty_inst m) o.
 
 Definition opt_fold {A B: Type} (f: A -> B -> A) (d: A) (o: option B) : A :=

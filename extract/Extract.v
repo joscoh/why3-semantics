@@ -72,41 +72,49 @@ Extract Inlined Constant errorM_bind => "(@@)".
 Extract Inlined Constant mbind => "(@@)".
 
 (*Handle state monad*)
-Extract Constant ctr_unit => "BigInt.t ref".
-Extract Constant ctr "'ty" => "'ty".
-Extract Inlined Constant ctr_ret => "".
+Extract Constant ctr_ty => "BigInt.t ref".
+Extract Constant state "'a" "'ty" => "'ty".
+Extract Inlined Constant st_ret => "".
+Extract Inlined Constant st_bnd => "(@@)".
+(*NOTE: we cannot extract get, set directly because
+  they refer to different references each time*)
+Extract Inlined Constant st_multi_ret => "".
+Extract Inlined Constant exceptT_bnd => "(@@)".
+(*Extract Constant ctr "'ty" => "'ty".*)
+(*Extract Inlined Constant ctr_ret => "".
 Extract Inlined Constant ctr_bnd' => "(@@)".
-Extract Inlined Constant ctr_bnd => "(@@)".
-Extract Inlined Constant new_ctr => "ref (BigInt.of_int 8)".
-Extract Inlined Constant incr => "(id_ctr := BigInt.succ !id_ctr)".
+Extract Inlined Constant ctr_bnd => "(@@)".*)
+Extract Inlined Constant new_ctr => "ref".
+Extract Inlined Constant ctr_incr => "(id_ctr := BigInt.succ !id_ctr)".
+(*Extract Inlined Constant incr => "(id_ctr := BigInt.succ !id_ctr)".*)
 Extract Inlined Constant ctr_get => "!id_ctr".
 
 (*Handle hashcons*)
-
+(*TODO: change this*)
 Extract Constant hashcons_unit "'k" => 
-  "(BigInt.t * 'k Hashtbl.hashtbl) ref".
-Extract Constant hashcons_st "'ty" "'ty2" => "'ty2".
-Extract Inlined Constant hashcons_ret => "".
-Extract Inlined Constant hashcons_bnd => "(@@)".
+  "(BigInt.t * 'k Hashtbl.hashset) ref".
+(*Extract Constant hashcons_st "'ty" "'ty2" => "'ty2".*)
+(*Extract Inlined Constant hashcons_ret => "".
+Extract Inlined Constant hashcons_bnd => "(@@)".*)
 Extract Inlined Constant hashcons_new => 
-  "ref (BigInt.one, Hashtbl.create_hashtbl)".
+  "ref (BigInt.one, Hashtbl.create_hashset)".
+Extract Inlined Constant hashcons_get_ctr =>
+  "(fst !hash_st)".
 Extract Inlined Constant hashcons_incr => 
   "(let old = !hash_st in
     hash_st := (BigInt.succ (fst old), (snd old)))".
-Extract Inlined Constant hashcons_get_ctr =>
-  "(fst !hash_st)".
 Extract Inlined Constant hashcons_lookup =>
-  "(fun _ _ k -> Hashtbl.find_opt_hashtbl H.hash H.equal (snd !hash_st) k)".
+  "(fun _ _ k -> Hashtbl.find_opt_hashset H.hash H.equal (snd !hash_st) k)".
 Extract Inlined Constant hashcons_add =>
   "(fun _ k -> let old = !hash_st in
-              hash_st := (fst old, Hashtbl.add_hashtbl H.hash (snd old) k))".
+              hash_st := (fst old, Hashtbl.add_hashset H.hash (snd old) k))".
 
 (*Hashcons + Exception Monad Transformer*)
-Extract Constant errorHashT "'ty" "'ty2" => "'ty2".
+(*Extract Constant errorHashT "'ty" "'ty2" => "'ty2".
 Extract Inlined Constant errorHash_ret => "".
-Extract Inlined Constant errorHash_bnd => "(@@)".
+Extract Inlined Constant errorHash_bnd => "(@@)".*)
 Extract Inlined Constant errorHash_lift => "".
-Extract Inlined Constant errorHash_lift2 => "".
+(*Extract Inlined Constant errorHash_lift2 => "".*)
 
 (*Maps - inline some things to reduce dependent types, Obj.magic
   and unecessary functions*)

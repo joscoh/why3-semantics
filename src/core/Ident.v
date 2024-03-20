@@ -184,8 +184,8 @@ Require Import stdpp.base.
   a problem.
   If the same id string is used multiple times, they
   will have the same tag*)
-Definition id_ctr : ctr_unit :=
-  new_ctr. (*For extraction*)
+Definition id_ctr : ctr_ty :=
+  new_ctr CoqBigInt.eight. (*For extraction*)
 
 Definition id_register : preid -> ctr ident :=
   fun p =>
@@ -193,7 +193,7 @@ Definition id_register : preid -> ctr ident :=
     {| id_string := p.(pre_name);
     id_attrs := p.(pre_attrs);
     id_loc := p.(pre_loc);
-    id_tag := i |}) ctr_get) incr.
+    id_tag := i |}) ctr_get) ctr_incr.
 
 (*1st 7 values of the counter correspond to builtin symbols
   (so that we don't need state)*)
