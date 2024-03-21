@@ -15,7 +15,12 @@ let list_attributes () =
   Hsattr.iter (fun a -> acc := a.attr_string :: !acc);
   !acc
 
-module Hid = Exthtbl.Make(OrderedHashed(IdentTag))
+module Id2 = MakeMSHW (struct
+type t = ident
+let tag id = id.id_tag
+let eq t1 t2 = id_equal t1 t2
+end)
+module Hid = Id2.H
 
 let sexp_of_attribute (a:attribute) =
   Mysexplib.sexp_of_string a.attr_string
@@ -91,13 +96,6 @@ let print_sn fmt w =
   SNword (Format.asprintf "%a%s" print_sn w (String.sub s m (len - m)))
 
 let print_decoded fmt s = print_sn fmt (sn_decode s)
-
-(*JOSH TODO should be in Wstdlib*)
-module Hstr = Exthtbl.Make(struct
-  type t    = String.t
-  let hash  = (Hashtbl.hash : string -> int)
-  let equal = ((=) : string -> string -> bool)
-end)
 
 let id_fresh ?(attrs = Sattr.empty) ?loc nm =
   create_ident nm attrs loc

@@ -4,7 +4,7 @@
   BinNums BinPos Datatypes Specif  List0 String0
   base Basics BinInt zmap pmap fin_maps numbers option0 decidable
   ErrorMonad CoqUtil CoqBigInt LocTy StateMonad
-  Extmap Extset CoqWstdlib Weakhtbl CoqHashtbl Hashcons Number Ctr
+  Extmap Extset CoqWstdlib CoqWeakhtbl CoqHashtbl Hashcons CoqNumber Ctr
   IntFuncs 
   IdentDefs
   TyDefs TyFuncs)
@@ -25,15 +25,30 @@
   )
  )
 
+;create Weakhtbl.ml (only for testing)
+(rule
+  (deps CoqWeakhtbl.ml Weakhtblextra.ml)
+  (targets weakhtbl.ml)
+  (action 
+  (with-stdout-to weakhtbl.ml
+    (pipe-stdout
+     (cat CoqWeakhtbl.ml Weakhtblextra.ml)
+     (run sed -e "s/open CoqWeakhtbl//g")
+    )
+   )
+  )
+ )
+
 ;create Wstdlib.ml (only for testing)
 (rule
   (deps CoqWstdlib.ml Wstdlibextra.ml)
-  (targets Wstdlib.ml)
+  (targets wstdlib.ml)
   (action 
-  (with-stdout-to Wstdlib.ml
+  (with-stdout-to wstdlib.ml
     (pipe-stdout
      (cat CoqWstdlib.ml Wstdlibextra.ml)
      (run sed -e "s/open CoqWstdlib//g")
+     (run sed -e "s/open CoqWeakhtbl/open Weakhtbl/g")
     )
    )
   )
@@ -50,6 +65,7 @@
      (run sed -e "s/open IdentDefs//g")
      (run sed -e "s/open LocTy/open Loc/g")
      (run sed -e "s/open CoqWstdlib/open Wstdlib/g")
+     (run sed -e "s/open CoqWeakhtbl/open Weakhtbl/g")
     )
    )
   )
@@ -66,6 +82,7 @@
      (run sed -e "s/open TyDefs//g")
      (run sed -e "s/open IdentDefs/open Ident/g")
      (run sed -e "s/open CoqWstdlib/open Wstdlib/g")
+     (run sed -e "s/open CoqWeakhtbl/open Weakhtbl/g")
     )
    )
   )
@@ -74,7 +91,7 @@
 (library
  (name Why3Coq)
  (modules (:standard \ TyExn TyDefs TyFuncs TyExtra IdentDefs IdentExtra 
-  LocTy LocExtra Locpre CoqWstdlib Wstdlibextra))
+  LocTy LocExtra Locpre CoqWstdlib Wstdlibextra CoqWeakhtbl Weakhtblextra))
  (flags (:standard -w -33 -w -32)) ;32 is unused value - extraction results in values we don't want in mli file
  (libraries zarith sexplib re))
 

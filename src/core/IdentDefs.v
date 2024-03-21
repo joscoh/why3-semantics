@@ -45,7 +45,7 @@ Definition tag x := x.(attr_tag).
 Definition eq := attr_eq.
 End AttrTag.
 
-Module Attr  := MakeMSH AttrTag.
+Module Attr  := MakeMS AttrTag.
 Module Sattr := Attr.S.
 Module Mattr := Attr.M.
 
@@ -107,7 +107,7 @@ Record ident := {
   id_string : string;
   id_attrs: Sattr.t;
   id_loc: option LocTy.position;
-  id_tag: CoqBigInt.t; (*TODO: weakhtbl i think*)
+  id_tag: CoqWeakhtbl.tag; (*TODO: weakhtbl i think*)
 }.
 
 (*Decidable equality*)
@@ -115,7 +115,7 @@ Definition ident_eqb (i1 i2: ident) : bool :=
   String.eqb i1.(id_string) i2.(id_string) &&
   Sattr.equal i1.(id_attrs) i2.(id_attrs) &&
   option_eqb LocTy.equal i1.(id_loc) i2.(id_loc) &&
-  CoqBigInt.eqb i1.(id_tag) i2.(id_tag).
+  CoqWeakhtbl.tag_equal i1.(id_tag) i2.(id_tag).
 
 (*TODO: prove equality for Sets, options
   Need this to use as keys in sets and maps*)
@@ -144,7 +144,7 @@ End IdentTag.
 (*NOTE: we do not have weak hash tables, so we ignore the W.
   This seems to be used for sharing and optimizations, we may
   need to add something similar later (maybe with PTrees)*)
-Module Id := CoqWstdlib.MakeMSH IdentTag.
+Module Id := CoqWstdlib.MakeMSWeak IdentTag.
 Module Sid := Id.S.
 Module Mid := Id.M.
 (*module Hid = Id.H
@@ -161,7 +161,7 @@ Record preid := {
   (and nothing about false). But for now, OK to do
   structural equality I think*)
 Definition id_equal (i1 i2: ident) : bool := ident_eqb i1 i2.
-Definition id_hash (i: ident) : CoqBigInt.t := i.(id_tag).
+Definition id_hash (i: ident) : CoqBigInt.t := CoqWeakhtbl.tag_hash (i.(id_tag)).
 Definition id_compare (id1 id2: ident) : CoqInt.int :=
   CoqBigInt.compare (id_hash id1) (id_hash id2).
 
@@ -184,7 +184,7 @@ Definition id_register : preid -> ctr ident :=
     {| id_string := p.(pre_name);
     id_attrs := p.(pre_attrs);
     id_loc := p.(pre_loc);
-    id_tag := i |}) IdCtr.get) IdCtr.incr.
+    id_tag := CoqWeakhtbl.create_tag i |}) IdCtr.get) IdCtr.incr.
 
 (*1st 7 values of the counter correspond to builtin symbols
   (so that we don't need state)*)
@@ -195,25 +195,25 @@ Definition id_builtin (name: string) (tag: CoqBigInt.t) : ident :=
      id_tag := tag |}.
   
 Definition id_int : ident :=
-  id_builtin "int" CoqBigInt.one.
+  id_builtin "int" (CoqWeakhtbl.create_tag CoqBigInt.one).
 
 Definition id_real : ident :=
-  id_builtin "real" CoqBigInt.two.
+  id_builtin "real" (CoqWeakhtbl.create_tag CoqBigInt.two).
 
 Definition id_bool : ident :=
-  id_builtin "bool" CoqBigInt.three.
+  id_builtin "bool" (CoqWeakhtbl.create_tag CoqBigInt.three).
 
 Definition id_str : ident :=
-  id_builtin "string" CoqBigInt.four.
+  id_builtin "string" (CoqWeakhtbl.create_tag CoqBigInt.four).
 
 Definition id_a : ident :=
-  id_builtin "a" CoqBigInt.five.
+  id_builtin "a" (CoqWeakhtbl.create_tag CoqBigInt.five).
 
 Definition id_b : ident :=
-  id_builtin "b" CoqBigInt.six.
+  id_builtin "b" (CoqWeakhtbl.create_tag CoqBigInt.six).
 
 Definition id_fun : ident :=
-  id_builtin (op_infix "->") CoqBigInt.seven.
+  id_builtin (op_infix "->") (CoqWeakhtbl.create_tag CoqBigInt.seven).
 
 Definition create_ident name attrs loc :=
   {| pre_name := name; pre_attrs := attrs; pre_loc := loc|}.

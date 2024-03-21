@@ -36,8 +36,8 @@ val tv_of_string : string -> tvsymbol
 type 'a type_def =
   | NoDef
   | Alias of 'a
-  | Range of Number.int_range
-  | Float of Number.float_format
+  | Range of CoqNumber.int_range
+  | Float of CoqNumber.float_format
 
 (*Our types are different:*)
 

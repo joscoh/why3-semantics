@@ -1,7 +1,7 @@
 Require Import CoqWstdlib.
 Require Import IdentDefs.
-Require Number.
-Require Hashcons Weakhtbl. 
+Require CoqNumber.
+Require Hashcons CoqWeakhtbl. 
 Require Import stdpp.base.
 Require Import Coq.Wellfounded.Inverse_Image.
 Require Import IntFuncs.
@@ -31,7 +31,7 @@ Definition eq := tvsymbol_eq.
 
 End TvarTagged.
 
-Module Tvar := MakeMSH TvarTagged.
+Module Tvar := MakeMSWeak TvarTagged.
 Module Stv := Tvar.S.
 Module Mtv := Tvar.M.
 (*Module Htv := Tvar.H*)
@@ -67,8 +67,8 @@ Unset Elimination Schemes.
 Inductive type_def (A: Type) : Type :=
   | NoDef
   | Alias: A -> type_def A
-  | Range: Number.int_range -> type_def A
-  | Float: Number.float_format -> type_def A.
+  | Range: CoqNumber.int_range -> type_def A
+  | Float: CoqNumber.float_format -> type_def A.
 
 Arguments NoDef {_}.
 Arguments Alias {_}.
@@ -77,7 +77,7 @@ Arguments Float {_}.
 
 Record ty_o (A: Type) := 
   mk_ty_o { ty_node: A;
-    ty_tag: Weakhtbl.tag}.
+    ty_tag: CoqWeakhtbl.tag}.
     
 Record tysymbol_o (A: Type) := mk_ts_o {
   ts_name : ident;
@@ -87,7 +87,7 @@ Record tysymbol_o (A: Type) := mk_ts_o {
 
 (*Coq types - we append with _c for coq*)
 Inductive ty_c : Type :=
-  | mk_ty_c : ty_node_c -> Weakhtbl.tag -> ty_c
+  | mk_ty_c : ty_node_c -> CoqWeakhtbl.tag -> ty_c
 with tysymbol_c : Type :=
   | mk_ts_c : ident -> list tvsymbol -> type_def ty_c -> tysymbol_c
 with ty_node_c : Type :=
@@ -107,7 +107,7 @@ Definition ty_node_of (t: ty_c) : ty_node_c :=
   | mk_ty_c n _ => n
   end.
 
-Definition ty_tag_of (t: ty_c) : Weakhtbl.tag:=
+Definition ty_tag_of (t: ty_c) : CoqWeakhtbl.tag:=
   match t with
   | mk_ty_c _ n => n
   end.
@@ -136,7 +136,7 @@ Definition build_tysym_o (i: ident) (l: list tvsymbol)
   tysymbol_o _ :=
   {| ts_name := i; ts_args := l;  ts_def := t |}.
 
-Definition build_ty_o (n: ty_node_c) (i: Weakhtbl.tag) : ty_o _ :=
+Definition build_ty_o (n: ty_node_c) (i: CoqWeakhtbl.tag) : ty_o _ :=
   {| ty_node := n; ty_tag := i |}.
 
 End ExtractInterface.
@@ -197,7 +197,7 @@ End TyInd.
 (* Decidable Equality *)
 
 Fixpoint ty_eqb (t1 t2: ty_c) : bool :=
-  CoqBigInt.eqb (ty_tag_of t1) (ty_tag_of t2) &&
+  CoqWeakhtbl.tag_equal (ty_tag_of t1) (ty_tag_of t2) &&
   ty_node_eqb (ty_node_of t1) (ty_node_of t2)
 with ty_node_eqb (t1 t2: ty_node_c) : bool :=
   match t1, t2 with
@@ -216,8 +216,8 @@ with tysymbol_eqb (t1 t2: tysymbol_c) : bool :=
   match ts_def_of t1, ts_def_of t2 with
   | NoDef, NoDef => true
   | Alias a1, Alias a2 => ty_eqb a1 a2
-  | Range n1, Range n2 => Number.int_range_eqb n1 n2
-  | Float f1, Float f2 => Number.float_format_eqb f1 f2
+  | Range n1, Range n2 => CoqNumber.int_range_eqb n1 n2
+  | Float f1, Float f2 => CoqNumber.float_format_eqb f1 f2
   | _, _ => false
   end.
 
@@ -273,8 +273,8 @@ Proof.
     destruct d; destruct d2; simpl; try solve_eqb_eq.
     (*3 interesting cases*)
     + rewrite <- IH. solve_eqb_eq.
-    + rewrite <- Number.int_range_eqb_eq. solve_eqb_eq.
-    + rewrite <- Number.float_format_eqb_eq. solve_eqb_eq.
+    + rewrite <- CoqNumber.int_range_eqb_eq. solve_eqb_eq.
+    + rewrite <- CoqNumber.float_format_eqb_eq. solve_eqb_eq.
 Qed. 
 
 Definition ty_eqb_eq := proj1 ty_eqb_eq_aux.
@@ -291,7 +291,7 @@ Definition tag (ts: tysymbol_c) := (ts_name_of ts).(id_tag).
 Definition eq := tysymbol_eq.
 End TsymTagged.
 
-Module Tsym := MakeMSH TsymTagged.
+Module Tsym := MakeMSWeak TsymTagged.
 Module Sts := Tsym.S.
 Module Mts := Tsym.M.
 (*Module Hts := Tsym.H
@@ -301,7 +301,7 @@ Definition ts_equal (t1 t2: tysymbol_c) : bool := tysymbol_eqb t1 t2.
 Definition ty_equal (t1 t2: ty_c) : bool := ty_eqb t1 t2.
 
 Definition ts_hash (ts: tysymbol_c) := id_hash (ts_name_of ts).
-Definition ty_hash (t: ty_c) := Weakhtbl.tag_hash (ty_tag_of t).
+Definition ty_hash (t: ty_c) := CoqWeakhtbl.tag_hash (ty_tag_of t).
 Definition ts_compare (ts1 ts2: tysymbol_c) : int :=
   id_compare (ts_name_of ts1) (ts_name_of ts2).
 Definition ty_compare (ty1 ty2: ty_c) : int :=
@@ -328,7 +328,7 @@ Definition hash (t: ty_c) : CoqBigInt.t :=
     | Tyapp s tl => Hashcons.combine_big_list ty_hash (ts_hash s) tl
   end.
 
-Definition tag n ty := mk_ty_c (ty_node_of ty) (Weakhtbl.create_tag n).
+Definition tag n ty := mk_ty_c (ty_node_of ty) (CoqWeakhtbl.create_tag n).
 End TyHash.
 
 Module Hsty := Hashcons.Make TyHash.
@@ -346,7 +346,7 @@ Definition tag (t: ty_c) := ty_tag_of t.
 Definition eq := ty_eq.
 End TyTagged.
 
-Module TyM := MakeMSH TyTagged.
+Module TyM := MakeMSWeak TyTagged.
 Module Sty := TyM.S.
 Module Mty := TyM.M.
 (*Module Hty := Ty.H

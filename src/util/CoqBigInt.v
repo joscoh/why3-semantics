@@ -43,6 +43,8 @@ Definition seven : t := 7.
 Definition eight : t := 8.
 Definition nine : t := 9.
 
+Definition neg_one : t := -1.
+
 (*For Zmap, we implement these functions manually in OCaml*)
 Definition to_Z : t -> Z := id.
 Definition of_Z: Z -> t := id.

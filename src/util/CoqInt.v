@@ -12,3 +12,7 @@ Definition int_eqb_eq : forall (i1 i2: int), i1 = i2 <-> int_eqb i1 i2 = true :=
 Definition zero : int := int63_of_Z 0%Z eq_refl.
 Definition one : int := int63_of_Z 1%Z eq_refl.
 Definition neg_one : int := int63_of_Z (-1)%Z eq_refl.
+
+(*Add these as axioms: the Coq code never calls them*)
+Axiom add : int -> int -> int.
+Axiom mult: int -> int -> int.

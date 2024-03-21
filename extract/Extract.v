@@ -36,6 +36,7 @@ Extract Inlined Constant CoqBigInt.add => "BigInt.add".
 Extract Inlined Constant CoqBigInt.lt => "BigInt.lt".
 Extract Inlined Constant CoqBigInt.compare => "BigInt.compare".
 Extract Inlined Constant CoqBigInt.hash => "BigInt.hash".
+Extract Inlined Constant CoqBigInt.neg_one => "(BigInt.of_int (-1))".
 Extract Inlined Constant CoqBigInt.two => "(BigInt.of_int 2)".
 Extract Inlined Constant CoqBigInt.three => "(BigInt.of_int 3)".
 Extract Inlined Constant CoqBigInt.four => "(BigInt.of_int 4)".
@@ -50,6 +51,8 @@ Extract Inlined Constant CoqInt.int_eqb => "Int.equal".
 Extract Inlined Constant CoqInt.zero => "Int.zero".
 Extract Inlined Constant CoqInt.one => "Int.one".
 Extract Inlined Constant CoqInt.neg_one => "Int.minus_one".
+Extract Inlined Constant CoqInt.add => "Int.add".
+Extract Inlined Constant CoqInt.mult => "Int.mul".
 Extract Inlined Constant Hashcons.int_65599 => "65599".
 
 Extract Inlined Constant CoqBigInt.to_Z => "ZCompat.to_Z_big".

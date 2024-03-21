@@ -3,7 +3,7 @@ From ExtLib Require Import Monads.
 Import MonadNotation.
 
 Definition mk_ty (n: ty_node_c) : ty_c :=
-  mk_ty_c n Weakhtbl.dummy_tag.
+  mk_ty_c n CoqWeakhtbl.dummy_tag.
 
 Definition ty_var (n: tvsymbol) : hashcons_st _ ty_c :=
   Hsty.hashcons (mk_ty (Tyvar n)).
@@ -157,13 +157,13 @@ Definition create_tysymbol (name: preid) (args: list tvsymbol) (d: type_def ty_c
     | Range ir =>
       if negb (null args) then
         throw IllegalTypeParameters
-      else if CoqBigInt.lt ir.(Number.ir_upper) ir.(Number.ir_lower)
+      else if CoqBigInt.lt ir.(CoqNumber.ir_upper) ir.(CoqNumber.ir_lower)
         then throw EmptyRange
       else err_ret tt
     | Float fp => if negb (null args) then
         throw IllegalTypeParameters
-      else if CoqBigInt.lt fp.(Number.fp_exponent_digits) CoqBigInt.one ||
-        CoqBigInt.lt (fp.(Number.fp_significand_digits)) CoqBigInt.one then
+      else if CoqBigInt.lt fp.(CoqNumber.fp_exponent_digits) CoqBigInt.one ||
+        CoqBigInt.lt (fp.(CoqNumber.fp_significand_digits)) CoqBigInt.one then
         throw BadFloatSpec
       else err_ret tt
     end in
