@@ -20,8 +20,8 @@ type tvsymbol = private {
 }
 
 module Mtv : Extmap.S with type key = tvsymbol
-module Stv : Extset.S with type elt = tvsymbol
-(*module Htv : Exthtbl.S with type key = tvsymbol*)
+module Stv : Extset.S with module M = Mtv
+module Htv : Exthtbl.S with type key = tvsymbol
 
 val tv_compare : tvsymbol -> tvsymbol -> int
 val tv_equal : tvsymbol -> tvsymbol -> bool
@@ -36,8 +36,8 @@ val tv_of_string : string -> tvsymbol
 type 'a type_def =
   | NoDef
   | Alias of 'a
-  | Range of CoqNumber.int_range
-  | Float of CoqNumber.float_format
+  | Range of Number.int_range
+  | Float of Number.float_format
 
 (*Our types are different:*)
 
@@ -67,14 +67,14 @@ type ty = ty_node_c ty_o
 type tysymbol = ty tysymbol_o
 
 module Mts : Extmap.S with type key = tysymbol
-(*module Sts : Extset.S with module M = Mts
-module Hts : Exthtbl.S with type key = tysymbol
-module Wts : Weakhtbl.S with type key = tysymbol*)
+module Sts : Extset.S with module M = Mts
+(*module Hts : Exthtbl.S with type key = tysymbol*)
+module Wts : Weakhtbl.S with type key = tysymbol
 
 module Mty : Extmap.S with type key = ty
-module Sty : Extset.S (*with module M = Mty
+module Sty : Extset.S with module M = Mty
 module Hty : Exthtbl.S with type key = ty
-module Wty : Weakhtbl.S with type key = ty*)
+module Wty : Weakhtbl.S with type key = ty
 
 val ts_compare : tysymbol -> tysymbol -> int
 val ty_compare : ty -> ty -> int

@@ -4,10 +4,40 @@
 Require Export ErrorMonad.
 Require CoqBigInt.
 From stdpp Require Import pmap zmap.  
+(*For sorting*)
+Require mathcomp.ssreflect.path.
+
+(*Sorted lists*)
+(*Compare list (A * B), where sorted by A already*)
+Fixpoint cmp_sorted_list {A B C: Type} (eq_A: A -> A -> bool) 
+  (lt_A: A -> A -> bool) (cmp_B: B -> C -> CoqInt.int)
+  (l1: list (A * B)) (l2: (list (A * C))) : CoqInt.int :=
+  match l1, l2 with
+  | (k1, v1) :: t1, (k2, v2) :: t2 => if lt_A k1 k2 then CoqInt.neg_one
+                          else if eq_A k1 k2 then 
+                            (*Compare values, if equal, then recurse*)
+                            let x := cmp_B v1 v2 in
+                            if CoqInt.int_eqb x CoqInt.zero then
+                              cmp_sorted_list eq_A lt_A cmp_B t1 t2
+                            else x
+                          else CoqInt.one
+  | nil, _ :: _ => CoqInt.neg_one
+  | _ :: _, nil => CoqInt.one
+  | nil, nil => CoqInt.zero
+  end.
+
+Fixpoint find_minmax {A: Type} (cmp: A -> A -> bool) (l: list A) : option A :=
+  match l with
+  | nil => None
+  | x :: tl => 
+    match (find_minmax cmp tl) with
+    | Some y => if cmp x y then Some x else Some y
+    | None => Some x
+    end
+  end.
 
 (*We implement the [extmap] interface from Why3, with the following
   exceptions
-  1. [compare] and [equal] on maps (for now)
   2.  [max_binding] and [min_binding], which are
     much more difficult in a trie than in a BST
   3. [split] and [translate], which do not have natural counterparts
@@ -34,7 +64,7 @@ Parameter remove: key -> t a -> t a.
 Parameter merge: (key -> option a -> option b -> option c) ->
   t a -> t b -> t c.
 Parameter union: (key -> a -> a -> option a) -> t a -> t a -> t a.
-(*Parameter compare: (a -> a -> Z) -> t a -> t a -> Z.*)
+Parameter compare: (a -> a -> CoqInt.int) -> t a -> t a -> CoqInt.int.
 (*TODO: do we want to just use (a -> a -> bool) and have separate
   erased proof?*)
 Parameter equal: EqDecision a -> t a -> t a -> bool.
@@ -48,8 +78,8 @@ Parameter partition: (key -> a -> bool) -> t a -> (t a * t a).
 Parameter cardinal: t a -> CoqBigInt.t.
 Parameter bindings: t a -> list (key * a).
 (*NOTE: can we avoid these?*)
-(*Parameter min_binding: t a -> errorM (key * a).
-Parameter max_binding: t a -> (key * a).*)
+Parameter min_binding: t a -> errorM (key * a).
+Parameter max_binding: t a -> errorM (key * a).
 Parameter choose: t a -> errorM (key * a).
 (*Parameter split: key -> t a -> t a * option a * t a.*)
 Parameter find: key -> t a -> errorM a.
@@ -66,7 +96,7 @@ Parameter set_inter: t a -> t b -> t a.
 Parameter set_diff: t a -> t b -> t a.
 Parameter set_submap: t a -> t b -> bool.
 Parameter set_disjoint: t a -> t b -> bool.
-(*Parameter set_compare: t a -> t b -> Z.*)
+Parameter set_compare: t a -> t b -> CoqInt.int.
 Parameter set_equal: t a -> t b -> bool.
 Parameter find_def: a -> key -> t a -> a.
 Parameter find_opt: key -> t a -> option a.
@@ -88,12 +118,12 @@ Parameter contains: t a -> key -> bool.
 Parameter domain: t a -> t unit.
 Parameter subdomain: (key -> a -> bool) -> t a -> t unit.
 Parameter is_num_elt: CoqBigInt.t -> t a -> bool.
-(*Parameter enumeration: Type -> Type.
+Parameter enumeration: Type -> Type.
 Parameter val_enum: enumeration a -> option (key * a).
 Parameter start_enum: t a -> enumeration a.
 Parameter next_enum: enumeration a -> enumeration a.
 Parameter start_ge_enum: key -> t a -> enumeration a.
-Parameter next_ge_enum: key -> enumeration a -> enumeration a.*)
+Parameter next_ge_enum: key -> enumeration a -> enumeration a.
 
 End Types.
 
@@ -306,6 +336,40 @@ Definition union (f: key -> a -> a -> option a) (m1: t a) (m2: t a):
     | Some v1, Some v2 => f k v1 v2
     end) m1 m2.
 
+Definition bindings {a: Type} (m: t a) : list (key * a) :=
+  (map snd (map_to_list (mp m))).
+
+(*Comparison*)
+(*We do this very inefficiently for now: make list, sort by key (positive),
+  then compare sorted lists*)
+Definition sorted_bindings {a: Type} (m : t a) :
+  list (key * a) :=
+  let l1 : list (key * a) := bindings m in
+  path.sort(fun x y => Z.leb (tag (fst x)) (tag (fst y))) l1.
+
+Definition compare_aux {a b: Type} (cmp: a -> b -> CoqInt.int) (m1 : t a) (m2: t b) : CoqInt.int :=
+  let l1_sort := sorted_bindings m1 in
+  let l2_sort := sorted_bindings m2 in
+  cmp_sorted_list (fun x y => Z.eqb (tag x) (tag y))
+    (fun x y => Z.ltb (tag x) (tag y)) cmp l1_sort l2_sort.
+
+Definition compare := @compare_aux a a.
+
+(*Very inefficient: get list and scan through*)
+Definition min_binding (m: t a) : errorM (key * a) :=
+  let l := bindings m in
+  match find_minmax (fun x y => Z.leb (tag (fst x)) (tag (fst y))) l with
+  | Some x => err_ret x
+  | None => throw Not_found
+  end.
+
+(*Just switch cmp function*)
+Definition max_binding (m: t a) : errorM (key * a) :=
+  let l := bindings m in
+  match find_minmax (fun x y => Z.leb (tag (fst y)) (tag (fst x))) l with
+  | Some x => err_ret x
+  | None => throw Not_found
+  end.
 
 Definition equal {a: Type} (eq: EqDecision a) (m1: t a) (m2: t a) : bool :=
    @Zmap_eq_dec _ (@prod_eq_dec _ T.eq _ eq) (mp m1) (mp m2). 
@@ -342,9 +406,6 @@ Definition partition (f: key -> a -> bool) (m: t a) : (t a * t a) :=
   size function, maybe not*)
 Definition cardinal (m: t a) : CoqBigInt.t :=
   CoqBigInt.of_Z (Z.of_nat (map_size (mp m))).
-
-Definition bindings {a: Type} (m: t a) : list (key * a) :=
-  (map snd (map_to_list (mp m))).
 
 (*This is NOT guaranteed to get the minimum element.
   TODO: fix (or just don't include this)*)
@@ -456,6 +517,9 @@ Definition set_submap (m1: t a) (m2: t b) : bool :=
 
 Definition set_disjoint (m1: t a) (m2: t b) : bool :=
   disjoint (fun _ _ _ => false) m1 m2.
+
+Definition set_compare (m1: t a) (m2: t b) : CoqInt.int :=
+  compare_aux (fun _ _ => CoqInt.zero) m1 m2.
 
 (*This is not particularly efficient, but we use the
   canonicity property to say that if the key lists are equal,
@@ -701,6 +765,65 @@ Proof.
   destruct (mp m !! tag k); auto.
 Qed.
 
+(*Enumerations*)
+(*We fake this for now*)
+Inductive enum (A: Type) : Type :=
+  | Enum_end
+  | Enum_list : list (key * A) -> (key * A) -> list (key * A) -> enum A.
+Definition enumeration : Type -> Type := enum.
+Arguments Enum_end {_}.
+Arguments Enum_list {_}.
 
+Definition val_enum {A: Type} (e: enumeration A) : option (key * A) :=
+  match e with
+  | Enum_end => None
+  | Enum_list _ x _ => Some x
+  end. 
+
+Definition next_enum {A: Type} (e: enumeration A) : enumeration A :=
+  match e with
+  | Enum_end => Enum_end
+  | Enum_list l1 x l2 =>
+    match l2 with
+    | nil => Enum_end
+    | y :: t2 => Enum_list (x :: l1) y t2
+    end
+  end.
+
+(*Important that these are sorted, or else [next_ge_enum] wont work*)
+Definition start_enum {A: Type} (m: t A) : enumeration A :=
+  match (sorted_bindings m) with
+  | nil => Enum_end
+  | x :: t => Enum_list nil x t
+  end.
+
+(*Keep iterating (0 or more times) until the current element
+  satisfies the predicate*)
+Fixpoint enum_until_aux {A: Type} (f: key -> bool) (prev: list (key * A)) 
+  (curr: key * A)
+  (remain: list (key * A)) :
+  option (list (key * A) * (key * A) * list (key * A)) :=
+  if f (fst curr) then Some (prev, curr, remain)
+  else match remain with
+        | nil => None
+        | y :: tl => enum_until_aux f (curr :: prev) y tl
+  end.
+
+Definition enum_until {A: Type} (f: key -> bool) (e: enumeration A) : enumeration A :=
+  match e with
+  | Enum_end => Enum_end
+  | Enum_list l1 x l2 => 
+    match enum_until_aux f l1 x l2 with
+    | None => Enum_end
+    | Some (l1', y, l2') => Enum_list l1' y l2'
+    end
+  end.
+
+(*These are quite inefficient*)
+Definition next_ge_enum {A: Type} (k: key) (e: enumeration A) : enumeration A :=
+  enum_until (fun x => Z.geb (tag x) (tag k)) e.
+
+Definition start_ge_enum {A: Type} (k: key) (m: t A) : enumeration A :=
+  next_ge_enum k (start_enum m).
 
 End Make.

@@ -15,3 +15,13 @@ let is_ts_tuple ts = ts_equal ts (ts_tuple (List.length ts.ts_args))
 
 let is_ts_tuple_id id =
   try Some (Hid.find ts_tuple_ids id) with Not_found -> None
+
+module Ty2 = MakeMSHW(TyTagged)
+module Hty = Ty2.H
+module Wty = Ty2.W
+
+module Tsym2 = MakeMSHW(TsymTagged)
+module Wts = Tsym2.W
+
+module Tvar2 = MakeMSHW(TvarTagged)
+module Htv = Tvar2.H

@@ -1,5 +1,5 @@
 From Src.core Require Import IdentDefs TyDefs TyFuncs.
-From Src.util Require Import Extmap Extset Hashcons Ctr.
+From Src.util Require Import extmap extset hashcons Ctr.
 From stdpp Require Import gmap.
 From Coq Require Extraction.
 From ExtLib Require Import Monads EitherMonad StateMonad.
@@ -53,7 +53,7 @@ Extract Inlined Constant CoqInt.one => "Int.one".
 Extract Inlined Constant CoqInt.neg_one => "Int.minus_one".
 Extract Inlined Constant CoqInt.add => "Int.add".
 Extract Inlined Constant CoqInt.mult => "Int.mul".
-Extract Inlined Constant Hashcons.int_65599 => "65599".
+Extract Inlined Constant hashcons.int_65599 => "65599".
 
 Extract Inlined Constant CoqBigInt.to_Z => "ZCompat.to_Z_big".
 Extract Inlined Constant CoqBigInt.of_Z => "ZCompat.of_Z_big".
@@ -203,7 +203,7 @@ Extraction Inline mk_errtype.
 (*Unset Extraction Optimize.*)
 
 Separate Extraction
-  Extmap Extset CoqHashtbl IdentDefs TyDefs TyFuncs. (*Ty.ty_v_map Ident.*)
+  CoqNumber hashcons extmap extset CoqHashtbl IdentDefs TyDefs TyFuncs. (*Ty.ty_v_map Ident.*)
 (*Separate Extraction Extmap.
 Separate Extraction Ty.ty Ty.ty_v_map Ident.*)
 

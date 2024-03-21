@@ -66,6 +66,13 @@ sig
   val compare : t -> t -> int
 end
 
+module TaggedList (X: TaggedType) =
+struct
+  type t = X.t list
+  let tag = Hashcons.combine_big_list X.tag (BigInt.of_int 3)
+  let equ_ts ts1 ts2 = X.tag ts1 == X.tag ts2
+  let eq = Lists.equal equ_ts
+end
 
 module OrderedHashedList (X : TaggedType) =
 struct

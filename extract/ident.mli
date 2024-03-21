@@ -20,7 +20,7 @@ type attribute = private {
 [@@deriving sexp]
 
 module Mattr : Extmap.S with type key = attribute
-module Sattr : Extset.S with type elt = attribute (*module M = Mattr*)
+module Sattr : Extset.S with module M = Mattr
 
 val attr_compare : attribute -> attribute -> int
 val attr_equal : attribute -> attribute -> bool
@@ -72,9 +72,9 @@ type ident = private {
 }
 
 module Mid : Extmap.S with type key = ident
-module Sid : Extset.S with type elt = ident (*module M = Mid*)
+module Sid : Extset.S with module M = Mid
 module Hid : Exthtbl.S with type key = ident
-(*module Wid : Weakhtbl.S with type key = ident*)
+module Wid : Weakhtbl.S with type key = ident
 
 val id_compare : ident -> ident -> int
 val id_equal : ident -> ident -> bool

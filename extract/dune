@@ -3,12 +3,12 @@
  (extracted_modules 
   BinNums BinPos Datatypes Specif  List0 String0
   base Basics BinInt zmap pmap fin_maps numbers option0 decidable
-  ErrorMonad CoqUtil CoqBigInt LocTy StateMonad
-  Extmap Extset CoqWstdlib CoqWeakhtbl CoqHashtbl Hashcons CoqNumber Ctr
+  ErrorMonad CoqUtil CoqBigInt LocTy StateMonad ssrbool path
+  extmap extset CoqWstdlib CoqWeakhtbl CoqHashtbl hashcons CoqNumber Ctr
   IntFuncs 
   IdentDefs
   TyDefs TyFuncs)
- (theories Src stdpp Proofs ExtLib)
+ (theories Src stdpp Proofs ExtLib mathcomp.ssreflect elpi HB)
  )
 
 ;create Loc.ml (only for testing)
@@ -54,12 +54,26 @@
   )
  )
 
+;create Number.ml
+ (rule
+  (deps CoqNumber.ml numberextra.ml)
+  (targets number.ml)
+  (action 
+  (with-stdout-to number.ml
+    (pipe-stdout
+     (cat CoqNumber.ml numberextra.ml)
+     (run sed -e "s/open CoqNumber//g")
+    )
+   )
+  )
+ )
+
 ;create Ident.ml
  (rule
   (deps IdentDefs.ml IdentExtra.ml)
-  (targets Ident.ml)
+  (targets ident.ml)
   (action 
-  (with-stdout-to Ident.ml
+  (with-stdout-to ident.ml
     (pipe-stdout
      (cat IdentDefs.ml IdentExtra.ml)
      (run sed -e "s/open IdentDefs//g")
@@ -74,15 +88,16 @@
 ;Create Ty.ml by concatenation Defs, Exn, Funcs
  (rule
   (deps TyDefs.ml TyExn.ml TyFuncs.ml TyExtra.ml)
-  (targets Ty.ml)
+  (targets ty.ml)
   (action 
-  (with-stdout-to Ty.ml
+  (with-stdout-to ty.ml
     (pipe-stdout
      (cat TyDefs.ml TyExn.ml TyFuncs.ml TyExtra.ml)
      (run sed -e "s/open TyDefs//g")
      (run sed -e "s/open IdentDefs/open Ident/g")
      (run sed -e "s/open CoqWstdlib/open Wstdlib/g")
      (run sed -e "s/open CoqWeakhtbl/open Weakhtbl/g")
+     (run sed -e "s/CoqNumber/Number/g")
     )
    )
   )
@@ -91,8 +106,9 @@
 (library
  (name Why3Coq)
  (modules (:standard \ TyExn TyDefs TyFuncs TyExtra IdentDefs IdentExtra 
-  LocTy LocExtra Locpre CoqWstdlib Wstdlibextra CoqWeakhtbl Weakhtblextra))
- (flags (:standard -w -33 -w -32)) ;32 is unused value - extraction results in values we don't want in mli file
+  LocTy LocExtra Locpre CoqWstdlib Wstdlibextra CoqWeakhtbl Weakhtblextra
+  CoqNumber numberextra))
+ (flags (:standard -w -33 -w -32 -w -9)) ;32 is unused value - extraction results in values we don't want in mli file
  (libraries zarith sexplib re))
 
 

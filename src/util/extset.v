@@ -1,5 +1,5 @@
 Require Export ErrorMonad.
-Require Import Extmap.
+Require Import extmap.
 From ExtLib Require Import Monads.
 Import MonadNotation.
 
@@ -8,8 +8,10 @@ Local Open Scope monad_scope.
 (*Slightly different than OCaml: doesnt depend on map*)
 Module Type S.
 
-Parameter elt : Type.
-Parameter t : Type.
+Declare Module M : extmap.S.
+
+Definition elt : Type := M.key.
+Definition t : Type := M.t unit.
 
 Parameter empty : t.
 Parameter is_empty : t -> bool.
@@ -18,7 +20,7 @@ Parameter add : elt -> t -> t.
 Parameter singleton: elt -> t.
 Parameter remove: elt -> t -> t.
 Parameter merge : (elt -> bool -> bool -> bool) -> t -> t -> t.
-(*Parameter compare: t -> t -> int.*)
+Parameter compare: t -> t -> CoqInt.int.
 Parameter equal: t -> t -> bool.
 Parameter subset: t -> t -> bool.
 Parameter disjoint: t -> t -> bool.
@@ -30,8 +32,8 @@ Parameter filter: (elt -> bool) -> t -> t.
 Parameter partition: (elt -> bool) -> t -> t * t.
 Parameter cardinal: t -> CoqBigInt.t.
 Parameter elements: t -> list elt.
-(*Parameter min_elt: t -> elt.
-Parameter max_elt: t -> elt.*)
+Parameter min_elt: t -> errorM elt.
+Parameter max_elt: t -> errorM elt.
 Parameter choose: t -> errorM elt.
 (*Parameter split: elt -> t -> t * bool * t*)
 Parameter change: (bool -> bool) -> elt -> t -> t.
@@ -58,8 +60,9 @@ Parameter equal_eq: forall (m1 m2: t),
 End S.
 
 (*This is almost verbatim from the OCaml*)
-Module MakeOfMap (M: Extmap.S) <: S.
+Module MakeOfMap (M1: extmap.S) <: S.
 
+Module M := M1.
 Definition elt := M.key.
 Definition t := M.t unit.
 
@@ -75,6 +78,8 @@ Definition remove := @M.remove unit.
 Definition merge (f: elt -> bool -> bool -> bool) (s1: t) (s2: t) : t :=
   M.merge (fun e a b => is_true_o (f e (isSome a) (isSome b))) s1 s2.
 
+Definition compare := @M.set_compare unit unit.
+
 Definition equal := @M.set_equal unit unit.
 Definition subset := @M.set_submap unit unit.
 Definition disjoint := @M.set_disjoint unit unit.
@@ -87,6 +92,10 @@ Definition filter f s := @M.filter unit (fun e _ => f e) s.
 Definition partition f s := @M.partition unit (fun e _ => f e) s.
 Definition cardinal := @M.cardinal unit.
 Definition elements := @M.keys unit.
+Definition min_elt (s: t) : errorM elt :=
+  err_bnd (fun y => err_ret (fst y)) (M.min_binding s).
+Definition max_elt (s: t) : errorM elt :=
+  err_bnd (fun y => err_ret (fst y)) (M.max_binding s).
 Definition choose (s: t) : errorM elt :=
   err_bnd (fun y => err_ret (fst y)) (@M.choose unit s).
 Definition change (f: bool -> bool) (x: elt) (s: t) : t :=
@@ -121,7 +130,7 @@ Qed.
 End MakeOfMap.
 
 Module Make (X: TaggedType).
-Module M := Extmap.Make(X).
-Module St := Extset.MakeOfMap(M).
+Module M1 := extmap.Make(X).
+Module St := extset.MakeOfMap(M1).
 Include St.
 End Make.

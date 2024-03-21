@@ -15,12 +15,9 @@ let list_attributes () =
   Hsattr.iter (fun a -> acc := a.attr_string :: !acc);
   !acc
 
-module Id2 = MakeMSHW (struct
-type t = ident
-let tag id = id.id_tag
-let eq t1 t2 = id_equal t1 t2
-end)
+module Id2 = MakeMSHW(IdentTag)
 module Hid = Id2.H
+module Wid = Id2.W
 
 let sexp_of_attribute (a:attribute) =
   Mysexplib.sexp_of_string a.attr_string

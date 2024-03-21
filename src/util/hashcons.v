@@ -10,17 +10,16 @@ Parameter hash : t -> CoqBigInt.t.
 Parameter tag : CoqBigInt.t -> t -> t.
 End HashedType.
 
-(*A very limited version of the interface*)
-Module Type S (H: HashedType).
+Module Type S.
 Parameter t : Type.
-Parameter hashcons : t -> @hashcons_st H.t t.
-Parameter unique : t -> @hashcons_st H.t t. (*Register the value without hash-consing*)
-Parameter iter : (t -> unit) -> @hashcons_st H.t unit.
-Parameter stats : unit -> hashcons_st H.t 
+Parameter hashcons : t -> @hashcons_st t t.
+Parameter unique : t -> hashcons_st t t. (*Register the value without hash-consing*)
+Parameter iter : (t -> unit) -> hashcons_st t unit.
+Parameter stats: unit -> hashcons_st t 
   (CoqInt.int * CoqInt.int * CoqInt.int * CoqInt.int * CoqInt.int * CoqInt.int).
 End S.
 
-Module Make (H: HashedType) <: S H.
+Module Make (H: HashedType) <: S.
 Definition t := H.t.
 
 Definition hash_st : @hashcons_unit H.t := hashcons_new _.

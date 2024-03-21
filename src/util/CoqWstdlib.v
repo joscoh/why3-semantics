@@ -1,6 +1,6 @@
 Require Import Coq.ZArith.ZArith.
 From stdpp Require Import base.
-Require Export CoqInt Extmap Extset.
+Require Export CoqInt extmap extset.
 Require CoqWeakhtbl.
 
 (*TODO: see*)
@@ -33,8 +33,8 @@ End OrderedHashed.
 
 Module MakeMS (X: TaggedType).
 Module T := OrderedHashed(X).
-Module M := Extmap.Make(X).
-Module S := Extset.MakeOfMap(M).
+Module M := extmap.Make(X).
+Module S := extset.MakeOfMap(M).
 End MakeMS.
 
 Module MakeTagged (X: CoqWeakhtbl.Weakey) <: TaggedType.
@@ -47,8 +47,8 @@ End MakeTagged.
 Module MakeMSWeak (X: CoqWeakhtbl.Weakey).
 Module Tg := MakeTagged(X).
 Module T := OrderedHashed(Tg).
-Module M := Extmap.Make(Tg).
-Module S := Extset.MakeOfMap(M).
+Module M := extmap.Make(Tg).
+Module S := extset.MakeOfMap(M).
 End MakeMSWeak.
 
 

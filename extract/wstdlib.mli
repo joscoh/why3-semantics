@@ -12,15 +12,15 @@
 (** {1 Specific instances of Set, Map, Hashtbl on int, string, float, and tagged types} *)
 
 module Mint : Extmap.S with type key = int
-module Sint : Extset.S with type elt = int (*module M = Mint*)
+module Sint : Extset.S with module M = Mint
 module Hint : Exthtbl.S with type key = int
 
 module Mstr : Extmap.S with type key = string
-module Sstr : Extset.S with type elt = string (*module M = Mstr*)
+module Sstr : Extset.S with module M = Mstr
 module Hstr : Exthtbl.S with type key = string
 
 module Mfloat : Extmap.S with type key = float
-module Sfloat : Extset.S with type elt = float (*module M = Mfloat*)
+module Sfloat : Extset.S with module M = Mfloat
 module Hfloat : Exthtbl.S with type key = float
 
 (* Set, Map, Hashtbl on structures with a unique tag *)
@@ -43,32 +43,35 @@ end
 module OrderedHashed (X : TaggedType) :
   OrderedHashedType with type t = X.t
 
+module TaggedList (X: TaggedType) :
+  TaggedType with type t = X.t list
+
 module OrderedHashedList (X : TaggedType) :
   OrderedHashedType with type t = X.t list
 
 module MakeMS (X : TaggedType) :
 sig
   module M : Extmap.S with type key = X.t
-  module S : Extset.S with type elt = X.t (*module M = M*)
+  module S : Extset.S with module M = M
 end
 
 module MakeMSWeak (X : Weakhtbl.Weakey) :
 sig
   module M : Extmap.S with type key = X.t
-  module S : Extset.S with type elt = X.t (*module M = M*)
+  module S : Extset.S with module M = M
 end
 
 module MakeMSH (X : TaggedType) :
 sig
   module M : Extmap.S with type key = X.t
-  module S : Extset.S with type elt = X.t (*module M = M*)
+  module S : Extset.S with module M = M
   module H : Exthtbl.S with type key = X.t
 end
 
 module MakeMSHW (X : Weakhtbl.Weakey) :
 sig
   module M : Extmap.S with type key = X.t
-  module S : Extset.S with type elt = X.t (*module M = M*)
+  module S : Extset.S with module M = M
   module H : Exthtbl.S with type key = X.t
   module W : Weakhtbl.S with type key = X.t
 end

@@ -1,4 +1,3 @@
-(*Why3 Number uses BigInt; we will use Z*)
 Require Import CoqUtil.
 Require CoqBigInt.
 

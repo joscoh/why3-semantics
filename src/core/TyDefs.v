@@ -1,7 +1,7 @@
 Require Import CoqWstdlib.
 Require Import IdentDefs.
 Require CoqNumber.
-Require Hashcons CoqWeakhtbl. 
+Require hashcons CoqWeakhtbl. 
 Require Import stdpp.base.
 Require Import Coq.Wellfounded.Inverse_Image.
 Require Import IntFuncs.
@@ -311,7 +311,7 @@ Definition ty_compare (ty1 ty2: ty_c) : int :=
 (*NOTE: in OCaml, ts_equal and ty_equal are reference equality
   because of hash consing - TODO: maybe change*)
 
-Module TyHash <: Hashcons.HashedType.
+Module TyHash <: hashcons.HashedType.
 Definition t := ty_c.
 Definition equal (ty1 ty2: ty_c) : bool :=
   match ty_node_of ty1, ty_node_of ty2 with
@@ -325,13 +325,13 @@ Definition hash (t: ty_c) : CoqBigInt.t :=
   but ptree vs hash table makes it OK (though numbers are large!)*)
   match ty_node_of t with
     | Tyvar v => tv_hash v
-    | Tyapp s tl => Hashcons.combine_big_list ty_hash (ts_hash s) tl
+    | Tyapp s tl => hashcons.combine_big_list ty_hash (ts_hash s) tl
   end.
 
 Definition tag n ty := mk_ty_c (ty_node_of ty) (CoqWeakhtbl.create_tag n).
 End TyHash.
 
-Module Hsty := Hashcons.Make TyHash.
+Module Hsty := hashcons.Make TyHash.
 
 Definition mk_ts (name: preid) (args: list tvsymbol) (d: type_def ty_c) : 
   ctr tysymbol_c :=
