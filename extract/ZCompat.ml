@@ -8,7 +8,7 @@ let to_pos (z: Z.t) : BinNums.positive =
       let b = Z.testbit z n in
       if b then build_pos (n-1) (Coq_xI base)
       else build_pos (n-1) (Coq_xO base)
-  in build_pos (Z.numbits z - 1) Coq_xH  
+  in build_pos (Z.numbits z - 2) Coq_xH  
 
 let to_Z (z: Z.t) : BinNums.coq_Z =
   if Z.equal z Z.zero then Z0
@@ -16,13 +16,14 @@ let to_Z (z: Z.t) : BinNums.coq_Z =
   else Zneg (to_pos (Z.neg z))
 
 let of_pos (p: BinNums.positive) : Z.t =
-  let rec of_pos_aux (p: BinNums.positive) (z: Z.t) : Z.t =
+  (*TODO: tail recursive?*)
+  let rec of_pos_aux (p: BinNums.positive) : Z.t =
     match p with
-    | Coq_xH -> z
-    | Coq_xO p' -> of_pos_aux p' (Z.shift_left z 1) (*2 * z*)
-    | Coq_xI p' -> of_pos_aux p' (Z.succ (Z.shift_left z 1))(*2 * z + 1*)
+    | Coq_xH -> Z.one
+    | Coq_xO p' -> Z.shift_left (of_pos_aux p') 1 (*2 * z*)
+    | Coq_xI p' -> Z.succ (Z.shift_left (of_pos_aux p') 1) (*2 * z + 1*)
   in
-  of_pos_aux p Z.one
+  of_pos_aux p
 
 let of_Z (z: BinNums.coq_Z) : Z.t =
   match z with
