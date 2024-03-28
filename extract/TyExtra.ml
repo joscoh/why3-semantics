@@ -2,7 +2,7 @@ let oty_type = function Some ty -> ty | None -> raise UnexpectedProp
 let ts_tuple_ids = Hid.create 17
 
 (*JOSH: remove memoization*)
-let ts_tuple = (*Hint.memo 17*) (fun n ->
+let ts_tuple = Hint.memo 17 (fun n ->
   let vl = ref [] in
   for _i = 1 to n do vl := create_tvsymbol (id_fresh "a") :: !vl done;
   let ts = create_tysymbol (id_fresh ("tuple" ^ string_of_int n)) !vl NoDef in

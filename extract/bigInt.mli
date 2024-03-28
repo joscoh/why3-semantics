@@ -13,8 +13,8 @@
 
 type t
 
-(*val t_of_sexp: Mysexplib.sexp -> t
-val sexp_of_t : t -> Mysexplib.sexp*)
+val t_of_sexp: Mysexplib.sexp -> t
+val sexp_of_t : t -> Mysexplib.sexp
 (*[@@deriving sexp]*)
 
 val compare : t -> t -> int

@@ -11,14 +11,14 @@
 
 (*open Mysexplib.Std_big_int [@@warning "-33"]
 open Big_int*)
-(*open Sexplib.Sexp
-open Sexplib.Conv*)
+open Sexplib.Sexp
+open Sexplib.Conv
 
 type t = Z.t
 
 
 (*Cannot derive, trying to write by hand from sexplib*)
-(*let exn_to_string e = to_string_hum (sexp_of_exn e)
+let exn_to_string e = to_string_hum (sexp_of_exn e)
 let t_of_sexp sexp =
   match sexp with
   | Atom str ->
@@ -27,7 +27,7 @@ let t_of_sexp sexp =
   | List _ -> of_sexp_error "big_int_of_sexp: atom needed" sexp
 ;;
 
-let sexp_of_t n = Atom (Big_int_Z.string_of_big_int n)*)
+let sexp_of_t n = Atom (Big_int_Z.string_of_big_int n)
 
 (*type t = big_int
 [@@deriving sexp]*)
