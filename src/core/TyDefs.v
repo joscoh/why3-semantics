@@ -1,11 +1,12 @@
 Require Import CoqWstdlib.
 Require Import IdentDefs.
 Require CoqNumber.
-Require hashcons CoqWeakhtbl. 
-Require Import stdpp.base.
+Require hashcons CoqWeakhtbl CoqHashtbl. 
+(* Require Import stdpp.base. *)
 Require Import Coq.Wellfounded.Inverse_Image.
 Require Import IntFuncs.
 Require Import CoqExthtbl.
+Local Open Scope state_scope.
 
 Record tvsymbol := {
   tv_name : ident
@@ -44,7 +45,8 @@ Definition tv_compare (tv1 tv2: tvsymbol) : CoqInt.int :=
   id_compare tv1.(tv_name) tv2.(tv_name).
 
 Definition create_tvsymbol (n: preid) : ctr tvsymbol :=
-  ctr_bnd (fun i => ctr_ret {|tv_name := i|}) (id_register n).
+  i <- id_register n ;;
+  st_ret {|tv_name := i|}.
 
 (*This has to be a stateful function which finds the existing
   identifier for the string if it has been created.
@@ -61,18 +63,16 @@ Definition tv_hashtbl : hash_st string tvsymbol unit
   := @Hstr_tv.create CoqInt.one.
 
 (*TODO: should use actual monad transformers*)
-Definition tv_of_string (s: string) : hash_ctr string tvsymbol tvsymbol :=
-  hash_ctr_bnd (fun (o: option tvsymbol) =>
-    match o with
+Definition tv_of_string (s: string) : state (CoqBigInt.t * CoqHashtbl.hashtbl string tvsymbol) tvsymbol :=
+  o <- (st_lift2 (Hstr_tv.find_opt s)) ;;
+  match o with
     | None => 
       let tv := create_tvsymbol (id_fresh1 s) in
-      hash_ctr_bnd (fun i => 
-        hash_ctr_bnd (fun _ => hash_ctr_ret i)
-        (hash_ctr_lift2 (Hstr_tv.add s i))
-      ) (hash_ctr_lift1 tv)
-    | Some v => hash_ctr_ret v
-    end
-  ) (hash_ctr_lift2 (Hstr_tv.find_opt s)).
+      i <- (st_lift1 tv) ;;
+      _ <- (st_lift2 (Hstr_tv.add s i)) ;;
+      st_ret i
+    | Some v => st_ret v
+  end.
 
 (** Type Symbols and Types **)
 Unset Elimination Schemes.
@@ -357,7 +357,8 @@ Module Hsty := hashcons.Make TyHash.
 
 Definition mk_ts (name: preid) (args: list tvsymbol) (d: type_def ty_c) : 
   ctr tysymbol_c :=
-  ctr_bnd (fun i => ctr_ret (mk_ts_c i args d)) (id_register name).
+  i <- id_register name ;;
+  st_ret (mk_ts_c i args d).
 
 Definition ty_eq : base.EqDecision ty_c :=
   dec_from_eqb _ ty_eqb_eq.

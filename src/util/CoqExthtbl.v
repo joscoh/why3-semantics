@@ -3,6 +3,7 @@ Require Import StateMonad.
 Require Import CoqHashtbl.
 (*TODO: is this bad?*)
 Require Import CoqWstdlib.
+Local Open Scope state_scope.
 Module Type S.
 
 (*Very limited for now - create, add, find*)
@@ -42,9 +43,10 @@ Section Ty.
 Definition create (_: CoqInt.int) : hash_st key value unit :=
   hash_set (create_hashtbl value).
 Definition add (k: key) (v: value) : hash_st key value unit :=
-  hash_bnd (fun h => hash_set (add_hashtbl X.tag h k v)) hash_get.
+  h <- hash_get ;;
+  hash_set (add_hashtbl X.tag h k v).
 Definition find_opt (k: key) : hash_st key value (option value) :=
-  hash_bnd (fun h => hash_ret 
-    (option_map snd (find_opt_hashtbl X.tag X.equal h k))) hash_get.
+  h <- hash_get ;;
+  st_ret (option_map snd (find_opt_hashtbl X.tag X.equal h k)).
 End Ty.
 End Make.

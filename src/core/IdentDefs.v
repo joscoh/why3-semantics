@@ -10,6 +10,7 @@ Require Import CoqWstdlib.
 Require LocTy.
 Require Export StateMonad.
 Require Import Ctr.
+Local Open Scope state_scope.
 
 (*We include another prop-valued field (erased) during extraction
   asserting equality for 2 reasons:
@@ -180,12 +181,12 @@ Definition id_ctr : ctr unit := IdCtr.create CoqBigInt.eight.
 
 Definition id_register : preid -> ctr ident :=
   fun p =>
-  ctr_bnd (fun _ => ctr_bnd (fun i => ctr_ret 
-    {| id_string := p.(pre_name);
+    _ <- IdCtr.incr tt ;;
+    i <- IdCtr.get tt ;;
+    st_ret {| id_string := p.(pre_name);
     id_attrs := p.(pre_attrs);
     id_loc := p.(pre_loc);
-    id_tag := CoqWeakhtbl.create_tag i |}) (IdCtr.get tt)) 
-    (IdCtr.incr tt).
+    id_tag := CoqWeakhtbl.create_tag i |}.
 
 (*1st 7 values of the counter correspond to builtin symbols
   (so that we don't need state)*)

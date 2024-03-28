@@ -3,7 +3,7 @@
  (extracted_modules 
   BinNums BinPos Datatypes Specif  List0 String0
   base Basics BinInt zmap pmap fin_maps numbers option0 decidable
-  ErrorMonad Byte CoqUtil CoqBigInt LocTy StateMonad ssrbool path
+  ErrorMonad Byte CoqUtil CoqBigInt LocTy StateMonad StateMonad0 ssrbool path
   extmap extset CoqWstdlib CoqWeakhtbl CoqHashtbl hashcons CoqNumber Ctr
   IntFuncs 
   CoqExthtbl

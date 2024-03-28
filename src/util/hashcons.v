@@ -1,5 +1,6 @@
 Require Import StateMonad.
 Require CoqHashtbl.
+Local Open Scope state_scope.
 
 Module Type HashedType.
 Parameter t : Type.
@@ -25,11 +26,10 @@ Definition t := H.t.
 Definition hash_st : @hashcons_unit H.t := hashcons_new _.
 
 Definition unique (d: t) : hashcons_st H.t t :=
-  hashcons_bnd (fun i =>
-    let d := H.tag i d in
-    hashcons_bnd (fun _ => hashcons_ret d) hashcons_incr
-    )
-  (hashcons_get_ctr).
+  i <- hashcons_get_ctr ;;
+  let d := H.tag i d in
+  _ <- hashcons_incr ;;
+  st_ret d.
 
 (*Steps: 1. Check to see if the value d is in the map
   2. If so, return the value found without modifying state
@@ -39,37 +39,30 @@ Definition unique (d: t) : hashcons_st H.t t :=
   don't want stdpp typeclasses*)
 (*TODO: dont do notation yet, see*)
 Definition hashcons (d: t) : @hashcons_st H.t t :=
-
-  hashcons_bnd (fun o =>
-    match o with
-    | Some k => hashcons_ret k
-    | None =>
-      hashcons_bnd (fun i => 
-        (*Change tag to counter value*)
-        let d1 := H.tag i d in
-        (*Add d1 to state*)
-        hashcons_bnd (fun _ => 
-        (*Increment counter*)
-          hashcons_bnd (fun _ =>
-            hashcons_ret d1
-          ) hashcons_incr
-        ) (hashcons_add H.hash d1)
-      )
-      hashcons_get_ctr
-    end
-  ) (hashcons_lookup H.hash H.equal d).
+  o <- hashcons_lookup H.hash H.equal d ;;
+  match o with
+  | Some k => st_ret k
+  | None =>
+    i <- hashcons_get_ctr ;;
+    (*Change tag to counter value*)
+    let d1 := H.tag i d in
+    (*Add d1 to state*)
+    _ <- hashcons_add H.hash d1 ;;
+    (*Increment counter*)
+    _ <- hashcons_incr ;;
+    st_ret d1
+  end.
 
 (*Using [iter_hashset_unsafe] is OK here because we are in a monad
   extracted to a mutable reference*)
 Definition iter (f: t -> unit) : @hashcons_st H.t unit :=
-  hashcons_bnd (fun h => 
-    hashcons_ret (CoqHashtbl.iter_hashset_unsafe f h)
-  ) hashcons_getset.
+  h <- hashcons_getset ;;
+  st_ret (CoqHashtbl.iter_hashset_unsafe f h).
 
 (*We give no stats yeto*)
 Definition stats (_ : unit) : hashcons_st H.t  
   (CoqInt.int * CoqInt.int * CoqInt.int * CoqInt.int * CoqInt.int * CoqInt.int) :=
-  hashcons_ret (CoqInt.zero, CoqInt.zero, CoqInt.zero, CoqInt.zero, CoqInt.zero, CoqInt.zero).
+  st_ret (CoqInt.zero, CoqInt.zero, CoqInt.zero, CoqInt.zero, CoqInt.zero, CoqInt.zero).
 
 End Make.
 

@@ -5,8 +5,68 @@ Require Import ErrorMonad.
 Require Import Monad.
 Require Import CoqHashtbl. (*NOTE: stdpp and coq-ext-lib cannot both
   be imported in same file!*)
-From ExtLib Require Import Monads MonadState StateMonad EitherMonad.
-Import MonadNotation.
+From ExtLib Require Export Monads MonadState StateMonad EitherMonad.
+
+(*TODO: error monad*)
+
+(*We use custom notation because we have a separate bind and return
+  for state, error, and combination (for extraction reasons)*)
+Definition st A B := (state A B). (*For extraction - bad hack*)
+Definition st_bind {A B C: Type} (f: B -> st A C) (x: st A B) : st A C :=
+  bind x f.
+Definition st_ret {A B: Type} (x: B) : st A B := ret x.
+Definition st_list {A B: Type} (l: list (st A B)) : st A (list B) := 
+  listM st_ret st_bind l.
+
+(*ExceptT errtype (state A) monad (error + state)*)
+(*We need this to be a definition for extraction.
+  We need the typeclass instances because Coq cannot infer
+  them otherwise. This is bad.*)
+Definition errState A B := (eitherT errtype (st A) B).
+Global Instance Monad_errState A: Monad (errState A) := 
+  Monad_eitherT _ (Monad_state _). 
+Global Instance MonadT_errorHashconsT K: 
+  MonadT (errState K) (state K) := 
+  MonadT_eitherT _ (Monad_state _). 
+Global Instance MonadState_errorHashconsT K: 
+  MonadState K (errState K):= MonadState_eitherT _ (Monad_state _) (MonadState_state _).
+Global Instance Exception_errorHashconsT K : 
+  MonadExc errtype (errState K) :=
+  Exception_eitherT _ (Monad_state _).
+Definition errst_lift1 {A B} (s1: st A B) : errState A B :=
+  lift s1.
+(*TODO: error monad*)
+Definition errst_lift2 {A B} (e: errorM B) : errState A B :=
+  match e with
+  | inl e => raise e
+  | inr t => ret t
+  end.
+(*For extraction*)
+Definition errst_bind {A B C : Type} (f: B -> errState A C) (x: errState A B) : errState A C :=
+  bind x f.
+Definition errst_ret {A B: Type} (x: B) : errState A B := ret x.
+Declare Scope errst_scope.
+Definition errst_list {K A: Type} (l: list (errState K A)) :
+  errState K (list A) :=
+  listM errst_ret errst_bind l.
+
+Declare Scope state_scope.
+Delimit Scope state_scope with state.
+Notation "x <- c1 ;;; c2" := (@errst_bind _ _ _ (fun x => c2) c1)
+  (at level 61, c1 at next level, right associativity) : state_scope.
+Notation "x <- c1 ;; c2" := (@st_bind _ _ _ (fun x => c2) c1)
+  (at level 61, c1 at next level, right associativity) : state_scope.
+
+(*Combining 2 states*)
+Definition st_lift1 {A B C: Type} (s1: st A C) : st (A * B) C :=
+  mkState (fun (t: A * B) => 
+    let (res, i) := (runState s1) (fst t) in
+    (res, (i, snd t))).
+Definition st_lift2 {A B C: Type} (s2: st B C) : st (A * B) C :=
+  mkState (fun (t: A * B) => 
+    let (res, i) := (runState s2) (snd t) in
+    (res, (fst t, i))).
+
 
 (*We use coq-ext-lib's monads and monad transformers.
   However, we cannot use their notations, or else the OCaml code
@@ -15,61 +75,33 @@ Import MonadNotation.
   each use of state a different set of definitions.
   (TODO: can we improve this and reduce duplication>)*)
 
-Local Open Scope monad_scope.
-Existing Instance
-     Monad_state.
-Section Ctr.
-(* Notation ctr := (state CoqBigInt.t). *)
-(*1. Mutable counter*)
-Definition ctr a := (state CoqBigInt.t a).
-Global Instance Monad_ctr: Monad ctr := Monad_state _.
-Global Instance MonadState_ctr : MonadState CoqBigInt.t ctr := MonadState_state _.
-Definition ctr_bnd {a b} (f: a -> ctr b) (m: ctr a) : ctr b := 
-  bind m f.
-Definition ctr_ret {a} (x: a) : ctr a := ret x.
+(*1. Counter*)
+
+Local Open Scope state_scope.
+Notation ctr a := (st CoqBigInt.t a).
 Definition ctr_get : ctr CoqBigInt.t := get.
 Definition ctr_set (i: CoqBigInt.t) : ctr unit := put i.
 Definition ctr_ty := ctr unit.
 Definition new_ctr (i: CoqBigInt.t) : ctr unit := put i.
-(*TODO: see if notation/inlined/whatever*)
 Definition ctr_incr : ctr unit :=
   i <- ctr_get ;; ctr_set (CoqBigInt.succ i).
-End Ctr.
 
 (*2. Hash table*)
-
-Existing Instance
-     Monad_stateT.
+Notation hash_st key value a := (st (hashtbl key value) a).
 Section HashTbl.
-Definition hash_st (key value a: Type) : Type := state (hashtbl key value) a.
-Global Instance Monad_hash_st key value: Monad (hash_st key value) := Monad_state _. 
-Global Instance MonadState_hash_st key value : 
-  MonadState (hashtbl key value) (hash_st key value) := MonadState_state _.
 Context {key value: Type} (hash: key -> CoqBigInt.t) 
   (eqb: key -> key -> bool).
-
 Definition hash_get : hash_st key value (hashtbl key value):= get.
 Definition hash_set (x: hashtbl key value) : hash_st key value unit :=
   put x.
-Definition hash_ret {a: Type} (x: a) : hash_st key value a := ret x.
-Definition hash_bnd {a b: Type} (f: a -> hash_st key value b) 
-  (m: hash_st key value a) : hash_st key value b := bind m f.
 Definition new_hash : hash_st key value unit := put (create_hashtbl value).
 Definition hash_unit := hash_st key value unit.
-Definition hash_listM {A: Type} (l: list (hash_st key value A))
- := listM hash_ret hash_bnd l.
 End HashTbl.
 
-(*3. Hash consing - combine 2 states*)
-Definition hashcons_st key a := (state (CoqBigInt.t * hashset key) a).
-Global Instance Monad_hashcons_st key: Monad (hashcons_st key) := Monad_state _. 
-Global Instance MonadState_hashcons_st key : 
-  MonadState (CoqBigInt.t * hashset key) (hashcons_st key) := MonadState_state _.
+(*3. Hash consing*)
+Notation hashcons_st key a := (st (CoqBigInt.t * hashset key) a).
 Definition hashcons_new key : hashcons_st key unit :=
   put (CoqBigInt.one, create_hashset).
-Definition hashcons_bnd {key a b} (f: a -> hashcons_st key b) (m: hashcons_st key a) :
-  hashcons_st key b := bind m f.
-Definition hashcons_ret {key a} (x: a) : hashcons_st key a := ret x.
 Section HashCons.
 Context {key: Type} (hash: key -> CoqBigInt.t) 
   (eqb: key -> key -> bool).
@@ -88,101 +120,10 @@ Definition hashcons_add (k: key) : hashcons_st key unit :=
 Definition hashcons_incr : hashcons_st key unit :=
   t <- get;;
   put (CoqBigInt.succ (fst t), snd t).
-Definition hashcons_list {K A : Type} (l: list (@hashcons_st K A)) :
-  @hashcons_st K (list A) := listM hashcons_ret hashcons_bnd l.
 End HashCons.
 Definition hashcons_unit key := hashcons_st key unit.
 
 (*4. Hash Consing + Error Handling (w monad transformers)*)
-Definition errorHashconsT (K A: Type) := (eitherT errtype 
-  (state (CoqBigInt.t * (hashset K))) A).
-Global Instance Monad_errorHashconsT K: Monad (errorHashconsT K) := Monad_eitherT _ (Monad_state _). 
-Global Instance MonadT_errorHashconsT K: MonadT (errorHashconsT K) (hashcons_st K) := 
-  MonadT_eitherT _ (Monad_state _). 
-Global Instance MonadState_errorHashconsT K: MonadState (CoqBigInt.t * (hashset K))
-  (errorHashconsT K) := MonadState_eitherT _ (Monad_state _) (MonadState_state _).
-Global Instance Exception_errorHashconsT K : MonadExc errtype (errorHashconsT K) :=
-  Exception_eitherT _ (Monad_state _).
-Definition errorHashcons_bnd {K a b} (f: a -> errorHashconsT K b) (m: errorHashconsT K a):
-  errorHashconsT K b := bind m f.
-Definition errorHashcons_ret {K a} (x: a) : errorHashconsT K a := ret x.
-Definition errorHashcons_lift {K a} (x: hashcons_st K a) : errorHashconsT K a := lift x.
-(*TODO: do we need this?*)
-Definition errorHashcons_lift2 {K a} (x: errorM a) : errorHashconsT K a := 
-  match x with
-  | inl e => raise e
-  | inr t => ret t
-  end.
-Definition errorHashcons_list {K A: Type} (l: list (@errorHashconsT K A)) :
- @errorHashconsT K (list A) :=
-  listM errorHashcons_ret errorHashcons_bnd l.
-
+Notation errorHashconsT K A := (errState (CoqBigInt.t * hashset K) A).
 (*5. Hash table + error handling*)
-Definition errorHashT (K V A: Type) := (eitherT errtype 
-  (state (hashtbl K V)) A).
-Global Instance Monad_errorHashT K V: Monad (errorHashT K V) := Monad_eitherT _ (Monad_state _). 
-Global Instance MonadT_errorHashT K V: MonadT (errorHashT K V) (hash_st K V) := 
-  MonadT_eitherT _ (Monad_state _). 
-Global Instance MonadState_errorHashT K V: MonadState (hashtbl K V)
-  (errorHashT K V) := MonadState_eitherT _ (Monad_state _) (MonadState_state _).
-Global Instance Exception_errorHashT K V : MonadExc errtype (errorHashT K V) :=
-  Exception_eitherT _ (Monad_state _).
-Definition errorHash_bnd {K V a b} (f: a -> errorHashT K V b) (m: errorHashT K V a):
-  errorHashT K V b := bind m f.
-Definition errorHash_ret {K V a} (x: a) : errorHashT K V a := ret x.
-Definition errorHash_lift {K V a} (x: hash_st K V a) : errorHashT K V a := 
-  lift x.
-(*TODO: do we need this?*)
-Definition errorHash_lift2 {K V a} (x: errorM a) : errorHashT K V a := 
-  match x with
-  | inl e => raise e
-  | inr t => ret t
-  end.
-Definition errorHash_list {K V A: Type} (l: list (@errorHashT K V A)) :
- @errorHashT K V (list A) :=
-  listM errorHash_ret errorHash_bnd l.
-
-(*Combining 2 states*)
-Definition st_lift1 {A B C: Type} (s1: state A C) : state (A * B) C :=
-  mkState (fun (t: A * B) => 
-    let (res, i) := (runState s1) (fst t) in
-    (res, (i, snd t))).
-Definition st_lift2 {A B C: Type} (s2: state B C) : state (A * B) C :=
-  mkState (fun (t: A * B) => 
-    let (res, i) := (runState s2) (snd t) in
-    (res, (fst t, i))).
-
-(*Hash table + counter (temp)*)
-Section HashCtr.
-Definition hash_ctr (key value a: Type) : Type :=
-  state (CoqBigInt.t * hashtbl key value) a.
-Global Instance Monad_hash_ctr_st key value: Monad (hash_ctr key value) := Monad_state _. 
-Global Instance MonadState_hash_ctr_st key value : 
-  MonadState (CoqBigInt.t * hashtbl key value) (hash_ctr key value) := 
-    MonadState_state _.
-Context {key value: Type} (hash: key -> CoqBigInt.t) 
-  (eqb: key -> key -> bool).
-Definition hash_ctr_get : hash_ctr key value 
-  (CoqBigInt.t * hashtbl key value):= get.
-Definition hash_ctr_set (x: CoqBigInt.t * hashtbl key value) : 
-  hash_ctr key value unit :=
-  put x.
-Definition hash_ctr_ret {a: Type} (x: a) : hash_ctr key value a := ret x.
-Definition hash_ctr_bnd {a b: Type} (f: a -> hash_ctr key value b) 
-  (m: hash_ctr key value a) : hash_ctr key value b := bind m f.
-(*Definition new_hash_ctr : hash_ctr key value unit := 
-  put (create_hashtbl value).*)
-(*Definition hash_unit := hash_st key value unit.
-Definition hash_listM {A: Type} (l: list (hash_st key value A))
- := listM hash_ret hash_bnd l.*)
-
-(*TODO: a bit worried about this with extraction*)
-Definition hash_ctr_lift1 {a: Type} (x: ctr a) : hash_ctr key value a :=
-  mkState (fun (t: CoqBigInt.t * hashtbl key value) => 
-    let (res, i) := (runState x) (fst t) in
-    (res, (i, snd t))).
-Definition hash_ctr_lift2 {a: Type} (x: hash_st key value a) : hash_ctr key value a :=
-  mkState (fun (t: CoqBigInt.t * hashtbl key value) => 
-    let (res, h) := (runState x) (snd t) in
-    (res, (fst t, h))).
-End HashCtr.
+Notation errorHashT K V A := (errState (hashtbl K V) A).
