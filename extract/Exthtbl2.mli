@@ -16,6 +16,8 @@ module type S =
   val add : key -> value -> unit
 
   val find_opt : key -> value option
+
+  val memo: (key -> value) -> key -> value
  end
 
 module type TyMod =
@@ -23,5 +25,5 @@ module type TyMod =
   type t
  end
 
-module Make (X:TaggedType) (Y:TyMod) :
+module MakeExthtbl (X:TaggedType) (Y:TyMod) :
     S with type key = X.t with type value = Y.t

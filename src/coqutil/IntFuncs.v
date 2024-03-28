@@ -65,3 +65,41 @@ Definition option_compare {A: Type} (cmp:  A -> A -> CoqInt.int) (o1 o2: option 
   | None, Some _ => CoqInt.neg_one
   | Some _, None => CoqInt.one
   end.
+
+(*Generate a list from 0 to n-1*)
+Lemma iota_lemma z : CoqBigInt.eqb z CoqBigInt.zero = false -> 
+  CoqBigInt.lt z CoqBigInt.zero = false ->
+  (Z.to_nat (CoqBigInt.to_Z (CoqBigInt.pred z)) 
+  < Z.to_nat (CoqBigInt.to_Z z))%nat.
+Proof.
+  intros Hneq Hlt.
+  rewrite CoqBigInt.pred_spec, Znat.Z2Nat.inj_pred.
+  apply PeanoNat.Nat.lt_pred_l.
+  rewrite CoqBigInt.eqb_spec in Hneq.
+  rewrite <- Z2Nat_eqb_nat in Hneq.
+  - rewrite CoqBigInt.zero_spec in Hneq; simpl in Hneq.
+    apply EqNat.beq_nat_false_stt in Hneq; exact Hneq.
+  - rewrite CoqBigInt.lt_spec, Z.ltb_ge, CoqBigInt.zero_spec in Hlt.
+    exact Hlt.
+  - rewrite CoqBigInt.zero_spec. apply Z.le_refl.
+Qed.
+
+
+Fixpoint iota_aux (z: CoqBigInt.t) (ACC: Acc lt (Z.to_nat z)) {struct ACC} : 
+  list CoqBigInt.t :=
+  match CoqBigInt.lt z CoqBigInt.zero as b return
+    CoqBigInt.lt z CoqBigInt.zero = b -> list CoqBigInt.t with
+  | true => fun _ => nil
+  | false => fun Hlt =>
+    (*TODO: see how extraction works*)
+    match CoqBigInt.eqb z CoqBigInt.zero as b return
+      CoqBigInt.eqb z CoqBigInt.zero = b -> list CoqBigInt.t with
+    | true => fun _ => nil
+    | false => fun Hneq => 
+      z :: iota_aux (CoqBigInt.pred z) (Acc_inv ACC (iota_lemma _ Hneq Hlt))
+    end eq_refl
+  end eq_refl.
+
+(*TODO: inline*)
+Definition iota (z: CoqBigInt.t) : list CoqBigInt.t :=
+  iota_aux z (Wf_nat.lt_wf _).

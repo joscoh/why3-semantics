@@ -55,6 +55,9 @@ sig
   module S : Extset.S with module M = M
 end
 
+module MakeTagged (X: Weakhtbl.Weakey) : 
+  TaggedType with type t = X.t
+
 module MakeMSWeak (X : Weakhtbl.Weakey) :
 sig
   module M : Extmap.S with type key = X.t
@@ -78,3 +81,4 @@ end
 
 module Int : OrderedHashedType with type t = int
 module Str2 : TaggedType with type t = string
+module BigIntTag : TaggedType with type t = BigInt.t

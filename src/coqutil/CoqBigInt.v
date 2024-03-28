@@ -1,5 +1,7 @@
 Require Export Coq.ZArith.BinInt.
 Require Export CoqInt.
+Require Import Coq.Strings.String.
+Require Import CoqUtil.
 From Proofs Require Import core.Common. (*For [is_true]*)
 Require Import Integer.
 
@@ -23,6 +25,7 @@ Definition one : t := 1.
 Definition zero : t := 0.
 Definition add : t -> t -> t := Z.add.
 Definition succ : t -> t := Z.succ.
+Definition pred : t -> t := Z.pred.
 Definition eqb : t -> t -> bool := Z.eqb.
 Definition compare : t -> t -> CoqInt.int :=
   fun x y => compare_to_int (Z.compare x y).
@@ -32,6 +35,10 @@ Definition mul_int : CoqInt.int -> t -> t :=
 Definition lt : t -> t -> bool := Z.ltb.
 (*TODO: implement this - we don't need a good hash function for Coq*)
 Axiom hash : t -> CoqInt.int.
+(*This function is (presumably) a bit different than
+  OCaml, but the implementation doesn't matter*)
+(*TODO: implement*)
+Axiom to_string : t -> string.
 
 (*Single digit numbers*)
 Definition two : t := 2.
@@ -79,12 +86,19 @@ Proof. reflexivity. Qed.
 Lemma eqb_spec z1 z2: eqb z1 z2 = Z.eqb (to_Z z1) (to_Z z2).
 Proof. reflexivity. Qed.
 
+Lemma pred_spec z: to_Z (pred z) = Z.pred (to_Z z).
+Proof. reflexivity. Qed.
+
+Lemma lt_spec z1 z2: lt z1 z2 = Z.ltb (to_Z z1) (to_Z z2).
+Proof. reflexivity. Qed.
+
 (*These are all opaque outside of this file*)
 Global Opaque t.
 Global Opaque zero.
 Global Opaque one.
 Global Opaque add.
 Global Opaque succ.
+Global Opaque pred.
 Global Opaque eqb.
 Global Opaque compare.
 Global Opaque mul_int.

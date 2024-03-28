@@ -166,11 +166,11 @@ val ts_func : tysymbol
 val ty_func : ty -> ty -> ty
 val ty_pred : ty -> ty (* ty_pred 'a == ty_func 'a bool *)
 
-val ts_tuple : int -> tysymbol
+val ts_tuple : BigInt.t -> tysymbol
 val ty_tuple : ty list -> ty
 
 val is_ts_tuple : tysymbol -> bool
-val is_ts_tuple_id : ident -> int option
+val is_ts_tuple_id : ident -> BigInt.t option
 
 (** {2 Operations on [ty option]} *)
 

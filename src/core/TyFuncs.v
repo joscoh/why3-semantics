@@ -330,35 +330,87 @@ Definition ty_pred (ty_a : ty_c) : hashcons_st _ ty_c :=
 (*We create the tuple type symbols and types as needed,
   storing in a hash table*)
 (*We have 2 hash tables: int -> symbol and symbol -> int*)
-(*TODO: do generalized monad stuff first*)
-(*TODO: we need the int*)
-(*No memoization, *)
-(* Module TupIds := CoqExthtbl.Make (CoqWstdlib.Int). *)
+Module TysymbolT <: CoqExthtbl.TyMod.
+Definition t := tysymbol_c.
+End TysymbolT.
+Module BigIntT <: CoqExthtbl.TyMod.
+Definition t := CoqBigInt.t.
+End BigIntT.
+Module IdentTag2 := CoqWstdlib.MakeTagged IdentTag.
+Module TupIds := CoqExthtbl.MakeExthtbl(CoqWstdlib.BigIntTag) (TysymbolT).
+Module TupNames := CoqExthtbl.MakeExthtbl IdentTag2
+  BigIntT.
 
-(*For now, skip tuples*)
+Definition ts_tuple_ids := TupNames.create CoqInt.one.
+Definition tuple_memo := TupIds.create CoqInt.one.
 
-(*Again, know that [create_tysymbol] succeds so use [mk_ts]*)
-(*NOTE: no memoization so this will increase counter each time
-  tuple is called (not ideal maybe implement TODO)*)
-(*TODO: maybe just build in tuples up to 17 elements or
-  so (what they assume) - this would avoid state issues and
-  make things just as fast*)
-(*Definition ts_tuple (n: CoqBigInt.t) :=
-  (*Create symbols a1, a2, ..., an*)
-  let vl := map (fun _ => create_tvsymbol (id_fresh "a")) (CoqInt.list_init n (fun _ => tt)) in
-  let ts := ctr_bnd (fun l => mk_ts (id_fresh ("tuple" ++ CoqInt.string_of_int n)) l NoDef)
-    (ctr_list vl) in
-  ts.*)
-(*
-Definition ty_tuple (tyl: list ty_c) :=
-  ctr_bnd (fun ts => ty_app1 ts tyl)
-    (ts_tuple (int_length2 _ tyl)).*)
+(*CoqBig int for now, but need function to turn
+  to string*)
 
+(*TODO: move*)
+(*A fold left*)
+Definition fold_left_st := fun {S1 A B: Type} (f: A -> B -> st S1 A) =>
+  fix fold_left_st (l: list B) (x: A) {struct l} :=
+  match l with
+  | nil => st_ret x
+  | h :: t => j <- f x h ;;
+              fold_left_st t j
+  end.
+
+(*NOTE: for now, we memoize manually because everything is in
+  the state monad
+  type is st (ctr * (TupNames * TupIds))
+  Not ideal TODO reduce boilerplate*)
+Definition ts_tuple : CoqBigInt.t -> st _ tysymbol_c :=
+  fun (n: CoqBigInt.t) =>
+    o <- (st_lift2 (st_lift2 (TupIds.find_opt n))) ;;
+    match o with
+    | Some v => st_ret v
+    | None =>
+      (*Create n fresh type variables*)
+      (*Order doesn't matter, so we can reverse*)
+      let vl := fold_left_st (fun l _ => 
+        h <- create_tvsymbol (IdentDefs.id_fresh1 "a") ;;
+        st_ret (h :: l)
+      ) (iota n) nil : ctr (list tvsymbol) in
+      l <- (st_lift1 vl) ;;
+      i <- (st_lift1 (id_register 
+        (id_fresh1 ("tuple" ++ CoqBigInt.to_string n)))) ;;
+      let ts :=  mk_ts_builtin i l NoDef in (*NOTE: know no error*)
+      _ <- st_lift2 (st_lift1 (TupNames.add (ts_name_of ts) n)) ;;
+      _ <- st_lift2 (st_lift2 (TupIds.add n ts)) ;;
+      st_ret ts
+    end.
+
+(*Types are getting worse:
+  st ((ctr * (TupNames * TupIds)) * hashcons ty)*)
+Definition ty_tuple (l: list ty_c) : st _ ty_c :=
+  s <- st_lift1 (ts_tuple (int_length l)) ;;
+  st_lift2 (ty_app1 s l). (*Know we won't hit error don't need ty_app*)
+
+(*Different implementation: we just look up in hash table,
+  don't call [ts_tuple]. Less state in state monad*)
+Definition is_ts_tuple (ts: tysymbol_c) : 
+  hash_st CoqBigInt.t tysymbol_c bool :=
+  o <- TupIds.find_opt (int_length (ts_args_of ts)) ;;
+  match o with
+  | None => st_ret false
+  | Some t => st_ret (tysymbol_eqb t ts)
+  end.
+
+Definition is_ts_tuple_id (i: ident) : hash_st ident CoqBigInt.t 
+  (option CoqBigInt.t) :=
+  o <- TupNames.find_opt i ;;
+  st_ret o.
 
 (** {2 Operations on [ty option]} *)
 Definition UnexpectedProp := mk_errtype tt.
 
-(*Skip [oty_type]*)
+Definition oty_type (x: option ty_c) : errorM ty_c :=
+  match x with
+  | Some t => err_ret t
+  | None => throw UnexpectedProp
+  end.
 
 Definition oty_equal (o1 o2: option ty_c) : bool :=
   option_eqb ty_equal o1 o2.

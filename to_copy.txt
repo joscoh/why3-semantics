@@ -57,6 +57,8 @@ util/wstdlib.ml
 util/wstdlib.mli
 util/number.ml
 util/number.mli
+util/loc.ml
+util/loc.mli
 core/ident.ml
 core/ident.mli
 core/ty.ml

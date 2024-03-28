@@ -57,7 +57,7 @@ Definition create_tvsymbol (n: preid) : ctr tvsymbol :=
 Module Tvsym_t <: CoqExthtbl.TyMod.
 Definition t := tvsymbol.
 End Tvsym_t.
-Module Hstr_tv := CoqExthtbl.Make(CoqWstdlib.Str2)(Tvsym_t).
+Module Hstr_tv := CoqExthtbl.MakeExthtbl(CoqWstdlib.Str2)(Tvsym_t).
 
 Definition tv_hashtbl : hash_st string tvsymbol unit 
   := @Hstr_tv.create CoqInt.one.

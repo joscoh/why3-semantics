@@ -1,4 +1,4 @@
-let oty_type = function Some ty -> ty | None -> raise UnexpectedProp
+(* let oty_type = function Some ty -> ty | None -> raise UnexpectedProp
 let ts_tuple_ids = Hid.create 17
 
 (*JOSH: remove memoization*)
@@ -14,7 +14,7 @@ let ty_tuple tyl = ty_app (ts_tuple (List.length tyl)) tyl
 let is_ts_tuple ts = ts_equal ts (ts_tuple (List.length ts.ts_args))
 
 let is_ts_tuple_id id =
-  try Some (Hid.find ts_tuple_ids id) with Not_found -> None
+  try Some (Hid.find ts_tuple_ids id) with Not_found -> None *)
 
 module Ty2 = MakeMSHW(TyTagged)
 module Hty = Ty2.H

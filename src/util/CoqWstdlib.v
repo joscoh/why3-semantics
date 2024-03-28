@@ -3,6 +3,13 @@ From stdpp Require Import base.
 Require Export CoqInt extmap extset.
 Require CoqWeakhtbl.
 
+Module BigIntTag <: TaggedType.
+Definition t := CoqBigInt.t.
+Definition tag (x: t) := x.
+Definition equal : EqDecision t :=
+  dec_from_eqb CoqBigInt.eqb CoqBigInt.eqb_eq.
+End BigIntTag.
+
 (*This is much slower than Str (uses positives instead of hash
     function) so we only use it when we need it in
     Coq

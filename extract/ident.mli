@@ -71,6 +71,8 @@ type ident = private {
   id_tag    : Weakhtbl.tag;         (** unique magical tag *)
 }
 
+module IdentTag : Weakhtbl.Weakey with type t = ident
+
 module Mid : Extmap.S with type key = ident
 module Sid : Extset.S with module M = Mid
 module Hid : Exthtbl.S with type key = ident

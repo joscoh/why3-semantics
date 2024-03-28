@@ -24,6 +24,8 @@ Section Ty.
 Parameter create : CoqInt.int -> hash_st key value unit.
 Parameter add : key -> value -> hash_st key value unit.
 Parameter find_opt : key -> hash_st key value (option value).
+
+Parameter memo : (key -> value) -> key -> hash_st key value value.
 End Ty.
 End S.
 
@@ -31,7 +33,9 @@ Module Type TyMod.
 Parameter t : Type.
 End TyMod.
 
-Module Make (X: TaggedType) (Y: TyMod) <: S.
+(*TODO: Coq extraction gets modules wrong if this has
+  same name as Weakhtbl*)
+Module MakeExthtbl (X: TaggedType) (Y: TyMod) <: S.
 Definition key := X.t.
 Definition value := Y.t.
 
@@ -48,5 +52,15 @@ Definition add (k: key) (v: value) : hash_st key value unit :=
 Definition find_opt (k: key) : hash_st key value (option value) :=
   h <- hash_get ;;
   st_ret (option_map snd (find_opt_hashtbl X.tag X.equal h k)).
+
+Definition memo (f: key -> value) (k: key) : hash_st key value value :=
+  h <- hash_get ;;
+  match (find_opt_hashtbl X.tag X.equal h k) with
+  | Some v => st_ret (snd v)
+  | None => let y := f k in
+    _ <- hash_set (add_hashtbl X.tag h k y) ;;
+    st_ret y
+  end.
+
 End Ty.
-End Make.
+End MakeExthtbl.

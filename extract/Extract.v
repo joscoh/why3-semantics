@@ -31,6 +31,7 @@ Extract Inlined Constant CoqBigInt.t => "BigInt.t".
 Extract Inlined Constant CoqBigInt.zero => "BigInt.zero" (*TODO: change to BigInt when put in Why3*).
 Extract Inlined Constant CoqBigInt.one => "BigInt.one" (*TODO*).
 Extract Inlined Constant CoqBigInt.succ => "BigInt.succ".
+Extract Inlined Constant CoqBigInt.pred => "BigInt.pred".
 Extract Inlined Constant CoqBigInt.eqb => "BigInt.eq".
 Extract Inlined Constant CoqBigInt.mul_int => "BigInt.mul_int".
 Extract Inlined Constant CoqBigInt.add => "BigInt.add".
@@ -46,6 +47,7 @@ Extract Inlined Constant CoqBigInt.six => "(BigInt.of_int 6)".
 Extract Inlined Constant CoqBigInt.seven => "(BigInt.of_int 7)".
 Extract Inlined Constant CoqBigInt.eight => "(BigInt.of_int 8)".
 Extract Inlined Constant CoqBigInt.nine => "(BigInt.of_int 9)".
+Extract Inlined Constant CoqBigInt.to_string => "BigInt.to_string".
 
 Extract Inlined Constant CoqInt.int => "Stdlib.Int.t".
 Extract Inlined Constant CoqInt.int_eqb => "Stdlib.Int.equal".
@@ -81,7 +83,7 @@ Extraction Inline Monad_errorM.
 (*General state monad*)
 Extract Constant st "'a" "'b" => "'b".
 Extract Inlined Constant st_bind => "(@@)".
-Extract Inlined Constant st_ret => "".
+Extract Inlined Constant st_ret => "(fun x -> x)".
 
 (*Combine state monads*)
 Extract Inlined Constant st_lift1 => "".
