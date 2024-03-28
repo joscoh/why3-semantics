@@ -23,7 +23,7 @@ module Str = struct
   type t = string
   (*TODO bad could overwrite*)
   let tag (s: string) : BigInt.t = (BigInt.of_int (Hashtbl.hash s))
-  let eq (s1 : string) (s2: string) : bool = s1 = s2
+  let equal (s1 : string) (s2: string) : bool = s1 = s2
 end
 
 module Mstr = Extmap.Make(Str)
@@ -55,7 +55,7 @@ module type TaggedType =
 sig
   type t
   val tag : t -> BigInt.t
-  val eq : t -> t -> bool (*JOSH: added*)
+  val equal : t -> t -> bool (*JOSH: added*)
 end
 
 module type OrderedHashedType =
@@ -71,7 +71,7 @@ struct
   type t = X.t list
   let tag = Hashcons.combine_big_list X.tag (BigInt.of_int 3)
   let equ_ts ts1 ts2 = X.tag ts1 == X.tag ts2
-  let eq = Lists.equal equ_ts
+  let equal = Lists.equal equ_ts
 end
 
 module OrderedHashedList (X : TaggedType) =

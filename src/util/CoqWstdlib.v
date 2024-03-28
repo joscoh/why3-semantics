@@ -3,6 +3,19 @@ From stdpp Require Import base.
 Require Export CoqInt extmap extset.
 Require CoqWeakhtbl.
 
+(*This is much slower than Str (uses positives instead of hash
+    function) so we only use it when we need it in
+    Coq
+    TODO maybe axiomatize hash function and implement in Coq?
+    Not great more trust*)
+Module Str2 <: TaggedType.
+Definition t := string.
+Definition tag (s: string) : CoqBigInt.t :=
+  CoqBigInt.of_Z (Z.pos (str_to_pos s)).
+Definition equal : EqDecision string := 
+  dec_from_eqb String.eqb (fun x y => iff_sym (String.eqb_eq x y)).
+End Str2.
+
 (*TODO: see*)
 (*Definition stdlib_compare_int (x y: positive) : Z :=
   match Pos.compare x y with
@@ -40,7 +53,7 @@ End MakeMS.
 Module MakeTagged (X: CoqWeakhtbl.Weakey) <: TaggedType.
 Definition t := X.t.
 Definition tag x := CoqWeakhtbl.tag_hash (X.tag x).
-Definition eq : base.EqDecision t := X.eq.
+Definition equal : base.EqDecision t := X.equal.
 End MakeTagged.
 
 (*Don't create a weak hashtable, but use the weakey type*)

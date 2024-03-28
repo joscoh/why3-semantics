@@ -17,5 +17,5 @@ Definition create_tag : CoqBigInt.t -> tag := fun x => x.
 Module Type Weakey.
 Parameter t : Type.
 Parameter tag : t -> tag.
-Parameter eq: base.EqDecision t. (*JOSH ADDED*)
+Parameter equal: base.EqDecision t. (*JOSH ADDED*)
 End Weakey.

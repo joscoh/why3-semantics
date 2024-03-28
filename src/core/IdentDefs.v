@@ -42,7 +42,7 @@ Definition attr_eq : base.EqDecision attribute :=
 Module AttrTag <: TaggedType.
 Definition t := attribute.
 Definition tag x := x.(attr_tag).
-Definition eq := attr_eq.
+Definition equal := attr_eq.
 End AttrTag.
 
 Module Attr  := MakeMS AttrTag.
@@ -137,7 +137,7 @@ Definition ident_eq : base.EqDecision ident :=
 Module IdentTag <: TaggedType.
 Definition t := ident.
 Definition tag x := x.(id_tag).
-Definition eq := ident_eq.
+Definition equal := ident_eq.
 
 End IdentTag.
 
@@ -184,7 +184,8 @@ Definition id_register : preid -> ctr ident :=
     {| id_string := p.(pre_name);
     id_attrs := p.(pre_attrs);
     id_loc := p.(pre_loc);
-    id_tag := CoqWeakhtbl.create_tag i |}) IdCtr.get) IdCtr.incr.
+    id_tag := CoqWeakhtbl.create_tag i |}) (IdCtr.get tt)) 
+    (IdCtr.incr tt).
 
 (*1st 7 values of the counter correspond to builtin symbols
   (so that we don't need state)*)

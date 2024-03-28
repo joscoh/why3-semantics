@@ -18,6 +18,8 @@ Import MonadNotation.
 Local Open Scope monad_scope.
 Existing Instance
      Monad_state.
+Section Ctr.
+(* Notation ctr := (state CoqBigInt.t). *)
 (*1. Mutable counter*)
 Definition ctr a := (state CoqBigInt.t a).
 Global Instance Monad_ctr: Monad ctr := Monad_state _.
@@ -32,6 +34,7 @@ Definition new_ctr (i: CoqBigInt.t) : ctr unit := put i.
 (*TODO: see if notation/inlined/whatever*)
 Definition ctr_incr : ctr unit :=
   i <- ctr_get ;; ctr_set (CoqBigInt.succ i).
+End Ctr.
 
 (*2. Hash table*)
 
@@ -45,8 +48,8 @@ Global Instance MonadState_hash_st key value :
 Context {key value: Type} (hash: key -> CoqBigInt.t) 
   (eqb: key -> key -> bool).
 
-Definition hash_get (a: Type) : hash_st key value (hashtbl key value):= get.
-Definition hash_set (a: Type) (x: hashtbl key value) : hash_st key value unit :=
+Definition hash_get : hash_st key value (hashtbl key value):= get.
+Definition hash_set (x: hashtbl key value) : hash_st key value unit :=
   put x.
 Definition hash_ret {a: Type} (x: a) : hash_st key value a := ret x.
 Definition hash_bnd {a b: Type} (f: a -> hash_st key value b) 
@@ -139,4 +142,47 @@ Definition errorHash_list {K V A: Type} (l: list (@errorHashT K V A)) :
  @errorHashT K V (list A) :=
   listM errorHash_ret errorHash_bnd l.
 
+(*Combining 2 states*)
+Definition st_lift1 {A B C: Type} (s1: state A C) : state (A * B) C :=
+  mkState (fun (t: A * B) => 
+    let (res, i) := (runState s1) (fst t) in
+    (res, (i, snd t))).
+Definition st_lift2 {A B C: Type} (s2: state B C) : state (A * B) C :=
+  mkState (fun (t: A * B) => 
+    let (res, i) := (runState s2) (snd t) in
+    (res, (fst t, i))).
 
+(*Hash table + counter (temp)*)
+Section HashCtr.
+Definition hash_ctr (key value a: Type) : Type :=
+  state (CoqBigInt.t * hashtbl key value) a.
+Global Instance Monad_hash_ctr_st key value: Monad (hash_ctr key value) := Monad_state _. 
+Global Instance MonadState_hash_ctr_st key value : 
+  MonadState (CoqBigInt.t * hashtbl key value) (hash_ctr key value) := 
+    MonadState_state _.
+Context {key value: Type} (hash: key -> CoqBigInt.t) 
+  (eqb: key -> key -> bool).
+Definition hash_ctr_get : hash_ctr key value 
+  (CoqBigInt.t * hashtbl key value):= get.
+Definition hash_ctr_set (x: CoqBigInt.t * hashtbl key value) : 
+  hash_ctr key value unit :=
+  put x.
+Definition hash_ctr_ret {a: Type} (x: a) : hash_ctr key value a := ret x.
+Definition hash_ctr_bnd {a b: Type} (f: a -> hash_ctr key value b) 
+  (m: hash_ctr key value a) : hash_ctr key value b := bind m f.
+(*Definition new_hash_ctr : hash_ctr key value unit := 
+  put (create_hashtbl value).*)
+(*Definition hash_unit := hash_st key value unit.
+Definition hash_listM {A: Type} (l: list (hash_st key value A))
+ := listM hash_ret hash_bnd l.*)
+
+(*TODO: a bit worried about this with extraction*)
+Definition hash_ctr_lift1 {a: Type} (x: ctr a) : hash_ctr key value a :=
+  mkState (fun (t: CoqBigInt.t * hashtbl key value) => 
+    let (res, i) := (runState x) (fst t) in
+    (res, (i, snd t))).
+Definition hash_ctr_lift2 {a: Type} (x: hash_st key value a) : hash_ctr key value a :=
+  mkState (fun (t: CoqBigInt.t * hashtbl key value) => 
+    let (res, h) := (runState x) (snd t) in
+    (res, (fst t, h))).
+End HashCtr.

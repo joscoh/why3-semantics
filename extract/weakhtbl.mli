@@ -66,7 +66,7 @@ module type Weakey =
 sig
   type t
   val tag : t -> tag
-  val eq : t -> t -> bool
+  val equal : t -> t -> bool
 end
 
 module Make (S : Weakey) : S with type key = S.t

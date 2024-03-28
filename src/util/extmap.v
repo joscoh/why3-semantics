@@ -164,7 +164,7 @@ Parameter tag: t -> CoqBigInt.t.
 (*NOTE: we need a form of decidable equality: this
   is different from the OCaml implementation, which takes in
   an ordered type*)
-Parameter eq : EqDecision t. 
+Parameter equal : EqDecision t. 
 End TaggedType.
 
 Module Make (T: TaggedType) <: S.
@@ -372,7 +372,7 @@ Definition max_binding (m: t a) : errorM (key * a) :=
   end.
 
 Definition equal {a: Type} (eq: EqDecision a) (m1: t a) (m2: t a) : bool :=
-   @Zmap_eq_dec _ (@prod_eq_dec _ T.eq _ eq) (mp m1) (mp m2). 
+   @Zmap_eq_dec _ (@prod_eq_dec _ T.equal _ eq) (mp m1) (mp m2). 
 
 (*Ignore positive argument in fold because invariant that
   always encode (fst x) = p*)

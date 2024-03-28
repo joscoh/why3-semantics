@@ -5,6 +5,7 @@ Require hashcons CoqWeakhtbl.
 Require Import stdpp.base.
 Require Import Coq.Wellfounded.Inverse_Image.
 Require Import IntFuncs.
+Require Import CoqExthtbl.
 
 Record tvsymbol := {
   tv_name : ident
@@ -27,7 +28,7 @@ Definition tvsymbol_eq : base.EqDecision tvsymbol :=
 Module TvarTagged <: TaggedType.
 Definition t := tvsymbol.
 Definition tag tv := tv.(tv_name).(id_tag).
-Definition eq := tvsymbol_eq.
+Definition equal := tvsymbol_eq.
 
 End TvarTagged.
 
@@ -45,12 +46,33 @@ Definition tv_compare (tv1 tv2: tvsymbol) : CoqInt.int :=
 Definition create_tvsymbol (n: preid) : ctr tvsymbol :=
   ctr_bnd (fun i => ctr_ret {|tv_name := i|}) (id_register n).
 
-(*In OCaml, this is a stateful function that stores variables
-  in hash table and looks up to see if any have been
-  created with same name already.
-  Here, we just give a new one - NOTE: is this a problem?*)
-Definition tv_of_string (s: string) : ctr tvsymbol :=
-  create_tvsymbol (id_fresh1 s).
+(*This has to be a stateful function which finds the existing
+  identifier for the string if it has been created.
+  Other parts of the OCaml Why3 code rely on the 
+  same string giving the same result (ironically, we need
+  state to make this a pure function)*)
+(*TODO: monad transformer prob*)
+Module Tvsym_t <: CoqExthtbl.TyMod.
+Definition t := tvsymbol.
+End Tvsym_t.
+Module Hstr_tv := CoqExthtbl.Make(CoqWstdlib.Str2)(Tvsym_t).
+
+Definition tv_hashtbl : hash_st string tvsymbol unit 
+  := @Hstr_tv.create CoqInt.one.
+
+(*TODO: should use actual monad transformers*)
+Definition tv_of_string (s: string) : hash_ctr string tvsymbol tvsymbol :=
+  hash_ctr_bnd (fun (o: option tvsymbol) =>
+    match o with
+    | None => 
+      let tv := create_tvsymbol (id_fresh1 s) in
+      hash_ctr_bnd (fun i => 
+        hash_ctr_bnd (fun _ => hash_ctr_ret i)
+        (hash_ctr_lift2 (Hstr_tv.add s i))
+      ) (hash_ctr_lift1 tv)
+    | Some v => hash_ctr_ret v
+    end
+  ) (hash_ctr_lift2 (Hstr_tv.find_opt s)).
 
 (** Type Symbols and Types **)
 Unset Elimination Schemes.
@@ -288,7 +310,7 @@ Definition tysymbol_eq : base.EqDecision tysymbol_c :=
 Module TsymTagged <: TaggedType.
 Definition t := tysymbol_c.
 Definition tag (ts: tysymbol_c) := (ts_name_of ts).(id_tag).
-Definition eq := tysymbol_eq.
+Definition equal := tysymbol_eq.
 End TsymTagged.
 
 Module Tsym := MakeMSWeak TsymTagged.
@@ -343,7 +365,7 @@ Definition ty_eq : base.EqDecision ty_c :=
 Module TyTagged <: TaggedType.
 Definition t := ty_c.
 Definition tag (t: ty_c) := ty_tag_of t.
-Definition eq := ty_eq.
+Definition equal := ty_eq.
 End TyTagged.
 
 Module TyM := MakeMSWeak TyTagged.

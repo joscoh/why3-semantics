@@ -321,6 +321,16 @@ Definition ty_pred (ty_a : ty_c) : hashcons_st _ ty_c :=
   hashcons_bnd (fun t =>
     ty_app1 ts_func [ty_a; t]) ty_bool.
 
+(*Tuples*)
+
+(*We create the tuple type symbols and types as needed,
+  storing in a hash table*)
+(*We have 2 hash tables: int -> symbol and symbol -> int*)
+(*TODO: do generalized monad stuff first*)
+(*TODO: we need the int*)
+(*No memoization, *)
+(* Module TupIds := CoqExthtbl.Make (CoqWstdlib.Int). *)
+
 (*For now, skip tuples*)
 
 (*Again, know that [create_tysymbol] succeds so use [mk_ts]*)

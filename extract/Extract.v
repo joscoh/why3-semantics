@@ -1,5 +1,6 @@
 From Src.core Require Import IdentDefs TyDefs TyFuncs.
-From Src.util Require Import extmap extset hashcons Ctr.
+From Src.coqutil Require Import Ctr.
+From Src.util Require Import extmap extset hashcons CoqExthtbl.
 From stdpp Require Import gmap.
 From Coq Require Extraction.
 From ExtLib Require Import Monads EitherMonad StateMonad.
@@ -46,13 +47,13 @@ Extract Inlined Constant CoqBigInt.seven => "(BigInt.of_int 7)".
 Extract Inlined Constant CoqBigInt.eight => "(BigInt.of_int 8)".
 Extract Inlined Constant CoqBigInt.nine => "(BigInt.of_int 9)".
 
-Extract Inlined Constant CoqInt.int => "Int.t".
-Extract Inlined Constant CoqInt.int_eqb => "Int.equal".
-Extract Inlined Constant CoqInt.zero => "Int.zero".
-Extract Inlined Constant CoqInt.one => "Int.one".
-Extract Inlined Constant CoqInt.neg_one => "Int.minus_one".
-Extract Inlined Constant CoqInt.add => "Int.add".
-Extract Inlined Constant CoqInt.mult => "Int.mul".
+Extract Inlined Constant CoqInt.int => "Stdlib.Int.t".
+Extract Inlined Constant CoqInt.int_eqb => "Stdlib.Int.equal".
+Extract Inlined Constant CoqInt.zero => "Stdlib.Int.zero".
+Extract Inlined Constant CoqInt.one => "Stdlib.Int.one".
+Extract Inlined Constant CoqInt.neg_one => "Stdlib.Int.minus_one".
+Extract Inlined Constant CoqInt.add => "Stdlib.Int.add".
+Extract Inlined Constant CoqInt.mult => "Stdlib.Int.mul".
 Extract Inlined Constant hashcons.int_65599 => "65599".
 
 Extract Inlined Constant CoqBigInt.to_Z => "ZCompat.to_Z_big".
@@ -78,7 +79,7 @@ Extraction Inline Monad_errorM.
 (*Extract Inlined Constant ExtLib.MonadExn.raise => "raise".*)
 (*TODO: see*)
 
-Extract Inlined Constant mbind => "(@@)".
+(*Extract Inlined Constant mbind => "(@@)".*)
 
 (*Handle state monad*)
 Extract Inlined Constant ctr_ty => "BigInt.t ref".
@@ -155,6 +156,15 @@ Extraction Inline Monad_errorHashT.
 Extraction Inline Exception_errorHashT.
 Extract Inlined Constant errorHash_lift2 => "".
 
+(*Hash table + Counter Monad*)
+Extract Constant hash_ctr "'ty" "'ty2" "'ty3" => "'ty3".
+Extract Inlined Constant hash_ctr_ret => "".
+Extract Inlined Constant hash_ctr_bnd => "(@@)".
+Extract Inlined Constant hash_ctr_lift1 => "".
+(* Extraction Inline Monad_errorHashT.
+Extraction Inline Exception_errorHashT. *)
+Extract Inlined Constant hash_ctr_lift2 => "".
+
 
 
 (*Maps - inline some things to reduce dependent types, Obj.magic
@@ -202,8 +212,8 @@ Extraction Inline mk_errtype.
 
 (*Unset Extraction Optimize.*)
 
-Separate Extraction
-  CoqNumber hashcons extmap extset CoqHashtbl IdentDefs TyDefs TyFuncs. (*Ty.ty_v_map Ident.*)
+Separate Extraction CoqUtil.str_to_pos (*TEMP*)
+  CoqExthtbl CoqNumber hashcons extmap extset CoqHashtbl IdentDefs TyDefs TyFuncs. (*Ty.ty_v_map Ident.*)
 (*Separate Extraction Extmap.
 Separate Extraction Ty.ty Ty.ty_v_map Ident.*)
 

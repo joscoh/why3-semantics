@@ -29,7 +29,7 @@ module type TaggedType =
 sig
   type t
   val tag : t -> BigInt.t
-  val eq : t -> t -> bool (*JOSH ADDED*)
+  val equal : t -> t -> bool (*JOSH ADDED*)
 end
 
 module type OrderedHashedType =
@@ -77,3 +77,4 @@ sig
 end
 
 module Int : OrderedHashedType with type t = int
+module Str2 : TaggedType with type t = string
