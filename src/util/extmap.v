@@ -6,6 +6,84 @@ Require CoqBigInt.
 From stdpp Require Import pmap zmap.  
 (*For sorting*)
 Require mathcomp.ssreflect.path.
+Set Bullet Behavior "Strict Subproofs".
+
+(*Let's try*)
+Section PmapEq.
+Context {A: Type} (eqb : A -> A -> bool).
+Fixpoint pmap_ne_eqb (p1 p2: Pmap_ne A) : bool :=
+  match p1, p2 with
+  | PNode001 p1, PNode001 p2 => pmap_ne_eqb p1 p2
+  | PNode010 x1, PNode010 x2 => eqb x1 x2
+  | PNode011 x1 p1, PNode011 x2 p2 => eqb x1 x2 && pmap_ne_eqb p1 p2
+  | PNode100 p1, PNode100 p2 => pmap_ne_eqb p1 p2
+  | PNode101 p1 p2, PNode101 p3 p4 => pmap_ne_eqb p1 p3 && pmap_ne_eqb p2 p4
+  | PNode110 p1 x1, PNode110 p2 x2 => eqb x1 x2 && pmap_ne_eqb p1 p2
+  | PNode111 p1 x1 p2, PNode111 p3 x2 p4 => eqb x1 x2 && pmap_ne_eqb p1 p3 && pmap_ne_eqb p2 p4
+  | _, _ => false
+  end.
+
+Definition pmap_eqb (p1 p2: Pmap A) : bool :=
+  match p1, p2 with
+  | PEmpty, PEmpty => true
+  | PNodes p1, PNodes p2 => pmap_ne_eqb p1 p2
+  | _, _ => false
+  end.
+
+(*Now we prove equivalence*)
+Lemma pmap_ne_eqb_spec_aux (Heqb: forall (x y: A), x = y <-> eqb x y = true)
+  (p1 p2: Pmap_ne A) (s: forall x y, {x = y} + {x <> y}) (Hs:
+    forall x y, proj_sumbool _ _ (s x y) = eqb x y):
+  pmap_ne_eqb p1 p2 = @Pmap_ne_eq_dec _ s p1 p2.
+Proof.
+  generalize dependent s.
+  revert p2.
+  induction p1; simpl; intros; destruct p2; auto;
+  unfold sumbool_rec, sumbool_rect, decide_rel;
+  try (rewrite IHp1 with (s:=s));
+  try (rewrite <- Hs); 
+  try (rewrite IHp1_1 with (s:=s));
+  try (rewrite IHp1_2 with (s:=s));
+  auto;
+  try progress(destruct (Pmap_ne_eq_dec p1 p2)); auto;
+  try progress(destruct (s a a0)); auto;
+  try progress(destruct (Pmap_ne_eq_dec p1_1 p2_1)); auto;
+  destruct(Pmap_ne_eq_dec p1_2 p2_2); reflexivity.
+Qed.
+
+Lemma pmap_ne_eqb_spec (Heqb: forall (x y: A), x = y <-> eqb x y = true)
+  (p1 p2: Pmap_ne A):
+  pmap_ne_eqb p1 p2 = @Pmap_ne_eq_dec _ (dec_from_eqb eqb Heqb) p1 p2.
+Proof.
+  assert (Hdec: forall x y, (proj_sumbool _ _ (dec_from_eqb eqb Heqb x y)) = eqb x y).
+  {
+    intros. unfold dec_from_eqb.
+    generalize dependent (Heqb x y).
+    generalize dependent (eqb x y).
+    destruct b; reflexivity.
+  }
+  apply pmap_ne_eqb_spec_aux; auto.
+Qed.
+
+Lemma pmap_eqb_spec (Heqb: forall (x y: A), x = y <-> eqb x y = true)
+  (p1 p2: Pmap A):
+  pmap_eqb p1 p2 = @Pmap_eq_dec _ (dec_from_eqb eqb Heqb) p1 p2.
+Proof.
+  unfold pmap_eqb, Pmap_eq_dec.
+  destruct p1; destruct p2; auto.
+  unfold sumbool_rec, sumbool_rect, decide_rel.
+  rewrite pmap_ne_eqb_spec_aux with (s:=(dec_from_eqb eqb Heqb)); auto.
+  - destruct (Pmap_ne_eq_dec p p0); reflexivity.
+  - (*TODO: avoid dups*)
+    intros. unfold dec_from_eqb.
+    generalize dependent (Heqb x y).
+    generalize dependent (eqb x y).
+    destruct b; reflexivity.
+Qed.
+
+(*TODO: Zmap dec*)
+
+End PmapEq.
 
 (*Sorted lists*)
 (*Compare list (A * B), where sorted by A already*)
@@ -161,10 +239,9 @@ End S.
 Module Type TaggedType.
 Parameter t : Type.
 Parameter tag: t -> CoqBigInt.t.
-(*NOTE: we need a form of decidable equality: this
-  is different from the OCaml implementation, which takes in
-  an ordered type*)
-Parameter equal : EqDecision t. 
+(*We do not yet require this to be decidable equality;
+  we only require that when used*)
+Parameter equal : t -> t -> bool.
 End TaggedType.
 
 Module Make (T: TaggedType) <: S.
@@ -370,6 +447,8 @@ Definition max_binding (m: t a) : errorM (key * a) :=
   | Some x => err_ret x
   | None => throw Not_found
   end.
+
+Print Pmap_eq_dec.
 
 Definition equal {a: Type} (eq: EqDecision a) (m1: t a) (m2: t a) : bool :=
    @Zmap_eq_dec _ (@prod_eq_dec _ T.equal _ eq) (mp m1) (mp m2). 
