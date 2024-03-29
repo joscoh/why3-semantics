@@ -1,6 +1,7 @@
-Require Import ErrorMonad StateMonad TyDefs IntFuncs.
+Require Import Monads TyDefs IntFuncs.
 From ExtLib Require Import Monads.
-Local Open Scope state_scope.
+Import MonadNotations.
+Local Open Scope monad_scope.
 
 Definition mk_ty (n: ty_node_c) : ty_c :=
   mk_ty_c n CoqWeakhtbl.dummy_tag.
@@ -88,7 +89,7 @@ Fixpoint ty_v_map_err (fn: tvsymbol -> errorM ty_c) (t: ty_c) :
   match ty_node_of t with
   | Tyvar v => errst_lift2 (fn v)
   | Tyapp f tl =>
-    l <- errst_list (map (ty_v_map_err fn) tl) ;;;
+    l <-- errst_list (map (ty_v_map_err fn) tl) ;;;
     errst_lift1 (ty_app1 f l)
   end.
 
@@ -120,7 +121,9 @@ Definition fold_errorM' := fun {A B: Type} (f: A -> B -> errorM A) =>
   fix fold_errorM (l: list B) (x: A) {struct l} :=
   match l with
   | nil => err_ret x
-  | h :: t => err_bnd (fun i => f i h) (fold_errorM t x)
+  | h :: t =>
+    i <-- fold_errorM t x ;;
+    f i h
   end.
 
 (*TODO: replace with this?*)
@@ -133,7 +136,9 @@ Fixpoint ty_v_fold_err {A: Type} (fn: A -> tvsymbol -> errorM A) (acc: A)
 
 Definition ty_v_all_err (pr: tvsymbol -> errorM bool) (t: ty_c) : 
   errorM bool :=
-  ty_v_fold_err (fun acc v => err_bnd (fun i => err_ret (i && acc)) (pr v)) true t.
+  ty_v_fold_err (fun acc v => 
+    i <-- pr v ;;
+    err_ret (i && acc)) true t.
 
 Definition UnboundTypeVar (t: tvsymbol) : errtype := 
   mk_errtype t.
@@ -146,9 +151,11 @@ Definition create_tysymbol (name: preid) (args: list tvsymbol) (d: type_def ty_c
   : errorM (ctr tysymbol_c) :=
   let add (s: Stv.t) (v: tvsymbol) := Stv.add_new (DuplicateTypeVar v) v s in
   let s1 := fold_errorM' add args Stv.empty in
-  let check (v: tvsymbol) : errorM bool := err_bnd 
-    (fun m => if Stv.mem v m then err_ret true 
-      else throw (UnboundTypeVar v)) s1 in
+  let check (v: tvsymbol) : errorM bool := 
+    m <-- s1 ;;
+    if Stv.mem v m then err_ret true else
+    throw (UnboundTypeVar v)
+  in
   let c: errorM unit :=
     match d with
     | NoDef => err_ret tt
@@ -167,7 +174,8 @@ Definition create_tysymbol (name: preid) (args: list tvsymbol) (d: type_def ty_c
         throw BadFloatSpec
       else err_ret tt
     end in
-  err_bnd (fun _ => err_ret (mk_ts name args d)) c.
+  _ <-- c ;;
+  err_ret (mk_ts name args d).
 
 (*Returns map of type variables to elements in list tl*)
 Definition ts_match_args {A: Type} (s: tysymbol_c) (tl: list A) : 
@@ -186,7 +194,7 @@ Definition ty_match_args (t: ty_c) : errorM (Mtv.t ty_c) :=
 Definition ty_app (s: tysymbol_c) (tl: list ty_c) : errorHashconsT ty_c ty_c :=
   match ts_def_of s with
   | Alias t => 
-    m <- (errst_lift2 (ts_match_args s tl)) ;;;
+    m <-- (errst_lift2 (ts_match_args s tl)) ;;;
     ty_full_inst m t
   | _ =>
     if negb (CoqBigInt.eqb (int_length (ts_args_of s)) (int_length tl)) then
@@ -200,7 +208,7 @@ Fixpoint ty_s_map (fn: tysymbol_c -> tysymbol_c) (t: ty_c) : errorHashconsT ty_c
   match ty_node_of t with
   | Tyvar _ => errst_ret t
   | Tyapp f tl => 
-    l <- (errst_list (map (ty_s_map fn) tl)) ;;;
+    l <-- (errst_list (map (ty_s_map fn) tl)) ;;;
     ty_app (fn f) l
   end.
 
@@ -216,7 +224,7 @@ Definition ty_s_any (pr: tysymbol_c -> bool) (t: ty_c) : bool :=
   ty_s_fold (fun x y => x || (pr y)) false t.
 
 (* type matching *)
-Local Open Scope state_scope (*TODO: fix scopes*).
+Local Open Scope monad_scope (*TODO: fix scopes*).
 (*TODO: very bad*)
 Definition ty_mapM (fn: ty_c -> hashcons_st _ ty_c) (t: ty_c) : hashcons_st _ ty_c :=
   match ty_node_of t with
@@ -243,7 +251,8 @@ Definition fold_right2_error := fun {A B C: Type} (f: C -> A -> B -> errorM C) =
   match l1, l2 with
   | nil, nil => err_ret accu
   | a1 :: l1, a2 :: l2 => 
-    err_bnd (fun x => f x a1 a2) (fold_right2_error l1 l2 accu)
+    x <-- fold_right2_error l1 l2 accu ;;
+    f x a1 a2
   | _, _ => throw (Invalid_argument "fold_right2")
   end.
 
@@ -276,7 +285,7 @@ Fixpoint ty_match_aux (err1 err2: ty_c)
   end.
 
 Definition ty_match  (s: Mtv.t ty_c) (ty1 ty2: ty_c) : errorHashconsT _ (Mtv.t ty_c) :=
-  t1 <- (errst_lift1 (ty_inst s ty1)) ;;;
+  t1 <-- (errst_lift1 (ty_inst s ty1)) ;;;
   errst_lift2 (ty_match_aux t1 ty2 s ty1 ty2).
 
 

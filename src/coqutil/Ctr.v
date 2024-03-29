@@ -1,6 +1,6 @@
 (*A counter, mutable when extracted to OCaml.
   We put it in a module so that multiple instances can be created*)
-Require Import StateMonad.
+Require Import Monads.
 From ExtLib Require Import StateMonad.
 (* Notation ctr := (state CoqBigInt.t). *)
 Module Type Ctr.

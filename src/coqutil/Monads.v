@@ -1,13 +1,51 @@
 (*Several different state monads, which are extracted
   to mutable references in OCaml*)
 Require CoqBigInt.
-Require Import ErrorMonad.
-Require Import Monad.
 Require Import CoqHashtbl. (*NOTE: stdpp and coq-ext-lib cannot both
   be imported in same file!*)
+Require Export CoqUtil.
 From ExtLib Require Export Monads MonadState StateMonad EitherMonad.
 
-(*TODO: error monad*)
+(*Generic monads*)
+(*We want to lift a (list (m A)) to a m (list A) for a monad m.
+  We can do this in 3 ways:
+  1. Use typeclasses
+  2. Give a generic function that takes in bind and return
+  3. Write the same function for each monad
+  Unfortunately, the first 2 ways give horrible OCaml code
+  full of Object.magic and that can easily not compile
+  (we need non-prenex polymorphism).
+  So we do the third (for now)*)
+(*Just so we don't have to write it 3 times*)
+(*Of course in OCaml, these all reduce to the identity function*)
+Notation listM ret bnd l :=
+  (fold_right (fun x acc =>
+    bnd (fun h => bnd (fun t => ret (h :: t)) acc) x)
+    (ret nil) l).
+
+(*Error Monad*)
+(*We make the exception type a record so we can add more
+  elements later*)
+Record errtype : Type := { errargs: Type; errdata : errargs}.
+
+Definition Not_found : errtype := {| errargs:= unit; errdata := tt|}.
+Definition Invalid_argument (s: string) : errtype :=
+  {| errargs := string; errdata := s|}.
+
+Definition errorM (A: Type) : Type := Datatypes.sum errtype A.
+
+Global Instance Monad_errorM : Monad errorM :=
+  Monad_either _.
+Global Instance Exception_errorM : MonadExc errtype errorM :=
+  Exception_either _.
+Definition err_ret {A: Type} (x: A) : errorM A := ret x.
+Definition err_bnd {A B: Type} (f: A -> errorM B) (x: errorM A) : errorM B := bind x f.
+Definition throw : forall {A: Type} (e: errtype), errorM A :=
+  fun A e => raise e.
+Definition errorM_list {A: Type} (l: list (errorM A)) : errorM (list A) :=
+  listM err_ret err_bnd l.
+Definition ignore {A: Type} (x: errorM A) : errorM unit :=
+  err_bnd (fun _ => err_ret tt) x.
 
 (*We use custom notation because we have a separate bind and return
   for state, error, and combination (for extraction reasons)*)
@@ -35,7 +73,6 @@ Global Instance Exception_errorHashconsT K :
   Exception_eitherT _ (Monad_state _).
 Definition errst_lift1 {A B} (s1: st A B) : errState A B :=
   lift s1.
-(*TODO: error monad*)
 Definition errst_lift2 {A B} (e: errorM B) : errState A B :=
   match e with
   | inl e => raise e
@@ -50,12 +87,17 @@ Definition errst_list {K A: Type} (l: list (errState K A)) :
   errState K (list A) :=
   listM errst_ret errst_bind l.
 
-Declare Scope state_scope.
-Delimit Scope state_scope with state.
-Notation "x <- c1 ;;; c2" := (@errst_bind _ _ _ (fun x => c2) c1)
-  (at level 61, c1 at next level, right associativity) : state_scope.
+Declare Scope monad_scope.
+Delimit Scope monad_scope with monad.
+Module MonadNotations.
+(*TODO: not ideal, but we need to disambiguate*)
+Notation "x <-- c1 ;;; c2" := (@errst_bind _ _ _ (fun x => c2) c1)
+  (at level 61, c1 at next level, right associativity) : monad_scope.
+Notation "x <-- c1 ;; c2" := (@err_bnd _ _ (fun x => c2) c1)
+  (at level 61, c1 at next level, right associativity) : monad_scope.
 Notation "x <- c1 ;; c2" := (@st_bind _ _ _ (fun x => c2) c1)
-  (at level 61, c1 at next level, right associativity) : state_scope.
+  (at level 61, c1 at next level, right associativity) : monad_scope.
+End MonadNotations.
 
 (*Combining 2 states*)
 Definition st_lift1 {A B C: Type} (s1: st A C) : st (A * B) C :=
@@ -77,7 +119,8 @@ Definition st_lift2 {A B C: Type} (s2: st B C) : st (A * B) C :=
 
 (*1. Counter*)
 
-Local Open Scope state_scope.
+Local Open Scope monad_scope.
+Import MonadNotations.
 Notation ctr a := (st CoqBigInt.t a).
 Definition ctr_get : ctr CoqBigInt.t := get.
 Definition ctr_set (i: CoqBigInt.t) : ctr unit := put i.

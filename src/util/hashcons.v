@@ -1,6 +1,7 @@
-Require Import StateMonad.
+Require Import Monads.
 Require CoqHashtbl.
-Local Open Scope state_scope.
+Import MonadNotations.
+Local Open Scope monad_scope.
 
 Module Type HashedType.
 Parameter t : Type.

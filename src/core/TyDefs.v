@@ -6,7 +6,8 @@ Require hashcons CoqWeakhtbl CoqHashtbl.
 Require Import Coq.Wellfounded.Inverse_Image.
 Require Import IntFuncs.
 Require Import CoqExthtbl.
-Local Open Scope state_scope.
+Import MonadNotations.
+Local Open Scope monad_scope.
 
 Record tvsymbol := {
   tv_name : ident

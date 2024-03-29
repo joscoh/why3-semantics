@@ -8,9 +8,10 @@ Export ListNotations.
 (*From stdpp Require Export gmap.*)
 Require Import CoqWstdlib.
 Require LocTy.
-Require Export StateMonad.
+Require Export Monads.
 Require Import Ctr.
-Local Open Scope state_scope.
+Import MonadNotations.
+Local Open Scope monad_scope.
 
 (*We include another prop-valued field (erased) during extraction
   asserting equality for 2 reasons:

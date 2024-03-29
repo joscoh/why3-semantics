@@ -1,7 +1,7 @@
 (*An implementation of association lists satisfying the same
   interface as Why3 OCaml extmap. We use binary tries (gmap)
   instead of balanced binary trees*)
-Require Export ErrorMonad.
+Require Export Monads.
 Require CoqBigInt.
 From stdpp Require Import pmap zmap.  
 (*For sorting*)

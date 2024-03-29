@@ -1,9 +1,10 @@
 Require Import CoqInt.
-Require Import StateMonad.
+Require Import Monads.
 Require Import CoqHashtbl.
 (*TODO: is this bad?*)
 Require Import CoqWstdlib.
-Local Open Scope state_scope.
+Import MonadNotations.
+Local Open Scope monad_scope.
 Module Type S.
 
 (*Very limited for now - create, add, find*)
