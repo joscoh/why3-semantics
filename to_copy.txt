@@ -11,8 +11,8 @@ coq-util/numbers.ml
 coq-util/numbers.mli
 coq-util/BinNums.ml
 coq-util/BinNums.mli
-coq-util/ErrorMonad.ml
-coq-util/ErrorMonad.mli
+coq-util/Monads.ml
+coq-util/Monads.mli
 coq-util/Specif.ml
 coq-util/Specif.mli
 coq-util/pmap.ml
@@ -37,8 +37,6 @@ coq-util/CoqHashtbl.ml
 coq-util/CoqHashtbl.mli
 coq-util/StateMonad.ml
 coq-util/StateMonad.mli
-coq-util/StateMonad0.ml
-coq-util/StateMonad0.mli
 coq-util/path.ml
 coq-util/path.mli
 coq-util/ssrbool.ml

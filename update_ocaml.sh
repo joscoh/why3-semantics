@@ -5,6 +5,17 @@ FILES="to_copy.txt"
 #TODO: PATH variable?
 TGT=/home/josh/Documents/why3_big/why3-test
 
+if [ -z "$1" ]; then
+	echo "Updating files:"
+    ARG=false
+  elif [ "$1" = "--comp" ]; then
+  	echo "Showing differences:"
+  	ARG=true
+  else
+  	echo "Unknown option: "$1
+  	exit 0
+fi
+
 #iterate through lines in file
 while read p; do
 	#get old filename
@@ -13,22 +24,17 @@ while read p; do
 	SRC=_build/default/extract/$SRCFILE
 	#get destination
 	DST=$TGT/src/$p
-	#echo "$p"
-	#echo "$SRC"
-	#echo "$DST"
 	#if SRC is newer than DST, replace
 	if cmp --silent -- "$SRC" "$DST"; then
 		:
 	else
-	  rm -f $DST
-	  cp $SRC $DST
-	  echo "Updated "$p$
-	# else
-	#   echo "files differ"
-	# fi
-	# if [[ $SRC -nt $DST ]]; then
-	#   rm $DST
-	#   cp $SRC $DST
-	#   echo "Updated "$p$
+	  #If we select the --comp option, just print different files
+	  if [ "$ARG" = "true" ]; then
+	  	echo "$p"
+	  else
+	    rm -f $DST
+	    cp $SRC $DST
+	    echo "Updated "$p$
+	  fi
 	fi
 done < $FILES
