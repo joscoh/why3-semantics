@@ -12,6 +12,7 @@ Require Export Monads.
 Require Import Ctr.
 Import MonadNotations.
 Local Open Scope monad_scope.
+Set Bullet Behavior "Strict Subproofs".
 
 (*We include another prop-valued field (erased) during extraction
   asserting equality for 2 reasons:
@@ -38,13 +39,10 @@ Proof.
   solve_eqb_eq.
 Qed.
 
-Definition attr_eq : base.EqDecision attribute :=
-  dec_from_eqb attr_eqb attr_eqb_eq.
-
 Module AttrTag <: TaggedType.
 Definition t := attribute.
 Definition tag x := x.(attr_tag).
-Definition equal := attr_eq.
+Definition equal := attr_eqb.
 End AttrTag.
 
 Module Attr  := MakeMS AttrTag.
@@ -130,16 +128,14 @@ Proof.
     <- CoqBigInt.eqb_eq.
   unfold is_true.
   rewrite String.eqb_eq,  <- Sattr.equal_eq.
-  solve_eqb_eq.
+  - solve_eqb_eq.
+  - apply attr_eqb_eq.
 Qed.
-
-Definition ident_eq : base.EqDecision ident :=
-  dec_from_eqb ident_eqb ident_eqb_eq.
 
 Module IdentTag <: TaggedType.
 Definition t := ident.
 Definition tag x := x.(id_tag).
-Definition equal := ident_eq.
+Definition equal := ident_eqb.
 
 End IdentTag.
 

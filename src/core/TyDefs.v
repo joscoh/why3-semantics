@@ -24,13 +24,10 @@ Proof.
   destruct t1 as [t1]; destruct t2 as [t2]; simpl; solve_eqb_eq. 
 Qed.
 
-Definition tvsymbol_eq : base.EqDecision tvsymbol :=
-  dec_from_eqb _ tvsymbol_eqb_eq.
-
 Module TvarTagged <: TaggedType.
 Definition t := tvsymbol.
 Definition tag tv := tv.(tv_name).(id_tag).
-Definition equal := tvsymbol_eq.
+Definition equal := tvsymbol_eqb.
 
 End TvarTagged.
 
@@ -304,14 +301,10 @@ Definition ty_eqb_eq := proj1 ty_eqb_eq_aux.
 Definition ty_node_eqb_eq := proj1 (proj2 ty_eqb_eq_aux).
 Definition tysymbol_eqb_eq := proj2 (proj2 ty_eqb_eq_aux).
 
-Definition tysymbol_eq : base.EqDecision tysymbol_c :=
-  dec_from_eqb _ tysymbol_eqb_eq.
-
-
 Module TsymTagged <: TaggedType.
 Definition t := tysymbol_c.
 Definition tag (ts: tysymbol_c) := (ts_name_of ts).(id_tag).
-Definition equal := tysymbol_eq.
+Definition equal := tysymbol_eqb.
 End TsymTagged.
 
 Module Tsym := MakeMSWeak TsymTagged.
@@ -361,13 +354,10 @@ Definition mk_ts (name: preid) (args: list tvsymbol) (d: type_def ty_c) :
   i <- id_register name ;;
   st_ret (mk_ts_c i args d).
 
-Definition ty_eq : base.EqDecision ty_c :=
-  dec_from_eqb _ ty_eqb_eq.
-
 Module TyTagged <: TaggedType.
 Definition t := ty_c.
 Definition tag (t: ty_c) := ty_tag_of t.
-Definition equal := ty_eq.
+Definition equal := ty_eqb.
 End TyTagged.
 
 Module TyM := MakeMSWeak TyTagged.

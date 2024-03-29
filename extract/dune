@@ -1,8 +1,8 @@
 (coq.extraction
  (prelude Extract)
  (extracted_modules 
-  BinNums BinPos Datatypes Specif  List0 String0
-  base Basics BinInt zmap pmap fin_maps numbers option0 decidable
+  BinNums BinPos Datatypes Specif  List0 String0 Common
+  base Basics BinInt zmap pmap fin_maps numbers option0
   Byte CoqUtil CoqBigInt LocTy StateMonad ssrbool path Monads
   extmap extset CoqWstdlib CoqWeakhtbl CoqHashtbl hashcons CoqNumber Ctr
   IntFuncs 

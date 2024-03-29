@@ -254,3 +254,36 @@ Proof.
   - left. apply H. reflexivity.
   - right. intro C. apply H in C. discriminate.
 Defined.
+
+Lemma dec_from_eqb_spec {A: Type} (eqb : A -> A -> bool) 
+  (Heqb: forall (x y: A), x = y <-> eqb x y = true):
+  forall x y, (proj_sumbool _ _ (dec_from_eqb eqb Heqb x y)) = eqb x y.
+Proof.
+  intros. unfold dec_from_eqb.
+  generalize dependent (Heqb x y).
+  generalize dependent (eqb x y).
+  destruct b; reflexivity.
+Qed.
+
+Lemma option_eqb_spec {A: Type} (eqb : A -> A -> bool) 
+  (Heqb: forall (x y: A), x = y <-> eqb x y = true)
+  (o1 o2: option A):
+  option_eqb eqb o1 o2 = @option_eq_dec _ (dec_from_eqb eqb Heqb) o1 o2.
+Proof.
+  unfold option_eqb, option_eq_dec.
+  destruct o1; destruct o2; auto.
+  unfold decide, decide_rel.
+  rewrite <- dec_from_eqb_spec with (Heqb:=Heqb).
+  destruct (dec_from_eqb eqb Heqb a a0); reflexivity.
+Qed.
+
+Lemma tuple_eqb_spec {a b: Type} (eqb1: a -> a -> bool)
+  (eqb2: b -> b -> bool)
+  (Heqb1: forall (x y: a), x = y <-> eqb1 x y = true)
+  (Heqb2: forall x y, x = y <-> eqb2 x y = true):
+  forall x y, x = y <-> tuple_eqb eqb1 eqb2 x y = true.
+Proof.
+  intros [x1 x2] [y1 y2]; unfold tuple_eqb; simpl.
+  rewrite andb_true_iff, <- Heqb1, <- Heqb2.
+  split; intros C; inversion C; subst; auto.
+Qed.

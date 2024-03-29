@@ -8,7 +8,6 @@ From stdpp Require Import pmap zmap.
 Require mathcomp.ssreflect.path.
 Set Bullet Behavior "Strict Subproofs".
 
-(*Let's try*)
 Section PmapEq.
 Context {A: Type} (eqb : A -> A -> bool).
 Fixpoint pmap_ne_eqb (p1 p2: Pmap_ne A) : bool :=
@@ -55,14 +54,7 @@ Lemma pmap_ne_eqb_spec (Heqb: forall (x y: A), x = y <-> eqb x y = true)
   (p1 p2: Pmap_ne A):
   pmap_ne_eqb p1 p2 = @Pmap_ne_eq_dec _ (dec_from_eqb eqb Heqb) p1 p2.
 Proof.
-  assert (Hdec: forall x y, (proj_sumbool _ _ (dec_from_eqb eqb Heqb x y)) = eqb x y).
-  {
-    intros. unfold dec_from_eqb.
-    generalize dependent (Heqb x y).
-    generalize dependent (eqb x y).
-    destruct b; reflexivity.
-  }
-  apply pmap_ne_eqb_spec_aux; auto.
+  apply pmap_ne_eqb_spec_aux, dec_from_eqb_spec; auto.
 Qed.
 
 Lemma pmap_eqb_spec (Heqb: forall (x y: A), x = y <-> eqb x y = true)
@@ -74,14 +66,29 @@ Proof.
   unfold sumbool_rec, sumbool_rect, decide_rel.
   rewrite pmap_ne_eqb_spec_aux with (s:=(dec_from_eqb eqb Heqb)); auto.
   - destruct (Pmap_ne_eq_dec p p0); reflexivity.
-  - (*TODO: avoid dups*)
-    intros. unfold dec_from_eqb.
-    generalize dependent (Heqb x y).
-    generalize dependent (eqb x y).
-    destruct b; reflexivity.
+  - apply dec_from_eqb_spec.
 Qed.
 
-(*TODO: Zmap dec*)
+Definition zmap_eqb (z1 z2: Zmap A) : bool :=
+  option_eqb eqb (Zmap_0 z1) (Zmap_0 z2) &&
+  pmap_eqb (Zmap_pos z1) (Zmap_pos z2) &&
+  pmap_eqb (Zmap_neg z1) (Zmap_neg z2).
+
+Lemma zmap_eqb_spec (Heqb: forall (x y: A), x = y <-> eqb x y = true)
+  (z1 z2: Zmap A):
+  zmap_eqb z1 z2 = @Zmap_eq_dec _ (dec_from_eqb eqb Heqb) z1 z2.
+Proof.
+  unfold zmap_eqb, Zmap_eq_dec.
+  destruct z1 as [z01 zp1 zn1].
+  destruct z2 as [z02 zp2 zn2].
+  simpl.
+  unfold decide, decide_rel.
+  rewrite option_eqb_spec with (Heqb:=Heqb).
+  destruct (option_eq_dec z01 z02); simpl; auto.
+  rewrite !pmap_eqb_spec with (Heqb:=Heqb).
+  destruct (Pmap_eq_dec zp1 zp2); simpl; auto.
+  destruct (Pmap_eq_dec zn1 zn2); reflexivity.
+Qed.
 
 End PmapEq.
 
@@ -127,6 +134,7 @@ Fixpoint find_minmax {A: Type} (cmp: A -> A -> bool) (l: list A) : option A :=
 Module Type S.
 
 Parameter key: Type.
+Parameter key_eq : key -> key -> bool.
 Parameter t : Type -> Type.
 
 Section Types.
@@ -143,9 +151,7 @@ Parameter merge: (key -> option a -> option b -> option c) ->
   t a -> t b -> t c.
 Parameter union: (key -> a -> a -> option a) -> t a -> t a -> t a.
 Parameter compare: (a -> a -> CoqInt.int) -> t a -> t a -> CoqInt.int.
-(*TODO: do we want to just use (a -> a -> bool) and have separate
-  erased proof?*)
-Parameter equal: EqDecision a -> t a -> t a -> bool.
+Parameter equal: (a -> a -> bool) -> t a -> t a -> bool.
 Parameter iter: (key -> a -> unit) -> t a -> unit.
 Parameter fold: (key -> a -> b -> b) -> t a -> b -> b.
 Parameter for_all: (key -> a -> bool) -> t a -> bool.
@@ -217,10 +223,14 @@ End Types.
   same (in fact we need some injectivity properties). For our
   purposes, equal is just a boolean decision procedure for
   structural equality*)
-Parameter eqb_eq: forall {a: Type} (eqb: EqDecision a) (m1 m2: t a),
+Parameter eqb_eq: forall {a: Type} (eqb: a -> a -> bool)
+  (Heqb: forall (x y: a), x = y <-> eqb x y = true)
+  (Heq1: forall x y, x = y <-> key_eq x y = true) (m1 m2: t a),
   m1 = m2 <-> equal eqb m1 m2 = true.
 
-Parameter set_equal_eq: forall {a b: Type} (m1: t a) (m2: t b),
+Parameter set_equal_eq: forall {a b: Type} 
+  (Heq1: forall x y, x = y <-> key_eq x y = true)
+  (m1: t a) (m2: t b),
   set_equal m1 m2 = true <-> map (fun _ => tt) m1 = map (fun _ => tt) m2.
 
 Parameter map_inj_eq: forall {A B: Type} (f: A -> B) (m1 m2: t A)
@@ -247,6 +257,7 @@ End TaggedType.
 Module Make (T: TaggedType) <: S.
 
 Definition key := T.t.
+Definition key_eq := T.equal.
 
 Definition tag x := CoqBigInt.to_Z (T.tag x).
 
@@ -448,10 +459,8 @@ Definition max_binding (m: t a) : errorM (key * a) :=
   | None => throw Not_found
   end.
 
-Print Pmap_eq_dec.
-
-Definition equal {a: Type} (eq: EqDecision a) (m1: t a) (m2: t a) : bool :=
-   @Zmap_eq_dec _ (@prod_eq_dec _ T.equal _ eq) (mp m1) (mp m2). 
+Definition equal {a: Type} (eqa: a -> a -> bool) (m1: t a) (m2 : t a) : bool :=
+  zmap_eqb (tuple_eqb T.equal eqa) (mp m1) (mp m2). 
 
 (*Ignore positive argument in fold because invariant that
   always encode (fst x) = p*)
@@ -605,7 +614,7 @@ Definition set_compare (m1: t a) (m2: t b) : CoqInt.int :=
   so are the sets*)
 (*One way to say: if we remove bindings, these are equal*)
 Definition set_equal (m1: t a) (m2: t b) : bool :=
-  equal _ (map (fun _ => tt) m1) (map (fun _ => tt) m2).
+  equal (fun _ _ => true) (map (fun _ => tt) m1) (map (fun _ => tt) m2).
 
 (*Variants of find*)
 
@@ -720,12 +729,17 @@ Definition is_num_elt (p: CoqBigInt.t) (m: t a) : bool :=
 
 End Types.
 
-Lemma equal_spec: forall {a: Type} (eqb: EqDecision a)
+Lemma equal_spec: forall {a: Type} (eqb : a -> a -> bool) 
+  (Heqb: forall (x y: a), x = y <-> eqb x y = true)
+  (Heq1: forall x y, x = y <-> T.equal x y = true)
   (tag_inj: Inj eq eq T.tag) (m1 m2: t a),
   equal eqb m1 m2 = true <-> (forall k, find_opt _ k m1 = find_opt _ k m2).
 Proof.
   intros.
   unfold equal.
+  assert (Htupeq: forall x y, x = y <-> 
+    tuple_eqb T.equal eqb x y = true) by (apply tuple_eqb_spec; auto).
+  rewrite zmap_eqb_spec with (Heqb := Htupeq).
   destruct Zmap_eq_dec as [Heq | Hneq]; simpl; subst; auto; split; auto;
   try discriminate.
   - intros _.
@@ -774,21 +788,28 @@ Qed.
 (*Canonicity is not necessarily a requirement of all maps,
   but in our case, we need to know that equal (which denotes if the
   elements are the same) is equivalent to Leibnitz equality*)
-Lemma eqb_eq: forall {a: Type} (eqb: EqDecision a) (m1 m2: t a),
+Lemma eqb_eq: forall {a: Type} (eqb: a -> a -> bool)
+  (Heqb: forall (x y: a), x = y <-> eqb x y = true)
+  (Heq1: forall x y, x = y <-> T.equal x y = true) (m1 m2: t a),
   m1 = m2 <-> equal eqb m1 m2 = true.
 Proof.
   intros. unfold equal.
+  assert (Htupeq: forall x y, x = y <-> 
+  tuple_eqb T.equal eqb x y = true) by (apply tuple_eqb_spec; auto).
+  rewrite zmap_eqb_spec with (Heqb := Htupeq).
   destruct (Zmap_eq_dec); simpl; subst; split; intros; subst; auto;
   try discriminate.
   destruct m1 as [m1 m1_wf]; destruct m2 as [m2 m2_wf]; simpl in *;
   subst. f_equal. apply bool_irrelevance.
 Qed.
 
-Lemma set_equal_eq: forall {a b: Type} (m1: t a) (m2: t b),
+Lemma set_equal_eq: forall {a b: Type}
+  (Heq1: forall x y, x = y <-> T.equal x y = true) (m1: t a) (m2: t b),
   set_equal _ _ m1 m2 = true <-> map (fun _ => tt) m1 = map (fun _ => tt) m2.
 Proof.
   intros. unfold set_equal.
-  rewrite <- eqb_eq. reflexivity.
+  rewrite <- eqb_eq; auto.
+  intros [] []; split; auto.
 Qed.
 
 Lemma map_inj_eq {A B: Type} (f: A -> B) (m1 m2: t A)

@@ -34,7 +34,7 @@ while read p; do
 	  else
 	    rm -f $DST
 	    cp $SRC $DST
-	    echo "Updated "$p$
+	    echo "Updated "$p
 	  fi
 	fi
 done < $FILES

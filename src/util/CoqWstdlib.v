@@ -6,8 +6,7 @@ Require CoqWeakhtbl.
 Module BigIntTag <: TaggedType.
 Definition t := CoqBigInt.t.
 Definition tag (x: t) := x.
-Definition equal : EqDecision t :=
-  dec_from_eqb CoqBigInt.eqb CoqBigInt.eqb_eq.
+Definition equal := CoqBigInt.eqb.
 End BigIntTag.
 
 (*This is much slower than Str (uses positives instead of hash
@@ -19,8 +18,7 @@ Module Str2 <: TaggedType.
 Definition t := string.
 Definition tag (s: string) : CoqBigInt.t :=
   CoqBigInt.of_Z (Z.pos (str_to_pos s)).
-Definition equal : EqDecision string := 
-  dec_from_eqb String.eqb (fun x y => iff_sym (String.eqb_eq x y)).
+Definition equal := String.eqb.
 End Str2.
 
 (*TODO: see*)
@@ -60,7 +58,7 @@ End MakeMS.
 Module MakeTagged (X: CoqWeakhtbl.Weakey) <: TaggedType.
 Definition t := X.t.
 Definition tag x := CoqWeakhtbl.tag_hash (X.tag x).
-Definition equal : base.EqDecision t := X.equal.
+Definition equal := X.equal.
 End MakeTagged.
 
 (*Don't create a weak hashtable, but use the weakey type*)
