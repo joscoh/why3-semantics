@@ -3,7 +3,7 @@
 #to_copy.txt contains relative paths of files to copy : ex: core/ty.ml
 FILES="to_copy.txt"
 #TODO: PATH variable?
-TGT=/home/josh/Documents/Research/why3/why3-fork
+TGT=why3
 
 if [ -z "$1" ]; then
 	echo "Updating files:"

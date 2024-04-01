@@ -14,3 +14,9 @@ proofs-silent:
 
 src-silent:
 	dune build Src
+
+bench-conf:
+	dune build && cd why3 && ./configure --enable-local && make && bench/bench
+
+bench:
+	dune build && ./update_ocaml.sh && cd why3 &&  make && bench/bench
