@@ -146,6 +146,14 @@ Extract Inlined Constant ts_name_of => "ts_name".
 Extract Inlined Constant ts_args_of => "ts_args".
 Extract Inlined Constant ts_def_of => "ts_def".
 
+(*Extract pat to mixed record-inductive*)
+Extract Inductive pattern_c => "(pattern_node pattern_o)" 
+  [ "(fun (a, b, c) -> build_pattern_o a b c)" ].
+Extract Inlined Constant pat_node_of => "pat_node".
+Extract Inlined Constant pat_vars_of => "pat_vars".
+Extract Inlined Constant pat_ty_of => "pat_ty".
+
+
 (*Definition ty := ty_o ty_node_c.
 Definition tysymbol := tysymbol_o ty.
 Definition type_def := type_def_o ty.*)

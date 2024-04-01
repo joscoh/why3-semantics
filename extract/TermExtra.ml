@@ -95,7 +95,7 @@ let create_fsymbol ?constr ?proj nm al vl =
 
 (** Patterns *)
 
-type pattern = {
+(* type pattern = {
   pat_node : pattern_node;
   pat_vars : Svs.t;
   pat_ty   : ty;
@@ -108,7 +108,7 @@ and pattern_node =
   | Por  of pattern * pattern (* | *)
   | Pas  of pattern * vsymbol
   (* naming a term recognized by pattern as a variable *)
-
+ *)
 (* h-consing constructors for patterns *)
 
 let mk_pattern n vs ty = {

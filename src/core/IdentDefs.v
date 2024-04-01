@@ -125,11 +125,10 @@ Proof.
   revert i1 i2.
   intros [s1 a1 l1 p1] [s2 a2 l2 p2]; simpl.
   rewrite !andb_true, <- (option_eqb_eq LocTy.position_eqb_eq),
-    <- CoqBigInt.eqb_eq.
+    <- CoqBigInt.eqb_eq, <- (Sattr.equal_eq attr_eqb_eq).
   unfold is_true.
-  rewrite String.eqb_eq,  <- Sattr.equal_eq.
-  - solve_eqb_eq.
-  - apply attr_eqb_eq.
+  rewrite String.eqb_eq.
+  solve_eqb_eq.
 Qed.
 
 Module IdentTag <: TaggedType.

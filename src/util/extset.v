@@ -54,9 +54,9 @@ Parameter remove_left: t -> elt -> t.
                Format.formatter -> t -> unit. *)
 
 (*Proofs: TODO add as needed*)
-Parameter equal_eq: forall (m1 m2: t)
-  (Heq: forall x y, x = y <-> M.key_eq x y = true),
-  m1 = m2 <-> equal m1 m2 = true.
+Parameter equal_eq: 
+  forall (Heq: forall x y, x = y <-> M.key_eq x y = true) (m1 m2: t),
+  m1 = m2 <-> equal m1 m2.
 
 End S.
 
@@ -121,9 +121,9 @@ Definition contains := @M.contains unit.
 Definition add_left s e := M.add e tt s.
 Definition remove_left s e := @M.remove unit e s.
 
-Lemma equal_eq: forall (m1 m2: t)
-  (Heq: forall x y, x = y <-> M.key_eq x y = true),
-  m1 = m2 <-> equal m1 m2 = true.
+Lemma equal_eq (Heq: forall x y, x = y <-> M.key_eq x y = true): 
+  forall (m1 m2: t),
+  m1 = m2 <-> equal m1 m2.
 Proof.
   intros. unfold equal.
   rewrite M.set_equal_eq; auto.

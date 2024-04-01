@@ -8,6 +8,7 @@ Require Import IntFuncs.
 Require Import CoqExthtbl.
 Import MonadNotations.
 Local Open Scope monad_scope.
+Set Bullet Behavior "Strict Subproofs".
 
 Record tvsymbol := {
   tv_name : ident
@@ -273,21 +274,9 @@ Proof.
   - intros ts tys IHsym IHl.
     simpl.
     destruct t2 as [v2 | ts1 tys2]; [split;discriminate |].
-    rewrite !andb_true, <- IHsym, int_length_eq.
-    destruct (Nat.eqb_spec (length tys) (length tys2)) as [Hlen| Hlen];
-    [| solve_eqb_eq].
-    (*TODO: maybe separate lemma*)
-    assert (Hl: tys = tys2 <-> forallb (fun x => x) (map2 ty_eqb tys tys2)). {
-      clear -IHl Hlen.
-      generalize dependent tys2.
-      induction tys as [| thd ttl IHtys]; simpl; intros [|th2 ttl2];
-      try solve[split; solve[auto; discriminate]].
-      simpl. intros Hlen.
-      rewrite andb_true, <- (Forall_inv IHl th2), <- IHtys; auto.
-      - solve_eqb_eq.
-      - apply Forall_inv_tail in IHl; assumption.
-    }
-    rewrite <- Hl. solve_eqb_eq.
+    rewrite !andb_true, <- IHsym, int_length_eq, <- nat_eqb_eq.
+    rewrite and_assoc, <- (forall_eqb_eq IHl).
+    solve_eqb_eq.
   - intros [i vs d]; simpl; intros IH [i1 vs2 d2]; simpl.
     rewrite !andb_true, <- ident_eqb_eq, <- (list_eqb_eq tvsymbol_eqb_eq).
     destruct d; destruct d2; simpl; try solve_eqb_eq.

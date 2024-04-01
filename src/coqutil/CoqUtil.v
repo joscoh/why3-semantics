@@ -287,3 +287,30 @@ Proof.
   rewrite andb_true_iff, <- Heqb1, <- Heqb2.
   split; intros C; inversion C; subst; auto.
 Qed.
+
+Lemma nat_eqb_eq (n1 n2: nat) : n1 = n2 <-> Nat.eqb n1 n2.
+Proof. symmetry. apply Nat.eqb_eq. Qed.
+
+Lemma forall_eqb_eq {A: Type} {eqb: A -> A -> bool} {l1 l2: list A}:
+  Forall (fun x => forall y, x = y <-> eqb x y) l1 ->
+  l1 = l2 <-> length l1 = length l2 /\ forallb (fun x => x) (map2 eqb l1 l2).
+Proof.
+  intros Hall.
+  destruct (Nat.eqb_spec (length l1) (length l2)); [| solve_eqb_eq].
+  assert (l1 = l2 <-> forallb (fun x => x) (map2 eqb l1 l2)). {
+    generalize dependent l2. induction l1 as [| h1 t1]; simpl.
+    - intros [| h t]; simpl; solve_eqb_eq.
+    - intros [| h2 t2]; [solve_eqb_eq|]; simpl.
+      intros Hlen.
+      rewrite andb_true, <- (Forall_inv Hall h2).
+      rewrite <- (IHt1 (Forall_inv_tail Hall)); auto;
+      solve_eqb_eq.
+  }
+  rewrite H. split; intros; destruct_all; auto.
+Qed.
+
+Lemma bool_eqb_eq (b1 b2: bool) : b1 = b2 <-> Bool.eqb b1 b2.
+Proof.
+  symmetry.
+  apply eqb_true_iff.
+Qed.

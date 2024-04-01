@@ -226,12 +226,12 @@ End Types.
 Parameter eqb_eq: forall {a: Type} (eqb: a -> a -> bool)
   (Heqb: forall (x y: a), x = y <-> eqb x y = true)
   (Heq1: forall x y, x = y <-> key_eq x y = true) (m1 m2: t a),
-  m1 = m2 <-> equal eqb m1 m2 = true.
+  m1 = m2 <-> equal eqb m1 m2.
 
 Parameter set_equal_eq: forall {a b: Type} 
   (Heq1: forall x y, x = y <-> key_eq x y = true)
   (m1: t a) (m2: t b),
-  set_equal m1 m2 = true <-> map (fun _ => tt) m1 = map (fun _ => tt) m2.
+  set_equal m1 m2 <-> map (fun _ => tt) m1 = map (fun _ => tt) m2.
 
 Parameter map_inj_eq: forall {A B: Type} (f: A -> B) (m1 m2: t A)
   (f_inj: Inj eq eq f),
@@ -733,7 +733,7 @@ Lemma equal_spec: forall {a: Type} (eqb : a -> a -> bool)
   (Heqb: forall (x y: a), x = y <-> eqb x y = true)
   (Heq1: forall x y, x = y <-> T.equal x y = true)
   (tag_inj: Inj eq eq T.tag) (m1 m2: t a),
-  equal eqb m1 m2 = true <-> (forall k, find_opt _ k m1 = find_opt _ k m2).
+  equal eqb m1 m2 <-> (forall k, find_opt _ k m1 = find_opt _ k m2).
 Proof.
   intros.
   unfold equal.
@@ -791,7 +791,7 @@ Qed.
 Lemma eqb_eq: forall {a: Type} (eqb: a -> a -> bool)
   (Heqb: forall (x y: a), x = y <-> eqb x y = true)
   (Heq1: forall x y, x = y <-> T.equal x y = true) (m1 m2: t a),
-  m1 = m2 <-> equal eqb m1 m2 = true.
+  m1 = m2 <-> equal eqb m1 m2.
 Proof.
   intros. unfold equal.
   assert (Htupeq: forall x y, x = y <-> 
@@ -805,7 +805,7 @@ Qed.
 
 Lemma set_equal_eq: forall {a b: Type}
   (Heq1: forall x y, x = y <-> T.equal x y = true) (m1: t a) (m2: t b),
-  set_equal _ _ m1 m2 = true <-> map (fun _ => tt) m1 = map (fun _ => tt) m2.
+  set_equal _ _ m1 m2 <-> map (fun _ => tt) m1 = map (fun _ => tt) m2.
 Proof.
   intros. unfold set_equal.
   rewrite <- eqb_eq; auto.
@@ -925,5 +925,7 @@ Definition next_ge_enum {A: Type} (k: key) (e: enumeration A) : enumeration A :=
 
 Definition start_ge_enum {A: Type} (k: key) (m: t A) : enumeration A :=
   next_ge_enum k (start_enum m).
+
+Definition test := 0%nat.
 
 End Make.

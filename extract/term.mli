@@ -78,7 +78,7 @@ exception InvalidStringLiteralType of ty
 
 (** {2 Patterns} *)
 
-type pattern = private {
+(* type pattern = private {
   pat_node : pattern_node;
   pat_vars : Svs.t;
   pat_ty   : ty;
@@ -89,7 +89,20 @@ and pattern_node =
   | Pvar of vsymbol
   | Papp of lsymbol * pattern list
   | Por  of pattern * pattern
-  | Pas  of pattern * vsymbol
+  | Pas  of pattern * vsymbol *)
+
+
+type 'a pattern_o = private {pat_node : 'a; pat_vars : Svs.t;
+pat_ty : ty}
+
+type pattern_node =
+| Pwild
+| Pvar of vsymbol
+| Papp of lsymbol * (pattern_node pattern_o) list
+| Por  of (pattern_node pattern_o) * (pattern_node pattern_o)
+| Pas  of (pattern_node pattern_o) * vsymbol
+
+type pattern = pattern_node pattern_o
 
 (** Smart constructors for patterns *)
 
