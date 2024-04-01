@@ -27,6 +27,8 @@ coq-util/BinInt.ml
 coq-util/BinInt.mli
 coq-util/List0.ml
 coq-util/List0.mli
+coq-util/Bool0.ml
+coq-util/Bool0.mli
 coq-util/Byte.ml
 coq-util/Byte.mli
 coq-util/Common.ml
@@ -63,3 +65,5 @@ core/ident.ml
 core/ident.mli
 core/ty.ml
 core/ty.mli
+core/term.ml
+core/term.mli

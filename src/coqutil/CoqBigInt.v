@@ -33,6 +33,8 @@ Definition compare : t -> t -> CoqInt.int :=
 Definition mul_int : CoqInt.int -> t -> t :=
   fun i z => Z.mul (Integer.int_val _ i) z.
 Definition lt : t -> t -> bool := Z.ltb.
+Definition is_zero : t -> bool := fun z => Z.eqb z 0.
+Definition pos : t -> bool := fun z => Z.ltb 0 z.
 (*TODO: implement this - we don't need a good hash function for Coq*)
 Axiom hash : t -> CoqInt.int.
 (*This function is (presumably) a bit different than
@@ -103,6 +105,8 @@ Global Opaque eqb.
 Global Opaque compare.
 Global Opaque mul_int.
 Global Opaque lt.
+Global Opaque is_zero.
+Global Opaque pos.
 Global Opaque two.
 Global Opaque three.
 Global Opaque four.

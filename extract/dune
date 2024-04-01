@@ -1,14 +1,14 @@
 (coq.extraction
  (prelude Extract)
  (extracted_modules 
-  BinNums BinPos Datatypes Specif  List0 String0 Common
+  BinNums BinPos Datatypes Specif  List0 String0 Bool0 Common
   base Basics BinInt zmap pmap fin_maps numbers option0
   Byte CoqUtil CoqBigInt LocTy StateMonad ssrbool path Monads
   extmap extset CoqWstdlib CoqWeakhtbl CoqHashtbl hashcons CoqNumber Ctr
   IntFuncs 
   CoqExthtbl
   IdentDefs
-  TyDefs TyFuncs)
+  TyDefs TyFuncs TermDefs)
  (theories Src stdpp Proofs ExtLib mathcomp.ssreflect elpi HB)
  )
 
@@ -119,11 +119,31 @@
   )
  )
 
+ ;Create term.ml
+ (rule
+  (deps TermDefs.ml TermExtra.ml)
+  (targets term.ml)
+  (action 
+  (with-stdout-to term.ml
+    (pipe-stdout
+     (cat TermDefs.ml TermExtra.ml)
+     (run sed -e "s/open TyDefs/open Ty/g")
+     (run sed -e "s/open TyFuncs//g")
+     (run sed -e "s/open IdentDefs/open Ident/g")
+     (run sed -e "s/open CoqWstdlib/open Wstdlib/g")
+     (run sed -e "s/open CoqWeakhtbl/open Weakhtbl/g")
+     (run sed -e "s/CoqNumber/Number/g")
+     (run sed -e "s/CoqExthtbl/Exthtbl2/g")
+    )
+   )
+  )
+ )
+
 (library
  (name Why3Coq)
  (modules (:standard \ TyExn TyDefs TyFuncs TyExtra IdentDefs IdentExtra 
   LocTy LocExtra Locpre CoqWstdlib Wstdlibextra CoqWeakhtbl Weakhtblextra
-  CoqNumber numberextra CoqExthtbl))
+  CoqNumber numberextra CoqExthtbl TermDefs TermExtra))
  (flags (:standard -w -33 -w -32 -w -9)) ;32 is unused value - extraction results in values we don't want in mli file
  (libraries zarith sexplib re))
 

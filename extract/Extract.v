@@ -1,11 +1,11 @@
-From Src.core Require Import IdentDefs TyDefs TyFuncs.
+From Src.core Require Import IdentDefs TyDefs TyFuncs TermDefs.
 From Src.coqutil Require Import Ctr.
 From Src.util Require Import extmap extset hashcons CoqExthtbl.
 (* From stdpp Require Import gmap.  *)
 From Coq Require Extraction.
 From ExtLib Require Import Monads EitherMonad StateMonad.
 
-Extraction Blacklist String List Option.
+Extraction Blacklist String List Option Bool.
 
 Require Import Coq.extraction.ExtrOcamlBasic.
 (*Extract to native OCaml strings*)
@@ -36,6 +36,8 @@ Extract Inlined Constant CoqBigInt.eqb => "BigInt.eq".
 Extract Inlined Constant CoqBigInt.mul_int => "BigInt.mul_int".
 Extract Inlined Constant CoqBigInt.add => "BigInt.add".
 Extract Inlined Constant CoqBigInt.lt => "BigInt.lt".
+Extract Inlined Constant CoqBigInt.is_zero => "BigInt.is_zero".
+Extract Inlined Constant CoqBigInt.pos => "BigInt.pos".
 Extract Inlined Constant CoqBigInt.compare => "BigInt.compare".
 Extract Inlined Constant CoqBigInt.hash => "BigInt.hash".
 Extract Inlined Constant CoqBigInt.neg_one => "(BigInt.of_int (-1))".
@@ -174,7 +176,8 @@ Extraction Inline mk_errtype.
 (*Unset Extraction Optimize.*)
 
 Separate Extraction CoqUtil.str_to_pos (*TEMP*)
-  CoqExthtbl CoqNumber hashcons extmap extset CoqHashtbl IdentDefs TyDefs TyFuncs. (*Ty.ty_v_map Ident.*)
+  CoqExthtbl CoqNumber hashcons extmap extset CoqHashtbl 
+  IdentDefs TyDefs TyFuncs TermDefs. (*Ty.ty_v_map Ident.*)
 (*Separate Extraction Extmap.
 Separate Extraction Ty.ty Ty.ty_v_map Ident.*)
 
