@@ -104,16 +104,13 @@ Definition ty_closed (t: ty_c) : bool :=
 
 (*Smart constructors*)
 
-Definition mk_errtype {A: Type} (x: A) : errtype :=
-  {| errargs := A; errdata := x|}.
-
 Definition BadTypeArity (t: tysymbol_c * CoqBigInt.t) : errtype := 
-  mk_errtype t.
+  mk_errtype "BadTypeArity" t.
 
 Require Import IdentDefs.
 
 Definition DuplicateTypeVar (t: tvsymbol) : errtype := 
-  mk_errtype t.
+  mk_errtype "DuplicateTypeVar" t.
 
 (*Note: fold right, not left*)
 (*Version that can be used in nested recursive defs*)
@@ -141,11 +138,12 @@ Definition ty_v_all_err (pr: tvsymbol -> errorM bool) (t: ty_c) :
     err_ret (i && acc)) true t.
 
 Definition UnboundTypeVar (t: tvsymbol) : errtype := 
-  mk_errtype t.
+  mk_errtype "UnboundTypeVar" t.
 
-Definition IllegalTypeParameters : errtype := mk_errtype tt.
-Definition EmptyRange : errtype := mk_errtype tt.
-Definition BadFloatSpec : errtype := mk_errtype tt.
+Definition IllegalTypeParameters : errtype := 
+  mk_errtype "IllegalTypeParameters" tt.
+Definition EmptyRange : errtype := mk_errtype "EmptyRange" tt.
+Definition BadFloatSpec : errtype := mk_errtype "BadFloatSpec" tt.
 
 Definition create_tysymbol (name: preid) (args: list tvsymbol) (d: type_def ty_c) (*: tysymbol_c*)
   : errorM (ctr tysymbol_c) :=
@@ -242,7 +240,7 @@ Fixpoint ty_inst (s: Mtv.t ty_c) (t: ty_c) : hashcons_st _ ty_c :=
   | _ => ty_mapM (ty_inst s) t
   end.
 
-Definition Exit : errtype := mk_errtype tt.
+Definition Exit : errtype := mk_errtype "Exit" tt.
 
 (*Version with exceptions*)
 (*Write in strange way so Coq can use in nested recursion*)
@@ -256,41 +254,44 @@ Definition fold_right2_error := fun {A B C: Type} (f: C -> A -> B -> errorM C) =
   | _, _ => throw (Invalid_argument "fold_right2")
   end.
 
-Definition TypeMismatch (t: ty_c * ty_c) : errtype := mk_errtype t.
+Definition TypeMismatch (t: ty_c * ty_c) : errtype := 
+  mk_errtype "TypeMismatch" t.
 
 (*Idea: when we have variable: check to see if it is in map
   If so, must be mapped to ty2 or else throw exception*)
 (*We add an extra parameter in a bit of a hack so that 
   we throw the exception that the higher-level interface
   expects (since we don't have try/catch)*)
-Fixpoint ty_match_aux (err1 err2: ty_c) 
+Fixpoint ty_match_aux (*(err1 err2: ty_c) *)
   (s: Mtv.t ty_c) (ty1 ty2: ty_c) 
    : errorM (Mtv.t ty_c) :=
 
   match ty_node_of ty1, ty_node_of ty2 with
   | Tyapp f1 l1, Tyapp f2 l2 =>
     if ts_equal f1 f2 then
-    fold_right2_error (ty_match_aux err1 err2) l1 l2 s
-    else throw (TypeMismatch (err1, err2))
+    fold_right2_error (ty_match_aux (*err1 err2*)) l1 l2 s
+    else throw Exit (*(TypeMismatch (err1, err2))*)
   | Tyvar n1, _ => 
     (*We are not using Mtv.change because there is an
       exception in the function (so the types do not match)
       Instead, we will search manually and throw an exception if needed*)
     match Mtv.find_opt _ n1 s with
     | Some ty3 => if ty_equal ty3 ty2 then err_ret s else
-      throw (TypeMismatch (err1, err2))
+      throw Exit (*
+      throw (TypeMismatch (err1, err2))*)
     | None => err_ret (Mtv.add n1 ty2 s)
     end
-  | _, _ => throw (TypeMismatch (err1, err2))
+  | _, _ => throw Exit (*throw (TypeMismatch (err1, err2))*)
   end.
 
 Definition ty_match  (s: Mtv.t ty_c) (ty1 ty2: ty_c) : errorHashconsT _ (Mtv.t ty_c) :=
   t1 <-- (errst_lift1 (ty_inst s ty1)) ;;;
-  errst_lift2 (ty_match_aux t1 ty2 s ty1 ty2).
+  errst_lift2
+  (trywith (fun (_ : unit) => (ty_match_aux s ty1 ty2)) Exit 
+    (fun (_: unit) => throw (TypeMismatch (t1, ty2)))).
 
 
 (* built-in symbols *)
-
 
 Definition mk_ts_builtin (name: ident) (args: list tvsymbol) (d: type_def ty_c) : 
   tysymbol_c := mk_ts_c name args d.
@@ -413,7 +414,7 @@ Definition is_ts_tuple_id (i: ident) : hash_st ident CoqBigInt.t
   st_ret o.
 
 (** {2 Operations on [ty option]} *)
-Definition UnexpectedProp := mk_errtype tt.
+Definition UnexpectedProp := mk_errtype "UnexpectedProp" tt.
 
 Definition oty_type (x: option ty_c) : errorM ty_c :=
   match x with

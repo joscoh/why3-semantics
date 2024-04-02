@@ -26,11 +26,11 @@ Notation listM ret bnd l :=
 (*Error Monad*)
 (*We make the exception type a record so we can add more
   elements later*)
-Record errtype : Type := { errargs: Type; errdata : errargs}.
+Record errtype : Type := { errname : string; errargs: Type; errdata : errargs}.
 
-Definition Not_found : errtype := {| errargs:= unit; errdata := tt|}.
+Definition Not_found : errtype := {| errname := "Not_found"; errargs:= unit; errdata := tt|}.
 Definition Invalid_argument (s: string) : errtype :=
-  {| errargs := string; errdata := s|}.
+  {| errname := "Invalid_argument"; errargs := string; errdata := s|}.
 
 Definition errorM (A: Type) : Type := Datatypes.sum errtype A.
 
@@ -46,6 +46,23 @@ Definition errorM_list {A: Type} (l: list (errorM A)) : errorM (list A) :=
   listM err_ret err_bnd l.
 Definition ignore {A: Type} (x: errorM A) : errorM unit :=
   err_bnd (fun _ => err_ret tt) x.
+(*TODO: wish we could just use definition name*)
+Definition mk_errtype (name: string) {A: Type} (x: A) : errtype :=
+  {| errname := name; errargs := A; errdata := x|}.
+(*Try/catch mechanism
+  TODO: could make dependent (ret : (errargs e -> A))
+  but much harder to extract
+  For OCaml, the last argument NEEDs to take in a unit, or
+  else the strict semantics mean that it is always thrown
+  The first argument is the same if it is a "raise" *)
+Definition trywith {A: Type} (x: unit -> errorM A) (e: errtype) 
+  (ret: unit -> errorM A) : errorM A :=
+  match x tt with
+  | inl e1 => if String.eqb (errname e1) (errname e) then
+    ret tt else throw e1
+  | inr y => err_ret y
+  end.
+
 
 (*We use custom notation because we have a separate bind and return
   for state, error, and combination (for extraction reasons)*)

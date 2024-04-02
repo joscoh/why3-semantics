@@ -1,4 +1,4 @@
-From Src.core Require Import IdentDefs TyDefs TyFuncs TermDefs.
+From Src.core Require Import IdentDefs TyDefs TyFuncs TermDefs TermFuncs.
 From Src.coqutil Require Import Ctr.
 From Src.util Require Import extmap extset hashcons CoqExthtbl.
 (* From stdpp Require Import gmap.  *)
@@ -153,22 +153,6 @@ Extract Inlined Constant pat_node_of => "pat_node".
 Extract Inlined Constant pat_vars_of => "pat_vars".
 Extract Inlined Constant pat_ty_of => "pat_ty".
 
-
-(*Definition ty := ty_o ty_node_c.
-Definition tysymbol := tysymbol_o ty.
-Definition type_def := type_def_o ty.*)
-
-
-(*Extract Inductive ty_node__ => "ty_node_" ["Tyvar" "Tyapp"].*)
-(*Extraction Inline ty'.
-Extraction Inline tysymbol'.*)
-
-(*Extraction Inline ty_build.
-Extraction Inline ty_build'.
-Extraction Inline ty_build_simpl.
-Extraction Inline ty_build_simpl'.*)
-(*Extraction Inline Decision RelDecision.*)
-
 (*Other exceptions*)
 Extract Inlined Constant BadTypeArity => "BadTypeArity".
 Extract Inlined Constant DuplicateTypeVar => "DuplicateTypeVar".
@@ -178,14 +162,25 @@ Extract Inlined Constant EmptyRange => "EmptyRange".
 Extract Inlined Constant BadFloatSpec => "BadFloatSpec".
 Extract Inlined Constant UnexpectedProp => "UnexpectedProp".
 Extract Inlined Constant TypeMismatch => "TypeMismatch".
+
+(*Term exceptions*)
+Extract Inlined Constant UncoveredVar => "UncoveredVar".
+Extract Inlined Constant DuplicateVar => "DuplicateVar".
 Extraction Inline mk_errtype.
 (*Extract Inlined Constant BadTypeArity_reg => "exception Exceptions.BadTypeArity of tysymbol * int".*)
+
+(* We need to compare names for equality because
+  we cannot just put e in the match, or else it is interpreted
+  as a variable/wildcard*)
+Extract Inlined Constant trywith => "(fun x e ret ->
+  try x ()
+  with | e1 -> if e = e1 then ret () else raise e1)".
 
 (*Unset Extraction Optimize.*)
 
 Separate Extraction CoqUtil.str_to_pos (*TEMP*)
   CoqExthtbl CoqNumber hashcons extmap extset CoqHashtbl 
-  IdentDefs TyDefs TyFuncs TermDefs. (*Ty.ty_v_map Ident.*)
+  IdentDefs TyDefs TyFuncs TermDefs TermFuncs. (*Ty.ty_v_map Ident.*)
 (*Separate Extraction Extmap.
 Separate Extraction Ty.ty Ty.ty_v_map Ident.*)
 

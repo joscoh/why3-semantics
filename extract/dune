@@ -8,7 +8,7 @@
   IntFuncs 
   CoqExthtbl
   IdentDefs
-  TyDefs TyFuncs TermDefs)
+  TyDefs TyFuncs TermDefs TermFuncs)
  (theories Src stdpp Proofs ExtLib mathcomp.ssreflect elpi HB)
  )
 
@@ -121,12 +121,12 @@
 
  ;Create term.ml
  (rule
-  (deps TermDefs.ml TermExtra.ml)
+  (deps TermDefs.ml TermExn.ml TermFuncs.ml TermExtra.ml)
   (targets term.ml)
   (action 
   (with-stdout-to term.ml
     (pipe-stdout
-     (cat TermDefs.ml TermExtra.ml)
+     (cat TermDefs.ml TermExn.ml TermFuncs.ml TermExtra.ml)
      (run sed -e "s/open TyDefs/open Ty/g")
      (run sed -e "s/open TyFuncs//g")
      (run sed -e "s/open IdentDefs/open Ident/g")
@@ -134,6 +134,7 @@
      (run sed -e "s/open CoqWeakhtbl/open Weakhtbl/g")
      (run sed -e "s/CoqNumber/Number/g")
      (run sed -e "s/CoqExthtbl/Exthtbl2/g")
+     (run sed -e "s/open TermDefs//g")
     )
    )
   )
@@ -143,7 +144,7 @@
  (name Why3Coq)
  (modules (:standard \ TyExn TyDefs TyFuncs TyExtra IdentDefs IdentExtra 
   LocTy LocExtra Locpre CoqWstdlib Wstdlibextra CoqWeakhtbl Weakhtblextra
-  CoqNumber numberextra CoqExthtbl TermDefs TermExtra))
+  CoqNumber numberextra CoqExthtbl TermDefs TermExtra TermExn TermFuncs))
  (flags (:standard -w -33 -w -32 -w -9)) ;32 is unused value - extraction results in values we don't want in mli file
  (libraries zarith sexplib re))
 
