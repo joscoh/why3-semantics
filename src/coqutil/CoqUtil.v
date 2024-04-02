@@ -229,6 +229,15 @@ Fixpoint fold_right2 {A B C: Type} (f: A -> B -> C -> C) (l1: list A)
   | _, _ => None
   end.
 
+Fixpoint fold_left2 {A B C: Type} (f: C -> A -> B -> C) (l1: list A)
+  (l2: list B) (accu: C) : option C :=
+  match l1, l2 with
+  | nil, nil => Some accu
+  | a1 :: l1, a2 :: l2 => 
+    fold_left2 f l1 l2 (f accu a1 a2)
+  | _, _ => None
+  end.
+
 Definition null {A: Type} (l: list A) : bool :=
   match l with
   | nil => true

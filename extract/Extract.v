@@ -166,9 +166,14 @@ Extract Inlined Constant TypeMismatch => "TypeMismatch".
 (*Term exceptions*)
 Extract Inlined Constant UncoveredVar => "UncoveredVar".
 Extract Inlined Constant DuplicateVar => "DuplicateVar".
-Extraction Inline mk_errtype.
-(*Extract Inlined Constant BadTypeArity_reg => "exception Exceptions.BadTypeArity of tysymbol * int".*)
+Extract Inlined Constant BadArity => "BadArity".
+Extract Inlined Constant FunctionSymbolExpected => "FunctionSymbolExpected".
+Extract Inlined Constant PredicateSymbolExpected => "PredicateSymbolExpected".
+Extract Inlined Constant ConstructorExpected => "ConstructorExpected".
 
+Extraction Inline mk_errtype.
+
+(*Try/Catch*)
 (* We need to compare names for equality because
   we cannot just put e in the match, or else it is interpreted
   as a variable/wildcard*)

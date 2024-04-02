@@ -141,7 +141,7 @@ let pat_app f pl ty =
 
 (* generic traversal functions *)
 
-let pat_map fn pat = match pat.pat_node with
+(* let pat_map fn pat = match pat.pat_node with
   | Pwild | Pvar _ -> pat
   | Papp (s, pl) -> pat_app_aux s (List.map fn pl) pat.pat_ty
   | Pas (p, v) -> pat_as_aux (fn p) v
@@ -164,9 +164,9 @@ let pat_any pr pat = Util.any pat_fold pr pat
 exception BadArity of lsymbol * int
 exception FunctionSymbolExpected of lsymbol
 exception PredicateSymbolExpected of lsymbol
-exception ConstructorExpected of lsymbol
+exception ConstructorExpected of lsymbol *)
 
-let pat_app fs pl ty =
+(* let pat_app fs pl ty =
   let s = match fs.ls_value with
     | Some vty -> ty_match Mtv.empty vty ty
     | None -> raise (FunctionSymbolExpected fs)
@@ -183,7 +183,7 @@ let pat_as p v =
 
 let pat_or p q =
   ty_equal_check p.pat_ty q.pat_ty;
-  pat_or_aux p q
+  pat_or_aux p q *)
 
 (* rename all variables in a pattern *)
 
@@ -881,7 +881,7 @@ let t_peek_quant (vl,_,_,_) =
 let ls_arg_inst ls tl =
   let mtch s ty t = ty_match s ty (t_type t) in
   try List.fold_left2 mtch Mtv.empty ls.ls_args tl with
-    | Invalid_argument _ -> raise (BadArity (ls, List.length tl))
+    | Invalid_argument _ -> raise (BadArity (ls, (BigInt.of_int (List.length tl)))) (*JOSH of_int*)
 
 let ls_app_inst ls tl ty =
   let s = ls_arg_inst ls tl in
