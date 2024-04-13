@@ -14,11 +14,37 @@ open Number
 
 (** Construction *)
 
-type constant =
+(* type constant =
   | ConstInt  of int_constant
   | ConstReal of real_constant
   | ConstStr  of string
-[@@deriving sexp]
+[@@deriving sexp] *)
+
+let sexp_of_constant x =
+  match x with
+  | ConstInt i -> Sexplib0.Sexp.List [
+    Sexplib0.Sexp.Atom "ConstInt";
+    Number.sexp_of_int_constant i
+  ]
+  | ConstReal r -> Sexplib0.Sexp.List [
+    Sexplib0.Sexp.Atom "ConstReal";
+    sexp_of_real_constant r
+  ] 
+  | ConstStr s -> Sexplib0.Sexp.List [
+    Sexplib0.Sexp.Atom "ConstStr";
+    Sexplib0.Sexp_conv.sexp_of_string s
+  ] 
+
+let constant_of_sexp x =
+  match x with
+  | Sexplib0.Sexp.List [ Sexplib0.Sexp.Atom s; a] ->
+    begin match s with
+    | "ConstInt" -> ConstInt (int_constant_of_sexp a)
+    | "ConstReal" -> ConstReal (real_constant_of_sexp a)
+    | "ConstStr" -> ConstStr (Sexplib0.Sexp_conv.string_of_sexp a)
+    | _ -> Sexplib0.Sexp_conv.of_sexp_error "constant_of_sexp" x
+    end
+  | _ -> Sexplib0.Sexp_conv.of_sexp_error "constant_of_sexp" x
 
 let compare_const ?(structural=true) c1 c2 =
   match c1, c2 with

@@ -38,3 +38,28 @@ Proof.
   rewrite andb_true, <- !CoqBigInt.eqb_eq.
   solve_eqb_eq.
 Qed.
+
+(*Construction*)
+Definition int_value : Type := CoqBigInt.t.
+
+Variant int_literal_kind :=
+  | ILitUnk | ILitDec | ILitHex | ILitOct | ILitBin.
+
+Record int_constant := {
+  il_kind : int_literal_kind;
+  il_int : CoqBigInt.t
+}.
+
+Record real_value := {
+  rv_sig : CoqBigInt.t;
+  rv_pow2: CoqBigInt.t;
+  rv_pow5 : CoqBigInt.t
+}.
+
+Variant real_literal_kind := 
+  | RLitUnk | RLitDec (i: CoqInt.int) | RLitHex (i: CoqInt.int).
+
+Record real_constant := {
+  rl_kind : real_literal_kind;
+  rl_real : real_value
+}.

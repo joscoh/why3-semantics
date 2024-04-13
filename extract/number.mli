@@ -28,6 +28,9 @@ type int_constant = {
 }
 [@@deriving sexp]
 
+val sexp_of_int_constant : int_constant -> Sexplib0.Sexp.t
+val int_constant_of_sexp : Sexplib0.Sexp.t -> int_constant
+
 type real_value = private {
   rv_sig  : BigInt.t;
   rv_pow2 : BigInt.t;
@@ -43,6 +46,9 @@ type real_constant = {
   rl_real : real_value
 }
 [@@deriving sexp]
+
+val sexp_of_real_constant : real_constant -> Sexplib0.Sexp.t
+val real_constant_of_sexp : Sexplib0.Sexp.t -> real_constant
 
 val neg_int : int_constant -> int_constant
 val abs_int : int_constant -> int_constant

@@ -7,6 +7,7 @@
   extmap extset CoqWstdlib CoqWeakhtbl CoqHashtbl hashcons CoqNumber Ctr
   IntFuncs 
   CoqExthtbl
+  ConstantDefs
   IdentDefs
   TyDefs TyFuncs TermDefs TermFuncs)
  (theories Src stdpp Proofs ExtLib mathcomp.ssreflect elpi HB)
@@ -119,6 +120,24 @@
   )
  )
 
+ ;Create constant.ml
+ ;create Ident.ml
+ (rule
+  (deps ConstantDefs.ml ConstantExtra.ml)
+  (targets constant.ml)
+  (action 
+  (with-stdout-to constant.ml
+    (pipe-stdout
+     (cat ConstantDefs.ml ConstantExtra.ml)
+     (run sed -e "s/CoqNumber/Number/g")
+    ;  (run sed -e "s/open LocTy/open Loc/g")
+    ;  (run sed -e "s/open CoqWstdlib/open Wstdlib/g")
+    ;  (run sed -e "s/open CoqWeakhtbl/open Weakhtbl/g")
+    )
+   )
+  )
+ )
+
  ;Create term.ml
  (rule
   (deps TermDefs.ml TermExn.ml TermFuncs.ml TermExtra.ml)
@@ -135,6 +154,8 @@
      (run sed -e "s/CoqNumber/Number/g")
      (run sed -e "s/CoqExthtbl/Exthtbl2/g")
      (run sed -e "s/open TermDefs//g")
+     (run sed -e "s/ConstantDefs/Constant/g")
+     (run sed -e "s/open LocTy/open Loc/g")
     )
    )
   )
@@ -144,8 +165,10 @@
  (name Why3Coq)
  (modules (:standard \ TyExn TyDefs TyFuncs TyExtra IdentDefs IdentExtra 
   LocTy LocExtra Locpre CoqWstdlib Wstdlibextra CoqWeakhtbl Weakhtblextra
-  CoqNumber numberextra CoqExthtbl TermDefs TermExtra TermExn TermFuncs))
- (flags (:standard -w -33 -w -32 -w -9)) ;32 is unused value - extraction results in values we don't want in mli file
+  CoqNumber numberextra CoqExthtbl ConstantDefs ConstantExtra TermDefs TermExtra TermExn TermFuncs))
+ (flags (:standard -w -33 -w -32 -w -9 -w -27)) 
+ ;32 is unused value - extraction results in values we don't want in mli file
+ ;27 is unused var strict - TODO turn off after
  (libraries zarith sexplib re))
 
 

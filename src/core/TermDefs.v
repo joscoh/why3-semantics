@@ -271,3 +271,259 @@ Definition pattern_eqb_eq := proj1 pattern_eqb_eq_aux.
 Definition pattern_node_eqb_eq := proj2 pattern_eqb_eq_aux.
 
 (*No sets/maps of patterns*)
+
+(* Terms *)
+Require LocTy CoqNumber ConstantDefs.
+
+
+(*First, Coq definition*)
+Variant quant : Set :=
+  | Tforall
+  | Texists.
+
+Variant binop : Set :=
+  | Tand
+  | Tor
+  | Timplies
+  | Tiff.
+
+Record term_o (A: Type) := {
+  t_node : A;
+  t_ty: option ty_c;
+  t_attrs : Sattr.t;
+  t_loc: option LocTy.position
+}.
+
+(*Note that this does not need to be a record
+  because it is not exposed externally.
+  For now, keep as record so we don't have to
+  change all the rest of the functions in Term at once.
+  Maybe change at end *)
+(*NO deferred substitution*)
+Record bind_info := {
+  bv_vars : Mvs.t CoqBigInt.t (*free vars*);
+}.
+
+(*Coq definitions*)
+(*No deferred substitution*)
+(*TODO: maybe should just inline all of these types, then define
+  later - that is much better*)
+Unset Elimination Schemes.
+Inductive term_c :=
+  | mk_term_c : term_node -> option ty_c -> Sattr.t -> 
+    option LocTy.position -> term_c
+with term_node :=
+  | Tvar : vsymbol -> term_node
+  | Tconst: ConstantDefs.constant -> term_node
+  | Tapp: lsymbol -> list term_c -> term_node
+  | Tif: term_c -> term_c -> term_c -> term_node
+  | Tlet : term_c -> (vsymbol * bind_info * term_c) -> term_node
+  | Tcase : term_c -> list (pattern * bind_info * term_c) -> term_node
+  | Teps: (vsymbol * bind_info * term_c) -> term_node
+  | Tquant : quant -> (list vsymbol * bind_info * list (list term_c) * term_c) -> term_node
+  | Tbinop : binop -> term_c -> term_c -> term_node
+  | Tnot : term_c -> term_node
+  | Ttrue : term_node
+  | Tfalse : term_node.
+
+Definition term_bound := (vsymbol * bind_info * term_c)%type.
+Definition term_branch := (pattern * bind_info * term_c)%type.
+Definition trigger := list (list term_c).
+Definition term_quant := 
+  (list vsymbol * bind_info * trigger * term_c)%type.
+Set Elimination Schemes.
+
+(*Convert term_bound, branch, and quant to tuple*)
+(* Definition term_bound_to_tup (tb: term_bound) : vsymbol * bind_info * term_c :=
+  match tb with
+  | mk_term_bound v b t => (v, b, t)
+  end.
+
+Definition term_bound_of_tup (x:  vsymbol * bind_info * term_c) : term_bound :=
+  match x with
+  | (v, b, t) => mk_term_bound v b t
+  end.
+
+Definition term_branch_to_tup (tb: term_branch) : pattern * bind_info * term_c :=
+  match tb with
+  | mk_term_branch v b t => (v, b, t)
+  end.
+
+Definition term_branch_of_tup (x:  pattern * bind_info * term_c) : term_branch :=
+  match x with
+  | (v, b, t) => mk_term_branch v b t
+  end.
+
+Definition term_quant_to_tup (tb: term_quant) : list vsymbol * bind_info * trigger * term_c :=
+  match tb with
+  | mk_term_quant v b tr t => (v, b, tr, t)
+  end.
+
+Definition term_quant_of_tup (x:  list vsymbol * bind_info * trigger * term_c) : term_quant :=
+  match x with
+  | (v, b, tr, t) => mk_term_quant v b tr t
+  end.
+
+Definition trigger_to_terms (t: trigger) : list (list term_c) :=
+  match t with
+  | mk_trigger t => t
+  end.
+
+Definition trigger_of_terms (l: list (list term_c)) : trigger :=
+  mk_trigger l. *)
+
+Definition term := term_o term_node.
+
+Section ExtractInterface.
+
+Definition t_node_of (t: term_c) : term_node :=
+  match t with
+  | mk_term_c t _ _ _ => t
+  end.
+
+Definition t_ty_of (t: term_c) : option ty_c :=
+  match t with
+  | mk_term_c _ o _ _ => o
+  end.
+
+Definition t_attrs_of (t: term_c) : Sattr.t :=
+  match t with
+  | mk_term_c _ _ a _ => a
+  end.
+
+Definition t_loc_of (t: term_c) : option LocTy.position :=
+  match t with
+  | mk_term_c _ _ _ l => l
+  end.
+
+(*Constructor*)
+Definition build_term_o (t: term_node)
+  (o: option ty_c) (a: Sattr.t) (l: option LocTy.position) :
+  term_o term_node :=
+  {| t_node := t; t_ty := o; t_attrs := a; t_loc := l |}.
+
+End ExtractInterface.
+
+(*For convenience - TODO figure out, cannot pattern match as
+  tuple - should we encode as tuple?*)
+(* Definition term_bound_vsym (tb: term_bound) : vsymbol :=
+  match tb with
+  | mk_term_bound v _ _ => v
+  end.
+
+Definition term_bound_binfo (tb: term_bound) : bind_info :=
+  match tb with
+  | mk_term_bound _ b _ => b
+  end.
+
+Definition term_bound_term (tb: term_bound) : term_c :=
+  match tb with
+  | mk_term_bound _ _ t => t
+  end.
+
+Definition term_branch_pattern (tb: term_branch) : pattern :=
+  match tb with
+  | mk_term_branch p _ _ => p
+  end.
+
+Definition term_branch_binfo (tb: term_branch) : bind_info :=
+  match tb with
+  | mk_term_branch _ b _ => b
+  end.
+
+Definition term_branch_term (tb: term_branch) : term_c :=
+  match tb with
+  | mk_term_branch _ _ t => t
+  end.
+
+Definition term_quant_vsyms (tq: term_quant) : list vsymbol :=
+  match tq with
+  | mk_term_quant l _ _ _ => l
+  end.
+
+Definition term_quant_binfo (tq: term_quant) : bind_info :=
+  match tq with
+  | mk_term_quant _ b _ _ => b
+  end.
+
+Definition term_quant_trigger (tq: term_quant) : trigger :=
+  match tq with
+  | mk_term_quant _ _ tr _ => tr
+  end.
+
+Definition term_quant_term (tq: term_quant) : term_c :=
+  match tq with
+  | mk_term_quant _ _ _ t => t
+  end.
+
+Definition trigger_terms (tr: trigger) : list (list term_c) :=
+  match tr with
+  | mk_trigger l => l
+  end. *)
+
+Definition trd {A B C: Type} (x: A * B * C) : C :=
+match x with
+| (_, _, y) => y
+end.
+
+
+(*Inductive on Terms*)
+Section TermInd.
+
+Variable (P: term_c -> Prop).
+Variable (P1: term_node -> Prop).
+(* Variable (P2: term_bound -> Prop).
+Variable (P3: term_branch -> Prop).
+Variable (P4: term_quant -> Prop).
+Variable (P5: trigger -> Prop). *)
+
+Variable (Hterm: forall t, P1 (t_node_of t) -> P t).
+Variable (Hvar: forall v, P1 (Tvar v)).
+Variable (Hconst: forall c, P1 (Tconst c)).
+Variable (Happ: forall l ts, Forall P ts -> P1 (Tapp l ts)).
+Variable (Hif: forall t1 t2 t3, P t1 -> P t2 -> P t3 -> 
+  P1 (Tif t1 t2 t3)).
+Variable (Hlet: forall t v b t1, P t -> P t1 -> P1 (Tlet t (v, b, t1))).
+Variable (Hcase: forall t tbs, P t -> (*TODO: see how to phrase*)
+Forall P (map trd tbs)-> P1 (Tcase t tbs)).
+Variable (Heps: forall v b t, P t -> P1 (Teps (v, b, t))).
+Variable (Hquant: forall q l b tr t,
+  Forall (fun x => Forall P x) tr ->
+  P t ->
+  P1 (Tquant q (l, b, tr, t))).
+Variable (Hbinop: forall b t1 t2, P t1 -> P t2 -> P1 (Tbinop b t1 t2)).
+Variable (Hnot: forall t, P t -> P1 (Tnot t)).
+Variable (Htrue: P1 Ttrue).
+Variable (Hfalse: P1 Tfalse).
+(* Variable (Htermbound: forall tb,
+  P (term_bound_term tb) -> P2 tb).
+Variable (Htermbranch: forall tb,
+  P (term_branch_term tb) -> P3 tb).
+Variable (Htermquant: forall tq,
+  P5 (term_quant_trigger tq) -> P (term_quant_term tq) -> P4 tq).
+Variable (Htrigger: forall tr,
+  Forall (fun x => Forall P x) (trigger_terms tr) ->
+  P5 tr). *)
+
+Fixpoint term_ind (t: term_c) : P t :=
+  Hterm t (term_node_ind (t_node_of t))
+with term_node_ind (t: term_node) {struct t} : P1 t :=
+  match t with
+  | Tvar v => Hvar v
+  | Tconst c => Hconst c
+  | Tapp l ts => Happ l ts (mk_Forall term_ind ts)
+  | Tif t1 t2 t3 => Hif _ _ _ (term_ind t1) (term_ind t2) (term_ind t3)
+  | Tlet t (v, b, t1) => Hlet t v b t1
+    (term_ind t) (term_ind t1)
+  | Tcase t tbs => Hcase t tbs (term_ind t) 
+    (*Coq's termination checker likes this better*)
+      ((proj2 (Forall_map _ _ _)) (mk_Forall (fun x => term_ind (trd x)) tbs))
+  | Teps (v, b, t) => Heps v b t (term_ind t)
+  | Tquant q (l, b, tr, t) => Hquant q l b tr t
+    (mk_Forall (mk_Forall term_ind) tr) (term_ind t)
+  | Tbinop b t1 t2 => Hbinop b t1 t2 (term_ind t1) (term_ind t2)
+  | Tnot t => Hnot t (term_ind t)
+  | Ttrue => Htrue
+  | Tfalse => Hfalse
+  end.
+End TermInd.

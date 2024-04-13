@@ -131,7 +131,25 @@ type binop =
   | Timplies
   | Tiff
 
-type term = private {
+type 'a term_o = private { t_node : 'a; t_ty : ty_node_c ty_o option;
+  t_attrs : Sattr.t; t_loc : Loc.position option }
+
+type term_node =
+| Tvar of vsymbol
+| Tconst of Constant.constant
+| Tapp of lsymbol * (term_node term_o) list
+| Tif of (term_node term_o) * (term_node term_o) * (term_node term_o)
+| Tlet of (term_node term_o) * term_bound
+| Tcase of (term_node term_o) * term_branch list
+| Teps of term_bound
+| Tquant of quant * term_quant
+| Tbinop of binop * (term_node term_o) * (term_node term_o)
+| Tnot of (term_node term_o)
+| Ttrue
+| Tfalse
+
+
+(* type term = private {
   t_node  : term_node;
   t_ty    : ty option;
   t_attrs : Sattr.t;
@@ -150,13 +168,15 @@ and term_node =
   | Tbinop of binop * term * term
   | Tnot of term
   | Ttrue
-  | Tfalse
+  | Tfalse *)
 
 and term_bound
 and term_branch
 and term_quant
 
-and trigger = term list list
+and trigger = (term_node term_o) list list
+
+type term = (term_node term_o)
 
 val term_size : term -> BigInt.t
 (** [term_size t] is the size, i.e. the number of [term_node] constructors occuring in [t] *)

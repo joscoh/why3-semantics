@@ -51,6 +51,8 @@ coq-util/Exthtbl2.ml
 coq-util/Exthtbl2.mli
 util/bigInt.ml
 util/bigInt.mli
+util/constant.mli
+util/constant.ml
 util/hashcons.ml
 util/hashcons.mli
 util/wstdlib.ml

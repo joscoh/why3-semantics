@@ -77,6 +77,17 @@ Definition combine (acc n: CoqInt.int) : CoqInt.int :=
 Definition combine_list {A: Type} (f: A -> CoqInt.int) 
   (acc: CoqInt.int) (l: list A) : CoqInt.int :=
   List.fold_left (fun acc x => combine acc (f x)) l acc.
+Definition combine2 (acc n1 n2: CoqInt.int) := 
+  combine (combine acc n1) n2.
+Definition combine3 acc n1 n2 n3 := combine (combine2 acc n1 n2) n3.
+Definition combine_option {A: Type} (h: A -> CoqInt.int) 
+  (o: option A) : CoqInt.int :=
+  match o with
+  | None => CoqInt.neg_one
+  | Some s => h s
+  end.
+Definition combine_pair {A B: Type} (h1 : A -> CoqInt.int)
+  (h2: B -> CoqInt.int) x := combine (h1 (fst x)) (h2 (snd x)).
 
 Definition combine_big acc n := 
   CoqBigInt.add (CoqBigInt.mul_int int_65599 acc) n.

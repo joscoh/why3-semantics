@@ -153,6 +153,14 @@ Extract Inlined Constant pat_node_of => "pat_node".
 Extract Inlined Constant pat_vars_of => "pat_vars".
 Extract Inlined Constant pat_ty_of => "pat_ty".
 
+(*Extract term to mixed record-inductive*)
+Extract Inductive term_c => "(term_node term_o)"
+  [ "(fun (a, b, c, d) -> build_term_o a b c d)"].
+Extract Inlined Constant t_node_of => "t_node".
+Extract Inlined Constant t_ty_of => "t_ty".
+Extract Inlined Constant t_attrs_of => "t_attrs".
+Extract Inlined Constant t_loc_of => "t_loc".
+
 (*Other exceptions*)
 Extract Inlined Constant BadTypeArity => "BadTypeArity".
 Extract Inlined Constant DuplicateTypeVar => "DuplicateTypeVar".
