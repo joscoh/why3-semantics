@@ -103,3 +103,7 @@ Fixpoint iota_aux (z: CoqBigInt.t) (ACC: Acc lt (Z.to_nat z)) {struct ACC} :
 (*TODO: inline*)
 Definition iota (z: CoqBigInt.t) : list CoqBigInt.t :=
   iota_aux z (Wf_nat.lt_wf _).
+
+(*Lexicographic comparison*)
+Definition lex_comp x1 x2 : CoqInt.int :=
+  if CoqInt.is_zero x1 then x2 else x1.

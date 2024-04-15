@@ -3,6 +3,7 @@ Require Import Coq.Numbers.BinNums.
 Require Import Coq.Bool.Bool.
 Require Import Setoid.
 Require Import CoqInt.
+Require Import IntFuncs.
 (*TODO: will likely need a layer on top to interface with existing Loc*)
 
 
@@ -27,3 +28,10 @@ Proof.
 Qed.
 
 Definition equal (p1 p2: position) : bool := position_eqb p1 p2.
+
+(*TODO: OCAML*)
+(*A Lexicographic ordering*)
+(* Definition compare (p1 p2: position) : CoqInt.int :=
+  lex_comp (CoqInt.compare p1.(pos_file_tag) p2.(pos_file_tag))
+    (lex_comp (CoqInt.compare p1.(pos_start) p2.(pos_start))
+      (CoqInt.compare p1.(pos_end) p2.(pos_end))). *)

@@ -58,6 +58,7 @@ Extract Inlined Constant CoqInt.one => "Stdlib.Int.one".
 Extract Inlined Constant CoqInt.neg_one => "Stdlib.Int.minus_one".
 Extract Inlined Constant CoqInt.add => "Stdlib.Int.add".
 Extract Inlined Constant CoqInt.mult => "Stdlib.Int.mul".
+Extract Inlined Constant CoqInt.is_zero => "(fun x -> Stdlib.Int.equal x Stdlib.Int.zero)". 
 Extract Inlined Constant hashcons.int_65599 => "65599".
 
 Extract Inlined Constant CoqBigInt.to_Z => "ZCompat.to_Z_big".

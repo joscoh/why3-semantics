@@ -41,6 +41,9 @@ Proof.
   discriminate.
 Qed.
 
+Definition compare (i1 i2: int) : comparison :=
+  Z.compare (int_val i1) (int_val i2).
+
 End BoundedInt.
 
 Definition ocaml_int_size := 2 ^ 62.
@@ -52,3 +55,5 @@ Proof. apply eqb_eq. Qed.
 
 Definition int63_of_Z (z: Z) (Hz: Z.leb (-ocaml_int_size) z && Z.ltb z ocaml_int_size) : int63 :=
   mk_int _ z Hz.
+
+Definition int63_compare := compare ocaml_int_size.

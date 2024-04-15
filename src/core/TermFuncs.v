@@ -143,3 +143,250 @@ Definition pat_as (p: pattern_c) (v: vsymbol) : errorM pattern_c :=
 Definition pat_or (p q: pattern_c) : errorM pattern_c :=
   _ <-- ty_equal_check (pat_ty_of p) (pat_ty_of q) ;;
   pat_or_aux p q.
+
+(*Term equality modulo alpha-equivalence and location*)
+Section TCompare.
+Variable trigger attr loc const: bool.
+
+Definition list_comp l : CoqInt.int :=
+  fold_left lex_comp l CoqInt.zero.
+
+(*Compare variables v1 and v2.
+  To be equal, they must either be mapped to each other in each map
+  or not in either map and equal*)
+Definition var_compare (m1 m2: Mvs.t CoqBigInt.t) (v1 v2: vsymbol) : CoqInt.int :=
+  match Mvs.find_opt _ v1 m1, Mvs.find_opt _ v2 m2 with
+  | Some i1, Some i2 => CoqBigInt.compare i1 i2
+  | None, None => vs_compare v1 v2
+  | Some _, _ => CoqInt.neg_one
+  | _, _ => CoqInt.one
+  end.
+
+Definition quant_compare (q1 q2: quant) : CoqInt.int :=
+  match q1, q2 with
+  | Tforall, Texists => CoqInt.neg_one
+  | Texists, Tforall => CoqInt.one
+  | _, _ => CoqInt.zero
+  end.
+
+Definition binop_compare (b1 b2: binop) : CoqInt.int :=
+  match b1, b2 with
+  | Tand, Tand => CoqInt.zero
+  | Tor, Tor => CoqInt.zero
+  | Timplies, Timplies => CoqInt.zero
+  | Tiff, Tiff => CoqInt.zero
+  | Tand, _ => CoqInt.neg_one
+  | _, Tand => CoqInt.one
+  | Tor, _ => CoqInt.neg_one
+  | _, Tor => CoqInt.one
+  | Timplies, _ => CoqInt.neg_one
+  | _, Timplies => CoqInt.one
+  end.
+
+
+(*Version of fold_left2 with default values for shorter lists*)
+(*Weird definition so Coq's termination checker accepts it*)
+Definition fold_left2_def {A B C: Type} :=
+  fun (f : A -> B -> C -> A) (d1 d2: A) =>
+    fix fold_left2_def (l1: list B) : list C -> A -> A :=
+      match l1 with
+      | nil => fun l2 acc =>
+        match l2 with
+        | nil => acc
+        | _ :: _ => d1
+        end
+      | x1 :: t1 => fun l2 acc =>
+        match l2 with
+        | nil => d2
+        | x2 :: t2 => fold_left2_def t1 t2 (f acc x1 x2)
+        end
+      end.
+    
+(* Fixpoint fold_left2_def {A B C: Type} (f: A -> B -> C -> A) (acc: A)
+  (l1: list B)(l2: list C) (d1 d2: A) : A :=
+  match l1, l2 with
+  | nil, nil => acc
+  | x1 :: t1, x2 :: t2 => fold_left2_def f (f acc x1 x2) t1 t2 d1 d2
+  | nil, _ :: _ => d1
+  | _ :: _, nil => d2
+  end. *)
+
+(*TODO CHECK OCAML*)
+(*Version of*)
+
+(*TODO CHECK OCAML*)
+Definition or_cmp_vsym (bv1 bv2: Mvs.t CoqBigInt.t) (v1 v2: vsymbol) :=
+  match Mvs.find_opt _ v1 bv1, Mvs.find_opt _ v2 bv2 with
+    | Some i1, Some i2 => CoqBigInt.compare i1 i2
+    (*Should never happen*)
+    | None, None => CoqInt.zero
+    | Some _, None => CoqInt.neg_one
+    | _, _ => CoqInt.one
+  end.
+
+
+Fixpoint or_cmp (bv1 bv2: Mvs.t CoqBigInt.t) (q1 q2: pattern_c) : CoqInt.int :=
+  match (pat_node_of q1), (pat_node_of q2) with
+  | Pwild, Pwild => CoqInt.zero
+  | Pvar v1, Pvar v2 =>
+    (*TODO CHECK OCAML*)
+    or_cmp_vsym bv1 bv2 v1 v2
+  | Papp s1 l1, Papp s2 l2 =>
+    let i1 := ls_compare s1 s2 in
+    lex_comp i1 (
+      fold_left2_def (fun i p1 p2 =>
+        lex_comp i (or_cmp bv1 bv2 p1 p2))
+        CoqInt.neg_one CoqInt.one l1 l2
+        CoqInt.zero 
+    )
+  | Por p1 q1, Por p2 q2 =>
+    let i1 := or_cmp bv1 bv2 p1 p2 in
+    lex_comp i1 (or_cmp bv1 bv2 q1 q2)
+  | Pas p1 v1, Pas p2 v2 =>
+    let i1 := or_cmp bv1 bv2 p1 p2 in
+    lex_comp i1 (or_cmp_vsym bv1 bv2 v1 v2)
+  | Pwild,  _ => CoqInt.neg_one | _, Pwild  => CoqInt.one
+  | Pvar _, _ => CoqInt.neg_one | _, Pvar _ => CoqInt.one
+  | Papp _ _, _ => CoqInt.neg_one | _, Papp _ _ => CoqInt.one
+  | Por _ _,  _ => CoqInt.neg_one | _, Por _ _  => CoqInt.one
+  end.
+
+Fixpoint pat_compare (state: CoqBigInt.t * Mvs.t CoqBigInt.t * Mvs.t CoqBigInt.t)
+  (p1 p2: pattern_c) : CoqInt.int * CoqBigInt.t * Mvs.t CoqBigInt.t * Mvs.t CoqBigInt.t :=
+  let '(bnd, bv1, bv2) := state in
+  match (pat_node_of p1), (pat_node_of p2) with
+  | Pwild, Pwild => (CoqInt.zero, bnd, bv1, bv2)
+  | Pvar v1, Pvar v2 => (CoqInt.zero, CoqBigInt.succ bnd, Mvs.add v1 bnd bv1, Mvs.add v2 bnd bv2) (*equal by fiat*)
+  | Papp s1 l1, Papp s2 l2 =>
+    let i1 := ls_compare s1 s2 in
+    let '(sbnd, sm1, sm2) := state in
+    let '(i2, bnd, bv1, bv2) := fold_left2_def (fun acc p1 p2 =>
+      let '(i, bnd1, m1, m2) := acc in
+      let '(j, bnd2, m1', m2') := pat_compare (bnd1, m1, m2) p1 p2 in
+        (lex_comp i j, bnd2, m1', m2')) 
+        (CoqInt.neg_one, sbnd, sm1, sm2) (CoqInt.one, sbnd, sm1, sm2)
+        l1 l2
+        (CoqInt.zero, sbnd, sm1, sm2)
+         in 
+    (lex_comp i1 i2, bnd, bv1, bv2)
+  | Por p1 q1, Por p2 q2 =>
+    let '(i1, bnd1, bv1, bv2) := pat_compare state p1 p2 in
+    if negb (CoqInt.is_zero i1) then (i1, bnd1, bv1, bv2)
+    else 
+      let i2 := or_cmp bv1 bv1 q1 q2 in
+      (i2, bnd1, bv1, bv2)
+  | Pas p1 v1, Pas p2 v2 =>
+    let '(i1, bnd, bv1, bv2) := pat_compare state p1 p2 in
+    (i1, CoqBigInt.succ bnd, Mvs.add v1 bnd bv1, Mvs.add v2 bnd bv2)
+  | Pwild, _  => (CoqInt.neg_one, bnd, bv1, bv2) | _, Pwild  => (CoqInt.one, bnd, bv1, bv2)
+  | Pvar _, _ => (CoqInt.neg_one, bnd, bv1, bv2) | _, Pvar _ => (CoqInt.one, bnd, bv1, bv2)
+  | Papp _ _, _ => (CoqInt.neg_one, bnd, bv1, bv2) | _, Papp _ _ => (CoqInt.one, bnd, bv1, bv2)
+  | Por _ _, _  => (CoqInt.neg_one, bnd, bv1, bv2) | _, Por _ _  => (CoqInt.one, bnd, bv1, bv2)
+  end.
+
+(* Fixpoint t_compare_aux (bnd: CoqBigInt.t) (m1 m2: Mvs.t CoqBigInt.t)
+  (t1 t2: term_c) : CoqInt.int :=
+  (*No shortcuts - TODO ocaml*)
+  let i1 := oty_compare (t_ty_of t1) (t_ty_of t2) in
+  lex_comp i1 (
+  let i2 := if attr then (Sattr.compare (t_attrs_of t1) (t_attrs_of t2)) else CoqInt.zero in
+  lex_comp i2 (
+  let i3 := if loc then option_compare Loc.compare (t_loc_of t1) (t_loc_of t2) else CoqInt.zero in
+  lex_comp i3 (
+    match (t_node_of t1), (t_node_of t2) with
+      | Tvar v1, Tvar v2 ->
+          var_compare vml1 vml2 v1 v2
+      | Tconst c1, Tconst c2 ->
+          Constant.compare_const ~structural:const c1 c2
+
+  )
+  )
+  )
+
+let rec t_compare bnd (vml1 : BigInt.t Mvs.t) (vml2 : BigInt.t Mvs.t) t1 t2 : int =
+    if t1 != t2 || not (Mvs.is_empty vml1) || not (Mvs.is_empty vml2) then begin
+      let i1 = oty_compare t1.t_ty t2.t_ty in
+      lex_comp i1 (
+      let i2 = if attr then (Sattr.compare t1.t_attrs t2.t_attrs) else 0 in
+      lex_comp i2 (
+      let i3 = if loc then (Option.compare Loc.compare t1.t_loc t2.t_loc) else 0 in
+      lex_comp i3 (
+      match t1.t_node, t2.t_node with
+      | Tvar v1, Tvar v2 ->
+          var_compare vml1 vml2 v1 v2
+        | Tconst c1, Tconst c2 ->
+            Constant.compare_const ~structural:const c1 c2
+        | Tapp (s1,l1), Tapp (s2,l2) ->
+          let i1 = ls_compare s1 s2 in
+          lex_comp i1 (
+            fold_left2_def (fun acc t1 t2 ->
+              if acc <> 0 then acc else (t_compare bnd vml1 vml2) t1 t2) 0 l1 l2 (-1) 1)
+        | Tif (f1,t1,e1), Tif (f2,t2,e2) ->
+            let i1 = t_compare bnd vml1 vml2 f1 f2 in
+            lex_comp i1 (
+            let i2 = t_compare bnd vml1 vml2 t1 t2 in
+            lex_comp i2 (
+            t_compare bnd vml1 vml2 e1 e2))
+        | Tlet (t1,((v1,b1),e1)), Tlet (t2,((v2,b2),e2)) ->
+            let i1 = t_compare bnd vml1 vml2 t1 t2 in
+            lex_comp i1 (
+            let vml1 = Mvs.add v1 bnd vml1 in
+            let vml2 = Mvs.add v2 bnd vml2 in
+            t_compare (BigInt.succ bnd) vml1 vml2 e1 e2)
+        | Tcase (t1,bl1), Tcase (t2,bl2) ->
+            let i1 = t_compare bnd vml1 vml2 t1 t2 in
+            lex_comp i1 (
+            let b_compare ((p1,b1),t1) ((p2,b2),t2) =
+              let ip, bnd,bv1,bv2 = pat_compare (bnd,Mvs.empty,Mvs.empty) p1 p2 in
+              if ip <> 0 then ip else
+              let vml1 = Mvs.union (fun x n1 n2 -> Some n1) bv1 vml1 in
+              let vml2 = Mvs.union (fun x n1 n2 -> Some n1) bv2 vml2 in
+              t_compare bnd vml1 vml2 t1 t2 in
+            Lists.compare b_compare bl1 bl2)
+        | Teps ((v1,b1),e1), Teps ((v2,b2),e2) ->
+            let vml1 = Mvs.add v1 bnd vml1 in
+            let vml2 = Mvs.add v2 bnd vml2 in
+            t_compare (BigInt.succ bnd) vml1 vml2 e1 e2
+        | Tquant (q1,(((vl1,b1),tr1),f1)), Tquant (q2,(((vl2,b2),tr2),f2)) ->
+            let i1 = quant_compare q1 q2 in
+            lex_comp i1 (
+            let rec add bnd bv1 bv2 vl1 vl2 = match vl1, vl2 with
+              | (v1::vl1), (v2::vl2) ->
+                  let bv1 = Mvs.add v1 bnd bv1 in
+                  let bv2 = Mvs.add v2 bnd bv2 in
+                  add (BigInt.succ bnd) bv1 bv2 vl1 vl2
+              | [], (_::_) -> -1, bnd, bv1, bv2
+              | (_::_), [] -> 1, bnd, bv1, bv2 
+              | [], [] -> 0, bnd, bv1, bv2 in
+            let i1, bnd, bv1, bv2 = add bnd Mvs.empty Mvs.empty vl1 vl2 in
+            if i1 <> 0 then i1 else
+            let vml1 = Mvs.union (fun x n1 n2 -> Some n1) bv1 vml1 in
+            let vml2 = Mvs.union (fun x n1 n2 -> Some n1) bv2 vml2 in
+            let tr_cmp t1 t2 = t_compare bnd vml1 vml2 t1 t2 in
+            let i2 = if trigger then (Lists.compare (Lists.compare tr_cmp) tr1 tr2) else 0 in
+            if i2 <> 0 then i2 else
+            t_compare bnd vml1 vml2 f1 f2)
+        | Tbinop (op1,f1,g1), Tbinop (op2,f2,g2) ->
+            let i1 = binop_compare op1 op2 in
+            lex_comp i1 (
+            let i2 = t_compare bnd vml1 vml2 g1 g2 in
+            lex_comp i2 (
+            t_compare bnd vml1 vml2 f1 f2))
+        | Tnot f1, Tnot f2 ->
+            t_compare bnd vml1 vml2 f1 f2
+        | Ttrue, Ttrue -> 0
+        | Tfalse, Tfalse -> 0
+        | Tvar _, _   -> -1 | _, Tvar _   -> 1
+        | Tconst _, _ -> -1 | _, Tconst _ -> 1
+        | Tapp _, _   -> -1 | _, Tapp _   -> 1
+        | Tif _, _    -> -1 | _, Tif _    -> 1
+        | Tlet _, _   -> -1 | _, Tlet _   -> 1
+        | Tcase _, _  -> -1 | _, Tcase _  -> 1
+        | Teps _, _   -> -1 | _, Teps _   -> 1
+        | Tquant _, _ -> -1 | _, Tquant _ -> 1
+        | Tbinop _, _ -> -1 | _, Tbinop _ -> 1
+        | Tnot _, _   -> -1 | _, Tnot _   -> 1
+        | Ttrue, _    -> -1 | _, Ttrue    -> 1
+      ))) end else 0 *)
+
+End TCompare.

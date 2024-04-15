@@ -13,12 +13,6 @@ Local Open Scope Z_scope.
   Any code using BigInt.t should ONLY use this interface
   to ensure that the extracted code is valid OCaml and does
   not rely on Coq's Z type*)
-Definition compare_to_int (c: comparison) : CoqInt.int :=
-  match c with
-  | Eq => CoqInt.zero
-  | Lt => CoqInt.neg_one
-  | Gt => CoqInt.one
-  end.
 
 Definition t : Type := Z.
 Definition one : t := 1.

@@ -270,7 +270,7 @@ type term_or_bound =
 
 
 (*lexicographic comparison*)
-let lex_comp x1 x2 : int =
+(* let lex_comp x1 x2 : int =
   if x1 = 0 then x2 else x1
 
 let list_comp l : int =
@@ -364,7 +364,7 @@ let rec or_cmp bv1 bv2 q1 q2 = match q1.pat_node, q2.pat_node with
     | Pwild, _  -> -1, bnd, bv1, bv2 | _, Pwild  -> 1, bnd, bv1, bv2
     | Pvar _, _ -> -1, bnd, bv1, bv2 | _, Pvar _ -> 1, bnd, bv1, bv2
     | Papp _, _ -> -1, bnd, bv1, bv2 | _, Papp _ -> 1, bnd, bv1, bv2
-    | Por _, _  -> -1, bnd, bv1, bv2 | _, Por _  -> 1, bnd, bv1, bv2
+    | Por _, _  -> -1, bnd, bv1, bv2 | _, Por _  -> 1, bnd, bv1, bv2 *)
 
 let t_compare ~trigger ~attr ~loc ~const t1 t2 =
   let rec t_compare bnd (vml1 : BigInt.t Mvs.t) (vml2 : BigInt.t Mvs.t) t1 t2 : int =
@@ -384,7 +384,7 @@ let t_compare ~trigger ~attr ~loc ~const t1 t2 =
           let i1 = ls_compare s1 s2 in
           lex_comp i1 (
             fold_left2_def (fun acc t1 t2 ->
-              if acc <> 0 then acc else (t_compare bnd vml1 vml2) t1 t2) 0 l1 l2 (-1) 1)
+              if acc <> 0 then acc else (t_compare bnd vml1 vml2) t1 t2) (-1) 1 l1 l2 0)
         | Tif (f1,t1,e1), Tif (f2,t2,e2) ->
             let i1 = t_compare bnd vml1 vml2 f1 f2 in
             lex_comp i1 (
@@ -401,7 +401,7 @@ let t_compare ~trigger ~attr ~loc ~const t1 t2 =
             let i1 = t_compare bnd vml1 vml2 t1 t2 in
             lex_comp i1 (
             let b_compare ((p1,b1),t1) ((p2,b2),t2) =
-              let ip, bnd,bv1,bv2 = pat_compare (bnd,Mvs.empty,Mvs.empty) p1 p2 in
+              let ((ip, bnd),bv1),bv2 = pat_compare ((bnd,Mvs.empty),Mvs.empty) p1 p2 in
               if ip <> 0 then ip else
               let vml1 = Mvs.union (fun x n1 n2 -> Some n1) bv1 vml1 in
               let vml2 = Mvs.union (fun x n1 n2 -> Some n1) bv2 vml2 in
