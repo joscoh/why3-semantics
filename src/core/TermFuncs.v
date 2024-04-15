@@ -1,4 +1,4 @@
-Require Import IntFuncs Monads TyDefs TermDefs TyFuncs.
+Require Import IntFuncs Monads TyDefs TermDefs TyFuncs IdentDefs.
 Import MonadNotations.
 Local Open Scope monad_scope.
 
@@ -271,7 +271,7 @@ Fixpoint pat_compare (state: CoqBigInt.t * Mvs.t CoqBigInt.t * Mvs.t CoqBigInt.t
     (lex_comp i1 i2, bnd, bv1, bv2)
   | Por p1 q1, Por p2 q2 =>
     let '(i1, bnd1, bv1, bv2) := pat_compare state p1 p2 in
-    if negb (CoqInt.is_zero i1) then (i1, bnd1, bv1, bv2)
+    if negb (CoqInt.is_zero  i1) then (i1, bnd1, bv1, bv2)
     else 
       let i2 := or_cmp bv1 bv1 q1 q2 in
       (i2, bnd1, bv1, bv2)
@@ -284,109 +284,104 @@ Fixpoint pat_compare (state: CoqBigInt.t * Mvs.t CoqBigInt.t * Mvs.t CoqBigInt.t
   | Por _ _, _  => (CoqInt.neg_one, bnd, bv1, bv2) | _, Por _ _  => (CoqInt.one, bnd, bv1, bv2)
   end.
 
-(* Fixpoint t_compare_aux (bnd: CoqBigInt.t) (m1 m2: Mvs.t CoqBigInt.t)
+(*TODO move*)
+Definition list_compare {A B: Type} (cmp: A -> B -> CoqInt.int) (l1: list A) (l2: list B) : CoqInt.int :=
+  fold_left2_def (fun acc x1 x2 => lex_comp acc (cmp x1 x2))
+    CoqInt.neg_one CoqInt.one l1 l2 CoqInt.zero. 
+
+Fixpoint t_compare_aux (bnd: CoqBigInt.t) (vml1 vml2: Mvs.t CoqBigInt.t)
   (t1 t2: term_c) : CoqInt.int :=
   (*No shortcuts - TODO ocaml*)
   let i1 := oty_compare (t_ty_of t1) (t_ty_of t2) in
   lex_comp i1 (
   let i2 := if attr then (Sattr.compare (t_attrs_of t1) (t_attrs_of t2)) else CoqInt.zero in
   lex_comp i2 (
-  let i3 := if loc then option_compare Loc.compare (t_loc_of t1) (t_loc_of t2) else CoqInt.zero in
+  let i3 := if loc then option_compare LocTy.compare (t_loc_of t1) (t_loc_of t2) else CoqInt.zero in
   lex_comp i3 (
     match (t_node_of t1), (t_node_of t2) with
-      | Tvar v1, Tvar v2 ->
-          var_compare vml1 vml2 v1 v2
-      | Tconst c1, Tconst c2 ->
-          Constant.compare_const ~structural:const c1 c2
-
-  )
-  )
-  )
-
-let rec t_compare bnd (vml1 : BigInt.t Mvs.t) (vml2 : BigInt.t Mvs.t) t1 t2 : int =
-    if t1 != t2 || not (Mvs.is_empty vml1) || not (Mvs.is_empty vml2) then begin
-      let i1 = oty_compare t1.t_ty t2.t_ty in
-      lex_comp i1 (
-      let i2 = if attr then (Sattr.compare t1.t_attrs t2.t_attrs) else 0 in
-      lex_comp i2 (
-      let i3 = if loc then (Option.compare Loc.compare t1.t_loc t2.t_loc) else 0 in
-      lex_comp i3 (
-      match t1.t_node, t2.t_node with
-      | Tvar v1, Tvar v2 ->
-          var_compare vml1 vml2 v1 v2
-        | Tconst c1, Tconst c2 ->
-            Constant.compare_const ~structural:const c1 c2
-        | Tapp (s1,l1), Tapp (s2,l2) ->
-          let i1 = ls_compare s1 s2 in
+      | Tvar v1, Tvar v2 =>
+        var_compare vml1 vml2 v1 v2
+      | Tconst c1, Tconst c2 =>
+        ConstantDefs.compare_const_aux const c1 c2
+      | Tapp s1 l1, Tapp s2 l2 =>
+        let i1 := ls_compare s1 s2 in
+        lex_comp i1 (
+          fold_left2_def (fun acc t1 t2 =>
+            lex_comp acc (t_compare_aux bnd vml1 vml2 t1 t2))
+          CoqInt.neg_one CoqInt.one l1 l2 CoqInt.zero)
+      | Tif f1 t1 e1, Tif f2 t2 e2 =>
+        let i1 := t_compare_aux bnd vml1 vml2 f1 f2 in
+        lex_comp i1 (
+        let i2 := t_compare_aux bnd vml1 vml2 t1 t2 in
+        lex_comp i2 (
+        t_compare_aux bnd vml1 vml2 e1 e2))
+      | Tlet t1 (v1, b1, e1), Tlet t2 (v2, b2, e2) =>
+        let i1 := t_compare_aux bnd vml1 vml2 t1 t2 in
+        lex_comp i1 (
+        let vml1 := Mvs.add v1 bnd vml1 in
+        let vml2 := Mvs.add v2 bnd vml2 in
+        t_compare_aux (CoqBigInt.succ bnd) vml1 vml2 e1 e2)
+      | Tcase t1 bl1, Tcase t2 bl2 =>
+        let i1 := t_compare_aux bnd vml1 vml2 t1 t2 in
+        lex_comp i1 (
+        let b_compare x1 x2 :=
+          let '(p1, b1, t1) := x1 in 
+          let '(p2, b2, t2) := x2 in
+          let '(ip, bnd, bv1, bv2) := pat_compare (bnd, Mvs.empty, Mvs.empty) p1 p2 in
+          lex_comp ip (
+            let vml1 := Mvs.union _ (fun x n1 n2 => Some n1) bv1 vml1 in
+            let vml2 := Mvs.union _ (fun x n1 n2 => Some n1) bv2 vml2 in
+            t_compare_aux bnd vml1 vml2 t1 t2
+          ) in
+        list_compare b_compare bl1 bl2)
+      | Teps (v1, b1, e1), Teps (v2, b2, e2) => 
+        let vml1 := Mvs.add v1 bnd vml1 in
+        let vml2 := Mvs.add v2 bnd vml2 in
+        t_compare_aux (CoqBigInt.succ bnd) vml1 vml2 e1 e2
+      | Tquant q1 (vl1, b1, tr1, f1), Tquant q2 (vl2, b2, tr2, f2) =>
+        let i1 := quant_compare q1 q2 in
+        lex_comp i1 (
+          let add bnd bv1 bv2 vl1 vl2 :=
+            (*Don't need fold_left_def here because recurse on vsym lists
+              but nicer to write this way*)
+            fold_left2_def (fun acc v1 v2 =>
+              let '(val, bnd, bv1, bv2) := acc in
+              (*val is so that different lengths compare differently*)
+              (val, CoqBigInt.succ bnd, Mvs.add v1 bnd bv1, Mvs.add v2 bnd bv2))
+              (CoqInt.neg_one, bnd, bv1, bv2)
+              (CoqInt.one, bnd, bv1, bv2)
+              vl1 vl2 (CoqInt.zero, bnd, bv1, bv2) in
+          let '(i1, bnd, bv1, bv2) := add bnd Mvs.empty Mvs.empty vl1 vl2 in
           lex_comp i1 (
-            fold_left2_def (fun acc t1 t2 ->
-              if acc <> 0 then acc else (t_compare bnd vml1 vml2) t1 t2) 0 l1 l2 (-1) 1)
-        | Tif (f1,t1,e1), Tif (f2,t2,e2) ->
-            let i1 = t_compare bnd vml1 vml2 f1 f2 in
-            lex_comp i1 (
-            let i2 = t_compare bnd vml1 vml2 t1 t2 in
-            lex_comp i2 (
-            t_compare bnd vml1 vml2 e1 e2))
-        | Tlet (t1,((v1,b1),e1)), Tlet (t2,((v2,b2),e2)) ->
-            let i1 = t_compare bnd vml1 vml2 t1 t2 in
-            lex_comp i1 (
-            let vml1 = Mvs.add v1 bnd vml1 in
-            let vml2 = Mvs.add v2 bnd vml2 in
-            t_compare (BigInt.succ bnd) vml1 vml2 e1 e2)
-        | Tcase (t1,bl1), Tcase (t2,bl2) ->
-            let i1 = t_compare bnd vml1 vml2 t1 t2 in
-            lex_comp i1 (
-            let b_compare ((p1,b1),t1) ((p2,b2),t2) =
-              let ip, bnd,bv1,bv2 = pat_compare (bnd,Mvs.empty,Mvs.empty) p1 p2 in
-              if ip <> 0 then ip else
-              let vml1 = Mvs.union (fun x n1 n2 -> Some n1) bv1 vml1 in
-              let vml2 = Mvs.union (fun x n1 n2 -> Some n1) bv2 vml2 in
-              t_compare bnd vml1 vml2 t1 t2 in
-            Lists.compare b_compare bl1 bl2)
-        | Teps ((v1,b1),e1), Teps ((v2,b2),e2) ->
-            let vml1 = Mvs.add v1 bnd vml1 in
-            let vml2 = Mvs.add v2 bnd vml2 in
-            t_compare (BigInt.succ bnd) vml1 vml2 e1 e2
-        | Tquant (q1,(((vl1,b1),tr1),f1)), Tquant (q2,(((vl2,b2),tr2),f2)) ->
-            let i1 = quant_compare q1 q2 in
-            lex_comp i1 (
-            let rec add bnd bv1 bv2 vl1 vl2 = match vl1, vl2 with
-              | (v1::vl1), (v2::vl2) ->
-                  let bv1 = Mvs.add v1 bnd bv1 in
-                  let bv2 = Mvs.add v2 bnd bv2 in
-                  add (BigInt.succ bnd) bv1 bv2 vl1 vl2
-              | [], (_::_) -> -1, bnd, bv1, bv2
-              | (_::_), [] -> 1, bnd, bv1, bv2 
-              | [], [] -> 0, bnd, bv1, bv2 in
-            let i1, bnd, bv1, bv2 = add bnd Mvs.empty Mvs.empty vl1 vl2 in
-            if i1 <> 0 then i1 else
-            let vml1 = Mvs.union (fun x n1 n2 -> Some n1) bv1 vml1 in
-            let vml2 = Mvs.union (fun x n1 n2 -> Some n1) bv2 vml2 in
-            let tr_cmp t1 t2 = t_compare bnd vml1 vml2 t1 t2 in
-            let i2 = if trigger then (Lists.compare (Lists.compare tr_cmp) tr1 tr2) else 0 in
-            if i2 <> 0 then i2 else
-            t_compare bnd vml1 vml2 f1 f2)
-        | Tbinop (op1,f1,g1), Tbinop (op2,f2,g2) ->
-            let i1 = binop_compare op1 op2 in
-            lex_comp i1 (
-            let i2 = t_compare bnd vml1 vml2 g1 g2 in
-            lex_comp i2 (
-            t_compare bnd vml1 vml2 f1 f2))
-        | Tnot f1, Tnot f2 ->
-            t_compare bnd vml1 vml2 f1 f2
-        | Ttrue, Ttrue -> 0
-        | Tfalse, Tfalse -> 0
-        | Tvar _, _   -> -1 | _, Tvar _   -> 1
-        | Tconst _, _ -> -1 | _, Tconst _ -> 1
-        | Tapp _, _   -> -1 | _, Tapp _   -> 1
-        | Tif _, _    -> -1 | _, Tif _    -> 1
-        | Tlet _, _   -> -1 | _, Tlet _   -> 1
-        | Tcase _, _  -> -1 | _, Tcase _  -> 1
-        | Teps _, _   -> -1 | _, Teps _   -> 1
-        | Tquant _, _ -> -1 | _, Tquant _ -> 1
-        | Tbinop _, _ -> -1 | _, Tbinop _ -> 1
-        | Tnot _, _   -> -1 | _, Tnot _   -> 1
-        | Ttrue, _    -> -1 | _, Ttrue    -> 1
-      ))) end else 0 *)
+          (*Keep the first (quantified) var*)
+          let vml1 := Mvs.union _ (fun x n1 n2 => Some n1) bv1 vml1 in
+          let vml2 := Mvs.union _ (fun x n1 n2 => Some n1) bv2 vml2 in
+          let tr_cmp t1 t2 := t_compare_aux bnd vml1 vml2 t1 t2 in
+          let i2 := if trigger then list_compare (list_compare tr_cmp) tr1 tr2 else CoqInt.zero in
+          lex_comp i2 (t_compare_aux bnd vml1 vml2 f1 f2)))
+      | Tbinop op1 f1 g1, Tbinop op2 f2 g2 =>
+          let i1 := binop_compare op1 op2 in
+          lex_comp i1 (
+          let i2 := t_compare_aux bnd vml1 vml2 g1 g2 in
+          lex_comp i2 (
+          t_compare_aux bnd vml1 vml2 f1 f2))
+      | Tnot f1, Tnot f2 =>
+          t_compare_aux bnd vml1 vml2 f1 f2
+      | Ttrue, Ttrue => CoqInt.zero
+      | Tfalse, Tfalse => CoqInt.zero
+      | Tvar _, _   => CoqInt.neg_one | _, Tvar _   => CoqInt.one
+      | Tconst _, _ => CoqInt.neg_one | _, Tconst _ => CoqInt.one
+      | Tapp _ _, _   => CoqInt.neg_one | _, Tapp _ _   => CoqInt.one
+      | Tif _ _ _, _    => CoqInt.neg_one | _, Tif _ _ _    => CoqInt.one
+      | Tlet _ _, _   => CoqInt.neg_one | _, Tlet _ _   => CoqInt.one
+      | Tcase _ _, _  => CoqInt.neg_one | _, Tcase _ _  => CoqInt.one
+      | Teps _, _   => CoqInt.neg_one | _, Teps _   => CoqInt.one
+      | Tquant _ _, _ => CoqInt.neg_one | _, Tquant _ _ => CoqInt.one
+      | Tbinop _ _ _, _ => CoqInt.neg_one | _, Tbinop _ _ _ => CoqInt.one
+      | Tnot _, _   => CoqInt.neg_one | _, Tnot _   => CoqInt.one
+      | Ttrue, _    => CoqInt.neg_one | _, Ttrue    => CoqInt.one
+    end))).
+
+Definition t_compare_full t1 t2 := t_compare_aux CoqBigInt.zero Mvs.empty Mvs.empty t1 t2.
 
 End TCompare.

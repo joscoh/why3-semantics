@@ -367,7 +367,8 @@ let rec or_cmp bv1 bv2 q1 q2 = match q1.pat_node, q2.pat_node with
     | Por _, _  -> -1, bnd, bv1, bv2 | _, Por _  -> 1, bnd, bv1, bv2 *)
 
 let t_compare ~trigger ~attr ~loc ~const t1 t2 =
-  let rec t_compare bnd (vml1 : BigInt.t Mvs.t) (vml2 : BigInt.t Mvs.t) t1 t2 : int =
+  t_compare_full trigger attr loc const t1 t2
+  (* let rec t_compare bnd (vml1 : BigInt.t Mvs.t) (vml2 : BigInt.t Mvs.t) t1 t2 : int =
     if t1 != t2 || not (Mvs.is_empty vml1) || not (Mvs.is_empty vml2) then begin
       let i1 = oty_compare t1.t_ty t2.t_ty in
       lex_comp i1 (
@@ -452,7 +453,7 @@ let t_compare ~trigger ~attr ~loc ~const t1 t2 =
         | Tnot _, _   -> -1 | _, Tnot _   -> 1
         | Ttrue, _    -> -1 | _, Ttrue    -> 1
       ))) end else 0 in
-  t_compare BigInt.zero Mvs.empty Mvs.empty t1 t2
+  t_compare BigInt.zero Mvs.empty Mvs.empty t1 t2 *)
 
 let t_similar t1 t2 =
   oty_equal t1.t_ty t2.t_ty &&

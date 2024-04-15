@@ -318,7 +318,7 @@ with term_node :=
   | Tapp: lsymbol -> list term_c -> term_node
   | Tif: term_c -> term_c -> term_c -> term_node
   | Tlet : term_c -> (vsymbol * bind_info * term_c) -> term_node
-  | Tcase : term_c -> list (pattern * bind_info * term_c) -> term_node
+  | Tcase : term_c -> list (pattern_c * bind_info * term_c) -> term_node
   | Teps: (vsymbol * bind_info * term_c) -> term_node
   | Tquant : quant -> (list vsymbol * bind_info * list (list term_c) * term_c) -> term_node
   | Tbinop : binop -> term_c -> term_c -> term_node
@@ -327,7 +327,7 @@ with term_node :=
   | Tfalse : term_node.
 
 Definition term_bound := (vsymbol * bind_info * term_c)%type.
-Definition term_branch := (pattern * bind_info * term_c)%type.
+Definition term_branch := (pattern_c * bind_info * term_c)%type.
 Definition trigger := list (list term_c).
 Definition term_quant := 
   (list vsymbol * bind_info * trigger * term_c)%type.
