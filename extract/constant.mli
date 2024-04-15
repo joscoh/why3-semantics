@@ -18,6 +18,7 @@ type constant =
   | ConstStr  of string
 [@@deriving sexp]
 
+val compare_const_aux : bool -> constant -> constant -> int
 val compare_const : ?structural:bool -> constant -> constant -> int
 (** if [structural] then it is structural comparison, two
    mathematically equal values might differ; otherwise. mathematical

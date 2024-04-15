@@ -47,6 +47,8 @@ let constant_of_sexp x =
   | _ -> Sexplib0.Sexp_conv.of_sexp_error "constant_of_sexp" x
 
 let compare_const ?(structural=true) c1 c2 =
+  compare_const_aux structural c1 c2 
+(* 
   match c1, c2 with
   | ConstInt { il_kind = k1; il_int = i1 }, ConstInt { il_kind = k2; il_int = i2 } ->
       let c = if structural then Stdlib.compare k1 k2 else 0 in
@@ -55,7 +57,7 @@ let compare_const ?(structural=true) c1 c2 =
       let c = if structural then Stdlib.compare k1 k2 else 0 in
       if c <> 0 then c else compare_real ~structural r1 r2
   | _, _ ->
-      Stdlib.compare c1 c2
+      Stdlib.compare c1 c2 *)
 
 let int_const ?(il_kind=ILitUnk) n =
   ConstInt { il_kind; il_int = n }

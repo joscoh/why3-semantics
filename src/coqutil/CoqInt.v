@@ -12,6 +12,8 @@ Definition int_eqb_eq : forall (i1 i2: int), i1 = i2 <-> int_eqb i1 i2 = true :=
 
 Definition zero : int := int63_of_Z 0%Z eq_refl.
 Definition one : int := int63_of_Z 1%Z eq_refl.
+Definition two : int := int63_of_Z 2%Z eq_refl.
+Definition five : int := int63_of_Z 5%Z eq_refl.
 Definition neg_one : int := int63_of_Z (-1)%Z eq_refl.
 Definition is_zero (i: int) : bool := int_eqb i zero.
 

@@ -22,6 +22,8 @@ type int_literal_kind =
   ILitUnk | ILitDec | ILitHex | ILitOct | ILitBin
 [@@deriving sexp]
 
+val int_literal_kind_compare : int_literal_kind -> int_literal_kind -> int
+
 type int_constant = {
   il_kind : int_literal_kind;
   il_int  : int_value;
@@ -41,6 +43,8 @@ type real_literal_kind =
   RLitUnk | RLitDec of int | RLitHex of int
 [@@deriving sexp]
 
+val real_literal_kind_compare : real_literal_kind -> real_literal_kind -> int
+
 type real_constant = {
   rl_kind : real_literal_kind;
   rl_real : real_value
@@ -56,6 +60,7 @@ val abs_int : int_constant -> int_constant
 val neg_real : real_constant -> real_constant
 val abs_real : real_constant -> real_constant
 
+val compare_real_aux : bool -> real_value -> real_value -> int
 val compare_real : ?structural:bool -> real_value -> real_value -> int
 (** Compare two real values.
     By default, the comparison is structural,

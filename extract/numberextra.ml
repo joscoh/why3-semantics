@@ -130,7 +130,10 @@ type real_constant = {
 }
 [@@deriving sexp] *)
 
-let compare_real ?(structural=true) { rv_sig = s1; rv_pow2 = p21; rv_pow5 = p51 }
+let compare_real ?(structural=true) r1 r2 =
+  compare_real_aux structural r1 r2
+  
+  (*{ rv_sig = s1; rv_pow2 = p21; rv_pow5 = p51 }
                                     { rv_sig = s2; rv_pow2 = p22; rv_pow5 = p52 } =
   if structural then
     let c = BigInt.compare s1 s2 in
@@ -146,7 +149,7 @@ let compare_real ?(structural=true) { rv_sig = s1; rv_pow2 = p21; rv_pow5 = p51 
     let v2 = BigInt.pow_int_pos_bigint 2 (BigInt.sub p22 p2_min) in
     let v2 = BigInt.mul v2 (BigInt.pow_int_pos_bigint 5 (BigInt.sub p52 p5_min)) in
     let v2 = BigInt.mul s2 v2 in
-    BigInt.compare v1 v2
+    BigInt.compare v1 v2 *)
 
 let neg_int { il_kind; il_int = i } =
   { il_kind; il_int = BigInt.minus i }

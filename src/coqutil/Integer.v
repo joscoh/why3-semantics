@@ -55,5 +55,6 @@ Proof. apply eqb_eq. Qed.
 
 Definition int63_of_Z (z: Z) (Hz: Z.leb (-ocaml_int_size) z && Z.ltb z ocaml_int_size) : int63 :=
   mk_int _ z Hz.
+Definition int63_to_Z (i: int63) : Z := int_val _ i.
 
 Definition int63_compare := compare ocaml_int_size.

@@ -1,7 +1,8 @@
-(*Functions that operate on [CoqBigInt.t]. They must
+(*Functions that operate on [CoqBigInt.t/CoqInt.int]. They must
   ONLY use definitions/lemmas from that file. They cannot
   refer to the fact that the type is secretly Z underneath*)
-Require CoqBigInt.
+Require CoqBigInt CoqInt.
+Require Import Coq.Strings.String.
 Require Import Coq.Lists.List.
 Require Export Coq.ZArith.BinInt.
 Require Import Lia.
@@ -107,3 +108,6 @@ Definition iota (z: CoqBigInt.t) : list CoqBigInt.t :=
 (*Lexicographic comparison*)
 Definition lex_comp x1 x2 : CoqInt.int :=
   if CoqInt.is_zero x1 then x2 else x1.
+
+Definition string_compare (s1 s2: string) : CoqInt.int :=
+  CoqInt.compare_to_int (String.compare s1 s2).
