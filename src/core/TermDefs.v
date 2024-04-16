@@ -333,45 +333,6 @@ Definition term_quant :=
   (list vsymbol * bind_info * trigger * term_c)%type.
 Set Elimination Schemes.
 
-(*Convert term_bound, branch, and quant to tuple*)
-(* Definition term_bound_to_tup (tb: term_bound) : vsymbol * bind_info * term_c :=
-  match tb with
-  | mk_term_bound v b t => (v, b, t)
-  end.
-
-Definition term_bound_of_tup (x:  vsymbol * bind_info * term_c) : term_bound :=
-  match x with
-  | (v, b, t) => mk_term_bound v b t
-  end.
-
-Definition term_branch_to_tup (tb: term_branch) : pattern * bind_info * term_c :=
-  match tb with
-  | mk_term_branch v b t => (v, b, t)
-  end.
-
-Definition term_branch_of_tup (x:  pattern * bind_info * term_c) : term_branch :=
-  match x with
-  | (v, b, t) => mk_term_branch v b t
-  end.
-
-Definition term_quant_to_tup (tb: term_quant) : list vsymbol * bind_info * trigger * term_c :=
-  match tb with
-  | mk_term_quant v b tr t => (v, b, tr, t)
-  end.
-
-Definition term_quant_of_tup (x:  list vsymbol * bind_info * trigger * term_c) : term_quant :=
-  match x with
-  | (v, b, tr, t) => mk_term_quant v b tr t
-  end.
-
-Definition trigger_to_terms (t: trigger) : list (list term_c) :=
-  match t with
-  | mk_trigger t => t
-  end.
-
-Definition trigger_of_terms (l: list (list term_c)) : trigger :=
-  mk_trigger l. *)
-
 Definition term := term_o term_node.
 
 Section ExtractInterface.
@@ -403,63 +364,6 @@ Definition build_term_o (t: term_node)
   {| t_node := t; t_ty := o; t_attrs := a; t_loc := l |}.
 
 End ExtractInterface.
-
-(*For convenience - TODO figure out, cannot pattern match as
-  tuple - should we encode as tuple?*)
-(* Definition term_bound_vsym (tb: term_bound) : vsymbol :=
-  match tb with
-  | mk_term_bound v _ _ => v
-  end.
-
-Definition term_bound_binfo (tb: term_bound) : bind_info :=
-  match tb with
-  | mk_term_bound _ b _ => b
-  end.
-
-Definition term_bound_term (tb: term_bound) : term_c :=
-  match tb with
-  | mk_term_bound _ _ t => t
-  end.
-
-Definition term_branch_pattern (tb: term_branch) : pattern :=
-  match tb with
-  | mk_term_branch p _ _ => p
-  end.
-
-Definition term_branch_binfo (tb: term_branch) : bind_info :=
-  match tb with
-  | mk_term_branch _ b _ => b
-  end.
-
-Definition term_branch_term (tb: term_branch) : term_c :=
-  match tb with
-  | mk_term_branch _ _ t => t
-  end.
-
-Definition term_quant_vsyms (tq: term_quant) : list vsymbol :=
-  match tq with
-  | mk_term_quant l _ _ _ => l
-  end.
-
-Definition term_quant_binfo (tq: term_quant) : bind_info :=
-  match tq with
-  | mk_term_quant _ b _ _ => b
-  end.
-
-Definition term_quant_trigger (tq: term_quant) : trigger :=
-  match tq with
-  | mk_term_quant _ _ tr _ => tr
-  end.
-
-Definition term_quant_term (tq: term_quant) : term_c :=
-  match tq with
-  | mk_term_quant _ _ _ t => t
-  end.
-
-Definition trigger_terms (tr: trigger) : list (list term_c) :=
-  match tr with
-  | mk_trigger l => l
-  end. *)
 
 Definition trd {A B C: Type} (x: A * B * C) : C :=
 match x with
@@ -495,35 +399,242 @@ Variable (Hbinop: forall b t1 t2, P t1 -> P t2 -> P1 (Tbinop b t1 t2)).
 Variable (Hnot: forall t, P t -> P1 (Tnot t)).
 Variable (Htrue: P1 Ttrue).
 Variable (Hfalse: P1 Tfalse).
-(* Variable (Htermbound: forall tb,
-  P (term_bound_term tb) -> P2 tb).
-Variable (Htermbranch: forall tb,
-  P (term_branch_term tb) -> P3 tb).
-Variable (Htermquant: forall tq,
-  P5 (term_quant_trigger tq) -> P (term_quant_term tq) -> P4 tq).
-Variable (Htrigger: forall tr,
-  Forall (fun x => Forall P x) (trigger_terms tr) ->
-  P5 tr). *)
 
-Fixpoint term_ind (t: term_c) : P t :=
+Fixpoint term_c_ind (t: term_c) : P t :=
   Hterm t (term_node_ind (t_node_of t))
 with term_node_ind (t: term_node) {struct t} : P1 t :=
   match t with
   | Tvar v => Hvar v
   | Tconst c => Hconst c
-  | Tapp l ts => Happ l ts (mk_Forall term_ind ts)
-  | Tif t1 t2 t3 => Hif _ _ _ (term_ind t1) (term_ind t2) (term_ind t3)
+  | Tapp l ts => Happ l ts (mk_Forall term_c_ind ts)
+  | Tif t1 t2 t3 => Hif _ _ _ (term_c_ind t1) (term_c_ind t2) (term_c_ind t3)
   | Tlet t (v, b, t1) => Hlet t v b t1
-    (term_ind t) (term_ind t1)
-  | Tcase t tbs => Hcase t tbs (term_ind t) 
+    (term_c_ind t) (term_c_ind t1)
+  | Tcase t tbs => Hcase t tbs (term_c_ind t) 
     (*Coq's termination checker likes this better*)
-      ((proj2 (Forall_map _ _ _)) (mk_Forall (fun x => term_ind (trd x)) tbs))
-  | Teps (v, b, t) => Heps v b t (term_ind t)
+      ((proj2 (Forall_map _ _ _)) (mk_Forall (fun x => term_c_ind (trd x)) tbs))
+  | Teps (v, b, t) => Heps v b t (term_c_ind t)
   | Tquant q (l, b, tr, t) => Hquant q l b tr t
-    (mk_Forall (mk_Forall term_ind) tr) (term_ind t)
-  | Tbinop b t1 t2 => Hbinop b t1 t2 (term_ind t1) (term_ind t2)
-  | Tnot t => Hnot t (term_ind t)
+    (mk_Forall (mk_Forall term_c_ind) tr) (term_c_ind t)
+  | Tbinop b t1 t2 => Hbinop b t1 t2 (term_c_ind t1) (term_c_ind t2)
+  | Tnot t => Hnot t (term_c_ind t)
   | Ttrue => Htrue
   | Tfalse => Hfalse
   end.
+
+(*Version to prove both*)
+Definition term_mut_ind:
+  (forall t, P t) /\ (forall t, P1 t) :=
+  conj (fun t => term_c_ind t) (fun t => term_node_ind t).
 End TermInd.
+
+(*Decidable equality on terms*)
+
+(*TODO: replace in CoqUtil - version for nested recursion*)
+Definition fold_right2 {A B C: Type} :=
+  fun (f: A -> B -> C -> C) =>
+    fix fold_right2 (l1: list A) : list B -> C -> option C :=
+      match l1 with
+      | nil => fun l2 base =>
+        match l2 with
+        | nil => Some base
+        | _ :: _ => None
+        end
+      | x1 :: t1 => fun l2 base =>
+        match l2 with
+        | nil => None
+        | x2 :: t2 => option_map (f x1 x2) (fold_right2 t1 t2 base)
+        end
+      end.
+
+Definition lists_equal_aux {A B: Type} (cmp: A -> B -> bool) (l1: list A) (l2: list B) :=
+  fold_right2 (fun x1 x2 acc => cmp x1 x2 && acc) l1 l2 true.
+
+(*TODO: move*)
+Definition true_opt (x: option bool) : bool :=
+  match x with
+  | Some y => y
+  | None => false
+  end.
+
+Definition lists_equal {A B: Type} (cmp: A -> B -> bool) (l1: list A) (l2: list B) :=
+  true_opt (lists_equal_aux cmp l1 l2).
+
+Lemma lists_equal_spec {A: Type} {cmp: A -> A -> bool} (l1 l2: list A) :
+  Forall (fun x => forall y, x = y <-> cmp x y) l1 ->
+  l1 = l2 <-> lists_equal cmp l1 l2.
+Proof.
+  intros Hall.
+  unfold lists_equal.
+  unfold true_opt.
+  assert (l1 = l2 <-> lists_equal_aux cmp l1 l2 = Some true). {
+    unfold lists_equal_aux. revert l2.
+    induction l1; intros l2; simpl.
+    - destruct l2; solve_eqb_eq.
+    - destruct l2; simpl; [solve_eqb_eq |].
+      unfold option_map.
+      specialize (IHl1 (Forall_inv_tail Hall) l2).
+      destruct (fold_right2 (fun (x1 x2 : A) (acc : bool) => cmp x1 x2 && acc) l1 l2 true).
+      + destruct b.
+        * rewrite andb_true_r. 
+          split; intros Heq; inversion Heq; subst; auto.
+          -- f_equal. apply (Forall_inv Hall); reflexivity.
+          -- apply (Forall_inv Hall) in H0; subst; f_equal.
+            apply IHl1; reflexivity.
+        * rewrite andb_false_r. split; intro C; inversion C; subst.
+          apply IHl1; reflexivity.
+      + split; intro C; inversion C; subst. apply IHl1; reflexivity.
+  }
+  destruct (lists_equal_aux cmp l1 l2);
+  rewrite H; solve_eqb_eq.
+Qed.
+
+
+Definition bind_info_eqb (b1 b2: bind_info) : bool :=
+  Mvs.equal CoqBigInt.eqb b1.(bv_vars) b2.(bv_vars).
+
+Lemma bind_info_eqb_eq b1 b2: b1 = b2 <-> bind_info_eqb b1 b2.
+Proof.
+  destruct b1, b2; unfold bind_info_eqb; simpl.
+  rewrite <- Mvs.eqb_eq.
+  - solve_eqb_eq.
+  - apply CoqBigInt.eqb_eq.
+  - apply vsymbol_eqb_eq.
+Qed.
+
+Definition quant_eqb (q1 q2: quant) : bool :=
+  match q1, q2 with
+  | Tforall, Tforall => true
+  | Texists, Texists => true
+  | _, _ => false
+  end.
+
+Lemma quant_eqb_eq q1 q2 : q1 = q2 <-> quant_eqb q1 q2.
+Proof.
+  destruct q1; destruct q2; simpl; solve_eqb_eq.
+Qed.
+
+Definition binop_eqb (b1 b2: binop) : bool :=
+  match b1, b2 with
+  | Tand, Tand => true
+  | Tor, Tor => true
+  | Timplies, Timplies => true
+  | Tiff, Tiff => true
+  | _, _ => false
+  end.
+
+Lemma binop_eqb_eq b1 b2: b1 = b2 <-> binop_eqb b1 b2.
+Proof.
+  destruct b1, b2; simpl; solve_eqb_eq.
+Qed.
+
+Fixpoint term_eqb (t1 t2: term_c) : bool :=
+  term_node_eqb (t_node_of t1) (t_node_of t2) &&
+  option_eqb ty_eqb (t_ty_of t1) (t_ty_of t2) &&
+  Sattr.equal (t_attrs_of t1) (t_attrs_of t2) &&
+  option_eqb LocTy.position_eqb (t_loc_of t1) (t_loc_of t2)
+with term_node_eqb (t1 t2: term_node) : bool :=
+  match t1, t2 with
+  | Tvar v1, Tvar v2 => vsymbol_eqb v1 v2
+  | Tconst c1, Tconst c2 => ConstantDefs.constant_eqb c1 c2
+  | Tapp l1 ts1, Tapp l2 ts2 =>
+    lsymbol_eqb l1 l2 &&
+    lists_equal term_eqb ts1 ts2
+  | Tif t1 t2 t3, Tif e1 e2 e3 =>
+    term_eqb t1 e1 && term_eqb t2 e2 && term_eqb t3 e3
+  | Tlet t1 (v1, b1, t2), Tlet t3 (v2, b2, t4) =>
+    term_eqb t1 t3 &&
+    vsymbol_eqb v1 v2 &&
+    bind_info_eqb b1 b2 &&
+    term_eqb t2 t4
+  | Tcase t1 tbs1, Tcase t2 tbs2 =>
+    term_eqb t1 t2 &&
+    lists_equal (fun x1 x2 =>
+      let '(p1, b1, t1) := x1 in
+      let '(p2, b2, t2) := x2 in
+      pattern_eqb p1 p2 &&
+      bind_info_eqb b1 b2 &&
+      term_eqb t1 t2
+    ) tbs1 tbs2
+  | Teps (v1, b1, t1), Teps (v2, b2, t2) =>
+    vsymbol_eqb v1 v2 &&
+    bind_info_eqb b1 b2 &&
+    term_eqb t1 t2 
+  | Tquant q1 (l1, b1, tr1, t1), Tquant q2 (l2, b2, tr2, t2) =>
+    quant_eqb q1 q2 &&
+    lists_equal vsymbol_eqb l1 l2 &&
+    bind_info_eqb b1 b2 &&
+    lists_equal (lists_equal term_eqb) tr1 tr2 &&
+    term_eqb t1 t2
+  | Tbinop b1 t1 t2, Tbinop b2 t3 t4 =>
+    binop_eqb b1 b2 &&
+    term_eqb t1 t3 &&
+    term_eqb t2 t4
+  | Tnot t1, Tnot t2 => term_eqb t1 t2 
+  | Ttrue, Ttrue => true
+  | Tfalse, Tfalse => true
+  | _, _ => false
+  end.
+
+(*TODO: move (from Substitution)*)
+Lemma Forall_impl_strong {A: Type} {P Q: A -> Prop} {l: list A}:
+  (forall a, In a l -> P a -> Q a) ->
+  Forall P l ->
+  Forall Q l.
+Proof.
+  induction l; simpl; auto; intros.
+  inversion H0; subst.
+  constructor; auto.
+Qed.
+  
+
+Lemma term_eqb_eq_aux: (forall t1 t2, t1 = t2 <-> term_eqb t1 t2) /\
+  (forall t1 t2, t1 = t2 <-> term_node_eqb t1 t2).
+Proof.
+  apply term_mut_ind.
+  - intros [t1 ty1 a1 p1] Ht2 [t2 ty2 a2 p2]; simpl.
+    rewrite !andb_true, <- Ht2, <- (option_eqb_eq ty_eqb_eq), 
+    <- (Sattr.equal_eq attr_eqb_eq), 
+    <- (option_eqb_eq LocTy.position_eqb_eq).
+    solve_eqb_eq.
+  - intros v t2; destruct t2; simpl; try rewrite <- vsymbol_eqb_eq; 
+    solve_eqb_eq.
+  - intros c t2; destruct t2; simpl; try rewrite <- ConstantDefs.constant_eqb_eq;
+    solve_eqb_eq.
+  - intros l1 ts1 IH [| | l2 ts2 | | | | | | | | |]; try solve_eqb_eq.
+    simpl. rewrite andb_true, <- lsymbol_eqb_eq.
+    rewrite <- (lists_equal_spec _ _ IH).
+    solve_eqb_eq.
+  - intros ta tb tc IH1 IH2 IH3 [| | | ea eb ec | | | | | | | |];
+    try solve_eqb_eq; simpl; rewrite !andb_true, <- IH1, <- IH2, <- IH3.
+    solve_eqb_eq.
+  - intros t1 v1 b1 e1 IH1 IH2 [| | | | t2 [[v2 b2] e2] | | | | | | |];
+    try solve_eqb_eq; simpl; rewrite !andb_true, <- IH1, <- IH2, <- bind_info_eqb_eq,
+    <- vsymbol_eqb_eq. solve_eqb_eq.
+  - intros t1 tbs1 Ih1 Hall [| | | | | t2 tbs2 | | | | | |];
+    try solve_eqb_eq; simpl; rewrite andb_true, <- Ih1, <- lists_equal_spec;
+    [solve_eqb_eq|].
+    rewrite Forall_map in Hall.
+    revert Hall.
+    apply Forall_impl.
+    intros.
+    destruct a as [[p1 b1] tm1]; destruct y as [[p2 b2] tm2]; simpl in H.
+    rewrite !andb_true, <- pattern_eqb_eq, <- bind_info_eqb_eq, <- H.
+    solve_eqb_eq.
+  - intros v1 b1 t1 IH [| | | | | | [[v2 b2] t2] | | | | |]; 
+    try solve_eqb_eq; simpl; rewrite !andb_true, <- vsymbol_eqb_eq,
+    <- bind_info_eqb_eq, <- IH. solve_eqb_eq.
+  - intros q1 vs1 b1 tr1 t1 IH1 IH2 [| | | | | | | q2 [[[vs2 b2] tr2] t2] | | | |];
+    try solve_eqb_eq; simpl; rewrite !andb_true, <- quant_eqb_eq,
+    <- bind_info_eqb_eq, <- IH2, <- !lists_equal_spec; [solve_eqb_eq | |].
+    + revert IH1. apply Forall_impl.
+      intros a Hall l2. apply lists_equal_spec. auto.
+    + rewrite Forall_forall. intros v Hinv. apply vsymbol_eqb_eq.
+  - intros b1 ta tb IHa IHb [| | | | | | | | b2 ea eb | | | ];
+    try solve_eqb_eq; simpl; rewrite !andb_true, <- binop_eqb_eq, <- IHa, <- IHb;
+    solve_eqb_eq.
+  - intros t1 IH [| | | | | | | | | t2 | | ]; try solve_eqb_eq; simpl.
+    rewrite <- IH; solve_eqb_eq.
+  - intros t2; destruct t2; solve_eqb_eq.
+  - intros t2; destruct t2; solve_eqb_eq.
+Qed.

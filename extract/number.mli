@@ -54,6 +54,9 @@ type real_constant = {
 val sexp_of_real_constant : real_constant -> Sexplib0.Sexp.t
 val real_constant_of_sexp : Sexplib0.Sexp.t -> real_constant
 
+val int_constant_eqb : int_constant -> int_constant -> bool
+val real_constant_eqb : real_constant -> real_constant -> bool
+
 val neg_int : int_constant -> int_constant
 val abs_int : int_constant -> int_constant
 

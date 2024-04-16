@@ -31,6 +31,8 @@ val real_const_from_string :
   radix:int -> neg:bool -> int:string -> frac:string -> exp:string option -> constant
 val string_const : string -> constant
 
+val constant_eqb : constant -> constant -> bool
+
 (** Pretty-printing *)
 
 type escape_map = char -> string

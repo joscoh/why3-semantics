@@ -1,4 +1,4 @@
-Require Import CoqNumber.
+Require Import CoqNumber CoqUtil.
 Require Import Coq.Strings.String.
 Require Import IntFuncs.
 (** Construction *)
@@ -8,6 +8,20 @@ Variant constant :=
   | ConstReal (r: real_constant)
   | ConstStr (s: string).
 
+Definition constant_eqb (c1 c2: constant) : bool :=
+  match c1, c2 with
+  | ConstInt i1, ConstInt i2 => int_constant_eqb i1 i2
+  | ConstReal r1, ConstReal r2 => real_constant_eqb r1 r2
+  | ConstStr s1, ConstStr s2 => String.eqb s1 s2
+  | _, _ => false
+  end.
+
+Lemma constant_eqb_eq c1 c2: c1 = c2 <-> constant_eqb c1 c2.
+Proof.
+  destruct c1; destruct c2; simpl; try solve_eqb_eq;
+  [rewrite <- int_constant_eqb_eq | rewrite <- real_constant_eqb_eq |
+   unfold is_true; rewrite String.eqb_eq]; solve_eqb_eq.
+Qed.
 
 Definition compare_const_aux (structural : bool) (c1 c2: constant) :=
   match c1, c2 with

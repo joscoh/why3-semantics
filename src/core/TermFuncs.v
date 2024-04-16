@@ -385,3 +385,44 @@ Fixpoint t_compare_aux (bnd: CoqBigInt.t) (vml1 vml2: Mvs.t CoqBigInt.t)
 Definition t_compare_full t1 t2 := t_compare_aux CoqBigInt.zero Mvs.empty Mvs.empty t1 t2.
 
 End TCompare.
+
+
+(*NOTE: different from OCaml, which is faster and uses 
+  reference equality. This version uses structural equality, but
+  not completely (ignoring attributes, location, etc)*)
+(*This is weaker than their version.
+  Terms that are similar in this version may not be similar there.
+  (This is problem for attr_copy)
+  *)
+(* Fixpoint t_similar (t1 t2: term_c) :=
+  oty_equal (t_ty_of t1) (t_ty_of t2) &&
+  match (t_node_of t1), (t_node_of t2) with
+  | Tvar v1, Tvar v2 => vs_equal v1 v2
+  | Tconst c1, Tconst c2 => CoqInt.int_eqb 
+    (ConstantDefs.compare_const_aux true c1 c2) CoqInt.zero
+  | Tapp s1 l1, Tapp s2 l2 => ls_equal s1 s2 && 
+    match lists_equal t_similar l1 l2 with
+    | Some b => b
+    | None => false
+    end
+  | Tif f1 t1 e1, Tif f2 t2 e2 => t_similar f1 f2 && t_similar t1 t2 && t_similar e1 e2
+  | 
+  | _, _ => true
+  end.
+
+
+let t_similar t1 t2 =
+  oty_equal t1.t_ty t2.t_ty &&
+  match t1.t_node, t2.t_node with
+    | Tvar v1, Tvar v2 -> vs_equal v1 v2
+    | Tconst c1, Tconst c2 -> Constant.compare_const ~structural:true c1 c2 = 0
+    | Tapp (s1,l1), Tapp (s2,l2) -> ls_equal s1 s2 && Lists.equal (==) l1 l2
+    | Tif (f1,t1,e1), Tif (f2,t2,e2) -> f1 == f2 && t1 == t2 && e1 == e2
+    | Tlet (t1,bv1), Tlet (t2,bv2) -> t1 == t2 && bv1 == bv2
+    | Tcase (t1,bl1), Tcase (t2,bl2) -> t1 == t2 && Lists.equal (==) bl1 bl2
+    | Teps bv1, Teps bv2 -> bv1 == bv2
+    | Tquant (q1,bv1), Tquant (q2,bv2) -> q1 = q2 && bv1 == bv2
+    | Tbinop (o1,f1,g1), Tbinop (o2,f2,g2) -> o1 = o2 && f1 == f2 && g1 == g2
+    | Tnot f1, Tnot f2 -> f1 == f2
+    | Ttrue, Ttrue | Tfalse, Tfalse -> true
+    | _, _ -> false *)

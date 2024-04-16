@@ -85,6 +85,8 @@ val ty_equal : ty -> ty -> bool
 val ts_hash : tysymbol -> BigInt.t
 val ty_hash : ty -> BigInt.t
 
+val ty_eqb : ty -> ty -> bool
+
 exception BadTypeArity of tysymbol * BigInt.t
 exception DuplicateTypeVar of tvsymbol
 exception UnboundTypeVar of tvsymbol

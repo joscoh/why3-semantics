@@ -117,3 +117,73 @@ Definition compare_real_aux (structural: bool) (r1 r2: real_value) :=
       (CoqBigInt.pow_int_pos_bigint CoqInt.five (CoqBigInt.sub p52 p5_min)) in
     let v2'' := CoqBigInt.mul s2 v2' in
     CoqBigInt.compare v1'' v2''.
+
+(*Decidable equality*)
+(* Definition int_value_eqb (i1 i2: int_value) : bool :=
+  CoqBigInt.eqb i1 i2.
+
+Lemma int_value_eqb_eq i1 i2: i1 = i2 <-> int_value_eqb i1 i2.
+Proof. apply CoqBigInt.eqb_eq. Qed. *)
+
+Definition int_literal_kind_eqb (i1 i2: int_literal_kind) : bool :=
+  match i1, i2 with
+  | ILitUnk, ILitUnk => true
+  | ILitDec, ILitDec => true
+  | ILitHex, ILitHex => true
+  | ILitOct, ILitOct => true
+  | ILitBin, ILitBin => true
+  | _, _ => false
+  end.
+
+Lemma int_literal_kind_eqb_eq i1 i2: i1 = i2 <-> int_literal_kind_eqb i1 i2.
+Proof.
+  destruct i1; destruct i2; simpl; solve_eqb_eq.
+Qed.
+
+Definition int_constant_eqb (i1 i2: int_constant) : bool :=
+  int_literal_kind_eqb i1.(il_kind) i2.(il_kind) &&
+  CoqBigInt.eqb i1.(il_int) i2.(il_int).
+
+Lemma int_constant_eqb_eq i1 i2 : i1 = i2 <-> int_constant_eqb i1 i2.
+Proof.
+  destruct i1 as [k1 i1]; destruct i2 as [k2 i2]; unfold int_constant_eqb; simpl.
+  rewrite andb_true, <- int_literal_kind_eqb_eq, <- CoqBigInt.eqb_eq.
+  solve_eqb_eq.
+Qed.
+
+Definition real_value_eqb (r1 r2: real_value) : bool :=
+  CoqBigInt.eqb r1.(rv_sig) r2.(rv_sig) &&
+  CoqBigInt.eqb r1.(rv_pow2) r2.(rv_pow2) &&
+  CoqBigInt.eqb r1.(rv_pow5) r2.(rv_pow5).
+
+Lemma real_value_eqb_eq r1 r2: r1 = r2 <-> real_value_eqb r1 r2.
+Proof.
+  destruct r1 as [s1 p21 p51]; destruct r2 as [s2 p22 p52];
+  unfold real_value_eqb; simpl; rewrite !andb_true, <- !CoqBigInt.eqb_eq;
+  solve_eqb_eq.
+Qed.
+
+Definition real_literal_kind_eqb (r1 r2: real_literal_kind) : bool :=
+  match r1, r2 with
+  | RLitUnk, RLitUnk => true
+  | RLitDec i1, RLitDec i2 => CoqInt.int_eqb i1 i2
+  | RLitHex i1, RLitHex i2 => CoqInt.int_eqb i1 i2
+  | _, _ => false
+  end.
+
+Lemma real_literal_kind_eqb_eq r1 r2 : r1 = r2 <-> real_literal_kind_eqb r1 r2.
+Proof.
+  destruct r1; destruct r2; simpl; try (unfold is_true; rewrite <- CoqInt.int_eqb_eq);
+  solve_eqb_eq.
+Qed.
+
+Definition real_constant_eqb (r1 r2: real_constant) : bool :=
+  real_literal_kind_eqb r1.(rl_kind) r2.(rl_kind) &&
+  real_value_eqb r1.(rl_real) r2.(rl_real).
+
+Lemma real_constant_eqb_eq r1 r2 : r1 = r2 <-> real_constant_eqb r1 r2.
+Proof.
+  destruct r1; destruct r2; unfold real_constant_eqb; simpl;
+  rewrite andb_true, <- real_literal_kind_eqb_eq, <- real_value_eqb_eq;
+  solve_eqb_eq.
+Qed.

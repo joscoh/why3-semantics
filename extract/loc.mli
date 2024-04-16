@@ -28,6 +28,8 @@ So far, line numbers start with 1 and column number start with 0.
 type position
 [@@deriving sexp]
 
+val position_eqb : position -> position -> bool
+
 val user_position : string -> int -> int -> int -> int -> position
 (** [user_position f bl bc el ec] builds the source position for file
     [f], starting at line [bl] and character [bc] and ending at line
