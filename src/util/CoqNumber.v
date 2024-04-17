@@ -1,5 +1,5 @@
 Require Import CoqUtil IntFuncs.
-Require CoqBigInt.
+Require CoqBigInt hashcons.
 
 (** Range checks *)
 Record int_range := {
@@ -119,11 +119,6 @@ Definition compare_real_aux (structural: bool) (r1 r2: real_value) :=
     CoqBigInt.compare v1'' v2''.
 
 (*Decidable equality*)
-(* Definition int_value_eqb (i1 i2: int_value) : bool :=
-  CoqBigInt.eqb i1 i2.
-
-Lemma int_value_eqb_eq i1 i2: i1 = i2 <-> int_value_eqb i1 i2.
-Proof. apply CoqBigInt.eqb_eq. Qed. *)
 
 Definition int_literal_kind_eqb (i1 i2: int_literal_kind) : bool :=
   match i1, i2 with
@@ -187,3 +182,33 @@ Proof.
   rewrite andb_true, <- real_literal_kind_eqb_eq, <- real_value_eqb_eq;
   solve_eqb_eq.
 Qed.
+
+(*Hashing*)
+(*TODO: OCAML - these are all not great hash functions,
+  we need to replace Hashtbl.hash (axiomatize?)*)
+Definition int_literal_kind_hash (i: int_literal_kind) : CoqBigInt.t :=
+  match i with
+  | ILitUnk => CoqBigInt.zero
+  | ILitDec => CoqBigInt.one
+  | ILitHex => CoqBigInt.two
+  | ILitOct => CoqBigInt.three
+  | ILitBin => CoqBigInt.four
+  end.
+
+Definition int_constant_hash (i: int_constant) : CoqBigInt.t :=
+  hashcons.combine_big (int_literal_kind_hash i.(il_kind))
+    (i.(il_int)).
+
+Definition real_literal_kind_hash (r: real_literal_kind) : CoqBigInt.t :=
+  match r with
+  | RLitUnk => CoqBigInt.zero
+  | RLitDec i => CoqBigInt.of_int i
+  | RLitHex i => CoqBigInt.of_int i
+  end. 
+
+Definition real_value_hash (r: real_value) : CoqBigInt.t :=
+  hashcons.combine2_big r.(rv_sig) r.(rv_pow2) r.(rv_pow5).
+
+Definition real_constant_hash (r: real_constant) : CoqBigInt.t :=
+  hashcons.combine_big (real_literal_kind_hash r.(rl_kind))
+    (real_value_hash r.(rl_real)).

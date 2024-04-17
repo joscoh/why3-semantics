@@ -33,6 +33,7 @@ Definition is_zero : t -> bool := fun z => Z.eqb z 0.
 Definition pos : t -> bool := fun z => Z.ltb 0 z.
 Definition min : t -> t -> t := fun z1 z2 => Z.min z1 z2.
 Definition pow_int_pos_bigint : CoqInt.int -> t -> t := fun base exp => Z.pow (int63_to_Z base) exp.
+Definition of_int : CoqInt.int -> t := fun i => int63_to_Z i.
 (*TODO: implement this - we don't need a good hash function for Coq*)
 Axiom hash : t -> CoqInt.int.
 (*This function is (presumably) a bit different than
@@ -109,6 +110,7 @@ Global Opaque is_zero.
 Global Opaque pos.
 Global Opaque min.
 Global Opaque pow_int_pos_bigint.
+Global Opaque of_int.
 Global Opaque two.
 Global Opaque three.
 Global Opaque four.

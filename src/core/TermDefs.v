@@ -638,3 +638,50 @@ Proof.
   - intros t2; destruct t2; solve_eqb_eq.
   - intros t2; destruct t2; solve_eqb_eq.
 Qed.
+
+Definition term_eqb_eq := proj1 term_eqb_eq_aux.
+Definition term_node_eqb_eq := proj2 term_eqb_eq_aux.
+
+(*Derived equality*)
+Definition term_bound_eqb (t1 t2: term_bound) : bool :=
+  match t1, t2 with
+  | (v1, b1, t1), (v2, b2, t2) => vsymbol_eqb v1 v2 &&
+    bind_info_eqb b1 b2 && term_eqb t1 t2
+  end.
+
+Lemma term_bound_eqb_eq t1 t2: t1 = t2 <-> term_bound_eqb t1 t2.
+Proof.
+  destruct t1 as [[v1 b1] t1]; destruct t2 as [[v2 b2] t2]; simpl;
+  rewrite !andb_true, <- vsymbol_eqb_eq, <- bind_info_eqb_eq, <- term_eqb_eq.
+  solve_eqb_eq.
+Qed.
+
+Definition term_branch_eqb (tb1 tb2: term_branch) : bool :=
+  match tb1, tb2 with
+  | (p1, b1, t1), (p2, b2, t2) => pattern_eqb p1 p2 &&
+    bind_info_eqb b1 b2 && term_eqb t1 t2
+  end.
+
+Lemma term_branch_eqb_eq tb1 tb2: tb1 = tb2 <-> term_branch_eqb tb1 tb2.
+Proof.
+  destruct tb1 as [[p1 b1] t1]; destruct tb2 as [[p2 b2] t2]; simpl;
+  rewrite !andb_true, <- pattern_eqb_eq, <- bind_info_eqb_eq, <- term_eqb_eq.
+  solve_eqb_eq.
+Qed.
+
+Definition term_quant_eqb (tq1 tq2: term_quant) : bool :=
+  match tq1, tq2 with
+  | (vs1, b1, tr1, t1), (vs2, b2, tr2, t2) =>
+    list_eqb vsymbol_eqb vs1 vs2 &&
+    bind_info_eqb b1 b2 &&
+    list_eqb (list_eqb term_eqb) tr1 tr2 &&
+    term_eqb t1 t2
+  end.
+
+Lemma term_quant_eqb_eq tq1 tq2: tq1 = tq2 <-> term_quant_eqb tq1 tq2.
+Proof.
+  destruct tq1 as [[[vs1 b1] tr1] t1]; destruct tq2 as [[[vs2 b2] tr2] t2];
+  simpl; rewrite !andb_true, <- (list_eqb_eq vsymbol_eqb_eq), <-
+  bind_info_eqb_eq, <- (list_eqb_eq (list_eqb_eq term_eqb_eq)), <- term_eqb_eq.
+  solve_eqb_eq.
+Qed.

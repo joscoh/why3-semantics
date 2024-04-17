@@ -31,7 +31,10 @@ val real_const_from_string :
   radix:int -> neg:bool -> int:string -> frac:string -> exp:string option -> constant
 val string_const : string -> constant
 
+(*JOSH*)
 val constant_eqb : constant -> constant -> bool
+val constant_hash : constant -> BigInt.t
+val str_hash : string -> BigInt.t
 
 (** Pretty-printing *)
 

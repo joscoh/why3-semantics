@@ -1,4 +1,4 @@
-Require Import IntFuncs Monads TyDefs TermDefs TyFuncs IdentDefs.
+Require Import IntFuncs Monads TyDefs TermDefs TyFuncs IdentDefs ConstantDefs.
 Import MonadNotations.
 Local Open Scope monad_scope.
 
@@ -202,19 +202,7 @@ Definition fold_left2_def {A B C: Type} :=
         end
       end.
     
-(* Fixpoint fold_left2_def {A B C: Type} (f: A -> B -> C -> A) (acc: A)
-  (l1: list B)(l2: list C) (d1 d2: A) : A :=
-  match l1, l2 with
-  | nil, nil => acc
-  | x1 :: t1, x2 :: t2 => fold_left2_def f (f acc x1 x2) t1 t2 d1 d2
-  | nil, _ :: _ => d1
-  | _ :: _, nil => d2
-  end. *)
 
-(*TODO CHECK OCAML*)
-(*Version of*)
-
-(*TODO CHECK OCAML*)
 Definition or_cmp_vsym (bv1 bv2: Mvs.t CoqBigInt.t) (v1 v2: vsymbol) :=
   match Mvs.find_opt _ v1 bv1, Mvs.find_opt _ v2 bv2 with
     | Some i1, Some i2 => CoqBigInt.compare i1 i2
@@ -229,7 +217,6 @@ Fixpoint or_cmp (bv1 bv2: Mvs.t CoqBigInt.t) (q1 q2: pattern_c) : CoqInt.int :=
   match (pat_node_of q1), (pat_node_of q2) with
   | Pwild, Pwild => CoqInt.zero
   | Pvar v1, Pvar v2 =>
-    (*TODO CHECK OCAML*)
     or_cmp_vsym bv1 bv2 v1 v2
   | Papp s1 l1, Papp s2 l2 =>
     let i1 := ls_compare s1 s2 in
@@ -386,43 +373,143 @@ Definition t_compare_full t1 t2 := t_compare_aux CoqBigInt.zero Mvs.empty Mvs.em
 
 End TCompare.
 
-
-(*NOTE: different from OCaml, which is faster and uses 
-  reference equality. This version uses structural equality, but
-  not completely (ignoring attributes, location, etc)*)
-(*This is weaker than their version.
-  Terms that are similar in this version may not be similar there.
-  (This is problem for attr_copy)
-  *)
-(* Fixpoint t_similar (t1 t2: term_c) :=
+(*NOTE: OCaml is faster and uses reference equality, we instead
+  use structural equality. Nothing is mutable, so this should
+  be OK*)
+Definition t_similar (t1 t2: term_c) : bool :=
   oty_equal (t_ty_of t1) (t_ty_of t2) &&
   match (t_node_of t1), (t_node_of t2) with
   | Tvar v1, Tvar v2 => vs_equal v1 v2
   | Tconst c1, Tconst c2 => CoqInt.int_eqb 
     (ConstantDefs.compare_const_aux true c1 c2) CoqInt.zero
   | Tapp s1 l1, Tapp s2 l2 => ls_equal s1 s2 && 
-    match lists_equal t_similar l1 l2 with
-    | Some b => b
-    | None => false
-    end
-  | Tif f1 t1 e1, Tif f2 t2 e2 => t_similar f1 f2 && t_similar t1 t2 && t_similar e1 e2
-  | 
-  | _, _ => true
+    lists_equal term_eqb l1 l2
+  | Tif f1 t1 e1, Tif f2 t2 e2 => term_eqb f1 f2 && term_eqb t1 t2 
+    && term_eqb e1 e2
+  | Tlet t1 bv1, Tlet t2 bv2 => term_eqb t1 t2 && 
+    term_bound_eqb bv1 bv2
+  | Tcase t1 bl1, Tcase t2 bl2 => term_eqb t1 t2 &&
+    lists_equal term_branch_eqb bl1 bl2
+  | Teps bv1, Teps bv2 => term_bound_eqb bv1 bv2
+  | Tquant q1 bv1, Tquant q2 bv2 => 
+    quant_eqb q1 q2 && term_quant_eqb bv1 bv2
+  | Tbinop o1 f1 g1, Tbinop o2 f2 g2 =>
+    binop_eqb o1 o2 && term_eqb f1 f2 && term_eqb g1 g2
+  | Tnot f1, Tnot f2 => term_eqb f1 f2
+  | Ttrue, Ttrue => true
+  | Tfalse, Tfalse => true
+  | _, _ => false
   end.
 
+(*Hashing*)
 
-let t_similar t1 t2 =
-  oty_equal t1.t_ty t2.t_ty &&
-  match t1.t_node, t2.t_node with
-    | Tvar v1, Tvar v2 -> vs_equal v1 v2
-    | Tconst c1, Tconst c2 -> Constant.compare_const ~structural:true c1 c2 = 0
-    | Tapp (s1,l1), Tapp (s2,l2) -> ls_equal s1 s2 && Lists.equal (==) l1 l2
-    | Tif (f1,t1,e1), Tif (f2,t2,e2) -> f1 == f2 && t1 == t2 && e1 == e2
-    | Tlet (t1,bv1), Tlet (t2,bv2) -> t1 == t2 && bv1 == bv2
-    | Tcase (t1,bl1), Tcase (t2,bl2) -> t1 == t2 && Lists.equal (==) bl1 bl2
-    | Teps bv1, Teps bv2 -> bv1 == bv2
-    | Tquant (q1,bv1), Tquant (q2,bv2) -> q1 = q2 && bv1 == bv2
-    | Tbinop (o1,f1,g1), Tbinop (o2,f2,g2) -> o1 = o2 && f1 == f2 && g1 == g2
-    | Tnot f1, Tnot f2 -> f1 == f2
-    | Ttrue, Ttrue | Tfalse, Tfalse -> true
-    | _, _ -> false *)
+Fixpoint or_hash bv (q: pattern_c) : CoqBigInt.t :=
+  match (pat_node_of q) with
+  | Pwild => CoqBigInt.zero
+  | Pvar v => CoqBigInt.succ match Mvs.find_opt _ v bv with
+              | Some i => i
+              (*Should never occur by typing*)
+              | None => CoqBigInt.zero
+              end
+  | Papp s l => hashcons.combine_big_list (or_hash bv) (ls_hash s) l
+  | Por p q => hashcons.combine_big (or_hash bv p) (or_hash bv q)
+  | Pas p v => let j := match Mvs.find_opt _ v bv with
+              | Some i => i
+              (*Should never occur*)
+              | None => CoqBigInt.zero
+              end in 
+              hashcons.combine_big (or_hash bv p) (CoqBigInt.succ j)
+  end.
+
+(*Gives number of bound vars, updated map, hash value*)
+Fixpoint pat_hash (bnd: CoqBigInt.t) (bv: Mvs.t CoqBigInt.t) (p: pattern_c) : 
+  CoqBigInt.t * Mvs.t CoqBigInt.t * CoqBigInt.t :=
+  match (pat_node_of p) with
+  | Pwild => (bnd, bv, CoqBigInt.zero)
+  | Pvar v => (CoqBigInt.succ bnd, Mvs.add v bnd bv, CoqBigInt.succ bnd)
+  | Papp s l => 
+    (*TODO: nested version of fold_left*)
+    fold_left (fun acc p =>
+      let '(bnd, bv, h) := acc in
+      let '(bnd1, bv1, hp) := pat_hash bnd bv p in
+      (bnd1, bv1, hashcons.combine_big h hp)) l (bnd, bv, ls_hash s)
+  | Por p q =>
+    let '(bnd1, bv1, hp) := pat_hash bnd bv p in
+    (bnd1, bv1, hashcons.combine_big hp (or_hash bv1 q))
+  | Pas p v =>
+    let '(bnd1, bv1, hp) := pat_hash bnd bv p in
+    (CoqBigInt.succ bnd1, Mvs.add v bnd bv, hashcons.combine_big hp (CoqBigInt.succ bnd1))
+  end.
+
+Section TermHash.
+
+Variable (trigger attr const : bool).
+
+Definition q_hash (q: quant) : CoqBigInt.t :=
+  match q with
+  | Tforall => CoqBigInt.zero
+  | Texists => CoqBigInt.one
+  end.
+
+Definition binop_hash (b: binop) : CoqBigInt.t :=
+  match b with
+  | Tand => CoqBigInt.zero
+  | Tor => CoqBigInt.one
+  | Timplies => CoqBigInt.two
+  | Tiff => CoqBigInt.three
+  end.
+
+Fixpoint t_hash_aux (bnd: CoqBigInt.t) (vml: Mvs.t CoqBigInt.t) (t: term_c) : CoqBigInt.t :=
+  let h := oty_hash (t_ty_of t) in
+  let h1 := if attr then Sattr.fold (fun l h => hashcons.combine_big (attr_hash l) h) (t_attrs_of t) h else h in
+  hashcons.combine_big h1 (
+    match (t_node_of t) with
+    | Tvar v => match Mvs.find_opt _ v vml with
+                | Some i => CoqBigInt.succ i
+                | None => vs_hash v
+                end
+    | Tconst c =>
+      if const then constant_hash c else
+      match c with
+      | ConstInt i => i.(CoqNumber.il_int)
+      | ConstReal r => CoqNumber.real_value_hash r.(CoqNumber.rl_real)
+      | ConstStr c => ConstantDefs.str_hash c
+      end
+    | Tapp s l => hashcons.combine_big_list (t_hash_aux bnd vml) (ls_hash s) l
+    | Tif f t e =>
+      hashcons.combine2_big (t_hash_aux bnd vml f) (t_hash_aux bnd vml t) (t_hash_aux bnd vml e)
+    | Tlet t (v, b, e) =>
+      hashcons.combine_big (t_hash_aux bnd vml t)
+        (t_hash_aux (CoqBigInt.succ bnd) (Mvs.add v bnd vml) e)
+    | Tcase t bl =>
+      let h1 := t_hash_aux bnd vml t in
+      let b_hash x :=
+        let '(p, b, t) := x in
+        let '(bnd, bv, hp) := pat_hash bnd Mvs.empty p in
+        (*Overwrite with newest bound value*)
+        let vml := Mvs.union _ (fun x n1 n2 => Some n1) bv vml in
+        hashcons.combine_big hp (t_hash_aux bnd vml t) in
+      hashcons.combine_big_list b_hash h bl
+    | Teps (v, b, e) =>
+      t_hash_aux (CoqBigInt.succ bnd) (Mvs.add v bnd vml) e
+    | Tquant q (vl, b, tr, f) =>
+      let h := q_hash q in
+      let '(bnd, bv) := fold_left (fun acc v => 
+        let '(bnd, bv) := acc in
+        (CoqBigInt.succ bnd, Mvs.add v bnd bv)) vl (bnd, Mvs.empty) in
+      let vml := Mvs.union _ (fun x n1 n2 => Some n1) bv vml in
+      let h :=
+        if trigger then fold_left (hashcons.combine_big_list (t_hash_aux bnd vml)) tr h
+        else h in
+      hashcons.combine_big h (t_hash_aux bnd vml f)
+    | Tbinop op f g =>
+      hashcons.combine2_big (binop_hash op) (t_hash_aux bnd vml f) (t_hash_aux bnd vml g)
+    | Tnot f => hashcons.combine_big CoqBigInt.one (t_hash_aux bnd vml f)
+    | Ttrue => CoqBigInt.two
+    | Tfalse => CoqBigInt.three
+    end
+  ).
+
+Definition t_hash_full t := t_hash_aux CoqBigInt.zero Mvs.empty t.
+
+End TermHash.

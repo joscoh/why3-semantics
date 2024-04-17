@@ -29,7 +29,6 @@ Qed.
 
 Definition equal (p1 p2: position) : bool := position_eqb p1 p2.
 
-(*TODO: OCAML*)
 (*A Lexicographic ordering*)
 Definition compare (p1 p2: position) : CoqInt.int :=
   lex_comp (CoqInt.compare p1.(pos_file_tag) p2.(pos_file_tag))

@@ -39,3 +39,13 @@ Definition compare_const_aux (structural : bool) (c1 c2: constant) :=
   | ConstReal _, _ => CoqInt.neg_one
   | _, ConstReal _ => CoqInt.one
   end.
+
+(*Hashing*)
+Definition str_hash (s: string) : CoqBigInt.t :=
+  CoqBigInt.of_Z (Z.pos (str_to_pos s)).
+Definition constant_hash (c: constant) : CoqBigInt.t :=
+  match c with
+  | ConstInt i => int_constant_hash i
+  | ConstReal r => real_constant_hash r
+  | ConstStr s => str_hash s
+  end.

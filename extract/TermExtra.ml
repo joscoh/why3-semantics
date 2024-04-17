@@ -455,7 +455,7 @@ let t_compare ~trigger ~attr ~loc ~const t1 t2 =
       ))) end else 0 in
   t_compare BigInt.zero Mvs.empty Mvs.empty t1 t2 *)
 
-let t_similar t1 t2 =
+(* let t_similar t1 t2 =
   oty_equal t1.t_ty t2.t_ty &&
   match t1.t_node, t2.t_node with
     | Tvar v1, Tvar v2 -> vs_equal v1 v2
@@ -469,9 +469,9 @@ let t_similar t1 t2 =
     | Tbinop (o1,f1,g1), Tbinop (o2,f2,g2) -> o1 = o2 && f1 == f2 && g1 == g2
     | Tnot f1, Tnot f2 -> f1 == f2
     | Ttrue, Ttrue | Tfalse, Tfalse -> true
-    | _, _ -> false
+    | _, _ -> false *)
 
-    let rec pat_hash bnd bv p = match p.pat_node with
+    (* let rec pat_hash bnd bv p = match p.pat_node with
     | Pwild -> bnd, bv, BigInt.zero
     | Pvar v -> BigInt.succ bnd, Mvs.add v bnd bv, BigInt.succ bnd
     | Papp (s,l) ->
@@ -491,10 +491,11 @@ let t_similar t1 t2 =
         bnd, bv, Hashcons.combine_big hp (or_hash q)
     | Pas (p,v) ->
         let bnd,bv,hp = pat_hash bnd bv p in
-        BigInt.succ bnd, Mvs.add v bnd bv, Hashcons.combine_big hp (BigInt.succ bnd)
+        BigInt.succ bnd, Mvs.add v bnd bv, Hashcons.combine_big hp (BigInt.succ bnd) *)
 
 let t_hash ~trigger ~attr ~const t =
-  let rec t_hash (bnd : BigInt.t) (vml: (BigInt.t Mvs.t))  t =
+    t_hash_full trigger attr const t
+  (*let rec t_hash (bnd : BigInt.t) (vml: (BigInt.t Mvs.t))  t =
     let h = oty_hash t.t_ty in
     let h =
       if attr then
@@ -526,7 +527,7 @@ let t_hash ~trigger ~attr ~const t =
       | Tcase (t,bl) ->
           let h = t_hash bnd vml t in
           let b_hash ((p,b),t) =
-            let bnd,bv,hp = pat_hash bnd Mvs.empty p in
+            let (bnd,bv),hp = pat_hash bnd Mvs.empty p in
             let vml = Mvs.union (fun x n1 n2 -> Some n1) bv vml in
             Hashcons.combine_big hp (t_hash bnd vml t) in
           Hashcons.combine_big_list b_hash h bl
@@ -557,7 +558,7 @@ let t_hash ~trigger ~attr ~const t =
       | Ttrue -> BigInt.of_int 2
       | Tfalse -> BigInt.of_int 3
       end in
-  t_hash BigInt.zero Mvs.empty t
+  t_hash BigInt.zero Mvs.empty t *)
 
 let t_hash_generic ~trigger ~attr ~const t =
   t_hash ~trigger ~attr ~const t

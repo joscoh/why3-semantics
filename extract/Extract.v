@@ -45,6 +45,7 @@ Extract Inlined Constant CoqBigInt.compare => "BigInt.compare".
 Extract Inlined Constant CoqBigInt.hash => "BigInt.hash".
 Extract Inlined Constant CoqBigInt.min => "BigInt.min".
 Extract Inlined Constant CoqBigInt.pow_int_pos_bigint => "BigInt.pow_int_pos_bigint".
+Extract Inlined Constant CoqBigInt.of_int => "BigInt.of_int".
 Extract Inlined Constant CoqBigInt.neg_one => "(BigInt.of_int (-1))".
 Extract Inlined Constant CoqBigInt.two => "(BigInt.of_int 2)".
 Extract Inlined Constant CoqBigInt.three => "(BigInt.of_int 3)".
