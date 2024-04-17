@@ -51,6 +51,12 @@ Definition seven : t := 7.
 Definition eight : t := 8.
 Definition nine : t := 9.
 
+(*Some small primes*)
+Definition eleven : t := 11.
+Definition thirteen : t := 13.
+Definition seventeen : t := 17.
+Definition nineteen : t := 19.
+
 Definition neg_one : t := -1.
 
 (*For Zmap, we implement these functions manually in OCaml*)
@@ -121,3 +127,7 @@ Global Opaque eight.
 Global Opaque nine.
 Global Opaque to_Z.
 Global Opaque of_Z.
+Global Opaque eleven.
+Global Opaque thirteen.
+Global Opaque seventeen.
+Global Opaque nineteen.

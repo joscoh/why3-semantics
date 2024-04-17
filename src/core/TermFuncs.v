@@ -445,18 +445,20 @@ Section TermHash.
 
 Variable (trigger attr const : bool).
 
+(*For now, set to small (and unique) primes*)
+
 Definition q_hash (q: quant) : CoqBigInt.t :=
   match q with
-  | Tforall => CoqBigInt.zero
-  | Texists => CoqBigInt.one
+  | Tforall => CoqBigInt.five
+  | Texists => CoqBigInt.seven
   end.
 
 Definition binop_hash (b: binop) : CoqBigInt.t :=
   match b with
-  | Tand => CoqBigInt.zero
-  | Tor => CoqBigInt.one
-  | Timplies => CoqBigInt.two
-  | Tiff => CoqBigInt.three
+  | Tand => CoqBigInt.eleven
+  | Tor => CoqBigInt.thirteen
+  | Timplies => CoqBigInt.seventeen
+  | Tiff => CoqBigInt.nineteen
   end.
 
 Fixpoint t_hash_aux (bnd: CoqBigInt.t) (vml: Mvs.t CoqBigInt.t) (t: term_c) : CoqBigInt.t :=

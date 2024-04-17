@@ -188,11 +188,11 @@ Qed.
   we need to replace Hashtbl.hash (axiomatize?)*)
 Definition int_literal_kind_hash (i: int_literal_kind) : CoqBigInt.t :=
   match i with
-  | ILitUnk => CoqBigInt.zero
-  | ILitDec => CoqBigInt.one
-  | ILitHex => CoqBigInt.two
-  | ILitOct => CoqBigInt.three
-  | ILitBin => CoqBigInt.four
+  | ILitUnk => CoqBigInt.two
+  | ILitDec => CoqBigInt.three
+  | ILitHex => CoqBigInt.five
+  | ILitOct => CoqBigInt.seven
+  | ILitBin => CoqBigInt.eleven
   end.
 
 Definition int_constant_hash (i: int_constant) : CoqBigInt.t :=
@@ -201,9 +201,9 @@ Definition int_constant_hash (i: int_constant) : CoqBigInt.t :=
 
 Definition real_literal_kind_hash (r: real_literal_kind) : CoqBigInt.t :=
   match r with
-  | RLitUnk => CoqBigInt.zero
-  | RLitDec i => CoqBigInt.of_int i
-  | RLitHex i => CoqBigInt.of_int i
+  | RLitUnk => CoqBigInt.thirteen
+  | RLitDec i => hashcons.combine_big CoqBigInt.two (CoqBigInt.of_int i)
+  | RLitHex i => hashcons.combine_big CoqBigInt.three (CoqBigInt.of_int i)
   end. 
 
 Definition real_value_hash (r: real_value) : CoqBigInt.t :=

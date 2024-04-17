@@ -55,6 +55,10 @@ Extract Inlined Constant CoqBigInt.six => "(BigInt.of_int 6)".
 Extract Inlined Constant CoqBigInt.seven => "(BigInt.of_int 7)".
 Extract Inlined Constant CoqBigInt.eight => "(BigInt.of_int 8)".
 Extract Inlined Constant CoqBigInt.nine => "(BigInt.of_int 9)".
+Extract Inlined Constant CoqBigInt.eleven => "(BigInt.of_int 11)".
+Extract Inlined Constant CoqBigInt.thirteen => "(BigInt.of_int 13)".
+Extract Inlined Constant CoqBigInt.seventeen => "(BigInt.of_int 17)".
+Extract Inlined Constant CoqBigInt.nineteen => "(BigInt.of_int 19)".
 Extract Inlined Constant CoqBigInt.to_string => "BigInt.to_string".
 
 Extract Inlined Constant CoqInt.int => "Stdlib.Int.t".
