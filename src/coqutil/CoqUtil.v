@@ -323,3 +323,11 @@ Proof.
   symmetry.
   apply eqb_true_iff.
 Qed.
+
+Definition map_fold_left {A B C: Type} (f: A -> B -> A * C) (acc: A) (l: list B) : A * (list C) :=
+  let res := 
+  fold_left (fun x e => 
+    let y := f (fst x) e in
+    (fst y, snd y :: (snd x))
+  ) l (acc, nil) in
+  (fst res, rev' (snd res)).

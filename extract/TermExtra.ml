@@ -366,8 +366,8 @@ let rec or_cmp bv1 bv2 q1 q2 = match q1.pat_node, q2.pat_node with
     | Papp _, _ -> -1, bnd, bv1, bv2 | _, Papp _ -> 1, bnd, bv1, bv2
     | Por _, _  -> -1, bnd, bv1, bv2 | _, Por _  -> 1, bnd, bv1, bv2 *)
 
-let t_compare ~trigger ~attr ~loc ~const t1 t2 =
-  t_compare_full trigger attr loc const t1 t2
+(* let t_compare ~trigger ~attr ~loc ~const t1 t2 =
+  t_compare_full trigger attr loc const t1 t2 *)
   (* let rec t_compare bnd (vml1 : BigInt.t Mvs.t) (vml2 : BigInt.t Mvs.t) t1 t2 : int =
     if t1 != t2 || not (Mvs.is_empty vml1) || not (Mvs.is_empty vml2) then begin
       let i1 = oty_compare t1.t_ty t2.t_ty in
@@ -493,8 +493,8 @@ let t_compare ~trigger ~attr ~loc ~const t1 t2 =
         let bnd,bv,hp = pat_hash bnd bv p in
         BigInt.succ bnd, Mvs.add v bnd bv, Hashcons.combine_big hp (BigInt.succ bnd) *)
 
-let t_hash ~trigger ~attr ~const t =
-    t_hash_full trigger attr const t
+(* let t_hash ~trigger ~attr ~const t =
+    t_hash_full trigger attr const t *)
   (*let rec t_hash (bnd : BigInt.t) (vml: (BigInt.t Mvs.t))  t =
     let h = oty_hash t.t_ty in
     let h =
@@ -561,19 +561,19 @@ let t_hash ~trigger ~attr ~const t =
   t_hash BigInt.zero Mvs.empty t *)
 
 let t_hash_generic ~trigger ~attr ~const t =
-  t_hash ~trigger ~attr ~const t
+  t_hash_full trigger attr const t
 let t_compare_generic ~trigger ~attr ~loc ~const t1 t2=
-  t_compare ~trigger ~attr ~loc ~const t1 t2
+  t_compare_full trigger attr loc const t1 t2
 let t_equal_generic ~trigger ~attr ~loc ~const t1 t2 =
-  t_compare ~trigger ~attr ~loc ~const t1 t2 = 0
+  t_compare_full trigger attr loc const t1 t2 = 0
 
 let mterm_generic ~trigger ~attr ~loc ~const
     : (module (Extmap.S with type key = term)) =
   (module (Extmap.Make(struct
       type t = term
-      let tag t = t_hash ~trigger ~attr ~const t (*TODO JOSH hash*)
+      let tag t = t_hash_full trigger attr const t (*TODO JOSH hash*)
       (* let compare t1 t2 = t_compare ~trigger ~attr ~loc ~const t1 t2 *)
-      let equal x y = (t_compare ~trigger ~attr ~loc ~const x y = 0) (*JOSH TODO equal*)
+      let equal x y = (t_compare_full trigger attr loc const x y = 0) (*JOSH TODO equal*)
     end)))
 
 let sterm_generic ~trigger ~attr ~loc ~const
@@ -585,16 +585,16 @@ let hterm_generic ~trigger ~attr ~loc ~const
     : (module (Exthtbl.S with type key = term)) =
   (module (Exthtbl.Make(struct
       type t = term
-      let hash t = BigInt.hash (t_hash ~trigger ~attr ~const t)
-      let equal t1 t2 = t_compare ~trigger ~attr ~loc ~const t1 t2 = 0
+      let hash t = BigInt.hash (t_hash_full trigger attr const t)
+      let equal t1 t2 = t_compare_full trigger attr loc const t1 t2 = 0
     end)))
 
-let t_hash_strict t =
+(* let t_hash_strict t =
   t_hash ~trigger:true ~attr:true ~const:true t
 let t_equal_strict t1 t2 =
   t_compare ~trigger:true ~attr:true ~loc:true ~const:true t1 t2 = 0
 let t_compare_strict t1 t2 =
-  t_compare ~trigger:true ~attr:true ~loc:true ~const:true t1 t2
+  t_compare ~trigger:true ~attr:true ~loc:true ~const:true t1 t2 *)
 
 module Mterm_strict =
   (val (mterm_generic ~trigger:true ~attr:true ~loc:true ~const:true))
@@ -603,12 +603,12 @@ module Sterm_strict =
 module Hterm_strict=
   (val (hterm_generic ~trigger:true ~attr:true ~loc:true ~const:true))
 
-let t_hash t =
+(* let t_hash t =
   t_hash ~trigger:false ~attr:false ~const:false t
 let t_equal t1 t2 =
   t_compare ~trigger:false ~attr:false ~loc:false ~const:false t1 t2 = 0
 let t_compare t1 t2 =
-  t_compare ~trigger:false ~attr:false ~loc:false ~const:false t1 t2
+  t_compare ~trigger:false ~attr:false ~loc:false ~const:false t1 t2 *)
 
 module Mterm =
   (val (mterm_generic ~trigger:false ~attr:false ~loc:false ~const:false))
@@ -618,7 +618,7 @@ module Hterm =
   (val (hterm_generic ~trigger:false ~attr:false ~loc:false ~const:false))
 
 (* type checking *)
-
+(* 
 exception TermExpected of term
 exception FmlaExpected of term
 
@@ -643,7 +643,7 @@ let tr_equal = Lists.equal (Lists.equal t_equal)
 
 let tr_map fn = List.map (List.map fn)
 let tr_fold fn = List.fold_left (List.fold_left fn)
-let tr_map_fold fn = Lists.map_fold_left (Lists.map_fold_left fn)
+let tr_map_fold fn = Lists.map_fold_left (Lists.map_fold_left fn) *)
 
 (* bind_info equality, hash, and traversal *)
 

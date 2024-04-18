@@ -200,6 +200,8 @@ Extract Inlined Constant BadArity => "BadArity".
 Extract Inlined Constant FunctionSymbolExpected => "FunctionSymbolExpected".
 Extract Inlined Constant PredicateSymbolExpected => "PredicateSymbolExpected".
 Extract Inlined Constant ConstructorExpected => "ConstructorExpected".
+Extract Inlined Constant TermExpected => "TermExpected".
+Extract Inlined Constant FmlaExpected => "FmlaExpected".
 
 Extraction Inline mk_errtype.
 

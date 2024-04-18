@@ -8,3 +8,5 @@ exception FunctionSymbolExpected of lsymbol
 exception PredicateSymbolExpected of lsymbol
 exception ConstructorExpected of lsymbol
 
+exception TermExpected of term
+exception FmlaExpected of term

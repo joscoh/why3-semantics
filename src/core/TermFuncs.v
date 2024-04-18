@@ -519,3 +519,62 @@ Fixpoint t_hash_aux (bnd: CoqBigInt.t) (vml: Mvs.t CoqBigInt.t) (t: term_c) : Co
 Definition t_hash_full t := t_hash_aux CoqBigInt.zero Mvs.empty t.
 
 End TermHash.
+
+
+(*Derived versions*)
+Definition t_hash_strict (t: term_c) : CoqBigInt.t :=
+  t_hash_full true true true t.
+Definition t_equal_strict (t1 t2: term_c) : bool :=
+  CoqInt.int_eqb (t_compare_full true true true true t1 t2) (CoqInt.zero).
+Definition t_compare_strict (t1 t2: term_c) : CoqInt.int :=
+  t_compare_full true true true true t1 t2.
+(*TODO: skip sets and maps for now, see if we need them
+  (but hopefully not because hashing is not injective)*)
+
+Definition t_hash (t: term_c) : CoqBigInt.t :=
+  t_hash_full false false false t.
+Definition t_equal (t1 t2: term_c) : bool :=
+  CoqInt.int_eqb (t_compare_full false false false false t1 t2) (CoqInt.zero).
+Definition t_compare (t1 t2: term_c) : CoqInt.int :=
+  t_compare_full false false false false t1 t2.
+
+(* Type Checking *)
+Definition TermExpected (t: term_c) : errtype :=
+  mk_errtype "TermExpected" t.
+Definition FmlaExpected (t: term_c) : errtype :=
+  mk_errtype "FmlaExpected" t.
+
+Definition t_type (t: term_c) : errorM ty_c :=
+  match (t_ty_of t) with
+  | Some ty => err_ret ty
+  | None => throw (TermExpected t)
+  end.
+
+Definition t_prop (f: term_c) : errorM term_c :=
+  if negb (isSome (t_ty_of f)) then err_ret f else
+    throw (FmlaExpected f).
+
+Definition t_ty_check (t: term_c) (typ: option ty_c) : errorM unit :=
+  match typ, (t_ty_of t) with
+  | Some l, Some r => ty_equal_check l r
+  | Some _, None => throw (TermExpected t)
+  | None, Some _ => throw (FmlaExpected t)
+  | None, None => err_ret tt
+  end.
+
+Definition vs_check (v: vsymbol) (t: term_c) : errorM unit :=
+  typ <-- t_type t;;
+  ty_equal_check v.(vs_ty) typ.
+
+(*Trigger Equality and Traversal*)
+Definition tr_equal := lists_equal (lists_equal t_equal).
+
+Definition tr_map {A B: Type} (fn: A -> B) :=
+  map (map fn).
+
+Definition tr_fold {A B: Type} (fn: A -> B -> A) (acc: A) (l: list (list B)) 
+  := fold_left (fun acc tms => fold_left (fun acc t => fn acc t) tms acc) l acc. 
+
+Definition tr_map_fold {A B C: Type} (fn: A -> B -> A * C) :=
+  map_fold_left (map_fold_left fn).
+
