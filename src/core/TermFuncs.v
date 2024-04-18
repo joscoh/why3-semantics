@@ -373,9 +373,13 @@ Definition t_compare_full t1 t2 := t_compare_aux CoqBigInt.zero Mvs.empty Mvs.em
 
 End TCompare.
 
-(*NOTE: OCaml is faster and uses reference equality, we instead
-  use structural equality. Nothing is mutable, so this should
-  be OK*)
+(*TODO: a hack*)
+Definition term_eqb_fast := term_eqb.
+Definition term_branch_eqb_fast := term_branch_eqb.
+Definition term_bound_eqb_fast := term_bound_eqb.
+Definition term_quant_eqb_fast := term_quant_eqb.
+
+(*Using only structural/decidable equality is slow*)
 Definition t_similar (t1 t2: term_c) : bool :=
   oty_equal (t_ty_of t1) (t_ty_of t2) &&
   match (t_node_of t1), (t_node_of t2) with
@@ -383,19 +387,19 @@ Definition t_similar (t1 t2: term_c) : bool :=
   | Tconst c1, Tconst c2 => CoqInt.int_eqb 
     (ConstantDefs.compare_const_aux true c1 c2) CoqInt.zero
   | Tapp s1 l1, Tapp s2 l2 => ls_equal s1 s2 && 
-    lists_equal term_eqb l1 l2
-  | Tif f1 t1 e1, Tif f2 t2 e2 => term_eqb f1 f2 && term_eqb t1 t2 
-    && term_eqb e1 e2
-  | Tlet t1 bv1, Tlet t2 bv2 => term_eqb t1 t2 && 
-    term_bound_eqb bv1 bv2
-  | Tcase t1 bl1, Tcase t2 bl2 => term_eqb t1 t2 &&
-    lists_equal term_branch_eqb bl1 bl2
-  | Teps bv1, Teps bv2 => term_bound_eqb bv1 bv2
+    lists_equal term_eqb_fast l1 l2
+  | Tif f1 t1 e1, Tif f2 t2 e2 => term_eqb_fast f1 f2 && term_eqb_fast t1 t2 
+    && term_eqb_fast e1 e2
+  | Tlet t1 bv1, Tlet t2 bv2 => term_eqb_fast t1 t2 && 
+    term_bound_eqb_fast bv1 bv2
+  | Tcase t1 bl1, Tcase t2 bl2 => term_eqb_fast t1 t2 &&
+    lists_equal term_branch_eqb_fast bl1 bl2
+  | Teps bv1, Teps bv2 => term_bound_eqb_fast bv1 bv2
   | Tquant q1 bv1, Tquant q2 bv2 => 
-    quant_eqb q1 q2 && term_quant_eqb bv1 bv2
+    quant_eqb q1 q2 && term_quant_eqb_fast bv1 bv2
   | Tbinop o1 f1 g1, Tbinop o2 f2 g2 =>
-    binop_eqb o1 o2 && term_eqb f1 f2 && term_eqb g1 g2
-  | Tnot f1, Tnot f2 => term_eqb f1 f2
+    binop_eqb o1 o2 && term_eqb_fast f1 f2 && term_eqb_fast g1 g2
+  | Tnot f1, Tnot f2 => term_eqb_fast f1 f2
   | Ttrue, Ttrue => true
   | Tfalse, Tfalse => true
   | _, _ => false

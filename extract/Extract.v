@@ -83,6 +83,12 @@ Extract Inlined Constant string_compare => "String.compare".
 (*Extract Inlined Constant length => "List.length".
 Extract Inlined Constant Coq.Arith.PeanoNat.Nat.eqb => "Int.equal".*)
 
+(*For now*)
+Extract Inlined Constant term_eqb_fast => "(fun x y -> x == y || term_eqb x y)".
+Extract Inlined Constant term_branch_eqb_fast => "(fun x y -> x == y || term_branch_eqb x y)".
+Extract Inlined Constant term_bound_eqb_fast => "(fun x y -> x == y || term_bound_eqb x y)".
+Extract Inlined Constant term_quant_eqb_fast => "(fun x y -> x == y || term_quant_eqb x y)".
+
 (*Handle exception monad*)
 
 Extract Constant errorM "'a" => "'a".
