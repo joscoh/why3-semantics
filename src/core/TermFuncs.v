@@ -578,3 +578,110 @@ Definition tr_fold {A B: Type} (fn: A -> B -> A) (acc: A) (l: list (list B))
 Definition tr_map_fold {A B C: Type} (fn: A -> B -> A * C) :=
   map_fold_left (map_fold_left fn).
 
+(* Hash-consing for terms and formulas*)
+
+Definition vars_union (s1 s2: Mvs.t CoqBigInt.t) : Mvs.t CoqBigInt.t :=
+  Mvs.union _ (fun _ m n => Some (CoqBigInt.add m n)) s1 s2.
+
+Definition add_b_vars {A B: Type} (s: Mvs.t CoqBigInt.t) (x: A * bind_info * B) : Mvs.t CoqBigInt.t :=
+  let '(_, b, _) := x in
+  vars_union s b.(bv_vars).
+
+Fixpoint t_vars (t: term_c) : Mvs.t CoqBigInt.t :=
+  match (t_node_of t) with
+  | Tvar v => Mvs.singleton _ v CoqBigInt.one
+  | Tconst _ => Mvs.empty
+  | Tapp _ tl => fold_left (fun s x => vars_union s (t_vars x)) tl Mvs.empty
+  | Tif f t e => vars_union (vars_union (t_vars f) (t_vars t)) (t_vars e)
+  | Tlet t bt => add_b_vars (t_vars t) bt
+  | Tcase t bl => List.fold_left add_b_vars bl (t_vars t)
+  | Teps (_, b, _) => b.(bv_vars)
+  | Tquant _ (_, b, _, _) => b.(bv_vars)
+  | Tbinop _ f1 f2 => vars_union (t_vars f1) (t_vars f2)
+  | Tnot f => t_vars f
+  | Ttrue | Tfalse => Mvs.empty
+  end.
+
+(*Avoid mutual recursion*)
+Definition add_t_vars s t := vars_union s (t_vars t).
+
+(*Skip add_nt_vars, not used*)
+
+(*Hash-Consing Constructors for Terms*)
+(*NOTE: not actually hash consing*)
+
+Definition mk_term (n: term_node) (t: option ty_c) : term_c :=
+  mk_term_c n t (Sattr.empty) None.
+
+Definition t_var v := mk_term (Tvar v) (Some v.(vs_ty)).
+Definition t_const c t := mk_term (Tconst c) (Some t).
+Definition t_app f tl t := mk_term (Tapp f tl) t.
+Definition t_if f t1 t2 := mk_term (Tif f t1 t2) (t_ty_of t2).
+Definition t_let t1 bt t := mk_term (Tlet t1 bt) t.
+Definition t_case t1 bl t := mk_term (Tcase t1 bl) t.
+Definition t_eps bf t := mk_term (Teps bf) t.
+Definition t_quant q qf := mk_term (Tquant q qf) None.
+Definition t_binary op f g := mk_term (Tbinop op f g) None.
+Definition t_not f := mk_term (Tnot f) None.
+Definition t_true := mk_term Ttrue None.
+Definition t_false := mk_term Tfalse None.
+
+Definition t_attr_set1 (loc: option LocTy.position) (l: Sattr.t) (t: term_c) : term_c :=
+  mk_term_c (t_node_of t) (t_ty_of t) l loc.
+
+Definition t_attr_add (l: attribute) (t: term_c) : term_c :=
+  mk_term_c (t_node_of t) (t_ty_of t) (Sattr.add l (t_attrs_of t)) (t_loc_of t).
+
+Definition t_attr_remove (l: attribute) (t: term_c) : term_c :=
+  mk_term_c (t_node_of t) (t_ty_of t) (Sattr.remove l (t_attrs_of t)) (t_loc_of t).
+
+
+Definition t_attr_copy (s t: term_c) : term_c :=
+  (*No reference equality check*)
+  if t_similar s t && Sattr.is_empty (t_attrs_of t) && negb (isSome (t_loc_of t)) then s else
+  let attrs := Sattr.union (t_attrs_of s) (t_attrs_of t) in
+  let loc := if isNone (t_loc_of t) then (t_loc_of s) else (t_loc_of t) in
+  mk_term_c (t_node_of t) (t_ty_of t) attrs loc.
+
+(* Unsafe Map*)
+
+Definition bound_map {A B C D: Type} (f: A -> B) (x: C * D * A) : C * D * B :=
+  match x with
+  | (u, b, e) => (u, b, f e)
+  end.
+
+Definition t_map_unsafe (fn: term_c -> term_c) (t: term_c) : term_c :=
+  t_attr_copy t (match (t_node_of t) with
+  | Tvar _ | Tconst _ => t
+  | Tapp f tl => t_app f (map fn tl) (t_ty_of t)
+  | Tif f t1 t2 => t_if (fn f) (fn t1) (fn t2)
+  | Tlet e b => t_let (fn e) (bound_map fn b) (t_ty_of t)
+  | Tcase e bl => t_case (fn e) (map (bound_map fn) bl) (t_ty_of t)
+  | Teps b => t_eps (bound_map fn b) (t_ty_of t)
+  | Tquant q (vl, b, tl, f) => t_quant q (vl, b, tr_map fn tl, fn f)
+  | Tbinop op f1 f2 => t_binary op (fn f1) (fn f2)
+  | Tnot f1 => t_not (fn f1)
+  | Ttrue | Tfalse => t
+  end).
+
+(*Unsafe Fold*)
+
+Definition bound_fold {A B C D E: Type} (fn : A -> B -> C) (acc : A)
+  (x: D * E * B) : C := 
+  match x with
+  | (_, _, e) => fn acc e
+  end.
+
+Definition t_fold_unsafe {A: Type} (fn: A -> term_c -> A) (acc: A) (t: term_c) : A :=
+  match t_node_of t with
+  | Tvar _ | Tconst _ => acc
+  | Tapp _ tl => fold_left fn tl acc
+  | Tif f t1 t2 => fn (fn (fn acc f) t1) t2
+  | Tlet e b => fn (bound_fold fn acc b) e
+  | Tcase e bl => fold_left (bound_fold fn) bl (fn acc e)
+  | Teps b => bound_fold fn acc b
+  | Tquant _ (_, b, tl, f1) => fn (tr_fold fn acc tl) f1
+  | Tbinop _ f1 f2 => fn (fn acc f1) f2
+  | Tnot f1 => fn acc f1
+  | Ttrue | Tfalse => acc
+  end.

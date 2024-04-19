@@ -187,6 +187,8 @@ Definition isSome {A: Type} (o: option A) : bool :=
   | _ => false
   end.
 
+Definition isNone {A: Type} (x: option A) := negb (isSome x).
+
 (*TODO: Common?*)
 Definition option_eqb {A: Type}(eq: A -> A -> bool) (o1 o2: option A): bool :=
   match o1, o2 with

@@ -657,7 +657,7 @@ let tr_map_fold fn = Lists.map_fold_left (Lists.map_fold_left fn) *)
 
 (* hash-consing for terms and formulas *)
 
-let vars_union s1 s2 = Mvs.union (fun _ m n -> Some (BigInt.add m n)) s1 s2
+(* let vars_union s1 s2 = Mvs.union (fun _ m n -> Some (BigInt.add m n)) s1 s2
 
 let add_b_vars s ((_,b),_) = vars_union s b.bv_vars
 
@@ -699,9 +699,10 @@ let t_quant q qf    = mk_term (Tquant (q, qf)) None
 let t_binary op f g = mk_term (Tbinop (op, f, g)) None
 let t_not f         = mk_term (Tnot f) None
 let t_true          = mk_term (Ttrue) None
-let t_false         = mk_term (Tfalse) None
+let t_false         = mk_term (Tfalse) None*)
 
-let t_attr_set ?loc l t = { t with t_attrs = l; t_loc = loc }
+let t_attr_set ?loc l t = t_attr_set1 loc l t 
+(*{ t with t_attrs = l; t_loc = loc }
 
 let t_attr_add l t = { t with t_attrs = Sattr.add l t.t_attrs }
 
@@ -744,7 +745,7 @@ let t_fold_unsafe fn acc t = match t.t_node with
   | Tquant (_,(((_,b),tl),f1)) -> fn (tr_fold fn acc tl) f1
   | Tbinop (_,f1,f2) -> fn (fn acc f1) f2
   | Tnot f1 -> fn acc f1
-  | Ttrue | Tfalse -> acc
+  | Ttrue | Tfalse -> acc *)
 
 (* unsafe map_fold *)
 
