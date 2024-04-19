@@ -722,6 +722,66 @@ Definition t_map_unsafe (fn: term_c -> term_c) (t: term_c) : term_c :=
   | Ttrue | Tfalse => t
   end).
 
+Definition bound_map_ctr {A B C D: Type} (f: A -> ctr B) (x: C * D * A) : ctr (C * D * B) :=
+  match x with
+  | (u, b, e) => 
+    e1 <- f e;;
+    st_ret (u, b, e1)
+  end.
+
+(*Get state out of trigger map*)
+(*TODO: generalize to all state?*)
+Fixpoint st_tr {A: Type} (l: list (list (ctr A))) : ctr (list (list A)) :=
+  match l with
+  | nil => st_ret nil
+  | l1 :: tl =>
+    l2 <- st_list l1 ;;
+    tl2 <- st_tr tl ;;
+    st_ret (l2 :: tl2)
+  end.
+
+
+Definition t_map_ctr_unsafe (fn: term_c -> ctr term_c) (t: term_c) : ctr term_c :=
+  t1 <- (match (t_node_of t) with
+  | Tvar _ | Tconst _ => st_ret t
+  | Tapp f tl =>
+    l <- st_list (map fn tl) ;;
+   st_ret (t_app f l (t_ty_of t))
+  | Tif f t1 t2 =>
+    f1 <- fn f ;;
+    t1' <- fn t1 ;;
+    t2' <- fn t2 ;;
+    st_ret (t_if f1 t1' t2')
+  | Tlet e b =>
+    e1 <- fn e ;;
+    b1 <- (bound_map_ctr fn b);;
+    st_ret (t_let e1 b1 (t_ty_of t))
+  | Tcase e bl => 
+    e1 <- fn e;;
+    l <- (st_list (map (bound_map_ctr fn) bl));;
+    st_ret (t_case e1 l (t_ty_of t))
+  | Teps b => 
+    b1 <- bound_map_ctr fn b ;;
+    st_ret (t_eps b1 (t_ty_of t))
+  | Tquant q (vl, b, tl, f) => 
+    l <- st_tr (tr_map fn tl) ;;
+    f1 <- fn f;;
+    st_ret (t_quant q (vl, b, l, f1))
+  | Tbinop op f1 f2 => 
+    f1' <- fn f1;;
+    f2' <- fn f2;;
+    st_ret (t_binary op f1' f2')
+  | Tnot f1 => 
+    f1' <- fn f1;;
+    st_ret (t_not f1')
+  | Ttrue | Tfalse => st_ret t
+  end) ;;
+  
+  st_ret (t_attr_copy t t1).
+
+
+
+
 (*Unsafe Fold*)
 
 Definition bound_fold {A B C D E: Type} (fn : A -> B -> C) (acc : A)
@@ -868,18 +928,7 @@ Definition vl_rename (h: Mvs.t term_c) (vl: list vsymbol) :=
   x <- vl_rename_aux vl (st_ret (h, nil)) ;;
   st_ret (fst x, rev' (snd x)).
 
-(*Get state out of trigger map*)
-(*TODO: generalize to all state?*)
-Fixpoint st_tr {A: Type} (l: list (list (ctr A))) : ctr (list (list A)) :=
-  match l with
-  | nil => st_ret nil
-  | l1 :: tl =>
-    l2 <- st_list l1 ;;
-    tl2 <- st_tr tl ;;
-    st_ret (l2 :: tl2)
-  end.
-
-(* Fixpoint t_subst_unsafe (m: Mvs.t term_c) (t: term_c) : ctr term_c :=
+Fixpoint t_subst_unsafe (m: Mvs.t term_c) (t: term_c) : ctr term_c :=
   let t_subst t := t_subst_unsafe m t in
 
   let t_open_bnd {A: Type} (v : A) m t f : ctr (A * term_c) :=
@@ -941,6 +990,5 @@ Fixpoint st_tr {A: Type} (l: list (list (ctr A))) : ctr (list (list A)) :=
   | Tquant q bq =>
     bq1 <- b_subst3 bq ;;
     st_ret (t_attr_copy t (t_quant q bq1))
-  | _ => st_ret t
-  end. *)
-
+  | _ => t_map_ctr_unsafe t_subst t
+  end.
