@@ -749,7 +749,7 @@ let t_fold_unsafe fn acc t = match t.t_node with
 
 (* unsafe map_fold *)
 
-let bound_map_fold fn acc ((u,b),e) =
+(* let bound_map_fold fn acc ((u,b),e) =
   let acc, e = fn acc e in
   acc, ((u,b),e)
 
@@ -817,7 +817,7 @@ let t_close_quant vl tl f =
   (((vl, bnd_new s), tl), t_prop f)
 
 let vl_rename h vl =
-  Lists.map_fold_left vs_rename h vl
+  Lists.map_fold_left vs_rename h vl*)
 
 let rec t_subst_unsafe m t =
   let t_subst t = t_subst_unsafe m t in
@@ -864,7 +864,7 @@ let rec t_subst_unsafe m t =
   | Tquant (q, (((vl,b),tl),f1 as bq)) ->
       t_attr_copy t (t_quant q (b_subst2 bq))
   | _ ->
-      t_map_unsafe t_subst t
+      t_map_unsafe t_subst t 
 
 let t_subst_unsafe m t =
   if Mvs.is_empty m then t else t_subst_unsafe m t

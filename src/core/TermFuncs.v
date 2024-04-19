@@ -79,6 +79,12 @@ Definition pat_map (fn: pattern_c -> pattern_c): pattern_c -> errorM pattern_c  
     _ <-- ty_equal_check (pat_ty_of p) (pat_ty_of res) ;;
     err_ret res).
 
+Definition pat_map_err (fn: pattern_c -> errorM pattern_c): pattern_c -> errorM pattern_c  :=
+  pat_map_aux (fun p => 
+    res <-- fn p ;;
+    _ <-- ty_equal_check (pat_ty_of p) (pat_ty_of res) ;;
+    err_ret res).
+
 Definition pat_fold {A: Type} (fn: A -> pattern_c -> A) (acc: A) (pat: pattern_c) : A :=
   match (pat_node_of pat) with
   | Pwild => acc
@@ -143,6 +149,58 @@ Definition pat_as (p: pattern_c) (v: vsymbol) : errorM pattern_c :=
 Definition pat_or (p q: pattern_c) : errorM pattern_c :=
   _ <-- ty_equal_check (pat_ty_of p) (pat_ty_of q) ;;
   pat_or_aux p q.
+
+(*NOTE: Why3 uses the (type-safe) pat_map function to implement
+  the [pat_rename_all] function.
+  This checks for the same variables in an "or" pattern, etc.
+  But we will only be using this with fresh (and well-typed) variables
+  applied consistently, and this function is not callable
+  outside of the module.
+  So we will use an unsafe map function, which avoids
+  putting everything (including term substitution) into
+  an error monad
+  TODO: make sure this is safe*)
+
+Definition pat_app_unsafe (f: lsymbol) (pl: list pattern_c) (t: ty_c) :
+  pattern_c :=
+  (*Create union of all elements*)
+  let un : Svs.t := fold_left (fun (s: Svs.t) p =>
+    Svs.union s (pat_vars_of p)) pl Svs.empty in
+  mk_pattern (Papp f pl) un t.
+
+Definition pat_as_unsafe (p: pattern_c) (v: vsymbol) : pattern_c :=
+  let s := Svs.add v (pat_vars_of p) in
+  mk_pattern (Pas p v) s v.(vs_ty).
+
+Definition pat_or_unsafe (p q: pattern_c) : pattern_c :=
+  mk_pattern (Por p q) (pat_vars_of p) (pat_ty_of p).
+
+Definition pat_map_unsafe (fn: pattern_c -> pattern_c) (p: pattern_c) : pattern_c :=
+  match (pat_node_of p) with
+  | Pwild | Pvar _ => p
+  | Papp s pl => pat_app_unsafe s (map fn pl) (pat_ty_of p)
+  | Pas p v => pat_as_unsafe (fn p) v
+  | Por p q => pat_or_unsafe (fn p) (fn q)
+  end.
+
+(*Rename all variables in a pattern*)
+Fixpoint pat_rename_all (m: Mvs.t vsymbol) (p: pattern_c) : pattern_c:=
+  match (pat_node_of p) with
+  | Pvar v => 
+    match Mvs.find_opt _ v m with
+    | Some v1 => (pat_var v1)
+    | None => p (*NOTE: should never occur*)
+    end
+  | Pas p v =>
+    let p1 := pat_rename_all m p in
+    pat_as_unsafe p1
+    match Mvs.find_opt _ v m with
+      | Some v1 => v1
+      | None => v (*Should never occur*)
+      end
+  | _ => pat_map_unsafe (pat_rename_all m) p
+  end.
+
 
 (*Term equality modulo alpha-equivalence and location*)
 Section TCompare.
@@ -685,3 +743,204 @@ Definition t_fold_unsafe {A: Type} (fn: A -> term_c -> A) (acc: A) (t: term_c) :
   | Tnot f1 => fn acc f1
   | Ttrue | Tfalse => acc
   end.
+
+(* Unsafe Map_fold *)
+
+Definition bound_map_fold {A B C D E F: Type} (fn: A -> B -> C * D)
+  (acc: A) (x : E * F * B) : C * (E * F * D) :=
+  match x with
+  | (u, b, e) => let '(acc, e) := fn acc e in
+    (acc, (u, b, e))
+  end.
+
+Definition t_map_fold_unsafe {A: Type} (fn : A -> term_c -> A * term_c)
+  (acc: A) (t: term_c) : (A * term_c) :=
+  match (t_node_of t) with
+  | Tvar _ | Tconst _ => (acc, t)
+  | Tapp f tl =>
+    let '(acc, sl) := map_fold_left fn acc tl in
+    (acc, t_attr_copy t (t_app f sl (t_ty_of t)))
+  | Tif f t1 t2 =>
+    let '(acc, g) := fn acc f in
+    let '(acc, s1) := fn acc t1 in
+    let '(acc, s2) := fn acc t2 in
+    (acc, t_attr_copy t (t_if g s1 s2))
+  | Tlet e b =>
+      let '(acc, e) := fn acc e in
+      let '(acc, b) := bound_map_fold fn acc b in
+      (acc, t_attr_copy t (t_let e b (t_ty_of t)))
+  | Tcase e bl =>
+      let '(acc, e) := fn acc e in
+      let '(acc, bl) := map_fold_left (bound_map_fold fn) acc bl in
+      (acc, t_attr_copy t (t_case e bl (t_ty_of t)))
+  | Teps b =>
+      let '(acc, b) := bound_map_fold fn acc b in
+      (acc, t_attr_copy t (t_eps b (t_ty_of t)))
+  | Tquant q (vl, b, tl, f1) =>
+      let '(acc, tl) := tr_map_fold fn acc tl in
+      let '(acc, f1) := fn acc f1 in
+      (acc, t_attr_copy t (t_quant q (vl, b, tl, f1)))
+  | Tbinop op f1 f2 =>
+      let '(acc, g1) := fn acc f1 in
+      let '(acc, g2) := fn acc f2 in
+      (acc, t_attr_copy t (t_binary op g1 g2))
+  | Tnot f1 =>
+      let '(acc, g1) := fn acc f1 in
+      (acc, t_attr_copy t (t_not g1))
+  | Ttrue | Tfalse => (acc, t)
+  end.
+
+(*Type-unsafe term substitution*)
+
+(*Note: this is eager, not lazy, unlike the current
+  Why3 implementation*)
+Definition fresh_vsymbol (v: vsymbol) : ctr vsymbol :=
+  create_vsymbol (id_clone1 None Sattr.empty v.(vs_name)) v.(vs_ty).
+
+Definition vs_rename (h: Mvs.t term_c) (v: vsymbol) : 
+  ctr (Mvs.t term_c * vsymbol) :=
+  u <- fresh_vsymbol v;;
+  st_ret (Mvs.add v (t_var u) h, u).
+
+Definition bnd_new (s: Mvs.t CoqBigInt.t) : bind_info :=
+  {| bv_vars := s|}.
+
+Definition t_close_bound (v: vsymbol) (t: term_c) :
+  vsymbol * bind_info * term_c :=
+  (v, bnd_new (Mvs.remove _ v (t_vars t)), t).
+
+(*Given a set of variables, generate new variables in a map.
+  NOTE: this is not very efficient: nlogn (or so) vs O(n) for
+  smart implementation. But the map interface does not accept a monad
+  TODO: should we change this?*)
+Fixpoint add_vars (l: list vsymbol) : ctr (Mvs.t vsymbol) :=
+  match l with
+  | nil => st_ret Mvs.empty
+  | v :: vs => 
+    v1 <- fresh_vsymbol v ;;
+    m <- add_vars vs ;;
+    st_ret (Mvs.add v v1 m)
+  end.
+
+Definition pat_rename (h: Mvs.t term_c) (p: pattern_c) :
+  ctr (Mvs.t term_c * pattern_c) := 
+  m <- add_vars (Svs.elements (pat_vars_of p)) ;;
+  let p := pat_rename_all m p in
+  (*Keep the newly-alpha-renamed ones (second) if overlap*)
+  st_ret (Mvs.union _ (fun _ _ t => Some t) h (Mvs.map t_var m), p).
+
+Definition t_close_branch (p: pattern_c) (t: term_c) : 
+  (pattern_c * bind_info * term_c) :=
+  (p, bnd_new (Mvs.set_diff _ _ (t_vars t) (pat_vars_of p)), t).
+
+(*Once again, we will have an "unsafe" [t_close_quant], which
+  does not check the type of the inputted term and which is only
+  used internally, and a public function that is type-safe*)
+Definition t_close_quant_unsafe (vl: list vsymbol) 
+  (tl: list (list term_c)) (f: term_c) :
+  list vsymbol * bind_info * list (list term_c) * term_c :=
+  let del_v s v := Mvs.remove _ v s in
+  let s := tr_fold add_t_vars (t_vars f) tl in
+  let s := fold_left del_v vl s in
+  (vl, bnd_new s, tl, f).
+
+Definition t_close_quant (vl: list vsymbol) 
+  (tl: list (list term_c)) (f: term_c) :
+  errorM (list vsymbol * bind_info * list (list term_c) * term_c) :=
+  let '(vl, s, tl, f) := t_close_quant_unsafe vl tl f in
+  p <-- t_prop f ;;
+  err_ret (vl, s, tl, p).
+
+(*TODO: they use map_fold_left, we need state*)
+Fixpoint vl_rename_aux (vl: list vsymbol) 
+  (acc: ctr (Mvs.t term_c * list vsymbol)) : ctr (Mvs.t term_c * list vsymbol) :=
+  match vl with
+  | nil => acc
+  | v :: vs =>
+    x <- acc;;
+    let '(m, vls) := x in
+    x1 <- vs_rename m v ;;
+    let '(m1, v1) := x1 in
+    vl_rename_aux vs (st_ret (m1, v1 :: vls))
+  end.
+
+Definition vl_rename (h: Mvs.t term_c) (vl: list vsymbol) :=
+  x <- vl_rename_aux vl (st_ret (h, nil)) ;;
+  st_ret (fst x, rev' (snd x)).
+
+(*Get state out of trigger map*)
+(*TODO: generalize to all state?*)
+Fixpoint st_tr {A: Type} (l: list (list (ctr A))) : ctr (list (list A)) :=
+  match l with
+  | nil => st_ret nil
+  | l1 :: tl =>
+    l2 <- st_list l1 ;;
+    tl2 <- st_tr tl ;;
+    st_ret (l2 :: tl2)
+  end.
+
+(* Fixpoint t_subst_unsafe (m: Mvs.t term_c) (t: term_c) : ctr term_c :=
+  let t_subst t := t_subst_unsafe m t in
+
+  let t_open_bnd {A: Type} (v : A) m t f : ctr (A * term_c) :=
+    x <- f m v ;;
+    let '(m, v) := x in
+    t1 <- t_subst_unsafe m t ;;
+    st_ret (v, t1)
+  in
+
+  let t_open_quant vl m (tl : list (list term_c)) f :
+    ctr (list vsymbol * list (list term_c) * term_c) :=
+    x <- vl_rename m vl ;;
+    let '(m, vl) := x in
+    tl <- st_tr (tr_map (t_subst_unsafe m) tl) ;;
+    f1 <- t_subst_unsafe m f;; 
+    st_ret (vl, tl, f1)
+  in
+
+  let b_subst {A: Type} bv f (cl : A -> term_c -> (A * bind_info * term_c)) 
+    : ctr (A * bind_info * term_c) :=
+    let '(u, b, e) := bv in
+    if Mvs.set_disjoint _ _ m b.(bv_vars) then st_ret bv else
+    let m1 := Mvs.set_inter _ _ m b.(bv_vars) in
+    y <- (fun v m t => t_open_bnd v m t f) u m1 e ;;
+    let '(v, t1) := y in
+    let x := cl v t1 in
+    st_ret x in
+
+  let b_subst1 bv : ctr (vsymbol * bind_info * term_c) :=
+    b_subst bv vs_rename t_close_bound in
+
+  let b_subst2 bv : ctr (pattern_c * bind_info * term_c) :=
+    b_subst bv pat_rename t_close_branch in
+
+  let b_subst3 bq :=
+    let '(vl, b, tl, f1) := bq in
+    if Mvs.set_disjoint _ _ m b.(bv_vars) then st_ret bq else
+    let m1 := Mvs.set_inter _ _ m b.(bv_vars) in
+    y <- t_open_quant vl m1 tl f1 ;;
+    let '(vs, tr, t1) := y in
+    let x := t_close_quant_unsafe vs tr t1 in
+    st_ret x
+  in
+
+  
+  match (t_node_of t) with
+  | Tvar u => st_ret (t_attr_copy t (Mvs.find_def _ t u m))
+  | Tlet e bt =>
+    t1 <- t_subst e ;;
+    b1 <- (b_subst1 bt) ;;
+    st_ret (t_attr_copy t (t_let t1 b1 (t_ty_of t)))
+  | Tcase e bl =>
+    d <- t_subst e ;;
+    bl <- st_list (map b_subst2 bl) ;;
+    st_ret (t_attr_copy t (t_case d bl (t_ty_of t)))
+  | Teps bf =>
+    bf1 <- (b_subst1 bf);;
+    st_ret (t_attr_copy t (t_eps bf1 (t_ty_of t)))
+  | Tquant q bq =>
+    bq1 <- b_subst3 bq ;;
+    st_ret (t_attr_copy t (t_quant q bq1))
+  | _ => st_ret t
+  end. *)
+

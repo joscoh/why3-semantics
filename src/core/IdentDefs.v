@@ -220,3 +220,11 @@ Definition create_ident name attrs loc :=
 (*For that reason, we give it a different name*)
 Definition id_fresh1 (s: string) : preid :=
   create_ident s Sattr.empty None.
+
+Definition id_clone1 loc attrs i :=
+  let aa := Sattr.union attrs i.(id_attrs) in
+  let loc := match loc with
+            | None => i.(id_loc)
+            | Some _ => loc
+  end in
+  create_ident i.(id_string) aa loc.

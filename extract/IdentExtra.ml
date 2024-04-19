@@ -105,12 +105,13 @@ let id_attr id attrs =
   create_ident id.id_string attrs id.id_loc
 
 let id_clone ?loc ?(attrs = Sattr.empty) id =
-  let aa = Sattr.union attrs id.id_attrs in
+  id_clone1 loc attrs id
+  (* let aa = Sattr.union attrs id.id_attrs in
   let loc = match loc with
     | None -> id.id_loc
     | Some _ -> loc
   in
-  create_ident id.id_string aa loc
+  create_ident id.id_string aa loc *)
 
 let id_derive ?(attrs = Sattr.empty) nm id =
   let aa = Sattr.union attrs id.id_attrs in

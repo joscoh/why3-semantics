@@ -187,3 +187,5 @@ Definition hashcons_unit key := hashcons_st key unit.
 Notation errorHashconsT K A := (errState (CoqBigInt.t * hashset K) A).
 (*5. Hash table + error handling*)
 Notation errorHashT K V A := (errState (hashtbl K V) A).
+(*6: Counter + error handling*)
+Notation ctrErr A := (errState (CoqBigInt.t) A).
