@@ -866,8 +866,8 @@ let vl_rename h vl =
   | _ ->
       t_map_unsafe t_subst t  *)
 
-let t_subst_unsafe m t =
-  if Mvs.is_empty m then t else t_subst_unsafe m t
+(* let t_subst_unsafe m t =
+  if Mvs.is_empty m then t else t_subst_unsafe m t *)
 
 (* close bindings *)
 
@@ -877,16 +877,27 @@ let t_subst_unsafe m t =
 
 let t_open_quant (vl, b, tl, f) = vl, tl, f *)
 
-let  t_open_bound ((v,b),t) =
+(* let  t_open_bound ((v,b),t) =
   let m,v = vs_rename Mvs.empty v in
   v, t_subst_unsafe m t
 let t_open_branch ((p,b),t) =
   let m,p = pat_rename Mvs.empty p in
-  p, t_subst_unsafe m t
-let t_open_quant (((vl,b),tl),f) =
-  let m,vl = vl_rename Mvs.empty vl in
+  p, t_subst_unsafe m t*)
+
+(*JOSH: TODO MOVE
+  Equal in Coq but not OCaml*)
+let coq_to_ocaml_tup3 (x: ('a * 'b) * 'c) : 'a * 'b * 'c =
+  let (a, b), c = x in
+  a, b, c
+let coq_to_ocaml_tup4 (x: (('a * 'b) * 'c) * 'd) : 'a * 'b * 'c * 'd =
+  let ((a, b), c), d = x in
+  a, b, c, d
+
+let t_open_quant bq =
+  coq_to_ocaml_tup3 (t_open_quant1 bq)
+  (* let m,vl = vl_rename Mvs.empty vl in
   let tl = tr_map (t_subst_unsafe m) tl in
-  vl, tl, t_subst_unsafe m f
+  vl, tl, t_subst_unsafe m f *)
 
 
 
@@ -904,10 +915,10 @@ let t_open_quant (((vl,b),tl),f) =
   let m,v = vs_rename b.bv_subst v in
   v, t_subst_unsafe m t *)
 
-let t_open_bound_with e ((v,b),t) =
+(*let t_open_bound_with e ((v,b),t) =
   vs_check v e;
   let m = Mvs.singleton v e in
-  t_subst_unsafe m t
+  t_subst_unsafe m t *)
 
 
 
@@ -919,28 +930,33 @@ let t_clone_bound_id ?loc ?attrs ((v,_),_) =
 (** open bindings with optimized closing callbacks *)
 
 let t_open_bound_cb tb =
+  coq_to_ocaml_tup3 (t_open_bound_cb1 tb)
+  (* let (a, b), c = t_open_bound_cb1 tb in
+  a, b, c
   let v, t = t_open_bound tb in
   let close v' t' =
     if t == t' && vs_equal v v' then tb else t_close_bound v' t'
   in
-  v, t, close
+  v, t, close *)
 
 let t_open_branch_cb tbr =
-  let p, t = t_open_branch tbr in
+  coq_to_ocaml_tup3 (t_open_branch_cb1 tbr)
+  (* let p, t = t_open_branch tbr in
   let close p' t' =
     if t == t' && p == p' then tbr else t_close_branch p' t'
   in
-  p, t, close
+  p, t, close *)
 
 let t_open_quant_cb fq =
-  let vl, tl, f = t_open_quant fq in
+  coq_to_ocaml_tup4 (t_open_quant_cb1 fq)
+  (* let vl, tl, f = t_open_quant fq in
   let close vl' tl' f' =
     if f == f' &&
       Lists.equal (Lists.equal ((==) : term -> term -> bool)) tl tl' &&
       Lists.equal vs_equal vl vl'
     then fq else t_close_quant vl' tl' f'
   in
-  vl, tl, f, close
+  vl, tl, f, close *)
 
 (* retrieve bound identifiers (useful to detect sharing) *)
 

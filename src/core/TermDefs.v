@@ -685,3 +685,10 @@ Proof.
   bind_info_eqb_eq, <- (list_eqb_eq (list_eqb_eq term_eqb_eq)), <- term_eqb_eq.
   solve_eqb_eq.
 Qed.
+
+(*A hack: extract these to (fun x y -> x == y || *_eqb x y)*)
+Definition pattern_eqb_fast := pattern_eqb.
+Definition term_eqb_fast := term_eqb.
+Definition term_branch_eqb_fast := term_branch_eqb.
+Definition term_bound_eqb_fast := term_bound_eqb.
+Definition term_quant_eqb_fast := term_quant_eqb.

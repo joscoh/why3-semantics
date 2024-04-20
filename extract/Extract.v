@@ -84,6 +84,7 @@ Extract Inlined Constant string_compare => "String.compare".
 Extract Inlined Constant Coq.Arith.PeanoNat.Nat.eqb => "Int.equal".*)
 
 (*For now*)
+Extract Inlined Constant pattern_eqb_fast => "(fun x y -> x == y || pattern_eqb x y)".
 Extract Inlined Constant term_eqb_fast => "(fun x y -> x == y || term_eqb x y)".
 Extract Inlined Constant term_branch_eqb_fast => "(fun x y -> x == y || term_branch_eqb x y)".
 Extract Inlined Constant term_bound_eqb_fast => "(fun x y -> x == y || term_bound_eqb x y)".

@@ -431,12 +431,6 @@ Definition t_compare_full t1 t2 := t_compare_aux CoqBigInt.zero Mvs.empty Mvs.em
 
 End TCompare.
 
-(*TODO: a hack*)
-Definition term_eqb_fast := term_eqb.
-Definition term_branch_eqb_fast := term_branch_eqb.
-Definition term_bound_eqb_fast := term_bound_eqb.
-Definition term_quant_eqb_fast := term_quant_eqb.
-
 (*Using only structural/decidable equality is slow*)
 Definition t_similar (t1 t2: term_c) : bool :=
   oty_equal (t_ty_of t1) (t_ty_of t2) &&
@@ -928,13 +922,13 @@ Definition vl_rename (h: Mvs.t term_c) (vl: list vsymbol) :=
   x <- vl_rename_aux vl (st_ret (h, nil)) ;;
   st_ret (fst x, rev' (snd x)).
 
-Fixpoint t_subst_unsafe (m: Mvs.t term_c) (t: term_c) : ctr term_c :=
-  let t_subst t := t_subst_unsafe m t in
+Fixpoint t_subst_unsafe_aux (m: Mvs.t term_c) (t: term_c) : ctr term_c :=
+  let t_subst t := t_subst_unsafe_aux m t in
 
   let t_open_bnd {A: Type} (v : A) m t f : ctr (A * term_c) :=
     x <- f m v ;;
     let '(m, v) := x in
-    t1 <- t_subst_unsafe m t ;;
+    t1 <- t_subst_unsafe_aux m t ;;
     st_ret (v, t1)
   in
 
@@ -942,8 +936,8 @@ Fixpoint t_subst_unsafe (m: Mvs.t term_c) (t: term_c) : ctr term_c :=
     ctr (list vsymbol * list (list term_c) * term_c) :=
     x <- vl_rename m vl ;;
     let '(m, vl) := x in
-    tl <- st_tr (tr_map (t_subst_unsafe m) tl) ;;
-    f1 <- t_subst_unsafe m f;; 
+    tl <- st_tr (tr_map (t_subst_unsafe_aux m) tl) ;;
+    f1 <- t_subst_unsafe_aux m f;; 
     st_ret (vl, tl, f1)
   in
 
@@ -992,3 +986,80 @@ Fixpoint t_subst_unsafe (m: Mvs.t term_c) (t: term_c) : ctr term_c :=
     st_ret (t_attr_copy t (t_quant q bq1))
   | _ => t_map_ctr_unsafe t_subst t
   end.
+
+Definition t_subst_unsafe m t :=
+  if Mvs.is_empty _ m then st_ret t else t_subst_unsafe_aux m t.
+
+(* open bindings *)
+
+Definition t_open_bound (x: term_bound) : ctr (vsymbol * term_c) :=
+  let '(v, b, t) := x in
+  y <- vs_rename Mvs.empty v ;;
+  let '(m, v) := y in
+  t1 <- t_subst_unsafe m t ;;
+  st_ret (v, t1).
+
+Definition t_open_branch (x: term_branch) : ctr (pattern_c * term_c) :=
+  let '(p, b, t) := x in
+  y <- pat_rename Mvs.empty p ;;
+  let '(m, p) := y in
+  t1 <- t_subst_unsafe m t ;;
+  st_ret (p, t1).
+
+(*Different because tuples in OCaml/Coq are different*)
+(*TODO: figure out tuple things because this is annoying we don't
+  want to duplicate everything - maybe just accept different tuples?*)
+Definition t_open_quant1 (x: term_quant) : ctr (list vsymbol * trigger * term_c) :=
+  let '(vl, b, tl, f) := x in
+  y <- vl_rename Mvs.empty vl ;;
+  let '(m, vl) := y in
+  tl <- st_tr (tr_map (t_subst_unsafe m) tl) ;;
+  t1 <- t_subst_unsafe m f ;;
+  st_ret (vl, tl, t1).
+
+Definition t_open_bound_with (e: term_c) (x: term_bound) : ctrErr term_c :=
+  let '(v, b, t) := x in
+  _ <-- errst_lift2 (vs_check v e) ;;;
+  let m := Mvs.singleton _ v e in
+  errst_lift1 (t_subst_unsafe m t).
+
+(*skip t_clone_bound_id (for now)*)
+
+
+(** open bindings with optimized closing callbacks *)
+(*Josh - I think that these are so that you don't have to
+  call t_close_bound (and calculuate vars, etc), you can just
+  call the callback which, assuming you are just opening then
+  closing, will just return the original tb*)
+Definition t_open_bound_cb1 (tb : term_bound) : 
+  ctr (vsymbol * term_c * (vsymbol -> term_c -> vsymbol * bind_info * term_c)) :=
+  x <- t_open_bound tb ;;
+  let '(v, t) := x in
+  let close v' t' :=
+    if term_eqb_fast t t' && vs_equal v v' then tb else
+      t_close_bound v' t'
+  in
+  st_ret (v, t, close).
+
+Definition t_open_branch_cb1 (tbr: term_branch) :=
+  x <- t_open_branch tbr ;;
+  let '(p, t) := x in
+  let close p' t' :=
+    if term_eqb_fast t t' && pattern_eqb_fast p p' then tbr else t_close_branch p' t'
+  in
+  st_ret (p, t, close).
+
+(*This one is also in the error monad because of [t_close_quant]
+  which checks the type of f'*)
+Definition t_open_quant_cb1 (fq: term_quant) : ctr (list vsymbol * trigger * term_c *
+  (list vsymbol -> trigger -> term_c -> errorM (list vsymbol * bind_info * trigger * term_c))) :=
+  x <- (t_open_quant1 fq) ;;
+  let '(vl, tl, f) := x in
+  let close vl' tl' f' :=
+    if term_eqb_fast f f' &&
+      lists_equal (lists_equal term_eqb_fast) tl tl' &&
+      lists_equal vs_equal vl vl'
+    then err_ret fq else
+    (t_close_quant vl' tl' f')
+  in
+  st_ret (vl, tl, f, close).
