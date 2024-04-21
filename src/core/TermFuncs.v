@@ -667,7 +667,7 @@ Definition mk_term (n: term_node) (t: option ty_c) : term_c :=
 
 Definition t_var v := mk_term (Tvar v) (Some v.(vs_ty)).
 Definition t_const c t := mk_term (Tconst c) (Some t).
-Definition t_app f tl t := mk_term (Tapp f tl) t.
+Definition t_app1 f tl t := mk_term (Tapp f tl) t.
 Definition t_if f t1 t2 := mk_term (Tif f t1 t2) (t_ty_of t2).
 Definition t_let t1 bt t := mk_term (Tlet t1 bt) t.
 Definition t_case t1 bl t := mk_term (Tcase t1 bl) t.
@@ -705,7 +705,7 @@ Definition bound_map {A B C D: Type} (f: A -> B) (x: C * D * A) : C * D * B :=
 Definition t_map_unsafe (fn: term_c -> term_c) (t: term_c) : term_c :=
   t_attr_copy t (match (t_node_of t) with
   | Tvar _ | Tconst _ => t
-  | Tapp f tl => t_app f (map fn tl) (t_ty_of t)
+  | Tapp f tl => t_app1 f (map fn tl) (t_ty_of t)
   | Tif f t1 t2 => t_if (fn f) (fn t1) (fn t2)
   | Tlet e b => t_let (fn e) (bound_map fn b) (t_ty_of t)
   | Tcase e bl => t_case (fn e) (map (bound_map fn) bl) (t_ty_of t)
@@ -740,7 +740,7 @@ Definition t_map_ctr_unsafe (fn: term_c -> ctr term_c) (t: term_c) : ctr term_c 
   | Tvar _ | Tconst _ => st_ret t
   | Tapp f tl =>
     l <- st_list (map fn tl) ;;
-   st_ret (t_app f l (t_ty_of t))
+   st_ret (t_app1 f l (t_ty_of t))
   | Tif f t1 t2 =>
     f1 <- fn f ;;
     t1' <- fn t1 ;;
@@ -813,7 +813,7 @@ Definition t_map_fold_unsafe {A: Type} (fn : A -> term_c -> A * term_c)
   | Tvar _ | Tconst _ => (acc, t)
   | Tapp f tl =>
     let '(acc, sl) := map_fold_left fn acc tl in
-    (acc, t_attr_copy t (t_app f sl (t_ty_of t)))
+    (acc, t_attr_copy t (t_app1 f sl (t_ty_of t)))
   | Tif f t1 t2 =>
     let '(acc, g) := fn acc f in
     let '(acc, s1) := fn acc t1 in
@@ -1063,3 +1063,108 @@ Definition t_open_quant_cb1 (fq: term_quant) : ctr (list vsymbol * trigger * ter
     (t_close_quant vl' tl' f')
   in
   st_ret (vl, tl, f, close).
+
+(* retrieve bound identifiers (useful to detect sharing) *)
+Definition t_peek_bound (x: term_bound) : ident :=
+  match x with
+  | (v, _, _) => v.(vs_name)
+  end.
+
+Definition t_peek_branch (x: term_branch) : Sid.t :=
+  match x with
+  | (p, _, _) => Svs.fold (fun v a => Sid.add v.(vs_name) a) (pat_vars_of p) Sid.empty
+  end.
+
+Definition t_peek_quant (x: term_quant) : list ident :=
+  match x with
+  | (vl, _, _, _) => map (fun v => v.(vs_name)) vl
+  end.
+
+(* constructors with type checking *)
+
+(*Basically, build up type susbstitution and ensure it matches*)
+Definition ls_arg_inst (ls: lsymbol) (tl: list term_c) : 
+  errorHashconsT ty_c (Mtv.t ty_c) :=
+  let mtch s typ t :=
+    t1 <-- errst_lift2 (t_type t) ;;;
+    ty_match s typ t1 in
+  o <-- (fold_left2_errorHashcons mtch Mtv.empty ls.(ls_args) tl) ;;;
+  match o with
+  | Some l => errst_ret l
+  | None => errst_lift2 (throw (BadArity (ls, int_length tl)))
+  end.
+
+(*I think that we are claiming that it should have type typ, and
+  getting the correct substitution (above does arguments, this does
+  return type)*)
+Definition ls_app_inst (ls: lsymbol) (tl: list term_c) (typ: option ty_c) :
+   errorHashconsT ty_c (Mtv.t ty_c) :=
+  s <-- ls_arg_inst ls tl ;;;
+  match ls.(ls_value), typ with
+  | Some _, None => errst_lift2 (throw (PredicateSymbolExpected ls))
+  | None, Some _ => errst_lift2 (throw (FunctionSymbolExpected ls))
+  | Some vty, Some typ => ty_match s vty typ
+  | None, None => errst_ret s
+  end.
+
+Definition t_app_infer (ls: lsymbol) (tl: list term_c) : 
+  errorHashconsT ty_c term_c :=
+  s <-- ls_arg_inst ls tl ;;;
+  let o := oty_inst s ls.(ls_value) in
+  match o with
+  | None => errst_ret (t_app1 ls tl None)
+  | Some h =>
+    h1 <-- errst_lift1 h ;;;
+    errst_ret (t_app1 ls tl (Some h1))
+  end.
+
+Definition t_app ls tl typ :=
+  _ <-- ls_app_inst ls tl typ ;;;
+  errst_ret (t_app1 ls tl typ).
+
+Definition fs_app fs tl ty := t_app fs tl (Some ty).
+Definition ps_app ps tl := t_app ps tl None.
+
+(*A bit of a hack*)
+Definition AssertFail (s: string) : errtype :=
+  mk_errtype "AssertFail" s.
+
+Definition assert (b: bool) (msg : string) : errorM unit :=
+  if b then err_ret tt else throw (AssertFail msg).
+
+(*TODO: if we hardcode in ty_int into hashcons, do not need hashcons
+  type here, see*)
+Definition t_nat_const (n: CoqInt.int) : errorHashconsT ty_c term_c :=
+  _ <-- errst_lift2 (assert (CoqInt.ge n CoqInt.zero) "t_nat_const negative") ;;;
+  t <-- errst_lift1 ty_int ;;;
+  errst_ret (t_const (ConstantDefs.int_const_of_int n) t).
+
+Definition t_int_const (n: CoqBigInt.t) : hashcons_st ty_c term_c :=
+  t <- ty_int ;;
+  st_ret (t_const (ConstantDefs.int_const1 CoqNumber.ILitUnk n) t).
+
+(*TODO: for now, skip t_real_const - involves normalizing,
+  Euclidean algo, see if we need*)
+
+Definition t_string_const (s: string) : hashcons_st ty_c term_c :=
+  t <- ty_str ;;
+  st_ret (t_const (ConstantDefs.string_const s) t).
+
+
+
+(* 
+
+
+
+let t_nat_const n =
+  assert (n >= 0);
+  t_const (Constant.int_const_of_int n) ty_int
+
+let t_int_const n =
+  t_const (Constant.int_const n) Ty.ty_int
+
+let t_real_const ?pow2 ?pow5 s =
+  t_const (Constant.real_const ?pow2 ?pow5 s) Ty.ty_real
+
+let t_string_const s =
+  t_const (Constant.string_const s) Ty.ty_str *)

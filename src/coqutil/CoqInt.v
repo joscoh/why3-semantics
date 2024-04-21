@@ -31,3 +31,5 @@ Definition compare (i1 i2: int) : int :=
 (*Add these as axioms: the Coq code never calls them*)
 Axiom add : int -> int -> int.
 Axiom mult: int -> int -> int.
+(*TODO: switch to Compcert ints*)
+Axiom ge : int -> int -> bool.

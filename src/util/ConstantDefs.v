@@ -49,3 +49,12 @@ Definition constant_hash (c: constant) : CoqBigInt.t :=
   | ConstReal r => real_constant_hash r
   | ConstStr s => str_hash s
   end.
+
+Definition int_const1 (k: int_literal_kind) (n: CoqBigInt.t) :=
+  ConstInt ({| il_kind := k; il_int := n |}).
+
+Definition int_const_of_int (n: CoqInt.int) :=
+  int_const1 ILitUnk (CoqBigInt.of_int n).
+
+Definition string_const s :=
+  ConstStr s.

@@ -10,3 +10,6 @@ exception ConstructorExpected of lsymbol
 
 exception TermExpected of term
 exception FmlaExpected of term
+
+(*TODO: move*)
+exception AssertFail of string

@@ -960,17 +960,17 @@ let t_open_quant_cb fq =
 
 (* retrieve bound identifiers (useful to detect sharing) *)
 
-let t_peek_bound ((v,_),_) = v.vs_name
+(* let t_peek_bound ((v,_),_) = v.vs_name
 
 let t_peek_branch ((p,_),_) =
   Svs.fold (fun v a -> Sid.add v.vs_name a) p.pat_vars Sid.empty
 
 let t_peek_quant (((vl,_),_),_) =
-  List.map (fun v -> v.vs_name) vl
+  List.map (fun v -> v.vs_name) vl *)
 
 (* constructors with type checking *)
 
-let ls_arg_inst ls tl =
+(* let ls_arg_inst ls tl =
   let mtch s ty t = ty_match s ty (t_type t) in
   try List.fold_left2 mtch Mtv.empty ls.ls_args tl with
     | Invalid_argument _ -> raise (BadArity (ls, (BigInt.of_int (List.length tl)))) (*JOSH of_int*)
@@ -997,13 +997,13 @@ let t_nat_const n =
   t_const (Constant.int_const_of_int n) ty_int
 
 let t_int_const n =
-  t_const (Constant.int_const n) Ty.ty_int
+  t_const (Constant.int_const n) Ty.ty_int *)
 
 let t_real_const ?pow2 ?pow5 s =
   t_const (Constant.real_const ?pow2 ?pow5 s) Ty.ty_real
 
-let t_string_const s =
-  t_const (Constant.string_const s) Ty.ty_str
+(* let t_string_const s =
+  t_const (Constant.string_const s) Ty.ty_str *)
 
 exception InvalidIntegerLiteralType of ty
 exception InvalidRealLiteralType of ty

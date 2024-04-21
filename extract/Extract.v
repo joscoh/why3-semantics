@@ -73,6 +73,7 @@ Extract Inlined Constant CoqInt.mult => "Stdlib.Int.mul".
 Extract Inlined Constant CoqInt.is_zero => "(fun x -> Stdlib.Int.equal x Stdlib.Int.zero)". 
 Extract Inlined Constant hashcons.int_65599 => "65599".
 Extract Inlined Constant CoqInt.compare => "Stdlib.Int.compare".
+Extract Inlined Constant CoqInt.ge => "(fun x y -> Stdlib.Int.compare x y >= 0)".
 
 Extract Inlined Constant CoqBigInt.to_Z => "ZCompat.to_Z_big".
 Extract Inlined Constant CoqBigInt.of_Z => "ZCompat.of_Z_big".
@@ -203,6 +204,7 @@ Extract Inlined Constant PredicateSymbolExpected => "PredicateSymbolExpected".
 Extract Inlined Constant ConstructorExpected => "ConstructorExpected".
 Extract Inlined Constant TermExpected => "TermExpected".
 Extract Inlined Constant FmlaExpected => "FmlaExpected".
+Extract Inlined Constant AssertFail => "AssertFail".
 
 Extraction Inline mk_errtype.
 
