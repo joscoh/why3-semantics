@@ -50,6 +50,7 @@ Definition six : t := 6.
 Definition seven : t := 7.
 Definition eight : t := 8.
 Definition nine : t := 9.
+Definition ten : t := 10.
 
 (*Some small primes*)
 Definition eleven : t := 11.

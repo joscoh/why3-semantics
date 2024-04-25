@@ -165,6 +165,10 @@ Definition hashcons_new key : hashcons_st key unit :=
 Section HashCons.
 Context {key: Type} (hash: key -> CoqBigInt.t) 
   (eqb: key -> key -> bool).
+Definition hashcons_get : hashcons_st key (CoqBigInt.t * (hashset key)) :=
+  get.
+Definition hashcons_set (v: (CoqBigInt.t * (hashset key))) : hashcons_st key unit :=
+  put v.
 Definition hashcons_getset : hashcons_st key (hashset key) :=
   t <- get;;
   ret (snd t).

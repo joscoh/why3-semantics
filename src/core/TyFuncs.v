@@ -2,6 +2,83 @@ Require Import Monads TyDefs IntFuncs.
 From ExtLib Require Import Monads.
 Import MonadNotations.
 Local Open Scope monad_scope.
+Require Import IdentDefs.
+
+(*First, deal with builtins, because we want to add them directly
+  for hashconsing. This ensures that e.g. ty_bool is a pure
+  value, not wrapped in a monad*)
+
+Definition ty_var_builtin (n: tvsymbol) (tag: CoqWeakhtbl.tag) :
+  ty_c := mk_ty_c (Tyvar n) tag.
+Definition ty_app_builtin (s: tysymbol_c) (tl: list ty_c)
+  (tag: CoqWeakhtbl.tag) : ty_c :=
+  mk_ty_c (Tyapp s tl) tag.
+
+
+(* built-in symbols *)
+
+Definition mk_ts_builtin (name: ident) (args: list tvsymbol) (d: type_def ty_c) : 
+  tysymbol_c := mk_ts_c name args d.
+
+
+(*NOTE: for these, we actually know that they will not fail,
+  so we define manually, not with [create_tysymbol].
+  TODO (maybe): reserve counter values for builtins so that
+  we don't need ctr state here either*)
+Definition ts_int := mk_ts_builtin id_int nil NoDef.
+Definition ts_real := mk_ts_builtin id_real nil NoDef.
+Definition ts_bool := mk_ts_builtin id_bool nil NoDef.
+Definition ts_str := mk_ts_builtin id_str nil NoDef.
+
+(*Similarly, we know that ty_app will succeed,
+  but we still need hashconsing*)
+(*NOTE: if we want, we could add these values to the
+  hashcons map at the beginning; then we would not need
+  state here
+  TODO see if this is needed/helpful*)
+Definition ty_int := ty_app_builtin ts_int nil 
+  (CoqWeakhtbl.create_tag (CoqBigInt.one)).
+Definition ty_real := ty_app_builtin ts_real nil
+  (CoqWeakhtbl.create_tag (CoqBigInt.two)).
+Definition ty_bool := ty_app_builtin ts_bool nil
+  (CoqWeakhtbl.create_tag (CoqBigInt.three)).
+Definition ty_str := ty_app_builtin ts_str nil
+  (CoqWeakhtbl.create_tag (CoqBigInt.four)).
+
+Definition create_builtin_tvsymbol (i: ident) : tvsymbol :=
+  {| tv_name := i|}.
+
+Definition ts_func :=
+  let tv_a := create_builtin_tvsymbol id_a in
+  let tv_b := create_builtin_tvsymbol id_b in
+  mk_ts_builtin id_fun [tv_a; tv_b] NoDef.
+
+(*And two type variables*)
+Definition vs_a : tvsymbol :=
+  (create_tvsymbol_builtin id_a).
+Definition vs_b : tvsymbol :=
+  (create_tvsymbol_builtin id_b).
+
+Definition ty_a : ty_c :=
+  ty_var_builtin vs_a
+    (CoqWeakhtbl.create_tag (CoqBigInt.five)).
+Definition ty_b : ty_c :=
+  ty_var_builtin vs_b
+    (CoqWeakhtbl.create_tag (CoqBigInt.six)).
+
+(*One particular function type is builtin (the general case
+  is below)*)
+Definition ty_func_ab : ty_c :=
+  ty_app_builtin ts_func [ty_a; ty_b]
+    (CoqWeakhtbl.create_tag (CoqBigInt.seven)).
+
+(*Now construct hashcons with these builtin values*)
+(*TODO: see note in IdentDefs.ty, need to ensure this is
+  called in Coq*)
+Definition ty_hashcons_builtins : hashcons_st ty_c unit :=
+  Hsty.add_builtins
+  [ty_int; ty_real; ty_bool; ty_str; ty_a; ty_b; ty_func_ab] 
+    (CoqBigInt.eight).
 
 Definition mk_ty (n: ty_node_c) : ty_c :=
   mk_ty_c n CoqWeakhtbl.dummy_tag.
@@ -106,8 +183,6 @@ Definition ty_closed (t: ty_c) : bool :=
 
 Definition BadTypeArity (t: tysymbol_c * CoqBigInt.t) : errtype := 
   mk_errtype "BadTypeArity" t.
-
-Require Import IdentDefs.
 
 Definition DuplicateTypeVar (t: tvsymbol) : errtype := 
   mk_errtype "DuplicateTypeVar" t.
@@ -290,50 +365,13 @@ Definition ty_match  (s: Mtv.t ty_c) (ty1 ty2: ty_c) : errorHashconsT _ (Mtv.t t
   (trywith (fun (_ : unit) => (ty_match_aux s ty1 ty2)) Exit 
     (fun (_: unit) => throw (TypeMismatch (t1, ty2)))).
 
-
-(* built-in symbols *)
-
-Definition mk_ts_builtin (name: ident) (args: list tvsymbol) (d: type_def ty_c) : 
-  tysymbol_c := mk_ts_c name args d.
-
-
-(*TODO: should probably change create_tysymbol to different
-  monad order*)
-(*NOTE: for these, we actually know that they will not fail,
-  so we define manually, not with [create_tysymbol].
-  TODO (maybe): reserve counter values for builtins so that
-  we don't need ctr state here either*)
-Definition ts_int := mk_ts_builtin id_int nil NoDef.
-Definition ts_real := mk_ts_builtin id_real nil NoDef.
-Definition ts_bool := mk_ts_builtin id_bool nil NoDef.
-Definition ts_str := mk_ts_builtin id_str nil NoDef.
-
-(*Similarly, we know that ty_app will succeed,
-  but we still need hashconsing*)
-(*NOTE: if we want, we could add these values to the
-  hashcons map at the beginning; then we would not need
-  state here
-  TODO see if this is needed/helpful*)
-Definition ty_int := ty_app1 ts_int nil.
-Definition ty_real := ty_app1 ts_real nil.
-Definition ty_bool := ty_app1 ts_bool nil.
-Definition ty_str := ty_app1 ts_str nil.
-
-Definition create_builtin_tvsymbol (i: ident) : tvsymbol :=
-  {| tv_name := i|}.
-
-Definition ts_func :=
-  let tv_a := create_builtin_tvsymbol id_a in
-  let tv_b := create_builtin_tvsymbol id_b in
-  mk_ts_builtin id_fun [tv_a; tv_b] NoDef.
-
+(*These must be hashconsed because they are not constant*)
 (*We know that [ty_app] always succeeds here*)
 Definition ty_func (ty_a ty_b: ty_c) : hashcons_st _ ty_c :=
   ty_app1 ts_func [ty_a; ty_b].
 
 Definition ty_pred (ty_a : ty_c) : hashcons_st _ ty_c := 
-  t <- ty_bool ;;
-  ty_app1 ts_func [ty_a; t].
+  ty_app1 ts_func [ty_a; ty_bool].
 
 (*Tuples*)
 

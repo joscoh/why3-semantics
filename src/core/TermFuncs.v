@@ -1133,23 +1133,18 @@ Definition AssertFail (s: string) : errtype :=
 Definition assert (b: bool) (msg : string) : errorM unit :=
   if b then err_ret tt else throw (AssertFail msg).
 
-(*TODO: if we hardcode in ty_int into hashcons, do not need hashcons
-  type here, see*)
-Definition t_nat_const (n: CoqInt.int) : errorHashconsT ty_c term_c :=
-  _ <-- errst_lift2 (assert (CoqInt.ge n CoqInt.zero) "t_nat_const negative") ;;;
-  t <-- errst_lift1 ty_int ;;;
-  errst_ret (t_const1 (ConstantDefs.int_const_of_int n) t).
+Definition t_nat_const (n: CoqInt.int) : errorM term_c :=
+  _ <--  (assert (CoqInt.ge n CoqInt.zero) "t_nat_const negative") ;;
+  err_ret (t_const1 (ConstantDefs.int_const_of_int n) ty_int).
 
-Definition t_int_const (n: CoqBigInt.t) : hashcons_st ty_c term_c :=
-  t <- ty_int ;;
-  st_ret (t_const1 (ConstantDefs.int_const1 NumberDefs.ILitUnk n) t).
+Definition t_int_const (n: CoqBigInt.t) : term_c :=
+  t_const1 (ConstantDefs.int_const1 NumberDefs.ILitUnk n) ty_int.
 
 (*TODO: for now, skip t_real_const - involves normalizing,
   Euclidean algo, see if we need*)
 
-Definition t_string_const (s: string) : hashcons_st ty_c term_c :=
-  t <- ty_str ;;
-  st_ret (t_const1 (ConstantDefs.string_const s) t).
+Definition t_string_const (s: string) : term_c :=
+  t_const1 (ConstantDefs.string_const s) ty_str.
 
 Definition InvalidIntegerLiteralType (t: ty_c) : errtype :=
   mk_errtype "InvalidIntegerLiteralType" t.
@@ -1286,3 +1281,77 @@ Definition t_case_close (t: term_c) (l: list (pattern_c * term_c)) :=
   t_case t (map (fun x => t_close_branch (fst x) (snd x)) l).
 Definition t_eps_close (v: vsymbol) (f: term_c) :=
   t_eps (t_close_bound v f).
+
+(*Built-in Symbols*)
+(*These are pure functions because of our builtin types*)
+Definition ps_equ : lsymbol :=
+  create_psymbol_builtin (id_eq) [ty_a;ty_a].
+
+(*Ignore ignore for now*)
+
+Definition t_equ (t1 t2: term_c) : errorHashconsT ty_c term_c :=
+  ps_app ps_equ [t1; t2].
+
+Definition t_neq (t1 t2: term_c) : errorHashconsT ty_c term_c :=
+  a <-- (ps_app ps_equ [t1; t2]) ;;;
+  errst_lift2 (t_not a).
+
+(*With builtin types, this is pure, not errorHashconsT*)
+Definition fs_bool_true : lsymbol := 
+  create_fsymbol_builtin (CoqBigInt.two) false
+  id_true nil ty_bool.
+
+(*HERE*)
+Definition fs_bool_false : lsymbol :=
+  create_fsymbol_builtin (CoqBigInt.two) false
+  id_false nil ty_bool.
+(*Don't use [fs_app] because this is a builtin*)
+Definition t_bool_true : term_c := t_app1 fs_bool_true nil (Some ty_bool).
+Definition t_bool_false : term_c := t_app1 fs_bool_false nil (Some ty_bool).
+
+(*Convert boolean-valued term to prop (I believe)
+  TODO: this seems a bit unsafe, make sure
+  Ah, they just convert to (b = true) and type checking
+  takes care of rest*)
+Definition to_prop (t: term_c) : errorHashconsT ty_c term_c :=
+  match (t_ty_of t) with
+  | Some _ =>
+    if t_equal t t_bool_true then errst_ret t_true
+    else if t_equal t t_bool_false then errst_ret t_false
+    else 
+      t1 <-- (t_equ t t_bool_true) ;;;
+      errst_ret (t_attr_copy t t1)
+  | None => errst_ret t
+  end.
+
+(*TODO: skip tuples for now, can implement like type*)
+
+Definition fs_func_app : lsymbol :=
+  create_fsymbol_builtin CoqBigInt.zero false 
+    id_app [ty_func_ab ; ty_a] ty_b.
+
+
+Definition t_func_app (fn t: term_c) : errorHashconsT ty_c term_c :=
+  t_app_infer fs_func_app [fn; t].
+Definition t_pred_app pr t : errorHashconsT ty_c term_c :=
+  t1 <-- (t_func_app pr t) ;;;
+  t_equ t1 t_bool_true.
+
+(*TODO: move*)
+(*A fold left*)
+Definition fold_left_errst := fun {S1 A B: Type} (f: A -> B -> errState S1 A) =>
+  fix fold_left_errst (l: list B) (x: A) {struct l} :=
+  match l with
+  | nil => errst_ret x
+  | h :: t => j <-- f x h ;;;
+              fold_left_errst t j
+  end.
+
+Definition t_func_app_l fn tl : errorHashconsT ty_c term_c :=
+  fold_left_errst t_func_app fn tl.
+
+Definition t_pred_app_l pr tl : errorHashconsT ty_c term_c :=
+  ta <-- (t_func_app_l pr tl) ;;;
+  t_equ ta t_bool_true.
+
+(*Skip acc and wf for now (can add later)*)

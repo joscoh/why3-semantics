@@ -120,6 +120,10 @@ val id_str : ident
 val id_a : ident
 val id_b : ident
 val id_fun : ident
+val id_eq : ident
+val id_true : ident
+val id_false : ident
+val id_app : ident
 
 (** Unique persistent names for pretty printing *)
 

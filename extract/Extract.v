@@ -55,6 +55,7 @@ Extract Inlined Constant CoqBigInt.six => "(BigInt.of_int 6)".
 Extract Inlined Constant CoqBigInt.seven => "(BigInt.of_int 7)".
 Extract Inlined Constant CoqBigInt.eight => "(BigInt.of_int 8)".
 Extract Inlined Constant CoqBigInt.nine => "(BigInt.of_int 9)".
+Extract Inlined Constant CoqBigInt.ten => "(BigInt.of_int 10)".
 Extract Inlined Constant CoqBigInt.eleven => "(BigInt.of_int 11)".
 Extract Inlined Constant CoqBigInt.thirteen => "(BigInt.of_int 13)".
 Extract Inlined Constant CoqBigInt.seventeen => "(BigInt.of_int 17)".
@@ -134,6 +135,10 @@ Extract Constant hashcons_unit "'k" =>
   "(BigInt.t * 'k CoqHashtbl.hashset) ref".
 Extract Inlined Constant hashcons_new => 
   "ref (BigInt.one, CoqHashtbl.create_hashset)".
+Extract Inlined Constant hashcons_get => 
+  "!hash_st".
+Extract Inlined Constant hashcons_set => 
+  "(fun x -> hash_st := x)".
 Extract Inlined Constant hashcons_getset =>
   "(snd !hash_st)".
 Extract Inlined Constant hashcons_get_ctr =>

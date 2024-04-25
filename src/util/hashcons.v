@@ -14,6 +14,9 @@ End HashedType.
 
 Module Type S.
 Parameter t : Type.
+(*NOTE: this is potentially unsafe if not used carefully, since 
+  it assumes the inputted ints are unique and resets the counter*)
+Parameter add_builtins : list t -> CoqBigInt.t -> hashcons_st t unit.
 Parameter hashcons : t -> @hashcons_st t t.
 Parameter unique : t -> hashcons_st t t. (*Register the value without hash-consing*)
 Parameter iter : (t -> unit) -> hashcons_st t unit.
@@ -26,6 +29,13 @@ Definition t := H.t.
 
 Definition hash_st : @hashcons_unit H.t := hashcons_new _.
 
+Definition add_builtins (l: list t) (next: CoqBigInt.t) : hashcons_st t unit :=
+  x <- hashcons_get ;;
+  let '(i, h) := x in 
+  let h' := List.fold_right (fun (x : t) (acc : CoqHashtbl.hashset t) => 
+    CoqHashtbl.add_hashset H.hash acc x) h l in
+  hashcons_set (next, h').
+
 Definition unique (d: t) : hashcons_st H.t t :=
   i <- hashcons_get_ctr ;;
   let d := H.tag i d in
@@ -36,9 +46,6 @@ Definition unique (d: t) : hashcons_st H.t t :=
   2. If so, return the value found without modifying state
   3. Otherwise, change tag to counter value and add to map,
   updating state*)
-(*TODO: monad notations would be VERY helpful here, but we 
-  don't want stdpp typeclasses*)
-(*TODO: dont do notation yet, see*)
 Definition hashcons (d: t) : @hashcons_st H.t t :=
   o <- hashcons_lookup H.hash H.equal d ;;
   match o with

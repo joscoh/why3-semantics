@@ -47,6 +47,10 @@ Definition create_tvsymbol (n: preid) : ctr tvsymbol :=
   i <- id_register n ;;
   st_ret {|tv_name := i|}.
 
+(*Note: ONLY for builtins*)
+Definition create_tvsymbol_builtin (i: ident) : tvsymbol :=
+  {| tv_name := i|}.
+
 (*This has to be a stateful function which finds the existing
   identifier for the string if it has been created.
   Other parts of the OCaml Why3 code rely on the 

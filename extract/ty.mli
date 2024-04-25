@@ -171,6 +171,10 @@ val ty_int  : ty
 val ty_real : ty
 val ty_bool : ty
 val ty_str  : ty
+(*JOSH - added*)
+val ty_a : ty
+val ty_b : ty
+val ty_func_ab : ty
 
 val ts_func : tysymbol
 

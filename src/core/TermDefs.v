@@ -118,6 +118,18 @@ Definition create_fsymbol1 nm al vl :=
 Definition create_psymbol nm al :=
   create_lsymbol1 nm al None.
 
+(*For builtins ONLY*)
+Definition create_lsymbol_builtin (constr: CoqBigInt.t) (proj: bool) 
+  (i: ident) (args: list ty_c)
+  (value: option ty_c) : lsymbol :=
+  {| ls_name := i; ls_args := args; ls_value := value;
+    ls_constr := constr; ls_proj := proj |}.
+
+Definition create_fsymbol_builtin constr proj nm al vl :=
+  create_lsymbol_builtin constr proj nm al (Some vl).
+Definition create_psymbol_builtin  nm al :=
+  create_lsymbol_builtin CoqBigInt.zero false nm al None.
+
 (*Type free vars both from arguments and return type*)
 Definition ls_ty_freevars (ls: lsymbol) : Stv.t :=
   let acc := oty_freevars Stv.empty ls.(ls_value) in

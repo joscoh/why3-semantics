@@ -153,27 +153,18 @@ Record preid := {
   pre_loc : option LocTy.position
 }.
 
-(*In OCaml, this is reference equality (==).
-  TODO: we could axiomatize and assume x == y -> x = y
-  (and nothing about false). But for now, OK to do
-  structural equality I think*)
+(*In OCaml, this is reference equality (==).*)
 Definition id_equal (i1 i2: ident) : bool := ident_eqb i1 i2.
 Definition id_hash (i: ident) : CoqBigInt.t := CoqWeakhtbl.tag_hash (i.(id_tag)).
 Definition id_compare (id1 id2: ident) : CoqInt.int :=
   CoqBigInt.compare (id_hash id1) (id_hash id2).
 
 Module IdCtr := MakeCtr.
-Definition id_ctr : ctr unit := IdCtr.create CoqBigInt.eight.
+(*TODO: we need to ensure that this is called in Coq - need
+  some sort of wrapper I think*)
+Definition id_ctr : ctr unit := IdCtr.create CoqBigInt.thirteen.
 
-(*Require Import stdpp.base.*)
 (*Constructors*)
-(*NOTE: for us, registering just calculates the tag
-  instead of changing state. We need to see if this is
-  a problem.
-  If the same id string is used multiple times, they
-  will have the same tag*)
-(*Definition id_ctr : ctr_ty :=
-  new_ctr CoqBigInt.eight. (*For extraction*)*)
 
 Definition id_register : preid -> ctr ident :=
   fun p =>
@@ -184,7 +175,7 @@ Definition id_register : preid -> ctr ident :=
     id_loc := p.(pre_loc);
     id_tag := CoqWeakhtbl.create_tag i |}.
 
-(*1st 7 values of the counter correspond to builtin symbols
+(*1st 10 values of the counter correspond to builtin symbols
   (so that we don't need state)*)
 Definition id_builtin (name: string) (tag: CoqBigInt.t) : ident :=
   {| id_string := name;
@@ -204,6 +195,8 @@ Definition id_bool : ident :=
 Definition id_str : ident :=
   id_builtin "string" (CoqWeakhtbl.create_tag CoqBigInt.four).
 
+(*JOSH: TODO: can this be the same for function and equ
+  types?*)
 Definition id_a : ident :=
   id_builtin "a" (CoqWeakhtbl.create_tag CoqBigInt.five).
 
@@ -212,6 +205,18 @@ Definition id_b : ident :=
 
 Definition id_fun : ident :=
   id_builtin (op_infix "->") (CoqWeakhtbl.create_tag CoqBigInt.seven).
+
+Definition id_eq : ident :=
+  id_builtin (op_infix "=") (CoqWeakhtbl.create_tag CoqBigInt.eight). 
+
+Definition id_true : ident :=
+  id_builtin "True" (CoqWeakhtbl.create_tag CoqBigInt.nine).
+
+Definition id_false : ident :=
+  id_builtin "Frue" (CoqWeakhtbl.create_tag CoqBigInt.ten).
+
+Definition id_app : ident :=
+  id_builtin (op_infix "@") (CoqWeakhtbl.create_tag CoqBigInt.eleven).
 
 Definition create_ident name attrs loc :=
   {| pre_name := name; pre_attrs := attrs; pre_loc := loc|}.
