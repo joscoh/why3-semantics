@@ -1028,7 +1028,7 @@ let check_literal c ty =
 
 (* let t_const c ty = check_literal c ty; t_const c ty *)
 
-let t_if f t1 t2 =
+(* let t_if f t1 t2 =
   t_ty_check t2 t1.t_ty;
   t_if (t_prop f) t1 t2
 
@@ -1076,7 +1076,7 @@ let rec t_and_l = function
 let rec t_or_l = function
   | [] -> t_false
   | [f] -> f
-  | f::fl -> t_or f (t_or_l fl)
+  | f::fl -> t_or f (t_or_l fl) *)
 
 let asym_split = create_attribute "asym_split"
 let stop_split = create_attribute "stop_split"

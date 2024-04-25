@@ -669,13 +669,13 @@ Definition mk_term (n: term_node) (t: option ty_c) : term_c :=
 Definition t_var v := mk_term (Tvar v) (Some v.(vs_ty)).
 Definition t_const1 c t := mk_term (Tconst c) (Some t).
 Definition t_app1 f tl t := mk_term (Tapp f tl) t.
-Definition t_if f t1 t2 := mk_term (Tif f t1 t2) (t_ty_of t2).
-Definition t_let t1 bt t := mk_term (Tlet t1 bt) t.
-Definition t_case t1 bl t := mk_term (Tcase t1 bl) t.
-Definition t_eps bf t := mk_term (Teps bf) t.
-Definition t_quant q qf := mk_term (Tquant q qf) None.
-Definition t_binary op f g := mk_term (Tbinop op f g) None.
-Definition t_not f := mk_term (Tnot f) None.
+Definition t_if1 f t1 t2 := mk_term (Tif f t1 t2) (t_ty_of t2).
+Definition t_let1 t1 bt t := mk_term (Tlet t1 bt) t.
+Definition t_case1 t1 bl t := mk_term (Tcase t1 bl) t.
+Definition t_eps1 bf t := mk_term (Teps bf) t.
+Definition t_quant1 q qf := mk_term (Tquant q qf) None.
+Definition t_binary1 op f g := mk_term (Tbinop op f g) None.
+Definition t_not1 f := mk_term (Tnot f) None.
 Definition t_true := mk_term Ttrue None.
 Definition t_false := mk_term Tfalse None.
 
@@ -707,13 +707,13 @@ Definition t_map_unsafe (fn: term_c -> term_c) (t: term_c) : term_c :=
   t_attr_copy t (match (t_node_of t) with
   | Tvar _ | Tconst _ => t
   | Tapp f tl => t_app1 f (map fn tl) (t_ty_of t)
-  | Tif f t1 t2 => t_if (fn f) (fn t1) (fn t2)
-  | Tlet e b => t_let (fn e) (bound_map fn b) (t_ty_of t)
-  | Tcase e bl => t_case (fn e) (map (bound_map fn) bl) (t_ty_of t)
-  | Teps b => t_eps (bound_map fn b) (t_ty_of t)
-  | Tquant q (vl, b, tl, f) => t_quant q (vl, b, tr_map fn tl, fn f)
-  | Tbinop op f1 f2 => t_binary op (fn f1) (fn f2)
-  | Tnot f1 => t_not (fn f1)
+  | Tif f t1 t2 => t_if1 (fn f) (fn t1) (fn t2)
+  | Tlet e b => t_let1 (fn e) (bound_map fn b) (t_ty_of t)
+  | Tcase e bl => t_case1 (fn e) (map (bound_map fn) bl) (t_ty_of t)
+  | Teps b => t_eps1 (bound_map fn b) (t_ty_of t)
+  | Tquant q (vl, b, tl, f) => t_quant1 q (vl, b, tr_map fn tl, fn f)
+  | Tbinop op f1 f2 => t_binary1 op (fn f1) (fn f2)
+  | Tnot f1 => t_not1 (fn f1)
   | Ttrue | Tfalse => t
   end).
 
@@ -746,29 +746,29 @@ Definition t_map_ctr_unsafe (fn: term_c -> ctr term_c) (t: term_c) : ctr term_c 
     f1 <- fn f ;;
     t1' <- fn t1 ;;
     t2' <- fn t2 ;;
-    st_ret (t_if f1 t1' t2')
+    st_ret (t_if1 f1 t1' t2')
   | Tlet e b =>
     e1 <- fn e ;;
     b1 <- (bound_map_ctr fn b);;
-    st_ret (t_let e1 b1 (t_ty_of t))
+    st_ret (t_let1 e1 b1 (t_ty_of t))
   | Tcase e bl => 
     e1 <- fn e;;
     l <- (st_list (map (bound_map_ctr fn) bl));;
-    st_ret (t_case e1 l (t_ty_of t))
+    st_ret (t_case1 e1 l (t_ty_of t))
   | Teps b => 
     b1 <- bound_map_ctr fn b ;;
-    st_ret (t_eps b1 (t_ty_of t))
+    st_ret (t_eps1 b1 (t_ty_of t))
   | Tquant q (vl, b, tl, f) => 
     l <- st_tr (tr_map fn tl) ;;
     f1 <- fn f;;
-    st_ret (t_quant q (vl, b, l, f1))
+    st_ret (t_quant1 q (vl, b, l, f1))
   | Tbinop op f1 f2 => 
     f1' <- fn f1;;
     f2' <- fn f2;;
-    st_ret (t_binary op f1' f2')
+    st_ret (t_binary1 op f1' f2')
   | Tnot f1 => 
     f1' <- fn f1;;
-    st_ret (t_not f1')
+    st_ret (t_not1 f1')
   | Ttrue | Tfalse => st_ret t
   end) ;;
   
@@ -819,29 +819,29 @@ Definition t_map_fold_unsafe {A: Type} (fn : A -> term_c -> A * term_c)
     let '(acc, g) := fn acc f in
     let '(acc, s1) := fn acc t1 in
     let '(acc, s2) := fn acc t2 in
-    (acc, t_attr_copy t (t_if g s1 s2))
+    (acc, t_attr_copy t (t_if1 g s1 s2))
   | Tlet e b =>
       let '(acc, e) := fn acc e in
       let '(acc, b) := bound_map_fold fn acc b in
-      (acc, t_attr_copy t (t_let e b (t_ty_of t)))
+      (acc, t_attr_copy t (t_let1 e b (t_ty_of t)))
   | Tcase e bl =>
       let '(acc, e) := fn acc e in
       let '(acc, bl) := map_fold_left (bound_map_fold fn) acc bl in
-      (acc, t_attr_copy t (t_case e bl (t_ty_of t)))
+      (acc, t_attr_copy t (t_case1 e bl (t_ty_of t)))
   | Teps b =>
       let '(acc, b) := bound_map_fold fn acc b in
-      (acc, t_attr_copy t (t_eps b (t_ty_of t)))
+      (acc, t_attr_copy t (t_eps1 b (t_ty_of t)))
   | Tquant q (vl, b, tl, f1) =>
       let '(acc, tl) := tr_map_fold fn acc tl in
       let '(acc, f1) := fn acc f1 in
-      (acc, t_attr_copy t (t_quant q (vl, b, tl, f1)))
+      (acc, t_attr_copy t (t_quant1 q (vl, b, tl, f1)))
   | Tbinop op f1 f2 =>
       let '(acc, g1) := fn acc f1 in
       let '(acc, g2) := fn acc f2 in
-      (acc, t_attr_copy t (t_binary op g1 g2))
+      (acc, t_attr_copy t (t_binary1 op g1 g2))
   | Tnot f1 =>
       let '(acc, g1) := fn acc f1 in
-      (acc, t_attr_copy t (t_not g1))
+      (acc, t_attr_copy t (t_not1 g1))
   | Ttrue | Tfalse => (acc, t)
   end.
 
@@ -974,17 +974,17 @@ Fixpoint t_subst_unsafe_aux (m: Mvs.t term_c) (t: term_c) : ctr term_c :=
   | Tlet e bt =>
     t1 <- t_subst e ;;
     b1 <- (b_subst1 bt) ;;
-    st_ret (t_attr_copy t (t_let t1 b1 (t_ty_of t)))
+    st_ret (t_attr_copy t (t_let1 t1 b1 (t_ty_of t)))
   | Tcase e bl =>
     d <- t_subst e ;;
     bl <- st_list (map b_subst2 bl) ;;
-    st_ret (t_attr_copy t (t_case d bl (t_ty_of t)))
+    st_ret (t_attr_copy t (t_case1 d bl (t_ty_of t)))
   | Teps bf =>
     bf1 <- (b_subst1 bf);;
-    st_ret (t_attr_copy t (t_eps bf1 (t_ty_of t)))
+    st_ret (t_attr_copy t (t_eps1 bf1 (t_ty_of t)))
   | Tquant q bq =>
     bq1 <- b_subst3 bq ;;
-    st_ret (t_attr_copy t (t_quant q bq1))
+    st_ret (t_attr_copy t (t_quant1 q bq1))
   | _ => t_map_ctr_unsafe t_subst t
   end.
 
@@ -1190,3 +1190,82 @@ Definition check_literal (c: constant) (t: ty_c) : errorM unit :=
 Definition t_const c t : errorM term_c :=
   _ <-- check_literal c t ;;
   err_ret (t_const1 c t).
+
+Definition t_if (f t1 t2: term_c) : errorM term_c :=
+  _ <-- t_ty_check t1 (t_ty_of t1) ;;
+  p <-- t_prop f ;;
+  err_ret (t_if1 p t1 t2).
+
+Definition t_let (t1: term_c) (bt: term_bound) : errorM term_c :=
+let '(v, _, t2) := bt in
+  _ <-- vs_check v t1 ;;
+  err_ret (t_let1 t1 bt (t_ty_of t2)).
+
+(*TODO: is err_listM equivalent to List.iter?*)
+
+Definition EmptyCase : errtype :=
+  mk_errtype "EmptyCase" tt.
+
+Definition t_case (t: term_c) (bl: list term_branch) : errorM term_c :=
+  tty <-- t_type t ;;
+  bty <-- match bl with
+          | (_, _, tbr) :: _ => err_ret (t_ty_of tbr)
+          | _ => throw EmptyCase
+          end ;;
+  let t_check_branch (tb: term_branch) : errorM unit :=
+    let '(p, _, tbr) := tb in
+    _ <-- ty_equal_check tty (pat_ty_of p) ;;
+    t_ty_check tbr bty
+  in
+  _ <-- errorM_list (map t_check_branch bl);;
+  err_ret (t_case1 t bl bty).
+
+Definition t_eps (bf: term_bound) : errorM term_c :=
+  let '(v, _, f) := bf in
+  _ <-- t_prop f ;;
+  err_ret (t_eps1 bf (Some v.(vs_ty))).
+
+(*Note: term_quant only constructible via API so don't
+  need to check type TODO ensure*)
+Definition t_quant (q: quant) (qf: term_quant) : term_c :=
+  let '(vl, _, _, f) := qf in
+  if null vl then f else t_quant1 q qf.
+
+Definition t_binary (op: binop) (f1 f2: term_c) : errorM term_c :=
+  p1 <-- t_prop f1 ;;
+  p2 <-- t_prop f2 ;;
+  err_ret (t_binary1 op p1 p2).
+  
+Definition t_not (f: term_c) : errorM term_c :=
+  p <-- t_prop f ;;
+  err_ret (t_not1 p).
+
+Definition t_forall := t_quant Tforall.
+Definition t_exists := t_quant Texists.
+Definition t_and := t_binary Tand.
+Definition t_or := t_binary Tor.
+Definition t_implies := t_binary Timplies.
+Definition t_iff := t_binary Tiff.
+
+(*TODO: no check for single list error - is this a bug?
+  I guess not as long as term is well-typed, but kind of
+  weird to say singleton "and" can be a value-typed term*)
+Fixpoint t_and_l (l: list term_c) : errorM term_c :=
+  match l with
+  | nil => err_ret t_true
+  | [f] => err_ret f
+  | f :: fl => 
+    f1 <-- (t_and_l fl) ;;
+    t_and f f1
+  end.
+
+Fixpoint t_or_l (l: list term_c) : errorM term_c :=
+  match l with
+  | nil => err_ret t_false
+  | [f] => err_ret f
+  | f :: fl => 
+    f1 <-- (t_or_l fl) ;;
+    t_or f f1
+  end.
+  
+(*Skip async for now*)

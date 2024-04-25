@@ -17,3 +17,5 @@ exception AssertFail of string
 exception InvalidIntegerLiteralType of ty
 exception InvalidRealLiteralType of ty
 exception InvalidStringLiteralType of ty
+
+exception EmptyCase

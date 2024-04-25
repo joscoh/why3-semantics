@@ -209,6 +209,7 @@ Extract Inlined Constant AssertFail => "AssertFail".
 Extract Inlined Constant InvalidIntegerLiteralType => "InvalidIntegerLiteralType".
 Extract Inlined Constant InvalidRealLiteralType => "InvalidRealLiteralType".
 Extract Inlined Constant InvalidStringLiteralType => "InvalidStringLiteralType".
+Extract Inlined Constant EmptyCase => "EmptyCase".
 
 (*TODO: implement later*)
 Extract Inlined Constant check_float => "Number.check_float".
