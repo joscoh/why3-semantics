@@ -212,3 +212,21 @@ Definition real_value_hash (r: real_value) : CoqBigInt.t :=
 Definition real_constant_hash (r: real_constant) : CoqBigInt.t :=
   hashcons.combine_big (real_literal_kind_hash r.(rl_kind))
     (real_value_hash r.(rl_real)).
+
+(*Real constants*)
+(*I believe we want to express v as a power of p
+  See*)
+(*TODO: figure out semantics of OCaml BigInt euclidean division*)
+(* Fixpoint normalize (v p e: CoqBigInt.t) : CoqBigInt.t :=
+  let '(d, m) := CoqBigInt.computer_div_mod v p *)
+
+
+
+(* let rec normalize v p e =
+  let (d,m) = BigInt.computer_div_mod v p in
+  if BigInt.eq m BigInt.zero then
+    let e2 = BigInt.add e e in
+    let (v,f) = normalize d (BigInt.mul p p) e2 in
+    let (d,m) = BigInt.computer_div_mod v p in
+    if BigInt.eq m BigInt.zero then (d, BigInt.add f e2) else (v, BigInt.add f e)
+  else (v, BigInt.zero) *)

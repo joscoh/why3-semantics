@@ -1005,7 +1005,7 @@ let t_real_const ?pow2 ?pow5 s =
 (* let t_string_const s =
   t_const (Constant.string_const s) Ty.ty_str *)
 
-exception InvalidIntegerLiteralType of ty
+(* exception InvalidIntegerLiteralType of ty
 exception InvalidRealLiteralType of ty
 exception InvalidStringLiteralType of ty
 
@@ -1024,9 +1024,9 @@ let check_literal c ty =
   | ConstReal x, Float fp -> Number.check_float x fp
   | ConstReal _, _ -> raise (InvalidRealLiteralType ty)
   | ConstStr _, _ when ts_equal ts ts_str -> ()
-  | ConstStr _, _ -> raise (InvalidStringLiteralType ty)
+  | ConstStr _, _ -> raise (InvalidStringLiteralType ty) *)
 
-let t_const c ty = check_literal c ty; t_const c ty
+(* let t_const c ty = check_literal c ty; t_const c ty *)
 
 let t_if f t1 t2 =
   t_ty_check t2 t1.t_ty;

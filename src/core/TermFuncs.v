@@ -1,4 +1,5 @@
 Require Import IntFuncs Monads TyDefs TermDefs TyFuncs IdentDefs ConstantDefs.
+Require NumberFuncs.
 Import MonadNotations.
 Local Open Scope monad_scope.
 
@@ -529,8 +530,8 @@ Fixpoint t_hash_aux (bnd: CoqBigInt.t) (vml: Mvs.t CoqBigInt.t) (t: term_c) : Co
     | Tconst c =>
       if const then constant_hash c else
       match c with
-      | ConstInt i => i.(CoqNumber.il_int)
-      | ConstReal r => CoqNumber.real_value_hash r.(CoqNumber.rl_real)
+      | ConstInt i => i.(NumberDefs.il_int)
+      | ConstReal r => NumberDefs.real_value_hash r.(NumberDefs.rl_real)
       | ConstStr c => ConstantDefs.str_hash c
       end
     | Tapp s l => hashcons.combine_big_list (t_hash_aux bnd vml) (ls_hash s) l
@@ -666,7 +667,7 @@ Definition mk_term (n: term_node) (t: option ty_c) : term_c :=
   mk_term_c n t (Sattr.empty) None.
 
 Definition t_var v := mk_term (Tvar v) (Some v.(vs_ty)).
-Definition t_const c t := mk_term (Tconst c) (Some t).
+Definition t_const1 c t := mk_term (Tconst c) (Some t).
 Definition t_app1 f tl t := mk_term (Tapp f tl) t.
 Definition t_if f t1 t2 := mk_term (Tif f t1 t2) (t_ty_of t2).
 Definition t_let t1 bt t := mk_term (Tlet t1 bt) t.
@@ -1137,34 +1138,55 @@ Definition assert (b: bool) (msg : string) : errorM unit :=
 Definition t_nat_const (n: CoqInt.int) : errorHashconsT ty_c term_c :=
   _ <-- errst_lift2 (assert (CoqInt.ge n CoqInt.zero) "t_nat_const negative") ;;;
   t <-- errst_lift1 ty_int ;;;
-  errst_ret (t_const (ConstantDefs.int_const_of_int n) t).
+  errst_ret (t_const1 (ConstantDefs.int_const_of_int n) t).
 
 Definition t_int_const (n: CoqBigInt.t) : hashcons_st ty_c term_c :=
   t <- ty_int ;;
-  st_ret (t_const (ConstantDefs.int_const1 CoqNumber.ILitUnk n) t).
+  st_ret (t_const1 (ConstantDefs.int_const1 NumberDefs.ILitUnk n) t).
 
 (*TODO: for now, skip t_real_const - involves normalizing,
   Euclidean algo, see if we need*)
 
 Definition t_string_const (s: string) : hashcons_st ty_c term_c :=
   t <- ty_str ;;
-  st_ret (t_const (ConstantDefs.string_const s) t).
+  st_ret (t_const1 (ConstantDefs.string_const s) t).
 
+Definition InvalidIntegerLiteralType (t: ty_c) : errtype :=
+  mk_errtype "InvalidIntegerLiteralType" t.
+Definition InvalidRealLiteralType (t: ty_c) : errtype :=
+  mk_errtype "InvalidRealLiteralType" t.
+Definition InvalidStringLiteralType (t: ty_c) : errtype :=
+  mk_errtype "InvalidStringLiteralType" t.
 
+Import ConstantDefs.
+Axiom check_float : NumberDefs.real_constant -> NumberDefs.float_format -> errorM unit.
+(*NOTE: for now, we are not going to support floating points*)
+Definition check_literal (c: constant) (t: ty_c) : errorM unit :=
+  ts <-- match (ty_node_of t), c with
+    | Tyapp ts [], _ => err_ret ts
+    | _, ConstInt _ => throw (InvalidIntegerLiteralType t)
+    | _, ConstReal _ => throw (InvalidRealLiteralType t)
+    |_ , ConstStr _ => throw (InvalidStringLiteralType t)
+  end ;;
+  match c, (ts_def_of ts) with
+  (*Int*)
+  | ConstInt n, NoDef => (*ts_int has type NoDef so this is safe*)
+    if ts_equal ts ts_int then err_ret tt
+    else throw (InvalidIntegerLiteralType t) 
+  | ConstInt n, Range ir => NumberFuncs.check_range n ir
+  | ConstInt n, _ => throw (InvalidIntegerLiteralType t) 
+  (*Real*)
+  | ConstReal _, NoDef => if ts_equal ts ts_real then err_ret tt
+    else throw (InvalidRealLiteralType t)
+  | ConstReal x, Float fp =>
+    (*JOSH: TODO (or not) see*)
+    check_float x fp
+  | ConstReal _, _ => throw (InvalidRealLiteralType t)
+  (*String*)
+  | ConstStr _, _ => if ts_equal ts ts_str then err_ret tt
+    else throw (InvalidStringLiteralType t)
+  end.
 
-(* 
-
-
-
-let t_nat_const n =
-  assert (n >= 0);
-  t_const (Constant.int_const_of_int n) ty_int
-
-let t_int_const n =
-  t_const (Constant.int_const n) Ty.ty_int
-
-let t_real_const ?pow2 ?pow5 s =
-  t_const (Constant.real_const ?pow2 ?pow5 s) Ty.ty_real
-
-let t_string_const s =
-  t_const (Constant.string_const s) Ty.ty_str *)
+Definition t_const c t : errorM term_c :=
+  _ <-- check_literal c t ;;
+  err_ret (t_const1 c t).

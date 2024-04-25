@@ -1,6 +1,6 @@
 Require Import CoqWstdlib.
 Require Import IdentDefs.
-Require CoqNumber.
+Require NumberDefs.
 Require hashcons CoqWeakhtbl CoqHashtbl. 
 (* Require Import stdpp.base. *)
 Require Import Coq.Wellfounded.Inverse_Image.
@@ -88,8 +88,8 @@ Unset Elimination Schemes.
 Inductive type_def (A: Type) : Type :=
   | NoDef
   | Alias: A -> type_def A
-  | Range: CoqNumber.int_range -> type_def A
-  | Float: CoqNumber.float_format -> type_def A.
+  | Range: NumberDefs.int_range -> type_def A
+  | Float: NumberDefs.float_format -> type_def A.
 
 Arguments NoDef {_}.
 Arguments Alias {_}.
@@ -237,8 +237,8 @@ with tysymbol_eqb (t1 t2: tysymbol_c) : bool :=
   match ts_def_of t1, ts_def_of t2 with
   | NoDef, NoDef => true
   | Alias a1, Alias a2 => ty_eqb a1 a2
-  | Range n1, Range n2 => CoqNumber.int_range_eqb n1 n2
-  | Float f1, Float f2 => CoqNumber.float_format_eqb f1 f2
+  | Range n1, Range n2 => NumberDefs.int_range_eqb n1 n2
+  | Float f1, Float f2 => NumberDefs.float_format_eqb f1 f2
   | _, _ => false
   end.
 
@@ -282,8 +282,8 @@ Proof.
     destruct d; destruct d2; simpl; try solve_eqb_eq.
     (*3 interesting cases*)
     + rewrite <- IH. solve_eqb_eq.
-    + rewrite <- CoqNumber.int_range_eqb_eq. solve_eqb_eq.
-    + rewrite <- CoqNumber.float_format_eqb_eq. solve_eqb_eq.
+    + rewrite <- NumberDefs.int_range_eqb_eq. solve_eqb_eq.
+    + rewrite <- NumberDefs.float_format_eqb_eq. solve_eqb_eq.
 Qed. 
 
 Definition ty_eqb_eq := proj1 ty_eqb_eq_aux.

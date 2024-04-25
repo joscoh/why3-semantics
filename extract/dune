@@ -4,7 +4,8 @@
   BinNums BinPos Datatypes Specif  List0 String0 Bool0 Common
   base Basics BinInt zmap pmap fin_maps numbers option0
   Byte CoqUtil CoqBigInt LocTy StateMonad ssrbool path Monads
-  extmap extset CoqWstdlib CoqWeakhtbl CoqHashtbl hashcons CoqNumber Ctr
+  extmap extset CoqWstdlib CoqWeakhtbl CoqHashtbl hashcons NumberDefs
+  NumberFuncs Ctr
   IntFuncs 
   CoqExthtbl
   ConstantDefs
@@ -72,13 +73,13 @@
 
 ;create Number.ml
  (rule
-  (deps CoqNumber.ml numberextra.ml)
+  (deps NumberDefs.ml numberexn.ml NumberFuncs.ml numberextra.ml)
   (targets number.ml)
   (action 
   (with-stdout-to number.ml
     (pipe-stdout
-     (cat CoqNumber.ml numberextra.ml)
-     (run sed -e "s/open CoqNumber//g")
+     (cat NumberDefs.ml numberexn.ml NumberFuncs.ml numberextra.ml)
+     (run sed -e "s/open NumberDefs//g")
     )
    )
   )
@@ -113,7 +114,7 @@
      (run sed -e "s/open IdentDefs/open Ident/g")
      (run sed -e "s/open CoqWstdlib/open Wstdlib/g")
      (run sed -e "s/open CoqWeakhtbl/open Weakhtbl/g")
-     (run sed -e "s/CoqNumber/Number/g")
+     (run sed -e "s/NumberDefs/Number/g")
      (run sed -e "s/CoqExthtbl/Exthtbl2/g")
     )
    )
@@ -129,7 +130,7 @@
   (with-stdout-to constant.ml
     (pipe-stdout
      (cat ConstantDefs.ml ConstantExtra.ml)
-     (run sed -e "s/CoqNumber/Number/g")
+     (run sed -e "s/NumberDefs/Number/g")
     ;  (run sed -e "s/open LocTy/open Loc/g")
     ;  (run sed -e "s/open CoqWstdlib/open Wstdlib/g")
     ;  (run sed -e "s/open CoqWeakhtbl/open Weakhtbl/g")
@@ -151,7 +152,8 @@
      (run sed -e "s/open IdentDefs/open Ident/g")
      (run sed -e "s/open CoqWstdlib/open Wstdlib/g")
      (run sed -e "s/open CoqWeakhtbl/open Weakhtbl/g")
-     (run sed -e "s/CoqNumber/Number/g")
+     (run sed -e "s/NumberDefs/Number/g")
+     (run sed -e "s/open NumberFuncs//g") ;bad
      (run sed -e "s/CoqExthtbl/Exthtbl2/g")
      (run sed -e "s/open TermDefs//g")
      (run sed -e "s/ConstantDefs/Constant/g")
@@ -165,7 +167,7 @@
  (name Why3Coq)
  (modules (:standard \ TyExn TyDefs TyFuncs TyExtra IdentDefs IdentExtra 
   LocTy LocExtra Locpre CoqWstdlib Wstdlibextra CoqWeakhtbl Weakhtblextra
-  CoqNumber numberextra CoqExthtbl ConstantDefs ConstantExtra TermDefs TermExtra TermExn TermFuncs))
+  NumberDefs numberexn NumberFuncs numberextra CoqExthtbl ConstantDefs ConstantExtra TermDefs TermExtra TermExn TermFuncs))
  (flags (:standard -w -33 -w -32 -w -9 -w -27)) 
  ;32 is unused value - extraction results in values we don't want in mli file
  ;27 is unused var strict - TODO turn off after

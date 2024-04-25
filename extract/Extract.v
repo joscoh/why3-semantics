@@ -1,7 +1,7 @@
 From Src.core Require Import
 IdentDefs TyDefs TyFuncs TermDefs TermFuncs.
 From Src.coqutil Require Import IntFuncs Ctr.
-From Src.util Require Import ConstantDefs extmap extset hashcons CoqExthtbl.
+From Src.util Require Import ConstantDefs NumberFuncs extmap extset hashcons CoqExthtbl.
 (* From stdpp Require Import gmap.  *)
 From Coq Require Extraction.
 From ExtLib Require Import Monads EitherMonad StateMonad.
@@ -194,6 +194,7 @@ Extract Inlined Constant EmptyRange => "EmptyRange".
 Extract Inlined Constant BadFloatSpec => "BadFloatSpec".
 Extract Inlined Constant UnexpectedProp => "UnexpectedProp".
 Extract Inlined Constant TypeMismatch => "TypeMismatch".
+Extract Inlined Constant OutOfRange => "OutOfRange".
 
 (*Term exceptions*)
 Extract Inlined Constant UncoveredVar => "UncoveredVar".
@@ -205,6 +206,12 @@ Extract Inlined Constant ConstructorExpected => "ConstructorExpected".
 Extract Inlined Constant TermExpected => "TermExpected".
 Extract Inlined Constant FmlaExpected => "FmlaExpected".
 Extract Inlined Constant AssertFail => "AssertFail".
+Extract Inlined Constant InvalidIntegerLiteralType => "InvalidIntegerLiteralType".
+Extract Inlined Constant InvalidRealLiteralType => "InvalidRealLiteralType".
+Extract Inlined Constant InvalidStringLiteralType => "InvalidStringLiteralType".
+
+(*TODO: implement later*)
+Extract Inlined Constant check_float => "Number.check_float".
 
 Extraction Inline mk_errtype.
 
@@ -219,7 +226,7 @@ Extract Inlined Constant trywith => "(fun x e ret ->
 (*Unset Extraction Optimize.*)
 
 Separate Extraction CoqUtil.str_to_pos (*TEMP*)
-  CoqExthtbl CoqNumber hashcons extmap extset CoqHashtbl 
+  CoqExthtbl NumberDefs NumberFuncs hashcons extmap extset CoqHashtbl 
   ConstantDefs IdentDefs TyDefs TyFuncs TermDefs TermFuncs. (*Ty.ty_v_map Ident.*)
 (*Separate Extraction Extmap.
 Separate Extraction Ty.ty Ty.ty_v_map Ident.*)

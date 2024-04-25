@@ -162,13 +162,13 @@ Definition create_tysymbol (name: preid) (args: list tvsymbol) (d: type_def ty_c
     | Range ir =>
       if negb (null args) then
         throw IllegalTypeParameters
-      else if CoqBigInt.lt ir.(CoqNumber.ir_upper) ir.(CoqNumber.ir_lower)
+      else if CoqBigInt.lt ir.(NumberDefs.ir_upper) ir.(NumberDefs.ir_lower)
         then throw EmptyRange
       else err_ret tt
     | Float fp => if negb (null args) then
         throw IllegalTypeParameters
-      else if CoqBigInt.lt fp.(CoqNumber.fp_exponent_digits) CoqBigInt.one ||
-        CoqBigInt.lt (fp.(CoqNumber.fp_significand_digits)) CoqBigInt.one then
+      else if CoqBigInt.lt fp.(NumberDefs.fp_exponent_digits) CoqBigInt.one ||
+        CoqBigInt.lt (fp.(NumberDefs.fp_significand_digits)) CoqBigInt.one then
         throw BadFloatSpec
       else err_ret tt
     end in

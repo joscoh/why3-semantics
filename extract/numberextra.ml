@@ -487,11 +487,11 @@ let print_real_constant support fmt r =
 
 (** Range checks *)
 
-exception OutOfRange of int_constant
+(* exception OutOfRange of int_constant
 
 let check_range c {ir_lower = lo; ir_upper = hi} =
   let cval = c.il_int in
-  if BigInt.lt cval lo || BigInt.gt cval hi then raise (OutOfRange c)
+  if BigInt.lt cval lo || BigInt.gt cval hi then raise (OutOfRange c) *)
 
 let int_range_equal ir1 ir2 =
   BigInt.eq ir1.ir_lower ir2.ir_lower && BigInt.eq ir1.ir_upper ir2.ir_upper

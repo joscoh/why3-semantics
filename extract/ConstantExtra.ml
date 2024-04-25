@@ -72,8 +72,8 @@ let real_const ?(pow2 = BigInt.zero) ?(pow5 = BigInt.zero) i =
 let real_const_from_string ~radix ~neg ~int ~frac ~exp =
   ConstReal (real_literal ~radix ~neg ~int ~frac ~exp)
 
-let string_const s =
-  ConstStr s
+(* let string_const s =
+  ConstStr s *)
 
 type escape_map = char -> string
 

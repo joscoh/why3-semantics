@@ -273,7 +273,7 @@ Definition pattern_node_eqb_eq := proj2 pattern_eqb_eq_aux.
 (*No sets/maps of patterns*)
 
 (* Terms *)
-Require LocTy CoqNumber ConstantDefs.
+Require LocTy NumberDefs ConstantDefs.
 
 
 (*First, Coq definition*)

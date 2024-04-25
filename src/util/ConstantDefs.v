@@ -1,4 +1,4 @@
-Require Import CoqNumber CoqUtil.
+Require Import NumberDefs CoqUtil.
 Require Import Coq.Strings.String.
 Require Import IntFuncs.
 (** Construction *)

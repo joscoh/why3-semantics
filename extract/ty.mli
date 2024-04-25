@@ -66,6 +66,15 @@ type ty_node_c =
 type ty = ty_node_c ty_o
 type tysymbol = ty tysymbol_o
 
+(*JOSH - TODO BAD: shouldn't need to expose this
+    Why doesn't Coq extraction use dot notation?*)
+val ts_name : tysymbol -> ident
+val ts_args : tysymbol -> tvsymbol list
+val ts_def : tysymbol -> ty type_def
+val ty_node : ty -> ty_node_c
+val ty_tag : ty -> Weakhtbl.tag
+
+
 module Mts : Extmap.S with type key = tysymbol
 module Sts : Extset.S with module M = Mts
 (*module Hts : Exthtbl.S with type key = tysymbol*)
