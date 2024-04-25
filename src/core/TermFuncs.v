@@ -1269,3 +1269,20 @@ Fixpoint t_or_l (l: list term_c) : errorM term_c :=
   end.
   
 (*Skip async for now*)
+
+(*Closing constructors*)
+
+Definition t_quant_close (q: quant) (vl: list vsymbol) (tl: list (list term_c)) (f: term_c) :=
+  if null vl then t_prop f else
+  tq <-- (t_close_quant vl tl f) ;;
+  err_ret (t_quant q tq).
+
+Definition t_forall_close := t_quant_close Tforall.
+Definition t_exists_close := t_quant_close Texists.
+
+Definition t_let_close (v: vsymbol) (t1 t2: term_c) : errorM term_c :=
+  t_let t1 (t_close_bound v t2).
+Definition t_case_close (t: term_c) (l: list (pattern_c * term_c)) :=
+  t_case t (map (fun x => t_close_branch (fst x) (snd x)) l).
+Definition t_eps_close (v: vsymbol) (f: term_c) :=
+  t_eps (t_close_bound v f).
