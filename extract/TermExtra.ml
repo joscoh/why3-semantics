@@ -1096,7 +1096,7 @@ let rec t_or_asym_l = function
 
 (* closing constructors *)
 
-let t_quant_close q vl tl f =
+(* let t_quant_close q vl tl f =
   if vl = [] then t_prop f else t_quant q (t_close_quant vl tl f)
 
 let t_forall_close = t_quant_close Tforall
@@ -1104,19 +1104,19 @@ let t_exists_close = t_quant_close Texists
 
 let t_let_close v t1 t2 = t_let t1 (t_close_bound v t2)
 let t_case_close t l = t_case t (List.map (fun (p,e) -> t_close_branch p e) l)
-let t_eps_close v f = t_eps (t_close_bound v f)
+let t_eps_close v f = t_eps (t_close_bound v f) *)
 
 (* built-in symbols *)
 
-let ps_equ =
+(* let ps_equ =
   let v = ty_var (create_tvsymbol (id_fresh "a")) in
-  create_psymbol (id_fresh (op_infix "=")) [v; v]
+  create_psymbol (id_fresh (op_infix "=")) [v; v]*)
 
 let ps_ignore =
   let v = ty_var (create_tvsymbol (id_fresh "a")) in
   create_psymbol (id_fresh "ignore'term") [v]
 
-let t_equ t1 t2 = ps_app ps_equ [t1; t2]
+(*let t_equ t1 t2 = ps_app ps_equ [t1; t2]
 let t_neq t1 t2 = t_not (ps_app ps_equ [t1; t2])
 
 let fs_bool_true  = create_fsymbol ~constr:(BigInt.of_int 2) (id_fresh "True")  [] ty_bool
@@ -1131,7 +1131,7 @@ let to_prop t =
     if t_equal t t_bool_true then t_true
     else if t_equal t t_bool_false then t_false
     else t_attr_copy t (t_equ t t_bool_true)
-  | None -> t
+  | None -> t *)
 
 let fs_tuple_ids = Hid.create 17
 
@@ -1155,17 +1155,17 @@ let t_tuple tl =
   let ty = ty_tuple (List.map t_type tl) in
   fs_app (fs_tuple (List.length tl)) tl ty
 
-let fs_func_app =
+(* let fs_func_app =
   let ty_a = ty_var (create_tvsymbol (id_fresh "a")) in
   let ty_b = ty_var (create_tvsymbol (id_fresh "b")) in
   let id = id_fresh (op_infix "@") in
-  create_fsymbol id [ty_func ty_a ty_b; ty_a] ty_b
+  create_fsymbol id [ty_func ty_a ty_b; ty_a] ty_b *)
 
-let t_func_app fn t = t_app_infer fs_func_app [fn; t]
+(* let t_func_app fn t = t_app_infer fs_func_app [fn; t]
 let t_pred_app pr t = t_equ (t_func_app pr t) t_bool_true
 
 let t_func_app_l fn tl = List.fold_left t_func_app fn tl
-let t_pred_app_l pr tl = t_equ (t_func_app_l pr tl) t_bool_true
+let t_pred_app_l pr tl = t_equ (t_func_app_l pr tl) t_bool_true *)
 
 let ps_acc =
   let alpha = ty_var (create_tvsymbol (id_fresh "a")) in

@@ -213,7 +213,7 @@ Definition id_true : ident :=
   id_builtin "True" (CoqWeakhtbl.create_tag CoqBigInt.nine).
 
 Definition id_false : ident :=
-  id_builtin "Frue" (CoqWeakhtbl.create_tag CoqBigInt.ten).
+  id_builtin "False" (CoqWeakhtbl.create_tag CoqBigInt.ten).
 
 Definition id_app : ident :=
   id_builtin (op_infix "@") (CoqWeakhtbl.create_tag CoqBigInt.eleven).

@@ -1348,7 +1348,7 @@ Definition fold_left_errst := fun {S1 A B: Type} (f: A -> B -> errState S1 A) =>
   end.
 
 Definition t_func_app_l fn tl : errorHashconsT ty_c term_c :=
-  fold_left_errst t_func_app fn tl.
+  fold_left_errst t_func_app tl fn.
 
 Definition t_pred_app_l pr tl : errorHashconsT ty_c term_c :=
   ta <-- (t_func_app_l pr tl) ;;;
