@@ -5,7 +5,7 @@
   base Basics BinInt zmap pmap fin_maps numbers option0
   Byte CoqUtil CoqBigInt LocTy StateMonad ssrbool path Monads
   extmap extset CoqWstdlib CoqWeakhtbl CoqHashtbl hashcons NumberDefs
-  NumberFuncs Ctr
+  NumberFuncs State Ctr
   IntFuncs 
   CoqExthtbl
   ConstantDefs

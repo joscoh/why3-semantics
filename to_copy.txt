@@ -43,6 +43,8 @@ coq-util/path.ml
 coq-util/path.mli
 coq-util/ssrbool.ml
 coq-util/ssrbool.mli
+coq-util/State.ml
+coq-util/State.mli
 coq-util/Ctr.ml
 coq-util/Ctr.mli
 coq-util/IntFuncs.ml

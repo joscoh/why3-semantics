@@ -1,6 +1,6 @@
 From Src.core Require Import
 IdentDefs TyDefs TyFuncs TermDefs TermFuncs.
-From Src.coqutil Require Import IntFuncs Ctr.
+From Src.coqutil Require Import IntFuncs Ctr State.
 From Src.util Require Import ConstantDefs NumberFuncs extmap extset hashcons CoqExthtbl.
 (* From stdpp Require Import gmap.  *)
 From Coq Require Extraction.
@@ -81,10 +81,6 @@ Extract Inlined Constant CoqBigInt.of_Z => "ZCompat.of_Z_big".
 
 Extract Inlined Constant string_compare => "String.compare".
 
-(*TODO: this is BAD - figure out better*)
-(*Extract Inlined Constant length => "List.length".
-Extract Inlined Constant Coq.Arith.PeanoNat.Nat.eqb => "Int.equal".*)
-
 (*For now*)
 Extract Inlined Constant pattern_eqb_fast => "(fun x y -> x == y || pattern_eqb x y)".
 Extract Inlined Constant term_eqb_fast => "(fun x y -> x == y || term_eqb x y)".
@@ -123,40 +119,11 @@ Extract Inlined Constant errst_ret => "".
 Extract Inlined Constant errst_lift1 => "".
 Extract Inlined Constant errst_lift2 => "".
 
-(*Counter*)
-Extract Inlined Constant ctr_ty => "BigInt.t ref".
-Extract Inlined Constant new_ctr => "ref".
-Extract Inlined Constant ctr_incr => "(ctr_ref := BigInt.succ !ctr_ref)".
-Extract Inlined Constant ctr_get => "!ctr_ref".
-Extract Inlined Constant ctr_set => "fun x -> ctr_ref := x".
-
-(*Handle hashcons*)
-Extract Constant hashcons_unit "'k" => 
-  "(BigInt.t * 'k CoqHashtbl.hashset) ref".
-Extract Inlined Constant hashcons_new => 
-  "ref (BigInt.one, CoqHashtbl.create_hashset)".
-Extract Inlined Constant hashcons_get => 
-  "!hash_st".
-Extract Inlined Constant hashcons_set => 
-  "(fun x -> hash_st := x)".
-Extract Inlined Constant hashcons_getset =>
-  "(snd !hash_st)".
-Extract Inlined Constant hashcons_get_ctr =>
-  "(fst !hash_st)".
-Extract Inlined Constant hashcons_incr => 
-  "(let old = !hash_st in
-    hash_st := (BigInt.succ (fst old), (snd old)))".
-Extract Inlined Constant hashcons_lookup =>
-  "(fun _ _ k -> CoqHashtbl.find_opt_hashset H.hash H.equal (snd !hash_st) k)".
-Extract Inlined Constant hashcons_add =>
-  "(fun _ k -> let old = !hash_st in
-              hash_st := (fst old, CoqHashtbl.add_hashset H.hash (snd old) k))".
-
-(*Hash table state monad*)
-Extract Constant hash_unit "'k" "'v" => "(('k, 'v) CoqHashtbl.hashtbl) ref".
-Extract Inlined Constant hash_set => "(fun x -> hash_ref := x)".
-Extract Inlined Constant hash_get => "!hash_ref".
-Extract Inlined Constant new_hash => "ref CoqHashtbl.create_hashtbl".
+(*Mutable state monads*)
+Extract Constant State.st_ty "'a" => "'a ref".
+Extract Inlined Constant State.new_st => "ref".
+Extract Inlined Constant State.st_set => "(fun x -> st_ref := x)".
+Extract Inlined Constant State.st_get => "!st_ref".
 
 (*Maps - inline some things to reduce dependent types, Obj.magic
   and unecessary functions*)

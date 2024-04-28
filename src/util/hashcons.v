@@ -1,4 +1,5 @@
-Require Import Monads.
+Require Import State.
+(* Require Import Monads. *)
 Require CoqHashtbl.
 Import MonadNotations.
 Local Open Scope monad_scope.
@@ -26,6 +27,70 @@ End S.
 
 Module Make (H: HashedType) <: S.
 Definition t := H.t.
+
+Module HashconsTy <: ModTy.
+Definition t := (CoqBigInt.t * CoqHashtbl.hashset H.t)%type.
+Definition default := (CoqBigInt.zero, @CoqHashtbl.create_hashset H.t).
+End HashconsTy.
+
+Module HashconsSt := MakeState(HashconsTy).
+
+Definition add_builtins (l: list t) (next: CoqBigInt.t) : hashcons_st t unit :=
+  x <- HashconsSt.get tt ;;
+  let '(i, h) := x in 
+  let h' := List.fold_right (fun (x : t) (acc : CoqHashtbl.hashset t) => 
+    CoqHashtbl.add_hashset H.hash acc x) h l in
+  HashconsSt.set (next, h').
+
+(*Increment counter*)
+Definition incr (_: unit) : hashcons_st H.t unit :=
+  x <- HashconsSt.get tt ;;
+  let '(i, h) := x in 
+  HashconsSt.set (CoqBigInt.succ i, h).
+
+Definition unique (d: t) : hashcons_st H.t t :=
+  x <- HashconsSt.get tt ;;
+  let '(i, h) := x in 
+  let d := H.tag i d in
+  _ <- incr tt ;;
+  st_ret d.
+
+
+(*Steps: 1. Check to see if the value d is in the map
+  2. If so, return the value found without modifying state
+  3. Otherwise, change tag to counter value and add to map,
+  updating state*)
+Definition hashcons (d: t) : @hashcons_st H.t t :=
+  x <- HashconsSt.get tt ;;
+  let '(i, h) := x in 
+  let o := CoqHashtbl.find_opt_hashset H.hash H.equal h d in
+  match o with
+  | Some k => st_ret k
+  | None =>
+    (* i <- hashcons_get_ctr ;; *)
+    (*Change tag to counter value*)
+    let d1 := H.tag i d in
+    (*Add d1 to state + incrememnt counter*)
+    _ <- HashconsSt.set (i, CoqHashtbl.add_hashset H.hash h d1);;
+    (*Increment counter*)
+    _ <- incr tt ;;
+    st_ret d1
+  end.
+
+(*Using [iter_hashset_unsafe] is OK here because we are in a monad
+  extracted to a mutable reference*)
+Definition iter (f: t -> unit) : @hashcons_st H.t unit :=
+  x <- HashconsSt.get tt ;;
+  let '(i, h) := x in 
+  st_ret (CoqHashtbl.iter_hashset_unsafe f h).
+
+(*We give no stats yeto*)
+Definition stats (_ : unit) : hashcons_st H.t  
+  (CoqInt.int * CoqInt.int * CoqInt.int * CoqInt.int * CoqInt.int * CoqInt.int) :=
+  st_ret (CoqInt.zero, CoqInt.zero, CoqInt.zero, CoqInt.zero, CoqInt.zero, CoqInt.zero).
+
+End Make.
+(* 
 
 Definition hash_st : @hashcons_unit H.t := hashcons_new _.
 
@@ -72,7 +137,7 @@ Definition stats (_ : unit) : hashcons_st H.t
   (CoqInt.int * CoqInt.int * CoqInt.int * CoqInt.int * CoqInt.int * CoqInt.int) :=
   st_ret (CoqInt.zero, CoqInt.zero, CoqInt.zero, CoqInt.zero, CoqInt.zero, CoqInt.zero).
 
-End Make.
+End Make. *)
 
 (*Some "magic" constants from their hash function*)
 Require CoqInt.

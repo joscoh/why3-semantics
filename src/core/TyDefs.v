@@ -57,15 +57,15 @@ Definition create_tvsymbol_builtin (i: ident) : tvsymbol :=
   same string giving the same result (ironically, we need
   state to make this a pure function)*)
 (*TODO: monad transformer prob*)
-Module Tvsym_t <: CoqExthtbl.TyMod.
+Module Tvsym_t <: CoqExthtbl.ModTySimpl.
 Definition t := tvsymbol.
 End Tvsym_t.
 Module Hstr_tv := CoqExthtbl.MakeExthtbl(CoqWstdlib.Str2)(Tvsym_t).
 
+(*TODO: need to use in Coq*)
 Definition tv_hashtbl : hash_st string tvsymbol unit 
   := @Hstr_tv.create CoqInt.one.
 
-(*TODO: should use actual monad transformers*)
 Definition tv_of_string (s: string) : state (CoqBigInt.t * CoqHashtbl.hashtbl string tvsymbol) tvsymbol :=
   o <- (st_lift2 (Hstr_tv.find_opt s)) ;;
   match o with

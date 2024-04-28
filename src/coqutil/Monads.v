@@ -129,64 +129,16 @@ Definition st_lift2 {A B C: Type} (s2: st B C) : st (A * B) C :=
 
 (*We use coq-ext-lib's monads and monad transformers.
   However, we cannot use their notations, or else the OCaml code
-  is full of Obj.magic.
-  Because we extract to mutable references (with names), we make
-  each use of state a different set of definitions.
-  (TODO: can we improve this and reduce duplication>)*)
+  is full of Obj.magic; we define our own above
+  TODO: can we figure out how to fix this?*)
 
+(*Notations for types*)
 (*1. Counter*)
-
-Local Open Scope monad_scope.
-Import MonadNotations.
 Notation ctr a := (st CoqBigInt.t a).
-Definition ctr_get : ctr CoqBigInt.t := get.
-Definition ctr_set (i: CoqBigInt.t) : ctr unit := put i.
-Definition ctr_ty := ctr unit.
-Definition new_ctr (i: CoqBigInt.t) : ctr unit := put i.
-Definition ctr_incr : ctr unit :=
-  i <- ctr_get ;; ctr_set (CoqBigInt.succ i).
-
 (*2. Hash table*)
 Notation hash_st key value a := (st (hashtbl key value) a).
-Section HashTbl.
-Context {key value: Type} (hash: key -> CoqBigInt.t) 
-  (eqb: key -> key -> bool).
-Definition hash_get : hash_st key value (hashtbl key value):= get.
-Definition hash_set (x: hashtbl key value) : hash_st key value unit :=
-  put x.
-Definition new_hash : hash_st key value unit := put (create_hashtbl value).
-Definition hash_unit := hash_st key value unit.
-End HashTbl.
-
 (*3. Hash consing*)
 Notation hashcons_st key a := (st (CoqBigInt.t * hashset key) a).
-Definition hashcons_new key : hashcons_st key unit :=
-  put (CoqBigInt.one, create_hashset).
-Section HashCons.
-Context {key: Type} (hash: key -> CoqBigInt.t) 
-  (eqb: key -> key -> bool).
-Definition hashcons_get : hashcons_st key (CoqBigInt.t * (hashset key)) :=
-  get.
-Definition hashcons_set (v: (CoqBigInt.t * (hashset key))) : hashcons_st key unit :=
-  put v.
-Definition hashcons_getset : hashcons_st key (hashset key) :=
-  t <- get;;
-  ret (snd t).
-Definition hashcons_lookup (k: key) : hashcons_st key (option key) :=
-  t <- get;;
-  ret (find_opt_hashset hash eqb (snd t) k).
-Definition hashcons_get_ctr: hashcons_st key CoqBigInt.t :=
-  t <- get ;;
-  ret (fst t).
-Definition hashcons_add (k: key) : hashcons_st key unit :=
-  t <- get;;
-  put (fst t, add_hashset hash (snd t) k).
-Definition hashcons_incr : hashcons_st key unit :=
-  t <- get;;
-  put (CoqBigInt.succ (fst t), snd t).
-End HashCons.
-Definition hashcons_unit key := hashcons_st key unit.
-
 (*4. Hash Consing + Error Handling (w monad transformers)*)
 Notation errorHashconsT K A := (errState (CoqBigInt.t * hashset K) A).
 (*5. Hash table + error handling*)

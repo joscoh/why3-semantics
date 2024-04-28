@@ -378,10 +378,10 @@ Definition ty_pred (ty_a : ty_c) : hashcons_st _ ty_c :=
 (*We create the tuple type symbols and types as needed,
   storing in a hash table*)
 (*We have 2 hash tables: int -> symbol and symbol -> int*)
-Module TysymbolT <: CoqExthtbl.TyMod.
+Module TysymbolT <: CoqExthtbl.ModTySimpl.
 Definition t := tysymbol_c.
 End TysymbolT.
-Module BigIntT <: CoqExthtbl.TyMod.
+Module BigIntT <: CoqExthtbl.ModTySimpl.
 Definition t := CoqBigInt.t.
 End BigIntT.
 Module IdentTag2 := CoqWstdlib.MakeTagged IdentTag.

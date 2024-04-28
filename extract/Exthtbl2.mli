@@ -9,8 +9,6 @@ module type S =
 
   type value
 
-  type t
-
   val create : Int.t -> unit
 
   val add : key -> value -> unit
@@ -20,10 +18,10 @@ module type S =
   val memo: (key -> value) -> key -> value
  end
 
-module type TyMod =
+module type ModTySimpl =
  sig
   type t
  end
 
-module MakeExthtbl (X:TaggedType) (Y:TyMod) :
+module MakeExthtbl (X:TaggedType) (Y:ModTySimpl) :
     S with type key = X.t with type value = Y.t
