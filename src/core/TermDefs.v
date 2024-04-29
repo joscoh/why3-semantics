@@ -3,7 +3,7 @@ Require Import Ty.
 Require Import CoqWstdlib.
 Require Import Monads.
 Import MonadNotations.
-Local Open Scope monad_scope.
+Local Open Scope state_scope.
 Require Import IntFuncs.
 Set Bullet Behavior "Strict Subproofs".
 

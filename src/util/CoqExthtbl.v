@@ -4,7 +4,7 @@ Require Import CoqHashtbl.
 (*TODO: is this bad?*)
 Require Import CoqWstdlib.
 Import MonadNotations.
-Local Open Scope monad_scope.
+Local Open Scope state_scope.
 Module Type S.
 
 (*Very limited for now - create, add, find*)
@@ -45,12 +45,12 @@ Definition value := Y.t.
 
 Module HashtblTy <: ModTy.
 Definition t := hashtbl key value.
-Definition default := @create_hashtbl key value.
+Definition initial := @create_hashtbl key value.
 End HashtblTy.
 
 Module HashSt := MakeState(HashtblTy).
 Definition create (_: CoqInt.int) : hash_st key value unit :=
-  HashSt.create (create_hashtbl value).
+  HashSt.create.
 Definition add (k: key) (v: value) : hash_st key value unit :=
   h <- HashSt.get tt ;;
   HashSt.set (add_hashtbl X.tag h k v).

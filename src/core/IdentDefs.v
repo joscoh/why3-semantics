@@ -9,9 +9,9 @@ Export ListNotations.
 Require Import CoqWstdlib.
 Require LocTy.
 Require Export Monads.
-Require Import Ctr.
+Require Import CoqCtr.
 Import MonadNotations.
-Local Open Scope monad_scope.
+Local Open Scope state_scope.
 Set Bullet Behavior "Strict Subproofs".
 
 (*We include another prop-valued field (erased) during extraction
@@ -159,10 +159,13 @@ Definition id_hash (i: ident) : CoqBigInt.t := CoqWeakhtbl.tag_hash (i.(id_tag))
 Definition id_compare (id1 id2: ident) : CoqInt.int :=
   CoqBigInt.compare (id_hash id1) (id_hash id2).
 
-Module IdCtr := MakeCtr.
+Module CtrStart <: BigIntVal.
+Definition val := CoqBigInt.thirteen.
+End CtrStart. 
+Module IdCtr := MakeCtr(CtrStart).
 (*TODO: we need to ensure that this is called in Coq - need
   some sort of wrapper I think*)
-Definition id_ctr : ctr unit := IdCtr.create CoqBigInt.thirteen.
+Definition id_ctr : ctr unit := IdCtr.create.
 
 (*Constructors*)
 

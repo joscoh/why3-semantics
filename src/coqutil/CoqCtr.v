@@ -2,23 +2,28 @@
   We put it in a module so that multiple instances can be created*)
 Require Import State.
 Import MonadNotations. 
-Local Open Scope monad_scope.
+Local Open Scope state_scope.
 
 Module Type Ctr.
-Parameter create : CoqBigInt.t -> state CoqBigInt.t unit.
+Parameter create : ctr unit.
 Parameter incr : unit -> ctr unit.
 Parameter get : unit -> ctr CoqBigInt.t. (*Important - in state monad*)
 End Ctr.
 
-Module BigIntTy <: ModTy.
+Module Type BigIntVal.
+Parameter val : CoqBigInt.t.
+End BigIntVal.
+
+Module BigIntTy(B: BigIntVal) <: ModTy.
 Definition t := CoqBigInt.t.
-Definition default := CoqBigInt.zero.
+Definition initial := B.val.
 End BigIntTy.
 
-Module MakeCtr <: Ctr.
+Module MakeCtr (B: BigIntVal) : Ctr.
 
-Module St := MakeState(BigIntTy).
-Definition create (i: CoqBigInt.t) : ctr unit := St.create i.
+Module B1 := BigIntTy(B).
+Module St := MakeState(B1).
+Definition create : ctr unit := St.create.
 Definition incr (_: unit) : ctr unit :=
   i <- St.get tt ;;
   St.set (CoqBigInt.succ i).

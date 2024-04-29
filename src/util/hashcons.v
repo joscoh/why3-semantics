@@ -2,7 +2,7 @@ Require Import State.
 (* Require Import Monads. *)
 Require CoqHashtbl.
 Import MonadNotations.
-Local Open Scope monad_scope.
+Local Open Scope state_scope.
 
 Module Type HashedType.
 Parameter t : Type.
@@ -30,7 +30,7 @@ Definition t := H.t.
 
 Module HashconsTy <: ModTy.
 Definition t := (CoqBigInt.t * CoqHashtbl.hashset H.t)%type.
-Definition default := (CoqBigInt.zero, @CoqHashtbl.create_hashset H.t).
+Definition initial := (CoqBigInt.zero, @CoqHashtbl.create_hashset H.t).
 End HashconsTy.
 
 Module HashconsSt := MakeState(HashconsTy).

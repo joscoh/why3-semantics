@@ -63,9 +63,24 @@ Definition trywith {A: Type} (x: unit -> errorM A) (e: errtype)
   | inr y => err_ret y
   end.
 
+(*State Monad*)
+(*The state monad is more complicated because we want to extract
+  to mutable references, but we want to do so safely.
+  This means that we want to make [runState] opaque, since 
+  the OCaml mutable counter has a single defined state.
+  Thus, in our state module (State.v), we want a runState 
+  implementation that runs the state only on the initial value.
+  However, we cannot make runState fully opaque, because we need
+  it in State.v. Instead, we make 2 modules: 1 for normal state
+  and 1 with another runState. The state type is opaque, and using
+  the standard module (St) does not include runState.
+  The user should NEVER run st_run_unsafe or even need to
+  reference StateMonadRun/MakeStateFull.
 
-(*We use custom notation because we have a separate bind and return
-  for state, error, and combination (for extraction reasons)*)
+  In OCaml, runState resets the counter to the initial state,
+  so that one can begin this whole process again.
+  *)
+
 Definition st A B := (state A B). (*For extraction - bad hack*)
 Definition st_bind {A B C: Type} (f: B -> st A C) (x: st A B) : st A C :=
   bind x f.
@@ -81,7 +96,7 @@ Definition errState A B := (eitherT errtype (st A) B).
 Global Instance Monad_errState A: Monad (errState A) := 
   Monad_eitherT _ (Monad_state _). 
 Global Instance MonadT_errorHashconsT K: 
-  MonadT (errState K) (state K) := 
+  MonadT (errState K) (st K) := 
   MonadT_eitherT _ (Monad_state _). 
 Global Instance MonadState_errorHashconsT K: 
   MonadState K (errState K):= MonadState_eitherT _ (Monad_state _) (MonadState_state _).
@@ -99,10 +114,31 @@ Definition errst_lift2 {A B} (e: errorM B) : errState A B :=
 Definition errst_bind {A B C : Type} (f: B -> errState A C) (x: errState A B) : errState A C :=
   bind x f.
 Definition errst_ret {A B: Type} (x: B) : errState A B := ret x.
-Declare Scope errst_scope.
 Definition errst_list {K A: Type} (l: list (errState K A)) :
   errState K (list A) :=
   listM errst_ret errst_bind l.
+
+(*We need different notations for each monad.
+  If we use a single notation with typeclasses, the
+  resulting OCaml code uses lots of Obj.magic*)
+Declare Scope state_scope.
+Delimit Scope state_scope with state.
+Declare Scope err_scope.
+Delimit Scope err_scope with err.
+Declare Scope errst_scope.
+Delimit Scope errst_scope with errst.
+Module MonadNotations.
+Notation "x <- c1 ;; c2" := (@st_bind _ _ _ (fun x => c2) c1)
+  (at level 61, c1 at next level, right associativity) : state_scope.
+
+Notation "x <- c1 ;; c2" := (@err_bnd _ _ (fun x => c2) c1)
+  (at level 61, c1 at next level, right associativity) : err_scope.
+
+Notation "x <- c1 ;; c2" := (@errst_bind _ _ _ (fun x => c2) c1)
+  (at level 61, c1 at next level, right associativity) : errst_scope.
+End MonadNotations.
+(* Declare Scope 
+
 
 Declare Scope monad_scope.
 Delimit Scope monad_scope with monad.
@@ -114,7 +150,7 @@ Notation "x <-- c1 ;; c2" := (@err_bnd _ _ (fun x => c2) c1)
   (at level 61, c1 at next level, right associativity) : monad_scope.
 Notation "x <- c1 ;; c2" := (@st_bind _ _ _ (fun x => c2) c1)
   (at level 61, c1 at next level, right associativity) : monad_scope.
-End MonadNotations.
+End MonadNotations. *)
 
 (*Combining 2 states*)
 Definition st_lift1 {A B C: Type} (s1: st A C) : st (A * B) C :=

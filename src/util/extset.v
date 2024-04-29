@@ -2,7 +2,7 @@ Require Import extmap.
 From ExtLib Require Import Monads.
 Require Export Monads.
 Import MonadNotations.
-Local Open Scope monad_scope.
+Local Open Scope err_scope.
 
 
 (*Slightly different than OCaml: doesnt depend on map*)
@@ -94,13 +94,13 @@ Definition partition f s := @M.partition unit (fun e _ => f e) s.
 Definition cardinal := @M.cardinal unit.
 Definition elements := @M.keys unit.
 Definition min_elt (s: t) : errorM elt :=
-  y <-- M.min_binding s ;;
+  y <- M.min_binding s ;;
   err_ret (fst y).
 Definition max_elt (s: t) : errorM elt :=
-  y <-- M.max_binding s ;;
+  y <- M.max_binding s ;;
   err_ret (fst y).
 Definition choose (s: t) : errorM elt :=
-  y <-- M.choose s ;;
+  y <- M.choose s ;;
   err_ret (fst y).
 Definition change (f: bool -> bool) (x: elt) (s: t) : t :=
   M.change (fun a => is_true_o (f (isSome a))) x s.

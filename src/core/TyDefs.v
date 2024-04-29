@@ -7,7 +7,7 @@ Require Import Coq.Wellfounded.Inverse_Image.
 Require Import IntFuncs.
 Require Import CoqExthtbl.
 Import MonadNotations.
-Local Open Scope monad_scope.
+Local Open Scope state_scope.
 Set Bullet Behavior "Strict Subproofs".
 
 Record tvsymbol := {
@@ -66,7 +66,7 @@ Module Hstr_tv := CoqExthtbl.MakeExthtbl(CoqWstdlib.Str2)(Tvsym_t).
 Definition tv_hashtbl : hash_st string tvsymbol unit 
   := @Hstr_tv.create CoqInt.one.
 
-Definition tv_of_string (s: string) : state (CoqBigInt.t * CoqHashtbl.hashtbl string tvsymbol) tvsymbol :=
+Definition tv_of_string (s: string) : st (CoqBigInt.t * CoqHashtbl.hashtbl string tvsymbol) tvsymbol :=
   o <- (st_lift2 (Hstr_tv.find_opt s)) ;;
   match o with
     | None => 

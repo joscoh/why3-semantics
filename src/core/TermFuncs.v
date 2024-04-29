@@ -1,7 +1,7 @@
 Require Import IntFuncs Monads TyDefs TermDefs TyFuncs IdentDefs ConstantDefs.
 Require NumberFuncs.
 Import MonadNotations.
-Local Open Scope monad_scope.
+Local Open Scope err_scope.
 
 (*h-consing constructors for patterns*)
 
@@ -21,7 +21,7 @@ Definition pat_var (v: vsymbol) : pattern_c :=
   mk_pattern (Pvar v) (Svs.singleton v) v.(vs_ty).
 
 Definition pat_as_aux (p: pattern_c) (v: vsymbol) : errorM pattern_c :=
-  s <-- Svs.add_new (DuplicateVar v) v (pat_vars_of p) ;;
+  s <- Svs.add_new (DuplicateVar v) v (pat_vars_of p) ;;
   err_ret (mk_pattern (Pas p v) s v.(vs_ty)).
 
 Definition pat_or_aux (p q: pattern_c) : errorM pattern_c :=
@@ -29,7 +29,7 @@ Definition pat_or_aux (p q: pattern_c) : errorM pattern_c :=
     err_ret (mk_pattern (Por p q) (pat_vars_of p) (pat_ty_of p))
   else
     let s := Mvs.union _ (fun _ _ _ => None) (pat_vars_of p) (pat_vars_of q) in
-    x <-- Svs.choose s ;;
+    x <- Svs.choose s ;;
     throw (UncoveredVar x).
 
 (*A bit different implementation than OCaml because we cannot
@@ -43,17 +43,17 @@ Definition pat_app_aux (f: lsymbol) (pl: list pattern_c) (t: ty_c) :
   (*Create 2 sets: 1 is union of all, other checks for duplicates*)
   let dups : errorM Svs.t := fold_left (fun (s : errorM Svs.t) p => 
     (*Check for common elts*)
-    s1 <-- s ;;
+    s1 <- s ;;
     let dups := Mvs.inter (fun _ _ _ => Some tt) s1 (pat_vars_of p) in
     if negb (Mvs.is_empty _ dups) then
-      x <-- Mvs.choose _ dups ;;
+      x <- Mvs.choose _ dups ;;
       throw (DuplicateVar (fst x))
     else
     (*Compute union*)
     err_ret (Mvs.union _ (fun _ _ _ => None) s1 (pat_vars_of p))
   ) pl (err_ret Svs.empty) in
 
-  s <-- dups ;;
+  s <- dups ;;
   err_ret (mk_pattern (Papp f pl) s t).
 
 (* Generic Traversal Functions *)
@@ -62,14 +62,14 @@ Definition pat_map_aux (fn: pattern_c -> errorM pattern_c) (p: pattern_c) : erro
   | Pwild => err_ret p
   | Pvar _ => err_ret p
   | Papp s pl =>
-    l <-- errorM_list (map fn pl) ;;
+    l <- errorM_list (map fn pl) ;;
     pat_app_aux s l (pat_ty_of p)
   | Pas p v => 
-    p1 <-- fn p ;;
+    p1 <- fn p ;;
     pat_as_aux p1 v
   | Por p q => 
-    p1 <-- fn p ;;
-    q1 <-- fn q ;;
+    p1 <- fn p ;;
+    q1 <- fn q ;;
     pat_or_aux p1 q1
   end.
 
@@ -77,13 +77,13 @@ Definition pat_map_aux (fn: pattern_c -> errorM pattern_c) (p: pattern_c) : erro
 Definition pat_map (fn: pattern_c -> pattern_c): pattern_c -> errorM pattern_c  :=
   pat_map_aux (fun p => 
     let res := fn p in
-    _ <-- ty_equal_check (pat_ty_of p) (pat_ty_of res) ;;
+    _ <- ty_equal_check (pat_ty_of p) (pat_ty_of res) ;;
     err_ret res).
 
 Definition pat_map_err (fn: pattern_c -> errorM pattern_c): pattern_c -> errorM pattern_c  :=
   pat_map_aux (fun p => 
-    res <-- fn p ;;
-    _ <-- ty_equal_check (pat_ty_of p) (pat_ty_of res) ;;
+    res <- fn p ;;
+    _ <- ty_equal_check (pat_ty_of p) (pat_ty_of res) ;;
     err_ret res).
 
 Definition pat_fold {A: Type} (fn: A -> pattern_c -> A) (acc: A) (pat: pattern_c) : A :=
@@ -118,8 +118,8 @@ Fixpoint fold_left2_errorHashcons {A B C S : Type}
   match l1, l2 with
   | nil, nil => errst_lift2 (err_ret (Some accu))
   | a1 :: l1, a2 :: l2 => 
-    x <-- (f accu a1 a2) ;;;
-    fold_left2_errorHashcons f x l1 l2
+    (x <- (f accu a1 a2) ;;
+    fold_left2_errorHashcons f x l1 l2)%errst
   | _, _ => errst_lift2 (err_ret None)
   end.
 
@@ -130,25 +130,25 @@ Definition pat_app (fs: lsymbol) (pl: list pattern_c) (t: ty_c) :
   errorHashconsT _ pattern_c :=
   (*First, make sure that the result types are matchable
     (i.e. list int vs list a maps a to int)*)
-  s <-- (match fs.(ls_value) with
+  (s <- (match fs.(ls_value) with
             | Some vty => ty_match Mtv.empty vty t
             | None => errst_lift2 (throw (FunctionSymbolExpected fs))
-  end) ;;;
+  end) ;;
   let mtch s ty p := ty_match s ty (pat_ty_of p) in
-  o <-- fold_left2_errorHashcons mtch s fs.(ls_args) pl ;;;
+  o <- fold_left2_errorHashcons mtch s fs.(ls_args) pl ;;
   errst_lift2 (match o with
   | None => throw (BadArity (fs, int_length pl))
   | Some _ => if CoqBigInt.is_zero fs.(ls_constr) then throw (ConstructorExpected fs)
   else pat_app_aux fs pl t
-  end) 
+  end))%errst 
   .
 
 Definition pat_as (p: pattern_c) (v: vsymbol) : errorM pattern_c :=
-  _ <-- ty_equal_check (pat_ty_of p) v.(vs_ty) ;;
+  _ <- ty_equal_check (pat_ty_of p) v.(vs_ty) ;;
   pat_as_aux p v.
 
 Definition pat_or (p q: pattern_c) : errorM pattern_c :=
-  _ <-- ty_equal_check (pat_ty_of p) (pat_ty_of q) ;;
+  _ <- ty_equal_check (pat_ty_of p) (pat_ty_of q) ;;
   pat_or_aux p q.
 
 (*NOTE: Why3 uses the (type-safe) pat_map function to implement
@@ -616,7 +616,7 @@ Definition t_ty_check (t: term_c) (typ: option ty_c) : errorM unit :=
   end.
 
 Definition vs_check (v: vsymbol) (t: term_c) : errorM unit :=
-  typ <-- t_type t;;
+  typ <- t_type t;;
   ty_equal_check v.(vs_ty) typ.
 
 (*Trigger Equality and Traversal*)
@@ -697,6 +697,8 @@ Definition t_attr_copy (s t: term_c) : term_c :=
   mk_term_c (t_node_of t) (t_ty_of t) attrs loc.
 
 (* Unsafe Map*)
+
+Local Open Scope state_scope.
 
 Definition bound_map {A B C D: Type} (f: A -> B) (x: C * D * A) : C * D * B :=
   match x with
@@ -903,8 +905,8 @@ Definition t_close_quant (vl: list vsymbol)
   (tl: list (list term_c)) (f: term_c) :
   errorM (list vsymbol * bind_info * list (list term_c) * term_c) :=
   let '(vl, s, tl, f) := t_close_quant_unsafe vl tl f in
-  p <-- t_prop f ;;
-  err_ret (vl, s, tl, p).
+  (p <- t_prop f ;;
+  err_ret (vl, s, tl, p))%err.
 
 (*TODO: they use map_fold_left, we need state*)
 Fixpoint vl_rename_aux (vl: list vsymbol) 
@@ -1019,10 +1021,10 @@ Definition t_open_quant1 (x: term_quant) : ctr (list vsymbol * trigger * term_c)
   st_ret (vl, tl, t1).
 
 Definition t_open_bound_with (e: term_c) (x: term_bound) : ctrErr term_c :=
-  let '(v, b, t) := x in
-  _ <-- errst_lift2 (vs_check v e) ;;;
+  (let '(v, b, t) := x in
+  _ <- errst_lift2 (vs_check v e) ;;
   let m := Mvs.singleton _ v e in
-  errst_lift1 (t_subst_unsafe m t).
+  errst_lift1 (t_subst_unsafe m t))%errst.
 
 (*skip t_clone_bound_id (for now)*)
 
@@ -1083,13 +1085,15 @@ Definition t_peek_quant (x: term_quant) : list ident :=
 
 (* constructors with type checking *)
 
+Local Open Scope errst_scope.
+
 (*Basically, build up type susbstitution and ensure it matches*)
 Definition ls_arg_inst (ls: lsymbol) (tl: list term_c) : 
   errorHashconsT ty_c (Mtv.t ty_c) :=
   let mtch s typ t :=
-    t1 <-- errst_lift2 (t_type t) ;;;
+    t1 <- errst_lift2 (t_type t) ;;
     ty_match s typ t1 in
-  o <-- (fold_left2_errorHashcons mtch Mtv.empty ls.(ls_args) tl) ;;;
+  o <- (fold_left2_errorHashcons mtch Mtv.empty ls.(ls_args) tl) ;;
   match o with
   | Some l => errst_ret l
   | None => errst_lift2 (throw (BadArity (ls, int_length tl)))
@@ -1100,7 +1104,7 @@ Definition ls_arg_inst (ls: lsymbol) (tl: list term_c) :
   return type)*)
 Definition ls_app_inst (ls: lsymbol) (tl: list term_c) (typ: option ty_c) :
    errorHashconsT ty_c (Mtv.t ty_c) :=
-  s <-- ls_arg_inst ls tl ;;;
+  s <- ls_arg_inst ls tl ;;
   match ls.(ls_value), typ with
   | Some _, None => errst_lift2 (throw (PredicateSymbolExpected ls))
   | None, Some _ => errst_lift2 (throw (FunctionSymbolExpected ls))
@@ -1110,17 +1114,17 @@ Definition ls_app_inst (ls: lsymbol) (tl: list term_c) (typ: option ty_c) :
 
 Definition t_app_infer (ls: lsymbol) (tl: list term_c) : 
   errorHashconsT ty_c term_c :=
-  s <-- ls_arg_inst ls tl ;;;
+  s <- ls_arg_inst ls tl ;;
   let o := oty_inst s ls.(ls_value) in
   match o with
   | None => errst_ret (t_app1 ls tl None)
   | Some h =>
-    h1 <-- errst_lift1 h ;;;
+    h1 <- errst_lift1 h ;;
     errst_ret (t_app1 ls tl (Some h1))
   end.
 
 Definition t_app ls tl typ :=
-  _ <-- ls_app_inst ls tl typ ;;;
+  _ <- ls_app_inst ls tl typ ;;
   errst_ret (t_app1 ls tl typ).
 
 Definition fs_app fs tl ty := t_app fs tl (Some ty).
@@ -1133,8 +1137,10 @@ Definition AssertFail (s: string) : errtype :=
 Definition assert (b: bool) (msg : string) : errorM unit :=
   if b then err_ret tt else throw (AssertFail msg).
 
+Local Open Scope err_scope.
+
 Definition t_nat_const (n: CoqInt.int) : errorM term_c :=
-  _ <--  (assert (CoqInt.ge n CoqInt.zero) "t_nat_const negative") ;;
+  _ <-  (assert (CoqInt.ge n CoqInt.zero) "t_nat_const negative") ;;
   err_ret (t_const1 (ConstantDefs.int_const_of_int n) ty_int).
 
 Definition t_int_const (n: CoqBigInt.t) : term_c :=
@@ -1157,7 +1163,7 @@ Import ConstantDefs.
 Axiom check_float : NumberDefs.real_constant -> NumberDefs.float_format -> errorM unit.
 (*NOTE: for now, we are not going to support floating points*)
 Definition check_literal (c: constant) (t: ty_c) : errorM unit :=
-  ts <-- match (ty_node_of t), c with
+  ts <- match (ty_node_of t), c with
     | Tyapp ts [], _ => err_ret ts
     | _, ConstInt _ => throw (InvalidIntegerLiteralType t)
     | _, ConstReal _ => throw (InvalidRealLiteralType t)
@@ -1183,17 +1189,17 @@ Definition check_literal (c: constant) (t: ty_c) : errorM unit :=
   end.
 
 Definition t_const c t : errorM term_c :=
-  _ <-- check_literal c t ;;
+  _ <- check_literal c t ;;
   err_ret (t_const1 c t).
 
 Definition t_if (f t1 t2: term_c) : errorM term_c :=
-  _ <-- t_ty_check t1 (t_ty_of t1) ;;
-  p <-- t_prop f ;;
+  _ <- t_ty_check t1 (t_ty_of t1) ;;
+  p <- t_prop f ;;
   err_ret (t_if1 p t1 t2).
 
 Definition t_let (t1: term_c) (bt: term_bound) : errorM term_c :=
 let '(v, _, t2) := bt in
-  _ <-- vs_check v t1 ;;
+  _ <- vs_check v t1 ;;
   err_ret (t_let1 t1 bt (t_ty_of t2)).
 
 (*TODO: is err_listM equivalent to List.iter?*)
@@ -1202,22 +1208,22 @@ Definition EmptyCase : errtype :=
   mk_errtype "EmptyCase" tt.
 
 Definition t_case (t: term_c) (bl: list term_branch) : errorM term_c :=
-  tty <-- t_type t ;;
-  bty <-- match bl with
+  tty <- t_type t ;;
+  bty <- match bl with
           | (_, _, tbr) :: _ => err_ret (t_ty_of tbr)
           | _ => throw EmptyCase
           end ;;
   let t_check_branch (tb: term_branch) : errorM unit :=
     let '(p, _, tbr) := tb in
-    _ <-- ty_equal_check tty (pat_ty_of p) ;;
+    _ <- ty_equal_check tty (pat_ty_of p) ;;
     t_ty_check tbr bty
   in
-  _ <-- errorM_list (map t_check_branch bl);;
+  _ <- errorM_list (map t_check_branch bl);;
   err_ret (t_case1 t bl bty).
 
 Definition t_eps (bf: term_bound) : errorM term_c :=
   let '(v, _, f) := bf in
-  _ <-- t_prop f ;;
+  _ <- t_prop f ;;
   err_ret (t_eps1 bf (Some v.(vs_ty))).
 
 (*Note: term_quant only constructible via API so don't
@@ -1227,12 +1233,12 @@ Definition t_quant (q: quant) (qf: term_quant) : term_c :=
   if null vl then f else t_quant1 q qf.
 
 Definition t_binary (op: binop) (f1 f2: term_c) : errorM term_c :=
-  p1 <-- t_prop f1 ;;
-  p2 <-- t_prop f2 ;;
+  p1 <- t_prop f1 ;;
+  p2 <- t_prop f2 ;;
   err_ret (t_binary1 op p1 p2).
   
 Definition t_not (f: term_c) : errorM term_c :=
-  p <-- t_prop f ;;
+  p <- t_prop f ;;
   err_ret (t_not1 p).
 
 Definition t_forall := t_quant Tforall.
@@ -1250,7 +1256,7 @@ Fixpoint t_and_l (l: list term_c) : errorM term_c :=
   | nil => err_ret t_true
   | [f] => err_ret f
   | f :: fl => 
-    f1 <-- (t_and_l fl) ;;
+    f1 <- (t_and_l fl) ;;
     t_and f f1
   end.
 
@@ -1259,7 +1265,7 @@ Fixpoint t_or_l (l: list term_c) : errorM term_c :=
   | nil => err_ret t_false
   | [f] => err_ret f
   | f :: fl => 
-    f1 <-- (t_or_l fl) ;;
+    f1 <- (t_or_l fl) ;;
     t_or f f1
   end.
   
@@ -1269,7 +1275,7 @@ Fixpoint t_or_l (l: list term_c) : errorM term_c :=
 
 Definition t_quant_close (q: quant) (vl: list vsymbol) (tl: list (list term_c)) (f: term_c) :=
   if null vl then t_prop f else
-  tq <-- (t_close_quant vl tl f) ;;
+  tq <- (t_close_quant vl tl f) ;;
   err_ret (t_quant q tq).
 
 Definition t_forall_close := t_quant_close Tforall.
@@ -1283,6 +1289,9 @@ Definition t_eps_close (v: vsymbol) (f: term_c) :=
   t_eps (t_close_bound v f).
 
 (*Built-in Symbols*)
+
+Local Open Scope errst_scope.
+
 (*These are pure functions because of our builtin types*)
 Definition ps_equ : lsymbol :=
   create_psymbol_builtin (id_eq) [ty_a;ty_a].
@@ -1293,7 +1302,7 @@ Definition t_equ (t1 t2: term_c) : errorHashconsT ty_c term_c :=
   ps_app ps_equ [t1; t2].
 
 Definition t_neq (t1 t2: term_c) : errorHashconsT ty_c term_c :=
-  a <-- (ps_app ps_equ [t1; t2]) ;;;
+  a <- (ps_app ps_equ [t1; t2]) ;;
   errst_lift2 (t_not a).
 
 (*With builtin types, this is pure, not errorHashconsT*)
@@ -1301,7 +1310,6 @@ Definition fs_bool_true : lsymbol :=
   create_fsymbol_builtin (CoqBigInt.two) false
   id_true nil ty_bool.
 
-(*HERE*)
 Definition fs_bool_false : lsymbol :=
   create_fsymbol_builtin (CoqBigInt.two) false
   id_false nil ty_bool.
@@ -1319,7 +1327,7 @@ Definition to_prop (t: term_c) : errorHashconsT ty_c term_c :=
     if t_equal t t_bool_true then errst_ret t_true
     else if t_equal t t_bool_false then errst_ret t_false
     else 
-      t1 <-- (t_equ t t_bool_true) ;;;
+      t1 <- (t_equ t t_bool_true) ;;
       errst_ret (t_attr_copy t t1)
   | None => errst_ret t
   end.
@@ -1334,7 +1342,7 @@ Definition fs_func_app : lsymbol :=
 Definition t_func_app (fn t: term_c) : errorHashconsT ty_c term_c :=
   t_app_infer fs_func_app [fn; t].
 Definition t_pred_app pr t : errorHashconsT ty_c term_c :=
-  t1 <-- (t_func_app pr t) ;;;
+  t1 <- (t_func_app pr t) ;;
   t_equ t1 t_bool_true.
 
 (*TODO: move*)
@@ -1343,7 +1351,7 @@ Definition fold_left_errst := fun {S1 A B: Type} (f: A -> B -> errState S1 A) =>
   fix fold_left_errst (l: list B) (x: A) {struct l} :=
   match l with
   | nil => errst_ret x
-  | h :: t => j <-- f x h ;;;
+  | h :: t => j <- f x h ;;
               fold_left_errst t j
   end.
 
@@ -1351,7 +1359,7 @@ Definition t_func_app_l fn tl : errorHashconsT ty_c term_c :=
   fold_left_errst t_func_app tl fn.
 
 Definition t_pred_app_l pr tl : errorHashconsT ty_c term_c :=
-  ta <-- (t_func_app_l pr tl) ;;;
+  ta <- (t_func_app_l pr tl) ;;
   t_equ ta t_bool_true.
 
 (*Skip acc and wf for now (can add later)*)

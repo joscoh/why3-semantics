@@ -1,7 +1,7 @@
 Require Import Monads TyDefs IntFuncs.
 From ExtLib Require Import Monads.
 Import MonadNotations.
-Local Open Scope monad_scope.
+Local Open Scope state_scope.
 Require Import IdentDefs.
 
 (*First, deal with builtins, because we want to add them directly
@@ -163,12 +163,12 @@ Definition ty_v_any (pr: tvsymbol -> bool) (t: ty_c) : bool :=
   ty_v_fold (fun acc v => acc || (pr v)) false t.
 Fixpoint ty_v_map_err (fn: tvsymbol -> errorM ty_c) (t: ty_c) :
   errorHashconsT ty_c ty_c :=
-  match ty_node_of t with
+  (match ty_node_of t with
   | Tyvar v => errst_lift2 (fn v)
   | Tyapp f tl =>
-    l <-- errst_list (map (ty_v_map_err fn) tl) ;;;
+    l <- errst_list (map (ty_v_map_err fn) tl) ;;
     errst_lift1 (ty_app1 f l)
-  end.
+  end)%errst.
 
 Definition ty_full_inst (m: Mtv.t ty_c) (t: ty_c) : errorHashconsT ty_c ty_c:=
   ty_v_map_err (fun v => Mtv.find _ v m) t.
@@ -187,6 +187,8 @@ Definition BadTypeArity (t: tysymbol_c * CoqBigInt.t) : errtype :=
 Definition DuplicateTypeVar (t: tvsymbol) : errtype := 
   mk_errtype "DuplicateTypeVar" t.
 
+Local Open Scope err_scope.
+
 (*Note: fold right, not left*)
 (*Version that can be used in nested recursive defs*)
 Definition fold_errorM' := fun {A B: Type} (f: A -> B -> errorM A) =>
@@ -194,7 +196,7 @@ Definition fold_errorM' := fun {A B: Type} (f: A -> B -> errorM A) =>
   match l with
   | nil => err_ret x
   | h :: t =>
-    i <-- fold_errorM t x ;;
+    i <- fold_errorM t x ;;
     f i h
   end.
 
@@ -209,7 +211,7 @@ Fixpoint ty_v_fold_err {A: Type} (fn: A -> tvsymbol -> errorM A) (acc: A)
 Definition ty_v_all_err (pr: tvsymbol -> errorM bool) (t: ty_c) : 
   errorM bool :=
   ty_v_fold_err (fun acc v => 
-    i <-- pr v ;;
+    i <- pr v ;;
     err_ret (i && acc)) true t.
 
 Definition UnboundTypeVar (t: tvsymbol) : errtype := 
@@ -225,7 +227,7 @@ Definition create_tysymbol (name: preid) (args: list tvsymbol) (d: type_def ty_c
   let add (s: Stv.t) (v: tvsymbol) := Stv.add_new (DuplicateTypeVar v) v s in
   let s1 := fold_errorM' add args Stv.empty in
   let check (v: tvsymbol) : errorM bool := 
-    m <-- s1 ;;
+    m <- s1 ;;
     if Stv.mem v m then err_ret true else
     throw (UnboundTypeVar v)
   in
@@ -247,7 +249,7 @@ Definition create_tysymbol (name: preid) (args: list tvsymbol) (d: type_def ty_c
         throw BadFloatSpec
       else err_ret tt
     end in
-  _ <-- c ;;
+  _ <- c ;;
   err_ret (mk_ts name args d).
 
 (*Returns map of type variables to elements in list tl*)
@@ -267,8 +269,8 @@ Definition ty_match_args (t: ty_c) : errorM (Mtv.t ty_c) :=
 Definition ty_app (s: tysymbol_c) (tl: list ty_c) : errorHashconsT ty_c ty_c :=
   match ts_def_of s with
   | Alias t => 
-    m <-- (errst_lift2 (ts_match_args s tl)) ;;;
-    ty_full_inst m t
+    (m <- (errst_lift2 (ts_match_args s tl)) ;;
+    ty_full_inst m t)%errst
   | _ =>
     if negb (CoqBigInt.eqb (int_length (ts_args_of s)) (int_length tl)) then
       (errst_lift2 (throw (BadTypeArity (s, int_length tl))))
@@ -281,8 +283,8 @@ Fixpoint ty_s_map (fn: tysymbol_c -> tysymbol_c) (t: ty_c) : errorHashconsT ty_c
   match ty_node_of t with
   | Tyvar _ => errst_ret t
   | Tyapp f tl => 
-    l <-- (errst_list (map (ty_s_map fn) tl)) ;;;
-    ty_app (fn f) l
+    (l <- (errst_list (map (ty_s_map fn) tl)) ;;
+    ty_app (fn f) l)%errst
   end.
 
 Fixpoint ty_s_fold {A: Type} (fn: A -> tysymbol_c -> A) (acc: A) (t: ty_c) : A :=
@@ -297,14 +299,14 @@ Definition ty_s_any (pr: tysymbol_c -> bool) (t: ty_c) : bool :=
   ty_s_fold (fun x y => x || (pr y)) false t.
 
 (* type matching *)
-Local Open Scope monad_scope (*TODO: fix scopes*).
+(* Local Open Scope state_scope (*TODO: fix scopes*). *)
 (*TODO: very bad*)
 Definition ty_mapM (fn: ty_c -> hashcons_st _ ty_c) (t: ty_c) : hashcons_st _ ty_c :=
   match ty_node_of t with
   | Tyvar _ => st_ret t
   | Tyapp f tl => 
-    l <- st_list (map fn tl) ;;
-    ty_app1 f l
+    (l <- st_list (map fn tl) ;;
+    ty_app1 f l)%state
 end.
 
 (*TODO: why does this pass Coq's termination checker?*)
@@ -324,7 +326,7 @@ Definition fold_right2_error := fun {A B C: Type} (f: C -> A -> B -> errorM C) =
   match l1, l2 with
   | nil, nil => err_ret accu
   | a1 :: l1, a2 :: l2 => 
-    x <-- fold_right2_error l1 l2 accu ;;
+    x <- fold_right2_error l1 l2 accu ;;
     f x a1 a2
   | _, _ => throw (Invalid_argument "fold_right2")
   end.
@@ -360,10 +362,10 @@ Fixpoint ty_match_aux (*(err1 err2: ty_c) *)
   end.
 
 Definition ty_match  (s: Mtv.t ty_c) (ty1 ty2: ty_c) : errorHashconsT _ (Mtv.t ty_c) :=
-  t1 <-- (errst_lift1 (ty_inst s ty1)) ;;;
+  (t1 <- (errst_lift1 (ty_inst s ty1)) ;;
   errst_lift2
   (trywith (fun (_ : unit) => (ty_match_aux s ty1 ty2)) Exit 
-    (fun (_: unit) => throw (TypeMismatch (t1, ty2)))).
+    (fun (_: unit) => throw (TypeMismatch (t1, ty2)))))%errst.
 
 (*These must be hashconsed because they are not constant*)
 (*We know that [ty_app] always succeeds here*)
@@ -374,6 +376,8 @@ Definition ty_pred (ty_a : ty_c) : hashcons_st _ ty_c :=
   ty_app1 ts_func [ty_a; ty_bool].
 
 (*Tuples*)
+
+Local Open Scope state_scope.
 
 (*We create the tuple type symbols and types as needed,
   storing in a hash table*)

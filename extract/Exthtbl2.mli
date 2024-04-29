@@ -1,6 +1,5 @@
 open CoqHashtbl
 open Datatypes
-open StateMonad
 open Extmap
 
 module type S =

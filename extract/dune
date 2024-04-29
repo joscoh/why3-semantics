@@ -3,9 +3,9 @@
  (extracted_modules 
   BinNums BinPos Datatypes Specif  List0 String0 Bool0 Common
   base Basics BinInt zmap pmap fin_maps numbers option0
-  Byte CoqUtil CoqBigInt LocTy StateMonad ssrbool path Monads
+  Byte CoqUtil CoqBigInt LocTy ssrbool path Monads
   extmap extset CoqWstdlib CoqWeakhtbl CoqHashtbl hashcons NumberDefs
-  NumberFuncs State Ctr
+  NumberFuncs State CoqCtr
   IntFuncs 
   CoqExthtbl
   ConstantDefs
@@ -71,6 +71,15 @@
   )
  )
 
+;create Ctr.ml (TODO: need better method for extract + hand-written .mli files)
+(rule
+  (deps CoqCtr.ml)
+  (targets Ctr.ml)
+  (action
+    (with-stdout-to Ctr.ml
+        (cat CoqCtr.ml)
+    )))
+
 ;create Number.ml
  (rule
   (deps NumberDefs.ml numberexn.ml NumberFuncs.ml numberextra.ml)
@@ -97,6 +106,7 @@
      (run sed -e "s/open LocTy/open Loc/g")
      (run sed -e "s/open CoqWstdlib/open Wstdlib/g")
      (run sed -e "s/open CoqWeakhtbl/open Weakhtbl/g")
+     (run sed -e "s/open CoqCtr/open Ctr/g")
     )
    )
   )
@@ -165,7 +175,7 @@
 
 (library
  (name Why3Coq)
- (modules (:standard \ TyExn TyDefs TyFuncs TyExtra IdentDefs IdentExtra 
+ (modules (:standard \ CoqCtr TyExn TyDefs TyFuncs TyExtra IdentDefs IdentExtra 
   LocTy LocExtra Locpre CoqWstdlib Wstdlibextra CoqWeakhtbl Weakhtblextra
   NumberDefs numberexn NumberFuncs numberextra CoqExthtbl ConstantDefs ConstantExtra TermDefs TermExtra TermExn TermFuncs))
  (flags (:standard -w -33 -w -32 -w -9 -w -27)) 

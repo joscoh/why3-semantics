@@ -1,6 +1,6 @@
 From Src.core Require Import
 IdentDefs TyDefs TyFuncs TermDefs TermFuncs.
-From Src.coqutil Require Import IntFuncs Ctr State.
+From Src.coqutil Require Import IntFuncs CoqCtr State.
 From Src.util Require Import ConstantDefs NumberFuncs extmap extset hashcons CoqExthtbl.
 (* From stdpp Require Import gmap.  *)
 From Coq Require Extraction.
@@ -124,6 +124,7 @@ Extract Constant State.st_ty "'a" => "'a ref".
 Extract Inlined Constant State.new_st => "ref".
 Extract Inlined Constant State.st_set => "(fun x -> st_ref := x)".
 Extract Inlined Constant State.st_get => "!st_ref".
+Extract Inlined Constant State.st_run_UNSAFE => "(fun _ x -> st_ref := T.initial; x)".
 
 (*Maps - inline some things to reduce dependent types, Obj.magic
   and unecessary functions*)
