@@ -1521,7 +1521,7 @@ let t_v_map fn t =
   let fn v _ = let res = fn v in vs_check v res; res in
   t_subst_unsafe (Mvs.mapi fn (t_vars t)) t
 
-let bnd_v_fold fn acc b = Mvs.fold (fun v _ acc -> fn acc v) b.bv_vars acc
+(* let bnd_v_fold fn acc b = Mvs.fold (fun v _ acc -> fn acc v) b.bv_vars acc
 
 let bound_v_fold fn acc ((_,b),_) = bnd_v_fold fn acc b
 
@@ -1531,7 +1531,7 @@ let rec t_v_fold fn acc t = match t.t_node with
   | Tcase (e,bl) -> List.fold_left (bound_v_fold fn) (t_v_fold fn acc e) bl
   | Teps b -> bound_v_fold fn acc b
   | Tquant (_,(((_,b),_),_)) -> bnd_v_fold fn acc b
-  | _ -> t_fold_unsafe (t_v_fold fn) acc t
+  | _ -> t_fold_unsafe (t_v_fold fn) acc t *)
 
 let t_v_all pr t = Util.all t_v_fold pr t
 let t_v_any pr t = Util.any t_v_fold pr t

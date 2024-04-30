@@ -178,6 +178,13 @@ and trigger = (term_node term_o) list list
 
 type term = (term_node term_o)
 
+(*JOSH - TODO BAD: shouldn't need to expose this
+    Why doesn't Coq extraction use dot notation?*)
+val t_node : term -> term_node
+val t_ty : term -> ty option
+val t_attrs : term -> Sattr.t
+val t_loc : term -> Loc.position option
+
 val term_size : term -> BigInt.t
 (** [term_size t] is the size, i.e. the number of [term_node] constructors occuring in [t] *)
 
@@ -589,6 +596,16 @@ module TermTF : sig
 
   val tr_map_fold : ('a -> term -> 'a * term) ->
     ('a -> term -> 'a * term) -> 'a -> trigger -> 'a * trigger
+end
+
+(*JOSH: TODO TEMP *)
+module TermTFAlt : sig
+
+  val t_select : (term -> 'a) -> (term -> 'a) -> term -> 'a
+  (** [t_select fnT fnF t] is [fnT t] if [t] is a value, [fnF t] otherwise *)
+
+  val t_selecti : ('a -> term -> 'b) -> ('a -> term -> 'b) -> 'a -> term -> 'b
+  (** [t_selecti fnT fnF acc t] is [t_select (fnT acc) (fnF acc) t] *)
 end
 
 (** {2 Map/fold over free variables} *)

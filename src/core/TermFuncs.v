@@ -1363,3 +1363,42 @@ Definition t_pred_app_l pr tl : errorHashconsT ty_c term_c :=
   t_equ ta t_bool_true.
 
 (*Skip acc and wf for now (can add later)*)
+
+(*Subset of term library*)
+
+(* map/fold over free variables *)
+(*Only fold for now*)
+
+Definition bnd_v_fold {A: Type} (fn: A -> vsymbol -> A) (acc: A) 
+  (b: bind_info) : A :=
+    Mvs.fold (fun v _ acc => fn acc v) b.(bv_vars) acc.
+
+Definition bound_v_fold {A B C: Type} (fn: A -> vsymbol -> A) (acc: A)
+  (x : B * bind_info * C) : A :=
+  let '(_, b, _) := x in
+  bnd_v_fold fn acc b.
+
+Fixpoint t_v_fold {A: Type} (fn : A -> vsymbol -> A) (acc: A)
+  (t: term_c) : A :=
+  match (t_node_of t) with
+  | Tvar v => fn acc v
+  | Tlet e b => bound_v_fold fn (t_v_fold fn acc e) b
+  | Tcase e bl => fold_left (bound_v_fold fn) bl (t_v_fold fn acc e)
+  | Teps b => bound_v_fold fn acc b
+  | Tquant _ (_, b, _, _) => bnd_v_fold fn acc b (*No recursion bc we know free vars*)
+  | _ => t_fold_unsafe (t_v_fold fn) acc t
+  end.
+
+(** Traversal with separate functions for value-typed and prop-typed terms *)
+(*TODO: temp: Alt module until we replace the rest*)
+Module TermTFAlt.
+
+Definition t_select {A: Type} (fnT: term_c -> A) (fnF: term_c -> A) 
+  (e: term_c) : A :=
+  if isNone (t_ty_of e) then fnF e else fnT e.
+
+Definition t_selecti {A B: Type} (fnT: A -> term_c -> B) 
+  (fnF: A -> term_c -> B) (acc: A) (e: term_c) : B :=
+  if isNone (t_ty_of e) then fnF acc e else fnT acc e.
+
+End TermTFAlt.

@@ -45,6 +45,7 @@ Parameter fold2_inter: forall {a: Type}, (elt -> a -> a) -> t -> t -> a -> a.
 Parameter fold2_union: forall {a: Type}, (elt -> a -> a) -> t -> t -> a -> a.
 (*Parameter translate: (elt -> elt) -> t -> t.*)
 Parameter add_new: errtype -> elt -> t -> errorM t.
+Parameter add_new_opt: elt -> t -> option t.
 Parameter is_num_elt: CoqBigInt.t -> t -> bool.
 Parameter of_list: list elt -> t.
 Parameter contains: t -> elt -> bool.
@@ -114,6 +115,7 @@ Definition fold2_inter {a: Type} (f: elt -> a -> a) (s1 s2: t) (acc : a) : a :=
 Definition fold2_union {a: Type} (f: elt -> a -> a) (s1 s2: t) (acc: a) : a :=
   M.fold2_union (fun k _ _ acc => f k acc) s1 s2 acc.
 Definition add_new e x s := M.add_new e x tt s.
+Definition add_new_opt x s := M.add_new_opt x tt s.
 Definition is_num_elt := @M.is_num_elt unit.
 Definition of_list (l: list elt) : t :=
   List.fold_right add empty l.

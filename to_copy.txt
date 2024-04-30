@@ -37,8 +37,6 @@ coq-util/CoqUtil.ml
 coq-util/CoqUtil.mli
 coq-util/CoqHashtbl.ml
 coq-util/CoqHashtbl.mli
-coq-util/StateMonad.ml
-coq-util/StateMonad.mli
 coq-util/path.ml
 coq-util/path.mli
 coq-util/ssrbool.ml
@@ -71,3 +69,5 @@ core/ty.ml
 core/ty.mli
 core/term.ml
 core/term.mli
+core/decl.ml
+core/decl.mli

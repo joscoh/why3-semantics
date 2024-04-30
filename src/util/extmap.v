@@ -194,6 +194,8 @@ Parameter fold2_inter: (key -> a -> b -> c -> c) -> t a -> t b -> c ->c.
 Parameter fold2_union: (key -> option a -> option b -> c -> c) -> t a -> t b -> c -> c.
 (*Parameter translate: (key -> key) -> t a -> t a.*)
 Parameter add_new: errtype -> key -> a -> t a -> errorM (t a).
+(*JOSH - added version that does not throw error*)
+Parameter add_new_opt : key -> a -> t a -> option (t a).
 Parameter replace: errtype -> key -> a -> t a -> errorM (t a).
 Parameter keys: t a -> list key.
 Parameter values: t a -> list a.
@@ -698,6 +700,12 @@ Definition add_new (e: errtype) (k: key) (v: a) (m: t a) : errorM (t a) :=
   match (find_opt k m) with
   | None => err_ret (add k v m)
   | _ => throw e
+  end.
+
+Definition add_new_opt (k: key) (v: a) (m: t a) : option (t a) :=
+  match (find_opt k m) with
+  | None => Some (add k v m)
+  | _ => None
   end.
 
 Definition replace (e: errtype) (k: key) (v: a) (m: t a) : errorM (t a) :=

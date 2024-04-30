@@ -1,5 +1,6 @@
 From Src.core Require Import
-IdentDefs TyDefs TyFuncs TermDefs TermFuncs.
+IdentDefs TyDefs TyFuncs TermDefs TermFuncs
+DeclDefs DeclFuncs.
 From Src.coqutil Require Import IntFuncs CoqCtr State.
 From Src.util Require Import ConstantDefs NumberFuncs extmap extset hashcons CoqExthtbl.
 (* From stdpp Require Import gmap.  *)
@@ -184,6 +185,10 @@ Extract Inlined Constant InvalidRealLiteralType => "InvalidRealLiteralType".
 Extract Inlined Constant InvalidStringLiteralType => "InvalidStringLiteralType".
 Extract Inlined Constant EmptyCase => "EmptyCase".
 
+(*Decl exceptions*)
+Extract Inlined Constant UnboundVar => "UnboundVar".
+Extract Inlined Constant UnexpectedProjOrConstr => "UnexpectedProjOrConstr".
+
 (*TODO: implement later*)
 Extract Inlined Constant check_float => "Number.check_float".
 
@@ -201,7 +206,8 @@ Extract Inlined Constant trywith => "(fun x e ret ->
 
 Separate Extraction CoqUtil.str_to_pos (*TEMP*)
   CoqExthtbl NumberDefs NumberFuncs hashcons extmap extset CoqHashtbl 
-  ConstantDefs IdentDefs TyDefs TyFuncs TermDefs TermFuncs. (*Ty.ty_v_map Ident.*)
+  ConstantDefs IdentDefs TyDefs TyFuncs TermDefs TermFuncs
+  DeclDefs DeclFuncs. (*Ty.ty_v_map Ident.*)
 (*Separate Extraction Extmap.
 Separate Extraction Ty.ty Ty.ty_v_map Ident.*)
 
