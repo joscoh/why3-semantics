@@ -1097,9 +1097,11 @@ Inductive decrease_fun (fs: list fn) (ps: list pn) :
     nth (sn_idx f_decl) ts tm_d = Tvar x ->
     (*Uniformity: we must be applying the function uniformly*)
     l = map vty_var (s_params f) ->
-    (*None of [fs] of [ps] appear in the terms*) 
+    (*All terms are decreasing (NEW)*)
+    Forall (decrease_fun fs ps small hd m vs) ts ->
+    (* None of [fs] of [ps] appear in the terms 
     Forall (fun t => forall f,  In f fs -> negb (funsym_in_tm (fn_sym f) t)) ts ->
-    Forall (fun t => forall p, In p ps -> negb (predsym_in_tm (pn_sym p) t)) ts ->
+    Forall (fun t => forall p, In p ps -> negb (predsym_in_tm (pn_sym p) t)) ts -> *)
     (*Then this recursive call is valid*)
     decrease_fun fs ps small hd m vs (Tfun f l ts)
   (*Other function call*)
@@ -1179,9 +1181,10 @@ with decrease_pred (fs: list fn) (ps: list pn) :
     nth (sn_idx p_decl) ts tm_d = Tvar x ->
     (*Uniformity: we must be applying the function uniformly*)
     l = map vty_var (s_params p) ->
+    Forall (decrease_fun fs ps small hd m vs) ts ->
     (*None of [fs] or[ps] appear in the terms*) 
-    Forall (fun t => forall f,  In f fs -> negb (funsym_in_tm (fn_sym f) t)) ts ->
-    Forall (fun t => forall p, In p ps -> negb (predsym_in_tm (pn_sym p) t)) ts ->
+    (* Forall (fun t => forall f,  In f fs -> negb (funsym_in_tm (fn_sym f) t)) ts ->
+    Forall (fun t => forall p, In p ps -> negb (predsym_in_tm (pn_sym p) t)) ts -> *)
     (*Then this recursive call is valid*)
     decrease_pred fs ps small hd m vs (Fpred p l ts)
   (*Other predicate call*)

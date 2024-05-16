@@ -1036,8 +1036,7 @@ Lemma dec_inv_tfun_in {small: list vsymbol} {hd: option vsymbol} {f: funsym}
   (Hin: In fn_def fs)
   (Hfeq: f = fn_sym fn_def):
   l = map vty_var (s_params f) /\
-  Forall (fun t => forall f, In f fs -> negb (funsym_in_tm (fn_sym f) t)) ts /\
-  Forall (fun t => forall p, In p ps -> negb (predsym_in_tm (pn_sym p) t)) ts.
+  Forall (decrease_fun fs ps small hd m vs) ts.
 Proof.
   inversion Hde; subst.
   - exfalso. specialize (H _ Hin).
@@ -1095,9 +1094,7 @@ Proof.
   destruct (in_dec funsym_eq_dec f (map fn_sym fs)).
   - rewrite in_map_iff in i. destruct i as [fn_def [Hfeq Hin]].
     apply dec_inv_tfun_in with(fn_def:=fn_def) in Hde; auto.
-    destruct_all.
-    revert H0 H1. rewrite !Forall_forall; intros.
-    apply Dec_notin_t; auto.
+    apply Hde.
   - eapply dec_inv_tfun_notin. apply Hde. auto.
 Qed.
 
@@ -1110,8 +1107,9 @@ Lemma dec_inv_fpred_in {small: list vsymbol} {hd: option vsymbol}
   (Hin: In pn_def ps)
   (Hpeq: p = pn_sym pn_def):
   l = map vty_var (s_params p) /\
-  Forall (fun t => forall f, In f fs -> negb (funsym_in_tm (fn_sym f) t)) ts /\
-  Forall (fun t => forall p, In p ps -> negb (predsym_in_tm (pn_sym p) t)) ts.
+  Forall (decrease_fun fs ps small hd m vs) ts.
+  (* Forall (fun t => forall f, In f fs -> negb (funsym_in_tm (fn_sym f) t)) ts /\
+  Forall (fun t => forall p, In p ps -> negb (predsym_in_tm (pn_sym p) t)) ts. *)
 Proof.
   inversion Hde; subst.
   - exfalso. specialize (H0 _ Hin).
@@ -1172,9 +1170,7 @@ Proof.
   destruct (in_dec predsym_eq_dec p (map pn_sym ps)).
   - rewrite in_map_iff in i. destruct i as [pn_def [Hpeq Hin]].
     apply dec_inv_fpred_in with(pn_def:=pn_def) in Hde; auto.
-    destruct_all.
-    revert H0 H1. rewrite !Forall_forall; intros.
-    apply Dec_notin_t; auto.
+    apply Hde.
   - eapply dec_inv_fpred_notin. apply Hde. auto.
 Qed.
 

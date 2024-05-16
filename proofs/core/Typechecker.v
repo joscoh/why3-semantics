@@ -1019,8 +1019,9 @@ Fixpoint check_decrease_fun (fs: list fn) (ps: list pn)
       | Tvar x => 
         (x \in small) &&
         (l == map vty_var (s_params f)) &&
-        all (fun t => all (fun f => negb (funsym_in_tm (fn_sym f) t)) fs) ts &&
-        all (fun t => all (fun p => negb (predsym_in_tm (pn_sym p) t)) ps) ts 
+        all (check_decrease_fun fs ps small hd m vs) ts
+        (* all (fun t => all (fun f => negb (funsym_in_tm (fn_sym f) t)) fs) ts &&
+        all (fun t => all (fun p => negb (predsym_in_tm (pn_sym p) t)) ps) ts  *)
       | _ => false
       end 
     else 
@@ -1080,8 +1081,9 @@ with check_decrease_pred (fs: list fn) (ps: list pn)
       | Tvar x => 
         (x \in small) &&
         (l == map vty_var (s_params p)) &&
-        all (fun t => all (fun f => negb (funsym_in_tm (fn_sym f) t)) fs) ts &&
-        all (fun t => all (fun p => negb (predsym_in_tm (pn_sym p) t)) ps) ts 
+        all (check_decrease_fun fs ps small hd m vs) ts
+        (* all (fun t => all (fun f => negb (funsym_in_tm (fn_sym f) t)) fs) ts &&
+        all (fun t => all (fun p => negb (predsym_in_tm (pn_sym p) t)) ps) ts  *)
       | _ => false
       end 
     else 
@@ -1250,10 +1252,7 @@ Proof.
       - apply ReflectT. apply Dec_fun_notin=>//.
         by rewrite -Forall_forall.
       - false_triv_case Hnotfp.
-        (*Now, we have ruled out all cases for decrease_fun*)
-        + apply Hnotin. rewrite in_map_iff.
-          by exists f_decl.
-        + apply Hall2. by apply Forall_forall.   
+        apply Hall2. by apply Forall_forall.
     }
     (*Now we handle the recursive case*)
     move: Hhas => /hasP Hhas.
@@ -1292,39 +1291,32 @@ Proof.
     case: (v \in small) /inP => Hinv/=; last first.
     {
       false_triv_case Hnotfp.
-      rewrite nth_eq in H5. 
+      rewrite nth_eq in H9. 
       rewrite -(Hntheq f_decl H2 erefl) in Hntht.
-      rewrite H5 in Hntht. by injection Hntht => Hxy; subst.
+      rewrite H9 in Hntht. by injection Hntht => Hxy; subst.
     }
     case: (tys == map vty_var (s_params f1)) /eqP => Htys/=; last
     by false_triv_case Hnotfp.
-    (*Hmm- this is annoying - do manually first*)
-    case: ((all (fun t : term => all (fun f : fn => ~~ funsym_in_tm (fn_sym f) t) fs) tms &&
-    all (fun t : term => all (fun p : pn => ~~ predsym_in_tm (pn_sym p) t) ps) tms))
-    /(andPP allP allP).
+    case: ((all (check_decrease_fun fs ps small hd m vs) tms)) 
+    /allP => Halldec.
     + (*The case where we actually say true*)
-      move=> [Hall1 Hall2].
       apply ReflectT.
       apply Dec_fun_in with(x:=v)(f_decl:=(nth fn_d fs (find (fun x => fn_sym x == f1) fs))) =>//.
       * apply /inP. apply mem_nth. by rewrite -has_find.
       * by rewrite nth_eq.
       * rewrite Forall_forall. move=> x /inP Hinx.
-        move: Hall1 => /(_ _ Hinx) /allP Hall1 f /inP Hinf.
-        by apply Hall1.
-      * rewrite Forall_forall. move=> x /inP Hinx.
-        move: Hall2 => /(_ _ Hinx) /allP Hall2 f /inP Hinf.
-        by apply Hall2.
+        move: Halldec => /(_ _ Hinx).
+        apply ForallT_In with (x:=x) in IHall; 
+        [| by apply term_eq_dec | by apply /inP ].
+        by move: IHall => /(_ small hd) [].
     + (*One final contradiction case*)
-      move=> /(andPP allP allP).
-      rewrite negb_and.
-      case: (all (fun x  => all (fun f : fn => ~~ funsym_in_tm (fn_sym f) x) fs) tms)
-      /allP =>//= [Hall1 Hnotall2 | Hnotall _];
-      false_triv_case Hnotfp. 
-      * move: Hnotall2 => /negP C1. apply C1. apply /allP.
-        move=> t Hint. apply /allP.
-        move=> p Hinp. rewrite Forall_forall in H12. by apply H12; apply /inP.
-      * apply Hnotall. move=> t Hint. apply /allP.
-        move=> f Hinf. rewrite Forall_forall in H11. by apply H11; apply /inP.
+      false_triv_case Hnotfp.
+      apply Halldec. 
+      move => y /inP Hiny.
+      move: H11; rewrite Forall_forall; move => /(_ y Hiny).
+      apply ForallT_In with (x:=y) in IHall => //; last
+        by apply term_eq_dec.
+      by move: IHall => /(_ small hd) [].
   - move=> tm1 v tm2 IH1 IH2 small hd.
     not_in_tm_case fs ps (Tlet tm1 v tm2).
     move => Hnotin.
@@ -1442,10 +1434,7 @@ Proof.
       - apply ReflectT. apply Dec_pred_notin=>//.
         by rewrite -Forall_forall.
       - false_triv_case Hnotfp.
-        (*Now, we have ruled out all cases for decrease_fun*)
-        + apply Hnotin. rewrite in_map_iff.
-          by exists p_decl.
-        + apply Hall2. by apply Forall_forall.   
+        apply Hall2. by apply Forall_forall.   
     }
     (*Now we handle the recursive case*)
     move: Hhas => /hasP Hhas.
@@ -1484,39 +1473,32 @@ Proof.
     case: (v \in small) /inP => Hinv/=; last first.
     {
       false_triv_case Hnotfp.
-      rewrite nth_eq in H5. 
+      rewrite nth_eq in H9. 
       rewrite -(Hntheq p_decl H2 erefl) in Hntht.
-      rewrite H5 in Hntht. by injection Hntht => Hxy; subst.
+      rewrite H9 in Hntht. by injection Hntht => Hxy; subst.
     }
     case: (tys == map vty_var (s_params p1)) /eqP => Htys/=; last
     by false_triv_case Hnotfp.
-    (*Hmm- this is annoying - do manually first*)
-    case: ((all (fun t : term => all (fun f : fn => ~~ funsym_in_tm (fn_sym f) t) fs) tms &&
-    all (fun t : term => all (fun p : pn => ~~ predsym_in_tm (pn_sym p) t) ps) tms))
-    /(andPP allP allP).
+    case: ((all (check_decrease_fun fs ps small hd m vs) tms)) 
+    /allP => Halldec.
     + (*The case where we actually say true*)
-      move=> [Hall1 Hall2].
       apply ReflectT.
       apply Dec_pred_in with(x:=v)(p_decl:=(nth pn_d ps (find (fun x => pn_sym x == p1) ps))) =>//.
       * apply /inP. apply mem_nth. by rewrite -has_find.
       * by rewrite nth_eq.
       * rewrite Forall_forall. move=> x /inP Hinx.
-        move: Hall1 => /(_ _ Hinx) /allP Hall1 f /inP Hinf.
-        by apply Hall1.
-      * rewrite Forall_forall. move=> x /inP Hinx.
-        move: Hall2 => /(_ _ Hinx) /allP Hall2 f /inP Hinf.
-        by apply Hall2.
+        move: Halldec => /(_ _ Hinx).
+        apply ForallT_In with (x:=x) in IHall; 
+        [| by apply term_eq_dec | by apply /inP ].
+        by move: IHall => /(_ small hd) [].
     + (*One final contradiction case*)
-      move=> /(andPP allP allP).
-      rewrite negb_and.
-      case: (all (fun x => all (fun f : fn => ~~ funsym_in_tm (fn_sym f) x) fs) tms)
-      /allP =>//= [Hall1 Hnotall2 | Hnotall _];
-      false_triv_case Hnotfp. 
-      * move: Hnotall2 => /negP C1. apply C1. apply /allP.
-        move=> t Hint. apply /allP.
-        move=> p Hinp. rewrite Forall_forall in H12. by apply H12; apply /inP.
-      * apply Hnotall. move=> t Hint. apply /allP.
-        move=> f Hinf. rewrite Forall_forall in H11. by apply H11; apply /inP.
+      false_triv_case Hnotfp.
+      apply Halldec. 
+      move => y /inP Hiny.
+      move: H11; rewrite Forall_forall; move => /(_ y Hiny).
+      apply ForallT_In with (x:=y) in IHall => //; last
+        by apply term_eq_dec.
+      by move: IHall => /(_ small hd) [].
   - move=> q v f IH small hd.
     not_in_fmla_case fs ps (Fquant q v f) => Hnotin.
     case: (IH (remove vsymbol_eq_dec v small) (upd_option hd v)) =>Hdec;
