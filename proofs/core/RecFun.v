@@ -1003,7 +1003,209 @@ induction l; simpl.
 Qed.
 
 (*Case analysis for [tmatch]*)
+(*TODO: move to typechecking*)
+Definition check_var_case hd small v :=
+  match hd with
+  | Some v1 => vsymbol_eqb v v1
+  | None => false
+  end || in_bool vsymbol_eq_dec v small.
+
+Lemma check_var_case_spec hd small v:
+  reflect (var_case hd small v) (check_var_case hd small v) .
+Proof.
+  unfold check_var_case, var_case.
+  apply ssrbool.orPP; [| apply in_bool_spec].
+  destruct hd.
+  - destruct (vsymbol_eqb_spec v v0); subst.
+    + apply ReflectT; reflexivity.
+    + apply ReflectF; intro C; inversion C; subst; contradiction.
+  - apply ReflectF; discriminate.
+Qed.
+
+Definition check_fun_case hd small tms :=
+  existsb (fun t => 
+    match t with
+    | Tvar v => check_var_case hd small v
+    | _ => false
+    end) tms.
+
+(*TODO: is there a more direct way to prove this?*)
+Lemma exists_in_iff {A: Type} (P: A -> Prop) (l: list A) (d: A) :
+  (exists x, In x l /\ P x) <-> (exists j, j < length l /\ P (nth j l d)).
+Proof.
+  induction l; simpl.
+  - split; intros; destruct_all; auto; try contradiction; lia.
+  - split.
+    + intros [x [[Hax | Hinx] Hpx]]; subst.
+      * exists 0. split; auto. lia.
+      * assert (Hex: exists x, In x l /\ P x) by (exists x; auto).
+        apply IHl in Hex. destruct Hex as [j [Hj Hpj]].
+        exists (S j). split; auto. lia.
+    + intros [j [Hj Hp]].
+      destruct j as [| j'].
+      * exists a. auto.
+      * exists (nth j' l d). split; auto. right. apply nth_In. lia.
+Qed.
+
+
+Lemma check_fun_case_spec hd small tms:
+  reflect (exists j, j < length tms /\ exists v, nth j tms tm_d = Tvar v /\ var_case hd small v)
+    (check_fun_case hd small tms).
+Proof.
+  unfold check_fun_case.
+  eapply ssrbool.equivP with (P:= exists x, In x tms /\ (fun x => exists v, x = Tvar v /\ var_case hd small v) x).
+  apply has_existsP.
+  - intros x Hinx.
+    destruct x; try solve[apply ReflectF; intros [? [Hv ?]]; discriminate].
+    destruct (check_var_case_spec hd small v).
+    + apply ReflectT. exists v. auto.
+    + apply ReflectF. intros [v' [Hv' Hvar]]; inversion Hv'; subst; contradiction.
+  - apply exists_in_iff with (P:= (fun x => exists v, x = Tvar v /\ var_case hd small v)).
+Qed.
+
+(*Not strong enough, don't want exists in Prop*)
+
+Definition iff_set (A1 A2: Type) : Type :=
+  (A1 -> A2) * (A2 -> A1).
+
+Lemma existsb_exists_strong {A: Type} (P: A -> bool) (l: list A):
+  iff_set (existsb P l) {x | In x l /\ P x}.
+Proof.
+  unfold iff_set.
+  induction l as [| h t IH]; simpl.
+  - split; try discriminate. intros [x [[] ?]].
+  - split.
+    + destruct (P h) eqn : Hph; simpl.
+      * intros _. apply (exist _ h). auto.
+      * intros Hex. destruct ((fst IH) Hex) as [x [Hinx Hpx]].
+        apply (exist _ x). auto.
+    + intros [x [Hhx Hpx]].
+      (*Convoluted case analysis because we don't have decidable equality*)
+      destruct (P h) eqn : Hph; auto.
+      assert (In x t). {
+        destruct Hhx; subst; auto. rewrite Hph in Hpx; discriminate.
+      }
+      simpl. apply (snd IH). apply (exist _ x); auto.
+Qed.
+
+(*For this, we need decidable equality (or P: A -> bool)*)
+Lemma exists_in_iff_strong {A: Type} (eq_dec: forall (x y: A), {x = y} + {x <> y}) 
+  (P: A -> Prop) (l: list A) (d: A) :
+  iff_set {x | In x l /\ P x} {j | j < length l /\ P (nth j l d)}.
+Proof.
+  unfold iff_set.
+  induction l; simpl.
+  - split.
+    + intros [x [[] ?]].
+    + intros [x [Hj ?]]; lia.
+  - split.
+    + intros [x [Hax Hpx]].
+      destruct (eq_dec a x).
+      * subst. apply (exist _ 0). split; auto. lia.
+      * assert (In x l). { destruct Hax; subst; auto; contradiction. }
+        assert (Hex: {x : A | In x l /\ P x}). {
+          apply (exist _ x); auto. }
+        destruct ((fst IHl) Hex) as [j [Hj Hnth]].
+        apply (exist _  (S j)). split; auto. lia.
+    + intros [j [Hj Hp]].
+      destruct j.
+      * apply (exist _ a). auto.
+      * assert (Hex: {j : nat | j < Datatypes.length l /\ P (nth j l d)}). {
+          apply (exist _ j); split; auto; lia. }
+        destruct ((snd IHl) Hex) as [x [Hinx Hpx]].
+        apply (exist _ x); auto.
+Qed.
+
+Lemma iff_iff_set (P1 P2: Prop):
+  (P1 <-> P2) ->
+  iff_set P1 P2.
+Proof.
+  unfold iff_set. intros Hiff.
+  split; apply Hiff.
+Qed.
+
+Lemma iff_set_trans (A B C: Type):
+  iff_set A B ->
+  iff_set B C ->
+  iff_set A C.
+Proof.
+  unfold iff_set.
+  intros [Hab1 Hab2] [Hbc1 Hbc2]. split; auto.
+Qed.
+
+Lemma iff_set_true (A: Type):
+  iff_set true A ->
+  A.
+Proof.
+  unfold iff_set. intros [Hta Hat]; auto.
+Qed.
+
+Lemma iff_set_false (A: Type):
+  iff_set false A ->
+  (A -> False).
+Proof.
+  unfold iff_set. intros [Hfa Haf]; auto.
+Qed.
+
+
+Lemma check_fun_case_exists hd small tms: 
+  iff_set (check_fun_case hd small tms)
+  {j : nat * vsymbol | (fst j) < length tms /\ nth (fst j) tms tm_d = Tvar (snd j) /\ var_case hd small (snd j)}.
+Proof.
+  unfold check_fun_case.
+  eapply iff_set_trans.
+  apply existsb_exists_strong.
+  eapply iff_set_trans.
+  apply exists_in_iff_strong with (d:=tm_d). apply term_eq_dec.
+  unfold iff_set.
+  split.
+  - intros [j [Hj Hnth]].
+    destruct (nth j tms tm_d) eqn : Hjth; try discriminate.
+    apply (exist _ (j, v)); simpl. repeat split; auto.
+    destruct (check_var_case_spec hd small v); auto. discriminate.
+  - intros [j [Hj [Hnth Hvar]]].
+    destruct j as [j v]; simpl in *.
+    apply (exist _ j). split; auto.
+    rewrite Hnth.
+    destruct (check_var_case_spec hd small v); auto.
+Qed.
+
 Definition tmatch_case (tm: term) (hd: option vsymbol) (small: list vsymbol) :
+  Either (Either {mvar: vsymbol | tm = Tvar mvar /\ var_case hd small mvar}
+    { x: funsym * list vty * list term * nat * vsymbol |
+        let c := fst (fst (fst (fst x))) in
+        let l := snd (fst (fst (fst x))) in
+        let tms := snd (fst (fst x)) in
+        let j := snd (fst x) in
+        let var := snd x in
+        tm = Tfun c l tms /\
+        j < length tms /\
+        nth j tms tm_d = Tvar var /\
+        var_case hd small var
+    }) 
+    (match tm with
+        | Tvar var => ~ var_case hd small var
+        | Tfun f l tms => forall j, j < length tms ->
+          forall v, nth j tms tm_d = Tvar v ->
+          ~ var_case hd small v
+        | _ => True
+      end).
+Proof.
+  destruct tm; try solve[apply Right, I].
+  - destruct (check_var_case_spec hd small v).
+    + left. left. apply (exist _ v). auto.
+    + right. auto.
+  - pose proof (check_fun_case_exists hd small l0) as Hcase.
+    destruct (check_fun_case hd small l0).
+    + apply iff_set_true in Hcase.
+      left. right. destruct Hcase as [[j v] [Hj [Hjth Hvar]]]; simpl in *.
+      apply (exist _ (f, l, l0, j, v)). auto.
+    + right. intros j Hj v Hv Hvar.
+      apply (iff_set_false {j : nat * vsymbol | _}) in Hcase; auto.
+      apply (exist _ (j, v)). auto.
+Qed.
+
+(*Definition tmatch_case (tm: term) (hd: option vsymbol) (small: list vsymbol) :
   Either {mvar: vsymbol | tm = Tvar mvar /\
     (hd = Some mvar \/ In mvar small)}
     (~ exists var, tm = Tvar var /\ (hd = Some var \/ In var small)).
@@ -1020,7 +1222,7 @@ Proof.
     + apply Left. apply (exist _ v). split; auto.
     + apply Right. intros [var [Ht [Hvar | Hinvar]]]; try inversion Hvar; subst; 
       inversion Ht; subst; contradiction.
-Qed.
+Qed.*)
 
 End Cases.
 
@@ -1268,7 +1470,7 @@ Proof.
 Qed.
 
 Lemma dec_inv_tmatch_var {fs' ps' tm small hd mvar v pats}
-  (Htm: tm = Tvar mvar /\ (hd = Some mvar \/ In mvar small)):
+  (Htm: tm = Tvar mvar /\ var_case hd small mvar) :
   decrease_fun fs' ps' small hd m vs (Tmatch tm v pats) ->
   Forall
   (fun x : pattern * term =>
@@ -1289,7 +1491,8 @@ Proof.
     rewrite H4; auto.
   - destruct Htm as [Ht _]. inversion Ht; subst.
     rewrite Forall_forall. auto.
-  - exfalso. apply H7. exists mvar. auto.
+  - destruct Htm; discriminate.
+  - exfalso. destruct Htm; subst. contradiction.
 Qed.
 
 (*Proof identical*)
@@ -1315,17 +1518,26 @@ Proof.
     rewrite H4; auto.
   - destruct Htm as [Ht _]. inversion Ht; subst.
     rewrite Forall_forall. auto.
-  - exfalso. apply H7. exists mvar. auto.
+  - destruct Htm; discriminate.
+  - exfalso. destruct Htm; subst. contradiction.
 Qed.
 
+(*Constructor cases - TODO*)
+
 Lemma dec_inv_tmatch_notvar {fs' ps' tm small hd v pats}
-  (Htm: ~ exists var, tm = Tvar var /\ (hd = Some var \/ In var small)):
+  (Htm: (match tm with
+        | Tvar var => ~ var_case hd small var
+        | Tfun f l tms => forall j, j < length tms ->
+          forall v, nth j tms tm_d = Tvar v ->
+          ~ var_case hd small v
+        | _ => True
+      end)):
   decrease_fun fs' ps' small hd m vs (Tmatch tm v pats) ->
   Forall (fun x => decrease_fun fs' ps' 
     (remove_all vsymbol_eq_dec (pat_fv (fst x)) small) 
     ((upd_option_iter hd (pat_fv (fst x)))) m vs (snd x)) pats.
 Proof.
-  intros. inversion H; subst.
+  intros. inversion H; subst; try contradiction.
   - rewrite Forall_forall. intros.
     apply Dec_notin_t; intros y Hiny;
     [apply H0 in Hiny | apply H1 in Hiny];
@@ -1333,19 +1545,25 @@ Proof.
     rewrite existsb_false in H4;
     rewrite Forall_forall in H4;
     rewrite H4; auto.
-  - exfalso. apply Htm. exists mvar. auto.
+  - exfalso. apply (Htm j Hj mvar); auto.
   - rewrite Forall_forall. auto.
 Qed.
 
 (*Proof also identical*)
 Lemma dec_inv_fmatch_notvar {fs' ps' tm small hd v pats}
-  (Htm: ~ exists var, tm = Tvar var /\ (hd = Some var \/ In var small)):
+  (Htm: (match tm with
+        | Tvar var => ~ var_case hd small var
+        | Tfun f l tms => forall j, j < length tms ->
+          forall v, nth j tms tm_d = Tvar v ->
+          ~ var_case hd small v
+        | _ => True
+      end)):
   decrease_pred fs' ps' small hd m vs (Fmatch tm v pats) ->
   Forall (fun x => decrease_pred fs' ps' 
     (remove_all vsymbol_eq_dec (pat_fv (fst x)) small) 
     ((upd_option_iter hd (pat_fv (fst x)))) m vs (snd x)) pats.
 Proof.
-  intros. inversion H; subst.
+  intros. inversion H; subst; try contradiction.
   - rewrite Forall_forall. intros.
     apply Dec_notin_f; intros y Hiny;
     [apply H0 in Hiny | apply H1 in Hiny];
@@ -1353,7 +1571,7 @@ Proof.
     rewrite existsb_false in H4;
     rewrite Forall_forall in H4;
     rewrite H4; auto.
-  - exfalso. apply Htm. exists mvar. auto.
+  - exfalso. apply (Htm j Hj mvar); auto.
   - rewrite Forall_forall. auto.
 Qed.
 
@@ -3264,11 +3482,80 @@ bool)
     (*We have 2 different cases; we need to have 2
     different inner recursive functions, 1 for each case*)
     match tmatch_case t hd small with
-    | Left z =>
+    | Left (Left z) =>
       let mvar : vsymbol := proj1_sig z in
       let tm_eq : t = Tvar mvar := proj1' (proj2_sig z) in
       let mvar_small : hd = Some mvar \/ In mvar small :=
         proj2' (proj2_sig z) in
+
+      let Hdec2 : Forall (fun x => decrease_fun fs ps
+        (union vsymbol_eq_dec (vsyms_in_m m vs (pat_constr_vars m vs (fst x)))
+          (remove_all vsymbol_eq_dec (pat_fv (fst x)) small))
+        (upd_option_iter hd (pat_fv (fst x))) m vs (snd x)) pats :=
+        dec_inv_tmatch_var (proj2_sig z) Hdec' in
+       
+
+      (*Can't make [match_rep] a separate function or else Coq
+      cannot tell structurally decreasing. So we inline it*)
+      (*Unfortunately, we need a different version for each
+        pattern match*)
+      let fix match_rep (pats: list (pattern * term)) 
+        (Hall: Forall (fun x => term_has_type gamma (snd x) ty) pats)
+        (Hpats: Forall (fun x => pattern_has_type gamma (fst x) ty1) pats)
+        (Hdec: Forall (fun x => decrease_fun fs ps
+        (union vsymbol_eq_dec (vsyms_in_m m vs (pat_constr_vars m vs (fst x)))
+          (remove_all vsymbol_eq_dec (pat_fv (fst x)) small))
+        (upd_option_iter hd (pat_fv (fst x))) m vs (snd x)) pats) :
+        domain (val ty) :=
+      match pats as l' return 
+        Forall (fun x => term_has_type gamma (snd x) ty) l' ->
+        Forall (fun x => pattern_has_type gamma (fst x) ty1) l' ->
+        Forall (fun x => decrease_fun fs ps
+        (union vsymbol_eq_dec (vsyms_in_m m vs (pat_constr_vars m vs (fst x)))
+          (remove_all vsymbol_eq_dec (pat_fv (fst x)) small))
+        (upd_option_iter hd (pat_fv (fst x))) m vs (snd x)) l' ->
+        domain (val ty) with
+      | (p , dat) :: ptl => fun Hall Hpats Hdec =>
+        (*We need info about [match_val_single] to know how the
+          valuation changes*)
+        match (match_val_single gamma_valid pd vt ty1 p (Forall_inv Hpats) dom_t) as o
+          return (match_val_single gamma_valid pd vt ty1 p (Forall_inv Hpats) dom_t) = o ->
+          domain (val ty) with
+        | Some l => fun Hmatch => 
+          proj1_sig (term_rep_aux (extend_val_with_list pd vt v l) dat ty
+          _ _ (Forall_inv Hall) (Forall_inv Hdec) 
+          (small_match_lemma Hmatch Ht1 (proj2_sig z) (dom_t_pf _ (proj1' (proj2_sig z))) Hsmall Hhd)
+          (match_val_single_upd_option hd Hmatch Hhd))
+        | None => fun _ => match_rep ptl (Forall_inv_tail Hall)
+          (Forall_inv_tail Hpats) (Forall_inv_tail Hdec)
+        end eq_refl
+      | _ =>  fun _ _ _ =>
+        match domain_ne pd (val ty) with
+        | DE x => x
+        end
+      end Hall Hpats Hdec in
+
+       (*For some reason, Coq needs the typing annotation here*)
+       exist (fun d => forall x Heqx, d = 
+       dom_cast (dom_aux pd)
+       (f_equal (fun x0 : vty => val x0)
+          (eq_sym (ty_var_inv (term_has_type_cast Heqx Hty')))) 
+       (var_to_dom pd vt v x)) (match_rep pats Hall Hpats Hdec2)
+         (fun x Heqx => False_rect _ (tmatch_not_var Heqx))
+
+    (*Constr case*)
+    | Left (Right z) =>
+      (*This is really annoying but destructing tuple means Coq can't unify*)
+      let c := fst (fst (fst (fst (proj1_sig z)))) in
+      let l := snd (fst (fst (fst (proj1_sig z)))) in
+      let tms := snd (fst (fst (proj1_sig z))) in
+      let j := snd (fst (proj1_sig z)) in
+      let var := snd (proj1_sig z) in
+      let tm_eq : t = Tfun c l tms := proj1' (proj2_sig z) in
+      let Hj : j < length tms := proj1' (proj2' (proj2_sig z)) in
+      let Hnth : nth j tms tm_d = Tvar var := proj1' (proj2' (proj2' (proj2_sig z))) in
+      let Hvarsmall : Typing.var_case hd small var := proj2' (proj2' (proj2' (proj2_sig z))) in
+      (*START*)
 
       let Hdec2 : Forall (fun x => decrease_fun fs ps
         (union vsymbol_eq_dec (vsyms_in_m m vs (pat_constr_vars m vs (fst x)))
