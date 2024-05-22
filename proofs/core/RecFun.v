@@ -1719,6 +1719,13 @@ Proof.
 (*Needs to be transparent for termination*)
 Defined.
 
+Definition term_rep_aux_ret (v: val_vars pd vt) {tm : term} {t: vty}
+  (Hty: term_has_type gamma tm t) (d: domain (val t)) : Prop :=
+  (forall x (Heqx: tm = Tvar x),
+  d = dom_cast _ (f_equal (fun x => val x) 
+    (eq_sym (ty_var_inv (term_has_type_cast Heqx Hty))))
+    (var_to_dom _ vt v x)).
+
 (*The function we need*)
 Fixpoint get_arg_list_recfun {v : val_vars pd vt} {hd d} (s: fpsym)
   {vs': list vty} {ts: list term}
@@ -1738,10 +1745,7 @@ Fixpoint get_arg_list_recfun {v : val_vars pd vt} {hd d} (s: fpsym)
       (Hhd: forall h, hd = Some h ->
       vty_in_m m vs (snd h) /\
       hide_ty (v h) = d),
-      {d: domain (val ty) | forall x (Heqx: t = Tvar x),
-          d = dom_cast _ (f_equal (fun x => val x) 
-            (eq_sym (ty_var_inv (term_has_type_cast Heqx Hty))))
-            (var_to_dom _ vt v x)})
+      {d: domain (val ty) | term_rep_aux_ret v Hty d})
   (Hparamslen: length vs' = length (s_params s))
   {struct ts}:
   forall args
@@ -3096,6 +3100,8 @@ Notation d := (hide_ty
 (*y is the vsymbol we must be syntactically decreasing on*)
 Notation y := (nth (sn_idx f1) (sn_args f1) vs_d).
 
+
+
 (*The body of [term_rep_aux]*)
 Definition term_rep_aux_body 
 (term_rep_aux: forall (v: val_vars pd vt) 
@@ -3108,10 +3114,7 @@ Definition term_rep_aux_body
   (Hhd: forall h, hd = Some h ->
     vty_in_m m vs (snd h) /\
     hide_ty (v h) = d),
-  {d: domain (val ty) | forall x (Heqx: t = Tvar x),
-    d = dom_cast _ (f_equal (fun x => val x) 
-      (eq_sym (ty_var_inv (term_has_type_cast Heqx Hty))))
-      (var_to_dom _ vt v x)})
+  {d: domain (val ty) | term_rep_aux_ret v Hty d})
 (formula_rep_aux: forall (v: val_vars pd vt) 
 (f: formula) (small: list vsymbol) (hd: option vsymbol)
 (Hval: formula_typed gamma f)
@@ -3136,16 +3139,11 @@ bool)
 (Hhd: forall h, hd = Some h ->
   vty_in_m m vs (snd h) /\
   hide_ty (v h) = d):
-{d: domain (val ty) | forall x (Heqx: t = Tvar x),
-  d = dom_cast _ (f_equal (fun x => val x) 
-    (eq_sym (ty_var_inv (term_has_type_cast Heqx Hty))))
-    (var_to_dom _ vt v x)} :=
+{d: domain (val ty) | term_rep_aux_ret v Hty d} :=
   match t as tm return forall (Hty': term_has_type gamma tm ty),
   decrease_fun fs ps small hd m vs tm -> 
-  {d: domain (val ty) | forall x (Heqx: tm = Tvar x),
-  d = dom_cast _ (f_equal (fun x => val x) 
-    (eq_sym (ty_var_inv (term_has_type_cast Heqx Hty'))))
-    (var_to_dom _ vt v x)} with
+  {d: domain (val ty) | term_rep_aux_ret v Hty' d
+} with
 (*Some cases are identical to [term_rep]*)
 | Tconst (ConstInt z) => fun Hty' _ =>
   let Htyeq : vty_int = ty :=
