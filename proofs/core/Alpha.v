@@ -2415,7 +2415,7 @@ Proof.
     inversion H1; subst.
     rewrite fold_is_true in H3.
     rewrite all2_forall with(d1:=(Pwild, tm_d)) (d2:=(Pwild, tm_d)) in H3; auto.
-    constructor; [apply H8 | apply (H _ _ _ H2); auto | | |
+    apply T_Match; [ apply (H _ _ _ H2); auto | | |
     destruct l; destruct ps; auto; inversion H5].
     + intros. destruct (In_nth _ _ (Pwild, tm_d) H4) as [n [Hn Hx]]; 
       subst.
@@ -2423,7 +2423,7 @@ Proof.
       bool_hyps. rename H3 into Heqp.
       apply alpha_equiv_p_type_full with(ty:=v0) in Heqp; auto.
       apply alpha_equiv_p_fv_len_full; auto.
-      apply H11. wf_tac.
+      apply H10. wf_tac.
     + intros. destruct (In_nth _ _ (Pwild, tm_d) H4) as [n [Hn Hx]]; 
       subst.
       specialize (H3 n ltac:(lia)).
@@ -2441,7 +2441,7 @@ Proof.
         rewrite map_nth_inbound with(d2:=vs_d); auto.
         rewrite mk_fun_vars_eq_full; auto.
         wf_tac.
-      * apply H13. wf_tac.
+      * apply H12. wf_tac.
   - (*Teps*)
     alpha_case t1 Heq.
     bool_hyps; simpl_sumbool.
@@ -2518,7 +2518,7 @@ Proof.
       bool_hyps. rename H3 into Heqp.
       apply alpha_equiv_p_type_full with(ty:=v0) in Heqp; auto.
       apply alpha_equiv_p_fv_len_full; auto.
-      apply H11. wf_tac.
+      apply H10. wf_tac.
     + intros. 
       destruct (In_nth _ _ (Pwild, Ftrue) H4) as [n [Hn Hx]]; subst.
       specialize (H3 n ltac:(lia)).
@@ -2536,7 +2536,7 @@ Proof.
         rewrite map_nth_inbound with(d2:=vs_d); auto.
         rewrite mk_fun_vars_eq_full; auto.
         wf_tac.
-      * apply H12. wf_tac.
+      * apply H11. wf_tac.
 Qed. 
 
 Definition alpha_equiv_t_type t := proj_tm alpha_equiv_type t.

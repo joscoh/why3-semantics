@@ -447,7 +447,7 @@ Fixpoint typecheck_term (s: context) (t: term) : option vty :=
     | None => None
     end else None
   | Tmatch tm ty1 ps =>
-    if is_vty_adt s ty1 && (typecheck_term s tm == Some ty1) &&
+    if (*is_vty_adt s ty1 &&*) (typecheck_term s tm == Some ty1) &&
       all (fun x => typecheck_pattern s (fst x) ty1) ps
     then 
       match ps with
@@ -521,7 +521,7 @@ with typecheck_formula (s: context) (f: formula) : bool :=
     (typecheck_term s t1 == Some ty) &&
     (typecheck_term s t2 == Some ty)
   | Fmatch tm ty ps =>
-    is_vty_adt s ty &&
+    (*is_vty_adt s ty &&*)
     (typecheck_term s tm == Some ty) &&
     all (fun x => typecheck_pattern s (fst x) ty) ps &&
     (~~ (null ps)) &&
@@ -642,10 +642,10 @@ Proof.
     + case: (None == Some v) /eqP=>//= _. reflF.
       move: H5 => /(IHt1 v). by rewrite Ht1'.
   - move=> tm ty ps IHtm HallT v.
-    case Hisadt: (is_vty_adt s ty) => [t |]/=; last first.
+    (*case Hisadt: (is_vty_adt s ty) => [t |]/=; last first.
       reflF. rewrite <- is_vty_adt_none_iff in Hisadt.
       case: H2 => [a [m [args [m_in [a_in Hty]]]]].
-      apply (Hisadt a m args m_in a_in Hty).
+      apply (Hisadt a m args m_in a_in Hty).*)
     case: (typecheck_term s tm == Some ty) /(IHtm ty)=> Htm/=; last by reflF.
     (*Here things get trickier because terms and patterns are not
       eqTypes*)
@@ -665,7 +665,7 @@ Proof.
     + case Htm1': (typecheck_term s tm1) => [ty2 |]; last first.
         case: (None == Some v) /eqP=>// _. reflF.
         have: typecheck_term s tm1 == Some v. 
-        apply /(ForallT_hd _ _ _ HallT). apply H7. by left.
+        apply /(ForallT_hd _ _ _ HallT). apply H6. by left.
         by rewrite Htm1'.
       rewrite eq_refl/=.
       have Htm1: term_has_type s tm1 ty2 by
@@ -709,23 +709,19 @@ Proof.
       * move=> /elimT /(_ isT) Hptl.
         case: (Some ty2 == Some v) /eqP => [[] <-| Hneq].
         -- reflT=>//.
-          ++ move: Hisadt. case: t => [[m a] vs] Hisadt.
-            apply is_vty_adt_some in Hisadt.
-            case: Hisadt => [Hty [a_in m_in]].
-            exists a. exists m. by exists vs. 
-          ++ move=> x [<-// | Hinx]. by apply Hptl.
+          move=> x [<-// | Hinx]. by apply Hptl.
         -- reflF. have /eqP : typecheck_term s tm1 == Some v by 
-            apply /(ForallT_hd _ _ _ HallT); apply H7; left.
+            apply /(ForallT_hd _ _ _ HallT); apply H6; left.
           by rewrite Htm1'.
       * move=> /elimF /(_ erefl) Hnotall.
         case: (None == Some v) /eqP=>// _. reflF.
         apply Hnotall. move=> x Hinx.
         have->:ty2 = v. {
           have /eqP: typecheck_term s tm1 == Some v by
-            apply /(ForallT_hd _ _ _ HallT); apply H7; left.
+            apply /(ForallT_hd _ _ _ HallT); apply H6; left.
           by rewrite Htm1' =>/= [[]].
         }
-        by apply H7; right.
+        by apply H6; right.
   - move=> f v IHf ty2.
     case: (typecheck_formula s f) /IHf => Hval; last by reflF.
     case: (typecheck_type s (snd v)) /typecheck_type_correct => /=Hty1;
@@ -785,35 +781,31 @@ Proof.
   - (*The difficult case: patterns (easier than terms because
       we don't need to determine the type of the inner patterns)*)
     move=> tm ty ps Htm HallT.
-    case Hisadt: (is_vty_adt s ty) => [t |]/=; last first.
+    (*case Hisadt: (is_vty_adt s ty) => [t |]/=; last first.
       reflF. rewrite <- is_vty_adt_none_iff in Hisadt.
       case: H2 => [a [m [args [m_in [a_in Hty]]]]].
-      apply (Hisadt a m args m_in a_in Hty).
+      apply (Hisadt a m args m_in a_in Hty).*)
     case: (typecheck_term s tm == Some ty) /Htm => Htm /=; last by reflF.
     have Hallt: (forall x, In x ps -> reflect (pattern_has_type s x.1 ty)
       (typecheck_pattern s x.1 ty)) by move=> x _; apply typecheck_pattern_correct.
     case: (all (fun x : pattern * formula => typecheck_pattern s x.1 ty) ps)
       /(forallb_ForallP _ _ _ Hallt) => Hallps/=; last by
       (reflF; rewrite Forall_forall in Hallps).
-    case Hnull: (null ps) =>/=. reflF. by rewrite Hnull in H7.
+    case Hnull: (null ps) =>/=. reflF. by rewrite Hnull in H6.
     apply iff_reflect. split.
     + move=> Hmatch. inversion Hmatch; subst.
-      move: HallT H6. clear. elim: ps => [// | [p1 f1] pt /= IH HallT Hall].
+      move: HallT H5. clear. elim: ps => [// | [p1 f1] pt /= IH HallT Hall].
       apply /andP; split.
       * apply /(ForallT_hd _ _ _ HallT). by apply (Hall (p1, f1)); left. 
       * apply IH=>//. by inversion HallT. move=> x Hinx.
         by apply Hall; right.
     + move=> Hcheck. rewrite Forall_forall in Hallps. 
       constructor=>//; last by rewrite Hnull.
-      * move: Hisadt. case: t => [[m a] vs] Hisadt.
-        apply is_vty_adt_some in Hisadt.
-        case: Hisadt => [Hty [a_in m_in]].
-        exists a. exists m. by exists vs.
-      *  move: HallT Hcheck. clear. 
-        elim: ps => [// | [p1 f1] ptl /= IH HallT /andP[Hf1 Hcheck]].
-        inversion HallT; subst.
-        move=> x [Hx | Hinx]; subst=>//.
-        by apply /H1. by apply IH.
+      move: HallT Hcheck. clear. 
+      elim: ps => [// | [p1 f1] ptl /= IH HallT /andP[Hf1 Hcheck]].
+      inversion HallT; subst.
+      move=> x [Hx | Hinx]; subst=>//.
+      by apply /H1. by apply IH.
 Qed.
 
 (*Now a few easy corollaries*)
@@ -1030,16 +1022,16 @@ Fixpoint check_decrease_fun (fs: list fn) (ps: list pn)
   (*Other hard cases - pattern matches*)
   | Tmatch (Tvar mvar) v pats =>
     if ((hd == Some mvar) || (mvar \in small)) then 
-      match vty_m_adt m vs (snd mvar) with
-      | Some _ =>
+      (*match vty_m_adt m vs (snd mvar) with
+      | Some _ =>*)
           all (fun x =>
           check_decrease_fun fs ps
           (union vsymbol_eq_dec (vsyms_in_m m vs (pat_constr_vars m vs (fst x))) 
           (remove_all vsymbol_eq_dec (pat_fv (fst x)) 
           small)) (upd_option_iter hd (pat_fv (fst x))) m vs (snd x)
           ) pats
-      | None => false
-      end
+      (*| None => false
+      end*)
     (*Non-smaller cases*)
     else 
       all (fun x =>
@@ -1092,16 +1084,16 @@ with check_decrease_pred (fs: list fn) (ps: list pn)
    (*Other hard cases - pattern matches*)
    | Fmatch (Tvar mvar) v pats =>
     if ((hd == Some mvar) || (mvar \in small)) then 
-      match vty_m_adt m vs (snd mvar) with
-      | Some _ =>
+      (*match vty_m_adt m vs (snd mvar) with
+      | Some _ =>*)
           all (fun x =>
           check_decrease_pred fs ps
           (union vsymbol_eq_dec (vsyms_in_m m vs (pat_constr_vars m vs (fst x))) 
           (remove_all vsymbol_eq_dec (pat_fv (fst x)) 
           small)) (upd_option_iter hd (pat_fv (fst x))) m vs (snd x)
           ) pats
-      | None => false
-      end
+      (*| None => false
+      end*)
     (*Non-smaller cases*)
     else 
       all (fun x =>
@@ -1369,20 +1361,20 @@ Proof.
         last first.
         {
           false_triv_case Hnotin.
-          apply Hmvar. by case: H2 => Hcon; [left; apply /eqP | right; apply /inP].
+          apply Hmvar. by case: H5 => Hcon; [left; apply /eqP | right; apply /inP].
         }
       apply ReflectT. apply Dec_tmatch_rec=>//.
       - move=> [var [[Heq] Hvar]]; subst.
         apply Hmvar. by case: Hvar => Hcon; [left; apply /eqP | right; apply /inP].
       - by apply Dec_notin_t.
     }
-    case Hadt: (vty_m_adt m vs (snd mvar)) => [a |]/=; last first.
+    (*case Hadt: (vty_m_adt m vs (snd mvar)) => [a |]/=; last first.
     {
       false_triv_case Hnotin. eapply vty_m_adt_none in Hadt.
       apply Hadt. apply H8. by [].
       apply H6. exists mvar. split=>//. 
       by case: Hmvar => Hcon; [left; apply /eqP | right; apply /inP].
-    }
+    }*)
     case: (Hall (fun x =>  (union vsymbol_eq_dec (vsyms_in_m m vs (pat_constr_vars m vs x.1))
     (remove_all vsymbol_eq_dec (pat_fv x.1) small)))
     (fun x => (upd_option_iter hd (pat_fv x.1))))=> Hallin;
@@ -1393,8 +1385,8 @@ Proof.
       by case: Hmvar => Hcon; [left; apply /eqP | right; apply /inP].
     }
     apply ReflectT.
-    apply vty_m_adt_some in Hadt. case: Hadt => [a_in mvar_eq].
-    apply Dec_tmatch with(a:=a)=>//.
+    (*apply vty_m_adt_some in Hadt. case: Hadt => [a_in mvar_eq].*)
+    apply Dec_tmatch => //.
     by case: Hmvar => Hcon; [left; apply /eqP | right; apply /inP].
   - move=> f v IH small hd.
     not_in_tm_case fs ps (Teps f v).
@@ -1569,20 +1561,20 @@ Proof.
         last first.
         {
           false_triv_case Hnotin.
-          apply Hmvar. by case: H2 => Hcon; [left; apply /eqP | right; apply /inP].
+          apply Hmvar. by case: H5 => Hcon; [left; apply /eqP | right; apply /inP].
         }
       apply ReflectT. apply Dec_fmatch_rec=>//.
       - move=> [var [[Heq] Hvar]]; subst.
         apply Hmvar. by case: Hvar => Hcon; [left; apply /eqP | right; apply /inP].
       - by apply Dec_notin_t.
     }
-    case Hadt: (vty_m_adt m vs (snd mvar)) => [a |]/=; last first.
+    (*case Hadt: (vty_m_adt m vs (snd mvar)) => [a |]/=; last first.
     {
       false_triv_case Hnotin. eapply vty_m_adt_none in Hadt.
       apply Hadt. apply H8. by [].
       apply H6. exists mvar. split=>//. 
       by case: Hmvar => Hcon; [left; apply /eqP | right; apply /inP].
-    }
+    }*)
     case: (Hall (fun x =>  (union vsymbol_eq_dec (vsyms_in_m m vs (pat_constr_vars m vs x.1))
     (remove_all vsymbol_eq_dec (pat_fv x.1) small)))
     (fun x => (upd_option_iter hd (pat_fv x.1))))=> Hallin;
@@ -1593,8 +1585,8 @@ Proof.
       by case: Hmvar => Hcon; [left; apply /eqP | right; apply /inP].
     }
     apply ReflectT.
-    apply vty_m_adt_some in Hadt. case: Hadt => [a_in mvar_eq].
-    apply Dec_fmatch with(a:=a)=>//.
+    (*apply vty_m_adt_some in Hadt. case: Hadt => [a_in mvar_eq].*)
+    apply Dec_fmatch =>//.
     by case: Hmvar => Hcon; [left; apply /eqP | right; apply /inP].
 Qed.
 

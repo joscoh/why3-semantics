@@ -94,9 +94,9 @@ Inductive term_has_type: context -> term -> vty -> Prop :=
     term_has_type s (Tif f t1 t2) ty
   | T_Match: forall s tm ty1 (ps: list (pattern * term)) ty2,
     (*A pattern match matches on an algebraic datatype*)
-    (exists a m args, mut_in_ctx m s /\
+    (*(exists a m args, mut_in_ctx m s /\
       adt_in_mut a m /\
-      ty1 = vty_cons (adt_name a) args) ->
+      ty1 = vty_cons (adt_name a) args) ->*)
     term_has_type s tm ty1 ->
     (forall x, In x ps -> pattern_has_type s (fst x) ty1) ->
     (forall x, In x ps -> term_has_type s (snd x) ty2) ->
@@ -149,9 +149,9 @@ with formula_typed: context -> formula -> Prop :=
     term_has_type s t2 ty ->
     formula_typed s (Feq ty t1 t2)
   | F_Match: forall s tm ty (ps: list (pattern * formula)),
-    (exists a m args, mut_in_ctx m s /\
+    (*(exists a m args, mut_in_ctx m s /\
     adt_in_mut a m /\
-    ty = vty_cons (adt_name a) args) ->
+    ty = vty_cons (adt_name a) args) ->*)
     term_has_type s tm ty ->
     (forall x, In x ps -> pattern_has_type s (fst x) ty) ->
     (forall x, In x ps -> formula_typed s (snd x)) ->
@@ -242,8 +242,8 @@ Lemma has_type_valid: forall gamma t ty,
 Proof.
   intros. induction H; try solve[constructor]; try assumption; auto.
   apply valid_type_ty_subst; assumption.
-  destruct ps. inversion H4.
-  apply (H3 p); auto. left; auto. 
+  destruct ps; try discriminate.
+  apply (H2 p); auto. left; auto. 
 Qed.
 
 (*Now we define valid contexts. Unlike the paper,
@@ -1116,12 +1116,12 @@ Inductive decrease_fun (fs: list fn) (ps: list pn) :
   (*Pattern match on var - this is how we add new, smaller variables*)
   | Dec_tmatch: forall (small: list vsymbol) (hd: option vsymbol) 
     (m: mut_adt)
-    (vs: list vty) (a: alg_datatype)
+    (vs: list vty) (*(a: alg_datatype)*)
     (mvar: vsymbol) (v: vty) (pats: list (pattern * term)),
     (*We can only match on a variable?*)
     (hd = Some mvar) \/ In mvar small ->
-    adt_in_mut a m ->
-    snd mvar = vty_cons (adt_name a) vs ->
+    (*adt_in_mut a m ->
+    snd mvar = vty_cons (adt_name a) vs ->*)
     (*Note: we allow repeated matches on the same variable*)
     (forall (x: pattern * term), In x pats ->
       decrease_fun fs ps 
@@ -1196,11 +1196,11 @@ with decrease_pred (fs: list fn) (ps: list pn) :
     decrease_pred fs ps small hd m vs (Fpred p l ts)
   (*Pattern match on var - this is how we add new, smaller variables*)
   | Dec_fmatch: forall (small: list vsymbol) (hd: option vsymbol) m vs
-    (a: alg_datatype)
+    (*(a: alg_datatype)*)
     (mvar: vsymbol) (v: vty) (pats: list (pattern * formula)),
     hd = Some mvar \/ In mvar small ->
-    adt_in_mut a m ->
-    snd mvar = vty_cons (adt_name a) vs ->
+    (*adt_in_mut a m ->
+    snd mvar = vty_cons (adt_name a) vs ->*)
     (forall x, In x pats -> decrease_pred fs ps 
       (*remove pat_fv's (bound), add back constr vars (smaller)*)
       (union vsymbol_eq_dec (vsyms_in_m m vs (pat_constr_vars m vs (fst x))) 
@@ -2216,13 +2216,9 @@ Proof.
       inversion H10; subst. constructor; auto.
   - (*Tmatch*)
     constructor; auto.
-    + destruct H4 as [a [m [args [m_in [a_in Hv]]]]]; subst.
-      exists a. exists m. exists args. split_all; auto.
-      revert m_in. apply mut_in_ctx_sublist; auto.
     + intros. eapply pattern_has_type_sublist; auto. auto. auto.
-    + clear -H0 H9. induction ps; simpl; intros; auto;
-      destruct H; subst;
-      inversion H0; subst; simpl in H9; auto.
+    + rewrite Forall_map, Forall_forall in H0.
+      auto.
   - (*Teps*)
     constructor; auto. revert H5. apply valid_type_sublist, Hsub.
   - (*Fpred*)
@@ -2239,14 +2235,8 @@ Proof.
     apply valid_type_sublist, Hsub.
   - (*Fmatch*)
     constructor; auto.
-    + destruct H4 as [a [m [args [m_in [a_in Hv]]]]]; subst.
-      exists a. exists m. exists args. split_all; auto.
-      revert m_in.
-      apply mut_in_ctx_sublist; auto.
     + intros. eapply pattern_has_type_sublist; auto. auto. auto.
-    + clear -H0 H8. induction ps; simpl; intros; auto;
-      destruct H; subst;
-      inversion H0; subst; simpl in H8; auto.
+    + rewrite Forall_map, Forall_forall in H0; auto.
 Qed.
 
 Definition term_has_type_sublist g1 g2
@@ -2690,9 +2680,9 @@ Proof.
   - bool_hyps. destruct Hinfs; [apply (H (snd v)) | apply (H0 ty)]; auto.
   - repeat(bool_hyps; destruct_all); auto; [apply (H0 ty) | apply (H1 ty)]; auto.
   - bool_hyps. destruct Hinfs; [apply (H v)|]; auto.
-    clear -H0 H9 H1.
+    clear -H0 H8 H1.
     induction ps; simpl in H1;[inversion H1 |].
-    bool_hyps. simpl in H9.
+    bool_hyps. simpl in H8.
     inversion H0; subst.
     destruct H1; auto.
     apply (H3 ty); auto.
@@ -2713,10 +2703,10 @@ Proof.
     apply (H (snd v)); auto.
   - repeat(bool_hyps; destruct_all); auto.
   - bool_hyps. destruct Hinfs; [apply (H v)|]; auto.
-    clear -H0 H8 H1.
+    clear -H0 H7 H1.
     induction ps; simpl in H1;[inversion H1 |].
     bool_hyps.
-    simpl in H8; inversion H0; subst.
+    simpl in H7; inversion H0; subst.
     destruct H1; auto.
 Qed.
 
@@ -2749,9 +2739,9 @@ Proof.
   - bool_hyps. destruct Hinfs; [apply (H (snd v)) | apply (H0 ty)]; auto.
   - repeat(bool_hyps; destruct_all); auto; [apply (H0 ty) | apply (H1 ty)]; auto.
   - bool_hyps. destruct Hinfs; [apply (H v)|]; auto.
-    clear -H0 H9 H1.
+    clear -H0 H8 H1.
     induction ps0; simpl in H1;[inversion H1 |].
-    bool_hyps. simpl in H9; inversion H0; subst.
+    bool_hyps. simpl in H8; inversion H0; subst.
     destruct H1; auto.
     apply (H3 ty); auto.
   - bool_hyps. destruct Hinfs as [? | Hinfs]; try simpl_sumbool.
@@ -2772,9 +2762,9 @@ Proof.
     apply (H (snd v)); auto.
   - repeat(bool_hyps; destruct_all); auto.
   - bool_hyps. destruct Hinfs; [apply (H v)|]; auto.
-    clear -H0 H8 H1.
+    clear -H0 H7 H1.
     induction ps0; simpl in H1;[inversion H1 |].
-    bool_hyps. simpl in H8; inversion H0; subst.
+    bool_hyps. simpl in H7; inversion H0; subst.
     destruct H1; auto.
 Qed.
 

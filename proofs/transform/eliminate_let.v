@@ -68,8 +68,8 @@ Proof.
   - constructor; auto; [| | rewrite null_map; auto].
     + intros x. rewrite in_map_iff.
       intros [y [Hx Hiny]]; subst; simpl; auto.
-    + clear -H9 H0. induction ps; simpl in *; auto;
-      intros.
+    + clear -H8 H0. induction ps; simpl in *; auto;
+      intros; try contradiction.
       inversion H0; subst.
       destruct H; subst; simpl; auto.
   - constructor; auto. rewrite map_length; auto.
@@ -89,7 +89,7 @@ Proof.
   - constructor; auto; [| | rewrite null_map; auto].
     + intros x. rewrite in_map_iff.
       intros [y [Hx Hiny]]; subst; simpl; auto.
-    + clear -H8 H0. induction ps; simpl in *; auto;
+    + clear -H7 H0. induction ps; simpl in *; auto;
       intros.
       inversion H0; subst.
       destruct H; subst; simpl; auto.
