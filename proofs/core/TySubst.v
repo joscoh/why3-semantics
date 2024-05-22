@@ -495,9 +495,6 @@ Proof.
   -(*Match relies on pattern typing, rest is easy*) 
     destruct Hp as [Hpt Hallp].
     constructor; auto.
-    + destruct H4 as [a [m [args [m_in [a_in Hv]]]]]; subst.
-      exists a. exists m. exists (ty_subst_list' params tys args).
-      split_all; auto.
     + intros x. rewrite in_map_iff. intros [x1 [Hx Hinx1]]; subst. simpl.
       apply ty_subst_p_ty; auto. rewrite Forall_map in Hallp.
       rewrite Forall_forall in Hallp. apply Hallp; auto.
@@ -535,9 +532,6 @@ Proof.
         rewrite Forall_forall in Hp. apply Hp. apply nth_In; auto.
   - (*Exact same proof*) destruct Hp as [Hpt Hallp].
     constructor; auto.
-    + destruct H4 as [a [m [args [m_in [a_in Hv]]]]]; subst.
-      exists a. exists m. exists (ty_subst_list' params tys args).
-      split_all; auto.
     + intros x. rewrite in_map_iff. intros [x1 [Hx Hinx1]]; subst. simpl.
       apply ty_subst_p_ty; auto. rewrite Forall_map in Hallp.
       rewrite Forall_forall in Hallp. apply Hallp; auto.
@@ -907,31 +901,30 @@ Proof.
     eapply H2. apply H10. rewrite Forall_forall in H1; apply H1;
     auto.
   - rewrite Forall_map.
-    apply Forall_and.
+    apply Forall_and. 
     + (*Lots of unfolding to show that the pat fvs are actually NoDup*) 
       unfold tm_wf_strong in H1. simpl in H1. 
-      destruct_all. rewrite map_app in H8.
-      rewrite NoDup_app_iff in H8.
+      destruct_all. rewrite map_app in H5.
+      rewrite NoDup_app_iff in H5.
       destruct_all.
-      rewrite concat_map in H12.
-      rewrite NoDup_concat_iff in H12.
+      rewrite concat_map in H10.
+      rewrite NoDup_concat_iff in H10.
       destruct_all.
       rewrite Forall_forall. intros.
       eapply pat_names_uniq_nodup.
-      apply H7; auto.
-      clear -H12 H16.
-      rewrite !map_map in H12.
-      specialize (H12 (map fst (pat_fv x2.1 ++ tm_bnd x2.2)%list)).
-      prove_hyp H12.
+      apply H6; auto.
+      rewrite !map_map in H10.
+      specialize (H10 (map fst (pat_fv x.1 ++ tm_bnd x.2)%list)).
+      prove_hyp H10.
       {
         rewrite in_map_iff. eexists; split; [reflexivity | auto].
       }
-      rewrite map_app in H12.
-      rewrite NoDup_app_iff in H12.
-      apply H12.
+      rewrite map_app in H10.
+      rewrite NoDup_app_iff in H10.
+      apply H10.
     + (*easier*)
       revert H0. apply Forall_impl_in; intros.
-      eapply H8. apply H9; auto.
+      eapply H5. apply H8; auto.
       rewrite Forall_forall in H3; apply H3; auto.
   - (*pred same as fun*)
     rewrite Forall_map.
@@ -948,28 +941,27 @@ Proof.
     apply Forall_and.
     + (*Lots of unfolding to show that the pat fvs are actually NoDup*) 
       unfold fmla_wf_strong in H1. simpl in H1. 
-      destruct_all. rewrite map_app in H10.
-      rewrite NoDup_app_iff in H10.
+      destruct_all. rewrite map_app in H5.
+      rewrite NoDup_app_iff in H5.
       destruct_all.
-      rewrite concat_map in H12.
-      rewrite NoDup_concat_iff in H12.
+      rewrite concat_map in H10.
+      rewrite NoDup_concat_iff in H10.
       destruct_all.
       rewrite Forall_forall. intros.
       eapply pat_names_uniq_nodup.
-      apply H7; auto.
-      clear -H12 H16.
-      rewrite !map_map in H12.
-      specialize (H12 (map fst (pat_fv x2.1 ++ fmla_bnd x2.2)%list)).
-      prove_hyp H12.
+      apply H6; auto.
+      rewrite !map_map in H10.
+      specialize (H10 (map fst (pat_fv x.1 ++ fmla_bnd x.2)%list)).
+      prove_hyp H10.
       {
         rewrite in_map_iff. eexists; split; [reflexivity | auto].
       }
-      rewrite map_app in H12.
-      rewrite NoDup_app_iff in H12.
-      apply H12.
+      rewrite map_app in H10.
+      rewrite NoDup_app_iff in H10.
+      apply H10.
     + (*easier*)
       revert H0. apply Forall_impl_in; intros.
-      eapply H10. apply H8; auto.
+      eapply H5. apply H7; auto.
       rewrite Forall_forall in H3; apply H3; auto.
 Qed.
   

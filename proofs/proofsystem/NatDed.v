@@ -1819,10 +1819,10 @@ Proof.
     simpl_set; auto.
   - simpl_set.
     right. left.
-    destruct ps. inversion H4.
+    destruct ps; try discriminate. 
     destruct p as [p1 t1].
     simpl in *. simpl_set. left. 
-    specialize (H3 _ (ltac:(left; auto)) H); auto.
+    specialize (H2 _ (ltac:(left; auto)) H); auto.
 Qed.
 
 Theorem D_eq_refl gamma delta (ty: vty) (t: term):
