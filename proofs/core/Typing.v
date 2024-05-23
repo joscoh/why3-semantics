@@ -1072,6 +1072,47 @@ Definition var_case (hd: option vsymbol) (small: list vsymbol)
   (v: vsymbol) : Prop :=
   hd = Some v \/ In v small.
 
+Definition check_var_case hd small v :=
+  match hd with
+  | Some v1 => vsymbol_eqb v v1
+  | None => false
+  end || in_bool vsymbol_eq_dec v small.
+
+Lemma check_var_case_spec hd small v:
+  reflect (var_case hd small v) (check_var_case hd small v) .
+Proof.
+  unfold check_var_case, var_case.
+  apply ssrbool.orPP; [| apply in_bool_spec].
+  destruct hd.
+  - destruct (vsymbol_eqb_spec v v0); subst.
+    + apply ReflectT; reflexivity.
+    + apply ReflectF; intro C; inversion C; subst; contradiction.
+  - apply ReflectF; discriminate.
+Qed.
+
+Definition tm_var_case (hd: option vsymbol) (small: list vsymbol)
+  (t: term) : bool :=
+  match t with
+  | Tvar v => check_var_case hd small v
+  | _ => false
+  end.
+
+(*If we match on [Tfun f l tms] and are in case
+  [Pconstr f l ps], then if the jth element of tms is
+  a small variable, then all [pat_constr_vars] in
+  (nth j ps) should be added*)
+Definition get_constr_smaller (small: list vsymbol)
+  (hd: option vsymbol) m vs (f: funsym) (l: list vty)
+  (tms: list term) (p: pattern) : list vsymbol :=
+  match p with
+  | Pconstr f1 l1 ps =>
+    if funsym_eqb f f1 && list_eqb vty_eqb l l1 then
+    concat (map2 (fun t p => if tm_var_case hd small t
+      then pat_constr_vars m vs p else nil) tms ps)
+    else nil
+  | _ => nil
+  end.
+
 Unset Elimination Schemes.
 (*list of vsymbols are known to be smaller
   option vsymbol is equal, if it is some
@@ -1125,7 +1166,6 @@ Inductive decrease_fun (fs: list fn) (ps: list pn) :
     (mvar: vsymbol) (v: vty) (pats: list (pattern * term)),
     (*We can only match on a variable*)
     var_case hd small mvar ->
-    (hd = Some mvar) \/ In mvar small ->
     (*Note: we allow repeated matches on the same variable*)
     (forall (x: pattern * term), In x pats ->
       decrease_fun fs ps 
@@ -1141,10 +1181,10 @@ Inductive decrease_fun (fs: list fn) (ps: list pn) :
     (vs: list vty) (a: alg_datatype)
     (mvar: vsymbol) (v: vty) (tm: term) (pats: list (pattern * term))
     (c: funsym) (l: list vty) (tms: list term) (j: nat) (Hj: j < length tms),
-    nth j tms tm_d = Tvar mvar ->
-    var_case hd small mvar ->
-    adt_in_mut a m ->
-    snd mvar = vty_cons (adt_name a) vs ->
+    (*nth j tms tm_d = Tvar mvar ->
+    var_case hd small mvar ->*)
+    (*adt_in_mut a m ->
+    snd mvar = vty_cons (adt_name a) vs ->*)
     decrease_fun fs ps small hd m vs (Tfun c l tms) ->
     (*Note: we allow repeated matches on the same variable*)
     (forall (x: pattern * term), In x pats ->
@@ -1154,13 +1194,7 @@ Inductive decrease_fun (fs: list fn) (ps: list pn) :
       (*remove pat_fv's (bound), add back constr vars (smaller)*)
       (union vsymbol_eq_dec 
         (vsyms_in_m m vs 
-          (match (fst x) with
-            | Pconstr f1 l1 ps => if funsym_eqb c f1 
-                && list_eqb vty_eqb l l1 then
-                (pat_constr_vars m vs (nth j ps Pwild))
-                else nil
-            | _ => nil
-          end))
+          (get_constr_smaller small hd m vs c l tms (fst x)))
         (remove_all vsymbol_eq_dec (pat_fv (fst x)) 
         small)) (upd_option_iter hd (pat_fv (fst x))) m vs (snd x)) ->
     decrease_fun fs ps small hd m vs 
@@ -1171,9 +1205,7 @@ Inductive decrease_fun (fs: list fn) (ps: list pn) :
     (tm: term) (v: vty) (pats: list (pattern * term)),
       (match tm with
         | Tvar var => ~ var_case hd small var
-        | Tfun f l tms => forall j, j < length tms ->
-          forall v, nth j tms tm_d = Tvar v ->
-          ~ var_case hd small v
+        | Tfun f l tms => false
         | _ => True
       end) ->
     (*~(exists var, tm = Tvar var /\ (hd = Some var \/ In var small)) \/
@@ -1259,8 +1291,8 @@ with decrease_pred (fs: list fn) (ps: list pn) :
     (c: funsym) (l: list vty) (tms: list term) (j: nat) (Hj: j < length tms),
     nth j tms tm_d = Tvar mvar ->
     var_case hd small mvar ->
-    adt_in_mut a m ->
-    snd mvar = vty_cons (adt_name a) vs ->
+    (*adt_in_mut a m ->
+    snd mvar = vty_cons (adt_name a) vs ->*)
     decrease_fun fs ps small hd m vs (Tfun c l tms) ->
     (*Note: we allow repeated matches on the same variable*)
     (forall (x: pattern * formula), In x pats ->
@@ -1270,13 +1302,7 @@ with decrease_pred (fs: list fn) (ps: list pn) :
       (*remove pat_fv's (bound), add back constr vars (smaller)*)
       (union vsymbol_eq_dec 
         (vsyms_in_m m vs 
-          (match (fst x) with
-            | Pconstr f1 l1 ps => if funsym_eqb c f1 
-                && list_eqb vty_eqb l l1 then
-                (pat_constr_vars m vs (nth j ps Pwild))
-                else nil
-            | _ => nil
-          end))
+          (get_constr_smaller small hd m vs c l tms (fst x)))
         (remove_all vsymbol_eq_dec (pat_fv (fst x)) 
         small)) (upd_option_iter hd (pat_fv (fst x))) m vs (snd x)) ->
     decrease_pred fs ps small hd m vs 
@@ -1286,9 +1312,7 @@ with decrease_pred (fs: list fn) (ps: list pn) :
     (tm: term) (v: vty) (pats: list (pattern * formula)),
      (match tm with
         | Tvar var => ~ var_case hd small var
-        | Tfun f l tms => forall j, j < length tms ->
-          forall v, nth j tms tm_d = Tvar v ->
-          ~ var_case hd small v
+        | Tfun f l tms => false
         | _ => True
       end) ->
     (* ~(exists var, tm = Tvar var /\ (hd = Some var \/ In var small)) -> *)
