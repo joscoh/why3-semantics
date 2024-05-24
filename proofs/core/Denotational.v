@@ -1183,9 +1183,69 @@ Definition bool_of_binop (b: binop) : bool -> bool -> bool :=
 
 Variable (pf: pi_funpred gamma_valid pd).
 Notation funs := (funs gamma_valid pd pf).
+
+(*The match case*)
+Section MatchCase.
+
+(*The match case involves iterating over the inner pattern list, calling [match_val_single]
+  on each one. We don't want to repeat this each time, so we define a single function
+  here instead of using nested recursion. We need an awkward dependently typed encoding
+  because terms and formulas are different and have different typing rules. But 
+  encoding it this way means that all the types we need are definitionally equal when
+  we instantiate with true/false, so we don't need anything special later.*)
+
+Definition gen_term (b: bool) := if b then term else formula.
+Definition gen_type (b: bool) := if b then vty else unit.
+Definition gen_typed (b: bool) (t: gen_term b) (ty: gen_type b) : Prop :=
+  match b return gen_term b -> gen_type b -> Prop with
+  | true => fun t ty => term_has_type gamma t ty
+  | false => fun f _ => formula_typed gamma f
+  end t ty.
+Definition gen_ret (b: bool) (ty: gen_type b) :=
+  match b return gen_type b -> Type with
+  | true => fun ty => domain (val vt ty)
+  | false => fun _ => bool
+end ty.
+Definition gen_default (b: bool) (ty: gen_type b) : gen_ret b ty :=
+  match b return forall (ty: gen_type b), gen_ret b ty with
+  | true => fun ty => match domain_ne pd (val vt ty) with | DE x => x end
+  | false => fun _ => false
+  end ty.
+
 (*NOTE: we do not (yet?) prove we never hit None on well-typed pattern
   match by exhaustivenss - need to give exhaustiveness check,
-  use ADT rep to show that pattern matches all cases*)  
+  use ADT rep to show that pattern matches all cases*) 
+
+(*Pattern matching needs nested recursion, just as [get_arg_list]*)
+Definition match_rep v 
+  (term_rep: forall (v: val_vars pd vt) (t: term) (ty: vty)
+    (Hty: term_has_type gamma t ty), domain (val vt ty))
+  (formula_rep: forall (v: val_vars pd vt) (f: formula)
+    (Hty: formula_typed gamma f), bool)
+  (b: bool) (ty:gen_type b) ty1 dom_t :=
+ fix match_rep (ps: list (pattern * (gen_term b))) 
+      (Hps: Forall (fun x => pattern_has_type gamma (fst x) ty1) ps)
+      (Hall: Forall (fun x => gen_typed b (snd x) ty) ps) :
+        (gen_ret b ty) := 
+    match ps as l' return 
+      Forall (fun x => pattern_has_type gamma (fst x) ty1) l' ->
+      Forall (fun x => gen_typed b (snd x) ty) l' ->
+      gen_ret b ty with
+    | (p , dat) :: ptl => fun Hpats Hall =>
+      match (match_val_single vt ty1 p (Forall_inv Hpats) dom_t) with
+      | Some l => 
+          match b return forall (ty: gen_type b) (dat: gen_term b), gen_typed b dat ty -> gen_ret b ty with
+          | true => fun ty dat Hty => term_rep (extend_val_with_list pd vt v l) dat ty Hty
+          | false => fun ty dat Hty => formula_rep (extend_val_with_list pd vt v l) dat Hty
+          end ty dat (Forall_inv Hall)
+      | None => match_rep ptl (Forall_inv_tail Hpats) (Forall_inv_tail Hall)
+      end
+    | _ => (*Will not reach if exhaustive*) fun _ _ => gen_default b ty 
+    end Hps Hall .
+
+
+End MatchCase. 
+
 
 (*Terms*)
 (* There are many dependent type obligations and casting to ensure that
@@ -1264,26 +1324,7 @@ term_rep v (Tmatch t ty1 xs) ty Hty :=
 
   let dom_t := term_rep v t ty1 Ht1 in
 
-  let fix match_rep (ps: list (pattern * term)) 
-      (Hps: Forall (fun x => pattern_has_type gamma (fst x) ty1) ps)
-      (Hall: Forall (fun x => term_has_type gamma (snd x) ty) ps) :
-        domain (val vt ty) :=
-    match ps as l' return 
-      Forall (fun x => pattern_has_type gamma (fst x) ty1) l' ->
-      Forall (fun x => term_has_type gamma (snd x) ty) l' ->
-      domain (val vt ty) with
-    | (p , dat) :: ptl => fun Hpats Hall =>
-      match (match_val_single vt ty1 p (Forall_inv Hpats) dom_t) with
-      | Some l => term_rep (extend_val_with_list pd vt v l) dat ty
-        (Forall_inv Hall) 
-      | None => match_rep ptl (Forall_inv_tail Hpats) (Forall_inv_tail Hall)
-      end
-    | _ => (*Will not reach if exhaustive*) fun _ _ =>
-      match domain_ne pd (val vt ty) with
-      | DE x =>  x
-      end
-    end Hps Hall in
-    match_rep xs Hps Hall;
+  match_rep v term_rep formula_rep true ty ty1 dom_t xs Hps Hall;
 
 term_rep v (Teps f x) ty Hty :=
   let Hval : formula_typed gamma f := proj1' (ty_eps_inv Hty) in
@@ -1369,23 +1410,8 @@ with formula_rep (v: val_vars pd vt) (f: formula)
       proj2' (proj2' (typed_match_inv Hval)) in
 
     let dom_t := term_rep v t ty1 Ht1 in
-    let fix match_rep (ps: list (pattern * formula)) 
-      (Hps: Forall (fun x => pattern_has_type gamma (fst x) ty1) ps)
-      (Hall: Forall (fun x => formula_typed gamma (snd x)) ps) :
-        bool :=
-    match ps as l' return 
-      Forall (fun x => pattern_has_type gamma (fst x) ty1) l' ->
-      Forall (fun x => formula_typed gamma (snd x)) l' ->
-      bool with
-    | (p , dat) :: ptl => fun Hpats Hall =>
-      match (match_val_single vt ty1 p (Forall_inv Hpats) dom_t) with
-      | Some l => formula_rep (extend_val_with_list pd vt v l) dat
-        (Forall_inv Hall) 
-      | None => match_rep ptl (Forall_inv_tail Hpats) (Forall_inv_tail Hall)
-      end
-    | _ => (*will not reach if exhaustive*) fun _ _ => false
-    end Hps Hall in
-    match_rep xs Hps Hall.
+    
+    match_rep v term_rep formula_rep false tt ty1 dom_t xs Hps Hall.
 
 End TermFmlaRep.
 
