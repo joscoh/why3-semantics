@@ -166,6 +166,28 @@ Proof.
   apply H3; auto.
 Qed.
 
+Lemma recdefs_not_constrs {l: list funpred_def} {il: list nat}
+  (l_in: In l (mutfuns_of_context gamma))
+  (Hlen: length l = length il):
+  forall f : funsym,
+  In f (map fn_sym (fst (funpred_defs_to_sns l il))) ->
+  forall (m : mut_adt) (a : alg_datatype), mut_in_ctx m gamma -> adt_in_mut a m -> ~ constr_in_adt f a.
+Proof.
+  intros f Hinf.
+  rewrite in_map_iff in Hinf.
+  destruct Hinf as [f' [Hf Hinf']]. subst.
+  apply funpred_defs_to_sns_in_fst in Hinf'; auto.
+  destruct Hinf' as [i [Hi Hf']]; simpl in Hf'; subst; simpl in *.
+  intros m a m_in a_in c_in.
+  assert (Hinf: In (nth i (fst (split_funpred_defs l)) (id_fs, [], tm_d)) (fst (split_funpred_defs l))). {
+    apply nth_In. auto.
+  }
+  apply split_funpred_defs_in_l in Hinf.
+  remember (fst (fst (nth i (fst (split_funpred_defs l)) (id_fs, [], tm_d)))) as f.
+  apply (constr_not_recfun gamma_valid l f a m l_in m_in a_in); auto.
+  apply In_in_bool. apply in_fun_def in Hinf; auto.
+Qed.
+ 
 Lemma get_funsym_fn {l: list funpred_def} {il} {f: funsym}
   (l_in: In l (mutfuns_of_context gamma))
   (f_in: funsym_in_mutfun f l):
@@ -303,6 +325,7 @@ Proof.
     params Hfparams Hpparams
     (funpred_defs_to_sns_typevars1 l_in Hfparams (eq_sym Hlen))
     (funpred_defs_to_sns_typevars2 l_in Hpparams (eq_sym Hlen))
+    (recdefs_not_constrs l_in (eq_sym Hlen))
     m vs Hlenparams Hfvty Hpvty Hfdec Hpdec 
       m_in (*pf*) _ pf (triv_val_vars pd vt)
     (proj1_sig fn_info)
@@ -311,6 +334,9 @@ Proof.
     (vt_with_args_vt_eq _ _ Hparamsnodup Hsrtslen')
     a')).
 Defined.
+
+
+
 
 (*preds_rep*)
 Definition preds_rep (pf: pi_funpred gamma_valid pd) 
@@ -360,6 +386,7 @@ Proof.
     params Hfparams Hpparams
     (funpred_defs_to_sns_typevars1 l_in Hfparams (eq_sym Hlen))
     (funpred_defs_to_sns_typevars2 l_in Hpparams (eq_sym Hlen))
+    (recdefs_not_constrs l_in (eq_sym Hlen))
     m vs Hlenparams Hfvty Hpvty Hfdec Hpdec 
       m_in _ pf (triv_val_vars pd vt)
     (proj1_sig pn_info)
@@ -756,7 +783,8 @@ funs_rep_aux gamma_valid
   (funpred_defs_to_sns_types l il (eq_sym Hlen) l_in)
   (funpred_defs_to_sns_valid l il (eq_sym Hlen) l_in) params Hfparams
   Hpparams (funpred_defs_to_sns_typevars1 l_in Hfparams (eq_sym Hlen))
-  (funpred_defs_to_sns_typevars2 l_in Hpparams (eq_sym Hlen)) m vs Hlenparams Hfvty
+  (funpred_defs_to_sns_typevars2 l_in Hpparams (eq_sym Hlen))
+  (recdefs_not_constrs l_in (eq_sym Hlen)) m vs Hlenparams Hfvty
   Hpvty Hfdec Hpdec m_in (vt_with_args triv_val_typevar params srts)
   (pf_with_funpred pf l l_in) vv0 f f_in0 srts0 srts_len0 vt_eq_srts
   (cast_arg_list
@@ -845,7 +873,7 @@ Proof.
   unfold eq_ind_r.
   simpl.
   match goal with
-  | |- funs_rep_aux ?val ?fs ?ps _ _ _ _ _ _ _ _ _ _ _ _ 
+  | |- funs_rep_aux ?val ?fs ?ps _ _ _ _ _ _ _ _ _ _ _ _ _
     _ _ _ _ _ _ _ _ _ _ _ _ _ ?x _ _ = ?e => 
     let H := fresh in
     assert (H: x = srts_len0); [apply UIP_dec; apply Nat.eq_dec | rewrite H; clear H]
@@ -977,7 +1005,8 @@ preds_rep_aux gamma_valid
   (funpred_defs_to_sns_types l il (eq_sym Hlen) l_in)
   (funpred_defs_to_sns_valid l il (eq_sym Hlen) l_in) params Hfparams
   Hpparams (funpred_defs_to_sns_typevars1 l_in Hfparams (eq_sym Hlen))
-  (funpred_defs_to_sns_typevars2 l_in Hpparams (eq_sym Hlen)) m vs Hlenparams Hfvty
+  (funpred_defs_to_sns_typevars2 l_in Hpparams (eq_sym Hlen))
+  ((recdefs_not_constrs l_in (eq_sym Hlen)) )m vs Hlenparams Hfvty
   Hpvty Hfdec Hpdec m_in (vt_with_args triv_val_typevar params srts)
   (pf_with_funpred pf l l_in) vv0 p p_in srts0 srts_len0 vt_eq_srts
   (cast_arg_list
@@ -1065,7 +1094,7 @@ Proof.
   unfold eq_ind_r.
   simpl.
   match goal with
-  | |- preds_rep_aux ?val ?fs ?ps _ _ _ _ _ _ _ _ _ _ _ _ 
+  | |- preds_rep_aux ?val ?fs ?ps _ _ _ _ _ _ _ _ _ _ _ _ _
     _ _ _ _ _ _ _ _ _ _ _ _ _ ?x _ _ = ?e => 
     let H := fresh in
     assert (H: x = srts_len0); [apply UIP_dec; apply Nat.eq_dec | rewrite H; clear H]

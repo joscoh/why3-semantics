@@ -2652,7 +2652,87 @@ End FinalLemmas.
   also add assumption above that no fs are in constructors (which should be
   provable from something, but see*)
 
-(*TODO: in [match_case], specify that this is part of *)
+(*Need to reason about the different parts of [iter_arg_list]; in particular,
+  if a variable is set, it was set in some particular and unique single pattern match*)
+
+Lemma get_assoc_list_app1 {A B: Set} (eq_dec: forall (x y : A), {x = y} + {x <> y}) (l1 l2: list (A * B))
+  (x: A) (Hinx: In x (map fst l1)):
+  get_assoc_list eq_dec (l1 ++ l2) x = get_assoc_list eq_dec l1 x.
+Proof.
+  induction l1 as [| h t IH]; simpl in *; try contradiction.
+  destruct (eq_dec x (fst h)); auto.
+  destruct Hinx; subst; auto. contradiction.
+Qed.
+
+Lemma get_assoc_list_app2 {A B: Set} (eq_dec: forall (x y : A), {x = y} + {x <> y}) (l1 l2: list (A * B))
+  (x: A) (Hinx: ~ In x (map fst l1)):
+  get_assoc_list eq_dec (l1 ++ l2) x = get_assoc_list eq_dec l2 x.
+Proof.
+  induction l1 as [| h t IH]; simpl in *; auto.
+  destruct (eq_dec x (fst h)); subst; auto.
+  exfalso; apply Hinx; auto.
+Qed.
+
+Lemma extend_val_with_list_app1 v l1 l2 x
+  (Hinx: In x (map fst l1)):
+  extend_val_with_list pd vt v (l1 ++ l2) x = extend_val_with_list pd vt v l1 x.
+Proof.
+  unfold extend_val_with_list.
+  rewrite get_assoc_list_app1; auto. 
+Qed.
+
+Lemma extend_val_with_list_app2 v l1 l2 x
+  (Hinx: ~ In x (map fst l1)):
+  extend_val_with_list pd vt v (l1 ++ l2) x = extend_val_with_list pd vt v l2 x.
+Proof.
+  unfold extend_val_with_list.
+  rewrite get_assoc_list_app2; auto. 
+Qed.
+
+Lemma iter_arg_list_single_match (v: val_vars pd vt) {tys a pats Hall l i x}
+  (Hiter: @iter_arg_list gamma gamma_valid pd vt tys a pats Hall = Some l)
+  (Hlen: length pats = length tys) 
+  (Hdisj: disj_map pat_fv pats)
+  (Hi: i < length pats)
+  (Hx: In x (pat_fv (nth i pats Pwild))):
+  exists Hty l1 Heq,
+    match_val_single gamma_valid pd vt (nth i tys vty_int) (nth i pats Pwild) Hty (dom_cast (dom_aux pd) Heq (hnth i a s_int (dom_int pd))) = Some l1 /\
+    extend_val_with_list pd vt v l x =
+    extend_val_with_list pd vt v l1 x.
+Proof.
+  generalize dependent i. generalize dependent tys. generalize dependent l. induction pats as [| phd ptl IHp]; intros; [simpl in *; lia |].
+  destruct i; simpl.
+  - simpl in Hx. destruct tys as [| thd ttl]; [simpl in *; lia |].
+    simpl in Hall |- *. exists (Forall_inv Hall). simpl in Hiter.
+    revert Hiter. case_match_hyp; try discriminate.
+    intros Hlists; inversion Hlists; subst; clear Hlists.
+    exists l0. exists eq_refl. unfold dom_cast; simpl. 
+    split; auto.
+    apply extend_val_with_list_app1.
+    eapply match_val_single_free_var. apply Hmatch. apply Hx.
+  - simpl in Hx. destruct tys as [| thd ttl]; [simpl in *; lia|].
+    simpl in Hall |- *. 
+    (*Need to use IH*)
+    simpl in Hiter.
+    revert Hiter. case_match_hyp; try discriminate.
+    intros Hl; inversion Hl; subst; clear Hl.
+    assert (Hlen': length ptl = length ttl) by (simpl in Hlen; lia).
+    assert (Hi': i < length ptl) by (simpl in Hi; lia).
+    destruct (IHp (disj_map_cons_impl Hdisj) l1 ttl (hlist_tl a) (Forall_inv_tail Hall) Hmatch0 Hlen' i Hi' Hx)
+      as [Hty [l2 [Heq [Hmatchith Hextend]]]]; clear IHp.
+    exists Hty. exists l2. exists Heq. split; auto.
+    assert (Hnotin: ~ In x (map fst l0)). {
+      erewrite <- match_val_single_free_var. 2: apply Hmatch.
+      rewrite disj_map_cons_iff in Hdisj.
+      destruct Hdisj as [_ Hd]. intro Hinx.
+      apply (Hd i Pwild x Hi'). auto.
+    }
+    rewrite <- Hextend.
+    apply extend_val_with_list_app2; assumption.
+Qed.
+
+(*This result isn't doing anything fancy; it uses [small_match_lemma] after going into
+  the associated constructor. There is a lot of bookkeeping involved*)
 Lemma constr_match_lemma {tm v ty1 p Hty dom_t small d l hd c tys tms}
   (Hmatch: match_val_single gamma_valid pd vt ty1 p Hty dom_t = Some l)
   (Hty1: term_has_type gamma tm ty1)
@@ -2674,8 +2754,147 @@ Lemma constr_match_lemma {tm v ty1 p Hty dom_t small d l hd c tys tms}
        (remove_all vsymbol_eq_dec (pat_fv p) small)) ->
     vty_in_m m vs (snd x) /\
     adt_smaller_trans (hide_ty (extend_val_with_list pd vt v l x)) d.
-Admitted.
-
+Proof.
+  intros x. simpl_set. intros [Hinx | [Hinx Hnotfv]].
+  (*Do easier case first*)
+  2: {
+    specialize (Hsmall x Hinx).
+    destruct Hsmall as [Hinm Hsmall]; split; auto.
+    erewrite hide_ty_eq with (Hs:=eq_refl). apply Hsmall.
+    unfold dom_cast; simpl. symmetry.
+    apply extend_val_notin. 
+    erewrite <- match_val_single_free_var. apply Hnotfv.
+    apply Hmatch.
+  }
+  (*The interesting case*)
+  unfold get_constr_smaller in Hinx.
+  destruct p as [| f tys' pats | | | ]; try contradiction.
+  destruct (funsym_eqb_spec c f); simpl in Hinx; [| contradiction].
+  destruct (list_eqb_spec _ vty_eq_spec tys tys'); [| contradiction].
+  subst.
+  unfold vsyms_in_m in Hinx.
+  rewrite in_filter in Hinx.
+  destruct Hinx as [Hm Hinx].
+  split; auto.
+  rewrite in_concat in Hinx.
+  destruct Hinx as [vars [Hinvars Hinx]].
+  assert (Hlens: length tms = length pats). {
+    inversion Hty; inversion Hty1; lia.
+  }
+  rewrite in_map2_iff with (d1:=tm_d)(d2:=Pwild) in Hinvars by assumption.
+  destruct Hinvars as [i [Hi Hvars]].
+  subst. 
+  unfold tm_var_case in Hinx.
+  destruct (nth i tms tm_d) as [| y | | | | | ]  eqn : Hith; try contradiction.
+  destruct (check_var_case_spec hd small y); [| contradiction].
+  unfold Typing.var_case in *.
+  (*Get mutual type information*)
+  assert (Hconstrs:  exists (m : mut_adt) (a : alg_datatype), 
+    mut_in_ctx m gamma /\ adt_in_mut a m /\ constr_in_adt f a) by
+  (inversion Hty; subst; assumption).
+  destruct Hconstrs as [m1 [a1 [m1_in [a1_in f_in]]]].
+  (*Use assumption that we do not redefine any constructors*)
+  assert (Hconstr: ~In f (map fn_sym fs)). {
+    intro Hconstr.
+    apply (fs_not_constr _ Hconstr _ _ m1_in a1_in); assumption.
+  }
+  destruct (Domt f tms tys' eq_refl i Hi Hconstr) as [a [Ha Hntha]].
+  (*Now we simplify inside [match_val_single] until we get to the ith*)
+  revert Hmatch. rewrite match_val_single_rewrite.
+  generalize dependent (@is_vty_adt_some gamma ty1).
+  generalize dependent (@adt_vty_length_eq gamma gamma_valid ty1).
+  generalize dependent (@constr_length_eq gamma gamma_valid ty1).
+  (*inversion Hty; subst.*)
+  assert (Hisadt: is_vty_adt gamma ty1 = Some (m1, a1, tys')). {
+    apply is_vty_adt_iff. auto.
+    split_all; auto.
+    inversion Hty1; subst.
+    rewrite (adt_constr_subst_ret gamma_valid m1_in a1_in f_in); auto.
+  }
+  rewrite Hisadt.
+  intros Hlen1 Hlen2 Hadtinfo.
+  
+  simpl.
+  case_find_constr. intros s.
+  destruct (funsym_eq_dec (projT1 s) f); [| discriminate].
+  destruct s as [f' Hf']. simpl in *; subst.
+  (*Now need to relate a and the arg list from [constr_rep]*)
+  destruct Hf' as [[f_in1 arg1] Haarg].
+  simpl in *.
+  assert (Heq: ty_subst_list_s (s_params f) (map (fun x0 : vty => val x0) tys') (s_args f) =
+        sym_sigma_args f (map (v_subst vt) tys')).
+  {
+    rewrite sym_sigma_args_map.
+    unfold ty_subst_list_s, ty_subst_list.
+    rewrite map_map.
+    apply map_ext.
+    intros. symmetry. apply funsym_subst_eq.
+    apply s_params_Nodup.
+    all: inversion Hty1; subst; lia.
+  }
+  revert Haarg.
+  rewrite (constrs gamma_valid pd pf m1 a1 f (proj2' (proj2' (Hadtinfo m1 a1 tys' eq_refl)))
+      (proj1' (proj2' (Hadtinfo m1 a1 tys' eq_refl))) f_in1 (map (v_subst vt) tys')
+      (eq_trans (map_length (v_subst vt) tys')
+           (Hlen2 m1 a1 tys' eq_refl (pat_has_type_valid gamma (Pconstr f tys' pats) ty1 Hty))) 
+      ).
+  unfold constr_rep_dom, dom_cast. rewrite !scast_scast.
+  match goal with | |- context [ scast ?H ?x ] => generalize dependent H end.
+  intros e. assert (e = eq_refl). apply UIP. subst. simpl.
+  intros Hrepeq.
+  apply constr_rep_inj in Hrepeq. 2: apply (gamma_all_unif gamma_valid); assumption.
+  (*Now we know that a and arg1 are equal*)
+  subst arg1.
+  clear Domt.
+  (*Simplify the goal a bit*)
+  match goal with | |- context [ cast_arg_list ?H ?a] => generalize dependent H end.
+  intros Heq'.
+  match goal with | |- context [iter_arg_list ?val ?pd ?l ?a ?p ?H] => generalize dependent H end.
+  intros Hallty.
+  unfold arg_list_var_nth_cond in Hntha.
+  destruct (Hntha i Hi _ Hith) as [ty' [Hty' [Heqval Hhnth]]].
+  clear Hntha.
+  rewrite !dom_cast_compose in Hhnth.
+  (*Prove that x is in l*)
+  intros Hiter.
+  (*Use previous result to get portion of l that x belongs to (we need for [small_match_lemma]*)
+  assert (Hi': i < length pats) by lia.
+  assert (Hinx': In x (pat_fv (nth i pats Pwild))). {
+    apply pat_constr_vars_fv in Hinx; auto.
+  }
+  assert (Hlenmap: length pats = length (ty_subst_list (s_params f) tys' (s_args f))). {
+    unfold ty_subst_list; rewrite map_length.
+    inversion Hty; subst; auto.
+  }
+  destruct (iter_arg_list_single_match v Hiter Hlenmap (pat_constr_disj_map Hty) Hi' Hinx') as 
+    [Hty2 [l1 [Heqith [Hl1 Hextend]]]].
+  (*Now, finally, we can use [small_match_lemma]*)
+  rewrite Hextend.
+  assert (Htyith: term_has_type gamma (nth i tms tm_d) ((nth i (ty_subst_list (s_params f) tys' (s_args f)) vty_int))). {
+    inversion Hty1; subst.
+    rewrite Forall_nth in H9.
+    (*TODO: I should really really do this in a separate lemma somewhere*)
+    specialize (H9 i (tm_d, vty_int)).
+    prove_hyp H9.
+    { rewrite combine_length, map_length. lia. }
+    simpl in H9.
+    rewrite combine_nth in H9; auto. rewrite map_length; auto.
+  }
+  pose proof (@small_match_lemma _ v _ _ _ _ _ d _ _ _ Hl1 Htyith (conj Hith v0)) as Hsmaller.
+  apply Hsmaller; auto; [| simpl_set; auto].
+  - (*Prove that the domain condition is satisfied*)
+    rewrite hnth_cast_arg_list.
+    unfold sym_sigma_args.
+    clear -Hhnth.
+    (*A really really annoying thing - Coq can't unify types, we need to give a trivial proof*)
+    assert (Hnthtriv: (@hnth sort domain (ty_subst_list_s (s_params f) (@map vty sort (v_subst vt) tys') (s_args f)) i a
+        s_int (dom_int pd)) =  @hnth sort domain
+          (ty_subst_list_s (s_params f) (@map vty sort (fun x : vty => val x) tys') (s_args f)) i a
+          s_int (dom_int pd)) by reflexivity.
+    rewrite Hnthtriv, Hhnth.
+    unfold dom_cast. rewrite !scast_scast. apply scast_eq_uip.
+  - left. unfold vsyms_in_m. rewrite in_filter. auto.
+Qed.
 
 (*Finally, start building the real function. We separate into
   pieces to avoid too many layers of nested recursion and to
