@@ -1125,13 +1125,6 @@ Unset Elimination Schemes.
     and which come from the same mut adt as hd*)
 Inductive decrease_fun (fs: list fn) (ps: list pn) : 
   list vsymbol -> option vsymbol -> mut_adt -> list vty -> term -> Prop :=
-  (*Before any of the constructor cases, if none of fs or ps appear
-    in t, then t is trivially a decreasing function*)
-  | Dec_notin_t: forall (small: list vsymbol) (hd: option vsymbol) (m: mut_adt)
-    (vs: list vty) (t: term),
-    (forall (f: fn), In f fs -> negb (funsym_in_tm (fn_sym f) t)) ->
-    (forall p, In p ps -> negb (predsym_in_tm (pn_sym p) t)) ->
-    decrease_fun fs ps small hd m vs t
   (*First, the recursive function call case*)
   | Dec_fun_in: forall (small: list vsymbol) (hd: option vsymbol) (m: mut_adt)
     (vs: list vty) 
@@ -1143,11 +1136,8 @@ Inductive decrease_fun (fs: list fn) (ps: list pn) :
     nth (sn_idx f_decl) ts tm_d = Tvar x ->
     (*Uniformity: we must be applying the function uniformly*)
     l = map vty_var (s_params f) ->
-    (*All terms are decreasing (NEW)*)
+    (*All terms are decreasing*)
     Forall (decrease_fun fs ps small hd m vs) ts ->
-    (* None of [fs] of [ps] appear in the terms 
-    Forall (fun t => forall f,  In f fs -> negb (funsym_in_tm (fn_sym f) t)) ts ->
-    Forall (fun t => forall p, In p ps -> negb (predsym_in_tm (pn_sym p) t)) ts -> *)
     (*Then this recursive call is valid*)
     decrease_fun fs ps small hd m vs (Tfun f l ts)
   (*Other function call*)
@@ -1162,7 +1152,7 @@ Inductive decrease_fun (fs: list fn) (ps: list pn) :
   (*Pattern match on var - this is how we add new, smaller variables*)
   | Dec_tmatch: forall (small: list vsymbol) (hd: option vsymbol) 
     (m: mut_adt)
-    (vs: list vty) (*(a: alg_datatype)*)
+    (vs: list vty) 
     (mvar: vsymbol) (v: vty) (pats: list (pattern * term)),
     (*We can only match on a variable*)
     var_case hd small mvar ->
@@ -1181,10 +1171,6 @@ Inductive decrease_fun (fs: list fn) (ps: list pn) :
     (vs: list vty) (a: alg_datatype)
     (mvar: vsymbol) (v: vty) (tm: term) (pats: list (pattern * term))
     (c: funsym) (l: list vty) (tms: list term) (j: nat) (Hj: j < length tms),
-    (*nth j tms tm_d = Tvar mvar ->
-    var_case hd small mvar ->*)
-    (*adt_in_mut a m ->
-    snd mvar = vty_cons (adt_name a) vs ->*)
     decrease_fun fs ps small hd m vs (Tfun c l tms) ->
     (*Note: we allow repeated matches on the same variable*)
     (forall (x: pattern * term), In x pats ->
@@ -1208,9 +1194,6 @@ Inductive decrease_fun (fs: list fn) (ps: list pn) :
         | Tfun f l tms => false
         | _ => True
       end) ->
-    (*~(exists var, tm = Tvar var /\ (hd = Some var \/ In var small)) \/
-      (exists tms l f, tm = Tapp f l tms /\ forall j, j < length tms ->
-        forall v, nth j ) ->*)
     decrease_fun fs ps small hd m vs tm ->
     (forall x, In x pats ->
       decrease_fun fs ps 
@@ -1242,11 +1225,6 @@ Inductive decrease_fun (fs: list fn) (ps: list pn) :
 (*This is very similar*)
 with decrease_pred (fs: list fn) (ps: list pn) : 
   list vsymbol -> option vsymbol -> mut_adt -> list vty -> formula -> Prop :=
-  | Dec_notin_f: forall (small: list vsymbol) (hd: option vsymbol) (m: mut_adt)
-  (vs: list vty) (fmla: formula),
-  (forall f, In f fs -> negb (funsym_in_fmla (fn_sym f) fmla)) ->
-  (forall p, In p ps -> negb (predsym_in_fmla (pn_sym p) fmla)) ->
-  decrease_pred fs ps small hd m vs fmla
   (*First, the recursive predicate call case*)
   | Dec_pred_in: forall (small: list vsymbol) (hd: option vsymbol) m vs
     (p: predsym) (p_decl: pn) (l: list vty) (ts: list term) x,
@@ -1258,9 +1236,6 @@ with decrease_pred (fs: list fn) (ps: list pn) :
     (*Uniformity: we must be applying the function uniformly*)
     l = map vty_var (s_params p) ->
     Forall (decrease_fun fs ps small hd m vs) ts ->
-    (*None of [fs] or[ps] appear in the terms*) 
-    (* Forall (fun t => forall f,  In f fs -> negb (funsym_in_tm (fn_sym f) t)) ts ->
-    Forall (fun t => forall p, In p ps -> negb (predsym_in_tm (pn_sym p) t)) ts -> *)
     (*Then this recursive call is valid*)
     decrease_pred fs ps small hd m vs (Fpred p l ts)
   (*Other predicate call*)
@@ -1291,8 +1266,6 @@ with decrease_pred (fs: list fn) (ps: list pn) :
     (c: funsym) (l: list vty) (tms: list term) (j: nat) (Hj: j < length tms),
     nth j tms tm_d = Tvar mvar ->
     var_case hd small mvar ->
-    (*adt_in_mut a m ->
-    snd mvar = vty_cons (adt_name a) vs ->*)
     decrease_fun fs ps small hd m vs (Tfun c l tms) ->
     (*Note: we allow repeated matches on the same variable*)
     (forall (x: pattern * formula), In x pats ->
@@ -1315,7 +1288,6 @@ with decrease_pred (fs: list fn) (ps: list pn) :
         | Tfun f l tms => false
         | _ => True
       end) ->
-    (* ~(exists var, tm = Tvar var /\ (hd = Some var \/ In var small)) -> *)
     decrease_fun fs ps small hd m vs tm ->
     (forall x, In x pats ->
       decrease_pred fs ps 

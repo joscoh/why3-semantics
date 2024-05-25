@@ -1044,9 +1044,6 @@ Lemma dec_inv_tfun_in {small: list vsymbol} {hd: option vsymbol} {f: funsym}
   Forall (decrease_fun fs ps small hd m vs) ts.
 Proof.
   inversion Hde; subst.
-  - exfalso. specialize (H _ Hin).
-    simpl in H. destruct (funsym_eq_dec (fn_sym fn_def) (fn_sym fn_def));
-    simpl in H; try inversion H. contradiction.
   - split; auto.
   - exfalso. apply H5. rewrite in_map_iff. exists fn_def. split; auto.
 Qed.
@@ -1060,9 +1057,6 @@ Lemma dec_inv_tfun_arg {small: list vsymbol} {hd: option vsymbol} {f: funsym}
 exists x, In x small /\  nth (sn_idx fn_def) ts tm_d = Tvar x.
 Proof.
   inversion Hde; subst.
-  - exfalso. specialize (H _ Hin).
-    simpl in H. destruct (funsym_eq_dec (fn_sym fn_def) (fn_sym fn_def));
-    simpl in H; try inversion H. contradiction.
   - assert (fn_def = f_decl). apply (NoDup_map_in fs_uniq Hin H2 H3).
     subst. exists x. split; auto.
   - exfalso. apply H5. rewrite in_map_iff. exists fn_def. split; auto.
@@ -1075,16 +1069,6 @@ Lemma dec_inv_tfun_notin {small: list vsymbol} {hd: option vsymbol} {f: funsym}
 Forall (decrease_fun fs ps small hd m vs) ts.
 Proof.
   inversion Hde; subst.
-  - rewrite Forall_forall. intros.
-    apply Dec_notin_t.
-    + intros. specialize (H _ H2). simpl in H.
-      bool_hyps. rewrite existsb_false in H3.
-      rewrite Forall_forall in H3. specialize (H3 _ H1).
-      rewrite H3; auto.
-    + intros. specialize (H0 _ H2). simpl in H0.
-      bool_hyps. rewrite existsb_false in H0.
-      rewrite Forall_forall in H0. specialize (H0 _ H1).
-      rewrite H0; auto.
   - exfalso. apply Hnotin. rewrite in_map_iff.
     exists f_decl. split; auto.
   - rewrite Forall_forall. auto.
@@ -1115,9 +1099,6 @@ Lemma dec_inv_fpred_in {small: list vsymbol} {hd: option vsymbol}
   Forall (decrease_fun fs ps small hd m vs) ts.
 Proof.
   inversion Hde; subst.
-  - exfalso. specialize (H0 _ Hin).
-    simpl in H0. destruct (predsym_eq_dec (pn_sym pn_def) (pn_sym pn_def));
-    simpl in H0; try inversion H0. contradiction.
   - split; auto.
   - exfalso. apply H5. rewrite in_map_iff. exists pn_def. split; auto.
 Qed.
@@ -1132,9 +1113,6 @@ Lemma dec_inv_fpred_arg {small: list vsymbol} {hd: option vsymbol}
 exists x, In x small /\  nth (sn_idx pn_def) ts tm_d = Tvar x.
 Proof.
   inversion Hde; subst.
-  - exfalso. specialize (H0 _ Hin).
-    simpl in H0. destruct (predsym_eq_dec (pn_sym pn_def) (pn_sym pn_def));
-    simpl in H0; try inversion H0. contradiction.
   - assert (pn_def = p_decl). apply (NoDup_map_in ps_uniq Hin H2 H3).
     subst. exists x. split; auto.
   - exfalso. apply H5. rewrite in_map_iff. exists pn_def. split; auto.
@@ -1148,16 +1126,6 @@ Lemma dec_inv_fpred_notin {small: list vsymbol} {hd: option vsymbol}
 Forall (decrease_fun fs ps small hd m vs) ts.
 Proof.
   inversion Hde; subst.
-  - rewrite Forall_forall. intros.
-    apply Dec_notin_t.
-    + intros. specialize (H _ H2). simpl in H.
-      bool_hyps. rewrite existsb_false in H.
-      rewrite Forall_forall in H. specialize (H _ H1).
-      rewrite H; auto.
-    + intros. specialize (H0 _ H2). simpl in H0.
-      bool_hyps. rewrite existsb_false in H3.
-      rewrite Forall_forall in H3. specialize (H3 _ H1).
-      rewrite H3; auto.
   - exfalso. apply Hnotin. rewrite in_map_iff.
     exists p_decl. split; auto.
   - rewrite Forall_forall. auto.
@@ -1186,7 +1154,7 @@ Ltac solve_dec_inv :=
     inversion Heq; subst; auto
   | Heq: decrease_fun ?fs ?ps ?small ?hd ?m ?vs ?t |- _ =>
     inversion Heq; subst; auto
-  end;
+  end. (*;
   repeat lazymatch goal with
   | |- ?P /\ ?Q => split
   | H1: forall (f: fn), In f ?fs -> 
@@ -1225,7 +1193,7 @@ Ltac solve_dec_inv :=
     try (specialize (H1 _ Hin));
     try (specialize (H2 _ Hin));
     bool_hyps
-  end.
+  end.*)
 
 Lemma dec_inv_tlet {fs' ps' tm1 x tm2 small y}:
   decrease_fun fs' ps' small y m vs (Tlet tm1 x tm2) ->
@@ -1258,16 +1226,14 @@ Lemma dec_inv_tmatch_fst {fs' ps' tm small hd v pats}:
   decrease_fun fs' ps' small hd m vs (Tmatch tm v pats) ->
   decrease_fun fs' ps' small hd m vs tm.
 Proof.
-  solve_dec_inv.
-  apply Dec_notin_t; simpl; auto.
+  solve_dec_inv. constructor.
 Qed.
 
 Lemma dec_inv_fmatch_fst {fs' ps' tm small hd v pats}:
   decrease_pred fs' ps' small hd m vs (Fmatch tm v pats) ->
   decrease_fun fs' ps' small hd m vs tm.
 Proof.
-  solve_dec_inv.
-  apply Dec_notin_t; simpl; auto.
+  solve_dec_inv. constructor.
 Qed.
 
 Lemma dec_inv_tmatch_var {fs' ps' tm small hd mvar v pats}
@@ -1282,14 +1248,6 @@ Lemma dec_inv_tmatch_var {fs' ps' tm small hd mvar v pats}
       (upd_option_iter hd (pat_fv (fst x))) m vs (snd x)) pats.
 Proof.
   intros. inversion H; subst.
-  - (*No funsym or predsym occurrence*)
-    rewrite Forall_forall. intros.
-    apply Dec_notin_t; intros y Hiny;
-    [apply H0 in Hiny | apply H1 in Hiny];
-    simpl in Hiny; bool_hyps;
-    rewrite existsb_false in H4;
-    rewrite Forall_forall in H4;
-    rewrite H4; auto.
   - destruct Htm as [Ht _]. inversion Ht; subst.
     rewrite Forall_forall. auto.
   - destruct Htm; discriminate.
@@ -1309,21 +1267,13 @@ Lemma dec_inv_fmatch_var {fs' ps' tm small hd mvar v pats}
       (upd_option_iter hd (pat_fv (fst x))) m vs (snd x)) pats.
 Proof.
   intros. inversion H; subst.
-  - (*No funsym or predsym occurrence*)
-    rewrite Forall_forall. intros.
-    apply Dec_notin_f; intros y Hiny;
-    [apply H0 in Hiny | apply H1 in Hiny];
-    simpl in Hiny; bool_hyps;
-    rewrite existsb_false in H4;
-    rewrite Forall_forall in H4;
-    rewrite H4; auto.
   - destruct Htm as [Ht _]. inversion Ht; subst.
     rewrite Forall_forall. auto.
   - destruct Htm; discriminate.
   - exfalso. destruct Htm; subst. contradiction.
 Qed.
 
-(*Constructor cases - TODO*)
+(*Constructor cases*)
 Lemma dec_inv_tmatch_constr {fs' ps' tm small hd f l tms v pats}
   (Htm: tm = Tfun f l tms):
   decrease_fun fs' ps' small hd m vs (Tmatch tm v pats) ->
@@ -1337,15 +1287,7 @@ Lemma dec_inv_tmatch_constr {fs' ps' tm small hd f l tms v pats}
       (upd_option_iter hd (pat_fv (fst x))) m vs (snd x)) pats.
 Proof.
   intros Hdec. inversion Hdec; subst; try discriminate.
-  - (*No funsym or predsym occurrence - TODO factor out*)
-    rewrite Forall_forall. intros.
-    apply Dec_notin_t; intros y Hiny;
-    [apply H in Hiny | apply H0 in Hiny];
-    simpl in Hiny; bool_hyps;
-    rewrite existsb_false in H3;
-    rewrite Forall_forall in H3;
-    rewrite H3; auto.
-  - inversion H; subst. rewrite Forall_forall; auto.
+  inversion H; subst. rewrite Forall_forall; auto.
 Qed.
 
 Lemma dec_inv_fmatch_constr {fs' ps' tm small hd f l tms v pats}
@@ -1361,15 +1303,7 @@ Lemma dec_inv_fmatch_constr {fs' ps' tm small hd f l tms v pats}
       (upd_option_iter hd (pat_fv (fst x))) m vs (snd x)) pats.
 Proof.
   intros Hdec. inversion Hdec; subst; try discriminate.
-  - (*No funsym or predsym occurrence - TODO factor out*)
-    rewrite Forall_forall. intros.
-    apply Dec_notin_f; intros y Hiny;
-    [apply H in Hiny | apply H0 in Hiny];
-    simpl in Hiny; bool_hyps;
-    rewrite existsb_false in H3;
-    rewrite Forall_forall in H3;
-    rewrite H3; auto.
-  - inversion H; subst. rewrite Forall_forall; auto.
+  inversion H; subst. rewrite Forall_forall; auto.
 Qed.
 
 Lemma dec_inv_tmatch_notvar {fs' ps' v pats} small hd tm
@@ -1380,14 +1314,7 @@ Lemma dec_inv_tmatch_notvar {fs' ps' v pats} small hd tm
     ((upd_option_iter hd (pat_fv (fst x)))) m vs (snd x)) pats.
 Proof.
   intros. inversion H; subst; try contradiction; try discriminate.
-  - rewrite Forall_forall. intros.
-    apply Dec_notin_t; intros y Hiny;
-    [apply H0 in Hiny | apply H1 in Hiny];
-    simpl in Hiny; bool_hyps;
-    rewrite existsb_false in H4;
-    rewrite Forall_forall in H4;
-    rewrite H4; auto.
-  - rewrite Forall_forall. auto.
+  rewrite Forall_forall. auto.
 Qed.
 
 (*Proof also identical*)
@@ -1399,14 +1326,7 @@ Lemma dec_inv_fmatch_notvar {fs' ps' tm small hd v pats}
     ((upd_option_iter hd (pat_fv (fst x)))) m vs (snd x)) pats.
 Proof.
   intros. inversion H; subst; try contradiction; try discriminate.
-  - rewrite Forall_forall. intros.
-    apply Dec_notin_f; intros y Hiny;
-    [apply H0 in Hiny | apply H1 in Hiny];
-    simpl in Hiny; bool_hyps;
-    rewrite existsb_false in H4;
-    rewrite Forall_forall in H4;
-    rewrite H4; auto.
-  - rewrite Forall_forall. auto.
+  rewrite Forall_forall. auto.
 Qed.
 
 Lemma dec_inv_fnot {fs' ps' f small hd}:
