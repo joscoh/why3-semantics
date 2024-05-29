@@ -1,5 +1,248 @@
 (*Separate file to use ssreflect*)
 Require Export Typing.
+Set Bullet Behavior "Strict Subproofs".
+
+(*Ordering on types*)
+(*Require Import Coq.Structures.OrdersEx.
+Require Import Coq.Structures.Orders.
+
+(*Does this exist?*)
+Print StrictOrder.
+(*Require this to be decidable equality also*)
+Definition comparison_eq {A: Type} (comp: A -> A -> comparison) : Prop :=
+  forall x y, comp x y = Eq <-> x = y.
+Definition comparison_lt_gt {A: Type} (comp: A -> A -> comparison) : Prop :=
+  forall x y, comp x y = Lt <-> comp y x = Gt.
+Definition comparison_lt_trans  {A: Type} (comp: A -> A -> comparison) : Prop :=
+  forall x y z, comp x y = Lt -> comp y z = Lt -> comp x z = Lt.
+
+Class StrictComp {A: Type} (comp: A -> A -> comparison) : Prop :=
+  mk_strictcomp { strict_eq: comparison_eq comp; strict_lt_gt : comparison_lt_gt comp;
+    strict_lt_trans : comparison_lt_trans comp }.
+
+Lemma StrictComp_StrictOrder {A: Type} (comp: A -> A -> comparison) (Hcomp: StrictComp comp) :
+  StrictOrder (fun x y => comp x y = Lt).
+Proof.
+  destruct Hcomp as [Heq Hlt Htrans].
+  constructor.
+  - intros x; unfold complement.
+    assert (Hex': comp x x = Eq) by (apply Heq; auto).
+    rewrite Hex'; discriminate.
+  - apply Htrans.
+Qed.
+
+(*Definition comparison_eqb (c1 c2: comparison) : bool :=
+  match c1, c2 with
+  | Eq, Eq => true
+  | Lt, Lt => true
+  | Gt, Gt => true
+  | _, _ => false
+  end.
+
+Lemma comparison_eqb_spec c1 c2:
+  reflect (c1 = c2) (comparison_eqb c1 c2).
+Proof.
+  destruct c1; destruct c2; simpl;
+  try solve[apply ReflectT; reflexivity];
+  apply ReflectF; intro C; discriminate.
+Qed.*)
+
+Instance StrictComp_n: StrictComp N_as_OT.compare.
+Proof.
+  constructor.
+  - split; apply N_as_OT.compare_eq_iff.
+  - intros x y.
+    rewrite N_as_OT.compare_antisym.
+    unfold CompOpp.
+    destruct (N_as_OT.compare y x); split; auto; intros; discriminate.
+  - intros x y z. rewrite !N_as_OT.compare_lt_iff. apply N_as_OT.lt_trans.
+Qed.
+
+Lemma StrictComp_alpha {A B: Type} (comp: B -> B -> comparison) (f: A -> B)
+  (Hstrict: StrictComp comp)
+  (Hinj: forall x y, f x = f y -> x = y):
+  StrictComp (fun x y => comp (f x) (f y)).
+Proof.
+  destruct Hstrict as [strict_eq strict_lt_gt strict_trans].
+  constructor.
+  - intros x y. split.
+    + intros Hcomp. apply strict_eq in Hcomp. auto.
+    + intros; subst. apply strict_eq. reflexivity.
+  - intros x y. apply strict_lt_gt.
+  - intros x y z. apply strict_trans.
+Qed.
+
+Instance StrictComp_ascii: StrictComp Ascii_as_OT.compare.
+Proof.
+  unfold Ascii_as_OT.compare. apply StrictComp_alpha.
+  apply StrictComp_n.
+  intros x y Heq.
+  apply (f_equal Ascii.ascii_of_N) in Heq.
+  rewrite !Ascii.ascii_N_embedding in Heq. exact Heq.
+Qed.
+
+
+(*Lexicographic comparison of tuples*)
+Definition lex_comp (c1 c2: comparison) : comparison :=
+  match c1 with
+  | Eq => c2
+  | x => x
+  end.
+
+Definition tuple_compare {A B: Type} (comp1: A -> A -> comparison) (comp2: B -> B -> comparison)
+  (x1 : A * B) (x2: A * B) : comparison :=
+  lex_comp (comp1 (fst x1) (fst x2)) (comp2 (snd x1) (snd x2)).
+
+Definition list_compare {A: Type} (comp: A -> A -> comparison) :=
+  fix list_compare (l1 l2: list A) : comparison :=
+  match l1, l2 with
+  | nil, nil => Eq
+  | nil, _ => Lt
+  | _, nil => Gt
+  | x1 :: t1, x2 :: t2 =>
+    tuple_compare comp list_compare (x1, t1) (x2, t2)
+    (* lex_comp (comp x1 x2) (list_compare t1 t2) *)
+  end.*
+
+(*OK, going to use ssreflect because they have lists and prods already*)
+(*From mathcomp.ssreflect Require Import order.
+From HB Require Import structures.
+Check prod.
+Print seqprod_with.
+HB.about (list nat).
+
+(*TODO: maybe use ssreflect orderType?*)
+Definition compare_destruct {A: Type} (comp: A -> A -> comparison) :=
+  forall x y, CompSpec eq (fun x y => comp x y = Lt) x y (comp x y).
+
+Lemma tuple_compare_spec {A B: Type} (comp1: A -> A -> comparison) (comp2: B -> B -> comparison):
+  compare_destruct comp1 ->
+  compare_destruct comp2 ->
+  compare_destruct (tuple_compare comp1 comp2).
+
+Definition StrictComp_tuple {A B: Type} {comp1: A -> A -> comparison} {comp2: B -> B -> comparison}
+  (Hcomp1: StrictComp comp1) (Hcomp2: StrictComp comp2) : StrictComp (tuple_compare comp1 comp2).
+Proof.
+  destruct Hcomp1 as [Heq1 Hlt1 Htrans1]; destruct Hcomp2 as [Heq2 Hlt2 Htrans2].
+  (*The equality case is useful in multiple places*)
+
+
+comparison_eq
+  (fun x1 x2 : A * B =>
+   match comp1 (fst x1) (fst x2) with
+   | Eq => comp2 (snd x1) (snd x2)
+   | _ => comp1 (fst x1) (fst x2)
+   end)
+
+  unfold tuple_compare, lex_comp.
+  constructor.
+  - intros [x1 x2] [y1 y2]; simpl.
+    destruct (comp1 x1 y1) eqn : Hcomp1.
+    + apply Heq1 in Hcomp1; subst.
+      split.
+      * intros Hcomp2. apply Heq2 in Hcomp2; subst; auto.
+      * intros Heq; inversion Heq; subst; apply Heq2; reflexivity.
+    + split; try discriminate. intros Heq; inversion Heq; subst.
+      rewrite <- Hcomp1. apply Heq1; reflexivity.
+    + split; try discriminate. intros Heq; inversion Heq; subst.
+      rewrite <- Hcomp1. apply Heq1; reflexivity.
+  - intros [x1 x2] [y1 y2]; simpl.
+    destruct (comp1 x1 y1) eqn : Hcomp1.
+    + 
+
+ destruct
+      rewrite Heq2. apply Heq2.
+
+
+(*Define new string function*)
+
+list_ascii_of_string
+
+
+Search list_ascii_of_string.
+  
+
+
+
+Ascii_as_OT.compare =
+fun a b : Ascii.ascii => N_as_OT.compare (Ascii.N_of_ascii a) (Ascii.N_of_ascii b)
+     : Ascii.ascii -> Ascii.ascii -> comparison
+
+Instance StrictComp_string : StrictComp String_as_OT.compare.
+Proof.
+  unfold String_as_OT.compare.
+  Print Ascii_as_OT.compare.
+
+
+  constructor.
+
+
+Definition typevar_compare (t1 t2: typevar) : comparison := String_as_OT.compare t1 t2.
+
+
+Definition typesym_compare (t1 t2: typesym) : comparison := 
+  tuple_compare String_as_OT.compare (list_compare typevar_compare)
+    (ts_name t1) (ts_args t1) (ts_name t2) (ts_args t2).
+
+Fixpoint vty_compare (v1 v2: vty) : comparison :=
+  match v1, v2 with
+  | vty_int, vty_int => Eq
+  | vty_int, _ => Lt
+  | _, vty_int => Gt
+  | vty_real, vty_real => Eq
+  | vty_real, _ => Lt
+  | _, vty_real => Gt
+  | vty_var v1, vty_var v2 => typevar_compare v1 v2
+  | vty_var _, _ => Lt
+  | _, vty_var _ => Gt
+  | vty_cons t1 vs1, vty_cons t2 vs2 =>
+    tuple_compare typesym_compare (list_compare vty_compare)
+      t1 vs1 t2 vs2
+  end.
+
+Print mut_adt.
+Print alg_datatype.
+Print funsym.
+Print fpsym.
+
+Definition fpsym_compare (f1 f2: fpsym) : comparison :=
+  lex_comp (String_as_OT.compare (s_name f1) (s_name f2))
+    (tuple_compare (list_compare typevar_compare) (list_compare vty_compare)
+      (s_params f1) (s_args f1) (s_params f2) (s_args f2)).
+
+Definition funsym_compare (f1 f2: funsym) : comparison :=
+  tuple_compare fpsym_compare vty_compare (f_sym f1) (f_ret f1) (f_sym f2) (f_ret f2).
+
+Definition alg_datatype_compare (a1 a2: alg_datatype) : comparison :=
+  tuple_compare typesym_compare (list_compare funsym_compare) (adt_name a1) (adt_constr_list a1)
+    (adt_name a2) (adt_constr_list a2).
+
+Definition mut_adt_compare (m1 m2: mut_adt) : comparison :=
+  tuple_compare (list_compare alg_datatype_compare) (list_compare typevar_compare) (typs m1) (m_params m1)
+    (typs m2) (m_params m2).
+
+
+(*Nope, let's go back to existing map*)
+
+Require Import Coq.FSets.FMapAVL.
+
+Module TyOrderedType <: OrderedType.
+Definition t := vty.
+Definition eq (t1 t2: t) : Prop := (t1 = t2).
+Definition eq_equiv : Equivalence eq.
+Proof.
+  apply eq_equivalence.
+Defined.
+Definition lt v1 v2 := vty_compare v1 v2 = Lt. 
+Instance lt_strorder : StrictOrder lt.
+Print StrictOrder.
+End TyOrderedType.
+
+Module MutOrderedType <: OrderedType.
+End MutOrderedType.
+
+Print OrderedType.*)*)
+
 
 From HB Require Import structures.
 From mathcomp Require Import all_ssreflect.
@@ -1157,26 +1400,309 @@ Definition check_decrease_idx {A: Type}
  fold_right (fun t acc => if eq_dec x (fst t) then (x, y) :: acc 
   else t :: acc) nil l. *)
 
-Definition replace_assoc_list  {A B: Set} (eq_dec: forall (x y: A), {x = y} + { x <> y}) 
- (l: list (A * B)) (x: A) (f: A -> B -> B) : list (A * B) :=
- fold_right (fun t acc => if eq_dec x (fst t) then (x, (f x (snd t))) :: acc 
-  else t :: acc) nil l.
+
+(*A very lazy, inefficient implementation of association lists*)
+(*Replace if element there, do nothing if not*)
+Definition replace_assoc_list_aux {A B: Set} (eq_dec: forall (x y: A), {x = y} + { x <> y}) 
+ (l: list (A * B)) (x: A) (f: A -> B -> B) : list (A * B) := 
+  fold_right (fun h acc => (if eq_dec x (fst h) then (x, f x (snd h)) else h) :: acc) nil l.
+
+(*We define "get" on this*)
+(* Lemma replace_aux_get1 {A B: Set} (eq_dec: forall (x y: A), {x = y} + { x <> y}) 
+ (l: list (A * B)) (x: A) (f: A -> B -> B): *)
+  
+
+Lemma replace_assoc_list_aux_elt {A B: Set} (eq_dec: forall (x y: A), {x = y} + { x <> y}) 
+ (l: list (A * B)) (x: A) (f: A -> B -> B) :
+  forall z1 z2, In (z1, z2) (replace_assoc_list_aux eq_dec l x f) <->
+     (In (z1, z2) l /\ z1 <> x) \/ (z1 = x /\ exists y1, In (x, y1) l /\ z2 = f x y1).
+Proof.
+  intros z1 z2. induction l as [| [x1 y1] tl IH]; simpl.
+  - split; intros; destruct_all; contradiction.
+  - split; intros Hin.
+    + destruct Hin as [Heq|Hin].
+      * destruct (eq_dec x x1); simpl in Heq; inversion Heq; subst.
+        -- right. split; auto. exists y1. auto.
+        -- left. auto.
+      * apply IH in Hin.
+        destruct Hin as [[Hin Hneq]|[Heq [y2 [Hiny2 Heqy2]]]].
+        -- left. auto.
+        -- subst. right. split; auto. exists y2. auto.
+    + destruct Hin as [[[Heq | Hin] Hneq] | [Heq [y2 [[Heq1 | Hin] Heqy2]]]].
+      * inversion Heq; subst. destruct (eq_dec x z1); subst; auto; contradiction.
+      * right. apply IH; auto.
+      * inversion Heq1; subst. destruct (eq_dec x x); auto; contradiction.
+      * subst. right. apply IH. right. split; auto.
+        exists y2. auto.
+Qed.
+
+Lemma replace_assoc_list_map_fst {A B: Set} (eq_dec: forall (x y: A), {x = y} + { x <> y}) 
+ (l: list (A * B)) (x: A) (f: A -> B -> B):
+  map fst (replace_assoc_list_aux eq_dec l x f) = map fst l.
+Proof.
+  induction l as [| [x1 y1] tl IH]; simpl; auto.
+  destruct (eq_dec x x1); simpl; subst; rewrite IH; reflexivity.
+Qed.
+
+
+Definition replace_assoc_list {A B: Set} (eq_dec: forall (x y: A), {x = y} + { x <> y}) 
+ (l: list (A * B)) (x: A) (f: A -> B -> B) (y: B) : list (A * B) :=
+  match (get_assoc_list eq_dec l x) with
+  | Some _ => replace_assoc_list_aux eq_dec l x f
+  | None => (x, y) :: l
+  end.
+
+Lemma replace_assoc_list_keys {A B: Set} (eq_dec: forall (x y: A), {x = y} + { x <> y}) 
+ (l: list (A * B)) (x: A) (f: A -> B -> B) (y: B):
+  forall z1 z2, In (z1, z2) (replace_assoc_list eq_dec l x f y) <->
+    ((In (z1, z2) l /\ z1 <> x) \/ (z1 = x /\ exists y1, In (x, y1) l /\ z2 = f x y1)) \/
+    (z1 = x /\ z2 = y /\ ~ In x (map fst l)).
+Proof.
+  intros z1 z2.
+  unfold replace_assoc_list.
+  destruct (get_assoc_list eq_dec l x) eqn : Hget.
+  - rewrite replace_assoc_list_aux_elt.
+    split; intros Hin.
+    + left. auto.
+    + destruct Hin as [? | [Hx [Hy Hinx]]]; auto; subst.
+      assert (Hget': get_assoc_list eq_dec l x = None) by (apply get_assoc_list_none; auto).
+      rewrite Hget' in Hget. discriminate.
+  - simpl. apply get_assoc_list_none in Hget.
+    split; intros Hin.
+    + destruct Hin as [ Heq | Hin]; [inversion Heq |]; subst; auto.
+      left. left. split; auto. intro C; subst.
+      apply Hget. rewrite in_map_iff. exists (x, z2); auto.
+    + destruct Hin as [[[Hin Hneq] | [Heq [y1 [Hiny1 Heqy1]]]] | [Hx [Hy _]]]; subst; auto.
+      exfalso. apply Hget. rewrite in_map_iff. exists (x, y1); auto.
+Qed.
+ 
+
+(*Replace an element if it is present, add (x, y) otherwise*)
+(* Fixpoint replace_assoc_list {A B: Set} (eq_dec: forall (x y: A), {x = y} + { x <> y}) 
+ (l: list (A * B)) (x: A) (f: A -> B -> B) (y: B) : list (A * B) :=
+  match l with
+  | nil => [(x, y)]
+  | h :: tl => if eq_dec x (fst h) then (x, f x (snd h)) :: tl else 
+    h :: replace_assoc_list eq_dec tl x f y
+  end. *)
+(* 
+Definition map_elt_aux {A B: Set} (eq_dec: forall (x y: A), {x = y} + {x <> y})
+  (l: list (A * B)) (x: A) : option B := get_assoc_list eq_dec l x.
+
+
+Lemma replace_assoc_list_keys {A B: Set} (eq_dec: forall (x y: A), {x = y} + { x <> y}) 
+ (l: list (A * B)) (x: A) (f: A -> B -> B) (y: B):
+  forall z1 z2, In (z1, z2) (replace_assoc_list eq_dec l x f y) <->
+    (In (z1, z2) l /\ z1 <> x) \/ (z1 = x /\ exists y1, In (x, y1) l /\ z2 = f x y1) \/
+    (z1 = x /\ z2 = y /\ ~ In x (map fst l)).
+Proof.
+  intros z1 z2.
+  induction l as [| h t IH]; simpl.
+  - split; intros Hin.
+    + destruct Hin as [Heq | []]; inversion Heq; subst; auto.
+      right. right. auto.
+    + destruct Hin as [[[] _]|[[_ [_ [[] _]]]|[Heq1 [Heq2 _]]]]; subst; auto.
+  - destruct h as [x1 y1]; simpl in *. destruct (eq_dec x x1); simpl; subst.
+    + split; intros Hin.
+      * destruct Hin as [Heq | Hin]; [inversion Heq; subst |].
+        -- right. left. split; auto. exists y1. auto.
+        -- destruct (eq_dec z1 x1); subst.
+          ++  
+
+ split; intros; destruct_all; auto; try contradiction. 
+  left.
+
+
+ intros.
+
+  forall z, In z (map fst l) *)
+
+Lemma replace_assoc_list_nodup {A B: Set} (eq_dec: forall (x y: A), {x = y} + { x <> y}) 
+ (l: list (A * B)) (x: A) (f: A -> B -> B) (y: B) :
+  NoDup (map fst l) ->
+  NoDup (map fst (replace_assoc_list eq_dec l x f y)).
+Proof.
+  unfold replace_assoc_list.
+  destruct (get_assoc_list eq_dec l x) eqn : Hget.
+  - rewrite replace_assoc_list_map_fst. auto.
+  - intros Hnodup. simpl. constructor; auto.
+    apply get_assoc_list_none in Hget. auto.
+Qed.
+    
 Definition set_assoc_list  {A B: Set} (eq_dec: forall (x y: A), {x = y} + { x <> y}) 
  (l: list (A * B)) (x: A) (y: B) : list (A * B) :=
- replace_assoc_list eq_dec l x (fun _ _ => y).
+ replace_assoc_list eq_dec l x (fun _ _ => y) y.
 
-Definition map (A B: Set) := list (A * B).
+Definition map_aux (A B: Set) := list (A * B).
+Definition map_get_aux {A B: Set} (eq_dec: forall (x y: A), {x = y} + { x <> y}) 
+  (m: map_aux A B) (x: A) : option B := get_assoc_list eq_dec m x.
+Definition map_set_aux {A B: Set} (eq_dec: forall (x y: A), {x = y} + { x <> y}) 
+  (m: map_aux A B) (x: A) (y: B) : map_aux A B := set_assoc_list eq_dec m x y.
+Definition map_replace_aux {A B: Set} (eq_dec: forall (x y: A), {x = y} + { x <> y}) 
+  (m: map_aux A B) (x: A) (f: A -> B -> B) y: map_aux A B := replace_assoc_list eq_dec m x f y.
+Definition map_bindings_aux {A B: Set} (m: map_aux A B) : list (A * B) := m.
+Definition map_singleton_aux {A B: Set} (x: A) (y: B) : map_aux A B := [(x, y)].
+Definition map_empty_aux {A B: Set} : map_aux A B := nil.
+
+Definition map_wf {A B: Set} (m: map_aux A B) : Prop :=
+  NoDup (map fst m).
+Definition map (A B: Set) := {m: map_aux A B | map_wf m}.
 Definition map_get {A B: Set} (eq_dec: forall (x y: A), {x = y} + { x <> y}) 
-  (m: map A B) (x: A) : option B := get_assoc_list eq_dec m x.
+  (m: map A B) (x: A) : option B := map_get_aux eq_dec (proj1_sig m) x.
+Definition map_set_proof {A B: Set} (eq_dec: forall (x y: A), {x = y} + { x <> y}) 
+  (m: map A B) (x: A) (y: B) : map_wf (map_set_aux eq_dec (proj1_sig m) x y).
+Proof.
+  unfold map_wf, map_set_aux, set_assoc_list.
+  apply replace_assoc_list_nodup.
+  destruct m as [m m_wf].
+  apply m_wf.
+Qed.
+Definition map_replace_proof {A B: Set} (eq_dec: forall (x y: A), {x = y} + { x <> y}) 
+  (m: map A B) (x: A) (f: A -> B -> B) (y: B) : map_wf (map_replace_aux eq_dec (proj1_sig m) x f y).
+Proof.
+  unfold map_wf, map_replace_aux. apply replace_assoc_list_nodup.
+  destruct m as [m m_wf].
+  apply m_wf.
+Qed.
+Definition map_singleton_proof {A B: Set} (x: A) (y: B) : map_wf (map_singleton_aux x y).
+Proof.
+  constructor; auto. constructor.
+Qed.
+Definition map_empty_proof {A B: Set} : map_wf (@map_empty_aux A B).
+Proof. constructor. Qed.
 Definition map_set {A B: Set} (eq_dec: forall (x y: A), {x = y} + { x <> y}) 
-  (m: map A B) (x: A) (y: B) : map A B := set_assoc_list eq_dec m x y.
+  (m: map A B) (x: A) (y: B) : map A B := exist _ _ (map_set_proof eq_dec m x y).
 Definition map_replace {A B: Set} (eq_dec: forall (x y: A), {x = y} + { x <> y}) 
-  (m: map A B) (x: A) (f: A -> B -> B): map A B := replace_assoc_list eq_dec m x f.
-Definition map_bindings {A B: Set} (m: map A B) : list (A * B) := m.
+  (m: map A B) (x: A) (f: A -> B -> B) (y: B) : map A B := exist _ _ (map_replace_proof eq_dec m x f y).
+Definition map_bindings {A B: Set} (m: map A B) : list (A * B) := map_bindings_aux (proj1_sig m).
+Definition map_singleton {A B: Set} x y : map A B := exist _ _ (map_singleton_proof x y).
+Definition map_empty {A B: Set} : map A B := exist _ _ (@map_empty_proof A B).
+
+(*And now the proofs*)
+Section MapProofs.
+Context  {A B: Set} (eq_dec: forall (x y: A), {x = y} + { x <> y}).
+
+Local Lemma map_get_some_iff (m: map A B) (x: A) (y: B):
+  map_get eq_dec m x = Some y <-> In (x, y) (proj1_sig m).
+Proof.
+  unfold map_get, map_get_aux. split; intros Hin.
+  - apply get_assoc_list_some in Hin; auto.
+  - apply get_assoc_list_nodup; auto. destruct m; auto.
+Qed.
+
+Local Lemma map_get_none_iff (m: map A B) (x: A):
+  map_get eq_dec m x = None <-> ~ In x (List.map fst (proj1_sig m)).
+Proof.
+  apply get_assoc_list_none.
+Qed.
+
+Local Lemma map_get_eq_iff (m1 m2: map A B) (x: A):
+  map_get eq_dec m1 x = map_get eq_dec m2 x <-> 
+  (forall y, In (x, y) (proj1_sig m1) <-> In (x, y) (proj1_sig m2)).
+Proof.
+  destruct (map_get eq_dec m2 x) as [y2 |] eqn : Hget2.
+  - rewrite !map_get_some_iff in Hget2 |- *.
+    split.
+    + intros Hget1 y.
+      split; intros Hin.
+      -- assert (y = y2) by (apply (nodup_fst_inj (proj2_sig m1) Hin); auto);
+          subst; auto.
+      -- assert (y = y2) by (apply (nodup_fst_inj (proj2_sig m2) Hin); auto);
+          subst; auto.
+    + intros Hiff. apply Hiff; auto.
+  - rewrite !map_get_none_iff in Hget2 |- *.
+    split.
+    + intros Hget1 y. split; intros Hin; exfalso; [apply Hget1 | apply Hget2];
+      rewrite in_map_iff; exists (x, y); auto.
+    + intros Hiff Hinfst. apply Hget2.
+      rewrite !in_map_iff in Hinfst |- *.
+      destruct Hinfst as [[x1 y1] [Hx Hinx]]; subst.
+      exists (x1, y1); split; auto. apply Hiff; auto.
+Qed.
+
+
+Lemma map_set_get_same (m: map A B) (x: A) (y: B):
+  map_get eq_dec (map_set eq_dec m x y) x = Some y.
+Proof.
+  rewrite map_get_some_iff. simpl.
+  unfold map_set_aux.
+  apply replace_assoc_list_keys.
+  destruct (in_dec eq_dec x (List.map fst (sval m))) as [Hin | Hnotin].
+  + left. right. split; auto. rewrite in_map_iff in Hin.
+    destruct Hin as [[x1 y1] [Hxx1 Hin1]]; subst; exists y1; auto.
+  + right. auto.
+Qed.
+
+Lemma map_set_get_diff (m: map A B) (x: A) (y: B) (z: A):
+  x <> z ->
+  map_get eq_dec (map_set eq_dec m x y) z = map_get eq_dec m z.
+Proof.
+  intros Hneq.
+  apply map_get_eq_iff.
+  intros z2. simpl.
+  unfold map_set_aux. rewrite replace_assoc_list_keys.
+  split; intros; destruct_all; subst; try contradiction; auto.
+Qed.
+
+Lemma map_singleton_get1 (x : A) (y: B) :
+  map_get eq_dec (map_singleton x y) x = Some y.
+Proof.
+  apply map_get_some_iff. simpl. auto.
+Qed.
+
+Lemma map_singleton_get2 (x : A) (y: B) z:
+  x <> z ->
+  map_get eq_dec (map_singleton x y) z = None.
+Proof.
+  intros Hneq.
+  apply map_get_none_iff. simpl. intros [Heq | []]; auto.
+Qed.
+
+Lemma map_empty_get z: @map_get A B eq_dec map_empty z = None.
+Proof.
+  apply map_get_none_iff. simpl. auto.
+Qed.
+
+(*Replace lemmas*)
+Lemma map_replace_get_same1 (m: map A B) (x: A) (f: A -> B -> B) (y: B) (y1: B)
+  (Hget: map_get eq_dec m x = Some y1):
+  map_get eq_dec (map_replace eq_dec m x f y) x = Some (f x y1).
+Proof.
+  apply map_get_some_iff. simpl. apply replace_assoc_list_keys.
+  apply get_assoc_list_some in Hget.
+  left. right. split; auto. exists y1; auto.
+Qed.
+
+Lemma map_replace_get_same2 (m: map A B) (x: A) (f: A -> B -> B) (y: B)
+  (Hget: map_get eq_dec m x = None):
+  map_get eq_dec (map_replace eq_dec m x f y) x = Some y.
+Proof.
+  apply map_get_some_iff.
+  apply map_get_none_iff in Hget.
+  apply replace_assoc_list_keys. right. auto.
+Qed.
+
+Lemma map_replace_get_diff (m: map A B) (x: A) (f: A -> B -> B) (y: B) (z: A):
+  x <> z ->
+  map_get eq_dec (map_replace eq_dec m x f y) z = map_get eq_dec m z.
+Proof.
+  intros Hneq.
+  apply map_get_eq_iff. intros y1; simpl.
+  rewrite replace_assoc_list_keys. 
+  split; intros; destruct_all; subst; auto; contradiction.
+Qed.
+
+Lemma map_bindings_iff (m: map A B) (x: A) (y: B) :
+  In (x, y) (map_bindings m) <-> map_get eq_dec m x = Some y.
+Proof.
+  rewrite map_get_some_iff. reflexivity.
+Qed.
+
+End MapProofs.
 
 Definition group_indices_adt 
   (l: list (fpsym * list vsymbol)):
-  list ((mut_adt * list vty) * list (fpsym * list nat)) :=
+  map (mut_adt * list vty)  (map fpsym (list nat)) :=
   fold_right (fun x acc =>
     let '(f, vs) := x in
 
@@ -1187,11 +1713,13 @@ Definition group_indices_adt
         map_replace 
           (tuple_eq_dec mut_adt_dec (list_eq_dec vty_eq_dec))
           m (m1, args) (fun t mp =>
-          map_replace fpsym_eq_dec mp f (fun _ l => idx :: l))
+          map_replace fpsym_eq_dec mp f (fun _ l => idx :: l) [idx])
+          map_empty
+
       | None => m
       end
       ) acc (combine vs (iota 0 (length vs)))
-  ) nil l.
+  ) map_empty l.
 
 (*A more powerful version of "find" that allows a predicate to return an option
   which we return*)
@@ -1658,7 +2186,12 @@ Proof.
     by apply split_funpred_defs_length.
   }
   split_all =>//.
-  - (*Some things we could prove that may be useful (see):
+  - Print group_indices_adt.
+    
+
+
+
+ (*Some things we could prove that may be useful (see):
       1. It is the case that for i < length syms,
           check_decrease_idx ... m vs (nth i idxs) (nth i syms)
             for all terms and formulas in l
