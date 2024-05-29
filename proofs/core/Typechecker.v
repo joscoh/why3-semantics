@@ -990,6 +990,927 @@ Definition fn_d : fn :=
 Definition pn_d : pn :=
   (mk_pn (Build_predsym id_sym) sn_d Ftrue).
 
+(*We will typecheck [decrease_fun] and [decrease_pred]
+  differently: the naive way takes exponential time.
+  Instead, we will find the index for each fun/predsym at a time*)
+
+(* Print fn.
+Print sn.*)
+
+(*Do all occurrences of fpsymbol f appear with index i smaller?*)
+Fixpoint check_decrease_fun_aux (f: fpsym) (idx: nat)
+  (small: list vsymbol) (hd: option vsymbol) (m: mut_adt)
+  (vs: list vty) (t: term) : bool :=
+  match t with
+  | Tfun f1 tys tms =>
+    if fpsym_eqb f f1 then
+      match (nth tm_d tms idx) with
+      | Tvar x =>
+          (x \in small) &&
+          (tys == map vty_var (s_params f)) &&
+          all (check_decrease_fun_aux f idx small hd m vs) tms
+      | _ => false
+      end
+    else 
+      (*Not recursive*)
+      all (fun t => check_decrease_fun_aux f idx small hd m vs t) tms
+  | Tmatch t ty pats =>
+    match t with
+    | Tvar x =>
+      if (check_var_case hd small x) then
+         all (fun x =>
+          check_decrease_fun_aux f idx
+          (union vsymbol_eq_dec (vsyms_in_m m vs (pat_constr_vars m vs (fst x))) 
+          (remove_all vsymbol_eq_dec (pat_fv (fst x)) 
+          small)) (upd_option_iter hd (pat_fv (fst x))) m vs (snd x)
+          ) pats
+      else
+        all (fun x =>
+        check_decrease_fun_aux f idx
+        (remove_all vsymbol_eq_dec (pat_fv (fst x)) small) 
+        (upd_option_iter hd (pat_fv (fst x))) m vs (snd x)) pats
+    | Tfun f1 tys tms =>
+      all (fun x =>
+          check_decrease_fun_aux f idx
+          (union vsymbol_eq_dec (vsyms_in_m m vs 
+            (get_constr_smaller small hd m vs f1 tys tms (fst x)))
+          (remove_all vsymbol_eq_dec (pat_fv (fst x)) 
+          small)) (upd_option_iter hd (pat_fv (fst x))) m vs (snd x)
+          ) pats
+    | _ =>
+      all (fun x =>
+        check_decrease_fun_aux f idx 
+        (remove_all vsymbol_eq_dec (pat_fv (fst x)) small) 
+        (upd_option_iter hd (pat_fv (fst x))) m vs (snd x)) pats
+    end
+  | Tlet t1 v t2 =>
+    check_decrease_fun_aux f idx small hd m vs t1 &&
+    check_decrease_fun_aux f idx (remove vsymbol_eq_dec v small) (upd_option hd v) m vs t2
+  | Tif f1 t1 t2 =>
+    check_decrease_pred_aux f idx small hd m vs f1 &&
+    check_decrease_fun_aux f idx small hd m vs t1 &&
+    check_decrease_fun_aux f idx small hd m vs t2
+  | Teps f1 v =>
+    check_decrease_pred_aux f idx (remove vsymbol_eq_dec v small) (upd_option hd v) m vs f1
+  | _ => true
+  end
+with check_decrease_pred_aux (f: fpsym) (idx: nat)
+  (small: list vsymbol) (hd: option vsymbol) (m: mut_adt)
+  (vs: list vty) (fmla: formula) : bool :=
+  match fmla with
+  | Fpred f1 tys tms =>
+    if fpsym_eqb f f1 then
+      match (nth tm_d tms idx) with
+      | Tvar x =>
+          (x \in small) &&
+          (tys == map vty_var (s_params f)) &&
+          all (check_decrease_fun_aux f idx small hd m vs) tms
+      | _ => false
+      end
+    else 
+      (*Not recursive*)
+      all (fun t => check_decrease_fun_aux f idx small hd m vs t) tms
+  | Fmatch t ty pats =>
+    match t with
+    | Tvar x =>
+      if (check_var_case hd small x) then
+         all (fun x =>
+          check_decrease_pred_aux f idx
+          (union vsymbol_eq_dec (vsyms_in_m m vs (pat_constr_vars m vs (fst x))) 
+          (remove_all vsymbol_eq_dec (pat_fv (fst x)) 
+          small)) (upd_option_iter hd (pat_fv (fst x))) m vs (snd x)
+          ) pats
+      else
+        all (fun x =>
+        check_decrease_pred_aux f idx
+        (remove_all vsymbol_eq_dec (pat_fv (fst x)) small) 
+        (upd_option_iter hd (pat_fv (fst x))) m vs (snd x)) pats
+    | Tfun f1 tys tms =>
+      all (fun x =>
+          check_decrease_pred_aux f idx
+          (union vsymbol_eq_dec (vsyms_in_m m vs 
+            (get_constr_smaller small hd m vs f1 tys tms (fst x)))
+          (remove_all vsymbol_eq_dec (pat_fv (fst x)) 
+          small)) (upd_option_iter hd (pat_fv (fst x))) m vs (snd x)
+          ) pats
+    | _ =>
+      all (fun x =>
+        check_decrease_pred_aux f idx 
+        (remove_all vsymbol_eq_dec (pat_fv (fst x)) small) 
+        (upd_option_iter hd (pat_fv (fst x))) m vs (snd x)) pats
+    end
+  | Fnot f1 =>
+    check_decrease_pred_aux f idx small hd m vs f1
+  | Fquant q v f1 =>
+    check_decrease_pred_aux f idx (remove vsymbol_eq_dec v small) (upd_option hd v) m vs f1
+  | Feq ty t1 t2 =>
+    check_decrease_fun_aux f idx small hd m vs t1 &&
+    check_decrease_fun_aux f idx small hd m vs t2
+  | Fbinop b f1 f2 =>
+    check_decrease_pred_aux f idx small hd m vs f1 &&
+    check_decrease_pred_aux f idx small hd m vs f2
+  | Flet t1 v f1 =>
+    check_decrease_fun_aux f idx small hd m vs t1 &&
+    check_decrease_pred_aux f idx (remove vsymbol_eq_dec v small) (upd_option hd v) m vs f1
+  | Fif f1 f2 f3 =>
+    check_decrease_pred_aux f idx small hd m vs f1 &&
+    check_decrease_pred_aux f idx small hd m vs f2 &&
+    check_decrease_pred_aux f idx small hd m vs f3
+  | _ => true
+  end.
+
+(*Check termination for all terms/formulas for a given
+  index for a fun or predsym*)
+Definition check_decrease_idx {A: Type}
+  (check_aux: fpsym -> nat -> list vsymbol -> option vsymbol ->
+    mut_adt -> list vty -> A -> bool)
+  (l: list (list vsymbol * A))
+  (m: mut_adt) (args: list vty)
+  (i: nat) (f: fpsym) : bool :=
+  forallb (fun x => (*Check given term's termination*)
+    let '(vs, t) := x in
+    match nth_error vs i with
+    | Some v =>
+        check_aux f i nil (Some v) m args t
+    | None => false
+    end
+  ) l.
+
+(*Group indices by mutual adt*)
+(*Should really be map, not assoc list*)
+(*Hmm, should we use pmap or something?*)
+(*want map (mut_adt * list vty) (map fsym (list nat))*)
+(*Require Import Coq.FSets.FMapAVL.*)
+
+(*We really do want a BST instead of binary trie.
+  With tuples/lists, ordering is much easier than *)
+
+
+
+(*Countable instance for mutual ADT*)
+
+
+
+(*TODO: if this gets awful, use stdpp*)
+(* Definition set_assoc_list  {A B: Set} (eq_dec: forall (x y: A), {x = y} + { x <> y}) 
+ (l: list (A * B)) (x: A) (y: B) : list (A * B) :=
+ fold_right (fun t acc => if eq_dec x (fst t) then (x, y) :: acc 
+  else t :: acc) nil l. *)
+
+Definition replace_assoc_list  {A B: Set} (eq_dec: forall (x y: A), {x = y} + { x <> y}) 
+ (l: list (A * B)) (x: A) (f: A -> B -> B) : list (A * B) :=
+ fold_right (fun t acc => if eq_dec x (fst t) then (x, (f x (snd t))) :: acc 
+  else t :: acc) nil l.
+Definition set_assoc_list  {A B: Set} (eq_dec: forall (x y: A), {x = y} + { x <> y}) 
+ (l: list (A * B)) (x: A) (y: B) : list (A * B) :=
+ replace_assoc_list eq_dec l x (fun _ _ => y).
+
+Definition map (A B: Set) := list (A * B).
+Definition map_get {A B: Set} (eq_dec: forall (x y: A), {x = y} + { x <> y}) 
+  (m: map A B) (x: A) : option B := get_assoc_list eq_dec m x.
+Definition map_set {A B: Set} (eq_dec: forall (x y: A), {x = y} + { x <> y}) 
+  (m: map A B) (x: A) (y: B) : map A B := set_assoc_list eq_dec m x y.
+Definition map_replace {A B: Set} (eq_dec: forall (x y: A), {x = y} + { x <> y}) 
+  (m: map A B) (x: A) (f: A -> B -> B): map A B := replace_assoc_list eq_dec m x f.
+Definition map_bindings {A B: Set} (m: map A B) : list (A * B) := m.
+
+Definition group_indices_adt 
+  (l: list (fpsym * list vsymbol)):
+  list ((mut_adt * list vty) * list (fpsym * list nat)) :=
+  fold_right (fun x acc =>
+    let '(f, vs) := x in
+
+    fold_right (fun vi m =>
+      let '(v, idx) := vi in
+      match (is_vty_adt gamma (snd v)) with
+      | Some (m1, a, args) => 
+        map_replace 
+          (tuple_eq_dec mut_adt_dec (list_eq_dec vty_eq_dec))
+          m (m1, args) (fun t mp =>
+          map_replace fpsym_eq_dec mp f (fun _ l => idx :: l))
+      | None => m
+      end
+      ) acc (combine vs (iota 0 (length vs)))
+  ) nil l.
+
+(*A more powerful version of "find" that allows a predicate to return an option
+  which we return*)
+(*Oops, forgot I was using ssreflect. Redo?*)
+Definition list_find {A B: Type} (p: A -> option B) (l: list A) : option (A * B) :=
+  fold_right (fun x acc => match (p x) with | Some y => Some (x, y) | None => acc end) None l.
+
+Lemma list_find_none_iff {A B: Type} (p: A -> option B) (l: list A):
+  list_find p l = None <-> forall x, In x l -> p x = None.
+Proof.
+  induction l; simpl; split; intros; auto; try contradiction; destruct_all; subst; auto.
+  - destruct (p x); auto; discriminate.
+  - destruct (p a) eqn : Ha; try discriminate.
+    apply IHl; auto.
+  - destruct (p a) eqn : Ha.
+    + exfalso. assert (Hnone: p a = None) by auto.
+      rewrite Hnone in Ha; discriminate.
+    + apply IHl; auto.
+Qed.
+
+Lemma list_find_some {A B: Type} (p: A -> option B) (l: list A)  x y:
+  list_find p l = Some (x, y) ->
+  In x l /\ p x = Some y.
+Proof.
+  induction l as [| h t IH]; simpl; try discriminate.
+  destruct (p h) eqn : Hph; intros Hsome.
+  - inversion Hsome; subst. auto.
+  - apply IH in Hsome. destruct_all; auto.
+Qed.
+
+
+(*Option version of "forall"*)
+(*TODO: define in terms of "pmap"?*)
+Definition list_collect {A B: Type} (p: A -> option B) (l: list A) : option (list B) :=
+  fold_right (fun x acc =>
+    Option.bind (fun y =>
+                Option.bind (fun z => Some (z :: y)) (p x)) acc
+  ) (Some nil) l.
+
+Lemma list_collect_some_iff {A B: Type} (p: A -> option B) (l: list A) (l1: list B):
+  list_collect p l = Some l1 <->  (List.map Some l1 = List.map p l) /\ (forall x, In x l -> isSome (p x)).
+Proof.
+  revert l1.
+  induction l as [| h t IH]; simpl; intros [| h1 t1]; simpl; split; intros Hl; auto.
+  - inversion Hl.
+  - destruct Hl; discriminate.
+  - destruct (list_collect p t); try discriminate.
+    destruct (p h); discriminate.
+  - destruct Hl; discriminate.
+  - destruct (list_collect p t) eqn : Ht; try discriminate.
+    destruct (p h) eqn : Hph; try discriminate.
+    simpl in Hl; inversion Hl; subst.
+    destruct (IH t1) as [IH' _]; clear IH; specialize (IH' Logic.eq_refl); destruct IH' as 
+    [Hsome Hall].
+    rewrite Hsome. split; auto. intros; destruct_all; subst; auto. rewrite Hph; reflexivity.
+  - destruct Hl as [Hht Hall]. inversion Hht as [[Hh Ht]] .
+    specialize (IH t1); destruct IH as [_ IH]. rewrite IH; auto.
+Qed.
+
+Lemma list_collect_none_iff {A B: Type} (p: A -> option B) (l: list A):
+  list_collect p l = None <-> (exists x, In x l /\ p x = None).
+Proof.
+  induction l as [| h t IH]; simpl; split.
+  - discriminate.
+  - intros; destruct_all; contradiction.
+  - intros Hnone.
+    destruct (list_collect p t) eqn : Ht; simpl in Hnone; try discriminate.
+    + destruct (p h) eqn : Hh; simpl in Hnone; try discriminate.
+      exists h. auto.
+    + apply IH in Hnone. destruct_all. eauto.
+  - intros [x [[Hhx | Hinx] Hpx]]; subst; auto.
+    + rewrite Hpx. simpl. destruct (list_collect p t); reflexivity.
+    + destruct (list_collect p t); simpl; auto.
+      assert (Some l = None); [| discriminate].
+      apply IH. exists x; auto.
+Qed.
+
+
+Definition check_decrease_fun 
+  (mutfun: list (funsym * list vsymbol * term))
+  (mutpred: list (predsym * list vsymbol * formula)) : option (mut_adt * list vty * list nat) :=
+  (*First, build mut map*)
+  let syms_args := (List.map (fun x => (f_sym (fst (fst x)), snd (fst x))) mutfun ++
+     List.map (fun x => (p_sym (fst (fst x)), snd (fst x))) mutpred) in
+  let mut_map := group_indices_adt syms_args in
+  let syms := List.map fst syms_args in 
+  
+  let tmlist := List.map (fun x => (snd (fst x), (snd x))) mutfun in
+  let fmlalist := List.map (fun x => (snd (fst x), (snd x))) mutpred in
+  (*For each m(vs), we have map funsym -> list indices*)
+  let mut_mapl := map_bindings mut_map in 
+  Option.map (fun x => (fst (fst x), snd x))
+  (list_find (fun t => 
+    let '(mvs, mp) := t in
+    let '(m, vs) := mvs in
+    (*For every fun/predsym in the list, 
+      1. see if the sym appears in mp (if not, return false, there
+      is no possible index)
+      2. If so, get indices, and find one that works, if any*)
+    (list_collect (fun (f : fpsym) => 
+      match (map_get fpsym_eq_dec mp f) with
+      | None => None
+      | Some l =>
+        List.find (fun i =>
+          check_decrease_idx check_decrease_fun_aux tmlist m vs i f &&
+          check_decrease_idx check_decrease_pred_aux fmlalist m vs i f
+        ) l
+      end
+    ) syms)
+  ) mut_mapl).
+(* 
+
+Definition check_decrease_fun 
+  (mutfun: list (funsym * list vsymbol * term))
+  (mutpred: list (predsym * list vsymbol * formula)) : bool :=
+  (*First, build mut map*)
+  let syms_args := (List.map (fun x => (f_sym (fst (fst x)), snd (fst x))) mutfun ++
+     List.map (fun x => (p_sym (fst (fst x)), snd (fst x))) mutpred) in
+  let mut_map := group_indices_adt syms_args in
+  let syms := List.map fst syms_args in 
+  
+  let tmlist := List.map (fun x => (snd (fst x), (snd x))) mutfun in
+  let fmlalist := List.map (fun x => (snd (fst x), (snd x))) mutpred in
+  (*For each m(vs), we have map funsym -> list indices*)
+  let mut_mapl := map_bindings mut_map in
+  List.existsb (fun t => 
+    let '(mvs, mp) := t in
+    let '(m, vs) := mvs in
+    (*For every fun/predsym in the list, 
+      1. see if the sym appears in mp (if not, return false, there
+      is no possible index)
+      2. If so, get indices, and find one that works, if any*)
+    forallb (fun (f : fpsym) => 
+      match (map_get fpsym_eq_dec mp f) with
+      | None => false
+      | Some l =>
+        List.existsb (fun i =>
+          check_decrease_idx check_decrease_fun_aux tmlist m vs i f &&
+          check_decrease_idx check_decrease_pred_aux fmlalist m vs i f
+        ) l
+      end
+    ) syms
+  ) mut_mapl. *)
+
+(*We also need to check the params. This is easy; we do it generically*)
+
+(*Given a list of A's and a function A -> B, return Some x 
+  iff f y = x for all y in l*)
+Definition find_eq {A B: eqType} (f: A -> B) (l: list A) : option B :=
+  match l with
+  | nil => None
+  | x :: tl => 
+    (*x is our candidate*)
+    if all (fun y => f y == f x) l then Some (f x) else None
+    end.
+
+(*TODO: move*)
+Lemma find_eq_spec {A B: eqType} (f: A -> B) (l: list A) (b: B):
+  reflect (l <> nil /\ forall x, x \in l -> f x = b)
+  (find_eq f l == Some b).
+Proof.
+  rewrite /find_eq.
+  case: l => [//= | h t /=].
+  - by apply ReflectF => [] [].
+  - rewrite eq_refl/=.
+    case: (all (fun y : A => f y == f h) t) /allP => [ Hall| Hnotall].
+    + case: (Some (f h) == Some b) /eqP => [[Hhb] | Hneq]; subst.
+      * apply ReflectT.  split=>//. move=> x.
+        rewrite in_cons => /orP[/eqP Hxh | Hint]; subst=>//.
+        by apply /eqP; apply Hall.
+      * apply ReflectF.
+        move=> [_ Hall2].
+        rewrite Hall2 in Hneq=>//.
+        by rewrite mem_head.
+    + apply ReflectF.
+      move=> [_ Hall].
+      apply Hnotall. move=> x Hinx. rewrite !Hall //.
+      by rewrite mem_head.
+      by rewrite in_cons Hinx orbT.
+Qed. 
+
+HB.instance Definition _ := hasDecEq.Build fpsym fpsym_eqb_spec.
+HB.instance Definition _ := hasDecEq.Build funpred_def funpred_def_eqb_spec.
+Definition mut_adt_eqb (m1 m2: mut_adt) : bool :=
+  mut_adt_dec m1 m2.
+
+Lemma mut_adt_eqb_spec (m1 m2: mut_adt) :
+  reflect (m1 = m2) (mut_adt_eqb m1 m2).
+Proof.
+  unfold mut_adt_eqb. destruct (mut_adt_dec m1 m2); subst; simpl;
+  [apply ReflectT | apply ReflectF]; auto.
+Qed.
+
+HB.instance Definition _ := hasDecEq.Build mut_adt mut_adt_eqb_spec.
+
+
+(*TODO: do we need all info? Or just bool?*)
+Definition check_termination (l: list funpred_def) : option (mut_adt * list typevar * list vty * list nat) :=
+  if null l then None else
+  let t := (split_funpred_defs l) in
+  let syms := List.map (fun x => f_sym (fst (fst x))) (fst t) ++
+    List.map (fun x => p_sym (fst (fst x))) (snd t) in
+  match find_eq (fun (x : fpsym) => s_params x) syms with
+  | Some params =>
+    match (check_decrease_fun (fst t) (snd t)) with
+    | Some (m, vs, idxs) =>
+      (*Some of these might be implied by typing but we check them anyway for proofs*)
+      if ((length vs =? length (m_params m))%nat &&
+        mut_in_ctx m gamma) then
+        Some (m, params, vs, idxs) else None
+    | None => None
+    end
+    (* omap (fun x => (fst (fst x), params, snd (fst x), snd x)) (check_decrease_fun (fst t) (snd t)) *)
+  | None => None
+  end.
+
+
+
+
+
+
+
+  (*Check each funsym and each predsym*)
+  (* forallb (fun (f: fpsym) => (*For given funsym*)
+    let argslen := length (s_args f) in
+    (*If no indices, true (constant symbols)*)
+    (argslen =? 0)%nat || List.existsb (fun i => (*Check all terms using index i*)
+      check_decrease_idx check_decrease_fun_aux tmlist i f &&
+      check_decrease_idx check_decrease_pred_aux fmlalist i f
+      ) (iota 0 argslen)
+  ) (map f_sym funsyms ++ map p_sym predsyms). *)
+
+(*Now to prove correct*)
+
+(*This is substantially different than the Typing definition
+  (because the naive implementation of that "algorithm" takes
+    exponential time. This one is polynomial.)
+  To prove this correct, we prove it equivalent to a Prop-typed
+  version, and prove that equivalent to the Typing version.
+  First, we define the Prop-typed version*)
+Section TypecheckFuncProp.
+
+(*(f: fpsym) (idx: nat)
+  (small: list vsymbol) (hd: option vsymbol) (m: mut_adt)
+  (vs: list vty) (t: term)*)
+
+
+
+
+
+Unset Elimination Schemes.
+Inductive decrease_fun_prop (f: fpsym) (idx: nat) : 
+  list vsymbol -> option vsymbol -> mut_adt -> list vty -> term -> Prop :=
+  | Decp_fun_in: forall (f1: funsym) (small: list vsymbol) (hd: option vsymbol) (m: mut_adt)
+    (vs: list vty) (l: list vty) (ts: list term) (x: vsymbol),
+    f = f_sym f1 ->
+    nth tm_d ts idx = Tvar x ->
+    In x small ->
+    l = List.map vty_var (s_params f) ->
+    Forall (decrease_fun_prop f idx small hd m vs) ts ->
+    decrease_fun_prop f idx small hd m vs (Tfun f1 l ts)
+  | Decp_fun_notin: forall (small: list vsymbol) (hd: option vsymbol)
+    (m: mut_adt) (vs: list vty) 
+    (f1: funsym) (l: list vty) (ts: list term),
+    f <> f_sym f1 ->
+    (forall t, In t ts -> decrease_fun_prop f idx small hd m vs t) ->
+    decrease_fun_prop f idx small hd m vs (Tfun f1 l ts)
+  | Decp_tmatch: forall (small: list vsymbol) (hd: option vsymbol) 
+    (m: mut_adt)
+    (vs: list vty) 
+    (mvar: vsymbol) (v: vty) (pats: list (pattern * term)),
+    var_case hd small mvar ->
+    (forall (x: pattern * term), In x pats ->
+      decrease_fun_prop f idx
+      (union vsymbol_eq_dec (vsyms_in_m m vs (pat_constr_vars m vs (fst x))) 
+        (remove_all vsymbol_eq_dec (pat_fv (fst x)) 
+        small)) (upd_option_iter hd (pat_fv (fst x))) m vs (snd x)) ->
+    decrease_fun_prop f idx small hd m vs (Tmatch (Tvar mvar) v pats) 
+  | Decp_tmatch_constr: forall (small: list vsymbol) (hd: option vsymbol) 
+    (m: mut_adt)
+    (vs: list vty) (a: alg_datatype)
+    (mvar: vsymbol) (v: vty) (tm: term) (pats: list (pattern * term))
+    (c: funsym) (l: list vty) (tms: list term) (j: nat) (Hj: j < length tms),
+    decrease_fun_prop f idx small hd m vs (Tfun c l tms) ->
+    (forall (x: pattern * term), In x pats ->
+      decrease_fun_prop f idx
+      (union vsymbol_eq_dec 
+        (vsyms_in_m m vs 
+          (get_constr_smaller small hd m vs c l tms (fst x)))
+        (remove_all vsymbol_eq_dec (pat_fv (fst x)) 
+        small)) (upd_option_iter hd (pat_fv (fst x))) m vs (snd x)) ->
+    decrease_fun_prop f idx small hd m vs 
+      (Tmatch (Tfun c l tms) v pats) 
+  | Decp_tmatch_rec: forall (small: list vsymbol) (hd: option vsymbol)
+    m vs
+    (tm: term) (v: vty) (pats: list (pattern * term)),
+      (match tm with
+        | Tvar var => ~ var_case hd small var
+        | Tfun f l tms => false
+        | _ => True
+      end) ->
+   decrease_fun_prop f idx small hd m vs tm ->
+    (forall x, In x pats ->
+      decrease_fun_prop f idx
+      (remove_all vsymbol_eq_dec (pat_fv (fst x)) small) 
+      (upd_option_iter hd (pat_fv (fst x))) m vs (snd x)) ->
+    decrease_fun_prop f idx small hd m vs (Tmatch tm v pats)
+  | Decp_var: forall (small : list vsymbol) (hd: option vsymbol) m vs (v: vsymbol),
+    decrease_fun_prop f idx small hd m vs (Tvar v)
+  | Decp_const: forall (small : list vsymbol) (hd: option vsymbol) m vs (c: Syntax.constant),
+    decrease_fun_prop f idx small hd m vs (Tconst c)
+  | Decp_tlet: forall (small: list vsymbol) (hd: option vsymbol) m vs (t1: term)
+    (v: vsymbol) (t2: term),
+    decrease_fun_prop f idx small hd m vs t1 ->
+    decrease_fun_prop f idx (remove vsymbol_eq_dec v small) (upd_option hd v) m vs t2 ->
+    decrease_fun_prop f idx small hd m vs (Tlet t1 v t2)
+  | Decp_tif: forall (small: list vsymbol) (hd: option vsymbol) m vs (f1: formula)
+    (t1 t2: term),
+    decrease_pred_prop f idx small hd m vs f1 ->
+    decrease_fun_prop f idx small hd m vs t1 ->
+    decrease_fun_prop f idx small hd m vs t2 ->
+    decrease_fun_prop f idx small hd m vs (Tif f1 t1 t2)
+  | Decp_eps: forall (small: list vsymbol) (hd: option vsymbol) m vs (f1: formula)
+    (v: vsymbol),
+    decrease_pred_prop f idx (remove vsymbol_eq_dec v small) (upd_option hd v) m vs f1 ->
+    decrease_fun_prop f idx small hd m vs (Teps f1 v)
+with decrease_pred_prop (f: fpsym) (idx: nat) : 
+  list vsymbol -> option vsymbol -> mut_adt -> list vty -> formula -> Prop :=
+  | Decp_pred_in: forall (small: list vsymbol) (hd: option vsymbol) m vs
+    (p: predsym) (p_decl: pn) (l: list vty) (ts: list term) x,
+    f = p_sym p ->
+    nth tm_d ts idx = Tvar x ->
+    In x small ->
+    l = List.map vty_var (s_params p) ->
+    Forall (decrease_fun_prop f idx small hd m vs) ts ->
+    decrease_pred_prop f idx small hd m vs (Fpred p l ts)
+  | Decp_pred_notin: forall (small: list vsymbol) (hd: option vsymbol) m vs
+    (p: predsym) (l: list vty) (ts: list term),
+    f <> p_sym p ->
+    (forall t, In t ts -> decrease_fun_prop f idx small hd m vs t) ->
+    decrease_pred_prop f idx small hd m vs (Fpred p l ts)
+  | Decp_fmatch: forall (small: list vsymbol) (hd: option vsymbol) m vs
+    (mvar: vsymbol) (v: vty) (pats: list (pattern * formula)),
+    var_case hd small mvar ->
+    (forall x, In x pats -> decrease_pred_prop f idx
+      (union vsymbol_eq_dec (vsyms_in_m m vs (pat_constr_vars m vs (fst x))) 
+        (remove_all vsymbol_eq_dec (pat_fv (fst x)) 
+        small)) (upd_option_iter hd (pat_fv (fst x))) m vs (snd x)) ->
+    decrease_pred_prop f idx small hd m vs (Fmatch (Tvar mvar) v pats)
+  | Decp_fmatch_constr: forall (small: list vsymbol) (hd: option vsymbol) 
+    (m: mut_adt)
+    (vs: list vty) (a: alg_datatype)
+    (mvar: vsymbol) (v: vty) (tm: term) (pats: list (pattern * formula))
+    (c: funsym) (l: list vty) (tms: list term) (j: nat) (Hj: j < length tms),
+    nth tm_d tms j = Tvar mvar ->
+    var_case hd small mvar ->
+    decrease_fun_prop f idx small hd m vs (Tfun c l tms) ->
+    (forall (x: pattern * formula), In x pats ->
+      decrease_pred_prop f idx
+      (union vsymbol_eq_dec 
+        (vsyms_in_m m vs 
+          (get_constr_smaller small hd m vs c l tms (fst x)))
+        (remove_all vsymbol_eq_dec (pat_fv (fst x)) 
+        small)) (upd_option_iter hd (pat_fv (fst x))) m vs (snd x)) ->
+    decrease_pred_prop f idx small hd m vs 
+      (Fmatch (Tfun c l tms) v pats) 
+  | Decp_fmatch_rec: forall (small: list vsymbol) (hd: option vsymbol) m vs
+    (tm: term) (v: vty) (pats: list (pattern * formula)),
+     (match tm with
+        | Tvar var => ~ var_case hd small var
+        | Tfun f l tms => false
+        | _ => True
+      end) ->
+    decrease_fun_prop f idx small hd m vs tm ->
+    (forall x, In x pats ->
+      decrease_pred_prop f idx
+      (remove_all vsymbol_eq_dec (pat_fv (fst x)) small) 
+      (upd_option_iter hd (pat_fv (fst x))) m vs (snd x)) ->
+    decrease_pred_prop f idx small hd m vs (Fmatch tm v pats)
+  | Decp_true: forall (small: list vsymbol) (hd: option vsymbol) m vs,
+    decrease_pred_prop f idx small hd m vs Ftrue
+  | Decp_false: forall (small: list vsymbol) (hd: option vsymbol) m vs,
+    decrease_pred_prop f idx small hd m vs Ffalse
+  | Decp_not: forall small hd m vs f1,
+    decrease_pred_prop f idx small hd m vs f1 ->
+    decrease_pred_prop f idx small hd m vs (Fnot f1)
+  | Decp_quant: forall (small: list vsymbol) (hd: option vsymbol) m vs
+    (q: quant) (v: vsymbol) (f1: formula),
+    decrease_pred_prop f idx (remove vsymbol_eq_dec v small) (upd_option hd v) m vs f1 ->
+    decrease_pred_prop f idx small hd m vs (Fquant q v f1)
+  | Decp_eq: forall (small: list vsymbol) (hd: option vsymbol) m vs
+    (ty: vty) (t1 t2: term),
+    decrease_fun_prop f idx small hd m vs t1 ->
+    decrease_fun_prop f idx small hd m vs t2 ->
+    decrease_pred_prop f idx small hd m vs (Feq ty t1 t2)
+  | Decp_binop: forall (small: list vsymbol) (hd: option vsymbol) m vs
+    (b: binop) (f1 f2: formula),
+    decrease_pred_prop f idx small hd m vs f1 ->
+    decrease_pred_prop f idx small hd m vs f2 ->
+    decrease_pred_prop f idx small hd m vs (Fbinop b f1 f2)
+  | Decp_flet: forall (small: list vsymbol) (hd: option vsymbol) m vs (t1: term)
+    (v: vsymbol) (f1: formula),
+    decrease_fun_prop f idx small hd m vs t1 ->
+    decrease_pred_prop f idx (remove vsymbol_eq_dec v small) (upd_option hd v) m vs f1 ->
+    decrease_pred_prop f idx small hd m vs (Flet t1 v f1)
+  | Decp_fif: forall (small: list vsymbol) (hd: option vsymbol) m vs
+    (f1 f2 f3: formula),
+    decrease_pred_prop f idx small hd m vs f1 ->
+    decrease_pred_prop f idx small hd m vs f2 ->
+    decrease_pred_prop f idx small hd m vs f3 ->
+    decrease_pred_prop f idx small hd m vs (Fif f1 f2 f3)
+    .
+Set Elimination Schemes.
+Scheme decrease_fun_prop_ind := Minimality for decrease_fun_prop Sort Prop
+with decrease_pred_prop_ind := Minimality for decrease_pred_prop Sort Prop.
+
+(*TODO: move*)
+
+Lemma omap_some_iff {A B: Type} (f: A -> B) (o: option A) (x: B):
+  omap f o = Some x ->
+  exists y, o = Some y /\ f y = x.
+Proof.
+  rewrite /omap. case: o => [z/= [] <- |//].
+  by exists z.
+Qed.
+
+(*Don't bother with rest, only one we need induction for*)
+(*The theorem we want to prove*)
+(*Not iff because many lists could satisfy the condition, but this
+  function only returns one*)
+Theorem check_termination_some (l: list funpred_def) m params vs idxs : 
+  check_termination l = Some (m, params, vs, idxs) ->
+  funpred_def_term gamma l m params vs idxs.
+Proof.
+  (*TODO: ssreflect?*)
+  rewrite /check_termination /funpred_def_term.
+  case: (nullP l) => [//| Hnull].
+  set (t := (split_funpred_defs l)).
+  set (funsyms := List.map (fun x : funsym * seq vsymbol * term => f_sym (x.1.1)) t.1).
+  set (predsyms := List.map (fun x : predsym * seq vsymbol * formula =>p_sym (x.1.1)) t.2).
+  case Hfind: (find_eq  (fun (x : fpsym) => s_params x) (funsyms ++ predsyms)) => [params1 | //].
+  move: Hfind => /eqP /find_eq_spec [Hnull' Hparams].
+  case Hdec: (check_decrease_fun t.1 t.2) => [[[m1 vs1] idxs1] | //].
+  case: (Nat.eqb_spec (length vs1) (length (m_params m1))) => [Hlenvs |//].
+  case m_in: (mut_in_ctx m1 gamma) => //. move=> [] Hm Hparams1 Hvs Hidxs; subst.
+  (*Simplify the [check_decrease_fun] to prove our coals*)
+  rewrite /check_decrease_fun in Hdec.
+  apply omap_some_iff in Hdec.
+  case: Hdec => [[[[m2 vs2] mp2] idxs2] [Hfind]] [] Hm Hvs Hidx; subst.
+  apply list_find_some in Hfind.
+  case: Hfind => [Hinbind Hall].
+  apply list_collect_some_iff in Hall.
+  setoid_rewrite map_app in Hall.
+  setoid_rewrite map_map in Hall.
+  rewrite /= in Hall.
+  subst funsyms predsyms.
+  set (funsyms := List.map (fun x : funsym * seq vsymbol * term => f_sym (x.1.1)) t.1) in *.
+  set (predsyms := List.map (fun x : predsym * seq vsymbol * formula =>p_sym (x.1.1)) t.2) in *.
+  case : Hall => [Hmap Hall].
+  have Hl : length idxs = length l.
+  {
+    rewrite <- map_length with (f:=Some). rewrite Hmap !map_length app_length.
+    rewrite /funsyms/predsyms !map_length /t.
+    by apply split_funpred_defs_length.
+  }
+  split_all =>//.
+  - (*Some things we could prove that may be useful (see):
+      1. It is the case that for i < length syms,
+          check_decrease_idx ... m vs (nth i idxs) (nth i syms)
+            for all terms and formulas in l
+        (Note: can get from hmap, is hall useful?)
+      2. Need to know mp2
+         Spec should be:
+          for every (funsym, list nat) in mp2,
+            suppose (f, vs) is in syms.
+            then for every 0 <= i < length (vs), i in idx <-> nth i vs has type m(vs)
+      I think these 2 facts should be enough to prove what we need, but see*)
+
+(*TODO: prove - need to know about idxs and where they come from*) admit.
+  - (*prove about m*) admit.
+  - (*same as before*) admit.
+  - move => f. rewrite funpred_defs_to_sns_in_fst =>//=.
+    move => [i [Hi Hf]]; rewrite Hf /=.
+    apply Hparams. apply /inP. rewrite in_app_iff; left.
+    rewrite /funsyms in_map_iff.
+    exists (List.nth i (split_funpred_defs l).1 (id_fs, [::], tm_d)).
+    split=>//. rewrite /t. by apply nth_In.
+  - move => p. rewrite funpred_defs_to_sns_in_snd =>//= => [[i [Hi Hf]]].
+    rewrite Hf /=.
+    apply Hparams. apply /inP. rewrite in_app_iff; right.
+    rewrite /predsyms in_map_iff.
+    exists (List.nth i (split_funpred_defs l).2 (id_ps, [::], Ftrue)).
+    split=>//. rewrite /t. by apply nth_In.
+  - (*These are the big ones*)
+    
+    (*So the "Hall" part will be useful for that*)
+    
+    
+
+
+Theorem check_term_equiv :  
+  check_termination l = Some (m, params, vs, is) ->
+  funpred_def_term l m params vs is.
+
+
+
+
+
+
+ m params vs is
+
+
+  reflect (check_termination l == Some (
+  check_termination l ->
+  funpred_def_term_exists gamma l
+  .
+Proof.
+  unfold funpred_def_term_exists, check_termination_prop.
+  (*TODO: maybe better way than split - only prove direction we need first*)
+  intros [Hnotnil [[params Hparams] Hdecrease]].
+  unfold decrease_prop in Hdecrease.
+  destruct Hdecrease as [[[m vs] mp] [Hin Hall]].
+  exists m. exists params. exists vs.
+  (*Now we need to get list of nat*)
+  (*Maybe it is better to produce this?*)
+
+
+
+
+(*TODO: instead of bool, maybe should return 
+  option (list nat * mut_adt * list vty)
+  then fold through, ensure we are matching on single mut*)
+Definition decrease_idx_prop {A: Type}
+  (check_aux: fpsym -> nat -> list vsymbol -> option vsymbol ->
+    mut_adt -> list vty -> A -> Prop)
+  (l: list (list vsymbol * A))
+  (m: mut_adt) (args: list vty)
+  (i: nat) (f: fpsym) : Prop :=
+  Forall (fun x => 
+    let '(vs, t) := x in
+    exists v,
+      nth_error vs i = Some v /\
+      check_aux f i nil (Some v) m args t
+  ) l.
+
+Definition decrease_prop
+  (mutfun: list (funsym * list vsymbol * term))
+  (mutpred: list (predsym * list vsymbol * formula)) : Prop :=
+  let syms_args := (List.map (fun x => (f_sym (fst (fst x)), snd (fst x))) mutfun ++
+     List.map (fun x => (p_sym (fst (fst x)), snd (fst x))) mutpred) in
+  let mut_map := group_indices_adt syms_args in
+  let syms := List.map fst syms_args in 
+  
+  let tmlist := List.map (fun x => (snd (fst x), (snd x))) mutfun in
+  let fmlalist := List.map (fun x => (snd (fst x), (snd x))) mutpred in
+  (*For each m(vs), we have map funsym -> list indices*)
+  let mut_mapl := map_bindings mut_map in
+  exists t, In t mut_mapl /\ 
+    let '(mvs, mp) := t in
+    let '(m, vs) := mvs in
+    (*For every fun/predsym in the list, 
+      1. see if the sym appears in mp (if not, return false, there
+      is no possible index)
+      2. If so, get indices, and find one that works, if any*)
+    Forall (fun (f : fpsym) => 
+      match (map_get fpsym_eq_dec mp f) with
+      | None => false
+      | Some l =>
+        exists i, In i l /\
+          decrease_idx_prop check_decrease_fun_aux tmlist m vs i f /\
+          decrease_idx_prop check_decrease_pred_aux fmlalist m vs i f
+      end
+    ) syms.
+
+Definition check_termination_prop (l: list funpred_def) : Prop :=
+  l <> nil /\
+  let t := (split_funpred_defs l) in
+  let syms := List.map (fun x => f_sym (fst (fst x))) (fst t) ++
+    List.map (fun x => p_sym (fst (fst x))) (snd t) in
+  (exists params,
+    forall x, In x syms -> s_params x = params) /\
+  decrease_prop (fst t) (snd t).
+
+(*The theorem we want to prove*)
+Theorem check_term_equiv (l: list funpred_def) :
+  check_termination_prop l ->
+  funpred_def_term_exists gamma l
+  .
+Proof.
+  unfold funpred_def_term_exists, check_termination_prop.
+  (*TODO: maybe better way than split - only prove direction we need first*)
+  intros [Hnotnil [[params Hparams] Hdecrease]].
+  unfold decrease_prop in Hdecrease.
+  destruct Hdecrease as [[[m vs] mp] [Hin Hall]].
+  exists m. exists params. exists vs.
+  (*Now we need to get list of nat*)
+  (*Maybe it is better to produce this?*)
+  
+  
+
+
+  intros [Hnotnil [[[m vs] mp] [Hin Hall]]].
+  exists m. Print funpred_def_term.
+  (*TODO: add check for params*)
+
+
+  
+
+
+
+  let fs := fst (funpred_defs_to_sns l is) in
+    let ps := snd (funpred_defs_to_sns l is) in
+
+
+
+Definition funpred_valid (l: list funpred_def) :=
+    ((Forall funpred_def_valid_type l) /\
+    funpred_def_term_exists l).
+
+
+
+Definition check_decrease_fun 
+  (mutfun: list (funsym * (list vsymbol * term)))
+  (mutpred: list (predsym * (list vsymbol * formula))) : bool :=
+  (*First, build mut map*)
+  let syms_args := (List.map (fun x => (f_sym (fst x), fst (snd x))) mutfun ++
+     List.map (fun x => (p_sym (fst x), fst (snd x))) mutpred) in
+  let mut_map := group_indices_adt syms_args in
+  let syms := List.map fst syms_args in 
+  
+  let tmlist := List.map snd mutfun in
+  let fmlalist := List.map snd mutpred in
+  (*For each m(vs), we have map funsym -> list indices*)
+  let mut_mapl := map_bindings mut_map in
+  forallb (fun t => 
+    let '(mvs, mp) := t in
+    let '(m, vs) := mvs in
+    (*For every fun/predsym in the list, 
+      1. see if the sym appears in mp (if not, return false, there
+      is no possible index)
+      2. If so, get indices, and find one that works, if any*)
+    forallb (fun (f : fpsym) => 
+      match (map_get fpsym_eq_dec mp f) with
+      | None => false
+      | Some l =>
+        List.existsb (fun i =>
+          check_decrease_idx check_decrease_fun_aux tmlist m vs i f &&
+          check_decrease_idx check_decrease_pred_aux fmlalist m vs i f
+        ) l
+      end
+    ) syms
+  ) mut_mapl.
+
+   
+
+(*Check termination for all terms/formulas for a given
+  index for a fun or predsym*)
+Definition check_decrease_idx {A: Type}
+  (check_aux: fpsym -> nat -> list vsymbol -> option vsymbol ->
+    mut_adt -> list vty -> A -> bool)
+  (l: list (list vsymbol * A))
+  (i: nat) (f: fpsym) : bool :=
+  forallb (fun x => (*Check given term's termination*)
+    let '(vs, t) := x in
+    match nth_error vs i with
+    | Some v =>
+      match (is_vty_adt gamma (snd v)) with
+      | Some (m, a, args) =>
+          check_aux f i nil (Some v) m args t
+      | None => false
+      end
+    | None => false
+    end
+  ) l.
+
+Definition check_decrease_fun 
+  (mutfun: list (funsym * (list vsymbol * term)))
+  (mutpred: list (predsym * (list vsymbol * formula))) : bool :=
+  let funsyms := map fst mutfun in
+  let predsyms := map fst mutpred in
+  let tmlist := map snd mutfun in
+  let fmlalist := map snd mutpred in
+  (*Check each funsym and each predsym*)
+  forallb (fun (f: fpsym) => (*For given funsym*)
+    let argslen := length (s_args f) in
+    (*If no indices, true (constant symbols)*)
+    (argslen =? 0)%nat || List.existsb (fun i => (*Check all terms using index i*)
+      check_decrease_idx check_decrease_fun_aux tmlist i f &&
+      check_decrease_idx check_decrease_pred_aux fmlalist i f
+      ) (iota 0 argslen)
+  ) (map f_sym funsyms ++ map p_sym predsyms).
+
+
+
+
+let check_decrease_fun (mut: (lsymbol * ((vsymbol list) * term)) list) : bool =
+  (*For each lsymbol in the list, test all terms using each possible index, so that
+    we can construct a list which works*)
+  (*TODO: do we need decreasing indicies for something? If so, modify*)
+  let syms = List.map fst mut in
+  let tmlist = List.map snd mut in
+  List.for_all (fun (l: lsymbol) ->
+      print_endline ("CHECKING: " ^ l.ls_name.id_string); (*For given lsymbol, test all indicies*)
+      (*If no indices, true (constant symbols)*)
+      let argslen = (IntFuncs.int_length l.ls_args) in
+      BigInt.is_zero argslen || 
+      List.exists (fun i -> (*Check all terms with index i*)
+        print_endline ("AT INDEX: " ^ BigInt.to_string i);
+        let b = (List.for_all (fun (vs, t) -> (*Check given term's termination here*)
+        print_endline ("CHECK_TERM: " ^ (term_to_string t));
+        print_endline ("WITH VARS:" ^ vars_to_string vs);
+          assert (List.length (l.ls_args) = List.length vs);
+          begin match big_nth vs i with
+          | Some v -> print_endline ("WITH HEAD = " ^ v.vs_name.id_string); 
+            check_decrease_fun_aux syms (l, i) Svs.empty (Some v) t
+          | None -> print_endline ("REACHED A BAD PLACE! with " ^ vars_to_string vs ^ " and idx " ^ BigInt.to_string i); (*impossible through well-formed assumptions*) false
+          end) tmlist) in
+          print_endline ("RESULT: " ^ Bool.to_string b); b) (IntFuncs.iota_z argslen)) syms
+
 
 (*First, we need a decidable version of
   [decrease_fun] and [decrease_pred], assuming we already
@@ -1178,7 +2099,7 @@ HB.instance Definition _ := hasDecEq.Build fn fn_eqb_spec.
 HB.instance Definition _ := hasDecEq.Build pn pn_eqb_spec.
 
 (*Handle case at beginning of most*)
-Ltac not_in_tm_case fs ps t :=
+(* Ltac not_in_tm_case fs ps t :=
   case: (all (fun (f: fn) => ~~ (funsym_in_tm (fn_sym f) t)) fs &&
     all (fun (p: pn) => ~~ (predsym_in_tm (pn_sym p) t)) ps)
     /(andPP (funsym_in_tmP fs t) (predsym_in_tmP ps t))=>/=;
@@ -1188,7 +2109,7 @@ Ltac not_in_fmla_case fs ps fm :=
   case: (all (fun (f: fn) => ~~ (funsym_in_fmla (fn_sym f) fm)) fs &&
     all (fun (p: pn) => ~~ (predsym_in_fmla (pn_sym p) fm)) ps)
     /(andPP (funsym_in_fmlaP fs fm) (predsym_in_fmlaP ps fm))=>/=;
-  [move=> [Hnotf Hnotp]; apply ReflectT; by apply Dec_notin_f |].
+  [move=> [Hnotf Hnotp]; apply ReflectT; by apply Dec_notin_f |]. *)
 
 (*Handle trivial cases for false*)
 Ltac false_triv_case Hnot :=
