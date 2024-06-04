@@ -1168,9 +1168,8 @@ Inductive decrease_fun (fs: list fn) (ps: list pn) :
     This allows us to match on tuples, for instance*)
   | Dec_tmatch_constr: forall (small: list vsymbol) (hd: option vsymbol) 
     (m: mut_adt)
-    (vs: list vty) (a: alg_datatype)
-    (mvar: vsymbol) (v: vty) (tm: term) (pats: list (pattern * term))
-    (c: funsym) (l: list vty) (tms: list term) (j: nat) (Hj: j < length tms),
+    (vs: list vty) (v: vty)(pats: list (pattern * term))
+    (c: funsym) (l: list vty) (tms: list term),
     decrease_fun fs ps small hd m vs (Tfun c l tms) ->
     (*Note: we allow repeated matches on the same variable*)
     (forall (x: pattern * term), In x pats ->
@@ -1261,11 +1260,8 @@ with decrease_pred (fs: list fn) (ps: list pn) :
     This allows us to match on tuples, for instance*)
   | Dec_fmatch_constr: forall (small: list vsymbol) (hd: option vsymbol) 
     (m: mut_adt)
-    (vs: list vty) (a: alg_datatype)
-    (mvar: vsymbol) (v: vty) (tm: term) (pats: list (pattern * formula))
-    (c: funsym) (l: list vty) (tms: list term) (j: nat) (Hj: j < length tms),
-    nth j tms tm_d = Tvar mvar ->
-    var_case hd small mvar ->
+    (vs: list vty) (v : vty) (pats: list (pattern * formula))
+    (c: funsym) (l: list vty) (tms: list term),
     decrease_fun fs ps small hd m vs (Tfun c l tms) ->
     (*Note: we allow repeated matches on the same variable*)
     (forall (x: pattern * formula), In x pats ->
