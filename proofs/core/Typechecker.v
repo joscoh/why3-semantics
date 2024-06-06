@@ -1982,6 +1982,73 @@ Section TypecheckFuncProp.
 
 
 
+(*START - I think - without adding info to context, doesn't work
+  Need separate funsym and predsym version for each (see if can redo somehow)
+  Because otherwise have - funsym foo (not in fs), predsym foo (in ps)
+  here - call recursive for Tfun foo when that is a problem*)
+Unset Elimination Schemes.
+Inductive decrease_fun_prop_triv
+  (ind1: list vsymbol -> option vsymbol -> mut_adt -> list vty -> term -> Prop)
+  (ind2: list vsymbol -> option vsymbol -> mut_adt -> list vty -> formula -> Prop):
+  list vsymbol -> option vsymbol -> mut_adt -> list vty -> term -> Prop :=
+  | Decp_tmatch: forall (small: list vsymbol) (hd: option vsymbol) 
+    (m: mut_adt)
+    (vs: list vty) 
+    (mvar: vsymbol) (v: vty) (pats: list (pattern * term)),
+    var_case hd small mvar ->
+    (forall (x: pattern * term), In x pats ->
+      ind1 (union vsymbol_eq_dec (vsyms_in_m m vs (pat_constr_vars m vs (fst x))) 
+        (remove_all vsymbol_eq_dec (pat_fv (fst x)) 
+        small)) (upd_option_iter hd (pat_fv (fst x))) m vs (snd x)) ->
+    decrease_fun_prop_triv ind1 ind2 small hd m vs (Tmatch (Tvar mvar) v pats).
+
+Inductive decrease_pred_prop_triv
+  (ind1: list vsymbol -> option vsymbol -> mut_adt -> list vty -> term -> Prop)
+  (ind2: list vsymbol -> option vsymbol -> mut_adt -> list vty -> formula -> Prop):
+  list vsymbol -> option vsymbol -> mut_adt -> list vty -> formula -> Prop :=
+  | Decp_fmatch: forall (small: list vsymbol) (hd: option vsymbol) 
+    (m: mut_adt)
+    (vs: list vty) 
+    (mvar: vsymbol) (v: vty) (pats: list (pattern * formula)),
+    var_case hd small mvar ->
+    (forall (x: pattern * formula), In x pats ->
+      ind2 (union vsymbol_eq_dec (vsyms_in_m m vs (pat_constr_vars m vs (fst x))) 
+        (remove_all vsymbol_eq_dec (pat_fv (fst x)) 
+        small)) (upd_option_iter hd (pat_fv (fst x))) m vs (snd x)) ->
+    decrease_pred_prop_triv ind1 ind2 small hd m vs (Fmatch (Tvar mvar) v pats).
+
+Section Dec.
+Variable (f: funsym) (idx: nat).
+
+Inductive decrease_fun_prop  : 
+  list vsymbol -> option vsymbol -> mut_adt -> list vty -> term -> Prop :=
+  | Decp_ttriv: forall small hd m vs t,
+    decrease_fun_prop_triv decrease_fun_prop decrease_pred_prop small hd m vs t ->
+    decrease_fun_prop small hd m vs t
+with decrease_pred_prop :
+  list vsymbol -> option vsymbol -> mut_adt -> list vty -> formula -> Prop :=
+  | Decp_ftriv: forall small hd m vs f,
+    decrease_pred_prop_triv decrease_fun_prop decrease_pred_prop small hd m vs f ->
+    decrease_pred_prop small hd m vs f.
+
+End Dec.
+(*This will work but induction will be horrible - maybe just do 4 even though that is horrible*)
+  
+  | Decp_fun_in: forall (f1: funsym) (small: list vsymbol) (hd: option vsymbol) (m: mut_adt)
+    (vs: list vty) (l: list vty) (ts: list term) (x: vsymbol),
+    f = f_sym f1 ->
+    nth tm_d ts idx = Tvar x ->
+    In x small ->
+    l = List.map vty_var (s_params f) ->
+    Forall (decrease_fun_prop f idx small hd m vs) ts ->
+    decrease_fun_prop f idx small hd m vs (Tfun f1 l ts)
+  | Decp_fun_notin: forall (small: list vsymbol) (hd: option vsymbol)
+    (m: mut_adt) (vs: list vty) 
+    (f1: funsym) (l: list vty) (ts: list term),
+    f <> f_sym f1 ->
+    (forall t, In t ts -> decrease_fun_prop f idx small hd m vs t) ->
+    decrease_fun_prop f idx small hd m vs (Tfun f1 l ts)
+
 
 
 Unset Elimination Schemes.
@@ -2146,7 +2213,6 @@ Scheme decrease_fun_prop_ind := Minimality for decrease_fun_prop Sort Prop
 with decrease_pred_prop_ind := Minimality for decrease_pred_prop Sort Prop.
 
 (*Prove reflection*)
-Check check_decrease_fun_aux.
 
 Ltac fun_caseF t := 
   let x := fresh in
@@ -2376,6 +2442,198 @@ Proof.
 
 
   Print group_indices_adt.*)*)*)*)
+Print sn.
+Search sn.
+Set Bullet Behavior "Strict Subproofs".
+
+(*TODO: move*)
+Lemma Forall_impl_in  {A: Type} {P Q: A -> Prop} {l}:
+(forall x, In x l -> P x -> Q x) ->
+Forall P l ->
+Forall Q l.
+Proof.
+  rewrite !Forall_forall; intros; auto.
+Qed.
+
+
+Lemma NoDup_map_typerror {A B C: Type} (f1: A -> C) (f2: B -> C) (l1: list A) (l2: list B)
+          (x1: A) (x2: B) (Hnodup: NoDup (List.map f1 l1 ++ List.map f2 l2)):
+          In x1 l1 -> In x2 l2 -> f1 x1 = f2 x2 -> False.
+Proof.
+  induction l1; simpl; auto.
+  simpl in Hnodup. inversion Hnodup; subst.
+  intros [Heq | Hin]; subst; auto.
+  intros Hin2 Heq. apply H1. rewrite in_app_iff. right. rewrite in_map_iff.
+  exists x2. auto.
+Qed.
+(* 
+Lemma NoDup_map_typerror' {A B C D: Type} (f1: A -> C) (f2: B -> C) (f3: C -> D) (l1: list A) (l2: list B)
+          (x1: A) (x2: B) (Hnodup: NoDup (List.map f3 (List.map f1 l1 ++ List.map f2 l2))):
+          In x1 l1 -> In x2 l2 -> f1 x1 = f2 x2 -> False.
+Proof.
+  induction l1; simpl; auto.
+  simpl in Hnodup. inversion Hnodup; subst.
+  intros [Heq | Hin]; subst; auto.
+  intros Hin2 Heq. apply H1. rewrite in_app_iff. right. rewrite in_map_iff.
+  exists x2. auto.
+Qed. *)
+
+Lemma all_dec_iff (fs: list fn) (ps: list pn) (idxs: list nat)
+      (Hlen: length idxs = length fs + length ps) m vs t f
+      (Hwf1: Forall fn_wf fs) (Hwf2: Forall pn_wf ps)
+      (Hn: NoDup (List.map sn_sym (List.map fn_sn fs ++ List.map pn_sn ps))):
+      (forall small hd,
+        decrease_fun fs ps small hd m vs t <->
+        (forall (i: nat) (Hi: (i < (length fs + length ps)%coq_nat)%coq_nat),
+          let s := (List.nth i (List.map fn_sn fs ++ List.map pn_sn ps) sn_d) in
+          decrease_fun_prop (sn_sym s) (sn_idx s) small hd m vs t)) /\
+      (forall small hd,
+        decrease_pred fs ps small hd m vs f <->
+        (forall (i: nat) (Hi: (i < (length fs + length ps)%coq_nat)%coq_nat),
+          let s := (List.nth i (List.map fn_sn fs ++ List.map pn_sn ps) sn_d) in
+          decrease_pred_prop (sn_sym s) (sn_idx s)
+          small hd m vs f)).
+Proof.
+  revert t f.
+  apply term_formula_ind; try solve[intros; split; intros; constructor].
+  - (*Tfun - interesting case*)
+    intros f1 l l1 Hall small hd. split.
+    + intros Hdec i Hi. inversion Hdec; subst.
+      * (*Recursive case - only if s = fs *)
+        destruct (@In_nth _  fs f_decl fn_d ltac:(assumption)) as [j [Hj Hfdecl]].
+        assert (Hsymeq: f_sym (fn_sym (List.nth j fs fn_d)) = (sn_sym (List.nth j fs fn_d))).
+        { subst. rewrite Forall_forall in Hwf1. apply Hwf1. assumption. }
+        set (s:=List.nth i (List.map fn_sn fs ++ List.map pn_sn ps) sn_d). simpl.
+        destruct (sn_eqb_spec s (fn_sn f_decl)) as [Hseq | Hsneq]; subst.
+       (*  destruct (fpsym_eqb_spec (sn_sym s) (f_sym (fn_sym (List.nth j fs fn_d)))) as [Hseq | Hsneq]. *)
+       (*  destruct (Nat.eqb_spec i j) as [Hij | Hij]; subst. *)
+        -- simpl. apply Decp_fun_in with (x:=x); auto; try solve[
+           subst s; rewrite <- ?nth_eq, Hseq, ?Hsymeq; auto].
+           (*TODO: avoid repeat*)
+           revert Hall H11. rewrite !Forall_forall. intros. apply Hall; auto.
+        -- (*Other case, just non-recursive*) apply Decp_fun_notin.
+          ++ intro C. rewrite Hsymeq in C.
+            (*Need to reason about uniqueness*)
+            apply Hsneq. eapply NoDup_map_in. apply Hn. all: auto.
+            ** subst s. apply nth_In; rewrite -> app_length, !map_length; auto.
+            ** apply in_app_iff. left. rewrite in_map_iff. exists (List.nth j fs fn_d). auto.
+          ++ intros tm Hintm. revert H11 Hall. rewrite !Forall_forall; intros; apply Hall; auto.
+      * (*f1 not in list*)
+        simpl. apply Decp_fun_notin.
+        -- intro C. assert (Hilt: (i < length fs)%coq_nat). {
+            (*Has to be in 1st portion because no funsym and predsym can agree*)
+            destruct (Nat.lt_ge_cases i (length fs)) as [Hilt | Higt]; auto.
+            rewrite app_nth2 in C; [| rewrite map_length; lia].
+            rewrite map_length in C.
+            
+            eapply NoDup_map_typerror in C; [contradiction | | | ].
+            Search NoDup List.map.
+            assert (NoDup_map_typerror {A B C: Type} (f1: A -> C) (f2: B -> C) (l1: list A) (l2: list B)
+              (x1: A) (x2: B) (Hnodup: NoDup (List.map f1 l1 ++ List.map f2 l2)) ->
+              In x1 l1 -> In x2 l2 -> f1 x1 = f2 x2 -> False).
+
+ 
+            assert (Hicase: (i < length fs)%coq_nat \/ (length fs <= i < (length fs + length ps)%coq_nat)%coq_nat).
+              Search (?x < ?y)%coq_nat "\/".
+            
+
+Nat.lt_ge_cases: forall n m : nat, (n < m)%coq_nat \/ (m <= n)%coq_nat
+          
+
+
+ rewrite app_nth1 in C.
+          2: { 
+
+
+ intro C. apply H5. rewrite in_map_iff. exists (List.nth i fs fn_d).
+          split; [|apply nth_In
+            
+
+
+ exists (List.nth i (List.map fn_sn fs ++ List.map pn_sn ps) sn_d).  exists (f_sym f1).
+
+
+
+ rewrite <- C in H5. subst f1.
+
+ apply nth_In.
+            Search NoDup List.map.
+            
+            (*Ugh, anyway need to reason about uniqueness*)
+            
+
+ inversion C.
+
+ [rewrite -> Hsneq; auto|].
+          apply Hall.
+
+
+ apply Forall_impl_in. intros tm Hintm Hall. apply Hall; auto.
+            rewrite Forall_forall in H11. auto.
+            
+
+
+            subst s. rewrite -> Hseq, Hsymeq. auto.
+            subst s. rewrite <- nth_eq. rewrite -> Hseq. auto.
+            subst s. rewrite -> Hseq, Hsymeq. auto. 
+
+
+ symmetry. apply Hsymeq.
+
+
+ (*All but 1 are trivial*)
+          try solve[ subst s;
+          rewrite app_nth1; [|rewrite map_length; auto];
+          rewrite -> map_nth_inbound with (d2:=fn_d); auto;
+          try rewrite <- nth_eq;
+          try rewrite Hsymeq; auto]. subst s.
+          revert Hall. apply Forall_impl_in. intros tm Hintm Hall. apply Hall; auto.
+          rewrite Forall_forall in H11. auto.
+        -- (*Other case, just non-recursive*) apply Decp_fun_notin.
+          apply Hall.
+
+
+
+          rewrite app_nth1; [|rewrite map_length; auto];
+          rewrite -> map_nth_inbound with (d2:=fn_d); auto. auto.
+          ++ rewrite app_nth1; [|rewrite map_length; auto].
+            rewrite -> map_nth_inbound with (d2:=fn_d); auto.
+            rewrite Forall_forall in Hwf1.
+            symmetry. apply Hwf1. assumption.
+          ++ rewrite app_nth1; [| rewrite map_length; auto].
+            rewrite <- nth_eq, map_nth_inbound with (d2:=fn_d); auto.
+          ++ rewrite app_nth1; [| rewrite map_length; auto].
+            rewrite -> map_nth_inbound with (d2:=fn_d); auto.
+            
+
+
+  assumption.
+            Search List.nth nth.
+            specialize (Hwf1 (List.nth j fs fn_d) ltac:(assumption)).
+            unfold fn_wf in Hwf1.
+
+            Search fn_sym sn_sym.
+
+ reflexivity.
+          rewrite nth_app1.
+        simpl. apply Decp_fun_in with (x:=x); auto.
+        -- 
+
+
+
+ Print decrease_fun_prop.
+      intros i Hi. simpl. 
+
+split.
+    
+
+  - intros; split; intros; constructor.
+  - intros; split; intros; constructor. 
+    + intros i Hi. constructor.
+    + constructor.
+
+
+ inversion Hdec. inversion Hdec; subst.
 
 (*Don't bother with rest, only one we need induction for*)
 (*The theorem we want to prove*)
@@ -2568,7 +2826,48 @@ In (m, vs, mp2)
     unfold funsyms; rewrite in_map_iff.
     exists (List.nth i (split_funpred_defs l).2 (id_ps, [::], Ftrue)).
     split; auto. unfold t. apply nth_In; auto.
-  - (*Now, only need to prove [decrease_fun] goal*) Check decrease_fun.
+  - rewrite Forall_forall.
+    intros f1. rewrite funpred_defs_to_sns_in_fst; [| auto].
+    intros [i [Hi Hf1]].
+
+    simpl in Hf1; subst; simpl. Check decrease_pred_prop.
+
+
+     /\
+
+    (*So what is the idea: 
+      decrease_fun takes in list of fn, pn, checks to see if, in given term,
+      all f in fn and all p in pn decrease on their corresponding index
+
+      decrease_fun_prop takes in single fpsym and sees if all ocurrences of this
+      fpsym in given term decrease on given index
+
+      2 directions: 
+      1. If for all f in fs and p in ps, we have decrease_fun/pred_prop f (idx f) t,
+      then we have decrease_fun fs ps t
+      2. The converse - need to go term by term
+
+      so theorem is:
+      for all fs ps f, In f fs ->
+      decrease_fun fs ps 
+    
+
+ Search funpred_defs_to_sns.
+
+
+
+ Print check_decrease_idx.
+
+
+    Lemma (f: fpsym) (l: list (list vsymbol * term)) (is: list nat)
+
+     check_decrease_fun_aux f
+
+
+
+
+
+(*Now, only need to prove [decrease_fun] goal*) Check decrease_fun.
 
 
     (*Know: forall i, i < length l ->
