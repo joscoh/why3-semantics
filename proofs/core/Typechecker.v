@@ -1976,81 +1976,536 @@ Definition check_termination (l: list funpred_def) : option (mut_adt * list type
   First, we define the Prop-typed version*)
 Section TypecheckFuncProp.
 
-(*(f: fpsym) (idx: nat)
-  (small: list vsymbol) (hd: option vsymbol) (m: mut_adt)
-  (vs: list vty) (t: term)*)
+(*For now, we will have 4 cases. TODO: try to reduce ducplication.
+  But we CANNOT make it just have 2 cases, taking in fpsym.
+  Problem arises if we have a funsym and predsym with the same name.
+  We would consider that a recursive call, but really it should not be.
+  Of course, the well-typed context rules this out, but we really don't
+  want to reason about this in the terminatiion checker*)
 
-
-
-(*START - I think - without adding info to context, doesn't work
-  Need separate funsym and predsym version for each (see if can redo somehow)
-  Because otherwise have - funsym foo (not in fs), predsym foo (in ps)
-  here - call recursive for Tfun foo when that is a problem*)
 Unset Elimination Schemes.
-Inductive decrease_fun_prop_triv
-  (ind1: list vsymbol -> option vsymbol -> mut_adt -> list vty -> term -> Prop)
-  (ind2: list vsymbol -> option vsymbol -> mut_adt -> list vty -> formula -> Prop):
+Inductive decrease_fun_tm_prop (f: funsym) (idx: nat) : 
   list vsymbol -> option vsymbol -> mut_adt -> list vty -> term -> Prop :=
+  | Decf_fun_in: forall (small: list vsymbol) (hd: option vsymbol) (m: mut_adt)
+    (vs: list vty) (l: list vty) (ts: list term) (x: vsymbol)
+    (Hnthvar: nth tm_d ts idx = Tvar x)
+    (Hinsmall: In x small)
+    (Hunif: l = List.map vty_var (s_params f))
+    (Htsdec: forall t, In t ts -> decrease_fun_tm_prop f idx small hd m vs t),
+    decrease_fun_tm_prop f idx small hd m vs (Tfun f l ts)
+  | Decf_fun_notin: forall (small: list vsymbol) (hd: option vsymbol)
+    (m: mut_adt) (vs: list vty) 
+    (f1: funsym) (l: list vty) (ts: list term)
+    (Hneqfs: f <> f1)
+    (Htsdec: forall t, In t ts -> decrease_fun_tm_prop f idx small hd m vs t),
+    decrease_fun_tm_prop f idx small hd m vs (Tfun f1 l ts)
+  | Decf_tmatch: forall (small: list vsymbol) (hd: option vsymbol) 
+    (m: mut_adt)
+    (vs: list vty) 
+    (mvar: vsymbol) (v: vty) (pats: list (pattern * term))
+    (Hvarcase: var_case hd small mvar)
+    (Hpatsdec: forall (x: pattern * term), In x pats ->
+      decrease_fun_tm_prop f idx
+      (union vsymbol_eq_dec (vsyms_in_m m vs (pat_constr_vars m vs (fst x))) 
+        (remove_all vsymbol_eq_dec (pat_fv (fst x)) 
+        small)) (upd_option_iter hd (pat_fv (fst x))) m vs (snd x)),
+    decrease_fun_tm_prop f idx small hd m vs (Tmatch (Tvar mvar) v pats) 
+  | Decf_tmatch_constr: forall (small: list vsymbol) (hd: option vsymbol) 
+    (m: mut_adt) (vs: list vty) (v: vty) (pats: list (pattern * term))
+    (c: funsym) (l: list vty) (tms: list term)
+    (Hdecconstr: decrease_fun_tm_prop f idx small hd m vs (Tfun c l tms))
+    (Hpatsdec: forall (x: pattern * term), In x pats ->
+      decrease_fun_tm_prop f idx
+      (union vsymbol_eq_dec 
+        (vsyms_in_m m vs 
+          (get_constr_smaller small hd m vs c l tms (fst x)))
+        (remove_all vsymbol_eq_dec (pat_fv (fst x)) 
+        small)) (upd_option_iter hd (pat_fv (fst x))) m vs (snd x)),
+    decrease_fun_tm_prop f idx small hd m vs 
+      (Tmatch (Tfun c l tms) v pats) 
+  | Decf_tmatch_rec: forall (small: list vsymbol) (hd: option vsymbol)
+    m vs
+    (tm: term) (v: vty) (pats: list (pattern * term))
+      (Htm: match tm with
+        | Tvar var => ~ var_case hd small var
+        | Tfun f l tms => false
+        | _ => True
+      end)
+    (Hdectm: decrease_fun_tm_prop f idx small hd m vs tm)
+    (Hpatsdec: forall x, In x pats ->
+      decrease_fun_tm_prop f idx
+      (remove_all vsymbol_eq_dec (pat_fv (fst x)) small) 
+      (upd_option_iter hd (pat_fv (fst x))) m vs (snd x)),
+    decrease_fun_tm_prop f idx small hd m vs (Tmatch tm v pats)
+  | Decf_var: forall (small : list vsymbol) (hd: option vsymbol) m vs (v: vsymbol),
+    decrease_fun_tm_prop f idx small hd m vs (Tvar v)
+  | Decf_const: forall (small : list vsymbol) (hd: option vsymbol) m vs (c: Syntax.constant),
+    decrease_fun_tm_prop f idx small hd m vs (Tconst c)
+  | Decf_tlet: forall (small: list vsymbol) (hd: option vsymbol) m vs (t1: term)
+    (v: vsymbol) (t2: term),
+    decrease_fun_tm_prop f idx small hd m vs t1 ->
+    decrease_fun_tm_prop f idx (remove vsymbol_eq_dec v small) (upd_option hd v) m vs t2 ->
+    decrease_fun_tm_prop f idx small hd m vs (Tlet t1 v t2)
+  | Decf_tif: forall (small: list vsymbol) (hd: option vsymbol) m vs (f1: formula)
+    (t1 t2: term),
+    decrease_fun_fmla_prop f idx small hd m vs f1 ->
+    decrease_fun_tm_prop f idx small hd m vs t1 ->
+    decrease_fun_tm_prop f idx small hd m vs t2 ->
+    decrease_fun_tm_prop f idx small hd m vs (Tif f1 t1 t2)
+  | Decf_eps: forall (small: list vsymbol) (hd: option vsymbol) m vs (f1: formula)
+    (v: vsymbol),
+    decrease_fun_fmla_prop f idx (remove vsymbol_eq_dec v small) (upd_option hd v) m vs f1 ->
+    decrease_fun_tm_prop f idx small hd m vs (Teps f1 v)
+with decrease_fun_fmla_prop (f: funsym) (idx: nat) : 
+  list vsymbol -> option vsymbol -> mut_adt -> list vty -> formula -> Prop :=
+  | Decf_pred: forall (small: list vsymbol) (hd: option vsymbol) m vs
+    (p: predsym) (l: list vty) (ts: list term),
+    (forall t, In t ts -> decrease_fun_tm_prop f idx small hd m vs t) ->
+    decrease_fun_fmla_prop f idx small hd m vs (Fpred p l ts)
+  | Decf_fmatch: forall (small: list vsymbol) (hd: option vsymbol) m vs
+    (mvar: vsymbol) (v: vty) (pats: list (pattern * formula))
+    (Hvarcase: var_case hd small mvar)
+    (Hpatsdec: forall x, In x pats -> decrease_fun_fmla_prop f idx
+      (union vsymbol_eq_dec (vsyms_in_m m vs (pat_constr_vars m vs (fst x))) 
+        (remove_all vsymbol_eq_dec (pat_fv (fst x)) 
+        small)) (upd_option_iter hd (pat_fv (fst x))) m vs (snd x)),
+    decrease_fun_fmla_prop f idx small hd m vs (Fmatch (Tvar mvar) v pats)
+  | Decf_fmatch_constr: forall (small: list vsymbol) (hd: option vsymbol) 
+    (m: mut_adt)
+    (vs: list vty)(v: vty) (pats: list (pattern * formula))
+    (c: funsym) (l: list vty) (tms: list term)
+    (Hdecfun: decrease_fun_tm_prop f idx small hd m vs (Tfun c l tms))
+    (Hpatsdec: forall (x: pattern * formula), In x pats ->
+      decrease_fun_fmla_prop f idx
+      (union vsymbol_eq_dec 
+        (vsyms_in_m m vs 
+          (get_constr_smaller small hd m vs c l tms (fst x)))
+        (remove_all vsymbol_eq_dec (pat_fv (fst x)) 
+        small)) (upd_option_iter hd (pat_fv (fst x))) m vs (snd x)),
+    decrease_fun_fmla_prop f idx small hd m vs 
+      (Fmatch (Tfun c l tms) v pats) 
+  | Decf_fmatch_rec: forall (small: list vsymbol) (hd: option vsymbol) m vs
+    (tm: term) (v: vty) (pats: list (pattern * formula))
+     (Htm: match tm with
+        | Tvar var => ~ var_case hd small var
+        | Tfun f l tms => false
+        | _ => True
+      end)
+    (Hdectm: decrease_fun_tm_prop f idx small hd m vs tm)
+    (Hdecpats: forall x, In x pats ->
+      decrease_fun_fmla_prop f idx
+      (remove_all vsymbol_eq_dec (pat_fv (fst x)) small) 
+      (upd_option_iter hd (pat_fv (fst x))) m vs (snd x)),
+    decrease_fun_fmla_prop f idx small hd m vs (Fmatch tm v pats)
+  | Decf_true: forall (small: list vsymbol) (hd: option vsymbol) m vs,
+    decrease_fun_fmla_prop f idx small hd m vs Ftrue
+  | Decf_false: forall (small: list vsymbol) (hd: option vsymbol) m vs,
+    decrease_fun_fmla_prop f idx small hd m vs Ffalse
+  | Decf_not: forall small hd m vs f1,
+    decrease_fun_fmla_prop f idx small hd m vs f1 ->
+    decrease_fun_fmla_prop f idx small hd m vs (Fnot f1)
+  | Decf_quant: forall (small: list vsymbol) (hd: option vsymbol) m vs
+    (q: quant) (v: vsymbol) (f1: formula),
+    decrease_fun_fmla_prop f idx (remove vsymbol_eq_dec v small) (upd_option hd v) m vs f1 ->
+    decrease_fun_fmla_prop f idx small hd m vs (Fquant q v f1)
+  | Decf_eq: forall (small: list vsymbol) (hd: option vsymbol) m vs
+    (ty: vty) (t1 t2: term),
+    decrease_fun_tm_prop f idx small hd m vs t1 ->
+    decrease_fun_tm_prop f idx small hd m vs t2 ->
+    decrease_fun_fmla_prop f idx small hd m vs (Feq ty t1 t2)
+  | Decf_binop: forall (small: list vsymbol) (hd: option vsymbol) m vs
+    (b: binop) (f1 f2: formula),
+    decrease_fun_fmla_prop f idx small hd m vs f1 ->
+    decrease_fun_fmla_prop f idx small hd m vs f2 ->
+    decrease_fun_fmla_prop f idx small hd m vs (Fbinop b f1 f2)
+  | Decf_flet: forall (small: list vsymbol) (hd: option vsymbol) m vs (t1: term)
+    (v: vsymbol) (f1: formula),
+    decrease_fun_tm_prop f idx small hd m vs t1 ->
+    decrease_fun_fmla_prop f idx (remove vsymbol_eq_dec v small) (upd_option hd v) m vs f1 ->
+    decrease_fun_fmla_prop f idx small hd m vs (Flet t1 v f1)
+  | Decf_fif: forall (small: list vsymbol) (hd: option vsymbol) m vs
+    (f1 f2 f3: formula),
+    decrease_fun_fmla_prop f idx small hd m vs f1 ->
+    decrease_fun_fmla_prop f idx small hd m vs f2 ->
+    decrease_fun_fmla_prop f idx small hd m vs f3 ->
+    decrease_fun_fmla_prop f idx small hd m vs (Fif f1 f2 f3)
+    .
+(*And the predsym versions - TODO: LOTS of duplication*)
+Inductive decrease_pred_tm_prop (f: predsym) (idx: nat) : 
+  list vsymbol -> option vsymbol -> mut_adt -> list vty -> term -> Prop :=
+  | Decp_fun: forall (small: list vsymbol) (hd: option vsymbol)
+    (m: mut_adt) (vs: list vty) 
+    (f1: funsym) (l: list vty) (ts: list term),
+    (forall t, In t ts -> decrease_pred_tm_prop f idx small hd m vs t) ->
+    decrease_pred_tm_prop f idx small hd m vs (Tfun f1 l ts)
   | Decp_tmatch: forall (small: list vsymbol) (hd: option vsymbol) 
     (m: mut_adt)
     (vs: list vty) 
     (mvar: vsymbol) (v: vty) (pats: list (pattern * term)),
     var_case hd small mvar ->
     (forall (x: pattern * term), In x pats ->
-      ind1 (union vsymbol_eq_dec (vsyms_in_m m vs (pat_constr_vars m vs (fst x))) 
+      decrease_pred_tm_prop f idx
+      (union vsymbol_eq_dec (vsyms_in_m m vs (pat_constr_vars m vs (fst x))) 
         (remove_all vsymbol_eq_dec (pat_fv (fst x)) 
         small)) (upd_option_iter hd (pat_fv (fst x))) m vs (snd x)) ->
-    decrease_fun_prop_triv ind1 ind2 small hd m vs (Tmatch (Tvar mvar) v pats).
-
-Inductive decrease_pred_prop_triv
-  (ind1: list vsymbol -> option vsymbol -> mut_adt -> list vty -> term -> Prop)
-  (ind2: list vsymbol -> option vsymbol -> mut_adt -> list vty -> formula -> Prop):
+    decrease_pred_tm_prop f idx small hd m vs (Tmatch (Tvar mvar) v pats) 
+  | Decp_tmatch_constr: forall (small: list vsymbol) (hd: option vsymbol) 
+    (m: mut_adt) (vs: list vty) (v: vty) (pats: list (pattern * term))
+    (c: funsym) (l: list vty) (tms: list term),
+    decrease_pred_tm_prop f idx small hd m vs (Tfun c l tms) ->
+    (forall (x: pattern * term), In x pats ->
+      decrease_pred_tm_prop f idx
+      (union vsymbol_eq_dec 
+        (vsyms_in_m m vs 
+          (get_constr_smaller small hd m vs c l tms (fst x)))
+        (remove_all vsymbol_eq_dec (pat_fv (fst x)) 
+        small)) (upd_option_iter hd (pat_fv (fst x))) m vs (snd x)) ->
+    decrease_pred_tm_prop f idx small hd m vs 
+      (Tmatch (Tfun c l tms) v pats) 
+  | Decp_tmatch_rec: forall (small: list vsymbol) (hd: option vsymbol)
+    m vs
+    (tm: term) (v: vty) (pats: list (pattern * term)),
+      (match tm with
+        | Tvar var => ~ var_case hd small var
+        | Tfun f l tms => false
+        | _ => True
+      end) ->
+   decrease_pred_tm_prop f idx small hd m vs tm ->
+    (forall x, In x pats ->
+      decrease_pred_tm_prop f idx
+      (remove_all vsymbol_eq_dec (pat_fv (fst x)) small) 
+      (upd_option_iter hd (pat_fv (fst x))) m vs (snd x)) ->
+    decrease_pred_tm_prop f idx small hd m vs (Tmatch tm v pats)
+  | Decp_var: forall (small : list vsymbol) (hd: option vsymbol) m vs (v: vsymbol),
+    decrease_pred_tm_prop f idx small hd m vs (Tvar v)
+  | Decp_const: forall (small : list vsymbol) (hd: option vsymbol) m vs (c: Syntax.constant),
+    decrease_pred_tm_prop f idx small hd m vs (Tconst c)
+  | Decp_tlet: forall (small: list vsymbol) (hd: option vsymbol) m vs (t1: term)
+    (v: vsymbol) (t2: term)
+    (Hdec1: decrease_pred_tm_prop f idx small hd m vs t1)
+    (Hdec2: decrease_pred_tm_prop f idx (remove vsymbol_eq_dec v small) (upd_option hd v) m vs t2),
+    decrease_pred_tm_prop f idx small hd m vs (Tlet t1 v t2)
+  | Decp_tif: forall (small: list vsymbol) (hd: option vsymbol) m vs (f1: formula)
+    (t1 t2: term),
+    decrease_pred_fmla_prop f idx small hd m vs f1 ->
+    decrease_pred_tm_prop f idx small hd m vs t1 ->
+    decrease_pred_tm_prop f idx small hd m vs t2 ->
+    decrease_pred_tm_prop f idx small hd m vs (Tif f1 t1 t2)
+  | Decp_eps: forall (small: list vsymbol) (hd: option vsymbol) m vs (f1: formula)
+    (v: vsymbol),
+    decrease_pred_fmla_prop f idx (remove vsymbol_eq_dec v small) (upd_option hd v) m vs f1 ->
+    decrease_pred_tm_prop f idx small hd m vs (Teps f1 v)
+with decrease_pred_fmla_prop (f: predsym) (idx: nat) : 
   list vsymbol -> option vsymbol -> mut_adt -> list vty -> formula -> Prop :=
-  | Decp_fmatch: forall (small: list vsymbol) (hd: option vsymbol) 
-    (m: mut_adt)
-    (vs: list vty) 
+ | Decp_pred_in: forall (small: list vsymbol) (hd: option vsymbol) m vs
+    (l: list vty) (ts: list term) x
+    (Hnthvar: nth tm_d ts idx = Tvar x)
+    (Hinsmall: In x small)
+    (Hunif: l = List.map vty_var (s_params f))
+    (Htsdec: forall t, In t ts -> decrease_pred_tm_prop f idx small hd m vs t),
+    decrease_pred_fmla_prop f idx small hd m vs (Fpred f l ts)
+  | Decp_pred_notin: forall (small: list vsymbol) (hd: option vsymbol) m vs
+    (p: predsym) (l: list vty) (ts: list term)
+    (Hneqps: f <> p)
+    (Htsdec: forall t, In t ts -> decrease_pred_tm_prop f idx small hd m vs t),
+    decrease_pred_fmla_prop f idx small hd m vs (Fpred p l ts)
+ (*  | Decp_pred: forall (small: list vsymbol) (hd: option vsymbol) m vs
+    (p: predsym) (l: list vty) (ts: list term),
+    (forall t, In t ts -> decrease_pred_tm_prop f idx small hd m vs t) ->
+    decrease_pred_fmla_prop f idx small hd m vs (Fpred p l ts) *)
+  | Decp_fmatch: forall (small: list vsymbol) (hd: option vsymbol) m vs
     (mvar: vsymbol) (v: vty) (pats: list (pattern * formula)),
     var_case hd small mvar ->
-    (forall (x: pattern * formula), In x pats ->
-      ind2 (union vsymbol_eq_dec (vsyms_in_m m vs (pat_constr_vars m vs (fst x))) 
+    (forall x, In x pats -> decrease_pred_fmla_prop f idx
+      (union vsymbol_eq_dec (vsyms_in_m m vs (pat_constr_vars m vs (fst x))) 
         (remove_all vsymbol_eq_dec (pat_fv (fst x)) 
         small)) (upd_option_iter hd (pat_fv (fst x))) m vs (snd x)) ->
-    decrease_pred_prop_triv ind1 ind2 small hd m vs (Fmatch (Tvar mvar) v pats).
+    decrease_pred_fmla_prop f idx small hd m vs (Fmatch (Tvar mvar) v pats)
+  | Decp_fmatch_constr: forall (small: list vsymbol) (hd: option vsymbol) 
+    (m: mut_adt)
+    (vs: list vty)(v: vty) (pats: list (pattern * formula))
+    (c: funsym) (l: list vty) (tms: list term),
+    decrease_pred_tm_prop f idx small hd m vs (Tfun c l tms) ->
+    (forall (x: pattern * formula), In x pats ->
+      decrease_pred_fmla_prop f idx
+      (union vsymbol_eq_dec 
+        (vsyms_in_m m vs 
+          (get_constr_smaller small hd m vs c l tms (fst x)))
+        (remove_all vsymbol_eq_dec (pat_fv (fst x)) 
+        small)) (upd_option_iter hd (pat_fv (fst x))) m vs (snd x)) ->
+    decrease_pred_fmla_prop f idx small hd m vs 
+      (Fmatch (Tfun c l tms) v pats) 
+  | Decp_fmatch_rec: forall (small: list vsymbol) (hd: option vsymbol) m vs
+    (tm: term) (v: vty) (pats: list (pattern * formula)),
+     (match tm with
+        | Tvar var => ~ var_case hd small var
+        | Tfun f l tms => false
+        | _ => True
+      end) ->
+    decrease_pred_tm_prop f idx small hd m vs tm ->
+    (forall x, In x pats ->
+      decrease_pred_fmla_prop f idx
+      (remove_all vsymbol_eq_dec (pat_fv (fst x)) small) 
+      (upd_option_iter hd (pat_fv (fst x))) m vs (snd x)) ->
+    decrease_pred_fmla_prop f idx small hd m vs (Fmatch tm v pats)
+  | Decp_true: forall (small: list vsymbol) (hd: option vsymbol) m vs,
+    decrease_pred_fmla_prop f idx small hd m vs Ftrue
+  | Decp_false: forall (small: list vsymbol) (hd: option vsymbol) m vs,
+    decrease_pred_fmla_prop f idx small hd m vs Ffalse
+  | Decp_not: forall small hd m vs f1,
+    decrease_pred_fmla_prop f idx small hd m vs f1 ->
+    decrease_pred_fmla_prop f idx small hd m vs (Fnot f1)
+  | Decp_quant: forall (small: list vsymbol) (hd: option vsymbol) m vs
+    (q: quant) (v: vsymbol) (f1: formula),
+    decrease_pred_fmla_prop f idx (remove vsymbol_eq_dec v small) (upd_option hd v) m vs f1 ->
+    decrease_pred_fmla_prop f idx small hd m vs (Fquant q v f1)
+  | Decp_eq: forall (small: list vsymbol) (hd: option vsymbol) m vs
+    (ty: vty) (t1 t2: term),
+    decrease_pred_tm_prop f idx small hd m vs t1 ->
+    decrease_pred_tm_prop f idx small hd m vs t2 ->
+    decrease_pred_fmla_prop f idx small hd m vs (Feq ty t1 t2)
+  | Decp_binop: forall (small: list vsymbol) (hd: option vsymbol) m vs
+    (b: binop) (f1 f2: formula),
+    decrease_pred_fmla_prop f idx small hd m vs f1 ->
+    decrease_pred_fmla_prop f idx small hd m vs f2 ->
+    decrease_pred_fmla_prop f idx small hd m vs (Fbinop b f1 f2)
+  | Decp_flet: forall (small: list vsymbol) (hd: option vsymbol) m vs (t1: term)
+    (v: vsymbol) (f1: formula),
+    decrease_pred_tm_prop f idx small hd m vs t1 ->
+    decrease_pred_fmla_prop f idx (remove vsymbol_eq_dec v small) (upd_option hd v) m vs f1 ->
+    decrease_pred_fmla_prop f idx small hd m vs (Flet t1 v f1)
+  | Decp_fif: forall (small: list vsymbol) (hd: option vsymbol) m vs
+    (f1 f2 f3: formula),
+    decrease_pred_fmla_prop f idx small hd m vs f1 ->
+    decrease_pred_fmla_prop f idx small hd m vs f2 ->
+    decrease_pred_fmla_prop f idx small hd m vs f3 ->
+    decrease_pred_fmla_prop f idx small hd m vs (Fif f1 f2 f3)
+    .
+Set Elimination Schemes.
+Scheme decrease_fun_tm_prop_ind := Minimality for decrease_fun_tm_prop Sort Prop
+with decrease_fun_fmla_prop_ind := Minimality for decrease_fun_fmla_prop Sort Prop.
+Scheme decrease_pred_tm_prop_ind := Minimality for decrease_pred_tm_prop Sort Prop
+with decrease_pred_fmla_prop_ind := Minimality for decrease_pred_fmla_prop Sort Prop.
 
-Section Dec.
-Variable (f: funsym) (idx: nat).
+(*Now we prove the theorem*)
+(*TODO: move to separate file*)
 
-Inductive decrease_fun_prop  : 
-  list vsymbol -> option vsymbol -> mut_adt -> list vty -> term -> Prop :=
-  | Decp_ttriv: forall small hd m vs t,
-    decrease_fun_prop_triv decrease_fun_prop decrease_pred_prop small hd m vs t ->
-    decrease_fun_prop small hd m vs t
-with decrease_pred_prop :
-  list vsymbol -> option vsymbol -> mut_adt -> list vty -> formula -> Prop :=
-  | Decp_ftriv: forall small hd m vs f,
-    decrease_pred_prop_triv decrease_fun_prop decrease_pred_prop small hd m vs f ->
-    decrease_pred_prop small hd m vs f.
+(*From RecFun: TODO: delete there*)
+Lemma dec_inv_tfun_rec {fs ps m vs} {small: list vsymbol} {hd: option vsymbol} {f: funsym}
+  {l: list vty} {ts: list term}
+  (Hde: decrease_fun fs ps small hd m vs (Tfun f l ts)) :
+  Forall (fun t => decrease_fun fs ps small hd m vs t) ts.
+Proof.
+  inversion Hde; subst; auto. rewrite Forall_forall; auto.
+Qed.
 
-End Dec.
-(*This will work but induction will be horrible - maybe just do 4 even though that is horrible*)
-  
-  | Decp_fun_in: forall (f1: funsym) (small: list vsymbol) (hd: option vsymbol) (m: mut_adt)
-    (vs: list vty) (l: list vty) (ts: list term) (x: vsymbol),
-    f = f_sym f1 ->
-    nth tm_d ts idx = Tvar x ->
-    In x small ->
-    l = List.map vty_var (s_params f) ->
-    Forall (decrease_fun_prop f idx small hd m vs) ts ->
-    decrease_fun_prop f idx small hd m vs (Tfun f1 l ts)
-  | Decp_fun_notin: forall (small: list vsymbol) (hd: option vsymbol)
-    (m: mut_adt) (vs: list vty) 
-    (f1: funsym) (l: list vty) (ts: list term),
-    f <> f_sym f1 ->
-    (forall t, In t ts -> decrease_fun_prop f idx small hd m vs t) ->
-    decrease_fun_prop f idx small hd m vs (Tfun f1 l ts)
+(*As a corollary, we get that [decrease_fun] holds recursively*)
+Lemma dec_inv_fpred_rec {fs ps m vs} {small: list vsymbol} {hd: option vsymbol} 
+  {p: predsym}
+  {l: list vty} {ts: list term}
+  (Hde: decrease_pred fs ps small hd m vs (Fpred p l ts)) :
+  Forall (fun t => decrease_fun fs ps small hd m vs t) ts.
+Proof.
+  inversion Hde; subst; auto. rewrite Forall_forall; auto.
+Qed.
+
+(*An inversion we need for tmatch - TODO from RecFun*)
+Lemma dec_inv_tmatch_fst {fs' ps' m vs tm small hd v pats}:
+  decrease_fun fs' ps' small hd m vs (Tmatch tm v pats) ->
+  decrease_fun fs' ps' small hd m vs tm.
+Proof.
+  intros Hdec; inversion Hdec; subst; auto. constructor.
+Qed.
+
+Lemma dec_inv_fmatch_fst {fs' ps' m vs tm small hd v pats}:
+  decrease_pred fs' ps' small hd m vs (Fmatch tm v pats) ->
+  decrease_fun fs' ps' small hd m vs tm.
+Proof.
+  intros Hdec; inversion Hdec; subst; auto. constructor.
+Qed.
+
+(*Specialize the IH, invert, try to solve*)
+Ltac spec_inv := match goal with
+      | Hin: In ?x ?l, Hfs: forall (x: ?A), In x ?l -> ?Q |- _ =>
+        specialize (Hfs _ Hin); inversion Hfs; subst; auto
+      end.
+
+Ltac app_IH_hyp := repeat match goal with
+      | H : forall (small : list vsymbol) (h: option vsymbol), decrease_fun _ _ small h _ _ ?t <-> ?Q,
+        H2: decrease_fun _ _ _ _ _ _ ?t |- _ => apply H in H2
+      | H : forall (small : list vsymbol) (h: option vsymbol), decrease_pred _ _ small h _ _ ?t <-> ?Q,
+        H2: decrease_pred _ _ _ _ _ _ ?t |- _ => apply H in H2
+      end;
+      try solve[destruct_all; split_all; constructor; auto].
+
+Ltac app_IH_goal := first [match goal with
+      | H: forall (small: list vsymbol) (hd: option vsymbol), decrease_fun _ _ small hd _ _ ?t <-> _ |-
+          decrease_fun _ _ _ _ _ _ ?t => apply H
+      end |
+      match goal with
+      | H: forall (small: list vsymbol) (hd: option vsymbol), decrease_pred _ _ small hd _ _ ?t <-> _ |-
+          decrease_pred _ _ _ _ _ _ ?t => apply H
+      end]
+      ; try solve[split; intros; auto; spec_inv].
+
+Lemma In_map {A B: Type} (f: A -> B) (x: A) l:
+  In x l ->
+  In (f x) (List.map f l).
+Proof.
+  intros. rewrite in_map_iff. exists x; auto.
+Qed.
 
 
+Ltac Forall_forall_all :=
+  repeat match goal with
+  | H: Forall ?P ?l |- _ => rewrite Forall_forall in H
+  | |- Forall ?P ?l => rewrite Forall_forall
+  end.
 
+(*Silly tactic*)
+Ltac applyHmap H := auto; intros; apply H, In_map; assumption.
+
+Lemma dec_nil_triv m vs t f:
+  (forall small hd, decrease_fun nil nil small hd m vs t) /\
+  (forall small hd, decrease_pred nil nil small hd m vs f).
+Proof.
+  revert t f. apply term_formula_ind; intros; try solve[Forall_forall_all; intros; constructor; auto].
+  - Forall_forall_all. destruct tm as [| x | | | | |]; try solve[apply Dec_tmatch_rec; applyHmap H0];
+    try solve[apply Dec_tmatch_constr; applyHmap H0].
+    destruct (check_var_case_spec hd small x) as [Hxvar | Hxvar];
+    [apply Dec_tmatch | apply Dec_tmatch_rec]; applyHmap H0.
+  - Forall_forall_all. destruct tm as [| x | | | | |]; try solve[apply Dec_fmatch_rec; applyHmap H0];
+    try solve[apply Dec_fmatch_constr; applyHmap H0].
+    destruct (check_var_case_spec hd small x) as [Hxvar | Hxvar];
+    [apply Dec_fmatch | apply Dec_fmatch_rec]; applyHmap H0.
+Qed.
+
+Definition decrease_fun_nil m vs t :=
+  proj_tm (dec_nil_triv m vs) t.
+Definition decrease_pred_nil m vs f :=
+  proj_fmla (dec_nil_triv m vs) f.
+
+Theorem all_dec_iff (fs: list fn) (ps: list pn) (idxs: list nat)
+      (Hlen: length idxs = length fs + length ps) m vs t f
+      (Hn1: NoDup (List.map fn_sym fs))
+      (Hn2: NoDup (List.map pn_sym ps)):
+      (forall small hd,
+        decrease_fun fs ps small hd m vs t <->
+        (forall f1 (Hin: In f1 fs), decrease_fun_tm_prop (fn_sym f1) (sn_idx f1) small hd m vs t) /\
+        (forall p (Hin: In p ps), decrease_pred_tm_prop (pn_sym p) (sn_idx p) small hd m vs t)) /\
+      (forall small hd,
+        decrease_pred fs ps small hd m vs f <->
+        (forall f1 (Hin: In f1 fs), decrease_fun_fmla_prop (fn_sym f1) (sn_idx f1) small hd m vs f) /\
+        (forall p (Hin: In p ps), decrease_pred_fmla_prop (pn_sym p) (sn_idx p) small hd m vs f)).
+Proof.
+  revert t f.
+  apply term_formula_ind; try solve[intros; split; intros; split_all; constructor];
+  try solve[ intros; split;
+    [intros Hdec; inversion Hdec; subst; app_IH_hyp |
+     intros; destruct_all; constructor; app_IH_goal]].
+  (*Only 4 interesting cases: Tfun/Fpred/Tmatch/Fmatch - and really only 1 is interesting*)
+  - (*Tfun - interesting case*)
+    intros f1 l l1 Hall small hd. Forall_forall_all. split.
+    + intros Hdec.
+      pose proof (dec_inv_tfun_rec Hdec) as Hdecrec. Forall_forall_all.
+      (*2nd case is trivial*) split.
+      2: { intros p Hinp. constructor. intros t Hint. apply Hall; auto. }
+      intros f2 Hinf2.
+      destruct (funsym_eqb_spec f1 (fn_sym f2)) as [Hfeq | Hfneq]; subst. (*TODO: name hyp*)
+      * inversion Hdec; subst; auto; [| exfalso; apply H5; rewrite in_map_iff; exists f2; auto ].
+        apply Decf_fun_in with (x:=x); auto.
+        -- rewrite <- nth_eq. assert (f2 = f_decl) by (apply (NoDup_map_in Hn1); assumption); subst. assumption.
+        -- intros; apply Hall; auto.
+      * apply Decf_fun_notin; auto. intros; apply Hall; auto. 
+    + (*Other direction*)
+      intros [Hfn Hpn].
+      destruct (in_dec funsym_eq_dec f1 (List.map fn_sym fs)) as [Hinf | Hnotinf].
+      * rewrite in_map_iff in Hinf. destruct Hinf as [f_decl [Hf1 Hinf_decl]]; subst.
+        assert (A:=Hfn).
+        (*Get info about l, x*)
+        specialize (A _ Hinf_decl). inversion A; subst; [| contradiction].
+        apply Dec_fun_in with (f_decl:=f_decl)(x:=x); auto; [rewrite nth_eq; auto|].
+        Forall_forall_all; intros t Hint; apply Hall; auto.
+        (*Prove IH*)
+        split; intros f2 Hinf2; clear -Hfn Hpn Hinf2 Htsdec Hint; specialize (Htsdec _ Hint); spec_inv. 
+      * apply Dec_fun_notin; auto. intros t Hint. apply Hall; auto; split; intros f2 Hinf2; spec_inv.
+  - (*Tmatch - just IH is a bit more complicated and we have multiple cases*)
+    intros tm v pats IH1 IH2 small hd. split. 
+    + (*6 cases but nearly identical*) 
+      intros Hdec; inversion Hdec; subst; rewrite Forall_forall in IH2; split; intros f1 Hinf1;
+      [apply Decf_tmatch | apply Decp_tmatch|apply Decf_tmatch_constr | apply Decp_tmatch_constr|
+       apply Decf_tmatch_rec | apply Decp_tmatch_rec]; auto;
+      try solve[apply IH1; auto]; intros; apply IH2; auto; rewrite in_map_iff; exists x; auto.
+    + intros [Hfs Hps].
+      (*To get useful info from the match, we need to know that fs/ps is not empty. If fs is empty, everything
+        is trivial - do in convoluted way to avoid destructing and making context bad*)
+      assert (Hcase: (exists f1, In f1 fs) \/ (exists p1, In p1 ps) \/ decrease_fun fs ps small hd m vs (Tmatch tm v pats)).
+      { destruct fs as [| f1 ftl]; [| left; exists f1; simpl; auto].
+        destruct ps as [| p1 pt1]; [| right; left; exists p1; simpl; auto].
+        right. right. apply decrease_fun_nil.
+      }
+      Forall_forall_all.
+      destruct Hcase as [ [f1 Hinf1] | [ [f1 Hinf1]| Hdec]]; [| | assumption];
+      (*Similar cases*)
+      [assert (A:=Hfs)| assert (A:=Hps)]; specialize (A _ Hinf1); inversion A; subst;
+      [apply Dec_tmatch | apply Dec_tmatch_constr | apply Dec_tmatch_rec | 
+       apply Dec_tmatch | apply Dec_tmatch_constr | apply Dec_tmatch_rec ]; auto;
+      first[apply IH1 | intros x Hinx; apply IH2]; try solve[apply In_map; auto];
+      (split; intros f2 Hinf2; [assert (B:=Hfs) | assert (B:=Hps)]); specialize (B _ Hinf2);
+      inversion B; subst; try contradiction; try discriminate; auto.
+  - (*Pred*)
+    intros f1 l l1 Hall small hd. Forall_forall_all. split.
+    + intros Hdec.
+      pose proof (dec_inv_fpred_rec Hdec) as Hdecrec. Forall_forall_all.
+      (*1st case is trivial*) split.
+      { intros f2 Hinf2. constructor. intros t Hint. apply Hall; auto. }
+      intros f2 Hinf2.
+      destruct (predsym_eqb_spec f1 (pn_sym f2)) as [Hfeq | Hfneq]; subst. (*TODO: name hyp*)
+      * inversion Hdec; subst; auto; [| exfalso; apply H5; rewrite in_map_iff; exists f2; auto ].
+        apply Decp_pred_in with (x:=x); auto.
+        -- rewrite <- nth_eq. assert (f2 = p_decl) by (apply (NoDup_map_in Hn2); assumption); subst. assumption.
+        -- intros; apply Hall; auto.
+      * apply Decp_pred_notin; auto. intros; apply Hall; auto.
+    + (*Other direction*)
+      intros [Hfn Hpn].
+      destruct (in_dec predsym_eq_dec f1 (List.map pn_sym ps)) as [Hinf | Hnotinf].
+      * rewrite in_map_iff in Hinf. destruct Hinf as [f_decl [Hf1 Hinf_decl]]; subst.
+        assert (A:=Hpn).
+        (*Get info about l, x*)
+        specialize (A _ Hinf_decl). inversion A; subst; [|contradiction].
+        apply Dec_pred_in with (p_decl:=f_decl)(x:=x); auto; [rewrite nth_eq; auto|].
+        Forall_forall_all; intros t Hint; apply Hall; auto.
+        (*Prove IH*)
+        split; intros f2 Hinf2; clear -Hfn Hpn Hinf2 Htsdec Hint; specialize (Htsdec _ Hint); spec_inv. 
+      * apply Dec_pred_notin; auto. intros t Hint. apply Hall; auto; split; intros f2 Hinf2; spec_inv.
+  - (*Fmatch - repetitive*)
+    intros tm v pats IH1 IH2 small hd. split. 
+    + (*6 cases but nearly identical*) 
+      intros Hdec; inversion Hdec; subst; rewrite Forall_forall in IH2; split; intros f1 Hinf1;
+      [apply Decf_fmatch | apply Decp_fmatch|apply Decf_fmatch_constr | apply Decp_fmatch_constr|
+       apply Decf_fmatch_rec | apply Decp_fmatch_rec]; auto;
+      try solve[apply IH1; auto]; intros; apply IH2; auto; rewrite in_map_iff; exists x; auto.
+    + intros [Hfs Hps].
+      (*To get useful info from the match, we need to know that fs/ps is not empty. If fs is empty, everything
+        is trivial - do in convoluted way to avoid destructing and making context bad*)
+      assert (Hcase: (exists f1, In f1 fs) \/ (exists p1, In p1 ps) \/ decrease_pred fs ps small hd m vs (Fmatch tm v pats)).
+      { destruct fs as [| f1 ftl]; [| left; exists f1; simpl; auto].
+        destruct ps as [| p1 pt1]; [| right; left; exists p1; simpl; auto].
+        right. right. apply decrease_pred_nil.
+      }
+      Forall_forall_all.
+      destruct Hcase as [ [f1 Hinf1] | [ [f1 Hinf1]| Hdec]]; [| | assumption];
+      (*Similar cases*)
+      [assert (A:=Hfs)| assert (A:=Hps)]; specialize (A _ Hinf1); inversion A; subst;
+      [apply Dec_fmatch | apply Dec_fmatch_constr | apply Dec_fmatch_rec | 
+       apply Dec_fmatch | apply Dec_fmatch_constr | apply Dec_fmatch_rec ]; auto;
+      first[apply IH1 | intros x Hinx; apply IH2]; try solve[apply In_map; auto];
+      (split; intros f2 Hinf2; [assert (B:=Hfs) | assert (B:=Hps)]); specialize (B _ Hinf2);
+      inversion B; subst; try contradiction; try discriminate; auto.
+Qed.
+
+
+(*Old
 Unset Elimination Schemes.
 Inductive decrease_fun_prop (f: fpsym) (idx: nat) : 
   list vsymbol -> option vsymbol -> mut_adt -> list vty -> term -> Prop :=
@@ -2210,7 +2665,9 @@ with decrease_pred_prop (f: fpsym) (idx: nat) :
     .
 Set Elimination Schemes.
 Scheme decrease_fun_prop_ind := Minimality for decrease_fun_prop Sort Prop
-with decrease_pred_prop_ind := Minimality for decrease_pred_prop Sort Prop.
+with decrease_pred_prop_ind := Minimality for decrease_pred_prop Sort Prop.*)
+
+(*START - redo reflection with new preds*)
 
 (*Prove reflection*)
 
