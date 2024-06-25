@@ -206,7 +206,7 @@ Definition vty_in_m (m: mut_adt) (vs: list vty) (v: vty) : bool :=
   match v with
   | vty_cons ts vs' => 
     ssrbool.isSome (find_ts_in_mut ts m) &&
-    list_eq_dec vty_eq_dec vs' vs
+    list_eqb vty_eqb vs' vs
   | _ => false
   end.
 
@@ -228,7 +228,7 @@ Proof.
   destruct (find_ts_in_mut t m) eqn : Hfind; simpl.
   - apply find_ts_in_mut_some in Hfind.
     destruct Hfind; subst.
-    destruct (list_eq_dec vty_eq_dec l vs); subst; simpl.
+    destruct (list_eqb_spec _ vty_eq_spec l vs); subst; simpl.
     + apply ReflectT. exists a. split; auto.
     + apply ReflectF. intros [a' [Ha' Heq]]; inversion Heq; subst;
       contradiction.
@@ -259,7 +259,7 @@ Proof.
     intros [a [a_in Hty]]; inversion Hty]]).
   unfold ssrbool.isSome.
   destruct (find_ts_in_mut t m) eqn : Hts; simpl.
-  - destruct (list_eq_dec vty_eq_dec l0 vs); subst; simpl; split;
+  - destruct (list_eqb_spec _ vty_eq_spec l0 vs); subst; simpl; split;
     intros; auto; try tf.
     + exists a. apply find_ts_in_mut_some in Hts. destruct Hts.
       subst. split; auto.

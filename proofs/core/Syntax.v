@@ -989,22 +989,42 @@ Proof.
 Qed.
 
 (*Decidable equality*)
-Ltac right_dec := 
-  solve[let C := fresh "C" in right; intro C; inversion C; try contradiction].
+Local Ltac reflF := solve[apply ReflectF; intro C; inversion C; subst; auto; contradiction].
 
-Definition adt_dec: forall (x1 x2: alg_datatype), {x1 = x2} + {x1 <> x2}.
-intros [t1 c1] [t2 c2].
-destruct (typesym_eq_dec t1 t2); [|right_dec].
-destruct (ne_list_eq_dec funsym_eq_dec c1 c2); [|right_dec].
-left. rewrite e, e0; reflexivity.
-Defined.
+Definition adt_eqb (a1 a2: alg_datatype) : bool :=
+  typesym_eqb (adt_name a1) (adt_name a2) &&
+  list_eqb funsym_eqb (adt_constr_list a1) (adt_constr_list a2).
 
-Definition mut_adt_dec: forall (m1 m2: mut_adt), {m1 = m2} + {m1 <> m2}.
-intros m1 m2. destruct m1, m2.
-destruct (list_eq_dec adt_dec typs0 typs1); subst; [|right_dec].
-destruct (list_eq_dec typevar_eq_dec m_params0 m_params1); subst;[|right_dec].
-left. f_equal. apply bool_irrelevance.
-Defined.
+Lemma adt_eqb_spec a1 a2: reflect (a1 = a2) (adt_eqb a1 a2).
+Proof.
+  unfold adt_eqb.
+  destruct a1 as [t1 c1]; destruct a2 as [t2 c2]; simpl.
+  destruct (typesym_eqb_spec t1 t2); subst; [|reflF].
+  destruct (list_eqb_spec _ funsym_eqb_spec 
+    (adt_constr_list (alg_def t2 c1)) (adt_constr_list (alg_def t2 c2))) as [Hl |];
+  [apply ReflectT | reflF].
+  apply ne_list_list_inj in Hl; simpl in Hl; subst; reflexivity.
+Qed.
+
+Definition adt_dec (a1 a2: alg_datatype) : {a1 = a2} + {a1 <> a2} :=
+  reflect_dec' (adt_eqb_spec a1 a2).
+
+Definition mut_adt_eqb (m1 m2: mut_adt) : bool :=
+  (list_eqb adt_eqb (typs m1) (typs m2)) &&
+  (list_eqb typevar_eqb (m_params m1) (m_params m2)).
+
+Lemma mut_adt_eqb_spec (m1 m2: mut_adt) :
+  reflect (m1 = m2) (mut_adt_eqb m1 m2).
+Proof.
+  destruct m1 as [t1 p1 n1]; destruct m2 as [t2 p2 n2];
+  unfold mut_adt_eqb; simpl.
+  destruct (list_eqb_spec _ adt_eqb_spec t1 t2); subst; [|reflF].
+  destruct (list_eqb_spec _ typevar_eqb_spec p1 p2); subst; [|reflF].
+  apply ReflectT. f_equal. apply bool_irrelevance.
+Qed.
+
+Definition mut_adt_dec (m1 m2: mut_adt): {m1 = m2} + {m1 <> m2} :=
+  reflect_dec' (mut_adt_eqb_spec m1 m2).
 
 Definition funpred_def_eqb (f1 f2: funpred_def) : bool :=
   match f1, f2 with

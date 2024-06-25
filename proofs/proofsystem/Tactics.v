@@ -3,6 +3,7 @@
 Require Export NatDed.
 Require Export Theory.
 Require Export Unfold.
+Require Import CommonSSR.
 From mathcomp Require Export all_ssreflect.
 Set Bullet Behavior "Strict Subproofs".
 

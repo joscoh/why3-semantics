@@ -342,7 +342,7 @@ Proof.
   clear H. unfold satisfies in *.
   intros.
   specialize (Hval vt vv).
-  simpl_rep_full. erewrite fmla_rep_irrel. rewrite Hval.
+  simpl_rep_full. erewrite fmla_rep_irrel. rewrite -> Hval. 
   auto.
 Qed.
 

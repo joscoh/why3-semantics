@@ -8,15 +8,6 @@ From HB Require Import structures.
 From mathcomp Require Import all_ssreflect.
 Set Bullet Behavior "Strict Subproofs".
 
-(*Now we can transform "reflect" into computable "dec" EVEN if "reflect" is opaque.
-  This is what we are missing in the ssreflect library. We do NOT match on
-  "reflect"; we match on the boolean predicate directly*)
-Definition reflect_dec' {P} {b} (H: reflect P b): {P} + {~P} :=
-  match b as b1 return b = b1 -> _ with
-  | true => fun Heq => left (elimT H Heq)
-  | false => fun Hneq => right (elimF H Hneq)
-  end erefl.
-
 (*Type variable (ex: a)*)
 Definition typevar : Set := string. 
 
@@ -64,6 +55,14 @@ Proof.
     subst; simpl. specialize (IHl1 l2). destruct IHl1; subst.
     apply ReflectT. auto. apply ReflectF. intro C; inversion C; subst; contradiction.
 Qed.
+
+(*A transparent version of [list_eq_dec]. Stdlib version
+  is opaque and this is very annoying when trying to compute*)
+
+Definition list_eq_dec' {A: Type} (eq: A -> A -> bool)
+  (Heq: forall (x y : A), reflect (x = y) (eq x y))
+  (l1 l2: list A) : {l1 = l2} + {l1 <> l2} :=
+  reflect_dec' (list_eqb_spec eq Heq l1 l2).
 
 Definition bool_eqb (b1 b2: bool) : bool :=
   match b1, b2 with
@@ -135,39 +134,6 @@ Fixpoint vty_ind (t: vty) : P t :=
   end.
 
 End TyInd.
-
-(*Need a version for Type too*)
-
-Inductive ForallT {A: Type} (P: A -> Type) : list A -> Type :=
-  | ForallT_nil: ForallT P nil
-  | ForallT_cons: forall {x: A} {l: list A},
-    P x -> ForallT P l -> ForallT P (x :: l).
-
-Lemma ForallT_hd {A: Type} (P: A -> Type) (x: A) (l: list A):
-  ForallT P (x :: l) ->
-  P x.
-Proof.
-  intros. inversion X; subst. apply X0.
-Qed.
-
-Lemma ForallT_tl {A: Type} (P: A -> Type) (x: A) (l: list A):
-  ForallT P (x :: l) ->
-  ForallT P l.
-Proof.
-  intros. inversion X; auto.
-Qed.
-
-Lemma ForallT_In {A: Type} (P: A -> Type)
-  (eq_dec: forall (x y: A), {x = y} + {x <> y}) (l: list A):
-  ForallT P l ->
-  forall x, In x l -> P x.
-Proof.
-  intros Hall. induction Hall; simpl; intros.
-  destruct H.
-  destruct (eq_dec x x0); subst; auto.
-  apply IHHall. destruct H; subst; auto.
-  contradiction.
-Qed.
 
 Section TyIndType.
 
