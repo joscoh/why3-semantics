@@ -190,7 +190,6 @@ Proof.
         rewrite H1 in H4.
         unfold ty_subst in H4; simpl in H4.
         inversion H4.
-        rewrite <- list_map_map.
         rewrite <- (adt_constr_params gamma_valid m_in a_in c_in).
         rewrite map_subst_params; auto.
         apply s_params_Nodup.
@@ -235,7 +234,6 @@ Proof.
       rewrite H1 in H5.
       unfold ty_subst in H5; simpl in H5.
       inversion H5.
-      rewrite <- list_map_map.
       rewrite <- (adt_constr_params gamma_valid Hinctx Hinmut c_in).
       rewrite map_subst_params; auto.
       apply s_params_Nodup.
@@ -401,7 +399,6 @@ Proof.
         rewrite H1 in H10.
         unfold ty_subst in H10; simpl in H10.
         inversion H10.
-        rewrite <- list_map_map.
         rewrite <- (adt_constr_params gamma_valid Hinctx Hinmut c_in).
         rewrite map_subst_params; auto.
         apply s_params_Nodup.
@@ -428,7 +425,6 @@ Proof.
       rewrite H1 in H5.
       unfold ty_subst in H5; simpl in H5.
       inversion H5.
-      rewrite <- list_map_map.
       rewrite <- (adt_constr_params gamma_valid Hinctx Hinmut c_in).
       rewrite map_subst_params; auto.
       apply s_params_Nodup.
@@ -592,7 +588,6 @@ Proof.
       rewrite H1 in H5.
       unfold ty_subst in H5; simpl in H5.
       inversion H5.
-      rewrite <- list_map_map.
       rewrite <- (adt_constr_params gamma_valid Hinctx Hinmut (fst (proj1_sig Hf'))).
       rewrite map_subst_params; auto.
       apply s_params_Nodup.

@@ -248,10 +248,10 @@ Proof.
   destruct Hval.
   (*Here, we use the typechecking result that it is
     decidable to find the list of indices*)
-  apply (Typechecker.funpred_def_term_decide gamma 
-    (valid_context_wf _ gamma_valid) _ l_in) 
+  apply (Typechecker.termination_check_decide gamma
+    (valid_context_wf _ gamma_valid) _ l_in (all_funpred_def_valid_type gamma_valid _ l_in)) 
   in H0.
-  destruct (Typechecker.find_funpred_def_term gamma l) as [[[[m params] vs] il ] |].
+  destruct (TerminationChecker.check_termination l) as [[[[m params] vs] il ] |].
   - exact (funpred_defs_to_sns l il).
   - exact (False_rect _ H0).
 Defined.
@@ -286,9 +286,10 @@ Definition funs_rep (pf: pi_funpred gamma_valid pd)
 Proof.
   pose proof (funpred_def_valid _ l_in) as Hval.
   destruct Hval as [Hval Hex].
-  apply (Typechecker.funpred_def_term_decide gamma (valid_context_wf _ gamma_valid) _ l_in) 
+  apply (Typechecker.termination_check_decide gamma (valid_context_wf _ gamma_valid) _ l_in
+    (all_funpred_def_valid_type gamma_valid _ l_in)) 
   in Hex.
-  destruct (Typechecker.find_funpred_def_term gamma l) as [[[[m params] vs] il]| ];
+  destruct (TerminationChecker.check_termination l) as [[[[m params] vs] il]| ];
   [| exact (False_rect _ Hex)].
   set (sns := (funpred_defs_to_sns l il)).
   unfold funpred_def_term in Hex.
@@ -350,9 +351,10 @@ Definition preds_rep (pf: pi_funpred gamma_valid pd)
 Proof.
   pose proof (funpred_def_valid _ l_in) as Hval.
   destruct Hval as [Hval Hex].
-  apply (Typechecker.funpred_def_term_decide gamma (valid_context_wf _ gamma_valid) _ l_in) 
+  apply (Typechecker.termination_check_decide gamma (valid_context_wf _ gamma_valid) _ l_in
+    (all_funpred_def_valid_type gamma_valid _ l_in)) 
   in Hex.
-  destruct (Typechecker.find_funpred_def_term gamma l) as [[[[m params] vs] il]| ];
+  destruct (TerminationChecker.check_termination l) as [[[[m params] vs] il]| ];
   [| exact (False_rect _ Hex)].
   set (sns := (funpred_defs_to_sns l il)).
   unfold funpred_def_term in Hex.
@@ -710,7 +712,7 @@ Lemma pf_funs l
 (m: mut_adt)
 (vs: list vty)
 (il: list nat)
-(Hterm: Typechecker.find_funpred_def_term gamma l =
+(Hterm: @TerminationChecker.check_termination gamma l =
         Some (m, params, vs, il))
 (Hnotnil: l <> [])
 (Hlenparams: Datatypes.length vs = Datatypes.length (m_params m))
@@ -817,7 +819,8 @@ Proof.
   (*Now, the interesting case*)
   unfold funs_rep. simpl.
   destruct (funpred_def_valid l l_in) as [Hallval' Hex'].
-  generalize dependent (Typechecker.funpred_def_term_decide gamma (valid_context_wf _ gamma_valid) l l_in Hex').
+  generalize dependent (Typechecker.termination_check_decide gamma 
+    (valid_context_wf _ gamma_valid) l l_in (all_funpred_def_valid_type gamma_valid l l_in) Hex').
   rewrite Hterm. (*Now we get the same m, il, vs, and params*)
   simpl.
   intros Ht1.
@@ -932,7 +935,7 @@ Lemma pf_preds l
 (m: mut_adt)
 (vs: list vty)
 (il: list nat)
-(Hterm: Typechecker.find_funpred_def_term gamma l =
+(Hterm: @TerminationChecker.check_termination gamma l =
         Some (m, params, vs, il))
 (Hnotnil: l <> [])
 (Hlenparams: Datatypes.length vs = Datatypes.length (m_params m))
@@ -1038,7 +1041,8 @@ Proof.
   (*Now, the interesting case*)
   unfold preds_rep. simpl.
   destruct (funpred_def_valid l l_in) as [Hallval' Hex'].
-  generalize dependent (Typechecker.funpred_def_term_decide gamma (valid_context_wf _ gamma_valid) l l_in Hex').
+  generalize dependent (Typechecker.termination_check_decide gamma (valid_context_wf gamma gamma_valid) l l_in 
+    (all_funpred_def_valid_type gamma_valid l l_in) Hex').
   rewrite Hterm. (*Now we get the same m, il, vs, and params*)
   simpl.
   intros Ht1.
@@ -1159,8 +1163,9 @@ Proof.
   intros.
   unfold funs_rep. simpl.
   destruct (funpred_def_valid l l_in) as [Hallval Hex].
-  generalize dependent (Typechecker.funpred_def_term_decide gamma (valid_context_wf _ gamma_valid) l l_in Hex).
-  destruct (Typechecker.find_funpred_def_term gamma l) as [[[[m params] vs] il] |] eqn : Hterm.
+  generalize dependent (Typechecker.termination_check_decide gamma (valid_context_wf gamma gamma_valid) l l_in 
+    (all_funpred_def_valid_type gamma_valid l l_in) Hex).
+  destruct (TerminationChecker.check_termination l) as [[[[m params] vs] il] |] eqn : Hterm.
   2: { intros []. }
   intros Ht.
   unfold funpred_def_term in Ht.
@@ -1196,8 +1201,9 @@ Proof.
   intros.
   unfold preds_rep. simpl.
   destruct (funpred_def_valid l l_in) as [Hallval Hex].
-  generalize dependent (Typechecker.funpred_def_term_decide gamma (valid_context_wf _ gamma_valid) l l_in Hex).
-  destruct (Typechecker.find_funpred_def_term gamma l) as [[[[m params] vs] il] |] eqn : Hterm.
+  generalize dependent (Typechecker.termination_check_decide gamma (valid_context_wf gamma gamma_valid) l l_in 
+    (all_funpred_def_valid_type gamma_valid l l_in) Hex).
+  destruct (TerminationChecker.check_termination l) as [[[[m params] vs] il] |] eqn : Hterm.
   2: { intros []. }
   intros Ht.
   unfold funpred_def_term in Ht.
@@ -1248,8 +1254,9 @@ Proof.
   2: intros; symmetry; apply pf_with_funpred_preds_notin; auto.
   unfold funs_rep. simpl.
   destruct (funpred_def_valid l l_in) as [Hallval Hex].
-  generalize dependent (Typechecker.funpred_def_term_decide gamma (valid_context_wf _ gamma_valid) l l_in Hex).
-  destruct (Typechecker.find_funpred_def_term gamma l) as [[[[m params] vs] il] |] eqn : Hterm.
+  generalize dependent (Typechecker.termination_check_decide gamma (valid_context_wf gamma gamma_valid) l l_in 
+    (all_funpred_def_valid_type gamma_valid l l_in) Hex).
+  destruct (TerminationChecker.check_termination l) as [[[[m params] vs] il] |] eqn : Hterm.
   2: { intros []. }
   intros Ht.
   unfold funpred_def_term in Ht.
@@ -1392,8 +1399,9 @@ Proof.
   2: intros; symmetry; apply pf_with_funpred_preds_notin; auto.
   unfold preds_rep. simpl.
   destruct (funpred_def_valid l l_in) as [Hallval Hex].
-  generalize dependent (Typechecker.funpred_def_term_decide gamma (valid_context_wf _ gamma_valid) l l_in Hex).
-  destruct (Typechecker.find_funpred_def_term gamma l) as [[[[m params] vs] il] |] eqn : Hterm.
+  generalize dependent(Typechecker.termination_check_decide gamma (valid_context_wf gamma gamma_valid) l l_in 
+    (all_funpred_def_valid_type gamma_valid l l_in) Hex).
+  destruct (TerminationChecker.check_termination l) as [[[[m params] vs] il] |] eqn : Hterm.
   2: { intros []. }
   intros Ht.
   unfold funpred_def_term in Ht.

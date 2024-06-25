@@ -4,6 +4,67 @@ Require Export Coq.Arith.PeanoNat.
 Export ListNotations.
 Require Export Coq.Logic.Eqdep_dec.
 Require Export Lia.
+Set Bullet Behavior "Strict Subproofs".
+
+(*Reflection*)
+
+(*Don't want to import ssreflect here*)
+Section Reflect.
+
+Lemma not_false: ~is_true false.
+Proof.
+  intro C; inversion C.
+Qed.
+
+Definition elimT {P: Prop} {b: bool} (Href: reflect P b) (B: is_true b) : P :=
+  match Href in reflect _ b' return b' = true -> P with
+  | ReflectT _ Hp => fun _ => Hp
+  | ReflectF _ Hf => fun Hb => False_ind _ (not_false Hb)
+  end B.
+
+Definition notTf: true <> false.
+Proof.
+  discriminate.
+Qed. 
+
+Definition elimF {P: Prop} {b: bool} (Href: reflect P b) (B: b = false) : ~ P :=
+  match Href in reflect _ b' return b' = false -> ~ P with
+  | ReflectT _ Hp => fun Hb => False_ind _ (notTf Hb)
+  | ReflectF _ Hf => fun _ => Hf
+  end B.
+
+(*Now we can transform "reflect" into computable "dec" EVEN if "reflect" is opaque.
+  This is what we are missing in the ssreflect library. We do NOT match on
+  "reflect"; we match on the boolean predicate directly*)
+Definition reflect_dec' {P} {b} (H: reflect P b): {P} + {~P} :=
+  match b as b1 return b = b1 -> _ with
+  | true => fun Heq => left (elimT H Heq)
+  | false => fun Hneq => right (elimF H Hneq)
+  end eq_refl.
+
+End Reflect.
+
+(*Some generally useful tactics*)
+  (*TODO: use elsewhere*)
+
+Ltac all_inj :=
+  repeat match goal with
+  | H : ?f ?x = ?f ?y |- _ =>
+    tryif progress(injection H) then intros; subst; clear H else fail
+  end.
+
+Ltac in_map_contra :=
+  match goal with
+  | H: In ?x ?l, H1: ~ In (?f ?x) (List.map ?f ?l) |- _ =>
+    exfalso; apply H1; rewrite in_map_iff; exists x; auto
+  end.
+
+Ltac Forall_forall_all :=
+  repeat match goal with
+  | H: Forall ?P ?l |- _ => rewrite Forall_forall in H
+  | |- Forall ?P ?l => rewrite Forall_forall
+  end.
+
 (** Generally useful definitions, lemmas, and tactics *)
 
 (*Why is this not in Coq stdlib?*)
@@ -1113,19 +1174,6 @@ Proof.
     destruct (nodup_NoDup eq_dec l); auto. exfalso. apply n. constructor; auto.
 Qed.
 
-Lemma tuple_eq_dec {A B: Type} (eq1: forall (x y: A), { x = y } + {x <> y})
-  (eq2: forall (x y : B), {x=y} + {x<>y}) :
-  (forall (x y : A * B), {x = y} + { x <> y}).
-Proof.
-  intros.
-  destruct x; destruct y.
-  destruct (eq1 a a0); subst; [| right; intro C; inversion C; subst; contradiction].
-  destruct (eq2 b b0); subst; [|right; intro C; inversion C; subst; contradiction].
-  left; reflexivity.
-Defined.
-
-
-
 (*Non-empty lists*)
 Section NEList.
 
@@ -1141,11 +1189,6 @@ Inductive ne_list (A: Set) : Set :=
 
 Global Arguments ne_hd {A}.
 Global Arguments ne_cons {A}.
-
-Lemma not_false: ~is_true false.
-Proof.
-  intro C; inversion C.
-Qed.
 
 Lemma isT : true.
 Proof. auto. Qed.
@@ -1480,6 +1523,12 @@ Proof.
   intros. split; intros; destruct_all; intuition.
 Qed.
 
+Lemma demorgan_or (P Q: Prop):
+  ~ (P \/ Q) <-> ~ P /\ ~ Q.
+Proof.
+  tauto.
+Qed.
+
 End Props.
 
 Section AssocList.
@@ -1638,6 +1687,79 @@ Proof.
 Qed.
 
 End Find.
+
+(*Variants of [find]*)
+Section FindVariants.
+
+(*If x is in (map f l), get the y such that In y l and 
+  y = f x*)
+Definition get_map_elt {A B: Type} (eq_dec: forall (x y: B), {x = y} + {x <> y}) 
+  (f: A -> B) (x: B) (l: list A): option A :=
+  find (fun y => eq_dec (f y) x) l.
+
+Lemma get_map_elt_some {A B: Type} (eq_dec: forall (x y: B), {x = y} + {x <> y}) 
+  (f: A -> B) (x: B) (l: list A) y:
+  get_map_elt eq_dec f x l = Some y ->
+  In y l /\ f y = x.
+Proof.
+  intros Hget. apply find_some in Hget. destruct_all; split; auto.
+  destruct eq_dec; auto. discriminate.
+Qed.
+
+Lemma get_map_elt_none {A B: Type} (eq_dec: forall (x y: B), {x = y} + {x <> y}) 
+  (f: A -> B) (x: B) (l: list A) :
+  get_map_elt eq_dec f x l = None <-> ~ In x (map f l).
+Proof.
+  unfold get_map_elt. rewrite find_none_iff.
+  split; intros Hin.
+  - intros Hinx. rewrite in_map_iff in Hinx.
+    destruct Hinx as [y [Hx Hiny]]; subst.
+    apply Hin in Hiny. destruct eq_dec; auto; discriminate.
+  - intros y Hiny. destruct eq_dec; auto; subst. exfalso.
+    solve[in_map_contra].
+Qed.
+
+End FindVariants.
+
+(*A verison of [Forall] in Type (mostly for proving
+  reflect)*)
+Section ForallT.
+
+
+(*Need a version for Type too*)
+
+Inductive ForallT {A: Type} (P: A -> Type) : list A -> Type :=
+  | ForallT_nil: ForallT P nil
+  | ForallT_cons: forall {x: A} {l: list A},
+    P x -> ForallT P l -> ForallT P (x :: l).
+
+Lemma ForallT_hd {A: Type} (P: A -> Type) (x: A) (l: list A):
+  ForallT P (x :: l) ->
+  P x.
+Proof.
+  intros. inversion X; subst. apply X0.
+Qed.
+
+Lemma ForallT_tl {A: Type} (P: A -> Type) (x: A) (l: list A):
+  ForallT P (x :: l) ->
+  ForallT P l.
+Proof.
+  intros. inversion X; auto.
+Qed.
+
+Lemma ForallT_In {A: Type} (P: A -> Type)
+  (eq_dec: forall (x y: A), {x = y} + {x <> y}) (l: list A):
+  ForallT P l ->
+  forall x, In x l -> P x.
+Proof.
+  intros Hall. induction Hall; simpl; intros.
+  destruct H.
+  destruct (eq_dec x x0); subst; auto.
+  apply IHHall. destruct H; subst; auto.
+  contradiction.
+Qed.
+
+End ForallT.
 
 (*Lemmas about props/decidable eq*)
 Section PropDec.
@@ -1890,6 +2012,7 @@ Ltac dec H :=
 
 Ltac refl_t := solve[apply ReflectT; subst; auto].
 
+
 Section Tup.
 
 Definition tuple_eqb {A B: Type}
@@ -1910,6 +2033,33 @@ Proof.
   dec (Heq2 (snd x) (snd y)).
   destruct x; destruct y; simpl in *; subst; refl_t.
 Qed.
+
+Definition tuple_eq_dec' {A B: Type}
+  {eq1 eq2}
+  (Heq1: forall (x y: A), reflect (x = y) (eq1 x y))
+  (Heq2: forall (x y: B), reflect (x = y) (eq2 x y))
+  (x y: A * B) : {x = y} + {x <> y} :=
+  reflect_dec' (tuple_eqb_spec Heq1 Heq2 x y).
+
+(*Not guaranteed to be computable.
+  TODO: create computable version?*)
+Definition tuple_eq_dec {A B: Type} (eq1: forall (x y: A), { x = y } + {x <> y})
+  (eq2: forall (x y : B), {x=y} + {x<>y}) :
+  (forall (x y : A * B), {x = y} + { x <> y}).
+Proof.
+  refine (fun '(x1, x2) '(y1, y2) =>
+    match (eq1 x1 y1) with
+    | left Heq =>
+      match (eq2 x2 y2) with
+      | left Heq2 => left _
+      | right Hneq => right _
+      end
+    | right Hneq => right _
+    end).
+  - f_equal; assumption.
+  - subst; intro C; injection C; intros; subst; contradiction.
+  - intro C; injection C; intros; subst; contradiction.
+Defined.
 
 End Tup.
 
@@ -2486,3 +2636,11 @@ Ltac eq_mem_tac :=
   | |- eq_mem (union ?dec ?l1 ?l2) (union ?dec ?l2 ?l1) => apply eq_mem_union_comm
   | |- eq_mem (union ?dec ?l1 ?l2) (union ?dec ?l3 ?l4) => apply eq_mem_union
   end; auto.
+
+(*TODO: use elsewhere*)
+Ltac nodup_inj :=
+  match goal with
+  | H: ?f ?x = ?f ?y, Hn1: NoDup (List.map ?f ?l) |- _ => assert (x = y) by
+    (apply (NoDup_map_in Hn1); assumption);
+    subst y; clear H
+  end.

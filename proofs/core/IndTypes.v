@@ -2421,10 +2421,10 @@ Ltac prove_constr :=
   let He := fresh "Heq" in
   match goal with | |- mkW ?i ?a ?b ?x ?a1 ?f = mkW ?i ?a ?b ?x ?a2 ?f2 =>
     assert (He: a1 = a2);
-  [unfold eq_rect; rewrite (all_funsym_refl (elimT _ _)); reflexivity|
+  [unfold eq_rect; rewrite (all_funsym_refl (Common.elimT _ _)); reflexivity|
   apply (mkW_eq a b x a1 a2 He); intros; revert_eqs;
   unfold cast, eq_rec_r, eq_rec, eq_rect, eq_idx', eq_ind_r, eq_ind (*eq_rect, eq_ind_r, eq_ind, eq_rec_r), eq_rec*);
-  repeat (progress (try rewrite (all_funsym_refl (elimT _ _));
+  repeat (progress (try rewrite (all_funsym_refl (Common.elimT _ _));
     try rewrite (all_funsym_refl (eq_sym _)))); intros;
     repeat match goal with
     | H: ?x = ?x |- _ => let He := fresh in 
@@ -2450,7 +2450,7 @@ Proof. reflexivity. Qed.
 
 Lemma att_correct: att = mkW (finite 1) _ _ tt tt (fun _ => emp_fun).
 Proof.
-  unfold att. prove_constr. destruct b.
+  unfold att. prove_constr.  destruct b.
 Qed.
 
 (*Bool*)

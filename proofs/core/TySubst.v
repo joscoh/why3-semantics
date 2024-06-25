@@ -1,6 +1,6 @@
 (*Type substitution*)
 Require Import Denotational.
-Require Import Typechecker.
+Require Import CommonSSR Typechecker.
 
 (*We can substitute types for type variables just as we 
   substitute terms for term variables. We would like to

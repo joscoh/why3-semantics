@@ -241,7 +241,7 @@ End TransUtil.
 (*Prove task_wf automatically*)
 From mathcomp Require Import all_ssreflect.
 Set Bullet Behavior "Strict Subproofs".
-Require Import Typechecker.
+Require Import Typechecker CommonSSR.
 
 Definition check_closed gamma (f: formula) : bool :=
   typecheck_formula gamma f &&
