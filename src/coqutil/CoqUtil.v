@@ -158,9 +158,11 @@ Ltac solve_eqb_eq :=
   auto; try discriminate; contradiction].
 
 (*TODO: move from Types to Common*)
-Fixpoint list_eqb {A: Type} (eq: A -> A -> bool) (l1 l2: list A) : bool :=
+(*TODO: do we need this and [lists_equal] below?*)
+Definition list_eqb {A: Type} (eq: A -> A -> bool) :=
+  fix list_eqb (l1 l2: list A) : bool :=
   match l1, l2 with
-  | x1 :: t1, x2 :: t2 => eq x1 x2 && list_eqb eq t1 t2
+  | x1 :: t1, x2 :: t2 => eq x1 x2 && list_eqb t1 t2
   | nil, nil => true
   | _, _ => false
   end.
@@ -171,14 +173,23 @@ Proof.
   unfold is_true. apply andb_true_iff.
 Qed.
 
+(*More useful in some IHs*)
+Lemma list_eqb_eq2 {A: Type} {eq: A -> A -> bool} (l1 l2 : list A)
+  (Heq: Forall (fun x => forall y, x = y <-> eq x y) l1):
+  l1 = l2 <-> list_eqb eq l1 l2.
+Proof.
+  revert l2. induction l1 as [|h1 t1]; simpl;
+  intros [| h2 t2]; simpl; auto; try solve_eqb_eq.
+  rewrite andb_true, <- (Forall_inv Heq h2), 
+    <- (IHt1 (Forall_inv_tail Heq) t2). solve_eqb_eq.
+Qed.
+
 Lemma list_eqb_eq {A: Type} {eq: A -> A -> bool} 
   (Heq: forall x y, x = y <-> eq x y)
   l1 l2:
   l1 = l2 <-> list_eqb eq l1 l2.
 Proof.
-  revert l2. induction l1 as [|h1 t1]; simpl;
-  intros [| h2 t2]; simpl; auto; try solve_eqb_eq.
-  rewrite andb_true, <- Heq, <- IHt1. solve_eqb_eq.
+  apply list_eqb_eq2. rewrite Forall_forall; intros; auto.
 Qed.
 
 Definition isSome {A: Type} (o: option A) : bool :=
@@ -208,6 +219,7 @@ Qed.
 (*TODO: dont repeat with Common*)
 (*This awkward definition satisfies Coq's positivity checker
   for nested induction, unlike the normal one*)
+(*TODO: make nicer*)
 Definition map2 {A B C: Type} :=
   fun (f: A -> B -> C) =>
     fix map2 (l1: list A) : list B -> list C :=
@@ -222,14 +234,22 @@ Definition map2 {A B C: Type} :=
       end.
 
 (*Unlike OCaml, this gives option, not exception*)
-Fixpoint fold_right2 {A B C: Type} (f: A -> B -> C -> C) (l1: list A)
-  (l2: list B) (accu: C) : option C :=
-  match l1, l2 with
-  | nil, nil => Some accu
-  | a1 :: l1, a2 :: l2 => 
-    option_map (f a1 a2) (fold_right2 f l1 l2 accu)
-  | _, _ => None
-  end.
+(*version for nested recursion TODO improve*)
+Definition fold_right2 {A B C: Type} :=
+  fun (f: A -> B -> C -> C) =>
+    fix fold_right2 (l1: list A) : list B -> C -> option C :=
+      match l1 with
+      | nil => fun l2 base =>
+        match l2 with
+        | nil => Some base
+        | _ :: _ => None
+        end
+      | x1 :: t1 => fun l2 base =>
+        match l2 with
+        | nil => None
+        | x2 :: t2 => option_map (f x1 x2) (fold_right2 t1 t2 base)
+        end
+      end.
 
 Fixpoint fold_left2 {A B C: Type} (f: C -> A -> B -> C) (l1: list A)
   (l2: list B) (accu: C) : option C :=
@@ -333,6 +353,16 @@ Definition map_fold_left {A B C: Type} (f: A -> B -> A * C) (acc: A) (l: list B)
     (fst y, snd y :: (snd x))
   ) l (acc, nil) in
   (fst res, rev' (snd res)).
+
+(*TODO: monad?*)
+Definition option_bind {A B: Type} (x: option A) (f: A -> option B) : option B :=
+  match x with
+  | Some y => f y
+  | None => None
+  end.
+
+Definition list_find_opt {A: Type} (p: A -> bool) (l: list A) : option A :=
+  fold_right (fun x acc => if p x then Some x else acc) None l.
 
 (*In extraction, make this OCaml a * b * c, which is
   NOT equal to extracted default, (a * b) * c*)

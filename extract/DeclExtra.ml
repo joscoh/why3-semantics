@@ -889,7 +889,7 @@ gives set of mutual adts and map adt name -> mut_adt*)
     | _ -> acc) kn ([], Mts.empty) *)
 
 (*TODO: move I think*)
-let is_vty_adt (ctx: mut_info) (t: ty) : (mut_adt * tysymbol * ty list) option =
+(*let is_vty_adt (ctx: mut_info) (t: ty) : (mut_adt * tysymbol * ty list) option =
   match t.ty_node with
   | Tyapp (ts, tys) -> Option.bind (Mts.find_opt ts (snd ctx)) (fun m -> Some (m, ts, tys))
   | Tyvar _ -> None
@@ -905,7 +905,7 @@ let vty_in_m (m: mut_adt) (vs: ty list) (v: ty) : bool =
 let vty_in_m' (m: mut_adt) (v: ty) : bool =
   match v.ty_node with
   | Tyapp(ts, vs') -> ts_in_mut ts m
-  | _ -> false
+  | _ -> false*)
 
 (*Create map of [mut_adt * ty list]*)
 
@@ -921,7 +921,7 @@ let add_union (eq: 'a -> 'a -> bool) (x: 'a) (l: 'a list) =
 let get_adts_present (ctx: mut_info) (l: vsymbol list) : (mut_adt * ty list) list =
   List.fold_right (fun v acc -> 
     match (is_vty_adt ctx v.vs_ty) with
-    | Some (m, a, vs) -> add_union (=) (m, vs) acc
+    | Some ((m, a), vs) -> add_union (=) (m, vs) acc
     | None -> acc
     ) l []
 

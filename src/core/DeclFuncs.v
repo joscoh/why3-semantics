@@ -96,3 +96,25 @@ Definition get_ctx_tys (kn: Mid.t decl) : mut_info :=
     | _ => acc
     end) kn (nil, Mts.empty).
 
+Definition is_vty_adt (ctx: mut_info) (t: ty_c) : 
+  option (mut_adt * tysymbol_c * list ty_c) :=
+  match ty_node_of t with
+  | Tyapp ts tys => option_bind (Mts.find_opt _ ts (snd ctx))
+      (fun m => Some (m, ts, tys))
+  | Tyvar _ => None
+  end.
+
+Definition ts_in_mut (ts: tysymbol_c) (m: mut_adt) : bool :=
+  isSome (list_find_opt (fun a => ts_equal (fst a) ts) m).
+
+Definition vty_in_m (m: mut_adt) (vs: list ty_c) (v: ty_c) : bool :=
+  match ty_node_of v with
+  | Tyapp ts vs' => ts_in_mut ts m && list_eqb ty_equal vs vs'
+  | _ => false
+  end.
+
+Definition vty_in_m' (m: mut_adt) (v: ty_c) : bool :=
+  match ty_node_of v with
+  | Tyapp ts vs' => ts_in_mut ts m
+  | _ => false
+  end.

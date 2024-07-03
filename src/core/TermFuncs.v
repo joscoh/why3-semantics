@@ -440,13 +440,13 @@ Definition t_similar (t1 t2: term_c) : bool :=
   | Tconst c1, Tconst c2 => CoqInt.int_eqb 
     (ConstantDefs.compare_const_aux true c1 c2) CoqInt.zero
   | Tapp s1 l1, Tapp s2 l2 => ls_equal s1 s2 && 
-    lists_equal term_eqb_fast l1 l2
+    list_eqb term_eqb_fast l1 l2
   | Tif f1 t1 e1, Tif f2 t2 e2 => term_eqb_fast f1 f2 && term_eqb_fast t1 t2 
     && term_eqb_fast e1 e2
   | Tlet t1 bv1, Tlet t2 bv2 => term_eqb_fast t1 t2 && 
     term_bound_eqb_fast bv1 bv2
   | Tcase t1 bl1, Tcase t2 bl2 => term_eqb_fast t1 t2 &&
-    lists_equal term_branch_eqb_fast bl1 bl2
+    list_eqb term_branch_eqb_fast bl1 bl2
   | Teps bv1, Teps bv2 => term_bound_eqb_fast bv1 bv2
   | Tquant q1 bv1, Tquant q2 bv2 => 
     quant_eqb q1 q2 && term_quant_eqb_fast bv1 bv2
@@ -620,7 +620,7 @@ Definition vs_check (v: vsymbol) (t: term_c) : errorM unit :=
   ty_equal_check v.(vs_ty) typ.
 
 (*Trigger Equality and Traversal*)
-Definition tr_equal := lists_equal (lists_equal t_equal).
+Definition tr_equal := list_eqb (list_eqb t_equal).
 
 Definition tr_map {A B: Type} (fn: A -> B) :=
   map (map fn).
@@ -1060,8 +1060,8 @@ Definition t_open_quant_cb1 (fq: term_quant) : ctr (list vsymbol * trigger * ter
   let '(vl, tl, f) := x in
   let close vl' tl' f' :=
     if term_eqb_fast f f' &&
-      lists_equal (lists_equal term_eqb_fast) tl tl' &&
-      lists_equal vs_equal vl vl'
+      list_eqb (list_eqb term_eqb_fast) tl tl' &&
+      list_eqb vs_equal vl vl'
     then err_ret fq else
     (t_close_quant vl' tl' f')
   in

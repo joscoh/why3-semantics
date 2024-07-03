@@ -442,65 +442,6 @@ End TermInd.
 
 (*Decidable equality on terms*)
 
-(*TODO: replace in CoqUtil - version for nested recursion*)
-Definition fold_right2 {A B C: Type} :=
-  fun (f: A -> B -> C -> C) =>
-    fix fold_right2 (l1: list A) : list B -> C -> option C :=
-      match l1 with
-      | nil => fun l2 base =>
-        match l2 with
-        | nil => Some base
-        | _ :: _ => None
-        end
-      | x1 :: t1 => fun l2 base =>
-        match l2 with
-        | nil => None
-        | x2 :: t2 => option_map (f x1 x2) (fold_right2 t1 t2 base)
-        end
-      end.
-
-Definition lists_equal_aux {A B: Type} (cmp: A -> B -> bool) (l1: list A) (l2: list B) :=
-  fold_right2 (fun x1 x2 acc => cmp x1 x2 && acc) l1 l2 true.
-
-(*TODO: move*)
-Definition true_opt (x: option bool) : bool :=
-  match x with
-  | Some y => y
-  | None => false
-  end.
-
-Definition lists_equal {A B: Type} (cmp: A -> B -> bool) (l1: list A) (l2: list B) :=
-  true_opt (lists_equal_aux cmp l1 l2).
-
-Lemma lists_equal_spec {A: Type} {cmp: A -> A -> bool} (l1 l2: list A) :
-  Forall (fun x => forall y, x = y <-> cmp x y) l1 ->
-  l1 = l2 <-> lists_equal cmp l1 l2.
-Proof.
-  intros Hall.
-  unfold lists_equal.
-  unfold true_opt.
-  assert (l1 = l2 <-> lists_equal_aux cmp l1 l2 = Some true). {
-    unfold lists_equal_aux. revert l2.
-    induction l1; intros l2; simpl.
-    - destruct l2; solve_eqb_eq.
-    - destruct l2; simpl; [solve_eqb_eq |].
-      unfold option_map.
-      specialize (IHl1 (Forall_inv_tail Hall) l2).
-      destruct (fold_right2 (fun (x1 x2 : A) (acc : bool) => cmp x1 x2 && acc) l1 l2 true).
-      + destruct b.
-        * rewrite andb_true_r. 
-          split; intros Heq; inversion Heq; subst; auto.
-          -- f_equal. apply (Forall_inv Hall); reflexivity.
-          -- apply (Forall_inv Hall) in H0; subst; f_equal.
-            apply IHl1; reflexivity.
-        * rewrite andb_false_r. split; intro C; inversion C; subst.
-          apply IHl1; reflexivity.
-      + split; intro C; inversion C; subst. apply IHl1; reflexivity.
-  }
-  destruct (lists_equal_aux cmp l1 l2);
-  rewrite H; solve_eqb_eq.
-Qed.
-
 
 Definition bind_info_eqb (b1 b2: bind_info) : bool :=
   Mvs.equal CoqBigInt.eqb b1.(bv_vars) b2.(bv_vars).
@@ -551,7 +492,7 @@ with term_node_eqb (t1 t2: term_node) : bool :=
   | Tconst c1, Tconst c2 => ConstantDefs.constant_eqb c1 c2
   | Tapp l1 ts1, Tapp l2 ts2 =>
     lsymbol_eqb l1 l2 &&
-    lists_equal term_eqb ts1 ts2
+    list_eqb term_eqb ts1 ts2
   | Tif t1 t2 t3, Tif e1 e2 e3 =>
     term_eqb t1 e1 && term_eqb t2 e2 && term_eqb t3 e3
   | Tlet t1 (v1, b1, t2), Tlet t3 (v2, b2, t4) =>
@@ -561,7 +502,7 @@ with term_node_eqb (t1 t2: term_node) : bool :=
     term_eqb t2 t4
   | Tcase t1 tbs1, Tcase t2 tbs2 =>
     term_eqb t1 t2 &&
-    lists_equal (fun x1 x2 =>
+    list_eqb (fun x1 x2 =>
       let '(p1, b1, t1) := x1 in
       let '(p2, b2, t2) := x2 in
       pattern_eqb p1 p2 &&
@@ -574,9 +515,9 @@ with term_node_eqb (t1 t2: term_node) : bool :=
     term_eqb t1 t2 
   | Tquant q1 (l1, b1, tr1, t1), Tquant q2 (l2, b2, tr2, t2) =>
     quant_eqb q1 q2 &&
-    lists_equal vsymbol_eqb l1 l2 &&
+    list_eqb vsymbol_eqb l1 l2 &&
     bind_info_eqb b1 b2 &&
-    lists_equal (lists_equal term_eqb) tr1 tr2 &&
+    list_eqb (list_eqb term_eqb) tr1 tr2 &&
     term_eqb t1 t2
   | Tbinop b1 t1 t2, Tbinop b2 t3 t4 =>
     binop_eqb b1 b2 &&
@@ -615,7 +556,7 @@ Proof.
     solve_eqb_eq.
   - intros l1 ts1 IH [| | l2 ts2 | | | | | | | | |]; try solve_eqb_eq.
     simpl. rewrite andb_true, <- lsymbol_eqb_eq.
-    rewrite <- (lists_equal_spec _ _ IH).
+    rewrite <- (list_eqb_eq2 _ _ IH).
     solve_eqb_eq.
   - intros ta tb tc IH1 IH2 IH3 [| | | ea eb ec | | | | | | | |];
     try solve_eqb_eq; simpl; rewrite !andb_true, <- IH1, <- IH2, <- IH3.
@@ -624,7 +565,7 @@ Proof.
     try solve_eqb_eq; simpl; rewrite !andb_true, <- IH1, <- IH2, <- bind_info_eqb_eq,
     <- vsymbol_eqb_eq. solve_eqb_eq.
   - intros t1 tbs1 Ih1 Hall [| | | | | t2 tbs2 | | | | | |];
-    try solve_eqb_eq; simpl; rewrite andb_true, <- Ih1, <- lists_equal_spec;
+    try solve_eqb_eq; simpl; rewrite andb_true, <- Ih1, <- list_eqb_eq2;
     [solve_eqb_eq|].
     rewrite Forall_map in Hall.
     revert Hall.
@@ -638,9 +579,9 @@ Proof.
     <- bind_info_eqb_eq, <- IH. solve_eqb_eq.
   - intros q1 vs1 b1 tr1 t1 IH1 IH2 [| | | | | | | q2 [[[vs2 b2] tr2] t2] | | | |];
     try solve_eqb_eq; simpl; rewrite !andb_true, <- quant_eqb_eq,
-    <- bind_info_eqb_eq, <- IH2, <- !lists_equal_spec; [solve_eqb_eq | |].
+    <- bind_info_eqb_eq, <- IH2, <- !list_eqb_eq2; [solve_eqb_eq | |].
     + revert IH1. apply Forall_impl.
-      intros a Hall l2. apply lists_equal_spec. auto.
+      intros a Hall l2. apply list_eqb_eq2. auto.
     + rewrite Forall_forall. intros v Hinv. apply vsymbol_eqb_eq.
   - intros b1 ta tb IHa IHb [| | | | | | | | b2 ea eb | | | ];
     try solve_eqb_eq; simpl; rewrite !andb_true, <- binop_eqb_eq, <- IHa, <- IHb;
