@@ -333,3 +333,10 @@ Definition map_fold_left {A B C: Type} (f: A -> B -> A * C) (acc: A) (l: list B)
     (fst y, snd y :: (snd x))
   ) l (acc, nil) in
   (fst res, rev' (snd res)).
+
+(*In extraction, make this OCaml a * b * c, which is
+  NOT equal to extracted default, (a * b) * c*)
+(*TODO: use axiom trick*)
+Definition ocaml_tup3 (A B C: Type) : Type := A * B * C.
+Definition to_tup3 {A B C: Type} (x: A * B * C) : ocaml_tup3 A B C := x.
+Definition of_tup3 {A B C: Type} (x: ocaml_tup3 A B C) : A * B * C := x.

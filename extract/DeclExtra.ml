@@ -14,6 +14,27 @@ open Ident
 open Ty
 open Term
 
+let sexp_of_ind_sign (x: ind_sign) : Sexplib0.Sexp.t =
+  match x with Ind -> Sexplib0.Sexp.Atom "Ind" | Coind -> Sexplib0.Sexp.Atom "Coind"
+
+let ind_sign_of_sexp (x: Sexplib0.Sexp.t) : ind_sign =
+  match x with
+  | Sexplib0.Sexp.Atom "Ind" -> Ind
+  | Sexplib0.Sexp.Atom "Coind"  -> Coind 
+  | _ -> Sexplib0.Sexp_conv.of_sexp_error "ind_sign_of_sexp" x 
+
+
+let sexp_of_prop_kind (x: prop_kind) : Sexplib0.Sexp.t =
+   match x with Plemma -> Sexplib0.Sexp.Atom "Plemma" | Paxiom -> Sexplib0.Sexp.Atom "Paxiom" | Pgoal -> Sexplib0.Sexp.Atom "Pgoal"
+
+
+let prop_kind_of_sexp (x: Sexplib0.Sexp.t) : prop_kind =
+  match x with
+  | Sexplib0.Sexp.Atom "Plemma" -> Plemma
+  | Sexplib0.Sexp.Atom "Paxiom"  -> Paxiom 
+  | Sexplib0.Sexp.Atom "Pgoal"  -> Pgoal 
+  | _ -> Sexplib0.Sexp_conv.of_sexp_error "prop_kind_of_sexp" x 
+
 (*  (*Type declaration*)
 
 type constructor = lsymbol * lsymbol option list
@@ -284,13 +305,13 @@ let check_termination ldl =
   let check ls _ =
     find_variant (NoTerminationProof ls) cgr ls.ls_name in
   let res = Mls.mapi check syms in
-  List.map (fun (ls,((_,f),_)) -> (ls,((ls,f),Mls.find ls res))) ldl
+  List.map (fun (ls,((_,f),_)) -> (ls,((ls,f),Mls.find ls res))) ldl 
 
 (** Inductive predicate declaration *)
 
-type prsymbol = {
+(* type prsymbol = {
   pr_name : ident;
-}
+} *)
 
 module Prop = MakeMSHW (struct
   type t = prsymbol
@@ -309,26 +330,26 @@ let pr_hash pr = id_hash pr.pr_name
 
 let create_prsymbol n = { pr_name = id_register n }
 
-type ind_decl = lsymbol * (prsymbol * term) list
+(* type ind_decl = lsymbol * (prsymbol * term) list *)
 
-type ind_sign = Ind | Coind
+(* type ind_sign = Ind | Coind
 [@@deriving sexp]
 
-type ind_list = ind_sign * ind_decl list
+type ind_list = ind_sign * ind_decl list *)
 
 (** Proposition declaration *)
 
-type prop_kind =
+(* type prop_kind =
   | Plemma    (* prove, use as a premise *)
   | Paxiom    (* do not prove, use as a premise *)
   | Pgoal     (* prove, do not use as a premise *)
 [@@deriving sexp]
 
-type prop_decl = prop_kind * prsymbol * term
+type prop_decl = prop_kind * prsymbol * term *)
 
 (** Declaration type *)
 
-type decl = {
+(*type decl = {
   d_node : decl_node;
   d_news : Sid.t;         (* idents introduced in declaration *)
   d_tag  : Weakhtbl.tag;  (* unique magical tag *)
@@ -341,7 +362,7 @@ and decl_node =
   | Dlogic of logic_decl list   (* recursive functions and predicates *)
   | Dind   of ind_list          (* (co)inductive predicates *)
   | Dprop  of prop_decl         (* axiom / lemma / goal *)
-
+*)
 (** Declarations *)
 
 module Hsdecl = Hashcons.Make (struct
@@ -843,12 +864,348 @@ let check_positivity kn d = match d.d_node with
       List.iter check_decl tdl
   | _ -> ()
 
+(*JOSH - HERE, we will add termination check.
+ Unlike Why3, our termination check depends on type definitions*)
+
+(*TODO: is this defined?*)
+let null (l: 'a list) : bool = 
+  match l with
+  | [] -> true
+  | _ -> false
+
+(*TODO?*)
+type mut_adt = data_decl list
+type mut_info = mut_adt list *  mut_adt Mts.t
+
+(*TODO: move*)
+(*Get all mutual ADT definitions:
+gives set of mutual adts and map adt name -> mut_adt*)
+let get_ctx_tys (kn: decl Mid.t) : mut_info  =
+  Mid.fold (fun _ d acc ->
+    match d.d_node with
+    | Ddata m ->
+      let (ms, mp) = acc in
+      (m :: ms, List.fold_right (fun t ts -> Mts.add t m ts) (List.map fst m) mp )
+    | _ -> acc) kn ([], Mts.empty)
+
+(*TODO: move I think*)
+let is_vty_adt (ctx: mut_info) (t: ty) : (mut_adt * tysymbol * ty list) option =
+  match t.ty_node with
+  | Tyapp (ts, tys) -> Option.bind (Mts.find_opt ts (snd ctx)) (fun m -> Some (m, ts, tys))
+  | Tyvar _ -> None
+
+let ts_in_mut (ts: tysymbol) (m: mut_adt) : bool =
+  match List.find_opt (fun a -> (fst a) = ts) m with | Some _ -> true | None -> false
+
+let vty_in_m (m: mut_adt) (vs: ty list) (v: ty) : bool =
+  match v.ty_node with
+  | Tyapp(ts, vs') -> ts_in_mut ts m && List.equal ty_equal vs vs'
+  | _ -> false
+
+let vty_in_m' (m: mut_adt) (v: ty) : bool =
+  match v.ty_node with
+  | Tyapp(ts, vs') -> ts_in_mut ts m
+  | _ -> false
+
+(*Create map of [mut_adt * ty list]*)
+
+(*Need way to create tag of tuple*)
+
+(*A hack - should really use maps but it is complicated with
+  tuples and lists - are BSTs the way to go?*)
+(*Inefficient of course*)
+let add_union (eq: 'a -> 'a -> bool) (x: 'a) (l: 'a list) =
+  if List.exists (fun y -> eq x y) l then l else x :: l
+
+
+let get_adts_present (ctx: mut_info) (l: vsymbol list) : (mut_adt * ty list) list =
+  List.fold_right (fun v acc -> 
+    match (is_vty_adt ctx v.vs_ty) with
+    | Some (m, a, vs) -> add_union (=) (m, vs) acc
+    | None -> acc
+    ) l []
+
+(*TEMP - change to bigint*)
+(*NOTE: from 0 to n-1, NOT 1 to n - NEEDS to be increasing order*)
+let iota (n: int) : int list =
+  let rec iota_aux n = 
+  if n < 0
+    then []
+    else if n = 0 then [] else (n - 1) :: (iota_aux (n-1)) in
+  List.rev (iota_aux n)
+
+(*TODO: combine probably*)
+let get_idx_lists_aux kn (funs: (vsymbol list * term) Mls.t) :  (data_decl list * ty list * (int list) list) list =
+    let syms : vsymbol list list = Mls.fold (fun _ x y -> (fst x) :: y) funs [] in
+    List.map (fun (m, vs) -> 
+    
+      let l : int list list =
+        List.map (fun args ->
+          List.map fst (List.filter (fun it -> vty_in_m m vs (snd it)) 
+            (List.combine (iota (List.length args)) (List.map (fun v -> v.vs_ty) args)))
+
+        ) syms
+        in
+        (*If any are null, discard*)
+        (m, vs, if List.exists null l then [] else l)
+      
+    ) 
+    (get_adts_present (get_ctx_tys kn) (List.concat syms))
+
+
+let get_idx_lists kn (funs: (vsymbol list * term) Mls.t) : (data_decl list * ty list * (int list) list) list =
+  List.filter (fun (_, _, x) -> not (null x)) (get_idx_lists_aux kn funs)
+
+let rec get_possible_index_lists (l: int list list) : int list list =
+  match l with
+  | l1 :: rest -> let r = get_possible_index_lists rest in
+    List.concat (List.map (fun x -> List.map (fun y -> x :: y) r) l1)
+  | [] -> [[]]
+
+(*The core of the termination checking (TODO move?)*)
+
+let check_unif_map (m: ty Mtv.t) : bool =
+  Mtv.for_all (fun (v: tvsymbol) (t : ty) -> 
+    match t.ty_node with 
+      | Tyvar v1 -> tv_equal v v1 
+      | _ -> false
+      ) m
+
+let check_inst_eq (m: ty Mtv.t) (syms: tvsymbol list) (tys: ty list) : bool =
+  List.for_all (fun (v, t) -> match Mtv.find_opt v m with | Some t1 -> ty_equal t t1 | None -> false) 
+    (List.combine syms tys)
+
+let vsym_in_m (m: mut_adt) (vs: ty list) (x: vsymbol) : bool =
+  vty_in_m m vs (x.vs_ty)
+
+let constr_in_m (l: lsymbol) (m: mut_adt) : bool =
+  List.exists (fun (d: data_decl) -> List.exists (fun c -> fst c = l) (snd d)) m
+
+(*TODO: do we need this?*)
+
+
+(*TODO: do we need vs?*)
+let rec pat_constr_vars_inner (m: mut_adt) (vs: ty list) (p: pattern) : Svs.t =
+  match p.pat_node with
+| Pwild -> Svs.empty
+| Pvar x -> if vsym_in_m m vs x then Svs.singleton x else Svs.empty
+| Papp (f, ps) -> 
+    (*only add variables in constructors of right type*)
+    if constr_in_m f m then (*TODO: how to say tys = vs? For now, don't include - ruled out by uniformity of types
+        although this is currently unsound I think (or maybe sound I just can't prove it)*)
+        (*Also don't use length goals, implied by typing*)
+      List.fold_right (fun x acc -> Svs.union (pat_constr_vars_inner m vs x) acc)
+        (*A horrible way to write this: need to get patterns corresponding only to argument types in m*)
+        (*But how to get m_params? Ugh - need better way to deal with this stuff*) 
+      (*Also do not include params part - rely on uniform ADT restriction*)
+        (List.map fst (List.filter (fun x -> vty_in_m' m (snd x)) (List.combine ps (f.ls_args)))) Svs.empty
+  else Svs.empty
+| Por (p1, p2) -> Svs.inter (pat_constr_vars_inner m vs p1) (pat_constr_vars_inner m vs p2)
+| Pas (p', y) -> Svs.union (if vsym_in_m m vs y then Svs.singleton y else Svs.empty) (pat_constr_vars_inner m vs p')
+
+(*Get strictly smaller (not just <=) vars. Recurse until we hit constructor*)
+let rec pat_constr_vars (m: mut_adt) (vs: ty list) (p: pattern) : Svs.t =
+match p.pat_node with
+| Papp (_, _) -> pat_constr_vars_inner m vs p
+| Por (p1, p2) -> Svs.inter (pat_constr_vars m vs p1) (pat_constr_vars m vs p2)
+| Pas (p, y) -> pat_constr_vars m vs p
+| _ -> Svs.empty
+
+let upd_option (hd: vsymbol option) (x: vsymbol) : vsymbol option =
+  match hd with
+  | Some y -> if vs_equal x y then None else hd
+  | None -> None
+
+let upd_option_iter (x: vsymbol option) (xs: Svs.t) : vsymbol option =
+  Svs.fold (fun v o -> upd_option o v) xs x
+
+let check_var_case small hd v =
+  hd = Some v || Svs.mem v small
+
+let tm_var_case (small: Svs.t) (hd: vsymbol option) (t: term) : bool =
+  match t.t_node with
+| Tvar v -> check_var_case small hd v
+| _ -> false
+
+(*If jth element of tms is small variable, all [pat_constr_vars] in
+  (nth j ps) should be added*)
+let get_constr_smaller (small: Svs.t) (hd: vsymbol option) (m: mut_adt)
+  (vs: ty list) (f: lsymbol) (tms: term list) (p: pattern) : Svs.t =
+  match p.pat_node with
+| Papp (f1, ps) -> if ls_equal f f1 then 
+    List.fold_right Svs.union (List.map2 (fun t p -> if tm_var_case small hd t then pat_constr_vars m vs p else Svs.empty) tms ps) Svs.empty
+else Svs.empty
+| _ -> Svs.empty
+
+let svs_remove_all (l: vsymbol list) (s: Svs.t) : Svs.t =
+  List.fold_right Svs.remove l s
+
+let rec check_decrease_fun (funs: (lsymbol * int) list)
+  (small: Svs.t) (hd: vsymbol option) (m: mut_adt) (vs: ty list) (t: term) : bool =
+match t.t_node with
+| Tapp(f, ts) ->
+  begin match List.find_opt (fun y -> f = (fst y)) funs with
+  | Some (_, i) ->
+      (*Needs to be called on smaller variable at ith index*)
+      begin match (List.nth ts i).t_node with
+      | Tvar x -> Svs.contains small x && (*Check that map is uniform*)
+      check_unif_map (ls_arg_inst f ts) &&
+      List.for_all (check_decrease_fun funs small hd m vs) ts
+      | _ -> false
+      end
+  | None -> (*not recursive*)
+    List.for_all (check_decrease_fun funs small hd m vs) ts
+  end
+(*Other interesting case is Tcase*)
+| Tcase (t, pats) -> 
+  check_decrease_fun funs small hd m vs t &&
+  (*TODO: merge these - maybe case inside function and just change the thing that is being union'ed*)
+  List.for_all (fun tb ->
+    let (p, t1) = t_open_branch tb in
+    let toadd = begin match t.t_node with 
+      | Tvar mvar -> if check_var_case small hd mvar then pat_constr_vars m vs p else Svs.empty
+      | Tapp(c, tms) -> get_constr_smaller small hd m vs c tms p
+      | _ -> Svs.empty
+    end in
+    let newsmall = Svs.union toadd (Svs.diff small p.pat_vars) in
+    check_decrease_fun funs newsmall (upd_option_iter hd p.pat_vars) m vs t1
+    ) pats
+
+  (* begin match t.t_node with
+  | Tvar mvar ->
+    if hd = Some mvar || Svs.mem mvar small then
+      List.for_all (fun tb ->
+        let (p, t) = t_open_branch tb in
+        (*Add smaller variables*)
+        let newsmall = Svs.union (pat_constr_vars m vs p) (Svs.diff small (p.pat_vars)) in
+        check_decrease_fun funs newsmall (upd_option_iter hd p.pat_vars) m vs t
+        ) pats
+      else 
+        (*Non-smaller cases*)
+        List.for_all (fun tb ->
+          let (p, t) = t_open_branch tb in
+          let newsmall = Svs.diff small (p.pat_vars) in
+          check_decrease_fun funs newsmall (upd_option_iter hd p.pat_vars) m vs t
+          ) pats
+  | Tapp(c, tms) ->
+    List.for_all (fun tb ->
+      let (p, t) = t_open_branch tb in
+      let newsmall = Svs.union (get_constr_smaller small hd m vs c tms p) (Svs.diff small (p.pat_vars)) in
+      check_decrease_fun funs newsmall (upd_option_iter hd p.pat_vars) m vs t
+      ) pats
+
+  | _ -> List.for_all (fun tb ->
+    let (p, t) = t_open_branch tb in
+    let newsmall = Svs.diff small (p.pat_vars) in
+    check_decrease_fun funs newsmall (upd_option_iter hd p.pat_vars) m vs t
+    ) pats
+  end *)
+  (*START*)
+  (*1*)
+| Tlet(t1, tb) -> check_decrease_fun funs small hd m vs t1 &&
+  let (x, t2) = t_open_bound tb in
+  (*TODO: is this remove useless because x is guaranteed to be fresh?*)
+  check_decrease_fun funs (Svs.remove x small) (upd_option hd x) m vs t2
+| Tif(t1, t2, t3) -> check_decrease_fun funs small hd m vs t1 &&
+  check_decrease_fun funs small hd m vs t2 &&
+  check_decrease_fun funs small hd m vs t3
+| Teps(tb) ->  let (x, t2) = t_open_bound tb in
+  (*same as Tlet*) (*I think we can get rid of all of these*)
+  check_decrease_fun funs (Svs.remove x small) (upd_option hd x) m vs t2
+| Tquant(q, tq) -> let (vars, _, f) = t_open_quant tq in
+  check_decrease_fun funs (svs_remove_all vars small) (upd_option_iter hd (Svs.of_list vars)) m vs f
+| Tbinop(_, t1, t2) -> check_decrease_fun funs small hd m vs t1 && check_decrease_fun funs small hd m vs t2
+| Tnot(t) -> check_decrease_fun funs small hd m vs t
+| Tvar _ -> true
+| Tconst _ -> true
+| Ttrue -> true
+| Tfalse -> true
+
+let find_idx_list (l: (lsymbol * (vsymbol list * term)) list) m vs (candidates : int list list) : int list option =
+  List.find_opt (fun il -> 
+    List.for_all (fun ((f, (vars, t)), i) ->
+      check_decrease_fun (List.combine (List.map fst l) il) Svs.empty (Some (List.nth vars i)) m vs t
+      ) (List.combine l il)) candidates
+
+(*START*)
+
+(*TODO:*)
+let mut_in_ctx (m: mut_adt) (kn: decl Mid.t) : bool =
+  List.mem m (fst (get_ctx_tys kn))
+
+let find_elt (f: 'a -> 'b option) (l: 'a list) : ('a * 'b) option =
+  List.fold_right (fun x acc -> match f x with | None -> acc | Some y -> Some (x, y)) l None
+
+ (*TODO: do we need mutual ADT?*)
+let check_termination_aux kn (funs: (vsymbol list * term) Mls.t) :
+      (int Mls.t) option =
+  if Mls.is_empty funs then None
+  else 
+    let l = Mls.bindings funs in
+    let idxs = (get_idx_lists kn funs) in
+    Option.bind
+  (*TODO: skipping params for now - do we need?*)
+
+  (find_elt (fun (m, vs, cands) -> 
+    (*Skip params, implied by typing*)
+    if mut_in_ctx m kn then 
+      find_idx_list l m vs (get_possible_index_lists cands)
+  else None
+    )
+  idxs)
+  (fun (_, idxs) -> 
+    (*Match index with corresponding symbol*)
+    Some (List.fold_right (fun x acc -> Mls.add (fst x) (snd x) acc) (List.combine (List.map fst l) idxs) Mls.empty)
+    )
+
+(*Other case: non-recursive*)
+(*TODO: better way to check?*)
+(*See if lsymbol appears in term*)
+let rec ls_in_tm (l: lsymbol) (t: term) : bool =
+  match t.t_node with
+| Tapp (f, ts) -> ls_equal f l || List.exists (ls_in_tm l) ts
+| Tif (t1, t2, t3) -> ls_in_tm l t1 || ls_in_tm l t2 || ls_in_tm l t3
+| Tlet (t1, tb) -> ls_in_tm l t1 || let (_, t2) = t_open_bound tb in
+  ls_in_tm l t2
+| Tcase (t1, pats) -> ls_in_tm l t1 || List.exists (fun tb ->
+    let (_, t) = t_open_branch tb in ls_in_tm l t) pats
+| Teps tb -> let (_, t2) = t_open_bound tb in ls_in_tm l t2
+| Tquant (_, tq) -> let (_, _ ,t2) = t_open_quant tq in ls_in_tm l t2
+| Tbinop (_, t1, t2) -> ls_in_tm l t1 || ls_in_tm l t2
+| Tnot f -> ls_in_tm l f
+|_ -> false
+
+
+let check_termination_strict kn d : decl =
+  match d.d_node with
+  | Dlogic ((l :: ls) as ld) ->
+
+    let add acc (ls,ld) = Mls.add ls (open_ls_defn ld) acc in
+    let syms = List.fold_left add Mls.empty ld in
+    (*First, see if non-recursive*)
+    let binds = Mls.bindings syms in
+    if List.for_all (fun t -> List.for_all (fun l -> not (ls_in_tm l t)) (List.map fst binds)) (List.map (fun x -> snd (snd x)) binds) 
+      then d else
+    begin match (check_termination_aux kn syms) with
+    | Some idxs -> (*TODO: do we actually need index info?*)
+      (*TODO: change from int list to int maybe?*)
+      let ldl =  List.map (fun (ls,((_,f),_)) -> (ls,((ls,f),[Mls.find ls idxs]))) ld in
+      (*TODO: do we need to hashcons?*)
+      { d_node = Dlogic ldl;
+        d_news = d.d_news;
+        d_tag  = d.d_tag;}
+    | None -> raise (NoTerminationProof (fst l))
+    end
+
+  | _ -> d
+
 let known_add_decl kn d =
   let kn = known_add_decl kn d in
   check_positivity kn d;
   check_foundness kn d;
   check_match kn d;
-  kn
+  let d = check_termination_strict kn d in
+  (d, kn)
 
 (** Records *)
 

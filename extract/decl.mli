@@ -194,7 +194,7 @@ end
 type known_map = decl Mid.t
 
 val known_id : known_map -> ident -> unit
-val known_add_decl : known_map -> decl -> known_map
+val known_add_decl : known_map -> decl -> decl * known_map
 val merge_known : known_map -> known_map -> known_map
 
 exception KnownIdent of ident

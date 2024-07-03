@@ -25,6 +25,11 @@ Extract Inlined Constant Datatypes.snd => "snd".
 
 Extract Inlined Constant proj_sumbool => "".
 
+(*OCaml tuples*)
+Extract Constant ocaml_tup3 "'a" "'b" "'c" => "'a * 'b * 'c".
+Extract Inlined Constant to_tup3 => "(fun ((x, y), z) -> (x, y, z))".
+Extract Inlined Constant of_tup3 => "(fun (x, y, z) -> ((x, y), z)))".
+
 (*Axiomatize OCaml ints and BigInts*)
 (*TODO: move to approprate files?*)
 (*TODO: We need this module stuff for now because dune does not

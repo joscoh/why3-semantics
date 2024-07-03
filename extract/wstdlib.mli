@@ -43,6 +43,9 @@ end
 module OrderedHashed (X : TaggedType) :
   OrderedHashedType with type t = X.t
 
+module OrderedIntHashed (X: OrderedHashedType) :
+  Hashtbl.HashedType with type t = X.t
+
 module TaggedList (X: TaggedType) :
   TaggedType with type t = X.t list
 

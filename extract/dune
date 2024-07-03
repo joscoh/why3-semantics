@@ -185,7 +185,7 @@
      (run sed -e "s/open TyFuncs//g")
      (run sed -e "s/open IdentDefs/open Ident/g")
      (run sed -e "s/open CoqWstdlib/open Wstdlib/g")
-     ;(run sed -e "s/open CoqWeakhtbl/open Weakhtbl/g")
+     (run sed -e "s/open CoqWeakhtbl/open Weakhtbl/g")
      ;(run sed -e "s/NumberDefs/Number/g")
      ;(run sed -e "s/open NumberFuncs//g") ;bad
      ;(run sed -e "s/CoqExthtbl/Exthtbl2/g")

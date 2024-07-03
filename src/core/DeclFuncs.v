@@ -1,4 +1,4 @@
-Require Import Monads TyDefs TermDefs DeclDefs TyFuncs TermFuncs.
+Require Import Monads TyDefs TermDefs DeclDefs TyFuncs TermFuncs IdentDefs.
 Import MonadNotations.
 Local Open Scope err_scope.
 
@@ -79,3 +79,14 @@ Definition make_ls_defn (ls: lsymbol) (vl: list vsymbol)
   _ <- errst_lift2 (t_ty_check t ls.(ls_value)) ;;
   (* return the definition *)
   errst_ret (ls, (ls, fd, [])).
+
+(*Termination Checking*)
+(*TODO: move to DeclDefs?*)
+(* Definition mut_adt : Type := list data_decl.
+Definition mut_info : Type := list mut_adt * Mts.t mut_adt. *)
+
+(*TODO: probably move*)
+(* Definition get_ctx_tys (kn: Mid.t decl) : mut_info. *)
+
+(*Get all mutual ADT definitions.
+  *)
