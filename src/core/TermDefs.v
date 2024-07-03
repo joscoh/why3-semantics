@@ -1,5 +1,5 @@
 Require Import Ident.
-Require Import Ty.
+Require Import TyDefs TyFuncs.
 Require Import CoqWstdlib.
 Require Import Monads.
 Import MonadNotations.

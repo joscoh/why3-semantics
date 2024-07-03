@@ -1,10 +1,20 @@
 Require Import CoqInt TyDefs TermDefs IdentDefs.
+
+(*JOSH TODO: HORRIBLE HACK*)
+(*Coq's extraction does not know that tysymbol_c -> tysymbol_o
+  requires importing TyDefs, so it does not, and then can't find
+  the result. So we have this completely fake definition in here
+  so that Coq will import Ty in extraction.
+  TODO: make it so we manually add files to import, probably delete
+  from extracted code (maybe)*)
+Definition hack : Type := tysymbol.
+
 (*Type Declaration*)
 
 (*Constructor symbol with the list of projections*)
 Definition constructor : Type := lsymbol * list (option lsymbol).
 
-Definition data_decl : Type := tysymbol * list constructor.
+Definition data_decl : Type := tysymbol_c * list constructor.
 
 (*Logic Declaration*)
 
@@ -42,7 +52,7 @@ Definition prop_decl : Type := ocaml_tup3 prop_kind prsymbol term.
 (* Declaration Type *)
 
 Variant decl_node :=
-  | Dtype : tysymbol -> decl_node (*Abstract types and aliases*)
+  | Dtype : tysymbol_c -> decl_node (*Abstract types and aliases*)
   | Ddata: list data_decl -> decl_node (*Recursive ADTs*)
   | Dparam : lsymbol -> decl_node (*abstract fun/pred*)
   | Dlogic : list logic_decl -> decl_node (*recursive fun/pred*)

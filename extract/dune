@@ -206,9 +206,10 @@
   NumberDefs numberexn NumberFuncs numberextra CoqExthtbl ConstantDefs 
   ConstantExtra TermDefs TermExtra TermExn TermFuncs DeclDefs 
   DeclExn DeclFuncs DeclExtra))
- (flags (:standard -w -33 -w -32 -w -9 -w -27)) 
+ (flags (:standard -w -33 -w -32 -w -9 -w -27 -w -34)) 
  ;32 is unused value - extraction results in values we don't want in mli file
  ;27 is unused var strict - TODO turn off after
+ ;34 is unused type declaration - TODO remove, need for hack in decl
  (libraries zarith sexplib re))
 
 

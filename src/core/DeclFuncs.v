@@ -82,11 +82,17 @@ Definition make_ls_defn (ls: lsymbol) (vl: list vsymbol)
 
 (*Termination Checking*)
 (*TODO: move to DeclDefs?*)
-(* Definition mut_adt : Type := list data_decl.
-Definition mut_info : Type := list mut_adt * Mts.t mut_adt. *)
+Definition mut_adt : Type := list data_decl.
+Definition mut_info : Type := list mut_adt * Mts.t mut_adt.
 
 (*TODO: probably move*)
-(* Definition get_ctx_tys (kn: Mid.t decl) : mut_info. *)
+(*Get all mutual ADT definitions.*)
+Definition get_ctx_tys (kn: Mid.t decl) : mut_info :=
+  Mid.fold (fun _ d acc =>
+    match d.(d_node) with
+    | Ddata m =>
+      let '(ms, mp) := acc in
+      (m :: ms, fold_right (fun t ts => Mts.add t m ts) mp (map fst m))
+    | _ => acc
+    end) kn (nil, Mts.empty).
 
-(*Get all mutual ADT definitions.
-  *)

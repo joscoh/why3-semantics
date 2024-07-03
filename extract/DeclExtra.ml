@@ -874,19 +874,19 @@ let null (l: 'a list) : bool =
   | _ -> false
 
 (*TODO?*)
-type mut_adt = data_decl list
-type mut_info = mut_adt list *  mut_adt Mts.t
+(* type mut_adt = data_decl list
+type mut_info = mut_adt list *  mut_adt Mts.t *)
 
 (*TODO: move*)
 (*Get all mutual ADT definitions:
 gives set of mutual adts and map adt name -> mut_adt*)
-let get_ctx_tys (kn: decl Mid.t) : mut_info  =
+(* let get_ctx_tys (kn: decl Mid.t) : mut_info  =
   Mid.fold (fun _ d acc ->
     match d.d_node with
     | Ddata m ->
       let (ms, mp) = acc in
       (m :: ms, List.fold_right (fun t ts -> Mts.add t m ts) (List.map fst m) mp )
-    | _ -> acc) kn ([], Mts.empty)
+    | _ -> acc) kn ([], Mts.empty) *)
 
 (*TODO: move I think*)
 let is_vty_adt (ctx: mut_info) (t: ty) : (mut_adt * tysymbol * ty list) option =
