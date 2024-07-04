@@ -162,11 +162,22 @@ Definition st_lift2 {A B C: Type} (s2: st B C) : st (A * B) C :=
     let (res, i) := (runState s2) (snd t) in
     (res, (fst t, i))).
 
+(*Combine 2 states inside either monad*)
+Definition errst_tup1 {A B C: Type} (s1: errState A C) : errState (A * B) C :=
+  match s1 with
+  | mkEitherT s1' => mkEitherT (st_lift1 s1')
+  end.
+Definition errst_tup2 {A B C: Type} (s1: errState B C) : errState (A * B) C :=
+  match s1 with
+  | mkEitherT s1' => mkEitherT (st_lift2 s1')
+  end.
 
 (*We use coq-ext-lib's monads and monad transformers.
   However, we cannot use their notations, or else the OCaml code
   is full of Obj.magic; we define our own above
   TODO: can we figure out how to fix this?*)
+
+Definition hashcons_ty K : Type := CoqBigInt.t * hashset K.
 
 (*Notations for types*)
 (*1. Counter*)
@@ -174,9 +185,9 @@ Notation ctr a := (st CoqBigInt.t a).
 (*2. Hash table*)
 Notation hash_st key value a := (st (hashtbl key value) a).
 (*3. Hash consing*)
-Notation hashcons_st key a := (st (CoqBigInt.t * hashset key) a).
+Notation hashcons_st key a := (st (hashcons_ty key) a).
 (*4. Hash Consing + Error Handling (w monad transformers)*)
-Notation errorHashconsT K A := (errState (CoqBigInt.t * hashset K) A).
+Notation errorHashconsT K A := (errState (hashcons_ty K) A).
 (*5. Hash table + error handling*)
 Notation errorHashT K V A := (errState (hashtbl K V) A).
 (*6: Counter + error handling*)

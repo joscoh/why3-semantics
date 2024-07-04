@@ -1014,7 +1014,7 @@ match p.pat_node with
 | Pas (p, y) -> pat_constr_vars m vs p
 | _ -> Svs.empty*)
 
-let upd_option (hd: vsymbol option) (x: vsymbol) : vsymbol option =
+(* let upd_option (hd: vsymbol option) (x: vsymbol) : vsymbol option =
   match hd with
   | Some y -> if vs_equal x y then None else hd
   | None -> None
@@ -1028,11 +1028,11 @@ let check_var_case small hd v =
 let tm_var_case (small: Svs.t) (hd: vsymbol option) (t: term) : bool =
   match t.t_node with
 | Tvar v -> check_var_case small hd v
-| _ -> false
+| _ -> false *)
 
 (*If jth element of tms is small variable, all [pat_constr_vars] in
   (nth j ps) should be added*)
-let get_constr_smaller (small: Svs.t) (hd: vsymbol option) (m: mut_adt)
+(* let get_constr_smaller (small: Svs.t) (hd: vsymbol option) (m: mut_adt)
   (vs: ty list) (f: lsymbol) (tms: term list) (p: pattern) : Svs.t =
   match p.pat_node with
 | Papp (f1, ps) -> if ls_equal f f1 then 
@@ -1041,30 +1041,35 @@ else Svs.empty
 | _ -> Svs.empty
 
 let svs_remove_all (l: vsymbol list) (s: Svs.t) : Svs.t =
-  List.fold_right Svs.remove l s
+  List.fold_right Svs.remove l s *)
 
 (*TODO: move/implement*)
-let big_nth l n =
+(*let big_nth l n =
   if BigInt.lt n BigInt.zero then invalid_arg "big_nth" else
   let rec nth_aux l n =
     match l with
     | [] -> failwith "nth"
     | a::l -> if BigInt.is_zero n then a else nth_aux l (BigInt.pred n)
-  in nth_aux l n
+  in nth_aux l n*)
 
-let rec check_decrease_fun (funs: (lsymbol * BigInt.t) list)
+(*let rec check_decrease_fun (funs: (lsymbol * BigInt.t) list)
   (small: Svs.t) (hd: vsymbol option) (m: mut_adt) (vs: ty list) (t: term) : bool =
 match t.t_node with
 | Tapp(f, ts) ->
   begin match List.find_opt (fun y -> f = (fst y)) funs with
   | Some (_, i) ->
       (*Needs to be called on smaller variable at ith index*)
-      begin match (big_nth ts i).t_node with
-      | Tvar x -> Svs.contains small x && (*Check that map is uniform*)
-      check_unif_map (ls_arg_inst f ts) &&
-      List.for_all (check_decrease_fun funs small hd m vs) ts
-      | _ -> false
+      begin match big_nth ts i with
+      | None -> false
+      | Some j -> 
+        begin match j.t_node with
+        | Tvar x -> Svs.contains small x && (*Check that map is uniform*)
+        check_unif_map (ls_arg_inst f ts) &&
+        List.for_all (check_decrease_fun funs small hd m vs) ts
+        | _ -> false
+        end
       end
+      
   | None -> (*not recursive*)
     List.for_all (check_decrease_fun funs small hd m vs) ts
   end
@@ -1131,12 +1136,15 @@ match t.t_node with
 | Tvar _ -> true
 | Tconst _ -> true
 | Ttrue -> true
-| Tfalse -> true
+| Tfalse -> true*)
 
 let find_idx_list (l: (lsymbol * (vsymbol list * term)) list) m vs (candidates : BigInt.t list list) : BigInt.t list option =
   List.find_opt (fun il -> 
     List.for_all (fun ((f, (vars, t)), i) ->
-      check_decrease_fun (List.combine (List.map fst l) il) Svs.empty (Some (big_nth vars i)) m vs t
+      match big_nth vars i with
+      | None -> false
+      | Some x ->
+      check_decrease_fun (List.combine (List.map fst l) il) Svs.empty (Some x) m vs t
       ) (List.combine l il)) candidates
 
 (*START*)

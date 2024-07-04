@@ -115,3 +115,30 @@ Definition lex_comp x1 x2 : CoqInt.int :=
 
 Definition string_compare (s1 s2: string) : CoqInt.int :=
   CoqInt.compare_to_int (String.compare s1 s2).
+
+(*nth on lists*)
+
+Fixpoint big_nth_aux {A: Type} (l: list A) (z: CoqBigInt.t) (ACC: Acc lt (Z.to_nat z)) {struct ACC} : 
+  option A :=
+  match CoqBigInt.lt z CoqBigInt.zero as b return
+    CoqBigInt.lt z CoqBigInt.zero = b -> option A with
+  | true => fun _ => None
+  | false => fun Hlt =>
+    (*TODO: see how extraction works*)
+    match CoqBigInt.eqb z CoqBigInt.zero as b return
+      CoqBigInt.eqb z CoqBigInt.zero = b -> option A with
+    | true => fun _ =>
+      match l with
+      | nil => None
+      | x :: _ => Some x
+      end
+    | false => fun Hneq => 
+      match l with
+      | nil => None
+      | _ :: t => big_nth_aux t (CoqBigInt.pred z)  (Acc_inv ACC (iota_lemma _ Hneq Hlt))
+      end
+    end eq_refl
+  end eq_refl.
+
+Definition big_nth {A: Type} (l: list A) (z: CoqBigInt.t) : option A :=
+  big_nth_aux l z (Wf_nat.lt_wf _).

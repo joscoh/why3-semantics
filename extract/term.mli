@@ -690,3 +690,19 @@ val remove_unused_in_term : bool -> term -> term
    [Ident.unused_attr]. [polarity] is the polarity of [t]. Does
    nothing on sub-terms where polarity cannot be determined, so there
    might be some unused symbols left. *)
+
+(*JOSH - recursion over terms (for Coq termination purposes)
+  This is UNSAFE and should ONLY be used from Coq
+  TODO: make safe version*)
+
+val term_rec :
+    (vsymbol -> 'a1) -> (Constant.constant -> 'a1) -> (lsymbol -> (term_node term_o)
+    list -> 'a1 list -> 'a1) -> ((term_node term_o) -> 'a1 ->
+    (term_node term_o) -> 'a1 -> (term_node term_o) -> 'a1 -> 'a1) ->
+    ((term_node term_o) -> 'a1 -> vsymbol -> (term_node term_o) -> 'a1 ->
+    'a1) -> ((term_node term_o) -> 'a1 ->
+    (((pattern_node pattern_o) * (term_node term_o)) * 'a1) list -> 'a1) ->
+    (vsymbol -> (term_node term_o) -> 'a1 -> 'a1) -> (quant -> vsymbol list
+    -> (term_node term_o) -> 'a1 -> 'a1) -> (binop -> (term_node term_o) ->
+    'a1 -> (term_node term_o) -> 'a1 -> 'a1) -> ((term_node term_o) -> 'a1 ->
+    'a1) -> 'a1 -> 'a1 -> (term_node term_o) -> 'a1

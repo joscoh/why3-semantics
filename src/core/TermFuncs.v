@@ -1012,6 +1012,7 @@ Definition t_open_branch (x: term_branch) : ctr (pattern_c * term_c) :=
 (*Different because tuples in OCaml/Coq are different*)
 (*TODO: figure out tuple things because this is annoying we don't
   want to duplicate everything - maybe just accept different tuples?*)
+(*TODO: fix with tuple hack*)
 Definition t_open_quant1 (x: term_quant) : ctr (list vsymbol * trigger * term_c) :=
   let '(vl, b, tl, f) := x in
   y <- vl_rename Mvs.empty vl ;;
@@ -1402,3 +1403,41 @@ Definition t_selecti {A B: Type} (fnT: A -> term_c -> B)
   if isNone (t_ty_of e) then fnF acc e else fnT acc e.
 
 End TermTFAlt.
+
+(*Let's try something*)
+
+(*TODO: depending on vsymbols is probably bad, maybe
+  need to remove, or call [t_open_bound] and recurse on size here*)
+Section TermRecUnsafe.
+Context {A: Type}
+  (var_case: vsymbol -> A)
+  (const_case: constant -> A)
+  (app_case: lsymbol -> list term_c -> list A -> A)
+  (if_case: term_c -> A -> term_c -> A -> term_c -> A -> A)
+  (let_case: term_c -> A -> vsymbol -> term_c -> A -> A)
+  (match_case : term_c -> A -> (list (pattern_c * term_c * A)) -> A)
+  (eps_case: vsymbol -> term_c -> A -> A)
+  (quant_case: quant -> list vsymbol -> term_c -> A -> A)
+  (binop_case: binop -> term_c -> A -> term_c -> A -> A)
+  (not_case: term_c -> A -> A)
+  (true_case: A)
+  (false_case : A).
+Fixpoint term_rec (t: term_c) : A :=
+  match t_node_of t with
+  | Tvar v => var_case v
+  | Tconst c => const_case c
+  | Tapp l ts => app_case l ts (map term_rec ts)
+  | Tif t1 t2 t3 => if_case t1 (term_rec t1) t2 (term_rec t2) t3 (term_rec t3)
+  | Tlet t1 (v, _, t2) => let_case t1 (term_rec t1) v t2 (term_rec t2)
+  | Tcase t1 ps => match_case t1 (term_rec t1) (map (fun x => (fst (fst x), (snd x), term_rec (snd x))) ps)
+  | Teps (v, _, f) => eps_case v f (term_rec f)
+  | Tquant q (vs, _, _, f) => quant_case q vs f (term_rec f)
+  | Tbinop b t1 t2 => binop_case b t1 (term_rec t1) t2 (term_rec t2)
+  | Tnot f => not_case f (term_rec f)
+  | Ttrue => true_case
+  | Tfalse => false_case
+  end.
+End TermRecUnsafe.
+
+(*TODO: safe version? (prove by wf recusion on size)
+  Need to prove things about substitution*)

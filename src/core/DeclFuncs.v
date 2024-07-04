@@ -192,9 +192,9 @@ Fixpoint pat_constr_vars_inner (m: mut_adt) (vs: list ty_c) (p: pattern_c) {stru
     if constr_in_m f m then (*TODO: how to say tys = vs? For now, don't include - ruled out by uniformity of types
         although this is currently unsound I think (or maybe sound I just can't prove it)*)
         (*Also don't use length goals, implied by typing*)
-      (*For termination purposes, fold over combineWith*)
+      (*For termination purposes, fold over map2*)
       fold_right Svs.union Svs.empty 
-      (combineWith (fun p x => if vty_in_m' m x then pat_constr_vars_inner m vs p else Svs.empty) ps (f.(ls_args)))
+      (map2 (fun p x => if vty_in_m' m x then pat_constr_vars_inner m vs p else Svs.empty) ps (f.(ls_args)))
         (*A horrible way to write this: need to get patterns corresponding only to argument types in m*)
       (*Also do not include params part - rely on uniform ADT restriction*)
   else Svs.empty
@@ -210,3 +210,112 @@ match pat_node_of p with
 | Pas p y => pat_constr_vars m vs p
 | _ => Svs.empty
 end.
+
+Definition upd_option (hd: option vsymbol) (x: vsymbol) : option vsymbol :=
+  match hd with
+  | Some y => if vs_equal x y then None else hd
+  | None => None
+  end.
+
+Definition upd_option_iter (x: option vsymbol) (xs: Svs.t) : option vsymbol :=
+  Svs.fold (fun v o => upd_option o v) xs x.
+
+Definition check_var_case small hd v :=
+  option_eqb vs_equal hd (Some v) || Svs.mem v small.
+
+Definition tm_var_case (small: Svs.t) (hd: option vsymbol) (t: term_c) : bool :=
+  match t_node_of t with
+| Tvar v => check_var_case small hd v
+| _ => false
+end.
+
+(*If jth element of tms is small variable, all [pat_constr_vars] in
+  (nth j ps) should be added*)
+Definition get_constr_smaller (small: Svs.t) (hd: option vsymbol) (m: mut_adt)
+  (vs: list ty_c) (f: lsymbol) (tms: list term_c) (p: pattern_c) : Svs.t :=
+  match pat_node_of p with
+  | Papp f1 ps => if ls_equal f f1 then 
+      fold_right Svs.union Svs.empty (map2 (fun t p => if tm_var_case small hd t then pat_constr_vars m vs p else Svs.empty) tms ps)
+      else Svs.empty
+  | _ => Svs.empty
+  end.
+
+Definition svs_remove_all (l: list vsymbol) (s: Svs.t) : Svs.t :=
+  fold_right Svs.remove s l.
+
+Definition check_decrease_fun (funs: list (lsymbol * CoqBigInt.t))
+  (small: Svs.t) (hd: option vsymbol) (m: mut_adt) (vs: list ty_c) (t: term_c) : 
+  errorHashconsT ty_c bool :=
+  @term_rec (Svs.t -> option vsymbol -> errorHashconsT ty_c bool)
+  (*Tvar*)
+  (fun _ _ _ => errst_ret true)
+  (*Tconst*)
+  (fun _ _ _ => errst_ret true)
+  (*Tapp*)
+  (fun f ts recs small hd => 
+    match list_find_opt (fun y => ls_equal f (fst y)) funs with
+  | Some (_, i) =>
+      (*Needs to be called on smaller variable at ith index*)
+      match (IntFuncs.big_nth ts i) with
+      | None => errst_ret false
+      | Some tm => 
+        match t_node_of tm with
+        | Tvar x => (*Check that map is uniform*)
+        (*TODO: do we need this check?*)
+        l <- ls_arg_inst f ts;;
+        a <- errst_list (map (fun x => x small hd) recs);;
+        errst_ret (Svs.contains small x &&
+        check_unif_map l &&
+        forallb (fun x => x) a)
+        | _ => errst_ret false
+        end
+      end
+  | None => (*not recursive*)
+    a <- errst_list (map (fun x => x small hd) recs);;
+    errst_ret (forallb (fun x => x) a)
+  end)
+  (*Tif*)
+  (fun _ rec1 _ rec2 _ rec3 small hd =>
+    r1 <- rec1 small hd ;;
+    r2 <- rec2 small hd ;;
+    r3 <- rec3 small hd ;;
+    errst_ret (r1 && r2 && r3))
+  (*Tlet*)
+  (fun _ rec1 x _ rec2 small hd =>
+    r1 <- rec1 small hd;;
+    (*TODO: is this remove useless because x is guaranteed to be fresh?
+      Now need this check because x is not guaranteed to be fresh*)
+    r2 <- rec2 (Svs.remove x small) (upd_option hd x) ;;
+    errst_ret (r1 && r2)
+  )
+  (*Other interesting case is Tcase*)
+  (fun (t: term_c) rec1 recps (small : Svs.t) hd =>
+    r1 <- rec1 small hd;;
+    r2 <- errst_list (map (fun y =>
+      let  '(p, t1, rec) := y in 
+      let toadd := match t_node_of t with 
+        | Tvar mvar => if check_var_case small hd mvar then pat_constr_vars m vs p else Svs.empty
+        | Tapp c tms => get_constr_smaller small hd m vs c tms p
+        | _ => Svs.empty
+      end in
+      let newsmall := Svs.union toadd (Svs.diff small (pat_vars_of p)) in
+      rec newsmall (upd_option_iter hd (pat_vars_of p))
+    ) recps);;
+    errst_ret (r1 && forallb (fun x => x) r2))
+  (*Teps*)
+  (fun v t rec small hd =>
+    rec (Svs.remove v small) (upd_option hd v) )
+  (*Tquant*)
+  (fun _ vars _ rec small hd =>
+    rec (svs_remove_all vars small) (upd_option_iter hd (Svs.of_list vars)))
+  (*Tbinop*)
+  (fun _ _ rec1 _ rec2 small hd =>
+    r1 <- rec1 small hd;; 
+    r2 <- rec2 small hd;;
+    errst_ret (r1 && r2))
+  (*Tnot*)
+  (fun _ rec small hd => rec small hd)
+  (*Ttrue*)
+  (fun _ _ => errst_ret true)
+  (*Tfalse*)
+  (fun _ _ => errst_ret true) t small hd.
