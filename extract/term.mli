@@ -180,6 +180,9 @@ type term = (term_node term_o)
 
 (*JOSH - TODO BAD: shouldn't need to expose this
     Why doesn't Coq extraction use dot notation?*)
+val pat_node : pattern -> pattern_node
+val pat_vars : pattern -> Svs.t
+val pat_ty : pattern -> ty
 val t_node : term -> term_node
 val t_ty : term -> ty option
 val t_attrs : term -> Sattr.t

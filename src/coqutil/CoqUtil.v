@@ -266,6 +266,20 @@ Definition null {A: Type} (l: list A) : bool :=
   | _ => false
   end.
 
+Definition combineWith {A B C: Type} (f: A -> B -> C) :=
+  fix combineWith (l1: list A) (l2: list B) : list C :=
+  match l1, l2 with
+  | x1 :: xs, y1 :: ys => f x1 y1 :: combineWith xs ys
+  | _, _ => nil
+  end.
+
+Lemma combineWith_equiv {A B C: Type} (f: A -> B -> C) (l1: list A) (l2: list B):
+  combineWith f l1 l2 = map (fun y => f (fst y) (snd y)) (combine l1 l2).
+Proof.
+  revert l2. induction l1 as [| h t IH]; simpl; intros; auto.
+  destruct l2; auto. rewrite IH; auto. 
+Qed.
+
 (*Options*)
 Definition option_fold {A B: Type} (none: A) (some: B -> A) (o: option B) : A :=
   match o with

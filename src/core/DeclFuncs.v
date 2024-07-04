@@ -180,3 +180,33 @@ Definition vsym_in_m (m: mut_adt) (vs: list ty_c) (x: vsymbol) : bool :=
 
 Definition constr_in_m (l: lsymbol) (m: mut_adt) : bool :=
   existsb (fun (d: data_decl) => existsb (fun c => ls_equal (fst c) l) (snd d)) m.
+
+
+Fixpoint pat_constr_vars_inner (m: mut_adt) (vs: list ty_c) (p: pattern_c) {struct p} : 
+  Svs.t :=
+  match pat_node_of p with
+| Pwild => Svs.empty
+| Pvar x => if vsym_in_m m vs x then Svs.singleton x else Svs.empty
+| Papp f ps => 
+    (*only add variables in constructors of right type*)
+    if constr_in_m f m then (*TODO: how to say tys = vs? For now, don't include - ruled out by uniformity of types
+        although this is currently unsound I think (or maybe sound I just can't prove it)*)
+        (*Also don't use length goals, implied by typing*)
+      (*For termination purposes, fold over combineWith*)
+      fold_right Svs.union Svs.empty 
+      (combineWith (fun p x => if vty_in_m' m x then pat_constr_vars_inner m vs p else Svs.empty) ps (f.(ls_args)))
+        (*A horrible way to write this: need to get patterns corresponding only to argument types in m*)
+      (*Also do not include params part - rely on uniform ADT restriction*)
+  else Svs.empty
+| Por p1 p2 => Svs.inter (pat_constr_vars_inner m vs p1) (pat_constr_vars_inner m vs p2)
+| Pas p' y => Svs.union (if vsym_in_m m vs y then Svs.singleton y else Svs.empty) (pat_constr_vars_inner m vs p')
+  end.
+
+(*Get strictly smaller (not just <=) vars. Recurse until we hit constructor*)
+Fixpoint pat_constr_vars (m: mut_adt) (vs: list ty_c) (p: pattern_c) : Svs.t :=
+match pat_node_of p with
+| Papp _ _ => pat_constr_vars_inner m vs p
+| Por p1 p2 => Svs.inter (pat_constr_vars m vs p1) (pat_constr_vars m vs p2)
+| Pas p y => pat_constr_vars m vs p
+| _ => Svs.empty
+end.
