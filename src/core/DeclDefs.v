@@ -64,3 +64,26 @@ Record decl := mk_decl {
   d_node : decl_node;
   d_news : Sid.t;
   d_tag : CoqWeakhtbl.tag}.
+
+(*Decidable Equality*)
+Definition constructor_eqb : constructor -> constructor -> bool :=
+  tuple_eqb ls_equal (list_eqb (option_eqb ls_equal)).
+
+Definition data_decl_eqb : data_decl -> data_decl -> bool :=
+  tuple_eqb ts_equal (list_eqb constructor_eqb).
+
+Lemma constructor_eqb_eq c1 c2:
+  c1 = c2 <-> constructor_eqb c1 c2.
+Proof.
+  apply tuple_eqb_spec.
+  - apply lsymbol_eqb_eq.
+  - apply list_eqb_eq, option_eqb_eq, lsymbol_eqb_eq.
+Qed.
+
+Lemma data_decl_eqb_eq d1 d2:
+  d1 = d2 <-> data_decl_eqb d1 d2.
+Proof.
+  apply tuple_eqb_spec.
+  - apply tysymbol_eqb_eq.
+  - apply list_eqb_eq, constructor_eqb_eq.
+Qed.

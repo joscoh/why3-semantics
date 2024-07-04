@@ -85,6 +85,10 @@ Definition make_ls_defn (ls: lsymbol) (vl: list vsymbol)
 Definition mut_adt : Type := list data_decl.
 Definition mut_info : Type := list mut_adt * Mts.t mut_adt.
 
+(*Decidable equality for [mut_adt]*)
+Definition mut_adt_eqb : mut_adt -> mut_adt -> bool :=
+  list_eqb data_decl_eqb.
+
 (*TODO: probably move*)
 (*Get all mutual ADT definitions.*)
 Definition get_ctx_tys (kn: Mid.t decl) : mut_info :=
@@ -118,3 +122,61 @@ Definition vty_in_m' (m: mut_adt) (v: ty_c) : bool :=
   | Tyapp ts vs' => ts_in_mut ts m
   | _ => false
   end.
+
+(*TODO: should really use maps but complicated with tuples and lists -
+  do we need BSTs?*)
+Definition add_union {A: Type} (eq : A -> A -> bool) (x: A) (l: list A) :=
+  if existsb (fun y => eq x y) l then l else x :: l.
+
+Definition get_adts_present (ctx: mut_info) (l: list vsymbol) : 
+  list (mut_adt * list ty_c) :=
+  fold_right (fun v acc =>
+    match is_vty_adt ctx (v.(vs_ty)) with
+    | Some (m, a, vs) => add_union (*equality predicate*)
+      (tuple_eqb mut_adt_eqb (list_eqb ty_eqb)) (m, vs) acc
+    | None => acc
+    end) nil l.
+
+Definition get_idx_lists_aux kn (funs: Mls.t (list vsymbol * term_c)) :  
+  list (mut_adt * list ty_c * list (list CoqBigInt.t)) :=
+    let syms : list (list vsymbol) := 
+      Mls.fold (fun _ x y => (fst x) :: y) funs nil in
+    map (fun '(m, vs) => 
+    
+      let l : list (list CoqBigInt.t) :=
+        map (fun args =>
+          map fst (filter (fun it => vty_in_m m vs (snd it)) 
+            (combine (IntFuncs.iota2 (IntFuncs.int_length args)) (map (fun v => v.(vs_ty)) args)))
+        ) syms
+        in
+        (*If any are null, discard*)
+        (m, vs, if existsb null l then [] else l)
+      
+    ) 
+    (get_adts_present (get_ctx_tys kn) (List.concat syms)).
+
+Definition get_idx_lists kn (funs: Mls.t (list vsymbol * term_c) ) : 
+  list (mut_adt * list ty_c * list (list CoqBigInt.t)) :=
+  filter (fun '(_, _, x) => negb (null x)) (get_idx_lists_aux kn funs).
+
+Fixpoint get_possible_index_lists {A: Type} (l: list (list A)) : 
+  list (list A) :=
+  match l with
+  | l1 :: rest => let r := get_possible_index_lists rest in
+    concat (map (fun x => List.map (fun y => x :: y) r) l1)
+  | [] => [[]]
+  end.
+
+(*The core of the termination checking*)
+Definition check_unif_map (m: Mtv.t ty_c) : bool :=
+  Mtv.for_all _ (fun (v: tvsymbol) (t : ty_c) => 
+    match ty_node_of t with 
+      | Tyvar v1 => tv_equal v v1 
+      | _ => false
+    end) m.
+
+Definition vsym_in_m (m: mut_adt) (vs: list ty_c) (x: vsymbol) : bool :=
+  vty_in_m m vs (x.(vs_ty)).
+
+Definition constr_in_m (l: lsymbol) (m: mut_adt) : bool :=
+  existsb (fun (d: data_decl) => existsb (fun c => ls_equal (fst c) l) (snd d)) m.
