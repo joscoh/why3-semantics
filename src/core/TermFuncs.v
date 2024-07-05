@@ -995,12 +995,25 @@ Definition t_subst_unsafe m t :=
 
 (* open bindings *)
 
+(*The Why3 versions are stateful. For our purposes, stateless
+  version suffice (and are much easier to prove/reason about).
+  We will prove that we use them safely. We provide the
+  stateful versions for API purposes: it causes problems in
+  the test suite if we use stateless ones (in RAC)
+  TODO: see why we have problem - we shouldn't*)
+
+Definition t_view_bound (x: term_bound) : vsymbol * term_c :=
+  let '(v, b, t) := x in (v, t).
+
 Definition t_open_bound (x: term_bound) : ctr (vsymbol * term_c) :=
   let '(v, b, t) := x in
   y <- vs_rename Mvs.empty v ;;
   let '(m, v) := y in
   t1 <- t_subst_unsafe m t ;;
   st_ret (v, t1).
+
+Definition t_view_branch (x: term_branch) : pattern_c * term_c :=
+  let '(p, b, t) := x in (p, t).
 
 Definition t_open_branch (x: term_branch) : ctr (pattern_c * term_c) :=
   let '(p, b, t) := x in
@@ -1020,6 +1033,10 @@ Definition t_open_quant1 (x: term_quant) : ctr (list vsymbol * trigger * term_c)
   tl <- st_tr (tr_map (t_subst_unsafe m) tl) ;;
   t1 <- t_subst_unsafe m f ;;
   st_ret (vl, tl, t1).
+
+Definition t_view_quant (x: term_quant) : list vsymbol * trigger * term_c :=
+  let '(vl, b, tl, f) := x in
+  (vl, tl, f).
 
 Definition t_open_bound_with (e: term_c) (x: term_bound) : ctrErr term_c :=
   (let '(v, b, t) := x in
@@ -1137,6 +1154,9 @@ Definition AssertFail (s: string) : errtype :=
 
 Definition assert (b: bool) (msg : string) : errorM unit :=
   if b then err_ret tt else throw (AssertFail msg).
+
+Definition assert_false {A: Type} (msg: string) : errorM A :=
+  throw (AssertFail msg).
 
 Local Open Scope err_scope.
 

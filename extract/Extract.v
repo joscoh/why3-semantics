@@ -189,6 +189,7 @@ Extract Inlined Constant InvalidIntegerLiteralType => "InvalidIntegerLiteralType
 Extract Inlined Constant InvalidRealLiteralType => "InvalidRealLiteralType".
 Extract Inlined Constant InvalidStringLiteralType => "InvalidStringLiteralType".
 Extract Inlined Constant EmptyCase => "EmptyCase".
+Extract Inlined Constant NoTerminationProof => "NoTerminationProof".
 
 (*Decl exceptions*)
 Extract Inlined Constant UnboundVar => "UnboundVar".

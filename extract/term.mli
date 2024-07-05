@@ -706,3 +706,12 @@ val term_rec :
     -> (term_node term_o) -> 'a1 -> 'a1) -> (binop -> (term_node term_o) ->
     'a1 -> (term_node term_o) -> 'a1 -> 'a1) -> ((term_node term_o) -> 'a1 ->
     'a1) -> 'a1 -> 'a1 -> (term_node term_o) -> 'a1
+
+(*JOSH TODO MOVE to MONADS*)
+val assert_false : string -> 'a
+(*JOSH TODO*)
+val t_open_quant1 : term_quant -> (vsymbol list * trigger) * term
+(*TODO*)
+val t_view_bound: term_bound -> vsymbol * term
+val t_view_branch: term_branch -> pattern * term
+val t_view_quant: term_quant -> (vsymbol list * trigger) * term

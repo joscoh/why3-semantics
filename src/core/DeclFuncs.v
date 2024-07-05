@@ -80,6 +80,42 @@ Definition make_ls_defn (ls: lsymbol) (vl: list vsymbol)
   (* return the definition *)
   errst_ret (ls, (ls, fd, [])).
 
+(*Option monad for internal use, exception for API*)
+Definition open_ls_defn_aux (l: ls_defn) : option 
+  (list vsymbol * term_c) :=
+  let '(_, f, _) := l in
+  let s := match t_node_of f with
+    | Tquant Tforall b => t_view_quant b
+    | _ => (nil, nil, f)
+    end in
+  let '(vl, _, f) := s in
+  match t_node_of f with
+  | Tapp _ (_ :: f :: nil) => Some (vl, f)
+  | Tbinop _ _ f => Some (vl, f)
+  | _ => None
+  end.
+
+Definition open_ls_defn (l: ls_defn) : errorM (list vsymbol * term_c) :=
+  match open_ls_defn_aux l with
+  | Some (vs, t) => err_ret (vs, t)
+  | None => (TermFuncs.assert_false "open_ls_defn"%string)
+  end.
+
+(*Definition open_ls_defn (l: ls_defn) : errState CoqBigInt.t 
+  (list vsymbol * term_c) :=
+  let '(_, f, _) := l in
+  s <- errst_lift1 match t_node_of f with
+    | Tquant Tforall b => t_open_quant1 b
+    | _ => st_ret (nil, nil, f)
+    end ;;
+  let '(vl, _, f) := s in
+  match t_node_of f with
+  | Tapp _ (_ :: f :: nil) => errst_ret (vl, f)
+  | Tbinop _ _ f => errst_ret (vl, f)
+  | _ => errst_lift2 (TermFuncs.assert_false "open_ls_defn"%string)
+  end.*)
+
+  
 (*Termination Checking*)
 (*TODO: move to DeclDefs?*)
 Definition mut_adt : Type := list data_decl.
@@ -319,3 +355,170 @@ Definition check_decrease_fun (funs: list (lsymbol * CoqBigInt.t))
   (fun _ _ => errst_ret true)
   (*Tfalse*)
   (fun _ _ => errst_ret true) t small hd.
+
+(*TODO: should try to generalized with monad*)
+Definition fold_errst {A B C: Type}
+  (f: B -> A -> errState C A) :=
+  fix foldM (l: list B) (x: A) :=
+  match l with
+  | nil => errst_ret x
+  | h :: t =>
+    j <- foldM t x;;
+    f h j
+  end.
+
+Definition find_opt_errst {A S: Type} (f: A -> errState S bool) (l: list A) :
+  errState S (option A) :=
+  fold_errst (fun x acc =>
+    y <- f x;;
+    errst_ret (if (y : bool) then (Some x) else acc)) l None. 
+  
+
+Definition find_idx_list (l: list (lsymbol * (list vsymbol * term_c))) m vs 
+  (candidates : list (list CoqBigInt.t)) : 
+  errorHashconsT ty_c (option (list CoqBigInt.t)) :=
+  (*Cannot use [list_find_opt] because we are in a monad*)
+  find_opt_errst (fun il => 
+    l1 <- (errst_list (map (fun y =>
+      let '((f, (vars, t)), i) := y in
+      match IntFuncs.big_nth vars i with
+      | None => errst_ret false
+      | Some x =>
+      check_decrease_fun (List.combine (List.map fst l) il) Svs.empty (Some x) m vs t
+      end
+      ) (List.combine l il))) ;;
+    errst_ret (forallb (fun x => x) l1)) candidates.
+
+(*TODO: move*)
+Definition list_inb {A: Type} (eq: A -> A -> bool) (x: A) (l: list A) : bool :=
+  existsb (fun y => eq x y) l.
+
+(*TODO: move above*)
+Definition mut_in_ctx (m: mut_adt) (kn: Mid.t decl) : bool :=
+  list_inb mut_adt_eqb m (fst (get_ctx_tys kn)).
+
+(*NOTE: if we don't need to do the uniformity check, this is all
+  much simpler because we have no monads (because we are bypassing
+  substitution through term_rec)
+  and morally, we shouldn't really need hash consing if we are just
+  checking for a type substitution, right?*)
+
+
+Definition find_elt_errst {S A B: Type} (f: A -> errState S (option B))
+  (l: list A) : errState S (option (A * B)) :=
+  fold_errst (fun x acc => 
+    b <- f x ;;
+    errst_ret 
+      (match b with
+    | None => acc
+    | Some y => Some (x, y)
+      end)) l None.
+
+ (*TODO: do we need mutual ADT?*)
+Definition check_termination_aux kn (funs: Mls.t (list vsymbol * term_c)) :
+  errorHashconsT ty_c (option (Mls.t CoqBigInt.t)) :=
+  if Mls.is_empty _ funs then errst_ret None
+  else 
+    let l := Mls.bindings funs in
+    let idxs := (get_idx_lists kn funs) in
+  (*TODO: skipping params for now - do we need?*)
+
+  o <- (find_elt_errst (fun y =>
+      let '(m, vs, cands) := y in 
+      (*Skip params, implied by typing*)
+      if mut_in_ctx m kn then 
+        find_idx_list l m vs (get_possible_index_lists cands)
+    else errst_ret None
+      )
+    idxs);;
+  errst_ret (option_bind o
+  (fun y =>
+    let  '(_, idxs) := y in 
+    (*Match index with corresponding symbol*)
+    Some (fold_right (fun x acc => Mls.add (fst x) (snd x) acc) Mls.empty (combine (map fst l) idxs) )
+  )).
+
+(*AFTER BUILD*)
+Definition ls_in_tm (l: lsymbol) (t: term_c) : bool :=
+  term_rec 
+  (*Tvar*)
+  (fun _ => false)
+  (*Tconst*)
+  (fun _ => false)
+  (*Tapp*)
+  (fun f ts recs => ls_equal f l || existsb (fun x => x) recs)
+  (*Tif*)
+  (fun _ r1 _ r2 _ r3 => r1 || r2 || r3)
+  (*Tlet*)
+  (fun _ r1 _ _ r2 => r1 || r2)
+  (*Tcase*)
+  (fun _ r1 recs => r1 || existsb snd recs)
+  (*Teps*)
+  (fun _ _ r => r)
+  (*Tquant*)
+  (fun _ _ _ r => r)
+  (*Tbinop*)
+  (fun _ _ r1 _ r2 => r1 || r2)
+  (*Tnot*)
+  (fun _ r => r)
+  (*Ttrue*)
+  false
+  (*Tfalse*)
+  false
+  t.
+
+(*TODO: I think I should remove monad stuff if possible later
+  (all from [ty_match])*)
+
+(*TODO: Why doesn't this work inline?*)
+Definition build_decl node news tag: decl :=
+  {| d_node := node; d_news := news; d_tag := tag |}.
+
+(*TODO*)
+Definition NoTerminationProof (l: lsymbol) : errtype :=
+  mk_errtype "NoTerminationProof" l.
+
+(*First, check that all logic definitions are valid*)
+Definition get_logic_defs (ld: list logic_decl) : 
+  option (Mls.t (list vsymbol * term_c)) :=
+  fold_left (fun acc y => 
+    let '(ls, ld) := y in
+    match acc, open_ls_defn_aux ld with
+    | Some m, Some ld' => Some (Mls.add ls ld' m)
+    | _, _ => None
+    end
+  ) ld (Some (Mls.empty)).
+
+(*START - need to get monads to work out, see about it*)
+Definition check_termination_strict kn d : 
+  errorHashconsT ty_c decl :=
+  match d.(d_node) with
+  | Dlogic (l :: ls) =>
+    let ld := l :: ls in
+
+    match (get_logic_defs ld) with
+    | None => errst_lift2 (TermFuncs.assert_false "open_ls_defn"%string)
+    | Some syms =>
+         (*First, see if non-recursive*)
+      let binds := Mls.bindings syms in
+      if forallb (fun t => forallb (fun l => negb (ls_in_tm l t)) (map fst binds)) (map (fun x => snd (snd x)) binds) 
+        then errst_ret d else
+      o <- (check_termination_aux kn syms) ;;
+      match o with
+      | Some idxs => (*TODO: do we actually need index info?*)
+        (*TODO: change from int list to int maybe?*)
+        ldl <- errst_list (map (fun (y : logic_decl) =>
+          let '(ls,((_,f),_)) := y in 
+          errst_ret (ls,((ls,f),[(*TODO*) (*CoqBigInt.to_int*) 
+            match Mls.find_opt _ ls idxs with
+            | Some i => i
+            | None => (*TODO: HACK*) CoqBigInt.neg_one
+            end (*(Mls.find _ ls idxs)*)]))) ld) ;; (*JOSH TODO delete to_int*)
+        (*TODO: do we need to hashcons?*)
+        errst_ret (build_decl (Dlogic ldl) (d.(d_news)) (d.(d_tag)))
+      | None => errst_lift2 (throw (NoTerminationProof (fst l)) )
+      end
+    end
+  | _ => errst_ret d
+  end.
+

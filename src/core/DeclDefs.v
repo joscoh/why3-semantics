@@ -21,7 +21,7 @@ Definition data_decl : Type := tysymbol_c * list constructor.
 (*TODO: BigInt?*)
 (*Ah, the last one is the terminating arguments - in our
   case, we want an int I believe*)
-Definition ls_defn : Type := lsymbol * term_c * list CoqInt.int.
+Definition ls_defn : Type := lsymbol * term_c * list CoqBigInt.t.
 
 Definition logic_decl : Type := lsymbol * ls_defn.
 
