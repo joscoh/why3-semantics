@@ -28,7 +28,7 @@ Extract Inlined Constant proj_sumbool => "".
 (*OCaml tuples*)
 Extract Constant ocaml_tup3 "'a" "'b" "'c" => "'a * 'b * 'c".
 Extract Inlined Constant to_tup3 => "(fun ((x, y), z) -> (x, y, z))".
-Extract Inlined Constant of_tup3 => "(fun (x, y, z) -> ((x, y), z)))".
+Extract Inlined Constant of_tup3 => "(fun (x, y, z) -> ((x, y), z))".
 
 (*Axiomatize OCaml ints and BigInts*)
 (*TODO: move to approprate files?*)
@@ -124,6 +124,9 @@ Extract Inlined Constant errst_bind => "(@@)".
 Extract Inlined Constant errst_ret => "".
 Extract Inlined Constant errst_lift1 => "".
 Extract Inlined Constant errst_lift2 => "".
+Extract Inlined Constant errst_tup1 => "".
+Extract Inlined Constant errst_tup2 => "".
+
 
 (*Mutable state monads*)
 Extract Constant State.st_ty "'a" => "'a ref".
@@ -189,11 +192,21 @@ Extract Inlined Constant InvalidIntegerLiteralType => "InvalidIntegerLiteralType
 Extract Inlined Constant InvalidRealLiteralType => "InvalidRealLiteralType".
 Extract Inlined Constant InvalidStringLiteralType => "InvalidStringLiteralType".
 Extract Inlined Constant EmptyCase => "EmptyCase".
-Extract Inlined Constant NoTerminationProof => "NoTerminationProof".
 
 (*Decl exceptions*)
 Extract Inlined Constant UnboundVar => "UnboundVar".
 Extract Inlined Constant UnexpectedProjOrConstr => "UnexpectedProjOrConstr".
+Extract Inlined Constant NoTerminationProof => "NoTerminationProof".
+Extract Inlined Constant IllegalTypeAlias=> "IllegalTypeAlias".
+Extract Inlined Constant ClashIdent => "ClashIdent".
+Extract Inlined Constant BadConstructor => "BadConstructor".
+Extract Inlined Constant BadRecordField=> "BadRecordField".
+Extract Inlined Constant RecordFieldMissing=> "RecordFieldMissing".
+Extract Inlined Constant DuplicateRecordField=> "DuplicateRecordField".
+Extract Inlined Constant EmptyDecl=> "EmptyDecl".
+Extract Inlined Constant EmptyAlgDecl=> "EmptyAlgDecl".
+Extract Inlined Constant NonPositiveTypeDecl => "(fun (x, y, z) ->
+  NonPositiveTypeDecl(x, y, z))".
 
 (*TODO: implement later*)
 Extract Inlined Constant check_float => "Number.check_float".

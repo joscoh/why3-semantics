@@ -715,3 +715,5 @@ val t_open_quant1 : term_quant -> (vsymbol list * trigger) * term
 val t_view_bound: term_bound -> vsymbol * term
 val t_view_branch: term_branch -> pattern * term
 val t_view_quant: term_quant -> (vsymbol list * trigger) * term
+(*Need for decidable equality in Coq*)
+val term_eqb : term -> term -> bool

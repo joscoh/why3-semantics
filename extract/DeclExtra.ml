@@ -313,22 +313,23 @@ let syms = List.fold_left add Mls.empty ldl in
   pr_name : ident;
 } *)
 
-module Prop = MakeMSHW (struct
+module Prop = MakeMSHW (PropTag) 
+(*struct
   type t = prsymbol
   let tag pr = pr.pr_name.id_tag
   let equal = (==) (*JOSH TODO equal*)
-end)
+end)*)
 
-module Spr = Prop.S
-module Mpr = Prop.M
+(* module Spr = Prop.S
+module Mpr = Prop.M *)
 module Hpr = Prop.H
 module Wpr = Prop.W
 
-let pr_equal : prsymbol -> prsymbol -> bool = (==)
+(* let pr_equal : prsymbol -> prsymbol -> bool = (==)
 
 let pr_hash pr = id_hash pr.pr_name
 
-let create_prsymbol n = { pr_name = id_register n }
+let create_prsymbol n = { pr_name = id_register n } *)
 
 (* type ind_decl = lsymbol * (prsymbol * term) list *)
 
@@ -365,7 +366,7 @@ and decl_node =
 *)
 (** Declarations *)
 
-module Hsdecl = Hashcons.Make (struct
+(* module Hsdecl = Hashcons.Make (struct
 
   type t = decl
 
@@ -418,26 +419,27 @@ module Hsdecl = Hashcons.Make (struct
 
   let tag n d = { d with d_tag = Weakhtbl.create_tag n }
 
-end)
+end) *)
 
-module Decl = MakeMSHW (struct
+module Decl = MakeMSHW (DeclTag)
+(*struct
   type t = decl
   let tag d = d.d_tag
   let equal = (==) (*JOSH TODO equal*)
 end)
 
 module Sdecl = Decl.S
-module Mdecl = Decl.M
+module Mdecl = Decl.M*)
 module Wdecl = Decl.W
 module Hdecl = Decl.H
 
-let d_equal : decl -> decl -> bool = (==)
+(* let d_equal : decl -> decl -> bool = (==)
 
-let d_hash d = Weakhtbl.tag_hash d.d_tag
+let d_hash d = Weakhtbl.tag_hash d.d_tag *)
 
 (** Declaration constructors *)
 
-let mk_decl node news =
+(* let mk_decl node news =
   let d = {
       d_node = node;
       d_news = news;
@@ -445,28 +447,28 @@ let mk_decl node news =
     } in
   match node with
   | Dprop (Pgoal,_,_) -> Hsdecl.unique d
-  | _ -> Hsdecl.hashcons d
+  | _ -> Hsdecl.hashcons d *)
 
 
-exception IllegalTypeAlias of tysymbol
-exception ClashIdent of ident
+(* exception IllegalTypeAlias of tysymbol
+exception ClashIdent of ident *)
 exception BadLogicDecl of lsymbol * lsymbol
-exception BadConstructor of lsymbol
+(* exception BadConstructor of lsymbol *)
 
-exception BadRecordField of lsymbol
+(* exception BadRecordField of lsymbol *)
 exception BadRecordType of lsymbol * tysymbol
 exception BadRecordUnnamed of lsymbol * tysymbol
 exception BadRecordCons of lsymbol * tysymbol
-exception RecordFieldMissing of lsymbol
-exception DuplicateRecordField of lsymbol
+(* exception RecordFieldMissing of lsymbol *)
+(* exception DuplicateRecordField of lsymbol *)
 
-exception EmptyDecl
-exception EmptyAlgDecl of tysymbol
+(* exception EmptyDecl *)
+(* exception EmptyAlgDecl of tysymbol *)
 exception EmptyIndDecl of lsymbol
 
-exception NonPositiveTypeDecl of tysymbol * lsymbol * ty
+(* exception NonPositiveTypeDecl of tysymbol * lsymbol * ty *)
 
-let news_id s id = Sid.add_new (ClashIdent id) id s
+(* let news_id s id = Sid.add_new (ClashIdent id) id s *)
 
 let syms_ts s ts = Sid.add ts.ts_name s
 let syms_ls s ls = Sid.add ls.ls_name s
@@ -477,9 +479,9 @@ let syms_term s t = t_s_fold syms_ty syms_ls s t
 let syms_ty_decl ts =
   type_def_fold syms_ty Sid.empty ts.ts_def
 
-let create_ty_decl ts =
+(* let create_ty_decl ts =
   let news = Sid.singleton ts.ts_name in
-  mk_decl (Dtype ts) news
+  mk_decl (Dtype ts) news *)
 
 let syms_data_decl tdl =
   let syms_constr syms (fs,_) =
@@ -488,7 +490,7 @@ let syms_data_decl tdl =
     List.fold_left syms_constr syms cl in
   List.fold_left syms_decl Sid.empty tdl
 
-let create_data_decl tdl =
+(* let create_data_decl tdl =
   if tdl = [] then raise EmptyDecl;
   let add s (ts,_) = Sts.add ts s in
   let tss = List.fold_left add Sts.empty tdl in
@@ -535,7 +537,7 @@ let create_data_decl tdl =
     List.fold_left (check_constr ts ty cll pjs) news cl
   in
   let news = List.fold_left check_decl Sid.empty tdl in
-  mk_decl (Ddata tdl) news
+  mk_decl (Ddata tdl) news *)
 
 let syms_param_decl ls =
   let syms = Opt.fold syms_ty Sid.empty ls.ls_value in

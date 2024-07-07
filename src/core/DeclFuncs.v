@@ -482,3 +482,210 @@ Definition check_termination_strict kn d :
   | _ => err_ret d
   end.
 
+
+(* Declarations *)
+(* 
+(*NOTE: NOT hashconsing for now (see if we need/how fast)*)
+Definition mk_decl node news :=
+  {| d_node := node; d_news := news; d_tag := CoqWeakhtbl.dummy_tag |}. *)
+
+(*TODO: equal and hash - use functions from hashcons basically
+  because we can't use tag without hashconsing*)
+
+Definition IllegalTypeAlias (t: tysymbol_c) : errtype :=
+  mk_errtype "IllegalTypeAlias" t.
+Definition ClashIdent (i: ident) : errtype :=
+  mk_errtype "ClashIdent" i.
+Definition BadConstructor (l: lsymbol) : errtype :=
+  mk_errtype "BadConstructor" l.
+
+Definition BadRecordField (l: lsymbol) : errtype :=
+  mk_errtype "BadRecordField" l.
+Definition RecordFieldMissing (l: lsymbol) : errtype :=
+  mk_errtype "RecordFieldMissing" l.
+Definition DuplicateRecordField (l: lsymbol) : errtype :=
+  mk_errtype "DuplicateRecordField" l.
+
+
+Definition EmptyDecl : errtype :=
+  mk_errtype "EmptyDecl" tt.
+Definition EmptyAlgDecl (t: tysymbol_c) : errtype :=
+  mk_errtype "EmptyAlgDecl" t.
+
+Definition NonPositiveTypeDecl (x: ocaml_tup3 tysymbol_c lsymbol ty_c) : errtype :=
+  mk_errtype "NonPositiveTypeDecl" x.
+
+Definition news_id (s : Sid.t) (i: ident) : errorM Sid.t := 
+  Sid.add_new (ClashIdent i) i s.
+
+Definition create_ty_decl (t: tysymbol_c) : st (hashcons_ty decl) decl :=
+  mk_decl (Dtype t) (Sid.singleton (ts_name_of t)).
+
+Definition is_nodef {A: Type} (t: type_def A) : bool :=
+  match t with
+  | NoDef => true
+  | _ => false
+  end.
+
+(* Local Open Scope err_scope. *)
+  (*TODO: should try to generalized with monad - lots of these
+    floating around, need to fix*)
+Definition foldl_errst {A B C: Type}
+  (f: A -> B -> errState C A) :=
+  fix foldM (l: list B) (x: A) :=
+  match l with
+  | nil => errst_ret x
+  | h :: t =>
+    j <- f x h ;;
+    foldM t j
+  end.
+
+Definition foldl_err {A B: Type}
+  (f: A -> B -> errorM A) :=
+  fix foldM (l: list B) (x: A) :=
+  match l with
+  | nil => err_ret x
+  | h :: t =>
+    (j <- f x h ;;
+    foldM t j)%err
+  end.
+
+Definition iter_err {A: Type}
+  (f: A -> errorM unit) (l: list A) : errorM unit :=
+  foldl_err (fun _ x => f x) l tt.
+
+(*TODO: bad*)
+Fixpoint fold_left2_err {A B C : Type} 
+  (f: C -> A -> B -> errorM C) (accu: C) 
+  (l1: list A) (l2: list B) : errorM (option C) :=
+  match l1, l2 with
+  | nil, nil => err_ret (Some accu)
+  | a1 :: l1, a2 :: l2 => 
+    (x <- (f accu a1 a2) ;;
+    fold_left2_err f x l1 l2)%err
+  | _, _ => err_ret None
+  end.
+
+
+(*TODO: move*)
+Definition opt_fold {A B: Type} (f: B -> A -> B) (d: B) (x: option A) : B :=
+  match x with
+  | None => d
+  | Some y => f d y
+  end.
+
+Definition opt_get_exn {A: Type} (e: errtype) (x: option A) : errorM A :=
+  match x with
+  | Some y => err_ret y
+  | None => throw e
+  end.
+
+Definition create_data_decl (tdl: list data_decl) : 
+  errState (hashcons_ty ty_c * hashcons_ty decl) decl :=
+  if null tdl then errst_lift2 (throw EmptyDecl)
+  else
+    (*All typesymbols defined*)
+    let tss := fold_left (fun s x => Sts.add (fst x) s) tdl Sts.empty : Sts.t in 
+
+  (*For projections: need 1 argument, type needs to match ADT,
+    must be marked as projection, not marked as constructor
+    Then these are added to the set of identifiers*)
+  let check_proj (tyv: ty_c) (s: Sls.t) (tya: ty_c) (ls: option lsymbol) : errorM Sls.t :=
+    match ls with
+    | None => err_ret s
+    | Some ls1 =>
+      match ls1.(ls_args), ls1.(ls_value), ls1.(ls_proj) with
+      | ptyv :: nil, Some ptya, true =>
+        if CoqBigInt.is_zero ls1.(ls_constr) then
+          (_ <- ty_equal_check tyv ptyv ;;
+          _ <- ty_equal_check tya ptya ;;
+          Sls.add_new (DuplicateRecordField ls1) ls1 s)%err
+        else throw (BadRecordField ls1)
+
+      | _, _, _ => throw (BadRecordField ls1)
+      end
+    end
+  in
+
+  let check_constr (tys: tysymbol_c) (ty: ty_c) (cll: CoqBigInt.t) 
+    (pjs: Sls.t) (news: Sid.t) (c: constructor) : errorM Sid.t :=
+    let '(fs, pl) := c in
+    (*Check claimed type value*)
+    (ty1 <- opt_get_exn (BadConstructor fs) fs.(ls_value) ;;
+    _ <- ty_equal_check ty ty1;;
+    (*Ensure all projectors well formed*)
+    o <- (fold_left2_err (check_proj ty) Sls.empty fs.(ls_args) pl);;
+    match o with
+    | None => throw (BadConstructor fs)
+    | Some fs_pjs =>
+      (*Ensure claimed projectors equal*)
+      if negb (Sls.equal pjs fs_pjs) then
+        x <- (Sls.choose (Sls.diff pjs fs_pjs));; (*guaranteed to succeed here*)
+        throw (RecordFieldMissing x)
+      (*Ensure claimed constructor number val correct*)
+      else if negb (CoqBigInt.eqb fs.(ls_constr) cll) then
+        throw (BadConstructor fs)
+      else
+        let vs := ty_freevars Stv.empty ty in
+        (*Check for some positivity restrictrions:
+          namely, we cannot have list A = foo : list (list A) - typesymbol
+          cannot appear in arguments
+          (NOTE: I think there is an easier way to check this - just
+          recurse into arguments and see if typesymbol there, but longer to write)*)
+        (*Should put in separate function for proving purposes later*)
+        let fix check (seen: bool) (ty: ty_c) : errorM unit :=
+          match ty_node_of ty with
+          | Tyvar v =>
+            if Stv.mem v vs then err_ret tt else throw (UnboundTypeVar v)
+          | Tyapp ts tl =>
+            let now1 := Sts.mem ts tss in
+            if seen && now1 then throw (NonPositiveTypeDecl (to_tup3 (tys, fs, ty)))
+            else iter_err (check (seen || now1)) tl
+          end
+        in
+      _ <- iter_err (check false) fs.(ls_args);; 
+      (*Finally, check name*)
+      news_id news fs.(ls_name)
+    end
+    )%err
+  in
+
+
+
+  let check_decl (news : Sid.t) (d: data_decl) :=
+    let '(ts, cl) := d in
+    let cll := IntFuncs.int_length cl in
+    if null cl then errst_lift2 (throw (EmptyAlgDecl ts))
+    else if negb (is_nodef (ts_def_of ts)) then 
+      errst_lift2 (throw (IllegalTypeAlias ts))
+    else
+      news1 <- errst_lift2 (news_id news (ts_name_of ts)) ;;
+      (*I think just all lsymbols in cl - list of projections*)
+      let pjs := fold_left (fun s y =>
+        let pl := snd y in
+        fold_left (opt_fold Sls.add_left) pl s) cl Sls.empty in
+      (*Make sure every name in pjs is unique*)
+      
+      (*Cannot use errorM directly because of universe inconsistency;
+        do our own ad-hoc error handling*)
+      match (Sls.fold (fun (pj: lsymbol) (s : Sid.t + ident) => 
+        match s with
+        | inr err => inr err
+        | inl s1 =>
+          let ls := pj.(ls_name) in
+          if Sid.contains s1 ls then inr ls else inl (Sid.add ls s1)
+        end) pjs (inl news1)) with
+      | inr l => errst_lift2 (throw (ClashIdent l))
+      | inl news2  =>
+        
+        (* (s1 <- s;;
+        news_id s1 pj.(ls_name))%err) pjs (err_ret news1)) ;; *)
+        l1 <- errst_lift1 (st_list (map ty_var (ts_args_of ts)));;
+        ty <- ty_app ts l1 ;;
+        (* let ty := ty_app ts (List.map ty_var (ts_args_of ts)) in *)
+        errst_lift2 (foldl_err (check_constr ts ty cll pjs) cl news2) 
+      end
+  in
+  news <- errst_tup1 (foldl_errst check_decl tdl Sid.empty);;
+  errst_tup2 (errst_lift1 (mk_decl (Ddata tdl) news)).
+(*TODO: need hash consing*)

@@ -370,3 +370,9 @@ Definition list_find_opt {A: Type} (p: A -> bool) (l: list A) : option A :=
 Definition ocaml_tup3 (A B C: Type) : Type := A * B * C.
 Definition to_tup3 {A B C: Type} (x: A * B * C) : ocaml_tup3 A B C := x.
 Definition of_tup3 {A B C: Type} (x: ocaml_tup3 A B C) : A * B * C := x.
+(*TODO: axiom*)
+Lemma of_tup3_inj {A B C: Type} (x1 x2: ocaml_tup3 A B C):
+  of_tup3 x1 = of_tup3 x2 -> x1 = x2.
+Proof.
+  auto.
+Qed.
