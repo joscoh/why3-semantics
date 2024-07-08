@@ -470,25 +470,25 @@ exception BadRecordCons of lsymbol * tysymbol
 
 (* let news_id s id = Sid.add_new (ClashIdent id) id s *)
 
-let syms_ts s ts = Sid.add ts.ts_name s
+(* let syms_ts s ts = Sid.add ts.ts_name s
 let syms_ls s ls = Sid.add ls.ls_name s
 
 let syms_ty s ty = ty_s_fold syms_ts s ty
-let syms_term s t = t_s_fold syms_ty syms_ls s t
+let syms_term s t = t_s_fold syms_ty syms_ls s t *)
 
-let syms_ty_decl ts =
-  type_def_fold syms_ty Sid.empty ts.ts_def
+(* let syms_ty_decl ts =
+  type_def_fold syms_ty Sid.empty ts.ts_def *)
 
 (* let create_ty_decl ts =
   let news = Sid.singleton ts.ts_name in
   mk_decl (Dtype ts) news *)
 
-let syms_data_decl tdl =
+(* let syms_data_decl tdl =
   let syms_constr syms (fs,_) =
     List.fold_left syms_ty syms fs.ls_args in
   let syms_decl syms (_,cl) =
     List.fold_left syms_constr syms cl in
-  List.fold_left syms_decl Sid.empty tdl
+  List.fold_left syms_decl Sid.empty tdl *)
 
 (* let create_data_decl tdl =
   if tdl = [] then raise EmptyDecl;
@@ -539,7 +539,7 @@ let syms_data_decl tdl =
   let news = List.fold_left check_decl Sid.empty tdl in
   mk_decl (Ddata tdl) news *)
 
-let syms_param_decl ls =
+(* let syms_param_decl ls =
   let syms = Opt.fold syms_ty Sid.empty ls.ls_value in
   List.fold_left syms_ty syms ls.ls_args
 
@@ -558,7 +558,7 @@ let syms_logic_decl ldl =
 
 (*JOSH: TODO hack*)
 let lsym_ocaml_to_coq (x, (y, z, w)) =
-  (x, ((y, z), w))
+  (x, ((y, z), w)) *)
 
 let create_logic_decl ldl =
   if ldl = [] then raise EmptyDecl;
@@ -636,12 +636,12 @@ let rec f_pos_ps sps pol f = match f.t_node, pol with
     | _ -> None *)
   
   
-let syms_ind_decl idl =
+(* let syms_ind_decl idl =
   let syms_ax syms (_,f) =
     syms_term syms f in
   let syms_decl syms (_,al) =
     List.fold_left syms_ax syms al in
-  List.fold_left syms_decl Sid.empty idl
+  List.fold_left syms_decl Sid.empty idl *)
   
 (* let create_ind_decl s idl =
   if idl = [] then raise EmptyDecl;
@@ -697,14 +697,14 @@ let syms_ind_decl idl =
   let news = List.fold_left check_decl Sid.empty idl in
   mk_decl (Dind (s, idl)) news *)
 
-let syms_prop_decl f =
-  syms_term Sid.empty f
+(* let syms_prop_decl f =
+  syms_term Sid.empty f *)
 
-let create_prop_decl k p f =
+(* let create_prop_decl k p f =
   let news = news_id Sid.empty p.pr_name in
-  mk_decl (Dprop (k,p,check_fvs f)) news
+  mk_decl (Dprop (k,p,check_fvs f)) news *)
 
-let get_used_syms_ty ty = syms_ty Sid.empty ty
+(* let get_used_syms_ty ty = syms_ty Sid.empty ty
 
 let get_used_syms_decl d =
   match d.d_node with
@@ -713,7 +713,7 @@ let get_used_syms_decl d =
   | Dparam ls -> syms_param_decl ls
   | Dlogic ldl -> syms_logic_decl ldl
   | Dind (_, idl) -> syms_ind_decl idl
-  | Dprop (_,_,f) -> syms_prop_decl f
+  | Dprop (_,_,f) -> syms_prop_decl f *)
 
 (** Utilities *)
 

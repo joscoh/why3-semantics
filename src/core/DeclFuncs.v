@@ -776,6 +776,7 @@ Definition create_ind_decl (s: ind_sign) (idl: list ind_decl) :
     let sps := fold_left (fun acc x => Sls.add (fst x) acc) idl Sls.empty in
     let check_ax (ps : lsymbol) (news: Sid.t) (x: prsymbol * term_c) : errorM Sid.t :=
       let '(pr, f) := x in
+      (f <- check_fvs f ;;
       (*TODO: should return lsym that actually causes problem, not ps*)
       if negb (ind_pos sps f) then throw (NonPositiveIndDecl(ps, pr, ps))
       else match valid_ind_form ps f with
@@ -787,7 +788,7 @@ Definition create_ind_decl (s: ind_sign) (idl: list ind_decl) :
             throw (UnboundTypeVar y))%err
           else news_id news pr.(pr_name)
         | None => throw (InvalidIndDecl (ps, pr))
-      end
+      end)%err
     in
     let check_decl (news: Sid.t) (x: lsymbol * list (prsymbol * term_c)) : errorM Sid.t :=
       let '(ps, al) := x in
@@ -799,3 +800,80 @@ Definition create_ind_decl (s: ind_sign) (idl: list ind_decl) :
     in
     news <- errst_lift2 (foldl_err check_decl idl Sid.empty) ;;
     errst_lift1 (mk_decl (Dind (s, idl)) news).
+
+(*Prop Decl*)
+Definition create_prop_decl (k: prop_kind) (p: prsymbol) (f: term_c) : 
+  errorHashconsT decl decl :=
+  news <- errst_lift2 (news_id Sid.empty p.(pr_name)) ;;
+  f <- errst_lift2 (check_fvs f) ;;
+  errst_lift1 (mk_decl (Dprop (to_tup3 (k, p, f))) news).
+
+(*Used Symbols*)
+
+Definition syms_ts (s : Sid.t) (ts : tysymbol_c) := 
+  Sid.add (ts_name_of ts) s.
+
+Definition syms_ls (s : Sid.t) (ls : lsymbol) := 
+  Sid.add ls.(ls_name) s.
+
+Definition syms_ty (s : Sid.t) (ty : ty_c) := 
+  ty_s_fold syms_ts s ty.
+
+Definition syms_term (s : Sid.t) (t: term_c) : Sid.t := 
+  t_s_fold syms_ty syms_ls s t.
+
+Definition syms_ty_decl (ts : tysymbol_c) : Sid.t :=
+  type_def_fold syms_ty Sid.empty (ts_def_of ts).
+
+Definition syms_data_decl (tdl : list data_decl) : Sid.t :=
+  let syms_constr syms '(fs,_) :=
+    fold_left syms_ty fs.(ls_args) syms in
+  let syms_decl syms '(_,cl) :=
+    fold_left syms_constr cl syms in
+  fold_left syms_decl tdl Sid.empty.
+
+Definition syms_param_decl (ls : lsymbol) : Sid.t :=
+  let syms := opt_fold syms_ty Sid.empty ls.(ls_value) in
+  fold_left syms_ty ls.(ls_args) syms.
+
+Definition syms_logic_decl (ldl : list logic_decl) : Sid.t :=
+  let syms_decl syms '(ls,ld) :=
+    (*Use option version so we don't need to be in error monad
+      (TODO: make sure that if [ls_defn_of_axiom] succeeds, 
+      then so does [open_ls_defn]. I believe this is true)*)
+    match (open_ls_defn_aux ld) with
+    | Some (_, e) =>
+        let syms := fold_left syms_ty ls.(ls_args) syms in
+        syms_term syms e
+    | None => syms (*TODO: make sure we can't hit this case*)
+    end
+  in
+  fold_left syms_decl ldl Sid.empty.
+
+Definition syms_ind_decl (idl: list ind_decl): Sid.t :=
+  let syms_ax syms '(_,f) :=
+    syms_term syms f in
+  let syms_decl syms '(_,al) :=
+    fold_left syms_ax al syms in
+  fold_left syms_decl idl Sid.empty.
+
+Definition syms_prop_decl (f : term_c) : Sid.t :=
+  syms_term Sid.empty f.
+
+Definition get_used_syms_ty (ty : ty_c) := 
+  syms_ty Sid.empty ty.
+
+Definition get_used_syms_decl (d: decl) : Sid.t :=
+  match d.(d_node) with
+  | Dtype ts => syms_ty_decl ts
+  | Ddata dl => syms_data_decl dl
+  | Dparam ls => syms_param_decl ls
+  | Dlogic ldl => syms_logic_decl ldl
+  | Dind (_, idl) => syms_ind_decl idl
+  | Dprop x => let '(_, _, f) := of_tup3 x in syms_prop_decl f
+  end.
+  
+  
+  
+  
+  
