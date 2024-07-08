@@ -496,6 +496,8 @@ Definition IllegalTypeAlias (t: tysymbol_c) : errtype :=
   mk_errtype "IllegalTypeAlias" t.
 Definition ClashIdent (i: ident) : errtype :=
   mk_errtype "ClashIdent" i.
+Definition BadLogicDecl (x: lsymbol * lsymbol) : errtype :=
+  mk_errtype "BadLogicDecl" x.
 Definition BadConstructor (l: lsymbol) : errtype :=
   mk_errtype "BadConstructor" l.
 
@@ -511,6 +513,8 @@ Definition EmptyDecl : errtype :=
   mk_errtype "EmptyDecl" tt.
 Definition EmptyAlgDecl (t: tysymbol_c) : errtype :=
   mk_errtype "EmptyAlgDecl" t.
+Definition EmptyIndDecl (l: lsymbol) : errtype :=
+  mk_errtype "EmptyIndDecl" l.
 
 Definition NonPositiveTypeDecl (x: ocaml_tup3 tysymbol_c lsymbol ty_c) : errtype :=
   mk_errtype "NonPositiveTypeDecl" x.
@@ -518,6 +522,7 @@ Definition NonPositiveTypeDecl (x: ocaml_tup3 tysymbol_c lsymbol ty_c) : errtype
 Definition news_id (s : Sid.t) (i: ident) : errorM Sid.t := 
   Sid.add_new (ClashIdent i) i s.
 
+(*Create abstract type decl*)
 Definition create_ty_decl (t: tysymbol_c) : st (hashcons_ty decl) decl :=
   mk_decl (Dtype t) (Sid.singleton (ts_name_of t)).
 
@@ -527,7 +532,6 @@ Definition is_nodef {A: Type} (t: type_def A) : bool :=
   | _ => false
   end.
 
-(* Local Open Scope err_scope. *)
   (*TODO: should try to generalized with monad - lots of these
     floating around, need to fix*)
 Definition foldl_errst {A B C: Type}
@@ -566,20 +570,15 @@ Fixpoint fold_left2_err {A B C : Type}
   | _, _ => err_ret None
   end.
 
-
-(*TODO: move*)
-Definition opt_fold {A B: Type} (f: B -> A -> B) (d: B) (x: option A) : B :=
-  match x with
-  | None => d
-  | Some y => f d y
-  end.
-
 Definition opt_get_exn {A: Type} (e: errtype) (x: option A) : errorM A :=
   match x with
   | Some y => err_ret y
   | None => throw e
   end.
 
+(*Create datatype decl - checks for well-formedness (including of
+  constructors and projections) and positivity (ignoring polymorphism
+  and function types)*)
 Definition create_data_decl (tdl: list data_decl) : 
   errState (hashcons_ty ty_c * hashcons_ty decl) decl :=
   if null tdl then errst_lift2 (throw EmptyDecl)
@@ -677,15 +676,126 @@ Definition create_data_decl (tdl: list data_decl) :
         end) pjs (inl news1)) with
       | inr l => errst_lift2 (throw (ClashIdent l))
       | inl news2  =>
-        
-        (* (s1 <- s;;
-        news_id s1 pj.(ls_name))%err) pjs (err_ret news1)) ;; *)
         l1 <- errst_lift1 (st_list (map ty_var (ts_args_of ts)));;
         ty <- ty_app ts l1 ;;
-        (* let ty := ty_app ts (List.map ty_var (ts_args_of ts)) in *)
         errst_lift2 (foldl_err (check_constr ts ty cll pjs) cl news2) 
       end
   in
   news <- errst_tup1 (foldl_errst check_decl tdl Sid.empty);;
   errst_tup2 (errst_lift1 (mk_decl (Ddata tdl) news)).
-(*TODO: need hash consing*)
+
+(*Create abstract logical param decl*)
+Definition create_param_decl (ls: lsymbol) : errState (hashcons_ty decl) decl :=
+  if negb (CoqBigInt.is_zero ls.(ls_constr)) || ls.(ls_proj)
+  then errst_lift2 (throw (UnexpectedProjOrConstr ls))
+  else 
+    let news := Sid.singleton ls.(ls_name) in
+    errst_lift1 (mk_decl (Dparam ls) news).
+
+(*Create recursive fun/pred decl. Unlike current Why3 impl,
+  we do not check termination here: only later when we know
+  mutual types in context*)
+Definition create_logic_decl_nocheck (ldl: list logic_decl) : 
+  errorHashconsT decl decl :=
+  if null ldl then errst_lift2 (throw EmptyDecl)
+  else
+    let check_decl (news : Sid.t) (x: logic_decl) : errorM Sid.t :=
+      let '(ls, (s, _, _)) := x in
+      if negb (ls_equal s ls) then throw (BadLogicDecl (ls, s))
+      else if negb (CoqBigInt.is_zero ls.(ls_constr)) ||
+        ls.(ls_proj) then throw (UnexpectedProjOrConstr ls)
+      else news_id news ls.(ls_name)
+    in
+    news <- errst_lift2 (foldl_err check_decl ldl Sid.empty);;
+    errst_lift1 (mk_decl (Dlogic ldl) news).
+
+(*Inductive Predicate Checks*)
+
+Definition InvalidIndDecl (x: lsymbol * prsymbol) : errtype :=
+  mk_errtype "InvalidIndDecl" x.
+Definition NonPositiveIndDecl (x: lsymbol * prsymbol * lsymbol) : errtype :=
+  mk_errtype "NonPositiveIndDecl" x.
+
+(*We differ from Why3, giving a simpler well-formed/positivity
+  check that we proved correct in the semantics.
+  We use strict positivity rather than their positivity;
+  all of the tests still pass*)
+Definition lsyms_notin_tm (p: Sls.t) (t: term_c) : bool :=
+  Sls.for_all (fun x => negb (ls_in_tm x t)) p.
+
+Fixpoint ind_strict_pos (sps: Sls.t) (f: term_c) {struct f} : bool :=
+  lsyms_notin_tm sps f ||
+  match t_node_of f with
+  | Tapp p tms => Sls.mem p sps && forallb (lsyms_notin_tm sps) tms
+  | Tbinop Timplies f1 f2 => ind_strict_pos sps f2 && lsyms_notin_tm sps f1
+  | Tquant q tq => let '(_, _, f) := t_view_quant tq in ind_strict_pos sps f
+  | Tbinop b f1 f2 =>
+    match b with
+    | Tiff => false
+    | _ => (*and/or*) ind_strict_pos sps f1 && ind_strict_pos sps f2
+    end
+  (*TODO: too restrictive?*)
+  | Tlet t tb => let '(_, t2) := t_view_bound tb in
+    ind_strict_pos sps t2 && lsyms_notin_tm sps t
+  | Tif f1 f2 f3 =>
+    lsyms_notin_tm sps f1 && ind_strict_pos sps f2 && ind_strict_pos sps f3
+  | Tcase t pats =>
+      (*Maybe too restrictive*)
+    lsyms_notin_tm sps t &&
+    forallb (fun x => let '(_, t) := t_view_branch x in ind_strict_pos sps t) pats
+  | _ => false
+  end.
+
+Fixpoint ind_pos (sps: Sls.t) (f: term_c) {struct f} : bool :=
+  match t_node_of f with
+  | Tapp p ts =>  Sls.mem p sps && forallb (lsyms_notin_tm sps) ts
+  | Tquant Tforall tq => ind_pos sps (snd (t_view_quant tq))
+  | Tlet t tb => (*TODO: too restrictive?*) lsyms_notin_tm sps t &&
+    ind_pos sps (snd (t_view_bound tb))
+  | Tbinop Timplies f1 f2 => ind_strict_pos sps f1 && ind_pos sps f2
+  | _ => false
+  end.
+
+(*Shape of inductive predicates*)
+Fixpoint valid_ind_form (ps: lsymbol) (f: term_c) : option term_c :=
+  match t_node_of f with
+  | Tapp p ts => if ls_equal p ps && 
+     list_eqb ty_equal p.(ls_args) (rem_opt_list (map t_ty_of ts))
+    then Some f else None (*TODO: do we need this check?*)
+    (*NOTE: ignore length, implied by typing*)
+  | Tbinop Timplies f1 f2 => valid_ind_form ps f2
+  | Tquant Tforall tq => valid_ind_form ps (snd (t_view_quant tq))
+  | Tlet t tb => valid_ind_form ps (snd (t_view_bound tb))
+  | _ => None
+  end.
+
+Definition create_ind_decl (s: ind_sign) (idl: list ind_decl) :
+  errorHashconsT decl decl :=
+  if null idl then errst_lift2 (throw EmptyDecl)
+  else
+    let sps := fold_left (fun acc x => Sls.add (fst x) acc) idl Sls.empty in
+    let check_ax (ps : lsymbol) (news: Sid.t) (x: prsymbol * term_c) : errorM Sid.t :=
+      let '(pr, f) := x in
+      (*TODO: should return lsym that actually causes problem, not ps*)
+      if negb (ind_pos sps f) then throw (NonPositiveIndDecl(ps, pr, ps))
+      else match valid_ind_form ps f with
+        | Some g =>
+          let gtv := TermFuncs.t_ty_freevars Stv.empty g in
+          let ftv := TermFuncs.t_ty_freevars Stv.empty f in
+          if negb (Stv.subset ftv ftv) then
+            (y <- (Stv.choose (Stv.diff ftv gtv));;
+            throw (UnboundTypeVar y))%err
+          else news_id news pr.(pr_name)
+        | None => throw (InvalidIndDecl (ps, pr))
+      end
+    in
+    let check_decl (news: Sid.t) (x: lsymbol * list (prsymbol * term_c)) : errorM Sid.t :=
+      let '(ps, al) := x in
+      if null al then throw (EmptyIndDecl ps)
+      else if isSome ps.(ls_value) then throw (TermFuncs.PredicateSymbolExpected ps)
+      else
+        (news <- news_id news ps.(ls_name) ;;
+        foldl_err (check_ax ps) al news )%err
+    in
+    news <- errst_lift2 (foldl_err check_decl idl Sid.empty) ;;
+    errst_lift1 (mk_decl (Dind (s, idl)) news).

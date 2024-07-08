@@ -1002,8 +1002,10 @@ Definition t_subst_unsafe m t :=
   the test suite if we use stateless ones (in RAC)
   TODO: see why we have problem - we shouldn't*)
 
+(*Need to define it this way instead of pattern matching
+  so that Coq can tell it is recursive*)
 Definition t_view_bound (x: term_bound) : vsymbol * term_c :=
-  let '(v, b, t) := x in (v, t).
+  (fst (fst x), snd x).
 
 Definition t_open_bound (x: term_bound) : ctr (vsymbol * term_c) :=
   let '(v, b, t) := x in
@@ -1013,7 +1015,7 @@ Definition t_open_bound (x: term_bound) : ctr (vsymbol * term_c) :=
   st_ret (v, t1).
 
 Definition t_view_branch (x: term_branch) : pattern_c * term_c :=
-  let '(p, b, t) := x in (p, t).
+  (fst (fst x), snd x).
 
 Definition t_open_branch (x: term_branch) : ctr (pattern_c * term_c) :=
   let '(p, b, t) := x in
@@ -1035,8 +1037,7 @@ Definition t_open_quant1 (x: term_quant) : ctr (list vsymbol * trigger * term_c)
   st_ret (vl, tl, t1).
 
 Definition t_view_quant (x: term_quant) : list vsymbol * trigger * term_c :=
-  let '(vl, b, tl, f) := x in
-  (vl, tl, f).
+  (fst (fst (fst x)), snd (fst x), snd x).
 
 Definition t_open_bound_with (e: term_c) (x: term_bound) : ctrErr term_c :=
   (let '(v, b, t) := x in
@@ -1386,6 +1387,51 @@ Definition t_pred_app_l pr tl : errorHashconsT ty_c term_c :=
 (*Skip acc and wf for now (can add later)*)
 
 (*Subset of term library*)
+
+(* fold over symbols *)
+
+Fixpoint pat_gen_fold {A: Type} (fnT: A -> ty_c -> A) 
+  (fnL: A -> lsymbol -> A) (acc : A) (pat : pattern_c) {struct pat} : A :=
+  let fn acc p := pat_gen_fold fnT fnL acc p in
+  let acc := fnT acc (pat_ty_of pat) in
+  match pat_node_of pat with
+    | Pwild => acc
+    | Pvar _ => acc
+    | Papp s pl => fold_left fn pl (fnL acc s)
+    | Por p q => fn (fn acc p) q
+    | Pas p _ => fn acc p
+  end.
+
+Fixpoint t_gen_fold {A: Type} (fnT : A -> ty_c -> A) (fnL: A -> lsymbol -> A) 
+  (acc : A) (t : term_c) : A :=
+  let fn := t_gen_fold fnT fnL in
+  let acc := opt_fold fnT acc (t_ty_of t) in
+  match t_node_of t with
+  | Tconst _ => acc
+  | Tvar _ => acc
+  | Tapp f tl => fold_left fn tl (fnL acc f)
+  | Tif f t1 t2 => fn (fn (fn acc f) t1) t2
+  | Tlet t1 (_,_,t2) => fn (fn acc t1) t2
+  | Tcase t1 bl =>
+      let branch acc x :=
+        fn (pat_gen_fold fnT fnL acc (fst (fst x))) (snd x) in
+      fold_left branch bl (fn acc t1)
+  | Teps (_, _, f) => fn acc f
+  | Tquant _ (vl, _, tl, f1) =>
+      (* these variables (and their types) may never appear below *)
+      let acc := fold_left (fun a v => fnT a v.(vs_ty)) vl acc in
+      fn (tr_fold fn acc tl) f1
+  | Tbinop _ f1 f2 => fn (fn acc f1) f2
+  | Tnot f1 => fn acc f1
+  | Ttrue | Tfalse => acc
+  end.
+
+Definition t_s_fold {A: Type} := @t_gen_fold A.
+
+Definition t_ty_fold {A: Type} (fn: A -> ty_c -> A) (acc: A) (t: term_c) : A :=
+  t_s_fold fn (fun x _ => x) acc t.
+
+Definition t_ty_freevars := t_ty_fold ty_freevars.
 
 (* map/fold over free variables *)
 (*Only fold for now*)

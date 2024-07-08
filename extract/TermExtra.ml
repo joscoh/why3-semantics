@@ -204,14 +204,14 @@ let rec pat_gen_map fnT fnL m pat =
     | Pas (p, v) -> pat_as (fn p) (Mvs.find v m)
     | Por (p, q) -> pat_or (fn p) (fn q)
 
-let rec pat_gen_fold fnT fnL acc pat =
+(* let rec pat_gen_fold fnT fnL acc pat =
   let fn acc p = pat_gen_fold fnT fnL acc p in
   let acc = fnT acc pat.pat_ty in
   match pat.pat_node with
     | Pwild | Pvar _ -> acc
     | Papp (s, pl) -> List.fold_left fn (fnL acc s) pl
     | Por (p, q) -> fn (fn acc p) q
-    | Pas (p, _) -> fn acc p
+    | Pas (p, _) -> fn acc p *)
 
 (** Terms and formulas *)
 
@@ -1273,7 +1273,7 @@ let t_ty_subst mapT mapV t =
 
 (* fold over symbols *)
 
-let rec t_gen_fold fnT fnL acc t =
+(* let rec t_gen_fold fnT fnL acc t =
   let fn = t_gen_fold fnT fnL in
   let acc = Opt.fold fnT acc t.t_ty in
   match t.t_node with
@@ -1294,7 +1294,7 @@ let rec t_gen_fold fnT fnL acc t =
   | Tnot f1 -> fn acc f1
   | Ttrue | Tfalse -> acc
 
-let t_s_fold = t_gen_fold
+let t_s_fold = t_gen_fold *)
 
 let t_s_all prT prL t = Util.alld t_s_fold prT prL t
 let t_s_any prT prL t = Util.anyd t_s_fold prT prL t
@@ -1303,9 +1303,9 @@ let t_s_any prT prL t = Util.anyd t_s_fold prT prL t
 
 let t_ty_map fn t = t_s_map fn (fun ls -> ls) t
 
-let t_ty_fold fn acc t = t_s_fold fn Util.const acc t
+(* let t_ty_fold fn acc t = t_s_fold fn Util.const acc t *)
 
-let t_ty_freevars = t_ty_fold ty_freevars
+(* let t_ty_freevars = t_ty_fold ty_freevars *)
 
 (* map/fold over applications in terms and formulas (but not in patterns!) *)
 

@@ -267,11 +267,19 @@ Definition null {A: Type} (l: list A) : bool :=
   end.
 
 (*Options*)
-Definition option_fold {A B: Type} (none: A) (some: B -> A) (o: option B) : A :=
-  match o with
-  | None => none
-  | Some x => some x
+(*One version*)
+
+
+(*Opt.fold*)
+Definition opt_fold {A B: Type} (f: B -> A -> B) (d: B) (x: option A) : B :=
+  match x with
+  | None => d
+  | Some y => f d y
   end.
+
+(*An alternate version, kind of map/fold *)
+Definition option_fold {A B: Type} (none: B) (some: A -> B) (o: option A) : B :=
+  opt_fold (fun _ => some) none o.
 
 (*NOTE: don't use reflect because we want all proofs to be
   erased*)
