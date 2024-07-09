@@ -19,3 +19,7 @@ exception NonPositiveTypeDecl of tysymbol * lsymbol * ty
 
 exception InvalidIndDecl of lsymbol * prsymbol
 exception NonPositiveIndDecl of lsymbol * prsymbol * lsymbol
+
+exception KnownIdent of ident
+exception UnknownIdent of ident
+exception RedeclaredIdent of ident

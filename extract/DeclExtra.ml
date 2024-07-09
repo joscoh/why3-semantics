@@ -777,14 +777,14 @@ end
 
 (** Known identifiers *)
 
-exception KnownIdent of ident
+(* exception KnownIdent of ident
 exception UnknownIdent of ident
-exception RedeclaredIdent of ident
+exception RedeclaredIdent of ident *)
 
-type known_map = decl Mid.t
+(* type known_map = decl Mid.t
 
 let known_id kn id =
-  if not (Mid.mem id kn) then raise (UnknownIdent id)
+  if not (Mid.mem id kn) then raise (UnknownIdent id) *)
 
 let merge_known kn1 kn2 =
   let check_known id decl1 decl2 =
@@ -793,7 +793,7 @@ let merge_known kn1 kn2 =
   in
   Mid.union check_known kn1 kn2
 
-let known_add_decl kn0 decl =
+(* let known_add_decl kn0 decl =
   let kn = Mid.map (Util.const decl) decl.d_news in
   let check id decl0 _ =
     if d_equal decl0 decl
@@ -803,7 +803,7 @@ let known_add_decl kn0 decl =
   let kn = Mid.union check kn0 kn in
   let unk = Mid.set_diff (get_used_syms_decl decl) kn in
   if Sid.is_empty unk then kn
-  else raise (UnknownIdent (Sid.choose unk))
+  else raise (UnknownIdent (Sid.choose unk)) *)
 
 let find_constructors kn ts =
   match (Mid.find ts.ts_name kn).d_node with

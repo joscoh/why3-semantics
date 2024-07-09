@@ -872,8 +872,43 @@ Definition get_used_syms_decl (d: decl) : Sid.t :=
   | Dind (_, idl) => syms_ind_decl idl
   | Dprop x => let '(_, _, f) := of_tup3 x in syms_prop_decl f
   end.
+
+(* Utilities *)
+
+(*TODO as needed*)
   
-  
-  
-  
-  
+(* Known Identifiers *)
+Definition KnownIdent (i: ident) : errtype :=
+  mk_errtype "KnownIdent" i.
+Definition UnknownIdent (i: ident) : errtype :=
+  mk_errtype "UnknownIdent" i.
+Definition RedeclaredIdent (i: ident) : errtype :=
+  mk_errtype "RedeclaredIdent" i.
+
+Definition known_map :=  Mid.t decl.
+
+Definition known_id (kn : known_map) (i: ident) : errorM unit :=
+  if negb (Mid.mem _ i kn) then throw (UnknownIdent i) else err_ret tt.
+
+(*Probably don't need merge_known for now*)
+Local Open Scope err_scope.
+Definition known_add_decl (kn0 : known_map) (d: decl) : errorM known_map :=
+  let kn := Mid.map (fun _ => d) d.(d_news) in
+  (*Instead of union with exceptions, we will take the map
+    intersection; if non-empty, we throw the appropriate exception*)
+  let inter := (Mid.set_inter _ _ kn0 kn) in
+  if negb (Mid.is_empty _ inter) then
+    x <- Mid.choose _ inter ;;
+    let '(i, d1) := x in
+    if d_equal d1 d
+    then throw (KnownIdent i)
+    else throw (RedeclaredIdent i)
+  else
+    (*Now we can just take union*)
+    let kn := Mid.set_union _ kn0 kn in
+  (* let kn := Mid.union _ check kn0 kn in *)
+    let unk := Mid.set_diff _ _ (get_used_syms_decl d) kn in
+    if Sid.is_empty unk then err_ret kn
+    else 
+      j <- (Sid.choose unk);;
+      throw (UnknownIdent j).
