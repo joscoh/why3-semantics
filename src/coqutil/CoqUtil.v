@@ -235,30 +235,22 @@ Definition map2 {A B C: Type} :=
 
 (*Unlike OCaml, this gives option, not exception*)
 (*version for nested recursion TODO improve*)
-Definition fold_right2 {A B C: Type} :=
-  fun (f: A -> B -> C -> C) =>
-    fix fold_right2 (l1: list A) : list B -> C -> option C :=
-      match l1 with
-      | nil => fun l2 base =>
-        match l2 with
-        | nil => Some base
-        | _ :: _ => None
-        end
-      | x1 :: t1 => fun l2 base =>
-        match l2 with
-        | nil => None
-        | x2 :: t2 => option_map (f x1 x2) (fold_right2 t1 t2 base)
-        end
-      end.
+Definition fold_right2 {A B C: Type} (f: A -> B -> C -> C) :=
+  fix fold_right2 (l1: list A) (l2: list B) (x: C) : option C :=
+    match l1, l2 with
+    | nil, nil => Some x
+    | x1 :: t1, x2 :: t2 => option_map (f x1 x2) (fold_right2 t1 t2 x)
+    | _, _ => None
+    end.
 
-Fixpoint fold_left2 {A B C: Type} (f: C -> A -> B -> C) (l1: list A)
-  (l2: list B) (accu: C) : option C :=
-  match l1, l2 with
-  | nil, nil => Some accu
-  | a1 :: l1, a2 :: l2 => 
-    fold_left2 f l1 l2 (f accu a1 a2)
-  | _, _ => None
-  end.
+Definition fold_left2 {A B C: Type} (f: C -> A -> B -> C) :=
+  fix fold_left2 (l1: list A) (l2: list B) (accu: C) : option C :=
+    match l1, l2 with
+    | nil, nil => Some accu
+    | a1 :: l1, a2 :: l2 => 
+      fold_left2 l1 l2 (f accu a1 a2)
+    | _, _ => None
+    end.
 
 Definition null {A: Type} (l: list A) : bool :=
   match l with

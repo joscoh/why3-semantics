@@ -23,3 +23,5 @@ exception NonPositiveIndDecl of lsymbol * prsymbol * lsymbol
 exception KnownIdent of ident
 exception UnknownIdent of ident
 exception RedeclaredIdent of ident
+
+exception NonFoundedTypeDecl of tysymbol

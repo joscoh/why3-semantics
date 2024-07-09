@@ -805,7 +805,7 @@ let merge_known kn1 kn2 =
   if Sid.is_empty unk then kn
   else raise (UnknownIdent (Sid.choose unk)) *)
 
-let find_constructors kn ts =
+(* let find_constructors kn ts =
   match (Mid.find ts.ts_name kn).d_node with
   | Dtype _ -> []
   | Ddata dl -> List.assq ts dl
@@ -837,7 +837,7 @@ let find_prop_decl kn pr =
       let test (_,l) = List.mem_assq pr l in
       Paxiom, List.assq pr (snd (List.find test dl))
   | Dprop (k,_,f) -> k,f
-  | Dtype _ | Ddata _ | Dparam _ | Dlogic _ -> assert false
+  | Dtype _ | Ddata _ | Dparam _ | Dlogic _ -> assert false *)
 
 let check_match kn d =
   let rec check () t = match t.t_node with
@@ -849,7 +849,7 @@ let check_match kn d =
     | _ -> t_fold check () t
   in
   decl_fold check () d
-
+(* 
 exception NonFoundedTypeDecl of tysymbol
 
 let check_foundness kn d =
@@ -884,7 +884,7 @@ let check_foundness kn d =
         then () else raise (NonFoundedTypeDecl ts)
       in
       List.fold_left check () tdl
-  | _ -> ()
+  | _ -> () *)
 
 let rec ts_extract_pos kn sts ts =
   assert (not (is_alias_type_def ts.ts_def));

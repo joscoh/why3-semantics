@@ -912,3 +912,185 @@ Definition known_add_decl (kn0 : known_map) (d: decl) : errorM known_map :=
     else 
       j <- (Sid.choose unk);;
       throw (UnknownIdent j).
+
+(*TODO: MOVE*)
+(*We return an option, unlike OCaml*)
+Definition list_assoc {A B: Type} (eq: A -> A -> bool) (x: A) 
+  (l: list (A * B)) : option B :=
+  fold_right (fun y acc => if eq x (fst y) then Some (snd y) else acc) None l.
+
+Definition list_mem_assoc {A B: Type} (eq: A -> A -> bool) (x: A)
+  (l: list (A * B)) : bool :=
+  isSome (list_assoc eq x l).
+
+Definition list_of_opt {A: Type} (x: option (list A)) : list A :=
+  match x with
+  | None => nil
+  | Some y => y
+  end.
+
+(*We want non-error versions of the find_* functions.
+  We will prove that we cannot hit the error case (assert false)
+  in a well-typed context. The one difference is that if the
+  user searches for a constructor/etc not in the map, this returns
+  nil/None, not a Not_found error*)
+
+Definition find_constructors (kn: known_map) (ts: tysymbol_c) : list constructor :=
+  list_of_opt (option_bind (Mid.find_opt _ (ts_name_of ts) kn) (fun d => 
+    match d.(d_node) with
+    | Ddata dl => list_assoc ts_equal ts dl
+    | _ => None
+    end)).
+
+Definition find_inductive_cases (kn : known_map) (ps : lsymbol) : list (prsymbol * term_c) :=
+  list_of_opt (option_bind (Mid.find_opt _  ps.(ls_name) kn) (fun d => 
+    match d.(d_node) with
+    | Dind (_, dl) => list_assoc ls_equal ps dl
+    | _ => None
+    end)).
+
+Definition find_logic_definition (kn : known_map) (ls : lsymbol) : option ls_defn :=
+  option_bind (Mid.find_opt _  ls.(ls_name) kn) (fun d => 
+    match d.(d_node) with
+    | Dlogic dl => list_assoc ls_equal ls dl
+    | _ => None
+    end).
+
+(*In well-typed context, will not hit default case*)
+Definition find_prop (kn : known_map) (pr: prsymbol) : term_c  :=
+  match option_bind (Mid.find_opt _  pr.(pr_name) kn) (fun d => 
+    match d.(d_node) with
+    | Dind (_, dl) => 
+      (*Find list *)
+      option_bind (list_find_opt (fun x => list_mem_assoc pr_equal pr (snd x)) dl )
+      (fun l1 => list_assoc pr_equal pr (snd l1))
+    | Dprop x => let '(_, _, f) := of_tup3 x in Some f
+    | _ => None
+    end)
+  with | Some tm => tm | _ => t_false end.
+
+(*This one should be in the error or option monad - clients
+  catch Not_found*)
+Definition find_prop_decl (kn : known_map) (pr : prsymbol) : errorM (prop_kind * term_c) :=
+  d <- Mid.find _ pr.(pr_name) kn ;;
+  match d.(d_node) with
+  | Dind (_, dl) =>
+    match (list_find_opt (fun x => list_mem_assoc pr_equal pr (snd x)) dl ) with
+    | None => throw Not_found
+    | Some l1 => 
+      match list_assoc pr_equal pr (snd l1) with
+      | None => throw Not_found
+      | Some f => err_ret (Paxiom, f)
+      end
+    end
+  | Dprop p => let '(k, _, f) := of_tup3 p in err_ret (k, f)
+  | _ => (assert_false "find_prop_decl")
+  end.
+
+(*We do NOT check pattern matching exhaustiveness (for now at least)*)
+
+Definition NonFoundedTypeDecl (t: tysymbol_c) : errtype :=
+  mk_errtype "NonFoundedTypeDecl" t.
+
+(*An upper bound on the amount of time the following functions
+  can take: the number of declare type symbols in a context*)
+Definition all_tysymbols (kn: known_map) : Sts.t :=
+  Mid.fold (fun _ d acc =>
+    match d.(d_node) with
+    | Dtype ts => Sts.add ts acc
+    | Ddata ld => fold_right Sts.add acc (map fst ld)
+    | _ => acc
+    end) kn Sts.empty.
+
+Definition is_abstract_type (kn: known_map) (ts: tysymbol_c) : bool :=
+  Mid.exists_ _ (fun _ d =>
+    match d.(d_node) with 
+    | Dtype ts' => ts_equal ts ts'
+    | _ => false
+    end) kn.
+
+
+(*For Coq purposes, this needs fuel, so we need a nat in OCaml.
+  This nat will be the size of a map, so it should not cause
+  an exponential memory blowup*)
+(*TODO: factor out ACC stuff*)
+
+(*NOTE: I am implementing their version although I did not
+  prove stuff about that. The difference is that instead of checking
+  that all type arguments (in check_type), as the semantics does,
+  this includes a set of variables known to be mapped to
+  possibly-not-inhabited types; we do things lazily.
+
+  For example, rose trees:
+  type forest 'a = list (tree 'a)
+  with tree 'a   = Node 'a (forest 'a)
+
+  in mine, I look at list (tree 'a), (tree 'a) cannot be proved
+  so I reject
+  in theirs, they just say that 'a variable of list cannot be used, 
+  so Nil is still OK.
+  We may not prove anything about this version, but it is annoying
+  that all the rose-tree tests fail
+  (TODO: need to figure out rose-tree-type data structures because
+  they are used a lot)
+  *)
+Fixpoint check_ts_aux (kn: known_map) (tss: Sts.t) (tvs: Stv.t) 
+  (ts: tysymbol_c) (z: CoqBigInt.t) (ACC: Acc lt (Z.to_nat z))  {struct ACC} : bool :=
+  match CoqBigInt.lt z CoqBigInt.zero as b return
+    CoqBigInt.lt z CoqBigInt.zero = b -> bool with
+  | true => fun _ => false
+  | false => fun Hlt =>
+    match CoqBigInt.eqb z CoqBigInt.zero as b return
+      CoqBigInt.eqb z CoqBigInt.zero = b -> bool with
+    | true => fun _ => false
+    | false => fun Hneq => 
+      (*The actual function here*)
+      (*Recursive data type, abandon*)
+        if Sts.mem ts tss then false else
+        (* an abstract type is inhabited iff
+          all its type arguments are inhabited - BUT we
+          assume all are, so we just say yes
+          (recursive instances are ruled out by positivity anyway) *)
+        if is_abstract_type kn ts then Stv.is_empty tvs else
+        let cl := find_constructors kn ts in
+        (* an algebraic type is inhabited iff
+          we can build a value of this type *)
+        let tss := Sts.add ts tss in
+        (*Need nested recursion unlike OCaml*)
+        (existsb (fun y =>
+          let '(ls, _) := y in
+            forallb (fun t => 
+              (fix check_type (ty: ty_c) : bool :=                    
+                  match ty_node_of ty with
+                  | Tyvar tv => negb (Stv.mem tv tvs)
+                  | Tyapp ts tl =>
+                    match fold_left2 (fun acc ty tv =>
+                      if check_type ty then acc else Stv.add tv acc)
+                      tl (ts_args_of ts) Stv.empty 
+                    with | None => false
+                    | Some tvs =>
+                      check_ts_aux kn tss tvs ts (CoqBigInt.pred z) 
+                        (Acc_inv ACC (IntFuncs.iota_lemma _ Hneq Hlt))
+                    end
+                  end
+                ) t
+            ) ls.(ls_args)
+          )) cl
+      end eq_refl
+  end eq_refl.
+
+Definition check_ts (kn: known_map) (tss: Sts.t) (tvs : Stv.t) (ts: tysymbol_c) 
+  (z: CoqBigInt.t) : bool :=
+  check_ts_aux kn tss tvs ts z (Wf_nat.lt_wf _).
+    
+
+Definition check_foundness (kn: known_map) (d: decl) : errorM unit :=
+  match d.(d_node) with
+  | Ddata tdl =>
+    foldl_err (fun _ x =>
+      (*Need number of sufficient size - *)
+      if check_ts kn Sts.empty Stv.empty (fst x) (Sts.cardinal (all_tysymbols kn)) then
+      err_ret tt else throw (NonFoundedTypeDecl (fst x))
+      ) tdl tt
+  | _ => err_ret tt
+  end.
