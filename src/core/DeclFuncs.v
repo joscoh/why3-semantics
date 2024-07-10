@@ -516,7 +516,7 @@ Definition EmptyAlgDecl (t: tysymbol_c) : errtype :=
 Definition EmptyIndDecl (l: lsymbol) : errtype :=
   mk_errtype "EmptyIndDecl" l.
 
-Definition NonPositiveTypeDecl (x: ocaml_tup3 tysymbol_c lsymbol ty_c) : errtype :=
+Definition NonPositiveTypeDecl (x: tysymbol_c * lsymbol * ty_c) : errtype :=
   mk_errtype "NonPositiveTypeDecl" x.
 
 Definition news_id (s : Sid.t) (i: ident) : errorM Sid.t := 
@@ -638,7 +638,7 @@ Definition create_data_decl (tdl: list data_decl) :
             if Stv.mem v vs then err_ret tt else throw (UnboundTypeVar v)
           | Tyapp ts tl =>
             let now1 := Sts.mem ts tss in
-            if seen && now1 then throw (NonPositiveTypeDecl (to_tup3 (tys, fs, ty)))
+            if seen && now1 then throw (NonPositiveTypeDecl (tys, fs, ty))
             else iter_err (check (seen || now1)) tl
           end
         in
@@ -1034,55 +1034,45 @@ Definition is_abstract_type (kn: known_map) (ts: tysymbol_c) : bool :=
   (TODO: need to figure out rose-tree-type data structures because
   they are used a lot)
   *)
-Fixpoint check_ts_aux (kn: known_map) (tss: Sts.t) (tvs: Stv.t) 
-  (ts: tysymbol_c) (z: CoqBigInt.t) (ACC: Acc lt (Z.to_nat z))  {struct ACC} : bool :=
-  match CoqBigInt.lt z CoqBigInt.zero as b return
-    CoqBigInt.lt z CoqBigInt.zero = b -> bool with
-  | true => fun _ => false
-  | false => fun Hlt =>
-    match CoqBigInt.eqb z CoqBigInt.zero as b return
-      CoqBigInt.eqb z CoqBigInt.zero = b -> bool with
-    | true => fun _ => false
-    | false => fun Hneq => 
-      (*The actual function here*)
-      (*Recursive data type, abandon*)
-        if Sts.mem ts tss then false else
-        (* an abstract type is inhabited iff
-          all its type arguments are inhabited - BUT we
-          assume all are, so we just say yes
-          (recursive instances are ruled out by positivity anyway) *)
-        if is_abstract_type kn ts then Stv.is_empty tvs else
-        let cl := find_constructors kn ts in
-        (* an algebraic type is inhabited iff
-          we can build a value of this type *)
-        let tss := Sts.add ts tss in
-        (*Need nested recursion unlike OCaml*)
-        (existsb (fun y =>
-          let '(ls, _) := y in
-            forallb (fun t => 
-              (fix check_type (ty: ty_c) : bool :=                    
-                  match ty_node_of ty with
-                  | Tyvar tv => negb (Stv.mem tv tvs)
-                  | Tyapp ts tl =>
-                    match fold_left2 (fun acc ty tv =>
-                      if check_type ty then acc else Stv.add tv acc)
-                      tl (ts_args_of ts) Stv.empty 
-                    with | None => false
-                    | Some tvs =>
-                      check_ts_aux kn tss tvs ts (CoqBigInt.pred z) 
-                        (Acc_inv ACC (IntFuncs.iota_lemma _ Hneq Hlt))
-                    end
-                  end
-                ) t
-            ) ls.(ls_args)
-          )) cl
-      end eq_refl
-  end eq_refl.
-
 Definition check_ts (kn: known_map) (tss: Sts.t) (tvs : Stv.t) (ts: tysymbol_c) 
   (z: CoqBigInt.t) : bool :=
-  check_ts_aux kn tss tvs ts z (Wf_nat.lt_wf _).
-    
+  @IntFuncs.int_rect (fun _ => known_map * Sts.t * Stv.t * tysymbol_c -> bool)
+  (*lt*) (fun _ _ _ => false)
+  (*zero*) (fun _  => false)
+  (*pos*) (fun _ _ _ rec x =>
+    let '(kn, tss, tvs, ts) := x in
+    (*Recursive data type, abandon*)
+    if Sts.mem ts tss then false else
+    (* an abstract type is inhabited iff
+      all its type arguments are inhabited - BUT we
+      assume all are, so we just say yes
+      (recursive instances are ruled out by positivity anyway) *)
+    if is_abstract_type kn ts then Stv.is_empty tvs else
+    let cl := find_constructors kn ts in
+    (* an algebraic type is inhabited iff
+      we can build a value of this type *)
+    let tss := Sts.add ts tss in
+    (*Need nested recursion unlike OCaml*)
+    (existsb (fun y =>
+      let '(ls, _) := y in
+        forallb (fun t => 
+          (fix check_type (ty: ty_c) : bool :=                    
+              match ty_node_of ty with
+              | Tyvar tv => negb (Stv.mem tv tvs)
+              | Tyapp ts tl =>
+                match fold_left2 (fun acc ty tv =>
+                  if check_type ty then acc else Stv.add tv acc)
+                  tl (ts_args_of ts) Stv.empty 
+                with | None => false
+                | Some tvs =>
+                  (*recursive call*)
+                  rec (kn, tss, tvs, ts)
+                end
+              end
+            ) t
+        ) ls.(ls_args)
+      )) cl
+  ) z (kn, tss, tvs, ts).
 
 Definition check_foundness (kn: known_map) (d: decl) : errorM unit :=
   match d.(d_node) with
@@ -1092,5 +1082,89 @@ Definition check_foundness (kn: known_map) (d: decl) : errorM unit :=
       if check_ts kn Sts.empty Stv.empty (fst x) (Sts.cardinal (all_tysymbols kn)) then
       err_ret tt else throw (NonFoundedTypeDecl (fst x))
       ) tdl tt
+  | _ => err_ret tt
+  end.
+
+(*Positivity Check*)
+
+Definition get_opt_def {A: Type} (x: option A) (d: A) : A :=
+  match x with
+  | Some y => y
+  | None => d
+  end.
+
+(*NOTE: we do not (for now) prove anything about this.
+  Our semantics are only defined for non-function types at the moment.
+  Will probably add*)
+    
+Definition ts_extract_pos_aux (kn: known_map) (sts: Sts.t) (ts: tysymbol_c)
+  (z: CoqBigInt.t) : option (list bool) :=
+  @IntFuncs.int_rect (fun _ => known_map * Sts.t * tysymbol_c -> option (list bool))
+  (*lt case*)
+  (fun _ _ _ => None)
+  (*zero case*)
+  (fun _ => None)
+  (*interesting case*)
+  (fun z _ _ rec x =>
+    let '(kn, sts, ts) := x in
+     if is_alias_type_def (ts_def_of ts) then None else
+      if ts_equal ts ts_func then Some [false; true] else
+      if Sts.mem ts sts then Some (map (fun _ => true) (ts_args_of ts)) else
+      match find_constructors kn ts with
+      | nil => Some (map (fun _ => false) (ts_args_of ts))
+      | csl =>
+        let sts := Sts.add ts sts in
+        let fix get_ty (ty: ty_c) (stv: Stv.t)(*{ struct ty}*) : Stv.t :=
+          match ty_node_of ty with
+          | Tyvar _ => stv
+          | Tyapp ts tl =>
+            (*Recursive call*)
+            match (rec (kn, sts, ts)) with
+            | Some l => 
+              let get (acc : Stv.t) (t: ty_c) (pos : bool) : Stv.t :=
+                if pos then get_ty t acc else ty_freevars acc t in
+              get_opt_def (fold_left2 get tl
+              l stv) Stv.empty
+            | None => (*impossible I think*) Stv.empty
+            end
+          end
+        in
+        let negs := fold_left (fun acc x => let '(ls, _) := x in
+          fold_left (fun x y => get_ty y x) ls.(ls_args) acc) csl Stv.empty in
+        Some (map (fun v => negb (Stv.mem v negs)) (ts_args_of ts))
+      end)
+  z (kn, sts, ts).
+
+Definition ts_extract_pos (kn: known_map) (sts: Sts.t) (ts: tysymbol_c) : errorM (list bool) :=
+  (*same bound as before*)
+  match (ts_extract_pos_aux kn sts ts (Sts.cardinal (all_tysymbols kn))) with
+  | None => assert_false "ts_extract_pos"
+  | Some l => err_ret l
+  end.
+
+Definition check_positivity (kn : known_map) (d : decl) : errorM unit := 
+  match d.(d_node) with
+  | Ddata tdl =>
+      let tss := fold_left (fun acc x => Sts.add (fst x) acc) tdl Sts.empty in
+      let check_constr (tys : tysymbol_c) (x: constructor) : errorM unit :=
+        let '(cs, _) := x in
+        let fix check_ty (ty: ty_c) : errorM unit :=
+          match ty_node_of ty with
+          | Tyvar _ => err_ret tt
+          | Tyapp ts tl =>
+            let check ty (pos : bool) :=
+              if pos then check_ty ty else
+              if ty_s_any (Sts.contains tss) ty then
+              throw (NonPositiveTypeDecl (tys, cs, ty))
+              else err_ret tt
+            in
+            (*Same bound as before*)
+            l1 <- (ts_extract_pos kn Sts.empty ts) ;;
+            list_iter2 check tl l1
+          end
+        in
+        iter_err check_ty cs.(ls_args)
+      in
+      iter_err (fun x => iter_err (check_constr (fst x)) (snd x)) tdl
   | _ => err_ret tt
   end.

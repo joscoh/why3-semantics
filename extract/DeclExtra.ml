@@ -886,7 +886,7 @@ let check_foundness kn d =
       List.fold_left check () tdl
   | _ -> () *)
 
-let rec ts_extract_pos kn sts ts =
+(* let rec ts_extract_pos kn sts ts =
   assert (not (is_alias_type_def ts.ts_def));
   if ts_equal ts ts_func then [false;true] else
   if Sts.mem ts sts then List.map Util.ttrue ts.ts_args else
@@ -924,7 +924,7 @@ let check_positivity kn d = match d.d_node with
       in
       let check_decl (ts,cl) = List.iter (check_constr ts) cl in
       List.iter check_decl tdl
-  | _ -> ()
+  | _ -> () *)
 
 let known_add_decl kn d =
   let kn = known_add_decl kn d in

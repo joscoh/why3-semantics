@@ -206,12 +206,10 @@ Extract Inlined Constant DuplicateRecordField=> "DuplicateRecordField".
 Extract Inlined Constant EmptyDecl=> "EmptyDecl".
 Extract Inlined Constant EmptyAlgDecl=> "EmptyAlgDecl".
 Extract Inlined Constant EmptyIndDecl => "EmptyIndDecl".
-Extract Inlined Constant NonPositiveTypeDecl => "(fun (x, y, z) ->
-  NonPositiveTypeDecl(x, y, z))".
+Extract Inlined Constant NonPositiveTypeDecl => "(fun ((x, y), z) -> NonPositiveTypeDecl(x, y, z))".
 Extract Inlined Constant BadLogicDecl => "BadLogicDecl".
 Extract Inlined Constant InvalidIndDecl => "InvalidIndDecl".
-Extract Inlined Constant NonPositiveIndDecl => "(fun ((x, y), z) ->
-  NonPositiveIndDecl(x, y, z))".
+Extract Inlined Constant NonPositiveIndDecl => "(fun ((x, y), z) -> NonPositiveIndDecl(x, y, z))".
 Extract Inlined Constant KnownIdent => "KnownIdent".
 Extract Inlined Constant UnknownIdent => "UnknownIdent".
 Extract Inlined Constant RedeclaredIdent => "RedeclaredIdent".

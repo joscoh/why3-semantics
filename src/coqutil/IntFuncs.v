@@ -67,8 +67,21 @@ Definition option_compare {A: Type} (cmp:  A -> A -> CoqInt.int) (o1 o2: option 
   | Some _, None => CoqInt.one
   end.
 
-(*Generate a list from 0 to n-1*)
-Lemma iota_lemma z : CoqBigInt.eqb z CoqBigInt.zero = false -> 
+(*Recursive Functions over BigInts*)
+
+(*We want to write several functions that are recursive over
+  integers, either because that is the function we want
+  (i.e. nth) or because we need fuel for non-structural functions.
+  We can do this by inducting on the accessibility proof of the lt
+  relation (resulting in good OCaml code as documented in
+  "Well Founded Recursion Done Right"). Here we do it
+  generically so that we don't need the boilerplate for
+  every such function (at the cost of having to write some
+  functions a bit unnaturally).
+  Although we do this completely generically, the OCaml functions
+  do not have Obj.magic (a dependent case is likely different)*)
+
+Lemma int_wf_lemma z : CoqBigInt.eqb z CoqBigInt.zero = false -> 
   CoqBigInt.lt z CoqBigInt.zero = false ->
   (Z.to_nat (CoqBigInt.to_Z (CoqBigInt.pred z)) 
   < Z.to_nat (CoqBigInt.to_Z z))%nat.
@@ -85,25 +98,50 @@ Proof.
   - rewrite CoqBigInt.zero_spec. apply Z.le_refl.
 Qed.
 
+Section IntFunc.
+ Context {P: CoqBigInt.t -> Type} 
+  (neg_case: forall z, CoqBigInt.lt z CoqBigInt.zero = true -> P z)
+  (zero_case: P CoqBigInt.zero)
+  (ind_case: forall z, CoqBigInt.eqb z CoqBigInt.zero = false ->
+    CoqBigInt.lt z CoqBigInt.zero = false ->
+    P (CoqBigInt.pred z) -> P z).
 
-Fixpoint iota_aux (z: CoqBigInt.t) (ACC: Acc lt (Z.to_nat z)) {struct ACC} : 
-  list CoqBigInt.t :=
+Lemma zero_lemma z : CoqBigInt.eqb z CoqBigInt.zero = true ->
+  z = CoqBigInt.zero.
+Proof.
+rewrite CoqBigInt.eqb_eq. auto.
+Qed.
+
+(*The Fixpoint*)
+Fixpoint int_rect_aux (z: CoqBigInt.t) 
+  (ACC: Acc lt (Z.to_nat z)) {struct ACC} : P z :=
   match CoqBigInt.lt z CoqBigInt.zero as b return
-    CoqBigInt.lt z CoqBigInt.zero = b -> list CoqBigInt.t with
-  | true => fun _ => nil
+  CoqBigInt.lt z CoqBigInt.zero = b -> P z with
+  | true => fun Hlt => neg_case _ Hlt
   | false => fun Hlt =>
-    (*TODO: see how extraction works*)
     match CoqBigInt.eqb z CoqBigInt.zero as b return
-      CoqBigInt.eqb z CoqBigInt.zero = b -> list CoqBigInt.t with
-    | true => fun _ => nil
+      CoqBigInt.eqb z CoqBigInt.zero = b -> P z with
+    | true => fun Heq => eq_rect _ P zero_case _ (eq_sym (zero_lemma _ Heq))
     | false => fun Hneq => 
-      z :: iota_aux (CoqBigInt.pred z) (Acc_inv ACC (iota_lemma _ Hneq Hlt))
+      ind_case _ Hneq Hlt (int_rect_aux (CoqBigInt.pred z) 
+        (Acc_inv ACC (int_wf_lemma _ Hneq Hlt)))
     end eq_refl
   end eq_refl.
 
-(*TODO: inline*)
+Definition int_rect (z: CoqBigInt.t) : P z :=
+  int_rect_aux z (Wf_nat.lt_wf _).
+
+End IntFunc.
+
+(*Generate a list from 0 to n-1*)
 Definition iota (z: CoqBigInt.t) : list CoqBigInt.t :=
-  iota_aux z (Wf_nat.lt_wf _).
+  @int_rect (fun _ => list CoqBigInt.t)
+  (*lt*)
+  (fun _ _ => nil)
+  (*zero*)
+  nil
+  (*body*)
+  (fun z _ _ rec => z :: rec) z.
 
 (*[iota] is from n down to 1. We want 0 to n-1*)
 Definition iota2 (z: CoqBigInt.t) : list CoqBigInt.t :=
@@ -117,28 +155,19 @@ Definition string_compare (s1 s2: string) : CoqInt.int :=
   CoqInt.compare_to_int (String.compare s1 s2).
 
 (*nth on lists*)
-
-Fixpoint big_nth_aux {A: Type} (l: list A) (z: CoqBigInt.t) (ACC: Acc lt (Z.to_nat z)) {struct ACC} : 
-  option A :=
-  match CoqBigInt.lt z CoqBigInt.zero as b return
-    CoqBigInt.lt z CoqBigInt.zero = b -> option A with
-  | true => fun _ => None
-  | false => fun Hlt =>
-    (*TODO: see how extraction works*)
-    match CoqBigInt.eqb z CoqBigInt.zero as b return
-      CoqBigInt.eqb z CoqBigInt.zero = b -> option A with
-    | true => fun _ =>
-      match l with
-      | nil => None
-      | x :: _ => Some x
-      end
-    | false => fun Hneq => 
-      match l with
-      | nil => None
-      | _ :: t => big_nth_aux t (CoqBigInt.pred z)  (Acc_inv ACC (iota_lemma _ Hneq Hlt))
-      end
-    end eq_refl
-  end eq_refl.
-
-Definition big_nth {A: Type} (l: list A) (z: CoqBigInt.t) : option A :=
-  big_nth_aux l z (Wf_nat.lt_wf _).
+Definition big_nth {A: Type} (l: list A)  (z: CoqBigInt.t) : option A :=
+  @int_rect (fun _ => list A -> option A)
+  (*lt*)
+  (fun _ _ _ => None)
+  (*zero*)
+  (fun l =>
+    match l with
+    | nil => None
+    | x :: _ => Some x
+    end)
+  (*pos*)
+  (fun _ _ _ rec l =>
+    match l with
+    | nil => None
+    | _ :: t => rec t
+    end) z l.
