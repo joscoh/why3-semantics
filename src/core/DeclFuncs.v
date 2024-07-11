@@ -892,7 +892,7 @@ Definition known_id (kn : known_map) (i: ident) : errorM unit :=
 
 (*Probably don't need merge_known for now*)
 Local Open Scope err_scope.
-Definition known_add_decl (kn0 : known_map) (d: decl) : errorM known_map :=
+Definition known_add_decl_aux (kn0 : known_map) (d: decl) : errorM known_map :=
   let kn := Mid.map (fun _ => d) d.(d_news) in
   (*Instead of union with exceptions, we will take the map
     intersection; if non-empty, we throw the appropriate exception*)
@@ -1168,3 +1168,12 @@ Definition check_positivity (kn : known_map) (d : decl) : errorM unit :=
       iter_err (fun x => iter_err (check_constr (fst x)) (snd x)) tdl
   | _ => err_ret tt
   end.
+
+Definition known_add_decl (kn : known_map) (d : decl) : errorM (decl * Mid.t decl) :=
+  kn <- known_add_decl_aux kn d;;
+  _ <- check_positivity kn d;;
+  _ <- check_foundness kn d;;
+  (*Don't check match for now*)
+  d <- check_termination_strict kn d;;
+  err_ret (d, kn).
+

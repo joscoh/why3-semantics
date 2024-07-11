@@ -926,13 +926,13 @@ let check_positivity kn d = match d.d_node with
       List.iter check_decl tdl
   | _ -> () *)
 
-let known_add_decl kn d =
+(* let known_add_decl kn d =
   let kn = known_add_decl kn d in
   check_positivity kn d;
   check_foundness kn d;
   check_match kn d;
   let d = check_termination_strict kn d in
-  (d, kn)
+  (d, kn) *)
 
 (** Records *)
 
