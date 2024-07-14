@@ -9,6 +9,20 @@ Definition tag (x: t) := x.
 Definition equal := CoqBigInt.eqb.
 End BigIntTag.
 
+(*A version of the Str interface where tag is implemented by
+  an (axiomatized) string hash function. We will never run this,
+  so we axiomatize it. In principle, we could implement it in Coq
+  such that it is equal to OCaml (albeit slower). May do this
+  in future*)
+Axiom string_hash: string -> CoqBigInt.t.
+Module Str <: TaggedType.
+Definition t := string.
+Definition tag (s: string) : CoqBigInt.t := string_hash s.
+Definition equal := String.eqb.
+End Str.
+Module Mstr := extmap.Make Str.
+Module Sstr := extset.MakeOfMap(Mstr).
+
 (*This is much slower than Str (uses positives instead of hash
     function) so we only use it when we need it in
     Coq

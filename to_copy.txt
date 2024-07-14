@@ -15,8 +15,14 @@ coq-util/Monads.ml
 coq-util/Monads.mli
 coq-util/Specif.ml
 coq-util/Specif.mli
+coq-util/countable.ml
+coq-util/countable.mli
+coq-util/strings0.ml
+coq-util/strings0.mli
 coq-util/pmap.ml
 coq-util/pmap.mli
+coq-util/gmap.ml
+coq-util/gmap.mli
 coq-util/Basics.ml
 coq-util/Basics.mli
 coq-util/zmap.ml
@@ -71,3 +77,7 @@ core/term.ml
 core/term.mli
 core/decl.ml
 core/decl.mli
+core/coercion.mli
+core/coercion.ml
+core/theory.mli
+core/theory.ml

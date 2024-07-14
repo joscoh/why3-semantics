@@ -19,15 +19,15 @@ module Hint = Exthtbl.Make(struct
   let hash x = x
 end)
 
-module Str = struct
+(* module Str = struct
   type t = string
   (*TODO bad could overwrite*)
   let tag (s: string) : BigInt.t = (BigInt.of_int (Hashtbl.hash s))
   let equal (s1 : string) (s2: string) : bool = s1 = s2
-end
+end *)
 
-module Mstr = Extmap.Make(Str)
-module Sstr = Extset.MakeOfMap(Mstr)
+(* module Mstr = Extmap.Make(Str)
+module Sstr = Extset.MakeOfMap(Mstr) *)
 module Hstr = Exthtbl.Make(struct
   type t    = String.t
   let hash  = (Hashtbl.hash : string -> int)
@@ -58,13 +58,13 @@ sig
   val equal : t -> t -> bool (*JOSH: added*)
 end
 
-module type OrderedHashedType =
+(* module type OrderedHashedType =
 sig
   type t
   val hash : t -> BigInt.t
   val equal : t -> t -> bool
   val compare : t -> t -> int
-end
+end *)
 
 module TaggedList (X: TaggedType) =
 struct

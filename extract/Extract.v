@@ -1,13 +1,11 @@
-From Src.core Require Import
-IdentDefs TyDefs TyFuncs TermDefs TermFuncs
-DeclDefs DeclFuncs.
+From Src.core Require Import IdentDefs TyDefs TyFuncs TermDefs TermFuncs
+DeclDefs DeclFuncs CoercionDefs TheoryDefs.
 From Src.coqutil Require Import IntFuncs CoqCtr State.
 From Src.util Require Import ConstantDefs NumberFuncs extmap extset hashcons CoqExthtbl.
-(* From stdpp Require Import gmap.  *)
 From Coq Require Extraction.
 From ExtLib Require Import Monads EitherMonad StateMonad.
 
-Extraction Blacklist String List Option Bool.
+Extraction Blacklist String List Option Bool Strings.
 
 Require Import Coq.extraction.ExtrOcamlBasic.
 (*Extract to native OCaml strings*)
@@ -15,11 +13,11 @@ Require Import Coq.extraction.ExtrOcamlNativeString.
 
 Set Extraction KeepSingleton.
 
-(*Extract Inductive bool => "bool" [ "true" "false" ].
+Extract Inductive bool => "bool" [ "true" "false" ].
 Extract Inductive list => "list" [ "[]" "(::)" ].
 Extract Inductive option => "option" [ "Some" "None" ].
 Extract Inductive unit => "unit" [ "()" ].
-Extract Inductive prod => "(*)"  [ "(,)" ].*)
+Extract Inductive prod => "(*)"  [ "(,)" ].
 Extract Inlined Constant Datatypes.fst => "fst".
 Extract Inlined Constant Datatypes.snd => "snd".
 
@@ -167,6 +165,40 @@ Extract Inlined Constant t_ty_of => "t_ty".
 Extract Inlined Constant t_attrs_of => "t_attrs".
 Extract Inlined Constant t_loc_of => "t_loc".
 
+(*Extract namespace to solve positivity issue*)
+Extract Inductive namespace_c => "namespace"
+  ["(fun (x1, x2, x3, x4) -> make_namespace x1 x2 x3 x4)"].
+Extract Inlined Constant make_namespace_c => "make_namespace".
+Extract Inlined Constant ns_ts_of => "ns_ts".
+Extract Inlined Constant ns_ls_of => "ns_ls".
+Extract Inlined Constant ns_pr_of => "ns_pr".
+Extract Inlined Constant ns_ns_of => "ns_ns".
+(*These functions must never be called*)
+Extract Inlined Constant ns_ts1 => "failwith 'ns_ts1'".
+Extract Inlined Constant ns_ls1 => "failwith 'ns_ls1'".
+Extract Inlined Constant ns_pr1 => "failwith 'ns_pr1'".
+Extract Inlined Constant ns_ns1 => "failwith 'ns_ns1'".
+
+(*Extract theory to mixed record-inductive*)
+Extract Inductive theory_c => "tdecl_node theory_o"
+  ["(fun (x1, x2, x3, x4, x5, x6, x7, x8, x9, x10, x11) -> build_theory_o x1 x2 x3 x4 x5 x6 x7 x8 x9 x10 x11)]"].
+(*TODO: fun x => x.th_name? Then don't need to expose functions*)
+Extract Inlined Constant th_name_of => "th_name".
+Extract Inlined Constant th_path_of => "th_path".
+Extract Inlined Constant th_decls_of => "th_decls".
+Extract Inlined Constant th_ranges_of => "th_ranges".
+Extract Inlined Constant th_floats_of => "th_floats".
+Extract Inlined Constant th_crcmap_of => "th_crcmap".
+Extract Inlined Constant th_proved_wf_of => "th_proved_wf".
+Extract Inlined Constant th_export_of => "th_export".
+Extract Inlined Constant th_known_of => "th_known".
+Extract Inlined Constant th_local_of => "th_local".
+Extract Inlined Constant th_used_of => "th_used".
+Extract Inductive tdecl_c => "tdecl_node tdecl_o"
+  ["fun (x1, x2) -> build_tdecl_o x1 x2"].
+Extract Inlined Constant td_node_of => "td_node".
+Extract Inlined Constant td_tag_of => "td_tag".
+
 (*Other exceptions*)
 Extract Inlined Constant BadTypeArity => "BadTypeArity".
 Extract Inlined Constant DuplicateTypeVar => "DuplicateTypeVar".
@@ -218,6 +250,10 @@ Extract Inlined Constant NonFoundedTypeDecl => "NonFoundedTypeDecl".
 
 (*TODO: implement later*)
 Extract Inlined Constant check_float => "Number.check_float".
+(*Not implementing*)
+Extract Inlined Constant pp_formattted_ty => "Pp.formatted".
+(*Hash function, may implement*)
+Extract Inlined Constant CoqWstdlib.string_hash => "(fun s -> (BigInt.of_int (Hashtbl.hash s)))".
 
 Extraction Inline mk_errtype.
 
@@ -230,12 +266,11 @@ Extract Inlined Constant trywith => "(fun x e ret ->
   with | e1 -> if e = e1 then ret () else raise e1)".
 
 (*Unset Extraction Optimize.*)
-
-Separate Extraction CoqUtil.str_to_pos (*TEMP*)
+Separate Extraction (*CoqUtil.str_to_pos*) (*TEMP*)
   CoqExthtbl NumberDefs NumberFuncs hashcons extmap extset CoqHashtbl 
+  CoqWstdlib
   ConstantDefs IdentDefs TyDefs TyFuncs TermDefs TermFuncs
-  DeclDefs DeclFuncs. (*Ty.ty_v_map Ident.*)
+  DeclDefs DeclFuncs CoercionDefs TheoryDefs.
+(* TheoryDefs.*) (*Ty.ty_v_map Ident.*)
 (*Separate Extraction Extmap.
 Separate Extraction Ty.ty Ty.ty_v_map Ident.*)
-
-(*Recursive Extraction Library Ty.*)
