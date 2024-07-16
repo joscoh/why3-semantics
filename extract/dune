@@ -2,10 +2,10 @@
  (prelude Extract)
  (extracted_modules 
   BinNums BinPos Datatypes Specif  List0 String0 Bool0 Common
-  base Basics BinInt strings0 countable zmap pmap gmap fin_maps numbers option0
+  base Basics BinInt strings0 zmap pmap fin_maps numbers option0
   Byte CoqUtil CoqBigInt LocTy ssrbool path Monads
   extmap extset CoqWstdlib CoqWeakhtbl CoqHashtbl hashcons NumberDefs
-  NumberFuncs State CoqCtr
+  NumberFuncs State CoqCtr PmapExtra
   IntFuncs 
   CoqExthtbl
   ConstantDefs

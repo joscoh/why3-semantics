@@ -1,31 +1,32 @@
 (*The Theory API*)
-From stdpp Require Import zmap gmap.  
-Require Import CoqInt CoqWstdlib IdentDefs TyDefs TermDefs DeclDefs DeclFuncs 
-  CoercionDefs.
+From stdpp Require zmap gmap.
+Require Import PmapExtra CoqInt CoqWstdlib IdentDefs TyDefs TermDefs CoercionDefs DeclDefs DeclFuncs.
+Set Bullet Behavior "Strict Subproofs".
 (*We do NOT implement the theory API - we stop
   at the level of creating Tasks and proving transformations
   on Tasks correct. But we need the theory definitions because
   they are part of the Task definition*)
 
-
+Import zmap pmap.
 (** Namespace *)
 
 (*Mstr.t namespace is not strictly positive so we will
   use a manual Zmap*)
-(*Can we play a similar trick?*)
-
+(*Zmap is much easier than gmap, we don't directly
+  need extensionality, and we could prove ourselves
+  if we needed*)
 (*Translate*)
-Definition gmap_to_mstr2 {A: Type} (z: gmap string A) : Mstr.t A :=
-  gmap_fold _ Mstr.add Mstr.empty z. 
-Definition mstr2_to_gmap {A: Type} (m: Mstr.t A) : gmap string A :=
-  Mstr.fold (fun s x (acc : gmap string A) => <[s:=x]>acc) m gmap_empty.
+Definition pmap_to_mstr {A: Type} (z: Pmap (string * A)) : Mstr.t A :=
+  Pmap_fold _ (fun _ y => Mstr.add (fst y) (snd y)) Mstr.empty z.
+Definition mstr_to_pmap {A: Type} (m: Mstr.t A) : Pmap (string * A) :=
+  Mstr.fold (fun s x (acc : Pmap (string * A)) => <[strings.string_to_pos s:=(s, x)]>acc) m Pmap_empty.
 
 Unset Elimination Schemes.
 Inductive namespace_c := mk_namespace_c {
   ns_ts1 : Mstr.t tysymbol_c;   (* type symbols *)
   ns_ls1 : Mstr.t lsymbol;    (* logic symbols *)
   ns_pr1 : Mstr.t prsymbol;   (* propositions *)
-  ns_ns1 : gmap string namespace_c;  (* inner namespaces *)
+  ns_ns1 : Pmap (string * namespace_c);  (* inner namespaces *)
 }.
 
 (*OCaml version*)
@@ -49,14 +50,17 @@ Definition make_namespace_c (ns_ts: Mstr.t tysymbol_c)
   (ns_ls: Mstr.t lsymbol) (ns_pr: Mstr.t prsymbol)
   (ns_ns: Mstr.t namespace_c): namespace_c :=
   {| ns_ts1 := ns_ts; ns_ls1 := ns_ls; ns_pr1 := ns_pr; ns_ns1 := 
-    mstr2_to_gmap ns_ns |}.
+    mstr_to_pmap ns_ns |}.
 
 Definition ns_ts_of (n: namespace_c) : Mstr.t tysymbol_c :=
   ns_ts1 n.
 Definition ns_ls_of (n: namespace_c) : Mstr.t lsymbol := ns_ls1 n.
 Definition ns_pr_of (n: namespace_c) : Mstr.t prsymbol := ns_pr1 n.
 Definition ns_ns_of (n: namespace_c) : Mstr.t namespace_c :=
-  gmap_to_mstr2 (ns_ns1 n).
+  pmap_to_mstr (ns_ns1 n).
+(*For inductive definitions*)
+Definition ns_ns_alt (n: namespace_c) :=
+  ns_ns1 n.
 
 (** Meta properties *)
 
@@ -151,9 +155,12 @@ with tdecl_node :=
   | Meta : meta -> list meta_arg -> tdecl_node.
 
 (*And a utility to ensure clients can have the same behavior*)
-Definition proj_zmap_to_map {A: Type} (z: Zmap (tysymbol_c * A)) : 
+Definition zmap_to_mts {A: Type} (z: Zmap (tysymbol_c * A)) : 
   Mts.t A :=
   Zmap_fold _ (fun _ y acc => Mts.add (fst y) (snd y) acc) Mts.empty z.
+
+Definition mts_to_zmap {A: Type} (m: Mts.t A) : Zmap (tysymbol_c * A) :=
+  Mts.fold (fun t y (acc : Zmap (tysymbol_c * A)) => <[(ts_name_of t).(id_tag):=(t, y)]>acc) m Zmap_empty.
 
 Set Elimination Schemes.
 
@@ -181,13 +188,26 @@ Definition th_decls_of (th: theory_c) : list tdecl_c :=
 
 Definition th_ranges_of (th: theory_c) : Mts.t tdecl_c :=
   match th with
-  | mk_theory_c _ _ _ r _ _ _ _ _ _ _ => proj_zmap_to_map r
+  | mk_theory_c _ _ _ r _ _ _ _ _ _ _ => zmap_to_mts r
   end.
 
 Definition th_floats_of (th: theory_c) : Mts.t tdecl_c :=
   match th with
-  | mk_theory_c _ _ _ _ f _ _ _ _ _ _ => proj_zmap_to_map f
+  | mk_theory_c _ _ _ _ f _ _ _ _ _ _ => zmap_to_mts f
   end.
+
+(*For recursive definitions in Coq - extract to
+  (mts_to_zmap) - otherwise Coq cannot tell struct decrease*)
+Definition th_ranges_alt (th: theory_c) :=
+  match th with
+  | mk_theory_c _ _ _ r _ _ _ _ _ _ _ => r
+  end.
+
+Definition th_floats_alt (th: theory_c):=
+  match th with
+  | mk_theory_c _ _ _ _ f _ _ _ _ _ _ => f
+  end.
+
 
 Definition th_crcmap_of (th: theory_c) : CoercionDefs.t :=
   match th with
@@ -248,3 +268,280 @@ Definition build_theory_o (th_name : ident) (th_path : list string)
     th_local := th_local; th_used := th_used |}.
 
 End ExtractInterface.
+
+(** Equality *)
+
+(*Needed [gmap_eqb] because we do not yet have EqDecision for this type*)
+Fixpoint namespace_eqb (n1 n2: namespace_c) {struct n1} : bool :=
+  Mstr.equal tysymbol_eqb (ns_ts_of n1) (ns_ts_of n2) &&
+  Mstr.equal lsymbol_eqb (ns_ls_of n1) (ns_ls_of n2) &&
+  Mstr.equal prsymbol_eqb (ns_pr_of n1) (ns_pr_of n2) &&
+  pmap_eqb (tuple_eqb String.eqb namespace_eqb) (ns_ns_alt n1) (ns_ns_alt n2) .
+
+Scheme Equality for meta_arg_type.
+Definition meta_arg_type_eqb := meta_arg_type_beq.
+
+Definition meta_arg_eqb (m1 m2: meta_arg) : bool :=
+  match m1, m2 with
+  | MAty t1, MAty t2 => ty_eqb t1 t2
+  | MAts t1, MAts t2 => tysymbol_eqb t1 t2
+  | MAls l1, MAls l2 => lsymbol_eqb l1 l2
+  | MApr p1, MApr p2 => prsymbol_eqb p1 p2
+  | MAstr s1, MAstr s2 => String.eqb s1 s2
+  | MAint i1, MAint i2 => CoqInt.int_eqb i1 i2
+  | MAid i1, MAid i2 => ident_eqb i1 i2
+  | _, _ => false
+  end.
+
+(*TODO: ensure this is sound*)
+Axiom pp_formatted_ty_eqb : pp_formattted_ty -> pp_formattted_ty -> bool.
+Axiom pp_formatted_ty_eqb_eq: forall x y,
+  x = y <-> pp_formatted_ty_eqb x y.
+
+Definition meta_eqb (m1 m2: meta) : bool :=
+  String.eqb m1.(meta_name) m2.(meta_name) &&
+  list_eqb meta_arg_type_eqb m1.(meta_type) m2.(meta_type) &&
+  Bool.eqb m1.(meta_excl) m2.(meta_excl) &&
+  pp_formatted_ty_eqb m1.(meta_desc) m2.(meta_desc) &&
+  CoqBigInt.eqb m1.(meta_tag) m2.(meta_tag).
+
+Definition symbol_map_eqb (s1 s2: symbol_map) : bool :=
+  Mts.equal ty_eqb s1.(sm_ty) s2.(sm_ty) &&
+  Mts.equal tysymbol_eqb s1.(sm_ts) s2.(sm_ts) &&
+  Mls.equal lsymbol_eqb s1.(sm_ls) s2.(sm_ls) &&
+  Mpr.equal prsymbol_eqb s1.(sm_pr) s2.(sm_pr).
+
+(*Equality for tdecl*)
+
+(*This is very annoying: cannot recurse under Mts
+  so we need a size param
+  TODO: what about zmap?*)
+
+Fixpoint theory_eqb (t1 t2: theory_c) {struct t1} : bool :=
+  ident_eqb (th_name_of t1) (th_name_of t2) &&
+  list_eqb String.eqb (th_path_of t1) (th_path_of t2) &&
+  list_eqb tdecl_eqb (th_decls_of t1) (th_decls_of t2) &&
+  zmap_eqb (tuple_eqb tysymbol_eqb tdecl_eqb) (th_ranges_alt t1) (th_ranges_alt t2) &&
+  zmap_eqb (tuple_eqb tysymbol_eqb tdecl_eqb) (th_floats_alt t1) (th_floats_alt t2) &&
+  CoercionDefs.t_eqb (th_crcmap_of t1) (th_crcmap_of t2) &&
+  Mls.equal (tuple_eqb prsymbol_eqb lsymbol_eqb)
+    (th_proved_wf_of t1) (th_proved_wf_of t2) &&
+  namespace_eqb (th_export_of t1) (th_export_of t2) &&
+  Mid.equal decl_eqb (th_known_of t1) (th_known_of t2) &&
+  Sid.equal (th_local_of t1) (th_local_of t2) &&
+  Sid.equal (th_used_of t1) (th_used_of t2)
+with tdecl_eqb (t1 t2: tdecl_c) {struct t1} : bool :=
+  tdecl_node_eqb (td_node_of t1) (td_node_of t2) &&
+  CoqBigInt.eqb (td_tag_of t1) (td_tag_of t2)  
+with tdecl_node_eqb (t1 t2: tdecl_node) {struct t1} : bool :=
+  match t1, t2 with
+  | Decl d1, Decl d2 => decl_eqb d1 d2
+  | Use t1, Use t2 => theory_eqb t1 t2
+  | Clone t1 s1, Clone t2 s2 => theory_eqb t1 t2 &&
+    symbol_map_eqb s1 s2  
+  | Meta m1 a1, Meta m2 a2 => meta_eqb m1 m2 &&
+    list_eqb meta_arg_eqb a1 a2
+  | _, _ => false
+  end.
+
+(*Proofs*)
+
+Definition prop_snd {A B: Type} {P: B -> Prop} : A * B -> Prop :=
+  fun x => P (snd x).
+
+Definition all_snd {A B: Type} {P: B -> Prop} (f: forall x, P x):
+  forall (x: A * B), prop_snd x :=
+  fun x => f (snd x).
+
+(*TODO: move*)
+Lemma list_eqb_Forall {A: Type} {eqb: A -> A -> bool} {l1: list A}
+  (Hall: Forall (fun x => forall y, x = y <-> eqb x y) l1) l2:
+  l1 = l2 <-> list_eqb eqb l1 l2.
+Proof.
+  revert l2. induction l1 as [| h1 t1 IH]; intros [| h2 t2]; simpl;
+  try solve[solve_eqb_eq].
+  rewrite andb_true, <- (Forall_inv Hall h2), <- IH;
+  [solve_eqb_eq |].
+  apply Forall_inv_tail in Hall; auto.
+Qed.
+
+(*Induction Principle for Namespace*)
+Section NamespaceInd.
+Variable (P: namespace_c -> Prop).
+Variable (Hname: forall n, pmap_Forall (@prop_snd _ _ P) 
+  (ns_ns_alt n) -> P n).
+
+Fixpoint namespace_ind (n: namespace_c) : P n :=
+  Hname n (mk_pmap_Forall (all_snd namespace_ind) (ns_ns_alt n)).
+
+End NamespaceInd.
+
+(*Induction Principle for Theories*)
+Section TheoryInd.
+(* Definition zmap_forall {A: Type} (p: A -> Prop) (z: Zmap A) : Prop :=
+  Zmap_fold _ (fun _ x y => p x /\ y) True z. *)
+
+Variable (P: theory_c -> Prop) (P1: tdecl_c -> Prop) (P2: tdecl_node -> Prop).
+Variable (Htheory: forall (t: theory_c),
+  Forall P1 (th_decls_of t) ->
+  Zmap_Forall (fun x => P1 (snd x)) (th_ranges_alt t) ->
+  Zmap_Forall (fun x => P1 (snd x)) (th_floats_alt t) ->
+  P t).
+Variable (Htdecl: forall (t: tdecl_c),
+  P2 (td_node_of t) -> P1 t).
+Variable (Hdecl: forall d, P2 (Decl d)).
+Variable (Huse: forall t, P t -> P2 (Use t)).
+Variable (Hclone: forall t1 s1, P t1 -> P2 (Clone t1 s1)).
+Variable (Hmeta: forall m a, P2 (Meta m a)).
+
+(*The induction principle is actually easy with all this*)
+Fixpoint theory_ind (t: theory_c) : P t :=
+  Htheory t (mk_Forall tdecl_ind (th_decls_of t))
+    (mk_Zmap_Forall (all_snd tdecl_ind) (th_ranges_alt t))
+    (mk_Zmap_Forall (all_snd tdecl_ind) (th_floats_alt t))
+with tdecl_ind (t: tdecl_c) : P1 t :=
+  Htdecl t (tdecl_node_ind (td_node_of t))
+with tdecl_node_ind (t: tdecl_node) : P2 t :=
+  match t with
+  | Decl d => Hdecl d
+  | Use th => Huse _ (theory_ind th)
+  | Clone th syms => Hclone th syms (theory_ind th)
+  | Meta m margs => Hmeta m margs
+  end.
+
+Definition theory_mut_ind:
+  (forall t, P t) /\
+  (forall t, P1 t) /\
+  (forall t, P2 t) :=
+  conj (fun t => theory_ind t)
+    (conj (fun t => tdecl_ind t)
+      (fun t => tdecl_node_ind t)).
+
+End TheoryInd.
+
+Lemma string_eqb_eq s1 s2:
+  s1 = s2 <-> String.eqb s1 s2.
+Proof.
+  rewrite <- String.eqb_eq. reflexivity.
+Qed.
+
+(*Now prove equality*)
+Lemma namespace_eqb_eq (n1 n2: namespace_c) :
+  n1 = n2 <-> namespace_eqb n1 n2.
+Proof.
+  revert n2.
+  apply namespace_ind with (P:=fun n1 => forall n2,
+    n1 = n2 <-> namespace_eqb n1 n2).
+  clear. intros [t1 l1 p1 n1] Hall [t2 l2 p2 n2];
+  simpl in *.
+  rewrite !andb_true.
+  rewrite <- !(Mstr.eqb_eq _ prsymbol_eqb_eq string_eqb_eq),
+  <- (Mstr.eqb_eq _ tysymbol_eqb_eq string_eqb_eq),
+  <- (Mstr.eqb_eq _ lsymbol_eqb_eq string_eqb_eq).
+  rewrite <- pmap_eqb_Forall; [solve_eqb_eq|].
+  eapply pmap_Forall_impl; [apply Hall|].
+  intros.
+  destruct x as [s1 n1']; destruct y as [s2 n2'];
+  unfold tuple_eqb; simpl.
+  rewrite andb_true, <- string_eqb_eq, <- (H0 n2').
+  simpl. solve_eqb_eq.
+Qed.
+
+Lemma symbol_map_eqb_eq s1 s2:
+  s1 = s2 <-> symbol_map_eqb s1 s2.
+Proof.
+  destruct s1 as [t1 ty1 l1 p1]; destruct s2 as [t2 ty2 l2 p2];
+  unfold symbol_map_eqb; simpl.
+  rewrite !andb_true, <- (Mts.eqb_eq _ ty_eqb_eq tysymbol_eqb_eq),
+  <- (Mts.eqb_eq _ tysymbol_eqb_eq tysymbol_eqb_eq),
+  <- (Mls.eqb_eq _ lsymbol_eqb_eq lsymbol_eqb_eq),
+  <- (Mpr.eqb_eq _ prsymbol_eqb_eq prsymbol_eqb_eq).
+  solve_eqb_eq.
+Qed.
+
+Lemma meta_arg_type_eqb_eq m1 m2:
+  m1 = m2 <-> meta_arg_type_eqb m1 m2.
+Proof.
+  split. apply internal_meta_arg_type_dec_lb.
+  apply internal_meta_arg_type_dec_bl.
+Qed.
+
+Lemma meta_eqb_eq m1 m2:
+  m1 = m2 <-> meta_eqb m1 m2.
+Proof.
+  destruct m1; destruct m2; unfold meta_eqb; simpl.
+  rewrite !andb_true, <- string_eqb_eq, <-
+  (list_eqb_eq meta_arg_type_eqb_eq),
+  <- bool_eqb_eq, <- pp_formatted_ty_eqb_eq,
+  <- CoqBigInt.eqb_eq. solve_eqb_eq.
+Qed.
+
+Lemma meta_arg_eqb_eq a1 a2:
+  a1 = a2 <-> meta_arg_eqb a1 a2.
+Proof.
+  destruct a1; destruct a2; simpl; try solve[solve_eqb_eq];
+  [rewrite <- ty_eqb_eq | rewrite <- tysymbol_eqb_eq |
+   rewrite <- lsymbol_eqb_eq | rewrite <- prsymbol_eqb_eq |
+   rewrite <- string_eqb_eq | unfold is_true; rewrite <- CoqInt.int_eqb_eq |
+   rewrite <- ident_eqb_eq]; solve_eqb_eq.
+Qed.
+
+Lemma theory_eqb_eq_aux:
+  (forall t1 t2, t1 = t2 <-> theory_eqb t1 t2) /\
+  (forall t1 t2, t1 = t2 <-> tdecl_eqb t1 t2) /\
+  (forall t1 t2, t1 = t2 <-> tdecl_node_eqb t1 t2).
+Proof.
+  apply theory_mut_ind.
+  - intros t1 Hdecs Hranges Hfloats t2.
+    destruct t1; destruct t2; simpl in *.
+    rewrite !andb_true, <- ident_eqb_eq, <-
+    (list_eqb_eq (fun x y => iff_sym (String.eqb_eq x y))).
+    rewrite <- (list_eqb_Forall Hdecs).
+    assert (Hforall2: forall z,
+    Zmap_Forall (fun x => forall y, x.2 = y <-> tdecl_eqb x.2 y) z ->
+    Zmap_Forall (fun x => forall y,
+      x = y <-> tuple_eqb tysymbol_eqb tdecl_eqb x y) z
+    ).
+    {
+      intros zm Hall. eapply Zmap_Forall_impl. apply Hall. simpl.
+      intros.
+      destruct x as [ts1 td1]; destruct y as [ts2 td2];
+      unfold tuple_eqb; simpl in *.
+      rewrite andb_true, <- tysymbol_eqb_eq, <- H0. solve_eqb_eq.
+    }
+    rewrite <- (zmap_eqb_Forall (Hforall2 _ Hranges)), 
+    <- (zmap_eqb_Forall (Hforall2 _ Hfloats)), <- CoercionDefs.t_eqb_eq,
+    <- (Mls.eqb_eq _ (tuple_eqb_spec _ _ prsymbol_eqb_eq lsymbol_eqb_eq) lsymbol_eqb_eq),
+    <- namespace_eqb_eq, <- (Mid.eqb_eq _ decl_eqb_eq ident_eqb_eq),
+    <- !(Sid.equal_eq ident_eqb_eq). clear.
+    solve_eqb_eq.
+  - intros [x1 y1] IH [x2 y2]; simpl in *.
+    rewrite andb_true, <- IH, <- CoqBigInt.eqb_eq.
+    solve_eqb_eq.
+  - intros d t2; destruct t2; try solve[solve_eqb_eq].
+    simpl. rewrite <- decl_eqb_eq. solve_eqb_eq.
+  - intros th IH t2. destruct t2; try solve[solve_eqb_eq].
+    simpl. rewrite <- IH. solve_eqb_eq.
+  - intros th1 s1 IH t2. destruct t2; try solve[solve_eqb_eq].
+    simpl. rewrite andb_true, <- IH, <- symbol_map_eqb_eq.
+    solve_eqb_eq.
+  - intros m a t2; destruct t2; try solve[solve_eqb_eq].
+    simpl. rewrite andb_true, <- meta_eqb_eq,
+    <- (list_eqb_eq meta_arg_eqb_eq). solve_eqb_eq.
+Qed.
+
+Definition theory_eqb_eq := proj1 theory_eqb_eq_aux.
+Definition tdecl_eqb_eq := proj1 (proj2 theory_eqb_eq_aux).
+Definition tdecl_node_eqb_eq := proj2 (proj2 theory_eqb_eq_aux).
+
+
+Module TdeclTag <: TaggedType.
+Definition t := tdecl_c.
+Definition tag td := td_tag_of td.
+Definition equal := tdecl_eqb.
+End TdeclTag.
+
+Module Tdecl := MakeMS TdeclTag.
+
+Module Stdecl := Tdecl.S.
+Module Mtdecl := Tdecl.M.

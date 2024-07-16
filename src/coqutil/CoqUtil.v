@@ -154,8 +154,18 @@ End StrPos.
 
 Ltac solve_eqb_eq :=
   solve[let Heq := fresh "Heq" in
-  split; intros Heq; inversion Heq; destruct_all; subst;
-  auto; try discriminate; contradiction].
+  split; intros Heq; 
+  ((progress (inversion Heq; destruct_all; subst))+
+  (*TODO: why does inversion fail sometimes?*)
+  (destruct Heq; subst) +
+  (idtac)); 
+  (* inversion Heq; destruct_all; subst; *)
+  (*Solve goals*)
+  auto; 
+  try solve[split_all; auto];
+  try discriminate; 
+  try solve[ f_equal; auto];
+  contradiction].
 
 (*TODO: move from Types to Common*)
 (*TODO: do we need this and [lists_equal] below?*)

@@ -4,93 +4,10 @@
 Require Export Monads.
 Require CoqBigInt.
 From stdpp Require Import pmap zmap.  
+Require Import PmapExtra.
 (*For sorting*)
 Require mathcomp.ssreflect.path.
 Set Bullet Behavior "Strict Subproofs".
-
-Section PmapEq.
-Context {A: Type} (eqb : A -> A -> bool).
-Fixpoint pmap_ne_eqb (p1 p2: Pmap_ne A) : bool :=
-  match p1, p2 with
-  | PNode001 p1, PNode001 p2 => pmap_ne_eqb p1 p2
-  | PNode010 x1, PNode010 x2 => eqb x1 x2
-  | PNode011 x1 p1, PNode011 x2 p2 => eqb x1 x2 && pmap_ne_eqb p1 p2
-  | PNode100 p1, PNode100 p2 => pmap_ne_eqb p1 p2
-  | PNode101 p1 p2, PNode101 p3 p4 => pmap_ne_eqb p1 p3 && pmap_ne_eqb p2 p4
-  | PNode110 p1 x1, PNode110 p2 x2 => eqb x1 x2 && pmap_ne_eqb p1 p2
-  | PNode111 p1 x1 p2, PNode111 p3 x2 p4 => eqb x1 x2 && pmap_ne_eqb p1 p3 && pmap_ne_eqb p2 p4
-  | _, _ => false
-  end.
-
-Definition pmap_eqb (p1 p2: Pmap A) : bool :=
-  match p1, p2 with
-  | PEmpty, PEmpty => true
-  | PNodes p1, PNodes p2 => pmap_ne_eqb p1 p2
-  | _, _ => false
-  end.
-
-(*Now we prove equivalence*)
-Lemma pmap_ne_eqb_spec_aux (Heqb: forall (x y: A), x = y <-> eqb x y = true)
-  (p1 p2: Pmap_ne A) (s: forall x y, {x = y} + {x <> y}) (Hs:
-    forall x y, proj_sumbool _ _ (s x y) = eqb x y):
-  pmap_ne_eqb p1 p2 = @Pmap_ne_eq_dec _ s p1 p2.
-Proof.
-  generalize dependent s.
-  revert p2.
-  induction p1; simpl; intros; destruct p2; auto;
-  unfold sumbool_rec, sumbool_rect, decide_rel;
-  try (rewrite IHp1 with (s:=s));
-  try (rewrite <- Hs); 
-  try (rewrite IHp1_1 with (s:=s));
-  try (rewrite IHp1_2 with (s:=s));
-  auto;
-  try progress(destruct (Pmap_ne_eq_dec p1 p2)); auto;
-  try progress(destruct (s a a0)); auto;
-  try progress(destruct (Pmap_ne_eq_dec p1_1 p2_1)); auto;
-  destruct(Pmap_ne_eq_dec p1_2 p2_2); reflexivity.
-Qed.
-
-Lemma pmap_ne_eqb_spec (Heqb: forall (x y: A), x = y <-> eqb x y = true)
-  (p1 p2: Pmap_ne A):
-  pmap_ne_eqb p1 p2 = @Pmap_ne_eq_dec _ (dec_from_eqb eqb Heqb) p1 p2.
-Proof.
-  apply pmap_ne_eqb_spec_aux, dec_from_eqb_spec; auto.
-Qed.
-
-Lemma pmap_eqb_spec (Heqb: forall (x y: A), x = y <-> eqb x y = true)
-  (p1 p2: Pmap A):
-  pmap_eqb p1 p2 = @Pmap_eq_dec _ (dec_from_eqb eqb Heqb) p1 p2.
-Proof.
-  unfold pmap_eqb, Pmap_eq_dec.
-  destruct p1; destruct p2; auto.
-  unfold sumbool_rec, sumbool_rect, decide_rel.
-  rewrite pmap_ne_eqb_spec_aux with (s:=(dec_from_eqb eqb Heqb)); auto.
-  - destruct (Pmap_ne_eq_dec p p0); reflexivity.
-  - apply dec_from_eqb_spec.
-Qed.
-
-Definition zmap_eqb (z1 z2: Zmap A) : bool :=
-  option_eqb eqb (Zmap_0 z1) (Zmap_0 z2) &&
-  pmap_eqb (Zmap_pos z1) (Zmap_pos z2) &&
-  pmap_eqb (Zmap_neg z1) (Zmap_neg z2).
-
-Lemma zmap_eqb_spec (Heqb: forall (x y: A), x = y <-> eqb x y = true)
-  (z1 z2: Zmap A):
-  zmap_eqb z1 z2 = @Zmap_eq_dec _ (dec_from_eqb eqb Heqb) z1 z2.
-Proof.
-  unfold zmap_eqb, Zmap_eq_dec.
-  destruct z1 as [z01 zp1 zn1].
-  destruct z2 as [z02 zp2 zn2].
-  simpl.
-  unfold decide, decide_rel.
-  rewrite option_eqb_spec with (Heqb:=Heqb).
-  destruct (option_eq_dec z01 z02); simpl; auto.
-  rewrite !pmap_eqb_spec with (Heqb:=Heqb).
-  destruct (Pmap_eq_dec zp1 zp2); simpl; auto.
-  destruct (Pmap_eq_dec zn1 zn2); reflexivity.
-Qed.
-
-End PmapEq.
 
 (*Sorted lists*)
 (*Compare list (A * B), where sorted by A already*)

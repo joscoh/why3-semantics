@@ -173,6 +173,7 @@ Extract Inlined Constant ns_ts_of => "ns_ts".
 Extract Inlined Constant ns_ls_of => "ns_ls".
 Extract Inlined Constant ns_pr_of => "ns_pr".
 Extract Inlined Constant ns_ns_of => "ns_ns".
+Extract Inlined Constant ns_ns_alt => "(fun x -> mstr_to_pmap (ns_ns x))".
 (*These functions must never be called*)
 Extract Inlined Constant ns_ts1 => "failwith 'ns_ts1'".
 Extract Inlined Constant ns_ls1 => "failwith 'ns_ls1'".
@@ -188,6 +189,8 @@ Extract Inlined Constant th_path_of => "th_path".
 Extract Inlined Constant th_decls_of => "th_decls".
 Extract Inlined Constant th_ranges_of => "th_ranges".
 Extract Inlined Constant th_floats_of => "th_floats".
+Extract Inlined Constant th_ranges_alt => "(fun x -> mts_to_zmap (th_ranges x))".
+Extract Inlined Constant th_floats_alt => "(fun x -> mts_to_zmap (th_floats x))".
 Extract Inlined Constant th_crcmap_of => "th_crcmap".
 Extract Inlined Constant th_proved_wf_of => "th_proved_wf".
 Extract Inlined Constant th_export_of => "th_export".
