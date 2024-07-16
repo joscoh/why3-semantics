@@ -19,16 +19,16 @@ Definition t := Mts.t (Mts.t coercion).
 (* Decidable Equality *)
 Fixpoint coercion_kind_eqb (c1 c2: coercion_kind) : bool :=
   match c1, c2 with
-  | CRCleaf l1, CRCleaf l2 => lsymbol_eqb l1 l2
+  | CRCleaf l1, CRCleaf l2 => ls_equal l1 l2
   | CRCcomp c1 c2, CRCcomp c3 c4 => coercion_kind_eqb c1 c3 && coercion_kind_eqb c2 c4
   | _, _ => false
   end.
 
 Definition coercion_eqb (c1 c2: coercion) : bool :=
   coercion_kind_eqb c1.(crc_kind) c2.(crc_kind) &&
-  tysymbol_eqb c1.(crc_src_ts) c2.(crc_src_ts) &&
+  ts_equal c1.(crc_src_ts) c2.(crc_src_ts) &&
   list_eqb ty_eqb c1.(crc_src_tl) c2.(crc_src_tl) &&
-  tysymbol_eqb c1.(crc_tar_ts) c2.(crc_tar_ts) &&
+  ts_equal c1.(crc_tar_ts) c2.(crc_tar_ts) &&
   list_eqb ty_eqb c1.(crc_tar_tl) c2.(crc_tar_tl).
 
 Definition t_eqb (t1 t2: t) : bool :=

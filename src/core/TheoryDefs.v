@@ -160,7 +160,8 @@ Definition zmap_to_mts {A: Type} (z: Zmap (tysymbol_c * A)) :
   Zmap_fold _ (fun _ y acc => Mts.add (fst y) (snd y) acc) Mts.empty z.
 
 Definition mts_to_zmap {A: Type} (m: Mts.t A) : Zmap (tysymbol_c * A) :=
-  Mts.fold (fun t y (acc : Zmap (tysymbol_c * A)) => <[(ts_name_of t).(id_tag):=(t, y)]>acc) m Zmap_empty.
+  Mts.fold (fun t y (acc : Zmap (tysymbol_c * A)) => 
+    <[CoqBigInt.to_Z (CoqWeakhtbl.tag_hash (ts_name_of t).(id_tag)):=(t, y)]>acc) m Zmap_empty.
 
 Set Elimination Schemes.
 
@@ -273,9 +274,9 @@ End ExtractInterface.
 
 (*Needed [gmap_eqb] because we do not yet have EqDecision for this type*)
 Fixpoint namespace_eqb (n1 n2: namespace_c) {struct n1} : bool :=
-  Mstr.equal tysymbol_eqb (ns_ts_of n1) (ns_ts_of n2) &&
-  Mstr.equal lsymbol_eqb (ns_ls_of n1) (ns_ls_of n2) &&
-  Mstr.equal prsymbol_eqb (ns_pr_of n1) (ns_pr_of n2) &&
+  Mstr.equal ts_equal (ns_ts_of n1) (ns_ts_of n2) &&
+  Mstr.equal ls_equal (ns_ls_of n1) (ns_ls_of n2) &&
+  Mstr.equal pr_equal (ns_pr_of n1) (ns_pr_of n2) &&
   pmap_eqb (tuple_eqb String.eqb namespace_eqb) (ns_ns_alt n1) (ns_ns_alt n2) .
 
 Scheme Equality for meta_arg_type.
@@ -284,12 +285,12 @@ Definition meta_arg_type_eqb := meta_arg_type_beq.
 Definition meta_arg_eqb (m1 m2: meta_arg) : bool :=
   match m1, m2 with
   | MAty t1, MAty t2 => ty_eqb t1 t2
-  | MAts t1, MAts t2 => tysymbol_eqb t1 t2
-  | MAls l1, MAls l2 => lsymbol_eqb l1 l2
-  | MApr p1, MApr p2 => prsymbol_eqb p1 p2
+  | MAts t1, MAts t2 => ts_equal t1 t2
+  | MAls l1, MAls l2 => ls_equal l1 l2
+  | MApr p1, MApr p2 => pr_equal p1 p2
   | MAstr s1, MAstr s2 => String.eqb s1 s2
   | MAint i1, MAint i2 => CoqInt.int_eqb i1 i2
-  | MAid i1, MAid i2 => ident_eqb i1 i2
+  | MAid i1, MAid i2 => id_equal i1 i2
   | _, _ => false
   end.
 
@@ -307,9 +308,9 @@ Definition meta_eqb (m1 m2: meta) : bool :=
 
 Definition symbol_map_eqb (s1 s2: symbol_map) : bool :=
   Mts.equal ty_eqb s1.(sm_ty) s2.(sm_ty) &&
-  Mts.equal tysymbol_eqb s1.(sm_ts) s2.(sm_ts) &&
-  Mls.equal lsymbol_eqb s1.(sm_ls) s2.(sm_ls) &&
-  Mpr.equal prsymbol_eqb s1.(sm_pr) s2.(sm_pr).
+  Mts.equal ts_equal s1.(sm_ts) s2.(sm_ts) &&
+  Mls.equal ls_equal s1.(sm_ls) s2.(sm_ls) &&
+  Mpr.equal pr_equal s1.(sm_pr) s2.(sm_pr).
 
 (*Equality for tdecl*)
 
@@ -318,16 +319,16 @@ Definition symbol_map_eqb (s1 s2: symbol_map) : bool :=
   TODO: what about zmap?*)
 
 Fixpoint theory_eqb (t1 t2: theory_c) {struct t1} : bool :=
-  ident_eqb (th_name_of t1) (th_name_of t2) &&
+  id_equal (th_name_of t1) (th_name_of t2) &&
   list_eqb String.eqb (th_path_of t1) (th_path_of t2) &&
   list_eqb tdecl_eqb (th_decls_of t1) (th_decls_of t2) &&
-  zmap_eqb (tuple_eqb tysymbol_eqb tdecl_eqb) (th_ranges_alt t1) (th_ranges_alt t2) &&
-  zmap_eqb (tuple_eqb tysymbol_eqb tdecl_eqb) (th_floats_alt t1) (th_floats_alt t2) &&
+  zmap_eqb (tuple_eqb ts_equal tdecl_eqb) (th_ranges_alt t1) (th_ranges_alt t2) &&
+  zmap_eqb (tuple_eqb ts_equal tdecl_eqb) (th_floats_alt t1) (th_floats_alt t2) &&
   CoercionDefs.t_eqb (th_crcmap_of t1) (th_crcmap_of t2) &&
-  Mls.equal (tuple_eqb prsymbol_eqb lsymbol_eqb)
+  Mls.equal (tuple_eqb pr_equal ls_equal)
     (th_proved_wf_of t1) (th_proved_wf_of t2) &&
   namespace_eqb (th_export_of t1) (th_export_of t2) &&
-  Mid.equal decl_eqb (th_known_of t1) (th_known_of t2) &&
+  Mid.equal d_equal (th_known_of t1) (th_known_of t2) &&
   Sid.equal (th_local_of t1) (th_local_of t2) &&
   Sid.equal (th_used_of t1) (th_used_of t2)
 with tdecl_eqb (t1 t2: tdecl_c) {struct t1} : bool :=
@@ -335,7 +336,7 @@ with tdecl_eqb (t1 t2: tdecl_c) {struct t1} : bool :=
   CoqBigInt.eqb (td_tag_of t1) (td_tag_of t2)  
 with tdecl_node_eqb (t1 t2: tdecl_node) {struct t1} : bool :=
   match t1, t2 with
-  | Decl d1, Decl d2 => decl_eqb d1 d2
+  | Decl d1, Decl d2 => d_equal d1 d2
   | Use t1, Use t2 => theory_eqb t1 t2
   | Clone t1 s1, Clone t2 s2 => theory_eqb t1 t2 &&
     symbol_map_eqb s1 s2  
@@ -541,7 +542,7 @@ Definition tag td := td_tag_of td.
 Definition equal := tdecl_eqb.
 End TdeclTag.
 
-Module Tdecl := MakeMS TdeclTag.
+Module Tdecl1 := MakeMS TdeclTag.
 
-Module Stdecl := Tdecl.S.
-Module Mtdecl := Tdecl.M.
+Module Stdecl1 := Tdecl1.S.
+Module Mtdecl1 := Tdecl1.M.

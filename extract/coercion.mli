@@ -17,6 +17,9 @@ open Term
 type t
 (** a set of coercions *)
 
+(*JOSH*)
+val t_eqb: t -> t -> bool
+
 val empty: t
 
 val add: t -> lsymbol -> t

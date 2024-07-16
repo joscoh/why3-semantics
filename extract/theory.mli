@@ -161,6 +161,8 @@ and symbol_map = {
 
 module Mtdecl : Extmap.S with type key = tdecl
 module Stdecl : Extset.S with module M = Mtdecl
+module Mtdecl1 : Extmap.S with type key = tdecl
+module Stdecl1 : Extset.S with module M = Mtdecl1
 module Htdecl : Exthtbl.S with type key = tdecl
 
 val td_equal : tdecl -> tdecl -> bool

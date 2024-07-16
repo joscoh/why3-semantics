@@ -15,14 +15,10 @@ coq-util/Monads.ml
 coq-util/Monads.mli
 coq-util/Specif.ml
 coq-util/Specif.mli
-coq-util/countable.ml
-coq-util/countable.mli
 coq-util/strings0.ml
 coq-util/strings0.mli
 coq-util/pmap.ml
 coq-util/pmap.mli
-coq-util/gmap.ml
-coq-util/gmap.mli
 coq-util/Basics.ml
 coq-util/Basics.mli
 coq-util/zmap.ml
@@ -41,6 +37,8 @@ coq-util/Common.ml
 coq-util/Common.mli
 coq-util/CoqUtil.ml
 coq-util/CoqUtil.mli
+coq-util/PmapExtra.ml
+coq-util/PmapExtra.mli
 coq-util/CoqHashtbl.ml
 coq-util/CoqHashtbl.mli
 coq-util/path.ml

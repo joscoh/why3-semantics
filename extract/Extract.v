@@ -255,6 +255,7 @@ Extract Inlined Constant NonFoundedTypeDecl => "NonFoundedTypeDecl".
 Extract Inlined Constant check_float => "Number.check_float".
 (*Not implementing*)
 Extract Inlined Constant pp_formattted_ty => "Pp.formatted".
+Extract Inlined Constant pp_formatted_ty_eqb => "(=)".
 (*Hash function, may implement*)
 Extract Inlined Constant CoqWstdlib.string_hash => "(fun s -> (BigInt.of_int (Hashtbl.hash s)))".
 
