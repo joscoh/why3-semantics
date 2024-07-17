@@ -29,28 +29,29 @@ Module Make (H: HashedType) <: S.
 Definition t := H.t.
 
 Module HashconsTy <: ModTy.
-Definition t := (CoqBigInt.t * CoqHashtbl.hashset H.t)%type.
-Definition initial := (CoqBigInt.zero, @CoqHashtbl.create_hashset H.t).
+Definition t := hashcons_ty H.t (*(CoqBigInt.t * CoqHashtbl.hashset H.t)%type*).
+Definition initial := mk_hashcons_ty CoqBigInt.zero 
+  (@CoqHashtbl.create_hashset H.t).
 End HashconsTy.
 
 Module HashconsSt := MakeState(HashconsTy).
 
 Definition add_builtins (l: list t) (next: CoqBigInt.t) : hashcons_st t unit :=
   x <- HashconsSt.get tt ;;
-  let '(i, h) := x in 
+  let (i, h) := get_hashcons x in
   let h' := List.fold_right (fun (x : t) (acc : CoqHashtbl.hashset t) => 
     CoqHashtbl.add_hashset H.hash acc x) h l in
-  HashconsSt.set (next, h').
+  HashconsSt.set (mk_hashcons_ty next h').
 
 (*Increment counter*)
 Definition incr (_: unit) : hashcons_st H.t unit :=
   x <- HashconsSt.get tt ;;
-  let '(i, h) := x in 
-  HashconsSt.set (CoqBigInt.succ i, h).
+  let '(i, h) := get_hashcons x in 
+  HashconsSt.set (mk_hashcons_ty (CoqBigInt.succ i) h).
 
 Definition unique (d: t) : hashcons_st H.t t :=
   x <- HashconsSt.get tt ;;
-  let '(i, h) := x in 
+  let '(i, h) := get_hashcons x in 
   let d := H.tag i d in
   _ <- incr tt ;;
   st_ret d.
@@ -62,7 +63,7 @@ Definition unique (d: t) : hashcons_st H.t t :=
   updating state*)
 Definition hashcons (d: t) : @hashcons_st H.t t :=
   x <- HashconsSt.get tt ;;
-  let '(i, h) := x in 
+  let '(i, h) := get_hashcons x in 
   let o := CoqHashtbl.find_opt_hashset H.hash H.equal h d in
   match o with
   | Some k => st_ret k
@@ -71,7 +72,7 @@ Definition hashcons (d: t) : @hashcons_st H.t t :=
     (*Change tag to counter value*)
     let d1 := H.tag i d in
     (*Add d1 to state + incrememnt counter*)
-    _ <- HashconsSt.set (i, CoqHashtbl.add_hashset H.hash h d1);;
+    _ <- HashconsSt.set (mk_hashcons_ty i (CoqHashtbl.add_hashset H.hash h d1));;
     (*Increment counter*)
     _ <- incr tt ;;
     st_ret d1
@@ -81,7 +82,7 @@ Definition hashcons (d: t) : @hashcons_st H.t t :=
   extracted to a mutable reference*)
 Definition iter (f: t -> unit) : @hashcons_st H.t unit :=
   x <- HashconsSt.get tt ;;
-  let '(i, h) := x in 
+  let '(i, h) := get_hashcons x in 
   st_ret (CoqHashtbl.iter_hashset_unsafe f h).
 
 (*We give no stats yeto*)

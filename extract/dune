@@ -270,7 +270,7 @@
      ;(run sed -e "s/NumberDefs/Number/g")
      ;(run sed -e "s/open NumberFuncs//g") ;bad
      ;(run sed -e "s/CoqExthtbl/Exthtbl2/g")
-    ;  (run sed -e "s/open TermDefs/open Term/g")
+     (run sed -e "s/open TermDefs/open Term/g")
      (run sed -e "s/open TermFuncs/open Term/g") ;bad
      ;(run sed -e "s/ConstantDefs/Constant/g")
      ;(run sed -e "s/open LocTy/open Loc/g")

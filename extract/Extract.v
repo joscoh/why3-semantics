@@ -130,6 +130,7 @@ Extract Inlined Constant errst_lift1 => "".
 Extract Inlined Constant errst_lift2 => "".
 Extract Inlined Constant errst_tup1 => "".
 Extract Inlined Constant errst_tup2 => "".
+Extract Inlined Constant errst_assoc => "".
 
 
 (*Mutable state monads*)

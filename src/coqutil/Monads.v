@@ -174,6 +174,12 @@ Definition st_lift2 {A B C: Type} (s2: st B C) : st (A * B) C :=
   mkState (fun (t: A * B) => 
     let (res, i) := (runState s2) (snd t) in
     (res, (fst t, i))).
+(*TODO: better composition*)
+Definition st_assoc {A B C D: Type} (s1: st (A * (B * C)) D) :
+  st (A * B * C) D :=
+  mkState (fun (t: A * B * C) =>
+    let '(res, (a, (b, c))) := (runState s1) (fst (fst t), (snd (fst t), snd t)) in
+    (res, (a, b, c))).
 
 (*Combine 2 states inside either monad*)
 Definition errst_tup1 {A B C: Type} (s1: errState A C) : errState (A * B) C :=
@@ -184,13 +190,26 @@ Definition errst_tup2 {A B C: Type} (s1: errState B C) : errState (A * B) C :=
   match s1 with
   | mkEitherT s1' => mkEitherT (st_lift2 s1')
   end.
+(*TODO: this is bad, need saner way of handling state
+  composition*)
+Definition errst_assoc {A B C D: Type} (s1: errState (A * (B * C)) D) :
+  errState (A * B * C) D :=
+  match s1 with
+  | mkEitherT s1' => mkEitherT (st_assoc s1')
+  end.
 
 (*We use coq-ext-lib's monads and monad transformers.
   However, we cannot use their notations, or else the OCaml code
   is full of Obj.magic; we define our own above
   TODO: can we figure out how to fix this?*)
 
-Definition hashcons_ty K : Type := CoqBigInt.t * hashset K.
+Record hashcons_ty (K : Type) := mk_hashcons_ty {hashcons_ctr: CoqBigInt.t;
+  hashcons_hash : hashset K}.
+Arguments hashcons_ctr {_}.
+Arguments hashcons_hash {_}.
+Arguments mk_hashcons_ty {_}.
+Definition get_hashcons {K: Type} (h: hashcons_ty K) : CoqBigInt.t * hashset K :=
+  (hashcons_ctr h, hashcons_hash h).
 
 (*Notations for types*)
 (*1. Counter*)

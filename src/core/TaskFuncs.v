@@ -1,4 +1,4 @@
-Require Export TaskDefs.
+Require Export TyDefs TaskDefs.
 Import MonadNotations.
 (* Constructors with Checks*)
 
@@ -97,3 +97,36 @@ Definition new_decl (t: task) (d: decl) (td: tdecl_c) : errState (hashcons_ty td
   end.
 
 (*Skip [new_clone], [new_meta]*)
+
+(* declaration constructors + add_decl *)
+
+Definition add_decl (t: task) (d: decl) : 
+  errState (hashcons_ty tdecl_c * hashcons_ty task_hd) task :=
+  td <- errst_lift1 (st_lift1 (create_decl d));;
+  new_decl t d td.
+Definition add_ty_decl tk ts :
+  errState (hashcons_ty decl * hashcons_ty tdecl_c * hashcons_ty task_hd) task :=
+  td <- errst_lift1 (st_lift1 (st_lift1 (create_ty_decl ts)));;
+  errst_assoc (errst_tup2 (add_decl tk td)).
+Definition add_data_decl tk dl :
+  (*4 hashcons here - really, really need to have better composition*)
+  errState (hashcons_ty ty_c * hashcons_ty decl * 
+    hashcons_ty tdecl_c * hashcons_ty task_hd) task :=
+  td <- (errst_tup1 (errst_tup1 (create_data_decl dl))) ;;
+  errst_assoc (errst_tup2 (add_decl tk td)).
+Definition add_param_decl tk ls :
+  errState (hashcons_ty decl * hashcons_ty tdecl_c * hashcons_ty task_hd) task :=
+  td <- errst_tup1 (errst_tup1 (create_param_decl ls));;
+  errst_assoc (errst_tup2 (add_decl tk td)).
+Definition add_logic_decl tk dl :
+  errState (hashcons_ty decl * hashcons_ty tdecl_c * hashcons_ty task_hd) task :=
+  td <- errst_tup1 (errst_tup1 (create_logic_decl_nocheck dl));;
+  errst_assoc (errst_tup2 (add_decl tk td)).
+Definition add_ind_decl tk s dl :
+  errState (hashcons_ty decl * hashcons_ty tdecl_c * hashcons_ty task_hd) task :=
+  td <- errst_tup1 (errst_tup1 (create_ind_decl s dl));;
+  errst_assoc (errst_tup2 (add_decl tk td)).
+Definition add_prop_decl tk k p f :
+  errState (hashcons_ty decl * hashcons_ty tdecl_c * hashcons_ty task_hd) task :=
+  td <- errst_tup1 (errst_tup1 (create_prop_decl k p f));;
+  errst_assoc (errst_tup2 (add_decl tk td)).
