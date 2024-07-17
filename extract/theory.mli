@@ -340,3 +340,6 @@ exception RangeConflict of tysymbol
 exception FloatConflict of tysymbol
 exception IllFormedWf of prsymbol * lsymbol
 exception ProvedWfConflict of lsymbol
+
+(*JOSH - expose constructors*)
+val td_node : tdecl -> tdecl_node

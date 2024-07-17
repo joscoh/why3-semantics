@@ -294,10 +294,13 @@ Definition ty_eqb_eq := proj1 ty_eqb_eq_aux.
 Definition ty_node_eqb_eq := proj1 (proj2 ty_eqb_eq_aux).
 Definition tysymbol_eqb_eq := proj2 (proj2 ty_eqb_eq_aux).
 
+Definition ty_eqb_fast := ty_eqb.
+Definition tysymbol_eqb_fast := tysymbol_eqb.
+
 Module TsymTagged <: TaggedType.
 Definition t := tysymbol_c.
 Definition tag (ts: tysymbol_c) := (ts_name_of ts).(id_tag).
-Definition equal := tysymbol_eqb.
+Definition equal := tysymbol_eqb_fast.
 End TsymTagged.
 
 Module Tsym := MakeMSWeak TsymTagged.
@@ -306,8 +309,8 @@ Module Mts := Tsym.M.
 (*Module Hts := Tsym.H
   Module Wts := Tsym.W*)
 
-Definition ts_equal (t1 t2: tysymbol_c) : bool := tysymbol_eqb t1 t2.
-Definition ty_equal (t1 t2: ty_c) : bool := ty_eqb t1 t2.
+Definition ts_equal (t1 t2: tysymbol_c) : bool := tysymbol_eqb_fast t1 t2.
+Definition ty_equal (t1 t2: ty_c) : bool := ty_eqb_fast t1 t2.
 
 Definition ts_hash (ts: tysymbol_c) := id_hash (ts_name_of ts).
 Definition ty_hash (t: ty_c) := CoqWeakhtbl.tag_hash (ty_tag_of t).
@@ -350,7 +353,7 @@ Definition mk_ts (name: preid) (args: list tvsymbol) (d: type_def ty_c) :
 Module TyTagged <: TaggedType.
 Definition t := ty_c.
 Definition tag (t: ty_c) := ty_tag_of t.
-Definition equal := ty_eqb.
+Definition equal := ty_eqb_fast.
 End TyTagged.
 
 Module TyM := MakeMSWeak TyTagged.

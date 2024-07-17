@@ -11,7 +11,7 @@
   ConstantDefs
   IdentDefs
   TyDefs TyFuncs TermDefs TermFuncs DeclDefs DeclFuncs CoercionDefs 
-  TheoryDefs)
+  TheoryDefs TaskDefs)
  (theories Src stdpp Proofs ExtLib mathcomp.ssreflect elpi HB)
  )
 
@@ -254,13 +254,43 @@
   )
  )
 
+;Theory.ml
+(rule
+  (deps TaskDefs.ml TaskExtra.ml)
+  (targets task.ml)
+  (action 
+  (with-stdout-to task.ml
+    (pipe-stdout
+     (cat TaskDefs.ml TaskExtra.ml)
+     (run sed -e "s/open TyDefs/open Ty/g")
+     (run sed -e "s/open TyFuncs//g")
+     (run sed -e "s/open IdentDefs/open Ident/g")
+     (run sed -e "s/open CoqWstdlib/open Wstdlib/g")
+     (run sed -e "s/open CoqWeakhtbl/open Weakhtbl/g")
+     ;(run sed -e "s/NumberDefs/Number/g")
+     ;(run sed -e "s/open NumberFuncs//g") ;bad
+     ;(run sed -e "s/CoqExthtbl/Exthtbl2/g")
+    ;  (run sed -e "s/open TermDefs/open Term/g")
+     (run sed -e "s/open TermFuncs/open Term/g") ;bad
+     ;(run sed -e "s/ConstantDefs/Constant/g")
+     ;(run sed -e "s/open LocTy/open Loc/g")
+     (run sed -e "s/open DeclDefs/open Decl/g")
+     (run sed -e "s/open DeclFuncs//g")
+     (run sed -e "s/CoercionDefs/Coercion/g")
+     (run sed -e "s/open TheoryDefs/open Theory/g")
+    )
+   )
+  )
+ )
+
 (library
  (name Why3Coq)
  (modules (:standard \ CoqCtr TyExn TyDefs TyFuncs TyExtra IdentDefs IdentExtra 
   LocTy LocExtra Locpre CoqWstdlib Wstdlibextra CoqWeakhtbl Weakhtblextra
   NumberDefs numberexn NumberFuncs numberextra CoqExthtbl ConstantDefs 
   ConstantExtra TermDefs TermExtra TermExn TermFuncs DeclDefs 
-  DeclExn DeclFuncs DeclExtra CoercionDefs CoercionExtra TheoryDefs TheoryExtra))
+  DeclExn DeclFuncs DeclExtra CoercionDefs CoercionExtra TheoryDefs TheoryExtra
+  TaskDefs TaskExtra))
  (flags (:standard -w -33 -w -32 -w -9 -w -27 -w -34)) 
  ;32 is unused value - extraction results in values we don't want in mli file
  ;27 is unused var strict - TODO turn off after

@@ -1,5 +1,5 @@
 From Src.core Require Import IdentDefs TyDefs TyFuncs TermDefs TermFuncs
-DeclDefs DeclFuncs CoercionDefs TheoryDefs.
+DeclDefs DeclFuncs CoercionDefs TheoryDefs TaskDefs.
 From Src.coqutil Require Import IntFuncs CoqCtr State.
 From Src.util Require Import ConstantDefs NumberFuncs extmap extset hashcons CoqExthtbl.
 From Coq Require Extraction.
@@ -86,11 +86,17 @@ Extract Inlined Constant CoqBigInt.of_Z => "ZCompat.of_Z_big".
 Extract Inlined Constant string_compare => "String.compare".
 
 (*For now*)
+Extract Inlined Constant ident_eqb_fast => "(fun x y -> x == y || ident_eqb x y)".
+Extract Inlined Constant tysymbol_eqb_fast => "(fun x y -> x == y || tysymbol_eqb x y)".
+Extract Inlined Constant ty_eqb_fast => "(fun x y -> x == y || ty_eqb x y)".
 Extract Inlined Constant pattern_eqb_fast => "(fun x y -> x == y || pattern_eqb x y)".
 Extract Inlined Constant term_eqb_fast => "(fun x y -> x == y || term_eqb x y)".
 Extract Inlined Constant term_branch_eqb_fast => "(fun x y -> x == y || term_branch_eqb x y)".
 Extract Inlined Constant term_bound_eqb_fast => "(fun x y -> x == y || term_bound_eqb x y)".
 Extract Inlined Constant term_quant_eqb_fast => "(fun x y -> x == y || term_quant_eqb x y)".
+Extract Inlined Constant tdecl_eqb_fast => "(fun x y -> x == y || tdecl_eqb x y)".
+Extract Inlined Constant meta_eqb_fast => "(fun x y -> x == y || meta_eqb x y)".
+Extract Inlined Constant task_hd_eqb_fast => "(fun x y -> x == y || task_hd_eqb x y)".
 
 (*Handle exception monad*)
 
@@ -274,7 +280,7 @@ Separate Extraction (*CoqUtil.str_to_pos*) (*TEMP*)
   CoqExthtbl NumberDefs NumberFuncs hashcons extmap extset CoqHashtbl 
   CoqWstdlib
   ConstantDefs IdentDefs TyDefs TyFuncs TermDefs TermFuncs
-  DeclDefs DeclFuncs CoercionDefs TheoryDefs.
+  DeclDefs DeclFuncs CoercionDefs TheoryDefs TaskDefs.
 (* TheoryDefs.*) (*Ty.ty_v_map Ident.*)
 (*Separate Extraction Extmap.
 Separate Extraction Ty.ty Ty.ty_v_map Ident.*)

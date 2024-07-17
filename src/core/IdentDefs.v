@@ -112,10 +112,13 @@ Record ident := {
 
 (*Decidable equality*)
 Definition ident_eqb (i1 i2: ident) : bool :=
+  (*tag first for fast eq*)
+  CoqWeakhtbl.tag_equal i1.(id_tag) i2.(id_tag) &&
   String.eqb i1.(id_string) i2.(id_string) &&
   Sattr.equal i1.(id_attrs) i2.(id_attrs) &&
-  option_eqb LocTy.equal i1.(id_loc) i2.(id_loc) &&
-  CoqWeakhtbl.tag_equal i1.(id_tag) i2.(id_tag).
+  option_eqb LocTy.equal i1.(id_loc) i2.(id_loc).
+
+Definition ident_eqb_fast := ident_eqb.
 
 (*TODO: prove equality for Sets, options
   Need this to use as keys in sets and maps*)
@@ -134,7 +137,7 @@ Qed.
 Module IdentTag <: TaggedType.
 Definition t := ident.
 Definition tag x := x.(id_tag).
-Definition equal := ident_eqb.
+Definition equal := ident_eqb_fast.
 
 End IdentTag.
 
@@ -154,7 +157,7 @@ Record preid := {
 }.
 
 (*In OCaml, this is reference equality (==).*)
-Definition id_equal (i1 i2: ident) : bool := ident_eqb i1 i2.
+Definition id_equal (i1 i2: ident) : bool := ident_eqb_fast i1 i2.
 Definition id_hash (i: ident) : CoqBigInt.t := CoqWeakhtbl.tag_hash (i.(id_tag)).
 Definition id_compare (id1 id2: ident) : CoqInt.int :=
   CoqBigInt.compare (id_hash id1) (id_hash id2).

@@ -8,6 +8,11 @@ Local Definition tag := CoqBigInt.t.
 Definition dummy_tag : tag := CoqBigInt.neg_one.
 
 Definition tag_equal : tag -> tag -> bool := CoqBigInt.eqb.
+Lemma tag_equal_eq t1 t2:
+  t1 = t2 <-> is_true (tag_equal t1 t2).
+Proof.
+  apply CoqBigInt.eqb_eq.
+Qed.
 
 (*We enforce the invariant that all values are nonnegative*)
 Definition tag_hash (k: tag) := k.

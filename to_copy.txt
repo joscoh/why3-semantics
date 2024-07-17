@@ -79,3 +79,5 @@ core/coercion.mli
 core/coercion.ml
 core/theory.mli
 core/theory.ml
+core/task.mli
+core/task.ml

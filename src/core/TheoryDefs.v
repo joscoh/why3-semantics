@@ -300,11 +300,12 @@ Axiom pp_formatted_ty_eqb_eq: forall x y,
   x = y <-> pp_formatted_ty_eqb x y.
 
 Definition meta_eqb (m1 m2: meta) : bool :=
+(*Tag first*)
+  CoqBigInt.eqb m1.(meta_tag) m2.(meta_tag) &&
   String.eqb m1.(meta_name) m2.(meta_name) &&
   list_eqb meta_arg_type_eqb m1.(meta_type) m2.(meta_type) &&
   Bool.eqb m1.(meta_excl) m2.(meta_excl) &&
-  pp_formatted_ty_eqb m1.(meta_desc) m2.(meta_desc) &&
-  CoqBigInt.eqb m1.(meta_tag) m2.(meta_tag).
+  pp_formatted_ty_eqb m1.(meta_desc) m2.(meta_desc).
 
 Definition symbol_map_eqb (s1 s2: symbol_map) : bool :=
   Mts.equal ty_eqb s1.(sm_ty) s2.(sm_ty) &&
@@ -332,8 +333,9 @@ Fixpoint theory_eqb (t1 t2: theory_c) {struct t1} : bool :=
   Sid.equal (th_local_of t1) (th_local_of t2) &&
   Sid.equal (th_used_of t1) (th_used_of t2)
 with tdecl_eqb (t1 t2: tdecl_c) {struct t1} : bool :=
-  tdecl_node_eqb (td_node_of t1) (td_node_of t2) &&
-  CoqBigInt.eqb (td_tag_of t1) (td_tag_of t2)  
+  (*Important: tag is first*)
+  CoqBigInt.eqb (td_tag_of t1) (td_tag_of t2) &&
+  tdecl_node_eqb (td_node_of t1) (td_node_of t2)
 with tdecl_node_eqb (t1 t2: tdecl_node) {struct t1} : bool :=
   match t1, t2 with
   | Decl d1, Decl d2 => d_equal d1 d2
@@ -535,6 +537,22 @@ Definition theory_eqb_eq := proj1 theory_eqb_eq_aux.
 Definition tdecl_eqb_eq := proj1 (proj2 theory_eqb_eq_aux).
 Definition tdecl_node_eqb_eq := proj2 (proj2 theory_eqb_eq_aux).
 
+(*Fast versions: in OCaml: fun x y -> (x == y) || eq x y
+  If we choose tag first in eq, then should be almost as
+  fast as == (assuming hashconsing) without additional proofs*)
+Definition meta_eqb_fast := meta_eqb.
+Definition tdecl_eqb_fast := tdecl_eqb.
+
+Module MetaTag <: TaggedType.
+Definition t := meta.
+Definition tag m := m.(meta_tag).
+Definition equal := meta_eqb_fast.
+End MetaTag.
+
+Module SMmeta1 := MakeMS MetaTag.
+Module Smeta := SMmeta1.S.
+Module Mmeta := SMmeta1.M.
+
 
 Module TdeclTag <: TaggedType.
 Definition t := tdecl_c.
@@ -546,3 +564,6 @@ Module Tdecl1 := MakeMS TdeclTag.
 
 Module Stdecl1 := Tdecl1.S.
 Module Mtdecl1 := Tdecl1.M.
+
+Definition td_equal (t1 t2: tdecl_c) : bool := tdecl_eqb_fast t1 t2.
+Definition td_hash (td: tdecl_c) := td_tag_of td.

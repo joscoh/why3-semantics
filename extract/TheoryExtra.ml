@@ -117,8 +117,8 @@ let print_meta_desc fmt m =
 
 module SMmeta = MakeMSH(struct type t = meta let tag m = m.meta_tag let equal = (==) (*JOSH TODO equal*) end)
 
-module Smeta = SMmeta.S
-module Mmeta = SMmeta.M
+(* module Smeta = SMmeta.S
+module Mmeta = SMmeta.M *)
 module Hmeta = SMmeta.H
 
 let meta_equal : meta -> meta -> bool = (==)
@@ -286,8 +286,8 @@ module Stdecl = Tdecl.S
 module Mtdecl = Tdecl.M
 module Htdecl = Tdecl.H
 
-let td_equal : tdecl -> tdecl -> bool = (==)
-let td_hash td = td.td_tag
+(* let td_equal : tdecl -> tdecl -> bool = (==) *)
+(* let td_hash td = td.td_tag *)
 
 (** Constructors and utilities *)
 
