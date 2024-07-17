@@ -228,3 +228,9 @@ val make_record_update :
 
 val make_record_pattern :
   known_map -> (lsymbol * pattern) list -> ty -> pattern
+
+(*JOSH*)
+type 'a known_res =
+| Known of ident
+| Normal of 'a
+val known_add_decl_informative: known_map -> decl -> (decl * decl Mid.t) known_res

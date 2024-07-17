@@ -284,7 +284,7 @@ Definition meta_arg_type_eqb := meta_arg_type_beq.
 
 Definition meta_arg_eqb (m1 m2: meta_arg) : bool :=
   match m1, m2 with
-  | MAty t1, MAty t2 => ty_eqb t1 t2
+  | MAty t1, MAty t2 => ty_equal t1 t2
   | MAts t1, MAts t2 => ts_equal t1 t2
   | MAls l1, MAls l2 => ls_equal l1 l2
   | MApr p1, MApr p2 => pr_equal p1 p2
@@ -543,6 +543,9 @@ Definition tdecl_node_eqb_eq := proj2 (proj2 theory_eqb_eq_aux).
 Definition meta_eqb_fast := meta_eqb.
 Definition tdecl_eqb_fast := tdecl_eqb.
 
+Definition meta_equal : meta -> meta -> bool := meta_eqb_fast.
+Definition meta_hash m := m.(meta_tag).
+
 Module MetaTag <: TaggedType.
 Definition t := meta.
 Definition tag m := m.(meta_tag).
@@ -567,3 +570,77 @@ Module Mtdecl1 := Tdecl1.M.
 
 Definition td_equal (t1 t2: tdecl_c) : bool := tdecl_eqb_fast t1 t2.
 Definition td_hash (td: tdecl_c) := td_tag_of td.
+
+(* Theory Declarations *)
+
+Module TdeclHash <: hashcons.HashedType.
+Definition t := tdecl_c.
+
+(*Don't compare IDs*)
+Definition eq_marg (m1 m2: meta_arg) : bool :=
+  match m1, m2 with
+  | MAty t1, MAty t2 => ty_equal t1 t2
+  | MAts t1, MAts t2 => ts_equal t1 t2
+  | MAls l1, MAls l2 => ls_equal l1 l2
+  | MApr p1, MApr p2 => pr_equal p1 p2
+  | MAstr s1, MAstr s2 => String.eqb s1 s2
+  | MAint i1, MAint i2 => CoqInt.int_eqb i1 i2
+  | _, _ => false
+  end.
+
+Definition eq_smap := symbol_map_eqb.
+
+Definition equal td1 td2 := 
+  match td_node_of td1, td_node_of td2 with
+  | Decl d1, Decl d2 => d_equal d1 d2
+  | Use th1, Use th2 => id_equal (th_name_of th1) (th_name_of th2)
+  | Clone th1 sm1, Clone th2 sm2 =>
+      id_equal (th_name_of th1) (th_name_of th2) && eq_smap sm1 sm2
+  | Meta t1 al1, Meta t2 al2 =>
+      meta_eqb_fast t1 t2 && list_eqb eq_marg al1 al2
+  | _, _ => false
+  end.
+
+Definition hs_cl_ty {A: Type} (_: A) ty acc := 
+  hashcons.combine_big acc (ty_hash ty).
+Definition hs_cl_ts {A: Type} (_ : A) ts acc := 
+  hashcons.combine_big acc (ts_hash ts).
+Definition hs_cl_ls {A: Type} (_ : A) ls acc := 
+  hashcons.combine_big acc (ls_hash ls).
+Definition hs_cl_pr {A: Type} (_ : A) pr acc := 
+  hashcons.combine_big acc (pr_hash pr).
+
+Definition hs_ta x :=
+  match x with 
+  | MAty ty => ty_hash ty
+  | MAts ts => ts_hash ts
+  | MAls ls => ls_hash ls
+  | MApr pr => pr_hash pr
+  | MAstr s => string_hash s (*OK because we will not call this in Coq*)
+  | MAint i => CoqBigInt.of_int i (*TODO: not real hash*) (*BigInt.of_int (Hashtbl.hash i)*)
+  | MAid i => IdentDefs.id_hash i
+  end.
+
+Definition hs_smap (sm : symbol_map) (h: CoqBigInt.t) : CoqBigInt.t :=
+  Mts.fold hs_cl_ty sm.(sm_ty)
+    (Mts.fold hs_cl_ts sm.(sm_ts)
+      (Mls.fold hs_cl_ls sm.(sm_ls)
+        (Mpr.fold hs_cl_pr sm.(sm_pr) h))).
+
+Definition hash (td : tdecl_c) : CoqBigInt.t :=  
+  match td_node_of td with
+  | Decl d => d_hash d 
+  | Use th => id_hash (th_name_of th) 
+  | Clone  th sm => hs_smap sm  (id_hash (th_name_of th))
+  | Meta t al => hashcons.combine_big_list hs_ta (meta_hash t) al
+  end.
+
+Definition tag (n: CoqBigInt.t) td : tdecl_c :=
+  mk_tdecl_c (td_node_of td) n.
+End TdeclHash.
+
+Module Hstdecl := hashcons.Make TdeclHash.
+
+Definition mk_tdecl n : hashcons_st tdecl_c tdecl_c := Hstdecl.hashcons (mk_tdecl_c n CoqBigInt.neg_one).
+
+Definition create_decl d := mk_tdecl (Decl d).

@@ -892,7 +892,11 @@ Definition known_id (kn : known_map) (i: ident) : errorM unit :=
 
 (*Probably don't need merge_known for now*)
 Local Open Scope err_scope.
-Definition known_add_decl_aux (kn0 : known_map) (d: decl) : errorM known_map :=
+(*TODO: this is NOT ideal, but we need to catch KnownIdent in task.ml.
+  This is very hard because it takes an argument, so we return an explicit result
+    type*)
+Variant known_res (A: Type) := | Known (i: ident) | Normal (a: A).
+Definition known_add_decl_aux (kn0 : known_map) (d: decl) : errorM (known_res known_map) :=
   let kn := Mid.map (fun _ => d) d.(d_news) in
   (*Instead of union with exceptions, we will take the map
     intersection; if non-empty, we throw the appropriate exception*)
@@ -901,14 +905,14 @@ Definition known_add_decl_aux (kn0 : known_map) (d: decl) : errorM known_map :=
     x <- Mid.choose _ inter ;;
     let '(i, d1) := x in
     if d_equal d1 d
-    then throw (KnownIdent i)
+    then err_ret (Known _ i) (*throw (KnownIdent i)*)
     else throw (RedeclaredIdent i)
   else
     (*Now we can just take union*)
     let kn := Mid.set_union _ kn0 kn in
   (* let kn := Mid.union _ check kn0 kn in *)
     let unk := Mid.set_diff _ _ (get_used_syms_decl d) kn in
-    if Sid.is_empty unk then err_ret kn
+    if Sid.is_empty unk then err_ret (Normal _ kn)
     else 
       j <- (Sid.choose unk);;
       throw (UnknownIdent j).
@@ -1170,10 +1174,26 @@ Definition check_positivity (kn : known_map) (d : decl) : errorM unit :=
   end.
 
 Definition known_add_decl (kn : known_map) (d : decl) : errorM (decl * Mid.t decl) :=
-  kn <- known_add_decl_aux kn d;;
-  _ <- check_positivity kn d;;
-  _ <- check_foundness kn d;;
-  (*Don't check match for now*)
-  d <- check_termination_strict kn d;;
-  err_ret (d, kn).
+  o <- known_add_decl_aux kn d;;
+  match o with
+  | Known i => throw (KnownIdent i)
+  | Normal kn =>
+    _ <- check_positivity kn d;;
+    _ <- check_foundness kn d;;
+    (*Don't check match for now*)
+    d <- check_termination_strict kn d;;
+    err_ret (d, kn)
+  end.
 
+(*Gives more info*)
+Definition known_add_decl_informative (kn : known_map) (d : decl) : errorM (known_res (decl * Mid.t decl)) :=
+  o <- known_add_decl_aux kn d;;
+  match o with
+  | Known i => err_ret (Known _ i)
+  | Normal kn =>
+    _ <- check_positivity kn d;;
+    _ <- check_foundness kn d;;
+    (*Don't check match for now*)
+    d <- check_termination_strict kn d;;
+    err_ret (Normal _ (d, kn))
+  end.

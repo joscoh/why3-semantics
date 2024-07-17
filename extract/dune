@@ -11,7 +11,7 @@
   ConstantDefs
   IdentDefs
   TyDefs TyFuncs TermDefs TermFuncs DeclDefs DeclFuncs CoercionDefs 
-  TheoryDefs TaskDefs)
+  TheoryDefs TaskDefs TaskFuncs)
  (theories Src stdpp Proofs ExtLib mathcomp.ssreflect elpi HB)
  )
 
@@ -256,12 +256,12 @@
 
 ;Theory.ml
 (rule
-  (deps TaskDefs.ml TaskExtra.ml)
+  (deps TaskDefs.ml TaskExn.ml TaskFuncs.ml TaskExtra.ml)
   (targets task.ml)
   (action 
   (with-stdout-to task.ml
     (pipe-stdout
-     (cat TaskDefs.ml TaskExtra.ml)
+     (cat TaskDefs.ml TaskExn.ml TaskFuncs.ml TaskExtra.ml)
      (run sed -e "s/open TyDefs/open Ty/g")
      (run sed -e "s/open TyFuncs//g")
      (run sed -e "s/open IdentDefs/open Ident/g")
@@ -278,6 +278,7 @@
      (run sed -e "s/open DeclFuncs//g")
      (run sed -e "s/CoercionDefs/Coercion/g")
      (run sed -e "s/open TheoryDefs/open Theory/g")
+     (run sed -e "s/open TaskDefs//g")
     )
    )
   )
@@ -290,7 +291,7 @@
   NumberDefs numberexn NumberFuncs numberextra CoqExthtbl ConstantDefs 
   ConstantExtra TermDefs TermExtra TermExn TermFuncs DeclDefs 
   DeclExn DeclFuncs DeclExtra CoercionDefs CoercionExtra TheoryDefs TheoryExtra
-  TaskDefs TaskExtra))
+  TaskDefs TaskExn TaskExtra TaskFuncs))
  (flags (:standard -w -33 -w -32 -w -9 -w -27 -w -34)) 
  ;32 is unused value - extraction results in values we don't want in mli file
  ;27 is unused var strict - TODO turn off after

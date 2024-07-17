@@ -110,6 +110,7 @@ Definition errst_lift2 {A B} (e: errorM B) : errState A B :=
   | inl e => raise e
   | inr t => ret t
   end.
+
 (*For extraction*)
 Definition errst_bind {A B C : Type} (f: B -> errState A C) (x: errState A B) : errState A C :=
   bind x f.
@@ -117,6 +118,18 @@ Definition errst_ret {A B: Type} (x: B) : errState A B := ret x.
 Definition errst_list {K A: Type} (l: list (errState K A)) :
   errState K (list A) :=
   listM errst_ret errst_bind l.
+
+(*Try/catch - TODO: reduce duplication*)
+Definition errst_trywith {St A B: Type} (x: unit -> errState St A) (e: errtype) 
+  (ret: unit -> errState St A) : errState St A :=
+  catch (x tt) (fun e1 => if String.eqb (errname e1) (errname e) then ret tt else errst_lift2 (throw e1)).
+
+(*TODO: BAD - 1 argument error, ignore*)
+Definition errst_trywith1 {St A B: Type} (x: unit -> errState St A) (e: errtype) 
+  (ret: unit -> errState St A) : errState St A :=
+  catch (x tt) (fun e1 => if String.eqb (errname e1) (errname e) then ret tt else 
+    errst_lift2 (throw e1)).
+
 
 (*We need different notations for each monad.
   If we use a single notation with typeclasses, the

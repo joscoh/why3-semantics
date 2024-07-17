@@ -121,9 +121,9 @@ module SMmeta = MakeMSH(struct type t = meta let tag m = m.meta_tag let equal = 
 module Mmeta = SMmeta.M *)
 module Hmeta = SMmeta.H
 
-let meta_equal : meta -> meta -> bool = (==)
+(* let meta_equal : meta -> meta -> bool = (==)
 
-let meta_hash m = m.meta_tag
+let meta_hash m = m.meta_tag *)
 
 exception KnownMeta of meta
 exception UnknownMeta of string
@@ -216,7 +216,7 @@ and symbol_map = {
 
 (** Theory declarations *)
 
-module Hstdecl = Hashcons.Make (struct
+(* module Hstdecl = Hashcons.Make (struct
 
   type t = tdecl
 
@@ -274,7 +274,7 @@ module Hstdecl = Hashcons.Make (struct
 
 end)
 
-let mk_tdecl n = Hstdecl.hashcons { td_node = n ; td_tag = BigInt.of_int(-1) }
+let mk_tdecl n = Hstdecl.hashcons { td_node = n ; td_tag = BigInt.of_int(-1) } *)
 
 module Tdecl = MakeMSH (struct
   type t = tdecl
@@ -524,7 +524,7 @@ let add_symbol_ls uc ({ls_name = id} as ls) =
 
 let add_symbol_pr uc pr = add_symbol add_pr pr.pr_name pr uc
 
-let create_decl d = mk_tdecl (Decl d)
+(* let create_decl d = mk_tdecl (Decl d) *)
 
 let print_id fmt id = Ident.print_decoded fmt id.id_string
 

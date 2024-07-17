@@ -54,9 +54,10 @@ val task_hd_equal : task_hd -> task_hd -> bool
 val task_hash : task -> BigInt.t
 val task_hd_hash : task_hd -> BigInt.t
 
-val task_known : task -> known_map
-val task_clone : task -> clone_map
-val task_meta  : task -> meta_map
+(*JOSH - name clash, not OK for Coq*)
+val task_known1 : task -> known_map
+val task_clone1 : task -> clone_map
+val task_meta1  : task -> meta_map
 
 val find_clone_tds : task -> theory -> tdecl_set
 val find_meta_tds  : task -> meta -> tdecl_set

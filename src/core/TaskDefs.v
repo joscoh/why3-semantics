@@ -1,10 +1,10 @@
-Require Import Monads PmapExtra CoqWeakhtbl IdentDefs TermFuncs DeclDefs DeclFuncs TheoryDefs.
+Require Export Monads PmapExtra CoqWeakhtbl IdentDefs TermDefs TermFuncs DeclDefs DeclFuncs TheoryDefs.
 Import MonadNotations.
 
 (*Clone and Meta History*)
-Module Stdecl := TheoryDefs.Stdecl1.
-Module HStdecl := Stdecl.
-Definition tdecl_set := Stdecl.t.
+Module Stdecl2 := TheoryDefs.Stdecl1.
+Module HStdecl := Stdecl2.
+Definition tdecl_set := Stdecl2.t.
 Definition clone_map := Mid.t tdecl_set.
 Definition meta_map := Mmeta.t tdecl_set.
 
@@ -40,8 +40,8 @@ Fixpoint task_hd_eqb (t1 t2: task_hd) : bool :=
   td_equal t1.(task_decl) t2.(task_decl) &&
   option_eqb task_hd_eqb t1.(task_prev) t2.(task_prev) &&
   Mid.equal d_equal t1.(task_known) t2.(task_known) &&
-  Mid.equal Stdecl.equal t1.(task_clone) t2.(task_clone) &&
-  Mmeta.equal Stdecl.equal t1.(task_meta) t2.(task_meta).
+  Mid.equal Stdecl2.equal t1.(task_clone) t2.(task_clone) &&
+  Mmeta.equal Stdecl2.equal t1.(task_meta) t2.(task_meta).
 
 Lemma task_hd_eqb_eq t1 t2:
   t1 = t2 <-> task_hd_eqb t1 t2.
@@ -51,8 +51,8 @@ Proof.
   destruct t1; destruct t2; simpl in *.
   rewrite !andb_true, <- tdecl_eqb_eq, <- (option_eqb_Forall IH),
   <- (Mid.eqb_eq _ decl_eqb_eq ident_eqb_eq),
-  <- (Mid.eqb_eq _ (Stdecl.equal_eq tdecl_eqb_eq) ident_eqb_eq),
-  <- (Mmeta.eqb_eq _ (Stdecl.equal_eq tdecl_eqb_eq) meta_eqb_eq),
+  <- (Mid.eqb_eq _ (Stdecl2.equal_eq tdecl_eqb_eq) ident_eqb_eq),
+  <- (Mmeta.eqb_eq _ (Stdecl2.equal_eq tdecl_eqb_eq) meta_eqb_eq),
   <- CoqWeakhtbl.tag_equal_eq.
   solve_eqb_eq.
 Qed.
@@ -119,4 +119,6 @@ Definition mk_task (decl: tdecl_c) (prev: task) (known: known_map)
   |});;
   st_ret (Some t))%state.
 
-(* Constructors with Checks*)
+Definition task_known1 (o : task) := option_fold Mid.empty (fun t => t.(task_known)) o.
+Definition task_clone1 (o: task) := option_fold Mid.empty (fun t => t.(task_clone)) o. 
+Definition task_meta1 (o: task) := option_fold Mmeta.empty (fun t => t.(task_meta)) o.
