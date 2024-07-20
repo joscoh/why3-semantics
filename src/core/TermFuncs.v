@@ -112,14 +112,14 @@ Definition ConstructorExpected (l: lsymbol) : errtype :=
   mk_errtype "ConstructorExpected" l.
 
 (*TODO: bad*)
-Fixpoint fold_left2_errorHashcons {A B C S : Type} 
-  (f: C -> A -> B -> errorHashconsT S C) (accu: C) 
-  (l1: list A) (l2: list B) : errorHashconsT S (option C) :=
+Fixpoint fold_left2_errst {A B C S : Type} 
+  (f: C -> A -> B -> errState S C) (accu: C) 
+  (l1: list A) (l2: list B) : errState S (option C) :=
   match l1, l2 with
   | nil, nil => errst_lift2 (err_ret (Some accu))
   | a1 :: l1, a2 :: l2 => 
     (x <- (f accu a1 a2) ;;
-    fold_left2_errorHashcons f x l1 l2)%errst
+    fold_left2_errst f x l1 l2)%errst
   | _, _ => errst_lift2 (err_ret None)
   end.
 
@@ -135,7 +135,7 @@ Definition pat_app (fs: lsymbol) (pl: list pattern_c) (t: ty_c) :
             | None => errst_lift2 (throw (FunctionSymbolExpected fs))
   end) ;;
   let mtch s ty p := ty_match s ty (pat_ty_of p) in
-  o <- fold_left2_errorHashcons mtch s fs.(ls_args) pl ;;
+  o <- fold_left2_errst mtch s fs.(ls_args) pl ;;
   errst_lift2 (match o with
   | None => throw (BadArity (fs, int_length pl))
   | Some _ => if CoqBigInt.is_zero fs.(ls_constr) then throw (ConstructorExpected fs)
@@ -1112,7 +1112,7 @@ Definition ls_arg_inst (ls: lsymbol) (tl: list term_c) :
   let mtch s typ t :=
     t1 <- errst_lift2 (t_type t) ;;
     ty_match s typ t1 in
-  o <- (fold_left2_errorHashcons mtch Mtv.empty ls.(ls_args) tl) ;;
+  o <- (fold_left2_errst mtch Mtv.empty ls.(ls_args) tl) ;;
   match o with
   | Some l => errst_ret l
   | None => errst_lift2 (throw (BadArity (ls, int_length tl)))

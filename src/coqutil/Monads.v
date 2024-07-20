@@ -124,13 +124,6 @@ Definition errst_trywith {St A B: Type} (x: unit -> errState St A) (e: errtype)
   (ret: unit -> errState St A) : errState St A :=
   catch (x tt) (fun e1 => if String.eqb (errname e1) (errname e) then ret tt else errst_lift2 (throw e1)).
 
-(*TODO: BAD - 1 argument error, ignore*)
-Definition errst_trywith1 {St A B: Type} (x: unit -> errState St A) (e: errtype) 
-  (ret: unit -> errState St A) : errState St A :=
-  catch (x tt) (fun e1 => if String.eqb (errname e1) (errname e) then ret tt else 
-    errst_lift2 (throw e1)).
-
-
 (*We need different notations for each monad.
   If we use a single notation with typeclasses, the
   resulting OCaml code uses lots of Obj.magic*)
@@ -166,7 +159,7 @@ Notation "x <- c1 ;; c2" := (@st_bind _ _ _ (fun x => c2) c1)
 End MonadNotations. *)
 
 (*Combining 2 states*)
-Definition st_lift1 {A B C: Type} (s1: st A C) : st (A * B) C :=
+Definition st_lift1 {B A C: Type} (s1: st A C) : st (A * B) C :=
   mkState (fun (t: A * B) => 
     let (res, i) := (runState s1) (fst t) in
     (res, (i, snd t))).
@@ -174,12 +167,92 @@ Definition st_lift2 {A B C: Type} (s2: st B C) : st (A * B) C :=
   mkState (fun (t: A * B) => 
     let (res, i) := (runState s2) (snd t) in
     (res, (fst t, i))).
-(*TODO: better composition*)
+(*Can we generalize?*)
+(*TODO: do we need wf?*)
+Record iso (A B: Type) := mk_iso {iso_f : A -> B; iso_rev: B -> A (*; iso_inv1: forall x, iso_f (iso_rev x) = x;
+  iso_inv2: forall x, iso_rev (iso_f x) = x*)}.
+Arguments mk_iso {_} {_}.
+Arguments iso_f {_} {_}.
+Arguments iso_rev {_} {_}.
+(*Build isomorphisms*)
+Definition iso_reverse {A B} (i: iso A B) : iso B A :=
+  {| iso_f := iso_rev i; iso_rev := iso_f i |}.
+Definition iso_tup1 A {B C} (i: iso B C) : iso (A * B) (A * C) :=
+  {| iso_f := fun '(a, b) => (a, iso_f i b);
+     iso_rev := fun '(a, c) => (a, iso_rev i c)|}.
+
+Definition st_iso {A B C: Type} (i: iso A B) (s1: st A C) : st B C :=
+  mkState (fun (t: B) =>
+    let '(res, a1) := runState s1 (iso_rev i t) in
+    (res, iso_f i a1)).
+Definition assoc_iso {A B C}: iso (A * B * C) (A * (B * C)) :=
+  mk_iso (fun '(a, b, c) => (a, (b, c)))
+    (fun '(a, (b, c)) => (a, b, c)).
+Definition comm_iso {A B}: iso (A * B) (B * A) :=
+  mk_iso (fun '(x, y) => (y, x)) (fun '(x, y) => (y, x)).
+Definition assoc4_iso  {A B C D} : iso ((A * (B * (C * D)))) (A * B * C * D) :=
+  mk_iso (fun '(a, (b, (c, d))) => (a, b, c, d)) (fun '(a, b, c, d) => (a, (b, (c, d)))).
+Definition assoc13_iso {A B C D} : iso (A * (B * C * D)) (A * B * C * D) :=
+  mk_iso (fun '(a, (b, c, d)) => (a, b, c, d)) (fun '(a, b, c, d) => (a, (b, c, d))).
+Definition assoc22_iso {A B C D} : iso ((A * B) * (C * D)) (A * B * C * D) :=
+  mk_iso (fun '((a, b), (c, d)) => (a, b, c, d)) (fun '(a, b, c, d) => ((a, b), (c, d))).
+
+
 Definition st_assoc {A B C D: Type} (s1: st (A * (B * C)) D) :
+  st (A * B * C) D := st_iso (iso_reverse assoc_iso) s1.
+Definition st_assoc_rev {A B C D: Type} (s1: st (A * B * C) D) :
+  st (A * (B * C)) D := st_iso assoc_iso s1.
+Definition st_comm {A B C: Type} (s1: st (A * B) C) : st (B * A) C :=
+  st_iso comm_iso s1.
+Definition st_assoc4 {A B C D E: Type} (s1: st (A * (B * (C * D))) E) : st (A * B * C * D) E :=
+  st_iso assoc4_iso s1.
+Definition st_assoc13 {A B C D E: Type} (s: st (A * (B * C * D)) E) : st (A * B * C * D) E :=
+  st_iso assoc13_iso s.
+Definition st_assoc22 {A B C D E: Type} (s: st ((A * B) * (C * D)) E) : st (A * B * C * D) E :=
+  st_iso assoc22_iso s.
+
+Definition st_congr1 {A B C D: Type} (f: st B D -> st C D) (s: st (A * B) D) : st (A * C) D :=
+  (*Idea: initial state is (a, c). Run f on state that takes in b, runs s on (a, b), gets result b'
+    gives state that takes in c, gets c', and overall state is (a, c')
+    Essentially: run s, pass result in to f, transform to c*)
+  mkState (fun (t: A * C) =>
+    let '(a, c) := t in
+    let '(d, c) := runState (f (mkState (fun (b: B) => 
+      let '(d, (a, b)) := runState s (a, b) in
+      (d, b)))) c in
+    (d, (a, c))).
+
+(*TODO: better composition*)
+(* Definition st_assoc {A B C D: Type} (s1: st (A * (B * C)) D) :
   st (A * B * C) D :=
   mkState (fun (t: A * B * C) =>
     let '(res, (a, (b, c))) := (runState s1) (fst (fst t), (snd (fst t), snd t)) in
     (res, (a, b, c))).
+Definition st_assoc_rev {A B C D: Type} (s1: st (A * B * C) D) :
+  st (A * (B * C)) D :=
+  mkState (fun (t: A * (B * C)) =>
+    let '(res, (a, b, c)) := (runState s1) (fst t, fst (snd t), snd (snd t)) in
+    (res, (a, (b, c)))).
+(*TODO: basically, we want some kind of algebraic structure*)
+Definition st_comm {A B C: Type} (s1: st (A * B) C) : st (B * A) C :=
+  mkState (fun (t: B * A) =>
+    let '(res, (a, b)) := runState s1 ((snd t), (fst t)) in
+      (res, (b, a))).
+(*Maybe derivable but hard - problem: we can't rewrite in subparts*)
+Definition st_assoc4 {A B C D E: Type} (s1: st (A * (B * (C * D))) E) : st (A * B * C * D) E :=
+  mkState (fun (t: A * B * C * D) =>
+    let '(a1, b1, c1, d1) := t in
+    let '(res, (a, (b, (c, d)))) := runState s1 (a1, (b1, (c1, d1))) in
+    (res, (a, b, c, d))). *)
+(*Probably very inefficient, but now we have a quasi-rewrite theory*)
+Definition st_insert {A B C D: Type} (s1: st (A * C) D) : st (A * B * C) D :=
+  st_assoc (st_comm (st_assoc (@st_lift2 B _ _ (st_comm s1)))).
+
+(*Lift state transformations to errState*)
+Definition errst_trans {S1 S2 A: Type} (f: forall A, st S1 A -> st S2 A) (s: errState S1 A) : errState S2 A :=
+  match s with
+  | mkEitherT s1' => mkEitherT (f _ s1')
+  end.
 
 (*Combine 2 states inside either monad*)
 Definition errst_tup1 {A B C: Type} (s1: errState A C) : errState (A * B) C :=
@@ -194,8 +267,36 @@ Definition errst_tup2 {A B C: Type} (s1: errState B C) : errState (A * B) C :=
   composition*)
 Definition errst_assoc {A B C D: Type} (s1: errState (A * (B * C)) D) :
   errState (A * B * C) D :=
-  match s1 with
-  | mkEitherT s1' => mkEitherT (st_assoc s1')
+  errst_trans (@st_assoc _ _ _) s1.
+Definition errst_assoc_rev {A B C D: Type} (s1: errState (A * B * C) D) :
+  errState (A * (B * C)) D :=
+  errst_trans (@st_assoc_rev _ _ _) s1.
+Definition errst_comm {A B C: Type} (s: errState (A * B) C) : errState (B * A) C :=
+  errst_trans (@st_comm _ _) s.
+Definition errst_insert {A B C D: Type} (s: errState (A * C) D) : errState (A * B * C) D :=
+  errst_trans (@st_insert _ _ _) s.
+(**)
+Definition errst_assoc4 {A B C D E: Type} (s: errState (A * (B * (C * D))) E) : errState (A * B * C * D) E :=
+  errst_trans (@st_assoc4 _ _ _ _) s.
+Definition errst_assoc13 {A B C D E: Type} (s: errState (A * (B * C * D)) E) : errState (A * B * C * D) E :=
+  errst_trans (@st_assoc13 _ _ _ _) s.
+Definition errst_assoc22 {A B C D E: Type} (s: errState ((A * B) * (C * D)) E) : errState (A * B * C * D) E :=
+  errst_trans (@st_assoc22 _ _ _ _) s.
+
+(*For convenience*)
+Definition errst_tup2_assoc {A B C D: Type} (s: errState (B * C) D) : errState (A * B * C) D :=
+  errst_assoc (errst_tup2 s).
+Definition errst_tup2_assoc3 {A B C D E: Type} (s: errState (B * C * D) E) : errState (A * B * C * D) E :=
+  errst_assoc4 (@errst_tup2 A _ _ (errst_assoc_rev s)).
+
+Definition errst_congr1 {A B C D: Type} (f: errState B D -> errState C D) (s:errState (A * B) D) : errState (A * C) D :=
+  let g s :=
+    match f (mkEitherT s) with
+    | mkEitherT s1 => s1
+    end
+  in
+  match s with
+  | mkEitherT s1 => mkEitherT (st_congr1 g s1)
   end.
 
 (*We use coq-ext-lib's monads and monad transformers.

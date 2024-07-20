@@ -239,3 +239,6 @@ Definition id_clone1 loc attrs i :=
             | Some _ => loc
   end in
   create_ident i.(id_string) aa loc.
+
+Definition id_derive1 nm (i : ident) :=
+  create_ident nm (i.(id_attrs)) i.(id_loc).

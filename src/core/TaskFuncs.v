@@ -130,3 +130,11 @@ Definition add_prop_decl tk k p f :
   errState (hashcons_ty decl * hashcons_ty tdecl_c * hashcons_ty task_hd) task :=
   td <- errst_tup1 (errst_tup1 (create_prop_decl k p f));;
   errst_assoc (errst_tup2 (add_decl tk td)).
+
+(*We will only add decls for now*)
+Definition add_tdecl1 (tsk: option task_hd) (td: tdecl_c) : 
+  errState (hashcons_ty tdecl_c * hashcons_ty task_hd) task :=
+  match td_node_of td with
+  | Decl d => new_decl tsk d td
+  | _ => errst_ret tsk
+  end.

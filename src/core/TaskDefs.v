@@ -35,6 +35,44 @@ Fixpoint task_hd_ind (t: task_hd) : P t :=
 
 End TaskInd.
 
+(*Write functions over task*)
+Section TaskRect.
+
+Variable (P: task -> Type).
+Variable (Hnone: P None).
+Variable (Hsome: forall t, P t.(task_prev) -> P (Some t)).
+
+(*Need well-founded induction*)
+Definition option_size {A: Type} (sz: A -> nat) (o: option A) : nat :=
+  match o with
+  | None => 1
+  | Some x => 1 + sz x
+  end.
+Fixpoint task_hd_size (t: task_hd) {struct t} : nat :=
+  option_size task_hd_size t.(task_prev).
+Definition task_size (t: task) : nat :=
+  option_size task_hd_size t.
+
+Lemma task_size_lt t: task_size (t.(task_prev)) < task_size (Some t).
+Proof.
+  simpl. destruct t; simpl.
+  unfold task_size. lia.
+Qed.
+
+Fixpoint task_rect_aux (t: task)  (ACC: Acc lt (task_size t)) {struct ACC} : 
+  P t.
+destruct t.
+- apply Hsome. apply task_rect_aux. 
+  apply (Acc_inv ACC).
+  apply task_size_lt.
+- apply Hnone.
+Defined.
+
+Definition task_rect (t: task) : P t :=
+  task_rect_aux t (Wf_nat.lt_wf _).
+
+End TaskRect.
+
 Fixpoint task_hd_eqb (t1 t2: task_hd) : bool :=
   CoqWeakhtbl.tag_equal t1.(task_tag) t2.(task_tag) && (*tag first*)
   td_equal t1.(task_decl) t2.(task_decl) &&
