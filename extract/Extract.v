@@ -1,11 +1,11 @@
 From Src.core Require Import IdentDefs TyDefs TyFuncs TermDefs TermFuncs
-DeclDefs DeclFuncs CoercionDefs TheoryDefs TaskDefs TaskFuncs.
+DeclDefs DeclFuncs CoercionDefs TheoryDefs TaskDefs TaskFuncs TransDefs.
 From Src.coqutil Require Import IntFuncs CoqCtr State.
 From Src.util Require Import ConstantDefs NumberFuncs extmap extset hashcons CoqExthtbl.
 From Coq Require Extraction.
 From ExtLib Require Import Monads EitherMonad StateMonad.
 
-Extraction Blacklist String List Option Bool Strings.
+Extraction Blacklist Nat String List Option Bool Strings.
 
 Require Import Coq.extraction.ExtrOcamlBasic.
 (*Extract to native OCaml strings*)
@@ -139,6 +139,22 @@ Extract Inlined Constant State.new_st => "ref".
 Extract Inlined Constant State.st_set => "(fun x -> st_ref := x)".
 Extract Inlined Constant State.st_get => "!st_ref".
 Extract Inlined Constant State.st_run_UNSAFE => "(fun _ x -> st_ref := T.initial; x)".
+
+(*Hashcons state monad lifts*)
+Extract Inlined Constant full_of_ty => "".
+Extract Inlined Constant full_of_d => "".
+Extract Inlined Constant full_of_td => "".
+Extract Inlined Constant full_of_tsk => "".
+Extract Inlined Constant full_of_ty_d => "".
+Extract Inlined Constant full_of_ty_td => "".
+Extract Inlined Constant full_of_ty_tsk => "".
+Extract Inlined Constant full_of_d_td => "".
+Extract Inlined Constant full_of_d_tsk => "".
+Extract Inlined Constant full_of_td_tsk => "".
+Extract Inlined Constant full_of_ty_d_td => "".
+Extract Inlined Constant full_of_ty_d_tsk => "".
+Extract Inlined Constant full_of_ty_td_tsk => "".
+Extract Inlined Constant full_of_d_td_tsk => "".
 
 (*Maps - inline some things to reduce dependent types, Obj.magic
   and unecessary functions*)
@@ -290,7 +306,7 @@ Separate Extraction (*CoqUtil.str_to_pos*) (*TEMP*)
   CoqExthtbl NumberDefs NumberFuncs hashcons extmap extset CoqHashtbl 
   CoqWstdlib
   ConstantDefs IdentDefs TyDefs TyFuncs TermDefs TermFuncs
-  DeclDefs DeclFuncs CoercionDefs TheoryDefs TaskDefs TaskFuncs.
+  DeclDefs DeclFuncs CoercionDefs TheoryDefs TaskDefs TaskFuncs TransDefs.
 (* TheoryDefs.*) (*Ty.ty_v_map Ident.*)
 (*Separate Extraction Extmap.
 Separate Extraction Ty.ty Ty.ty_v_map Ident.*)

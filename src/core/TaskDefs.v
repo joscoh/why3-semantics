@@ -1,5 +1,8 @@
-Require Export Monads PmapExtra CoqWeakhtbl IdentDefs TermDefs TermFuncs DeclDefs DeclFuncs TheoryDefs.
-Import MonadNotations.
+Require Export Monads PmapExtra CoqWeakhtbl IdentDefs TyDefs TermDefs TermFuncs DeclDefs DeclFuncs TheoryDefs.
+Import MonadNotations. (*TODO: fix once fix imports*)
+
+(*REALLY REALLY NEED TO FIX IMPORTS*)
+Definition hack : Type := tysymbol.
 
 (*Clone and Meta History*)
 Module Stdecl2 := TheoryDefs.Stdecl1.
@@ -160,3 +163,72 @@ Definition mk_task (decl: tdecl_c) (prev: task) (known: known_map)
 Definition task_known1 (o : task) := option_fold Mid.empty (fun t => t.(task_known)) o.
 Definition task_clone1 (o: task) := option_fold Mid.empty (fun t => t.(task_clone)) o. 
 Definition task_meta1 (o: task) := option_fold Mmeta.empty (fun t => t.(task_meta)) o.
+
+(*Now that we have ty, decl, tdecl, and task, we have all the hashconsed types
+  (ignoring term for now, will maybe have to change)
+  We define functions to lift subsets of these hashconsed states to the full state.
+  TODO: it would be really, really nice to have better composition*)
+Require Import TyDefs.
+Definition hashcons_full : Type :=
+  (hashcons_ty ty_c) * (hashcons_ty decl) * (hashcons_ty tdecl_c) * (hashcons_ty task_hd).
+
+Section Lifts.
+Context {A: Type} {St: Type}.
+(*type*)
+Definition full_of_ty (s: errState (hashcons_ty ty_c) A) : errState hashcons_full A :=
+  errst_tup1 (errst_tup1 (errst_tup1 s)).
+  (* errst_assoc13 (@errst_tup1 _ ((hashcons_ty decl) * (hashcons_ty tdecl_c) * (hashcons_ty task_hd)) _ s). *)
+
+(*decl*)
+Definition full_of_d (s: errState (hashcons_ty decl) A) : errState hashcons_full A :=
+  errst_tup1 (errst_tup1 (errst_tup2 s)).
+  (* errst_assoc22 (errst_tup1 (errst_tup2 s)). *)
+
+(*tdecl*)
+Definition full_of_td (s: errState (hashcons_ty tdecl_c) A) : errState hashcons_full A :=
+  errst_tup1 (errst_tup2 s).
+
+(*task*)
+Definition full_of_tsk (s: errState (hashcons_ty task_hd) A) : errState hashcons_full A :=
+  errst_tup2 s.
+
+(*type + decl*)
+Definition full_of_ty_d (s: errState (hashcons_ty ty_c * hashcons_ty decl) A) : errState hashcons_full A :=
+  errst_tup1 (errst_tup1 s).
+
+(*type + tdecl*)
+Definition full_of_ty_td (s: errState (hashcons_ty ty_c * hashcons_ty tdecl_c) A) : errState hashcons_full A :=
+  errst_tup1 (errst_insert s).
+
+(*type + task*)
+Definition full_of_ty_tsk (s: errState (hashcons_ty ty_c * hashcons_ty task_hd) A) : errState hashcons_full A :=
+  errst_assoc (errst_insert (errst_assoc_rev (errst_insert s))).
+
+(*decl + tdecl*)
+Definition full_of_d_td (s: errState (hashcons_ty decl * hashcons_ty tdecl_c) A) : errState hashcons_full A :=
+  errst_assoc13 (errst_tup2 (errst_tup1 s)).
+
+(*decl + task*)
+Definition full_of_d_tsk (s: errState (hashcons_ty decl * hashcons_ty task_hd) A) : errState hashcons_full A :=
+  errst_assoc13 (errst_tup2 (errst_insert s)).
+
+(*tdecl + task*)
+Definition full_of_td_tsk (s: errState (hashcons_ty tdecl_c * hashcons_ty task_hd) A) : errState hashcons_full A :=
+  errst_assoc (errst_tup2 s).
+
+(*type + decl + tdecl*)
+Definition full_of_ty_d_td (s: errState (hashcons_ty ty_c * hashcons_ty decl * hashcons_ty tdecl_c) A) : errState hashcons_full A :=
+  errst_tup1 s.
+
+(*type + decl + task*)
+Definition full_of_ty_d_tsk (s: errState (hashcons_ty ty_c * hashcons_ty decl * hashcons_ty task_hd) A) : errState hashcons_full A :=
+  errst_insert s.
+
+(*type + tdecl + task*)
+Definition full_of_ty_td_tsk (s: errState (hashcons_ty ty_c * hashcons_ty tdecl_c * hashcons_ty task_hd) A) : errState hashcons_full A :=
+  errst_assoc22 (errst_insert (errst_assoc_rev s)).
+
+(*decl + tdecl + task*)
+Definition full_of_d_td_tsk (s: errState (hashcons_ty decl * hashcons_ty tdecl_c * hashcons_ty task_hd) A) : errState hashcons_full A :=
+  errst_assoc13 (errst_tup2 s).
+End Lifts.

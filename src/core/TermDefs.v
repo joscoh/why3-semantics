@@ -1,10 +1,11 @@
 Require Import Ident.
-Require Import TyDefs TyFuncs.
+Require Export TyDefs TyFuncs ConstantDefs.
 Require Import CoqWstdlib.
 Require Import Monads.
 Import MonadNotations.
 Local Open Scope state_scope.
 Require Import IntFuncs.
+Require LocTy NumberDefs .
 Set Bullet Behavior "Strict Subproofs".
 
 (* Variable Symbols*)
@@ -285,7 +286,6 @@ Definition pattern_node_eqb_eq := proj2 pattern_eqb_eq_aux.
 (*No sets/maps of patterns*)
 
 (* Terms *)
-Require LocTy NumberDefs ConstantDefs.
 
 
 (*First, Coq definition*)

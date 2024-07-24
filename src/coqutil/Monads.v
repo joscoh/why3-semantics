@@ -275,7 +275,6 @@ Definition errst_comm {A B C: Type} (s: errState (A * B) C) : errState (B * A) C
   errst_trans (@st_comm _ _) s.
 Definition errst_insert {A B C D: Type} (s: errState (A * C) D) : errState (A * B * C) D :=
   errst_trans (@st_insert _ _ _) s.
-(**)
 Definition errst_assoc4 {A B C D E: Type} (s: errState (A * (B * (C * D))) E) : errState (A * B * C * D) E :=
   errst_trans (@st_assoc4 _ _ _ _) s.
 Definition errst_assoc13 {A B C D E: Type} (s: errState (A * (B * C * D)) E) : errState (A * B * C * D) E :=
@@ -325,3 +324,98 @@ Notation errorHashconsT K A := (errState (hashcons_ty K) A).
 Notation errorHashT K V A := (errState (hashtbl K V) A).
 (*6: Counter + error handling*)
 Notation ctrErr A := (errState (CoqBigInt.t) A).
+
+(*Utility Functions*)
+Import MonadNotations.
+
+(*We need lots of e.g. folding and mapping over lists.
+  The functions we need are often identical, but we need multiple
+  versions to avoid Obj.magic (unless we can evaluate before extraction)*)
+
+Local Open Scope err_scope.
+(*Note: fold right, not left*)
+(*Version that can be used in nested recursive defs*)
+Definition foldr_err := fun {A B: Type} (f: A -> B -> errorM A) =>
+  fix fold_errorM (l: list B) (x: A) {struct l} :=
+  match l with
+  | nil => err_ret x
+  | h :: t =>
+    i <- fold_errorM t x ;;
+    f i h
+  end.
+
+Definition foldl_err {A B: Type}
+  (f: A -> B -> errorM A) :=
+  fix foldM (l: list B) (x: A) :=
+  match l with
+  | nil => err_ret x
+  | h :: t =>
+    (j <- f x h ;;
+    foldM t j)%err
+  end.
+
+Definition fold_left2_err {A B C : Type} 
+  (f: C -> A -> B -> errorM C) :=
+  fix foldM (accu: C) (l1: list A) (l2: list B) : errorM (option C) :=
+  match l1, l2 with
+  | nil, nil => err_ret (Some accu)
+  | a1 :: l1, a2 :: l2 => 
+    (x <- (f accu a1 a2) ;;
+    foldM x l1 l2)%err
+  | _, _ => err_ret None
+  end.
+
+Definition iter_err {A: Type}
+  (f: A -> errorM unit) (l: list A) : errorM unit :=
+  foldl_err (fun _ x => f x) l tt.
+
+Definition iter2_err {A B: Type} (f: A -> B -> errorM unit) (l1: list A) (l2: list B) : errorM unit :=
+  o <- fold_left2_err (fun _ x y => f x y) tt l1 l2 ;;
+  match o with
+  | None => throw (Invalid_argument "iter2")
+  | Some x => err_ret x
+  end.
+
+Local Open Scope state_scope.
+Definition foldl_st := fun {S1 A B: Type} (f: A -> B -> st S1 A) =>
+  fix foldl_st (l: list B) (x: A) {struct l} :=
+  match l with
+  | nil => st_ret x
+  | h :: t => j <- f x h ;;
+              foldl_st t j
+  end.
+
+Local Open Scope errst_scope.
+
+Definition foldl_errst := fun {S1 A B: Type} (f: A -> B -> errState S1 A) =>
+  fix fold_left_errst (l: list B) (x: A) {struct l} :=
+  match l with
+  | nil => errst_ret x
+  | h :: t => j <- f x h ;;
+              fold_left_errst t j
+  end.
+
+Fixpoint fold_left2_errst {A B C S : Type} 
+  (f: C -> A -> B -> errState S C) (accu: C) 
+  (l1: list A) (l2: list B) : errState S (option C) :=
+  match l1, l2 with
+  | nil, nil => errst_lift2 (err_ret (Some accu))
+  | a1 :: l1, a2 :: l2 => 
+    (x <- (f accu a1 a2) ;;
+    fold_left2_errst f x l1 l2)%errst
+  | _, _ => errst_lift2 (err_ret None)
+  end.
+
+(*This is a partial function in why3, we give a default val here*)
+(*Need errState version*)
+Definition map_join_left_errst {A B St: Type} (d: B) 
+  (map: A -> errState St B) (join: B -> B -> errState St B) 
+  (l: list A) : errState St B :=
+  match l with
+  | x :: xl => 
+    y <- (map x) ;;
+    foldl_errst (fun acc x => 
+    l1 <- (map x) ;;
+    join acc l1) xl y 
+  | _ => errst_ret d
+  end.

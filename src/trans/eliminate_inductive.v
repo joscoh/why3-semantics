@@ -19,7 +19,7 @@ Definition axm (acc: list decl) (x: prsymbol * term_c) :
 Definition imp {A: Type} (acc: list decl) (x: A * list (prsymbol * term_c)) : 
   errorHashconsT decl (list decl) :=
   let (_, al) := x in
-  fold_left_errst axm al acc.
+  foldl_errst axm al acc.
 
 Definition t_and_simp (t1 t2: term_c) : term_c.
 Admitted.
@@ -57,20 +57,6 @@ Definition exi {A: Type} (vl: list term_c) (x: A * term_c) :
     in
   descend (snd x).
 
-(*This is a partial function in why3, we give a default val here*)
-(*Need errState version*)
-Definition map_join_left_errst {A B St: Type} (d: B) 
-  (map: A -> errState St B) (join: B -> B -> errState St B) 
-  (l: list A) : errState St B :=
-  match l with
-  | x :: xl => 
-    y <- (map x) ;;
-    fold_left_errst (fun acc x => 
-    l1 <- (map x) ;;
-    join acc l1) xl y 
-  | _ => errst_ret d
-  end.
-
 (*TODO: LOTS of monad stuff we would like to avoid*)
 Definition inv {A: Type} (acc: list decl) (x: lsymbol * list (A * term_c)) : 
   errState (CoqBigInt.t * (hashcons_ty ty_c * hashcons_ty decl)) (list decl) :=
@@ -95,9 +81,9 @@ Definition elim (d: decl) :
   match d.(d_node) with
   | Dind x =>
     let il := snd x in
-    dl <- errst_tup2 (errst_tup2 (fold_left_errst log il nil)) ;;
-    dl <- errst_tup2 (errst_tup2 (fold_left_errst imp il dl)) ;;
-    dl <- fold_left_errst inv il dl ;;
+    dl <- errst_tup2 (errst_tup2 (foldl_errst log il nil)) ;;
+    dl <- errst_tup2 (errst_tup2 (foldl_errst imp il dl)) ;;
+    dl <- foldl_errst inv il dl ;;
     errst_ret (rev dl)
   | _ => errst_ret [d]
   end.
@@ -105,7 +91,7 @@ Definition elim (d: decl) :
 (*Lift to hashcons_full*)
 
 Definition elim_lift (d: decl) :
-  errState (CoqBigInt.t * TransDefs.hashcons_full) (list decl) :=
+  errState (CoqBigInt.t * hashcons_full) (list decl) :=
   @errst_congr1 CoqBigInt.t (hashcons_ty ty_c * hashcons_ty decl) _ _ full_of_ty_d (elim d).
 
 Definition eliminate_inductive := TransDefs.decl_errst elim_lift None.

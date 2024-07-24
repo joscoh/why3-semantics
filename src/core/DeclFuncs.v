@@ -41,17 +41,6 @@ Definition map2_opt {A B C: Type} (f: A -> B -> C) :=
       | _, _ => None
       end.
 
-(*TODO: option or error?*)
-Definition list_iter2 {A B: Type} (f: A -> B -> errorM unit) :=
-  fix list_iter2  (l1 : list A) (l2: list B) : errorM unit :=
-    match l1, l2 with
-    | nil, nil => err_ret tt
-    | x1 :: t1, x2 :: t2 => 
-      _ <- f x1 x2 ;;
-      list_iter2 t1 t2
-    | _, _ => throw (Invalid_argument "iter2")
-    end.
-
 Local Open Scope errst_scope.
 
 Definition make_ls_defn (ls: lsymbol) (vl: list vsymbol)
@@ -75,7 +64,7 @@ Definition make_ls_defn (ls: lsymbol) (vl: list vsymbol)
   tforall <- errst_lift2 (t_forall_close vl [] bd) ;;
   fd <- errst_lift2 (check_fvs tforall) ;;
    (* check correspondence with the type signature of ls *)
-  _ <- errst_lift2 (list_iter2 check_vl ls.(ls_args) vl) ;;
+  _ <- errst_lift2 (iter2_err check_vl ls.(ls_args) vl) ;;
   _ <- errst_lift2 (t_ty_check t ls.(ls_value)) ;;
   (* return the definition *)
   errst_ret (ls, (ls, fd, [])).
@@ -100,20 +89,6 @@ Definition open_ls_defn (l: ls_defn) : errorM (list vsymbol * term_c) :=
   | Some (vs, t) => err_ret (vs, t)
   | None => (TermFuncs.assert_false "open_ls_defn"%string)
   end.
-
-(*Definition open_ls_defn (l: ls_defn) : errState CoqBigInt.t 
-  (list vsymbol * term_c) :=
-  let '(_, f, _) := l in
-  s <- errst_lift1 match t_node_of f with
-    | Tquant Tforall b => t_open_quant1 b
-    | _ => st_ret (nil, nil, f)
-    end ;;
-  let '(vl, _, f) := s in
-  match t_node_of f with
-  | Tapp _ (_ :: f :: nil) => errst_ret (vl, f)
-  | Tbinop _ _ f => errst_ret (vl, f)
-  | _ => errst_lift2 (TermFuncs.assert_false "open_ls_defn"%string)
-  end.*)
 
   
 (*Termination Checking*)
@@ -436,7 +411,6 @@ Definition ls_in_tm (l: lsymbol) (t: term_c) : bool :=
 Definition build_decl node news tag: decl :=
   {| d_node := node; d_news := news; d_tag := tag |}.
 
-(*TODO*)
 Definition NoTerminationProof (l: lsymbol) : errtype :=
   mk_errtype "NoTerminationProof" l.
 
@@ -484,13 +458,6 @@ Definition check_termination_strict kn d :
 
 
 (* Declarations *)
-(* 
-(*NOTE: NOT hashconsing for now (see if we need/how fast)*)
-Definition mk_decl node news :=
-  {| d_node := node; d_news := news; d_tag := CoqWeakhtbl.dummy_tag |}. *)
-
-(*TODO: equal and hash - use functions from hashcons basically
-  because we can't use tag without hashconsing*)
 
 Definition IllegalTypeAlias (t: tysymbol_c) : errtype :=
   mk_errtype "IllegalTypeAlias" t.
@@ -530,44 +497,6 @@ Definition is_nodef {A: Type} (t: type_def A) : bool :=
   match t with
   | NoDef => true
   | _ => false
-  end.
-
-  (*TODO: should try to generalized with monad - lots of these
-    floating around, need to fix*)
-Definition foldl_errst {A B C: Type}
-  (f: A -> B -> errState C A) :=
-  fix foldM (l: list B) (x: A) :=
-  match l with
-  | nil => errst_ret x
-  | h :: t =>
-    j <- f x h ;;
-    foldM t j
-  end.
-
-Definition foldl_err {A B: Type}
-  (f: A -> B -> errorM A) :=
-  fix foldM (l: list B) (x: A) :=
-  match l with
-  | nil => err_ret x
-  | h :: t =>
-    (j <- f x h ;;
-    foldM t j)%err
-  end.
-
-Definition iter_err {A: Type}
-  (f: A -> errorM unit) (l: list A) : errorM unit :=
-  foldl_err (fun _ x => f x) l tt.
-
-(*TODO: bad*)
-Fixpoint fold_left2_err {A B C : Type} 
-  (f: C -> A -> B -> errorM C) (accu: C) 
-  (l1: list A) (l2: list B) : errorM (option C) :=
-  match l1, l2 with
-  | nil, nil => err_ret (Some accu)
-  | a1 :: l1, a2 :: l2 => 
-    (x <- (f accu a1 a2) ;;
-    fold_left2_err f x l1 l2)%err
-  | _, _ => err_ret None
   end.
 
 Definition opt_get_exn {A: Type} (e: errtype) (x: option A) : errorM A :=
@@ -1164,7 +1093,7 @@ Definition check_positivity (kn : known_map) (d : decl) : errorM unit :=
             in
             (*Same bound as before*)
             l1 <- (ts_extract_pos kn Sts.empty ts) ;;
-            list_iter2 check tl l1
+            iter2_err check tl l1
           end
         in
         iter_err check_ty cs.(ls_args)

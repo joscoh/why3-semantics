@@ -88,6 +88,9 @@ Proof. auto. Qed.
 Lemma zero_spec: to_Z zero = 0.
 Proof. reflexivity. Qed.
 
+Lemma one_spec: to_Z one = 1.
+Proof. reflexivity. Qed.
+
 Lemma succ_spec z: to_Z (succ z) = Z.succ (to_Z z).
 Proof. reflexivity. Qed.
 

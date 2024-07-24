@@ -3,6 +3,8 @@ coq-util/Datatypes.ml
 coq-util/Datatypes.mli
 coq-util/base.ml
 coq-util/base.mli
+coq-util/Nat0.mli
+coq-util/Nat0.ml
 coq-util/fin_maps.ml
 coq-util/fin_maps.mli
 coq-util/option0.ml
@@ -81,3 +83,5 @@ core/theory.mli
 core/theory.ml
 core/task.mli
 core/task.ml
+core/trans.mli
+core/trans.ml

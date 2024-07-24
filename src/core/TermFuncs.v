@@ -1,4 +1,5 @@
-Require Import IntFuncs Monads TyDefs TermDefs TyFuncs IdentDefs ConstantDefs.
+Require Import IntFuncs Monads (*TyDefs TermDefs TyFuncs IdentDefs ConstantDefs*).
+Require Export TermDefs.
 Require NumberFuncs.
 Import MonadNotations.
 Local Open Scope err_scope.
@@ -110,18 +111,6 @@ Definition PredicateSymbolExpected (l: lsymbol) : errtype :=
   mk_errtype "PredicateSymbolExpected" l.
 Definition ConstructorExpected (l: lsymbol) : errtype :=
   mk_errtype "ConstructorExpected" l.
-
-(*TODO: bad*)
-Fixpoint fold_left2_errst {A B C S : Type} 
-  (f: C -> A -> B -> errState S C) (accu: C) 
-  (l1: list A) (l2: list B) : errState S (option C) :=
-  match l1, l2 with
-  | nil, nil => errst_lift2 (err_ret (Some accu))
-  | a1 :: l1, a2 :: l2 => 
-    (x <- (f accu a1 a2) ;;
-    fold_left2_errst f x l1 l2)%errst
-  | _, _ => errst_lift2 (err_ret None)
-  end.
 
 (*We need to do all of this because we include the types in
   everything, so we check for consistency*)
@@ -1367,18 +1356,8 @@ Definition t_pred_app pr t : errorHashconsT ty_c term_c :=
   t1 <- (t_func_app pr t) ;;
   t_equ t1 t_bool_true.
 
-(*TODO: move*)
-(*A fold left*)
-Definition fold_left_errst := fun {S1 A B: Type} (f: A -> B -> errState S1 A) =>
-  fix fold_left_errst (l: list B) (x: A) {struct l} :=
-  match l with
-  | nil => errst_ret x
-  | h :: t => j <- f x h ;;
-              fold_left_errst t j
-  end.
-
 Definition t_func_app_l fn tl : errorHashconsT ty_c term_c :=
-  fold_left_errst t_func_app tl fn.
+  foldl_errst t_func_app tl fn.
 
 Definition t_pred_app_l pr tl : errorHashconsT ty_c term_c :=
   ta <- (t_func_app_l pr tl) ;;

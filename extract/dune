@@ -1,7 +1,7 @@
 (coq.extraction
  (prelude Extract)
  (extracted_modules 
-  BinNums BinPos Datatypes Specif  List0 String0 Bool0 Common
+  BinNums BinPos Datatypes Specif  List0 String0 Bool0 Common Nat0
   base Basics BinInt strings0 zmap pmap fin_maps numbers option0
   Byte CoqUtil CoqBigInt LocTy ssrbool path Monads
   extmap extset CoqWstdlib CoqWeakhtbl CoqHashtbl hashcons NumberDefs
@@ -11,7 +11,7 @@
   ConstantDefs
   IdentDefs
   TyDefs TyFuncs TermDefs TermFuncs DeclDefs DeclFuncs CoercionDefs 
-  TheoryDefs TaskDefs TaskFuncs)
+  TheoryDefs TaskDefs TaskFuncs TransDefs)
  (theories Src stdpp Proofs ExtLib mathcomp.ssreflect elpi HB)
  )
 
@@ -284,6 +284,39 @@
   )
  )
 
+;Trans.ml
+(rule
+  (deps TransImport.ml TransDefs.ml TransExtra.ml)
+  (targets trans.ml)
+  (action 
+  (with-stdout-to trans.ml
+    (pipe-stdout
+     (cat TransDefs.ml TransExtra.ml)
+     (run sed -e "s/open.*//g")
+    ;  (run sed -e "s/open TyDefs/open Ty/g")
+    ;  (run sed -e "s/open TyFuncs//g")
+    ;  (run sed -e "s/open IdentDefs/open Ident/g")
+    ;  (run sed -e "s/open CoqWstdlib/open Wstdlib/g")
+    ;  (run sed -e "s/open CoqWeakhtbl/open Weakhtbl/g")
+    ;  ;(run sed -e "s/NumberDefs/Number/g")
+    ;  ;(run sed -e "s/open NumberFuncs//g") ;bad
+    ;  ;(run sed -e "s/CoqExthtbl/Exthtbl2/g")
+    ;  (run sed -e "s/open TermDefs/open Term/g")
+    ;  (run sed -e "s/open TermFuncs/open Term/g") ;bad
+    ;  ;(run sed -e "s/ConstantDefs/Constant/g")
+    ;  ;(run sed -e "s/open LocTy/open Loc/g")
+    ;  (run sed -e "s/open DeclDefs/open Decl/g")
+    ;  (run sed -e "s/open DeclFuncs//g")
+    ;  (run sed -e "s/CoercionDefs/Coercion/g")
+    ;  (run sed -e "s/open TheoryDefs/open Theory/g")
+    ;  (run sed -e "s/open TaskDefs/open Task/g")
+    ;  (run sed -e "s/open TaskFuncs//g")
+    (run cat TransImport.ml -)
+    )
+   )
+  )
+ )
+
 (library
  (name Why3Coq)
  (modules (:standard \ CoqCtr TyExn TyDefs TyFuncs TyExtra IdentDefs IdentExtra 
@@ -291,7 +324,7 @@
   NumberDefs numberexn NumberFuncs numberextra CoqExthtbl ConstantDefs 
   ConstantExtra TermDefs TermExtra TermExn TermFuncs DeclDefs 
   DeclExn DeclFuncs DeclExtra CoercionDefs CoercionExtra TheoryDefs TheoryExtra
-  TaskDefs TaskExn TaskExtra TaskFuncs))
+  TaskDefs TaskExn TaskExtra TaskFuncs TransDefs TransExtra))
  (flags (:standard -w -33 -w -32 -w -9 -w -27 -w -34)) 
  ;32 is unused value - extraction results in values we don't want in mli file
  ;27 is unused var strict - TODO turn off after

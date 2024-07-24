@@ -1,8 +1,8 @@
-Require Import Monads TyDefs IntFuncs.
+Require Import Monads IntFuncs. 
+Require Export IdentDefs TyDefs.
 From ExtLib Require Import Monads.
 Import MonadNotations.
 Local Open Scope state_scope.
-Require Import IdentDefs.
 
 (*First, deal with builtins, because we want to add them directly
   for hashconsing. This ensures that e.g. ty_bool is a pure
@@ -189,23 +189,12 @@ Definition DuplicateTypeVar (t: tvsymbol) : errtype :=
 
 Local Open Scope err_scope.
 
-(*Note: fold right, not left*)
-(*Version that can be used in nested recursive defs*)
-Definition fold_errorM' := fun {A B: Type} (f: A -> B -> errorM A) =>
-  fix fold_errorM (l: list B) (x: A) {struct l} :=
-  match l with
-  | nil => err_ret x
-  | h :: t =>
-    i <- fold_errorM t x ;;
-    f i h
-  end.
-
 (*TODO: replace with this?*)
 Fixpoint ty_v_fold_err {A: Type} (fn: A -> tvsymbol -> errorM A) (acc: A)
   (t: ty_c) {struct t} : errorM A :=
   match ty_node_of t with
   | Tyvar v => fn acc v
-  | Tyapp _ tl => fold_errorM' (ty_v_fold_err fn) tl acc
+  | Tyapp _ tl => foldr_err (ty_v_fold_err fn) tl acc
   end.
 
 Definition ty_v_all_err (pr: tvsymbol -> errorM bool) (t: ty_c) : 
@@ -225,7 +214,7 @@ Definition BadFloatSpec : errtype := mk_errtype "BadFloatSpec" tt.
 Definition create_tysymbol (name: preid) (args: list tvsymbol) (d: type_def ty_c) (*: tysymbol_c*)
   : errorM (ctr tysymbol_c) :=
   let add (s: Stv.t) (v: tvsymbol) := Stv.add_new (DuplicateTypeVar v) v s in
-  let s1 := fold_errorM' add args Stv.empty in
+  let s1 := foldr_err add args Stv.empty in
   let check (v: tvsymbol) : errorM bool := 
     m <- s1 ;;
     if Stv.mem v m then err_ret true else
@@ -399,16 +388,6 @@ Definition tuple_memo := TupIds.create CoqInt.one.
 (*CoqBig int for now, but need function to turn
   to string*)
 
-(*TODO: move*)
-(*A fold left*)
-Definition fold_left_st := fun {S1 A B: Type} (f: A -> B -> st S1 A) =>
-  fix fold_left_st (l: list B) (x: A) {struct l} :=
-  match l with
-  | nil => st_ret x
-  | h :: t => j <- f x h ;;
-              fold_left_st t j
-  end.
-
 (*NOTE: for now, we memoize manually because everything is in
   the state monad
   type is st (ctr * (TupNames * TupIds))
@@ -421,7 +400,7 @@ Definition ts_tuple : CoqBigInt.t -> st _ tysymbol_c :=
     | None =>
       (*Create n fresh type variables*)
       (*Order doesn't matter, so we can reverse*)
-      let vl := fold_left_st (fun l _ => 
+      let vl := foldl_st (fun l _ => 
         h <- create_tvsymbol (IdentDefs.id_fresh1 "a") ;;
         st_ret (h :: l)
       ) (iota n) nil : ctr (list tvsymbol) in
