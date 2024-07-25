@@ -21,8 +21,6 @@ Definition imp {A: Type} (acc: list decl) (x: A * list (prsymbol * term_c)) :
   let (_, al) := x in
   foldl_errst axm al acc.
 
-Definition t_and_simp (t1 t2: term_c) : term_c.
-Admitted.
 (*TODO: non-typechecking versions of some API
   functions - then we can avoid error monad.
   We already know that things are well-typed*)
@@ -41,7 +39,7 @@ Definition exi {A: Type} (vl: list term_c) (x: A * term_c) :
     | Tapp _ tl =>
       let marry acc v t := 
         t1 <- (t_equ v t) ;;
-        errst_ret (t_and_simp acc t1) in
+        errst_lift2 (t_and_simp acc t1) in
       o <- fold_left2_errst marry t_true vl tl;;
       match o with
       | None => (*cannot happen w typechecking*) errst_ret f

@@ -57,7 +57,7 @@ Definition gen_decl1 {A St: Type} (add : task -> A -> errState (St * hashcons_fu
     | Decl d => 
       l <- (fn d) ;;
       foldl_errst add l acc
-    | _ =>  errst_tup2 (full_of_td_tsk (add_tdecl1 acc tsk.(task_decl)))
+    | _ =>  errst_tup2 (full_of_td_tsk (add_tdecl acc tsk.(task_decl)))
     end
   in
   fold_errst fn.

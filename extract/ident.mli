@@ -108,6 +108,7 @@ val id_clone1 : Loc.position option -> Sattr.t -> ident -> preid
 
 (** create a derived pre-ident (inherit attributes and location) *)
 val id_derive : ?attrs:Sattr.t -> string -> ident -> preid
+val id_derive1: string -> ident -> preid
 
 (* DEPRECATED : retrieve preid name without registering *)
 val preid_name : preid -> string

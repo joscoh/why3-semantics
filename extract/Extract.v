@@ -1,5 +1,6 @@
 From Src.core Require Import IdentDefs TyDefs TyFuncs TermDefs TermFuncs
 DeclDefs DeclFuncs CoercionDefs TheoryDefs TaskDefs TaskFuncs TransDefs.
+From Src.transform Require Import EliminateInductive.
 From Src.coqutil Require Import IntFuncs CoqCtr State.
 From Src.util Require Import ConstantDefs NumberFuncs extmap extset hashcons CoqExthtbl.
 From Coq Require Extraction.
@@ -125,12 +126,13 @@ Extract Inlined Constant st_lift2 => "".
 (*State + error monad*)
 Extract Constant errState "'a" "'b" => "'b".
 Extract Inlined Constant errst_bind => "(@@)".
-Extract Inlined Constant errst_ret => "".
+Extract Inlined Constant errst_ret => "(fun x -> x)".
 Extract Inlined Constant errst_lift1 => "".
 Extract Inlined Constant errst_lift2 => "".
 Extract Inlined Constant errst_tup1 => "".
 Extract Inlined Constant errst_tup2 => "".
 Extract Inlined Constant errst_assoc => "".
+Extract Inlined Constant errst_congr1 => "". (*TODO: make sure OK*)
 
 
 (*Mutable state monads*)
@@ -306,7 +308,8 @@ Separate Extraction (*CoqUtil.str_to_pos*) (*TEMP*)
   CoqExthtbl NumberDefs NumberFuncs hashcons extmap extset CoqHashtbl 
   CoqWstdlib
   ConstantDefs IdentDefs TyDefs TyFuncs TermDefs TermFuncs
-  DeclDefs DeclFuncs CoercionDefs TheoryDefs TaskDefs TaskFuncs TransDefs.
+  DeclDefs DeclFuncs CoercionDefs TheoryDefs TaskDefs TaskFuncs TransDefs
+  EliminateInductive.
 (* TheoryDefs.*) (*Ty.ty_v_map Ident.*)
 (*Separate Extraction Extmap.
 Separate Extraction Ty.ty Ty.ty_v_map Ident.*)

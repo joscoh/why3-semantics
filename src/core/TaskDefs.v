@@ -8,8 +8,33 @@ Definition hack : Type := tysymbol.
 Module Stdecl2 := TheoryDefs.Stdecl1.
 Module HStdecl := Stdecl2.
 Definition tdecl_set := Stdecl2.t.
+
+Definition tds_empty : tdecl_set := Stdecl2.empty.
+Definition tds_singleton td : tdecl_set := Stdecl2.singleton td.
+Definition tds_add := Stdecl2.add.
+
 Definition clone_map := Mid.t tdecl_set.
 Definition meta_map := Mmeta.t tdecl_set.
+
+Definition cm_find (cm : clone_map) (th : theory_c) : tdecl_set := 
+  Mid.find_def _ tds_empty (th_name_of th) cm.
+
+Definition cm_add cm th td := Mid.change _ (fun o => 
+  match o with
+  | None => Some (tds_singleton td)
+  | Some tds => Some (tds_add td tds)
+  end) (th_name_of th) cm.
+
+Definition mm_add_aux mm t td := Mmeta.change _ (fun o =>
+  match o with
+  | None => Some (tds_singleton td)
+  | Some tds => Some (tds_add td tds)
+  end) t mm.
+
+Definition mm_add (mm : meta_map) (t: meta) (td : tdecl_c) : meta_map := 
+  if t.(meta_excl)
+  then Mmeta.add t (tds_singleton td) mm
+  else mm_add_aux mm t td.
 
 
 (** Task *)
@@ -163,6 +188,9 @@ Definition mk_task (decl: tdecl_c) (prev: task) (known: known_map)
 Definition task_known1 (o : task) := option_fold Mid.empty (fun t => t.(task_known)) o.
 Definition task_clone1 (o: task) := option_fold Mid.empty (fun t => t.(task_clone)) o. 
 Definition task_meta1 (o: task) := option_fold Mmeta.empty (fun t => t.(task_meta)) o.
+
+Definition find_clone_tds task (th : theory_c) := 
+  cm_find (task_clone1 task) th.
 
 (*Now that we have ty, decl, tdecl, and task, we have all the hashconsed types
   (ignoring term for now, will maybe have to change)

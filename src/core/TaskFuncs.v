@@ -96,6 +96,17 @@ Definition new_decl (t: task) (d: decl) (td: tdecl_c) : errState (hashcons_ty td
   | Normal n => errst_ret n
   end.
 
+Definition new_clone (tsk : task) (th: theory_c) (td: tdecl_c) :
+  errState (hashcons_ty task_hd) task :=
+  let cl := cm_add (task_clone1 tsk) th td in
+  t1 <- errst_lift2 (check_task tsk) ;;
+  errst_lift1 (mk_task td t1 (task_known1 tsk) cl (task_meta1 tsk)).
+
+Definition new_meta tsk t td :=
+  let mt := mm_add (task_meta1 tsk) t td in
+  t1 <- errst_lift2 (check_task tsk) ;;
+  errst_lift1 (mk_task td t1 (task_known1 tsk) (task_clone1 tsk) mt).
+
 (*Skip [new_clone], [new_meta]*)
 
 (* declaration constructors + add_decl *)
@@ -132,9 +143,12 @@ Definition add_prop_decl tk k p f :
   errst_assoc (errst_tup2 (add_decl tk td)).
 
 (*We will only add decls for now*)
-Definition add_tdecl1 (tsk: option task_hd) (td: tdecl_c) : 
+Definition add_tdecl (tsk: option task_hd) (td: tdecl_c) : 
   errState (hashcons_ty tdecl_c * hashcons_ty task_hd) task :=
   match td_node_of td with
   | Decl d => new_decl tsk d td
-  | _ => errst_ret tsk
+  | Use th => if Stdecl2.mem td (find_clone_tds tsk th) then errst_ret tsk else 
+    errst_tup2 (new_clone tsk th td)
+  | Clone th _ => errst_tup2 (new_clone tsk th td)
+  | Meta t _ => errst_tup2 (new_meta tsk t td)
   end.

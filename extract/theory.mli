@@ -343,3 +343,4 @@ exception ProvedWfConflict of lsymbol
 
 (*JOSH - expose constructors*)
 val td_node : tdecl -> tdecl_node
+val th_name : theory -> ident

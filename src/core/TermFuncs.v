@@ -677,6 +677,13 @@ Definition t_attr_add (l: attribute) (t: term_c) : term_c :=
 Definition t_attr_remove (l: attribute) (t: term_c) : term_c :=
   mk_term_c (t_node_of t) (t_ty_of t) (Sattr.remove l (t_attrs_of t)) (t_loc_of t).
 
+(*A little hack: all we need (for now) is to remove attributes, so
+  we will remove all with name. So we can ignore hashcons*)
+Definition t_attr_remove_name (s: string) (t: term_c) : term_c :=
+  mk_term_c (t_node_of t) (t_ty_of t) 
+    (Sattr.filter (fun a => negb (String.eqb a.(attr_string) s)) (t_attrs_of t))
+    (t_loc_of t).
+
 
 Definition t_attr_copy (s t: term_c) : term_c :=
   (*No reference equality check*)
@@ -1486,3 +1493,14 @@ End TermRecUnsafe.
 
 (*TODO: safe version? (prove by wf recusion on size)
   Need to prove things about substitution*)
+
+(* constructors with propositional simplification *)
+
+Definition t_and_simp (f1 f2 : term_c) : errorM term_c := 
+  match t_node_of f1, t_node_of f2 with
+  | Ttrue, _  => err_ret f2
+  | _, Ttrue  => err_ret (t_attr_remove_name "asym_split" f1)
+  | Tfalse, _ => err_ret (t_attr_remove_name "asym_split" f1)
+  | _, Tfalse => err_ret f2
+  | _, _ => if t_equal f1 f2 then err_ret f1 else t_and f1 f2
+  end.

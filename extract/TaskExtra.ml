@@ -41,10 +41,10 @@ end)
 let mk_tds s =
   Theory.Stdecl.fold Stdecl2.add s Stdecl2.empty
 
-let tds_empty = Stdecl2.empty
-let tds_singleton td = Stdecl2.singleton td
+(* let tds_empty = Stdecl2.empty
+let tds_singleton td = Stdecl2.singleton td *)
 
-let tds_add = Stdecl2.add
+(* let tds_add = Stdecl2.add *)
 
 let tds_equal = Stdecl2.equal
 (* let tds_hash = Stdecl.hash 
@@ -54,10 +54,10 @@ let tds_compare = Stdecl2.compare
 (* type clone_map = tdecl_set Mid.t
 type meta_map = tdecl_set Mmeta.t *)
 
-let cm_find cm th = Mid.find_def tds_empty th.th_name cm
+(* let cm_find cm th = Mid.find_def tds_empty th.th_name cm *)
 let mm_find mm t = Mmeta.find_def tds_empty t mm
 
-let cm_add cm th td = Mid.change (function
+(* let cm_add cm th td = Mid.change (function
   | None -> Some (tds_singleton td)
   | Some tds -> Some (tds_add td tds)) th.th_name cm
 
@@ -67,7 +67,7 @@ let mm_add mm t td = Mmeta.change (function
 
 let mm_add mm t td = if t.meta_excl
   then Mmeta.add t (tds_singleton td) mm
-  else mm_add mm t td
+  else mm_add mm t td *)
 
 (** Task *)
 
@@ -118,7 +118,7 @@ let mk_task decl prev known clone meta = Some (Hstask.hashcons {
 let task_clone o = Option.fold ~some:(fun t -> t.task_clone) ~none:Mid.empty   o
 let task_meta  o = Option.fold ~some:(fun t -> t.task_meta)  ~none:Mmeta.empty o *)
 
-let find_clone_tds task (th : theory) = cm_find (task_clone1 task) th
+(* let find_clone_tds task (th : theory) = cm_find (task_clone1 task) th*)
 let find_meta_tds task (t : meta) = mm_find (task_meta1 task) t
 
 (* constructors with checks *)
@@ -161,13 +161,13 @@ let new_decl task d td =
 
 let new_decl task d td = try new_decl task d td with KnownIdent _ -> task *)
 
-let new_clone task th td =
+(* let new_clone task th td =
   let cl = cm_add (task_clone1 task) th td in
   mk_task td (check_task task) (task_known1 task) cl (task_meta1 task)
 
 let new_meta task t td =
   let mt = mm_add (task_meta1 task) t td in
-  mk_task td (check_task task) (task_known1 task) (task_clone1 task) mt
+  mk_task td (check_task task) (task_known1 task) (task_clone1 task) mt *)
 
 (* declaration constructors + add_decl *)
 
@@ -182,13 +182,13 @@ let add_prop_decl tk k p f = add_decl tk (create_prop_decl k p f) *)
 
 (* task constructors *)
 
-let add_tdecl task td = match td.td_node with
+(* let add_tdecl task td = match td.td_node with
   | Decl d -> new_decl task d td
   | Use th ->
       if Stdecl2.mem td (find_clone_tds task th) then task else
       new_clone task th td
   | Clone (th,_) -> new_clone task th td
-  | Meta (t,_) -> new_meta task t td
+  | Meta (t,_) -> new_meta task t td *)
 
 let rec flat_tdecl task td = match td.td_node with
   | Decl { d_node = Dprop (Plemma,pr,f) } -> add_prop_decl task Paxiom pr f

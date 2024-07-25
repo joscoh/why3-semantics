@@ -275,3 +275,6 @@ val apply_transform : string -> Env.env -> task -> task list
 val apply_transform_args :
   string -> Env.env -> string list -> naming_table -> Env.fformat -> task -> task list
 (** apply a registered 1-to-1 or a 1-to-n or a trans with args, directly *)
+
+(*JOSH - monadic versions*)
+val decl_errst:  (decl -> decl list     ) -> task -> task trans

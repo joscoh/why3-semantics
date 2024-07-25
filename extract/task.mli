@@ -145,4 +145,3 @@ exception LemmaFound
 
 (*JOSH - need for recursive functions*)
 val task_rect : 'a -> (task_hd -> 'a -> 'a) -> task -> 'a
-val add_tdecl1 : task -> tdecl -> task
