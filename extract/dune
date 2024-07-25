@@ -84,13 +84,14 @@
 
 ;create Number.ml
  (rule
-  (deps NumberDefs.ml numberexn.ml NumberFuncs.ml numberextra.ml)
+  (deps NumberImports.ml NumberDefs.ml numberexn.ml NumberFuncs.ml numberextra.ml)
   (targets number.ml)
   (action 
   (with-stdout-to number.ml
     (pipe-stdout
      (cat NumberDefs.ml numberexn.ml NumberFuncs.ml numberextra.ml)
-     (run sed -e "s/open NumberDefs//g")
+     (run sed -e "s/^open.*//g")
+     (run cat NumberImports.ml -)
     )
    )
   )
@@ -98,17 +99,14 @@
 
 ;create Ident.ml
  (rule
-  (deps IdentDefs.ml IdentExtra.ml)
+  (deps IdentImports.ml IdentDefs.ml IdentExtra.ml)
   (targets ident.ml)
   (action 
   (with-stdout-to ident.ml
     (pipe-stdout
      (cat IdentDefs.ml IdentExtra.ml)
-     (run sed -e "s/open IdentDefs//g")
-     (run sed -e "s/open LocTy/open Loc/g")
-     (run sed -e "s/open CoqWstdlib/open Wstdlib/g")
-     (run sed -e "s/open CoqWeakhtbl/open Weakhtbl/g")
-     (run sed -e "s/open CoqCtr/open Ctr/g")
+     (run sed -e "s/^open.*//g")
+     (run cat IdentImports.ml -)
     )
    )
   )
@@ -116,36 +114,29 @@
 
 ;Create Ty.ml by concatenation Defs, Exn, Funcs
  (rule
-  (deps TyDefs.ml TyExn.ml TyFuncs.ml TyExtra.ml)
+  (deps TyImports.ml TyDefs.ml TyExn.ml TyFuncs.ml TyExtra.ml)
   (targets ty.ml)
   (action 
   (with-stdout-to ty.ml
     (pipe-stdout
      (cat TyDefs.ml TyExn.ml TyFuncs.ml TyExtra.ml)
-     (run sed -e "s/open TyDefs//g")
-     (run sed -e "s/open IdentDefs/open Ident/g")
-     (run sed -e "s/open CoqWstdlib/open Wstdlib/g")
-     (run sed -e "s/open CoqWeakhtbl/open Weakhtbl/g")
-     (run sed -e "s/NumberDefs/Number/g")
-     (run sed -e "s/CoqExthtbl/Exthtbl2/g")
+     (run sed -e "s/^open.*//g")
+     (run cat TyImports.ml -)
     )
    )
   )
  )
 
  ;Create constant.ml
- ;create Ident.ml
  (rule
-  (deps ConstantDefs.ml ConstantExtra.ml)
+  (deps ConstantImports.ml ConstantDefs.ml ConstantExtra.ml)
   (targets constant.ml)
   (action 
   (with-stdout-to constant.ml
     (pipe-stdout
      (cat ConstantDefs.ml ConstantExtra.ml)
-     (run sed -e "s/NumberDefs/Number/g")
-    ;  (run sed -e "s/open LocTy/open Loc/g")
-    ;  (run sed -e "s/open CoqWstdlib/open Wstdlib/g")
-    ;  (run sed -e "s/open CoqWeakhtbl/open Weakhtbl/g")
+     (run sed -e "s/^open.*//g")
+     (run cat ConstantImports.ml -)
     )
    )
   )
@@ -153,23 +144,14 @@
 
  ;Create term.ml
  (rule
-  (deps TermDefs.ml TermExn.ml TermFuncs.ml TermExtra.ml)
+  (deps TermImports.ml TermDefs.ml TermExn.ml TermFuncs.ml TermExtra.ml)
   (targets term.ml)
   (action 
   (with-stdout-to term.ml
     (pipe-stdout
      (cat TermDefs.ml TermExn.ml TermFuncs.ml TermExtra.ml)
-     (run sed -e "s/open TyDefs/open Ty/g")
-     (run sed -e "s/open TyFuncs//g")
-     (run sed -e "s/open IdentDefs/open Ident/g")
-     (run sed -e "s/open CoqWstdlib/open Wstdlib/g")
-     (run sed -e "s/open CoqWeakhtbl/open Weakhtbl/g")
-     (run sed -e "s/NumberDefs/Number/g")
-     (run sed -e "s/open NumberFuncs//g") ;bad
-     (run sed -e "s/CoqExthtbl/Exthtbl2/g")
-     (run sed -e "s/open TermDefs//g")
-     (run sed -e "s/ConstantDefs/Constant/g")
-     (run sed -e "s/open LocTy/open Loc/g")
+     (run sed -e "s/^open.*//g")
+     (run cat TermImports.ml -)
     )
    )
   )
@@ -177,25 +159,14 @@
 
  ;Create decl.ml
  (rule
-  (deps DeclDefs.ml DeclExn.ml DeclFuncs.ml DeclExtra.ml)
+  (deps DeclImports.ml DeclDefs.ml DeclExn.ml DeclFuncs.ml DeclExtra.ml)
   (targets decl.ml)
   (action 
   (with-stdout-to decl.ml
     (pipe-stdout
      (cat DeclDefs.ml DeclExn.ml DeclFuncs.ml DeclExtra.ml)
-     (run sed -e "s/open TyDefs/open Ty/g")
-     (run sed -e "s/open TyFuncs//g")
-     (run sed -e "s/open IdentDefs/open Ident/g")
-     (run sed -e "s/open CoqWstdlib/open Wstdlib/g")
-     (run sed -e "s/open CoqWeakhtbl/open Weakhtbl/g")
-     ;(run sed -e "s/NumberDefs/Number/g")
-     ;(run sed -e "s/open NumberFuncs//g") ;bad
-     ;(run sed -e "s/CoqExthtbl/Exthtbl2/g")
-     (run sed -e "s/open TermDefs/open Term/g")
-     (run sed -e "s/open TermFuncs//g") ;bad
-     ;(run sed -e "s/ConstantDefs/Constant/g")
-     ;(run sed -e "s/open LocTy/open Loc/g")
-     (run sed -e "s/open DeclDefs//g")
+     (run sed -e "s/^open.*//g")
+     (run cat DeclImports.ml -)
     )
    )
   )
@@ -203,25 +174,14 @@
 
 ;Coercion.ml
 (rule
-  (deps CoercionDefs.ml CoercionExtra.ml)
+  (deps CoercionImports.ml CoercionDefs.ml CoercionExtra.ml)
   (targets coercion.ml)
   (action 
   (with-stdout-to coercion.ml
     (pipe-stdout
      (cat CoercionDefs.ml CoercionExtra.ml)
-     (run sed -e "s/open TyDefs/open Ty/g")
-     (run sed -e "s/open TyFuncs//g")
-     (run sed -e "s/open IdentDefs/open Ident/g")
-     (run sed -e "s/open CoqWstdlib/open Wstdlib/g")
-     ;(run sed -e "s/open CoqWeakhtbl/open Weakhtbl/g")
-     ;(run sed -e "s/NumberDefs/Number/g")
-     ;(run sed -e "s/open NumberFuncs//g") ;bad
-     ;(run sed -e "s/CoqExthtbl/Exthtbl2/g")
-     (run sed -e "s/open TermDefs/open Term/g")
-     (run sed -e "s/open TermFuncs//g") ;bad
-     ;(run sed -e "s/ConstantDefs/Constant/g")
-     ;(run sed -e "s/open LocTy/open Loc/g")
-     ;(run sed -e "s/open DeclDefs//g")
+     (run sed -e "s/^open.*//g")
+     (run cat CoercionImports.ml -)
     )
    )
   )
@@ -229,57 +189,29 @@
 
 ;Theory.ml
 (rule
-  (deps TheoryDefs.ml TheoryExtra.ml)
+  (deps TheoryImports.ml TheoryDefs.ml TheoryExtra.ml)
   (targets theory.ml)
   (action 
   (with-stdout-to theory.ml
     (pipe-stdout
      (cat TheoryDefs.ml TheoryExtra.ml)
-     (run sed -e "s/open TyDefs/open Ty/g")
-     (run sed -e "s/open TyFuncs//g")
-     (run sed -e "s/open IdentDefs/open Ident/g")
-     (run sed -e "s/open CoqWstdlib/open Wstdlib/g")
-     (run sed -e "s/open CoqWeakhtbl/open Weakhtbl/g")
-     ;(run sed -e "s/NumberDefs/Number/g")
-     ;(run sed -e "s/open NumberFuncs//g") ;bad
-     ;(run sed -e "s/CoqExthtbl/Exthtbl2/g")
-     (run sed -e "s/open TermDefs/open Term/g")
-     (run sed -e "s/open TermFuncs//g") ;bad
-     ;(run sed -e "s/ConstantDefs/Constant/g")
-     ;(run sed -e "s/open LocTy/open Loc/g")
-     (run sed -e "s/open DeclDefs/open Decl/g")
-     (run sed -e "s/open DeclFuncs//g")
-     (run sed -e "s/CoercionDefs/Coercion/g")
+     (run sed -e "s/^open.*//g")
+     (run cat TheoryImports.ml -)
     )
    )
   )
  )
 
-;Theory.ml
+;Task.ml
 (rule
-  (deps TaskDefs.ml TaskExn.ml TaskFuncs.ml TaskExtra.ml)
+  (deps TaskImports.ml TaskDefs.ml TaskExn.ml TaskFuncs.ml TaskExtra.ml)
   (targets task.ml)
   (action 
   (with-stdout-to task.ml
     (pipe-stdout
      (cat TaskDefs.ml TaskExn.ml TaskFuncs.ml TaskExtra.ml)
-     (run sed -e "s/open TyDefs/open Ty/g")
-     (run sed -e "s/open TyFuncs//g")
-     (run sed -e "s/open IdentDefs/open Ident/g")
-     (run sed -e "s/open CoqWstdlib/open Wstdlib/g")
-     (run sed -e "s/open CoqWeakhtbl/open Weakhtbl/g")
-     ;(run sed -e "s/NumberDefs/Number/g")
-     ;(run sed -e "s/open NumberFuncs//g") ;bad
-     ;(run sed -e "s/CoqExthtbl/Exthtbl2/g")
-     (run sed -e "s/open TermDefs/open Term/g")
-     (run sed -e "s/open TermFuncs/open Term/g") ;bad
-     ;(run sed -e "s/ConstantDefs/Constant/g")
-     ;(run sed -e "s/open LocTy/open Loc/g")
-     (run sed -e "s/open DeclDefs/open Decl/g")
-     (run sed -e "s/open DeclFuncs//g")
-     (run sed -e "s/CoercionDefs/Coercion/g")
-     (run sed -e "s/open TheoryDefs/open Theory/g")
-     (run sed -e "s/open TaskDefs//g")
+     (run sed -e "s/^open.*//g")
+     (run cat TaskImports.ml -)
     )
    )
   )
@@ -287,32 +219,14 @@
 
 ;Trans.ml
 (rule
-  (deps TransImport.ml TransDefs.ml TransExtra.ml)
+  (deps TransImports.ml TransDefs.ml TransExtra.ml)
   (targets trans.ml)
   (action 
   (with-stdout-to trans.ml
     (pipe-stdout
      (cat TransDefs.ml TransExtra.ml)
-     (run sed -e "s/open.*//g")
-    ;  (run sed -e "s/open TyDefs/open Ty/g")
-    ;  (run sed -e "s/open TyFuncs//g")
-    ;  (run sed -e "s/open IdentDefs/open Ident/g")
-    ;  (run sed -e "s/open CoqWstdlib/open Wstdlib/g")
-    ;  (run sed -e "s/open CoqWeakhtbl/open Weakhtbl/g")
-    ;  ;(run sed -e "s/NumberDefs/Number/g")
-    ;  ;(run sed -e "s/open NumberFuncs//g") ;bad
-    ;  ;(run sed -e "s/CoqExthtbl/Exthtbl2/g")
-    ;  (run sed -e "s/open TermDefs/open Term/g")
-    ;  (run sed -e "s/open TermFuncs/open Term/g") ;bad
-    ;  ;(run sed -e "s/ConstantDefs/Constant/g")
-    ;  ;(run sed -e "s/open LocTy/open Loc/g")
-    ;  (run sed -e "s/open DeclDefs/open Decl/g")
-    ;  (run sed -e "s/open DeclFuncs//g")
-    ;  (run sed -e "s/CoercionDefs/Coercion/g")
-    ;  (run sed -e "s/open TheoryDefs/open Theory/g")
-    ;  (run sed -e "s/open TaskDefs/open Task/g")
-    ;  (run sed -e "s/open TaskFuncs//g")
-    (run cat TransImport.ml -)
+     (run sed -e "s/^open.*//g")
+    (run cat TransImports.ml -)
     )
    )
   )
@@ -327,7 +241,7 @@
     (pipe-stdout
      (cat EliminateInductive.ml EliminateInductiveExtra.ml)
      (run sed -e "s/open.*//g")
-    (run cat EliminateInductiveImports.ml -)
+     (run cat EliminateInductiveImports.ml -)
     )
    )
   )

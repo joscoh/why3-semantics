@@ -2,15 +2,6 @@ Require Import CoqInt TyDefs TermDefs TermFuncs IdentDefs CoqWstdlib.
 Import MonadNotations.
 Set Bullet Behavior "Strict Subproofs".
 
-(*JOSH TODO: HORRIBLE HACK*)
-(*Coq's extraction does not know that tysymbol_c -> tysymbol_o
-  requires importing TyDefs, so it does not, and then can't find
-  the result. So we have this completely fake definition in here
-  so that Coq will import Ty in extraction.
-  TODO: make it so we manually add files to import, probably delete
-  from extracted code (maybe)*)
-Definition hack : Type := tysymbol.
-
 (*Type Declaration*)
 
 (*Constructor symbol with the list of projections*)

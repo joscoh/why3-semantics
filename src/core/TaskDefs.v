@@ -1,9 +1,6 @@
 Require Export Monads PmapExtra CoqWeakhtbl IdentDefs TyDefs TermDefs TermFuncs DeclDefs DeclFuncs TheoryDefs.
 Import MonadNotations. (*TODO: fix once fix imports*)
 
-(*REALLY REALLY NEED TO FIX IMPORTS*)
-Definition hack : Type := tysymbol.
-
 (*Clone and Meta History*)
 Module Stdecl2 := TheoryDefs.Stdecl1.
 Module HStdecl := Stdecl2.
