@@ -332,7 +332,7 @@ exception ClashSymbol of string
 
 exception KnownMeta of meta
 exception UnknownMeta of string
-exception BadMetaArity of meta * int
+exception BadMetaArity of meta * BigInt.t
 exception MetaTypeMismatch of meta * meta_arg_type * meta_arg_type
 exception IllFormedMeta of meta * string
 

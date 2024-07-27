@@ -90,6 +90,11 @@ Definition open_ls_defn (l: ls_defn) : errorM (list vsymbol * term_c) :=
   | None => (TermFuncs.assert_false "open_ls_defn"%string)
   end.
 
+Definition ls_defn_decrease_aux (l: ls_defn) : list CoqBigInt.t :=
+  match l with
+  | (_, _, ls) => ls
+  end.
+
   
 (*Termination Checking*)
 (*TODO: move to DeclDefs?*)

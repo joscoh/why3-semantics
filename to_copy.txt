@@ -87,3 +87,5 @@ core/trans.mli
 core/trans.ml
 transform/eliminate_inductive.mli
 transform/eliminate_inductive.ml
+transform/eliminate_definition.mli
+transform/eliminate_definition.ml

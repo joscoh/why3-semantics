@@ -11,8 +11,8 @@
   ConstantDefs
   IdentDefs
   TyDefs TyFuncs TermDefs TermFuncs DeclDefs DeclFuncs CoercionDefs 
-  TheoryDefs TaskDefs TaskFuncs TransDefs
-  EliminateInductive)
+  TheoryDefs TheoryFuncs TaskDefs TaskFuncs TransDefs
+  EliminateInductive EliminateDefinition)
  (theories Src stdpp Proofs ExtLib mathcomp.ssreflect elpi HB)
  )
 
@@ -189,12 +189,12 @@
 
 ;Theory.ml
 (rule
-  (deps TheoryImports.ml TheoryDefs.ml TheoryExtra.ml)
+  (deps TheoryImports.ml TheoryDefs.ml TheoryExn.ml TheoryFuncs.ml TheoryExtra.ml)
   (targets theory.ml)
   (action 
   (with-stdout-to theory.ml
     (pipe-stdout
-     (cat TheoryDefs.ml TheoryExtra.ml)
+     (cat TheoryDefs.ml TheoryExn.ml TheoryFuncs.ml TheoryExtra.ml)
      (run sed -e "s/^open.*//g")
      (run cat TheoryImports.ml -)
     )
@@ -240,8 +240,23 @@
   (with-stdout-to eliminate_inductive.ml
     (pipe-stdout
      (cat EliminateInductive.ml EliminateInductiveExtra.ml)
-     (run sed -e "s/open.*//g")
+     (run sed -e "s/^open.*//g")
      (run cat EliminateInductiveImports.ml -)
+    )
+   )
+  )
+ )
+
+;eliminate_definition
+ (rule
+  (deps EliminateDefinitionImports.ml EliminateDefinition.ml EliminateDefinitionExtra.ml)
+  (targets eliminate_definition.ml)
+  (action 
+  (with-stdout-to eliminate_definition.ml
+    (pipe-stdout
+     (cat EliminateDefinition.ml EliminateDefinitionExtra.ml)
+     (run sed -e "s/^open.*//g")
+     (run cat EliminateDefinitionImports.ml -)
     )
    )
   )
@@ -253,9 +268,11 @@
   LocTy LocExtra Locpre CoqWstdlib Wstdlibextra CoqWeakhtbl Weakhtblextra
   NumberDefs numberexn NumberFuncs numberextra CoqExthtbl ConstantDefs 
   ConstantExtra TermDefs TermExtra TermExn TermFuncs DeclDefs 
-  DeclExn DeclFuncs DeclExtra CoercionDefs CoercionExtra TheoryDefs TheoryExtra
+  DeclExn DeclFuncs DeclExtra CoercionDefs CoercionExtra TheoryDefs
+  TheoryFuncs TheoryExn TheoryExtra
   TaskDefs TaskExn TaskExtra TaskFuncs TransDefs TransExtra
-  EliminateInductive EliminateInductiveExtra))
+  EliminateInductive EliminateInductiveExtra
+  EliminateDefinition EliminateDefinitionExtra))
  (flags (:standard -w -33 -w -32 -w -9 -w -27 -w -34)) 
  ;32 is unused value - extraction results in values we don't want in mli file
  ;27 is unused var strict - TODO turn off after

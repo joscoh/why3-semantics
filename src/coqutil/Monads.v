@@ -387,6 +387,14 @@ Definition foldl_st := fun {S1 A B: Type} (f: A -> B -> st S1 A) =>
 
 Local Open Scope errst_scope.
 
+Definition foldr_errst := fun {S1 A B: Type} (f: B -> A -> errState S1 A) (base: A) =>
+  fix fold_right_errst (l: list B) {struct l} :=
+  match l with
+  | nil => errst_ret base
+  | h :: t => r <- fold_right_errst t ;;
+              f h r
+  end.
+
 Definition foldl_errst := fun {S1 A B: Type} (f: A -> B -> errState S1 A) =>
   fix fold_left_errst (l: list B) (x: A) {struct l} :=
   match l with
@@ -405,6 +413,20 @@ Fixpoint fold_left2_errst {A B C S : Type}
     fold_left2_errst f x l1 l2)%errst
   | _, _ => errst_lift2 (err_ret None)
   end.
+
+Definition map2_errst {A B C St: Type} (f: A -> B -> errState St C) :=
+  fix map2 (l1: list A) (l2: list B) : errState St (option (list C)) :=
+    match l1, l2 with
+    | nil, nil => errst_ret (Some nil)
+    | x1 :: t1, x2 :: t2 => 
+      y <- f x1 x2 ;;
+      o <- map2 t1 t2 ;;
+      match o with
+      | Some ys => errst_ret (Some (y :: ys))
+      | None => errst_ret None
+      end
+    | _, _ => errst_ret None
+    end.
 
 (*This is a partial function in why3, we give a default val here*)
 (*Need errState version*)

@@ -1496,6 +1496,21 @@ End TermRecUnsafe.
 
 (* constructors with propositional simplification *)
 
+(*TODO for this (and below) should we be in error monad?
+  This is not type safe if we give (e.g) t_and Ttrue (foo a), where foo is not Prop
+  So spec is: if both are typed Prop, then this is semantically equal to And (and similar)
+  have:
+  1. produces well-typed term if no error reached
+  2. if inputs were well typed prop, produces semantically equal to and
+  3. no spec if not - need to prove precondition*)
+Definition t_not_simp (f: term_c) : errorM term_c := 
+  match t_node_of f with
+  | Ttrue  => err_ret (t_attr_copy f t_false)
+  | Tfalse => err_ret (t_attr_copy f t_true)
+  | Tnot g => err_ret (t_attr_copy f g)
+  | _      => t_not f
+  end.
+
 Definition t_and_simp (f1 f2 : term_c) : errorM term_c := 
   match t_node_of f1, t_node_of f2 with
   | Ttrue, _  => err_ret f2
@@ -1504,3 +1519,15 @@ Definition t_and_simp (f1 f2 : term_c) : errorM term_c :=
   | _, Tfalse => err_ret f2
   | _, _ => if t_equal f1 f2 then err_ret f1 else t_and f1 f2
   end.
+
+Definition t_iff_simp (f1 f2 : term_c) : errorM term_c := 
+  match t_node_of f1, t_node_of f2 with
+  | Ttrue, _  => err_ret f2
+  | _, Ttrue  => err_ret f1
+  | Tfalse, _ => t_not_simp f2
+  | _, Tfalse => t_not_simp f1
+  | _, _ => if t_equal f1 f2 then err_ret (t_attr_copy f1 t_true) else t_iff f1 f2
+  end.
+
+Definition t_equ_simp (t1 t2 : term_c) : errorHashconsT ty_c term_c :=
+  if t_equal t1 t2 then errst_ret t_true  else t_equ t1 t2.

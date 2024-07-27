@@ -278,3 +278,4 @@ val apply_transform_args :
 
 (*JOSH - monadic versions*)
 val decl_errst:  (decl -> decl list     ) -> task -> task trans
+val tdecl_errst:  (decl -> tdecl list) -> task -> task trans

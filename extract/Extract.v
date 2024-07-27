@@ -1,6 +1,6 @@
 From Src.core Require Import IdentDefs TyDefs TyFuncs TermDefs TermFuncs
-DeclDefs DeclFuncs CoercionDefs TheoryDefs TaskDefs TaskFuncs TransDefs.
-From Src.transform Require Import EliminateInductive.
+DeclDefs DeclFuncs CoercionDefs TheoryDefs TheoryFuncs TaskDefs TaskFuncs TransDefs.
+From Src.transform Require Import EliminateInductive EliminateDefinition.
 From Src.coqutil Require Import IntFuncs CoqCtr State.
 From Src.util Require Import ConstantDefs NumberFuncs extmap extset hashcons CoqExthtbl.
 From Coq Require Extraction.
@@ -275,6 +275,11 @@ Extract Inlined Constant UnknownIdent => "UnknownIdent".
 Extract Inlined Constant RedeclaredIdent => "RedeclaredIdent".
 Extract Inlined Constant NonFoundedTypeDecl => "NonFoundedTypeDecl".
 
+(*Theory Exceptions*)
+Extract Inlined Constant BadMetaArity => "BadMetaArity".
+Extract Inlined Constant MetaTypeMismatch => "(fun ((x, y), z) -> MetaTypeMismatch (x, y, z))".
+
+
 (*Task Exceptions*)
 Extract Inlined Constant LemmaFound => "LemmaFound".
 Extract Inlined Constant GoalFound => "GoalFound".
@@ -288,6 +293,8 @@ Extract Inlined Constant pp_formattted_ty => "Pp.formatted".
 Extract Inlined Constant pp_formatted_ty_eqb => "(=)".
 (*Hash function, may implement*)
 Extract Inlined Constant CoqWstdlib.string_hash => "(fun s -> (BigInt.of_int (Hashtbl.hash s)))".
+(*Not implementing specific metas (yet) - requires state*)
+Extract Inlined Constant meta_rewrite => "Compute.meta_rewrite".
 
 Extraction Inline mk_errtype.
 
@@ -308,8 +315,8 @@ Separate Extraction (*CoqUtil.str_to_pos*) (*TEMP*)
   CoqExthtbl NumberDefs NumberFuncs hashcons extmap extset CoqHashtbl 
   CoqWstdlib
   ConstantDefs IdentDefs TyDefs TyFuncs TermDefs TermFuncs
-  DeclDefs DeclFuncs CoercionDefs TheoryDefs TaskDefs TaskFuncs TransDefs
-  EliminateInductive.
+  DeclDefs DeclFuncs CoercionDefs TheoryDefs TheoryFuncs TaskDefs TaskFuncs TransDefs
+  EliminateInductive EliminateDefinition.
 (* TheoryDefs.*) (*Ty.ty_v_map Ident.*)
 (*Separate Extraction Extmap.
 Separate Extraction Ty.ty Ty.ty_v_map Ident.*)

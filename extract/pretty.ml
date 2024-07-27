@@ -1083,7 +1083,7 @@ let () = Exn_printer.register
   | BadMetaArity (m,n) ->
       let i = List.length m.meta_type in
       Format.fprintf fmt "Metaproperty %s expects %d argument%s but \
-        is applied to %d" m.meta_name i (if i = 1 then "" else "s") n
+        is applied to %d" m.meta_name i (if i = 1 then "" else "s") (BigInt.to_int n) (*JOSH to_int*)
   | MetaTypeMismatch (m,t1,t2) ->
       Format.fprintf fmt "Metaproperty %s expects a %a argument but \
         is applied to %a"

@@ -65,3 +65,7 @@ Definition gen_decl1 {A St: Type} (add : task -> A -> errState (St * hashcons_fu
 Definition decl_errst {St: Type} (f: decl -> errState (St * hashcons_full) (list decl))
   (t1 t2: task) : errState (St * hashcons_full) task :=
   gen_decl1 (fun (t : task) (d: decl) => errst_tup2 (full_of_td_tsk (TaskFuncs.add_decl t d))) f t1 t2.
+
+Definition tdecl_errst  {St: Type} (f: decl -> errState (St * hashcons_full) (list tdecl_c))
+  (t1 t2: task) : errState (St * hashcons_full) task :=
+  gen_decl1 (fun (t : task) (d: tdecl_c) => errst_tup2 (full_of_td_tsk (TaskFuncs.add_tdecl t d))) f t1 t2.

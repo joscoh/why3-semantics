@@ -127,8 +127,8 @@ let meta_hash m = m.meta_tag *)
 
 exception KnownMeta of meta
 exception UnknownMeta of string
-exception BadMetaArity of meta * int
-exception MetaTypeMismatch of meta * meta_arg_type * meta_arg_type
+(* exception BadMetaArity of meta * int *)
+(* exception MetaTypeMismatch of meta * meta_arg_type * meta_arg_type *)
 exception IllFormedMeta of meta * string
 
 let meta_table = Hstr.create 17
@@ -973,7 +973,7 @@ let add_clone_internal =
 
 (** Meta properties *)
 
-let get_meta_arg_type = function
+(* let get_meta_arg_type = function
   | MAty  _ -> MTty
   | MAts  _ -> MTtysymbol
   | MAls  _ -> MTlsymbol
@@ -1001,7 +1001,7 @@ let create_meta m al =
         List.map2 get_meta_arg m.meta_type al
       with Invalid_argument _ ->
         raise (BadMetaArity (m, List.length al)) in
-    mk_tdecl (Meta (m,al))
+    mk_tdecl (Meta (m,al)) *)
 
 let add_meta uc s al = add_tdecl uc (create_meta s al)
 

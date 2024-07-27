@@ -6,7 +6,7 @@ open CoqUtil
 open Weakhtbl
 open Wstdlib
 open Datatypes
-open Decl
+open IntFuncs
 
 open Monads
 open PmapExtra

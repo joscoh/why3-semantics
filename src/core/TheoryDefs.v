@@ -1,6 +1,7 @@
 (*The Theory API*)
 From stdpp Require zmap gmap.
-Require Import PmapExtra CoqInt CoqWstdlib IdentDefs TyDefs TermDefs CoercionDefs DeclDefs DeclFuncs.
+Require Import PmapExtra CoqInt CoqWstdlib.
+Require Export IdentDefs TyDefs TermDefs CoercionDefs DeclDefs DeclFuncs.
 Set Bullet Behavior "Strict Subproofs".
 (*We do NOT implement the theory API - we stop
   at the level of creating Tasks and proving transformations

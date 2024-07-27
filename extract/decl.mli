@@ -234,3 +234,4 @@ type 'a known_res =
 | Known of ident
 | Normal of 'a
 val known_add_decl_informative: known_map -> decl -> (decl * decl Mid.t) known_res
+val ls_defn_decrease_aux : ls_defn -> BigInt.t list
