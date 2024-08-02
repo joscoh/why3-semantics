@@ -1531,57 +1531,6 @@ Qed.
 
 End Props.
 
-Section AssocList.
-
-Definition get_assoc_list {A B: Set} (eq_dec: forall (x y: A), {x = y} + { x <> y}) 
-  (l: list (A * B)) (x: A) : option B :=
-  fold_right (fun y acc => if eq_dec x (fst y) then Some (snd y) else acc) None l.
-
-Lemma get_assoc_list_some {A B: Set} 
-(eq_dec: forall (x y: A), {x = y} + { x <> y}) 
-(l: list (A * B)) (x: A) (res: B):
-  get_assoc_list eq_dec l x = Some res ->
-  In (x, res) l.
-Proof.
-  induction l; simpl. intro C; inversion C.
-  destruct (eq_dec x (fst a)); subst. intro C; inversion C; subst.
-  left. destruct a; auto.
-  intros. right. apply IHl. assumption.
-Qed.
-
-Lemma get_assoc_list_none {A B: Set} 
-(eq_dec: forall (x y: A), {x = y} + { x <> y}) 
-(l: list (A * B)) (x: A) :
-  get_assoc_list eq_dec l x = None <->
-  ~ In x (map fst l).
-Proof.
-  induction l; simpl; split; intros; auto.
-  - intro C. destruct (eq_dec x (fst a)); subst.
-    inversion H. destruct C. subst. contradiction.
-    apply IHl; auto.
-  - destruct (eq_dec x (fst a)); subst. exfalso. apply H. left; auto.
-    apply IHl. intro C. apply H. right; assumption.
-Qed.
-
-Lemma get_assoc_list_nodup {A B: Set} 
-  (eq_dec: forall (x y: A), {x=y} +{x<> y})
-  (l: list (A * B)) (x: A) (y: B)
-  (Hnodup: NoDup (map fst l))
-  (Hin: In (x, y) l):
-  get_assoc_list eq_dec l x = Some y.
-Proof.
-  unfold get_assoc_list. induction l; simpl; auto.
-  inversion Hin.
-  inversion Hnodup; subst.
-  destruct Hin as [Heq | Hin]; subst; auto; simpl in *.
-  destruct (eq_dec x x); try contradiction; auto.
-  destruct a as [h1 h2]; subst; simpl in *.
-  destruct (eq_dec x h1); subst; auto.
-  exfalso. apply H1. rewrite in_map_iff. exists (h1, y); auto.
-Qed.
-
-End AssocList.
-
 (*Results about [in]*)
 Section In.
 
