@@ -600,4 +600,12 @@ Proof.
       assert (y2 = z2) by apply (nodup_fst_inj m2_wf Hin2 Hz2). subst. rewrite Hf in Hf1; discriminate.
 Qed.
 
+(*Derived functions*)
+Definition amap_mem {C: Type} (x: A) (m: amap A C) : bool :=
+  map_contains eq_dec (proj1_sig m) x.
+(*TODO: proofs*)
+
+Definition amap_subset {C: Type} (m1: amap A B) (m2: amap A C) : bool :=
+  (*All keys in m1 are in m2*)
+  forallb (fun x => amap_mem x m2) (map fst (proj1_sig m1)).
 End MapProofs.
