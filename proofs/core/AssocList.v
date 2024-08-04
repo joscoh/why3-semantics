@@ -603,7 +603,12 @@ Qed.
 (*Derived functions*)
 Definition amap_mem {C: Type} (x: A) (m: amap A C) : bool :=
   map_contains eq_dec (proj1_sig m) x.
-(*TODO: proofs*)
+
+Lemma amap_mem_spec (x: A) (m: amap A B):
+  amap_mem x m = match amap_get eq_dec m x with | Some _ => true | None => false end.
+Proof.
+  reflexivity.
+Qed.
 
 Definition amap_subset {C: Type} (m1: amap A B) (m2: amap A C) : bool :=
   (*All keys in m1 are in m2*)
