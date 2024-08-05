@@ -21,12 +21,19 @@ Definition add_case (fs: funsym) (pl: list pattern) (a: A) (cases : amap funsym 
       end
     ) fs cases.
 
+(*NOTE: we use length (s_args c) instead of the list, so we don't need to reference types later*)
 Definition union_cases (pl: list pattern) (a: A) (types: amap funsym (list pattern)) 
+    (cases: amap funsym (list (list pattern * A))) : amap funsym (list (list pattern * A)) :=
+    let add pl _ := Pwild :: pl in
+    let wild (c: funsym) _  := [(fold_left add (s_args c) pl, a)] in
+    let join _ wl rl := Some (wl ++ rl) in
+    amap_union funsym_eq_dec join (amap_map_key wild types) cases . 
+(* Definition union_cases (pl: list pattern) (a: A) (types: amap funsym (list pattern)) 
     (cases: amap funsym (list (list pattern * A))) : amap funsym (list (list pattern * A)) :=
     let add pl _ := Pwild :: pl in
     let wild ql := [(fold_left add ql pl, a)] in
     let join _ wl rl := Some (wl ++ rl) in
-    amap_union funsym_eq_dec join (amap_map wild types) cases .
+    amap_union funsym_eq_dec join (amap_map wild types) cases . *)
 
 (*Part 1: The dispatch function they implement in OCaml
   This is more efficient (1 pass) but harder to directly reason about*)
@@ -101,12 +108,14 @@ Definition dispatch2_aux (x: list pattern * A)
   (amap funsym (list (list pattern * A))) * list (list pattern * A) :=
   let (pl, a) := x in
   let (cases, wilds) := y in
-  let p := List.hd Pwild pl in
-  let pl := List.tl pl in
-  match p with
-  | Pconstr fs _ pl' => (add_case fs (rev pl' ++ pl) a cases, wilds)
-  | Pwild => (union_cases pl a types cases, (pl, a) :: wilds)
-  | _ => (*impossible*) (cases, wilds)
+  match pl with
+  | p :: pl =>  
+    match p with
+    | Pconstr fs _ pl' => (add_case fs (rev pl' ++ pl) a cases, wilds)
+    | Pwild => (union_cases pl a types cases, (pl, a) :: wilds)
+    | _ => (*impossible*) (cases, wilds)
+    end
+  | nil => (cases, wilds) (*impossible if well-typed*)
   end.
 
 Definition dispatch2_gen (rl: list (list pattern * A)) :
@@ -304,6 +313,248 @@ Proof.
            simpl. rewrite amap_set_get_same. Search amap_get amap_set.
         *)
   
+(*TODO: defined elsewhere, see*)
+Definition constr_at_head_ex cs rl :=
+  existsb (constr_at_head cs) rl.
+(*Structural Lemmas*)
+(*Here we relate the output of [dispatch2] to the matrices S and D from the paper, giving a nice
+  functional specification. This is useful both in correctness and termination proofs*)
+
+(*Basically, we need to know something about types and rl - some things we could say:
+  1. constr_at_head_ex cs rl = amap_mem funsym_eq_dec cs types
+  2. forall cs in types, constr_at_head_ex cs rl (cannot prove inductively)
+  3. forall constr_at_head_ex cs rl, cs in types (can prove inductively - but isn't true depending on is_constr)
+  I think we actually need the first one
+  unless we inline definition of types
+  
+  Why is this so difficult? It really shouldn't be
+
+
+
+Lemma dispatch2_gen_fst_nil (types: amap funsym (list pattern)) rl cs:
+  amap_mem funsym_eq_dec cs types ->
+  constr_at_head_ex cs rl = false ->
+  amap_get funsym_eq_dec (fst (dispatch2_gen types rl)) cs = None.
+Proof.
+  intros Htyps.
+   induction rl as [| [ps a] rtl IH]; simpl.
+  - intros _. apply amap_empty_get.
+  - intros Hfalse. apply orb_false_elim in Hfalse. destruct Hfalse as [Hhd Hfalse].
+    destruct (dispatch2_gen types rtl ) as [cases wilds]; simpl in *.
+    unfold constr_at_head in Hhd; simpl in Hhd.
+    destruct ps as [|phd ptl]; auto.
+    destruct phd; auto.
+    + unfold add_case, amap_change. simpl.
+      destruct (funsym_eqb_spec f cs); try discriminate.
+      rewrite amap_replace_get_diff; auto.
+    + unfold union_cases; simpl. 
+      destruct (amap_get funsym_eq_dec (amap_map_key
+        (fun (c : funsym) (_ : list pattern) =>
+         [(fold_left (fun (pl : list pattern) (_ : vty) => Pwild :: pl) (s_args c) ptl, a)]) types) cs) as [y|] eqn : Hget2.
+      * erewrite amap_union_inl.  Search amap_get amap_union.
+
+      Search amap_get amap_replace. 
+
+ Search (?x || ?y = false).
+
+ Search amap_empty.*)
+
+(*START HERE*)
+
+(*Basic problem: I cannot get strong enough IH
+  We need (for base case) to assume that cs in rl - but we need (in IH) to know something about
+  case like: cs :: Pwild - Pwild still induces something (bc of types) but IH gives no info
+
+  really need to know that everything in types is in rl - but this does NOT hold inductively
+  problem is really that this is NOT defined via structural recursion on rl
+  so somehow we need to say something useful:
+
+  in inductive case, want to say we have foo :: filter ...., but constructor may not appear
+  what if we have
+  1. If cs appears in types but NOT as constr, get this result (though constr case is trivial)
+  2. Then case as whether as constr
+
+Let's try*)
+(*NOTE: assume simplified*)
+Definition simplified_aux (p: pattern) : bool :=
+  match p with
+  | Pconstr _ _ _ => true
+  | Pwild => true
+  | _ => false
+  end.
+
+Lemma simplify_aux_simplified t a p:
+  forallb simplified_aux (map fst (simplify_aux t a p)).
+Proof.
+  revert a.
+  induction p; simpl; intros; auto.
+  rewrite map_app, forallb_app; auto. rewrite IHp1, IHp2; auto.
+Qed.
+
+Print simplify.
+
+Definition simplified (p: list (list pattern * A)) : bool :=
+  (*The first patterns of each are simplified*)
+  forallb (fun l => match fst l with | nil => false | p :: _ => simplified_aux p end) p.
+
+Lemma forallb_concat {B: Type} (f: B -> bool) (l: list (list B)):
+  forallb f (concat l) = forallb (fun l1 => forallb f l1) l.
+Proof.
+  induction l; simpl; auto.
+  rewrite !forallb_app. rewrite IHl. auto.
+Qed.
+
+Lemma forallb_map {B C: Type} (f: B -> C) (p: C -> bool) l:
+  (forall x, In x l -> p (f x)) ->
+  forallb p (map f l).
+Proof.
+  induction l; simpl; auto; intros Hin.
+  rewrite Hin; auto.
+Qed. 
+
+Lemma simplify_simplified t rl :
+  simplified (simplify t rl).
+Proof.
+  unfold simplify, simplified.
+  rewrite forallb_concat.
+  apply forallb_map.
+  intros x Hinx.
+  apply forallb_forall.
+  intros y Hiny.
+  unfold simplify_single in Hiny.
+  destruct x as [ps a]; simpl in *.
+  destruct ps as [| p ptl]; auto.
+  rewrite in_map_iff in Hiny.
+  destruct Hiny as [[p2 z] [Hz Hinx']].
+  subst. simpl in *.
+  pose proof (simplify_aux_simplified t a p) as Hsimpl.
+  unfold is_true in Hsimpl.
+  rewrite forallb_forall in Hsimpl.
+  apply Hsimpl. rewrite in_map_iff. exists (p2, z); auto.
+Qed.
+
+Definition wild_at_head_ex rl := existsb (pat_at_head Pwild) rl.
+
+(*First structural lemma: if neither a constructor nor Pwild appears in the first column, 
+  S is empty*)
+Lemma dispatch2_gen_fst_notin (types: amap funsym (list pattern)) rl cs:
+  amap_mem funsym_eq_dec cs types ->
+  (constr_at_head_ex cs rl || wild_at_head_ex rl) = false <->
+  amap_get funsym_eq_dec (fst (dispatch2_gen types rl)) cs = None.
+Proof.
+  intros Htypes. induction rl as [| [ps a] rtl IH]; simpl; [split; auto|].
+  destruct (dispatch2_gen types rtl) as [cases wilds] eqn : Hd; simpl in *.
+  unfold constr_at_head, pat_at_head;simpl.
+  destruct ps as [| phd ptl]; simpl in *; auto.
+  destruct phd; simpl; auto.
+  - unfold add_case, amap_change. destruct (funsym_eqb_spec f cs); subst; simpl.
+    + split; try discriminate.
+      destruct (amap_get funsym_eq_dec cases cs) eqn : Hget.
+      * erewrite amap_replace_get_same1. discriminate. apply Hget.
+      * rewrite amap_replace_get_same2; auto. discriminate.
+    + rewrite amap_replace_get_diff; auto.
+  - rewrite orb_true_r. split; try discriminate.
+    unfold union_cases.
+    rewrite amap_mem_spec in Htypes.
+    destruct (amap_get funsym_eq_dec types cs) eqn : Hget1; try discriminate.
+    destruct (amap_get funsym_eq_dec cases cs) eqn : Hget2. 
+    + erewrite amap_union_inboth. discriminate. erewrite amap_map_key_get_some. reflexivity. apply Hget1. apply Hget2.
+    + erewrite amap_union_inl. discriminate. erewrite amap_map_key_get_some. reflexivity. apply Hget1. auto.
+Qed.
+
+Lemma filter_map_nil rl cs:
+  (constr_at_head_ex cs rl || wild_at_head_ex rl) = false ->
+  filter_map (fun x : list pattern * A =>
+         match fst x with (*these functions can be arbitrary but whatever*)
+         | Pconstr fs _ pats :: ps => if funsym_eqb fs cs then Some (rev pats ++ ps, snd x) else None
+         | Pwild :: ps => Some (repeat Pwild (Datatypes.length (s_args cs)) ++ ps, snd x)
+         | _ => None
+         end) rl = nil.
+Proof.
+  induction rl as [| [ps a] ptl IH]; simpl; simpl; auto.
+  intros Hhead; unfold constr_at_head, pat_at_head in Hhead; simpl in *.
+  destruct ps as [| phd ps]; auto.
+  destruct phd; simpl in *; auto.
+  - destruct (funsym_eqb_spec f cs); subst; auto; discriminate.
+  - rewrite orb_true_r in Hhead. discriminate.
+Qed.
+  
+(*2nd (main) structural lemma: if either cs or a Pwild appears in the first column, then S is the
+  result of filtering all of the other constructors out, appending the arguments of the matching
+  constructors and the correct number of wildcards for a Pwild*)
+Lemma dispatch2_gen_fst_in (types: amap funsym (list pattern)) rl cs:
+  amap_mem funsym_eq_dec cs types ->
+  (constr_at_head_ex cs rl || wild_at_head_ex rl) ->
+  amap_get funsym_eq_dec (fst (dispatch2_gen types rl)) cs = Some
+    (filter_map (fun x =>
+      let ps := fst x in
+      let a := snd x in
+      match ps with
+      | p :: ps =>
+        match p with
+        | Pwild => Some (repeat Pwild (length (s_args cs)) ++ ps, a)
+        | Pconstr fs tys pats => (*trivial here*)
+            if funsym_eqb fs cs then Some (rev pats ++ ps, a) else None
+        | _ => None
+        end
+      | _ => None
+      end
+) rl).
+Proof.
+  intros Htypes. induction rl as [| [ps a] rtl IH]; simpl; try discriminate; intros Hhead;
+  try contradiction.
+  destruct (dispatch2_gen types rtl) as [cases wilds] eqn : Hd; simpl in *.
+  unfold constr_at_head, pat_at_head in Hhead; simpl in Hhead.
+  destruct ps as [| phd ptl]; simpl in *; auto.
+  destruct phd; auto.
+  - unfold add_case, amap_change; simpl.
+    destruct (funsym_eqb_spec f cs); subst.
+    + simpl in Hhead. 
+      (*Need to see what recursive case is: preveious lemma gives more info*)
+      destruct (constr_at_head_ex cs rtl || wild_at_head_ex rtl) eqn : Hhd2.
+      * simpl in IH. erewrite amap_replace_get_same1.
+        2: apply IH; auto. reflexivity.
+      * rewrite amap_replace_get_same2. 
+        -- rewrite filter_map_nil. reflexivity. auto.
+        -- pose proof (dispatch2_gen_fst_notin types rtl cs Htypes) as Hnone.
+           rewrite Hd in Hnone; apply Hnone. auto.
+    + simpl in Hhead. rewrite amap_replace_get_diff; auto.
+  - unfold union_cases; simpl.
+    (*Need to prove list*)
+    assert (Hrepeat: fold_left (fun (pl : list pattern) (_ : vty) => Pwild :: pl) (s_args cs) ptl =
+      repeat Pwild (Datatypes.length (s_args cs)) ++ ptl).
+    {
+      clear.
+      revert ptl. induction (s_args cs); intros; auto.
+      simpl fold_left. rewrite IHl.
+      assert (Hassoc: forall {A: Type} (l1: list A) l2 l3, l1 ++ l2 :: l3 = (l1 ++ [l2]) ++ l3).
+      { intros. rewrite <- app_assoc. reflexivity. }
+      rewrite Hassoc.  f_equal.
+      assert (Hwild: [Pwild] = repeat Pwild 1) by reflexivity.
+      rewrite Hwild, <- repeat_app, Nat.add_comm. reflexivity.
+    }
+    assert (Htypes':=Htypes).
+    rewrite amap_mem_spec in Htypes'.
+    destruct (amap_get funsym_eq_dec types cs) eqn : Hget1; try discriminate.
+    destruct (constr_at_head_ex cs rtl || wild_at_head_ex rtl) eqn : Hhead2.
+    + erewrite amap_union_inboth. 3: { apply IH. auto. }
+      2: { apply amap_map_key_get_some. apply Hget1. } simpl. f_equal.
+      f_equal. f_equal. auto. 
+    + (*here, recursive get is false and list is nil*)
+      rewrite filter_map_nil; auto.
+      erewrite amap_union_inl. reflexivity. erewrite amap_map_key_get_some.
+      f_equal. f_equal. f_equal. apply Hrepeat.
+      apply Hget1. pose proof (dispatch2_gen_fst_notin types rtl cs Htypes) as Hnone.
+      rewrite Hd in Hnone; apply Hnone. auto.
+Qed.
+
+(*START: do default structural lemma*)
+
+
+
+(*Termination Metric*)
+
+(*Termination Proofs*)
 
 (*TODO: do we need to know that only Pwild/Pconstr*)
 

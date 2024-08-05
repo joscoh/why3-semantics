@@ -145,6 +145,8 @@ Definition map_singleton_aux {A B: Type} (x: A) (y: B) : map_aux A B := [(x, y)]
 Definition map_empty_aux {A B: Type} : map_aux A B := nil.
 Definition map_map_aux {A B C: Type} (f: B -> C) (m: map_aux A B) : map_aux A C :=
   map (fun x => (fst x, f (snd x))) m.
+Definition map_map_key_aux {A B C: Type} (f: A -> B -> C) (m: map_aux A B) : map_aux A C :=
+  map (fun x => (fst x, f (fst x) (snd x))) m.
 (*VERY inefficient - O(n^2) union *)
 (*Merge 2 maps*)
 Definition map_contains {A B: Type} (eq_dec: forall (x y: A), {x = y} + { x <> y}) (m: map_aux A B)
@@ -218,6 +220,10 @@ Proof. constructor. Qed.
 
 Definition map_map_proof {A B C: Type} (f: B -> C) (m: amap A B) : map_wf (map_map_aux f (proj1_sig m)).
 Proof. unfold map_map_aux, map_wf. rewrite map_map. simpl. destruct m; simpl. apply m.
+Qed.
+
+Definition map_map_key_proof {A B C: Type} (f: A -> B -> C) (m: amap A B) : map_wf (map_map_key_aux f (proj1_sig m)).
+Proof. unfold map_map_key_aux, map_wf. rewrite map_map. simpl. destruct m; simpl. apply m.
 Qed.
 
 (*The hard one*)
@@ -435,6 +441,7 @@ Definition amap_bindings {A B: Type} (m: amap A B) : list (A * B) := map_binding
 Definition amap_singleton {A B: Type} x y : amap A B := exist _ _ (map_singleton_proof x y).
 Definition amap_empty {A B: Type} : amap A B := exist _ _ (@map_empty_proof A B).
 Definition amap_map {A B C: Type} (f: B -> C) (m: amap A B) : amap A C := exist _ _ (map_map_proof f m).
+Definition amap_map_key {A B C: Type} (f: A -> B -> C) (m: amap A B) : amap A C := exist _ _ (map_map_key_proof f m).
 Definition amap_union {A B: Type} (eq_dec: forall (x y: A), {x = y} + { x <> y})
   (f: A -> B -> B -> option B) (m1 m2: amap A B) := exist _ _ (map_union_proof eq_dec f m1 m2).
 
@@ -599,6 +606,27 @@ Proof.
     + assert (y1 = z1) by apply (nodup_fst_inj m1_wf Hin1 Hz1).
       assert (y2 = z2) by apply (nodup_fst_inj m2_wf Hin2 Hz2). subst. rewrite Hf in Hf1; discriminate.
 Qed.
+
+Lemma amap_map_key_get_some {C: Type} (f: A -> B -> C) (m: amap A B) (x: A) (y: B):
+  amap_get eq_dec m x = Some y ->
+  amap_get eq_dec (amap_map_key f m) x = Some (f x y).
+Proof.
+  rewrite !amap_get_some_iff.
+  unfold amap_map_key, map_map_key_aux,amap_get, map_get_aux; simpl.
+  intros Hinxy.
+  apply get_assoc_list_nodup; auto. rewrite !map_map. simpl. destruct m as [m m_wf]; apply m_wf.
+  rewrite in_map_iff. exists (x, y); auto.
+Qed.
+
+Lemma amap_map_key_get_none {C: Type} (f: A -> B -> C) (m: amap A B) (x: A):
+  amap_get eq_dec m x = None ->
+  amap_get eq_dec (amap_map_key f m) x = None.
+Proof.
+  rewrite !amap_get_none_iff.
+  unfold amap_map_key, map_map_key_aux,amap_get, map_get_aux; simpl.
+  intros Hinxy.
+  apply get_assoc_list_none. rewrite !map_map. simpl. auto.
+Qed. 
 
 (*Derived functions*)
 Definition amap_mem {C: Type} (x: A) (m: amap A C) : bool :=
