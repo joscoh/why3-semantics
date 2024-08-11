@@ -501,6 +501,7 @@ Proof.
 Qed.
 
 (*Second main structural lemma: the matrix D*)
+Print dispatch2_aux.
 
 Lemma dispatch2_gen_snd (types: amap funsym (list pattern)) rl:
   snd (dispatch2_gen types rl) = filter_map (fun x =>
@@ -1313,405 +1314,49 @@ Qed.*)
   
 (*TODO START: we do NOT have the strict inequality here, but we may need to assume that rl is nonempty*)
 
-Print dispatch1.
-
-(*TODO MOVE: in why3, throw error if list is empty. We give an option version for this, then prove
-  that it is equivalent to the existing version (which is simpler to reason about*)
-Section Dispatch.
-Variable (t: term) (types: amap funsym (list pattern)) .
-Equations dispatch_opt (x: list pattern * A) 
-  (y:  (amap funsym (list (list pattern * A))) * list (list pattern * A) ) : 
-  option ((amap funsym (list (list pattern * A))) * list (list pattern * A))
-  by wf (pat_list_size (fst x)) lt  :=
-  dispatch_opt (nil, _) y := (*impossible*) None;
-  dispatch_opt (Pvar x :: pl, a) (cases, wilds) := 
-    let a := mk_let x t a in
-    Some (union_cases pl a types cases, (pl, a) :: wilds);
-  dispatch_opt (Pconstr fs _ pl' :: pl, a) (cases, wilds) :=
-    Some (add_case fs (rev pl' ++ pl) a cases, wilds);
-  dispatch_opt (Pwild :: pl, a) (cases, wilds) :=
-    Some (union_cases pl a types cases, (pl, a) :: wilds);
-  dispatch_opt (Por p q :: pl, a) (cases, wilds) :=
-    option_bind (dispatch_opt (q :: pl, a) (cases, wilds)) (fun o =>
-    dispatch_opt (p :: pl, a) o) ;
-  dispatch_opt (Pbind p x :: pl, a) (cases, wilds) :=
-    dispatch_opt (p :: pl, mk_let x t a) (cases, wilds).
-Next Obligation.
-  rewrite !pat_list_size_cons. simpl. lia.
-Defined.
-Next Obligation.
-  rewrite !pat_list_size_cons. simpl. lia.
-Defined.
-
-Print dispatch1.
-Definition dispatch1_opt (rl: list (list pattern * A)) :
-  option (amap funsym (list (list pattern * A)) * list (list pattern * A)) :=
-  fold_right (fun x acc => option_bind acc (fun o => dispatch_opt x o)) (Some (amap_empty, nil)) rl.
-
-Lemma dispatch_opt_none x acc:
-  dispatch_opt x acc = None <-> null (fst x).
-Proof.
-  apply dispatch_opt_elim; intros; simpl in *; try solve[auto;split; auto; discriminate].
-  destruct (dispatch_opt (q :: pl, a) (cases, wilds)); simpl; auto.
-Qed.
-
-Lemma dispatch_opt_some x acc l:
-  dispatch_opt x acc = Some l <-> negb (null (fst x)) /\ l = dispatch t types x acc.
-Proof.
-  revert l. apply dispatch_opt_elim; intros; simpl;
-  try solve [split; [intros Hsome; inversion Hsome; subst| intros [_ Hl]; subst]; auto].
-  - split; intros; destruct_all; discriminate.
-  - simpl in *. rewrite dispatch_equation_5. destruct (dispatch_opt (q :: pl, a) (cases, wilds)) as [l1 |] eqn : Hq; simpl.
-    + rewrite H0. specialize (H l1). destruct H as [Hl1 _].
-      specialize (Hl1 eq_refl). destruct Hl1; subst; auto. reflexivity.
-    + split; try discriminate. apply dispatch_opt_none in Hq. discriminate.
-  - rewrite dispatch_equation_6. apply H.
-Qed. 
-
-Lemma dispatch1_opt_none rl:
-  dispatch1_opt rl = None <-> existsb (fun x => (null (fst x))) rl.
-Proof.
-  induction rl as [| rhd rtl IH]; simpl.
-  - split; discriminate.
-  - destruct (dispatch1_opt rtl) as [l1|] eqn : Htl.
-    + simpl. rewrite dispatch_opt_none.
-      unfold is_true.
-      rewrite orb_true_iff, <- IH. split; intros; auto; destruct_all; auto; discriminate.
-    + simpl. split; auto. intros _. destruct (null (fst rhd)); auto. simpl. apply IH. auto.
-Qed. 
-
-Lemma dispatch1_opt_some rl l:
-  dispatch1_opt rl = Some l <->
-  forallb (fun x => negb (null (fst x))) rl /\ l = dispatch1 t types rl.
-Proof.
-  revert l.
-  induction rl as [|rhd rtl IH]; simpl; intros l.
-  - split.
-    + intros Hsome; inversion Hsome; subst; auto.
-    + intros [_ Hl]; subst; auto.
-  - destruct (dispatch1_opt rtl) as [ l1|] eqn : Htl .
-    2: { simpl. apply dispatch1_opt_none in Htl.
-      split; try discriminate. unfold is_true. rewrite andb_true_iff.
-      intros [[Hnull Hall] Hl].
-      exfalso.
-      (*TODO: generalize this*)
-      apply existsb_exists in Htl.
-      rewrite forallb_forall in Hall.
-      destruct Htl as [x [Hinx Hnullx]].
-      specialize (Hall x Hinx). rewrite Hnullx in Hall. discriminate.
-    }
-    simpl.
-    rewrite dispatch_opt_some.
-    specialize (IH l1). destruct IH as [IH _]. specialize (IH eq_refl).
-    destruct IH as [Hall Hl1]; subst. rewrite Hall. rewrite andb_true_r. reflexivity.
-Qed.
-End Dispatch.
-
-(*Now, we prove smaller lemmas (move above stuff later TODO*)
-
-Lemma compile_size_nil' n:
-  compile_size' n nil = 0.
-Proof. reflexivity. Qed.
-
-Lemma compile_size_cons_le n x l:
-  compile_size' n l <= compile_size' n (x :: l).
-Proof.
-  rewrite compile_size_cons'. lia.
-Qed.
-Print pat_list_list_size.
-Lemma pat_list_list_size_cons n x l:
-  pat_list_list_size n (x :: l) = pat_list_size_n n x + pat_list_list_size n l.
-Proof. reflexivity. Qed.
-
-Print pat_list_size_n.
-Lemma pat_list_size_n_cons n x l:
-  pat_list_size_n n (x :: l) = pat_size_n n x + pat_list_size_n n l.
-Proof. reflexivity. Qed.
-
-Lemma pat_size_n_pos n p:
-  0 < pat_size_n n p.
-Proof.
-  destruct p; simpl; lia.
-Qed.
-
-Lemma pat_list_size_n_pos n l:
-  negb (null l) ->
-  0 < pat_list_size_n n l.
-Proof.
-  induction l as [| h t IH]; simpl; try discriminate.
-  intros _. rewrite pat_list_size_n_cons.
-  pose proof (pat_size_n_pos n h); lia.
-Qed.
-  
-
-Lemma pat_list_list_size_pos n l:
-  negb (null l) ->
-  forallb (fun x => negb (null x)) l ->
-  0 < pat_list_list_size n l.
-Proof.
-  induction l; simpl; auto; try discriminate.
-  intros _. intros Hnull.
-  rewrite pat_list_list_size_cons.
-  apply andb_true_iff in Hnull. destruct Hnull as [Hnull _].
-  pose proof (pat_list_size_n_pos n a Hnull). lia.
-Qed.
-
-Lemma null_app {B: Type} (l1 l2: list B):
-  null (l1 ++ l2) = null l1 && null l2.
-Proof.
-  destruct l1; auto.
-Qed.
-
-Lemma null_concat {B: Type} (l: list (list B)):
-  null (concat l) = forallb null l.
-Proof.
-  induction l; simpl; auto. rewrite null_app, IHl; auto.
-Qed.
-
-Lemma forallb_map {B C: Type} (f: B -> C) (p: C -> bool) (l: list B):
-  forallb p (map f l) = forallb (fun x => p (f x)) l.
-Proof.
-  induction l; simpl; auto. rewrite IHl; auto.
-Qed.
-
-Lemma forallb_false {B: Type} (p: B -> bool) (l: list B):
-  forallb p l = false <-> exists x, In x l /\ negb (p x).
-Proof.
-  induction l; simpl.
-  - split; try discriminate. intros;destruct_all; contradiction.
-  - split.
-    + rewrite andb_false_iff. intros [Hpa | Hall].
-      * exists a. split; auto. rewrite Hpa; auto.
-      * apply IHl in Hall. destruct Hall as [x [Hinx Hx]].
-        exists x. auto.
-    + intros [x [[Hax | Hinx] Hnegb]]; subst; auto.
-      * destruct (p x); auto. discriminate.
-      * apply andb_false_iff. right. apply IHl. exists x; auto.
-Qed.
-
-Lemma forallb_t {B: Type} (l: list B):
-  forallb (fun _ => true) l.
-Proof.
-  induction l; auto.
-Qed.
-
-Lemma forallb_f {B: Type} (l: list B):
-  forallb (fun _ => false) l = null l.
-Proof.
-  induction l; auto.
-Qed.
-
-Lemma choose_all_null {B: Type} (l: list (list B)):
-  null (choose_all l) = existsb null l.
-Proof.
-  induction l; simpl; auto.
-  rewrite null_concat, forallb_map.
-  destruct (choose_all l) as [|c1 ctl]; simpl in *.
-  - rewrite forallb_t, <- IHl, orb_true_r. auto.
-  - rewrite forallb_f, <- IHl, orb_false_r. auto.
-Qed. 
-
-Lemma expand_pat_null p:
-  null (expand_pat p) = false.
-Proof.
-  induction p; simpl; auto.
-  - rewrite null_map, choose_all_null.
-    apply existsb_false. rewrite Forall_map. auto.
-  - rewrite null_app, IHp1, IHp2. auto.
-Qed.
-
-Lemma expand_pat_list_null l:
-  null (expand_pat_list l) = false.
-Proof.
-  induction l as [| p t IH]; simpl; auto.
-  unfold expand_pat_list in *; rewrite choose_all_null. simpl.
-  rewrite expand_pat_null. simpl. rewrite choose_all_null in IH. auto.
-Qed.
-
-Lemma forallb_concat {B: Type} (p: B -> bool) (l: list (list B)):
-  forallb p (concat l) = forallb (fun l1 => forallb p l1) l.
-Proof.
-  induction l; simpl; auto. rewrite forallb_app, IHl. auto.
-Qed. 
-
-Lemma expand_pat_list_all_null l:
-  negb (null l) ->
-  (* forallb (fun x => negb (null x)) l -> *)
-  forallb (fun x => negb (null x)) (expand_pat_list l).
-Proof.
-  induction l as [| p t IH]; simpl; auto.
-  intros _.
-  destruct t as [|t1 t2]; simpl in IH.
-  - unfold expand_pat_list; simpl. rewrite forallb_concat.
-    apply forallb_forall. intros x. rewrite in_map_iff. intros [y [Hy Hiny]]; subst. auto.
-  - rewrite expand_pat_list_cons, forallb_concat.
-    apply forallb_forall. intros x. rewrite in_map_iff.
-    intros [p1 [Hp1 Hinp1]]. subst. rewrite forallb_map. simpl.
-    apply forallb_t.
-Qed.
-
-Lemma compile_size_cons_lt n x l:
-  negb (null (fst x)) ->
-  compile_size' n l < compile_size' n (x :: l).
-Proof.
-  intros Hnull. rewrite compile_size_cons'.
-  assert (0 <pat_list_list_size n (expand_pat_list (fst x))); try lia.
-  apply pat_list_list_size_pos.
-  - rewrite expand_pat_list_null. auto.
-  - apply expand_pat_list_all_null. auto.
-Qed.  
-
-Lemma pat_list_list_size_nil n:
-  pat_list_list_size n nil = 0.
-Proof. reflexivity. Qed.
-
-Lemma sum_concat {B: Type} (f: B -> nat) (l: list (list B)) :
-  sum (map f (concat l)) = sum (map (fun l1 => sum (map f l1)) l).
-Proof.
-  induction l; simpl; auto.
-  rewrite map_app, sum_app, IHl. auto.
-Qed.
-
-Lemma sum_map_sum {B: Type} (f g: B -> nat) (l: list B):
-  sum (map (fun (x: B) => f x + g x) l) =
-  sum (map f l) + sum (map g l).
-Proof.
-  induction l; simpl; auto.
-  rewrite IHl; auto. lia.
-Qed.
-
-(*A similar lemma*)
-Lemma pat_list_list_expand_cons_lt n x l:
-  pat_list_list_size n (expand_pat_list l) < pat_list_list_size n (expand_pat_list (x :: l)).
-Proof.
-  rewrite expand_pat_list_cons.
-  pose proof (expand_pat_list_null l) as Hnull.
-  induction (expand_pat_list l) as [|e1 e2 IH]; simpl; try discriminate.
-  destruct e2 as [| e2 e3]; simpl in *.
-  - pose proof (expand_pat_null x). destruct (expand_pat x); try discriminate.
-    simpl. rewrite !pat_list_list_size_cons.
-    rewrite !pat_list_size_n_cons. rewrite pat_list_list_size_nil. 
-    pose proof (pat_size_n_pos n p); lia.
-  - rewrite pat_list_list_size_cons.
-    unfold pat_list_list_size at 2.
-    rewrite sum_concat. rewrite !map_map. simpl.
-    specialize (IH eq_refl).
-    unfold pat_list_list_size at 2 in IH.
-    rewrite sum_concat in IH. rewrite !map_map in IH; simpl in IH.
-    rewrite sum_map_sum.
-    apply Nat.add_lt_mono; auto.
-    pose proof (expand_pat_null x). destruct (expand_pat x); try discriminate.
-    simpl. rewrite pat_list_size_n_cons. pose proof (pat_size_n_pos n p). lia.
-Qed.
-
-Lemma sum_lt {B: Type} (f g: B -> nat) (l: list B)
-  (Hlt: forall x, In x l -> f x <= g x):
-  sum (map f l) <= sum (map g l).
-Proof.
-  induction l; simpl in *; auto; try lia.
-  apply Nat.add_le_mono; auto.
-Qed.
-
-(*A weaker lemma that holds unconditionally*)
-Lemma dispatch2_gen_snd_leq n types rl:
-  compile_size' n (snd (dispatch2_gen types rl)) <= compile_size' n rl.
-Proof.
-  rewrite dispatch2_gen_snd. induction rl as [|[ps a] rtl IH]; auto.
-  simpl. destruct ps as [| phd ptl]; simpl; auto.
-  destruct phd; simpl; auto; try solve[eapply Nat.le_trans; [apply IH| apply compile_size_cons_le]].
-  rewrite !compile_size_cons'. simpl.
-  apply Nat.add_le_mono; auto.
-  rewrite expand_pat_list_cons. simpl. rewrite app_nil_r.
-  unfold pat_list_list_size. rewrite map_map. unfold pat_list_size_n. simpl.
-  apply sum_lt. intros x Hinx. lia.
-Qed.
-
-(*The main lemma: assuming nonempty rl lists, the D matrix is actually smaller*)
-Lemma dispatch2_gen_snd_smaller' n types rl:
-  negb (null rl) ->
-  forallb (fun x => negb (null (fst x))) rl ->
-  compile_size' n (snd (dispatch2_gen types rl)) < compile_size' n rl.
-Proof.
-  rewrite dispatch2_gen_snd. induction rl as [|[ps a] rtl IH]; try discriminate.
-  simpl. intros _ Hnull. destruct ps as [| phd ptl]; simpl; try discriminate.
-  destruct phd; simpl; auto; try solve[
-  eapply Nat.le_lt_trans; [rewrite <- dispatch2_gen_snd with (types:=types); apply dispatch2_gen_snd_leq |
-    apply compile_size_cons_lt; auto]].
-  (*Only 1 nontrivial case*)
-  simpl in *.
-  rewrite !compile_size_cons'.
-  simpl.
-  apply Nat.add_lt_le_mono.
-  - apply pat_list_list_expand_cons_lt.
-  - rewrite <- (dispatch2_gen_snd types). apply dispatch2_gen_snd_leq.
-Qed.
-
-(*TODO: move*)
-Check simplify_aux.
-
-Lemma null_simplify_aux t a p:
-  negb (null (simplify_aux t a p)).
-Proof.
-  revert a.
-  induction p; simpl; intros; auto.
-  rewrite null_app, negb_andb, IHp1, IHp2. auto.
-Qed.
-
-Lemma null_simplify_single t rl:
-  negb (null (simplify_single t rl)).
-Proof.
-  destruct rl as [ps a]. simpl.
-  destruct ps; simpl; auto.
-  rewrite null_map, null_simplify_aux.
-  auto.
-Qed.
-
-Lemma null_simplify t rl:
-  null (simplify t rl) = null rl.
-Proof.
-  unfold simplify. rewrite null_concat.
-  destruct rl; simpl; auto.
-  pose proof (null_simplify_single t p) as Hnull.
-  apply negb_true_iff in Hnull.
-  rewrite Hnull; auto.
-Qed.
-
-Lemma simplify_single_all_null t x:
-  negb (null (fst x)) ->
-  forallb (fun x => negb (null (fst x))) (simplify_single t x).
-Proof.
-  destruct x as [ps a]. simpl.
-  destruct ps as [| p ptl]; simpl; auto. intros _.
-  rewrite forallb_map. simpl. apply forallb_t.
-Qed.
-
-Lemma simplify_all_null t rl:
-  forallb (fun x => negb (null (fst x))) rl ->
-  forallb (fun x => negb (null (fst x))) (simplify t rl).
-Proof.
-  intros Hall.
-  unfold simplify.
-  rewrite forallb_concat, forallb_map.
-  apply forallb_forall. intros x Hinx.
-  apply simplify_single_all_null. unfold is_true in Hall. rewrite forallb_forall in Hall.
-  apply Hall; auto.
-Qed.
-
-(*And the full result*)
 Lemma d_matrix_smaller' n t types rl:
   negb (null rl) ->
-  forallb (fun x => negb (null (fst x))) rl ->
-  compile_size' n (snd (dispatch1 t types rl)) < compile_size' n rl.
+  compile_size' n (snd (dispatch1 t types rl)) <= compile_size' n rl.
 Proof.
   rewrite dispatch_equiv.
   unfold dispatch2.
-  intros Hnull Hallnull.
-  eapply Nat.lt_le_trans.
-  - apply dispatch2_gen_snd_smaller'.
-    + rewrite null_simplify; auto.
-    + apply simplify_all_null; auto.
-  - unfold compile_size'. rewrite expand_full_simplify. auto.
-Qed.
+  intros Hnull. 
+  eapply Nat.le_trans.
+Admitted. 
+
+(* Lemma dispatch_smaller n t types rhd rtl:
+  compile_size' n (snd (dispatch t types rhd rtl)) < pat_list_size_n n (fst rhd) + compile_size' n (snd rtl).
+Proof.
+  apply dispatch_elim; intros; auto; try solve[simpl; lia].
+  - simpl.  rewrite compile_size_cons'.
+  unfold dispatch. *)
+(*apply dispatch2_gen_snd_smaller. apply compile_size_simplify.
+Qed. *)
+
+(*old lemma
+Lemma dispatch_smaller n t types rhd rtl:
+  compile_size n (snd (dispatch t types rhd rtl)) <= pat_list_size_mixed n (fst rhd) + compile_size n (snd rtl).
+Proof.
+  apply dispatch_elim; intros; auto; try solve[simpl; lia].
+  - simpl. rewrite compile_size_cons. simpl. lia.
+  - simpl. rewrite compile_size_cons. simpl. destruct pl; simpl; lia.
+  - simpl. eapply Nat.le_trans. apply H0.
+    eapply Nat.le_trans. apply Nat.add_le_mono_l. apply H.
+    simpl snd. rewrite !Nat.add_assoc. apply Nat.add_le_mono_r. simpl fst.
+    eapply Nat.le_trans. apply Nat.add_le_mono. apply pat_list_size_mixed_cons. apply pat_list_size_mixed_cons.
+    rewrite Nat.add_0_r, !Nat.pow_add_r, Nat.mul_add_distr_r.
+    apply Nat.add_le_mono.
+    + apply Nat.mul_le_mono_r. rewrite <- (Nat.mul_1_r (2 ^ (pat_size_mixed n p))) at 1.
+      apply Nat.mul_le_mono; auto. apply pow_geq_1; lia.
+    + apply Nat.mul_le_mono_r. rewrite <- (Nat.mul_1_l (2 ^ (pat_size_mixed n q))) at 1.
+      apply Nat.mul_le_mono; auto. apply pow_geq_1; lia.
+  - eapply Nat.le_trans. apply H. apply Nat.add_le_mono_r.
+    simpl fst. eapply Nat.le_trans. apply pat_list_size_mixed_cons.
+    simpl. nia.
+Qed.*)
+
+
+
 
 
 
@@ -2110,10 +1755,7 @@ Equations compile (tl: list (term * vty)) (rl: nat * list (list pattern * A)) (H
     let cslist := snd types_cslist in
     
     (*dispatch part*)
-    match dispatch1_opt t types rl as o return dispatch1_opt t types rl = o -> _ with
-    | None => fun _ => None
-    | Some casewild => fun Hdispatch1 =>
-    (* let casewild := dispatch1 t types rl in *)
+    let casewild := dispatch1 t types rl in
     let cases := fst casewild in
     let wilds := snd casewild in
     (* let (cases, wilds) := proj1_sig casewild in *)
@@ -2198,37 +1840,35 @@ Equations compile (tl: list (term * vty)) (rl: nat * list (list pattern * A)) (H
     | _ => 
       comp_full tt 
     end 
-end eq_refl
 end eq_refl.
 Next Obligation.
-intros t ty tl n phd ptl Hn compile rl css is_constr types_cslist t2 Heqt2 types cslist casewild Hdispatch cases wilds _.
-subst wilds. apply dispatch1_opt_some in Hdispatch.
-destruct Hdispatch as [Hnotnull Hcasewild]. rewrite Hcasewild.
+intros t ty tl n phd ptl Hn compile rl css is_constr types_cslist t2 Heqt2 types cslist casewild cases wilds _.
+subst wilds. unfold casewild.
 revert Hn.
-unfold rl_wf. rewrite dispatch_equiv. simpl. replace (phd :: ptl) with rl by auto.
-unfold compile_size_bound. intros Hn.
-(*TODO: prove that constr_in one -> constr_in other (so max is <=)*)
-pose proof (expand_size_dispatch2_gen_snd types (simplify t rl)).
-unfold dispatch2.
-(*Also TODO just combine in termination metric instead of n separately*)
-
+unfold rl_wf. simpl.
+unfold compile_size_bound. admit. 
 
 (*Need to prove that compile_size_bound is smaller with dispatch - is that true?
   it is (length) * max (s_args) - it gets bigger
   really, we want to ensure that it is bigger than simplified version*)
 Admitted.
-(*Prove that D matrix (wilds) is smaller*)
 Next Obligation.
-intros t ty tl n phd ptl Hn compile rl css is_constr types_cslist t2 Heqt2 types cslist casewild Hdispatch cases wilds _.
-subst wilds. apply dispatch1_opt_some in Hdispatch.
-destruct Hdispatch as [Hnotnull Hcasewild]. rewrite Hcasewild.
-unfold compile_size1. apply d_matrix_smaller'; auto.
+intros t ty tl n phd ptl Hn compile rl css is_constr types_cslist t2 Heqt2 types cslist casewild cases wilds _.
+subst wilds. unfold casewild.
+unfold compile_size1. rewrite dispatch_equiv. simpl.
+unfold rl.
+(*What we need: compile_size' n (snd (dispatch2 t types (phd :: ptl))) < compile_size' n (phd :: ptl)*)
+unfold dispatch2. simpl.
+ simpl.
+ simpl. eapply Nat.lt_le_trans. apply (dispatch_smaller n).
+(*In wilds, what is actually strictly smaller?*)
+rewrite compile_size_cons.
+apply Nat.add_le_mono_l.
+apply d_matrix_smaller.
 Defined.
-(*Prove n bound for S case*)
 Next Obligation.
 admit.
 Admitted.
-(*Termination for S matrix for all constructors*)
 Next Obligation.
 (*2nd termination obligation: comp_cases*)
 (*NOTE: can we prove unconditionally?*)
