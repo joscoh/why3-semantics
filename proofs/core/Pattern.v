@@ -1101,9 +1101,80 @@ Qed.
 
 (*Given lists l1, l2, ..., ln, find all lists with x1,...xn such that x_i \in l_i*)
 (*TODO: like [get_possible_index_lists]*)
-Definition choose_all {A: Type} (l: list (list A)) : list (list A) :=
+(* Definition choose_all {A: Type} (l: list (list A)) : list (list A) :=
   fold_right (fun l1 acc =>
-    concat (map (fun x => map (fun y => x :: y) acc) l1)) [nil] l.
+    concat (map (fun x => map (fun y => x :: y) acc) l1)) [nil] l. *)
+
+(*Theorems about [choose_all]*)
+
+Definition combinewith {A B C: Type} (f: A -> B -> C) (l1: list A) (l2: list B) : list C :=
+  concat (map (fun x => map (fun y => f x y) l2 ) l1).
+
+(* Lemma choose_all_equiv {B: Type} (l: list (list B)): choose_all l =
+  fold_right (fun l1 acc => combinewith cons l1 acc) [nil] l.
+Proof.
+  reflexivity.
+Qed. *)
+
+Definition choose_all {B: Type} (l: list (list B)) :=
+  fold_right (fun l1 acc => combinewith cons l1 acc) [nil] l.
+
+(* Lemma combinewith_id_l {B C: Type} (f: B -> C -> C) (l1: list B) (l2: list C):
+  (forall a b, In a l1 -> In b l2 -> f a b = b) ->
+  combinewith f l1 l2 = l2.
+Proof.
+  intros Hall. unfold combinewith.
+  
+ *)
+(*Theorems about [combinewith] and [choose_all]*)
+Lemma combinewith_cons1 {B C D: Type} (f: B -> C -> D) (x: B) (l1: list B) (l2: list C) :
+  combinewith f (x :: l1) l2 =
+  (map (fun y => f x y) l2) ++ combinewith f l1 l2.
+Proof.
+  reflexivity.
+Qed.
+
+Lemma combinewith_app1 {B C D: Type} (f: B -> C -> D) (l1 l2: list B) (l3: list C) :
+  combinewith f (l1 ++ l2) l3 =
+  combinewith f l1 l3 ++ combinewith f l2 l3.
+Proof.
+  induction l1; simpl; auto.
+  rewrite !combinewith_cons1, IHl1.
+  rewrite app_assoc. reflexivity.
+Qed.
+
+Lemma combinewith_comp {B C: Type} (l1 : list B) (l2 l3: list C) f g
+  (Hcomp: forall x y z, f x (g y z) = g (f x y) z):
+  combinewith f l1 (combinewith g l2 l3) =
+  combinewith g (combinewith f l1 l2) l3.
+Proof.
+  induction l1; [reflexivity|].
+  unfold combinewith at 1. simpl.
+  fold (@combinewith _ _ _ f l1 (combinewith g l2 l3)).
+  rewrite IHl1.
+  unfold combinewith at 5. simpl.
+  rewrite combinewith_app1.
+  fold (@combinewith _ _ _ f l1 l2). f_equal.
+  (*Separate lemma?*) clear -Hcomp.
+  (*TODO: how do f and g have to compose?*)
+  induction l2; simpl; [reflexivity|].
+  rewrite !combinewith_cons1.
+  rewrite !map_app, !map_map.
+  rewrite IHl2. f_equal.
+  apply map_ext.
+  auto.
+Qed.
+
+
+Lemma choose_all_app {B: Type} (l1 l2: list (list B)) :
+  choose_all (l1 ++ l2) = combinewith (fun x y => x ++ y) (choose_all l1) (choose_all l2).
+Proof.
+  induction l1; simpl; auto.
+  - unfold combinewith; simpl; rewrite app_nil_r, map_id; reflexivity.
+  - rewrite IHl1. apply combinewith_comp.
+    intros. reflexivity.
+Qed.
+
 
 (*Note: ignore variables here, only care about size*)
 Fixpoint expand_pat (p: pattern) : list pattern :=
@@ -1505,6 +1576,7 @@ Lemma choose_all_null {B: Type} (l: list (list B)):
   null (choose_all l) = existsb null l.
 Proof.
   induction l; simpl; auto.
+  unfold combinewith.
   rewrite null_concat, forallb_map.
   destruct (choose_all l) as [|c1 ctl]; simpl in *.
   - rewrite forallb_t, <- IHl, orb_true_r. auto.
@@ -1542,7 +1614,7 @@ Proof.
   induction l as [| p t IH]; simpl; auto.
   intros _.
   destruct t as [|t1 t2]; simpl in IH.
-  - unfold expand_pat_list; simpl. rewrite forallb_concat.
+  - unfold expand_pat_list; simpl. unfold combinewith. rewrite forallb_concat.
     apply forallb_forall. intros x. rewrite in_map_iff. intros [y [Hy Hiny]]; subst. auto.
   - rewrite expand_pat_list_cons, forallb_concat.
     apply forallb_forall. intros x. rewrite in_map_iff.
@@ -1714,14 +1786,19 @@ Proof.
 Qed.
 
 
-
 (*Proving that the S matrix is smaller is done in several steps:*)
 
 (*Step 0: if cs does not appear in rl, then compile_size n l <= compile_size n rl + (expand_size rl) * (s_args c)*)
 
 (*Step 0.5: if cs does appear in rl, then compile_size n l + n <= compile_size n rl + (expand_size rl) * (s_arcs c)*)
+
+
 Lemma double n: n + n = 2 * n.
-Proof. lia. Qed. 
+Proof. lia. Qed.
+
+(*What we want to show overall: amap_get funsym_eq_dec (fst (dispatch1 t types rl)) cs = Some l
+______________________________________(1/1)
+compile_size' n l < compile_size' n rl*) 
 
 (*Lemma pat_list_size_mixed_constr n cs tys pats l:
   pat_list_size_mixed n (Pconstr cs tys pats :: l) =
@@ -1795,25 +1872,864 @@ Proof.
 
  Check pat_list_size_mixed_app.*)
   
+Check choose_all.
+Print expand_pat_list.
 
-(*Lemma dispatch2_gen_bound_in n types rl cs l:
+(*Lemma: l \in (choose_all l1) iff forall i, nth i l in nth i l1*)
+(*For all: l \in (choose_all (l1 ++ l2)) iff forall i, nth i l in nth i (l1 ++ l2)
+  can we see what is equivalent?*)
+(* l: list (list pattern)
+comprehension: (choose_all l) == {x : list pattern | forall i, i < length x -> In (nth i x) (nth i l)}
+
+append: if we have (all combos of l1) and (all combose of l2), composition should be
+  take all elts of first, take all elts of 2nd, append them
+  (maybe do with combine with *)
+
+
+(*Idea: combinewith {A B C: Type} (f: A -> B -> C) (l1: list A) (l2: list B) : list C :=
+  (combine all (f x y) for x in l1 and for y in l2)
+
+  then choose_all (l: list (list pattern)) : list (list pattern) :=
+  fold_right (fun (x: list pattern) (acc: list (list pattern)) :=
+    concat (map (fun (l1: list pattern) => combinewith cons x l1*)
+
+
+    (*LHD: tae all posssibilitys from (l1 ++ l2), cons x to front, concat
+      RHS: take all possible for l1, append a to top, append with all from l2
+    should be equal, need to prove
+
+ Search map concat. rewrite <- concat_map. rewrite !concat_map. rewrite !map_map.
+    rewrite !concat_map.
+
+
+    rewrite !concat_map, !map_map.
+    
+ rewrite concat_concat. simpl.
+    f_equal. rewrite !concat_map. rewrite !map_map.
+
+ rewrite !map_map.
+
+
+ Search map (fun x => x). auto.
+*)
+Lemma expand_pat_list_app l1 l2:
+  expand_pat_list (l1 ++ l2) =
+  (*Idea: get all in l1, get all in l2, combine all*)
+  combinewith (fun x y => x ++ y) (expand_pat_list l1) (expand_pat_list l2).
+Proof.
+  unfold expand_pat_list.
+  rewrite map_app, choose_all_app. reflexivity.
+Qed.
+
+(*TODO: replace*)
+Lemma expand_pat_list_cons' x t: expand_pat_list (x :: t) =
+  combinewith cons (expand_pat x) (expand_pat_list t).
+Proof.
+  reflexivity.
+Qed.
+
+Lemma expand_pat_list_nil: expand_pat_list nil = [nil].
+Proof. reflexivity. Qed.
+
+Lemma combinewith_rev {B C D: Type} (f: B -> C -> D) (l1: list B) (l2: list C):
+  combinewith f (rev l1) (rev l2) = rev (combinewith f l1 l2).
+Proof.
+  induction l1 as [|h t IH]; simpl; auto.
+  rewrite combinewith_app1, !combinewith_cons1, IH.
+  rewrite rev_app_distr.
+  f_equal.
+  unfold combinewith. simpl. rewrite app_nil_r.
+  rewrite map_rev. reflexivity.
+Qed.
+(* 
+Lemma combinewith_rev' {B C D: Type} (f: B -> C -> list D) (l1: list B) (l2: list C):
+  rev (combinewith f l1 l2) = combinewith (fun x y => rev (f x y)) l1 l2.
+Proof.
+  induction l1 as [| h t IH]; simpl; auto.
+  rewrite !combinewith_cons1.
+  rewrite rev_app_distr, IH.
+  rewrite <- map_rev.
+
+  rewrite <- map_rev.
+
+  combinewith f (rev l1) (rev l2) = .
+Proof.
+  induction l1 as [|h t IH]; simpl; auto.
+  rewrite combinewith_app1, !combinewith_cons1, IH.
+  rewrite rev_app_distr.
+  f_equal.
+  unfold combinewith. simpl. rewrite app_nil_r.
+  rewrite map_rev. reflexivity.
+Qed.
+
+Check choose_all.
+Lemma choose_all_rev {B: Type} (l: list (list B)) : choose_all (rev l) = rev (choose_all l).
+Proof.
+  induction l as [| h t IH]; auto.
+  simpl. rewrite choose_all_app, IH.
+  rewrite <- combinewith_rev.
+  
+
+  Search choose_all.
+  rewrite choose_all_cons'.
+  Print choose_all.
+
+Lemma expand_pat_list_rev l: expand_pat_list (rev l) = rev (expand_pat_list l).
+Proof.
+  Print expand_pat_list.
+  induction l as [| h t IH]; auto.
+  simpl. rewrite expand_pat_list_app.
+  rewrite (expand_pat_list_cons' h t).
+  rewrite <- combinewith_rev, <- IH.
+  rewrite expand_pat_list_cons'.
+  unfold combinewith at 2. simpl.
+  replace ((concat (map (fun x : pattern => [[x]]) (expand_pat h)))) with (map (fun x => [x]) (expand_pat h)).
+  2: {
+    clear. induction (expand_pat h); simpl; auto.
+    rewrite IHl; auto.
+  }
+  
+  
+
+  unfold expand_pat.
+
+  rewrite IH.
+  replace (expand_pat_list [h]) with (rev (map (fun x => [x]) (expand_pat h))).
+  2: {
+    clear. rewrite expand_pat_list_cons'.
+    unfold expand_pat_list. simpl.
+    induction (expand_pat h); simpl; auto.
+    rewrite IHl. unfold combinewith; simpl. rewrite combinewith_cons.
+
+ simpl. unfold expand_pat_list.
+
+
+ rewrite expand_pat_list_nil.
+  
+  rewrite <- combinewith_rev, <- IH. 
+  
+
+
+IH.
+  rewrite !expand_pat_list_cons', expand_pat_list_nil.
+  unfold combinewith at 2. simpl.
+  assert (Hconcat: (concat (map (fun x : pattern => [[x]]) (expand_pat h))) = (map (fun x => [x]) (expand_pat h))).
+  {
+    
+  }
+  rewrite Hconcat; clear Hconcat.
+  
+
+
+  replace (concat (map (fun x : pattern => [[x]]) (expand_pat h))) with (expand_pat h).
+  2: {
+    induction (expand_pat h); simpl.
+
+ rewrite concat_map.
+
+  Search expand_pat_list.
+   simpl.
+  simpl. *)
+Search pat_list_size_n.
+Lemma pat_list_size_n_app n l1 l2:
+  pat_list_size_n n (l1 ++ l2) = pat_list_size_n n l1 + pat_list_size_n n l2.
+Proof.
+  induction l1; simpl; auto. rewrite !pat_list_size_n_cons, IHl1. lia.
+Qed. 
+
+(*TODO: not general enough - only works list -> list -> list*)
+Lemma pat_list_list_size_combinewith_app n l1 l2:
+  (* (forall x y, pat_list_size_n n (f x y) = (pat_list_size_n n x) + (pat_list_size_n n y)) -> *)
+  pat_list_list_size n (combinewith (fun x y => x ++ y) l1 l2) =
+  (length l2) * (pat_list_list_size n l1) + (length l1) * (pat_list_list_size n l2).
+Proof.
+  unfold combinewith, pat_list_list_size.
+  rewrite sum_concat. rewrite !map_map.
+  erewrite map_ext.
+  2: {
+    intros. rewrite map_map. reflexivity. }
+  revert l2. induction l1; simpl; intros l2; try nia.
+  specialize (IHl1 l2). rewrite IHl1.
+  rewrite Nat.mul_add_distr_l.
+  assert (sum (map (fun x : list pattern => pat_list_size_n n (a ++ x)) l2) =
+
+    Datatypes.length l2 * pat_list_size_n n a + (sum (map (pat_list_size_n n) l2))); try lia.
+  {
+    clear. induction l2; simpl; intros; auto.
+    rewrite pat_list_size_n_app.
+    rewrite IHl2. lia.
+  }
+Qed.
+
+Lemma combinewith_cons_app {B: Type} (l1: list B) l2:
+  combinewith cons l1 l2 = combinewith (fun x y => x ++ y) (map (fun x => [x]) l1) l2.
+Proof.
+  unfold combinewith.
+  rewrite !map_map. reflexivity.
+Qed. 
+
+Lemma combinewith_elts {B C D: Type} (f: B -> C -> D) (l1 : list B) (l2: list C) (x: D):
+  In x (combinewith f l1 l2) <-> exists y z, In y l1 /\ In z l2 /\ x = f y z.
+Proof.
+  unfold combinewith.
+  rewrite in_concat.
+  split.
+  - intros [l [Hinl Hinx]]. rewrite in_map_iff in Hinl.
+    destruct Hinl as [y [Hl Hiny]]; subst.
+    rewrite in_map_iff in Hinx. destruct Hinx as [z [Hx Hz]]; subst.
+    exists y. exists z. auto.
+  - intros [y [z [Hiny [Hinz Hx]]]]; subst.
+    eexists.
+    split.
+    + rewrite in_map_iff. exists y. split; auto.
+    + rewrite in_map_iff. exists z; auto.
+Qed.
+
+Lemma choose_all_lengths {B: Type} (l: list (list B)) (l1: list B):
+  In l1 (choose_all l) -> length l1 = length l.
+Proof.
+  revert l1.
+  induction l as [| h t]; simpl; auto; intros l1.
+  - intros [Hl1 | []]; subst; auto.
+  - rewrite combinewith_elts. intros [y [z [Hiny [Hinz Hl1]]]]. subst.
+    simpl. f_equal. apply IHt. auto.
+Qed.
+    
+
+(*TODO: one with default elt after*)
+(*TODO: do we actually need this (at least now?*)
+Lemma choose_all_elts {B: Type} (l: list (list B)) (l1: list B):
+  In l1 (choose_all l) <-> (length l1 = length l /\ forall x, x < length l -> 
+    exists b l2, nth_error l1 x = Some b /\ nth_error l x = Some l2 /\ In b l2).
+Proof.
+  revert l1.
+  induction l as [| h t IH]; intros l1.
+  - simpl. split. 
+    + intros [Hl1 | []]. subst. split; auto. intros; lia.
+    + intros [Hlen _]. destruct l1; simpl in *; auto. discriminate.
+  - simpl. rewrite combinewith_elts.
+    split.
+    + intros [y [z [Hiny [Hinz Hl1]]]]. subst. simpl.
+      assert (Hz := Hinz). apply IH in Hz.
+      destruct Hz as [Hlenz Hz].
+      split; auto.
+      intros i Hi.
+      destruct i as [|i']; simpl; auto.
+      * exists y. exists h. auto.
+      * apply Hz. lia.
+    + intros [Hlen Helts].
+      destruct l1 as [| y z]; try discriminate.
+      simpl in Hlen.
+      exists y. exists z.
+      split_all; auto.
+      * specialize (Helts 0 (ltac:(lia))). simpl in Helts.
+        destruct Helts as [b1 [l2 [Hb [Hl2 Hinb]]]].
+        inversion Hb; inversion Hl2; subst; auto.
+      * apply IH; split; try lia. intros x Hx.
+        apply (Helts (S x)). lia.
+Qed. 
+
+(*Can we prove this*)
+Require Import Coq.Sorting.Permutation.
+
+Print choose_all.
+
+Lemma map_const {B C: Type} (d: C) (l: list B):
+  map (fun _ => d) l = repeat d (length l).
+Proof.
+  induction l; simpl; auto. rewrite IHl. reflexivity.
+Qed.
+
+Lemma perm_concat_map_cons {B C: Type} (l: list B) (f: B -> C) g:
+  Permutation (concat (map (fun x => f x :: g x) l))
+    (map (fun x => f x) l ++ concat (map (fun x => g x) l)).
+Proof.
+  induction l as [| h t IH]; simpl; auto.
+  constructor. eapply Permutation_trans.
+  - apply Permutation_app_head. apply IH.
+  - apply Permutation_app_swap_app. 
+Qed.
+
+
+Lemma combinewith_switch {B C D: Type} (f: B -> C -> D) (l1: list B) (l2: list C):
+  Permutation (combinewith f l1 l2) (combinewith (fun x y => f y x) l2 l1).
+Proof.
+  revert l2. induction l1 as [| h t IH]; intros l2.
+  - unfold combinewith. simpl. rewrite map_const.
+    replace (concat (repeat [] (Datatypes.length l2))) with (@nil D); auto.
+    induction (length l2); simpl; auto.
+  - rewrite combinewith_cons1. unfold combinewith in *. simpl.
+    eapply Permutation_trans.
+    + apply Permutation_app_head. apply IH.
+    + eapply Permutation_sym.
+      apply perm_concat_map_cons.
+Qed.
+
+Lemma combinewith_permutation_fst {B C D: Type} (f: B -> C -> list D) (l1 l1': list B) (l2 : list C):
+  Permutation l1 l1' ->
+  Permutation (combinewith f l1 l2) (combinewith f l1' l2).
+Proof.
+  intros Hl1.
+  induction Hl1.
+  - unfold combinewith. simpl. constructor.
+  - rewrite !combinewith_cons1.
+    apply Permutation_app; auto.
+  - rewrite !combinewith_cons1.
+    eapply Permutation_trans.
+    apply Permutation_app_swap_app. 
+    apply Permutation_app; auto.
+  - eapply Permutation_trans. apply IHHl1_1.
+    eapply Permutation_trans. apply IHHl1_2.
+    auto.
+Qed.
+
+Lemma combinewith_permutation_snd {B C D: Type} (f: B -> C -> list D) (l1: list B) (l2 l2' : list C):
+  Permutation l2 l2' ->
+  Permutation (combinewith f l1 l2) (combinewith f l1 l2').
+Proof.
+  intros Hperm.
+  eapply Permutation_trans.
+  - apply combinewith_switch.
+  - eapply Permutation_trans.
+    2: apply Permutation_sym, combinewith_switch.
+    apply combinewith_permutation_fst. auto.
+Qed.
+
+Lemma combinewith_permutation {B C D: Type} (f: B -> C -> list D) (l1 l1': list B) (l2 l2' : list C):
+  Permutation l1 l1' ->
+  Permutation l2 l2' ->
+  Permutation (combinewith f l1 l2) (combinewith f l1' l2').
+Proof.
+  intros Hl1 Hl2.
+  eapply Permutation_trans.
+  - apply combinewith_permutation_fst. apply Hl1.
+  - apply combinewith_permutation_snd. apply Hl2.
+Qed.
+
+(*Now proofs about elements of [choose_all]*)
+Lemma choose_all_permutation {B: Type} (l1 l2: list (list B)) :
+  Forall2 (fun x y => Permutation x y) l1 l2 ->
+  Permutation (choose_all l1) (choose_all l2).
+Proof.
+  revert l2.
+  induction l1 as [| h1 t1]; intros l2 Hall.
+  - simpl. destruct l2; try inversion Hall. auto.
+  - destruct l2 as [| h2 t2]; [inversion Hall|].
+    simpl. inversion Hall; subst. apply combinewith_permutation; auto.
+Qed.
+
+Lemma combinewith_comp' {B C D: Type} (l1 : list B) (l2 : list C) (l3: list D) f g
+  (Hcomp: forall x y z, f x (g y z) = g (f x y) z):
+  combinewith f l1 (combinewith g l2 l3) =
+  combinewith g (combinewith f l1 l2) l3.
+Proof.
+  induction l1; [reflexivity|].
+  unfold combinewith at 1. simpl.
+  fold (@combinewith _ _ _ f l1 (combinewith g l2 l3)).
+  rewrite IHl1.
+  unfold combinewith at 5. simpl.
+  rewrite combinewith_app1.
+  fold (@combinewith _ _ _ f l1 l2). f_equal.
+  (*Separate lemma?*) clear -Hcomp.
+  (*TODO: how do f and g have to compose?*)
+  induction l2; simpl; [reflexivity|].
+  rewrite !combinewith_cons1.
+  rewrite !map_app, !map_map.
+  rewrite IHl2. f_equal.
+  apply map_ext.
+  auto.
+Qed.
+(* 
+Lemma permutation_map_f {B C: Type} (l: list B) (f1 f2: B -> list C):
+  (forall x, In x l -> Permutation (f1 x) (f2 x)) ->
+  Permutation (map f1 l) (map f2 l).
+Proof.
+  induction l as [|h t IH]; simpl; auto.
+  intros Hperms. 
+  Search Permutation cons.
+
+ constructor.
+
+
+Permutation (map (fun y : C => f1 h y) l2) (map (fun y : C => f2 h y) l2) *)
+
+(* Lemma combinewith_permutation_f {B C D: Type} (l1: list B) (l2: list C) (f1 f2: B -> C -> list D):
+  (forall b c, Permutation (f1 b c) (f2 b c)) ->
+  Permutation (combinewith f1 l1 l2) (combinewith f2 l1 l2).
+Proof.
+  revert l2. induction l1 as [| h t IH]; intros l2 Hperm.
+  - unfold combinewith. simpl. auto.
+  - rewrite !combinewith_cons1. apply Permutation_app; auto.
+    Search Permutation map.
+    apply Permutation_map. *)
+
+(*Just prove specific version*)
+(* Lemma combinewith_permutation_rev_app {B: Type} (l1 l2: list (list B)):
+  Permutation (combinewith (fun x y => x ++ y) l1 l2) (combinewith (fun x y => y ++ x) l1 l2).
+Proof.
+  induction l1 as [| h t IH]; simpl; auto.
+  rewrite !combinewith_cons1.  *)
+Search Permutation concat.
+(*The converse is clearly not true*)
+Lemma perm_concat {B: Type} (l1 l2: list (list B)):
+  Permutation l1 l2 ->
+  Permutation (concat l1) (concat l2).
+Proof.
+  intros Hperm. induction Hperm; simpl; auto.
+  - apply Permutation_app; auto.
+  - apply Permutation_app_swap_app.
+  - eapply Permutation_trans; eauto.
+Qed. 
+
+(*What we want to say:
+  suppose that l1 and l2 are permutations. Then, if we
+  aggregate a commutative operation over all elements of the result, it is equal
+  (Note: we CANNOT prove that they are permutations - the elements themselves
+  may be in a different order and within each list, the elements are in a different order*)
+
+(*TODO: rewerite with these*)
+Definition list_sum {B: Type} (f: B -> nat) (l: list B) : nat :=
+  sum (map f l).
+Definition list_list_sum {B: Type} (f: B -> nat) (l: list (list B)) : nat :=
+  list_sum (list_sum f) l.
+
+(*Need concat here - naive Permutation result not true*)
+(*NOTE: just do with sum for now*)
+
+Lemma concat_map_singleton {B: Type} (l: list B):
+  concat (map (fun x => [[x]]) l) = (map (fun x => [x]) l).
+Proof.
+  induction l; simpl; auto. rewrite IHl; auto.
+Qed.
+
+(*
+
+Lemma choose_all_permutation2 {B: Type} (l1 l2: list (list B)) (f: B -> nat) :
+  Permutation l1 l2 ->
+  (*NOT TRUE*) list_list_sum f (choose_all l1) = list_list_sum f (choose_all l2).
+Proof.
+  revert l2.
+  induction l1 as [| h1 t1 IH]; intros l2 Hperm.
+  - simpl. apply Permutation_nil in Hperm. subst; auto.
+  - simpl.  (*TODO: separte lemma?*)
+    assert (Hsplit: exists l3 l4, l2 = l3 ++ h1 :: l4 /\ Permutation t1 (l3 ++ l4)).
+    {
+      assert (Hin: In h1 l2). { eapply Permutation_in. apply Hperm. simpl; auto. }
+      apply in_split in Hin.
+      destruct Hin as [l3 [l4 Hl2]]; subst.
+      apply Permutation_cons_app_inv in Hperm.
+      exists l3. exists l4. auto.
+    }
+    destruct Hsplit as [l3 [l4 [Hl2 Hpermtl]]]. subst.
+    rewrite choose_all_app.
+    simpl.
+
+Lemma pat_list_list_size_combinewith_app n l1 l2:
+  (* (forall x y, pat_list_size_n n (f x y) = (pat_list_size_n n x) + (pat_list_size_n n y)) -> *)
+  pat_list_list_size n (combinewith (fun x y => x ++ y) l1 l2) =
+  (length l2) * (pat_list_list_size n l1) + (length l1) * (pat_list_list_size n l2).
+Proof.
+  unfold combinewith, pat_list_list_size.
+  rewrite sum_concat. rewrite !map_map.
+  erewrite map_ext.
+  2: {
+    intros. rewrite map_map. reflexivity. }
+  revert l2. induction l1; simpl; intros l2; try nia.
+  specialize (IHl1 l2). rewrite IHl1.
+  rewrite Nat.mul_add_distr_l.
+  assert (sum (map (fun x : list pattern => pat_list_size_n n (a ++ x)) l2) =
+
+    Datatypes.length l2 * pat_list_size_n n a + (sum (map (pat_list_size_n n) l2))); try lia.
+  {
+    clear. induction l2; simpl; intros; auto.
+    rewrite pat_list_size_n_app.
+    rewrite IHl2. lia.
+  }
+Qed.
+
+    (*TODO: separate lemma*)
+    assert (list_list_sum f (combinewith cons h1 (choose_all t1)) = 
+      list_list_sum f (choose_all t1)
+    rewrite !combinewith_cons_app.
+    rewrite !combinewith_comp.
+    2: { intros; rewrite app_assoc; auto. }
+    apply IH in Hpermtl.
+    rewrite choose_all_app in Hpermtl.
+    
+
+    eapply Permutation_trans. 
+    { apply perm_concat. apply combinewith_permutation. 2: apply Hpermt
+    -
+    eapply combinewith_permutation. 2: apply Hpermtl. apply Permutation_refl.
+    rewrite !combinewith_comp. 2: intros; rewrite app_assoc; auto.
+    apply combinewith_permutation; auto.
+    eapply Permutation_trans. apply combinewith_switch.
+    simpl.
+
+Lemma list_sum_combinewith {B C: Type} (f: B -> C -> list D) (g: D -> nat):
+  list_sum g (combinewith f l1 l2) = 
+
+    unfold combinewith at 1. unfold list_list_sum at 1.
+    unfold list_sum at 1 2. rewrite !concat_map,!map_map.
+    
+
+ simpl.
+
+
+(*What we want to say:
+  suppose that l1 and l2 are permutations:
+  for any aggregations over the resulting lists
+
+    (*TODO: separte lemma?*)
+    assert (Hsplit: exists l3 l4, l2 = l3 ++ h1 :: l4 /\ Permutation t1 (l3 ++ l4)).
+    {
+      assert (Hin: In h1 l2). { eapply Permutation_in. apply Hperm. simpl; auto. }
+      apply in_split in Hin.
+      destruct Hin as [l3 [l4 Hl2]]; subst.
+      apply Permutation_cons_app_inv in Hperm.
+      exists l3. exists l4. auto.
+    }
+    destruct Hsplit as [l3 [l4 [Hl2 Hpermtl]]]. subst.
+    rewrite choose_all_app.
+    simpl.
+    rewrite !combinewith_cons_app.
+    rewrite !combinewith_comp.
+    2: { intros; rewrite app_assoc; auto. }
+    apply IH in Hpermtl.
+    rewrite choose_all_app in Hpermtl.
+    eapply Permutation_trans. 
+    { apply perm_concat. apply combinewith_permutation. 2: apply Hpermt
+    -
+    eapply combinewith_permutation. 2: apply Hpermtl. apply Permutation_refl.
+    rewrite !combinewith_comp. 2: intros; rewrite app_assoc; auto.
+    apply combinewith_permutation; auto.
+    eapply Permutation_trans. apply combinewith_switch.
+    simpl.
+
+
+
+
+ eapply Permutation_trans. apply combinewith_permutation.
+
+
+ apply Permutation_refl.
+    eapply combinewith_permutation.
+
+
+
+    Search combinewith cons app.
+    Check combinewith_comp'.
+    Check (combinewith_comp' (choose_all l3) h1 (choose_all l4)).
+    epose proof (combinewith_comp (choose_all l3)).
+    rewrite <- combinewith_comp.
+    Check combinewith_comp.
+
+
+
+      
+      Search In app. Search Permutation In.
+
+Permutation_cons_app_inv:
+  forall [A : Type] [l : list A] (l1 l2 : list A) [a : A],
+  Permutation (a :: l) (l1 ++ a :: l2) -> Permutation l (l1 ++ l2)
+
+      clear -Hperm. remember (h1 :: t1) as l1 eqn : Hl1. generalize dependent t1. revert h1. induction Hperm; subst; auto; intros.
+      - discriminate.
+      - inversion Hl1; subst. exists nil. exists l'. auto.
+      - inversion Hl1; subst. exists [x]. exists l. auto.
+      - subst. specialize (IHHperm1 _ _ eq_refl).
+        destruct IHHperm1 as [l3 [l4 [Hl' Hperm]]]. subst.
+        
+
+
+
+
+ apply IHHperm1 in Hperm1.
+ Heql1' subst. contradiction. 
+      inversion Hperm; subst. exists nil. exists l'. split; auto.
+      exists [x]. exists l. split; auto.
+      
+      eapply Permutation_sym in Hperm.
+      apply Permutation_vs_cons_inv in Hperm.
+
+      
+      Permutation_vs_cons_inv:
+  forall [A : Type] [l l1 : list A] [a : A],
+  Permutation l (a :: l1) -> exists l' l'' : list A, l = l' ++ a :: l''
+
+    Search choose_all app.
+
+ Search Permutation cons. 
+
+
+Permutation_vs_cons_inv:
+  forall [A : Type] [l l1 : list A] [a : A],
+  Permutation l (a :: l1) -> exists l' l'' : list A, l = l' ++ a :: l''
+
+
+ Search (Permutation nil ?x). inversion Hperm; subst. auto. 
+  induction Hperm; simpl; auto.
+  - apply combinewith_permutation; auto.
+  - eapply Permutation_trans. apply combinewith_permutation.
+    2: apply combinewith_permutation.
+
+ epose proof (combinewith_comp y x).
+
+ eapply Permutation_trans.  rewrite combinewith_comp. Search combinewith. apply combinewith_permutation; auto.
+*)
+Lemma Forall2_map {B C D1 D2: Type} (P1: B -> C -> Prop) (P2: D1 -> D2 -> Prop) 
+  (f1: B -> D1) (f2: C -> D2) (l1: list B) (l2: list C):
+  Forall2 P1 l1 l2 ->
+  (forall x y, P1 x y -> P2 (f1 x) (f2 y)) ->
+  Forall2 P2 (map f1 l1) (map f2 l2).
+Proof.
+  intros Hall Hps.
+  induction Hall; simpl; auto.
+Qed.
+
+(* Lemma expand_pat_list_rev l:
+  Permutation (expand_pat_list l) (expand_pat_list (rev l)).
+Proof.
+  apply choose_all_permutation .
+  eapply Forall2_map. 
+  eapply Forall2_map with (P1 := fun x y => Permutation x y). 
+  Search Forall2 map.
+  apply Forall2_map. *)
+  
+  
+
+(*The theorem we want: if l1 and l1' are permutations, and l2 and l2' are permutations,
+  and if f produces a list
+  then combineWith f l1 l2 and combindwith f l1' l2' are permutations
+
+  then prove: choose_all is permutation
+  then prove (for other): if permutation, length is the same
+
+Lemma combinewith_permutation 
+
+Check Permutation.*)
+*)
+(*First, prove length*)
+(*NOTE: I think this is all useless*)
+Lemma sum_repeat n m:
+  sum (repeat n m) = m * n.
+Proof.
+  induction m; simpl; lia.
+Qed.
+
+Lemma combinewith_cons_length {B: Type} (x: list B) (l: list (list B)):
+  length (combinewith cons x l) =  (length x) * (length l).
+Proof.
+  unfold combinewith. rewrite length_concat. rewrite !map_map.
+  erewrite map_ext.
+  2: { intros. rewrite map_length. reflexivity. }
+  rewrite map_const.
+  apply sum_repeat.
+Qed. 
+
+
+Lemma choose_all_perm_length {B: Type} (l1 l2: list (list B)):
+  Permutation l1 l2 ->
+  length (choose_all l1) = length (choose_all l2).
+Proof.
+  intros Hperm.
+  induction Hperm; simpl; auto.
+  - rewrite !combinewith_cons_length. lia.
+  - rewrite !combinewith_cons_length. lia.
+  - lia.
+Qed. 
+
+Lemma expand_pat_list_length_perm (l1 l2: list pattern) :
+  Permutation l1 l2 ->
+  length (expand_pat_list l1) = length (expand_pat_list l2).
+Proof.
+  intros Hperm.
+  apply choose_all_perm_length.
+  apply Permutation_map. auto.
+Qed.
+
+Lemma expand_pat_list_rev_length (l: list pattern) :
+  length (expand_pat_list (rev l)) = length (expand_pat_list l).
+Proof.
+  apply expand_pat_list_length_perm. apply Permutation_sym. apply Permutation_rev.
+Qed. 
+
+Lemma pat_list_list_size_concat_eq n l:
+  pat_list_list_size n l = pat_list_size_n n (concat l).
+Proof.
+  induction l; simpl; auto.
+  rewrite pat_list_list_size_cons, pat_list_size_n_app. lia.
+Qed.
+
+(*In the end, don't need anything about permutations*)
+Lemma pat_list_list_size_rev n l:
+  pat_list_list_size n (expand_pat_list (rev l)) =
+  pat_list_list_size n (expand_pat_list l).
+Proof.
+  induction l; simpl; auto.
+  rewrite expand_pat_list_cons', expand_pat_list_app, combinewith_cons_app,
+    !pat_list_list_size_combinewith_app, !map_length, <- IHl, !expand_pat_list_cons', expand_pat_list_nil.
+  unfold combinewith; simpl.
+  rewrite concat_map_singleton, !map_length, expand_pat_list_rev_length.
+  lia.
+Qed.
+
+Lemma dispatch2_gen_bound_in n types rl cs l:
   amap_mem funsym_eq_dec cs types ->
   constr_at_head_ex cs rl ->
   amap_get funsym_eq_dec (fst (dispatch2_gen types rl)) cs = Some l ->
-  compile_size n l + n <= compile_size n rl + (expand_size rl) * (length (s_args cs)).
+  compile_size' n l + n <= compile_size' n rl + (expand_size rl) * (length (s_args cs)).
 Proof.
-  intros Htypes.
-  intros Hconstr.
+  intros Htypes Hconstr.
   rewrite dispatch2_gen_fst_in; auto; [| rewrite Hconstr; auto].
   intros Hsome; inversion Hsome; subst; clear Hsome.
   induction rl as [| [ps a] rtl IH]; auto; [discriminate|].
   simpl. simpl in Hconstr.
   unfold constr_at_head in Hconstr. simpl in Hconstr.
   destruct ps as [| p ptl].
-  - simpl in Hconstr. rewrite compile_size_cons, expand_size_cons. simpl.
-    apply IH in Hconstr. nia.
+  - rewrite expand_size_cons. simpl. rewrite compile_size_cons'. simpl.
+    eapply Nat.le_trans. apply IH; auto. lia.
   - destruct p; simpl in Hconstr.
-    + rewrite !compile_size_cons, !expand_size_cons. simpl.
+    + rewrite expand_size_cons, compile_size_cons'; simpl.
+      eapply Nat.le_trans. apply IH; auto. lia.
+    + (*Interesting case: add constr*)
+      destruct (funsym_eqb_spec f cs); subst.
+      2: {
+        (*TODO: factor out*)
+        rewrite expand_size_cons, compile_size_cons'; simpl.
+        eapply Nat.le_trans. apply IH; auto. lia.
+      }
+      rewrite expand_size_cons. simpl.
+      rewrite expand_size_pat_list_cons. simpl.
+      rewrite !compile_size_cons'. simpl.
+      rewrite expand_pat_list_cons'. simpl.
+      rewrite expand_pat_list_app.
+      rewrite pat_list_list_size_combinewith_app.
+      rewrite combinewith_cons_app.
+      rewrite !map_map.
+      rewrite pat_list_list_size_combinewith_app.
+      rewrite !map_length.
+      fold (expand_pat_list l0).
+      (*Main result we need (TODO:separate lemma?)*)
+      assert (Hconstrbound: Datatypes.length (expand_pat_list ptl) * pat_list_list_size n (expand_pat_list ( l0)) + n <=
+         Datatypes.length (expand_pat_list ptl) *
+          pat_list_list_size n (map (fun x : list pattern => [Pconstr cs l x]) (expand_pat_list l0))).
+      {
+        assert (pat_list_list_size n (expand_pat_list l0) + n <= 
+          pat_list_list_size n (map (fun x : list pattern => [Pconstr cs l x]) (expand_pat_list l0))).
+        {
+
+          (*The less interesting part:*)
+          assert (Hweak: forall l1, 
+            pat_list_list_size n l1 <= pat_list_list_size n (map (fun x : list pattern => [Pconstr cs l x]) l1)).
+          { 
+            intros l1. induction l1; simpl; auto.
+            rewrite !pat_list_list_size_cons. simpl. unfold pat_list_size_n. lia.
+          }
+          (*The important part*)
+          (*Idea: [expand_pat_list] has something, that something already increases potential by n, 
+            rest only increases*)
+          pose proof (expand_pat_list_null l0) as Hnull.
+          destruct (expand_pat_list l0) as [| e1 e2]; try discriminate.
+          simpl map. rewrite !pat_list_list_size_cons.
+          simpl. specialize (Hweak e2). unfold pat_list_size_n. lia.
+        }
+        (*And now we deal with the multiplication - can only increase the difference*)
+        assert (length (expand_pat_list ptl) >= 1); [|nia].
+        pose proof (expand_pat_list_null ptl); destruct (expand_pat_list ptl); simpl; [discriminate | lia].
+      }
+      rewrite expand_pat_list_rev_length.
+      rewrite pat_list_list_size_rev.
+      (*Steps TODO:
+        1. Prove general unconditional bound (without n)
+        2. lia
+        3. prove wild case*)
+      assert (compile_size' n
+  (filter_map
+     (fun x : list pattern * A =>
+      match fst x with
+      | Pconstr fs _ pats :: ps => if funsym_eqb fs cs then Some (rev pats ++ ps, snd x) else None
+      | Pwild :: ps => Some (repeat Pwild (Datatypes.length (s_args cs)) ++ ps, snd x)
+      | _ => None
+      end) rtl) <= compile_size' n rtl + expand_size rtl * Datatypes.length (s_args cs)) by admit.
+      lia.
+      
+
+
+
+      lia.
+      
+
+
+
+      Print pat_list_list_size.
+      
+
+Print expand_pat_list.
+Print choose_all.
+
+
+
+
+
+      
+
+        Search expand_pat_list.
+
+ nia.
+
+          (*TODO: prove: 
+
+
+        destruct ptl.
+        2: { rewrite expand_pat_list_cons'. simpl.
+ simpl. rewrite !Nat.add_0_r.
+        unfold pat_list_list_size. rewrite !map_map.
+        unfold pat_list_size_n at 2. simpl.
+        pose proof (expand_pat_list_null l0).
+        induction (expand_pat_list l0); simpl; try lia; try discriminate.
+        
+
+        Search expand_pat_list.
+        destruct l0; simpl; auto. lia.
+
+
+ simpl.
+        destruct l0; simpl.
+
+        destruct l0; simpl.
+        
+
+
+
+
+      Print expand_pat_list.
+
+expand_pat_list_app
+      
+
+
+      (*TODO: might redo some of these above, but first app*)
+Check expand_pat_list_cons.
+Print choose_all.
+
+  
+
+
+ simpl.
+      simpl.
+      Print expand_pat_list.
+      Print expand_pat.
+
+
+      rewrite expand_pat_list_app.
+      rewrite expand_pat_list_cons. simpl.
+
+      rewrite compile_size_app'.
+
+
+
+ rewrite !compile_size_cons, !expand_size_cons. simpl.
       rewrite expand_size_pat_list_cons. simpl. apply IH in Hconstr. nia.
     + destruct (funsym_eqb_spec f cs); subst.
       * (*Interesting case: add constr*)
@@ -1846,6 +2762,13 @@ Proof.
 (*Is it possible to do all multiplication or not?
   dont think so - depends on size, could have n itself there so cannot add more
   *)
+
+(*TODO THIS*)
+(*Lemma dispatch2_gen_bound_in n types rl cs l:
+  amap_mem funsym_eq_dec cs types ->
+  constr_at_head_ex cs rl ->
+  amap_get funsym_eq_dec (fst (dispatch2_gen types rl)) cs = Some l ->
+  compile_size' n l + n <= compile_size' n rl + (expand_size rl) * (length (s_args cs)).*)
 
 
         Print pat_list_size_mixed.
@@ -2138,7 +3061,7 @@ Equations compile (tl: list (term * vty)) (rl: nat * list (list pattern * A)) (H
     let comp_full (_: unit) :=
       let no_wilds := forallb (fun f => amap_mem funsym_eq_dec f types) css in
       let base : option (list (pattern * A)) := if no_wilds then Some nil else (*TODO: bind*)
-       match compile tl (n, wilds) _ with
+       match comp_wilds tt with
         | None => None
         | Some x => Some [(Pwild, x)]
       end in
@@ -2232,7 +3155,16 @@ Admitted.
 Next Obligation.
 (*2nd termination obligation: comp_cases*)
 (*NOTE: can we prove unconditionally?*)
-intros.
+(*TODO: ensure we don't need [comp_wilds] here - shouldn't*)
+intros t ty tl n p ptl Hn compile rl css is_constr types_cslist t2 Heqt2 types cslist casewild Hdispatch cases wilds _ cs _ l Hget.
+unfold compile_size1. simpl.
+fold rl.
+apply dispatch1_opt_some in Hdispatch.
+destruct Hdispatch as [Hnotnull Hcasewild].
+unfold cases in Hget. rewrite Hcasewild in Hget.
+
+
+
 unfold compile_size'. simpl.
 replace (p :: l0) with rl by auto.
 revert Hget. unfold cases, casewild.
