@@ -2574,7 +2574,136 @@ Proof.
   lia.
 Qed.
 
-Lemma dispatch2_gen_bound_in n types rl cs l:
+(*We prove the bound in several stages. First, prove the constructor part
+  assuming an unconditional bound on the tail*)
+Lemma dispatch2_gen_bound_constr rtl cs n l0 ptl a l:
+compile_size' n
+       (filter_map
+          (fun x : list pattern * A =>
+           match fst x with
+           | Pconstr fs _ pats :: ps => if funsym_eqb fs cs then Some (rev pats ++ ps, snd x) else None
+           | Pwild :: ps => Some (repeat Pwild (Datatypes.length (s_args cs)) ++ ps, snd x)
+           | _ => None
+           end) rtl) <= compile_size' n rtl + expand_size rtl * Datatypes.length (s_args cs) ->
+compile_size' n
+  ((rev l0 ++ ptl, a)
+   :: filter_map
+        (fun x : list pattern * A =>
+         match fst x with
+         | Pconstr fs _ pats :: ps => if funsym_eqb fs cs then Some (rev pats ++ ps, snd x) else None
+         | Pwild :: ps => Some (repeat Pwild (Datatypes.length (s_args cs)) ++ ps, snd x)
+         | _ => None
+         end) rtl) + n <=
+compile_size' n ((Pconstr cs l l0 :: ptl, a) :: rtl) +
+expand_size ((Pconstr cs l l0 :: ptl, a) :: rtl) * Datatypes.length (s_args cs).
+Proof.
+  intros IH.
+  rewrite expand_size_cons. simpl.
+  rewrite expand_size_pat_list_cons, !compile_size_cons'. simpl.
+  rewrite expand_pat_list_cons', expand_pat_list_app, pat_list_list_size_combinewith_app, 
+    combinewith_cons_app. simpl.
+  rewrite !map_map, pat_list_list_size_combinewith_app, map_length.
+  fold (expand_pat_list l0).
+  (*Main result we need (TODO:separate lemma?)*)
+  assert (Hconstrbound: Datatypes.length (expand_pat_list ptl) * pat_list_list_size n (expand_pat_list ( l0)) + n <=
+     Datatypes.length (expand_pat_list ptl) *
+      pat_list_list_size n (map (fun x : list pattern => [Pconstr cs l x]) (expand_pat_list l0))).
+  {
+    assert (pat_list_list_size n (expand_pat_list l0) + n <= 
+      pat_list_list_size n (map (fun x : list pattern => [Pconstr cs l x]) (expand_pat_list l0))).
+    {
+
+      (*The less interesting part:*)
+      assert (Hweak: forall l1, 
+        pat_list_list_size n l1 <= pat_list_list_size n (map (fun x : list pattern => [Pconstr cs l x]) l1)).
+      { 
+        intros l1. induction l1; simpl; auto.
+        rewrite !pat_list_list_size_cons. simpl. unfold pat_list_size_n. lia.
+      }
+      (*The important part*)
+      (*Idea: [expand_pat_list] has something, that something already increases potential by n, 
+        rest only increases*)
+      pose proof (expand_pat_list_null l0) as Hnull.
+      destruct (expand_pat_list l0) as [| e1 e2]; try discriminate.
+      simpl map. rewrite !pat_list_list_size_cons.
+      simpl. specialize (Hweak e2). unfold pat_list_size_n. lia.
+    }
+    (*And now we deal with the multiplication - can only increase the difference*)
+    assert (length (expand_pat_list ptl) >= 1); [|nia].
+    pose proof (expand_pat_list_null ptl); destruct (expand_pat_list ptl); simpl; [discriminate | lia].
+  }
+  rewrite expand_pat_list_rev_length, pat_list_list_size_rev.
+  lia.
+Qed.
+
+Lemma sum_map_S {B: Type} (f: B -> nat) (l: list B):
+              sum (map (fun x => S (f x)) l) = length l + sum(map f l).
+Proof.
+  induction l; simpl; auto. rewrite IHl; auto. lia.
+Qed.
+
+(*Lemma we need for Pwild case*)
+Lemma dispatch2_gen_bound_wild: forall n m ptl, pat_list_list_size n (expand_pat_list (repeat Pwild m ++ ptl)) =
+        m * length (expand_pat_list ptl) + pat_list_list_size n (expand_pat_list ptl).
+Proof.
+  intros.
+  rewrite expand_pat_list_app.
+  replace (expand_pat_list (repeat Pwild m)) with [(repeat Pwild m)]. 
+  2: {
+    unfold expand_pat_list. unfold choose_all.
+    replace (map expand_pat (repeat Pwild m)) with ((map (fun x => [x])) (repeat Pwild m)).
+    2: {
+      induction m; simpl; auto. f_equal; auto.
+    }
+    induction m; simpl; auto.
+    rewrite <- IHm. unfold combinewith. simpl. reflexivity.
+  }
+
+  assert (forall l m, pat_list_list_size n (combinewith (fun x y => x ++ y) [repeat Pwild m] l) =
+    m * length l + pat_list_list_size n l).
+  {
+    clear. intros. induction m; simpl; auto. (*unfold pat_list_list_size.
+    unfold combinewith. simpl. simpl.*)
+    - unfold combinewith; simpl. rewrite app_nil_r, map_id. auto. 
+    - unfold combinewith in *. simpl in *.
+      rewrite app_nil_r in *.
+      unfold pat_list_list_size in *. rewrite !map_map in *.
+      unfold pat_list_size_n in *. simpl in *.
+      rewrite sum_map_S. rewrite IHm. lia.
+  }
+  auto.
+Qed.
+
+(*The first bound we need: weaker, but unconditional*)
+Lemma dispatch2_gen_bound_gen rl cs n:
+  compile_size' n
+   (filter_map
+      (fun x : list pattern * A =>
+       match fst x with
+       | Pconstr fs _ pats :: ps => if funsym_eqb fs cs then Some (rev pats ++ ps, snd x) else None
+       | Pwild :: ps => Some (repeat Pwild (length (s_args cs)) ++ ps, snd x)
+       | _ => None
+       end) rl) <= compile_size' n rl + expand_size rl * length (s_args cs).
+Proof.
+  induction rl as [| [ps a] rtl IH]; auto.
+  simpl.
+  destruct ps as [| p ptl].
+  - rewrite expand_size_cons. simpl. rewrite compile_size_cons'. simpl. lia.
+  - destruct p; try solve[rewrite expand_size_cons, compile_size_cons'; simpl; lia].
+    + destruct (funsym_eqb_spec f cs); subst.
+      * (*hard case: proved*) pose proof (dispatch2_gen_bound_constr rtl cs n l0 ptl a l); lia.
+      * rewrite expand_size_cons, compile_size_cons'; simpl. lia.
+    + (*Pwild case*)
+      rewrite !compile_size_cons'. simpl.
+      rewrite expand_size_cons. simpl.
+      rewrite expand_size_pat_list_cons. simpl. rewrite Nat.add_0_r.
+      replace (Pwild :: ptl) with (repeat Pwild 1 ++ ptl) by reflexivity.
+      rewrite !dispatch2_gen_bound_wild; simpl.
+      rewrite expand_pat_list_length. lia.
+Qed.
+
+(*And the real bound we need*)
+Theorem dispatch2_gen_bound_in n types rl cs l:
   amap_mem funsym_eq_dec cs types ->
   constr_at_head_ex cs rl ->
   amap_get funsym_eq_dec (fst (dispatch2_gen types rl)) cs = Some l ->
@@ -2589,217 +2718,29 @@ Proof.
   destruct ps as [| p ptl].
   - rewrite expand_size_cons. simpl. rewrite compile_size_cons'. simpl.
     eapply Nat.le_trans. apply IH; auto. lia.
-  - destruct p; simpl in Hconstr.
-    + rewrite expand_size_cons, compile_size_cons'; simpl.
-      eapply Nat.le_trans. apply IH; auto. lia.
+  - destruct p; simpl in Hconstr; try solve[rewrite expand_size_cons, compile_size_cons'; simpl;
+      eapply Nat.le_trans; [apply IH; auto| lia]].
     + (*Interesting case: add constr*)
       destruct (funsym_eqb_spec f cs); subst.
-      2: {
-        (*TODO: factor out*)
-        rewrite expand_size_cons, compile_size_cons'; simpl.
-        eapply Nat.le_trans. apply IH; auto. lia.
-      }
-      rewrite expand_size_cons. simpl.
-      rewrite expand_size_pat_list_cons. simpl.
+      * apply (dispatch2_gen_bound_constr rtl cs n l0 ptl a l).
+        apply dispatch2_gen_bound_gen.
+      * rewrite expand_size_cons, compile_size_cons'; simpl;
+        eapply Nat.le_trans; [apply IH; auto| lia].
+    + (*Pwild case*)
       rewrite !compile_size_cons'. simpl.
-      rewrite expand_pat_list_cons'. simpl.
-      rewrite expand_pat_list_app.
-      rewrite pat_list_list_size_combinewith_app.
-      rewrite combinewith_cons_app.
-      rewrite !map_map.
-      rewrite pat_list_list_size_combinewith_app.
-      rewrite !map_length.
-      fold (expand_pat_list l0).
-      (*Main result we need (TODO:separate lemma?)*)
-      assert (Hconstrbound: Datatypes.length (expand_pat_list ptl) * pat_list_list_size n (expand_pat_list ( l0)) + n <=
-         Datatypes.length (expand_pat_list ptl) *
-          pat_list_list_size n (map (fun x : list pattern => [Pconstr cs l x]) (expand_pat_list l0))).
-      {
-        assert (pat_list_list_size n (expand_pat_list l0) + n <= 
-          pat_list_list_size n (map (fun x : list pattern => [Pconstr cs l x]) (expand_pat_list l0))).
-        {
+      rewrite expand_size_cons. simpl.
+      rewrite expand_size_pat_list_cons. simpl. rewrite Nat.add_0_r.
+      replace (Pwild :: ptl) with (repeat Pwild 1 ++ ptl) by reflexivity.
+      rewrite !dispatch2_gen_bound_wild; simpl.
+      rewrite expand_pat_list_length. specialize (IH Hconstr). lia.
+Qed.
 
-          (*The less interesting part:*)
-          assert (Hweak: forall l1, 
-            pat_list_list_size n l1 <= pat_list_list_size n (map (fun x : list pattern => [Pconstr cs l x]) l1)).
-          { 
-            intros l1. induction l1; simpl; auto.
-            rewrite !pat_list_list_size_cons. simpl. unfold pat_list_size_n. lia.
-          }
-          (*The important part*)
-          (*Idea: [expand_pat_list] has something, that something already increases potential by n, 
-            rest only increases*)
-          pose proof (expand_pat_list_null l0) as Hnull.
-          destruct (expand_pat_list l0) as [| e1 e2]; try discriminate.
-          simpl map. rewrite !pat_list_list_size_cons.
-          simpl. specialize (Hweak e2). unfold pat_list_size_n. lia.
-        }
-        (*And now we deal with the multiplication - can only increase the difference*)
-        assert (length (expand_pat_list ptl) >= 1); [|nia].
-        pose proof (expand_pat_list_null ptl); destruct (expand_pat_list ptl); simpl; [discriminate | lia].
-      }
-      rewrite expand_pat_list_rev_length.
-      rewrite pat_list_list_size_rev.
-      (*Steps TODO:
-        1. Prove general unconditional bound (without n)
-        2. lia
-        3. prove wild case*)
-      assert (compile_size' n
-  (filter_map
-     (fun x : list pattern * A =>
-      match fst x with
-      | Pconstr fs _ pats :: ps => if funsym_eqb fs cs then Some (rev pats ++ ps, snd x) else None
-      | Pwild :: ps => Some (repeat Pwild (Datatypes.length (s_args cs)) ++ ps, snd x)
-      | _ => None
-      end) rtl) <= compile_size' n rtl + expand_size rtl * Datatypes.length (s_args cs)) by admit.
-      lia.
-      
-
-
-
-      lia.
-      
-
-
-
-      Print pat_list_list_size.
-      
-
-Print expand_pat_list.
-Print choose_all.
-
-
-
-
-
-      
-
-        Search expand_pat_list.
-
- nia.
-
-          (*TODO: prove: 
-
-
-        destruct ptl.
-        2: { rewrite expand_pat_list_cons'. simpl.
- simpl. rewrite !Nat.add_0_r.
-        unfold pat_list_list_size. rewrite !map_map.
-        unfold pat_list_size_n at 2. simpl.
-        pose proof (expand_pat_list_null l0).
-        induction (expand_pat_list l0); simpl; try lia; try discriminate.
-        
-
-        Search expand_pat_list.
-        destruct l0; simpl; auto. lia.
-
-
- simpl.
-        destruct l0; simpl.
-
-        destruct l0; simpl.
-        
-
-
-
-
-      Print expand_pat_list.
-
-expand_pat_list_app
-      
-
-
-      (*TODO: might redo some of these above, but first app*)
-Check expand_pat_list_cons.
-Print choose_all.
-
-  
-
-
- simpl.
-      simpl.
-      Print expand_pat_list.
-      Print expand_pat.
-
-
-      rewrite expand_pat_list_app.
-      rewrite expand_pat_list_cons. simpl.
-
-      rewrite compile_size_app'.
-
-
-
- rewrite !compile_size_cons, !expand_size_cons. simpl.
-      rewrite expand_size_pat_list_cons. simpl. apply IH in Hconstr. nia.
-    + destruct (funsym_eqb_spec f cs); subst.
-      * (*Interesting case: add constr*)
-        rewrite !compile_size_cons, !expand_size_cons. simpl fst.
-        (*TODO: prove that pat_list_size_mixed n (Pconstr _ _ ps) :: tl = pat_list_size_mixed (ps ++ tl)
-          and prove that pat_list_size_constr is invariant under rev*)
-        rewrite expand_size_pat_list_cons. simpl. Print pat_list_size_mixed.
-        unfold pat_list_size_mixed at 1.
-        (*So we have: size (rev l0 ++ ptl) + (compile_size rtl) + n <= size ptl + (n + size l0) * (size ptl) +
-            compile_size n rtl + (size l0 * expand_size ptl + expand_size rtl) * (length args)
-
-          can say:
-            compile_size rtl <= compile_size rtl + expans_size rtl * length (args) - we get
-
-          size (rev l0 ++ ptl) + n <= size ptl + (n + size l0) * (size ptl) +
-            (size l0 + expand_size ptl) * (length args)
-
-         ==> size (rev l0 ++ ptl) <= size ptl + (size l0) * (size ptl) + (size l0 + expand_size ptl) * (length args)
-
-        so really, we want to prove that
-          size (rev l0 ++ ptl) <= size ptl + (size l0) * (size ptl) - can we prove this?
-*)
-
-        
-        eapply Nat.le_trans.
-        { apply Nat.add_le_mono. 
-
-
-
-(*Is it possible to do all multiplication or not?
-  dont think so - depends on size, could have n itself there so cannot add more
-  *)
-
-(*TODO THIS*)
-(*Lemma dispatch2_gen_bound_in n types rl cs l:
-  amap_mem funsym_eq_dec cs types ->
-  constr_at_head_ex cs rl ->
-  amap_get funsym_eq_dec (fst (dispatch2_gen types rl)) cs = Some l ->
-  compile_size' n l + n <= compile_size' n rl + (expand_size rl) * (length (s_args cs)).*)
-
-
-        Print pat_list_size_mixed.
-Print pat_size_mixed.
-Print pat_iter_op.
-
-        Print expand_size_pat.
- simpl.
-
-
-
- simpl expand_size_pat.
-        Search pat_list_size_mixed.
-        Print pat_size_mixed.
-        rewrite !pat_list_size_mixed_cons.
- simpl.
-        
-
- Print compile_size. simpl.
-  
-
-  - dicsriminate.
-
-  Search dispatch2_gen.
-Admitted. 
-
+(*And the corollary for the full S matrix*)
 Lemma s_matrix_bound_in n t types rl cs l:
   amap_mem funsym_eq_dec cs types ->
   constr_at_head_ex cs rl ->
   amap_get funsym_eq_dec (fst (dispatch1 t types rl)) cs = Some l ->
-  compile_size n l + n <= compile_size n rl + (expand_size rl) * (length (s_args cs)).
+  compile_size' n l + n <= compile_size' n rl + (expand_size rl) * (length (s_args cs)).
 Proof.
   intros Htypes. rewrite dispatch_equiv. unfold dispatch2.
   intros Hhead Hget.
@@ -2807,9 +2748,11 @@ Proof.
   - apply constr_at_head_ex_simplify with (t:=t) in Hhead. 
     apply (dispatch2_gen_bound_in _ _ _ _ _ Htypes Hhead Hget).
   - apply Nat.add_le_mono. 
-    + apply compile_size_simplify.
+    + unfold compile_size'. rewrite expand_full_simplify. lia.
     + apply Nat.mul_le_mono; auto. apply expand_size_simplify.
 Qed.
+
+(*Then prove: if n is above our bound, then get actual decrease*)
 
 
   (*This lemma is wrong: length increases - need length of expand
