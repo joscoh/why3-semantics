@@ -607,6 +607,22 @@ Proof.
       assert (y2 = z2) by apply (nodup_fst_inj m2_wf Hin2 Hz2). subst. rewrite Hf in Hf1; discriminate.
 Qed.
 
+Lemma amap_union_notin (f: A -> B -> B -> option B) (m1 m2: amap A B) (x: A)
+  (Hin1: amap_get eq_dec m1 x = None)
+  (Hin2: amap_get eq_dec m2 x = None):
+  amap_get eq_dec (amap_union eq_dec f m1 m2) x = None.
+Proof.
+  destruct m1 as [m1 m1_wf]; destruct m2 as [m2 m2_wf]; simpl in *.
+  apply amap_get_none_iff in Hin1, Hin2. simpl in *.
+  apply amap_get_none_iff. simpl. intros Hx.
+  rewrite in_map_iff in Hx. destruct Hx as [[z1 z2] [Hx Hinz]]; simpl in *; subst.
+  rewrite map_union_in in Hinz; auto.
+  destruct_all; try contradiction.
+  - apply Hin1. rewrite in_map_iff. exists (x, z2); auto.
+  - apply Hin2. rewrite in_map_iff. exists (x, z2); auto.
+  - apply Hin1. rewrite in_map_iff. exists (x, x0); auto.
+Qed. 
+
 Lemma amap_map_key_get_some {C: Type} (f: A -> B -> C) (m: amap A B) (x: A) (y: B):
   amap_get eq_dec m x = Some y ->
   amap_get eq_dec (amap_map_key f m) x = Some (f x y).
