@@ -1185,6 +1185,7 @@ Definition compile_size (rl: list (list pattern * A)) : nat :=
 
 (*Lemmas*)
 
+
 Lemma pat_list_list_size_app l1 l2:
   pat_list_list_size (l1 ++ l2) = pat_list_list_size l1 + pat_list_list_size l2.
 Proof.
@@ -1292,8 +1293,27 @@ Proof.
     simpl. rewrite pat_list_size_n_cons. pose proof (pat_size_n_pos p). lia.
 Qed.
 
-
 End PatSize.
+
+Lemma pat_size_n_mono_le n1 n2 p:
+  n1 <= n2 ->
+  pat_size_n n1 p <= pat_size_n n2 p.
+Proof.
+  intros Hn. induction p; simpl; auto; try lia.
+  assert (sum (map (pat_size_n n1) ps) <= sum (map (pat_size_n n2) ps)).
+  { apply sum_lt. rewrite <- Forall_forall. assumption. }
+  lia.
+Qed.
+
+Lemma compile_size_mono_le n1 n2 rl:
+  n1 <= n2 ->
+  compile_size n1 rl <= compile_size n2 rl.
+Proof.
+  intros Hn.
+  repeat (apply sum_lt; intros).
+  apply pat_size_n_mono_le; assumption.
+Qed.
+
 End TerminationMetric.
 
 (*Part 4: D matrix is smaller*)
@@ -2193,18 +2213,14 @@ Qed.
 
 Obligation Tactic := idtac.
 
-Definition compile_size1 (x: nat * list (list pattern * A)) : nat :=
-  compile_size (fst x) (snd x).
-Definition rl_wf (x: nat * list (list pattern * A)) : Prop :=
-  (fst x) > compile_size_bound (snd x).
+Definition compile_measure (rl: list (list pattern * A)) : nat :=
+  compile_size (S (compile_size_bound rl)) rl.
 
-
-(*TODO: why does equations not support function of multiple params?*)
-Equations compile (tl: list (term * vty)) (rl: nat * list (list pattern * A)) (Hrl: rl_wf rl)
-  : option A  by wf (compile_size1 rl) lt :=
-  compile _ (n, []) Hn := None;
-  compile [] (n, (_, a) :: _) Hn => Some a;
-  compile ((t, ty) :: tl) (n, rl) Hn =>
+Equations compile (tl: list (term * vty)) (rl: list (list pattern * A))
+  : option A  by wf (compile_measure rl) lt :=
+  compile _ [] := None;
+  compile [] ((_, a) :: _) => Some a;
+  compile ((t, ty) :: tl) rl =>
     (*No bare*)
     (*extract the set of constructors*)
     let css :=
@@ -2234,12 +2250,12 @@ Equations compile (tl: list (term * vty)) (rl: nat * list (list pattern * A)) (H
     let cases := fst casewild in
     let wilds := snd casewild in
 
-    let comp_wilds (_: unit) := compile tl (n, wilds) _ in
+    let comp_wilds (_: unit) := compile tl wilds in
 
     let comp_cases cs (al : list (term * vty)) :=
          match (amap_get funsym_eq_dec cases cs ) as o return amap_get funsym_eq_dec cases cs = o -> _ with
           | None => fun _ => None (*impossible*)
-          | Some l => fun Hget => compile (rev al ++ tl) (n, l) _
+          | Some l => fun Hget => compile (rev al ++ tl) l
           end eq_refl
         in
 
@@ -2291,52 +2307,34 @@ Equations compile (tl: list (term * vty)) (rl: nat * list (list pattern * A)) (H
 end eq_refl
 end eq_refl.
 Next Obligation.
-(*Prove that D decreases bound (wf condition)*)
-intros t ty tl n phd ptl Hn compile rl css is_constr types_cslist t2 Heqt2 types cslist casewild Hdispatch cases wilds _.
-subst wilds. apply dispatch1_opt_some in Hdispatch.
+intros t ty tl phd ptl compile rl css is_constr types_cslist t2 Heqt2 types cslist casewild Hdispatch cases wilds _.
+fold rl.
+unfold compile_measure.
+unfold wilds.  apply dispatch1_opt_some in Hdispatch.
 destruct Hdispatch as [Hnotnull Hcasewild]. rewrite Hcasewild.
-revert Hn. fold rl.
-unfold rl_wf.
-pose proof (d_matrix_compile_bound_gets_smaller t types rl).
-simpl in *. lia.
+eapply Nat.le_lt_trans.
+- apply compile_size_mono_le, le_n_S, (d_matrix_compile_bound_gets_smaller t types rl).
+- apply d_matrix_smaller; auto.
 Defined.
 Next Obligation.
-(*Prove that D matrix (wilds) is smaller*)
-intros t ty tl n phd ptl Hn compile rl css is_constr types_cslist t2 Heqt2 types cslist casewild Hdispatch cases wilds _.
-subst wilds. apply dispatch1_opt_some in Hdispatch.
-destruct Hdispatch as [Hnotnull Hcasewild]. rewrite Hcasewild.
-unfold compile_size1. apply d_matrix_smaller; auto.
-Defined.
-(*Prove n bound for S case*)
-Next Obligation.
-intros t ty tl n p ptl Hn compile rl css is_constr types_cslist t2 Heqt2 types cslist casewild Hdispatch cases wilds _ cs _ l Hget.
+intros t ty tl p ptl compile rl css is_constr types_cslist t2 Heqt2 types cslist casewild Hdispatch cases wilds _ cs _ l Hget.
 apply dispatch1_opt_some in Hdispatch.
 destruct Hdispatch as [Hnotnull Hcasewild]. 
-revert Hn. fold rl.
-unfold rl_wf.
+fold rl.
+unfold compile_measure.
 pose proof (s_matrix_compile_bound_get_smaller t types rl cs l) as Hsmall.
 revert Hget. unfold cases. rewrite Hcasewild. intros Hget.
 assert (Htypes: amap_mem funsym_eq_dec cs types) by (eapply constrs_in_types; eauto).
 specialize (Hsmall Htypes Hget).
-simpl. lia.
-Defined.
-(*Last one: termination for S caes*)
-Next Obligation.
-(*2nd termination obligation: comp_cases*)
-intros t ty tl n p ptl Hn compile rl css is_constr types_cslist t2 Heqt2 types cslist casewild Hdispatch cases wilds _ cs _ l Hget.
-unfold compile_size1. simpl.
-fold rl.
-apply dispatch1_opt_some in Hdispatch.
-destruct Hdispatch as [Hnotnull Hcasewild].
-unfold cases in Hget. rewrite Hcasewild in Hget.
-eapply s_matrix_bound_large_n; eauto.
-- eapply constrs_in_types; eauto.
-- pose proof (dispatch1_in_types rl t types cs) as Hdisj.
+eapply Nat.le_lt_trans.
+- apply compile_size_mono_le, le_n_S. apply Hsmall.
+- eapply (s_matrix_bound_large_n _ t types rl cs l); auto.
+  pose proof (dispatch1_in_types rl t types cs) as Hdisj.
   rewrite amap_mem_spec in Hdisj.
   rewrite Hget in Hdisj. specialize (Hdisj eq_refl).
   destruct Hdisj as [Hincs | Hintypes]; auto.
   rewrite <- populate_all_in. apply Hintypes.
   apply simplify_simplified. rewrite <- populate_all_simplify. apply (eq_sym Heqt2).
 Defined.
-(*And it is defined!*)
+
 End Compile.
