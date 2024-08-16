@@ -302,11 +302,10 @@ Definition add_case (fs: funsym) (pl: list pattern) (a: A) (cases : amap funsym 
       end
     ) fs cases.
 
-(*NOTE: we use length (s_args c) instead of the list, so we don't need to reference types later*)
 Definition union_cases (pl: list pattern) (a: A) (types: amap funsym (list pattern)) 
     (cases: amap funsym (list (list pattern * A))) : amap funsym (list (list pattern * A)) :=
     let add pl _ := Pwild :: pl in
-    let wild (c: funsym) _  := [(fold_left add (s_args c) pl, a)] in
+    let wild (c: funsym) ql  := [(fold_left add ql pl, a)] in
     let join _ wl rl := Some (wl ++ rl) in
     amap_union funsym_eq_dec join (amap_map_key wild types) cases . 
 
@@ -605,12 +604,12 @@ Proof.
     + erewrite amap_union_inl. discriminate. erewrite amap_map_key_get_some. reflexivity. apply Hget1. auto.
 Qed.
 
-Lemma filter_map_nil_pat_false rl cs:
+Lemma filter_map_nil_pat_false rl cs m:
   (constr_at_head_ex cs rl || wild_at_head_ex rl) = false ->
   filter_map (fun x : list pattern * A =>
          match fst x with (*these functions can be arbitrary but whatever*)
          | Pconstr fs _ pats :: ps => if funsym_eqb fs cs then Some (rev pats ++ ps, snd x) else None
-         | Pwild :: ps => Some (repeat Pwild (Datatypes.length (s_args cs)) ++ ps, snd x)
+         | Pwild :: ps => Some (repeat Pwild m ++ ps, snd x)
          | _ => None
          end) rl = nil.
 Proof.
@@ -625,8 +624,8 @@ Qed.
 (*2nd (main) structural lemma: if either cs or a Pwild appears in the first column, then S is the
   result of filtering all of the other constructors out, appending the arguments of the matching
   constructors and the correct number of wildcards for a Pwild*)
-Lemma dispatch2_gen_fst_in (types: amap funsym (list pattern)) rl cs:
-  amap_mem funsym_eq_dec cs types ->
+Lemma dispatch2_gen_fst_in (types: amap funsym (list pattern)) ys rl cs:
+  amap_get funsym_eq_dec types cs = Some ys ->
   (constr_at_head_ex cs rl || wild_at_head_ex rl) ->
   amap_get funsym_eq_dec (fst (dispatch2_gen types rl)) cs = Some
     (filter_map (fun x =>
@@ -635,7 +634,7 @@ Lemma dispatch2_gen_fst_in (types: amap funsym (list pattern)) rl cs:
       match ps with
       | p :: ps =>
         match p with
-        | Pwild => Some (repeat Pwild (length (s_args cs)) ++ ps, a)
+        | Pwild => Some (repeat Pwild (length ys) ++ ps, a)
         | Pconstr fs tys pats => (*trivial here*)
             if funsym_eqb fs cs then Some (rev pats ++ ps, a) else None
         | _ => None
@@ -644,11 +643,14 @@ Lemma dispatch2_gen_fst_in (types: amap funsym (list pattern)) rl cs:
       end
 ) rl).
 Proof.
-  intros Htypes. induction rl as [| [ps a] rtl IH]; simpl; try discriminate; intros Hhead;
+  revert ys.
+  induction rl as [| [ps a] rtl IH]; simpl; try discriminate; intros ys Htypes Hhead;
   try contradiction.
   destruct (dispatch2_gen types rtl) as [cases wilds] eqn : Hd; simpl in *.
   unfold constr_at_head, pat_at_head in Hhead; simpl in Hhead.
   destruct ps as [| phd ptl]; simpl in *; auto.
+  assert (Hmem: amap_mem funsym_eq_dec cs types). {
+    rewrite amap_mem_spec, Htypes; auto. }
   destruct phd; auto.
   - unfold add_case, amap_change; simpl.
     destruct (funsym_eqb_spec f cs); subst.
@@ -656,37 +658,34 @@ Proof.
       (*Need to see what recursive case is: preveious lemma gives more info*)
       destruct (constr_at_head_ex cs rtl || wild_at_head_ex rtl) eqn : Hhd2.
       * simpl in IH. erewrite amap_replace_get_same1.
-        2: apply IH; auto. reflexivity.
+        2: apply IH; auto. reflexivity. auto.
       * rewrite amap_replace_get_same2. 
         -- rewrite filter_map_nil_pat_false. reflexivity. auto.
-        -- pose proof (dispatch2_gen_fst_notin types rtl cs Htypes) as Hnone.
+        -- pose proof (dispatch2_gen_fst_notin types rtl cs Hmem) as Hnone.
            rewrite Hd in Hnone; apply Hnone. auto.
     + simpl in Hhead. rewrite amap_replace_get_diff; auto.
   - unfold union_cases; simpl.
-    assert (Hrepeat: fold_left (fun (pl : list pattern) (_ : vty) => Pwild :: pl) (s_args cs) ptl =
-      repeat Pwild (Datatypes.length (s_args cs)) ++ ptl).
+    assert (Hrepeat: forall (ql: list pattern), fold_left (fun (pl : list pattern) (_ : pattern) => Pwild :: pl) ql ptl =
+      repeat Pwild (Datatypes.length ql) ++ ptl).
     {
-      clear.
-      revert ptl. induction (s_args cs); intros; auto.
-      simpl fold_left. rewrite IHl.
+      clear. intros ql.
+      revert ptl. induction ql; intros; auto.
+      simpl fold_left. rewrite IHql.
       assert (Hassoc: forall {A: Type} (l1: list A) l2 l3, l1 ++ l2 :: l3 = (l1 ++ [l2]) ++ l3).
       { intros. rewrite <- app_assoc. reflexivity. }
       rewrite Hassoc.  f_equal.
       assert (Hwild: [Pwild] = repeat Pwild 1) by reflexivity.
       rewrite Hwild, <- repeat_app, Nat.add_comm. reflexivity.
     }
-    assert (Htypes':=Htypes).
-    rewrite amap_mem_spec in Htypes'.
-    destruct (amap_get funsym_eq_dec types cs) eqn : Hget1; try discriminate.
     destruct (constr_at_head_ex cs rtl || wild_at_head_ex rtl) eqn : Hhead2.
-    + erewrite amap_union_inboth. 3: { apply IH. auto. }
-      2: { apply amap_map_key_get_some. apply Hget1. } simpl. f_equal.
+    + erewrite amap_union_inboth. 3: { apply IH. apply Htypes. auto. }
+      2: { apply amap_map_key_get_some. apply Htypes. } simpl. f_equal.
       f_equal. f_equal. auto. 
     + (*here, recursive get is false and list is nil*)
       rewrite filter_map_nil_pat_false; auto.
       erewrite amap_union_inl. reflexivity. erewrite amap_map_key_get_some.
       f_equal. f_equal. f_equal. apply Hrepeat.
-      apply Hget1. pose proof (dispatch2_gen_fst_notin types rtl cs Htypes) as Hnone.
+      apply Htypes. pose proof (dispatch2_gen_fst_notin types rtl cs Hmem) as Hnone.
       rewrite Hd in Hnone; apply Hnone. auto.
 Qed.
 
@@ -962,8 +961,8 @@ Proof.
 Qed.
 
 
-(*Our termination metric will be [pat_size n (expand_full ls)], where n > length (expand_full ls) * max (s_args c)
-  (or (expand_size ls) * max (s_args c)*)
+(*Our termination metric will be [pat_size n (expand_full ls)], where n > length (expand_full ls) * max (length ps)
+  (or (expand_size ls) * max (length ps), for all ps, constr lists that appear in ls*)
 
 (*Now we want to show the following:*)
 
@@ -1070,10 +1069,12 @@ Proof.
   intros Htypes.
   destruct (constr_at_head_ex cs rl || wild_at_head_ex rl) eqn : Hin.
   2: { rewrite dispatch2_gen_fst_notin in Hin. 2: apply Htypes. rewrite Hin. discriminate. }
-  rewrite dispatch2_gen_fst_in; auto.
-  clear Htypes Hin.
-  revert l.
-  induction rl as [| [ps a] ptl IH]; simpl; intros l; auto; [intros Hsome; inversion Hsome; subst; auto|].
+  rewrite amap_mem_spec in Htypes.
+  destruct (amap_get funsym_eq_dec types cs) as [ys |] eqn : Hget; try discriminate.
+  rewrite dispatch2_gen_fst_in with (ys:=ys); auto.
+  clear Htypes Hget Hin.
+  revert ys l.
+  induction rl as [| [ps a] ptl IH]; simpl; intros ys l; auto; [intros Hsome; inversion Hsome; subst; auto|].
   destruct ps as [|p ps]; auto.
   - rewrite expand_size_cons; simpl. intros Hsome. apply IH in Hsome. lia.
   - destruct p; rewrite !expand_size_cons; simpl; try solve[intros Hsome; apply IH in Hsome; lia].
@@ -1082,15 +1083,15 @@ Proof.
       intros Hl; subst; clear Hsome. rewrite expand_size_cons. simpl.
       rewrite expand_size_pat_list_cons. simpl.
       rewrite expand_size_pat_list_app, expand_size_pat_list_rev.
-      specialize (IH _ eq_refl). unfold expand_size_pat_list at 1.
+      specialize (IH ys _ eq_refl). unfold expand_size_pat_list at 1.
       apply Nat.add_le_mono; auto.
     + intros Hl; inversion Hl; subst; clear Hl.
       rewrite expand_size_cons. simpl.
       rewrite expand_size_pat_list_cons, expand_size_pat_list_app.
-      replace (expand_size_pat_list (repeat Pwild (Datatypes.length (s_args cs)))) with 1.
-      -- specialize (IH _ eq_refl). simpl. rewrite !Nat.add_0_r. apply Nat.add_le_mono; auto.
+      replace (expand_size_pat_list (repeat Pwild (Datatypes.length ys))) with 1.
+      -- specialize (IH ys _ eq_refl). simpl. rewrite !Nat.add_0_r. apply Nat.add_le_mono; auto.
       -- (*Crucial: adding lots of wilds does not increase this measure*) 
-        clear. induction (length (s_args cs)); simpl; auto. 
+        clear. induction (length ys); simpl; auto. 
         rewrite expand_size_pat_list_cons. simpl. lia.
 Qed.
 
@@ -1111,58 +1112,6 @@ Qed.
 
 (*4. Now we reason about why we used this particular metric: the length of the simplified list is
   smaller than [expand_size]*)
-
-(* Lemma mul_geq_1 n m:
-  1 <= m ->
-  1 <= n ->
-  1 <= (m * n).
-Proof.
-nia.
-Qed.
-
-Lemma iter_mult_geq l:
-  (forall x, In x l -> 1 <= x) ->
-  1 <= iter_mult l.
-Proof.
-  intros Hin. induction l; simpl in *; auto.
-  assert (1 <= a) by (apply Hin; auto).
-  apply mul_geq_1; auto.
-Qed.
-
-Lemma expand_size_pat_geq p:
-  1 <= expand_size_pat p.
-Proof.
-  induction p; simpl; auto; try lia.
-  apply iter_mult_geq. rewrite Forall_forall in H.
-  intros x. rewrite in_map_iff. intros [p [Hx Hinx]]; subst.
-  apply H; auto.
-Qed.
-
-Lemma expand_size_pat_list_geq rl:
-  1 <= expand_size_pat_list rl.
-Proof.
-  unfold expand_size_pat_list.
-  apply iter_mult_geq.
-  intros x. rewrite in_map_iff.
-  intros [p [Hin Hinx]]; subst.
-  apply expand_size_pat_geq.
-Qed.
-
-Lemma expand_size_length rl:
-  length rl <= expand_size rl.
-Proof.
-  induction rl as [| phd ptl IH]; auto; simpl.
-  rewrite expand_size_cons.
-  pose proof (expand_size_pat_list_geq (fst phd)). lia.
-Qed.
-
-Lemma expand_size_simplify_length t rl:
-  length (simplify t rl) <= expand_size rl.
-Proof.
-  eapply Nat.le_trans.
-  - apply expand_size_length.
-  - rewrite expand_size_simplify; auto.
-Qed. *)
 
 
 (*Finish defining termination metric*)
@@ -1499,26 +1448,26 @@ Qed.
 
 (*We prove the bound in several stages. First, prove the constructor part
   assuming an unconditional bound on the tail*)
-Lemma dispatch2_gen_bound_constr rtl cs n l0 ptl a l:
+Lemma dispatch2_gen_bound_constr rtl cs n l0 ptl a l (m: nat) :
 compile_size n
        (filter_map
           (fun x : list pattern * A =>
            match fst x with
            | Pconstr fs _ pats :: ps => if funsym_eqb fs cs then Some (rev pats ++ ps, snd x) else None
-           | Pwild :: ps => Some (repeat Pwild (Datatypes.length (s_args cs)) ++ ps, snd x)
+           | Pwild :: ps => Some (repeat Pwild m++ ps, snd x)
            | _ => None
-           end) rtl) <= compile_size n rtl + expand_size rtl * Datatypes.length (s_args cs) ->
+           end) rtl) <= compile_size n rtl + expand_size rtl * m ->
 compile_size n
   ((rev l0 ++ ptl, a)
    :: filter_map
         (fun x : list pattern * A =>
          match fst x with
          | Pconstr fs _ pats :: ps => if funsym_eqb fs cs then Some (rev pats ++ ps, snd x) else None
-         | Pwild :: ps => Some (repeat Pwild (Datatypes.length (s_args cs)) ++ ps, snd x)
+         | Pwild :: ps => Some (repeat Pwild m ++ ps, snd x)
          | _ => None
          end) rtl) + n <=
 compile_size n ((Pconstr cs l l0 :: ptl, a) :: rtl) +
-expand_size ((Pconstr cs l l0 :: ptl, a) :: rtl) * Datatypes.length (s_args cs).
+expand_size ((Pconstr cs l l0 :: ptl, a) :: rtl) * m.
 Proof.
   intros IH.
   rewrite expand_size_cons. simpl.
@@ -1592,15 +1541,15 @@ Proof.
 Qed.
 
 (*The first bound we need: weaker, but unconditional*)
-Lemma dispatch2_gen_bound_gen rl cs n:
+Lemma dispatch2_gen_bound_gen rl cs n (m: nat):
   compile_size n
    (filter_map
       (fun x : list pattern * A =>
        match fst x with
        | Pconstr fs _ pats :: ps => if funsym_eqb fs cs then Some (rev pats ++ ps, snd x) else None
-       | Pwild :: ps => Some (repeat Pwild (length (s_args cs)) ++ ps, snd x)
+       | Pwild :: ps => Some (repeat Pwild m ++ ps, snd x)
        | _ => None
-       end) rl) <= compile_size n rl + expand_size rl * length (s_args cs).
+       end) rl) <= compile_size n rl + expand_size rl * m.
 Proof.
   induction rl as [| [ps a] rtl IH]; auto.
   simpl.
@@ -1608,7 +1557,7 @@ Proof.
   - rewrite expand_size_cons. simpl. rewrite compile_size_cons. simpl. lia.
   - destruct p; try solve[rewrite expand_size_cons, compile_size_cons; simpl; lia].
     + destruct (funsym_eqb_spec f cs); subst.
-      * (*hard case: proved*) pose proof (dispatch2_gen_bound_constr rtl cs n l0 ptl a l); lia.
+      * (*hard case: proved*) pose proof (dispatch2_gen_bound_constr rtl cs n l0 ptl a l m) ; lia.
       * rewrite expand_size_cons, compile_size_cons; simpl. lia.
     + (*Pwild case*)
       rewrite !compile_size_cons. simpl.
@@ -1620,16 +1569,16 @@ Proof.
 Qed.
 
 (*And the real bound we need:
-  We add at most (length (s_args c)) wilds per each row of the expanded matrix, but
+  We add at most (length ys) wilds per each row of the expanded matrix, but
   we reduce by n. This allows us to set n large enough*)
-Theorem dispatch2_gen_bound_in n types rl cs l:
-  amap_mem funsym_eq_dec cs types ->
+Theorem dispatch2_gen_bound_in n types rl cs l (ys: list pattern):
+  amap_get funsym_eq_dec types cs = Some ys ->
   constr_at_head_ex cs rl ->
   amap_get funsym_eq_dec (fst (dispatch2_gen types rl)) cs = Some l ->
-  compile_size n l + n <= compile_size n rl + (expand_size rl) * (length (s_args cs)).
+  compile_size n l + n <= compile_size n rl + (expand_size rl) * (length ys).
 Proof.
-  intros Htypes Hconstr.
-  rewrite dispatch2_gen_fst_in; auto; [| rewrite Hconstr; auto].
+  intros Hget Hconstr.
+  rewrite dispatch2_gen_fst_in with (ys:=ys); auto; [| rewrite Hconstr; auto].
   intros Hsome; inversion Hsome; subst; clear Hsome.
   induction rl as [| [ps a] rtl IH]; auto; [discriminate|].
   simpl. simpl in Hconstr.
@@ -1655,295 +1604,22 @@ Proof.
 Qed.
 
 (*And the corollary for the full S matrix*)
-Lemma s_matrix_bound_in n t types rl cs l:
-  amap_mem funsym_eq_dec cs types ->
+Lemma s_matrix_bound_in n t types rl cs l (ys: list pattern):
+  amap_get funsym_eq_dec types cs = Some ys ->
   constr_at_head_ex cs (simplify t rl) ->
   amap_get funsym_eq_dec (fst (dispatch1 t types rl)) cs = Some l ->
-  compile_size n l + n <= compile_size n rl + (expand_size rl) * (length (s_args cs)).
+  compile_size n l + n <= compile_size n rl + (expand_size rl) * (length ys).
 Proof.
   intros Htypes. rewrite dispatch_equiv. unfold dispatch2.
   intros Hhead Hget.
   eapply Nat.le_trans.
-  - apply (dispatch2_gen_bound_in _ _ _ _ _ Htypes Hhead Hget).
+  - apply (dispatch2_gen_bound_in _ _ _ _ _ _ Htypes Hhead Hget).
   - apply Nat.add_le_mono. 
     + unfold compile_size. rewrite expand_full_simplify. lia.
     + apply Nat.mul_le_mono; auto. rewrite expand_size_simplify; auto.
 Qed.
 
-(*Part 6: Define full bound*)
-
-(*The bound we give: (length rl) * (max size of s_args in rl)*)
-(*We actually do need to get every single constructor in the patterns, because when simplifying,
-  we may introduce a constructor that was was not at the head before*)
-(*We don't care about duplicates or efficiency; we never run this*)
-Fixpoint get_constrs_pat (p: pattern) : list funsym :=
-  match p with
-  | Pconstr f _ ps => f :: concat (map get_constrs_pat ps)
-  | Por p1 p2 => (get_constrs_pat p1) ++ (get_constrs_pat p2)
-  | Pbind p _ => get_constrs_pat p
-  | _ => nil
-  end.
-Definition get_constrs_pat_list (l: list pattern) : list funsym :=
-  concat (map get_constrs_pat l).
-Definition get_constrs_pat_list_list (l: list (list pattern)) : list funsym :=
-  concat (map get_constrs_pat_list l).
-Definition get_constrs_in (rl: list (list pattern * A)) : list funsym :=
-  concat (map (fun x => get_constrs_pat_list (fst x)) rl).
-
-(*Lemmas*)
-Lemma get_constrs_in_cons x l:
-  get_constrs_in (x :: l) = get_constrs_pat_list (fst x) ++ get_constrs_in l.
-Proof. reflexivity. Qed.
-Lemma get_constrs_pat_list_cons x l:
-  get_constrs_pat_list (x :: l) = get_constrs_pat x ++ get_constrs_pat_list l.
-Proof. reflexivity. Qed.
-Lemma get_constrs_in_app l1 l2:
-  get_constrs_in (l1 ++ l2) = get_constrs_in l1 ++ get_constrs_in l2.
-Proof.
-  induction l1; simpl; auto. rewrite !get_constrs_in_cons; auto. rewrite IHl1.
-  rewrite app_assoc.
-  auto.
-Qed. 
-Lemma get_constrs_pat_list_app l1 l2:
-  get_constrs_pat_list (l1 ++ l2) = get_constrs_pat_list l1 ++ get_constrs_pat_list l2.
-Proof.
-  induction l1; simpl; auto. rewrite !get_constrs_pat_list_cons, IHl1, app_assoc.
-  reflexivity.
-Qed.
-
-Lemma constr_at_head_pat_list c h:
-  constr_at_head c h -> In c (get_constrs_pat_list (fst h)).
-Proof.
-  destruct h as [ps a]. simpl.
-  unfold constr_at_head. simpl.
-  destruct ps as [| p tl]; simpl; auto.
-  destruct p; simpl; auto; try discriminate.
-  destruct (funsym_eqb_spec f c); subst; auto. discriminate.
-Qed.
-
-Lemma constr_at_head_ex_in (rl: list (list pattern * A)) (c: funsym):
-  constr_at_head_ex c rl ->
-  In c (get_constrs_in rl).
-Proof.
-  induction rl as [| h t IH]; simpl; auto.
-  rewrite get_constrs_in_cons, in_app_iff. unfold is_true.
-  rewrite orb_true_iff.
-  intros Hin.
-  pose proof (constr_at_head_pat_list c h). destruct_all; auto.
-Qed.
-
-(*Simplifying does not change constructors*)
-Lemma get_constrs_in_simplify_single c t h:
-In c (get_constrs_in (simplify_single t h))  <-> In c (get_constrs_pat_list (fst h)).
-Proof.
-  unfold simplify_single.
-  destruct h as [ps a].
-  destruct ps as [| p ptl]; simpl; auto; [reflexivity|].
-  rewrite get_constrs_pat_list_cons.
-  unfold get_constrs_in. rewrite !map_map. simpl.
-  revert a.
-  induction p; simpl; intros a; auto; try rewrite app_nil_r; auto; try reflexivity.
-  rewrite map_app, concat_app, !in_app_iff, IHp1, IHp2.
-  rewrite !in_app_iff; split; intros; destruct_all; auto.
-Qed.
-
-Lemma get_constrs_in_simplify (rl: list (list pattern * A)) t (c: funsym):
-  In c (get_constrs_in (simplify t rl)) <-> In c (get_constrs_in rl).
-Proof.
-  induction rl as [| rhd rtl IH]; simpl; auto; [reflexivity|].
-  unfold simplify in *; simpl in *. rewrite get_constrs_in_app, get_constrs_in_cons, !in_app_iff.
-  rewrite IH. rewrite get_constrs_in_simplify_single. reflexivity.
-Qed.
-
-(*Iterated max*)
-Definition iter_max (l: list nat) : nat :=
-  fold_right max 0 l.
-Lemma iter_max_in (n: nat) (l: list nat):
-  In n l -> n <= iter_max l.
-Proof.
-  induction l; simpl; auto; [contradiction|].
-  intros [Han| Hin]; subst; auto; try lia.
-  specialize (IHl Hin); lia.
-Qed.
-Lemma iter_max_leq (l1 l2: list nat):
-  (forall x, In x l1 -> In x l2) ->
-  iter_max l1 <= iter_max l2.
-Proof.
-  induction l1 as [| h t IH]; simpl; intros Hin; [lia|].
-  assert (h <= iter_max l2) by (apply iter_max_in; auto).
-  assert (iter_max t <= iter_max l2) by auto.
-  lia.
-Qed.
-
-(*The bound*)
-Definition compile_size_bound (rl: list (list pattern * A)) : nat :=
-  expand_size rl  * (iter_max (map (fun (c: funsym) => length (s_args c)) (get_constrs_in rl))).
-
-(*And now, If n is above our bound, S matrix size decreases*)
-Lemma s_matrix_bound_large_n n t types rl cs l:
-  amap_mem funsym_eq_dec cs types ->
-  constr_at_head_ex cs (simplify t rl) ->
-  amap_get funsym_eq_dec (fst (dispatch1 t types rl)) cs = Some l ->
-  n > compile_size_bound rl ->
-  compile_size n l < compile_size n rl.
-Proof.
-  intros Htypes Hconstr Hget Hn.
-  pose proof (s_matrix_bound_in n _ _ _ _ _ Htypes Hconstr Hget).
-  revert Hn. unfold compile_size_bound.
-  assert (length (s_args cs) <= iter_max (map (fun c : funsym => Datatypes.length (s_args c)) (get_constrs_in rl))); [|nia].
-  apply iter_max_in.
-  rewrite in_map_iff. exists cs. split; auto.
-  rewrite <- get_constrs_in_simplify. 
-  apply constr_at_head_ex_in. apply Hconstr.
-Qed.
- 
-(*Part 7: [compile_size] only decreases as we recurse*)
-(*Since [compile_size] is not constant, we show that it only decreaess, so our initial bound is always
-  large enough*)
-
-(*D matrix*)
-Lemma dispatch2_gen_snd_constrs c types rl:
-  In c (get_constrs_in (snd (dispatch2_gen types rl))) -> In c (get_constrs_in rl).
-Proof.
-  rewrite dispatch2_gen_snd.
-  induction rl as [| [ps a] rtl IH]; simpl; auto.
-  rewrite get_constrs_in_cons, in_app_iff. simpl.
-  destruct ps as [| phd ptl]; simpl; auto.
-  simpl.
-  rewrite get_constrs_pat_list_cons, in_app_iff.
-  destruct phd; simpl; auto.
-  rewrite get_constrs_in_cons, in_app_iff. simpl.
-  intros; destruct_all; auto.
-Qed.
-
-(*Simplification does not add constructors (there is an iff version provable but it is more compicated)*)
-Lemma simplify_aux_constrs t a phd x c:
-  In x (simplify_aux t a phd) ->
-  In c (get_constrs_pat (fst x)) ->
-  In c (get_constrs_pat phd).
-Proof.
-  revert a.
-  induction phd; simpl; intros a; eauto; try (intros [Hx | []]; subst; simpl; auto).
-  rewrite !in_app_iff. intros [Hs1 | Hs2] Hinc; [left | right]; eauto.
-Qed.
-
-Lemma simplify_constrs c t rl:
-  In c (get_constrs_in (simplify t rl)) -> In c (get_constrs_in rl).
-Proof.
-  induction rl as [| [ps a] rtl IH]; simpl; auto.
-  unfold simplify in *; simpl in *.
-  destruct ps as [| phd ptl]; simpl; auto.
-  rewrite get_constrs_in_app, get_constrs_in_cons, !in_app_iff; simpl.
-  assert (In c (get_constrs_in (map (fun x : pattern * A => (fst x :: ptl, snd x)) (simplify_aux t a phd))) ->
-    In c (get_constrs_pat_list (phd :: ptl))); [| intros; destruct_all; auto].
-  unfold get_constrs_in. rewrite !map_map. simpl.
-  rewrite get_constrs_pat_list_cons, in_app_iff.
-  erewrite map_ext. 2: { intros. rewrite get_constrs_pat_list_cons. reflexivity. }
-  rewrite (perm_in_iff c (perm_concat_map_app _ _ _)), in_app_iff.
-  rewrite map_const, in_concat_repeat.
-  2: { pose proof (null_simplify_aux t a phd). destruct (simplify_aux t a phd); simpl in *; try lia. discriminate. }
-  rewrite in_concat.  intros [[fs [Hinfs Hinc]] | ?]; auto.
-  rewrite in_map_iff in Hinfs.
-  destruct Hinfs as [[p a1] [Hfs Hinpa]]; subst; simpl in *. left.
-  eapply simplify_aux_constrs. apply Hinpa. assumption.
-Qed.
-
-Lemma d_matrix_constrs c t types rl:
-  In c (get_constrs_in (snd (dispatch1 t types rl))) -> In c (get_constrs_in rl).
-Proof.
-  rewrite dispatch_equiv.
-  unfold dispatch2.
-  intros Hin1.
-  apply dispatch2_gen_snd_constrs in Hin1.
-  apply simplify_constrs in Hin1.
-  assumption.
-Qed.
-
-Lemma d_matrix_compile_bound_gets_smaller t types (rl: list (list pattern * A)):
-  compile_size_bound (snd (dispatch1 t types rl)) <= (compile_size_bound rl).
-Proof.
-  unfold compile_size_bound.
-  apply Nat.mul_le_mono.
-  - apply expand_size_d.
-  - apply iter_max_leq.
-    intros x. rewrite !in_map_iff.
-    intros [c [Hx Hinc]]; subst.
-    exists c. split; auto.
-    apply d_matrix_constrs in Hinc; exact Hinc.
-Qed.
-
-
-(*And the same for the S matrix*)
-
-Lemma get_constrs_pat_list_rev_in c l:
-  In c (get_constrs_pat_list (rev l)) <-> In c (get_constrs_pat_list l).
-Proof.
-  apply perm_in_iff. unfold get_constrs_pat_list. rewrite map_rev. apply perm_concat_rev.
-Qed.
-
-Lemma dispatch2_gen_fst_constrs c cs types rl l:
-  amap_mem funsym_eq_dec cs types ->
-  amap_get funsym_eq_dec (fst (dispatch2_gen types rl)) cs = Some l ->
-  In c (get_constrs_in l) -> In c (get_constrs_in rl).
-Proof.
-  intros Htypes.
-  destruct (constr_at_head_ex cs rl || wild_at_head_ex rl) eqn : Hconstr.
-  2: { rewrite dispatch2_gen_fst_notin in Hconstr; eauto. rewrite Hconstr; auto. discriminate. }
-  rewrite dispatch2_gen_fst_in; auto.
-  clear Hconstr.
-  intros Hsome; inversion Hsome; subst; clear Hsome.
-  induction rl as [| [ps a] rtl IH]; simpl; auto.
-  rewrite get_constrs_in_cons, in_app_iff; simpl.
-  destruct ps as [| phd ptl]; simpl; auto.
-  rewrite get_constrs_pat_list_cons, in_app_iff; simpl.
-  destruct phd; auto.
-  - (*constr case*)
-    destruct (funsym_eqb_spec f cs); subst; simpl; auto.
-    rewrite get_constrs_in_cons; simpl.
-    rewrite get_constrs_pat_list_app, !in_app_iff.
-    rewrite get_constrs_pat_list_rev_in.
-    unfold get_constrs_pat_list at 1.
-    intros; destruct_all; auto.
-  - (*Wild case*)
-    simpl. rewrite get_constrs_in_cons, in_app_iff.
-    simpl. rewrite get_constrs_pat_list_app, in_app_iff.
-    assert (In c (get_constrs_pat_list (repeat Pwild (Datatypes.length (s_args cs)))) -> False).
-    { clear. induction (length (s_args cs)); simpl; auto. }
-    intros; destruct_all; auto.
-Qed.
-
-Lemma s_matrix_constrs cs c t types rl l:
-  amap_mem funsym_eq_dec cs types ->
-  amap_get funsym_eq_dec (fst (dispatch1 t types rl)) cs = Some l ->
-  In c (get_constrs_in l) -> In c (get_constrs_in rl).
-Proof.
-  intros Htypes Hget Hinc.
-  revert Hget.
-  rewrite dispatch_equiv.
-  unfold dispatch2.
-  intros Hin1.
-  apply dispatch2_gen_fst_constrs with (c:=c) in Hin1; auto.
-  apply simplify_constrs in Hin1.
-  assumption.
-Qed.
-
-Lemma s_matrix_compile_bound_get_smaller t types rl cs l:
-  amap_mem funsym_eq_dec cs types ->
-  amap_get funsym_eq_dec (fst (dispatch1 t types rl)) cs = Some l ->
-  compile_size_bound l <= (compile_size_bound rl).
-Proof.
-  intros Htypes Hget.
-  unfold compile_size_bound.
-  apply Nat.mul_le_mono.
-  - eapply expand_size_s; eauto.
-  - apply iter_max_leq.
-    intros x. rewrite !in_map_iff.
-    intros [c [Hx Hinc]]. subst.
-    exists c. split; auto.
-    eapply s_matrix_constrs; eauto.
-Qed.
-
-(*Part 8: Proofs about [populate_all]*)
+(*Part 6: Proofs about [populate_all]*)
 
 (*Essentially, we need to know how the keys of the map from [populate_all] correspond to the
   keys of the map in [dispatch]. This is annoyingly complicated, in part because
@@ -2186,7 +1862,7 @@ Proof.
       * rewrite amap_map_key_get_none; auto.
 Qed.
 
-(*The last lemma we need, a corollary of the above:*)
+(*The main lemma we need, a corollary of the above:*)
 Lemma constrs_in_types t rl cs l is_constr o:
   amap_get funsym_eq_dec (fst (dispatch1 t (fst o) rl)) cs = Some l ->
   populate_all is_constr rl = Some o ->
@@ -2209,7 +1885,369 @@ Proof.
   - apply Hpop.
 Qed.
 
-(*Part 8: Define the function*)
+(*Part 7: Define full bound*)
+
+(*The bound we give: (length rl) * (max size of ps in rl)*)
+(*We actually do need to get every single constructor in the patterns, because when simplifying,
+  we may introduce a constructor that was was not at the head before*)
+(*We don't care about duplicates or efficiency; we never run this*)
+
+Fixpoint get_constrs_pat (p: pattern) : list (funsym * nat) :=
+  match p with
+  | Pconstr f _ ps => (f, length ps) :: concat (map get_constrs_pat ps)
+  | Por p1 p2 => (get_constrs_pat p1) ++ (get_constrs_pat p2)
+  | Pbind p _ => get_constrs_pat p
+  | _ => nil
+  end.
+Definition get_constrs_pat_list (l: list pattern) : list (funsym * nat) :=
+  concat (map get_constrs_pat l).
+Definition get_constrs_pat_list_list (l: list (list pattern)) : list (funsym * nat) :=
+  concat (map get_constrs_pat_list l).
+Definition get_constrs_in (rl: list (list pattern * A)) : list (funsym * nat) :=
+  concat (map (fun x => get_constrs_pat_list (fst x)) rl).
+
+(*Lemmas*)
+Lemma get_constrs_in_cons x l:
+  get_constrs_in (x :: l) = get_constrs_pat_list (fst x) ++ get_constrs_in l.
+Proof. reflexivity. Qed.
+Lemma get_constrs_pat_list_cons x l:
+  get_constrs_pat_list (x :: l) = get_constrs_pat x ++ get_constrs_pat_list l.
+Proof. reflexivity. Qed.
+Lemma get_constrs_in_app l1 l2:
+  get_constrs_in (l1 ++ l2) = get_constrs_in l1 ++ get_constrs_in l2.
+Proof.
+  induction l1; simpl; auto. rewrite !get_constrs_in_cons; auto. rewrite IHl1.
+  rewrite app_assoc.
+  auto.
+Qed. 
+Lemma get_constrs_pat_list_app l1 l2:
+  get_constrs_pat_list (l1 ++ l2) = get_constrs_pat_list l1 ++ get_constrs_pat_list l2.
+Proof.
+  induction l1; simpl; auto. rewrite !get_constrs_pat_list_cons, IHl1, app_assoc.
+  reflexivity.
+Qed.
+
+
+Definition constr_args_at_head (c: funsym) (ps: list pattern) (r: list pattern * A) : bool :=
+  match fst r with
+  | Pconstr f _ pats :: _ => funsym_eqb f c && list_eqb pattern_eqb ps pats
+  | _ => false
+  end.
+
+Lemma constr_args_at_head_pat_list c pats h:
+  constr_args_at_head c pats h -> In (c, length pats) (get_constrs_pat_list (fst h)).
+Proof.
+  destruct h as [ps a]. simpl.
+  unfold constr_args_at_head. simpl.
+  destruct ps as [| p tl]; simpl; auto.
+  destruct p; simpl; auto; try discriminate.
+  destruct (funsym_eqb_spec f c); subst; simpl; try discriminate.
+  destruct (list_eqb_spec _ pattern_eqb_spec pats l0); subst; simpl; auto.
+  discriminate.
+Qed.
+
+Lemma constr_args_at_head_ex_in (rl: list (list pattern * A)) (c: funsym) ps:
+  existsb (constr_args_at_head c ps) rl ->
+  In (c, length ps) (get_constrs_in rl).
+Proof.
+  induction rl as [| h t IH]; simpl; auto.
+  rewrite get_constrs_in_cons, in_app_iff. unfold is_true.
+  rewrite orb_true_iff.
+  intros Hin.
+  pose proof (constr_args_at_head_pat_list c ps h). destruct_all; auto.
+Qed.
+
+
+(*Simplifying does not change constructors*)
+Lemma get_constrs_in_simplify_single c t h:
+In c (get_constrs_in (simplify_single t h))  <-> In c (get_constrs_pat_list (fst h)).
+Proof.
+  unfold simplify_single.
+  destruct h as [ps a].
+  destruct ps as [| p ptl]; simpl; auto; [reflexivity|].
+  rewrite get_constrs_pat_list_cons.
+  unfold get_constrs_in. rewrite !map_map. simpl.
+  revert a.
+  induction p; simpl; intros a; auto; try rewrite app_nil_r; auto; try reflexivity.
+  rewrite map_app, concat_app, !in_app_iff, IHp1, IHp2.
+  rewrite !in_app_iff; split; intros; destruct_all; auto.
+Qed.
+
+Lemma get_constrs_in_simplify (rl: list (list pattern * A)) t (c: funsym * nat):
+  In c (get_constrs_in (simplify t rl)) <-> In c (get_constrs_in rl).
+Proof.
+  induction rl as [| rhd rtl IH]; simpl; auto; [reflexivity|].
+  unfold simplify in *; simpl in *. rewrite get_constrs_in_app, get_constrs_in_cons, !in_app_iff.
+  rewrite IH. rewrite get_constrs_in_simplify_single. reflexivity.
+Qed.
+
+(*Iterated max*)
+Definition iter_max (l: list nat) : nat :=
+  fold_right max 0 l.
+Lemma iter_max_in (n: nat) (l: list nat):
+  In n l -> n <= iter_max l.
+Proof.
+  induction l; simpl; auto; [contradiction|].
+  intros [Han| Hin]; subst; auto; try lia.
+  specialize (IHl Hin); lia.
+Qed.
+Lemma iter_max_leq (l1 l2: list nat):
+  (forall x, In x l1 -> In x l2) ->
+  iter_max l1 <= iter_max l2.
+Proof.
+  induction l1 as [| h t IH]; simpl; intros Hin; [lia|].
+  assert (h <= iter_max l2) by (apply iter_max_in; auto).
+  assert (iter_max t <= iter_max l2) by auto.
+  lia.
+Qed.
+
+
+(*Prove that for every cs(ps) in [populate_all], (cs, length ps) is in [get_constrs_in]*)
+
+(*Previous lemma iff but not strong enough*)
+Lemma populate_all_in_strong is_constr rl o cs pats:
+  simplified rl ->
+  populate_all is_constr rl = Some o ->
+  amap_get funsym_eq_dec (fst o) cs = Some pats -> 
+    existsb (constr_args_at_head cs pats) rl.
+Proof.
+  intros Hsimpl. unfold populate_all.
+  destruct (get_heads rl) as[heads|] eqn : Hhead; [|discriminate].
+  rewrite fold_left_right_opt.
+  unfold constr_at_head_ex.
+  rewrite <- (rev_involutive rl) at 1.
+  rewrite existsb_rev. 
+  assert (Hhead1: get_heads (rev rl) = Some (rev heads)). {
+    rewrite get_heads_rev, Hhead. reflexivity.
+  }
+  clear Hhead.
+  rewrite <- simplified_rev in Hsimpl.
+  (*Now, same direction*)
+  generalize dependent (rev heads).
+  revert o.
+  revert cs.
+  revert pats.
+  induction (rev rl) as [| [ps a] t IH]; simpl; auto; intros o cs pats.
+  - intros l. inv Hsome. simpl.
+    inv Hsome. simpl. rewrite amap_empty_get. discriminate. 
+  - intros head. destruct ps as [| phd ptl]; try discriminate.
+    destruct (get_heads t) as [heads1|] eqn : Hheads2; simpl; try discriminate.
+    inv Hsome. simpl.
+    match goal with 
+    | |- context [option_bind ?o ?f] => destruct o as [p|] eqn : Hfold; simpl; try discriminate end.
+    unfold simplified in Hsimpl.
+    unfold constr_args_at_head at 1; simpl.
+    (*simplified assumption means we only care about constr and wildcard*)
+    destruct phd; simpl in *; auto; try discriminate.
+    + destruct p as [css csl]; simpl in *.
+      destruct (is_constr f); try discriminate.
+      rewrite amap_mem_spec.
+      destruct (amap_get funsym_eq_dec css f) as [fy|] eqn : Hmem.
+      * inv Hsome. simpl in *. 
+        destruct (funsym_eqb_spec f cs); simpl; subst; auto.
+        -- destruct (list_eqb_spec _ pattern_eqb_spec o l0); subst; auto.
+          intros Hget. rewrite Hget in Hmem. inversion Hmem; subst. simpl.
+          eapply IH; eauto.
+        -- intros Hget. apply (IH Hsimpl _ _ _  _ eq_refl Hfold). auto. 
+      * inv Hsome. 
+        simpl.
+        destruct (funsym_eqb_spec f cs); simpl; subst.
+        2: { rewrite amap_set_get_diff; auto. intros; eapply IH; eauto.
+        }
+        rewrite amap_set_get_same. inv Hsome.
+        destruct (list_eqb_spec _ pattern_eqb_spec o o); subst; auto.
+    + inv Hsome. eapply IH. assumption. reflexivity. auto.
+Qed.
+
+Lemma populate_all_get_constrs_in is_constr rl o cs ps:
+  populate_all is_constr rl = Some o ->
+  amap_get funsym_eq_dec (fst o) cs = Some ps ->
+  In (cs, length ps) (get_constrs_in rl).
+Proof.
+  rewrite populate_all_simplify with (t:=tm_d).
+  intros Hpop Hget.
+  apply (populate_all_in_strong is_constr (simplify tm_d rl) o cs) in Hget; auto.
+  2: apply simplify_simplified.
+  rewrite <- get_constrs_in_simplify.
+  apply constr_args_at_head_ex_in. apply Hget.
+Qed.
+
+(*The bound*)
+Definition compile_size_bound (rl: list (list pattern * A)) : nat :=
+  expand_size rl * (iter_max (map snd (get_constrs_in rl))).
+
+(*And now, If n is above our bound, S matrix size decreases*)
+Lemma s_matrix_bound_large_n is_constr n t rl cs l o:
+  populate_all is_constr rl = Some o ->
+  amap_mem funsym_eq_dec cs (fst o) ->
+  constr_at_head_ex cs (simplify t rl) ->
+  amap_get funsym_eq_dec (fst (dispatch1 t (fst o) rl)) cs = Some l ->
+  n > compile_size_bound rl ->
+  compile_size n l < compile_size n rl.
+Proof.
+  intros Hpop Htypes Hconstr Hget Hn.
+  rewrite amap_mem_spec in Htypes.
+  destruct (amap_get funsym_eq_dec (fst o) cs) as [ys |] eqn : Htypes'; try discriminate.
+  pose proof (s_matrix_bound_in n _ _ _ _ _ _ Htypes' Hconstr Hget).
+  revert Hn. unfold compile_size_bound.
+  assert (length ys <= iter_max (map snd (get_constrs_in rl)));[| nia].
+  apply iter_max_in. rewrite in_map_iff.
+  exists (cs, length ys). split; auto.
+  eapply populate_all_get_constrs_in. apply Hpop. auto.
+Qed.
+ 
+(*Part 7: [compile_size] only decreases as we recurse*)
+(*Since [compile_size] is not constant, we show that it only decreaess, so our initial bound is always
+  large enough*)
+
+(*D matrix*)
+Lemma dispatch2_gen_snd_constrs c types rl:
+  In c (get_constrs_in (snd (dispatch2_gen types rl))) -> In c (get_constrs_in rl).
+Proof.
+  rewrite dispatch2_gen_snd.
+  induction rl as [| [ps a] rtl IH]; simpl; auto.
+  rewrite get_constrs_in_cons, in_app_iff. simpl.
+  destruct ps as [| phd ptl]; simpl; auto.
+  simpl.
+  rewrite get_constrs_pat_list_cons, in_app_iff.
+  destruct phd; simpl; auto.
+  rewrite get_constrs_in_cons, in_app_iff. simpl.
+  intros; destruct_all; auto.
+Qed.
+
+(*Simplification does not add constructors (there is an iff version provable but it is more compicated)*)
+Lemma simplify_aux_constrs t a phd x c:
+  In x (simplify_aux t a phd) ->
+  In c (get_constrs_pat (fst x)) ->
+  In c (get_constrs_pat phd).
+Proof.
+  revert a.
+  induction phd; simpl; intros a; eauto; try (intros [Hx | []]; subst; simpl; auto).
+  rewrite !in_app_iff. intros [Hs1 | Hs2] Hinc; [left | right]; eauto.
+Qed.
+
+Lemma simplify_constrs c t rl:
+  In c (get_constrs_in (simplify t rl)) -> In c (get_constrs_in rl).
+Proof.
+  induction rl as [| [ps a] rtl IH]; simpl; auto.
+  unfold simplify in *; simpl in *.
+  destruct ps as [| phd ptl]; simpl; auto.
+  rewrite get_constrs_in_app, get_constrs_in_cons, !in_app_iff; simpl.
+  assert (In c (get_constrs_in (map (fun x : pattern * A => (fst x :: ptl, snd x)) (simplify_aux t a phd))) ->
+    In c (get_constrs_pat_list (phd :: ptl))); [| intros; destruct_all; auto].
+  unfold get_constrs_in. rewrite !map_map. simpl.
+  rewrite get_constrs_pat_list_cons, in_app_iff.
+  erewrite map_ext. 2: { intros. rewrite get_constrs_pat_list_cons. reflexivity. }
+  rewrite (perm_in_iff c (perm_concat_map_app _ _ _)), in_app_iff.
+  rewrite map_const, in_concat_repeat.
+  2: { pose proof (null_simplify_aux t a phd). destruct (simplify_aux t a phd); simpl in *; try lia. discriminate. }
+  rewrite in_concat.  intros [[fs [Hinfs Hinc]] | ?]; auto.
+  rewrite in_map_iff in Hinfs.
+  destruct Hinfs as [[p a1] [Hfs Hinpa]]; subst; simpl in *. left.
+  eapply simplify_aux_constrs. apply Hinpa. assumption.
+Qed.
+
+Lemma d_matrix_constrs c t types rl:
+  In c (get_constrs_in (snd (dispatch1 t types rl))) -> In c (get_constrs_in rl).
+Proof.
+  rewrite dispatch_equiv.
+  unfold dispatch2.
+  intros Hin1.
+  apply dispatch2_gen_snd_constrs in Hin1.
+  apply simplify_constrs in Hin1.
+  assumption.
+Qed.
+
+Lemma d_matrix_compile_bound_gets_smaller t types (rl: list (list pattern * A)):
+  compile_size_bound (snd (dispatch1 t types rl)) <= (compile_size_bound rl).
+Proof.
+  unfold compile_size_bound.
+  apply Nat.mul_le_mono.
+  - apply expand_size_d.
+  - apply iter_max_leq.
+    intros x. rewrite !in_map_iff.
+    intros [c [Hx Hinc]]; subst.
+    exists c. split; auto.
+    apply d_matrix_constrs in Hinc; exact Hinc.
+Qed.
+
+
+(*And the same for the S matrix*)
+
+Lemma get_constrs_pat_list_rev_in c l:
+  In c (get_constrs_pat_list (rev l)) <-> In c (get_constrs_pat_list l).
+Proof.
+  apply perm_in_iff. unfold get_constrs_pat_list. rewrite map_rev. apply perm_concat_rev.
+Qed.
+
+Lemma dispatch2_gen_fst_constrs c cs types rl l:
+  amap_mem funsym_eq_dec cs types ->
+  amap_get funsym_eq_dec (fst (dispatch2_gen types rl)) cs = Some l ->
+  In c (get_constrs_in l) -> In c (get_constrs_in rl).
+Proof.
+  intros Htypes.
+  destruct (constr_at_head_ex cs rl || wild_at_head_ex rl) eqn : Hconstr.
+  2: { rewrite dispatch2_gen_fst_notin in Hconstr; eauto. rewrite Hconstr; auto. discriminate. }
+  rewrite amap_mem_spec in Htypes. 
+  destruct (amap_get funsym_eq_dec types cs) as [ys|] eqn : Htypes'; try discriminate.
+  rewrite dispatch2_gen_fst_in with (ys:=ys); auto.
+  clear Hconstr.
+  intros Hsome; inversion Hsome; subst; clear Hsome.
+  induction rl as [| [ps a] rtl IH]; simpl; auto.
+  rewrite get_constrs_in_cons, in_app_iff; simpl.
+  destruct ps as [| phd ptl]; simpl; auto.
+  rewrite get_constrs_pat_list_cons, in_app_iff; simpl.
+  destruct phd; auto.
+  - (*constr case*)
+    destruct (funsym_eqb_spec f cs); subst; simpl; auto.
+    rewrite get_constrs_in_cons; simpl.
+    rewrite get_constrs_pat_list_app, !in_app_iff.
+    rewrite get_constrs_pat_list_rev_in.
+    unfold get_constrs_pat_list at 1.
+    intros; destruct_all; auto.
+  - (*Wild case*)
+    simpl. rewrite get_constrs_in_cons, in_app_iff.
+    simpl. rewrite get_constrs_pat_list_app, in_app_iff.
+    assert (In c (get_constrs_pat_list (repeat Pwild (Datatypes.length ys))) -> False).
+    { clear. induction (length ys); simpl; auto. }
+    intros; destruct_all; auto.
+Qed.
+
+Lemma s_matrix_constrs cs c t types rl l:
+  amap_mem funsym_eq_dec cs types ->
+  amap_get funsym_eq_dec (fst (dispatch1 t types rl)) cs = Some l ->
+  In c (get_constrs_in l) -> In c (get_constrs_in rl).
+Proof.
+  intros Htypes Hget Hinc.
+  revert Hget.
+  rewrite dispatch_equiv.
+  unfold dispatch2.
+  intros Hin1.
+  apply dispatch2_gen_fst_constrs with (c:=c) in Hin1; auto.
+  apply simplify_constrs in Hin1.
+  assumption.
+Qed.
+
+Lemma s_matrix_compile_bound_get_smaller t types rl cs l:
+  amap_mem funsym_eq_dec cs types ->
+  amap_get funsym_eq_dec (fst (dispatch1 t types rl)) cs = Some l ->
+  compile_size_bound l <= (compile_size_bound rl).
+Proof.
+  intros Htypes Hget.
+  unfold compile_size_bound.
+  apply Nat.mul_le_mono.
+  - eapply expand_size_s; eauto.
+  - apply iter_max_leq.
+    intros x. rewrite !in_map_iff.
+    intros [c [Hx Hinc]]. subst.
+    exists c. split; auto.
+    eapply s_matrix_constrs; eauto.
+Qed.
+
+
+ 
+
+(*Part 9: Define the function*)
 
 Obligation Tactic := idtac.
 
@@ -2328,7 +2366,7 @@ assert (Htypes: amap_mem funsym_eq_dec cs types) by (eapply constrs_in_types; ea
 specialize (Hsmall Htypes Hget).
 eapply Nat.le_lt_trans.
 - apply compile_size_mono_le, le_n_S. apply Hsmall.
-- eapply (s_matrix_bound_large_n _ t types rl cs l); auto.
+- eapply (s_matrix_bound_large_n _ _ t rl cs l); auto. apply (eq_sym Heqt2). all: auto.
   pose proof (dispatch1_in_types rl t types cs) as Hdisj.
   rewrite amap_mem_spec in Hdisj.
   rewrite Hget in Hdisj. specialize (Hdisj eq_refl).
