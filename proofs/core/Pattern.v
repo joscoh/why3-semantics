@@ -1524,20 +1524,11 @@ Proof.
     induction m; simpl; auto.
     rewrite <- IHm. unfold combinewith. simpl. reflexivity.
   }
-
-  assert (forall l m, pat_list_list_size n (combinewith (fun x y => x ++ y) [repeat Pwild m] l) =
-    m * length l + pat_list_list_size n l).
-  {
-    clear. intros. induction m; simpl; auto. (*unfold pat_list_list_size.
-    unfold combinewith. simpl. simpl.*)
-    - unfold combinewith; simpl. rewrite app_nil_r, map_id. auto. 
-    - unfold combinewith in *. simpl in *.
-      rewrite app_nil_r in *.
-      unfold pat_list_list_size in *. rewrite !map_map in *.
-      unfold pat_list_size_n in *. simpl in *.
-      rewrite sum_map_S. rewrite IHm. lia.
-  }
-  auto.
+  rewrite pat_list_list_size_combinewith_app. simpl.
+  replace (pat_list_list_size n [repeat Pwild m]) with m; [lia|].
+  induction m; simpl; auto. revert IHm.
+  rewrite !pat_list_list_size_cons, pat_list_list_size_nil.
+  rewrite pat_list_size_n_cons. simpl. lia.
 Qed.
 
 (*The first bound we need: weaker, but unconditional*)
