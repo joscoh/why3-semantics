@@ -746,7 +746,7 @@ Theorem spec_match_eq
   (al1: arg_list (domain (dom_aux pd)) (sym_sigma_args c (map (v_subst vt) args)))
   (Ht: tm_semantic_constr t m_in a_in c_in args_len Hty al1)
   (*Info about rest of terms*)
-  (ts: list term) (tys: list vty) (al2: arg_list (domain (dom_aux pd)) (map (v_subst vt) tys))
+  (ts: list term) (tys: list vty)
   (Htsty: Forall2 (term_has_type gamma) (t :: ts) (vty_cons (adt_name a) args :: tys)) (*duplicate proof for irrelevance*)
   (*Info about pattern matrix*)
   (P: pat_matrix) (Hpsimp: simplified P)
@@ -944,5 +944,76 @@ Proof.
 Qed.
 
 End SpecProof.
+
+(*The proof for the default matrix is much easier*)
+Theorem default_match_eq 
+  (*Info about first term*)
+  (t: term) {m: mut_adt} (m_in : mut_in_ctx m gamma)
+  {a: alg_datatype} (a_in: adt_in_mut a m) {c: funsym} (c_in: constr_in_adt c a) 
+  {args: list vty} (args_len: length args = length (m_params m))
+  (params_len: length (s_params c) = length args)
+  (Hty: term_has_type gamma t (vty_cons (adt_name a) args))
+  (al1: arg_list (domain (dom_aux pd)) (sym_sigma_args c (map (v_subst vt) args)))
+  (Ht: tm_semantic_constr t m_in a_in c_in args_len Hty al1)
+  
+  (*Info about rest of terms*)
+  (ts: list term) (tys: list vty)
+  (Htsty: Forall2 (term_has_type gamma) (t :: ts) (vty_cons (adt_name a) args :: tys)) (*duplicate proof for irrelevance*)
+  (*Info about pattern matrix*)
+  (P: pat_matrix) (Hpsimp: simplified P)
+  (c_notin: constr_at_head_ex c P = false)
+  (Htyp: pat_matrix_typed (vty_cons (adt_name a) args :: tys) P)
+  (Htyp': pat_matrix_typed tys (default P)):
+
+  matches_matrix_tms (t :: ts) (vty_cons (adt_name a) args :: tys) P
+    Htsty Htyp =
+
+  matches_matrix tys (terms_to_hlist ts tys (Forall2_inv_tail Htsty)) (default P) Htyp'.
+Proof.
+  unfold matches_matrix_tms.
+  generalize dependent (Forall2_inv_tail Htsty).
+  revert Htsty Htyp Htyp'.
+  induction P as [| rhd rtl].
+  - intros. simpl. rewrite !matches_matrix_equation_1. reflexivity.
+  - intros. simpl. rewrite !matches_matrix_equation_2.
+    destruct rhd as [ps a1]; simpl.
+    (*Case on patterns*)
+    destruct ps as [| phd ptl].
+    + assert (Htyph:=Htyp). apply pat_matrix_typed_head in Htyph.
+      simpl in Htyph. destruct Htyph as [Hrow _]; inversion Hrow. 
+    + destruct phd as [| f' params tms | | |]; try discriminate.
+      * (*Pconstr*)
+        simpl in c_notin. apply orb_false_iff in c_notin.
+        unfold constr_at_head in c_notin.
+        simpl in c_notin.
+        destruct c_notin as [c_eq c_notin].
+        destruct (funsym_eqb_spec f' c); try discriminate.
+        rewrite matches_row_equation_4.
+        (*Use fact that different constructor gives None*)
+        rewrite terms_to_hlist_equation_4 at 1. simpl hlist_hd.
+        rewrite match_val_single_constr_nomatch with (m_in:=m_in)(a_in:=a_in)(c1_in:=c_in)
+          (args_len:=args_len)(Hty:=Hty)(al1:=al1); auto.
+        simpl. apply IHrtl; auto.
+      * (*Pwild*)
+        rewrite matches_row_equation_4. simpl.
+        rewrite terms_to_hlist_tl.
+        rewrite matches_matrix_equation_2. simpl.
+        rewrite terms_to_hlist_irrel with (H2:=f).
+        rewrite matches_row_irrel with (Hr2:=(Forall_inv (proj1 Htyp'))). simpl.
+        simpl in *.
+        unfold option_bind.
+        match goal with |- context [matches_row ?tys ?hl ?ptl ?H] =>
+          destruct (matches_row tys hl ptl H) as [m1|] eqn : Hmatch1
+        end.
+        -- (*TODO: why do we need to do this?*)
+          match goal with |- context [matches_row ?tys ?hl ?ptl ?H] =>
+            replace (matches_row tys hl ptl H) with (Some m1) by (apply Hmatch1); auto
+          end.
+          f_equal. apply gen_rep_irrel.
+        -- match goal with |- context [matches_row ?tys ?hl ?ptl ?H] =>
+            replace (matches_row tys hl ptl H) with (@None (list (vsymbol * {s: sort & domain (dom_aux pd) s }))) by (apply Hmatch1); auto
+          end.
+Qed.
+
 End SpecDefaultLemmas.
 End PatProofs.
