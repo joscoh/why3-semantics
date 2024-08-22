@@ -1733,6 +1733,13 @@ Proof.
     apply Hsimpl. rewrite in_map_iff. exists (p2, z); auto.
 Qed.
 
+Lemma simplified_tl(p: list pattern * A) ps:
+  simplified (p :: ps) ->
+  simplified ps.
+Proof.
+  unfold simplified. simpl. intros. bool_hyps. auto.
+Qed.
+
 Lemma get_heads_rev rl:
   get_heads (rev rl) = option_map (fun x => rev x) (get_heads rl).
 Proof.
