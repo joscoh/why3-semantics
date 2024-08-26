@@ -3,6 +3,7 @@ Require Import Syntax Vars AssocList GenElts.
 Set Bullet Behavior "Strict Subproofs".
 From Equations Require Import Equations.
 Require Import Coq.Sorting.Permutation.
+Require Import Init.Wf.
 
 (*Lots of definitions and general theorems. TODO maybe move*)
 
@@ -290,7 +291,7 @@ Qed.
 
 Section Compile.
 Context {A: Type} (get_constructors: typesym -> list funsym) 
-  (mk_case: term -> list (pattern * A) -> A) (mk_let: vsymbol -> term -> A -> A).
+  (mk_case: term -> vty -> list (pattern * A) -> A) (mk_let: vsymbol -> term -> A -> A).
 
 (*Part 1: Define parts of compile function. We separate out helper functions to make proofs easier*)
 
@@ -2324,7 +2325,7 @@ Equations compile (tl: list (term * vty)) (rl: list (list pattern * A))
       | Some b =>
         match (fold_left_opt add cslist b) with
         | None => None
-        | Some b1 => Some (mk_case t b1)
+        | Some b1 => Some (mk_case t ty b1)
         end
       end in 
     
@@ -2372,5 +2373,125 @@ eapply Nat.le_lt_trans.
   rewrite <- populate_all_in. apply Hintypes.
   apply simplify_simplified. rewrite <- populate_all_simplify. apply (eq_sym Heqt2).
 Defined.
+
+(*Let's try to prove an induction principle*)
+(* Check compile_elim.*)
+Lemma compile_ind (P: list (term * vty) -> list (list pattern * A) -> option A -> Prop)
+  (Hnone: forall tl, P tl nil None)
+  (Hemp: forall ps a l, P nil ((ps, a) :: l) (Some a))
+  (Hilltyped: forall t ty tl rl,
+    let css :=
+    match ty with
+    | vty_cons ts _ => get_constructors ts
+    | _ => nil
+    end in 
+    let is_constr fs := in_bool funsym_eq_dec fs css in
+    (populate_all is_constr rl = None \/
+      forall types_cslist,
+        (populate_all is_constr rl) = Some types_cslist ->
+        let types := fst types_cslist in
+        let cslist := snd types_cslist in
+        dispatch1_opt t types rl = None 
+    ) ->
+    P ((t, ty) :: tl) rl None
+  )
+  (Hconstr: forall t ty tl rl,
+    let css :=
+    match ty with
+    | vty_cons ts _ => get_constructors ts
+    | _ => nil
+    end in 
+    let is_constr fs := in_bool funsym_eq_dec fs css in
+    (* let types_cslist := populate_all is_constr rl in *)
+    forall types_cslist (Htypes: (populate_all is_constr rl) = Some types_cslist),
+      (*NOTE: we don't have maps, not ideal*)
+      let types := fst types_cslist in
+      let cslist := snd types_cslist in
+      forall casewild (Hdispatch1 : dispatch1_opt t types rl = Some casewild),
+        let cases := fst casewild in
+        let wilds := snd casewild in
+        (*wilds*)
+        P tl wilds (compile tl wilds) /\
+        (forall cs al l (Hget: amap_get funsym_eq_dec cases cs = Some l),
+          P (rev al ++ tl) l (compile (rev al ++ tl) l)) ->
+    P ((t, ty) :: tl) rl (compile ((t, ty) :: tl) rl)):
+  forall ts p, P ts p (compile ts p).
+Proof.
+  intros ts rl.
+  (*Prove by strong induction on size*)
+  remember (compile_measure rl) as n eqn : Hsize.
+  generalize dependent rl.
+  revert ts.
+  induction n as [ n IHn ] using (well_founded_induction lt_wf).
+  intros [| [t ty] ts] [| [phd a] rtl] Hn; subst; simp compile.
+  set (rl := ((phd, a) :: rtl)) in *.
+  specialize (Hconstr t ty ts rl); revert Hconstr. 
+  (*Simplify goal*)
+  set (css:=  match ty with
+    | vty_cons ts0 _ => get_constructors ts0
+    | _ => []
+    end) in *.
+  Opaque dispatch1_opt.
+  simpl.
+  set (is_constr := fun fs => in_bool funsym_eq_dec fs css) in *.
+  intros Hconstr.
+  destruct (populate_all is_constr rl) as [types_cslist|] eqn : Hpop.
+  2: {
+    apply Hilltyped. left; auto.
+  }
+  destruct ((dispatch1_opt t (fst types_cslist) rl)) as [casewild|] eqn : Hdispatch1.
+  2: {
+    apply Hilltyped. right; auto. intros. subst types.
+    unfold is_constr in Hpop. unfold css in Hpop.
+    rewrite H in Hpop.
+    inversion Hpop; subst. assumption.
+  }
+  specialize (Hconstr types_cslist eq_refl casewild Hdispatch1).
+  revert Hconstr.
+  unfold rl at 2.
+  simp compile.
+  (*One more round of simplifying, then we just have to prove the IH*)
+  (*TODO: bad*)
+  subst css.
+  set (css:=  match ty with
+  | vty_cons ts0 _ => get_constructors ts0
+  | _ => []
+  end) in *.
+  simpl.
+  subst is_constr.
+  set (is_constr := fun fs => in_bool funsym_eq_dec fs css) in *.
+  fold rl.
+  rewrite Hpop, Hdispatch1.
+  intros Hconstr.
+  apply Hconstr.
+  (*All that is left is proving the IH from our strong induction IH*)
+  split.
+  - eapply IHn. 2: reflexivity.
+    (*First case, repeat proof from Equations*)
+    unfold compile_measure.
+    apply dispatch1_opt_some in Hdispatch1.
+    destruct Hdispatch1 as [Hnotnull Hcasewild]. rewrite Hcasewild.
+    eapply Nat.le_lt_trans.
+    + apply compile_size_mono_le, le_n_S, (d_matrix_compile_bound_gets_smaller t (fst types_cslist) rl).
+    + apply d_matrix_smaller; auto.
+  - intros cs al l Hget. eapply IHn. 2: reflexivity.
+    apply dispatch1_opt_some in Hdispatch1.
+    destruct Hdispatch1 as [Hnotnull Hcasewild]. 
+    fold rl.
+    unfold compile_measure.
+    pose proof (s_matrix_compile_bound_get_smaller t (fst types_cslist) rl cs l) as Hsmall.
+    revert Hget. rewrite Hcasewild. intros Hget.
+    assert (Htypes: amap_mem funsym_eq_dec cs (fst types_cslist)) by (eapply constrs_in_types; eauto).
+    specialize (Hsmall Htypes Hget).
+    eapply Nat.le_lt_trans.
+    + apply compile_size_mono_le, le_n_S. apply Hsmall.
+    + eapply (s_matrix_bound_large_n _ _ t rl cs l); auto. apply Hpop.  all: auto.
+      pose proof (dispatch1_in_types rl t (fst types_cslist) cs) as Hdisj.
+      rewrite amap_mem_spec in Hdisj.
+      rewrite Hget in Hdisj. specialize (Hdisj eq_refl).
+      destruct Hdisj as [Hincs | Hintypes]; auto.
+      rewrite <- populate_all_in. apply Hintypes.
+      apply simplify_simplified. rewrite <- populate_all_simplify. apply Hpop.
+Qed.
 
 End Compile.
