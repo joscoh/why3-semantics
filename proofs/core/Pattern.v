@@ -1335,24 +1335,29 @@ Proof.
 Qed.
 
 Lemma simplify_single_all_null t x:
-  negb (null (fst x)) ->
+  negb (null (fst x)) =
   forallb (fun x => negb (null (fst x))) (simplify_single t x).
 Proof.
   destruct x as [ps a]. simpl.
-  destruct ps as [| p ptl]; simpl; auto. intros _.
-  rewrite forallb_map. simpl. apply forallb_t.
+  destruct ps as [| p ptl]; simpl; auto.
+  rewrite forallb_map. simpl. rewrite forallb_t. reflexivity.
+Qed.
+
+(*TODO: move from Typing*)
+Lemma forallb_ext: forall {B: Type} (f g: B -> bool) (l: list B),
+  (forall x, f x = g x) ->
+  forallb f l = forallb g l.
+Proof.
+  intros. induction l; simpl; auto; congruence.
 Qed.
 
 Lemma simplify_all_null t rl:
-  forallb (fun x => negb (null (fst x))) rl ->
+  forallb (fun x => negb (null (fst x))) rl =
   forallb (fun x => negb (null (fst x))) (simplify t rl).
 Proof.
-  intros Hall.
   unfold simplify.
   rewrite forallb_concat, forallb_map.
-  apply forallb_forall. intros x Hinx.
-  apply simplify_single_all_null. unfold is_true in Hall. rewrite forallb_forall in Hall.
-  apply Hall; auto.
+  apply forallb_ext. apply simplify_single_all_null.
 Qed.
 
 (*And the full result*)
@@ -1367,7 +1372,7 @@ Proof.
   eapply Nat.lt_le_trans.
   - apply dispatch2_gen_snd_smaller.
     + rewrite null_simplify; auto.
-    + apply simplify_all_null; auto.
+    + rewrite <- simplify_all_null; auto.
   - unfold compile_size. rewrite expand_full_simplify. auto.
 Qed.
 
@@ -2115,7 +2120,7 @@ Proof.
 Qed.
 
 (*Simplification does not add constructors (there is an iff version provable but it is more compicated)*)
-Lemma simplify_aux_constrs t a phd x c:
+(* Lemma simplify_aux_constrs t a phd x c:
   In x (simplify_aux t a phd) ->
   In c (get_constrs_pat (fst x)) ->
   In c (get_constrs_pat phd).
@@ -2144,7 +2149,7 @@ Proof.
   rewrite in_map_iff in Hinfs.
   destruct Hinfs as [[p a1] [Hfs Hinpa]]; subst; simpl in *. left.
   eapply simplify_aux_constrs. apply Hinpa. assumption.
-Qed.
+Qed. *)
 
 Lemma d_matrix_constrs c t types rl:
   In c (get_constrs_in (snd (dispatch1 t types rl))) -> In c (get_constrs_in rl).
@@ -2153,7 +2158,7 @@ Proof.
   unfold dispatch2.
   intros Hin1.
   apply dispatch2_gen_snd_constrs in Hin1.
-  apply simplify_constrs in Hin1.
+  apply get_constrs_in_simplify in Hin1.
   assumption.
 Qed.
 
@@ -2223,7 +2228,7 @@ Proof.
   unfold dispatch2.
   intros Hin1.
   apply dispatch2_gen_fst_constrs with (c:=c) in Hin1; auto.
-  apply simplify_constrs in Hin1.
+  apply get_constrs_in_simplify in Hin1.
   assumption.
 Qed.
 
@@ -2374,9 +2379,133 @@ eapply Nat.le_lt_trans.
   apply simplify_simplified. rewrite <- populate_all_simplify. apply (eq_sym Heqt2).
 Defined.
 
+(*It is much simpler to work with simplified pattern matrices. We show that (in the interesting case),
+  we are free to assume that our matrix is simplified for [compile]. First, some lemmas*)
+
+(*Simplifying twice does nothing*)
+
+Lemma simplified_simplify_aux 
+  t a p:
+  simplified_aux p ->
+  simplify_aux t a p = [(p, a)].
+Proof.
+  induction p; simpl; try discriminate; auto.
+Qed.
+
+Lemma simplified_simplify (t : term) (rl : list (list pattern * A)):
+  simplified rl ->
+  simplify t rl = rl.
+Proof.
+  induction rl as [| [ps a] rtl IH]; simpl.
+  - intros _. reflexivity.
+  - destruct ps as [| phd ptl]; simpl; auto.
+    + intros Htl. unfold simplify in *. simpl. f_equal. auto.
+    + intros Hsimp. apply andb_prop in Hsimp.
+      destruct Hsimp as [Hhd Htl].
+      unfold simplify in *. simpl. rewrite IH; auto.
+      rewrite simplified_simplify_aux; auto.
+Qed.
+
+Lemma simplify_twice (t : term) (rl : list (list pattern * A)):
+  simplify t (simplify t rl) = simplify t rl.
+Proof.
+  apply simplified_simplify, simplify_simplified.
+Qed.
+
+Lemma dispatch1_simplify t types P:
+  dispatch1 t types (simplify t P) = dispatch1 t types P.
+Proof.
+  rewrite !dispatch_equiv.
+  unfold dispatch2.
+  rewrite simplify_twice.
+  reflexivity.
+Qed.
+
+(*TODO: move*)
+Lemma existsb_forallb_negb {B: Type} (p: B -> bool) (l: list B):
+  existsb p l = negb (forallb (fun x => negb (p x)) l).
+Proof.
+  induction l as [| h t IH]; simpl; auto.
+  destruct (p h); simpl; auto.
+Qed.
+
+Lemma dispatch1_opt_simplify t types P : 
+  dispatch1_opt t types (simplify t P) = dispatch1_opt t types P.
+Proof.
+  destruct (dispatch1_opt _ _ P) as [l1|] eqn : Hd1.
+  - apply dispatch1_opt_some in Hd1.
+    destruct Hd1 as [Hall Hl1].
+    apply dispatch1_opt_some.
+    split.
+    + rewrite <- simplify_all_null. auto.
+    + rewrite dispatch1_simplify; assumption.
+  - apply dispatch1_opt_none in Hd1.
+    apply dispatch1_opt_none.
+    rewrite existsb_forallb_negb in Hd1 |- *.
+    rewrite <- simplify_all_null. auto.
+Qed.
+
+
+Lemma compile_simplify (tms: list (term * vty)) (P: list (list pattern * A))  t ty:
+  compile ((t, ty) :: tms) P =
+  compile ((t, ty) :: tms) (simplify t P).
+Proof.
+  destruct P as [| row P']; simp compile; auto.
+  destruct ((simplify t (row :: P'))) as [| s1 stl] eqn : Hsimp.
+  {
+    exfalso. revert Hsimp. rewrite <- null_nil, null_simplify. simpl. auto.
+  }
+  simp compile.
+  set (css := match ty with
+    | vty_cons ts _ => get_constructors ts
+    | _ => []
+    end ) in *.
+  set (P := row :: P') in *.
+  rewrite <- Hsimp.
+  Opaque dispatch1_opt.
+  simpl.
+  set (is_constr := fun fs => in_bool funsym_eq_dec fs css) in *.
+  rewrite <- populate_all_simplify.
+  destruct (populate_all is_constr P) as [types_cslist|] eqn : Hpop; [| reflexivity].
+  rewrite dispatch1_opt_simplify.
+  destruct (dispatch1_opt t (fst types_cslist) P) as [casewild|] eqn : Hdispatch; reflexivity.
+Qed.
+
+Lemma iter_max_eq l1 l2:
+  (forall x, In x l1 <-> In x l2) ->
+  iter_max l1 = iter_max l2.
+Proof.
+  intros Hallin.
+  apply Nat.le_antisymm; apply iter_max_leq; intros; apply Hallin; auto.
+Qed.
+
+Lemma compile_measure_simplify t rl:
+  compile_measure (simplify t rl) = compile_measure rl.
+Proof.
+  unfold compile_measure, compile_size.
+  rewrite expand_full_simplify.
+  unfold compile_size_bound.
+  rewrite expand_size_simplify.
+  f_equal. f_equal. f_equal. apply iter_max_eq.
+  intros x. 
+  rewrite !in_map_iff.
+  split; intros [y [Hx Hinx]]; subst; exists y; split; auto; revert Hinx;
+  rewrite get_constrs_in_simplify; auto.
+Qed.
+
+(*Now we can prove an induction principle for [compile]. In the interesting cases,
+  we can assume our pattern matrix is simplified thanks to the above*)
+
 (*Let's try to prove an induction principle*)
 (* Check compile_elim.*)
 Lemma compile_ind (P: list (term * vty) -> list (list pattern * A) -> option A -> Prop)
+  (P_simp: forall t ty tms rl,
+    P ((t, ty) :: tms) (simplify t rl) (compile ((t, ty) :: tms) (simplify t rl)) ->
+    P ((t, ty) :: tms) rl (compile ((t, ty) :: tms) rl))
+    
+  (* (P_ext: forall tms1 tms2 rl1 rl2,
+    compile tms1 rl1 = compile tms2 rl2 ->
+    P tms1 rl1 (compile tms1 rl1) <-> P tms2 rl2 (compile tms2 rl2)) *)
   (Hnone: forall tl, P tl nil None)
   (Hemp: forall ps a l, P nil ((ps, a) :: l) (Some a))
   (Hilltyped: forall t ty tl rl,
@@ -2386,9 +2515,10 @@ Lemma compile_ind (P: list (term * vty) -> list (list pattern * A) -> option A -
     | _ => nil
     end in 
     let is_constr fs := in_bool funsym_eq_dec fs css in
+    simplified rl ->
     (populate_all is_constr rl = None \/
-      forall types_cslist,
-        (populate_all is_constr rl) = Some types_cslist ->
+      exists types_cslist,
+        (populate_all is_constr rl) = Some types_cslist /\
         let types := fst types_cslist in
         let cslist := snd types_cslist in
         dispatch1_opt t types rl = None 
@@ -2402,6 +2532,7 @@ Lemma compile_ind (P: list (term * vty) -> list (list pattern * A) -> option A -
     | _ => nil
     end in 
     let is_constr fs := in_bool funsym_eq_dec fs css in
+    simplified rl ->
     (* let types_cslist := populate_all is_constr rl in *)
     forall types_cslist (Htypes: (populate_all is_constr rl) = Some types_cslist),
       (*NOTE: we don't have maps, not ideal*)
@@ -2423,9 +2554,24 @@ Proof.
   generalize dependent rl.
   revert ts.
   induction n as [ n IHn ] using (well_founded_induction lt_wf).
-  intros [| [t ty] ts] [| [phd a] rtl] Hn; subst; simp compile.
+  intros [| [t ty] ts] [| [phd a] rtl] Hn; subst; try solve[simp compile].
+  rewrite compile_simplify.
   set (rl := ((phd, a) :: rtl)) in *.
-  specialize (Hconstr t ty ts rl); revert Hconstr. 
+  set (simplify t rl) as rl' in *.
+  specialize (P_simp t ty ts rl); revert P_simp. fold rl'.
+  destruct rl' as [|[phd1 a1] rtl1] eqn : Hsimpeq.
+  {
+    exfalso. assert (Hnull: null (simplify t rl)). {
+      fold rl'. rewrite Hsimpeq. reflexivity.
+    }
+    rewrite null_simplify in Hnull. discriminate.
+  }
+  unfold rl at 2.
+  simp compile.
+  rewrite <- Hsimpeq.
+  fold rl.
+  assert (Hsimp: simplified rl') by (apply simplify_simplified). 
+  specialize (Hconstr t ty ts rl'); revert Hconstr.
   (*Simplify goal*)
   set (css:=  match ty with
     | vty_cons ts0 _ => get_constructors ts0
@@ -2435,20 +2581,21 @@ Proof.
   simpl.
   set (is_constr := fun fs => in_bool funsym_eq_dec fs css) in *.
   intros Hconstr.
-  destruct (populate_all is_constr rl) as [types_cslist|] eqn : Hpop.
+  replace (populate_all is_constr rl) with (populate_all is_constr rl') by (symmetry; apply populate_all_simplify).
+  destruct (populate_all is_constr rl') as [types_cslist|] eqn : Hpop.
   2: {
-    apply Hilltyped. left; auto.
+    intros P_ext. apply P_ext. apply Hilltyped; auto.
   }
-  destruct ((dispatch1_opt t (fst types_cslist) rl)) as [casewild|] eqn : Hdispatch1.
+  replace (dispatch1_opt t (fst types_cslist) rl) with
+    (dispatch1_opt t (fst types_cslist) rl') by (apply dispatch1_opt_simplify).
+  destruct ((dispatch1_opt t (fst types_cslist) rl')) as [casewild|] eqn : Hdispatch1.
   2: {
-    apply Hilltyped. right; auto. intros. subst types.
-    unfold is_constr in Hpop. unfold css in Hpop.
-    rewrite H in Hpop.
-    inversion Hpop; subst. assumption.
+    intros P_ext; apply P_ext.
+    apply Hilltyped; auto. right. exists types_cslist. split; auto. 
   }
-  specialize (Hconstr types_cslist eq_refl casewild Hdispatch1).
+  specialize (Hconstr Hsimp types_cslist eq_refl casewild Hdispatch1).
   revert Hconstr.
-  unfold rl at 2.
+  rewrite Hsimpeq at 2.
   simp compile.
   (*One more round of simplifying, then we just have to prove the IH*)
   (*TODO: bad*)
@@ -2460,9 +2607,10 @@ Proof.
   simpl.
   subst is_constr.
   set (is_constr := fun fs => in_bool funsym_eq_dec fs css) in *.
-  fold rl.
+  rewrite <- Hsimpeq.
   rewrite Hpop, Hdispatch1.
-  intros Hconstr.
+  intros Hconstr P_ext.
+  apply P_ext. 
   apply Hconstr.
   (*All that is left is proving the IH from our strong induction IH*)
   split.
@@ -2471,22 +2619,26 @@ Proof.
     unfold compile_measure.
     apply dispatch1_opt_some in Hdispatch1.
     destruct Hdispatch1 as [Hnotnull Hcasewild]. rewrite Hcasewild.
+    unfold rl'. rewrite dispatch1_simplify.
     eapply Nat.le_lt_trans.
     + apply compile_size_mono_le, le_n_S, (d_matrix_compile_bound_gets_smaller t (fst types_cslist) rl).
     + apply d_matrix_smaller; auto.
-  - intros cs al l Hget. eapply IHn. 2: reflexivity.
+      unfold rl' in Hnotnull.
+      rewrite <- simplify_all_null in Hnotnull.
+      apply Hnotnull.
+  - intros cs al l Hget. eapply IHn.   2: reflexivity.
+    replace (compile_measure rl) with (compile_measure rl') by (apply compile_measure_simplify).
     apply dispatch1_opt_some in Hdispatch1.
     destruct Hdispatch1 as [Hnotnull Hcasewild]. 
-    fold rl.
     unfold compile_measure.
-    pose proof (s_matrix_compile_bound_get_smaller t (fst types_cslist) rl cs l) as Hsmall.
+    pose proof (s_matrix_compile_bound_get_smaller t (fst types_cslist) rl' cs l) as Hsmall.
     revert Hget. rewrite Hcasewild. intros Hget.
     assert (Htypes: amap_mem funsym_eq_dec cs (fst types_cslist)) by (eapply constrs_in_types; eauto).
     specialize (Hsmall Htypes Hget).
     eapply Nat.le_lt_trans.
     + apply compile_size_mono_le, le_n_S. apply Hsmall.
-    + eapply (s_matrix_bound_large_n _ _ t rl cs l); auto. apply Hpop.  all: auto.
-      pose proof (dispatch1_in_types rl t (fst types_cslist) cs) as Hdisj.
+    + eapply (s_matrix_bound_large_n _ _ t rl' cs l); auto. apply Hpop.  all: auto.
+      pose proof (dispatch1_in_types rl' t (fst types_cslist) cs) as Hdisj.
       rewrite amap_mem_spec in Hdisj.
       rewrite Hget in Hdisj. specialize (Hdisj eq_refl).
       destruct Hdisj as [Hincs | Hintypes]; auto.

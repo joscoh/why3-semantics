@@ -1381,4 +1381,894 @@ Proof.
 Qed.
 
 End SpecDefaultLemmas.
+
+Definition gen_match (t: term) (ty: vty) (l: list (pattern * gen_term b)) : gen_term b :=
+  match b return list (pattern * gen_term b) -> gen_term b with
+  | true => fun pats => Tmatch t ty pats
+  | false => fun pats => Fmatch t ty pats
+  end l.
+
+Definition get_constructors (ts: typesym) : list funsym :=
+  match (find_ts_in_ctx gamma ts) with
+  | Some (m, a) => adt_constr_list a
+  | None => nil
+  end.
+
+(*[populate] is some iff all constructors (nested) in the pattern satisfy [is_constr]*)
+Check populate.
+
+(*TODO: unify with thing in Pattern.v*)
+Fixpoint constrs_in_pat (p: pattern) : list funsym :=
+  match p with
+  | Pconstr c tys ps => c :: concat (map constrs_in_pat ps)
+  | Por p1 p2 => (constrs_in_pat p1) ++ (constrs_in_pat p2)
+  | Pbind p _ => constrs_in_pat p
+  | _ => nil
+  end.
+Print simplified_aux.
+(*Only if simplified already or something*)
+Lemma populate_none_simpl (is_constr: funsym -> bool) acc p:
+  simplified_aux p ->
+  populate is_constr acc p = None ->
+  exists c tys ps, p = Pconstr c tys ps /\ is_constr c = false.
+Proof.
+  destruct p; try discriminate. simpl. intros _.
+  destruct acc as [css csl]; simpl.
+  destruct (is_constr f) eqn : Hf.
+  + destruct (amap_mem funsym_eq_dec f css ); discriminate.
+  + intros _. exists f. exists l. exists l0. auto.
+Qed.
+(*  - intros acc. destruct (populate is_constr acc p1) as [o1|] eqn : Hpop1; simpl.
+    + intros Hpop2. apply IHp2 in Hpop2.
+      destruct Hpop2 as [c [tys [ps [Hp2 Hc]]]]; subst. exists c. exists tys. exists ps. 
+      
+      [Hinc Hc]]. exists c. rewrite in_app_iff. split; auto.
+    + intros _. apply IHp1 in Hpop1.
+      destruct Hpop1 as [c [Hinc Hc]].
+      exists c. rewrite in_app_iff. split; auto.
+  - intros acc Hpop. eapply IHp. apply Hpop. 
+Qed. *)
+
+Lemma fold_left_opt_none {B C: Type} (f: B -> C -> option B) (l: list C) (base: B) :
+  fold_left_opt f l base = None <->
+  exists l1 x l2 y, l = l1 ++ x :: l2 /\ (fold_left_opt f l1 base)= Some y /\ f y x  = None.
+Proof.
+  revert base. induction l as [| h t IH]; simpl; intros; auto.
+  - split; try discriminate.
+    intros [l1 [x [l2 [y [Hl _]]]]]. destruct l1; inversion Hl.
+  - destruct (f base h) eqn : Hf.
+    + rewrite IH. split; intros [l1 [x [l2 [y [Hl [Hfold Hf']]]]]]; subst.
+      * exists (h :: l1). exists x. exists l2. exists y. split_all; auto.
+        simpl. rewrite Hf. auto.
+      * destruct l1 as [| h1 t1].
+        -- simpl in *. inversion Hfold; subst.
+          inversion Hl; subst. rewrite Hf' in Hf. discriminate.
+        -- inversion Hl; subst.
+          simpl in Hfold. rewrite Hf in Hfold. 
+          exists t1. exists x. exists l2. exists y. split_all; auto.
+    + split; auto. intros _. exists nil. exists h. exists t.
+      exists base. split_all; auto.
+Qed.
+
+(*pattern in matrix*)
+Definition pat_in_mx (p: pattern) (P: pat_matrix) : Prop :=
+  exists row, In row P /\ In p (fst row).
+
+Lemma pat_in_mx_head p row P:
+  In p (fst row) ->
+  pat_in_mx p (row :: P).
+Proof.
+  intros Hin. unfold pat_in_mx. exists row. simpl; auto.
+Qed.
+
+Lemma pat_in_mx_tail p row P:
+  pat_in_mx p P ->
+  pat_in_mx p (row :: P).
+Proof.
+  unfold pat_in_mx.
+  intros [row1 [Hinr Hinp]].
+  exists row1. simpl; auto.
+Qed.
+
+Lemma pat_in_mx_nil p:
+  ~ (pat_in_mx p nil).
+Proof.
+  intro C. destruct C; destruct_all; contradiction.
+Qed.
+
+Lemma pat_in_mx_cons_inv p row P:
+  pat_in_mx p (row :: P) ->
+  In p (fst row) \/ pat_in_mx p P.
+Proof.
+  unfold pat_in_mx. simpl.
+  intros [row1 [[Hrow | Hinr] Hinp]]; subst; eauto.
+Qed.
+
+(*TODO: move to common*)
+Ltac inv H :=
+  try(intros H); inversion H; subst; clear H.
+
+
+(*Everything in [get_heads] is in the original matrix*)
+Lemma in_get_heads (P: pat_matrix) l:
+  get_heads P = Some l ->
+  forall p, In p l -> pat_in_mx p P.
+Proof.
+  revert l.
+  induction P as [|[ps a] P' IH]; simpl; auto; intros l.
+  - inv Hsome. contradiction.
+  - destruct ps as [| phd ptl]; [discriminate|].
+    destruct (get_heads P') as [l'|]; simpl; [|discriminate].
+    inv Hsome. simpl. intros p [Hp | Hinp]; subst.
+    + apply pat_in_mx_head. simpl; auto.
+    + apply pat_in_mx_tail. eapply IH. reflexivity. auto.
+Qed.
+
+(*No, that isn't what we want: want: if p is in [get_heads] and matrix is typed,
+  then p has the first type n the list*)
+Lemma in_get_heads_tys (ty: vty) (tys: list vty) (P: pat_matrix) (p: pattern) l
+  (Hp: pat_matrix_typed (ty :: tys) P)
+  (Hheads: get_heads P = Some l)
+  (Hinp: In p l):
+  pattern_has_type gamma p ty.
+Proof.
+  generalize dependent l.
+  (* remember (ty :: tys) as tys2. *)
+  (* generalize dependent tys. generalize dependent tys2. revert ty.  *)
+  induction P as [| [ps a] P' IH]; simpl; intros l. (*intros ty tys2 Hp tys Htys2 l; subst.*)
+  - inv Hsome. contradiction.
+  - destruct ps as [| phd ptl]; [discriminate|].
+    destruct (get_heads P') as [l'|]; [|discriminate].
+    simpl. inv Hsome. simpl.
+    intros [Hpeq | Hinp]; subst.
+    + apply pat_matrix_typed_head in Hp.
+      destruct Hp as [Hrow _].
+      apply Forall2_inv_head in Hrow. auto.
+    + apply pat_matrix_typed_tail in Hp. eauto.
+Qed.
+
+(*TODO: prob don't need these below: *)
+Lemma pat_in_row_typed (p: pattern) (ps: list pattern) (tys: list vty)
+  (Hrow: row_typed tys ps)
+  (Hinp: In p ps):
+  exists ty, pattern_has_type gamma p ty.
+Proof.
+  induction Hrow; [contradiction|].
+  simpl in Hinp. destruct Hinp as [Hp | Hinp]; subst; eauto.
+Qed.
+
+(*Any pattern in a well-typed pattern matrix is well-typed*)
+Lemma pat_in_mx_typed (p: pattern) (P: pat_matrix) (tys: list vty)
+  (HP: pat_matrix_typed tys P)
+  (Hinp: pat_in_mx p P):
+  exists ty, pattern_has_type gamma p ty.
+Proof.
+  induction P as [| row P' IH]; simpl in *.
+  - exfalso. apply (pat_in_mx_nil _ Hinp).
+  - apply pat_in_mx_cons_inv in Hinp.
+    pose proof (pat_matrix_typed_tail HP) as Htail.
+    pose proof (pat_matrix_typed_head HP) as Hhead.
+    destruct Hinp as [Hinp | Hinp]; auto.
+    apply (pat_in_row_typed _ (fst row) tys); auto. apply Hhead.
+Qed.
+
+(*Any constructor pattern in a well-typed pattern matrix is indeed a constructor*)
+(* 
+Check simplify.
+Section DispatchEq.
+
+(*Simplifying twice does nothing*)
+
+Lemma simplified_simplify_aux {B: Type}  (mk_let : vsymbol -> term -> B -> B) 
+  t a p:
+  simplified_aux p ->
+  simplify_aux mk_let t a p = [(p, a)].
+Proof.
+  induction p; simpl; try discriminate; auto.
+Qed.
+
+Lemma simplified_simplify {B: Type}  (mk_let : vsymbol -> term -> B -> B) 
+  (t : term) (rl : list (list pattern * B)):
+  simplified rl ->
+  simplify mk_let t rl = rl.
+Proof.
+  induction rl as [| [ps a] rtl IH]; simpl.
+  - intros _. reflexivity.
+  - destruct ps as [| phd ptl]; simpl; auto.
+    + intros Htl. unfold simplify in *. simpl. f_equal. auto.
+    + intros Hsimp. apply andb_prop in Hsimp.
+      destruct Hsimp as [Hhd Htl].
+      unfold simplify in *. simpl. rewrite IH; auto.
+      rewrite simplified_simplify_aux; auto.
+Qed.
+
+Lemma simplify_twice  {B: Type}  (mk_let : vsymbol -> term -> B -> B) 
+  (t : term) (rl : list (list pattern * B)):
+  simplify mk_let t (simplify mk_let t rl) = simplify mk_let t rl.
+Proof.
+  apply simplified_simplify, simplify_simplified.
+Qed.
+
+Lemma dispatch1_simplify {B: Type} (mk_let: vsymbol -> term -> B -> B) t types P:
+  dispatch1 mk_let t types (simplify mk_let t P) = dispatch1 mk_let t types P.
+Proof.
+  rewrite !dispatch_equiv.
+  unfold dispatch2.
+  rewrite simplify_twice.
+  reflexivity.
+Qed.
+
+(*TODO: move*)
+Lemma existsb_forallb_negb {B: Type} (p: B -> bool) (l: list B):
+  existsb p l = negb (forallb (fun x => negb (p x)) l).
+Proof.
+  induction l as [| h t IH]; simpl; auto.
+  destruct (p h); simpl; auto.
+Qed.
+
+(*TODO: move to Pattern?*)
+Lemma dispatch1_opt_simplify {B: Type} t types P (mk_let: vsymbol -> term -> B -> B) : 
+  dispatch1_opt mk_let t types (simplify mk_let t P) = dispatch1_opt mk_let t types P.
+Proof.
+  destruct (dispatch1_opt _ _ _ P) as [l1|] eqn : Hd1.
+  - apply dispatch1_opt_some in Hd1.
+    destruct Hd1 as [Hall Hl1].
+    apply dispatch1_opt_some.
+    split.
+    + rewrite <- simplify_all_null. auto.
+    + rewrite dispatch1_simplify; assumption.
+  - apply dispatch1_opt_none in Hd1.
+    apply dispatch1_opt_none.
+    rewrite existsb_forallb_negb in Hd1 |- *.
+    rewrite <- simplify_all_null. auto.
+Qed.
+
+(*Can we try to prove: compile ... = compile ... (simplify ...)
+  then assume simplified - will make things easier I think*)
+Lemma compile_simplify (tms: list (term * vty)) (P: pat_matrix)  t ty
+  (*(Htys: Forall2 (term_has_type gamma) tms tys)*)
+  (*(Hp: pat_matrix_typed tys P)*):
+  compile get_constructors gen_match gen_let ((t, ty) :: tms) P =
+  compile get_constructors gen_match gen_let ((t, ty) :: tms) (simplify gen_let t P).
+Proof.
+  destruct P as [| row P']; simp compile; auto.
+  destruct ((simplify gen_let t (row :: P'))) as [| s1 stl] eqn : Hsimp.
+  {
+    exfalso. revert Hsimp. rewrite <- null_nil, null_simplify. simpl. auto.
+  }
+  simp compile.
+  set (css := match ty with
+    | vty_cons ts _ => get_constructors ts
+    | _ => []
+    end ) in *.
+  set (P := row :: P') in *.
+  rewrite <- Hsimp.
+  Opaque dispatch1_opt.
+  simpl.
+  set (is_constr := fun fs => in_bool funsym_eq_dec fs css) in *.
+  rewrite <- populate_all_simplify.
+  destruct (populate_all is_constr P) as [types_cslist|] eqn : Hpop; [| reflexivity].
+  rewrite dispatch1_opt_simplify.
+  destruct (dispatch1_opt gen_let t (fst types_cslist) P) as [casewild|] eqn : Hdispatch; reflexivity.
+Qed. *)
+
+(*And therefore, it suffices to assume that the pattern matrix is simplified*)
+(*Don't do this, just use for cons case*)
+(*Do want to assume simplified this makes this easier for sure - problem
+  is null, P :: ps case - get different a if we simplify or not (could assume ts not nil)*)
+(*Lemma compile_simplified_suff
+  (P1: option (gen_term b) -> Prop):
+  (forall tms P, simplified P -> P1 (compile get_constructors gen_match gen_let tms P)) ->
+  (forall tms P, P1 (compile get_constructors gen_match gen_let tms P)).
+Proof.
+  intros Hall.
+  intros.
+  destruct P as [| [ps a] P'].
+  - simp compile. specialize (Hall tms nil). apply Hall. reflexivity.
+  - destruct tms as [| thd ttl].
+    + simp compile.
+      specialize (Hall nil (simplify gen_let tm_d ((ps, a) :: P'))).
+      prove_hyp Hall.
+      { apply simplify_simplified. }
+      destruct (simplify gen_let tm_d ((ps, a) :: P')) 
+
+
+      simpl in Hall.
+    
+     rewrite compile_equation_2. simp compile.
+   simpl in Hall.
+  Check compile_equation_1.
+  destruct tms as [| thd ttl]. simp compile.
+
+  (tms: list (term * vty)) (P: pat_matrix)
+
+  
+   [|reflexivity].
+  reflexivity.
+
+
+  Search populate_all simplify.
+
+    Search null nil.
+
+    null_simplify:
+  forall {A : Type} (mk_let : vsymbol -> term -> A -> A) 
+    (t : term) (rl : list (list pattern * A)),
+  null (simplify mk_let t rl) = null rl
+     unfold simplify in Hsimp.
+    apply concat_nil_Forall in Hsimp.
+    rewrite Forall_map in Hsimp.
+    inversion Hsimp; subst.
+    unfold simplify_single in H1.
+    Search simplify null.
+    destruct ps
+
+    Search concat nil.
+  }*)
+
+(*TODO: replace*)
+(* Lemma pat_matrix_typed_cons tys p ps:
+  row_typed tys (fst p) ->
+  @gen_typed gamma b (snd p) ret_ty ->
+  pat_matrix_typed tys ps ->
+  pat_matrix_typed tys (p :: ps).
+Proof.
+  unfold pat_matrix_typed. intros; destruct_all; split; constructor; auto.
+Qed.
+
+Lemma simplify_single_typed_inv1 tms mk_let t row:
+  pat_matrix_typed tms (simplify_single mk_let t row) ->
+  row_typed tms (fst row).
+Proof.
+  unfold simplify_single. destruct row as [[| rhd rtl] a]; simpl; auto.
+  - intros Hpat. apply pat_matrix_typed_head in Hpat.
+    simpl in Hpat. apply Hpat.
+  - intros Htyped. 
+    induction rhd; simpl in *.
+    + pose proof (pat_matrix_typed_head Htyped) as Hpat.
+      simpl in *. destruct Hpat as [Hrow Hgen].
+      inversion Hrow; subst.
+      constructor; auto.
+      Search pattern_has_type Pvar.
+      constructor.
+    
+     apply pat_matrix_typed_head.head in Htyped. 
+
+  
+   unfold pat_matrix_typed in Hpat. simpl in Hpat.
+  Print simplify_single.
+
+
+Lemma simplify_typed_inv tms mk_let t rl:
+  pat_matrix_typed tms (simplify mk_let t rl) ->
+  pat_matrix_typed tms rl.
+Proof.
+  induction rl as [| rhd rtl IH].
+  - unfold simplify; simpl. auto.
+  - unfold simplify in *. simpl.
+    intros Hpattyped.
+    apply pat_matrix_typed_app_inv in Hpattyped.
+    destruct Hpattyped as [Htyhd Htytl].
+    apply pat_matrix_typed_cons; auto.
+    + 
+    Search pat_matrix_typed cons.
+    Search pat_matrix_typed.
+  Print pat_matrix_typed.
+
+  pat_matrix_typed_app_inv:
+  forall {tys : list vty}
+  {p1 p2 : list (list pattern * gen_term b)},
+pat_matrix_typed tys (p1 ++ p2) ->
+pat_matrix_typed tys p1 /\ pat_matrix_typed tys p2
+
+ pat_matrix_typed (ty :: map snd tms)
+  (simplify gen_let t rl)
+(2 / 2)
+pat_matrix_typed (ty :: map snd tms) rl *) 
+
+(*NOT iff: if regular, then simplify*)
+
+Fixpoint pat_in_strong (p1 p2: pattern) : bool :=
+  pattern_eqb p1 p2 ||
+  match p2 with
+  | Por pa pb => pat_in_strong p1 pa || pat_in_strong p1 pb
+  | Pbind p _ => pat_in_strong p1 p
+  | Pconstr c tys ps => existsb (fun x => x) (map (pat_in_strong p1) ps)
+  | _ => false
+  end.
+
+Lemma pat_in_strong_rewrite p1 p2: pat_in_strong p1 p2 =
+  pattern_eqb p1 p2 ||
+  match p2 with
+  | Por pa pb => pat_in_strong p1 pa || pat_in_strong p1 pb
+  | Pbind p _ => pat_in_strong p1 p
+  | Pconstr c tys ps => existsb (fun x => x) (map (pat_in_strong p1) ps)
+  | _ => false
+  end.
+Proof.
+  destruct p2; reflexivity.
+Qed.
+
+Lemma pat_in_strong_refl p: pat_in_strong p p.
+Proof.
+  rewrite pat_in_strong_rewrite. destruct (pattern_eqb_spec p p); auto; contradiction.
+Qed.
+
+(*All free vars in inner pattern are in outer pattern*)
+Lemma pat_in_strong_fv p1 p2:
+  pat_in_strong p1 p2 ->
+  (forall x, In x (pat_fv p1) -> In x (pat_fv p2)).
+Proof.
+  intros Hstrong x Hinx.
+  induction p2 as [v1 | f tys ps IH | |pa pb | p2 v1]; rewrite pat_in_strong_rewrite in Hstrong.
+  - destruct (pattern_eqb_spec p1 (Pvar v1)); try discriminate. subst.
+    simpl in Hinx. auto.
+  - destruct (pattern_eqb_spec p1 (Pconstr f tys ps)); subst; auto. simpl in *.
+    simpl_set. apply existsb_exists in Hstrong.
+    destruct Hstrong as [b1 [Hinb1 Hb1]]; subst.
+    rewrite in_map_iff in Hinb1.
+    destruct Hinb1 as [p2 [Hstrong Hinp2]].
+    exists p2. split; auto. rewrite Forall_forall in IH; apply IH; auto.
+  - destruct (pattern_eqb_spec p1 Pwild); [|discriminate]; subst; auto.
+  - destruct (pattern_eqb_spec p1 (Por pa pb)); subst; auto. simpl. simpl_set.
+    destruct (pat_in_strong p1 pa); auto.
+  - destruct (pattern_eqb_spec p1 (Pbind p2 v1)); subst; auto. simpl. simpl_set.
+    destruct (pat_in_strong p1 p2); auto.
+Qed.
+
+Definition pat_in_mx_strong (p: pattern) (P: pat_matrix) : Prop :=
+  exists row p1, In row P /\ In p1 (fst row) /\ pat_in_strong p p1.
+
+(*TODO: prob dont use strong, just look at fv*)
+Definition row_fv {B: Type} (row: list pattern * B) : list vsymbol :=
+  big_union vsymbol_eq_dec pat_fv (fst row).
+Definition pat_mx_fv (P: pat_matrix) : list vsymbol :=
+  big_union vsymbol_eq_dec row_fv P.
+
+Definition pat_matrix_vars_disj1 (tms: list term) (P: pat_matrix) : Prop :=
+  disj (big_union vsymbol_eq_dec tm_fv tms) (pat_mx_fv P).
+
+Lemma pat_matrix_vars_disj_equiv tms P:
+  (pat_matrix_vars_disj tms P) <-> (pat_matrix_vars_disj1 tms P).
+Proof.
+  unfold pat_matrix_vars_disj, pat_matrix_vars_disj1. split.
+  - intros Hall. intros x [Hinx1 Hinx2].
+    unfold pat_mx_fv in Hinx2.
+    revert Hinx2. rewrite <- big_union_elts.
+    intros [row [Hinrow Hinx2]].
+    rewrite Forall_forall in Hall.
+    apply Hall in Hinrow.
+    apply (Hinrow x). auto.
+  - unfold pat_mx_fv. intros Hdisj.
+    rewrite Forall_forall. intros row Hinrow x [Hxin1 Hinx2].
+    revert Hinx2. rewrite <- big_union_elts. intros [p [Hinp Hinx2]].
+    apply (Hdisj x); split; auto. simpl_set. exists row. split; auto.
+    unfold row_fv. simpl_set. exists p; auto.
+Qed.
+
+(*Move?*) (*P1 = regular, P2 = simplify*)
+Lemma pat_matrix_vars_subset tms P1 P2:
+  (forall x, In x (pat_mx_fv P2) -> In x (pat_mx_fv P1)) ->
+  (* (forall p, pat_in_mx_strong p P2 -> pat_in_mx_strong p P1) -> *)
+  pat_matrix_vars_disj tms P1 -> 
+  pat_matrix_vars_disj tms P2.
+Proof.
+  intros Hall.
+  rewrite !pat_matrix_vars_disj_equiv. (*TODO: only have 1*) 
+  unfold pat_matrix_vars_disj1.
+  intros Hdisj x [Hx1 Hx2].
+  apply Hall in Hx2.
+  apply (Hdisj x); auto.
+Qed.
+(* 
+  rewrite !Forall_forall.
+  intros Hallin row Hinrow.
+  unfold pat_row_vars_disj.
+  unfold disj. intros x [Hinx1 Hinx2].
+  rewrite <- big_union_elts in Hinx2.
+  destruct Hinx2 as [p [Hinp Hinx2]].
+  specialize (Hall p).
+  assert (Hinmx: pat_in_mx_strong p P1). {
+    apply Hall. unfold pat_in_mx. exists row. exists p. split_all; auto.
+    apply pat_in_strong_refl.
+  }
+  unfold pat_in_mx in Hinmx.
+  destruct Hinmx as [row2 [p_in [Hinrow2 [Hinp2 Hinstr]]]].
+  specialize (Hallin row2 Hinrow2).
+  apply (Hallin x).
+  split; auto. simpl_set. exists p_in. split; auto.
+  eapply pat_in_strong_fv. apply Hinstr. auto.
+Qed. *)
+(* 
+Lemma pat_matrix_vars_subset tms P1 P2:
+  (forall p, pat_in_mx p P2 -> pat_in_mx p P1) ->
+  pat_matrix_vars_disj tms P1 -> 
+  pat_matrix_vars_disj tms P2.
+Proof.
+  intros Hall.
+  unfold pat_matrix_vars_disj.
+  rewrite !Forall_forall.
+  intros Hallin row Hinrow.
+  unfold pat_row_vars_disj.
+  unfold disj. intros x [Hinx1 Hinx2].
+  rewrite <- big_union_elts in Hinx2.
+  destruct Hinx2 as [p [Hinp Hinx2]].
+  specialize (Hall p).
+  assert (Hinmx: pat_in_mx p P1). {
+    apply Hall. unfold pat_in_mx. exists row; auto.
+  }
+  unfold pat_in_mx in Hinmx.
+  destruct Hinmx as [row2 [Hinrow2 Hinp2]].
+  specialize (Hallin row2 Hinrow2).
+  apply (Hallin x).
+  split; auto. simpl_set. exists p. auto.
+Qed. *)
+(*TODO: delete this stuff*)
+Lemma pat_in_mx_strong_app_iff p P1 P2:
+  pat_in_mx_strong p (P1 ++ P2) <-> pat_in_mx_strong p P1 \/ pat_in_mx_strong p P2.
+Proof.
+  unfold pat_in_mx_strong. setoid_rewrite in_app_iff.
+  split; intros Hin; destruct_all; eauto 6.
+Qed.
+
+Lemma pat_in_mx_strong_tail p row P:
+  pat_in_mx_strong p P ->
+  pat_in_mx_strong p (row :: P).
+Proof.
+  unfold pat_in_mx_strong. simpl.
+  intros; destruct_all; eauto 6.
+Qed.
+
+Lemma pat_in_mx_strong_head p1 p2 row P:
+  In p2 (fst row) ->
+  pat_in_strong p1 p2 ->
+  pat_in_mx_strong p1 (row :: P).
+Proof.
+  intros Hin Hstr. unfold pat_in_mx_strong. exists row. exists p2. simpl; auto.
+Qed.
+
+Lemma pat_in_mx_strong_nil p:
+  ~ (pat_in_mx_strong p nil).
+Proof.
+  intro C. destruct C; destruct_all; contradiction.
+Qed.
+
+Lemma pat_in_mx_strong_cons_inv p row P:
+  pat_in_mx_strong p (row :: P) ->
+  (exists p2, In p2 (fst row) /\ pat_in_strong p p2) \/ pat_in_mx_strong p P.
+Proof.
+  unfold pat_in_mx_strong. simpl.
+  intros [row1 [p1 [[Hrow | Hinr] [Hinp1 Hstrong]]]]; subst; eauto 6.
+Qed.
+
+Lemma big_union_app {B C: Type} (eq_dec: forall (x y: C), {x = y} + {x <> y})
+  (f: B -> list C) (l1 l2: list B):
+  forall x, In x (big_union eq_dec f (l1 ++ l2)) <-> In x (union eq_dec (big_union eq_dec f l1) (big_union eq_dec f l2)).
+Proof. 
+  intros x. simpl_set. setoid_rewrite in_app_iff.
+  split; intros; destruct_all; eauto.
+Qed.
+
+(*This is NOT true - ex: (Por p1 p2) in original, p1 in simplify, not in original
+  Need stronger, nested notion*)
+Lemma simplify_subset mk_let t rl:
+  forall x, In x (pat_mx_fv (simplify mk_let t rl)) -> In x (pat_mx_fv rl).
+Proof.
+  intros x.
+  induction rl as [| rhd rtl IH]; simpl; auto.
+  unfold pat_mx_fv in *; simpl. unfold simplify in *. simpl.
+  rewrite big_union_app. simpl_set_small.
+  intros [Hinx | Hinx]; auto.
+  (*The inner lemma we need*)
+  clear -Hinx. destruct rhd as [[| phd ptl] a]; simpl; [contradiction|].
+  unfold simplify_single in Hinx. unfold row_fv at 1. simpl.
+  simpl_set_small.
+  generalize dependent a.
+  induction phd; simpl in *; intros; unfold row_fv in Hinx; simpl in Hinx; simpl_set_small;
+  try (destruct Hinx as [Hinx | Hf]; [|contradiction]); simpl_set_small; auto.
+  - rewrite map_app in Hinx. apply big_union_app in Hinx.
+    simpl_set_small. destruct Hinx as [Hinx | Hinx]; auto.
+    + apply IHphd1 in Hinx. destruct_all; auto.
+    + apply IHphd2 in Hinx. destruct_all; auto.
+  - apply IHphd in Hinx. destruct_all; auto.
+Qed.
+
+(*And so we get the disjointness result we want*)
+Lemma simplify_disj mk_let tms t rl:
+  pat_matrix_vars_disj tms rl ->
+  pat_matrix_vars_disj tms (simplify mk_let t rl).
+Proof.
+  apply pat_matrix_vars_subset.
+  apply simplify_subset.
+Qed.
+
+Lemma pat_matrix_typed_app {tys: list vty} {p1 p2}:
+  pat_matrix_typed tys p1 ->
+  pat_matrix_typed tys p2 ->
+  pat_matrix_typed tys (p1 ++ p2).
+Proof.
+  unfold pat_matrix_typed; rewrite !Forall_app; intros; destruct_all; auto.
+Qed.
+
+Lemma prove_pat_matrix_typed_cons {tys p ps}:
+  row_typed tys (fst p) ->
+  @gen_typed gamma b (snd p) ret_ty ->
+  pat_matrix_typed tys ps ->
+  pat_matrix_typed tys (p :: ps).
+Proof.
+  intros. unfold pat_matrix_typed in *.
+  destruct_all; split; constructor; auto.
+Qed.
+
+Lemma pat_matches_typed_nil l:
+  pat_matrix_typed l nil.
+Proof.
+  split; auto.
+Qed.
+
+Lemma simplify_typed {tys t ty rl}:
+  term_has_type gamma t ty ->
+  pat_matrix_typed (ty :: tys) rl ->
+  pat_matrix_typed (ty :: tys) (simplify gen_let t rl).
+Proof.
+  intros Htm.
+  induction rl as [| rhd rtl IH].
+  - unfold simplify. simpl. auto.
+  - unfold simplify in *. simpl.
+    intros Htyped.
+    pose proof (pat_matrix_typed_head Htyped) as Hhd.
+    pose proof (pat_matrix_typed_tail Htyped) as Htl.
+    apply pat_matrix_typed_app; auto.
+    clear -Hhd Htm.
+    (*Inner result*)
+    destruct Hhd as [Hrow Htm1].
+    destruct rhd as [[| phd ptl] a]; simpl in *.
+    + apply prove_pat_matrix_typed_cons; simpl; auto.
+      inversion Hrow; subst.
+    + assert (Hrowtl:=Hrow). apply Forall2_inv_tail in Hrowtl.
+      apply Forall2_inv_head in Hrow. rename Hrow into Hphdty. simpl in Hphdty.
+      generalize dependent a.
+      induction phd; simpl in *; intros; try (apply prove_pat_matrix_typed_cons; simpl; auto);
+      inversion Hphdty; subst;
+      try(solve[constructor; auto]); try solve[apply pat_matches_typed_nil];
+      try solve[apply gen_let_ty; auto].
+      * repeat(constructor; auto).
+      * rewrite map_app. apply pat_matrix_typed_app; auto.
+      * apply IHphd; auto. apply gen_let_ty; auto.
+Qed.
+Print simplified.
+Lemma get_heads_simplified (rl: pat_matrix) l p:
+  simplified rl ->
+  get_heads rl = Some l ->
+  In p l -> simplified_aux p.
+Proof.
+  generalize dependent l.
+  induction rl as [| [ps a] rtl IH]; simpl; intros l.
+  - intros _. inv Hsome. contradiction.
+  - destruct ps as [| phd ptl]; [discriminate|].
+    intros Hsimp. apply andb_prop in Hsimp.
+    destruct Hsimp as [Hsimphd Hsimptl].
+    destruct (get_heads rtl); simpl in *;[|discriminate].
+    inv Hsome. simpl. intros [Hp | Hinp]; subst; eauto.
+Qed.
+
+Lemma get_heads_none_iff {B: Type} (l: list (list pattern * B)):
+  get_heads l = None <-> existsb (fun x => null (fst x)) l.
+Proof.
+  induction l as [| [ps a] t IH]; simpl; auto.
+  - split; discriminate.
+  - destruct ps; simpl; auto.
+    + split; auto.
+    + destruct (get_heads t); simpl; auto.
+      rewrite <- IH. split; discriminate.
+Qed.
+
+Lemma pat_matrix_typed_row_lengths tys rl p:
+  pat_matrix_typed tys rl ->
+  In p rl ->
+  length (fst p) = length tys.
+Proof.
+  induction rl as [| h t IH]; simpl; auto; [contradiction|].
+  intros Htyped. assert (Htl:=Htyped). apply pat_matrix_typed_head in Htyped.
+  apply pat_matrix_typed_tail in Htl. destruct Htyped as [Hrow Hty].
+  intros [Hhp | Hinp]; subst; eauto.
+  apply Forall2_length in Hrow; auto.
+Qed.
+
+Lemma pat_matrix_typed_not_null {ty tys rl}:
+  pat_matrix_typed (ty :: tys) rl ->
+  existsb (fun x => null (fst x)) rl = false.
+Proof.
+  intros Htyped.
+  destruct (existsb _ rl) eqn : Hex; auto.
+  apply existsb_exists in Hex.
+  destruct Hex as [row [Hinrow Hnullrow]].
+  exfalso.
+  apply pat_matrix_typed_row_lengths with (p:=row) in Htyped; auto.
+  destruct (fst row); discriminate.
+Qed.
+  
+(*Our main correctness theorem: [compile is_constr gen_let gen_case tms tys P] =
+  Some t iff [matches_matrix_tms tms tys P] = Some d and
+  d = term_rep v t*)
+Theorem compile_correct (tms: list term) (tys: list vty) (P: pat_matrix) 
+  (Htys: Forall2 (term_has_type gamma) tms tys)
+  (Hp: pat_matrix_typed tys P)
+  (Hdisj: pat_matrix_vars_disj tms P):
+  opt_related (fun t d => forall Hty, d = gen_rep v ret_ty t Hty)
+    (compile get_constructors gen_match gen_let (combine tms tys) P)
+    (matches_matrix_tms tms tys P Htys Hp).
+Proof.
+  assert (Htms: tms = map fst (combine tms tys)).
+  {
+    rewrite map_fst_combine; auto. apply Forall2_length in Htys; auto.
+  }
+  assert (Htyseq: tys = map snd (combine tms tys)).
+  {
+    rewrite map_snd_combine; auto. apply Forall2_length in Htys; auto.
+  }
+  assert (Htys2: Forall2 (term_has_type gamma) (map fst (combine tms tys))
+    (map snd (combine tms tys))).
+  {
+    rewrite <- Htms, <- Htyseq; auto.
+  }
+  assert (Hp2: pat_matrix_typed (map snd (combine tms tys)) P).
+  {
+    rewrite <- Htyseq; auto.
+  }
+  replace (matches_matrix_tms tms tys P Htys Hp) with
+  (matches_matrix_tms (map fst (combine tms tys)) (map snd (combine tms tys)) P Htys2 Hp2).
+  2: {
+    revert Htys2 Hp2.
+    rewrite <- Htms, <- Htyseq.
+    intros. unfold matches_matrix_tms.
+    erewrite terms_to_hlist_irrel. apply matches_matrix_irrel.
+  }
+  rewrite Htms in Hdisj.
+  clear Htms Htyseq Htys Hp.
+  generalize dependent (combine tms tys). clear tms tys.
+  intros tms Hdisj Htys Hp.
+  apply (compile_ind get_constructors gen_match gen_let
+    (fun ts P o => forall (Hdisj: pat_matrix_vars_disj (map fst ts) P) Htys Hp, 
+      opt_related (fun t d => forall Hty, d = gen_rep v ret_ty t Hty)
+      o (matches_matrix_tms (map fst ts) (map snd ts) P Htys Hp))); clear.
+  - (*extensionality*)
+    intros t ty tms rl Hopt Hdisj Htys Hp. simpl in *.
+    unfold opt_related in *.
+    (*Proved hyps for Hopt*)
+    specialize (Hopt (simplify_disj _ _ _ _ Hdisj) Htys (simplify_typed (Forall2_inv_head Htys) Hp)).
+    rewrite <- compile_simplify in Hopt.
+    destruct (compile _ _ _ _ rl); erewrite simplify_match_eq  with (Hty2:=Hp) in Hopt; assumption.
+  - (*P is nil*) intros. reflexivity.
+  - (*P not nil, ts is nil*) intros ps a P' Hdisj Htys Hp.
+    simpl in *. unfold matches_matrix_tms. simp terms_to_hlist. simp matches_matrix. simpl.
+    destruct ps as [| phd ptl].
+    + simp matches_row. intros. unfold extend_val_with_list. simpl. apply gen_rep_irrel.
+    + (*Cannot have non-null row in this case*)
+      exfalso.
+      apply pat_matrix_typed_head in Hp.
+      destruct Hp as [Hrow _]; inversion Hrow.
+  - (*Ill-typed (populate_all or dispatch don't give Some)*)
+    intros t ty tl rl css is_constr Hsimp [Hpop | Hdisj] Hdisj1.
+    + unfold populate_all in Hpop.
+      destruct (get_heads rl) as [l|] eqn : Hget.
+      * (*Case 1: [get_heads] is Some, [fold_left_opt] is None*)
+        simpl. intros Htyps Hp.
+        apply fold_left_opt_none in Hpop.
+        destruct Hpop as [ps1 [p [ps2 [acc1 [Hl [Hfold Hpop]]]]]].
+        subst. apply populate_none_simpl in Hpop.
+        2: {
+          apply (get_heads_simplified rl (ps1 ++ p :: ps2)); auto.
+          rewrite in_app_iff; simpl; auto.
+        }
+        (*Idea: contradiction, by None we found a constructor in 1st column that is
+          not [is_constr]. But by tying, it has to be*)
+        destruct Hpop as [c [tys [ps [Hpeq Hnotconstr]]]]; subst.
+
+        assert (Htyp: pattern_has_type gamma (Pconstr c tys ps) ty). {
+          eapply in_get_heads_tys. apply Hp. apply Hget.
+          rewrite !in_app_iff; simpl; auto.
+        }
+        (*The contradiction*)
+        assert (Hconstr: is_constr c). {
+          unfold is_constr. unfold css.
+          inversion Htyp; subst.
+          unfold sigma.
+          destruct H11 as [m [a [m_in [a_in c_in]]]].
+          rewrite (adt_constr_ret gamma_valid m_in a_in c_in).
+          rewrite ty_subst_cons.
+          unfold get_constructors.
+          assert (Hts: find_ts_in_ctx gamma (adt_name a) = Some (m, a)). {
+            apply find_ts_in_ctx_iff; auto.
+          }
+          rewrite Hts.
+          apply In_in_bool.
+          apply constr_in_adt_eq. exact c_in.
+        }
+        rewrite Hnotconstr in Hconstr; discriminate.
+      * (*Second typing contradiction: if get_heads is None*)
+        (*By typing, cannot have an empty pattern list in a row*)
+        apply get_heads_none_iff in Hget. intros Htys Hp.
+        rewrite (pat_matrix_typed_not_null Hp) in Hget.
+        discriminate.
+    + (*Final typing contradiction - dispatch1_opt is None, same as previous.*)
+      intros Htyps Hp. simpl in *.
+      destruct Hdisj as [types_cslist [Hpop Hdisp]].
+      apply dispatch1_opt_none in Hdisp.
+      rewrite (pat_matrix_typed_not_null Hp) in Hdisp.
+      discriminate.
+  - (*The interesting case*)
+    intros t ty tl rl css is_constr Hsimp types_cslist Hpop types cslist casewild
+      Hdisp cases wilds Hwilds IH Htmtys Hp.
+    
+      
+       Hconstrs.
+
+pat_matrix_typed (ty :: map snd tl) rl
+
+      existsb
+  (fun x : list pattern * gen_term b =>
+null (fst x))
+  rl
+
+      apply existsb_exists in Hget.
+      intros Htys Hp. simpl in *.
+      destruct Hget as [row [Hinrow Hnullrow]].
+      exfalso.
+      apply pat_matrix_typed_row_lengths with (p:=row) in Hp; auto.
+      destruct (fst row); discriminate.
+      
+
+    Lemma dispatch1_opt_none rl:
+  dispatch1_opt rl = None <-> existsb (fun x => (null (fst x))) rl.
+
+
+        Print get_heads.
+        Search get_heads None.
+        apply get_heads_none_iff in Hget.
+          Search adt_constr_list constr_in_adt.
+          apply In_in_bool.
+          apply c_in.
+          Search find_ts_in_ctx.
+          Search get_constructors.
+          Search f_ret constr_in_adt.
+        }
+        Print get_heads.
+      
+       Print populate. Search fold_left_opt.
+    
+     Search populate_all.
+
+    
+     inversion Hp; subst; simpl in *.
+     simpl.
+    rewrite matches_matrix_equation_2.
+    Print matches_matrix.
+    
+     simpl. simpl. simp matches_matrix. simpl. 
+    simp terms_to_hlist. rewrite matches_row_equation_1. simpl. simp matches_row.
+  
+   intros.
+  
+  
+   unfold matches_matrix_tms. simp matches_matrix. reflexivity. auto. 
+
+
+  apply (compile_elim get_constructors gen_match gen_let
+    (fun ts P c =>
+      forall(Htys: Forall2 (term_has_type gamma) tms tys)
+      (Hp: pat_matrix_typed tys P),
+      opt_related (fun t d => forall Hty, d = gen_rep v ret_ty t Hty)
+        c
+        (matches_matrix_tms tms tys P Htys Hp))).
+  3: {
+    intros.
+  }
+Check compile_elim.
+
+(*TODO: either prove separately that [compile] is well-typed (maybe easier) or 
+  have "exists" in theorem*)
+
+
+
 End PatProofs.
