@@ -2200,71 +2200,43 @@ Proof.
   - (*The interesting case*)
     intros t ty tl rl css is_constr Hsimp types_cslist Hpop types cslist casewild
       Hdisp cases wilds Hwilds IH Htmtys Hp.
-    
-      
-       Hconstrs.
-
-pat_matrix_typed (ty :: map snd tl) rl
-
-      existsb
-  (fun x : list pattern * gen_term b =>
-null (fst x))
-  rl
-
-      apply existsb_exists in Hget.
-      intros Htys Hp. simpl in *.
-      destruct Hget as [row [Hinrow Hnullrow]].
-      exfalso.
-      apply pat_matrix_typed_row_lengths with (p:=row) in Hp; auto.
-      destruct (fst row); discriminate.
-      
-
-    Lemma dispatch1_opt_none rl:
-  dispatch1_opt rl = None <-> existsb (fun x => (null (fst x))) rl.
-
-
-        Print get_heads.
-        Search get_heads None.
-        apply get_heads_none_iff in Hget.
-          Search adt_constr_list constr_in_adt.
-          apply In_in_bool.
-          apply c_in.
-          Search find_ts_in_ctx.
-          Search get_constructors.
-          Search f_ret constr_in_adt.
-        }
-        Print get_heads.
-      
-       Print populate. Search fold_left_opt.
-    
-     Search populate_all.
-
-    
-     inversion Hp; subst; simpl in *.
-     simpl.
-    rewrite matches_matrix_equation_2.
-    Print matches_matrix.
-    
-     simpl. simpl. simp matches_matrix. simpl. 
-    simp terms_to_hlist. rewrite matches_row_equation_1. simpl. simp matches_row.
-  
-   intros.
-  
-  
-   unfold matches_matrix_tms. simp matches_matrix. reflexivity. auto. 
-
-
-  apply (compile_elim get_constructors gen_match gen_let
-    (fun ts P c =>
-      forall(Htys: Forall2 (term_has_type gamma) tms tys)
-      (Hp: pat_matrix_typed tys P),
-      opt_related (fun t d => forall Hty, d = gen_rep v ret_ty t Hty)
-        c
-        (matches_matrix_tms tms tys P Htys Hp))).
-  3: {
-    intros.
-  }
-Check compile_elim.
+    set (comp_wilds := fun (_: unit) => compile get_constructors gen_match gen_let tl
+      wilds) in *.
+    set (comp_cases := fun cs (al : list (term * vty)) =>
+          match (amap_get funsym_eq_dec cases cs ) as o return amap_get funsym_eq_dec cases cs = o -> _ with
+            | None => fun _ => None (*impossible*)
+            | Some l => fun Hget => compile get_constructors gen_match gen_let (rev al ++ tl) l
+            end eq_refl).
+    (*A bit more simplified, start with this - try to simplify add or comp_full*)
+    set (no_wilds := forallb (fun f => amap_mem funsym_eq_dec f types) css) in *. simpl.
+    set (base := if no_wilds then Some [] else
+      match comp_wilds tt with
+      | Some x => Some [(Pwild, x)]
+      | None => None
+      end) in *.
+    set (add := fun acc (x: funsym * list vty * list pattern) =>
+          let '(cs, params, ql) := x in
+          (*create variables*)
+          let pat_tys :=  (map (ty_subst (s_params cs) params) (s_args cs)) in
+          let new_var_names := GenElts.gen_vars (length ql) (tm_fv t ++ tm_bnd t) in
+          let typed_vars := map (fun '(x, y) => (fst x, y)) (combine new_var_names pat_tys) in
+          let vl := rev typed_vars in 
+          let pl := rev_map Pvar vl in
+          let al := rev_map Tvar vl in
+          match (comp_cases cs (combine al (map snd vl))) with
+          | None => None
+          | Some v => Some ((Pconstr cs params pl, v) :: acc)
+          end) in *.
+    set (comp_full:=
+        match base with
+        | Some b =>
+          match (fold_left_opt add cslist b) with
+          | Some b1 => Some (gen_match t ty b1)
+          | None => None
+          end
+        | None => None
+        end) in *.
+        
 
 (*TODO: either prove separately that [compile] is well-typed (maybe easier) or 
   have "exists" in theorem*)
