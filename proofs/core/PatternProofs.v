@@ -393,6 +393,35 @@ Definition tm_semantic_constr (t: term) {m: mut_adt} (m_in : mut_in_ctx m gamma)
       c c_in (adts pd m (map (v_subst vt) args)) 
          al)).
 
+(*If a term has type a(args) for ADT a, then we can find the constructor and arguments
+  that its term_rep is equal to. This is a nicer, higher level interface for [find_constr_rep];
+  it is a straightforward application*)
+Lemma find_semantic_constr (t: term) {m: mut_adt} (m_in : mut_in_ctx m gamma)
+  {a: alg_datatype} (a_in: adt_in_mut a m)  
+  {args: list vty} (args_len: length args = length (m_params m))
+  (Hty: term_has_type gamma t (vty_cons (adt_name a) args)) :
+  {f : funsym & {Hf: constr_in_adt f a * arg_list (domain (dom_aux pd)) (sym_sigma_args f (map (v_subst vt) args))
+    |  tm_semantic_constr t m_in a_in (fst Hf) args_len Hty (snd Hf) }}.
+Proof.
+  unfold tm_semantic_constr.
+  assert (srts_len: length (map (v_subst vt) args) = length (m_params m)) by (rewrite map_length; auto).
+  assert (Hunif: uniform m) by (apply (gamma_all_unif gamma_valid); auto). 
+  (*Of course, use [find_constr_rep]*)
+  destruct (find_constr_rep gamma_valid _ m_in (map (v_subst vt) args) srts_len (dom_aux pd) a a_in
+    (adts pd m (map (v_subst vt) args)) Hunif
+    (scast (adts pd m (map (v_subst vt) args) a a_in) (dom_cast (dom_aux pd) (v_subst_cons (adt_name a) args) 
+      (term_rep gamma_valid pd vt pf v t
+  (vty_cons (adt_name a) args) Hty)))) as [f [[c_in al] Hrep]]. simpl in Hrep.
+  apply (existT _ f).
+  apply (exist _ (c_in , al)). simpl.
+  assert (Heq: srts_len = (eq_trans (map_length (v_subst vt) args) args_len)). { apply UIP_dec, Nat.eq_dec.  }
+  subst.
+  rewrite <- Hrep, scast_eq_sym.
+  unfold dom_cast.
+  rewrite <- eq_sym_map_distr, scast_eq_sym.
+  reflexivity.
+Qed.
+
 Section SpecProof.
 
 (*TODO: write this up more formally and remove comment in Coq code*)
@@ -1038,6 +1067,61 @@ Proof.
         (args_len:=args_len)(Hty:=Hty)(al1:=al1); auto.
       simpl. apply IHrtl; auto.
     + (*Pwild*)
+      simp matches_row. simpl.
+      rewrite terms_to_hlist_tl.
+      simp matches_matrix; simpl.
+      rewrite terms_to_hlist_irrel with (H2:=f).
+      rewrite matches_row_irrel with (Hr2:=(Forall_inv (proj1 Htyp'))). simpl.
+      simpl in *.
+      unfold option_bind.
+      match goal with |- context [matches_row ?tys ?hl ?ptl ?H] =>
+        destruct (matches_row tys hl ptl H) as [m1|] eqn : Hmatch1
+      end.
+      * (*TODO: why do we need to do this?*)
+        match goal with |- context [matches_row ?tys ?hl ?ptl ?H] =>
+          replace (matches_row tys hl ptl H) with (Some m1) by (apply Hmatch1); auto
+        end.
+        f_equal. apply gen_rep_irrel.
+      * match goal with |- context [matches_row ?tys ?hl ?ptl ?H] =>
+          replace (matches_row tys hl ptl H) with (@None (list (vsymbol * {s: sort & domain (dom_aux pd) s }))) by (apply Hmatch1); auto
+        end.
+Qed.
+
+(*Another version: if the term is not a constructor at all*)
+Theorem default_match_eq_nonadt 
+  (*Info about first term*)
+  (t: term) (ty: vty) (Htm: term_has_type gamma t ty) (Hnotadt: is_vty_adt gamma ty = None)
+  (*Info about rest of terms*)
+  (ts: list term) (tys: list vty)
+  (Htsty: Forall2 (term_has_type gamma) (t :: ts) (ty :: tys)) (*duplicate proof for irrelevance*)
+  (*Info about pattern matrix*)
+  (P: pat_matrix) (Hpsimp: simplified P)
+  (Htyp: pat_matrix_typed (ty :: tys) P)
+  (Htyp': pat_matrix_typed tys (default P)):
+   matches_matrix_tms (t :: ts) (ty :: tys) P
+    Htsty Htyp =
+
+  matches_matrix tys (terms_to_hlist ts tys (Forall2_inv_tail Htsty)) (default P) Htyp'.
+Proof.
+  unfold matches_matrix_tms.
+  generalize dependent (Forall2_inv_tail Htsty).
+  revert Htsty Htyp Htyp'.
+  induction P as [| rhd rtl]; intros; simpl; simp matches_matrix; [reflexivity|].
+  destruct rhd as [ps a1]; simpl.
+  (*Case on patterns*)
+  destruct ps as [| phd ptl].
+  - assert (Htyph:=Htyp). apply pat_matrix_typed_head in Htyph.
+    simpl in Htyph. destruct Htyph as [Hrow _]; inversion Hrow. 
+  - destruct phd as [| f' params tms | | |]; try discriminate.
+    + (*Pconstr*)
+      simp matches_row. rewrite terms_to_hlist_equation_4 at 1. simpl hlist_hd.
+      rewrite match_val_single_rewrite.
+      generalize dependent (@is_vty_adt_some gamma ty).
+      generalize dependent (@adt_vty_length_eq gamma gamma_valid ty).
+      generalize dependent (@constr_length_eq gamma gamma_valid ty).
+      rewrite Hnotadt. simpl. auto. 
+    + (*Pwild*)
+      (*Same as above, should change*)
       simp matches_row. simpl.
       rewrite terms_to_hlist_tl.
       simp matches_matrix; simpl.
@@ -2087,6 +2171,69 @@ Proof.
   apply pat_matrix_typed_row_lengths with (p:=row) in Htyped; auto.
   destruct (fst row); discriminate.
 Qed.
+
+(*Need a bunch of typing results for default and specialize*)
+Search dispatch1_opt Some.
+(*First, prove equivalent to dispatch*)
+Lemma dispatch1_equiv_default mk_let t types rl:
+  simplified rl -> (*Makes things easier*)
+  snd (dispatch1 mk_let t types rl) = default rl.
+Proof.
+  intros Hsimp.
+  rewrite dispatch_equiv.
+  unfold dispatch2.
+  rewrite simplified_simplify; auto.
+  induction rl as [| [[| phd ptl] a] rtl IH]; auto; simpl;
+  destruct (dispatch2_gen types rtl) as [cases wilds]; simpl in *; auto.
+  destruct phd; auto. simpl. rewrite IH; auto.
+Qed.
+
+(*The other one will be harder, do later*)
+
+(*Prove [disj] for default*)
+
+Lemma default_vars_subset rl:
+  sublist (pat_mx_fv (default rl)) (pat_mx_fv rl).
+Proof.
+  unfold sublist, pat_mx_fv. induction rl as [| [ps a] rtl IH]; auto.
+  intros x. simpl.
+  destruct ps as [| p ptl]; simpl; auto.
+  destruct p; simpl; auto; intros Hinx; unfold row_fv at 1; simpl_set_small; auto.
+  simpl fst. rewrite big_union_cons. simpl.
+  unfold row_fv at 1 in Hinx; destruct_all; auto.
+Qed.
+
+Lemma disj_default t ts rl:
+  simplified rl ->
+  pat_matrix_vars_disj (t :: ts) rl ->
+  pat_matrix_vars_disj ts (default rl).
+Proof.
+  intros Hsimp.
+  rewrite !pat_matrix_vars_disj_equiv.
+  unfold pat_matrix_vars_disj1.
+  intros Hdisj.
+  eapply disj_sublist_lr.
+  - apply Hdisj.
+  - rewrite big_union_cons. apply union_sublist_r.
+  - apply default_vars_subset.
+Qed.
+
+Lemma default_typed {t ts rl}:
+  pat_matrix_typed (t :: ts) rl ->
+  pat_matrix_typed ts (default rl).
+Proof.
+  induction rl as [| [ps a] rtl IH]; intros Hpat.
+  - apply pat_matches_typed_nil.
+  - simpl.
+    pose proof (pat_matrix_typed_tail Hpat) as Htl.
+    pose proof (pat_matrix_typed_head Hpat) as Hhd; simpl in Hhd;
+    destruct Hhd as [Hrow Hty].
+    destruct ps as [| phd ptl]; auto.
+    inversion Hrow; subst.
+    destruct phd; auto.
+    apply prove_pat_matrix_typed_cons; auto.
+Qed.
+
   
 (*Our main correctness theorem: [compile is_constr gen_let gen_case tms tys P] =
   Some t iff [matches_matrix_tms tms tys P] = Some d and
@@ -2199,7 +2346,7 @@ Proof.
       discriminate.
   - (*The interesting case*)
     intros t ty tl rl css is_constr Hsimp types_cslist Hpop types cslist casewild
-      Hdisp cases wilds Hwilds IH Htmtys Hp.
+      Hdisp cases wilds IH Hdisj Htmtys Hp. simpl in Htmtys.
     set (comp_wilds := fun (_: unit) => compile get_constructors gen_match gen_let tl
       wilds) in *.
     set (comp_cases := fun cs (al : list (term * vty)) =>
@@ -2236,7 +2383,83 @@ Proof.
           end
         | None => None
         end) in *.
-        
+    destruct IH as [IHwilds IHconstrs].
+    assert (Hwilds: wilds = default rl). {
+      unfold wilds.
+      apply dispatch1_opt_some in Hdisp.
+      destruct Hdisp as [Hnotnull Hcasewild]; subst.
+      rewrite dispatch1_equiv_default; auto.
+    }
+    (*Might as well prove hypotheses for IH now*)
+    prove_hyp IHwilds.
+    {
+      rewrite Hwilds.
+      eapply disj_default; eauto.
+    }
+    assert (Htywild: pat_matrix_typed (map snd tl) wilds). {
+      rewrite Hwilds. eapply default_typed; eauto.
+    }
+    specialize (IHwilds (Forall2_inv_tail Htmtys) Htywild).
+    (*Case 1: types is empty*)
+    destruct (amap_is_empty types) eqn : Htypesemp.
+    {
+      (*We know:
+        1. All elements are Pwild in first column
+        2. No matter what type ty is, it cannot be a constructor that is in the first column.
+        3. Thus, we can use either of our default lemmas*)
+      destruct (is_vty_adt gamma ty) as [[[m a] args]|] eqn : Hisadt.
+      - (*case 1: ADT. Know constructor not in first column*)
+        assert (args_len: length args = length (m_params m)). {
+          apply adt_vty_length_eq in Hisadt; auto.
+          clear -Htmtys.
+          apply Forall2_inv_head in Htmtys.
+          apply has_type_valid in Htmtys; auto.
+        }
+        apply is_vty_adt_some in Hisadt.
+        destruct Hisadt as [Hty [a_in m_in]]; subst.
+        destruct (find_semantic_constr t m_in a_in args_len (Forall2_inv_head Htmtys))
+        as [f [[c_in al] Hrep]].
+        simpl in Hrep.
+        assert (Hnotin: constr_at_head_ex f rl = false).
+        {
+          destruct (constr_at_head_ex f rl) eqn : Hconstr; auto.
+          apply (populate_all_in _ _ _ _ Hsimp Hpop) in Hconstr.
+          unfold types in Htypesemp.
+          assert (Hconstrf: amap_mem funsym_eq_dec f (fst types_cslist) = false).
+            apply amap_is_empty_mem; auto.
+          rewrite Hconstrf in Hconstr; discriminate.
+        }
+        (*Now we apply default lemma 1*)
+        unfold comp_wilds. simpl in Hdisj.
+        assert (constrs_len: length (s_params f) = length args).
+        {
+          rewrite args_len. f_equal. apply (adt_constr_params gamma_valid m_in a_in c_in).
+        }
+        rewrite (default_match_eq _ m_in a_in c_in args_len constrs_len (Forall2_inv_head Htmtys) al Hrep _ 
+          _ Htmtys rl Hsimp Hnotin Hp (default_typed Hp)).
+        (*And use IH about wilds*)
+        revert IHwilds.
+        unfold matches_matrix_tms.
+        generalize dependent Htywild.
+        rewrite Hwilds.
+        intros Htywild.
+        rewrite matches_matrix_irrel with (Hty2:=(default_typed Hp)).
+        auto.
+      - (*Case 2: not ADT at all. Similar but use second default lemma*)
+        rewrite (default_match_eq_nonadt _ _ (Forall2_inv_head Htmtys) Hisadt _ _ Htmtys
+          rl Hsimp Hp (default_typed Hp)).
+        revert IHwilds.
+        unfold comp_wilds.
+        unfold matches_matrix_tms.
+        generalize dependent Htywild.
+        rewrite Hwilds.
+        intros Htywild.
+        rewrite matches_matrix_irrel with (Hty2:=(default_typed Hp)).
+        auto.
+    }
+    (*Now that we know that [types] is non-empty, we know that there is at least
+      one constructor in the first column. By typing, ty is an ADT*)
+         
 
 (*TODO: either prove separately that [compile] is well-typed (maybe easier) or 
   have "exists" in theorem*)

@@ -2334,7 +2334,7 @@ Equations compile (tl: list (term * vty)) (rl: list (list pattern * A))
         end
       end in 
     
-    if null (proj1_sig types) (*TODO: abstraction*) then comp_wilds tt
+    if amap_is_empty types then comp_wilds tt
     else
     
     match t with
@@ -2588,7 +2588,7 @@ Lemma compile_ind (P: list (term * vty) -> list (list pattern * A) -> option A -
           end
         end in 
       
-      if null (proj1_sig types) (*TODO: abstraction*) then comp_wilds tt
+      if amap_is_empty types then comp_wilds tt
       else
       
       match t with

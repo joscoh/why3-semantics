@@ -440,6 +440,7 @@ Definition amap_replace {A B: Type} (eq_dec: forall (x y: A), {x = y} + { x <> y
 Definition amap_bindings {A B: Type} (m: amap A B) : list (A * B) := map_bindings_aux (proj1_sig m).
 Definition amap_singleton {A B: Type} x y : amap A B := exist _ _ (map_singleton_proof x y).
 Definition amap_empty {A B: Type} : amap A B := exist _ _ (@map_empty_proof A B).
+Definition amap_is_empty {A B: Type} (m: amap A B) : bool := null (proj1_sig m).
 Definition amap_map {A B C: Type} (f: B -> C) (m: amap A B) : amap A C := exist _ _ (map_map_proof f m).
 Definition amap_map_key {A B C: Type} (f: A -> B -> C) (m: amap A B) : amap A C := exist _ _ (map_map_key_proof f m).
 Definition amap_union {A B: Type} (eq_dec: forall (x y: A), {x = y} + { x <> y})
@@ -644,6 +645,16 @@ Proof.
   apply get_assoc_list_none. rewrite !map_map. simpl. auto.
 Qed. 
 
+Lemma amap_is_empty_get (m: amap A B):
+  amap_is_empty m <-> forall x, amap_get eq_dec m x = None.
+Proof.
+  unfold amap_is_empty. setoid_rewrite amap_get_none_iff.
+  destruct (proj1_sig m); simpl.
+  - split; auto.
+  - split; [discriminate|]. intros Hnotin.
+    exfalso. apply (Hnotin (fst p)). left; auto.
+Qed.
+
 (*Derived functions*)
 Definition amap_mem {C: Type} (x: A) (m: amap A C) : bool :=
   map_contains eq_dec (proj1_sig m) x.
@@ -652,6 +663,14 @@ Lemma amap_mem_spec (x: A) (m: amap A B):
   amap_mem x m = match amap_get eq_dec m x with | Some _ => true | None => false end.
 Proof.
   reflexivity.
+Qed.
+
+Lemma amap_is_empty_mem (m: amap A B):
+  amap_is_empty m <-> forall x, amap_mem x m = false.
+Proof.
+  setoid_rewrite amap_mem_spec.
+  rewrite amap_is_empty_get.
+  split; intros Hin x; specialize (Hin x); destruct (amap_get eq_dec m x); auto; discriminate.
 Qed.
 
 Definition amap_subset {C: Type} (m1: amap A B) (m2: amap A C) : bool :=
