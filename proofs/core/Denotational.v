@@ -125,7 +125,7 @@ Qed.
   a Fixpoint (even though we use "exact" everywhere and nearly
   get the same proof term)*)
 Definition get_arg_list (v: val_typevar)
-  (s: fpsym) (vs: list vty) (ts: list term) 
+  (vs: list vty) (ts: list term) 
   (reps: forall (t: term) (ty: vty),
     term_has_type gamma t ty ->
     domain (v_subst v ty))
@@ -174,7 +174,7 @@ Lemma get_arg_list_hnth (v: val_typevar)
 (Hi: i < length args):
 forall Heq Hty,
 hnth i
-  (get_arg_list v s vs ts reps Hp Hlents Hlenvs Hall) s_int (dom_int pd) =
+  (get_arg_list v vs ts reps Hp Hlents Hlenvs Hall) s_int (dom_int pd) =
   dom_cast (dom_aux pd) Heq
   (reps (nth i ts tm_d) (ty_subst params vs (nth i args vty_int))
   Hty).
@@ -214,7 +214,7 @@ Definition fun_arg_list {ty} (v: val_typevar)
 arg_list domain
   (sym_sigma_args f
     (map (v_subst v) vs)) :=
-get_arg_list v f vs ts reps (s_params_Nodup f)
+get_arg_list v vs ts reps (s_params_Nodup f)
   (proj1' (fun_ty_inv Hty))
   (proj1' (proj2' (fun_ty_inv Hty)))
   (proj1' (proj2' (proj2' (fun_ty_inv Hty)))).
@@ -241,7 +241,7 @@ Definition pred_arg_list (v: val_typevar)
 arg_list domain
   (sym_sigma_args p
     (map (v_subst v) vs)) :=
-get_arg_list v p vs ts reps (s_params_Nodup p)
+get_arg_list v vs ts reps (s_params_Nodup p)
   (proj1' (pred_val_inv Hval))
   (proj1' (proj2' (pred_val_inv Hval)))
   (proj2' (proj2' (pred_val_inv Hval))).
@@ -1481,7 +1481,7 @@ Section ChangeContext.
 
 (*Extensionality for [arg_list]*)
 Lemma get_arg_list_ext {gamma1 gamma2 pd} (v: val_typevar)
-  (s: fpsym) (vs: list vty) (ts1 ts2: list term) 
+  (vs: list vty) (ts1 ts2: list term) 
   (reps1: forall (t: term) (ty: vty),
     term_has_type gamma1 t ty ->
     domain (dom_aux pd) (v_subst v ty))
@@ -1503,8 +1503,8 @@ Lemma get_arg_list_ext {gamma1 gamma2 pd} (v: val_typevar)
     (combine ts1 (map (ty_subst params vs) args)))
   (Hall2: Forall (fun x => term_has_type gamma2 (fst x) (snd x))
     (combine ts2 (map (ty_subst params vs) args))):
-  get_arg_list pd v s vs ts1 reps1 Hp1 Hlents1 Hlenvs1 Hall1 =
-  get_arg_list pd v s vs ts2 reps2 Hp2 Hlents2 Hlenvs2 Hall2.
+  get_arg_list pd v vs ts1 reps1 Hp1 Hlents1 Hlenvs1 Hall1 =
+  get_arg_list pd v vs ts2 reps2 Hp2 Hlents2 Hlenvs2 Hall2.
 Proof.
   unfold get_arg_list. simpl.
   assert (Hlenvs1 = Hlenvs2). apply UIP_dec. apply Nat.eq_dec.
@@ -1527,7 +1527,7 @@ Qed.
 
 (*An alternate, nicer form when ts are equal*)
 Lemma get_arg_list_eq {gamma} pd (v: val_typevar)
-(s: fpsym) (vs: list vty) (ts: list term) 
+(vs: list vty) (ts: list term) 
 (reps1 reps2: forall (t: term) (ty: vty),
   term_has_type gamma t ty ->
   domain (dom_aux pd) (v_subst v ty))
@@ -1542,8 +1542,8 @@ Lemma get_arg_list_eq {gamma} pd (v: val_typevar)
 (Hlenvs1 Hlenvs2: length vs = length params)
 (Hall1 Hall2: Forall (fun x => term_has_type gamma (fst x) (snd x))
   (combine ts (map (ty_subst params vs) args))):
-get_arg_list pd v s vs ts reps1 Hp1 Hlents1 Hlenvs1 Hall1 =
-get_arg_list pd v s vs ts reps2 Hp2 Hlents2 Hlenvs2 Hall2.
+get_arg_list pd v vs ts reps1 Hp1 Hlents1 Hlenvs1 Hall1 =
+get_arg_list pd v vs ts reps2 Hp2 Hlents2 Hlenvs2 Hall2.
 Proof.
   apply get_arg_list_ext; auto.
   intros i Hi ty H1 H2.
@@ -2038,7 +2038,7 @@ Qed.
   reps, and proofs.*)
 
 Lemma get_arg_list_vt_ext
-(vt1 vt2: val_typevar) (s: fpsym)
+(vt1 vt2: val_typevar)
   (vs1 vs2: list vty) (ts1 ts2: list term) vv1 vv2
   (reps1 reps2: forall (vt: val_typevar) (pf: pi_funpred gamma_valid pd) 
     (vv: val_vars pd vt)
@@ -2065,8 +2065,8 @@ Lemma get_arg_list_vt_ext
   (Heq: map (v_subst vt1) vs1 = map (v_subst vt2) vs2):
   cast_arg_list 
     (f_equal (fun x => ty_subst_list_s params x args) Heq)
-    (get_arg_list pd vt1 s vs1 ts1 (reps1 vt1 pf vv1) Hp Hlents1 Hlenvs1 Hall1) =
-  get_arg_list pd vt2 s vs2 ts2 (reps2 vt2 pf vv2) Hp Hlents2 Hlenvs2 Hall2.
+    (get_arg_list pd vt1 vs1 ts1 (reps1 vt1 pf vv1) Hp Hlents1 Hlenvs1 Hall1) =
+  get_arg_list pd vt2 vs2 ts2 (reps2 vt2 pf vv2) Hp Hlents2 Hlenvs2 Hall2.
 Proof.
   match goal with
   | |- cast_arg_list ?H ?a = _ => generalize dependent H end.
@@ -2118,8 +2118,8 @@ Lemma get_arg_list_vt_eq (vt1 vt2: val_typevar) (s: fpsym)
   Hp Hlents Hlenvs Hall
   (Heq: map (v_subst vt2) vs = map (v_subst vt1) vs):
   cast_arg_list (f_equal (sym_sigma_args s) (eq_sym Heq))
-    (get_arg_list pd vt1 s vs ts (reps vt1 pf vv1) Hp Hlents Hlenvs Hall) =
-  get_arg_list pd vt2 s vs ts (reps vt2 pf vv2) Hp Hlents Hlenvs Hall.
+    (get_arg_list pd vt1 vs ts (reps vt1 pf vv1) Hp Hlents Hlenvs Hall) =
+  get_arg_list pd vt2 vs ts (reps vt2 pf vv2) Hp Hlents Hlenvs Hall.
 Proof.
   apply get_arg_list_vt_ext; auto. 
   rewrite Forall_forall in Hreps.

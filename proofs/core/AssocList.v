@@ -655,6 +655,15 @@ Proof.
     exfalso. apply (Hnotin (fst p)). left; auto.
 Qed.
 
+Lemma amap_not_empty_exists (m: amap A B):
+  amap_is_empty m = false <-> exists x y, amap_get eq_dec m x = Some y.
+Proof.
+  unfold amap_is_empty. setoid_rewrite amap_get_some_iff.
+  destruct (proj1_sig m) as [|[x1 y1] t]; simpl; auto.
+  - split; intros; [discriminate| destruct_all; contradiction].
+  - split; auto. intros _. exists x1. exists y1. auto.
+Qed. 
+
 (*Derived functions*)
 Definition amap_mem {C: Type} (x: A) (m: amap A C) : bool :=
   map_contains eq_dec (proj1_sig m) x.
@@ -671,6 +680,16 @@ Proof.
   setoid_rewrite amap_mem_spec.
   rewrite amap_is_empty_get.
   split; intros Hin x; specialize (Hin x); destruct (amap_get eq_dec m x); auto; discriminate.
+Qed.
+
+Lemma amap_not_empty_mem (m: amap A B):
+  amap_is_empty m = false <-> exists x, amap_mem x m.
+Proof.
+  setoid_rewrite amap_mem_spec.
+  rewrite amap_not_empty_exists.
+  split; intros [x Hin].
+  - destruct Hin as [y Hget]. exists x. rewrite Hget. auto.
+  - exists x. destruct (amap_get eq_dec m x) as [y|] eqn : Hget; eauto. discriminate.
 Qed.
 
 Definition amap_subset {C: Type} (m1: amap A B) (m2: amap A C) : bool :=
