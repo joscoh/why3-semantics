@@ -2248,8 +2248,30 @@ Proof.
     eapply s_matrix_constrs; eauto.
 Qed.
 
+(*It is important that the variables we add do not overlap with the other variables
+  present in the matrix*)
+Definition row_fv (row: list pattern * A) : list vsymbol :=
+  big_union vsymbol_eq_dec pat_fv (fst row).
+Definition pat_mx_fv (P: list (list pattern * A)) : list vsymbol :=
+  big_union vsymbol_eq_dec row_fv P.
 
- 
+(*Variables in pattern actions*)
+Variable (a_vars: A -> list vsymbol).
+(*NOTE: include both bound and fv, not sure if we need all*)
+Variable (a_let_vars: forall (v: vsymbol) (tm: term) (a: A),
+  forall x, In x (a_vars (mk_let v tm a)) <-> v = x \/ In x (tm_bnd tm) \/ In x (tm_fv tm) \/
+    In x (a_vars a)).
+
+Definition pat_mx_act_vars (P: list (list pattern * A)) : list vsymbol :=
+  big_union vsymbol_eq_dec (fun x => a_vars (snd x)) P.
+
+Definition tmlist_vars (tl: list (term * vty)) : list vsymbol :=
+  concat (map (fun x => tm_fv (fst x) ++ tm_bnd (fst x)) tl) .
+
+(*Get all variables in the input*)
+(*Problem is that this is very slow, don't want to precompute, should be OK for our purposes now*)
+Definition compile_fvs (tl: list (term * vty)) (rl: list (list pattern * A)) :=
+  tmlist_vars tl ++ pat_mx_fv rl ++ pat_mx_act_vars rl.
 
 (*Part 9: Define the function*)
 
@@ -2314,8 +2336,8 @@ Equations compile (tl: list (term * vty)) (rl: list (list pattern * A))
         let '(cs, params, ql) := x in
         (*create variables*)
         let pat_tys :=  (map (ty_subst (s_params cs) params) (s_args cs)) in
-        let new_var_names := gen_vars (length ql) (tm_fv t ++ tm_bnd t) in
-        let typed_vars := map (fun '(x, y) => (fst x, y)) (combine new_var_names pat_tys) in
+        let new_var_names := gen_strs (length ql) (compile_fvs ((t, ty) :: tl) rl) in
+        let typed_vars := (combine new_var_names pat_tys) in
         let vl := rev typed_vars in 
         let pl := rev_map Pvar vl in
         let al := rev_map Tvar vl in
@@ -2445,6 +2467,270 @@ Proof.
     rewrite <- simplify_all_null. auto.
 Qed.
 
+(*[compile_fv] is invariant under simplifying*)
+
+(*TODO: move*)
+Lemma big_union_app {B C: Type} (eq_dec: forall (x y: C), {x = y} + {x <> y})
+  (f: B -> list C) (l1 l2: list B):
+  forall x, In x (big_union eq_dec f (l1 ++ l2)) <-> In x (union eq_dec (big_union eq_dec f l1) (big_union eq_dec f l2)).
+Proof. 
+  intros x. simpl_set. setoid_rewrite in_app_iff.
+  split; intros; destruct_all; eauto.
+Qed.
+
+Lemma tmlist_vars_cons t tms: tmlist_vars (t :: tms) =
+  tm_fv (fst t) ++ tm_bnd (fst t) ++ tmlist_vars tms.
+Proof. unfold tmlist_vars; simpl. rewrite app_assoc; auto.
+Qed.
+
+Lemma pat_mx_fv_app x p1 p2:
+  In x (pat_mx_fv (p1 ++ p2)) <-> In x (pat_mx_fv p1) \/ In x (pat_mx_fv p2).
+Proof.
+  unfold pat_mx_fv. rewrite big_union_app. simpl_set_small. reflexivity.
+Qed.
+
+Lemma pat_mx_act_vars_app x p1 p2:
+  In x (pat_mx_act_vars (p1 ++ p2)) <-> In x (pat_mx_act_vars p1) \/ In x (pat_mx_act_vars p2).
+Proof.
+  unfold pat_mx_act_vars. rewrite big_union_app. simpl_set_small. reflexivity.
+Qed. 
+
+(*TODO: replace [prove_hyp]*)
+Ltac forward_gen H tac :=
+        match type of H with
+        | ?X -> _ => let H' := fresh in assert (H':X) ; [tac|specialize (H H'); clear H']
+        end.
+
+Tactic Notation "forward" constr(H) := forward_gen H ltac:(idtac).
+Tactic Notation "forward" constr(H) "by" tactic(tac) := forward_gen H tac.
+
+
+Lemma compile_fv_simplifiy (tms: list (term * vty)) (P: list (list pattern * A)) t ty:
+  forall x, 
+    In x (compile_fvs ((t, ty) :: tms) P) <->
+    In x (compile_fvs ((t, ty) :: tms) (simplify t P)).
+Proof.
+  unfold simplify. unfold compile_fvs.
+  intros x.
+  rewrite !in_app_iff.
+  rewrite !tmlist_vars_cons. simpl. 
+  rewrite !in_app_iff.
+  induction P as [| rhd rtl IH]; [reflexivity|simpl].
+  simpl_set_small.
+  rewrite !pat_mx_fv_app, ! pat_mx_act_vars_app.
+  (*We need 2 directions: if in [simplify_single] vars, then in original
+    and if in original, then in [simplify_single] vars or in term*)
+  assert (Hsingle1: 
+    In x (pat_mx_fv (simplify_single t rhd)) \/
+    In x (pat_mx_act_vars (simplify_single t rhd)) ->
+    In x (row_fv rhd) \/ In x (a_vars (snd rhd)) \/ In x (tm_fv t) \/ In x (tm_bnd t)
+  ).
+  {
+    clear -a_let_vars. destruct rhd as [ps a]. simpl.
+    destruct ps as [| phd ptl]; simpl. 
+    { simpl_set_small; simpl. intros; destruct_all; auto. }
+    unfold row_fv; simpl. simpl_set_small.
+    generalize dependent a.
+    induction phd; simpl; intros a; try solve[
+      unfold row_fv; simpl; simpl_set_small; simpl;
+      try(rewrite a_let_vars); intros; destruct_all; auto; contradiction 
+    ].
+    - (*Por*)
+      unfold pat_mx_fv in *. 
+      rewrite !map_app, !big_union_app; simpl_set_small.
+      rewrite pat_mx_act_vars_app.
+      intros [[Hin1 | Hin2] | [Hin1 | Hin2]];
+      [specialize (IHphd1 _ (or_introl Hin1)) | 
+       specialize (IHphd2 _ (or_introl Hin2)) |
+       specialize (IHphd1 _ (or_intror Hin1)) |
+       specialize (IHphd2 _ (or_intror Hin2))];
+      destruct_all; auto.
+    - (*Pbind*)
+      intros Hin. apply IHphd in Hin.
+      rewrite a_let_vars in Hin. simpl_set_small.
+      destruct_all; auto.
+  }
+  (*And the other direction*)
+  assert (Hsingle2: 
+    In x (row_fv rhd) \/ In x (a_vars (snd rhd)) ->
+    In x (pat_mx_fv (simplify_single t rhd)) \/
+    In x (pat_mx_act_vars (simplify_single t rhd))).
+  {
+    clear -a_let_vars. destruct rhd as [ps a]. simpl.
+    destruct ps as [| phd ptl]; simpl. 
+    { simpl_set_small; simpl. intros; destruct_all; auto. }
+    unfold row_fv; simpl. simpl_set_small.
+    generalize dependent a.
+    induction phd; simpl; intros a; try solve[
+      unfold row_fv; simpl; simpl_set_small; simpl;
+      try(rewrite a_let_vars); intros; destruct_all; auto 10; contradiction 
+    ].
+    -  (*Por*)
+      unfold pat_mx_fv in *. 
+      rewrite !map_app, !big_union_app; simpl_set_small.
+      rewrite pat_mx_act_vars_app.
+      intros [[[Hin | Hin] | Hin] | Hin];
+      [specialize (IHphd1 a (or_introl (or_introl Hin))) |
+       specialize (IHphd2 a (or_introl (or_introl Hin))) |
+       specialize (IHphd1 a (or_introl (or_intror Hin))) |
+       specialize (IHphd1 a (or_intror Hin))];
+      destruct_all; auto.
+    - (*Pbind*)
+      simpl_set_small.
+      intros Hin. apply IHphd. rewrite a_let_vars. destruct_all; auto.
+  }
+  (*Now we can solve this (by lots of cases)*)
+  destruct IH as [IH1 IH2]; split.
+  -
+  intros; destruct_all; auto;
+    (forward Hsingle2; [solve[auto]|]) +
+    (forward IH1; [solve[auto]|]);
+    destruct_all; auto.
+  - intros; destruct_all; auto;
+    (forward Hsingle1; [solve[auto]|]) +
+    (forward IH2; [solve[auto]|]);
+    destruct_all; auto.
+Qed.
+
+(*TODO: prove in [gen_elts] that 2 lists with same elements give same [gen_strs]*)
+    
+    
+    Print Ltac prove_hyp. prove_hyp IH1. auto. d  
+  split; intros; destruct_all; auto 50.
+
+      + specialize (IHphd1 (or_introl Hin1)).
+        destruct_all; auto.
+      + specialize (IHphd2 (or_introl Hin2)).
+        destruct_all; auto.
+      + specialize (IHphd1 (or_intror Hin1)).
+        destruct_all; auto. 
+      
+       apply IHphd1 in Hin1.
+      intros [[Hin1 | Hin2 | [Hin1 | Hin2]]]; auto.
+      specialize (IHphd1 )
+      rewrite pat_mx_fv_app.
+    - unfold row_fv; simpl. simpl_set_small; simpl.
+      rewrite a_let_vars. intros; destruct_all; auto; contradiction.
+    - unfold row_fv. simpl. simpl_set_small. simpl.
+      intros; destruct_all; auto; contradiction.
+    
+      Search a_vars.
+    simpl.
+    
+     split; intros; destruct_all}
+    unfold simplify_single.
+  }
+  assert (Hsingle: 
+    In x (row_fv rhd) \/ In x (a_vars (snd rhd)) \/ In x (tm_fv t) \/ In x (tm_bnd t) <->
+    In x (pat_mx_fv (simplify_single t rhd)) \/
+    In x (pat_mx_act_vars (simplify_single t rhd))).
+  {
+    clear.
+    destruct rhd as [ps a]. simpl.
+    destruct ps as [| phd ptl]; simpl.
+    { split; intros; destruct_all}
+    unfold simplify_single.
+  }
+  
+  )
+  split.
+  - intros Hin. destruct_all; auto.
+  unfold pat_mx_fv, pat_mx_act_vars in *.
+  rewrite !big_union_app.
+  simpl_set_small.
+  unfold tmlist_vars in *; simpl in *.
+  rewrite !in_app_iff in IH |- *.
+  unfold pat_mx_fv at 2.
+
+  rewrite !in_app_iff.
+   simpl.
+  simpl.
+
+Lemma simplify_subset1 t rl:
+  forall x, In x (pat_mx_fv (simplify t rl)) -> In x (pat_mx_fv rl).
+Proof.
+  intros x.
+  induction rl as [| rhd rtl IH]; simpl; auto.
+  unfold pat_mx_fv in *; simpl. unfold simplify in *. simpl.
+  rewrite big_union_app. simpl_set_small.
+  intros [Hinx | Hinx]; auto.
+  (*The inner lemma we need*)
+  clear -Hinx. destruct rhd as [[| phd ptl] a]; simpl; [contradiction|].
+  unfold simplify_single in Hinx. unfold row_fv at 1. simpl.
+  simpl_set_small.
+  generalize dependent a.
+  induction phd; simpl in *; intros; unfold row_fv in Hinx; simpl in Hinx; simpl_set_small;
+  try (destruct Hinx as [Hinx | Hf]; [|contradiction]); simpl_set_small; auto.
+  - rewrite map_app in Hinx. apply big_union_app in Hinx.
+    simpl_set_small. destruct Hinx as [Hinx | Hinx]; auto.
+    + apply IHphd1 in Hinx. destruct_all; auto.
+    + apply IHphd2 in Hinx. destruct_all; auto.
+  - apply IHphd in Hinx. destruct_all; auto.
+Qed.
+
+(*Need to have a notion of variables in A*)
+Section Simplify.
+
+
+(*Idea:
+  look at pat_fv + mx_vars
+  also need to know how [simplify] changes [mx_vars]
+  1. know that in fv of simmplify -> in fv of regular
+  2. prove: in fv of regular -> fv of simplify OR in mx_vars of simplify
+  3. prove: in mx_vars of simplify -> in mx of regular or in term_vars of regular or in fv of regular
+
+  
+  *)
+Print compile_fvs.
+Definition pat_mx_all_vars (P: list (list pattern * A)) :=
+  union vsymbol_eq_dec (pat_mx_fv P) (pat_mx_vars P).
+
+(*The real lemma I want*)
+Lemma simplify_all_vars_equiv t rl:
+  forall x, In x (pat_mx_all_vars P)
+
+Lemma simplify_subset2 t rl:
+  forall x, In x (pat_mx_fv rl) -> In x (pat_mx_fv (simplify t rl)) \/ In x (pat_mx_vars (simplify t rl)) 
+  
+  
+  (a_vars t).
+Proof.
+  intros x.
+  induction rl as [| rhd rtl IH]; simpl; auto.
+  unfold pat_mx_fv in *; simpl. unfold simplify in *. simpl.
+  rewrite big_union_app. simpl_set_small.
+  intros [Hinx | Hinx].
+  2: { apply IH in Hinx. destruct Hinx; auto. }
+  (*The inner lemma we need*)
+  assert (Hinx1: In x (big_union vsymbol_eq_dec row_fv (simplify_single t rhd)) \/
+    In x (tm_bnd t)).
+  {
+    clear -Hinx. destruct rhd as [[| phd ptl] a]; simpl; [contradiction|].
+    unfold row_fv in Hinx; simpl in Hinx. simpl_set_small.
+    generalize dependent a.
+    induction phd; simpl in *; intros; unfold row_fv; simpl; simpl_set_small; simpl;
+    try solve[destruct_all; auto].
+    
+    
+     unfold row_fv in Hinx; simpl in Hinx; simpl_set_small;
+    try (destruct Hinx as [Hinx | Hf]; [|contradiction]); simpl_set_small; auto.
+    - rewrite map_app in Hinx. apply big_union_app in Hinx.
+      simpl_set_small. destruct Hinx as [Hinx | Hinx]; auto.
+      + apply IHphd1 in Hinx. destruct_all; auto.
+      + apply IHphd2 in Hinx. destruct_all; auto.
+    - apply IHphd in Hinx. destruct_all; auto.
+  }
+  clear -Hinx. 
+
+Lemma compile_fv_simplifiy (tms: list (term * vty)) (P: list (list pattern * A)) t ty:
+  forall x, 
+    In x (compile_fvs ((t, ty) :: tms) P) <->
+    In x (compile_fvs ((t, ty) :: tms) (simplify t P)).
+Proof.
+  unfold simplify. unfold compile_fvs.
+  simpl.
+  
+   intros x. induction 
 
 Lemma compile_simplify (tms: list (term * vty)) (P: list (list pattern * A))  t ty:
   compile ((t, ty) :: tms) P =
@@ -2468,7 +2754,8 @@ Proof.
   rewrite <- populate_all_simplify.
   destruct (populate_all is_constr P) as [types_cslist|] eqn : Hpop; [| reflexivity].
   rewrite dispatch1_opt_simplify.
-  destruct (dispatch1_opt t (fst types_cslist) P) as [casewild|] eqn : Hdispatch; reflexivity.
+  destruct (dispatch1_opt t (fst types_cslist) P) as [casewild|] eqn : Hdispatch; try reflexivity.
+
 Qed.
 
 Lemma iter_max_eq l1 l2:
@@ -2568,8 +2855,8 @@ Lemma compile_ind (P: list (term * vty) -> list (list pattern * A) -> option A -
           let '(cs, params, ql) := x in
           (*create variables*)
           let pat_tys :=  (map (ty_subst (s_params cs) params) (s_args cs)) in
-          let new_var_names := gen_vars (length ql) (tm_fv t ++ tm_bnd t) in
-          let typed_vars := map (fun '(x, y) => (fst x, y)) (combine new_var_names pat_tys) in
+          let new_var_names := gen_strs (length ql) (tm_fv t ++ tm_bnd t ++ pat_mx_fv rl) in
+          let typed_vars := (combine new_var_names pat_tys) in
           let vl := rev typed_vars in 
           let pl := rev_map Pvar vl in
           let al := rev_map Tvar vl in
