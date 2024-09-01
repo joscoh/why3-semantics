@@ -2280,6 +2280,53 @@ Obligation Tactic := idtac.
 Definition compile_measure (rl: list (list pattern * A)) : nat :=
   compile_size (S (compile_size_bound rl)) rl.
 
+(*Some more intermediate functions, for proofs:*)
+Definition comp_cases (compile: list (term * vty) -> list (list pattern * A) -> option A) cases (tl: list (term * vty)) 
+  := fun
+  cs (al : list (term * vty)) =>
+   match (amap_get funsym_eq_dec cases cs ) as o return amap_get funsym_eq_dec cases cs = o -> _ with
+    | None => fun _ => None (*impossible*)
+    | Some l => fun Hget => compile (rev al ++ tl) l
+    end eq_refl
+        .
+
+Definition add (comp_cases: funsym -> list (term * vty) -> option A) 
+  (t: term) (ty: vty) (rl: list (list pattern * A)) (tl: list (term * vty)) := fun
+
+acc (x: funsym * list vty * list pattern) =>
+  let '(cs, params, ql) := x in
+  (*create variables*)
+  let pat_tys :=  (map (ty_subst (s_params cs) params) (s_args cs)) in
+  let new_var_names := gen_strs (length ql) (compile_fvs ((t, ty) :: tl) rl) in
+  let typed_vars := (combine new_var_names pat_tys) in
+  let vl := rev typed_vars in 
+  let pl := rev_map Pvar vl in
+  let al := rev_map Tvar vl in
+  match (comp_cases cs (combine al (map snd vl))) with
+  | None => None
+  | Some v => Some ((Pconstr cs params pl, v) :: acc)
+  end.
+
+(*Instead of matching on t, which gives us lots of different cases,
+  have this result:*)
+Definition is_fun (t: term) : Either ({x : funsym * list vty * list term | t = Tfun (fst (fst x)) (snd (fst x)) (snd x)})
+  { x: unit | forall cs tys tms, t <> Tfun cs tys tms}.
+Proof.
+  destruct t; try solve[apply Right; apply (exist _ tt); discriminate].
+  apply Left. apply (exist _ (f, l, l0)). reflexivity.
+Defined.
+
+Definition comp_full (comp_wilds : unit -> option A) comp_cases 
+  (types: amap funsym (list pattern))
+  (cslist: list (funsym * list vty * list pattern)) css t ty tl rl (_: unit) :=
+    let no_wilds := forallb (fun f => amap_mem funsym_eq_dec f types) css in
+    let base : option (list (pattern * A)) := if no_wilds then Some nil else (*TODO: bind*)
+    option_map (fun x => [(Pwild, x)]) (comp_wilds tt)
+    in
+    option_bind base (fun b =>
+      option_map (fun b1 => mk_case t ty b1)  (fold_left_opt (add comp_cases t ty rl tl) cslist b)). 
+
+
 Equations compile (tl: list (term * vty)) (rl: list (list pattern * A))
   : option A  by wf (compile_measure rl) lt :=
   compile _ [] := None;
@@ -2316,6 +2363,7 @@ Equations compile (tl: list (term * vty)) (rl: list (list pattern * A))
 
     let comp_wilds (_: unit) := compile tl wilds in
 
+
     let comp_cases cs (al : list (term * vty)) :=
          match (amap_get funsym_eq_dec cases cs ) as o return amap_get funsym_eq_dec cases cs = o -> _ with
           | None => fun _ => None (*impossible*)
@@ -2324,15 +2372,19 @@ Equations compile (tl: list (term * vty)) (rl: list (list pattern * A))
         in
 
     (*TODO: default case here*)
-    let comp_full (_: unit) :=
+    let comp_full := comp_full comp_wilds comp_cases types cslist css t ty tl rl in
+
+    (* let comp_full (_: unit) :=
       let no_wilds := forallb (fun f => amap_mem funsym_eq_dec f types) css in
       let base : option (list (pattern * A)) := if no_wilds then Some nil else (*TODO: bind*)
-       match comp_wilds tt with
+      option_map (fun x => [(Pwild, x)]) (comp_wilds tt)
+       (* match comp_wilds tt with
         | None => None
         | Some x => Some [(Pwild, x)]
-      end in
+      end *) in
 
-      let add acc (x: funsym * list vty * list pattern) : option (list (pattern * A)) :=
+
+      (* let add acc (x: funsym * list vty * list pattern) : option (list (pattern * A)) :=
         let '(cs, params, ql) := x in
         (*create variables*)
         let pat_tys :=  (map (ty_subst (s_params cs) params) (s_args cs)) in
@@ -2345,21 +2397,32 @@ Equations compile (tl: list (term * vty)) (rl: list (list pattern * A))
         | None => None
         | Some v => Some ((Pconstr cs params pl, v) :: acc)
         end
-      in
+      in *)
       (*TODO: bind*)
       match base with
       | None => None
       | Some b =>
-        match (fold_left_opt add cslist b) with
+        match (fold_left_opt (add comp_cases t ty rl tl) cslist b) with
         | None => None
         | Some b1 => Some (mk_case t ty b1)
         end
-      end in 
+      end in  *)
     
     if amap_is_empty types then comp_wilds tt
     else
+
+    match (is_fun t) with
+    | Left Hconstr =>
+      let '(cs, params, al) := proj1_sig Hconstr in
+        if is_constr cs then
+        if amap_mem funsym_eq_dec cs types then comp_cases cs (combine al
+          (map (ty_subst (s_params cs) params) (s_args cs))) else comp_wilds tt
+        else comp_full tt
+    | Right Hnotconstr =>
+      comp_full tt
+    end
     
-    match t with
+   (*  match t with
     | Tfun cs params al =>
       if is_constr cs then
         if amap_mem funsym_eq_dec cs types then comp_cases cs (combine al
@@ -2367,7 +2430,7 @@ Equations compile (tl: list (term * vty)) (rl: list (list pattern * A))
       else comp_full tt
     | _ => 
       comp_full tt 
-    end 
+    end  *)
 end eq_refl
 end eq_refl.
 Next Obligation.
@@ -2505,7 +2568,7 @@ Tactic Notation "forward" constr(H) := forward_gen H ltac:(idtac).
 Tactic Notation "forward" constr(H) "by" tactic(tac) := forward_gen H tac.
 
 
-Lemma compile_fv_simplifiy (tms: list (term * vty)) (P: list (list pattern * A)) t ty:
+Lemma compile_fv_simplify (tms: list (term * vty)) (P: list (list pattern * A)) t ty:
   forall x, 
     In x (compile_fvs ((t, ty) :: tms) P) <->
     In x (compile_fvs ((t, ty) :: tms) (simplify t P)).
@@ -2592,145 +2655,56 @@ Proof.
     destruct_all; auto.
 Qed.
 
-(*TODO: prove in [gen_elts] that 2 lists with same elements give same [gen_strs]*)
-    
-    
-    Print Ltac prove_hyp. prove_hyp IH1. auto. d  
-  split; intros; destruct_all; auto 50.
-
-      + specialize (IHphd1 (or_introl Hin1)).
-        destruct_all; auto.
-      + specialize (IHphd2 (or_introl Hin2)).
-        destruct_all; auto.
-      + specialize (IHphd1 (or_intror Hin1)).
-        destruct_all; auto. 
-      
-       apply IHphd1 in Hin1.
-      intros [[Hin1 | Hin2 | [Hin1 | Hin2]]]; auto.
-      specialize (IHphd1 )
-      rewrite pat_mx_fv_app.
-    - unfold row_fv; simpl. simpl_set_small; simpl.
-      rewrite a_let_vars. intros; destruct_all; auto; contradiction.
-    - unfold row_fv. simpl. simpl_set_small. simpl.
-      intros; destruct_all; auto; contradiction.
-    
-      Search a_vars.
-    simpl.
-    
-     split; intros; destruct_all}
-    unfold simplify_single.
-  }
-  assert (Hsingle: 
-    In x (row_fv rhd) \/ In x (a_vars (snd rhd)) \/ In x (tm_fv t) \/ In x (tm_bnd t) <->
-    In x (pat_mx_fv (simplify_single t rhd)) \/
-    In x (pat_mx_act_vars (simplify_single t rhd))).
-  {
-    clear.
-    destruct rhd as [ps a]. simpl.
-    destruct ps as [| phd ptl]; simpl.
-    { split; intros; destruct_all}
-    unfold simplify_single.
-  }
-  
-  )
-  split.
-  - intros Hin. destruct_all; auto.
-  unfold pat_mx_fv, pat_mx_act_vars in *.
-  rewrite !big_union_app.
-  simpl_set_small.
-  unfold tmlist_vars in *; simpl in *.
-  rewrite !in_app_iff in IH |- *.
-  unfold pat_mx_fv at 2.
-
-  rewrite !in_app_iff.
-   simpl.
-  simpl.
-
-Lemma simplify_subset1 t rl:
-  forall x, In x (pat_mx_fv (simplify t rl)) -> In x (pat_mx_fv rl).
+(*And therefore, [gen_strs] are equivalent*)
+Lemma compile_gen_strs_simplify (tms: list (term * vty)) (P: list (list pattern * A)) t ty n:
+  gen_strs n (compile_fvs ((t, ty) :: tms) (simplify t P)) =
+  gen_strs n (compile_fvs ((t, ty) :: tms) P).
 Proof.
-  intros x.
-  induction rl as [| rhd rtl IH]; simpl; auto.
-  unfold pat_mx_fv in *; simpl. unfold simplify in *. simpl.
-  rewrite big_union_app. simpl_set_small.
-  intros [Hinx | Hinx]; auto.
-  (*The inner lemma we need*)
-  clear -Hinx. destruct rhd as [[| phd ptl] a]; simpl; [contradiction|].
-  unfold simplify_single in Hinx. unfold row_fv at 1. simpl.
-  simpl_set_small.
-  generalize dependent a.
-  induction phd; simpl in *; intros; unfold row_fv in Hinx; simpl in Hinx; simpl_set_small;
-  try (destruct Hinx as [Hinx | Hf]; [|contradiction]); simpl_set_small; auto.
-  - rewrite map_app in Hinx. apply big_union_app in Hinx.
-    simpl_set_small. destruct Hinx as [Hinx | Hinx]; auto.
-    + apply IHphd1 in Hinx. destruct_all; auto.
-    + apply IHphd2 in Hinx. destruct_all; auto.
-  - apply IHphd in Hinx. destruct_all; auto.
+apply gen_strs_ext. intros; rewrite <- compile_fv_simplify. reflexivity.
 Qed.
 
-(*Need to have a notion of variables in A*)
-Section Simplify.
-
-
-(*Idea:
-  look at pat_fv + mx_vars
-  also need to know how [simplify] changes [mx_vars]
-  1. know that in fv of simmplify -> in fv of regular
-  2. prove: in fv of regular -> fv of simplify OR in mx_vars of simplify
-  3. prove: in mx_vars of simplify -> in mx of regular or in term_vars of regular or in fv of regular
-
-  
-  *)
-Print compile_fvs.
-Definition pat_mx_all_vars (P: list (list pattern * A)) :=
-  union vsymbol_eq_dec (pat_mx_fv P) (pat_mx_vars P).
-
-(*The real lemma I want*)
-Lemma simplify_all_vars_equiv t rl:
-  forall x, In x (pat_mx_all_vars P)
-
-Lemma simplify_subset2 t rl:
-  forall x, In x (pat_mx_fv rl) -> In x (pat_mx_fv (simplify t rl)) \/ In x (pat_mx_vars (simplify t rl)) 
-  
-  
-  (a_vars t).
+Lemma fold_left_opt_change_f {B C: Type} (f1 f2: B -> C -> option B) (l: list C) (x: B):
+  (forall b c, f1 b c = f2 b c) ->
+  fold_left_opt f1 l x = fold_left_opt f2 l x.
 Proof.
-  intros x.
-  induction rl as [| rhd rtl IH]; simpl; auto.
-  unfold pat_mx_fv in *; simpl. unfold simplify in *. simpl.
-  rewrite big_union_app. simpl_set_small.
-  intros [Hinx | Hinx].
-  2: { apply IH in Hinx. destruct Hinx; auto. }
-  (*The inner lemma we need*)
-  assert (Hinx1: In x (big_union vsymbol_eq_dec row_fv (simplify_single t rhd)) \/
-    In x (tm_bnd t)).
-  {
-    clear -Hinx. destruct rhd as [[| phd ptl] a]; simpl; [contradiction|].
-    unfold row_fv in Hinx; simpl in Hinx. simpl_set_small.
-    generalize dependent a.
-    induction phd; simpl in *; intros; unfold row_fv; simpl; simpl_set_small; simpl;
-    try solve[destruct_all; auto].
-    
-    
-     unfold row_fv in Hinx; simpl in Hinx; simpl_set_small;
-    try (destruct Hinx as [Hinx | Hf]; [|contradiction]); simpl_set_small; auto.
-    - rewrite map_app in Hinx. apply big_union_app in Hinx.
-      simpl_set_small. destruct Hinx as [Hinx | Hinx]; auto.
-      + apply IHphd1 in Hinx. destruct_all; auto.
-      + apply IHphd2 in Hinx. destruct_all; auto.
-    - apply IHphd in Hinx. destruct_all; auto.
-  }
-  clear -Hinx. 
+  intros Hext.
+  revert x. induction l; simpl; auto.
+  intros x. rewrite Hext. destruct (f2 x a); auto.
+Qed.
+ 
+Ltac case_match_goal :=
+  repeat match goal with 
+        |- (match ?p with |Some l => ?x | None => ?y end) = ?z =>
+          let Hp := fresh "Hmatch" in 
+          destruct p eqn: Hp end; auto.
 
-Lemma compile_fv_simplifiy (tms: list (term * vty)) (P: list (list pattern * A)) t ty:
-  forall x, 
-    In x (compile_fvs ((t, ty) :: tms) P) <->
-    In x (compile_fvs ((t, ty) :: tms) (simplify t P)).
+Lemma add_simplify_eq: forall comp_cases t ty P ts acc x,
+  add comp_cases t ty P ts acc x = add comp_cases t ty (simplify t P) ts acc x.
 Proof.
-  unfold simplify. unfold compile_fvs.
-  simpl.
-  
-   intros x. induction 
+intros comp_cases t ty P ts acc [[f1 tys1] ps1]; simpl.
+rewrite compile_gen_strs_simplify.
+reflexivity.
+Qed.
+
+Lemma fold_left_opt_simplify_eq comp_cases t ty P ts x y:
+  fold_left_opt (add comp_cases t ty (simplify t P) ts) x y =
+  fold_left_opt (add comp_cases t ty P ts) x y.
+Proof.
+  apply fold_left_opt_change_f.
+  intros. symmetry. apply add_simplify_eq.
+Qed.
+
+Lemma comp_full_simplify_eq comp_wilds comp_cases types cslist css t ty tl P x:
+  comp_full comp_wilds comp_cases types cslist css t ty tl (simplify t P) x =
+  comp_full comp_wilds comp_cases types cslist css t ty tl P x.
+Proof.
+  unfold comp_full.
+  destruct (forallb _ _); simpl; auto.
+  - rewrite fold_left_opt_simplify_eq. reflexivity.
+  - destruct (comp_wilds tt); simpl; auto.  
+    rewrite fold_left_opt_simplify_eq. reflexivity.
+Qed.
+
 
 Lemma compile_simplify (tms: list (term * vty)) (P: list (list pattern * A))  t ty:
   compile ((t, ty) :: tms) P =
@@ -2755,7 +2729,8 @@ Proof.
   destruct (populate_all is_constr P) as [types_cslist|] eqn : Hpop; [| reflexivity].
   rewrite dispatch1_opt_simplify.
   destruct (dispatch1_opt t (fst types_cslist) P) as [casewild|] eqn : Hdispatch; try reflexivity.
-
+  destruct (amap_is_empty (fst types_cslist)); auto.
+  rewrite comp_full_simplify_eq; reflexivity.
 Qed.
 
 Lemma iter_max_eq l1 l2:
@@ -2843,7 +2818,9 @@ Lemma compile_ind (P: list (term * vty) -> list (list pattern * A) -> option A -
           in
 
       (*TODO: default case here*)
-      let comp_full (_: unit) :=
+      let comp_full := comp_full comp_wilds comp_cases types cslist css t ty tl rl in
+      
+      (* let comp_full (_: unit) :=
         let no_wilds := forallb (fun f => amap_mem funsym_eq_dec f types) css in
         let base : option (list (pattern * A)) := if no_wilds then Some nil else (*TODO: bind*)
         match comp_wilds tt with
@@ -2855,7 +2832,7 @@ Lemma compile_ind (P: list (term * vty) -> list (list pattern * A) -> option A -
           let '(cs, params, ql) := x in
           (*create variables*)
           let pat_tys :=  (map (ty_subst (s_params cs) params) (s_args cs)) in
-          let new_var_names := gen_strs (length ql) (tm_fv t ++ tm_bnd t ++ pat_mx_fv rl) in
+          let new_var_names := gen_strs (length ql) (compile_fvs ((t, ty) :: tl) rl) in
           let typed_vars := (combine new_var_names pat_tys) in
           let vl := rev typed_vars in 
           let pl := rev_map Pvar vl in
@@ -2873,12 +2850,22 @@ Lemma compile_ind (P: list (term * vty) -> list (list pattern * A) -> option A -
           | None => None
           | Some b1 => Some (mk_case t ty b1)
           end
-        end in 
+        end in  *)
       
       if amap_is_empty types then comp_wilds tt
       else
+      match (is_fun t) with
+          | Left Hconstr =>
+            let '(cs, params, al) := proj1_sig Hconstr in
+              if is_constr cs then
+              if amap_mem funsym_eq_dec cs types then comp_cases cs (combine al
+                (map (ty_subst (s_params cs) params) (s_args cs))) else comp_wilds tt
+              else comp_full tt
+          | Right Hnotconstr =>
+            comp_full tt
+          end
       
-      match t with
+     (*  match t with
       | Tfun cs params al =>
         if is_constr cs then
           if amap_mem funsym_eq_dec cs types then comp_cases cs (combine al
@@ -2886,7 +2873,7 @@ Lemma compile_ind (P: list (term * vty) -> list (list pattern * A) -> option A -
         else comp_full tt
       | _ => 
         comp_full tt 
-      end )):
+      end *) )):
   forall ts p, P ts p (compile ts p).
 Proof.
   intros ts rl.
@@ -2951,7 +2938,8 @@ Proof.
   rewrite <- Hsimpeq.
   (*rewrite Hpop, Hdispatch1.*)
   intros Hconstr P_ext.
-  apply P_ext. 
+  unfold rl'. rewrite comp_full_simplify_eq. fold rl'.
+  apply P_ext.
   apply Hconstr.
   (*All that is left is proving the IH from our strong induction IH*)
   split.

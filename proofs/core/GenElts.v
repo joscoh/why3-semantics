@@ -124,6 +124,43 @@ Proof.
   + intros. apply gen_notin_notin in H0. auto.
 Qed.
 
+(*We can change the list in question as long as it has equivalent elements (even if a different
+  length, although this is not trivial to show*)
+Lemma gen_notin_ext_aux (l1 l2: list A) (n: nat):
+  (forall x, In x l1 <-> In x l2) ->
+  length l1 <= length l2 ->
+  gen_notin n l1 = gen_notin n l2.
+Proof.
+  intros Hiff Hlen.
+  pose proof (gen_notin_length n l1) as Hgen. revert Hgen.
+  unfold gen_notin. 
+  replace (n + length l2) with ((n + length l1) + (length l2 - length l1)) by lia.
+  unfold gen_dist.
+  rewrite firstn_length.
+  rewrite Nat.min_l_iff.
+  intros Hlenge.
+  (*Now prove that this prefix is equivalent to the longer one*)
+  rewrite (seq_app (n+ length l1)).
+  rewrite filter_ext with (f:=fun x => negb(in_dec eq_dec x l2)) (g:=fun x => negb (in_dec eq_dec x l1)).
+  2: { intros. repeat (destruct (in_dec _ _); simpl); auto; apply Hiff in i; contradiction. }
+  rewrite map_app, filter_app.
+  rewrite firstn_app.
+  replace (n - length _) with 0.
+  2: { symmetry; apply Nat.sub_0_le; auto. }
+  rewrite firstn_O, app_nil_r.
+  reflexivity.
+Qed.
+
+Lemma gen_notin_ext (l1 l2: list A) (n: nat):
+  (forall x, In x l1 <-> In x l2) ->
+  gen_notin n l1 = gen_notin n l2.
+Proof.
+  intros Hiff.
+  unfold gen_notin.
+  destruct (Nat.le_ge_cases (length l1) (length l2)); [|symmetry]; apply gen_notin_ext_aux; auto.
+  intros; rewrite Hiff; reflexivity.
+Qed.
+
 End NoDupsList.
 
 (*We want to apply this to strings and vsymbols.
@@ -474,6 +511,16 @@ Lemma gen_strs_notin' (n: nat) (l: list vsymbol):
 forall (s: string), In s (gen_strs n l) -> ~ In s (map fst l).
 Proof.
   intros. apply gen_notin_notin in H. auto.
+Qed.
+
+Lemma gen_strs_ext (n: nat) (l1 l2: list vsymbol)
+  (Hl12: forall x, In x l1 <-> In x l2):
+  gen_strs n l1 = gen_strs n l2.
+Proof.
+  unfold gen_strs.
+  apply gen_notin_ext.
+  - apply nth_str_inj.
+  - intros x. rewrite !in_map_iff; split; intros [y [Hy Hiny]]; subst; exists y; split; auto; apply Hl12; auto.
 Qed.
 
 (*No variables, just names with a prefix*)
