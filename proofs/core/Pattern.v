@@ -2302,7 +2302,7 @@ acc (x: funsym * list vty * list pattern) =>
   let vl := rev typed_vars in 
   let pl := rev_map Pvar vl in
   let al := rev_map Tvar vl in
-  match (comp_cases cs (combine al (map snd vl))) with
+  match (comp_cases cs (combine al (rev (map snd vl)))) with
   | None => None
   | Some v => Some ((Pconstr cs params pl, v) :: acc)
   end.
@@ -2811,11 +2811,12 @@ Lemma compile_ind (P: list (term * vty) -> list (list pattern * A) -> option A -
       let comp_wilds (_: unit) := compile tl wilds in
 
       let comp_cases cs (al : list (term * vty)) :=
-          match (amap_get funsym_eq_dec cases cs ) as o return amap_get funsym_eq_dec cases cs = o -> _ with
+        comp_cases compile cases tl cs al in
+         (*  match (amap_get funsym_eq_dec cases cs ) as o return amap_get funsym_eq_dec cases cs = o -> _ with
             | None => fun _ => None (*impossible*)
             | Some l => fun Hget => compile (rev al ++ tl) l
             end eq_refl
-          in
+          in *)
 
       (*TODO: default case here*)
       let comp_full := comp_full comp_wilds comp_cases types cslist css t ty tl rl in
