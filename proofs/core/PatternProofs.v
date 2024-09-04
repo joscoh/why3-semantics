@@ -111,7 +111,7 @@ Section PatProofs.
 
 Context {gamma: context} (gamma_valid: valid_context gamma).
 Context (pd: pi_dom) (pf: pi_funpred gamma_valid pd) (vt: val_typevar).
-Variable (v: val_vars pd vt).
+(* Variable (v: val_vars pd vt). *)
 Variable (b: bool). (*Generic over terms and formulas*)
 Variable (ret_ty : gen_type b). (*The return type of the values*)
 
@@ -207,7 +207,7 @@ End PatMatrixTyping.
 
 (*Semantics of multiple pattern matching*)
 Section MultipleMatchSemantics.
-
+Variable (v: val_vars pd vt).
 
 (*Much, much easier with Equations*)
 Equations matches_row (tys: list vty) 
@@ -342,6 +342,7 @@ Qed.
 End MultipleMatchSemantics.
 
 Section SpecDefaultLemmas.
+Variable (v: val_vars pd vt).
 
 (*Prove the key intermediate results for the S and D matrices.
   First, we give nicer definitions*)
@@ -833,14 +834,14 @@ Theorem spec_match_eq
   (Htyp': pat_matrix_typed (rev (ty_subst_list (s_params c) args (s_args c)) ++ tys)
     (spec P c)):
 
-  matches_matrix_tms (t :: ts) (vty_cons (adt_name a) args :: tys) P
+  matches_matrix_tms v (t :: ts) (vty_cons (adt_name a) args :: tys) P
     Htsty Htyp =
 
-  matches_matrix 
+  matches_matrix v
   (*Type list more complicated: args of c + rest*)
   (rev (ty_subst_list (s_params c) args (s_args c)) ++ tys)
     (cast_arg_list (spec_prop_cast c args _ params_len)
-   (hlist_app _ _ _ (hlist_rev _ _ al1) (terms_to_hlist ts tys (Forall2_inv_tail Htsty))))
+   (hlist_app _ _ _ (hlist_rev _ _ al1) (terms_to_hlist v ts tys (Forall2_inv_tail Htsty))))
     (spec P c) Htyp'.
 Proof.
   unfold matches_matrix_tms.
@@ -892,7 +893,7 @@ Proof.
           rewrite !rev_length, !map_length. auto. }
         destruct Hr1 as [Hrow1 Hrow2].
         (*Now we can split the [app]*)
-        rewrite matches_row_app with(h1:=cast_arg_list Heq1 (hlist_rev _ _ al1))(h2:=terms_to_hlist ts tys f)
+        rewrite matches_row_app with(h1:=cast_arg_list Heq1 (hlist_rev _ _ al1))(h2:=terms_to_hlist v ts tys f)
           (Hr2:=Hrow1)(Hr3:=Hrow2).
         (*We prove the easy goals first*)
         2: rewrite hlist_app_cast1, cast_arg_list_compose; apply cast_arg_list_eq.
@@ -938,7 +939,7 @@ Proof.
           (*Now, some proof irrelevance to show equality of the next two matches*)
           rewrite terms_to_hlist_irrel with (H2:=f).
           rewrite matches_row_irrel with (Hr2:=Hrow2).
-          destruct (matches_row tys (terms_to_hlist ts tys f) ptl Hrow2) as [m3|] eqn : Hmatch3; simpl.
+          destruct (matches_row tys (terms_to_hlist v ts tys f) ptl Hrow2) as [m3|] eqn : Hmatch3; simpl.
           ** (*Here, use permutation result*) 
             assert (Hn: NoDup (map fst m1)). {
               eapply match_val_single_nodup. apply Hconstreq.
@@ -994,7 +995,7 @@ Proof.
       simpl.
       rewrite matches_row_app  with (h1:=cast_arg_list Heq1 (hlist_rev (domain (dom_aux pd))
           (sym_sigma_args c (map (v_subst vt) args)) al1) )
-        (h2:=(terms_to_hlist ts tys f))(Hr2:=Hr1)(Hr3:=Hr2).
+        (h2:=(terms_to_hlist v ts tys f))(Hr2:=Hr1)(Hr3:=Hr2).
       (*First, prove the side conditions*)
       2: {
         rewrite (hlist_app_cast1) with (Heq:=Heq1).
@@ -1013,7 +1014,7 @@ Proof.
       rewrite terms_to_hlist_tl.
       rewrite terms_to_hlist_irrel with (H2:=f).
       rewrite matches_row_irrel with (Hr2:=Hr2).
-      destruct (matches_row tys (terms_to_hlist ts tys f) ptl Hr2) as [m1|] eqn : Hmatch1; simpl; auto.
+      destruct (matches_row tys (terms_to_hlist v ts tys f) ptl Hr2) as [m1|] eqn : Hmatch1; simpl; auto.
       f_equal. apply gen_rep_irrel.
 Qed.
 
@@ -1039,10 +1040,10 @@ Theorem default_match_eq
   (Htyp: pat_matrix_typed (vty_cons (adt_name a) args :: tys) P)
   (Htyp': pat_matrix_typed tys (default P)):
 
-  matches_matrix_tms (t :: ts) (vty_cons (adt_name a) args :: tys) P
+  matches_matrix_tms v (t :: ts) (vty_cons (adt_name a) args :: tys) P
     Htsty Htyp =
 
-  matches_matrix tys (terms_to_hlist ts tys (Forall2_inv_tail Htsty)) (default P) Htyp'.
+  matches_matrix v tys (terms_to_hlist v ts tys (Forall2_inv_tail Htsty)) (default P) Htyp'.
 Proof.
   unfold matches_matrix_tms.
   generalize dependent (Forall2_inv_tail Htsty).
@@ -1098,10 +1099,10 @@ Theorem default_match_eq_nonadt
   (P: pat_matrix) (Hpsimp: simplified P)
   (Htyp: pat_matrix_typed (ty :: tys) P)
   (Htyp': pat_matrix_typed tys (default P)):
-   matches_matrix_tms (t :: ts) (ty :: tys) P
+   matches_matrix_tms v (t :: ts) (ty :: tys) P
     Htsty Htyp =
 
-  matches_matrix tys (terms_to_hlist ts tys (Forall2_inv_tail Htsty)) (default P) Htyp'.
+  matches_matrix v tys (terms_to_hlist v ts tys (Forall2_inv_tail Htsty)) (default P) Htyp'.
 Proof.
   unfold matches_matrix_tms.
   generalize dependent (Forall2_inv_tail Htsty).
@@ -1204,9 +1205,9 @@ Lemma simplify_single_match_eq t ts ty1 tys Htmty (row : list pattern * gen_term
   (Htty: term_has_type gamma t ty1)
   (Hvars: pat_row_vars_disj (t :: ts) (fst row)):
   opt_related (fun d l => d = gen_rep (extend_val_with_list pd vt v l) ret_ty (snd row) Htyrow) 
-  (matches_matrix (ty1 :: tys) (terms_to_hlist (t :: ts) (ty1 :: tys) Htmty)
+  (matches_matrix v (ty1 :: tys) (terms_to_hlist v (t :: ts) (ty1 :: tys) Htmty)
     (simplify_single gen_let t row) Hp1)
-  (matches_row (ty1 :: tys) (terms_to_hlist (t :: ts) (ty1 :: tys) Htmty) (fst row) Hp2).
+  (matches_row (ty1 :: tys) (terms_to_hlist v (t :: ts) (ty1 :: tys) Htmty) (fst row) Hp2).
 Proof.
   destruct row as [row a]; simpl in *.
   destruct row as [| rhd rtl]; simpl in *.
@@ -1297,7 +1298,7 @@ Proof.
         simpl_set_small. destruct_all; split; auto.
       } 
       specialize (IHrhd1 Hp2' Hdisj1 a Hr1 Htyrow).
-      destruct (matches_matrix _ _ _ Hr1) as [m1 |] eqn : Hmatch1.
+      destruct (matches_matrix _ _ _ _ Hr1) as [m1 |] eqn : Hmatch1.
       * (*First pattern matches*) simpl.
         simpl in IHrhd1.
         (*Make everything in goal match IH, need to destruct, all other cases contradictions*)
@@ -1323,7 +1324,7 @@ Proof.
         }
         specialize (IHrhd2 Hp2'' Hdisj2 a Hr2 Htyrow).
         simpl hlist_tl in *.
-        destruct (matches_matrix _ _ _ Hr2) as [m2|] eqn : Hmatch2.
+        destruct (matches_matrix _ _ _ _ Hr2) as [m2|] eqn : Hmatch2.
         --(*Second pattern matches*)
           simpl in *.
           (*Still need info from first IH - cannot match*)
@@ -1434,8 +1435,8 @@ Qed.
 Theorem simplify_match_eq (t: term) (ts: list term) (tys: list vty) (P: pat_matrix)
   Htmty Hty1 Hty2
   (Hdisj: pat_matrix_vars_disj (t :: ts) P):
-  matches_matrix_tms (t :: ts) tys (simplify gen_let t P) Htmty Hty1 =
-  matches_matrix_tms (t :: ts) tys P Htmty Hty2.
+  matches_matrix_tms v (t :: ts) tys (simplify gen_let t P) Htmty Hty1 =
+  matches_matrix_tms v (t :: ts) tys P Htmty Hty2.
 Proof.
   revert Htmty Hty1 Hty2.
   induction P as [| rhd P' IH]; simpl; intros.
@@ -1454,7 +1455,7 @@ Proof.
     (*Bulk is [simplify_single_match_eq] can't rewrite bc not rewritable relation*)
     pose proof (simplify_single_match_eq t ts ty1 tys Htmty rhd Hp1 (Forall_inv (proj1 Hty2))
       (Forall_inv (proj2 Hty2)) (Forall2_inv_head Htmty) Hdisj1) as Hrelated.
-    destruct (matches_matrix _ _ _ Hp1) as [m1 |] eqn : Hmatch1; simpl in *.
+    destruct (matches_matrix _ _ _ _ Hp1) as [m1 |] eqn : Hmatch1; simpl in *.
     + (*If LHS matches, easy from lemma*)
       destruct (matches_row _ _ (fst rhd) _) as [m2|] eqn : Hmatch2; [|contradiction].
       subst. reflexivity.
@@ -2236,7 +2237,7 @@ Proof.
 Qed.
 
 (*Need a bunch of typing results for default and specialize*)
-Search dispatch1_opt Some.
+
 (*First, prove equivalent to dispatch*)
 Lemma dispatch1_equiv_default mk_let t types rl:
   simplified rl -> (*Makes things easier*)
@@ -2572,11 +2573,11 @@ Qed.
 (*Alternate definition of [term_rep] for [Tfun] - TODO: really need to
   simplify a lot of this stuff*)
 
-Lemma get_arg_list_eq (f: funsym) (ty: vty) (tys: list vty) (tms: list term) 
+Lemma get_arg_list_eq v (f: funsym) (ty: vty) (tys: list vty) (tms: list term) 
   (Hty: term_has_type gamma (Tfun f tys tms) ty) Hp Hlents Hlenvs Hall Htms constrs_len:
   get_arg_list pd vt tys tms (term_rep gamma_valid pd vt pf v) Hp Hlents Hlenvs Hall =
   cast_arg_list  (eq_sym (sym_sigma_args_map vt f tys constrs_len))
-    (terms_to_hlist tms ((ty_subst_list (s_params f) tys (s_args f))) Htms).
+    (terms_to_hlist v tms ((ty_subst_list (s_params f) tys (s_args f))) Htms).
 Proof.
   revert Hp Hlents Hlenvs Hall Htms.
   generalize dependent (eq_sym (sym_sigma_args_map vt f tys constrs_len)).
@@ -2600,11 +2601,11 @@ Proof.
     erewrite term_rep_irrel. reflexivity.
 Qed.
 
-Lemma fun_arg_list_eq (f: funsym) (ty: vty) (tys: list vty) (tms: list term) 
+Lemma fun_arg_list_eq (v: val_vars pd vt) (f: funsym) (ty: vty) (tys: list vty) (tms: list term) 
   (Hty: term_has_type gamma (Tfun f tys tms) ty) Htms constrs_len:
   fun_arg_list pd vt f tys tms (term_rep gamma_valid pd vt pf v) Hty =
   cast_arg_list  (eq_sym (sym_sigma_args_map vt f tys constrs_len))
-    (terms_to_hlist tms ((ty_subst_list (s_params f) tys (s_args f))) Htms).
+    (terms_to_hlist v tms ((ty_subst_list (s_params f) tys (s_args f))) Htms).
 Proof.
   unfold fun_arg_list.
   eapply get_arg_list_eq. apply Hty.
@@ -2614,13 +2615,14 @@ Qed.
   al = terms_to_hlist tms (with the appropriate cast)*)
 Lemma tfun_semantic_constr {m a c f} (m_in: mut_in_ctx m gamma)
   (a_in: adt_in_mut a m) (c_in : constr_in_adt c a) (f_in: constr_in_adt f a)
+  (v: val_vars pd vt)
   (args: list vty) (tms: list term)
   (al : arg_list (domain (dom_aux pd)) (sym_sigma_args c (map (v_subst vt) args)))
   (Htty : term_has_type gamma (Tfun f args tms) (vty_cons (adt_name a) args))
   (constrs_len : length (s_params f) = length args)
   (args_len : length args = length (m_params m))
   (Htms : Forall2 (term_has_type gamma) tms (ty_subst_list (s_params f) args (s_args f)))
-  (Hsem: tm_semantic_constr (Tfun f args tms) m_in a_in c_in args_len Htty al):
+  (Hsem: tm_semantic_constr v (Tfun f args tms) m_in a_in c_in args_len Htty al):
   exists Heq : c = f,
   al =
   cast_arg_list
@@ -2630,7 +2632,7 @@ Lemma tfun_semantic_constr {m a c f} (m_in: mut_in_ctx m gamma)
     (eq_sym Heq))
     (cast_arg_list
     (eq_sym (sym_sigma_args_map vt f args constrs_len))
-    (terms_to_hlist tms
+    (terms_to_hlist v tms
     (ty_subst_list (s_params f) args (s_args f)) Htms)).
 Proof.
   unfold tm_semantic_constr in Hsem.
@@ -2662,11 +2664,11 @@ Proof.
   apply (gamma_all_unif gamma_valid); auto.
 Qed.
 
-Lemma terms_to_hlist_app (tys1 tys2 : list vty) (tms1 tms2 : list term) Hty Hty1 Hty2:
+Lemma terms_to_hlist_app v (tys1 tys2 : list vty) (tms1 tms2 : list term) Hty Hty1 Hty2:
   length tys1 = length tms1 ->
-  terms_to_hlist (tms1 ++ tms2) (tys1 ++ tys2)  Hty =
+  terms_to_hlist v (tms1 ++ tms2) (tys1 ++ tys2)  Hty =
   cast_arg_list (eq_sym (map_app (v_subst vt) tys1 tys2))
-    (hlist_app _ _ _ (terms_to_hlist tms1 tys1 Hty1) (terms_to_hlist tms2 tys2 Hty2)).
+    (hlist_app _ _ _ (terms_to_hlist v tms1 tys1 Hty1) (terms_to_hlist v tms2 tys2 Hty2)).
 Proof.
   intros Hlen.
   generalize dependent (eq_sym (map_app (v_subst vt) tys1 tys2)).
@@ -2683,10 +2685,10 @@ Proof.
     simpl. apply term_rep_irrel.
 Qed.
 
-Lemma terms_to_hlist_rev tys tms Hty Htyrev:
-  terms_to_hlist (rev tms) (rev tys) Htyrev =
+Lemma terms_to_hlist_rev v tys tms Hty Htyrev:
+  terms_to_hlist v (rev tms) (rev tys) Htyrev =
   cast_arg_list (eq_sym (map_rev _ _))
-    (hlist_rev _ _ (terms_to_hlist tms tys Hty)).
+    (hlist_rev _ _ (terms_to_hlist v tms tys Hty)).
 Proof.
   generalize dependent (eq_sym (map_rev (v_subst vt) tys)).
   revert Hty Htyrev.
@@ -2714,7 +2716,7 @@ Qed.
 
 (*TODO: move - also proved in Denotational implicitly - move to sep lemma*)
 
-Lemma match_rep_irrel
+Lemma match_rep_irrel v
    (b1: bool) (ty: gen_type b1) ty1 
   (d: domain (dom_aux pd) (v_subst vt ty1)) pats Hpats1 Hpats2 Hpats3 Hpats4 :
 
@@ -2733,7 +2735,7 @@ Proof.
 Qed.  
 
 
-Lemma gen_match_rep (ty: gen_type b) (t: term) (ty1: vty) (pats: list (pattern * gen_term b)) 
+Lemma gen_match_rep v (ty: gen_type b) (t: term) (ty1: vty) (pats: list (pattern * gen_term b)) 
   (Hty: gen_typed b (gen_match t ty1 pats) ty) 
   (Hty1: term_has_type gamma t ty1)
   (Hpats1: Forall (fun x => pattern_has_type gamma (fst x) ty1) pats)
@@ -2748,7 +2750,6 @@ Proof.
     reflexivity.
 Qed.
 
-Search term_has_type Tmatch.
 (*TODO: fix [gen_typed] implicits*)
 Lemma gen_match_typed (tm: term) (ty1: vty) (ps: list (pattern * gen_term b))
   (ty2: gen_type b):
@@ -2994,7 +2995,6 @@ Proof.
 Qed.
 
 Require Import GenElts.
-Check compile.
 
 Lemma gen_getvars_let (v1: vsymbol) (tm: term) (a: gen_term b) (x: vsymbol):
   In x (gen_getvars (gen_let v1 tm a)) <->
@@ -3005,9 +3005,6 @@ Proof.
   split; intros; destruct_all; auto; destruct (vsymbol_eq_dec v1 x); auto.
 Qed.
 
-Print add.
-
-Check compile_fvs.
 (*A "map" version of "add" (asusming all options are Some) that is more pleasant to work with*)
 Definition add_map (getvars: gen_term b -> list vsymbol) (comp_cases : funsym -> list (term * vty) -> option (gen_term b)) (t: term) ty tl rl :=
 (fun (x: funsym * list vty * list pattern) =>
@@ -3077,15 +3074,395 @@ Proof.
     intros Hi. apply Hith; lia.
 Qed.
 
+Lemma match_rep_to_mx_type {ty pats}
+  (Hty1 : Forall (fun x : pattern * gen_term b => pattern_has_type gamma (fst x) ty) pats)
+  (Hty2 : Forall (fun x : pattern * gen_term b => @gen_typed gamma b (snd x) ret_ty) pats):
+  pat_matrix_typed [ty] (map (fun row : pattern * gen_term b => ([fst row], snd row)) pats).
+Proof.
+  unfold pat_matrix_typed. rewrite !Forall_map. simpl. split; auto.
+  revert Hty1. apply Forall_impl. intros a Ha.
+  unfold row_typed. constructor; auto.
+Qed.
+
+Lemma match_rep_matches_matrix v ty dom_d pats Hty1 Hty2 x:
+  matches_matrix v [ty] (HL_cons (domain (dom_aux pd)) (v_subst vt ty) _ dom_d (HL_nil _)) 
+    (map (fun row => ([fst row], snd row)) pats) (match_rep_to_mx_type Hty1 Hty2) = Some x ->
+  x = match_rep gamma_valid pd vt v (term_rep gamma_valid pd vt pf) (formula_rep gamma_valid pd vt pf) b
+    ret_ty ty dom_d pats Hty1 Hty2.
+Proof.
+  generalize dependent (match_rep_to_mx_type Hty1 Hty2). revert Hty1 Hty2.
+  induction pats as [|phd ptl IH]; simpl; intros Hty1 Hty2 Hty3.
+  - simp matches_matrix. discriminate.
+  - destruct phd as [p tm]. simp matches_matrix. simpl.
+    simp matches_row.
+    rewrite match_val_single_irrel with (Hval2:=Forall_inv Hty1). simpl hlist_hd. simpl.
+    destruct (match_val_single gamma_valid pd vt ty p (Forall_inv Hty1) dom_d); simpl; auto.
+    + inv Hsome. erewrite gen_rep_irrel. rewrite app_nil_r. reflexivity.
+    + apply IH.
+Qed.
+
+Lemma Forall_app_snd {A: Type} {P: A -> Prop} {l1 l2: list A}:
+  Forall P (l1 ++ l2) ->
+  Forall P l2.
+Proof.
+  rewrite Forall_app; intros [_ Hp]; auto.
+Qed.
+
+(*If everything in the first list does not match, we can ignore it in [match_rep]*)
+Lemma match_rep_app2 v ps1 ps2 ty dom_t Hty1 Hty2
+  (Hps1: forall p Hp, In p ps1 -> match_val_single gamma_valid pd vt ty (fst p) Hp dom_t = None):
+  match_rep gamma_valid pd vt v (term_rep gamma_valid pd vt pf) (formula_rep gamma_valid pd vt pf) b ret_ty ty dom_t 
+    (ps1 ++ ps2) Hty1 Hty2 =
+  match_rep gamma_valid pd vt v (term_rep gamma_valid pd vt pf) (formula_rep gamma_valid pd vt pf) b ret_ty ty dom_t 
+    ps2 (Forall_app_snd Hty1) (Forall_app_snd Hty2).
+Proof.
+  generalize dependent (Forall_app_snd Hty1). generalize dependent (Forall_app_snd Hty2). revert Hty1 Hty2.
+  induction ps1 as [|[p t] ptl IH]; simpl; auto.
+  - intros. apply match_rep_irrel.
+  - simpl in *. intros Hty1 Hty2 Hty3 Hty4. rewrite (Hps1 (p, t)); auto.
+Qed.
+
+Lemma constr_typed_row {c tys ps ty}:
+  pattern_has_type gamma (Pconstr c tys ps) ty ->
+  row_typed (ty_subst_list (s_params c) tys (s_args c)) ps.
+Proof.
+  intros Hp; inversion Hp; subst.
+  apply Forall2_nth.
+  unfold ty_subst_list; rewrite !map_length. split; auto. intros i d1 d2 Hi.
+  apply (H8 (nth i ps d1, (nth i (seq.map (ty_subst (s_params c) tys) (s_args c)) d2))).
+  rewrite in_combine_iff; [| rewrite map_length; lia].
+  exists i. split; auto. intros. f_equal; apply nth_indep; auto. rewrite map_length; lia.
+Qed.
+
+(*TODO: replace [prove_hyp]*)
+Ltac forward_gen H tac :=
+        match type of H with
+        | ?X -> _ => let H' := fresh in assert (H':X) ; [tac|specialize (H H'); clear H']
+        end.
+
+Tactic Notation "forward" constr(H) := forward_gen H ltac:(idtac).
+Tactic Notation "forward" constr(H) "by" tactic(tac) := forward_gen H tac.
 
 (*TODO go back and prove disj lemmas from before with names notion*)
 
+Lemma matches_row_allvars v tys1 (tys2 : list sort) (Heq: tys2 = map (v_subst vt) tys1) (*ugh*) (al: arg_list (domain (dom_aux pd)) tys2) vars Hvarsty:
+  exists l, matches_row tys1 (cast_arg_list Heq al) (map Pvar vars) Hvarsty = Some l /\
+  forall x, extend_val_with_list pd vt v l x = val_with_args pd vt v vars al x.
+Proof.
+  subst. unfold cast_arg_list. simpl.
+  generalize dependent Hvarsty.
+  revert vars.
+  induction tys1 as [| ty tys1 IH]; simpl; intros [| var1 vars] Hvarsty; try solve[inversion Hvarsty]; simpl.
+  - simp matches_row. exists nil. split; auto.
+  - simpl in *. simp matches_row. simpl.
+    rewrite (hlist_inv al). simpl.
+    specialize (IH (hlist_tl al) vars (Forall2_inv_tail Hvarsty)).
+    destruct IH as [l1 [Hl1 Hvals]]. rewrite Hl1. simpl.
+    eexists. split; [reflexivity|].
+    intros x.
+    inversion Hvarsty; subst. inversion H2; subst.
+    destruct (vsymbol_eq_dec var1 x); subst.
+    + destruct (vty_eq_dec _ _); [|contradiction].
+      unfold extend_val_with_list; simpl. destruct (vsymbol_eq_dec x x); [|contradiction]. simpl.
+      destruct (sort_eq_dec _ _); [|contradiction].
+      apply dom_cast_eq.
+    + (*Both cases identical*)
+      assert (extend_val_with_list pd vt v
+        ((var1, existT (domain (dom_aux pd)) (v_subst vt (snd var1)) (hlist_hd al)) :: l1) x =
+        val_with_args pd vt v vars (hlist_tl al) x).
+      {
+        unfold extend_val_with_list. simpl.
+        destruct (vsymbol_eq_dec x var1); subst; [contradiction|].
+        apply Hvals.
+      }
+      destruct (vty_eq_dec _ _); auto.
+Qed.
+
+(*TODO: should really simplify with this*)
+Definition match_rep' v (ty: gen_type b) ty1 dom_t :=
+  fix match_rep (ps: list (pattern * (gen_term b)))
+    (Hps: Forall (fun x => pattern_has_type gamma (fst x) ty1) ps)
+    (Hall: Forall (fun x => gen_typed b (snd x) ty) ps) :
+      (gen_ret pd vt b ty) :=
+    match ps as l' return
+      Forall (fun x => pattern_has_type gamma (fst x) ty1) l' ->
+      Forall (fun x => gen_typed b (snd x) ty) l' ->
+      gen_ret pd vt b ty with
+    | (p , dat) :: ptl => fun Hpats Hall =>
+      match (match_val_single gamma_valid pd vt ty1 p (Forall_inv Hpats) dom_t) with
+      | Some l => 
+          gen_rep (extend_val_with_list pd vt v l) ty dat (Forall_inv Hall)
+          (* match b return forall (ty: gen_type b) (dat: gen_term b), gen_typed b dat ty -> gen_ret b ty with
+          | true => fun ty dat Hty => term_rep (extend_val_with_list pd vt v l) dat ty Hty
+          | false => fun ty dat Hty => formula_rep (extend_val_with_list pd vt v l) dat Hty
+          end ty dat (Forall_inv Hall) *)
+      | None => match_rep ptl (Forall_inv_tail Hpats) (Forall_inv_tail Hall)
+      end
+    | _ => (*Will not reach if exhaustive*) fun _ _ => gen_default pd vt b ty 
+    end Hps Hall .
+
+Lemma match_rep_equiv v ty ty1 dom_t ps Hps Hall:
+  match_rep gamma_valid pd vt v (term_rep gamma_valid pd vt pf) (formula_rep gamma_valid pd vt pf) b ty ty1 dom_t ps Hps Hall =
+  match_rep' v ty ty1 dom_t ps Hps Hall.
+Proof.
+  reflexivity.
+Qed.
+
+Lemma combine_app {A B: Type} (l1 l2: list A) (l3 l4: list B):
+  length l1 = length l3 ->
+  combine (l1 ++ l2) (l3 ++ l4) = combine l1 l3 ++ combine l2 l4.
+Proof.
+  revert l3. induction l1 as [| h1 t1 IH]; simpl; intros [| h3 t3]; simpl; auto; try discriminate.
+  intros Hlen. f_equal. apply IH. lia.
+Qed.
+
+Lemma rev_combine {A B: Type} (l1 : list A) (l2: list B):
+  length l1 = length l2 ->
+  rev (combine l1 l2) = combine (rev l1) (rev l2).
+Proof.
+  revert l2. induction l1 as [|h1 t1 IH]; simpl; auto.
+  intros [| h2 t2] Hlen; simpl in *.
+  - rewrite combine_nil. reflexivity.
+  - rewrite combine_app.
+    + rewrite IH; auto.
+    + rewrite !rev_length; auto.
+Qed.
+
+(*Reversing hlists and valuations based on them*)
+
+Lemma rev_nth1 {A: Type} (l: list A) (d: A) (n: nat):
+  n < length l ->
+  nth n l d = nth (length l - S n) (rev l) d.
+Proof.
+  intros Hn.
+  rewrite <- (rev_involutive l) at 1.
+  rewrite rev_nth; rewrite rev_length; auto.
+Qed.
+Lemma hlist_app_hnth1 (dom: sort -> Set) tys1 tys2 (h1 : arg_list (domain dom) tys1) (h2: arg_list (domain dom) tys2) d1 d2 n:
+  n < length tys1 ->
+  exists Heq,
+  hnth n (hlist_app _ tys1 tys2 h1 h2) d1 d2 =
+  dom_cast _ Heq (hnth n h1 d1 d2).
+Proof.
+  revert n.
+  induction tys1 as [| ty1 tys IH]; simpl.
+  - intros n Hn. lia.
+  - intros [| n'] Hn.
+    + exists eq_refl. rewrite (hlist_inv h1). reflexivity.
+    + destruct (IH (hlist_tl h1) n' (ltac:(lia))) as [Heq Hnth].
+      exists Heq. rewrite (hlist_inv h1). simp hlist_app.
+Qed.
+
+Lemma hlist_app_hnth2 (dom: sort -> Set) tys1 tys2 (h1 : arg_list (domain dom) tys1) (h2: arg_list (domain dom) tys2) d1 d2 n:
+  n >= length tys1 ->
+  exists Heq,
+  hnth n (hlist_app _ tys1 tys2 h1 h2) d1 d2 =
+  dom_cast _ Heq (hnth (n - length tys1) h2 d1 d2).
+Proof.
+  revert n.
+  induction tys1; simpl.
+  - intros n Hn. rewrite Nat.sub_0_r. exists eq_refl. reflexivity.
+  - intros n Hn.
+    remember (n - S (Datatypes.length tys1)) as j eqn : Hj.
+    destruct j as [| j']; simpl.
+    + assert (n = S (length tys1)) by lia. subst. 
+      destruct (IHtys1 (hlist_tl h1) (length tys1) (ltac:(lia))) as [Heq1 IH].
+      revert Heq1 IH. rewrite Nat.sub_diag. intros. exists Heq1.
+      rewrite (hlist_inv h1). simp hlist_app.
+    + (*assert (Hngt: n > S (length tys1)) by lia.*) destruct n as [| n']; [discriminate|].
+      assert (Hn': n' >= length tys1) by lia.
+      destruct (IHtys1 (hlist_tl h1) n' Hn') as [Heq1 IH].
+      revert Heq1 IH.
+      replace (n' - length tys1) with (S j') by lia.
+      intros. exists Heq1. rewrite (hlist_inv h1). simp hlist_app.
+Qed.
+
+Lemma hlist_rev_hnth (dom: sort -> Set) i tys (h: arg_list (domain dom) tys) d1 d2:
+  i < length tys ->
+  exists Heq,
+  hnth i (hlist_rev (domain dom) tys h) d1 d2 =
+  dom_cast dom Heq (hnth (length tys - S i) h d1 d2).
+Proof.
+  revert i. induction tys as [| ty1 tys IH]; simpl.
+  - intros i Hi; lia.
+  - intros i Hi. remember (length tys - i) as j eqn : Hj. 
+    destruct j as [| j'].
+    + assert (i = length tys) by lia. subst.
+      (*Use app2 lemma*)
+      destruct (hlist_app_hnth2 dom _ _ (hlist_rev (domain dom) tys (hlist_tl h)) 
+        (HL_cons (domain dom) ty1 [] (hlist_hd h) (HL_nil (domain dom))) d1 d2 (length tys)
+        (ltac:(rewrite rev_length; lia))) as [Heq1 Happ].
+      revert Heq1 Happ. rewrite rev_length, Nat.sub_diag. simpl. intros.
+      exists Heq1. rewrite (hlist_inv h). simp hlist_rev.
+    + (*Need IH and app1*)
+      assert (Heq: nth j' tys d1 = nth i (rev tys ++ [ty1]) d1).
+      {
+        rewrite app_nth1; [|rewrite rev_length; lia].
+        rewrite rev_nth; try lia. 
+        f_equal. lia.
+      }
+      exists Heq.
+      rewrite (hlist_inv h).
+      simp hlist_rev.
+     (*use app1 lemma*)
+      destruct (hlist_app_hnth1 dom _ _ (hlist_rev (domain dom) tys (hlist_tl h)) 
+        (HL_cons (domain dom) ty1 [] (hlist_hd h) (HL_nil (domain dom))) d1 d2 i
+        (ltac:(rewrite rev_length; lia))) as [Heq1 Happ].
+      rewrite Happ.
+      destruct (IH (hlist_tl h) i ltac:(lia)) as [Heq2 IH2].
+      rewrite IH2. rewrite !dom_cast_compose.
+      simpl. generalize dependent (eq_trans Heq2 Heq1).
+      replace (length tys - S i) with j' by lia. intros.
+      apply dom_cast_eq.
+Qed.
+
+Lemma sub_nmn n m:
+  m <= n ->
+  n - (n - m) = m.
+Proof.
+  intros. lia.
+Qed.
+
+Lemma val_with_args_rev v vars {srts} (al: arg_list (domain (dom_aux pd)) srts):
+  NoDup vars ->
+  map (v_subst vt) (map snd vars) = srts -> 
+  forall x, val_with_args pd vt v (rev vars) (hlist_rev (domain (dom_aux pd)) _ al) x =
+    val_with_args pd vt v vars al x.
+Proof.
+  rewrite map_map. intros Hnodup Hsrts x; subst.
+  set (srts:=(map (fun x0 : string * vty => v_subst vt (snd x0)) vars)). 
+  destruct (in_dec vsymbol_eq_dec x vars) as [Hin | Hnotin].
+  - destruct (In_nth _ _ vs_d Hin) as [i [Hi Hx]].
+    assert (Hnth: nth i srts s_int = v_subst vt (snd x)).
+    {
+      unfold srts. rewrite map_nth_inbound with (d2:=vs_d); subst; auto.
+    }
+    rewrite (val_with_args_in') with (i:=i)(Heq:=Hnth); auto.
+    2: unfold srts; rewrite map_length; reflexivity.
+    assert (Hx': nth ((length vars - S i )) (rev vars) vs_d  = x). {
+      subst. symmetry. rewrite rev_nth1; auto.
+    }
+    assert (Hnth': nth (length vars - S i) (rev srts) s_int = v_subst vt (snd x)).
+    {
+      rewrite <- Hx. rewrite (rev_nth1 vars); auto.
+      unfold srts. rewrite <- map_rev.
+      rewrite map_nth_inbound with (d2:=vs_d); auto. rewrite rev_length.
+      destruct vars; simpl in *; try lia.
+    }
+    rewrite (val_with_args_in') with (i:=(length vars - S i))(Heq:=Hnth'); auto;
+    try rewrite !rev_length; auto; [| apply NoDup_rev; auto|
+      unfold srts; rewrite map_length; auto |destruct vars; simpl in *; lia].
+    destruct (hlist_rev_hnth _ (length vars - S i) srts al s_int (dom_int pd)
+      ltac:(unfold srts; rewrite map_length; destruct vars; simpl in *; lia)) as [Heq Hrev].
+    rewrite Hrev. rewrite dom_cast_compose.
+    generalize dependent (eq_trans Heq Hnth').
+    replace (Datatypes.length srts - S (Datatypes.length vars - S i)) with i.
+    2: { unfold srts; rewrite map_length. destruct vars; simpl in *; try lia.
+      symmetry; apply sub_nmn. clear -Hi. apply Arith_prebase.lt_n_Sm_le in Hi. apply Hi. 
+      (*Why doesn't lia work*) 
+    }
+    intros e. apply dom_cast_eq.
+  - rewrite !val_with_args_notin; auto. rewrite <- List.in_rev. auto.
+Qed.
+
+Lemma terms_to_hlist_change_vv v1 v2 ts tys Hall:
+  (forall t x, In t ts -> In x (tm_fv t) -> v1 x = v2 x) ->
+  terms_to_hlist v1 ts tys Hall = terms_to_hlist v2 ts tys Hall.
+Proof.
+  intros Halleq. generalize dependent tys. induction ts as [| t ts IH]; intros [| ty1 tys] Hall;
+  try solve[inversion Hall]; auto.
+  simp terms_to_hlist. simpl in *.
+  rewrite tm_change_vv with (v2:=v2) by (intros x Hinx; apply (Halleq t); auto).
+  rewrite IH; auto.
+  intros t1 x Hint1 Hinx; apply (Halleq t1 x); auto.
+Qed.
+
+
+Lemma dom_cast_refl {v: sort} {dom} (Heq : v= v) al:
+  dom_cast dom Heq al = al.
+Proof.
+  assert (Heq = eq_refl) by (apply UIP_dec, sort_eq_dec). subst.
+  reflexivity.
+Qed.
+ 
+Lemma terms_to_hlist_val_with_args v vars tys {srts1} (Heq: srts1 = map (v_subst vt) tys) al Htys (Hn: NoDup vars):
+  terms_to_hlist (val_with_args pd vt v vars al) (map Tvar vars) tys Htys = cast_arg_list Heq al.
+Proof.
+  subst. unfold cast_arg_list; simpl.
+  (*TODO: regular induction will likely not work - maybe have nth property for val_with_args or something?*)
+  generalize dependent tys. induction vars as [| v1 vars IH]; intros [| ty1 tys]; simpl; intros
+  al Htys; try solve[inversion Htys]; auto.
+  - simp terms_to_hlist. symmetry. apply hlist_nil.
+  - simp terms_to_hlist. simpl. simp term_rep. simpl.
+    unfold var_to_dom. rewrite (hlist_inv al). simpl.
+    inversion Htys; subst. inversion H2; subst.
+    destruct (vty_eq_dec _ _); [|contradiction].
+    destruct (vsymbol_eq_dec _ _); [| contradiction].
+    inversion Hn; subst; auto.
+    erewrite terms_to_hlist_change_vv with (v2:=val_with_args pd vt v vars (hlist_tl al)).
+    + rewrite IH; auto. f_equal. rewrite !dom_cast_compose. apply dom_cast_refl.
+    + intros t x Hint Hinx.
+      rewrite in_map_iff in Hint. destruct Hint as [y [Ht Hiny]]; subst.
+      destruct Hinx as [Hx | []]; subst.
+      destruct (vsymbol_eq_dec v1 x); subst; [contradiction|].
+      destruct (vty_eq_dec _ _); auto.
+Qed.
+
+
+Lemma gen_fv_getvars t: forall x, In x (gen_fv t) -> In x (gen_getvars t).
+Proof.
+  intros x. unfold gen_fv, gen_getvars. destruct b; rewrite in_app_iff; auto.
+Qed.
+
+(*Last thing (I think) we need: we can change the valuation for [matches_matrix] as long
+  as they agree on all free variables in the matrix actions*)
+Lemma matches_matrix_change_vv (v1 v2: val_vars pd vt) tys al P Hp
+  (Heq: forall x row, In row P -> In x (gen_getvars (snd row)) -> v1 x = v2 x):
+  matches_matrix v1 tys al P Hp = matches_matrix v2 tys al P Hp.
+Proof.
+  revert Hp. induction P; intros Hp; simp matches_matrix; auto.
+  simpl in *.
+  destruct (matches_row _ _ _ _); auto.
+  - f_equal. apply gen_rep_change_vv.
+    intros x Hinx. simpl in *.
+    assert (Hv12: v1 x = v2 x). {
+      apply (Heq x a); auto. apply gen_fv_getvars; auto.
+    }
+    unfold extend_val_with_list.
+    destruct (get_assoc_list vsymbol_eq_dec l x); auto.
+    destruct (sort_eq_dec _ _); auto.
+  - apply IHP; auto. intros x row Hinrow Hinx; apply (Heq x row); auto.
+Qed.
+
+
+(*We need a lemma: verything in gen_getvars of a row in (spec rl c) is in
+  gen_getvars of a row in rl*)
+Lemma gen_getvars_spec {rl c row x}:
+  In row (spec rl c) -> In x (gen_getvars (snd row)) ->
+  exists row1, In row1 rl /\ In x (gen_getvars (snd row1)).
+Proof.
+  induction rl as [| rhd rtl IH]; simpl; [contradiction|].
+  destruct rhd as [ps a]; simpl in *.
+  destruct ps as [| phd ptl]; auto.
+  - intros Hinr Hinx. destruct (IH Hinr Hinx) as [r1 [Hinr1 Hinx1]].
+    exists r1. auto.
+  - destruct phd; auto; try solve[intros Hinr Hinx; destruct (IH Hinr Hinx) as [r1 [Hinr1 Hinx1]];
+    exists r1; auto].
+    + destruct (funsym_eqb_spec f c); subst; 
+      [|solve[intros Hinr Hinx; destruct (IH Hinr Hinx) as [r1 [Hinr1 Hinx1]]; exists r1; auto]].
+      simpl. intros [Hr | Hinr] Hinx;
+      [|solve[destruct (IH Hinr Hinx) as [r1 [Hinr1 Hinx1]]; exists r1; auto]].
+      subst. simpl in Hinx. exists ((Pconstr c l l0 :: ptl, a)). auto.
+    + simpl. intros [Hr | Hinr] Hinx; (*WAY too repetitive*)
+      [|solve[destruct (IH Hinr Hinx) as [r1 [Hinr1 Hinx1]]; exists r1; auto]].
+      subst. simpl in Hinx. exists (Pwild :: ptl, a); auto.
+Qed.
 
 (*Our main correctness theorem: [compile is_constr gen_let gen_case tms tys P] =
   Some t iff [matches_matrix_tms tms tys P] = Some d and
   d = term_rep v t*)
 (*Nope, that is troo strong. Can only prove compile = Some t -> matches_matrix = Some (term_rep)*)
-Theorem compile_correct (tms: list (term * vty)) 
+Theorem compile_correct (v: val_vars pd vt) (tms: list (term * vty)) 
   (*(tms: list term) (tys: list vty)*) (P: pat_matrix) 
   (Htys: Forall2 (term_has_type gamma) (map fst tms) (map snd tms))
   (Hp: pat_matrix_typed (map snd tms) P)
@@ -3093,21 +3470,21 @@ Theorem compile_correct (tms: list (term * vty))
   t :
   compile get_constructors gen_match gen_let gen_getvars tms P = Some t ->
   exists (Hty : gen_typed b t ret_ty),  
-    matches_matrix_tms (map fst tms) (map snd tms) P Htys Hp = Some (gen_rep v ret_ty t Hty).
+    matches_matrix_tms v (map fst tms) (map snd tms) P Htys Hp = Some (gen_rep v ret_ty t Hty).
 Proof.
-  revert t.
+  revert v t. (*It is very important that we generalize v*)
   apply (compile_ind get_constructors gen_match gen_let gen_getvars gen_getvars_let
     (fun tms P o =>
       forall (Hdisj: pat_matrix_var_names_disj (map fst tms) P) Htys Hp,
-      forall t, o = Some t ->
+      forall v t, o = Some t ->
       exists Hty : gen_typed b t ret_ty,
-      matches_matrix_tms (map fst tms) (map snd tms) P Htys
+      matches_matrix_tms v (map fst tms) (map snd tms) P Htys
         Hp =
       Some (gen_rep v ret_ty t Hty))); auto; clear.
   - (*extensionality*)
-    intros t ty tms rl Hopt Hdisj Htys Hp. simpl in *.
+    intros t ty tms rl Hopt Hdisj Htys Hp v. simpl in *.
     (*Proved hyps for Hopt*)
-    specialize (Hopt (simplify_disj' _ _ _ _ Hdisj) Htys (simplify_typed (Forall2_inv_head Htys) Hp)).
+    specialize (Hopt (simplify_disj' _ _ _ _ Hdisj) Htys (simplify_typed (Forall2_inv_head Htys) Hp) v).
     rewrite <- compile_simplify in Hopt.
     intros tm Hcomp. apply Hopt in Hcomp.
     destruct Hcomp as [Hty Hmatch].
@@ -3116,7 +3493,7 @@ Proof.
     apply pat_matrix_var_names_vars_disj; assumption.
     apply gen_getvars_let.
   - (*P is nil*) intros. discriminate.
-  - (*P not nil, ts is nil*) intros ps a P' Hdisj Htys Hp.
+  - (*P not nil, ts is nil*) intros ps a P' Hdisj Htys Hp v.
     simpl in *. unfold matches_matrix_tms. simp terms_to_hlist. simp matches_matrix. simpl.
     intros tm. inv Hsome.
     destruct ps as [| phd ptl].
@@ -3130,7 +3507,7 @@ Proof.
     + unfold populate_all in Hpop.
       destruct (get_heads rl) as [l|] eqn : Hget.
       * (*Case 1: [get_heads] is Some, [fold_left_opt] is None*)
-        simpl. intros Htyps Hp.
+        simpl. intros Htyps Hp v.
         apply fold_left_opt_none in Hpop.
         destruct Hpop as [ps1 [p [ps2 [acc1 [Hl [Hfold Hpop]]]]]].
         subst. apply populate_none_simpl in Hpop.
@@ -3170,7 +3547,7 @@ Proof.
       discriminate.
   - (*The interesting case*)
     intros t ty tl rl css is_constr Hsimp types_cslist Hpop types cslist casewild
-      Hdisp cases wilds IH Hdisj Htmtys Hp. simpl in Htmtys.
+      Hdisp cases wilds IH Hdisj Htmtys Hp v. simpl in Htmtys.
     set (comp_wilds := fun (_: unit) => compile get_constructors gen_match gen_let gen_getvars tl
       wilds) in *.
     set (comp_cases := fun cs (al : list (term * vty)) =>
@@ -3240,7 +3617,7 @@ Proof.
         }
         apply is_vty_adt_some in Hisadt.
         destruct Hisadt as [Hty [a_in m_in]]; subst.
-        destruct (find_semantic_constr t m_in a_in args_len (Forall2_inv_head Htmtys))
+        destruct (find_semantic_constr v t m_in a_in args_len (Forall2_inv_head Htmtys))
         as [f [[c_in al] Hrep]].
         simpl in Hrep.
         assert (Hnotin: constr_at_head_ex f rl = false).
@@ -3258,7 +3635,7 @@ Proof.
         {
           rewrite args_len. f_equal. apply (adt_constr_params gamma_valid m_in a_in c_in).
         }
-        rewrite (default_match_eq _ m_in a_in c_in args_len constrs_len (Forall2_inv_head Htmtys) al Hrep _ 
+        rewrite (default_match_eq v _ m_in a_in c_in args_len constrs_len (Forall2_inv_head Htmtys) al Hrep _ 
           _ Htmtys rl Hsimp Hnotin Hp (default_typed Hp)).
         (*And use IH about wilds*)
         revert IHwilds.
@@ -3266,10 +3643,9 @@ Proof.
         generalize dependent Htywild.
         rewrite Hwilds.
         intros Htywild.
-        rewrite matches_matrix_irrel with (Hty2:=(default_typed Hp)).
-        auto.
+        setoid_rewrite matches_matrix_irrel with (Hty2:=(default_typed Hp)). auto.
       - (*Case 2: not ADT at all. Similar but use second default lemma*)
-        rewrite (default_match_eq_nonadt _ _ (Forall2_inv_head Htmtys) Hisadt _ _ Htmtys
+        rewrite (default_match_eq_nonadt _ _ _ (Forall2_inv_head Htmtys) Hisadt _ _ Htmtys
           rl Hsimp Hp (default_typed Hp)).
         revert IHwilds.
         unfold comp_wilds.
@@ -3277,7 +3653,7 @@ Proof.
         generalize dependent Htywild.
         rewrite Hwilds.
         intros Htywild.
-        rewrite matches_matrix_irrel with (Hty2:=(default_typed Hp)).
+        setoid_rewrite matches_matrix_irrel with (Hty2:=(default_typed Hp)).
         auto.
     }
     (*Now that we know that [types] is non-empty, we know that there is at least
@@ -3305,9 +3681,9 @@ Proof.
     destruct Hdisp as [Hnotnull Hdisp].
     
     (*TODO: prove [comp_full case]*)
-    assert (Hfull: forall t1, comp_full tt = Some t1 ->
+    assert (Hfull: forall t1, comp_full tt = Some t1 -> (*TODO: forall v?*)
       exists Hty : gen_typed b t1 ret_ty,
-      matches_matrix_tms (t :: map fst tl)
+      matches_matrix_tms v (t :: map fst tl)
         (ty :: map snd tl) rl Htmtys Hp =
       Some (gen_rep v ret_ty t1 Hty)). 
     {
@@ -3386,173 +3762,203 @@ Proof.
         rewrite <- (adt_constr_params gamma_valid m_in a_in c_in1).
         rewrite map_ty_subst_var; auto. apply s_params_Nodup.
       }
+      assert (Hcallval: forall {c tys ps},
+        In (c, tys, ps) cslist ->
+        Forall (valid_type gamma) (map (ty_subst (s_params c) tys) (s_args c))). 
+      {
+        intros c tys ps Hin.
+        specialize (Hclist_types _ _ _ Hin).
+        inversion Hclist_types; subst. rewrite Forall_nth. intros i d. rewrite map_length; intros Hi.
+        apply pat_has_type_valid with (p:=nth i ps Pwild).
+        specialize (H9 (nth i ps Pwild, nth i 
+          (map (ty_subst (s_params c) tys) (s_args c)) d)).
+        apply H9. rewrite in_combine_iff; [| rewrite map_length; auto].
+        exists i. split; [lia|]. intros d1 d2.
+        f_equal; apply nth_indep; [| rewrite map_length]; lia.
+      }
+      (*Instantiate IHconstrs for each possible constructor so that we don't need to
+        do it multiple times*)
+      assert (IHconstrs' : forall (c: funsym) tys1 ps1,
+        In (c, tys1, ps1) cslist ->
+        let ty := vty_cons (adt_name a) args in
+        let new_typs := (map (ty_subst (s_params c) tys1) (s_args c)) in
+        let new_vars :=(combine (gen_strs (Datatypes.length ps1) (compile_fvs gen_getvars ((t, ty) :: tl) rl)) new_typs) in
+        forall (v: val_vars pd vt) (t: gen_term b),
+            compile get_constructors gen_match gen_let gen_getvars (rev (combine (map Tvar new_vars) new_typs) ++ tl) (spec rl c) = Some t ->
+        (*Exists so we only have to prove once*)
+        exists (Htys: Forall2 (term_has_type gamma) ((rev (map Tvar new_vars)) ++ map fst tl)
+          (rev new_typs ++ map snd tl))
+          (Hp: pat_matrix_typed (rev new_typs ++ map snd tl) (spec rl c))
+          (Hty: gen_typed b t ret_ty),
+             matches_matrix_tms v ((rev (map Tvar new_vars)) ++ map fst tl) (rev new_typs ++ map snd tl) (spec rl c) Htys Hp =
+             Some (gen_rep v ret_ty t Hty)).
+      {
+        intros c tys1 ps1 Hinc ty new_typs new_vars v1 t1 Hcompile.
+        specialize (IHconstrs c (combine (map Tvar new_vars) new_typs) (spec rl c)).
+        forward IHconstrs.
+        { unfold cases. eapply dispatch1_equiv_spec; eauto.
+          rewrite amap_mem_spec.
+          replace (amap_get funsym_eq_dec (fst types_cslist) c) with (Some ps1); auto.
+          symmetry. apply (proj2 (populate_all_fst_snd_full _ _ _ Hsimp Hpop)).
+          exists tys1; apply Hinc.
+        }
+        assert (Hvarstyps: length new_vars = length new_typs). {
+          unfold new_vars. rewrite combine_length, gen_strs_length.
+          assert (length ps1 = length new_typs); try lia.
+          unfold new_typs. rewrite map_length; auto. 
+          specialize (Hclist_types _ _ _ Hinc); inversion Hclist_types; auto.
+        }
+        revert IHconstrs.
+        (*Simplify lists in IHConstrs*)
+        rewrite !rev_combine, !map_app, !map_fst_combine;
+        try solve[try rewrite !rev_length; try rewrite !map_length; auto].
+        rewrite !map_snd_combine; [| rewrite !rev_length, !map_length; auto].
+        intros IHconstrs.
+        assert (Hlen: length ps1 = length (s_args c)). {
+          specialize (Hclist_types _ _ _ Hinc); inversion Hclist_types; subst; auto.
+        }
+        forward IHconstrs.
+        {
+          (*Prove disjoint*) unfold vsymbol in *.
+          (*Different [disj] lemma*)
+          eapply disj_spec1. apply Hdisj.
+          revert Hdisj; clear -Hlen. (*need to know length ps = length (s_argcs c)*) simpl. 
+          unfold pat_matrix_var_names_disj; intros Hdisj.
+          intros x [Hinx1 Hinx2].
+          rewrite in_map_big_union with (eq_dec1:=string_dec)  in Hinx1 .
+          simpl_set. destruct Hinx1 as [t1 [Hint1 Hinx1]]. rewrite <- List.in_rev in Hint1.
+          rewrite in_map_iff in Hint1. destruct Hint1 as [[n ty1] [Ht1 Hiny]]; subst. simpl in Hinx1.
+          destruct Hinx1 as [Hx | []]; subst.
+          unfold new_vars, new_typs in Hiny.
+          (*Contradiction, x cannot be in names of rl and in [gen_strs]*)
+          rewrite in_combine_iff in Hiny; rewrite gen_strs_length in *; [| rewrite map_length; auto] .
+          destruct Hiny as [i [Hi Hxty]]. specialize (Hxty ""%string vty_int).
+          inversion Hxty.
+          assert (Hnotin: ~ In x (map fst (compile_fvs gen_getvars ((t, ty) :: tl) rl))). {
+            apply (gen_strs_notin' (length ps1)). subst. apply nth_In. rewrite gen_strs_length; auto. }
+          apply Hnotin. unfold compile_fvs. rewrite !map_app. rewrite !in_app_iff; auto.
+        }
+        assert (Htys : Forall2 (term_has_type gamma)
+          (rev (map Tvar new_vars) ++ map fst tl)
+          (rev new_typs ++ map snd tl)).
+        {
+          (*Prove terms are typed correctly*) 
+          unfold vsymbol in *.
+          apply Forall2_app.
+          2: { inversion Htmtys; auto. }
+          apply Forall2_rev.
+          (*Prove all variables have correct type*)
+          apply Forall2_nth; rewrite map_length; split; [auto|].
+          intros i d1 d2 Hi.
+          assert (Hi': i < length (s_args c)) by
+            (rewrite Hvarstyps in Hi; unfold new_typs in Hi; rewrite map_length in Hi; exact Hi).
+          rewrite map_nth_inbound with (d2:=(""%string, vty_int)) by auto. 
+          apply T_Var'.
+          -- (*We proved [valid_type] already*)
+            specialize (Hcallval _ _ _ Hinc).
+            rewrite Forall_forall in Hcallval; apply Hcallval, nth_In. rewrite map_length; assumption.
+          -- unfold new_vars, new_typs. rewrite combine_nth; [| rewrite gen_strs_length, map_length; lia].
+              simpl. apply nth_indep; rewrite map_length; assumption.
+        }
+        assert (Hp' : pat_matrix_typed (rev new_typs ++ map snd tl) (spec rl c)).
+        {
+          specialize (Hcargs _ _ _ Hinc). destruct Hcargs as [c_in Htys1]; subst.
+          apply (spec_typed_adt m_in a_in); auto.
+        }
+        (*Now we use IH*)
+        exists Htys. exists Hp'. apply (IHconstrs Htys Hp' v1 t1).
+        rewrite <- Hcompile. f_equal. rewrite rev_combine. reflexivity.
+        rewrite map_length. assumption.
+      }
+      (*The stronger typing result we need in multiple places:*)
+      (*Now we use previous result about [pats]*)
+      assert (Hallty: Forall (fun x =>
+        pattern_has_type gamma (fst x) (vty_cons (adt_name a) args) /\
+        forall y, snd x = Some y -> @gen_typed gamma b y ret_ty)
+        (map (fun x => (fst x, Some (snd x))) pats)).
+      {
+        rewrite <- Hpats.
+        rewrite Forall_app. split.
+        - (*Prove constrs*)
+          rewrite Forall_forall.
+          intros x. rewrite <- List.in_rev, in_map_iff.
+          intros [y [Hx Hiny]]; subst. simpl. 
+          destruct y as [[c tys] ps]; simpl.
+          unfold rev_map.
+          specialize (Hclist_types _ _ _ Hiny).
+          split.
+          + (*Prove pattern has correct type*)
+            inversion Hclist_types; subst.
+            apply P_Constr'; auto.
+            2: { unfold rev_map. (*prove disj by uniqueness of generated variable names*)
+              rewrite !map_rev, !rev_involutive, !map_length, 
+              !combine_length, !gen_strs_length,
+              !map_length, H6, Nat.min_id.
+              intros i j d Hi Hj Hij.
+              rewrite !map_nth_inbound with (d2:=(""%string, vty_int));
+              try solve [rewrite combine_length, gen_strs_length,
+                map_length; lia].
+              simpl.
+              rewrite !combine_nth; try solve[rewrite gen_strs_length, map_length; auto].
+              intros x. simpl. intros [[Hx1 | []] [Hx2 | []]]; subst.
+              inversion Hx2; subst.
+              pose proof (gen_strs_nodup (length (s_args c)) (compile_fvs gen_getvars ((t, sigma (f_ret c)) :: tl) rl)) as Hnodup.
+              rewrite NoDup_nth in Hnodup.
+              rewrite gen_strs_length in Hnodup.
+              specialize (Hnodup i j Hi Hj (eq_sym H0)). subst; contradiction.
+            }
+            unfold rev_map. rewrite !map_rev, !rev_involutive. 
+            (*Prove all variables have correct type: not too hard - TODO maybe factor out*)
+            apply Forall2_nth; unfold ty_subst_list; rewrite !map_length, combine_length,
+               gen_strs_length, map_length, H6, Nat.min_id. split; [reflexivity|].
+            intros i d1 d2 Hi.
+            rewrite !map_nth_inbound with (d2:=(""%string, vty_int));
+              [| rewrite combine_length, gen_strs_length, map_length; lia].
+            apply P_Var'.
+            * (*We proved valid above*)
+              specialize (Hcallval _ _ _ Hiny); rewrite Forall_forall in Hcallval; apply Hcallval.
+              apply nth_In.
+              rewrite map_length; assumption.
+            * rewrite combine_nth; auto.
+              -- simpl. apply nth_indep. rewrite map_length; auto.
+              -- erewrite gen_strs_length, map_length; auto.
+          + (*Now prove that pattern row action is valid - follows from IH, we proved above*)
+            specialize (IHconstrs' c tys ps Hiny).
+            inversion Hclist_types; subst.
+            intros y. unfold comp_cases, Pattern.comp_cases.
+            destruct (amap_get funsym_eq_dec cases c) as [c_spec|] eqn : Hccase;
+            [|discriminate].
+            unfold cases in Hccase.
+            assert (Hget:=Hccase).
+            erewrite (dispatch1_equiv_spec _ _ _ Hsimp Hpop Hp) in Hccase.
+            2: { eapply constrs_in_types. apply Hccase. apply Hpop. }
+            revert Hccase; inv Hsome.
+            unfold rev_map. rewrite !map_rev, !rev_involutive, !map_snd_combine;
+              [|rewrite gen_strs_length, map_length; lia].
+            intros Hcompile.
+            specialize (IHconstrs' v _ Hcompile).
+            destruct IHconstrs' as [Htys [Hp' [Hty Heq]]].
+            apply Hty.
+        - (*Prove typing for base - easier*)
+          rewrite Forall_forall. intros x. destruct no_wilds eqn : Hnowilds; [contradiction|].
+          intros [Hx | []]; subst. simpl.
+          split.
+          2: { intros y Hy. specialize (IHwilds v y Hy).
+              destruct IHwilds as [Hty ?]; exact Hty.  }
+          (*Idea: some pattern has the type we need, since cslist is not empty*)
+          rewrite amap_not_empty_exists in Htypesemp. destruct Htypesemp as  [fs [pats1 Hget]].
+          unfold types in Hget.
+          rewrite (proj2 (populate_all_fst_snd_full _ _ _ Hsimp Hpop)) in Hget.
+          destruct Hget as [tys1 Hinc].
+          apply Hclist_types in Hinc. constructor; auto. eapply pat_has_type_valid. apply Hinc.
+      }
       (*Prove typing*)
       assert (Htyall: @gen_typed gamma b
         (gen_match t (vty_cons (adt_name a) args) pats) ret_ty).
       {
         apply gen_match_typed; auto.
         - clear -Htmtys. apply Forall2_inv_head in Htmtys; auto.
-        - (*Now we use previous result about [pats]*)
-          assert (Hallty: Forall (fun x =>
-            pattern_has_type gamma (fst x) (vty_cons (adt_name a) args) /\
-            forall y, snd x = Some y -> @gen_typed gamma b y ret_ty)
-            (map (fun x => (fst x, Some (snd x))) pats)).
-          {
-            rewrite <- Hpats.
-            rewrite Forall_app. split.
-            - (*Prove constrs*)
-              rewrite Forall_forall.
-              intros x. rewrite <- List.in_rev, in_map_iff.
-              intros [y [Hx Hiny]]; subst. simpl. Print comp_cases.
-              destruct y as [[c tys] ps]; simpl.
-              unfold rev_map.
-              (* rewrite !map_rev, !rev_involutive. *)
-              specialize (Hclist_types _ _ _ Hiny).
-              (*Useful in multiple places:*)
-              assert (Hallval: Forall (valid_type gamma) (map (ty_subst (s_params c) tys) (s_args c))). {
-                inversion Hclist_types; subst. rewrite Forall_nth. intros i d. rewrite map_length; intros Hi.
-                apply pat_has_type_valid with (p:=nth i ps Pwild).
-                specialize (H9 (nth i ps Pwild, nth i 
-                  (map (ty_subst (s_params c) tys) (s_args c)) d)).
-                apply H9. rewrite in_combine_iff; [| rewrite map_length; auto].
-                exists i. split; [lia|]. intros d1 d2.
-                f_equal; apply nth_indep; [| rewrite map_length]; lia.
-              }
-              split.
-              + (*Prove pattern has correct type*)
-                inversion Hclist_types; subst.
-                apply P_Constr'; auto.
-                2: { unfold rev_map. (*prove disj by uniqueness of generated variable names*)
-                  rewrite !map_rev, !rev_involutive, !map_length, 
-                  !combine_length, !gen_strs_length,
-                  !map_length, H6, Nat.min_id.
-                  intros i j d Hi Hj Hij.
-                  rewrite !map_nth_inbound with (d2:=(""%string, vty_int));
-                  try solve [rewrite combine_length, gen_strs_length,
-                    map_length; lia].
-                  simpl.
-                  rewrite !combine_nth; try solve[rewrite gen_strs_length, map_length; auto].
-                  intros x. simpl. intros [[Hx1 | []] [Hx2 | []]]; subst.
-                  inversion Hx2; subst.
-                  pose proof (gen_strs_nodup (length (s_args c)) (compile_fvs gen_getvars ((t, sigma (f_ret c)) :: tl) rl)) as Hnodup.
-                  rewrite NoDup_nth in Hnodup.
-                  rewrite gen_strs_length in Hnodup.
-                  specialize (Hnodup i j Hi Hj (eq_sym H0)). subst; contradiction.
-                }
-                unfold rev_map. rewrite !map_rev, !rev_involutive. 
-                (*Prove all variables have correct type: not too hard - TODO maybe factor out*)
-                apply Forall2_nth; unfold ty_subst_list; rewrite !map_length, combine_length,
-                   gen_strs_length, map_length, H6, Nat.min_id. split; [reflexivity|].
-                intros i d1 d2 Hi.
-                rewrite !map_nth_inbound with (d2:=(""%string, vty_int));
-                  [| rewrite combine_length, gen_strs_length, map_length; lia].
-                apply P_Var'.
-                * (*We proved valid above*)
-                  rewrite Forall_forall in Hallval; apply Hallval. apply nth_In.
-                  rewrite map_length; assumption.
-                * rewrite combine_nth; auto.
-                  -- simpl. apply nth_indep. rewrite map_length; auto.
-                  -- erewrite gen_strs_length, map_length; auto.
-              + (*Now prove that pattern row action is valid - follows from IH*)
-                inversion Hclist_types; subst.
-                intros y. unfold comp_cases, Pattern.comp_cases.
-                destruct (amap_get funsym_eq_dec cases c) as [c_spec|] eqn : Hccase;
-                [|discriminate].
-                unfold cases in Hccase.
-                assert (Hget:=Hccase).
-                erewrite (dispatch1_equiv_spec _ _ _ Hsimp Hpop Hp) in Hccase.
-                2: { eapply constrs_in_types. apply Hccase. apply Hpop. }
-                revert Hccase; inv Hsome.
-                unfold rev_map. rewrite !map_rev, !rev_involutive, !map_snd_combine;
-                  [|rewrite gen_strs_length, map_length; lia].
-                intros Hcompile.
-                (*Need in multiple places*)
-                assert (Hmapfst: (map fst
-                   (rev
-                      (combine
-                         (map Tvar
-                            (combine
-                               (gen_strs (Datatypes.length ps)
-                                  (compile_fvs gen_getvars ((t, sigma (f_ret c)) :: tl) rl))
-                               (map (ty_subst (s_params c) tys) (s_args c))))
-                         (map (ty_subst (s_params c) tys) (s_args c))) ++ tl)) = 
-                    (rev
-                   (map Tvar
-                      (combine
-                         (gen_strs (Datatypes.length ps) (compile_fvs gen_getvars ((t, sigma (f_ret c)) :: tl) rl))
-                         (map (ty_subst (s_params c) tys) (s_args c)))) ++ map fst tl)).
-                 {
-                    rewrite map_app, map_rev, map_fst_combine; auto.
-                    unfold vsymbol.
-                    rewrite  !map_length, combine_length, gen_strs_length, map_length; lia.
-                 }
-                assert (Hmapsnd: (map snd
-                 (rev
-                    (combine
-                       (map Tvar
-                          (combine
-                             (gen_strs (Datatypes.length ps)
-                                (compile_fvs gen_getvars ((t, sigma (f_ret c)) :: tl) rl))
-                             (map (ty_subst (s_params c) tys) (s_args c))))
-                       (map (ty_subst (s_params c) tys) (s_args c))) ++ tl)) =
-                  rev (map (ty_subst (s_params c) tys) (s_args c)) ++ map snd tl).
-                {
-                  rewrite map_app, map_rev, map_snd_combine; auto.
-                  unfold vsymbol in *.
-                  rewrite !map_length, combine_length, gen_strs_length, map_length; lia.
-                }
-
-                apply IHconstrs with (cs:=c) in Hcompile; auto.
-                * (*Prove disjoint*) unfold vsymbol in *.
-                  rewrite Hmapfst.
-                  (*Different [disj] lemma*)
-                  eapply disj_spec1. apply Hdisj.
-                  revert Hdisj; clear -H6. (*need to know length ps = length (s_argcs c)*) simpl. 
-                  unfold pat_matrix_var_names_disj; intros Hdisj.
-                  intros x [Hinx1 Hinx2].
-                  rewrite in_map_big_union with (eq_dec1:=string_dec)  in Hinx1 .
-                  simpl_set. destruct Hinx1 as [t1 [Hint1 Hinx1]]. rewrite <- List.in_rev in Hint1.
-                  rewrite in_map_iff in Hint1. destruct Hint1 as [[n ty] [Ht1 Hiny]]; subst. simpl in Hinx1.
-                  destruct Hinx1 as [Hx | []]; subst.
-                  (*Contradiction, x cannot be in names of rl and in [gen_strs]*)
-                  rewrite in_combine_iff in Hiny; rewrite gen_strs_length in *; [| rewrite map_length; auto] .
-                  destruct Hiny as [i [Hi Hxty]]. specialize (Hxty ""%string vty_int).
-                  inversion Hxty.
-                  assert (Hnotin: ~ In x (map fst (compile_fvs gen_getvars ((t, sigma (f_ret c)) :: tl) rl))). {
-                    apply (gen_strs_notin' (length ps)). subst. apply nth_In. rewrite gen_strs_length; auto. }
-                  apply Hnotin. unfold compile_fvs. rewrite !map_app. rewrite !in_app_iff; auto.
-                * (*Prove terms are typed correctly*) 
-                  unfold vsymbol in *. rewrite Hmapfst, Hmapsnd.
-                  apply Forall2_app.
-                  2: { inversion Htmtys; auto. }
-                  apply Forall2_rev.
-                  (*Prove all variables have correct type*)
-                  apply Forall2_nth; rewrite !map_length, combine_length, gen_strs_length, map_length, H6, Nat.min_id.
-                  split; [reflexivity|]; intros i d1 d2 Hi.
-                  rewrite map_nth_inbound with (d2:=(""%string, vty_int)); [| rewrite combine_length, gen_strs_length, map_length; lia].
-                  apply T_Var'.
-                  -- (*We proved [valid_type] already*)
-                    rewrite Forall_forall in Hallval; apply Hallval, nth_In. rewrite map_length; assumption.
-                  -- rewrite combine_nth; [| rewrite gen_strs_length, map_length; lia].
-                     simpl. apply nth_indep; rewrite map_length; lia.
-                * (*Prove pat matrix is typed correctly, use IH*) unfold vsymbol in *. rewrite Hmapsnd.
-                  (*We need a few typing results - TODO: do we need elsewhere? Proved in case below, reduce dup?*)
-                  specialize (Hcargs _ _ _ Hiny). destruct Hcargs as [c_in Htys]; subst.
-                  apply (spec_typed_adt m_in a_in); auto.
-            - (*Prove typing for base - easier*)
-              rewrite Forall_forall. intros x. destruct no_wilds eqn : Hnowilds; [contradiction|].
-              intros [Hx | []]; subst. simpl.
-              split.
-              2: { intros y Hy. specialize (IHwilds y Hy).
-                  destruct IHwilds as [Hty ?]; exact Hty.  }
-              (*Idea: some pattern has the type we need, since cslist is not empty*)
-              rewrite amap_not_empty_exists in Htypesemp. destruct Htypesemp as  [fs [pats1 Hget]].
-              unfold types in Hget.
-              rewrite (proj2 (populate_all_fst_snd_full _ _ _ Hsimp Hpop)) in Hget.
-              destruct Hget as [tys1 Hinc].
-              apply Hclist_types in Hinc. constructor; auto. eapply pat_has_type_valid. apply Hinc.
-          }
-          revert Hallty. rewrite Forall_map. apply Forall_impl. simpl.
+        - revert Hallty. rewrite Forall_map. apply Forall_impl. simpl.
           intros x [Hall1 Hall2]. split; auto.
         - (*Use fact that types not empty to show pats not null*)
           assert (Hlen: length pats <> 0). {
@@ -3568,7 +3974,336 @@ Proof.
       }
       (*Typing proof complete, now prove semantics*)
       exists Htyall.
-      admit. }
+      assert (Htty: term_has_type gamma t (vty_cons (adt_name a) args)).
+      { inversion Htmtys; auto. }
+      assert (Hpatsty: Forall (fun x => pattern_has_type gamma (fst x) (vty_cons (adt_name a) args)) pats). {
+        revert Hallty. rewrite Forall_map. apply Forall_impl. intros x [Hpat _]; auto. }
+      assert (Hactty: Forall (fun x : pattern * gen_term b => @gen_typed gamma b (snd x) ret_ty) pats). {
+        revert Hallty. rewrite Forall_map. apply Forall_impl. intros x [_ Htys]. specialize (Htys (snd x)); auto. }
+      erewrite gen_match_rep with (Hty1:=Htty)(Hpats1:=Hpatsty)(Hpats2:=Hactty).
+      (*Proof sketch:
+          [match_rep] is equivalent to [matches_matrix] with single-valued columns.
+        then show tha we can split pats into l1 ++ x ++ l2 for any x in l1 st x not in l1.
+        Then we get the constructor of [term_rep t].
+        Case 1: constructor is in types
+          Then we split pats as above and use matches_matrix_app. We know that the result on l1 must be none,
+          so we use x, which is [compile] - use IH for the result
+        Case 2: constructor not in types
+          Then we know all of pats list (before base) is nil, then use base, use default lemma*)
+      (*Awkward to state*)
+      (*maybe dont use lemma, maybe just prove app result for [match_rep] directly?*)
+      
+      (*One more simplification of [pats] - we can split it into [pats1] and [pats2] corresponding to each list*)
+      symmetry in Hpats.
+      apply map_eq_app in Hpats. destruct Hpats as [pats1 [pats2 [Hpats [Hpats1 Hpats2]]]]. subst pats.
+      destruct (find_semantic_constr v t m_in a_in args_len Htty) as [c [[c_in al] Hsem]]; simpl in Hsem.
+      destruct (in_dec funsym_eq_dec c (map (fun x => fst (fst x)) cslist)).
+      - (*Case 1: c is in [cslist]*)
+        rewrite in_map_iff in i.
+        destruct i as [[[f1 tys1] ps1] [Hc Hinc]]; simpl in Hc; subst f1.
+        set (ty := (vty_cons (adt_name a) args)) in *.
+        assert (Hinpats: In (add_map gen_getvars comp_cases t ty tl rl (c, tys1, ps1)) 
+          (map (fun x : pattern * gen_term b => (fst x, Some (snd x))) pats1)).
+        {
+          rewrite Hpats1, <- In_rev, in_map_iff. exists (c, tys1, ps1); auto.
+        }
+        rewrite in_map_iff in Hinpats. destruct Hinpats as [[p1 tm1] [Hadd Hinx]].
+        (*simplify Hadd*)
+        revert Hadd. simpl. unfold rev_map. rewrite !map_rev, !rev_involutive, map_snd_combine.
+        2: { rewrite map_length, gen_strs_length; auto. apply Hclist_types in Hinc; inversion Hinc; auto. }
+        set (new_typs := (map (ty_subst (s_params c) tys1) (s_args c))) in *.
+        set (new_vars :=(combine (gen_strs (Datatypes.length ps1) (compile_fvs gen_getvars ((t, ty) :: tl) rl)) new_typs)) in *.
+        intros Hadd; inversion Hadd; subst p1.
+        (*Now we know that Pconstr c tys1... is in pats. So we can split pats here - the [NoDup] is important*)
+        assert (Hsplitpats1: exists patsa patsb, pats1 = patsa ++ (Pconstr c tys1 (map Pvar new_vars), tm1) :: patsb /\
+          forall x y, In (x, y) patsa -> exists c1 tys1 ps1, x = (Pconstr c1 tys1 ps1) /\ c1 <> c).
+        {
+          apply in_split in Hinx. destruct Hinx as [patsa [patsb Hpats1eq]]; subst. exists patsa. exists patsb.
+          split; auto.
+          (*Now we need to prove NoDups from NoDups of cslist*)
+          revert Hpats1.
+          rewrite map_app. simpl. rewrite <- map_rev. intros Hpats1; symmetry in Hpats1.
+          apply map_eq_app in Hpats1. destruct Hpats1 as [cl1 [cl2 [Hrev [Hmapc1 Hmapc2]]]].
+          subst. intros x y Hinxy.
+          assert (Hin2: In (x, Some y) (map (add_map gen_getvars comp_cases t ty tl rl) cl1)). {
+            rewrite Hmapc1, in_map_iff. exists (x, y); auto.
+          }
+          rewrite in_map_iff in Hin2.
+          destruct Hin2 as [[[f2 vs2] ps2] [Hxy Hinxy1]]; simpl in Hxy.
+          inversion Hxy; subst. exists f2. exists vs2. eexists. split; [reflexivity|].
+          intros Hceq.
+          (*Contradiction arises from NoDups of cslist*)
+          pose proof (proj1 (populate_all_fst_snd_full _ _ _ Hsimp Hpop)) as Hnodup.
+          unfold cslist in Hrev.
+          apply NoDup_rev in Hnodup. rewrite <- map_rev in Hnodup.
+          rewrite Hrev in Hnodup.
+          destruct cl2 as [|chd cl2]; [discriminate | inversion Hmapc2; subst; clear Hmapc2].
+          revert Hnodup. rewrite map_app. simpl. rewrite NoDup_app_iff'.
+          intros [_ [_ Hnotin]]. apply (Hnotin c).
+          simpl. split.
+          -(*  rewrite in_map_iff in Hin2. destruct Hin2 as [y [Hy Hiny]]. *)
+            rewrite in_map_iff. exists (c, vs2, ps2). split; auto.
+          - left. destruct chd as [[y1 y2] y3]; simpl in H0; inversion H0; subst; auto.
+        }
+        destruct Hsplitpats1 as [patsa [patsb [Hpats1eq Hcnotin]]].
+        subst pats1.
+        (*TODO: prove [match_rep_app], then prove that if this constr condition holds (and all are constrs),
+          then match_rep gives none- NOTE: annoying to use [match_rep because the app property is really
+          if first doesnt hold, then equals second (NOT direct composition)*) Check match_val_single.
+        assert (forall p Hp, In p patsa -> match_val_single gamma_valid pd vt ty (fst p) Hp
+          (term_rep gamma_valid pd vt pf v t ty Htty) = None).
+        {
+          (*Use [match_val_single_constr_nomatch] to show that all None*)
+          intros [p1 a1] Hp' Hinp'.
+          destruct (Hcnotin _ _ Hinp') as [f2 [vs2 [ps2 [Hx Hf12]]]]; subst. simpl fst.
+          eapply (match_val_single_constr_nomatch _ _ m_in a_in c_in args_len); eauto.
+        }
+        (*So patsa is irrelevant, and we can manually simplify [match_rep]*)
+        revert Hpatsty Hactty.
+        rewrite <- app_assoc. intros.
+        rewrite match_rep_app2; [|assumption].
+        rewrite match_rep_equiv. 
+        (*And the thing we care about is the [match_val_single] here*)
+        (*Awful hack*) Opaque match_val_single.
+        simpl match_rep'. Transparent match_val_single. unfold ty.
+        assert (Heq: sym_sigma_args c (map (v_subst vt) args) = map (v_subst vt) (ty_subst_list (s_params c) args (s_args c))).
+        { apply sym_sigma_args_map. rewrite (adt_constr_params gamma_valid m_in a_in c_in). auto. }
+        (*Useful to know*)
+        assert (Hpcty: pattern_has_type gamma (Pconstr c tys1 (map Pvar new_vars)) ty). {
+          rewrite Forall_forall in Hallty.
+          specialize (Hallty (Pconstr c tys1 (map Pvar new_vars), Some tm1)).
+          forward Hallty. 
+          { rewrite in_map_iff. exists (Pconstr c tys1 (map Pvar new_vars), tm1); split; auto.
+            rewrite !in_app_iff; simpl; auto.
+          }
+          apply Hallty.
+        }
+        assert (Heqty: tys1 = args). {
+          inversion Hpcty; subst.
+          unfold sigma in H4.
+          rewrite (adt_constr_ret gamma_valid m_in a_in c_in) in H4.
+          rewrite ty_subst_cons in H4.
+          rewrite <- (adt_constr_params gamma_valid m_in a_in c_in) in H4.
+          rewrite map_ty_subst_var in H4; auto.
+          - unfold ty in H4; inversion H4; auto.
+          - apply s_params_Nodup.
+        }
+        subst tys1.
+        assert (Hvarsty: row_typed (ty_subst_list (s_params c) args (s_args c)) (map Pvar new_vars)).
+        {
+          apply constr_typed_row in Hpcty. auto.
+        }
+        (*Now we have all the typing info to rewrite the [match_val_single]*)
+        rewrite (match_val_single_constr_row _ _ m_in a_in c_in args_len Htty al Hsem _ _ _ _ Heq Hvarsty).
+        (*We can solve this explicitly: we know that [matches_row] succeeds here (these are all variables)
+          and each variable is mapped to the corresponding element of the hlist*)
+        (*Rest of proof (sketch):
+          We can directly simplify the [matches_row] into the valuation vs -> al
+          We want to show that matches_matrix v (t :: tl) rl = Some (gen_rep (vs -> al) tm1)
+            where compile (vs ++ tl) (spec c rl) = Some tm1.
+          From the IH, we have that matches_matrix (vs -> al) (vs ++ tl) (spec c rl) =
+            Some (gen_rep (vs -> al) tm1) (NOTE: we need to adjust v here!)
+          From our spec lemma, we know that matches_matrix v (t :: tl) rl =
+            matches_matrix v (al ++ rl) (spec c rl).
+            Thus, it remains to show that
+            matches_matrix v (al ++ rl) P = matches_matrix (vs -> al) (vs ++ rl) P
+            This follows by considering each row - the terms only matter based on what they
+              become under (domain (v_subst vt)), and by the definition of the valuation, 
+              the resulting domain values are equivalent (as long as rl does not have any variables in vs)
+        *)
+        (*First, rewrite this [matches_row]*)
+        destruct (matches_row_allvars v _ _ Heq al new_vars Hvarsty) as [l [Hl Hvall]].
+        rewrite Hl.
+        (*Need to reverse here to match to ending result of [compile]**)
+        assert (params_len : Datatypes.length (s_params c) = Datatypes.length args). {
+          specialize (Hclist_types _ _ _ Hinc); inversion Hclist_types; auto.
+        }
+        assert (Hlenps: length ps1 = length new_typs). {
+          unfold new_typs. rewrite map_length; auto. 
+          specialize (Hclist_types _ _ _ Hinc); inversion Hclist_types; auto.
+        }
+        assert (Hvarstyps: length new_vars = length new_typs). {
+          unfold new_vars. rewrite combine_length, gen_strs_length. lia.
+        }
+        assert (Hnodup: NoDup new_vars). {
+          unfold new_vars. apply NoDup_combine_l. apply gen_strs_nodup.
+        }
+        rewrite gen_rep_change_vv with (v2:=val_with_args pd vt v (rev new_vars) (hlist_rev _ _ al)).
+        2: { 
+          intros x Hinx'. rewrite val_with_args_rev; auto.
+          rewrite Heq. unfold new_vars. rewrite map_snd_combine; auto. rewrite gen_strs_length. lia.
+        }
+        (*Step 2: We already simplified IHconstrs, now we destruct - need to change v!*)
+        specialize (IHconstrs' _ _ _ Hinc (val_with_args pd vt v (rev new_vars) (hlist_rev _ _ al)) tm1).
+        forward IHconstrs'. (*prove the compile equivalence*)
+        {
+          rewrite H1. unfold comp_cases, Pattern.comp_cases. (*some duplication too*)
+          unfold cases.
+          erewrite (dispatch1_equiv_spec _ _ _ Hsimp Hpop Hp); auto. 
+          unfold cslist in Hinc.
+          rewrite amap_mem_spec.
+          replace (amap_get funsym_eq_dec (fst types_cslist) c) with (Some ps1); auto.
+          symmetry.
+          rewrite (proj2 (populate_all_fst_snd_full _ _ _ Hsimp Hpop)). exists args; assumption.
+        }
+        (*Need to simplify again - bad*)
+        subst new_typs new_vars.
+        set (new_typs := (map (ty_subst (s_params c) args) (s_args c))) in *.
+        set (new_vars :=(combine (gen_strs (Datatypes.length ps1) (compile_fvs gen_getvars ((t, ty) :: tl) rl)) new_typs)) in *.
+        (*Why we needed the "exists" in the alternate IHconstrs: now we don't need to prove typing again*)
+        destruct IHconstrs' as [Htys [Hp' [Hty IHmatch]]].
+        erewrite gen_rep_irrel.
+        rewrite <- IHmatch.
+        (*Step 3: Use spec lemma to rewrite*)
+        rewrite (spec_match_eq v t m_in a_in c_in args_len params_len Htty al Hsem _ _ _ _ Hsimp _ Hp').
+        (*Step 4: Show that we can change the valuation in this case*)
+        (*TODO: START*)
+        
+        (*TODO: see*) clear -Hvarstyps Hnodup Hlenps.
+
+        revert Hp' Htys. generalize dependent (spec_prop_cast c args (map snd tl) params_len).
+        unfold ty_subst_list.
+        unfold matches_matrix_tms.
+        change (seq.map (ty_subst (s_params c) args) (s_args c)) with new_typs.
+        (*NOTE: first, prove that none of new_vars are in terms, so we can replace
+          second [terms_to_hlist] with just v*)
+
+        intros Heq Hp' Htys.
+        (*Aha, we can use [terms_to_hlist app] to split and prove directly*)
+        assert (Hlen: length (rev (map Tvar new_vars)) = length (rev new_typs)). {
+          rewrite !rev_length, map_length; auto.
+        }
+        rewrite terms_to_hlist_app with (Hty2:=Forall2_inv_tail Htmtys)
+          (Hty1:=proj1(Forall2_app_inv Htys Hlen)) by auto.
+        (*Now we know that [terms_to_hlist] on (map Tvar new_vars) is just al*)
+        assert (Heqrev: rev (sym_sigma_args c (map (v_subst vt) args)) =
+          map (v_subst vt) (rev new_typs)).
+        {
+          rewrite map_app in Heq. apply app_inv_tail in Heq. exact Heq.
+        }
+        generalize dependent (proj1 (Forall2_app_inv Htys Hlen)).
+        replace (rev (map Tvar new_vars)) with (map Tvar (rev new_vars)) by (rewrite map_rev; reflexivity).
+        intros Hall.
+        rewrite (terms_to_hlist_val_with_args v (rev new_vars) (rev new_typs)) with (Heq:=Heqrev);
+        [| apply NoDup_rev; assumption].
+
+        rewrite matches_matrix_change_vv with (v1:=val_with_args _ _ _ _ _) (v2:=v).
+        2: {
+          (*Prove these valuations are equivalent for all action vars -relies on fresh vars*)
+          intros x row Hinrow Hinx.
+          rewrite val_with_args_notin; auto.
+          rewrite <- In_rev. unfold new_vars. unfold vsymbol in *.
+          rewrite in_combine_iff; rewrite gen_strs_length; [|solve[auto]].
+          intros [i [Hi Hx]]. specialize (Hx ""%string vty_int).
+          assert (Hinget: In (fst x)((gen_strs (length ps1) (compile_fvs gen_getvars ((t, ty) :: tl) rl) ))).
+          { subst. simpl. apply nth_In. rewrite gen_strs_length. auto. }
+          apply gen_strs_notin in Hinget.
+          apply Hinget.
+          (*contradiction - in action vars, so must be in [compile_fvs]*)
+          unfold compile_fvs. rewrite !in_app_iff. right. right.
+          unfold pat_mx_act_vars. simpl_set. Search gen_getvars spec.
+          apply (gen_getvars_spec Hinrow Hinx).
+        }
+
+        f_equal.
+        (*Get all casts to beginning*)
+        rewrite hlist_app_cast1.
+        rewrite (terms_to_hlist_change_vv (val_with_args pd vt v (rev new_vars)
+          (hlist_rev (domain (dom_aux pd))
+          (sym_sigma_args c (map (v_subst vt) args)) al)) v).
+        2: {
+          (*Last subgoal: prove no intersection between vars and terms*)
+          intros tm x Htm Hx.
+          rewrite val_with_args_notin; auto.
+          rewrite <- In_rev.
+          unfold new_vars, vsymbol. rewrite in_combine_iff; rewrite gen_strs_length; [|solve[auto]].
+          intros [i [Hi Hxeq]].
+          specialize (Hxeq ""%string vty_int).
+          assert (Hinget: In (fst x)((gen_strs (length ps1) (compile_fvs gen_getvars ((t, ty) :: tl) rl) ))).
+          { subst. simpl. apply nth_In. rewrite gen_strs_length. auto. }
+          apply gen_strs_notin in Hinget.
+          apply Hinget.
+          (*contradiction - in action vars, so must be in [compile_fvs]*)
+          unfold compile_fvs. rewrite !in_app_iff. left.
+          unfold tmlist_vars. rewrite in_concat. simpl.
+          exists ((tm_fv tm ++ tm_bnd tm)). rewrite in_map_iff, in_app_iff. split; auto.
+          right. rewrite in_map_iff in Htm. destruct Htm as [y [Htm Hiny]]. subst.
+          exists y. auto. 
+        }
+        (*Only need to prove casts equivalent now*)
+        rewrite !cast_arg_list_compose.
+        apply cast_arg_list_eq.
+    - (*Second case: constructor is NOT in list - then we fall through to defaults*)
+      (*Similar, show pats1 has constructors which are not c*)
+      assert (Hpats1c: forall x y, In (x, y) pats1 -> 
+        exists c1 tys1 ps1, x = (Pconstr c1 tys1 ps1) /\ c1 <> c).
+      {
+        intros x y Hinxy.
+        assert (Hinxy1: In (x, Some y) (map (fun x => (fst x, Some (snd x))) pats1)) by
+          (rewrite in_map_iff; exists (x, y); auto).
+        rewrite Hpats1 in Hinxy1. rewrite <- List.in_rev in Hinxy1.
+        rewrite in_map_iff in Hinxy1. destruct Hinxy1 as [[[f1 tys1] ps1] [Hxy Hinfs]]; simpl in Hxy.
+        inversion Hxy; subst.
+        exists f1. exists tys1. eexists. split; [reflexivity| auto]. 
+        (*Show not c by notin*)
+        intro Heq; subst. apply n. rewrite in_map_iff.
+        eexists; split; [| apply Hinfs]; reflexivity.
+      }
+      set (ty := vty_cons (adt_name a) args) in *.
+      assert (forall p Hp, In p pats1 -> match_val_single gamma_valid pd vt ty (fst p) Hp
+        (term_rep gamma_valid pd vt pf v t ty Htty) = None).
+      {
+        (*Use [match_val_single_constr_nomatch] to show that all None*)
+        intros [p1 a1] Hp' Hinp'.
+        destruct (Hpats1c _ _ Hinp') as [f2 [vs2 [ps2 [Hx Hf12]]]]; subst. simpl fst.
+        eapply (match_val_single_constr_nomatch _ _ m_in a_in c_in args_len); eauto.
+      }
+      (*Similarly, pats1 is irrelevant, so we go to pats2 (wild)*)
+      rewrite match_rep_app2; [|assumption].
+      (*Now we show that [no_wilds] is false, so that pats2 = (Pwild, comp_wilds)*)
+      assert (Hno: no_wilds = false). {
+        (*If true, impossible - we know that c is in constructors but not cslist*)
+        unfold no_wilds.
+        apply forallb_false.
+        exists c. split; auto.
+        - unfold css. apply (in_get_constructors m_in a_in); auto.
+        - unfold types.
+          rewrite amap_mem_spec.
+          destruct (amap_get funsym_eq_dec (fst types_cslist) c) as [y|] eqn : Hget; auto.
+          rewrite (proj2 (populate_all_fst_snd_full _ _ _ Hsimp Hpop)) in Hget.
+          destruct Hget as [tys Hincslist]. exfalso.
+          apply n. rewrite in_map_iff. exists (c, tys, y); auto.
+      }
+      rewrite Hno in Hpats2.
+      (*Now explicitly get parts of pats2*)
+      destruct pats2 as [| [y1 y2] [|]]; try discriminate.
+      simpl in Hpats2. injection Hpats2. intros Hcompwilds Hy1; subst y1.
+      rewrite match_rep_equiv.
+      simpl.
+      unfold extend_val_with_list. simpl.
+      (*Now use IH and show default*)
+      symmetry in Hcompwilds; unfold comp_wilds in Hcompwilds.
+      specialize (IHwilds v y2 Hcompwilds). destruct IHwilds as [Hty IHmatch].
+      erewrite gen_rep_irrel.
+      rewrite <- IHmatch. subst wilds.
+      (*And now we use [default_match_eq]*)
+      unfold matches_matrix_tms at 2.
+      pose proof (default_match_eq). unfold ty. clear IHmatch.
+      revert Htywild.
+      rewrite (dispatch1_equiv_default _ _ _ _ Hsimp). intros.
+      apply (default_match_eq v t m_in a_in c_in args_len) with (Hty:=Htty) (al1:=al); auto.
+      + rewrite (adt_constr_params gamma_valid m_in a_in c_in); auto.
+      + (*Last goal: show that since not in cslist, constr_at_head_ex is false*)
+        destruct (constr_at_head_ex c rl) eqn : Hconstr; auto.
+        apply (populate_all_in _ _ _ _ Hsimp Hpop) in Hconstr.
+        rewrite amap_mem_spec in Hconstr.
+        destruct (amap_get funsym_eq_dec (fst types_cslist) c) as [y|] eqn : Hget; auto.
+        apply (proj2 (populate_all_fst_snd_full _ _ _ Hsimp Hpop)) in Hget.
+        destruct Hget as [tys Hinc].
+        (*Contradiction from not in cslist*)
+        exfalso. apply n.
+        rewrite in_map_iff. exists (c, tys, y). auto.
+    }
     destruct (is_fun t) as [s1 | s2]; auto.
     destruct s1 as [[[f tys] tms] Ht]; subst t; simpl.
     (*Now, see if t is a constructor application that can be simplified*)
@@ -3577,7 +4312,7 @@ Proof.
     assert (Htty: term_has_type gamma (Tfun f tys tms) (vty_cons (adt_name a) args)). {
       subst. clear -Htmtys. apply (Forall2_inv_head Htmtys).
     }
-    destruct (find_semantic_constr (Tfun f tys tms) m_in a_in args_len Htty) as 
+    destruct (find_semantic_constr v (Tfun f tys tms) m_in a_in args_len Htty) as 
     [c [[c_in al] Hrep]].
     simpl in Hrep.
     assert (f_in: constr_in_adt f a). {
@@ -3611,7 +4346,7 @@ Proof.
     }
     (*Now, we can related c and f, and al with [terms_to_hlist tms] by our
       lemma [tfun_semantic_constr]*)
-    destruct (tfun_semantic_constr m_in a_in c_in f_in _ _ al Htty constrs_len args_len Htms' Hrep)
+    destruct (tfun_semantic_constr m_in a_in c_in f_in v _ _ al Htty constrs_len args_len Htms' Hrep)
       as [Heq Hal]. subst c. unfold cast_arg_list at 1 in Hal; simpl in Hal.
     destruct (amap_mem funsym_eq_dec f types) eqn : Hfintypes; auto.
     2: {
@@ -3626,7 +4361,7 @@ Proof.
         discriminate.
       }
       (*Now we apply default lemma 1*)
-      rewrite (default_match_eq _ m_in a_in c_in args_len constrs_len Htty al Hrep _ 
+      rewrite (default_match_eq v _ m_in a_in c_in args_len constrs_len Htty al Hrep _ 
         _ Htmtys rl Hsimp Hnotin Hp (default_typed Hp)).
       (*And use IH about wilds*)
       revert IHwilds.
@@ -3634,7 +4369,7 @@ Proof.
       generalize dependent Htywild.
       rewrite Hwilds.
       intros Htywild.
-      rewrite matches_matrix_irrel with (Hty2:=(default_typed Hp)).
+      setoid_rewrite matches_matrix_irrel with (Hty2:=(default_typed Hp)).
       auto.
     }
     (*If f is in types, then we use specialization result and IH*)
@@ -3644,7 +4379,7 @@ Proof.
     rewrite Hgetf.
     (*Now can use [spec] lemma*)
     pose proof (@spec_typed_adt _ _ _ m_in a_in f_in _ (map snd tl) _ Hp) as Hspecty.
-    rewrite (spec_match_eq (Tfun f args tms) m_in a_in c_in args_len constrs_len Htty al
+    rewrite (spec_match_eq v (Tfun f args tms) m_in a_in c_in args_len constrs_len Htty al
       Hrep _ _ Htmtys rl Hsimp Hp Hspecty).
     (*And we need the IH*)
     specialize (IHconstrs _ (combine tms
@@ -3667,15 +4402,15 @@ Proof.
     }
     specialize (IHconstrs (disj_spec Hdisj) Htysrev Hspecty).
     intros tm Hcompile.
-    specialize (IHconstrs tm Hcompile).
+    specialize (IHconstrs v tm Hcompile).
     (*Now, we use the IH*)
     destruct IHconstrs as [IHty IHmatch].
     exists IHty.
     unfold matches_matrix_tms in IHmatch.
     revert IHmatch.
     match goal with 
-    | |- matches_matrix ?l1 ?al1 ?P ?H = Some ?x ->
-         matches_matrix ?l2 ?al2 ?P2 ?H = Some ?y =>
+    | |- matches_matrix _ ?l1 ?al1 ?P ?H = Some ?x ->
+         matches_matrix _ ?l2 ?al2 ?P2 ?H = Some ?y =>
       replace al1 with al2; auto
     end.
     (*And now, use [al] equality result*)
@@ -3687,10 +4422,7 @@ Proof.
     rewrite hlist_rev_cast,  !hlist_app_cast1.
     rewrite !cast_arg_list_compose.
     apply cast_arg_list_eq.
-Admitted.
- 
-(*TODO: either prove separately that [compile] is well-typed (maybe easier) or 
-  have "exists" in theorem*)
+Qed.
 
 
 
