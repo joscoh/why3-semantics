@@ -2758,16 +2758,10 @@ Qed.
 (*Now we can prove an induction principle for [compile]. In the interesting cases,
   we can assume our pattern matrix is simplified thanks to the above*)
 
-(*Let's try to prove an induction principle*)
-(* Check compile_elim.*)
 Lemma compile_ind (P: list (term * vty) -> list (list pattern * A) -> option A -> Prop)
   (P_simp: forall t ty tms rl,
     P ((t, ty) :: tms) (simplify t rl) (compile ((t, ty) :: tms) (simplify t rl)) ->
     P ((t, ty) :: tms) rl (compile ((t, ty) :: tms) rl))
-    
-  (* (P_ext: forall tms1 tms2 rl1 rl2,
-    compile tms1 rl1 = compile tms2 rl2 ->
-    P tms1 rl1 (compile tms1 rl1) <-> P tms2 rl2 (compile tms2 rl2)) *)
   (Hnone: forall tl, P tl nil None)
   (Hemp: forall ps a l, P nil ((ps, a) :: l) (Some a))
   (Hilltyped: forall t ty tl rl,
@@ -2812,46 +2806,8 @@ Lemma compile_ind (P: list (term * vty) -> list (list pattern * A) -> option A -
 
       let comp_cases cs (al : list (term * vty)) :=
         comp_cases compile cases tl cs al in
-         (*  match (amap_get funsym_eq_dec cases cs ) as o return amap_get funsym_eq_dec cases cs = o -> _ with
-            | None => fun _ => None (*impossible*)
-            | Some l => fun Hget => compile (rev al ++ tl) l
-            end eq_refl
-          in *)
 
-      (*TODO: default case here*)
       let comp_full := comp_full comp_wilds comp_cases types cslist css t ty tl rl in
-      
-      (* let comp_full (_: unit) :=
-        let no_wilds := forallb (fun f => amap_mem funsym_eq_dec f types) css in
-        let base : option (list (pattern * A)) := if no_wilds then Some nil else (*TODO: bind*)
-        match comp_wilds tt with
-          | None => None
-          | Some x => Some [(Pwild, x)]
-        end in
-
-        let add acc (x: funsym * list vty * list pattern) : option (list (pattern * A)) :=
-          let '(cs, params, ql) := x in
-          (*create variables*)
-          let pat_tys :=  (map (ty_subst (s_params cs) params) (s_args cs)) in
-          let new_var_names := gen_strs (length ql) (compile_fvs ((t, ty) :: tl) rl) in
-          let typed_vars := (combine new_var_names pat_tys) in
-          let vl := rev typed_vars in 
-          let pl := rev_map Pvar vl in
-          let al := rev_map Tvar vl in
-          match (comp_cases cs (combine al (map snd vl))) with
-          | None => None
-          | Some v => Some ((Pconstr cs params pl, v) :: acc)
-          end
-        in
-        (*TODO: bind*)
-        match base with
-        | None => None
-        | Some b =>
-          match (fold_left_opt add cslist b) with
-          | None => None
-          | Some b1 => Some (mk_case t ty b1)
-          end
-        end in  *)
       
       if amap_is_empty types then comp_wilds tt
       else
@@ -2864,17 +2820,7 @@ Lemma compile_ind (P: list (term * vty) -> list (list pattern * A) -> option A -
               else comp_full tt
           | Right Hnotconstr =>
             comp_full tt
-          end
-      
-     (*  match t with
-      | Tfun cs params al =>
-        if is_constr cs then
-          if amap_mem funsym_eq_dec cs types then comp_cases cs (combine al
-            (map (ty_subst (s_params cs) params) (s_args cs))) else comp_wilds tt
-        else comp_full tt
-      | _ => 
-        comp_full tt 
-      end *) )):
+          end)):
   forall ts p, P ts p (compile ts p).
 Proof.
   intros ts rl.
@@ -2937,7 +2883,6 @@ Proof.
   subst is_constr.
   set (is_constr := fun fs => in_bool funsym_eq_dec fs css) in *.
   rewrite <- Hsimpeq.
-  (*rewrite Hpop, Hdispatch1.*)
   intros Hconstr P_ext.
   unfold rl'. rewrite comp_full_simplify_eq. fold rl'.
   apply P_ext.
