@@ -321,6 +321,17 @@ Proof.
     + rewrite <- Habs, Hfold; reflexivity.
 Qed.
 
+(*Much easier*)
+Lemma axioms_of_def_elim which nonrec (l: list funpred_def):
+   (snd (elim_decl which nonrec l)) = axioms_of_def which l.
+Proof.
+  unfold elim_decl, axioms_of_def.
+  induction l as [| h t IH]; simpl; auto.
+  unfold add_ld at 1.
+  destruct (gen_funpred_def_match h) as [b [[ls vs] e]] eqn : Hgen; simpl in *.
+  destruct (fold_right (add_ld which) ([], [], []) t ) as [[abst1 defn1] axl1]; simpl.
+  destruct (which b ls) eqn : Hwhich; simpl; [f_equal|]; auto.
+Qed.
 
 (*And the proof of equivalence*)
 Lemma eliminate_definition_split which nonrec: forall t,
@@ -350,71 +361,26 @@ Proof.
     rewrite map_rev.
     induction (rev gamma); simpl; auto.
     rewrite (surjective_pairing (elim _ _ a)); simpl.
-    rewrite !rev_app_distr.  (*TODO: STAET HERE*)
-    
-    rewrite rev_map.
-    destruct a; simpl; try rewrite concat_app; simpl;
-    try rewrite IHl, app_nil_r; auto.
-    rewrite build_ind_axioms_eq. simpl.
-    rewrite rev_app_distr, IHl, app_nil_r.
-    reflexivity.
-      admit.
-  - 
-    
-     unfold decls_of_def, elim_decl.
-      rewrite (surjective_pairing (partition _ _)). simpl.
-
-    
-     simpl.
-
-
-intros. unfold eliminate_inductive, eliminate_inductive_alt,
-  compose_single_trans, single_trans.
-  f_equal.
-  unfold trans_decl, gen_new_ctx, gen_axioms.
-  destruct t as [[gamma delta] goal]; simpl_task.
-  rewrite (surjective_pairing (fold_left
-  (fun (acc : list def * list (string * formula)) (x : def) =>
-   let (g, d) := elim x in (g ++ fst acc, d ++ snd acc)) gamma (
-  [], []))); simpl. f_equal. f_equal.
-  - (*Prove gamma equivalent*)
-    (*Eliminate fold_left*)
-    rewrite <- fold_left_rev_right. simpl_task. 
-    rewrite <- (rev_involutive gamma) at 2.
-    induction (rev gamma); simpl; auto.
-    rewrite (surjective_pairing (elim a)); simpl.
-    rewrite rev_app_distr.
-    destruct a; simpl; try 
-    (rewrite IHl, map_app; simpl; rewrite concat_app; reflexivity).
-    rewrite map_app; simpl. 
-    rewrite get_indpred_defs_eq; simpl.
-    rewrite concat_app, IHl; simpl. 
-    rewrite app_nil_r; auto.
-  - (*Prove delta part*)
-    f_equal. rewrite <- fold_left_rev_right.
-    rewrite <- (rev_involutive gamma) at 2.
-    rewrite map_rev.
-    induction (rev gamma); simpl; auto.
-    rewrite (surjective_pairing (elim a)); simpl.
-    destruct a; simpl; try rewrite concat_app; simpl;
-    try rewrite IHl, app_nil_r; auto.
-    rewrite build_ind_axioms_eq. simpl.
-    rewrite rev_app_distr, IHl, app_nil_r.
-    reflexivity.
-
+    rewrite !rev_app_distr.
+    rewrite concat_app. simpl. rewrite <- IHl, app_nil_r. f_equal.
+    destruct a; simpl; auto.
+    + rewrite axioms_of_def_elim. reflexivity.
+    + destruct nonrec; [|reflexivity]. rewrite axioms_of_def_elim. reflexivity.
+Qed.
 
 
 (*Prove soundness*)
-Theorem eliminate_definition_gen_sound which:
-  sound_trans (eliminate_definition_gen which).
+Theorem eliminate_definition_gen_sound which nonrec:
+  sound_trans (eliminate_definition_gen which nonrec).
 Proof.
   (*First, split into two parts*)
   rewrite sound_trans_ext.
-  2: apply eliminate_inductive_split.
-  unfold eliminate_inductive_alt.
+  2: apply eliminate_definition_split.
+  unfold eliminate_definition_alt.
   (*Prove sound by composition*)
   apply compose_single_trans_sound.
-  - (*The very hard part:*) apply gen_axioms_sound.
+  (*TODO*)
+  (* - The very hard part: apply gen_axioms_sound.
   - (*The easier part*) apply gen_new_ctx_sound.
   - (*All axioms are well-formed*) apply gen_axioms_wf.
-Qed.
+Qed. *)
