@@ -1644,7 +1644,7 @@ Proof.
            vv2) Hty1)).
     {
       unfold fun_arg_list.
-      apply get_arg_list_vt_ext with(s:=f1)(Heq:=Hmap);
+      apply get_arg_list_vt_ext with(Heq:=Hmap);
       rewrite map_length; auto.
       revert H; rewrite Forall_forall; intros.
       revert Hty0. rewrite -> map_nth_inbound with (d2:=tm_d); auto.
@@ -1927,7 +1927,7 @@ Proof.
           vv2) Hty1)).
     {
       unfold pred_arg_list.
-      apply get_arg_list_vt_ext with(s:=p)(Heq:=Hmap);
+      apply get_arg_list_vt_ext with(Heq:=Hmap);
       rewrite map_length; auto.
       revert H; rewrite Forall_forall; intros.
       revert Hty0. rewrite -> map_nth_inbound with (d2:=tm_d); auto.

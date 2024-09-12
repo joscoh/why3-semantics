@@ -703,7 +703,7 @@ Lemma get_arg_list_hnth_unif {gamma: context}
 (i: nat)
 (Hi: i < length args):
 hnth i
-  (get_arg_list pd v s (map vty_var (s_params s)) ts reps (s_params_Nodup s) Hlents Hlenvs Hall) s_int (dom_int pd) =
+  (get_arg_list pd v (map vty_var (s_params s)) ts reps (s_params_Nodup s) Hlents Hlenvs Hall) s_int (dom_int pd) =
   dom_cast (dom_aux pd) (arg_list_hnth_eq s Hi v)
   (reps (nth i ts tm_d) (ty_subst (s_params s) 
     (map vty_var (s_params s)) (nth i args vty_int))

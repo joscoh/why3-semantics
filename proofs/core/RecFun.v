@@ -4340,7 +4340,7 @@ Lemma get_arg_list_aux_eq: forall input ts rec v s small Hsmall hd Hhd vs Hparam
         term_rep gamma_valid pd vt pf v tm ty Hty) ts ->
       proj1_sig (@get_arg_list_recfun v hd _ s _ small Hsmall Hhd (term_rep_aux input rec v ) Hparamslen ts 
           (s_args s) Hargslen Hall Hdec) =
-      get_arg_list pd vt s vs ts (term_rep gamma_valid pd vt pf v) (s_params_Nodup s) Hargslen Hparamslen Hall.
+      get_arg_list pd vt vs ts (term_rep gamma_valid pd vt pf v) (s_params_Nodup s) Hargslen Hparamslen Hall.
 Proof.
   intros input ts rec v s.
   generalize dependent (s_args s). intros args; revert args.
