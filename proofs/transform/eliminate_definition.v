@@ -251,15 +251,16 @@ Definition gen_axioms which (nonrec : bool) (t: task) : task :=
     end) (task_gamma t)) in
   add_axioms t new_d.
 
-Definition gen_new_ctx which (nonrec : bool) (t: task) : task :=
-  let new_g :=
+Definition gen_new_ctx_gamma which (nonrec: bool) (gamma: context) : context :=
   concat (map (fun x =>
     match x with
     | recursive_def l => rev (decl_list_of_def which false l)
     | nonrec_def l => if nonrec then rev (decl_list_of_def which true [l]) else [x]
     | _ => [x]
-    end) (task_gamma t)) in
-  mk_task new_g (task_delta t) (task_goal t).
+    end) gamma).
+
+Definition gen_new_ctx which (nonrec : bool) (t: task) : task :=
+  mk_task (gen_new_ctx_gamma which nonrec (task_gamma t)) (task_delta t) (task_goal t).
 
 Definition eliminate_definition_alt which nonrec : trans :=
   compose_single_trans (gen_axioms which nonrec) (gen_new_ctx which nonrec).
@@ -322,6 +323,7 @@ Proof.
   destruct t as [[gamma delta] goal]; simpl_task.
   rewrite (surjective_pairing (fold_left _ gamma _)); simpl. f_equal. f_equal.
   - (*Prove gamma equivalent*)
+    unfold gen_new_ctx_gamma.
     rewrite <- fold_left_rev_right. simpl_task.
     rewrite <- (rev_involutive gamma) at 2.
     (*TODO: bad*)
@@ -667,6 +669,8 @@ Proof.
           apply (nonrec_in_context _ Hd).
     apply rec_axiom_typed; assumption.
 Qed.
+
+End Typing.
 
 (*Part 2: Axioms are sound*)
 
@@ -1210,6 +1214,400 @@ Proof.
         -- unfold fun_defined; auto.
         -- unfold pred_defined; auto.
 Qed.     
+
+(*Part 3: New Context*)
+
+(*Just like with [eliminate_inductive], have to convert interpretations from 1 context to
+  the other*)
+Section NewContext.
+
+(*Easier, fewer cases*)
+Print Either.
+Definition is_rec_nonrec (x: def) : Either (list funpred_def) (option funpred_def) :=
+  match x with
+  | recursive_def l => Left _ _ l
+  | nonrec_def f => Right _ _ (Some f)
+  | _ => Right _ _ None
+  end.
+
+
+Definition gen_new_ctx_gamma' which (nonrec: bool) (gamma: context) : context :=
+  concat (map (fun x =>
+    match (is_rec_nonrec x) with
+    | Left l =>  rev (decl_list_of_def which false l)
+    | Right (Some l) => if nonrec then rev (decl_list_of_def which true [l]) else [x]
+    | Right None => [x]
+    end) gamma).
+
+Lemma gen_new_ctx_gamma_equiv which nonrec gamma:
+  gen_new_ctx_gamma which nonrec gamma =
+  gen_new_ctx_gamma' which nonrec gamma.
+Proof.
+  unfold gen_new_ctx_gamma, gen_new_ctx_gamma'.
+  f_equal. apply map_ext.
+  intros. destruct a; simpl; auto.
+Qed.
+
+Print decl_list_of_def.
+
+Lemma app_nil_iff {A: Type} (l1 l2: list A):
+  l1 ++ l2 = nil <-> l1 = nil /\ l2 = nil.
+Proof.
+  split.
+  - apply app_eq_nil.
+  - intros [Hl1 Hl2]; subst; auto.
+Qed.
+
+Lemma filter_map_in {A B: Type} (f: A -> option B) (l: list A) (x: B):
+  In x (Pattern.filter_map f l) ->
+  exists y, In y l /\ f y = Some x.
+Proof.
+  induction l as [| h t IH ]; simpl; [contradiction|].
+  destruct (f h) as [z|] eqn : Hfh.
+  - simpl. intros [Hzx | Hinx]; subst; eauto.
+    apply IH in Hinx. destruct_all; eauto.
+  - intros Hin. apply IH in Hin; destruct_all; eauto.
+Qed.
+
+Lemma in_filter_map {A B: Type} (f: A -> option B) (l: list A) (x: B) (y: A):
+  In y l ->
+  f y = Some x ->
+  In x (Pattern.filter_map f l).
+Proof.
+  induction l as [| h t IH ]; simpl; [contradiction|].
+  intros [Hhy | Hiny] Hfy; subst.
+  - rewrite Hfy. simpl; auto.
+  - destruct (f h); simpl; auto.
+Qed.
+
+Lemma in_filter_map_iff {A B: Type} (f: A -> option B) (l: list A) (x: B):
+  In x (Pattern.filter_map f l) <->
+  exists y, In y l /\ f y = Some x.
+Proof.
+  split. apply filter_map_in.
+  intros [y [Hiny Hfy]]. apply (in_filter_map _ _ _ _ Hiny Hfy).
+Qed.
+
+Lemma get_recfun_defs_typesyms which nonrec: forall l,
+  concat (map typesyms_of_def (rev (decl_list_of_def which nonrec l))) = nil.
+Proof.
+  intros l.
+  unfold decl_list_of_def. rewrite map_rev, map_app, rev_app_distr, concat_app.
+  apply app_nil_iff. split.
+  - unfold decls_of_def. simpl.
+    destruct (Pattern.filter_map _ l) as [| h t] eqn : Hpat; auto.
+    destruct t as [| h2 t2]; simpl; auto.
+    destruct nonrec; auto.
+  - unfold decls_of_def. simpl.
+    apply concat_nil_Forall.
+    apply Forall_rev.
+    rewrite Forall_map. rewrite Forall_forall. intros x Hinx.
+    apply filter_map_in in Hinx.
+    destruct Hinx as [y [Hiny Hx]].
+    destruct (gen_funpred_def_match y) as [b [[ls vs] e]]; simpl in Hx.
+    destruct (which b ls); inversion Hx; simpl; auto; destruct b; auto.
+Qed.
+
+Definition gen_syms_of_def {b: bool} : def -> list (gen_sym b) :=
+  match b return def -> list (gen_sym b) with
+  | true => funsyms_of_def
+  | false => predsyms_of_def
+  end.
+
+Definition gen_syms_of_rec {b: bool} : list funpred_def -> list (gen_sym b) :=
+  match b return list funpred_def -> list (gen_sym b) with
+  | true => funsyms_of_rec
+  | false => predsyms_of_rec
+  end.
+
+Definition gen_syms_of_nonrec {b: bool} : funpred_def -> list (gen_sym b) :=
+  match b return funpred_def -> list (gen_sym b) with
+  | true => funsyms_of_nonrec
+  | false => predsyms_of_nonrec
+  end.
+
+Lemma gen_syms_of_def_recursive {b: bool} l:
+ @gen_syms_of_def b (recursive_def l) = gen_syms_of_rec l.
+Proof.
+  destruct b; reflexivity.
+Qed.
+
+Lemma gen_syms_of_def_nonrec {b: bool} l:
+ @gen_syms_of_def b (nonrec_def l) = gen_syms_of_nonrec l.
+Proof.
+  destruct b; reflexivity.
+Qed.
+
+Lemma gen_syms_of_abs {b: bool} l:
+  @gen_syms_of_def b (gen_abs l) = [l].
+Proof.
+  destruct b; auto.
+Qed.
+
+Lemma in_gen_syms_of_rec {b: bool} (l: list funpred_def) (f: gen_sym b) :
+  In f (gen_syms_of_rec l) <-> exists vs e, In (gen_funpred_def b f vs e) l.
+Proof.
+  destruct b; simpl in *.
+  - unfold funsyms_of_rec.
+    rewrite in_omap_iff. split.
+    + intros [fd [Hinfd Hf]]. destruct fd; inversion Hf; subst. eexists. eexists. apply Hinfd.
+    + intros [vs [e Hin]]. eexists. split; [apply Hin|reflexivity].
+  - unfold predsyms_of_rec.
+    rewrite in_omap_iff. split.
+    + intros [fd [Hinfd Hf]]. destruct fd; inversion Hf; subst. eexists. eexists. apply Hinfd.
+    + intros [vs [e Hin]]. eexists. split; [apply Hin|reflexivity].
+Qed.
+
+Lemma get_recfun_defs_syms which nonrec {b: bool}: forall l x,
+  In x (concat (map (@gen_syms_of_def b) (rev (decl_list_of_def which nonrec l)))) <->
+  In x (gen_syms_of_rec l).
+Proof.
+  intros l x.
+  unfold decl_list_of_def. rewrite map_rev, map_app, rev_app_distr, concat_app, !in_app_iff.
+  (*rewrite as partition*)
+  rewrite (elements_in_partition (fun x => which b x) (gen_syms_of_rec l)).
+  2: apply partition_as_filter.
+  rewrite (or_comm (In x (filter _ _))).
+  apply or_iff.
+  - unfold decls_of_def. simpl.
+    rewrite in_concat, in_filter, in_gen_syms_of_rec.
+    setoid_rewrite <- In_rev.
+    setoid_rewrite in_map_iff.
+    split.
+    + intros [l1 [[d [Hl1 Hind]] Hinx]]; subst.
+      destruct (Pattern.filter_map _ _) as [| h [|h1 t]] eqn : Hpat; [contradiction| |].
+      * assert (Hinh: In h [h]) by (simpl; auto).
+        revert Hinh. rewrite <- Hpat; intros Hinh; apply filter_map_in in Hinh.
+        destruct Hinh as [h1 [Hinh1 Hhh1]].
+        destruct (gen_funpred_def_match h1) as [b1 [[ls vs] e]] eqn : Hdef; simpl in Hhh1.
+        apply gen_funpred_def_match_eq in Hdef; subst; simpl in *.
+        destruct (which b1 ls) eqn : Hwhich; inversion Hhh1; subst.
+        destruct nonrec; simpl in Hind; destruct Hind as [Hhd | []]; subst;
+        destruct b; destruct b1; simpl in Hinx; try contradiction;
+        destruct Hinx as [Hls | []]; subst; rewrite Hwhich; split; auto;
+        do 2 eexists; apply Hinh1.
+      * simpl in Hind. destruct Hind as [Hd | []]; subst.
+        rewrite <- Hpat in Hinx. clear Hpat.
+        rewrite gen_syms_of_def_recursive, in_gen_syms_of_rec in Hinx.
+        destruct Hinx as [vs [e Hinfd]].
+        apply filter_map_in in Hinfd.
+        destruct Hinfd as [fd1 [Hinfd1 Hfd]].
+        destruct (gen_funpred_def_match fd1) as [b1 [[ls1 vs1] e1]] eqn : Hdef; simpl in Hfd.
+        apply gen_funpred_def_match_eq in Hdef; subst; simpl in *.
+        destruct (which b1 ls1) eqn : Hwhich; inversion Hfd; subst.
+        destruct b; destruct b1; simpl in *; inversion H0; subst; rewrite Hwhich; split; auto;
+        do 2 eexists; apply Hinfd1.
+    + (*other direction*)
+      intros [Hwhich [vs [e Hinfd]]].
+      assert (Hfinpat: In (gen_funpred_def b x vs e) (Pattern.filter_map
+        (fun x : funpred_def =>
+      let (b, p) := gen_funpred_def_match x in let
+        (p0, _) := p in let (ls, _) := p0 in if which b ls then
+      None else Some x)
+        l)).
+      {
+        eapply in_filter_map. apply Hinfd. 
+        destruct (gen_funpred_def_match _) as [b1 [[ls1 vs1] e1]] eqn : Hdef.
+        apply gen_funpred_def_match_eq in Hdef; subst; simpl in *.
+        destruct b; destruct b1; simpl in *; inversion Hdef; subst;
+        [destruct (which true x) | destruct (which false x)]; try discriminate; reflexivity.
+      }
+      destruct (Pattern.filter_map _ _) as [| h [|h1 t1]] eqn : Hpat; [contradiction| |].
+      * simpl. destruct Hfinpat as [Hh | []]; subst.
+        destruct nonrec.
+        -- eexists. split. eexists. split. reflexivity.
+          left; reflexivity. rewrite gen_syms_of_def_nonrec.
+          destruct b; simpl in *; auto.
+        -- eexists. split. eexists. split. reflexivity.
+          left; reflexivity. rewrite gen_syms_of_def_recursive.
+          destruct b; simpl in *; auto.
+      * eexists. split. eexists. split. reflexivity. simpl. left; reflexivity.
+        rewrite gen_syms_of_def_recursive. rewrite in_gen_syms_of_rec.
+        exists vs. exists e. assumption.
+  - (*Other proof - easier, dont case on pat result*)
+    rewrite in_filter, in_concat.
+    setoid_rewrite <- In_rev.
+    setoid_rewrite in_map_iff.
+    setoid_rewrite in_filter_map_iff.
+    split.
+    + intros [fs [[d [Hfs [fd [Hinfd Hfd]]]] Hinfs]]; subst.
+      rewrite in_gen_syms_of_rec.
+      destruct (gen_funpred_def_match fd) as [b1 [[ls vs] e]] eqn : Hdef; simpl in Hfd.
+      apply gen_funpred_def_match_eq in Hdef; subst; simpl in *.
+      destruct (which b1 ls) eqn : Hwhich; inversion Hfd; subst.
+      (*b and b1 not the same*)
+      destruct b; destruct b1; simpl in *; try contradiction;
+      destruct Hinfs as [Hx | []]; subst; rewrite Hwhich; split; auto;
+      do 2 eexists; eassumption.
+    + rewrite in_gen_syms_of_rec. intros [Hwhich [vs [e Hinfd]]].
+      eexists. split. 
+      * eexists. split; [reflexivity|]. eexists. split; [apply Hinfd|].
+        destruct (gen_funpred_def_match _) as [b1 [[ls1 vs1] e1]] eqn : Hdef.
+        apply gen_funpred_def_match_eq in Hdef; subst; simpl in *.
+        destruct b; destruct b1; inversion Hdef; subst;
+        rewrite Hwhich; reflexivity.
+      * rewrite gen_syms_of_abs. simpl. auto.
+Qed.
+
+(*The corollaries*)
+Lemma get_recfun_defs_funsyms which nonrec: forall l x,
+  In x (concat (map funsyms_of_def (rev (decl_list_of_def which nonrec l)))) <->
+  In x (funsyms_of_rec l).
+Proof.
+  intros l x.
+  apply get_recfun_defs_syms with (b:=true).
+Qed.
+
+Lemma get_recfun_defs_predsyms which nonrec: forall l x,
+  In x (concat (map predsyms_of_def (rev (decl_list_of_def which nonrec l)))) <->
+  In x (predsyms_of_rec l).
+Proof.
+  intros l x.
+  apply get_recfun_defs_syms with (b:=false).
+Qed.
+
+Lemma funsyms_of_rec_single l:
+  funsyms_of_rec [l] = funsyms_of_nonrec l.
+Proof. unfold funsyms_of_rec, funsyms_of_nonrec. destruct l; simpl; reflexivity. Qed.
+
+Lemma predsyms_of_rec_single l:
+  predsyms_of_rec [l] = predsyms_of_nonrec l.
+Proof. unfold predsyms_of_rec, predsyms_of_nonrec. destruct l; simpl; reflexivity. Qed.
+
+(*The new context has the same signature*)
+Lemma gen_new_ctx_gamma_eq_sig which nonrec gamma:
+  eq_sig (gen_new_ctx_gamma' which nonrec gamma) gamma.
+Proof.
+  unfold gen_new_ctx_gamma'. induction gamma; simpl.
+  - apply eq_sig_refl.
+  - destruct (is_rec_nonrec a) as [l | l] eqn : Hrec.
+    + destruct a; inversion Hrec; subst. (*rec case*)
+      unfold eq_sig in *; simpl in *; split_all.
+      * intros. unfold sig_t; simpl.
+        rewrite map_app, concat_app, get_recfun_defs_typesyms; auto.
+      * intros. unfold sig_f; simpl.
+        rewrite map_app, concat_app, !in_app_iff, get_recfun_defs_funsyms.
+        apply or_iff_compat_l; auto.
+      * intros. unfold sig_p; simpl.
+        rewrite map_app, concat_app, !in_app_iff, get_recfun_defs_predsyms.
+        apply or_iff_compat_l; auto.
+    + destruct l as [l|]; [|apply eq_sig_cons; auto]. (*nonrec case*)
+      destruct a; inversion Hrec; subst.
+
+      unfold eq_sig in *; simpl in *; split_all.
+      * intros. unfold sig_t; simpl.
+        rewrite map_app, concat_app. destruct nonrec; [rewrite get_recfun_defs_typesyms; auto|].
+        simpl. auto.
+      * intros. unfold sig_f; simpl.
+        rewrite map_app, concat_app, !in_app_iff. destruct nonrec.
+        -- rewrite get_recfun_defs_funsyms; rewrite funsyms_of_rec_single; 
+           apply or_iff_compat_l; auto.
+        -- simpl. rewrite app_nil_r. apply or_iff_compat_l; auto.
+      * intros. unfold sig_p; simpl.
+        rewrite map_app, concat_app, !in_app_iff. destruct nonrec.
+        -- rewrite get_recfun_defs_predsyms; rewrite predsyms_of_rec_single; 
+           apply or_iff_compat_l; auto.
+        -- simpl. rewrite app_nil_r. apply or_iff_compat_l; auto.
+Qed.
+
+
+(*Prove that the new context is valid*)
+Lemma gen_new_ctx_valid which nonrec gamma:
+  valid_context gamma ->
+  valid_context (gen_new_ctx_gamma which nonrec gamma).
+Proof.
+  intros. rewrite gen_new_ctx_gamma_equiv.
+  induction H; simpl; try solve[constructor].
+  unfold gen_new_ctx_gamma' in *. simpl.
+  assert (Heqctx:=gen_new_ctx_gamma_eq_sig gamma).
+  unfold eq_sig in Heqctx. destruct Heqctx as [Htseq [Hfseq Hpseq]].
+  destruct (is_ind d) eqn : Hind.
+  - destruct d; inversion Hind; subst.
+    simpl in *.
+    (*Now we must simplify the wf_predsym/funsym context *)
+    assert (Hallwfp: Forall (wf_predsym gamma) (predsyms_of_indprop l)).
+    {
+      revert H1. apply Forall_impl. intros a.
+      apply wf_predsym_sublist; intros.
+      unfold sublist. intros x Hinx. apply Hinx.
+    } 
+    apply valid_ctx_abstract_app;
+    try rewrite get_indpred_defs_typesyms;
+    try rewrite get_indpred_defs_funsyms;
+    try rewrite get_indpred_defs_predsyms;
+    auto.
+    + rewrite Forall_forall. intros d.
+      unfold get_indpred_defs.
+      rewrite in_map_iff. intros [[p fs] [Hd Hinx]]; simpl in *; subst.
+      reflexivity.
+    + revert Hallwfp. apply Forall_impl.
+      intros a. apply wf_predsym_sublist.
+      intros x. apply Htseq.
+    + rewrite Forall_forall; intros p Hinp.
+      rewrite Hpseq.
+      rewrite Forall_forall in H3; auto.
+  - (*No change in context*)
+    pose proof (gen_new_ctx_gamma_eq_sig (d :: gamma)) as Heq2.
+    unfold gen_new_ctx_gamma in Heq2.
+    simpl in Heq2. rewrite Hind in Heq2.
+    simpl in *. assert (Heq3:=Heq2). unfold eq_sig in Heq2. 
+    destruct Heq2 as [Htseq2 [Hfseq2 Hpseq2]].
+    simpl. constructor; auto.
+    + revert H0. apply Forall_impl. intros a.
+      apply wf_funsym_sublist. 
+      apply eq_sig_is_sublist, eq_sig_sym; auto.
+    + revert H1. apply Forall_impl. intros a.
+      apply wf_predsym_sublist.
+      apply eq_sig_is_sublist, eq_sig_sym; auto.
+    + rewrite Forall_forall. intros x Hinx.
+      rewrite Hfseq.
+      rewrite Forall_forall in H2; apply (H2 x); auto.
+    + rewrite Forall_forall. intros x Hinx.
+      rewrite Hpseq.
+      rewrite Forall_forall in H3; apply (H3 x); auto.
+    + rewrite Forall_forall. intros x Hinx.
+      rewrite Htseq.
+      rewrite Forall_forall in H4; apply (H4 x); auto.
+    + (*The difficult part: proving that def is still valid*)
+      revert H9.
+      apply valid_def_sublist.
+      * apply eq_sig_is_sublist, eq_sig_sym; auto.
+      * pose proof (gen_new_ctx_gamma_sig_t (d :: gamma)).
+        unfold gen_new_ctx_gamma in H9.
+        simpl in H9. rewrite Hind in H9. auto.
+      * pose proof (gen_new_ctx_gamma_mut (d :: gamma)).
+        unfold gen_new_ctx_gamma in H9.
+        simpl in H9. rewrite Hind in H9. auto.
+Qed.
+
+Lemma gen_new_ctx_sound which nonrec: sound_trans (single_trans (gen_new_ctx which nonrec)).
+Proof.
+  (*rewrite gen_new_ctx_rewrite.*) unfold sound_trans, single_trans.
+  intros.
+  simpl in H.
+  specialize (H _ ltac:(left; auto)).
+  unfold task_valid in *. simpl in *.
+  split; auto.
+  destruct t as [[gamma delta] goal]; simpl_task.
+  destruct H as [Hwf Hval].
+  intros.
+  specialize (Hval (gen_new_ctx_valid _ gamma_valid) Hwf).
+  unfold log_conseq in *.
+  intros.
+  (*Now, need to show that we can convert an interpretation
+    for the full context into one of the weakened context*)
+  specialize (Hval pd (gen_new_ctx_pf gamma_valid pd pf)
+    (gen_new_ctx_pf_full gamma_valid pd pf pf_full)).
+  prove_hyp Hval.
+  {
+    intros d Hd.
+    erewrite satisfies_gen_new_ctx_pf. apply H.
+    Unshelve. auto.
+  }
+  erewrite satisfies_gen_new_ctx_pf in Hval.
+  apply Hval.
+Qed.
+
 
 (*Prove soundness*)
 Theorem eliminate_definition_gen_sound which nonrec:
