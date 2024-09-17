@@ -1839,6 +1839,137 @@ Proof.
     apply (sublist_strong_nodup _ _ _ Hpreds). apply NoDup_rev. auto.
 Qed.
 
+(*See*)
+Print valid_context.
+Lemma valid_ctx_concrete_def {gamma} (d: def):
+  (*d introduces no new typesyms*)
+  typesyms_of_def d = nil ->
+  Forall (wf_funsym gamma) (funsyms_of_def d) ->
+  Forall (wf_predsym gamma) (predsyms_of_def d) ->
+  (* Forall (fun t => ~ In t (sig_t gamma)) (concat (map typesyms_of_def l)) -> *)
+  Forall (fun f => ~ In f (sig_f gamma)) (funsyms_of_def d) ->
+  Forall (fun p => ~ In p (sig_p gamma)) (predsyms_of_def d) ->
+  (* NoDup (concat (map typesyms_of_def l)) -> *)
+  NoDup (funsyms_of_def d) ->
+  NoDup (predsyms_of_def d) ->
+  nonempty_def d ->
+  valid_def (d :: gamma) d ->
+  valid_context gamma ->
+  valid_context (d :: gamma).
+Proof.
+  intros Htys Hwf1 Hwf2 Hsig1 Hsig2 Hn1 Hn2 Hne Hval gamma_valid.
+  constructor; auto.
+  - revert Hwf1. rewrite !Forall_forall; intros Hwf1 x Hinx.
+    apply wf_funsym_expand; auto.
+  - revert Hwf2. rewrite !Forall_forall; intros Hwf2 x Hinx.
+    apply wf_predsym_expand; auto.
+  - rewrite Htys. constructor.
+  - rewrite Htys; constructor.
+Qed.
+
+Definition funpred_def_eq_dec (f1 f2: funpred_def) : {f1 = f2} + {f1 <> f2} :=
+   (reflect_dec' (funpred_def_eqb_spec f1 f2)).
+
+(*Sometimes it is easier to first match on l2*)
+(* Lemma sublist_strong_rewrite {A: Type} eq_dec (l1 l2: list A):
+  sublist_strong eq_dec l1 l2 =
+  match l2 with
+  | nil =>
+    match l1 with
+    | nil => true
+    | _ => false
+    end
+  | x2 :: t2 =>
+    match l1 with
+    | nil => true
+    | x1 :: t1 => (eq_dec x1 x2 && sublist_strong eq_dec t1 t2) || sublist_strong eq_dec l1 t2
+    end
+  end.
+Proof.
+  destruct l1; destruct l2; auto.
+Qed. *)
+
+Lemma sublist_strong_omap {A B: Type} (f: A -> option B) eq_dec1 eq_dec2 (l1 l2: list A):
+  sublist_strong eq_dec1 l1 l2 ->
+  sublist_strong eq_dec2 (omap f l1) (omap f l2).
+Proof.
+  revert l1. induction l2 as [| h2 t2 IH]; intros [| h1 t1]; simpl; auto.
+  - intros _. apply sublist_strong_nil.
+  - intros Hsub. apply orb_true_iff in Hsub. destruct Hsub as [Hsub | Hsub].
+    + apply andb_true_iff in Hsub. destruct Hsub as [Heq Hsub].
+      destruct (eq_dec1 h1 h2); subst; [|discriminate].
+      apply IH in Hsub. destruct (f h2); simpl; auto.
+      destruct (eq_dec2 b b); auto. rewrite Hsub; auto.
+    + apply IH in Hsub. simpl in Hsub.
+      destruct (f h2); auto.
+      simpl. destruct (match f h1 with
+        | Some y => y :: omap f t1
+        | None => omap f t1
+        end) eqn : Hmatch; auto.
+      apply orb_true_iff. right; auto.
+Qed.
+(* 
+Lemma sublist_strong_funsyms_of_rec l1 l2:
+  sublist_strong funpred_def_eq_dec l1 l2 ->
+  sublist_strong funsym_eq_dec (funsyms_of_rec l1) (funsyms_of_rec l2).
+Proof.
+  apply sublist_strong_omap.
+Qed.
+
+
+
+  unfold funsyms_of_rec. revert l1. induction l2 as [|h2 t2 IH]; intros [| h1 t1]; simpl; auto.
+  - intros _. destruct h2; auto.
+    apply sublist_strong_nil.
+  - unfold is_true at 1. rewrite orb_true_iff, andb_true_iff. intros [[Heq Hsub]| Hsub].
+    + destruct (funpred_def_eq_dec h1 h2); subst; [|discriminate].
+      destruct h2; simpl; [|apply IH; auto].
+      destruct (funsym_eq_dec f f); auto. rewrite IH; auto.
+    + apply IH in Hsub. simpl in Hsub. destruct h2; auto.
+      simpl.  destruct  apply IH. 
+  
+   simpl. *)
+
+Lemma split_funpred_defs_partition_length l:
+  length (fst (split_funpred_defs l)) =
+  length (fst (partition (fun x => match x with | fun_def _ _ _  => true | _ => false end) l)) /\
+  length (snd (split_funpred_defs l)) =
+  length (snd (partition (fun x => match x with | fun_def _ _ _  => true | _ => false end) l))
+  .
+Proof.
+  induction l as [|h t [IH1 IH2]]; simpl; auto; split; auto;
+  rewrite (surjective_pairing (partition _ _)); simpl; destruct h; simpl; auto.
+Qed.
+
+
+
+(*Get the indices in the list corresponding to the sublist.
+  TODO: need to prove sorted?*)
+Lemma sublist_strong_indices {A: Type} eq_dec (d: A) (l1 l2: list A):
+  sublist_strong eq_dec l1 l2 ->
+  exists idxs, length idxs = length l1 /\
+  Forall (fun i => i < length l2) idxs /\
+  l1 = map (fun i => nth i l2 d) idxs.
+Proof.
+  revert l1. induction l2 as [| h2 t2 IH].
+  - intros l1 Hsub. destruct l1; inversion Hsub. exists nil. auto.
+  - simpl. intros [| h1 t1]; simpl.
+    + intros _. exists nil. auto.
+    + intros Hsub. apply orb_true_iff in Hsub.
+      destruct Hsub as [Hsub | Hsub].
+      * apply andb_true_iff in Hsub. destruct Hsub as [Heq Hsub].
+        destruct (eq_dec h1 h2); subst; [|discriminate].
+        apply IH in Hsub.
+        destruct Hsub as [idxs [Hlen [Hall Ht1]]].
+        exists (0 :: (map S idxs)).
+        simpl. rewrite map_length, map_map, <- Ht1. split_all; auto.
+        constructor; auto. lia. rewrite Forall_map. revert Hall. apply Forall_impl; intros; lia.
+      * apply IH in Hsub.
+        destruct Hsub as [idxs [Hlen [Hall Hht]]].
+        exists (map S idxs). rewrite map_length, map_map, Forall_map. split_all; auto.
+        revert Hall. apply Forall_impl; intros; lia.
+Qed.
+
 (*Prove that the new context is valid*)
 Lemma gen_new_ctx_valid which nonrec gamma:
   valid_context gamma ->
@@ -1866,10 +1997,430 @@ Proof.
     {
       eapply add_rec_abs_valid; auto. all: auto.
     }
-    destruct (Pattern.filter_map _ l) eqn : Hpat; [simpl; auto|].
+    destruct (Pattern.filter_map _ l) as [|h t] eqn : Hpat; [simpl; auto|].
+    (*Prove that funsyms are [sublist_strong] of funsyms of l*)
+    set (l1:=h :: t) in *.
+    assert (Hsublist: sublist_strong funpred_def_eq_dec l1 l).
+    {
+      rewrite <- Hpat. clear. (*separate lemma?*)
+      induction l as [| h t IH]; simpl; auto.
+      destruct (gen_funpred_def_match h) as [b1 [[ls vs] e]] eqn : Hdef.
+      apply gen_funpred_def_match_eq in Hdef. subst.
+      destruct (which b1 ls) eqn : Hwhich.
+      - simpl. (*destruct b1; simpl in *; auto.*)
+        destruct (Pattern.filter_map _ _) eqn : Hpat; [simpl; auto|].
+        apply orb_true_iff. right. auto.
+      - simpl.
+        destruct (funpred_def_eq_dec _ _); simpl; [| auto].
+        rewrite IH; auto.
+    }
+    assert (Hfuns: sublist_strong funsym_eq_dec (funsyms_of_rec l1) (funsyms_of_rec l)).
+    { eapply sublist_strong_omap; eauto. }
+    assert (Hpreds: sublist_strong predsym_eq_dec (predsyms_of_rec l1) (predsyms_of_rec l)).
+    { eapply sublist_strong_omap; eauto. }
+    (*We also need to know that no funsym in these funsyms are in the abstract symbols*)
+    assert (Hdisj1: (*TODO: does it need to be both?*)  disj (funsyms_of_rec l1)
+      (concat (map funsyms_of_def (rev (fst (decls_of_def which false l)))))).
+    {
+      rewrite <- Hpat. simpl. unfold funsyms_of_rec. intros x [Hinx1 Hinx2].
+      revert Hinx1 Hinx2.
+      rewrite in_omap_iff, in_concat.
+      setoid_rewrite in_filter_map_iff.
+      setoid_rewrite in_map_iff.
+      setoid_rewrite <- In_rev.
+      setoid_rewrite in_filter_map_iff.
+      intros [fd1 [[fd2 [Hinfd Hfd]] Hx]].
+      intros [fs [[d [Hfs [fd3 [Hinfd3 Hd]]]] Hinx2]];
+      destruct fd1; inversion Hx; subst.
+      destruct (gen_funpred_def_match fd2) as [b1 [[ls1 vs1] e1]] eqn : Hdef1.
+      destruct (gen_funpred_def_match fd3) as [b2 [[ls2 vs2] e2]] eqn : Hdef2.
+      apply gen_funpred_def_match_eq in Hdef1, Hdef2. subst.
+      destruct (which b1 ls1) eqn : Hwhich1; inversion Hfd.
+      destruct (which b2 ls2) eqn : Hwhich2; inversion Hd; subst.
+      destruct b2; simpl in Hinx2; [|contradiction].
+      destruct Hinx2 as [Hxeq | []]; subst.
+      destruct b1; inversion H11; subst.
+      rewrite Hwhich1 in Hwhich2. discriminate.
+    }
+    (*Almost exactly the same, not great*)
+    assert (Hdisj2: (*TODO: does it need to be both?*)  disj (predsyms_of_rec l1)
+      (concat (map predsyms_of_def (rev (fst (decls_of_def which false l)))))).
+    {
+      rewrite <- Hpat. simpl. unfold predsyms_of_rec. intros x [Hinx1 Hinx2].
+      revert Hinx1 Hinx2.
+      rewrite in_omap_iff, in_concat.
+      setoid_rewrite in_filter_map_iff.
+      setoid_rewrite in_map_iff.
+      setoid_rewrite <- In_rev.
+      setoid_rewrite in_filter_map_iff.
+      intros [fd1 [[fd2 [Hinfd Hfd]] Hx]].
+      intros [fs [[d [Hfs [fd3 [Hinfd3 Hd]]]] Hinx2]];
+      destruct fd1; inversion Hx; subst.
+      destruct (gen_funpred_def_match fd2) as [b1 [[ls1 vs1] e1]] eqn : Hdef1.
+      destruct (gen_funpred_def_match fd3) as [b2 [[ls2 vs2] e2]] eqn : Hdef2.
+      apply gen_funpred_def_match_eq in Hdef1, Hdef2. subst.
+      destruct (which b1 ls1) eqn : Hwhich1; inversion Hfd.
+      destruct (which b2 ls2) eqn : Hwhich2; inversion Hd; subst.
+      destruct b2; simpl in Hinx2; [contradiction|].
+      destruct Hinx2 as [Hxeq | []]; subst.
+      destruct b1; inversion H11; subst.
+      rewrite Hwhich1 in Hwhich2. discriminate.
+    }
+    (* clear Hpat. *)
     simpl rev at 1. 
+    assert (Hsigt: sublist (sig_t (recursive_def l :: gamma))
+      (sig_t
+      (rev (fst (decls_of_def which false l)) ++ gamma1))).
+    {
+      unfold sig_t. 
+      rewrite map_app, concat_app.
+      rewrite typesyms_rec_nil. simpl.
+      intros ts Hints.
+      apply Htseq; auto.
+    }
     (*Second part: prove that adding the recursive definition is OK (TODO: separate lemma)*)
     (*I think prove the [sublist_strong] again*)
+    apply valid_ctx_concrete_def; auto.
+    + (*wf_funsym*) revert H0. 
+      rewrite !Forall_forall. intros Hwf1 x Hinx.
+      apply sublist_strong_in in Hfuns.
+      apply Hfuns in Hinx.
+      eapply wf_funsym_sublist.
+      2: apply (Hwf1 x Hinx).
+      apply Hsigt.
+    + (*wf_predsym*)
+      revert H1. rewrite !Forall_forall. intros Hwf2 x Hinx.
+      apply sublist_strong_in in Hpreds.
+      apply Hpreds in Hinx.
+      eapply wf_predsym_sublist. 2: apply (Hwf2 x Hinx).
+      apply Hsigt.
+    + (*disjoint of funsyms*)
+      revert H2. rewrite !Forall_forall.
+      intros Hsig1 x Hinx1.
+      unfold sig_f. rewrite map_app, concat_app, in_app_iff.
+      intros [Hinx2 | Hinx2].
+      * apply (Hdisj1 x); auto.
+      * apply (Hsig1 x); auto.
+        -- apply sublist_strong_in in Hfuns. auto.
+        -- apply Hfseq; auto.
+    + (*disjointness of predsyms*)
+      revert H3. rewrite !Forall_forall.
+      intros Hsig2 x Hinx1.
+      unfold sig_p. rewrite map_app, concat_app, in_app_iff.
+      intros [Hinx2 | Hinx2].
+      * apply (Hdisj2 x); auto.
+      * apply (Hsig2 x); auto.
+        -- apply sublist_strong_in in Hpreds. auto.
+        -- apply Hpseq; auto.
+    + (*Nodup of funsyms*)
+      apply (sublist_strong_nodup _ _ _ Hfuns); auto.
+    + (*predsyms*) apply (sublist_strong_nodup _ _ _ Hpreds); auto.
+    + (*The more interesting part - prove that the definition is valid*)
+      revert H9.
+      assert (forall l1 l2 gamma1 gamma2,
+        (* (forall x, In x (sig_f gamma1) <-> In x (sig_f gamma2)) ->
+        (forall x, In x (sig_t gamma1) <-> In x (sig_t gamma2)) ->
+        (forall x, In x (sig_p gamma1) <-> In x (sig_p gamma2)) -> *)
+        sublist_sig gamma2 gamma1 ->
+        sublist (mut_of_context gamma2) (mut_of_context gamma1) ->
+        sublist_strong funpred_def_eq_dec l1 l2 ->
+        l1 <> nil ->
+        funpred_valid gamma2 l2 ->
+        funpred_valid gamma1 l1).
+      { 
+        (*TODO: separate lemma*)
+        clear.
+        intros l1 l2 gamma1 gamma2 Hsig Hmut Hsub Hnotnil. (*Hfs Hts Hps Hmut Hsub.*)
+        unfold funpred_valid.
+        intros [Hallval Hterm].
+        split.
+        - revert Hallval.
+          rewrite !Forall_forall; intros Hallval x Hinx.
+          assert (Hinx1: In x l2) by (apply (sublist_strong_in _ _ _ Hsub); auto).
+          specialize (Hallval _ Hinx1).
+          unfold funpred_def_valid_type in *.
+          destruct x; destruct Hallval as [Hty [Hsubfv [Hsubty [Hn Hmap]]]]; split_all; auto.
+          + (*Prove typing*)
+            revert Hty. apply term_has_type_sublist; auto.
+          + revert Hty. apply formula_typed_sublist; auto.
+        - (*Interesting - termination*)
+          revert Hterm.
+          unfold funpred_def_term_exists.
+          intros [m [params [vs [is Hterm]]]].
+          exists m. exists params. exists vs.
+          unfold funpred_def_term in Hterm.
+          destruct Hterm as [Hl2 [Hlenvs [Hm_in [Hlenis [His [Hftys [Hptys [Hfparams [Hpparams [Hdecfun Hdecpred]]]]]]]]]].
+          (*Difficulty: we know that l1 is a sublist of l2. We have to build up the appropriate list.
+            We did this in the previous lemma (sublist_strong_indices)*)
+          destruct (sublist_strong_indices _ fd_d _ _ Hsub) as [idxs [Hlen2 [Hallidx Hl1]]].
+          set (is2 := map (fun i => nth i is 0) idxs).
+          (*And a result we need from this*)
+          assert (Hij: forall i, i < length l1 ->
+            exists j, j < length l2 /\
+            nth i l1 fd_d = nth j l2 fd_d /\
+            nth i is2 0 = nth j is 0 (*/\
+            (i < length (fst (split_funpred_defs l1)) <->
+             j < length (fst (split_funpred_defs l2)))*)).
+          {
+            intros i Hi. exists (nth i idxs 0).
+            (*Prove first 3 separately*)
+            assert (Hnthi: nth i idxs 0 < Datatypes.length l2). {
+              rewrite Forall_forall in Hallidx; apply Hallidx; apply nth_In; lia.
+            }
+            assert (Hnthl12: nth i l1 fd_d = nth (nth i idxs 0) l2 fd_d). {
+              rewrite Hl1. rewrite map_nth_inbound with (d2:=0); auto. lia.
+            }
+            assert (Hnthis12: nth i is2 0 = nth (nth i idxs 0) is 0). {
+              unfold is2. rewrite map_nth_inbound with (d2:=0); auto. lia.
+            }
+            split_all; auto.
+            (* split; intros Hfstsplit.
+            - 
+            
+             Print split_funpred_defs.
+            
+             Print funpred_defs_to_sns. assert (Hinfs: In (nth i idxs 0) (fst ( l1))).
+
+
+            funpred_defs_to_sns_in_fst:
+  forall (l : list funpred_def) (is : list nat) (x : fn),
+  Datatypes.length l = Datatypes.length is ->
+  In x (fst (funpred_defs_to_sns l is)) <->
+  (exists i : nat,
+     i < Datatypes.length (fst (split_funpred_defs l)) /\
+     (let y := nth i (fst (split_funpred_defs l)) (id_fs, [], tm_d) in
+      x = fundef_to_fn (fst (fst y)) (snd (fst y)) (snd y) (nth i is 0))) *)
+          }
+          (*Then indicies are (map (nth i is) idxs)*)
+          assert (Hlen3: length is2 = length l1) by (unfold is2; rewrite map_length; auto).
+          exists is2.
+          unfold funpred_def_term. split_all; auto.
+          + eapply mut_in_ctx_sublist; eassumption.
+          + (*Prove bound on nth*) intros i Hi.
+            rewrite Hlen3 in Hi.
+            specialize (Hij i Hi).
+            destruct Hij as [j [Hj [Hil1 Hiis2]]].
+            rewrite Hiis2.
+            specialize (His j (ltac:(lia))).
+            revert His.
+            pose proof (split_funpred_defs_length l1) as Hsplitlen.
+            assert (Hi2: i < length (fst (split_funpred_defs l1)) \/
+              length (fst (split_funpred_defs l1)) <= i < length l1) by lia.
+            destruct Hi2 as [Hi2 | Hi2].
+            * (*TODO: problem! this is the wrong index list!
+                We really need the one corresponding to each part of [split_funpred_defs]
+                and we can put them together
+                So plan is
+                1. proce [split_funpred_defs] equivalent to omap of partition
+                  (maybe also prove map_filter equivalent to this too)
+                2. prove that [sublist_strong] preserved under filter (and hence partition)
+                3. combine with previous omap result to show that each side is sublist_strong
+                4. use lemma to get 2 lists idx1 and idx2, concat together
+                (should be OK because [funpred_defs_to_sns] does indeed split up)*)
+              
+            
+            
+             rewrite
+            (*TODO: going to have to prove something about[split_funpred_defs]*)
+            rewrite !app_nth1.
+            
+            * rewrite !app_nth1; [| rewrite map_length; lia ].
+            Search split_funpred_defs.
+              rewrite map_nth_inbound with (d2:=(id_fs, nil, tm_d)); 
+            2: rewrite map_length.
+            Search split_funpred_defs.
+
+            split_funpred_defs_length:
+  forall l : list funpred_def,
+  Datatypes.length (fst (split_funpred_defs l)) +
+  Datatypes.length (snd (split_funpred_defs l)) = 
+  Datatypes.length l
+            rewrite <- map_nth.
+            rewrite app_nth1.
+            rewrite map_nth_inbound.
+          
+          
+           Search mut_in_ctx mut_of_context.
+          simpl.
+          (*Could say: if we have [sublist_strong], we can find a list of indices such that
+            l1 = map (fun i => nth i l2 d) (idxs)
+            and do the same for 
+            *)
+          
+          spe
+               split; auto.
+              split_all; auto.
+            intros [| h1 t1]; simpl.
+          }
+          assert (exists is': length is' = length l1)
+          eexists.
+          unfold funpred_def_term.
+
+          (*What we want:
+            must be the case that for all i, exists j,
+              nth i l1 = nth j l2 /\
+              nth i is' = nth j is *)
+
+          
+
+
+
+            (*TODO: this is what we need, not full iff*) unfold sublist_sig. 
+            split_all; intros y Hiny; [apply Hts | apply Hfs | apply Hps]; auto.
+            *  
+              
+               [apply Hfs ] 
+
+        
+        admit. }
+      apply H9; auto.
+      * intros x. pose proof (get_recfun_defs_funsyms which false l x) as Hfunseq.
+        unfold sig_f.
+        simpl concat at 2.
+        rewrite in_app_iff, <- Hfunseq.
+        simpl.
+        rewrite map_app, concat_app, app_assoc. rewrite in_app_iff.
+        apply or_iff; auto.
+        unfold decl_list_of_def. rewrite !in_app_iff.
+        rewrite rev_app_distr, map_app, concat_app.
+        rewrite in_app_iff. apply or_iff; [|reflexivity].
+        simpl. rewrite Hpat. unfold l1.
+        destruct h; simpl; destruct t; simpl; try rewrite app_nil_r; reflexivity.
+      * (*TODO: should be easier way to prove these*)
+        intros x. pose proof (get_recfun_defs_typesyms which false l) as Htyseq.
+        unfold decl_list_of_def in Htyseq.
+        unfold sig_t. Opaque decls_of_def. simpl. Transparent decls_of_def. 
+        rewrite map_app, concat_app.
+        rewrite rev_app_distr, map_app, concat_app in Htyseq.
+        apply app_eq_nil in Htyseq.
+        destruct Htyseq as [_ Htyseq]; rewrite Htyseq. simpl; auto.
+      * (*predsyms*)
+        intros x. pose proof (get_recfun_defs_predsyms which false l x) as Hpredseq.
+        unfold sig_p.
+        simpl concat at 2.
+        rewrite in_app_iff, <- Hpredseq.
+        simpl.
+        rewrite map_app, concat_app, app_assoc. rewrite in_app_iff.
+        apply or_iff; auto.
+        unfold decl_list_of_def. rewrite !in_app_iff.
+        rewrite rev_app_distr, map_app, concat_app.
+        rewrite in_app_iff. apply or_iff; [|reflexivity].
+        simpl. rewrite Hpat. unfold l1.
+        destruct h; simpl; destruct t; simpl; try rewrite app_nil_r; reflexivity. 
+  - 
+      *
+
+        Search app nil.
+        rewrite concat_app in Htyseq.
+        simpl concat at 2.
+        simpl. rewrite map_app, concat_app.
+        unfold decl_list_of_def in Htyseq.
+         simpl in Htyseq.
+        rewrite in_app_iff.
+        rewrite in_app_iff, <- Hfunseq.
+        (* rewrite <- Hpat. *)
+        simpl.
+        rewrite map_app, concat_app, app_assoc. rewrite in_app_iff.
+        apply or_iff; auto.
+        unfold decl_list_of_def. rewrite !in_app_iff.
+        rewrite rev_app_distr, map_app, concat_app.
+        rewrite in_app_iff. apply or_iff; [|reflexivity].
+        simpl. rewrite Hpat. unfold l1.
+        destruct h; simpl; destruct t; simpl; try rewrite app_nil_r; reflexivity.
+
+        
+        
+         destruct (Pattern.filter_map _ _) eqn : Hpat.
+        Print decls_of_def.
+        simpl.
+        rewrite concat_app.
+        rewrite map_app.
+        rewrite comcat_app.
+        apply or_iff; auto.
+        Search (?P \/ ?Q <-> ?R \/ ?S).
+        apply iff_congr.
+        apply iff_compat.
+        
+         rewrite concat_app.
+        unfold map.
+        simpl.
+
+        In x
+  (concat
+  (map funsyms_of_def
+  (recursive_def l1 :: rev
+  (fst
+  (decls_of_def which false l)) ++
+gamma1)))
+        rewrite map_app.
+        rewrite concat_app.
+        simpl.
+        revert Hfunseq.
+        unfold sig_f.
+        unfold decl_list_of_dec
+         unfold decl_list_of_def in H10.
+        rewrite in_app_iff in H10.
+        simpl in H10. 
+      
+      
+      
+       Print decl_list_of_def. intros f. unfold sig_f. simpl.
+
+      get_recfun_defs_funsyms
+
+      unfold valid_def, funpred_valid.
+      intros [Hallval Hterm].
+      split.
+      * revert Hallval. rewrite !Forall_forall. intros Hallval fd Hinfd.
+      Print funsyms_of_rec.
+        
+        revert H9. unfold funpred_valid; intros [] funpred_def_valid_type.
+      Print funpred_valid.
+      simpl.
+      simpl.
+
+    
+    
+      apply Htseq in Hinx2.  apply Hinx1.
+      
+      
+       apply Hdisj1 in Hinx1. apply sublist_strong_in in Hfuns.
+        apply Hfuns in Hinx1.
+
+
+        funsyms_rec_sublist_strong:
+  forall (which : forall b : bool, gen_sym b -> bool) 
+    (b : bool) (l : list funpred_def),
+  sublist_strong funsym_eq_dec
+    (concat (map funsyms_of_def (rev (fst (decls_of_def which b l)))))
+    (rev (funsyms_of_rec l))
+        
+      Search decls_of_def funsyms_of_def.
+      rewrite concat_app.
+      Search decls_of_def fst.
+
+
+      typesyms_rec_nil:
+  forall (which : forall b : bool, gen_sym b -> bool) 
+    (b : bool) (l : list funpred_def),
+  concat (map typesyms_of_def (rev (fst (decls_of_def which b l)))) = []
+      simpl.
+      fold gamma1 in Htseq.
+      rewrite Htseq.
+      (*TODO*)
+       auto.
+      simpl.
+    
+    remember (h :: t) as l1 eqn : Hl1. clear Hl1.
+    simpl. set (l1:=h :: t) in *. 
+      simpl funsyms_of_def.
+    
+     unfold funsyms_of_def. simpl. Opaque cons.  simpl.
+      (*TODO: move*)
+     
+    
+    
+     rewrite !Forall_forall. Search wf_funsym.
     
     constructor; auto.
     + simpl. 
