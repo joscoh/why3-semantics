@@ -1510,17 +1510,395 @@ Proof.
         -- simpl. rewrite app_nil_r. apply or_iff_compat_l; auto.
 Qed.
 
+Lemma gen_abs_not_concrete{b} l:
+  concrete_def (@gen_abs b l) = false.
+Proof. destruct b; auto. Qed.
+
+(*Suppose we have a recursive definition on list l. Then we can take a sublist of l
+  and the definition is still a valid recursive function*)
+(*TODO: we need both recursive and nonrecursive
+  easist way probably with filter (as I am doing) - but ignore cases*)
+(*Lemma filter_rec_def_valid gamma l (p: funpred_def -> bool):
+  valid_context (recursive_def l :: gamma) ->
+  valid_context (recursive_def (filter p l) :: 
+    (map gen_abs (filter (fun x => negb (p x)) l)) :: gamma).
+Proof.
+  intros Hval. inversion Hval; subst; simpl in *.
+  constructor; auto.
+  - simpl. unfold funsyms_of_rec. *)
+  
+(*Let's see if we can prove
+1. If we take any definition, and we convert all of its declared type/fun/predsysm to
+  abstract symbols (in any order), then the resulting context is still well-formed
+  (we may have proved similar for eliminate_inductive)
+2. If we take a recursive definition and add some of the symbols as abstract and the rest as
+  concrete, the result is still well-formed
+3. Nonrec case follows from (1)*)
+
+Print def. 
+
+(*Prove for recursive definition only - TODO: should try to factor this out, but it is difficult*)
+
+(*Prove generic for recursive: if we abstract some of them, then keep the rest in
+  a recursive def, everything is still fine*)
+Print valid_context.
+(* 
+Lemma filter_rec_def_valid gamma l (p: funpred_def -> bool):
+  valid_context (recursive_def l :: gamma) ->
+  valid_context (
+    recursive_def (filter p l) :: 
+    Pattern.filter_map (fun x => 
+      match gen_funpred_def_match x with
+      | (b, (ls, _, _)) => if which b ls
+
+    (map gen_abs (filter (fun x => negb (p x)) l)) :: gamma). *)
+
+
+(*To reduce number of cases*)
+Lemma rewrite_concrete_recs which l:
+  match snd (decls_of_def which false l) with
+| Some d => [d]
+| None => []
+end =
+match Pattern.filter_map
+  (fun x : funpred_def =>
+let (b, p) := gen_funpred_def_match x in let
+  (p0, _) := p in let (ls, _) := p0 in if which b ls then
+None else Some x)
+  l with
+| nil => nil
+| l => [recursive_def l]
+end.
+Proof.
+  simpl.
+  destruct (Pattern.filter_map _ _); simpl; auto.
+  destruct l0; auto.
+Qed.
+
+Lemma gen_abs_concrete {b: bool} (ls: gen_sym b):
+  concrete_def (gen_abs ls) = false.
+Proof.
+  destruct b; auto.
+Qed.
+
+Lemma gen_abs_typesyms {b: bool} (ls: gen_sym b):
+  typesyms_of_def (gen_abs ls) = nil.
+Proof.
+  destruct b; auto.
+Qed.
+
+Fixpoint sublist_strong {A: Type} (eq_dec: forall x y, {x = y} + {x <> y}) (l1 l2: list A): bool :=
+  match l1, l2 with
+  | nil, _ => true
+  | x1 :: t1, x2 :: t2 => (eq_dec x1 x2 && sublist_strong eq_dec t1 t2) || sublist_strong eq_dec l1 t2
+  | _, nil => false
+  end.
+
+Lemma sublist_strong_in {A: Type} eq_dec (l1 l2: list A):
+  sublist_strong eq_dec l1 l2 ->
+  sublist l1 l2.
+Proof.
+  revert l1. unfold sublist. induction l2 as [| h2 t2 IH]; simpl; intros [| h1 t1]; auto;
+  try contradiction.
+  intros Hsub x [Hx | Hinx]; subst; bool_hyps; destruct Hsub as [Hsub1 | Hsub2];
+  bool_hyps; subst; auto.
+  - destruct (eq_dec x h2); subst; auto. discriminate.
+  - right. apply (IH _ Hsub2 x); simpl; auto.
+  - destruct (eq_dec h1 h2); subst; auto; [|discriminate]. right.
+    apply (IH t1 H0 x); auto.
+  - right. apply (IH _ Hsub2 x); simpl; auto.
+Qed.
+
+Lemma sublist_strong_nodup {A: Type} eq_dec (l1 l2: list A):
+  sublist_strong eq_dec l1 l2 ->
+  NoDup l2 ->
+  NoDup l1.
+Proof.
+  revert l1. induction l2 as [| h2 t2 IH]; simpl; intros [| h1 t1]; auto; try discriminate;
+  [constructor|]. intros Hsub Hnodup.
+  inversion Hnodup; subst.
+  apply orb_true_iff in Hsub.
+  destruct Hsub as [Hsub | Hsub].
+  - apply andb_true_iff in Hsub. destruct Hsub as [Heq Hsub]. destruct (eq_dec h1 h2); [subst| discriminate].
+    constructor; auto. intros Hin. apply (sublist_strong_in _ _ _ Hsub) in Hin. contradiction.
+  - apply (IH _ Hsub); auto.
+Qed.
+
+Lemma sublist_strong_app {A: Type} eq_dec (l1 l2 l3 l4: list A):
+  sublist_strong eq_dec l1 l2 ->
+  sublist_strong eq_dec l3 l4 ->
+  sublist_strong eq_dec (l1 ++ l3) (l2 ++ l4).
+Proof.
+  revert l1 l3 l4. induction l2 as [| x2 t2 IH]; simpl;
+  intros [| x1 t1] l3 l4; simpl; auto.
+  - intros _ Hsub.
+    destruct l3 as [| x3 t3]; auto.
+    apply orb_true_iff. right. apply (IH nil); auto. destruct t2; auto.
+  - intros Hsub1 Hsub2. apply orb_true_iff in Hsub1. apply orb_true_iff.
+    destruct Hsub1 as [Hsub1 | Hsub1].
+    + apply andb_true_iff in Hsub1. destruct Hsub1 as [Heq Hsub1].
+      destruct (eq_dec x1 x2); [subst | discriminate]. simpl.
+      left. apply IH; auto.
+    + right. apply (IH (x1 :: t1)); auto.
+Qed.
+
+Lemma sublist_strong_nil {A: Type} eq_dec (l: list A):
+  sublist_strong eq_dec nil l.
+Proof. destruct l; auto. Qed.
+
+Lemma sublist_strong_refl {A: Type} eq_dec (l: list A):
+  sublist_strong eq_dec l l.
+Proof.
+  induction l as [| h t IH]; auto; simpl.
+  apply orb_true_iff. left. apply andb_true_iff. split; auto.
+  destruct (eq_dec h h); auto.
+Qed.
+
+Lemma sublist_strong_rev {A: Type} eq_dec (l1 l2: list A):
+  sublist_strong eq_dec l1 l2 ->
+  sublist_strong eq_dec (rev l1) (rev l2).
+Proof.
+  revert l1. induction l2 as [| x2 t2 IH]; intros [|x1 t1]; simpl; auto.
+  - intros. apply sublist_strong_nil.
+  - intros Hsub. apply orb_true_iff in Hsub.
+    destruct Hsub as [Hsub | Hsub].
+    + apply andb_true_iff in Hsub.
+      destruct Hsub as [Heq Hsub].
+      destruct (eq_dec x1 x2); [subst| discriminate].
+      apply sublist_strong_app; auto.
+      apply sublist_strong_refl.
+    + apply IH in Hsub.
+      simpl in Hsub.
+      pose proof (sublist_strong_app eq_dec (rev t1 ++ [x1]) (rev t2) nil  [x2] Hsub
+        (sublist_strong_nil eq_dec _)) as Hsubapp.
+      rewrite app_nil_r in Hsubapp. apply Hsubapp.
+Qed.
+
+Lemma concat_rev_single {A: Type} (l: list (list A))
+  (Hall: Forall (fun x => length x <= 1) l):
+  concat (rev l) = rev(concat l).
+Proof.
+  induction l as [| h t IH]; simpl; auto.
+  inversion Hall; subst.
+  rewrite concat_app, rev_app_distr; simpl.
+  rewrite app_nil_r.
+  rewrite IH; auto. f_equal.
+  destruct h as [| h1 t1]; simpl; auto.
+  simpl in *. destruct t1; auto; simpl in *; lia.
+Qed.
+
+(*The funsyms that are turned abstract are a (strong) subset of
+  the recursive funsyms - the order matters for NoDup, although we could
+  prove a Permutation if we needed*)
+Lemma funsyms_rec_sublist_strong which b l:
+   sublist_strong funsym_eq_dec (concat
+    (map funsyms_of_def
+    (rev (fst (decls_of_def which b l)))))
+    (rev (funsyms_of_rec l)).
+Proof.
+  rewrite map_rev.
+  rewrite concat_rev_single.
+  2: {
+    rewrite Forall_map. simpl. rewrite Forall_forall.
+    intros x. rewrite in_filter_map_iff. intros [y [Hiny Hx]].
+    destruct (gen_funpred_def_match y) as [b1 [[ls vs] e]] eqn : Hdef.
+    apply gen_funpred_def_match_eq in Hdef. subst.
+    destruct (which b1 ls) eqn : Hwhich; inversion Hx; subst.
+    destruct b1; auto.
+  }
+  apply sublist_strong_rev.
+  (*Now all revs are gone*)
+  induction l as [| h t IH]; simpl; auto.
+  destruct (gen_funpred_def_match h) as [b1 [[ls vs] e]] eqn : Hdef.
+  apply gen_funpred_def_match_eq in Hdef. subst.
+  destruct (which b1 ls) eqn : Hwhich.
+  - simpl. destruct b1; simpl in *; auto.
+    destruct (funsym_eq_dec ls ls); auto. simpl.
+    rewrite IH; auto.
+  - destruct b1; simpl in *; auto. rewrite IH.
+    destruct (concat _); auto. apply orb_true_r.
+Qed.
+
+(*And the same for predsyms*)
+Lemma predsyms_rec_sublist_strong which b l:
+   sublist_strong predsym_eq_dec (concat
+    (map predsyms_of_def
+    (rev (fst (decls_of_def which b l)))))
+    (rev (predsyms_of_rec l)).
+Proof.
+  rewrite map_rev.
+  rewrite concat_rev_single.
+  2: {
+    rewrite Forall_map. simpl. rewrite Forall_forall.
+    intros x. rewrite in_filter_map_iff. intros [y [Hiny Hx]].
+    destruct (gen_funpred_def_match y) as [b1 [[ls vs] e]] eqn : Hdef.
+    apply gen_funpred_def_match_eq in Hdef. subst.
+    destruct (which b1 ls) eqn : Hwhich; inversion Hx; subst.
+    destruct b1; auto.
+  }
+  apply sublist_strong_rev.
+  (*Now all revs are gone*)
+  induction l as [| h t IH]; simpl; auto.
+  destruct (gen_funpred_def_match h) as [b1 [[ls vs] e]] eqn : Hdef.
+  apply gen_funpred_def_match_eq in Hdef. subst.
+  destruct (which b1 ls) eqn : Hwhich.
+  - simpl. destruct b1; simpl in *; auto.
+    destruct (predsym_eq_dec ls ls); auto. simpl.
+    rewrite IH; auto.
+  - destruct b1; simpl in *; auto. rewrite IH.
+    destruct (concat _); auto. apply orb_true_r.
+Qed.
+
+Lemma typesyms_rec_nil which b l:
+  concat
+    (map typesyms_of_def
+    (rev (fst (decls_of_def which b l)))) = nil.
+Proof.
+  apply concat_nil_Forall. rewrite Forall_map. apply Forall_rev.
+  simpl. rewrite Forall_forall. intros x. rewrite in_filter_map_iff.
+  intros [fd [Hinfd Hx]].
+  destruct (gen_funpred_def_match fd) as [b1 [[ls vs] e]] eqn : Hdef.
+  apply gen_funpred_def_match_eq in Hdef. subst.
+  destruct (which b1 ls); inversion Hx; subst; simpl; auto.
+  apply gen_abs_typesyms.
+Qed.
+
+
+(*Add abstract symbols from recursive def still well-founded*)
+Lemma add_rec_abs_valid {gamma gamma1} which b
+  (* (gamma_valid: valid_context gamma) *)
+  (gamma1_valid: valid_context gamma1)
+  (l: list funpred_def)
+  (Hwf1: Forall (wf_funsym (recursive_def l :: gamma)) (funsyms_of_rec l))
+  (Hwf2: Forall (wf_predsym (recursive_def l :: gamma)) (predsyms_of_rec l))
+  (Hnotsig1: Forall (fun f : funsym => ~ In f (sig_f gamma)) (funsyms_of_rec l))
+  (Hnotsig2: Forall (fun f : predsym => ~ In f (sig_p gamma)) (predsyms_of_rec l))
+  (Hnodup1: NoDup (funsyms_of_rec l))
+  (Hnodup2: NoDup (predsyms_of_rec l))
+  (Htseq: forall x, In x (sig_t gamma1) <-> In x (sig_t gamma))
+  (Hfseq: forall x, In x (sig_f gamma1) <-> In x (sig_f gamma))
+  (Hpseq: forall x, In x (sig_p gamma1) <-> In x (sig_p gamma))
+  :
+  valid_context (rev (fst (decls_of_def which b l)) ++ gamma1).
+Proof.
+  pose proof (funsyms_rec_sublist_strong which b l) as Hfuns.
+  assert (Hfuns1: forall x, In x (concat
+    (map funsyms_of_def
+    (rev (fst (decls_of_def which b l))))) ->
+      In x (funsyms_of_rec l)).
+  {
+    apply sublist_strong_in in Hfuns. intros x Hinx.
+    rewrite In_rev. apply Hfuns; auto.
+  }
+  pose proof (predsyms_rec_sublist_strong which b l) as Hpreds.
+  assert (Hpreds1: forall x, In x (concat
+    (map predsyms_of_def
+    (rev (fst (decls_of_def which b l))))) ->
+      In x (predsyms_of_rec l)).
+  {
+    apply sublist_strong_in in Hpreds. intros x Hinx.
+    rewrite In_rev. apply Hpreds; auto.
+  }
+  pose proof (typesyms_rec_nil which b l) as Htys.
+  apply valid_ctx_abstract_app; auto.
+  try rewrite get_recfun_defs_typesyms;
+  try rewrite get_recfun_defs_funsyms;
+  try rewrite get_recfun_defs_predsyms; auto.
+  - apply Forall_rev. simpl.
+    rewrite Forall_forall. intros x.
+    rewrite in_filter_map_iff. intros [y [Hiny Hx]].
+    destruct (gen_funpred_def_match y) as [b1 [[ls vs] e]] eqn : Hdef.
+    apply gen_funpred_def_match_eq in Hdef. subst.
+    destruct (which b1 ls); inversion Hx; subst; simpl; auto.
+    apply gen_abs_concrete.
+  - (*Prove funsym well-formed according to this new context*) 
+    rewrite Forall_forall in Hwf1 |- *.
+    intros x Hinx. apply Hfuns1 in Hinx.
+    apply wf_funsym_sublist with (g1:=(recursive_def l) :: gamma); auto.
+    intros ts. simpl. apply Htseq.
+  - (*Same for predsym*)
+    rewrite Forall_forall in Hwf2 |- *.
+    intros x Hinx. apply Hpreds1 in Hinx.
+    apply wf_predsym_sublist with (g1:=(recursive_def l) :: gamma); auto.
+    intros ts. simpl. apply Htseq.
+  - (*Typesyms in signature*)
+    rewrite Htys. constructor.
+  - (*Prove funsyms not in signature*) rewrite Forall_forall in Hnotsig1 |- *. (*need H2*)
+    intros x Hinx. apply Hfuns1 in Hinx.
+    intros Hinx1. apply Hfseq in Hinx1.
+    apply (Hnotsig1 x); auto.
+  - (*Same for predsyms*) rewrite Forall_forall in Hnotsig2 |- *. (*need H3*)
+    intros x Hinx. apply Hpreds1 in Hinx.
+    intros Hinx1. apply Hpseq in Hinx1.
+    apply (Hnotsig2 x); auto.
+  - (*Nodups in added symbols*)
+    rewrite Htys; auto; constructor.
+  - (*NoDups in added funsyms*)
+    apply (sublist_strong_nodup _ _ _ Hfuns). apply NoDup_rev. auto.
+  - (*NoDups in added presyms*)
+    apply (sublist_strong_nodup _ _ _ Hpreds). apply NoDup_rev. auto.
+Qed.
 
 (*Prove that the new context is valid*)
 Lemma gen_new_ctx_valid which nonrec gamma:
   valid_context gamma ->
-  valid_context (gen_new_ctx_gamma which nonrec gamma).
+  valid_context (gen_new_ctx_gamma' which nonrec gamma).
 Proof.
-  intros. rewrite gen_new_ctx_gamma_equiv.
+  intros.
   induction H; simpl; try solve[constructor].
+  assert (Hval2: valid_context (d :: gamma)) by (constructor; auto).
   unfold gen_new_ctx_gamma' in *. simpl.
-  assert (Heqctx:=gen_new_ctx_gamma_eq_sig gamma).
+  assert (Heqctx:=gen_new_ctx_gamma_eq_sig which nonrec gamma).
   unfold eq_sig in Heqctx. destruct Heqctx as [Htseq [Hfseq Hpseq]].
+  destruct (is_rec_nonrec d) as [l| l] eqn : Hrec.
+  - destruct d; inversion Hrec; subst. simpl in *.
+    (*Annoying, we add both concrete and abstract symbols, so we cannot directly
+      use [valid_ctx_abstract_app]*)
+    unfold decl_list_of_def. rewrite rev_app_distr.
+    rewrite rewrite_concrete_recs.
+    (*2 parts: first, prove abstract is well-formed*)
+    rewrite <- app_assoc.
+    unfold gen_new_ctx_gamma' in Htseq, Hfseq, Hpseq.
+    match goal with |- valid_context (?x ++ ?l ++ ?z) =>
+      set (gamma1:=z) in *;
+      assert (Hval3: valid_context (l ++ gamma1))
+    end.
+    {
+      eapply add_rec_abs_valid; auto. all: auto.
+    }
+    destruct (Pattern.filter_map _ l) eqn : Hpat; [simpl; auto|].
+    simpl rev at 1. 
+    (*Second part: prove that adding the recursive definition is OK (TODO: separate lemma)*)
+    (*I think prove the [sublist_strong] again*)
+    
+    constructor; auto.
+    + simpl. 
+      (*START*)
+    
+    constructor.
+    
+     simpl app at 1. 
+    simpl.
+    { simpl; auto. }
+    simpl.
+    apply valid_ctx_abstract_app;
+    try rewrite get_recfun_defs_typesyms;
+    try rewrite get_recfun_defs_funsyms;
+    try rewrite get_recfun_defs_predsyms; auto.
+    + (*Prove not concrete def*)
+      rewrite Forall_forall. intros d.
+      rewrite <- In_rev. unfold decl_list_of_def.
+      rewrite in_app_iff. intros [Hind | Hind].
+      * simpl in Hind. apply in_filter_map_iff in Hind.
+        destruct Hind as [y [Hiny Hd]].
+        destruct (gen_funpred_def_match _) as [b1 [[ls1 vs1] e1]] eqn : Hdef.
+        destruct (which b1 ls1); inversion Hd; subst; auto.
+        apply gen_abs_not_concrete.
+      * destruct ()
+        apply gen_funpred_def_match_eq in Hdef; subst; simpl in *.
+
+  
+   Check valid_ctx_abstract_app.
   destruct (is_ind d) eqn : Hind.
   - destruct d; inversion Hind; subst.
     simpl in *.
