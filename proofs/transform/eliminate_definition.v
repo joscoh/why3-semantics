@@ -2676,10 +2676,451 @@ Proof.
     eapply valid_context_change_tl. apply Hval2. all: auto.
 Qed.
 
+
+(*Convert an interpretation from gamma into one onto
+  [gen_new_ctx_gamma gamma].
+  This is very simple; we use the same funs and preds*)
+
+(*Note: these lemmas are exactly the same as [eliminate_inductive]. Can we generalize?*)
+
+Lemma gen_new_ctx_funs_constrs which nonrec  {gamma} (gamma_valid: valid_context gamma) 
+(pd: pi_dom) (pf: pi_funpred gamma_valid pd):
+  forall (m : mut_adt) (a : alg_datatype) 
+    (c : funsym) (Hm : mut_in_ctx m (gen_new_ctx_gamma' which nonrec gamma)) 
+    (Ha : adt_in_mut a m) (Hc : constr_in_adt c a)
+    (srts : list sort)
+    (Hlens : Datatypes.length srts =
+              Datatypes.length (m_params m))
+    (args : arg_list (domain (dom_aux pd))
+              (sym_sigma_args c srts)),
+  funs gamma_valid pd pf c srts args =
+  constr_rep_dom (gen_new_ctx_valid which nonrec _ gamma_valid) m Hm srts Hlens 
+    (dom_aux pd) a Ha c Hc (adts pd m srts) args.
+Proof.
+  intros.
+  assert (m_in: mut_in_ctx m gamma). {
+    revert Hm. apply mut_in_ctx_sublist.
+    rewrite gen_new_ctx_gamma_mut. apply incl_refl.
+  }
+  rewrite (constrs _ pd pf m a c m_in Ha Hc srts Hlens).
+  unfold constr_rep_dom.
+  f_equal. f_equal. f_equal. apply UIP_dec. apply sort_eq_dec.
+  apply constr_rep_change_gamma.
+Qed.
+
+Definition gen_new_ctx_pf which nonrec {gamma} (gamma_valid: valid_context gamma) 
+(pd: pi_dom) (pf: pi_funpred gamma_valid pd):
+pi_funpred (gen_new_ctx_valid which nonrec _ gamma_valid) pd :=
+Build_pi_funpred (gen_new_ctx_valid which nonrec _ gamma_valid) pd
+  (funs gamma_valid pd pf)
+  (preds gamma_valid pd pf)
+  (gen_new_ctx_funs_constrs which nonrec gamma_valid pd pf).
+
+(*And we prove that every formula true under this pf in gamma'
+  is true under the original in gamma, and vice versa.
+  This is trivial*)
+Lemma tm_gen_new_ctx_pf which nonrec {gamma} (gamma_valid: valid_context gamma) 
+(pd: pi_dom) (pf: pi_funpred gamma_valid pd)
+(vt: val_typevar) (vv: val_vars pd vt) (t: term) (ty: vty)
+(Hty1: term_has_type gamma t ty)
+(Hty2: term_has_type (gen_new_ctx_gamma' which nonrec gamma) t ty):
+term_rep (gen_new_ctx_valid which nonrec _ gamma_valid) pd vt
+  (gen_new_ctx_pf which nonrec gamma_valid pd pf) vv t ty Hty2 =
+term_rep gamma_valid pd vt pf vv t ty Hty1.
+Proof.
+  apply term_change_gamma_pf; simpl; auto.
+  rewrite gen_new_ctx_gamma_mut; auto.
+Qed.
+
+Lemma fmla_gen_new_ctx_pf which nonrec {gamma} (gamma_valid: valid_context gamma) 
+(pd: pi_dom) (pf: pi_funpred gamma_valid pd)
+(vt: val_typevar) (vv: val_vars pd vt) (f: formula)
+(Hty1: formula_typed gamma f)
+(Hty2: formula_typed (gen_new_ctx_gamma' which nonrec gamma) f):
+formula_rep (gen_new_ctx_valid which nonrec _ gamma_valid) pd vt
+  (gen_new_ctx_pf which nonrec gamma_valid pd pf) vv f Hty2 =
+formula_rep gamma_valid pd vt pf vv f Hty1.
+Proof.
+  apply fmla_change_gamma_pf; simpl; auto.
+  rewrite gen_new_ctx_gamma_mut; auto.
+Qed.
+(* 
+Lemma mutfuns_of_context_app l1 l2:
+  mutfuns_of_context (l1 ++ l2) =
+  mutfuns_of_context l1 ++
+  mutfuns_of_context l2.
+Proof.
+  induction l1; simpl; auto; 
+  destruct a; auto; simpl; f_equal; auto.
+Qed.
+
+Lemma get_indpred_defs_mutfuns l:
+  mutfuns_of_context (get_indpred_defs l) = nil.
+Proof.
+  induction l; auto.
+Qed.*)
+Print fun_defined.
+Print mutfuns_of_context.
+
+Lemma sublist_nil_l {A: Type} (l: list A):
+  sublist nil l.
+Proof.
+  intros x. contradiction.
+Qed.
+
+Lemma decl_list_of_def_mutfuns which nonrec l:
+  sublist (concat (mutfuns_of_context
+    (rev (decl_list_of_def which nonrec l)))) l.
+Proof.
+  unfold decl_list_of_def. rewrite rev_app_distr, mutfuns_of_context_app, concat_app.
+  apply app_sublist.
+  - simpl.
+    assert (Hsubpat: sublist (Pattern.filter_map
+      (fun x : funpred_def =>
+    let (b, p) := gen_funpred_def_match x in let (p0, _) :=
+      p in let (ls, _) := p0 in if which b ls then None else
+    Some x)
+      l) l).
+    {
+      intros x. rewrite in_filter_map_iff. intros [d [Hind Hx]].
+      destruct (gen_funpred_def_match d) as [b1 [[ls vs] e]] eqn : Hdef.
+      apply gen_funpred_def_match_eq in Hdef. subst.
+      destruct (which b1 ls); inversion Hx; subst; auto.
+    }
+    destruct (Pattern.filter_map _ l) as [| h t] eqn : Hpat; auto.
+    destruct t as [| h2 t2]; [destruct nonrec|]; auto.
+    + simpl. apply sublist_nil_l.
+    + simpl. rewrite app_nil_r; auto.
+  - simpl.
+    match goal with |- sublist ?x ?l => let H := fresh in
+      assert (H: x = nil); [| rewrite H; apply sublist_nil_l]
+    end.
+    induction l as [| h t IH]; simpl; auto.
+    destruct (gen_funpred_def_match h) as [b1 [[ls vs] e]] eqn : Hdef.
+    apply gen_funpred_def_match_eq in Hdef. subst.
+    destruct (which b1 ls); simpl; auto.
+    rewrite mutfuns_of_context_app; simpl.
+    destruct b1; simpl; rewrite app_nil_r; auto.
+Qed.
+
+Lemma decl_list_of_def_nonrec_mutfuns which f:
+  (concat (mutfuns_of_context
+    (rev (decl_list_of_def which true [f])))) = nil.
+Proof.
+  unfold decl_list_of_def. rewrite rev_app_distr, mutfuns_of_context_app, concat_app.
+  simpl.
+  destruct (gen_funpred_def_match f) as [b1 [[ls vs] e]] eqn : Hdef.
+  apply gen_funpred_def_match_eq in Hdef. subst.
+  destruct (which b1 ls); simpl; auto.
+  destruct b1; auto.
+Qed.
+
+Lemma gen_new_ctx_gamma_mutfuns which nonrec gamma:
+  sublist (concat (mutfuns_of_context (gen_new_ctx_gamma' which nonrec gamma)))
+    (concat (mutfuns_of_context gamma)).
+Proof.
+  unfold gen_new_ctx_gamma'.
+  induction gamma as [| gh gtl IH]; simpl; auto; [apply sublist_refl|].
+  rewrite mutfuns_of_context_app, concat_app.
+  destruct (is_rec_nonrec gh) as [l|[fd|]] eqn : Hisrec.
+  - destruct gh; inversion Hisrec; subst. clear Hisrec.
+    simpl.
+    apply sublist_app2; auto.
+    apply decl_list_of_def_mutfuns.
+  - (*nonrec*)
+    destruct gh; inversion Hisrec; subst.
+    destruct nonrec; simpl; auto.
+    rewrite decl_list_of_def_nonrec_mutfuns.
+    auto.
+  - (*other*)
+    destruct gh; inversion Hisrec; subst; auto.
+Qed.
+
+Lemma nonrec_of_context_app l1 l2:
+  nonrec_of_context (l1 ++ l2) = nonrec_of_context l1 ++ nonrec_of_context l2.
+Proof.
+  induction l1 as [| h t IH]; simpl; auto.
+  destruct h; simpl; auto. f_equal; auto.
+Qed.
+
+Lemma decl_list_of_def_recursive_nonrec which l:
+  (nonrec_of_context
+    (rev (decl_list_of_def which false l))) = nil.
+Proof.
+  unfold decl_list_of_def. rewrite rev_app_distr, nonrec_of_context_app.
+  apply app_nil_iff.
+  split.
+  - simpl. destruct (Pattern.filter_map _ _) as [| h [|h1 t1]]; simpl; auto.
+  - simpl.
+    induction l as [| h t IH]; simpl; auto.
+    destruct (gen_funpred_def_match h) as [b1 [[ls vs] e]] eqn : Hdef.
+    apply gen_funpred_def_match_eq in Hdef. subst.
+    destruct (which b1 ls); simpl; auto; rewrite nonrec_of_context_app; simpl;
+    destruct b1; simpl; rewrite app_nil_r; auto.
+Qed.
+
+Lemma sublist_cons_l {A: Type} x (l1 l2: list A):
+  sublist l1 l2 ->
+  sublist (x :: l1) (x :: l2).
+Proof.
+  intros Hsub y; simpl.
+  intros [Hxy | Hiny]; subst; auto.
+Qed.
+
+Lemma decl_list_of_def_nonrec which fd:
+  sublist (nonrec_of_context
+  (rev (decl_list_of_def which true [fd]))) [fd].
+Proof.
+  unfold decl_list_of_def. simpl.
+  destruct (gen_funpred_def_match fd) as [b1 [[ls vs] e]] eqn : Hdef.
+  apply gen_funpred_def_match_eq in Hdef. subst.
+  destruct (which b1 ls); simpl; auto; [| apply sublist_refl].
+  destruct b1; simpl; auto; apply sublist_nil_l.
+Qed.
+
+Lemma gen_new_ctx_gamma_nonrec which nonrec gamma:
+  sublist (nonrec_of_context (gen_new_ctx_gamma' which nonrec gamma))
+    (nonrec_of_context gamma).
+Proof.
+  unfold gen_new_ctx_gamma'.
+  induction gamma as [| gh gtl IH]; simpl; auto; [apply sublist_refl|].
+  rewrite nonrec_of_context_app.
+  destruct (is_rec_nonrec gh) as [l|[fd|]] eqn : Hisrec.
+  - destruct gh; inversion Hisrec; subst. clear Hisrec.
+    rewrite decl_list_of_def_recursive_nonrec. auto.
+  - (*nonrec*)
+    destruct gh; inversion Hisrec; subst.
+    destruct nonrec; simpl; auto; [| apply sublist_cons_l; auto].
+    replace (fd :: nonrec_of_context gtl) with ([fd] ++ nonrec_of_context gtl) by reflexivity.
+    apply sublist_app2; auto. apply decl_list_of_def_nonrec.
+  - (*other*)
+    destruct gh; inversion Hisrec; subst; auto.
+Qed.
+
+Lemma nonrec_def_of_context d gamma:
+  In (nonrec_def d) gamma <-> In d (nonrec_of_context gamma).
+Proof.
+  induction gamma as [| h t [IH1 IH2]]; simpl; [reflexivity|].
+  split.
+  - intros [Hh | Hin]; subst; simpl; auto. destruct h; simpl; eauto.
+  - destruct h; simpl; auto. intros [Hh | Hind]; subst; auto.
+Qed.
+
+(*And the corollary, about concrete funs*)
+Lemma gen_new_ctx_fun_defined which nonrec gamma f args body:
+  fun_defined (gen_new_ctx_gamma' which nonrec gamma) f args body ->
+  fun_defined gamma f args body.
+Proof.
+  unfold fun_defined.
+  intros [[fs [Hinfs inf]] | Hnonrec].
+  - assert (Hin1: In (fun_def f args body) (concat (mutfuns_of_context gamma))).
+    {
+      eapply (gen_new_ctx_gamma_mutfuns which nonrec).
+      rewrite in_concat. exists fs; auto. 
+    }
+    rewrite in_concat in Hin1.
+    left; auto.
+  - right.
+    rewrite nonrec_def_of_context in Hnonrec.
+    rewrite nonrec_def_of_context.
+    apply gen_new_ctx_gamma_nonrec in Hnonrec. auto.
+Qed.
+
+(*preds is identical*)
+Lemma gen_new_ctx_pred_defined which nonrec gamma p args body:
+  pred_defined (gen_new_ctx_gamma' which nonrec gamma) p args body ->
+  pred_defined gamma p args body.
+Proof.
+  unfold pred_defined.
+  intros [[fs [Hinfs inf]] | Hnonrec].
+  - assert (Hin1: In (pred_def p args body) (concat (mutfuns_of_context gamma))).
+    {
+      eapply (gen_new_ctx_gamma_mutfuns which nonrec).
+      rewrite in_concat. exists fs; auto. 
+    }
+    rewrite in_concat in Hin1.
+    left; auto.
+  - right.
+    rewrite nonrec_def_of_context in Hnonrec.
+    rewrite nonrec_def_of_context.
+    apply gen_new_ctx_gamma_nonrec in Hnonrec. auto.
+Qed.
+
+Lemma indpreds_of_decl_list_of_def which nonrec l:
+  indpreds_of_context (rev (decl_list_of_def which nonrec l)) = nil.
+Proof.
+  unfold decl_list_of_def.
+  rewrite rev_app_distr, indpreds_of_context_app.
+  apply app_nil_iff. split.
+  - simpl. destruct (Pattern.filter_map _ _) as [| h1 [|h2 t2]] eqn : Hpat; simpl; auto.
+    destruct nonrec; auto.
+  - simpl. induction l as [| h t IH]; simpl; auto.
+    destruct (gen_funpred_def_match h) as [b1 [[ls vs] e]] eqn : Hdef.
+    apply gen_funpred_def_match_eq in Hdef. subst.
+    destruct (which b1 ls); simpl; auto.
+    rewrite indpreds_of_context_app; simpl. destruct b1; simpl; auto; rewrite app_nil_r; auto.
+Qed.
+
+Lemma gen_new_ctx_gamma_indpreds which nonrec gamma:
+  indpreds_of_context (gen_new_ctx_gamma' which nonrec gamma) =
+  indpreds_of_context gamma.
+Proof.
+  unfold gen_new_ctx_gamma'.
+  induction gamma as [| gh gtl IH]; simpl; auto.
+  rewrite indpreds_of_context_app, IH.
+  destruct (is_rec_nonrec gh) as [l|[fd|]] eqn : Hisrec.
+  - destruct gh; inversion Hisrec; subst. clear Hisrec.
+    rewrite indpreds_of_decl_list_of_def. auto.
+  - (*nonrec*)
+    destruct gh; inversion Hisrec; subst.
+    destruct nonrec; simpl; auto.
+    rewrite indpreds_of_decl_list_of_def; auto.
+  -(*other*)
+    destruct gh; inversion Hisrec; subst; auto.
+Qed. 
+
+
+
+
+(*Lemma gen_new_ctx_gamma_mutfuns which nonrec gamma:
+  sublist (mutfuns_of_context (gen_new_ctx_gamma gamma) =
+  mutfuns_of_context gamma.
+Proof.
+  induction gamma; simpl; auto.
+  destruct a; simpl; auto.
+  f_equal; auto.
+  unfold gen_new_ctx_gamma; simpl.
+  rewrite mutfuns_of_context_app.
+  rewrite get_indpred_defs_mutfuns; auto.
+Qed.
+
+Lemma gen_new_ctx_nonrec fd gamma:
+  In (nonrec_def fd) (gen_new_ctx_gamma gamma) <->
+  In (nonrec_def fd) gamma.
+Proof.
+  induction gamma; simpl; auto; try reflexivity; destruct a; simpl;
+  try apply or_iff_compat_l; auto.
+  unfold gen_new_ctx_gamma. simpl. rewrite in_app_iff.
+  split; intros; destruct_all; auto; try discriminate;
+  try solve[right; apply IHgamma; auto].
+  unfold get_indpred_defs in H. rewrite in_map_iff in H.
+  destruct_all. inversion H.
+Qed.
+
+Lemma indpreds_of_context_app l1 l2:
+  indpreds_of_context (l1 ++ l2) =
+  indpreds_of_context l1 ++ indpreds_of_context l2.
+Proof.
+  induction l1; simpl; auto. destruct a; auto. simpl.
+  f_equal; auto.
+Qed.
+
+Lemma get_indpred_defs_indpreds l:
+  indpreds_of_context (get_indpred_defs l) = nil.
+Proof.
+  induction l; auto.
+Qed.
+
+Lemma gen_new_ctx_gamma_indpreds gamma:
+  indpreds_of_context (gen_new_ctx_gamma gamma) = nil.
+Proof.
+  induction gamma; simpl; auto.
+  unfold gen_new_ctx_gamma; simpl.
+  destruct (is_ind a) eqn : Hind.
+  - destruct a; inversion Hind; subst.
+    rewrite indpreds_of_context_app.
+    rewrite get_indpred_defs_indpreds; auto.
+  - simpl; destruct a; auto; inversion Hind.
+Qed.  *)
+
+(*And now we prove that if pf is full, so is
+  [gen_new_ctx_pf] (not true in the other direction of course -
+  recfuns wont necessarily hold)*)
+Lemma gen_new_ctx_pf_full which nonrec {gamma} (gamma_valid: valid_context gamma) 
+(pd: pi_dom) (pf: pi_funpred gamma_valid pd):
+full_interp gamma_valid pd pf ->
+full_interp (gen_new_ctx_valid which nonrec _ gamma_valid) pd 
+  (gen_new_ctx_pf which nonrec gamma_valid pd pf).
+Proof.
+  unfold full_interp; intros [Hfun [Hpred [Hconstr Hleast]]]; split_all.
+  - clear -Hfun.
+    intros. simpl.
+    assert (f_in': fun_defined gamma f args body). {
+      apply gen_new_ctx_fun_defined in f_in; auto.
+    }
+    erewrite (Hfun f args body f_in' srts srts_len a vt vv).
+    erewrite tm_gen_new_ctx_pf.
+    apply dom_cast_eq.
+  - clear -Hpred.
+    intros. simpl.
+    assert (p_in': pred_defined gamma p args body). {
+      apply gen_new_ctx_pred_defined in p_in; auto.
+    }
+    erewrite (Hpred p args body p_in' srts srts_len a vt vv).
+    symmetry.
+    apply fmla_gen_new_ctx_pf.
+  - clear -Hconstr.
+    intros.
+    assert (Hin:=l_in).
+    rewrite gen_new_ctx_gamma_indpreds in Hin.
+    specialize (Hconstr l Hin p fs p_in srts srts_len vt vv f f_in).
+    erewrite fmla_rep_irrel.
+    erewrite fmla_gen_new_ctx_pf.
+    apply Hconstr.
+    Unshelve.
+    apply (indprop_fmla_valid (gen_new_ctx_valid which nonrec gamma gamma_valid) l_in p_in f_in).
+  - clear -Hleast.
+    intros.
+    assert (Hin:=l_in).
+    rewrite gen_new_ctx_gamma_indpreds in Hin.
+    specialize (Hleast l Hin p p_in fs srts srts_len a vt vv Ps).
+    apply Hleast; auto.
+    intros fs1 Hform Hinfs1.
+    assert (Hall: Forall (formula_typed (gen_new_ctx_gamma' which nonrec gamma)) fs1).
+    {
+      revert Hform. rewrite !Forall_forall. intros Hall x Hinx.
+      eapply formula_typed_sublist. 3: apply Hall; auto.
+      - apply eq_sig_is_sublist, eq_sig_sym, gen_new_ctx_gamma_eq_sig.
+      - rewrite gen_new_ctx_gamma_mut; apply sublist_refl. 
+    }
+    specialize (H fs1 Hall Hinfs1).
+    revert H.
+    erewrite dep_map_ext. intros Hand; apply Hand.
+    intros x y1 y2 Hinx.
+    apply fmla_change_gamma_pf; auto.
+    + rewrite gen_new_ctx_gamma_mut. reflexivity.
+    + intros p1 srts1 a1 Hinp1.
+      simpl.
+      apply find_apply_pred_ext; auto.
+Qed.
+
+Lemma satisfies_gen_new_ctx_pf which nonrec
+{gamma} (gamma_valid: valid_context gamma) 
+(pd: pi_dom) (pf: pi_funpred gamma_valid pd)
+(pf_full: full_interp gamma_valid pd pf)
+(pf_full2: full_interp (gen_new_ctx_valid which nonrec _ gamma_valid) pd
+  (gen_new_ctx_pf which nonrec gamma_valid pd pf))
+(f: formula)
+(Hty1: formula_typed gamma f)
+(Hty2: formula_typed (gen_new_ctx_gamma' which nonrec gamma) f):
+satisfies (gen_new_ctx_valid which nonrec gamma gamma_valid) pd 
+  (gen_new_ctx_pf which nonrec gamma_valid pd pf) pf_full2 f
+  Hty2 <->
+satisfies gamma_valid pd pf pf_full f Hty1.
+Proof.
+  unfold satisfies. split; intros.
+  specialize (H vt vv).
+  erewrite fmla_gen_new_ctx_pf in H.
+  apply H.
+  erewrite fmla_gen_new_ctx_pf. apply H.
+Qed.
+
 Lemma gen_new_ctx_sound which nonrec: sound_trans (single_trans (gen_new_ctx which nonrec)).
 Proof.
-  (*rewrite gen_new_ctx_rewrite.*) unfold sound_trans, single_trans.
+  unfold gen_new_ctx.
+  unfold sound_trans, single_trans.
   intros.
+  setoid_rewrite gen_new_ctx_gamma_equiv in H.
   simpl in H.
   specialize (H _ ltac:(left; auto)).
   unfold task_valid in *. simpl in *.
@@ -2687,13 +3128,13 @@ Proof.
   destruct t as [[gamma delta] goal]; simpl_task.
   destruct H as [Hwf Hval].
   intros.
-  specialize (Hval (gen_new_ctx_valid _ gamma_valid) Hwf).
+  specialize (Hval (gen_new_ctx_valid which nonrec _ gamma_valid) Hwf).
   unfold log_conseq in *.
   intros.
   (*Now, need to show that we can convert an interpretation
     for the full context into one of the weakened context*)
-  specialize (Hval pd (gen_new_ctx_pf gamma_valid pd pf)
-    (gen_new_ctx_pf_full gamma_valid pd pf pf_full)).
+  specialize (Hval pd (gen_new_ctx_pf which nonrec gamma_valid pd pf)
+    (gen_new_ctx_pf_full which nonrec gamma_valid pd pf pf_full)).
   prove_hyp Hval.
   {
     intros d Hd.
@@ -2702,6 +3143,21 @@ Proof.
   }
   erewrite satisfies_gen_new_ctx_pf in Hval.
   apply Hval.
+Qed.
+
+
+(*1 final result: [gen_axioms] produces well-formed goals.
+  We essentially proved this with [gen_axioms_typed]*)
+Lemma gen_axioms_wf which nonrec: forall t, task_wf t -> task_wf (gen_axioms which nonrec t).
+Proof.
+  intros. destruct t as [[gamma delta] goal];
+  unfold gen_axioms, add_axioms; simpl_task.
+  inversion H. constructor; simpl_task; auto.
+  (*We already proved typing*) 
+  rewrite !map_app.
+  rewrite Forall_app. split; auto.
+  rewrite Forall_forall.
+  apply (gen_axioms_typed which nonrec (gamma, delta, goal)). auto.
 Qed.
 
 
@@ -2715,8 +3171,7 @@ Proof.
   unfold eliminate_definition_alt.
   (*Prove sound by composition*)
   apply compose_single_trans_sound.
-  (*TODO*)
-  - (*The harder part*) apply gen_axioms_sound.
-  - (*The easier part*) apply gen_new_ctx_sound.
+  - (*Soundness of axioms*) apply gen_axioms_sound.
+  - (*Well-typed context*) apply gen_new_ctx_sound.
   - (*All axioms are well-formed*) apply gen_axioms_wf.
 Qed. 
