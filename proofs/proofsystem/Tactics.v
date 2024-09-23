@@ -844,7 +844,7 @@ Lemma derives_destruct_ex gamma delta goal name c x f:
   (sig_f gamma))) ->
   formula_typed gamma goal ->
   task_wf (gamma, delta, Fquant Texists x f) ->
-  derives (abs_fun (constsym c (snd x)) :: gamma, 
+  derives (abs_fun (const_noconstr c (snd x)) :: gamma, 
     replace_hyp delta name (safe_sub_f (t_constsym c (snd x)) x f), goal) ->
   derives (gamma, delta, goal).
 Proof.

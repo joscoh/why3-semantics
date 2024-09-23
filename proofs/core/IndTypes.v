@@ -2361,9 +2361,9 @@ Section Tests.
 
 (** Utilities for building tests *)
 
-Notation mk_fs name params args ret_ts ret_args := 
+Notation mk_fs name params args ret_ts ret_args num_constrs := 
   (Build_funsym (Build_fpsym name params args erefl erefl) 
-    (vty_cons ret_ts (map vty_var ret_args)) erefl).
+    (vty_cons ret_ts (map vty_var ret_args)) true num_constrs erefl).
 
 Definition triv_vars : typevar -> Set := fun _ => empty.
 Definition triv_syms: typesym -> list vty -> Set := fun _ _ => empty.
@@ -2437,7 +2437,7 @@ Ltac prove_constr :=
 
 (*Unit*)
 Definition ts_unit : typesym := mk_ts "unit" nil.
-Definition fs_tt := mk_fs "tt" nil nil ts_unit nil.
+Definition fs_tt := mk_fs "tt" nil nil ts_unit nil 1.
 Definition unit_constrs := list_to_ne_list [fs_tt] erefl.
 
 Definition aunit := triv_adt ts_unit unit_constrs.
@@ -2455,8 +2455,8 @@ Qed.
 
 (*Bool*)
 Definition ts_bool : typesym := mk_ts "bool" nil.
-Definition fs_true := mk_fs "true" nil nil ts_bool nil.
-Definition fs_false := mk_fs "false" nil nil ts_bool nil.
+Definition fs_true := mk_fs "true" nil nil ts_bool nil 2.
+Definition fs_false := mk_fs "false" nil nil ts_bool nil 2.
 Definition bool_constrs := list_to_ne_list [fs_true; fs_false] erefl.
 
 Definition abool := triv_adt ts_bool bool_constrs.
@@ -2478,13 +2478,13 @@ Qed.
 (*Days of the week*)
 Definition ts_week : typesym := mk_ts "days" nil.
 Definition week_constrs := list_to_ne_list
-[mk_fs "mon" nil nil ts_week nil;
-mk_fs "tues" nil nil ts_week nil;
-mk_fs "wed" nil nil ts_week nil;
-mk_fs "thurs" nil nil ts_week nil;
-mk_fs "fri" nil nil ts_week nil;
-mk_fs "sat" nil nil ts_week nil;
-mk_fs "sun" nil nil ts_week nil] erefl.
+[mk_fs "mon" nil nil ts_week nil 7;
+mk_fs "tues" nil nil ts_week nil 7;
+mk_fs "wed" nil nil ts_week nil 7;
+mk_fs "thurs" nil nil ts_week nil 7;
+mk_fs "fri" nil nil ts_week nil 7;
+mk_fs "sat" nil nil ts_week nil 7;
+mk_fs "sun" nil nil ts_week nil 7] erefl.
 Definition aweek := triv_adt ts_week week_constrs.
 
 Lemma aweek_correct: aweek = 
@@ -2503,9 +2503,9 @@ Inductive num : Set :=
 
 Definition ts_num : typesym := mk_ts "num" nil.
 Definition num_constrs := list_to_ne_list 
-[mk_fs "npos" nil [vty_int] ts_num nil;
-mk_fs "nneg" nil [vty_int] ts_num nil;
-mk_fs "nzero" nil nil ts_num nil] erefl.
+[mk_fs "npos" nil [vty_int] ts_num nil 3;
+mk_fs "nneg" nil [vty_int] ts_num nil 3;
+mk_fs "nzero" nil nil ts_num nil 3] erefl.
 Definition anum := triv_adt ts_num num_constrs.
 
 Lemma anum_correct: anum =
@@ -2523,10 +2523,10 @@ Inductive test1 : Set :=
 
 Definition ts_test1 : typesym := mk_ts "test1" nil.
 Definition test1_constrs := list_to_ne_list
-[mk_fs "test1a" nil [vty_int; vty_int] ts_test1 nil;
-   mk_fs "test1b" nil nil ts_test1 nil;
-   mk_fs "test1c" nil [vty_real; vty_int] ts_test1 nil;
-   mk_fs "test1d" nil [vty_real; vty_real; vty_real] ts_test1 nil] erefl.
+[mk_fs "test1a" nil [vty_int; vty_int] ts_test1 nil 4;
+   mk_fs "test1b" nil nil ts_test1 nil 4;
+   mk_fs "test1c" nil [vty_real; vty_int] ts_test1 nil 4;
+   mk_fs "test1d" nil [vty_real; vty_real; vty_real] ts_test1 nil 4] erefl.
 Definition atest1 := triv_adt ts_test1 test1_constrs.
 
 Lemma atest1_correct : atest1 =
@@ -2543,8 +2543,8 @@ Qed.
 
 (*Nat*)
 Definition ts_nat : typesym := mk_ts "nat" nil.
-Definition fs_O: funsym := mk_fs "O" nil nil ts_nat nil.
-Definition fs_S: funsym := mk_fs "S" nil [vty_cons ts_nat nil] ts_nat nil.
+Definition fs_O: funsym := mk_fs "O" nil nil ts_nat nil 2.
+Definition fs_S: funsym := mk_fs "S" nil [vty_cons ts_nat nil] ts_nat nil 2.
 Definition nat_cxt : context := 
     [datatype_def (triv_mut [alg_def ts_nat (mk_ne [fs_O; fs_S])])].
 Definition nat_constrs := list_to_ne_list [fs_O; fs_S] erefl.
@@ -2573,9 +2573,9 @@ Qed.
 
 (*Int list*)
 Definition ts_intlist : typesym := mk_ts "intlist" nil.
-Definition fs_intnil : funsym := mk_fs "nil" nil nil ts_intlist nil.
+Definition fs_intnil : funsym := mk_fs "nil" nil nil ts_intlist nil 2.
 Definition fs_intcons: funsym := 
-  mk_fs "cons" nil [vty_int; vty_cons ts_intlist nil] ts_intlist nil.
+  mk_fs "cons" nil [vty_int; vty_cons ts_intlist nil] ts_intlist nil 2.
 Definition intlist_cxt : context := 
     [datatype_def (triv_mut [alg_def ts_intlist 
       (mk_ne [fs_intnil; fs_intcons])])].
@@ -2592,9 +2592,9 @@ Proof. reflexivity. Qed.
 
 (*Int binary tree*)
 Definition ts_inttree : typesym := mk_ts "inttree" nil.
-Definition fs_intleaf:= mk_fs "leaf" nil nil ts_inttree nil.
+Definition fs_intleaf:= mk_fs "leaf" nil nil ts_inttree nil 2.
 Definition fs_intnode := mk_fs "node" nil [vty_int; vty_cons ts_inttree nil; vty_cons ts_inttree nil]
-ts_inttree nil.
+ts_inttree nil 2.
 Definition inttree_cxt : context := 
   [datatype_def (triv_mut [alg_def ts_inttree
   (mk_ne [fs_intleaf; fs_intnode])])].
@@ -2617,11 +2617,11 @@ Inductive test2 : Set :=
   | test2d: Z -> Z -> test2 -> test2.
 
 Definition ts_test2 : typesym := mk_ts "test2" nil.
-Definition fs_test2a := mk_fs "test2a" nil [vty_int] ts_test2 nil.
-Definition fs_test2b := mk_fs "test2b" nil [vty_cons ts_test2 nil] ts_test2 nil.
+Definition fs_test2a := mk_fs "test2a" nil [vty_int] ts_test2 nil 4.
+Definition fs_test2b := mk_fs "test2b" nil [vty_cons ts_test2 nil] ts_test2 nil 4.
 Definition fs_test2c := mk_fs "test2c" nil [vty_cons ts_test2 nil; vty_real; vty_cons ts_test2 nil;
-vty_cons ts_test2 nil] ts_test2 nil.
-Definition fs_test2d := mk_fs "test2d" nil [vty_int; vty_int; vty_cons ts_test2 nil] ts_test2 nil.
+vty_cons ts_test2 nil] ts_test2 nil 4.
+Definition fs_test2d := mk_fs "test2d" nil [vty_int; vty_int; vty_cons ts_test2 nil] ts_test2 nil 4.
 
 Definition test2_cxt := [datatype_def 
   (triv_mut [alg_def ts_test2 
@@ -2650,8 +2650,8 @@ Definition two_var (A: Set) (B: Set) : typevar -> Set :=
 
 (*Option type*)
 Definition ts_option : typesym := mk_ts "option" [ta].
-Definition fs_none := mk_fs "None" [ta] nil ts_option [ta].
-Definition fs_some := mk_fs "Some" [ta] [vty_var ta] ts_option [ta].
+Definition fs_none := mk_fs "None" [ta] nil ts_option [ta] 2.
+Definition fs_some := mk_fs "Some" [ta] [vty_var ta] ts_option [ta] 2.
 Definition option_cxt := [datatype_def 
   (mk_mut [alg_def ts_option (mk_ne [fs_none; fs_some])] [ta] erefl)].
 Definition option_constrs := list_to_ne_list [fs_none; fs_some] erefl.
@@ -2667,8 +2667,8 @@ Qed.
 
 (*Either type*)
 Definition ts_Either: typesym := mk_ts "Either" [ta; tb].
-Definition fs_left := mk_fs "Left" [ta; tb] [vty_var ta] ts_Either [ta; tb].
-Definition fs_right := mk_fs "Right" [ta; tb] [vty_var tb] ts_Either [ta; tb].
+Definition fs_left := mk_fs "Left" [ta; tb] [vty_var ta] ts_Either [ta; tb] 2.
+Definition fs_right := mk_fs "Right" [ta; tb] [vty_var tb] ts_Either [ta; tb] 2.
 Definition Either_cxt := [datatype_def 
   (mk_mut [alg_def ts_Either (mk_ne [fs_left; fs_right])] [ta; tb] erefl)].
 Definition Either_constrs := list_to_ne_list [fs_left; fs_right] erefl.
@@ -2684,8 +2684,8 @@ Qed.
 
 (*List type*)
 Definition ts_list: typesym := mk_ts "list" [ta].
-Definition fs_nil := mk_fs "Nil" [ta] nil ts_list [ta].
-Definition fs_cons := mk_fs "Cons" [ta] [vty_var ta; vty_cons ts_list [vty_var ta]] ts_list [ta].
+Definition fs_nil := mk_fs "Nil" [ta] nil ts_list [ta] 2.
+Definition fs_cons := mk_fs "Cons" [ta] [vty_var ta; vty_cons ts_list [vty_var ta]] ts_list [ta] 2.
 Definition list_cxt := [datatype_def 
   (mk_mut [alg_def ts_list (mk_ne [fs_nil; fs_cons])] [ta] erefl)].
 Definition list_constrs := list_to_ne_list [ fs_nil; fs_cons ] erefl.
@@ -2704,10 +2704,10 @@ Qed.
 
 (*Binary tree*)
 Definition ts_tree: typesym := mk_ts "tree" [ta].
-Definition fs_leaf := mk_fs "Leaf" [ta] nil ts_tree [ta].
+Definition fs_leaf := mk_fs "Leaf" [ta] nil ts_tree [ta] 2.
 Definition fs_node := mk_fs "Node" [ta] 
 [vty_var ta; vty_cons ts_tree [vty_var ta]; vty_cons ts_tree [vty_var ta]]
-ts_tree [ta].
+ts_tree [ta] 2.
 Definition tree_cxt := [datatype_def 
   (mk_mut [alg_def ts_tree (mk_ne [fs_leaf; fs_node])] [ta] erefl)].
 Definition tree_constrs := list_to_ne_list [fs_leaf; fs_node] erefl.
@@ -2729,7 +2729,7 @@ Proof. intros; solve_adt_eq. Qed.
 (*Abstract type with no arguments*)
 Definition ts_abs := mk_ts "abs" nil.
 Definition ts_wrap1: typesym := mk_ts "wrap1" nil.
-Definition fs_wrap1 := mk_fs "Wrap" nil [vty_cons ts_abs nil] ts_wrap1 nil.
+Definition fs_wrap1 := mk_fs "Wrap" nil [vty_cons ts_abs nil] ts_wrap1 nil 1.
 Definition wrap1_cxt := [datatype_def 
   (triv_mut [alg_def ts_wrap1 (mk_ne [fs_wrap1])])].
 
@@ -2750,7 +2750,7 @@ Proof.
 Definition ts_abs2 := mk_ts "abs" [ta; tb].
 Definition ts_wrap2: typesym := mk_ts "wrap2" [ta; tb].
 Definition fs_wrap2 := mk_fs "Wrap" [ta; tb] 
-  [vty_cons ts_abs2 [vty_var ta; vty_var tb]] ts_wrap1 [ta; tb].
+  [vty_cons ts_abs2 [vty_var ta; vty_var tb]] ts_wrap1 [ta; tb] 1.
 Definition wrap2_cxt := [datatype_def 
   (mk_mut [alg_def ts_wrap2 (mk_ne [fs_wrap2])] [ta; tb] erefl)].
 
@@ -2804,9 +2804,9 @@ with mutB : Set :=
 
 Definition ts_mutA := mk_ts "mutA" nil.
 Definition ts_mutB := mk_ts "mutB" nil.
-Definition fs_mk_A1 := mk_fs "mk_A1" nil nil ts_mutA nil.
-Definition fs_mk_A2 := mk_fs "mk_A2" nil [vty_cons ts_mutB nil] ts_mutA nil.
-Definition fs_mk_B := mk_fs "mk_B" nil [vty_cons ts_mutA nil] ts_mutB nil.
+Definition fs_mk_A1 := mk_fs "mk_A1" nil nil ts_mutA nil 2.
+Definition fs_mk_A2 := mk_fs "mk_A2" nil [vty_cons ts_mutB nil] ts_mutA nil 2.
+Definition fs_mk_B := mk_fs "mk_B" nil [vty_cons ts_mutA nil] ts_mutB nil 1.
 
 Definition mutAB_ctx := [datatype_def 
   (triv_mut [alg_def ts_mutA (mk_ne [fs_mk_A1; fs_mk_A2]);
@@ -2876,13 +2876,13 @@ with fmla : Set :=
 
 Definition ts_tm := mk_ts "tm" nil.
 Definition ts_fmla := mk_ts "fmla" nil.
-Definition fs_tm_const := mk_fs "tm_const" nil [vty_int] ts_tm nil.
+Definition fs_tm_const := mk_fs "tm_const" nil [vty_int] ts_tm nil 2.
 Definition fs_tm_if := mk_fs "tm_if" nil [vty_cons ts_fmla nil; vty_cons ts_tm nil;
-  vty_cons ts_tm nil] ts_tm nil.
+  vty_cons ts_tm nil] ts_tm nil 2.
 Definition fs_fm_eq := mk_fs "fm_eq" nil [vty_cons ts_tm nil; vty_cons ts_tm nil]
-  ts_fmla nil.
-Definition fs_fm_true := mk_fs "fm_true" nil nil ts_fmla nil.
-Definition fs_fm_false := mk_fs "fm_false" nil nil ts_fmla nil.
+  ts_fmla nil 3.
+Definition fs_fm_true := mk_fs "fm_true" nil nil ts_fmla nil 3.
+Definition fs_fm_false := mk_fs "fm_false" nil nil ts_fmla nil 3.
 
 Definition tm_fmla_ctx := [datatype_def
   (triv_mut [alg_def ts_tm (mk_ne [fs_tm_const; fs_tm_if]);
@@ -2975,12 +2975,12 @@ Definition ts_rose := mk_ts "rose" [ta].
 Definition ts_treelist := mk_ts "treelist" [ta].
 Definition fs_rnode := mk_fs "rnode" [ta] 
   [vty_var ta; vty_cons ts_treelist [vty_var ta]]
-  ts_rose [ta].
+  ts_rose [ta] 1.
 Definition fs_tnil := mk_fs "tnil" [ta] []
-  ts_treelist [ta].
+  ts_treelist [ta] 2.
 Definition fs_tcons := mk_fs "tcons" [ta]
   [vty_cons ts_rose [vty_var ta]; vty_cons ts_treelist [vty_var ta]]
-  ts_treelist [ta].
+  ts_treelist [ta] 2.
 
 Definition rose_ctx := [datatype_def 
   (mk_mut [alg_def ts_rose (mk_ne [fs_rnode]);

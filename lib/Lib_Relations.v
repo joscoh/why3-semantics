@@ -182,7 +182,7 @@ Definition t1 : vty := vty_cons t1_ts nil.
 Definition t2 : vty := vty_cons t2_ts nil.
 Definition tup_ts : typesym := mk_ts "Tup" nil.
 Definition tup : vty := vty_cons tup_ts nil.
-Definition pair : funsym := funsym_noty "Pair" [t1; t2] tup.
+Definition pair : funsym := constr_noty "Pair" [t1; t2] tup 1.
 Definition tup_adt : alg_datatype :=
   alg_def tup_ts (list_to_ne_list [pair] erefl).
 Definition tup_mut : mut_adt := mut_from_adt tup_adt.

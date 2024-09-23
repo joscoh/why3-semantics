@@ -32,11 +32,17 @@ Proof.
   exists x; auto.
 Qed.
 
-Definition funsym_noty (name: string) (args: list vty) 
-  (ret: vty) : funsym :=
+Definition funsym_noconstr_noty (name: string) (args: list vty) 
+  (ret: vty)  : funsym :=
   Build_funsym (Build_fpsym name (find_args (ret :: args)) args
     (find_args_check_args_l _ _ (fun x => in_cons _ x _)) (find_args_nodup _)) 
-    ret (find_args_check_args_in _ _ (in_eq _ _)).
+    ret false 0 (find_args_check_args_in _ _ (in_eq _ _)).
+
+Definition constr_noty (name: string) (args: list vty) 
+  (ret: vty) (num: nat) : funsym :=
+  Build_funsym (Build_fpsym name (find_args (ret :: args)) args
+    (find_args_check_args_l _ _ (fun x => in_cons _ x _)) (find_args_nodup _)) 
+    ret true num (find_args_check_args_in _ _ (in_eq _ _)).
 
 Definition predsym_noty (name: string) (args: list vty) : predsym :=
   Build_predsym (Build_fpsym name (find_args args) args
@@ -45,11 +51,14 @@ Definition predsym_noty (name: string) (args: list vty) : predsym :=
 
 (*Constant symbols*)
 
-Definition constsym (name: string) (ty: vty) : funsym :=
-  funsym_noty name nil ty.
+Definition const_noconstr (name: string) (ty: vty) : funsym :=
+  funsym_noconstr_noty name nil ty.
+Definition const_constr (name: string) (ty: vty) (num: nat) : funsym :=
+  constr_noty name nil ty num.
 
+(*Non-constr*)
 Definition t_constsym name s : term :=
-  Tfun (constsym name s) nil nil.
+  Tfun (const_noconstr name s) nil nil.
 
 Lemma t_constsym_fv name s:
   tm_fv (t_constsym name s) = nil.

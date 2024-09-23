@@ -101,12 +101,12 @@ Definition t1_ : vsymbol := ("t1", tree_a).
 Definition t2_ : vsymbol := ("t2", tree_a).
 (*Definition t3_ : vsymbol := ("t3", tree_a).*)
 
-Definition t1__ : term := Tfun (constsym "t1" tree_a) nil nil.
-Definition t2__ : term := Tfun (constsym "t2" tree_a) nil nil.
+Definition t1__ : term := Tfun (Util.const_noconstr "t1" tree_a) nil nil.
+Definition t2__ : term := Tfun (Util.const_noconstr "t2" tree_a) nil nil.
 (*Definition l3__ : term := Tfun (constsym "l3" list_a) nil nil.
 Definition l__ : term := Tfun (constsym "l" list_a) nil nil.*)
-Definition x__ : term := Tfun (constsym "x" a_) nil nil.
-Definition y__ : term := Tfun (constsym "y" a_) nil nil.
+Definition x__ : term := Tfun (Util.const_noconstr "x" a_) nil nil.
+Definition y__ : term := Tfun (Util.const_noconstr "y" a_) nil nil.
 
 Ltac extra_simpl ::= fold a_; fold x_; (*fold y_;*) 
   fold tree_a; fold t1_; fold t2_;

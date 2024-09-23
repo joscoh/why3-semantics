@@ -16,7 +16,7 @@ Section Tuple.
 
 Definition prod_ts : typesym := mk_ts "pair" ["'a"; "'b"].
 Definition wprod (a b: vty) : vty := vty_cons prod_ts  [a; b].
-Definition Pair : funsym :=  funsym_noty "Pair" [a; b] (wprod a b).
+Definition Pair : funsym :=  constr_noty "Pair" [a; b] (wprod a b) 1.
 Definition wprod_adt : alg_datatype := alg_def prod_ts
   (list_to_ne_list [Pair] erefl).
 Definition wprod_mut : mut_adt := mk_mut [wprod_adt] ["'a"; "'b"] erefl.
@@ -28,8 +28,8 @@ End Tuple.
 Section List.
 Definition list_ts : typesym := mk_ts "list" ["'a"].
 Definition wlist (a: vty) : vty := vty_cons list_ts [a].
-Definition Nil : funsym := funsym_noty "nil" nil (wlist a).
-Definition Cons : funsym := funsym_noty "Cons" [a; (wlist a)] (wlist a).
+Definition Nil : funsym := constr_noty "nil" nil (wlist a) 2.
+Definition Cons : funsym := constr_noty "Cons" [a; (wlist a)] (wlist a) 2.
 Definition wlist_adt: alg_datatype := alg_def list_ts
   (list_to_ne_list [Nil; Cons] erefl).
 Definition wlist_mut: mut_adt := mk_mut [wlist_adt] ["'a"] erefl.
@@ -48,7 +48,7 @@ Definition d : vty := vty_var "d".
 Definition tuplist (v1 v2: vty) := wlist (wprod v1 v2).
 Definition l1 : vsymbol := ("l1",(wlist c)).
 Definition l2 : vsymbol := ("l2",(wlist d)).
-Definition zip_fs : funsym := funsym_noty "zip" [(wlist c); (wlist d)]
+Definition zip_fs : funsym := funsym_noconstr_noty "zip" [(wlist c); (wlist d)]
   (tuplist c d).
 
 (*Define the patterns separately*)

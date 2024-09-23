@@ -30,14 +30,14 @@ Definition avar : typevar := "a".
 Definition a : vty := vty_var avar.
 Definition option_ts : typesym := mk_ts "option" [avar].
 Definition option_ty : vty := vty_cons option_ts [a].
-Definition none_fs : funsym := funsym_noty "None" nil option_ty.
-Definition some_fs : funsym := funsym_noty "Some" [a] option_ty.
+Definition none_fs : funsym := constr_noty "None" nil option_ty 2.
+Definition some_fs : funsym := constr_noty "Some" [a] option_ty 2.
 Definition option_adt : alg_datatype := alg_def option_ts 
   (list_to_ne_list [none_fs; some_fs] Logic.eq_refl).
 Definition option_mut: mut_adt := mk_mut [option_adt] [avar] erefl.
 
 (*Our function definition*)
-Definition isSome : funsym := funsym_noty "isSome" [option_ty] vty_int.
+Definition isSome : funsym := funsym_noconstr_noty "isSome" [option_ty] vty_int.
 Definition o: vsymbol := ("o", option_ty).
 Definition isSome_def : funpred_def :=
   fun_def isSome [o] 

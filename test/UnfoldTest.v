@@ -25,24 +25,24 @@ Definition x : vsymbol := ("x", a).
 Definition y: vsymbol := ("y", b).
 
 
-(*We need an ADT for the termination check*)
+(*We need an ADT for the termination check (old version, nonrec version below)*)
 Definition tunit_ts : typesym :=
   mk_ts "unit" nil.
 Definition tunit_ty : vty := vty_cons tunit_ts nil.
 Definition tt_fs : funsym :=
-  funsym_noty "tt" nil tunit_ty.
+  constr_noty "tt" nil tunit_ty 1.
 Definition tunit : alg_datatype :=
     alg_def tunit_ts (ne_hd tt_fs).
 Definition munit : mut_adt :=
   mk_mut [tunit] nil erefl.
-  Definition u: vsymbol := ("u", tunit_ty).
+Definition u: vsymbol := ("u", tunit_ty).
 Definition tt_t : term :=
   Tfun tt_fs nil nil.
 
 Definition fst_fs : funsym :=
-  funsym_noty "fst" [tunit_ty; a; b] a.
+  funsym_noconstr_noty "fst" [tunit_ty; a; b] a.
 Definition snd_fs : funsym :=
-  funsym_noty "snd" [tunit_ty; a; b] b.
+  funsym_noconstr_noty "snd" [tunit_ty; a; b] b.
 
 Definition fst_fun : funpred_def :=
   fun_def fst_fs [u; x;y] (Tvar x).
@@ -56,11 +56,11 @@ Definition unfold_theory : theory :=
   rev [
   tdef (datatype_def munit);  
   tdef (recursive_def [fst_fun]);
-   tdef (recursive_def [snd_fun]);
-   tprop Pgoal "fst_lemma" (Feq vty_int 
+  tdef (recursive_def [snd_fun]);
+  tprop Pgoal "fst_lemma" (Feq vty_int 
     (Tfun fst_fs [vty_int; vty_real] [tt_t; tfive; thalf])
     tfive);
-   tprop Pgoal "snd_lemma" (Feq vty_real
+  tprop Pgoal "snd_lemma" (Feq vty_real
     (Tfun snd_fs [vty_int; vty_real] [tt_t; tfive; thalf])
     thalf)].
 
@@ -95,9 +95,9 @@ Definition x : vsymbol := ("x", a).
 Definition y: vsymbol := ("y", b).
 
 Definition fst_fs : funsym :=
-  funsym_noty "fst" [a; b] a.
+  funsym_noconstr_noty "fst" [a; b] a.
 Definition snd_fs : funsym :=
-  funsym_noty "snd" [a; b] b.
+  funsym_noconstr_noty "snd" [a; b] b.
 
 Definition fst_fun : funpred_def :=
   fun_def fst_fs [x;y] (Tvar x).

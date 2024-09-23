@@ -8,8 +8,8 @@ Module Tree.
 Definition a : vty := vty_var "a".
 Definition tree_ts : typesym := mk_ts "tree" ["a"].
 Definition tree : vty := vty_cons tree_ts [a].
-Definition Empty : funsym := const "Empty" tree.
-Definition Node : funsym := funsym_noty "Node" [tree; a; tree] tree.
+Definition Empty : funsym := const_constr "Empty" tree 2.
+Definition Node : funsym := constr_noty "Node" [tree; a; tree] tree 2.
 Definition tree_adt : alg_datatype := alg_def tree_ts
   (list_to_ne_list [Empty; Node] erefl).
 Definition tree_mut : mut_adt := mut_from_adt tree_adt.
@@ -38,7 +38,7 @@ Definition Tree : theory :=
   ].
 
 (*Number of nodes*)
-Definition size : funsym := funsym_noty "size" [tree] vty_int.
+Definition size : funsym := funsym_noconstr_noty "size" [tree] vty_int.
 Definition l : vsymbol := ("l", tree).
 Definition r : vsymbol := ("r", tree).
 
@@ -63,7 +63,7 @@ Definition Size : theory :=
   ].
 
 (*In-order traversal*)
-Definition inorder : funsym := funsym_noty "inorder" [tree] List.list.
+Definition inorder : funsym := funsym_noconstr_noty "inorder" [tree] List.list.
 Definition x : vsymbol := ("x", a).
 Definition inorder_body : term := <t
   match {t} : tree with

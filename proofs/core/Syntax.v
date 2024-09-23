@@ -74,6 +74,8 @@ Record fpsym : Set :=
 Record funsym: Set :=
   { f_sym: fpsym;
     f_ret: vty;
+    f_is_constr : bool; (*is the funsym a constructor?*)
+    f_num_constrs : nat; (*if so, how many constrs in ADT?*)
     f_ret_wf : check_sublist (type_vars f_ret) 
       (s_params f_sym) }.
 
@@ -116,7 +118,7 @@ Definition id_ret: vty := vty_var a_var.
 
 Definition id_sym : fpsym := Build_fpsym id_name id_params id_args eq_refl eq_refl.
 
-Definition id_fs : funsym := Build_funsym id_sym id_ret eq_refl.
+Definition id_fs : funsym := Build_funsym id_sym id_ret false 0 eq_refl.
 
 End ID.
 
@@ -156,6 +158,8 @@ Definition fpsym_eq_dec (f1 f2: fpsym) : {f1 = f2} + {f1 <> f2} :=
 Lemma funsym_eq: forall (f1 f2: funsym),
   f_sym f1 = f_sym f2 ->
   f_ret f1 = f_ret f2 ->
+  f_is_constr f1 = f_is_constr f2 ->
+  f_num_constrs f1 = f_num_constrs f2 ->
   f1 = f2.
 Proof.
   intros. destruct f1; destruct f2; simpl in *; subst.
@@ -164,7 +168,9 @@ Qed.
 
 Definition funsym_eqb (f1 f2: funsym) : bool :=
   (fpsym_eqb (f_sym f1) (f_sym f2)) &&
-  (vty_eqb (f_ret f1) (f_ret f2)).
+  (vty_eqb (f_ret f1) (f_ret f2)) &&
+  (Bool.eqb (f_is_constr f1) (f_is_constr f2)) &&
+  (Nat.eqb (f_num_constrs f1) (f_num_constrs f2)).
 
 Lemma funsym_eqb_spec: forall (f1 f2: funsym),
   reflect (f1 = f2) (funsym_eqb f1 f2).
@@ -172,6 +178,8 @@ Proof.
   intros. unfold funsym_eqb.
   dec (fpsym_eqb_spec (f_sym f1) (f_sym f2)).
   dec (vty_eq_spec (f_ret f1) (f_ret f2)).
+  dec (Bool.eqb_spec (f_is_constr f1) (f_is_constr f2)).
+  dec (Nat.eqb_spec (f_num_constrs f1) (f_num_constrs f2)).
   apply ReflectT. apply funsym_eq; auto.
 Qed.
 

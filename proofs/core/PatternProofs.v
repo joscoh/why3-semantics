@@ -4007,7 +4007,7 @@ Definition simple_pat (p: pattern) : bool :=
   | Pwild => true
   | _ => false
   end.
-Check Pattern.filter_map.
+
 Definition simple_pat_match (ps: list pattern) : bool :=
   forallb simple_pat ps &&
   nodupb funsym_eq_dec (Pattern.filter_map 

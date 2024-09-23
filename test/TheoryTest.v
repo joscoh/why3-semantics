@@ -24,7 +24,7 @@ Definition t_ty : vty := vty_cons t nil.
 
 Definition op: funsym := Build_funsym 
   (Build_fpsym "op" nil [t_ty; t_ty] erefl erefl)
-  t_ty erefl.
+  t_ty false 0 erefl.
 
 Definition x : vsymbol := ("x"%string, t_ty).
 Definition y : vsymbol := ("y"%string, t_ty).
@@ -86,7 +86,7 @@ End Comm.
 (*Monoid*)
 Module Monoid.
 
-Definition unit : funsym := mk_constant "unit" t_ty erefl.
+Definition unit : funsym := mk_constant "unit" t_ty false 0 erefl.
 
 Definition monoid : theory :=
   rev [
@@ -152,7 +152,7 @@ End CommutativeMonoid.
 Module Group.
 
 Definition inv : funsym := Build_funsym 
-  (Build_fpsym "inv" nil [t_ty] erefl erefl) t_ty erefl.
+  (Build_fpsym "inv" nil [t_ty] erefl erefl) t_ty false 0 erefl.
 
 Definition group : theory :=
   rev [
@@ -222,16 +222,16 @@ Module Ring.
   clones and more than 1 set of functions interacting.
   We do not support the infix notation of why3*)
 
-Definition zero : funsym := mk_constant "zero" t_ty erefl.
+Definition zero : funsym := mk_constant "zero" t_ty false 0 erefl.
 Definition plus : funsym := Build_funsym 
   (Build_fpsym "plus" nil [t_ty; t_ty] erefl erefl)
-  t_ty erefl.
+  t_ty false 0 erefl.
 Definition mult : funsym := Build_funsym 
   (Build_fpsym "mult" nil [t_ty; t_ty] erefl erefl)
-  t_ty erefl.
+  t_ty false 0 erefl.
 Definition neg : funsym := Build_funsym 
 (Build_fpsym "neg" nil [t_ty] erefl erefl)
-t_ty erefl.
+t_ty false 0 erefl.
 
 (*Unlike regular why3, we require qualified names in "clone"*)
 Definition MA_t : typesym := mk_ts "MulAssoc.t" nil.
@@ -239,7 +239,7 @@ Definition MA_t_ty : vty := vty_cons MA_t nil.
 (*We have utilities to do this, but we are testing them, so we
   do it by hand*)
 Definition MA_op: funsym := Build_funsym (Build_fpsym "MulAssoc.op" nil [MA_t_ty; MA_t_ty] erefl erefl)
-  MA_t_ty erefl.
+  MA_t_ty false 0 erefl.
 
 Definition ring : theory :=
   rev [
@@ -484,11 +484,11 @@ Definition xt := (t_constsym ("x"%string) t_ty).
 Definition yt := (t_constsym ("y"%string) t_ty).
 Definition zt := (t_constsym ("z"%string) t_ty).
 
-Lemma xt_eq: Tfun (constsym "x" t_ty) nil nil = xt.
+Lemma xt_eq: Tfun (const_noconstr "x" t_ty) nil nil = xt.
 Proof. reflexivity. Qed.
-Lemma yt_eq: Tfun (constsym "y" t_ty) nil nil = yt.
+Lemma yt_eq: Tfun (const_noconstr "y" t_ty) nil nil = yt.
 Proof. reflexivity. Qed.
-Lemma zt_eq: Tfun (constsym "z" t_ty) nil nil = zt.
+Lemma zt_eq: Tfun (const_noconstr "z" t_ty) nil nil = zt.
 Proof. reflexivity. Qed.
 
 

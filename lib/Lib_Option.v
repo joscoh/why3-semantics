@@ -7,8 +7,8 @@ Definition a : vty := vty_var "a".
 
 Definition option_ts : typesym := mk_ts "Option" ["a"].
 Definition option : vty := vty_cons option_ts [a].
-Definition None : funsym := const "None" option.
-Definition Some : funsym := funsym_noty "Some" [a] option.
+Definition None : funsym := const_constr "None" option 2.
+Definition Some : funsym := constr_noty "Some" [a] option 2.
 Definition option_adt : alg_datatype :=
     alg_def option_ts (list_to_ne_list [None; Some] erefl).
 Definition option_mut : mut_adt :=

@@ -6,8 +6,8 @@ Module List.
 Definition a : vty := vty_var "a".
 Definition list_ts : typesym := mk_ts "list" ["a"].
 Definition list : vty := vty_cons list_ts [a].
-Definition Nil : funsym := const "nil" list.
-Definition Cons : funsym := funsym_noty "Cons" [a; list] list.
+Definition Nil : funsym := const_constr "nil" list 2.
+Definition Cons : funsym := constr_noty "Cons" [a; list] list 2.
 Definition list_adt : alg_datatype := alg_def list_ts
   (list_to_ne_list [Nil; Cons] erefl).
 Definition list_mut : mut_adt := mut_from_adt list_adt.
@@ -36,7 +36,7 @@ Definition List : theory :=
   ].
 
 (*Length of a list*)
-Definition length : funsym := funsym_noty "length" [list] vty_int.
+Definition length : funsym := funsym_noconstr_noty "length" [list] vty_int.
 Definition r : vsymbol := ("r", list).
 
 Definition length_body : term :=  <t
@@ -153,18 +153,5 @@ Definition Reverse : theory :=
     tprop Plemma "Reverse_length" <f forall l,
       [vty_int] length<a>(reverse<a>({l})) = length<a>({l}) f>
   ].  
-
-(*Plan:
-write down:
-- membership
-- append
-- reverse
-- maybe rev append
-for now, skip nth
-prove lemmas in there
-will need to fix theory
-nothing should need pred unfolding
-may need some more simple tactics
-*)
 
 End List.

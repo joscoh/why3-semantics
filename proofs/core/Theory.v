@@ -146,6 +146,8 @@ Definition sub_in_fpsym (f: fpsym) : fpsym :=
 Definition sub_in_funsym (f: funsym) : funsym :=
   Build_funsym (sub_in_fpsym f)
   (sub_in_vty (f_ret f))
+  (f_is_constr f)
+  (f_num_constrs f)
   (check_sublist_sub (f_ret_wf f)).
 
 (*Sub in alg_datatype - only typesyms can be substituted*)
@@ -351,6 +353,8 @@ Definition qual_fpsym (f: fpsym) : fpsym :=
 Definition qual_funsym (f: funsym) : funsym :=
   Build_funsym (qual_fpsym (f_sym f))
     (qual_vty (f_ret f))
+    (f_is_constr f)
+    (f_num_constrs f)
     (check_sublist_qual (f_ret_wf f)).
 
 Definition qual_funsym_n (f: funsym) : funsym :=

@@ -150,12 +150,12 @@ Definition l1_ : vsymbol := ("l1", list_a).
 Definition l2_ : vsymbol := ("l2", list_a).
 Definition l3_ : vsymbol := ("l3", list_a).
 
-Definition l1__ : term := Tfun (constsym "l1" list_a) nil nil.
-Definition l2__ : term := Tfun (constsym "l2" list_a) nil nil.
-Definition l3__ : term := Tfun (constsym "l3" list_a) nil nil.
-Definition l__ : term := Tfun (constsym "l" list_a) nil nil.
-Definition x__ : term := Tfun (constsym "x" a_) nil nil.
-Definition y__ : term := Tfun (constsym "y" a_) nil nil.
+Definition l1__ : term := Tfun (Util.const_noconstr "l1" list_a) nil nil.
+Definition l2__ : term := Tfun (Util.const_noconstr "l2" list_a) nil nil.
+Definition l3__ : term := Tfun (Util.const_noconstr "l3" list_a) nil nil.
+Definition l__ : term := Tfun (Util.const_noconstr "l" list_a) nil nil.
+Definition x__ : term := Tfun (Util.const_noconstr "x" a_) nil nil.
+Definition y__ : term := Tfun (Util.const_noconstr "y" a_) nil nil.
 
 Ltac extra_simpl ::= fold a_; fold x_; fold y_; 
   fold list_a;

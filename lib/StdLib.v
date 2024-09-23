@@ -4,9 +4,10 @@ From mathcomp Require Export all_ssreflect.
 
 (*Different than other version because we use [funsym_noty]
   instead of writing manually*)
-Definition const name ty := funsym_noty name nil ty.
-Definition binop name ty : funsym := funsym_noty name [ty;ty] ty.
-Definition unop name ty : funsym := funsym_noty name [ty] ty.
+Definition const_noconstr name ty := funsym_noconstr_noty name nil ty.
+Definition const_constr name ty n := constr_noty name nil ty n.
+Definition binop name ty : funsym := funsym_noconstr_noty name [ty;ty] ty.
+Definition unop name ty : funsym := funsym_noconstr_noty name [ty] ty.
 Definition binpred name ty : predsym := predsym_noty name [ty; ty].
 
 Definition nonrec_fun f args body : def := nonrec_def (fun_def f args body).

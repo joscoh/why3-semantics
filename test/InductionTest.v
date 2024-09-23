@@ -12,8 +12,8 @@ Local Open Scope string_scope.
 (*First, define nat type*)
 Definition nat_ts : typesym := mk_ts "nat" nil.
 Definition wnat : vty := vty_cons nat_ts nil.
-Definition O_fs : funsym := funsym_noty "O" nil wnat.
-Definition S_fs: funsym := funsym_noty "S" [wnat] wnat.
+Definition O_fs : funsym := constr_noty "O" nil wnat 2.
+Definition S_fs: funsym := constr_noty "S" [wnat] wnat 2.
 Definition wnat_adt : alg_datatype := alg_def nat_ts
   (list_to_ne_list [O_fs; S_fs] erefl).
 Definition wnat_mut : mut_adt := mk_mut [wnat_adt] nil erefl.
@@ -25,7 +25,7 @@ Definition S (t: term) : term := Tfun S_fs nil [t].
 Definition n : vsymbol := ("n", wnat).
 Definition m: vsymbol := ("m", wnat).
 Definition n': vsymbol := ("n'", wnat).
-Definition add_fs : funsym := funsym_noty "add" [wnat; wnat] wnat.
+Definition add_fs : funsym := funsym_noconstr_noty "add" [wnat; wnat] wnat.
 Definition add (t1 t2: term) := Tfun add_fs nil [t1; t2].
 Definition add_def : funpred_def :=
   fun_def add_fs [n; m] 
@@ -64,12 +64,12 @@ Qed.
 Definition n_ : term := (t_constsym "n" wnat).
 Definition m_ : term := (t_constsym "m" wnat).
 
-Lemma n_eq_: Tfun (constsym "n" wnat) nil nil = n_.
+Lemma n_eq_: Tfun (const_noconstr "n" wnat) nil nil = n_.
 Proof.
   reflexivity.
 Qed.
 
-Lemma m_eq_ : Tfun (constsym "m" wnat) nil nil = m_.
+Lemma m_eq_ : Tfun (const_noconstr "m" wnat) nil nil = m_.
 reflexivity. Qed.
 
 Ltac extra_simpl ::= fold wnat; fold n_; fold m_; 

@@ -4,8 +4,8 @@ Require Import Lib_Algebra.
 (*For now, we only define the main Int module. Maybe do more later*)
 Module Int.
 
-Definition zero : funsym := const "zero" vty_int.
-Definition one : funsym := const "one" vty_int.
+Definition zero : funsym := const_noconstr "zero" vty_int.
+Definition one : funsym := const_noconstr "one" vty_int.
 
 Definition eq : predsym := binpred "eq" vty_int.
 Definition neg : funsym := unop "neg" vty_int.

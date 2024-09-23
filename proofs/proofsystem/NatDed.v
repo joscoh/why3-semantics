@@ -773,7 +773,7 @@ Definition forallI_trans name : trans :=
   else
   match task_goal t with
   | Fquant Tforall x f => [mk_task 
-    (abs_fun (constsym name (snd x)) :: (task_gamma t))
+    (abs_fun (const_noconstr name (snd x)) :: (task_gamma t))
     (task_delta t)
     (safe_sub_f (t_constsym name (snd x)) x f)] 
   | _ => [t]
@@ -793,7 +793,7 @@ forall (f : funsym) (srts : list sort),
            domain (dom_aux pd) (funsym_sigma_ret f srts).
 Proof.
 refine (fun f =>
-  match (funsym_eq_dec f (constsym name s)) with
+  match (funsym_eq_dec f (const_noconstr name s)) with
   | left Heq => fun srts a => _
   | right _ => funs f
   end).
@@ -819,9 +819,9 @@ arg_list (domain (dom_aux pd)) (sym_sigma_args f srts) ->
 (name: string) (s: sort)
 (d: domain (dom_aux pd) s)
 srts a Heq:
-funs_with_const funs name s d (constsym name s) srts a = dom_cast _ Heq d.
+funs_with_const funs name s d (const_noconstr name s) srts a = dom_cast _ Heq d.
 Proof.
-  unfold funs_with_const. destruct (funsym_eq_dec (constsym name s) (constsym name s));
+  unfold funs_with_const. destruct (funsym_eq_dec (const_noconstr name s) (const_noconstr name s));
   try contradiction.
   apply dom_cast_eq.
 Qed.
@@ -832,11 +832,11 @@ arg_list (domain (dom_aux pd)) (sym_sigma_args f srts) ->
 (name: string) (s: sort)
 (d: domain (dom_aux pd) s)
 (f: funsym) srts a:
-f <> constsym name s ->
+f <> const_noconstr name s ->
 funs_with_const funs name s d f srts a = funs f srts a.
 Proof.
   intros. unfold funs_with_const.
-  destruct (funsym_eq_dec f (constsym name s)); try contradiction; auto.
+  destruct (funsym_eq_dec f (const_noconstr name s)); try contradiction; auto.
 Qed.
 
 (*And now we need to prove that this interpretation 
@@ -845,7 +845,7 @@ Qed.
 Lemma funs_with_const_constrs {gamma: context} 
 (gamma_valid: valid_context gamma)
 (name: string) (s: sort)
-(gamma_valid': valid_context (abs_fun (constsym name s) :: gamma))
+(gamma_valid': valid_context (abs_fun (const_noconstr name s) :: gamma))
 (pd: pi_dom)
 (pf: pi_funpred gamma_valid pd)
 (d: domain (dom_aux pd) s):
@@ -865,7 +865,7 @@ Proof.
   rewrite funs_with_const_diff.
   2: {
     intro C. subst.
-    assert (~constr_in_adt (constsym name s) a). {
+    assert (~constr_in_adt (const_noconstr name s) a). {
       apply (proj1 
         (abs_not_concrete_fun gamma_valid' _ ltac:(simpl; left; auto)) m);
       auto.
@@ -881,7 +881,7 @@ Qed.
 Definition pf_with_const {gamma: context} 
 (gamma_valid: valid_context gamma)
 (name: string) (s: sort)
-(gamma_valid': valid_context (abs_fun (constsym name s) :: gamma))
+(gamma_valid': valid_context (abs_fun (const_noconstr name s) :: gamma))
 (pd: pi_dom)
 (pf: pi_funpred gamma_valid pd)
 (d: domain (dom_aux pd) s):
@@ -897,7 +897,7 @@ Build_pi_funpred gamma_valid' pd
 Lemma interp_with_const_full {gamma: context} 
 (gamma_valid: valid_context gamma)
 (name: string) (s: sort)
-(gamma_valid': valid_context (abs_fun (constsym name s) :: gamma))
+(gamma_valid': valid_context (abs_fun (const_noconstr name s) :: gamma))
 (pd: pi_dom)
 (pf: pi_funpred gamma_valid pd)
 (pf_full: full_interp gamma_valid pd pf)
@@ -906,7 +906,7 @@ full_interp gamma_valid' pd (pf_with_const gamma_valid name s gamma_valid' pd pf
 Proof.
   destruct pf_full as [full_fun [full_pred [full_ind1 full_ind2]]].
   (*Key: this constant not used before*)
-  assert (Hconstnew: ~ In (constsym name s) (sig_f gamma)). {
+  assert (Hconstnew: ~ In (const_noconstr name s) (sig_f gamma)). {
     inversion gamma_valid'; subst.
     simpl in H4. inversion H4; subst; auto.
   }
@@ -915,13 +915,13 @@ Proof.
     2: {
       intro C. subst.
       destruct f_in; destruct_all; subst.
-      - assert (~In (constsym name s) (funsyms_of_rec x)). {
+      - assert (~In (const_noconstr name s) (funsyms_of_rec x)). {
          apply (abs_not_concrete_fun gamma_valid' _ ltac:(simpl; left; auto)).
          auto.
         }
         apply in_fun_def in H0. contradiction.
-      - apply (nonrecfun_not_abs gamma_valid' (fun_def (constsym name s) args body)
-        (constsym name s)); simpl; auto.
+      - apply (nonrecfun_not_abs gamma_valid' (fun_def (const_noconstr name s) args body)
+        (const_noconstr name s)); simpl; auto.
     }
     assert (f_in': fun_defined gamma f args body). {
       destruct f_in; destruct_all; subst; [left | right]; auto.
@@ -934,7 +934,7 @@ Proof.
     intros.
     simpl. rewrite funs_with_const_diff; auto.
     intro C; subst.
-    assert (In (constsym name s) (sig_f gamma)); try contradiction. 
+    assert (In (const_noconstr name s) (sig_f gamma)); try contradiction. 
     eapply term_has_type_funsym_in_sig.
     apply fun_defined_ty in f_in'; auto. apply f_in'. auto.
   - (*Predicate very similar*)
@@ -947,7 +947,7 @@ Proof.
     apply fmla_change_gamma_pf; auto.
     intros. simpl. rewrite funs_with_const_diff; auto.
     intro C; subst.
-    assert (In (constsym name s) (sig_f gamma)); try contradiction. 
+    assert (In (const_noconstr name s) (sig_f gamma)); try contradiction. 
     eapply formula_typed_funsym_in_sig.
     apply pred_defined_typed in p_in'; auto. apply p_in'. auto.
   - (*First indprop easy*)
@@ -955,7 +955,7 @@ Proof.
       (pf2:=pf) (Hval2:= (indprop_fmla_valid gamma_valid l_in p_in f_in)); auto.
     intros. simpl. rewrite funs_with_const_diff; auto.
     intro C; subst.
-    assert (In (constsym name s) (sig_f gamma)); try contradiction. 
+    assert (In (const_noconstr name s) (sig_f gamma)); try contradiction. 
     eapply formula_typed_funsym_in_sig. 2: apply H.
     eapply indprop_fmla_valid; auto.
     apply l_in. apply p_in. auto.
@@ -963,7 +963,7 @@ Proof.
     eapply full_ind2 with(vt:=vt)(vv:=vv); auto.
     intros.
     assert (Hform1 : 
-      Forall (formula_typed (abs_fun (constsym name s) :: gamma)) fs0). {
+      Forall (formula_typed (abs_fun (const_noconstr name s) :: gamma)) fs0). {
       revert Hform. apply Forall_impl. intros f.
       apply formula_typed_sublist.
       apply expand_sublist_sig.
@@ -985,7 +985,7 @@ Proof.
       - apply find_apply_pred_ext. auto.
       - rewrite funs_with_const_diff; auto.
         intro C; subst.
-        assert (In (constsym name s) (sig_f gamma)); try contradiction. 
+        assert (In (const_noconstr name s) (sig_f gamma)); try contradiction. 
         eapply formula_typed_funsym_in_sig. apply y1. auto.
     }
     rewrite H2; auto.
@@ -1019,8 +1019,8 @@ Proof.
     rewrite null_nil in f_mono.
     apply union_nil in f_mono. apply f_mono.
   }
-  assert (Hnotused: ~ In (constsym name (snd v)) (sig_f gamma)). {
-    intro C. apply n. rewrite in_map_iff. exists (constsym name (snd v)).
+  assert (Hnotused: ~ In (const_noconstr name (snd v)) (sig_f gamma)). {
+    intro C. apply n. rewrite in_map_iff. exists (const_noconstr name (snd v)).
     split; auto.
   }
   assert (Htyval: valid_type gamma (snd v)). {
@@ -1029,7 +1029,7 @@ Proof.
     inversion f_ty; subst. auto.
   }
   (*First, prove new context is valid*)
-  assert (gamma_valid': valid_context (abs_fun (constsym name (snd v)) :: gamma)). {
+  assert (gamma_valid': valid_context (abs_fun (const_noconstr name (snd v)) :: gamma)). {
     constructor; simpl; auto; constructor; auto; try solve[constructor].
     unfold wf_funsym. simpl. constructor; auto.
     split.
@@ -1080,7 +1080,7 @@ Proof.
       intros. subst pf'. simpl.
       rewrite funs_with_const_diff; auto.
       intro C; subst.
-      assert (In (constsym name vty) (sig_f gamma)); try contradiction.
+      assert (In (const_noconstr name vty) (sig_f gamma)); try contradiction.
       eapply formula_typed_funsym_in_sig.
       2: apply H2.
       destruct t_wf.
@@ -1091,11 +1091,11 @@ Proof.
   unfold satisfies in Hval.
   specialize (Hval vt vv).
   (*A few typing lemmas*)
-  assert (Hty1: term_has_type (abs_fun (constsym name vty) :: gamma) (t_constsym name vty) vty).
+  assert (Hty1: term_has_type (abs_fun (const_noconstr name vty) :: gamma) (t_constsym name vty) vty).
   {
     unfold t_constsym.
-    assert (vty = ty_subst (s_params (constsym name vty)) nil (f_ret
-      (constsym name vty))). {
+    assert (vty = ty_subst (s_params (const_noconstr name vty)) nil (f_ret
+      (const_noconstr name vty))). {
       simpl. rewrite Hsort. simpl.
       unfold ty_subst.
       rewrite <- subst_is_sort_eq; auto.
@@ -1126,7 +1126,7 @@ Proof.
   intros. subst pf'. simpl.
   rewrite funs_with_const_diff; auto.
   intro C. subst d'. subst.
-  assert (In (constsym name vty) (sig_f gamma)); try contradiction.
+  assert (In (const_noconstr name vty) (sig_f gamma)); try contradiction.
   eapply formula_typed_funsym_in_sig.
   apply f_ty. auto.
   Unshelve.
@@ -1147,7 +1147,7 @@ Theorem D_forallI gamma delta x f c:
   (*delta and f are typed under gamma (they do not use the new symbol)*)
   Forall (formula_typed gamma) (map snd delta) ->
   closed gamma (Fquant Tforall x f) ->
-  derives (abs_fun (constsym c (snd x)) :: gamma, delta, 
+  derives (abs_fun (const_noconstr c (snd x)) :: gamma, delta, 
     safe_sub_f (t_constsym c (snd x)) x f) ->
   derives (gamma, delta, Fquant Tforall x f).
 Proof.
@@ -1505,7 +1505,7 @@ Qed.
   then we can prove C*)
 Definition existsE_trans name (f: formula) (x: vsymbol) hyp :
   trans := 
-  let c := constsym name (snd x) in
+  let c := const_noconstr name (snd x) in
   let t_c := t_constsym name (snd x) in 
   fun t =>
   (*New symbol not in signature*)
@@ -1522,11 +1522,11 @@ Definition existsE_trans name (f: formula) (x: vsymbol) hyp :
 Lemma t_constsym_ty gamma name ty:
   type_vars ty = nil ->
   valid_type gamma ty ->
-  In (constsym name ty) (sig_f gamma) ->
+  In (const_noconstr name ty) (sig_f gamma) ->
   term_has_type gamma (t_constsym name ty) ty.
 Proof.
   intros. unfold t_constsym.
-  assert (ty = ty_subst (s_params (constsym name ty)) nil (f_ret (constsym name ty))). {
+  assert (ty = ty_subst (s_params (const_noconstr name ty)) nil (f_ret (const_noconstr name ty))). {
     simpl. rewrite H. simpl.
     symmetry. apply ty_subst_params_id.
     rewrite H. auto.
@@ -1562,8 +1562,8 @@ Proof.
     rewrite null_nil in f_mono.
     apply union_nil in f_mono. apply f_mono.
   }
-  assert (Hnotused: ~ In (constsym name (snd x)) (sig_f gamma)). {
-   intro C. apply n. rewrite in_map_iff. exists (constsym name (snd x)).
+  assert (Hnotused: ~ In (const_noconstr name (snd x)) (sig_f gamma)). {
+   intro C. apply n. rewrite in_map_iff. exists (const_noconstr name (snd x)).
     split; auto.
   }
   assert (Htyval: valid_type gamma (snd x)). {
@@ -1572,7 +1572,7 @@ Proof.
     inversion f_ty; subst. auto.
   }
   (*First, prove new context is valid*)
-  assert (gamma_valid': valid_context (abs_fun (constsym name (snd x)) :: gamma)). {
+  assert (gamma_valid': valid_context (abs_fun (const_noconstr name (snd x)) :: gamma)). {
     constructor; simpl; auto; constructor; auto; try solve[constructor].
     unfold wf_funsym. simpl. constructor; auto.
     split.
@@ -1614,13 +1614,13 @@ Proof.
     intros d1 Hd1.
     destruct Hd1; subst.
     - unfold satisfies. intros.
-      assert (Htyc: term_has_type (abs_fun (constsym name xty) :: gamma) (t_constsym name xty) xty). {
+      assert (Htyc: term_has_type (abs_fun (const_noconstr name xty) :: gamma) (t_constsym name xty) xty). {
         apply t_constsym_ty; simpl; auto.
         revert Htyval.
         apply valid_type_sublist.
         apply expand_sublist_sig.
       }
-      assert (Htyf: formula_typed (abs_fun (constsym name xty) :: gamma) f). {
+      assert (Htyf: formula_typed (abs_fun (const_noconstr name xty) :: gamma) f). {
         destruct Hwf1. simpl_task. destruct task_goal_typed; simpl_task.
         inversion f_ty; subst.
         revert H6.
@@ -1726,7 +1726,7 @@ Theorem D_existsE gamma delta x f c g hyp:
   (*g must be typed under gamma*)
   formula_typed gamma g ->
   derives (gamma, delta, Fquant Texists x f) ->
-  derives (abs_fun (constsym c (snd x)) :: gamma, 
+  derives (abs_fun (const_noconstr c (snd x)) :: gamma, 
     (hyp, safe_sub_f (t_constsym c (snd x)) x f) :: delta,
     g) ->
   derives (gamma, delta, g).

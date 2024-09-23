@@ -10,7 +10,7 @@ Definition t_ts : typesym := mk_ts "t" nil.
 Definition t : vty := vty_cons t_ts nil.
 
 Definition op: funsym := binop "op" t. 
-Definition unit : funsym := const "Unit" t.
+Definition unit : funsym := const_noconstr "Unit" t.
 
 Definition inv : funsym := unop "inv" t. 
 (*Definition op (t1 t2: term) : term :=
@@ -85,7 +85,7 @@ Definition CommutativeGroup : theory :=
   ].
 
 (*Rings*)
-Definition zero : funsym := const "zero" t.
+Definition zero : funsym := const_noconstr "zero" t.
 Definition plus : funsym := binop "plus" t.
 Definition mult : funsym := binop "mult" t.
 Definition neg : funsym := unop "neg" t.
@@ -126,7 +126,7 @@ Definition CommutativeRing : theory :=
   ].
 
 (*Commutative Rings With Unit*)
-Definition one : funsym := const "one" t.
+Definition one : funsym := const_noconstr "one" t.
 Definition UnitaryCommutativeRing : theory :=
   rev [
     tclone CommutativeRing None emp_typemap nil nil;

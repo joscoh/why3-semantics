@@ -49,8 +49,8 @@ Local Open Scope string_scope.
   with the specification that forall x, f x = g x.
   We prove that f 0 = g 0*)
 
-Definition f : funsym := funsym_noty "f" [a] vty_int.
-Definition g: funsym := funsym_noty "g" [a] vty_int.
+Definition f : funsym := funsym_noconstr_noty "f" [a] vty_int.
+Definition g: funsym := funsym_noconstr_noty "g" [a] vty_int.
 Definition x: vsymbol := ("x", a).
 Definition zero : term := Tconst (ConstInt 0).
 
@@ -85,7 +85,7 @@ End TestSpecialize.
 Module InjTest.
 Local Open Scope string_scope.
 
-Definition f : funsym := funsym_noty "f" [a] a.
+Definition f : funsym := funsym_noconstr_noty "f" [a] a.
 Definition x: vsymbol := ("x", a).
 Definition y: vsymbol := ("y", a).
 
@@ -109,8 +109,8 @@ Qed.
 Definition a' := tyconst "a".
 Definition x' := ("x", a').
 Definition y' := ("y", a').
-Definition x'' := constsym "x" a'.
-Definition y'' := constsym "y" a'.
+Definition x'' := const_noconstr "x" a'.
+Definition y'' := const_noconstr "y" a'.
 Definition x1 := Tfun x'' nil nil.
 Definition y1 := Tfun y'' nil nil.
 Ltac extra_simpl ::= fold a'; fold x'; fold y'; fold x''; 
