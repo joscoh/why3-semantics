@@ -1932,6 +1932,19 @@ Definition nonrec_def_nonrec (f: funpred_def) : bool :=
   | pred_def p _ body => negb (predsym_in_fmla p body)
   end.
 
+(*Last bit: [is_constr] and [num_constrs] for funsyms:
+  1. ADT constr funsyms must have [is_constr] = true and [num_constrs] be correct
+  2. For all others, [is_constr] is false*)
+
+Definition valid_constrs_adt (a: alg_datatype) : bool :=
+  forallb (fun f => f_is_constr f && (Nat.eqb (f_num_constrs f) (length (adt_constr_list a))))
+    (adt_constr_list a).
+
+Definition valid_constrs_def (d: def) : bool :=
+  match d with
+  | datatype_def m => forallb valid_constrs_adt (typs m)
+  | _ => forallb (fun f => negb (f_is_constr f)) (funsyms_of_def d)
+  end.
 
 Definition valid_def gamma (d: def) : Prop :=
   match d with
@@ -1977,6 +1990,8 @@ Inductive valid_context : context -> Prop :=
     NoDup (typesyms_of_def d) ->
     (*nonempty*)
     nonempty_def d ->
+    (*constr metadata is correct*)
+    valid_constrs_def d ->
     (*checks for concrete defs*)
     valid_def (d :: gamma) d ->
     valid_context (d :: gamma).
@@ -2539,6 +2554,13 @@ Proof.
   intros Hval; induction Hval; auto.
 Qed.
 
+Lemma valid_context_constrs gamma:
+  valid_context gamma ->
+  Forall valid_constrs_def gamma.
+Proof.
+  intros Hval; induction Hval; auto.
+Qed. 
+
 (*Now we prove that gamma has NoDups. This follows from the
   uniqueness of each symbol type and the fact that no definition
   is empty*)
@@ -2555,7 +2577,7 @@ Proof.
   - unfold typesyms_of_mut in H3.
     destruct (typs m) eqn : Htyps; [inversion H7 |].
     apply (H3 (adt_name a)); simpl; auto.
-    apply H9.
+    apply H10.
     unfold typesyms_of_context.
     rewrite in_concat. exists (map adt_name (typs m)).
     split; auto; [| rewrite in_map_iff; exists a; split; auto;
@@ -2568,14 +2590,14 @@ Proof.
     destruct f.
     + (*function case*)
       apply (H1 f); simpl; auto.
-      apply H10. unfold funsyms_of_context.
+      apply H11. unfold funsyms_of_context.
       rewrite in_concat. exists (funsyms_of_rec (fun_def f l0 t :: l)).
       split; simpl; auto.
       rewrite in_map_iff. exists (recursive_def (fun_def f l0 t :: l)).
       auto.
     + (*pred*)
       apply (H2 p); simpl; auto.
-      apply H11. unfold predsyms_of_context.
+      apply H12. unfold predsyms_of_context.
       rewrite in_concat. exists (predsyms_of_rec (pred_def p l0 f :: l)).
       split; simpl; auto.
       rewrite in_map_iff. exists (recursive_def (pred_def p l0 f :: l));
@@ -2583,7 +2605,7 @@ Proof.
   - (*inductive def has a predsym*)
     destruct l; [inversion H7 |].
     destruct i. apply (H2 p); simpl; auto.
-    apply H11. unfold predsyms_of_context.
+    apply H12. unfold predsyms_of_context.
     rewrite in_concat. exists (predsyms_of_indprop (ind_def p l0 :: l)).
     split; simpl; auto.
     rewrite in_map_iff. exists (inductive_def (ind_def p l0 :: l));
@@ -4160,5 +4182,216 @@ Proof.
 Qed.
 
 End GetADTSort.
+
+(*Info about [is_constr] metadata*)
+
+Definition is_funsym_constr (f: funsym) : bool :=
+  List.existsb (fun (m: mut_adt) =>
+    List.existsb (fun (a: alg_datatype) => constr_in_adt f a)
+     (typs m)) (mut_of_context gamma).
+
+(*Not very ssreflect-like but much easier to prove this way*)
+Lemma is_funsym_constr_correct f:
+  reflect (exists m a, mut_in_ctx m gamma /\ adt_in_mut a m /\
+    constr_in_adt f a) (is_funsym_constr f).
+Proof.
+  apply iff_reflect.
+  unfold is_funsym_constr.
+  rewrite existsb_exists.
+  setoid_rewrite existsb_exists.
+  split; intros; destruct_all.
+  - exists x. split; [apply mut_in_ctx_eq; auto|].
+    exists x0. split; auto. eapply in_bool_In; eauto.
+  - exists x. exists x0. split_all; auto; [apply mut_in_ctx_eq |
+    apply In_in_bool]; auto.
+Qed.
+
+(*Another equivalent statement*)
+Lemma is_funsym_constr_def_iff f:
+  is_funsym_constr f <-> exists m, In (datatype_def m) gamma /\ In f (funsyms_of_def (datatype_def m)).
+Proof.
+  unfold is_true.
+  unfold is_funsym_constr.
+  rewrite existsb_exists.
+  setoid_rewrite existsb_exists.
+  setoid_rewrite <- mut_in_ctx_eq2.
+  setoid_rewrite <- (reflect_iff _ _ (in_bool_spec mut_adt_dec _ _)).
+  simpl.
+  unfold funsyms_of_mut.
+  setoid_rewrite in_concat.
+  setoid_rewrite in_map_iff.
+  setoid_rewrite constr_in_adt_eq.
+  split; intros; destruct_all; eauto 10.
+Qed.
+
+(*0.5. Suppose f is in [funsyms_of_def] for something other than a [datatype_def].
+  Then [f_is_constr f] = false*)
+Lemma is_constr_false f:
+  In f (sig_f gamma) ->
+  f_is_constr f = false <-> exists d, In d gamma /\ In f (funsyms_of_def d) /\
+    (forall m, d <> datatype_def m).
+Proof.
+  pose proof (valid_context_constrs _ gamma_valid) as Hval.
+  intros Hinf.
+  unfold sig_f in Hinf.
+  rewrite in_concat in Hinf.
+  setoid_rewrite in_map_iff in Hinf. 
+  destruct Hinf as [fs [[d [Hd Hind]] Hinf]]; subst.
+  rewrite Forall_forall in Hval.
+  specialize (Hval _ Hind).
+  unfold valid_constrs_def in Hval.
+  destruct d as [m | | | | | |];
+  (*All but one are the same*)
+  try solve[
+    unfold is_true in Hval;
+    rewrite forallb_forall in Hval;
+    specialize (Hval _ Hinf);
+    destruct (f_is_constr f); [discriminate|]; split; auto; intros _;
+    eexists; split_all; [apply Hind | apply Hinf | intros m C; discriminate]].
+  (*The interesting case*)
+  assert (Hinf':=Hinf).
+  simpl in Hinf.
+  unfold funsyms_of_mut in Hinf.
+  rewrite in_concat in Hinf.
+  setoid_rewrite in_map_iff in Hinf.
+  destruct Hinf as [fs [[a [Hfs a_in]] f_in]]; subst.
+  unfold is_true in Hval.
+  rewrite forallb_forall in Hval.
+  specialize (Hval _ a_in).
+  unfold valid_constrs_adt in Hval.
+  rewrite forallb_forall in Hval.
+  specialize (Hval _ f_in).
+  apply andb_true_iff in Hval.
+  destruct Hval as [Hconstr _].
+  rewrite Hconstr. split; [discriminate|].
+  intros [d [Hind1 [Hf Hm]]].
+  exfalso.
+  destruct (def_eq_dec d (datatype_def m)) as [Heq | Heq]; subst;
+  [apply (Hm m); auto|].
+  apply (funsym_multiple_defs gamma_valid d (datatype_def m) f); auto.
+Qed.
+
+
+(*[is_constr] is true iff f is a constructor that belongs to some ADT in the context
+  and if the constrs are correct*)
+Lemma is_constr_iff f:
+  In f (sig_f gamma) ->
+  f_is_constr f <-> exists m a, mut_in_ctx m gamma /\ adt_in_mut a m /\ constr_in_adt f a
+    (*/\ f_num_constrs f = length (adt_constr_list a)*).
+Proof.
+  pose proof (valid_context_constrs _ gamma_valid) as Hval.
+  intros Hinf. assert (Hinf':=Hinf).
+  unfold sig_f in Hinf.
+  rewrite in_concat in Hinf.
+  setoid_rewrite in_map_iff in Hinf. 
+  destruct Hinf as [fs [[d [Hd Hind]] Hinf]]; subst.
+  rewrite Forall_forall in Hval.
+  specialize (Hval _ Hind).
+  unfold valid_constrs_def in Hval.
+  destruct d as [m | | | | | |];
+  (*All but one are the same*)
+  try solve[
+    unfold is_true in Hval;
+    rewrite forallb_forall in Hval;
+    specialize (Hval _ Hinf);
+    destruct (f_is_constr f); [discriminate|];
+    split; [discriminate|];
+    intros [m [a [m_in [a_in c_in]]]];
+    assert (Hconstr: is_funsym_constr f) by
+      (apply (reflect_iff _ _ (is_funsym_constr_correct _ )); eauto);
+    apply is_funsym_constr_def_iff in Hconstr;
+    destruct Hconstr as [m1 [Hd Hinf2]];
+    exfalso;
+    unshelve(eapply (funsym_multiple_defs gamma_valid _ _ f _ Hind Hd)); eauto;
+    intro C; inversion C].
+  (*Interesting case*)
+  simpl in Hinf.
+  unfold funsyms_of_mut in Hinf.
+  rewrite in_concat in Hinf.
+  setoid_rewrite in_map_iff in Hinf.
+  destruct Hinf as [fs [[a [Hfs a_in]] f_in]]; subst.
+  unfold is_true in Hval.
+  rewrite forallb_forall in Hval.
+  specialize (Hval _ a_in).
+  unfold valid_constrs_adt in Hval.
+  rewrite forallb_forall in Hval.
+  specialize (Hval _ f_in).
+  apply andb_true_iff in Hval.
+  destruct Hval as [Hconstr Hnum].
+  rewrite Hconstr. split; auto; intros _.
+  exists m. exists a. split_all.
+  - apply mut_in_ctx_eq2; auto.
+  - apply In_in_bool; auto.
+  - apply constr_in_adt_eq; auto.
+Qed.
+
+(*2. If [is_constr] is true, then [num_constrs] is accurate*)
+Lemma num_constrs_correct {m a f}:
+  mut_in_ctx m gamma ->
+  adt_in_mut a m ->
+  constr_in_adt f a ->
+  f_num_constrs f = length (adt_constr_list a).
+Proof.
+  (*TODO: is there easier, less repetitive way?*)
+  intros m_in a_in c_in.
+  assert (Hinf: In f (sig_f gamma)). {
+    eapply constr_in_sig_f; eauto.
+  }
+  assert (Hisconstrs: f_is_constr f). {
+    apply is_constr_iff; auto; eauto.
+  }
+  pose proof (valid_context_constrs _ gamma_valid) as Hval.
+  assert (Hinf':=Hinf).
+  unfold sig_f in Hinf.
+  rewrite in_concat in Hinf.
+  setoid_rewrite in_map_iff in Hinf. 
+  destruct Hinf as [fs [[d [Hd Hind]] Hinf]]; subst.
+  rewrite Forall_forall in Hval.
+  specialize (Hval _ Hind).
+  unfold valid_constrs_def in Hval.
+  destruct d as [m1 | | | | | |];
+  try solve[
+    assert (Hnot: f_is_constr f = false); [|rewrite Hisconstrs in Hnot; discriminate];
+    apply is_constr_false; auto; eexists; split_all; [apply Hind | apply Hinf| intros; discriminate]].
+  simpl in Hinf.
+  unfold funsyms_of_mut in Hinf.
+  rewrite in_concat in Hinf.
+  setoid_rewrite in_map_iff in Hinf.
+  destruct Hinf as [fs [[a1 [Hfs a1_in]] f_in]]; subst.
+  (*m and m1 are the same, same for a and a1*)
+  assert (Heq: a = a1 /\ m = m1). {
+    eapply constr_in_one_adt; try eassumption.
+    - apply mut_in_ctx_eq2; auto.
+    - apply In_in_bool; auto.
+    - apply constr_in_adt_eq; auto.
+  }
+  destruct Heq as [Ha Hm]; subst.
+  (*now continue*)
+  unfold is_true in Hval.
+  rewrite forallb_forall in Hval.
+  specialize (Hval _ a1_in).
+  unfold valid_constrs_adt in Hval.
+  rewrite forallb_forall in Hval.
+  specialize (Hval _ f_in).
+  apply andb_true_iff in Hval.
+  destruct Hval as [Hconstr Hnum].
+  apply Nat.eqb_eq in Hnum; auto.
+Qed.
+
+(*3. (Alt) If f is a constructor, then [is_constr] is true and [num_constrs] is accurate *)
+Lemma constr_data_correct {m a f}:
+  mut_in_ctx m gamma ->
+  adt_in_mut a m ->
+  constr_in_adt f a ->
+  f_is_constr f /\ f_num_constrs f = length (adt_constr_list a).
+Proof.
+  intros m_in a_in c_in.
+  assert (Hinf: In f (sig_f gamma)). {
+    eapply constr_in_sig_f; eauto.
+  }
+  split; [| eapply num_constrs_correct; eauto].
+  apply is_constr_iff; eauto.
+Qed.
+
 
 End GetADT.

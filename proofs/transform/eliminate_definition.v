@@ -1805,6 +1805,7 @@ Lemma add_rec_abs_valid {gamma gamma1} which b
   (Htseq: forall x, In x (sig_t gamma1) <-> In x (sig_t gamma))
   (Hfseq: forall x, In x (sig_f gamma1) <-> In x (sig_f gamma))
   (Hpseq: forall x, In x (sig_p gamma1) <-> In x (sig_p gamma))
+  (Hnoconstrs: Forall (fun f => f_is_constr f = false) (funsyms_of_rec l))
   :
   valid_context (rev (fst (decls_of_def which b l)) ++ gamma1).
 Proof.
@@ -1864,7 +1865,16 @@ Proof.
     apply (sublist_strong_nodup _ _ _ Hfuns). apply NoDup_rev. auto.
   - (*NoDups in added presyms*)
     apply (sublist_strong_nodup _ _ _ Hpreds). apply NoDup_rev. auto.
+  - (*No marked constrs in added funsyms*)
+    rewrite Forall_forall in Hnoconstrs |- *. auto.
 Qed.
+
+(*A hack*)
+Definition is_constr_gen {b: bool} (ls: gen_sym b) : bool :=
+  match b return gen_sym b -> bool with
+  | true => fun f => f_is_constr f
+  | false => fun _ => false
+  end ls.
 
 (*Version for nonrec*)
 Lemma add_nonrec_abs_valid {gamma gamma1} b1 ls1 vs1 e1
@@ -1876,7 +1886,8 @@ Lemma add_nonrec_abs_valid {gamma gamma1} b1 ls1 vs1 e1
   (Hnotsig2: Forall (fun f : predsym => ~ In f (sig_p gamma)) (predsyms_of_nonrec fd))
   (Htseq: forall x, In x (sig_t gamma1) <-> In x (sig_t gamma))
   (Hfseq: forall x, In x (sig_f gamma1) <-> In x (sig_f gamma))
-  (Hpseq: forall x, In x (sig_p gamma1) <-> In x (sig_p gamma)),
+  (Hpseq: forall x, In x (sig_p gamma1) <-> In x (sig_p gamma))
+  (Hnoconstr: is_constr_gen ls1 = false),
   valid_context ((gen_abs ls1) :: gamma1).
 Proof.
   intros fd; intros.
@@ -1904,6 +1915,7 @@ Proof.
   - (*Nodup is trivial*) simpl. destruct b1; simpl; constructor.
   - simpl. destruct b1; rewrite app_nil_r; simpl; repeat(constructor; auto).
   - simpl. destruct b1; rewrite app_nil_r; simpl; repeat(constructor; auto). 
+  - simpl. destruct b1; simpl; constructor; auto.
 Qed.
 
 (*Add a concrete def with no typesyms to a context*)
@@ -1917,11 +1929,12 @@ Lemma valid_ctx_concrete_def {gamma} (d: def):
   NoDup (funsyms_of_def d) ->
   NoDup (predsyms_of_def d) ->
   nonempty_def d ->
+  valid_constrs_def d ->
   valid_def (d :: gamma) d ->
   valid_context gamma ->
   valid_context (d :: gamma).
 Proof.
-  intros Htys Hwf1 Hwf2 Hsig1 Hsig2 Hn1 Hn2 Hne Hval gamma_valid.
+  intros Htys Hwf1 Hwf2 Hsig1 Hsig2 Hn1 Hn2 Hne Hconstrs Hval gamma_valid.
   constructor; auto.
   - revert Hwf1. rewrite !Forall_forall; intros Hwf1 x Hinx.
     apply wf_funsym_expand; auto.
@@ -2337,12 +2350,32 @@ Proof.
   - revert H4. rewrite !Forall_forall. setoid_rewrite Hfseq. auto.
   - revert H5. rewrite !Forall_forall. setoid_rewrite Hpseq. auto.
   - revert H6. rewrite !Forall_forall. setoid_rewrite Htseq. auto.
-  - eapply valid_def_sublist. 4: apply H11.
+  - eapply valid_def_sublist. 4: apply H12.
     + unfold sublist_sig, sig_t, sig_f, sig_p; simpl.
       split_all; apply sublist_app2; auto; try solve[apply sublist_refl];
       intros x; [apply Htseq | apply Hfseq | apply Hpseq].
     + unfold sig_t. simpl. f_equal. apply Ht.
     + unfold mut_of_context. simpl. destruct d; simpl; auto. f_equal; auto.
+Qed.
+
+Lemma convert_is_constr fs:
+  (forallb (fun f => negb (f_is_constr f)) fs) <->
+  Forall (fun f => f_is_constr f = false) fs.
+Proof.
+  unfold is_true; rewrite forallb_forall, Forall_forall;
+  split; intros Hallin x Hin; specialize (Hallin _ Hin);
+  destruct (f_is_constr x); auto.
+Qed.
+
+Lemma sublist_strong_forallb {A: Type} (p: A -> bool) eq_dec (l1 l2: list A):
+  sublist_strong eq_dec l1 l2 ->
+  forallb p l2 ->
+  forallb p l1.
+Proof.
+  intros Hsub Hall.
+  apply sublist_strong_in in Hsub.
+  unfold is_true in *.
+  rewrite forallb_forall in Hall |-  *. auto.
 Qed.
   
 (*Prove that the new context is valid*)
@@ -2377,6 +2410,7 @@ Proof.
     end.
     {
       eapply add_rec_abs_valid; auto. all: auto.
+      apply convert_is_constr; auto.
     }
     destruct (Pattern.filter_map _ l) as [|h t] eqn : Hpat; [simpl; auto|].
     (*Prove that funsyms are [sublist_strong] of funsyms of l*)
@@ -2420,7 +2454,7 @@ Proof.
       destruct (which b2 ls2) eqn : Hwhich2; inversion Hd; subst.
       destruct b2; simpl in Hinx2; [|contradiction].
       destruct Hinx2 as [Hxeq | []]; subst.
-      destruct b1; inversion H11; subst.
+      destruct b1; inversion H12; subst.
       rewrite Hwhich1 in Hwhich2. discriminate.
     }
     (*Almost exactly the same, not great*)
@@ -2444,7 +2478,7 @@ Proof.
       destruct (which b2 ls2) eqn : Hwhich2; inversion Hd; subst.
       destruct b2; simpl in Hinx2; [contradiction|].
       destruct Hinx2 as [Hxeq | []]; subst.
-      destruct b1; inversion H11; subst.
+      destruct b1; inversion H12; subst.
       rewrite Hwhich1 in Hwhich2. discriminate.
     }
     (* clear Hpat. *)
@@ -2496,8 +2530,11 @@ Proof.
     + (*Nodup of funsyms*)
       apply (sublist_strong_nodup _ _ _ Hfuns); auto.
     + (*predsyms*) apply (sublist_strong_nodup _ _ _ Hpreds); auto.
+    + (*constrs*) simpl. 
+      apply (sublist_strong_forallb (fun f => negb(f_is_constr f))) in  Hfuns; [|assumption].
+      destruct h; simpl; auto.
     + (*The more interesting part - prove that the definition is valid*)
-      revert H9.
+      revert H10.
       apply sublist_strong_rec_wf; auto.
       * apply valid_context_wf; auto.
       * (*Prove [sublist_sig]*)
@@ -2562,6 +2599,7 @@ Proof.
       rewrite Hmuts2 in Hmuts.
       rewrite Hsig2 in Hsigteq.
       eapply add_nonrec_abs_valid with (vs1:=vs1)(e1:=e1); eauto.
+      (*prove constr*) destruct b1; simpl in *; auto. destruct (f_is_constr ls1); auto. 
     + (*Don't change context*)
       simpl. auto.
       eapply valid_context_change_tl. apply Hval2. all: auto.

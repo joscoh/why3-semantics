@@ -122,27 +122,6 @@ Qed.
 Definition seqI {A: eqType} (s1 s2: seq A) :=
   filter (fun x => x \in s2) s1.
 
-Definition is_funsym_constr (gamma: context) (f: funsym) : bool :=
-  List.existsb (fun (m: mut_adt) =>
-    List.existsb (fun (a: alg_datatype) => constr_in_adt f a)
-     (typs m)) (mut_of_context gamma).
-
-(*Not very ssreflect-like but much easier to prove this way*)
-Lemma is_funsym_constr_correct gamma f:
-  reflect (exists m a, mut_in_ctx m gamma /\ adt_in_mut a m /\
-    constr_in_adt f a) (is_funsym_constr gamma f).
-Proof.
-  apply iff_reflect.
-  rewrite /is_funsym_constr.
-  rewrite existsb_exists.
-  setoid_rewrite existsb_exists.
-  split; intros; destruct_all.
-  - exists x. split; first by apply mut_in_ctx_eq.
-    exists x0. split=>//; by apply in_bool_In in H0.
-  - exists x. exists x0. split_all=>//; [by apply mut_in_ctx_eq |
-    by apply In_in_bool].
-Qed.
-
 Definition all_in_range (bound: nat) (p: nat -> bool) : bool :=
   forallb p (iota 0 bound).
 
@@ -1365,6 +1344,7 @@ Definition check_context_cons (d: def) (gamma: context) : bool :=
   uniq preds &&
   uniq tys &&
   nonempty_def d &&
+  valid_constrs_def d &&
   valid_def_check (d :: gamma) d.
 
 (*If we start with a valid context, this check means that
@@ -1413,6 +1393,8 @@ Proof.
   case: (uniq (typesyms_of_def d)) /uniqP => Hnodupt; last by reflF.
   case Hemp: (nonempty_def d); last 
     by (apply ReflectF => C; inversion C; subst; rewrite Hemp in H10).
+  case Hconstrs: (valid_constrs_def d); last by
+    (apply ReflectF => C; inversion C; subst; rewrite Hconstrs in H11).
   (*At this point, wf_context holds, so we can use the
     def check lemma (the recfun case needs a wf_context)*)
   have Hwf: wf_context (d :: gamma). {

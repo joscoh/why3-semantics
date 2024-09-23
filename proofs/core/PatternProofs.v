@@ -3510,7 +3510,7 @@ Proof.
       apply Hinget.
       (*contradiction - in action vars, so must be in [compile_fvs]*)
       unfold compile_fvs. rewrite !in_app_iff. right. right.
-      unfold pat_mx_act_vars. simpl_set. Search gen_getvars spec.
+      unfold pat_mx_act_vars. simpl_set.
       apply (gen_getvars_spec Hinrow Hinx).
     }
 

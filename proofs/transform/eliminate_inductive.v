@@ -3502,6 +3502,7 @@ Lemma valid_ctx_abstract_app {gamma} (l: list def):
   NoDup (concat (map typesyms_of_def l)) ->
   NoDup (concat (map funsyms_of_def l)) ->
   NoDup (concat (map predsyms_of_def l)) ->
+  Forall (fun f => f_is_constr f = false) (concat (map funsyms_of_def l)) ->
   valid_context gamma ->
   valid_context (l ++ gamma).
 Proof.
@@ -3520,22 +3521,24 @@ Proof.
     unfold sig_f.
     rewrite map_app, concat_app, in_app_iff.
     intros [Hinx | Hinx]; auto.
-    + apply (H20 x); auto.
+    + apply (H22 x); auto.
     + rewrite Forall_forall in H3; apply (H3 x); auto.
   - rewrite Forall_forall; intros.
     unfold sig_p.
     rewrite map_app, concat_app, in_app_iff.
     intros [Hinx | Hinx]; auto.
-    + apply (H15 x); auto.
+    + apply (H17 x); auto.
     + rewrite Forall_forall in H4; apply (H4 x); auto.
   - rewrite Forall_forall; intros.
     unfold sig_t.
     rewrite map_app, concat_app, in_app_iff.
     intros [Hinx | Hinx]; auto.
-    + apply (H23 x); auto.
+    + apply (H25 x); auto.
     + rewrite Forall_forall in H2; apply (H2 x); auto.
   - destruct a; inversion H16; auto.
-  - destruct a; inversion H16; auto; simpl; auto.
+  - destruct a; auto. simpl. simpl in *.
+    inversion H8; subst. rewrite H29; auto.
+  - destruct a; inversion H18; auto; simpl; auto.
 Qed.
 
 Lemma eq_sig_sym g1 g2:
@@ -3604,15 +3607,15 @@ Proof.
       rewrite Htseq.
       rewrite Forall_forall in H4; apply (H4 x); auto.
     + (*The difficult part: proving that def is still valid*)
-      revert H9.
+      revert H10.
       apply valid_def_sublist.
       * apply eq_sig_is_sublist, eq_sig_sym; auto.
       * pose proof (gen_new_ctx_gamma_sig_t (d :: gamma)).
-        unfold gen_new_ctx_gamma in H9.
-        simpl in H9. rewrite Hind in H9. auto.
+        unfold gen_new_ctx_gamma in H10.
+        simpl in H10. rewrite Hind in H10. auto.
       * pose proof (gen_new_ctx_gamma_mut (d :: gamma)).
-        unfold gen_new_ctx_gamma in H9.
-        simpl in H9. rewrite Hind in H9. auto.
+        unfold gen_new_ctx_gamma in H10.
+        simpl in H10. rewrite Hind in H10. auto.
 Qed.
 
 (*Convert an interpretation from gamma into one onto
