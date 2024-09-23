@@ -59,7 +59,7 @@ Definition add_ld (which : lsymbol -> bool) md x ds :
     (*hd = fact(n) (as term)*)
     ti <- errst_tup2 (full_of_ty (t_insert hd e)) ;;
     ax <- errst_lift2 (t_forall_close vl [] ti)  ;;
-    (*ax: forall n, if n = 0 then fact(n) = 1 else fact(n) = n * (n-1)*)
+    (*ax: forall n, if n = 0 then fact(n) = 1 else fact(n) = n * fact (n-1)*)
     ax <- errst_tup2 (full_of_d (create_prop_decl Paxiom pr ax)) ;;
     (*create abstract symbol for fact*)
     ld <- errst_tup2 (full_of_d (create_param_decl ls)) ;;
