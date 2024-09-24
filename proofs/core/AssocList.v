@@ -655,6 +655,18 @@ Proof.
     exfalso. apply (Hnotin (fst p)). left; auto.
 Qed.
 
+Lemma amap_not_empty_get (m: amap A B):
+  amap_is_empty m = false ->
+  {x : A * B | amap_get eq_dec m (fst x) = Some (snd x)}.
+Proof.
+  unfold amap_is_empty. pose proof (amap_get_some_iff m) as Hget.
+  destruct (proj1_sig m) as [|[x1 y1] t]; simpl; [discriminate|].
+  intros _.
+  simpl in Hget.
+  exists (x1, y1). simpl. apply Hget. auto.
+Defined.
+
+
 Lemma amap_not_empty_exists (m: amap A B):
   amap_is_empty m = false <-> exists x y, amap_get eq_dec m x = Some y.
 Proof.
@@ -695,4 +707,50 @@ Qed.
 Definition amap_subset {C: Type} (m1: amap A B) (m2: amap A C) : bool :=
   (*All keys in m1 are in m2*)
   forallb (fun x => amap_mem x m2) (map fst (proj1_sig m1)).
+
+Definition amap_choose (m: amap A B) : option (A * B) :=
+  match amap_is_empty m as b return amap_is_empty m = b -> option (A * B) with
+  | true => fun _ => None
+  | false => fun Hfalse => Some (proj1_sig (amap_not_empty_get m Hfalse))
+  end eq_refl.
+
+Lemma amap_choose_empty (m: amap A B):
+  amap_is_empty m <-> amap_choose m = None.
+Proof.
+  unfold amap_choose.
+  generalize dependent (amap_not_empty_get m).
+  destruct (amap_is_empty m); split; intros; auto; discriminate.
+Qed.
+
+Lemma amap_choose_nonempty (m: amap A B) x y:
+  amap_choose m = Some (x, y) ->
+  amap_get eq_dec m x = Some y.
+Proof.
+  unfold amap_choose. generalize dependent (amap_not_empty_get m).
+  destruct (amap_is_empty m); simpl; try discriminate.
+  intros s Hsome. destruct (s eq_refl); simpl in *; inversion Hsome; subst; auto.
+Qed.
+
+Definition amap_size (m: amap A B) : nat :=
+  length (proj1_sig m).
+
+Lemma amap_size_emp (m: amap A B):
+  amap_is_empty m <-> amap_size m = 0.
+Proof.
+  unfold amap_is_empty, amap_size.
+  rewrite null_nil, length_zero_iff_nil. reflexivity.
+Qed.
+
+Lemma amap_size_set (m: amap A B) (x: A) (y: B):
+  amap_size (amap_set eq_dec m x y) = (if amap_mem x m then 0 else 1) + amap_size m.
+Proof.
+  unfold amap_mem, amap_size, amap_set. simpl.
+  unfold map_contains, map_set_aux, map_get_aux.
+  destruct m as [m m_wf]; simpl in *.
+  unfold set_assoc_list, replace_assoc_list.
+  destruct (get_assoc_list eq_dec m x) eqn : Hget; simpl; auto.
+  rewrite <- (map_length fst), replace_assoc_list_map_fst, map_length.
+  reflexivity.
+Qed.
+
 End MapProofs.

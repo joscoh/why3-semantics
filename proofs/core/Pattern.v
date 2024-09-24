@@ -2316,16 +2316,23 @@ Proof.
   apply Left. apply (exist _ (f, l, l0)). reflexivity.
 Defined.
 
-Definition comp_full (comp_wilds : unit -> option A) comp_cases 
+Definition comp_full (is_bare: bool) (comp_wilds : unit -> option A) comp_cases 
   (types: amap funsym (list pattern))
   (cslist: list (funsym * list vty * list pattern)) css t ty tl rl (_: unit) :=
-    let no_wilds := forallb (fun f => amap_mem funsym_eq_dec f types) css in
-    let base : option (list (pattern * A)) := if no_wilds then Some nil else (*TODO: bind*)
-    option_map (fun x => [(Pwild, x)]) (comp_wilds tt)
+    let no_wilds := 
+      if is_bare then
+        option_bind (amap_choose funsym_eq_dec types) (fun x =>
+          Some (Nat.eqb (amap_size types) (f_num_constrs (fst x)))) 
+      else Some (forallb (fun f => amap_mem funsym_eq_dec f types) css) in
+    let base : option (list (pattern * A)) :=
+      option_bind no_wilds (fun b => if b then Some nil else (*TODO: bind*)
+    option_map (fun x => [(Pwild, x)]) (comp_wilds tt))
     in
     option_bind base (fun b =>
       option_map (fun b1 => mk_case t ty b1)  (fold_left_opt (add comp_cases t ty rl tl) cslist b)). 
 
+Section Comp.
+Variable bare: bool.
 
 Equations compile (tl: list (term * vty)) (rl: list (list pattern * A))
   : option A  by wf (compile_measure rl) lt :=
@@ -2334,13 +2341,17 @@ Equations compile (tl: list (term * vty)) (rl: list (list pattern * A))
   compile ((t, ty) :: tl) rl =>
     (*No bare*)
     (*extract the set of constructors*)
-    let css :=
+    let is_bare_css :=
     match ty with
-    | vty_cons ts _ => get_constructors ts
-    | _ => nil
+    | vty_cons ts _ => if bare then (true, nil) else (false, get_constructors ts)
+    | _ => (false, nil)
     end in
+    let is_bare := fst is_bare_css in
+    let css := snd is_bare_css in
     (*NOTE: no metadata in funsym saying constructor*)
-    let is_constr fs := in_bool funsym_eq_dec fs css in
+    let is_constr fs := 
+    (*NOTE: don't check f_is_constr - true by typing*)
+      is_bare || in_bool funsym_eq_dec fs css in
 
     (*Here, we do the simplify/dispatch*)
 
@@ -2372,7 +2383,7 @@ Equations compile (tl: list (term * vty)) (rl: list (list pattern * A))
         in
 
     (*TODO: default case here*)
-    let comp_full := comp_full comp_wilds comp_cases types cslist css t ty tl rl in
+    let comp_full := comp_full is_bare comp_wilds comp_cases types cslist css t ty tl rl in
 
     (* let comp_full (_: unit) :=
       let no_wilds := forallb (fun f => amap_mem funsym_eq_dec f types) css in
@@ -2434,7 +2445,7 @@ Equations compile (tl: list (term * vty)) (rl: list (list pattern * A))
 end eq_refl
 end eq_refl.
 Next Obligation.
-intros t ty tl phd ptl compile rl css is_constr types_cslist t2 Heqt2 types cslist casewild Hdispatch cases wilds _.
+intros t ty tl phd ptl compile rl is_bare_css is_bare css is_constr types_cslist t2 Heqt2 types cslist casewild Hdispatch cases wilds _.
 fold rl.
 unfold compile_measure.
 unfold wilds.  apply dispatch1_opt_some in Hdispatch.
@@ -2444,7 +2455,7 @@ eapply Nat.le_lt_trans.
 - apply d_matrix_smaller; auto.
 Defined.
 Next Obligation.
-intros t ty tl p ptl compile rl css is_constr types_cslist t2 Heqt2 types cslist casewild Hdispatch cases wilds _ cs _ l Hget.
+intros t ty tl p ptl compile rl is_bare_css is_bare css is_constr types_cslist t2 Heqt2 types cslist casewild Hdispatch cases wilds _ cs _ l Hget.
 apply dispatch1_opt_some in Hdispatch.
 destruct Hdispatch as [Hnotnull Hcasewild]. 
 fold rl.
@@ -2694,17 +2705,22 @@ Proof.
   intros. symmetry. apply add_simplify_eq.
 Qed.
 
-Lemma comp_full_simplify_eq comp_wilds comp_cases types cslist css t ty tl P x:
-  comp_full comp_wilds comp_cases types cslist css t ty tl (simplify t P) x =
-  comp_full comp_wilds comp_cases types cslist css t ty tl P x.
+Lemma comp_full_simplify_eq is_bare comp_wilds comp_cases types cslist css t ty tl P x:
+  comp_full is_bare comp_wilds comp_cases types cslist css t ty tl (simplify t P) x =
+  comp_full is_bare comp_wilds comp_cases types cslist css t ty tl P x.
 Proof.
   unfold comp_full.
-  destruct (forallb _ _); simpl; auto.
-  - rewrite fold_left_opt_simplify_eq. reflexivity.
-  - destruct (comp_wilds tt); simpl; auto.  
-    rewrite fold_left_opt_simplify_eq. reflexivity.
+  destruct is_bare.
+  - destruct (amap_choose _ _); simpl; auto.
+    destruct (Nat.eqb _ _); simpl; auto.
+    + rewrite fold_left_opt_simplify_eq. reflexivity.
+    + destruct (comp_wilds tt); simpl; auto. 
+      rewrite fold_left_opt_simplify_eq. reflexivity.
+  - destruct (forallb _ _); simpl; auto.
+    + rewrite fold_left_opt_simplify_eq. reflexivity.
+    + destruct (comp_wilds tt); simpl; auto.  
+      rewrite fold_left_opt_simplify_eq. reflexivity.
 Qed.
-
 
 Lemma compile_simplify (tms: list (term * vty)) (P: list (list pattern * A))  t ty:
   compile ((t, ty) :: tms) P =
@@ -2716,15 +2732,16 @@ Proof.
     exfalso. revert Hsimp. rewrite <- null_nil, null_simplify. simpl. auto.
   }
   simp compile.
-  set (css := match ty with
-    | vty_cons ts _ => get_constructors ts
-    | _ => []
-    end ) in *.
+  set (bare_css := match ty with
+    | vty_cons ts _ =>
+        if bare then (true, []) else (false, get_constructors ts)
+    | _ => (false, [])
+    end) in *.
   set (P := row :: P') in *.
   rewrite <- Hsimp.
   Opaque dispatch1_opt.
   simpl.
-  set (is_constr := fun fs => in_bool funsym_eq_dec fs css) in *.
+  set (is_constr := fun fs => fst bare_css || in_bool funsym_eq_dec fs (snd bare_css)) in *.
   rewrite <- populate_all_simplify.
   destruct (populate_all is_constr P) as [types_cslist|] eqn : Hpop; [| reflexivity].
   rewrite dispatch1_opt_simplify.
@@ -2765,12 +2782,15 @@ Lemma compile_ind (P: list (term * vty) -> list (list pattern * A) -> option A -
   (Hnone: forall tl, P tl nil None)
   (Hemp: forall ps a l, P nil ((ps, a) :: l) (Some a))
   (Hilltyped: forall t ty tl rl,
-    let css :=
+    let is_bare_css :=
     match ty with
-    | vty_cons ts _ => get_constructors ts
-    | _ => nil
-    end in 
-    let is_constr fs := in_bool funsym_eq_dec fs css in
+    | vty_cons ts _ => if bare then (true, nil) else (false, get_constructors ts)
+    | _ => (false, nil)
+    end in
+    let is_bare := fst is_bare_css in
+    let css := snd is_bare_css in
+    let is_constr fs := 
+      is_bare || in_bool funsym_eq_dec fs css in
     simplified rl ->
     (populate_all is_constr rl = None \/
       exists types_cslist,
@@ -2782,12 +2802,15 @@ Lemma compile_ind (P: list (term * vty) -> list (list pattern * A) -> option A -
     P ((t, ty) :: tl) rl None
   )
   (Hconstr: forall t ty tl rl,
-    let css :=
+    let is_bare_css :=
     match ty with
-    | vty_cons ts _ => get_constructors ts
-    | _ => nil
-    end in 
-    let is_constr fs := in_bool funsym_eq_dec fs css in
+    | vty_cons ts _ => if bare then (true, nil) else (false, get_constructors ts)
+    | _ => (false, nil)
+    end in
+    let is_bare := fst is_bare_css in
+    let css := snd is_bare_css in
+    let is_constr fs := 
+      is_bare || in_bool funsym_eq_dec fs css in
     simplified rl ->
     (* let types_cslist := populate_all is_constr rl in *)
     forall types_cslist (Htypes: (populate_all is_constr rl) = Some types_cslist),
@@ -2807,7 +2830,7 @@ Lemma compile_ind (P: list (term * vty) -> list (list pattern * A) -> option A -
       let comp_cases cs (al : list (term * vty)) :=
         comp_cases compile cases tl cs al in
 
-      let comp_full := comp_full comp_wilds comp_cases types cslist css t ty tl rl in
+      let comp_full := comp_full is_bare comp_wilds comp_cases types cslist css t ty tl rl in
       
       if amap_is_empty types then comp_wilds tt
       else
@@ -2848,13 +2871,14 @@ Proof.
   assert (Hsimp: simplified rl') by (apply simplify_simplified). 
   specialize (Hconstr t ty ts rl'); revert Hconstr.
   (*Simplify goal*)
-  set (css:=  match ty with
-    | vty_cons ts0 _ => get_constructors ts0
-    | _ => []
-    end) in *.
+  set (bare_css := match ty with
+  | vty_cons ts _ =>
+      if bare then (true, []) else (false, get_constructors ts)
+  | _ => (false, [])
+  end) in *.
   Opaque dispatch1_opt.
   simpl.
-  set (is_constr := fun fs => in_bool funsym_eq_dec fs css) in *.
+  set (is_constr := fun fs => (fst bare_css) || in_bool funsym_eq_dec fs (snd bare_css)) in *.
   intros Hconstr.
   replace (populate_all is_constr rl) with (populate_all is_constr rl') by (symmetry; apply populate_all_simplify).
   destruct (populate_all is_constr rl') as [types_cslist|] eqn : Hpop.
@@ -2874,14 +2898,15 @@ Proof.
   simp compile.
   (*One more round of simplifying, then we just have to prove the IH*)
   (*TODO: bad*)
-  subst css.
-  set (css:=  match ty with
-  | vty_cons ts0 _ => get_constructors ts0
-  | _ => []
+  subst bare_css.
+  set (bare_css := match ty with
+  | vty_cons ts _ =>
+      if bare then (true, []) else (false, get_constructors ts)
+  | _ => (false, [])
   end) in *.
   simpl.
   subst is_constr.
-  set (is_constr := fun fs => in_bool funsym_eq_dec fs css) in *.
+  set (is_constr := fun fs => (fst bare_css) || in_bool funsym_eq_dec fs (snd bare_css)) in *.
   rewrite <- Hsimpeq.
   intros Hconstr P_ext.
   unfold rl'. rewrite comp_full_simplify_eq. fold rl'.
@@ -2920,5 +2945,7 @@ Proof.
       rewrite <- populate_all_in. apply Hintypes.
       apply simplify_simplified. rewrite <- populate_all_simplify. apply Hpop.
 Qed.
+
+End Comp.
 
 End Compile.
