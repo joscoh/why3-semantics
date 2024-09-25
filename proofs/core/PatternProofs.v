@@ -2967,7 +2967,7 @@ let is_bare_css :=
 let is_bare := fst is_bare_css in
 let css := snd is_bare_css in
 let is_constr fs := 
-  is_bare || in_bool funsym_eq_dec fs css in
+  f_is_constr fs && (is_bare || in_bool funsym_eq_dec fs css) in
 let types := fst types_cslist in
 let cslist := snd types_cslist in
 let cases := fst casewild in
@@ -3009,7 +3009,7 @@ Some (gen_rep v ret_ty t0 Hty))
 let comp_wilds := fun _ : unit => compile get_constructors gen_match gen_let gen_getvars bare tl wilds in
 let comp_cases := fun (cs : funsym) (al : list (term * vty)) =>
   comp_cases (compile get_constructors gen_match gen_let gen_getvars bare) cases tl cs al in
-let comp_full := comp_full gen_match gen_getvars bare
+let comp_full := comp_full gen_match gen_getvars is_bare
   comp_wilds comp_cases types cslist css t ty tl rl : unit -> option (gen_term b) in
 comp_full tt = Some t1 ->
       exists Hty : gen_typed b t1 ret_ty,
@@ -3027,7 +3027,7 @@ Proof.
       | vty_cons ts _ => get_constructors ts
       | _ => nil
     end)) in *.
-  assert (Hbare: (if bare
+  assert (Hbare: (if is_bare
   then
   option_bind (amap_choose funsym_eq_dec types)
   (fun x : funsym * list pattern =>
@@ -3036,7 +3036,12 @@ Proof.
   Some (forallb (fun f : funsym => amap_mem funsym_eq_dec f types) 
     css')).
   {
-    destruct bare; auto; [|destruct ty; reflexivity].
+    assert (Hisbare: is_bare -> bare). {
+      unfold is_bare, bare_css. destruct ty; simpl; auto.
+      destruct bare; auto.
+    }
+    unfold is_bare, bare_css. rewrite Hty.
+    destruct bare; simpl; auto; [| unfold css', css, bare_css; rewrite Hty; auto].
     (*Idea: if bare is true:
     1. amap_choose is Some
     2. result is well-typed so equal to [get_constructors]*)
@@ -3757,19 +3762,19 @@ Qed.
 (*Finally, Our main correctness theorem: if [compile is_constr gen_let gen_case tms tys P] =
   Some t, then [matches_matrix_tms tms tys P] = Some (term_rep v t).
   We CANNOT prove the converse; it does not hold, as semantic exhaustiveness is undecidable*)
-Theorem compile_correct (v: val_vars pd vt) (tms: list (term * vty)) 
+Theorem compile_correct (bare: bool) (v: val_vars pd vt) (tms: list (term * vty)) 
   (P: pat_matrix) 
   (Htys: Forall2 (term_has_type gamma) (map fst tms) (map snd tms))
   (Hp: pat_matrix_typed (map snd tms) P)
   (Hdisj: pat_matrix_var_names_disj (map fst tms) P)
   t :
-  compile get_constructors gen_match gen_let gen_getvars false tms P = Some t ->
+  compile get_constructors gen_match gen_let gen_getvars bare tms P = Some t ->
   exists (Hty : gen_typed b t ret_ty),  
     matches_matrix_tms v (map fst tms) (map snd tms) P Htys Hp = Some (gen_rep v ret_ty t Hty).
 Proof.
   revert v t. (*It is very important that we generalize v*)
   apply (compile_ind get_constructors gen_match gen_let gen_getvars gen_getvars_let
-    false (fun tms P o =>
+    bare (fun tms P o =>
       forall (Hdisj: pat_matrix_var_names_disj (map fst tms) P) Htys Hp,
       forall v t, o = Some t ->
       exists Hty : gen_typed b t ret_ty,
@@ -3818,14 +3823,28 @@ Proof.
           eapply in_get_heads_tys. apply Hp. apply Hget.
           rewrite !in_app_iff; simpl; auto.
         }
+        (*if bare is true, easy*)
+        inversion Htyp; subst.
+        unfold sigma in *.
+        destruct H11 as [m [a [m_in [a_in c_in]]]].
+        destruct bare.
+        {
+          exfalso.
+          revert Hnotconstr.
+          unfold is_constr, is_bare, is_bare_css.
+          rewrite (adt_constr_ret gamma_valid m_in a_in c_in).
+          rewrite ty_subst_cons. simpl.
+          assert (f_constr: f_is_constr c) by (rewrite is_constr_iff; eauto).
+          rewrite f_constr.
+          discriminate.   
+        }
         (*The contradiction*)
         assert (Hconstr: is_constr c). {
           unfold is_constr. unfold css, is_bare, is_bare_css.
-          inversion Htyp; subst.
-          unfold sigma.
-          destruct H11 as [m [a [m_in [a_in c_in]]]].
           rewrite (adt_constr_ret gamma_valid m_in a_in c_in).
           rewrite ty_subst_cons. simpl. 
+          assert (f_constr: f_is_constr c) by (rewrite is_constr_iff; eauto).
+          rewrite f_constr.
           apply In_in_bool, (in_get_constructors m_in a_in); auto.
         }
         rewrite Hnotconstr in Hconstr; discriminate.
@@ -3843,12 +3862,12 @@ Proof.
   - (*The interesting case*)
     intros t ty tl rl bare_css is_bare css is_constr Hsimp types_cslist Hpop types cslist casewild
       Hdisp cases wilds IH Hdisj Htmtys Hp v. simpl in Htmtys.
-    set (comp_wilds := fun (_: unit) => compile get_constructors gen_match gen_let gen_getvars false tl
+    set (comp_wilds := fun (_: unit) => compile get_constructors gen_match gen_let gen_getvars bare tl
       wilds) in *.
     set (comp_cases := fun cs (al : list (term * vty)) =>
-      comp_cases (compile get_constructors gen_match gen_let gen_getvars false) cases tl cs al).
+      comp_cases (compile get_constructors gen_match gen_let gen_getvars bare) cases tl cs al).
     simpl.
-    set (comp_full := comp_full gen_match gen_getvars false comp_wilds comp_cases types cslist css t ty tl rl).
+    set (comp_full := comp_full gen_match gen_getvars bare comp_wilds comp_cases types cslist css t ty tl rl).
     destruct IH as [IHwilds IHconstrs].
     assert (Hwilds: wilds = default rl). {
       unfold wilds.
@@ -3957,11 +3976,6 @@ Proof.
     {
       intros t1 Ht1.
       eapply comp_full_correct; eauto.
-      - revert Hpop.
-        unfold is_constr, is_bare, css, bare_css.
-        destruct ty; auto.
-      - revert Ht1. unfold comp_full, Pattern.comp_full.
-        destruct ty; auto.
     }
     destruct (is_fun t) as [s1 | s2]; auto.
     destruct s1 as [[[f tys] tms] Ht]; subst t; simpl.
@@ -3977,8 +3991,22 @@ Proof.
     assert (f_in: constr_in_adt f a). {
       unfold is_constr, is_bare, css, bare_css in Hconstr.
       rewrite Hty in Hconstr.
-      apply in_bool_In in Hconstr.
-      rewrite (in_get_constructors m_in a_in) in Hconstr. exact Hconstr.
+      (*Crucially, need [f_is_constr] here*)
+      apply andb_true_iff in Hconstr.
+      destruct Hconstr as [f_constr Hconstr].
+      assert (f_constr': f_is_constr f) by auto.
+      rewrite (is_constr_iff gamma gamma_valid) in f_constr'.
+      2: solve[inversion Htty; subst; auto].
+      destruct f_constr' as [m1 [a1 [m1_in [a1_in f_in]]]].
+      (*Show that they are the same y relating [adt_name]*)
+      inversion Htty; subst.
+      rewrite (adt_constr_subst_ret gamma_valid m1_in a1_in f_in) in H2 by auto.
+      inversion H2; subst.
+      assert (Hm: m1 = m) by
+        (apply (mut_adts_inj (valid_context_wf _ gamma_valid) m1_in m_in a1_in a_in); auto).
+      subst.
+      assert (Ha: a1 = a) by (apply (adt_names_inj' gamma_valid a1_in a_in); auto).
+      subst. assumption.
     }
     assert (constrs_len: length (s_params f) = length args).
     {
@@ -4085,57 +4113,48 @@ Qed.
 End CompileTheorem.
 
 (*Some corollaries*)
-Corollary compile_typed (v: val_vars pd vt) (tms: list (term * vty)) 
+Corollary compile_typed (bare: bool) (v: val_vars pd vt) (tms: list (term * vty)) 
   (P: pat_matrix) 
   (Htys: Forall2 (term_has_type gamma) (map fst tms) (map snd tms))
   (Hp: pat_matrix_typed (map snd tms) P)
   (Hdisj: pat_matrix_var_names_disj (map fst tms) P)
   t :
-  compile get_constructors gen_match gen_let gen_getvars false tms P = Some t ->
+  compile get_constructors gen_match gen_let gen_getvars bare tms P = Some t ->
   @gen_typed gamma b t ret_ty.
 Proof.
   intros Hcomp. apply compile_correct in Hcomp; auto.
 Qed.
 
-Corollary compile_rep (v: val_vars pd vt) (tms: list (term * vty)) 
+Corollary compile_rep (bare: bool) (v: val_vars pd vt) (tms: list (term * vty)) 
   (P: pat_matrix) 
   (Htys: Forall2 (term_has_type gamma) (map fst tms) (map snd tms))
   (Hp: pat_matrix_typed (map snd tms) P)
   (Hdisj: pat_matrix_var_names_disj (map fst tms) P) t
   (Hty: @gen_typed gamma b t ret_ty) :
-  compile get_constructors gen_match gen_let gen_getvars false tms P = Some t ->
+  compile get_constructors gen_match gen_let gen_getvars bare tms P = Some t ->
   matches_matrix_tms v (map fst tms) (map snd tms) P Htys Hp = Some (gen_rep v ret_ty t Hty).
 Proof.
   intros Hcomp.
-  destruct (compile_correct v tms P Htys Hp Hdisj t Hcomp) as [Hty' Hrep].
+  destruct (compile_correct bare v tms P Htys Hp Hdisj t Hcomp) as [Hty' Hrep].
   rewrite Hrep. f_equal. apply gen_rep_irrel.
 Qed.
 
 (*A corollary: If [matches_matrix] is None (i.e., no semantic match), 
   then [compile] returns None, indicating an error.
   We cannot prove the converse; it does not hold*)
-Corollary exhaustiveness_correct (v: val_vars pd vt) (tms: list (term * vty)) 
+Corollary exhaustiveness_correct (bare: bool) (v: val_vars pd vt) (tms: list (term * vty)) 
   (P: pat_matrix) 
   (Htys: Forall2 (term_has_type gamma) (map fst tms) (map snd tms))
   (Hp: pat_matrix_typed (map snd tms) P)
   (Hdisj: pat_matrix_var_names_disj (map fst tms) P):
   matches_matrix_tms v (map fst tms) (map snd tms) P Htys Hp = None ->
-  compile get_constructors gen_match gen_let gen_getvars false tms P = None.
+  compile get_constructors gen_match gen_let gen_getvars bare tms P = None.
 Proof.
   intros Hmatch.
-  destruct (compile get_constructors gen_match gen_let gen_getvars false tms P) as [t|] eqn : Hcomp; auto.
-  destruct (compile_correct v tms P Htys Hp Hdisj t Hcomp) as [Hty' Hrep].
+  destruct (compile get_constructors gen_match gen_let gen_getvars bare tms P) as [t|] eqn : Hcomp; auto.
+  destruct (compile_correct bare v tms P Htys Hp Hdisj t Hcomp) as [Hty' Hrep].
   rewrite Hrep in Hmatch. discriminate.
 Qed. 
-
-(*Unlike the OCaml one, we cannot give a context-insensitive exhaustiveness check
-  We do not store size of ADT in funsym, so we have no way of knowing if the match
-  is exhaustive.
-  Basically, we have 2 options:
-  1. just change why3 check to be context sensitive
-  2. prove at OCaml level that, under well-typedness there, the context-insensitive one
-    is equivalent to the context-sensivite one (using fact about constrs).
-    Then relate context sensitive to this one (makes more sense)*)
 
 Section SimplePat.
 
@@ -4499,6 +4518,7 @@ Proof.
 Qed.
 
 End SimplePat.
+End PatProofs.
 
 (*Now we give a context-insensitive version of pattern matching
   compilation ([compile_bare]). In real Why3, there are 2 differences:
@@ -4509,17 +4529,10 @@ End SimplePat.
     with free variables, we cannot quite do the same. So we
     construct the necessary terms, which is still cheap*)
 
-Lemma compile_bare_equiv
+(*Note that we proved above that the same spec holds
+  with or without [bare]. What remains is to show that
+  if [bare] is true, we can completely ignore [get_constructors]
+  and thus we can pass in a trivial, context-free function*)
 
 
-(v: val_vars pd vt) (tms: list (term * vty)) 
-  (P: pat_matrix) 
-  (Htys: Forall2 (term_has_type gamma) (map fst tms) (map snd tms))
-  (Hp: pat_matrix_typed (map snd tms) P)
-  (Hdisj: pat_matrix_var_names_disj (map fst tms) P)
-  t :
-  compile get_constructors gen_match gen_let gen_getvars false tms P = Some t ->
-  exists (Hty : gen_typed b t ret_ty),  
-    matches_matrix_tms v (map fst tms) (map snd tms) P Htys Hp = Some (gen_rep v ret_ty t Hty).
-
-End PatProofs.
+(* Lemma compile_bare_equiv *)

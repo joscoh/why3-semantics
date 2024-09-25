@@ -2348,10 +2348,10 @@ Equations compile (tl: list (term * vty)) (rl: list (list pattern * A))
     end in
     let is_bare := fst is_bare_css in
     let css := snd is_bare_css in
-    (*NOTE: no metadata in funsym saying constructor*)
     let is_constr fs := 
-    (*NOTE: don't check f_is_constr - true by typing*)
-      is_bare || in_bool funsym_eq_dec fs css in
+    (*Need to check that f_is_constr because we need to check for
+      constr in cases later (not true by typing)*)
+      (f_is_constr fs) && (is_bare || in_bool funsym_eq_dec fs css) in
 
     (*Here, we do the simplify/dispatch*)
 
@@ -2741,7 +2741,7 @@ Proof.
   rewrite <- Hsimp.
   Opaque dispatch1_opt.
   simpl.
-  set (is_constr := fun fs => fst bare_css || in_bool funsym_eq_dec fs (snd bare_css)) in *.
+  set (is_constr := fun fs => (f_is_constr fs) && (fst bare_css || in_bool funsym_eq_dec fs (snd bare_css))) in *.
   rewrite <- populate_all_simplify.
   destruct (populate_all is_constr P) as [types_cslist|] eqn : Hpop; [| reflexivity].
   rewrite dispatch1_opt_simplify.
@@ -2790,7 +2790,7 @@ Lemma compile_ind (P: list (term * vty) -> list (list pattern * A) -> option A -
     let is_bare := fst is_bare_css in
     let css := snd is_bare_css in
     let is_constr fs := 
-      is_bare || in_bool funsym_eq_dec fs css in
+      f_is_constr fs && (is_bare || in_bool funsym_eq_dec fs css) in
     simplified rl ->
     (populate_all is_constr rl = None \/
       exists types_cslist,
@@ -2810,7 +2810,7 @@ Lemma compile_ind (P: list (term * vty) -> list (list pattern * A) -> option A -
     let is_bare := fst is_bare_css in
     let css := snd is_bare_css in
     let is_constr fs := 
-      is_bare || in_bool funsym_eq_dec fs css in
+      f_is_constr fs && (is_bare || in_bool funsym_eq_dec fs css) in
     simplified rl ->
     (* let types_cslist := populate_all is_constr rl in *)
     forall types_cslist (Htypes: (populate_all is_constr rl) = Some types_cslist),
@@ -2878,7 +2878,7 @@ Proof.
   end) in *.
   Opaque dispatch1_opt.
   simpl.
-  set (is_constr := fun fs => (fst bare_css) || in_bool funsym_eq_dec fs (snd bare_css)) in *.
+  set (is_constr := fun fs => f_is_constr fs && ((fst bare_css) || in_bool funsym_eq_dec fs (snd bare_css))) in *.
   intros Hconstr.
   replace (populate_all is_constr rl) with (populate_all is_constr rl') by (symmetry; apply populate_all_simplify).
   destruct (populate_all is_constr rl') as [types_cslist|] eqn : Hpop.
@@ -2906,7 +2906,7 @@ Proof.
   end) in *.
   simpl.
   subst is_constr.
-  set (is_constr := fun fs => (fst bare_css) || in_bool funsym_eq_dec fs (snd bare_css)) in *.
+  set (is_constr := fun fs => f_is_constr fs && ((fst bare_css) || in_bool funsym_eq_dec fs (snd bare_css))) in *.
   rewrite <- Hsimpeq.
   intros Hconstr P_ext.
   unfold rl'. rewrite comp_full_simplify_eq. fold rl'.
