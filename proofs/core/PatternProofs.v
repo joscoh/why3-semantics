@@ -2685,6 +2685,7 @@ Lemma gen_getvars_let (v1: vsymbol) (tm: term) (a: gen_term b) (x: vsymbol):
   In x (gen_getvars (gen_let v1 tm a)) <->
   v1 = x \/ In x (tm_bnd tm) \/ In x (tm_fv tm) \/ In x (gen_getvars a).
 Proof.
+  clear ret_ty.
   unfold gen_let, gen_getvars.
   destruct b; simpl; simpl_set_small; rewrite !in_app_iff; simpl_set_small;
   split; intros; destruct_all; auto; destruct (vsymbol_eq_dec v1 x); auto.
@@ -3860,8 +3861,9 @@ Proof.
       rewrite (pat_matrix_typed_not_null Hp) in Hdisp.
       discriminate.
   - (*The interesting case*)
-    intros t ty tl rl bare_css is_bare css is_constr Hsimp types_cslist Hpop types cslist casewild
-      Hdisp cases wilds IH Hdisj Htmtys Hp v. simpl in Htmtys.
+    intros t ty tl rl rhd rtl bare_css is_bare css is_constr Hsimp Hrleq types_cslist Hpop types cslist casewild
+      Hdisp cases wilds IH Hdisj Htmtys Hp v.
+    subst rl; set (rl:=rhd :: rtl) in *. simpl in Htmtys.
     set (comp_wilds := fun (_: unit) => compile get_constructors gen_match gen_let gen_getvars bare tl
       wilds) in *.
     set (comp_cases := fun cs (al : list (term * vty)) =>
@@ -4377,8 +4379,8 @@ Proof.
     intros ps a l Hsimp1. simpl. intros Hsimp. apply andb_prop in Hsimp.
     destruct Hsimp as [Hsimpa _]. intros t. inv Ha; auto.
   - (*Interesting case*)
-    intros t ty tl rl bare_css is_bare css is_constr Hsimpl types_cslist Hpop types cslist casewild Hdisp cases wilds
-    [IHwilds IHcases] Hsimp1 Hsimp2 t1. simpl.
+    intros t ty tl rl rhd rtl bare_css is_bare css is_constr Hsimpl Hrl types_cslist Hpop types cslist casewild Hdisp cases wilds
+    [IHwilds IHcases] Hsimp1 Hsimp2 t1. subst rl; set (rl:=rhd :: rtl) in *; simpl.
     simpl in Hsimp1.
     apply andb_prop in Hsimp1. destruct Hsimp1 as [Hsimpt Hsimptl].
     apply dispatch1_opt_some in Hdisp.
@@ -4498,7 +4500,7 @@ Proof.
     }
     destruct (amap_is_empty types) eqn : Htyemp; [solve[apply IHwilds]|].
     destruct (is_fun t); [|destruct ty; apply Hcompfull; auto].
-    destruct s as [[[cs params] al] Ht]. simpl in *.
+    destruct s as [[[cs params] al] Ht]. simpl.
     destruct (is_constr cs) eqn: Hconstr; [| destruct ty; apply Hcompfull; auto].
     destruct (amap_mem funsym_eq_dec cs types) eqn : Hmem.
     + unfold comp_cases.
@@ -4513,7 +4515,7 @@ Proof.
         destruct l; auto. simpl. simpl in Hsimpt.
         apply andb_true_iff in Hsimpt. destruct Hsimpt as [Hsimpa Hsimpal].
         rewrite Hsimpa. apply IHal; auto.
-      * subst;eapply gen_simple_pats_spec; eauto.
+      * subst; eapply gen_simple_pats_spec; eauto.
     + apply IHwilds.
 Qed.
 
@@ -4534,5 +4536,33 @@ End PatProofs.
   if [bare] is true, we can completely ignore [get_constructors]
   and thus we can pass in a trivial, context-free function*)
 
+(*Provable by [reflexivity] because bare and get_constructors
+  defined outside of the Fixpoint*)
+Lemma compile_bare_equiv {A: Type} constr1 constr2 
+  (gen_match: term -> vty -> list (pattern * A) -> A)
+  gen_let gen_getvars tms P:
+  compile constr1 gen_match gen_let gen_getvars true tms P =
+  compile constr2 gen_match gen_let gen_getvars true tms P.
+Proof.
+  reflexivity.
+Qed.
 
-(* Lemma compile_bare_equiv *)
+(*And now we fully define [compile_bare] b is for term or formula*)
+Definition compile_bare (b: bool) tms P :=
+  compile (fun _ => nil) (gen_match b) (gen_let b) (gen_getvars b) true tms P.
+
+(*The only one we really need (NOTE: may need typing)*)
+Corollary compile_bare_spec {gamma: context} (gamma_valid: valid_context gamma)
+  (pd: pi_dom) (pf: pi_funpred gamma_valid pd) (vt: val_typevar) (v: val_vars pd vt)
+  (b: bool) (ret_ty: gen_type b) tms P
+  (Htys: Forall2 (term_has_type gamma) (map fst tms) (map snd tms))
+  (Hp: pat_matrix_typed b ret_ty (map snd tms) P)
+  (Hdisj: pat_matrix_var_names_disj b (map fst tms) P) t
+  (Hty: @gen_typed gamma b t ret_ty):
+  compile_bare b tms P = Some t ->
+  matches_matrix_tms gamma_valid pd pf vt b ret_ty v (map fst tms) (map snd tms) P Htys Hp = 
+  Some (gen_rep gamma_valid pd pf vt b v ret_ty t Hty).
+Proof.
+  unfold compile_bare. erewrite compile_bare_equiv.
+  apply compile_rep. auto.
+Qed.

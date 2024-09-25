@@ -2801,7 +2801,7 @@ Lemma compile_ind (P: list (term * vty) -> list (list pattern * A) -> option A -
     ) ->
     P ((t, ty) :: tl) rl None
   )
-  (Hconstr: forall t ty tl rl,
+  (Hconstr: forall t ty tl rl rhd rtl,
     let is_bare_css :=
     match ty with
     | vty_cons ts _ => if bare then (true, nil) else (false, get_constructors ts)
@@ -2812,6 +2812,7 @@ Lemma compile_ind (P: list (term * vty) -> list (list pattern * A) -> option A -
     let is_constr fs := 
       f_is_constr fs && (is_bare || in_bool funsym_eq_dec fs css) in
     simplified rl ->
+    rl = rhd :: rtl ->
     (* let types_cslist := populate_all is_constr rl in *)
     forall types_cslist (Htypes: (populate_all is_constr rl) = Some types_cslist),
       (*NOTE: we don't have maps, not ideal*)
@@ -2892,7 +2893,7 @@ Proof.
     intros P_ext; apply P_ext.
     apply Hilltyped; auto. right. exists types_cslist. split; auto. 
   }
-  specialize (Hconstr Hsimp types_cslist eq_refl casewild Hdispatch1).
+  specialize (Hconstr (phd1, a1) rtl1 Hsimp Hsimpeq types_cslist eq_refl casewild Hdispatch1).
   revert Hconstr.
   rewrite Hsimpeq at 2.
   simp compile.
