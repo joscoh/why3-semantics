@@ -335,7 +335,7 @@ Defined.
 Lemma get_idx_correct (x: A) (l: list A) (Hin: in_bool eq_dec x l) :
   fin_nth l (get_idx x l Hin) = x.
 Proof.
-  unfold fin_nth. generalize dependent (erefl (length l)).
+  unfold fin_nth. generalize dependent (@erefl _ (length l)).
   induction l; intros; simpl.
   - inversion Hin.
   - destruct l; simpl.

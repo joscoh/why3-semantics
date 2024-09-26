@@ -692,12 +692,15 @@ Qed.
 
 (*Second main structural lemma: the matrix D*)
 
-Lemma dispatch2_gen_snd (types: amap funsym (list pattern)) rl:
-  snd (dispatch2_gen types rl) = filter_map (fun x =>
+Definition default {A: Type} (rl : list (list pattern * A)) := 
+  filter_map (fun x =>
     match (fst x) with
     | Pwild :: ps => Some (ps, snd x)
     | _ => None
     end ) rl.
+
+Lemma dispatch2_gen_snd (types: amap funsym (list pattern)) rl:
+  snd (dispatch2_gen types rl) = default rl.
 Proof.
   induction rl as [| [pl a] rtl IH]; simpl; auto.
   unfold dispatch2_aux; simpl.
@@ -2950,3 +2953,15 @@ Qed.
 End Comp.
 
 End Compile.
+
+(*The version of [compile] for [gen_term]*)
+Definition compile_term (b: bool) get_constructors bare tms P :=
+  compile get_constructors (@gen_match b) (@gen_let b) 
+    (@gen_getvars b) bare tms P.
+Definition compile_bare (b: bool) tms P :=
+  compile (fun _ => nil) (@gen_match b) (@gen_let b) (@gen_getvars b) true tms P.
+
+(*single version*)
+Definition compile_bare_single (b: bool) (t: term) (ty: vty)
+  (pats: list (pattern * (gen_term b))) :=
+  compile_bare b [(t, ty)] (map (fun x => ([(fst x)], (snd x))) pats).

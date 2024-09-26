@@ -1116,3 +1116,19 @@ Qed.
   
 Definition def_eq_dec (d1 d2: def) : {d1 = d2} + {d1 <> d2} :=
   reflect_dec' (def_eqb_spec d1 d2).
+
+(*In many cases, it is inconvenient to use terms and formulas
+  separately. With a bit of dependent typing, we can generalize.
+  This will be very useful, particularly for pattern-matching:*)
+Definition gen_term (b: bool) := if b then term else formula.
+Definition gen_type (b: bool) := if b then vty else unit.
+Definition gen_match {b: bool} (t: term) (ty: vty) (l: list (pattern * gen_term b)) : gen_term b :=
+  match b return list (pattern * gen_term b) -> gen_term b with
+  | true => fun pats => Tmatch t ty pats
+  | false => fun pats => Fmatch t ty pats
+  end l.
+Definition gen_let {b: bool} (v: vsymbol) (t: term) (g: gen_term b) : gen_term b :=
+  match b return gen_term b -> gen_term b with
+  | true => fun t2 => Tlet t v t2
+  | false => fun f => Flet t v f
+  end g.

@@ -14,36 +14,6 @@ Proof.
   - intros [Hl1 Hl2]; subst; auto.
 Qed.
 
-Lemma filter_map_in {A B: Type} (f: A -> option B) (l: list A) (x: B):
-  In x (Pattern.filter_map f l) ->
-  exists y, In y l /\ f y = Some x.
-Proof.
-  induction l as [| h t IH ]; simpl; [contradiction|].
-  destruct (f h) as [z|] eqn : Hfh.
-  - simpl. intros [Hzx | Hinx]; subst; eauto.
-    apply IH in Hinx. destruct_all; eauto.
-  - intros Hin. apply IH in Hin; destruct_all; eauto.
-Qed.
-
-Lemma in_filter_map {A B: Type} (f: A -> option B) (l: list A) (x: B) (y: A):
-  In y l ->
-  f y = Some x ->
-  In x (Pattern.filter_map f l).
-Proof.
-  induction l as [| h t IH ]; simpl; [contradiction|].
-  intros [Hhy | Hiny] Hfy; subst.
-  - rewrite Hfy. simpl; auto.
-  - destruct (f h); simpl; auto.
-Qed.
-
-Lemma in_filter_map_iff {A B: Type} (f: A -> option B) (l: list A) (x: B):
-  In x (Pattern.filter_map f l) <->
-  exists y, In y l /\ f y = Some x.
-Proof.
-  split. apply filter_map_in.
-  intros [y [Hiny Hfy]]. apply (in_filter_map _ _ _ _ Hiny Hfy).
-Qed.
-
 
 Fixpoint sublist_strong {A: Type} (eq_dec: forall x y, {x = y} + {x <> y}) (l1 l2: list A): bool :=
   match l1, l2 with

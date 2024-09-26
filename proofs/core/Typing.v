@@ -1,5 +1,6 @@
 Require Export Vars.
 Require Export Context.
+Require Import Pattern.
 Set Bullet Behavior "Strict Subproofs".
 
 (** Typechecking **)
@@ -101,7 +102,10 @@ Inductive term_has_type: context -> term -> vty -> Prop :=
     (forall x, In x ps -> pattern_has_type s (fst x) ty1) ->
     (forall x, In x ps -> term_has_type s (snd x) ty2) ->
     (*need this to ensure that typing is decidable*)
-    negb (null ps) ->
+    (*TODO: don't need anymore*)
+    (* negb (null ps) -> *)
+    (*the pattern match is exhaustive*)
+    isSome (compile_bare_single true tm ty1 ps) ->
     term_has_type s (Tmatch tm ty1 ps) ty2
   | T_eps: forall s x f,
     formula_typed s f ->
@@ -155,8 +159,10 @@ with formula_typed: context -> formula -> Prop :=
     term_has_type s tm ty ->
     (forall x, In x ps -> pattern_has_type s (fst x) ty) ->
     (forall x, In x ps -> formula_typed s (snd x)) ->
+    (*the pattern match is exhaustive*)
+    isSome (compile_bare_single false tm ty ps) ->
     (*See comment in term*)
-    negb (null ps) ->
+    (* negb (null ps) -> *)
     formula_typed s (Fmatch tm ty ps).
 (*
 Notation "s '|-' t ':' ty" := (term_has_type s t ty) (at level 40).

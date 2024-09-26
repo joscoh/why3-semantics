@@ -439,3 +439,31 @@ In y (fmla_type_vars f) := fun x y =>
 proj2 (bnd_vars_type_vars x y tm_d f).
 
 End Typevars.
+
+(*Some "gen" results:*)
+
+Definition gen_fv {b: bool} (t: gen_term b) : list vsymbol :=
+  match b return gen_term b -> list vsymbol with
+  | true => tm_fv
+  | false => fmla_fv
+  end t.
+
+Definition gen_getvars {b: bool} (x: gen_term b) : list vsymbol :=
+  match b return gen_term b -> list vsymbol with
+  | true => fun t => tm_bnd t ++ tm_fv t
+  | false => fun f => fmla_bnd f ++ fmla_fv f
+  end x.
+
+Lemma gen_fv_getvars {b: bool} (t: gen_term b) : forall x, In x (gen_fv t) -> In x (gen_getvars t).
+Proof.
+  intros x. unfold gen_fv, gen_getvars. destruct b; rewrite in_app_iff; auto.
+Qed.
+
+Lemma gen_getvars_let {b: bool} (v1: vsymbol) (tm: term) (a: gen_term b) (x: vsymbol):
+  In x (gen_getvars (gen_let v1 tm a)) <->
+  v1 = x \/ In x (tm_bnd tm) \/ In x (tm_fv tm) \/ In x (gen_getvars a).
+Proof.
+  unfold gen_let, gen_getvars.
+  destruct b; simpl; simpl_set_small; rewrite !in_app_iff; simpl_set_small;
+  split; intros; destruct_all; auto; destruct (vsymbol_eq_dec v1 x); auto.
+Qed.

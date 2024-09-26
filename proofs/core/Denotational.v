@@ -1194,8 +1194,6 @@ Section MatchCase.
   encoding it this way means that all the types we need are definitionally equal when
   we instantiate with true/false, so we don't need anything special later.*)
 
-Definition gen_term (b: bool) := if b then term else formula.
-Definition gen_type (b: bool) := if b then vty else unit.
 Definition gen_typed (b: bool) (t: gen_term b) (ty: gen_type b) : Prop :=
   match b return gen_term b -> gen_type b -> Prop with
   | true => fun t ty => term_has_type gamma t ty
