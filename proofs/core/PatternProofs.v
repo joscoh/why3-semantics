@@ -1909,15 +1909,23 @@ Definition get_constructors (ts: typesym) : list funsym :=
   | None => nil
   end.
 
-Lemma in_get_constructors {m a f} (m_in: mut_in_ctx m gamma) (a_in: adt_in_mut a m):
-  In f (get_constructors (adt_name a)) <->
-  constr_in_adt f a.
+Lemma get_constructors_eq {m a} (m_in: mut_in_ctx m gamma) (a_in: adt_in_mut a m):
+  get_constructors (adt_name a) = adt_constr_list a. 
 Proof.
   unfold get_constructors.
   assert (Hts: find_ts_in_ctx gamma (adt_name a) = Some (m, a)). {
     apply find_ts_in_ctx_iff; auto.
   }
-  rewrite Hts. rewrite constr_in_adt_eq. reflexivity. 
+  rewrite Hts.
+  reflexivity.
+Qed.
+
+Lemma in_get_constructors {m a f} (m_in: mut_in_ctx m gamma) (a_in: adt_in_mut a m):
+  In f (get_constructors (adt_name a)) <->
+  constr_in_adt f a.
+Proof.
+  rewrite (get_constructors_eq m_in a_in).
+  rewrite constr_in_adt_eq. reflexivity. 
 Qed. 
 
 (*Part 1: Lemmas for Typing Contradictions*)
@@ -3804,8 +3812,8 @@ Qed.
 
 (*Now we prove that if we have a simple, exhaustive pattern match, 
   then [compile] returns Some*)
-Lemma compile_simple_exhaust (m: mut_adt) (a: alg_datatype) (vs: list vty) 
-  (t: term) (m_in: mut_in_ctx m gamma) (a_in: adt_in_mut a m)
+Lemma compile_simple_exhaust {m: mut_adt} {a: alg_datatype} {vs: list vty} 
+  {t: term} (m_in: mut_in_ctx m gamma) (a_in: adt_in_mut a m)
   (ps: list (pattern * gen_term b))
   (Hsimp: simple_pat_match (map fst ps))
   (Hex: simple_exhaust (map fst ps) a)
@@ -4325,9 +4333,7 @@ Proof.
       intros. rewrite andb_true_r; reflexivity.
     }
     unfold css'.
-    unfold get_constructors.
-    replace (find_ts_in_ctx gamma (adt_name a)) with (Some (m, a)).
-    2: { symmetry. apply find_ts_in_ctx_iff; auto. }
+    rewrite (get_constructors_eq m_in a_in).
     reflexivity.
   }
   rewrite Hbare in Ht1; clear Hbare. simpl in Ht1.
@@ -4561,7 +4567,109 @@ Proof.
       (*To prove the [compile_bare] goal, we need to show that
         pats is simple and syntactically exhaustive and use 
         [compile_simple_exhaust]*)
-      admit.
+      assert (Hmapfstpats: map fst pats =
+        map fst (rev (map (add_map gen_getvars comp_cases t (vty_cons (adt_name a) args) tl rl)
+          cslist) ++ (if no_wilds then [] else [(Pwild, comp_wilds tt)]))).
+      {
+        rewrite Hpats, map_map. simpl. reflexivity.
+      }
+      (*TODO: we proved this for [simple] already - can we use?
+        copied for now*)
+      assert (Hsimpl: (simple_pat_match (map fst pats))).
+      {
+        rewrite Hmapfstpats.
+        rewrite map_app, map_rev, map_map.
+        unfold simple_pat_match.
+        apply andb_true_iff. split.
+        + rewrite forallb_app. apply andb_true_iff; split.
+          * (*Prove all pats are simple - they are vars*)
+            rewrite forallb_rev, forallb_map.
+            apply forallb_forall.
+            intros [[c tys1] pats1] Hinc. simpl.
+            unfold rev_map. rewrite map_rev, rev_involutive.
+            rewrite forallb_map. apply forallb_t.
+          * simpl.
+            destruct no_wilds; auto. (*easy - just a wild*)
+        +  apply (reflect_iff _ _ (nodup_NoDup _ _)).
+          rewrite filter_map_app, !filter_map_rev, !filter_map_map. simpl.
+          (*second list is nil*)
+          assert (Hsnd: (Pattern.filter_map
+            (fun x : pattern * option (gen_term b) => match fst x with
+          | Pconstr c _ _ => Some c
+          | _ => None
+          end) (if no_wilds then [] else [(Pwild, comp_wilds tt)])) = nil); [| rewrite Hsnd, app_nil_r].
+          {
+            destruct no_wilds; auto.
+          }
+          apply NoDup_rev.
+          apply populate_all_fst_snd_full in Hpop; [|assumption].
+          destruct Hpop as [Hnodup Hpop].
+          revert Hnodup.
+          match goal with |- NoDup ?l1 -> NoDup ?l2 => 
+            replace l1 with l2; [solve[auto]|]
+          end.
+          clear.
+          induction (snd (types_cslist)) as [| x xs IH]; simpl; auto.
+          destruct x as [[cs tys1] pats1]; simpl in *. rewrite IH; auto.
+      }
+      (*Now prove that this match is exhaustive*)
+      assert (Hexhaust: (simple_exhaust (map fst pats) a)).
+      {
+        rewrite Hmapfstpats.
+        rewrite map_app, map_rev, map_map.
+        unfold simple_pat_match.
+        destruct no_wilds eqn : Hwilds.
+        - (*Case 1: no_wilds is true, so constrs all in*)
+          simpl; rewrite app_nil_r.
+          apply orb_true_iff.
+          left.
+          apply forallb_forall.
+          intros cs Hincs.
+          rewrite existsb_rev.
+          revert Hwilds.
+          unfold no_wilds, css'.
+          rewrite (get_constructors_eq m_in a_in).
+          rewrite forallb_forall.
+          intros Hallin.
+          specialize (Hallin _ Hincs).
+          (*Since cs in types, cs is cslist, so we can get the element*)
+          rewrite amap_mem_spec in Hallin.
+          destruct (amap_get funsym_eq_dec types cs) as [ps1 |] eqn : Hget; [|discriminate].
+          unfold types in Hget.
+          rewrite (proj2 (populate_all_fst_snd_full _ _ _ Hsimp Hpop)) in Hget.
+          destruct Hget as [tys1 Hincs1].
+          unfold cslist.
+          apply existsb_exists.
+          setoid_rewrite in_map_iff.
+          eexists. split.
+          eexists. split; [| apply Hincs1]. reflexivity.
+          simpl. destruct (funsym_eqb_spec cs cs); auto.
+        - (*Case 2: we have a wild*)
+          apply orb_true_iff. right.
+          rewrite existsb_app. simpl. rewrite orb_true_r.
+          reflexivity.
+      }
+      assert (Htty: term_has_type gamma t (vty_cons (adt_name a) args)) by (inversion Htmtys; auto).
+      (*Now we can use [compile_simple_exhaust]*)
+      pose proof (compile_simple_exhaust m_in a_in pats Hsimpl Hexhaust 
+        Htty) as Hcomp.
+      destruct (compile_bare_single b t (vty_cons (adt_name a) args) pats); auto.
+      exfalso.
+      (*Last two typing results are easy*)
+      forward Hcomp.
+      {
+        revert Hallty. rewrite !Forall_map. apply Forall_impl.
+        simpl. intros p1 Hps; apply Hps.
+      }
+      forward Hcomp.
+      {
+        revert Hallty. rewrite !Forall_map. apply Forall_impl.
+        simpl. intros p1 Hps. apply Hps; reflexivity.
+      }
+      (*Use length*)
+      forward Hcomp.
+      { destruct pats; auto. }
+      contradiction.
   }
   (*Typing proof complete, now prove semantics*)
   exists Htyall.
@@ -4886,7 +4994,7 @@ Proof.
     (*Contradiction from not in cslist*)
     exfalso. apply n.
     rewrite in_map_iff. exists (c, tys, y). auto.
-Admitted.
+Qed.
 
 
 (*Finally, Our main correctness theorem: if [compile is_constr gen_let gen_case tms tys P] =
@@ -5267,10 +5375,6 @@ Lemma compile_bare_equiv {A: Type} constr1 constr2
 Proof.
   reflexivity.
 Qed.
-
-(*And now we fully define [compile_bare] b is for term or formula*)
-Definition compile_bare (b: bool) tms P :=
-  compile (fun _ => nil) (gen_match b) (gen_let b) (gen_getvars b) true tms P.
 
 (*The only one we really need (NOTE: may need typing)*)
 Corollary compile_bare_spec {gamma: context} (gamma_valid: valid_context gamma)
