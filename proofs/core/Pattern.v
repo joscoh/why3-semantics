@@ -2385,47 +2385,16 @@ Equations compile (tl: list (term * vty)) (rl: list (list pattern * A))
           end eq_refl
         in
 
-    (*TODO: default case here*)
     let comp_full := comp_full is_bare comp_wilds comp_cases types cslist css t ty tl rl in
-
-    (* let comp_full (_: unit) :=
-      let no_wilds := forallb (fun f => amap_mem funsym_eq_dec f types) css in
-      let base : option (list (pattern * A)) := if no_wilds then Some nil else (*TODO: bind*)
-      option_map (fun x => [(Pwild, x)]) (comp_wilds tt)
-       (* match comp_wilds tt with
-        | None => None
-        | Some x => Some [(Pwild, x)]
-      end *) in
-
-
-      (* let add acc (x: funsym * list vty * list pattern) : option (list (pattern * A)) :=
-        let '(cs, params, ql) := x in
-        (*create variables*)
-        let pat_tys :=  (map (ty_subst (s_params cs) params) (s_args cs)) in
-        let new_var_names := gen_strs (length ql) (compile_fvs ((t, ty) :: tl) rl) in
-        let typed_vars := (combine new_var_names pat_tys) in
-        let vl := rev typed_vars in 
-        let pl := rev_map Pvar vl in
-        let al := rev_map Tvar vl in
-        match (comp_cases cs (combine al (map snd vl))) with
-        | None => None
-        | Some v => Some ((Pconstr cs params pl, v) :: acc)
-        end
-      in *)
-      (*TODO: bind*)
-      match base with
-      | None => None
-      | Some b =>
-        match (fold_left_opt (add comp_cases t ty rl tl) cslist b) with
-        | None => None
-        | Some b1 => Some (mk_case t ty b1)
-        end
-      end in  *)
     
     if amap_is_empty types then comp_wilds tt
     else
 
-    match (is_fun t) with
+    (*NOTE: remove Tfun case - interacts poorly with rewriting*)
+
+    comp_full tt
+
+    (* match (is_fun t) with
     | Left Hconstr =>
       let '(cs, params, al) := proj1_sig Hconstr in
         if is_constr cs then
@@ -2434,17 +2403,8 @@ Equations compile (tl: list (term * vty)) (rl: list (list pattern * A))
         else comp_full tt
     | Right Hnotconstr =>
       comp_full tt
-    end
+    end *)
     
-   (*  match t with
-    | Tfun cs params al =>
-      if is_constr cs then
-        if amap_mem funsym_eq_dec cs types then comp_cases cs (combine al
-          (map (ty_subst (s_params cs) params) (s_args cs))) else comp_wilds tt
-      else comp_full tt
-    | _ => 
-      comp_full tt 
-    end  *)
 end eq_refl
 end eq_refl.
 Next Obligation.
@@ -2838,7 +2798,8 @@ Lemma compile_ind (P: list (term * vty) -> list (list pattern * A) -> option A -
       
       if amap_is_empty types then comp_wilds tt
       else
-      match (is_fun t) with
+      comp_full tt)):
+      (* match (is_fun t) with
           | Left Hconstr =>
             let '(cs, params, al) := proj1_sig Hconstr in
               if is_constr cs then
@@ -2847,7 +2808,8 @@ Lemma compile_ind (P: list (term * vty) -> list (list pattern * A) -> option A -
               else comp_full tt
           | Right Hnotconstr =>
             comp_full tt
-          end)):
+          end)): *)
+
   forall ts p, P ts p (compile ts p).
 Proof.
   intros ts rl.

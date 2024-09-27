@@ -3283,24 +3283,7 @@ Proof.
           destruct x as [[cs tys1] pats1]; simpl in *. rewrite IH; auto.
     }
     destruct (amap_is_empty types) eqn : Htyemp; [solve[apply IHwilds]|].
-    destruct (is_fun t); [|destruct ty; apply Hcompfull; auto].
-    destruct s as [[[cs params] al] Ht]. simpl.
-    destruct (is_constr cs) eqn: Hconstr; [| destruct ty; apply Hcompfull; auto].
-    destruct (amap_mem funsym_eq_dec cs types) eqn : Hmem.
-    + unfold comp_cases.
-      rewrite amap_mem_spec in Hmem.
-      destruct (amap_get funsym_eq_dec cases cs) as [ys|] eqn : Hget; [|discriminate].
-      eapply IHcases; eauto.
-      * rewrite map_app, forallb_app. rewrite map_rev, forallb_rev.
-        rewrite Hsimptl, andb_true_r.
-        subst t. clear -Hsimpt. simpl in Hsimpt.
-        generalize dependent (map (ty_subst (s_params cs) params) (s_args cs)).
-        induction al; simpl; auto. intros l.
-        destruct l; auto. simpl. simpl in Hsimpt.
-        apply andb_true_iff in Hsimpt. destruct Hsimpt as [Hsimpa Hsimpal].
-        rewrite Hsimpa. apply IHal; auto.
-      * subst; eapply gen_simple_pats_spec; eauto.
-    + apply IHwilds.
+    destruct ty; apply Hcompfull; auto.
 Qed.
 
 (*The second part: exhaustive*)
@@ -4154,56 +4137,7 @@ Proof.
       rewrite amap_mem_spec, Hgettypes.
       reflexivity.
   }
-  (*Now we proceed by cases. There is only 1 interesting case left*)
-  destruct (is_fun t) as [[[[cs tys1] tms1] Ht]|]; auto.
-  simpl in Ht; subst t. simpl.
-  destruct (f_is_constr cs) eqn : Hfconstr; auto.
-  simpl.
-  (*Need stuff from typing*)
-  assert (c_in: constr_in_adt cs a). {
-    assert (Hfconstr': f_is_constr cs) by auto. (*TODO: has to be a better way to get Coq to not be so stupid*)
-    rewrite is_constr_iff in Hfconstr'; eauto;
-    [| inversion Hty; solve[auto]].
-    destruct Hfconstr' as [m1 [a1 [m1_in [a1_in c1_in]]]].
-    (*same goal - m1 and a1 are same*)
-    inversion Hty; subst.
-    rewrite (adt_constr_subst_ret gamma_valid m1_in a1_in c1_in) in H2 by auto.
-    inversion H2; subst.
-    assert (m1 = m) by (apply (mut_adts_inj (valid_context_wf _ gamma_valid) m1_in m_in a1_in a_in); auto).
-    subst.
-    assert (a1 = a) by (apply (adt_names_inj' gamma_valid a1_in a_in); auto).
-    subst; auto.
-  }
-  (*Now 2 cases: either constr is in list or not.
-    If it is, use fact that if in list, compile is not none because
-    vars*)
-  destruct (amap_mem funsym_eq_dec cs (fst types_cslist)) eqn : Hmem.
-  * (*get has to be true*)
-    apply dispatch1_opt_some in Hdisp.
-    destruct Hdisp as [Hnotnull Hcasewild]; subst.
-    erewrite dispatch1_equiv_spec; eauto.
-    rewrite app_nil_r.
-    assert (vs = tys1). {
-      inversion Hty; subst.
-      rewrite (adt_constr_subst_ret gamma_valid m_in a_in c_in) in H2 by auto.
-      inversion H2; auto.
-    }
-    subst tys1.
-    inversion Hty; subst.
-    (*And therefore, the result of [compile] is not None*)
-    apply compile_all_wild; auto.
-    -- apply Hspecvarwild.
-    -- rewrite !map_rev, map_fst_combine, map_snd_combine; auto;
-      try rewrite !map_length; auto.
-      apply Forall2_rev.
-      rewrite Forall2_combine, map_length; auto.
-    -- rewrite !map_rev, map_snd_combine; auto;
-      [|rewrite map_length; auto].
-      pose proof (spec_typed_adt m_in a_in c_in Hmxty) as Hmx.
-      rewrite app_nil_r in Hmx. apply Hmx.
-  * (*wilds*)
-    apply Hcompwilds.
-    apply Hdefaultnull with (cs:=cs); auto.
+  exact Hcompfull.
 Qed.
 
 End SimplePat.
@@ -5170,137 +5104,7 @@ Proof.
       intros t1 Ht1.
       eapply comp_full_correct; eauto.
     }
-    destruct (is_fun t) as [s1 | s2]; auto.
-    destruct s1 as [[[f tys] tms] Ht]; subst t; simpl.
-    (*Now, see if t is a constructor application that can be simplified*)
-    destruct (is_constr f) eqn : Hconstr; auto.
-    (*We know that f is a constructor, so we can get its arg_list*)
-    assert (Htty: term_has_type gamma (Tfun f tys tms) (vty_cons (adt_name a) args)). {
-      subst. clear -Htmtys. apply (Forall2_inv_head Htmtys).
-    }
-    destruct (find_semantic_constr v (Tfun f tys tms) m_in a_in args_len Htty) as 
-    [c [[c_in al] Hrep]].
-    simpl in Hrep.
-    assert (f_in: constr_in_adt f a). {
-      unfold is_constr, is_bare, css, bare_css in Hconstr.
-      rewrite Hty in Hconstr.
-      (*Crucially, need [f_is_constr] here*)
-      apply andb_true_iff in Hconstr.
-      destruct Hconstr as [f_constr Hconstr].
-      assert (f_constr': f_is_constr f) by auto.
-      rewrite (is_constr_iff gamma gamma_valid) in f_constr'.
-      2: solve[inversion Htty; subst; auto].
-      destruct f_constr' as [m1 [a1 [m1_in [a1_in f_in]]]].
-      (*Show that they are the same y relating [adt_name]*)
-      inversion Htty; subst.
-      rewrite (adt_constr_subst_ret gamma_valid m1_in a1_in f_in) in H2 by auto.
-      inversion H2; subst.
-      assert (Hm: m1 = m) by
-        (apply (mut_adts_inj (valid_context_wf _ gamma_valid) m1_in m_in a1_in a_in); auto).
-      subst.
-      assert (Ha: a1 = a) by (apply (adt_names_inj' gamma_valid a1_in a_in); auto).
-      subst. assumption.
-    }
-    assert (constrs_len: length (s_params f) = length args).
-    {
-      rewrite args_len. f_equal. apply (adt_constr_params gamma_valid m_in a_in f_in).
-    }
-    (*From this info, we will need to link [al] to [tms]. Need a few results*)
-    assert (Heqty: tys = args). {
-      inversion Htty; subst.
-      rewrite (adt_constr_ret gamma_valid m_in a_in f_in) in H2.
-      rewrite ty_subst_cons in H2.
-      assert (Hparams: s_params f = m_params m) by
-        apply (adt_constr_params gamma_valid m_in a_in f_in).
-      rewrite <- Hparams in H2.
-      rewrite map_ty_subst_var in H2; auto.
-      - inversion H2; subst; auto.
-      - apply s_params_Nodup.
-    }
-    subst.
-    assert (Htms': Forall2 (term_has_type gamma) tms
-      (ty_subst_list (s_params f) args (s_args f))).
-    {
-      inversion Htty; subst. unfold ty_subst_list.
-      rewrite Forall2_combine. split; [rewrite map_length; auto|]. assumption.
-    }
-    (*Now, we can related c and f, and al with [terms_to_hlist tms] by our
-      lemma [tfun_semantic_constr]*)
-    destruct (tfun_semantic_constr m_in a_in c_in f_in v _ _ al Htty constrs_len args_len Htms' Hrep)
-      as [Heq Hal]. subst c. unfold cast_arg_list at 1 in Hal; simpl in Hal.
-    destruct (amap_mem funsym_eq_dec f types) eqn : Hfintypes; auto.
-    2: {
-      (*If not in types, similar to above, use default result*)
-      unfold comp_wilds.
-      assert (Hnotin: constr_at_head_ex f rl = false).
-      {
-        destruct (constr_at_head_ex f rl) eqn : Hconstr1; auto.
-        apply (populate_all_in _ _ _ _ Hsimp Hpop) in Hconstr1.
-        unfold types in Hfintypes.
-        rewrite Hfintypes in Hconstr1.
-        discriminate.
-      }
-      (*Now we apply default lemma 1*)
-      rewrite (default_match_eq v _ m_in a_in c_in args_len constrs_len Htty al Hrep _ 
-        _ Htmtys rl Hsimp Hnotin Hp (default_typed Hp)).
-      (*And use IH about wilds*)
-      revert IHwilds.
-      unfold matches_matrix_tms.
-      generalize dependent Htywild.
-      rewrite Hwilds.
-      intros Htywild.
-      setoid_rewrite matches_matrix_irrel with (Hty2:=(default_typed Hp)).
-      auto.
-    }
-    (*If f is in types, then we use specialization result and IH*)
-    unfold comp_cases, Pattern.comp_cases.
-    assert (Hgetf: amap_get funsym_eq_dec cases f = Some (spec rl f)) by
-      apply (dispatch1_equiv_spec _ _ _ Hsimp Hpop Hp Hfintypes).
-    rewrite Hgetf.
-    (*Now can use [spec] lemma*)
-    pose proof (@spec_typed_adt _ _ _ m_in a_in f_in _ (map snd tl) _ Hp) as Hspecty.
-    rewrite (spec_match_eq v (Tfun f args tms) m_in a_in c_in args_len constrs_len Htty al
-      Hrep _ _ Htmtys rl Hsimp Hp Hspecty).
-    (*And we need the IH*)
-    specialize (IHconstrs _ (combine tms
-      (map (ty_subst (s_params f) args) (s_args f))) _ Hgetf). 
-    assert (Htmslen: Datatypes.length tms = Datatypes.length (s_args f)). {
-      inversion Htty; subst; auto.
-    }
-    rewrite !map_app, !map_rev, !map_fst_combine in IHconstrs by (rewrite map_length; auto).
-    rewrite !map_snd_combine in IHconstrs by (rewrite map_length; auto).
-    (*Prove IH premises*)
-    assert (Htysrev: Forall2 (term_has_type gamma)
-      (rev tms ++ map fst tl)
-      (rev (map (ty_subst (s_params f) args) (s_args f)) ++
-    map snd tl)).
-    {
-      apply Forall2_app.
-      - apply Forall2_rev. auto.
-      - inversion Htmtys; auto.
-    }
-    specialize (IHconstrs (disj_spec Hdisj) Htysrev Hspecty).
-    intros tm Hcompile.
-    specialize (IHconstrs v tm Hcompile).
-    (*Now, we use the IH*)
-    destruct IHconstrs as [IHty IHmatch].
-    exists IHty.
-    unfold matches_matrix_tms in IHmatch.
-    revert IHmatch.
-    match goal with 
-    | |- matches_matrix _ ?l1 ?al1 ?P ?H = Some ?x ->
-         matches_matrix _ ?l2 ?al2 ?P2 ?H = Some ?y =>
-      replace al1 with al2; auto
-    end.
-    (*And now, use [al] equality result*)
-    subst.
-    rewrite terms_to_hlist_app with (Hty1:=(Forall2_rev Htms'))(Hty2:= (Forall2_inv_tail Htmtys)).
-    2: unfold ty_subst_list; rewrite !rev_length, !map_length; auto.
-    rewrite terms_to_hlist_rev with (Hty:=Htms').
-    (*Bring all casts to front*)
-    rewrite hlist_rev_cast,  !hlist_app_cast1.
-    rewrite !cast_arg_list_compose.
-    apply cast_arg_list_eq.
+    auto.
 Qed.
 
 End CompileTheorem.
