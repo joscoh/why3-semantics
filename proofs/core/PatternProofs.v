@@ -5153,6 +5153,426 @@ Proof.
   rewrite Hrep in Hmatch. discriminate.
 Qed. 
 
+
+(*TODO: maybe move above*)
+
+(*Because [compile] is part of our typecheck, we need to prove
+  that modified terms are still well-typed.
+  The main result is that if the two pattern matrices have
+  the same "shape", then exhaustiveness checking doesn't change.
+  NOTE: this is why we need to take out the optimization for
+  functions; otherwise this is not true,
+  ex: match [1] with | _ :: _ -> end vs match x with | _ :: _ -> end
+  2nd not exhaustive*)
+
+(*TODO: from alpha*)
+Fixpoint shape_p (p1 p2: pattern) :=
+  match p1, p2 with
+  | Pwild, Pwild => true
+  | Por pa pb, Por pc pd => shape_p pa pc && shape_p pb pd
+  | Pbind p1 v1, Pbind p2 v2 => shape_p p1 p2
+  | Pvar v1, Pvar v2 => true
+  | Pconstr f1 tys1 ps1, Pconstr f2 tys2 ps2 =>
+    (funsym_eq_dec f1 f2) &&
+    (list_eq_dec vty_eq_dec tys1 tys2) &&
+    (length ps1 =? length ps2) &&
+    all2 (fun p1 p2 => shape_p p1 p2) ps1 ps2
+  | _, _ => false
+  end.
+
+Definition shape_mx (p1 p2: pat_matrix) : bool :=
+  all2 (fun r1 r2 => 
+    all2 shape_p (fst r1) (fst r2)) p1 p2.
+
+Definition gterm_d: gen_term b :=
+  match b return gen_term b with
+  | true => tm_d
+  | false => Ftrue
+  end.
+
+Definition lens_mx (p1 p2: pat_matrix) : bool :=
+  ((length p1) =? (length p2)) &&
+  (all2 (fun r1 r2 => length (fst r1) =? length (fst r2)) p1 p2).
+
+Lemma map2_app {A B C: Type} (f: A -> B -> C) l1 l2 l3 l4:
+  length l1 = length l3 ->
+  map2 f (l1 ++ l2) (l3 ++ l4) =
+  map2 f l1 l3 ++ map2 f l2 l4.
+Proof.
+  revert l3. induction l1 as [| h1 t1 IH]; simpl;
+  intros [| h2 t2]; try discriminate; auto.
+  simpl. intros Hlen.
+  rewrite IH; auto.
+Qed.
+
+Lemma length_simplify_aux {A: Type} {glet: vsymbol -> term -> A -> A} 
+  (p1 p2: pattern) t1 t2 a1 a2:
+  shape_p p1 p2 ->
+  length (simplify_aux glet t1 a1 p1) = length (simplify_aux glet t2 a2 p2).
+Proof.
+  revert p2 t1 t2 a1 a2.
+  induction p1; intros p2; destruct p2;
+  try discriminate; simpl; auto.
+  intros t1 t2 a1 a2. unfold is_true. rewrite andb_true_iff.
+  intros [Hshape1 Hshape2].
+  rewrite !app_length; auto.
+Qed.
+
+Lemma shape_mx_simplify {glet t1 t2} P1 P2:
+  lens_mx P1 P2 ->
+  shape_mx P1 P2 ->
+  shape_mx (simplify glet t1 P1) (simplify glet t2 P2) &&
+  lens_mx (simplify glet t1 P1) (simplify glet t2 P2).
+Proof.
+  unfold lens_mx, simplify, shape_mx. unfold is_true at 1.
+  rewrite andb_true_iff. intros [Hlen1 Halllen].
+  apply Nat.eqb_eq in Hlen1.
+  rewrite fold_is_true in Halllen. revert Halllen.
+  generalize dependent P2.
+  induction P1 as [| phd1 ptl1 IH].
+  - intros [| phd2 ptl2]; [|discriminate]; auto.
+  - intros [| phd2 ptl2]; [discriminate|simpl].
+    unfold all2 in *. simpl.
+    intros Hlen Hallen Hshape.
+    apply andb_true_iff in Hallen, Hshape.
+    destruct Hallen as [Hlenhd Hlentl];
+    destruct Hshape as [Hshapeh Hshapet].
+    rewrite !app_length.
+    assert (Hlensingle: length (simplify_single glet t1 phd1) =
+      length (simplify_single glet t2 phd2)).
+    {
+      unfold simplify_single.
+      destruct phd1 as [[| p1 ps1] a1];
+      destruct phd2 as [[| p2 ps2] a2]; try discriminate; auto.
+      rewrite !map_length.
+      apply length_simplify_aux.
+      simpl in Hshapeh.
+      apply andb_true_iff in Hshapeh.
+      apply Hshapeh.
+    }
+    rewrite Hlensingle.
+    rewrite !map2_app by (apply Hlensingle).
+    rewrite !forallb_app.
+    specialize (IH ptl2 (ltac:(lia)) Hlentl Hshapet).
+    apply andb_true_iff in IH.
+    destruct IH as [IH1 IH2].
+    apply andb_true_iff in IH2.
+    destruct IH2 as [IH2 IH3].
+    apply Nat.eqb_eq in IH2.
+    rewrite IH1, IH2, Nat.eqb_refl, IH3. simpl.
+    rewrite !andb_true_r.
+    (*Now just prove the [simplify_single] conditions*)
+    clear -Hshapeh Hlenhd.
+    unfold simplify_single.
+    destruct phd1 as [[| p1 ps1] a1];
+    destruct phd2 as [[| p2 ps2] a2]; try discriminate; auto.
+    simpl in Hshapeh, Hlenhd.
+    (*TODO: separate lemma?*)
+    apply andb_true_iff in Hshapeh.
+    destruct Hshapeh as [Hshape Htl].
+    revert a1 a2.
+    generalize dependent p2.
+    induction p1; simpl; intros p2; destruct p2; try discriminate; intros; simpl;
+    try rewrite !andb_true_r; try rewrite Htl; auto.
+    + rewrite Hshape; auto.
+    +  (*or*)
+      apply andb_true_iff in Hshape.
+      destruct Hshape as [Hshape1 Hshape2].
+      rewrite !map_app, !map2_app, !forallb_app; auto.
+      * specialize (IHp1_1 _ Hshape1 a1 a2).
+        apply andb_true_iff in IHp1_1.
+        destruct IHp1_1 as [IH1 IH2]; rewrite IH1, IH2.
+        simpl; auto.
+      * rewrite !map_length. apply length_simplify_aux; auto.
+      * rewrite !map_length. apply length_simplify_aux; auto.
+Qed.
+
+(* Lemma get_heads_eq (P1 P2: pat_mx)
+  (Hlens: len_mx P1 P2): *)
+
+Lemma lens_mx_cons {h1 h2 t1 t2}:
+  lens_mx (h1 :: t1) (h2 :: t2) =
+  (length (fst h1) =? length (fst h2)) && (lens_mx t1 t2).
+Proof.
+  unfold lens_mx. simpl.
+  unfold all2. simpl.
+  rewrite andb_comm, <- !andb_assoc. f_equal.
+  apply andb_comm.
+Qed.
+
+Lemma shape_mx_cons {h1 h2 t1 t2}:
+  shape_mx (h1 :: t1) (h2 :: t2) =
+  all2 shape_p (fst h1) (fst h2) && shape_mx t1 t2.
+Proof.
+  reflexivity.
+Qed.
+
+(*Equivalence of [get_heads] under [lens_mx] and [shape_mx]*)
+Lemma get_heads_shape P1 P2
+  (Hlen: lens_mx P1 P2)
+  (Hshape: shape_mx P1 P2):
+  opt_related (fun l1 l2 =>
+    length l1 = length l2 /\
+    all2 shape_p l1 l2)
+  (get_heads P1) (get_heads P2).
+Proof.
+  generalize dependent P2.
+  induction P1 as [| h1 t1 IH]; simpl;
+  intros [| h2 t2]; try discriminate; simpl; auto.
+  rewrite lens_mx_cons, shape_mx_cons.
+  unfold is_true. rewrite !andb_true_iff.
+  intros [Hlen Hlens] [Hshape Hshapes].
+  apply Nat.eqb_eq in Hlen.
+  destruct h1 as [ps1 a1]; destruct h2 as [ps2 a2].
+  simpl fst in *. destruct ps1 as [| phd1 ptl1];
+  destruct ps2 as [| phd2 ptl2]; try discriminate; simpl; auto.
+  specialize (IH _ Hlens Hshapes).
+  destruct (get_heads t1) as [l1|]; simpl in IH |- *.
+  - destruct (get_heads t2) as [l2|]; [|contradiction].
+    simpl. destruct IH as [Hlenls Halll].
+    rewrite Hlenls. split; auto.
+    rewrite all2_cons in Hshape |- * .
+    rewrite andb_true_iff in Hshape.
+    destruct Hshape as [Hshape _].
+    rewrite Hshape, Halll. reflexivity.
+  - destruct (get_heads t2); [contradiction|auto].
+Qed.
+
+Lemma all2_rev {A B : Type} (f: A -> B -> bool) l1 l2:
+  length l1 = length l2 ->
+  all2 f l1 l2 = all2 f (rev l1) (rev l2).
+Proof.
+  unfold all2. revert l2.
+  induction l1 as [| h1 t1 IH]; intros [| h2 t2]; try discriminate; simpl; auto.
+  intros Hlen.
+  rewrite !map2_app; [| rewrite !rev_length; lia].
+  rewrite forallb_app. simpl.
+  rewrite andb_true_r, andb_comm, IH; auto.
+Qed.
+
+Lemma lens_mx_rev P1 P2:
+  lens_mx (rev P1) (rev P2) = lens_mx P1 P2.
+Proof.
+  unfold lens_mx.
+  rewrite !rev_length.
+  destruct (Nat.eqb_spec (length P1) (length P2)); simpl; auto.
+  rewrite <- all2_rev; auto.
+Qed.
+
+
+Lemma simplified_shape P1 P2:
+  lens_mx P1 P2 ->
+  shape_mx P1 P2 ->
+  simplified P1 ->
+  simplified P2.
+Proof.
+  unfold simplified, shape_mx, lens_mx.
+  generalize dependent P2.
+  induction P1 as [| h1 t1 IH]; intros [| h2 t2]; simpl; try discriminate; auto.
+  rewrite !all2_cons.
+  unfold is_true; rewrite !andb_true_iff.
+  intros [Hlent [Hlenh Hlens]] [Hshapeh Hshapet].
+  destruct h1 as [ps1 a1]; destruct h2 as [ps2 a2]; simpl fst in *;
+  try discriminate.
+  destruct ps1 as [| p1 tl1]; destruct ps2 as [| p2 tl2]; intros [Hfst Hrest]; try discriminate; simpl; auto.
+  - split; auto. apply IH; auto. rewrite Hlent; auto.
+  - split; auto.
+    2: { apply IH; auto. rewrite Hlent; auto. }
+    (*The interesting case*)
+    rewrite all2_cons in Hshapeh.
+    rewrite andb_true_iff in Hshapeh. destruct Hshapeh as [Hshapep Hshapetl].
+    clear -Hshapep Hfst.
+    destruct p1; destruct p2; auto.
+Qed.
+
+(*Equivalence of [populate_all] under [lens_mx] and [shape_mx]*)
+Lemma populate_all_shape {constrs} P1 P2
+  (Hsimpl: simplified P1) (*easier*)
+  (Hlen: lens_mx P1 P2)
+  (Hshape: shape_mx P1 P2):
+  opt_related (fun o1 o2 =>
+    forall cs,
+    opt_related (fun ps1 ps2 => 
+      length ps1 = length ps2 /\
+      all2 shape_p ps1 ps2)
+      (amap_get funsym_eq_dec (fst o1) cs)
+      (amap_get funsym_eq_dec (fst o2) cs)) 
+  (populate_all constrs P1)
+  (populate_all constrs P2).
+Proof.
+  unfold populate_all.
+  pose proof (get_heads_shape _ _ Hlen Hshape) as Hheads.
+  destruct (get_heads P1) as [heads1|] eqn : Hhead1; simpl in Hheads.
+  2: { destruct (get_heads P2); [contradiction| auto]. }
+  destruct (get_heads P2) as [heads2|] eqn : Hhead2; [|contradiction].
+  assert (Hsimpl2: simplified P2) by 
+    (apply (simplified_shape _ _ Hlen Hshape Hsimpl)).
+  rewrite <- simplified_rev in Hsimpl, Hsimpl2.
+  assert (Hget1: get_heads (rev P1) = Some (rev heads1)) by
+    (rewrite get_heads_rev, Hhead1; reflexivity).
+  assert (Hget2: get_heads (rev P2) = Some (rev heads2)) by
+    (rewrite get_heads_rev, Hhead2; reflexivity).
+  destruct Hheads as [Hlenh Hallhds].
+  assert (Hall: all2 shape_p (rev heads1) (rev heads2)) by
+    (rewrite <- all2_rev; auto). 
+  rewrite !fold_left_right_opt.
+  assert (Hlen2: length (rev heads1) = length (rev heads2)) by
+    (rewrite !rev_length; auto).
+  rewrite <- lens_mx_rev in Hlen.
+  clear -Hsimpl Hsimpl2 Hget1 Hget2 Hall Hlen2 Hlen.
+  generalize dependent (rev heads1).
+  generalize dependent (rev heads2).
+  generalize dependent (rev P2).
+  generalize dependent (rev P1).
+  clear P1 P2.
+  (*TODO: do induction on P, as below*)
+  intros P1; induction P1 as [| [ps1 a1] t1 IH].
+  - intros _. intros [| [ps2 a2] t2]; try discriminate. simpl; auto.
+    intros _ _ l1 Hsome1 l2 Hsome2 Hall Hlen.
+    inversion Hsome1; inversion Hsome2; subst; simpl. auto.
+  - intros Hsimp1 [| [ps2 a2] t2] Hlens; [discriminate|].
+    rewrite lens_mx_cons in Hlens.
+    intros Hsimp2 hds1 Hhds1 hds2 Hhds2 Hshapes Hlenheads.
+    simpl in Hhds1, Hhds2.
+    destruct ps1 as [|phd1 ptl1]; [discriminate|].
+    destruct ps2 as [|phd2 ptl2]; [discriminate|].
+    destruct (get_heads t1) as [hd1|] eqn : Hhd1; [|discriminate].
+    destruct (get_heads t2) as [hd2|] eqn : Hhd2; [|discriminate].
+    simpl in Hhds1, Hhds2. revert Hhds1 Hhds2. inv Hsome. inv Hsome.
+    simpl.
+    (*Now we use IH*)
+    simpl in *.
+    rewrite all2_cons in Hshapes.
+    apply andb_true_iff in Hsimp1, Hsimp2, Hlens, Hshapes.
+    destruct Hsimp1 as [Hsimphd1 Hsimpt1].
+    destruct Hsimp2 as [Hsimphd2 Hsimpt2].
+    destruct Hlens as [Hlenpt Hlens].
+    destruct Hshapes as [Hshapep Hshapeh].
+    specialize (IH Hsimpt1 _ Hlens Hsimpt2 _ Hhd2 _ eq_refl Hshapeh
+      (ltac:(lia))).
+    destruct (fold_right_opt _ hd1 _) as [o1|]; simpl in IH |- *.
+    2: { destruct (fold_right_opt _ hd2 _) as [o2|]; [contradiction|auto]. }
+    destruct (fold_right_opt _ hd2 _) as [o2|]; [simpl in IH|contradiction].
+    simpl.
+    (*Now we need to reason about [populate] - simplified helps here*)
+    destruct phd1 as [| f1 tys1 ps1 | | |]; destruct phd2 as [| f2 tys2 ps2 | | |]; try discriminate;
+    simpl; auto.
+    (*constr case*)
+    destruct o1 as [css1 csl1].
+    destruct o2 as [css2 csl2].
+    simpl in *.
+    (*shape gives f1 = f2*)
+    destruct (funsym_eq_dec f1 f2); [|discriminate]; subst.
+    destruct (constrs f2); simpl; auto.
+    (*Now, will need to use fact that mem are equivalent from IH*)
+    rewrite !amap_mem_spec.
+    assert (IH':=IH).
+    specialize (IH f2).
+    destruct (amap_get funsym_eq_dec css1 f2) as [y1|] eqn : Hget1;
+    destruct (amap_get funsym_eq_dec css2 f2) as [y2|] eqn : Hget2;
+    simpl in IH; try contradiction; auto.
+    (*Both some*) simpl. intros cs.
+    destruct (funsym_eq_dec cs f2).
+    * subst. rewrite !amap_set_get_same; simpl.
+      bool_hyps; split; auto. apply Nat.eqb_eq; auto.
+    * rewrite !amap_set_get_diff; auto.
+Qed.
+
+Lemma all2_Forall2 {A B: Type} (f: A -> B -> bool) l1 l2:
+  (length l1 =? length l2) && (all2 f l1 l2) <-> Forall2 f l1 l2.
+Proof.
+  revert l2. induction l1 as [|h1 t1]; simpl; intros [| h2 t2]; simpl.
+  - split; auto.
+  - split; try discriminate. intro C; inversion C.
+  - split; [discriminate| intro C; inversion C].
+  - rewrite all2_cons, (andb_comm (f h1 h2)), andb_assoc.
+    unfold is_true in IHt1 |- *.
+    rewrite andb_true_iff, IHt1. split; [intros [Hall Hf]; constructor; auto|
+      intros Hall; inversion Hall; auto].
+Qed.
+
+Check existsb_eq.
+
+Lemma existsb_eq' {A: Type} {f1 f2: A -> bool} l1 l2:
+  Forall2 (fun x y => f1 x = f2 y) l1 l2 ->
+  existsb f1 l1 = existsb f2 l2.
+Proof.
+  rewrite Forall2_combine. intros [Hlen Hall].
+  apply existsb_eq; auto.
+Qed.
+
+
+Lemma len_mx_null_equiv P1 P2:
+  lens_mx P1 P2 ->
+  existsb (fun x : list pattern * gen_term b => null (fst x)) P1 =
+  existsb (fun x : list pattern * gen_term b => null (fst x)) P2.
+Proof.
+  unfold lens_mx.
+  intros Hlens.
+  apply existsb_eq'. rewrite all2_Forall2 in Hlens.
+  revert Hlens.
+  apply Forall2_impl. intros l1 l2 Hlen.
+  apply Nat.eqb_eq in Hlen.
+  destruct (fst l1); destruct (fst l2); auto; discriminate.
+Qed. 
+
+Lemma compile_change_tm_ps {constrs tms1 tms2 P1 P2}
+  (Hlens: lens_mx P1 P2)
+  (Hshape: shape_mx P1 P2)
+  (* (Hlen: length tms1 = length tms2) *)
+  (Htys: map snd tms1 = map snd tms2):
+  (*TODO: what typing assumptions do we need?*)
+  isSome (compile constrs gen_match gen_let gen_getvars true tms1 P1) =
+  isSome (compile constrs gen_match gen_let gen_getvars true tms2 P2).
+Proof.
+  revert tms2 P2 Hlens Hshape Htys.
+  apply (compile_ind constrs gen_match gen_let gen_getvars gen_getvars_let
+    true (fun tms1 P1 o =>
+      forall (tms2 : list (term * vty)) (P2 : pat_matrix) 
+      (Hlens: lens_mx P1 P2)
+      (Hshape: shape_mx P1 P2)
+      (Htys: map snd tms1 = map snd tms2),
+      isSome o = isSome (compile constrs gen_match gen_let gen_getvars true tms2 P2)));
+  clear tms1 P1; auto.
+  - intros t ty tms1 P1 Hsimp tms2 P2 Hlens Hshape Htys.
+    destruct tms2 as [| [t2 ty2] tms2]; [discriminate|].
+    specialize (Hsimp ((t2, ty2) :: tms2) (simplify gen_let t2 P2)).
+    rewrite <- !compile_simplify in Hsimp by (apply gen_getvars_let).
+    pose proof (@shape_mx_simplify gen_let t t2 _ _ Hlens Hshape) as Hsimpl.
+    apply andb_true_iff in Hsimpl.
+    destruct Hsimpl as [Hshape2 Hlens2].
+    apply Hsimp; auto.
+  - (*None case*) intros tms1 tms2 [| ? ?]; try discriminate. auto.
+  - (*Some case*) intros ps1 a1 P1 [| t1 t2] [| [ps2 a2] P2]; try discriminate. auto.
+  - (*Ill-typed*)
+    intros t ty tms1 P1 is_bare_css is_bare css is_constr Hsimp Hilltyped.
+    intros [| [t2 ty2] tms2]; [discriminate|].
+    intros [| r2 P2']; [auto|].
+    intros Hlens Hshape Htys; simpl in Htys.
+    injection Htys; intros Htyeq Htys2; subst ty2.
+    set (P2:=r2 :: P2') in *.
+    pose proof (@populate_all_shape is_constr _ _ Hsimp Hlens Hshape) as Hpops.
+    subst P2.
+    Opaque dispatch1_opt.
+    simp compile.
+    set (P2:=r2 :: P2') in *.
+    destruct Hilltyped as [Hpop | Hdisp].
+    + rewrite Hpop in Hpops. simpl in Hpops.
+      simpl. destruct (populate_all _ P2); auto. contradiction.
+    + destruct Hdisp as [types_cslist [Hpop Hdisp]].
+      simpl. rewrite Hpop in Hpops.
+      destruct (populate_all _ P2); auto; simpl in Hpops.
+      apply dispatch1_opt_none in Hdisp.
+      rewrite (len_mx_null_equiv _ _ Hlens) in Hdisp.
+      rewrite <- dispatch1_opt_none in Hdisp.
+      rewrite Hdisp.
+      reflexivity.
+  - (*Interesting case*)
+    intros t ty tms1 P1 rhd rtl is_bare_css is_bare css is_constr Hsimpl
+      Hrl types_cslist Hpop types cslist casewild Hdisp1 cases wilds [IHwilds IHconstrs]
+      tms2 P2 Hlens Hshape Htys.
+    (*TODO: start here*)
+
 End PatProofs.
 
 (*Now we give a context-insensitive version of pattern matching
