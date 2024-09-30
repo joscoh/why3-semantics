@@ -5818,6 +5818,63 @@ Proof.
       apply Nat.eqb_eq. lia.
 Qed.
 
+Definition ty_rel (ty1 ty2: vty) : bool :=
+  match ty1, ty2 with
+  | vty_int, vty_int => true
+  | vty_real, vty_real => true
+  | vty_var _, vty_var _ => true
+  | vty_cons _ _, vty_cons _ _ => true
+  | _, _ => false
+  end.
+
+Lemma map2_map {A B C D E} (f: A -> B -> C) (g: D -> A) (h: E -> B) l1 l2:
+  map2 f (map g l1) (map h l2) = map2 (fun x y => f (g x) (h y)) l1 l2.
+Proof.
+  revert l2. induction l1 as [| h1 t1 IH]; intros [|h2 t2]; simpl; auto.
+  f_equal; auto.
+Qed.
+
+Lemma all2_map {A B C D} (f: A -> B -> bool) (g: C -> A) (h: D -> B) l1 l2:
+  all2 f (map g l1) (map h l2) = all2 (fun x y => f (g x) (h y)) l1 l2.
+Proof.
+  unfold all2. rewrite map2_map. reflexivity.
+Qed.
+
+Lemma ty_rel_refl ty:
+  ty_rel ty ty.
+Proof.
+  destruct ty; auto.
+Qed.
+
+Lemma ty_rel_sym ty1 ty2:
+  ty_rel ty1 ty2 = ty_rel ty2 ty1.
+Proof.
+  destruct ty1; destruct ty2; auto.
+Qed.
+
+Lemma all_ty_rel_refl' l1 l2:
+  l1 = l2 ->
+  all2 ty_rel l1 l2.
+Proof.
+  intros; subst.
+  induction l2 as [| h t IH]; auto;
+  destruct h; auto.
+Qed.
+
+Lemma all_ty_rel_refl l:
+  all2 ty_rel l l.
+Proof.
+  apply all_ty_rel_refl'; auto.
+Qed.
+
+Lemma all_ty_rel_sym l1 l2:
+  all2 ty_rel l1 l2 = all2 ty_rel l2 l1.
+Proof.
+  revert l2.
+  induction l1 as [|h1 t1 IH]; intros [| h2 t2]; simpl; auto.
+  rewrite !all2_cons, ty_rel_sym, IH. reflexivity.
+Qed.
+
 (*We do need typing assumptions, for a simple (and sort of silly) reason:
   when we use "choose" to get an element, that element may not be the same
   in both lists, so the value of [f_num_constrs] could differ*)
@@ -5832,21 +5889,24 @@ Lemma compile_change_tm_ps {constrs tms1 tms2 P1 P2}
   (* (Hp1: pat_matrix_typed (map snd tms1) P1)
   (Hp2: pat_matrix_typed (map snd tms2) P2) *)
   (* (Hlen: length tms1 = length tms2) *)
-  (Htys: map snd tms1 = map snd tms2):
+  (Htyslen: length tms1 = length tms2)
+  (Htys: all2 ty_rel (map snd tms1) (map snd tms2)):
+  (* (Htys: map snd tms1 = map snd tms2): *)
   (*TODO: what typing assumptions do we need?*)
   isSome (compile constrs gen_match gen_let gen_getvars true tms1 P1) =
   isSome (compile constrs gen_match gen_let gen_getvars true tms2 P2).
 Proof.
-  revert tms2 P2 Hlens Hshape Htys.
+  revert tms2 P2 Hlens Hshape Htyslen Htys.
   apply (compile_ind constrs gen_match gen_let gen_getvars gen_getvars_let
     true (fun tms1 P1 o =>
       forall (tms2 : list (term * vty)) (P2 : pat_matrix) 
       (Hlens: lens_mx P1 P2)
       (Hshape: shape_mx P1 P2)
-      (Htys: map snd tms1 = map snd tms2),
+      (Htyslen: length tms1 = length tms2)
+      (Htys: all2 ty_rel (map snd tms1) (map snd tms2)),
       isSome o = isSome (compile constrs gen_match gen_let gen_getvars true tms2 P2)));
   clear tms1 P1; auto.
-  - intros t ty tms1 P1 Hsimp tms2 P2 Hlens Hshape Htys.
+  - intros t ty tms1 P1 Hsimp tms2 P2 Hlens Hshape Htyslen Htys.
     destruct tms2 as [| [t2 ty2] tms2]; [discriminate|].
     specialize (Hsimp ((t2, ty2) :: tms2) (simplify gen_let t2 P2)).
     rewrite <- !compile_simplify in Hsimp by (apply gen_getvars_let).
@@ -5860,13 +5920,22 @@ Proof.
     intros t ty tms1 P1 is_bare_css is_bare css is_constr Hsimp Hilltyped.
     intros [| [t2 ty2] tms2]; [discriminate|].
     intros [| r2 P2']; [auto|].
-    intros Hlens Hshape Htys; simpl in Htys.
-    injection Htys; intros Htyeq Htys2; subst ty2.
+    intros Hlens Hshape Htyslen Htys; simpl in Htys.
+    (* injection Htys; intros Htyeq Htys2; subst ty2. *)
     set (P2:=r2 :: P2') in *.
     pose proof (@populate_all_shape is_constr _ _ Hsimp Hlens Hshape) as Hpops.
     subst P2.
     Opaque dispatch1_opt.
     simp compile.
+    set (is_bare_css1:= match ty2 with
+    | vty_cons _ _ => (true, [])
+    | _ => (false, [])
+    end) in *.
+    assert (Hbare: is_bare_css = is_bare_css1). {
+      unfold is_bare_css, is_bare_css1. destruct ty; destruct ty2;
+      try discriminate; auto.
+    }
+    generalize dependent is_bare_css1. intros; subst is_bare_css1.
     set (P2:=r2 :: P2') in *.
     destruct Hilltyped as [Hpop | Hdisp].
     + rewrite Hpop in Hpops. simpl in Hpops.
@@ -5882,12 +5951,22 @@ Proof.
   - (*Interesting case*)
     intros t ty tms1 P1 rhd rtl is_bare_css is_bare css is_constr Hsimpl
       Hrl types_cslist Hpop types cslist casewild Hdisp1 cases wilds [IHwilds IHconstrs]
-      tms2 P2 Hlens Hshape Htys.
+      tms2 P2 Hlens Hshape Htyslen Htys.
     destruct P2 as [| rhd2 rtl2]; [rewrite Hrl in Hlens; discriminate|].
     destruct tms2 as [| [t2 ty2] tms2]; [discriminate|].
-    simpl in Htys. injection Htys. intros Htys2 Htyeq; subst ty2.
+    simpl in Htys. rewrite all2_cons in Htys.
+    apply andb_true_iff in Htys. destruct Htys as [Htyrel Htys2]. 
     simp compile.
     set (P2:=rhd2 :: rtl2) in *.
+    set (is_bare_css1:= match ty2 with
+    | vty_cons _ _ => (true, [])
+    | _ => (false, [])
+    end) in *.
+    assert (Hbare: is_bare_css = is_bare_css1). {
+      unfold is_bare_css, is_bare_css1. destruct ty; destruct ty2;
+      try discriminate; auto.
+    }
+    generalize dependent is_bare_css1. intros; subst is_bare_css1.
     (*Deal with [populate_all]*)
     simpl.
     pose proof (@populate_all_shape is_constr _ _ Hsimpl Hlens Hshape) as Hpops.
@@ -5929,8 +6008,8 @@ Proof.
     { unfold wilds. rewrite !dispatch1_equiv_default by auto; auto. }
     forward IHwilds.
     { unfold wilds. rewrite !dispatch1_equiv_default by auto; auto. }
-    clear Hshaped Hlensd.
-    specialize (IHwilds Htys2).
+    clear Hshaped Hlensd. simpl in Htyslen.
+    specialize (IHwilds (ltac:(lia)) Htys2).
     (*case 1: types is empty - from IH*)
     destruct (amap_is_empty (fst types_cslist2)) eqn : Hisemp; [auto|].
     (*Otherwise, prove [comp_full] the same*)
@@ -6002,7 +6081,9 @@ Proof.
       l l1 l2
       (Hlens: lens_mx P1 P2)
       (Hshape: shape_mx P1 P2)
-      (Htys2: map snd tms1 = map snd tms2)
+      (Htyslen: length tms1 = length tms2)
+      (Htys2: all2 ty_rel (map snd tms1) (map snd tms2))
+      (* (Htys2: map snd tms1 = map snd tms2) *)
       (Hsimpl : simplified P1)
       (Hsimp2: simplified P2)
       (Hpop: populate_all is_constr P1 = Some types_cslist1)
@@ -6021,7 +6102,9 @@ Proof.
         Some l2 ->
         lens_mx l1 l2 ->
         shape_mx l1 l2 ->
-        map snd (rev al1 ++ tms1) = map snd (rev al2 ++ tms2) ->
+        length (rev al1 ++ tms1) = length (rev al2 ++ tms2) ->
+        all2 ty_rel (map snd (rev al1 ++ tms1)) (map snd (rev al2 ++ tms2)) ->
+        (* map snd (rev al1 ++ tms1) = map snd (rev al2 ++ tms2) -> *)
         isSome (compile constrs gen_match gen_let gen_getvars true (rev al1 ++ tms1)
         l1) = isSome (compile constrs gen_match gen_let gen_getvars true
         (rev al2 ++ tms2) l2)),
@@ -6041,7 +6124,7 @@ Proof.
     {
       clear.
       intros t1 t2 tms1 P1 tms2 P2 types_cslist1 types_cslist2 l l1 l2 Hlens Hshapes
-        Htys2 Hsimpl Hsimp2 Hpop1 Hpop2 Hcslists Hpops IHconstrs Hopt1 Hopt2.
+        Htyslen Htys2 Hsimpl Hsimp2 Hpop1 Hpop2 Hcslists Hpops IHconstrs Hopt1 Hopt2.
       apply fold_right_opt_add_map in Hopt1.
       apply fold_left_opt_none in Hopt2.
       destruct Hopt2 as [l3 [x [l5 [ps1 [Hcslist2 [Hopt2 Hadd]]]]]].
@@ -6153,13 +6236,30 @@ Proof.
         apply spec_shape; auto.
       - rewrite Hlenps.
         apply spec_shape; auto.
+      - unfold rev_map. 
+        rewrite !app_length, !rev_length, !combine_length, !rev_length, 
+          !map_length, !rev_length, !combine_length, !gen_strs_length.
+        lia.
       - unfold rev_map. rewrite <- !map_rev, !rev_involutive.
         rewrite !map_app, !map_rev.
-        f_equal; auto. f_equal.
+        unfold all2.
+        rewrite map2_app.
+        2: { unfold vsymbol in *. rewrite !rev_length, !map_length, !combine_length, !map_length,
+          !combine_length, !gen_strs_length. lia. }
+        rewrite forallb_app.
+        unfold all2 in Htys2; rewrite Htys2, andb_true_r.
+        rewrite map2_rev.
+        2: {
+           unfold vsymbol in *. rewrite !map_length, !combine_length, !map_length,
+          !combine_length, !gen_strs_length. lia.
+        }
+        rewrite Hlenps.
+        rewrite forallb_rev.
+        apply all_ty_rel_refl'.
         apply map_snd_combine_eq; auto.
         + apply map_snd_combine_eq; auto.
-          rewrite Hlenps, !gen_strs_length. reflexivity.
-        + rewrite !map_length, Hlenps.
+          rewrite!gen_strs_length. reflexivity.
+        + rewrite !map_length.
           unfold vsymbol in *. rewrite !combine_length, !gen_strs_length.
           reflexivity.
     }
@@ -6170,11 +6270,12 @@ Proof.
       amap_get funsym_eq_dec (fst (dispatch1 gen_let t2 (fst types_cslist2) P2)) cs = Some l3 ->
       lens_mx l2 l3 ->
       shape_mx l2 l3 ->
-      map snd (rev al1 ++ tms1) = map snd (rev al2 ++ tms2) ->
+      length (rev al1 ++ tms1) = length (rev al2 ++ tms2) ->
+      all2 ty_rel (map snd (rev al1 ++ tms1)) (map snd (rev al2 ++ tms2)) ->
       isSome (compile constrs gen_match gen_let gen_getvars true (rev al1 ++ tms1) l2) =
       isSome (compile constrs gen_match gen_let gen_getvars true (rev al2 ++ tms2) l3)).
     {
-      intros cs al1 al2 l2 l3 Hget1 Hget2 Hlens1 Hshape1 Hmapeq.
+      intros cs al1 al2 l2 l3 Hget1 Hget2 Hlens1 Hshape1 Hleneq Hall2.
       apply IHconstrs with (cs:=cs); auto.
     }
     (*Now case on [fold_left_opt]*)
@@ -6186,6 +6287,8 @@ Proof.
       apply Hsomenone in Hopt2; auto.
       * rewrite lens_mx_sym; auto.
       * rewrite shape_mx_sym; auto.
+      * lia.
+      * rewrite all_ty_rel_sym; auto.
       * intros cs. specialize (Hpops cs).
         destruct (amap_get _ (fst types_cslist) cs);
         destruct (amap_get _ (fst types_cslist2) cs); auto;
@@ -6198,22 +6301,15 @@ Proof.
       * intros; symmetry; eapply IH'; eauto.
         -- rewrite lens_mx_sym; auto.
         -- rewrite shape_mx_sym; auto.
+        -- rewrite all_ty_rel_sym. auto.
 Qed.
 
 
 (*Corollaries*)
 
-Lemma map2_map {A B C: Type} (f: B -> B -> C) (g: A -> B) (l1 l2: list A):
-  map2 f (map g l1) (map g l2) =
-  map2 (fun a1 a2 => f (g a1) (g a2)) l1 l2.
-Proof.
-  revert l2. induction l1 as [| h1 t1 IH]; simpl; auto.
-  intros [| h2 t2]; simpl; auto.
-  rewrite IH; reflexivity.
-Qed.
-
-Lemma compile_bare_single_ext t1 t2 ty ps1 ps2
+Lemma compile_bare_single_ext t1 t2 ty1 ty2 ps1 ps2
   (Hlenps: length ps1 = length ps2)
+  (Htys: ty_rel ty1 ty2)
   (Hshapeps: all2 shape_p (map fst ps1) (map fst ps2)):
   (* (Hty1: term_has_type gamma t1 ty)
   (Hty2: term_has_type gamma t2 ty)
@@ -6221,8 +6317,8 @@ Lemma compile_bare_single_ext t1 t2 ty ps1 ps2
   (Hpats2: Forall (fun p => pattern_has_type gamma p ty) (map fst ps2))
   (Htms1: Forall (fun t => @gen_typed gamma b t ret_ty) (map snd ps1))
   (Htms2: Forall (fun t => @gen_typed gamma b t ret_ty) (map snd ps2)): *)
-  isSome (compile_bare_single b t1 ty ps1) =
-  isSome (compile_bare_single b t2 ty ps2).
+  isSome (compile_bare_single b t1 ty1 ps1) =
+  isSome (compile_bare_single b t2 ty2 ps2).
 Proof.
   apply compile_change_tm_ps; simpl; auto.
   - (*prove lens_mx*)
@@ -6243,6 +6339,7 @@ Proof.
     rewrite andb_true_r in Hx. subst.
     rewrite all2_forall in Hshapeps; [| auto].
     apply Hshapeps; auto.
+  - rewrite !all2_cons, Htys; auto.
 Qed.
 
 
@@ -6254,6 +6351,7 @@ Lemma compile_bare_single_ext_simpl t1 t2 ty ps1 ps2
 Proof.
   apply compile_bare_single_ext; auto.
   - rewrite <-(map_length fst), Hps,map_length; reflexivity.
+  - apply ty_rel_refl.
   - rewrite Hps. clear. induction (map fst ps2); simpl; auto.
     rewrite all2_cons, shape_p_refl. auto.
 Qed.
