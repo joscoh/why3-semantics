@@ -1,6 +1,6 @@
 (*Eliminate let*)
 
-Require Import Alpha.
+Require Import Alpha PatternProofs.
 Require Import Task.
 From Equations Require Import Equations.
 Set Bullet Behavior "Strict Subproofs".
@@ -65,13 +65,15 @@ Proof.
     destruct bt. 
     + apply safe_sub_t_typed; auto.
     + constructor; auto.
-  - constructor; auto; [| | rewrite null_map; auto].
+  - constructor; auto.
     + intros x. rewrite in_map_iff.
       intros [y [Hx Hiny]]; subst; simpl; auto.
     + clear -H8 H0. induction ps; simpl in *; auto;
       intros; try contradiction.
       inversion H0; subst.
       destruct H; subst; simpl; auto.
+    + revert H9. apply compile_bare_single_ext_simpl.
+      rewrite map_map; auto.
   - constructor; auto. rewrite map_length; auto.
     assert (Hlen: length (map (ty_subst (s_params p) tys) (s_args p)) =
       length tms) by (rewrite map_length; auto).
@@ -86,13 +88,15 @@ Proof.
     destruct bf. 
     + apply safe_sub_f_typed; auto.
     + constructor; auto.
-  - constructor; auto; [| | rewrite null_map; auto].
+  - constructor; auto.
     + intros x. rewrite in_map_iff.
       intros [y [Hx Hiny]]; subst; simpl; auto.
     + clear -H7 H0. induction ps; simpl in *; auto;
       intros.
       inversion H0; subst.
       destruct H; subst; simpl; auto.
+    + revert H8. apply compile_bare_single_ext_simpl.
+      rewrite map_map; auto.
 Qed.
 
 Definition elim_let_t_typed bt bf t gamma := proj_tm 
@@ -1013,9 +1017,11 @@ Proof.
   - inversion H3; subst.
     constructor; auto.
   - rewrite map_In_spec. 
-    inversion H2; subst. constructor; auto; [| |rewrite null_map; auto];
-    intros p; rewrite in_map_iff; 
-    intros [p1 [Hp Hinp1]]; subst; simpl; auto.
+    inversion H2; subst. constructor; auto;
+    try (intros p; rewrite in_map_iff; 
+    intros [p1 [Hp Hinp1]]; subst; simpl; auto).
+    revert H11. apply compile_bare_single_ext_simpl.
+    rewrite map_map; auto.
   - inversion H1; subst. constructor; auto.
   - inversion H1; subst. rewrite map_In_spec; constructor; auto;
     try rewrite map_length; auto.
@@ -1036,9 +1042,11 @@ Proof.
   - inversion H2; subst. constructor; auto.
   - inversion H3; subst. constructor; auto.
   - rewrite map_In_spec. 
-    inversion H2; subst. constructor; auto; [| |rewrite null_map; auto];
-    intros p; rewrite in_map_iff; 
-    intros [p1 [Hp Hinp1]]; subst; simpl; auto.
+    inversion H2; subst. constructor; auto; 
+    try (intros p; rewrite in_map_iff; 
+    intros [p1 [Hp Hinp1]]; subst; simpl; auto).
+    revert H10. apply compile_bare_single_ext_simpl.
+    rewrite map_map; auto.
 Qed.
 
 (*And our corollaries*)

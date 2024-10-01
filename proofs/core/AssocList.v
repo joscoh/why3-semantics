@@ -753,4 +753,42 @@ Proof.
   reflexivity.
 Qed.
 
+Lemma same_elts_size (m1 m2: amap A B):
+  (forall x, amap_mem x m1 = amap_mem x m2) ->
+  amap_size m1 = amap_size m2.
+Proof.
+  unfold amap_mem, map_contains, map_get_aux, amap_size.
+  intros Hsame.
+  destruct m1 as [m1 m1_wf]; destruct m2 as [m2 m2_wf]; simpl in *.
+  rewrite <- !(map_length fst).
+  (*To avoid doing twice*)
+  assert (Hle1: forall (m1 m2 : map_aux A B),
+    NoDup (map fst m1) ->
+    (forall x, 
+      match get_assoc_list eq_dec m1 x with
+      | Some _ => true
+      | None => false
+      end =
+      match get_assoc_list eq_dec m2 x with
+      | Some _ => true
+      | None => false
+      end
+      ) -> 
+      length (map fst m1) <= length (map fst m2)).
+  {
+    clear. intros m1 m2 Hn Hsame.
+    apply NoDup_incl_length; auto.
+    intros x Hinx.
+    specialize (Hsame x).
+    destruct (get_assoc_list eq_dec m1 x) as [y1|] eqn : Hget.
+    - destruct (get_assoc_list eq_dec m2 x) as [y2 |] eqn : Hget2;
+      [|discriminate].
+      apply get_assoc_list_some in Hget2.
+      rewrite in_map_iff. exists (x, y2); auto.
+    - apply get_assoc_list_none in Hget.
+      contradiction.
+  }
+  apply Nat.le_antisymm; apply Hle1; auto.
+Qed.
+
 End MapProofs.

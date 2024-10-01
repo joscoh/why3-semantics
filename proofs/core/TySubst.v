@@ -451,6 +451,30 @@ Proof.
     + apply IHp; auto.
 Qed.
 
+Require Import PatternProofs.
+
+(*Why we need [ty_rel] - it holds under substitution*)
+Definition ty_rel_subst' ty ps args:
+  ty_rel ty (ty_subst' ps args ty).
+Proof.
+  destruct ty; simpl; auto.
+Qed.
+
+(*And show that [ty_subst_p] preserves [shape_p]*)
+Lemma subst_p_shape p:
+  shape_p p (ty_subst_p p).
+Proof.
+  induction p as [| f tys1 ps1 | | |]; simpl; auto; [| rewrite IHp1 IHp2; auto].
+  destruct (funsym_eq_dec f f); [| contradiction]; simpl.
+  unfold ty_subst_list' at 1. rewrite !map_length !Nat.eqb_refl. simpl.
+  rewrite andb_true_r.
+  apply andb_true_iff. split.
+  - clear. induction tys1 as [| ty1 tl1 IH]; auto.
+    simpl. rewrite all2_cons ty_rel_subst' IH. reflexivity.
+  - revert H. clear. induction ps1 as [| p1 t1 IH]; simpl; auto.
+    intros Hall. inversion Hall; subst. rewrite all2_cons H1. auto.
+Qed. 
+
 (*Typing for terms and formulas*)
 Lemma ty_subst_tf_ty (t: term) (f: formula):
   (forall ty (Hty: term_has_type gamma t ty)
@@ -485,14 +509,14 @@ Proof.
       rewrite <- ty_subst_twice; auto; [| apply s_params_Nodup].
       apply H; auto.
       * apply nth_In; auto.
-      * apply (H10 ((List.nth i l1 tm_d), (ty_subst (s_params f1) l (nth i (s_args f1) vty_int)))).
+      * apply (H10 ((List.nth i l1 tm_d), (ty_subst (s_params f1) l (List.nth i (s_args f1) vty_int)))).
         rewrite in_combine_iff; [| rewrite map_length; auto].
         exists i. split; auto.
         intros. rewrite -> !map_nth_inbound with (d2:=vty_int); try lia.
         f_equal. apply nth_indep; auto.
       * rewrite Forall_map in Hp.
         rewrite Forall_forall in Hp. apply Hp. apply nth_In; auto.
-  -(*Match relies on pattern typing, rest is easy*) 
+  -(*Match relies on pattern typing, rest is easy - except exhaustiveness*) 
     destruct Hp as [Hpt Hallp].
     constructor; auto.
     + intros x. rewrite in_map_iff. intros [x1 [Hx Hinx1]]; subst. simpl.
@@ -504,7 +528,12 @@ Proof.
       * rewrite in_map_iff. exists x1; auto.
       * rewrite Forall_map Forall_forall in Hallp.
         apply Hallp; auto.
-    + rewrite null_map. auto.
+    + revert H9. apply compile_bare_single_ext.
+      * rewrite map_length; reflexivity.
+      * apply ty_rel_subst'.
+      * rewrite map_map.
+        clear. induction ps as [| phd ptl IH]; simpl; auto.
+        rewrite all2_cons subst_p_shape. auto.
   - (*Pred almost same as Fun*) constructor; auto.
     + rewrite Forall_forall; intros.
       unfold ty_subst_list in H0.
@@ -541,7 +570,12 @@ Proof.
       * rewrite in_map_iff. exists x1; auto.
       * rewrite Forall_map Forall_forall in Hallp.
         apply Hallp; auto.
-    + rewrite null_map. auto.
+    + revert H8. apply compile_bare_single_ext.
+      * rewrite map_length; reflexivity.
+      * apply ty_rel_subst'.
+      * rewrite map_map.
+        clear. induction ps as [| phd ptl IH]; simpl; auto.
+        rewrite all2_cons subst_p_shape. auto.
 Qed.
 
 Definition ty_subst_t_ty t := proj_tm ty_subst_tf_ty t.

@@ -2323,9 +2323,10 @@ Definition comp_full (is_bare: bool) (comp_wilds : unit -> option A) comp_cases
   (types: amap funsym (list pattern))
   (cslist: list (funsym * list vty * list pattern)) css t ty tl rl (_: unit) :=
     let no_wilds := 
-      if is_bare then
-        option_bind (amap_choose funsym_eq_dec types) (fun x =>
-          Some (Nat.eqb (amap_size types) (f_num_constrs (fst x)))) 
+      if is_bare then (*not using choose - we need to know it is the first one*)
+        option_bind (option_map (fun x => match x with | (cs, _, _) => cs end)
+          (List.head cslist)) (fun x =>
+          Some (Nat.eqb (amap_size types) (f_num_constrs x))) 
       else Some (forallb (fun f => amap_mem funsym_eq_dec f types) css) in
     let base : option (list (pattern * A)) :=
       option_bind no_wilds (fun b => if b then Some nil else (*TODO: bind*)
@@ -2674,7 +2675,7 @@ Lemma comp_full_simplify_eq is_bare comp_wilds comp_cases types cslist css t ty 
 Proof.
   unfold comp_full.
   destruct is_bare.
-  - destruct (amap_choose _ _); simpl; auto.
+  -destruct (hd_error _); simpl; auto.
     destruct (Nat.eqb _ _); simpl; auto.
     + rewrite fold_left_opt_simplify_eq. reflexivity.
     + destruct (comp_wilds tt); simpl; auto. 

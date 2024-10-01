@@ -2362,6 +2362,81 @@ Proof.
   - apply map_snd_combine_nodup; apply NoDup_pat_fv.
   - intros. rewrite map_fst_combine; auto.
 Qed.
+
+Require Import PatternProofs.
+
+Fixpoint shape_p (p1 p2: pattern) :=
+  match p1, p2 with
+  | Pwild, Pwild => true
+  | Por pa pb, Por pc pd => shape_p pa pc && shape_p pb pd
+  | Pbind p1 v1, Pbind p2 v2 => shape_p p1 p2
+  | Pvar v1, Pvar v2 => true
+  | Pconstr f1 tys1 ps1, Pconstr f2 tys2 ps2 =>
+    (funsym_eq_dec f1 f2) &&
+    (list_eq_dec vty_eq_dec tys1 tys2) &&
+    (length ps1 =? length ps2) &&
+    all2 (fun p1 p2 => shape_p p1 p2) ps1 ps2
+  | _, _ => false
+  end.
+
+Lemma shape_p_impl p1 p2:
+  shape_p p1 p2 ->
+  PatternProofs.shape_p p1 p2.
+Proof.
+  revert p2. induction p1 as [| f1 tys1 ps1 IH | | |]; intros p2; destruct p2 as [| f2 tys2 ps2 | | |]; simpl; auto.
+  - unfold is_true at 1. rewrite !andb_true_iff.
+    intros [[[Hf1 Htys] Hlenps] Hshape].
+    rewrite Hf1, Hlenps.
+    destruct (list_eq_dec _ _ _); subst; [|discriminate].
+    rewrite Nat.eqb_refl, all_ty_rel_refl. simpl. apply Nat.eqb_eq in Hlenps.
+    revert IH Hshape Hlenps. clear. revert ps2. 
+    induction ps1 as [| p1 ptl IH]; intros [| p2 ptl2]; auto; try discriminate. simpl.
+    rewrite !all2_cons. intros Hall; inversion Hall; subst.
+    unfold is_true; rewrite !andb_true_iff; intros [Hshapep Hshaptl] Hlens.
+    split; auto.
+    + apply H1; auto.
+    + apply IH; auto.
+  - intros; bool_hyps; rewrite IHp1_1, IHp1_2; auto.
+Qed.
+
+Lemma alpha_p_shape vars p1 p2
+  (Heq: alpha_equiv_p vars p1 p2):
+  shape_p p1 p2.
+Proof.
+  generalize dependent p2. induction p1; simpl; intros;
+  alpha_case p2 Heq; auto; bool_hyps; repeat simpl_sumbool;
+  simpl.
+  - rewrite H3. simpl. nested_ind_case.
+    rewrite all2_cons in H1 |- *. bool_hyps.
+    rewrite (Hp p), (IHps Hforall _ H2); auto.
+  - rewrite IHp1_1, IHp1_2; auto.
+Qed.
+
+
+(*TODO: change*)
+(* Lemma map2_map {A B C D E} (f: A -> B -> C) (g: D -> A) (h: E -> B) l1 l2:
+  map2 f (map g l1) (map h l2) = map2 (fun x y => f (g x) (h y)) l1 l2.
+Proof.
+  revert l2. induction l1 as [| h1 t1 IH]; intros [|h2 t2]; simpl; auto.
+  f_equal; auto.
+Qed.
+
+Lemma all2_map {A B C D} (f: A -> B -> bool) (g: C -> A) (h: D -> B) l1 l2:
+  all2 f (map g l1) (map h l2) = all2 (fun x y => f (g x) (h y)) l1 l2.
+Proof.
+  unfold all2. rewrite map2_map. reflexivity.
+Qed. *)
+
+Lemma all2_impl {A B: Type} {f1 f2: A -> B -> bool} l1 l2:
+  (forall x y, f1 x y -> f2 x y) ->
+  all2 f1 l1 l2 ->
+  all2 f2 l1 l2.
+Proof.
+  intros Himpl. revert l2. induction l1 as [| h1 t1 IH]; intros [| h2 t2]; simpl; auto.
+  rewrite !all2_cons. unfold is_true. rewrite !andb_true_iff; intros [Hf Ht]; split; auto.
+  - apply Himpl; auto.
+  - apply IH; auto.
+Qed. 
     
 (*alpha equivalence preserves well-typedness*)
 Lemma alpha_equiv_type (t: term) (f: formula):
@@ -2414,9 +2489,9 @@ Proof.
     apply Nat.eqb_eq in H5.
     inversion H1; subst.
     rewrite fold_is_true in H3.
+    assert (Hall2:=H3).
     rewrite all2_forall with(d1:=(Pwild, tm_d)) (d2:=(Pwild, tm_d)) in H3; auto.
-    apply T_Match; [ apply (H _ _ _ H2); auto | | |
-    destruct l; destruct ps; auto; inversion H5].
+    apply T_Match; [ apply (H _ _ _ H2); auto | | | ].
     + intros. destruct (In_nth _ _ (Pwild, tm_d) H4) as [n [Hn Hx]]; 
       subst.
       specialize (H3 n ltac:(lia)). simpl in H3.
@@ -2442,6 +2517,14 @@ Proof.
         rewrite mk_fun_vars_eq_full; auto.
         wf_tac.
       * apply H12. wf_tac.
+    + revert H13. apply compile_bare_single_ext; eauto; [apply ty_rel_refl|].
+      revert Hall2.
+      rewrite all2_map.
+      apply all2_impl.
+      intros x y.
+      unfold is_true; rewrite andb_true_iff; intros [Hps _].
+      apply alpha_p_shape in Hps; auto.
+      apply shape_p_impl; auto.
   - (*Teps*)
     alpha_case t1 Heq.
     bool_hyps; simpl_sumbool.
@@ -2509,9 +2592,9 @@ Proof.
     apply Nat.eqb_eq in H5.
     inversion H1; subst.
     rewrite fold_is_true in H3.
+    assert (Hall2:=H3).
     rewrite all2_forall with(d1:=(Pwild, Ftrue))(d2:=(Pwild, Ftrue)) in H3; auto.
-    constructor; auto; [apply (H _ _ _ H2); auto | | |
-      destruct l; destruct ps; auto; inversion H5].
+    constructor; auto; [apply (H _ _ _ H2); auto | | |].
     + intros. 
       destruct (In_nth _ _ (Pwild, Ftrue) H4) as [n [Hn Hx]]; subst.
       specialize (H3 n ltac:(lia)).
@@ -2537,6 +2620,14 @@ Proof.
         rewrite mk_fun_vars_eq_full; auto.
         wf_tac.
       * apply H11. wf_tac.
+    + revert H12. apply compile_bare_single_ext; eauto; [apply ty_rel_refl|].
+      revert Hall2.
+      rewrite all2_map.
+      apply all2_impl.
+      intros x y.
+      unfold is_true; rewrite andb_true_iff; intros [Hps _].
+      apply alpha_p_shape in Hps; auto.
+      apply shape_p_impl; auto.
 Qed. 
 
 Definition alpha_equiv_t_type t := proj_tm alpha_equiv_type t.
@@ -5861,33 +5952,6 @@ End ConvertFirst.
   We show that alpha equivalence implies this, but also that
   this implies equivalence of [valid_ind_form] and [ind_positive]*)
 Section Shape.
-
-Fixpoint shape_p (p1 p2: pattern) :=
-  match p1, p2 with
-  | Pwild, Pwild => true
-  | Por pa pb, Por pc pd => shape_p pa pc && shape_p pb pd
-  | Pbind p1 v1, Pbind p2 v2 => shape_p p1 p2
-  | Pvar v1, Pvar v2 => true
-  | Pconstr f1 tys1 ps1, Pconstr f2 tys2 ps2 =>
-    (funsym_eq_dec f1 f2) &&
-    (list_eq_dec vty_eq_dec tys1 tys2) &&
-    (length ps1 =? length ps2) &&
-    all2 (fun p1 p2 => shape_p p1 p2) ps1 ps2
-  | _, _ => false
-  end.
-
-Lemma alpha_p_shape vars p1 p2
-  (Heq: alpha_equiv_p vars p1 p2):
-  shape_p p1 p2.
-Proof.
-  generalize dependent p2. induction p1; simpl; intros;
-  alpha_case p2 Heq; auto; bool_hyps; repeat simpl_sumbool;
-  simpl.
-  - rewrite H3. simpl. nested_ind_case.
-    rewrite all2_cons in H1 |- *. bool_hyps.
-    rewrite (Hp p), (IHps Hforall _ H2); auto.
-  - rewrite IHp1_1, IHp1_2; auto.
-Qed.
 
 Fixpoint shape_t (t1 t2: term):=
   match t1, t2 with

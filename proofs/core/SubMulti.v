@@ -1298,6 +1298,8 @@ Proof.
   destruct_all; auto.
 Qed.
 
+Require Import PatternProofs.
+
 Lemma subs_ty gamma t f:
   (forall ty (Hty1: term_has_type gamma t ty)
     (subs: list (vsymbol * term))
@@ -1334,13 +1336,14 @@ Proof.
     constructor; auto. apply H0; auto.
     apply remove_bindings_forall'; auto.
   - inversion Hty1; subst. constructor; auto.
-    3: rewrite null_map; auto.
     + intros x. rewrite in_map_iff.
       intros [pt [Hx Hinpt]]; subst; simpl. auto.
     + intros x. rewrite in_map_iff.
       intros [pt [Hx Hinpt]]; subst; simpl.
       rewrite Forall_map, Forall_forall in H0.
       apply H0; auto. apply remove_bindings_forall'; auto.
+    + revert H9. apply compile_bare_single_ext_simpl; eauto.
+      rewrite !map_map. reflexivity.
   - inversion Hty1; subst. constructor; auto.
     apply H; auto. apply remove_bindings_forall'; auto.
   - inversion Hty1; subst.
@@ -1359,13 +1362,14 @@ Proof.
   - inversion Hty1; subst. constructor; auto.
     apply H0; auto. apply remove_bindings_forall'; auto.
   - inversion Hty1; subst. constructor; auto.
-    3: rewrite null_map; auto.
     + intros x. rewrite in_map_iff.
       intros [pt [Hx Hinpt]]; subst; simpl. auto.
     + intros x. rewrite in_map_iff.
       intros [pt [Hx Hinpt]]; subst; simpl.
       rewrite Forall_map, Forall_forall in H0.
       apply H0; auto. apply remove_bindings_forall'; auto.
+    + revert H8. apply compile_bare_single_ext_simpl; eauto.
+      rewrite !map_map. reflexivity.
 Qed.
 
 Definition sub_ts_ty gamma t := proj_tm (subs_ty gamma) t.

@@ -1,7 +1,7 @@
 Require Import Task.
 Require Import Alpha GenElts.
 Require Import eliminate_inductive. (*TODO: not great, factor out common stuff*)
-Require Import PatternProofs. (*TODO: factor out gen stuff*)
+Require Import PatternProofs.
 Require Import Denotational2.
 Set Bullet Behavior "Strict Subproofs".
 
@@ -543,15 +543,19 @@ Proof.
     apply (term_ind (fun t2 => forall ty t1 (Hty1: term_has_type gamma t1 ty) (Hty2: term_has_type gamma t2 ty),
       formula_typed gamma (t_insert ty t1 t2)) (fun _ => True)); intros; simpl; auto; 
         try solve[apply F_Eq; assumption]; inversion Hty3; subst; constructor; auto;
-    [| | rewrite null_map; assumption]; intros x; rewrite in_map_iff; intros [y [Hx Hiny]]; subst; simpl; auto.
-    rewrite Forall_map, Forall_forall in H0. auto.
+        try (intros x; rewrite in_map_iff; intros [y [Hx Hiny]]; subst; simpl; auto);
+        try (rewrite Forall_map, Forall_forall in H0); auto.
+    revert H9. apply compile_bare_single_ext_simpl.
+    rewrite map_map; reflexivity.
   - intros Hty1 Hty2.
     apply (formula_ind (fun _ => True) (fun f2 => forall f1 (Hty1: formula_typed gamma f1) 
       (Hty2: formula_typed gamma f2),
       formula_typed gamma (f_insert f1 f2))); intros; simpl; auto; 
-        try solve[apply F_Eq; assumption]; inversion Hty3; subst; constructor; auto;
-    [| | rewrite null_map; assumption]; intros x; rewrite in_map_iff; intros [y [Hx Hiny]]; subst; simpl; auto.
-    rewrite Forall_map, Forall_forall in H0. auto.
+        try solve[apply F_Eq; assumption]; inversion Hty3; subst; constructor; auto; 
+        try (intros x; rewrite in_map_iff; intros [y [Hx Hiny]]; subst; simpl; auto);
+        try (rewrite Forall_map, Forall_forall in H0); auto.
+    revert H8. apply compile_bare_single_ext_simpl.
+    rewrite map_map; reflexivity.
 Qed.
 
 Definition gen_sig (b: bool) : context -> list (gen_sym b) :=
@@ -596,7 +600,7 @@ Definition gen_funpred_def_valid_type gamma {b: bool} (ls: gen_sym b) (vs: list 
   (t: gen_term b):
   funpred_def_valid_type gamma (gen_funpred_def b ls vs t) <->
   @gen_typed gamma b t (gen_sym_ret ls) /\
-  sublist (gen_fv b t) vs /\
+  sublist (gen_fv t) vs /\
   sublist (gen_type_vars t) (gen_sym_params ls) /\
   NoDup (map fst vs) /\
   map snd vs = gen_sym_args ls.
@@ -1033,7 +1037,7 @@ Qed.
 
 Lemma t_insert_gen_rep {gamma} (gamma_valid: valid_context gamma) pd vt pf vv {b: bool}
   (t1 t2: gen_term b) (ty: gen_type b) Hty Hty1 Hty2
-  (Hdisj: disj (gen_fv b t1) (gen_bnd t2)):
+  (Hdisj: disj (gen_fv t1) (gen_bnd t2)):
   formula_rep gamma_valid pd vt pf vv (t_insert_gen ty t1 t2) Hty =
   all_dec (gen_rep gamma_valid pd pf vt b vv ty t1 Hty1 = gen_rep gamma_valid pd pf vt b vv ty t2 Hty2).
 Proof.
@@ -1055,7 +1059,6 @@ Proof.
   - inversion Hty; subst. apply H0 in H7. apply H1 in H8. destruct_all.
     split; auto. constructor; auto.
   - inversion Hty; subst.
-    rewrite null_map in H8.
     split.
     + destruct ps as [|phd ptl]; try discriminate.
       simpl in H7.
@@ -1079,6 +1082,9 @@ Proof.
         rewrite Forall_forall in H0; apply H0 in H7.
         -- destruct_all; assumption.
         -- rewrite in_map_iff; exists x; auto.
+      * (*Prove exhaust*)
+        revert H8. apply compile_bare_single_ext_simpl.
+        rewrite map_map; reflexivity.
 Qed.
 
 Lemma f_insert_typed_inv {gamma} { f1 f2 }
@@ -1094,7 +1100,6 @@ Proof.
   - inversion Hty; subst. apply H0 in H7. apply H1 in H8. destruct_all.
     split; auto. constructor; auto.
   - inversion Hty; subst.
-    rewrite null_map in H8.
     split.
     + destruct ps as [|phd ptl]; try discriminate.
       simpl in H7.
@@ -1118,6 +1123,9 @@ Proof.
         rewrite Forall_forall in H0; apply H0 in H7.
         -- destruct_all; assumption.
         -- rewrite in_map_iff; exists x; auto.
+      * (*Prove exhaust*)
+        revert H8. apply compile_bare_single_ext_simpl.
+        rewrite map_map; reflexivity.
 Qed.
 
 Lemma t_insert_gen_typed_inv {gamma} {b} {ty: gen_type b} {t1 t2: gen_term b}
@@ -1130,7 +1138,7 @@ Proof.
 Qed.
 
 Lemma gen_app_fv {b: bool} (ls: gen_sym b) (tys: list vty) (tms: list term):
-  gen_fv b (gen_app b ls tys tms) =
+  gen_fv (gen_app b ls tys tms) =
   big_union vsymbol_eq_dec tm_fv tms.
 Proof.
   destruct b; auto.
@@ -1233,7 +1241,7 @@ Proof.
     apply s_params_Nodup.
   }
   assert (Hvveq: forall x
-        (Hinxfv: In x (gen_fv b e))
+        (Hinxfv: In x (gen_fv e))
         (Heq: v_subst (vt_with_args vt (s_params ls') srts)
           (snd x) =
         v_subst vt (snd x))

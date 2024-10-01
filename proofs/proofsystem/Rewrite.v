@@ -1,6 +1,7 @@
 (*Replace terms and formulas with equivalent ones*)
 Require Import Typechecker.
 Require Export Denotational.
+Require Import PatternProofs.
 Set Bullet Behavior "Strict Subproofs".
 
 (*Substitute a term for a term in a term or formula*)
@@ -120,6 +121,8 @@ Proof.
     rewrite in_combine_iff by (rewrite map_length; auto).
     exists i. split; auto. intros.
     f_equal; apply nth_indep; rewrite ?map_length; lia.
+  - revert H9. apply compile_bare_single_ext_simpl; eauto.
+    rewrite !map_map. reflexivity.
   - revert H8 H. rewrite !Forall_forall; intros.
     (*Annoying because of combine*)
     rewrite in_combine_iff in H0 by (rewrite !map_length; auto).
@@ -133,6 +136,8 @@ Proof.
     rewrite in_combine_iff by (rewrite map_length; auto).
     exists i. split; auto. intros.
     f_equal; apply nth_indep; rewrite ?map_length; lia.
+  - revert H8. apply compile_bare_single_ext_simpl; eauto.
+    rewrite !map_map. reflexivity.
 Qed.
 
 (*And now we reason about the semantics:
@@ -367,6 +372,8 @@ Proof.
     rewrite in_combine_iff by (rewrite map_length; auto).
     exists i. split; auto. intros.
     f_equal; apply nth_indep; rewrite ?map_length; lia.
+  - revert H9. apply compile_bare_single_ext_simpl; eauto.
+    rewrite !map_map. reflexivity.
   - revert H8 H. rewrite !Forall_forall; intros.
     (*Annoying because of combine*)
     rewrite in_combine_iff in H0 by (rewrite !map_length; auto).
@@ -380,6 +387,8 @@ Proof.
     rewrite in_combine_iff by (rewrite map_length; auto).
     exists i. split; auto. intros.
     f_equal; apply nth_indep; rewrite ?map_length; lia.
+  - revert H8. apply compile_bare_single_ext_simpl; eauto.
+    rewrite !map_map. reflexivity.
 Qed.
 
 (*And now we reason about the semantics:
