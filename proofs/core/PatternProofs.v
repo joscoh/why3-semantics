@@ -6618,3 +6618,16 @@ Proof.
   unfold compile_bare. erewrite compile_bare_equiv.
   apply compile_rep. auto.
 Qed.
+
+Corollary compile_bare_typed {gamma: context} (gamma_valid: valid_context gamma)
+  (pd: pi_dom) (pf: pi_funpred gamma_valid pd) (vt: val_typevar) (v: val_vars pd vt)
+  (b: bool) (ret_ty: gen_type b) tms P
+  (Htys: Forall2 (term_has_type gamma) (map fst tms) (map snd tms))
+  (Hp: @pat_matrix_typed gamma b ret_ty (map snd tms) P)
+  (Hdisj: pat_matrix_var_names_disj b (map fst tms) P) t:
+  compile_bare b tms P = Some t ->
+  @gen_typed gamma b t ret_ty.
+Proof.
+  unfold compile_bare. erewrite compile_bare_equiv. 
+  eapply compile_typed; eauto.
+Qed.
