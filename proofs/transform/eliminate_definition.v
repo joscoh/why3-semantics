@@ -3,6 +3,7 @@ Require Import Alpha GenElts.
 Require Import eliminate_inductive. (*TODO: not great, factor out common stuff*)
 Require Import PatternProofs.
 Require Import Denotational2.
+Require Import Exhaustive.
 Set Bullet Behavior "Strict Subproofs".
 
 (*TODO: move*)
@@ -916,14 +917,16 @@ Proof.
     generalize dependent (proj2' (proj2' (typed_match_inv Hty))).
     generalize dependent (proj1' (proj2' (ty_match_inv Hty2))).
     generalize dependent (proj2' (proj2' (ty_match_inv Hty2))).
+    (*Need existence of [match_rep] by exhaustiveness*)
+    pose proof (well_typed_sem_exhaust gamma_valid pd pf vt vv true ty
+      tm v ps Hty2 (proj1' (ty_match_inv Hty2))) as [p [Htyp [Hinp Hmatchp]]].
     generalize dependent (term_rep gamma_valid pd vt pf vv tm v
       (proj1' (ty_match_inv Hty2))).
     (*Get hypotheses we need*)
-    clear -H0 H1. (*do we need Hty2/info about pattern typing?*)
+    clear -H0 H1 Hinp. (*do we need Hty2/info about pattern typing?*)
     induction ps as [|phd ptl IH]; simpl.
-    (*TODO: we actually need non-exhaustiveness here*)
-    + admit.
-    + intros d Hall1 Hall2 Hall3 Hall4.
+    + contradiction.
+    + intros d Hmatch1 Hall1 Hall2 Hall3 Hall4.
       destruct phd as [phd tdh]; simpl in *.
       rewrite match_val_single_irrel with (Hval2:=(Forall_inv Hall2)).
       simpl.
@@ -937,10 +940,15 @@ Proof.
           apply (H1 x); split; auto. rewrite !in_app_iff; auto.
         -- eapply disj_sublist. apply H1. eapply sublist_trans. apply sublist_app_r.
           eapply sublist_trans. apply sublist_app_l. apply sublist_app_r.
-      * (*Use IH*) apply IH.
+      * (*Use IH*) apply IH; auto.
         -- inversion H0; subst; auto.
         -- eapply disj_sublist. apply H1. unfold sublist. intros x. rewrite !in_app_iff.
           intros; destruct_all; auto.
+        -- destruct Hinp; subst; auto.
+          (*Contradicts [match_val_single] exhaustive*)
+          simpl in Hmatch1.
+          erewrite match_val_single_irrel in Hmatch.
+          rewrite Hmatch in Hmatch1. discriminate.
   - (*epsilon*)
     split_all_dec_eq; auto; [ apply term_rep_irrel|].
     f_equal. repeat (apply functional_extensionality_dep; intros).
@@ -948,7 +956,7 @@ Proof.
     erewrite fmla_change_vv. reflexivity.
     intros y Hiny. unfold substi. destruct (vsymbol_eq_dec y v); subst; auto.
     unfold eq_sym; simpl. apply dom_cast_eq.
-Admitted.
+Qed.
 
 (*And the same for formulas - can we prove easier?*)
 Lemma f_insert_rep {gamma} (gamma_valid: valid_context gamma) pd vt pf vv f1 f2 Hty Hty1 Hty2
@@ -995,13 +1003,15 @@ Proof.
     generalize dependent (proj2' (proj2' (typed_match_inv Hty))).
     generalize dependent (proj1' (proj2' (typed_match_inv Hty2))).
     generalize dependent (proj2' (proj2' (typed_match_inv Hty2))).
+    (*Need existence of [match_rep] by exhaustiveness*)
+    pose proof (well_typed_sem_exhaust gamma_valid pd pf vt vv false tt
+      tm v ps Hty2 (proj1' (typed_match_inv Hty2))) as [p [Htyp [Hinp Hmatchp]]].
     generalize dependent (term_rep gamma_valid pd vt pf vv tm v
       (proj1' (typed_match_inv Hty2))).
-    clear -H0 H1. 
+    clear -H0 H1 Hinp. 
     induction ps as [|phd ptl IH]; simpl.
-    (*TODO: we actually need non-exhaustiveness here*)
-    + admit.
-    + intros d Hall1 Hall2 Hall3 Hall4.
+    + contradiction.
+    + intros d Hmatch1 Hall1 Hall2 Hall3 Hall4.
       destruct phd as [phd tdh]; simpl in *.
       rewrite match_val_single_irrel with (Hval2:=(Forall_inv Hall2)).
       simpl.
@@ -1015,11 +1025,16 @@ Proof.
           apply (H1 x); split; auto. rewrite !in_app_iff; auto.
         -- eapply disj_sublist. apply H1. eapply sublist_trans. apply sublist_app_r.
           eapply sublist_trans. apply sublist_app_l. apply sublist_app_r.
-      * (*Use IH*) apply IH.
+      * (*Use IH*) apply IH; auto.
         -- inversion H0; subst; auto.
         -- eapply disj_sublist. apply H1. unfold sublist. intros x. rewrite !in_app_iff.
           intros; destruct_all; auto.
-Admitted.
+        -- destruct Hinp; subst; auto.
+          (*Contradicts [match_val_single] exhaustive*)
+          simpl in Hmatch1.
+          erewrite match_val_single_irrel in Hmatch.
+          rewrite Hmatch in Hmatch1. discriminate.
+Qed.
 
 Definition gen_bnd {b: bool} (t: gen_term b) : list vsymbol :=
   match b return gen_term b -> list vsymbol with
