@@ -6619,6 +6619,21 @@ Proof.
   apply compile_rep. auto.
 Qed.
 
+(* Kind of dumb: can give a default pi_funpred, pi_dom, val_vars
+(*TODO: move*)
+(*Trivial [pi_dom] that maps every type to unit except ADTs*)
+Print pi_dom.
+Definition dom_aux_d (s: sort) : Set :=
+  match (is_sort_adt )
+
+
+is_sort_adt:
+  context -> sort -> option (mut_adt * alg_datatype * typesym * list sort)
+
+Print pi_dom.
+Definition pd_d : pi_dom.
+Print pi_dom. *)
+
 Corollary compile_bare_typed {gamma: context} (gamma_valid: valid_context gamma)
   (pd: pi_dom) (pf: pi_funpred gamma_valid pd) (vt: val_typevar) (v: val_vars pd vt)
   (b: bool) (ret_ty: gen_type b) tms P
@@ -6631,3 +6646,6 @@ Proof.
   unfold compile_bare. erewrite compile_bare_equiv. 
   eapply compile_typed; eauto.
 Qed.
+
+(*And the single versions*)
+

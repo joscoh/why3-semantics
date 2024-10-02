@@ -58,6 +58,23 @@ Definition sound_trans (T: trans) : Prop :=
   (forall (tr: task), In tr (T t) -> task_valid tr) ->
   task_valid t.
 
+(*Apply T1, then T2*)
+(*TODO: FIX WF ISSUE*)
+(* Definition trans_comp (T1 T2: trans) : trans :=
+  fun t => concat (map T2 (T1 t)).
+
+Lemma sound_trans_comp (T1 T2: trans)
+  (Hs1: sound_trans T1)
+  (Hs2: sound_trans T2):
+  sound_trans (trans_comp T1 T2).
+Proof.
+  unfold sound_trans in *.
+  unfold trans_comp.
+  intros t Hwf Hinconcat.
+  apply Hs2; auto.
+  intros tr Hintr.
+  apply Hs1. *)
+
 (*As a trivial example, the identity transformation is sound*)
 Definition trans_id: trans := fun x => [x].
 
@@ -235,6 +252,430 @@ Proof.
     apply (Hallty (gamma, delta, goal)); auto.
   - erewrite satisfies_irrel. apply (H0 _ H1).
 Qed.
+
+(*Map a term/formula transformation through all assumptions
+  and the goal*)
+(*NOTE: we do NOT map in definitions (except [nonrec_def] - we don't
+  want to deal with e.g. function termination, positivity, etc).
+  This is OK; when we need this (e.g. for [compile_match]),
+  we must have run [eliminate_inductive] and at least
+  [eliminate_recursion] beforehand
+  NOTE: Why3 does not enforce this restriction (e.g. for [compile_match])
+  it is probably OK because [compile_match] should not prevent 
+  termination, but it is very annoying to show for sure*)
+Section Map.
+Variable (fn : term -> term) (pn: formula -> formula).
+
+Definition funpred_def_map (fd: funpred_def) : funpred_def :=
+  match fd with
+  | fun_def f vs t => fun_def f vs (fn t)
+  | pred_def p vs f => pred_def p vs (pn f)
+  end.
+
+Definition def_map (d: def) : def :=
+  match d with
+  | nonrec_def ls => nonrec_def (funpred_def_map ls)
+  (* | recursive_def ls =>
+    recursive_def (map funpred_def_map ls)
+  | inductive_def ls =>
+    inductive_def (map indpred_def_map ls) *)
+  | _ => d
+  end.
+
+Definition task_map (t: task) : task :=
+  (map def_map (task_gamma t), 
+   map (fun x => (fst x, pn (snd x))) (task_delta t),
+   pn (task_goal t)).
+Definition trans_map : trans :=
+  single_trans task_map.
+
+(*And describe condition for soundness*)
+(*NOTE; need iff for [full_interp] part*)
+Variable (fn_typed: forall gamma t ty,
+  term_has_type gamma t ty ->
+  term_has_type gamma (fn t) ty).
+Variable (pn_typed: forall gamma f,
+  formula_typed gamma f ->
+  formula_typed gamma (pn f)).
+Variable (fn_rep: forall gamma (gamma_valid: valid_context gamma) 
+  (pd: pi_dom) (pf: pi_funpred gamma_valid pd) (vt: val_typevar)
+  (vv: val_vars pd vt) (t: term) (ty: vty) (Hty: term_has_type gamma t ty)
+  (Hty2: term_has_type gamma (fn t) ty),
+  term_rep gamma_valid pd vt pf vv t ty Hty =
+  term_rep gamma_valid pd vt pf vv (fn t) ty Hty2).
+Variable (pn_rep: forall gamma (gamma_valid: valid_context gamma) 
+  (pd: pi_dom) (pf: pi_funpred gamma_valid pd) (vt: val_typevar)
+  (vv: val_vars pd vt) (f: formula) (Hty: formula_typed gamma f)
+  (Hty2: formula_typed gamma (pn f)),
+  formula_rep gamma_valid pd vt pf vv f Hty =
+  formula_rep gamma_valid pd vt pf vv (pn f) Hty2).
+
+(*Prove context part*)
+(* Lemma def_map_context_valid gamma:
+  valid_context gamma ->
+  valid_context (map ) *)
+Section FunInterp.
+
+(*Need to convert [pi_funpred] on [gamma] into one on [(map def_map gamma)].
+  This is not too hard*)
+
+Lemma def_map_gamma_mut gamma:
+  mut_of_context (map def_map gamma) = mut_of_context gamma.
+Proof.
+  induction gamma as [| h t IH]; simpl; auto.
+  destruct h; simpl in *; auto. f_equal; assumption.
+Qed.
+
+(*TODO: can I assume [gamma_valid1]?*)
+Lemma def_map_constrs {gamma} (gamma_valid: valid_context gamma)
+  (gamma_valid1: valid_context (map def_map gamma))
+(pd: pi_dom) (pf: pi_funpred gamma_valid pd):
+  forall (m : mut_adt) (a : alg_datatype) 
+    (c : funsym) (Hm : mut_in_ctx m (map def_map gamma)) 
+    (Ha : adt_in_mut a m) (Hc : constr_in_adt c a)
+    (srts : list sort)
+    (Hlens : Datatypes.length srts =
+              Datatypes.length (m_params m))
+    (args : arg_list (domain (dom_aux pd))
+              (sym_sigma_args c srts)),
+  funs gamma_valid pd pf c srts args =
+  constr_rep_dom gamma_valid1 m Hm srts Hlens 
+    (dom_aux pd) a Ha c Hc (adts pd m srts) args.
+Proof.
+  intros.
+  assert (m_in: mut_in_ctx m gamma). {
+    revert Hm. apply mut_in_ctx_sublist.
+    rewrite def_map_gamma_mut. apply incl_refl.
+  }
+  rewrite (constrs _ pd pf m a c m_in Ha Hc srts Hlens).
+  unfold constr_rep_dom.
+  f_equal. f_equal. f_equal. apply UIP_dec. apply sort_eq_dec.
+  apply constr_rep_change_gamma.
+Qed.
+
+Definition def_map_pf {gamma} (gamma_valid: valid_context gamma) 
+(gamma_valid1: valid_context (map def_map gamma))
+(pd: pi_dom) (pf: pi_funpred gamma_valid pd):
+pi_funpred gamma_valid1 pd :=
+Build_pi_funpred gamma_valid1 pd
+  (funs gamma_valid pd pf)
+  (preds gamma_valid pd pf)
+  (def_map_constrs gamma_valid gamma_valid1 pd pf).
+
+(*And we prove that every formula true under this pf in gamma'
+  is true under the original in gamma, and vice versa.
+  This is trivial*)
+Lemma tm_def_map_pf {gamma} (gamma_valid: valid_context gamma) 
+(gamma_valid1: valid_context (map def_map gamma))
+(pd: pi_dom) (pf: pi_funpred gamma_valid pd)
+(vt: val_typevar) (vv: val_vars pd vt) (t: term) (ty: vty)
+(Hty1: term_has_type gamma t ty)
+(Hty2: term_has_type (map def_map gamma) t ty):
+term_rep gamma_valid1 pd vt
+  (def_map_pf gamma_valid gamma_valid1 pd pf) vv t ty Hty2 =
+term_rep gamma_valid pd vt pf vv t ty Hty1.
+Proof.
+  apply term_change_gamma_pf; simpl; auto.
+  apply def_map_gamma_mut.
+Qed.
+
+Lemma fmla_def_map_pf {gamma} (gamma_valid: valid_context gamma)
+(gamma_valid1: valid_context (map def_map gamma))
+(pd: pi_dom) (pf: pi_funpred gamma_valid pd)
+(vt: val_typevar) (vv: val_vars pd vt) (f: formula)
+(Hty1: formula_typed gamma f)
+(Hty2: formula_typed (map def_map gamma) f):
+formula_rep gamma_valid1 pd vt
+  (def_map_pf gamma_valid gamma_valid1 pd pf) vv f Hty2 =
+formula_rep gamma_valid pd vt pf vv f Hty1.
+Proof.
+  apply fmla_change_gamma_pf; simpl; auto.
+  apply def_map_gamma_mut.
+Qed.
+
+Lemma mutfuns_of_def_map gamma:
+  mutfuns_of_context (map def_map gamma) = mutfuns_of_context gamma.
+Proof.
+  induction gamma as [| h t IH]; simpl; auto.
+  destruct h; simpl; auto. f_equal; auto.
+Qed.
+
+Lemma indpreds_of_def_map gamma:
+  indpreds_of_context (map def_map gamma) = indpreds_of_context gamma.
+Proof.
+  induction gamma as [| h t IH]; simpl; auto.
+  destruct h; simpl; auto. f_equal; auto.
+Qed.
+
+(*TODO: move*)
+Definition eq_sig (g1 g2: context) : Prop :=
+  (forall x, In x (sig_t g1) <-> In x (sig_t g2)) /\
+  (forall x, In x (sig_f g1) <-> In x (sig_f g2)) /\
+  (forall x, In x (sig_p g1) <-> In x (sig_p g2)).
+
+Lemma eq_sig_refl: forall l, eq_sig l l.
+Proof.
+  intros. unfold eq_sig; split_all; intros; reflexivity.
+Qed.
+
+Lemma eq_sig_cons: forall x l1 l2,
+  eq_sig l1 l2 ->
+  eq_sig (x :: l1) (x :: l2).
+Proof.
+  intros. unfold eq_sig in *. split_all; intros;
+  unfold sig_t, sig_f, sig_p in *; simpl;
+  rewrite !in_app_iff; apply or_iff_compat_l; auto.
+Qed.
+
+Lemma eq_sig_sublist g1 g2:
+  eq_sig g1 g2 <-> sublist_sig g1 g2 /\ sublist_sig g2 g1.
+Proof.
+  unfold eq_sig, sublist_sig. split; intros; 
+  destruct_all; split_all; unfold sublist in *; intros; auto;
+  try (apply H; auto); try (apply H0; auto); try (apply H1; auto);
+  split; intros; auto.
+Qed.
+
+Lemma eq_sig_is_sublist g1 g2:
+  eq_sig g1 g2 ->
+  sublist_sig g1 g2.
+Proof.
+  rewrite eq_sig_sublist; intros [H1 H2]; auto.
+Qed.
+
+Lemma eq_sig_sym g1 g2:
+  eq_sig g1 g2 ->
+  eq_sig g2 g1.
+Proof.
+  unfold eq_sig. intros; destruct_all; split_all; intros; auto;
+  symmetry; auto.
+Qed.
+
+Lemma def_map_eq_sig gamma:
+  eq_sig (map def_map gamma) gamma.
+Proof.
+  induction gamma as [|h t IH]; simpl; [apply eq_sig_refl|].
+  destruct h; simpl; try solve[apply eq_sig_cons; auto].
+  unfold eq_sig in *. unfold sig_t, sig_f, sig_p in *. simpl in *.
+  unfold funpred_def_map; simpl.
+  destruct IH as [IH1 [IH2 IH3]].
+  destruct f; simpl in *; auto.
+  - split_all; auto.
+    intros f1; specialize (IH2 f1); destruct IH2; 
+    split; intros; destruct_all; subst; auto.
+  - split_all; auto.
+    intros f1; specialize (IH3 f1); destruct IH3; 
+    split; intros; destruct_all; subst; auto.
+Qed.
+
+(*And now we prove that if pf is full, so is
+  [gen_new_ctx_pf] (not true in the other direction of course -
+  recfuns wont necessarily hold)*)
+Lemma def_map_pf_full {gamma} (gamma_valid: valid_context gamma)
+(gamma_valid1: valid_context (map def_map gamma)) 
+(pd: pi_dom) (pf: pi_funpred gamma_valid pd):
+full_interp gamma_valid pd pf ->
+full_interp gamma_valid1 pd 
+  (def_map_pf gamma_valid gamma_valid1 pd pf).
+Proof.
+  unfold full_interp; intros [Hfun [Hpred [Hconstr Hleast]]]; split_all.
+  - clear Hpred Hconstr Hleast.
+    intros. simpl.
+    (*Not quite defined exactly, but equialent is defined*)
+    assert (f_in': fun_defined gamma f args body \/
+      exists body1, fun_defined gamma f args body1 /\
+      term_has_type gamma body (f_ret f) /\
+      forall (Hty1: term_has_type gamma body (f_ret f))
+      (Hty2: term_has_type gamma body1 (f_ret f)) pd pf vt vv,
+      term_rep gamma_valid pd vt pf vv body1 (f_ret f) Hty2 =
+      term_rep gamma_valid pd vt pf vv body (f_ret f) Hty1
+    ).
+    {
+      assert (f_in1:=f_in).
+      unfold fun_defined in *.
+      setoid_rewrite mutfuns_of_def_map in f_in.
+      destruct f_in as [Hrec | Hnonrec]; auto.
+      rewrite in_map_iff in Hnonrec.
+      destruct Hnonrec as [d [Hd Hind]].
+      destruct d; try discriminate.
+      simpl in Hd. unfold funpred_def_map in Hd.
+      destruct f0; try discriminate.
+      inversion Hd; subst; auto. right. exists t.
+      split_all; auto.
+      apply fn_typed.
+      apply nonrec_body_ty in Hind; auto.
+    }
+    destruct f_in' as [f_in' | [body1 [f_in' [Hty Hbodyrep]]]].
+    + erewrite (Hfun f args body f_in' srts srts_len a vt vv).
+      erewrite tm_def_map_pf.
+      apply dom_cast_eq.
+    + erewrite (Hfun f args body1 f_in' srts srts_len a vt vv).
+      erewrite Hbodyrep with (Hty1:=Hty).
+      erewrite tm_def_map_pf.
+      apply dom_cast_eq.
+  - clear Hfun Hconstr Hleast.
+    intros. simpl.
+    (*Not quite defined exactly, but equialent is defined*)
+    assert (p_in': pred_defined gamma p args body \/
+      exists body1, pred_defined gamma p args body1 /\
+      formula_typed gamma body /\
+      forall (Hty1: formula_typed gamma body)
+      (Hty2: formula_typed gamma body1) pd pf vt vv,
+      formula_rep gamma_valid pd vt pf vv body1 Hty2 =
+      formula_rep gamma_valid pd vt pf vv body Hty1
+    ).
+    {
+      assert (p_in1:=p_in).
+      unfold pred_defined in *.
+      setoid_rewrite mutfuns_of_def_map in p_in.
+      destruct p_in as [Hrec | Hnonrec]; auto.
+      rewrite in_map_iff in Hnonrec.
+      destruct Hnonrec as [d [Hd Hind]].
+      destruct d; try discriminate.
+      simpl in Hd. unfold funpred_def_map in Hd.
+      destruct f; try discriminate.
+      inversion Hd; subst; auto. right. exists f.
+      split_all; auto.
+      apply pn_typed.
+      apply nonrec_body_typed in Hind; auto.
+    }
+    destruct p_in' as [p_in' | [body1 [p_in' [Hty Hbodyrep]]]].
+    + erewrite (Hpred p args body p_in' srts srts_len a vt vv).
+      erewrite fmla_def_map_pf.
+      reflexivity.
+    + erewrite (Hpred p args body1 p_in' srts srts_len a vt vv).
+      erewrite Hbodyrep with (Hty1:=Hty).
+      erewrite fmla_def_map_pf.
+      reflexivity.
+  - clear -Hconstr.
+    intros.
+    assert (Hin:=l_in).
+    rewrite indpreds_of_def_map in Hin.
+    specialize (Hconstr l Hin p fs p_in srts srts_len vt vv f f_in).
+    erewrite fmla_rep_irrel.
+    erewrite fmla_def_map_pf.
+    apply Hconstr.
+    Unshelve.
+    apply (indprop_fmla_valid gamma_valid1 l_in p_in f_in).
+  - clear -Hleast.
+    intros.
+    assert (Hin:=l_in).
+    rewrite indpreds_of_def_map in Hin.
+    specialize (Hleast l Hin p p_in fs srts srts_len a vt vv Ps).
+    apply Hleast; auto.
+    intros fs1 Hform Hinfs1.
+    assert (Hall: Forall (formula_typed (map def_map gamma)) fs1).
+    {
+      revert Hform. rewrite !Forall_forall. intros Hall x Hinx.
+      eapply formula_typed_sublist. 3: apply Hall; auto.
+      - apply eq_sig_is_sublist, eq_sig_sym, def_map_eq_sig.
+      - rewrite def_map_gamma_mut; apply sublist_refl. 
+    }
+    specialize (H fs1 Hall Hinfs1).
+    revert H.
+    erewrite dep_map_ext. intros Hand; apply Hand.
+    intros x y1 y2 Hinx.
+    apply fmla_change_gamma_pf; auto.
+    + rewrite def_map_gamma_mut. reflexivity.
+    + intros p1 srts1 a1 Hinp1.
+      simpl.
+      apply find_apply_pred_ext; auto.
+Qed.
+
+Lemma satisfies_def_map_pf
+{gamma} (gamma_valid: valid_context gamma) 
+(gamma_valid1: valid_context (map def_map gamma)) 
+(pd: pi_dom) (pf: pi_funpred gamma_valid pd)
+(pf_full: full_interp gamma_valid pd pf)
+(pf_full2: full_interp gamma_valid1 pd
+  (def_map_pf gamma_valid gamma_valid1 pd pf))
+(f: formula)
+(Hty1: formula_typed gamma f)
+(Hty2: formula_typed (map def_map gamma) f):
+satisfies gamma_valid1 pd 
+  (def_map_pf gamma_valid gamma_valid1 pd pf) pf_full2 f
+  Hty2 <->
+satisfies gamma_valid pd pf pf_full f Hty1.
+Proof.
+  unfold satisfies. split; intros.
+  specialize (H vt vv).
+  erewrite fmla_def_map_pf in H.
+  apply H.
+  erewrite fmla_def_map_pf. apply H.
+Qed.
+
+End FunInterp.
+
+(*TODO: replace [prove_hyp]*)
+Ltac forward_gen H tac :=
+        match type of H with
+        | ?X -> _ => let H' := fresh in assert (H':X) ; [tac|specialize (H H'); clear H']
+        end.
+
+Tactic Notation "forward" constr(H) := forward_gen H ltac:(idtac).
+Tactic Notation "forward" constr(H) "by" tactic(tac) := forward_gen H tac.
+
+
+Lemma task_map_valid (t: task):
+  task_wf t ->
+  task_valid (task_map t) ->
+  task_valid t.
+Proof.
+  unfold task_valid.
+  destruct t as [[gamma delta] goal]; simpl_task.
+  unfold task_map; simpl; simpl_task.
+  intros Hwf1 [Hwf2 Hval].
+  split; auto.
+  intros gamma_valid Hwf3.
+  unfold log_conseq. intros pd pf pf_full Hsat.
+  unfold satisfies.
+  inversion Hwf2; simpl in *; simpl_task.
+  specialize (Hval task_gamma_valid0 Hwf2).
+  unfold log_conseq in Hval.
+  specialize (Hval pd).
+  specialize (Hval (def_map_pf gamma_valid task_gamma_valid0 pd pf)
+    (def_map_pf_full gamma_valid task_gamma_valid0 pd pf pf_full)).
+  forward Hval. (*Prove equivalence of hypotheses*)
+  {
+    intros d Hd.
+    assert (Hind:=Hd).
+    rewrite map_map in Hind.
+    simpl in Hind.
+    rewrite in_map_iff in Hind.
+    destruct Hind as [[name f] [Hdeq Hinf]]; simpl in Hdeq; subst d.
+    assert (Hty: formula_typed gamma (pn f)).
+    {
+      apply pn_typed.
+      assert (Hinf': In f (map snd (task_delta (gamma, delta, goal)))) by (rewrite in_map_iff;
+        exists (name, f); auto). 
+      apply (Forall_In task_delta_typed Hinf').
+    }
+    rewrite satisfies_def_map_pf with (pf_full:=pf_full)(Hty1:=Hty).
+    unfold satisfies.
+    intros vt vv. (*Here, use equivalence of rep*)
+    erewrite <- pn_rep. apply Hsat.
+    Unshelve. rewrite in_map_iff; exists (name, f); auto.
+  }
+  (*And now we can prove the same for the goal*)
+  intros vt vv.
+  unfold satisfies in Hval.
+  specialize (Hval vt vv).
+  erewrite fmla_def_map_pf in Hval.
+  erewrite pn_rep. apply Hval.
+  Unshelve.
+  apply pn_typed.
+  inversion Hwf1; auto; simpl_task.
+  inversion task_goal_typed1; auto.
+Qed.
+
+Lemma trans_map_sound: sound_trans trans_map.
+Proof.
+  unfold sound_trans, trans_map, single_trans. simpl.
+  intros t Hwf Hval. specialize (Hval _ (ltac:(left; reflexivity))).
+  apply task_map_valid; auto.
+Qed.
+
+End Map.
 
 End TransUtil.
 
