@@ -6,7 +6,7 @@ Require Export Interp. (*NOTE: require this so that
 Section Induction.
 
 Context {gamma: context} (gamma_valid: valid_context gamma)
-{pd: pi_dom gamma}.
+{pd: pi_dom} (pdf: pi_dom_full gamma pd).
 
 
 
@@ -443,7 +443,7 @@ Proof.
   apply (existT _ (Logic.eq_refl)). reflexivity.
 Qed.
 
-Notation domain := (domain (dom_aux pd)).
+Notation domain := (domain pd).
 
 (*Finally, we define a generalized induction principle on ADTs: 
   - Suppose we have P, a proposition on all ADTs in mut adt m
@@ -454,19 +454,19 @@ Notation domain := (domain (dom_aux pd)).
   *)
 Theorem adt_rep_ind m m_in srts
   (Hlen: length srts = length (m_params m)) 
-  (P: forall t t_in, adt_rep m srts (dom_aux pd) t t_in -> Prop):
-  (forall t t_in (x: adt_rep m srts (dom_aux pd) t t_in) 
+  (P: forall t t_in, adt_rep m srts pd t t_in -> Prop):
+  (forall t t_in (x: adt_rep m srts pd t t_in) 
     (c: funsym) (Hc: constr_in_adt c t) (a: arg_list domain (sym_sigma_args c srts))
-    (Hx: x = constr_rep gamma_valid m m_in srts Hlen (dom_aux pd) t t_in c
-      Hc (Interp.adts pd m srts) a),
+    (Hx: x = constr_rep gamma_valid m m_in srts Hlen pd t t_in c
+      Hc (Interp.adts pdf m srts) a),
     (forall i t' t_in' Heq, i < length (s_args c) ->
       (*If nth i a has type adt_rep ..., then P holds of it*)
-      P t' t_in' (scast (Interp.adts pd m srts t' m_in t_in') 
+      P t' t_in' (scast (Interp.adts pdf m srts t' m_in t_in') 
         (dom_cast _ Heq (hnth i a s_int (dom_int pd)))) 
       ) ->
     P t t_in x
     ) ->
-  forall t t_in (x: adt_rep m srts (dom_aux pd) t t_in),
+  forall t t_in (x: adt_rep m srts pd t t_in),
   P t t_in x.
 Proof.
   intros.
@@ -476,12 +476,12 @@ Proof.
   use it for this*)
   pose proof (W_ind (finite (length (typs m)))
   (fun n : finite (Datatypes.length (typs m)) =>
-    build_base (var_map m srts (dom_aux pd))
-    (typesym_map m srts (dom_aux pd)) (typs m)
+    build_base (var_map m srts pd)
+    (typesym_map m srts pd) (typs m)
     (adt_constrs (fin_nth (typs m) n)))
   (fun this i : finite (Datatypes.length (typs m)) =>
-    build_rec (var_map m srts (dom_aux pd))
-      (typesym_map m srts (dom_aux pd)) (typs m)
+    build_rec (var_map m srts pd)
+      (typesym_map m srts pd) (typs m)
       (adt_name (fin_nth (typs m) i))
       (adt_constrs (fin_nth (typs m) this)))
   (*instantiate P*)
@@ -526,9 +526,9 @@ Proof.
     Then we use (complicated, dependent) inversion to
     connect the components of x' with those of the constructor and args
     *)
-  destruct (find_constr_rep gamma_valid m m_in srts Hlen (dom_aux pd)
+  destruct (find_constr_rep gamma_valid m m_in srts Hlen pd
     (fin_nth (typs m) i) (In_in_bool adt_dec _ _ (fin_nth_in (typs m) i))
-    (Interp.adts pd m srts) (gamma_all_unif gamma_valid m m_in) x') as [c [[c_in args] Hx']].
+    (Interp.adts pdf m srts) (gamma_all_unif gamma_valid m m_in) x') as [c [[c_in args] Hx']].
   (*Here, we need info about a*)
   assert (Hnodupb: nodupb funsym_eq_dec
     (ne_list_to_list (adt_constrs (fin_nth (typs m) i)))). {
@@ -536,8 +536,8 @@ Proof.
     rewrite in_map_iff. exists (fin_nth (typs m) i). split; auto.
     apply fin_nth_in.
   }
-  destruct (get_funsym_base (var_map m srts (dom_aux pd))
-    (typesym_map m srts (dom_aux pd)) (typs m) 
+  destruct (get_funsym_base (var_map m srts pd)
+    (typesym_map m srts pd) (typs m) 
     (adt_name (fin_nth (typs m) i))
     (adt_constrs (fin_nth (typs m) i)) Hnodupb a
     ) as [c' [Hinc' [b1 Ha]]].
@@ -594,8 +594,8 @@ Proof.
   }
   set (fin:=nat_to_finite n Hn').
   set (br:=(@finite_to_build_rec 
-  (var_map m srts (dom_aux pd))
-  (typesym_map m srts (dom_aux pd))
+  (var_map m srts pd)
+  (typesym_map m srts pd)
   (typs m)
   (adt_name (fin_nth (typs m) i))
   (adt_name (fin_nth (typs m) (get_idx adt_dec t' (typs m) t_in')))
@@ -615,8 +615,8 @@ Proof.
     (cast_w (cast_i m m_in (get_idx adt_dec t' (typs m) t_in'))
       (f (get_idx adt_dec t' (typs m) t_in')
         br))) =
-            (scast (Interp.adts pd m srts t' m_in t_in')
-            (dom_cast (dom_aux pd) Heq (hnth j args s_int (dom_int pd))))). {
+            (scast (Interp.adts pdf m srts t' m_in t_in')
+            (dom_cast pd Heq (hnth j args s_int (dom_int pd))))). {
     unfold cast_adt_rep. rewrite cast_w_twice. 2: apply finite_eq_dec.
     (*Now we need to know something about f, again by
       inversion on x'*)
@@ -639,8 +639,8 @@ Proof.
     unfold cast_a in Hexeq.
     (*We use a cast on the [build_rec] to specialize the function*)
     set (br_cast := (cast_build_rec (cast_i m m_in i)
-    (var_map m srts (dom_aux pd))
-    (typesym_map m srts (dom_aux pd)) 
+    (var_map m srts pd)
+    (typesym_map m srts pd) 
     (adt_name (fin_nth (typs m) (get_idx adt_dec t' (typs m) t_in')))
     c Hinc' b1 br
     )).
@@ -660,8 +660,8 @@ Proof.
     (*this is a bit awful because we need all the function types*)
     rewrite (@cast_fun' _ 
       (finite (Datatypes.length (typs m)))
-      (fun j0 a => build_rec (var_map m srts (dom_aux pd))
-        (typesym_map m srts (dom_aux pd)) (typs m)
+      (fun j0 a => build_rec (var_map m srts pd)
+        (typesym_map m srts pd) (typs m)
         (adt_name (fin_nth (typs m) j0))
         (adt_constrs
           (fin_nth (typs m)
@@ -672,12 +672,12 @@ Proof.
       (fun (j0 : finite (Datatypes.length (typs m))) => 
       W (finite (Datatypes.length (typs m)))
         (fun n0 : finite (Datatypes.length (typs m)) =>
-        build_base (var_map m srts (dom_aux pd))
-          (typesym_map m srts (dom_aux pd)) (typs m)
+        build_base (var_map m srts pd)
+          (typesym_map m srts pd) (typs m)
           (adt_constrs (fin_nth (typs m) n0)))
         (fun this i0 : finite (Datatypes.length (typs m)) =>
-        build_rec (var_map m srts (dom_aux pd))
-          (typesym_map m srts (dom_aux pd)) (typs m)
+        build_rec (var_map m srts pd)
+          (typesym_map m srts pd) (typs m)
           (adt_name (fin_nth (typs m) i0))
           (adt_constrs (fin_nth (typs m) this))) j0)
       _ _ _ Heq2).
@@ -741,8 +741,8 @@ Proof.
           rewrite build_rec_finite_inv1. reflexivity.
         }
         (*With that lemma, we can rewrite*)
-        rewrite (H (var_map m srts (dom_aux pd))
-        (typesym_map m srts (dom_aux pd)) _ _ (cast_i m m_in i) ).
+        rewrite (H (var_map m srts pd)
+        (typesym_map m srts pd) _ _ (cast_i m m_in i) ).
         (*Now we have a [build_rec_to_finite] of a single cast*)
         rewrite build_rec_to_finite_cast.
         2: {
@@ -760,8 +760,8 @@ Proof.
     unfold args_to_ind_base, args_to_ind_base_aux.
     subst fin.
     (*need a default adt*)
-    set (d_adt:= scast (Interp.adts pd m srts t' m_in t_in')
-    (dom_cast (dom_aux pd) Heq (hnth j args s_int (dom_int pd)))).
+    set (d_adt:= scast (Interp.adts pdf m srts t' m_in t_in')
+    (dom_cast pd Heq (hnth j args s_int (dom_int pd)))).
     (*1. Push through [tup_of_list]*)
     rewrite tnthS_tup_of_list with(d:=d_adt).
     (*2. Push through [cast_list]*)

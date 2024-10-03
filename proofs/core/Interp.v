@@ -21,12 +21,12 @@ Variable (gamma: context).
   It makes some dependent type stuff easier to split out the domain-related
   pieces from the function and predicate pieces, since the latter
   will change without affecting domains or valuations*)
-Record pi_dom := {
-  dom_aux: sort -> Set; 
+Definition pi_dom : Type := sort -> Set.
+Record pi_dom_full (pd: pi_dom) := {
   (*the prelimiary domain function: the full
     function is (domain dom_aux), which enforces that domain s_int reduces
     to Z and domain s_real reduces to R*)
-  domain_ne: forall s, domain_nonempty (domain dom_aux) s;
+  domain_ne: forall s, domain_nonempty (domain pd) s;
 
   (*ADTs: they are the corresponding W type created by [mk_adts],
     with the typesym and typevar map coming from sorts on which
@@ -34,40 +34,39 @@ Record pi_dom := {
 
     adts: forall (m: mut_adt) (srts: list sort)
     (a: alg_datatype) (m_in: mut_in_ctx m gamma) (Hin: adt_in_mut a m),
-    (domain dom_aux) (typesym_to_sort (adt_name a) srts) =
-    adt_rep m srts dom_aux a Hin;
+    (domain pd) (typesym_to_sort (adt_name a) srts) =
+    adt_rep m srts pd a Hin;
 
 }.
 End PD.
-Arguments dom_aux {_}.
-Arguments domain_ne {_}.
-Arguments adts {_}.
+Arguments domain_ne {_} {_}.
+Arguments adts {_} {_}.
 Context {gamma: context} (gamma_valid: valid_context gamma).
-Record pi_funpred (pd: pi_dom gamma ) := {
+Record pi_funpred (pd: pi_dom) (pdf: pi_dom_full gamma pd) := {
   (*Functions and predicates take in a heterogenous list such that
     the ith argument has the correct type.*)
 
   funs: forall (f:funsym) (srts: list sort),
-    arg_list (domain (dom_aux pd)) (sym_sigma_args f srts) ->
-    (domain (dom_aux pd) (funsym_sigma_ret f srts));
+    arg_list (domain pd) (sym_sigma_args f srts) ->
+    (domain pd (funsym_sigma_ret f srts));
 
   preds: forall (p:predsym) (srts: list sort),
-    arg_list (domain (dom_aux pd)) (sym_sigma_args p srts) -> bool;
+    arg_list (domain pd) (sym_sigma_args p srts) -> bool;
 
   (*The interpretation for each constructor comes from [constr_rep]
     with an additional cast for the domains*)
   constrs: forall (m: mut_adt) (a: alg_datatype) (c: funsym)
     (Hm: mut_in_ctx m gamma) (Ha: adt_in_mut a m) (Hc: constr_in_adt c a)
     (srts: list sort) (Hlens: length srts = length (m_params m))
-    (args: arg_list (domain (dom_aux pd)) (sym_sigma_args c srts)),
+    (args: arg_list (domain pd) (sym_sigma_args c srts)),
     funs c srts args =
-    constr_rep_dom gamma_valid m Hm srts Hlens (dom_aux pd) a Ha
-      c Hc (adts pd m srts) args
+    constr_rep_dom gamma_valid m Hm srts Hlens pd a Ha
+      c Hc (adts pdf m srts) args
 
 }.
 
 (*Useful for defaults*)
-Definition dom_int (pd: pi_dom gamma) : domain (dom_aux pd) s_int := 0%Z.
+Definition dom_int (pd: pi_dom) : domain pd s_int := 0%Z.
 
 (*Valuations*)
 (*A valuation maps type variables to sorts*)
@@ -75,16 +74,17 @@ Definition val_typevar := typevar -> sort.
 
 (*And variables to elements of their domain (according to the
   typevar valuation)*)
-Definition val_vars (pd: pi_dom gamma) (vt: val_typevar) : Type :=
-  forall (x: vsymbol), domain (dom_aux pd) (v_subst vt (snd x)).
+Definition val_vars (pd: pi_dom) (vt: val_typevar) : Type :=
+  forall (x: vsymbol), domain pd (v_subst vt (snd x)).
 
 (*Valuation utilities*)
 Section ValUtil.
 
-Variable pd: pi_dom gamma.
+Variable pd: pi_dom.
+Variable pdf : pi_dom_full gamma pd.
 Variable vt: val_typevar.
 
-Notation domain := (domain (dom_aux pd)).
+Notation domain := (domain pd).
 Notation val t  := (domain (v_subst vt t)).
 
 Definition var_to_dom (vv: val_vars pd vt) (x: vsymbol): val (snd x) :=
@@ -229,7 +229,7 @@ Lemma extend_val_lookup (v: val_vars pd vt) l x t:
   extend_val_with_list vt v l x =
     match (sort_eq_dec (val vt (snd x)) (projT1 t))  with
     | left Heq =>
-        dom_cast (dom_aux pd) (eq_sym Heq)
+        dom_cast pd (eq_sym Heq)
           (projT2 t)
     | right _ => v x
     end.
@@ -310,7 +310,7 @@ Lemma val_with_args_in' (vv : val_vars pd vt)
   x = nth i vars vs_d ->
   forall Heq : nth i srts s_int = v_subst vt (snd x),
   val_with_args vv vars a x =
-  dom_cast (dom_aux pd) Heq (hnth i a s_int (dom_int pd)).
+  dom_cast pd Heq (hnth i a s_int (dom_int pd)).
 Proof.
   intros. subst. apply val_with_args_in; auto.
 Qed.
@@ -342,7 +342,7 @@ End ValArgs.
 (*Trivial valuation gives default elements*)
 Definition triv_val_vars (vt: val_typevar) : val_vars pd vt :=
   fun x => 
-  match domain_ne pd (v_subst vt (snd x)) with
+  match domain_ne pdf (v_subst vt (snd x)) with
   | DE y => y
   end.
 
@@ -512,7 +512,7 @@ Definition upd_vv_args params tys params_len params_nodup
 pd (vt: val_typevar) (vv: val_vars pd vt)
 : val_vars pd (vt_with_args vt params (map (v_subst vt) tys)) :=
   fun x => 
-  (dom_cast (dom_aux pd) (v_subst_vt_with_args' params tys params_len params_nodup
+  (dom_cast pd (v_subst_vt_with_args' params tys params_len params_nodup
     vt (snd x)) 
     (vv (ty_subst_var params tys x))).
 
@@ -539,7 +539,7 @@ Definition upd_vv_args_srts params srts
 pd vt (vv: val_vars pd vt):
 val_vars pd (vt_with_args vt params srts) :=
 fun x =>
-dom_cast (dom_aux pd) 
+dom_cast pd
   (f_equal (fun y => v_subst (vt_with_args vt params y) (snd x)) 
     (map_v_subst_sorts vt srts))
   (upd_vv_args params (sorts_to_tys srts) 
@@ -550,6 +550,7 @@ End VTUtil.
 
 End Interp.
 
-Arguments dom_aux {_}.
-Arguments domain_ne {_}.
-Arguments adts {_}.
+Arguments domain_ne {_} {_}.
+Arguments adts {_} {_}.
+Arguments funs {_} _ _ {_}.
+Arguments preds {_} _ _ {_}.
