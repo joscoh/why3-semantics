@@ -9,8 +9,8 @@ Inductive domain_nonempty (domain: sort -> Type) (s: sort) :=
     domain_nonempty domain s.
 
 Section Interp.
-
-Context {gamma: context} (gamma_valid: valid_context gamma).
+Section PD.
+Variable (gamma: context).
 
 (*A pre-interpretation includes a map from sorts to Set, the condition that
   all of these Sets are nonempty, interpretations for functions and predicates,
@@ -33,12 +33,17 @@ Record pi_dom := {
     the type is applied*)
 
     adts: forall (m: mut_adt) (srts: list sort)
-    (a: alg_datatype) (Hin: adt_in_mut a m),
+    (a: alg_datatype) (m_in: mut_in_ctx m gamma) (Hin: adt_in_mut a m),
     (domain dom_aux) (typesym_to_sort (adt_name a) srts) =
     adt_rep m srts dom_aux a Hin;
 
 }.
-Record pi_funpred (pd: pi_dom) := {
+End PD.
+Arguments dom_aux {_}.
+Arguments domain_ne {_}.
+Arguments adts {_}.
+Context {gamma: context} (gamma_valid: valid_context gamma).
+Record pi_funpred (pd: pi_dom gamma ) := {
   (*Functions and predicates take in a heterogenous list such that
     the ith argument has the correct type.*)
 
@@ -62,7 +67,7 @@ Record pi_funpred (pd: pi_dom) := {
 }.
 
 (*Useful for defaults*)
-Definition dom_int pd : domain (dom_aux pd) s_int := 0%Z.
+Definition dom_int (pd: pi_dom gamma) : domain (dom_aux pd) s_int := 0%Z.
 
 (*Valuations*)
 (*A valuation maps type variables to sorts*)
@@ -70,13 +75,13 @@ Definition val_typevar := typevar -> sort.
 
 (*And variables to elements of their domain (according to the
   typevar valuation)*)
-Definition val_vars (pd: pi_dom) (vt: val_typevar) : Type :=
+Definition val_vars (pd: pi_dom gamma) (vt: val_typevar) : Type :=
   forall (x: vsymbol), domain (dom_aux pd) (v_subst vt (snd x)).
 
 (*Valuation utilities*)
 Section ValUtil.
 
-Variable pd: pi_dom.
+Variable pd: pi_dom gamma.
 Variable vt: val_typevar.
 
 Notation domain := (domain (dom_aux pd)).
@@ -544,3 +549,7 @@ dom_cast (dom_aux pd)
 End VTUtil.
 
 End Interp.
+
+Arguments dom_aux {_}.
+Arguments domain_ne {_}.
+Arguments adts {_}.

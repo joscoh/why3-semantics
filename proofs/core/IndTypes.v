@@ -1103,7 +1103,8 @@ Definition args_to_constr_base (a: arg_list domain sigma_args):
 
 (*We assume that the domain of all adts is given by [adt_rep]
   (which we will require of all possible valid domains)*)
-Variable dom_adts: forall (a: alg_datatype) (Hin: adt_in_mut a m),
+Variable dom_adts: forall (a: alg_datatype) (m_in: mut_in_ctx m gamma) 
+  (Hin: adt_in_mut a m),
   domain (typesym_to_sort (adt_name a) srts) =
   adt_rep a Hin.
 
@@ -1117,7 +1118,7 @@ Proof.
   unfold adt_rep.
   f_equal.
   rewrite get_idx_fin. reflexivity.
-  apply (adts_nodups gamma_valid m_in).
+  apply (adts_nodups gamma_valid m_in). assumption.
 Qed.
 
 (*Now we need some intermediate results about casting (some are not
@@ -1374,7 +1375,7 @@ Definition constr_rep_dom (a: arg_list domain (sym_sigma_args c srts)) :
   domain (funsym_sigma_ret c srts) := 
   scast 
     (*equality proof*)
-    (etrans (esym (dom_adts t t_in)) 
+    (etrans (esym (dom_adts t m_in t_in)) 
       (f_equal domain adt_typesym_funsym)
     ) 
     (*the real value*)
@@ -1769,7 +1770,7 @@ Proof.
         destruct (ts_in_mut_list_ex t0 m Hind). destruct a.
         assert (domain (sigma (vty_cons t0 l0)) = adt_rep x H0). {
           rewrite sigma_cons. rewrite split_arg_func_lemma2.
-          rewrite H. apply dom_adts. exact t0. exact Hl0.
+          rewrite H. apply dom_adts. exact m_in. exact t0. exact Hl0.
         }
         apply (exist _ (HL_cons domain (sigma (vty_cons t0 l0)) _ 
           (get_ind_arg t0 l0 l x H0 H Hl0 H1 i Hi) atl)).
@@ -1929,8 +1930,8 @@ End Constr.
   of funsyms, arg_list, adt_rep, and constr_rep. Thus, our
   semantics do not need to directly reason about finite types,
   W-types, or the explicit functions above.*)
-
-Variable dom_adts: forall (a: alg_datatype) (Hin: adt_in_mut a m),
+Variable dom_adts: forall (a: alg_datatype) (m_in: mut_in_ctx m gamma) 
+(Hin: adt_in_mut a m)  ,
 domain (typesym_to_sort (adt_name a) srts) =
 adt_rep a Hin.
 
@@ -2198,12 +2199,15 @@ Lemma constr_rep_change_gamma {gamma1 gamma2: context}
   (t_in : adt_in_mut t m)
   (c: funsym)
   (c_in: constr_in_adt c t)
-  (adts: forall (a : alg_datatype) (Hin : adt_in_mut a m),
+  (adts1: forall (a : alg_datatype) (m_in: mut_in_ctx m gamma1) (Hin : adt_in_mut a m),
+  domain domain_aux (typesym_to_sort (adt_name a) srts) =
+  adt_rep m srts domain_aux a Hin)
+  (adts2: forall (a : alg_datatype) (m_in: mut_in_ctx m gamma2) (Hin : adt_in_mut a m),
   domain domain_aux (typesym_to_sort (adt_name a) srts) =
   adt_rep m srts domain_aux a Hin)
   (a: arg_list (domain domain_aux) (sym_sigma_args c srts)):
-  constr_rep gamma_valid1 m m_in1 srts srts_len domain_aux t t_in c c_in adts a =
-  constr_rep gamma_valid2 m m_in2 srts srts_len domain_aux t t_in c c_in adts a.
+  constr_rep gamma_valid1 m m_in1 srts srts_len domain_aux t t_in c c_in adts1 a =
+  constr_rep gamma_valid2 m m_in2 srts srts_len domain_aux t t_in c c_in adts2 a.
 Proof.
   unfold constr_rep.
   f_equal.
@@ -2226,15 +2230,20 @@ Lemma find_constr_rep_change_gamma {gamma1 gamma2: context}
   (srts_len : Datatypes.length srts = Datatypes.length (m_params m))
   (domain_aux : Types.sort -> Set) (t : alg_datatype)
   (t_in : adt_in_mut t m)
-  (dom_adts : forall (a : alg_datatype) (Hin : adt_in_mut a m),
+  (dom_adts1 : forall (a : alg_datatype) (m_in: mut_in_ctx m gamma1) 
+              (Hin : adt_in_mut a m),
+              domain domain_aux (typesym_to_sort (adt_name a) srts) =
+              adt_rep m srts domain_aux a Hin)
+  (dom_adts2 : forall (a : alg_datatype) (m_in: mut_in_ctx m gamma2) 
+              (Hin : adt_in_mut a m),
               domain domain_aux (typesym_to_sort (adt_name a) srts) =
               adt_rep m srts domain_aux a Hin)
   (m_unif: uniform m)
   (x: adt_rep m srts domain_aux t t_in):
   projT1 (find_constr_rep gamma_valid1 m m_in1 
-    srts srts_len domain_aux t t_in dom_adts m_unif x) =
+    srts srts_len domain_aux t t_in dom_adts1 m_unif x) =
   projT1 (find_constr_rep gamma_valid2 m m_in2 
-    srts srts_len domain_aux t t_in dom_adts m_unif x).
+    srts srts_len domain_aux t t_in dom_adts2 m_unif x).
 Proof.
   unfold find_constr_rep.
   simpl.
