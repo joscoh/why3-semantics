@@ -6,11 +6,12 @@ Require Export Denotational.
 Section Iter.
 
 Context {gamma} (gamma_valid: valid_context gamma) (pd: pi_dom)
+  (pdf: pi_dom_full gamma pd)
   (vt: val_typevar).
 
-Notation domain := (domain (dom_aux pd)).
-Notation term_rep := (term_rep gamma_valid pd vt).
-Notation formula_rep := (formula_rep gamma_valid pd vt).
+Notation domain := (domain pd).
+Notation term_rep := (term_rep gamma_valid pd pdf vt).
+Notation formula_rep := (formula_rep gamma_valid pd pdf vt).
 
 (*First, we define iterated substitution in 2 forms: 
   for substituting multiple values with an hlist of values
@@ -61,12 +62,12 @@ Lemma substi_mult_nth' (vv: val_vars pd vt)
 (Hi: i < length vs)
 (Hnodup: NoDup vs):
 substi_mult vv vs vals (nth i vs vs_d) = 
-dom_cast (dom_aux pd) 
+dom_cast pd
   (substi_mult_nth_lemma _ _ vs i Hi s_int vs_d) 
   (hnth i vals s_int (dom_int pd)).
 Proof.
   match goal with
-  | |- _ = dom_cast (dom_aux ?pd) ?Heq ?d => generalize dependent Heq
+  | |- _ = dom_cast ?pd ?Heq ?d => generalize dependent Heq
   end.
   generalize dependent i.
   revert vv.
@@ -126,7 +127,7 @@ Lemma substi_mult_nth'' (vv: val_vars pd vt)
 let H : v_subst vt (snd (nth i vs vs_d)) = v_subst vt (snd x) 
   := (f_equal (fun y => (v_subst vt (snd y))) (eq_sym Heqx)) in
 substi_mult vv vs vals x = 
-dom_cast (dom_aux pd) 
+dom_cast pd
   (eq_trans
     (substi_mult_nth_lemma _ _ vs i Hi s_int vs_d) 
     H)
@@ -134,7 +135,7 @@ dom_cast (dom_aux pd)
 Proof.
   simpl.
   match goal with
-  | |- _ = dom_cast (dom_aux ?pd) ?Heq ?d => generalize dependent Heq
+  | |- _ = dom_cast ?pd ?Heq ?d => generalize dependent Heq
   end.
   generalize dependent i.
   revert vv.
@@ -184,7 +185,7 @@ Proof.
 Qed. 
   
   Lemma substi_multi_let_change_pf
-  (pf1 pf2: pi_funpred gamma_valid pd) 
+  (pf1 pf2: pi_funpred gamma_valid pd pdf) 
   (vv: val_vars pd vt)
   (vs: list (vsymbol * term))
   Hall
@@ -219,7 +220,7 @@ Qed.
 
 End IterSub.
 
-Variable  (pf: pi_funpred gamma_valid pd).
+Variable  (pf: pi_funpred gamma_valid pd pdf).
 
 (*Then we define iterated logical operators*)
 

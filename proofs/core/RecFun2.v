@@ -13,7 +13,7 @@ Section Full.
 (*First, we define when a mutual function body is in a context*)
 
 Context {gamma: context} (gamma_valid: valid_context gamma)
-{pd: pi_dom}.
+{pd: pi_dom} {pdf: pi_dom_full gamma pd}.
 
 Lemma funpred_def_valid (l: list funpred_def)
   (l_in: In l (mutfuns_of_context gamma)):
@@ -258,7 +258,7 @@ Defined.
 (*We will need to prove that this has all of the desired properties*)
 
 
-Notation domain := (domain (dom_aux pd)).
+Notation domain := (domain pd).
 
 (*Here, we fix our valuation since we cannot take in any
   input in our final version. We can give a trivial valuation
@@ -275,7 +275,7 @@ Notation domain := (domain (dom_aux pd)).
   the typechecker's correctness.
   We need a pf to know how to evaluate other function and
   predicate symbols (non-recursive ones)*)
-Definition funs_rep (pf: pi_funpred gamma_valid pd) 
+Definition funs_rep (pf: pi_funpred gamma_valid pd pdf) 
   (f: funsym) (l: list funpred_def)
   (f_in: funsym_in_mutfun f l)
   (l_in: In l (mutfuns_of_context gamma))
@@ -316,7 +316,7 @@ Proof.
   exact (dom_cast _ 
     (f_equal (fun x => funsym_sigma_ret x srts) (eq_sym (proj2' (proj2_sig fn_info))))
 
-  (@funs_rep_aux _ gamma_valid pd (fst sns) (snd sns)
+  (@funs_rep_aux _ gamma_valid pd pdf (fst sns) (snd sns)
     (proj1' (funpred_def_to_sns_wf gamma l il Hlen Hidx Hval))
     (proj2' (funpred_def_to_sns_wf gamma l il Hlen Hidx Hval))
     (proj1' (funpred_defs_to_sns_NoDup (valid_context_wf _ gamma_valid) _ _ l_in (eq_sym Hlen)))
@@ -328,7 +328,7 @@ Proof.
     (funpred_defs_to_sns_typevars2 l_in Hpparams (eq_sym Hlen))
     (recdefs_not_constrs l_in (eq_sym Hlen))
     m vs Hlenparams Hfvty Hpvty Hfdec Hpdec 
-      m_in (*pf*) _ pf (triv_val_vars pd vt)
+      m_in (*pf*) _ pf (triv_val_vars pd pdf vt)
     (proj1_sig fn_info)
     (proj1' (proj2_sig fn_info))
     srts Hsrtslen'
@@ -340,7 +340,7 @@ Defined.
 
 
 (*preds_rep*)
-Definition preds_rep (pf: pi_funpred gamma_valid pd) 
+Definition preds_rep (pf: pi_funpred gamma_valid pd pdf) 
   (p: predsym) (l: list funpred_def)
   (p_in: predsym_in_mutfun p l)
   (l_in: In l (mutfuns_of_context gamma))
@@ -378,7 +378,7 @@ Proof.
   (*Need to get the fn associated with this funsym*)
   (*We call [funs_rep_aux] with all of the proofs we need; we need
     to cast the result because it returns something basedon the funsym*)
-  exact (@preds_rep_aux _ gamma_valid pd (fst sns) (snd sns)
+  exact (@preds_rep_aux _ gamma_valid pd pdf (fst sns) (snd sns)
     (proj1' (funpred_def_to_sns_wf gamma l il Hlen Hidx Hval))
     (proj2' (funpred_def_to_sns_wf gamma l il Hlen Hidx Hval))
     (proj1' (funpred_defs_to_sns_NoDup (valid_context_wf _ gamma_valid) _ _ l_in (eq_sym Hlen)))
@@ -390,7 +390,7 @@ Proof.
     (funpred_defs_to_sns_typevars2 l_in Hpparams (eq_sym Hlen))
     (recdefs_not_constrs l_in (eq_sym Hlen))
     m vs Hlenparams Hfvty Hpvty Hfdec Hpdec 
-      m_in _ pf (triv_val_vars pd vt)
+      m_in _ pf (triv_val_vars pd pdf vt)
     (proj1_sig pn_info)
     (proj1' (proj2_sig pn_info))
     srts Hsrtslen'
@@ -413,7 +413,7 @@ Qed.
 
 (*Now we define a modified pi_funpred, where we interpret
   these functions and predicates using their reps*)
-Definition pf_with_funpred_funs (pf: pi_funpred gamma_valid pd)
+Definition pf_with_funpred_funs (pf: pi_funpred gamma_valid pd pdf)
   (l: list funpred_def)
   (l_in: In l (mutfuns_of_context gamma)) :
   forall (f: funsym) (srts: list sort)
@@ -432,7 +432,7 @@ Definition pf_with_funpred_funs (pf: pi_funpred gamma_valid pd)
     | right f_notin => (funs gamma_valid pd pf) f srts a
     end.
 
-Definition pf_with_funpred_preds (pf: pi_funpred gamma_valid pd)
+Definition pf_with_funpred_preds (pf: pi_funpred gamma_valid pd pdf)
   (l: list funpred_def)
   (l_in: In l (mutfuns_of_context gamma)) :
   forall (p: predsym) (srts: list sort)
@@ -453,7 +453,7 @@ Definition pf_with_funpred_preds (pf: pi_funpred gamma_valid pd)
 
   (*Here, we rely on the fact that we cannot have
     a funsym that is recursive and also a constructor*)
-Lemma pf_with_funpred_constrs  (pf: pi_funpred gamma_valid pd)
+Lemma pf_with_funpred_constrs  (pf: pi_funpred gamma_valid pd pdf)
   (l: list funpred_def)
   (l_in: In l (mutfuns_of_context gamma)):
   forall (m : mut_adt) (a : alg_datatype) 
@@ -466,7 +466,7 @@ Lemma pf_with_funpred_constrs  (pf: pi_funpred gamma_valid pd)
               (sym_sigma_args c srts)),
   (pf_with_funpred_funs pf l l_in) c srts args =
   constr_rep_dom gamma_valid m Hm srts Hlens 
-    (dom_aux pd) a Ha c Hc (Interp.adts pd m srts) args.
+    pd a Ha c Hc (Interp.adts pdf m srts) args.
 Proof.
   intros. unfold pf_with_funpred_funs.
   destruct (funsym_in_mutfun_dec c l);
@@ -478,11 +478,11 @@ Proof.
   apply (constr_not_recfun gamma_valid _ _ _ _ l_in Hm Ha i Hc).
 Qed.
 
-Definition pf_with_funpred (pf: pi_funpred gamma_valid pd)
+Definition pf_with_funpred (pf: pi_funpred gamma_valid pd pdf)
 (l: list funpred_def)
 (l_in: In l (mutfuns_of_context gamma)):
-pi_funpred gamma_valid pd :=
-Build_pi_funpred gamma_valid pd (pf_with_funpred_funs pf l l_in)
+pi_funpred gamma_valid pd pdf :=
+Build_pi_funpred gamma_valid pd pdf (pf_with_funpred_funs pf l l_in)
   (pf_with_funpred_preds pf l l_in)
   (pf_with_funpred_constrs pf l l_in).
   
@@ -707,7 +707,7 @@ Lemma pf_funs l
 (srts: list sort)
 (params: list typevar)
 (srts_len: length srts = length params)
-(pf: pi_funpred gamma_valid pd)
+(pf: pi_funpred gamma_valid pd pdf)
 (Hallval: Forall (funpred_def_valid_type gamma) l)
 (m: mut_adt)
 (vs: list vty)
@@ -891,7 +891,7 @@ Proof.
   unfold funs_rep_aux. simpl.
   rewrite funcs_rep_aux_change_pf with(pf2:=pf_with_funpred pf l l_in).
   (*Now, just need val_vars*)
-  rewrite funcs_rep_aux_change_val with(v1:=vv0)(v2:=triv_val_vars pd (vt_with_args triv_val_typevar (s_params (fn_sym f)) srts0)).
+  rewrite funcs_rep_aux_change_val with(v1:=vv0)(v2:=triv_val_vars pd pdf (vt_with_args triv_val_typevar (s_params (fn_sym f)) srts0)).
   reflexivity.
   (*Trivial goals*)
   + intros.
@@ -930,7 +930,7 @@ Lemma pf_preds l
 (srts: list sort)
 (params: list typevar)
 (srts_len: length srts = length params)
-(pf: pi_funpred gamma_valid pd)
+(pf: pi_funpred gamma_valid pd pdf)
 (Hallval: Forall (funpred_def_valid_type gamma) l)
 (m: mut_adt)
 (vs: list vty)
@@ -1113,7 +1113,7 @@ Proof.
   rewrite eq_trans_refl_l. simpl.
   rewrite funcs_rep_aux_change_pf with(pf1:=pf)(pf2:=pf_with_funpred pf l l_in).
   (*Now, just need val_vars*)
-  rewrite funcs_rep_aux_change_val with(v1:=vv0)(v2:=triv_val_vars pd (vt_with_args triv_val_typevar (s_params (pn_sym p)) srts0)).
+  rewrite funcs_rep_aux_change_val with(v1:=vv0)(v2:=triv_val_vars pd pdf (vt_with_args triv_val_typevar (s_params (pn_sym p)) srts0)).
   reflexivity.
   (*Easy goals*)
   + intros.
@@ -1223,7 +1223,7 @@ Proof.
 Qed.
 
 (*Now, we can state and prove our full spec:*)
-Theorem funs_rep_spec (pf: pi_funpred gamma_valid pd)
+Theorem funs_rep_spec (pf: pi_funpred gamma_valid pd pdf)
   (l: list funpred_def)
   (l_in: In l (mutfuns_of_context gamma)):
   forall (f: funsym) (args: list vsymbol) (body: term)
@@ -1235,7 +1235,7 @@ Theorem funs_rep_spec (pf: pi_funpred gamma_valid pd)
   (*We need a cast because we change [val_typevar]*)
   dom_cast _ (funs_cast vt (recfun_in_funsyms l_in (fun_in_mutfun f_in)) srts_len) (
   (*The function is the same as evaluating the body*)
-  term_rep gamma_valid pd 
+  term_rep gamma_valid pd pdf
   (*Setting the function params to srts*)
   (vt_with_args vt (s_params f) srts)
   (*And recursively using [funs_rep] and [preds_rep]*)
@@ -1296,7 +1296,7 @@ Proof.
     (*Now these are the same type*)
     match goal with
     | |- dom_cast ?d ?H1 ?t1 = dom_cast ?d ?H2 ?t2 =>
-      assert (t1 = dom_cast (dom_aux pd) Hv t2)
+      assert (t1 = dom_cast pd Hv t2)
     end.
     2: {
       rewrite H.
@@ -1370,7 +1370,7 @@ Proof.
 Qed. 
 
 (*The pred spec is easier, we don't need a cast*)
-Theorem preds_rep_spec (pf: pi_funpred gamma_valid pd)
+Theorem preds_rep_spec (pf: pi_funpred gamma_valid pd pdf)
   (l: list funpred_def)
   (l_in: In l (mutfuns_of_context gamma)):
   forall (p: predsym) (args: list vsymbol) (body: formula)
@@ -1380,7 +1380,7 @@ Theorem preds_rep_spec (pf: pi_funpred gamma_valid pd)
   (vt: val_typevar) (vv: val_vars pd vt),
   preds_rep pf p l (pred_in_mutfun p_in) l_in srts srts_len a =
   (*The function is the same as evaluating the body*)
-  formula_rep gamma_valid pd 
+  formula_rep gamma_valid pd pdf
   (*Setting the function params to srts*)
   (vt_with_args vt (s_params p) srts)
   (*And recursively using [funs_rep] and [preds_rep]*)

@@ -2938,3 +2938,40 @@ End Wf.
 End FixedVt.
 End FixedInterp.
 End Theorems.
+
+(*[gen] versions*)
+Section Gen.
+
+Context {gamma: context} (gamma_valid: valid_context gamma).
+Context (pd: pi_dom) (pdf: pi_dom_full gamma pd) 
+  (pf: pi_funpred gamma_valid pd pdf) (vt: val_typevar).
+
+Context {b: bool}.
+(* Variable (v: val_vars pd vt). *)
+
+Definition gen_rep (v: val_vars pd vt) (ty: gen_type b) (d: gen_term b) (Hty: gen_typed b d ty) : gen_ret pd vt b ty :=
+  match b return forall (ty: gen_type b) (dat: gen_term b), 
+    gen_typed b dat ty -> gen_ret pd vt b ty with
+  | true => fun ty dat Hty => term_rep gamma_valid pd pdf vt pf v dat ty Hty
+  | false => fun ty dat Hty => formula_rep gamma_valid pd pdf vt pf v dat Hty
+  end ty d Hty.
+
+Lemma gen_rep_change_vv v1 v2 ty t Hty:
+  (forall x, In x (gen_fv t) -> v1 x = v2 x) ->
+  gen_rep v1 ty t Hty = gen_rep v2 ty t Hty.
+Proof.
+  generalize dependent t.
+  generalize dependent ty.
+  unfold gen_term, gen_type, gen_typed, gen_fv, gen_rep.
+  destruct b; simpl in *; intros; [apply tm_change_vv | apply fmla_change_vv]; auto.
+Qed.
+
+Lemma gen_rep_irrel v1 ty d Hty1 Hty2:
+  gen_rep v1 ty d Hty1 = gen_rep v1 ty d Hty2.
+Proof.
+  generalize dependent d.
+  revert ty. unfold gen_rep. destruct b; simpl; intros;
+  [apply term_rep_irrel | apply fmla_rep_irrel].
+Qed.
+
+End Gen.
