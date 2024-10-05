@@ -57,12 +57,12 @@ with sub_fs (subs: list (vsymbol * term)) (f : formula) {struct f}: formula :=
 
 (*Create an [arg_list] by mapping [term_rep]*)
 Definition map_arg_list {gamma: context} (gamma_valid: valid_context gamma)
-(pd: pi_dom) (vt: val_typevar) (pf: pi_funpred gamma_valid pd)
+(pd: pi_dom) (pdf: pi_dom_full gamma pd) (vt: val_typevar) (pf: pi_funpred gamma_valid pd pdf)
 (vv: val_vars pd vt)
 (tms: list term) (tys: list vty)
 (Hlen: length tms = length tys)
 (Htys: Forall (fun x => term_has_type gamma (fst x) (snd x)) (combine tms tys)):
-arg_list (domain (dom_aux pd)) (map (v_subst vt) tys).
+arg_list (domain pd) (map (v_subst vt) tys).
 Proof.
   generalize dependent tys.
   induction tms; simpl.
@@ -74,7 +74,7 @@ Proof.
     destruct tys.
     + exact (False_rect _ (Nat.neq_succ_0 _ Htys)).
     + apply HL_cons.
-      * exact (term_rep gamma_valid pd vt pf vv a v (Forall_inv Hall)).
+      * exact (term_rep gamma_valid pd pdf vt pf vv a v (Forall_inv Hall)).
       * exact (IHtms tys (Nat.succ_inj _ _ Htys) (Forall_inv_tail Hall)).
 Defined.
 
@@ -96,16 +96,16 @@ Proof.
 Qed.
 
 Lemma map_arg_list_nth {gamma: context} (gamma_valid: valid_context gamma)
-(pd: pi_dom) (vt: val_typevar) (pf: pi_funpred gamma_valid pd)
+(pd: pi_dom) (pdf: pi_dom_full gamma pd) (vt: val_typevar) (pf: pi_funpred gamma_valid pd pdf)
 (vv: val_vars pd vt)
 (tms: list term) (tys: list vty)
 (Hlen: length tms = length tys)
 (Htys: Forall (fun x => term_has_type gamma (fst x) (snd x)) (combine tms tys))
 (i: nat) (Hi: i < length tys):
-hnth i (map_arg_list gamma_valid pd vt pf vv tms tys Hlen Htys)
-  s_int (dom_int pd) = dom_cast (dom_aux pd) 
+hnth i (map_arg_list gamma_valid pd pdf vt pf vv tms tys Hlen Htys)
+  s_int (dom_int pd) = dom_cast pd 
     (map_arg_list_nth_eq vt tys i Hi)
-  (term_rep gamma_valid pd vt pf vv 
+  (term_rep gamma_valid pd pdf vt pf vv 
     (nth i tms tm_d) (nth i tys vty_int) 
       (map_arg_list_nth_ty Hlen Hi Htys)).
 Proof.
@@ -221,7 +221,8 @@ Qed.
 (*Need assumption about types of vars*)
 (*Need assumption about no capture*)
 Lemma subs_rep {gamma: context} (gamma_valid: valid_context gamma)
-  (pd: pi_dom) (vt: val_typevar) (pf: pi_funpred gamma_valid pd)
+  (pd: pi_dom) (pdf: pi_dom_full gamma pd) (vt: val_typevar) 
+  (pf: pi_funpred gamma_valid pd pdf)
   (t: term) (f: formula):
   (forall 
   (subs: list (vsymbol * term))
@@ -230,9 +231,9 @@ Lemma subs_rep {gamma: context} (gamma_valid: valid_context gamma)
   (Hall: Forall (fun x => term_has_type gamma (fst x) (snd x))
     (combine (map snd subs) (map snd (map fst subs))))
   vv ty Hty1 Hty2,
-    term_rep gamma_valid pd vt pf vv (sub_ts subs t) ty Hty1 =
-    term_rep gamma_valid pd vt pf (val_with_args pd vt vv (map fst subs)
-      (map_arg_list gamma_valid pd vt pf vv (map snd subs) (map snd (map fst subs))
+    term_rep gamma_valid pd pdf vt pf vv (sub_ts subs t) ty Hty1 =
+    term_rep gamma_valid pd pdf vt pf (val_with_args pd vt vv (map fst subs)
+      (map_arg_list gamma_valid pd pdf vt pf vv (map snd subs) (map snd (map fst subs))
         (map_snd_fst_len _) Hall)
       ) t ty Hty2) /\
   (forall 
@@ -242,9 +243,9 @@ Lemma subs_rep {gamma: context} (gamma_valid: valid_context gamma)
   (Hall: Forall (fun x => term_has_type gamma (fst x) (snd x))
     (combine (map snd subs) (map snd (map fst subs))))
   vv Hty1 Hty2,
-    formula_rep gamma_valid pd vt pf vv (sub_fs subs f) Hty1 =
-    formula_rep gamma_valid pd vt pf (val_with_args pd vt vv (map fst subs)
-      (map_arg_list gamma_valid pd vt pf vv (map snd subs) (map snd (map fst subs))
+    formula_rep gamma_valid pd pdf vt pf vv (sub_fs subs f) Hty1 =
+    formula_rep gamma_valid pd pdf vt pf (val_with_args pd vt vv (map fst subs)
+      (map_arg_list gamma_valid pd pdf vt pf vv (map snd subs) (map snd (map fst subs))
         (map_snd_fst_len _) Hall)
       ) f Hty2).
 Proof.
@@ -376,12 +377,12 @@ Proof.
         (*Simplify to single cast*)
         match goal with
         | |- dom_cast ?d ?H1 ?x1 = dom_cast ?d ?H2 ?x2 =>
-          replace x2 with (dom_cast (dom_aux pd) 
+          replace x2 with (dom_cast pd 
             (f_equal (v_subst vt) Hcast) x1); [rewrite !dom_cast_compose;
             apply dom_cast_eq |]
         end.
         repeat match goal with 
-        | |- context [term_rep ?v ?pd ?vt ?pf ?vv ?t ?ty ?Hty] =>
+        | |- context [term_rep ?v ?pd ?pdf ?vt ?pf ?vv ?t ?ty ?Hty] =>
           generalize dependent Hty
         end.
         assert (Htmseq:  (nth j (map snd (remove_binding subs v)) tm_d) =
@@ -436,10 +437,10 @@ Proof.
     (*Need to show that these [match_val_single] are equal*)
     rewrite match_val_single_irrel with (Hval2:=Forall_inv Hpat2).
     simpl.
-    destruct ( match_val_single gamma_valid pd vt v phd (Forall_inv Hpat2)
-    (term_rep gamma_valid pd vt pf
+    destruct ( match_val_single gamma_valid pd pdf vt v phd (Forall_inv Hpat2)
+    (term_rep gamma_valid pd pdf vt pf
        (val_with_args pd vt vv (map fst subs)
-          (map_arg_list gamma_valid pd vt pf vv (map snd subs) (map snd (map fst subs))
+          (map_arg_list gamma_valid pd pdf vt pf vv (map snd subs) (map snd (map fst subs))
              (map_snd_fst_len subs) Hall)) tm v Hty2)) eqn : Hmatch.
     + (*Hard case*)
       inversion H0; subst; clear H4.
@@ -470,7 +471,7 @@ Proof.
         (*By assumption, not in list l*)
         rewrite extend_val_notin.
         2: {
-          rewrite <- (match_val_single_free_var _ _ _ _ _ _ _ _ _ Hmatch).
+          rewrite <- (match_val_single_free_var _ _ _ _ _ _ _ _ _ _ Hmatch).
           intro C.
           apply (remove_bindings_notin subs (pat_fv phd) _ C).
           apply nth_In; auto. rewrite map_length; auto.
@@ -511,12 +512,12 @@ Proof.
         (*Simplify to single cast*)
         match goal with
         | |- dom_cast ?d ?H1 ?x1 = dom_cast ?d ?H2 ?x2 =>
-          replace x2 with (dom_cast (dom_aux pd) 
+          replace x2 with (dom_cast pd 
             (f_equal (v_subst vt) Hcast) x1); [rewrite !dom_cast_compose;
             apply dom_cast_eq |]
         end.
         repeat match goal with 
-        | |- context [term_rep ?v ?pd ?vt ?pf ?vv ?t ?ty ?Hty] =>
+        | |- context [term_rep ?v ?pd ?pdf ?vt ?pf ?vv ?t ?ty ?Hty] =>
           generalize dependent Hty
         end.
         assert (Htmseq:  (nth j (map snd (remove_bindings subs (pat_fv phd))) tm_d) =
@@ -534,7 +535,7 @@ Proof.
         intros.
         rewrite extend_val_notin; auto.
         (*Use fact that bound vars cannot be free in terms*)
-        rewrite <- (match_val_single_free_var _ _ _ _ _ _ _ _ _ Hmatch).
+        rewrite <- (match_val_single_free_var _ _ _ _ _ _ _ _ _ _ Hmatch).
         intro Hinx'.
         apply (Hfreebnd x).
         split; simpl.
@@ -550,10 +551,10 @@ Proof.
         rewrite val_with_args_notin; auto.
         destruct (in_dec vsymbol_eq_dec x (pat_fv phd)).
         -- apply extend_val_in_agree; auto.
-          apply (match_val_single_typs _ _ _ _ _ _ _ _ Hmatch).
-          rewrite <- (match_val_single_free_var _ _ _ _ _ _ _ _ _ Hmatch); auto.
+          apply (match_val_single_typs _ _ _ _ _ _ _ _ _ Hmatch).
+          rewrite <- (match_val_single_free_var _ _ _ _ _ _ _ _ _ _ Hmatch); auto.
         -- rewrite !extend_val_notin; auto;
-          try solve[rewrite <- (match_val_single_free_var _ _ _ _ _ _ _ _ _ Hmatch); auto].
+          try solve[rewrite <- (match_val_single_free_var _ _ _ _ _ _ _ _ _ _ Hmatch); auto].
           rewrite val_with_args_notin; auto.
           intro C.
           apply n0. eapply notin_remove_binding. apply C. auto.
@@ -639,12 +640,12 @@ Proof.
         (*Simplify to single cast*)
         match goal with
         | |- dom_cast ?d ?H1 ?x1 = dom_cast ?d ?H2 ?x2 =>
-          replace x2 with (dom_cast (dom_aux pd) 
+          replace x2 with (dom_cast pd 
             (f_equal (v_subst vt) Hcast) x1); [rewrite !dom_cast_compose;
             apply dom_cast_eq |]
         end.
         repeat match goal with 
-        | |- context [term_rep ?v ?pd ?vt ?pf ?vv ?t ?ty ?Hty] =>
+        | |- context [term_rep ?v ?pd ?pdf ?vt ?pf ?vv ?t ?ty ?Hty] =>
           generalize dependent Hty
         end.
         assert (Htmseq:  (nth j (map snd (remove_binding subs v)) tm_d) =
@@ -690,12 +691,12 @@ Proof.
   - (*Fquant*)
     (*Core of the proof*)
     assert (Hd: forall d,
-    formula_rep gamma_valid pd vt pf (substi pd vt vv v d)
+    formula_rep gamma_valid pd pdf vt pf (substi pd vt vv v d)
     (sub_fs (remove_binding subs v) f) (typed_quant_inv Hty1) =
-    formula_rep gamma_valid pd vt pf
+    formula_rep gamma_valid pd pdf vt pf
     (substi pd vt
        (val_with_args pd vt vv (map fst subs)
-          (map_arg_list gamma_valid pd vt pf vv (map snd subs)
+          (map_arg_list gamma_valid pd pdf vt pf vv (map snd subs)
              (map snd (map fst subs)) (map_snd_fst_len subs) Hall)) v d) f
     (typed_quant_inv Hty2)).
     {
@@ -766,12 +767,12 @@ Proof.
           (*Simplify to single cast*)
           match goal with
           | |- dom_cast ?d ?H1 ?x1 = dom_cast ?d ?H2 ?x2 =>
-            replace x2 with (dom_cast (dom_aux pd) 
+            replace x2 with (dom_cast pd 
               (f_equal (v_subst vt) Hcast) x1); [rewrite !dom_cast_compose;
               apply dom_cast_eq |]
           end.
           repeat match goal with 
-          | |- context [term_rep ?v ?pd ?vt ?pf ?vv ?t ?ty ?Hty] =>
+          | |- context [term_rep ?v ?pd ?pdf ?vt ?pf ?vv ?t ?ty ?Hty] =>
             generalize dependent Hty
           end.
           assert (Htmseq:  (nth j (map snd (remove_binding subs v)) tm_d) =
@@ -902,12 +903,12 @@ Proof.
         (*Simplify to single cast*)
         match goal with
         | |- dom_cast ?d ?H1 ?x1 = dom_cast ?d ?H2 ?x2 =>
-          replace x2 with (dom_cast (dom_aux pd) 
+          replace x2 with (dom_cast pd 
             (f_equal (v_subst vt) Hcast) x1); [rewrite !dom_cast_compose;
             apply dom_cast_eq |]
         end.
         repeat match goal with 
-        | |- context [term_rep ?v ?pd ?vt ?pf ?vv ?t ?ty ?Hty] =>
+        | |- context [term_rep ?v ?pd ?pdf ?vt ?pf ?vv ?t ?ty ?Hty] =>
           generalize dependent Hty
         end.
         assert (Htmseq:  (nth j (map snd (remove_binding subs v)) tm_d) =
@@ -960,10 +961,10 @@ Proof.
     (*Need to show that these [match_val_single] are equal*)
     rewrite match_val_single_irrel with (Hval2:=Forall_inv Hpat2).
     simpl.
-    destruct ( match_val_single gamma_valid pd vt v phd (Forall_inv Hpat2)
-    (term_rep gamma_valid pd vt pf
+    destruct ( match_val_single gamma_valid pd pdf vt v phd (Forall_inv Hpat2)
+    (term_rep gamma_valid pd pdf vt pf
       (val_with_args pd vt vv (map fst subs)
-          (map_arg_list gamma_valid pd vt pf vv (map snd subs) (map snd (map fst subs))
+          (map_arg_list gamma_valid pd pdf vt pf vv (map snd subs) (map snd (map fst subs))
             (map_snd_fst_len subs) Hall)) tm v Hty2)) eqn : Hmatch.
     + (*Hard case*)
       inversion H0; subst; clear H4.
@@ -994,7 +995,7 @@ Proof.
         (*By assumption, not in list l*)
         rewrite extend_val_notin.
         2: {
-          rewrite <- (match_val_single_free_var _ _ _ _ _ _ _ _ _ Hmatch).
+          rewrite <- (match_val_single_free_var _ _ _ _ _ _ _ _ _ _ Hmatch).
           intro C.
           apply (remove_bindings_notin subs (pat_fv phd) _ C).
           apply nth_In; auto. rewrite map_length; auto.
@@ -1035,12 +1036,12 @@ Proof.
         (*Simplify to single cast*)
         match goal with
         | |- dom_cast ?d ?H1 ?x1 = dom_cast ?d ?H2 ?x2 =>
-          replace x2 with (dom_cast (dom_aux pd) 
+          replace x2 with (dom_cast pd 
             (f_equal (v_subst vt) Hcast) x1); [rewrite !dom_cast_compose;
             apply dom_cast_eq |]
         end.
         repeat match goal with 
-        | |- context [term_rep ?v ?pd ?vt ?pf ?vv ?t ?ty ?Hty] =>
+        | |- context [term_rep ?v ?pd ?pdf ?vt ?pf ?vv ?t ?ty ?Hty] =>
           generalize dependent Hty
         end.
         assert (Htmseq:  (nth j (map snd (remove_bindings subs (pat_fv phd))) tm_d) =
@@ -1058,7 +1059,7 @@ Proof.
         intros.
         rewrite extend_val_notin; auto.
         (*Use fact that bound vars cannot be free in terms*)
-        rewrite <- (match_val_single_free_var _ _ _ _ _ _ _ _ _ Hmatch).
+        rewrite <- (match_val_single_free_var _ _ _ _ _ _ _ _ _ _ Hmatch).
         intro Hinx'.
         apply (Hfreebnd x).
         split; simpl.
@@ -1074,10 +1075,10 @@ Proof.
         rewrite val_with_args_notin; auto.
         destruct (in_dec vsymbol_eq_dec x (pat_fv phd)).
         -- apply extend_val_in_agree; auto.
-          apply (match_val_single_typs _ _ _ _ _ _ _ _ Hmatch).
-          rewrite <- (match_val_single_free_var _ _ _ _ _ _ _ _ _ Hmatch); auto.
+          apply (match_val_single_typs _ _ _ _ _ _ _ _ _ Hmatch).
+          rewrite <- (match_val_single_free_var _ _ _ _ _ _ _ _ _ _ Hmatch); auto.
         -- rewrite !extend_val_notin; auto;
-          try solve[rewrite <- (match_val_single_free_var _ _ _ _ _ _ _ _ _ Hmatch); auto].
+          try solve[rewrite <- (match_val_single_free_var _ _ _ _ _ _ _ _ _ _ Hmatch); auto].
           rewrite val_with_args_notin; auto.
           intro C.
           apply n0. eapply notin_remove_binding. apply C. auto.
@@ -1102,16 +1103,18 @@ Definition sub_ts_rep (t: term)
 (Hnodup: NoDup (map fst subs))
 (Hfreebnd: disj (big_union vsymbol_eq_dec tm_fv (map snd subs)) (tm_bnd t))
 {gamma} (gamma_valid: valid_context gamma)
-(pd: pi_dom) (vt: val_typevar) (pf: pi_funpred gamma_valid pd) :=
-(proj_tm (subs_rep gamma_valid pd vt pf) t) subs Hnodup Hfreebnd.
+(pd: pi_dom) (pdf: pi_dom_full gamma pd) (vt: val_typevar) 
+(pf: pi_funpred gamma_valid pd pdf) :=
+(proj_tm (subs_rep gamma_valid pd pdf vt pf) t) subs Hnodup Hfreebnd.
 
 Definition sub_fs_rep (f: formula)
 (subs: list (vsymbol * term))
 (Hnodup: NoDup (map fst subs))
 (Hfreebnd: disj (big_union vsymbol_eq_dec tm_fv (map snd subs)) (fmla_bnd f))
 {gamma} (gamma_valid: valid_context gamma)
-(pd: pi_dom) (vt: val_typevar) (pf: pi_funpred gamma_valid pd) :=
-(proj_fmla (subs_rep gamma_valid pd vt pf) f) subs Hnodup Hfreebnd.
+(pd: pi_dom) (pdf: pi_dom_full gamma pd) (vt: val_typevar) 
+(pf: pi_funpred gamma_valid pd pdf) :=
+(proj_fmla (subs_rep gamma_valid pd pdf vt pf) f) subs Hnodup Hfreebnd.
 
 (*Prove previous substitution result*)
 
@@ -1176,17 +1179,18 @@ Definition sub_f_equiv t1 x f := proj_fmla (sub_equiv t1 x) f.
 
 (*Previous substitution lemma comes out as corollary*)
 Lemma sub_t_rep {gamma}  (gamma_valid : valid_context gamma) 
-(pd : pi_dom) (pf : pi_funpred gamma_valid pd) 
+(pd : pi_dom) (pdf: pi_dom_full gamma pd) 
+(pf : pi_funpred gamma_valid pd pdf) 
 (vt : val_typevar) (t t1 : term) (x : string) 
 (ty1 ty2 : vty) (v : val_vars pd vt)
 (Hty1 : term_has_type gamma t1 ty1)
 (Hty2 : term_has_type gamma t ty2)
 (Hty3 : term_has_type gamma (sub_t t1 (x, ty1) t) ty2):
 (forall x0 : vsymbol, In x0 (tm_fv t1) -> ~ In x0 (tm_bnd t)) ->
-term_rep gamma_valid pd vt pf v (sub_t t1 (x, ty1) t) ty2 Hty3 =
-term_rep gamma_valid pd vt pf
+term_rep gamma_valid pd pdf vt pf v (sub_t t1 (x, ty1) t) ty2 Hty3 =
+term_rep gamma_valid pd pdf vt pf
 (substi pd vt v (x, ty1)
-   (term_rep gamma_valid pd vt pf v t1 ty1 Hty1)) t ty2 Hty2.
+   (term_rep gamma_valid pd pdf vt pf v t1 ty1 Hty1)) t ty2 Hty2.
 Proof.
   revert Hty3.
   rewrite sub_t_equiv.
@@ -1217,17 +1221,18 @@ Proof.
 Qed.
 
 Lemma sub_f_rep {gamma}  (gamma_valid : valid_context gamma) 
-(pd : pi_dom) (pf : pi_funpred gamma_valid pd) 
+(pd : pi_dom) (pdf: pi_dom_full gamma pd) 
+(pf : pi_funpred gamma_valid pd pdf) 
 (vt : val_typevar) (f: formula) (t1 : term) (x : string) 
 (ty1 : vty) (v : val_vars pd vt)
 (Hty1 : term_has_type gamma t1 ty1)
 (Hval2 : formula_typed gamma f)
 (Hval3 : formula_typed gamma (sub_f t1 (x, ty1) f)):
 (forall x0 : vsymbol, In x0 (tm_fv t1) -> ~ In x0 (fmla_bnd f)) ->
-formula_rep gamma_valid pd vt pf v (sub_f t1 (x, ty1) f) Hval3 =
-       formula_rep gamma_valid pd vt pf
+formula_rep gamma_valid pd pdf vt pf v (sub_f t1 (x, ty1) f) Hval3 =
+       formula_rep gamma_valid pd pdf vt pf
          (substi pd vt v (x, ty1)
-            (term_rep gamma_valid pd vt pf v t1 ty1 Hty1)) f Hval2.
+            (term_rep gamma_valid pd pdf vt pf v t1 ty1 Hty1)) f Hval2.
 Proof.
   revert Hval3.
   rewrite sub_f_equiv.

@@ -11,10 +11,11 @@ Set Bullet Behavior "Strict Subproofs".
 Section OtherTransform.
 
 Context {gamma: context} (gamma_valid: valid_context gamma)
-(pd: pi_dom) (vt: val_typevar) (pf: pi_funpred gamma_valid pd).
+(pd: pi_dom) (pdf: pi_dom_full gamma pd) 
+(vt: val_typevar) (pf: pi_funpred gamma_valid pd pdf).
 
-Notation term_rep := (term_rep gamma_valid pd).
-Notation formula_rep := (formula_rep gamma_valid pd).
+Notation term_rep := (term_rep gamma_valid pd pdf).
+Notation formula_rep := (formula_rep gamma_valid pd pdf).
 
 (*true -> P is equivalent to P*)
 Lemma true_impl (vv: val_vars pd vt) (f: formula) (Hval1: formula_typed gamma f)
@@ -126,7 +127,7 @@ Proof.
   - (*Prove let case here*)
     induction l; auto.
     + simpl; intros; simpl_rep_full. erewrite fmla_rep_irrel.
-      erewrite (fmla_rep_irrel gamma_valid pd pf vt _ f2).
+      erewrite (fmla_rep_irrel gamma_valid pd pdf pf vt _ f2).
       reflexivity.
     + intros. simpl fforalls. erewrite distr_binop_let.
       * rewrite !formula_rep_equation_9. cbv zeta.
@@ -261,28 +262,28 @@ Section Def.
 
 Context {gamma: context} 
   (gamma_valid: valid_context  gamma)
-  (pd: pi_dom).
+  (pd: pi_dom) (pdf: pi_dom_full gamma pd).
 
 (*For the list of predsyms, we need to search through the list
   to apply the correct pred. The dependent types make this
   complicated, so we use a separate function*)
-Fixpoint find_apply_pred (pi: pi_funpred gamma_valid pd)
+Fixpoint find_apply_pred (pi: pi_funpred gamma_valid pd pdf)
 (ps: list predsym)
 (*Our props are an hlist, where we have a Pi for each pi
 of type (srts -> arg_list pi srts -> bool)*)
 (Ps: hlist (fun (p: predsym) => forall srts, 
-  arg_list (domain (dom_aux pd)) 
+  arg_list (domain pd) 
   (sym_sigma_args p srts) -> bool) ps) (p: predsym) :
   (forall srts : list sort,
-    arg_list (domain (dom_aux pd)) 
+    arg_list (domain pd) 
       (sym_sigma_args p srts) -> bool) :=
   (match ps as ps' return
   (hlist (fun p : predsym =>
     forall srts : list sort,
-    arg_list (domain (dom_aux pd))
+    arg_list (domain pd)
       (sym_sigma_args p srts) -> bool) ps') ->
     forall srts : list sort,
-      arg_list (domain (dom_aux pd)) 
+      arg_list (domain pd) 
         (sym_sigma_args p srts) -> bool with
   (*Underneath the depednent types, this is quite
     simple: iterate through the list, compare for equality
@@ -295,12 +296,12 @@ of type (srts -> arg_list pi srts -> bool)*)
     end
   end) Ps.
 
-Lemma find_apply_pred_in (pf: pi_funpred gamma_valid pd)
+Lemma find_apply_pred_in (pf: pi_funpred gamma_valid pd pdf)
   (ps: list predsym)
   (Ps: hlist
   (fun p' : predsym =>
     forall srts : list sort,
-    arg_list (domain (dom_aux pd)) (sym_sigma_args p' srts) -> bool)
+    arg_list (domain pd) (sym_sigma_args p' srts) -> bool)
   ps)
   (p: predsym)
   (Hinp: in_bool predsym_eq_dec p ps) :
@@ -313,12 +314,12 @@ Proof.
     destruct (predsym_eq_dec p a); subst; auto.
 Qed.
 
-Lemma find_apply_pred_notin (pf: pi_funpred gamma_valid pd)
+Lemma find_apply_pred_notin (pf: pi_funpred gamma_valid pd pdf)
 (ps: list predsym)
 (Ps: hlist
 (fun p' : predsym =>
   forall srts : list sort,
-  arg_list (domain (dom_aux pd)) (sym_sigma_args p' srts) -> bool)
+  arg_list (domain pd) (sym_sigma_args p' srts) -> bool)
 ps)
 (p: predsym) :
 ~ In p ps ->
@@ -337,14 +338,16 @@ Lemma find_apply_pred_ext {gamma1 gamma2: context}
   (gamma_valid1: valid_context gamma1)
   (gamma_valid2: valid_context gamma2)
   (pd: pi_dom) 
-  (pf1 : pi_funpred gamma_valid1 pd)
-  (pf2 : pi_funpred gamma_valid2 pd)
+  (pdf1: pi_dom_full gamma1 pd)
+  (pdf2: pi_dom_full gamma2 pd)
+  (pf1 : pi_funpred gamma_valid1 pd pdf1)
+  (pf2 : pi_funpred gamma_valid2 pd pdf2)
   (Hext: forall p srts a,
     preds gamma_valid1 pd pf1 p srts a =
     preds gamma_valid2 pd pf2 p srts a)
   l Ps p srts a:
-  find_apply_pred gamma_valid1 pd pf1 l Ps p srts a =
-  find_apply_pred gamma_valid2 pd pf2 l Ps p srts a.
+  find_apply_pred gamma_valid1 pd pdf1 pf1 l Ps p srts a =
+  find_apply_pred gamma_valid2 pd pdf2 pf2 l Ps p srts a.
 Proof.
   induction l; simpl; auto.
   destruct (predsym_eq_dec p a0); subst; auto.
@@ -356,7 +359,7 @@ Section IndPropRep.
 
 Context {gamma: context} 
   (gamma_valid: valid_context  gamma)
-  (pd: pi_dom).
+  (pd: pi_dom) (pdf: pi_dom_full gamma pd).
 
 Section Def.
 
@@ -364,10 +367,10 @@ Section Def.
 
 (*An interpretation where we substitute p with P*)
 
-Definition interp_with_P (pi: pi_funpred gamma_valid pd) (p: predsym) 
+Definition interp_with_P (pi: pi_funpred gamma_valid pd pdf) (p: predsym) 
   (P: forall srts, 
-    arg_list (domain (dom_aux pd)) (sym_sigma_args p srts) -> bool) :
-  pi_funpred gamma_valid pd :=
+    arg_list (domain pd) (sym_sigma_args p srts) -> bool) :
+  pi_funpred gamma_valid pd pdf :=
   {|
   funs := funs gamma_valid pd pi;
   preds :=
@@ -379,30 +382,30 @@ Definition interp_with_P (pi: pi_funpred gamma_valid pd) (p: predsym)
         end
     | _ => preds gamma_valid pd pi pr
     end;
-  constrs := constrs gamma_valid pd pi
+  constrs := constrs gamma_valid pd pdf pi
 |}.
 
-Notation find_apply_pred := (find_apply_pred gamma_valid pd).
+Notation find_apply_pred := (find_apply_pred gamma_valid pd pdf).
 
 (*Do the same for a list of predsyms*)
-Definition interp_with_Ps (pi: pi_funpred gamma_valid pd)
+Definition interp_with_Ps (pi: pi_funpred gamma_valid pd pdf)
   (ps: list predsym)
   (*Our props are an hlist, where we have a Pi for each pi
   of type (srts -> arg_list pi srts -> bool)*)
   (Ps: hlist (fun (p: predsym) => forall srts, 
-    arg_list (domain (dom_aux pd)) 
+    arg_list (domain pd) 
     (sym_sigma_args p srts) -> bool) ps) :
-  pi_funpred gamma_valid pd :=
+  pi_funpred gamma_valid pd pdf :=
   {|
   funs := funs gamma_valid pd pi;
   preds := find_apply_pred pi ps Ps;
-  constrs := constrs gamma_valid pd pi
+  constrs := constrs gamma_valid pd pdf pi
 |}.
 
-Lemma interp_with_Ps_single (pi: pi_funpred gamma_valid pd)
+Lemma interp_with_Ps_single (pi: pi_funpred gamma_valid pd pdf)
   (p: predsym)
   (Ps: hlist (fun (p:predsym) => forall srts, 
-    arg_list (domain (dom_aux pd)) 
+    arg_list (domain pd) 
     (sym_sigma_args p srts) -> bool) [p]) :
   interp_with_Ps pi [p] Ps =
   interp_with_P pi p (hlist_hd Ps).
@@ -491,27 +494,27 @@ Definition mk_vt srts params :=
   vt_with_args triv_val_typevar srts params.
 
 Definition mk_vv vt :=
-  triv_val_vars pd vt.
+  triv_val_vars pd pdf vt.
 
 (*Since inductive predicates can be mutually recursive, we need
   a list of predsyms and formula lists. This makes the dependent
   types tricky, since we need a (P: forall srts, arg_list srts -> bool)
   for each such predsym*)
 
-Definition indpred_rep (pf: pi_funpred gamma_valid pd) 
+Definition indpred_rep (pf: pi_funpred gamma_valid pd pdf) 
   (*(vt: val_typevar) (vv: val_vars pd vt)*)
   (indpred : list (predsym * list formula))
   (Hform: Forall (Forall (formula_typed gamma)) (map snd indpred)) 
   (p: predsym)
   (Hin: in_bool predsym_eq_dec p (map fst indpred))
   (srts: list sort)
-  (a: arg_list (domain (dom_aux pd)) 
+  (a: arg_list (domain pd) 
   (sym_sigma_args p srts)) : bool :=
   (*Our props are an hlist, where we have a Pi for each pi
   of type (srts -> arg_list pi srts -> bool)*)
   all_dec ((forall (Ps: hlist (fun (p': predsym) => 
     (forall (srts: list sort), 
-    arg_list (domain (dom_aux pd)) 
+    arg_list (domain pd) 
     (sym_sigma_args p' srts) -> bool)) (map fst indpred)),
     (*The precondition is the conjunction of all of the
       inductive hypotheses from the list of formulas, with
@@ -523,7 +526,7 @@ Definition indpred_rep (pf: pi_funpred gamma_valid pd)
       with
       | nil => fun _ => True
       | fs :: ftl => fun Hall =>
-        iter_and (map is_true (dep_map (@formula_rep _ gamma_valid pd
+        iter_and (map is_true (dep_map (@formula_rep _ gamma_valid pd pdf
           (mk_vt (s_params p) srts) (interp_with_Ps pf _ Ps) (mk_vv _))
             fs (Forall_inv Hall))) /\
           build_indpred ftl (Forall_inv_tail Hall)
@@ -534,17 +537,17 @@ Definition indpred_rep (pf: pi_funpred gamma_valid pd)
       (get_hlist_elt predsym_eq_dec Ps p Hin) srts a)).
 
 (*The version for non-mutual-recursion is a lot simpler*)
-Definition indpred_rep_single (pf: pi_funpred gamma_valid pd) 
+Definition indpred_rep_single (pf: pi_funpred gamma_valid pd pdf) 
   (*(vt: val_typevar) (vv: val_vars pd vt)*) (p: predsym)
   (fs: list formula) (Hform: Forall (formula_typed gamma) fs) (srts: list sort) 
-  (a: arg_list (domain (dom_aux pd)) 
+  (a: arg_list (domain pd) 
   (sym_sigma_args p srts)) : bool :=
   all_dec
   (forall (P: forall (srts: list sort), 
-    arg_list (domain (dom_aux pd)) 
+    arg_list (domain pd) 
     (sym_sigma_args p srts) -> bool),
     iter_and (map is_true (dep_map (@formula_rep _ gamma_valid 
-      pd (mk_vt (s_params p) srts) (interp_with_P pf p P) (mk_vv _)) 
+      pd pdf (mk_vt (s_params p) srts) (interp_with_P pf p P) (mk_vv _)) 
       fs Hform)) -> P srts a).
 
 (*We prove these equivalent in the single case
@@ -561,10 +564,10 @@ Proof.
 Defined.
 
 (*Prove equivalence*)
-Lemma indpred_rep_single_equiv (pf: pi_funpred gamma_valid pd) 
+Lemma indpred_rep_single_equiv (pf: pi_funpred gamma_valid pd pdf) 
 (*(vt: val_typevar) (vv: val_vars pd vt)*) (p: predsym)
 (fs: list formula) (Hform: Forall (formula_typed gamma) fs) (srts: list sort) 
-(a: arg_list (domain (dom_aux pd)) 
+(a: arg_list (domain pd) 
 (sym_sigma_args p srts)) :
   indpred_rep_single pf p fs Hform srts a =
   indpred_rep pf [(p, fs)] (Forall_single Hform) p (in_triv p fs) srts a.
@@ -589,7 +592,7 @@ Proof.
     intros _ Hmult.
     specialize (Hmult (HL_cons (fun p' : predsym =>
     forall srts : list sort,
-    arg_list (domain (dom_aux pd)) (sym_sigma_args p' srts) -> bool)
+    arg_list (domain pd) (sym_sigma_args p' srts) -> bool)
     p nil P (@HL_nil _ _))).
     revert Hmult. simpl. unfold eq_rect_r, eq_rect.
     assert (e = eq_refl). apply UIP_dec. apply predsym_eq_dec.
@@ -618,12 +621,12 @@ End Def.
 (*One of the complications is that the [build_indpred]
   function is difficult to work with. This is a more
   useful form *)
-  Lemma build_indpred_iff (pf: pi_funpred gamma_valid pd) 
+  Lemma build_indpred_iff (pf: pi_funpred gamma_valid pd pdf) 
   (vt: val_typevar) (vv: val_vars pd vt) (ps: list predsym)
   (Ps: hlist
   (fun p' : predsym =>
     forall srts : list sort,
-    arg_list (domain (dom_aux pd)) (sym_sigma_args p' srts) -> bool)
+    arg_list (domain pd) (sym_sigma_args p' srts) -> bool)
   ps)
   (fs: list (list formula))
   (Hform: Forall (Forall (formula_typed gamma)) fs):
@@ -644,7 +647,7 @@ End Def.
         iter_and
           (map is_true
             (dep_map
-                (formula_rep gamma_valid pd vt
+                (formula_rep gamma_valid pd pdf vt
                   (interp_with_Ps pf ps Ps) vv)
                 fs (Forall_inv Hall))) /\
         build_indpred ftl (Forall_inv_tail Hall)
@@ -655,7 +658,7 @@ End Def.
     iter_and
     (map is_true
         (dep_map
-          (formula_rep gamma_valid pd vt
+          (formula_rep gamma_valid pd pdf vt
               (interp_with_Ps pf ps Ps) vv) f Hallf))).
 Proof.
   revert Hform.
@@ -680,24 +683,24 @@ Section LeastPred.
 
 (*We prove the second part (the "least predicate" part)
   first, since it is easy*)
-Theorem indpred_least_pred (pf: pi_funpred gamma_valid pd) 
+Theorem indpred_least_pred (pf: pi_funpred gamma_valid pd pdf) 
   (*(vt: val_typevar) (vv: val_vars pd vt)*)
   (ps: list (predsym * list formula))
   (Hform: Forall (Forall (formula_typed gamma)) (map snd ps)):
   forall (Ps: hlist
     (fun p' : predsym =>
     forall srts : list sort,
-    arg_list (domain (dom_aux pd)) (sym_sigma_args p' srts) -> bool)
+    arg_list (domain pd) (sym_sigma_args p' srts) -> bool)
     (map fst ps))
   (p: predsym) (Hinp: in_bool predsym_eq_dec p (map fst ps))
   (srts: list sort) 
-  (a: arg_list (domain (dom_aux pd)) 
+  (a: arg_list (domain pd) 
   (sym_sigma_args p srts)),  
   (*If P holds of all of the constructors*)
   (forall (fs : list formula) (Hform : Forall (formula_typed gamma) fs),
     In fs (map snd ps) ->
       iter_and (map is_true (dep_map
-        (formula_rep gamma_valid pd (mk_vt (s_params p) srts)
+        (formula_rep gamma_valid pd pdf (mk_vt (s_params p) srts)
         (interp_with_Ps pf (map fst ps) Ps) (mk_vv _)) fs Hform))) ->
 (*Then indpred_rep p fs x -> P x*)  
     indpred_rep pf ps Hform p Hinp srts a ->
@@ -712,14 +715,14 @@ Proof.
 Qed.
 
 (*And the version with any val*)
-Theorem indpred_least_pred_val (pf: pi_funpred gamma_valid pd) 
+Theorem indpred_least_pred_val (pf: pi_funpred gamma_valid pd pdf) 
   (vt: val_typevar) (vv: val_vars pd vt)
   (ps: list (predsym * list formula))
   (Hform: Forall (Forall (formula_typed gamma)) (map snd ps)):
   forall (Ps: hlist
     (fun p' : predsym =>
     forall srts : list sort,
-    arg_list (domain (dom_aux pd)) (sym_sigma_args p' srts) -> bool)
+    arg_list (domain pd) (sym_sigma_args p' srts) -> bool)
     (map fst ps))
   (p: predsym) (Hinp: in_bool predsym_eq_dec p (map fst ps))
   (srts: list sort) 
@@ -728,12 +731,12 @@ Theorem indpred_least_pred_val (pf: pi_funpred gamma_valid pd)
   (Hsub: Forall (fun f => sublist (fmla_type_vars f) (s_params p)) 
     (concat (map snd ps))) 
   (Hclosed: Forall closed_formula (concat (map snd ps)))
-  (a: arg_list (domain (dom_aux pd)) (sym_sigma_args p srts)),  
+  (a: arg_list (domain pd) (sym_sigma_args p srts)),  
   (*If P holds of all of the constructors*)
   (forall (fs : list formula) (Hform : Forall (formula_typed gamma) fs),
     In fs (map snd ps) ->
       iter_and (map is_true (dep_map
-        (formula_rep gamma_valid pd vt
+        (formula_rep gamma_valid pd pdf vt
         (interp_with_Ps pf (map fst ps) Ps) vv) fs Hform))) ->
 (*Then indpred_rep p fs x -> P x*)  
     indpred_rep pf ps Hform p Hinp srts a ->
@@ -950,12 +953,12 @@ Qed.
 (*Now, we prove that any formula which is valid and whose bound
   variables are well-formed is equivalent to the one formed
   by [indpred_decomp]*)
-Lemma indpred_decomp_equiv (pf: pi_funpred gamma_valid pd) 
+Lemma indpred_decomp_equiv (pf: pi_funpred gamma_valid pd pdf) 
   (vt: val_typevar) (vv: val_vars pd vt)  
   (f: formula) (Hval: formula_typed gamma f)
   (Hwf: fmla_wf f) :
-  formula_rep gamma_valid pd vt pf vv f Hval =
-  formula_rep gamma_valid pd vt pf vv 
+  formula_rep gamma_valid pd pdf vt pf vv f Hval =
+  formula_rep gamma_valid pd pdf vt pf vv 
     (indpred_transform f) (indpred_transform_valid f Hval).
 Proof.
   revert vv.
@@ -965,8 +968,8 @@ Proof.
   (P2:= fun f => forall Hval : formula_typed gamma f,
   fmla_wf f -> forall (v : formula_typed gamma (indpred_transform f))
   (vv : val_vars pd vt),
-  formula_rep gamma_valid pd vt pf vv f Hval =
-  formula_rep gamma_valid pd vt pf vv (indpred_transform f) v); 
+  formula_rep gamma_valid pd pdf vt pf vv f Hval =
+  formula_rep gamma_valid pd pdf vt pf vv (indpred_transform f) v); 
   unfold indpred_transform; simpl; auto; intros; try solve[apply true_impl].
   - destruct q; simpl; auto; [|apply true_impl].
     simpl in v0.
@@ -1022,7 +1025,7 @@ Proof.
       apply iter_flet_typed_inj in H2; split_all.
       inversion H2; subst. constructor; auto. 
     }
-    rewrite (distr_impl_let_forall _ _ vt pf vv f1) with(Hval2:=Hval3).
+    rewrite (distr_impl_let_forall _ _ _ vt pf vv f1) with(Hval2:=Hval3).
     + simpl_rep_full. rewrite bool_of_binop_impl.
       apply all_dec_eq. split; intros;
       erewrite fmla_rep_irrel;
@@ -1221,16 +1224,16 @@ Qed.
 (*We need the following: since all of the constructor
   formulas are closed, they are equivalent under any valuation;
   accordingly, so is [indpred_rep]*)
-Lemma constrs_val_eq (pf: pi_funpred gamma_valid pd)
+Lemma constrs_val_eq (pf: pi_funpred gamma_valid pd pdf)
 (vt: val_typevar) (v1 v2: val_vars pd vt) 
 (fs: list formula)
 (Hform: Forall (formula_typed gamma) fs)
 (Hclosed: Forall closed_formula fs) :
   iter_and (map is_true (dep_map
-    (formula_rep gamma_valid pd  
+    (formula_rep gamma_valid pd pdf  
       vt pf v1) fs Hform)) =
   iter_and (map is_true (dep_map
-    (formula_rep gamma_valid pd  
+    (formula_rep gamma_valid pd pdf 
       vt pf v2) fs Hform)).
 Proof.
   f_equal. f_equal.
@@ -1264,7 +1267,7 @@ Qed.*)
 (*Now we prove our key intermediate lemma that we need:
   suppose f is a formula in which p appears strictly positiviely,
   then [[f]]_(p->indpred_rep p) implies [[f]]_(p->P) for any P*)
-Lemma strict_pos_impred_implies_P' (pf: pi_funpred gamma_valid pd) 
+Lemma strict_pos_impred_implies_P' (pf: pi_funpred gamma_valid pd pdf) 
   (*(vt: val_typevar) (vv: val_vars pd vt)*)
   (ps: list (predsym * (list formula)))  
   (f: formula)
@@ -1287,17 +1290,17 @@ Lemma strict_pos_impred_implies_P' (pf: pi_funpred gamma_valid pd)
   forall (Ps: hlist
     (fun p' : predsym =>
     forall srts : list sort,
-    arg_list (domain (dom_aux pd)) (sym_sigma_args p' srts) -> bool)
+    arg_list (domain pd) (sym_sigma_args p' srts) -> bool)
     (map fst ps)),  
   (*If P holds of all of the constructors*)
   (forall (fs: list formula) (Hform: Forall (formula_typed gamma) fs), 
     In fs (map snd ps) ->
   iter_and (map is_true (dep_map
-    (formula_rep gamma_valid pd (mk_vt (s_params p) srts) 
+    (formula_rep gamma_valid pd pdf (mk_vt (s_params p) srts) 
       (interp_with_Ps pf (map fst ps) Ps) vv) fs Hform))) ->
   (*Then [[f]]_(p->indpred_rep p) implies [[f]]_(p->P)*) 
-  formula_rep gamma_valid pd (mk_vt (s_params p) srts) pf vv f Hvalf ->
-  formula_rep gamma_valid pd (mk_vt (s_params p) srts) 
+  formula_rep gamma_valid pd pdf (mk_vt (s_params p) srts) pf vv f Hvalf ->
+  formula_rep gamma_valid pd pdf (mk_vt (s_params p) srts) 
     (interp_with_Ps pf (map fst ps) Ps) vv f Hvalf.
 Proof.
   intros Ps HandPs.
@@ -1315,9 +1318,9 @@ Proof.
   - (*Show arg lists are the same: because P cannot appear
       in list by strict positivity*)
     assert ((pred_arg_list pd (mk_vt (s_params p) srts) p0 vs ts
-    (term_rep gamma_valid pd (mk_vt (s_params p) srts) pf vv) Hvalf) =  
+    (term_rep gamma_valid pd pdf (mk_vt (s_params p) srts) pf vv) Hvalf) =  
     (pred_arg_list pd (mk_vt (s_params p) srts) p0 vs ts
-    (term_rep gamma_valid pd (mk_vt (s_params p) srts) 
+    (term_rep gamma_valid pd pdf (mk_vt (s_params p) srts) 
     (interp_with_Ps pf (map fst ps) Ps) vv) Hvalf)). {
       apply get_arg_list_eq.
       rewrite Forall_forall. intros.
@@ -1400,9 +1403,9 @@ Proof.
       specialize (H _ i). rewrite Hinp' in H. inversion H.
   - (*First, know that [[f1]] eq in both cases because P cannot be
       present*)
-    assert (Hf1: formula_rep gamma_valid pd (mk_vt (s_params p) srts) pf vv f1
+    assert (Hf1: formula_rep gamma_valid pd pdf (mk_vt (s_params p) srts) pf vv f1
     (proj1' (typed_if_inv Hvalf)) =
-    formula_rep gamma_valid pd (mk_vt (s_params p) srts) (interp_with_Ps pf (map fst ps) Ps) vv f1
+    formula_rep gamma_valid pd pdf (mk_vt (s_params p) srts) (interp_with_Ps pf (map fst ps) Ps) vv f1
     (proj1' (typed_if_inv Hvalf))). {
       apply fmla_change_pf; auto; simpl; intros p' srts' a' Hinp'.
       symmetry.
@@ -1411,7 +1414,7 @@ Proof.
       specialize (H _ i). rewrite Hinp' in H. inversion H.
     }
     rewrite <- Hf1.
-    destruct (formula_rep gamma_valid pd (mk_vt (s_params p) srts) pf vv f1
+    destruct (formula_rep gamma_valid pd pdf (mk_vt (s_params p) srts) pf vv f1
     (proj1' (typed_if_inv Hvalf))); simpl in Hunif; bool_hyps;
     [apply IHHpos1 | apply IHHpos2]; auto.
   - (*Hmm, this is the hardest one - need rewrite lemma for match*)
@@ -1421,8 +1424,8 @@ Proof.
     intros. destruct a as [fh ph]. revert H2.
     (*Show that [term_rep] is equal because P cannot appear*)
     assert (Hteq: 
-    (term_rep gamma_valid pd (mk_vt (s_params p) srts) pf vv t ty Hvalf) =
-    (term_rep gamma_valid pd (mk_vt (s_params p) srts) (interp_with_Ps pf (map fst ps) Ps) vv t ty
+    (term_rep gamma_valid pd pdf (mk_vt (s_params p) srts) pf vv t ty Hvalf) =
+    (term_rep gamma_valid pd pdf (mk_vt (s_params p) srts) (interp_with_Ps pf (map fst ps) Ps) vv t ty
         Hvalf)). {
       apply tm_change_pf; auto. intros p' srts' a' Hinp'; simpl.
       symmetry.
@@ -1431,8 +1434,8 @@ Proof.
       specialize (H _ i). rewrite Hinp' in H. inversion H.
     }
     rewrite <- Hteq at 1.
-    destruct (match_val_single gamma_valid pd (mk_vt (s_params p) srts) ty fh (Forall_inv Hps)
-    (term_rep gamma_valid pd (mk_vt (s_params p) srts) pf vv t ty Hvalf)) eqn : Hm.
+    destruct (match_val_single gamma_valid pd pdf (mk_vt (s_params p) srts) ty fh (Forall_inv Hps)
+    (term_rep gamma_valid pd pdf (mk_vt (s_params p) srts) pf vv t ty Hvalf)) eqn : Hm.
     + (*First case follows from original IH*) 
       apply H1; simpl; auto.
       * simpl in Hunif; bool_hyps; auto.
@@ -1448,7 +1451,7 @@ Qed.
 (*If some pred P does not appear in any terms for [substi_multi_let],
   then valuations are equal no matter what P is*)
 
-Lemma substi_mult_notin_eq (pf1 pf2: pi_funpred gamma_valid pd) 
+Lemma substi_mult_notin_eq (pf1 pf2: pi_funpred gamma_valid pd pdf) 
   (vt: val_typevar) (vv: val_vars pd vt) (l: list (vsymbol * term))
   (ps: list predsym) Hall
   (Hallnotin: Forall (fun x => (forall p, In p ps -> 
@@ -1457,17 +1460,17 @@ Lemma substi_mult_notin_eq (pf1 pf2: pi_funpred gamma_valid pd)
     (preds gamma_valid pd pf1 p srts a) = (preds gamma_valid pd pf2 p srts a)) ->
   (forall f srts a, 
     funs gamma_valid pd pf1 f srts a = funs gamma_valid pd pf2 f srts a) ->
-  substi_multi_let gamma_valid pd vt pf1 vv l Hall =
-  substi_multi_let gamma_valid pd vt pf2 vv l Hall.
+  substi_multi_let gamma_valid pd pdf vt pf1 vv l Hall =
+  substi_multi_let gamma_valid pd pdf vt pf2 vv l Hall.
 Proof.
   revert Hall vv.
   induction l; simpl; auto; intros.
   inversion Hallnotin; subst.
   destruct a.
   assert (substi pd vt vv v
-  (term_rep gamma_valid pd vt pf1 vv t (snd v) (Forall_inv Hall)) =
+  (term_rep gamma_valid pd pdf vt pf1 vv t (snd v) (Forall_inv Hall)) =
   (substi pd vt vv v
-      (term_rep gamma_valid pd vt pf2 vv t (snd v) (Forall_inv Hall)))). {
+      (term_rep gamma_valid pd pdf vt pf2 vv t (snd v) (Forall_inv Hall)))). {
     unfold substi. apply functional_extensionality_dep; intros; simpl.
     destruct (vsymbol_eq_dec x v); subst; auto.
     unfold eq_rec_r, eq_rec, eq_rect. simpl.
@@ -1481,8 +1484,8 @@ Proof.
   apply IHl; auto.
 Qed.
 
-Lemma preds_srts_rewrite pf (p: predsym) srts1 srts2 (Heq: srts1 = srts2)
-  (a: arg_list (domain (dom_aux pd)) (sym_sigma_args p srts1)):
+Lemma preds_srts_rewrite (pf: pi_funpred gamma_valid pd pdf) (p: predsym) srts1 srts2 (Heq: srts1 = srts2)
+  (a: arg_list (domain pd) (sym_sigma_args p srts1)):
   preds gamma_valid pd pf p srts1 a =
   preds gamma_valid pd pf p srts2 (cast_arg_list (f_equal (sym_sigma_args p) Heq) a).
 Proof.
@@ -1493,10 +1496,10 @@ Lemma get_hlist_elt_srts_rewrite {l: list predsym}
   (Ps: hlist
   (fun p' : predsym =>
    forall srts : list sort,
-   arg_list (domain (dom_aux pd)) (sym_sigma_args p' srts) -> bool)
+   arg_list (domain pd) (sym_sigma_args p' srts) -> bool)
     l) 
   (p: predsym) (Hinp': in_bool predsym_eq_dec p l) 
-  srts1 srts2 (Heq: srts1 = srts2) (a: arg_list (domain (dom_aux pd)) (sym_sigma_args p srts1)):
+  srts1 srts2 (Heq: srts1 = srts2) (a: arg_list (domain pd) (sym_sigma_args p srts1)):
   get_hlist_elt predsym_eq_dec Ps p Hinp' srts1 a =
   get_hlist_elt predsym_eq_dec Ps p Hinp' srts2 (cast_arg_list (f_equal (sym_sigma_args p) Heq) a).
 Proof.
@@ -1673,7 +1676,7 @@ Qed.
 
 (*Finally, we prove the main theorem (first version)*)
 Theorem indpred_constrs_true
-  (pf: pi_funpred gamma_valid pd)
+  (pf: pi_funpred gamma_valid pd pdf)
   (indpred: list (predsym * list formula))
   (Hform: Forall (Forall (formula_typed gamma)) (map snd indpred))
   (Hvalind: Forall (fun t => Forall (valid_ind_form (fst t)) (snd t)) 
@@ -1695,7 +1698,7 @@ Theorem indpred_constrs_true
   (Hparams: Forall_eq (fun p0 : predsym => s_params p0) (map fst indpred))
   (Hunif: Forall (fun f => 
     pred_with_params_fmla (map fst indpred) (s_params p) f) fs) :
-  formula_rep gamma_valid pd (mk_vt (s_params p) srts) pf (mk_vv _) f Hvalf.
+  formula_rep gamma_valid pd pdf (mk_vt (s_params p) srts) pf (mk_vv _) f Hvalf.
 Proof.
   assert (Hinfs': In fs (map snd indpred)). {
     rewrite in_map_iff. exists (p, fs); auto.
@@ -1769,7 +1772,7 @@ Proof.
   assert (Hconstrsfs :=(Hallconstrs fs Hallfs Hinfs')).
   (*Now, we need to know that this constructor (f) is true
     under p->P interp*)
-  assert (Hformf: formula_rep gamma_valid pd 
+  assert (Hformf: formula_rep gamma_valid pd pdf
     (mk_vt (s_params p) srts) (interp_with_Ps pf (map fst indpred) Ps) 
     (mk_vv _) f Hvalf). {
       rewrite <- prove_iter_and in Hconstrsfs.
@@ -1777,7 +1780,7 @@ Proof.
       rewrite in_map_iff. eexists. split; [reflexivity |]. 
       (*Here, we need to rewrite with a different val_typevar*)
       assert (Hex:=(in_dep_map 
-        (formula_rep gamma_valid pd (mk_vt (s_params p) srts)
+        (formula_rep gamma_valid pd pdf (mk_vt (s_params p) srts)
           (interp_with_Ps pf (map fst indpred) Ps) (mk_vv _)) _ Hallfs _ Hinf)).
       destruct Hex as [Hval4 Hinf'].
       erewrite fmla_rep_irrel. apply Hinf'.
@@ -1802,12 +1805,12 @@ Proof.
   rewrite get_hlist_elt_srts_rewrite with (Heq:=Hsrts).
   intros.
   (*Need this in multiple places*)
-  assert ((substi_multi_let gamma_valid pd (mk_vt (s_params p) srts) 
+  assert ((substi_multi_let gamma_valid pd pdf (mk_vt (s_params p) srts) 
     (interp_with_Ps pf (map fst indpred) Ps)
     (substi_mult pd (mk_vt (s_params p) srts) (mk_vv _) 
     (tup_1 (indpred_decomp (a_convert_all_f f nil))) h)
     (tup_2 (indpred_decomp (a_convert_all_f f nil))) Halltup2) =
-    (substi_multi_let gamma_valid pd (mk_vt (s_params p) srts) pf
+    (substi_multi_let gamma_valid pd pdf (mk_vt (s_params p) srts) pf
       (substi_mult pd (mk_vt (s_params p) srts) (mk_vv _) 
       (tup_1 (indpred_decomp (a_convert_all_f f nil))) h)
       (tup_2 (indpred_decomp (a_convert_all_f f nil))) Halltup2)). {
@@ -1838,7 +1841,7 @@ Proof.
   - rewrite <- H0. apply Hformf.
     clear H0 Hformf.
     rewrite H. clear H.
-    remember (substi_multi_let gamma_valid pd (mk_vt (s_params p) srts) pf
+    remember (substi_multi_let gamma_valid pd pdf (mk_vt (s_params p) srts) pf
     (substi_mult pd (mk_vt (s_params p) srts) (mk_vv (mk_vt (s_params p) srts))
        (tup_1 (indpred_decomp (a_convert_all_f f nil))) h)
     (tup_2 (indpred_decomp (a_convert_all_f f nil))) Halltup2) as vv'.
@@ -1868,7 +1871,7 @@ Qed.
 
 (*And this holds for any vt and vv such that vt sets s_params to srts*)
 Theorem indpred_constrs_true_val
-  (pf: pi_funpred gamma_valid pd)
+  (pf: pi_funpred gamma_valid pd pdf)
   (vt: val_typevar) (vv: val_vars pd vt)
   (indpred: list (predsym * list formula))
   (Hform: Forall (Forall (formula_typed gamma)) (map snd indpred))
@@ -1894,7 +1897,7 @@ Theorem indpred_constrs_true_val
   (Hsub: Forall (fun f => sublist (fmla_type_vars f) (s_params p)) 
     (concat (map snd indpred))) 
   (Hvt: vt_eq vt (s_params p) srts):
-  formula_rep gamma_valid pd vt pf vv f Hvalf.
+  formula_rep gamma_valid pd pdf vt pf vv f Hvalf.
 Proof.
   erewrite fmla_change_vt.
   apply (indpred_constrs_true pf indpred Hform 
@@ -1932,7 +1935,7 @@ End LeastPred.
 Section Single.
 
 Theorem indpred_constrs_true_single
-  (pf: pi_funpred gamma_valid pd)
+  (pf: pi_funpred gamma_valid pd pdf)
   (vt: val_typevar) (vv: val_vars pd vt)
   (p: predsym) (fs: list formula)
   (Hform: Forall (formula_typed gamma) fs)
@@ -1950,7 +1953,7 @@ Theorem indpred_constrs_true_single
   (Hvt: vt_eq vt (s_params p) srts) :
   (forall (f: formula) (Hvalf: formula_typed gamma f), 
     In f fs ->
-    formula_rep gamma_valid pd vt pf vv f Hvalf).
+    formula_rep gamma_valid pd pdf vt pf vv f Hvalf).
 Proof.
   intros.
   apply (indpred_constrs_true_val) with(p:=p)(fs:=fs)(srts:=srts)
@@ -1970,13 +1973,13 @@ Proof.
   - rewrite app_nil_r. auto. 
 Qed.
 
-Theorem indpred_least_pred_single (pf: pi_funpred gamma_valid pd) 
+Theorem indpred_least_pred_single (pf: pi_funpred gamma_valid pd pdf) 
   (vt: val_typevar) (vv: val_vars pd vt)
   (p: predsym) (fs: list formula) 
   (Hform: Forall (formula_typed gamma) fs):
   forall (P:
     forall srts : list sort,
-    arg_list (domain (dom_aux pd)) 
+    arg_list (domain pd) 
       (sym_sigma_args p srts) ->
     bool
   )
@@ -1985,12 +1988,12 @@ Theorem indpred_least_pred_single (pf: pi_funpred gamma_valid pd)
   (Hvt: vt_eq vt (s_params p) srts) 
   (Hsub: Forall (fun f => sublist (fmla_type_vars f) (s_params p)) fs) 
   (Hclosed: Forall closed_formula fs)
-  (a: arg_list (domain (dom_aux pd)) (sym_sigma_args p srts)),
+  (a: arg_list (domain pd) (sym_sigma_args p srts)),
   (*If P holds of all of the constructors*)
   iter_and
   (map is_true
       (dep_map
-        (formula_rep gamma_valid pd 
+        (formula_rep gamma_valid pd pdf
           vt (interp_with_P pf p P)  vv) fs Hform)) ->
 (*Then indpred_rep p fs x -> P x*)  
     indpred_rep_single pf p fs Hform srts a -> P srts a.
@@ -2030,13 +2033,13 @@ Section ChangeParams.
 
 (*Inprop rep does not depend on definition for
   ps in pf*)
-Lemma indpred_rep_change_pf (pf1 pf2: pi_funpred gamma_valid pd) 
+Lemma indpred_rep_change_pf (pf1 pf2: pi_funpred gamma_valid pd pdf) 
 (indpred : list (predsym * list formula))
 (Hform: Forall (Forall (formula_typed gamma)) (map snd indpred)) 
 (p: predsym)
 (Hin: in_bool predsym_eq_dec p (map fst indpred))
 (srts: list sort)
-(a: arg_list (domain (dom_aux pd)) 
+(a: arg_list (domain pd) 
 (sym_sigma_args p srts))
 (*pf agree on all fun and predsyms that appear in one of
   the formulas and are NOT in the list*)
@@ -2055,10 +2058,10 @@ Proof.
   remember (map fst indpred) as preds.
   assert (Heq': forall a Ps Hform, In a fmlas ->
   (dep_map
-    (formula_rep gamma_valid pd (mk_vt (s_params p) srts) 
+    (formula_rep gamma_valid pd pdf (mk_vt (s_params p) srts) 
       (interp_with_Ps pf1 preds Ps) (mk_vv _)) a
     Hform) =
-    (dep_map (formula_rep gamma_valid pd (mk_vt (s_params p) srts)  
+    (dep_map (formula_rep gamma_valid pd pdf (mk_vt (s_params p) srts)  
       (interp_with_Ps pf2 preds Ps) (mk_vv _)) a
         Hform)).
   { intros.
@@ -2289,13 +2292,13 @@ Qed.
 
 (*First, we need an indpred rep which instantiate the hypothesis
   from our valid context*)
-Definition indpred_rep_full (pf: pi_funpred gamma_valid pd)
+Definition indpred_rep_full (pf: pi_funpred gamma_valid pd pdf)
   (l: list (predsym * list formula))
   (l_in: In l (indpreds_of_context gamma))
   (p: predsym)
   (p_in: pred_in_indpred p l)
   (srts: list sort)
-  (a: arg_list (domain (dom_aux pd)) (sym_sigma_args p srts)):
+  (a: arg_list (domain pd) (sym_sigma_args p srts)):
   bool :=
   indpred_rep pf l
   (in_indpred_valid l_in) p p_in srts a.
@@ -2305,11 +2308,11 @@ destruct (pred_in_indpred p l); auto.
 Qed.
 
 (*Then, we define the pf*)
-Definition pf_with_indprop_preds (pf: pi_funpred gamma_valid pd)
+Definition pf_with_indprop_preds (pf: pi_funpred gamma_valid pd pdf)
   (l: list (predsym * list formula))
   (l_in: In l (indpreds_of_context gamma)):
   forall (p: predsym) (srts: list sort)
-  (a: arg_list (domain (dom_aux pd)) (sym_sigma_args p srts)),
+  (a: arg_list (domain pd) (sym_sigma_args p srts)),
   bool :=
 
   fun p srts a =>
@@ -2328,14 +2331,14 @@ Definition pf_with_indprop_preds (pf: pi_funpred gamma_valid pd)
 (*This composes with the theorems above to show that we have
   the least fixpoint property (since we can use the lemma 
   changing the pf) We show this in FullInterp.v*)
-Lemma pf_with_indprop_preds_in (pf: pi_funpred gamma_valid pd)
+Lemma pf_with_indprop_preds_in (pf: pi_funpred gamma_valid pd pdf)
 (l: list (predsym * list formula))
 (l_in: In l (indpreds_of_context gamma))
 (p: predsym)
 (Hinp: pred_in_indpred p l):
 forall (srts: list sort)
 (srts_len: length srts = length (s_params p))
-(a: arg_list (domain (dom_aux pd)) (sym_sigma_args p srts)),
+(a: arg_list (domain pd) (sym_sigma_args p srts)),
 pf_with_indprop_preds pf l l_in p srts a =
 indpred_rep_full pf l l_in p Hinp srts a.
 Proof.
@@ -2347,13 +2350,13 @@ Proof.
   reflexivity.
 Qed.
 
-Lemma pf_with_indprop_preds_notin (pf: pi_funpred gamma_valid pd)
+Lemma pf_with_indprop_preds_notin (pf: pi_funpred gamma_valid pd pdf)
 (l: list (predsym * list formula))
 (l_in: In l (indpreds_of_context gamma))
 (p: predsym)
 (Hinp: ~ pred_in_indpred p l):
 forall (srts: list sort)
-(a: arg_list (domain (dom_aux pd)) (sym_sigma_args p srts)),
+(a: arg_list (domain pd) (sym_sigma_args p srts)),
 pf_with_indprop_preds pf l l_in p srts a =
 preds gamma_valid pd pf p srts a.
 Proof.
@@ -2362,12 +2365,12 @@ Proof.
   reflexivity.
 Qed.
 
-Definition pf_with_indprop (pf: pi_funpred gamma_valid pd)
+Definition pf_with_indprop (pf: pi_funpred gamma_valid pd pdf)
 (l: list (predsym * list formula))
 (l_in: In l (indpreds_of_context gamma)):
-pi_funpred gamma_valid pd :=
-Build_pi_funpred gamma_valid pd (funs gamma_valid pd pf)
-  (pf_with_indprop_preds pf l l_in) (constrs gamma_valid pd pf).
+pi_funpred gamma_valid pd pdf :=
+Build_pi_funpred gamma_valid pd pdf (funs gamma_valid pd pf)
+  (pf_with_indprop_preds pf l l_in) (constrs gamma_valid pd pdf pf).
 
 End BuildPF.
 

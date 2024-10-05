@@ -149,25 +149,25 @@ Lemma replace_tm_rep {gamma: context}
   (tm_o tm_n: term) (ty1: vty)
   (Hty1: term_has_type gamma tm_o ty1)
   (Hty2: term_has_type gamma tm_n ty1)
-  (pd: pi_dom) (pf: pi_funpred gamma_valid pd)
+  (pd: pi_dom) (pdf: pi_dom_full gamma pd) (pf: pi_funpred gamma_valid pd pdf)
   (vt: val_typevar)
   (*Need to be the same for all vals, not under a
     particular one*)
   (Hrep: forall (vv: val_vars pd vt) Hty1 Hty2,
-    term_rep gamma_valid pd vt pf vv tm_o ty1 Hty1 =
-    term_rep gamma_valid pd vt pf vv tm_n ty1 Hty2)
+    term_rep gamma_valid pd pdf vt pf vv tm_o ty1 Hty1 =
+    term_rep gamma_valid pd pdf vt pf vv tm_n ty1 Hty2)
   (t: term) (f: formula) :
   (forall (vv: val_vars pd vt) (ty2: vty)
     (Htyt: term_has_type gamma t ty2)
     (Htysub: term_has_type gamma (replace_tm_t tm_o tm_n t) ty2),
-    term_rep gamma_valid pd vt pf vv (replace_tm_t tm_o tm_n t) ty2 Htysub =
-    term_rep gamma_valid pd vt pf vv t ty2 Htyt
+    term_rep gamma_valid pd pdf vt pf vv (replace_tm_t tm_o tm_n t) ty2 Htysub =
+    term_rep gamma_valid pd pdf vt pf vv t ty2 Htyt
   ) /\
   (forall (vv: val_vars pd vt) 
     (Hvalf: formula_typed gamma f)
     (Hvalsub: formula_typed gamma (replace_tm_f tm_o tm_n f)),
-    formula_rep gamma_valid pd vt pf vv (replace_tm_f tm_o tm_n f) Hvalsub =
-    formula_rep gamma_valid pd vt pf vv f Hvalf).
+    formula_rep gamma_valid pd pdf vt pf vv (replace_tm_f tm_o tm_n f) Hvalsub =
+    formula_rep gamma_valid pd pdf vt pf vv f Hvalf).
 Proof.
   revert t f; apply term_formula_ind; simpl; intros;
   try revert Htysub; try revert Hvalsub; cbn;
@@ -200,8 +200,8 @@ Proof.
     simpl.
     inversion H0; subst. inversion Htmt; subst.
     inversion Hpatt; subst.
-    destruct (match_val_single gamma_valid pd vt v p1 (Forall_inv Hpatt)
-    (term_rep gamma_valid pd vt pf vv tm v Htyt)) eqn : Hmatch; auto.
+    destruct (match_val_single gamma_valid pd pdf vt v p1 (Forall_inv Hpatt)
+    (term_rep gamma_valid pd pdf vt pf vv tm v Htyt)) eqn : Hmatch; auto.
     destruct (existsb _ _); auto.
     apply term_rep_irrel.
   - (*Teps*)
@@ -249,8 +249,8 @@ Proof.
       match ?p2 with | Some l2 => _ | None => _ end =>
       replace p2 with p1 by reflexivity
     end.
-    destruct (match_val_single gamma_valid pd vt v p1 (Forall_inv Hpatf)
-    (term_rep gamma_valid pd vt pf vv tm v Hvalf)) eqn : Hmatch; auto.
+    destruct (match_val_single gamma_valid pd pdf vt v p1 (Forall_inv Hpatf)
+    (term_rep gamma_valid pd pdf vt pf vv tm v Hvalf)) eqn : Hmatch; auto.
     destruct (existsb _ _); auto.
     apply fmla_rep_irrel.
 Qed.
@@ -260,14 +260,14 @@ Definition replace_tm_f_rep {gamma: context}
 (tm_o tm_n: term) (ty1: vty)
 (Hty1: term_has_type gamma tm_o ty1)
 (Hty2: term_has_type gamma tm_n ty1)
-(pd: pi_dom) (pf: pi_funpred gamma_valid pd)
+(pd: pi_dom) (pdf: pi_dom_full gamma pd) (pf: pi_funpred gamma_valid pd pdf)
 (vt: val_typevar)
 (Hrep: forall (vv: val_vars pd vt) Hty1 Hty2,
-    term_rep gamma_valid pd vt pf vv tm_o ty1 Hty1 =
-    term_rep gamma_valid pd vt pf vv tm_n ty1 Hty2)
+    term_rep gamma_valid pd pdf vt pf vv tm_o ty1 Hty1 =
+    term_rep gamma_valid pd pdf vt pf vv tm_n ty1 Hty2)
 (f: formula) :=
 proj_fmla (replace_tm_rep gamma_valid tm_o tm_n ty1 Hty1 Hty2
-  pd pf vt Hrep) f.
+  pd pdf pf vt Hrep) f.
 
 (*And the same for rewriting/replacing formulas -
   can we reduce duplication?*)
@@ -400,25 +400,25 @@ Lemma replace_fmla_rep {gamma: context}
   (fmla_o fmla_n: formula)
   (Hty1: formula_typed gamma fmla_o)
   (Hty2: formula_typed gamma fmla_n)
-  (pd: pi_dom) (pf: pi_funpred gamma_valid pd)
+  (pd: pi_dom) (pdf: pi_dom_full gamma pd) (pf: pi_funpred gamma_valid pd pdf)
   (vt: val_typevar)
   (*Need to be the same for all vals, not under a
     particular one*)
   (Hrep: forall (vv: val_vars pd vt) Hty1 Hty2,
-    formula_rep gamma_valid pd vt pf vv fmla_o Hty1 =
-    formula_rep gamma_valid pd vt pf vv fmla_n Hty2)
+    formula_rep gamma_valid pd pdf vt pf vv fmla_o Hty1 =
+    formula_rep gamma_valid pd pdf vt pf vv fmla_n Hty2)
   (t: term) (f: formula) :
   (forall (vv: val_vars pd vt) (ty2: vty)
     (Htyt: term_has_type gamma t ty2)
     (Htysub: term_has_type gamma (replace_fmla_t fmla_o fmla_n t) ty2),
-    term_rep gamma_valid pd vt pf vv (replace_fmla_t fmla_o fmla_n t) ty2 Htysub =
-    term_rep gamma_valid pd vt pf vv t ty2 Htyt
+    term_rep gamma_valid pd pdf vt pf vv (replace_fmla_t fmla_o fmla_n t) ty2 Htysub =
+    term_rep gamma_valid pd pdf vt pf vv t ty2 Htyt
   ) /\
   (forall (vv: val_vars pd vt) 
     (Hvalf: formula_typed gamma f)
     (Hvalsub: formula_typed gamma (replace_fmla_f fmla_o fmla_n f)),
-    formula_rep gamma_valid pd vt pf vv (replace_fmla_f fmla_o fmla_n f) Hvalsub =
-    formula_rep gamma_valid pd vt pf vv f Hvalf).
+    formula_rep gamma_valid pd pdf vt pf vv (replace_fmla_f fmla_o fmla_n f) Hvalsub =
+    formula_rep gamma_valid pd pdf vt pf vv f Hvalf).
 Proof.
   revert t f; apply term_formula_ind; simpl; intros;
   try revert Htysub; try revert Hvalsub; unfold replace_fmla_t,
@@ -459,8 +459,8 @@ Proof.
       match ?p2 with | Some l2 => _ | None => _ end =>
       replace p2 with p1 by reflexivity
     end.
-    destruct (match_val_single gamma_valid pd vt v p1 (Forall_inv Hpatf)
-    (term_rep gamma_valid pd vt pf vv tm v Htyt)) eqn : Hmatch; auto.
+    destruct (match_val_single gamma_valid pd pdf vt v p1 (Forall_inv Hpatf)
+    (term_rep gamma_valid pd pdf vt pf vv tm v Htyt)) eqn : Hmatch; auto.
     destruct (existsb _ _); auto.
     apply term_rep_irrel.
   - (*Teps*)
@@ -503,8 +503,8 @@ Proof.
     simpl.
     inversion H0; subst. inversion Htmt; subst.
     inversion Hpatt; subst.
-    destruct (match_val_single gamma_valid pd vt v p1 (Forall_inv Hpatt)
-    (term_rep gamma_valid pd vt pf vv tm v Hvalf)) eqn : Hmatch; auto.
+    destruct (match_val_single gamma_valid pd pdf vt v p1 (Forall_inv Hpatt)
+    (term_rep gamma_valid pd pdf vt pf vv tm v Hvalf)) eqn : Hmatch; auto.
     destruct (existsb _ _); auto.
     apply fmla_rep_irrel.
 Qed.
@@ -514,11 +514,11 @@ Definition replace_fmla_f_rep {gamma: context}
 (fmla_o fmla_n: formula)
 (Hty1: formula_typed gamma fmla_o)
 (Hty2: formula_typed gamma fmla_n)
-(pd: pi_dom) (pf: pi_funpred gamma_valid pd)
+(pd: pi_dom) (pdf: pi_dom_full gamma pd) (pf: pi_funpred gamma_valid pd pdf)
 (vt: val_typevar)
 (Hrep: forall (vv: val_vars pd vt) Hty1 Hty2,
-    formula_rep gamma_valid pd vt pf vv fmla_o Hty1 =
-    formula_rep gamma_valid pd vt pf vv fmla_n Hty2)
+    formula_rep gamma_valid pd pdf vt pf vv fmla_o Hty1 =
+    formula_rep gamma_valid pd pdf vt pf vv fmla_n Hty2)
 (f: formula) :=
 proj_fmla (replace_fmla_rep gamma_valid fmla_o fmla_n Hty1 Hty2
-  pd pf vt Hrep) f.
+  pd pdf pf vt Hrep) f.

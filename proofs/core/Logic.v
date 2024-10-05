@@ -15,35 +15,37 @@ Section Valid.
 (*Note that we treat non-closed formulas as implicitly
   universally quantified by quantifying over valuations.
   (ie: we use the universal closure)*)
-Definition satisfies (pd: pi_dom) (pf: pi_funpred gamma_valid pd)
+Definition satisfies (pd: pi_dom) (pdf: pi_dom_full gamma pd)
+  (pf: pi_funpred gamma_valid pd pdf)
   (pf_full: full_interp gamma_valid pd pf) (f: formula)
   (f_typed: formula_typed gamma f) : Prop :=
   forall (vt: val_typevar) (vv: val_vars pd vt),
-  formula_rep gamma_valid pd vt pf vv f f_typed.
+  formula_rep gamma_valid pd pdf vt pf vv f f_typed.
 
 (*A formula is satisfiable if there exists an interpretation
   that satisfies it*)
 Definition sat (f: formula) (f_typed: formula_typed gamma f) := 
-  exists (pd: pi_dom) 
-  (pf: pi_funpred gamma_valid pd) 
+  exists (pd: pi_dom) (pdf: pi_dom_full gamma pd)
+  (pf: pi_funpred gamma_valid pd pdf) 
   (pf_full: full_interp gamma_valid pd pf),
-  satisfies pd pf pf_full f f_typed.
+  satisfies pd pdf pf pf_full f f_typed.
 
 (*A set of formulas is satisfiable if they are all
   satisfied by some interpretation*)
 Definition sat_set (l: list formula) 
   (l_typed: Forall (formula_typed gamma) l): Prop :=
-  exists (pd: pi_dom) (pf: pi_funpred gamma_valid pd)
+  exists (pd: pi_dom) (pdf: pi_dom_full gamma pd) 
+    (pf: pi_funpred gamma_valid pd pdf)
   (pf_full: full_interp gamma_valid pd pf),
   forall (f: formula) (f_in: In f l),
-    satisfies pd pf pf_full f (Forall_In l_typed f_in).
+    satisfies pd pdf pf pf_full f (Forall_In l_typed f_in).
 
 (*A formula is valid if all (full) interpretations satisfy it*)
 Definition valid (f: formula) (f_typed: formula_typed gamma f) : Prop :=
-  forall (pd: pi_dom) 
-  (pf: pi_funpred gamma_valid pd) 
+  forall (pd: pi_dom) (pdf: pi_dom_full gamma pd)
+  (pf: pi_funpred gamma_valid pd pdf) 
   (pf_full: full_interp gamma_valid pd pf),
-  satisfies pd pf pf_full f f_typed.
+  satisfies pd pdf pf pf_full f f_typed.
 
 End Valid.
 
@@ -72,19 +74,20 @@ Record closed_tm (t: term) : Prop :=
 Definition log_conseq (Delta: list formula) (f: formula)
   (Hc: closed gamma f)
   (Delta_ty: Forall (formula_typed gamma) Delta): Prop :=
-  forall (pd: pi_dom) (pf: pi_funpred gamma_valid pd)
+  forall (pd: pi_dom) (pdf: pi_dom_full gamma pd) 
+    (pf: pi_funpred gamma_valid pd pdf)
     (pf_full: full_interp gamma_valid pd pf),
     (forall d (Hd: In d Delta),
-      satisfies pd pf pf_full d (Forall_In Delta_ty Hd)) ->
-    satisfies pd pf pf_full f (f_ty Hc).
+      satisfies pd pdf pf pf_full d (Forall_In Delta_ty Hd)) ->
+    satisfies pd pdf pf pf_full f (f_ty Hc).
 
 (*Theorems*)
 Section Thm.
 
-Lemma satisfies_irrel pd pf Hfull 
+Lemma satisfies_irrel pd pdf pf Hfull 
   (f: formula) (ty1 ty2: formula_typed gamma f):
-  satisfies pd pf Hfull f ty1 <->
-  satisfies pd pf Hfull f ty2.
+  satisfies pd pdf pf Hfull f ty1 <->
+  satisfies pd pdf pf Hfull f ty2.
 Proof.
   unfold satisfies; split; intros; erewrite fmla_rep_irrel; auto.
 Qed.
@@ -110,16 +113,17 @@ Arguments F_Not {_} {_}.
 
 (*It cannot be the case that both f and ~f are satisfied
   by an interpretation*)
-Theorem consistent (pd: pi_dom) (pf: pi_funpred gamma_valid pd)
+Theorem consistent (pd: pi_dom) (pdf: pi_dom_full gamma pd) 
+(pf: pi_funpred gamma_valid pd pdf)
 (pf_full: full_interp gamma_valid pd pf) (f: formula)
 (f_typed: formula_typed gamma f):
-~ (satisfies pd pf pf_full f f_typed /\
-  satisfies pd pf pf_full (Fnot f) (F_Not f_typed)).
+~ (satisfies pd pdf pf pf_full f f_typed /\
+  satisfies pd pdf pf pf_full (Fnot f) (F_Not f_typed)).
 Proof.
   unfold satisfies.
   intro C. destruct C.
-  specialize (H triv_val_typevar (triv_val_vars _ _)).
-  specialize (H0 triv_val_typevar (triv_val_vars _ _)).
+  specialize (H triv_val_typevar (triv_val_vars pd pdf _)).
+  specialize (H0 triv_val_typevar (triv_val_vars _ pdf _)).
   revert H0; simpl_rep_full.
   erewrite fmla_rep_irrel. rewrite H. auto.
 Qed.
@@ -127,11 +131,12 @@ Qed.
 (*For a closed and monomorphic formula, we can remove the
   quantifiers and give a concrete definition of satisfaction
   (really true for any vt and vv, but easier to give triv) *)
-Theorem closed_satisfies_equiv (pd: pi_dom) (pf: pi_funpred gamma_valid pd)
+Theorem closed_satisfies_equiv (pd: pi_dom) (pdf: pi_dom_full gamma pd)  
+(pf: pi_funpred gamma_valid pd pdf)
 (pf_full: full_interp gamma_valid pd pf) (f: formula)
 (Hc: closed gamma f):
-reflect (satisfies pd pf pf_full f (f_ty Hc))
-  (formula_rep gamma_valid pd triv_val_typevar pf (triv_val_vars _ _) 
+reflect (satisfies pd pdf pf pf_full f (f_ty Hc))
+  (formula_rep gamma_valid pd pdf triv_val_typevar pf (triv_val_vars _ pdf _) 
     f (f_ty Hc)).
 Proof.
   apply iff_reflect. unfold satisfies. split; intros.
@@ -145,27 +150,29 @@ Proof.
 Qed.
 
 Lemma closed_satisfies_rep
-(pd : pi_dom) (pf : pi_funpred gamma_valid pd)
+(pd : pi_dom) (pdf: pi_dom_full gamma pd) 
+(pf : pi_funpred gamma_valid pd pdf)
 (pf_full : full_interp gamma_valid pd pf) (f : formula)
 (Hc : closed gamma f)
 (Hty1: formula_typed gamma f):
-satisfies pd pf pf_full f Hty1 <->
-formula_rep gamma_valid pd triv_val_typevar pf
-(triv_val_vars pd triv_val_typevar) f Hty1.
+satisfies pd pdf pf pf_full f Hty1 <->
+formula_rep gamma_valid pd pdf triv_val_typevar pf
+(triv_val_vars pd pdf triv_val_typevar) f Hty1.
 Proof.
   erewrite satisfies_irrel.
-  rewrite (reflect_iff _ _ (closed_satisfies_equiv pd pf pf_full f Hc)).
+  rewrite (reflect_iff _ _ (closed_satisfies_equiv pd pdf pf pf_full f Hc)).
   erewrite fmla_rep_irrel. unfold is_true. reflexivity.
 Qed.
 
 (*As an immediate corollary, satisfaction is decidable*)
-Corollary closed_satisfies_dec (pd: pi_dom) (pf: pi_funpred gamma_valid pd)
+Corollary closed_satisfies_dec (pd: pi_dom) (pdf: pi_dom_full gamma pd)  
+(pf: pi_funpred gamma_valid pd pdf)
 (pf_full: full_interp gamma_valid pd pf) (f: formula)
 (Hc: closed gamma f):
-{ satisfies pd pf pf_full f (f_ty Hc) } +
-{~ satisfies pd pf pf_full f (f_ty Hc)}.
+{ satisfies pd pdf pf pf_full f (f_ty Hc) } +
+{~ satisfies pd pdf pf pf_full f (f_ty Hc)}.
 Proof.
-  destruct (closed_satisfies_equiv pd pf pf_full f Hc);
+  destruct (closed_satisfies_equiv pd pdf pf pf_full f Hc);
   [left | right]; auto.
 Qed.
 
@@ -180,18 +187,19 @@ Qed.
 (*For every formula f and every interpretation I,
   either I |= f or I |= ~f. This relies on f being
   closed and monomorphic*)
-Theorem semantic_lem (pd: pi_dom) (pf: pi_funpred gamma_valid pd)
+Theorem semantic_lem (pd: pi_dom) (pdf: pi_dom_full gamma pd)  
+(pf: pi_funpred gamma_valid pd pdf)
 (pf_full: full_interp gamma_valid pd pf) (f: formula) 
 (Hc: closed gamma f):
-satisfies pd pf pf_full f (f_ty Hc) \/
-satisfies pd pf pf_full (Fnot f) (f_ty (closed_not Hc)).
+satisfies pd pdf pf pf_full f (f_ty Hc) \/
+satisfies pd pdf pf pf_full (Fnot f) (f_ty (closed_not Hc)).
 Proof.
   rewrite !closed_satisfies_rep.
   simpl_rep_full.
   rewrite fmla_rep_irrel with(Hval1:= (typed_not_inv (f_ty (closed_not Hc))))
     (Hval2:=f_ty Hc).
-  destruct (formula_rep gamma_valid pd triv_val_typevar pf 
-    (triv_val_vars pd triv_val_typevar) f (f_ty Hc)); auto.
+  destruct (formula_rep gamma_valid pd pdf triv_val_typevar pf 
+    (triv_val_vars pd pdf triv_val_typevar) f (f_ty Hc)); auto.
   apply closed_not. all: auto.
 Qed.
 
@@ -206,15 +214,15 @@ log_conseq Delta f Hc Delta_ty <->
 Proof.
   unfold log_conseq, sat_set.
   split.
-  - intros. intros [pd [pf [pf_full Hsat]]].
-    apply (consistent pd pf pf_full f (f_ty Hc)).
+  - intros. intros [pd [pdf [pf [pf_full Hsat]]]].
+    apply (consistent pd pdf pf pf_full f (f_ty Hc)).
     split.
     + apply H; intros. erewrite satisfies_irrel. apply Hsat.
       Unshelve. simpl; auto.
     + erewrite satisfies_irrel. apply Hsat. Unshelve. simpl; auto.
   - intros.
-    destruct (semantic_lem pd pf pf_full f Hc); auto.
-    exfalso. apply H. exists pd. exists pf. exists pf_full.
+    destruct (semantic_lem pd pdf pf pf_full f Hc); auto.
+    exfalso. apply H. exists pd. exists pdf. exists pf. exists pf_full.
     intros. simpl in f_in. destruct f_in; subst.
     + erewrite satisfies_irrel. apply H1.
     + erewrite satisfies_irrel. apply H0. Unshelve. auto.
@@ -250,15 +258,16 @@ Qed.
 (*A key lemma for the theorem: I |= (f -> g)
   iff (I |= f -> I |= g)*)
 Lemma satisfies_impl
-  (pd: pi_dom) (pf: pi_funpred gamma_valid pd)
+  (pd: pi_dom) (pdf: pi_dom_full gamma pd) 
+  (pf: pi_funpred gamma_valid pd pdf)
   (pf_full: full_interp gamma_valid pd pf) 
   (f g: formula) (Hc1: closed gamma f) (Hc2: closed gamma g):
-  satisfies pd pf pf_full (Fbinop Timplies f g) (f_ty (closed_binop Hc1 Hc2)) <->
-  (satisfies pd pf pf_full f (f_ty Hc1) -> satisfies pd pf pf_full g (f_ty Hc2)).
+  satisfies pd pdf pf pf_full (Fbinop Timplies f g) (f_ty (closed_binop Hc1 Hc2)) <->
+  (satisfies pd pdf pf pf_full f (f_ty Hc1) -> satisfies pd pdf pf pf_full g (f_ty Hc2)).
 Proof.
-  rewrite (ssrbool.rwP (closed_satisfies_equiv pd pf pf_full f _)),
-  (ssrbool.rwP (closed_satisfies_equiv pd pf pf_full g _)),
-  (ssrbool.rwP (closed_satisfies_equiv pd pf pf_full (Fbinop Timplies f g) _)).
+  rewrite (ssrbool.rwP (closed_satisfies_equiv pd pdf pf pf_full f _)),
+  (ssrbool.rwP (closed_satisfies_equiv pd pdf pf pf_full g _)),
+  (ssrbool.rwP (closed_satisfies_equiv pd pdf pf pf_full (Fbinop Timplies f g) _)).
   simpl_rep_full.
   rewrite bool_of_binop_impl, simpl_all_dec.
   rewrite (fmla_rep_irrel) with(Hval2:=f_ty Hc1).
@@ -284,7 +293,7 @@ Proof.
     + erewrite satisfies_irrel. apply H.
       Unshelve. auto.
   - unfold log_conseq. intros.
-    assert (satisfies pd pf pf_full (Fbinop Timplies f g) (f_ty (closed_binop Hc1 Hc2))). {
+    assert (satisfies pd pdf pf pf_full (Fbinop Timplies f g) (f_ty (closed_binop Hc1 Hc2))). {
       apply H. intros. erewrite satisfies_irrel. apply H0.
       Unshelve. simpl; auto.
     }
@@ -314,11 +323,12 @@ Definition log_conseq_gen
   (Delta: list formula) (f: formula)
   (Hty: formula_typed gamma f)
   (Delta_ty: Forall (formula_typed gamma) Delta): Prop :=
-  forall (pd: pi_dom) (pf: pi_funpred gamma_valid pd)
+  forall (pd: pi_dom) (pdf: pi_dom_full gamma pd) 
+    (pf: pi_funpred gamma_valid pd pdf)
     (pf_full: full_interp gamma_valid pd pf),
     (forall d (Hd: In d Delta),
-      satisfies pd pf pf_full d (Forall_In Delta_ty Hd)) ->
-    satisfies pd pf pf_full f Hty.
+      satisfies pd pdf pf pf_full d (Forall_In Delta_ty Hd)) ->
+    satisfies pd pdf pf pf_full f Hty.
 
 (*If the formula is closed, then this is exactly the same
   as logical consequence*)
@@ -348,8 +358,13 @@ Lemma satisfies_ext {gamma1 gamma2: context}
   (gamma_valid2: valid_context gamma2)
   (Hadts: mut_of_context gamma1 = mut_of_context gamma2)
   (pd: pi_dom)
-  (pf1: pi_funpred gamma_valid1 pd)
-  (pf2: pi_funpred gamma_valid2 pd)
+  (pdf1: pi_dom_full gamma1 pd) 
+  (pdf2: pi_dom_full gamma2 pd) 
+  (pf1: pi_funpred gamma_valid1 pd pdf1)
+  (pf2: pi_funpred gamma_valid2 pd pdf2)
+  (*TODO: should really remove this by using *)
+  (Hpdf: forall s : sort, domain_nonempty_dom (domain_ne pdf1 s) =
+    domain_nonempty_dom (domain_ne pdf2 s))
   (full1: full_interp gamma_valid1 pd pf1)
   (full2: full_interp gamma_valid2 pd pf2)
   (f: formula)
@@ -361,8 +376,8 @@ Lemma satisfies_ext {gamma1 gamma2: context}
     funs gamma_valid2 pd pf2 fs srts a)
   (Hval1: formula_typed gamma1 f)
   (Hval2: formula_typed gamma2 f):
-  satisfies gamma_valid1 pd pf1 full1 f Hval1 <->
-  satisfies gamma_valid2 pd pf2 full2 f Hval2.
+  satisfies gamma_valid1 pd pdf1 pf1 full1 f Hval1 <->
+  satisfies gamma_valid2 pd pdf2 pf2 full2 f Hval2.
 Proof.
   unfold satisfies. split; intros.
   - erewrite <- fmla_change_gamma_pf. apply H. all: auto.
@@ -372,15 +387,15 @@ Qed.
 (*I |= f1 /\ f2 iff I |= f1 and I |= f2. If only all connectives
   were so nice*)
 Lemma satisfies_and {gamma} (gamma_valid: valid_context gamma)
-  (pd: pi_dom) (pf: pi_funpred gamma_valid pd)
+  (pd: pi_dom) (pdf: pi_dom_full gamma pd) (pf: pi_funpred gamma_valid pd pdf)
   (pf_full: full_interp gamma_valid pd pf)
   (A B: formula) (A_ty: formula_typed gamma A) 
   (B_ty: formula_typed gamma B):
-  satisfies gamma_valid pd pf pf_full (Fbinop Tand A B) 
+  satisfies gamma_valid pd pdf pf pf_full (Fbinop Tand A B) 
     (F_Binop _ _ _ _ A_ty B_ty)
   <-> 
-  satisfies gamma_valid pd pf pf_full A A_ty /\
-  satisfies gamma_valid pd pf pf_full B B_ty.
+  satisfies gamma_valid pd pdf pf pf_full A A_ty /\
+  satisfies gamma_valid pd pdf pf pf_full B B_ty.
 Proof.
   unfold satisfies. split; intros.
   - split; intros vt vv; specialize (H vt vv); revert H;

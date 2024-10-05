@@ -6659,12 +6659,10 @@ Proof.
     erewrite term_rep_irrel. reflexivity.
 Qed.
 
-(*Relate [matches_matrix] to *)
-
 Corollary compile_bare_single_spec1 {gamma: context} (gamma_valid: valid_context gamma)
   (pd: pi_dom) (pdf: pi_dom_full gamma pd) 
   (pf: pi_funpred gamma_valid pd pdf) (vt: val_typevar) (v: val_vars pd vt)
-  (b: bool) (ret_ty: gen_type b) {m: mut_adt} (t: term) (ty: vty)
+  (b: bool) (ret_ty: gen_type b) (t: term) (ty: vty)
   (ps: list (pattern * gen_term b))
   (Hty: term_has_type gamma t ty)
   (Htyps1: Forall (fun p => pattern_has_type gamma (fst p) ty) ps)
@@ -6717,7 +6715,7 @@ Qed.
 Corollary compile_bare_single_spec2 {gamma: context} (gamma_valid: valid_context gamma)
   (pd: pi_dom) (pdf: pi_dom_full gamma pd) 
   (pf: pi_funpred gamma_valid pd pdf) (vt: val_typevar) (v: val_vars pd vt)
-  (b: bool) (ret_ty: gen_type b) {m: mut_adt} (t: term) (ty: vty)
+  (b: bool) (ret_ty: gen_type b) (t: term) (ty: vty)
   (ps: list (pattern * gen_term b))
   (Hty: term_has_type gamma t ty)
   (Htyps1: Forall (fun p => pattern_has_type gamma (fst p) ty) ps)
@@ -6739,7 +6737,7 @@ Qed.
 
 (*Typing*)
 Corollary compile_bare_single_typed {gamma: context} (gamma_valid: valid_context gamma)
-  (b: bool) (ret_ty: gen_type b) {m: mut_adt} (t: term) (ty: vty)
+  (b: bool) (ret_ty: gen_type b) (t: term) (ty: vty)
   (ps: list (pattern * gen_term b))
   (Hty: term_has_type gamma t ty)
   (Htyps1: Forall (fun p => pattern_has_type gamma (fst p) ty) ps)

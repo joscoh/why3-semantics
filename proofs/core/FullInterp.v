@@ -86,13 +86,14 @@ Qed.
 (*The definition - set each constructor to its rep*)
 Definition funs_with_constrs{gamma: context}
   (gamma_valid: valid_context gamma) (pd: pi_dom) 
+  (pdf: pi_dom_full gamma pd)
   (*(pf: pi_funpred gamma_valid pd)*)
   (funs: forall (f: funsym) (srts: list sort)
-  (arg: arg_list (domain (dom_aux pd)) (sym_sigma_args f srts)),
-  domain (dom_aux pd) (funsym_sigma_ret f srts)):
+  (arg: arg_list (domain pd) (sym_sigma_args f srts)),
+  domain pd (funsym_sigma_ret f srts)):
   forall (f: funsym) (srts: list sort)
-  (arg: arg_list (domain (dom_aux pd)) (sym_sigma_args f srts)),
-  domain (dom_aux pd) (funsym_sigma_ret f srts) :=
+  (arg: arg_list (domain pd) (sym_sigma_args f srts)),
+  domain pd (funsym_sigma_ret f srts) :=
   fun f srts arg =>
   match constr_in_mut_dec gamma f with
   | Left adt_dat =>
@@ -104,7 +105,7 @@ Definition funs_with_constrs{gamma: context}
      match (Nat.eq_dec (length srts) (length (m_params m))) with
      | left srts_len =>
        constr_rep_dom gamma_valid m m_in srts srts_len
-         (dom_aux pd) a a_in f f_in (adts pd m srts) arg
+         pd a a_in f f_in (adts pdf m srts) arg
      | right _ => funs f srts arg
      end
   | Right f_notin => funs f srts arg
@@ -117,20 +118,21 @@ Definition funs_with_constrs{gamma: context}
 (*First, all constrs are correct*)
 Lemma funs_with_constrs_constrs {gamma: context}
   (gamma_valid: valid_context gamma) (pd: pi_dom) 
+  (pdf: pi_dom_full gamma pd) 
   (funs: forall (f: funsym) (srts: list sort)
-    (arg: arg_list (domain (dom_aux pd)) (sym_sigma_args f srts)),
-    domain (dom_aux pd) (funsym_sigma_ret f srts)):
+    (arg: arg_list (domain pd) (sym_sigma_args f srts)),
+    domain pd (funsym_sigma_ret f srts)):
   forall (m : mut_adt) (a : alg_datatype) 
   (c : funsym) (Hm : mut_in_ctx m gamma) 
   (Ha : adt_in_mut a m) (Hc : constr_in_adt c a)
   (srts : list sort)
   (Hlens : Datatypes.length srts =
             Datatypes.length (m_params m))
-  (args : arg_list (domain (dom_aux pd))
+  (args : arg_list (domain pd)
             (sym_sigma_args c srts)),
-  (funs_with_constrs gamma_valid pd funs) c srts args =
+  (funs_with_constrs gamma_valid pd pdf funs) c srts args =
   constr_rep_dom gamma_valid m Hm srts Hlens 
-  (dom_aux pd) a Ha c Hc (adts pd m srts) args.
+  pd a Ha c Hc (adts pdf m srts) args.
 Proof.
   intros.
   unfold funs_with_constrs.
@@ -157,15 +159,16 @@ Qed.
 (*And for everything else, use funs*)
 Lemma funs_with_constrs_notin {gamma: context}
   (gamma_valid: valid_context gamma) (pd: pi_dom) 
+  (pdf: pi_dom_full gamma pd)
     (funs: forall (f: funsym) (srts: list sort)
-    (arg: arg_list (domain (dom_aux pd)) (sym_sigma_args f srts)),
-  domain (dom_aux pd) (funsym_sigma_ret f srts)):
+    (arg: arg_list (domain pd) (sym_sigma_args f srts)),
+  domain pd (funsym_sigma_ret f srts)):
   forall (f: funsym) srts arg,
     (forall (m: mut_adt) (a: alg_datatype),
       mut_in_ctx m gamma ->
       adt_in_mut a m ->
       ~constr_in_adt f a) ->
-    funs_with_constrs gamma_valid pd funs f srts arg =
+    funs_with_constrs gamma_valid pd pdf funs f srts arg =
   funs f srts arg.
 Proof.
   intros.
@@ -178,15 +181,16 @@ Qed.
 (*Now build a pi_funpred from a funs and preds function*)
 Definition mk_pi_funpred {gamma: context}
   (gamma_valid: valid_context gamma) (pd: pi_dom)
+  (pdf: pi_dom_full gamma pd)
   (funs: forall (f: funsym) (srts: list sort)
-    (arg: arg_list (domain (dom_aux pd)) (sym_sigma_args f srts)),
-    domain (dom_aux pd) (funsym_sigma_ret f srts))
+    (arg: arg_list (domain pd) (sym_sigma_args f srts)),
+    domain pd (funsym_sigma_ret f srts))
   (preds: forall (p: predsym) (srts: list sort)
-    (arg: arg_list (domain (dom_aux pd)) (sym_sigma_args p srts)),
+    (arg: arg_list (domain pd) (sym_sigma_args p srts)),
     bool):
-  pi_funpred gamma_valid pd :=
-  Build_pi_funpred gamma_valid pd (funs_with_constrs gamma_valid pd funs)
-    preds (funs_with_constrs_constrs gamma_valid pd funs).
+  pi_funpred gamma_valid pd pdf :=
+  Build_pi_funpred gamma_valid pd pdf (funs_with_constrs gamma_valid pd pdf funs)
+    preds (funs_with_constrs_constrs gamma_valid pd pdf funs).
 
 End BuildPreInterp.
 
@@ -197,26 +201,26 @@ End BuildPreInterp.
 Section BuildInterp.
 
 Context {gamma: context} (gamma_valid: valid_context gamma)
-  (pd: pi_dom).
+  (pd: pi_dom) (pdf: pi_dom_full gamma pd).
 
 (*Update a pf with reps for a single def*)
-Definition upd_pf (d: def) (pf: pi_funpred gamma_valid pd) (Hin: In d gamma) : 
-  pi_funpred gamma_valid pd :=
-  match d as d' return In d' gamma -> pi_funpred gamma_valid pd with
+Definition upd_pf (d: def) (pf: pi_funpred gamma_valid pd pdf) (Hin: In d gamma) : 
+  pi_funpred gamma_valid pd pdf :=
+  match d as d' return In d' gamma -> pi_funpred gamma_valid pd pdf with
   | recursive_def fs => fun Hin => 
     (pf_with_funpred gamma_valid pf fs ((proj2' (in_mutfuns _ fs)) Hin))
-  | inductive_def is => fun Hin =>  (pf_with_indprop gamma_valid pd pf 
+  | inductive_def is => fun Hin =>  (pf_with_indprop gamma_valid pd pdf pf 
     (get_indpred is) (in_inductive_ctx _ is Hin))
   | nonrec_def fd => fun Hin =>
     (pf_with_nonrec gamma_valid pf fd Hin)
   | _ => fun _ => pf
   end Hin.
 
-Fixpoint upd_pf_multi (l: list def) (pf: pi_funpred gamma_valid pd)
+Fixpoint upd_pf_multi (l: list def) (pf: pi_funpred gamma_valid pd pdf)
   (Hallin: Forall (fun x => In x gamma) l):
-  pi_funpred gamma_valid pd :=
+  pi_funpred gamma_valid pd pdf :=
   match l as l' return Forall (fun x => In x gamma) l' ->
-    pi_funpred gamma_valid pd
+    pi_funpred gamma_valid pd pdf
   with
   | nil => fun _ => pf
   | d :: tl => fun Hall =>
@@ -250,19 +254,19 @@ Qed.
 (*lots of duplication in the below proofs, improve*)
 
 (*Non recursive function - can we combine with recfun?*)
-Lemma upd_pf_multi_nonrecfun (l: list def) (pf: pi_funpred gamma_valid pd)
+Lemma upd_pf_multi_nonrecfun (l: list def) (pf: pi_funpred gamma_valid pd pdf)
 (Hallin: Forall (fun x => In x gamma) l)
 (Hnodupl: NoDup l)
 (Hordl: ctx_ordered l)
 (f: funsym) (args: list vsymbol) (body: term)
 (f_in: In (nonrec_def (fun_def f args body)) l)
 (srts: list sort) (srts_len: length srts = length (s_params f))
-(a: arg_list (domain (dom_aux pd)) (sym_sigma_args f srts))
+(a: arg_list (domain pd) (sym_sigma_args f srts))
 (vt: val_typevar)
 (vv: val_vars pd vt):
 funs gamma_valid pd (upd_pf_multi l pf Hallin) f srts a =
 dom_cast _ (funs_cast gamma_valid vt (nonrec_in_funsyms (in_nonrec_sub Hallin f_in)) srts_len) (
-  term_rep gamma_valid pd (vt_with_args vt (s_params f) srts)
+  term_rep gamma_valid pd pdf (vt_with_args vt (s_params f) srts)
     (upd_pf_multi l pf Hallin) 
     (val_with_args _ _ (upd_vv_args_srts (s_params f) srts (eq_sym srts_len)
     (s_params_Nodup _) pd vt vv) args a)
@@ -347,7 +351,7 @@ Proof.
 Qed.
 
 (*Recursive functions*)
-Lemma upd_pf_multi_recfun (l: list def) (pf: pi_funpred gamma_valid pd)
+Lemma upd_pf_multi_recfun (l: list def) (pf: pi_funpred gamma_valid pd pdf)
 (Hallin: Forall (fun x => In x gamma) l)
 (Hnodupl: NoDup l)
 (Hordl: ctx_ordered l)
@@ -355,12 +359,12 @@ fs (fs_in: In (recursive_def fs) l)
 (f: funsym) (args: list vsymbol) (body: term)
 (f_in: In (fun_def f args body) fs)
 (srts: list sort) (srts_len: length srts = length (s_params f))
-(a: arg_list (domain (dom_aux pd)) (sym_sigma_args f srts))
+(a: arg_list (domain pd) (sym_sigma_args f srts))
 (vt: val_typevar)
 (vv: val_vars pd vt):
 funs gamma_valid pd (upd_pf_multi l pf Hallin) f srts a =
 dom_cast _ (funs_cast gamma_valid vt (recfun_in_funsyms (in_mutfuns_sub Hallin fs_in) (fun_in_mutfun f_in)) srts_len) (
-  term_rep gamma_valid pd (vt_with_args vt (s_params f) srts)
+  term_rep gamma_valid pd pdf (vt_with_args vt (s_params f) srts)
     (upd_pf_multi l pf Hallin) 
     (val_with_args _ _ (upd_vv_args_srts (s_params f) srts (eq_sym srts_len)
     (s_params_Nodup _) pd vt vv) args a)
@@ -471,18 +475,18 @@ Proof.
 Qed.
 
 (*Non-recursive predicates*)
-Lemma upd_pf_multi_nonrecpred (l: list def) (pf: pi_funpred gamma_valid pd)
+Lemma upd_pf_multi_nonrecpred (l: list def) (pf: pi_funpred gamma_valid pd pdf)
 (Hallin: Forall (fun x => In x gamma) l)
 (Hnodupl: NoDup l)
 (Hordl: ctx_ordered l)
 (p: predsym) (args: list vsymbol) (body: formula)
 (p_in: In (nonrec_def (pred_def p args body)) l)
 (srts: list sort) (srts_len: length srts = length (s_params p))
-(a: arg_list (domain (dom_aux pd)) (sym_sigma_args p srts))
+(a: arg_list (domain pd) (sym_sigma_args p srts))
 (vt: val_typevar)
 (vv: val_vars pd vt):
 preds gamma_valid pd (upd_pf_multi l pf Hallin) p srts a =
-formula_rep gamma_valid pd (vt_with_args vt (s_params p) srts)
+formula_rep gamma_valid pd pdf (vt_with_args vt (s_params p) srts)
   (upd_pf_multi l pf Hallin) 
   (val_with_args _ _ (upd_vv_args_srts (s_params p) srts (eq_sym srts_len)
     (s_params_Nodup _) pd vt vv) args a)
@@ -564,7 +568,7 @@ Proof.
 Qed.
 
 (*Now we can prove the spec for recursive predicates:*)
-Lemma upd_pf_multi_recpred (l: list def) (pf: pi_funpred gamma_valid pd)
+Lemma upd_pf_multi_recpred (l: list def) (pf: pi_funpred gamma_valid pd pdf)
 (Hallin: Forall (fun x => In x gamma) l)
 (Hnodupl: NoDup l)
 (Hordl: ctx_ordered l)
@@ -572,11 +576,11 @@ fs (fs_in: In (recursive_def fs) l)
 (p: predsym) (args: list vsymbol) (body: formula)
 (p_in: In (pred_def p args body) fs)
 (srts: list sort) (srts_len: length srts = length (s_params p))
-(a: arg_list (domain (dom_aux pd)) (sym_sigma_args p srts))
+(a: arg_list (domain pd) (sym_sigma_args p srts))
 (vt: val_typevar)
 (vv: val_vars pd vt):
 preds gamma_valid pd (upd_pf_multi l pf Hallin) p srts a =
-formula_rep gamma_valid pd (vt_with_args vt (s_params p) srts)
+formula_rep gamma_valid pd pdf (vt_with_args vt (s_params p) srts)
   (upd_pf_multi l pf Hallin) 
   (val_with_args _ _ (upd_vv_args_srts (s_params p) srts (eq_sym srts_len)
     (s_params_Nodup _) pd vt vv) args a)
@@ -686,7 +690,7 @@ Proof.
 Qed.
 
 (*Any funsyms not defined in l are unchanged by [upd_pf_multi]*)
-Lemma upd_pf_multi_fun_notin (l: list def) (pf: pi_funpred gamma_valid pd)
+Lemma upd_pf_multi_fun_notin (l: list def) (pf: pi_funpred gamma_valid pd pdf)
 (Hallin: Forall (fun x => In x gamma) l)
 (f: funsym)
 (Hnotin: ~ In f (funsyms_of_context l))
@@ -711,7 +715,7 @@ Proof.
     apply Hinf. simpl. auto.
 Qed.
 
-Lemma upd_pf_multi_pred_notin (l: list def) (pf: pi_funpred gamma_valid pd)
+Lemma upd_pf_multi_pred_notin (l: list def) (pf: pi_funpred gamma_valid pd pdf)
 (Hallin: Forall (fun x => In x gamma) l)
 (p: predsym)
 (Hnotin: ~ In p (predsyms_of_context l))
@@ -757,7 +761,7 @@ Qed.
   and predicates, it is much easier to work with term/formula
   rep than the funrep, which is big and complicated. We do not
   have such an issue for inductive predicates*)
-Lemma upd_pf_multi_indprop (l: list def) (pf: pi_funpred gamma_valid pd)
+Lemma upd_pf_multi_indprop (l: list def) (pf: pi_funpred gamma_valid pd pdf)
   (Hallin: Forall (fun x => In x gamma) l)
   (Hnodupl: NoDup l)
   (Hordl: ctx_ordered l)
@@ -767,9 +771,9 @@ Lemma upd_pf_multi_indprop (l: list def) (pf: pi_funpred gamma_valid pd)
   (p_in: pred_in_indpred p ps)
   (srts: list sort)
   (srts_len: length srts = length (s_params p))
-  (a: arg_list (domain (dom_aux pd)) (sym_sigma_args p srts)):
+  (a: arg_list (domain pd) (sym_sigma_args p srts)):
   preds gamma_valid pd (upd_pf_multi l pf Hallin) p srts a =
-  indpred_rep_full gamma_valid pd (upd_pf_multi l pf Hallin)
+  indpred_rep_full gamma_valid pd pdf (upd_pf_multi l pf Hallin)
     ps (indpreds_of_sub Hallin ps_in) p p_in srts a.
 Proof.
   generalize dependent (indpreds_of_sub Hallin ps_in).
@@ -990,8 +994,8 @@ Qed.
 (*We can define what it means for an interpretation to be complete*)
 Definition full_interp {gamma} 
 (gamma_valid: valid_context gamma)
-(pd: pi_dom)
-(pf: pi_funpred gamma_valid pd) : Prop :=
+(pd: pi_dom) {pdf: pi_dom_full gamma pd}
+(pf: pi_funpred gamma_valid pd pdf) : Prop :=
 (*Defined functions are equal (with a cast) to their body, 
   under the valuation where the type arguments are mapped to srts 
   and the arguments are mapped to a, the arg list*)
@@ -999,12 +1003,12 @@ Definition full_interp {gamma}
   (f: funsym) (args: list vsymbol) (body: term)
   (f_in: fun_defined gamma f args body)
   (srts: list sort) (srts_len: length srts = length (s_params f))
-  (a: arg_list (domain (dom_aux pd)) (sym_sigma_args f srts))
+  (a: arg_list (domain pd) (sym_sigma_args f srts))
   (vt: val_typevar)
   (vv: val_vars pd vt),
   funs gamma_valid pd pf f srts a =
   dom_cast _ (funs_cast gamma_valid vt (fun_defined_in_funsyms f_in) srts_len) (
-    term_rep gamma_valid pd (vt_with_args vt (s_params f) srts)
+    term_rep gamma_valid pd pdf (vt_with_args vt (s_params f) srts)
       pf
       (val_with_args _ _ (upd_vv_args_srts (s_params f) srts (eq_sym srts_len)
       (s_params_Nodup _) pd vt vv) args a)
@@ -1018,11 +1022,11 @@ Definition full_interp {gamma}
   (p: predsym) (args: list vsymbol) (body: formula)
   (p_in: pred_defined gamma p args body)
   (srts: list sort) (srts_len: length srts = length (s_params p))
-  (a: arg_list (domain (dom_aux pd)) (sym_sigma_args p srts))
+  (a: arg_list (domain pd) (sym_sigma_args p srts))
   (vt: val_typevar)
   (vv: val_vars pd vt),
   preds gamma_valid pd pf p srts a =
-  formula_rep gamma_valid pd (vt_with_args vt (s_params p) srts)
+  formula_rep gamma_valid pd pdf (vt_with_args vt (s_params p) srts)
     pf
     (val_with_args _ _ (upd_vv_args_srts (s_params p) srts (eq_sym srts_len)
     (s_params_Nodup _) pd vt vv) args a)
@@ -1040,7 +1044,7 @@ Definition full_interp {gamma}
   (vv: val_vars pd (vt_with_args vt (s_params p) srts))
   (f: formula)
   (f_in: In f fs),
-  formula_rep gamma_valid pd 
+  formula_rep gamma_valid pd pdf 
     (vt_with_args vt (s_params p) srts) pf vv f 
     (*Typing proof*)
     (indprop_fmla_valid gamma_valid l_in p_in f_in)
@@ -1054,7 +1058,7 @@ Definition full_interp {gamma}
   (fs: list formula)
   (srts: list sort)
   (srts_len: length srts = length (s_params p))
-  (a: arg_list (domain (dom_aux pd)) (sym_sigma_args p srts))
+  (a: arg_list (domain pd) (sym_sigma_args p srts))
   (vt: val_typevar)
   (vv: val_vars pd (vt_with_args vt (s_params p) srts)),
 
@@ -1062,15 +1066,15 @@ Definition full_interp {gamma}
   forall (Ps: hlist
     (fun p' : predsym =>
     forall srts : list sort,
-    arg_list (domain (dom_aux pd)) (sym_sigma_args p' srts) -> bool)
+    arg_list (domain pd) (sym_sigma_args p' srts) -> bool)
     (map fst l)),
   (*If the constructors hold when ps -> Ps (ith of ps -> ith of Ps)*)
   (forall (fs : list formula) (Hform : Forall (formula_typed gamma) fs),
     In fs (map snd l) ->
       iter_and (map is_true (dep_map
-        (formula_rep gamma_valid pd 
+        (formula_rep gamma_valid pd pdf
         (vt_with_args vt (s_params p) srts) 
-        (interp_with_Ps gamma_valid pd pf (map fst l) Ps) vv) fs Hform))) ->
+        (interp_with_Ps gamma_valid pd pdf pf (map fst l) Ps) vv) fs Hform))) ->
   (*Then preds p fs x -> P x*) 
   preds gamma_valid pd pf p srts a ->
   get_hlist_elt predsym_eq_dec Ps p 
@@ -1079,19 +1083,20 @@ Definition full_interp {gamma}
 
 (*Prove versions (old) that ONLy relate to recursive defs*)
 Lemma full_interp_recfun {gamma} (gamma_valid: valid_context gamma)
-  (pd: pi_dom) (pf: pi_funpred gamma_valid pd)
+  (pd: pi_dom) (pdf: pi_dom_full gamma pd) 
+  (pf: pi_funpred gamma_valid pd pdf)
   (pf_full: full_interp gamma_valid pd pf):
   (forall (fs: list funpred_def)
   (fs_in: In fs (mutfuns_of_context gamma))
   (f: funsym) (args: list vsymbol) (body: term)
   (f_in: In (fun_def f args body) fs)
   (srts: list sort) (srts_len: length srts = length (s_params f))
-  (a: arg_list (domain (dom_aux pd)) (sym_sigma_args f srts))
+  (a: arg_list (domain pd) (sym_sigma_args f srts))
   (vt: val_typevar)
   (vv: val_vars pd vt),
   funs gamma_valid pd pf f srts a =
   dom_cast _ (funs_cast gamma_valid vt (recfun_in_funsyms fs_in (fun_in_mutfun f_in)) srts_len) (
-    term_rep gamma_valid pd (vt_with_args vt (s_params f) srts)
+    term_rep gamma_valid pd pdf (vt_with_args vt (s_params f) srts)
       pf
       (val_with_args _ _ (upd_vv_args_srts (s_params f) srts (eq_sym srts_len)
       (s_params_Nodup _) pd vt vv) args a)
@@ -1111,18 +1116,19 @@ Proof.
 Qed.
 
 Lemma full_interp_recpred {gamma} (gamma_valid: valid_context gamma)
-  (pd: pi_dom) (pf: pi_funpred gamma_valid pd)
+  (pd: pi_dom) (pdf: pi_dom_full gamma pd) 
+  (pf: pi_funpred gamma_valid pd pdf)
   (pf_full: full_interp gamma_valid pd pf):
   (forall (fs: list funpred_def)
   (fs_in: In fs (mutfuns_of_context gamma))
   (p: predsym) (args: list vsymbol) (body: formula)
   (p_in: In (pred_def p args body) fs)
   (srts: list sort) (srts_len: length srts = length (s_params p))
-  (a: arg_list (domain (dom_aux pd)) (sym_sigma_args p srts))
+  (a: arg_list (domain pd) (sym_sigma_args p srts))
   (vt: val_typevar)
   (vv: val_vars pd vt),
   preds gamma_valid pd pf p srts a =
-  formula_rep gamma_valid pd (vt_with_args vt (s_params p) srts)
+  formula_rep gamma_valid pd pdf (vt_with_args vt (s_params p) srts)
     pf
     (val_with_args _ _ (upd_vv_args_srts (s_params p) srts (eq_sym srts_len)
     (s_params_Nodup _) pd vt vv) args a)
@@ -1144,13 +1150,13 @@ Qed.
   it satisfies all of the conditions of [full_interp]*)
 
 Context {gamma: context} (gamma_valid: valid_context gamma)
-(pd: pi_dom).
+(pd: pi_dom) (pdf: pi_dom_full gamma pd).
 
 Definition full_pf funs preds : 
-  pi_funpred gamma_valid pd :=
-  upd_pf_multi gamma_valid pd gamma
+  pi_funpred gamma_valid pd pdf :=
+  upd_pf_multi gamma_valid pd pdf gamma
     (*start with the ADT constructors, add all defs in gamma*)
-    (mk_pi_funpred gamma_valid pd funs preds)
+    (mk_pi_funpred gamma_valid pd pdf funs preds)
     (all_in_refl gamma).
 
 (*And the spec: first, it is a full_interp*)
@@ -1165,13 +1171,13 @@ Proof.
     assert (Hin':=f_in).
     unfold fun_defined in Hin'.
     destruct Hin' as [ [fs [fs_in f_in']]|f_in'].
-    + rewrite (upd_pf_multi_recfun gamma_valid pd gamma
-      (mk_pi_funpred gamma_valid pd funs preds) (all_in_refl gamma) Hnodup
+    + rewrite (upd_pf_multi_recfun gamma_valid pd pdf gamma
+      (mk_pi_funpred gamma_valid pd pdf funs preds) (all_in_refl gamma) Hnodup
       Hord fs (proj1 (in_mutfuns gamma fs) fs_in) f args
       body f_in' srts srts_len a vt vv).
       apply dom_cast_eq'.
       apply term_rep_irrel.
-    + rewrite (upd_pf_multi_nonrecfun gamma_valid pd gamma _ (all_in_refl gamma) Hnodup
+    + rewrite (upd_pf_multi_nonrecfun gamma_valid pd pdf gamma _ (all_in_refl gamma) Hnodup
       Hord f args body f_in' _ srts_len a vt vv).
       apply dom_cast_eq'.
       apply term_rep_irrel.
@@ -1180,11 +1186,11 @@ Proof.
     assert (Hin':=p_in).
     unfold pred_defined in Hin'.
     destruct Hin' as [ [fs [fs_in p_in']]|p_in'].
-    + rewrite (upd_pf_multi_recpred gamma_valid pd gamma _ (all_in_refl gamma) Hnodup
+    + rewrite (upd_pf_multi_recpred gamma_valid pd pdf gamma _ (all_in_refl gamma) Hnodup
       Hord fs (proj1 (in_mutfuns gamma fs) fs_in) p args
       body p_in' srts srts_len a vt vv).
       apply fmla_rep_irrel.
-    + rewrite (upd_pf_multi_nonrecpred gamma_valid pd gamma _ (all_in_refl gamma) Hnodup
+    + rewrite (upd_pf_multi_nonrecpred gamma_valid pd pdf gamma _ (all_in_refl gamma) Hnodup
       Hord p args body p_in' _ srts_len a vt vv).
       apply fmla_rep_irrel.
   - intros. unfold full_pf. 
@@ -1214,7 +1220,7 @@ Proof.
       Unshelve. auto.
   - (*And the least predicate proof*)
     intros.
-    eapply (indpred_least_pred_val gamma_valid _ _ 
+    eapply (indpred_least_pred_val gamma_valid _ _ _
       (vt_with_args vt (s_params p) srts) vv); auto.
     + apply vt_with_args_vt_eq; auto. apply s_params_Nodup.
     + apply (in_indpred_typevars gamma_valid); auto.
@@ -1232,7 +1238,7 @@ Qed.
   and predicates, there exists a full_interp consistent with this
   *)
 Theorem full_interp_exists: forall funi predi,
-  {pf: pi_funpred gamma_valid pd | 
+  {pf: pi_funpred gamma_valid pd pdf | 
     full_interp gamma_valid pd pf /\ 
     (forall f srts a, In (abs_fun f) gamma ->
       (funs gamma_valid pd pf ) f srts a = funi f srts a) /\

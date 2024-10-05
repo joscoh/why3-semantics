@@ -27,14 +27,15 @@ Definition gen_term_eq_dec {b: bool} (x y: gen_term b) : {x = y} + {x <> y} :=
 (*We need alpha because we need the disjointness condition;
   we alpha convert first*)
 Lemma well_typed_sem_exhaust {gamma: context} (gamma_valid: valid_context gamma)
-  (pd: pi_dom) (pf: pi_funpred gamma_valid pd) (vt: val_typevar) (v: val_vars pd vt)
+  (pd: pi_dom) (pdf: pi_dom_full gamma pd) 
+  (pf: pi_funpred gamma_valid pd pdf) (vt: val_typevar) (v: val_vars pd vt)
   (b: bool) (ret_ty: gen_type b)
   (tm: term) (ty1: vty) (ps: list (pattern * gen_term b))
   (Hpatty: @gen_typed gamma b (gen_match tm ty1 ps) ret_ty)
   (Htty: term_has_type gamma tm ty1):
   exists p (Hty: pattern_has_type gamma (fst p) ty1), In p ps /\
-  isSome (match_val_single gamma_valid pd vt ty1 (fst p) Hty
-    (term_rep gamma_valid pd vt pf v tm ty1 Htty)).
+  isSome (match_val_single gamma_valid pd pdf vt ty1 (fst p) Hty
+    (term_rep gamma_valid pd pdf vt pf v tm ty1 Htty)).
 Proof.
   pose proof (gen_match_typed_inv gamma b tm ty1 ps ret_ty Hpatty) as [_ [Hallty Hcomp]].
   (*Have to convert pattern*)
@@ -91,60 +92,45 @@ Proof.
   (*Prove hypotheses for theorem*)
   assert (Htys:Forall2 (term_has_type gamma) (map fst [(tm, ty1)]) (map snd [(tm, ty1)])).
   { simpl. constructor; auto. }
-  assert (Hp: @pat_matrix_typed gamma b ret_ty (map snd ([(tm, ty1)])) 
-    (map (fun x : pattern * gen_term b => ([fst x], snd x)) ps1)).
-  { simpl.
-    assert (Hall: forall x, In x ps1 ->
-      pattern_has_type gamma (fst x) ty1 /\ @gen_typed gamma b (snd x) ret_ty).
-    {
-      (*Need induction from [all2]*)
-      clear -Halpha Hallty Hlen.
-      generalize dependent ps1.
-      induction ps as [| h t IH]; simpl; auto; intros [|h2 t2]; simpl; auto;
-      try contradiction; try discriminate.
-      rewrite !all2_cons. unfold is_true.
-      rewrite !andb_true_iff.
-      intros [[[Heqsnd Hlenh] Halpha] Hall] Hlen.
-      destruct (gen_term_eq_dec (snd h) (snd h2)); [|discriminate].
-      inversion Hallty; subst.
-      specialize (IH H2 _ Hall (ltac:(lia))).
-      intros x [Hx | Hinx]; subst; auto.
-      split.
-      - (*From alpha quiv*)
-        eapply alpha_equiv_p_type_full.
-        + apply Halpha.
-        + apply Nat.eqb_eq in Hlenh; apply Hlenh.
-        + destruct_all; assumption.
-      - rewrite <- e. apply H1.
-    }
-    apply compile_bare_single_pat_typed; auto;
-    rewrite Forall_map, Forall_forall;
-    intros x Hinx; apply Hall; auto.
-  }
-  assert (Hdisj: pat_matrix_var_names_disj b (map fst [(tm, ty1)]) 
-    (map (fun x : pattern * gen_term b => ([fst x], snd x)) ps1)).
+  assert (Hall: forall x, In x ps1 ->
+    pattern_has_type gamma (fst x) ty1 /\ @gen_typed gamma b (snd x) ret_ty).
   {
-    unfold pat_matrix_var_names_disj.
-    simpl.
+    (*Need induction from [all2]*)
+    clear -Halpha Hallty Hlen.
+    generalize dependent ps1.
+    induction ps as [| h t IH]; simpl; auto; intros [|h2 t2]; simpl; auto;
+    try contradiction; try discriminate.
+    rewrite !all2_cons. unfold is_true.
+    rewrite !andb_true_iff.
+    intros [[[Heqsnd Hlenh] Halpha] Hall] Hlen.
+    destruct (gen_term_eq_dec (snd h) (snd h2)); [|discriminate].
+    inversion Hallty; subst.
+    specialize (IH H2 _ Hall (ltac:(lia))).
+    intros x [Hx | Hinx]; subst; auto.
+    split.
+    - (*From alpha quiv*)
+      eapply alpha_equiv_p_type_full.
+      + apply Halpha.
+      + apply Nat.eqb_eq in Hlenh; apply Hlenh.
+      + destruct_all; assumption.
+    - rewrite <- e. apply H1.
+  }
+  assert (Htys1: Forall (fun p : pattern * gen_term b => pattern_has_type gamma (fst p) ty1) ps1).
+  { rewrite Forall_forall; intros x Hinx; apply Hall; auto. }
+  assert (Htys2: Forall (fun t : pattern * gen_term b => @gen_typed gamma b (snd t) ret_ty) ps1).
+  { rewrite Forall_forall; intros x Hinx; apply Hall; auto. }
+  assert (Hdisj: disj (map fst (tm_fv tm)) (map fst (big_union vsymbol_eq_dec pat_fv (map fst ps1)))).
+  {
     intros x [Hinx1 Hinx2].
-    unfold pat_mx_fv in Hinx2.
     rewrite in_map_iff in Hinx1, Hinx2.
     destruct Hinx1 as [[x1 y1] [Hx Hinx1]]; subst; simpl in *.
     destruct Hinx2 as [[x2 y2] [Hx Hinx2]]; subst; simpl in *.
-    rewrite union_elts in Hinx1. destruct Hinx1 as [Hinx1 | []].
-    (*Contradiction from definition of ps1*)
-    unfold ps1 in Hinx2.
-    rewrite map_map in Hinx2. simpl in Hinx2.
-    simpl_set. destruct Hinx2 as [[ps2 t2] [Hinps2 Hinx2]].
-    unfold row_fv in Hinx2.
-    simpl in Hinx2.
     simpl_set.
-    destruct Hinx2 as [p2 [Hinp2 Hinx2]].
-    rewrite in_map_iff in Hinps2.
-    destruct Hinps2 as [[p3 t3] [Heq Hinp3]];
-    inversion Heq; subst; clear Heq.
-    simpl in Hinp2.
-    destruct Hinp2 as [Hp2 | []]; subst.
+    destruct Hinx2 as [p [Hinp Hinx2]].
+    unfold ps1 in Hinp.
+    rewrite map_map in Hinp; simpl in Hinp.
+    rewrite in_map_iff in Hinp; destruct Hinp as [[p2 g2] [Hpg Hinpg]];
+    subst; simpl in *.
     (*Now, we get our contradiction*)
     apply a_convert_map_p_bnd in Hinx2.
     simpl in Hinx2.
@@ -152,7 +138,7 @@ Proof.
     - apply Hnotin. rewrite map_fst_combine.
       + rewrite in_map_iff. exists (x2, y2); auto.
       + rewrite gen_strs_length, map_length. reflexivity.
-    - assert (Hingen: In x2 (gen_strs (Datatypes.length (pat_fv p3)) (tm_fv tm ++ pat_fv p3))).
+    - assert (Hingen: In x2 (gen_strs (Datatypes.length (pat_fv p2)) (tm_fv tm ++ pat_fv p2))).
       {
         rewrite in_combine_iff in Hinx2;
         [| rewrite gen_strs_length, map_length; reflexivity].
@@ -166,49 +152,35 @@ Proof.
       apply Hingen; left. rewrite in_map_iff; exists (x2, y1); auto.
   }
   (*Now finally, we can apply the compile correctness result*)
-  unfold compile_bare_single in Hcomp2.
-  destruct (compile_bare _ _ _) as [t2|] eqn : Hcomp1; [|discriminate].
-  pose proof (compile_bare_typed gamma_valid pd pf vt v b ret_ty _ _ Htys Hp Hdisj _ Hcomp1) as Htyt.
-  pose proof (compile_bare_spec gamma_valid pd pf vt v b ret_ty _ _ Htys Hp Hdisj _ Htyt Hcomp1) as Hmatch.
-  unfold matches_matrix_tms in Hmatch. simpl in Hmatch.
-  (*Now we use the fact that [matches_matrix] gives Some, use induction*)
-  revert Hmatch Halpha Hlen. clear. generalize dependent ps1.
-  induction ps as [| phd ptl IH]; intros [| pt1 ph1]; simpl; auto;
+  destruct (compile_bare_single b tm ty1 ps1) as [tm1|] eqn : Hcomp1; [|discriminate].
+  pose proof (compile_bare_single_typed gamma_valid b ret_ty tm ty1 ps1 Htty 
+    Htys1 Htys2 tm1 Hcomp1) as Htyt.
+  pose proof (compile_bare_single_spec1 gamma_valid pd pdf pf vt v b ret_ty
+    tm ty1 ps1 Htty Htys1 Htys2 Hdisj tm1 Htyt Hcomp1) as Hmatch.
+  (*Now we use the fact that [match_rep_opt] gives Some, use induction*)
+  revert Hmatch Halpha Hlen Hallty. clear. generalize dependent ps1.
+  induction ps as [| [p1 a1] ptl IH]; intros [| [p2 a2] ph1]; simpl; auto;
   try discriminate.
-  intros Hp. simpl.
-  simp matches_matrix.
-  simpl.
-  simp matches_row.
-  simp terms_to_hlist. simpl hlist_hd.
-  rewrite all2_cons.
-  intros Hsome.
-  unfold is_true at 1.
-  rewrite !andb_true_iff.
-  intros [[[Hsndeq Hlenhd] Halphah] Halphat] Hlentl.
-  revert Hsome.
-  destruct (match_val_single gamma_valid pd vt ty1 (fst pt1)
-    _ _) as [o|] eqn : Hmatch1.
-  - (*Case 1: head*) simpl. intros Hsome.
-    exists phd. 
-    pose proof (pat_matrix_typed_head _ _ Hp) as [Hr1 Hr2].
-    simpl in Hr1.
-    inversion Hr1; subst.
-    assert (Hty: pattern_has_type gamma (fst phd) ty1). {
-      rewrite alpha_equiv_p_sym in Halphah.
-      rewrite flip_combine in Halphah.
-      eapply alpha_equiv_p_type_full. apply Halphah.
-      apply Nat.eqb_eq in Hlenhd; auto. auto.
-    }
-    exists Hty. split; auto.
-    destruct (match_val_single _ _ _ _ (fst phd) _ _) as [o2|] eqn : Hmatch2; 
+  intros Hp Htys2. simpl.
+  destruct (match_val_single gamma_valid pd pdf vt ty1 p2 (Forall_inv Hp)
+    (term_rep gamma_valid pd pdf vt pf v tm ty1 Htty)) as [o|] eqn : Hmatch; auto.
+  -  (*Case 1: head*) simpl. intros Hsome Hall Hlen Hallty.
+    exists (p1, a1). exists (proj1 (Forall_inv Hallty)). split; auto.
+    simpl.
+    destruct (match_val_single _ _ _ _ _ p1 _ _) as [o2|] eqn : Hmatch2; 
     simpl; auto.
     (*use fact that [match_val_single] preserved by alpha equiv*)
     rewrite match_val_single_alpha_p_none_iff in Hmatch2.
     erewrite term_rep_irrel in Hmatch2.
-    rewrite Hmatch1 in Hmatch2. discriminate. apply Halphah.
+    rewrite Hmatch in Hmatch2. discriminate.
+    rewrite all2_cons in Hall.
+    simpl in Hall.
+    bool_hyps; eauto.
   - (*IH case*) simpl. 
-    intros Hmatch.
-    destruct (IH ph1 (pat_matrix_typed_tail _ _ Hp) Hmatch Halphat (ltac:(lia)))
-    as [p1 [Hty1 [Hinp1 Hmatchp1]]].
-    exists p1. exists Hty1. split; auto.
+    intros Hmatch1 Hall Hlen Htyps.
+    destruct (IH ph1 (Forall_inv_tail Hp) (Forall_inv_tail Htys2)  Hmatch1)
+      as [p3 [Hty3 [Hinp3 Hmatchp3]]]; auto.
+    + rewrite all2_cons in Hall. bool_hyps. bool_to_prop; split_all; auto.
+    + inversion Htyps; auto.
+    + exists p3. exists Hty3. split; auto.
 Qed. 
