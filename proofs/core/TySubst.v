@@ -1098,7 +1098,7 @@ Lemma match_val_single_change_ty pd pdf vt (ty1 ty2: vty)
   (Heq: ty1 = ty2)
   d:
   match_val_single gamma_valid pd pdf vt ty1 p Hp1 d =
-  match_val_single gamma_valid pd pdf vt ty2 p Hp2 (dom_cast pd (f_equal (v_subst vt) Heq) d).
+  match_val_single gamma_valid pd pdf vt ty2 p Hp2 (dom_cast (dom_aux pd) (f_equal (v_subst vt) Heq) d).
 Proof.
   subst. simpl. unfold dom_cast. simpl. apply match_val_single_irrel.
 Qed.
@@ -1116,10 +1116,10 @@ Lemma match_val_single_ty_subst_none pd pdf vt (ty: vty)
   (Hp2: pattern_has_type gamma (ty_subst_p p) (ty_subst' params tys ty))
   (Heq: v_subst (vt_with_args vt params (map (v_subst vt) tys)) ty = 
     v_subst vt (ty_subst' params tys ty))
-  (d: domain pd (v_subst (vt_with_args vt params (map (v_subst vt) tys)) ty)):
+  (d: domain (dom_aux pd) (v_subst (vt_with_args vt params (map (v_subst vt) tys)) ty)):
   match_val_single gamma_valid pd pdf vt (ty_subst' params tys ty) 
     (ty_subst_p p) Hp2
-    (dom_cast pd Heq d) = None <->
+    (dom_cast (dom_aux pd) Heq d) = None <->
   match_val_single gamma_valid pd pdf
     (vt_with_args vt params (map (v_subst vt) tys)) ty p Hp1 d = None.
 Proof.
@@ -1187,13 +1187,13 @@ Proof.
     assert (
       constr_rep gamma_valid m1 m_in
            (map (v_subst vt) (ty_subst_list' params tys vs)) e0 
-           pd a1 a_in f2 x_in2
+           (dom_aux pd) a1 a_in f2 x_in2
            (adts pdf m1 (map (v_subst vt) (ty_subst_list' params tys vs))) args2 =
       scast (f_equal 
-      (fun x => adt_rep m1 x pd a1 a_in) (Logic.eq_sym Heq2)) 
+      (fun x => adt_rep m1 x (dom_aux pd) a1 a_in) (Logic.eq_sym Heq2)) 
       (constr_rep gamma_valid m1 m_in
       (map (v_subst (vt_with_args vt params (map (v_subst vt) tys))) vs) e
-      pd a1 a_in f1 x_in1
+      (dom_aux pd) a1 a_in f1 x_in1
       (adts pdf m1
          (map (v_subst (vt_with_args vt params (map (v_subst vt) tys))) vs))
       args1)
@@ -1214,7 +1214,7 @@ Proof.
       (*Now, we show that if x <> x0, this contradicts disjointness*)
       destruct (funsym_eq_dec f1 f2); subst; auto.
       exfalso. 
-      apply (constr_rep_disjoint gamma_valid m1 m_in _ e0 pd a1
+      apply (constr_rep_disjoint gamma_valid m1 m_in _ e0 (dom_aux pd) a1
       a_in _ args1 args2 (ltac:(auto)) (Logic.eq_sym H0)).
     }
     subst.
@@ -1356,25 +1356,25 @@ Lemma match_val_single_ty_subst_some pd pdf vt (ty: vty)
   (Hp2: pattern_has_type gamma (ty_subst_p p) (ty_subst' params tys ty))
   (Heq: v_subst (vt_with_args vt params (map (v_subst vt) tys)) ty = 
     v_subst vt (ty_subst' params tys ty))
-  (d: domain pd (v_subst (vt_with_args vt params (map (v_subst vt) tys)) ty))
+  (d: domain (dom_aux pd) (v_subst (vt_with_args vt params (map (v_subst vt) tys)) ty))
   l1 l2:
   match_val_single gamma_valid pd pdf vt (ty_subst' params tys ty) 
     (ty_subst_p p) Hp2
-    (dom_cast pd Heq d) = Some l1 ->
+    (dom_cast (dom_aux pd) Heq d) = Some l1 ->
   match_val_single gamma_valid pd pdf
     (vt_with_args vt params (map (v_subst vt) tys)) ty p Hp1 d = Some l2 ->
   forall x y,
   In (x, y) l2 ->
   exists z Heq,
     In (ty_subst_var x, z) l1 /\
-    projT2 z = dom_cast pd Heq (projT2 y).
+    projT2 z = dom_cast (dom_aux pd) Heq (projT2 y).
 Proof.
   revert ty vt Hp1 Hp2 Heq d l1 l2.
   induction p; intros ty vt Hp1 Hp2 Heq d l1 l2; auto.
   - (*Pvar (base case)*) simpl; intros.
     inv H; inv H0. simpl in *. destruct H1 as [Hxy | []]. inv Hxy.
-    simpl. exists ( existT (domain pd) (v_subst vt (ty_subst' params tys ty))
-    (dom_cast pd Heq d)).
+    simpl. exists ( existT (domain (dom_aux pd)) (v_subst vt (ty_subst' params tys ty))
+    (dom_cast (dom_aux pd) Heq d)).
     simpl.
     exists (Logic.eq_sym (v_subst_vt_with_args' params tys params_len params_nodup vt ty)).
     split; auto. apply dom_cast_eq.
@@ -1440,13 +1440,13 @@ Proof.
     assert (
       constr_rep gamma_valid m1 m_in
            (map (v_subst vt) (ty_subst_list' params tys vs)) e0 
-           pd a1 a_in f2 x_in2
+           (dom_aux pd) a1 a_in f2 x_in2
            (adts pdf m1 (map (v_subst vt) (ty_subst_list' params tys vs))) args2 =
       scast (f_equal 
-      (fun x => adt_rep m1 x pd a1 a_in) (Logic.eq_sym Heq2)) 
+      (fun x => adt_rep m1 x (dom_aux pd) a1 a_in) (Logic.eq_sym Heq2)) 
       (constr_rep gamma_valid m1 m_in
       (map (v_subst (vt_with_args vt params (map (v_subst vt) tys))) vs) e
-      pd a1 a_in f1 x_in1
+      (dom_aux pd) a1 a_in f1 x_in1
       (adts pdf m1
          (map (v_subst (vt_with_args vt params (map (v_subst vt) tys))) vs))
       args1)
@@ -1467,7 +1467,7 @@ Proof.
       (*Now, we show that if x <> x0, this contradicts disjointness*)
       destruct (funsym_eq_dec f1 f2); subst; auto.
       exfalso. 
-      apply (constr_rep_disjoint gamma_valid m1 m_in _ e0 pd a1
+      apply (constr_rep_disjoint gamma_valid m1 m_in _ e0 (dom_aux pd) a1
       a_in _ args1 args2 (ltac:(auto)) (Logic.eq_sym H0)).
     }
     subst.
@@ -1576,8 +1576,8 @@ Proof.
     intros Hl; inv Hl. simpl.
     intros x y [Hxy | Hinxy].
     + inv Hxy. simpl.
-      exists (existT (domain pd) (v_subst vt (ty_subst' params tys ty))
-      (dom_cast pd Heq d)).
+      exists (existT (domain (dom_aux pd)) (v_subst vt (ty_subst' params tys ty))
+      (dom_cast (dom_aux pd) Heq d)).
       simpl.
       exists Heq. split; auto.
     + destruct (IHp _ _ _ _ _ _ _ _ Hmatch Hmatch0 x y Hinxy) as [z [Heq1 [Hinxz Hz2]]].
@@ -1597,13 +1597,13 @@ Qed.
     (Hwf: tm_wf_strong_rec t)
     (Hty1: term_has_type gamma t ty1)
     (Hty2: term_has_type gamma (ty_subst_tm t) ty2)
-    (Hvv: forall x Heq, In x (tm_fv t) -> vv2 x = dom_cast pd Heq 
+    (Hvv: forall x Heq, In x (tm_fv t) -> vv2 x = dom_cast (dom_aux pd) Heq 
       (vv1 (ty_subst_var x)))
     Heq,
     (*[term_rep] version is ugly because of cast, but we mostly
       need formula version (or maybe not, see)*)
     term_rep gamma_valid pd pdf vt pf vv1 (ty_subst_tm t) ty2 Hty2 =
-    dom_cast pd Heq (term_rep gamma_valid pd pdf
+    dom_cast (dom_aux pd) Heq (term_rep gamma_valid pd pdf
       (vt_with_args vt params (map (v_subst vt) tys)) pf
       vv2
       t ty1 Hty1)) /\
@@ -1612,7 +1612,7 @@ Qed.
     (Hwf: fmla_wf_strong_rec f)
     (Hty1: formula_typed gamma f)
     (Hty2: formula_typed gamma (ty_subst_fmla f))
-    (Hvv: forall x Heq, In x (fmla_fv f) -> vv2 x = dom_cast pd Heq 
+    (Hvv: forall x Heq, In x (fmla_fv f) -> vv2 x = dom_cast (dom_aux pd) Heq 
       (vv1 (ty_subst_var x))),
     formula_rep gamma_valid pd pdf vt pf vv1 (ty_subst_fmla f) Hty2 =
     formula_rep gamma_valid pd pdf
@@ -1630,7 +1630,7 @@ Proof.
       generalize dependent (Logic.eq_sym (ty_constint_inv Hty2)); intros.
       assert (e = Logic.eq_refl). apply UIP_dec. apply vty_eq_dec.
       subst. simpl.
-      assert ((f_equal (domain pd) Heq) = Logic.eq_refl). {
+      assert ((f_equal (domain (dom_aux pd)) Heq) = Logic.eq_refl). {
         (*NOTE: relies on UIP*)
         apply UIP.
       }
@@ -1641,7 +1641,7 @@ Proof.
       generalize dependent (Logic.eq_sym (ty_constreal_inv Hty2)); intros.
       assert (e = Logic.eq_refl). apply UIP_dec. apply vty_eq_dec.
       subst. simpl.
-      assert ((f_equal (domain pd) Heq) = Logic.eq_refl). {
+      assert ((f_equal (domain (dom_aux pd)) Heq) = Logic.eq_refl). {
         (*NOTE: relies on UIP*)
         apply UIP.
       }
@@ -1879,7 +1879,7 @@ Proof.
     try (exfalso; apply n; auto).
     assert (exists z Heq,
       In (ty_subst_var x1, z) l /\
-      projT2 z = dom_cast pd Heq (projT2 y1)
+      projT2 z = dom_cast (dom_aux pd) Heq (projT2 y1)
     ).
     { eapply match_val_single_ty_subst_some. apply Hmatch. 
       apply Hmatch1. auto. }
@@ -1896,19 +1896,19 @@ Proof.
     (*So all that remains is to prove [match_val_single] Some lemma*)
   - (*Teps*)
     (*First, cast inhabited*)
-    assert (match domain_ne pdf (v_subst vt ty2) with
+    assert (match domain_ne pd (v_subst vt ty2) with
     | @DE _ _ x => x
-    end = dom_cast pd Heq
-    (match domain_ne pdf (v_subst (vt_with_args vt params (map (v_subst vt) tys)) ty1) with
+    end = dom_cast (dom_aux pd) Heq
+    (match domain_ne pd (v_subst (vt_with_args vt params (map (v_subst vt) tys)) ty1) with
     | @DE _ _ x => x
     end)). {
       generalize dependent (v_subst vt ty2); intros; subst.
       unfold dom_cast; reflexivity.
     }
-    generalize dependent (match domain_ne pdf (v_subst vt ty2) with
+    generalize dependent (match domain_ne pd (v_subst vt ty2) with
     | @DE _ _ x => x
     end).
-    generalize dependent (match domain_ne pdf (v_subst (vt_with_args vt params (map (v_subst vt) tys)) ty1) with
+    generalize dependent (match domain_ne pd (v_subst (vt_with_args vt params (map (v_subst vt) tys)) ty1) with
     | @DE _ _ x => x
     end).
     intros i1 i2 Hi; subst.
@@ -1916,8 +1916,8 @@ Proof.
     match goal with
     | |- ClassicalEpsilon.epsilon ?i1 ?f = dom_cast ?d ?Heq (ClassicalEpsilon.epsilon ?i2 ?g) => 
       let H := fresh in
-      assert (H: g = (fun (z: domain pd (v_subst (vt_with_args vt params (map (v_subst vt) tys)) ty1)) =>
-        f (dom_cast pd Heq z))); [| generalize dependent f;
+      assert (H: g = (fun (z: domain (dom_aux pd) (v_subst (vt_with_args vt params (map (v_subst vt) tys)) ty1)) =>
+        f (dom_cast (dom_aux pd) Heq z))); [| generalize dependent f;
         intros; rewrite H]
     end.
     {
@@ -1985,7 +1985,7 @@ Proof.
       simpl. apply v_subst_vt_with_args'; auto.
     }
     assert (forall d1 d2,
-      d1 = dom_cast pd Heq d2 ->
+      d1 = dom_cast (dom_aux pd) Heq d2 ->
       formula_rep gamma_valid pd pdf vt pf (substi pd vt vv1 (ty_subst_var v) d2) 
       (ty_subst_fmla f) (typed_quant_inv Hty2) =
     formula_rep gamma_valid pd pdf (vt_with_args vt params (map (v_subst vt) tys)) pf
@@ -2010,12 +2010,12 @@ Proof.
     apply all_dec_eq; split; intros.
     + erewrite <- H0. apply H1.
       Unshelve.
-      2: exact (dom_cast pd (Logic.eq_sym Heq) d).
+      2: exact (dom_cast (dom_aux pd) (Logic.eq_sym Heq) d).
       rewrite !dom_cast_compose. symmetry. apply dom_cast_refl.
     + erewrite H0. apply H1. reflexivity.
-    + destruct H1 as [d Hd]. exists (dom_cast pd Heq d).
+    + destruct H1 as [d Hd]. exists (dom_cast (dom_aux pd) Heq d).
       erewrite <- H0. apply Hd. reflexivity.
-    + destruct H1 as [d Hd]. exists (dom_cast pd (Logic.eq_sym Heq) d).
+    + destruct H1 as [d Hd]. exists (dom_cast (dom_aux pd) (Logic.eq_sym Heq) d).
       erewrite H0. apply Hd. rewrite !dom_cast_compose. symmetry.
       apply dom_cast_refl.
   - (*Feq*)
@@ -2197,7 +2197,7 @@ Proof.
     try (exfalso; apply n; auto).
     assert (exists z Heq,
       In (ty_subst_var x1, z) l /\
-      projT2 z = dom_cast pd Heq (projT2 y1)
+      projT2 z = dom_cast (dom_aux pd) Heq (projT2 y1)
     ).
     { eapply match_val_single_ty_subst_some. apply Hmatch. 
       apply Hmatch1. auto. }
@@ -3393,7 +3393,7 @@ Theorem ty_subst_wf_tm_rep (pd: pi_dom) (pdf: pi_dom_full gamma pd)
   NoDup (map fst (tm_fv t)) ->
   term_rep gamma_valid pd pdf vt pf vv (ty_subst_wf_tm t) 
     (ty_subst' params tys ty) Hty2 =
-  dom_cast pd (Logic.eq_sym (v_subst_vt_with_args' 
+  dom_cast (dom_aux pd) (Logic.eq_sym (v_subst_vt_with_args' 
     params tys params_len params_nodup vt ty))
     (term_rep gamma_valid pd pdf
       (vt_with_args vt params (map (v_subst vt) tys))

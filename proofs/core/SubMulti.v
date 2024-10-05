@@ -62,7 +62,7 @@ Definition map_arg_list {gamma: context} (gamma_valid: valid_context gamma)
 (tms: list term) (tys: list vty)
 (Hlen: length tms = length tys)
 (Htys: Forall (fun x => term_has_type gamma (fst x) (snd x)) (combine tms tys)):
-arg_list (domain pd) (map (v_subst vt) tys).
+arg_list (domain (dom_aux pd)) (map (v_subst vt) tys).
 Proof.
   generalize dependent tys.
   induction tms; simpl.
@@ -103,7 +103,7 @@ Lemma map_arg_list_nth {gamma: context} (gamma_valid: valid_context gamma)
 (Htys: Forall (fun x => term_has_type gamma (fst x) (snd x)) (combine tms tys))
 (i: nat) (Hi: i < length tys):
 hnth i (map_arg_list gamma_valid pd pdf vt pf vv tms tys Hlen Htys)
-  s_int (dom_int pd) = dom_cast pd 
+  s_int (dom_int pd) = dom_cast (dom_aux pd) 
     (map_arg_list_nth_eq vt tys i Hi)
   (term_rep gamma_valid pd pdf vt pf vv 
     (nth i tms tm_d) (nth i tys vty_int) 
@@ -377,7 +377,7 @@ Proof.
         (*Simplify to single cast*)
         match goal with
         | |- dom_cast ?d ?H1 ?x1 = dom_cast ?d ?H2 ?x2 =>
-          replace x2 with (dom_cast pd 
+          replace x2 with (dom_cast (dom_aux pd) 
             (f_equal (v_subst vt) Hcast) x1); [rewrite !dom_cast_compose;
             apply dom_cast_eq |]
         end.
@@ -512,7 +512,7 @@ Proof.
         (*Simplify to single cast*)
         match goal with
         | |- dom_cast ?d ?H1 ?x1 = dom_cast ?d ?H2 ?x2 =>
-          replace x2 with (dom_cast pd 
+          replace x2 with (dom_cast (dom_aux pd) 
             (f_equal (v_subst vt) Hcast) x1); [rewrite !dom_cast_compose;
             apply dom_cast_eq |]
         end.
@@ -640,7 +640,7 @@ Proof.
         (*Simplify to single cast*)
         match goal with
         | |- dom_cast ?d ?H1 ?x1 = dom_cast ?d ?H2 ?x2 =>
-          replace x2 with (dom_cast pd 
+          replace x2 with (dom_cast (dom_aux pd) 
             (f_equal (v_subst vt) Hcast) x1); [rewrite !dom_cast_compose;
             apply dom_cast_eq |]
         end.
@@ -767,7 +767,7 @@ Proof.
           (*Simplify to single cast*)
           match goal with
           | |- dom_cast ?d ?H1 ?x1 = dom_cast ?d ?H2 ?x2 =>
-            replace x2 with (dom_cast pd 
+            replace x2 with (dom_cast (dom_aux pd) 
               (f_equal (v_subst vt) Hcast) x1); [rewrite !dom_cast_compose;
               apply dom_cast_eq |]
           end.
@@ -903,7 +903,7 @@ Proof.
         (*Simplify to single cast*)
         match goal with
         | |- dom_cast ?d ?H1 ?x1 = dom_cast ?d ?H2 ?x2 =>
-          replace x2 with (dom_cast pd 
+          replace x2 with (dom_cast (dom_aux pd) 
             (f_equal (v_subst vt) Hcast) x1); [rewrite !dom_cast_compose;
             apply dom_cast_eq |]
         end.
@@ -1036,7 +1036,7 @@ Proof.
         (*Simplify to single cast*)
         match goal with
         | |- dom_cast ?d ?H1 ?x1 = dom_cast ?d ?H2 ?x2 =>
-          replace x2 with (dom_cast pd 
+          replace x2 with (dom_cast (dom_aux pd) 
             (f_equal (v_subst vt) Hcast) x1); [rewrite !dom_cast_compose;
             apply dom_cast_eq |]
         end.

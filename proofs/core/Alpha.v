@@ -746,7 +746,7 @@ Lemma match_val_single_alpha_p_none {ty: vty}
 (p1 p2: pattern)
 (Hty1: pattern_has_type gamma p1 ty)
 (Hty2: pattern_has_type gamma p2 ty)
-(d: domain pd (v_subst vt ty))
+(d: domain (dom_aux pd) (v_subst vt ty))
 (vars: list (vsymbol * vsymbol))
 (Heq: alpha_equiv_p vars p1 p2) :
 match_val_single gamma_valid pd pdf vt ty p1 Hty1 d = None ->
@@ -984,7 +984,7 @@ Lemma match_val_single_alpha_p_none_iff {ty: vty}
   (p1 p2: pattern)
   (Hty1: pattern_has_type gamma p1 ty)
   (Hty2: pattern_has_type gamma p2 ty)
-  (d: domain pd (v_subst vt ty))
+  (d: domain (dom_aux pd) (v_subst vt ty))
   (vars: list (vsymbol * vsymbol))
   (Heq: alpha_equiv_p vars p1 p2):
   match_val_single gamma_valid pd pdf vt ty p1 Hty1 d = None <->
@@ -1003,7 +1003,7 @@ Lemma match_val_single_alpha_p_some {ty: vty}
   (p1 p2: pattern)
   (Hty1: pattern_has_type gamma p1 ty)
   (Hty2: pattern_has_type gamma p2 ty)
-  (d: domain pd (v_subst vt ty))
+  (d: domain (dom_aux pd) (v_subst vt ty))
   (vars: list (vsymbol * vsymbol))
   (Heq: alpha_equiv_p vars p1 p2)
   (Hnodup1: NoDup (map fst vars))

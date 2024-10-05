@@ -115,7 +115,7 @@ Qed.
 Variable fs_not_constr : forall (f: funsym), In f (map fn_sym fs) ->
   forall m a, mut_in_ctx m gamma -> adt_in_mut a m -> ~ constr_in_adt f a. 
 
-Notation domain := (domain pd).
+Notation domain := (domain (dom_aux pd)).
 
 Section Smaller.
 
@@ -139,10 +139,10 @@ Inductive adt_smaller:
     (Hval2: valid_type sigma ty2)*) (d1: domain s1) 
     (d2: domain s2) m a1 a2 srts c args
     (Hx1_1: projT1 x1 = s1)
-    (Hx1_2: d1 = (dom_cast pd 
+    (Hx1_2: d1 = (dom_cast (dom_aux pd) 
        Hx1_1 (projT2 x1)))
     (Hx2_1: projT1 x2 = s2)
-    (Hx2_2: d2 = (dom_cast pd 
+    (Hx2_2: d2 = (dom_cast (dom_aux pd) 
        Hx2_1 (projT2 x2)))
     (Hty1: s1 = typesym_to_sort (adt_name a1) srts)
     (Hty2: s2 = typesym_to_sort (adt_name a2) srts)
@@ -151,16 +151,16 @@ Inductive adt_smaller:
     (m_in: mut_in_ctx m gamma)
     (c_in: constr_in_adt c a2)
     (lengths_eq: length srts = length (m_params m)),
-    let adt2 : adt_rep m srts pd a2 a_in2 :=
+    let adt2 : adt_rep m srts (dom_aux pd) a2 a_in2 :=
       scast (Interp.adts pdf m srts a2 m_in a_in2) (dom_cast _ Hty2 d2) in
-    let adt1: adt_rep m srts pd a1 a_in1 :=
+    let adt1: adt_rep m srts (dom_aux pd) a1 a_in1 :=
       scast (Interp.adts pdf m srts a1 m_in a_in1) (dom_cast _ Hty1 d1) in
     forall (Hadt2: adt2 = constr_rep gamma_valid m m_in srts
-      lengths_eq pd a2 a_in2 c c_in (Interp.adts pdf m srts) args),
+      lengths_eq (dom_aux pd) a2 a_in2 c c_in (Interp.adts pdf m srts) args),
     (exists i Heq, 
     i < length (s_args c) /\
     adt1 = scast (Interp.adts pdf m srts a1 m_in a_in1) 
-      (dom_cast pd Heq (hnth i args s_int (dom_int pd)))) ->
+      (dom_cast (dom_aux pd) Heq (hnth i args s_int (dom_int pd)))) ->
     adt_smaller x1 x2.
 
 (*Now we prove that this is well_founded. Basically our proof
@@ -412,7 +412,7 @@ Section MatchSmallerLemma.
 
 Lemma hide_ty_eq {s1 s2: sort} (d1: domain s1) (d2: domain s2) 
   (Hs: s1 = s2):
-  d2 = dom_cast pd Hs d1 ->
+  d2 = dom_cast (dom_aux pd) Hs d1 ->
   hide_ty d1 = hide_ty d2.
 Proof.
   intros. subst.
@@ -424,8 +424,8 @@ Qed.
   We need the more general form*)
 Lemma hide_ty_dom_cast {s1 s2 s3: sort} (d: domain s1) 
   (Hs1: s1 = s2) (Hs2: s1 = s3):
-  hide_ty (dom_cast pd Hs1 d) =
-  hide_ty (dom_cast pd Hs2 d).
+  hide_ty (dom_cast (dom_aux pd) Hs1 d) =
+  hide_ty (dom_cast (dom_aux pd) Hs2 d).
 Proof.
   subst. reflexivity.
 Qed.
@@ -541,7 +541,7 @@ Proof.
         (nth i (s_args f) vty_int))),
       vty_in_m m (map vty_var (m_params m)) (nth i (s_args f) vty_int) ->
       adt_smaller 
-      (hide_ty (dom_cast pd  Hithcast
+      (hide_ty (dom_cast (dom_aux pd)  Hithcast
         (hnth i (snd x) s_int (dom_int pd)))) (hide_ty d)). {
       intros.
       apply (reflect_iff _ _ (vty_in_m_spec _ _ _)) in H0.
@@ -586,7 +586,7 @@ Proof.
         + rewrite Hparams; auto. 
         + apply s_params_Nodup.
       }
-      eapply (ADT_small (hide_ty (dom_cast pd Hithcast0
+      eapply (ADT_small (hide_ty (dom_cast (dom_aux pd) Hithcast0
           (hnth i (snd x) s_int (dom_int pd)))) (hide_ty d)
           (v_subst vt 
             (ty_subst (s_params f) vs2 (nth i (s_args f) vty_int)))
@@ -726,7 +726,7 @@ Proof.
               (*Both need this result*)
               assert (Haleq: hide_ty (hlist_hd (cast_arg_list e a0)) =
               hide_ty
-                (dom_cast pd (Hithcast 0 (Nat.lt_0_succ (Datatypes.length l0)))
+                (dom_cast (dom_aux pd) (Hithcast 0 (Nat.lt_0_succ (Datatypes.length l0)))
                   (hlist_hd a0))). {
                 erewrite hlist_hd_cast.
                 unfold dom_cast. reflexivity.
@@ -1353,8 +1353,8 @@ forall (j: nat) (Hj: j < length tms) vs_small,
   exists (ty': vty) (Hty': term_has_type gamma (Tvar vs_small) ty') 
       Heq,
   hnth j a s_int (dom_int pd) =
-  dom_cast pd Heq
-    (dom_cast pd
+  dom_cast (dom_aux pd) Heq
+    (dom_cast (dom_aux pd)
       (f_equal (fun x0 : vty => val x0) (eq_sym (ty_var_inv Hty')))
       (var_to_dom pd vt v vs_small)).
 
@@ -1388,7 +1388,7 @@ Definition term_rep_aux_ret2 (v: val_vars pd vt) {tm: term} {t: vty}
     (*TODO: exists or sigma?*)
     exists (a: arg_list domain (ty_subst_list_s (s_params f) 
       (map (fun x => val x) tys) (s_args f))),
-       d = dom_cast pd (fun_ret_cast Heq Hty1) (funs gamma_valid pd pf f _ a) /\
+       d = dom_cast (dom_aux pd) (fun_ret_cast Heq Hty1) (funs gamma_valid pd pf f _ a) /\
        arg_list_var_nth_cond v tms a.
 
 Definition term_rep_aux_ret (v: val_vars pd vt) {tm : term} {t: vty}
@@ -1449,14 +1449,14 @@ Lemma arg_list_case_1
 exists
 (ty' : vty) (Hty' : term_has_type gamma (Tvar vs_small) ty') 
 (Heq0 : val ty' = ty_subst_s (s_params s) (map (fun x : vty => val x) vs') ahd),
-dom_cast pd
+dom_cast (dom_aux pd)
   (funsym_subst_eq (s_params s) vs' vt ahd (s_params_Nodup s)
      (eq_sym Hparamslen))
   (proj1_sig
      (rep thd (ty_subst (s_params s) vs' ahd) small hd (Forall_inv Htys)
         (Forall_inv Hdecs) Hsmall Hhd)) =
-dom_cast pd Heq0
-  (dom_cast pd
+dom_cast (dom_aux pd) Heq0
+  (dom_cast (dom_aux pd)
      (f_equal (fun x0 : vty => val x0) (eq_sym (ty_var_inv Hty')))
      (var_to_dom pd vt v vs_small)).
 Proof.
@@ -1538,7 +1538,7 @@ match ts as ts'
       | nil => fun Hlen =>
         False_rect _ (Nat.neq_succ_0 (length ttl) Hlen)
       | ahd :: atl => fun Heq Htys =>
-        exist _ (HL_cons _ _ _ (dom_cast pd
+        exist _ (HL_cons _ _ _ (dom_cast (dom_aux pd)
         (funsym_subst_eq (s_params s) vs' vt ahd
          (s_params_Nodup _) (eq_sym Hparamslen)) 
           (proj1_sig (rep _ _ _ _ (Forall_inv Htys) (Forall_inv Hdecs) Hsmall Hhd))) 
@@ -1559,7 +1559,7 @@ match ts as ts'
               hnth j'
                 (HL_cons domain (ty_subst_s (s_params s) (map (v_subst vt) vs') ahd)
                   (ty_subst_list_s (s_params s) (map (fun x : vty => val x) vs') atl)
-                  (dom_cast pd
+                  (dom_cast (dom_aux pd)
                       (funsym_subst_eq (s_params s) vs' vt ahd 
                         (s_params_Nodup s) (eq_sym Hparamslen))
                       (proj1_sig
@@ -1570,8 +1570,8 @@ match ts as ts'
                       (Nat.succ_inj (Datatypes.length ttl) (Datatypes.length atl) Heq)
                       (Forall_inv_tail Htys) (Forall_inv_tail Hdecs)))) s_int 
                 (dom_int pd) =
-              dom_cast pd Heq0
-                (dom_cast pd
+              dom_cast (dom_aux pd) Heq0
+                (dom_cast (dom_aux pd)
                   (f_equal (fun x0 : vty => val x0) (eq_sym (ty_var_inv Hty')))
                   (var_to_dom pd vt v vs_small))
           with
@@ -1731,13 +1731,13 @@ Qed.
 Lemma adt_smaller_hide_cast {s1 s2: sort} (x: domain s1) 
   (y: {s: sort & domain s}) (Heq: s1 = s2):
   adt_smaller (hide_ty x) y ->
-  adt_smaller (hide_ty (dom_cast pd Heq x)) y.
+  adt_smaller (hide_ty (dom_cast (dom_aux pd) Heq x)) y.
 Proof.
   intros. unfold hide_ty in *. destruct y as [ty_y dy].
   rename x into dx. inversion H. subst x1 x2.
   simpl in *. subst s0. subst s3. simpl in *.
   unfold dom_cast in Hx1_2, Hx2_2. simpl in Hx1_2, Hx2_2. subst d1 d2.
-  eapply (ADT_small _ _ s2 ty_y (dom_cast pd Heq dx) 
+  eapply (ADT_small _ _ s2 ty_y (dom_cast (dom_aux pd) Heq dx) 
     dy m0 a1 a2 srts c args _ _ _ _ (eq_trans (eq_sym Heq) Hty1) 
     Hty2 a_in1 a_in2 m_in0 c_in lengths_eq).
   Unshelve. all: try reflexivity.
@@ -1758,7 +1758,7 @@ Qed.
 Lemma adt_smaller_trans_hide_cast {s1 s2: sort} (x: domain s1)
   (y: {s: sort & domain s}) (Heq: s1 = s2):
   adt_smaller_trans (hide_ty x) y ->
-  adt_smaller_trans (hide_ty (dom_cast pd Heq x)) y.
+  adt_smaller_trans (hide_ty (dom_cast (dom_aux pd) Heq x)) y.
 Proof.
   intros.
   remember (hide_ty x) as x'.
@@ -1804,7 +1804,7 @@ let srts_len:= proj1' Hsrts in
 let vt_eq_srts:= proj2' Hsrts in
 let srts:= projT1 (projT2 fa) in
 let d:= hide_ty
-(dom_cast pd
+(dom_cast (dom_aux pd)
    (arg_nth_eq srts (sn_sym f1) (sn_idx f1) (sn_idx_bound f1
     (proj2_sig (projT1 fa))))
    (hnth (sn_idx f1) a1 s_int (dom_int pd))) in
@@ -1972,7 +1972,7 @@ let srts_len:= proj1' Hsrts in
 let vt_eq_srts:= proj2' Hsrts in
 let srts:= projT1 (projT2 fa) in
 let d:= hide_ty
-(dom_cast pd
+(dom_cast (dom_aux pd)
    (arg_nth_eq srts (sn_sym f1) (sn_idx f1) (sn_idx_bound f1
     (proj2_sig (projT1 fa))))
    (hnth (sn_idx f1) a1 s_int (dom_int pd))) in
@@ -2084,7 +2084,7 @@ let srts_len:= proj1' Hsrts in
 let vt_eq_srts:= proj2' Hsrts in
 let srts:= projT1 (projT2 fa) in
 let d:= hide_ty
-(dom_cast pd
+(dom_cast (dom_aux pd)
    (arg_nth_eq srts (sn_sym f1) (sn_idx f1) (sn_idx_bound f1
    (proj2_sig (projT1 fa))))
    (hnth (sn_idx f1) a1 s_int (dom_int pd))) in
@@ -2400,11 +2400,11 @@ Proof. solve_ret. Qed.
 Lemma var_case ty x v Hty' Heq: (fun d : domain (val ty) =>
 forall (x0 : vsymbol) (Heqx : Tvar x = Tvar x0),
 d =
-dom_cast pd
+dom_cast (dom_aux pd)
   (f_equal (fun x : vty => val x)
      (eq_sym (ty_var_inv (term_has_type_cast Heqx Hty')))) 
   (var_to_dom pd vt v x0))
- (dom_cast pd (f_equal (fun x : vty => val x) (eq_sym Heq))
+ (dom_cast (dom_aux pd) (f_equal (fun x : vty => val x) (eq_sym Heq))
     (var_to_dom pd vt v x)).
 Proof.
   simpl. intros. injection Heqx. intros; subst.
@@ -2414,7 +2414,7 @@ Qed.
 Lemma var_ret_case {ty : vty} {x : vsymbol} {v: val_vars pd vt} 
   (Hty : term_has_type gamma (Tvar x) ty) Heq :
   term_rep_aux_ret v Hty 
-    (dom_cast pd (f_equal (fun x1 : vty => val x1) (eq_sym Heq)) (var_to_dom pd vt v x)).
+    (dom_cast (dom_aux pd) (f_equal (fun x1 : vty => val x1) (eq_sym Heq)) (var_to_dom pd vt v x)).
 Proof.
   simpl_ret.
   - intros y Heqy. inversion Hty; subst. apply (var_case (snd x) x v Hty eq_refl y Heqy).
@@ -2437,7 +2437,7 @@ Lemma fun_nonrec_ret_case {f: funsym} {l ts ty v} (args: {a: arg_list domain (ty
       arg_list_var_nth_cond v ts a}) (Hnotin: ~ In f (map fn_sym fs))
   (Hty: term_has_type gamma (Tfun f l ts) ty) Heqret:
   term_rep_aux_ret v Hty (cast_dom_vty pd (eq_sym (ty_fun_ind_ret Hty)) (
-    dom_cast pd
+    dom_cast (dom_aux pd)
       (eq_sym Heqret)
         ((funs gamma_valid pd pf f 
           (map (fun x => val x) l)) (proj1_sig args)))).
@@ -2578,7 +2578,7 @@ Lemma iter_arg_list_single_match (v: val_vars pd vt) {tys a pats Hall l i x}
   (Hi: i < length pats)
   (Hx: In x (pat_fv (nth i pats Pwild))):
   exists Hty l1 Heq,
-    match_val_single gamma_valid pd pdf vt (nth i tys vty_int) (nth i pats Pwild) Hty (dom_cast pd Heq (hnth i a s_int (dom_int pd))) = Some l1 /\
+    match_val_single gamma_valid pd pdf vt (nth i tys vty_int) (nth i pats Pwild) Hty (dom_cast (dom_aux pd) Heq (hnth i a s_int (dom_int pd))) = Some l1 /\
     extend_val_with_list pd vt v l x =
     extend_val_with_list pd vt v l1 x.
 Proof.
@@ -2624,7 +2624,7 @@ Lemma constr_match_lemma {tm v ty1 p Hty dom_t small d l hd c tys tms}
     (*exists or sigma?*)
     exists (a: arg_list domain (ty_subst_list_s (s_params f) 
       (map (fun x => val x) tys) (s_args f))),
-       dom_t = dom_cast pd (fun_ret_cast Heq Hty1) (funs gamma_valid pd pf f _ a) /\
+       dom_t = dom_cast (dom_aux pd) (fun_ret_cast Heq Hty1) (funs gamma_valid pd pf f _ a) /\
        arg_list_var_nth_cond v tms a)
   (Hsmall: forall x,
     In x small ->
@@ -2799,7 +2799,7 @@ Notation srts_len := (proj1' Hsrts).
 Notation vt_eq_srts := (proj2' Hsrts).
 (*d is the ADT instance we must be smaller than to recurse*)
 Notation d := (hide_ty
-(dom_cast pd
+(dom_cast (dom_aux pd)
    (arg_nth_eq srts (sn_sym f1) (sn_idx f1) (sn_idx_bound f1
    (proj2_sig (projT1 fa))))
    (hnth (sn_idx f1) a1 s_int (dom_int pd)))).
@@ -2882,7 +2882,7 @@ Definition match_rep_aux
       | None => fun _ => match_rep ptl (Forall_inv_tail Hall)
         (Forall_inv_tail Hpats) (Forall_inv_tail Hdec)
       end eq_refl
-    | _ =>  fun _ _ _ => gen_default pd pdf vt b ty 
+    | _ =>  fun _ _ _ => gen_default pd vt b ty 
     end Hall Hpats Hdec.
 
 (*The arguments to [match_rep] in different cases:*)
@@ -3046,18 +3046,18 @@ bool)
     (*Now we have to cast in the reverse direction*)
     (*First, get in terms of f*)
     let ret1 : domain (funsym_sigma_ret f srts) :=
-      dom_cast pd 
+      dom_cast (dom_aux pd) 
         (f_equal (fun x => funsym_sigma_ret x srts) (eq_sym f_fn)) ret_val in
 
     let ret2 : 
       domain (ty_subst_s (s_params f) 
         (map (v_subst vt) l) (f_ret f)) :=
-      dom_cast pd 
+      dom_cast (dom_aux pd) 
         (f_equal (fun x => ty_subst_s (s_params f) x (f_ret f))
         l_eq2) ret1 in
 
     exist _ (cast_dom_vty pd Htyeq 
-      (dom_cast pd (eq_sym Heqret) ret2)) 
+      (dom_cast (dom_aux pd) (eq_sym Heqret) ret2)) 
       (fun_rec_ret_case fn_in f_fn Hty')
     
 
@@ -3069,7 +3069,7 @@ bool)
     types work out*)
 
   (exist _ (cast_dom_vty pd Htyeq (
-    dom_cast pd
+    dom_cast (dom_aux pd)
       (eq_sym Heqret)
         ((funs gamma_valid pd pf f 
           (map (fun x => val x) l)) args))) 
@@ -3203,7 +3203,7 @@ bool)
   let Hdec1 := dec_inv_teps Hdec' in
   (*We need to show that domain (val v ty) is inhabited*)
   let def : domain (val ty) :=
-  match (domain_ne pdf (val ty)) with
+  match (domain_ne pd (val ty)) with
   | DE x => x 
   end in
 
@@ -3557,7 +3557,7 @@ Lemma func_smaller_case' (v:val_vars pd vt)  :
   let vt_eq_srts:= proj2' Hsrts in
   let srts:= projT1 (projT2 fa) in
   let d:= hide_ty
-  (dom_cast pd
+  (dom_cast (dom_aux pd)
      (arg_nth_eq srts (sn_sym f1) (sn_idx f1) (sn_idx_bound f1
       (proj2_sig (projT1 fa))))
      (hnth (sn_idx f1) a1 s_int (dom_int pd))) in
@@ -3645,7 +3645,7 @@ let srts_len:= proj1' Hsrts in
 let vt_eq_srts:= proj2' Hsrts in
 let srts:= projT1 (projT2 fa) in
 let d:= hide_ty
-(dom_cast pd
+(dom_cast (dom_aux pd)
    (arg_nth_eq srts (sn_sym f1) (sn_idx f1) (sn_idx_bound f1
    (proj2_sig (projT1 fa))))
    (hnth (sn_idx f1) a1 s_int (dom_int pd))) in
@@ -3826,18 +3826,18 @@ let vt_eq_srts := (proj2' Hsrts) in
     (*Now we have to cast in the reverse direction*)
     (*First, get in terms of f*)
     let ret1 : domain (funsym_sigma_ret f srts) :=
-      dom_cast pd 
+      dom_cast (dom_aux pd) 
         (f_equal (fun x => funsym_sigma_ret x srts) (eq_sym f_fn)) ret_val in
 
     let ret2 : 
       domain (ty_subst_s (s_params f) 
         (map (v_subst vt) l) (f_ret f)) :=
-      dom_cast pd 
+      dom_cast (dom_aux pd) 
         (f_equal (fun x => ty_subst_s (s_params f) x (f_ret f))
         l_eq2) ret1 in
 
     exist _ (cast_dom_vty pd Htyeq 
-      (dom_cast pd (eq_sym Heqret) ret2)) 
+      (dom_cast (dom_aux pd) (eq_sym Heqret) ret2)) 
       (fun_rec_ret_case fn_in f_fn Hty)
     
 
@@ -3849,7 +3849,7 @@ let vt_eq_srts := (proj2' Hsrts) in
     types work out*)
 
   (exist _ (cast_dom_vty pd Htyeq (
-    dom_cast pd
+    dom_cast (dom_aux pd)
       (eq_sym Heqret)
         ((funs gamma_valid pd pf f 
           (map (fun x => val x) l)) args))) 

@@ -9,7 +9,7 @@ Context {gamma} (gamma_valid: valid_context gamma) (pd: pi_dom)
   (pdf: pi_dom_full gamma pd)
   (vt: val_typevar).
 
-Notation domain := (domain pd).
+Notation domain := (domain (dom_aux pd)).
 Notation term_rep := (term_rep gamma_valid pd pdf vt).
 Notation formula_rep := (formula_rep gamma_valid pd pdf vt).
 
@@ -62,7 +62,7 @@ Lemma substi_mult_nth' (vv: val_vars pd vt)
 (Hi: i < length vs)
 (Hnodup: NoDup vs):
 substi_mult vv vs vals (nth i vs vs_d) = 
-dom_cast pd
+dom_cast (dom_aux pd)
   (substi_mult_nth_lemma _ _ vs i Hi s_int vs_d) 
   (hnth i vals s_int (dom_int pd)).
 Proof.
@@ -127,7 +127,7 @@ Lemma substi_mult_nth'' (vv: val_vars pd vt)
 let H : v_subst vt (snd (nth i vs vs_d)) = v_subst vt (snd x) 
   := (f_equal (fun y => (v_subst vt (snd y))) (eq_sym Heqx)) in
 substi_mult vv vs vals x = 
-dom_cast pd
+dom_cast (dom_aux pd)
   (eq_trans
     (substi_mult_nth_lemma _ _ vs i Hi s_int vs_d) 
     H)

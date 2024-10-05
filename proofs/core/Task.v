@@ -335,14 +335,13 @@ Lemma change_gamma_adts {gamma1 gamma2}
   (pdf: pi_dom_full gamma1 pd):
   (forall m srts a (m_in: mut_in_ctx m gamma2)
     (a_in: adt_in_mut a m),
-    domain pd (typesym_to_sort (adt_name a) srts) = adt_rep m srts pd a a_in).
+    domain (dom_aux pd) (typesym_to_sort (adt_name a) srts) = adt_rep m srts (dom_aux pd) a a_in).
 Proof.
   intros m srts a m_in a_in.
   apply pdf. unfold mut_in_ctx.
   exact (eq_trans (f_equal (fun p => in_bool mut_adt_dec m p) Hm) m_in).
 Defined.
 
-Print change_gamma_adts.
 
 (*TODO: should we put [dom_nonempty] in pd so that we don't need lemma?*)
 Definition change_gamma_dom_full {gamma1 gamma2} 
@@ -350,7 +349,7 @@ Definition change_gamma_dom_full {gamma1 gamma2}
   (pd: pi_dom)
   (pdf: pi_dom_full gamma1 pd):
   pi_dom_full gamma2 pd :=
-  Build_pi_dom_full gamma2 pd (domain_ne pdf) (change_gamma_adts Hm pd pdf).
+  Build_pi_dom_full gamma2 pd (change_gamma_adts Hm pd pdf).
 
 (*TODO: can I assume [gamma_valid1]?*)
 Lemma def_map_constrs {gamma} (gamma_valid: valid_context gamma)
@@ -362,11 +361,11 @@ Lemma def_map_constrs {gamma} (gamma_valid: valid_context gamma)
     (srts : list sort)
     (Hlens : Datatypes.length srts =
               Datatypes.length (m_params m))
-    (args : arg_list (domain pd)
+    (args : arg_list (domain (dom_aux pd))
               (sym_sigma_args c srts)),
   funs gamma_valid pd pf c srts args =
   constr_rep_dom gamma_valid1 m Hm srts Hlens 
-    pd a Ha c Hc (adts (change_gamma_dom_full (eq_sym (def_map_gamma_mut gamma)) pd pdf) m srts) args.
+    (dom_aux pd) a Ha c Hc (adts (change_gamma_dom_full (eq_sym (def_map_gamma_mut gamma)) pd pdf) m srts) args.
 Proof.
   intros.
   assert (m_in: mut_in_ctx m gamma). {
@@ -384,29 +383,28 @@ Proof.
   - f_equal. apply constr_rep_change_gamma.
 Qed.
 
-(*START*)
-
 Definition def_map_pf {gamma} (gamma_valid: valid_context gamma) 
 (gamma_valid1: valid_context (map def_map gamma))
-(pd: pi_dom) (pf: pi_funpred gamma_valid pd):
-pi_funpred gamma_valid1 pd :=
-Build_pi_funpred gamma_valid1 pd
+(pd: pi_dom) (pdf: pi_dom_full gamma pd) 
+(pf: pi_funpred gamma_valid pd pdf):
+pi_funpred gamma_valid1 pd (change_gamma_dom_full (eq_sym (def_map_gamma_mut gamma)) pd pdf) :=
+Build_pi_funpred gamma_valid1 pd _
   (funs gamma_valid pd pf)
   (preds gamma_valid pd pf)
-  (def_map_constrs gamma_valid gamma_valid1 pd pf).
+  (def_map_constrs gamma_valid gamma_valid1 pd _ pf).
 
 (*And we prove that every formula true under this pf in gamma'
   is true under the original in gamma, and vice versa.
   This is trivial*)
 Lemma tm_def_map_pf {gamma} (gamma_valid: valid_context gamma) 
 (gamma_valid1: valid_context (map def_map gamma))
-(pd: pi_dom) (pf: pi_funpred gamma_valid pd)
+(pd: pi_dom) (pdf: pi_dom_full gamma pd)  (pf: pi_funpred gamma_valid pd pdf)
 (vt: val_typevar) (vv: val_vars pd vt) (t: term) (ty: vty)
 (Hty1: term_has_type gamma t ty)
 (Hty2: term_has_type (map def_map gamma) t ty):
-term_rep gamma_valid1 pd vt
-  (def_map_pf gamma_valid gamma_valid1 pd pf) vv t ty Hty2 =
-term_rep gamma_valid pd vt pf vv t ty Hty1.
+term_rep gamma_valid1 pd _ vt
+  (def_map_pf gamma_valid gamma_valid1 pd pdf pf) vv t ty Hty2 =
+term_rep gamma_valid pd pdf vt pf vv t ty Hty1.
 Proof.
   apply term_change_gamma_pf; simpl; auto.
   apply def_map_gamma_mut.
@@ -414,13 +412,13 @@ Qed.
 
 Lemma fmla_def_map_pf {gamma} (gamma_valid: valid_context gamma)
 (gamma_valid1: valid_context (map def_map gamma))
-(pd: pi_dom) (pf: pi_funpred gamma_valid pd)
+(pd: pi_dom) (pdf: pi_dom_full gamma pd) (pf: pi_funpred gamma_valid pd pdf)
 (vt: val_typevar) (vv: val_vars pd vt) (f: formula)
 (Hty1: formula_typed gamma f)
 (Hty2: formula_typed (map def_map gamma) f):
-formula_rep gamma_valid1 pd vt
-  (def_map_pf gamma_valid gamma_valid1 pd pf) vv f Hty2 =
-formula_rep gamma_valid pd vt pf vv f Hty1.
+formula_rep gamma_valid1 pd _ vt
+  (def_map_pf gamma_valid gamma_valid1 pd pdf pf) vv f Hty2 =
+formula_rep gamma_valid pd pdf vt pf vv f Hty1.
 Proof.
   apply fmla_change_gamma_pf; simpl; auto.
   apply def_map_gamma_mut.
@@ -506,10 +504,10 @@ Qed.
   recfuns wont necessarily hold)*)
 Lemma def_map_pf_full {gamma} (gamma_valid: valid_context gamma)
 (gamma_valid1: valid_context (map def_map gamma)) 
-(pd: pi_dom) (pf: pi_funpred gamma_valid pd):
+(pd: pi_dom) (pdf: pi_dom_full gamma pd) (pf: pi_funpred gamma_valid pd pdf):
 full_interp gamma_valid pd pf ->
 full_interp gamma_valid1 pd 
-  (def_map_pf gamma_valid gamma_valid1 pd pf).
+  (def_map_pf gamma_valid gamma_valid1 pd pdf pf).
 Proof.
   unfold full_interp; intros [Hfun [Hpred [Hconstr Hleast]]]; split_all.
   - clear Hpred Hconstr Hleast.
@@ -519,9 +517,9 @@ Proof.
       exists body1, fun_defined gamma f args body1 /\
       term_has_type gamma body (f_ret f) /\
       forall (Hty1: term_has_type gamma body (f_ret f))
-      (Hty2: term_has_type gamma body1 (f_ret f)) pd pf vt vv,
-      term_rep gamma_valid pd vt pf vv body1 (f_ret f) Hty2 =
-      term_rep gamma_valid pd vt pf vv body (f_ret f) Hty1
+      (Hty2: term_has_type gamma body1 (f_ret f)) pd pdf pf vt vv,
+      term_rep gamma_valid pd pdf vt pf vv body1 (f_ret f) Hty2 =
+      term_rep gamma_valid pd pdf vt pf vv body (f_ret f) Hty1
     ).
     {
       assert (f_in1:=f_in).
@@ -553,9 +551,9 @@ Proof.
       exists body1, pred_defined gamma p args body1 /\
       formula_typed gamma body /\
       forall (Hty1: formula_typed gamma body)
-      (Hty2: formula_typed gamma body1) pd pf vt vv,
-      formula_rep gamma_valid pd vt pf vv body1 Hty2 =
-      formula_rep gamma_valid pd vt pf vv body Hty1
+      (Hty2: formula_typed gamma body1) pd pdf pf vt vv,
+      formula_rep gamma_valid pd pdf vt pf vv body1 Hty2 =
+      formula_rep gamma_valid pd pdf vt pf vv body Hty1
     ).
     {
       assert (p_in1:=p_in).
@@ -618,17 +616,17 @@ Qed.
 Lemma satisfies_def_map_pf
 {gamma} (gamma_valid: valid_context gamma) 
 (gamma_valid1: valid_context (map def_map gamma)) 
-(pd: pi_dom) (pf: pi_funpred gamma_valid pd)
+(pd: pi_dom) (pdf: pi_dom_full gamma pd) (pf: pi_funpred gamma_valid pd pdf)
 (pf_full: full_interp gamma_valid pd pf)
 (pf_full2: full_interp gamma_valid1 pd
-  (def_map_pf gamma_valid gamma_valid1 pd pf))
+  (def_map_pf gamma_valid gamma_valid1 pd pdf pf))
 (f: formula)
 (Hty1: formula_typed gamma f)
 (Hty2: formula_typed (map def_map gamma) f):
-satisfies gamma_valid1 pd 
-  (def_map_pf gamma_valid gamma_valid1 pd pf) pf_full2 f
+satisfies gamma_valid1 pd _
+  (def_map_pf gamma_valid gamma_valid1 pd pdf pf) pf_full2 f
   Hty2 <->
-satisfies gamma_valid pd pf pf_full f Hty1.
+satisfies gamma_valid pd pdf pf pf_full f Hty1.
 Proof.
   unfold satisfies. split; intros.
   specialize (H vt vv).
@@ -660,14 +658,14 @@ Proof.
   intros Hwf1 [Hwf2 Hval].
   split; auto.
   intros gamma_valid Hwf3.
-  unfold log_conseq. intros pd pf pf_full Hsat.
+  unfold log_conseq. intros pd pdf pf pf_full Hsat.
   unfold satisfies.
   inversion Hwf2; simpl in *; simpl_task.
   specialize (Hval task_gamma_valid0 Hwf2).
   unfold log_conseq in Hval.
   specialize (Hval pd).
-  specialize (Hval (def_map_pf gamma_valid task_gamma_valid0 pd pf)
-    (def_map_pf_full gamma_valid task_gamma_valid0 pd pf pf_full)).
+  specialize (Hval _ (def_map_pf gamma_valid task_gamma_valid0 pd pdf pf)
+    (def_map_pf_full gamma_valid task_gamma_valid0 pd pdf pf pf_full)).
   forward Hval. (*Prove equivalence of hypotheses*)
   {
     intros d Hd.

@@ -541,10 +541,10 @@ Lemma match_val_single_matches_some {gamma} (gamma_valid: valid_context gamma)
   (term_rep gamma_valid pd pdf vt pf vv t ty Hty2) = Some l1 ->
   map fst l1 = map fst l /\
   Forall
-    (fun x : {x : sort & domain pd x} * term =>
+    (fun x : {x : sort & domain (dom_aux pd) x} * term =>
      exists ty1 Hty1 (Heq: v_subst vt ty1 = projT1 (fst x)),
        projT2 (fst x) =
-       dom_cast pd Heq (term_rep gamma_valid pd pdf vt pf vv (snd x) ty1 Hty1))
+       dom_cast (dom_aux pd) Heq (term_rep gamma_valid pd pdf vt pf vv (snd x) ty1 Hty1))
     (combine (map snd l1) (map snd l)).
 Proof.
   generalize dependent t. revert Hty. revert ty.
@@ -717,10 +717,10 @@ Lemma match_val_single_matches_some' {gamma} (gamma_valid: valid_context gamma)
     (term_rep gamma_valid pd pdf vt pf vv t ty Hty2) = Some l1 /\
   map fst l1 = map fst l /\
   Forall
-    (fun x : {x : sort & domain pd x} * term =>
+    (fun x : {x : sort & domain (dom_aux pd) x} * term =>
      exists ty1 Hty1 (Heq: v_subst vt ty1 = projT1 (fst x)),
        projT2 (fst x) =
-       dom_cast pd Heq (term_rep gamma_valid pd pdf vt pf vv (snd x) ty1 Hty1))
+       dom_cast (dom_aux pd) Heq (term_rep gamma_valid pd pdf vt pf vv (snd x) ty1 Hty1))
     (combine (map snd l1) (map snd l)).
 Proof.
   intros.
@@ -846,17 +846,17 @@ Lemma extend_val_with_args_eq {gamma} (gamma_valid: valid_context gamma)
   (pd: pi_dom) (pdf: pi_dom_full gamma pd) (vt: val_typevar) 
   (pf: pi_funpred gamma_valid pd pdf)
   (vv: val_vars pd vt)
-  (l1: list (vsymbol * {s : sort & domain pd s}))
+  (l1: list (vsymbol * {s : sort & domain (dom_aux pd) s}))
   (l2: list (vsymbol * term))
   (Hfst: map fst l1 = map fst l2)
   (Hnodup: NoDup (map fst l1))
   (Hsnd: Forall
-    (fun x : {x : sort & domain pd x} * term =>
+    (fun x : {x : sort & domain (dom_aux pd) x} * term =>
     exists
       (ty : vty) (Hty : term_has_type gamma (snd x) ty) 
     (Heq : v_subst vt ty = projT1 (fst x)),
       projT2 (fst x) =
-      dom_cast pd Heq (term_rep gamma_valid pd pdf vt pf vv (snd x) ty Hty))
+      dom_cast (dom_aux pd) Heq (term_rep gamma_valid pd pdf vt pf vv (snd x) ty Hty))
     (combine (map snd l1) (map snd l2)))
   (Hall: Forall (fun x : term * vty => term_has_type gamma (fst x) (snd x))
     (combine (map snd l2) (map snd (map fst l2)))):
@@ -880,7 +880,7 @@ Proof.
   assert (Hleneq: length l1 = length l2). {
     rewrite <- (map_length fst), Hfst, map_length; auto.
   }
-  assert (d: {s : sort & domain pd s}). {
+  assert (d: {s : sort & domain (dom_aux pd) s}). {
     exists s_int. apply dom_int.
   }
   destruct (In_nth _ _ (vs_d, d) Hinsd) as [i [Hi Hxsd]].
@@ -1013,7 +1013,7 @@ Proof.
           (term_rep gamma_valid pd pdf vt pf vv tm v Hty2) = Some l1 /\
         map fst l1 = map fst l /\
         Forall (fun x => exists ty Hty Heq ,
-          projT2 (fst x) = dom_cast pd Heq 
+          projT2 (fst x) = dom_cast (dom_aux pd) Heq 
             (term_rep gamma_valid pd pdf vt pf vv (snd x) ty Hty) 
         ) (combine (map snd l1) (map snd l))
       )  .
@@ -1105,7 +1105,7 @@ Proof.
           (term_rep gamma_valid pd pdf vt pf vv tm v Hty2) = Some l1 /\
         map fst l1 = map fst l /\
         Forall (fun x => exists ty Hty Heq ,
-          projT2 (fst x) = dom_cast pd Heq 
+          projT2 (fst x) = dom_cast (dom_aux pd) Heq 
             (term_rep gamma_valid pd pdf vt pf vv (snd x) ty Hty) 
         ) (combine (map snd l1) (map snd l))
       )  .

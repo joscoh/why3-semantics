@@ -62,8 +62,8 @@ Definition nonrec_fun_rep
   (f_in: In (nonrec_def (fun_def f args body)) gamma)
   (srts: list sort)
   (srts_len: length srts = length (s_params f))
-  (a: arg_list (domain pd) (sym_sigma_args f srts)):
-  domain pd (funsym_sigma_ret f srts) :=
+  (a: arg_list (domain (dom_aux pd)) (sym_sigma_args f srts)):
+  domain (dom_aux pd) (funsym_sigma_ret f srts) :=
   (*We need a cast because we change [val_typevar]*)
   dom_cast _ (funs_cast gamma_valid _ (nonrec_in_funsyms f_in) srts_len) (
   (*The function is the same as evaluating the body*)
@@ -72,7 +72,7 @@ Definition nonrec_fun_rep
   (vt_with_args triv_val_typevar (s_params f) srts) pf (*just use pf this time*)
   (*And setting the function arguments to a*)
   (val_with_args _ _ (upd_vv_args_srts (s_params f) srts (eq_sym srts_len)
-    (s_params_Nodup _) pd triv_val_typevar (triv_val_vars _ pdf _)) args a)
+    (s_params_Nodup _) pd triv_val_typevar (triv_val_vars _ _)) args a)
   (*Evaluating the function body*)
   body (f_ret f) (nonrec_body_ty f_in)).
 
@@ -83,7 +83,7 @@ Lemma nonrec_fun_rep_spec
   (f_in: In (nonrec_def (fun_def f args body)) gamma)
   (srts: list sort)
   (srts_len: length srts = length (s_params f))
-  (a: arg_list (domain pd) (sym_sigma_args f srts))
+  (a: arg_list (domain (dom_aux pd)) (sym_sigma_args f srts))
   (vt: val_typevar) (vv: val_vars pd vt):
   nonrec_fun_rep pf f args body f_in srts srts_len a =
   dom_cast _ (funs_cast gamma_valid vt (nonrec_in_funsyms f_in) srts_len) (
@@ -156,14 +156,14 @@ Definition nonrec_pred_rep
   (p_in: In (nonrec_def (pred_def p args body)) gamma)
   (srts: list sort)
   (srts_len: length srts = length (s_params p))
-  (a: arg_list (domain pd) (sym_sigma_args p srts)): bool :=
+  (a: arg_list (domain (dom_aux pd)) (sym_sigma_args p srts)): bool :=
   (*The function is the same as evaluating the body*)
   formula_rep gamma_valid pd pdf
   (*Setting the function params to srts*)
   (vt_with_args triv_val_typevar (s_params p) srts) pf (*just use pf this time*)
   (*And setting the function arguments to a*)
   (val_with_args _ _ (upd_vv_args_srts (s_params p) srts (eq_sym srts_len)
-    (s_params_Nodup _) pd triv_val_typevar (triv_val_vars _ pdf _)) args a)
+    (s_params_Nodup _) pd triv_val_typevar (triv_val_vars _ _)) args a)
   (*Evaluating the function body*)
   body (nonrec_body_typed p_in).
 
@@ -174,7 +174,7 @@ Lemma nonrec_pred_rep_spec
   (p_in: In (nonrec_def (pred_def p args body)) gamma)
   (srts: list sort)
   (srts_len: length srts = length (s_params p))
-  (a: arg_list (domain pd) (sym_sigma_args p srts))
+  (a: arg_list (domain (dom_aux pd)) (sym_sigma_args p srts))
   (vt: val_typevar) (vv: val_vars pd vt):
   nonrec_pred_rep pf p args body p_in srts srts_len a =
   formula_rep gamma_valid pd pdf
@@ -236,15 +236,15 @@ Definition pf_with_nonrec_fun (pf: pi_funpred gamma_valid pd pdf)
   (f: funsym) (args: list vsymbol) (body: term)
   (f_in: In (nonrec_def (fun_def f args body)) gamma):
   forall (f1: funsym) (srts: list sort)
-  (a: arg_list (domain pd) (sym_sigma_args f1 srts)),
-  domain pd (funsym_sigma_ret f1 srts) :=
+  (a: arg_list (domain (dom_aux pd)) (sym_sigma_args f1 srts)),
+  domain (dom_aux pd) (funsym_sigma_ret f1 srts) :=
   fun f1 srts a =>
   match funsym_eq_dec f1 f with
   | left Heq =>
     match (Nat.eq_dec (length srts) (length (s_params f) )) with
     | left srts_len =>
       (*Need another cast - ugly*)
-      dom_cast pd (f_equal (fun x => funsym_sigma_ret x srts) (eq_sym Heq))
+      dom_cast (dom_aux pd) (f_equal (fun x => funsym_sigma_ret x srts) (eq_sym Heq))
         (nonrec_fun_rep pf f args body f_in srts srts_len 
           (cast_arg_list (f_equal (fun (x: funsym) => sym_sigma_args x srts) Heq) a))
     | right srts_len => (funs gamma_valid pd pf) f1 srts a
@@ -258,7 +258,7 @@ Lemma pf_with_nonrec_fun_diff (pf: pi_funpred gamma_valid pd pdf)
 (f: funsym) (args: list vsymbol) (body: term)
 (f_in: In (nonrec_def (fun_def f args body)) gamma)
 (f1: funsym) (srts: list sort)
-(a: arg_list (domain pd) (sym_sigma_args f1 srts)):
+(a: arg_list (domain (dom_aux pd)) (sym_sigma_args f1 srts)):
 f <> f1 ->
 pf_with_nonrec_fun pf f args body f_in f1 srts a =
 funs gamma_valid pd pf f1 srts a.
@@ -273,7 +273,7 @@ Lemma pf_with_nonrec_fun_same (pf: pi_funpred gamma_valid pd pdf)
 (f_in: In (nonrec_def (fun_def f args body)) gamma)
 (srts: list sort)
 (srts_len: length srts = length (s_params f))
-(a: arg_list (domain pd) (sym_sigma_args f srts)):
+(a: arg_list (domain (dom_aux pd)) (sym_sigma_args f srts)):
 pf_with_nonrec_fun pf f args body f_in f srts a =
   nonrec_fun_rep pf f args body f_in srts srts_len a.
 Proof.
@@ -292,7 +292,7 @@ Definition pf_with_nonrec_pred (pf: pi_funpred gamma_valid pd pdf)
   (p: predsym) (args: list vsymbol) (body: formula)
   (p_in: In (nonrec_def (pred_def p args body)) gamma):
   forall (p1: predsym) (srts: list sort)
-  (a: arg_list (domain pd) (sym_sigma_args p1 srts)), bool :=
+  (a: arg_list (domain (dom_aux pd)) (sym_sigma_args p1 srts)), bool :=
   fun p1 srts a =>
   match predsym_eq_dec p1 p with
   | left Heq =>
@@ -310,7 +310,7 @@ Lemma pf_with_nonrec_pred_diff (pf: pi_funpred gamma_valid pd pdf)
 (p: predsym) (args: list vsymbol) (body: formula)
 (p_in: In (nonrec_def (pred_def p args body)) gamma)
 (p1: predsym) (srts: list sort)
-(a: arg_list (domain pd) (sym_sigma_args p1 srts)):
+(a: arg_list (domain (dom_aux pd)) (sym_sigma_args p1 srts)):
 p <> p1 ->
 pf_with_nonrec_pred pf p args body p_in p1 srts a =
 preds gamma_valid pd pf p1 srts a.
@@ -325,7 +325,7 @@ Lemma pf_with_nonrec_pred_same (pf: pi_funpred gamma_valid pd pdf)
 (p_in: In (nonrec_def (pred_def p args body)) gamma)
 (srts: list sort)
 (srts_len: length srts = length (s_params p))
-(a: arg_list (domain pd) (sym_sigma_args p srts)):
+(a: arg_list (domain (dom_aux pd)) (sym_sigma_args p srts)):
 pf_with_nonrec_pred pf p args body p_in p srts a =
   nonrec_pred_rep pf p args body p_in srts srts_len a.
 Proof.
@@ -343,11 +343,11 @@ Qed.
 Definition pf_with_nonrec_funs (pf: pi_funpred gamma_valid pd pdf)
   (fd: funpred_def) (f_in: In (nonrec_def fd) gamma):
   forall (f1: funsym) (srts: list sort)
-  (a: arg_list (domain pd) (sym_sigma_args f1 srts)),
-  domain pd (funsym_sigma_ret f1 srts) :=
+  (a: arg_list (domain (dom_aux pd)) (sym_sigma_args f1 srts)),
+  domain (dom_aux pd) (funsym_sigma_ret f1 srts) :=
   fun f1 srts a =>
   match fd as fd' return (In (nonrec_def fd') gamma) -> 
-    domain pd (funsym_sigma_ret f1 srts)
+    domain (dom_aux pd) (funsym_sigma_ret f1 srts)
   with
   | fun_def f args body => fun f_in =>
     pf_with_nonrec_fun pf f args body f_in f1 srts a
@@ -357,7 +357,7 @@ Definition pf_with_nonrec_funs (pf: pi_funpred gamma_valid pd pdf)
 Definition pf_with_nonrec_preds (pf: pi_funpred gamma_valid pd pdf)
   (fd: funpred_def) (f_in: In (nonrec_def fd) gamma):
   forall (p1: predsym) (srts: list sort)
-  (a: arg_list (domain pd) (sym_sigma_args p1 srts)),
+  (a: arg_list (domain (dom_aux pd)) (sym_sigma_args p1 srts)),
   bool :=
   fun p1 srts a =>
   match fd as fd' return (In (nonrec_def fd') gamma) -> bool
@@ -376,11 +376,11 @@ Lemma pf_with_nonrec_constrs (pf: pi_funpred gamma_valid pd pdf)
     (srts : list sort)
     (Hlens : Datatypes.length srts =
               Datatypes.length (m_params m))
-    (args : arg_list (domain pd)
+    (args : arg_list (domain (dom_aux pd))
               (sym_sigma_args c srts)),
   (pf_with_nonrec_funs pf fd f_in) c srts args =
   constr_rep_dom gamma_valid m Hm srts Hlens 
-    pd a Ha c Hc (Interp.adts pdf m srts) args.
+    (dom_aux pd) a Ha c Hc (Interp.adts pdf m srts) args.
 Proof.
   intros. unfold pf_with_nonrec_funs.
   destruct fd; simpl; [| destruct pf; apply constrs].

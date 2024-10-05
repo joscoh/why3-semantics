@@ -122,8 +122,8 @@ Theorem consistent (pd: pi_dom) (pdf: pi_dom_full gamma pd)
 Proof.
   unfold satisfies.
   intro C. destruct C.
-  specialize (H triv_val_typevar (triv_val_vars pd pdf _)).
-  specialize (H0 triv_val_typevar (triv_val_vars _ pdf _)).
+  specialize (H triv_val_typevar (triv_val_vars pd _)).
+  specialize (H0 triv_val_typevar (triv_val_vars _ _)).
   revert H0; simpl_rep_full.
   erewrite fmla_rep_irrel. rewrite H. auto.
 Qed.
@@ -136,7 +136,7 @@ Theorem closed_satisfies_equiv (pd: pi_dom) (pdf: pi_dom_full gamma pd)
 (pf_full: full_interp gamma_valid pd pf) (f: formula)
 (Hc: closed gamma f):
 reflect (satisfies pd pdf pf pf_full f (f_ty Hc))
-  (formula_rep gamma_valid pd pdf triv_val_typevar pf (triv_val_vars _ pdf _) 
+  (formula_rep gamma_valid pd pdf triv_val_typevar pf (triv_val_vars _ _) 
     f (f_ty Hc)).
 Proof.
   apply iff_reflect. unfold satisfies. split; intros.
@@ -157,7 +157,7 @@ Lemma closed_satisfies_rep
 (Hty1: formula_typed gamma f):
 satisfies pd pdf pf pf_full f Hty1 <->
 formula_rep gamma_valid pd pdf triv_val_typevar pf
-(triv_val_vars pd pdf triv_val_typevar) f Hty1.
+(triv_val_vars pd triv_val_typevar) f Hty1.
 Proof.
   erewrite satisfies_irrel.
   rewrite (reflect_iff _ _ (closed_satisfies_equiv pd pdf pf pf_full f Hc)).
@@ -199,7 +199,7 @@ Proof.
   rewrite fmla_rep_irrel with(Hval1:= (typed_not_inv (f_ty (closed_not Hc))))
     (Hval2:=f_ty Hc).
   destruct (formula_rep gamma_valid pd pdf triv_val_typevar pf 
-    (triv_val_vars pd pdf triv_val_typevar) f (f_ty Hc)); auto.
+    (triv_val_vars pd triv_val_typevar) f (f_ty Hc)); auto.
   apply closed_not. all: auto.
 Qed.
 
@@ -362,9 +362,6 @@ Lemma satisfies_ext {gamma1 gamma2: context}
   (pdf2: pi_dom_full gamma2 pd) 
   (pf1: pi_funpred gamma_valid1 pd pdf1)
   (pf2: pi_funpred gamma_valid2 pd pdf2)
-  (*TODO: should really remove this by using *)
-  (Hpdf: forall s : sort, domain_nonempty_dom (domain_ne pdf1 s) =
-    domain_nonempty_dom (domain_ne pdf2 s))
   (full1: full_interp gamma_valid1 pd pf1)
   (full2: full_interp gamma_valid2 pd pf2)
   (f: formula)

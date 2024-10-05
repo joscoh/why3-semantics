@@ -258,7 +258,7 @@ Defined.
 (*We will need to prove that this has all of the desired properties*)
 
 
-Notation domain := (domain pd).
+Notation domain := (domain (dom_aux pd)).
 
 (*Here, we fix our valuation since we cannot take in any
   input in our final version. We can give a trivial valuation
@@ -328,7 +328,7 @@ Proof.
     (funpred_defs_to_sns_typevars2 l_in Hpparams (eq_sym Hlen))
     (recdefs_not_constrs l_in (eq_sym Hlen))
     m vs Hlenparams Hfvty Hpvty Hfdec Hpdec 
-      m_in (*pf*) _ pf (triv_val_vars pd pdf vt)
+      m_in (*pf*) _ pf (triv_val_vars pd vt)
     (proj1_sig fn_info)
     (proj1' (proj2_sig fn_info))
     srts Hsrtslen'
@@ -390,7 +390,7 @@ Proof.
     (funpred_defs_to_sns_typevars2 l_in Hpparams (eq_sym Hlen))
     (recdefs_not_constrs l_in (eq_sym Hlen))
     m vs Hlenparams Hfvty Hpvty Hfdec Hpdec 
-      m_in _ pf (triv_val_vars pd pdf vt)
+      m_in _ pf (triv_val_vars pd vt)
     (proj1_sig pn_info)
     (proj1' (proj2_sig pn_info))
     srts Hsrtslen'
@@ -466,7 +466,7 @@ Lemma pf_with_funpred_constrs  (pf: pi_funpred gamma_valid pd pdf)
               (sym_sigma_args c srts)),
   (pf_with_funpred_funs pf l l_in) c srts args =
   constr_rep_dom gamma_valid m Hm srts Hlens 
-    pd a Ha c Hc (Interp.adts pdf m srts) args.
+    (dom_aux pd) a Ha c Hc (Interp.adts pdf m srts) args.
 Proof.
   intros. unfold pf_with_funpred_funs.
   destruct (funsym_in_mutfun_dec c l);
@@ -891,7 +891,7 @@ Proof.
   unfold funs_rep_aux. simpl.
   rewrite funcs_rep_aux_change_pf with(pf2:=pf_with_funpred pf l l_in).
   (*Now, just need val_vars*)
-  rewrite funcs_rep_aux_change_val with(v1:=vv0)(v2:=triv_val_vars pd pdf (vt_with_args triv_val_typevar (s_params (fn_sym f)) srts0)).
+  rewrite funcs_rep_aux_change_val with(v1:=vv0)(v2:=triv_val_vars pd (vt_with_args triv_val_typevar (s_params (fn_sym f)) srts0)).
   reflexivity.
   (*Trivial goals*)
   + intros.
@@ -1113,7 +1113,7 @@ Proof.
   rewrite eq_trans_refl_l. simpl.
   rewrite funcs_rep_aux_change_pf with(pf1:=pf)(pf2:=pf_with_funpred pf l l_in).
   (*Now, just need val_vars*)
-  rewrite funcs_rep_aux_change_val with(v1:=vv0)(v2:=triv_val_vars pd pdf (vt_with_args triv_val_typevar (s_params (pn_sym p)) srts0)).
+  rewrite funcs_rep_aux_change_val with(v1:=vv0)(v2:=triv_val_vars pd (vt_with_args triv_val_typevar (s_params (pn_sym p)) srts0)).
   reflexivity.
   (*Easy goals*)
   + intros.
@@ -1296,7 +1296,7 @@ Proof.
     (*Now these are the same type*)
     match goal with
     | |- dom_cast ?d ?H1 ?t1 = dom_cast ?d ?H2 ?t2 =>
-      assert (t1 = dom_cast pd Hv t2)
+      assert (t1 = dom_cast (dom_aux pd) Hv t2)
     end.
     2: {
       rewrite H.
