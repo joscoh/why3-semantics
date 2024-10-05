@@ -58,6 +58,29 @@ Definition sound_trans (T: trans) : Prop :=
   (forall (tr: task), In tr (T t) -> task_valid tr) ->
   task_valid t.
 
+Lemma sound_trans_ext (t1 t2: trans):
+  (forall x, t1 x = t2 x) ->
+  sound_trans t1 <-> sound_trans t2.
+Proof.
+  intros. unfold sound_trans; split; intros.
+  apply H0; auto. rewrite H; auto.
+  apply H0; auto. rewrite <- H; auto.
+Qed.
+
+(*NOTE: I don't remember why I didn't combine these, I think for
+  someting in the proof system*)
+Definition typed_trans (t: trans) : Prop :=
+  forall ts, task_wf ts -> forall tr, In tr (t ts) -> task_wf tr.
+Definition typed_single_trans (f: task -> task) : Prop :=
+  forall ts, task_wf ts -> task_wf (f ts).
+
+Lemma typed_trans_ext (t1 t2: trans):
+  (forall x : task, t1 x = t2 x) -> typed_trans t1 <-> typed_trans t2.
+Proof.
+  intros Hall. unfold typed_trans; split; intros Hty ts Hwf tr Hintr;
+  eapply Hty; eauto; [rewrite Hall|rewrite <- Hall]; auto.
+Qed.
+
 (*Apply T1, then T2*)
 (*TODO: FIX WF ISSUE*)
 (* Definition trans_comp (T1 T2: trans) : trans :=
@@ -197,13 +220,24 @@ Definition compose_single_trans (f1 f2: task -> task) :=
 Lemma compose_single_trans_sound f1 f2:
   sound_trans (single_trans f1) ->
   sound_trans (single_trans f2) ->
-  (forall x, task_wf x -> task_wf (f1 x)) ->
+  typed_single_trans f1 ->
   sound_trans (compose_single_trans f1 f2).
 Proof.
   unfold sound_trans, compose_single_trans, single_trans. 
   intros. simpl in *.
   apply H; auto. intros t2 [Heq | []]; subst.
   apply H0; auto.
+Qed.
+
+Lemma compose_single_trans_typed (f1 f2: task -> task):
+  typed_single_trans f1 ->
+  typed_single_trans f2 ->
+  typed_trans (compose_single_trans f1 f2).
+Proof.
+  unfold typed_single_trans, typed_trans, compose_single_trans; intros
+  Hty1 Hty2 ts Hwf tr.
+  unfold single_trans; intros [Htr | []]; subst.
+  apply Hty2. apply Hty1. auto.
 Qed.
 
 Definition add_axioms (t: task) (l: list (string * formula)) :=
