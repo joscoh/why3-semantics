@@ -874,21 +874,21 @@ Qed.
 
 (*A key result: t_insert_gen*)
 (*It must be the case that the free vars of t1 do not intersect with the boundvars of t2*)
-Lemma t_insert_rep {gamma} (gamma_valid: valid_context gamma) pd vt pf vv ty t1 t2 Hty Hty1 Hty2
+Lemma t_insert_rep {gamma} (gamma_valid: valid_context gamma) pd pdf vt pf vv ty t1 t2 Hty Hty1 Hty2
   (Hdisj: disj (tm_fv t1) (tm_bnd t2)):
-  formula_rep gamma_valid pd vt pf vv (t_insert ty t1 t2) Hty =
-  all_dec (term_rep gamma_valid pd vt pf vv t1 ty Hty1 =
-    term_rep gamma_valid pd vt pf vv t2 ty Hty2).
+  formula_rep gamma_valid pd pdf vt pf vv (t_insert ty t1 t2) Hty =
+  all_dec (term_rep gamma_valid pd pdf vt pf vv t1 ty Hty1 =
+    term_rep gamma_valid pd pdf vt pf vv t2 ty Hty2).
 Proof.
   revert vv t1 Hdisj Hty Hty1 Hty2.
   apply (term_ind (fun t2 => forall vv t1,
     disj (tm_fv t1) (tm_bnd t2) ->
     forall Hty Hty1 Hty2,
-    formula_rep gamma_valid pd vt pf vv
+    formula_rep gamma_valid pd pdf vt pf vv
     (t_insert ty t1 t2) Hty =
   all_dec
-    (term_rep gamma_valid pd vt pf vv t1 ty Hty1 =
-  term_rep gamma_valid pd vt pf vv t2 ty Hty2)) (fun _ => True)); simpl; intros; simpl_rep_full; auto.
+    (term_rep gamma_valid pd pdf vt pf vv t1 ty Hty1 =
+  term_rep gamma_valid pd pdf vt pf vv t2 ty Hty2)) (fun _ => True)); simpl; intros; simpl_rep_full; auto.
   - split_all_dec_eq; auto; apply term_rep_irrel.
   - split_all_dec_eq; auto; [apply term_rep_irrel | apply dom_cast_eq].
   - split_all_dec_eq; auto; [apply term_rep_irrel |].
@@ -900,12 +900,12 @@ Proof.
     2: { eapply disj_sublist. apply H1. apply sublist_cons. apply sublist_app_r. }
     (*Use disj*)
     rewrite tm_change_vv with (v2:=vv); auto.
-    + erewrite (term_rep_irrel _ _ _ _ _ tm1). reflexivity.
+    + erewrite (term_rep_irrel _ _ _ _ _ _ tm1). reflexivity.
     + intros x Hinx. unfold substi. destruct (vsymbol_eq_dec x v); subst; auto.
       exfalso. apply (H1 v); split; simpl; auto.
   - (*Tif*)
     rewrite fmla_rep_irrel with (Hval2:= (proj2' (proj2' (ty_if_inv Hty2)))).
-    destruct (formula_rep _ _ _ _ _ f _) eqn : Hrep.
+    destruct (formula_rep _ _ _ _ _ _ f _) eqn : Hrep.
     + erewrite H0; [reflexivity|].
       eapply disj_sublist. apply H2. eapply sublist_trans. apply sublist_app_l.
       apply sublist_app_r.
@@ -918,9 +918,9 @@ Proof.
     generalize dependent (proj1' (proj2' (ty_match_inv Hty2))).
     generalize dependent (proj2' (proj2' (ty_match_inv Hty2))).
     (*Need existence of [match_rep] by exhaustiveness*)
-    pose proof (well_typed_sem_exhaust gamma_valid pd pf vt vv true ty
+    pose proof (well_typed_sem_exhaust gamma_valid pd pdf pf vt vv true ty
       tm v ps Hty2 (proj1' (ty_match_inv Hty2))) as [p [Htyp [Hinp Hmatchp]]].
-    generalize dependent (term_rep gamma_valid pd vt pf vv tm v
+    generalize dependent (term_rep gamma_valid pd pdf vt pf vv tm v
       (proj1' (ty_match_inv Hty2))).
     (*Get hypotheses we need*)
     clear -H0 H1 Hinp. (*do we need Hty2/info about pattern typing?*)
@@ -930,12 +930,12 @@ Proof.
       destruct phd as [phd tdh]; simpl in *.
       rewrite match_val_single_irrel with (Hval2:=(Forall_inv Hall2)).
       simpl.
-      destruct (match_val_single gamma_valid pd vt v phd
+      destruct (match_val_single gamma_valid pd pdf vt v phd
         (Forall_inv Hall2) d) as [l1|] eqn : Hmatch.
       * (*use original IH*) rewrite Forall_forall in H0; rewrite H0 with (Hty1:=Hty1)(Hty2:=Forall_inv Hall1); simpl; auto.
         -- rewrite tm_change_vv with (t:=t1)(v2:=vv); [reflexivity|].
           intros x Hinx. rewrite extend_val_notin; auto.
-          rewrite <- (match_val_single_free_var _ _ _ _ _ _ _ _ _ Hmatch).
+          rewrite <- (match_val_single_free_var _ _ _ _ _ _ _ _ _ _ Hmatch).
           intros Hinx1.
           apply (H1 x); split; auto. rewrite !in_app_iff; auto.
         -- eapply disj_sublist. apply H1. eapply sublist_trans. apply sublist_app_r.
@@ -959,21 +959,21 @@ Proof.
 Qed.
 
 (*And the same for formulas - can we prove easier?*)
-Lemma f_insert_rep {gamma} (gamma_valid: valid_context gamma) pd vt pf vv f1 f2 Hty Hty1 Hty2
+Lemma f_insert_rep {gamma} (gamma_valid: valid_context gamma) pd pdf vt pf vv f1 f2 Hty Hty1 Hty2
   (Hdisj: disj (fmla_fv f1) (fmla_bnd f2)):
-  formula_rep gamma_valid pd vt pf vv (f_insert f1 f2) Hty =
-  eqb (formula_rep gamma_valid pd vt pf vv f1 Hty1)
-    (formula_rep gamma_valid pd vt pf vv f2 Hty2).
+  formula_rep gamma_valid pd pdf vt pf vv (f_insert f1 f2) Hty =
+  eqb (formula_rep gamma_valid pd pdf vt pf vv f1 Hty1)
+    (formula_rep gamma_valid pd pdf vt pf vv f2 Hty2).
 Proof.
   revert vv f1 Hdisj Hty Hty1 Hty2.
   apply (formula_ind (fun _ => True) (fun f2 => forall vv f1,
     disj (fmla_fv f1) (fmla_bnd f2) ->
     forall Hty Hty1 Hty2,
-    formula_rep gamma_valid pd vt pf vv
+    formula_rep gamma_valid pd pdf vt pf vv
     (f_insert f1 f2) Hty =
   eqb
-    (formula_rep gamma_valid pd vt pf vv f1 Hty1)
-  (formula_rep gamma_valid pd vt pf vv f2 Hty2))); simpl; intros; simpl_rep_full; auto;
+    (formula_rep gamma_valid pd pdf vt pf vv f1 Hty1)
+  (formula_rep gamma_valid pd pdf vt pf vv f2 Hty2))); simpl; intros; simpl_rep_full; auto;
   try solve[f_equal; try solve[apply fmla_rep_irrel]; auto; 
     solve[repeat(f_equal; auto; apply fmla_rep_irrel)]].
   - (*Fpred*)
@@ -986,12 +986,12 @@ Proof.
     2: { eapply disj_sublist. apply H1. apply sublist_cons. apply sublist_app_r. }
     (*Use disj*)
     rewrite fmla_change_vv with (v2:=vv); auto.
-    + erewrite (term_rep_irrel _ _ _ _ _ tm). reflexivity.
+    + erewrite (term_rep_irrel _ _ _ _ _ _ tm). reflexivity.
     + intros x Hinx. unfold substi. destruct (vsymbol_eq_dec x v); subst; auto.
       exfalso. apply (H1 v); split; simpl; auto.
   - (*Fif*)
     rewrite fmla_rep_irrel with (Hval2:= (proj1' (typed_if_inv Hty2))).
-    destruct (formula_rep _ _ _ _ _ f1 _) eqn : Hrep.
+    destruct (formula_rep _ _ _ _ _ _ f1 _) eqn : Hrep.
     + erewrite H0; [reflexivity|].
       eapply disj_sublist. apply H2. eapply sublist_trans. apply sublist_app_l.
       apply sublist_app_r.
@@ -1004,9 +1004,9 @@ Proof.
     generalize dependent (proj1' (proj2' (typed_match_inv Hty2))).
     generalize dependent (proj2' (proj2' (typed_match_inv Hty2))).
     (*Need existence of [match_rep] by exhaustiveness*)
-    pose proof (well_typed_sem_exhaust gamma_valid pd pf vt vv false tt
+    pose proof (well_typed_sem_exhaust gamma_valid pd pdf pf vt vv false tt
       tm v ps Hty2 (proj1' (typed_match_inv Hty2))) as [p [Htyp [Hinp Hmatchp]]].
-    generalize dependent (term_rep gamma_valid pd vt pf vv tm v
+    generalize dependent (term_rep gamma_valid pd pdf vt pf vv tm v
       (proj1' (typed_match_inv Hty2))).
     clear -H0 H1 Hinp. 
     induction ps as [|phd ptl IH]; simpl.
@@ -1015,12 +1015,12 @@ Proof.
       destruct phd as [phd tdh]; simpl in *.
       rewrite match_val_single_irrel with (Hval2:=(Forall_inv Hall2)).
       simpl.
-      destruct (match_val_single gamma_valid pd vt v phd
+      destruct (match_val_single gamma_valid pd pdf vt v phd
         (Forall_inv Hall2) d) as [l1|] eqn : Hmatch.
       * (*use original IH*) rewrite Forall_forall in H0; rewrite H0 with (Hty1:=Hty1)(Hty2:=Forall_inv Hall1); simpl; auto.
         -- rewrite fmla_change_vv with (f:=f1)(v2:=vv); [reflexivity|].
           intros x Hinx. rewrite extend_val_notin; auto.
-          rewrite <- (match_val_single_free_var _ _ _ _ _ _ _ _ _ Hmatch).
+          rewrite <- (match_val_single_free_var _ _ _ _ _ _ _ _ _ _ Hmatch).
           intros Hinx1.
           apply (H1 x); split; auto. rewrite !in_app_iff; auto.
         -- eapply disj_sublist. apply H1. eapply sublist_trans. apply sublist_app_r.
@@ -1050,11 +1050,11 @@ Proof.
   - destruct b1; destruct b2; auto.
 Qed.
 
-Lemma t_insert_gen_rep {gamma} (gamma_valid: valid_context gamma) pd vt pf vv {b: bool}
+Lemma t_insert_gen_rep {gamma} (gamma_valid: valid_context gamma) pd pdf vt pf vv {b: bool}
   (t1 t2: gen_term b) (ty: gen_type b) Hty Hty1 Hty2
   (Hdisj: disj (gen_fv t1) (gen_bnd t2)):
-  formula_rep gamma_valid pd vt pf vv (t_insert_gen ty t1 t2) Hty =
-  all_dec (gen_rep gamma_valid pd pf vt b vv ty t1 Hty1 = gen_rep gamma_valid pd pf vt b vv ty t2 Hty2).
+  formula_rep gamma_valid pd pdf vt pf vv (t_insert_gen ty t1 t2) Hty =
+  all_dec (gen_rep gamma_valid pd pdf pf vt vv ty t1 Hty1 = gen_rep gamma_valid pd pdf pf vt vv ty t2 Hty2).
 Proof.
   destruct b; simpl.
   - apply t_insert_rep; auto.
@@ -1168,10 +1168,10 @@ Proof.
   - apply a_convert_f_bnd.
 Qed.
 
-Lemma gen_rep_a_convert {b: bool} {gamma} (gamma_valid: valid_context gamma) pd pf vt vv (ty: gen_type b)
+Lemma gen_rep_a_convert {b: bool} {gamma} (gamma_valid: valid_context gamma) pd pdf pf vt vv (ty: gen_type b)
   (e: gen_term b) (vs: list vsymbol) Hty1 Hty2:
-  gen_rep gamma_valid pd pf vt b vv ty (a_convert_gen e vs) Hty1 =
-  gen_rep gamma_valid pd pf vt b vv ty e Hty2.
+  gen_rep gamma_valid pd pdf pf vt vv ty (a_convert_gen e vs) Hty1 =
+  gen_rep gamma_valid pd pdf pf vt vv ty e Hty2.
 Proof.
   destruct b; simpl in *.
   - erewrite term_rep_irrel. erewrite <- a_convert_t_rep. reflexivity.
@@ -1196,13 +1196,13 @@ Definition funpred_defined (gamma: context) {b: bool} :=
   end.
 
 (*The main result: the axiom we add holds. We factor out because we need in multiple places*)
-Lemma rec_axiom_true {gamma} (gamma_valid: valid_context gamma) pd pf vt vv
+Lemma rec_axiom_true {gamma} (gamma_valid: valid_context gamma) pd pdf pf vt vv
 {b: bool} (ls: gen_sym b) (vs: list vsymbol) (e: gen_term b)
 (pf_full: full_interp gamma_valid pd pf)
 (Hty: formula_typed gamma (snd (rec_axiom ls vs e)))
 (Hval: funpred_def_valid_type gamma (gen_funpred_def b ls vs e))
 (Hdef: funpred_defined gamma ls vs e):
-formula_rep gamma_valid pd vt pf vv
+formula_rep gamma_valid pd pdf vt pf vv
   (snd (rec_axiom ls vs e)) Hty.
 Proof.
   assert (Hfull:=pf_full).
@@ -1272,7 +1272,7 @@ Proof.
           vs
           (get_arg_list pd vt (map vty_var (s_params ls'))
           (map Tvar vs)
-          (term_rep gamma_valid pd vt pf
+          (term_rep gamma_valid pd pdf vt pf
           (substi_mult pd vt vv vs h))
           (s_params_Nodup ls') Hlen1 Hlen2 Hall)
           x)).
@@ -1312,7 +1312,7 @@ Proof.
     (*Now deal with [get_arg_list]*) 
     assert (Hj': j < Datatypes.length (s_args ls')) by lia. 
     rewrite (get_arg_list_hnth_unif pd vt ls'
-      (map Tvar vs) (term_rep gamma_valid pd vt pf
+      (map Tvar vs) (term_rep gamma_valid pd pdf vt pf
       (substi_mult pd vt vv vs h)) (ltac:(intros; apply term_rep_irrel))
       Hlen1 
       ) with (Hi:=Hj').
@@ -1321,7 +1321,7 @@ Proof.
     intros Heq2.
     (*Now simplify to variable*)
     match goal with
-    | |- context [term_rep ?v ?pd ?vt ?pf ?vv ?t ?ty ?Hty] => generalize dependent Hty
+    | |- context [term_rep ?v ?pd ?pdf ?vt ?pf ?vv ?t ?ty ?Hty] => generalize dependent Hty
     end.
     rewrite map_nth_inbound with (d2:=vs_d) by auto.
     intros Htyv.
@@ -2621,7 +2621,7 @@ End NewContext.
 (*Note: these lemmas are exactly the same as [eliminate_inductive]. Can we generalize?*)
 
 Lemma gen_new_ctx_funs_constrs which nonrec  {gamma} (gamma_valid: valid_context gamma) 
-(pd: pi_dom) (pf: pi_funpred gamma_valid pd):
+(pd: pi_dom) (pdf: pi_dom_full gamma pd) (pf: pi_funpred gamma_valid pd pdf):
   forall (m : mut_adt) (a : alg_datatype) 
     (c : funsym) (Hm : mut_in_ctx m (gen_new_ctx_gamma' which nonrec gamma)) 
     (Ha : adt_in_mut a m) (Hc : constr_in_adt c a)
@@ -2632,51 +2632,57 @@ Lemma gen_new_ctx_funs_constrs which nonrec  {gamma} (gamma_valid: valid_context
               (sym_sigma_args c srts)),
   funs gamma_valid pd pf c srts args =
   constr_rep_dom (gen_new_ctx_valid which nonrec _ gamma_valid) m Hm srts Hlens 
-    (dom_aux pd) a Ha c Hc (adts pd m srts) args.
+    (dom_aux pd) a Ha c Hc (adts 
+      (change_gamma_dom_full (eq_sym (gen_new_ctx_gamma_mut which nonrec gamma)) pd pdf) m srts) args.
 Proof.
   intros.
   assert (m_in: mut_in_ctx m gamma). {
     revert Hm. apply mut_in_ctx_sublist.
     rewrite gen_new_ctx_gamma_mut. apply incl_refl.
   }
-  rewrite (constrs _ pd pf m a c m_in Ha Hc srts Hlens).
+  rewrite (constrs _ pd pdf pf m a c m_in Ha Hc srts Hlens).
   unfold constr_rep_dom.
-  f_equal. f_equal. f_equal. apply UIP_dec. apply sort_eq_dec.
-  apply constr_rep_change_gamma.
+  simpl. unfold change_gamma_adts. simpl.
+  f_equal.
+  - f_equal.
+    + f_equal. f_equal. apply bool_irrelevance.
+    + f_equal. apply UIP_dec, sort_eq_dec.
+  - apply constr_rep_change_gamma.
 Qed.
 
 Definition gen_new_ctx_pf which nonrec {gamma} (gamma_valid: valid_context gamma) 
-(pd: pi_dom) (pf: pi_funpred gamma_valid pd):
-pi_funpred (gen_new_ctx_valid which nonrec _ gamma_valid) pd :=
-Build_pi_funpred (gen_new_ctx_valid which nonrec _ gamma_valid) pd
+(pd: pi_dom) (pdf: pi_dom_full gamma pd) (pf: pi_funpred gamma_valid pd pdf):
+pi_funpred (gen_new_ctx_valid which nonrec _ gamma_valid) pd 
+  (change_gamma_dom_full (eq_sym (gen_new_ctx_gamma_mut which nonrec gamma)) pd pdf) :=
+Build_pi_funpred (gen_new_ctx_valid which nonrec _ gamma_valid) pd _
   (funs gamma_valid pd pf)
   (preds gamma_valid pd pf)
-  (gen_new_ctx_funs_constrs which nonrec gamma_valid pd pf).
+  (gen_new_ctx_funs_constrs which nonrec gamma_valid pd pdf pf).
 
 (*And we prove that every formula true under this pf in gamma'
   is true under the original in gamma, and vice versa.
   This is trivial*)
 Lemma tm_gen_new_ctx_pf which nonrec {gamma} (gamma_valid: valid_context gamma) 
-(pd: pi_dom) (pf: pi_funpred gamma_valid pd)
+(pd: pi_dom) (pdf: pi_dom_full gamma pd) (pf: pi_funpred gamma_valid pd pdf)
 (vt: val_typevar) (vv: val_vars pd vt) (t: term) (ty: vty)
 (Hty1: term_has_type gamma t ty)
 (Hty2: term_has_type (gen_new_ctx_gamma' which nonrec gamma) t ty):
-term_rep (gen_new_ctx_valid which nonrec _ gamma_valid) pd vt
-  (gen_new_ctx_pf which nonrec gamma_valid pd pf) vv t ty Hty2 =
-term_rep gamma_valid pd vt pf vv t ty Hty1.
+term_rep (gen_new_ctx_valid which nonrec _ gamma_valid) pd _ vt
+  (gen_new_ctx_pf which nonrec gamma_valid pd pdf pf) vv t ty Hty2 =
+term_rep gamma_valid pd pdf vt pf vv t ty Hty1.
 Proof.
   apply term_change_gamma_pf; simpl; auto.
   rewrite gen_new_ctx_gamma_mut; auto.
 Qed.
 
 Lemma fmla_gen_new_ctx_pf which nonrec {gamma} (gamma_valid: valid_context gamma) 
-(pd: pi_dom) (pf: pi_funpred gamma_valid pd)
+(pd: pi_dom) (pdf: pi_dom_full gamma pd) (pf: pi_funpred gamma_valid pd pdf)
 (vt: val_typevar) (vv: val_vars pd vt) (f: formula)
 (Hty1: formula_typed gamma f)
 (Hty2: formula_typed (gen_new_ctx_gamma' which nonrec gamma) f):
-formula_rep (gen_new_ctx_valid which nonrec _ gamma_valid) pd vt
-  (gen_new_ctx_pf which nonrec gamma_valid pd pf) vv f Hty2 =
-formula_rep gamma_valid pd vt pf vv f Hty1.
+formula_rep (gen_new_ctx_valid which nonrec _ gamma_valid) pd _ vt
+  (gen_new_ctx_pf which nonrec gamma_valid pd pdf pf) vv f Hty2 =
+formula_rep gamma_valid pd pdf vt pf vv f Hty1.
 Proof.
   apply fmla_change_gamma_pf; simpl; auto.
   rewrite gen_new_ctx_gamma_mut; auto.
@@ -2890,10 +2896,10 @@ Qed.
   [gen_new_ctx_pf] (not true in the other direction of course -
   recfuns wont necessarily hold)*)
 Lemma gen_new_ctx_pf_full which nonrec {gamma} (gamma_valid: valid_context gamma) 
-(pd: pi_dom) (pf: pi_funpred gamma_valid pd):
+(pd: pi_dom) (pdf: pi_dom_full gamma pd) (pf: pi_funpred gamma_valid pd pdf):
 full_interp gamma_valid pd pf ->
 full_interp (gen_new_ctx_valid which nonrec _ gamma_valid) pd 
-  (gen_new_ctx_pf which nonrec gamma_valid pd pf).
+  (gen_new_ctx_pf which nonrec gamma_valid pd pdf pf).
 Proof.
   unfold full_interp; intros [Hfun [Hpred [Hconstr Hleast]]]; split_all.
   - clear -Hfun.
@@ -2949,17 +2955,17 @@ Qed.
 
 Lemma satisfies_gen_new_ctx_pf which nonrec
 {gamma} (gamma_valid: valid_context gamma) 
-(pd: pi_dom) (pf: pi_funpred gamma_valid pd)
+(pd: pi_dom) (pdf: pi_dom_full gamma pd) (pf: pi_funpred gamma_valid pd pdf)
 (pf_full: full_interp gamma_valid pd pf)
 (pf_full2: full_interp (gen_new_ctx_valid which nonrec _ gamma_valid) pd
-  (gen_new_ctx_pf which nonrec gamma_valid pd pf))
+  (gen_new_ctx_pf which nonrec gamma_valid pd pdf pf))
 (f: formula)
 (Hty1: formula_typed gamma f)
 (Hty2: formula_typed (gen_new_ctx_gamma' which nonrec gamma) f):
-satisfies (gen_new_ctx_valid which nonrec gamma gamma_valid) pd 
-  (gen_new_ctx_pf which nonrec gamma_valid pd pf) pf_full2 f
+satisfies (gen_new_ctx_valid which nonrec gamma gamma_valid) pd _
+  (gen_new_ctx_pf which nonrec gamma_valid pd pdf pf) pf_full2 f
   Hty2 <->
-satisfies gamma_valid pd pf pf_full f Hty1.
+satisfies gamma_valid pd pdf pf pf_full f Hty1.
 Proof.
   unfold satisfies. split; intros.
   specialize (H vt vv).
@@ -2986,8 +2992,8 @@ Proof.
   intros.
   (*Now, need to show that we can convert an interpretation
     for the full context into one of the weakened context*)
-  specialize (Hval pd (gen_new_ctx_pf which nonrec gamma_valid pd pf)
-    (gen_new_ctx_pf_full which nonrec gamma_valid pd pf pf_full)).
+  specialize (Hval pd _ (gen_new_ctx_pf which nonrec gamma_valid pd pdf pf)
+    (gen_new_ctx_pf_full which nonrec gamma_valid pd pdf pf pf_full)).
   prove_hyp Hval.
   {
     intros d Hd.
@@ -2996,6 +3002,28 @@ Proof.
   }
   erewrite satisfies_gen_new_ctx_pf in Hval.
   apply Hval.
+Qed.
+
+Lemma typed_gen_new_ctx which nonrec t:
+  task_wf t -> task_wf (gen_new_ctx which nonrec t).
+Proof.
+  destruct t as [[gamma delta] goal].
+  intros Hwf.
+  inversion Hwf. simpl_task.
+  pose proof (gen_new_ctx_valid which nonrec _ task_gamma_valid) as Hval.
+  unfold gen_new_ctx. rewrite gen_new_ctx_gamma_equiv. simpl_task.
+  constructor; simpl_task; auto.
+  - revert task_delta_typed.
+    apply Forall_impl.
+    intros f. apply formula_typed_sublist.
+    + apply eq_sig_is_sublist. apply eq_sig_sym. 
+      apply gen_new_ctx_gamma_eq_sig.
+    + rewrite gen_new_ctx_gamma_mut. apply sublist_refl.
+  - inversion task_goal_typed. constructor; auto.
+    revert f_ty. apply formula_typed_sublist.
+    + apply eq_sig_is_sublist. apply eq_sig_sym. 
+      apply gen_new_ctx_gamma_eq_sig.
+    + rewrite gen_new_ctx_gamma_mut. apply sublist_refl.
 Qed.
 
 
@@ -3026,7 +3054,21 @@ Proof.
   apply compose_single_trans_sound.
   - (*Soundness of axioms*) apply gen_axioms_sound.
   - (*Well-typed context*) apply gen_new_ctx_sound.
-  - (*All axioms are well-formed*) apply gen_axioms_wf.
-Qed. 
+  - (*All axioms are well-formed*) 
+    unfold typed_single_trans. apply gen_axioms_wf.
+Qed.
+
+Theorem eliminate_definition_gen_typed which nonrec:
+  typed_trans (eliminate_definition_gen which nonrec).
+Proof.
+  rewrite typed_trans_ext.
+  2: apply eliminate_definition_split.
+  unfold eliminate_definition_alt.
+  apply compose_single_trans_typed.
+  - unfold typed_single_trans.
+    apply gen_axioms_wf.
+  - unfold typed_single_trans.
+    apply typed_gen_new_ctx.
+Qed.
 
 End Proofs.
