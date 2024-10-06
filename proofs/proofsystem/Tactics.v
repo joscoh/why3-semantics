@@ -414,8 +414,8 @@ Proof.
   unfold log_conseq in *.
   unfold log_conseq_gen in *.
   intros.
-  specialize (Hval pd pf pf_full).
-  specialize (Hhyp pd pf pf_full).
+  specialize (Hval pd pdf pf pf_full).
+  specialize (Hhyp pd pdf pf pf_full).
   prove_hyp Hval.
   {
     intros d Hd.
@@ -483,7 +483,7 @@ Proof.
     (*Because we don't have irrel lemma*) 
     unfold log_conseq_gen in *.
     intros.
-    specialize (Hval pd pf pf_full).
+    specialize (Hval pd pdf pf pf_full).
     prove_hyp Hval.
     { intros d Hd. erewrite satisfies_irrel. apply (H d Hd). }
     erewrite satisfies_irrel. apply Hval.
@@ -922,7 +922,7 @@ Proof.
     unfold log_conseq_gen. intros.
     unfold satisfies.
     intros.
-    assert (Hfrep: satisfies gamma_valid pd pf pf_full f Htyf').
+    assert (Hfrep: satisfies gamma_valid pd pdf pf pf_full f Htyf').
     {
       erewrite satisfies_irrel. apply (H0 _ Hinsnd).
     }
@@ -1161,8 +1161,8 @@ Proof.
   unfold log_conseq in *.
   unfold log_conseq_gen in *.
   intros.
-  specialize (Hval pd pf pf_full).
-  specialize (Hhyp pd pf pf_full).
+  specialize (Hval pd pdf pf pf_full).
+  specialize (Hhyp pd pdf pf pf_full).
   prove_hyp Hval.
   {
     intros d Hd.

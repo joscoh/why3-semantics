@@ -271,8 +271,8 @@ Proof.
   assert (Heq: v_subst vt (vty_cons (adt_name a) vs) = typesym_to_sort (adt_name a) (map (v_subst vt) vs)). {
     apply sort_inj; simpl. rewrite !map_map. auto.
   }
-  set (d':= scast (adts pd m (map (v_subst vt) vs) a a_in) (dom_cast (dom_aux pd) Heq d)).
-  assert (d = scast (eq_trans (eq_sym (adts pd m (map (v_subst vt) vs) a a_in))
+  set (d':= scast (adts pdf m (map (v_subst vt) vs) a m_in a_in) (dom_cast (dom_aux pd) Heq d)).
+  assert (d = scast (eq_trans (eq_sym (adts pdf m (map (v_subst vt) vs) a m_in a_in))
     (eq_sym (f_equal (domain (dom_aux pd)) Heq))) d'). {
       unfold d'. unfold dom_cast. rewrite !scast_scast.
       (*Could do without UIP but ok*)
@@ -280,8 +280,8 @@ Proof.
   }
   rewrite H2. clear H2.
   match goal with
-  | |- is_true (formula_rep ?val ?pd ?vt ?pf ?vv ?f ?Hty) => generalize dependent Hty end.
-  generalize dependent (eq_trans (eq_sym (adts pd m (map (v_subst vt) vs) a a_in))
+  | |- is_true (formula_rep ?val ?pd ?pdf ?vt ?pf ?vv ?f ?Hty) => generalize dependent Hty end.
+  generalize dependent (eq_trans (eq_sym (adts pdf m (map (v_subst vt) vs) a m_in a_in))
   (eq_sym (f_equal (domain (dom_aux pd)) Heq))).
   assert (Hlen: Datatypes.length (map (v_subst vt) vs) = Datatypes.length (m_params m)).
   {
@@ -294,10 +294,10 @@ Proof.
     apply (adt_args gamma_valid m_in a_in).
   }
   (*Now, we will apply our induction theorem for ADTs*)
-  apply (adt_rep_ind gamma_valid m m_in (map (v_subst vt) vs) Hlen
+  apply (adt_rep_ind gamma_valid pdf m m_in (map (v_subst vt) vs) Hlen
     (fun t t_in a => 
       forall Heq Hty,
-      formula_rep gamma_valid pd vt pf 
+      formula_rep gamma_valid pd pdf vt pf 
         (substi pd vt vv (x, vty_cons (adt_name t) vs) (scast Heq a)) goal Hty)).
   (*And now we prove, for every ADT in m (a is the only one)
     and every rep, for every constr, if this holds inductively for recursive
@@ -326,7 +326,7 @@ Proof.
   destruct H as [Hwf Hval].
   specialize (Hval gamma_valid Hwf).
   unfold log_conseq in Hval.
-  specialize (Hval pd pf pf_full).
+  specialize (Hval pd pdf pf pf_full).
   prove_hyp Hval.
   {
     intros d1 Hd1.
@@ -435,7 +435,7 @@ Proof.
     (*Evaluate constr application and show equal*)
     simpl.
     simpl_rep_full.
-    rewrite (constrs gamma_valid pd pf m a c m_in a_in c_in _ Hlen).
+    rewrite (constrs gamma_valid pd pdf pf m a c m_in a_in c_in _ Hlen).
     unfold constr_rep_dom.
     unfold cast_dom_vty, dom_cast.
     rewrite !scast_scast.
@@ -480,7 +480,7 @@ Proof.
         auto. apply nth_In; auto.
     }
     erewrite (get_arg_list_hnth pd vt c vs _
-     (term_rep gamma_valid pd vt pf
+     (term_rep gamma_valid pd pdf vt pf
         (substi_mult pd vt vv
            (combine
               (gen_strs (Datatypes.length (s_args c))

@@ -148,17 +148,18 @@ Definition elim_let_f_fv bt bf f :=
 Section Rep.
 
 Context {gamma: context} (gamma_valid: valid_context gamma) 
-  (pd: pi_dom) (vt: val_typevar) (pf: pi_funpred gamma_valid pd).
+  (pd: pi_dom) (pdf: pi_dom_full gamma pd) (vt: val_typevar) 
+  (pf: pi_funpred gamma_valid pd pdf).
 
 Lemma elim_let_rep bt bf t f:
   (forall vv ty (Hty1: term_has_type gamma t ty) 
     (Hty2: term_has_type gamma (elim_let_t bt bf t) ty),
-    term_rep gamma_valid pd vt pf vv (elim_let_t bt bf t) ty Hty2 =
-    term_rep gamma_valid pd vt pf vv t ty Hty1) /\
+    term_rep gamma_valid pd pdf vt pf vv (elim_let_t bt bf t) ty Hty2 =
+    term_rep gamma_valid pd pdf vt pf vv t ty Hty1) /\
   (forall vv (Hty1: formula_typed gamma f) 
     (Hty2: formula_typed gamma (elim_let_f bt bf f)),
-    formula_rep gamma_valid pd vt pf vv (elim_let_f bt bf f) Hty2 =
-    formula_rep gamma_valid pd vt pf vv f Hty1).
+    formula_rep gamma_valid pd pdf vt pf vv (elim_let_f bt bf f) Hty2 =
+    formula_rep gamma_valid pd pdf vt pf vv f Hty1).
 Proof.
   revert t f; apply term_formula_ind; intros;
   try solve[simpl; apply term_rep_irrel];
@@ -1118,20 +1119,21 @@ End FreeVars.
 Section Rep.
 
 Context {gamma: context} (gamma_valid: valid_context gamma) 
-  (pd: pi_dom) (vt: val_typevar) (pf: pi_funpred gamma_valid pd).
+  (pd: pi_dom) (pdf: pi_dom_full gamma pd) (vt: val_typevar) 
+  (pf: pi_funpred gamma_valid pd pdf).
 
 Definition elim_let_tm_fmla_rep_eq (x: tm_fmla) (y: tm_fmla_ty x) : Prop :=
   match x as x' return tm_fmla_ty x' -> Prop with
   | Left t1 => fun t2 => 
     forall vv ty (Hty1: term_has_type gamma t1 ty) 
       (Hty2: term_has_type gamma t2 ty),
-    term_rep gamma_valid pd vt pf vv t2 ty Hty2 =
-    term_rep gamma_valid pd vt pf vv t1 ty Hty1
+    term_rep gamma_valid pd pdf vt pf vv t2 ty Hty2 =
+    term_rep gamma_valid pd pdf vt pf vv t1 ty Hty1
   | Right f1 => fun f2 =>
     forall vv (Hty1: formula_typed gamma f1)
       (Hty2: formula_typed gamma f2),
-    formula_rep gamma_valid pd vt pf vv f2 Hty2 =
-    formula_rep gamma_valid pd vt pf vv f1 Hty1
+    formula_rep gamma_valid pd pdf vt pf vv f2 Hty2 =
+    formula_rep gamma_valid pd pdf vt pf vv f1 Hty1
   end y.
 
 Lemma elim_let_tm_fmla_rep (x: tm_fmla) b1 b2 Heq1 Heq2:
@@ -1221,8 +1223,8 @@ Qed.
 Lemma elim_let_fmla_rep vv (f: formula) :
   forall (Hty1: formula_typed gamma f)
     (Hty2: formula_typed gamma (elim_let_fmla f)),
-    formula_rep gamma_valid pd vt pf vv (elim_let_fmla f) Hty2 =
-    formula_rep gamma_valid pd vt pf vv f Hty1.
+    formula_rep gamma_valid pd pdf vt pf vv (elim_let_fmla f) Hty2 =
+    formula_rep gamma_valid pd pdf vt pf vv f Hty1.
 Proof.
   apply (elim_let_tm_fmla_rep (Right f) bt bf eq_refl eq_refl);
   auto.
