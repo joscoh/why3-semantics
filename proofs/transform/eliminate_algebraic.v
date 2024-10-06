@@ -67,9 +67,9 @@ Definition rewriteF' f := rewriteF (a_convert_all_f f nil).
 Definition compile_match : trans := trans_map rewriteT' rewriteF'.
 
 (*Proofs*)
-(* 
+
 (*1. Typing*)
-Lemma rewrite_typed gamma t f:
+Lemma rewrite_typed {gamma} (gamma_valid: valid_context gamma) t f:
   (forall ty (Hty: term_has_type gamma t ty),
     term_has_type gamma (rewriteT t) ty) /\
   (forall (Hty: formula_typed gamma f),
@@ -94,14 +94,194 @@ Proof.
   - (*Tmatch*)
     intros tm ty ps IHtm IHps ty1 Hty1.
     destruct (compile_bare_single _ _ _ _) as [o1|] eqn : Hcompile; auto.
+    inversion Hty1; subst.
     (*2nd case cannot occur by typing but we don't prove that yet*)
-    unfold compile_bare_single in Hcompile.
-    eapply compile_bare_typed in Hcompile; eauto.
-    Search compile_bare.
-  - intros; inversion Hty; subst; constructor; auto.
+    eapply compile_bare_single_typed in Hcompile; eauto.
+    + rewrite Forall_map. simpl. rewrite Forall_forall; auto.
+    + rewrite Forall_map. simpl. rewrite Forall_forall; auto.
+      rewrite Forall_map, Forall_forall in IHps. auto.
+  - (*Fpred*)
+    intros f1 tys tms IH Hty.
+    inversion Hty; subst.
+    constructor; auto.
+    + rewrite map_length; auto.
+    + assert (Hlen: length tms = length (map (ty_subst (s_params f1) tys) (s_args f1))).
+      { rewrite map_length; auto. }
+      generalize dependent (map (ty_subst (s_params f1) tys) (s_args f1)).
+      revert IH.
+      clear.
+      induction tms as [| thd ttl IH]; intros Hall [| tyh tyt]; auto;
+      try discriminate; simpl.
+      intros Hall2 Hlen.
+      inversion Hall; subst. inversion Hall2; subst.
+      constructor; auto.
+  - intros tm ty ps IHtm IHps Hty1.
+    destruct (compile_bare_single _ _ _ _) as [o1|] eqn : Hcompile; auto.
+    inversion Hty1; subst.
+    (*2nd case cannot occur by typing but we don't prove that yet*)
+    eapply compile_bare_single_typed with (ret_ty:=tt) in Hcompile; eauto.
+    + rewrite Forall_map. simpl. rewrite Forall_forall; auto.
+    + rewrite Forall_map. simpl. rewrite Forall_forall; auto.
+      rewrite Forall_map, Forall_forall in IHps. auto.
+Qed.
+
+Definition rewriteT_typed {gamma} (gamma_valid: valid_context gamma) t:=
+  proj_tm (rewrite_typed gamma_valid) t.
+Definition rewriteF_typed {gamma} (gamma_valid: valid_context gamma) f:=
+  proj_fmla (rewrite_typed gamma_valid) f.
+
+(*TODO: move all of these (plus ones in Denotational)*)
+Lemma wf_tfun {f: funsym} {tys: list vty} {tms: list term}
+  (Hwf: term_wf (Tfun f tys tms)):
+  Forall term_wf tms.
+Proof.
+  unfold term_wf in Hwf. simpl in Hwf.
+  rewrite Forall_forall. intros t Hint.
+  unfold term_wf. destruct Hwf as [Hnodup Hfb].
+  split.
+  - eapply in_concat_NoDup; [apply vsymbol_eq_dec | apply Hnodup |].
+    rewrite in_map_iff. exists t; auto.
+  - intros x [Hinx1 Hinx2].
+    apply (Hfb x). simpl_set. rewrite in_concat.
+    split; eauto.
+    exists (tm_bnd t); split; auto. rewrite in_map_iff. exists t; auto.
+Qed.
+
+Lemma wf_tlet {tm1 tm2: term} {x} (Hwf: term_wf (Tlet tm1 x tm2)):
+  term_wf tm1 /\ term_wf tm2.
+Proof.
+  unfold term_wf in Hwf |- *. simpl in Hwf. destruct Hwf as [Hnodup Hfb].
+  inversion Hnodup as [| ? ? Hnotin Hn2]; subst.
+  apply NoDup_app in Hn2. destruct Hn2 as [Hn1 Hn2].
+  split_all; auto; intros y [Hiny1 Hiny2]; apply (Hfb y);
+  simpl_set; rewrite in_app_iff; auto.
+  split; auto. right. split; auto.
+  intro C; subst. apply Hnotin. rewrite in_app_iff; auto.
+Qed.
+
+Lemma wf_tif {f t1 t2} (Hwf: term_wf (Tif f t1 t2)):
+  fmla_wf f /\ term_wf t1 /\ term_wf t2.
+Proof.
+  unfold term_wf, fmla_wf in *. simpl in Hwf.
+  destruct Hwf as [Hnodup Hfb].
+  apply NoDup_app in Hnodup.
+  destruct Hnodup as [Hn1 Hn2].
+  apply NoDup_app in Hn2.
+  destruct Hn2 as [Hn2 Hn3].
+  do 2 (setoid_rewrite in_app_iff in Hfb).
+  split_all; auto; intros x [Hinx1 Hinx2]; apply (Hfb x); simpl_set; auto.
+Qed.
+(*
+(*1.5: Free vars*)
+
+(*I think it is sufficient: every free var in rewriteT is also in t?
+  Or do we need iff?
+  Difficulty is from compile_match_single - need to show that 
+  free vars of resulting matrix are (tm_fv t) \ (big_union pat_fv ps)
+  for row ps -> t
+  under simplify, this still holds
+  so we might be able to do iff*)
+Lemma rewrite_free_vars
 
 
 (*2: Semantics*)
+Lemma rewrite_rep {gamma} (gamma_valid: valid_context gamma)
+  (pd: pi_dom) (pdf: pi_dom_full gamma pd)
+  (pf: pi_funpred gamma_valid pd pdf)
+  (vt: val_typevar)
+  t f:
+  (forall (vv: val_vars pd vt) ty (Hty1: term_has_type gamma t ty)
+    (Hty2: term_has_type gamma (rewriteT t) ty)
+    (Hwf: term_wf t),
+    term_rep gamma_valid pd pdf vt pf vv (rewriteT t) ty Hty2 =
+    term_rep gamma_valid pd pdf vt pf vv t ty Hty1) /\
+  (forall (vv: val_vars pd vt) (Hty1: formula_typed gamma f)
+    (Hty2: formula_typed gamma (rewriteF f))
+    (Hwf: fmla_wf f),
+    formula_rep gamma_valid pd pdf vt pf vv (rewriteF f)  Hty2 =
+    formula_rep gamma_valid pd pdf vt pf vv f Hty1).
+Proof.
+  revert t f; apply term_formula_ind; simpl rewriteT; auto;
+  try solve[intros; try apply term_rep_irrel; try apply formula_rep_irrel].
+  - (*Tfun*)
+    intros f1 tys tms IH vv ty Hty1 Hty2 Hwf.
+    simpl_rep_full.
+    f_equal; [apply UIP_dec, vty_eq_dec |].
+    f_equal; [apply UIP_dec, sort_eq_dec|].
+    f_equal.
+    apply get_arg_list_ext; [rewrite map_length; auto|].
+    intros i. rewrite map_length. intros Hi ty1.
+    rewrite map_nth_inbound with (d2:=tm_d) by auto.
+    intros Hty3 Hty4.
+    rewrite Forall_nth in IH; apply IH; auto.
+    pose proof (wf_tfun Hwf) as IHwf.
+    rewrite Forall_nth in IHwf.
+    apply IHwf; auto.
+  - (*Tlet*)
+    intros tm1 ty tm2 IH1 IH2 vv ty1 Hty1 Hty2 Hwf.
+    simpl_rep_full.
+    pose proof (wf_tlet Hwf) as [Hwf1 Hwf2].
+    rewrite IH1 with (Hty1:=(proj1' (ty_let_inv Hty1))) by auto.
+    apply IH2; auto.
+  - (*Tif*)
+    intros f t1 t2 IH1 IH2 IH3 vv ty Hty1 Hty2 Hwf.
+    apply wf_tif in Hwf.
+    destruct Hwf as [Hwf1 [Hwf2 Hwf3]].
+    simpl_rep_full.
+    erewrite IH1, IH2, IH3 by auto. reflexivity.
+  - (*Tmatch - the interesting case*)
+    intros tm ty ps IHtm IHps vv ty1 Hty1 Hty2 Hwf.
+    revert Hty2.
+    destruct (compile_bare_single true (rewriteT tm) ty
+      (map (fun x : pattern * term => (fst x, rewriteT (snd x))) ps)) as [t2|] eqn : Hcomp;
+    [|intros; apply term_rep_irrel].
+    intros Hty2.
+    simpl_rep_full.
+    (*Why we needed wf*)
+    assert (Hdisj: disj (map fst (tm_fv (rewriteT tm)))
+    (map fst
+        (big_union vsymbol_eq_dec pat_fv
+          (map fst
+              (map (fun x : pattern * term => (fst x, rewriteT (snd x))) ps))))).
+    {
+
+    }
+    
+    pose proof (compile_bare_single_spec2 gamma_valid pd pdf pf vt vv true
+      ty1 _ _ _ _ _ _ _ _ Hty2 Hcomp).
+    Search compile_bare_single.
+    2: {
+
+    }
+
+    erewrite IH2 by auto.
+    
+    
+
+    (*1*)
+
+
+    Search term_wf.
+    
+     intros Hi ty1 Hty3 Hty4.
+    revert Hty3.
+    rewrite map_nth_inbound with (d2:=tm_d).
+    Search fun_arg_list.
+    apply fun_arg_list_ext.
+    Search get_arg_list.
+    Print term_wf.
+  
+  
+  
+   intros; apply term_rep_irrel.
+
+
+Lemma rewrite_typed {gamma} (gamma_valid: valid_context gamma) t f:
+  (forall ty (Hty: term_has_type gamma t ty),
+    term_has_type gamma (rewriteT t) ty) /\
+  (forall (Hty: formula_typed gamma f),
+    formula_typed gamma (rewriteF f)).
+
 
 (*3: Simple patterns*)
 
