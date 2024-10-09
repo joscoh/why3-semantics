@@ -354,6 +354,7 @@ Proof.
   intros.
   apply (D_weaken _ _ (rename_hyp delta name1 name2)); auto.
   - inversion H0; subst. destruct H1; simpl_task.
+    inversion task_wf_typed.
     rewrite map_snd_rename_hyp in task_delta_typed; auto.
   - rewrite map_snd_rename_hyp.
     apply sublist_refl.
@@ -408,7 +409,7 @@ Proof.
   simpl_task. intros.
   specialize (Hval gamma_valid Hwf).
   assert (Hallty: Forall (formula_typed gamma) (map snd delta)). {
-    inversion w_wf; auto.
+    inversion w_ty; destruct task_wf_typed; auto.
   }
   specialize (Hhyp gamma_valid Htyf Hallty).
   unfold log_conseq in *.
@@ -462,8 +463,8 @@ Proof.
     unfold replace_hyp_trans; simpl. intros x [<- | []]; auto.
   }
   inversion H2; subst.
-  destruct H3; subst; simpl_task.
-  constructor; auto.
+  destruct H3; subst; simpl_task. destruct task_wf_typed.
+  apply prove_task_wf; auto.
 Qed.
 
 (*If the formula is closed, a nice form*)
@@ -478,7 +479,6 @@ Proof.
     unfold task_valid in H.
     destruct H as [Hwf Hval].
     specialize (Hval gamma_valid Hwf). simpl_task.
-    rewrite <- log_conseq_open_equiv in Hval.
     clear -Hval.
     (*Because we don't have irrel lemma*) 
     unfold log_conseq_gen in *.
@@ -487,8 +487,8 @@ Proof.
     prove_hyp Hval.
     { intros d Hd. erewrite satisfies_irrel. apply (H d Hd). }
     erewrite satisfies_irrel. apply Hval.
-  - inversion H; subst. destruct H0. destruct task_goal_typed; auto.
-  - inversion H; subst. destruct H0; auto.
+  - inversion H; subst. destruct H0. destruct task_wf_typed; auto.
+  - inversion H; subst. destruct H0; destruct task_wf_typed; auto.
 Qed.
 
 Definition find_hyp (delta: list (string * formula)) name :=
@@ -581,8 +581,8 @@ Proof.
   apply get_assoc_list_some in Hget.
   apply (D_rewrite _ _ t1 t2 ty); auto.
   apply D_axiom; simpl_task. 
-  - inversion Hd; subst. destruct H; subst; constructor;
-    auto.
+  - inversion Hd; subst. destruct H; subst; 
+    destruct task_wf_typed; apply prove_task_wf; auto. 
   - rewrite in_map_iff. exists (name, Feq ty t1 t2); auto.
 Qed.
 
@@ -622,13 +622,11 @@ Proof.
   eapply D_rewrite2 with(ty:=ty); auto;
   apply D_axiom; simpl_task.
   - inversion Hd; subst.
-    destruct H; subst.
-    constructor; auto; simpl_task.
+    destruct H; subst; destruct task_wf_typed; apply prove_task_wf; auto.
     (*rewrite map_fst_replace_hyp in task_hyp_nodup. auto.*)
   - rewrite in_map_iff. exists (name1, Feq ty t1 t2); auto.
   - inversion Hd; subst.
-    inversion H; subst.
-    constructor; auto; simpl_task.
+    inversion H; subst; destruct task_wf_typed; apply prove_task_wf; auto.
     (*rewrite map_fst_replace_hyp in task_hyp_nodup. auto.*)
   - rewrite in_map_iff. exists (name2, f). auto.
 Qed.
@@ -658,9 +656,8 @@ Proof.
   assert (A:=Hd).
   revert A. apply derives_replace_hyp.
   apply D_eq_sym. apply D_axiom.
-  - inversion Hd; subst. destruct H; subst;
-    constructor; auto; simpl_task.
-    (*rewrite map_fst_replace_hyp in task_hyp_nodup. auto.*)
+  - inversion Hd; subst. destruct H; subst; destruct task_wf_typed;
+    apply prove_task_wf; auto.
   - rewrite in_map_iff. exists (name, Feq ty t1 t2); auto.
 Qed.
 
@@ -683,8 +680,8 @@ Proof.
   apply get_assoc_list_some in Hf.
   apply (D_implE _ _ f goal); auto.
   apply D_axiom.
-  - inversion Hd; subst. destruct H; subst.
-    constructor; auto; simpl_task.
+  - inversion Hd; subst. destruct H; subst; destruct task_wf_typed;
+    apply prove_task_wf; auto.
     apply closed_binop; auto.
   - rewrite in_map_iff. exists (name, Fbinop Timplies f goal); auto.
 Qed.
@@ -713,8 +710,7 @@ Proof.
   assert (A:=Hd). revert A.
   inversion Hd; subst. destruct H; subst.
   apply D_weaken.
-  (*- inversion task_hyp_nodup; auto.*)
-  - inversion task_delta_typed; auto.
+  - inversion task_wf_typed; inversion task_delta_typed; auto.
   - apply get_assoc_list_some in Hf.
     apply incl_cons; [|apply incl_refl].
     rewrite in_map_iff. exists (n1, f); auto.
@@ -866,10 +862,12 @@ Proof.
     inversion Hder; subst.
     destruct Hwf, H; simpl_task.
     rewrite Forall_forall. simpl. intros f' [Hf' | Hinf']; subst.
-    + rewrite Forall_forall in task_delta_typed0.
-      apply task_delta_typed0.
+    + destruct task_wf_typed0. 
+      rewrite Forall_forall in task_delta_typed.
+      apply task_delta_typed.
       apply replace_hyp_in; auto.
-    + rewrite Forall_forall in task_delta_typed.
+    + destruct task_wf_typed.  
+      rewrite Forall_forall in task_delta_typed.
       eapply formula_typed_sublist. 3: apply task_delta_typed; auto.
       apply expand_sublist_sig.
       simpl; apply sublist_refl.
@@ -898,8 +896,8 @@ Lemma D_specialize_hyp gamma delta goal name (v: vty_map) f:
 Proof.
   intros Hnodup Hvalty Hhyp Hclosed Hallty Hd.
   assert (task_wf (gamma, delta, goal)). {
-    inversion Hd; subst. destruct H; simpl_task.
-    constructor; auto.
+    inversion Hd; subst. destruct H; simpl_task; destruct task_wf_typed;
+    apply prove_task_wf; auto.
   }
   assert (Hwfvar: NoDup (List.map fst (fmla_fv f))). {
     unfold closed_formula in Hclosed.
@@ -960,9 +958,9 @@ Definition unfold_trans (f: funsym) : trans :=
   trans_goal (fun g => unfold_f g f).
 
 Lemma unfold_trans_sound: forall f, 
-  sound_trans (unfold_trans f).
+  sound_trans_closed (unfold_trans f).
 Proof.
-  intros. apply trans_goal_sound;
+  intros. apply trans_goal_sound_closed;
   intros.
   specialize (H vt vv).
   erewrite unfold_f_rep in H. apply H. auto.
@@ -975,7 +973,8 @@ Lemma D_unfold gamma delta goal f:
 Proof.
   intros Hclosed Hd. eapply (D_trans (unfold_trans f)); auto.
   - inversion Hd; subst.
-    inversion H; subst. constructor; auto.
+    inversion H; subst; destruct task_wf_typed; 
+    apply prove_task_wf; auto.
   - apply unfold_trans_sound.
   - unfold unfold_trans. simpl. simpl_task.
     intros x [<- | []]; auto.
@@ -995,9 +994,9 @@ Definition unfold_single_trans (f: funsym) (i: nat) : trans :=
   trans_goal (fun g => unfold_f_single g f i).
 
 Lemma unfold_single_trans_sound: forall f i, 
-  sound_trans (unfold_single_trans f i).
+  sound_trans_closed (unfold_single_trans f i).
 Proof.
-  intros. apply trans_goal_sound;
+  intros. apply trans_goal_sound_closed;
   intros.
   specialize (H vt vv).
   erewrite unfold_f_single_rep in H. apply H. auto.
@@ -1010,7 +1009,7 @@ Lemma D_unfold_single gamma delta goal f i:
 Proof.
   intros Hclosed Hd. eapply (D_trans (unfold_single_trans f i)); auto.
   - inversion Hd; subst.
-    inversion H; subst. constructor; auto.
+    inversion H; subst; destruct task_wf_typed; apply prove_task_wf; auto. 
   - apply unfold_single_trans_sound.
   - unfold unfold_single_trans. simpl. simpl_task.
     intros x [<- | []]; auto.
@@ -1031,9 +1030,9 @@ Definition unfold_p_single_trans (p: predsym) (i: nat) : trans :=
   trans_goal (fun g => unfold_p_single g p i).
 
 Lemma unfold_p_single_trans_sound: forall p i, 
-  sound_trans (unfold_p_single_trans p i).
+  sound_trans_closed (unfold_p_single_trans p i).
 Proof.
-  intros. apply trans_goal_sound;
+  intros. apply trans_goal_sound_closed;
   intros.
   specialize (H vt vv).
   erewrite unfold_p_single_rep in H. apply H. auto.
@@ -1046,7 +1045,7 @@ Lemma D_unfold_p_single gamma delta goal p i:
 Proof.
   intros Hclosed Hd. eapply (D_trans (unfold_p_single_trans p i)); auto.
   - inversion Hd; subst.
-    inversion H; subst. constructor; auto.
+    inversion H; subst; destruct task_wf_typed; apply prove_task_wf; auto. 
   - apply unfold_p_single_trans_sound.
   - unfold unfold_p_single_trans. simpl. simpl_task.
     intros x [<- | []]; auto.
@@ -1065,9 +1064,9 @@ Definition simpl_match_trans : trans :=
   trans_goal (fun g => simpl_match_f g).
 
 Lemma simpl_match_trans_sound: 
-  sound_trans simpl_match_trans.
+  sound_trans_closed simpl_match_trans.
 Proof.
-  apply trans_goal_sound; intros.
+  apply trans_goal_sound_closed; intros.
   specialize (H vt vv).
   erewrite simpl_match_f_rep in H. apply H.
 Qed.
@@ -1079,7 +1078,7 @@ Lemma D_simpl_match gamma delta goal:
 Proof.
   intros Hclosed Hd. eapply (D_trans simpl_match_trans); auto.
   - inversion Hd; subst.
-    inversion H; subst. constructor; auto.
+    inversion H; subst; destruct task_wf_typed; auto; apply prove_task_wf; auto. 
   - apply simpl_match_trans_sound.
   - unfold simpl_match_trans. simpl. simpl_task.
     intros x [<- | []]; auto.
@@ -1155,7 +1154,7 @@ Proof.
   simpl_task. intros.
   specialize (Hval gamma_valid Hwf).
   assert (Hallty: Forall (formula_typed gamma) (map snd delta)). {
-    inversion w_wf; auto.
+    inversion w_ty; destruct task_wf_typed; auto.
   }
   specialize (Hhyp gamma_valid Htyf Hallty).
   unfold log_conseq in *.
@@ -1190,10 +1189,10 @@ Proof.
   3: exact (add_hyp_trans_soundif name f_new).
   all: auto.
   simpl. simpl_task. split; auto.
-  inversion H2; subst. destruct H3.
-  constructor; auto.
-  unfold add_hyp_trans. simpl. simpl_task. 
-  intros; destruct_all; subst; auto; contradiction.
+  - inversion H2; subst. destruct H3. destruct task_wf_typed.
+    apply prove_task_wf; auto.
+  - unfold add_hyp_trans. simpl. simpl_task. 
+    intros; destruct_all; subst; auto; contradiction.
 Qed.
 
 Lemma derives_destruct_and gamma delta goal name f1 f2 
@@ -1210,7 +1209,8 @@ Proof.
   }
   assert (Hall: Forall (formula_typed gamma) (map snd delta)). {
     inversion Hd; subst.
-    destruct H; simpl_task. inversion task_delta_typed; subst.
+    destruct H; simpl_task; destruct task_wf_typed; 
+    inversion task_delta_typed; subst;
     inversion H4; subst. auto.
   }
   assert (formula_typed gamma (Fbinop Tand f1 f2)). {
@@ -1251,6 +1251,7 @@ Proof.
       erewrite fmla_rep_irrel. apply Hf1.
     + inversion Hd; subst.
       destruct H0; simpl_task.
+      destruct task_wf_typed.
       inversion task_delta_typed; auto.
 Qed.
 
@@ -1274,8 +1275,8 @@ Proof.
   apply get_assoc_list_some in Hget.
   apply (D_rewrite_iff _ _ f1 f2); auto.
   apply D_axiom; simpl_task. 
-  - inversion Hd; subst. destruct H; subst; constructor;
-    auto.
+  - inversion Hd; subst. destruct H; subst; destruct task_wf_typed;
+    apply prove_task_wf; auto. 
   - rewrite in_map_iff. exists (name, Fbinop Tiff f1 f2); auto.
 Qed.
 
@@ -1316,10 +1317,11 @@ Proof.
     rewrite in_map_iff. exists (name, Fbinop Tor f1 f2); auto.
   }
   inversion Hd1; inversion Hd2; subst; auto.
-  destruct H; destruct H4; simpl_task.
-  inversion task_delta_typed; inversion task_delta_typed0; subst.
-  constructor; auto; simpl_task.
-  apply closed_binop; constructor; auto.
+  destruct H; destruct H4; simpl_task; destruct task_wf_typed0;
+  destruct task_wf_typed;
+  apply prove_task_wf; auto.
+  all: inversion task_delta_typed; inversion task_delta_typed0; subst; auto.
+  apply closed_binop; simpl_task; constructor; auto.
 Qed.
 
 (*Destruct H: f1 \/ f2 as [n1 | n2]*)

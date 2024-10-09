@@ -229,9 +229,9 @@ Proof.
 Qed.
 
 (*Prove soundness*)
-Lemma induction_trans_sound: sound_trans induction_trans.
+Lemma induction_trans_sound: sound_trans_closed induction_trans.
 Proof.
-  unfold sound_trans, induction_trans.
+  unfold sound_trans_closed, TaskGen.sound_trans, induction_trans.
   intros.
   destruct t as [[gamma delta] goal]; simpl_task.
   destruct goal; try solve[apply H; simpl; auto].
@@ -257,7 +257,7 @@ Proof.
   unfold task_valid. simpl_task. 
   split; auto.
   intros.
-  unfold log_conseq.
+  unfold log_conseq_gen.
   intros.
   unfold satisfies.
   intros.
@@ -285,12 +285,12 @@ Proof.
   (eq_sym (f_equal (domain (dom_aux pd)) Heq))).
   assert (Hlen: Datatypes.length (map (v_subst vt) vs) = Datatypes.length (m_params m)).
   {
-    destruct w_wf. simpl_task.
-    destruct task_goal_typed.
+    destruct t_wf. simpl_task.
+    destruct task_goal_closed.
     inversion f_ty; subst.
     simpl in H5.
     inversion H5; subst.
-    rewrite map_length, H8. f_equal.
+    rewrite map_length, H8. f_equal. 
     apply (adt_args gamma_valid m_in a_in).
   }
   (*Now, we will apply our induction theorem for ADTs*)
@@ -338,11 +338,11 @@ Proof.
   revert Hval.
   assert (Hconstrty: formula_typed gamma (constr_case (adt_name a) vs c goal (x, vty_cons (adt_name a) vs))).
   {
-   inversion Hwf; subst; inversion task_goal_typed; auto.
+   inversion Hwf; subst; inversion task_goal_closed; auto.
   }
   unfold constr_case in Hconstrty |- *.
   apply fforalls_typed_inv in Hconstrty.
-  destruct Hconstrty as [Hihty Hallval].
+  destruct Hconstrty as [Hihty Hallval]. simpl_task.
   erewrite fforalls_rep'.
   Unshelve. 2: auto.
   rewrite simpl_all_dec. intros.
@@ -377,8 +377,8 @@ Proof.
   apply iter_fimplies_ty_inv in Hty'.
   destruct Hty' as [Hhypty Hgoalty].
   assert (Hallvalvs: Forall (valid_type gamma) vs). {
-    inversion w_wf; simpl_task.
-    destruct task_goal_typed.
+    inversion t_wf; simpl_task.
+    destruct task_goal_closed.
     inversion f_ty; subst.
     simpl in H4.
     inversion H4; subst. rewrite Forall_forall; auto.
@@ -648,7 +648,8 @@ Proof.
     destruct IHs as [Hd _].
     inversion Hd; subst.
     destruct H; simpl_task.
-    constructor; auto.
+    destruct task_wf_typed.
+    apply prove_task_wf; auto.
   - apply induction_trans_sound.
   - intros t. unfold induction_trans; simpl.
     simpl_task.

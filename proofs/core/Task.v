@@ -1,6 +1,85 @@
 Require Export Logic.
 Set Bullet Behavior "Strict Subproofs".
 
+
+(*TODO: replace [prove_hyp]*)
+Ltac forward_gen H tac :=
+        match type of H with
+        | ?X -> _ => let H' := fresh in assert (H':X) ; [tac|specialize (H H'); clear H']
+        end.
+
+Tactic Notation "forward" constr(H) := forward_gen H ltac:(idtac).
+Tactic Notation "forward" constr(H) "by" tactic(tac) := forward_gen H tac.
+
+(*TODO: move*)
+Lemma change_gamma_adts {gamma1 gamma2} 
+  (Hm: mut_of_context gamma1 = mut_of_context gamma2)
+  (pd: pi_dom)
+  (pdf: pi_dom_full gamma1 pd):
+  (forall m srts a (m_in: mut_in_ctx m gamma2)
+    (a_in: adt_in_mut a m),
+    domain (dom_aux pd) (typesym_to_sort (adt_name a) srts) = adt_rep m srts (dom_aux pd) a a_in).
+Proof.
+  intros m srts a m_in a_in.
+  apply pdf. unfold mut_in_ctx.
+  exact (eq_trans (f_equal (fun p => in_bool mut_adt_dec m p) Hm) m_in).
+Defined.
+
+(*TODO: should we put [dom_nonempty] in pd so that we don't need lemma?*)
+Definition change_gamma_dom_full {gamma1 gamma2} 
+  (Hm: mut_of_context gamma1 = mut_of_context gamma2)
+  (pd: pi_dom)
+  (pdf: pi_dom_full gamma1 pd):
+  pi_dom_full gamma2 pd :=
+  Build_pi_dom_full gamma2 pd (change_gamma_adts Hm pd pdf).
+
+
+
+(*TODO: move*)
+Definition eq_sig (g1 g2: context) : Prop :=
+  (forall x, In x (sig_t g1) <-> In x (sig_t g2)) /\
+  (forall x, In x (sig_f g1) <-> In x (sig_f g2)) /\
+  (forall x, In x (sig_p g1) <-> In x (sig_p g2)).
+
+Lemma eq_sig_refl: forall l, eq_sig l l.
+Proof.
+  intros. unfold eq_sig; split_all; intros; reflexivity.
+Qed.
+
+Lemma eq_sig_cons: forall x l1 l2,
+  eq_sig l1 l2 ->
+  eq_sig (x :: l1) (x :: l2).
+Proof.
+  intros. unfold eq_sig in *. split_all; intros;
+  unfold sig_t, sig_f, sig_p in *; simpl;
+  rewrite !in_app_iff; apply or_iff_compat_l; auto.
+Qed.
+
+Lemma eq_sig_sublist g1 g2:
+  eq_sig g1 g2 <-> sublist_sig g1 g2 /\ sublist_sig g2 g1.
+Proof.
+  unfold eq_sig, sublist_sig. split; intros; 
+  destruct_all; split_all; unfold sublist in *; intros; auto;
+  try (apply H; auto); try (apply H0; auto); try (apply H1; auto);
+  split; intros; auto.
+Qed.
+
+Lemma eq_sig_is_sublist g1 g2:
+  eq_sig g1 g2 ->
+  sublist_sig g1 g2.
+Proof.
+  rewrite eq_sig_sublist; intros [H1 H2]; auto.
+Qed.
+
+Lemma eq_sig_sym g1 g2:
+  eq_sig g1 g2 ->
+  eq_sig g2 g1.
+Proof.
+  unfold eq_sig. intros; destruct_all; split_all; intros; auto;
+  symmetry; auto.
+Qed.
+
+
 (*A why3 task consists of
    1. A context gamma (of abstract and concrete type, function, and
     predicate defs)
@@ -25,36 +104,76 @@ Definition task_delta (t: task) : list (string * formula) :=
 Definition task_goal (t: task) : formula :=
   snd t.
 
-Class task_wf (w: task) :=
-  {
-    (*Context is well-typed*)
-  task_gamma_valid: valid_context (task_gamma w);
-  (*Local context is well-typed*)
-  task_delta_typed: Forall (formula_typed (task_gamma w)) 
-    (map snd (task_delta w));
-  (*Goal is closed, monomorphic, and well-typed*)
-  task_goal_typed : closed (task_gamma w) (task_goal w)
-  }.
-
-(*A task is valid if delta |= f.*)
-Definition task_valid (*{gamma: context}*) (w: task)  : Prop :=
-  task_wf w /\
-  forall (gamma_valid: valid_context (task_gamma w)) (w_wf: task_wf w),
-    @log_conseq _ gamma_valid (map snd (task_delta w)) (task_goal w)
-      (task_goal_typed) (task_delta_typed).
-
 (*Now we define a task transformation: a function that
   produces 0 or more tasks from a task - called "tlist" in why3*)
 Definition trans := task -> list task.
 
-(*What does it mean for a transformation to be sound?
-  1. All resulting tasks are well-formed
-  2. If all resulting tasks are valid, then so is the original task*)
+
+Definition task_with_goal (t: task) (goal: formula) : task :=
+  mk_task (task_gamma t) (task_delta t) goal.
+
+Ltac simpl_task :=
+  unfold task_with_goal, mk_task, task_gamma, task_delta, task_goal in *; simpl in *.
+    
+(*Simple transformation utilities. We prove soundness below*)
+
+(*Transformation which creates a single new task*)
+Definition single_trans (t: task -> task) :trans :=
+  fun x => [t x].
+
+(*Some transformations only transform the goal or one
+  of the hypotheses. Proving these sound only requires
+  local reasoning*)
+
+Definition goals_trans (b: context -> formula -> bool) 
+  (f: context -> formula -> list formula) : trans :=
+  fun t =>
+  if (b (task_gamma t) (task_goal t)) then
+  map (task_with_goal t) (f (task_gamma t) (task_goal t)) 
+  else [t].
+
+(*Only produce a single goal*)
+Definition trans_goal (f: context -> formula -> formula)  :=
+  goals_trans (fun _ _ => true) (fun x y => [f x y]).
+
+Definition compose_single_trans (f1 f2: task -> task) :=
+  single_trans (fun x => f2 (f1 x)).
+
+Definition add_axioms (t: task) (l: list (string * formula)) :=
+  mk_task (task_gamma t) (l ++ task_delta t) (task_goal t).
+
+(*We parameterize everything by the typing predicate on tasks,
+  which will be different in different situations.
+  For our proof system, we need the goal to be closed and monomorphic.
+  But for general transformations, we don't need this; we just
+  monomorphize at the end.*)
+Module TaskGen.
+Section TaskProps.
+
+Variable task_typed : task -> Prop.
+Variable task_gamma_valid: forall (t: task), task_typed t ->
+  valid_context (task_gamma t).
+Variable task_delta_typed: forall (t: task), task_typed t ->
+  Forall (formula_typed (task_gamma t)) (map snd (task_delta t)).
+Variable task_goal_typed: forall (t: task), task_typed t -> 
+  formula_typed (task_gamma t) (task_goal t).
+
+Arguments task_gamma_valid {_}.
+Arguments task_delta_typed {_}.
+Arguments task_goal_typed {_}.
+
+
+(*A task is valid if delta |= f.*)
+Definition task_valid (w: task) : Prop :=
+  task_typed w /\
+  forall (gamma_valid: valid_context (task_gamma w)) (w_ty: task_typed w),
+    @log_conseq_gen _ gamma_valid (map snd (task_delta w)) (task_goal w)
+      (task_goal_typed w_ty) (task_delta_typed w_ty).
 
 (*The definition is a little awkward because of the double wf proof,
   but it makes it easier to use*)
 Definition sound_trans (T: trans) : Prop :=
-  forall (t: task) (t_wf: task_wf t),
+  forall (t: task) (t_wf: task_typed t),
   (forall (tr: task), In tr (T t) -> task_valid tr) ->
   task_valid t.
 
@@ -67,37 +186,6 @@ Proof.
   apply H0; auto. rewrite <- H; auto.
 Qed.
 
-(*NOTE: I don't remember why I didn't combine these, I think for
-  someting in the proof system*)
-Definition typed_trans (t: trans) : Prop :=
-  forall ts, task_wf ts -> forall tr, In tr (t ts) -> task_wf tr.
-Definition typed_single_trans (f: task -> task) : Prop :=
-  forall ts, task_wf ts -> task_wf (f ts).
-
-Lemma typed_trans_ext (t1 t2: trans):
-  (forall x : task, t1 x = t2 x) -> typed_trans t1 <-> typed_trans t2.
-Proof.
-  intros Hall. unfold typed_trans; split; intros Hty ts Hwf tr Hintr;
-  eapply Hty; eauto; [rewrite Hall|rewrite <- Hall]; auto.
-Qed.
-
-(*Apply T1, then T2*)
-(*TODO: FIX WF ISSUE*)
-(* Definition trans_comp (T1 T2: trans) : trans :=
-  fun t => concat (map T2 (T1 t)).
-
-Lemma sound_trans_comp (T1 T2: trans)
-  (Hs1: sound_trans T1)
-  (Hs2: sound_trans T2):
-  sound_trans (trans_comp T1 T2).
-Proof.
-  unfold sound_trans in *.
-  unfold trans_comp.
-  intros t Hwf Hinconcat.
-  apply Hs2; auto.
-  intros tr Hintr.
-  apply Hs1. *)
-
 (*As a trivial example, the identity transformation is sound*)
 Definition trans_id: trans := fun x => [x].
 
@@ -107,19 +195,22 @@ Proof.
   apply H. simpl. auto.
 Qed.
 
-Definition task_with_goal (t: task) (goal: formula) : task :=
-  mk_task (task_gamma t) (task_delta t) goal.
+(*NOTE: I don't remember why I didn't combine these, I think for
+  someting in the proof system*)
+Definition typed_trans (t: trans) : Prop :=
+  forall ts, task_typed ts -> forall tr, In tr (t ts) -> task_typed tr.
+Definition typed_single_trans (f: task -> task) : Prop :=
+  forall ts, task_typed ts -> task_typed (f ts).
 
-Ltac simpl_task :=
-  unfold task_with_goal, mk_task, task_gamma, task_delta, task_goal in *; simpl in *.
-    
+Lemma typed_trans_ext (t1 t2: trans):
+  (forall x : task, t1 x = t2 x) -> typed_trans t1 <-> typed_trans t2.
+Proof.
+  intros Hall. unfold typed_trans; split; intros Hty ts Hwf tr Hintr;
+  eapply Hty; eauto; [rewrite Hall|rewrite <- Hall]; auto.
+Qed.
 
 (*Utilities for transformations*)
 Section TransUtil.
-
-(*Transformation which creates a single new task*)
-Definition single_trans (t: task -> task) :trans :=
-  fun x => [t x].
 
 (*Prove a single_trans sound*)
 Lemma single_trans_sound (f: task -> task):
@@ -128,17 +219,6 @@ Lemma single_trans_sound (f: task -> task):
 Proof.
   intros. unfold sound_trans, single_trans. simpl. auto.
 Qed.
-
-(*Some transformations only transform the goal or one
-  of the hypotheses. Proving these sound only requires
-  local reasoning*)
-
-Definition goals_trans (b: context -> formula -> bool) 
-  (f: context -> formula -> list formula) : trans :=
-  fun t =>
-  if (b (task_gamma t) (task_goal t)) then
-  map (task_with_goal t) (f (task_gamma t) (task_goal t)) 
-  else [t].
 
 Lemma goals_trans_sound (b: context -> formula -> bool) f:
   (forall {gamma: context} (gamma_valid: valid_context gamma)
@@ -163,7 +243,7 @@ Proof.
   unfold task_valid.
   split; auto. simpl_task.
   intros.
-  unfold log_conseq.
+  unfold log_conseq_gen.
   intros.
   unfold satisfies. intros.
   apply H; auto.
@@ -176,7 +256,7 @@ Proof.
   simpl_task.
   destruct H0 as [Hwf Hval].
   assert (Htyx: formula_typed gamma x).
-  { inversion Hwf; subst; destruct task_goal_typed0; auto. }
+  { apply task_goal_typed in Hwf; auto. }
   exists Htyx.
   specialize (Hval gamma_valid Hwf).
   unfold log_conseq in Hval.
@@ -190,9 +270,6 @@ Proof.
   apply Hval.
 Qed.
 
-(*Only produce a single goal*)
-Definition trans_goal (f: context -> formula -> formula)  :=
-  goals_trans (fun _ _ => true) (fun x y => [f x y]).
 Definition trans_goal_sound
   (f: context -> formula -> formula) :
   (forall gamma (gamma_valid: valid_context gamma) 
@@ -212,9 +289,6 @@ Proof.
   specialize (H gamma gamma_valid goal Hty).
   apply (H pd pdf pf pf_full Htyx); intros; apply Hvalx.
 Qed.
-
-Definition compose_single_trans (f1 f2: task -> task) :=
-  single_trans (fun x => f2 (f1 x)).
 
 (*This decomposition is justified in the following lemma:*)
 Lemma compose_single_trans_sound f1 f2:
@@ -240,16 +314,13 @@ Proof.
   apply Hty2. apply Hty1. auto.
 Qed.
 
-Definition add_axioms (t: task) (l: list (string * formula)) :=
-  mk_task (task_gamma t) (l ++ task_delta t) (task_goal t).
-
 (*First, a version of the deduction theorem:
   it suffices to show that all of the axioms we add to delta
   are implied by delta*)
 Lemma add_axioms_sound (f: task -> list (string * formula))
-  (Hallty: forall (t: task) (t_wf: task_wf t) (fmla: formula),
+  (Hallty: forall (t: task) (t_wf: task_typed t) (fmla: formula),
     In fmla (map snd (f t)) -> formula_typed (task_gamma t) fmla):
-  (forall (t: task) (t_wf: task_wf t)
+  (forall (t: task) (t_wf: task_typed t)
     (fmla: formula)
     (gamma_valid: valid_context (task_gamma t))
     (Hallty: Forall (formula_typed (task_gamma t)) (map snd (task_delta t)))
@@ -271,7 +342,7 @@ Proof.
   destruct H0 as [Hwf Hval].
   intros.
   specialize (Hval gamma_valid Hwf).
-  unfold log_conseq in *.
+  unfold log_conseq_gen in *.
   intros.
   specialize (Hval pd pdf pf pf_full).
   erewrite satisfies_irrel.
@@ -281,7 +352,7 @@ Proof.
   destruct A.
   - erewrite satisfies_irrel.
     apply (H (gamma, delta, goal) t_wf d gamma_valid) 
-    with(Hallty:=task_delta_typed); auto.
+    with(Hallty:=task_delta_typed w_ty); auto.
     Unshelve.
     apply (Hallty (gamma, delta, goal)); auto.
   - erewrite satisfies_irrel. apply (H0 _ H1).
@@ -361,29 +432,6 @@ Proof.
   induction gamma as [| h t IH]; simpl; auto.
   destruct h; simpl in *; auto. f_equal; assumption.
 Qed.
-
-(*TODO: move*)
-Lemma change_gamma_adts {gamma1 gamma2} 
-  (Hm: mut_of_context gamma1 = mut_of_context gamma2)
-  (pd: pi_dom)
-  (pdf: pi_dom_full gamma1 pd):
-  (forall m srts a (m_in: mut_in_ctx m gamma2)
-    (a_in: adt_in_mut a m),
-    domain (dom_aux pd) (typesym_to_sort (adt_name a) srts) = adt_rep m srts (dom_aux pd) a a_in).
-Proof.
-  intros m srts a m_in a_in.
-  apply pdf. unfold mut_in_ctx.
-  exact (eq_trans (f_equal (fun p => in_bool mut_adt_dec m p) Hm) m_in).
-Defined.
-
-
-(*TODO: should we put [dom_nonempty] in pd so that we don't need lemma?*)
-Definition change_gamma_dom_full {gamma1 gamma2} 
-  (Hm: mut_of_context gamma1 = mut_of_context gamma2)
-  (pd: pi_dom)
-  (pdf: pi_dom_full gamma1 pd):
-  pi_dom_full gamma2 pd :=
-  Build_pi_dom_full gamma2 pd (change_gamma_adts Hm pd pdf).
 
 (*TODO: can I assume [gamma_valid1]?*)
 Lemma def_map_constrs {gamma} (gamma_valid: valid_context gamma)
@@ -470,50 +518,6 @@ Lemma indpreds_of_def_map gamma:
 Proof.
   induction gamma as [| h t IH]; simpl; auto.
   destruct h; simpl; auto. f_equal; auto.
-Qed.
-
-(*TODO: move*)
-Definition eq_sig (g1 g2: context) : Prop :=
-  (forall x, In x (sig_t g1) <-> In x (sig_t g2)) /\
-  (forall x, In x (sig_f g1) <-> In x (sig_f g2)) /\
-  (forall x, In x (sig_p g1) <-> In x (sig_p g2)).
-
-Lemma eq_sig_refl: forall l, eq_sig l l.
-Proof.
-  intros. unfold eq_sig; split_all; intros; reflexivity.
-Qed.
-
-Lemma eq_sig_cons: forall x l1 l2,
-  eq_sig l1 l2 ->
-  eq_sig (x :: l1) (x :: l2).
-Proof.
-  intros. unfold eq_sig in *. split_all; intros;
-  unfold sig_t, sig_f, sig_p in *; simpl;
-  rewrite !in_app_iff; apply or_iff_compat_l; auto.
-Qed.
-
-Lemma eq_sig_sublist g1 g2:
-  eq_sig g1 g2 <-> sublist_sig g1 g2 /\ sublist_sig g2 g1.
-Proof.
-  unfold eq_sig, sublist_sig. split; intros; 
-  destruct_all; split_all; unfold sublist in *; intros; auto;
-  try (apply H; auto); try (apply H0; auto); try (apply H1; auto);
-  split; intros; auto.
-Qed.
-
-Lemma eq_sig_is_sublist g1 g2:
-  eq_sig g1 g2 ->
-  sublist_sig g1 g2.
-Proof.
-  rewrite eq_sig_sublist; intros [H1 H2]; auto.
-Qed.
-
-Lemma eq_sig_sym g1 g2:
-  eq_sig g1 g2 ->
-  eq_sig g2 g1.
-Proof.
-  unfold eq_sig. intros; destruct_all; split_all; intros; auto;
-  symmetry; auto.
 Qed.
 
 Lemma def_map_eq_sig gamma:
@@ -671,18 +675,8 @@ Qed.
 
 End FunInterp.
 
-(*TODO: replace [prove_hyp]*)
-Ltac forward_gen H tac :=
-        match type of H with
-        | ?X -> _ => let H' := fresh in assert (H':X) ; [tac|specialize (H H'); clear H']
-        end.
-
-Tactic Notation "forward" constr(H) := forward_gen H ltac:(idtac).
-Tactic Notation "forward" constr(H) "by" tactic(tac) := forward_gen H tac.
-
-
 Lemma task_map_valid (t: task):
-  task_wf t ->
+  task_typed t ->
   task_valid (task_map t) ->
   task_valid t.
 Proof.
@@ -692,9 +686,10 @@ Proof.
   intros Hwf1 [Hwf2 Hval].
   split; auto.
   intros gamma_valid Hwf3.
-  unfold log_conseq. intros pd pdf pf pf_full Hsat.
+  unfold log_conseq_gen. intros pd pdf pf pf_full Hsat.
   unfold satisfies.
-  inversion Hwf2; simpl in *; simpl_task.
+  assert (task_gamma_valid0:=task_gamma_valid Hwf2).
+  simpl in *; simpl_task.
   specialize (Hval task_gamma_valid0 Hwf2).
   unfold log_conseq in Hval.
   specialize (Hval pd).
@@ -713,7 +708,7 @@ Proof.
       apply pn_typed.
       assert (Hinf': In f (map snd (task_delta (gamma, delta, goal)))) by (rewrite in_map_iff;
         exists (name, f); auto). 
-      apply (Forall_In task_delta_typed Hinf').
+      apply (Forall_In (task_delta_typed Hwf1) Hinf').
     }
     rewrite satisfies_def_map_pf with (pf_full:=pf_full)(Hty1:=Hty).
     unfold satisfies.
@@ -729,8 +724,7 @@ Proof.
   erewrite pn_rep. apply Hval.
   Unshelve.
   apply pn_typed.
-  inversion Hwf1; auto; simpl_task.
-  inversion task_goal_typed1; auto.
+  apply (task_goal_typed Hwf1).
 Qed.
 
 Lemma trans_map_sound: sound_trans trans_map.
@@ -743,6 +737,81 @@ Qed.
 End Map.
 
 End TransUtil.
+
+End TaskProps.
+End TaskGen.
+ 
+(*The typing conditions we need*)
+
+Section TaskType.
+Context (w: task).
+Class task_typed:= {
+   (*Context is well-typed*)
+  task_gamma_valid: valid_context (task_gamma w);
+  (*Local context is well-typed*)
+  task_delta_typed: Forall (formula_typed (task_gamma w)) 
+    (map snd (task_delta w));
+  (*Goal is closed, monomorphic, and well-typed*)
+  task_goal_typed : formula_typed (task_gamma w) (task_goal w)
+}.
+
+Class task_wf:=
+  {
+  task_wf_typed: task_typed;
+  (*Goal is closed, monomorphic, and well-typed*)
+  task_goal_closed : closed (task_gamma w) (task_goal w)
+  }.
+
+Coercion task_wf_typed : task_wf >-> task_typed.
+
+End TaskType.
+
+(* Arguments task_gamma_valid {_}.
+Arguments task_delta_typed {_}.
+Arguments task_goal_typed {_}.
+Arguments task_wf_typed {_}.
+Arguments task_goal_closed {_}. *)
+
+(*TODO: has to be better way than this*)
+
+Definition task_valid := TaskGen.task_valid task_typed task_delta_typed task_goal_typed.
+Definition task_valid_closed := TaskGen.task_valid task_wf task_delta_typed task_goal_typed.
+Definition sound_trans := TaskGen.sound_trans task_typed task_delta_typed task_goal_typed.
+Definition sound_trans_closed := TaskGen.sound_trans task_wf task_delta_typed task_goal_typed.
+
+Definition trans_goal_sound := TaskGen.trans_goal_sound task_typed
+  task_delta_typed task_goal_typed.
+Definition trans_goal_sound_closed := TaskGen.trans_goal_sound task_wf
+  task_delta_typed task_goal_typed.
+
+Definition goals_trans_sound := TaskGen.goals_trans_sound task_typed 
+  task_delta_typed task_goal_typed.
+Definition goals_trans_sound_closed := TaskGen.goals_trans_sound task_wf
+  task_delta_typed task_goal_typed.
+
+Definition trans_map := TaskGen.trans_map.
+
+Definition add_axioms_sound := TaskGen.add_axioms_sound task_typed task_delta_typed task_goal_typed.
+
+Definition sound_trans_ext := TaskGen.sound_trans_ext task_typed task_delta_typed task_goal_typed.
+Definition typed_trans_ext := TaskGen.typed_trans_ext task_typed.
+Definition compose_single_trans_sound := TaskGen.compose_single_trans_sound task_typed
+  task_delta_typed task_goal_typed.
+Definition compose_single_trans_typed := TaskGen.compose_single_trans_typed task_typed.
+Definition typed_trans := TaskGen.typed_trans task_typed.
+Definition typed_single_trans := TaskGen.typed_single_trans task_typed.
+
+Lemma prove_task_wf (w: task):
+  valid_context (task_gamma w) ->
+  Forall (formula_typed (task_gamma w)) 
+    (map snd (task_delta w)) ->
+  closed (task_gamma w) (task_goal w) ->
+  task_wf w.
+Proof.
+  intros Hgam Hdel Hgoal.
+  constructor; auto.
+  inversion Hgoal; constructor; auto.
+Qed.
 
 (*Prove task_wf automatically*)
 From mathcomp Require Import all_ssreflect.
@@ -766,21 +835,35 @@ Proof.
   - by apply ReflectF; intro C; inversion C; rewrite Hmono in f_mono.
 Qed.
 
-Definition check_task_wf (w: task): bool :=
-  check_context (task_gamma w)  &&
+Definition check_task_typed (w: task) : bool :=
+  check_context (task_gamma w) &&
   all (typecheck_formula (task_gamma w)) (map snd (task_delta w)) &&
-  check_closed (task_gamma w) (task_goal w).
+  typecheck_formula (task_gamma w) (task_goal w).
 
-Lemma check_task_wf_correct w:
-  reflect (task_wf w) (check_task_wf w).
+Lemma check_task_typed_correct w:
+  reflect (task_typed w) (check_task_typed w).
 Proof.
-  rewrite /check_task_wf.
+  rewrite /check_task_typed.
   (*Each follows from previous results - just case on each
     reflected bool*)
   case: (check_context_correct (task_gamma w)) => Hval/=; last by reflF.
   case: (all (typecheck_formula(task_gamma w)) (map snd (task_delta w))) 
   /(forallb_ForallP (fun x => formula_typed (task_gamma w) x)) => [| Hallty | Hallty]; try (by reflF);
   first by move=> x Hinx; apply typecheck_formula_correct.
+  case: (typecheck_formula_correct (task_gamma w) (task_goal w)) => Hclosed;
+  last by reflF.
+  by reflT.
+Qed.
+
+Definition check_task_wf (w: task): bool :=
+  check_task_typed w &&
+  check_closed (task_gamma w) (task_goal w).
+
+Lemma check_task_wf_correct w:
+  reflect (task_wf w) (check_task_wf w).
+Proof.
+  rewrite /check_task_wf.
+  case: (check_task_typed_correct w) => Hval/=; last by reflF.
   case: (check_closed_correct (task_gamma w) (task_goal w)) => Hclosed;
   last by reflF.
   by reflT.
@@ -788,6 +871,10 @@ Qed.
 
 Ltac prove_closed :=
   apply /check_closed_correct;
+  reflexivity.
+
+Ltac prove_task_typed :=
+  apply /check_task_typed_correct;
   reflexivity.
 
 Ltac prove_task_wf :=

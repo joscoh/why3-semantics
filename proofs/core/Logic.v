@@ -319,6 +319,7 @@ Qed.
 
 (*A version of log_conseq that does not require the
   formula to be closed. Used in intermediate goals*)
+(*TODO: do we need [log_conseq] at all now?*)
 Definition log_conseq_gen
   (Delta: list formula) (f: formula)
   (Hty: formula_typed gamma f)
@@ -330,16 +331,34 @@ Definition log_conseq_gen
       satisfies pd pdf pf pf_full d (Forall_In Delta_ty Hd)) ->
     satisfies pd pdf pf pf_full f Hty.
 
+Lemma log_conseq_gen_irrel (Delta: list formula) (f: formula)
+  (Hc1 Hc2: formula_typed gamma f)
+  (Delta_ty1 Delta_ty2: Forall (formula_typed gamma) Delta):
+log_conseq_gen Delta f Hc1 Delta_ty1 <->
+log_conseq_gen Delta f Hc2 Delta_ty2.
+Proof.
+  unfold log_conseq_gen, satisfies; split; intros.
+  - erewrite fmla_rep_irrel. apply H; auto.
+    intros. erewrite fmla_rep_irrel; apply H0; auto.
+    Unshelve. auto.
+  - erewrite fmla_rep_irrel. apply H; auto; intros.
+    erewrite fmla_rep_irrel. apply H0; auto. 
+    Unshelve. all: auto.
+Qed.
+
 (*If the formula is closed, then this is exactly the same
   as logical consequence*)
 Lemma log_conseq_open_equiv
 (Delta: list formula) (f: formula)
-(Hc: closed gamma f)
+(Hc: closed gamma f) (Hty: formula_typed gamma f)
 (Delta_ty: Forall (formula_typed gamma) Delta):
-log_conseq_gen Delta f (f_ty Hc) Delta_ty =
+log_conseq_gen Delta f Hty Delta_ty <->
 log_conseq Delta f Hc Delta_ty.
 Proof.
-  reflexivity.
+  erewrite log_conseq_gen_irrel with (Hc2:=f_ty Hc).
+  simpl.
+  unfold log_conseq_gen, log_conseq.
+  Unshelve. 2: exact Delta_ty. reflexivity.
 Qed.
 
 End Thm.

@@ -606,7 +606,7 @@ Proof.
     specialize (H _ Hinpfs). auto.
 Qed.
 
-Lemma gen_axioms_typed (t: task) (t_wf: task_wf t):
+Lemma gen_axioms_typed (t: task) (t_wf: task_typed t):
 forall fmla : formula,
 In fmla (map snd (concat (map
     (fun x : def =>
@@ -3790,7 +3790,8 @@ Qed.
 (*And therefore, this transformation is sound*)
 Lemma gen_new_ctx_sound: sound_trans (single_trans gen_new_ctx).
 Proof.
-  rewrite gen_new_ctx_rewrite. unfold sound_trans, single_trans.
+  rewrite gen_new_ctx_rewrite. unfold sound_trans, TaskGen.sound_trans, 
+    single_trans.
   intros.
   simpl in H.
   specialize (H _ ltac:(left; auto)).
@@ -3800,7 +3801,7 @@ Proof.
   destruct H as [Hwf Hval].
   intros.
   specialize (Hval (gen_new_ctx_valid _ gamma_valid) Hwf).
-  unfold log_conseq in *.
+  unfold log_conseq_gen in *.
   intros.
   (*Now, need to show that we can convert an interpretation
     for the full context into one of the weakened context*)
@@ -3808,14 +3809,38 @@ Proof.
     (gen_new_ctx_pf_full gamma_valid pd pdf pf pf_full)).
   prove_hyp Hval.
   {
-    intros d Hd.
+    intros d Hd. unfold task_gamma in *; simpl in *.
     erewrite satisfies_gen_new_ctx_pf. apply H.
     Unshelve. auto.
   }
+  unfold task_gamma in *; simpl in *.
   erewrite satisfies_gen_new_ctx_pf in Hval.
   apply Hval.
 Qed.
 
+
+Lemma typed_gen_new_ctx t:
+  task_typed t -> task_typed (gen_new_ctx t).
+Proof.
+  destruct t as [[gamma delta] goal].
+  intros Hwf.
+  inversion Hwf. simpl_task.
+  pose proof (gen_new_ctx_valid _ task_gamma_valid) as Hval.
+  rewrite gen_new_ctx_rewrite. simpl_task.
+  constructor; simpl_task; auto.
+  - revert task_delta_typed.
+    apply Forall_impl.
+    intros f. apply formula_typed_sublist.
+    + apply eq_sig_is_sublist. apply eq_sig_sym. 
+      apply gen_new_ctx_gamma_eq_sig.
+    + rewrite gen_new_ctx_gamma_mut. apply sublist_refl.
+  - revert task_goal_typed. apply formula_typed_sublist.
+    + apply eq_sig_is_sublist. apply eq_sig_sym. 
+      apply gen_new_ctx_gamma_eq_sig.
+    + rewrite gen_new_ctx_gamma_mut. apply sublist_refl.
+Qed.
+
+(* 
 Lemma typed_gen_new_ctx t:
   task_wf t -> task_wf (gen_new_ctx t).
 Proof.
@@ -3836,13 +3861,13 @@ Proof.
     + apply eq_sig_is_sublist. apply eq_sig_sym. 
       apply gen_new_ctx_gamma_eq_sig.
     + rewrite gen_new_ctx_gamma_mut. apply sublist_refl.
-Qed.
+Qed. *)
 
 End ChangeContext.
 
 (*1 final result: [gen_axioms] produces well-formed goals.
   We essentially proved this with [gen_axioms_typed]*)
-Lemma gen_axioms_wf: forall t, task_wf t -> task_wf (gen_axioms t).
+Lemma gen_axioms_wf: forall t, task_typed t -> task_typed (gen_axioms t).
 Proof.
   intros. destruct t as [[gamma delta] goal];
   unfold gen_axioms, add_axioms; simpl_task.
@@ -3867,7 +3892,8 @@ Proof.
   - (*The very hard part:*) apply gen_axioms_sound.
   - (*The easier part*) apply gen_new_ctx_sound.
   - (*All axioms are well-formed*)
-    unfold typed_single_trans. apply gen_axioms_wf.
+    unfold typed_single_trans, TaskGen.typed_single_trans. 
+    apply gen_axioms_wf.
 Qed.
 
 Theorem eliminate_inductive_typed:
@@ -3877,9 +3903,9 @@ Proof.
   2: apply eliminate_inductive_split.
   unfold eliminate_inductive_alt.
   apply compose_single_trans_typed.
-  - unfold typed_single_trans.
+  - unfold typed_single_trans, TaskGen.typed_single_trans.
     apply gen_axioms_wf.
-  - unfold typed_single_trans.
+  - unfold typed_single_trans, TaskGen.typed_single_trans.
     apply typed_gen_new_ctx.
 Qed.
 

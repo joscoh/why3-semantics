@@ -809,7 +809,7 @@ Proof.
   simpl in gamma_valid. apply gamma_valid.
 Qed.
 
-Lemma gen_axioms_typed which (nonrec : bool) (t: task) (t_wf: task_wf t):
+Lemma gen_axioms_typed which (nonrec : bool) (t: task) (t_wf: task_typed t):
 forall fmla : formula,
 In fmla (map snd (concat (map (fun x =>
     match x with
@@ -1393,7 +1393,7 @@ Proof.
       apply gen_funpred_def_match_eq in Hgen. subst.
       destruct Hinax as [Hinax | []]; subst.
       apply rec_axiom_true; auto.
-      * apply (recursive_valid_type task_gamma_valid Hind Hinfd).
+      * apply (recursive_valid_type gamma_valid Hind Hinfd).
       * destruct b; simpl in *. 
         -- unfold fun_defined. left.
           exists l. split; auto. apply in_mutfuns; auto.
@@ -1409,7 +1409,7 @@ Proof.
       destruct Hax as [Hax | []]. subst. 
       apply gen_funpred_def_match_eq in Hgen. subst.
       apply rec_axiom_true; auto.
-      * apply (nonrec_valid_type task_gamma_valid Hind).
+      * apply (nonrec_valid_type gamma_valid Hind).
       * destruct b; simpl in *.  
         -- unfold fun_defined; auto.
         -- unfold pred_defined; auto.
@@ -2977,7 +2977,7 @@ Qed.
 Lemma gen_new_ctx_sound which nonrec: sound_trans (single_trans (gen_new_ctx which nonrec)).
 Proof.
   unfold gen_new_ctx.
-  unfold sound_trans, single_trans.
+  unfold sound_trans, TaskGen.sound_trans, single_trans.
   intros.
   setoid_rewrite gen_new_ctx_gamma_equiv in H.
   simpl in H.
@@ -2988,7 +2988,7 @@ Proof.
   destruct H as [Hwf Hval].
   intros.
   specialize (Hval (gen_new_ctx_valid which nonrec _ gamma_valid) Hwf).
-  unfold log_conseq in *.
+  unfold log_conseq_gen in *.
   intros.
   (*Now, need to show that we can convert an interpretation
     for the full context into one of the weakened context*)
@@ -2996,16 +2996,17 @@ Proof.
     (gen_new_ctx_pf_full which nonrec gamma_valid pd pdf pf pf_full)).
   prove_hyp Hval.
   {
-    intros d Hd.
+    intros d Hd. unfold task_gamma in *; simpl in *.
     erewrite satisfies_gen_new_ctx_pf. apply H.
     Unshelve. auto.
   }
+  unfold task_gamma in *; simpl in *.
   erewrite satisfies_gen_new_ctx_pf in Hval.
   apply Hval.
 Qed.
 
 Lemma typed_gen_new_ctx which nonrec t:
-  task_wf t -> task_wf (gen_new_ctx which nonrec t).
+  task_typed t -> task_typed (gen_new_ctx which nonrec t).
 Proof.
   destruct t as [[gamma delta] goal].
   intros Hwf.
@@ -3019,8 +3020,7 @@ Proof.
     + apply eq_sig_is_sublist. apply eq_sig_sym. 
       apply gen_new_ctx_gamma_eq_sig.
     + rewrite gen_new_ctx_gamma_mut. apply sublist_refl.
-  - inversion task_goal_typed. constructor; auto.
-    revert f_ty. apply formula_typed_sublist.
+  - revert task_goal_typed.  apply formula_typed_sublist.
     + apply eq_sig_is_sublist. apply eq_sig_sym. 
       apply gen_new_ctx_gamma_eq_sig.
     + rewrite gen_new_ctx_gamma_mut. apply sublist_refl.
@@ -3029,7 +3029,7 @@ Qed.
 
 (*1 final result: [gen_axioms] produces well-formed goals.
   We essentially proved this with [gen_axioms_typed]*)
-Lemma gen_axioms_wf which nonrec: forall t, task_wf t -> task_wf (gen_axioms which nonrec t).
+Lemma gen_axioms_wf which nonrec: forall t, task_typed t -> task_typed (gen_axioms which nonrec t).
 Proof.
   intros. destruct t as [[gamma delta] goal];
   unfold gen_axioms, add_axioms; simpl_task.
@@ -3055,7 +3055,8 @@ Proof.
   - (*Soundness of axioms*) apply gen_axioms_sound.
   - (*Well-typed context*) apply gen_new_ctx_sound.
   - (*All axioms are well-formed*) 
-    unfold typed_single_trans. apply gen_axioms_wf.
+    unfold typed_single_trans, TaskGen.typed_single_trans. 
+    apply gen_axioms_wf.
 Qed.
 
 Theorem eliminate_definition_gen_typed which nonrec:
@@ -3065,9 +3066,9 @@ Proof.
   2: apply eliminate_definition_split.
   unfold eliminate_definition_alt.
   apply compose_single_trans_typed.
-  - unfold typed_single_trans.
+  - unfold typed_single_trans, TaskGen.typed_single_trans.
     apply gen_axioms_wf.
-  - unfold typed_single_trans.
+  - unfold typed_single_trans, TaskGen.typed_single_trans.
     apply typed_gen_new_ctx.
 Qed.
 

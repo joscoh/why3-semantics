@@ -816,11 +816,11 @@ Fixpoint valid_theory (t: theory) : Prop :=
       valid_theory tl /\
       (*If the formula is already monomorphic, dont do anything*)
       (if null (fmla_type_vars f) then
-      task_valid (mk_task (theory_ctx_int tl) (theory_axioms_int tl)
+      task_valid_closed (mk_task (theory_ctx_int tl) (theory_axioms_int tl)
       f) else
       (*Use exists so that the user can choose good names*)
       exists (names: list string),
-      task_valid (mk_task (map tyconst_def names ++ theory_ctx_int tl)
+      task_valid_closed (mk_task (map tyconst_def names ++ theory_ctx_int tl)
         (theory_axioms_int tl) (mk_mono names f)))
       
     end
