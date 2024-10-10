@@ -130,6 +130,62 @@ Definition rewriteT_typed {gamma} (gamma_valid: valid_context gamma) t:=
 Definition rewriteF_typed {gamma} (gamma_valid: valid_context gamma) f:=
   proj_fmla (rewrite_typed gamma_valid) f.
 
+(*Step 2: Free vars*)
+
+Lemma rewrite_fv t f:
+  (sublist (tm_fv (rewriteT t)) (tm_fv t)) /\
+  (sublist (fmla_fv (rewriteF f)) (fmla_fv f)).
+Proof.
+  revert t f; apply term_formula_ind; simpl; auto;
+  try solve[intros; apply sublist_refl];
+  try solve[intros; solve_subset].
+  - (*Tmatch*)
+    intros tm v ps Hsubtm Hall.
+    destruct (compile_bare_single _ _ _) eqn : Hcomp.
+    2: {
+      simpl. solve_subset.
+    }
+Admitted.
+
+Lemma sublist_type_vars t f:
+  (sublist (tm_type_vars (rewriteT t)) (tm_type_vars t)) /\
+  (sublist (fmla_type_vars (rewriteF f)) (fmla_type_vars f)).
+Proof.
+  revert t f; apply term_formula_ind; simpl; auto;
+  try solve[intros; apply sublist_refl];
+  try solve[intros; solve_subset].
+  - (*Tmatch*)
+    intros tm ty pats IHtm IHps.
+    destruct (compile_bare_single _ _ _) eqn : Hcomp.
+    2: { simpl. solve_subset. }
+    
+  Print tm_type_vars.
+  Print pat_type_vars.
+
+(*And prove the whole transformation is typed*)
+Definition compile_match_typed : typed_trans compile_match.
+Proof.
+  apply trans_map_typed.
+  - intros gamma t ty gamma_valid Hty.
+    apply rewriteT_typed; auto.
+    apply a_convert_all_t_ty; auto.
+  - intros gamma f gamma_valid Hty.
+    apply rewriteF_typed; auto.
+    apply a_convert_all_f_typed; auto.
+  - admit.
+  - admit.
+  - 
+    Search a_convert_all_t.
+    apply a_convert_all_t_typed.
+    Print rewriteT'.
+    apply a_equiv_t_full_typed.
+  unfold typed_trans, TaskGen.typed_trans.
+  unfold compile_match.
+  intros ts Hty tr Hin.
+  Search trans_map.
+  
+   trans_map, TaskGen.trans_map.
+
 (*TODO: move all of these (plus ones in Denotational)*)
 Lemma wf_tfun {f: funsym} {tys: list vty} {tms: list term}
   (Hwf: term_wf (Tfun f tys tms)):

@@ -1,4 +1,5 @@
 Require Export Syntax.
+Set Bullet Behavior "Strict Subproofs".
 
 (*Various functions on terms and formulas - free and bound
   variables, type variables, fun/pred symbols, etc*)
@@ -189,8 +190,19 @@ Section Typevars.
 Notation union := (union typevar_eq_dec).
 Notation big_union := (big_union typevar_eq_dec).
 
-Definition pat_type_vars (p: pattern) : list typevar :=
-  big_union type_vars (map snd (pat_fv p)).
+Fixpoint pat_type_vars (p: pattern) : list typevar :=
+  match p with
+  | Pvar v => type_vars (snd v)
+  | Pconstr f tys ps => 
+    union (big_union type_vars tys)
+        (big_union pat_type_vars ps)
+  | Por p1 p2 => union (pat_type_vars p1) (pat_type_vars p2)
+  | Pwild => nil
+  | Pbind p x => union (pat_type_vars p) (type_vars (snd x))
+  end.
+
+(* Definition pat_type_vars (p: pattern) : list typevar :=
+  big_union type_vars (map snd (pat_fv p)). *)
 
 Fixpoint tm_type_vars (t: term) {struct t} : list typevar :=
   match t with
@@ -260,7 +272,7 @@ Definition mono_t tm : bool :=
   We give an alternate version. We don't necessarily
   have equality unless elements are distinct.
   But we just prove equal elements*)
-Lemma pat_type_vars_rewrite (p: pattern):
+(* Lemma pat_type_vars_rewrite (p: pattern):
   forall x, In x (pat_type_vars p) <-> In x
   match p with
   | Pvar v => type_vars (snd v)
@@ -331,7 +343,7 @@ Proof.
         rewrite in_map_iff. exists v1; simpl_set; auto.
       * exists (snd v). split; auto. 
         rewrite in_map_iff. exists v; simpl_set; auto.
-Qed.
+Qed. *)
 
 (*One theorem we need: all typevars in free vars of a term
   or formula are in [tm/fmla_type_vars] t/f*)
@@ -375,8 +387,15 @@ Lemma fv_pat_vars_type_vars (p: pattern) x y:
   In x (pat_fv p) -> In y (type_vars (snd x)) ->
   In y (pat_type_vars p).
 Proof.
-  intros. unfold pat_type_vars. simpl_set. exists (snd x).
-  split; auto. rewrite in_map_iff. exists x. auto.
+  intros.
+  induction p; simpl in *; auto; simpl_set_small; auto.
+  - subst; auto.
+  - simpl_set. destruct H as [p [Hinp Hinx]].
+    rewrite Forall_forall in H1.
+    specialize (H1 _ Hinp Hinx).
+    right. exists p; auto.
+  - destruct H; auto.
+  - simpl in H. destruct_all; subst; auto. contradiction.  
 Qed. 
 
 (*Also for bound vars - easier to prove separately*)

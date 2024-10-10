@@ -3514,13 +3514,15 @@ Lemma pat_type_vars_null p:
   null (pat_type_vars p) =
   null (match p with
 | Pvar v => type_vars (snd v)
-| Pconstr f tys ps => big_union typevar_eq_dec pat_type_vars ps
+| Pconstr f tys ps => union typevar_eq_dec 
+  (big_union typevar_eq_dec type_vars tys)
+  (big_union typevar_eq_dec pat_type_vars ps)
 | Por p1 p2 => union typevar_eq_dec (pat_type_vars p1) (pat_type_vars p2)
 | Pwild => nil
 | Pbind p x => union typevar_eq_dec (pat_type_vars p) (type_vars (snd x))
 end).
 Proof.
-  apply same_elts_null, pat_type_vars_rewrite.
+  destruct p; reflexivity.
 Qed.
 
 Lemma ty_subst_srts_vars_p p
@@ -3529,31 +3531,36 @@ Lemma ty_subst_srts_vars_p p
   null (pat_type_vars (ty_subst_p p)).
 Proof.
   induction p; simpl; auto.
-  - rewrite pat_type_vars_null. 
-    apply type_vars_subst_sort; auto.
-    intros. apply Hallin.
-    apply pat_type_vars_rewrite. auto.
-  - rewrite pat_type_vars_null.
-    apply big_union_null_eq.
-    intros p.
-    rewrite in_map_iff.
-    intros [p1 [Hp Hinp1]]; subst.
-    rewrite Forall_forall in H.
-    apply H; auto.
-    intros.
-    apply Hallin.
-    apply pat_type_vars_rewrite. simpl_set.
-    exists p1; auto.
-  - rewrite pat_type_vars_null.
-    apply union_null_eq; 
-    [apply IHp1 | apply IHp2]; intros; apply Hallin, pat_type_vars_rewrite;
+  - apply type_vars_subst_sort; auto.
+  - apply union_null_eq.
+    + apply big_union_null_eq.
+      intros ty.
+      unfold ty_subst_list'.
+      rewrite in_map_iff.
+      intros [ty1 [Hty Hinty1]].
+      subst.
+      apply type_vars_subst_sort; auto.
+      simpl in Hallin. intros x Hinx.
+      apply Hallin. simpl_set_small; auto. left.
+      simpl_set. exists ty1. auto.
+    + apply big_union_null_eq.
+      intros p.
+      rewrite in_map_iff.
+      intros [p1 [Hp Hinp1]]; subst.
+      rewrite Forall_forall in H.
+      apply H; auto.
+      intros.
+      apply Hallin. simpl. simpl_set.
+      right.
+      exists p1; auto.
+  - apply union_null_eq; 
+    [apply IHp1 | apply IHp2]; intros; apply Hallin; simpl;
     simpl_set; auto.
-  - rewrite pat_type_vars_null.
-    apply union_null_eq.
-    + apply IHp; intros; apply Hallin, pat_type_vars_rewrite;
+  - apply union_null_eq.
+    + apply IHp; intros; apply Hallin; simpl;
       simpl_set; auto.
-    + apply type_vars_subst_sort; auto; intros; apply Hallin,
-      pat_type_vars_rewrite; simpl_set; auto.
+    + apply type_vars_subst_sort; auto; intros; apply Hallin; simpl;
+      simpl_set; auto.
 Qed.
 
 (*Could prove stronger theorem but this is ok*)

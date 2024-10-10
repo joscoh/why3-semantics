@@ -7427,12 +7427,43 @@ Proof.
   apply nth_In; auto.
 Qed.
 
+Lemma alpha_equiv_p_type_vars_aux p1 p2 l
+  (Heq: alpha_equiv_p l p1 p2)
+  (Hl: map snd (map fst l) = map snd (map snd l)):
+  pat_type_vars p1 = pat_type_vars p2.
+Proof.
+  generalize dependent l. revert p2.
+  induction p1 as [| f1 tys1 ps1 IH | | |]; simpl; destruct p2
+  as [| f2 tys2 ps2 | | |]; try discriminate;
+  intros l1 Halpha Hmapeq; simpl; auto.
+  - destruct (vty_eq_dec _ _); simpl; [|discriminate].
+    rewrite e. reflexivity.
+  - destruct (funsym_eq_dec f1 f2); [|discriminate].
+    destruct (Nat.eqb_spec (length ps1) (length ps2)); [|discriminate].
+    destruct (list_eq_dec _ tys1 tys2); [| discriminate]. subst.
+    f_equal.
+    simpl in Halpha. generalize dependent ps2.
+    induction ps1 as [| h1 t1 IH1]; destruct ps2 as [| h2 t2];
+    try discriminate; auto.
+    rewrite all2_cons. simpl.
+    unfold is_true at 1; rewrite andb_true_iff; intros [Ha1 Ha2] Hlen.
+    inversion IH as [| ? ? Hhd Htl]; subst.
+    erewrite Hhd; eauto. f_equal. auto.
+  - bool_hyps; erewrite IHp1_1; eauto. erewrite IHp1_2; eauto.
+  - bool_hyps. destruct (vty_eq_dec _ _); [|discriminate]. rewrite e.
+    f_equal; eauto.
+Qed.
+
 Lemma alpha_equiv_p_type_vars p1 p2
   (Heq: alpha_equiv_p (combine (pat_fv p1) (pat_fv p2)) p1 p2):
   pat_type_vars p1 = pat_type_vars p2.
 Proof.
-  unfold pat_type_vars. f_equal. apply alpha_equiv_p_snd; auto.
-Qed.
+  eapply alpha_equiv_p_type_vars_aux. apply Heq.
+  rewrite map_fst_combine, map_snd_combine.
+  - apply alpha_equiv_p_snd; auto.
+  - apply alpha_equiv_p_fv_len_full; auto.
+  - apply alpha_equiv_p_fv_len_full; auto.
+Qed. 
 
 Lemma alpha_equiv_type_vars t1 f1:
   (forall t2 vars (Hvars: forall x y, In (x, y) vars -> snd x = snd y) 
