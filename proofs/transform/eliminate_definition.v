@@ -162,14 +162,6 @@ Proof.
   rewrite IH; auto.
 Qed.
 
-Lemma sublist_app2 {A: Type} (l1 l2 l3 l4: list A):
-  sublist l1 l3 ->
-  sublist l2 l4 ->
-  sublist (l1 ++ l2) (l3 ++ l4).
-Proof.
-  intros Hsub1 Hsub2 x. rewrite !in_app_iff. intros [Hinx1 | Hinx1]; [left | right]; auto.
-Qed.
-
 Lemma sublist_nil_l {A: Type} (l: list A):
   sublist nil l.
 Proof.

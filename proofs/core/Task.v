@@ -79,6 +79,15 @@ Proof.
   symmetry; auto.
 Qed.
 
+(*TODO: move*)
+Lemma sublist_app2 {A: Type} (l1 l2 l3 l4: list A):
+  sublist l1 l3 ->
+  sublist l2 l4 ->
+  sublist (l1 ++ l2) (l3 ++ l4).
+Proof.
+  intros Hsub1 Hsub2 x. rewrite !in_app_iff. intros [Hinx1 | Hinx1]; [left | right]; auto.
+Qed.
+
 
 (*A why3 task consists of
    1. A context gamma (of abstract and concrete type, function, and
@@ -416,7 +425,12 @@ Variable (pn_rep: forall gamma (gamma_valid: valid_context gamma)
   (Hty2: formula_typed gamma (pn f)),
   formula_rep gamma_valid pd pdf vt pf vv f Hty =
   formula_rep gamma_valid pd pdf vt pf vv (pn f) Hty2).
-
+Variable (fn_fv: forall t, sublist (tm_fv (fn t)) (tm_fv t)).
+Variable (pn_fv: forall t, sublist (fmla_fv (pn t)) (fmla_fv t)).
+Variable (fn_type_vars: forall t, sublist (tm_type_vars (fn t)) (tm_type_vars t)).
+Variable (pn_type_vars: forall t, sublist (fmla_type_vars (pn t)) (fmla_type_vars t)).
+Variable (fn_funsym_in: forall f t, funsym_in_tm f (fn t) -> funsym_in_tm f t).
+Variable (pn_predsym_in: forall f t, predsym_in_fmla f (pn t) -> predsym_in_fmla f t).
 (*Prove context part*)
 (* Lemma def_map_context_valid gamma:
   valid_context gamma ->
@@ -734,6 +748,131 @@ Proof.
   apply task_map_valid; auto.
 Qed.
 
+Lemma funsyms_of_def_map d: funsyms_of_def (def_map d) = funsyms_of_def d.
+Proof.
+  destruct d; auto.
+  simpl. destruct f; auto.
+Qed.
+
+Lemma predsyms_of_def_map d: predsyms_of_def (def_map d) = predsyms_of_def d.
+Proof.
+  destruct d; auto.
+  simpl. destruct f; auto.
+Qed.
+
+Lemma typesyms_of_def_map d: typesyms_of_def (def_map d) = typesyms_of_def d.
+Proof.
+  destruct d; auto.
+Qed.
+
+(*TODO: move*)
+Lemma mut_valid_sublist
+(g1 g2 : context) (m: mut_adt):
+mut_of_context g1 = mut_of_context g2 ->
+sig_t g1 = sig_t g2 -> 
+mut_valid g1 m -> mut_valid g2 m.
+Proof.
+  intros Hmut Hsig.
+  unfold mut_valid.
+  intros; destruct_all; split_all; auto.
+  revert H0. apply Forall_impl. intros a.
+  unfold adt_inhab. apply typesym_inhab_sublist; auto.
+Qed.
+
+Lemma def_map_sig_t gamma:
+  sig_t (map def_map gamma) = sig_t gamma.
+Proof.
+  unfold sig_t. induction gamma as [| d gamma' IH]; simpl; auto.
+  rewrite typesyms_of_def_map, IH. reflexivity.
+Qed.
+
+
+(*And prove that the context is well-formed*)
+Lemma valid_context_def_map gamma:
+  valid_context gamma ->
+  valid_context (map def_map gamma).
+Proof.
+  intros Hval.
+  induction Hval; simpl; try solve[constructor].
+  assert (Heqctx:=def_map_eq_sig gamma).
+  unfold eq_sig in Heqctx. destruct Heqctx as [Htseq [Hfseq Hpseq]].
+  assert (Hsubt: sublist (sig_t (d :: gamma)) (sig_t (def_map d :: map def_map gamma))).
+  {
+    unfold sig_t in Htseq |- *; simpl.
+    rewrite typesyms_of_def_map.
+    apply sublist_app2; [apply sublist_refl|].
+    intros x Hinx. apply Htseq; auto.
+  }
+  assert (Hsub: sublist_sig (d :: gamma) (d :: map def_map gamma)).
+  {
+    unfold sublist_sig; simpl; unfold sig_t, sig_f, sig_p in *;
+    simpl;split_all; auto; apply sublist_app2; auto;
+    try apply sublist_refl; intros x Hinx;
+    [apply Htseq | apply Hfseq | apply Hpseq]; auto.
+  }
+  assert (Hmut: mut_of_context (d :: gamma) = mut_of_context (d :: map def_map gamma)).
+  {
+    unfold mut_of_context. destruct d; simpl; symmetry;
+    [f_equal | | | | | |];
+    apply def_map_gamma_mut.
+  }
+  constructor; simpl; auto.
+  - (*wf_funsym*) 
+    revert H. rewrite funsyms_of_def_map. apply Forall_impl.
+    intros f. apply wf_funsym_sublist; apply Hsubt.
+  - (*wf_predsym*) revert H0. rewrite predsyms_of_def_map. apply Forall_impl.
+    intros f. apply wf_predsym_sublist; apply Hsubt.
+  - (*funsym unique*)
+    rewrite funsyms_of_def_map. revert H1. apply Forall_impl.
+    setoid_rewrite Hfseq. auto.
+  - (*predsym unique*)
+    rewrite predsyms_of_def_map. revert H2. apply Forall_impl.
+    setoid_rewrite Hpseq. auto.
+  - (*typesym unique*)
+    rewrite typesyms_of_def_map. revert H3. apply Forall_impl.
+    setoid_rewrite Htseq. auto.
+  - (*nodup funs*) rewrite funsyms_of_def_map. assumption.
+  - (*nodup preds*) rewrite predsyms_of_def_map; assumption.
+  - (*nodup types*) rewrite typesyms_of_def_map; assumption.
+  - (*nonempty def*) destruct d; auto.
+  - (*valid constructors*)
+    pose proof (funsyms_of_def_map d) as Hfuns. 
+    destruct d; simpl in H8, Hfuns |- *; auto.
+    rewrite Hfuns. assumption.
+  - (*valid def*)
+    destruct d; simpl in H9 |- *; auto.
+    + revert H9. apply mut_valid_sublist; auto.
+      pose proof (def_map_sig_t gamma) as Hsigteq.
+      unfold sig_t in Hsigteq |- *; simpl;
+      rewrite Hsigteq; reflexivity.
+    + revert H9. apply funpred_valid_sublist; auto.
+      rewrite Hmut; apply sublist_refl.
+    + revert H9. apply indprop_valid_sublist; auto.
+      rewrite Hmut; apply sublist_refl.
+    + (*interesting case: nonrec*)
+      destruct H9 as [Hvaltype Hnonrec].
+      split.
+      * unfold funpred_def_valid_type in Hvaltype |- *.
+        destruct f; simpl in Hvaltype |-*;
+        destruct Hvaltype as [Hty [Hsubfv [Hsubty [Hnodup Hmap]]]];
+        split_all; auto.
+        -- apply fn_typed. revert Hty. apply term_has_type_sublist; auto.
+          rewrite Hmut; apply sublist_refl.
+        -- eapply sublist_trans. 2: apply Hsubfv. apply fn_fv.
+        -- eapply sublist_trans. 2: apply Hsubty. apply fn_type_vars.
+        -- apply pn_typed. revert Hty. apply formula_typed_sublist; auto.
+          rewrite Hmut; apply sublist_refl.
+        -- eapply sublist_trans. 2: apply Hsubfv. apply pn_fv.
+        -- eapply sublist_trans. 2: apply Hsubty. apply pn_type_vars.
+      * destruct f; simpl in Hnonrec |- *. unfold nonrec_def_nonrec.
+        -- destruct (funsym_in_tm f (fn t)) eqn : Hf; auto.
+          apply fn_funsym_in in Hf.
+          rewrite Hf in Hnonrec. discriminate.
+        -- destruct (predsym_in_fmla p (pn f)) eqn : Hf; auto.
+          apply pn_predsym_in in Hf.
+          rewrite Hf in Hnonrec. discriminate.
+Qed.
+
 End Map.
 
 End TransUtil.
@@ -812,6 +951,73 @@ Proof.
   constructor; auto.
   inversion Hgoal; constructor; auto.
 Qed.
+
+Section TaskMap.
+
+Variable (fn : term -> term) (pn: formula -> formula).
+Variable (fn_typed: forall gamma t ty,
+  term_has_type gamma t ty ->
+  term_has_type gamma (fn t) ty).
+Variable (pn_typed: forall gamma f,
+  formula_typed gamma f ->
+  formula_typed gamma (pn f)).
+Variable (fn_rep: forall gamma (gamma_valid: valid_context gamma) 
+  (pd: pi_dom) (pdf: pi_dom_full gamma pd) 
+  (pf: pi_funpred gamma_valid pd pdf) (vt: val_typevar)
+  (vv: val_vars pd vt) (t: term) (ty: vty) (Hty: term_has_type gamma t ty)
+  (Hty2: term_has_type gamma (fn t) ty),
+  term_rep gamma_valid pd pdf vt pf vv t ty Hty =
+  term_rep gamma_valid pd pdf vt pf vv (fn t) ty Hty2).
+Variable (pn_rep: forall gamma (gamma_valid: valid_context gamma) 
+  (pd: pi_dom) (pdf: pi_dom_full gamma pd)  
+  (pf: pi_funpred gamma_valid pd pdf) (vt: val_typevar)
+  (vv: val_vars pd vt) (f: formula) (Hty: formula_typed gamma f)
+  (Hty2: formula_typed gamma (pn f)),
+  formula_rep gamma_valid pd pdf vt pf vv f Hty =
+  formula_rep gamma_valid pd pdf vt pf vv (pn f) Hty2).
+Variable (fn_fv: forall t, sublist (tm_fv (fn t)) (tm_fv t)).
+Variable (pn_fv: forall t, sublist (fmla_fv (pn t)) (fmla_fv t)).
+Variable (fn_type_vars: forall t, sublist (tm_type_vars (fn t)) (tm_type_vars t)).
+Variable (pn_type_vars: forall t, sublist (fmla_type_vars (pn t)) (fmla_type_vars t)).
+Variable (fn_funsym_in: forall f t, funsym_in_tm f (fn t) -> funsym_in_tm f t).
+Variable (pn_predsym_in: forall f t, predsym_in_fmla f (pn t) -> predsym_in_fmla f t).
+(*Prove context part*)
+
+(*TODO: PROVE*)
+Lemma trans_map_typed: typed_trans (trans_map fn pn).
+Proof.
+  unfold typed_trans, trans_map, single_trans,
+  TaskGen.trans_map, TaskGen.typed_trans. simpl.
+  intros t Hwf tr [Htr | []]; subst.
+  inversion Hwf; subst.
+  destruct t as [[gamma delta] goal]. simpl_task.
+  constructor; auto.
+  - unfold task_gamma; simpl.
+    apply TaskGen.valid_context_def_map; auto.
+  - simpl_task. rewrite map_map; simpl. simpl_task.
+    revert task_delta_typed0.
+    rewrite !Forall_map.
+    apply Forall_impl.
+    intros [name f]; simpl; intros Hty.
+    apply pn_typed.
+    revert Hty.
+    apply formula_typed_sublist; auto.
+    + apply eq_sig_sublist. apply TaskGen.def_map_eq_sig.
+    + rewrite TaskGen.def_map_gamma_mut; apply sublist_refl.
+  - simpl_task. simpl_task.
+    apply pn_typed.
+    revert task_goal_typed0. apply formula_typed_sublist.
+    + apply eq_sig_sublist. apply TaskGen.def_map_eq_sig.
+    + rewrite TaskGen.def_map_gamma_mut; apply sublist_refl. 
+Qed.
+
+Lemma trans_map_sound: sound_trans (trans_map fn pn).
+Proof.
+  apply TaskGen.trans_map_sound; auto.
+  apply task_gamma_valid.
+Qed.
+
+End TaskMap.
 
 (*Prove task_wf automatically*)
 From mathcomp Require Import all_ssreflect.
