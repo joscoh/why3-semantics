@@ -132,35 +132,413 @@ Definition rewriteF_typed {gamma} (gamma_valid: valid_context gamma) f:=
 
 (*Step 2: Free vars*)
 
-Lemma rewrite_fv t f:
-  (sublist (tm_fv (rewriteT t)) (tm_fv t)) /\
-  (sublist (fmla_fv (rewriteF f)) (fmla_fv f)).
+(*Kind of a dumb lemma*)
+Lemma tfun_tms_typed gamma f tys tms ty1:
+  term_has_type gamma (Tfun f tys tms) ty1 ->
+  Forall (fun tm => exists ty, term_has_type gamma tm ty) tms.
 Proof.
-  revert t f; apply term_formula_ind; simpl; auto;
-  try solve[intros; apply sublist_refl];
-  try solve[intros; solve_subset].
-  - (*Tmatch*)
-    intros tm v ps Hsubtm Hall.
-    destruct (compile_bare_single _ _ _) eqn : Hcomp.
-    2: {
-      simpl. solve_subset.
-    }
-Admitted.
+  intros Hty. inversion Hty; subst.
+  rewrite Forall_forall in H9.
+  rewrite Forall_forall; intros x Hinx.
+  destruct (In_nth _ _ tm_d Hinx) as [n [Hn Hx]]; subst.
+  exists (nth n (map (ty_subst (s_params f) tys) (s_args f)) vty_int).
+  specialize (H9 (nth n tms tm_d, nth n (map (ty_subst (s_params f) tys) (s_args f)) vty_int)).
+  apply H9. rewrite in_combine_iff; [|rewrite map_length; auto].
+  exists n. split; auto. intros. f_equal; apply nth_indep; auto.
+  rewrite map_length; auto. lia.
+Qed.
 
-Lemma sublist_type_vars t f:
+Lemma fpred_tms_typed gamma f tys tms:
+  formula_typed gamma (Fpred f tys tms) ->
+  Forall (fun tm => exists ty, term_has_type gamma tm ty) tms.
+Proof.
+  intros Hty. inversion Hty; subst.
+  rewrite Forall_forall in H7.
+  rewrite Forall_forall; intros x Hinx.
+  destruct (In_nth _ _ tm_d Hinx) as [n [Hn Hx]]; subst.
+  exists (nth n (map (ty_subst (s_params f) tys) (s_args f)) vty_int).
+  specialize (H7 (nth n tms tm_d, nth n (map (ty_subst (s_params f) tys) (s_args f)) vty_int)).
+  apply H7. rewrite in_combine_iff; [|rewrite map_length; auto].
+  exists n. split; auto. intros. f_equal; apply nth_indep; auto.
+  rewrite map_length; auto. lia.
+Qed.
+
+
+Lemma rewrite_fv {gamma} (gamma_valid: valid_context gamma) t f:
+  (forall ty (Hty: term_has_type gamma t ty), 
+    sublist (tm_fv (rewriteT t)) (tm_fv t)) /\
+  (forall (Hty: formula_typed gamma f),
+    sublist (fmla_fv (rewriteF f)) (fmla_fv f)).
+Proof.
+  revert t f; apply term_formula_ind; auto;
+  try solve[simpl; intros; apply sublist_refl];
+  try solve[simpl; intros; inversion Hty; subst; solve_subset; eauto].
+  - (*Tfun*) 
+    intros f1 tys tms Hall ty Hty. simpl.
+    apply tfun_tms_typed in Hty.
+    apply sublist_big_union_map.
+    rewrite Forall_forall in Hall, Hty |- *.
+    intros x Hinx.
+    specialize (Hty _ Hinx).
+    destruct Hty as [ty1 Hty1].
+    eapply Hall; eauto.
+  - (*Tmatch*) intros tm v ps Hsubtm Hall ty Hty.
+    simpl rewriteT.
+    destruct (compile_bare_single _ _ _) eqn : Hcomp.
+    2: { simpl. solve_subset. }
+    inversion Hty; subst.
+    eapply compile_bare_single_fv in Hcomp; eauto.
+    (*Prove typing*)
+    2: apply rewriteT_typed; auto.
+    2: { rewrite Forall_map; simpl. rewrite Forall_forall; auto. }
+    2: {
+      simpl. rewrite Forall_map; simpl. rewrite Forall_forall.
+      intros x Hinx. apply rewriteT_typed; auto.
+    }
+    (*And now prove sublist*)
+    simpl in *.
+    apply (sublist_trans _ _ _ Hcomp).
+    intros x Hinx. simpl_set_small.
+    destruct Hinx as [Hinx | Hinx].
+    + (*Use first IH*)
+      eapply Hsubtm in Hinx; eauto.
+    + simpl_set.
+      destruct Hinx as [y [Hiny Hinx]].
+      rewrite in_map_iff in Hiny.
+      destruct Hiny as [y2 [Hy Hiny2]]; subst y.
+      simpl in Hinx. simpl_set_small.
+      destruct Hinx as [Hinx Hnotinx].
+      rewrite Forall_forall in Hall.
+      eapply Hall in Hinx; eauto.
+      2: rewrite in_map_iff; eauto.
+      right. exists y2. simpl_set_small; auto.
+  - (*Fpred*)
+    intros f1 tys tms Hall Hty. simpl.
+    apply fpred_tms_typed in Hty.
+    apply sublist_big_union_map.
+    rewrite Forall_forall in Hall, Hty |- *.
+    intros x Hinx.
+    specialize (Hty _ Hinx).
+    destruct Hty as [ty1 Hty1].
+    eapply Hall; eauto.
+  - (*Fmatch*) intros tm v ps Hsubtm Hall Hty.
+    simpl rewriteF.
+    destruct (compile_bare_single _ _ _) eqn : Hcomp.
+    2: { simpl. solve_subset. }
+    inversion Hty; subst.
+    eapply compile_bare_single_fv in Hcomp; eauto.
+    (*Prove typing*)
+    2: apply rewriteT_typed; auto.
+    2: { rewrite Forall_map; simpl. rewrite Forall_forall; auto. }
+    2: {
+      simpl. rewrite Forall_map; simpl. rewrite Forall_forall.
+      intros x Hinx. apply rewriteF_typed; auto.
+    }
+    (*And now prove sublist*)
+    simpl in *.
+    apply (sublist_trans _ _ _ Hcomp).
+    intros x Hinx. simpl_set_small.
+    destruct Hinx as [Hinx | Hinx].
+    + (*Use first IH*)
+      eapply Hsubtm in Hinx; eauto.
+    + simpl_set.
+      destruct Hinx as [y [Hiny Hinx]].
+      rewrite in_map_iff in Hiny.
+      destruct Hiny as [y2 [Hy Hiny2]]; subst y.
+      simpl in Hinx. simpl_set_small.
+      destruct Hinx as [Hinx Hnotinx].
+      rewrite Forall_forall in Hall.
+      eapply Hall in Hinx; eauto.
+      2: rewrite in_map_iff; eauto.
+      right. exists y2. simpl_set_small; auto.
+      Unshelve.
+      exact tt.
+Qed.
+
+Definition rewriteT_fv {gamma} (gamma_valid: valid_context gamma) t
+  ty (Hty: term_has_type gamma t ty) :=
+  proj_tm (rewrite_fv gamma_valid) t ty Hty.
+Definition rewriteF_fv {gamma} (gamma_valid: valid_context gamma) f
+  (Hty: formula_typed gamma f) :=
+  proj_fmla (rewrite_fv gamma_valid) f Hty.
+
+(*Part 3: Type vars*)
+
+(*TODO: copied from TySubst*)
+Lemma tm_type_vars_tmatch t ty ps:
+  tm_type_vars (Tmatch t ty ps) =
+  union typevar_eq_dec 
+    (union typevar_eq_dec (tm_type_vars t)
+      (big_union typevar_eq_dec pat_type_vars (map fst ps)))
+    (union typevar_eq_dec (big_union typevar_eq_dec (fun x => tm_type_vars (snd x)) ps)
+      (type_vars ty)).
+Proof.
+  simpl.
+  f_equal.
+  f_equal. induction ps; simpl; auto.
+  destruct a; simpl. f_equal. auto.
+Qed.
+
+Lemma tm_type_vars_fmatch t ty ps:
+  fmla_type_vars (Fmatch t ty ps) =
+  union typevar_eq_dec 
+    (union typevar_eq_dec (tm_type_vars t)
+      (big_union typevar_eq_dec pat_type_vars (map fst ps)))
+    (union typevar_eq_dec (big_union typevar_eq_dec (fun x => fmla_type_vars (snd x)) ps)
+      (type_vars ty)).
+Proof.
+  simpl.
+  f_equal.
+  f_equal. induction ps; simpl; auto.
+  destruct a; simpl. f_equal. auto.
+Qed.
+
+Lemma rewrite_type_vars t f:
   (sublist (tm_type_vars (rewriteT t)) (tm_type_vars t)) /\
   (sublist (fmla_type_vars (rewriteF f)) (fmla_type_vars f)).
 Proof.
-  revert t f; apply term_formula_ind; simpl; auto;
+  revert t f; apply term_formula_ind; auto;
   try solve[intros; apply sublist_refl];
-  try solve[intros; solve_subset].
+  try solve[simpl; intros; solve_subset].
   - (*Tmatch*)
-    intros tm ty pats IHtm IHps.
+    intros tm ty pats IHtm IHps. simpl rewriteT.
     destruct (compile_bare_single _ _ _) eqn : Hcomp.
     2: { simpl. solve_subset. }
-    
-  Print tm_type_vars.
-  Print pat_type_vars.
+    apply compile_bare_single_type_vars in Hcomp.
+    rewrite tm_type_vars_tmatch.
+    apply (sublist_trans _ _ _ Hcomp).
+    intros x Hinx.
+    rewrite gen_type_vars_match in Hinx.
+    rewrite !map_map in Hinx. simpl in Hinx.
+    simpl_set_small.
+    destruct Hinx as [Hinx | Hinx].
+    + simpl_set_small. destruct Hinx as [Hinx | Hinx]; auto.
+    + simpl_set_small. destruct Hinx as [Hinx | Hinx]; auto.
+      right. left. 
+      simpl_set. destruct Hinx as [y [Hiny Hinx]].
+      rewrite in_map_iff in Hiny.
+      destruct Hiny as [y2 [Hy Hiny2]]; subst y.
+      exists y2. split; auto.
+      rewrite Forall_map, Forall_forall in IHps.
+      apply IHps; auto.
+  - (*Fmatch*)
+    intros tm ty pats IHtm IHps. simpl rewriteF.
+    destruct (compile_bare_single _ _ _) eqn : Hcomp.
+    2: { simpl. solve_subset. }
+    apply compile_bare_single_type_vars in Hcomp.
+    rewrite tm_type_vars_fmatch.
+    apply (sublist_trans _ _ _ Hcomp).
+    intros x Hinx.
+    rewrite gen_type_vars_match in Hinx.
+    rewrite !map_map in Hinx. simpl in Hinx.
+    simpl_set_small.
+    destruct Hinx as [Hinx | Hinx].
+    + simpl_set_small. destruct Hinx as [Hinx | Hinx]; auto.
+    + simpl_set_small. destruct Hinx as [Hinx | Hinx]; auto.
+      right. left. 
+      simpl_set. destruct Hinx as [y [Hiny Hinx]].
+      rewrite in_map_iff in Hiny.
+      destruct Hiny as [y2 [Hy Hiny2]]; subst y.
+      exists y2. split; auto.
+      rewrite Forall_map, Forall_forall in IHps.
+      apply IHps; auto.
+Qed.
+
+Definition rewriteT_type_vars t :=
+  proj_tm rewrite_type_vars t.
+Definition rewriteF_type_vars f :=
+  proj_fmla rewrite_type_vars f.
+
+(*Part 4: fun/predsyms*)
+
+Definition gensym_in_fmla {b: bool} (f: gen_sym b) (t: formula) : bool :=
+  @gensym_in_gen_term b false f t.
+
+Lemma orb_impl_l (b b1 b2: bool):
+  (b1 -> b2) ->
+  (b || b1 -> b || b2).
+Proof.
+  destruct b; simpl; auto.
+Qed.
+
+(*TODO: move*)
+Lemma existsb_map {A B: Type} (f: A -> B) (g: B -> bool) (l: list A):
+  existsb g (map f l) = existsb (fun x => g (f x)) l.
+Proof.
+  induction l; simpl; auto; rewrite IHl; auto.
+Qed.
+
+
+Lemma rewrite_gen_sym (b: bool) (s: gen_sym b) t f:
+  (gensym_in_term s (rewriteT t) ->
+    gensym_in_term s t) /\
+  (gensym_in_fmla s (rewriteF f) ->
+    gensym_in_fmla s f).
+Proof.
+  revert t f; apply term_formula_ind; simpl; auto;
+  try solve[intros;
+    destruct b; simpl in *; unfold is_true in *; 
+    intros; repeat (bool_hyps; bool_to_prop;
+    destruct_all); auto].
+  - (*Tfun*) intros f1 tms tys IH.
+    (*Not great, but destruct each case*)
+    destruct b; simpl in *; [apply orb_impl_l|];
+    rewrite existsb_map; apply existsb_impl;
+    rewrite Forall_forall in IH; auto.
+  - (*Tmatch*)
+    intros tm ty ps IHtm IHps.
+    destruct (compile_bare_single _ _ _) eqn : Hcomp; auto.
+    intros Hins.
+    apply compile_bare_single_syms with (f:=s) in Hcomp; auto.
+    rewrite gensym_in_match in Hcomp.
+    unfold gensym_in_term.
+    rewrite (@gensym_in_match b true).
+    apply orb_true_iff in Hcomp. apply orb_true_iff.
+    destruct Hcomp as [Hin | Hin]; [rewrite IHtm; auto|].
+    right. revert Hin.
+    rewrite existsb_map. simpl.
+    apply existsb_impl.
+    rewrite Forall_map, Forall_forall in IHps. auto.
+  - (*Fpred*)  intros f1 tms tys IH.
+    destruct b; simpl in *; [|apply orb_impl_l];
+    rewrite existsb_map; apply existsb_impl;
+    rewrite Forall_forall in IH; auto.
+  - (*Fmatch*)
+    intros tm ty ps IHtm IHps.
+    destruct (compile_bare_single _ _ _) eqn : Hcomp; auto.
+    intros Hins.
+    apply compile_bare_single_syms with (f:=s) in Hcomp; auto.
+    rewrite gensym_in_match in Hcomp.
+    unfold gensym_in_fmla.
+    rewrite (@gensym_in_match b false).
+    apply orb_true_iff in Hcomp. apply orb_true_iff.
+    destruct Hcomp as [Hin | Hin]; [rewrite IHtm; auto|].
+    right. revert Hin.
+    rewrite existsb_map. simpl.
+    apply existsb_impl.
+    rewrite Forall_map, Forall_forall in IHps. auto.
+Qed.
+
+Definition rewriteT_gen_sym b s t :=
+  proj_tm (rewrite_gen_sym b s) t.
+Definition rewriteF_gen_sym b s t :=
+  proj_fmla (rewrite_gen_sym b s) t.
+
+Lemma orb_congr b1 b2 b3 b4:
+  b1 = b3 ->
+  b2 = b4 ->
+  b1 || b2 = b3 || b4.
+Proof. intros; subst; reflexivity. Qed.
+
+Ltac gensym_case b t Heq :=
+  alpha_case t Heq; try discriminate;
+  bool_hyps;
+  destruct b; simpl in *;
+  repeat (apply orb_congr; auto);
+  solve[auto].
+
+(*TODO: move to Alpha*)
+Lemma gensym_in_shape b (s: gen_sym b) t1 f1:
+  (forall t2 (Hshape: shape_t t1 t2),
+    gensym_in_term s t1 = gensym_in_term s t2) /\
+  (forall f2 (Hshape: shape_f f1 f2),
+    gensym_in_fmla s f1 = gensym_in_fmla s f2).
+Proof.
+  revert t1 f1.
+  apply term_formula_ind; simpl; intros;
+  try solve[alpha_case t2 Heq; try discriminate; destruct b; auto];
+  try (match goal with
+    | b: bool |- _ = gensym_in_term ?s ?t2 =>
+      gensym_case b t2 Heq
+    | b: bool |- _ = gensym_in_fmla ?s ?f2 =>
+      gensym_case b f2 Heq
+  end).
+  (*4 nontrivial cases*)
+  - alpha_case t2 Heq; try discriminate.
+    destruct (funsym_eq_dec f1 f); subst; [|discriminate].
+    simpl in Hshape.
+    destruct (Nat.eqb_spec (length l1) (length l2)); [|discriminate];
+    destruct (list_eq_dec vty_eq_dec l l0); [|discriminate]; simpl in Hshape.
+    assert (Hall: Forall2 shape_t l1 l2). {
+      apply all2_Forall2.
+      change (shape_t) with (fun x y => shape_t x y). 
+      rewrite e, Nat.eqb_refl, Hshape; reflexivity.
+    }
+    assert (Hall2: Forall2 (fun x y => gensym_in_term s x = gensym_in_term s y) l1 l2).
+    {
+      clear -H Hall. generalize dependent l2.
+      induction l1 as [| h1 t1 IH]; simpl in *; intros [| h2 t2] Hall; auto;
+      inversion Hall; subst. inversion H; subst. constructor; auto.
+    }
+    destruct b; simpl; [f_equal|]; apply existsb_eq'; auto.
+  - alpha_case t2 Heq; try discriminate.
+    destruct (shape_t tm t2) eqn: Hshape1; [|discriminate];
+    destruct (length ps =? length l) eqn : Hlen; [|discriminate];
+    destruct (vty_eq_dec _ _); [|discriminate].
+    simpl in Hshape. subst.
+    rewrite Forall_map in H0.
+    assert (Hall: Forall2 (fun x y => shape_t (snd x) (snd y)) ps l).
+    {
+      apply all2_Forall2.
+      rewrite Hlen. revert Hshape. apply all2_impl.
+      intros x y Ha. bool_hyps; auto.
+    }
+    assert (Hall2: Forall2 (fun x y => gensym_in_term s (snd x) = 
+      gensym_in_term s (snd y)) ps l).
+    {
+      clear -H0 Hall. generalize dependent l.
+      induction ps as [| h1 t1 IH]; simpl in *; intros [| h2 t2] Hall; auto;
+      inversion Hall; subst. inversion H0; subst. constructor; auto.
+    }
+    destruct b; simpl in *; apply orb_congr; auto; apply existsb_eq'; auto.
+  - alpha_case f2 Heq; try discriminate.
+    destruct (predsym_eq_dec _ _); subst; [|discriminate];
+    destruct (Nat.eqb (length tms) (length l0)) eqn : Hlen; [|discriminate];
+    destruct (list_eq_dec vty_eq_dec _ _); [|discriminate]; simpl in Hshape; subst.
+    assert (Hall: Forall2 shape_t tms l0). {
+      apply all2_Forall2.
+      change (shape_t) with (fun x y => shape_t x y).
+      rewrite Hlen , Hshape; auto.
+    }
+    assert (Hall2: Forall2 (fun x y => gensym_in_term s x = gensym_in_term s y) tms l0).
+    {
+      clear -H Hall. generalize dependent l0.
+      induction tms as [| h1 t1 IH]; simpl in *; intros [| h2 t2] Hall; auto;
+      inversion Hall; subst. inversion H; subst. constructor; auto.
+    }
+    destruct b; simpl; [|f_equal]; apply existsb_eq'; auto.
+  - alpha_case f2 Heq; try discriminate.
+    destruct (shape_t tm t) eqn: Hshape1; [|discriminate];
+    destruct (length ps =? length l) eqn : Hlen; [|discriminate];
+    destruct (vty_eq_dec _ _); [|discriminate].
+    simpl in Hshape. subst.
+    rewrite Forall_map in H0.
+    assert (Hall: Forall2 (fun x y => shape_f (snd x) (snd y)) ps l).
+    {
+      apply all2_Forall2.
+      rewrite Hlen. revert Hshape. apply all2_impl.
+      intros x y Ha. bool_hyps; auto.
+    }
+    assert (Hall2: Forall2 (fun x y => gensym_in_fmla s (snd x) = 
+      gensym_in_fmla s (snd y)) ps l).
+    {
+      clear -H0 Hall. generalize dependent l.
+      induction ps as [| h1 t1 IH]; simpl in *; intros [| h2 t2] Hall; auto;
+      inversion Hall; subst. inversion H0; subst. constructor; auto.
+    }
+    destruct b; simpl in *; apply orb_congr; auto; apply existsb_eq'; auto.
+Qed.
+
+Definition gensym_in_shape_t {b} (s: gen_sym b) (t1 t2: term)
+  (Hshape: shape_t t1 t2):
+    gensym_in_term s t1 = gensym_in_term s t2 :=
+  proj_tm (gensym_in_shape b s) t1 t2 Hshape.
+Definition gensym_in_shape_f {b} (s: gen_sym b) (f1 f2: formula)
+  (Hshape: shape_f f1 f2):
+    gensym_in_fmla s f1 = gensym_in_fmla s f2 :=
+  proj_fmla (gensym_in_shape b s) f1 f2 Hshape.
+
+(*Part 5:*)
 
 (*And prove the whole transformation is typed*)
 Definition compile_match_typed : typed_trans compile_match.
@@ -172,19 +550,51 @@ Proof.
   - intros gamma f gamma_valid Hty.
     apply rewriteF_typed; auto.
     apply a_convert_all_f_typed; auto.
-  - admit.
-  - admit.
-  - 
-    Search a_convert_all_t.
-    apply a_convert_all_t_typed.
-    Print rewriteT'.
-    apply a_equiv_t_full_typed.
-  unfold typed_trans, TaskGen.typed_trans.
-  unfold compile_match.
-  intros ts Hty tr Hin.
-  Search trans_map.
-  
-   trans_map, TaskGen.trans_map.
+  - intros gamma t ty gamma_valid Hty.
+    eapply sublist_trans.
+    eapply rewriteT_fv; eauto.
+    apply a_convert_all_t_ty; eauto.
+    erewrite a_equiv_t_fv. apply sublist_refl.
+    rewrite a_equiv_t_sym.
+    apply a_convert_all_t_equiv.
+  - intros gamma t gamma_valid Hty.
+    eapply sublist_trans.
+    eapply rewriteF_fv; eauto.
+    apply a_convert_all_f_typed; eauto.
+    erewrite a_equiv_f_fv. apply sublist_refl.
+    rewrite a_equiv_f_sym.
+    apply a_convert_all_f_equiv.
+  - intros t.
+    eapply sublist_trans.
+    apply rewriteT_type_vars.
+    erewrite a_equiv_t_type_vars. apply sublist_refl.
+    rewrite a_equiv_t_sym.
+    apply a_convert_all_t_equiv.
+  - intros t.
+    eapply sublist_trans.
+    apply rewriteF_type_vars.
+    erewrite a_equiv_f_type_vars. apply sublist_refl.
+    rewrite a_equiv_f_sym.
+    apply a_convert_all_f_equiv.
+  - intros f t Hf.
+    unfold rewriteT' in Hf.
+    apply (rewriteT_gen_sym true) in Hf.
+    simpl in Hf.
+    erewrite (@gensym_in_shape_t true) in Hf; [apply Hf|].
+    eapply alpha_shape_t with (vars:=nil).
+    rewrite a_equiv_t_sym.
+    apply a_convert_all_t_equiv.
+  - intros f t Hf.
+    unfold rewriteF' in Hf.
+    apply (rewriteF_gen_sym false) in Hf.
+    simpl in Hf.
+    erewrite (@gensym_in_shape_f false) in Hf; [apply Hf|].
+    eapply alpha_shape_f with (vars:=nil).
+    rewrite a_equiv_f_sym.
+    apply a_convert_all_f_equiv.
+Qed.
+
+
 
 (*TODO: move all of these (plus ones in Denotational)*)
 Lemma wf_tfun {f: funsym} {tys: list vty} {tms: list term}

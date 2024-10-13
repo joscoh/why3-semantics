@@ -180,7 +180,7 @@ Qed.
 (*TODO: really make [gen] versions more extensive and organized*)
 
 Section Gen.
-Definition gen_sym (b: bool) : Set := if b then funsym else predsym.
+(* Definition gen_sym (b: bool) : Set := if b then funsym else predsym. *)
 
 Definition gen_sym_name {b: bool} (f: gen_sym b) : string :=
   match b return gen_sym b -> string with
