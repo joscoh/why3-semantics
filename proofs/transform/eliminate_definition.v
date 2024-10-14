@@ -229,12 +229,6 @@ Definition gen_app (b: bool) (f: gen_sym b) (tys: list vty) (tms: list term) : g
   | false => fun p => Fpred p tys tms
   end f.
 
-Definition gen_if (b: bool) (f: formula) (t1 t2: gen_term b) : gen_term b :=
-  match b return gen_term b -> gen_term b -> gen_term b with
-  | true => fun t1 t2 => Tif f t1 t2
-  | false => fun f1 f2 => Fif f f1 f2
-  end t1 t2.
-
 (*Generalized equality (Teq or Fiff)*)
 Definition gen_eq (b: bool) (ty: gen_type b) (t1 t2: gen_term b) : formula :=
   match b return gen_type b -> gen_term b -> gen_term b -> formula with

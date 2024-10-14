@@ -2871,10 +2871,43 @@ Section Wf.
   and provide a function (not necessarily the most efficient one)
   to alpha-convert our term/formula into this form. The function
   and proofs are in Substitution.v*)
+Definition term_name_wf (t: term) : Prop :=
+  NoDup (map fst (tm_bnd t)) /\ disj (map fst (tm_fv t)) (map fst (tm_bnd t)).
+Definition fmla_name_wf (f: formula) : Prop :=
+  NoDup (map fst (fmla_bnd f)) /\ disj (map fst (fmla_fv f)) (map fst (fmla_bnd f)).
+
+(*For legacy reasons (TODO remove)*)
 Definition term_wf (t: term) : Prop :=
   NoDup (tm_bnd t) /\ forall x, ~ (In x (tm_fv t) /\ In x (tm_bnd t)).
 Definition fmla_wf (f: formula) : Prop :=
   NoDup (fmla_bnd f) /\ forall x, ~ (In x (fmla_fv f) /\ In x (fmla_bnd f)).
+
+Lemma term_name_wf_wf (t: term):
+  term_name_wf t ->
+  term_wf t.
+Proof.
+  unfold term_name_wf, term_wf.
+  intros [Hn Hdisj].
+  split.
+  - apply NoDup_map_inv in Hn; auto.
+  - intros x [Hinx1 Hinx2].
+    apply (Hdisj (fst x)).
+    rewrite !in_map_iff; split; eauto.
+Qed.
+
+Lemma fmla_name_wf_wf (f: formula):
+  fmla_name_wf f ->
+  fmla_wf f.
+Proof.
+  unfold fmla_name_wf, fmla_wf.
+  intros [Hn Hdisj].
+  split.
+  - apply NoDup_map_inv in Hn; auto.
+  - intros x [Hinx1 Hinx2].
+    apply (Hdisj (fst x)).
+    rewrite !in_map_iff; split; eauto.
+Qed.
+
 
 Lemma wf_quant (q: quant) (v: vsymbol) (f: formula) :
   fmla_wf (Fquant q v f) ->

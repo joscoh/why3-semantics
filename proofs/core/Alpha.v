@@ -6228,18 +6228,21 @@ Proof.
   intros y Hy Hy2; apply gen_strs_notin in Hy; apply Hy; in_tac.
 Qed.
 
-Theorem a_convert_all_t_wf t l :
-  term_wf (a_convert_all_t t l).
+Theorem a_convert_all_t_name_wf t l :
+  term_name_wf (a_convert_all_t t l).
 Proof.
-  unfold term_wf.
+  unfold term_name_wf.
   pose proof (gen_strs_nodup (length (tm_bnd t)) (l ++ tm_bnd t ++ tm_fv t)) as Hnodup.
   pose proof (gen_strs_length (length (tm_bnd t)) (l ++ tm_bnd t ++ tm_fv t)) as Hlen.
   pose proof (gen_strs_notin (length (tm_bnd t)) (l ++ tm_bnd t ++ tm_fv t)) as Hnotin.
   split.
-  - eapply NoDup_map_inv. apply alpha_t_aux_bnd; auto.
+  -  apply alpha_t_aux_bnd; auto.
   - intros x [Hinx1 Hinx2].
+    rewrite in_map_iff in Hinx2; destruct Hinx2 as [v2 [Hv2 Hinx2]].
     apply alpha_t_aux_bnd in Hinx2; auto.
+    rewrite in_map_iff in Hinx1; destruct Hinx1 as [v1 [Hv1 Hinx1]].
     rewrite <- alpha_equiv_t_fv in Hinx1; [| apply a_convert_all_t_equiv].
+    subst x. rewrite Hv2 in Hinx2.
     apply Hnotin in Hinx2. apply Hinx2. in_tac.
 Qed.
 
@@ -6283,6 +6286,13 @@ Proof.
   - apply gen_strs_length.
 Qed.
 
+(*TODO: see if we need*)
+Corollary a_convert_all_t_wf t l :
+  term_wf (a_convert_all_t t l).
+Proof.
+  apply term_name_wf_wf, a_convert_all_t_name_wf.
+Qed.
+
 (*And likewise for formulas*)
 
 Theorem a_convert_all_f_equiv f l:
@@ -6293,18 +6303,21 @@ Proof.
   intros y Hy Hy2; apply gen_strs_notin in Hy; apply Hy; in_tac.
 Qed.
 
-Theorem a_convert_all_f_wf f l:
-  fmla_wf (a_convert_all_f f l).
+Theorem a_convert_all_f_name_wf f l:
+  fmla_name_wf (a_convert_all_f f l).
 Proof.
-  unfold fmla_wf.
+  unfold fmla_name_wf.
   pose proof (gen_strs_nodup (length (fmla_bnd f)) (l ++ fmla_bnd f ++ fmla_fv f)) as Hnodup.
   pose proof (gen_strs_length (length (fmla_bnd f)) (l ++ fmla_bnd f ++ fmla_fv f)) as Hlen.
   pose proof (gen_strs_notin (length (fmla_bnd f)) (l ++ fmla_bnd f ++ fmla_fv f)) as Hnotin.
   split.
-  - eapply NoDup_map_inv. apply alpha_f_aux_bnd; auto.
+  - apply alpha_f_aux_bnd; auto.
   - intros x [Hinx1 Hinx2].
+    rewrite in_map_iff in Hinx2; destruct Hinx2 as [v2 [Hv2 Hinx2]].
     apply alpha_f_aux_bnd in Hinx2; auto.
+    rewrite in_map_iff in Hinx1; destruct Hinx1 as [v1 [Hv1 Hinx1]].
     rewrite <- alpha_equiv_f_fv in Hinx1; [| apply a_convert_all_f_equiv].
+    subst x. rewrite Hv2 in Hinx2.
     apply Hnotin in Hinx2. apply Hinx2. in_tac.
 Qed.
 
@@ -6401,6 +6414,12 @@ Proof.
     contradiction.
   - apply gen_strs_nodup.
   - rewrite gen_strs_length; auto.
+Qed.
+
+Corollary a_convert_all_f_wf f l :
+  fmla_wf (a_convert_all_f f l).
+Proof.
+  apply fmla_name_wf_wf, a_convert_all_f_name_wf.
 Qed.
 
 End ConvertFn.
