@@ -1198,3 +1198,257 @@ Qed.
 
 (*Part 3: Simple patterns*)
 
+(*NOTE: don't prove anything about the transformation yet,
+  do with function first*)
+
+Lemma rewrite_simple_pats {gamma} (gamma_valid: valid_context gamma) t f:
+  (forall ty (Hty: term_has_type gamma t ty),
+    term_simple_pats (rewriteT t)) /\
+  (forall (Hty: formula_typed gamma f),
+    fmla_simple_pats (rewriteF f)).
+Proof.
+  revert t f; apply term_formula_ind; simpl; auto;
+  try solve[intros; inversion Hty; subst; unfold is_true in *; eauto;
+    apply andb_true_iff; split; try (apply andb_true_iff; split); eauto ].
+  - (*Tfun*) 
+    intros f1 tys tms IH ty Hty.
+    rewrite forallb_map. 
+    apply forallb_forall. intros x Hinx.
+    rewrite Forall_forall in IH.
+    apply tfun_tms_typed in Hty.
+    rewrite Forall_forall in Hty.
+    specialize (Hty _ Hinx).
+    destruct Hty as [ty1 Hty1]. 
+    eapply IH; eauto.
+  - (*Tmatch*)
+    intros tm ty ps IHtm IHps ty1 Hty1.
+    destruct (compile_bare_single _ _ _ _) as [o1|] eqn : Hcomp.
+    + eapply (@compile_simple_pats gamma true); auto. 
+      (*From [compile]*)
+      3: erewrite compile_bare_equiv; apply Hcomp.
+      * inversion Hty1; subst. 
+        simpl. rewrite andb_true_r. eapply IHtm; eauto.
+      * rewrite !map_map. simpl.
+        rewrite forallb_map. rewrite Forall_map in IHps.
+        rewrite Forall_forall in IHps. apply forallb_forall.
+        inversion Hty1; subst.
+        intros x Hinx.
+        eapply IHps; eauto.
+    + (*Show that we do not hit the other case - from exhaustiveness checking*)
+      inversion Hty1; subst.
+      assert (Hsome: isSome (compile_bare_single true (rewriteT tm) ty
+        (map (fun x : pattern * term => (fst x, rewriteT (snd x))) ps))).
+      {
+        eapply compile_bare_single_ext_simpl. 2: eauto. rewrite map_map. reflexivity.
+      }
+      rewrite Hcomp in Hsome. discriminate.
+  - (*Fpred*)
+    intros f1 tys tms IH Hty.
+    rewrite forallb_map. 
+    apply forallb_forall. intros x Hinx.
+    rewrite Forall_forall in IH.
+    apply fpred_tms_typed in Hty.
+    rewrite Forall_forall in Hty.
+    specialize (Hty _ Hinx).
+    destruct Hty as [ty1 Hty1]. 
+    eapply IH; eauto.
+  - (*Fmatch*)
+    intros tm ty ps IHtm IHps Hty1.
+    destruct (compile_bare_single _ _ _ _) as [o1|] eqn : Hcomp.
+    + eapply (@compile_simple_pats gamma false); [exact tt | | |]. 
+      (*From [compile]*)
+      3: erewrite compile_bare_equiv; apply Hcomp.
+      * inversion Hty1; subst. 
+        simpl. rewrite andb_true_r. eapply IHtm; eauto.
+      * rewrite !map_map. simpl.
+        rewrite forallb_map. rewrite Forall_map in IHps.
+        rewrite Forall_forall in IHps. apply forallb_forall.
+        inversion Hty1; subst.
+        intros x Hinx.
+        eapply IHps; eauto.
+    + (*Show that we do not hit the other case*)
+      inversion Hty1; subst.
+      assert (Hsome: isSome (compile_bare_single false (rewriteT tm) ty
+        (map (fun x : pattern * formula => (fst x, rewriteF (snd x))) ps))).
+      {
+        eapply compile_bare_single_ext_simpl. 2: eauto. rewrite map_map. reflexivity.
+      }
+      rewrite Hcomp in Hsome. discriminate.
+Qed.
+
+Definition rewriteT_simple_pats {gamma} (gamma_valid: valid_context gamma) t
+  ty (Hty: term_has_type gamma t ty): 
+  term_simple_pats (rewriteT t) :=
+  proj_tm (rewrite_simple_pats gamma_valid) t ty Hty.
+Definition rewriteF_simple_pats {gamma} (gamma_valid: valid_context gamma) f
+  (Hty: formula_typed gamma f): 
+  fmla_simple_pats (rewriteF f) :=
+  proj_fmla (rewrite_simple_pats gamma_valid) f Hty.
+
+(*Lemmas:
+  1. If shape_p, then simple_pat equiv
+  2. If all2 shape_p, then all2 simple_pat_equiv (or similar)
+  3. If all2 shape_p, then constrs are the same*)
+
+Lemma shape_p_simple_pat (p1 p2: pattern):
+  shape_p p1 p2 ->
+  simple_pat p1 = simple_pat p2.
+Proof.
+  unfold simple_pat.
+  destruct p1 as [| f1 tys1 ps1 | | |]; destruct p2 as [| f2 tys2 ps2 | | |]; 
+  try discriminate; auto.
+  simpl.
+  unfold is_true at 1. rewrite !andb_true_iff.
+  intros [[_ Hlen2] Hall2].
+  generalize dependent ps2.
+  induction ps1 as [|h1 t1 IH]; intros [| h2 t2]; simpl; auto; try discriminate.
+  rewrite all2_cons. intros Hlen. rewrite andb_true_iff; intros [Hshape Hall].
+  destruct h1; destruct h2; auto; try discriminate. simpl. apply IH; auto.
+Qed.
+
+Lemma shape_p_simple_pats (l1 l2: list pattern):
+  length l1 = length l2 ->
+  all2 shape_p l1 l2 ->
+  forallb simple_pat l1 = forallb simple_pat l2.
+Proof.
+  revert l2. induction l1 as [| h1 t1 IH]; intros [|h2 t2]; simpl; auto;
+  try discriminate.
+  intros Hlen. rewrite all2_cons.
+  unfold is_true at 1. rewrite andb_true_iff. intros [Hshape Hall].
+  rewrite (shape_p_simple_pat _ _ Hshape). f_equal; apply IH; auto.
+Qed.
+
+Lemma shape_p_constrs (l1 l2: list pattern):
+  length l1 = length l2 ->
+  all2 shape_p l1 l2 ->
+  Pattern.filter_map (fun p => match p with 
+    | Pconstr c _ _ => Some c
+    | _ => None
+  end) l1 =
+  Pattern.filter_map (fun p => match p with 
+    | Pconstr c _ _ => Some c
+    | _ => None
+  end) l2.
+Proof.
+  revert l2. induction l1 as [| h1 t1 IH]; intros [|h2 t2]; simpl; auto;
+  try discriminate.
+  intros Hlen.
+  rewrite all2_cons.
+  unfold is_true at 1; rewrite andb_true_iff; intros [Hshape Hall].
+  specialize (IH t2 (ltac:(lia)) Hall).
+  destruct h1; destruct h2; simpl; auto; try discriminate.
+  simpl in Hshape.
+  destruct (funsym_eq_dec _ _); [|discriminate]; subst; f_equal; auto.
+Qed.
+
+
+Lemma shape_p_simple_pat_match (p1 p2: list pattern):
+  all2 shape_p p1 p2 ->
+  length p1 = length p2 ->
+  simple_pat_match p1 = simple_pat_match p2.
+Proof.
+  (*Don't need induction*)
+  intros Hall Hlen.
+  unfold simple_pat_match.
+  rewrite (shape_p_simple_pats _ _ Hlen Hall). f_equal.
+  f_equal. apply shape_p_constrs; auto.
+Qed.
+
+(*And now we prove (TODO: move probably)
+  that shape_t/f preserves simple patterns*)
+(*NOTE: I don't actually need this, prob delete*)
+Lemma shape_simple_pat t1 f1:
+  (forall t2 (Hshape: shape_t t1 t2),
+    term_simple_pats t1 = term_simple_pats t2) /\
+  (forall f2 (Hshape: shape_f f1 f2),
+    fmla_simple_pats f1 = fmla_simple_pats f2).
+Proof.
+  revert t1 f1; apply term_formula_ind; simpl; intros;
+  match goal with
+    | |- (?b = term_simple_pats ?t2) => alpha_case t2 Heq; auto;
+      try discriminate; try solve[bool_hyps; repeat(f_equal; auto)]
+    | |- (?b = fmla_simple_pats ?f2) => alpha_case f2 Heq; auto;
+      try discriminate; try solve[bool_hyps; repeat(f_equal; auto)]
+  end.
+  - (*Tfun*) 
+    destruct (funsym_eq_dec _ _); [|discriminate];
+    destruct (Nat.eqb (length l1) (length l2)) eqn : Hlen ; [|discriminate];
+    destruct (list_eq_dec _ _ _); [|discriminate]; simpl in Hshape.
+    generalize dependent l2. clear -H. induction l1 as [| h1 t1 IH];
+    intros [| h2 t2]; auto; try discriminate; simpl.
+    rewrite all2_cons. 
+    intros Hlen. unfold is_true at 1; rewrite andb_true_iff; intros [Hshape Hall].
+    inversion H; subst.
+    f_equal; auto.
+  - (*Tmatch*)
+    destruct (shape_t _ _) eqn : Hshape1; [|discriminate];
+    destruct (Nat.eqb (length _) (length _)) eqn : Hlen; [|discriminate];
+    destruct (vty_eq_dec _ _); [|discriminate]; simpl in Hshape.
+    rewrite <- !andb_assoc.
+    f_equal; auto.
+    (*Two separate things to prove (proved pats before, interesting part)*)
+    f_equal.
+    + generalize dependent l. clear -H0. induction ps as [| h1 t1 IH];
+      intros [| h2 t2]; simpl; auto; try discriminate.
+      intros Hlen. rewrite all2_cons. unfold is_true at 1.
+      rewrite !andb_true_iff. intros [[Hshapep Hshapet] Hall].
+      inversion H0; subst.
+      f_equal; auto.
+    + apply Nat.eqb_eq in Hlen. 
+      apply shape_p_simple_pat_match; [|rewrite !map_length; auto].
+      rewrite all2_map. revert Hshape. apply all2_impl.
+      intros x y Hxy; bool_hyps; auto.
+  - (*Fpred*)
+    destruct (predsym_eq_dec _ _); [|discriminate];
+    destruct (Nat.eqb (length _) (length _)) eqn : Hlen ; [|discriminate];
+    destruct (list_eq_dec _ _ _); [|discriminate]; simpl in Hshape.
+    generalize dependent l0. clear -H. induction tms as [| h1 t1 IH];
+    intros [| h2 t2]; auto; try discriminate; simpl.
+    rewrite all2_cons. 
+    intros Hlen. unfold is_true at 1; rewrite andb_true_iff; intros [Hshape Hall].
+    inversion H; subst.
+    f_equal; auto.
+  - (*Fmatch*) (*TODO: exactly the same, could generalize*)
+    destruct (shape_t _ _) eqn : Hshape1; [|discriminate];
+    destruct (Nat.eqb (length _) (length _)) eqn : Hlen; [|discriminate];
+    destruct (vty_eq_dec _ _); [|discriminate]; simpl in Hshape.
+    rewrite <- !andb_assoc.
+    f_equal; auto.
+    f_equal.
+    + generalize dependent l. clear -H0. induction ps as [| h1 t1 IH];
+      intros [| h2 t2]; simpl; auto; try discriminate.
+      intros Hlen. rewrite all2_cons. unfold is_true at 1.
+      rewrite !andb_true_iff. intros [[Hshapep Hshapet] Hall].
+      inversion H0; subst.
+      f_equal; auto.
+    + apply Nat.eqb_eq in Hlen. 
+      apply shape_p_simple_pat_match; [|rewrite !map_length; auto].
+      rewrite all2_map. revert Hshape. apply all2_impl.
+      intros x y Hxy; bool_hyps; auto.
+Qed.
+
+Definition shape_t_simple_pat t1 t2 (Hshape: shape_t t1 t2):
+  term_simple_pats t1 = term_simple_pats t2 :=
+  proj_tm (shape_simple_pat) t1 t2 Hshape.
+Definition shape_f_simple_pat f1 f2 (Hshape: shape_f f1 f2):
+  fmla_simple_pats f1 = fmla_simple_pats f2 :=
+  proj_fmla shape_simple_pat f1 f2 Hshape.
+
+Corollary rewriteT_simple_pats' {gamma} (gamma_valid: valid_context gamma) t
+  ty (Hty: term_has_type gamma t ty): 
+  term_simple_pats (rewriteT' t).
+Proof.
+  eapply rewriteT_simple_pats; eauto.
+  apply a_convert_all_t_ty; eauto.
+Qed.
+
+Corollary rewriteF_simple_pats' {gamma} (gamma_valid: valid_context gamma) f
+  (Hty: formula_typed gamma f): 
+  fmla_simple_pats (rewriteF' f).
+Proof.
+  eapply rewriteF_simple_pats; eauto.
+  apply a_convert_all_f_typed; eauto.
+Qed.
+
+(*If we need, can prove that all nonrec defs, hypotheses, and the goal
+  now have simple patterns*)
