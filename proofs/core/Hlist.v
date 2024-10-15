@@ -320,3 +320,32 @@ Proof.
 Qed.
 
 End Gen.
+
+From Equations Require Import Equations.
+
+(*[rev], [app]*)
+
+Equations hlist_app {A: Type} (f: A -> Type) (l1 l2: list A) (h1: hlist f l1) (h2: hlist f l2):
+  hlist f (l1 ++ l2) :=
+  hlist_app f nil l2 h1 h2 := h2;
+  hlist_app f (x :: l1) l2 (HL_cons _ a1 htl) h2 := HL_cons _ _ _ a1 (hlist_app f l1 l2 htl h2).
+
+Equations hlist_rev {A: Type} (f: A -> Type) (l: list A) (h: hlist f l) : hlist f (rev l) :=
+  hlist_rev f nil h := h;
+  hlist_rev f (x :: t) (HL_cons _ a1 htl) := hlist_app f (rev t) [x] (hlist_rev f t htl) 
+    (HL_cons _ _ _ a1 (HL_nil _)).
+
+
+Lemma hlist_hd_app1 {A: Type} {f: A -> Type} hd l1 l2 h1 h2:
+  hlist_hd (hlist_app f (hd :: l1) l2 h1 h2) =
+  hlist_hd h1.
+Proof.
+  rewrite (hlist_inv h1). simp hlist_app. reflexivity.
+Qed. 
+
+Lemma hlist_tl_app1 {A: Type} {f: A -> Type} hd l1 l2 h1 h2:
+  hlist_tl (hlist_app f (hd :: l1) l2 h1 h2) =
+  (hlist_app f l1 l2 (hlist_tl h1) h2).
+Proof.
+  rewrite (hlist_inv h1). simp hlist_app. reflexivity.
+Qed. 

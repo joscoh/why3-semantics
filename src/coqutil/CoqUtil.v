@@ -364,13 +364,6 @@ Definition map_fold_left {A B C: Type} (f: A -> B -> A * C) (acc: A) (l: list B)
   ) l (acc, nil) in
   (fst res, rev' (snd res)).
 
-(*TODO: monad?*)
-Definition option_bind {A B: Type} (x: option A) (f: A -> option B) : option B :=
-  match x with
-  | Some y => f y
-  | None => None
-  end.
-
 Definition list_find_opt {A: Type} (p: A -> bool) (l: list A) : option A :=
   fold_right (fun x acc => if p x then Some x else acc) None l.
 

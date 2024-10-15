@@ -245,6 +245,56 @@ Proof.
   - apply get_assoc_list_none in ha.
     exfalso. apply ha. rewrite in_map_iff. exists (x, t). auto.
 Qed.
+
+
+Lemma extend_val_app v l1 l2 x:
+  extend_val_with_list vt v (l1 ++ l2) x =
+  if in_dec vsymbol_eq_dec x (map fst l1) then
+    extend_val_with_list vt v l1 x
+  else extend_val_with_list vt v l2 x.
+Proof.
+  unfold extend_val_with_list.
+  rewrite get_assoc_list_app.
+  destruct (get_assoc_list vsymbol_eq_dec l1 x) eqn : Hsome; simpl;
+  destruct (in_dec vsymbol_eq_dec x (map fst l1)); auto.
+  - apply get_assoc_list_some in Hsome.
+    exfalso; apply n; rewrite in_map_iff; exists (x, s); auto.
+  - apply get_assoc_list_none in Hsome. contradiction.
+Qed.
+
+Lemma extend_val_perm v l1 l2 x:
+  NoDup (map fst l1) ->
+  Permutation l1 l2 ->
+  extend_val_with_list vt v l1 x = extend_val_with_list vt v l2 x.
+Proof.
+  intros Hn Hp.
+  destruct (in_dec vsymbol_eq_dec x (map fst l1)) as [Hin | Hnotin].
+  - rewrite in_map_iff in Hin. destruct Hin as [[x1 d1] [Hx Hinx1]]; simpl in *; subst.
+    rewrite !extend_val_lookup with (t:=d1); auto.
+    + eapply Permutation_NoDup. apply Permutation_map. apply Hp. auto.
+    + eapply Permutation_in. apply Hp. auto.
+  - rewrite !extend_val_notin; auto.
+    erewrite perm_in_iff. apply Hnotin. apply Permutation_sym, Permutation_map; auto.
+Qed.
+
+(*The exact one we need (in PatternProofs.v)*)
+Lemma extend_val_app_perm v m1 m2 m3 x:
+NoDup (map fst m1) ->
+Permutation m1 m2 ->
+extend_val_with_list vt v (m1 ++ m3) x =
+extend_val_with_list vt v (m2 ++ m3) x.
+Proof.
+  intros Hn Hperm.
+  rewrite !extend_val_app.
+  assert (Hiff: In x (map fst m1) <-> In x (map fst m2)). {
+    apply perm_in_iff, Permutation_map; auto.
+  }
+  destruct (in_dec vsymbol_eq_dec x (map fst m1)) as [Hin1 | Hnotin1];
+  destruct (in_dec vsymbol_eq_dec x (map fst m2)) as [Hin2 | Hnotin2]; auto.
+  - apply extend_val_perm; auto.
+  - apply Hiff in Hin1; contradiction.
+  - apply Hiff in Hin2; contradiction.
+Qed. 
   
 End ExtendVal.
 

@@ -6,177 +6,6 @@ Require Import Denotational2.
 Require Import Exhaustive.
 Set Bullet Behavior "Strict Subproofs".
 
-(*TODO: move*)
-Lemma app_nil_iff {A: Type} (l1 l2: list A):
-  l1 ++ l2 = nil <-> l1 = nil /\ l2 = nil.
-Proof.
-  split.
-  - apply app_eq_nil.
-  - intros [Hl1 Hl2]; subst; auto.
-Qed.
-
-
-Fixpoint sublist_strong {A: Type} (eq_dec: forall x y, {x = y} + {x <> y}) (l1 l2: list A): bool :=
-  match l1, l2 with
-  | nil, _ => true
-  | x1 :: t1, x2 :: t2 => (eq_dec x1 x2 && sublist_strong eq_dec t1 t2) || sublist_strong eq_dec l1 t2
-  | _, nil => false
-  end.
-
-Lemma sublist_strong_in {A: Type} eq_dec (l1 l2: list A):
-  sublist_strong eq_dec l1 l2 ->
-  sublist l1 l2.
-Proof.
-  revert l1. unfold sublist. induction l2 as [| h2 t2 IH]; simpl; intros [| h1 t1]; auto;
-  try contradiction.
-  intros Hsub x [Hx | Hinx]; subst; bool_hyps; destruct Hsub as [Hsub1 | Hsub2];
-  bool_hyps; subst; auto.
-  - destruct (eq_dec x h2); subst; auto. discriminate.
-  - right. apply (IH _ Hsub2 x); simpl; auto.
-  - destruct (eq_dec h1 h2); subst; auto; [|discriminate]. right.
-    apply (IH t1 H0 x); auto.
-  - right. apply (IH _ Hsub2 x); simpl; auto.
-Qed.
-
-Lemma sublist_strong_nodup {A: Type} eq_dec (l1 l2: list A):
-  sublist_strong eq_dec l1 l2 ->
-  NoDup l2 ->
-  NoDup l1.
-Proof.
-  revert l1. induction l2 as [| h2 t2 IH]; simpl; intros [| h1 t1]; auto; try discriminate;
-  [constructor|]. intros Hsub Hnodup.
-  inversion Hnodup; subst.
-  apply orb_true_iff in Hsub.
-  destruct Hsub as [Hsub | Hsub].
-  - apply andb_true_iff in Hsub. destruct Hsub as [Heq Hsub]. destruct (eq_dec h1 h2); [subst| discriminate].
-    constructor; auto. intros Hin. apply (sublist_strong_in _ _ _ Hsub) in Hin. contradiction.
-  - apply (IH _ Hsub); auto.
-Qed.
-
-Lemma sublist_strong_app {A: Type} eq_dec (l1 l2 l3 l4: list A):
-  sublist_strong eq_dec l1 l2 ->
-  sublist_strong eq_dec l3 l4 ->
-  sublist_strong eq_dec (l1 ++ l3) (l2 ++ l4).
-Proof.
-  revert l1 l3 l4. induction l2 as [| x2 t2 IH]; simpl;
-  intros [| x1 t1] l3 l4; simpl; auto.
-  - intros _ Hsub.
-    destruct l3 as [| x3 t3]; auto.
-    apply orb_true_iff. right. apply (IH nil); auto. destruct t2; auto.
-  - intros Hsub1 Hsub2. apply orb_true_iff in Hsub1. apply orb_true_iff.
-    destruct Hsub1 as [Hsub1 | Hsub1].
-    + apply andb_true_iff in Hsub1. destruct Hsub1 as [Heq Hsub1].
-      destruct (eq_dec x1 x2); [subst | discriminate]. simpl.
-      left. apply IH; auto.
-    + right. apply (IH (x1 :: t1)); auto.
-Qed.
-
-Lemma sublist_strong_nil {A: Type} eq_dec (l: list A):
-  sublist_strong eq_dec nil l.
-Proof. destruct l; auto. Qed.
-
-Lemma sublist_strong_refl {A: Type} eq_dec (l: list A):
-  sublist_strong eq_dec l l.
-Proof.
-  induction l as [| h t IH]; auto; simpl.
-  apply orb_true_iff. left. apply andb_true_iff. split; auto.
-  destruct (eq_dec h h); auto.
-Qed.
-
-Lemma sublist_strong_rev {A: Type} eq_dec (l1 l2: list A):
-  sublist_strong eq_dec l1 l2 ->
-  sublist_strong eq_dec (rev l1) (rev l2).
-Proof.
-  revert l1. induction l2 as [| x2 t2 IH]; intros [|x1 t1]; simpl; auto.
-  - intros. apply sublist_strong_nil.
-  - intros Hsub. apply orb_true_iff in Hsub.
-    destruct Hsub as [Hsub | Hsub].
-    + apply andb_true_iff in Hsub.
-      destruct Hsub as [Heq Hsub].
-      destruct (eq_dec x1 x2); [subst| discriminate].
-      apply sublist_strong_app; auto.
-      apply sublist_strong_refl.
-    + apply IH in Hsub.
-      simpl in Hsub.
-      pose proof (sublist_strong_app eq_dec (rev t1 ++ [x1]) (rev t2) nil  [x2] Hsub
-        (sublist_strong_nil eq_dec _)) as Hsubapp.
-      rewrite app_nil_r in Hsubapp. apply Hsubapp.
-Qed.
-
-
-Lemma sublist_strong_omap {A B: Type} (f: A -> option B) eq_dec1 eq_dec2 (l1 l2: list A):
-  sublist_strong eq_dec1 l1 l2 ->
-  sublist_strong eq_dec2 (omap f l1) (omap f l2).
-Proof.
-  revert l1. induction l2 as [| h2 t2 IH]; intros [| h1 t1]; simpl; auto.
-  - intros _. apply sublist_strong_nil.
-  - intros Hsub. apply orb_true_iff in Hsub. destruct Hsub as [Hsub | Hsub].
-    + apply andb_true_iff in Hsub. destruct Hsub as [Heq Hsub].
-      destruct (eq_dec1 h1 h2); subst; [|discriminate].
-      apply IH in Hsub. destruct (f h2); simpl; auto.
-      destruct (eq_dec2 b b); auto. rewrite Hsub; auto.
-    + apply IH in Hsub. simpl in Hsub.
-      destruct (f h2); auto.
-      simpl. destruct (match f h1 with
-        | Some y => y :: omap f t1
-        | None => omap f t1
-        end) eqn : Hmatch; auto.
-      apply orb_true_iff. right; auto.
-Qed.
-
-Lemma sublist_strong_filter {A: Type} eq_dec (p: A -> bool) (l1 l2: list A):
-  sublist_strong eq_dec l1 l2 ->
-  sublist_strong eq_dec (filter p l1) (filter p l2).
-Proof.
-  revert l1. induction l2 as [|h2 t2 IH]; intros [| h1 t1]; simpl; auto.
-  - intros _. apply sublist_strong_nil.
-  - intros Hsub. apply orb_true_iff in Hsub. destruct Hsub as [Hsub | Hsub].
-    + apply andb_true_iff in Hsub. destruct Hsub as [Heq Hsub].
-      destruct (eq_dec h1 h2); subst; [|discriminate].
-      destruct (p h2); auto. simpl.
-      destruct (eq_dec h2 h2); auto. rewrite IH; auto.
-    + apply IH in Hsub. simpl in Hsub.
-      destruct (p h2); auto. simpl.
-      destruct (if p h1 then h1 :: filter p t1 else filter p t1); auto.
-      apply orb_true_iff; right; auto.
-Qed.
-
-Lemma concat_rev_single {A: Type} (l: list (list A))
-  (Hall: Forall (fun x => length x <= 1) l):
-  concat (rev l) = rev(concat l).
-Proof.
-  induction l as [| h t IH]; simpl; auto.
-  inversion Hall; subst.
-  rewrite concat_app, rev_app_distr; simpl.
-  rewrite app_nil_r.
-  rewrite IH; auto. f_equal.
-  destruct h as [| h1 t1]; simpl; auto.
-  simpl in *. destruct t1; auto; simpl in *; lia.
-Qed.
-
-Lemma omap_app {A B: Type} (f: A -> option B) (l1 l2: list A):
-  omap f (l1 ++ l2) = omap f l1 ++ omap f l2.
-Proof.
-  induction l1 as [| h t IH]; simpl; auto.
-  destruct (f h); simpl; auto.
-  rewrite IH; auto.
-Qed.
-
-Lemma sublist_nil_l {A: Type} (l: list A):
-  sublist nil l.
-Proof.
-  intros x. contradiction.
-Qed.
-
-Lemma sublist_cons_l {A: Type} x (l1 l2: list A):
-  sublist l1 l2 ->
-  sublist (x :: l1) (x :: l2).
-Proof.
-  intros Hsub y; simpl.
-  intros [Hxy | Hiny]; subst; auto.
-Qed.
-
-
 (*TODO: really make [gen] versions more extensive and organized*)
 
 Section Gen.
@@ -379,12 +208,12 @@ Definition axioms_of_def (which : forall b, gen_sym b -> bool)
 Definition decls_of_def_aux (which: forall b, gen_sym b -> bool) (nonrec : bool)
   (l: list funpred_def) : list def * list funpred_def :=
   (*TODO: partition*)
-  (Pattern.filter_map (fun x =>
+  (omap (fun x =>
   match (gen_funpred_def_match x) with
   | existT b (ls, vl, e) => if which _ ls then Some (gen_abs ls) else None
   end
   ) l,
-  Pattern.filter_map (fun x =>
+  omap (fun x =>
   match (gen_funpred_def_match x) with
   | existT b (ls, vl, e) => if which _ ls then None else Some x
   end) l).
@@ -850,13 +679,7 @@ Ltac split_all_dec_eq :=
     let H1 := fresh in let H2 := fresh in
     assert (H1: x = a); [| assert (H2: y = b); [| rewrite H1, H2]]
   end.
-    
-Lemma sublist_cons {A: Type} (l1 l2 : list A) x:
-  sublist l1 l2 ->
-  sublist l1 (x :: l2).
-Proof.
-  unfold sublist. simpl. intros. right; auto.
-Qed.
+  
 
 (*A key result: t_insert_gen*)
 (*It must be the case that the free vars of t1 do not intersect with the boundvars of t2*)
@@ -1022,6 +845,7 @@ Proof.
           rewrite Hmatch in Hmatch1. discriminate.
 Qed.
 
+(*TODO: move*)
 Definition gen_bnd {b: bool} (t: gen_term b) : list vsymbol :=
   match b return gen_term b -> list vsymbol with
   | true => tm_bnd
@@ -1440,14 +1264,14 @@ Proof.
   unfold decl_list_of_def. rewrite map_rev, map_app, rev_app_distr, concat_app.
   apply app_nil_iff. split.
   - unfold decls_of_def. simpl.
-    destruct (Pattern.filter_map _ l) as [| h t] eqn : Hpat; auto.
+    destruct (omap _ l) as [| h t] eqn : Hpat; auto.
     destruct t as [| h2 t2]; simpl; auto.
     destruct nonrec; auto.
   - unfold decls_of_def. simpl.
     apply concat_nil_Forall.
     apply Forall_rev.
     rewrite Forall_map. rewrite Forall_forall. intros x Hinx.
-    apply filter_map_in in Hinx.
+    apply omap_in in Hinx.
     destruct Hinx as [y [Hiny Hx]].
     destruct (gen_funpred_def_match y) as [b [[ls vs] e]]; simpl in Hx.
     destruct (which b ls); inversion Hx; simpl; auto; destruct b; auto.
@@ -1520,9 +1344,9 @@ Proof.
     setoid_rewrite in_map_iff.
     split.
     + intros [l1 [[d [Hl1 Hind]] Hinx]]; subst.
-      destruct (Pattern.filter_map _ _) as [| h [|h1 t]] eqn : Hpat; [contradiction| |].
+      destruct (omap _ _) as [| h [|h1 t]] eqn : Hpat; [contradiction| |].
       * assert (Hinh: In h [h]) by (simpl; auto).
-        revert Hinh. rewrite <- Hpat; intros Hinh; apply filter_map_in in Hinh.
+        revert Hinh. rewrite <- Hpat; intros Hinh; apply omap_in in Hinh.
         destruct Hinh as [h1 [Hinh1 Hhh1]].
         destruct (gen_funpred_def_match h1) as [b1 [[ls vs] e]] eqn : Hdef; simpl in Hhh1.
         apply gen_funpred_def_match_eq in Hdef; subst; simpl in *.
@@ -1535,7 +1359,7 @@ Proof.
         rewrite <- Hpat in Hinx. clear Hpat.
         rewrite gen_syms_of_def_recursive, in_gen_syms_of_rec in Hinx.
         destruct Hinx as [vs [e Hinfd]].
-        apply filter_map_in in Hinfd.
+        apply omap_in in Hinfd.
         destruct Hinfd as [fd1 [Hinfd1 Hfd]].
         destruct (gen_funpred_def_match fd1) as [b1 [[ls1 vs1] e1]] eqn : Hdef; simpl in Hfd.
         apply gen_funpred_def_match_eq in Hdef; subst; simpl in *.
@@ -1544,20 +1368,20 @@ Proof.
         do 2 eexists; apply Hinfd1.
     + (*other direction*)
       intros [Hwhich [vs [e Hinfd]]].
-      assert (Hfinpat: In (gen_funpred_def b x vs e) (Pattern.filter_map
+      assert (Hfinpat: In (gen_funpred_def b x vs e) (omap
         (fun x : funpred_def =>
       let (b, p) := gen_funpred_def_match x in let
         (p0, _) := p in let (ls, _) := p0 in if which b ls then
       None else Some x)
         l)).
       {
-        eapply in_filter_map. apply Hinfd. 
+        eapply in_omap. apply Hinfd. 
         destruct (gen_funpred_def_match _) as [b1 [[ls1 vs1] e1]] eqn : Hdef.
         apply gen_funpred_def_match_eq in Hdef; subst; simpl in *.
         destruct b; destruct b1; simpl in *; inversion Hdef; subst;
         [destruct (which true x) | destruct (which false x)]; try discriminate; reflexivity.
       }
-      destruct (Pattern.filter_map _ _) as [| h [|h1 t1]] eqn : Hpat; [contradiction| |].
+      destruct (omap _ _) as [| h [|h1 t1]] eqn : Hpat; [contradiction| |].
       * simpl. destruct Hfinpat as [Hh | []]; subst.
         destruct nonrec.
         -- eexists. split. eexists. split. reflexivity.
@@ -1573,7 +1397,7 @@ Proof.
     rewrite in_filter, in_concat.
     setoid_rewrite <- In_rev.
     setoid_rewrite in_map_iff.
-    setoid_rewrite in_filter_map_iff.
+    setoid_rewrite in_omap_iff.
     split.
     + intros [fs [[d [Hfs [fd [Hinfd Hfd]]]] Hinfs]]; subst.
       rewrite in_gen_syms_of_rec.
@@ -1667,7 +1491,7 @@ Lemma rewrite_concrete_recs which l:
 | Some d => [d]
 | None => []
 end =
-match Pattern.filter_map
+match omap
   (fun x : funpred_def =>
 let (b, p) := gen_funpred_def_match x in let
   (p0, _) := p in let (ls, _) := p0 in if which b ls then
@@ -1678,7 +1502,7 @@ None else Some x)
 end.
 Proof.
   simpl.
-  destruct (Pattern.filter_map _ _); simpl; auto.
+  destruct (omap _ _); simpl; auto.
   destruct l0; auto.
 Qed.
 
@@ -1707,7 +1531,7 @@ Proof.
   rewrite concat_rev_single.
   2: {
     rewrite Forall_map. simpl. rewrite Forall_forall.
-    intros x. rewrite in_filter_map_iff. intros [y [Hiny Hx]].
+    intros x. rewrite in_omap_iff. intros [y [Hiny Hx]].
     destruct (gen_funpred_def_match y) as [b1 [[ls vs] e]] eqn : Hdef.
     apply gen_funpred_def_match_eq in Hdef. subst.
     destruct (which b1 ls) eqn : Hwhich; inversion Hx; subst.
@@ -1737,7 +1561,7 @@ Proof.
   rewrite concat_rev_single.
   2: {
     rewrite Forall_map. simpl. rewrite Forall_forall.
-    intros x. rewrite in_filter_map_iff. intros [y [Hiny Hx]].
+    intros x. rewrite in_omap_iff. intros [y [Hiny Hx]].
     destruct (gen_funpred_def_match y) as [b1 [[ls vs] e]] eqn : Hdef.
     apply gen_funpred_def_match_eq in Hdef. subst.
     destruct (which b1 ls) eqn : Hwhich; inversion Hx; subst.
@@ -1762,7 +1586,7 @@ Lemma typesyms_rec_nil which b l:
     (rev (fst (decls_of_def which b l)))) = nil.
 Proof.
   apply concat_nil_Forall. rewrite Forall_map. apply Forall_rev.
-  simpl. rewrite Forall_forall. intros x. rewrite in_filter_map_iff.
+  simpl. rewrite Forall_forall. intros x. rewrite in_omap_iff.
   intros [fd [Hinfd Hx]].
   destruct (gen_funpred_def_match fd) as [b1 [[ls vs] e]] eqn : Hdef.
   apply gen_funpred_def_match_eq in Hdef. subst.
@@ -1813,7 +1637,7 @@ Proof.
   try rewrite get_recfun_defs_predsyms; auto.
   - apply Forall_rev. simpl.
     rewrite Forall_forall. intros x.
-    rewrite in_filter_map_iff. intros [y [Hiny Hx]].
+    rewrite in_omap_iff. intros [y [Hiny Hx]].
     destruct (gen_funpred_def_match y) as [b1 [[ls vs] e]] eqn : Hdef.
     apply gen_funpred_def_match_eq in Hdef. subst.
     destruct (which b1 ls); inversion Hx; subst; simpl; auto.
@@ -2256,7 +2080,7 @@ Proof.
   unfold decl_list_of_def. simpl.
   rewrite rev_app_distr, mut_of_context_app.
   apply app_nil_iff. split.
-  - destruct (Pattern.filter_map _ _) as [|h t]; simpl; auto.
+  - destruct (omap _ _) as [|h t]; simpl; auto.
     destruct t; simpl; auto.
     destruct b; simpl; auto.
   - induction l as [| h t IH]; simpl; auto.
@@ -2345,17 +2169,6 @@ Proof.
   split; intros Hallin x Hin; specialize (Hallin _ Hin);
   destruct (f_is_constr x); auto.
 Qed.
-
-Lemma sublist_strong_forallb {A: Type} (p: A -> bool) eq_dec (l1 l2: list A):
-  sublist_strong eq_dec l1 l2 ->
-  forallb p l2 ->
-  forallb p l1.
-Proof.
-  intros Hsub Hall.
-  apply sublist_strong_in in Hsub.
-  unfold is_true in *.
-  rewrite forallb_forall in Hall |-  *. auto.
-Qed.
   
 (*Prove that the new context is valid*)
 Lemma gen_new_ctx_valid which nonrec gamma:
@@ -2391,7 +2204,7 @@ Proof.
       eapply add_rec_abs_valid; auto. all: auto.
       apply convert_is_constr; auto.
     }
-    destruct (Pattern.filter_map _ l) as [|h t] eqn : Hpat; [simpl; auto|].
+    destruct (omap _ l) as [|h t] eqn : Hpat; [simpl; auto|].
     (*Prove that funsyms are [sublist_strong] of funsyms of l*)
     set (l1:=h :: t) in *.
     assert (Hsublist: sublist_strong funpred_def_eq_dec l1 l).
@@ -2402,7 +2215,7 @@ Proof.
       apply gen_funpred_def_match_eq in Hdef. subst.
       destruct (which b1 ls) eqn : Hwhich.
       - simpl. (*destruct b1; simpl in *; auto.*)
-        destruct (Pattern.filter_map _ _) eqn : Hpat; [simpl; auto|].
+        destruct (omap _ _) eqn : Hpat; [simpl; auto|].
         apply orb_true_iff. right. auto.
       - simpl.
         destruct (funpred_def_eq_dec _ _); simpl; [| auto].
@@ -2419,10 +2232,10 @@ Proof.
       rewrite <- Hpat. simpl. unfold funsyms_of_rec. intros x [Hinx1 Hinx2].
       revert Hinx1 Hinx2.
       rewrite in_omap_iff, in_concat.
-      setoid_rewrite in_filter_map_iff.
+      setoid_rewrite in_omap_iff.
       setoid_rewrite in_map_iff.
       setoid_rewrite <- In_rev.
-      setoid_rewrite in_filter_map_iff.
+      setoid_rewrite in_omap_iff.
       intros [fd1 [[fd2 [Hinfd Hfd]] Hx]].
       intros [fs [[d [Hfs [fd3 [Hinfd3 Hd]]]] Hinx2]];
       destruct fd1; inversion Hx; subst.
@@ -2443,10 +2256,10 @@ Proof.
       rewrite <- Hpat. simpl. unfold predsyms_of_rec. intros x [Hinx1 Hinx2].
       revert Hinx1 Hinx2.
       rewrite in_omap_iff, in_concat.
-      setoid_rewrite in_filter_map_iff.
+      setoid_rewrite in_omap_iff.
       setoid_rewrite in_map_iff.
       setoid_rewrite <- In_rev.
-      setoid_rewrite in_filter_map_iff.
+      setoid_rewrite in_omap_iff.
       intros [fd1 [[fd2 [Hinfd Hfd]] Hx]].
       intros [fs [[d [Hfs [fd3 [Hinfd3 Hd]]]] Hinx2]];
       destruct fd1; inversion Hx; subst.
@@ -2681,19 +2494,19 @@ Proof.
   unfold decl_list_of_def. rewrite rev_app_distr, mutfuns_of_context_app, concat_app.
   apply app_sublist.
   - simpl.
-    assert (Hsubpat: sublist (Pattern.filter_map
+    assert (Hsubpat: sublist (omap
       (fun x : funpred_def =>
     let (b, p) := gen_funpred_def_match x in let (p0, _) :=
       p in let (ls, _) := p0 in if which b ls then None else
     Some x)
       l) l).
     {
-      intros x. rewrite in_filter_map_iff. intros [d [Hind Hx]].
+      intros x. rewrite in_omap_iff. intros [d [Hind Hx]].
       destruct (gen_funpred_def_match d) as [b1 [[ls vs] e]] eqn : Hdef.
       apply gen_funpred_def_match_eq in Hdef. subst.
       destruct (which b1 ls); inversion Hx; subst; auto.
     }
-    destruct (Pattern.filter_map _ l) as [| h t] eqn : Hpat; auto.
+    destruct (omap _ l) as [| h t] eqn : Hpat; auto.
     destruct t as [| h2 t2]; [destruct nonrec|]; auto.
     + simpl. apply sublist_nil_l.
     + simpl. rewrite app_nil_r; auto.
@@ -2756,7 +2569,7 @@ Proof.
   unfold decl_list_of_def. rewrite rev_app_distr, nonrec_of_context_app.
   apply app_nil_iff.
   split.
-  - simpl. destruct (Pattern.filter_map _ _) as [| h [|h1 t1]]; simpl; auto.
+  - simpl. destruct (omap _ _) as [| h [|h1 t1]]; simpl; auto.
   - simpl.
     induction l as [| h t IH]; simpl; auto.
     destruct (gen_funpred_def_match h) as [b1 [[ls vs] e]] eqn : Hdef.
@@ -2851,7 +2664,7 @@ Proof.
   unfold decl_list_of_def.
   rewrite rev_app_distr, indpreds_of_context_app.
   apply app_nil_iff. split.
-  - simpl. destruct (Pattern.filter_map _ _) as [| h1 [|h2 t2]] eqn : Hpat; simpl; auto.
+  - simpl. destruct (omaPp _ _) as [| h1 [|h2 t2]] eqn : Hpat; simpl; auto.
     destruct nonrec; auto.
   - simpl. induction l as [| h t IH]; simpl; auto.
     destruct (gen_funpred_def_match h) as [b1 [[ls vs] e]] eqn : Hdef.

@@ -47,6 +47,17 @@ Proof.
   exfalso. apply H1. rewrite in_map_iff. exists (h1, y); auto.
 Qed.
 
+Lemma get_assoc_list_app {A B: Type} (eq_dec: forall (x y: A), {x = y} + {x <> y}) (l1 l2: list (A * B)) (x: A):
+  get_assoc_list eq_dec (l1 ++ l2) x =
+  match (get_assoc_list eq_dec l1 x) with
+  | Some y => Some y
+  | _ => get_assoc_list eq_dec l2 x
+  end.
+Proof.
+  induction l1 as [| [x1 y1] t1]; simpl; auto.
+  destruct (eq_dec x x1); subst; auto.
+Qed.
+
 (*Replace if element there, do nothing if not*)
 Definition replace_assoc_list_aux {A B: Type} (eq_dec: forall (x y: A), {x = y} + { x <> y}) 
  (l: list (A * B)) (x: A) (f: A -> B -> B) : list (A * B) := 
@@ -790,5 +801,9 @@ Proof.
   }
   apply Nat.le_antisymm; apply Hle1; auto.
 Qed.
+
+Definition amap_change {A B: Type} (eq_dec: forall (x y: A), {x = y} + { x <> y}) 
+  (f: option B -> B) (x: A) (m: amap A B) : amap A B :=
+  amap_replace eq_dec m x (fun _ b => f (Some b)) (f None).
 
 End MapProofs.

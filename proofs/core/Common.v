@@ -4,6 +4,7 @@ Require Export Coq.Arith.PeanoNat.
 Export ListNotations.
 Require Export Coq.Logic.Eqdep_dec.
 Require Export Lia.
+Require Export Coq.Sorting.Permutation.
 Set Bullet Behavior "Strict Subproofs".
 
 (*Reflection*)
@@ -64,6 +65,9 @@ Ltac Forall_forall_all :=
   | H: Forall ?P ?l |- _ => rewrite Forall_forall in H
   | |- Forall ?P ?l => rewrite Forall_forall
   end.
+
+Ltac inv H :=
+  try(intros H); inversion H; subst; clear H.
 
 (** Generally useful definitions, lemmas, and tactics *)
 
@@ -367,6 +371,13 @@ Proof.
   rewrite H4. simpl. rewrite -> IHl1 with(l2:=l2); auto.
 Qed.
 
+Lemma big_union_repeat {B: Type} (f: B -> list A) (x: B) n y:
+  In y (big_union f (repeat x n)) -> In y (f x).
+Proof.
+  induction n; simpl; [contradiction|].
+  rewrite union_elts. intros [Hiny | Hiny]; auto.
+Qed.
+
 (*When the two lists are disjoint, union is append*)
 Lemma union_app_disjoint
   (l1 l2: list A)
@@ -504,6 +515,26 @@ Proof.
   rewrite !null_nil. intros. subst. reflexivity.
 Qed.
 
+Lemma null_app {B: Type} (l1 l2: list B):
+  null (l1 ++ l2) = null l1 && null l2.
+Proof.
+  destruct l1; auto.
+Qed.
+
+Lemma null_concat {B: Type} (l: list (list B)):
+  null (concat l) = forallb null l.
+Proof.
+  induction l; simpl; auto. rewrite null_app, IHl; auto.
+Qed.
+
+Lemma app_nil_iff {A: Type} (l1 l2: list A):
+  l1 ++ l2 = nil <-> l1 = nil /\ l2 = nil.
+Proof.
+  split.
+  - apply app_eq_nil.
+  - intros [Hl1 Hl2]; subst; auto.
+Qed.
+
 (** Lemmas about [remove] **)
 Section Remove.
 
@@ -590,6 +621,27 @@ Proof.
 Qed.
 
 End Remove.
+
+(*NOTE: can't get iff unless injective*)
+Lemma in_map_remove {B C: Type} eq_dec (f: B -> C) l y x:
+  In x (map f l) /\ f y <> x ->
+  In x (map f (remove eq_dec y l)).
+Proof.
+  rewrite !in_map_iff. setoid_rewrite in_remove_iff.
+  intros [[x1 [Hx Hinx1]] Hnot]; subst.
+  exists x1; split_all; auto. intro C1; subst; contradiction.
+Qed.
+
+Lemma in_map_remove_all {B C: Type} (f: B -> C) eq_dec l1 l2 x:
+  In x (map f l2) /\ ~ In x (map f l1) ->
+  In x (map f (remove_all eq_dec l1 l2)).
+Proof.
+  rewrite !in_map_iff. setoid_rewrite <- remove_all_elts.
+  intros [[x1 [Hx Hinx1]] Hnot]; subst.
+  exists x1; split_all; auto. intro C1; subst.
+  apply Hnot. exists x1; auto.
+Qed.
+
 
 (* Equality on Lists *)
 
@@ -800,6 +852,49 @@ Proof.
   intros. apply Hp. rewrite in_combine_iff; auto.
   exists i; split; auto. intros.
   f_equal; apply nth_indep; auto. lia.
+Qed.
+
+Lemma combine_app {A B: Type} (l1 l2: list A) (l3 l4: list B):
+  length l1 = length l3 ->
+  combine (l1 ++ l2) (l3 ++ l4) = combine l1 l3 ++ combine l2 l4.
+Proof.
+  revert l3. induction l1 as [| h1 t1 IH]; simpl; intros [| h3 t3]; simpl; auto; try discriminate.
+  intros Hlen. f_equal. apply IH. lia.
+Qed.
+
+Lemma rev_combine {A B: Type} (l1 : list A) (l2: list B):
+  length l1 = length l2 ->
+  rev (combine l1 l2) = combine (rev l1) (rev l2).
+Proof.
+  revert l2. induction l1 as [|h1 t1 IH]; simpl; auto.
+  intros [| h2 t2] Hlen; simpl in *.
+  - rewrite combine_nil. reflexivity.
+  - rewrite combine_app.
+    + rewrite IH; auto.
+    + rewrite !rev_length; auto.
+Qed.
+
+Lemma in_combine_snd {A B: Type} (l1 : list A) (l2: list B) x:
+  In x (combine l1 l2) ->
+  In (snd x) l2.
+Proof.
+  destruct x as [x y]. apply in_combine_r.
+Qed.
+
+Lemma in_combine_fst {A B: Type} (l1 : list A) (l2: list B) x:
+  In x (combine l1 l2) ->
+  In (fst x) l1.
+Proof.
+  destruct x as [x y]. apply in_combine_l.
+Qed.
+
+Lemma existsb_map_fst_combine {A B: Type} (l: list A) (l2: list B) (f: A -> bool):
+  existsb f (map fst (combine l l2)) ->
+  existsb f l.
+Proof.
+  revert l2. induction l as [|h1 t1]; simpl; auto; intros [| h2 t2]; simpl; auto; [discriminate|].
+  unfold is_true; rewrite !orb_true_iff; intros; destruct_all; auto.
+  rewrite IHt1; eauto.
 Qed.
 
 End CombineLemmas.
@@ -1271,6 +1366,12 @@ Proof.
   - f_equal. apply IHl1; auto.
 Qed.
 
+Lemma ne_list_nonemp {A: Set} (n: ne_list A):
+  exists x, In x (ne_list_to_list n).
+Proof.
+  destruct n as [a | a tl]; exists a; simpl; auto.
+Qed.
+
 Fixpoint in_bool_ne {A: Set} (eq_dec: forall (x y: A), {x = y} + {x <> y})
   (x: A) (l: ne_list A) : bool :=
   match l with
@@ -1352,6 +1453,94 @@ Proof.
   rewrite <- (firstn_skipn n l) at 2; intros.
   apply in_or_app; right; auto.
 Qed.
+
+
+Section Forallb.
+
+Lemma forallb_map {B C: Type} (f: B -> C) (p: C -> bool) (l: list B):
+  forallb p (map f l) = forallb (fun x => p (f x)) l.
+Proof.
+  induction l; simpl; auto. rewrite IHl; auto.
+Qed.
+
+Lemma forallb_false {B: Type} (p: B -> bool) (l: list B):
+  forallb p l = false <-> exists x, In x l /\ negb (p x).
+Proof.
+  induction l; simpl.
+  - split; try discriminate. intros;destruct_all; contradiction.
+  - split.
+    + rewrite andb_false_iff. intros [Hpa | Hall].
+      * exists a. split; auto. rewrite Hpa; auto.
+      * apply IHl in Hall. destruct Hall as [x [Hinx Hx]].
+        exists x. auto.
+    + intros [x [[Hax | Hinx] Hnegb]]; subst; auto.
+      * destruct (p x); auto. discriminate.
+      * apply andb_false_iff. right. apply IHl. exists x; auto.
+Qed.
+
+Lemma forallb_t {B: Type} (l: list B):
+  forallb (fun _ => true) l.
+Proof.
+  induction l; auto.
+Qed.
+
+Lemma forallb_f {B: Type} (l: list B):
+  forallb (fun _ => false) l = null l.
+Proof.
+  induction l; auto.
+Qed.
+
+Lemma forallb_concat {B: Type} (p: B -> bool) (l: list (list B)):
+  forallb p (concat l) = forallb (fun l1 => forallb p l1) l.
+Proof.
+  induction l; simpl; auto. rewrite forallb_app, IHl. auto.
+Qed. 
+
+Lemma forallb_map_true {B C: Type} (f: B -> C) (p: C -> bool) l:
+  (forall x, In x l -> p (f x)) ->
+  forallb p (map f l).
+Proof.
+  induction l; simpl; auto; intros Hin.
+  rewrite Hin; auto.
+Qed. 
+
+Lemma forallb_rev {B: Type} (f: B -> bool) l:
+  forallb f (rev l) = forallb f l.
+Proof.
+  induction l; simpl; auto.
+  rewrite forallb_app; simpl.
+  rewrite IHl, andb_true_r, andb_comm. reflexivity.
+Qed.
+
+Lemma existsb_rev {B: Type} (p: B -> bool) (l: list B):
+  existsb p (rev l) = existsb p l.
+Proof.
+  induction l; simpl; auto.
+  rewrite existsb_app; simpl.
+  rewrite orb_false_r, orb_comm, IHl. reflexivity.
+Qed.
+
+Lemma forallb_ext: forall {B: Type} (f g: B -> bool) (l: list B),
+  (forall x, f x = g x) ->
+  forallb f l = forallb g l.
+Proof.
+  intros. induction l; simpl; auto; congruence.
+Qed.
+
+Lemma existsb_forallb_negb {B: Type} (p: B -> bool) (l: list B):
+  existsb p l = negb (forallb (fun x => negb (p x)) l).
+Proof.
+  induction l as [| h t IH]; simpl; auto.
+  destruct (p h); simpl; auto.
+Qed.
+
+Lemma existsb_map {A B: Type} (f: A -> B) (g: B -> bool) (l: list A):
+  existsb g (map f l) = existsb (fun x => g (f x)) l.
+Proof.
+  induction l; simpl; auto; rewrite IHl; auto.
+Qed.
+
+End Forallb.
 
 Section Map2.
 
@@ -1469,6 +1658,35 @@ Proof.
   destruct l2; auto. simpl. rewrite IHl1; auto.
 Qed.
 
+Lemma map2_app {A B C: Type} (f: A -> B -> C) l1 l2 l3 l4:
+  length l1 = length l3 ->
+  map2 f (l1 ++ l2) (l3 ++ l4) =
+  map2 f l1 l3 ++ map2 f l2 l4.
+Proof.
+  revert l3. induction l1 as [| h1 t1 IH]; simpl;
+  intros [| h2 t2]; try discriminate; auto.
+  simpl. intros Hlen.
+  rewrite IH; auto.
+Qed.
+
+Lemma map2_rev {A B C: Type} (f: A -> B -> C) l1 l2:
+  length l1 = length l2 ->
+  map2 f (rev l1) (rev l2) = rev (map2 f l1 l2).
+Proof.
+  revert l2.
+  induction l1 as [| h1 t1 IH]; intros [| h2 t2]; try discriminate; simpl; auto.
+  intros Hlen.
+  rewrite !map2_app; [| rewrite !rev_length; lia].
+  simpl. f_equal; auto.
+Qed.
+
+Lemma map2_map {A B C D E} (f: A -> B -> C) (g: D -> A) (h: E -> B) l1 l2:
+  map2 f (map g l1) (map h l2) = map2 (fun x y => f (g x) (h y)) l1 l2.
+Proof.
+  revert l2. induction l1 as [| h1 t1 IH]; intros [|h2 t2]; simpl; auto.
+  f_equal; auto.
+Qed.
+
 End Map2.
 
 Section All2.
@@ -1499,7 +1717,145 @@ Proof.
     rewrite Hx. apply H0. auto.
 Qed.
 
+Lemma all2_rev {A B : Type} (f: A -> B -> bool) l1 l2:
+  length l1 = length l2 ->
+  all2 f l1 l2 = all2 f (rev l1) (rev l2).
+Proof.
+  intros Hlen.
+  unfold all2.
+  rewrite map2_rev; auto.
+  rewrite forallb_rev.
+  reflexivity.
+Qed.
+
+Lemma all2_Forall2 {A B: Type} (f: A -> B -> bool) l1 l2:
+  (length l1 =? length l2) && (all2 f l1 l2) <-> Forall2 f l1 l2.
+Proof.
+  revert l2. induction l1 as [|h1 t1]; simpl; intros [| h2 t2]; simpl.
+  - split; auto.
+  - split; try discriminate. intro C; inversion C.
+  - split; [discriminate| intro C; inversion C].
+  - rewrite all2_cons, (andb_comm (f h1 h2)), andb_assoc.
+    unfold is_true in IHt1 |- *.
+    rewrite andb_true_iff, IHt1. split; [intros [Hall Hf]; constructor; auto|
+      intros Hall; inversion Hall; auto].
+Qed.
+
+Lemma all2_map_snd_combine {A B: Type} (f: B -> B -> bool) (l1 l3: list A)
+  (l2 l4: list B):
+  all2 f l2 l4 ->
+  length l1 = length l3 ->
+  all2 f (map snd (combine l1 l2)) (map snd (combine l3 l4)).
+Proof.
+  intros Hall Hlen. generalize dependent l4. revert l2.
+  generalize dependent l3. induction l1 as [| h1 t1 IH]; intros
+  [| h2 t2]; simpl; auto; try discriminate.
+  intros Hlen l2 l4.
+  destruct l2; destruct l4; simpl; auto.
+  rewrite !all2_cons. unfold is_true.
+  rewrite !andb_true_iff; intros [Hf Hall]; rewrite Hf; split; auto.
+  apply IH; auto.
+Qed.
+
+Lemma all2_map {A B C D} (f: A -> B -> bool) (g: C -> A) (h: D -> B) l1 l2:
+  all2 f (map g l1) (map h l2) = all2 (fun x y => f (g x) (h y)) l1 l2.
+Proof.
+  unfold all2. rewrite map2_map. reflexivity.
+Qed.
+
 End All2.
+
+Section Forall2.
+
+(*Prop version of all2, with length condition*)
+
+Lemma Forall2_inv_head {A B: Type} {R: A -> B -> Prop} {a: A} {la: list A}
+  {b1: B} {lb: list B} (Hall: Forall2 R (a :: la) (b1 :: lb)) : R a b1.
+Proof.
+  inversion Hall; auto.
+Qed.
+
+Lemma Forall2_inv_tail {A B: Type} {R: A -> B -> Prop} {a: A} {la: list A}
+  {b1: B} {lb: list B} (Hall: Forall2 R (a :: la) (b1 :: lb)) : Forall2 R la lb.
+Proof.
+  inversion Hall; auto.
+Qed.
+
+Lemma Forall2_rev {A B: Type} {R: A -> B -> Prop} {l1 : list A} {l2: list B}:
+  Forall2 R l1 l2 ->
+  Forall2 R (rev l1) (rev l2).
+Proof.
+  intros Hall. induction Hall; simpl; auto.
+  apply Forall2_app; auto.
+Qed.
+
+Lemma Forall2_rev_inv {A B: Type} {R: A -> B -> Prop} {l1 : list A} {l2: list B}:
+  Forall2 R (rev l1) (rev l2) ->
+  Forall2 R l1 l2.
+Proof.
+  intros Hall.
+  rewrite <- (rev_involutive l1), <- (rev_involutive l2).
+  apply Forall2_rev; auto.
+Qed.
+
+Lemma Forall2_app_inv {A B: Type} {P: A -> B -> Prop} {l1 l2 l3 l4}:
+  Forall2 P (l1 ++ l2) (l3 ++ l4) ->
+  length l1 = length l3 ->
+  Forall2 P l1 l3 /\ Forall2 P l2 l4.
+Proof.
+  generalize dependent l3. induction l1 as [| h1 t1 IH]; intros [| h3 t3]; simpl;
+  intros Hall Hlen; try discriminate; auto.
+  inversion Hall as [|? ? ? ? Hp Hallt]; subst.
+  specialize (IH t3 Hallt ltac:(lia)).
+  destruct_all; split; auto.
+Qed.
+
+Lemma Forall2_combine {A B: Type} (P: A -> B -> Prop) (l1 : list A) (l2: list B):
+  Forall2 P l1 l2 <-> length l1 = length l2 /\ Forall (fun x => P (fst x) (snd x)) (combine l1 l2).
+Proof.
+  split.
+  - intros Hall. induction Hall; simpl; auto.
+    destruct IHHall as [Hlen IHall].
+    split; auto.
+  - revert l2. induction l1 as [| h1 t1 IH]; intros [| h2 t2]; simpl; intros [Hlen Hall]; try discriminate; auto.
+    inversion Hall; subst.
+    constructor; auto.
+Qed.
+
+Lemma Forall2_nth {B C: Type} {P: B -> C -> Prop} (l1: list B) (l2: list C):
+  Forall2 P l1 l2 <-> (length l1 = length l2 /\ forall i d1 d2, i < length l1 ->
+    P (nth i l1 d1) (nth i l2 d2)).
+Proof.
+  rewrite Forall2_combine. split; intros [Hlen Hith]; split; auto.
+  - rewrite Forall_nth in Hith.
+    rewrite combine_length, Hlen, Nat.min_id in Hith.
+    intros i d1 d2 Hi.
+    rewrite Hlen in Hi.
+    specialize (Hith i (d1, d2) Hi).
+    rewrite combine_nth in Hith; auto.
+  - apply Forall_nth.
+    intros i [d1 d2]. rewrite combine_length, Hlen, Nat.min_id, combine_nth; auto.
+    intros Hi. apply Hith; lia.
+Qed.
+
+Lemma Forall_app_snd {A: Type} {P: A -> Prop} {l1 l2: list A}:
+  Forall P (l1 ++ l2) ->
+  Forall P l2.
+Proof.
+  rewrite Forall_app; intros [_ Hp]; auto.
+Qed.
+
+End Forall2.
+
+Section Map.
+
+Lemma map_const {B C: Type} (d: C) (l: list B):
+  map (fun _ => d) l = repeat d (length l).
+Proof.
+  induction l; simpl; auto. rewrite IHl. reflexivity.
+Qed.
+
+End Map.
 
 Section Props.
 
@@ -1798,7 +2154,94 @@ Proof.
   rewrite orb_comm; apply IHl.
 Qed.
 
+Lemma existsb_eq' {A B: Type} {f1 : A -> bool} {f2: B -> bool} l1 l2:
+  Forall2 (fun x y => f1 x = f2 y) l1 l2 ->
+  existsb f1 l1 = existsb f2 l2.
+Proof.
+  revert l2. induction l1 as [|h1 t1 IH]; intros [| h2 t2]; simpl; auto;
+  intros Hall; inversion Hall; subst.
+  rewrite (IH t2); f_equal; auto.
+Qed. 
+
 End Existsb.
+
+(*Options*)
+Section Option.
+
+Definition option_bind {A B: Type} (o: option A) (f: A -> option B) : option B :=
+  match o with
+  | Some x => f x
+  | None => None
+  end.
+
+Lemma option_bind_id {B: Type} (o: option B):
+  option_bind o (fun x => Some x) = o.
+Proof.
+  destruct o; auto.
+Qed.
+
+Lemma option_bind_none {B C: Type} (o: option B):
+  @option_bind B C o (fun _ => None) = None.
+Proof.
+  destruct o; auto.
+Qed.
+
+Lemma option_map_comp {B C D: Type} (f: B -> C) (g: C -> D) (o: option B):
+  option_map g (option_map f o) =
+  option_map (fun x => g (f x)) o.
+Proof.
+  destruct o; auto.
+Qed.
+
+Lemma option_bind_ext {B C: Type} (f1 f2: B -> option C) (o: option B):
+  (forall x, f1 x = f2 x) ->
+  option_bind o f1 = option_bind o f2.
+Proof.
+  intros Hf. destruct o; simpl; auto.
+Qed.
+
+Lemma option_map_bind {B C D: Type} (f: B -> C) (o: option D) (g: D -> option B):
+  option_map f (option_bind o g) =
+  option_bind o (fun d => option_map f (g d)).
+Proof.
+  destruct o; simpl; auto.
+Qed.
+
+Lemma option_bind_map {B C: Type} (g: B -> C) (o: option B):
+  option_bind o (fun x => Some (g x)) =
+  option_map g o.
+Proof.
+  destruct o; auto.
+Qed.
+
+Lemma option_map_some {A B: Type} (f: A -> B) (o: option A) y:
+  option_map f o = Some y ->
+  exists z, o = Some z /\ y = f z.
+Proof.
+  destruct o; simpl; try discriminate.
+  inv Hsome. exists a; auto.
+Qed.
+
+Lemma option_bind_some {A B: Type} (f: A -> option B) (o: option A) y:
+  option_bind o f = Some y ->
+  exists z, o = Some z /\ f z = Some y.
+Proof. destruct o; simpl; [|discriminate]. intros Ha. exists a. auto.
+Qed.
+
+(*Technically works for anything associative, can change*)
+Lemma option_bind_appcomp {A: Type} (o1 o2: option (list A)) (m: list A):
+  option_bind (option_bind o1 (fun x => option_bind o2 (fun y => Some (x ++ y)))) (fun x => Some (m ++ x)) =
+  option_bind (option_bind o1 (fun x => Some (m ++ x))) (fun y => option_bind o2 (fun x => Some (y ++ x))).
+Proof.
+  destruct o1; destruct o2; simpl; auto.
+  rewrite app_assoc. reflexivity.
+Qed.
+
+Definition isSome {B: Type} (o: option B) : bool :=
+  match o with | Some _ => true | _ => false end.
+
+
+End Option.
 
 Section OMap.
 
@@ -1810,21 +2253,65 @@ fold_right (fun x acc =>
   | Some y => y :: acc
   end) nil l.
 
+Lemma omap_app {A B: Type} (f: A -> option B) (l1 l2: list A):
+  omap f (l1 ++ l2) = omap f l1 ++ omap f l2.
+Proof.
+  induction l1 as [| h t IH]; simpl; auto.
+  destruct (f h); auto. rewrite IH. reflexivity.
+Qed.
+
+Lemma omap_rev {A B: Type} (f: A -> option B) (l: list A) :
+  omap f (rev l) = rev (omap f l).
+Proof.
+  induction l as [| h t IH]; simpl; auto.
+  rewrite omap_app, IH; simpl.
+  destruct (f h); simpl; auto. rewrite app_nil_r. reflexivity.
+Qed.
+
+Lemma omap_map {A B C: Type} (f: A -> B) (g: B -> option C) (l: list A) :
+  omap g (map f l) = omap (fun x => g (f x)) l.
+Proof.
+  induction l as [| h t IH]; simpl; auto. destruct (g (f h)); rewrite IH; auto.
+Qed.
+
+Lemma omap_nil {A B: Type} (f: A -> option B) (l: list A):
+  omap f l = nil <-> forall x, In x l -> f x = None.
+Proof.
+  induction l as [| h t IH]; simpl; auto.
+  - split; auto. contradiction.
+  - split. 
+    + destruct (f h) eqn : Hfh; [discriminate|].
+      rewrite IH. intros Hall. intros; destruct_all; subst; auto.
+    + intros Hnone. rewrite (Hnone h); auto. apply IH; auto.
+Qed.
+
+Lemma omap_in {A B: Type} (f: A -> option B) (l: list A) (x: B):
+  In x (omap f l) ->
+  exists y, In y l /\ f y = Some x.
+Proof.
+  induction l as [| h t IH ]; simpl; [contradiction|].
+  destruct (f h) as [z|] eqn : Hfh.
+  - simpl. intros [Hzx | Hinx]; subst; eauto.
+    apply IH in Hinx. destruct_all; eauto.
+  - intros Hin. apply IH in Hin; destruct_all; eauto.
+Qed.
+
+Lemma in_omap {A B: Type} (f: A -> option B) (l: list A) (x: B) (y: A):
+  In y l ->
+  f y = Some x ->
+  In x (omap f l).
+Proof.
+  induction l as [| h t IH ]; simpl; [contradiction|].
+  intros [Hhy | Hiny] Hfy; subst.
+  - rewrite Hfy. simpl; auto.
+  - destruct (f h); simpl; auto.
+Qed.
+
 Lemma in_omap_iff {A B: Type} (f: A -> option B) (l: list A) (y: B):
   In y (omap f l) <-> exists x, In x l /\ f x = Some y.
 Proof.
-  split; intros; induction l; simpl in *.
-  - destruct H.
-  - destruct (f a) eqn : Hfa.
-    + simpl in H. destruct H as [Hby | ]; subst; auto.
-      * exists a; auto.
-      * destruct (IHl H) as [x [Hinx Hfx]]; exists x; auto.
-    + destruct (IHl H) as [x [Hinx Hfx]]; exists x; auto.
-  - destruct H as [_ [[] _]].
-  - destruct H as [x [[Hax | Hinx] Hfx]]; subst.
-    + rewrite Hfx. simpl; auto.
-    + specialize (IHl (ex_intro _ x (conj Hinx Hfx))).
-      destruct (f a); simpl; auto.
+  split. apply omap_in.
+  intros [z [Hiny Hfy]]. apply (in_omap _ _ _ _ Hiny Hfy).
 Qed.
 
 End OMap.
@@ -1920,7 +2407,25 @@ Proof.
   apply (Hd x); split; auto.
 Qed.
 
+Lemma disj_sublist2(l1 l2 l3: list A):
+  sublist l1 l2 ->
+  disj l2 l3 ->
+  disj l1 l3.
+Proof.
+  unfold sublist, disj. intros Hsub Hdisj x [Hinx1 Hinx2].
+  apply (Hdisj x); auto.
+Qed.
+
 End Disj.
+
+Lemma disj_map_inv {B C: Type} (f: B -> C) (l1 l2: list B):
+  disj (map f l1) (map f l2) ->
+  disj l1 l2.
+Proof.
+  unfold disj. intros Hdisj x [Hinx1 Hinx2].
+  apply (Hdisj (f x)); rewrite !in_map_iff; split; exists x; auto.
+Qed.
+
 (*Another notion - disjointness of mapped lists*)
 Section DisjMap.
 
@@ -2011,6 +2516,270 @@ Proof.
 Defined.
 
 End Tup.
+
+Section Sum.
+
+Definition sum (l: list nat) : nat :=
+  fold_right (fun x y => x + y) 0 l.
+
+Lemma sum_app l1 l2:
+  sum (l1 ++ l2) = sum l1 + sum l2.
+Proof.
+  induction l1; simpl; auto. lia.
+Qed.
+
+Lemma sum_concat {B: Type} (f: B -> nat) (l: list (list B)) :
+  sum (map f (concat l)) = sum (map (fun l1 => sum (map f l1)) l).
+Proof.
+  induction l; simpl; auto.
+  rewrite map_app, sum_app, IHl. auto.
+Qed.
+
+Lemma sum_map_sum {B: Type} (f g: B -> nat) (l: list B):
+  sum (map (fun (x: B) => f x + g x) l) =
+  sum (map f l) + sum (map g l).
+Proof.
+  induction l; simpl; auto.
+  rewrite IHl; auto. lia.
+Qed.
+
+Lemma sum_lt {B: Type} (f g: B -> nat) (l: list B)
+  (Hlt: forall x, In x l -> f x <= g x):
+  sum (map f l) <= sum (map g l).
+Proof.
+  induction l; simpl in *; auto; try lia.
+  apply Nat.add_le_mono; auto.
+Qed.
+
+Lemma sum_repeat n m:
+  sum (repeat n m) = m * n.
+Proof.
+  induction m; simpl; lia.
+Qed.
+
+Lemma sum_map_S {B: Type} (f: B -> nat) (l: list B):
+              sum (map (fun x => S (f x)) l) = length l + sum(map f l).
+Proof.
+  induction l; simpl; auto. rewrite IHl; auto. lia.
+Qed.
+
+End Sum.
+
+Section Concat.
+
+
+Lemma length_concat_mult {B: Type} n m (l: list (list B)):
+  length l = n ->
+  Forall (fun x => length x = m) l ->
+  length (concat l) = n * m.
+Proof.
+  revert n m.
+  induction l as [| h t]; simpl; auto.
+  - intros; subst. auto.
+  - intros n m Hn Hall. subst. rewrite app_length.
+    rewrite (IHt (length t) m); auto; [| inversion Hall; auto].
+    replace (length h) with m by (inversion Hall; auto). lia.
+Qed.
+
+Lemma length_concat {A: Type} (l: list (list A)):
+  length (concat l) = sum (map (@length A) l).
+Proof.
+  induction l; simpl; auto.
+  rewrite app_length, IHl; auto.
+Qed.
+
+Lemma concat_map_singleton {B: Type} (l: list B):
+  concat (map (fun x => [[x]]) l) = (map (fun x => [x]) l).
+Proof.
+  induction l; simpl; auto. rewrite IHl; auto.
+Qed.
+
+Lemma in_concat_repeat {B: Type} m (l: list B) (x: B):
+  0 < m ->
+  In x (concat (repeat l m)) <-> In x l.
+Proof.
+  induction m; simpl; auto; try lia.
+  rewrite in_app_iff.
+  intros Hm.
+  destruct m; simpl in *; auto.
+  - split; intros; destruct_all; auto. contradiction.
+  - rewrite IHm; try lia. split; intros; destruct_all; auto.
+Qed.
+
+Lemma perm_concat_map_app {B C: Type} (l: list B) (f g: B -> list C):
+  Permutation (concat (map (fun x => f x ++ g x) l))
+    (concat (map f l) ++ concat (map g l)).
+Proof.
+  induction l as [| h t IH]; simpl; auto.
+  eapply Permutation_trans.
+  2: {
+    rewrite app_assoc. apply Permutation_app_tail.
+    rewrite <- app_assoc.
+    eapply Permutation_trans. 2:
+    apply Permutation_app_swap_app.
+    apply Permutation_app_comm.
+  }
+  rewrite <- (app_assoc _ (concat (map f t))). apply Permutation_app_head.
+  auto.
+Qed.
+
+Lemma concat_rev_single {A: Type} (l: list (list A))
+  (Hall: Forall (fun x => length x <= 1) l):
+  concat (rev l) = rev(concat l).
+Proof.
+  induction l as [| h t IH]; simpl; auto.
+  inversion Hall; subst.
+  rewrite concat_app, rev_app_distr; simpl.
+  rewrite app_nil_r.
+  rewrite IH; auto. f_equal.
+  destruct h as [| h1 t1]; simpl; auto.
+  simpl in *. destruct t1; auto; simpl in *; lia.
+Qed.
+
+End Concat.
+
+Section Perm.
+
+Lemma perm_in_iff {B: Type} {l1 l2: list B} (x: B):
+  Permutation l1 l2 ->
+  In x l1 <-> In x l2.
+Proof.
+  intros Hperm. split; intros Hin.
+  - apply (Permutation_in x) in Hperm; auto.
+  - apply Permutation_sym in Hperm. apply (Permutation_in x) in Hperm; auto.
+Qed.
+
+Lemma perm_concat_rev {B: Type} (l: list (list B)):
+  Permutation (concat (rev l)) (concat l).
+Proof.
+  induction l as [| h t IH]; simpl; auto.
+  rewrite concat_app. simpl.
+  rewrite app_nil_r.
+  eapply Permutation_trans. apply Permutation_app_comm.
+  apply Permutation_app_head; auto.
+Qed.
+
+End Perm.
+
+Section FoldOpt.
+
+Fixpoint fold_left_opt {B C: Type} (f: B -> C -> option B) (l: list C) (base: B) : option B :=
+  match l with
+  | nil => Some base
+  | x :: xs =>
+    match (f base x) with
+    | None => None
+    | Some y => fold_left_opt f xs y
+    end
+  end.
+
+Lemma fold_left_opt_app {B C: Type} (f: B -> C -> option B) (l1 l2: list C) (i: B):
+  fold_left_opt f (l1 ++ l2) i =
+  option_bind (fold_left_opt f l1 i) (fold_left_opt f l2).
+Proof.
+  revert i.
+  induction l1 as [| h1 t1 IH]; simpl; auto; intros i.
+  destruct (f i h1); simpl; auto.
+Qed.
+
+
+(*foldr is easier for induction many times*)
+Fixpoint fold_right_opt {B C: Type} (f: B -> C -> option C) (l: list B) (base: C) : option C :=
+  match l with
+  | nil => Some base
+  | x :: xs => option_bind (fold_right_opt f xs base) (fun y => f x y)
+  end.
+
+Lemma fold_left_right_opt {B C: Type} (f: C -> B -> option C) (l: list B) (base: C) :
+  fold_left_opt f l base = fold_right_opt (fun x y => f y x) (rev l) base.
+Proof.
+  (*Easier to prove the other way*)
+  rewrite <- (rev_involutive l) at 1.
+  revert base.
+  induction (rev l) as [| h t IH]; simpl; auto; intros base.
+  rewrite fold_left_opt_app.
+  rewrite IH. simpl.
+  apply option_bind_ext.
+  intros x. destruct (f x h); auto.
+Qed.
+
+Lemma fold_left_opt_none {B C: Type} (f: B -> C -> option B) (l: list C) (base: B) :
+  fold_left_opt f l base = None <->
+  exists l1 x l2 y, l = l1 ++ x :: l2 /\ (fold_left_opt f l1 base)= Some y /\ f y x  = None.
+Proof.
+  revert base. induction l as [| h t IH]; simpl; intros; auto.
+  - split; try discriminate.
+    intros [l1 [x [l2 [y [Hl _]]]]]. destruct l1; inversion Hl.
+  - destruct (f base h) eqn : Hf.
+    + rewrite IH. split; intros [l1 [x [l2 [y [Hl [Hfold Hf']]]]]]; subst.
+      * exists (h :: l1). exists x. exists l2. exists y. split_all; auto.
+        simpl. rewrite Hf. auto.
+      * destruct l1 as [| h1 t1].
+        -- simpl in *. inversion Hfold; subst.
+          inversion Hl; subst. rewrite Hf' in Hf. discriminate.
+        -- inversion Hl; subst.
+          simpl in Hfold. rewrite Hf in Hfold. 
+          exists t1. exists x. exists l2. exists y. split_all; auto.
+    + split; auto. intros _. exists nil. exists h. exists t.
+      exists base. split_all; auto.
+Qed.
+
+Definition fold_left_opt_cons {B C D: Type} (g: C -> option D) (h: C -> B) base l y: 
+  fold_left_opt (fun acc x =>
+    match (g x) with
+    | Some v => Some ((h x, v) :: acc)
+    | None => None
+    end) l base = Some y ->
+  rev (map (fun x => (h x, g x)) l) ++ (map (fun x => (fst x, Some (snd x))) base) =
+  map (fun x => (fst x, Some (snd x))) y.
+Proof.
+  revert base. revert y. induction l as [| h1 t1 IH]; simpl.
+  - intros y base. inv Hbase. reflexivity.
+  - intros y base.
+    destruct (g h1) as [v1 |]; [|discriminate].
+    simpl. intros Hopt.
+    apply IH in Hopt.
+    rewrite <- Hopt. simpl.
+    rewrite <- app_assoc. simpl. reflexivity.
+Qed.
+
+(*Very annoying, but we need to slightly change the function so that we can use it*)
+Lemma fold_left_opt_change_f {B C: Type} (f1 f2: B -> C -> option B) (l: list C) (x: B):
+  (forall b c, f1 b c = f2 b c) ->
+  fold_left_opt f1 l x = fold_left_opt f2 l x.
+Proof.
+  intros Hext.
+  revert x. induction l; simpl; auto.
+  intros x. rewrite Hext. destruct (f2 x a); auto.
+Qed.
+
+End FoldOpt.
+
+(*Other stuff:*)
+
+Section Rev.
+
+Lemma rev_nth1 {A: Type} (l: list A) (d: A) (n: nat):
+  n < length l ->
+  nth n l d = nth (length l - S n) (rev l) d.
+Proof.
+  intros Hn.
+  rewrite <- (rev_involutive l) at 1.
+  rewrite rev_nth; rewrite rev_length; auto.
+Qed.
+
+Lemma rev_inj {A: Type} (l1 l2: list A):
+  rev l1 = rev l2 ->
+  l1 = l2.
+Proof.
+  intros Hrev.
+  rewrite <- (rev_involutive l1), <- (rev_involutive l2). rewrite Hrev; auto.
+Qed.
+
+End Rev.
+
+
+
 
 (*Tactics*)
 
@@ -2104,16 +2873,6 @@ Ltac in_tac :=
   | |- In ?x (?l1 ++ ?l2) => rewrite in_app_iff
   | |- In ?x ?l1 \/ In ?x ?l2 => solve[left; in_tac] + solve[right; in_tac]
   end; auto.
-
-Definition sum (l: list nat) : nat :=
-  fold_right (fun x y => x + y) 0 l.
-
-Lemma length_concat {A: Type} (l: list (list A)):
-  length (concat l) = sum (map (@length A) l).
-Proof.
-  induction l; simpl; auto.
-  rewrite app_length, IHl; auto.
-Qed.
 
 Ltac list_tac :=
   repeat(
@@ -2244,17 +3003,16 @@ Ltac case_match_goal :=
           let Hp := fresh "Hmatch" in 
           destruct p eqn: Hp end; auto.
 
-Ltac prove_hyp H :=
-  match goal with
-  | H: ?P -> ?Q |- _ => let N := fresh in assert (N: P); [|specialize (H N); clear N]
-  end.
 
-Ltac prove_hyps n H :=
-  match constr:(n) with
-  | O => idtac
-  | (S ?m) => prove_hyp H; [|prove_hyps m H]
-  end.
+Ltac forward_gen H tac :=
+        match type of H with
+        | ?X -> _ => let H' := fresh in assert (H':X) ; [tac|specialize (H H'); clear H']
+        end.
 
+Tactic Notation "forward" constr(H) := forward_gen H ltac:(idtac).
+Tactic Notation "forward" constr(H) "by" tactic(tac) := forward_gen H tac.
+
+Ltac prove_hyp H := forward H.
 
 (*Nodup, map, and union*)
 Section NoDupMapUnion.
@@ -2378,6 +3136,95 @@ Proof.
 Qed.
 
 End NoDupMapUnion.
+
+Section MoreUnion.
+
+Lemma big_union_app {B C: Type} (eq_dec: forall (x y: C), {x = y} + {x <> y})
+  (f: B -> list C) (l1 l2: list B):
+  forall x, In x (big_union eq_dec f (l1 ++ l2)) <-> In x (union eq_dec (big_union eq_dec f l1) (big_union eq_dec f l2)).
+Proof. 
+  intros x. simpl_set. setoid_rewrite in_app_iff.
+  split; intros; destruct_all; eauto.
+Qed.
+
+(*Prevent expansion under simpl*)
+Lemma big_union_cons {A B: Type} (eq_dec: forall x y: A, {x = y} + {x <> y})
+  (f: B -> list A) (y: B) (l: list B):
+  big_union eq_dec f (y :: l) = union eq_dec (f y) (big_union eq_dec f l).
+Proof. reflexivity. Qed.
+
+Lemma big_union_rev {B C: Type} eq_dec (f: B -> list C) (l: list B) x:
+  In x (big_union eq_dec f (rev l)) <-> In x (big_union eq_dec f l).
+Proof.
+  induction l; simpl; [reflexivity|].
+  rewrite big_union_app. simpl_set_small. simpl. split; intros Hin.
+  - destruct Hin as [Hin | [Hin | []]]; auto; apply IHl in Hin; auto.
+  - destruct Hin as [Hin | Hin]; auto; apply IHl in Hin; auto.
+Qed.
+
+
+Lemma in_map_big_union_app {B C D: Type} (f: B -> list C) (g: C -> D) eq_dec l1 l2 x:
+  In x (map g (big_union eq_dec f (l1 ++ l2))) <->
+  In x (map g (big_union eq_dec f l1)) \/ In x (map g (big_union eq_dec f l2)).
+Proof.
+  rewrite !in_map_iff. setoid_rewrite big_union_app. setoid_rewrite union_elts.
+  split; intros; destruct_all; eauto.
+Qed.
+
+Lemma in_map_big_union_rev {B C D: Type} (f: B -> list C) (g: C -> D) eq_dec l x:
+  In x (map g (big_union eq_dec f (rev l))) <->
+  In x (map g (big_union eq_dec f l)).
+Proof.
+  rewrite !in_map_iff. setoid_rewrite big_union_rev. reflexivity.
+Qed.
+
+Lemma in_map_big_union {B C D: Type} (f: B -> list C) (g: C -> D)  eq_dec eq_dec1 l x:
+  In x (map g (big_union eq_dec f l)) <->
+  In x (big_union eq_dec1 (fun x => map g (f x)) l).
+Proof.
+  rewrite in_map_iff. simpl_set.
+  split.
+  - intros [y [Hx Hiny]]; subst. simpl_set.
+    destruct Hiny as [z [Hinz Hiny]].
+    exists z. rewrite in_map_iff. eauto.
+  - intros [y [Hiny Hinx]]. rewrite in_map_iff in Hinx.
+    destruct Hinx as [z [Hx Hinz]]; subst.
+    exists z. simpl_set. eauto.
+Qed.
+
+Lemma in_map_union {B C: Type} (f: B -> C) eq_dec l1 l2 x:
+  In x (map f (union eq_dec l1 l2)) <->
+  In x (map f l1) \/ In x (map f l2).
+Proof.
+  rewrite !in_map_iff. setoid_rewrite union_elts. split; intros; destruct_all; eauto.
+Qed.
+
+End MoreUnion.
+
+Section OtherTODO.
+
+(*OTHER (TODO where to put)*)
+
+Lemma hd_error_null_iff {A: Type} (l: list A):
+  hd_error l = None <-> l = nil.
+Proof.
+  destruct l; simpl; split; auto; discriminate.
+Qed.
+
+Lemma orb_impl_l (b b1 b2: bool):
+  (b1 -> b2) ->
+  (b || b1 -> b || b2).
+Proof.
+  destruct b; simpl; auto.
+Qed.
+
+Lemma orb_congr b1 b2 b3 b4:
+  b1 = b3 ->
+  b2 = b4 ->
+  b1 || b2 = b3 || b4.
+Proof. intros; subst; reflexivity. Qed.
+
+End OtherTODO.
 
 (*More results about sublist*)
 Section Sublist.
@@ -2523,7 +3370,183 @@ Proof.
   unfold sublist; intros; simpl_set; destruct_all; auto.
 Qed.
 
+Lemma sublist_iff_l {A: Type} (l1 l2 l3: list A):
+  (forall x, In x l1 <-> In x l2) ->
+  sublist l1 l3 ->
+  sublist l2 l3.
+Proof.
+  intros Heq Hsub. intros x Hinx.
+  rewrite <- Heq in Hinx.
+  apply Hsub; auto.
+Qed.
+
+Lemma sublist_nil_l {A: Type} (l: list A):
+  sublist nil l.
+Proof.
+  intros x. contradiction.
+Qed.
+
+Lemma sublist_cons_l {A: Type} x (l1 l2: list A):
+  sublist l1 l2 ->
+  sublist (x :: l1) (x :: l2).
+Proof.
+  intros Hsub y; simpl.
+  intros [Hxy | Hiny]; subst; auto.
+Qed.
+
+Lemma sublist_cons {A: Type} (l1 l2 : list A) x:
+  sublist l1 l2 ->
+  sublist l1 (x :: l2).
+Proof.
+  unfold sublist. simpl. intros. right; auto.
+Qed.
+
 End Sublist.
+
+(*This time,we care about order and duplicates*)
+Section SublistStrong.
+
+Fixpoint sublist_strong {A: Type} (eq_dec: forall x y, {x = y} + {x <> y}) (l1 l2: list A): bool :=
+  match l1, l2 with
+  | nil, _ => true
+  | x1 :: t1, x2 :: t2 => (eq_dec x1 x2 && sublist_strong eq_dec t1 t2) || sublist_strong eq_dec l1 t2
+  | _, nil => false
+  end.
+
+Lemma sublist_strong_in {A: Type} eq_dec (l1 l2: list A):
+  sublist_strong eq_dec l1 l2 ->
+  sublist l1 l2.
+Proof.
+  revert l1. unfold sublist. induction l2 as [| h2 t2 IH]; simpl; intros [| h1 t1]; auto;
+  try contradiction; try discriminate.
+  intros Hsub x [Hx | Hinx]; subst; bool_hyps;
+  destruct Hsub as [Hsub1 | Hsub2];
+  bool_hyps; subst; auto.
+  - destruct (eq_dec x h2); subst; auto. discriminate.
+  - right. apply (IH _ Hsub2 x); simpl; auto.
+  - destruct (eq_dec h1 h2); subst; auto; [|discriminate]. right.
+    apply (IH t1 H0 x); auto.
+  - right. apply (IH _ Hsub2 x); simpl; auto.
+Qed.
+
+Lemma sublist_strong_nodup {A: Type} eq_dec (l1 l2: list A):
+  sublist_strong eq_dec l1 l2 ->
+  NoDup l2 ->
+  NoDup l1.
+Proof.
+  revert l1. induction l2 as [| h2 t2 IH]; simpl; intros [| h1 t1]; auto; try discriminate;
+  [constructor|]. intros Hsub Hnodup.
+  inversion Hnodup; subst.
+  apply orb_true_iff in Hsub.
+  destruct Hsub as [Hsub | Hsub].
+  - apply andb_true_iff in Hsub. destruct Hsub as [Heq Hsub]. destruct (eq_dec h1 h2); [subst| discriminate].
+    constructor; auto. intros Hin. apply (sublist_strong_in _ _ _ Hsub) in Hin. contradiction.
+  - apply (IH _ Hsub); auto.
+Qed.
+
+Lemma sublist_strong_app {A: Type} eq_dec (l1 l2 l3 l4: list A):
+  sublist_strong eq_dec l1 l2 ->
+  sublist_strong eq_dec l3 l4 ->
+  sublist_strong eq_dec (l1 ++ l3) (l2 ++ l4).
+Proof.
+  revert l1 l3 l4. induction l2 as [| x2 t2 IH]; simpl;
+  intros [| x1 t1] l3 l4; simpl; auto; try discriminate.
+  - intros _ Hsub.
+    destruct l3 as [| x3 t3]; auto.
+    apply orb_true_iff. right. apply (IH nil); auto. destruct t2; auto.
+  - intros Hsub1 Hsub2. apply orb_true_iff in Hsub1. apply orb_true_iff.
+    destruct Hsub1 as [Hsub1 | Hsub1].
+    + apply andb_true_iff in Hsub1. destruct Hsub1 as [Heq Hsub1].
+      destruct (eq_dec x1 x2); [subst | discriminate]. simpl.
+      left. apply IH; auto.
+    + right. apply (IH (x1 :: t1)); auto.
+Qed.
+
+Lemma sublist_strong_nil {A: Type} eq_dec (l: list A):
+  sublist_strong eq_dec nil l.
+Proof. destruct l; auto. Qed.
+
+Lemma sublist_strong_refl {A: Type} eq_dec (l: list A):
+  sublist_strong eq_dec l l.
+Proof.
+  induction l as [| h t IH]; auto; simpl.
+  apply orb_true_iff. left. apply andb_true_iff. split; auto.
+  destruct (eq_dec h h); auto.
+Qed.
+
+Lemma sublist_strong_rev {A: Type} eq_dec (l1 l2: list A):
+  sublist_strong eq_dec l1 l2 ->
+  sublist_strong eq_dec (rev l1) (rev l2).
+Proof.
+  revert l1. induction l2 as [| x2 t2 IH]; intros [|x1 t1]; simpl; auto;
+  try discriminate.
+  - intros. apply sublist_strong_nil.
+  - intros Hsub. apply orb_true_iff in Hsub.
+    destruct Hsub as [Hsub | Hsub].
+    + apply andb_true_iff in Hsub.
+      destruct Hsub as [Heq Hsub].
+      destruct (eq_dec x1 x2); [subst| discriminate].
+      apply sublist_strong_app; auto.
+      apply sublist_strong_refl.
+    + apply IH in Hsub.
+      simpl in Hsub.
+      pose proof (sublist_strong_app eq_dec (rev t1 ++ [x1]) (rev t2) nil  [x2] Hsub
+        (sublist_strong_nil eq_dec _)) as Hsubapp.
+      rewrite app_nil_r in Hsubapp. apply Hsubapp.
+Qed.
+
+
+Lemma sublist_strong_omap {A B: Type} (f: A -> option B) eq_dec1 eq_dec2 (l1 l2: list A):
+  sublist_strong eq_dec1 l1 l2 ->
+  sublist_strong eq_dec2 (omap f l1) (omap f l2).
+Proof.
+  revert l1. induction l2 as [| h2 t2 IH]; intros [| h1 t1]; simpl; auto;
+  try discriminate.
+  - intros _. apply sublist_strong_nil.
+  - intros Hsub. apply orb_true_iff in Hsub. destruct Hsub as [Hsub | Hsub].
+    + apply andb_true_iff in Hsub. destruct Hsub as [Heq Hsub].
+      destruct (eq_dec1 h1 h2); subst; [|discriminate].
+      apply IH in Hsub. destruct (f h2); simpl; auto.
+      destruct (eq_dec2 b b); auto. rewrite Hsub; auto.
+    + apply IH in Hsub. simpl in Hsub.
+      destruct (f h2); auto.
+      simpl. destruct (match f h1 with
+        | Some y => y :: omap f t1
+        | None => omap f t1
+        end) eqn : Hmatch; auto.
+      apply orb_true_iff. right; auto.
+Qed.
+
+Lemma sublist_strong_filter {A: Type} eq_dec (p: A -> bool) (l1 l2: list A):
+  sublist_strong eq_dec l1 l2 ->
+  sublist_strong eq_dec (filter p l1) (filter p l2).
+Proof.
+  revert l1. induction l2 as [|h2 t2 IH]; intros [| h1 t1]; simpl; auto;
+  try discriminate.
+  - intros _. apply sublist_strong_nil.
+  - intros Hsub. apply orb_true_iff in Hsub. destruct Hsub as [Hsub | Hsub].
+    + apply andb_true_iff in Hsub. destruct Hsub as [Heq Hsub].
+      destruct (eq_dec h1 h2); subst; [|discriminate].
+      destruct (p h2); auto. simpl.
+      destruct (eq_dec h2 h2); auto. rewrite IH; auto.
+    + apply IH in Hsub. simpl in Hsub.
+      destruct (p h2); auto. simpl.
+      destruct (if p h1 then h1 :: filter p t1 else filter p t1); auto.
+      apply orb_true_iff; right; auto.
+Qed.
+
+Lemma sublist_strong_forallb {A: Type} (p: A -> bool) eq_dec (l1 l2: list A):
+  sublist_strong eq_dec l1 l2 ->
+  forallb p l2 ->
+  forallb p l1.
+Proof.
+  intros Hsub Hall.
+  apply sublist_strong_in in Hsub.
+  unfold is_true in *.
+  rewrite forallb_forall in Hall |-  *. auto.
+Qed.
+
+End SublistStrong.
 
 Ltac solve_subset :=
   repeat match goal with

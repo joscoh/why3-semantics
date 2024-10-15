@@ -2156,6 +2156,26 @@ Proof.
   apply fmla_change_gamma_pf; auto.
 Qed.
 
+(*Also useful, especially in pattern matching compilation*)
+Lemma match_rep_irrel {gamma} (gamma_valid: valid_context gamma) 
+  pd pdf pf vt v
+   (b1: bool) (ty: gen_type b1) ty1 
+  (d: domain (dom_aux pd) (v_subst vt ty1)) pats Hpats1 Hpats2 Hpats3 Hpats4 :
+
+  match_rep gamma_valid pd pdf vt v (term_rep gamma_valid pd pdf vt pf) 
+    (formula_rep gamma_valid pd pdf vt pf) b1 ty ty1 d pats Hpats1 Hpats2 =
+  match_rep gamma_valid pd pdf vt v (term_rep gamma_valid pd pdf vt pf) 
+    (formula_rep gamma_valid pd pdf vt pf) b1 ty ty1 d pats Hpats3 Hpats4.
+Proof.
+  revert Hpats1 Hpats2 Hpats3 Hpats4. induction pats as [| p ptl IH]; simpl; auto.
+  intros. destruct p as [p a]; simpl.
+  rewrite match_val_single_irrel with (Hval2:=Forall_inv Hpats3). simpl in *.
+  destruct (match_val_single _ _ _ _ _ p (Forall_inv Hpats3) _) eqn : Hmatch; auto.
+  destruct b1; auto.
+  - apply term_rep_irrel.
+  - apply fmla_rep_irrel.
+Qed.  
+
 End ChangeContext.
 
 (*Theorems where the context (and pd) is fixed, but neither pf

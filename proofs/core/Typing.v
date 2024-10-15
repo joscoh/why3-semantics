@@ -176,6 +176,33 @@ Proof.
   intros. subst. constructor; auto.
 Qed. 
 
+Lemma P_Constr' {gamma} (params: list vty) (ps: list pattern) (f: funsym) ty:
+  In f (sig_f gamma) ->
+  Forall (valid_type gamma) params ->
+  valid_type gamma (f_ret f) ->
+  length params = length (s_params f) ->
+  Forall2 (pattern_has_type gamma) ps (ty_subst_list (s_params f) params (s_args f)) ->
+  (forall i j d, i < length ps -> j < length ps -> i <> j -> disj (pat_fv (nth i ps d)) (pat_fv (nth j ps d))) ->
+  (exists (m: mut_adt) (a: alg_datatype), mut_in_ctx m gamma /\ adt_in_mut a m /\ constr_in_adt f a) ->
+  ty = ty_subst (s_params f) params (f_ret f) ->
+  pattern_has_type gamma (Pconstr f params ps) ty.
+Proof.
+  intros Hinf Hallval Hval Hlenparams Hallty Hdisj Hadt Ht; subst. constructor; auto.
+  - apply Forall2_length in Hallty. unfold ty_subst_list in Hallty.
+    rewrite map_length in Hallty. auto.
+  - rewrite <- Forall_forall. rewrite Forall2_combine in Hallty. apply Hallty.
+  - intros i j d x Hi Hj Hij [Hx1 Hx2]. apply (Hdisj i j d Hi Hj Hij x); auto.
+Qed.
+
+(*TODO: move*)
+Lemma P_Var' {gamma} (x: vsymbol) ty:
+  valid_type gamma ty ->
+  snd x = ty ->
+  pattern_has_type gamma (Pvar x) ty.
+Proof.
+  intros. subst. constructor. auto.
+Qed.
+
 Lemma bool_dec: forall {A: Type} (f: A -> bool),
   (forall x : A, {is_true (f x)} + {~ is_true (f x)}).
 Proof.
@@ -422,13 +449,6 @@ Qed.
 Lemma existsb_ext: forall {A: Type} (f g: A -> bool) (l: list A),
   (forall x, f x = g x) ->
   existsb f l = existsb g l.
-Proof.
-  intros. induction l; simpl; auto; congruence.
-Qed.
-
-Lemma forallb_ext: forall {A: Type} (f g: A -> bool) (l: list A),
-  (forall x, f x = g x) ->
-  forallb f l = forallb g l.
 Proof.
   intros. induction l; simpl; auto; congruence.
 Qed.

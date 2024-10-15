@@ -262,6 +262,34 @@ with fmla_type_vars (f: formula) : list typevar :=
   | Ffalse => nil
   end.
 
+Lemma tm_type_vars_tmatch t ty ps:
+  tm_type_vars (Tmatch t ty ps) =
+  union 
+    (union (tm_type_vars t)
+      (big_union pat_type_vars (map fst ps)))
+    (union (big_union (fun x => tm_type_vars (snd x)) ps)
+      (type_vars ty)).
+Proof.
+  simpl.
+  f_equal.
+  f_equal. induction ps; simpl; auto.
+  destruct a; simpl. f_equal. auto.
+Qed.
+
+Lemma tm_type_vars_fmatch t ty ps:
+  fmla_type_vars (Fmatch t ty ps) =
+  union 
+    (union (tm_type_vars t)
+      (big_union pat_type_vars (map fst ps)))
+    (union (big_union (fun x => fmla_type_vars (snd x)) ps)
+      (type_vars ty)).
+Proof.
+  simpl.
+  f_equal.
+  f_equal. induction ps; simpl; auto.
+  destruct a; simpl. f_equal. auto.
+Qed.
+
 Definition mono (f: formula) : bool :=
   null (fmla_type_vars f).
 

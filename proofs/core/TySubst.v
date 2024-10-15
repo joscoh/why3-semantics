@@ -3473,34 +3473,6 @@ Proof.
     simpl_set. exists ty; auto.
 Qed.
 
-Lemma tm_type_vars_tmatch t ty ps:
-  tm_type_vars (Tmatch t ty ps) =
-  union typevar_eq_dec 
-    (union typevar_eq_dec (tm_type_vars t)
-      (big_union typevar_eq_dec pat_type_vars (map fst ps)))
-    (union typevar_eq_dec (big_union typevar_eq_dec (fun x => tm_type_vars (snd x)) ps)
-      (type_vars ty)).
-Proof.
-  simpl.
-  f_equal.
-  f_equal. induction ps; simpl; auto.
-  destruct a; simpl. f_equal. auto.
-Qed.
-
-Lemma tm_type_vars_fmatch t ty ps:
-  fmla_type_vars (Fmatch t ty ps) =
-  union typevar_eq_dec 
-    (union typevar_eq_dec (tm_type_vars t)
-      (big_union typevar_eq_dec pat_type_vars (map fst ps)))
-    (union typevar_eq_dec (big_union typevar_eq_dec (fun x => fmla_type_vars (snd x)) ps)
-      (type_vars ty)).
-Proof.
-  simpl.
-  f_equal.
-  f_equal. induction ps; simpl; auto.
-  destruct a; simpl. f_equal. auto.
-Qed.
-
 (*Two lists with the same elements have equal null*)
 Lemma same_elts_null {A: Type} (l1 l2: list A):
   (forall x, In x l1 <-> In x l2) ->
