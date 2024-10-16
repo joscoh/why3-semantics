@@ -7621,4 +7621,134 @@ Qed.
 
 End TypeVars.
 
+Section Syms.
+
+(*[shape_t/f] have the same fun/pred syms*)
+
+Ltac gensym_case b t Heq :=
+  alpha_case t Heq; try discriminate;
+  bool_hyps;
+  destruct b; simpl in *;
+  repeat (apply orb_congr; auto);
+  solve[auto].
+
+(*TODO: move to Alpha*)
+Lemma gensym_in_shape b (s: gen_sym b) t1 f1:
+  (forall t2 (Hshape: shape_t t1 t2),
+    gensym_in_term s t1 = gensym_in_term s t2) /\
+  (forall f2 (Hshape: shape_f f1 f2),
+    gensym_in_fmla s f1 = gensym_in_fmla s f2).
+Proof.
+  revert t1 f1.
+  apply term_formula_ind; simpl; intros;
+  try solve[alpha_case t2 Heq; try discriminate; destruct b; auto];
+  try (match goal with
+    | b: bool |- _ = gensym_in_term ?s ?t2 =>
+      gensym_case b t2 Heq
+    | b: bool |- _ = gensym_in_fmla ?s ?f2 =>
+      gensym_case b f2 Heq
+  end).
+  (*4 nontrivial cases*)
+  - alpha_case t2 Heq; try discriminate.
+    destruct (funsym_eq_dec f1 f); subst; [|discriminate].
+    simpl in Hshape.
+    destruct (Nat.eqb_spec (length l1) (length l2)); [|discriminate];
+    destruct (list_eq_dec vty_eq_dec l l0); [|discriminate]; simpl in Hshape.
+    assert (Hall: Forall2 shape_t l1 l2). {
+      apply all2_Forall2.
+      change (shape_t) with (fun x y => shape_t x y). 
+      rewrite e, Nat.eqb_refl, Hshape; reflexivity.
+    }
+    assert (Hall2: Forall2 (fun x y => gensym_in_term s x = gensym_in_term s y) l1 l2).
+    {
+      clear -H Hall. generalize dependent l2.
+      induction l1 as [| h1 t1 IH]; simpl in *; intros [| h2 t2] Hall; auto;
+      inversion Hall; subst. inversion H; subst. constructor; auto.
+    }
+    destruct b; simpl; [f_equal|]; apply existsb_eq'; auto.
+  - alpha_case t2 Heq; try discriminate.
+    destruct (shape_t tm t2) eqn: Hshape1; [|discriminate];
+    destruct (length ps =? length l) eqn : Hlen; [|discriminate];
+    destruct (vty_eq_dec _ _); [|discriminate].
+    simpl in Hshape. subst.
+    rewrite Forall_map in H0.
+    assert (Hall: Forall2 (fun x y => shape_t (snd x) (snd y)) ps l).
+    {
+      apply all2_Forall2.
+      rewrite Hlen. revert Hshape. apply all2_impl.
+      intros x y Ha. bool_hyps; auto.
+    }
+    assert (Hall2: Forall2 (fun x y => gensym_in_term s (snd x) = 
+      gensym_in_term s (snd y)) ps l).
+    {
+      clear -H0 Hall. generalize dependent l.
+      induction ps as [| h1 t1 IH]; simpl in *; intros [| h2 t2] Hall; auto;
+      inversion Hall; subst. inversion H0; subst. constructor; auto.
+    }
+    destruct b; simpl in *; apply orb_congr; auto; apply existsb_eq'; auto.
+  - alpha_case f2 Heq; try discriminate.
+    destruct (predsym_eq_dec _ _); subst; [|discriminate];
+    destruct (Nat.eqb (length tms) (length l0)) eqn : Hlen; [|discriminate];
+    destruct (list_eq_dec vty_eq_dec _ _); [|discriminate]; simpl in Hshape; subst.
+    assert (Hall: Forall2 shape_t tms l0). {
+      apply all2_Forall2.
+      change (shape_t) with (fun x y => shape_t x y).
+      rewrite Hlen , Hshape; auto.
+    }
+    assert (Hall2: Forall2 (fun x y => gensym_in_term s x = gensym_in_term s y) tms l0).
+    {
+      clear -H Hall. generalize dependent l0.
+      induction tms as [| h1 t1 IH]; simpl in *; intros [| h2 t2] Hall; auto;
+      inversion Hall; subst. inversion H; subst. constructor; auto.
+    }
+    destruct b; simpl; [|f_equal]; apply existsb_eq'; auto.
+  - alpha_case f2 Heq; try discriminate.
+    destruct (shape_t tm t) eqn: Hshape1; [|discriminate];
+    destruct (length ps =? length l) eqn : Hlen; [|discriminate];
+    destruct (vty_eq_dec _ _); [|discriminate].
+    simpl in Hshape. subst.
+    rewrite Forall_map in H0.
+    assert (Hall: Forall2 (fun x y => shape_f (snd x) (snd y)) ps l).
+    {
+      apply all2_Forall2.
+      rewrite Hlen. revert Hshape. apply all2_impl.
+      intros x y Ha. bool_hyps; auto.
+    }
+    assert (Hall2: Forall2 (fun x y => gensym_in_fmla s (snd x) = 
+      gensym_in_fmla s (snd y)) ps l).
+    {
+      clear -H0 Hall. generalize dependent l.
+      induction ps as [| h1 t1 IH]; simpl in *; intros [| h2 t2] Hall; auto;
+      inversion Hall; subst. inversion H0; subst. constructor; auto.
+    }
+    destruct b; simpl in *; apply orb_congr; auto; apply existsb_eq'; auto.
+Qed.
+
+Definition gensym_in_shape_t {b} (s: gen_sym b) (t1 t2: term)
+  (Hshape: shape_t t1 t2):
+    gensym_in_term s t1 = gensym_in_term s t2 :=
+  proj_tm (gensym_in_shape b s) t1 t2 Hshape.
+Definition gensym_in_shape_f {b} (s: gen_sym b) (f1 f2: formula)
+  (Hshape: shape_f f1 f2):
+    gensym_in_fmla s f1 = gensym_in_fmla s f2 :=
+  proj_fmla (gensym_in_shape b s) f1 f2 Hshape.
+
+End Syms.
+
 End Alpha.
+
+Definition a_convert_gen {b: bool} (t: gen_term b) (vs: list vsymbol) : gen_term b :=
+  match b return gen_term b -> gen_term b with
+  | true => fun t => a_convert_t t vs
+  | false => fun f => a_convert_f f vs
+  end t.
+
+Lemma gen_rep_a_convert {b: bool} {gamma} (gamma_valid: valid_context gamma) pd pdf pf vt vv (ty: gen_type b)
+  (e: gen_term b) (vs: list vsymbol) Hty1 Hty2:
+  gen_rep gamma_valid pd pdf pf vt vv ty (a_convert_gen e vs) Hty1 =
+  gen_rep gamma_valid pd pdf pf vt vv ty e Hty2.
+Proof.
+  destruct b; simpl in *.
+  - erewrite term_rep_irrel. erewrite <- a_convert_t_rep. reflexivity.
+  - erewrite fmla_rep_irrel. erewrite <- a_convert_f_rep. reflexivity.
+Qed.

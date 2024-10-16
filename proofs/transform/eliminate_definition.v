@@ -6,86 +6,6 @@ Require Import Denotational2.
 Require Import Exhaustive.
 Set Bullet Behavior "Strict Subproofs".
 
-(*TODO: really make [gen] versions more extensive and organized*)
-
-Section Gen.
-(* Definition gen_sym (b: bool) : Set := if b then funsym else predsym. *)
-
-Definition gen_sym_name {b: bool} (f: gen_sym b) : string :=
-  match b return gen_sym b -> string with
-  | true => fun f => s_name f
-  | false => fun f => s_name f
-  end f.
-
-Definition gen_sym_params {b: bool} (f: gen_sym b) : list typevar :=
-  match b return gen_sym b -> list typevar with
-  | true => s_params
-  | false => s_params
-  end f.
-
-Definition gen_sym_args {b: bool} (f: gen_sym b) : list vty :=
-  match b return gen_sym b -> list vty with
-  | true => s_args
-  | false => s_args
-  end f.
-
-Definition gen_funpred_def (b: bool) (f: gen_sym b) (l: list vsymbol) (t: gen_term b) : funpred_def :=
-  match b return gen_sym b -> gen_term b -> funpred_def with
-  | true => fun ls t => fun_def ls l t
-  | false => fun ls f => pred_def ls l f
-  end f t.
-
-Definition gen_funpred_def_match (x: funpred_def) : {b: bool & (gen_sym b * list vsymbol * gen_term b)%type} :=
-  match x with
-  | fun_def ls vs t => existT _ true (ls, vs, t)
-  | pred_def ls vs f => existT _ false (ls, vs, f)
-  end.
-
-Lemma gen_funpred_def_match_eq (x: funpred_def) b ls vs tms:
-  gen_funpred_def_match x = existT _ b (ls, vs, tms) <-> gen_funpred_def b ls vs tms = x.
-Proof.
-  unfold gen_funpred_def_match, gen_funpred_def. destruct x; simpl.
-  - split; intros Hex; [|destruct b]; inversion Hex; subst; auto.
-    apply inj_pair2_eq_dec in Hex; [inversion Hex; subst; auto | apply Bool.bool_dec].
-  - split; intros Hex; [|destruct b]; inversion Hex; subst; auto.
-    apply inj_pair2_eq_dec in Hex; [inversion Hex; subst; auto | apply Bool.bool_dec].
-Qed.
-
-(*Common features: let, match, app (fun or predsym), if*)
-Definition gen_app (b: bool) (f: gen_sym b) (tys: list vty) (tms: list term) : gen_term b :=
-  match b return gen_sym b -> gen_term b with
-  | true => fun f => Tfun f tys tms
-  | false => fun p => Fpred p tys tms
-  end f.
-
-(*Generalized equality (Teq or Fiff)*)
-Definition gen_eq (b: bool) (ty: gen_type b) (t1 t2: gen_term b) : formula :=
-  match b return gen_type b -> gen_term b -> gen_term b -> formula with
-  | true => fun ty t1 t2 => Feq ty t1 t2
-  | false => fun _ f1 f2 => Fbinop Tiff f1 f2
-  end ty t1 t2.
-
-Definition gen_sym_ret {b: bool} (f: gen_sym b) : gen_type b :=
-  match b return gen_sym b -> gen_type b with
-  | true => f_ret
-  | false => fun _ => tt
-  end f.
-
-Definition gen_abs {b: bool} (f: gen_sym b) : def :=
-  match b return gen_sym b -> def with
-  | true => abs_fun
-  | false => abs_pred
-  end f.
-
-Definition a_convert_gen {b: bool} (t: gen_term b) (vs: list vsymbol) : gen_term b :=
-  match b return gen_term b -> gen_term b with
-  | true => fun t => a_convert_t t vs
-  | false => fun f => a_convert_f f vs
-  end t.
-
-
-End Gen.
-
 (*Easy: don't need to change b as wer recurse*)
 
 (*Assume everything alpha converted already so no free var in hd in bound in t*)
@@ -113,8 +33,6 @@ Definition t_insert_gen {b: bool} (ty: gen_type b) (hd t: gen_term b) : formula 
   end ty hd t.
 
 
-
-
 Definition add_ld (which: forall b, gen_sym b -> bool) (x: funpred_def) 
   (y: list def * list funpred_def * list (string * formula)) : 
   list def * list funpred_def * list (string * formula) :=
@@ -125,7 +43,7 @@ Definition add_ld (which: forall b, gen_sym b -> bool) (x: funpred_def)
       (*Create new name for axiom*)
       let pr := ((gen_sym_name ls) ++ "_'def")%string in
       (*produce e.g. the term fact(n) - note that these are always polymorphic so we can give vars*)
-      let hd := gen_app b ls (map vty_var (gen_sym_params ls)) (map Tvar vl) in
+      let hd := gen_fun ls (map vty_var (gen_sym_params ls)) (map Tvar vl) in
       let ty := gen_sym_ret ls in
       (*Axiom: forall n, fact n = e*)
       (*First, alpha convert e so there are no freevars in common*)
@@ -187,7 +105,7 @@ Section Proofs.
 Definition rec_axiom {b: bool} (ls: gen_sym b)
   (vl: list vsymbol) (e: gen_term b) : string * formula :=
   let pr := ((gen_sym_name ls) ++ "_'def")%string in
-  let hd := gen_app b ls (map vty_var (gen_sym_params ls)) (map Tvar vl) in
+  let hd := gen_fun ls (map vty_var (gen_sym_params ls)) (map Tvar vl) in
   let ty := gen_sym_ret ls in
   let e' := a_convert_gen e vl in
   let ax1 := fforalls vl (t_insert_gen ty hd e') in
@@ -349,8 +267,8 @@ Qed.
 Section Typing.
 
 Lemma t_insert_gen_typed gamma {b: bool} (ty: gen_type b) (t1 t2: gen_term b):
-  @gen_typed gamma b t1 ty ->
-  @gen_typed gamma b t2 ty ->
+  gen_typed gamma b t1 ty ->
+  gen_typed gamma b t2 ty ->
   formula_typed gamma (t_insert_gen ty t1 t2).
 Proof.
   (*Prove in 2 parts bc of induction*)
@@ -374,48 +292,10 @@ Proof.
     rewrite map_map; reflexivity.
 Qed.
 
-Definition gen_sig (b: bool) : context -> list (gen_sym b) :=
-  match b return context -> list (gen_sym b) with
-  | true => sig_f
-  | false => sig_p
-  end.
-
-Definition gen_valid_type {b: bool} (gamma: context) (ty: gen_type b) : Prop :=
-  match b return gen_type b -> Prop with
-  | true => fun ty => valid_type gamma ty
-  | false => fun _ => True
-  end ty.
-
-Definition gen_ty_subst {b: bool} (params: list typevar) (tys: list vty) (ty: gen_type b) : gen_type b :=
-  match b return gen_type b -> gen_type b with
-  | true => ty_subst params tys
-  | false => fun _ => tt
-  end ty.
-
-Lemma gen_app_typed {b: bool} gamma (ls: gen_sym b) (tys: list vty) (tms: list term) (ty: gen_type b)
-  (Inf: In ls (gen_sig b gamma))
-  (Hval: Forall (valid_type gamma) tys)
-  (Hvalret: gen_valid_type gamma (gen_sym_ret ls))
-  (Hlentys: length tys = length (gen_sym_params ls))
-  (Hinner: Forall2 (term_has_type gamma) tms (map (ty_subst (gen_sym_params ls) tys) (gen_sym_args ls)))
-  (Hty: ty = gen_ty_subst (gen_sym_params ls) tys (gen_sym_ret ls))
-  : @gen_typed gamma b (gen_app b ls tys tms) ty.
-Proof.
-  rewrite Forall2_combine in Hinner.
-  destruct Hinner as [Htms Hinner]; rewrite map_length in Htms.
-  destruct b; simpl in *; subst; constructor; auto.
-Qed.
-
-Definition gen_type_vars {b: bool} (t: gen_term b) : list typevar :=
-  match b return gen_term b -> list typevar with
-  | true => tm_type_vars
-  | false => fmla_type_vars
-  end t.
-
 Definition gen_funpred_def_valid_type gamma {b: bool} (ls: gen_sym b) (vs: list vsymbol)
   (t: gen_term b):
   funpred_def_valid_type gamma (gen_funpred_def b ls vs t) <->
-  @gen_typed gamma b t (gen_sym_ret ls) /\
+  gen_typed gamma b t (gen_sym_ret ls) /\
   sublist (gen_fv t) vs /\
   sublist (gen_type_vars t) (gen_sym_params ls) /\
   NoDup (map fst vs) /\
@@ -485,8 +365,8 @@ Proof.
 Qed.
 
 Lemma a_convert_gen_typed {b: bool} gamma (t: gen_term b) (vs: list vsymbol) (ty: gen_type b):
-  @gen_typed gamma b t ty ->
-  @gen_typed gamma b (a_convert_gen t vs) ty.
+  gen_typed gamma b t ty ->
+  gen_typed gamma b (a_convert_gen t vs) ty.
 Proof.
   intros Hty. destruct b; simpl in *.
   - apply a_convert_t_ty; assumption.
@@ -518,22 +398,13 @@ Proof.
   - eapply nonrec_in_predsyms; eauto.
 Qed.
 
-Lemma gen_typevars_in_params {x v b} (ls: gen_sym b)
-  (Hinx: In x (gen_sym_args ls))
-  (Hinv: In v (type_vars x)):
-  In v (gen_sym_params ls).
-Proof.
-  destruct (In_nth _ _ vty_int Hinx) as [i [Hi Hx]]; subst.
-  destruct b; simpl in *; apply (typevars_in_params _ _ Hi _ Hinv).
-Qed.
-
 (*Need intermediate pieces in multiple places*)
 Lemma rec_axiom_app_typed {gamma b ls vs e}
   (gamma_valid: valid_context gamma)
   (Hallval: funpred_def_valid_type gamma (gen_funpred_def b ls vs e))
   (Hinctx: sym_in_context ls gamma):
-@gen_typed gamma b
-  (gen_app b ls (map vty_var (gen_sym_params ls))
+gen_typed gamma b
+  (gen_fun ls (map vty_var (gen_sym_params ls))
   (map Tvar vs))
   (gen_sym_ret ls).
 Proof.
@@ -543,7 +414,7 @@ Proof.
     by apply (in_context_wf_gen_sym gamma (valid_context_wf _ gamma_valid) Hinctx).
   apply wf_gen_sym_valid in Hwf.
   destruct Hwf as [Hvalargs Hvalret].
-   apply gen_app_typed; auto.
+   apply gen_fun_typed; auto.
   + apply (recursive_def_in_gen_sig _ Hinctx).
   + rewrite Forall_map. rewrite Forall_forall. intros x Hinsym. constructor.
   + rewrite map_length; reflexivity.
@@ -845,13 +716,6 @@ Proof.
           rewrite Hmatch in Hmatch1. discriminate.
 Qed.
 
-(*TODO: move*)
-Definition gen_bnd {b: bool} (t: gen_term b) : list vsymbol :=
-  match b return gen_term b -> list vsymbol with
-  | true => tm_bnd
-  | false => fmla_bnd
-  end t.
-
 Lemma all_dec_eqb (b1 b2: bool):
   proj_sumbool _ _ (all_dec (b1 = b2)) = eqb b1 b2.
 Proof.
@@ -955,18 +819,11 @@ Qed.
 
 Lemma t_insert_gen_typed_inv {gamma} {b} {ty: gen_type b} {t1 t2: gen_term b}
   (Hty: formula_typed gamma (t_insert_gen ty t1 t2)):
-  @gen_typed gamma b t1 ty /\ @gen_typed gamma b t2 ty.
+  gen_typed gamma b t1 ty /\ gen_typed gamma b t2 ty.
 Proof.
   destruct b; simpl in *.
   - apply t_insert_typed_inv; auto.
   - apply f_insert_typed_inv; auto.
-Qed.
-
-Lemma gen_app_fv {b: bool} (ls: gen_sym b) (tys: list vty) (tms: list term):
-  gen_fv (gen_app b ls tys tms) =
-  big_union vsymbol_eq_dec tm_fv tms.
-Proof.
-  destruct b; auto.
 Qed.
 
 Lemma a_convert_gen_bnd {b: bool} (t: gen_term b) (l: list vsymbol) (x: vsymbol):
@@ -978,26 +835,10 @@ Proof.
   - apply a_convert_f_bnd.
 Qed.
 
-Lemma gen_rep_a_convert {b: bool} {gamma} (gamma_valid: valid_context gamma) pd pdf pf vt vv (ty: gen_type b)
-  (e: gen_term b) (vs: list vsymbol) Hty1 Hty2:
-  gen_rep gamma_valid pd pdf pf vt vv ty (a_convert_gen e vs) Hty1 =
-  gen_rep gamma_valid pd pdf pf vt vv ty e Hty2.
-Proof.
-  destruct b; simpl in *.
-  - erewrite term_rep_irrel. erewrite <- a_convert_t_rep. reflexivity.
-  - erewrite fmla_rep_irrel. erewrite <- a_convert_f_rep. reflexivity.
-Qed.
-
 Ltac gen_dom_cast_eq :=
   match goal with
         | |- context [dom_cast ?d ?Heq ?t] => generalize dependent Heq
   end.
-
-Definition gen_fpsym {b: bool} (ls: gen_sym b) : fpsym :=
-  match b return gen_sym b -> fpsym with
-  | true => f_sym
-  | false =>p_sym
-  end ls.
 
 Definition funpred_defined (gamma: context) {b: bool} :=
   match b return gen_sym b -> list vsymbol -> gen_term b -> Prop with
@@ -1021,7 +862,7 @@ Proof.
   (*need for [fforalls_rep]*)
   assert (Hty1: formula_typed gamma
     (t_insert_gen (gen_sym_ret ls)
-    (gen_app b ls (map vty_var (gen_sym_params ls))
+    (gen_fun ls (map vty_var (gen_sym_params ls))
     (map Tvar vs))
     (a_convert_gen e vs))).
   { unfold rec_axiom in Hty; simpl in Hty.
@@ -1035,7 +876,7 @@ Proof.
   rewrite t_insert_gen_rep with (Hty1:=Htyapp) (Hty2:=Htyalph).
   2: {
     (*Prove disj*)
-    rewrite gen_app_fv. clear.
+    rewrite gen_fun_fv. clear.
     intros x [Hinx1 Hinx2].
     simpl_set. destruct Hinx1 as [t [Hint Hinx1]].
     rewrite in_map_iff in Hint.
@@ -2664,7 +2505,7 @@ Proof.
   unfold decl_list_of_def.
   rewrite rev_app_distr, indpreds_of_context_app.
   apply app_nil_iff. split.
-  - simpl. destruct (omaPp _ _) as [| h1 [|h2 t2]] eqn : Hpat; simpl; auto.
+  - simpl. destruct (omap _ _) as [| h1 [|h2 t2]] eqn : Hpat; simpl; auto.
     destruct nonrec; auto.
   - simpl. induction l as [| h t IH]; simpl; auto.
     destruct (gen_funpred_def_match h) as [b1 [[ls vs] e]] eqn : Hdef.

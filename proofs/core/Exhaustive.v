@@ -5,25 +5,6 @@ Require Import Pattern Alpha PatternProofs GenElts.
 Set Bullet Behavior "Strict Subproofs".
 From Equations Require Import Equations.
 
-(*Prove generic properties of pattern well-typed*)
-Lemma gen_match_typed_inv gamma b (tm: term) (ty1: vty) (ps: list (pattern * gen_term b))
-  (ty2: gen_type b):
-  @gen_typed gamma b (gen_match tm ty1 ps) ty2 ->
-  term_has_type gamma tm ty1 /\
-  Forall (fun x => pattern_has_type gamma (fst x) ty1 /\  
-    @gen_typed gamma b (snd x) ty2) ps /\
-  isSome (compile_bare_single b tm ty1 ps).
-Proof.
-  destruct b; intros Htyped; inversion Htyped; subst; split_all; auto;
-  rewrite Forall_forall; intros x Hinx; split; simpl in *; eauto.
-Qed.
-
-Definition gen_term_eq_dec {b: bool} (x y: gen_term b) : {x = y} + {x <> y} :=
-  match b return forall (x y: gen_term b), {x = y} + {x <> y} with
-  | true => term_eq_dec
-  | false => formula_eq_dec
-  end x y.
-
 (*We need alpha because we need the disjointness condition;
   we alpha convert first*)
 Lemma well_typed_sem_exhaust {gamma: context} (gamma_valid: valid_context gamma)
@@ -31,7 +12,7 @@ Lemma well_typed_sem_exhaust {gamma: context} (gamma_valid: valid_context gamma)
   (pf: pi_funpred gamma_valid pd pdf) (vt: val_typevar) (v: val_vars pd vt)
   (b: bool) (ret_ty: gen_type b)
   (tm: term) (ty1: vty) (ps: list (pattern * gen_term b))
-  (Hpatty: @gen_typed gamma b (gen_match tm ty1 ps) ret_ty)
+  (Hpatty: gen_typed gamma b (gen_match tm ty1 ps) ret_ty)
   (Htty: term_has_type gamma tm ty1):
   exists p (Hty: pattern_has_type gamma (fst p) ty1), In p ps /\
   isSome (match_val_single gamma_valid pd pdf vt ty1 (fst p) Hty
@@ -93,7 +74,7 @@ Proof.
   assert (Htys:Forall2 (term_has_type gamma) (map fst [(tm, ty1)]) (map snd [(tm, ty1)])).
   { simpl. constructor; auto. }
   assert (Hall: forall x, In x ps1 ->
-    pattern_has_type gamma (fst x) ty1 /\ @gen_typed gamma b (snd x) ret_ty).
+    pattern_has_type gamma (fst x) ty1 /\ gen_typed gamma b (snd x) ret_ty).
   {
     (*Need induction from [all2]*)
     clear -Halpha Hallty Hlen.
@@ -117,7 +98,7 @@ Proof.
   }
   assert (Htys1: Forall (fun p : pattern * gen_term b => pattern_has_type gamma (fst p) ty1) ps1).
   { rewrite Forall_forall; intros x Hinx; apply Hall; auto. }
-  assert (Htys2: Forall (fun t : pattern * gen_term b => @gen_typed gamma b (snd t) ret_ty) ps1).
+  assert (Htys2: Forall (fun t : pattern * gen_term b => gen_typed gamma b (snd t) ret_ty) ps1).
   { rewrite Forall_forall; intros x Hinx; apply Hall; auto. }
   assert (Hdisj: disj (map fst (tm_fv tm)) (map fst (big_union vsymbol_eq_dec pat_fv (map fst ps1)))).
   {

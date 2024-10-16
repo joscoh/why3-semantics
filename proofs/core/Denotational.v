@@ -1192,11 +1192,6 @@ Section MatchCase.
   encoding it this way means that all the types we need are definitionally equal when
   we instantiate with true/false, so we don't need anything special later.*)
 
-Definition gen_typed (b: bool) (t: gen_term b) (ty: gen_type b) : Prop :=
-  match b return gen_term b -> gen_type b -> Prop with
-  | true => fun t ty => term_has_type gamma t ty
-  | false => fun f _ => formula_typed gamma f
-  end t ty.
 Definition gen_ret (b: bool) (ty: gen_type b) :=
   match b return gen_type b -> Type with
   | true => fun ty => domain (val vt ty)
@@ -1221,16 +1216,16 @@ Definition match_rep v
   (b: bool) (ty:gen_type b) ty1 dom_t :=
  fix match_rep (ps: list (pattern * (gen_term b))) 
       (Hps: Forall (fun x => pattern_has_type gamma (fst x) ty1) ps)
-      (Hall: Forall (fun x => gen_typed b (snd x) ty) ps) :
+      (Hall: Forall (fun x => gen_typed gamma b (snd x) ty) ps) :
         (gen_ret b ty) := 
     match ps as l' return 
       Forall (fun x => pattern_has_type gamma (fst x) ty1) l' ->
-      Forall (fun x => gen_typed b (snd x) ty) l' ->
+      Forall (fun x => gen_typed gamma b (snd x) ty) l' ->
       gen_ret b ty with
     | (p , dat) :: ptl => fun Hpats Hall =>
       match (match_val_single vt ty1 p (Forall_inv Hpats) dom_t) with
       | Some l => 
-          match b return forall (ty: gen_type b) (dat: gen_term b), gen_typed b dat ty -> gen_ret b ty with
+          match b return forall (ty: gen_type b) (dat: gen_term b), gen_typed gamma b dat ty -> gen_ret b ty with
           | true => fun ty dat Hty => term_rep (extend_val_with_list pd vt v l) dat ty Hty
           | false => fun ty dat Hty => formula_rep (extend_val_with_list pd vt v l) dat Hty
           end ty dat (Forall_inv Hall)
@@ -2883,6 +2878,7 @@ Section FixedVt.
 
 Variable (vt: val_typevar).
 
+(*TODO: move to another file?*)
 Section Wf.
 
 (*If we know that the bound variable names are unique and do
@@ -2890,11 +2886,180 @@ Section Wf.
   correctness of many transformations. We define such a notion
   and provide a function (not necessarily the most efficient one)
   to alpha-convert our term/formula into this form. The function
-  and proofs are in Substitution.v*)
+  and proofs are in Alpha.v*)
 Definition term_name_wf (t: term) : Prop :=
   NoDup (map fst (tm_bnd t)) /\ disj (map fst (tm_fv t)) (map fst (tm_bnd t)).
 Definition fmla_name_wf (f: formula) : Prop :=
   NoDup (map fst (fmla_bnd f)) /\ disj (map fst (fmla_fv f)) (map fst (fmla_bnd f)).
+Definition gen_name_wf {b: bool} (t: gen_term b) : Prop :=
+  match b return gen_term b -> Prop with
+  | true => term_name_wf
+  | false => fmla_name_wf
+  end t.
+
+Lemma gen_name_wf_eq {b: bool} (t: gen_term b) :
+  gen_name_wf t <->
+  NoDup (map fst (gen_bnd t)) /\ disj (map fst (gen_fv t)) (map fst (gen_bnd t)).
+Proof.
+  destruct b; reflexivity.
+Qed.
+
+Lemma wf_genfun (b: bool) {s: gen_sym b} {tys: list vty} {tms: list term}
+  (Hwf: gen_name_wf (gen_fun s tys tms)):
+  Forall term_name_wf tms.
+Proof.
+  rewrite gen_name_wf_eq in Hwf. unfold term_name_wf.
+  rewrite gen_fun_bnd, gen_fun_fv in Hwf.
+  rewrite Forall_forall. intros t Hint.
+  destruct Hwf as [Hnodup Hfb].
+  rewrite concat_map in Hnodup.
+  split.
+  - eapply in_concat_NoDup; [apply string_dec | apply Hnodup |].
+    rewrite in_map_iff. exists (tm_bnd t); rewrite in_map_iff; eauto.
+  - intros x [Hinx1 Hinx2].
+    apply (Hfb x).
+    split; [rewrite in_map_big_union|].
+    + simpl_set. eauto. Unshelve. exact string_dec.
+    + rewrite concat_map, !map_map. 
+      rewrite in_concat. eexists. split; [| apply Hinx2].
+      rewrite in_map_iff. eauto.
+Qed.
+
+Lemma wf_genlet (b: bool) {tm1: term} {tm2: gen_term b} {x} 
+  (Hwf: gen_name_wf (gen_let x tm1 tm2)):
+  term_name_wf tm1 /\ gen_name_wf tm2.
+Proof.
+  rewrite gen_name_wf_eq in Hwf |- *. unfold term_name_wf.
+  rewrite gen_let_bnd, gen_let_fv in Hwf.
+  destruct Hwf as [Hnodup Hfb].
+  inversion Hnodup as [| ? ? Hnotin Hn2]; subst.
+  rewrite map_app in Hn2.
+  apply NoDup_app in Hn2. destruct Hn2 as [Hn1 Hn2].
+  split_all; auto; intros y [Hiny1 Hiny2]; apply (Hfb y);
+  rewrite in_map_union; simpl_set; simpl; rewrite map_app, in_app_iff; auto.
+  split; auto. right. apply in_map_remove. split; auto.
+  intro C; subst. apply Hnotin. rewrite map_app, in_app_iff; auto.
+Qed.
+
+Lemma wf_genif (b : bool) {f} {t1 t2 : gen_term b} 
+  (Hwf: gen_name_wf (gen_if f t1 t2)):
+  fmla_name_wf f /\ gen_name_wf t1 /\ gen_name_wf t2.
+Proof.
+  rewrite !gen_name_wf_eq in Hwf |- *.
+  rewrite gen_name_wf_eq. unfold fmla_name_wf.
+  rewrite gen_if_bnd, gen_if_fv in Hwf.
+  destruct Hwf as [Hnodup Hfb].
+  rewrite !map_app in Hnodup, Hfb.
+  apply NoDup_app in Hnodup.
+  destruct Hnodup as [Hn1 Hn2].
+  apply NoDup_app in Hn2.
+  destruct Hn2 as [Hn2 Hn3].
+  unfold disj in Hfb.
+  do 2 (setoid_rewrite in_app_iff in Hfb).
+  split_all; auto; intros x [Hinx1 Hinx2]; apply (Hfb x);
+  rewrite !in_map_union; simpl_set; auto.
+Qed.
+
+Lemma wf_genmatch (b: bool) {tm ty} {ps: list (pattern * gen_term b)} 
+  (Hwf: gen_name_wf (gen_match tm ty ps)):
+  term_name_wf tm /\ Forall (fun x => gen_name_wf (snd x)) ps.
+Proof.
+  rewrite gen_name_wf_eq in Hwf.
+  unfold term_name_wf. 
+  rewrite gen_match_bnd, gen_match_fv in Hwf.
+  rewrite !map_app in Hwf.
+  destruct Hwf as [Hn Hdisj].
+  apply NoDup_app_iff in Hn.
+  destruct Hn as [Hn1 [Hn2  [Hn12 _]]].
+  split_all; auto.
+  - eapply disj_sublist_lr. apply Hdisj.
+    intros x Hinx. rewrite in_map_union. auto.
+    apply sublist_app_l.
+  - rewrite Forall_forall. intros x Hinx.
+    rewrite gen_name_wf_eq.
+    rewrite concat_map in Hn2.
+    assert (Hn3:
+      NoDup (map fst (pat_fv (fst x)) ++ map fst (gen_bnd (snd x)))).
+    {
+      eapply in_concat_NoDup; [apply string_dec | apply Hn2 |].
+      rewrite in_map_iff. eexists.
+      rewrite <- map_app. split; [reflexivity|]. 
+      rewrite in_map_iff; eauto.
+    }
+    split.
+    + apply NoDup_app in Hn3. apply Hn3.
+    + intros y [Hiny1 Hiny2].
+      (*Because in [tm_bnd], cannot be in [pat_fv]*)
+      assert (Hnotin: ~ In y (map fst (pat_fv (fst x)))). {
+        intro C.
+        apply NoDup_app_iff in Hn3.
+        apply Hn3 in C; auto; contradiction.
+      }
+      apply (Hdisj y). split.
+      * rewrite in_map_union. right.
+        rewrite in_map_big_union with (eq_dec1:=string_dec).
+        simpl_set. exists x. split; auto.
+        apply in_map_remove_all. auto.
+      * rewrite in_app_iff. right. rewrite concat_map, map_map, in_concat.
+        eexists. split; [rewrite in_map_iff; eexists; split; [| apply Hinx]; reflexivity |].
+        rewrite map_app, in_app_iff; auto.
+Qed.
+
+Lemma wf_teps {f v} (Hwf: term_name_wf (Teps f v)):
+  fmla_name_wf f.
+Proof.
+  unfold term_name_wf in Hwf; unfold fmla_name_wf. simpl in *.
+  destruct Hwf as [Hn1 Hdisj].
+  inversion Hn1; subst. split; auto.
+  intros x [Hinx1 Hinx2].
+  assert (x <> fst v) by (intro C; subst; contradiction).
+  apply (Hdisj x); split.
+  - apply in_map_remove. auto.
+  - simpl. auto.
+Qed.
+
+Lemma wf_fquant {q v f} (Hwf: fmla_name_wf (Fquant q v f)):
+  fmla_name_wf f.
+Proof.
+  unfold fmla_name_wf in *; simpl in *.
+  destruct Hwf as [Hn1 Hdisj].
+  inversion Hn1; subst. split; auto.
+  intros x [Hinx1 Hinx2].
+  assert (x <> fst v) by (intro C; subst; contradiction).
+  apply (Hdisj x); split.
+  - apply in_map_remove. auto.
+  - simpl. auto.
+Qed.
+
+Lemma wf_feq {ty t1 t2} (Hwf: fmla_name_wf (Feq ty t1 t2)):
+  term_name_wf t1 /\ term_name_wf t2.
+Proof.
+  unfold term_name_wf, fmla_name_wf in *; simpl in *.
+  rewrite map_app in Hwf.
+  destruct Hwf as [Hn1 Hdisj].
+  apply NoDup_app in Hn1. destruct Hn1 as [Hn1 Hn2]. split_all; auto;
+  eapply disj_sublist_lr; try solve[apply Hdisj];
+  try solve[apply sublist_app_r]; try solve[apply sublist_app_l];
+  intros x Hinx; apply in_map_union; auto.
+Qed.
+
+Lemma wf_fbinop {b f1 f2} (Hwf: fmla_name_wf (Fbinop b f1 f2)):
+  fmla_name_wf f1 /\ fmla_name_wf f2.
+Proof.
+  unfold fmla_name_wf in *; simpl in *.
+  rewrite map_app in Hwf.
+  destruct Hwf as [Hn1 Hdisj].
+  apply NoDup_app in Hn1. destruct Hn1 as [Hn1 Hn2]. split_all; auto;
+  eapply disj_sublist_lr; try solve[apply Hdisj];
+  try solve[apply sublist_app_r]; try solve[apply sublist_app_l];
+  intros x Hinx; apply in_map_union; auto.
+Qed.
+
+Lemma wf_fnot {f} (Hwf: fmla_name_wf (Fnot f)):
+  fmla_name_wf f.
+Proof.
+  unfold fmla_name_wf in *; simpl in *; auto.
+Qed.
 
 (*For legacy reasons (TODO remove)*)
 Definition term_wf (t: term) : Prop :=
@@ -2987,9 +3152,9 @@ Context (pd: pi_dom) (pdf: pi_dom_full gamma pd)
 Context {b: bool}.
 (* Variable (v: val_vars pd vt). *)
 
-Definition gen_rep (v: val_vars pd vt) (ty: gen_type b) (d: gen_term b) (Hty: gen_typed b d ty) : gen_ret pd vt b ty :=
+Definition gen_rep (v: val_vars pd vt) (ty: gen_type b) (d: gen_term b) (Hty: gen_typed gamma b d ty) : gen_ret pd vt b ty :=
   match b return forall (ty: gen_type b) (dat: gen_term b), 
-    gen_typed b dat ty -> gen_ret pd vt b ty with
+    gen_typed gamma b dat ty -> gen_ret pd vt b ty with
   | true => fun ty dat Hty => term_rep gamma_valid pd pdf vt pf v dat ty Hty
   | false => fun ty dat Hty => formula_rep gamma_valid pd pdf vt pf v dat Hty
   end ty d Hty.
@@ -3010,6 +3175,32 @@ Proof.
   generalize dependent d.
   revert ty. unfold gen_rep. destruct b; simpl; intros;
   [apply term_rep_irrel | apply fmla_rep_irrel].
+Qed.
+
+Lemma gen_rep_let vv (ty2: gen_type b) (x: vsymbol) (t: term) (a: gen_term b) Hty1 Hty2 Hty3:
+  gen_rep vv ty2 (gen_let x t a) Hty2 =
+  gen_rep (substi pd vt vv x (term_rep gamma_valid pd pdf vt pf vv t (snd x) Hty1)) ty2 a Hty3.
+Proof.
+  revert ty2 a Hty2 Hty3.
+  unfold gen_let, gen_rep.
+  destruct b; simpl; intros; simpl_rep; simpl;
+  rewrite term_rep_irrel with (Hty2:=Hty1);
+  [apply term_rep_irrel | apply fmla_rep_irrel].
+Qed.
+
+Lemma gen_match_rep v (ty: gen_type b) (t: term) (ty1: vty) (pats: list (pattern * gen_term b)) 
+  (Hty: gen_typed gamma b (gen_match t ty1 pats) ty) 
+  (Hty1: term_has_type gamma t ty1)
+  (Hpats1: Forall (fun x => pattern_has_type gamma (fst x) ty1) pats)
+  (Hpats2: Forall (fun x => gen_typed gamma b (snd x) ty) pats):
+  gen_rep v ty (gen_match t ty1 pats) Hty =
+  match_rep gamma_valid pd pdf vt v (term_rep gamma_valid pd pdf vt pf) (formula_rep gamma_valid pd pdf vt pf)
+    b ty ty1 (term_rep gamma_valid pd pdf vt pf v t ty1 Hty1) pats Hpats1 Hpats2.
+Proof.
+  revert Hty.
+  unfold gen_match, gen_rep. destruct b; simpl in *; auto; intros;
+  simp term_rep; simpl; erewrite term_rep_irrel with (Hty2:=Hty1); erewrite match_rep_irrel;
+    reflexivity.
 Qed.
 
 End Gen.

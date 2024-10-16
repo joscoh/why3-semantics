@@ -624,6 +624,35 @@ Proof.
   apply nth_In; auto.
 Qed.
 
+Lemma v_subst_aux_type_vars (v: typevar -> vty) (t: vty):
+  forall x, In x (type_vars (v_subst_aux v t)) ->
+    exists y, In y (type_vars t) /\ In x (type_vars (v y)).
+Proof.
+  intros x. induction t; simpl; try contradiction.
+  - intros Hinx. exists v0. auto.
+  - simpl_set. intros [t [Hint Hinx]].
+    rewrite in_map_iff in Hint.
+    destruct Hint as [t2 [Ht Hint2]]; subst.
+    rewrite Forall_forall in H.
+    specialize (H _ Hint2 Hinx).
+    destruct H as [y [Hiny Hinx2]].
+    exists y. split; auto. simpl_set. exists t2. auto.
+Qed. 
+
+Lemma ty_subst_type_vars params tys ty:
+  sublist (type_vars (ty_subst params tys ty)) 
+    (big_union typevar_eq_dec type_vars tys).
+Proof.
+  unfold ty_subst.
+  intros x Hinx.
+  apply v_subst_aux_type_vars in Hinx.
+  destruct Hinx as [y [Hiny Hinx]].
+  generalize dependent tys.
+  induction params as [| phd ptl IH]; simpl; [contradiction|];
+  intros [|thd ttl]; [contradiction|].
+  simpl. simpl_set_small. destruct (typevar_eq_dec y phd); subst; simpl; auto.
+Qed.
+
 End TySubstLemmas.
 
 (*A version of [ty_subst] that only changes the mapped

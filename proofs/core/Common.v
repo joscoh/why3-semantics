@@ -1845,6 +1845,15 @@ Proof.
   rewrite Forall_app; intros [_ Hp]; auto.
 Qed.
 
+Lemma Forall2_map_iff {A B: Type} (f: A -> B) 
+  (P: A -> B -> Prop) (l: list A):
+  Forall2 P l (map f l) <-> Forall (fun x => P x (f x)) l.
+Proof.
+  induction l as [| h t IH]; simpl; [split; constructor|].
+  destruct IH as [IH1 IH2].
+  split; intros Hall; inversion Hall; constructor; auto.
+Qed.
+
 End Forall2.
 
 Section Map.

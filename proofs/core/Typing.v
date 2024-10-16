@@ -4421,3 +4421,84 @@ Qed.
 
 
 End GetADT.
+
+(*Gen*)
+
+Definition gen_typed gamma (b: bool) (t: gen_term b) (ty: gen_type b) : Prop :=
+  match b return gen_term b -> gen_type b -> Prop with
+  | true => fun t ty => term_has_type gamma t ty
+  | false => fun f _ => formula_typed gamma f
+  end t ty.
+
+
+Lemma gen_let_typed_inv gamma {b t x d ty}:
+  gen_typed gamma b (gen_let x t d) ty ->
+  term_has_type gamma t (snd x) /\ gen_typed gamma b d ty.
+Proof.
+  unfold gen_let. destruct b; simpl in *; intros Hty; inversion Hty; subst; auto.
+Qed.
+
+Lemma gen_let_ty gamma b x t a ty:
+  gen_typed gamma b a ty ->
+  term_has_type gamma t (snd x) ->
+  gen_typed gamma b (gen_let x t a) ty.
+Proof.
+  unfold gen_let.
+  destruct b; simpl; intros; constructor; auto.
+Qed.
+
+Lemma gen_match_typed gamma b (tm: term) (ty1: vty) (ps: list (pattern * gen_term b))
+  (ty2: gen_type b):
+  term_has_type gamma tm ty1 ->
+  Forall (fun x => pattern_has_type gamma (fst x) ty1 /\  gen_typed gamma b (snd x) ty2) ps ->
+  isSome (compile_bare_single b tm ty1 ps) ->
+  gen_typed gamma b (gen_match tm ty1 ps) ty2.
+Proof.
+  unfold gen_match.
+  destruct b; simpl; intros Htm Hand; apply Forall_and_inv in Hand; destruct Hand as [Hpats Htms];
+  intros Hnull; constructor; auto; rewrite <- Forall_forall; auto.
+Qed.
+
+Lemma gen_match_typed_inv gamma b (tm: term) (ty1: vty) (ps: list (pattern * gen_term b))
+  (ty2: gen_type b):
+  gen_typed gamma b (gen_match tm ty1 ps) ty2 ->
+  term_has_type gamma tm ty1 /\
+  Forall (fun x => pattern_has_type gamma (fst x) ty1 /\  
+    gen_typed gamma b (snd x) ty2) ps /\
+  isSome (compile_bare_single b tm ty1 ps).
+Proof.
+  destruct b; intros Htyped; inversion Htyped; subst; split_all; auto;
+  rewrite Forall_forall; intros x Hinx; split; simpl in *; eauto.
+Qed.
+
+Definition gen_sig (b: bool) : context -> list (gen_sym b) :=
+  match b return context -> list (gen_sym b) with
+  | true => sig_f
+  | false => sig_p
+  end.
+
+Definition gen_valid_type {b: bool} (gamma: context) (ty: gen_type b) : Prop :=
+  match b return gen_type b -> Prop with
+  | true => fun ty => valid_type gamma ty
+  | false => fun _ => True
+  end ty.
+
+Definition gen_ty_subst {b: bool} (params: list typevar) (tys: list vty) (ty: gen_type b) : gen_type b :=
+  match b return gen_type b -> gen_type b with
+  | true => ty_subst params tys
+  | false => fun _ => tt
+  end ty.
+
+Lemma gen_fun_typed {b: bool} gamma (ls: gen_sym b) (tys: list vty) (tms: list term) (ty: gen_type b)
+  (Inf: In ls (gen_sig b gamma))
+  (Hval: Forall (valid_type gamma) tys)
+  (Hvalret: gen_valid_type gamma (gen_sym_ret ls))
+  (Hlentys: length tys = length (gen_sym_params ls))
+  (Hinner: Forall2 (term_has_type gamma) tms (map (ty_subst (gen_sym_params ls) tys) (gen_sym_args ls)))
+  (Hty: ty = gen_ty_subst (gen_sym_params ls) tys (gen_sym_ret ls))
+  : gen_typed gamma b (gen_fun ls tys tms) ty.
+Proof.
+  rewrite Forall2_combine in Hinner.
+  destruct Hinner as [Htms Hinner]; rewrite map_length in Htms.
+  destruct b; simpl in *; subst; constructor; auto.
+Qed.

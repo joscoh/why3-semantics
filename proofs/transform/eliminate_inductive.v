@@ -378,18 +378,6 @@ Proof.
   apply H; auto.
 Qed.
 
-(*Use a lot - could move to Syntax see*)
-Lemma typevars_in_params (s: fpsym) i:
-i < length (s_args s) ->
-forall v : typevar,
-In v (type_vars (nth i (s_args s) vty_int)) -> In v (s_params s).
-Proof.
-  intros. destruct s; simpl in *.
-  assert (Hwf:=s_args_wf).
-  apply check_args_prop with(x:=nth i s_args vty_int) in Hwf; auto.
-  apply nth_In; auto.
-Qed.
-
 Lemma indprop_params_valid {gamma: context}
   (gamma_valid: valid_context gamma)
   {l: list indpred_def} {p: predsym} {fs: list (string * formula)}

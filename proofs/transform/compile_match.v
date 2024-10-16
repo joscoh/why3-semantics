@@ -323,9 +323,6 @@ Definition rewriteF_type_vars f :=
 
 (*1.4 fun/predsyms*)
 
-Definition gensym_in_fmla {b: bool} (f: gen_sym b) (t: formula) : bool :=
-  @gensym_in_gen_term b false f t.
-
 Lemma rewrite_gen_sym (b: bool) (s: gen_sym b) t f:
   (gensym_in_term s (rewriteT t) ->
     gensym_in_term s t) /\
@@ -380,114 +377,6 @@ Definition rewriteT_gen_sym b s t :=
   proj_tm (rewrite_gen_sym b s) t.
 Definition rewriteF_gen_sym b s t :=
   proj_fmla (rewrite_gen_sym b s) t.
-
-Ltac gensym_case b t Heq :=
-  alpha_case t Heq; try discriminate;
-  bool_hyps;
-  destruct b; simpl in *;
-  repeat (apply orb_congr; auto);
-  solve[auto].
-
-(*TODO: move to Alpha*)
-Lemma gensym_in_shape b (s: gen_sym b) t1 f1:
-  (forall t2 (Hshape: shape_t t1 t2),
-    gensym_in_term s t1 = gensym_in_term s t2) /\
-  (forall f2 (Hshape: shape_f f1 f2),
-    gensym_in_fmla s f1 = gensym_in_fmla s f2).
-Proof.
-  revert t1 f1.
-  apply term_formula_ind; simpl; intros;
-  try solve[alpha_case t2 Heq; try discriminate; destruct b; auto];
-  try (match goal with
-    | b: bool |- _ = gensym_in_term ?s ?t2 =>
-      gensym_case b t2 Heq
-    | b: bool |- _ = gensym_in_fmla ?s ?f2 =>
-      gensym_case b f2 Heq
-  end).
-  (*4 nontrivial cases*)
-  - alpha_case t2 Heq; try discriminate.
-    destruct (funsym_eq_dec f1 f); subst; [|discriminate].
-    simpl in Hshape.
-    destruct (Nat.eqb_spec (length l1) (length l2)); [|discriminate];
-    destruct (list_eq_dec vty_eq_dec l l0); [|discriminate]; simpl in Hshape.
-    assert (Hall: Forall2 shape_t l1 l2). {
-      apply all2_Forall2.
-      change (shape_t) with (fun x y => shape_t x y). 
-      rewrite e, Nat.eqb_refl, Hshape; reflexivity.
-    }
-    assert (Hall2: Forall2 (fun x y => gensym_in_term s x = gensym_in_term s y) l1 l2).
-    {
-      clear -H Hall. generalize dependent l2.
-      induction l1 as [| h1 t1 IH]; simpl in *; intros [| h2 t2] Hall; auto;
-      inversion Hall; subst. inversion H; subst. constructor; auto.
-    }
-    destruct b; simpl; [f_equal|]; apply existsb_eq'; auto.
-  - alpha_case t2 Heq; try discriminate.
-    destruct (shape_t tm t2) eqn: Hshape1; [|discriminate];
-    destruct (length ps =? length l) eqn : Hlen; [|discriminate];
-    destruct (vty_eq_dec _ _); [|discriminate].
-    simpl in Hshape. subst.
-    rewrite Forall_map in H0.
-    assert (Hall: Forall2 (fun x y => shape_t (snd x) (snd y)) ps l).
-    {
-      apply all2_Forall2.
-      rewrite Hlen. revert Hshape. apply all2_impl.
-      intros x y Ha. bool_hyps; auto.
-    }
-    assert (Hall2: Forall2 (fun x y => gensym_in_term s (snd x) = 
-      gensym_in_term s (snd y)) ps l).
-    {
-      clear -H0 Hall. generalize dependent l.
-      induction ps as [| h1 t1 IH]; simpl in *; intros [| h2 t2] Hall; auto;
-      inversion Hall; subst. inversion H0; subst. constructor; auto.
-    }
-    destruct b; simpl in *; apply orb_congr; auto; apply existsb_eq'; auto.
-  - alpha_case f2 Heq; try discriminate.
-    destruct (predsym_eq_dec _ _); subst; [|discriminate];
-    destruct (Nat.eqb (length tms) (length l0)) eqn : Hlen; [|discriminate];
-    destruct (list_eq_dec vty_eq_dec _ _); [|discriminate]; simpl in Hshape; subst.
-    assert (Hall: Forall2 shape_t tms l0). {
-      apply all2_Forall2.
-      change (shape_t) with (fun x y => shape_t x y).
-      rewrite Hlen , Hshape; auto.
-    }
-    assert (Hall2: Forall2 (fun x y => gensym_in_term s x = gensym_in_term s y) tms l0).
-    {
-      clear -H Hall. generalize dependent l0.
-      induction tms as [| h1 t1 IH]; simpl in *; intros [| h2 t2] Hall; auto;
-      inversion Hall; subst. inversion H; subst. constructor; auto.
-    }
-    destruct b; simpl; [|f_equal]; apply existsb_eq'; auto.
-  - alpha_case f2 Heq; try discriminate.
-    destruct (shape_t tm t) eqn: Hshape1; [|discriminate];
-    destruct (length ps =? length l) eqn : Hlen; [|discriminate];
-    destruct (vty_eq_dec _ _); [|discriminate].
-    simpl in Hshape. subst.
-    rewrite Forall_map in H0.
-    assert (Hall: Forall2 (fun x y => shape_f (snd x) (snd y)) ps l).
-    {
-      apply all2_Forall2.
-      rewrite Hlen. revert Hshape. apply all2_impl.
-      intros x y Ha. bool_hyps; auto.
-    }
-    assert (Hall2: Forall2 (fun x y => gensym_in_fmla s (snd x) = 
-      gensym_in_fmla s (snd y)) ps l).
-    {
-      clear -H0 Hall. generalize dependent l.
-      induction ps as [| h1 t1 IH]; simpl in *; intros [| h2 t2] Hall; auto;
-      inversion Hall; subst. inversion H0; subst. constructor; auto.
-    }
-    destruct b; simpl in *; apply orb_congr; auto; apply existsb_eq'; auto.
-Qed.
-
-Definition gensym_in_shape_t {b} (s: gen_sym b) (t1 t2: term)
-  (Hshape: shape_t t1 t2):
-    gensym_in_term s t1 = gensym_in_term s t2 :=
-  proj_tm (gensym_in_shape b s) t1 t2 Hshape.
-Definition gensym_in_shape_f {b} (s: gen_sym b) (f1 f2: formula)
-  (Hshape: shape_f f1 f2):
-    gensym_in_fmla s f1 = gensym_in_fmla s f2 :=
-  proj_fmla (gensym_in_shape b s) f1 f2 Hshape.
 
 (*1.5: Whole transformation is typed*)
 Definition compile_match_typed : typed_trans compile_match.
@@ -545,248 +434,6 @@ Qed.
 
 (*Part 2: Semantics*)
 
-(*TODO move and replace former*)
-Definition gen_name_wf {b: bool} (t: gen_term b) : Prop :=
-  match b return gen_term b -> Prop with
-  | true => term_name_wf
-  | false => fmla_name_wf
-  end t.
-
-(*TODO: move, copied from elim_def*)
-Definition gen_bnd {b: bool} (t: gen_term b) : list vsymbol :=
-  match b return gen_term b -> list vsymbol with
-  | true => tm_bnd
-  | false => fmla_bnd
-  end t.
-
-Lemma gen_name_wf_eq {b: bool} (t: gen_term b) :
-  gen_name_wf t <->
-  NoDup (map fst (gen_bnd t)) /\ disj (map fst (gen_fv t)) (map fst (gen_bnd t)).
-Proof.
-  destruct b; reflexivity.
-Qed.
-
-Definition gen_fun {b: bool} (s: gen_sym b) (tys: list vty) (tms: list term) : gen_term b :=
-  match b return gen_sym b -> gen_term b with
-  | true => fun f => Tfun f tys tms
-  | false => fun p => Fpred p tys tms
-  end s.
-
-Lemma gen_fun_bnd {b: bool} (s: gen_sym b) (tys: list vty) (tms: list term):
-  gen_bnd (gen_fun s tys tms) = concat (map tm_bnd tms).
-Proof. destruct b; reflexivity. Qed.
-
-Lemma gen_fun_fv {b: bool} (s: gen_sym b) (tys: list vty) (tms: list term):
-  gen_fv (gen_fun s tys tms) = big_union vsymbol_eq_dec tm_fv tms.
-Proof. destruct b; reflexivity. Qed.
-
-Lemma wf_genfun (b: bool) {s: gen_sym b} {tys: list vty} {tms: list term}
-  (Hwf: gen_name_wf (gen_fun s tys tms)):
-  Forall term_name_wf tms.
-Proof.
-  rewrite gen_name_wf_eq in Hwf. unfold term_name_wf.
-  rewrite gen_fun_bnd, gen_fun_fv in Hwf.
-  rewrite Forall_forall. intros t Hint.
-  destruct Hwf as [Hnodup Hfb].
-  rewrite concat_map in Hnodup.
-  split.
-  - eapply in_concat_NoDup; [apply string_dec | apply Hnodup |].
-    rewrite in_map_iff. exists (tm_bnd t); rewrite in_map_iff; eauto.
-  - intros x [Hinx1 Hinx2].
-    apply (Hfb x).
-    split; [rewrite in_map_big_union|].
-    + simpl_set. eauto. Unshelve. exact string_dec.
-    + rewrite concat_map, !map_map. 
-      rewrite in_concat. eexists. split; [| apply Hinx2].
-      rewrite in_map_iff. eauto.
-Qed.
-
-Lemma gen_let_bnd  {b: bool} {tm1: term} {tm2: gen_term b} {x}:
-  gen_bnd (gen_let x tm1 tm2) = x :: tm_bnd tm1 ++ gen_bnd tm2.
-Proof. destruct b; reflexivity. Qed.
-
-Lemma gen_let_fv  {b: bool} {tm1: term} {tm2: gen_term b} {x}:
-  gen_fv (gen_let x tm1 tm2) = 
-    union vsymbol_eq_dec (tm_fv tm1) (remove vsymbol_eq_dec x (gen_fv tm2)).
-Proof. destruct b; reflexivity. Qed.
-
-Lemma wf_genlet (b: bool) {tm1: term} {tm2: gen_term b} {x} 
-  (Hwf: gen_name_wf (gen_let x tm1 tm2)):
-  term_name_wf tm1 /\ gen_name_wf tm2.
-Proof.
-  rewrite gen_name_wf_eq in Hwf |- *. unfold term_name_wf.
-  rewrite gen_let_bnd, gen_let_fv in Hwf.
-  destruct Hwf as [Hnodup Hfb].
-  inversion Hnodup as [| ? ? Hnotin Hn2]; subst.
-  rewrite map_app in Hn2.
-  apply NoDup_app in Hn2. destruct Hn2 as [Hn1 Hn2].
-  split_all; auto; intros y [Hiny1 Hiny2]; apply (Hfb y);
-  rewrite in_map_union; simpl_set; simpl; rewrite map_app, in_app_iff; auto.
-  split; auto. right. apply in_map_remove. split; auto.
-  intro C; subst. apply Hnotin. rewrite map_app, in_app_iff; auto.
-Qed.
-
-(*TODO move*)
-Definition gen_if {b: bool} (f: formula) (t1 t2: gen_term b) : gen_term b :=
-  match b return gen_term b -> gen_term b -> gen_term b with
-  | true => fun t1 t2 => Tif f t1 t2
-  | false => fun f1 f2 => Fif f f1 f2
-  end t1 t2.
-
-Lemma gen_if_bnd  {b: bool} (f: formula) (t1 t2: gen_term b):
-  gen_bnd (gen_if f t1 t2) = fmla_bnd f ++ gen_bnd t1 ++ gen_bnd t2.
-Proof. destruct b; reflexivity. Qed.
-
-Lemma gen_if_fv  {b: bool} (f: formula) (t1 t2: gen_term b):
-  gen_fv (gen_if f t1 t2) = 
-    union vsymbol_eq_dec (fmla_fv f) 
-      (union vsymbol_eq_dec (gen_fv t1) (gen_fv t2)).
-Proof. destruct b; reflexivity. Qed.
-
-Lemma wf_genif (b : bool) {f} {t1 t2 : gen_term b} 
-  (Hwf: gen_name_wf (gen_if f t1 t2)):
-  fmla_name_wf f /\ gen_name_wf t1 /\ gen_name_wf t2.
-Proof.
-  rewrite !gen_name_wf_eq in Hwf |- *.
-  rewrite gen_name_wf_eq. unfold fmla_name_wf.
-  rewrite gen_if_bnd, gen_if_fv in Hwf.
-  destruct Hwf as [Hnodup Hfb].
-  rewrite !map_app in Hnodup, Hfb.
-  apply NoDup_app in Hnodup.
-  destruct Hnodup as [Hn1 Hn2].
-  apply NoDup_app in Hn2.
-  destruct Hn2 as [Hn2 Hn3].
-  unfold disj in Hfb.
-  do 2 (setoid_rewrite in_app_iff in Hfb).
-  split_all; auto; intros x [Hinx1 Hinx2]; apply (Hfb x);
-  rewrite !in_map_union; simpl_set; auto.
-Qed.
-
-
-Lemma gen_match_bnd {b: bool} (t: term) (ty: vty) (ps: list (pattern * gen_term b)):
-  gen_bnd (gen_match t ty ps) = 
-    tm_bnd t ++ concat (map (fun p => pat_fv (fst p) ++ gen_bnd (snd p)) ps).
-Proof. destruct b; reflexivity. Qed.
-
-
-Lemma gen_match_fv {b: bool} (t: term) (ty: vty) (ps: list (pattern * gen_term b)):
-  gen_fv (gen_match t ty ps) =
-  union vsymbol_eq_dec (tm_fv t)
-    (big_union vsymbol_eq_dec
-    (fun x => remove_all vsymbol_eq_dec (pat_fv (fst x))
-      (gen_fv (snd x))) ps).
-Proof. destruct b; reflexivity. Qed.
-
-Lemma wf_genmatch (b: bool) {tm ty} {ps: list (pattern * gen_term b)} 
-  (Hwf: gen_name_wf (gen_match tm ty ps)):
-  term_name_wf tm /\ Forall (fun x => gen_name_wf (snd x)) ps.
-Proof.
-  rewrite gen_name_wf_eq in Hwf.
-  unfold term_name_wf. 
-  rewrite gen_match_bnd, gen_match_fv in Hwf.
-  rewrite !map_app in Hwf.
-  destruct Hwf as [Hn Hdisj].
-  apply NoDup_app_iff in Hn.
-  destruct Hn as [Hn1 [Hn2  [Hn12 _]]].
-  split_all; auto.
-  - eapply disj_sublist_lr. apply Hdisj.
-    intros x Hinx. rewrite in_map_union. auto.
-    apply sublist_app_l.
-  - rewrite Forall_forall. intros x Hinx.
-    rewrite gen_name_wf_eq.
-    rewrite concat_map in Hn2.
-    assert (Hn3:
-      NoDup (map fst (pat_fv (fst x)) ++ map fst (gen_bnd (snd x)))).
-    {
-      eapply in_concat_NoDup; [apply string_dec | apply Hn2 |].
-      rewrite in_map_iff. eexists.
-      rewrite <- map_app. split; [reflexivity|]. 
-      rewrite in_map_iff; eauto.
-    }
-    split.
-    + apply NoDup_app in Hn3. apply Hn3.
-    + intros y [Hiny1 Hiny2].
-      (*Because in [tm_bnd], cannot be in [pat_fv]*)
-      assert (Hnotin: ~ In y (map fst (pat_fv (fst x)))). {
-        intro C.
-        apply NoDup_app_iff in Hn3.
-        apply Hn3 in C; auto; contradiction.
-      }
-      apply (Hdisj y). split.
-      * rewrite in_map_union. right.
-        rewrite in_map_big_union with (eq_dec1:=string_dec).
-        simpl_set. exists x. split; auto.
-        apply in_map_remove_all. auto.
-      * rewrite in_app_iff. right. rewrite concat_map, map_map, in_concat.
-        eexists. split; [rewrite in_map_iff; eexists; split; [| apply Hinx]; reflexivity |].
-        rewrite map_app, in_app_iff; auto.
-Qed.
-
-Lemma wf_teps {f v} (Hwf: term_name_wf (Teps f v)):
-  fmla_name_wf f.
-Proof.
-  unfold term_name_wf in Hwf; unfold fmla_name_wf. simpl in *.
-  destruct Hwf as [Hn1 Hdisj].
-  inversion Hn1; subst. split; auto.
-  intros x [Hinx1 Hinx2].
-  assert (x <> fst v) by (intro C; subst; contradiction).
-  apply (Hdisj x); split.
-  - apply in_map_remove. auto.
-  - simpl. auto.
-Qed.
-
-Lemma wf_fquant {q v f} (Hwf: fmla_name_wf (Fquant q v f)):
-  fmla_name_wf f.
-Proof.
-  unfold fmla_name_wf in *; simpl in *.
-  destruct Hwf as [Hn1 Hdisj].
-  inversion Hn1; subst. split; auto.
-  intros x [Hinx1 Hinx2].
-  assert (x <> fst v) by (intro C; subst; contradiction).
-  apply (Hdisj x); split.
-  - apply in_map_remove. auto.
-  - simpl. auto.
-Qed.
-
-Lemma wf_feq {ty t1 t2} (Hwf: fmla_name_wf (Feq ty t1 t2)):
-  term_name_wf t1 /\ term_name_wf t2.
-Proof.
-  unfold term_name_wf, fmla_name_wf in *; simpl in *.
-  rewrite map_app in Hwf.
-  destruct Hwf as [Hn1 Hdisj].
-  apply NoDup_app in Hn1. destruct Hn1 as [Hn1 Hn2]. split_all; auto;
-  eapply disj_sublist_lr; try solve[apply Hdisj];
-  try solve[apply sublist_app_r]; try solve[apply sublist_app_l];
-  intros x Hinx; apply in_map_union; auto.
-Qed.
-
-Lemma wf_fbinop {b f1 f2} (Hwf: fmla_name_wf (Fbinop b f1 f2)):
-  fmla_name_wf f1 /\ fmla_name_wf f2.
-Proof.
-  unfold fmla_name_wf in *; simpl in *.
-  rewrite map_app in Hwf.
-  destruct Hwf as [Hn1 Hdisj].
-  apply NoDup_app in Hn1. destruct Hn1 as [Hn1 Hn2]. split_all; auto;
-  eapply disj_sublist_lr; try solve[apply Hdisj];
-  try solve[apply sublist_app_r]; try solve[apply sublist_app_l];
-  intros x Hinx; apply in_map_union; auto.
-Qed.
-
-Lemma wf_fnot {f} (Hwf: fmla_name_wf (Fnot f)):
-  fmla_name_wf f.
-Proof.
-  unfold fmla_name_wf in *; simpl in *; auto.
-Qed.
-
-Lemma Forall2_map_iff {A B: Type} (f: A -> B) 
-  (P: A -> B -> Prop) (l: list A):
-  Forall2 P l (map f l) <-> Forall (fun x => P x (f x)) l.
-Proof.
-  induction l as [| h t IH]; simpl; [split; constructor|].
-  destruct IH as [IH1 IH2].
-  split; intros Hall; inversion Hall; constructor; auto.
-Qed.
-
 Lemma match_rep_ext {gamma} (gamma_valid: valid_context gamma)
   pd pdf pf vt vv b (ty: gen_type b) ty1 d (ps1 ps2 : list (pattern * gen_term b))
   Htyps1 Htyps2 Htms1 Htms2
@@ -812,24 +459,12 @@ Definition gen_rewrite {b: bool} (t: gen_term b) : gen_term b :=
   | false => rewriteF
   end t.
 
-(*TODO: move (from Exhaustive)*)
-Lemma gen_match_typed_inv gamma b (tm: term) (ty1: vty) (ps: list (pattern * gen_term b))
-  (ty2: gen_type b):
-  @gen_typed gamma b (gen_match tm ty1 ps) ty2 ->
-  term_has_type gamma tm ty1 /\
-  Forall (fun x => pattern_has_type gamma (fst x) ty1 /\  
-    @gen_typed gamma b (snd x) ty2) ps /\
-  isSome (compile_bare_single b tm ty1 ps).
-Proof.
-  destruct b; intros Htyped; inversion Htyped; subst; split_all; auto;
-  rewrite Forall_forall; intros x Hinx; split; simpl in *; eauto.
-Qed.
 
 Lemma gen_rewrite_typed (b: bool) 
   {gamma} (gamma_valid: valid_context gamma) (t: gen_term b)
   (ty: gen_type b):
-  @gen_typed gamma b t ty ->
-  @gen_typed gamma b (gen_rewrite t) ty.
+  gen_typed gamma b t ty ->
+  gen_typed gamma b (gen_rewrite t) ty.
 Proof.
   destruct b; [apply rewriteT_typed|apply rewriteF_typed]; assumption.
 Qed.
@@ -848,15 +483,15 @@ Lemma rewrite_rep_match_case (b: bool) {gamma}
     term_rep gamma_valid pd pdf vt pf vv tm ty Hty1)
   (IHps: Forall
     (fun (tm: gen_term b) =>
-    forall (vv : val_vars pd vt) (ty : gen_type b) (Hty1 : @gen_typed gamma b tm ty)
-    (Hty2 : @gen_typed gamma b (gen_rewrite tm) ty),
+    forall (vv : val_vars pd vt) (ty : gen_type b) (Hty1 : gen_typed gamma b tm ty)
+    (Hty2 : gen_typed gamma b (gen_rewrite tm) ty),
     gen_name_wf tm ->
     gen_rep gamma_valid pd pdf pf vt vv ty (gen_rewrite tm) Hty2 =
     gen_rep gamma_valid pd pdf pf vt vv ty tm Hty1) (map snd ps))
   (vv: val_vars pd vt)
   (ty1: gen_type b)
-  (Hty1 : @gen_typed gamma b (gen_match tm ty ps) ty1)
-  (Hty2: @gen_typed gamma b 
+  (Hty1 : gen_typed gamma b (gen_match tm ty ps) ty1)
+  (Hty2: gen_typed gamma b 
     match compile_bare_single b (rewriteT tm) ty
       (map (fun x => (fst x, gen_rewrite (snd x))) ps)
     with
@@ -923,7 +558,7 @@ Proof.
   {
     rewrite Forall_map. auto.
   }
-  assert (Htsr: Forall (fun t => @gen_typed gamma b (snd t) ty1)
+  assert (Htsr: Forall (fun t => gen_typed gamma b (snd t) ty1)
   (map (fun x => (fst x, gen_rewrite (snd x))) ps)).
   {
     rewrite Forall_map; simpl. revert Halltms.

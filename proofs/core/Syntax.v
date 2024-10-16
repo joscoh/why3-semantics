@@ -1120,8 +1120,16 @@ Definition def_eq_dec (d1 d2: def) : {d1 = d2} + {d1 <> d2} :=
 (*In many cases, it is inconvenient to use terms and formulas
   separately. With a bit of dependent typing, we can generalize.
   This will be very useful, particularly for pattern-matching:*)
+Definition gen_sym (b: bool) : Set := if b then funsym else predsym.
 Definition gen_term (b: bool) := if b then term else formula.
 Definition gen_type (b: bool) := if b then vty else unit.
+
+Definition gen_term_eq_dec {b: bool} (x y: gen_term b) : {x = y} + {x <> y} :=
+  match b return forall (x y: gen_term b), {x = y} + {x <> y} with
+  | true => term_eq_dec
+  | false => formula_eq_dec
+  end x y.
+
 Definition gen_match {b: bool} (t: term) (ty: vty) (l: list (pattern * gen_term b)) : gen_term b :=
   match b return list (pattern * gen_term b) -> gen_term b with
   | true => fun pats => Tmatch t ty pats
@@ -1132,3 +1140,103 @@ Definition gen_let {b: bool} (v: vsymbol) (t: term) (g: gen_term b) : gen_term b
   | true => fun t2 => Tlet t v t2
   | false => fun f => Flet t v f
   end g.
+
+Definition gen_d (b: bool) : gen_term b :=
+  match b return gen_term b with
+  | true => tm_d
+  | false => Ftrue
+  end.
+
+Definition gen_fun {b: bool} (s: gen_sym b) (tys: list vty) (tms: list term) : gen_term b :=
+  match b return gen_sym b -> gen_term b with
+  | true => fun f => Tfun f tys tms
+  | false => fun p => Fpred p tys tms
+  end s.
+
+Definition gen_if {b: bool} (f: formula) (t1 t2: gen_term b) : gen_term b :=
+  match b return gen_term b -> gen_term b -> gen_term b with
+  | true => fun t1 t2 => Tif f t1 t2
+  | false => fun f1 f2 => Fif f f1 f2
+  end t1 t2.
+
+(*More for [gen_sym]*)
+
+Definition gen_fpsym {b: bool} (ls: gen_sym b) : fpsym :=
+  match b return gen_sym b -> fpsym with
+  | true => f_sym
+  | false =>p_sym
+  end ls.
+
+Definition gen_sym_name {b: bool} (f: gen_sym b) : string :=
+  match b return gen_sym b -> string with
+  | true => fun f => s_name f
+  | false => fun f => s_name f
+  end f.
+
+Definition gen_sym_params {b: bool} (f: gen_sym b) : list typevar :=
+  match b return gen_sym b -> list typevar with
+  | true => s_params
+  | false => s_params
+  end f.
+
+Definition gen_sym_args {b: bool} (f: gen_sym b) : list vty :=
+  match b return gen_sym b -> list vty with
+  | true => s_args
+  | false => s_args
+  end f.
+
+Definition gen_sym_ret {b: bool} (f: gen_sym b) : gen_type b :=
+  match b return gen_sym b -> gen_type b with
+  | true => f_ret
+  | false => fun _ => tt
+  end f.
+
+Lemma typevars_in_params (s: fpsym) i:
+(i < length (s_args s))%nat ->
+forall v : typevar,
+In v (type_vars (nth i (s_args s) vty_int)) -> In v (s_params s).
+Proof.
+  intros. destruct s; simpl in *.
+  assert (Hwf:=s_args_wf0).
+  apply check_args_prop with(x:=List.nth i s_args0 vty_int) in Hwf; auto.
+  apply nth_In; auto.
+Qed.
+
+Lemma gen_typevars_in_params {x v b} (ls: gen_sym b)
+  (Hinx: In x (gen_sym_args ls))
+  (Hinv: In v (type_vars x)):
+  In v (gen_sym_params ls).
+Proof.
+  destruct (In_nth _ _ vty_int Hinx) as [i [Hi Hx]]; subst.
+  destruct b; simpl in *; apply (typevars_in_params _ _ Hi _ Hinv).
+Qed.
+
+(*Generalize [funpred_def]*)
+
+Definition gen_funpred_def (b: bool) (f: gen_sym b) (l: list vsymbol) (t: gen_term b) : funpred_def :=
+  match b return gen_sym b -> gen_term b -> funpred_def with
+  | true => fun ls t => fun_def ls l t
+  | false => fun ls f => pred_def ls l f
+  end f t.
+
+Definition gen_funpred_def_match (x: funpred_def) : {b: bool & (gen_sym b * list vsymbol * gen_term b)%type} :=
+  match x with
+  | fun_def ls vs t => existT _ true (ls, vs, t)
+  | pred_def ls vs f => existT _ false (ls, vs, f)
+  end.
+
+Lemma gen_funpred_def_match_eq (x: funpred_def) b ls vs tms:
+  gen_funpred_def_match x = existT _ b (ls, vs, tms) <-> gen_funpred_def b ls vs tms = x.
+Proof.
+  unfold gen_funpred_def_match, gen_funpred_def. destruct x; simpl.
+  - split; intros Hex; [|destruct b]; inversion Hex; subst; auto.
+    apply inj_pair2_eq_dec in Hex; [inversion Hex; subst; auto | apply Bool.bool_dec].
+  - split; intros Hex; [|destruct b]; inversion Hex; subst; auto.
+    apply inj_pair2_eq_dec in Hex; [inversion Hex; subst; auto | apply Bool.bool_dec].
+Qed.
+
+Definition gen_abs {b: bool} (f: gen_sym b) : def :=
+  match b return gen_sym b -> def with
+  | true => abs_fun
+  | false => abs_pred
+  end f.

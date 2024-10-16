@@ -489,10 +489,22 @@ End Typevars.
 
 (*Some "gen" results:*)
 
+Definition gen_type_vars {b: bool} (t: gen_term b) : list typevar :=
+  match b return gen_term b -> list typevar with
+  | true => tm_type_vars
+  | false => fmla_type_vars
+  end t.
+
 Definition gen_fv {b: bool} (t: gen_term b) : list vsymbol :=
   match b return gen_term b -> list vsymbol with
   | true => tm_fv
   | false => fmla_fv
+  end t.
+
+Definition gen_bnd {b: bool} (t: gen_term b) : list vsymbol :=
+  match b return gen_term b -> list vsymbol with
+  | true => tm_bnd
+  | false => fmla_bnd
   end t.
 
 Definition gen_getvars {b: bool} (x: gen_term b) : list vsymbol :=
@@ -506,11 +518,99 @@ Proof.
   intros x. unfold gen_fv, gen_getvars. destruct b; rewrite in_app_iff; auto.
 Qed.
 
-Lemma gen_getvars_let {b: bool} (v1: vsymbol) (tm: term) (a: gen_term b) (x: vsymbol):
+Lemma gen_getvars_let {b} (v1: vsymbol) (tm: term) (a: gen_term b) (x: vsymbol):
   In x (gen_getvars (gen_let v1 tm a)) <->
   v1 = x \/ In x (tm_bnd tm) \/ In x (tm_fv tm) \/ In x (gen_getvars a).
 Proof.
   unfold gen_let, gen_getvars.
   destruct b; simpl; simpl_set_small; rewrite !in_app_iff; simpl_set_small;
   split; intros; destruct_all; auto; destruct (vsymbol_eq_dec v1 x); auto.
+Qed.
+
+Lemma gen_type_vars_let {b} t1 v (t2: gen_term b):
+  gen_type_vars (gen_let v t1 t2) = union typevar_eq_dec (union typevar_eq_dec (tm_type_vars t1) (gen_type_vars t2))
+    (type_vars (snd v)).
+Proof.
+  destruct b; auto.
+Qed.
+
+Lemma gen_type_vars_match {b} t ty (ps: list (pattern * gen_term b)):
+  forall x, In x (gen_type_vars (gen_match t ty ps)) <->
+    In x (union typevar_eq_dec
+      (union typevar_eq_dec (tm_type_vars t) (big_union typevar_eq_dec pat_type_vars (map fst ps)))
+      (union typevar_eq_dec (big_union typevar_eq_dec gen_type_vars (map snd ps)) (type_vars ty))).
+Proof.
+  destruct b; simpl; auto;
+  intros x; simpl_set_small;
+  apply or_iff_compat_l; apply or_iff_compat_r;
+  induction ps as [| [p a] tl IH]; simpl; try solve[reflexivity];
+  simpl_set_small; apply or_iff_compat_l; assumption.
+Qed.
+
+Lemma gen_fun_bnd {b: bool} (s: gen_sym b) (tys: list vty) (tms: list term):
+  gen_bnd (gen_fun s tys tms) = concat (map tm_bnd tms).
+Proof. destruct b; reflexivity. Qed.
+
+Lemma gen_fun_fv {b: bool} (s: gen_sym b) (tys: list vty) (tms: list term):
+  gen_fv (gen_fun s tys tms) = big_union vsymbol_eq_dec tm_fv tms.
+Proof. destruct b; reflexivity. Qed.
+
+Lemma gen_let_bnd  {b: bool} {tm1: term} {tm2: gen_term b} {x}:
+  gen_bnd (gen_let x tm1 tm2) = x :: tm_bnd tm1 ++ gen_bnd tm2.
+Proof. destruct b; reflexivity. Qed.
+
+Lemma gen_let_fv  {b: bool} {tm1: term} {tm2: gen_term b} {x}:
+  gen_fv (gen_let x tm1 tm2) = 
+    union vsymbol_eq_dec (tm_fv tm1) (remove vsymbol_eq_dec x (gen_fv tm2)).
+Proof. destruct b; reflexivity. Qed.
+
+Lemma gen_if_bnd  {b: bool} (f: formula) (t1 t2: gen_term b):
+  gen_bnd (gen_if f t1 t2) = fmla_bnd f ++ gen_bnd t1 ++ gen_bnd t2.
+Proof. destruct b; reflexivity. Qed.
+
+Lemma gen_if_fv  {b: bool} (f: formula) (t1 t2: gen_term b):
+  gen_fv (gen_if f t1 t2) = 
+    union vsymbol_eq_dec (fmla_fv f) 
+      (union vsymbol_eq_dec (gen_fv t1) (gen_fv t2)).
+Proof. destruct b; reflexivity. Qed.
+
+Lemma gen_match_bnd {b: bool} (t: term) (ty: vty) (ps: list (pattern * gen_term b)):
+  gen_bnd (gen_match t ty ps) = 
+    tm_bnd t ++ concat (map (fun p => pat_fv (fst p) ++ gen_bnd (snd p)) ps).
+Proof. destruct b; reflexivity. Qed.
+
+Lemma gen_match_fv {b: bool} (t: term) (ty: vty) (ps: list (pattern * gen_term b)):
+  gen_fv (gen_match t ty ps) =
+  union vsymbol_eq_dec (tm_fv t)
+    (big_union vsymbol_eq_dec
+    (fun x => remove_all vsymbol_eq_dec (pat_fv (fst x))
+      (gen_fv (snd x))) ps).
+Proof. destruct b; reflexivity. Qed.
+
+Definition gensym_in_gen_term {b1 b2: bool} (f: gen_sym b1) (t: gen_term b2) : bool :=
+  match b1 return gen_sym b1 -> gen_term b2 -> bool with
+  | true => fun f => 
+    match b2 return gen_term b2 -> bool with
+    | true => funsym_in_tm f
+    | false => funsym_in_fmla f
+    end
+  | false => fun p =>
+    match b2 return gen_term b2 -> bool with
+    | true => predsym_in_tm p
+    | false => predsym_in_fmla p
+    end
+  end f t.
+
+Definition gensym_in_term {b: bool} (f: gen_sym b) (t: term) : bool :=
+  @gensym_in_gen_term b true f t.
+
+Definition gensym_in_fmla {b: bool} (f: gen_sym b) (t: formula) : bool :=
+  @gensym_in_gen_term b false f t.
+
+Lemma gensym_in_gen_let {b1 b2: bool} (f: gen_sym b1)
+  (t: term) (v: vsymbol) (t2: gen_term b2):
+  gensym_in_gen_term f (gen_let v t t2) =
+  gensym_in_term f t || gensym_in_gen_term f t2.
+Proof.
+  destruct b1; destruct b2; auto.
 Qed.

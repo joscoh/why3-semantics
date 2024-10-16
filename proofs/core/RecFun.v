@@ -2853,13 +2853,13 @@ Definition match_rep_aux
       (forall x, In x (newlist small p) -> vty_in_m m vs (snd x) /\
       adt_smaller_trans (hide_ty (extend_val_with_list pd vt v l x)) d)) :=
     fix match_rep (pats: list (pattern * (gen_term b))) 
-      (Hall: Forall (fun x => gen_typed b (snd x) ty) pats)
+      (Hall: Forall (fun x => gen_typed gamma b (snd x) ty) pats)
       (Hpats: Forall (fun x => pattern_has_type gamma (fst x) ty1) pats)
       (Hdec: Forall (fun x => gen_decrease fs ps (newlist small (fst x))
       (upd_option_iter hd (pat_fv (fst x))) m vs b (snd x)) pats) :
       gen_ret pd vt b ty :=
     match pats as l' return 
-      Forall (fun x => gen_typed b (snd x) ty) l' ->
+      Forall (fun x => gen_typed gamma b (snd x) ty) l' ->
       Forall (fun x => pattern_has_type gamma (fst x) ty1) l' ->
       Forall (fun x => gen_decrease fs ps (newlist small (fst x))
       (upd_option_iter hd (pat_fv (fst x))) m vs b (snd x)) l' ->
@@ -2871,7 +2871,7 @@ Definition match_rep_aux
         return (match_val_single gamma_valid pd pdf vt ty1 p (Forall_inv Hpats) dom_t) = o ->
         gen_ret pd vt b ty with
       | Some l => fun Hmatch => 
-           match b return forall (ty: gen_type b) (dat: gen_term b), gen_typed b dat ty -> 
+           match b return forall (ty: gen_type b) (dat: gen_term b), gen_typed gamma b dat ty -> 
             (gen_decrease fs ps (newlist small p) (upd_option_iter hd (pat_fv p)) m vs b dat) -> 
             gen_ret pd vt b ty with
           | true => fun ty dat Hty Hdec => proj1_sig (term_rep_aux (extend_val_with_list pd vt v l) dat ty
@@ -4317,10 +4317,10 @@ Proof.
 Qed.
 
 Definition gen_rep_aux (v: val_vars pd vt) input rec (b: bool) (t: gen_term b) (ty: gen_type b)
-  (small: list vsymbol) hd (Hty: gen_typed b t ty)
+  (small: list vsymbol) hd (Hty: gen_typed gamma b t ty)
   (Hdec: gen_decrease fs ps small hd m vs b t) Hsmall Hhd:
   gen_ret pd vt b ty :=
-  match b return forall (t: gen_term b) (ty: gen_type b) (Hty: gen_typed b t ty),
+  match b return forall (t: gen_term b) (ty: gen_type b) (Hty: gen_typed gamma b t ty),
     gen_decrease fs ps small hd m vs b t -> gen_ret pd vt b ty  with
   | true => fun t ty Hty Hdec => proj1_sig (term_rep_aux input rec v t ty small hd Hty Hdec Hsmall Hhd)
   | false => fun f _ Hty Hdec => formula_rep_aux input rec v f small hd Hty Hdec Hsmall Hhd
@@ -4331,7 +4331,7 @@ Lemma match_rep_aux_eq v input rec hd small (b: bool)
   dom1 dom2 (Hdom: dom1 = dom2) (pats : list (pattern * (gen_term b)))
   (ty: gen_type b) Hhd newlist Hinvar Hall Hpats Hdec
   (Hpseq: Forall (fun (x: gen_term b) =>
-    forall (v: val_vars pd vt) (ty: gen_type b) small hd (Hty: gen_typed b x ty)
+    forall (v: val_vars pd vt) (ty: gen_type b) small hd (Hty: gen_typed gamma b x ty)
       (Hdec : gen_decrease fs ps small hd m vs b x) Hsmall Hhd,
       gen_rep_aux v input rec b x ty small hd Hty Hdec Hsmall Hhd =
       gen_rep gamma_valid pd pdf pf vt v ty x Hty) (map snd pats)) :
@@ -4626,7 +4626,7 @@ forall
     Hall Hpats Hinvar1 Hinvar2
   (Hpseq: Forall (fun (x: gen_term b) =>
     forall (v: val_vars pd vt) (ty: gen_type b)
-      (small: list vsymbol) (hd: option vsymbol) (Hty: gen_typed b x ty)
+      (small: list vsymbol) (hd: option vsymbol) (Hty: gen_typed gamma b x ty)
       (Hdec : gen_decrease fs ps small hd m vs b x) Hsmall1 Hsmall2 Hhd,
     gen_rep_aux vt pf1 v input rec1 b x ty small hd Hty Hdec Hsmall1 Hhd =
     gen_rep_aux vt pf2 v input rec2 b x ty small hd Hty Hdec Hsmall2 Hhd)
@@ -4835,7 +4835,7 @@ forall
  Hhd1 Hhd2 (ty: gen_type b) Hall Hpats Hinvar1 Hinvar2
   (Hpseq: Forall (fun (tm: (gen_term b)) =>
     forall (v1 v2: val_vars pd vt) (ty: gen_type b)
-    (small: list vsymbol) (hd: option vsymbol) (Hty: gen_typed b tm ty)
+    (small: list vsymbol) (hd: option vsymbol) (Hty: gen_typed gamma b tm ty)
     (Hdec : gen_decrease fs ps small hd m vs b tm) Hsmall1 Hsmall2 Hhd1 Hhd2
     (Hv: forall x, In x (gen_fv tm) -> v1 x = v2 x),
     gen_rep_aux vt pf v1 in1 (fun x _ => funcs_rep_aux vt pf x) b tm ty small hd Hty Hdec Hsmall1 Hhd1 =
