@@ -356,7 +356,7 @@ Fixpoint typecheck_term (s: context) (t: term) : option vty :=
   | Tmatch tm ty1 ps =>
     if (typecheck_term s tm == Some ty1) &&
       all (fun x => typecheck_pattern s (fst x) ty1) ps &&
-      isSome (Pattern.compile_bare_single true tm ty1 ps)
+      isSome (Pattern.compile_bare_single true false tm ty1 ps)
     then 
       match ps with
       | nil => None
@@ -432,7 +432,7 @@ with typecheck_formula (s: context) (f: formula) : bool :=
     (*is_vty_adt s ty &&*)
     (typecheck_term s tm == Some ty) &&
     all (fun x => typecheck_pattern s (fst x) ty) ps &&
-    isSome (Pattern.compile_bare_single false tm ty ps) &&
+    isSome (Pattern.compile_bare_single false false tm ty ps) &&
     (* (~~ (null ps)) && *)
     ((fix check_list (l: list (pattern * formula)) : bool :=
       match l with
@@ -564,7 +564,7 @@ Proof.
       /(forallb_ForallP _ _ _ Hallt) => Hallps; last first.
       case: (None == Some v) /eqP =>// _; reflF.
       apply Hallps. by rewrite Forall_forall.
-    case Hcomp: (Pattern.compile_bare_single true tm ty ps) => [tm2 |]; last first.
+    case Hcomp: (Pattern.compile_bare_single true false tm ty ps) => [tm2 |]; last first.
       reflF. by rewrite Hcomp in H7.
     have Hallpat: forall x, In x ps -> pattern_has_type s x.1 ty by
       rewrite -Forall_forall.
@@ -702,7 +702,7 @@ Proof.
     case: (all (fun x : pattern * formula => typecheck_pattern s x.1 ty) ps)
       /(forallb_ForallP _ _ _ Hallt) => Hallps/=; last by
       (reflF; rewrite Forall_forall in Hallps).
-    case Hcomp: (Pattern.compile_bare_single false tm ty ps) => [tm2 |]; last first.
+    case Hcomp: (Pattern.compile_bare_single false false tm ty ps) => [tm2 |]; last first.
       reflF. by rewrite Hcomp in H6.
     apply iff_reflect. split.
     + move=> Hmatch. inversion Hmatch; subst.

@@ -2042,6 +2042,17 @@ Definition comp_full (is_bare: bool) (comp_wilds : unit -> option A) comp_cases
 
 Section Comp.
 Variable bare: bool.
+Variable simpl_constr : bool. (*Do we simplify
+  match (Tfun f ts) with | ... end to 
+  compile (ts) (S(P, f))?
+  If yes, interacts poorly with rewriting, so we cannot
+  use for exhaustiveness. But other parts of Why3 rely
+  on this being done (e.g. for tuples). So we include
+  both, prove all the specs for all except rewriting, 
+  and prove that the (simpl_constr = false) case
+  implies the (simpl_constr = true) case - it is only more restrictive
+  Then we use the false case for exhaustivenss and true for
+  compilation*)
 
 Equations compile (tl: list (term * vty)) (rl: list (list pattern * A))
   : option A  by wf (compile_measure rl) lt :=
@@ -2096,9 +2107,23 @@ Equations compile (tl: list (term * vty)) (rl: list (list pattern * A))
     if amap_is_empty types then comp_wilds tt
     else
 
+    if simpl_constr then
+      match (is_fun t) with
+      | Left Hconstr =>
+        let '(cs, params, al) := proj1_sig Hconstr in
+          if is_constr cs then
+          if amap_mem funsym_eq_dec cs types then comp_cases cs (combine al
+            (map (ty_subst (s_params cs) params) (s_args cs))) else comp_wilds tt
+          else comp_full tt
+      | Right Hnotconstr =>
+        comp_full tt
+      end
+    else comp_full tt
+
+
     (*NOTE: remove Tfun case - interacts poorly with rewriting*)
 
-    comp_full tt
+    (* comp_full tt *)
 
     (* match (is_fun t) with
     | Left Hconstr =>
@@ -2477,7 +2502,18 @@ Lemma compile_ind (P: list (term * vty) -> list (list pattern * A) -> option A -
       
       if amap_is_empty types then comp_wilds tt
       else
-      comp_full tt)):
+        if simpl_constr then
+        match (is_fun t) with
+        | Left Hconstr =>
+          let '(cs, params, al) := proj1_sig Hconstr in
+            if is_constr cs then
+            if amap_mem funsym_eq_dec cs types then comp_cases cs (combine al
+              (map (ty_subst (s_params cs) params) (s_args cs))) else comp_wilds tt
+            else comp_full tt
+        | Right Hnotconstr =>
+          comp_full tt
+        end
+      else comp_full tt)):
       (* match (is_fun t) with
           | Left Hconstr =>
             let '(cs, params, al) := proj1_sig Hconstr in
@@ -2595,13 +2631,15 @@ End Comp.
 End Compile.
 
 (*The version of [compile] for [gen_term]*)
-Definition compile_term (b: bool) get_constructors bare tms P :=
+Definition compile_term (b: bool) (simpl_constr: bool) 
+  get_constructors bare tms P :=
   compile get_constructors (@gen_match b) (@gen_let b) 
-    (@gen_getvars b) bare tms P.
-Definition compile_bare (b: bool) tms P :=
-  compile (fun _ => nil) (@gen_match b) (@gen_let b) (@gen_getvars b) true tms P.
+    (@gen_getvars b) bare simpl_constr tms P.
+Definition compile_bare (b: bool) (simpl_constr: bool) tms P :=
+  compile (fun _ => nil) (@gen_match b) (@gen_let b) (@gen_getvars b) 
+  true simpl_constr tms P.
 
 (*single version*)
-Definition compile_bare_single (b: bool) (t: term) (ty: vty)
+Definition compile_bare_single (b: bool) (simpl_constr: bool) (t: term) (ty: vty)
   (pats: list (pattern * (gen_term b))) :=
-  compile_bare b [(t, ty)] (map (fun x => ([(fst x)], (snd x))) pats).
+  compile_bare b simpl_constr [(t, ty)] (map (fun x => ([(fst x)], (snd x))) pats).

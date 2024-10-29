@@ -105,7 +105,7 @@ Inductive term_has_type: context -> term -> vty -> Prop :=
     (*TODO: don't need anymore*)
     (* negb (null ps) -> *)
     (*the pattern match is exhaustive*)
-    isSome (compile_bare_single true tm ty1 ps) ->
+    isSome (compile_bare_single true false tm ty1 ps) ->
     term_has_type s (Tmatch tm ty1 ps) ty2
   | T_eps: forall s x f,
     formula_typed s f ->
@@ -160,7 +160,7 @@ with formula_typed: context -> formula -> Prop :=
     (forall x, In x ps -> pattern_has_type s (fst x) ty) ->
     (forall x, In x ps -> formula_typed s (snd x)) ->
     (*the pattern match is exhaustive*)
-    isSome (compile_bare_single false tm ty ps) ->
+    isSome (compile_bare_single false false tm ty ps) ->
     (*See comment in term*)
     (* negb (null ps) -> *)
     formula_typed s (Fmatch tm ty ps).
@@ -4451,7 +4451,7 @@ Lemma gen_match_typed gamma b (tm: term) (ty1: vty) (ps: list (pattern * gen_ter
   (ty2: gen_type b):
   term_has_type gamma tm ty1 ->
   Forall (fun x => pattern_has_type gamma (fst x) ty1 /\  gen_typed gamma b (snd x) ty2) ps ->
-  isSome (compile_bare_single b tm ty1 ps) ->
+  isSome (compile_bare_single b false tm ty1 ps) ->
   gen_typed gamma b (gen_match tm ty1 ps) ty2.
 Proof.
   unfold gen_match.
@@ -4465,7 +4465,7 @@ Lemma gen_match_typed_inv gamma b (tm: term) (ty1: vty) (ps: list (pattern * gen
   term_has_type gamma tm ty1 /\
   Forall (fun x => pattern_has_type gamma (fst x) ty1 /\  
     gen_typed gamma b (snd x) ty2) ps /\
-  isSome (compile_bare_single b tm ty1 ps).
+  isSome (compile_bare_single b false tm ty1 ps).
 Proof.
   destruct b; intros Htyped; inversion Htyped; subst; split_all; auto;
   rewrite Forall_forall; intros x Hinx; split; simpl in *; eauto.
