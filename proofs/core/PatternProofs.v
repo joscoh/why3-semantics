@@ -5,6 +5,13 @@ Require Import GenElts.
 From Equations Require Import Equations. 
 Set Bullet Behavior "Strict Subproofs".
 
+(*Some tactics to help us*)
+Ltac simpl_len :=
+  repeat (rewrite !map_length || rewrite !rev_length || 
+  rewrite !app_length || rewrite !combine_length || rewrite !gen_strs_length || rewrite !repeat_length).
+
+Ltac solve_len := simpl_len; try reflexivity; solve[auto; try lia].
+
 (*General results we need*)
 
 (*TODO: move these once casting, cast_arg_list defined*)
@@ -77,13 +84,13 @@ Proof.
       (*Use app2 lemma*)
       destruct (hlist_app_hnth2 dom _ _ (hlist_rev (domain dom) tys (hlist_tl h)) 
         (HL_cons (domain dom) ty1 [] (hlist_hd h) (HL_nil (domain dom))) d1 d2 (length tys)
-        (ltac:(rewrite rev_length; lia))) as [Heq1 Happ].
+        (ltac:(solve_len))) as [Heq1 Happ].
       revert Heq1 Happ. rewrite rev_length, Nat.sub_diag. simpl. intros.
       exists Heq1. rewrite (hlist_inv h). simp hlist_rev.
     + (*Need IH and app1*)
       assert (Heq: nth j' tys d1 = nth i (rev tys ++ [ty1]) d1).
       {
-        rewrite app_nth1; [|rewrite rev_length; lia].
+        rewrite app_nth1 by solve_len.
         rewrite rev_nth; try lia. 
         f_equal. lia.
       }
@@ -93,7 +100,7 @@ Proof.
      (*use app1 lemma*)
       destruct (hlist_app_hnth1 dom _ _ (hlist_rev (domain dom) tys (hlist_tl h)) 
         (HL_cons (domain dom) ty1 [] (hlist_hd h) (HL_nil (domain dom))) d1 d2 i
-        (ltac:(rewrite rev_length; lia))) as [Heq1 Happ].
+        (ltac:(solve_len))) as [Heq1 Happ].
       rewrite Happ.
       destruct (IH (hlist_tl h) i ltac:(lia)) as [Heq2 IH2].
       rewrite IH2. rewrite !dom_cast_compose.
@@ -295,7 +302,7 @@ Proof.
   - simp terms_to_hlist. simp hlist_rev.
     rewrite terms_to_hlist_app with (Hty1:=Forall2_rev (Forall2_inv_tail Hty))
       (Hty2:=(Forall2_cons _ _ (Forall2_inv_head Hty) (Forall2_nil _))).
-    2: { rewrite !rev_length; auto. apply Forall2_length in Hty. simpl in Hty. lia. }
+    2: { simpl_len; auto. apply Forall2_length in Hty. simpl in Hty. lia. }
     assert (Happeq: rev (map (v_subst vt) tys) = map (v_subst vt) (rev tys)).
     {
       rewrite map_app in e. simpl in e.
@@ -439,7 +446,7 @@ Lemma find_semantic_constr (t: term) {m: mut_adt} (m_in : mut_in_ctx m gamma)
     |  tm_semantic_constr t m_in a_in (fst Hf) args_len Hty (snd Hf) }}.
 Proof.
   unfold tm_semantic_constr.
-  assert (srts_len: length (map (v_subst vt) args) = length (m_params m)) by (rewrite map_length; auto).
+  assert (srts_len: length (map (v_subst vt) args) = length (m_params m)) by solve_len.
   assert (Hunif: uniform m) by (apply (gamma_all_unif gamma_valid); auto). 
   (*Of course, use [find_constr_rep]*)
   destruct (find_constr_rep gamma_valid _ m_in (map (v_subst vt) args) srts_len (dom_aux pd) a a_in
@@ -691,15 +698,14 @@ Proof.
   assert (Hlen: length ps = length tys). {
     inversion Hty1; subst. eapply Forall2_length; eauto.
   }
-  apply Forall2_app_inv in Hty2'; [| rewrite !rev_length; auto].
+  apply Forall2_app_inv in Hty2'; [| solve_len].
   destruct Hty2' as [Hrowrev Hrowhd].
   (*Need correct typecast*)
   set (h2:=(HL_cons (domain (dom_aux pd)) (v_subst vt ty1) (map (v_subst vt) nil) 
     (hlist_hd al) (HL_nil _)) : arg_list (domain (dom_aux pd)) (map (v_subst vt) [ty1])).
 
   rewrite matches_row_app with (h1:=cast_arg_list (eq_sym (map_rev _ _)) 
-    (hlist_rev _ (map (v_subst vt) tys) (hlist_tl al)))(h2:=h2)(Hr2:=Hrowrev)(Hr3:=Hrowhd); auto.
-  3: rewrite !rev_length; auto.
+    (hlist_rev _ (map (v_subst vt) tys) (hlist_tl al)))(h2:=h2)(Hr2:=Hrowrev)(Hr3:=Hrowhd); auto; [| | solve_len].
   2: {
     rewrite hlist_app_cast1. rewrite !cast_arg_list_compose.
     simpl in *. rewrite (hlist_inv al) at 1.
@@ -836,15 +842,14 @@ Proof.
         assert (Hr1:=pat_matrix_typed_head Htyp'). simpl in Hr1.
         destruct Hr1 as [Hr1 _].
         apply Forall2_app_inv in Hr1.
-        2: {  unfold sorts_to_tys, ty_subst_list.
-          rewrite !rev_length, !map_length. auto. }
+        2: {  unfold sorts_to_tys, ty_subst_list. solve_len. }
         destruct Hr1 as [Hrow1 Hrow2].
         (*Now we can split the [app]*)
         rewrite matches_row_app with(h1:=cast_arg_list Heq1 (hlist_rev _ _ al1))(h2:=terms_to_hlist v ts tys f)
           (Hr2:=Hrow1)(Hr3:=Hrow2).
         (*We prove the easy goals first*)
         2: rewrite hlist_app_cast1, cast_arg_list_compose; apply cast_arg_list_eq.
-        2: unfold ty_subst_list; rewrite !rev_length, map_length; auto.
+        2: unfold ty_subst_list; solve_len.
         2: symmetry; apply (Forall2_length (Forall2_inv_tail Htyr)).
 
         (*Now we need to transform the [matches_row] into the corresponding
@@ -932,11 +937,7 @@ Proof.
       apply pat_matrix_typed_head in Htyp''. simpl in Htyp''.
       destruct Htyp'' as [Hrowty _].
       apply Forall2_app_inv in Hrowty.
-      2: {
-        rewrite repeat_length, rev_length.
-        unfold ty_subst_list.
-        rewrite !map_length. reflexivity.
-      }
+      2: unfold ty_subst_list; solve_len.
       destruct Hrowty as [Hr1 Hr2].
       (*Again decompose the row via append*)
       simpl.
@@ -949,10 +950,7 @@ Proof.
         rewrite !cast_arg_list_compose.
         apply cast_arg_list_eq.
       }
-      2: {
-        rewrite repeat_length.
-        unfold ty_subst_list. rewrite rev_length, map_length; reflexivity. 
-      }
+      2: unfold ty_subst_list; solve_len.
       2: apply Forall2_length in Hr2; auto.
       (*Then simplify first because all wilds*)
       rewrite matches_row_all_wilds with (ps:=(repeat Pwild (Datatypes.length (s_args c)))); [| apply repeat_spec].
@@ -1776,7 +1774,7 @@ Proof.
       (*replace (map vty_var (m_params m)) with (seq.map vty_var (m_params m)) in H3 by auto.*)
       rewrite <- Forall_forall in H11.
       apply Forall2_combine.
-      split; auto. unfold ty_subst_list; rewrite map_length. auto.
+      split; auto. unfold ty_subst_list; solve_len.
     + apply prove_pat_matrix_typed_cons; auto. simpl.
       apply Forall2_app; auto.
       (*This is pretty easy because Pwild can have any (valid) type*)
@@ -1788,14 +1786,11 @@ Proof.
         - inversion H2; subst. inversion H; subst. rewrite Forall_forall; auto.
       }
       assert (Hlen: length (repeat Pwild (Datatypes.length (s_args f))) =
-        length (rev (ty_subst_list (s_params f) args (s_args f)))).
-      {
-        unfold ty_subst_list.
-        rewrite repeat_length, rev_length, map_length; reflexivity.
-      }
+        length (rev (ty_subst_list (s_params f) args (s_args f)))) by
+        (unfold ty_subst_list; solve_len).
       clear -Hval Hlen.
       generalize dependent (rev (ty_subst_list (s_params f) args (s_args f))).
-      rewrite repeat_length. generalize dependent (length (s_args f)).
+      simpl_len. generalize dependent (length (s_args f)).
       intros n l Hval Hn; subst. induction l; simpl; auto.
       inversion Hval; subst.
       do 2(constructor; auto).
@@ -2237,7 +2232,7 @@ Proof.
       unfold srts. rewrite map_nth_inbound with (d2:=vs_d); subst; auto.
     }
     rewrite (val_with_args_in') with (i:=i)(Heq:=Hnth); auto.
-    2: unfold srts; rewrite map_length; reflexivity.
+    2: unfold srts; solve_len.
     assert (Hx': nth ((length vars - S i )) (rev vars) vs_d  = x). {
       subst. symmetry. rewrite rev_nth1; auto.
     }
@@ -2245,18 +2240,17 @@ Proof.
     {
       rewrite <- Hx. rewrite (rev_nth1 vars); auto.
       unfold srts. rewrite <- map_rev.
-      rewrite map_nth_inbound with (d2:=vs_d); auto. rewrite rev_length.
-      destruct vars; simpl in *; try lia.
+      rewrite map_nth_inbound with (d2:=vs_d); auto. simpl_len.
+      destruct vars; simpl in *; lia.
     }
-    rewrite (val_with_args_in') with (i:=(length vars - S i))(Heq:=Hnth'); auto;
-    try rewrite !rev_length; auto; [| apply NoDup_rev; auto|
-      unfold srts; rewrite map_length; auto |destruct vars; simpl in *; lia].
+    rewrite (val_with_args_in') with (i:=(length vars - S i))(Heq:=Hnth'); auto; simpl_len; auto;
+    [| apply NoDup_rev; auto| unfold srts; solve_len |destruct vars; simpl in *; lia].
     destruct (hlist_rev_hnth _ (length vars - S i) srts al s_int (dom_int pd)
-      ltac:(unfold srts; rewrite map_length; destruct vars; simpl in *; lia)) as [Heq Hrev].
+      ltac:(unfold srts; simpl_len; destruct vars; simpl in *; lia)) as [Heq Hrev].
     rewrite Hrev. rewrite dom_cast_compose.
     generalize dependent (eq_trans Heq Hnth').
     replace (Datatypes.length srts - S (Datatypes.length vars - S i)) with i.
-    2: { unfold srts; rewrite map_length. destruct vars; simpl in *; try lia.
+    2: { unfold srts; simpl_len; destruct vars; simpl in *; try lia.
       (*Why can't lia solve this directly?*)
     assert (i <= length vars) by (apply Arith_prebase.lt_n_Sm_le in Hi; assumption). lia.
     }
@@ -2389,10 +2383,10 @@ Lemma constr_typed_row {c tys ps ty}:
 Proof.
   intros Hp; inversion Hp; subst.
   apply Forall2_nth.
-  unfold ty_subst_list; rewrite !map_length. split; auto. intros i d1 d2 Hi.
+  unfold ty_subst_list; simpl_len. split; auto. intros i d1 d2 Hi.
   apply (H8 (nth i ps d1, (nth i (seq.map (ty_subst (s_params c) tys) (s_args c)) d2))).
-  rewrite in_combine_iff; [| rewrite map_length; lia].
-  exists i. split; auto. intros. f_equal; apply nth_indep; auto. rewrite map_length; lia.
+  rewrite in_combine_iff by solve_len.
+  exists i. split; auto. intros. f_equal; apply nth_indep; auto. solve_len.
 Qed.
 
 (*A constructor at the head of a well-typed pattern matrix has the first type*)
@@ -2680,7 +2674,7 @@ Proof.
           rewrite map_rev, forallb_rev.
           set (new_vars := (combine (gen_strs (length pats1) (compile_fvs gen_getvars ((t, ty) :: tl) rl)))
             (map (ty_subst (s_params c) tys) (s_args c))) in *.
-          rewrite map_fst_combine; auto; [| rewrite !map_length; auto].
+          rewrite map_fst_combine; auto; [| solve_len].
           (*Easy: all added are vars*)
           rewrite forallb_map. simpl. apply forallb_t.
         + (*Now case on [ps1] for end*)
@@ -3195,13 +3189,13 @@ Lemma in_cslist_val {c ps ty tys vs rl types_cslist constr}
   Forall (valid_type gamma) (map (ty_subst (s_params c) vs) (s_args c)).
 Proof.
   intros Hin. pose proof (in_cslist_typed Hp Hpop Hsimp Hin) as Hclist_types.
-  inversion Hclist_types; subst. rewrite Forall_nth. intros i d. rewrite map_length; intros Hi.
+  inversion Hclist_types; subst. rewrite Forall_nth. intros i d. simpl_len; intros Hi.
   apply pat_has_type_valid with (p:=nth i ps Pwild).
   specialize (H8 (nth i ps Pwild, nth i 
     (map (ty_subst (s_params c) vs) (s_args c)) d)).
-  apply H8. rewrite in_combine_iff; [| rewrite map_length; auto].
+  apply H8. rewrite in_combine_iff by solve_len.
   exists i. split; [lia|]. intros d1 d2.
-  f_equal; apply nth_indep; [| rewrite map_length]; lia.
+  f_equal; apply nth_indep; [| solve_len]; lia.
 Qed.
 
 Lemma compile_bare_single_pat_typed {ty ps}
@@ -3537,7 +3531,7 @@ Proof.
     pose proof (in_cslist_val Hmxty Hpop2 Hsimpl Hinc) as Hallval.
     assert (Hlenps1: Datatypes.length ps1 = Datatypes.length (s_args cs1)).
     { inversion Hpty; auto. }
-    rewrite map_snd_combine; [| rewrite !map_length, gen_strs_length; auto].
+    rewrite map_snd_combine by solve_len.
     intros Hcomp.
     (*Now use [compile_all_wild]*)
     exfalso. eapply compile_all_wild.
@@ -3545,24 +3539,17 @@ Proof.
     - apply Hspecvarwild.
     - (*prove term typing*)
       rewrite app_nil_r.
-      rewrite !map_rev, map_fst_combine, map_snd_combine;
-      try solve[rewrite !map_length, combine_length, gen_strs_length, !map_length; lia].
+      rewrite !map_rev, map_fst_combine, map_snd_combine; [| solve_len | solve_len].
       apply Forall2_rev.
-      apply Forall2_nth.
-      rewrite !map_length, combine_length, gen_strs_length, !map_length, <- Hlenps1, 
-      Nat.min_id.
+      apply Forall2_nth. simpl_len. rewrite <- Hlenps1, Nat.min_id.
       split; auto. intros i d1 d2 Hi.
-      rewrite map_nth_inbound with (d2:=(""%string, vty_int));
-      [|rewrite combine_length, gen_strs_length, map_length; lia].
-      (* rewrite map_nth_inbound with (d2:=(vty_int)) by lia. *)
-      rewrite combine_nth; [| rewrite gen_strs_length, map_length; lia].
-      apply T_Var'; auto.
-      2: { simpl. apply nth_indep; rewrite map_length; lia. }
+      rewrite map_nth_inbound with (d2:=(""%string, vty_int)) by solve_len.
+      rewrite combine_nth by solve_len.
+      apply T_Var'; auto; [| simpl; apply nth_indep; solve_len].
       rewrite Forall_nth in Hallval.
-      apply Hallval; rewrite map_length; lia.
+      apply Hallval; solve_len.
     - (*prove pat matrix typed*)
-      rewrite app_nil_r, map_rev, map_snd_combine;
-      [| rewrite !map_length, combine_length, gen_strs_length, map_length; lia].
+      rewrite app_nil_r, map_rev, map_snd_combine by solve_len.
       pose proof (spec_typed_adt m_in a_in c_in Hmxty) as Hmx.
       rewrite app_nil_r in Hmx. apply Hmx.
     - (*Prove not null*)
@@ -3770,16 +3757,15 @@ Proof.
       exists tys1; apply Hinc.
     }
     assert (Hvarstyps: length new_vars = length new_typs). {
-      unfold new_vars. rewrite combine_length, gen_strs_length.
+      unfold new_vars. simpl_len.
       assert (length ps1 = length new_typs); try lia.
-      unfold new_typs. rewrite map_length; auto. 
+      unfold new_typs. simpl_len; auto.
       specialize (Hclist_types _ _ _ Hinc); inversion Hclist_types; auto.
     }
     revert IHconstrs.
     (*Simplify lists in IHConstrs*)
-    rewrite !rev_combine, !map_app, !map_fst_combine;
-    try solve[try rewrite !rev_length; try rewrite !map_length; auto].
-    rewrite !map_snd_combine; [| rewrite !rev_length, !map_length; auto].
+    rewrite !rev_combine, !map_app, !map_fst_combine by solve_len.
+    rewrite !map_snd_combine by solve_len.
     intros IHconstrs.
     assert (Hlen: length ps1 = length (s_args c)). {
       specialize (Hclist_types _ _ _ Hinc); inversion Hclist_types; subst; auto.
@@ -3794,7 +3780,7 @@ Proof.
       2: { inversion Htmtys; auto. }
       apply Forall2_rev.
       (*Prove all variables have correct type*)
-      apply Forall2_nth; rewrite map_length; split; [auto|].
+      apply Forall2_nth; simpl_len; split; [auto|].
       intros i d1 d2 Hi.
       assert (Hi': i < length (s_args c)) by
         (rewrite Hvarstyps in Hi; unfold new_typs in Hi; rewrite map_length in Hi; exact Hi).
@@ -3802,9 +3788,9 @@ Proof.
       apply T_Var'.
       -- (*We proved [valid_type] already*)
         specialize (Hcallval _ _ _ Hinc).
-        rewrite Forall_forall in Hcallval; apply Hcallval, nth_In. rewrite map_length; assumption.
-      -- unfold new_vars, new_typs. rewrite combine_nth; [| rewrite gen_strs_length, map_length; lia].
-          simpl. apply nth_indep; rewrite map_length; assumption.
+        rewrite Forall_forall in Hcallval; apply Hcallval, nth_In. solve_len.
+      -- unfold new_vars, new_typs. rewrite combine_nth by solve_len.
+          simpl. apply nth_indep; solve_len.
     }
     assert (Hp' : pat_matrix_typed (rev new_typs ++ map snd tl) (spec rl c)).
     {
@@ -3813,8 +3799,7 @@ Proof.
     }
     (*Now we use IH*)
     exists Htys. exists Hp'. apply (IHconstrs Htys Hp' t1).
-    rewrite <- Hcompile. f_equal. rewrite rev_combine. reflexivity.
-    rewrite map_length. assumption.
+    rewrite <- Hcompile. f_equal. rewrite rev_combine; [reflexivity | solve_len]. 
   }
   (*The stronger typing result we need in multiple places:*)
   (*Now we use previous result about [pats]*)
@@ -3837,15 +3822,12 @@ Proof.
         inversion Hclist_types; subst.
         apply P_Constr'; auto.
         2: { unfold rev_map. (*prove disj by uniqueness of generated variable names*)
-          rewrite !map_rev, !rev_involutive, !map_length, 
-          !combine_length, !gen_strs_length,
-          !map_length, H6, Nat.min_id.
+          rewrite !map_rev, !rev_involutive; simpl_len. 
+          rewrite H6, Nat.min_id.
           intros i j d Hi Hj Hij.
-          rewrite !map_nth_inbound with (d2:=(""%string, vty_int));
-          try solve [rewrite combine_length, gen_strs_length,
-            map_length; lia].
+          rewrite !map_nth_inbound with (d2:=(""%string, vty_int)) by solve_len.
           simpl.
-          rewrite !combine_nth; try solve[rewrite gen_strs_length, map_length; auto].
+          rewrite !combine_nth by solve_len.
           intros x. simpl. intros [[Hx1 | []] [Hx2 | []]]; subst.
           inversion Hx2; subst.
           pose proof (gen_strs_nodup (length (s_args c)) (compile_fvs gen_getvars ((t, sigma (f_ret c)) :: tl) rl)) as Hnodup.
@@ -3855,19 +3837,17 @@ Proof.
         }
         unfold rev_map. rewrite !map_rev, !rev_involutive. 
         (*Prove all variables have correct type: not too hard*)
-        apply Forall2_nth; unfold ty_subst_list; rewrite !map_length, combine_length,
-            gen_strs_length, map_length, H6, Nat.min_id. split; [reflexivity|].
+        apply Forall2_nth; unfold ty_subst_list; simpl_len.
+        rewrite H6, Nat.min_id. split; [reflexivity|].
         intros i d1 d2 Hi.
-        rewrite !map_nth_inbound with (d2:=(""%string, vty_int));
-          [| rewrite combine_length, gen_strs_length, map_length; lia].
+        rewrite !map_nth_inbound with (d2:=(""%string, vty_int)) by solve_len.
         apply P_Var'.
         * (*We proved valid above*)
           specialize (Hcallval _ _ _ Hiny); rewrite Forall_forall in Hcallval; apply Hcallval.
-          apply nth_In.
-          rewrite map_length; assumption.
+          apply nth_In. solve_len.
         * rewrite combine_nth; auto.
-          -- simpl. apply nth_indep. rewrite map_length; auto.
-          -- erewrite gen_strs_length, map_length; auto.
+          -- simpl. apply nth_indep. solve_len.
+          -- solve_len.
       + (*Now prove that pattern row action is valid - follows from IH, we proved above*)
         specialize (IHconstrs' c tys ps Hiny).
         inversion Hclist_types; subst.
@@ -3879,8 +3859,7 @@ Proof.
         erewrite (dispatch1_equiv_spec _ _ _ Hsimp Hpop Hp) in Hccase.
         2: { eapply constrs_in_types. apply Hccase. apply Hpop. }
         revert Hccase; inv Hsome.
-        unfold rev_map. rewrite !map_rev, !rev_involutive, !map_snd_combine;
-          [|rewrite gen_strs_length, map_length; lia].
+        unfold rev_map. rewrite !map_rev, !rev_involutive, !map_snd_combine by solve_len.
         intros Hcompile.
         specialize (IHconstrs' _ Hcompile).
         destruct IHconstrs' as [Htys [Hp' [Hty Heq]]].
@@ -3908,7 +3887,7 @@ Proof.
       intros x [Hall1 Hall2]. split; auto.
     - (*Use fact that types not empty to show pats not null*)
       assert (Hlen: length pats <> 0). {
-        erewrite <- map_length, <- Hpats. rewrite app_length, rev_length, map_length.
+        erewrite <- map_length, <- Hpats. simpl_len.
         rewrite amap_not_empty_exists in Htypesemp. destruct Htypesemp as  [fs [pats1 Hget]].
         unfold types in Hget.
         rewrite (proj2 (populate_all_fst_snd_full _ _ _ Hsimp Hpop)) in Hget.
@@ -4059,7 +4038,7 @@ Proof.
     rewrite in_map_iff in Hinpats. destruct Hinpats as [[p1 tm1] [Hadd Hinx]].
     (*simplify Hadd*)
     revert Hadd. simpl. unfold rev_map. rewrite !map_rev, !rev_involutive, map_snd_combine.
-    2: { rewrite map_length, gen_strs_length; auto. apply Hclist_types in Hinc; inversion Hinc; auto. }
+    2: { simpl_len; auto. apply Hclist_types in Hinc; inversion Hinc; auto. }
     set (new_typs := (map (ty_subst (s_params c) tys1) (s_args c))) in *.
     set (new_vars :=(combine (gen_strs (Datatypes.length ps1) (compile_fvs gen_getvars ((t, ty) :: tl) rl)) new_typs)) in *.
     intros Hadd; inversion Hadd; subst p1.
@@ -4161,11 +4140,11 @@ Proof.
       specialize (Hclist_types _ _ _ Hinc); inversion Hclist_types; auto.
     }
     assert (Hlenps: length ps1 = length new_typs). {
-      unfold new_typs. rewrite map_length; auto. 
+      unfold new_typs. simpl_len; auto. 
       specialize (Hclist_types _ _ _ Hinc); inversion Hclist_types; auto.
     }
     assert (Hvarstyps: length new_vars = length new_typs). {
-      unfold new_vars. rewrite combine_length, gen_strs_length. lia.
+      unfold new_vars. solve_len.
     }
     assert (Hnodup: NoDup new_vars). {
       unfold new_vars. apply NoDup_combine_l. apply gen_strs_nodup.
@@ -4173,7 +4152,7 @@ Proof.
     rewrite gen_rep_change_vv with (v2:=val_with_args pd vt v (rev new_vars) (hlist_rev _ _ al)).
     2: { 
       intros x Hinx'. rewrite val_with_args_rev; auto.
-      rewrite Heq. unfold new_vars. rewrite map_snd_combine; auto. rewrite gen_strs_length. lia.
+      rewrite Heq. unfold new_vars. rewrite map_snd_combine; auto. solve_len.
     }
     (*Step 2: We already simplified IHconstrs, now we destruct - need to change v!*)
     specialize (IHconstrs' _ _ _ Hinc tm1).
@@ -4214,11 +4193,11 @@ Proof.
       destruct Hinx1 as [Hx | []]; subst.
       unfold new_vars, new_typs in Hiny.
       (*Contradiction, x cannot be in names of rl and in [gen_strs]*)
-      rewrite in_combine_iff in Hiny; rewrite gen_strs_length in *; [| rewrite map_length; auto] .
+      rewrite in_combine_iff in Hiny by solve_len; rewrite gen_strs_length in *.
       destruct Hiny as [i [Hi Hxty]]. specialize (Hxty ""%string vty_int).
       inversion Hxty.
       assert (Hnotin: ~ In x (map fst (compile_fvs gen_getvars ((t, ty) :: tl) rl))). {
-        apply (gen_strs_notin' (length ps1)). subst. apply nth_In. rewrite gen_strs_length; auto. }
+        apply (gen_strs_notin' (length ps1)). subst. apply nth_In. solve_len. }
       apply Hnotin. unfold compile_fvs. rewrite !map_app. rewrite !in_app_iff; auto.
     }
     erewrite gen_rep_irrel.
@@ -4236,9 +4215,7 @@ Proof.
 
     intros Heq Hp' Htys.
     (*We can use [terms_to_hlist app] to split and prove directly*)
-    assert (Hlen: length (rev (map Tvar new_vars)) = length (rev new_typs)). {
-      rewrite !rev_length, map_length; auto.
-    }
+    assert (Hlen: length (rev (map Tvar new_vars)) = length (rev new_typs)) by solve_len.
     rewrite terms_to_hlist_app with (Hty2:=Forall2_inv_tail Htmtys)
       (Hty1:=proj1(Forall2_app_inv Htys Hlen)) by auto.
     (*Now we know that [terms_to_hlist] on (map Tvar new_vars) is just al*)
@@ -4259,10 +4236,10 @@ Proof.
       intros x row Hinrow Hinx.
       rewrite val_with_args_notin; auto.
       rewrite <- In_rev. unfold new_vars. unfold vsymbol in *.
-      rewrite in_combine_iff; rewrite gen_strs_length; [|solve[auto]].
+      rewrite in_combine_iff; simpl_len; [|solve[auto]].
       intros [i [Hi Hx]]. specialize (Hx ""%string vty_int).
       assert (Hinget: In (fst x)((gen_strs (length ps1) (compile_fvs gen_getvars ((t, ty) :: tl) rl) ))).
-      { subst. simpl. apply nth_In. rewrite gen_strs_length. auto. }
+      { subst. simpl. apply nth_In. solve_len. }
       apply gen_strs_notin in Hinget.
       apply Hinget.
       (*contradiction - in action vars, so must be in [compile_fvs]*)
@@ -4282,11 +4259,11 @@ Proof.
       intros tm x Htm Hx.
       rewrite val_with_args_notin; auto.
       rewrite <- In_rev.
-      unfold new_vars, vsymbol. rewrite in_combine_iff; rewrite gen_strs_length; [|solve[auto]].
+      unfold new_vars, vsymbol. rewrite in_combine_iff; simpl_len; [|solve[auto]].
       intros [i [Hi Hxeq]].
       specialize (Hxeq ""%string vty_int).
       assert (Hinget: In (fst x)((gen_strs (length ps1) (compile_fvs gen_getvars ((t, ty) :: tl) rl) ))).
-      { subst. simpl. apply nth_In. rewrite gen_strs_length. auto. }
+      { subst. simpl. apply nth_In. solve_len. }
       apply gen_strs_notin in Hinget.
       apply Hinget.
       (*contradiction - in action vars, so must be in [compile_fvs]*)
@@ -4534,7 +4511,7 @@ Proof.
       rewrite (adt_constr_ret gamma_valid m_in a_in c_in).
       rewrite ty_subst_cons. rewrite !map_map.
       eexists. split_all; try assumption. reflexivity.
-      rewrite !map_length. reflexivity.
+      solve_len.
     }
     destruct Hadt as [m [a [args [m_in [a_in [Hty args_len]]]]]].
     apply dispatch1_opt_some in Hdisp.
@@ -4593,7 +4570,7 @@ Proof.
       (ty_subst_list (s_params cs) params (s_args cs))).
     {
       inversion Htty; subst. unfold ty_subst_list.
-      rewrite Forall2_combine. split; [rewrite map_length; auto|]. assumption.
+      rewrite Forall2_combine. split; [solve_len|]. assumption.
     } 
     (*From this info, we will need to link [al] to [tms]. Need a few results*)
     assert (Heqty: params = args). {
@@ -4670,8 +4647,8 @@ Proof.
     assert (Htmslen: Datatypes.length tms = Datatypes.length (s_args cs)). {
       inversion Htty; subst; auto.
     }
-    rewrite !map_app, !map_rev, !map_fst_combine in IHconstrs by (rewrite map_length; auto).
-    rewrite !map_snd_combine in IHconstrs by (rewrite map_length; auto).
+    rewrite !map_app, !map_rev, !map_fst_combine in IHconstrs by solve_len.
+    rewrite !map_snd_combine in IHconstrs by solve_len.
     (*Prove IH premises*)
     assert (Htysrev: Forall2 (term_has_type gamma)
       (rev tms ++ map fst tl)
@@ -4701,7 +4678,7 @@ Proof.
     end.
     (*And now, use [al] equality result*)
     rewrite terms_to_hlist_app with (Hty1:=(Forall2_rev Htms'))(Hty2:= (Forall2_inv_tail Htmtys)).
-    2: unfold ty_subst_list; rewrite !rev_length, !map_length; auto.
+    2: unfold ty_subst_list; solve_len. 
     rewrite terms_to_hlist_rev with (Hty:=Htms').
     (*Bring all casts to front*)
     rewrite hlist_rev_cast,  !hlist_app_cast1.
@@ -4824,7 +4801,7 @@ Proof.
   try discriminate; simpl; auto.
   intros t1 t2 a1 a2. unfold is_true. rewrite andb_true_iff.
   intros [Hshape1 Hshape2].
-  rewrite !app_length; auto.
+  solve_len.
 Qed.
 
 Lemma shape_mx_simplify {A B let1 let2 t1 t2} 
@@ -4848,14 +4825,14 @@ Proof.
     apply andb_true_iff in Hallen, Hshape.
     destruct Hallen as [Hlenhd Hlentl];
     destruct Hshape as [Hshapeh Hshapet].
-    rewrite !app_length.
+    simpl_len.
     assert (Hlensingle: length (simplify_single let1 t1 phd1) =
       length (simplify_single let2 t2 phd2)).
     {
       unfold simplify_single.
       destruct phd1 as [[| p1 ps1] a1];
       destruct phd2 as [[| p2 ps2] a2]; try discriminate; auto.
-      rewrite !map_length.
+      simpl_len.
       apply length_simplify_aux.
       simpl in Hshapeh.
       apply andb_true_iff in Hshapeh.
@@ -4888,13 +4865,12 @@ Proof.
     +  (*or*)
       apply andb_true_iff in Hshape.
       destruct Hshape as [Hshape1 Hshape2].
-      rewrite !map_app, !map2_app, !forallb_app; auto.
-      * specialize (IHp1_1 _ Hshape1 a1 a2).
-        apply andb_true_iff in IHp1_1.
-        destruct IHp1_1 as [IH1 IH2]; rewrite IH1, IH2.
-        simpl; auto.
-      * rewrite !map_length. apply length_simplify_aux; auto.
-      * rewrite !map_length. apply length_simplify_aux; auto.
+      rewrite !map_app, !map2_app, !forallb_app; auto;
+      try solve[simpl_len; apply length_simplify_aux; auto].
+      specialize (IHp1_1 _ Hshape1 a1 a2).
+      apply andb_true_iff in IHp1_1.
+      destruct IHp1_1 as [IH1 IH2]; rewrite IH1, IH2.
+      simpl; auto.
 Qed.
 
 
@@ -4950,8 +4926,7 @@ Lemma lens_mx_rev {A B: Type}
   (P2: list (list pattern * B)):
   lens_mx (rev P1) (rev P2) = lens_mx P1 P2.
 Proof.
-  unfold lens_mx.
-  rewrite !rev_length.
+  unfold lens_mx. simpl_len.
   destruct (Nat.eqb_spec (length P1) (length P2)); simpl; auto.
   rewrite <- all2_rev; auto.
 Qed.
@@ -5033,8 +5008,7 @@ Proof.
   assert (Hall: all2 shape_p (rev heads1) (rev heads2)) by
     (rewrite <- all2_rev; auto). 
   rewrite !fold_left_right_opt.
-  assert (Hlen2: length (rev heads1) = length (rev heads2)) by
-    (rewrite !rev_length; auto).
+  assert (Hlen2: length (rev heads1) = length (rev heads2)) by solve_len.
   rewrite <- lens_mx_rev in Hlen.
   clear -Hsimpl Hsimpl2 Hget1 Hget2 Hall Hlen2 Hlen.
   generalize dependent (rev heads1).
@@ -5415,10 +5389,10 @@ Proof.
     specialize (IH t2 Hshapet (ltac:(lia)) Hlenst).
     destruct IH as [IH1 IH2].
     rewrite !andb_true_iff. split_all; auto.
-    + unfold all2. rewrite !map2_app, forallb_app; [| rewrite !rev_length; auto].
+    + unfold all2. rewrite !map2_app, forallb_app by solve_len.
       rewrite map2_rev; auto. rewrite forallb_rev. 
       rewrite andb_true_iff; auto.
-    + rewrite !app_length, !rev_length. apply Nat.eqb_eq in Hlenh.
+    + simpl_len. apply Nat.eqb_eq in Hlenh.
       rewrite Hlenps, Hlenh. apply Nat.eqb_refl.
   - (*Pwild*)
     simpl.
@@ -5427,11 +5401,10 @@ Proof.
     specialize (IH t2 Hshapet (ltac:(lia)) Hlenst).
     destruct IH as [IH1 IH2].
     rewrite !andb_true_iff. split_all; auto.
-    + unfold all2. rewrite !map2_app, forallb_app; [|rewrite repeat_length; reflexivity].
+    + unfold all2. rewrite !map2_app, forallb_app by solve_len.
       unfold all2 in Hshapeh; rewrite Hshapeh, andb_true_r.
       apply all_shape_p_refl.
-    + rewrite !app_length, !repeat_length. simpl in Hlenh. 
-      apply Nat.eqb_eq. lia.
+    + simpl_len. simpl in Hlenh. apply Nat.eqb_eq. lia.
 Qed.
 
 Lemma ty_rel_subst tys1 tys2 params ty:
@@ -6077,43 +6050,29 @@ Proof.
           apply (spec_shape ty_rel); auto. apply ty_rel_refl.
         - rewrite Hlenps.
           apply spec_shape; auto. apply ty_rel_refl.
-        - unfold rev_map. 
-          rewrite !app_length, !rev_length, !combine_length, !rev_length, 
-            !map_length, !rev_length, !combine_length, !gen_strs_length.
-          rewrite !map_length. lia.
+        - unfold rev_map. solve_len.
         - unfold rev_map. rewrite <- !map_rev, !rev_involutive.
           rewrite !map_app, !map_rev.
           unfold all2.
-          rewrite map2_app.
-          2: { unfold vsymbol in *. rewrite !rev_length, !map_length, !combine_length, !map_length,
-            !combine_length, !gen_strs_length, !map_length. lia. }
+          unfold vsymbol in *.
+          rewrite map2_app by solve_len.
           rewrite forallb_app.
           unfold all2 in Htys2; rewrite Htys2, andb_true_r.
-          rewrite map2_rev.
-          2: {
-             unfold vsymbol in *. rewrite !map_length, !combine_length, !map_length,
-            !combine_length, !gen_strs_length, !map_length. lia.
-          }
+          rewrite map2_rev by solve_len.
           rewrite Hlenps.
           rewrite forallb_rev.
-          apply all2_map_snd_combine.
-          + apply all2_map_snd_combine; auto.
-            * (*Need that [change_rel] preserved by substitutions*)
-              apply ty_rel_subst_list; auto. 
-            * rewrite !gen_strs_length; auto.
-          + rewrite !map_length.
-            unfold vsymbol in *. rewrite !combine_length, !gen_strs_length, !map_length; auto.
+          apply all2_map_snd_combine; [| solve_len].
+          apply all2_map_snd_combine; auto; [| solve_len].
+          (*Need that [change_rel] preserved by substitutions*)
+          apply ty_rel_subst_list; auto. 
         - (*Now prove equivalence of terms for simpl_constr - why we need equality relation*)
           destruct simpl_constr; [|auto].
           unfold rev_map; rewrite !map_rev, !rev_involutive.
-          rewrite !map_app, all2_app by
-            (rewrite !map_length, !rev_length, !combine_length,!map_length, !combine_length,
-              !gen_strs_length, !map_length; lia).
+          rewrite !map_app, all2_app by solve_len.
           rewrite Htms,andb_true_r.
-          rewrite !map_rev, <-all2_rev by 
-            (rewrite !map_length, !combine_length, !map_length, !combine_length, !gen_strs_length, !map_length; lia).
+          rewrite !map_rev, <-all2_rev by solve_len.
           (*We don't know that lengths are equal, use firstn lemma*)
-          rewrite! map_fst_combine_eq, !map_length, !combine_length, !gen_strs_length,!map_length,!Nat.min_id.
+          rewrite! map_fst_combine_eq; simpl_len. rewrite !Nat.min_id.
           rewrite Hlenps.
           apply all2_firstn.
           (*This is easy: they are both variables*)
@@ -6227,22 +6186,19 @@ Proof.
     + rewrite Hlenps. apply (spec_shape ty_rel); auto. apply ty_rel_refl.
     + rewrite Hlenps.
       apply spec_shape; auto. apply ty_rel_refl.
-    + unfold rev_map.
-      rewrite !app_length, !rev_length, !combine_length, !map_length.  lia.
+    + unfold rev_map. solve_len.
     + (*prove ty_rel*) 
-      rewrite !map_app, !map_rev,all2_app
-        by (rewrite !rev_length, !map_length, !combine_length, !map_length; lia).
+      rewrite !map_app, !map_rev,all2_app by solve_len.
       apply andb_true_iff; split; auto.
-      rewrite <- all2_rev by (rewrite !map_length, !combine_length, !map_length; lia).
+      rewrite <- all2_rev by solve_len.
       apply all2_map_snd_combine; auto.
       apply ty_rel_subst_list; auto.
     + (*prove tms goal*)
-      rewrite !map_app, !map_rev, all2_app
-        by (rewrite !rev_length, !map_length, !combine_length, !map_length; lia).
+      rewrite !map_app, !map_rev, all2_app by solve_len.
       apply andb_true_iff; split; auto.
-      rewrite <- all2_rev by (rewrite !map_length, !combine_length, !map_length; lia).
+      rewrite <- all2_rev by solve_len.
        (*We don't know that lengths are equal, use firstn lemma*)
-      rewrite! map_fst_combine_eq, !map_length,Hlentms.
+      rewrite! map_fst_combine_eq,Hlentms. simpl_len.
       apply all2_firstn. auto.
 Qed.
 
@@ -6263,7 +6219,7 @@ Lemma compile_bare_single_ext {b1 b2} t1 t2 ty1 ty2 ps1 ps2
 Proof.
   apply compile_change_tm_ps; simpl; auto; try apply gen_getvars_let.
   - (*prove lens_mx*)
-    unfold lens_mx; rewrite !map_length, Hlenps, Nat.eqb_refl. simpl.
+    unfold lens_mx; simpl_len. rewrite Hlenps, Nat.eqb_refl. simpl.
     unfold all2.
     rewrite map2_map. simpl.
     apply forallb_forall.
@@ -6737,13 +6693,10 @@ Proof.
     rewrite Hyt.
     assert (Hn1: n < length cslist \/ n >= length cslist) by lia.
     assert (Hlen: length ps = length ps1 + length cslist).
-    {
-      apply (f_equal (@length _)) in Hopt.
-      rewrite app_length, !rev_length, !map_length in Hopt. lia. 
-    }
+    { apply (f_equal (@length _)) in Hopt. revert Hopt. solve_len. }
     destruct Hn1 as [Hn1 | Hn1].
     2: { (*Second case (wilds) is easier*)
-      rewrite app_nth2; rewrite rev_length, map_length; auto.
+      rewrite app_nth2; simpl_len; [|lia].
       destruct Hps1' as [Hps1eq | [t2 [Hcompw Hps1eq]]]; subst ps1; simpl in *; try lia.
       assert (Hn': n = length cslist) by lia.
       rewrite Hn' at 1. rewrite Nat.sub_diag. simpl.
@@ -6756,8 +6709,8 @@ Proof.
       apply pat_mx_type_vars_default in Hinx. auto.
     }
     (*Constr case is harder*)
-    rewrite app_nth1; [| rewrite rev_length, map_length; lia].
-    rewrite rev_nth; rewrite !map_length; auto.
+    rewrite app_nth1 by solve_len.
+    rewrite rev_nth; simpl_len; [| lia].
     erewrite map_nth_inbound with (d2:=(id_fs, nil, nil)); try lia.
     destruct ( nth (Datatypes.length cslist - S n) cslist (id_fs, [], []))
       as [[cs tys] pats] eqn : Hnth.
@@ -7211,13 +7164,10 @@ Proof.
       rewrite Hyt.
       assert (Hn1: n < length cslist \/ n >= length cslist) by lia.
       assert (Hlen: length ps = length ps1 + length cslist).
-      {
-        apply (f_equal (@length _)) in Hopt.
-        rewrite app_length, !rev_length, !map_length in Hopt. lia. 
-      }
+      { apply (f_equal (@length _)) in Hopt. revert Hopt. solve_len. }
       destruct Hn1 as [Hn1 | Hn1].
       2: { (*Second case (wilds) is easier*)
-        rewrite app_nth2; rewrite rev_length, map_length; auto.
+        rewrite app_nth2; simpl_len; [|lia].
         destruct Hps1' as [Hps1eq | [t2 [Hcompw Hps1eq]]]; subst ps1; simpl in *; try lia.
         assert (Hn': n = length cslist) by lia.
         rewrite Hn' at 1. rewrite Nat.sub_diag. simpl.
@@ -7229,8 +7179,8 @@ Proof.
         apply pat_mx_tv_fv_default in Hinx; auto.
       }
       (*Constr case is harder*)
-      rewrite app_nth1; [|rewrite rev_length, map_length; lia].
-      rewrite rev_nth; rewrite map_length; [| lia].
+      rewrite app_nth1 by solve_len. 
+      rewrite rev_nth; simpl_len; [| lia].
       erewrite map_nth_inbound with (d2:=(id_fs, nil, nil)); try lia.
       destruct ( nth (Datatypes.length cslist - S n) cslist (id_fs, [], []))
         as [[cs tys] pats] eqn : Hnth.
@@ -7300,36 +7250,29 @@ Proof.
       apply IHconstrs with(cs:=cs) in Hcompcase; auto.
       (*Prove typing results*)
       2: {
-        rewrite rev_combine; [| rewrite !map_length; reflexivity].
-        rewrite map_snd_combine; [|rewrite map_length, gen_strs_length; auto].
+        rewrite rev_combine by solve_len.
+        rewrite map_snd_combine by solve_len.
         (*Prove terms typed*)
         rewrite !map_app.
-        apply Forall2_app; auto.
-        2: { inversion Htms; subst; auto. }
-        rewrite map_fst_combine; [| rewrite !rev_length, !map_length, 
-          combine_length, gen_strs_length, map_length; lia].
-        rewrite map_snd_combine; [| rewrite !rev_length, !map_length,
-          combine_length, gen_strs_length, map_length; lia].
+        apply Forall2_app; auto; [| solve[inversion Htms; subst; auto]].
+        rewrite map_fst_combine by solve_len. 
+        rewrite map_snd_combine by solve_len. 
         apply Forall2_rev. 
-        apply Forall2_nth; rewrite map_length; split;
-          rewrite combine_length, gen_strs_length, !map_length, Hlenpats, 
-          Nat.min_id; [reflexivity|].
+        apply Forall2_nth; simpl_len; split; [lia|].
         intros i d1 d2 Hi.
-        rewrite map_nth_inbound with (d2:=(""%string, vty_int));
-        [| rewrite combine_length, gen_strs_length, map_length; lia]. 
+        rewrite map_nth_inbound with (d2:=(""%string, vty_int)) by solve_len.
         apply T_Var'.
         -- pose proof (in_cslist_val b ret_ty Hp Hpop Hsimpl Hincslist) as Hval.
           rewrite Forall_nth in Hval.
-          apply Hval; rewrite map_length; auto.
-        -- rewrite combine_nth; [| rewrite gen_strs_length, map_length; lia].
-          simpl. apply nth_indep. rewrite map_length; assumption.
+          apply Hval; solve_len.
+        -- rewrite combine_nth by solve_len.
+          simpl. apply nth_indep. solve_len.
       }
       2: {
         (*Prove pat matrix typed*)
-        rewrite rev_combine; [| rewrite !map_length; reflexivity].
-        rewrite map_snd_combine; [|rewrite map_length, gen_strs_length; auto].
-        rewrite map_app, map_snd_combine; [|rewrite !rev_length, !map_length,
-          combine_length, gen_strs_length, map_length; lia].
+        rewrite rev_combine by solve_len.
+        rewrite map_snd_combine by solve_len.
+        rewrite map_app, map_snd_combine by solve_len.
         eapply spec_typed_adt; eauto. subst ty; auto.
       }
       (*Now no more typing conditions, just need to prove sublist inclusion*)
@@ -7339,10 +7282,8 @@ Proof.
       destruct Hinx as [Hinx | Hinx].
       + (*Case 1: x in newly added variables*)
         revert Hinx. rewrite map_app.
-        rewrite rev_combine; [| rewrite !map_length, 
-          !combine_length, gen_strs_length, !map_length; auto].
-        rewrite map_fst_combine; [| rewrite !rev_length, !map_length,
-          !combine_length, gen_strs_length, !map_length; auto].
+        rewrite rev_combine by solve_len.
+        rewrite map_fst_combine by solve_len.
         rewrite big_union_app. simpl_set_small.
         rewrite big_union_rev. intros Hinx.
         destruct Hinx as [Hinx | Hinx]; auto.
@@ -7448,23 +7389,19 @@ Proof.
     apply IHconstrs with(cs:=cs) in Hcomp; auto.
     (*Prove typing results - easier than before*)
     2: {
-      rewrite rev_combine; [|rewrite !map_length; lia ].
-      rewrite !map_app, !map_fst_combine, !map_snd_combine; 
-        try solve[rewrite !rev_length, !map_length; lia].
+      rewrite rev_combine by solve_len.
+      rewrite !map_app, !map_fst_combine, !map_snd_combine by solve_len.
       apply Forall2_app; [|inversion Htms; solve[auto]].
       (*Prove terms typed*)
       apply Forall2_rev.
       (*From term typing*)
       inversion Htyt; subst.
-      rewrite Forall2_combine, map_length; split; [lia| auto].
+      rewrite Forall2_combine; simpl_len; split; [lia| auto].
     }
     2: {
       (*Prove pat matrix typed*)
-      rewrite rev_combine; [| rewrite !map_length; lia].
-      rewrite map_app, map_snd_combine; [|rewrite !rev_length, map_length; lia].
-      (* rewrite map_snd_combine; [|rewrite map_length, gen_strs_length; auto].
-      rewrite map_app, map_snd_combine; [|rewrite !rev_length, !map_length,
-        combine_length, gen_strs_length, map_length; lia]. *)
+      rewrite rev_combine by solve_len.
+      rewrite map_app, map_snd_combine by solve_len.
       eapply spec_typed_adt; eauto. subst; auto.
       (*Here, we prove that tys = params*)
       assert (tys = params); [|subst; auto].
@@ -7480,8 +7417,8 @@ Proof.
     destruct Hinx as [Hinx | Hinx].
     + (*Case 1: x in newly added variables*)
       revert Hinx.
-      rewrite rev_combine; [| rewrite map_length; lia].
-      rewrite map_app, map_fst_combine; [|rewrite !rev_length, !map_length; lia].
+      rewrite rev_combine by solve_len.
+      rewrite map_app, map_fst_combine by solve_len.
       rewrite big_union_app. simpl_set_small. 
       rewrite big_union_rev. intros [Hinx | Hinx]; auto.
       (*If in tms, in t*)
@@ -7734,13 +7671,10 @@ Proof.
       rewrite Hyt.
       assert (Hn1: n < length cslist \/ n >= length cslist) by lia.
       assert (Hlen: length ps = length ps1 + length cslist).
-      {
-        apply (f_equal (@length _)) in Hopt.
-        rewrite app_length, !rev_length, !map_length in Hopt. lia. 
-      }
+      { apply (f_equal (@length _)) in Hopt. revert Hopt; solve_len. }
       destruct Hn1 as [Hn1 | Hn1].
       2: { (*Second case (wilds) is easier*)
-        rewrite app_nth2; rewrite rev_length, map_length; auto.
+        rewrite app_nth2; simpl_len; [|lia].
         destruct Hps1' as [Hps1eq | [t2 [Hcompw Hps1eq]]]; subst ps1; simpl in *; try lia.
         assert (Hn': n = length cslist) by lia.
         rewrite Hn' at 1. rewrite Nat.sub_diag. simpl.
@@ -7752,9 +7686,9 @@ Proof.
         apply gensym_in_default in Hinf; auto.
       }
       (*Constr case is harder*)
-      rewrite app_nth1; [| rewrite rev_length, map_length; lia].
-      rewrite rev_nth; rewrite !map_length; auto.
-      erewrite map_nth_inbound with (d2:=(id_fs, nil, nil)); try lia.
+      rewrite app_nth1 by solve_len.
+      rewrite rev_nth by solve_len. simpl_len.
+      rewrite map_nth_inbound with (d2:=(id_fs, nil, nil)) by solve_len.
       destruct ( nth (Datatypes.length cslist - S n) cslist (id_fs, [], []))
         as [[cs tys] pats] eqn : Hnth.
       simpl.
@@ -8107,25 +8041,20 @@ Proof.
       - unfold cases, types. apply @dispatch1_equiv_spec with(gamma:=gamma)(is_constr:=is_constr)(ret_ty:=ret_ty)(tys:=ty :: map snd tms1); auto.
       - (*Term types*)
         rewrite !map_app. apply Forall2_app; [| inversion Htytms1; auto].
-        rewrite !map_rev, map_fst_combine, map_snd_combine.
-        all: try solve[ rewrite !map_length, !combine_length, !gen_strs_length, !map_length; lia].
+        rewrite !map_rev, map_fst_combine, map_snd_combine by solve_len.
         apply Forall2_rev.
-        rewrite map_snd_combine; [| rewrite gen_strs_length, !map_length; lia].
-        rewrite Forall2_nth. rewrite map_length, !combine_length, gen_strs_length, !map_length,Hlen, Nat.min_id.
+        rewrite map_snd_combine by solve_len.
+        rewrite Forall2_nth. simpl_len. rewrite Hlen, Nat.min_id.
         split; auto. intros i d1 d2 Hi.
-        rewrite map_nth_inbound with (d2:=(""%string, vty_int)).
-        2: rewrite combine_length, gen_strs_length, map_length; lia.
-        rewrite combine_nth. 
-        2: rewrite gen_strs_length, map_length; lia.
-        apply T_Var'; [| simpl; apply nth_indep; rewrite map_length; auto].
+        rewrite map_nth_inbound with (d2:=(""%string, vty_int)) by solve_len.
+        rewrite combine_nth by solve_len.
+        apply T_Var'; [| simpl; apply nth_indep; solve_len].
         pose proof (in_cslist_val _ _ Htyrl Hpop Hsimpl Hincslist) as Hallval.
         rewrite Forall_nth in Hallval.
         apply Hallval; rewrite map_length; lia.
       - (*pat matrix typed*)
         rewrite map_app, !map_rev.
-        rewrite !map_snd_combine.
-        2: rewrite gen_strs_length, map_length; lia.
-        2: rewrite !map_length, !combine_length, !gen_strs_length, !map_length; lia.
+        rewrite !map_snd_combine by solve_len.
         (*Get ty as ADT*)
         inversion Htycs; subst.
         destruct  H11 as [m [a [m_in [a_in c_in]]]].
@@ -8136,9 +8065,7 @@ Proof.
         rewrite Forall_forall. apply (constr_ret_valid gamma_valid m_in a_in); auto.
       - (*And the equality*)
         rewrite map_app, <- Htms3. f_equal; auto.
-        rewrite !map_rev. rewrite !map_snd_combine.
-        2: rewrite gen_strs_length, map_length; lia.
-        2: rewrite !map_length, !combine_length, !gen_strs_length, !map_length; lia.
+        rewrite !map_rev. rewrite !map_snd_combine by solve_len.
         reflexivity.
     }
     (*2: prove [comp_full]*)
@@ -8216,37 +8143,32 @@ Proof.
       end.
       (*simplify list*)
       revert Hcomp.
-      unfold rev_map; rewrite!map_rev,!rev_involutive,map_snd_combine_eq,
-      gen_strs_length, map_length. (*TODO: do we need exact length from typing?*)
+      unfold rev_map; rewrite!map_rev,!rev_involutive,map_snd_combine_eq; simpl_len. (*TODO: do we need exact length from typing?*)
       intros Hcomp. 
       apply none_isSome_false in Hcomp. exfalso; apply Hcomp.
       assert (Hin: In (cs, params, pats) (snd types_cslist)) by (rewrite Hcslist, in_app_iff; simpl; auto).
       (*Need typing*)
       pose proof (in_cslist_typed _ _ Htyrl Hpop Hsimpl Hin) as Htypat.
       assert (Hlenpats: length pats = length (s_args cs)) by (inversion Htypat; auto).
-      rewrite Hlenpats, Nat.min_id, firstn_all2;  [| rewrite map_length; lia].
+      rewrite Hlenpats, Nat.min_id, firstn_all2 by solve_len. 
       eapply (Hallconstrs cs params pats); auto.
       - symmetry. rewrite map_app, !map_rev. f_equal; auto.
-        rewrite map_snd_combine.
-        2: { rewrite !map_length, combine_length, gen_strs_length, map_length; lia. }
+        rewrite map_snd_combine by solve_len.
         reflexivity.
       - (*prove typing*)
         rewrite !map_app. apply Forall2_app; [|inversion Htytms2; auto].
-        rewrite !map_rev, map_fst_combine, map_snd_combine.
-        all: try solve[rewrite !map_length, combine_length, gen_strs_length, map_length; lia].
+        rewrite !map_rev, map_fst_combine, map_snd_combine by solve_len.
         apply Forall2_rev.
-        rewrite Forall2_nth.
-        rewrite !map_length, combine_length, gen_strs_length, !map_length, Nat.min_id. split; auto.
+        rewrite Forall2_nth. simpl_len; split; [lia|].
         intros i di d2 Hi.
         (*TODO: should really prove an induction principle for typing to avoid all this repetition*)
-        rewrite map_nth_inbound with (d2:=("x"%string, vty_int)); [| unfold vsymbol in *; rewrite combine_length, map_length,
-          gen_strs_length; lia].
-        rewrite combine_nth; [|rewrite gen_strs_length, !map_length; lia].
-        apply T_Var'; [|simpl; apply nth_indep; rewrite map_length;lia].
+        rewrite map_nth_inbound with (d2:=("x"%string, vty_int)) by solve_len.
+        rewrite combine_nth by solve_len. 
+        apply T_Var'; [|simpl; apply nth_indep; solve_len].
         (* show these types are valid*)
         pose proof (in_cslist_val _ _ Htyrl Hpop Hsimpl Hin) as Hallval.
         rewrite Forall_nth in Hallval.
-        apply Hallval; rewrite map_length; lia.
+        apply Hallval; solve_len.
     }
     (*Now back to case analysis*)
     destruct (is_fun tm2) as [s|] ; [|solve[auto]].
@@ -8329,18 +8251,19 @@ Proof.
     pose proof (in_cslist_args gamma_valid _ _ m_in a_in Htyrl Hpop Hsimpl Hincs) as [_ Htys].
     subst tys2.
     (*Now we can use constrs assumption*)
+    inversion Htytms2; auto.
     eapply (Hallconstrs cs tys pats); auto.
     + rewrite map_app; f_equal; auto. rewrite !map_rev. f_equal.
-      rewrite map_snd_combine; auto. rewrite map_length; inversion Htytm2; auto.
+      rewrite map_snd_combine; auto. simpl_len. inversion Htytm2; auto.
     + (*And prove typing*)
-      rewrite !map_app. apply Forall2_app; [| inversion Htytms2; auto].
+      rewrite !map_app. apply Forall2_app; auto. 
       rewrite !map_rev. apply Forall2_rev.
-      assert (Hlentms: Datatypes.length tms = Datatypes.length (s_args cs)).
-      { inversion Htytm2; auto. }
-      rewrite map_fst_combine, map_snd_combine; try rewrite map_length; auto.
+      assert (Hlentms: Datatypes.length tms = Datatypes.length (s_args cs)) by
+        (inversion Htytm2; auto).
+      rewrite map_fst_combine, map_snd_combine by solve_len.
       (*From typing*)
       inversion Htytm2; subst.
-      rewrite Forall2_combine; split; auto. rewrite map_length; auto.
+      rewrite Forall2_combine; split; auto. solve_len.
 Qed.
 
 (*And the corollary*)
