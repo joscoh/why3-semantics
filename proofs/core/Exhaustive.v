@@ -54,7 +54,7 @@ Proof.
       apply Hinx2. rewrite in_app_iff; auto.
   }
   assert (Hlen: length ps = length ps1) by (subst ps1; rewrite map_length; reflexivity). 
-  assert (Hcomp2: isSome (compile_bare_single b tm ty1 ps1)).
+  assert (Hcomp2: isSome (compile_bare_single b false tm ty1 ps1)).
   {
     revert Hcomp. apply compile_bare_single_ext.
     - unfold ps1; rewrite map_length; auto.
@@ -133,11 +133,11 @@ Proof.
       apply Hingen; left. rewrite in_map_iff; exists (x2, y1); auto.
   }
   (*Now finally, we can apply the compile correctness result*)
-  destruct (compile_bare_single b tm ty1 ps1) as [tm1|] eqn : Hcomp1; [|discriminate].
+  destruct (compile_bare_single b false tm ty1 ps1) as [tm1|] eqn : Hcomp1; [|discriminate].
   pose proof (compile_bare_single_typed gamma_valid b ret_ty tm ty1 ps1 Htty 
-    Htys1 Htys2 tm1 Hcomp1) as Htyt.
+    Htys1 Htys2 tm1 false Hcomp1) as Htyt.
   pose proof (compile_bare_single_spec1 gamma_valid pd pdf pf vt v b ret_ty
-    tm ty1 ps1 Htty Htys1 Htys2 Hdisj tm1 Htyt Hcomp1) as Hmatch.
+    tm ty1 ps1 Htty Htys1 Htys2 Hdisj tm1 Htyt false Hcomp1) as Hmatch.
   (*Now we use the fact that [match_rep_opt] gives Some, use induction*)
   revert Hmatch Halpha Hlen Hallty. clear. generalize dependent ps1.
   induction ps as [| [p1 a1] ptl IH]; intros [| [p2 a2] ph1]; simpl; auto;

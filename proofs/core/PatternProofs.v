@@ -5468,14 +5468,14 @@ Proof.
 Qed.
 
 (*TODO: see if this works*)
-Fixpoint shape_t (t1 t2: term) :=
+Fixpoint t_fun_equiv (t1 t2: term) :=
   match t1, t2 with
   | Tfun f1 ty1 tm1, Tfun f2 ty2 tm2 =>
     (funsym_eq_dec f1 f2) &&
     (length tm1 =? length tm2) && 
     (length ty1 =? length ty2) &&
     (all2 rel ty1 ty2) &&
-    (all2 (fun t1 t2 => shape_t t1 t2)) tm1 tm2
+    (all2 (fun t1 t2 => t_fun_equiv t1 t2)) tm1 tm2
   | Tvar _, Tvar _ => true
   | Tconst _, Tconst _ => true
   | Tlet _ _ _, Tlet _ _ _ => true
@@ -5486,7 +5486,7 @@ Fixpoint shape_t (t1 t2: term) :=
   end.
 
 
-(* Fixpoint shape_t (t1 t2: term):=
+(* Fixpoint t_fun_equiv (t1 t2: term):=
   match t1, t2 with
   | Tconst c1, Tconst c2 => true
   | Tvar v1, Tvar v2 => true (*TODO: need [ty_rel] here?*)
@@ -5495,21 +5495,21 @@ Fixpoint shape_t (t1 t2: term) :=
     (length tm1 =? length tm2) && 
     (length ty1 =? length ty2) &&
     (all2 rel ty1 ty2) &&
-    (all2 (fun t1 t2 => shape_t t1 t2)) tm1 tm2
+    (all2 (fun t1 t2 => t_fun_equiv t1 t2)) tm1 tm2
   | Tlet tm1 x tm2, Tlet tm3 y tm4 =>
-    shape_t tm1 tm3 &&
-    shape_t tm2 tm4
+    t_fun_equiv tm1 tm3 &&
+    t_fun_equiv tm2 tm4
   | Tif f1 t1 t3, Tif f2 t2 t4 =>
     shape_f f1 f2 &&
-    shape_t t1 t2 &&
-    shape_t t3 t4
+    t_fun_equiv t1 t2 &&
+    t_fun_equiv t3 t4
   | Tmatch t1 ty1 ps1, Tmatch t2 ty2 ps2 =>
-    shape_t t1 t2 &&
+    t_fun_equiv t1 t2 &&
     (length ps1 =? length ps2) &&
     (vty_eq_dec ty1 ty2) &&
     all2 (fun (x1 x2: pattern * term) =>
       shape_p (fst x1) (fst x2) &&
-      shape_t (snd x1) (snd x2)) ps1 ps2
+      t_fun_equiv (snd x1) (snd x2)) ps1 ps2
   | Teps f1 x, Teps f2 y => 
     shape_f f1 f2
   | _, _ => false
@@ -5520,14 +5520,14 @@ with shape_f (f1 f2: formula) {struct f1} : bool :=
     (predsym_eq_dec p1 p2) &&
     (length tm1 =? length tm2) && 
     (all2 rel ty1 ty2) &&
-    (all2 (fun t1 t2 => shape_t t1 t2)) tm1 tm2
+    (all2 (fun t1 t2 => t_fun_equiv t1 t2)) tm1 tm2
   | Fquant q1 x f1, Fquant q2 y f2 =>
     quant_eq_dec q1 q2 &&
     shape_f f1 f2
   | Feq ty1 t1 t3, Feq ty2 t2 t4 =>
     vty_eq_dec ty1 ty2 &&
-    shape_t t1 t2 &&
-    shape_t t3 t4
+    t_fun_equiv t1 t2 &&
+    t_fun_equiv t3 t4
   | Fbinop b1 f1 f3, Fbinop b2 f2 f4 =>
     binop_eq_dec b1 b2 &&
     shape_f f1 f2 &&
@@ -5537,14 +5537,14 @@ with shape_f (f1 f2: formula) {struct f1} : bool :=
   | Ftrue, Ftrue => true
   | Ffalse, Ffalse => true
   | Flet t1 x f1, Flet t2 y f2 =>
-    shape_t t1 t2 &&
+    t_fun_equiv t1 t2 &&
     shape_f f1 f2
   | Fif f1 f3 f5, Fif f2 f4 f6 =>
     shape_f f1 f2 &&
     shape_f f3 f4 &&
     shape_f f5 f6
   | Fmatch t1 ty1 ps1, Fmatch t2 ty2 ps2 =>
-    shape_t t1 t2 &&
+    t_fun_equiv t1 t2 &&
     (length ps1 =? length ps2) &&
     (vty_eq_dec ty1 ty2) && (*TODO: do we need stuff like this?*)
     all2 (fun (x1 x2: pattern * formula) =>
@@ -5637,8 +5637,8 @@ Proof.
 Qed.
 
 (*TODO: see if we need assumptions on rel*)
-Lemma all2_shape_t_var (rel: vty -> vty -> bool) (l1 l2: list vsymbol):
-  all2 (shape_t rel) (map Tvar l1) (map Tvar l2).
+Lemma all2_t_fun_equiv_var (rel: vty -> vty -> bool) (l1 l2: list vsymbol):
+  all2 (t_fun_equiv rel) (map Tvar l1) (map Tvar l2).
 Proof.
   revert l2. induction l1 as [| h1 t1 IH]; intros [| h2 t2]; auto; simpl.
   rewrite all2_cons. simpl. auto.
@@ -5661,7 +5661,7 @@ Lemma compile_change_tm_ps {A B: Type} {constrs match1 match2
   (Hshape: shape_mx ty_rel P1 P2)
   (Htyslen: length tms1 = length tms2)
   (Htys: all2 ty_rel (map snd tms1) (map snd tms2))
-  (Htms: if simpl_constr then all2 (shape_t ty_rel) (map fst tms1) (map fst tms2) else true):
+  (Htms: if simpl_constr then all2 (t_fun_equiv ty_rel) (map fst tms1) (map fst tms2) else true):
   (*NOTE: not proving equality anymore -
     but in some cases, can still get equality*)
   isSome (compile constrs match1 let1 vars1 true simpl_constr tms1 P1) ->
@@ -5675,7 +5675,7 @@ Proof.
       (Hshape: shape_mx ty_rel P1 P2)
       (Htyslen: length tms1 = length tms2)
       (Htys: all2 ty_rel (map snd tms1) (map snd tms2))
-      (Htms: if simpl_constr then all2 (shape_t ty_rel) (map fst tms1) (map fst tms2) else true),
+      (Htms: if simpl_constr then all2 (t_fun_equiv ty_rel) (map fst tms1) (map fst tms2) else true),
       isSome o -> 
       isSome (compile constrs match2 let2 vars2 true simpl_constr tms2 P2)));
   clear tms1 P1; auto.
@@ -5909,7 +5909,7 @@ Proof.
         (Hshape: shape_mx ty_rel P1 P2)
         (Htyslen: length tms1 = length tms2)
         (Htys2: all2 ty_rel (map snd tms1) (map snd tms2))
-        (Htms: if simpl_constr then all2 (shape_t ty_rel) (map fst tms1) (map fst tms2) else true)
+        (Htms: if simpl_constr then all2 (t_fun_equiv ty_rel) (map fst tms1) (map fst tms2) else true)
         (* (Htys2: map snd tms1 = map snd tms2) *)
         (Hsimpl : simplified P1)
         (Hsimp2: simplified P2)
@@ -5938,7 +5938,7 @@ Proof.
           shape_mx ty_rel l1 l2 ->
           length (rev al1 ++ tms1) = length (rev al2 ++ tms2) ->
           all2 ty_rel (map snd (rev al1 ++ tms1)) (map snd (rev al2 ++ tms2)) ->
-          (if simpl_constr then all2 (shape_t ty_rel) (map fst (rev al1 ++ tms1)) (map fst (rev al2 ++ tms2)) else true) ->
+          (if simpl_constr then all2 (t_fun_equiv ty_rel) (map fst (rev al1 ++ tms1)) (map fst (rev al2 ++ tms2)) else true) ->
           (* map snd (rev al1 ++ tms1) = map snd (rev al2 ++ tms2) -> *)
           isSome (compile constrs match1 let1 vars1 true simpl_constr (rev al1 ++ tms1)
           l1) -> isSome (compile constrs match2 let2 vars2 true simpl_constr
@@ -6117,7 +6117,7 @@ Proof.
           rewrite Hlenps.
           apply all2_firstn.
           (*This is easy: they are both variables*)
-          apply all2_shape_t_var.
+          apply all2_t_fun_equiv_var.
       }
       (*Now prove other version of IH*)
       assert (IH': forall (cs : funsym) (al1 al2 : list (term * vty)) l2 l3,
@@ -6128,7 +6128,7 @@ Proof.
         length (rev al1 ++ tms1) = length (rev al2 ++ tms2) ->
         all2 ty_rel (map snd (rev al1 ++ tms1)) (map snd (rev al2 ++ tms2)) ->
         (if simpl_constr
-             then all2 (shape_t ty_rel) (map fst (rev al1 ++ tms1)) (map fst (rev al2 ++ tms2))
+             then all2 (t_fun_equiv ty_rel) (map fst (rev al1 ++ tms1)) (map fst (rev al2 ++ tms2))
              else true) ->
         isSome (compile constrs match1 let1 vars1 true simpl_constr (rev al1 ++ tms1) l2) ->
         isSome (compile constrs match2 let2 vars2 true simpl_constr (rev al2 ++ tms2) l3)).
@@ -6146,7 +6146,7 @@ Proof.
     }
     (*Now finally we return to case analysis*)
     destruct simpl_constr; [| apply Hcompfull].
-    (*Use [shape_t] to argue that [is_fun t] and [is_fun t2] are related*)
+    (*Use [t_fun_equiv] to argue that [is_fun t] and [is_fun t2] are related*)
     simpl in Htms. rewrite all2_cons in Htms. apply andb_true_iff in Htms.
     destruct Htms as [Hshapet Htms].
     destruct (is_fun t) as [[ [ [cs params] tms] Ht]| [_ Hnotfun1]];
@@ -6302,11 +6302,11 @@ Qed.
   we can change the patter matrix under these assumptions*)
 (*NOTE: we could just require map fst tms1 = map fst tms2. See if we need*)
 
-(*TODO: rename shape_t*)
-Lemma shape_t_refl (rel: vty -> vty -> bool) (rel_refl: forall v, rel v v) t:
-  (shape_t rel t t).
+(*TODO: rename t_fun_equiv*)
+Lemma t_fun_equiv_refl (rel: vty -> vty -> bool) (rel_refl: forall v, rel v v) t:
+  (t_fun_equiv rel t t).
 Proof.
-  apply (term_formula_ind (fun t => shape_t rel t t) (fun f => True)); simpl; auto. 2: apply Ftrue.
+  apply (term_formula_ind (fun t => t_fun_equiv rel t t) (fun f => True)); simpl; auto. 2: apply Ftrue.
   intros f1 tys1 tms1 IH. destruct (funsym_eq_dec _ _); auto; simpl.
   rewrite !Nat.eqb_refl. simpl. apply andb_true_iff. split; [apply all_rel_refl; auto|].
   induction tms1 as [| h tl IH1]; simpl in *; auto.
@@ -6332,7 +6332,7 @@ Lemma compile_simpl_constr_change_ps {A B: Type} {constrs match1 match2
 Proof.
   apply compile_change_tm_ps; auto.
   - apply all_rel_refl. apply ty_rel_refl.
-  - clear. induction (map fst tms) as [| h t IH]; auto. rewrite all2_cons. rewrite shape_t_refl; auto.
+  - clear. induction (map fst tms) as [| h t IH]; auto. rewrite all2_cons. rewrite t_fun_equiv_refl; auto.
     apply ty_rel_refl.
 Qed.
 

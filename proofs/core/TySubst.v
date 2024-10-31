@@ -461,7 +461,7 @@ Qed.
 
 (*And show that [ty_subst_p] preserves [shape_p]*)
 Lemma subst_p_shape p:
-  PatternProofs.shape_p p (ty_subst_p p).
+  PatternProofs.shape_p ty_rel p (ty_subst_p p).
 Proof.
   induction p as [| f tys1 ps1 | | |]; simpl; auto; [| rewrite IHp1 IHp2; auto].
   destruct (funsym_eq_dec f f); [| contradiction]; simpl.

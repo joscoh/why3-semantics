@@ -37,11 +37,12 @@ End Map.
 
 (** Compile match patterns *)
 
+(*Use simpl_constr version of compile*)
 Fixpoint rewriteT (t: term) : term :=
   match t with
   | Tmatch tm ty ps =>
     let t1 := rewriteT tm in
-    match (compile_bare_single true t1 ty 
+    match (compile_bare_single true true t1 ty 
       (map (fun x => (fst x, rewriteT (snd x))) ps)) with
     | Some t2 => t2
     | None => t
@@ -52,7 +53,7 @@ with rewriteF (f: formula) : formula :=
   match f with
   | Fmatch t ty ps =>
     let t1 := rewriteT t in
-    match (compile_bare_single false t1 ty 
+    match (compile_bare_single false true t1 ty 
       (map (fun x => (fst x, rewriteF (snd x))) ps)) with
     | Some t2 => t2
     | None => f
@@ -492,7 +493,7 @@ Lemma rewrite_rep_match_case (b: bool) {gamma}
   (ty1: gen_type b)
   (Hty1 : gen_typed gamma b (gen_match tm ty ps) ty1)
   (Hty2: gen_typed gamma b 
-    match compile_bare_single b (rewriteT tm) ty
+    match compile_bare_single b true (rewriteT tm) ty
       (map (fun x => (fst x, gen_rewrite (snd x))) ps)
     with
     | Some t2 => t2
@@ -501,7 +502,7 @@ Lemma rewrite_rep_match_case (b: bool) {gamma}
   (Hwf: gen_name_wf (gen_match tm ty ps)):
   gen_rep gamma_valid pd pdf pf vt vv ty1
     match
-    compile_bare_single b (rewriteT tm) ty
+    compile_bare_single b true (rewriteT tm) ty
       (map (fun x => (fst x, gen_rewrite (snd x))) ps)
     with
     | Some t2 => t2
@@ -510,7 +511,7 @@ Lemma rewrite_rep_match_case (b: bool) {gamma}
   gen_rep gamma_valid pd pdf pf vt vv ty1 (gen_match tm ty ps) Hty1.
 Proof.
   revert Hty2.
-  destruct (compile_bare_single b (rewriteT tm) ty
+  destruct (compile_bare_single b true (rewriteT tm) ty
     (map (fun x : pattern * gen_term b => (fst x, gen_rewrite (snd x))) ps)) as [t2|] eqn : Hcomp;
   [|intros; apply gen_rep_irrel].
   intros Hty2.
@@ -775,7 +776,7 @@ Proof.
   - (*Tmatch*)
     intros tm ty ps IHtm IHps ty1 Hty1.
     destruct (compile_bare_single _ _ _ _) as [o1|] eqn : Hcomp.
-    + eapply (@compile_simple_pats gamma true); auto. 
+    + eapply (@compile_simple_pats gamma true) with (simpl_constr:=true); auto. 
       (*From [compile]*)
       3: erewrite compile_bare_equiv; apply Hcomp.
       * inversion Hty1; subst. 
@@ -788,12 +789,22 @@ Proof.
         eapply IHps; eauto.
     + (*Show that we do not hit the other case - from exhaustiveness checking*)
       inversion Hty1; subst.
-      assert (Hsome: isSome (compile_bare_single true (rewriteT tm) ty
+      assert (Hsome: isSome (compile_bare_single true false (rewriteT tm) ty
         (map (fun x : pattern * term => (fst x, rewriteT (snd x))) ps))).
       {
         eapply compile_bare_single_ext_simpl. 2: eauto. rewrite map_map. reflexivity.
       }
-      rewrite Hcomp in Hsome. discriminate.
+      (*Now we need fact that exhaustiveness check is only stricter than the
+        full, constructor-simplifying transformation*)
+      inversion Hty1; subst.
+      apply @compile_bare_single_simpl_constr with (gamma:=gamma) (t2:=(rewriteT tm)) (ret_ty:=ty1) in Hsome;
+      eauto.
+      * rewrite Hcomp in Hsome. discriminate.
+      * apply rewriteT_typed; auto.
+      * apply rewriteT_typed; auto.
+      * rewrite Forall_map, Forall_forall. auto.
+      * rewrite Forall_map, Forall_forall; auto.
+        intros x Hinx. apply rewriteT_typed; auto.
   - (*Fpred*)
     intros f1 tys tms IH Hty.
     rewrite forallb_map. 
@@ -820,12 +831,22 @@ Proof.
         eapply IHps; eauto.
     + (*Show that we do not hit the other case*)
       inversion Hty1; subst.
-      assert (Hsome: isSome (compile_bare_single false (rewriteT tm) ty
+      assert (Hsome: isSome (compile_bare_single false false (rewriteT tm) ty
         (map (fun x : pattern * formula => (fst x, rewriteF (snd x))) ps))).
       {
         eapply compile_bare_single_ext_simpl. 2: eauto. rewrite map_map. reflexivity.
       }
-      rewrite Hcomp in Hsome. discriminate.
+      (*Now we need fact that exhaustiveness check is only stricter than the
+        full, constructor-simplifying transformation*)
+      inversion Hty1; subst.
+      apply @compile_bare_single_simpl_constr with (gamma:=gamma) (t2:=(rewriteT tm)) (ret_ty:=tt) in Hsome;
+      eauto.
+      * rewrite Hcomp in Hsome. discriminate.
+      * apply rewriteT_typed; auto.
+      * apply rewriteT_typed; auto.
+      * rewrite Forall_map, Forall_forall. auto.
+      * rewrite Forall_map, Forall_forall; auto.
+        intros x Hinx. apply rewriteF_typed; auto.
 Qed.
 
 Definition rewriteT_simple_pats {gamma} (gamma_valid: valid_context gamma) t

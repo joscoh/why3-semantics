@@ -2380,14 +2380,14 @@ Fixpoint shape_p (p1 p2: pattern) :=
 
 Lemma shape_p_impl p1 p2:
   shape_p p1 p2 ->
-  PatternProofs.shape_p p1 p2.
+  PatternProofs.shape_p ty_rel p1 p2.
 Proof.
   revert p2. induction p1 as [| f1 tys1 ps1 IH | | |]; intros p2; destruct p2 as [| f2 tys2 ps2 | | |]; simpl; auto.
   - unfold is_true at 1. rewrite !andb_true_iff.
     intros [[[Hf1 Htys] Hlenps] Hshape].
     rewrite Hf1, Hlenps.
     destruct (list_eq_dec _ _ _); subst; [|discriminate].
-    rewrite Nat.eqb_refl, all_ty_rel_refl. simpl. apply Nat.eqb_eq in Hlenps.
+    rewrite Nat.eqb_refl, all_rel_refl by apply ty_rel_refl. simpl. apply Nat.eqb_eq in Hlenps.
     revert IH Hshape Hlenps. clear. revert ps2. 
     induction ps1 as [| p1 ptl IH]; intros [| p2 ptl2]; auto; try discriminate. simpl.
     rewrite !all2_cons. intros Hall; inversion Hall; subst.
