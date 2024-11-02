@@ -2626,6 +2626,378 @@ Proof.
       apply simplify_simplified. rewrite <- populate_all_simplify. apply Hpop.
 Qed.
 
+(*Another form, where each case is separated*)
+
+Lemma dispatch1_equiv_default t types 
+  (rl: list (list pattern * A)):
+  simplified rl -> (*Makes things easier*)
+  snd (dispatch1 t types rl) = default rl.
+Proof.
+  intros Hsimp.
+  rewrite dispatch_equiv.
+  unfold dispatch2.
+  rewrite simplified_simplify; auto.
+  rewrite dispatch2_gen_snd.
+  reflexivity.
+Qed.
+
+Lemma compile_ind' (P: list (term * vty) -> list (list pattern * A) -> option A -> Prop)
+  (P_simp: forall t ty tms rl,
+    P ((t, ty) :: tms) (simplify t rl) (compile ((t, ty) :: tms) rl) ->
+    P ((t, ty) :: tms) rl (compile ((t, ty) :: tms) rl))
+  (Hnone: forall tl, P tl nil None)
+  (Hemp: forall ps a l, P nil ((ps, a) :: l) (Some a))
+  (Hilltyped: forall t ty tl rl,
+    let is_bare_css :=
+    match ty with
+    | vty_cons ts _ => if bare then (true, nil) else (false, get_constructors ts)
+    | _ => (false, nil)
+    end in
+    let is_bare := fst is_bare_css in
+    let css := snd is_bare_css in
+    let is_constr fs := 
+      f_is_constr fs && (is_bare || in_bool funsym_eq_dec fs css) in
+    simplified rl ->
+    (populate_all is_constr rl = None \/
+      exists types_cslist,
+        (populate_all is_constr rl) = Some types_cslist /\
+        let types := fst types_cslist in
+        let cslist := snd types_cslist in
+        dispatch1_opt t types rl = None 
+    ) ->
+    P ((t, ty) :: tl) rl None
+  )
+  (*Separate out cases*)
+  (Hwildscase: forall t ty tl rl rhd rtl,
+    let is_bare_css :=
+    match ty with
+    | vty_cons ts _ => if bare then (true, nil) else (false, get_constructors ts)
+    | _ => (false, nil)
+    end in
+    let is_bare := fst is_bare_css in
+    let css := snd is_bare_css in
+    let is_constr fs := 
+      f_is_constr fs && (is_bare || in_bool funsym_eq_dec fs css) in
+    forall (Hsimpl: simplified rl) (Hrl: rl = rhd :: rtl) 
+      types_cslist (Htypes: (populate_all is_constr rl) = Some types_cslist),
+    let types := fst types_cslist in
+    let cslist := snd types_cslist in
+    forall casewild (Hcasewild : casewild = dispatch1 t types rl) (Hnotnull: forallb (fun x => negb (null (fst x))) rl),
+    let cases := fst casewild in
+    let wilds := snd casewild in
+    forall (Hwild: wilds = default rl) (IHwilds: P tl (default rl) (compile tl wilds))
+    (Hwildcases: amap_is_empty types \/ 
+      if simpl_constr then 
+      match (is_fun t) with
+      | Left Hconstr =>
+        let '(cs, params, al) := proj1_sig Hconstr in
+          is_constr cs && amap_mem funsym_eq_dec cs types = false
+      | _ => False
+      end
+      else False),
+    P ((t, ty) :: tl) rl (compile tl wilds))
+  (Hfullcase: forall t ty tl rl rhd rtl,
+    let is_bare_css :=
+    match ty with
+    | vty_cons ts _ => if bare then (true, nil) else (false, get_constructors ts)
+    | _ => (false, nil)
+    end in
+    let is_bare := fst is_bare_css in
+    let css := snd is_bare_css in
+    let is_constr fs := 
+      f_is_constr fs && (is_bare || in_bool funsym_eq_dec fs css) in
+    forall (Hsimpl: simplified rl) (Hrl: rl = rhd :: rtl) 
+      types_cslist (Htypes: (populate_all is_constr rl) = Some types_cslist),
+    let types := fst types_cslist in
+    let cslist := snd types_cslist in
+    forall casewild (Hcasewild : casewild = dispatch1 t types rl) (Hnotnull: forallb (fun x => negb (null (fst x))) rl),
+      let cases := fst casewild in
+      let wilds := snd casewild in
+      forall
+      (IHwilds: P tl (default rl) (compile tl wilds))
+      (IHconstrs: forall cs al l (Hget: amap_get funsym_eq_dec cases cs = Some l),
+        P (rev al ++ tl) l (compile (rev al ++ tl) l))
+      (Hisemp: amap_is_empty types = false),
+    P ((t, ty) :: tl) rl (
+      let comp_wilds (_: unit) := compile tl wilds in
+
+      let comp_cases cs (al : list (term * vty)) :=
+        comp_cases compile cases tl cs al in
+
+      let comp_full := comp_full is_bare comp_wilds comp_cases types cslist css t ty tl rl in
+      comp_full tt))
+  (Hconstrcase: forall t ty tl rl rhd rtl cs params tms,
+    let is_bare_css :=
+    match ty with
+    | vty_cons ts _ => if bare then (true, nil) else (false, get_constructors ts)
+    | _ => (false, nil)
+    end in
+    let is_bare := fst is_bare_css in
+    let css := snd is_bare_css in
+    let is_constr fs := 
+      f_is_constr fs && (is_bare || in_bool funsym_eq_dec fs css) in
+    forall (Hsimpl: simplified rl) (Hrl: rl = rhd :: rtl) 
+      types_cslist (Htypes: (populate_all is_constr rl) = Some types_cslist),
+      (*NOTE: we don't have maps, not ideal*)
+      let types := fst types_cslist in
+      let cslist := snd types_cslist in
+      forall casewild (Hcasewild : casewild = dispatch1 t types rl) (Hnotnull: forallb (fun x => negb (null (fst x))) rl),
+        let cases := fst casewild in
+        let wilds := snd casewild in
+      forall (IHwilds: P tl (default rl) (compile tl wilds))
+        (IHconstrs: forall cs al l (Hget: amap_get funsym_eq_dec cases cs = Some l),
+          P (rev al ++ tl) l (compile (rev al ++ tl) l))
+        (Hisemp: amap_is_empty types = false)
+        (Hsimplconstr: simpl_constr = true)
+        (Ht: t = Tfun cs params tms)
+        (Hisconstr: is_constr cs)
+        (Hmem: amap_mem funsym_eq_dec cs types),
+    
+    P ((t, ty) :: tl) rl (
+       comp_cases compile cases tl cs (combine tms
+              (map (ty_subst (s_params cs) params) (s_args cs))))):
+
+    forall ts p, P ts p (compile ts p).
+Proof.
+  apply compile_ind; auto.
+  - setoid_rewrite <- compile_simplify. auto.
+  - intros. destruct H1 as [IHwilds IHconstrs]. simpl.
+    apply dispatch1_opt_some in Hdispatch1.
+    destruct Hdispatch1 as [Hnotnull Hcasewild]; subst casewild.
+    (*prove wilds equiv*)
+    assert (Hwilds: wilds = default rl). {
+      unfold wilds.
+      rewrite dispatch1_equiv_default; auto.
+    }
+    destruct (amap_is_empty types) eqn : Hisemp; eauto.
+    { eapply Hwildscase; eauto. rewrite <- Hwilds; auto. }
+    destruct simpl_constr; eauto; [| eapply Hfullcase; eauto; rewrite <- Hwilds; auto].
+    specialize (Hwildscase t ty tl rl rhd rtl).
+    destruct (is_fun t) as [[[ [cs params] tms] Ht]|]; [| eapply Hfullcase; eauto; rewrite <- Hwilds; auto].
+    simpl in Ht |- *.  destruct (is_constr cs) eqn : Hconstr; [| eapply Hfullcase; eauto; rewrite <- Hwilds; auto].
+    destruct (amap_mem funsym_eq_dec cs types) eqn : Hmem; [eapply Hconstrcase; eauto; rewrite <- Hwilds; auto|].
+    eapply Hwildscase; eauto. rewrite <- Hwilds; auto. right. simpl.
+    apply andb_false_iff. right; auto.
+Qed.
+
+(*And now a version to prove goals of the form [compile tms rl = Some t1 -> P t1]*)
+
+
+(*A "map" version of "add" (asusming all options are Some) that is more pleasant to work with*)
+Definition add_map
+(comp_cases : funsym -> list (term * vty) -> option A) (t: term) 
+ty tl rl :=
+(fun (x: funsym * list vty * list pattern) =>
+          let '(cs, params, ql) := x in 
+          let pat_tys := map (ty_subst (s_params cs) params) (s_args cs) in 
+          let new_var_names := gen_strs (Datatypes.length ql) (compile_fvs ((t, ty) :: tl) rl) in
+          let typed_vars := (combine new_var_names pat_tys) in
+          let vl := rev typed_vars in 
+          let pl := rev_map Pvar vl in 
+          let al := rev_map Tvar vl in
+          (Pconstr cs params pl, comp_cases cs (combine al (rev (map snd vl))))).
+
+(*And the spec*)
+Lemma fold_right_opt_add_map 
+  comp_cases t ty rl tl cslist bse pats:
+  fold_left_opt (add comp_cases t ty rl tl) cslist bse = Some pats ->
+  (* map Some l = bse -> *)
+  rev (map (add_map comp_cases t ty tl rl) cslist) ++ (map (fun x => (fst x, Some (snd x))) bse) =
+  map (fun x => (fst x, Some (snd x))) pats.
+Proof.
+  intros Hadd.
+  unfold add in Hadd.
+  erewrite fold_left_opt_change_f in Hadd.
+  apply (fold_left_opt_cons (fun (x: funsym * list vty * list pattern) =>
+    let cs := fst (fst x) in
+    let params := snd (fst x) in
+    let ql := snd x in
+    let pat_tys := map (ty_subst (s_params cs) params) (s_args cs) in 
+    let new_var_names := gen_strs (Datatypes.length ql) (compile_fvs ((t, ty) :: tl) rl) in
+    let typed_vars := (combine new_var_names pat_tys) in
+    let vl := rev typed_vars in 
+    let pl := rev_map Pvar vl in 
+    let al := rev_map Tvar vl in
+    comp_cases cs (combine al (rev (map snd vl))))
+    (fun (x: funsym * list vty * list pattern) =>
+      let cs := fst (fst x) in
+      let params := snd (fst x) in
+      let ql := snd x in
+      let pat_tys := map (ty_subst (s_params cs) params) (s_args cs) in 
+      let new_var_names := gen_strs (Datatypes.length ql) (compile_fvs ((t, ty) :: tl) rl) in
+      let typed_vars :=(combine new_var_names pat_tys) in
+      let vl := rev typed_vars in 
+      let pl := rev_map Pvar vl in 
+      Pconstr cs params pl
+      )
+  ) in Hadd.
+  2: { simpl. intros. destruct c as [[f vs] ps]; simpl; reflexivity. }
+  erewrite (map_ext (fun x => (fst x, Some (snd x)))). rewrite <- Hadd.
+  simpl. f_equal.
+  2: simpl; intros [x1 y1]; auto.
+  f_equal.
+  apply map_ext. intros [[f vs] ps]; simpl; auto.
+Qed.
+
+(*TODO: maybe simplify dispatch1*)
+Lemma compile_prove_some (P_hyps: list (term * vty) -> list (list pattern * A) -> Prop) 
+  (P_goal: list (term * vty) -> list (list pattern * A) -> A -> Prop)
+  (P_simp: forall t ty tms rl
+    (Hsimpl: forall tm1, P_hyps ((t, ty) :: tms) (simplify t rl) -> compile ((t, ty) :: tms) rl = Some tm1 ->
+      P_goal ((t, ty) :: tms) (simplify t rl) tm1)
+    tm1
+    (Hcomp: (compile ((t, ty) :: tms) rl) = Some tm1)
+    (Hhyps: P_hyps ((t, ty) :: tms) rl),
+    P_goal ((t, ty) :: tms) rl tm1)
+  (Hemp: forall ps a l (Hhyps: P_hyps nil ((ps, a) :: l)), P_goal nil ((ps, a) :: l) a)
+  (*Separate out cases*)
+  (Hwildscase: forall t ty tl rl rhd rtl,
+    let is_bare_css :=
+    match ty with
+    | vty_cons ts _ => if bare then (true, nil) else (false, get_constructors ts)
+    | _ => (false, nil)
+    end in
+    let is_bare := fst is_bare_css in
+    let css := snd is_bare_css in
+    let is_constr fs := 
+      f_is_constr fs && (is_bare || in_bool funsym_eq_dec fs css) in
+    forall (Hsimpl: simplified rl) (Hrl: rl = rhd :: rtl) 
+      types_cslist (Hpop: (populate_all is_constr rl) = Some types_cslist),
+    let types := fst types_cslist in
+    let cslist := snd types_cslist in
+    forall casewild (Hcasewild : casewild = dispatch1 t types rl) (Hnotnull: forallb (fun x => negb (null (fst x))) rl),
+    let cases := fst casewild in
+    let wilds := snd casewild in
+    forall (Hwilds: wilds = default rl) (IHwilds: forall tm1, P_hyps tl (default rl) -> 
+      compile tl wilds = Some tm1 -> P_goal tl (default rl) tm1)
+    (Hwildcases: amap_is_empty types \/ 
+      if simpl_constr then 
+      match (is_fun t) with
+      | Left Hconstr =>
+        let '(cs, params, al) := proj1_sig Hconstr in
+          is_constr cs && amap_mem funsym_eq_dec cs types = false
+      | _ => False
+      end
+      else False) tm1
+    (Hmt1: compile tl wilds = Some tm1)
+    (Hhyps: P_hyps ((t, ty) :: tl) rl),
+    P_goal ((t, ty) :: tl) rl tm1)
+  (Hfullcase: forall t ty tl rl rhd rtl,
+    let is_bare_css :=
+    match ty with
+    | vty_cons ts _ => if bare then (true, nil) else (false, get_constructors ts)
+    | _ => (false, nil)
+    end in
+    let is_bare := fst is_bare_css in
+    let css := snd is_bare_css in
+    let is_constr fs := 
+      f_is_constr fs && (is_bare || in_bool funsym_eq_dec fs css) in
+    forall (Hsimpl: simplified rl) (Hrl: rl = rhd :: rtl) 
+      types_cslist (Hpop: (populate_all is_constr rl) = Some types_cslist),
+    let types := fst types_cslist in
+    let cslist := snd types_cslist in
+    forall casewild (Hcasewild : casewild = dispatch1 t types rl) (Hnotnull: forallb (fun x => negb (null (fst x))) rl),
+      let cases := fst casewild in
+      let wilds := snd casewild in
+      forall
+      (IHwilds: forall tm1, P_hyps tl (default rl) -> 
+        compile tl wilds = Some tm1 -> P_goal tl (default rl) tm1)
+      (IHconstrs: forall cs al l (Hget: amap_get funsym_eq_dec cases cs = Some l) tm1,
+        P_hyps (rev al ++ tl) l ->
+        compile (rev al ++ tl) l = Some tm1 ->
+        P_goal (rev al ++ tl) l tm1)
+      (Hisemp: amap_is_empty types = false)
+      (ps ps1 : list (pattern * A))
+      (Hopt : rev
+         (map
+            (add_map
+               (fun (cs0 : funsym) (al0 : list (term * vty)) =>
+                comp_cases compile
+                  cases tl cs0 al0) t ty tl rl) cslist) ++
+       map (fun x : pattern * A => (fst x, Some (snd x))) ps1 =
+       map (fun x : pattern * A => (fst x, Some (snd x))) ps)
+      (*Much more useful than destructing and simplifying each time*)
+      (Hps1' : ps1 = [] \/
+              (exists t2 : A,
+                 compile tl wilds = Some t2 /\
+                 ps1 = [(Pwild, t2)]))
+      (Hhyps: P_hyps ((t, ty) :: tl) rl),
+      (*NOTE: here we simplify [comp_full] to avoid duplication every time (TODO)*)
+      (* let comp_wilds (_: unit) := compile tl wilds in
+
+      let comp_cases cs (al : list (term * vty)) :=
+        comp_cases compile cases tl cs al in
+
+      let comp_full := comp_full is_bare comp_wilds comp_cases types cslist css t ty tl rl in
+      forall tm1 (Hcomp: comp_full tt = Some tm1), *)
+    P_goal ((t, ty) :: tl) rl (mk_case t ty ps))
+  (Hconstrcase: forall t ty tl rl rhd rtl cs params tms,
+    let is_bare_css :=
+    match ty with
+    | vty_cons ts _ => if bare then (true, nil) else (false, get_constructors ts)
+    | _ => (false, nil)
+    end in
+    let is_bare := fst is_bare_css in
+    let css := snd is_bare_css in
+    let is_constr fs := 
+      f_is_constr fs && (is_bare || in_bool funsym_eq_dec fs css) in
+    forall (Hsimpl: simplified rl) (Hrl: rl = rhd :: rtl) 
+      types_cslist (Hpop: (populate_all is_constr rl) = Some types_cslist),
+      (*NOTE: we don't have maps, not ideal*)
+      let types := fst types_cslist in
+      let cslist := snd types_cslist in
+      forall casewild (Hcasewild : casewild = dispatch1 t types rl) (Hnotnull: forallb (fun x => negb (null (fst x))) rl),
+        let cases := fst casewild in
+        let wilds := snd casewild in
+      forall (IHwilds: forall tm1, P_hyps tl (default rl) -> 
+        compile tl wilds = Some tm1 -> P_goal tl (default rl) tm1)
+      (IHconstrs: forall cs al l (Hget: amap_get funsym_eq_dec cases cs = Some l) tm1,
+        P_hyps (rev al ++ tl) l ->
+        compile (rev al ++ tl) l = Some tm1 ->
+        P_goal (rev al ++ tl) l tm1)
+      (Hisemp: amap_is_empty types = false)
+      (Hsimplconstr: simpl_constr = true)
+      (Ht: t = Tfun cs params tms)
+      (Hisconstr: is_constr cs)
+      (Hmem: amap_mem funsym_eq_dec cs types) tm1
+      (Hcomp: comp_cases compile cases tl cs (combine tms
+            (map (ty_subst (s_params cs) params) (s_args cs))) = Some tm1)
+      (Hhyps: P_hyps ((t, ty) :: tl) rl), 
+     P_goal ((t, ty) :: tl) rl tm1):
+
+    forall ts p tm1, P_hyps ts p -> (compile ts p) = Some tm1 -> P_goal ts p tm1.
+Proof.
+  intros ts rl tm1 Hhyps. revert ts rl Hhyps tm1.
+  apply (compile_ind' (fun tms rl o => P_hyps tms rl -> forall tm1, o = Some tm1 -> P_goal tms rl tm1)); auto; try discriminate.
+  - intros ps a p Hhyps tm1 Hsome; inversion Hsome; subst; auto.
+  - intros. eapply Hwildscase; eauto.
+  - (*[comp_full] simplify*)
+    intros t ty tl rl rhd rtl is_bare_css is_bare css is_constr Hsimpl Hrl types_cslist Hpop types
+      cslist casewild Hcasewild Hnotnull cases wilds IHwilds IHconstrs Hisemp Hhyps tm1.
+    simpl.
+    unfold comp_full.
+    rewrite <- option_map_bind.
+    intros Hopt. apply option_map_some in Hopt.
+    destruct Hopt as [ps [Hps Ht1]]; subst tm1.
+    apply option_bind_some in Hps.
+    destruct Hps as [ps1 [Hps1 Hopt]].
+    (*This way we can deal with [fold_left_opt] before destructing 'forallb'*)
+    apply fold_right_opt_add_map in Hopt.
+    (*Much more useful than destructing and simplifying each time*)
+    assert (Hps1': ps1 = nil \/ 
+      exists t2, compile tl wilds = Some t2 /\
+        ps1 = [(Pwild, t2)]).
+    {
+      apply option_bind_some in Hps1.
+      destruct Hps1 as [z [Hsome Hifz]].
+      destruct z; [inversion Hifz; auto|].
+      apply option_map_some in Hifz. destruct Hifz as [t1 [Hwilds Hps1]]; subst. right.
+      exists t1. auto.
+    }
+    eapply Hfullcase; eauto.
+  - intros. eapply Hconstrcase; eauto.
+Qed.
+
 End Comp.
 
 End Compile.
