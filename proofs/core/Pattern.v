@@ -2915,9 +2915,17 @@ Lemma compile_prove_some (P_hyps: list (term * vty) -> list (list pattern * A) -
                 comp_cases compile
                   cases tl cs0 al0) t ty tl rl) cslist) ++
        map (fun x : pattern * A => (fst x, Some (snd x))) ps1 =
-       map (fun x : pattern * A => (fst x, Some (snd x))) ps)
+       map (fun x : pattern * A => (fst x, Some (snd x))) ps),
+      let is_wilds := (if is_bare
+         then
+          option_bind
+            (option_map
+               (fun x : funsym * list vty * list pattern => let (y, _) := x in let (cs, _) := y in cs)
+               (hd_error cslist)) (fun x : funsym => Some (amap_size types =? f_num_constrs x))
+         else Some (forallb (fun f : funsym => amap_mem funsym_eq_dec f types) css)) in
+      forall
       (*Much more useful than destructing and simplifying each time*)
-      (Hps1' : ps1 = [] \/
+      (Hps1' : ps1 = [] /\ is_wilds = Some true \/ is_wilds = Some false /\
               (exists t2 : A,
                  compile tl wilds = Some t2 /\
                  ps1 = [(Pwild, t2)]))
@@ -2983,18 +2991,12 @@ Proof.
     destruct Hps as [ps1 [Hps1 Hopt]].
     (*This way we can deal with [fold_left_opt] before destructing 'forallb'*)
     apply fold_right_opt_add_map in Hopt.
-    (*Much more useful than destructing and simplifying each time*)
-    assert (Hps1': ps1 = nil \/ 
-      exists t2, compile tl wilds = Some t2 /\
-        ps1 = [(Pwild, t2)]).
-    {
-      apply option_bind_some in Hps1.
-      destruct Hps1 as [z [Hsome Hifz]].
-      destruct z; [inversion Hifz; auto|].
-      apply option_map_some in Hifz. destruct Hifz as [t1 [Hwilds Hps1]]; subst. right.
-      exists t1. auto.
-    }
     eapply Hfullcase; eauto.
+    apply option_bind_some in Hps1.
+    destruct Hps1 as [z [Hsome Hifz]].
+    destruct z; [inversion Hifz; auto|].
+    apply option_map_some in Hifz. destruct Hifz as [t1 [Hwilds Hps1]]; subst. right. split; auto.
+    exists t1. auto.
   - intros. eapply Hconstrcase; eauto.
 Qed.
 
