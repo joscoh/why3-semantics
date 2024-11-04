@@ -2686,15 +2686,9 @@ Lemma compile_ind' (P: list (term * vty) -> list (list pattern * A) -> option A 
     let cases := fst casewild in
     let wilds := snd casewild in
     forall (Hwild: wilds = default rl) (IHwilds: P tl (default rl) (compile tl wilds))
-    (Hwildcases: amap_is_empty types \/ 
-      if simpl_constr then 
-      match (is_fun t) with
-      | Left Hconstr =>
-        let '(cs, params, al) := proj1_sig Hconstr in
-          is_constr cs && amap_mem funsym_eq_dec cs types = false
-      | _ => False
-      end
-      else False),
+    (Hwildcases: amap_is_empty types \/ amap_is_empty types = false /\
+      simpl_constr = true /\
+      exists cs params al, t = Tfun cs params al /\ is_constr cs /\ amap_mem funsym_eq_dec cs types = false),
     P ((t, ty) :: tl) rl (compile tl wilds))
   (Hfullcase: forall t ty tl rl rhd rtl,
     let is_bare_css :=
@@ -2776,8 +2770,8 @@ Proof.
     destruct (is_fun t) as [[[ [cs params] tms] Ht]|]; [| eapply Hfullcase; eauto; rewrite <- Hwilds; auto].
     simpl in Ht |- *.  destruct (is_constr cs) eqn : Hconstr; [| eapply Hfullcase; eauto; rewrite <- Hwilds; auto].
     destruct (amap_mem funsym_eq_dec cs types) eqn : Hmem; [eapply Hconstrcase; eauto; rewrite <- Hwilds; auto|].
-    eapply Hwildscase; eauto. rewrite <- Hwilds; auto. right. simpl.
-    apply andb_false_iff. right; auto.
+    eapply Hwildscase; eauto. rewrite <- Hwilds; auto. right. simpl. split_all; auto.
+    exists cs. exists params. exists tms. auto.
 Qed.
 
 (*And now a version to prove goals of the form [compile tms rl = Some t1 -> P t1]*)
@@ -2870,15 +2864,9 @@ Lemma compile_prove_some (P_hyps: list (term * vty) -> list (list pattern * A) -
     let wilds := snd casewild in
     forall (Hwilds: wilds = default rl) (IHwilds: forall tm1, P_hyps tl (default rl) -> 
       compile tl wilds = Some tm1 -> P_goal tl (default rl) tm1)
-    (Hwildcases: amap_is_empty types \/ 
-      if simpl_constr then 
-      match (is_fun t) with
-      | Left Hconstr =>
-        let '(cs, params, al) := proj1_sig Hconstr in
-          is_constr cs && amap_mem funsym_eq_dec cs types = false
-      | _ => False
-      end
-      else False) tm1
+    (Hwildcases: amap_is_empty types \/ amap_is_empty types = false /\
+      simpl_constr = true /\
+      exists cs params al, t = Tfun cs params al /\ is_constr cs /\ amap_mem funsym_eq_dec cs types = false) tm1
     (Hmt1: compile tl wilds = Some tm1)
     (Hhyps: P_hyps ((t, ty) :: tl) rl),
     P_goal ((t, ty) :: tl) rl tm1)

@@ -4371,6 +4371,87 @@ Proof.
   auto.
 Qed.  
 
+(*Get ADT info - need in multiple places*)
+Lemma amap_empty_get_adt
+  {ty tl rl} {is_constr: funsym -> bool} {types_cslist}
+  (Hsimpl: simplified rl)
+  (Hpop: populate_all is_constr rl = Some types_cslist)
+  (Hisemp: amap_is_empty (fst types_cslist) = false)
+  (Hp: pat_matrix_typed (ty :: tl) rl):
+  exists (m : mut_adt) (a : alg_datatype) (args : list vty),
+  mut_in_ctx m gamma /\
+  adt_in_mut a m /\
+  ty = vty_cons (adt_name a) args /\ Datatypes.length args = Datatypes.length (m_params m).
+Proof.
+  rewrite (amap_not_empty_mem funsym_eq_dec) in Hisemp.
+  destruct Hisemp as [c Hintypes].
+  (*From [types], know that c is in first column*)
+  apply (populate_all_in _ _ _ _ Hsimpl Hpop) in Hintypes.
+  destruct (constr_at_head_ex_type Hp Hintypes) as [tys [pats Hcty]].
+  simpl in Hcty.
+  inversion Hcty; subst.
+  (*Use fact that constructor patterns must arise from ADT*)
+  destruct H11 as [m [a [m_in [a_in c_in]]]].
+  exists m. exists a. unfold sigma.
+  rewrite (adt_constr_ret gamma_valid m_in a_in c_in).
+  rewrite ty_subst_cons. rewrite !map_map.
+  eexists. split_all; try assumption. reflexivity.
+  solve_len.
+Qed.
+
+(*And info about Tfun case*)
+Lemma tfun_case_typing_info {cs params tms args a m tl}
+  (m_in: mut_in_ctx m gamma) (a_in: adt_in_mut a m)
+  (args_len: length args = length (m_params m))
+  (f_constr: f_is_constr cs)
+  (Htmtys1: Forall2 (term_has_type gamma) (Tfun cs params tms :: map fst tl)
+    (vty_cons (adt_name a) args :: map snd tl)):
+  term_has_type gamma (Tfun cs params tms) (vty_cons (adt_name a) args) /\
+  constr_in_adt cs a /\
+  length (s_params cs) = length args /\
+  Forall2 (term_has_type gamma) tms (ty_subst_list (s_params cs) params (s_args cs)) /\ params = args.
+Proof.
+  pose proof (Forall2_inv_head Htmtys1) as Htyt. simpl in Htyt. split; auto.
+  assert (f_in: constr_in_adt cs a). {
+    
+    assert (f_constr': f_is_constr cs) by auto.
+    rewrite (is_constr_iff gamma gamma_valid) in f_constr'.
+    2: solve[inversion Htyt; subst; auto].
+    destruct f_constr' as [m1 [a1 [m1_in [a1_in f_in]]]].
+    (*Show that they are the same y relating [adt_name]*)
+    inversion Htyt; subst.
+    rewrite (adt_constr_subst_ret gamma_valid m1_in a1_in f_in) in H2 by auto.
+    inversion H2; subst.
+    assert (Hm: m1 = m) by
+      (apply (mut_adts_inj (valid_context_wf _ gamma_valid) m1_in m_in a1_in a_in); auto).
+    subst.
+    assert (Ha: a1 = a) by (apply (adt_names_inj' gamma_valid a1_in a_in); auto).
+    subst. assumption.
+  }
+  assert (constrs_len: length (s_params cs) = length args).
+  {
+    rewrite args_len. f_equal. apply (adt_constr_params gamma_valid m_in a_in f_in).
+  }
+  assert (Htms': Forall2 (term_has_type gamma) tms
+    (ty_subst_list (s_params cs) params (s_args cs))).
+  {
+    inversion Htyt; subst. unfold ty_subst_list.
+    rewrite Forall2_combine. split; [solve_len|]. assumption.
+  }
+  assert (Heqty: params = args). {
+    inversion Htyt; subst.
+    rewrite (adt_constr_ret gamma_valid m_in a_in f_in) in H2.
+    rewrite ty_subst_cons in H2.
+    assert (Hparams: s_params cs = m_params m) by
+      apply (adt_constr_params gamma_valid m_in a_in f_in).
+    rewrite <- Hparams in H2.
+    rewrite map_ty_subst_var in H2; auto.
+    - inversion H2; subst; auto.
+    - apply s_params_Nodup.
+  }
+  split_all; auto.
+Qed.
+
     (*NOTE: this method not ideal, need ADT in lots of places
       maybe we want the following:
       1. for emp case, prove wilds
@@ -4487,7 +4568,7 @@ Lemma compile_prove_some_typed (P_hyps: list (term * vty) -> pat_matrix -> Prop)
           (compile_fvs gen_getvars ((t, ty) :: tl) rl)) new_typs) in
         length new_vars = length new_typs /\
         Forall2 (term_has_type gamma) (map Tvar new_vars) new_typs /\
-        pat_matrix_typed new_typs (spec rl c))
+        pat_matrix_typed (rev new_typs ++ map snd tl) (spec rl c))
 
       (IHwilds: forall tm1, P_hyps tl (default rl) -> 
         compile get_constructors gen_match gen_let gen_getvars bare simpl_constr tl wilds = Some tm1 -> 
@@ -4597,7 +4678,7 @@ Hspecty *)))
       (Htmty: Forall2 (term_has_type gamma) (t :: (map fst tl)) (ty :: (map snd tl)))
       (Hp: pat_matrix_typed ((vty_cons (adt_name a) args) :: map snd tl) rl)
       (*Info about [cslist] we will need*)
-      (Hclist_types: forall {c tys pats},
+      (*(Hclist_types: forall {c tys pats},
         In (c, tys, pats) cslist ->
         pattern_has_type gamma (Pconstr c tys pats) (vty_cons (adt_name a) args))
       (Hclist_len: forall {c tys pats},
@@ -4608,7 +4689,7 @@ Hspecty *)))
         constr_in_adt c a)
       (Hclist_tys: forall {c tys pats},
         In (c, tys, pats) cslist ->
-        tys = args)
+        tys = args)*)
       (*Info about the specific constructor*)
       (Hcsty: term_has_type gamma (Tfun cs params tms) (vty_cons (adt_name a) args))
       (f_in: constr_in_adt cs a)
@@ -4616,20 +4697,20 @@ Hspecty *)))
       (Heqty: params = args)
       (Htms': Forall2 (term_has_type gamma) tms (ty_subst_list (s_params cs) args (s_args cs)))
       (*And finally, info about new types and vars*)
-      (Hclist_new: forall {c tys1 ps1},
+      (*(Hclist_new: forall {c tys1 ps1},
         In (c, tys1, ps1) cslist ->
         let new_typs := (map (ty_subst (s_params c) tys1) (s_args c)) in
         let new_vars :=(combine (gen_strs (Datatypes.length ps1) 
           (compile_fvs gen_getvars ((t, ty) :: tl) rl)) new_typs) in
         length new_vars = length new_typs /\
         Forall2 (term_has_type gamma) (map Tvar new_vars) new_typs /\
-        pat_matrix_typed new_typs (spec rl c))
+        pat_matrix_typed new_typs (spec rl c))*)
 
       (IHwilds: forall tm1, P_hyps tl (default rl) -> 
         compile get_constructors gen_match gen_let gen_getvars bare simpl_constr tl wilds = Some tm1 -> 
         P_goal tl (default rl) tm1 Htytl Htywild)
       (*NOTE: prob don't need*)
-      (IHconstrs: forall (cs: funsym) (tys1: list vty) (ps1: list pattern)
+      (*(IHconstrs: forall (cs: funsym) (tys1: list vty) (ps1: list pattern)
         (*We do 3 things here 1. use In cslist instead of get for cases 2. prove typing once and for all 3. use spec,
           not l in list *)
         (Hinc: In (cs, tys1, ps1) cslist),
@@ -4648,7 +4729,7 @@ Hspecty *)))
             (rev (combine (map Tvar new_vars) new_typs) ++ tl) (spec rl cs) = Some tm1),
           P_goal  (rev (combine (map Tvar new_vars) new_typs) ++ tl) (spec rl cs) tm1 
             (constr_case_tys (proj1 (Hclist_new Hinc)) (proj1 (proj2 (Hclist_new Hinc))) Htytl) 
-            (constr_case_patty (Hclist_len Hinc) (Hclist_tys Hinc) (spec_typed_adt m_in a_in (Hclist_in Hinc) Hp)))
+            (constr_case_patty (Hclist_len Hinc) (Hclist_tys Hinc) (spec_typed_adt m_in a_in (Hclist_in Hinc) Hp)))*)
       (Hisemp: amap_is_empty types = false)
       (Hsimplconstr: simpl_constr = true)
       (Ht: t = Tfun cs params tms)
@@ -4689,7 +4770,7 @@ Hspecty *)))
       (Htmty: Forall2 (term_has_type gamma) (t :: (map fst tl)) (ty :: (map snd tl)))
       (Hp: pat_matrix_typed ((vty_cons (adt_name a) args) :: map snd tl) rl)
       (*Info about [cslist] we will need*)
-      (Hclist_types: forall {c tys pats},
+      (*(Hclist_types: forall {c tys pats},
         In (c, tys, pats) cslist ->
         pattern_has_type gamma (Pconstr c tys pats) (vty_cons (adt_name a) args))
       (Hclist_len: forall {c tys pats},
@@ -4700,7 +4781,7 @@ Hspecty *)))
         constr_in_adt c a)
       (Hclist_tys: forall {c tys pats},
         In (c, tys, pats) cslist ->
-        tys = args)
+        tys = args)*)
       (*Info about the specific constructor*)
       (Hcsty: term_has_type gamma (Tfun cs params tms) (vty_cons (adt_name a) args))
       (f_in: constr_in_adt cs a)
@@ -4709,18 +4790,18 @@ Hspecty *)))
       (Heqty: params = args)
       (Htms': Forall2 (term_has_type gamma) tms (ty_subst_list (s_params cs) args (s_args cs)))
       (*And finally, info about new types and vars*)
-      (Hclist_new: forall {c tys1 ps1},
+      (*(Hclist_new: forall {c tys1 ps1},
         In (c, tys1, ps1) cslist ->
         let new_typs := (map (ty_subst (s_params c) tys1) (s_args c)) in
         let new_vars :=(combine (gen_strs (Datatypes.length ps1) 
           (compile_fvs gen_getvars ((t, ty) :: tl) rl)) new_typs) in
         length new_vars = length new_typs /\
         Forall2 (term_has_type gamma) (map Tvar new_vars) new_typs /\
-        pat_matrix_typed new_typs (spec rl c))
+        pat_matrix_typed new_typs (spec rl c))*)
 
-      (IHwilds: forall tm1, P_hyps tl (default rl) -> 
+      (*(IHwilds: forall tm1, P_hyps tl (default rl) -> 
         compile get_constructors gen_match gen_let gen_getvars bare simpl_constr tl wilds = Some tm1 -> 
-        P_goal tl (default rl) tm1 Htytl Htywild)
+        P_goal tl (default rl) tm1 Htytl Htywild)*)
       (*Need IH specialized for this case - TODO: remove others I think (and maybe all cslist stuff?)*)
       (IHfun: 
         let new_typs := (map (ty_subst (s_params cs) args) (s_args cs)) in
@@ -4734,7 +4815,7 @@ Hspecty *)))
             (constr_case_patty (Hclist_len Hinc) (Hclist_tys Hinc) (spec_typed_adt m_in a_in (Hclist_in Hinc) Hp)) *)
 
 
-      (IHconstrs: forall (cs: funsym) (tys1: list vty) (ps1: list pattern)
+      (*(IHconstrs: forall (cs: funsym) (tys1: list vty) (ps1: list pattern)
         (*We do 3 things here 1. use In cslist instead of get for cases 2. prove typing once and for all 3. use spec,
           not l in list *)
         (Hinc: In (cs, tys1, ps1) cslist),
@@ -4753,7 +4834,7 @@ Hspecty *)))
             (rev (combine (map Tvar new_vars) new_typs) ++ tl) (spec rl cs) = Some tm1),
           P_goal  (rev (combine (map Tvar new_vars) new_typs) ++ tl) (spec rl cs) tm1 
             (constr_case_tys (proj1 (Hclist_new Hinc)) (proj1 (proj2 (Hclist_new Hinc))) Htytl) 
-            (constr_case_patty (Hclist_len Hinc) (Hclist_tys Hinc) (spec_typed_adt m_in a_in (Hclist_in Hinc) Hp)))
+            (constr_case_patty (Hclist_len Hinc) (Hclist_tys Hinc) (spec_typed_adt m_in a_in (Hclist_in Hinc) Hp)))*)
       (Hisemp: amap_is_empty types = false)
       (Hsimplconstr: simpl_constr = true)
       (Ht: t = Tfun cs params tms)
@@ -4776,7 +4857,8 @@ Proof.
    eapply (compile_prove_some get_constructors gen_match gen_let gen_getvars
     gen_getvars_let bare simpl_constr (fun ts p =>P_hyps ts p /\
     Forall2 (term_has_type gamma) (map fst ts) (map snd ts) /\ pat_matrix_typed (map snd ts) p)
-  (fun ts p tm1 => forall Htmtys Hp, P_goal ts p tm1 Htmtys Hp)); auto; clear -P_simp P_goal_irrel Hemp.
+  (fun ts p tm1 => forall Htmtys Hp, P_goal ts p tm1 Htmtys Hp)); auto; clear -P_simp P_goal_irrel Hemp
+    Hwildcase Hfullcase Hconstrnotincase Hconstrcase.
   - intros. destruct Hhyps as [Hhyps [Htmtys1 Hp1]]. apply P_simp; auto.
     intros Hhyps2. apply Hsimpl; split_all; auto.
     (*Prove simplify typed*)
@@ -4784,12 +4866,317 @@ Proof.
   - (*Prove nil case*)
     intros. destruct Hhyps as [Hhyps [Htmtys1 Hp1]].
     destruct ps as [| phd ptl].
-    + eapply P_goal_irrel. eapply Hemp; eauto.
+    + eapply P_goal_irrel. eapply Hemp; eauto. Unshelve. auto.
     + (*Cannot have non-null row in this case*)
       exfalso.
       apply pat_matrix_typed_head in Hp.
       destruct Hp as [Hrow _]; inversion Hrow.
-Admitted.
+  - (*Prove wild cases*) 
+    intros. destruct Hhyps as [Hhyps [Htmtys1 Hp1]].
+    destruct (amap_is_empty types) eqn : Hisemp.
+    + (*First case: empty types*)
+      pose proof (Forall2_inv_tail Htmtys1) as Htytl.
+      eapply Hwildcase with (Htywild := default_typed Hp)(Htytl:=Htytl); eauto.
+      intros tm2 Hhyps2 Hcomp2. apply IHwilds; auto. split_all; auto.
+      eapply default_typed; eauto.
+      Unshelve. 
+    + (*Second case: match on constr not in types*) 
+      destruct Hwildcases as [? | Hwildcases];[discriminate|].
+      destruct Hwildcases as [_ [Hsimplconstr [cs [params [tms [Ht [Hisconstr Hmem]]]]]]].
+      destruct (amap_empty_get_adt Hsimpl Hpop Hisemp Hp) as [m [a [args [m_in [a_in [Hty args_len]]]]]].
+      simpl in Hty; subst. (* eapply Hconstrnotincase; eauto. *)
+      (*Crucially, need [f_is_constr] here*)
+      assert (f_constr: f_is_constr cs) (*TODO: just need this, prove*).
+      { unfold is_constr, is_bare, css, is_bare_css in Hisconstr. 
+        apply andb_true_iff in Hisconstr; apply Hisconstr. }
+      (*Get typing info*)
+      destruct (tfun_case_typing_info m_in a_in args_len f_constr Htmtys1) as [Htyt [f_in [Hargslen [Htms' Hparams]]]].
+      subst args.
+      pose proof (Forall2_inv_tail Htmtys1) as Htytl.
+      eapply Hconstrnotincase with (Htywild := default_typed Hp)(Htytl:=Htytl); eauto.
+      (*Need to prove wilds again*)
+      intros tm2 Hhyps2 Hcomp2. apply IHwilds; auto. split_all; auto.
+      eapply default_typed; eauto.
+  - intros. (*full case*)
+    destruct Hhyps as [Hhyps [Htmtys1 Hp1]].
+    (*Get the ADT*)
+    destruct (amap_empty_get_adt Hsimpl Hpop Hisemp Hp) as [m [a [args [m_in [a_in [Hty args_len]]]]]].
+    simpl in Hty; subst.
+    pose proof (Forall2_inv_tail Htmtys1) as Htytl.
+    assert (Hclist_types: forall {c tys pats},
+      In (c, tys, pats) cslist ->
+      pattern_has_type gamma (Pconstr c tys pats) (vty_cons (adt_name a) args)) by
+      (intros c tys pats1 Hinc1; subst; apply (in_cslist_typed Hp Hpop Hsimpl Hinc1)).
+    eapply Hfullcase with (Htywild := default_typed Hp)(Htytl:=Htytl); eauto. Unshelve. all: eauto.
+    + (*Prove wilds again*)
+      intros tm2 Hhyps2 Hcomp2. apply IHwilds; auto. split_all; auto.
+      eapply default_typed; eauto.
+    + (*Prove IH*) intros cs tys1 pats Hinc new_typs new_vars tm2 Hhyps2 Hcomp2.
+      set (rl := rhd :: rtl) in *.
+      specialize (IHconstrs cs (combine (map Tvar new_vars) new_typs) (spec rl cs)).
+      forward IHconstrs.
+      { unfold cases. eapply dispatch1_equiv_spec; eauto.
+        rewrite amap_mem_spec.
+        replace (amap_get funsym_eq_dec (fst types_cslist) cs) with (Some pats); auto.
+        symmetry. apply (proj2 (populate_all_fst_snd_full _ _ _ Hsimpl Hpop)).
+        exists tys1; apply Hinc.
+      }
+      assert (Hvarstyps: length new_vars = length new_typs). {
+        unfold new_vars. simpl_len.
+        assert (length pats = length new_typs); try lia.
+        unfold new_typs. simpl_len; auto.
+        specialize (Hclist_types _ _ _ Hinc); inversion Hclist_types; auto.
+      }
+      specialize (IHconstrs tm2).
+      assert (Hlen: length pats = length (s_args cs)). {
+        specialize (Hclist_types _ _ _ Hinc); inversion Hclist_types; subst; auto.
+      }
+      apply IHconstrs; auto.
+            (*Simplify lists in IHConstrs*)
+      rewrite !rev_combine, !map_app, !map_fst_combine, !map_snd_combine by solve_len.
+      split_all; [rewrite <- rev_combine; auto; solve_len | |].
+      * (*Prove terms are typed correctly*) 
+        unfold vsymbol in *.
+        apply Forall2_app.
+        2: { inversion Htmtys; auto. }
+        apply Forall2_rev.
+        (*Prove all variables have correct type*)
+        apply Forall2_nth; simpl_len; split; [auto|].
+        intros i d1 d2 Hi.
+        assert (Hi': i < length (s_args cs)) by
+          (rewrite Hvarstyps in Hi; unfold new_typs in Hi; rewrite map_length in Hi; exact Hi).
+        rewrite map_nth_inbound with (d2:=(""%string, vty_int)) by auto. 
+        apply T_Var'.
+        -- (*We proved [valid_type] already*)
+          specialize (in_cslist_val Hp Hpop Hsimpl Hinc) as Hallval.
+          rewrite Forall_forall in Hallval; apply Hallval, nth_In. solve_len.
+        -- unfold new_vars, new_typs. rewrite combine_nth by solve_len.
+            simpl. apply nth_indep; solve_len.
+      * (*prove pat mx typed*)
+        destruct (in_cslist_args m_in a_in Hp Hpop Hsimpl Hinc) as [c_in Htys1]; subst.
+        apply (spec_typed_adt m_in a_in); auto.
+    + set (ty := vty_cons (adt_name a) args) in *. 
+      (* set (css':= (match ty with
+      | vty_cons ts _ => get_constructors ts
+      | _ => nil
+      end)) in *. *)
+      (*Prove equivalence of [bare] cases*)
+      assert (Hiswilds : is_wilds = Some
+        (forallb (fun f : funsym => amap_mem funsym_eq_dec f (fst types_cslist))
+           (get_constructors (adt_name a)))).
+      {
+        unfold is_wilds.
+        assert (Hisbare: is_bare -> bare). {
+          unfold is_bare, is_bare_css.
+          destruct bare; auto.
+        }
+        unfold is_bare, is_bare_css. subst ty.
+        destruct bare; simpl; auto.
+        (*Idea: if bare is true:
+        1. amap_choose is Some
+        2. result is well-typed so equal to [get_constructors]*)
+        unfold cslist.
+        destruct (hd_error (snd types_cslist)) as [[[cs tys2] ps2]|] eqn : Hchoose.
+        2: {
+          apply (populate_all_snd_hd_none Hsimpl Hpop) in Hchoose.
+          unfold types in Hisemp.
+          rewrite Hisemp in Hchoose; discriminate.
+        }
+        simpl. apply (populate_all_snd_hd_some Hsimpl Hpop) in Hchoose.
+        f_equal.
+        unfold types.
+        assert (c_in: constr_in_adt cs a). {
+          unfold types in Hchoose.
+          apply (populate_all_in_adt m_in a_in Hsimpl Hp Hpop Hchoose).
+        }
+        erewrite (size_check_equal m_in a_in c_in Hsimpl Hp); [| | eauto].
+        2: {
+          erewrite populate_all_ext. apply Hpop.
+          unfold is_constr, is_bare, is_bare_css. simpl.
+          intros. rewrite andb_true_r; reflexivity.
+        }
+        rewrite (get_constructors_eq m_in a_in).
+        reflexivity.
+      }
+      rewrite Hiswilds in Hps1'; apply Hps1'.
+    + (*Prove patslen*)
+      intros cs tys1 pats1 Hinc; specialize (Hclist_types _ _ _ Hinc); inversion Hclist_types; auto.
+    + (*Prove all constrs in*)
+      intros cs tys1 pats1 Hinc. apply (in_cslist_args m_in a_in Hp Hpop Hsimpl Hinc).
+    + (*Prove tys = args*)
+      intros cs tys1 pats1 Hinc. apply (in_cslist_args m_in a_in Hp Hpop Hsimpl Hinc).
+    + (*Prove length and typing for elements*)
+      intros cs tys1 pats1 Hinc new_typs new_vars.
+      (*Use info from previous*)
+      specialize (Hclist_types _ _ _ Hinc).
+      assert (Hpatslen: length pats1 = length (s_args cs)) by (inversion Hclist_types; auto).
+      assert (Hlenvars: length new_typs = length (s_args cs)) by (unfold new_typs; solve_len).
+      assert (Hlen: length new_vars = length new_typs) by (unfold new_vars, new_typs; solve_len).
+      split_all; auto.
+      * (*Prove term types*)
+        apply Forall2_nth; simpl_len; split; [auto|].
+        intros i d1 d2 Hi.
+        assert (Hi': i < length (s_args cs)) by (unfold vsymbol in *; lia).
+        rewrite map_nth_inbound with (d2:=(""%string, vty_int)) by auto. 
+        apply T_Var'.
+        -- (*We proved [valid_type] already*)
+          specialize (in_cslist_val Hp Hpop Hsimpl Hinc) as Hallval.
+          rewrite Forall_forall in Hallval; apply Hallval, nth_In. solve_len.
+        -- unfold new_vars, new_typs. rewrite combine_nth by solve_len.
+            simpl. apply nth_indep; solve_len.
+      * destruct (in_cslist_args m_in a_in Hp Hpop Hsimpl Hinc) as [c_in Hargs]; subst args.
+        unfold new_typs.
+        apply (spec_typed_adt m_in a_in c_in Hp).
+  - (*Tfun case*)
+    intros. destruct Hhyps as [Hhyps [Htmtys1 Hp1]].
+    (*Get the ADT*)
+    destruct (amap_empty_get_adt Hsimpl Hpop Hisemp Hp) as [m [a [args [m_in [a_in [Hty args_len]]]]]].
+    simpl in Hty; subst. (* eapply Hconstrnotincase; eauto. *)
+    (*Crucially, need [f_is_constr] here*)
+    assert (f_constr: f_is_constr cs) (*TODO: just need this, prove*).
+    { unfold is_constr, is_bare, css, is_bare_css in Hisconstr. 
+      apply andb_true_iff in Hisconstr; apply Hisconstr. }
+    (*Get typing info*)
+    destruct (tfun_case_typing_info m_in a_in args_len f_constr Htmtys1) as [Htyt [f_in [Hargslen [Htms' Hparams]]]].
+    subst args.
+    pose proof (Forall2_inv_tail Htmtys1) as Htytl.
+    eapply Hconstrcase with (Htytl:=Htytl); eauto; [eapply default_typed; eauto |].
+    (*Prove IH goal*)
+    intros new_typs tm2 Hhyps2 Hcomp2.
+    apply IHconstrs with (cs:=cs); auto; [ eapply dispatch1_equiv_spec; solve[eauto] |].
+    assert (Hlentms: length tms = length new_typs). {
+      unfold new_typs. inversion Htyt; solve_len. }
+    rewrite !map_app,!map_rev, !map_fst_combine, !map_snd_combine by solve_len.
+    split_all; auto.
+    + (*Term typing*)
+      apply Forall2_app; [| inversion Htmtys1; solve[auto]].
+      apply Forall2_rev, Htms'.
+    + (*Pattern matrix typing*)
+      apply (spec_typed_adt m_in a_in); auto.
+    Unshelve. all: eauto.
+    inversion Htyt; lia.
+Qed.
+
+(*
+
+    (*Now that we know that [types] is non-empty, we know that there is at least
+      one constructor in the first column. By typing, ty is an ADT*)
+    assert (Hadt: exists m a args, mut_in_ctx m gamma /\ adt_in_mut a m /\
+      ty = vty_cons (adt_name a) args /\ length args = length (m_params m)).
+    {
+      rewrite (amap_not_empty_mem funsym_eq_dec) in Hisemp.
+      destruct Hisemp as [c Hintypes].
+      (*From [types], know that c is in first column*)
+      apply (populate_all_in _ _ _ _ Hsimpl Hpop) in Hintypes.
+      destruct (constr_at_head_ex_type Hp Hintypes) as [tys [pats Hcty]].
+      simpl in Hcty.
+      inversion Hcty; subst.
+      (*Use fact that constructor patterns must arise from ADT*)
+      destruct H11 as [m [a [m_in [a_in c_in]]]].
+      exists m. exists a. unfold sigma.
+      rewrite (adt_constr_ret gamma_valid m_in a_in c_in).
+      rewrite ty_subst_cons. rewrite !map_map.
+      eexists. split_all; try assumption. reflexivity.
+      solve_len.
+    }
+    destruct Hadt as [m [a [args [m_in [a_in [Hty args_len]]]]]].
+    eapply Hconstrcase; eauto.
+    
+      rewrite !map_snd_combine by solve_len.
+      intros IHconstrs.
+      
+      assert (Htys : Forall2 (term_has_type gamma)
+        (rev (map Tvar new_vars) ++ map fst tl)
+        (rev new_typs ++ map snd tl)).
+      {
+        (*Prove terms are typed correctly*) 
+        unfold vsymbol in *.
+        apply Forall2_app.
+        2: { inversion Htmtys; auto. }
+        apply Forall2_rev.
+        (*Prove all variables have correct type*)
+        apply Forall2_nth; simpl_len; split; [auto|].
+        intros i d1 d2 Hi.
+        assert (Hi': i < length (s_args cs)) by
+          (rewrite Hvarstyps in Hi; unfold new_typs in Hi; rewrite map_length in Hi; exact Hi).
+        rewrite map_nth_inbound with (d2:=(""%string, vty_int)) by auto. 
+        apply T_Var'.
+        -- (*We proved [valid_type] already*)
+          specialize (in_cslist_val Hp Hpop Hsimpl Hinc) as Hallval.
+          rewrite Forall_forall in Hallval; apply Hallval, nth_In. solve_len.
+        -- unfold new_vars, new_typs. rewrite combine_nth by solve_len.
+            simpl. apply nth_indep; solve_len.
+      }
+      (*Prove typing*)
+      assert (Hp' : pat_matrix_typed (rev new_typs ++ map snd tl) (spec rl cs)).
+      {
+        subst ty.
+        destruct (in_cslist_args m_in a_in Hp Hpop Hsimpl Hinc) as [c_in Htys1]; subst.
+        apply (spec_typed_adt m_in a_in); auto.
+      }
+      (*Now we use IH*)
+      assert (Hcomb: (combine (rev (map Tvar new_vars)) (rev new_typs)) =
+        (rev (combine (map Tvar new_vars) new_typs))).
+      { rewrite rev_combine by solve_len. reflexivity. }
+      apply IHconstrs; auto; [split_all; auto|]; rewrite Hcomb; auto.
+    + 
+
+
+Admitted.*)
+      
+(*
+
+
+Lemma amap_empty_get_adt
+  {ty tl rl} {is_constr: funsym -> bool} {types_cslist}
+  (Hsimpl: simplified rl)
+  (Hpop: populate_all is_constr rl = Some types_cslist)
+  (Hisemp: amap_is_empty (fst types_cslist) = false)
+  (Hp: pat_matrix_typed (ty :: tl) rl):
+  exists (m : mut_adt) (a : alg_datatype) (args : list vty),
+  mut_in_ctx m gamma /\
+  adt_in_mut a m /\
+  ty = vty_cons (adt_name a) args /\ Datatypes.length args = Datatypes.length (m_params m).
+      (*Separate out*)
+
+
+      (*Get the ADT*)
+    (*Now that we know that [types] is non-empty, we know that there is at least
+      one constructor in the first column. By typing, ty is an ADT*)
+    assert (Hadt: exists m a args, mut_in_ctx m gamma /\ adt_in_mut a m /\
+      ty = vty_cons (adt_name a) args /\ length args = length (m_params m)).
+    {
+      clear -Hisemp Hsimpl Hpop ret_ty Hp gamma_valid. 
+      rewrite (amap_not_empty_mem funsym_eq_dec) in Hisemp.
+      destruct Hisemp as [c Hintypes].
+      (*From [types], know that c is in first column*)
+      apply (populate_all_in _ _ _ _ Hsimpl Hpop) in Hintypes.
+      destruct (constr_at_head_ex_type Hp Hintypes) as [tys [pats Hcty]].
+      simpl in Hcty.
+      inversion Hcty; subst.
+      (*Use fact that constructor patterns must arise from ADT*)
+      destruct H11 as [m [a [m_in [a_in c_in]]]].
+      exists m. exists a. unfold sigma.
+      rewrite (adt_constr_ret gamma_valid m_in a_in c_in).
+      rewrite ty_subst_cons. rewrite !map_map.
+      eexists. split_all; try assumption. reflexivity.
+      solve_len.
+    }
+    (*Hisemp*)
+    destruct Hadt as [m [a [args [m_in [a_in [Hty args_len]]]]]].
+
+
+      eapply Hconstrnotincase; eauto.
+
+
+
+      destruct simpl_constr eqn : Hsimplconstr; [|contradiction].
+      destruct (is_fun t) as [[[ [cs tys] tms] Ht]|]; [|contradiction].
+      simpl in Ht, Hwildcases.
+      apply andb_false_iff in Hwildcases.
+      
+      
+Admitted.*)
     (*
     apply Hsimpl.
 
@@ -5117,7 +5504,7 @@ forall (m : mut_adt) (a : alg_datatype) (args : list vty) (m_in : mut_in_ctx m g
                     new_typs in
                 Datatypes.length new_vars = Datatypes.length new_typs /\
                 Forall2 (term_has_type gamma) (map Tvar new_vars) new_typs /\
-                pat_matrix_typed new_typs (spec rl c))
+                pat_matrix_typed (rev new_typs ++ map snd tl) (spec rl c))
 (IHwilds: forall tm1 : gen_term b,
  True ->
  compile get_constructors gen_match gen_let gen_getvars bare simpl_constr tl wilds = Some tm1 ->
