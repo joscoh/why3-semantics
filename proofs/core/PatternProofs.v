@@ -2593,6 +2593,41 @@ Proof.
   destruct (p h); simpl; auto.
 Qed.
 
+(*Move?*)
+(*Without typing, we don't know that getting a constr in the map gives [spec].
+  But we can prove that it gives the weaker version*)
+Lemma spec_noty {A} {is_constr glet t cs tys pats types_cslist} {rl: list (list pattern * A)}
+  (Hsimpl: simplified rl)
+  (Hpop: populate_all is_constr rl = Some types_cslist):
+  In (cs, tys, pats) (snd types_cslist) ->
+  amap_get funsym_eq_dec (fst (dispatch1 glet t (fst types_cslist) rl)) cs = 
+  Some
+     (omap
+        (fun x =>
+         match fst x with
+         | Pconstr fs _ pats0 :: ps2 =>
+             if funsym_eqb fs cs then Some (rev pats0 ++ ps2, snd x) else None
+         | Pwild :: ps2 => Some (repeat Pwild (Datatypes.length pats) ++ ps2, snd x)
+         | _ => None
+         end) rl).
+Proof.
+  intros Hinc.
+  rewrite dispatch_equiv.
+  unfold dispatch2. rewrite simplified_simplify; auto.
+  assert (Htypes: amap_get funsym_eq_dec (fst types_cslist) cs = Some pats)
+   by (eapply populate_all_fst_snd_full; eauto).
+  assert (Hex: constr_at_head_ex cs rl || wild_at_head_ex rl). {
+    pose proof (populate_all_snd_strong _ _ _ _ _ _ Hsimpl Hpop Hinc) as Hex.
+    unfold constr_at_head_ex.
+    apply orb_true_iff; left.
+    revert Hex. apply existsb_impl. intros [x1 x2] Hinx.
+    unfold constr_args_at_head_strong, constr_at_head. simpl.
+    destruct x1 as [| phd ptl]; auto.
+    destruct phd as [ | f1 ? ? | | | ]; auto. intros; bool_hyps; auto.
+  }
+  rewrite dispatch2_gen_fst_in with (ys:=pats); auto.
+Qed.
+
 Lemma compile_simple_pats bare simpl_constr (tms: list (term * vty)) (P: pat_matrix) t
   (Hsimp: forallb term_simple_pats (map fst tms) /\ forallb gen_simple_pats (map snd P)):
   compile get_constructors gen_match gen_let gen_getvars bare simpl_constr tms P = Some t ->
@@ -2645,7 +2680,7 @@ Proof.
         rewrite forallb_map. simpl. apply forallb_t.
       * (*Now case on [ps1] for end*)
         destruct Hps1' as [[Hps1 Hiswilds] | [Hiswilds [t2 [Hwilds Hps1]]]]; subst; simpl; auto.
-        constructor; auto. simpl. rewrite <- Hwilds. intros y. apply IHwilds; split; auto. (*TODO: now duplication*)
+        constructor; auto. simpl. rewrite <- Hwilds. intros y. apply IHwilds; split; auto.
         apply gen_simple_pats_default; auto.
     + (*Simple follows from nodups of cslist*)
       replace (map fst ps) with (map fst (map
@@ -6279,33 +6314,8 @@ Proof.
         unfold comp_cases in H1, Hadd.
         (*Simplify [amap_get (fst dispatch1)], which is spec (but
         we don't have typing, so we can't quite use that)*)
-        destruct (amap_get funsym_eq_dec (fst (dispatch1 let1 t1 (fst types_cslist1) P1)) cs2)
-          as [y1|] eqn : Hspec1; [|discriminate].
-        (*Use this to prove [constr_at_head_ex cs rl || wild_at_head_ex rl = false]*)
-        rewrite dispatch_equiv in Hspec1.
-        unfold dispatch2 in Hspec1.
-        rewrite simplified_simplify in Hspec1 by auto.
-        assert (Hconstrwild: constr_at_head_ex cs2 P1 || wild_at_head_ex P1).
-        {
-          destruct (constr_at_head_ex cs2 P1 || wild_at_head_ex P1) eqn : Hconstrwild; auto.
-          rewrite dispatch2_gen_fst_notin with (types:=fst types_cslist1) in Hconstrwild.
-          - rewrite Hspec1 in Hconstrwild; discriminate.
-          - rewrite amap_mem_spec, Hget3; auto.
-        }
-        pose proof (dispatch2_gen_fst_in _ _ _ _ Hget3 Hconstrwild) as Hspec2.
-        rewrite Hspec1 in Hspec2.
-        inversion Hspec2; subst; clear Hspec2.
-        (*Now do same for the other side*)
-        assert (Hconstrwild2: (constr_at_head_ex cs2 P2 || wild_at_head_ex P2)).
-        {
-          rewrite <- (constr_at_head_ex_shape _ _ Hshapes Hlens),
-          <- (wild_at_head_ex_shape _ Hshapes Hlens). assumption.
-        }
-        pose proof (dispatch2_gen_fst_in _ _ _ _ Hget2 Hconstrwild2) as Hspec2.
-        revert Hadd.
-        rewrite dispatch_equiv. unfold dispatch2.
-        rewrite simplified_simplify by auto.
-        rewrite Hspec2.
+        rewrite (spec_noty Hsimpl Hpop1 Hinx2) in H1.
+        rewrite (spec_noty Hsimp2 Hpop2 Hinx) in Hadd.
         destruct (compile _ _ _ _ _ _ _  (omap _ P2)) as [a2|] eqn : Hcomp;
         [discriminate|].
         (*Now we use the IHconstrs*)
@@ -6318,14 +6328,10 @@ Proof.
           (isSome o1 -> isSome o2) ->
           False).
         { intros; subst. auto. }
-        intros _. apply (Hsolve _ _ _ _ _ H1 Hcomp).
+        apply (Hsolve _ _ _ _ _ H1 Hcomp).
         apply IHconstrs with (cs:=cs2); auto. (*Prove IH premises*)
-        - rewrite dispatch_equiv. unfold dispatch2.
-          rewrite simplified_simplify by auto.
-          apply Hspec1.
-        - rewrite dispatch_equiv. unfold dispatch2.
-          rewrite simplified_simplify by auto.
-          apply Hspec2.
+        - apply (spec_noty Hsimpl Hpop1 Hinx2). 
+        - apply (spec_noty Hsimp2 Hpop2 Hinx).
         - rewrite Hlenps.
           apply (spec_shape ty_rel); auto. apply ty_rel_refl.
         - rewrite Hlenps.
@@ -6413,43 +6419,20 @@ Proof.
         we don't have typing, so we can't quite use that)*)
     set (t1:=Tfun cs2 params tms) in *.
     set (P1:=rhd :: rtl) in *.
-    destruct (amap_get funsym_eq_dec (fst (dispatch1 let1 t1 types P1)) cs2)
-      as [y1|] eqn : Hspec1; [|discriminate].
-    (*Use this to prove [constr_at_head_ex cs rl || wild_at_head_ex rl = false]*)
-    rewrite dispatch_equiv in Hspec1.
-    unfold dispatch2 in Hspec1.
-    rewrite simplified_simplify in Hspec1 by auto.
-    assert (Hconstrwild: constr_at_head_ex cs2 P1 || wild_at_head_ex P1).
-    {
-      destruct (constr_at_head_ex cs2 P1 || wild_at_head_ex P1) eqn : Hconstrwild; auto.
-      rewrite dispatch2_gen_fst_notin with (types:=types) in Hconstrwild.
-      - rewrite Hspec1 in Hconstrwild; discriminate.
-      - auto.
-    }
-    assert (Hmem2:=Hmem). rewrite amap_mem_spec in Hmem2.
-    destruct (amap_get funsym_eq_dec (fst types_cslist) cs2) as [pats|] eqn : Hget3; [|discriminate]; clear Hmem2.
-    pose proof (dispatch2_gen_fst_in _ _ _ _ Hget3 Hconstrwild) as Hspec2. unfold types in Hspec1.
-    rewrite Hspec1 in Hspec2. Opaque omap.
-    injection Hspec2. intros Hy1; clear Hspec2; subst y1. Transparent omap.
-    (*Now do same for the other side*)
-    assert (Hconstrwild2: (constr_at_head_ex cs2 P2 || wild_at_head_ex P2)).
-    {
-      rewrite <- (constr_at_head_ex_shape _ _ Hshape Hlens),
-      <- (wild_at_head_ex_shape _ Hshape Hlens). assumption.
-    }
-    rewrite amap_mem_spec in Hmemeq.
-    destruct (amap_get funsym_eq_dec (fst types_cslist2) cs2) as [pats2|] eqn : Hget2; [|discriminate]; clear Hmemeq.
-    pose proof (dispatch2_gen_fst_in _ _ _ _ Hget2 Hconstrwild2) as Hspec2.
-    (* revert Hadd. *)
-    rewrite dispatch_equiv. unfold dispatch2.
-    rewrite simplified_simplify by auto.
-    rewrite Hspec2.
-    (*Need that pat lengths are equiv - TODO: need shape_p?*)
-    assert (Hlenps: length pats = length pats2). {
-      destruct Hpops as [_ [_ Hpops]]. specialize (Hpops cs2).
-      rewrite Hget3, Hget2 in Hpops.
-      simpl in Hpops. destruct Hpops; auto.
-    }
+    (*Get [pats] and [pats2], simplify dispatch*)
+    destruct Hpops as [Hmap [Hcslist Hpops]].
+    assert (Hpopscs := Hpops cs2).
+    rewrite !amap_mem_spec in Hmem, Hmemeq.
+    destruct (amap_get funsym_eq_dec (fst types_cslist) cs2) as [pats|] eqn : Hget3; [|discriminate].
+    destruct (amap_get funsym_eq_dec (fst types_cslist2) cs2) as [pats2|] eqn : Hget2; [|discriminate]; clear Hmem Hmemeq.
+    simpl in Hpopscs. destruct Hpopscs as [Hlenps Hshapeps].
+    assert (Hin1: exists tys1, In (cs2, tys1, pats) (snd types_cslist)).
+    { apply (populate_all_fst_snd_full _ _ _ Hsimpl Hpop); assumption. }
+    assert (Hin2: exists tys2, In (cs2, tys2, pats2) (snd types_cslist2)).
+    { apply (populate_all_fst_snd_full _ _ _ Hsimp2 Hpop2); assumption. }
+    destruct Hin1 as [tys1 Hincs1]; destruct Hin2 as [tys2 Hincs2].
+    (*Now we can rewrite to [spec]*)
+    rewrite (spec_noty Hsimpl Hpop Hincs1), (spec_noty Hsimp2 Hpop2 Hincs2). 
     destruct (Nat.eqb_spec (length tms) (length tms2')) as [Hlentms|]; [|discriminate].
     destruct (Nat.eqb_spec (length params) (length params2)); [|discriminate];
     simpl in Hshapet; apply andb_true_iff in Hshapet; destruct Hshapet as [Hallparams Halltms].
@@ -6460,9 +6443,7 @@ Proof.
     (*Now we use the IHconstrs*)
     apply IHconstrs with (cs:=cs2); auto.
     (*Prove IH premises*)
-    + unfold cases. rewrite dispatch_equiv. unfold dispatch2.
-      rewrite simplified_simplify by auto.
-      apply Hspec1.
+    + apply (spec_noty Hsimpl Hpop Hincs1). 
     + rewrite Hlenps. apply (spec_shape ty_rel); auto. apply ty_rel_refl.
     + rewrite Hlenps.
       apply spec_shape; auto. apply ty_rel_refl.
@@ -6868,77 +6849,33 @@ Lemma compile_bare_type_vars (b: bool) (simpl_constr: bool) (tms: list (term * v
   compile_bare b simpl_constr tms P = Some t ->
   sublist (gen_type_vars t) (union typevar_eq_dec (tm_list_type_vars tms) (pat_mx_type_vars P)).
 Proof.
-  revert t. unfold compile_bare.
-  apply (compile_ind _ gen_match gen_let gen_getvars (@gen_getvars_let b)
-    true simpl_constr
-    (fun tms P o =>
-      forall t, o = Some t ->
-      sublist (gen_type_vars t) (union typevar_eq_dec (tm_list_type_vars tms) (pat_mx_type_vars P)))); clear;
-  try discriminate.
-  - intros t ty tms rl Hsimp t1 Hcomp.
-    setoid_rewrite <- compile_simplify in Hsimp; [| apply gen_getvars_let].
-    specialize (Hsimp _ Hcomp).
+  intros Hcomp. assert (Ht: True) by auto; revert t Ht Hcomp. unfold compile_bare.
+  apply (compile_prove_some _ gen_match gen_let gen_getvars gen_getvars_let
+    true simpl_constr (fun tms P => True)
+    (fun tms P t =>  sublist (gen_type_vars t) (union typevar_eq_dec (tm_list_type_vars tms) (pat_mx_type_vars P)))); 
+  clear tms P.
+  - (*simplify*)
+    intros. specialize (Hsimpl _ (ltac:(auto)) Hcomp).
     intros x Hinx.
-    specialize (Hsimp _ Hinx).
+    specialize (Hsimpl _ Hinx).
     simpl_set_small.
-    destruct Hsimp as [Hin | Hin]; auto.
+    destruct Hsimpl as [Hin | Hin]; auto.
     apply pat_mx_type_vars_simp in Hin.
     destruct Hin as [Hin | Hin]; auto.
     simpl. simpl_set_small; auto.
-  - intros ps a P t. inv Hsome. simpl.
+  - (*nil case*)
+    intros ps a l _. simpl.
     eapply sublist_trans.
     2: apply union_sublist_l.
     apply union_sublist_r.
-  - intros t ty tl rl rhd rtl is_bare_css is_bare css is_constr Hsimpl Hrl types_cslist Hpop types cslist
-      casewild Hdisp cases wilds [IHwilds IHconstrs] t1.
-    (* subst rl; set (rl:=rhd :: rtl) in *. *)
-    apply dispatch1_opt_some in Hdisp.
-    destruct Hdisp as [Hnotnull Hcasewild]; subst casewild.
-    simpl. destruct (amap_is_empty types) eqn : Hemp; auto.
-    { intros Hcomp. apply IHwilds in Hcomp. unfold wilds in Hcomp.
-      rewrite dispatch1_equiv_default in Hcomp; auto.
-      eapply sublist_trans. apply Hcomp.
-      apply sublist_union.
-      - apply union_sublist_r.
-      - eapply sublist_trans. apply pat_mx_type_vars_default.
-        simpl. apply sublist_refl.
-    }
-    (*Prove comp_full case*)
-    assert (Hcompfull:
-    (comp_full gen_match gen_getvars is_bare
-      (fun _ : unit =>
-      compile (fun _ : typesym => []) gen_match gen_let gen_getvars true simpl_constr tl
-      wilds)
-      (fun (cs : funsym) (al : list (term * vty)) =>
-      comp_cases (compile (fun _ : typesym => []) gen_match gen_let gen_getvars true
-      simpl_constr) cases tl cs al) types cslist css t ty tl rl tt) =
-      Some t1 ->
-      sublist (gen_type_vars t1)
-      (union typevar_eq_dec
-      (union typevar_eq_dec (union typevar_eq_dec (tm_type_vars t) (type_vars ty))
-      (tm_list_type_vars tl)) (pat_mx_type_vars rl))).
-    {
-      (*comp_full case*)
-    unfold comp_full.
-    rewrite <- option_map_bind.
-    intros Hopt. apply option_map_some in Hopt.
-    destruct Hopt as [ps [Hps Ht1]]; subst t1.
-    apply option_bind_some in Hps.
-    destruct Hps as [ps1 [Hps1 Hopt]].
-    (*This way we can deal with [fold_left_opt] before destructing 'forallb'*)
-    apply fold_right_opt_add_map in Hopt.
-    (*Much more useful than destructing and simplifying each time*)
-    assert (Hps1': ps1 = nil \/ 
-      exists t2, compile (fun _ => nil) gen_match gen_let gen_getvars true simpl_constr tl wilds = Some t2 /\
-        ps1 = [(Pwild, t2)]).
-    {
-      apply option_bind_some in Hps1.
-      destruct Hps1 as [z [Hsome Hifz]].
-      destruct z; [inversion Hifz; auto|].
-      apply option_map_some in Hifz. destruct Hifz as [t1 [Hwilds Hps1]]; subst. right.
-      exists t1. auto.
-    }
-    clear Hps1.
+  - (*default*)
+    intros. apply IHwilds in Hmt1; auto.
+    eapply sublist_trans; [apply Hmt1|].
+    apply sublist_union.
+    + apply union_sublist_r.
+    + eapply sublist_trans; [ apply pat_mx_type_vars_default| apply sublist_refl].
+  - (*full*)
+    intros.
     eapply sublist_iff_l.
     { intros x. symmetry. apply gen_type_vars_match. }
     (*Now proceed by cases*)
@@ -6949,7 +6886,7 @@ Proof.
         (big_union typevar_eq_dec gen_type_vars (map snd ps))))).
     { simpl_set_small. destruct Hinx; simpl_set_small; destruct_all; auto. }
     clear Hinx.
-    simpl_set_small.
+    simpl_set_small. simpl.
     destruct Hinx' as [Hinx | Hinx]; simpl_set_small; auto.
     assert (Hinx': In x (big_union typevar_eq_dec (fun x => union typevar_eq_dec (pat_type_vars (fst x)) (gen_type_vars (snd x))) ps)).
     {
@@ -6976,13 +6913,12 @@ Proof.
     destruct Hn1 as [Hn1 | Hn1].
     2: { (*Second case (wilds) is easier*)
       rewrite app_nth2; simpl_len; [|lia].
-      destruct Hps1' as [Hps1eq | [t2 [Hcompw Hps1eq]]]; subst ps1; simpl in *; try lia.
+      destruct Hps1' as [[Hps1eq Hiswilds] | [Hiswilds [t2 [Hcompw Hps1eq]]]]; subst ps1; simpl in *; try lia.
       assert (Hn': n = length cslist) by lia.
       rewrite Hn' at 1. rewrite Nat.sub_diag. simpl.
       destruct yt as [y1 t1]. simpl. intros Heq; inversion Heq; subst y1 t1; clear Heq.
       (*Use wilds result*)
-      apply IHwilds in Hcompw. unfold wilds in Hcompw.
-      rewrite dispatch1_equiv_default in Hcompw; auto.
+      apply IHwilds in Hcompw; auto.
       simpl in Hinx. apply Hcompw in Hinx.
       simpl_set_small. destruct Hinx as [Hinx | Hinx]; auto.
       apply pat_mx_type_vars_default in Hinx. auto.
@@ -6998,13 +6934,15 @@ Proof.
     destruct yt as [y1 t1]. simpl in Hinx |- *.
     intros Heq. injection Heq. intros Hcompcase Hconstr. clear Heq.
     unfold comp_cases in Hcompcase.
-    destruct (amap_get funsym_eq_dec cases cs) as [y|] eqn : Hget; [|discriminate].
-    apply IHconstrs with(cs:=cs) in Hcompcase; [|solve[auto]].
-    (*Need to know that if in tys, we are OK*)
     assert (Hincs: In (cs, tys, pats) cslist). {
       rewrite <- Hnth.
       apply nth_In. lia.
     }
+    (*Rewrite to [spec]*)
+    revert Hcompcase. unfold cases. rewrite Hcasewild.
+    rewrite (spec_noty Hsimpl Hpop Hincs). intros.
+    apply IHconstrs with(cs:=cs) in Hcompcase; auto; [| unfold cases; rewrite Hcasewild; apply (spec_noty Hsimpl Hpop Hincs)].
+    (*Need to know that if in tys, we are OK*)
     (*If in tys, in pat matrix because (cs, tys, ps) is in matrix*)
     assert (Htys: forall x, In x (big_union typevar_eq_dec type_vars tys) ->
       In x (pat_mx_type_vars rl)).
@@ -7092,83 +7030,27 @@ Proof.
           (*Also subst case*)
           specialize (Hsubst _ _ Hinv Hinx). auto.
       * (*In spec type vars*)
-        (*TODO: factor out*)
-        revert Hget.
-        unfold cases.
-        rewrite dispatch_equiv.
-        unfold dispatch2. rewrite simplified_simplify; auto.
-        intros Hget.
-        assert (Htypes: amap_get funsym_eq_dec types cs = Some pats).
-        {
-          unfold types.
-          eapply populate_all_fst_snd_full; eauto.
-        }
-        assert (Hex: constr_at_head_ex cs rl || wild_at_head_ex rl). {
-          destruct (constr_at_head_ex cs rl || wild_at_head_ex rl) eqn : Hex; auto.
-          rewrite dispatch2_gen_fst_notin in Hex.
-          rewrite Hget in Hex. discriminate.
-          rewrite amap_mem_spec, Htypes. auto. 
-        }
-        revert Hget.
-        rewrite dispatch2_gen_fst_in with (ys:=pats); auto.
-        intros Hget; injection Hget; clear Hget; intros Hyspec.
-        (*So now we know that y is (spec rl cs)*)
-        subst y. apply pat_mx_type_vars_spec in Hinx. auto.
-    }
-    (*Now case analysis*)
-    destruct simpl_constr; [|apply Hcompfull].
-    destruct (is_fun t) as [[ [[cs params] tms] Ht]|]; [|apply Hcompfull];
-    simpl in Ht |- *.
-    destruct (is_constr cs) eqn : Hconstr ; [|apply Hcompfull].
-    destruct (amap_mem funsym_eq_dec cs types) eqn : Hmem.
-    2: {
-      intros Hcomp.
-      apply IHwilds in Hcomp. unfold wilds in Hcomp.
-      rewrite dispatch1_equiv_default in Hcomp; auto.
-      eapply sublist_trans; [apply Hcomp|].
-      intros x Hinx. simpl_set_small.
-      destruct Hinx as [Hinx | Hinx]; auto.
-      apply pat_mx_type_vars_default in Hinx. auto.
-    }
-    (*And the constr case*)
-    (*First, prove that cs is in [cases]*)
+        apply pat_mx_type_vars_spec in Hinx. auto.
+  - (*Tfun case*)
+    intros. revert Hcomp.
     unfold comp_cases.
-    destruct (amap_get funsym_eq_dec cases cs) as [y|] eqn : Hget; [|discriminate].
-    intros Hcomp.
-    apply (IHconstrs _ _ _ Hget) in Hcomp.
-    (*TODO: see what we can duplicate from before*)
+    (*First, rewrite with spec*)
+    rewrite amap_mem_spec in Hmem.
+    destruct (amap_get funsym_eq_dec types cs) as [pats|] eqn : Htypes; [|discriminate].
+    assert (Hin: exists tys, In (cs, tys, pats) cslist).
+    { unfold cslist. apply (proj2 (populate_all_fst_snd_full _ _ _ Hsimpl Hpop)); assumption. }
+    destruct Hin as [tys Hincs].
+    unfold cases. rewrite Hcasewild.
+    rewrite (spec_noty Hsimpl Hpop Hincs). intros Hcomp.
+    apply (IHconstrs cs) in Hcomp; auto; [| unfold cases; rewrite Hcasewild; apply (spec_noty Hsimpl Hpop Hincs)].
+    (*And now sublist goals*)
     eapply sublist_trans; [apply Hcomp|]; clear Hcomp.
     intros x Hinx. simpl_set_small.
     unfold tm_list_type_vars in Hinx.
     rewrite big_union_app in Hinx.
-    destruct Hinx as [Hinx | Hinx].
-    2: {
-      (*use spec result*)
-      revert Hget.
-      unfold cases.
-      rewrite dispatch_equiv.
-      unfold dispatch2. rewrite simplified_simplify; auto.
-      intros Hget.
-      assert (Hex: constr_at_head_ex cs rl || wild_at_head_ex rl). {
-        destruct (constr_at_head_ex cs rl || wild_at_head_ex rl) eqn : Hex; auto.
-        rewrite dispatch2_gen_fst_notin in Hex.
-        rewrite Hget in Hex. discriminate. auto.
-      }
-      revert Hget.
-      rewrite amap_mem_spec in Hmem.
-      destruct (amap_get funsym_eq_dec types cs) as [pats|] eqn : Htypes; [|discriminate].
-      rewrite dispatch2_gen_fst_in with (ys:=pats); auto.
-      intros Hget; injection Hget; clear Hget; intros Hyspec.
-      (*So now we know that y is (spec rl cs)*)
-      subst y. apply pat_mx_type_vars_spec in Hinx. auto.
-    }
+    destruct Hinx as [Hinx | Hinx]; [| apply pat_mx_type_vars_spec in Hinx; auto]. (*spec result*)
     simpl_set_small.
     rewrite big_union_rev in Hinx.
-    (*TODO: START*)
-    (*TODO: lots of duplication*)
-    (* rewrite amap_mem_spec in Hmem.
-    destruct (amap_get funsym_eq_dec types cs) as [pats|] eqn : Htypes; [|discriminate]. *)
-    (*Simpler than before*)
      assert (Htys: forall x, In x (big_union typevar_eq_dec type_vars params) ->
       In x (tm_type_vars t)).
     {
@@ -7187,7 +7069,8 @@ Proof.
       (*From previous result*)
       auto.
     }
-     (*First case already did, otherwise in pat vars*)
+    simpl. unfold tm_list_type_vars. simpl_set_small.
+    (*First case already did, otherwise in pat vars*)
     destruct Hinx as [Hinx | Hinx]; auto.
     simpl_set.
     (*Case in new terms - either old terms or new variables*)
