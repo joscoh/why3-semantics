@@ -7515,218 +7515,113 @@ Lemma compile_bare_gensyms (b1 b2: bool) (tms: list (term * vty))
   (forall (f: gen_sym b1), gensym_in_gen_term f t ->
     gensym_in_pat_mx f P \/ gensym_in_tms f tms).
 Proof.
-  revert t. unfold compile_bare.
-  apply (compile_ind _ gen_match gen_let gen_getvars (@gen_getvars_let b2)
-    true simpl_constr
-    (fun tms P o =>
-      forall t, o = Some t ->
-      (forall (f: gen_sym b1), gensym_in_gen_term f t ->
-    gensym_in_pat_mx f P \/ gensym_in_tms f tms))); clear;
-  try discriminate.
-  - intros t ty tms rl Hsimp t1 Hcomp.
-    setoid_rewrite <- compile_simplify in Hsimp; [| apply gen_getvars_let].
-    specialize (Hsimp _ Hcomp).
-    intros x Hinx.
-    specialize (Hsimp _ Hinx).
-    simpl_set_small.
-    destruct Hsimp as [Hin | Hin]; auto.
+  intros Hcomp. assert (Ht: True) by auto; revert t Ht Hcomp. unfold compile_bare.
+  apply (compile_prove_some _ gen_match gen_let gen_getvars gen_getvars_let
+    true simpl_constr (fun tms P => True)
+    (fun tms P t => forall f (Hinf: gensym_in_gen_term f t), gensym_in_pat_mx f P \/ gensym_in_tms f tms)); clear tms P.
+  - intros. (*simplify*)
+    specialize (Hsimpl _ (ltac:(auto)) Hcomp f Hinf). simpl.
+    destruct Hsimpl as [Hin | Hin]; auto.
     apply gensym_in_simplify in Hin.
     destruct Hin as [Hin | Hin]; auto.
     right. unfold gensym_in_tms; simpl. rewrite Hin; auto.
-  - intros ps a l t Hat. inversion Hat; subst. intros f Hinf.
+  - (*nil case*)
+    intros ps a l _ f Hinf.
     unfold gensym_in_pat_mx. simpl. rewrite Hinf; auto.
-  - intros t ty tl rl rhd rtl is_bare_css is_bare css is_constr Hsimp
-      Hrl types_cslist Hpop types cslist casewild Hdisp cases wilds 
-      [IHwild IHconstrs] tm1.
+  - (*wilds*)
+    intros. specialize (IHwilds _ (ltac:(auto)) Hmt1 f Hinf). 
+    unfold gensym_in_tms; simpl.
+    destruct IHwilds as [Hin | Hin]; auto.
+    + apply gensym_in_default in Hin; auto.
+    + right. apply orb_true_iff; auto.
+  - (*full*)
+    intros. 
+    rewrite gensym_in_match in Hinf.
+    apply orb_true_iff in Hinf.
+    destruct Hinf as [Hinf | Hinf].
+    1: { unfold gensym_in_tms; simpl. rewrite Hinf; auto. }
+    apply existsb_exists in Hinf.
+    destruct Hinf as [yt [Hinyt Hinx]].
+    (*Get element, relate it to ps1 and cslist*)
+    destruct (In_nth _ _ (Pwild, gen_d _) Hinyt) as [n [Hn Hyt]].
+    pose proof (f_equal (fun x => nth n x (Pwild, Some (gen_d b2))) Hopt)
+      as Hntheq.
+    simpl in Hntheq.
+    revert Hntheq.
+    (*Simplify this*)
+    rewrite map_nth_inbound with (d2:=(Pwild, gen_d b2)) by auto.
+    rewrite Hyt.
+    assert (Hn1: n < length cslist \/ n >= length cslist) by lia.
+    assert (Hlen: length ps = length ps1 + length cslist).
+    { apply (f_equal (@length _)) in Hopt. revert Hopt; solve_len. }
+    destruct Hn1 as [Hn1 | Hn1].
+    2: { (*Second case (wilds) is easier*)
+      rewrite app_nth2; simpl_len; [|lia].
+      destruct Hps1' as [[Hps1eq Hiswilds1] | [Hiswilds1 [t2 [Hcompw Hps1eq]]]]; subst ps1; simpl in *; try lia.
+      assert (Hn': n = length cslist) by lia.
+      rewrite Hn' at 1. rewrite Nat.sub_diag. simpl.
+      destruct yt as [y1 t1]. simpl. intros Heq; inversion Heq; subst y1 t1; clear Heq.
+      (*Use wilds result*)
+      specialize (IHwilds _ (ltac:(auto)) Hcompw f Hinx).
+      destruct IHwilds as [Hin | Hin]; auto.
+      + apply gensym_in_default in Hin; auto.
+      + right. apply orb_true_iff; auto.
+    }
+    (*Constr case is harder*)
+    rewrite app_nth1 by solve_len.
+    rewrite rev_nth by solve_len. simpl_len.
+    rewrite map_nth_inbound with (d2:=(id_fs, nil, nil)) by solve_len.
+    destruct ( nth (Datatypes.length cslist - S n) cslist (id_fs, [], []))
+      as [[cs tys] pats] eqn : Hnth.
     simpl.
-    apply dispatch1_opt_some in Hdisp.
-    destruct Hdisp as [Hnotnull Hcasewild].
-    assert (Htl: forall (f: gen_sym b1), gensym_in_tms f tl ->
-      gensym_in_tms f ((t, ty) :: tl)).
-    {
-      intros f Hinf. unfold gensym_in_tms in Hinf |- *; simpl;
-      rewrite Hinf, orb_true_r; auto.
+    unfold rev_map. rewrite !map_rev, !rev_involutive.
+    destruct yt as [y1 t1]. simpl in Hinx |- *.
+    intros Heq. injection Heq. intros Hcompcase Hconstr. clear Heq.
+    unfold comp_cases in Hcompcase.
+    assert (Hincs: In (cs, tys, pats) cslist). {
+      rewrite <- Hnth.
+      apply nth_In. lia.
     }
-    subst casewild.
-    destruct (amap_is_empty types) eqn : Hemp.
-    { intros Hcomp f Hinf.
-      apply IHwild with (f:=f) in Hcomp; auto.
-      unfold wilds in Hcomp.
-      rewrite dispatch1_equiv_default in Hcomp; auto.
-      destruct Hcomp as [Hin | Hin]; auto.
-      apply gensym_in_default in Hin; auto.
-    }
-    assert (Hcompfull: (comp_full gen_match gen_getvars is_bare
-    (fun _ : unit =>
-    compile (fun _ : typesym => []) gen_match gen_let gen_getvars true simpl_constr tl
-    wilds)
-    (fun (cs : funsym) (al : list (term * vty)) =>
-    comp_cases (compile (fun _ : typesym => []) gen_match gen_let gen_getvars true
-    simpl_constr) cases tl cs al) types cslist css t ty tl rl tt) =
-    Some tm1 ->
-    forall f : gen_sym b1,
-    gensym_in_gen_term f tm1 -> gensym_in_pat_mx f rl \/ gensym_in_tms f ((t, ty) :: tl)).
-    {
-      (*comp_full case*)
-      unfold comp_full.
-      rewrite <- option_map_bind.
-      intros Hopt. apply option_map_some in Hopt.
-      destruct Hopt as [ps [Hps Ht1]]; subst tm1.
-      apply option_bind_some in Hps.
-      destruct Hps as [ps1 [Hps1 Hopt]].
-      (*This way we can deal with [fold_left_opt] before destructing 'forallb'*)
-      apply fold_right_opt_add_map in Hopt.
-      (*Much more useful than destructing and simplifying each time*)
-      assert (Hps1': ps1 = nil \/ 
-        exists t2, compile (fun _ => nil) gen_match gen_let gen_getvars true simpl_constr tl wilds = Some t2 /\
-          ps1 = [(Pwild, t2)]).
-      {
-        apply option_bind_some in Hps1.
-        destruct Hps1 as [z [Hsome Hifz]].
-        destruct z; [inversion Hifz; auto|].
-        apply option_map_some in Hifz. destruct Hifz as [t1 [Hwilds Hps1]]; subst. right.
-        exists t1. auto.
-      }
-      clear Hps1.
-      intros f Hinf.
-      rewrite gensym_in_match in Hinf.
-      apply orb_true_iff in Hinf.
-      destruct Hinf as [Hinf | Hinf].
-      1: { unfold gensym_in_tms; simpl. rewrite Hinf; auto. }
-      apply existsb_exists in Hinf.
-      destruct Hinf as [yt [Hinyt Hinx]].
-      (*Get element, relate it to ps1 and cslist*)
-      destruct (In_nth _ _ (Pwild, gen_d _) Hinyt) as [n [Hn Hyt]].
-      pose proof (f_equal (fun x => nth n x (Pwild, Some (gen_d b2))) Hopt)
-        as Hntheq.
-      simpl in Hntheq.
-      revert Hntheq.
-      (*Simplify this*)
-      rewrite map_nth_inbound with (d2:=(Pwild, gen_d b2)) by auto.
-      rewrite Hyt.
-      assert (Hn1: n < length cslist \/ n >= length cslist) by lia.
-      assert (Hlen: length ps = length ps1 + length cslist).
-      { apply (f_equal (@length _)) in Hopt. revert Hopt; solve_len. }
-      destruct Hn1 as [Hn1 | Hn1].
-      2: { (*Second case (wilds) is easier*)
-        rewrite app_nth2; simpl_len; [|lia].
-        destruct Hps1' as [Hps1eq | [t2 [Hcompw Hps1eq]]]; subst ps1; simpl in *; try lia.
-        assert (Hn': n = length cslist) by lia.
-        rewrite Hn' at 1. rewrite Nat.sub_diag. simpl.
-        destruct yt as [y1 t1]. simpl. intros Heq; inversion Heq; subst y1 t1; clear Heq.
-        (*Use wilds result*)
-        apply IHwild with (f:=f) in Hcompw; auto. unfold wilds in Hcompw.
-        rewrite dispatch1_equiv_default in Hcompw; auto.
-        simpl in Hinx. destruct Hcompw as [Hinf | Hinf]; auto.
-        apply gensym_in_default in Hinf; auto.
-      }
-      (*Constr case is harder*)
-      rewrite app_nth1 by solve_len.
-      rewrite rev_nth by solve_len. simpl_len.
-      rewrite map_nth_inbound with (d2:=(id_fs, nil, nil)) by solve_len.
-      destruct ( nth (Datatypes.length cslist - S n) cslist (id_fs, [], []))
-        as [[cs tys] pats] eqn : Hnth.
-      simpl.
-      unfold rev_map. rewrite !map_rev, !rev_involutive.
-      destruct yt as [y1 t1]. simpl in Hinx |- *.
-      intros Heq. injection Heq. intros Hcompcase Hconstr. clear Heq.
-      unfold comp_cases in Hcompcase.
-      destruct (amap_get funsym_eq_dec cases cs) as [y|] eqn : Hget; [|discriminate].
-      apply IHconstrs with(cs:=cs)(f:=f) in Hcompcase; auto.
-      destruct Hcompcase as [Hinf | Hinf].
-      2: {
-        (*Case 2: in newly added - no funsyms!*)
-        unfold gensym_in_tms in Hinf.
-        rewrite map_app, existsb_app in Hinf.
-        apply orb_true_iff in Hinf.
-        destruct Hinf as [Hinf | Hinf]; auto.
-        rewrite map_rev, existsb_rev in Hinf.
-        apply existsb_map_fst_combine in Hinf.
-        apply existsb_exists in Hinf.
-        destruct Hinf as [tm [Hintm Hinf]].
-        rewrite in_map_iff in Hintm.
-        destruct Hintm as [v [Htm Hintm]]; subst tm.
-        (*Cannot have sym in var*)
-        destruct b1; discriminate.
-      }
-      (*Other case: in spec*)
-      revert Hget.
-      unfold cases.
-      rewrite dispatch_equiv.
-      unfold dispatch2. rewrite simplified_simplify; auto.
-      intros Hget.
-      assert (Hincs: In (cs, tys, pats) cslist). {
-        rewrite <- Hnth.
-        apply nth_In. lia.
-      }
-      assert (Htypes: amap_get funsym_eq_dec types cs = Some pats).
-      {
-        unfold types.
-        eapply populate_all_fst_snd_full; eauto.
-      }
-      assert (Hex: constr_at_head_ex cs rl || wild_at_head_ex rl). {
-        destruct (constr_at_head_ex cs rl || wild_at_head_ex rl) eqn : Hex; auto.
-        rewrite dispatch2_gen_fst_notin in Hex.
-        rewrite Hget in Hex. discriminate.
-        rewrite amap_mem_spec, Htypes. auto. 
-      }
-      revert Hget.
-      rewrite dispatch2_gen_fst_in with (ys:=pats); auto.
-      intros Hget; injection Hget; clear Hget; intros Hyspec.
-      (*So now we know that y is (spec rl cs)*)
-      subst y. apply gensym_in_spec in Hinf. auto.
-    }
-    (*By cases*)
-    destruct simpl_constr; [| apply Hcompfull].
-    destruct (is_fun t) as [[ [[cs params] tms] Ht]|]; [| apply Hcompfull]; simpl in Ht |- *.
-    destruct (is_constr cs) eqn : Hconstr; [| apply Hcompfull].
-    destruct (amap_mem funsym_eq_dec cs types) eqn : Hmem.
-    2: {
-      (*wilds*)
-      intros Hcomp f Hf. apply IHwild with (f:=f) in Hcomp; auto.
-      unfold gensym_in_tms in Hcomp |- *. simpl.
-      unfold is_true; rewrite orb_true_iff.
-      destruct Hcomp as [Hf1 | Hf1]; auto.
-      unfold wilds in Hf1.
-      rewrite dispatch1_equiv_default in Hf1; auto.
-      apply gensym_in_default in Hf1; auto.
-    }
-    (*Constr*)
-    unfold comp_cases.
-    destruct (amap_get funsym_eq_dec cases cs) as [y|] eqn : Hget; [|discriminate].
-    intros Hcomp f Hf. apply IHconstrs with (cs:=cs) (f:=f) in Hcomp; auto.
-    destruct Hcomp as [Hinf | Hinf].
-    2: {
-      (*Case 2: in newly added*)
-      unfold gensym_in_tms in Hinf.
-      rewrite map_app, existsb_app in Hinf.
-      apply orb_true_iff in Hinf.
-      destruct Hinf as [Hinf | Hinf]; auto.
-      rewrite map_rev, existsb_rev in Hinf.
-      apply existsb_map_fst_combine in Hinf. subst. right.
-      unfold gensym_in_tms; simpl.
-      apply orb_true_iff; left.
-      destruct b1; auto. simpl. apply orb_true_iff; auto.
-    }
-    (*Other case: in spec*)
-    revert Hget.
-    unfold cases.
-    rewrite dispatch_equiv.
-    unfold dispatch2. rewrite simplified_simplify; auto.
-    intros Hget.
+    revert Hcompcase. unfold cases; rewrite Hcasewild.
+    rewrite (spec_noty Hsimpl Hpop Hincs).
+    intros.
+    apply IHconstrs with(cs:=cs)(f:=f) in Hcompcase; auto; 
+    [| unfold cases; rewrite Hcasewild; apply (spec_noty Hsimpl Hpop Hincs)].
+    destruct Hcompcase as [Hinf | Hinf]; [apply gensym_in_spec in Hinf; solve[auto]|]. (*solve spec case*)
+    (*Case 2: in newly added - no funsyms!*)
+    unfold gensym_in_tms in Hinf.
+    rewrite map_app, existsb_app in Hinf.
+    apply orb_true_iff in Hinf. unfold gensym_in_tms. simpl.
+    destruct Hinf as [Hinf | Hinf]; auto; [| right; apply orb_true_iff; auto].
+    rewrite map_rev, existsb_rev in Hinf.
+    apply existsb_map_fst_combine in Hinf.
+    apply existsb_exists in Hinf.
+    destruct Hinf as [tm [Hintm Hinf]].
+    rewrite in_map_iff in Hintm.
+    destruct Hintm as [v [Htm Hintm]]; subst tm.
+    (*Cannot have sym in var*)
+    destruct b1; discriminate.
+  - (*Tfun*) intros. unfold comp_cases in Hcomp.
+    (*First, rewrite with spec*)
     rewrite amap_mem_spec in Hmem.
     destruct (amap_get funsym_eq_dec types cs) as [pats|] eqn : Htypes; [|discriminate].
-    assert (Hex: constr_at_head_ex cs rl || wild_at_head_ex rl). {
-      destruct (constr_at_head_ex cs rl || wild_at_head_ex rl) eqn : Hex; auto.
-      rewrite dispatch2_gen_fst_notin in Hex.
-      rewrite Hget in Hex. discriminate.
-      rewrite amap_mem_spec, Htypes. auto. 
-    }
-    revert Hget.
-    rewrite dispatch2_gen_fst_in with (ys:=pats); auto.
-    intros Hget; injection Hget; clear Hget; intros Hyspec.
-    (*So now we know that y is (spec rl cs)*)
-    subst y. apply gensym_in_spec in Hinf. auto.
+    assert (Hin: exists tys, In (cs, tys, pats) cslist).
+    { unfold cslist. apply (proj2 (populate_all_fst_snd_full _ _ _ Hsimpl Hpop)); assumption. }
+    destruct Hin as [tys Hincs]. revert Hcomp.
+    unfold cases. rewrite Hcasewild.
+    rewrite (spec_noty Hsimpl Hpop Hincs). intros Hcomp.
+    apply (IHconstrs cs) with (f:=f) in Hcomp; auto; [| unfold cases; rewrite Hcasewild; apply (spec_noty Hsimpl Hpop Hincs)].
+    destruct Hcomp as [Hinf1 | Hinf1]; [ apply gensym_in_spec in Hinf1; solve[auto] |].
+    (*Case 2: in newly added*)
+    unfold gensym_in_tms in Hinf1.
+    rewrite map_app, existsb_app in Hinf1.
+    apply orb_true_iff in Hinf1.
+    destruct Hinf1 as [Hinf1 | Hinf1]; auto; [| right; apply orb_true_iff; auto].
+    rewrite map_rev, existsb_rev in Hinf1.
+    apply existsb_map_fst_combine in Hinf1. subst. right.
+    unfold gensym_in_tms; simpl.
+    apply orb_true_iff; left.
+    destruct b1; auto. simpl. apply orb_true_iff; auto.
 Qed.
 
 (*And the single version*)
@@ -7810,6 +7705,8 @@ Qed.
 
 
 (*Note for induction, we CANNOT have terms be the same*)
+(*Here, we use [compile_ind] directly - dealing with two different typing results
+  makes things quite tricky and the proof follows a different structure*)
 Lemma compile_bare_simpl_constr {gamma} (gamma_valid: valid_context gamma)
   (b: bool)
   (P: pat_matrix b) tms1 tms2  ret_ty

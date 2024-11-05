@@ -776,7 +776,7 @@ Proof.
   - (*Tmatch*)
     intros tm ty ps IHtm IHps ty1 Hty1.
     destruct (compile_bare_single _ _ _ _) as [o1|] eqn : Hcomp.
-    + eapply (@compile_simple_pats gamma true) with (simpl_constr:=true); auto. 
+    + eapply (@compile_simple_pats gamma true) with (simpl_constr:=true); split_all; auto. 
       (*From [compile]*)
       3: erewrite compile_bare_equiv; apply Hcomp.
       * inversion Hty1; subst. 
@@ -818,7 +818,7 @@ Proof.
   - (*Fmatch*)
     intros tm ty ps IHtm IHps Hty1.
     destruct (compile_bare_single _ _ _ _) as [o1|] eqn : Hcomp.
-    + eapply (@compile_simple_pats gamma false); [exact tt | | |]. 
+    + eapply (@compile_simple_pats gamma false); split_all; [exact tt | | |]. 
       (*From [compile]*)
       3: erewrite compile_bare_equiv; apply Hcomp.
       * inversion Hty1; subst. 
