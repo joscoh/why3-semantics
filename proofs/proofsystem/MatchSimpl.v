@@ -967,8 +967,8 @@ Theorem simpl_match_rep {gamma: context} (gamma_valid: valid_context gamma)
     formula_rep gamma_valid pd pdf vt pf vv (simpl_match_f gamma f) Hty1 =
     formula_rep gamma_valid pd pdf vt pf vv f Hty2).
 Proof.
-  revert t f; apply term_formula_ind; simpl; intros; try solve[apply term_rep_irrel];
-  try solve[apply fmla_rep_irrel].
+  revert t f; apply term_formula_ind; intros; try solve[apply term_rep_irrel];
+  try solve[apply fmla_rep_irrel]; simpl in *.
   - simpl_rep_full.
     replace  (ty_fun_ind_ret Hty1) with (ty_fun_ind_ret Hty2) by
     (apply UIP_dec; apply vty_eq_dec).
@@ -1076,9 +1076,10 @@ Proof.
   - (*Fmatch*)
       destruct (formula_eq_dec (check_match gamma safe_sub_fs tm (Fmatch tm v ps) ps)
       (Fmatch tm v ps)).
-    {
+    { 
       revert Hty1.
-      rewrite e. intros. apply fmla_rep_irrel.
+      rewrite e. intros. simpl. erewrite term_rep_irrel. erewrite match_rep_irrel.
+      reflexivity.
     }
     simpl_rep_full.
     iter_match_gen Hty2 Htm2 Hpat2 Hty2.

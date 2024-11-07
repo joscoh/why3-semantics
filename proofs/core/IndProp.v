@@ -969,9 +969,10 @@ Proof.
   fmla_wf f -> forall (v : formula_typed gamma (indpred_transform f))
   (vv : val_vars pd vt),
   formula_rep gamma_valid pd pdf vt pf vv f Hval =
-  formula_rep gamma_valid pd pdf vt pf vv (indpred_transform f) v); 
-  unfold indpred_transform; simpl; auto; intros; try solve[apply true_impl].
-  - destruct q; simpl; auto; [|apply true_impl].
+  formula_rep gamma_valid pd pdf vt pf vv (indpred_transform f) v); auto;
+  unfold indpred_transform; intros; try solve[apply true_impl]; simpl.
+  - destruct q; auto; [|apply all_dec_eq; setoid_rewrite fmla_rep_irrel; reflexivity]. Unshelve. 
+    2: { inversion Hval; auto. }
     simpl in v0.
     simpl_rep_full. apply all_dec_eq.
     split; intros Hall d.
@@ -979,10 +980,10 @@ Proof.
       apply (Hall d).
       apply wf_quant in H0; auto.
     + erewrite H. apply (Hall d).
-      apply wf_quant in H0; auto.
-  - destruct b; try solve[apply true_impl].
+      apply wf_quant in H0; auto. 
+  - destruct b; simpl; try solve[f_equal; apply fmla_rep_irrel].
     simpl.
-    simpl in v.
+    simpl in v. 
     (*We need to know that we can push a let and a quantifier
       across an implication. This is why we need the wf assumption*)
     simpl_rep_full.
@@ -1038,7 +1039,7 @@ Proof.
     + intros x C. unfold fmla_wf in H1. split_all.
       apply (H4 (fst x)). split_all.
       simpl. apply union_elts. left; auto.
-      simpl. apply in_or_app. right. apply indpred_decomp_bound; auto.
+      simpl. apply in_or_app. right. apply indpred_decomp_bound; auto. 
   - (*On to let case*)
     simpl_rep_full.  
     assert (Hval1: formula_typed gamma

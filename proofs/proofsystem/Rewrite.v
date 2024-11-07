@@ -507,6 +507,7 @@ Proof.
     (term_rep gamma_valid pd pdf vt pf vv tm v Hvalf)) eqn : Hmatch; auto.
     destruct (existsb _ _); auto.
     apply fmla_rep_irrel.
+    Unshelve. all: constructor.
 Qed.
 
 Definition replace_fmla_f_rep {gamma: context} 

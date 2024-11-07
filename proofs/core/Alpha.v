@@ -5675,8 +5675,8 @@ Theorem alpha_aux_equiv (t: term) (f: formula):
     (Hbnd: forall x, In (fst x) l -> ~ In x (fmla_bnd f)),
     a_equiv_f f (alpha_f_aux f l)).
 Proof.
-  revert t f. apply term_formula_ind; simpl; intros; auto;
-  try solve[apply a_equiv_t_refl].
+  revert t f. apply term_formula_ind; intros; auto;
+  try solve[apply a_equiv_t_refl]; simpl in *.
   - (*Tfun*)
     apply alpha_tfun_congr; wf_tac.
     revert H.

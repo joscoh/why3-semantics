@@ -1024,11 +1024,11 @@ Proof.
         destruct (matches_row tys hl ptl H) as [m1|] eqn : Hmatch1
       end.
       * match goal with |- context [matches_row ?tys ?hl ?ptl ?H] =>
-          replace (matches_row tys hl ptl H) with (Some m1) by (apply Hmatch1); auto
+          replace (matches_row tys hl ptl H) with (Some m1) by (symmetry; apply Hmatch1); auto
         end.
         f_equal. apply gen_rep_irrel.
       * match goal with |- context [matches_row ?tys ?hl ?ptl ?H] =>
-          replace (matches_row tys hl ptl H) with (@None (list (vsymbol * {s: sort & domain (dom_aux pd) s }))) by (apply Hmatch1); auto
+          replace (matches_row tys hl ptl H) with (@None (list (vsymbol * {s: sort & domain (dom_aux pd) s }))) by (symmetry; apply Hmatch1); auto
         end.
 Qed.
 
@@ -1078,11 +1078,12 @@ Proof.
         destruct (matches_row tys hl ptl H) as [m1|] eqn : Hmatch1
       end.
       * match goal with |- context [matches_row ?tys ?hl ?ptl ?H] =>
-          replace (matches_row tys hl ptl H) with (Some m1) by (apply Hmatch1); auto
+          replace (matches_row tys hl ptl H) with (Some m1) by (symmetry; apply Hmatch1); auto
         end.
         f_equal. apply gen_rep_irrel.
       * match goal with |- context [matches_row ?tys ?hl ?ptl ?H] =>
-          replace (matches_row tys hl ptl H) with (@None (list (vsymbol * {s: sort & domain (dom_aux pd) s }))) by (apply Hmatch1); auto
+          replace (matches_row tys hl ptl H) with (@None (list (vsymbol * {s: sort & domain (dom_aux pd) s }))) by 
+          (symmetry; apply Hmatch1); auto
         end.
 Qed.
 
@@ -2241,7 +2242,7 @@ Proof.
     replace (Datatypes.length srts - S (Datatypes.length vars - S i)) with i.
     2: { unfold srts; simpl_len; destruct vars; simpl in *; try lia.
       (*Why can't lia solve this directly?*)
-    assert (i <= length vars) by (apply Arith_prebase.lt_n_Sm_le in Hi; assumption). lia.
+    assert (i <= length vars) by (apply PeanoNat.lt_n_Sm_le in Hi; assumption). lia.
     }
     intros e. apply dom_cast_eq.
   - rewrite !val_with_args_notin; auto. rewrite <- List.in_rev. auto.
@@ -2306,66 +2307,7 @@ Qed.
 
 End Val.
 
-(*Part 9: Rewrite [add] function in nicer way*)
-(*TODO: moved*)
-(*A "map" version of "add" (asusming all options are Some) that is more pleasant to work with*)
-(* Definition add_map {A: Type} (getvars: A -> list vsymbol) 
-(comp_cases : funsym -> list (term * vty) -> option A) (t: term) 
-ty tl rl :=
-(fun (x: funsym * list vty * list pattern) =>
-          let '(cs, params, ql) := x in 
-          let pat_tys := map (ty_subst (s_params cs) params) (s_args cs) in 
-          let new_var_names := gen_strs (Datatypes.length ql) (compile_fvs getvars ((t, ty) :: tl) rl) in
-          let typed_vars := (combine new_var_names pat_tys) in
-          let vl := rev typed_vars in 
-          let pl := rev_map Pvar vl in 
-          let al := rev_map Tvar vl in
-          (Pconstr cs params pl, comp_cases cs (combine al (rev (map snd vl))))).
-
-(*And the spec*)
-Lemma fold_right_opt_add_map {A: Type} (getvars: A -> list vsymbol) 
-  comp_cases t ty rl tl cslist bse pats:
-  fold_left_opt (add getvars comp_cases t ty rl tl) cslist bse = Some pats ->
-  (* map Some l = bse -> *)
-  rev (map (add_map getvars comp_cases t ty tl rl) cslist) ++ (map (fun x => (fst x, Some (snd x))) bse) =
-  map (fun x => (fst x, Some (snd x))) pats.
-Proof.
-  intros Hadd.
-  unfold add in Hadd.
-  erewrite fold_left_opt_change_f in Hadd.
-  apply (fold_left_opt_cons (fun (x: funsym * list vty * list pattern) =>
-    let cs := fst (fst x) in
-    let params := snd (fst x) in
-    let ql := snd x in
-    let pat_tys := map (ty_subst (s_params cs) params) (s_args cs) in 
-    let new_var_names := gen_strs (Datatypes.length ql) (compile_fvs getvars ((t, ty) :: tl) rl) in
-    let typed_vars := (combine new_var_names pat_tys) in
-    let vl := rev typed_vars in 
-    let pl := rev_map Pvar vl in 
-    let al := rev_map Tvar vl in
-    comp_cases cs (combine al (rev (map snd vl))))
-    (fun (x: funsym * list vty * list pattern) =>
-      let cs := fst (fst x) in
-      let params := snd (fst x) in
-      let ql := snd x in
-      let pat_tys := map (ty_subst (s_params cs) params) (s_args cs) in 
-      let new_var_names := gen_strs (Datatypes.length ql) (compile_fvs getvars ((t, ty) :: tl) rl) in
-      let typed_vars :=(combine new_var_names pat_tys) in
-      let vl := rev typed_vars in 
-      let pl := rev_map Pvar vl in 
-      Pconstr cs params pl
-      )
-  ) in Hadd.
-  2: { simpl. intros. destruct c as [[f vs] ps]; simpl; reflexivity. }
-  erewrite (map_ext (fun x => (fst x, Some (snd x)))). rewrite <- Hadd.
-  simpl. f_equal.
-  2: simpl; intros [x1 y1]; auto.
-  f_equal.
-  apply map_ext. intros [[f vs] ps]; simpl; auto.
-Qed. *)
-(*End TODO*)
-
-(*Part 10: 2 more typing lemmas*)
+(*Part 9: 2 more typing lemmas*)
 
 Lemma constr_typed_row {c tys ps ty}:
   pattern_has_type gamma (Pconstr c tys ps) ty ->

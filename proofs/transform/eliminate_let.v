@@ -740,7 +740,7 @@ elim_let_tm_fmla (Right (Fmatch tm ty ps)) b1 b2 Heq1 Heq2 :=
 Next Obligation.
 (*Because of [map_In], we have the hypothesis we need*)
 - apply in_sum_le; rewrite in_map_iff. exists x; auto.
-- apply Arith_prebase.le_lt_n_Sm_stt.
+- apply PeanoNat.le_lt_n_Sm.
   apply in_sum_le.
   rewrite in_map_iff; exists x; auto.
 Defined.
@@ -770,7 +770,7 @@ Next Obligation.
 (*Tmatch termination*)
 - eapply Nat.le_trans; [| apply Nat.le_add_l].
   apply in_sum_le. rewrite in_map_iff. exists x; auto.
-- apply Arith_prebase.le_lt_n_Sm_stt.
+- apply PeanoNat.le_lt_n_Sm.
   eapply Nat.le_trans; [| apply Nat.le_add_l].
   apply in_sum_le. rewrite in_map_iff. exists x; auto.
 Defined.
@@ -788,7 +788,7 @@ Defined.
 Next Obligation.
 (*Fpred termination*)
 - apply in_sum_le; rewrite in_map_iff. exists x; auto.
-- apply Arith_prebase.le_lt_n_Sm_stt.
+- apply PeanoNat.le_lt_n_Sm.
   apply in_sum_le.
   rewrite in_map_iff; exists x; auto.
 Defined.
@@ -818,7 +818,7 @@ Next Obligation.
 (*Fmatch termination*)
 - eapply Nat.le_trans; [| apply Nat.le_add_l].
   apply in_sum_le. rewrite in_map_iff. exists x; auto.
-- apply Arith_prebase.le_lt_n_Sm_stt.
+- apply PeanoNat.le_lt_n_Sm.
   eapply Nat.le_trans; [| apply Nat.le_add_l].
   apply in_sum_le. rewrite in_map_iff. exists x; auto.
 Defined.

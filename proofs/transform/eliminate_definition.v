@@ -637,7 +637,7 @@ Proof.
     intros y Hiny. unfold substi. destruct (vsymbol_eq_dec y v); subst; auto.
     unfold eq_sym; simpl. apply dom_cast_eq.
 Qed.
-
+Opaque formula_rep.
 (*And the same for formulas - can we prove easier?*)
 Lemma f_insert_rep {gamma} (gamma_valid: valid_context gamma) pd pdf vt pf vv f1 f2 Hty Hty1 Hty2
   (Hdisj: disj (fmla_fv f1) (fmla_bnd f2)):

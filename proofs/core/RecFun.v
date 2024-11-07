@@ -1474,7 +1474,6 @@ Proof.
 (*Needs to be transparent for termination*)
 Defined.
 
-
 (*The function we need*)
 Definition get_arg_list_recfun {v : val_vars pd vt} {hd d} (s: fpsym)
   {vs': list vty}
@@ -1585,7 +1584,7 @@ match ts as ts'
             (proj2_sig (get_arg_list_recfun  atl 
             (Nat.succ_inj (length ttl) (length atl) Heq)
             (Forall_inv_tail Htys) (Forall_inv_tail Hdecs)) j'
-            (Arith_prebase.lt_S_n j' (length ttl) Hj) vs_small Hnth
+            (PeanoNat.lt_S_n j' (length ttl) Hj) vs_small Hnth
             ) )
           end)
       end Hlen Htys

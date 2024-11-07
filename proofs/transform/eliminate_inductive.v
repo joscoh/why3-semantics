@@ -912,6 +912,8 @@ Notation var_in_firstb := (in_firstb vsymbol_eq_dec vsymbol_eq_dec).
   it has the same rep. Further complicated is the fact that
   it short-circuits, so we can't even be sure all parts are
   well-typed*)
+Opaque term_rep.
+Opaque formula_rep.
 Lemma descend_alpha_equiv_aux
   (f1 f2: formula) (vs: list vsymbol)
   (Hnotin1: forall x, In x (fmla_bnd f1)->  ~ (In x vs))
@@ -1497,7 +1499,7 @@ Proof.
   revert vv.
   generalize dependent Hval2.
   induction Hind; subst; unfold descend_transform; simpl; intros; auto.
-  - apply fold_left_and_rep.
+  - simpl_rep_full. apply fold_left_and_rep.
   - simpl_rep_full.
     assert (Hval1: formula_typed gamma (descend_transform vs f2)).
     {

@@ -92,7 +92,7 @@ Proof.
   rewrite CoqBigInt.eqb_spec in Hneq.
   rewrite <- Z2Nat_eqb_nat in Hneq.
   - rewrite CoqBigInt.zero_spec in Hneq; simpl in Hneq.
-    apply EqNat.beq_nat_false_stt in Hneq; exact Hneq.
+    apply PeanoNat.Nat.eqb_neq; exact Hneq.
   - rewrite CoqBigInt.lt_spec, Z.ltb_ge, CoqBigInt.zero_spec in Hlt.
     exact Hlt.
   - rewrite CoqBigInt.zero_spec. apply Z.le_refl.
