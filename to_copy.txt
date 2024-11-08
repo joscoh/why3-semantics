@@ -85,6 +85,8 @@ core/task.mli
 core/task.ml
 core/trans.mli
 core/trans.ml
+core/pattern.mli
+core/pattern.ml
 transform/eliminate_inductive.mli
 transform/eliminate_inductive.ml
 transform/eliminate_definition.mli

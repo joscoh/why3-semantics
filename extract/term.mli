@@ -717,3 +717,5 @@ val t_view_branch: term_branch -> pattern * term
 val t_view_quant: term_quant -> (vsymbol list * trigger) * term
 (*Need for decidable equality in Coq*)
 val term_eqb : term -> term -> bool
+(*for non-hashconsing pattern*)
+val pat_app_aux : lsymbol -> pattern list -> ty -> pattern

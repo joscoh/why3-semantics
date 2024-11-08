@@ -1,5 +1,6 @@
 From Src.core Require Import IdentDefs TyDefs TyFuncs TermDefs TermFuncs
-DeclDefs DeclFuncs CoercionDefs TheoryDefs TheoryFuncs TaskDefs TaskFuncs TransDefs.
+DeclDefs DeclFuncs CoercionDefs TheoryDefs TheoryFuncs TaskDefs TaskFuncs TransDefs
+PatternComp.
 From Src.transform Require Import EliminateInductive EliminateDefinition.
 From Src.coqutil Require Import IntFuncs CoqCtr State.
 From Src.util Require Import ConstantDefs NumberFuncs extmap extset hashcons CoqExthtbl.
@@ -244,7 +245,7 @@ Extract Inlined Constant DuplicateVar => "DuplicateVar".
 Extract Inlined Constant BadArity => "BadArity".
 Extract Inlined Constant FunctionSymbolExpected => "FunctionSymbolExpected".
 Extract Inlined Constant PredicateSymbolExpected => "PredicateSymbolExpected".
-Extract Inlined Constant ConstructorExpected => "ConstructorExpected".
+Extract Inlined Constant TermFuncs.ConstructorExpected => "ConstructorExpected".
 Extract Inlined Constant TermExpected => "TermExpected".
 Extract Inlined Constant FmlaExpected => "FmlaExpected".
 Extract Inlined Constant AssertFail => "AssertFail".
@@ -285,6 +286,11 @@ Extract Inlined Constant LemmaFound => "LemmaFound".
 Extract Inlined Constant GoalFound => "GoalFound".
 Extract Inlined Constant GoalNotFound => "GoalNotFound".
 
+(*Pattern comp Exceptions*)
+Extract Inlined Constant NonExhaustive => "NonExhaustive".
+Extract Inlined Constant PatternComp.ConstructorExpected => "ConstructorExpected".
+Extract Inlined Constant Failure => "Failure". (*TODO: MOVE*)
+
 
 (*TODO: implement later*)
 Extract Inlined Constant check_float => "Number.check_float".
@@ -316,7 +322,7 @@ Separate Extraction (*CoqUtil.str_to_pos*) (*TEMP*)
   CoqWstdlib
   ConstantDefs IdentDefs TyDefs TyFuncs TermDefs TermFuncs
   DeclDefs DeclFuncs CoercionDefs TheoryDefs TheoryFuncs TaskDefs TaskFuncs TransDefs
-  EliminateInductive EliminateDefinition.
+  EliminateInductive EliminateDefinition PatternComp.
 (* TheoryDefs.*) (*Ty.ty_v_map Ident.*)
 (*Separate Extraction Extmap.
 Separate Extraction Ty.ty Ty.ty_v_map Ident.*)

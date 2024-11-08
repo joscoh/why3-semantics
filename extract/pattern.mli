@@ -21,6 +21,8 @@ val compile :
   get_constructors:(tysymbol -> lsymbol list) ->
   mk_case:(term -> (pattern * 'a) list -> 'a) ->
   mk_let:(vsymbol -> term -> 'a -> 'a) ->
+  bool -> (*Bare?*)
+  bool -> (*Should constructors be simplified?*)
   term list -> (pattern list * 'a) list -> 'a
   (** [compile get_constructors mk_case mk_let terms branches]
       returns a composition of match- and let-terms equivalent

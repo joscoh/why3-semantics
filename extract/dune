@@ -12,7 +12,8 @@
   IdentDefs
   TyDefs TyFuncs TermDefs TermFuncs DeclDefs DeclFuncs CoercionDefs 
   TheoryDefs TheoryFuncs TaskDefs TaskFuncs TransDefs
-  EliminateInductive EliminateDefinition)
+  EliminateInductive EliminateDefinition
+  PatternComp)
  (theories Src stdpp Proofs ExtLib mathcomp.ssreflect elpi HB)
  )
 
@@ -262,6 +263,21 @@
   )
  )
 
+; pattern comp
+ (rule
+  (deps PatternImports.ml PatternExn.ml PatternComp.ml PatternExtra.ml)
+  (targets pattern.ml)
+  (action 
+  (with-stdout-to pattern.ml
+    (pipe-stdout
+     (cat PatternExn.ml PatternComp.ml PatternExtra.ml)
+     (run sed -e "s/^open.*//g")
+     (run cat PatternImports.ml -)
+    )
+   )
+  )
+ )
+
 (library
  (name Why3Coq)
  (modules (:standard \ CoqCtr TyExn TyDefs TyFuncs TyExtra IdentDefs IdentExtra 
@@ -272,7 +288,8 @@
   TheoryFuncs TheoryExn TheoryExtra
   TaskDefs TaskExn TaskExtra TaskFuncs TransDefs TransExtra
   EliminateInductive EliminateInductiveExtra
-  EliminateDefinition EliminateDefinitionExtra))
+  EliminateDefinition EliminateDefinitionExtra
+  PatternImports PatternExn PatternComp PatternExtra))
  (flags (:standard -w -33 -w -32 -w -9 -w -27 -w -34)) 
  ;32 is unused value - extraction results in values we don't want in mli file
  ;27 is unused var strict - TODO turn off after
