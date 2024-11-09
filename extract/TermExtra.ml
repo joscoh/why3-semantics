@@ -1538,26 +1538,26 @@ let t_v_any pr t = Util.any t_v_fold pr t
 
 let t_closed t = t_v_all Util.ffalse t
 
-let bnd_v_count fn acc b = Mvs.fold (fun v n acc -> fn acc v n) b.bv_vars acc
+(* let bnd_v_count fn acc b = Mvs.fold (fun v n acc -> fn acc v n) b.bv_vars acc
 
-let bound_v_count fn acc ((_,b),_) = bnd_v_count fn acc b
+let bound_v_count fn acc ((_,b),_) = bnd_v_count fn acc b *)
 
-let rec t_v_count fn acc t = match t.t_node with
+(* let rec t_v_count fn acc t = match t.t_node with
   | Tvar v -> fn acc v BigInt.one
   | Tlet (e,b) -> bound_v_count fn (t_v_count fn acc e) b
   | Tcase (e,bl) -> List.fold_left (bound_v_count fn) (t_v_count fn acc e) bl
   | Teps b -> bound_v_count fn acc b
   | Tquant (_,(((_,b),_),_)) -> bnd_v_count fn acc b
-  | _ -> t_fold_unsafe (t_v_count fn) acc t
+  | _ -> t_fold_unsafe (t_v_count fn) acc t *)
 
-let t_v_occurs v t =
-  t_v_count (fun c u n -> if vs_equal u v then BigInt.add c n else c) BigInt.zero t
+(* let t_v_occurs v t =
+  t_v_count (fun c u n -> if vs_equal u v then BigInt.add c n else c) BigInt.zero t *)
 
 (* replaces variables with terms in term [t] using map [m] *)
 
-let t_subst m t = Mvs.iter vs_check m; t_subst_unsafe m t
+(* let t_subst m t = Mvs.iter vs_check m; t_subst_unsafe m t
 
-let t_subst_single v t1 t = t_subst (Mvs.singleton v t1) t
+let t_subst_single v t1 t = t_subst (Mvs.singleton v t1) t *)
 
 (* set of free variables *)
 
@@ -1764,12 +1764,12 @@ let t_if_simp f1 f2 f3 = match f1.t_node, f2.t_node, f3.t_node with
   | _, _, _ -> t_if f1 f2 f3
 
 
-let small t = match t.t_node with
+(* let small t = match t.t_node with
   | Tvar _ | Tconst _ -> true
 (* NOTE: shouldn't we allow this?
   | Tapp (_,[]) -> true
 *)
-  | _ -> false
+  | _ -> false *)
 
 let v_copy_unused v =
   let id = v.vs_name in
@@ -1809,7 +1809,7 @@ let t_let_close_simp_keep_var ~keep v e t =
   else
     t_let_close v e t
 
-let t_let_close_simp = t_let_close_simp_keep_var ~keep:false
+(* let t_let_close_simp = t_let_close_simp_keep_var ~keep:false *)
 
 let t_case_simp t bl =
   let e0,tl = match bl with

@@ -1442,6 +1442,36 @@ Fixpoint t_v_fold {A: Type} (fn : A -> vsymbol -> A) (acc: A)
   | _ => t_fold_unsafe (t_v_fold fn) acc t
   end.
 
+Definition bnd_v_count {A: Type} (fn: A -> vsymbol -> CoqBigInt.t -> A) acc b := 
+  Mvs.fold (fun v n acc => fn acc v n) b.(bv_vars) acc.
+
+(* let bound_v_count fn acc x :=
+  t_view_bound 
+
+ ((_,b),_) = bnd_v_count fn acc b *)
+
+Fixpoint t_v_count {A: Type} (fn: A -> vsymbol -> CoqBigInt.t -> A) (acc: A) (t: term_c) : A :=
+  match t_node_of t with
+  | Tvar v => fn acc v CoqBigInt.one
+  | Tlet e (_, b, _) => bnd_v_count fn (t_v_count fn acc e) b
+  | Tcase e bl => fold_left (bnd_v_count fn) (map (fun x => snd (fst x)) bl) (t_v_count fn acc e)
+  | Teps (_, b, _) => bnd_v_count fn acc b
+  | Tquant _ (((_,b),_),_) => bnd_v_count fn acc b
+  | _ => t_fold_unsafe (t_v_count fn) acc t
+  end.
+
+Definition t_v_occurs v t :=
+  t_v_count (fun c u n => if vs_equal u v then CoqBigInt.add c n else c) CoqBigInt.zero t.
+
+(* replaces variables with terms in term [t] using map [m] *)
+
+(*NOTE: we need to iterate over bindings, not map directly*)
+Definition t_subst m t := 
+  _ <- errst_lift2 (iter_err (fun x => vs_check (fst x) (snd x)) (Mvs.bindings m)) ;;
+  errst_lift1 (t_subst_unsafe m t).
+
+Definition t_subst_single v t1 t := t_subst (Mvs.singleton _ v t1) t.
+
 (** Traversal with separate functions for value-typed and prop-typed terms *)
 (*TODO: temp: Alt module until we replace the rest*)
 Module TermTFAlt.
@@ -1531,3 +1561,23 @@ Definition t_iff_simp (f1 f2 : term_c) : errorM term_c :=
 
 Definition t_equ_simp (t1 t2 : term_c) : errorHashconsT ty_c term_c :=
   if t_equal t1 t2 then errst_ret t_true  else t_equ t1 t2.
+
+Definition small t := 
+  match t_node_of t with
+  | Tvar _ | Tconst _ => true
+(* NOTE: shouldn't we allow this?
+  | Tapp (_,[]) -> true
+*)
+  | _ => false
+end.
+
+(*Just do false version for now*)
+
+Definition t_let_close_simp (v: vsymbol) (e t: term_c) : ctrErr term_c :=
+  let n := t_v_occurs v t in
+  if CoqBigInt.is_zero n then errst_ret t
+  else
+  if CoqBigInt.eqb n CoqBigInt.one || small e then
+    t_subst_single v e t
+  else
+    errst_lift2 (t_let_close v e t).

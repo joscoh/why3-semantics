@@ -63,7 +63,7 @@ let populate_all (is_constr: lsymbol -> bool) (ty: ty) rl =
     in
     raise (NonExhaustive (cont [] cs.ls_args pl)) *)
 
-let comp_wilds compile types tl wilds css ty () =
+(* let comp_wilds compile types tl wilds css ty () =
   match (compile tl wilds) with
   | Succ x -> Succ x
   | NonExh pl ->
@@ -75,7 +75,7 @@ let comp_wilds compile types tl wilds css ty () =
       raise (NonExhaustive (pw :: pl))
     in
     Sls.iter find_cs css;
-    raise (NonExhaustive (pat_wild ty :: pl))
+    raise (NonExhaustive (pat_wild ty :: pl)) *)
 
   (* try compile tl wilds
   with NonExhaustive pl ->
@@ -90,7 +90,7 @@ let comp_wilds compile types tl wilds css ty () =
     raise (NonExhaustive (pat_wild ty :: pl)) *)
 
 (*TODO: maybe put this back in*)
-let comp_full mk_case compile bare types tl cases wilds css cslist t ty () =
+(* let comp_full mk_case compile bare types tl cases wilds css cslist t ty () =
   let no_wilds =
     if bare then
       let cs,_ = Mls.choose types in
@@ -118,10 +118,11 @@ let comp_full mk_case compile bare types tl cases wilds css cslist t ty () =
         (pat_app cs pl ty, x) :: acc
     end
   in
-  Succ (mk_case t (List.fold_left add base cslist))
+  Succ (mk_case t (List.fold_left add base cslist)) *)
 
-let compile ~get_constructors ~mk_case ~mk_let (bare: bool) (simpl_constr: bool) tl rl =
-  let rec compile tl rl = match tl,rl with
+(* let compile ~get_constructors ~mk_case ~mk_let (bare: bool) (simpl_constr: bool) tl rl =
+  compile_aux' get_constructors mk_case mk_let bare simpl_constr tl rl *)
+  (* let rec compile tl rl = match tl,rl with
     | _, [] -> (* no actions *)
         let pl = List.map (fun t -> pat_wild (t_type t)) tl in
         NonExh pl  (*(NonExhaustive pl)*)
@@ -166,19 +167,20 @@ let compile ~get_constructors ~mk_case ~mk_let (bare: bool) (simpl_constr: bool)
             end
           else comp_full mk_case compile bare types tl cases wilds css cslist t ty ()
   in
-  compile tl rl
+  compile tl rl *)
 
 let compile ~get_constructors ~mk_case ~mk_let (bare: bool) (simpl_constr: bool) tl rl =
-  match compile  ~get_constructors ~mk_case ~mk_let bare simpl_constr tl rl with
-  | Succ x -> x
-  | NonExh pl -> raise (NonExhaustive pl)
+  compile_aux' get_constructors mk_case mk_let bare simpl_constr tl rl
 
 let compile_bare ~mk_case ~mk_let tl rl =
-  let get_constructors _ = [] in
+  compile_bare_aux mk_case mk_let tl rl
+  (* let get_constructors _ = [] in
   try compile ~get_constructors ~mk_case ~mk_let true true tl rl
-  with NonExhaustive _ -> raise (NonExhaustive [])
+  with NonExhaustive _ -> raise (NonExhaustive []) *)
 
-let check_compile ~get_constructors tl = function
+let check_compile ~get_constructors tl ps =
+  check_compile_aux get_constructors tl ps
+  (* function
   | [] ->
       let pl = List.map (fun t -> pat_wild (t_type t)) tl in
       raise (NonExhaustive pl)
@@ -187,7 +189,7 @@ let check_compile ~get_constructors tl = function
       let tl = if tl = [] then List.map mkt pl else tl in
       let rl = List.map (fun pl -> pl, ()) ppl in
       let mk_case _ _ = () and mk_let _ _ _ = () in
-      compile ~get_constructors ~mk_case ~mk_let false false tl rl
+      compile ~get_constructors ~mk_case ~mk_let false false tl rl *)
 
 let is_exhaustive tl = function
   | [] -> false

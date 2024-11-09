@@ -87,6 +87,8 @@ Definition ty_var (n: tvsymbol) : hashcons_st _ ty_c :=
   Hsty.hashcons (mk_ty (Tyvar n)).
 Definition ty_app1 (s: tysymbol_c) (tl: list ty_c) : hashcons_st _ ty_c :=
   Hsty.hashcons (mk_ty (Tyapp s tl)).
+Definition ty_app_unsafe (s: tysymbol_c) (tl: list ty_c) : ty_c :=
+   (mk_ty (Tyapp s tl)).
 
 (*Generic Traversal Functions*)
 (*The reason we actually do want hash consing, or else
@@ -95,6 +97,12 @@ Definition ty_map (fn: ty_c -> ty_c) (t: ty_c) : hashcons_st _ ty_c :=
   match ty_node_of t with
   | Tyvar _ => st_ret t
   | Tyapp f tl => ty_app1 f (map fn tl)
+  end.
+
+Definition ty_map_unsafe (fn: ty_c -> ty_c) (t: ty_c) : ty_c :=
+  match ty_node_of t with
+  | Tyvar _ => t
+  | Tyapp f tl => ty_app_unsafe f (map fn tl)
   end.
 
 Definition ty_fold {A: Type} (fn: A -> ty_c -> A) (acc: A) (t: ty_c) : A :=
@@ -304,6 +312,12 @@ Fixpoint ty_inst (s: Mtv.t ty_c) (t: ty_c) : hashcons_st _ ty_c :=
   match ty_node_of t with
   | Tyvar n => st_ret (Mtv.find_def _ t n s)
   | _ => ty_mapM (ty_inst s) t
+  end.
+
+Fixpoint ty_inst_unsafe (s: Mtv.t ty_c) (t: ty_c) : ty_c :=
+  match ty_node_of t with
+  | Tyvar n => Mtv.find_def _ t n s
+  | _ => ty_map_unsafe (ty_inst_unsafe s) t
   end.
 
 Definition Exit : errtype := mk_errtype "Exit" tt.

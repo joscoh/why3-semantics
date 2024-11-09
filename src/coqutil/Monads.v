@@ -118,6 +118,41 @@ Definition errst_ret {A B: Type} (x: B) : errState A B := ret x.
 Definition errst_list {K A: Type} (l: list (errState K A)) :
   errState K (list A) :=
   listM errst_ret errst_bind l.
+Print eitherT.
+Check mkEitherT.
+(*Dependent version for termination proofs*)
+(* Definition errst_bind_dep {A B C: Type} (x: errState A B)
+  (f: forall (b: B) (s: A) (Heq: match x with
+    | mkEitherT y =>
+      match fst (runState y s) with
+      | inl _ => True
+      | inr s1 => b = s1
+      end
+  end), errState A C) : errState A C.
+(*TODO: do bind*)
+
+
+
+  mkState 
+  (fun (s: A) =>
+    runState (f (proj1_sig (dep_fst (runState x s))) s 
+      (proj2_sig (dep_fst (runState x s))))
+      (snd (runState x s))).
+    
+     (inr _) => True
+    | mkEitherT (inl y) =>
+  end), errState A C) : errState A C.
+  
+   | inr _ => True | inl y => b = fst (runState y s)end), 
+    errState A C) : errState A C.
+
+Definition st_bind_dep (A B C: Type) (x: st A B)
+  (f: forall (b: B) (s: A) (Heq: b = fst (runState x s)), st A C) : st A C :=
+  mkState 
+  (fun (s: A) =>
+    runState (f (proj1_sig (dep_fst (runState x s))) s 
+      (proj2_sig (dep_fst (runState x s))))
+      (snd (runState x s))). *)
 
 (*Try/catch - TODO: reduce duplication*)
 Definition errst_trywith {St A B: Type} (x: unit -> errState St A) (e: errtype) 
@@ -402,6 +437,10 @@ Definition foldl_errst := fun {S1 A B: Type} (f: A -> B -> errState S1 A) =>
   | h :: t => j <- f x h ;;
               fold_left_errst t j
   end.
+
+Definition iter_errst {S1 A: Type}
+  (f: A -> errState S1 unit) (l: list A) : errState S1 unit :=
+  foldl_errst (fun _ x => f x) l tt.
 
 Fixpoint fold_left2_errst {A B C S : Type} 
   (f: C -> A -> B -> errState S C) (accu: C) 
