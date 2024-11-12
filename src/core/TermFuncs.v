@@ -921,7 +921,7 @@ Definition vl_rename (h: Mvs.t term_c) (vl: list vsymbol) :=
   x <- vl_rename_aux vl (st_ret (h, nil)) ;;
   st_ret (fst x, rev' (snd x)).
 
-Fixpoint t_subst_unsafe_aux (m: Mvs.t term_c) (t: term_c) : ctr term_c :=
+(* Fixpoint t_subst_unsafe_aux (m: Mvs.t term_c) (t: term_c) : ctr term_c :=
   let t_subst t := t_subst_unsafe_aux m t in
 
   let t_open_bnd {A: Type} (v : A) m t f : ctr (A * term_c) :=
@@ -984,30 +984,30 @@ Fixpoint t_subst_unsafe_aux (m: Mvs.t term_c) (t: term_c) : ctr term_c :=
     bq1 <- b_subst3 bq ;;
     st_ret (t_attr_copy t (t_quant1 q bq1))
   | _ => t_map_ctr_unsafe t_subst t
-  end.
+  end. *)
 
 (*NOTE: breaking invariants about bv_vars: TODO: do we need?*)
-Fixpoint t_subst_unsafe_aux' (m: Mvs.t term_c) (t: term_c) : term_c :=
+Fixpoint t_subst_unsafe_aux (m: Mvs.t term_c) (t: term_c) : term_c :=
   match (t_node_of t) with
   | Tvar u => (t_attr_copy t (Mvs.find_def _ t u m))
   | Tlet e (v, b, t2) =>
-    let e1 := (t_subst_unsafe_aux' m e) in 
+    let e1 := (t_subst_unsafe_aux m e) in 
     (*Remove element of m corresponding to variable we substitute*)
     let m' := Mvs.remove _ v m in
     (*specialize to free vars of t2*)
     let m1 := Mvs.set_inter _ _ m' b.(bv_vars) in
     (*See if resulting is empty*)
-    let e2 := if Mvs.is_empty _ m1 then t2 else t_subst_unsafe_aux' m1 t2 in
+    let e2 := if Mvs.is_empty _ m1 then t2 else t_subst_unsafe_aux m1 t2 in
     (*Create new [bind_info] *)
     let b1 := bnd_new (Mvs.remove _ v (t_vars e2) (*(b.(bv_vars))*)) in (*TODO: do this or compute from maps directly?*)
     t_attr_copy t (t_let1 e1 (v, b1, e2) (t_ty_of t))
   | Tcase e bl =>
-    let e1 := (t_subst_unsafe_aux' m e) in
+    let e1 := (t_subst_unsafe_aux m e) in
     let bl2 := map
       (fun (x: pattern_c * bind_info * term_c) =>
         let m' := Mvs.set_diff _ _ m (pat_vars_of (fst (fst x))) in
         let m1 := Mvs.set_inter _ _ m' (snd (fst x)).(bv_vars) in
-        let e2 := if Mvs.is_empty _ m1 then snd x else t_subst_unsafe_aux' m1 (snd x) in
+        let e2 := if Mvs.is_empty _ m1 then snd x else t_subst_unsafe_aux m1 (snd x) in
         let b1 := bnd_new (Mvs.set_diff _ _ (t_vars e2) (pat_vars_of (fst (fst x)))) in
         (fst (fst x), b1, e2)
         ) bl in
@@ -1015,25 +1015,25 @@ Fixpoint t_subst_unsafe_aux' (m: Mvs.t term_c) (t: term_c) : term_c :=
   | Teps (v, b, t1) =>
     let m' := Mvs.remove _ v m in
     let m1 := Mvs.set_inter _ _ m' b.(bv_vars) in
-    let e2 := if Mvs.is_empty _ m1 then t1 else t_subst_unsafe_aux' m1 t1 in
+    let e2 := if Mvs.is_empty _ m1 then t1 else t_subst_unsafe_aux m1 t1 in
     let b1 := bnd_new (Mvs.remove _ v (t_vars e2)) in
     t_attr_copy t (t_eps1 (v, b1, e2) (t_ty_of t))
   | Tquant q (vs, b, tr, t1) =>
     let m' := Mvs.set_diff _ _ m (Svs.of_list vs) in
     let m1 := Mvs.set_inter _ _ m' b.(bv_vars) in
-    let e2 := if Mvs.is_empty _ m1 then t1 else t_subst_unsafe_aux' m1 t1 in
+    let e2 := if Mvs.is_empty _ m1 then t1 else t_subst_unsafe_aux m1 t1 in
     let b1 := bnd_new (Mvs.set_diff _ _ (t_vars e2) (Svs.of_list vs)) in
     (*don't sub in triggers I think*)
-    let tr2 := (tr_map (t_subst_unsafe_aux' m) tr) in (*don't do optimization here*)
+    let tr2 := (tr_map (t_subst_unsafe_aux m) tr) in (*don't do optimization here*)
     t_attr_copy t (t_quant1 q (vs, b1, tr2, e2))
-  | _ => t_map_unsafe (t_subst_unsafe_aux' m) t
+  | _ => t_map_unsafe (t_subst_unsafe_aux m) t
   end.
 
-Definition t_subst_unsafe m t :=
-  if Mvs.is_empty _ m then st_ret t else t_subst_unsafe_aux m t.
+(* Definition t_subst_unsafe m t :=
+  if Mvs.is_empty _ m then st_ret t else t_subst_unsafe_aux m t. *)
 
-Definition t_subst_unsafe' m t :=
-  if Mvs.is_empty _ m then t else t_subst_unsafe_aux' m t.
+Definition t_subst_unsafe m t :=
+  if Mvs.is_empty _ m then t else t_subst_unsafe_aux m t.
 
 (* open bindings *)
 
@@ -1053,8 +1053,7 @@ Definition t_open_bound (x: term_bound) : ctr (vsymbol * term_c) :=
   let '(v, b, t) := x in
   y <- vs_rename Mvs.empty v ;;
   let '(m, v) := y in
-  t1 <- t_subst_unsafe m t ;;
-  st_ret (v, t1).
+  st_ret (v, (t_subst_unsafe m t)).
 
 Definition t_view_branch (x: term_branch) : pattern_c * term_c :=
   (fst (fst x), snd x).
@@ -1063,8 +1062,7 @@ Definition t_open_branch (x: term_branch) : ctr (pattern_c * term_c) :=
   let '(p, b, t) := x in
   y <- pat_rename Mvs.empty p ;;
   let '(m, p) := y in
-  t1 <- t_subst_unsafe m t ;;
-  st_ret (p, t1).
+  st_ret (p, (t_subst_unsafe m t)).
 
 (*Different because tuples in OCaml/Coq are different*)
 (*TODO: figure out tuple things because this is annoying we don't
@@ -1074,18 +1072,16 @@ Definition t_open_quant1 (x: term_quant) : ctr (list vsymbol * trigger * term_c)
   let '(vl, b, tl, f) := x in
   y <- vl_rename Mvs.empty vl ;;
   let '(m, vl) := y in
-  tl <- st_tr (tr_map (t_subst_unsafe m) tl) ;;
-  t1 <- t_subst_unsafe m f ;;
-  st_ret (vl, tl, t1).
+  st_ret (vl, (tr_map (t_subst_unsafe m) tl), (t_subst_unsafe m f)).
 
 Definition t_view_quant (x: term_quant) : list vsymbol * trigger * term_c :=
   (fst (fst (fst x)), snd (fst x), snd x).
 
-Definition t_open_bound_with (e: term_c) (x: term_bound) : ctrErr term_c :=
+Definition t_open_bound_with (e: term_c) (x: term_bound) : errorM term_c :=
   (let '(v, b, t) := x in
-  _ <- errst_lift2 (vs_check v e) ;;
+  _ <- vs_check v e ;;
   let m := Mvs.singleton _ v e in
-  errst_lift1 (t_subst_unsafe m t))%errst.
+  err_ret (t_subst_unsafe m t))%err.
 
 (*skip t_clone_bound_id (for now)*)
 
@@ -1512,9 +1508,9 @@ Definition t_v_occurs v t :=
 (* replaces variables with terms in term [t] using map [m] *)
 
 (*NOTE: we need to iterate over bindings, not map directly*)
-Definition t_subst m t := 
-  _ <- errst_lift2 (iter_err (fun x => vs_check (fst x) (snd x)) (Mvs.bindings m)) ;;
-  errst_lift1 (t_subst_unsafe m t).
+Definition t_subst m t : errorM term_c := 
+  (_ <- (iter_err (fun x => vs_check (fst x) (snd x)) (Mvs.bindings m)) ;;
+  err_ret (t_subst_unsafe m t))%err.
 
 Definition t_subst_single v t1 t := t_subst (Mvs.singleton _ v t1) t.
 
@@ -1619,14 +1615,14 @@ end.
 
 (*Just do false version for now*)
 
-Definition t_let_close_simp (v: vsymbol) (e t: term_c) : ctrErr term_c :=
+Definition t_let_close_simp (v: vsymbol) (e t: term_c) : errorM term_c :=
   let n := t_v_occurs v t in
-  if CoqBigInt.is_zero n then errst_ret t
+  if CoqBigInt.is_zero n then err_ret t
   else
   if CoqBigInt.eqb n CoqBigInt.one || small e then
     t_subst_single v e t
   else
-    errst_lift2 (t_let_close v e t).
+    t_let_close v e t.
 (*
 (*A traversal function*)
 From Equations Require Import Equations.

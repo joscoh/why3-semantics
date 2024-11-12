@@ -90,7 +90,8 @@ Notation errst_throw e := (errst_lift2 (throw e)).
 
 Section Dispatch.
 (*mk_let can be [t_let_close_simp], which uses [t_subst], which is stateful*)
-Context {A: Type} (mk_let: vsymbol -> term_c -> A -> errState CoqBigInt.t A) (t: term_c) 
+(*TODO: not stateful, change*)
+Context {A: Type} (mk_let: vsymbol -> term_c -> A -> errorM A) (t: term_c) 
   (types: Mls.t (list pattern_c)).
 
 (*For dispatch, we need Equations, since it is not structurally recursive*)
@@ -134,6 +135,7 @@ Proof.
   subst. unfold list_pattern_c_size. simpl.
   rewrite (pattern_c_size_unfold p), Heq. lia.
 Qed.
+Local Open Scope err_scope.
 
 (*TODO: move lemmas to aux file*)
 (*TODO: really termination metric is just size of first elt of list*)
@@ -142,19 +144,19 @@ Qed.
 Fixpoint dispatch_aux (pla: list pattern_c * A) 
   (casewild: (Mls.t (list (list pattern_c * A)) * list (list pattern_c * A)))
   (ACC: Acc lt (list_pattern_c_size (fst pla))) :
-    errState CoqBigInt.t (Mls.t (list (list pattern_c * A)) * list (list pattern_c * A)) :=
+    errorM (Mls.t (list (list pattern_c * A)) * list (list pattern_c * A)) :=
     let cases := fst casewild in
     let wilds := snd casewild in
     match (fst pla) as o return o = fst pla -> _ with
-    | nil => fun _ => errst_throw (Failure "hd")
+    | nil => fun _ => throw (Failure "hd")
     | p :: pl => fun Hpl =>
       let cases := fst casewild in
       let wilds := snd casewild in
       let a := snd pla in
       match (pat_node_of p) as p' return pat_node_of p = p' -> _ with
       | Papp fs pl' => fun Heq =>
-        errst_ret (add_case fs (rev_append pl' pl) a cases, wilds)
-      | Pwild => fun Heq => errst_ret (union_cases pl a types cases, (pl, a) :: wilds)
+        err_ret (add_case fs (rev_append pl' pl) a cases, wilds)
+      | Pwild => fun Heq => err_ret (union_cases pl a types cases, (pl, a) :: wilds)
       | Por p1 q1 => fun Heq =>
         d1 <- dispatch_aux (q1 :: pl, a) (cases, wilds) (Acc_inv ACC (dispatch_aux_or2 Hpl Heq)) ;;
         dispatch_aux (p1 :: pl, a) d1 (Acc_inv ACC (dispatch_aux_or1 Hpl Heq))
@@ -163,16 +165,16 @@ Fixpoint dispatch_aux (pla: list pattern_c * A)
         dispatch_aux (p :: pl, a) (cases,wilds) (Acc_inv ACC (dispatch_aux_bind Hpl Heq))
       | Pvar x => fun Heq =>
         a <- mk_let x t a ;;
-        errst_ret (union_cases pl a types cases, (pl, a) :: wilds) 
+        err_ret (union_cases pl a types cases, (pl, a) :: wilds) 
       end eq_refl
     end eq_refl.
 
 Definition dispatch_aux' (pla: list pattern_c * A) 
   (casewild: (Mls.t (list (list pattern_c * A)) * list (list pattern_c * A))) :
-    errState CoqBigInt.t (Mls.t (list (list pattern_c * A)) * list (list pattern_c * A)) :=
+    errorM  (Mls.t (list (list pattern_c * A)) * list (list pattern_c * A)) :=
   dispatch_aux pla casewild (Wf_nat.lt_wf _).
 
-Definition dispatch rl := foldr_errst dispatch_aux' (Mls.empty, nil) rl.
+Definition dispatch rl := foldr_err (fun x y => dispatch_aux' y x) rl (Mls.empty, nil).
 
 End Dispatch.
 
@@ -282,7 +284,7 @@ Definition comp_wilds (compile: list term_c -> list (list pattern * A) -> comp_r
 
 Variable (get_constructors: tysymbol_c -> list lsymbol) 
   (mk_case: term_c -> list (pattern_c * A) -> errorM A)
-  (mk_let: vsymbol -> term_c -> A -> errState CoqBigInt.t A)
+  (mk_let: vsymbol -> term_c -> A -> errorM A)
   (bare: bool) (simpl_constr: bool).
 
 (*[mk_case] does not use state (t_case_close)*)
@@ -358,7 +360,7 @@ Fixpoint compile_aux (tl: list term_c) (rl: list (list pattern_c * A)) { struct 
     let cslist := snd types_cslist in
     (* dispatch every case to a primitive constructor/wild case *)
     (*TODO: need dependent version of bind here*)
-    casewild <- errst_tup1 (dispatch mk_let t types rl) ;;
+    casewild <- errst_lift2 (dispatch mk_let t types rl) ;;
     let cases := fst casewild in
     let wilds := snd casewild in
 
