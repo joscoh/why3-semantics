@@ -118,41 +118,75 @@ Definition errst_ret {A B: Type} (x: B) : errState A B := ret x.
 Definition errst_list {K A: Type} (l: list (errState K A)) :
   errState K (list A) :=
   listM errst_ret errst_bind l.
+
 Print eitherT.
-Check mkEitherT.
+
+Definition dep_fst {A B: Type} (x: A * B) : {a : A | a = fst x} :=
+  exist _ (fst x) eq_refl.
+
+Definition unwrap_eitherT {T: Type} {m: Type -> Type} {A: Type} (x: eitherT T m A) :
+  m (T + A)%type := match x with | mkEitherT y => y end.
+
+Definition run_errState {A B: Type} (x: errState A B) (a: A):
+  (errtype + B) * A := runState (unwrap_eitherT x) a.
+
+Search inr.
+
 (*Dependent version for termination proofs*)
-(* Definition errst_bind_dep {A B C: Type} (x: errState A B)
-  (f: forall (b: B) (s: A) (Heq: match x with
-    | mkEitherT y =>
-      match fst (runState y s) with
-      | inl _ => True
-      | inr s1 => b = s1
-      end
-  end), errState A C) : errState A C.
-(*TODO: do bind*)
+(*First version with tactics*)
+Definition errst_bind_dep {A B C: Type} (x: errState A B)
+  (f: forall (b: B) (s: A) (Heq: forall z,
+    fst (run_errState x s) = (inr z) ->
+    b = z),
+    (*match fst (runState (unwrap_eitherT x) s) with
+    | inl _ => True
+    | inr s1 => b = s1
+    end)*) errState A C) : errState A C.
+Proof.
+  apply mkEitherT.
+  apply mkState.
+  intros s.
+  set (y := unwrap_eitherT x).
+  (*Idea: runstate on s, if we get error just return error and resulting state,
+    otherwise, use f (continuation) on resulting value*)
+  destruct (run_errState x s) as [r1 s1] eqn : Hrun.
+  destruct r1 as [e | z].
+  - exact (inl e, s1).
+  - specialize (f z s (fun z1 Heq => 
+      let Hzz1 : inr z1 = inr z := eq_trans (eq_sym Heq) (f_equal fst Hrun) in
+      eq_sym (base.inr_inj _ _ Hzz1))).
+     (* unfold run_errState in Hrun. rewrite Hrun in f. simpl in f. *)
+    (*Now take [errState A C] from f, run on s1*)
+    (* specialize (f eq_refl). *)
+    exact (run_errState f s1).
+Defined.
 
-
-
-  mkState 
+(*Non-tactic version, exactly the same*)
+(*TODO: see if this is what we need*)
+Definition errst_bind_dep' {A B C: Type} (x: errState A B)
+  (f: forall (b: B) (s: A) (Heq: forall z,
+    fst (run_errState x s) = (inr z) ->
+    b = z), errState A C) : errState A C:=
+  mkEitherT (
+    mkState 
   (fun (s: A) =>
-    runState (f (proj1_sig (dep_fst (runState x s))) s 
-      (proj2_sig (dep_fst (runState x s))))
-      (snd (runState x s))).
+    match run_errState x s as r return runState (unwrap_eitherT x) s = r -> _ with
+    | (inl e, s1) => fun _ => (inl e, s1)
+    | (inr z, s1) => fun Heq => run_errState (f z s (fun z1 Heq1 =>
+        let Hzz1 : inr z1 = inr z := eq_trans (eq_sym Heq1) (f_equal fst Heq) in
+        eq_sym (base.inr_inj _ _ Hzz1))) s1
+    end eq_refl
+  )).
+
+(*Plan: write traversal function over terms, generic (do errorstate, allow extra state to be arbitrary) -
+  use this, problem will be map.
+  Equations likely gives terrible code (does this matter?)
+  will probably need some dependent version of map over monads
+  (will definitely need because right now only works with bind)
+  First, try to do traversal only over let, see how it works, then add map and match*)
     
-     (inr _) => True
-    | mkEitherT (inl y) =>
-  end), errState A C) : errState A C.
-  
-   | inr _ => True | inl y => b = fst (runState y s)end), 
-    errState A C) : errState A C.
 
-Definition st_bind_dep (A B C: Type) (x: st A B)
-  (f: forall (b: B) (s: A) (Heq: b = fst (runState x s)), st A C) : st A C :=
-  mkState 
-  (fun (s: A) =>
-    runState (f (proj1_sig (dep_fst (runState x s))) s 
-      (proj2_sig (dep_fst (runState x s))))
-      (snd (runState x s))). *)
+(*2*)
 
 (*Try/catch - TODO: reduce duplication*)
 Definition errst_trywith {St A B: Type} (x: unit -> errState St A) (e: errtype) 

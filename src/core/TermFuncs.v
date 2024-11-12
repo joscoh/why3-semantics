@@ -986,8 +986,54 @@ Fixpoint t_subst_unsafe_aux (m: Mvs.t term_c) (t: term_c) : ctr term_c :=
   | _ => t_map_ctr_unsafe t_subst t
   end.
 
+(*NOTE: breaking invariants about bv_vars: TODO: do we need?*)
+Fixpoint t_subst_unsafe_aux' (m: Mvs.t term_c) (t: term_c) : term_c :=
+  match (t_node_of t) with
+  | Tvar u => (t_attr_copy t (Mvs.find_def _ t u m))
+  | Tlet e (v, b, t2) =>
+    let e1 := (t_subst_unsafe_aux' m e) in 
+    (*Remove element of m corresponding to variable we substitute*)
+    let m' := Mvs.remove _ v m in
+    (*specialize to free vars of t2*)
+    let m1 := Mvs.set_inter _ _ m' b.(bv_vars) in
+    (*See if resulting is empty*)
+    let e2 := if Mvs.is_empty _ m1 then t2 else t_subst_unsafe_aux' m1 t2 in
+    (*Create new [bind_info] *)
+    let b1 := bnd_new (Mvs.remove _ v (t_vars e2) (*(b.(bv_vars))*)) in (*TODO: do this or compute from maps directly?*)
+    t_attr_copy t (t_let1 e1 (v, b1, e2) (t_ty_of t))
+  | Tcase e bl =>
+    let e1 := (t_subst_unsafe_aux' m e) in
+    let bl2 := map
+      (fun (x: pattern_c * bind_info * term_c) =>
+        let m' := Mvs.set_diff _ _ m (pat_vars_of (fst (fst x))) in
+        let m1 := Mvs.set_inter _ _ m' (snd (fst x)).(bv_vars) in
+        let e2 := if Mvs.is_empty _ m1 then snd x else t_subst_unsafe_aux' m1 (snd x) in
+        let b1 := bnd_new (Mvs.set_diff _ _ (t_vars e2) (pat_vars_of (fst (fst x)))) in
+        (fst (fst x), b1, e2)
+        ) bl in
+    t_attr_copy t (t_case1 e1 bl2 (t_ty_of t))
+  | Teps (v, b, t1) =>
+    let m' := Mvs.remove _ v m in
+    let m1 := Mvs.set_inter _ _ m' b.(bv_vars) in
+    let e2 := if Mvs.is_empty _ m1 then t1 else t_subst_unsafe_aux' m1 t1 in
+    let b1 := bnd_new (Mvs.remove _ v (t_vars e2)) in
+    t_attr_copy t (t_eps1 (v, b1, e2) (t_ty_of t))
+  | Tquant q (vs, b, tr, t1) =>
+    let m' := Mvs.set_diff _ _ m (Svs.of_list vs) in
+    let m1 := Mvs.set_inter _ _ m' b.(bv_vars) in
+    let e2 := if Mvs.is_empty _ m1 then t1 else t_subst_unsafe_aux' m1 t1 in
+    let b1 := bnd_new (Mvs.set_diff _ _ (t_vars e2) (Svs.of_list vs)) in
+    (*don't sub in triggers I think*)
+    let tr2 := (tr_map (t_subst_unsafe_aux' m) tr) in (*don't do optimization here*)
+    t_attr_copy t (t_quant1 q (vs, b1, tr2, e2))
+  | _ => t_map_unsafe (t_subst_unsafe_aux' m) t
+  end.
+
 Definition t_subst_unsafe m t :=
   if Mvs.is_empty _ m then st_ret t else t_subst_unsafe_aux m t.
+
+Definition t_subst_unsafe' m t :=
+  if Mvs.is_empty _ m then t else t_subst_unsafe_aux' m t.
 
 (* open bindings *)
 
@@ -1581,3 +1627,206 @@ Definition t_let_close_simp (v: vsymbol) (e t: term_c) : ctrErr term_c :=
     t_subst_single v e t
   else
     errst_lift2 (t_let_close v e t).
+(*
+(*A traversal function*)
+From Equations Require Import Equations.
+
+(*The size function*)
+
+Fixpoint term_size (t: term_c) : nat :=
+  match t_node_of t with
+  | Tvar _ => 1
+  | Tconst _ => 1
+  | Tapp _ tms => 1 + sum (map term_size tms)
+  | Tif t1 t2 t3 => 1 + term_size t1 + term_size t2 + term_size t3
+  | Tlet t1 (_, _, t2) => 1 + term_size t1 + term_size t2
+  | Tcase t1 pats => 1 + term_size t1 + sum (map (fun x => term_size (snd x)) pats)
+  | Teps (_, _, t) => 1 + term_size t
+  | Tquant _ (_, _, _, t) => 1 + term_size t
+  | Tbinop _ t1 t2 => 1 + term_size t1 + term_size t2
+  | Tnot t => 1 + term_size t
+  | Ttrue => 1
+  | Tfalse => 1
+  end.
+
+Definition term_node_size (t: term_node) : nat :=
+  match t with
+  | Tvar _ => 1
+  | Tconst _ => 1
+  | Tapp _ tms => 1 + sum (map term_size tms)
+  | Tif t1 t2 t3 => 1 + term_size t1 + term_size t2 + term_size t3
+  | Tlet t1 (_, _, t2) => 1 + term_size t1 + term_size t2
+  | Tcase t1 pats => 1 + term_size t1 + sum (map (fun x => term_size (snd x)) pats)
+  | Teps (_, _, t) => 1 + term_size t
+  | Tquant _ (_, _, _, t) => 1 + term_size t
+  | Tbinop _ t1 t2 => 1 + term_size t1 + term_size t2
+  | Tnot t => 1 + term_size t
+  | Ttrue => 1
+  | Tfalse => 1
+  end.
+
+Lemma term_size_eq tm: term_size tm = term_node_size (t_node_of tm).
+Proof. destruct tm; reflexivity. Qed.
+
+(*This will be generic for any errState (CoqBigInt.t * St) for some state St.
+  This is the most generic we will need for our purposes*)
+Section Traverse.
+(*NOT dependently typed for OCaml purposes*)
+Variable (St: Type). (*The type of state*)
+Variable (R: Type). (*Return type*)
+
+Notation T := (errState (CoqBigInt.t * St) R).
+
+Variable (var_case: forall (x: vsymbol), T).
+
+Variable (const_case: forall (c: constant), T).
+(*For now, only do let*)
+(*NOTE: recursive case 2 on [t_open_bound], v is the NEW variable, t2 is the new term*)
+Variable (let_case: forall (t1: term_c) (v: vsymbol) (t2: term_c) (r1 r2: R), T).
+Variable (if_case: forall (t1 t2 t3: term_c) (r1 r2 r3: R), T).
+
+Variable (evil: forall (t: term_c), T).
+
+(*This is annoying for sure*)
+Print term_c.
+
+(*We can't use Equations because it doesn't support mutual well-founded
+  definitions. So we will use Xavier trick again*)
+Print term_bound.
+Print bind_info.
+
+Lemma tif_size3 {t1 t2 t3 tm}
+  (Hsz : term_node_size (Tif t1 t2 t3) = term_size tm):
+  term_size t3 < term_size tm.
+Proof.
+  simpl in Hsz. lia.
+Qed.
+
+Lemma tif_size2 {t1 t2 t3 tm}
+  (Hsz : term_node_size (Tif t1 t2 t3) = term_size tm):
+  term_size t2 < term_size tm.
+Proof.
+  simpl in Hsz. lia.
+Qed.
+
+Lemma tif_size1 {t1 t2 t3 tm}
+  (Hsz : term_node_size (Tif t1 t2 t3) = term_size tm):
+  term_size t1 < term_size tm.
+Proof.
+  simpl in Hsz. lia.
+Qed.
+
+Print t_subst_unsafe.
+Print t_subst_unsafe_aux.
+
+Lemma t_subst_unsafe_size
+
+Lemma t_open_bound_size (b: term_bound): forall s,
+  term_size (snd (fst (runState (t_open_bound b) s))) = term_size (snd b).
+Proof.
+  intros s. destruct b as [[v b] t].
+  Opaque vs_rename.
+  simpl.
+  destruct (runState (vs_rename Mvs.empty v) s) as [[m1 v1] s1] eqn : Hrun.
+  simpl.
+  destruct (runState (t_subst_unsafe m1 t) s1) as [t2 s2] eqn : Hrun2.
+  simpl.
+  (*Get m1 value*)
+  Transparent vs_rename. Opaque fresh_vsymbol.
+  simpl in Hrun.
+  destruct (runState (fresh_vsymbol v) s) as [v3 s3] eqn : Hrun3.
+  inversion Hrun; subst.
+  (*We don't care that the variable is fresh, but we care that it is a variable*)
+
+
+  simpl in Hrun.
+  Print vs_rename.
+  
+   simpl in Hrun.
+
+
+
+  Print t_open_bound.
+  
+   simpl.
+  unfold t_open_bound, runState. simpl.
+
+(*Interesting case - why we need dependent bind*)
+Lemma tlet_size2 {t1 b y s tm}
+(Hsz: term_node_size (Tlet t1 b) = term_size tm)
+(Heq : forall z : vsymbol * term_c,
+  fst
+  (run_errState
+  (@errst_tup1 CoqBigInt.t St _ (errst_lift1 (t_open_bound b))) s) =
+  inr z -> y = z):
+  term_size (snd y) < term_size tm.
+Proof.
+  unfold errst_tup1 in Heq. Opaque t_open_bound. simpl in Heq.
+  unfold run_errState in Heq. simpl in Heq.
+  destruct (runState (t_open_bound b) (fst s)) as [v1 s1] eqn : Hrun.
+  simpl in Heq.
+  specialize (Heq v1 eq_refl). subst.
+  (*Now we just need to reason about [t_open_bound] and its size*)
+  Transparent t_open_bound.
+  Print t_open_bound.
+
+
+
+  unfold t_open_bound in Hrun.
+  destruct b as [[v bnd] t2]. simpl in Hrun.
+  unfold runState in Hrun.
+   simpl in Hrun.
+  unfold runState in Hrun. simpl in Hrun.
+
+
+
+  simpl in Heq.
+
+
+
+Fixpoint term_traverse (tm1: term_c) (ACC: Acc lt (term_size tm1)) : T :=
+  match (t_node_of tm1) as t1 return term_node_size t1 = term_size tm1 -> _ with
+  | Tconst c => fun _ => const_case c
+  | Tvar x => fun _ => var_case x
+  | Tif t1 t2 t3 => fun Hsz =>
+    v1 <- term_traverse t1 (Acc_inv ACC (tif_size1 Hsz)) ;;
+    v2 <- term_traverse t2 (Acc_inv ACC (tif_size2 Hsz)) ;;
+    v3 <- term_traverse t3 (Acc_inv ACC (tif_size3 Hsz)) ;;
+    if_case t1 t2 t3 v1 v2 v3
+  | Tlet t1 b => fun Hsz =>
+    v1 <- term_traverse t1 _ ;;
+    (*Need dependent types here to have enough information for the proof*)
+    errst_bind_dep' (errst_tup1 (errst_lift1 (t_open_bound b)))
+      (fun y s Heq => 
+        v2 <- (term_traverse (snd y) (Acc_inv ACC _)) ;;
+        let_case t1 (fst y) (snd y)  v1 v2)
+  | _ => fun Hsz => evil tm1
+  end (eq_sym (term_size_eq tm1)).
+
+Equations term_traverse (tm1: term_c) : T by wf (term_size tm1) lt :=
+  term_traverse tm1 := term_node_traverse (t_node_of tm1) 
+with term_node_traverse (tm1: term_node) : T :=
+  term_node_traverse (Tconst c) := const_case c;
+  term_node_traverse (Tvar x) := var_case x;
+  term_node_traverse (Tif t1 t2 t3) :=
+    v1 <- term_traverse t1 ;;
+    v2 <- term_traverse t2 ;;
+    v3 <- term_traverse t3 ;;
+    if_case t1 t2 t3 v1 v2 v3;
+  term_node_traverse (Tlet t1 b) :=
+    v1 <- term_traverse t1 ;;
+    (*Need dependent types here to have enough information for the proof*)
+    st_bind_dep _ _ _ (t_open_bound b)
+      (fun y s Heq => 
+        v2 <- (term_traverse (snd y)) ;;
+        let_case t1 ((fst y), (snd b)) v1 v2).
+
+Variable (T: Type).
+Variable (const_case: forall (c: CoqBigInt.t), ctr T)
+  (var_case: forall (x: var), ctr T)
+  (op_case: forall (o: intop) (t1 t2: tm) (r1 r2: T), ctr T)
+  (mult_case: forall (t1 t2: tm) (r1 r2: T), ctr T)
+  (*NOTE: recursive case 2 on [t_open_bound] - b is the NEW variable*)
+  (let_case: forall (t1: tm) (b: tm_bound) (r1 r2: T), ctr T).
+
+Equations *)
