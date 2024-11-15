@@ -230,7 +230,8 @@ Qed.
 (*This awkward definition satisfies Coq's positivity checker
   for nested induction, unlike the normal one*)
 (*TODO: make nicer*)
-Definition map2 {A B C: Type} :=
+Definition map2 {A B C: Type} (f: A -> B -> C) := Common.map2 f.
+(* Definition map2 {A B C: Type} :=
   fun (f: A -> B -> C) =>
     fix map2 (l1: list A) : list B -> list C :=
       match l1 with
@@ -241,7 +242,7 @@ Definition map2 {A B C: Type} :=
         | nil => nil
         | x2 :: t2 => f x1 x2 :: map2 t1 t2
         end
-      end.
+      end. *)
 
 (*Unlike OCaml, this gives option, not exception*)
 (*version for nested recursion TODO improve*)
@@ -262,11 +263,13 @@ Definition fold_left2 {A B C: Type} (f: C -> A -> B -> C) :=
     | _, _ => None
     end.
 
-Definition null {A: Type} (l: list A) : bool :=
+Definition null {A: Type} (l: list A) : bool := Common.null l.
+
+(* Definition null {A: Type} (l: list A) : bool :=
   match l with
   | nil => true
   | _ => false
-  end.
+  end. *)
 
 (*Options*)
 (*One version*)

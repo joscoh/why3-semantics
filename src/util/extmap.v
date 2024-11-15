@@ -68,6 +68,8 @@ Parameter merge: (key -> option a -> option b -> option c) ->
   t a -> t b -> t c.
 Parameter union: (key -> a -> a -> option a) -> t a -> t a -> t a.
 Parameter compare: (a -> a -> CoqInt.int) -> t a -> t a -> CoqInt.int.
+(*NOTE: this is inconsistent with OCaml equality, which is really map equivalence
+  TODO: implement map equivalence (inefficiently) and separate out equalities*)
 Parameter equal: (a -> a -> bool) -> t a -> t a -> bool.
 Parameter iter: (key -> a -> unit) -> t a -> unit.
 Parameter fold: (key -> a -> b -> b) -> t a -> b -> b.
@@ -160,15 +162,107 @@ Parameter map_inj_eq: forall {A B: Type} (f: A -> B) (m1 m2: t A)
 Parameter find_opt_contains: forall {a: Type} (m: t a) (k: key),
   contains m k = isSome (find_opt k m).
 
-(*Our specifications will be in terms of [find_opt]*)
-Parameter find_opt_inter: forall {a b c: Type} (f: key -> a -> b -> option c) (m1: t a) (m2: t b)
-  (k: key) (v: c),
-  find_opt k (inter f m1 m2) = Some v <-> 
-  exists v1 v2, find_opt k m1 = Some v1 /\ find_opt k m2 = Some v2 /\ f k v1 v2 = Some v.
+(*Specifications*)
+Section Spec.
+Context {a b c: Type}.
 
-Parameter find_opt_set_inter: forall {a: Type} (m1 m2: t a) (k: key) (v: a),
-  find_opt k (set_inter m1 m2) = Some v <->
-  find_opt k m1 = Some v /\ exists v2, find_opt k m2 = Some v2.
+Parameter empty_spec: forall k, find_opt k (@empty a) = None.
+
+Parameter singleton_spec: forall (k: key) (v: a) (k1: key) (v1: a),
+  find_opt k (singleton k1 v1) =
+  if key_eq k k1 then Some v1 else None.
+
+Parameter add_spec: forall (k1: key) (v1: a) (m: t a) (k: key),
+  find_opt k (add k1 v1 m) = 
+  if key_eq k k1 then Some v1 else find_opt k m.
+
+Parameter remove_spec: forall (k: key) (v: a) (k1: key) (m: t a),
+  find_opt k (remove k1 m) = 
+  if key_eq k k1 then None else find_opt k m.
+
+(*TODO: dont use mem*)
+Parameter merge_spec: forall (f: key -> option a -> option b -> option c)
+  (*Need f to respect equality*)
+  (Hf: forall k1 k2 o1 o2, key_eq k1 k2 -> f k1 o1 o2 = f k2 o1 o2) 
+  (m1: t a) (m2: t b) k,
+  find_opt k (merge f m1 m2) = 
+    if (mem k m1 || mem k m2) then
+    f k (find_opt k m1) (find_opt k m2) 
+    else None.
+
+Parameter mem_spec: forall (k: key) (m: t a),
+  mem k m = isSome (find_opt k m).
+
+Parameter union_spec: forall (f: key -> a -> a -> option a) 
+  (Hf: forall k1 k2 a1 a2, key_eq k1 k2 -> f k1 a1 a2 = f k2 a1 a2)
+  (m1: t a) (m2: t a) k,
+  find_opt k (union f m1 m2) = 
+    match (find_opt k m1), (find_opt k m2) with
+    | Some l1, Some l2 => f k l1 l2
+    | Some l1, None => Some l1
+    | None, Some l2 => Some l2
+    | None, None => None
+    end.
+
+Parameter bindings_spec: forall (m: t a) k v,
+  find_opt k m = Some v <-> exists k1, key_eq k k1 /\ In (k1, v) (bindings m).
+
+Parameter filter_spec: forall (f: key -> a -> bool) 
+  (Hf: forall k1 k2 a, key_eq k1 k2 -> f k1 a = f k2 a) 
+  (m: t a) k v,
+  find_opt k (filter f m) = Some v <-> find_opt k m = Some v /\ f k v.
+
+Parameter mapi_spec: forall (f: key -> a -> b) 
+  (Hf: forall k1 k2 a, key_eq k1 k2 -> f k1 a = f k2 a) 
+  (m: t a) k v,
+  find_opt k (mapi f m) = Some v <-> 
+  exists k1 v1, key_eq k k1 /\ find_opt k1 m = Some v1 /\ f k1 v1 = v.
+
+Parameter map_spec: forall (f: a -> b) (m: t a) k v,
+  find_opt k (map f m) = Some v <-> 
+  exists k1 v1, key_eq k k1 /\ find_opt k1 m = Some v1 /\ f v1 = v.
+
+Parameter inter_spec: forall (f: key -> a -> b -> option c) 
+  (Hf: forall k1 k2 a b, key_eq k1 k2 -> f k1 a b = f k2 a b) 
+  (m1: t a) (m2: t b) k,
+  find_opt k (inter f m1 m2) =
+  match find_opt k m1, find_opt k m2 with
+  | Some v1, Some v2 => f k v1 v2
+  | _, _ => None
+  end.
+
+Parameter diff_spec: forall (f: key -> a -> b -> option a) 
+  (Hf: forall k1 k2 a b, key_eq k1 k2 -> f k1 a b = f k2 a b) 
+  (m1: t a) (m2: t b) k,
+  find_opt k (diff f m1 m2) =
+  match find_opt k m1, find_opt k m2 with
+  | Some v1, Some v2 => f k v1 v2
+  | Some v1, None => Some v1
+  | _, _ => None
+  end.
+
+Parameter set_union_spec: forall (m1 : t a) (m2 : t a) k,
+  find_opt k (set_union m1 m2) = 
+  match (find_opt k m1) with
+  | Some v => Some v
+  | None => find_opt k m2
+  end.
+
+Parameter set_inter_spec: forall (m1: t a) (m2: t b) k,
+  find_opt k (set_inter m1 m2) =
+  match find_opt k m1, find_opt k m2 with
+  | Some v1, Some v2 => Some v1
+  | _, _ => None
+  end.
+
+Parameter set_diff_spec: forall (m1: t a) (m2: t b) k,
+  find_opt k (set_diff m1 m2) =
+  match find_opt k m1, find_opt k m2 with
+  | Some v1, None => Some v1
+  | _, _ => None
+  end.
+
+End Spec.
 
 End S.
 
@@ -455,7 +549,24 @@ Proof.
   - apply find_none_iff. intros x. rewrite andb_false_r. auto.
 Qed. 
 
-Lemma get_list_remove {A: Type} (k: key) (l: list (key * A)) k1 v1:
+Lemma get_list_remove {A: Type} (k: key) (l: list (key * A)) k1:
+  get_list k1 (remove_list k l) = 
+  if T.equal k1 k then None else get_list k1 l.
+Proof.
+  unfold remove_list, get_list. rewrite find_filter.
+  rewrite (find_ext _ (fun x => T.equal k1 x.1 && negb (T.equal k1 k))).
+  2: {
+    intros x. destruct (T.equal k1 x.1) eqn : Heq; simpl; auto.
+    destruct (T.equal k x.1) eqn : Heq1;
+    destruct (T.equal k1 k) eqn : Heq2; simpl; auto.
+    - rewrite <- Heq2. apply (T.eq_trans k1 x.1 k); auto. rewrite T.eq_sym; auto.
+    - rewrite <- Heq1. symmetry. apply (T.eq_trans k k1 x.1); auto. rewrite T.eq_sym; auto.
+  }
+  rewrite find_const_r.
+  destruct (T.equal k1 k) eqn : Hkk1; auto.
+Qed.
+
+(* Lemma get_list_remove {A: Type} (k: key) (l: list (key * A)) k1 v1:
   get_list k1 (remove_list k l) = Some v1 <->
   get_list k1 l = Some v1 /\ negb (T.equal k1 k).
 Proof.
@@ -470,7 +581,7 @@ Proof.
   }
   rewrite find_const_r.
   destruct (T.equal k1 k) eqn : Hkk1; simpl; split; intros; destruct_all; auto; discriminate.
-Qed.
+Qed. *)
 
 (*TODO: move*)
 Lemma sublist_Forall {A: Type} (P: A -> Prop) (l1 l2: list A):
@@ -488,9 +599,13 @@ Definition find_opt {A: Type} (k: key) (m: t A) : option A :=
   | Some l => get_list k l
   end.
 
-(*TODO: fix: also search for key*)
 Definition mem {A: Type} (k: key) (m: t A) : bool :=
   isSome (find_opt k m).
+
+Lemma mem_spec: forall (k: key) (m: t a),
+  mem k m = isSome (find_opt k m).
+Proof. reflexivity. Qed.
+
 
 (*Invariant: only one occurence of key at a time*)
 Definition add_aux {A: Type} (k: key) (v: A) (m: t A) : Zmap (list (key * A)):=
@@ -536,27 +651,24 @@ Definition add {a: Type} (k: key) (v: a) (m: t a) : t a :=
   build_wf (add_wf k v m).
 
 (*And the spec*)
-Lemma add_spec {A: Type} (k1: key) (v1: A) (m: t A) (k: key) (v: A):
-  find_opt k (add k1 v1 m) = Some v <->
-  (T.equal k k1 /\ v = v1) \/ (negb (T.equal k k1) /\ find_opt k m = Some v).
+Lemma add_spec {A: Type} (k1: key) (v1: A) (m: t A) (k: key):
+  find_opt k (add k1 v1 m) = 
+  if T.equal k k1 then Some v1 else find_opt k m.
 Proof.
-  unfold find_opt, add. simpl.
-  unfold add_aux.
+  unfold find_opt, add, add_aux. simpl.
   destruct m as [m m_wf]; simpl.
   destruct (Z.eq_dec (tag k1) (tag k)) as [Heqk | Heqk].
   - rewrite Heqk, lookup_insert, get_list_cons. simpl.
     destruct (T.equal k k1) eqn : Hkk1.
-    { split; intros; destruct_all; subst; auto; try discriminate. inversion H; auto. }
+    { split; intros; destruct_all; subst; auto; try discriminate. }
     destruct (m !! tag k) as [l1|] eqn : Hk. 
     2: { rewrite get_list_nil. split; intros; destruct_all; discriminate. }
-    rewrite get_list_remove. rewrite Hkk1. simpl.
-    split; intros; destruct_all; auto; discriminate.
+    rewrite get_list_remove. rewrite Hkk1. reflexivity. 
   - rewrite lookup_insert_ne; auto.
     destruct (T.equal k k1) eqn : Hkk1.
     { apply T.eq_compat in Hkk1. unfold tag in Heqk. rewrite Hkk1 in Heqk.
       contradiction. }
-    simpl.
-    destruct (m !! tag k) as [l1 |] eqn : Hk; split; intros; destruct_all; auto; discriminate.
+    reflexivity.
 Qed.
 
 Lemma singleton_wf (k: key) (v: a): gmap_wf {[tag k:=[(k, v)]]}.
@@ -570,15 +682,14 @@ Definition singleton (k: key) (v: a) : t a :=
   build_wf (singleton_wf k v).
 
 Lemma singleton_spec (k: key) (v: a) (k1: key) (v1: a) :
-  find_opt k (singleton k1 v1) = Some v <-> T.equal k k1 /\ v = v1.
+  find_opt k (singleton k1 v1) =
+  if T.equal k k1 then Some v1 else None.
 Proof.
   unfold singleton, find_opt. simpl. 
   destruct (Z.eq_dec (tag k) (tag k1)) as [Htag | Htag].
-  - rewrite Htag, lookup_singleton, get_list_cons, get_list_nil; simpl.
-    destruct (T.equal k k1); split; intros; destruct_all; subst; auto; try discriminate.
-    inversion H; auto.
-  - rewrite lookup_singleton_ne; auto. split; [discriminate|].
-    intros [Heq Hv].
+  - rewrite Htag, lookup_singleton, get_list_cons, get_list_nil; reflexivity.
+  - rewrite lookup_singleton_ne; auto.
+    destruct (T.equal k k1) eqn : Heq; auto.
     apply T.eq_compat in Heq. unfold tag in Htag. rewrite Heq in Htag. contradiction.
 Qed.
 
@@ -586,7 +697,7 @@ Definition remove_aux {A: Type} (k: key) (m: t A) : Zmap (list (key * A)) :=
   match (mp m) !! tag k with
   | None => mp m
   | Some l => let l1 := remove_list k l in
-    if null l1 then delete (tag k) (mp m) else <[tag k := l1]> (mp m)
+    if Common.null l1 then delete (tag k) (mp m) else <[tag k := l1]> (mp m)
   end.
 
 Lemma null_false {A: Type} (l: list A):
@@ -599,7 +710,7 @@ Proof.
   apply gmap_wf_iff. unfold remove_aux.
   destruct m as [m m_wf]; simpl.
   destruct (m !! tag k) eqn : Hk; [| apply gmap_wf_iff; auto].
-  destruct (null (remove_list k l)) eqn : Hrem.
+  destruct (Common.null (remove_list k l)) eqn : Hrem.
   - apply map_Forall_delete, gmap_wf_iff. auto.
   - apply map_Forall_insert_2; [| apply gmap_wf_iff; auto].
     split; [apply null_false; auto |].
@@ -615,33 +726,33 @@ Qed.
 Definition remove (k: key) (m: t a) : t a :=
   build_wf (remove_wf k m).
 
+Lemma contra_b {b1: bool} (Hb: b1 = false) : ~ b1.
+Proof. subst. auto. Qed.
+
 (*The spec*)
 Lemma remove_spec (k: key) (v: a) (k1: key) (m: t a) :
-  find_opt k (remove k1 m) = Some v <->
-  (*TODO: equal false or negb?*)
-  negb (T.equal k k1) /\ find_opt k m = Some v.
+  find_opt k (remove k1 m) = 
+  if T.equal k k1 then None else find_opt k m.
 Proof.
-  unfold remove, find_opt; simpl.
-  destruct m as [m m_wf]; auto.
-  unfold remove_aux; simpl. unfold key in *.
+  unfold remove, find_opt, remove_aux; simpl.
+  destruct m as [m m_wf]; auto. simpl.
   destruct (Z.eq_dec (tag k) (tag k1)) as [Htag | Htag].
   - rewrite Htag. destruct (m !! tag k1) as [l1|] eqn : Hmk1.
-    2: { rewrite Hmk1. split; intros; destruct_all; discriminate. }
-    destruct (null (remove_list k1 l1)) eqn : Hnull.
-    + unfold key in *. rewrite Hnull.
-      rewrite lookup_delete. split; [discriminate|].
-      intros [Hneq Hget].
-      assert (Hrem: get_list k (remove_list k1 l1) = Some v) by
-        (apply get_list_remove; auto).
-      apply null_nil in Hnull. rewrite Hnull, get_list_nil in Hrem. discriminate.
-    + unfold key in *; rewrite Hnull.
-      rewrite lookup_insert, get_list_remove. apply and_comm.
+    2: { rewrite Hmk1. destruct (T.equal k k1); auto. }
+    destruct (Common.null (remove_list k1 l1)) eqn : Hnull.
+    + rewrite lookup_delete.
+      destruct (T.equal k k1) eqn : Heq; auto.
+      assert (Hrem: get_list k (remove_list k1 l1) = None). {
+        rewrite fold_is_true, null_nil in Hnull.
+        rewrite Hnull, get_list_nil. auto.
+      }
+      rewrite get_list_remove in Hrem. rewrite Heq in Hrem. auto.
+    + rewrite lookup_insert, get_list_remove. reflexivity.
   - destruct (T.equal k k1) eqn : Heq.
     1: { apply T.eq_compat in Heq. unfold tag in Htag; rewrite Heq in Htag; contradiction. }
-    simpl.
     (*Bunch of cases*)
     destruct (m !! tag k1) as [l1 |] eqn : Hmk1.
-    + destruct (null (remove_list k1 l1)) eqn : Hnull; unfold key in *; rewrite Hnull;
+    + destruct (Common.null (remove_list k1 l1)) eqn : Hnull; 
       [rewrite lookup_delete_ne | rewrite lookup_insert_ne]; auto; split; intros;
       destruct_all; auto.
     + split; intros; destruct_all; auto.
@@ -802,9 +913,6 @@ Qed.
   
   *)
 
-Lemma contra_b {b1: bool} (Hb: b1 = false) : ~ b1.
-Proof. subst. auto. Qed.
-
 Lemma get_list_in_iff {A: Type} (k: key) (v: A) (l: list (key * A)):
   uniq T.equal (map fst l) ->
   get_list k l = Some v <-> exists k1, T.equal k k1 /\ In (k1, v) l.
@@ -957,9 +1065,9 @@ Proof.
   - apply T.eq_trans.
 Qed.
 (* Check gmap_wf_iff.*)
-Lemma map_get_wf {A: Type} {m: Zmap (list (key * A))} {k: key} {l1}
-  (Hwf: gmap_wf m) (Hin: m !! tag k = Some l1):
-  l1 <> nil /\ uniq T.equal (map fst l1) /\ Forall (fun x => tag k = tag x.1) l1.
+Lemma map_get_wf {A: Type} {m: Zmap (list (key * A))} {k: Z} {l1}
+  (Hwf: gmap_wf m) (Hin: m !! k = Some l1):
+  l1 <> nil /\ uniq T.equal (map fst l1) /\ Forall (fun x => k = tag x.1) l1.
 Proof.
   apply gmap_wf_iff in Hwf. rewrite map_Forall_lookup in Hwf.
   apply Hwf; auto.
@@ -1194,8 +1302,61 @@ Definition union (f: key -> a -> a -> option a) (m1: t a) (m2: t a):
     | Some v1, Some v2 => f k v1 v2
     end) m1 m2.
 
+(*Now the spec is easier*)
+Lemma union_spec (f: key -> a -> a -> option a) (Hf: forall k1 k2 a1 a2, 
+  T.equal k1 k2 -> f k1 a1 a2 = f k2 a1 a2)
+  (m1: t a) (m2: t a) k:
+  find_opt k (union f m1 m2) = 
+    match (find_opt k m1), (find_opt k m2) with
+    | Some l1, Some l2 => f k l1 l2
+    | Some l1, None => Some l1
+    | None, Some l2 => Some l2
+    | None, None => None
+    end.
+Proof.
+  unfold union. rewrite merge_spec; auto.
+  unfold mem.
+  destruct (find_opt k m1) as [l1|]; destruct (find_opt k m2) as [l2|]; auto.
+  intros k1 k2 o1 o2 Heq.
+  destruct o1; destruct o2; auto.
+Qed.
+
+(*Bindings is a bit more difficult:need to concat all bindings*)
+
 Definition bindings {a: Type} (m: t a) : list (key * a) :=
-  (map snd (map_to_list (mp m))).
+  (concat (map snd (map_to_list (mp m)))).
+
+(*Not directly - everything in bindings is find_opt - modulo equality*)
+Lemma bindings_spec (m: t a) k v:
+  find_opt k m = Some v <-> exists k1, T.equal k k1 /\ In (k1, v) (bindings m).
+Proof.
+  unfold bindings. setoid_rewrite in_concat. unfold find_opt.
+  setoid_rewrite in_map_iff. setoid_rewrite <- elem_of_list_In.
+  destruct m  as [m m_wf]; simpl.
+  split.
+  - destruct (m !! tag k) as [l1|] eqn : Hlookup; [|discriminate].
+    intros Hget.
+    pose proof (map_get_wf m_wf Hlookup) as [Hlnull [Huniql Hall]].
+    apply get_list_in_iff in Hget; auto.
+    destruct Hget as [k1 [Heq Hink1]].
+    exists k1. split; auto. 
+    exists l1. split.
+    + exists (tag k, l1). split; auto.
+      apply elem_of_map_to_list. auto.
+    + apply elem_of_list_In; auto.
+  - intros [k1 [Heq [l [[[k2 v2] [Hl Hinkv2]] Hinkv]]]]; simpl in *; subst.
+    apply elem_of_map_to_list in Hinkv2.
+    apply elem_of_list_In in Hinkv.
+    pose proof (map_get_wf m_wf Hinkv2) as [Hlnull [Huniql Hall]].
+    assert (Htag: k2 = tag k1). {
+      rewrite List.Forall_forall in Hall. apply Hall in Hinkv.
+      auto.
+    }
+    subst.
+    assert (Htag: tag k = tag k1) by (unfold tag; rewrite (T.eq_compat k k1); auto). 
+    rewrite Htag, Hinkv2.
+    apply get_list_in_iff; auto. exists k1. auto.
+Qed.
 
 (*Comparison*)
 (*We do this very inefficiently for now: make list, sort by key (positive),
@@ -1230,13 +1391,13 @@ Definition max_binding (m: t a) : errorM (key * a) :=
   end.
 
 Definition equal {a: Type} (eqa: a -> a -> bool) (m1: t a) (m2 : t a) : bool :=
-  zmap_eqb (tuple_eqb T.equal eqa) (mp m1) (mp m2). 
+  zmap_eqb (list_eqb (tuple_eqb T.equal eqa)) (mp m1) (mp m2). 
 
 (*Ignore positive argument in fold because invariant that
   always encode (fst x) = p*)
 Definition fold {a b: Type} (f: key -> a -> b -> b) (m: t a) (base: b) : b :=
-  Zmap_fold _ (fun (z: Z) (x: key * a) (y: b) =>
-    f (fst x) (snd x) y) base (mp m).
+  Zmap_fold _ (fun (z: Z) (x: list (key * a)) (y: b) =>
+    fold_right (fun (y: key * a) acc => f (fst y) (snd y) acc) y x) base (mp m).
 
 (*The next few are easy in terms of fold*)
 Definition iter (f: key -> a -> unit) (m: t a): unit :=
@@ -1255,6 +1416,29 @@ Definition filter (f: key -> a -> bool) (m: t a) : t a :=
                         | Some v => if f k v then Some v else None
                         | None => None
                         end) m (@empty a). 
+
+(*TODO: move*)
+Lemma empty_spec {A: Type} k :
+  find_opt k (@empty A) = None.
+Proof.
+  unfold empty, find_opt. simpl.
+  unfold lookup, Zmap_lookup, Zmap_empty. simpl. destruct (tag k); auto.
+Qed. 
+
+Lemma filter_spec (f: key -> a -> bool) (Hf: forall k1 k2 a, T.equal k1 k2 -> f k1 a = f k2 a) 
+  (m: t a) k v:
+  find_opt k (filter f m) = Some v <-> find_opt k m = Some v /\ f k v.
+Proof.
+  unfold filter.
+  rewrite merge_spec.
+  - unfold mem. rewrite empty_spec, orb_false_r.
+    destruct (find_opt k m) as [l1|] eqn : Hfind; simpl; [| split; intros; destruct_all; discriminate].
+    split.
+    + destruct (f k l1) eqn : Hfeq; [|discriminate]. intros Hsome; inversion Hsome; subst; auto.
+    + intros [Hl1 Hfeq]; subst. inversion Hl1; subst. rewrite Hfeq. reflexivity.
+  - intros k1 k2 o1 _ Heq. destruct o1; auto. rewrite (Hf k1 k2); auto.
+Qed.
+
 
 (*Inefficient partition*)
 Definition partition (f: key -> a -> bool) (m: t a) : (t a * t a) :=
@@ -1279,53 +1463,102 @@ Fixpoint choose_aux {A} (t : Pmap_ne A) : A :=
   | PNode111 l x r => x
   end.
 
+(*TODO: unsure about this, should prove that it succeeds on nonempty map*)
 Definition choose (m: t a) : errorM (key * a) :=
   match Zmap_neg (mp m), Zmap_0 (mp m), Zmap_pos (mp m) with
-  | PNodes n, _, _ => err_ret (choose_aux n)
-  | _, Some t, _ => err_ret t
-  | _, _, PNodes n => err_ret (choose_aux n)
+  | PNodes n, _, _ => 
+    match (choose_aux n) with
+    | x :: _ => err_ret x
+    | nil => throw Not_found (*can't happen by typing*)
+    end
+  | _, Some [t], _ => err_ret t
+  | _, _, PNodes n => 
+    match (choose_aux n) with
+    | x :: _ => err_ret x
+    | nil => throw Not_found (*can't happen by typing*)
+    end
   | _, _, _ => throw Not_found
   end.
 
 Definition find (k: key) (m: t a) : errorM a :=
-  match (mp m )!! tag k with
+  match (find_opt k m) with
   | None => throw Not_found
-  | Some v => err_ret (snd v)
+  | Some v => err_ret v
   end.
 
+(*TODO: START*)
+Definition mapi_aux {A B: Type} (f: key -> A -> B) (m: t A) : Zmap (list (key * B)) :=
+  fmap (fun (x: list (key * A)) => map (fun y => (fst y, f (fst y) (snd y))) x) (mp m).
+
 Lemma mapi_wf {A B: Type} (f: key -> A -> B) (m: t A) :
-  gmap_wf (fmap (fun x => (fst x, f (fst x) (snd x))) (mp m)).
+  gmap_wf (mapi_aux f m).
 Proof.
+  unfold mapi_aux.
   apply gmap_wf_iff.
   apply map_Forall_fmap.
   unfold map_Forall.
   intros k v Hkv. simpl.
-  destruct m as [m m_wf]. simpl in *.
-  apply gmap_wf_iff in m_wf.
-  apply m_wf in Hkv. auto.
+  destruct m as [m m_wf]; simpl in *.
+  rewrite gmap_wf_iff in m_wf.
+  apply m_wf in Hkv.
+  destruct Hkv as [Hnull [Huniq Hall]].
+  split; [intros Hmap; apply map_eq_nil in Hmap; subst; contradiction |].
+  rewrite map_map. simpl. split; auto.
+  rewrite Forall_map. simpl. auto.
 Qed.
 
-Definition map {a b: Type} (f: a -> b) (m: t a) : t b :=
-  build_wf (mapi_wf (fun _ x => f x) m).
-
-Definition mapi (f: key -> a -> b) (m: t a) : t b :=
+Definition mapi {a b: Type} (f: key -> a -> b) (m: t a) : t b :=
   build_wf (mapi_wf f m).
 
-(*Not particularly efficient*)
-Definition change_wf (f: option a -> option a) (k: key) (m: t a):
-  gmap_wf  match (f (option_map snd ((mp m) !! tag k))) with
-  | None => mp m
-  | Some v => <[tag k := (k, v)]>(mp m)
-  end.
+Definition map {a b: Type} (f: a -> b) (m: t a) : t b :=
+  mapi (fun _ => f) m.
+
+Lemma mapi_spec {A B: Type} (f: key -> A -> B) (Hf: forall k1 k2 a, T.equal k1 k2 -> f k1 a = f k2 a) 
+  (m: t A) k v:
+  find_opt k (mapi f m) = Some v <-> 
+  exists k1 v1, T.equal k k1 /\ find_opt k1 m = Some v1 /\ f k1 v1 = v.
 Proof.
-  destruct f.
-  - apply gmap_wf_iff, map_Forall_insert_2; auto.
-    destruct m; apply gmap_wf_iff; auto.
-  - destruct m; auto.
+  unfold mapi, find_opt, mapi_aux; simpl.
+  rewrite lookup_fmap.
+  destruct m as [m m_wf]; simpl.
+  destruct (m !! tag k) as [l|] eqn : Hlookup; simpl.
+  - pose proof (map_get_wf m_wf Hlookup) as [Hnotnull [Huniq Hall]].
+    rewrite get_list_in_iff; [| rewrite map_map; auto].
+    setoid_rewrite in_map_iff. 
+    split.
+    + intros [k1 [Heq [kv [Hkv Hin]]]]. inversion Hkv; subst; clear Hkv.
+      exists kv.1. exists kv.2. split_all; auto.
+      replace (tag kv.1) with (tag k); [| unfold tag; rewrite (T.eq_compat k kv.1); auto].
+      rewrite Hlookup. apply get_list_in_iff; auto. exists kv.1. rewrite T.eq_refl. destruct kv; auto.
+    + intros [k1 [v1 [Heq [Hget Hfeq]]]].
+      replace (tag k1) with (tag k) in Hget by (unfold tag; rewrite (T.eq_compat k k1); auto).
+      rewrite Hlookup in Hget. subst.
+      apply get_list_in_iff in Hget; auto.
+      destruct Hget as [k2 [Heq2 Hink2]].
+      exists k2. split; [apply (T.eq_trans k k1 k2); auto |].
+      exists (k2, v1); split; auto. simpl. f_equal. apply Hf; auto.
+      rewrite T.eq_sym; auto.
+  - split; [discriminate|].
+    intros [k1 [v1 [Heq [Hget Hfeq]]]]; subst.
+    replace (tag k1) with (tag k) in Hget by (unfold tag; rewrite (T.eq_compat k k1); auto).
+    rewrite Hlookup in Hget. discriminate.
 Qed.
 
+Lemma map_spec (f: a -> b) (m: t a) k v:
+  find_opt k (map f m) = Some v <-> 
+  exists k1 v1, T.equal k k1 /\ find_opt k1 m = Some v1 /\ f v1 = v.
+Proof.
+  unfold map. rewrite mapi_spec; auto.
+Qed.
+
+
+(*Not particularly efficient*)
+(*From the spec directly*)
 Definition change (f: option a -> option a) (k: key) (m: t a) : t a :=
-  build_wf (change_wf f k m).
+  match f (find_opt k m) with
+  | None => m
+  | Some v => add k v m
+  end.
 
 Definition inter {a b c: Type} (f: key -> a -> b -> option c) 
   (m1: t a) (m2: t b) : t c :=
@@ -1335,7 +1568,21 @@ Definition inter {a b c: Type} (f: key -> a -> b -> option c)
     | _, _ => None
     end) m1 m2.
 
-Definition diff (f: key -> a -> b -> option a) (m1: t a) (m2: t b) : t a :=
+Lemma inter_spec {A B C: Type} (f: key -> A -> B -> option C) 
+  (Hf: forall k1 k2 a b, T.equal k1 k2 -> f k1 a b = f k2 a b) 
+  (m1: t A) (m2: t B) k:
+  find_opt k (inter f m1 m2) =
+  match find_opt k m1, find_opt k m2 with
+  | Some v1, Some v2 => f k v1 v2
+  | _, _ => None
+  end.
+Proof.
+  unfold inter. rewrite merge_spec; auto.
+  - unfold mem. destruct (find_opt k m1); destruct (find_opt k m2); auto.
+  - intros k1 k2 o1 o2 Heq. destruct o1; destruct o2; auto.
+Qed. 
+
+Definition diff {a b} (f: key -> a -> b -> option a) (m1: t a) (m2: t b) : t a :=
   merge (fun k o1 o2 =>
     match o1, o2 with
     | Some v1, Some v2 => f k v1 v2
@@ -1343,13 +1590,30 @@ Definition diff (f: key -> a -> b -> option a) (m1: t a) (m2: t b) : t a :=
     end
   ) m1 m2.
 
+Lemma diff_spec {A B: Type} (f: key -> A -> B -> option A) 
+  (Hf: forall k1 k2 a b, T.equal k1 k2 -> f k1 a b = f k2 a b) 
+  (m1: t A) (m2: t B) k:
+  find_opt k (diff f m1 m2) =
+  match find_opt k m1, find_opt k m2 with
+  | Some v1, Some v2 => f k v1 v2
+  | Some v1, None => Some v1
+  | _, _ => None
+  end.
+Proof.
+  unfold diff. rewrite merge_spec.
+  - unfold mem. destruct (find_opt k m1); destruct (find_opt k m2); auto.
+  - intros k1 k2 o1 o2 Heq. destruct o1; destruct o2; auto.
+Qed.
+
 (*need that all keys in m1 in m2 and f holds for each such binding*)
 (*1 way to implement this: take difference m1 \ m2 and remove all common
   keys that satisfy f, then see if the resulting map is empty*)
+(*TODO: spec*)
 Definition submap (f: key -> a -> b -> bool) (m1 : t a) (m2: t b) : bool :=
   is_empty (diff (fun k v1 v2 => if f k v1 v2 then None else Some v1) m1 m2).
 
 (*For every common key in m1 and m2, f holds*)
+(*TODO: spec*)
 Definition disjoint (f: key -> a -> b -> bool) (m1: t a) (m2: t b) : bool :=
   is_empty (merge (fun k o1 o2 =>
     match o1, o2 with
@@ -1379,6 +1643,38 @@ Definition set_disjoint (m1: t a) (m2: t b) : bool :=
 Definition set_compare (m1: t a) (m2: t b) : CoqInt.int :=
   compare_aux (fun _ _ => CoqInt.zero) m1 m2.
 
+(*Specs (partial)*)
+Lemma set_union_spec (m1 : t a) (m2 : t a) k:
+  find_opt k (set_union m1 m2) = 
+  match (find_opt k m1) with
+  | Some v => Some v
+  | None => find_opt k m2
+  end.
+Proof.
+  unfold set_union. rewrite union_spec; auto.
+  destruct (find_opt k m1); destruct (find_opt k m2); auto.
+Qed.
+
+Lemma set_inter_spec (m1: t a) (m2: t b) k:
+  find_opt k (set_inter m1 m2) =
+  match find_opt k m1, find_opt k m2 with
+  | Some v1, Some v2 => Some v1
+  | _, _ => None
+  end.
+Proof.
+  unfold set_inter. rewrite inter_spec; auto.
+Qed.
+
+Lemma set_diff_spec (m1: t a) (m2: t b) k:
+  find_opt k (set_diff m1 m2) =
+  match find_opt k m1, find_opt k m2 with
+  | Some v1, None => Some v1
+  | _, _ => None
+  end.
+Proof.
+  unfold set_diff. rewrite diff_spec; auto.
+Qed.
+
 (*This is not particularly efficient, but we use the
   canonicity property to say that if the key lists are equal,
   so are the sets*)
@@ -1389,23 +1685,22 @@ Definition set_equal (m1: t a) (m2: t b) : bool :=
 (*Variants of find*)
 
 Definition find_def (d: a) (k: key) (m: t a) : a :=
-  match (mp m) !! tag k with
+  match find_opt k m with
+  | Some v => v
   | None => d
-  | Some v => snd v
   end.
-
-Definition find_opt (k: key) (m: t a) : option a :=
-  option_map snd ((mp m) !! tag k).
 
 (*NOTE: this is potentially NOT sound! User can pass in
   any exception into OCaml code. Don't think this causes
   any problems though, because exception is just thrown
   and we don't reason about exceptions*)
 Definition find_exn (e: errtype) (k: key) (m: t a) : errorM a :=
-  match (mp m) !! tag k with
+  match find_opt k m with
   | None => throw e
-  | Some v => err_ret (snd v)
+  | Some v => err_ret v
   end.
+
+(*TODO: do more specs later*)
 
 Definition map_filter (p: a -> option b) (m: t a) : t b :=
   merge (fun k o1 _ =>
@@ -1505,16 +1800,17 @@ Definition is_num_elt (p: CoqBigInt.t) (m: t a) : bool :=
 
 End Types.
 
-Lemma equal_spec: forall {a: Type} (eqb : a -> a -> bool) 
+(*Not proving this - no longer canonical*)
+(* Lemma equal_spec: forall {a: Type} (eqb : a -> a -> bool) 
   (Heqb: forall (x y: a), x = y <-> eqb x y = true)
   (Heq1: forall x y, x = y <-> T.equal x y = true)
   (tag_inj: Inj eq eq T.tag) (m1 m2: t a),
-  equal eqb m1 m2 <-> (forall k, find_opt _ k m1 = find_opt _ k m2).
+  equal eqb m1 m2 <-> (forall k, find_opt k m1 = find_opt k m2).
 Proof.
   intros.
   unfold equal.
   assert (Htupeq: forall x y, x = y <-> 
-    tuple_eqb T.equal eqb x y = true) by (apply tuple_eqb_spec; auto).
+    list_eqb (tuple_eqb T.equal eqb) x y = true) by (apply list_eqb_eq, tuple_eqb_spec; auto).
   rewrite zmap_eqb_spec with (Heqb := Htupeq).
   destruct Zmap_eq_dec as [Heq | Hneq]; simpl; subst; auto; split; auto;
   try discriminate.
@@ -1559,7 +1855,7 @@ Proof.
     exfalso.
     apply Hneq.
     apply map_eq. auto.
-Qed.
+Qed. *)
 
 (*Canonicity is not necessarily a requirement of all maps,
   but in our case, we need to know that equal (which denotes if the
@@ -1571,7 +1867,7 @@ Lemma eqb_eq: forall {a: Type} (eqb: a -> a -> bool)
 Proof.
   intros. unfold equal.
   assert (Htupeq: forall x y, x = y <-> 
-  tuple_eqb T.equal eqb x y = true) by (apply tuple_eqb_spec; auto).
+  list_eqb (tuple_eqb T.equal eqb) x y = true) by (apply list_eqb_eq, tuple_eqb_spec; auto).
   rewrite zmap_eqb_spec with (Heqb := Htupeq).
   destruct (Zmap_eq_dec); simpl; subst; split; intros; subst; auto;
   try discriminate.
@@ -1602,10 +1898,12 @@ Proof.
   destruct m2 as [m2 m2_wf];
   simpl in *.
   assert (m1 = m2). {
-    revert Heq.
-    apply map_fmap_inj.
-    intros [k1 v1] [k2 v2] Heq; simpl in *; inversion Heq; subst.
-    f_equal. apply f_inj; auto.
+    revert Heq. unfold mapi_aux.
+    apply map_fmap_inj. intros l1 l2.
+    revert l2. induction l1 as [| [k1 v1] t1 IH]; simpl; auto; intros [| [k2 v2] t2]; simpl; auto; 
+    try discriminate.
+    intros Heq; injection Heq; clear Heq. intros Hmap Hfeq Hk. subst.
+    f_equal; auto. f_equal; auto.
   }
   subst. f_equal. apply bool_irrelevance.
 Qed.
@@ -1635,7 +1933,7 @@ Proof.
 Qed.*)
 
 Lemma find_opt_contains: forall {a: Type} (m: t a) (k: key),
-  contains _ m k = isSome (find_opt _ k m).
+  contains _ m k = isSome (find_opt k m).
 Proof.
   intros. unfold contains, mem, find_opt, isSome, option_map.
   destruct (mp m !! tag k); auto.
@@ -1701,64 +1999,5 @@ Definition next_ge_enum {A: Type} (k: key) (e: enumeration A) : enumeration A :=
 
 Definition start_ge_enum {A: Type} (k: key) (m: t A) : enumeration A :=
   next_ge_enum k (start_enum m).
-
-Definition test := 0%nat.
-
-
-(*Lemmas*)
-
-(*Need merge spec*)
-
-Lemma merge_spec: forall {a b c: Type} (f: key -> option a -> option b -> option c) (m1: t a) (m2: t b)
-  (k: key),
-  find_opt _ k (merge f m1 m2) = f k (find_opt _ k m1) (find_opt _ k m2).
-Proof.
-  intros a b c f m1 m2 k.
-  unfold merge, find_opt. simpl.
-  unfold merge_aux.
-  destruct m1 as [m1 m1_wf]; destruct m2 as [m2 m2_wf]; simpl.
-  rewrite lookup_merge.
-  unfold diag_None.
-  destruct (m1 !! tag k) as [[k1 v1] |] eqn : Hm1k; simpl.
-  - assert (Htag: tag k = tag k1). {
-      apply gmap_wf_iff in m1_wf.
-      eapply map_Forall_lookup_1 in m1_wf. 2: apply Hm1k. auto.
-   }
-   destruct (m2 !! tag k) as [[k2 v2] |] eqn : Hm2k; simpl.
-    + unfold option_map; simpl. destruct (f k (Some v1) (Some v2)) eqn : Hf; simpl.
-
-   unfold option_map.  simpl. 
-  
-   simpl.
-  rewrite zmap.Zmap_lookup_merge.
-  unfold base.merge.
-  Search Zmap_merge.
-  rewrite (pmap.Pmap_lookup_merge _ m1 m2 (tag k)).
-  
-   Search base.merge. Locate base.merge.
-
-
-  pmap.Pmap_lookup_merge:
-  ∀ {A B C : Type} (f : option A → option B → option C) 
-    (mt1 : Pmap A) (mt2 : Pmap B) (i : positive),
-    base.merge f mt1 mt2 !! i = diag_None f (mt1 !! i) (mt2 !! i)
-  
-  
-  . base.merge. simpl.
-
-  unfold find_opt.
-   = Some v
-
-Lemma find_opt_inter: forall {a b c: Type} (f: key -> a -> b -> option c) (m1: t a) (m2: t b)
-  (k: key) (v: c),
-  find_opt _ k (inter f m1 m2) = Some v <-> 
-  exists v1 v2, find_opt _ k m1 = Some v1 /\ find_opt _ k m2 = Some v2 /\ f k v1 v2 = Some v.
-Proof.
-  intros a b c f m1 m2 k v.
-  unfold inter.
-
-Parameter find_opt_set_inter: forall {a: Type} (m1 m2: t a) (k: key) (v: a),
-  find_opt k (set_inter m1 m2) = Some v <->
-  find_opt k m1 = Some v /\ exists v2, find_opt k m2 = Some v2.
 
 End Make.

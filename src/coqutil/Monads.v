@@ -119,8 +119,6 @@ Definition errst_list {K A: Type} (l: list (errState K A)) :
   errState K (list A) :=
   listM errst_ret errst_bind l.
 
-Print eitherT.
-
 Definition dep_fst {A B: Type} (x: A * B) : {a : A | a = fst x} :=
   exist _ (fst x) eq_refl.
 
@@ -129,8 +127,6 @@ Definition unwrap_eitherT {T: Type} {m: Type -> Type} {A: Type} (x: eitherT T m 
 
 Definition run_errState {A B: Type} (x: errState A B) (a: A):
   (errtype + B) * A := runState (unwrap_eitherT x) a.
-
-Search inr.
 
 (*Dependent version for termination proofs*)
 (*First version with tactics*)

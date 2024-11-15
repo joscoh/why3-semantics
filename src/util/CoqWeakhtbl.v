@@ -23,4 +23,6 @@ Module Type Weakey.
 Parameter t : Type.
 Parameter tag : t -> tag.
 Parameter equal: t -> t -> bool. (*JOSH ADDED*)
+(*JOSH: TODO make sure safe*)
+Parameter equal_eq : forall x y, x = y <-> equal x y = true.
 End Weakey.

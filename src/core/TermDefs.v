@@ -27,10 +27,11 @@ Proof.
   solve_eqb_eq.
 Qed.
 
-Module VsymTag <: TaggedType.
+Module VsymTag <: CoqWeakhtbl.Weakey.
 Definition t := vsymbol.
 Definition tag vs := vs.(vs_name).(id_tag).
 Definition equal := vsymbol_eqb.
+Definition equal_eq := vsymbol_eqb_eq.
 End VsymTag.
 
 Module Vsym := MakeMSWeak(VsymTag).
@@ -72,10 +73,11 @@ Proof.
   solve_eqb_eq.
 Qed.
 
-Module LsymTag <: TaggedType.
+Module LsymTag <: CoqWeakhtbl.Weakey.
 Definition t := lsymbol.
 Definition tag ls := ls.(ls_name).(id_tag).
 Definition equal := lsymbol_eqb.
+Definition equal_eq := lsymbol_eqb_eq.
 End LsymTag.
 
 Module Lsym := MakeMSWeak(LsymTag).
@@ -382,8 +384,9 @@ match x with
 | (_, _, y) => y
 end.
 
+(*Induction on Terms*)
 
-(*Inductive on Terms*)
+(*Induction on Terms*)
 Section TermInd.
 
 Variable (P: term_c -> Prop).
@@ -439,6 +442,54 @@ Definition term_mut_ind:
   (forall t, P t) /\ (forall t, P1 t) :=
   conj (fun t => term_c_ind t) (fun t => term_node_ind t).
 End TermInd.
+
+(*Alternate Induction Principle*)
+Section TermIndAlt.
+
+Variable (P: term_c -> Prop).
+(*We write things in a weird way because these functions do not always compose neatly
+  to allow us to break things down into the [t_node_of] part and the full term.
+  We give the "standard" induction principle below*)
+Variable (Hvar: forall v t (Heq: t_node_of t = Tvar v), P t).
+Variable (Hconst: forall c t (Heq: t_node_of t = Tconst c), P t).
+Variable (Happ: forall l ts t (Heq: t_node_of t = Tapp l ts), Forall P ts -> P t).
+Variable (Hif: forall t1 t2 t3 t (Heq: t_node_of t = Tif t1 t2 t3), P t1 -> P t2 -> P t3 ->  P t).
+Variable (Hlet: forall t1 v b t2 t (Heq: t_node_of t = Tlet t1 (v, b, t2)), 
+  P t1 -> P t2 -> P t).
+Variable (Hcase: forall t1 tbs t (Heq: t_node_of t = Tcase t1 tbs), P t1 -> (*TODO: see how to phrase*)
+Forall P (map trd tbs)-> P t).
+Variable (Heps: forall v b t1 t (Heq: t_node_of t = Teps (v, b, t1)), P t1 -> P t).
+Variable (Hquant: forall q l b tr t1 t (Heq: t_node_of t = Tquant q (l, b, tr, t1)),
+  Forall (fun x => Forall P x) tr ->
+  P t1 ->
+  P t).
+Variable (Hbinop: forall b t1 t2 t (Heq: t_node_of t = Tbinop b t1 t2), 
+  P t1 -> P t2 -> P t).
+Variable (Hnot: forall t1 t (Heq: t_node_of t = Tnot t1), P t1 -> P t).
+Variable (Htrue: forall t (Ht: t_node_of t = Ttrue), P t).
+Variable (Hfalse: forall t (Ht: t_node_of t = Tfalse), P t).
+
+Fixpoint term_ind_alt (t: term_c) : P t :=
+  match t_node_of t as t1 return t_node_of t = t1 -> P t with
+  | Tvar v => Hvar v t
+  | Tconst c => Hconst c t
+  | Tapp l ts => fun Heq => Happ l ts t Heq (mk_Forall term_ind_alt ts)
+  | Tif t1 t2 t3 => fun Heq => Hif _ _ _ _ Heq (term_ind_alt t1) (term_ind_alt t2) (term_ind_alt t3)
+  | Tlet t1 (v, b, t2) => fun Heq => Hlet t1 v b t2 _ Heq
+      (term_ind_alt t1) (term_ind_alt t2)
+  | Tcase t1 tbs => fun Heq => Hcase t1 tbs _ Heq (term_ind_alt t1) 
+    (*Coq's termination checker likes this better*)
+      ((proj2 (Forall_map _ _ _)) (mk_Forall (fun x => term_ind_alt (trd x)) tbs))
+  | Teps (v, b, t1) => fun Heq => Heps v b t1 _ Heq (term_ind_alt t1)
+  | Tquant q (l, b, tr, t1) => fun Heq => Hquant q l b tr t1 _ Heq
+    (mk_Forall (mk_Forall term_ind_alt) tr) (term_ind_alt t1)
+  | Tbinop b t1 t2 => fun Heq => Hbinop b t1 t2 _ Heq (term_ind_alt t1) (term_ind_alt t2)
+  | Tnot t1 => fun Heq => Hnot t1 _ Heq (term_ind_alt t1)
+  | Ttrue => fun Heq => Htrue _ Heq
+  | Tfalse => fun Heq => Hfalse _ Heq
+  end eq_refl.
+
+End TermIndAlt.
 
 (*Decidable equality on terms*)
 

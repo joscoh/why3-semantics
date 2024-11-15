@@ -355,7 +355,7 @@ Fixpoint ty_match_aux (*(err1 err2: ty_c) *)
     (*We are not using Mtv.change because there is an
       exception in the function (so the types do not match)
       Instead, we will search manually and throw an exception if needed*)
-    match Mtv.find_opt _ n1 s with
+    match Mtv.find_opt n1 s with
     | Some ty3 => if ty_equal ty3 ty2 then err_ret s else
       throw Exit (*
       throw (TypeMismatch (err1, err2))*)

@@ -69,7 +69,7 @@ Fixpoint populate
     populate p1 q
   | Papp fs pl =>
     if is_constr fs then
-      if Mls.mem _ fs (fst acc) then err_ret acc else
+      if Mls.mem fs (fst acc) then err_ret acc else
       err_ret (Mls.add fs pl (fst acc), ((fs, pl) :: (snd acc)))
     else throw (ConstructorExpected (fs, ty))
   end.
@@ -264,7 +264,7 @@ Definition comp_wilds (compile: list term_c -> list (list pattern * A) -> comp_r
   | Succ x => errst_ret (Succ x)
   | NonExh pl =>
     let find_cs cs : errorHashconsT ty_c unit :=
-      if Mls.mem _ cs types then errst_ret tt else
+      if Mls.mem cs types then errst_ret tt else
       v <- errst_lift2 (opt_get cs.(ls_value)) ;;
       tm <- ty_match Mtv.empty v ty ;;
       let wild ty := pat_wild (ty_inst_unsafe tm ty) in
@@ -373,7 +373,7 @@ Fixpoint compile_aux (tl: list term_c) (rl: list (list pattern_c * A)) { struct 
       | Succ x => errst_ret (Succ x)
       | NonExh pl =>
         let find_cs cs : errorHashconsT ty_c unit :=
-          if Mls.mem _ cs types then errst_ret tt else
+          if Mls.mem cs types then errst_ret tt else
           v <- errst_lift2 (opt_get cs.(ls_value)) ;;
           tm <- ty_match Mtv.empty v ty ;;
           let wild ty := pat_wild (ty_inst_unsafe tm ty) in
@@ -424,7 +424,7 @@ Fixpoint compile_aux (tl: list term_c) (rl: list (list pattern_c * A)) { struct 
       (* | _ when Mls.is_empty types ->
           comp_wilds () *)
       | Tapp cs al => if is_constr cs then
-          if Mls.mem _ cs types then comp_cases cs al else 
+          if Mls.mem cs types then comp_cases cs al else 
             comp_wilds tt
           else comp_full comp_wilds comp_cases types css cslist t ty tt
       | _ => comp_full comp_wilds comp_cases types css cslist t ty tt

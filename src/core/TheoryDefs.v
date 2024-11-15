@@ -548,9 +548,13 @@ Definition meta_equal : meta -> meta -> bool := meta_eqb_fast.
 Definition meta_hash m := m.(meta_tag).
 
 Module MetaTag <: TaggedType.
+Module MetaTagDec <: EqDecTag.
 Definition t := meta.
 Definition tag m := m.(meta_tag).
 Definition equal := meta_eqb_fast.
+Definition equal_eq := meta_eqb_eq.
+End MetaTagDec.
+Include MakeDecTag MetaTagDec.
 End MetaTag.
 
 Module SMmeta1 := MakeMS MetaTag.
@@ -559,9 +563,13 @@ Module Mmeta := SMmeta1.M.
 
 
 Module TdeclTag <: TaggedType.
+Module TdeclTagDec <: EqDecTag.
 Definition t := tdecl_c.
 Definition tag td := td_tag_of td.
 Definition equal := tdecl_eqb.
+Definition equal_eq := tdecl_eqb_eq.
+End TdeclTagDec.
+Include MakeDecTag TdeclTagDec.
 End TdeclTag.
 
 Module Tdecl1 := MakeMS TdeclTag.

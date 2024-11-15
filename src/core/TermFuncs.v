@@ -177,14 +177,14 @@ Definition pat_map_unsafe (fn: pattern_c -> pattern_c) (p: pattern_c) : pattern_
 Fixpoint pat_rename_all (m: Mvs.t vsymbol) (p: pattern_c) : pattern_c:=
   match (pat_node_of p) with
   | Pvar v => 
-    match Mvs.find_opt _ v m with
+    match Mvs.find_opt v m with
     | Some v1 => (pat_var v1)
     | None => p (*NOTE: should never occur*)
     end
   | Pas p v =>
     let p1 := pat_rename_all m p in
     pat_as_unsafe p1
-    match Mvs.find_opt _ v m with
+    match Mvs.find_opt v m with
       | Some v1 => v1
       | None => v (*Should never occur*)
       end
@@ -203,7 +203,7 @@ Definition list_comp l : CoqInt.int :=
   To be equal, they must either be mapped to each other in each map
   or not in either map and equal*)
 Definition var_compare (m1 m2: Mvs.t CoqBigInt.t) (v1 v2: vsymbol) : CoqInt.int :=
-  match Mvs.find_opt _ v1 m1, Mvs.find_opt _ v2 m2 with
+  match Mvs.find_opt v1 m1, Mvs.find_opt v2 m2 with
   | Some i1, Some i2 => CoqBigInt.compare i1 i2
   | None, None => vs_compare v1 v2
   | Some _, _ => CoqInt.neg_one
@@ -252,7 +252,7 @@ Definition fold_left2_def {A B C: Type} :=
     
 
 Definition or_cmp_vsym (bv1 bv2: Mvs.t CoqBigInt.t) (v1 v2: vsymbol) :=
-  match Mvs.find_opt _ v1 bv1, Mvs.find_opt _ v2 bv2 with
+  match Mvs.find_opt v1 bv1, Mvs.find_opt v2 bv2 with
     | Some i1, Some i2 => CoqBigInt.compare i1 i2
     (*Should never happen*)
     | None, None => CoqInt.zero
@@ -452,14 +452,14 @@ Definition t_similar (t1 t2: term_c) : bool :=
 Fixpoint or_hash bv (q: pattern_c) : CoqBigInt.t :=
   match (pat_node_of q) with
   | Pwild => CoqBigInt.zero
-  | Pvar v => CoqBigInt.succ match Mvs.find_opt _ v bv with
+  | Pvar v => CoqBigInt.succ match Mvs.find_opt v bv with
               | Some i => i
               (*Should never occur by typing*)
               | None => CoqBigInt.zero
               end
   | Papp s l => hashcons.combine_big_list (or_hash bv) (ls_hash s) l
   | Por p q => hashcons.combine_big (or_hash bv p) (or_hash bv q)
-  | Pas p v => let j := match Mvs.find_opt _ v bv with
+  | Pas p v => let j := match Mvs.find_opt v bv with
               | Some i => i
               (*Should never occur*)
               | None => CoqBigInt.zero
@@ -512,7 +512,7 @@ Fixpoint t_hash_aux (bnd: CoqBigInt.t) (vml: Mvs.t CoqBigInt.t) (t: term_c) : Co
   let h1 := if attr then Sattr.fold (fun l h => hashcons.combine_big (attr_hash l) h) (t_attrs_of t) h else h in
   hashcons.combine_big h1 (
     match (t_node_of t) with
-    | Tvar v => match Mvs.find_opt _ v vml with
+    | Tvar v => match Mvs.find_opt v vml with
                 | Some i => CoqBigInt.succ i
                 | None => vs_hash v
                 end
@@ -986,7 +986,6 @@ Definition vl_rename (h: Mvs.t term_c) (vl: list vsymbol) :=
   | _ => t_map_ctr_unsafe t_subst t
   end. *)
 
-(*NOTE: breaking invariants about bv_vars: TODO: do we need?*)
 Fixpoint t_subst_unsafe_aux (m: Mvs.t term_c) (t: term_c) : term_c :=
   match (t_node_of t) with
   | Tvar u => (t_attr_copy t (Mvs.find_def _ t u m))
@@ -1028,6 +1027,45 @@ Fixpoint t_subst_unsafe_aux (m: Mvs.t term_c) (t: term_c) : term_c :=
     t_attr_copy t (t_quant1 q (vs, b1, tr2, e2))
   | _ => t_map_unsafe (t_subst_unsafe_aux m) t
   end.
+
+Lemma t_subst_unsafe_aux_rewrite m t:
+  t_subst_unsafe_aux m t =
+  match (t_node_of t) with
+  | Tvar u => (t_attr_copy t (Mvs.find_def _ t u m))
+  | Tlet e (v, b, t2) =>
+    let e1 := (t_subst_unsafe_aux m e) in 
+    let m' := Mvs.remove _ v m in
+    let m1 := Mvs.set_inter _ _ m' b.(bv_vars) in
+    let e2 := if Mvs.is_empty _ m1 then t2 else t_subst_unsafe_aux m1 t2 in
+    let b1 := bnd_new (Mvs.remove _ v (t_vars e2)) in 
+    t_attr_copy t (t_let1 e1 (v, b1, e2) (t_ty_of t))
+  | Tcase e bl =>
+    let e1 := (t_subst_unsafe_aux m e) in
+    let bl2 := map
+      (fun (x: pattern_c * bind_info * term_c) =>
+        let m' := Mvs.set_diff _ _ m (pat_vars_of (fst (fst x))) in
+        let m1 := Mvs.set_inter _ _ m' (snd (fst x)).(bv_vars) in
+        let e2 := if Mvs.is_empty _ m1 then snd x else t_subst_unsafe_aux m1 (snd x) in
+        let b1 := bnd_new (Mvs.set_diff _ _ (t_vars e2) (pat_vars_of (fst (fst x)))) in
+        (fst (fst x), b1, e2)
+        ) bl in
+    t_attr_copy t (t_case1 e1 bl2 (t_ty_of t))
+  | Teps (v, b, t1) =>
+    let m' := Mvs.remove _ v m in
+    let m1 := Mvs.set_inter _ _ m' b.(bv_vars) in
+    let e2 := if Mvs.is_empty _ m1 then t1 else t_subst_unsafe_aux m1 t1 in
+    let b1 := bnd_new (Mvs.remove _ v (t_vars e2)) in
+    t_attr_copy t (t_eps1 (v, b1, e2) (t_ty_of t))
+  | Tquant q (vs, b, tr, t1) =>
+    let m' := Mvs.set_diff _ _ m (Svs.of_list vs) in
+    let m1 := Mvs.set_inter _ _ m' b.(bv_vars) in
+    let e2 := if Mvs.is_empty _ m1 then t1 else t_subst_unsafe_aux m1 t1 in
+    let b1 := bnd_new (Mvs.set_diff _ _ (t_vars e2) (Svs.of_list vs)) in
+    let tr2 := (tr_map (t_subst_unsafe_aux m) tr) in
+    t_attr_copy t (t_quant1 q (vs, b1, tr2, e2))
+  | _ => t_map_unsafe (t_subst_unsafe_aux m) t
+  end.
+Proof. destruct t; reflexivity. Qed.
 
 (* Definition t_subst_unsafe m t :=
   if Mvs.is_empty _ m then st_ret t else t_subst_unsafe_aux m t. *)
@@ -1715,7 +1753,367 @@ Qed.
 Print t_subst_unsafe.
 Print t_subst_unsafe_aux.
 
-Lemma t_subst_unsafe_size
+Print Mvs.
+Set Bullet Behavior "Strict Subproofs".
+
+Lemma term_size_nodes t1 t2:
+  t_node_of t1 = t_node_of t2 ->
+  term_size t1 = term_size t2.
+Proof.
+  rewrite !term_size_eq.
+  intros Heq; rewrite Heq; reflexivity.
+Qed.
+Print term_c.
+Print all2.
+Locate map2.
+
+(*Idea: give shape notion, prove that similar -> shape, prove that shape -> size,
+(maybe dont need similar, just prove t_attr_copy has same shape
+or give new version of subst that doesnt use t_attr_copy or type and prove same shape)*)
+
+(*Notion of "same shape" for terms*)
+Fixpoint t_shape (t1 t2: term_c) {struct t1} : bool :=
+  match t_node_of t1, t_node_of t2 with
+  | Tconst _, Tconst _ => true
+  | Tvar _, Tvar _ => true
+  | Tapp l1 tms1, Tapp l2 tms2 => ls_equal l1 l2 && (length tms1 =? length tms2) && all2 t_shape tms1 tms2
+  | Tlet t1 (_, _, t2), Tlet t3 (_, _, t4) => t_shape t1 t3 && t_shape t2 t4
+  | Tif t1 t2 t3, Tif t4 t5 t6 => t_shape t1 t4 && t_shape t2 t5 && t_shape t3 t6
+  | Tcase t1 b1, Tcase t2 b2 => t_shape t1 t2 && (length b1 =? length b2) &&
+   forallb (fun x => x) (Common.map2 (fun x y => t_shape (snd x) (snd y)) b1 b2)
+  (* t_shape (map trd b1) (map trd b2)*)
+  | Teps (_, _, t1), Teps (_, _, t2) => t_shape t1 t2
+  | Tquant q1 (_, _, tr1, t1), Tquant q2 (_, _, tr2, t2) => quant_eqb q1 q2 && 
+    t_shape t1 t2
+  | Tbinop b1 t1 t2, Tbinop b2 t3 t4 => binop_eqb b1 b2 && t_shape t1 t3 && t_shape t2 t4
+  | Tnot t1, Tnot t2 => t_shape t1 t2
+  | Ttrue, Ttrue => true
+  | Tfalse, Tfalse => true
+  | _, _ => false
+  end.
+
+(*The fact that these functions are purely structurally recursive is very annoying*)
+Ltac prove_shape t1 t2:=
+  intros Hshape Heq;
+  destruct t1 as [n1 ? ? ?]; destruct t2 as [n2 ? ? ?]; destruct n1; try solve[inversion Heq];
+  simpl in Hshape; destruct n2; try discriminate; eauto.
+
+Lemma t_shape_var {t1 t2 v}:
+  t_shape t1 t2 ->
+  t_node_of t1 = Tvar v ->
+  exists v1, t_node_of t2 = Tvar v1.
+Proof.
+  prove_shape t1 t2.
+Qed.
+
+Lemma t_shape_const {t1 t2 c}:
+  t_shape t1 t2 ->
+  t_node_of t1 = Tconst c ->
+  exists c1, t_node_of t2 = Tconst c1.
+Proof.
+  prove_shape t1 t2.
+Qed.
+
+Lemma t_shape_app {t1 t2 l tms}:
+  t_shape t1 t2 ->
+  t_node_of t1 = Tapp l tms ->
+  exists tms2, t_node_of t2 = Tapp l tms2 /\ length tms = length tms2 /\ all2 t_shape tms tms2.
+Proof.
+  prove_shape t1 t2.
+  apply andb_true_iff in Hshape.
+  destruct Hshape as [Hls Hall].
+  apply andb_true_iff in Hls.
+  destruct Hls as [Hls Hlen].
+  simpl. unfold ls_equal in Hls. apply lsymbol_eqb_eq in Hls. subst.
+  simpl in Heq. inversion Heq; subst.
+  apply Nat.eqb_eq in Hlen. eauto.
+Qed.
+
+Lemma t_shape_if {t1 t2 tm1 tm2 tm3}:
+  t_shape t1 t2 ->
+  t_node_of t1 = Tif tm1 tm2 tm3 ->
+  exists e1 e2 e3, t_node_of t2 = Tif e1 e2 e3 /\ t_shape tm1 e1 /\ t_shape tm2 e2 /\ t_shape tm3 e3.
+Proof.
+  prove_shape t1 t2.
+  bool_hyps. simpl in Heq. inversion Heq; subst. simpl. 
+  repeat eexists; eauto.
+Qed.
+
+Lemma t_shape_let {t1 t2 tm1 v1 b1 tm2}:
+  t_shape t1 t2 ->
+  t_node_of t1 = Tlet tm1 (v1, b1, tm2) ->
+  exists e1 v2 b2 e2, t_node_of t2 = Tlet e1 (v2, b2, e2)  /\ t_shape tm1 e1 /\ t_shape tm2 e2.
+Proof.
+  intros Hshape Heq. 
+  destruct t1 as [n1 ? ? ?]; destruct t2 as [n2 ? ? ?]; destruct n1; try solve[inversion Heq].
+  simpl in Hshape. destruct p as [[v2 b2] e2]. destruct n2; try solve[inversion Hshape].
+  destruct p as [[v3 b3] e3]. simpl in Heq. inversion Heq; subst; clear Heq.
+  bool_hyps. simpl. repeat eexists; eauto.
+Qed.
+
+Lemma t_shape_case {t1 t2 tm1 tbs}:
+  t_shape t1 t2 ->
+  t_node_of t1 = Tcase tm1 tbs ->
+  exists tm2 tbs2, t_node_of t2 = Tcase tm2 tbs2 /\ t_shape tm1 tm2 /\ length tbs = length tbs2 /\ 
+    all2 t_shape (map snd tbs) (map snd tbs2).
+Proof.
+  prove_shape t1 t2.
+  apply andb_true_iff in Hshape.
+  destruct Hshape as [Hls Hall].
+  apply andb_true_iff in Hls.
+  destruct Hls as [Hshape Hlen].
+  simpl. apply Nat.eqb_eq in Hlen. unfold all2. setoid_rewrite map2_map.
+  simpl in Heq. inversion Heq; subst.
+  repeat eexists; eauto.
+Qed.
+
+Lemma t_shape_eps {t1 t2 v1 b1 tm1}:
+  t_shape t1 t2 ->
+  t_node_of t1 = Teps (v1, b1, tm1) ->
+  exists v2 b2 e2, t_node_of t2 = Teps (v2, b2, e2) /\ t_shape tm1 e2.
+Proof.
+  intros Hshape Heq. 
+  destruct t1 as [n1 ? ? ?]; destruct t2 as [n2 ? ? ?]; destruct n1; try solve[inversion Heq].
+  simpl in Hshape. destruct p as [[v2 b2] e2]. destruct n2; try solve[inversion Hshape].
+  destruct p as [[v3 b3] e3]. simpl in Heq. inversion Heq; subst; clear Heq.
+  bool_hyps. simpl. repeat eexists; eauto.
+Qed.
+
+Lemma t_shape_quant {t1 t2 q vs1 b1 tr1 tm1}:
+  t_shape t1 t2 ->
+  t_node_of t1 = Tquant q (vs1, b1, tr1, tm1) ->
+  exists vs2 b2 tr2 tm2, t_node_of t2 = Tquant q (vs2, b2, tr2, tm2) /\ t_shape tm1 tm2.
+Proof.
+  intros Hshape Heq. 
+  destruct t1 as [n1 ? ? ?]; destruct t2 as [n2 ? ? ?]; destruct n1; try solve[inversion Heq].
+  simpl in Hshape. destruct p as [[[vs2 b2] tr2] e2]. destruct n2; try solve[inversion Hshape].
+  destruct p as [[[vs3 b3] tr3] e3]. simpl in Heq. inversion Heq; subst; clear Heq.
+  bool_hyps. apply quant_eqb_eq in H. subst. simpl. repeat eexists; eauto.
+Qed.
+
+Lemma t_shape_binop {t1 t2 b tm1 tm2}:
+  t_shape t1 t2 ->
+  t_node_of t1 = Tbinop b tm1 tm2 ->
+  exists e1 e2, t_node_of t2 = Tbinop b e1 e2 /\ t_shape tm1 e1 /\ t_shape tm2 e2.
+Proof.
+  prove_shape t1 t2.
+  bool_hyps. apply binop_eqb_eq in H. subst. simpl in Heq. inversion Heq; subst. simpl. 
+  repeat eexists; eauto.
+Qed.
+
+Lemma t_shape_not {t1 t2 tm1}:
+  t_shape t1 t2 ->
+  t_node_of t1 = Tnot tm1 ->
+  exists tm2, t_node_of t2 = Tnot tm2 /\ t_shape tm1 tm2.
+Proof.
+  prove_shape t1 t2. simpl in Heq. inversion Heq; subst. eauto.
+Qed.
+
+Lemma t_shape_true {t1 t2}:
+  t_shape t1 t2 ->
+  t_node_of t1 = Ttrue ->
+  t_node_of t2 = Ttrue.
+Proof.
+  prove_shape t1 t2.
+Qed.
+
+Lemma t_shape_false {t1 t2}:
+  t_shape t1 t2 ->
+  t_node_of t1 = Tfalse ->
+  t_node_of t2 = Tfalse.
+Proof.
+  prove_shape t1 t2.
+Qed.
+
+
+
+Lemma t_shape_size (t1 t2: term_c):
+  t_shape t1 t2 ->
+  term_size t1 = term_size t2.
+Proof.
+  revert t2.
+  apply (term_ind_alt (fun t1 => forall t2 (Hshape: t_shape t1 t2), term_size t1 = term_size t2)); clear;
+  intros.
+  - destruct (t_shape_var Hshape Heq) as [v1 Heq2]. 
+    rewrite !term_size_eq, Heq, Heq2. reflexivity.
+  - destruct (t_shape_const Hshape Heq) as [c1 Heq2].
+    rewrite !term_size_eq, Heq, Heq2. reflexivity.
+  - destruct (t_shape_app Hshape Heq) as [tms1 [Heq2 [Hlen Hall]]].
+    rewrite !term_size_eq, Heq, Heq2. simpl.
+    f_equal. f_equal.
+    clear Heq Heq2 Hshape. generalize dependent tms1.
+    induction ts as [| thd ttl IH]; intros [| h2 tl2]; try discriminate; auto.
+    simpl. intros Hlen. rewrite all2_cons. intros Hshape.
+    bool_hyps. inversion H; subst. f_equal; auto.
+  - destruct (t_shape_if Hshape Heq) as [e1 [e2 [e3 [Heq2 [Hshape1 [Hshape2 Hshape3]]]]]].
+    rewrite !term_size_eq, Heq, Heq2. simpl. f_equal. f_equal; [f_equal |]; eauto.
+  - destruct (t_shape_let Hshape Heq) as [e1 [v1 [b1 [e2 [Heq2 [Hshape1 Hshape2]]]]]].
+    rewrite !term_size_eq, Heq, Heq2; simpl. f_equal. f_equal; auto.
+  - destruct (t_shape_case Hshape Heq) as [tm2 [tbs2 [Heq2 [Hshape1 [Hlen Hall]]]]].
+    rewrite !term_size_eq, Heq, Heq2; simpl. f_equal.
+    f_equal; eauto. f_equal.
+    rewrite all2_map in Hall.
+    clear Heq Heq2 Hshape1 H. generalize dependent tbs2. induction tbs as [| h1 tl1 IH];
+    intros [| h2 tl2]; try discriminate; auto; simpl.
+    intros Hlen. rewrite all2_cons. intros Hall. bool_hyps. inversion H0; subst; f_equal; eauto.
+    unfold trd in H4. destruct h1; destruct h2; simpl in *. destruct p; simpl in *; auto.
+  - destruct (t_shape_eps Hshape Heq) as [v2 [b2 [e2 [Heq2 Hshape2]]]].
+    rewrite !term_size_eq, Heq, Heq2; simpl. eauto.
+  - destruct (t_shape_quant Hshape Heq) as [vs2 [b2 [tr2 [tm2 [Heq2 Hshape2]]]]].
+    rewrite !term_size_eq, Heq, Heq2. simpl. auto.
+  - destruct (t_shape_binop Hshape Heq) as [e1 [e2 [Heq2 [Hshape1 Hshape2]]]].
+    rewrite !term_size_eq, Heq, Heq2; simpl; auto.
+  - destruct (t_shape_not Hshape Heq) as [tm2 [Heq2 Hshape2]];
+    rewrite !term_size_eq, Heq, Heq2; simpl; auto.
+  - rewrite !term_size_eq, Ht, (t_shape_true Hshape Ht). reflexivity.
+  - rewrite !term_size_eq, Ht, (t_shape_false Hshape Ht). reflexivity.
+Qed. 
+
+Lemma t_shape_refl t:
+  t_shape t t.
+Proof.
+  apply (term_ind_alt (fun t1 => t_shape t1 t1)); clear; auto;
+  intros; destruct t as [n1 ty1 a1 p1]; simpl in *; subst; auto;
+  try solve[unfold is_true; rewrite !andb_true_iff; split_all; auto].
+  - rewrite Nat.eqb_refl.
+    solve_bool. apply andb_true_iff. split; [apply lsymbol_eqb_eq; auto |].
+    induction ts as [| h1 t1 IH]; simpl; auto.
+    rewrite all2_cons. inversion H; subst. apply andb_true_iff; auto.
+  - rewrite Nat.eqb_refl. solve_bool. apply andb_true_iff; split; auto.
+    induction tbs as [| h1 tl1 IH]; simpl; auto.
+    inversion H0; subst; apply andb_true_iff; split; auto.
+    destruct h1 as [[p2 b2] t2]; auto.
+  - apply andb_true_iff; split; auto. apply quant_eqb_eq; auto.
+  - unfold is_true; rewrite !andb_true_iff; split_all; auto.
+    apply binop_eqb_eq; auto.
+Qed. 
+  
+Lemma all2_shape_refl l:
+  all2 t_shape l l.
+Proof.
+  induction l as [| h1 t1 IH]; auto.
+  rewrite all2_cons, t_shape_refl; auto.
+Qed.
+
+Lemma t_shape_node t1 t2:
+  t_node_of t1 = t_node_of t2 ->
+  t_shape t1 t2.
+Proof.
+  revert t2. apply (term_ind_alt (fun t1 => forall t2 (Hnode: t_node_of t1 = t_node_of t2), t_shape t1 t2));
+  clear; auto; intros; destruct t as [n1 ty1 a1 p1]; simpl in *; subst; try rewrite <- Hnode; auto;
+  try rewrite !t_shape_refl; auto.
+  - rewrite Nat.eqb_refl.
+    solve_bool. apply andb_true_iff. split; [apply lsymbol_eqb_eq; auto |].
+    apply all2_shape_refl.
+  - simpl. rewrite Nat.eqb_refl. simpl. clear -H0. induction tbs as [| h2 tl2 IH]; simpl; auto.
+    inversion H0; subst.
+    rewrite t_shape_refl; auto.
+  - rewrite andb_true_r. apply quant_eqb_eq; auto.
+  - rewrite !andb_true_r. apply binop_eqb_eq; auto. 
+Qed.
+
+
+Lemma t_similar_shape t1 t2:
+  t_similar t1 t2 ->
+  t_shape t1 t2.
+Proof.
+  unfold t_similar.
+  destruct (oty_equal (t_ty_of t1) (t_ty_of t2)) eqn : Hopt; simpl; [|discriminate].
+  destruct t1 as [n1 ty1 a1 p1]; destruct t2 as [n2 ty2 a2 p2].
+  simpl.
+  destruct n1; destruct n2; auto; unfold is_true; try rewrite !andb_true_iff;
+  try unfold term_eqb_fast; try unfold term_bound_eqb_fast.
+  - intros [Heq Hlisteq]. apply lsymbol_eqb_eq in Heq. subst.
+    apply list_eqb_eq in Hlisteq; [| apply term_eqb_eq].
+    subst. rewrite Nat.eqb_refl. split_all; auto.
+    apply lsymbol_eqb_eq; auto.
+    apply all2_shape_refl.
+  - intros [[Heq1 Heq2] Heq3].
+    apply term_eqb_eq in Heq1, Heq2, Heq3. subst. split_all; apply t_shape_refl.
+  - intros [Heq1 Heq2].
+    apply term_eqb_eq in Heq1. apply term_bound_eqb_eq in Heq2. subst.
+    destruct p0 as [[v2 b2] t2]; rewrite !t_shape_refl; auto.
+  - intros [Heq1 Heq2]. apply term_eqb_eq in Heq1. apply list_eqb_eq in Heq2; [| apply term_branch_eqb_eq];
+    subst. rewrite Nat.eqb_refl, t_shape_refl. split_all; auto.
+    clear. induction l0 as [| h1 t1 IH]; simpl; auto. rewrite t_shape_refl; auto.
+  - intros Heq. apply term_bound_eqb_eq in Heq; subst.
+    destruct p0 as [[v2 b2] t2]; apply t_shape_refl.
+  - intros [Heq1 Heq2]. apply term_quant_eqb_eq in Heq2. subst.
+    destruct p0 as [[[vs1 b1] tr1] t1]; apply andb_true_iff; split;auto; apply t_shape_refl.
+  - intros [[Heq1 Heq2] Heq3].
+    apply term_eqb_eq in Heq2, Heq3. subst. rewrite !t_shape_refl. split_all; auto.
+  - intros Heq. apply term_eqb_eq in Heq; subst; apply t_shape_refl.
+Qed.
+
+Lemma t_attr_copy_shape t1 t2:
+  t_shape (t_attr_copy t1 t2) t2.
+Proof.
+  unfold t_attr_copy.
+  destruct (t_similar t1 t2 && Sattr.is_empty (t_attrs_of t2) &&
+    negb (isSome (t_loc_of t2))) eqn : Hcond.
+  - bool_hyps. apply t_similar_shape; auto.
+  - apply t_shape_node. reflexivity.
+Qed.
+
+(*Therefore, size is the same*)
+Lemma term_size_attr_copy t1 t2: term_size (t_attr_copy t1 t2) = term_size t2.
+Proof.
+  apply t_shape_size, t_attr_copy_shape.
+Qed.
+
+(*NOTE: would it be easier to assume vars in map and prove shape?*)
+Lemma t_subst_unsafe_size m1 t (Hm1: forall v t1, Mvs.find_opt _ v m1 = Some t1 -> term_size t1 = 1): 
+  term_size (t_subst_unsafe m1 t) = term_size t.
+Proof.
+  unfold t_subst_unsafe.
+  destruct (Mvs.is_empty term_c m1); auto. (*we don't care about result*)
+  revert m1 Hm1.
+  apply term_ind_alt with  (P:=fun t1 => forall m1 
+    (Hm1: forall v t1, Mvs.find_opt _ v m1 = Some t1 -> term_size t1 = 1),
+    term_size (t_subst_unsafe_aux m1 t1) = term_size t1); clear t.
+  - (*var*) intros. rewrite t_subst_unsafe_aux_rewrite, Heq; simpl.
+    rewrite term_size_attr_copy. 
+    (*TODO: find_def*) admit.
+  - (*const*) intros. rewrite t_subst_unsafe_aux_rewrite, Heq.
+    unfold t_map_unsafe. rewrite term_size_attr_copy, Heq. reflexivity.
+  - (*app*) intros ls tms t2 Heq Hall m1 Hm1.
+    rewrite t_subst_unsafe_aux_rewrite, Heq.
+    unfold t_map_unsafe. rewrite term_size_attr_copy, Heq. simpl.
+    rewrite term_size_eq, Heq. simpl. f_equal. f_equal.
+    clear -Hall Hm1. induction tms as [| h1 t1 IH]; simpl; auto.
+    inversion Hall; subst; f_equal; auto.
+  - (*if*) intros t1 t2 t3 tm2 Heq IH1 IH2 IH3 m1 Hm1.
+    rewrite (term_size_eq tm2), t_subst_unsafe_aux_rewrite, Heq.
+    unfold t_map_unsafe; rewrite term_size_attr_copy, Heq. simpl.
+    f_equal. f_equal; [f_equal| ]; auto.
+  - (*let*) intros t1 v b t2 tm2 Heq IH1 IH2 m1 Hm1.
+    rewrite (term_size_eq tm2), t_subst_unsafe_aux_rewrite, Heq.
+    simpl. rewrite term_size_attr_copy. simpl.
+    f_equal. f_equal; auto.
+    destruct (Mvs.is_empty term_c _) eqn : Hisemp; auto.
+    apply IH2.
+    (*Need to know that property still holds - really just that everything in set_inter and remove
+      is in original*)
+    admit.
+  - 
+    
+     apply IH2.
+    
+    
+     at 2.
+    rewrite t_subst_unsafe_aux_rewrite. simpl. 
+    
+     simpl.
+    
+    
+    
+     (fun t => forall ).
+  - intros. rewrite t_subst_unsafe_aux_rewrite, Heq.
+  apply term_c_ind with
+    auto.
+  apply (term_c_ind (fun t => term_size )).
+  apply term_ind.
+  induction t.
 
 Lemma t_open_bound_size (b: term_bound): forall s,
   term_size (snd (fst (runState (t_open_bound b) s))) = term_size (snd b).
@@ -1724,8 +2122,6 @@ Proof.
   Opaque vs_rename.
   simpl.
   destruct (runState (vs_rename Mvs.empty v) s) as [[m1 v1] s1] eqn : Hrun.
-  simpl.
-  destruct (runState (t_subst_unsafe m1 t) s1) as [t2 s2] eqn : Hrun2.
   simpl.
   (*Get m1 value*)
   Transparent vs_rename. Opaque fresh_vsymbol.

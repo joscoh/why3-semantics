@@ -40,9 +40,13 @@ Proof.
 Qed.
 
 Module AttrTag <: TaggedType.
+Module AttrDecTag <: EqDecTag.
 Definition t := attribute.
 Definition tag x := x.(attr_tag).
 Definition equal := attr_eqb.
+Definition equal_eq := attr_eqb_eq.
+End AttrDecTag.
+Include MakeDecTag AttrDecTag.
 End AttrTag.
 
 Module Attr  := MakeMS AttrTag.
@@ -134,11 +138,11 @@ Proof.
   solve_eqb_eq.
 Qed.
 
-Module IdentTag <: TaggedType.
-Definition t := ident.
-Definition tag x := x.(id_tag).
-Definition equal := ident_eqb_fast.
-
+Module IdentTag <: CoqWeakhtbl.Weakey.
+  Definition t := ident.
+  Definition tag x := x.(id_tag).
+  Definition equal := ident_eqb_fast.
+  Definition equal_eq := ident_eqb_eq.
 End IdentTag.
 
 (*NOTE: we do not have weak hash tables, so we ignore the W.

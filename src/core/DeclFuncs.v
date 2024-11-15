@@ -119,7 +119,7 @@ Definition get_ctx_tys (kn: Mid.t decl) : mut_info :=
 Definition is_vty_adt (ctx: mut_info) (t: ty_c) : 
   option (mut_adt * tysymbol_c * list ty_c) :=
   match ty_node_of t with
-  | Tyapp ts tys => option_bind (Mts.find_opt _ ts (snd ctx))
+  | Tyapp ts tys => option_bind (Mts.find_opt ts (snd ctx))
       (fun m => Some (m, ts, tys))
   | Tyvar _ => None
   end.
@@ -449,7 +449,7 @@ Definition check_termination_strict kn d :
         let ldl := (map (fun (y : logic_decl) =>
           let '(ls,((_,f),_)) := y in 
           (ls,((ls,f),[(*TODO*) (*CoqBigInt.to_int*) 
-            match Mls.find_opt _ ls idxs with
+            match Mls.find_opt ls idxs with
             | Some i => i
             | None => (*TODO: HACK*) CoqBigInt.neg_one
             end (*(Mls.find _ ls idxs)*)]))) ld) in (*JOSH TODO delete to_int*)
@@ -822,7 +822,7 @@ Definition RedeclaredIdent (i: ident) : errtype :=
 Definition known_map :=  Mid.t decl.
 
 Definition known_id (kn : known_map) (i: ident) : errorM unit :=
-  if negb (Mid.mem _ i kn) then throw (UnknownIdent i) else err_ret tt.
+  if negb (Mid.mem i kn) then throw (UnknownIdent i) else err_ret tt.
 
 (*Probably don't need merge_known for now*)
 Local Open Scope err_scope.
@@ -874,21 +874,21 @@ Definition list_of_opt {A: Type} (x: option (list A)) : list A :=
   nil/None, not a Not_found error*)
 
 Definition find_constructors (kn: known_map) (ts: tysymbol_c) : list constructor :=
-  list_of_opt (option_bind (Mid.find_opt _ (ts_name_of ts) kn) (fun d => 
+  list_of_opt (option_bind (Mid.find_opt (ts_name_of ts) kn) (fun d => 
     match d.(d_node) with
     | Ddata dl => list_assoc ts_equal ts dl
     | _ => None
     end)).
 
 Definition find_inductive_cases (kn : known_map) (ps : lsymbol) : list (prsymbol * term_c) :=
-  list_of_opt (option_bind (Mid.find_opt _  ps.(ls_name) kn) (fun d => 
+  list_of_opt (option_bind (Mid.find_opt ps.(ls_name) kn) (fun d => 
     match d.(d_node) with
     | Dind (_, dl) => list_assoc ls_equal ps dl
     | _ => None
     end)).
 
 Definition find_logic_definition (kn : known_map) (ls : lsymbol) : option ls_defn :=
-  option_bind (Mid.find_opt _  ls.(ls_name) kn) (fun d => 
+  option_bind (Mid.find_opt ls.(ls_name) kn) (fun d => 
     match d.(d_node) with
     | Dlogic dl => list_assoc ls_equal ls dl
     | _ => None
@@ -896,7 +896,7 @@ Definition find_logic_definition (kn : known_map) (ls : lsymbol) : option ls_def
 
 (*In well-typed context, will not hit default case*)
 Definition find_prop (kn : known_map) (pr: prsymbol) : term_c  :=
-  match option_bind (Mid.find_opt _  pr.(pr_name) kn) (fun d => 
+  match option_bind (Mid.find_opt pr.(pr_name) kn) (fun d => 
     match d.(d_node) with
     | Dind (_, dl) => 
       (*Find list *)

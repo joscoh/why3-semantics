@@ -30,10 +30,11 @@ Proof.
   rewrite <- ident_eqb_eq. solve_eqb_eq.
 Qed.
 
-Module PropTag <: TaggedType.
+Module PropTag <: CoqWeakhtbl.Weakey.
 Definition t := prsymbol.
 Definition tag pr := pr.(pr_name).(id_tag).
 Definition equal := prsymbol_eqb.
+Definition equal_eq := prsymbol_eqb_eq.
 End PropTag.
 
 Module Prop1 := MakeMSWeak PropTag.
@@ -298,13 +299,14 @@ End DeclHash.
 
 Module Hsdecl := hashcons.Make DeclHash.
 
-Module DeclTag <: TaggedType.
+Module DeclTag <: CoqWeakhtbl.Weakey.
 Definition t := decl.
 Definition tag d := d.(d_tag).
 (*TODO: We cannot use reference equality, but can we just
-  compare tags? TODO TRY THIS!
+  compare tags? TODO TRY THIS! (NOTE (later) : fast?)
   For now, use decidable equality, which is much slower*)
 Definition equal := decl_eqb.
+Definition equal_eq := decl_eqb_eq.
 End DeclTag.
 
 Module Decl1 := MakeMSWeak DeclTag.
