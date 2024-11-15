@@ -1661,7 +1661,7 @@ Definition t_let_close_simp (v: vsymbol) (e t: term_c) : errorM term_c :=
     t_subst_single v e t
   else
     t_let_close v e t.
-(*
+
 (*A traversal function*)
 From Equations Require Import Equations.
 
@@ -1722,12 +1722,10 @@ Variable (if_case: forall (t1 t2 t3: term_c) (r1 r2 r3: R), T).
 Variable (evil: forall (t: term_c), T).
 
 (*This is annoying for sure*)
-Print term_c.
+
 
 (*We can't use Equations because it doesn't support mutual well-founded
   definitions. So we will use Xavier trick again*)
-Print term_bound.
-Print bind_info.
 
 Lemma tif_size3 {t1 t2 t3 tm}
   (Hsz : term_node_size (Tif t1 t2 t3) = term_size tm):
@@ -1750,10 +1748,6 @@ Proof.
   simpl in Hsz. lia.
 Qed.
 
-Print t_subst_unsafe.
-Print t_subst_unsafe_aux.
-
-Print Mvs.
 Set Bullet Behavior "Strict Subproofs".
 
 Lemma term_size_nodes t1 t2:
@@ -1763,9 +1757,6 @@ Proof.
   rewrite !term_size_eq.
   intros Heq; rewrite Heq; reflexivity.
 Qed.
-Print term_c.
-Print all2.
-Locate map2.
 
 (*Idea: give shape notion, prove that similar -> shape, prove that shape -> size,
 (maybe dont need similar, just prove t_attr_copy has same shape
@@ -1781,7 +1772,6 @@ Fixpoint t_shape (t1 t2: term_c) {struct t1} : bool :=
   | Tif t1 t2 t3, Tif t4 t5 t6 => t_shape t1 t4 && t_shape t2 t5 && t_shape t3 t6
   | Tcase t1 b1, Tcase t2 b2 => t_shape t1 t2 && (length b1 =? length b2) &&
    forallb (fun x => x) (Common.map2 (fun x y => t_shape (snd x) (snd y)) b1 b2)
-  (* t_shape (map trd b1) (map trd b2)*)
   | Teps (_, _, t1), Teps (_, _, t2) => t_shape t1 t2
   | Tquant q1 (_, _, tr1, t1), Tquant q2 (_, _, tr2, t2) => quant_eqb q1 q2 && 
     t_shape t1 t2
@@ -1956,7 +1946,6 @@ Proof.
     clear Heq Heq2 Hshape1 H. generalize dependent tbs2. induction tbs as [| h1 tl1 IH];
     intros [| h2 tl2]; try discriminate; auto; simpl.
     intros Hlen. rewrite all2_cons. intros Hall. bool_hyps. inversion H0; subst; f_equal; eauto.
-    unfold trd in H4. destruct h1; destruct h2; simpl in *. destruct p; simpl in *; auto.
   - destruct (t_shape_eps Hshape Heq) as [v2 [b2 [e2 [Heq2 Hshape2]]]].
     rewrite !term_size_eq, Heq, Heq2; simpl. eauto.
   - destruct (t_shape_quant Hshape Heq) as [vs2 [b2 [tr2 [tm2 [Heq2 Hshape2]]]]].
@@ -1982,7 +1971,6 @@ Proof.
   - rewrite Nat.eqb_refl. solve_bool. apply andb_true_iff; split; auto.
     induction tbs as [| h1 tl1 IH]; simpl; auto.
     inversion H0; subst; apply andb_true_iff; split; auto.
-    destruct h1 as [[p2 b2] t2]; auto.
   - apply andb_true_iff; split; auto. apply quant_eqb_eq; auto.
   - unfold is_true; rewrite !andb_true_iff; split_all; auto.
     apply binop_eqb_eq; auto.
@@ -2061,19 +2049,48 @@ Proof.
   apply t_shape_size, t_attr_copy_shape.
 Qed.
 
+(*The map change we need for several cases*)
+Lemma subst_vars_ok1 {A: Type} (P: A -> Prop) (m1: Mvs.t A) x y
+  (Hm1: forall v t1, Mvs.find_opt v m1 = Some t1 -> P t1):
+  forall v t1, Mvs.find_opt v (Mvs.set_inter A CoqBigInt.t (Mvs.remove A x m1) y) = Some t1 ->
+  P t1.
+Proof.
+  intros v1 t1. rewrite Mvs.set_inter_spec, Mvs.remove_spec.
+  destruct (Vsym.Tg.equal v1 x); [discriminate|].
+  destruct (Mvs.find_opt v1 m1) as [v2|] eqn : Hget; [|discriminate].
+  destruct (Mvs.find_opt v1 y); [|discriminate]. intros Hsome; inversion Hsome; subst.
+  apply (Hm1 _ _ Hget).
+Qed.
+
+Lemma subst_vars_ok2 {A: Type} (P: A -> Prop) (m1: Mvs.t A) x y
+  (Hm1: forall v t1, Mvs.find_opt v m1 = Some t1 -> P t1):
+  forall v t1, Mvs.find_opt v (Mvs.set_inter A CoqBigInt.t (Mvs.set_diff A unit m1 x) y) = Some t1 ->
+  P t1.
+Proof.
+  intros v1 t1. rewrite Mvs.set_inter_spec, Mvs.set_diff_spec.
+  destruct (Mvs.find_opt v1 m1) as [v2|] eqn : Hget; [|discriminate].
+  destruct (Mvs.find_opt v1 x); [discriminate |].
+  destruct (Mvs.find_opt v1 y); [|discriminate].
+  intros Hsome; inversion Hsome; subst. apply (Hm1 _ _ Hget).
+Qed.
+
+
 (*NOTE: would it be easier to assume vars in map and prove shape?*)
-Lemma t_subst_unsafe_size m1 t (Hm1: forall v t1, Mvs.find_opt _ v m1 = Some t1 -> term_size t1 = 1): 
+Lemma t_subst_unsafe_size m1 t (Hm1: forall v t1, Mvs.find_opt v m1 = Some t1 -> term_size t1 = 1): 
   term_size (t_subst_unsafe m1 t) = term_size t.
 Proof.
   unfold t_subst_unsafe.
   destruct (Mvs.is_empty term_c m1); auto. (*we don't care about result*)
   revert m1 Hm1.
   apply term_ind_alt with  (P:=fun t1 => forall m1 
-    (Hm1: forall v t1, Mvs.find_opt _ v m1 = Some t1 -> term_size t1 = 1),
+    (Hm1: forall v t1, Mvs.find_opt v m1 = Some t1 -> term_size t1 = 1),
     term_size (t_subst_unsafe_aux m1 t1) = term_size t1); clear t.
   - (*var*) intros. rewrite t_subst_unsafe_aux_rewrite, Heq; simpl.
-    rewrite term_size_attr_copy. 
-    (*TODO: find_def*) admit.
+    rewrite term_size_attr_copy.
+    rewrite Mvs.find_def_spec.
+    destruct (Mvs.find_opt v m1) as [v1|] eqn : Hfind; auto.
+    apply Hm1 in Hfind. rewrite Hfind. 
+    rewrite term_size_eq, Heq. reflexivity.
   - (*const*) intros. rewrite t_subst_unsafe_aux_rewrite, Heq.
     unfold t_map_unsafe. rewrite term_size_attr_copy, Heq. reflexivity.
   - (*app*) intros ls tms t2 Heq Hall m1 Hm1.
@@ -2094,26 +2111,45 @@ Proof.
     apply IH2.
     (*Need to know that property still holds - really just that everything in set_inter and remove
       is in original*)
-    admit.
-  - 
-    
-     apply IH2.
-    
-    
-     at 2.
-    rewrite t_subst_unsafe_aux_rewrite. simpl. 
-    
-     simpl.
-    
-    
-    
-     (fun t => forall ).
-  - intros. rewrite t_subst_unsafe_aux_rewrite, Heq.
-  apply term_c_ind with
-    auto.
-  apply (term_c_ind (fun t => term_size )).
-  apply term_ind.
-  induction t.
+    apply subst_vars_ok1; auto.
+  - (*case*) intros t1 tbs tm2 Heq IH1 IH2 m1 Hm1.
+    rewrite (term_size_eq tm2), t_subst_unsafe_aux_rewrite, Heq.
+    simpl. rewrite term_size_attr_copy. simpl. f_equal. f_equal.
+    + apply IH1; auto.
+    + f_equal. (*Prove that all are equal*) clear -Hm1 IH2.
+      induction tbs as [| tb1 tbtl IH]; simpl; auto.
+      inversion IH2; subst; auto. f_equal; auto.
+      destruct (Mvs.is_empty _); auto.
+      apply H1.
+      apply subst_vars_ok2; auto.
+  - (*eps*)
+    intros v b t1 tm2 Heq IH m1 Hm1.
+    rewrite (term_size_eq tm2), t_subst_unsafe_aux_rewrite, Heq.
+    simpl. rewrite term_size_attr_copy. simpl. f_equal.
+    destruct (Mvs.is_empty _); auto.
+    apply IH.  apply subst_vars_ok1; auto.
+  - (*quant*) intros q vs b tr t1 tm2 Heq IH1 IH2 m1 Hm1.
+    rewrite (term_size_eq tm2), t_subst_unsafe_aux_rewrite, Heq.
+    simpl. rewrite term_size_attr_copy. simpl. f_equal.
+    destruct (Mvs.is_empty _); auto.
+    apply IH2, subst_vars_ok2; auto.
+  - (*binop*) intros b t1 t2 tm2 Heq IH1 IH2 m1 Hm1.
+    rewrite (term_size_eq tm2), t_subst_unsafe_aux_rewrite, Heq.
+    unfold t_map_unsafe. rewrite term_size_attr_copy, Heq. simpl.
+    f_equal; auto.
+  - (*not*) intros t1 tm2 Heq IH m1 Hm1.
+    rewrite (term_size_eq tm2), t_subst_unsafe_aux_rewrite, Heq.
+    unfold t_map_unsafe. rewrite term_size_attr_copy, Heq. simpl.
+    f_equal; auto.
+  - (*true*) intros tm2 Heq m1 Hm1. 
+    rewrite !(term_size_eq tm2), t_subst_unsafe_aux_rewrite, Heq.
+    unfold t_map_unsafe. rewrite term_size_attr_copy, term_size_eq, !Heq.
+    reflexivity.
+  - (*false*) intros tm2 Heq m1 Hm1. 
+    rewrite !(term_size_eq tm2), t_subst_unsafe_aux_rewrite, Heq.
+    unfold t_map_unsafe. rewrite term_size_attr_copy, term_size_eq, !Heq.
+    reflexivity.
+Qed.
 
 Lemma t_open_bound_size (b: term_bound): forall s,
   term_size (snd (fst (runState (t_open_bound b) s))) = term_size (snd b).
@@ -2129,19 +2165,11 @@ Proof.
   destruct (runState (fresh_vsymbol v) s) as [v3 s3] eqn : Hrun3.
   inversion Hrun; subst.
   (*We don't care that the variable is fresh, but we care that it is a variable*)
-
-
-  simpl in Hrun.
-  Print vs_rename.
-  
-   simpl in Hrun.
-
-
-
-  Print t_open_bound.
-  
-   simpl.
-  unfold t_open_bound, runState. simpl.
+  apply t_subst_unsafe_size.
+  intros v2 tm1. rewrite Mvs.add_spec, Mvs.empty_spec.
+  destruct (Vsym.Tg.equal v2 v); [|discriminate].
+  intros Hsome; inversion Hsome; subst. reflexivity.
+Qed.
 
 (*Interesting case - why we need dependent bind*)
 Lemma tlet_size2 {t1 b y s tm}
@@ -2159,20 +2187,19 @@ Proof.
   simpl in Heq.
   specialize (Heq v1 eq_refl). subst.
   (*Now we just need to reason about [t_open_bound] and its size*)
-  Transparent t_open_bound.
-  Print t_open_bound.
+  pose proof (t_open_bound_size b (fst s)) as Hszb.
+  rewrite Hrun in Hszb. simpl in Hszb.
+  rewrite Hszb. 
+  (*And now return to main obligation*)
+  simpl in Hsz. destruct b as [[b1 b2] b3]; simpl. lia.
+Qed.
 
-
-
-  unfold t_open_bound in Hrun.
-  destruct b as [[v bnd] t2]. simpl in Hrun.
-  unfold runState in Hrun.
-   simpl in Hrun.
-  unfold runState in Hrun. simpl in Hrun.
-
-
-
-  simpl in Heq.
+Lemma tlet_size1 {t1 b tm1}
+  (Hsz: term_node_size (Tlet t1 b) = term_size tm1): 
+  term_size t1 < term_size tm1.
+Proof.
+  simpl in Hsz. destruct b as [[b1 b2] b3]. lia.
+Qed.
 
 
 
@@ -2186,15 +2213,15 @@ Fixpoint term_traverse (tm1: term_c) (ACC: Acc lt (term_size tm1)) : T :=
     v3 <- term_traverse t3 (Acc_inv ACC (tif_size3 Hsz)) ;;
     if_case t1 t2 t3 v1 v2 v3
   | Tlet t1 b => fun Hsz =>
-    v1 <- term_traverse t1 _ ;;
+    v1 <- term_traverse t1 (Acc_inv ACC (tlet_size1 Hsz)) ;;
     (*Need dependent types here to have enough information for the proof*)
     errst_bind_dep' (errst_tup1 (errst_lift1 (t_open_bound b)))
       (fun y s Heq => 
-        v2 <- (term_traverse (snd y) (Acc_inv ACC _)) ;;
+        v2 <- (term_traverse (snd y) (Acc_inv ACC (tlet_size2 Hsz Heq))) ;;
         let_case t1 (fst y) (snd y)  v1 v2)
   | _ => fun Hsz => evil tm1
   end (eq_sym (term_size_eq tm1)).
-
+(* 
 Equations term_traverse (tm1: term_c) : T by wf (term_size tm1) lt :=
   term_traverse tm1 := term_node_traverse (t_node_of tm1) 
 with term_node_traverse (tm1: term_node) : T :=
@@ -2211,14 +2238,6 @@ with term_node_traverse (tm1: term_node) : T :=
     st_bind_dep _ _ _ (t_open_bound b)
       (fun y s Heq => 
         v2 <- (term_traverse (snd y)) ;;
-        let_case t1 ((fst y), (snd b)) v1 v2).
+        let_case t1 ((fst y), (snd b)) v1 v2). *)
 
-Variable (T: Type).
-Variable (const_case: forall (c: CoqBigInt.t), ctr T)
-  (var_case: forall (x: var), ctr T)
-  (op_case: forall (o: intop) (t1 t2: tm) (r1 r2: T), ctr T)
-  (mult_case: forall (t1 t2: tm) (r1 r2: T), ctr T)
-  (*NOTE: recursive case 2 on [t_open_bound] - b is the NEW variable*)
-  (let_case: forall (t1: tm) (b: tm_bound) (r1 r2: T), ctr T).
-
-Equations *)
+End Traverse.

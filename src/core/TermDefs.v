@@ -379,11 +379,6 @@ Definition build_term_o (t: term_node)
 
 End ExtractInterface.
 
-Definition trd {A B C: Type} (x: A * B * C) : C :=
-match x with
-| (_, _, y) => y
-end.
-
 (*Induction on Terms*)
 
 (*Induction on Terms*)
@@ -404,7 +399,7 @@ Variable (Hif: forall t1 t2 t3, P t1 -> P t2 -> P t3 ->
   P1 (Tif t1 t2 t3)).
 Variable (Hlet: forall t v b t1, P t -> P t1 -> P1 (Tlet t (v, b, t1))).
 Variable (Hcase: forall t tbs, P t -> (*TODO: see how to phrase*)
-Forall P (map trd tbs)-> P1 (Tcase t tbs)).
+Forall P (map snd tbs)-> P1 (Tcase t tbs)).
 Variable (Heps: forall v b t, P t -> P1 (Teps (v, b, t))).
 Variable (Hquant: forall q l b tr t,
   Forall (fun x => Forall P x) tr ->
@@ -427,7 +422,7 @@ with term_node_ind (t: term_node) {struct t} : P1 t :=
     (term_c_ind t) (term_c_ind t1)
   | Tcase t tbs => Hcase t tbs (term_c_ind t) 
     (*Coq's termination checker likes this better*)
-      ((proj2 (Forall_map _ _ _)) (mk_Forall (fun x => term_c_ind (trd x)) tbs))
+      ((proj2 (Forall_map _ _ _)) (mk_Forall (fun x => term_c_ind (snd x)) tbs))
   | Teps (v, b, t) => Heps v b t (term_c_ind t)
   | Tquant q (l, b, tr, t) => Hquant q l b tr t
     (mk_Forall (mk_Forall term_c_ind) tr) (term_c_ind t)
@@ -457,7 +452,7 @@ Variable (Hif: forall t1 t2 t3 t (Heq: t_node_of t = Tif t1 t2 t3), P t1 -> P t2
 Variable (Hlet: forall t1 v b t2 t (Heq: t_node_of t = Tlet t1 (v, b, t2)), 
   P t1 -> P t2 -> P t).
 Variable (Hcase: forall t1 tbs t (Heq: t_node_of t = Tcase t1 tbs), P t1 -> (*TODO: see how to phrase*)
-Forall P (map trd tbs)-> P t).
+Forall P (map snd tbs)-> P t).
 Variable (Heps: forall v b t1 t (Heq: t_node_of t = Teps (v, b, t1)), P t1 -> P t).
 Variable (Hquant: forall q l b tr t1 t (Heq: t_node_of t = Tquant q (l, b, tr, t1)),
   Forall (fun x => Forall P x) tr ->
@@ -479,7 +474,7 @@ Fixpoint term_ind_alt (t: term_c) : P t :=
       (term_ind_alt t1) (term_ind_alt t2)
   | Tcase t1 tbs => fun Heq => Hcase t1 tbs _ Heq (term_ind_alt t1) 
     (*Coq's termination checker likes this better*)
-      ((proj2 (Forall_map _ _ _)) (mk_Forall (fun x => term_ind_alt (trd x)) tbs))
+      ((proj2 (Forall_map _ _ _)) (mk_Forall (fun x => term_ind_alt (snd x)) tbs))
   | Teps (v, b, t1) => fun Heq => Heps v b t1 _ Heq (term_ind_alt t1)
   | Tquant q (l, b, tr, t1) => fun Heq => Hquant q l b tr t1 _ Heq
     (mk_Forall (mk_Forall term_ind_alt) tr) (term_ind_alt t1)

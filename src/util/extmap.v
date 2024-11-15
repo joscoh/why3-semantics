@@ -176,7 +176,7 @@ Parameter add_spec: forall (k1: key) (v1: a) (m: t a) (k: key),
   find_opt k (add k1 v1 m) = 
   if key_eq k k1 then Some v1 else find_opt k m.
 
-Parameter remove_spec: forall (k: key) (v: a) (k1: key) (m: t a),
+Parameter remove_spec: forall (k: key) (k1: key) (m: t a),
   find_opt k (remove k1 m) = 
   if key_eq k k1 then None else find_opt k m.
 
@@ -260,6 +260,12 @@ Parameter set_diff_spec: forall (m1: t a) (m2: t b) k,
   match find_opt k m1, find_opt k m2 with
   | Some v1, None => Some v1
   | _, _ => None
+  end.
+
+Parameter find_def_spec: forall (d: a) (k: key) (m: t a),
+  find_def d k m = match find_opt k m with
+  | Some v => v
+  | None => d
   end.
 
 End Spec.
@@ -730,7 +736,7 @@ Lemma contra_b {b1: bool} (Hb: b1 = false) : ~ b1.
 Proof. subst. auto. Qed.
 
 (*The spec*)
-Lemma remove_spec (k: key) (v: a) (k1: key) (m: t a) :
+Lemma remove_spec (k: key) (k1: key) (m: t a) :
   find_opt k (remove k1 m) = 
   if T.equal k k1 then None else find_opt k m.
 Proof.
@@ -1689,6 +1695,13 @@ Definition find_def (d: a) (k: key) (m: t a) : a :=
   | Some v => v
   | None => d
   end.
+
+Lemma find_def_spec (d: a) (k: key) (m: t a):
+  find_def d k m = match find_opt k m with
+  | Some v => v
+  | None => d
+  end.
+Proof. reflexivity. Qed.
 
 (*NOTE: this is potentially NOT sound! User can pass in
   any exception into OCaml code. Don't think this causes
