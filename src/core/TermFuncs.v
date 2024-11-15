@@ -1719,6 +1719,10 @@ Variable (const_case: forall (c: constant), T).
 Variable (let_case: forall (t1: term_c) (v: vsymbol) (t2: term_c) (r1 r2: R), T).
 Variable (if_case: forall (t1 t2 t3: term_c) (r1 r2 r3: R), T).
 
+Variable (app_case: forall (l: lsymbol) (tms: list term_c) (rs: list R), T).
+(*Again, tbs is a list of (new pattern, new term, recursive call)*)
+Variable (match_case: forall (t1: term_c) (r1: R) (tb: list (pattern_c * term_c * R)), T).
+
 Variable (evil: forall (t: term_c), T).
 
 (*This is annoying for sure*)
@@ -2201,7 +2205,104 @@ Proof.
   simpl in Hsz. destruct b as [[b1 b2] b3]. lia.
 Qed.
 
+Lemma sum_in_lt l n:
+  In n l ->
+  n <= sum l.
+Proof.
+  induction l as [| h t IH]; simpl; auto; [contradiction|].
+  intros [Hn | Hin]; subst; try lia.
+  apply IH in Hin; lia.
+Qed.
 
+Lemma tapp_size {l ts tm1}
+  (Hsz: term_node_size (Tapp l ts) = term_size tm1):
+  Forall (fun t => term_size t < term_size tm1) ts.
+Proof.
+  simpl in Hsz. rewrite Forall_forall. intros x Hinx.
+  pose proof (sum_in_lt (map term_size ts) (term_size x)) as Hlt.
+  forward Hlt.
+  { rewrite in_map_iff; eauto. }
+  lia.
+Qed.
+
+(*Interesting case for match*)
+
+Lemma t_open_branch_size (b: term_branch): forall s,
+  term_size (snd (fst (runState (t_open_branch b) s))) = term_size (snd b).
+Proof.
+  intros s. destruct b as [[v b] t].
+  Opaque pat_rename.
+  simpl.
+  destruct (runState (pat_rename Mvs.empty v) s) as [[m1 v1] s1] eqn : Hrun.
+  simpl.
+  (*Get m1 value*)
+  Transparent pat_rename. Opaque add_vars.
+  simpl in Hrun.
+  destruct (runState (add_vars (Svs.elements (pat_vars_of v))) s) as [v3 s3] eqn : Hrun3.
+  inversion Hrun; subst.
+  (*We don't care that the variable is fresh, but we care that it is a variable*)
+  apply t_subst_unsafe_size.
+  intros v2 tm1. rewrite Mvs.union_spec; auto.
+  rewrite Mvs.empty_spec.
+  destruct (Mvs.find_opt v2 (Mvs.map t_var v3)) as [l2|] eqn : Hfind; [|discriminate].
+  intros Hsome; inversion Hsome; subst.
+  apply Mvs.map_spec in Hfind.
+  destruct Hfind as [k1 [v1 [Heqv [Hfind Htm1]]]]; subst.
+  reflexivity.
+Qed.
+
+Lemma tmatch_size2 {tm1 s y b}
+  (Hx: term_size (snd b) < term_size tm1)
+  (*(Hsz: term_node_size (Tcase t1 tbs)) (*TODO: do we need?*)*)
+  (Heq: forall z : pattern_c * term_c,
+    fst
+    (run_errState
+    (@errst_tup1 CoqBigInt.t St _ (errst_lift1 (t_open_branch b))) s) =
+    inr z -> y = z):
+  term_size (snd y) < term_size tm1.
+Proof.
+  unfold errst_tup1 in Heq. Opaque t_open_branch. simpl in Heq.
+  unfold run_errState in Heq. simpl in Heq.
+  destruct (runState (t_open_branch b) (fst s)) as [v1 s1] eqn : Hrun.
+  simpl in Heq.
+  specialize (Heq v1 eq_refl). subst.
+  (*Now we just need to reason about [t_open_bound] and its size*)
+  pose proof (t_open_branch_size b (fst s)) as Hszb.
+  rewrite Hrun in Hszb. simpl in Hszb.
+  rewrite Hszb. auto.
+Qed. 
+
+Lemma tmatch_size3 {tm1 t1 tbs}
+  (Hsz: term_node_size (Tcase t1 tbs) = term_size tm1):
+  Forall (fun x => term_size (snd x) < term_size tm1) tbs.
+Proof.
+  simpl in Hsz. rewrite Forall_forall. intros x Hinx.
+  pose proof (sum_in_lt (map (fun x => term_size (snd x)) tbs) (term_size (snd x))) as Hlt.
+  forward Hlt.
+  { rewrite in_map_iff; eauto. }
+  lia.
+Qed.
+
+Lemma tmatch_size1 {t1 tbs tm1}
+  (Hsz: term_node_size (Tcase t1 tbs) = term_size tm1):
+  term_size t1 < term_size tm1.
+Proof.
+  simpl in Hsz. lia.
+Qed.
+
+
+
+(*TODO: move from IndProp*)
+
+Fixpoint dep_map {A B: Type} {P: A -> Prop} (f: forall x, P x -> B)
+  (l: list A) (Hall: Forall P l) : list B :=
+  match l as l' return Forall P l' -> list B with
+  | nil => fun _ => nil
+  | x :: tl => fun Hforall => f x (Forall_inv Hforall) ::
+    dep_map f tl (Forall_inv_tail Hforall)
+  end Hall.
+
+Print term_c.
 
 Fixpoint term_traverse (tm1: term_c) (ACC: Acc lt (term_size tm1)) : T :=
   match (t_node_of tm1) as t1 return term_node_size t1 = term_size tm1 -> _ with
@@ -2219,6 +2320,26 @@ Fixpoint term_traverse (tm1: term_c) (ACC: Acc lt (term_size tm1)) : T :=
       (fun y s Heq => 
         v2 <- (term_traverse (snd y) (Acc_inv ACC (tlet_size2 Hsz Heq))) ;;
         let_case t1 (fst y) (snd y)  v1 v2)
+  | Tapp l ts => fun Hsz =>
+    (*Need dependent map for termination proof*)
+    recs <- errst_list (@dep_map _ _ (fun t => term_size t < term_size tm1) 
+      (fun t1 (Ht1: term_size t1 < term_size tm1) => 
+        term_traverse t1 (Acc_inv ACC Ht1)) ts (tapp_size Hsz)) ;;
+    (app_case l ts recs)
+  (*Case is the trickiest: we need both a dependent map and a dependent bind*)
+  | Tcase t1 tbs => fun Hsz =>
+    r1 <- term_traverse t1 (Acc_inv ACC (tmatch_size1 Hsz)) ;;
+    tbs2 <- errst_list (@dep_map _ _ (fun x => term_size (snd x) < term_size tm1)
+      (*Idea: For each element in list, use dependent bind and recursively traverse*)
+      (fun b (Hx: term_size (snd b) < term_size tm1) =>
+        errst_bind_dep' (errst_tup1 (errst_lift1 (t_open_branch b)))
+          (fun y s Heq =>
+            t2 <- term_traverse (snd y) (Acc_inv ACC (tmatch_size2 Hx Heq)) ;;
+            errst_ret (y, t2))
+        ) tbs (tmatch_size3 Hsz)) ;;
+    match_case t1 r1 tbs2
+
+
   | _ => fun Hsz => evil tm1
   end (eq_sym (term_size_eq tm1)).
 (* 
