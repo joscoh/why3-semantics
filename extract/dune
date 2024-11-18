@@ -10,7 +10,7 @@
   CoqExthtbl
   ConstantDefs
   IdentDefs
-  TyDefs TyFuncs TermDefs TermFuncs DeclDefs DeclFuncs CoercionDefs 
+  TyDefs TyFuncs TermDefs TermFuncs TermTraverse DeclDefs DeclFuncs CoercionDefs 
   TheoryDefs TheoryFuncs TaskDefs TaskFuncs TransDefs
   EliminateInductive EliminateDefinition
   PatternComp)
@@ -145,12 +145,12 @@
 
  ;Create term.ml
  (rule
-  (deps TermImports.ml TermDefs.ml TermExn.ml TermFuncs.ml TermExtra.ml)
+  (deps TermImports.ml TermDefs.ml TermExn.ml TermFuncs.ml TermTraverse.ml TermExtra.ml)
   (targets term.ml)
   (action 
   (with-stdout-to term.ml
     (pipe-stdout
-     (cat TermDefs.ml TermExn.ml TermFuncs.ml TermExtra.ml)
+     (cat TermDefs.ml TermExn.ml TermFuncs.ml TermTraverse.ml TermExtra.ml)
      (run sed -e "s/^open.*//g")
      (run cat TermImports.ml -)
     )
@@ -283,7 +283,7 @@
  (modules (:standard \ CoqCtr TyExn TyDefs TyFuncs TyExtra IdentDefs IdentExtra 
   LocTy LocExtra Locpre CoqWstdlib Wstdlibextra CoqWeakhtbl Weakhtblextra
   NumberDefs numberexn NumberFuncs numberextra CoqExthtbl ConstantDefs 
-  ConstantExtra TermDefs TermExtra TermExn TermFuncs DeclDefs 
+  ConstantExtra TermDefs TermExtra TermExn TermFuncs TermTraverse DeclDefs 
   DeclExn DeclFuncs DeclExtra CoercionDefs CoercionExtra TheoryDefs
   TheoryFuncs TheoryExn TheoryExtra
   TaskDefs TaskExn TaskExtra TaskFuncs TransDefs TransExtra

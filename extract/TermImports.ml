@@ -16,3 +16,4 @@ open Pmap
 open Zmap
 open Number
 open Hashcons
+open Common

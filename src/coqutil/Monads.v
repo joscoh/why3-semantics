@@ -130,7 +130,7 @@ Definition run_errState {A B: Type} (x: errState A B) (a: A):
 
 (*Dependent version for termination proofs*)
 (*First version with tactics*)
-Definition errst_bind_dep {A B C: Type} (x: errState A B)
+(* Definition errst_bind_dep {A B C: Type} (x: errState A B)
   (f: forall (b: B) (s: A) (Heq: forall z,
     fst (run_errState x s) = (inr z) ->
     b = z),
@@ -155,11 +155,11 @@ Proof.
     (*Now take [errState A C] from f, run on s1*)
     (* specialize (f eq_refl). *)
     exact (run_errState f s1).
-Defined.
+Defined. *)
 
 (*Non-tactic version, exactly the same*)
 (*TODO: see if this is what we need*)
-Definition errst_bind_dep' {A B C: Type} (x: errState A B)
+Definition errst_bind_dep {A B C: Type} (x: errState A B)
   (f: forall (b: B) (s: A) (Heq: forall z,
     fst (run_errState x s) = (inr z) ->
     b = z), errState A C) : errState A C:=

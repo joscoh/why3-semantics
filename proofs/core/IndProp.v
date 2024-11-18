@@ -435,61 +435,6 @@ Proof.
     apply IHps; auto.
 Qed. 
 
-Fixpoint dep_map {A B: Type} {P: A -> Prop} (f: forall x, P x -> B)
-  (l: list A) (Hall: Forall P l) : list B :=
-  match l as l' return Forall P l' -> list B with
-  | nil => fun _ => nil
-  | x :: tl => fun Hforall => f x (Forall_inv Hforall) ::
-    dep_map f tl (Forall_inv_tail Hforall)
-  end Hall.
-
-Lemma dep_map_in {A B: Type} {P: A -> Prop} (f: forall x, P x -> B)
-  (l: list A) (Hall: Forall P l) (x: B):
-  In x (dep_map f l Hall) ->
-  exists y H, In y l /\ f y H = x.
-Proof.
-  revert Hall. induction l; simpl; intros. destruct H.
-  inversion Hall; subst.
-  destruct H.
-  - subst. exists a. exists (Forall_inv Hall). split; auto.
-  - specialize (IHl _ H). destruct IHl as [y [Hy [Hiny Hxy]]].
-    exists y. exists Hy. split; auto.
-Qed.
-
-Lemma in_dep_map {A B: Type} {P: A -> Prop} (f: forall x, P x -> B)
-  (l: list A) (Hall: Forall P l) (x: A):
-  In x l ->
-  exists H,
-    In (f x H) (dep_map f l Hall).
-Proof.
-  revert Hall. induction l; simpl; intros. destruct H.
-  inversion Hall; subst. destruct H; subst.
-  - exists (Forall_inv Hall). left. reflexivity.
-  - specialize (IHl (Forall_inv_tail Hall) H).
-    destruct IHl as [Hx Hinx]. exists Hx. right. assumption.
-Qed.
-
-Lemma dep_map_ext {A B: Type} {P1 P2: A -> Prop} 
-  (f1: forall x, P1 x -> B)
-  (f2: forall x, P2 x -> B)
-  (l: list A)
-  (Hall1: Forall P1 l)
-  (Hall2: Forall P2 l)
-  (Hext: forall (x: A) (y1: P1 x) (y2: P2 x), In x l -> f1 x y1 = f2 x y2):
-  dep_map f1 l Hall1 = dep_map f2 l Hall2.
-Proof.
-  revert Hall1 Hall2. induction l; simpl; intros; auto;
-  simpl in *; f_equal; auto.
-Qed.
-
-Lemma dep_map_irrel {A B: Type} {P: A -> Prop} (f: forall x, P x -> B)
-  (l: list A) (Hall1 Hall2: Forall P l):
-  (forall x H1 H2, f x H1 = f x H2) ->
-  dep_map f l Hall1 = dep_map f l Hall2.
-Proof.
-  intros. apply dep_map_ext; auto.
-Qed.
-
 Definition mk_vt srts params :=
   vt_with_args triv_val_typevar srts params.
 

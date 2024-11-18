@@ -1,4 +1,4 @@
-From Src.core Require Import IdentDefs TyDefs TyFuncs TermDefs TermFuncs
+From Src.core Require Import IdentDefs TyDefs TyFuncs TermDefs TermFuncs TermTraverse
 DeclDefs DeclFuncs CoercionDefs TheoryDefs TheoryFuncs TaskDefs TaskFuncs TransDefs
 PatternComp.
 From Src.transform Require Import EliminateInductive EliminateDefinition.
@@ -134,6 +134,7 @@ Extract Inlined Constant errst_tup1 => "".
 Extract Inlined Constant errst_tup2 => "".
 Extract Inlined Constant errst_assoc => "".
 Extract Inlined Constant errst_congr1 => "". (*TODO: make sure OK*)
+Extract Inlined Constant errst_bind_dep => "(fun x y -> y x () ())".
 
 
 (*Mutable state monads*)
@@ -320,7 +321,7 @@ Extract Inlined Constant errst_trywith => "(fun x e ret ->
 Separate Extraction (*CoqUtil.str_to_pos*) (*TEMP*)
   CoqExthtbl NumberDefs NumberFuncs hashcons extmap extset CoqHashtbl 
   CoqWstdlib
-  ConstantDefs IdentDefs TyDefs TyFuncs TermDefs TermFuncs
+  ConstantDefs IdentDefs TyDefs TyFuncs TermDefs TermFuncs TermTraverse
   DeclDefs DeclFuncs CoercionDefs TheoryDefs TheoryFuncs TaskDefs TaskFuncs TransDefs
   EliminateInductive EliminateDefinition PatternComp.
 (* TheoryDefs.*) (*Ty.ty_v_map Ident.*)
