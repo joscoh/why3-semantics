@@ -91,3 +91,5 @@ transform/eliminate_inductive.mli
 transform/eliminate_inductive.ml
 transform/eliminate_definition.mli
 transform/eliminate_definition.ml
+transform/eliminate_algebraic.mli
+transform/eliminate_algebraic.ml

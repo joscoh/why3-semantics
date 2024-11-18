@@ -26,7 +26,7 @@ Notation T := (errState (CoqBigInt.t * St) R).
 
 Variable (var_case: forall (x: vsymbol), T).
 
-Variable (const_case: forall (c: constant), T).
+Variable (const_case: forall (c: constant) , T).
 (*For now, only do let*)
 (*NOTE: recursive case 2 on [t_open_bound], v is the NEW variable, t2 is the new term*)
 Variable (let_case: forall (t1: term_c) (v: vsymbol) (t2: term_c) (r1 r2: R), T).
@@ -116,6 +116,138 @@ Fixpoint term_traverse (tm1: term_c) (ACC: Acc lt (term_size tm1)) : T :=
   | Tfalse => fun _ => false_case
   end (eq_sym (term_size_eq tm1)).
 
+Definition tm_traverse (tm1: term_c) : T :=
+  term_traverse tm1 (Wf_nat.lt_wf _).
+
+End Traverse.
+
+(*And a version to map over terms specifically - basically only difference is that
+  non-recursive cases just return the term*)
+Section Map.
+Variable (St: Type). (*The type of state*)
+
+Notation T := (errState (CoqBigInt.t * St) term_c).
+
+(* Variable (var_case: forall (x: vsymbol), T).
+
+Variable (const_case: forall (c: constant) , T). *)
+(*For now, only do let*)
+(*NOTE: recursive case 2 on [t_open_bound], v is the NEW variable, t2 is the new term*)
+Variable (let_case: forall (t1: term_c) (r1: term_c) (v: vsymbol) (t2: term_c) (r2: term_c), T).
+Variable (if_case: forall (t1 t2 t3: term_c) (r1 r2 r3: term_c), T).
+
+(*NOTE: o is the OLD type so [rs] should be type-safe*)
+Variable (app_case: forall (l: lsymbol) (tms: list term_c) (o: option ty_c) (rs: list term_c), T).
+(*Again, tbs is a list of (new pattern, new term, recursive call)*)
+Variable (match_case: forall (t1: term_c) (r1: term_c) (tb: list (pattern_c * term_c * term_c)), T).
+(*As above: new variable, new term, new result*)
+Variable (eps_case: forall (v: vsymbol) (t: term_c) (r: term_c), T).
+Variable (quant_case: forall (q: quant) (vs: list vsymbol) (tr: list (list (term_c))) (rr: list (list term_c))
+  (t: term_c) (r: term_c), T).
+Variable (binop_case: forall (b: binop) (t1 t2: term_c) (r1 r2: term_c), T).
+Variable (not_case: forall (t: term_c) (r: term_c), T).
+(* Variable (true_case: T).
+Variable (false_case : T). *)
+
+Fixpoint term_map_rec (tm1: term_c) (ACC: Acc lt (term_size tm1)) : T :=
+  match (t_node_of tm1) as t1 return term_node_size t1 = term_size tm1 -> _ with
+  | Tconst c => fun _ => errst_ret tm1
+  | Tvar x => fun _ => errst_ret tm1
+  | Tif t1 t2 t3 => fun Hsz =>
+    v1 <- term_map_rec t1 (Acc_inv ACC (tif_size1 Hsz)) ;;
+    v2 <- term_map_rec t2 (Acc_inv ACC (tif_size2 Hsz)) ;;
+    v3 <- term_map_rec t3 (Acc_inv ACC (tif_size3 Hsz)) ;;
+    if_case t1 t2 t3 v1 v2 v3
+  | Tlet t1 b => fun Hsz =>
+    v1 <- term_map_rec t1 (Acc_inv ACC (tlet_size1 Hsz)) ;;
+    (*Need dependent types here to have enough information for the proof*)
+    errst_bind_dep (errst_tup1 (errst_lift1 (t_open_bound b)))
+      (fun y s Heq => 
+        v2 <- (term_map_rec (snd y) (Acc_inv ACC (tlet_size2 Hsz Heq))) ;;
+        let_case t1 v1 (fst y) (snd y) v2)
+  | Tapp l ts => fun Hsz =>
+    (*Need dependent map for termination proof*)
+    recs <- errst_list (@dep_map _ _ (fun t => term_size t < term_size tm1) 
+      (fun t1 (Ht1: term_size t1 < term_size tm1) => 
+        term_map_rec t1 (Acc_inv ACC Ht1)) ts (tapp_size Hsz)) ;;
+    (app_case l ts (t_ty_of tm1) recs)
+  (*Case is the trickiest: we need both a dependent map and a dependent bind*)
+  | Tcase t1 tbs => fun Hsz =>
+    r1 <- term_map_rec t1 (Acc_inv ACC (tmatch_size1 Hsz)) ;;
+    tbs2 <- errst_list (@dep_map _ _ (fun x => term_size (snd x) < term_size tm1)
+      (*Idea: For each element in list, use dependent bind and recursively traverse*)
+      (fun b (Hx: term_size (snd b) < term_size tm1) =>
+        errst_bind_dep (errst_tup1 (errst_lift1 (t_open_branch b)))
+          (fun y s Heq =>
+            t2 <- term_map_rec (snd y) (Acc_inv ACC (tmatch_size2 Hx Heq)) ;;
+            errst_ret (y, t2))
+        ) tbs (tmatch_size3 Hsz)) ;;
+    match_case t1 r1 tbs2
+  | Teps b => fun Hsz =>
+    errst_bind_dep (errst_tup1 (errst_lift1 (t_open_bound b)))
+      (fun y s Heq => 
+        v <- (term_map_rec (snd y) (Acc_inv ACC (teps_size Hsz Heq))) ;;
+        eps_case (fst y) (snd y) v)
+  (*A slight complication from the triggers - need nested dependent match*)
+  | Tquant q tq => fun Hsz =>
+    (*NOTE: doing bind ... ret, need for proofs even though superflous*)
+    errst_bind_dep (errst_tup1 (errst_lift1 (t_open_quant1 tq)))
+      (fun (y : list vsymbol * trigger * term_c) s Heq => 
+        v <- (term_map_rec (snd y) (Acc_inv ACC (tquant_size1 Hsz Heq))) ;;
+        let vs := fst (fst y) in
+        let tr := snd (fst y) in
+        let t := snd y in
+        (*Then traverse over triggers*)
+        v2 <- errst_list (dep_map (fun l1 (Hl1: Forall (fun x => term_size x < term_size tm1) l1) =>
+          errst_list (dep_map (fun tr1 (Ht1: term_size tr1 < term_size tm1) => 
+            term_map_rec tr1 (Acc_inv ACC Ht1))
+            l1 Hl1)) tr (tquant_size_tr Hsz Heq)) ;;
+        quant_case q vs tr v2 t v)
+  | Tbinop b t1 t2 => fun Hsz =>
+    r1 <- term_map_rec t1 (Acc_inv ACC (tbinop_size1 Hsz)) ;;
+    r2 <- term_map_rec t2 (Acc_inv ACC (tbinop_size2 Hsz)) ;;
+    binop_case b t1 t1 r1 r2
+  | Tnot t1 => fun Hsz =>
+    r1 <- term_map_rec t1 (Acc_inv ACC (tnot_size1 Hsz)) ;;
+    not_case t1 r1
+  | Ttrue => fun _ => errst_ret tm1
+  | Tfalse => fun _ => errst_ret tm1
+  end (eq_sym (term_size_eq tm1)).
+
+Definition term_map (tm1: term_c) : T :=
+  term_map_rec tm1 (Wf_nat.lt_wf _).
+
+(* End Map.
+
+(*Default cases for map - when we don't do anything interesting except recurse*)
+Section Default.
+Context {St: Type}.
+Notation T := (errState (CoqBigInt.t * ((hashcons_ty ty_c) * St))%type term_c).
+Check t_app1. *)
+(*Default arguments for any recursive-but-not-interesting cases*)
+
+Definition tmap_let_default (t1: term_c) (r1: term_c) (v: vsymbol) (t2: term_c) (r2: term_c) : T :=
+  errst_lift2 (t_let_close v r1 r2).
+Definition tmap_if_default (t1 t2 t3: term_c) (r1 r2 r3: term_c) : T :=
+  errst_lift2 (t_if r1 r2 r3).
+Definition tmap_app_default (l: lsymbol) (tms: list term_c) (o: option ty_c) (rs: list term_c) : T :=
+  errst_ret (t_app1 l rs o). (*NOTE: assuming type safe*)
+Definition tmap_match_default (t1: term_c) (r1: term_c) (tb: list (pattern_c * term_c * term_c)) : T :=
+  errst_lift2 (t_case_close r1 (map (fun x => (fst (fst x), snd x)) tb)).
+Definition tmap_eps_default (v: vsymbol) (t: term_c) (r: term_c) : T :=
+  errst_lift2 (t_eps_close v r).
+Definition tmap_quant_default (q: quant) (vs: list vsymbol) (tr: list (list (term_c))) (rr: list (list term_c))
+  (t: term_c) (r: term_c) : T :=
+  errst_lift2 (t_quant_close q vs rr r).
+Definition tmap_binop_default (b: binop) (t1 t2: term_c) (r1 r2: term_c) : T :=
+  errst_lift2 (t_binary b r1 r2).
+Definition tmap_not_default (t: term_c) (r: term_c) : T := errst_lift2 (t_not r).
+
+End Map.
+
+
+
+
 (* 
 Equations term_traverse (tm1: term_c) : T by wf (term_size tm1) lt :=
   term_traverse tm1 := term_node_traverse (t_node_of tm1) 
@@ -135,4 +267,4 @@ with term_node_traverse (tm1: term_node) : T :=
         v2 <- (term_traverse (snd y)) ;;
         let_case t1 ((fst y), (snd b)) v1 v2). *)
 
-End Traverse.
+

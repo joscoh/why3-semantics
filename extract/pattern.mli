@@ -53,3 +53,9 @@ val is_exhaustive : term list -> pattern list list -> bool
   (** [is_exhaustive] checks if the pattern list is exhaustive.
       If the term list argument is empty, it is treated as a list
       of variables of appropriate types. *)
+
+(*What we need for Coq purposes - non-default arguments*)
+val compile_bare_aux :
+  (term -> (pattern * 'a) list -> 'a) ->
+  (vsymbol -> term -> 'a -> 'a) ->
+  term list -> (pattern list * 'a) list -> 'a

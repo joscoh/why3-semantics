@@ -1,7 +1,7 @@
 From Src.core Require Import IdentDefs TyDefs TyFuncs TermDefs TermFuncs TermTraverse
 DeclDefs DeclFuncs CoercionDefs TheoryDefs TheoryFuncs TaskDefs TaskFuncs TransDefs
 PatternComp.
-From Src.transform Require Import EliminateInductive EliminateDefinition.
+From Src.transform Require Import EliminateInductive EliminateDefinition EliminateAlgebraic.
 From Src.coqutil Require Import IntFuncs CoqCtr State.
 From Src.util Require Import ConstantDefs NumberFuncs extmap extset hashcons CoqExthtbl.
 From Coq Require Extraction.
@@ -323,7 +323,7 @@ Separate Extraction (*CoqUtil.str_to_pos*) (*TEMP*)
   CoqWstdlib
   ConstantDefs IdentDefs TyDefs TyFuncs TermDefs TermFuncs TermTraverse
   DeclDefs DeclFuncs CoercionDefs TheoryDefs TheoryFuncs TaskDefs TaskFuncs TransDefs
-  EliminateInductive EliminateDefinition PatternComp.
+  EliminateInductive EliminateDefinition PatternComp EliminateAlgebraic.
 (* TheoryDefs.*) (*Ty.ty_v_map Ident.*)
 (*Separate Extraction Extmap.
 Separate Extraction Ty.ty Ty.ty_v_map Ident.*)

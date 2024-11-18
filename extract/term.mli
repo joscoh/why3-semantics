@@ -719,3 +719,32 @@ val t_view_quant: term_quant -> (vsymbol list * trigger) * term
 val term_eqb : term -> term -> bool
 (*for non-hashconsing pattern*)
 val pat_app_aux : lsymbol -> pattern list -> ty -> pattern
+(*for traversals*)
+val term_map : 
+  (*let*)
+  (term -> term -> vsymbol -> term -> term -> term) ->
+  (*if*)
+  (term -> term -> term -> term -> term -> term -> term) ->
+  (*app*)
+  (lsymbol -> term list -> ty option -> term list -> term) ->
+  (*case*)
+  (term -> term -> ((pattern * term) * term) list -> term) ->
+  (*eps*)
+  (vsymbol -> term -> term -> term) ->
+  (*quant*)
+  (quant -> vsymbol list -> term list list -> term list list -> term -> term -> term) ->
+  (*binop*)
+  (binop -> term -> term -> term -> term -> term) ->
+  (*not*)
+  (term -> term -> term) ->
+  (*the function*)
+  term -> term
+(*defaults*)
+val tmap_let_default : (term -> term -> vsymbol -> term -> term -> term)
+val tmap_if_default : (term -> term -> term -> term -> term -> term -> term)
+val tmap_app_default : (lsymbol -> term list -> ty option -> term list -> term)
+val tmap_match_default: (term -> term -> ((pattern * term) * term) list -> term)
+val tmap_eps_default : (vsymbol -> term -> term -> term)
+val tmap_quant_default: (quant -> vsymbol list -> term list list -> term list list -> term -> term -> term)
+val tmap_binop_default: (binop -> term -> term -> term -> term -> term)
+val tmap_not_default: (term -> term -> term)

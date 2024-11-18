@@ -1,22 +1,21 @@
-(* Require Import TermFuncs PatternComp.
+Require Import TermFuncs TermTraverse PatternComp.
 (** Compile match patterns *)
-Check t_open_branch.
-Fixpoint rewriteT (t: term_c) :=
-  match (t_node_of t) with
-  | Tcase t bl =>
-    let t1 := rewriteT t in
-    let rest := compile_bare t_case_close t_let_close_simp [t1] 
-      (map (fun b => 
-        )) 
+Import MonadNotations.
 
-
-let rec rewriteT t0 = match t0.t_node with
-  | Tcase (t,bl) ->
-      let t = rewriteT t in
-      let mk_b b = let p,t = t_open_branch b in [p], rewriteT t in
-      let mk_case = t_case_close and mk_let = t_let_close_simp in
-      let res = Pattern.compile_bare ~mk_case ~mk_let [t] (List.map mk_b bl) in
-      t_attr_copy t0 res
-  | _ -> t_map rewriteT t0
-
-let compile_match = Trans.decl (fun d -> [decl_map rewriteT d]) None *)
+Local Open Scope errst_scope.
+Definition rewriteT (t: term_c) : errState (CoqBigInt.t * hashcons_ty ty_c) term_c :=
+  term_map (hashcons_ty ty_c)
+  (*let*)
+  (tmap_let_default _)
+  (tmap_if_default _)
+  (tmap_app_default _)
+  (*only interesting case*)
+  (fun t1 r1 tb =>
+    res <- compile_bare_aux t_case_close t_let_close_simp [r1] (map (fun x => ([fst (fst x)], snd x)) tb) ;;
+    errst_ret (t_attr_copy t res)
+    )
+  (tmap_eps_default _)
+  (tmap_quant_default _)
+  (tmap_binop_default _)
+  (tmap_not_default _)
+  t.

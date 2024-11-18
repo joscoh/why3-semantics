@@ -22,3 +22,6 @@ let meta_remove_prop = register_meta "remove_prop" [MTprsymbol]
       let meta_remove_def = register_meta "remove_def" [MTlsymbol]
       ~desc:"Remove@ the@ definition@ of@ a@ function/predicate@ symbol@ but@ keep@ \
              its@ declaration."
+
+(*for compilation*)
+let unsupportedTerm : 'a -> 'b -> 'c = fun _ _ -> raise (Invalid_argument "unsupported")
