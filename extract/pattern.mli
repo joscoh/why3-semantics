@@ -59,3 +59,6 @@ val compile_bare_aux :
   (term -> (pattern * 'a) list -> 'a) ->
   (vsymbol -> term -> 'a -> 'a) ->
   term list -> (pattern list * 'a) list -> 'a
+val check_compile_aux :
+  (tysymbol -> lsymbol list) ->
+  term list -> pattern list list -> unit

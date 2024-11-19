@@ -49,23 +49,25 @@ Record hashcons_full : Type :=
 
 (*No memoization*)
 (*TODO: does not have a general type at all - just make it all for now*)
-Definition gen_decl1 {A St: Type} (add : task -> A -> errState (St * hashcons_full) task) 
-  (fn: decl -> errState (St * hashcons_full) (list A)):
-  task -> task -> errState (St * hashcons_full) task :=
+(*TODO: not general type, specialized to CoqBigInt.t - do we need any other state?*)
+Definition gen_decl1 {A (*St*): Type} (add : task -> A -> errState (CoqBigInt.t * hashcons_full) task) 
+  (fn: decl -> errState (CoqBigInt.t * hashcons_full) (list A)):
+  task -> task -> errState (CoqBigInt.t * hashcons_full) task :=
   let fn (tsk: task_hd) acc := 
     match td_node_of tsk.(task_decl) with
     | Decl d => 
       l <- (fn d) ;;
       foldl_errst add l acc
-    | _ =>  errst_tup2 (full_of_td_tsk (add_tdecl acc tsk.(task_decl)))
+    | _ =>  add_tdecl acc tsk.(task_decl)
     end
   in
   fold_errst fn.
 
-Definition decl_errst {St: Type} (f: decl -> errState (St * hashcons_full) (list decl))
-  (t1 t2: task) : errState (St * hashcons_full) task :=
-  gen_decl1 (fun (t : task) (d: decl) => errst_tup2 (full_of_td_tsk (TaskFuncs.add_decl t d))) f t1 t2.
+(*same*)
+Definition decl_errst (*{St: Type}*) (f: decl -> errState (CoqBigInt.t * hashcons_full) (list decl))
+  (t1 t2: task) : errState (CoqBigInt.t * hashcons_full) task :=
+  gen_decl1 (fun (t : task) (d: decl) => (TaskFuncs.add_decl t d)) f t1 t2.
 
-Definition tdecl_errst  {St: Type} (f: decl -> errState (St * hashcons_full) (list tdecl_c))
-  (t1 t2: task) : errState (St * hashcons_full) task :=
-  gen_decl1 (fun (t : task) (d: tdecl_c) => errst_tup2 (full_of_td_tsk (TaskFuncs.add_tdecl t d))) f t1 t2.
+Definition tdecl_errst (*{St: Type}*) (f: decl -> errState (CoqBigInt.t * hashcons_full) (list tdecl_c))
+  (t1 t2: task) : errState (CoqBigInt.t * hashcons_full) task :=
+  gen_decl1 (fun (t : task) (d: tdecl_c) => TaskFuncs.add_tdecl t d) f t1 t2.

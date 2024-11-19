@@ -720,6 +720,33 @@ val term_eqb : term -> term -> bool
 (*for non-hashconsing pattern*)
 val pat_app_aux : lsymbol -> pattern list -> ty -> pattern
 (*for traversals*)
+val tm_traverse:
+  (*var*)
+  (vsymbol -> 'a) ->
+  (*const*)
+  (Constant.constant -> 'a) ->
+  (*let*)
+  (term -> vsymbol -> term -> 'a -> 'a -> 'a) ->
+  (*if*)
+  (term -> term -> term -> 'a -> 'a -> 'a -> 'a) ->
+  (*app*)
+  (lsymbol -> term list -> 'a list -> 'a) ->
+  (*case*)
+  (term -> 'a -> ((pattern * term) * 'a) list -> 'a) ->
+  (*eps*)
+  (vsymbol -> term -> 'a -> 'a) ->
+  (*quant*)
+  (quant -> vsymbol list -> term list list -> 'a list list -> term -> 'a -> 'a) ->
+  (*binop*)
+  (binop -> term -> term -> 'a -> 'a -> 'a) ->
+  (*not*)
+  (term -> 'a -> 'a) ->
+  (*true*)
+  'a ->
+  (*false*)
+  'a ->
+  (*the function*)
+  term -> 'a
 val term_map : 
   (*let*)
   (term -> term -> vsymbol -> term -> term -> term) ->

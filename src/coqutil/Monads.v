@@ -261,6 +261,9 @@ Definition assoc13_iso {A B C D} : iso (A * (B * C * D)) (A * B * C * D) :=
   mk_iso (fun '(a, (b, c, d)) => (a, b, c, d)) (fun '(a, b, c, d) => (a, (b, c, d))).
 Definition assoc22_iso {A B C D} : iso ((A * B) * (C * D)) (A * B * C * D) :=
   mk_iso (fun '((a, b), (c, d)) => (a, b, c, d)) (fun '(a, b, c, d) => ((a, b), (c, d))).
+(*Need for partial to (St * hashcons_st)*)
+Definition assoc5_iso {A B C D E} : iso (A * B * C * D * E) (A * (B * C * D * E)) :=
+  mk_iso (fun '(a, b, c, d, e) => (a, (b, c, d, e))) (fun '(a, (b, c, d, e)) => (a, b, c, d, e)).
 
 
 Definition st_assoc {A B C D: Type} (s1: st (A * (B * C)) D) :
@@ -275,6 +278,8 @@ Definition st_assoc13 {A B C D E: Type} (s: st (A * (B * C * D)) E) : st (A * B 
   st_iso assoc13_iso s.
 Definition st_assoc22 {A B C D E: Type} (s: st ((A * B) * (C * D)) E) : st (A * B * C * D) E :=
   st_iso assoc22_iso s.
+Definition st_assoc5 {A B C D E F: Type} (s: st (A * B * C * D * E) F) : st (A * (B * C * D * E)) F :=
+  st_iso assoc5_iso s.
 
 Definition st_congr1 {A B C D: Type} (f: st B D -> st C D) (s: st (A * B) D) : st (A * C) D :=
   (*Idea: initial state is (a, c). Run f on state that takes in b, runs s on (a, b), gets result b'
@@ -346,6 +351,8 @@ Definition errst_assoc13 {A B C D E: Type} (s: errState (A * (B * C * D)) E) : e
   errst_trans (@st_assoc13 _ _ _ _) s.
 Definition errst_assoc22 {A B C D E: Type} (s: errState ((A * B) * (C * D)) E) : errState (A * B * C * D) E :=
   errst_trans (@st_assoc22 _ _ _ _) s.
+Definition errst_assoc5 {A B C D E F: Type} (s: errState (A * B * C * D * E) F) : errState (A * (B * C * D * E)) F :=
+  errst_trans (@st_assoc5 _ _ _ _ _) s. 
 
 (*For convenience*)
 Definition errst_tup2_assoc {A B C D: Type} (s: errState (B * C) D) : errState (A * B * C) D :=

@@ -839,7 +839,7 @@ let find_prop_decl kn pr =
   | Dprop (k,_,f) -> k,f
   | Dtype _ | Ddata _ | Dparam _ | Dlogic _ -> assert false *)
 
-let check_match kn d =
+(* let check_match kn d =
   let rec check () t = match t.t_node with
     | Tcase (t1,bl) ->
         let get_constructors ts = List.map fst (find_constructors kn ts) in
@@ -848,7 +848,7 @@ let check_match kn d =
         t_fold check () t
     | _ -> t_fold check () t
   in
-  decl_fold check () d
+  decl_fold check () d *)
 (* 
 exception NonFoundedTypeDecl of tysymbol
 

@@ -925,7 +925,74 @@ Definition find_prop_decl (kn : known_map) (pr : prsymbol) : errorM (prop_kind *
   | _ => (assert_false "find_prop_decl")
   end.
 
-(*We do NOT check pattern matching exhaustiveness (for now at least)*)
+(*Pattern matching exhaustiveness*)
+(*NOTE; we do not print useful error information*)
+Require Import PatternComp.
+
+Check check_compile_aux.
+Print decl_node.
+Local Open Scope errst_scope.
+Definition decl_fold_errst {St A: Type} (fn: A -> term_c -> errState St A) (acc: A) (d: decl) : errState St A :=
+  match d.(d_node) with
+  | Dtype _ => errst_ret acc
+  | Ddata _ => errst_ret acc
+  | Dparam _ => errst_ret acc
+  | Dlogic l =>
+    foldl_errst (fun acc x => 
+      y <- errst_lift2 (open_ls_defn (snd x)) ;;
+      fn acc (snd y)
+      ) l acc
+  | Dind (_, l) =>
+    foldl_errst (fun acc x =>
+      foldl_errst (fun acc y =>
+        fn acc (snd y)) (snd x) acc
+      ) l acc
+  | Dprop p => fn acc (snd (of_tup3 p))
+  end.
+Require Import TermTraverse.
+(*Check uses term map*)
+(*TODO: make sure this runs and no weird ocaml optimization, if not, give "ignore" in Coq to
+  force evaluation*)
+Definition check (kn: known_map) (_: unit) (t: term_c) : 
+  errState (CoqBigInt.t * hashcons_ty ty_c) unit :=
+  tm_traverse (hashcons_ty ty_c) unit
+  (*var*)
+  (fun _ => errst_ret tt)
+  (*const*)
+  (fun _ => errst_ret tt)
+  (*let*)
+  (fun _ _ _ _ _ => errst_ret tt)
+  (*if*)
+  (fun _ _ _ _ _ _ => errst_ret tt)
+  (*app*)
+  (fun _ _ _ => errst_ret tt)
+  (*match - interesting*)
+  (fun t1 r1 tb =>
+    let get_constructors ts := map fst (find_constructors kn ts) in 
+    let pl := map (fun b => [fst (fst b)]) tb in
+    res <- check_compile_aux get_constructors [t1] pl ;;
+    (*TODO: make sure we don't need r1, pl to run explicitly*)
+    errst_ret tt
+    )
+  (*eps*)
+  (fun _ _ _ => errst_ret tt)
+  (*quant*)
+  (fun _ _ _ _ _ _ => errst_ret tt)
+  (*binop*)
+  (fun _ _ _ _ _ => errst_ret tt)
+  (*not*)
+  (fun _ _ => errst_ret tt)
+  (*true*)
+  (errst_ret tt)
+  (*false*)
+  (errst_ret tt)
+  t.
+
+
+Definition check_match (kn: known_map) (d: decl) : errState (CoqBigInt.t * hashcons_ty ty_c) unit :=
+  decl_fold_errst (check kn) tt d.
+
+
 
 Definition NonFoundedTypeDecl (t: tysymbol_c) : errtype :=
   mk_errtype "NonFoundedTypeDecl" t.
@@ -1080,6 +1147,8 @@ Definition ts_extract_pos (kn: known_map) (sts: Sts.t) (ts: tysymbol_c) : errorM
   | Some l => err_ret l
   end.
 
+Local Open Scope err_scope.
+
 Definition check_positivity (kn : known_map) (d : decl) : errorM unit := 
   match d.(d_node) with
   | Ddata tdl =>
@@ -1107,27 +1176,31 @@ Definition check_positivity (kn : known_map) (d : decl) : errorM unit :=
   | _ => err_ret tt
   end.
 
-Definition known_add_decl (kn : known_map) (d : decl) : errorM (decl * Mid.t decl) :=
-  o <- known_add_decl_aux kn d;;
+Local Open Scope errst_scope.
+
+Definition known_add_decl (kn : known_map) (d : decl) : 
+  errState (CoqBigInt.t * hashcons_ty ty_c) (decl * Mid.t decl) :=
+  o <- errst_lift2 (known_add_decl_aux kn d);;
   match o with
-  | Known i => throw (KnownIdent i)
+  | Known i => errst_lift2 (throw (KnownIdent i))
   | Normal kn =>
-    _ <- check_positivity kn d;;
-    _ <- check_foundness kn d;;
-    (*Don't check match for now*)
-    d <- check_termination_strict kn d;;
-    err_ret (d, kn)
+    _ <- errst_lift2 (check_positivity kn d);;
+    _ <- errst_lift2 (check_foundness kn d);;
+    _ <- check_match kn d;;
+    d <- errst_lift2 (check_termination_strict kn d);;
+    errst_ret (d, kn)
   end.
 
 (*Gives more info*)
-Definition known_add_decl_informative (kn : known_map) (d : decl) : errorM (known_res (decl * Mid.t decl)) :=
-  o <- known_add_decl_aux kn d;;
+Definition known_add_decl_informative (kn : known_map) (d : decl) : 
+  errState (CoqBigInt.t * hashcons_ty ty_c) (known_res (decl * Mid.t decl)) :=
+  o <- errst_lift2 (known_add_decl_aux kn d);;
   match o with
-  | Known i => err_ret (Known _ i)
+  | Known i => errst_ret (Known _ i)
   | Normal kn =>
-    _ <- check_positivity kn d;;
-    _ <- check_foundness kn d;;
-    (*Don't check match for now*)
-    d <- check_termination_strict kn d;;
-    err_ret (Normal _ (d, kn))
+    _ <- errst_lift2 (check_positivity kn d);;
+    _ <- errst_lift2 (check_foundness kn d);;
+    _ <- check_match kn d;;
+    d <- errst_lift2 (check_termination_strict kn d);;
+    errst_ret (Normal _ (d, kn))
   end.

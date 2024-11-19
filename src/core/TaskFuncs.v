@@ -76,20 +76,34 @@ Definition check_decl (d: decl) : errorM decl :=
 Local Open Scope errst_scope.
 (*TODO: how to avoid all of the lifts?*)
 Definition new_decl1 (t: task) (d : decl) (td: tdecl_c) : 
-  errState (hashcons_ty tdecl_c * hashcons_ty task_hd) (known_res task) :=
+  errState (CoqBigInt.t * hashcons_full) (known_res task) :=
   d1 <- errst_lift2 (check_decl d);;
-  o <- errst_lift2 (known_add_decl_informative (task_known1 t) d1);;
+  o <- (errst_assoc5 (errst_tup1 (errst_tup1 (errst_tup1 (known_add_decl_informative (task_known1 t) d1)))));;
   match o with
   | Known i => errst_ret (Known _ i)
   | Normal (d1, kn) =>
-  td1 <- errst_lift1 (st_lift1 (create_decl d1)) ;;
+  td1 <- errst_tup2 (full_of_td (errst_lift1 (create_decl d1))) ;;
   _ <- errst_lift2 (check_task t);;
-  h <- errst_lift1 (st_lift2 (mk_task td1 t kn (task_clone1 t) (task_meta1 t)));;
+  h <- errst_tup2 (full_of_tsk (errst_lift1 (mk_task td1 t kn (task_clone1 t) (task_meta1 t))));;
   errst_ret (Normal _ h)
   end.
 
+(* Definition new_decl1 (t: task) (d : decl) (td: tdecl_c) : 
+  errState (CoqBigInt.t * hashcons_ty ty_c * hashcons_ty tdecl_c * hashcons_ty task_hd) (known_res task) :=
+  d1 <- errst_lift2 (check_decl d);;
+  o <- errst_tup1 (errst_tup1 (known_add_decl_informative (task_known1 t) d1));;
+  match o with
+  | Known i => errst_ret (Known _ i)
+  | Normal (d1, kn) =>
+  td1 <- errst_lift1 (st_lift1 (st_lift2 (create_decl d1))) ;;
+  _ <- errst_lift2 (check_task t);;
+  h <- errst_lift1  (st_lift2 (mk_task td1 t kn (task_clone1 t) (task_meta1 t)));;
+  errst_ret (Normal _ h)
+  end. *)
+
 (*Why we needed this known_res stuff*)
-Definition new_decl (t: task) (d: decl) (td: tdecl_c) : errState (hashcons_ty tdecl_c * hashcons_ty task_hd) task :=
+Definition new_decl (t: task) (d: decl) (td: tdecl_c) : 
+  errState (CoqBigInt.t * hashcons_full) task :=
   o <- new_decl1 t d td ;;
   match o with
   | Known i => errst_ret t
@@ -112,43 +126,43 @@ Definition new_meta tsk t td :=
 (* declaration constructors + add_decl *)
 
 Definition add_decl (t: task) (d: decl) : 
-  errState (hashcons_ty tdecl_c * hashcons_ty task_hd) task :=
-  td <- errst_lift1 (st_lift1 (create_decl d));;
+  errState (CoqBigInt.t * hashcons_full) task :=
+  td <-  (errst_tup2 (full_of_td (errst_lift1 (create_decl d))));;
   new_decl t d td.
+
 Definition add_ty_decl tk ts :
-  errState (hashcons_ty decl * hashcons_ty tdecl_c * hashcons_ty task_hd) task :=
-  td <- errst_lift1 (st_lift1 (st_lift1 (create_ty_decl ts)));;
-  errst_assoc (errst_tup2 (add_decl tk td)).
+  errState (CoqBigInt.t * hashcons_full) task :=
+  td <- errst_tup2 (full_of_d (errst_lift1 (create_ty_decl ts)));;
+  add_decl tk td.
 Definition add_data_decl tk dl :
   (*4 hashcons here - really, really need to have better composition*)
-  errState (hashcons_ty ty_c * hashcons_ty decl * 
-    hashcons_ty tdecl_c * hashcons_ty task_hd) task :=
-  td <- (errst_tup1 (errst_tup1 (create_data_decl dl))) ;;
-  errst_assoc (errst_tup2 (add_decl tk td)).
+  errState (CoqBigInt.t * hashcons_full) task :=
+  td <- (errst_tup2 (full_of_ty_d (create_data_decl dl))) ;;
+  add_decl tk td.
 Definition add_param_decl tk ls :
-  errState (hashcons_ty decl * hashcons_ty tdecl_c * hashcons_ty task_hd) task :=
-  td <- errst_tup1 (errst_tup1 (create_param_decl ls));;
-  errst_assoc (errst_tup2 (add_decl tk td)).
+  errState (CoqBigInt.t * hashcons_full) task :=
+  td <- errst_tup2 (full_of_d (create_param_decl ls));;
+  add_decl tk td.
 Definition add_logic_decl tk dl :
-  errState (hashcons_ty decl * hashcons_ty tdecl_c * hashcons_ty task_hd) task :=
-  td <- errst_tup1 (errst_tup1 (create_logic_decl_nocheck dl));;
-  errst_assoc (errst_tup2 (add_decl tk td)).
+  errState (CoqBigInt.t * hashcons_full) task :=
+  td <- errst_tup2 (full_of_d (create_logic_decl_nocheck dl));;
+  add_decl tk td.
 Definition add_ind_decl tk s dl :
-  errState (hashcons_ty decl * hashcons_ty tdecl_c * hashcons_ty task_hd) task :=
-  td <- errst_tup1 (errst_tup1 (create_ind_decl s dl));;
-  errst_assoc (errst_tup2 (add_decl tk td)).
+  errState (CoqBigInt.t * hashcons_full) task :=
+  td <- errst_tup2 (full_of_d (create_ind_decl s dl));;
+  add_decl tk td.
 Definition add_prop_decl tk k p f :
-  errState (hashcons_ty decl * hashcons_ty tdecl_c * hashcons_ty task_hd) task :=
-  td <- errst_tup1 (errst_tup1 (create_prop_decl k p f));;
-  errst_assoc (errst_tup2 (add_decl tk td)).
+  errState (CoqBigInt.t * hashcons_full) task :=
+  td <- errst_tup2 (full_of_d (create_prop_decl k p f));;
+  add_decl tk td.
 
 (*We will only add decls for now*)
 Definition add_tdecl (tsk: option task_hd) (td: tdecl_c) : 
-  errState (hashcons_ty tdecl_c * hashcons_ty task_hd) task :=
+  errState (CoqBigInt.t * hashcons_full) task :=
   match td_node_of td with
   | Decl d => new_decl tsk d td
   | Use th => if Stdecl2.mem td (find_clone_tds tsk th) then errst_ret tsk else 
-    errst_tup2 (new_clone tsk th td)
-  | Clone th _ => errst_tup2 (new_clone tsk th td)
-  | Meta t _ => errst_tup2 (new_meta tsk t td)
+    errst_tup2 (full_of_tsk (new_clone tsk th td))
+  | Clone th _ => errst_tup2 (full_of_tsk (new_clone tsk th td))
+  | Meta t _ => errst_tup2 (full_of_tsk (new_meta tsk t td))
   end.

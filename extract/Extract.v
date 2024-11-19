@@ -133,6 +133,7 @@ Extract Inlined Constant errst_lift2 => "".
 Extract Inlined Constant errst_tup1 => "".
 Extract Inlined Constant errst_tup2 => "".
 Extract Inlined Constant errst_assoc => "".
+Extract Inlined Constant errst_assoc5 => "".
 Extract Inlined Constant errst_congr1 => "". (*TODO: make sure OK*)
 Extract Inlined Constant errst_bind_dep => "(fun x y -> y x () ())".
 
