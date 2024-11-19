@@ -1,4 +1,4 @@
-Require Import TermFuncs TermTraverse PatternComp.
+Require Import TermFuncs TermTraverse PatternComp TransDefs.
 (** Compile match patterns *)
 Import MonadNotations.
 
@@ -19,3 +19,11 @@ Definition rewriteT (t: term_c) : errState (CoqBigInt.t * hashcons_ty ty_c) term
   (tmap_binop_default _)
   (tmap_not_default _)
   t.
+
+(*NOTE: type of trans not sufficient - might have state*)
+Definition compile_match := decl_errst 
+  (fun d => 
+    l <-  errst_assoc5 (errst_tup1 (errst_tup1 (
+        errst_list [decl_map (fun t => errst_tup1 (rewriteT t)) d]))) ;;
+    errst_ret l)
+    (*TODO: automate: need int * ty * decl -> int * full*) None.

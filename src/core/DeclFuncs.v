@@ -90,6 +90,18 @@ Definition open_ls_defn (l: ls_defn) : errorM (list vsymbol * term_c) :=
   | None => (TermFuncs.assert_false "open_ls_defn"%string)
   end.
 
+Definition open_ls_defn_cb (ld: ls_defn) : 
+  errorM (list vsymbol * term_c * 
+  (lsymbol -> list vsymbol -> term_c ->  errState (hashcons_ty ty_c) logic_decl)) :=
+  let '((ls, _), _) := ld in
+  (x <- (open_ls_defn ld) ;;
+  let '(vl, t) := x in
+  let close ls' vl' t' :=
+    if t_equal_strict t t' && list_eqb vs_equal vl vl' && ls_equal ls ls' then
+    errst_ret (ls, ld) else make_ls_defn ls' vl' t'
+  in
+  err_ret (vl, t, close))%err.
+
 Definition ls_defn_decrease_aux (l: ls_defn) : list CoqBigInt.t :=
   match l with
   | (_, _, ls) => ls
@@ -808,6 +820,41 @@ Definition get_used_syms_decl (d: decl) : Sid.t :=
   end.
 
 (* Utilities *)
+
+(*NOTE: for now, ONLY rewrite in nonrecursive funcs*)
+Definition is_recursive (s: Sid.t) (l: list logic_decl) : bool :=
+  existsb (fun x => Sid.mem (fst x).(ls_name) s) l.
+
+(*Lazy, just assuming CoqBigInt.t * hashcons_ty ty_c - might need others*)
+(*Let's map over everything and prove equivalent in our specific context because used
+  elsewhere*)
+Definition decl_map {St: Type} (fn: term_c -> errState (St * (hashcons_ty ty_c) * (hashcons_ty decl)) term_c) 
+  (d: decl) : errState (St * (hashcons_ty ty_c) * (hashcons_ty decl)) decl :=
+  match d.(d_node) with
+  | Dlogic l => (*if (is_recursive (get_used_syms_decl d) l) then errst_ret d else*)
+    let fn x := 
+      let '(ls,ld) := x in
+      y <- (errst_lift2 (open_ls_defn_cb ld)) ;;
+      let '(vl,e,close) := y in
+      t1 <- fn e;;
+      errst_tup1 (errst_tup2 (close ls vl t1))
+    in
+    l1 <- errst_list (map fn l) ;;
+    errst_tup2 (create_logic_decl_nocheck l1)
+  (*NOTE: prove we don't hit this*)
+  | Dind (s, l) =>
+    l2 <- errst_list (map (fun x => 
+      l1 <- (errst_list (map (fun y => 
+        z <- fn (snd y) ;;
+        errst_ret (fst y, z)) (snd x))) ;;
+      errst_ret (fst x, l1)) l) ;;
+    errst_tup2 (create_ind_decl s l2)
+  | Dprop x => let '(k, pr, f) := of_tup3 x in 
+    f1 <- (fn f);;
+    errst_tup2 (create_prop_decl k pr f1) 
+  | _ => errst_ret d
+  end.
+
 
 (*TODO as needed*)
   

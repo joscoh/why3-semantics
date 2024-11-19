@@ -6,3 +6,5 @@ open Theory
 open Task
 open Pattern
 open List0
+open Trans
+open Monads

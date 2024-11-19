@@ -19,34 +19,6 @@ Definition fold {A: Type} (fn: task_hd -> A -> A) (v: A) : trans A :=
 Definition fold_errst {St A: Type} (fn: task_hd -> A -> errState St A) (v: A) (t: task) : errState St A :=
   foldl_errst (fun x y => fn y x) (task_list t) v.
 
-(*Note: very bad solution (TODO) and move if using*)
-(* Record hashcons_ty_decl : Type :=
-  {hashcons_ty_decl1 : hashcons_ty ty_c;
-   hashcons_ty_decl2 : hashcons_ty decl}.
-Record hashcons_ty_decl_tdecl : Type :=
-  {hashcons_ty_decl_tdecl1: hashcons_ty ty_c;
-   hashcons_ty_decl_tdecl2: hashcons_ty decl;
-   hashcons_ty_decl_tdecl3: hashcons_ty tdecl_c;
-  }.
-Record hashcons_full : Type :=
-  {hashcons_ty_c : hashcons_ty ty_c;
-  (*TODO: term*)
-   hashcons_decl : hashcons_ty decl;
-   hashcons_tdecl: hashcons_ty tdecl_c;
-   hashcons_task_hd: hashcons_ty task_hd }. *)
-
-(*TODO: start here*)
-(*Need to figure out lens, composition, etc*)
-
-(* Definition hashcons_lift1 : hashcons_ty_decl  *)
-
-
-
-(*And lift all of these to it
-  TODO: this is really not ergonomic*)
-(*also TODO: do we need to add CoqBigInt to these?*)
-
-
 (*No memoization*)
 (*TODO: does not have a general type at all - just make it all for now*)
 (*TODO: not general type, specialized to CoqBigInt.t - do we need any other state?*)

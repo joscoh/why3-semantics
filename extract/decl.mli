@@ -32,7 +32,7 @@ val make_ls_defn : lsymbol -> vsymbol list -> term -> logic_decl
 
 val open_ls_defn : ls_defn -> vsymbol list * term
 
-val open_ls_defn_cb : ls_defn -> vsymbol list * term *
+val open_ls_defn_cb : ls_defn -> (vsymbol list * term) *
                     (lsymbol -> vsymbol list -> term -> logic_decl)
 
 val ls_defn_axiom : ls_defn -> term

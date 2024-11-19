@@ -93,14 +93,14 @@ let check_tl ty t = ty_equal_check ty (t_type t)
     | Tbinop (_, _, f) -> vl,f
     | _ -> assert false *)
 
-let open_ls_defn_cb ld =
+(* let open_ls_defn_cb ld =
   let (ls,_),_ = ld in
   let vl,t = open_ls_defn ld in
   let close ls' vl' t' =
     if t_equal_strict t t' && Lists.equal vs_equal vl vl' && ls_equal ls ls'
     then ls,ld else make_ls_defn ls' vl' t'
   in
-  vl,t,close
+  vl,t,close *)
 
   let ls_defn_decrease ((_,_),l) = List.map BigInt.to_int l (*JOSH to_int*)
 
@@ -721,7 +721,7 @@ let decl_map fn d = match d.d_node with
   | Dtype _ | Ddata _ | Dparam _ -> d
   | Dlogic l ->
       let fn (ls,ld) =
-        let vl,e,close = open_ls_defn_cb ld in
+        let (vl,e),close = open_ls_defn_cb ld in
         close ls vl (fn e)
       in
       create_logic_decl (List.map fn l)
@@ -756,7 +756,7 @@ let decl_map_fold fn acc d = match d.d_node with
   | Dtype _ | Ddata _ | Dparam _ -> acc, d
   | Dlogic l ->
       let fn acc (ls,ld) =
-        let vl,e,close = open_ls_defn_cb ld in
+        let (vl,e),close = open_ls_defn_cb ld in
         let acc,e = fn acc e in
         acc, close ls vl e
       in

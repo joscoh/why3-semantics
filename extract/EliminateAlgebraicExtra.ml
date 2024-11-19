@@ -60,7 +60,7 @@ let is_infinite_ty inf_ts ma_map =
       t_attr_copy t0 res
   | _ -> t_map rewriteT t0 *)
 
-let compile_match = Trans.decl (fun d -> [decl_map rewriteT d]) None
+(* let compile_match = Trans.decl (fun d -> [decl_map rewriteT d]) None *)
 
 (** Eliminate algebraic types and match statements *)
 
