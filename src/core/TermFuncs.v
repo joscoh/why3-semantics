@@ -1608,7 +1608,7 @@ Fixpoint t_v_fold {A: Type} (fn : A -> vsymbol -> A) (acc: A)
   end.
 
 Definition t_v_all (pr: vsymbol -> bool) (t: term_c) : bool :=
-  t_v_fold (fun x v => x && pr v) false t.
+  t_v_fold (fun x v => x && pr v) true t.
 
 Definition bnd_v_count {A: Type} (fn: A -> vsymbol -> CoqBigInt.t -> A) acc b := 
   Mvs.fold (fun v n acc => fn acc v n) b.(bv_vars) acc.

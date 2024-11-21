@@ -1533,7 +1533,7 @@ let rec t_v_fold fn acc t = match t.t_node with
   | Tquant (_,(((_,b),_),_)) -> bnd_v_fold fn acc b
   | _ -> t_fold_unsafe (t_v_fold fn) acc t *)
 
-let t_v_all pr t = Util.all t_v_fold pr t
+(* let t_v_all pr t = Util.all t_v_fold pr t *)
 let t_v_any pr t = Util.any t_v_fold pr t
 
 let t_closed t = t_v_all Util.ffalse t
@@ -1701,13 +1701,13 @@ let t_pred_app_beta lam t = t_pred_app_beta_l lam [t]
 
 let t_and_simp_l l = List.fold_right t_and_simp l t_true
 
-let t_or_simp f1 f2 = match f1.t_node, f2.t_node with
+(* let t_or_simp f1 f2 = match f1.t_node, f2.t_node with
   | Ttrue, _  -> t_attr_remove asym_split f1
   | _, Ttrue  -> f2
   | Tfalse, _ -> f2
   | _, Tfalse -> t_attr_remove asym_split f1
   | _, _ when t_equal f1 f2 -> f1
-  | _, _ -> t_or f1 f2
+  | _, _ -> t_or f1 f2 *)
 
 let t_or_simp_l l = List.fold_right t_or_simp l t_false
 
@@ -1731,13 +1731,13 @@ let t_or_asym_simp f1 f2 = match f1.t_node, f2.t_node with
 
 let t_or_asym_simp_l l = List.fold_right t_or_asym_simp l t_false
 
-let t_implies_simp f1 f2 = match f1.t_node, f2.t_node with
+(* let t_implies_simp f1 f2 = match f1.t_node, f2.t_node with
   | Ttrue, _  -> f2
   | _, Ttrue  -> f2
   | Tfalse, _ -> t_attr_copy f1 t_true
   | _, Tfalse -> t_not_simp f1
   | _, _ when t_equal f1 f2 -> t_attr_copy f1 t_true
-  | _, _ -> t_implies f1 f2
+  | _, _ -> t_implies f1 f2 *)
 
 (* let t_iff_simp f1 f2 = match f1.t_node, f2.t_node with
   | Ttrue, _  -> f2
@@ -1854,7 +1854,7 @@ let t_quant_simp q ((((vl,_),_),f) as qf) =
     if vl = [] then f
     else t_quant_close q vl (List.filter (List.for_all (t_v_all check)) tl) f
 
-let t_quant_close_simp q vl tl f =
+(* let t_quant_close_simp q vl tl f =
   if vl = [] then f else
   let fvs = t_vars f in
   let check v = Mvs.mem v fvs in
@@ -1863,13 +1863,13 @@ let t_quant_close_simp q vl tl f =
   else
     let vl = List.filter check vl in
     if vl = [] then f
-    else t_quant_close q vl (List.filter (List.for_all (t_v_all check)) tl) f
+    else t_quant_close q vl (List.filter (List.for_all (t_v_all check)) tl) f *)
 
 let t_forall_simp = t_quant_simp Tforall
 let t_exists_simp = t_quant_simp Texists
 
-let t_forall_close_simp = t_quant_close_simp Tforall
-let t_exists_close_simp = t_quant_close_simp Texists
+(* let t_forall_close_simp = t_quant_close_simp Tforall
+let t_exists_close_simp = t_quant_close_simp Texists *)
 
 (* let t_equ_simp t1 t2 =
   if t_equal t1 t2 then t_true  else t_equ t1 t2 *)

@@ -609,6 +609,13 @@ module TermTFAlt : sig
 
   val t_selecti : ('a -> term -> 'b) -> ('a -> term -> 'b) -> 'a -> term -> 'b
   (** [t_selecti fnT fnF acc t] is [t_select (fnT acc) (fnF acc) t] *)
+
+  val t_map_errst_unsafe : (term -> term) -> (term -> term) -> term -> term
+
+  val t_map_sign_errst_unsafe : (bool -> term -> term) ->
+    (bool -> term -> term) -> bool -> term -> term
+
+  val tr_map_errst : (term -> term) -> (term -> term) -> trigger -> trigger
 end
 
 (** {2 Map/fold over free variables} *)
@@ -722,56 +729,64 @@ val pat_app_aux : lsymbol -> pattern list -> ty -> pattern
 (*for traversals*)
 val tm_traverse:
   (*var*)
-  (vsymbol -> 'a) ->
+  (term -> vsymbol -> 'a) ->
   (*const*)
-  (Constant.constant -> 'a) ->
+  (term -> Constant.constant -> 'a) ->
   (*let*)
-  (term -> vsymbol -> term -> 'a -> 'a -> 'a) ->
+  (term -> term -> 'a -> vsymbol -> term -> 'a -> 'a) ->
   (*if*)
-  (term -> term -> term -> 'a -> 'a -> 'a -> 'a) ->
+  (term -> term -> term -> term -> 'a -> 'a -> 'a -> 'a) ->
   (*app*)
-  (lsymbol -> term list -> 'a list -> 'a) ->
+  (term -> lsymbol -> term list -> 'a list -> 'a) ->
   (*case*)
-  (term -> 'a -> ((pattern * term) * 'a) list -> 'a) ->
+  (term -> term -> 'a -> ((pattern * term) * 'a) list -> 'a) ->
   (*eps*)
-  (vsymbol -> term -> 'a -> 'a) ->
+  (term -> vsymbol -> term -> 'a -> 'a) ->
   (*quant*)
-  (quant -> vsymbol list -> term list list -> 'a list list -> term -> 'a -> 'a) ->
+  (term -> quant -> vsymbol list -> term list list -> 'a list list -> term -> 'a -> 'a) ->
   (*binop*)
-  (binop -> term -> term -> 'a -> 'a -> 'a) ->
+  (term -> binop -> term -> term -> 'a -> 'a -> 'a) ->
   (*not*)
-  (term -> 'a -> 'a) ->
+  (term -> term -> 'a -> 'a) ->
   (*true*)
-  'a ->
+  (term -> 'a) ->
   (*false*)
-  'a ->
+  (term -> 'a) ->
   (*the function*)
   term -> 'a
 val term_map : 
   (*let*)
-  (term -> term -> vsymbol -> term -> term -> term) ->
+  (term -> term -> term -> vsymbol -> term -> term -> term) ->
   (*if*)
-  (term -> term -> term -> term -> term -> term -> term) ->
+  (term -> term -> term -> term -> term -> term -> term -> term) ->
   (*app*)
-  (lsymbol -> term list -> ty option -> term list -> term) ->
+  (term -> lsymbol -> term list -> term list -> term) ->
   (*case*)
-  (term -> term -> ((pattern * term) * term) list -> term) ->
+  (term -> term -> term -> ((pattern * term) * term) list -> term) ->
   (*eps*)
-  (vsymbol -> term -> term -> term) ->
+  (term -> vsymbol -> term -> term -> term) ->
   (*quant*)
-  (quant -> vsymbol list -> term list list -> term list list -> term -> term -> term) ->
+  (term -> quant -> vsymbol list -> term list list -> term list list -> term -> term -> term) ->
   (*binop*)
-  (binop -> term -> term -> term -> term -> term) ->
+  (term -> binop -> term -> term -> term -> term -> term) ->
   (*not*)
-  (term -> term -> term) ->
+  (term -> term -> term -> term) ->
   (*the function*)
   term -> term
 (*defaults*)
-val tmap_let_default : (term -> term -> vsymbol -> term -> term -> term)
-val tmap_if_default : (term -> term -> term -> term -> term -> term -> term)
-val tmap_app_default : (lsymbol -> term list -> ty option -> term list -> term)
-val tmap_match_default: (term -> term -> ((pattern * term) * term) list -> term)
-val tmap_eps_default : (vsymbol -> term -> term -> term)
-val tmap_quant_default: (quant -> vsymbol list -> term list list -> term list list -> term -> term -> term)
-val tmap_binop_default: (binop -> term -> term -> term -> term -> term)
-val tmap_not_default: (term -> term -> term)
+val tmap_let_default : (term -> term -> term -> vsymbol -> term -> term -> term)
+val tmap_if_default : (term -> term -> term -> term -> term -> term -> term -> term)
+val tmap_app_default : (term -> lsymbol -> term list -> term list -> term)
+val tmap_match_default: (term -> term -> term -> ((pattern * term) * term) list -> term)
+val tmap_eps_default : (term -> vsymbol -> term -> term -> term)
+val tmap_quant_default: (term -> quant -> vsymbol list -> term list list -> term list list -> term -> term -> term)
+val tmap_binop_default: (term -> binop -> term -> term -> term -> term -> term)
+val tmap_not_default: (term -> term -> term -> term)
+
+val t_map_errst_unsafe : (term -> term) -> term -> term
+val t_map_sign_errst_unsafe : (bool -> term -> term) -> bool -> term -> term
+
+val t_view_quant_cb :
+  term_quant -> ((vsymbol list * trigger) * term) *
+              (vsymbol list -> trigger -> term -> term_quant)
+val t_quant_simp1 : quant -> term_quant -> term

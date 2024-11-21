@@ -293,6 +293,8 @@ Extract Inlined Constant NonExhaustive => "NonExhaustive".
 Extract Inlined Constant PatternComp.ConstructorExpected => "ConstructorExpected".
 Extract Inlined Constant Failure => "Failure". (*TODO: MOVE*)
 
+(*Elim algebraic exceptions*)
+Extract Inlined Constant UnsupportedTerm => "Printer.UnsupportedTerm".
 
 (*TODO: implement later*)
 Extract Inlined Constant check_float => "Number.check_float".

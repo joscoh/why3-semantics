@@ -1,4 +1,5 @@
 open Theory
+open Term
 
 
 let meta_syntax_logic = register_meta "syntax_logic" [MTlsymbol; MTstring; MTint]
@@ -24,4 +25,6 @@ let meta_remove_prop = register_meta "remove_prop" [MTprsymbol]
              its@ declaration."
 
 (*for compilation*)
-let unsupportedTerm : 'a -> 'b -> 'c = fun _ _ -> raise (Invalid_argument "unsupported")
+exception UnsupportedTerm of term * string
+
+let unsupportedTerm e s = raise (UnsupportedTerm (e,s))

@@ -64,7 +64,7 @@ let is_infinite_ty inf_ts ma_map =
 
 (** Eliminate algebraic types and match statements *)
 
-type state = {
+(* type state = {
   mt_map : lsymbol Mts.t;       (* from type symbols to selector functions *)
   cc_map : lsymbol Mls.t;       (* from old constructors to new constructors *)
   cp_map : lsymbol list Mls.t;  (* from old constructors to new projections *)
@@ -84,11 +84,14 @@ type state = {
 let enc_ty state = function
   | Some({ ty_node = Tyapp (ts,_) } as ty) ->
     not (Sty.mem ty (Mts.find_def Sty.empty ts state.kept_m))
-  | _ -> assert false
+  | _ -> assert false *)
 
-let uncompiled = "eliminate_algebraic: compile_match required"
+(* let uncompiled = "eliminate_algebraic: compile_match required" *)
 
-let rec rewriteT kn state t = match t.t_node with
+let rewriteT = rewriteT'
+let rewriteF = rewriteF'
+
+(* let rec rewriteT kn state t = match t.t_node with
   | Tcase (t1,bl) when enc_ty state t1.t_ty ->
       let t1 = rewriteT kn state t1 in
       let mk_br (w,m) br =
@@ -192,7 +195,7 @@ and rewriteF kn state av sign f =
         (rewriteF kn state av) sign f
   | _ ->
       TermTF.t_map_sign (Util.const (rewriteT kn state))
-        (rewriteF kn state Svs.empty) sign f
+        (rewriteF kn state Svs.empty) sign f *)
 
 let add_selector (state,task) ts ty csl =
   if state.no_sel then state, task else
