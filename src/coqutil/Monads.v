@@ -493,6 +493,15 @@ Fixpoint fold_left2_errst {A B C S : Type}
   | _, _ => errst_lift2 (err_ret None)
   end.
 
+Definition fold_left2_errst' {A B C S : Type} 
+  (f: C -> A -> B -> errState S C) (accu: C) 
+  (l1: list A) (l2: list B) : errState S C :=
+  l <- (fold_left2_errst f accu l1 l2) ;;
+  match l with
+  | None => errst_lift2 (throw (Invalid_argument "List.fold_left2"))
+  | Some r => errst_ret r
+  end.
+
 Definition map2_errst {A B C St: Type} (f: A -> B -> errState St C) :=
   fix map2 (l1: list A) (l2: list B) : errState St (option (list C)) :=
     match l1, l2 with

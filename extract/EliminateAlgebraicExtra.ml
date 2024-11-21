@@ -197,7 +197,7 @@ and rewriteF kn state av sign f =
       TermTF.t_map_sign (Util.const (rewriteT kn state))
         (rewriteF kn state Svs.empty) sign f *)
 
-let add_selector (state,task) ts ty csl =
+(* let add_selector (state,task) ts ty csl =
   if state.no_sel then state, task else
   (* declare the selector function *)
   let mt_id = id_derive ("match_" ^ ts.ts_name.id_string) ts.ts_name in
@@ -222,7 +222,7 @@ let add_selector (state,task) ts ty csl =
     add_prop_decl tsk Paxiom pr ax
   in
   let task = List.fold_left2 mt_add task csl mt_tl in
-  { state with mt_map }, task
+  { state with mt_map }, task *)
 
 let add_selector acc ts ty = function
   | [_] -> acc

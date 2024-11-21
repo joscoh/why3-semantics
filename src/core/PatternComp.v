@@ -7,30 +7,6 @@ Require Import PatternAux.
 
 Local Open Scope err_scope.
 
-(*TODO: move*)
-Fixpoint rev_map_aux {A B: Type} (f: A -> B) accu l:=
-  match l with
-  | [] => accu
-  | a :: l => rev_map_aux f (f a :: accu) l
-  end.
-
-Definition rev_map {A B: Type} (f: A -> B) (l: list A) : list B :=
-  rev_map_aux f nil l.
-
-Lemma rev_map_aux_eq {C D: Type} (f: C -> D) accu (l: list C):
-  rev_map_aux f accu l = (map f (rev l)) ++ accu.
-Proof.
-  revert accu.
-  induction l as [| h t IH]; simpl; auto; intros accu.
-  rewrite IH, map_app. simpl. rewrite <- app_assoc. reflexivity.
-Qed.
-
-Lemma rev_map_eq {C D: Type} (f: C -> D) (l: list C):
-  rev_map f l = map f (rev l).
-Proof.
-  unfold rev_map. rewrite rev_map_aux_eq, app_nil_r. reflexivity.
-Qed.
-
 Definition NonExhaustive (l: list pattern_c) : errtype := 
   mk_errtype "NonExhaustive" l.
 Definition ConstructorExpected (x: lsymbol * ty_c) : errtype :=

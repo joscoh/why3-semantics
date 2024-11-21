@@ -46,6 +46,14 @@ Record state := {
   no_sel : bool;                (* do not generate selector *)
 }.
 
+(*TODO use coq-record-update?*)
+Definition state_with_mt_mat (s: state) (mt_map: Mts.t lsymbol) : state :=
+  {| mt_map := mt_map; cc_map := s.(cc_map); cp_map := s.(cp_map);
+    pp_map := s.(pp_map); kept_m := s.(kept_m); tp_map := s.(tp_map);
+    inf_ts := s.(inf_ts); ma_map:= s.(ma_map) ; keep_e := s.(keep_e);
+    keep_r := s.(keep_r); keep_m := s.(keep_m); no_ind := s.(no_ind);
+    no_inv := s.(no_inv); no_sel := s.(no_sel)|}.
+
 (*Determin if this type should be kept (false) or axiomatized (true) - should only be called
   on ADTs*)
 (*TODO: their implementation gives errors, ours just false - prove don't hit it*)
@@ -281,3 +289,41 @@ with rewriteF' (kn: known_map) (s: state) (av: Svs.t) (sign: bool) (f: term_c) :
     TermTFAlt.t_map_sign_errst_unsafe (fun _ => rewriteT' kn s) (rewriteF' kn s av) sign f
   | _ => TermTFAlt.t_map_sign_errst_unsafe (fun _ => rewriteT' kn s) (rewriteF' kn s Svs.empty) sign f
   end.
+
+Check tysymbol_c.
+Locate "^".
+
+Definition add_selector {A: Type} (st: state * task) (ts: tysymbol_c) (ty: ty_c) (csl: list (lsymbol * A)) :
+  errState (CoqBigInt.t * hashcons_full) (state * task) :=
+  let s := fst st in
+  let tsk := snd st in
+  if s.(no_sel) then errst_ret st else
+  (* declare the selector function *)
+  let mt_id := id_derive1 ("match_"%string ++ (ts_name_of ts).(id_string))%string (ts_name_of ts) in
+  v <- errst_tup1 (errst_lift1 (create_tvsymbol (id_fresh1 "a"))) ;;
+  mt_ty <- errst_tup2 (full_of_ty (errst_lift1 (ty_var v))) ;;
+  let mt_al := ty :: rev_map (fun _ => mt_ty) csl in
+  mt_ls <- errst_tup1 (errst_lift1 (create_fsymbol1 mt_id mt_al mt_ty)) ;;
+  let mt_map := Mts.add ts mt_ls s.(mt_map) in
+  task  <- add_param_decl tsk mt_ls ;;
+  (* define the selector function *)
+  let mt_vs _ := create_vsymbol (id_fresh1 "z") mt_ty in
+  mt_vl <- errst_tup1 (errst_lift1 (st_list (rev_map mt_vs csl))) ;;
+  let mt_tl := rev_map t_var mt_vl in
+  let mt_add tsk x t :=
+    let cs := fst x in
+    let id := (mt_ls.(ls_name).(id_string) ++ "_"%string ++ cs.(ls_name).(id_string))%string in
+    pr <- errst_tup1 (errst_lift1 (create_prsymbol (id_derive1 id cs.(ls_name)))) ;;
+    vl <- errst_tup1 (errst_lift1 (st_list (rev_map (create_vsymbol (id_fresh1 "u")) cs.(ls_args))));;
+    newcs <- errst_lift2 (Mls.find _ cs s.(cc_map)) ;;
+    v <- errst_lift2 (option_get cs.(ls_value)) ;;
+    hd <- errst_tup2 (full_of_ty (fs_app newcs (rev_map t_var vl) v)) ;;
+    hd <- errst_tup2 (full_of_ty (fs_app mt_ls (hd::mt_tl) mt_ty)) ;;
+    let vl := List.rev_append mt_vl (List.rev vl) in
+    e <- errst_tup2 (full_of_ty (t_equ hd t)) ;;
+    ax <- errst_lift2 (t_forall_close vl [] e);;
+    add_prop_decl tsk Paxiom pr ax
+  in
+  (*TODO: write non-err version*)
+  task <- fold_left2_errst' mt_add task csl mt_tl ;;
+  errst_ret (state_with_mt_mat s mt_map, task).
