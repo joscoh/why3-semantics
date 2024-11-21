@@ -790,4 +790,5 @@ val t_view_quant_cb :
   term_quant -> ((vsymbol list * trigger) * term) *
               (vsymbol list -> trigger -> term -> term_quant)
 val t_quant_simp1 : quant -> term_quant -> term
+val create_fsymbol2 : BigInt.t -> bool -> preid -> ty list -> ty -> lsymbol
 val create_fsymbol1 : preid -> ty list -> ty -> lsymbol

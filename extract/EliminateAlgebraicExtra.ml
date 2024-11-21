@@ -270,7 +270,7 @@ let add_indexer (state,task) ts ty csl =
   in
   state, dl_add task csl *)
 
-let add_indexer acc ts ty = function
+(* let add_indexer acc ts ty = function
   | [_] -> acc
   | csl when not (fst acc).no_ind -> add_indexer acc ts ty csl
   | csl when List.length csl <= 16 -> add_discriminator acc ts ty csl
@@ -287,7 +287,7 @@ let complete_projections csl =
     in
     (c, List.mapi conv_p (List.combine pjl c.ls_args))
   in
-  List.map conv_c csl
+  List.map conv_c csl *)
 
 (* Adding meta so that counterexamples consider this new projection as a
    counterexample projection. This allow counterexamples to appear for

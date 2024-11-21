@@ -109,14 +109,21 @@ Definition check_proj (proj: bool) (constr: CoqBigInt.t)
 (*We do not have optional/labelled arguments, so we produce 2 versions
   leaving the current one (for now)*)
 (*TODO: see if we need other versions*)
-Definition create_lsymbol1 (name: preid) (args: list ty_c) 
+Definition create_lsymbol_gen (constr: CoqBigInt.t) (proj: bool) (name: preid) (args: list ty_c) 
   (value: option ty_c) : ctr lsymbol :=
   i <- id_register name ;;
   st_ret {| ls_name := i; ls_args := args; ls_value := value;
-    ls_constr := CoqBigInt.zero; ls_proj := false |}.
+    ls_constr := constr; ls_proj := proj |}.
+
+Definition create_lsymbol1 (name: preid) (args: list ty_c) 
+  (value: option ty_c) : ctr lsymbol :=
+  create_lsymbol_gen CoqBigInt.zero false name args value.
 
 Definition create_fsymbol1 nm al vl :=
   create_lsymbol1 nm al (Some vl).
+
+Definition create_fsymbol2 constr proj name args value :=
+  create_lsymbol_gen constr proj name args (Some value).
 
 Definition create_psymbol nm al :=
   create_lsymbol1 nm al None.

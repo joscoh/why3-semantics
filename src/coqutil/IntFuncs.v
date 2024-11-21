@@ -171,3 +171,7 @@ Definition big_nth {A: Type} (l: list A)  (z: CoqBigInt.t) : option A :=
     | nil => None
     | _ :: t => rec t
     end) z l.
+
+(*Like OCaml mapi but with BigInt*)
+Definition mapi {A B: Type} (f: CoqBigInt.t -> A -> B) (l: list A) : list B :=
+  map (fun x => f (fst x) (snd x)) (combine (iota2 (int_length l)) l).

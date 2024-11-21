@@ -333,7 +333,7 @@ Definition add_selector {A: Type} (acc : state * task) (ts: tysymbol_c) (ty: ty_
   | csl => add_selector_aux acc ts ty csl
   end.
 
-Definition add_indexer {A: Type} (st: state * task) (ts: tysymbol_c) (ty: ty_c) (csl: list (lsymbol * A)) :
+Definition add_indexer_aux {A: Type} (st: state * task) (ts: tysymbol_c) (ty: ty_c) (csl: list (lsymbol * A)) :
   errState (CoqBigInt.t * hashcons_full) (state * task) :=
   let s := fst st in
   let tsk := snd st in
@@ -390,3 +390,48 @@ Definition add_discriminator {A: Type} (st: state * task) (ts : tysymbol_c) (ty 
   in
   t' <- dl_add tsk csl ;;
   errst_ret (s, t').
+
+(*TODO: why length 16? Maybe discriminators get too large?*)
+(* discriminator is only added if indexers not generated
+  think that indexers imply discriminator - because we have (e.g.
+  axiom index_list_cons: forall u1, u2, index_list (cons' (u1, u2)) = 0
+axiom index_list_nil: index_list nil' = 1
+so clearly cons' <> nil (or else 1 = 0))*)
+Definition add_indexer {A: Type} (acc : state * task) (ts : tysymbol_c) (ty: ty_c)
+  (l: list (lsymbol * A)) : errState (CoqBigInt.t * hashcons_full) (state * task) :=
+  match l with
+  | [_] => errst_ret acc
+  | csl => if negb (fst acc).(no_ind) then add_indexer_aux acc ts ty csl
+           else if CoqBigInt.lt (IntFuncs.int_length csl) CoqBigInt.sixteen 
+            then add_discriminator acc ts ty csl
+           else errst_ret acc
+  end.
+
+Local Open Scope state_scope.
+Definition complete_projections (csl: list (lsymbol * list (option lsymbol))) : 
+  ctr (list (lsymbol * list (option lsymbol)))  :=
+  let conv_c x :=
+    let c := fst x in
+    let pjl := snd x in
+    let conv_p i (t : option lsymbol * ty_c) := 
+      match t with
+      | (None, ty) =>
+        (*don't have printf - but we need to convert CoqBigInt.t to string*)
+        let id := (c.(ls_name).(id_string) ++ "_proj_" ++ (CoqBigInt.to_string (CoqBigInt.succ i)))%string in
+         (* let id = Printf.sprintf "%s_proj_%d" c.ls_name.id_string (i+1) in *)
+        let id := id_derive1 id c.(ls_name) in
+          let v := (*they use option_get but I will use default - prove not reached*)
+            match  c.(ls_value) with
+            | Some t => t
+            | None => ty_int
+            end in
+          s <- create_fsymbol2 CoqBigInt.zero true id [v] ty ;;
+          st_ret (Some s)
+         (* Some (create_fsymbol1 ~proj:true id [Option.get c.ls_value] ty) *)
+      | (pj, _) => st_ret pj
+      end
+    in
+    l <- st_list (IntFuncs.mapi conv_p (combine pjl c.(ls_args))) ;;
+    st_ret (c, l)
+  in
+ st_list (List.map conv_c csl).

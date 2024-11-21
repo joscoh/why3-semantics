@@ -4,6 +4,7 @@ Require Import Coq.Strings.String.
 Require Import CoqUtil.
 From Proofs Require Import core.Common. (*For [is_true]*)
 Require Import Integer.
+From Proofs Require Import GenElts. (*for [nat_to_string] - is this implemented anywhere else?*)
 
 Local Open Scope Z_scope.
 
@@ -36,10 +37,13 @@ Definition pow_int_pos_bigint : CoqInt.int -> t -> t := fun base exp => Z.pow (i
 Definition of_int : CoqInt.int -> t := fun i => int63_to_Z i.
 (*TODO: implement this - we don't need a good hash function for Coq*)
 Axiom hash : t -> CoqInt.int.
-(*This function is (presumably) a bit different than
-  OCaml, but the implementation doesn't matter*)
-(*TODO: implement*)
-Axiom to_string : t -> string.
+(*This function is different than
+  OCaml, but the implementation is not terribly important (we need it for eliminate_algebraic to
+    define an lsymbol name, but the name doesn't matter). Very inefficient right now
+  and only works on nonnegative ints*)
+Definition to_string (z: t) : string :=
+  (if Z.ltb z Z.zero then "-" else "") ++
+  GenElts.nat_to_string (Z.to_nat z).
 
 (*Single digit numbers*)
 Definition two : t := 2.
@@ -57,6 +61,7 @@ Definition eleven : t := 11.
 Definition thirteen : t := 13.
 Definition seventeen : t := 17.
 Definition nineteen : t := 19.
+Definition sixteen : t := 16.
 
 Definition neg_one : t := -1.
 
