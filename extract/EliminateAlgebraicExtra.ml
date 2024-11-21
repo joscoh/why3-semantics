@@ -224,7 +224,7 @@ and rewriteF kn state av sign f =
   let task = List.fold_left2 mt_add task csl mt_tl in
   { state with mt_map }, task *)
 
-let add_selector acc ts ty = function
+(* let add_selector acc ts ty = function
   | [_] -> acc
   | csl -> add_selector acc ts ty csl
 
@@ -247,7 +247,7 @@ let add_indexer (state,task) ts ty csl =
     add_prop_decl tsk Paxiom pr ax
   in
   let task = List.fold_left mt_add task csl in
-  state, task
+  state, task *)
 
 let add_discriminator (state,task) ts ty csl =
   let d_add (c1,_) task (c2,_) =

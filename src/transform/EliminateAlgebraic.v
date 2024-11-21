@@ -290,10 +290,7 @@ with rewriteF' (kn: known_map) (s: state) (av: Svs.t) (sign: bool) (f: term_c) :
   | _ => TermTFAlt.t_map_sign_errst_unsafe (fun _ => rewriteT' kn s) (rewriteF' kn s Svs.empty) sign f
   end.
 
-Check tysymbol_c.
-Locate "^".
-
-Definition add_selector {A: Type} (st: state * task) (ts: tysymbol_c) (ty: ty_c) (csl: list (lsymbol * A)) :
+Definition add_selector_aux {A: Type} (st: state * task) (ts: tysymbol_c) (ty: ty_c) (csl: list (lsymbol * A)) :
   errState (CoqBigInt.t * hashcons_full) (state * task) :=
   let s := fst st in
   let tsk := snd st in
@@ -327,3 +324,38 @@ Definition add_selector {A: Type} (st: state * task) (ts: tysymbol_c) (ty: ty_c)
   (*TODO: write non-err version*)
   task <- fold_left2_errst' mt_add task csl mt_tl ;;
   errst_ret (state_with_mt_mat s mt_map, task).
+
+(*Don't need selector for ADT with only 1 constructor - why?*)
+Definition add_selector {A: Type} (acc : state * task) (ts: tysymbol_c) (ty: ty_c) (x: list (lsymbol * A)) :
+  errState (CoqBigInt.t * hashcons_full) (state * task) :=
+  match x with
+  | [_] => errst_ret acc
+  | csl => add_selector_aux acc ts ty csl
+  end.
+
+Definition add_indexer {A: Type} (st: state * task) (ts: tysymbol_c) (ty: ty_c) (csl: list (lsymbol * A)) :
+  errState (CoqBigInt.t * hashcons_full) (state * task) :=
+  let s := fst st in
+  let tsk := snd st in
+  (* declare the indexer function *)
+  let mt_id := id_derive1 ("index_" ++ (ts_name_of ts).(id_string))%string (ts_name_of ts) in
+  mt_ls <- errst_tup1 (errst_lift1 (create_fsymbol1 mt_id [ty] ty_int)) ;;
+  task <- add_param_decl tsk mt_ls ;;
+  (* define the indexer function - NOTE: we do without mutable reference *)
+  (*let index = ref (-1) in*)
+  let mt_add tsk x (index : CoqBigInt.t) :=
+    let cs := fst x in
+    (* incr index; *)
+    let id := (mt_ls.(ls_name).(id_string) ++ "_" ++ cs.(ls_name).(id_string))%string in
+    pr <-  errst_tup1 (errst_lift1 (create_prsymbol (id_derive1 id cs.(ls_name)))) ;;
+    vl <- (errst_tup1 (errst_lift1 (st_list (rev_map (create_vsymbol (id_fresh1 "u")) cs.(ls_args))))) ;;
+    newcs <- errst_lift2 (Mls.find _ cs s.(cc_map)) ;;
+    o <- errst_lift2 (option_get cs.(ls_value)) ;;
+    hd <- errst_tup2 (full_of_ty (fs_app newcs (rev_map t_var vl) o));; 
+    t1 <- errst_tup2 (full_of_ty (fs_app mt_ls [hd] ty_int)) ;;
+    ax <- errst_tup2 (full_of_ty (t_equ t1 (t_int_const index))) ;; (*safe to use int vs nat*)
+    ax <- errst_lift2 (t_forall_close (List.rev vl) [[hd]] ax) ;;
+    add_prop_decl tsk Paxiom pr ax
+  in
+  task <- fold_left2_errst' mt_add task csl (IntFuncs.iota2 (IntFuncs.int_length csl)) ;;
+  errst_ret (s, task).

@@ -10,3 +10,4 @@ open Trans
 open Monads
 open Datatypes
 open CoqUtil
+open IntFuncs
