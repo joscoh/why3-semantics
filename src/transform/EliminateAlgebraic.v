@@ -359,3 +359,34 @@ Definition add_indexer {A: Type} (st: state * task) (ts: tysymbol_c) (ty: ty_c) 
   in
   task <- fold_left2_errst' mt_add task csl (IntFuncs.iota2 (IntFuncs.int_length csl)) ;;
   errst_ret (s, task).
+
+Definition add_discriminator {A: Type} (st: state * task) (ts : tysymbol_c) (ty : ty_c) 
+  (csl : list (lsymbol * A)) : errState (CoqBigInt.t * hashcons_full) (state * task) :=
+  let s := fst st in
+  let tsk := snd st in
+  let d_add x task y :=
+    let c1 := fst x in
+    let c2 := fst y in
+    let id := (c1.(ls_name).(id_string) ++ "_" ++ c2.(ls_name).(id_string))%string in
+    pr <- errst_tup1 (errst_lift1 (create_prsymbol (id_derive1 id (ts_name_of ts)))) ;;
+    ul <- errst_tup1 (errst_lift1 (st_list (rev_map (create_vsymbol (id_fresh1 "u")) c1.(ls_args)))) ;;
+    vl <- errst_tup1 (errst_lift1 (st_list (rev_map (create_vsymbol (id_fresh1 "v")) c2.(ls_args)))) ;;
+    newc1 <- errst_lift2 (Mls.find _ c1 s.(cc_map)) ;;
+    newc2 <- errst_lift2 (Mls.find _ c2 s.(cc_map)) ;;
+    t1 <- errst_tup2 (full_of_ty (fs_app newc1 (rev_map t_var ul) ty)) ;;
+    t2 <- errst_tup2 (full_of_ty (fs_app newc2 (rev_map t_var vl) ty)) ;;
+    ax <- errst_tup2 (full_of_ty (t_neq t1 t2)) ;;
+    ax <- errst_lift2 (t_forall_close (List.rev vl) [[t2]] ax) ;;
+    ax <- errst_lift2 (t_forall_close (List.rev ul) [[t1]] ax) ;;
+    add_prop_decl task Paxiom pr ax
+  in
+  let fix dl_add (tsk : task) l : errState (CoqBigInt.t * hashcons_full) task :=
+    match l with
+    | c :: cl => 
+      t <- (foldl_errst (d_add c) cl tsk) ;;
+      dl_add t cl
+    | _ => errst_ret tsk
+    end
+  in
+  t' <- dl_add tsk csl ;;
+  errst_ret (s, t').

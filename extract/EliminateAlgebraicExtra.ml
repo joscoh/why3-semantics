@@ -249,7 +249,7 @@ let add_indexer (state,task) ts ty csl =
   let task = List.fold_left mt_add task csl in
   state, task *)
 
-let add_discriminator (state,task) ts ty csl =
+(* let add_discriminator (state,task) ts ty csl =
   let d_add (c1,_) task (c2,_) =
     let id = c1.ls_name.id_string ^ "_" ^ c2.ls_name.id_string in
     let pr = create_prsymbol (id_derive id ts.ts_name) in
@@ -268,7 +268,7 @@ let add_discriminator (state,task) ts ty csl =
     | c :: cl -> dl_add (List.fold_left (d_add c) task cl) cl
     | _ -> task
   in
-  state, dl_add task csl
+  state, dl_add task csl *)
 
 let add_indexer acc ts ty = function
   | [_] -> acc
