@@ -976,8 +976,6 @@ Definition find_prop_decl (kn : known_map) (pr : prsymbol) : errorM (prop_kind *
 (*NOTE; we do not print useful error information*)
 Require Import PatternComp.
 
-Check check_compile_aux.
-Print decl_node.
 Local Open Scope errst_scope.
 Definition decl_fold_errst {St A: Type} (fn: A -> term_c -> errState St A) (acc: A) (d: decl) : errState St A :=
   match d.(d_node) with
@@ -1004,17 +1002,17 @@ Definition check (kn: known_map) (_: unit) (t: term_c) :
   errState (CoqBigInt.t * hashcons_ty ty_c) unit :=
   tm_traverse (hashcons_ty ty_c) unit
   (*var*)
-  (fun _ => errst_ret tt)
+  (fun _ _ => errst_ret tt)
   (*const*)
-  (fun _ => errst_ret tt)
+  (fun _ _ => errst_ret tt)
   (*let*)
-  (fun _ _ _ _ _ => errst_ret tt)
-  (*if*)
   (fun _ _ _ _ _ _ => errst_ret tt)
+  (*if*)
+  (fun _ _ _ _ _ _ _ => errst_ret tt)
   (*app*)
-  (fun _ _ _ => errst_ret tt)
+  (fun _ _ _ _ => errst_ret tt)
   (*match - interesting*)
-  (fun t1 r1 tb =>
+  (fun _ t1 r1 tb =>
     let get_constructors ts := map fst (find_constructors kn ts) in 
     let pl := map (fun b => [fst (fst b)]) tb in
     res <- check_compile_aux get_constructors [t1] pl ;;
@@ -1022,17 +1020,17 @@ Definition check (kn: known_map) (_: unit) (t: term_c) :
     errst_ret tt
     )
   (*eps*)
-  (fun _ _ _ => errst_ret tt)
+  (fun _ _ _ _ => errst_ret tt)
   (*quant*)
-  (fun _ _ _ _ _ _ => errst_ret tt)
+  (fun _ _ _ _ _ _ _ => errst_ret tt)
   (*binop*)
-  (fun _ _ _ _ _ => errst_ret tt)
+  (fun _ _ _ _ _ _ => errst_ret tt)
   (*not*)
-  (fun _ _ => errst_ret tt)
+  (fun _ _ _ => errst_ret tt)
   (*true*)
-  (errst_ret tt)
+  (fun _ => errst_ret tt)
   (*false*)
-  (errst_ret tt)
+  (fun _ => errst_ret tt)
   t.
 
 

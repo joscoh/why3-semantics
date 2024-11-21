@@ -31,6 +31,9 @@ Record errtype : Type := { errname : string; errargs: Type; errdata : errargs}.
 Definition Not_found : errtype := {| errname := "Not_found"; errargs:= unit; errdata := tt|}.
 Definition Invalid_argument (s: string) : errtype :=
   {| errname := "Invalid_argument"; errargs := string; errdata := s|}.
+Definition Failure (msg: string) : errtype :=
+  {| errname := "Failure"; errargs := string; errdata := msg |}.
+
 
 Definition errorM (A: Type) : Type := Datatypes.sum errtype A.
 
@@ -517,3 +520,6 @@ Definition map_join_left_errst {A B St: Type} (d: B)
     join acc l1) xl y 
   | _ => errst_ret d
   end.
+
+(*TODO: move*)
+Notation errst_throw e := (errst_lift2 (throw e)).

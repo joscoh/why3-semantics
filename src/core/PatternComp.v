@@ -36,11 +36,6 @@ Definition NonExhaustive (l: list pattern_c) : errtype :=
 Definition ConstructorExpected (x: lsymbol * ty_c) : errtype :=
   mk_errtype "ConstructorExpected" x.
 
-
-(*TODO: move*)
-Definition Failure (msg: string) : errtype :=
-  mk_errtype "Failure" msg.
-
 (*Error-throwing hd (TODO move)*)
 Definition hd {A: Type} (l: list A) : errorM A :=
   match l with
@@ -84,9 +79,6 @@ Fixpoint populate
 End Populate.
 
 Local Open Scope errst_scope.
-
-(*TODO: move*)
-Notation errst_throw e := (errst_lift2 (throw e)).
 
 Section Dispatch.
 (*mk_let can be [t_let_close_simp], which uses [t_subst], which is stateful*)

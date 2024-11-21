@@ -715,6 +715,64 @@ Definition t_map_unsafe (fn: term_c -> term_c) (t: term_c) : term_c :=
   | Ttrue | Tfalse => t
   end).
 
+(*error*)
+Local Open Scope errst_scope.
+
+(*NOTE: would be really nice to generalize to monads*)
+Definition bound_map_errst {St A B C D: Type} (f: A -> errState St B) (x: C * D * A) : errState St (C * D * B) :=
+  match x with
+  | (u, b, e) => 
+    e1 <- f e;;
+    errst_ret (u, b, e1)
+  end.
+
+(*Get state out of trigger map*)
+Definition errst_tr {St A: Type} (l: list (list (errState St A))) : errState St (list (list A)) :=
+  errst_list (map (fun l => errst_list l) l).
+
+Definition tr_map_errst  {St: Type} (fn: term_c -> errState St term_c) (tl : list (list term_c)) := 
+  errst_tr (tr_map fn tl).
+
+Definition t_map_errst_unsafe {St: Type} (fn: term_c -> errState St term_c) (t: term_c) : errState St term_c :=
+  t1 <- (match (t_node_of t) with
+  | Tvar _ | Tconst _ => errst_ret t
+  | Tapp f tl =>
+    l <- errst_list (map fn tl) ;;
+    errst_ret (t_app1 f l (t_ty_of t))
+  | Tif f t1 t2 =>
+    f1 <- fn f ;;
+    t1' <- fn t1 ;;
+    t2' <- fn t2 ;;
+    errst_ret (t_if1 f1 t1' t2')
+  | Tlet e b =>
+    e1 <- fn e ;;
+    b1 <- (bound_map_errst fn b);;
+    errst_ret (t_let1 e1 b1 (t_ty_of t))
+  | Tcase e bl => 
+    e1 <- fn e;;
+    l <- (errst_list (map (bound_map_errst fn) bl));;
+    errst_ret (t_case1 e1 l (t_ty_of t))
+  | Teps b => 
+    b1 <- bound_map_errst fn b ;;
+    errst_ret (t_eps1 b1 (t_ty_of t))
+  | Tquant q (vl, b, tl, f) => 
+    l <- tr_map_errst fn tl ;;
+    f1 <- fn f;;
+    errst_ret (t_quant1 q (vl, b, l, f1))
+  | Tbinop op f1 f2 => 
+    f1' <- fn f1;;
+    f2' <- fn f2;;
+    errst_ret (t_binary1 op f1' f2')
+  | Tnot f1 => 
+    f1' <- fn f1;;
+    errst_ret (t_not1 f1')
+  | Ttrue | Tfalse => errst_ret t
+  end) ;;
+  
+  errst_ret (t_attr_copy t t1).
+
+Local Open Scope state_scope.
+
 Definition bound_map_ctr {A B C D: Type} (f: A -> ctr B) (x: C * D * A) : ctr (C * D * B) :=
   match x with
   | (u, b, e) => 
@@ -724,14 +782,8 @@ Definition bound_map_ctr {A B C D: Type} (f: A -> ctr B) (x: C * D * A) : ctr (C
 
 (*Get state out of trigger map*)
 (*TODO: generalize to all state?*)
-Fixpoint st_tr {A: Type} (l: list (list (ctr A))) : ctr (list (list A)) :=
-  match l with
-  | nil => st_ret nil
-  | l1 :: tl =>
-    l2 <- st_list l1 ;;
-    tl2 <- st_tr tl ;;
-    st_ret (l2 :: tl2)
-  end.
+Definition st_tr {A: Type} (l: list (list (ctr A))) : ctr (list (list A)) :=
+  st_list (map (fun l => st_list l) l).
 
 
 Definition t_map_ctr_unsafe (fn: term_c -> ctr term_c) (t: term_c) : ctr term_c :=
@@ -771,9 +823,6 @@ Definition t_map_ctr_unsafe (fn: term_c -> ctr term_c) (t: term_c) : ctr term_c 
   end) ;;
   
   st_ret (t_attr_copy t t1).
-
-
-
 
 (*Unsafe Fold*)
 
@@ -1081,6 +1130,18 @@ Definition t_open_bound_with (e: term_c) (x: term_bound) : errorM term_c :=
   _ <- vs_check v e ;;
   let m := Mvs.singleton _ v e in
   err_ret (t_subst_unsafe m t))%err.
+
+Definition t_view_quant_cb (fq: term_quant) : 
+  list vsymbol * trigger * term_c *
+  (list vsymbol -> trigger -> term_c -> errorM term_quant)  :=
+  let '(vl, tl, f) := t_view_quant fq in
+  let close vl' tl' f' :=
+    if term_eqb_fast f f' &&
+      list_eqb (list_eqb term_eqb_fast) tl tl' &&
+      list_eqb vs_equal vl vl' 
+    then err_ret fq else t_close_quant vl' tl' f'
+  in
+  (vl, tl, f, close).
 
 (*skip t_clone_bound_id (for now)*)
 
@@ -1460,6 +1521,69 @@ Definition t_ty_fold {A: Type} (fn: A -> ty_c -> A) (acc: A) (t: term_c) : A :=
 
 Definition t_ty_freevars := t_ty_fold ty_freevars.
 
+(*Polarity map*)
+
+
+Definition t_map_sign_errst_unsafe {St: Type}
+  (fn: bool -> term_c -> errState St term_c)  (sign: bool) (f: term_c) :
+  errState St term_c :=  
+  (match t_node_of f with
+| Tbinop Timplies f1 f2 =>
+    f1' <- fn (negb sign) f1 ;;
+    f2' <- fn sign f2 ;;
+    t1 <- errst_lift2 (t_implies f1' f2') ;;
+    errst_ret (t_attr_copy f t1)
+| Tbinop Tiff f1 f2 =>
+    f1p <- fn sign f1 ;;
+    f1n <- fn (negb sign) f1 ;;
+    f2p <- fn sign f2 ;; 
+    f2n <- fn (negb sign) f2 ;;
+    if t_equal f1p f1n && t_equal f2p f2n then 
+      t1 <- errst_lift2 (t_iff f1p f2p) ;;
+      errst_ret (t_attr_copy f t1)
+    else if sign
+      then 
+        t1 <- errst_lift2 (t_implies f1n f2p) ;;
+        t2 <- errst_lift2 (t_implies f2n f1p) ;;
+        t3 <- errst_lift2 (t_and t1 t2) ;;
+        errst_ret (t_attr_copy f t3)
+      else 
+        t1 <- errst_lift2 (t_or f1n f2n) ;;
+        t2 <- errst_lift2 (t_and f1p f2p) ;;
+        t3 <- errst_lift2 (t_implies t1 t2) ;;
+        errst_ret (t_attr_copy f t3)
+    (*t_attr_copy f*)
+| Tnot f1 =>
+    f1' <- (fn (negb sign) f1) ;;
+    t1 <- errst_lift2 (t_not f1') ;;
+    errst_ret (t_attr_copy f t1)
+| Tif f1 f2 f3 =>  if negb (isSome (t_ty_of f)) then
+    f1p <- fn sign f1 ;; 
+    f1n <- fn (negb sign) f1 ;;
+    f2 <- fn sign f2 ;; 
+    f3 <- fn sign f3 ;;
+    if t_equal f1p f1n then 
+      t1 <- errst_lift2 (t_if f1p f2 f3) ;;
+      errst_ret (t_attr_copy f t1)
+    else if sign then 
+      t1 <- errst_lift2 (t_implies f1n f2) ;;
+      t2 <- errst_lift2 (t_not f1p) ;;
+      t3 <- errst_lift2 (t_implies t2 f3) ;;
+      t4 <- errst_lift2 (t_and t1 t3) ;;
+      errst_ret (t_attr_copy f t4)
+    else 
+      t1 <- errst_lift2 (t_and f1p f2) ;;
+      t2 <- errst_lift2 (t_not f1n) ;;
+      t3 <- errst_lift2 (t_and t2 f3) ;;
+      t4 <- errst_lift2 (t_or t1 t3) ;;
+      errst_ret (t_attr_copy f t4)
+  else errst_throw (Failure "t_map_sign: cannot determine polarity")
+| Teps _ => errst_throw (Failure "t_map_sign: cannot determine polarity")
+| _ => 
+  t1 <- (t_map_errst_unsafe (fn sign) f) ;;
+  errst_ret (t_attr_copy f t1)
+end).
+
 (* map/fold over free variables *)
 (*Only fold for now*)
 
@@ -1482,6 +1606,9 @@ Fixpoint t_v_fold {A: Type} (fn : A -> vsymbol -> A) (acc: A)
   | Tquant _ (_, b, _, _) => bnd_v_fold fn acc b (*No recursion bc we know free vars*)
   | _ => t_fold_unsafe (t_v_fold fn) acc t
   end.
+
+Definition t_v_all (pr: vsymbol -> bool) (t: term_c) : bool :=
+  t_v_fold (fun x v => x && pr v) false t.
 
 Definition bnd_v_count {A: Type} (fn: A -> vsymbol -> CoqBigInt.t -> A) acc b := 
   Mvs.fold (fun v n acc => fn acc v n) b.(bv_vars) acc.
@@ -1524,6 +1651,16 @@ Definition t_select {A: Type} (fnT: term_c -> A) (fnF: term_c -> A)
 Definition t_selecti {A B: Type} (fnT: A -> term_c -> B) 
   (fnF: A -> term_c -> B) (acc: A) (e: term_c) : B :=
   if isNone (t_ty_of e) then fnF acc e else fnT acc e.
+
+Definition t_map_errst_unsafe {St: Type} (fnT: term_c -> errState St term_c) (fnF: term_c -> errState St term_c) := 
+  t_map_errst_unsafe (t_select fnT fnF).
+
+Definition t_map_sign_errst_unsafe {St: Type} (fnT: bool -> term_c -> errState St term_c)
+  (fnF: bool -> term_c -> errState St term_c) : bool -> term_c -> errState St term_c :=
+  t_map_sign_errst_unsafe (t_selecti fnT fnF).
+
+Definition tr_map_errst {St: Type} (fnT: term_c -> errState St term_c) (fnF: term_c -> errState St term_c) :=
+  tr_map_errst (t_select fnT fnF).
 
 End TermTFAlt.
 
@@ -1587,6 +1724,24 @@ Definition t_and_simp (f1 f2 : term_c) : errorM term_c :=
   | _, _ => if t_equal f1 f2 then err_ret f1 else t_and f1 f2
   end.
 
+Definition t_or_simp (f1 f2 : term_c) : errorM term_c := 
+  match t_node_of f1, t_node_of f2 with
+  | Ttrue, _  => err_ret (t_attr_remove_name "asym_split" f1)
+  | _, Ttrue  => err_ret f2
+  | Tfalse, _ => err_ret f2
+  | _, Tfalse => err_ret (t_attr_remove_name "asym_split" f1)
+  | _, _ => if t_equal f1 f2 then err_ret f1 else t_or f1 f2
+  end.
+
+Definition t_implies_simp (f1 f2 : term_c) : errorM term_c :=
+ match t_node_of f1, t_node_of f2 with
+  | Ttrue, _  => err_ret f2
+  | _, Ttrue  => err_ret f2
+  | Tfalse, _ => err_ret (t_attr_copy f1 t_true)
+  | _, Tfalse => t_not_simp f1
+  | _, _ => if t_equal f1 f2 then err_ret (t_attr_copy f1 t_true) else t_implies f1 f2
+ end.
+
 Definition t_iff_simp (f1 f2 : term_c) : errorM term_c := 
   match t_node_of f1, t_node_of f2 with
   | Ttrue, _  => err_ret f2
@@ -1595,6 +1750,22 @@ Definition t_iff_simp (f1 f2 : term_c) : errorM term_c :=
   | _, Tfalse => t_not_simp f1
   | _, _ => if t_equal f1 f2 then err_ret (t_attr_copy f1 t_true) else t_iff f1 f2
   end.
+
+(*Removes unused vars*)
+Definition t_quant_close_simp (q: quant) (vl : list vsymbol) (tl : list (list term_c)) (f: term_c) :
+  errorM term_c :=
+  if null vl then err_ret f else
+  let fvs := t_vars f in
+  let check v := Mvs.mem v fvs in
+  if forallb check vl then
+    t_quant_close q vl tl f
+  else
+    let vl := filter check vl in
+    if null vl  then err_ret f
+    else t_quant_close q vl (filter (forallb (t_v_all check)) tl) f.
+
+Definition t_forall_close_simp := t_quant_close_simp Tforall.
+Definition t_exists_close_simp := t_quant_close_simp Texists.
 
 Definition t_equ_simp (t1 t2 : term_c) : errorHashconsT ty_c term_c :=
   if t_equal t1 t2 then errst_ret t_true  else t_equ t1 t2.
@@ -1618,3 +1789,17 @@ Definition t_let_close_simp (v: vsymbol) (e t: term_c) : errorM term_c :=
     t_subst_single v e t
   else
     t_let_close v e t.
+
+Definition t_quant_simp1 (q: quant) (qf: term_quant) : errorM term_c :=
+  let '(vl, _, _, f) := qf in
+  let fvs := t_vars f in
+  let check v := Mvs.mem v fvs in
+  if forallb check vl then
+    err_ret (t_quant q qf)
+  else
+    let '(vl,tl,f) := t_view_quant qf in
+    let fvs := t_vars f in
+    let check v := Mvs.mem v fvs in
+    let vl := filter check vl in
+    if null vl then err_ret f
+    else t_quant_close q vl (filter (forallb (t_v_all check)) tl) f.
