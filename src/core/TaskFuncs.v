@@ -1,4 +1,4 @@
-Require Export TyDefs TaskDefs.
+Require Export TyDefs TaskDefs TheoryFuncs.
 Import MonadNotations.
 (* Constructors with Checks*)
 
@@ -166,3 +166,8 @@ Definition add_tdecl (tsk: option task_hd) (td: tdecl_c) :
   | Clone th _ => errst_tup2 (full_of_tsk (new_clone tsk th td))
   | Meta t _ => errst_tup2 (full_of_tsk (new_meta tsk t td))
   end.
+
+Definition add_meta tsk t al :
+  errState hashcons_full task  := 
+  m <-  full_of_ty_td (create_meta t al) ;;
+  errst_tup2 (new_meta tsk t m).

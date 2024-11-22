@@ -54,6 +54,20 @@ Definition state_with_mt_mat (s: state) (mt_map: Mts.t lsymbol) : state :=
     keep_r := s.(keep_r); keep_m := s.(keep_m); no_ind := s.(no_ind);
     no_inv := s.(no_inv); no_sel := s.(no_sel)|}.
 
+Definition state_with_cp_map (s: state) (cp_map: Mls.t (list lsymbol)) : state :=
+  {| mt_map := s.(mt_map); cc_map := s.(cc_map); cp_map := cp_map;
+    pp_map := s.(pp_map); kept_m := s.(kept_m); tp_map := s.(tp_map);
+    inf_ts := s.(inf_ts); ma_map:= s.(ma_map) ; keep_e := s.(keep_e);
+    keep_r := s.(keep_r); keep_m := s.(keep_m); no_ind := s.(no_ind);
+    no_inv := s.(no_inv); no_sel := s.(no_sel)|}.
+
+Definition state_with_pp_map (s: state) (pp_map: Mls.t lsymbol) : state :=
+  {| mt_map := s.(mt_map); cc_map := s.(cc_map); cp_map := s.(cp_map);
+    pp_map := (pp_map); kept_m := s.(kept_m); tp_map := s.(tp_map);
+    inf_ts := s.(inf_ts); ma_map:= s.(ma_map) ; keep_e := s.(keep_e);
+    keep_r := s.(keep_r); keep_m := s.(keep_m); no_ind := s.(no_ind);
+    no_inv := s.(no_inv); no_sel := s.(no_sel)|}.
+
 (*Determin if this type should be kept (false) or axiomatized (true) - should only be called
   on ADTs*)
 (*TODO: their implementation gives errors, ours just false - prove don't hit it*)
@@ -435,3 +449,55 @@ Definition complete_projections (csl: list (lsymbol * list (option lsymbol))) :
     st_ret (c, l)
   in
  st_list (List.map conv_c csl).
+
+(*Note: don't care about meta definitions, only proving soundness*)
+Axiom meta_model_projection : meta.
+
+Definition add_meta_model_projection tsk ls :=
+  add_meta tsk meta_model_projection [MAls ls].
+Local Open Scope errst_scope.
+Definition add_projections {A B: Type} (st : state * task) (_ts : A) (_ty : B) 
+  (csl: list (lsymbol * list (option lsymbol))) :
+  errState (CoqBigInt.t * hashcons_full) (state * task) :=
+  let s := fst st in
+  let tsk := snd st in
+  (* declare and define the projection functions *)
+  let pj_add x y :=
+    let '(cp_map,pp_map,tsk) := x in
+    let '(cs,pl) := y in
+    vl <- errst_tup1 (errst_lift1 (st_list (map (create_vsymbol (id_fresh1 "u")) cs.(ls_args)))) ;;
+    let tl := map t_var vl in
+    cc <- errst_lift2 (Mls.find _ cs s.(cc_map)) ;;
+    v <- errst_lift2 (option_get cs.(ls_value)) ;;
+    hd <- errst_tup2 (full_of_ty (fs_app cc tl v)) ;;
+    let add (x: list lsymbol * Mls.t lsymbol * task) (t: term_c) (pj: option lsymbol) :
+      errState (CoqBigInt.t * hashcons_full) (list lsymbol * Mls.t lsymbol * task) :=
+      let '(pjl,pp_map,tsk) := x in
+      pj <- errst_lift2 (option_get pj) ;;
+      lspp <-
+        match Mls.find_opt pj pp_map with
+        | Some pj => errst_ret (pj,pp_map)
+        | None =>
+          let id := (id_clone1 None Sattr.empty pj.(ls_name)) in
+          ls <- errst_tup1 (errst_lift1 (create_lsymbol1 id pj.(ls_args) pj.(ls_value))) ;;
+          errst_ret (ls,Mls.add pj ls pp_map)
+        end ;;
+      let '(ls,pp_map) := lspp in
+      tsk <- add_param_decl tsk ls ;;
+      let id := id_derive1 (ls.(ls_name).(id_string) ++ "'def")%string ls.(ls_name) in
+      pr <- errst_tup1 (errst_lift1 (create_prsymbol id)) ;;
+      hh <- errst_tup2 (full_of_ty (t_app ls [hd] (t_ty_of t)));;
+      hht <- errst_tup2 (full_of_ty (t_equ hh t)) ;;
+      ax <- errst_lift2 (t_forall_close vl [] hht) ;;
+      tsk <- add_prop_decl tsk Paxiom pr ax ;;
+      tsk <- errst_tup2 (add_meta_model_projection tsk ls) ;;
+      errst_ret (ls::pjl,pp_map,tsk)
+    in
+    res <- fold_left2_errst' add ([],pp_map,tsk) tl pl ;;
+    let '(pjl,pp_map,tsk) := res in
+    errst_ret (Mls.add cs (rev pjl) cp_map, pp_map, tsk)
+  in
+  csl <- errst_tup1 (errst_lift1 (complete_projections csl));;
+  res <- foldl_errst pj_add csl (s.(cp_map), s.(pp_map), tsk) ;;
+  let '(cp_map, pp_map, tsk) := res in
+  errst_ret (state_with_cp_map (state_with_pp_map s pp_map) cp_map, tsk).

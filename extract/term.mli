@@ -792,3 +792,4 @@ val t_view_quant_cb :
 val t_quant_simp1 : quant -> term_quant -> term
 val create_fsymbol2 : BigInt.t -> bool -> preid -> ty list -> ty -> lsymbol
 val create_fsymbol1 : preid -> ty list -> ty -> lsymbol
+val create_lsymbol1 : preid -> ty list -> ty option -> lsymbol

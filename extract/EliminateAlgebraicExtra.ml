@@ -293,10 +293,10 @@ let complete_projections csl =
    counterexample projection. This allow counterexamples to appear for
    these values.
 *)
-let add_meta_model_projection tsk ls =
-  add_meta tsk meta_model_projection [MAls ls]
+(* let add_meta_model_projection tsk ls =
+  add_meta tsk meta_model_projection [MAls ls] *)
 
-let add_projections (state,task) _ts _ty csl =
+(* let add_projections (state,task) _ts _ty csl =
   (* declare and define the projection functions *)
   let pj_add (cp_map,pp_map,tsk) (cs,pl) =
     let vl = List.map (create_vsymbol (id_fresh "u")) cs.ls_args in
@@ -328,7 +328,7 @@ let add_projections (state,task) _ts _ty csl =
   let cp_map, pp_map, task =
     List.fold_left pj_add (state.cp_map, state.pp_map, task) csl
   in
-  { state with cp_map; pp_map }, task
+  { state with cp_map; pp_map }, task *)
 
 let add_inversion (state,task) ts ty csl =
   if state.no_inv then state, task else

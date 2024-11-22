@@ -297,6 +297,9 @@ Extract Inlined Constant Failure => "Failure". (*TODO: MOVE*)
 (*Elim algebraic exceptions*)
 Extract Inlined Constant UnsupportedTerm => "Printer.UnsupportedTerm".
 
+(*meta*)
+Extract Inlined Constant meta_model_projection => "meta_model_projection".
+
 (*TODO: implement later*)
 Extract Inlined Constant check_float => "Number.check_float".
 (*Not implementing*)
