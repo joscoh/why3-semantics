@@ -68,6 +68,13 @@ Definition state_with_pp_map (s: state) (pp_map: Mls.t lsymbol) : state :=
     keep_r := s.(keep_r); keep_m := s.(keep_m); no_ind := s.(no_ind);
     no_inv := s.(no_inv); no_sel := s.(no_sel)|}.
 
+Definition state_with_cc_map (s: state) cc_map : state :=
+  {| mt_map := s.(mt_map); cc_map := cc_map; cp_map := s.(cp_map);
+    pp_map := s.(pp_map); kept_m := s.(kept_m); tp_map := s.(tp_map);
+    inf_ts := s.(inf_ts); ma_map:= s.(ma_map) ; keep_e := s.(keep_e);
+    keep_r := s.(keep_r); keep_m := s.(keep_m); no_ind := s.(no_ind);
+    no_inv := s.(no_inv); no_sel := s.(no_sel)|}.
+
 (*Determin if this type should be kept (false) or axiomatized (true) - should only be called
   on ADTs*)
 (*TODO: their implementation gives errors, ours just false - prove don't hit it*)
@@ -501,3 +508,85 @@ Definition add_projections {A B: Type} (st : state * task) (_ts : A) (_ty : B)
   res <- foldl_errst pj_add csl (s.(cp_map), s.(pp_map), tsk) ;;
   let '(cp_map, pp_map, tsk) := res in
   errst_ret (state_with_cp_map (state_with_pp_map s pp_map) cp_map, tsk).
+
+Definition add_inversion {A: Type} (st: state * task) (ts: tysymbol_c) (ty: ty_c) (csl: list (lsymbol * A)) 
+  : errState (CoqBigInt.t * hashcons_full) (state * task) :=
+  let s := fst st in
+  let tsk := snd st in
+  if s.(no_inv) then errst_ret (s, tsk) else
+  (* add the inversion axiom *)
+  let ax_id := ((ts_name_of ts).(id_string) ++ "_inversion")%string in
+  ax_pr <- errst_tup1 (errst_lift1 (create_prsymbol (id_derive1 ax_id (ts_name_of ts)))) ;;
+  ax_vs <- errst_tup1 (errst_lift1 (create_vsymbol (id_fresh1 "u") ty)) ;;
+  let ax_hd := t_var ax_vs in
+  let mk_cs x :=
+    let cs := fst x in
+    pjl <- errst_lift2 (Mls.find _ cs s.(cp_map)) ;;
+    let app pj := t_app_infer pj [ax_hd] in
+    cs <- errst_lift2 (Mls.find _ cs s.(cc_map)) ;;
+    errst_tup2 (full_of_ty (
+      pjl' <- (errst_list (map app pjl)) ;;
+      c <- (fs_app cs pjl' ty) ;;
+      t_equ ax_hd c
+    ))
+    in
+  ax_f <- map_join_left_errst t_true mk_cs (fun x y => errst_lift2 (t_or x y)) csl;;
+  ax_f <- errst_lift2 (t_forall_close [ax_vs] [] ax_f) ;;
+  pd <- add_prop_decl tsk Paxiom ax_pr ax_f ;;
+  errst_ret (s, pd).
+
+Definition kept_no_case {A B: Type} (used : Sid.t) s (x : tysymbol_c * list (A * list B)) :=
+  match x with
+  | (ts, [(_ , _ :: _)]) => s.(keep_r) && negb (Sid.mem (ts_name_of ts) used)
+  | (ts, csl) =>
+    match (ts_args_of ts) with
+    | nil => s.(keep_e) && forallb (fun x => null (snd x)) csl &&
+       negb (Mts.mem ts s.(kept_m))
+    | _ => false
+    end
+  end.
+
+Definition add_axioms (used: Sid.t) (st: state * task) 
+  (d: tysymbol_c * list (lsymbol * list (option lsymbol))) :
+  errState (CoqBigInt.t * hashcons_full) (state * task) :=
+  let s := fst st in
+  let tsk := snd st in
+  let ts := fst d in
+  let csl := snd d in
+  l <- errst_tup2 (full_of_ty (errst_lift1 (st_list (map ty_var (ts_args_of ts))))) ;;
+  ty <- errst_tup2 (full_of_ty (ty_app ts l)) ;;
+  if kept_no_case used s d then
+    (* for kept enums and records, we still use the selector function, but
+       always use the non-encoded projections and constructors *)
+    s <- errst_lift2(
+      let fold_c s x :=
+        let '(c, pjs) := x in
+        (pjs <-  errorM_list (map option_get pjs) ;;
+        let cc_map := Mls.add c c s.(cc_map) in
+        let cp_map := Mls.add c pjs s.(cp_map) in
+        let fold_pj pp_map pj := Mls.add pj pj pp_map in
+        let pp_map := fold_left fold_pj pjs s.(pp_map) in
+        err_ret (state_with_pp_map (state_with_cp_map (state_with_cc_map s cc_map) cp_map) pp_map))%err
+        (* { s with cc_map; cp_map; pp_map } *)
+      in
+      foldl_err fold_c csl s)
+    ;;
+    add_selector (s, tsk) ts ty csl
+  else if negb (null (ts_args_of ts)) || negb (Mts.mem ts s.(kept_m)) then
+    (* declare constructors as abstract functions *)
+    let cs_add x y :=
+      let '(s,tsk) := x in
+      let cs := fst y in
+      let id := id_clone1 None Sattr.empty cs.(ls_name) in
+      ls <- errst_tup1 (errst_lift1 (create_lsymbol1 id cs.(ls_args) cs.(ls_value))) ;;
+      d <- add_param_decl tsk ls ;;
+      errst_ret (state_with_cc_map s (Mls.add cs ls s.(cc_map)), d)
+      (* { s with cc_map = Mls.add cs ls s.cc_map },add_param_decl tsk ls *)
+    in
+    st1 <- foldl_errst cs_add csl (s,tsk) ;;
+    (* add selector, projections, and inversion axiom *)
+    st2 <- add_selector st1 ts ty csl ;;
+    st3 <- add_indexer st2 ts ty csl ;;
+    st4 <- add_projections st3 ts ty csl ;;
+    add_inversion st4 ts ty csl
+  else errst_ret (s,tsk).

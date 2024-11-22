@@ -330,7 +330,7 @@ let complete_projections csl =
   in
   { state with cp_map; pp_map }, task *)
 
-let add_inversion (state,task) ts ty csl =
+(* let add_inversion (state,task) ts ty csl =
   if state.no_inv then state, task else
   (* add the inversion axiom *)
   let ax_id = ts.ts_name.id_string ^ "_inversion" in
@@ -344,16 +344,16 @@ let add_inversion (state,task) ts ty csl =
     t_equ ax_hd (fs_app cs (List.map app pjl) ty) in
   let ax_f = Lists.map_join_left mk_cs t_or csl in
   let ax_f = t_forall_close [ax_vs] [] ax_f in
-  state, add_prop_decl task Paxiom ax_pr ax_f
+  state, add_prop_decl task Paxiom ax_pr ax_f *)
 
-let kept_no_case used state = function
+(* let kept_no_case used state = function
   | ts, [_,_::_] -> state.keep_r && not (Sid.mem ts.ts_name used)
   | { ts_args = [] } as ts, csl ->
      state.keep_e && List.for_all (fun (_,l) -> l = []) csl &&
        not (Mts.mem ts state.kept_m)
-  | _ -> false
+  | _ -> false *)
 
-let add_axioms used (state,task) ((ts,csl) as d) =
+(* let add_axioms used (state,task) ((ts,csl) as d) =
   let ty = ty_app ts (List.map ty_var ts.ts_args) in
   if kept_no_case used state d then
     (* for kept enums and records, we still use the selector function, but
@@ -384,7 +384,7 @@ let add_axioms used (state,task) ((ts,csl) as d) =
     let state,task = add_projections (state,task) ts ty csl in
     let state,task = add_inversion (state,task) ts ty csl in
     state, task
-  else state,task
+  else state,task *)
 
 let add_tags mts (state,task) (ts,csl) =
   let rec mat_ts sts ts csl =
