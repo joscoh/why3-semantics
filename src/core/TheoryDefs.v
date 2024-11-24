@@ -80,7 +80,7 @@ Variant meta_arg :=
   | MAls: lsymbol -> meta_arg
   | MApr : prsymbol -> meta_arg
   | MAstr: string -> meta_arg
-  | MAint: CoqInt.int -> meta_arg
+  | MAint: CoqBigInt.t -> meta_arg
   | MAid: ident -> meta_arg.
 
 (*NOTE: I am NOT dealing with formats. Will axiomatize this type;
@@ -290,7 +290,7 @@ Definition meta_arg_eqb (m1 m2: meta_arg) : bool :=
   | MAls l1, MAls l2 => ls_equal l1 l2
   | MApr p1, MApr p2 => pr_equal p1 p2
   | MAstr s1, MAstr s2 => String.eqb s1 s2
-  | MAint i1, MAint i2 => CoqInt.int_eqb i1 i2
+  | MAint i1, MAint i2 => CoqBigInt.eqb i1 i2
   | MAid i1, MAid i2 => id_equal i1 i2
   | _, _ => false
   end.
@@ -486,7 +486,7 @@ Proof.
   destruct a1; destruct a2; simpl; try solve[solve_eqb_eq];
   [rewrite <- ty_eqb_eq | rewrite <- tysymbol_eqb_eq |
    rewrite <- lsymbol_eqb_eq | rewrite <- prsymbol_eqb_eq |
-   rewrite <- string_eqb_eq | unfold is_true; rewrite <- CoqInt.int_eqb_eq |
+   rewrite <- string_eqb_eq | rewrite <- CoqBigInt.eqb_eq |
    rewrite <- ident_eqb_eq]; solve_eqb_eq.
 Qed.
 
@@ -593,7 +593,7 @@ Definition eq_marg (m1 m2: meta_arg) : bool :=
   | MAls l1, MAls l2 => ls_equal l1 l2
   | MApr p1, MApr p2 => pr_equal p1 p2
   | MAstr s1, MAstr s2 => String.eqb s1 s2
-  | MAint i1, MAint i2 => CoqInt.int_eqb i1 i2
+  | MAint i1, MAint i2 => CoqBigInt.eqb i1 i2
   | _, _ => false
   end.
 
@@ -626,7 +626,7 @@ Definition hs_ta x :=
   | MAls ls => ls_hash ls
   | MApr pr => pr_hash pr
   | MAstr s => string_hash s (*OK because we will not call this in Coq*)
-  | MAint i => CoqBigInt.of_int i (*TODO: not real hash*) (*BigInt.of_int (Hashtbl.hash i)*)
+  | MAint i => i (*TODO: not real hash*) (*BigInt.of_int (Hashtbl.hash i)*)
   | MAid i => IdentDefs.id_hash i
   end.
 

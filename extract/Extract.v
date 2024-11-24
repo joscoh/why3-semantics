@@ -309,6 +309,8 @@ Extract Inlined Constant pp_formatted_ty_eqb => "(=)".
 Extract Inlined Constant CoqWstdlib.string_hash => "(fun s -> (BigInt.of_int (Hashtbl.hash s)))".
 (*Not implementing specific metas (yet) - requires state*)
 Extract Inlined Constant meta_rewrite => "Compute.meta_rewrite".
+Extract Inlined Constant meta_infinite => "meta_infinite".
+Extract Inlined Constant meta_material => "meta_material".
 
 Extraction Inline mk_errtype.
 

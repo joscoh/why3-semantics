@@ -649,7 +649,7 @@ let print_meta_arg fmt = function
   | MAls ls -> fprintf fmt "%s %a" (ls_kind ls) print_ls ls
   | MApr pr -> fprintf fmt "prop %a" print_pr pr
   | MAstr s -> fprintf fmt "\"%s\"" s
-  | MAint i -> pp_print_int fmt i
+  | MAint i -> pp_print_int fmt (BigInt.to_int i)
   | MAid i -> Ident.print_decoded fmt (id_unique sprinter i)
 
 let print_qt fmt th =

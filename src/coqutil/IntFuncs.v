@@ -67,7 +67,7 @@ Definition option_compare {A: Type} (cmp:  A -> A -> CoqInt.int) (o1 o2: option 
   | Some _, None => CoqInt.one
   end.
 
-(*Recursive Functions over BigInts*)
+(*Recursive Functions over Ints/BigInts*)
 
 (*We want to write several functions that are recursive over
   integers, either because that is the function we want

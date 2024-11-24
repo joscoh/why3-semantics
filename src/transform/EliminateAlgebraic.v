@@ -75,6 +75,20 @@ Definition state_with_cc_map (s: state) cc_map : state :=
     keep_r := s.(keep_r); keep_m := s.(keep_m); no_ind := s.(no_ind);
     no_inv := s.(no_inv); no_sel := s.(no_sel)|}.
 
+Definition state_with_ma_map (s: state) ma_map : state :=
+  {| mt_map := s.(mt_map); cc_map := s.(cc_map); cp_map := s.(cp_map);
+    pp_map := s.(pp_map); kept_m := s.(kept_m); tp_map := s.(tp_map);
+    inf_ts := s.(inf_ts); ma_map:= ma_map ; keep_e := s.(keep_e);
+    keep_r := s.(keep_r); keep_m := s.(keep_m); no_ind := s.(no_ind);
+    no_inv := s.(no_inv); no_sel := s.(no_sel)|}.
+
+Definition state_with_inf_ts (s: state) inf_ts : state :=
+  {| mt_map := s.(mt_map); cc_map := s.(cc_map); cp_map := s.(cp_map);
+    pp_map := s.(pp_map); kept_m := s.(kept_m); tp_map := s.(tp_map);
+    inf_ts := inf_ts; ma_map:= s.(ma_map) ; keep_e := s.(keep_e);
+    keep_r := s.(keep_r); keep_m := s.(keep_m); no_ind := s.(no_ind);
+    no_inv := s.(no_inv); no_sel := s.(no_sel)|}.
+
 (*Determin if this type should be kept (false) or axiomatized (true) - should only be called
   on ADTs*)
 (*TODO: their implementation gives errors, ours just false - prove don't hit it*)
@@ -590,3 +604,118 @@ Definition add_axioms (used: Sid.t) (st: state * task)
     st4 <- add_projections st3 ts ty csl ;;
     add_inversion st4 ts ty csl
   else errst_ret (s,tsk).
+
+(*Separate out nested rec: hard for coq to deal with inline mutual recursion*)
+Section Fix.
+Context {A: Type}.
+Variable (mts: Mts.t (list (lsymbol * A))) (s: state).
+Local Open Scope err_scope.
+
+(*use fuel*)
+Check @IntFuncs.int_rect.
+(*TODO: fuel?
+  Why does this terminate? Idea: csl must be constructor list for some type, so by well-foundedness
+    of ADTs, terminates.
+    Not going to prove this, just give fuel as with type_inhab*)
+Definition mat_ts sts ts csl (z: CoqBigInt.t) :=
+  @IntFuncs.int_rect (fun _ => (*forall A, state -> Mts.t (list (lsymbol * A)) -> *)
+    Sts.t -> tysymbol_c -> list (lsymbol * A) -> errorM (list bool))
+  (*neg case*)
+  (fun _ _ sts stv ty  => throw Exit)
+  (*zero case*)
+  (fun sts stv ty => throw Exit)
+  (*pos case*)
+  (fun _ _ _ rec sts stv ty =>
+    let fix mat_ty sts stv ty { struct ty } : errorM Stv.t := 
+    match (ty_node_of ty) with
+    | Tyvar tv => err_ret (Stv.add tv stv)
+    | Tyapp ts tl =>
+        if Sts.mem ts sts then throw Exit else (* infinite type *)
+        matl <- 
+          match Mts.find_opt ts s.(ma_map) with
+          | Some y => err_ret y
+          | None => rec sts ts (Mts.find_def _ [] ts mts)
+          end ;;
+        let add s ty (mat : bool) := if mat then mat_ty sts s ty else err_ret s in
+        fold_left2_err' add stv tl matl
+    end in
+    let sts := Sts.add ts sts in
+    let add s x := foldl_err (mat_ty sts) (fst x).(ls_args) s in
+    stv <- foldl_err add csl Stv.empty ;;
+    err_ret (map (Stv.contains stv) (ts_args_of ts))
+  ) z sts ts csl.
+
+End Fix.
+
+(*We don't care about the values of these (NOTE: OCaml functions are effectful, this isn't quite sound)*)
+Axiom meta_infinite : meta.
+Axiom meta_material : meta.
+
+Definition add_tags {A: Type} (mts: Mts.t (list (lsymbol * A))) (st: state * task) 
+  (x: tysymbol_c * list (lsymbol * A)) : errState (hashcons_full) (state * task) :=
+  let s := fst st in
+  let tsk := snd st in
+  let ts := fst x in
+  let csl := snd x in
+  errst_trywith (*try*) (fun _ =>
+    matl <- errst_lift2 (mat_ts mts s s.(inf_ts) ts csl CoqBigInt.sixteen) ;;
+    let s := state_with_ma_map s (Mts.add ts matl s.(ma_map)) in
+    let add_material tsk (m: bool) (c: CoqBigInt.t) :=
+      if m then add_meta tsk meta_material [MAts ts; MAint c] else errst_ret tsk
+    in
+    l <- fold_left2_errst' add_material tsk matl (IntFuncs.iota2 (IntFuncs.int_length matl)) ;;
+    errst_ret (s, l))
+  (*with*)
+  Exit
+  (*->*)
+  (fun _ => let s := state_with_inf_ts s (Sts.add ts s.(inf_ts)) in
+    l <- add_meta tsk meta_infinite [MAts ts] ;;
+    errst_ret (s, l)).
+    
+    (* .
+    let add_material task m =
+      if m then add_meta task meta_material [MAts ts; MAint !c] else task
+    in
+    state, List.fold_left add_material task matl
+  )
+  try
+    
+  with Exit ->
+    let state = { s with inf_ts = Sts.add ts s.inf_ts } in
+    state, add_meta task meta_infinite [MAts ts] *)
+  
+(* 
+
+Definition add_tags {A: Type} (mts: Mts.t (list (lsymbol * A))) (st: state * task) 
+  (x: tysymbol_c * list (lsymbol * A)) : errState (hashcons_full) (state * task) :=
+  let '(ts,csl) := x in
+  fix mat_ts sts ts csl :=
+    let sts := Sts.add ts sts in
+    let add s x := List.fold_left (mat_ty sts) s (fst x).(ls_args) in
+    let stv := List.fold_left add Stv.empty csl in
+    List.map (Stv.contains stv) ts.ts_args
+  with mat_ty sts stv ty := 
+    match ty.ty_node with
+    | Tyvar tv => Stv.add tv stv
+    | Tyapp (ts,tl) =>
+        if Sts.mem ts sts then throw Exit else (* infinite type *)
+        let matl := 
+          match Mts.find_opt ts state.ma_map with
+          | Some y => y
+          | None => mat_ts sts ts (Mts.find_def [] ts mts)
+          end in
+        let add s mat ty := if mat then mat_ty sts s ty else s in
+        List.fold_left2 add stv matl tl
+    end
+  in try
+    let matl = mat_ts state.inf_ts ts csl in
+    let state = { state with ma_map = Mts.add ts matl state.ma_map } in
+    let c = ref (-1) in
+    let add_material task m =
+      incr c;
+      if m then add_meta task meta_material [MAts ts; MAint !c] else task
+    in
+    state, List.fold_left add_material task matl
+  with Exit ->
+    let state = { state with inf_ts = Sts.add ts state.inf_ts } in
+    state, add_meta task meta_infinite [MAts ts] *)

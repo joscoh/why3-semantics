@@ -188,7 +188,7 @@ Definition errst_bind_dep {A B C: Type} (x: errState A B)
 (*2*)
 
 (*Try/catch - TODO: reduce duplication*)
-Definition errst_trywith {St A B: Type} (x: unit -> errState St A) (e: errtype) 
+Definition errst_trywith {St A: Type} (x: unit -> errState St A) (e: errtype) 
   (ret: unit -> errState St A) : errState St A :=
   catch (x tt) (fun e1 => if String.eqb (errname e1) (errname e) then ret tt else errst_lift2 (throw e1)).
 
@@ -438,6 +438,14 @@ Definition fold_left2_err {A B C : Type}
     (x <- (f accu a1 a2) ;;
     foldM x l1 l2)%err
   | _, _ => err_ret None
+  end.
+
+Definition fold_left2_err' {A B C : Type} 
+  (f: C -> A -> B -> errorM C)(accu: C) (l1: list A) (l2: list B) : errorM C :=
+  l <- (fold_left2_err f accu l1 l2) ;;
+  match l with
+  | None => (throw (Invalid_argument "List.fold_left2"))
+  | Some r => err_ret r
   end.
 
 Definition iter_err {A: Type}

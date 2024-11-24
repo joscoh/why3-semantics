@@ -51,7 +51,7 @@ type meta_arg =
   | MAls  of lsymbol
   | MApr  of prsymbol
   | MAstr of string
-  | MAint of int
+  | MAint of BigInt.t
   | MAid of ident
 
 type meta = private {
