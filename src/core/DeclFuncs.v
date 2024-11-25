@@ -855,8 +855,44 @@ Definition decl_map {St: Type} (fn: term_c -> errState (St * (hashcons_ty ty_c) 
   | _ => errst_ret d
   end.
 
+(*For hashcons_full (which we don't have yet)- note inlining (e.g. full_of_ty) because
+  not defined yet*)
+(* Definition decl_map_full {St St1 St2: Type} 
+  (fn: term_c -> errState (St * ((hashcons_ty ty_c) * (hashcons_ty decl) * St1 * St2)) term_c) 
+  (d: decl) : errState (St * ((hashcons_ty ty_c) * (hashcons_ty decl) * St1 * St2)) decl :=
+  match d.(d_node) with
+  | Dlogic l => (*if (is_recursive (get_used_syms_decl d) l) then errst_ret d else*)
+    let fn x := 
+      let '(ls,ld) := x in
+      y <- (errst_lift2 (open_ls_defn_cb ld)) ;;
+      let '(vl,e,close) := y in
+      t1 <- fn e;;
+      errst_tup2 (errst_tup1 (errst_tup1 (errst_tup1 (close ls vl t1))))
+    in
+    l1 <- errst_list (map fn l) ;;
+    errst_tup2 (errst_tup1 (errst_tup1 (errst_tup2 (create_logic_decl_nocheck l1))))
+  (*NOTE: prove we don't hit this*)
+  | Dind (s, l) =>
+    l2 <- errst_list (map (fun x => 
+      l1 <- (errst_list (map (fun y => 
+        z <- fn (snd y) ;;
+        errst_ret (fst y, z)) (snd x))) ;;
+      errst_ret (fst x, l1)) l) ;;
+     errst_tup2 (errst_tup1 (errst_tup1 (errst_tup2 (create_ind_decl s l2))))
+  | Dprop x => let '(k, pr, f) := of_tup3 x in 
+    f1 <- (fn f);;
+     errst_tup2 (errst_tup1 (errst_tup1 (errst_tup2 (create_prop_decl k pr f1) )))
+  | _ => errst_ret d
+  end. *)
+
 
 (*TODO as needed*)
+
+Module DeclTFAlt.
+  Definition decl_map {St: Type} 
+    (fnT fnF: term_c -> errState (St * hashcons_ty ty_c * hashcons_ty decl) term_c) := 
+    decl_map (TermTFAlt.t_select fnT fnF).
+End DeclTFAlt.
   
 (* Known Identifiers *)
 Definition KnownIdent (i: ident) : errtype :=

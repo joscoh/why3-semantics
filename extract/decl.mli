@@ -235,3 +235,9 @@ type 'a known_res =
 | Normal of 'a
 val known_add_decl_informative: known_map -> decl -> (decl * decl Mid.t) known_res
 val ls_defn_decrease_aux : ls_defn -> BigInt.t list
+
+module DeclTFAlt : sig
+
+  val decl_map : (term -> term) -> (term -> term) -> decl -> decl
+
+end

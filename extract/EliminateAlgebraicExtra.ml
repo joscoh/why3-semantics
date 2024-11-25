@@ -423,7 +423,7 @@ let complete_projections csl =
     let state = { s with inf_ts = Sts.add ts s.inf_ts } in
     state, add_meta task meta_infinite [MAts ts] *)
 
-let has_nested_use sts csl =
+(* let has_nested_use sts csl =
   let check_c (c, _) =
     let check_arg ty = match ty.ty_node with
     | Tyapp (_, tl) -> List.exists (ty_s_any (Fun.flip Sts.mem sts)) tl
@@ -431,9 +431,9 @@ let has_nested_use sts csl =
     in
     List.exists check_arg c.ls_args
   in
-  List.exists check_c csl
+  List.exists check_c csl *)
 
-let comp t (state,task) = match t.task_decl.td_node with
+(* let comp t (state,task) = match t.task_decl.td_node with
   | Decl ({ d_node = Ddata dl } as d) ->
       let used = get_used_syms_decl d in
       let sts = List.fold_left (fun acc (ts, _) -> Sts.add ts acc) Sts.empty dl in
@@ -468,7 +468,7 @@ let comp t (state,task) = match t.task_decl.td_node with
       let fnF = rewriteF t.task_known state Svs.empty true in
       state, add_decl task (DeclTF.decl_map fnT fnF d)
   | _ ->
-      state, add_tdecl task t.task_decl
+      state, add_tdecl task t.task_decl *)
 
 let comp t (state,task) = match t.task_decl.td_node with
   | Use {th_decls = [{td_node = Decl ({d_node = Ddata [ts,_]})}]}
@@ -482,14 +482,14 @@ let comp t (state,task) = match t.task_decl.td_node with
       let rstate,rtask = ref state, ref task in
       let add _ (d,th) () =
         let t = Option.get (add_decl None d) in
-        let state,task = comp t (!rstate,!rtask) in
+        let state,task = comp_aux t (!rstate,!rtask) in
         let task = add_tdecl task (create_use th) in
         rstate := state ; rtask := task ; None
       in
       let tp_map = Mid.diff add state.tp_map (get_used_syms_decl d) in
-      comp t ({ !rstate with tp_map = tp_map }, !rtask)
+      comp_aux t ({ !rstate with tp_map = tp_map }, !rtask)
   | _ ->
-      comp t (state,task)
+    comp_aux t (state,task)
 
 let fold_comp st =
   let init = Task.add_meta None meta_infinite [MAts ts_int] in

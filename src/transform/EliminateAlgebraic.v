@@ -89,6 +89,13 @@ Definition state_with_inf_ts (s: state) inf_ts : state :=
     keep_r := s.(keep_r); keep_m := s.(keep_m); no_ind := s.(no_ind);
     no_inv := s.(no_inv); no_sel := s.(no_sel)|}.
 
+Definition state_with_kept_m (s: state) kept_m : state :=
+  {| mt_map := s.(mt_map); cc_map := s.(cc_map); cp_map := s.(cp_map);
+    pp_map := s.(pp_map); kept_m := kept_m; tp_map := s.(tp_map);
+    inf_ts := s.(inf_ts); ma_map:= s.(ma_map) ; keep_e := s.(keep_e);
+    keep_r := s.(keep_r); keep_m := s.(keep_m); no_ind := s.(no_ind);
+    no_inv := s.(no_inv); no_sel := s.(no_sel)|}.
+
 (*Determin if this type should be kept (false) or axiomatized (true) - should only be called
   on ADTs*)
 (*TODO: their implementation gives errors, ours just false - prove don't hit it*)
@@ -671,51 +678,68 @@ Definition add_tags {A: Type} (mts: Mts.t (list (lsymbol * A))) (st: state * tas
   (fun _ => let s := state_with_inf_ts s (Sts.add ts s.(inf_ts)) in
     l <- add_meta tsk meta_infinite [MAts ts] ;;
     errst_ret (s, l)).
-    
-    (* .
-    let add_material task m =
-      if m then add_meta task meta_material [MAts ts; MAint !c] else task
-    in
-    state, List.fold_left add_material task matl
-  )
-  try
-    
-  with Exit ->
-    let state = { s with inf_ts = Sts.add ts s.inf_ts } in
-    state, add_meta task meta_infinite [MAts ts] *)
-  
-(* 
 
-Definition add_tags {A: Type} (mts: Mts.t (list (lsymbol * A))) (st: state * task) 
-  (x: tysymbol_c * list (lsymbol * A)) : errState (hashcons_full) (state * task) :=
-  let '(ts,csl) := x in
-  fix mat_ts sts ts csl :=
-    let sts := Sts.add ts sts in
-    let add s x := List.fold_left (mat_ty sts) s (fst x).(ls_args) in
-    let stv := List.fold_left add Stv.empty csl in
-    List.map (Stv.contains stv) ts.ts_args
-  with mat_ty sts stv ty := 
-    match ty.ty_node with
-    | Tyvar tv => Stv.add tv stv
-    | Tyapp (ts,tl) =>
-        if Sts.mem ts sts then throw Exit else (* infinite type *)
-        let matl := 
-          match Mts.find_opt ts state.ma_map with
-          | Some y => y
-          | None => mat_ts sts ts (Mts.find_def [] ts mts)
-          end in
-        let add s mat ty := if mat then mat_ty sts s ty else s in
-        List.fold_left2 add stv matl tl
+(*TODO: move*)
+Definition fun_flip {A B C: Type} (f: A -> B -> C) x y := f y x.
+
+Definition has_nested_use {A: Type} (sts : Sts.t) (csl : list (lsymbol * A)) : bool :=
+  let check_c x :=
+    let check_arg ty := match ty_node_of ty with
+    | Tyapp _ tl => existsb (ty_s_any (fun_flip Sts.mem sts)) tl
+    | Tyvar _ => false
+    end in
+    existsb check_arg (fst x).(ls_args)
+  in
+  existsb check_c csl.
+
+Definition comp_aux (t: task_hd) (st : state * task) : 
+  errState (CoqBigInt.t * hashcons_full) (state * task) := 
+  let s := fst st in
+  let tsk := snd st in
+  match td_node_of t.(task_decl) with
+  | Decl d =>
+    match d.(d_node) with
+    | Ddata dl =>
+      let used := get_used_syms_decl d in
+      let sts := fold_left (fun acc x => Sts.add (fst x) acc) dl Sts.empty in
+      let fold_kept_m s d : errorHashconsT ty_c state :=
+        let '(ts,csl) := d in
+        if has_nested_use sts csl then errst_ret (state_with_kept_m s (Mts.remove _ ts s.(kept_m)))
+        else if null (ts_args_of ts) && s.(keep_m) && negb (kept_no_case used s d) then
+          t1 <- (ty_app ts []) ;;
+          errst_ret (state_with_kept_m s (Mts.add ts (Sty.singleton t1) s.(kept_m)))
+        else errst_ret s
+      in
+      s <- errst_tup2 (full_of_ty (foldl_errst fold_kept_m dl s)) ;;
+      (* add projections to records with keep_recs *)
+      let conv_t d : ctr (tysymbol_c *(list (lsymbol * list (option lsymbol)))) :=
+        let '(ts, csl) := d in
+        (* complete_projections can only be called on records or enums, so it
+            won't introduced ill-formed projections *)
+        if kept_no_case used s d then (r <- complete_projections csl ;; st_ret (ts, r))%state else st_ret d
+      in
+      dl <- errst_tup1 (errst_lift1 (st_list (map conv_t dl))) ;;
+      (* add type declarations *)
+      let concrete d := Mts.mem (fst d) s.(kept_m) || kept_no_case used s d in
+      let '(dl_concr, dl_abs) := List.partition concrete dl in
+      tsk <- foldl_errst (fun t x => add_ty_decl t (fst x)) dl_abs tsk ;;
+      tsk <- if null dl_concr then errst_ret tsk else add_data_decl tsk dl_concr;;
+      (* add needed functions and axioms *)
+      r1 <- foldl_errst (add_axioms used) dl (s,tsk) ;;
+      (* add the tags for infinite types and material arguments *)
+      let mts := fold_right (fun x acc => Mts.add (fst x) (snd x) acc) Mts.empty dl in
+      (* return the updated state and task *)
+      errst_tup2 (foldl_errst (add_tags mts) dl r1)
+      (* return the updated state and task *)
+      (* s, tsk *)
+    | _ =>
+        let fnT := rewriteT' t.(task_known) s in
+        let fnF := rewriteF' t.(task_known) s Svs.empty true in
+        d1 <- (errst_assoc5 (errst_tup1 (errst_tup1 (DeclTFAlt.decl_map (fun x => errst_tup1 (fnT x)) (fun x => errst_tup1 (fnF x)) d)))) ;;
+        d1 <- add_decl tsk  d1;;
+        errst_ret (s, d1)
     end
-  in try
-    let matl = mat_ts state.inf_ts ts csl in
-    let state = { state with ma_map = Mts.add ts matl state.ma_map } in
-    let c = ref (-1) in
-    let add_material task m =
-      incr c;
-      if m then add_meta task meta_material [MAts ts; MAint !c] else task
-    in
-    state, List.fold_left add_material task matl
-  with Exit ->
-    let state = { state with inf_ts = Sts.add ts state.inf_ts } in
-    state, add_meta task meta_infinite [MAts ts] *)
+  | _ =>
+    d1 <- add_tdecl tsk t.(task_decl) ;;
+    errst_ret (s, d1) 
+  end.
