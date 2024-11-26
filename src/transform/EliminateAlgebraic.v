@@ -35,7 +35,7 @@ Record state := {
   cp_map : Mls.t (list lsymbol);  (* from old constructors to new projections *)
   pp_map : Mls.t lsymbol;       (* from old projections to new projections *)
   kept_m : Mts.t Sty.t;         (* should we keep constructors/projections/Tcase for this type? *)
-  tp_map : Mid.t (decl*theory); (* skipped tuple symbols *)
+  tp_map : Mid.t (decl*theory_c); (* skipped tuple symbols *)
   inf_ts : Sts.t;               (* infinite types *)
   ma_map : Mts.t (list bool );     (* material type arguments *)
   keep_e : bool;                (* keep monomorphic enumeration types *)
@@ -92,6 +92,13 @@ Definition state_with_inf_ts (s: state) inf_ts : state :=
 Definition state_with_kept_m (s: state) kept_m : state :=
   {| mt_map := s.(mt_map); cc_map := s.(cc_map); cp_map := s.(cp_map);
     pp_map := s.(pp_map); kept_m := kept_m; tp_map := s.(tp_map);
+    inf_ts := s.(inf_ts); ma_map:= s.(ma_map) ; keep_e := s.(keep_e);
+    keep_r := s.(keep_r); keep_m := s.(keep_m); no_ind := s.(no_ind);
+    no_inv := s.(no_inv); no_sel := s.(no_sel)|}.
+
+Definition state_with_tp_map (s: state) tp_map : state :=
+  {| mt_map := s.(mt_map); cc_map := s.(cc_map); cp_map := s.(cp_map);
+    pp_map := s.(pp_map); kept_m := s.(kept_m); tp_map := (tp_map);
     inf_ts := s.(inf_ts); ma_map:= s.(ma_map) ; keep_e := s.(keep_e);
     keep_r := s.(keep_r); keep_m := s.(keep_m); no_ind := s.(no_ind);
     no_inv := s.(no_inv); no_sel := s.(no_sel)|}.
@@ -743,32 +750,83 @@ Definition comp_aux (t: task_hd) (st : state * task) :
     d1 <- add_tdecl tsk t.(task_decl) ;;
     errst_ret (s, d1) 
   end.
-(* Check Use.
 
-Check Decl.
-
-(*Going to do something stupid (probably): don't name anything tuplen for n in N unless it's a tuple.
-  Assume typechecking for tuple creation happens earlier*)
-  Check Ddata.
-  Print data_decl.
-(*Or should I just predefine all tuples up to ~10 or ~16 or whatever?
-  Maybe do that*)
-Definition is_tuple_hack (ts: tysymbol_c) :=
-
+(*NOTE: UNSOUND - tuple_theory is stateful, although it is memoized so it does return
+  the same value if called multiple times. But we really don't want to have to reason about it*)
+Axiom tuple_theory : CoqBigInt.t -> theory_c.
 
 Definition comp (t: task_hd) (st: state * task) : errState (CoqBigInt.t * hashcons_full) (state * task) :=
   let s := fst st in
   let tsk := snd st in
-  match td_node_of (t.task_decl) with
-  | Use th =>
-    match th_decls_of th with
-    | [x] =>
-      match td_node_of x with
-      | Decl d =>
-        match d.(d_node) with
-        | Ddata [(ts, _)] =>
-          if is_ts_tuple ts
-    
+  (*Separate out tuple case separately to avoid repeating all times*)
+
+  b <- errst_lift2 
+    match td_node_of (t.(task_decl)) with
+    | Use th =>
+      match th_decls_of th with
+      | [x] =>
+        match td_node_of x with
+        | Decl d =>
+          match d.(d_node) with
+          | Ddata [(ts, _)] => is_ts_tuple ts   
+          | _ => err_ret false
+          end
+        | _ => err_ret false
+        end
+      | _ => err_ret false
+      end
+    | _ => err_ret false
+    end ;;
+  if (b : bool) then errst_ret (s, tsk) else
+  match td_node_of (t.(task_decl)) with
+  | Decl d =>
+    b <- errst_lift2
+    match d.(d_node) with
+    | Ddata [(ts, _)] => (b <- is_ts_tuple ts ;; if (b : bool) then err_ret (Some ts) else err_ret None)%err
+    | _ => err_ret None
+    end ;;
+    match b with
+    | Some ts => 
+      let th := tuple_theory (IntFuncs.int_length (ts_args_of ts)) in
+      let tp_map := Mid.add (ts_name_of ts) (d,th) s.(tp_map) in
+      errst_ret (state_with_tp_map s tp_map , tsk)
+    | None => (*unlike them, do in 2 pieces to avoid mutable state
+        (seems like a bad idea to use a stateful update function
+        in a set diff)*)
+      let m := Mid.inter (fun _ x _ => Some x) s.(tp_map) (get_used_syms_decl d) in
+      f <- foldl_errst (fun x y =>
+        let '(rstate, rtask) := x in
+        let '(_, (d, th)) := y in
+        t1 <- (add_decl None d) ;;
+        t <- errst_lift2 (option_get t1) ;;
+        c <- comp_aux t (rstate,rtask) ;;
+        let '(s,tsk) := c in
+        u <- errst_tup2 (full_of_td (errst_lift1 (create_use th))) ;;
+        tsk <- add_tdecl tsk u ;;
+        errst_ret (s, tsk))  (Mid.bindings m) (s, tsk) ;;
+      let (rstate, rtask) := (f : state * task) in
+      
+
+      (* let rstate,rtask = ref state, ref task in
+      let add _ (d,th) () =
+        let t = Option.get (add_decl None d) in
+        let state,task = comp_aux t (!rstate,!rtask) in
+        let task = add_tdecl task (create_use th) in
+        rstate := state ; rtask := task ; None
+      in *)
+      let tp_map := Mid.diff (fun _ _  _ => None) s.(tp_map) (get_used_syms_decl d) in
+      comp_aux t (state_with_tp_map rstate tp_map, rtask)
+    end
+  | _ => comp_aux t (s,tsk)
+  end.
+
+(* 
+    if b then 
+
+
+    | Decl d =>
+
+
      {th_decls = [{td_node = Decl ({d_node = Ddata [ts,_]})}]}
     when is_ts_tuple ts ->
       s, tsk

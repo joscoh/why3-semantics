@@ -49,3 +49,7 @@ Definition create_meta (m : meta) (al : list meta_arg) :
     | Some al => errst_tup2 (errst_lift1 (mk_tdecl (Meta m al)))
     | None => errst_lift2 (throw (BadMetaArity (m, IntFuncs.int_length al)))
     end.
+
+(** Use *)
+
+Definition create_use th := mk_tdecl (Use th).

@@ -340,6 +340,8 @@ Extract Inlined Constant CoqWstdlib.string_hash => "(fun s -> (BigInt.of_int (Ha
 Extract Inlined Constant meta_rewrite => "Compute.meta_rewrite".
 Extract Inlined Constant meta_infinite => "meta_infinite".
 Extract Inlined Constant meta_material => "meta_material".
+(*TODO: figure out*)
+Extract Inlined Constant tuple_theory => "Theory.tuple_theory".
 
 Extraction Inline mk_errtype.
 

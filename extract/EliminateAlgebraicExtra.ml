@@ -470,7 +470,7 @@ let complete_projections csl =
   | _ ->
       state, add_tdecl task t.task_decl *)
 
-let comp t (state,task) = match t.task_decl.td_node with
+(* let comp t (state,task) = match t.task_decl.td_node with
 | Use {th_decls = [{td_node = Decl ({d_node = Ddata [ts,_]})}]}
   when is_ts_tuple ts ->
     state, task
@@ -500,7 +500,7 @@ let comp t (state,task) = match t.task_decl.td_node with
     let tp_map = Mid.diff (fun _ _  _ -> None) state.tp_map (get_used_syms_decl d) in
     comp_aux t ({ rstate with tp_map = tp_map }, rtask)
 | _ ->
-  comp_aux t (state,task)
+  comp_aux t (state,task) *)
 
 let fold_comp st =
   let init = Task.add_meta None meta_infinite [MAts ts_int] in

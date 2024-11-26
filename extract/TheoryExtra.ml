@@ -9,12 +9,6 @@
 (*                                                                  *)
 (********************************************************************)
 
-open Format
-open Wstdlib
-open Ident
-open Ty
-open Term
-open Decl
 
 let warning_clone_not_abstract =
   Loc.register_warning "clone_not_abstract" "Warn about theories cloned without substituting any abstract symbols"
@@ -1053,14 +1047,14 @@ let highord_theory =
   let uc = add_param_decl uc fs_func_app in
   close_theory uc
 
-let tuple_theory = Hint.memo 17 (fun n ->
+let tuple_theory (n: BigInt.t) = Hint.memo 17 (fun n ->
   let ts = ts_tuple (BigInt.of_int n) and fs = fs_tuple n in (*Josh of_int*)
   let pl = List.map (fun _ -> None) ts.ts_args in
   let nm = "Tuple" ^ string_of_int n in
   let attrs = Sattr.singleton builtin_attr in
   let uc = empty_theory (id_fresh ~attrs nm) ["why3";nm] in
   let uc = add_data_decl uc [ts, [fs,pl]] in
-  close_theory uc)
+  close_theory uc) (BigInt.to_int n) (*JOSH: bad*)
 
 let tuple_theory_name s =
   let l = String.length s in
@@ -1079,5 +1073,5 @@ let add_decl_with_tuples uc d =
     | Some n -> Sint.add (BigInt.to_int n) s (*JOSH to_int*)
     | None -> s in
   let ixs = Sid.fold add ids Sint.empty in
-  let add n uc = use_export uc (tuple_theory n) in
+  let add n uc = use_export uc (tuple_theory (BigInt.of_int n)) in (*Josh of_int*)
   add_decl ~warn:false (Sint.fold add ixs uc) d

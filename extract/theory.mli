@@ -279,7 +279,7 @@ val highord_theory : theory
 
 (* val wf_theory : theory *)
 
-val tuple_theory : int -> theory
+val tuple_theory : BigInt.t -> theory
 
 val tuple_theory_name : string -> int option
 
@@ -344,3 +344,4 @@ exception ProvedWfConflict of lsymbol
 (*JOSH - expose constructors*)
 val td_node : tdecl -> tdecl_node
 val th_name : theory -> ident
+val th_decls : theory -> tdecl list

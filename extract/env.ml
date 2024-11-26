@@ -234,7 +234,7 @@ let base_language_builtin =
     if s = bool_theory.th_name.id_string then bool_theory else
     if s = highord_theory.th_name.id_string then highord_theory else
     match tuple_theory_name s with
-    | Some n -> tuple_theory n
+    | Some n -> tuple_theory (BigInt.of_int n) (*JOSH of_int*)
     | None -> raise Not_found
   in
   Hpath.memo 7 (function
