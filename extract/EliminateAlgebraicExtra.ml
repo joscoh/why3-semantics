@@ -471,25 +471,36 @@ let complete_projections csl =
       state, add_tdecl task t.task_decl *)
 
 let comp t (state,task) = match t.task_decl.td_node with
-  | Use {th_decls = [{td_node = Decl ({d_node = Ddata [ts,_]})}]}
-    when is_ts_tuple ts ->
-      state, task
-  | Decl ({ d_node = Ddata [ts,_] } as d) when is_ts_tuple ts ->
-      let th = tuple_theory (List.length ts.ts_args) in
-      let tp_map = Mid.add ts.ts_name (d,th) state.tp_map in
-      { state with tp_map = tp_map }, task
-  | Decl d ->
-      let rstate,rtask = ref state, ref task in
-      let add _ (d,th) () =
-        let t = Option.get (add_decl None d) in
-        let state,task = comp_aux t (!rstate,!rtask) in
-        let task = add_tdecl task (create_use th) in
-        rstate := state ; rtask := task ; None
-      in
-      let tp_map = Mid.diff add state.tp_map (get_used_syms_decl d) in
-      comp_aux t ({ !rstate with tp_map = tp_map }, !rtask)
-  | _ ->
-    comp_aux t (state,task)
+| Use {th_decls = [{td_node = Decl ({d_node = Ddata [ts,_]})}]}
+  when is_ts_tuple ts ->
+    state, task
+| Decl ({ d_node = Ddata [ts,_] } as d) when is_ts_tuple ts ->
+    let th = tuple_theory (List.length ts.ts_args) in
+    let tp_map = Mid.add ts.ts_name (d,th) state.tp_map in
+    { state with tp_map = tp_map }, task
+| Decl d ->
+    (*unlike them, do in 2 pieces to avoid mutable state
+      (seems like a bad idea to use a stateful update function
+      in a set diff)*)
+    let m = Mid.inter (fun _ x _ -> Some x) state.tp_map (get_used_syms_decl d) in
+    let (rstate, rtask) = List.fold_left (fun (rstate, rtask) (_, (d, th)) ->
+      let t = Option.get (add_decl None d) in
+      let state,task = comp_aux t (rstate,rtask) in
+      let task = add_tdecl task (create_use th) in
+      (state, task)) (state, task) (Mid.bindings m) in
+    
+
+    (* let rstate,rtask = ref state, ref task in
+    let add _ (d,th) () =
+      let t = Option.get (add_decl None d) in
+      let state,task = comp_aux t (!rstate,!rtask) in
+      let task = add_tdecl task (create_use th) in
+      rstate := state ; rtask := task ; None
+    in *)
+    let tp_map = Mid.diff (fun _ _  _ -> None) state.tp_map (get_used_syms_decl d) in
+    comp_aux t ({ rstate with tp_map = tp_map }, rtask)
+| _ ->
+  comp_aux t (state,task)
 
 let fold_comp st =
   let init = Task.add_meta None meta_infinite [MAts ts_int] in

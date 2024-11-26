@@ -175,3 +175,10 @@ Definition big_nth {A: Type} (l: list A)  (z: CoqBigInt.t) : option A :=
 (*Like OCaml mapi but with BigInt*)
 Definition mapi {A B: Type} (f: CoqBigInt.t -> A -> B) (l: list A) : list B :=
   map (fun x => f (fst x) (snd x)) (combine (iota2 (int_length l)) l).
+
+(*TODO: make tail recursive?*)
+Fixpoint find_index {A: Type} (eqb: A -> A -> bool) (l: list A) (x: A) : option CoqBigInt.t :=
+  match l with
+  | h :: t => if eqb h x then Some CoqBigInt.zero else option_map CoqBigInt.succ (find_index eqb t x)
+  | nil => None
+  end.

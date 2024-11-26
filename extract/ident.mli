@@ -113,19 +113,6 @@ val id_derive1: string -> ident -> preid
 (* DEPRECATED : retrieve preid name without registering *)
 val preid_name : preid -> string
 
-(*JOSH - builtin symbols*)
-val id_int : ident
-val id_real : ident
-val id_bool : ident
-val id_str : ident
-val id_a : ident
-val id_b : ident
-val id_fun : ident
-val id_eq : ident
-val id_true : ident
-val id_false : ident
-val id_app : ident
-
 (** Unique persistent names for pretty printing *)
 
 type ident_printer
@@ -309,3 +296,49 @@ val unused_suffix : string
 
 val unused_attr : attribute
 (** attribute for unused variables kept for counterexample generation *)
+
+(*JOSH - builtin symbols*)
+val id_int : ident
+val id_real : ident
+val id_bool : ident
+val id_str : ident
+val id_a : ident
+val id_b : ident
+val id_c : ident
+val id_d : ident
+val id_e : ident
+val id_f : ident
+val id_g : ident
+val id_h : ident
+val id_i : ident
+val id_j : ident
+val id_k : ident
+val id_l : ident
+val id_m : ident
+val id_n : ident
+val id_o : ident
+val id_p : ident
+val id_fun : ident
+val id_eq : ident
+val id_true : ident
+val id_false : ident
+val id_app : ident
+(*Tuples*)
+val id_tup0 : ident
+val id_tup1 : ident
+val id_tup2 : ident
+val id_tup3 : ident
+val id_tup4 : ident
+val id_tup5 : ident
+val id_tup6 : ident
+val id_tup7 : ident
+val id_tup8 : ident
+val id_tup9 : ident
+val id_tup10 : ident
+val id_tup11 : ident
+val id_tup12 : ident
+val id_tup13 : ident
+val id_tup14 : ident
+val id_tup15 : ident
+val id_tup16 : ident
+val id_tup_list: ident list

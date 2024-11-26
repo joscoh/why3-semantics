@@ -743,3 +743,59 @@ Definition comp_aux (t: task_hd) (st : state * task) :
     d1 <- add_tdecl tsk t.(task_decl) ;;
     errst_ret (s, d1) 
   end.
+(* Check Use.
+
+Check Decl.
+
+(*Going to do something stupid (probably): don't name anything tuplen for n in N unless it's a tuple.
+  Assume typechecking for tuple creation happens earlier*)
+  Check Ddata.
+  Print data_decl.
+(*Or should I just predefine all tuples up to ~10 or ~16 or whatever?
+  Maybe do that*)
+Definition is_tuple_hack (ts: tysymbol_c) :=
+
+
+Definition comp (t: task_hd) (st: state * task) : errState (CoqBigInt.t * hashcons_full) (state * task) :=
+  let s := fst st in
+  let tsk := snd st in
+  match td_node_of (t.task_decl) with
+  | Use th =>
+    match th_decls_of th with
+    | [x] =>
+      match td_node_of x with
+      | Decl d =>
+        match d.(d_node) with
+        | Ddata [(ts, _)] =>
+          if is_ts_tuple ts
+    
+     {th_decls = [{td_node = Decl ({d_node = Ddata [ts,_]})}]}
+    when is_ts_tuple ts ->
+      s, tsk
+  | Decl ({ d_node = Ddata [ts,_] } as d) when is_ts_tuple ts ->
+      let th = tuple_theory (List.length ts.ts_args) in
+      let tp_map = Mid.add ts.ts_name (d,th) state.tp_map in
+      { s with tp_map = tp_map }, task
+  | Decl d ->
+      (*unlike them, do in 2 pieces to avoid mutable state
+        (seems like a bad idea to use a stateful update function
+        in a set diff)*)
+      let m = Mid.inter (fun _ x _ -> Some x) s.tp_map (get_used_syms_decl d) in
+      let (rstate, rtask) = List.fold_left (fun (rstate, rtask) (_, (d, th)) ->
+        let t = Option.get (add_decl None d) in
+        let s,task = comp_aux t (rstate,rtask) in
+        let task = add_tdecl task (create_use th) in
+        (s, task)) (s, task) (Mid.bindings m) in
+      
+
+      (* let rstate,rtask = ref state, ref task in
+      let add _ (d,th) () =
+        let t = Option.get (add_decl None d) in
+        let state,task = comp_aux t (!rstate,!rtask) in
+        let task = add_tdecl task (create_use th) in
+        rstate := state ; rtask := task ; None
+      in *)
+      let tp_map = Mid.diff (fun _ _  _ -> None) s.tp_map (get_used_syms_decl d) in
+      comp_aux t ({ rstate with tp_map = tp_map }, rtask)
+  | _ ->
+    comp_aux t (s,task) *)

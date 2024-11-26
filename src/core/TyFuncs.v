@@ -53,11 +53,41 @@ Definition ts_func :=
   let tv_b := create_builtin_tvsymbol id_b in
   mk_ts_builtin id_fun [tv_a; tv_b] NoDef.
 
-(*And two type variables*)
+(*And type variables*)
 Definition vs_a : tvsymbol :=
   (create_tvsymbol_builtin id_a).
 Definition vs_b : tvsymbol :=
   (create_tvsymbol_builtin id_b).
+Definition vs_c : tvsymbol :=
+  (create_tvsymbol_builtin id_c).
+Definition vs_d : tvsymbol :=
+  (create_tvsymbol_builtin id_d).
+Definition vs_e : tvsymbol :=
+  (create_tvsymbol_builtin id_e).
+Definition vs_f : tvsymbol :=
+  (create_tvsymbol_builtin id_f).
+Definition vs_g : tvsymbol :=
+  (create_tvsymbol_builtin id_g).
+Definition vs_h : tvsymbol :=
+  (create_tvsymbol_builtin id_h).
+Definition vs_i : tvsymbol :=
+  (create_tvsymbol_builtin id_i).
+Definition vs_j : tvsymbol :=
+  (create_tvsymbol_builtin id_j).
+Definition vs_k : tvsymbol :=
+  (create_tvsymbol_builtin id_k).
+Definition vs_l : tvsymbol :=
+  (create_tvsymbol_builtin id_l).
+Definition vs_m : tvsymbol :=
+  (create_tvsymbol_builtin id_m).
+Definition vs_n : tvsymbol :=
+  (create_tvsymbol_builtin id_n).
+Definition vs_o : tvsymbol :=
+  (create_tvsymbol_builtin id_o).
+Definition vs_p : tvsymbol :=
+  (create_tvsymbol_builtin id_p).
+
+
 
 Definition ty_a : ty_c :=
   ty_var_builtin vs_a
@@ -380,8 +410,61 @@ Definition ty_pred (ty_a : ty_c) : hashcons_st _ ty_c :=
 
 (*Tuples*)
 
-Local Open Scope state_scope.
+(*TODO: just hard code in the tuples*)
 
+(*Tuple typesyms*)
+Definition ts_tuple0: tysymbol_c := mk_ts_builtin id_tup0 [] NoDef.
+Definition ts_tuple1 : tysymbol_c := mk_ts_builtin id_tup1 [vs_a] NoDef.
+Definition ts_tuple2 : tysymbol_c := mk_ts_builtin id_tup2 [vs_a; vs_b] NoDef.
+Definition ts_tuple3 : tysymbol_c := mk_ts_builtin id_tup3 [vs_a; vs_b; vs_c] NoDef.
+Definition ts_tuple4 : tysymbol_c := mk_ts_builtin id_tup4 [vs_a; vs_b; vs_c; vs_d] NoDef.
+Definition ts_tuple5 : tysymbol_c := mk_ts_builtin id_tup5 [vs_a; vs_b; vs_c; vs_d; vs_e] NoDef.
+Definition ts_tuple6 : tysymbol_c := mk_ts_builtin id_tup6 [vs_a; vs_b; vs_c; vs_d; vs_e; vs_f] NoDef.
+Definition ts_tuple7 : tysymbol_c := mk_ts_builtin id_tup7 [vs_a; vs_b; vs_c; vs_d; vs_e; vs_f; vs_g] NoDef.
+Definition ts_tuple8 : tysymbol_c := mk_ts_builtin id_tup8 [vs_a; vs_b; vs_c; vs_d; vs_e; vs_f; vs_g; 
+  vs_h] NoDef.
+Definition ts_tuple9 : tysymbol_c := mk_ts_builtin id_tup9 [vs_a; vs_b; vs_c; vs_d; vs_e; vs_f; vs_g; 
+  vs_h; vs_i] NoDef.
+Definition ts_tuple10 : tysymbol_c := mk_ts_builtin id_tup10 [vs_a; vs_b; vs_c; vs_d; vs_e; vs_f; vs_g; 
+  vs_h; vs_i; vs_j] NoDef.
+Definition ts_tuple11 : tysymbol_c := mk_ts_builtin id_tup11 [vs_a; vs_b; vs_c; vs_d; vs_e; vs_f; vs_g; 
+  vs_h; vs_i; vs_j; vs_k] NoDef.
+Definition ts_tuple12 : tysymbol_c := mk_ts_builtin id_tup12 [vs_a; vs_b; vs_c; vs_d; vs_e; vs_f; vs_g; 
+  vs_h; vs_i; vs_j; vs_k; vs_l] NoDef.
+Definition ts_tuple13 : tysymbol_c := mk_ts_builtin id_tup13 [vs_a; vs_b; vs_c; vs_d; vs_e; vs_f; vs_g; 
+  vs_h; vs_i; vs_j; vs_k; vs_l; vs_m] NoDef.
+Definition ts_tuple14 : tysymbol_c := mk_ts_builtin id_tup14 [vs_a; vs_b; vs_c; vs_d; vs_e; vs_f; vs_g; 
+  vs_h; vs_i; vs_j; vs_k; vs_l; vs_m; vs_n] NoDef.
+Definition ts_tuple15 : tysymbol_c := mk_ts_builtin id_tup15 [vs_a; vs_b; vs_c; vs_d; vs_e; vs_f; vs_g; 
+  vs_h; vs_i; vs_j; vs_k; vs_l; vs_m; vs_n; vs_o] NoDef.
+Definition ts_tuple16 : tysymbol_c := mk_ts_builtin id_tup16 [vs_a; vs_b; vs_c; vs_d; vs_e; vs_f; vs_g; 
+  vs_h; vs_i; vs_j; vs_k; vs_l; vs_m; vs_n; vs_o; vs_p] NoDef.
+
+Definition ts_tuple_list : list tysymbol_c :=  [ts_tuple0; ts_tuple1; ts_tuple2; ts_tuple3; ts_tuple4; ts_tuple5; ts_tuple6; ts_tuple7; 
+  ts_tuple8; ts_tuple9; ts_tuple10; ts_tuple11; ts_tuple12; ts_tuple13; ts_tuple14; ts_tuple15; ts_tuple16].
+
+(*Doesn't work with tuple > 16*)
+Definition ts_tuple (n: CoqBigInt.t) : errorM tysymbol_c :=
+  match IntFuncs.big_nth ts_tuple_list n with
+  | Some x => err_ret x
+  | None => throw (Invalid_argument "Tuple cannot be larger than 16")
+  end.
+
+Local Open Scope errst_scope.
+
+Definition ty_tuple tyl : errState (hashcons_ty ty_c) ty_c := 
+  ts <- errst_lift2 (ts_tuple (IntFuncs.int_length tyl)) ;;
+  errst_lift1 (ty_app1 ts tyl).
+
+Definition is_ts_tuple ts : errorM bool := 
+  (ts1 <- (ts_tuple (int_length (ts_args_of ts))) ;;
+  err_ret (ts_equal ts ts1))%err.
+
+Definition is_ts_tuple_id (i: ident) : option CoqBigInt.t :=
+  (find_index id_equal id_tup_list i).
+
+(*Old, stateful version, works but we have to thread state through ADT trans and forward*)
+(* 
 (*We create the tuple type symbols and types as needed,
   storing in a hash table*)
 (*We have 2 hash tables: int -> symbol and symbol -> int*)
@@ -446,7 +529,7 @@ Definition is_ts_tuple (ts: tysymbol_c) :
 Definition is_ts_tuple_id (i: ident) : hash_st ident CoqBigInt.t 
   (option CoqBigInt.t) :=
   o <- TupNames.find_opt i ;;
-  st_ret o.
+  st_ret o. *)
 
 (** {2 Operations on [ty option]} *)
 Definition UnexpectedProp := mk_errtype "UnexpectedProp" tt.

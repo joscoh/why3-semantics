@@ -55,13 +55,41 @@ Definition seven : t := 7.
 Definition eight : t := 8.
 Definition nine : t := 9.
 Definition ten : t := 10.
-
-(*Some small primes*)
+(*All numbers up to 30*)
 Definition eleven : t := 11.
+Definition twelve : t := 12.
 Definition thirteen : t := 13.
-Definition seventeen : t := 17.
-Definition nineteen : t := 19.
+Definition fourteen : t := 14.
+Definition fifteen : t := 15.
 Definition sixteen : t := 16.
+Definition seventeen : t := 17.
+Definition eighteen : t := 18.
+Definition nineteen : t := 19.
+Definition twenty : t := 20.
+Definition twentyone : t := 21.
+Definition twentytwo : t := 22.
+Definition twentythree : t := 23.
+Definition twentyfour : t := 24.
+Definition twentyfive : t := 25.
+Definition twentysix : t := 26.
+Definition twentyseven : t := 27.
+Definition twentyeight : t := 28.
+Definition twentynine : t := 29.
+Definition thirty : t := 30. (*TODO: is there a better way to do this?*)
+Definition thirtyone : t := 31.
+Definition thirtytwo : t := 32.
+Definition thirtythree : t := 33.
+Definition thirtyfour : t := 34.
+Definition thirtyfive : t := 35.
+Definition thirtysix : t := 36.
+Definition thirtyseven : t := 37.
+Definition thirtyeight : t := 38.
+Definition thirtynine : t := 39.
+Definition forty : t := 40.
+Definition fortyone : t := 41.
+Definition fortytwo : t := 42.
+Definition fortythree : t := 43.
+Definition fortyfour : t := 44.
 
 Definition neg_one : t := -1.
 
