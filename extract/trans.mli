@@ -279,3 +279,6 @@ val apply_transform_args :
 (*JOSH - monadic versions*)
 val decl_errst:  (decl -> decl list     ) -> task -> task trans
 val tdecl_errst:  (decl -> tdecl list) -> task -> task trans
+val fold_errst   : (task_hd -> 'a -> 'a     ) -> 'a -> 'a trans
+(*JOSH: a hack, since we need to know (for monadic bind) that we can apply the function*)
+val trans_bind : 'a -> ('a -> 'b trans) -> 'b trans

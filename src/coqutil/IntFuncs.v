@@ -182,3 +182,23 @@ Fixpoint find_index {A: Type} (eqb: A -> A -> bool) (l: list A) (x: A) : option 
   | h :: t => if eqb h x then Some CoqBigInt.zero else option_map CoqBigInt.succ (find_index eqb t x)
   | nil => None
   end.
+
+Definition change_nth {A: Type} (l: list A) (x: A) (z: CoqBigInt.t) : list A :=
+  @int_rect (fun _ => list A -> A -> list A)
+  (*lt*)
+  (fun _ _ _ _ => nil)
+  (*eq*)
+  (fun l x => match l with
+    | nil => nil
+    | y :: tl => x :: tl
+  end)
+  (*pos*)
+  (fun _ _ _ rec l x =>
+    match l with
+    | nil => nil
+    | y :: tl => y :: rec tl x
+    end) z l x.
+
+(*NOTE: not tail recursive, unlike OCaml*)
+Definition init {A: Type} (z: CoqBigInt.t) (f: CoqBigInt.t -> A) : list A :=
+  map f (iota2 z).

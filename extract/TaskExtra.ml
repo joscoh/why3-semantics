@@ -55,7 +55,7 @@ let tds_compare = Stdecl2.compare
 type meta_map = tdecl_set Mmeta.t *)
 
 (* let cm_find cm th = Mid.find_def tds_empty th.th_name cm *)
-let mm_find mm t = Mmeta.find_def tds_empty t mm
+(* let mm_find mm t = Mmeta.find_def tds_empty t mm *)
 
 (* let cm_add cm th td = Mid.change (function
   | None -> Some (tds_singleton td)
@@ -119,7 +119,7 @@ let task_clone o = Option.fold ~some:(fun t -> t.task_clone) ~none:Mid.empty   o
 let task_meta  o = Option.fold ~some:(fun t -> t.task_meta)  ~none:Mmeta.empty o *)
 
 (* let find_clone_tds task (th : theory) = cm_find (task_clone1 task) th*)
-let find_meta_tds task (t : meta) = mm_find (task_meta1 task) t
+(* let find_meta_tds task (t : meta) = mm_find (task_meta1 task) t *)
 
 (* constructors with checks *)
 
@@ -289,7 +289,7 @@ let local_decls task symbmap =
 
 (* Selectors *)
 
-exception NotTaggingMeta of meta
+(* exception NotTaggingMeta of meta *)
 exception NotExclusiveMeta of meta
 
 let on_meta t fn acc task =

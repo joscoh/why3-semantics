@@ -820,40 +820,37 @@ Definition comp (t: task_hd) (st: state * task) : errState (CoqBigInt.t * hashco
   | _ => comp_aux t (s,tsk)
   end.
 
-(* 
-    if b then 
+Definition fold_comp st : trans_errst (state * task) :=
+  trans_bind
+  (init <- errst_tup2 (TaskFuncs.add_meta None meta_infinite [MAts ts_int]) ;;
+  init <- errst_tup2 (TaskFuncs.add_meta init meta_infinite [MAts ts_real]) ;;
+  init <- errst_tup2 (TaskFuncs.add_meta init meta_infinite [MAts ts_str]) ;;
+  TaskFuncs.add_param_decl init ps_equ)
+  (fun init => TransDefs.fold_errst comp (st,init)).
 
-
-    | Decl d =>
-
-
-     {th_decls = [{td_node = Decl ({d_node = Ddata [ts,_]})}]}
-    when is_ts_tuple ts ->
-      s, tsk
-  | Decl ({ d_node = Ddata [ts,_] } as d) when is_ts_tuple ts ->
-      let th = tuple_theory (List.length ts.ts_args) in
-      let tp_map = Mid.add ts.ts_name (d,th) state.tp_map in
-      { s with tp_map = tp_map }, task
-  | Decl d ->
-      (*unlike them, do in 2 pieces to avoid mutable state
-        (seems like a bad idea to use a stateful update function
-        in a set diff)*)
-      let m = Mid.inter (fun _ x _ -> Some x) s.tp_map (get_used_syms_decl d) in
-      let (rstate, rtask) = List.fold_left (fun (rstate, rtask) (_, (d, th)) ->
-        let t = Option.get (add_decl None d) in
-        let s,task = comp_aux t (rstate,rtask) in
-        let task = add_tdecl task (create_use th) in
-        (s, task)) (s, task) (Mid.bindings m) in
-      
-
-      (* let rstate,rtask = ref state, ref task in
-      let add _ (d,th) () =
-        let t = Option.get (add_decl None d) in
-        let state,task = comp_aux t (!rstate,!rtask) in
-        let task = add_tdecl task (create_use th) in
-        rstate := state ; rtask := task ; None
-      in *)
-      let tp_map = Mid.diff (fun _ _  _ -> None) s.tp_map (get_used_syms_decl d) in
-      comp_aux t ({ rstate with tp_map = tp_map }, rtask)
-  | _ ->
-    comp_aux t (s,task) *)
+Definition on_empty_state {A: Type} (t: state -> trans_errst A) : trans_errst A :=
+  TransDefs.on_tagged_ts meta_infinite (fun inf_ts =>
+  TransDefs.on_meta meta_material (fun ml =>
+    let inf_ts := Sts.union inf_ts (Sts.of_list [ts_real; ts_int; ts_str]) in
+    let fold ma_map x := 
+      match x with
+      | [MAts ts; MAint i] =>
+        let ma := match Mts.find_opt ts ma_map with
+        | Some l => (*Array.of_list*) l
+        | None => IntFuncs.init  (IntFuncs.int_length (ts_args_of ts)) (fun _ => false)
+        end in
+        let ma := IntFuncs.change_nth ma true i in
+        (* ma.(i) <- true; *)
+        err_ret (Mts.add ts (*(Array.to_list ma)*) ma ma_map)
+      | _ => assert_false "on_empty_state"
+      end
+    in
+    trans_bind
+    (errst_lift2 (foldl_err fold ml Mts.empty)) (fun ma_map =>
+    let empty_state := {|
+      mt_map := Mts.empty; cc_map := Mls.empty; cp_map := Mls.empty;
+      pp_map := Mls.empty; kept_m := Mts.empty; tp_map := Mid.empty;
+      inf_ts := inf_ts; ma_map := ma_map; keep_e := false; keep_r := false; keep_m := false;
+      no_ind := false; no_inv := false; no_sel := false
+    |} in 
+    t empty_state))).

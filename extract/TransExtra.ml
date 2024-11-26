@@ -233,9 +233,9 @@ let on_theory_tds th fn =
   let fn = Wtds.memoize 17 fn in
   fun task -> fn (find_clone_tds task th) task
 
-let on_meta_tds t fn =
+(* let on_meta_tds t fn =
   let fn = Wtds.memoize 17 fn in
-  fun task -> fn (find_meta_tds task t) task
+  fun task -> fn (find_meta_tds task t) task *)
 
 let on_cloned_theory th fn =
   let add td acc = match td.td_node with
@@ -245,12 +245,12 @@ let on_cloned_theory th fn =
   in
   on_theory_tds th (fun tds -> fn (HStdecl.fold add tds []))
 
-let on_meta t fn =
+(* let on_meta t fn =
   let add td acc = match td.td_node with
     | Meta (_,ma) -> ma::acc
     | _ -> assert false
   in
-  on_meta_tds t (fun tds -> fn (HStdecl.fold add tds []))
+  on_meta_tds t (fun tds -> fn (HStdecl.fold add tds [])) *)
 
 let on_used_theory th fn =
   let check td = match td.td_node with
@@ -279,7 +279,7 @@ let on_tagged_ty t fn =
   in
   on_meta_tds t (fun tds -> fn (HStdecl.fold add tds Sty.empty))
 
-let on_tagged_ts t fn =
+(* let on_tagged_ts t fn =
   begin match t.meta_type with
     | MTtysymbol :: _ -> ()
     | _ -> raise (NotTaggingMeta t)
@@ -288,7 +288,7 @@ let on_tagged_ts t fn =
     | Meta (_, MAts ts :: _) -> Sts.add ts acc
     | _ -> assert false
   in
-  on_meta_tds t (fun tds -> fn (HStdecl.fold add tds Sts.empty))
+  on_meta_tds t (fun tds -> fn (HStdecl.fold add tds Sts.empty)) *)
 
 let on_tagged_ls t fn =
   begin match t.meta_type with

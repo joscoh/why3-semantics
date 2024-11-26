@@ -16,6 +16,8 @@ Definition meta_map := Mmeta.t tdecl_set.
 Definition cm_find (cm : clone_map) (th : theory_c) : tdecl_set := 
   Mid.find_def _ tds_empty (th_name_of th) cm.
 
+Definition mm_find (mm: Mmeta.t tdecl_set) (t: meta) : tdecl_set := Mmeta.find_def _ tds_empty t mm.
+
 Definition cm_add cm th td := Mid.change _ (fun o => 
   match o with
   | None => Some (tds_singleton td)
@@ -189,6 +191,8 @@ Definition task_meta1 (o: task) := option_fold Mmeta.empty (fun t => t.(task_met
 Definition find_clone_tds task (th : theory_c) := 
   cm_find (task_clone1 task) th.
 
+Definition find_meta_tds task (t : meta) := mm_find (task_meta1 task) t.
+
 (*Now that we have ty, decl, tdecl, and task, we have all the hashconsed types
   (ignoring term for now, will maybe have to change)
   We define functions to lift subsets of these hashconsed states to the full state.
@@ -257,3 +261,5 @@ Definition full_of_ty_td_tsk (s: errState (hashcons_ty ty_c * hashcons_ty tdecl_
 Definition full_of_d_td_tsk (s: errState (hashcons_ty decl * hashcons_ty tdecl_c * hashcons_ty task_hd) A) : errState hashcons_full A :=
   errst_assoc13 (errst_tup2 s).
 End Lifts.
+
+Definition NotTaggingMeta (m: meta) : errtype := mk_errtype "NotTaggingMeta" m.

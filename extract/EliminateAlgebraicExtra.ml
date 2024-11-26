@@ -502,14 +502,14 @@ let complete_projections csl =
 | _ ->
   comp_aux t (state,task) *)
 
-let fold_comp st =
+(* let fold_comp st =
   let init = Task.add_meta None meta_infinite [MAts ts_int] in
   let init = Task.add_meta init meta_infinite [MAts ts_real] in
   let init = Task.add_meta init meta_infinite [MAts ts_str] in
   let init = Task.add_param_decl init ps_equ in
-  Trans.fold comp (st,init)
+  Trans.fold comp (st,init) *)
 
-let rec change_nth (l: 'a list) (i: BigInt.t) (x: 'a) : 'a list =
+(* let rec change_nth (l: 'a list) (i: BigInt.t) (x: 'a) : 'a list =
   if BigInt.le i BigInt.zero then 
     begin match l with
     | [] -> []
@@ -519,12 +519,12 @@ else
   begin match l with
   | [] -> []
   | y :: tl -> y :: change_nth tl (BigInt.pred i) x
-end
+end *)
 
 
 
 
-let on_empty_state t =
+(* let on_empty_state t =
   Trans.on_tagged_ts meta_infinite (fun inf_ts ->
   Trans.on_meta meta_material (fun ml ->
     let inf_ts = Sts.union inf_ts (Sts.of_list [ts_real; ts_int; ts_str]) in
@@ -534,7 +534,7 @@ let on_empty_state t =
         | l -> (*Array.of_list*) l
         | exception Not_found -> List.init  (List.length ts.ts_args) (fun _ -> false)
         in
-        let ma = change_nth ma i true in
+        let ma = change_nth ma true i in
         (* ma.(i) <- true; *)
         Mts.add ts (*(Array.to_list ma)*) ma ma_map
       | _ -> assert false
@@ -545,7 +545,7 @@ let on_empty_state t =
       pp_map = Mls.empty; kept_m = Mts.empty; tp_map = Mid.empty;
       inf_ts; ma_map; keep_e = false; keep_r = false; keep_m = false;
       no_ind = false; no_inv = false; no_sel = false
-    } in t empty_state))
+    } in t empty_state)) *)
 
 (* We need to rewrite metas *after* the main pass, because we need to know the
     final state. Some metas may mention symbols declared after the meta. *)

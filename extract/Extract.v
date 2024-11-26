@@ -317,6 +317,7 @@ Extract Inlined Constant MetaTypeMismatch => "(fun ((x, y), z) -> MetaTypeMismat
 Extract Inlined Constant LemmaFound => "LemmaFound".
 Extract Inlined Constant GoalFound => "GoalFound".
 Extract Inlined Constant GoalNotFound => "GoalNotFound".
+Extract Inlined Constant NotTaggingMeta => "NotTaggingMeta".
 
 (*Pattern comp Exceptions*)
 Extract Inlined Constant NonExhaustive => "NonExhaustive".
@@ -342,6 +343,9 @@ Extract Inlined Constant meta_infinite => "meta_infinite".
 Extract Inlined Constant meta_material => "meta_material".
 (*TODO: figure out*)
 Extract Inlined Constant tuple_theory => "Theory.tuple_theory".
+(*A bad hack: for trans, OCaml does not know [hashcons_full] so we extract to unit
+  because it is erased anyway*)
+Extract Inlined Constant hashcons_full => "unit".
 
 Extraction Inline mk_errtype.
 
