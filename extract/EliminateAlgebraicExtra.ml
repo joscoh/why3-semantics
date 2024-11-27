@@ -549,11 +549,11 @@ end *)
 
 (* We need to rewrite metas *after* the main pass, because we need to know the
     final state. Some metas may mention symbols declared after the meta. *)
-let fold_rewrite_metas state t task = match t.task_decl.td_node with
+(* let fold_rewrite_metas state t task = match t.task_decl.td_node with
   | Meta (m, mal) ->
     let map_arg ma = match ma with
     | MAls ({ ls_value = Some({ty_node = Tyapp(ts, _)}) } as ls)
-        when BigInt.pos ls.ls_constr && not (Mts.mem ts state.kept_m) ->
+        when BigInt.posa ls.ls_constr && not (Mts.mem ts state.kept_m) ->
       MAls (Mls.find_def ls ls state.cc_map)
     | MAls ({ ls_proj = true; ls_args = [{ty_node = Tyapp(ts, _)}] } as ls)
         when not (Mts.mem ts state.kept_m) ->
@@ -562,23 +562,15 @@ let fold_rewrite_metas state t task = match t.task_decl.td_node with
     in
     add_meta task m (List.map map_arg mal)
   | _ ->
-    add_tdecl task t.task_decl
+    add_tdecl task t.task_decl *)
 
-let rewrite_metas st = Trans.fold (fold_rewrite_metas st) None
+(* let rewrite_metas st = Trans.fold (fold_rewrite_metas st) None *)
 
-let eliminate_match =
+(* let eliminate_match =
   Trans.bind (Trans.compose compile_match (on_empty_state fold_comp))
-              (fun (state, task) -> Trans.seq [Trans.return task; rewrite_metas state])
-let meta_elim = register_meta "eliminate_algebraic" [MTstring]
-  ~desc:"@[<hov 2>Configure the 'eliminate_algebraic' transformation:@\n\
-    - keep_enums:   @[keep monomorphic enumeration types (do not use with polymorphism encoding)@]@\n\
-    - keep_recs:    @[keep non-recursive records (do not use with polymorphism encoding)@]@\n\
-    - keep_mono:    @[keep monomorphic algebraic datatypes@]@\n\
-    - no_index:     @[do not generate indexing functions@]@\n\
-    - no_inversion: @[do not generate inversion axioms@]@\n\
-    - no_selector:  @[do not generate selector@]@]"
+              (fun (state, task) -> Trans.seq [Trans.return task; rewrite_metas state]) *)
 
-let eliminate_algebraic =
+(* let eliminate_algebraic =
   Trans.on_meta meta_elim (fun ml ->
   Trans.on_tagged_ty meta_alg_kept (fun kept ->
   on_empty_state (fun st ->
@@ -616,7 +608,7 @@ let eliminate_algebraic =
               (fun (state, task) ->
               Trans.seq [Trans.return task;
                           rewrite_metas state;
-                          add_meta_decls state.kept_m]))))
+                          add_meta_decls state.kept_m])))) *)
 
 (** Eliminate user-supplied projection functions *)
 

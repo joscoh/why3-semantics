@@ -282,3 +282,9 @@ val tdecl_errst:  (decl -> tdecl list) -> task -> task trans
 val fold_errst   : (task_hd -> 'a -> 'a     ) -> 'a -> 'a trans
 (*JOSH: a hack, since we need to know (for monadic bind) that we can apply the function*)
 val trans_bind : 'a -> ('a -> 'b trans) -> 'b trans
+
+val return_errst    : 'a -> 'a trans
+val compose_errst   : task trans -> 'a trans -> 'a trans
+val seq_errst   : task trans list -> task trans
+val bind_errst      : 'a trans -> ('a -> 'b trans) -> 'b trans
+val add_tdecls_errst : tdecl list -> task trans

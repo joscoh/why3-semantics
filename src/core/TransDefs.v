@@ -7,6 +7,17 @@ Definition trans (A: Type) := task -> A.
 Definition trans_errst (A: Type) := task -> errState (CoqBigInt.t * hashcons_full) A. (*extracts to same OCaml but we need diff version*)
 Definition tlist (A: Type) := trans (list A).
 
+(*Only implement errst versions*)
+Definition return_errst {A: Type} (x: A) : trans_errst A := fun _ => errst_ret x.
+Definition compose_errst {A: Type} (f: trans_errst task) (g: trans_errst A) : trans_errst A :=
+  fun x =>
+  y <- (f x) ;; g y.
+Definition seq_errst (l: list (trans_errst task)) : trans_errst task :=
+  fun x => foldl_errst (fun x f => f x) l x.
+(*TODO: naming*)
+Definition bind_errst {A B: Type} (f: trans_errst A) (g: A -> trans_errst B) : trans_errst B :=
+  fun tsk => y <- (f tsk) ;; g y tsk. (*no memoization here*)
+
 (*trans defn is opaque, we need this for monadic ops*)
 (* Definition func_trans {St: Type} (A: Type) (f: task -> errState St A): trans A := f.
 Definition trans_func {St: Type} {A: Type} (t: trans A) : task -> errState St A := t. *)
@@ -54,6 +65,22 @@ Definition tdecl_errst (*{St: Type}*) (f: decl -> errState (CoqBigInt.t * hashco
   gen_decl1 (fun (t : task) (d: tdecl_c) => TaskFuncs.add_tdecl t d) f t1 t2.
 
 (*No memoization*)
+Definition gen_add_decl_errst {A : Type} (add: task -> A -> errState (CoqBigInt.t * hashcons_full) task) (decls: list A) 
+  (t: task) : errState (CoqBigInt.t * hashcons_full) task :=
+  match t with
+  | Some t1 =>
+    match (td_node_of (t1.(task_decl))) with
+    | Decl d =>
+      t2 <- (foldl_errst add decls (t1.(task_prev))) ;;
+      add_decl t2 d
+    | _ => errst_lift2 (assert_false "gen_add_decl")
+    end
+  | _ => errst_lift2 (assert_false "gen_add_decl")
+  end.
+
+Definition add_tdecls_errst : list tdecl_c -> trans_errst task := gen_add_decl_errst add_tdecl.
+
+(*No memoization*)
 Definition on_meta_tds {A: Type} (t: meta) (fn: tdecl_set -> task -> A) : task ->  A :=
   (* let fn = Wtds.memoize 17 fn in *)
   fun task => fn (find_meta_tds task t) task.
@@ -71,6 +98,21 @@ fun tsk =>
     x <- errst_lift2 (foldl_err (fun x y => add y x) (HStdecl.elements tds) []) ;;
     (fn x t) 
   (*(HStdecl.fold add tds Sts.empty))*)) tsk.
+
+Definition on_tagged_ty {St A : Type} (t: meta) (fn: Sty.t -> task -> errState St A) : 
+  task -> errState St A := fun tsk =>
+  _ <- errst_lift2 match t.(meta_type) with
+    | MTty :: _ => err_ret tt
+    | _ => throw (NotTaggingMeta t)
+  end;;
+  let add td acc := match (td_node_of td) with
+    | Meta _ (MAty ty :: _) => err_ret (Sty.add ty acc)
+    | _ => assert_false "on_tagged_ty"
+    end
+  in
+  on_meta_tds t (fun tds t => 
+    x <- errst_lift2 (foldl_err (fun x y => add y x) (HStdecl.elements tds) Sty.empty ) ;;
+    (fn x t)) tsk.
 
 (*Basically, do trans on the typesymbols with given meta tag
   (for elim ADT, this gives us the set of inifinte types)*)

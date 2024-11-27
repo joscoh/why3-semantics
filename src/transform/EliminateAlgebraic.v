@@ -47,8 +47,15 @@ Record state := {
 }.
 
 (*TODO use coq-record-update?*)
-Definition state_with_mt_mat (s: state) (mt_map: Mts.t lsymbol) : state :=
+Definition state_with_mt_map (s: state) (mt_map: Mts.t lsymbol) : state :=
   {| mt_map := mt_map; cc_map := s.(cc_map); cp_map := s.(cp_map);
+    pp_map := s.(pp_map); kept_m := s.(kept_m); tp_map := s.(tp_map);
+    inf_ts := s.(inf_ts); ma_map:= s.(ma_map) ; keep_e := s.(keep_e);
+    keep_r := s.(keep_r); keep_m := s.(keep_m); no_ind := s.(no_ind);
+    no_inv := s.(no_inv); no_sel := s.(no_sel)|}.
+
+Definition state_with_cc_map (s: state) cc_map : state :=
+  {| mt_map := s.(mt_map); cc_map := cc_map; cp_map := s.(cp_map);
     pp_map := s.(pp_map); kept_m := s.(kept_m); tp_map := s.(tp_map);
     inf_ts := s.(inf_ts); ma_map:= s.(ma_map) ; keep_e := s.(keep_e);
     keep_r := s.(keep_r); keep_m := s.(keep_m); no_ind := s.(no_ind);
@@ -68,27 +75,6 @@ Definition state_with_pp_map (s: state) (pp_map: Mls.t lsymbol) : state :=
     keep_r := s.(keep_r); keep_m := s.(keep_m); no_ind := s.(no_ind);
     no_inv := s.(no_inv); no_sel := s.(no_sel)|}.
 
-Definition state_with_cc_map (s: state) cc_map : state :=
-  {| mt_map := s.(mt_map); cc_map := cc_map; cp_map := s.(cp_map);
-    pp_map := s.(pp_map); kept_m := s.(kept_m); tp_map := s.(tp_map);
-    inf_ts := s.(inf_ts); ma_map:= s.(ma_map) ; keep_e := s.(keep_e);
-    keep_r := s.(keep_r); keep_m := s.(keep_m); no_ind := s.(no_ind);
-    no_inv := s.(no_inv); no_sel := s.(no_sel)|}.
-
-Definition state_with_ma_map (s: state) ma_map : state :=
-  {| mt_map := s.(mt_map); cc_map := s.(cc_map); cp_map := s.(cp_map);
-    pp_map := s.(pp_map); kept_m := s.(kept_m); tp_map := s.(tp_map);
-    inf_ts := s.(inf_ts); ma_map:= ma_map ; keep_e := s.(keep_e);
-    keep_r := s.(keep_r); keep_m := s.(keep_m); no_ind := s.(no_ind);
-    no_inv := s.(no_inv); no_sel := s.(no_sel)|}.
-
-Definition state_with_inf_ts (s: state) inf_ts : state :=
-  {| mt_map := s.(mt_map); cc_map := s.(cc_map); cp_map := s.(cp_map);
-    pp_map := s.(pp_map); kept_m := s.(kept_m); tp_map := s.(tp_map);
-    inf_ts := inf_ts; ma_map:= s.(ma_map) ; keep_e := s.(keep_e);
-    keep_r := s.(keep_r); keep_m := s.(keep_m); no_ind := s.(no_ind);
-    no_inv := s.(no_inv); no_sel := s.(no_sel)|}.
-
 Definition state_with_kept_m (s: state) kept_m : state :=
   {| mt_map := s.(mt_map); cc_map := s.(cc_map); cp_map := s.(cp_map);
     pp_map := s.(pp_map); kept_m := kept_m; tp_map := s.(tp_map);
@@ -102,6 +88,63 @@ Definition state_with_tp_map (s: state) tp_map : state :=
     inf_ts := s.(inf_ts); ma_map:= s.(ma_map) ; keep_e := s.(keep_e);
     keep_r := s.(keep_r); keep_m := s.(keep_m); no_ind := s.(no_ind);
     no_inv := s.(no_inv); no_sel := s.(no_sel)|}.
+
+Definition state_with_inf_ts (s: state) inf_ts : state :=
+  {| mt_map := s.(mt_map); cc_map := s.(cc_map); cp_map := s.(cp_map);
+    pp_map := s.(pp_map); kept_m := s.(kept_m); tp_map := s.(tp_map);
+    inf_ts := inf_ts; ma_map:= s.(ma_map) ; keep_e := s.(keep_e);
+    keep_r := s.(keep_r); keep_m := s.(keep_m); no_ind := s.(no_ind);
+    no_inv := s.(no_inv); no_sel := s.(no_sel)|}.
+
+Definition state_with_ma_map (s: state) ma_map : state :=
+  {| mt_map := s.(mt_map); cc_map := s.(cc_map); cp_map := s.(cp_map);
+    pp_map := s.(pp_map); kept_m := s.(kept_m); tp_map := s.(tp_map);
+    inf_ts := s.(inf_ts); ma_map:= ma_map ; keep_e := s.(keep_e);
+    keep_r := s.(keep_r); keep_m := s.(keep_m); no_ind := s.(no_ind);
+    no_inv := s.(no_inv); no_sel := s.(no_sel)|}.
+
+Definition state_with_keep_e (s: state) keep_e : state :=
+  {| mt_map := s.(mt_map); cc_map := s.(cc_map); cp_map := s.(cp_map);
+    pp_map := s.(pp_map); kept_m := s.(kept_m); tp_map := s.(tp_map);
+    inf_ts := s.(inf_ts); ma_map:= s.(ma_map) ; keep_e := keep_e;
+    keep_r := s.(keep_r); keep_m := s.(keep_m); no_ind := s.(no_ind);
+    no_inv := s.(no_inv); no_sel := s.(no_sel)|}.
+
+Definition state_with_keep_r (s: state) keep_r : state :=
+  {| mt_map := s.(mt_map); cc_map := s.(cc_map); cp_map := s.(cp_map);
+    pp_map := s.(pp_map); kept_m := s.(kept_m); tp_map := s.(tp_map);
+    inf_ts := s.(inf_ts); ma_map:= s.(ma_map) ; keep_e := s.(keep_e);
+    keep_r := keep_r; keep_m := s.(keep_m); no_ind := s.(no_ind);
+    no_inv := s.(no_inv); no_sel := s.(no_sel)|}.
+
+Definition state_with_keep_m (s: state) keep_m : state :=
+  {| mt_map := s.(mt_map); cc_map := s.(cc_map); cp_map := s.(cp_map);
+    pp_map := s.(pp_map); kept_m := s.(kept_m); tp_map := s.(tp_map);
+    inf_ts := s.(inf_ts); ma_map:= s.(ma_map) ; keep_e := s.(keep_e);
+    keep_r := s.(keep_r); keep_m := keep_m; no_ind := s.(no_ind);
+    no_inv := s.(no_inv); no_sel := s.(no_sel)|}.
+
+Definition state_with_no_ind (s: state) no_ind : state :=
+  {| mt_map := s.(mt_map); cc_map := s.(cc_map); cp_map := s.(cp_map);
+    pp_map := s.(pp_map); kept_m := s.(kept_m); tp_map := s.(tp_map);
+    inf_ts := s.(inf_ts); ma_map:= s.(ma_map) ; keep_e := s.(keep_e);
+    keep_r := s.(keep_r); keep_m := s.(keep_m); no_ind := no_ind;
+    no_inv := s.(no_inv); no_sel := s.(no_sel)|}.
+
+Definition state_with_no_inv (s: state) no_inv : state :=
+  {| mt_map := s.(mt_map); cc_map := s.(cc_map); cp_map := s.(cp_map);
+    pp_map := s.(pp_map); kept_m := s.(kept_m); tp_map := s.(tp_map);
+    inf_ts := s.(inf_ts); ma_map:= s.(ma_map) ; keep_e := s.(keep_e);
+    keep_r := s.(keep_r); keep_m := s.(keep_m); no_ind := s.(no_ind);
+    no_inv := no_inv; no_sel := s.(no_sel)|}.
+
+Definition state_with_no_sel (s: state) no_sel : state :=
+  {| mt_map := s.(mt_map); cc_map := s.(cc_map); cp_map := s.(cp_map);
+    pp_map := s.(pp_map); kept_m := s.(kept_m); tp_map := s.(tp_map);
+    inf_ts := s.(inf_ts); ma_map:= s.(ma_map) ; keep_e := s.(keep_e);
+    keep_r := s.(keep_r); keep_m := s.(keep_m); no_ind := s.(no_ind);
+    no_inv := s.(no_inv); no_sel := no_sel|}.
+
 
 (*Determin if this type should be kept (false) or axiomatized (true) - should only be called
   on ADTs*)
@@ -372,7 +415,7 @@ Definition add_selector_aux {A: Type} (st: state * task) (ts: tysymbol_c) (ty: t
   in
   (*TODO: write non-err version*)
   task <- fold_left2_errst' mt_add task csl mt_tl ;;
-  errst_ret (state_with_mt_mat s mt_map, task).
+  errst_ret (state_with_mt_map s mt_map, task).
 
 (*Don't need selector for ADT with only 1 constructor - why?*)
 Definition add_selector {A: Type} (acc : state * task) (ts: tysymbol_c) (ty: ty_c) (x: list (lsymbol * A)) :
@@ -854,3 +897,134 @@ Definition on_empty_state {A: Type} (t: state -> trans_errst A) : trans_errst A 
       no_ind := false; no_inv := false; no_sel := false
     |} in 
     t empty_state))).
+Check MAls.
+Print lsymbol.
+(* We need to rewrite metas *after* the main pass, because we need to know the
+    final state. Some metas may mention symbols declared after the meta. *)
+
+(*Separate out cases, since this is annoying*)
+Definition meta_constr_case (s: state) ls : option tysymbol_c :=
+  match ls.(ls_value) with
+  | Some t =>
+    match ty_node_of t with
+    | Tyapp ts _ => if CoqBigInt.pos ls.(ls_constr) && negb (Mts.mem ts s.(kept_m)) then Some ts
+    else None
+    | _ => None
+    end
+  | _ => None
+  end.
+
+Definition meta_proj_case s ls :=
+  if ls.(ls_proj) then
+    match ls.(ls_args) with
+    | [t] =>
+      match ty_node_of t with
+      | Tyapp ts _ =>
+        if negb (Mts.mem ts s.(kept_m)) then Some ts else None
+      | _ => None
+      end
+    | _ => None
+    end
+  else None.
+
+
+Definition fold_rewrite_metas (s: state) (t: task_hd) (tsk: task) : 
+  errState (CoqBigInt.t * hashcons_full) task
+  := match td_node_of (t.(task_decl)) with
+  | Meta m mal =>
+    let map_arg ma := match ma with
+    | MAls ls =>
+      (*Case 1: constr*)
+      match meta_constr_case s ls with
+      | Some ts => MAls (Mls.find_def _ ls ls s.(cc_map))
+      | None =>
+        match meta_proj_case s ls with
+        | Some ts => MAls (Mls.find_def _ ls ls s.(pp_map))
+        | None => ma
+        end
+      end
+    | _ => ma
+    end in
+    errst_tup2 (add_meta tsk m (map map_arg mal))
+  | _ =>
+    add_tdecl tsk t.(task_decl)
+  end.
+
+Definition rewrite_metas (st : state) : trans_errst task := 
+  fold_errst (fold_rewrite_metas st) None.
+
+Definition eliminate_match : trans_errst task :=
+  bind_errst (compose_errst compile_match (on_empty_state fold_comp))
+              (fun '(state, task) => seq_errst [return_errst task; rewrite_metas state]).
+
+(*TODO: is this correct*)
+Definition quote: string := """"%string.
+
+(*Also stateful, registers*)
+Axiom meta_kept : meta.
+Axiom meta_alg_kept : meta.
+Axiom meta_elim : meta.
+
+(*TODO: factor out into module functor?*)
+
+Definition sty_fold_errst {A St: Type} (f: ty_c -> A -> errState St A) (l: Sty.t) (acc: A) : errState St A :=
+  foldl_errst (fun x y => f y x) (Sty.elements l) acc.
+Definition mts_fold_errst {A B St: Type} (f: tysymbol_c -> A -> B -> errState St B) (l: Mts.t A) (acc: B):
+  errState St B :=
+  foldl_errst (fun x y => f (fst y) (snd y) x) (Mts.bindings l) acc.
+
+
+
+Definition eliminate_algebraic : trans_errst task :=
+  TransDefs.on_meta meta_elim (fun ml =>
+  TransDefs.on_tagged_ty meta_alg_kept (fun kept =>
+  on_empty_state (fun st =>
+  let check st x :=
+    match x with
+    (*TODO: equality instead of matching?*)
+    (* | [MAstr "keep_enums"] => err_ret (state_with_keep_e st true)
+    | [MAstr "keep_recs"]  => err_ret (state_with_keep_r st true)
+    | [MAstr "keep_mono"]  => err_ret (state_with_keep_m st true)
+    | [MAstr "no_index"]   => err_ret (state_with_no_ind st true)
+    | [MAstr "no_inversion"] => err_ret (state_with_no_inv st true)
+    | [MAstr "no_selector"]  => err_ret (state_with_no_sel st true) *)
+    | [MAstr s] =>
+      (*Matching gives horrible term and takes forever to typecheck*)
+      if (String.eqb s "keep_enums") then err_ret (state_with_keep_e st true)
+      else if (String.eqb s "keep_recs") then err_ret (state_with_keep_r st true)
+      else if (String.eqb s "keep_mono") then err_ret (state_with_keep_m st true)
+      else if (String.eqb s "no_index") then err_ret (state_with_no_ind st true)
+      else if (String.eqb s "no_inversion") then err_ret (state_with_no_inv st true)
+      else if (String.eqb s "no_selector") then err_ret (state_with_no_sel st true)
+      else
+        throw (
+            Invalid_argument (
+                "meta eliminate_algebraic, arg = " ++ quote ++ s ++ quote))
+    | l =>
+        throw (
+            Invalid_argument (
+                "meta eliminate_algebraic, nb arg = " ++
+                  CoqBigInt.to_string (IntFuncs.int_length l) ++ ""))
+    end
+  in
+  trans_bind
+  (errst_lift2 (foldl_err check ml st)) (fun st =>
+  let kept_fold ty m :=
+    match ty_node_of ty with
+    | Tyapp ts _ => (*TODO: is this same match?*)
+        let s := Mts.find_def _ Sty.empty ts m in
+        Mts.add ts (Sty.add ty s) m
+    | _ => m
+    end
+  in
+  let st := state_with_kept_m st (Sty.fold kept_fold kept Mts.empty) in
+  let add ty decls := m <- errst_tup2 (full_of_ty_td (create_meta meta_kept [MAty ty])) ;; errst_ret (m :: decls) in
+  let add_meta_decls kept_m :=
+    trans_bind (mts_fold_errst (fun _ => sty_fold_errst add) kept_m [])
+    TransDefs.add_tdecls_errst
+  in
+  bind_errst (compose_errst compile_match (fold_comp st))
+              (fun '(s, tsk) =>
+              seq_errst [return_errst tsk;
+                          rewrite_metas s;
+                          add_meta_decls s.(kept_m)]))))).

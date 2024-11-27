@@ -11,3 +11,12 @@ let meta_material = register_meta "material_type_arg" [MTtysymbol;MTint]
 
 let meta_alg_kept = register_meta "algebraic:kept" [MTty]
   ~desc:"Keep@ primitive@ operations@ over@ this@ algebraic@ type."
+
+let meta_elim = register_meta "eliminate_algebraic" [MTstring]
+  ~desc:"@[<hov 2>Configure the 'eliminate_algebraic' transformation:@\n\
+    - keep_enums:   @[keep monomorphic enumeration types (do not use with polymorphism encoding)@]@\n\
+    - keep_recs:    @[keep non-recursive records (do not use with polymorphism encoding)@]@\n\
+    - keep_mono:    @[keep monomorphic algebraic datatypes@]@\n\
+    - no_index:     @[do not generate indexing functions@]@\n\
+    - no_inversion: @[do not generate inversion axioms@]@\n\
+    - no_selector:  @[do not generate selector@]@]"
