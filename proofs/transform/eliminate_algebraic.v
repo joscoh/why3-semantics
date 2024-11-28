@@ -37,6 +37,58 @@ Record state := mk_state {
 #[export] Instance etaX : Settable _ := settable! mk_state <mt_map; cc_map; cp_map; pp_map; kept_m; no_ind; no_inv; no_sel>.
 Import RecordSetNotations. 
 
+(*Infer args for functions - hard to get it right*)
+
+Definition fold_right2_opt {A B C: Type} (f: A -> B -> C -> option C) (base: C) :=
+  fix fold (l1: list A) (l2: list B) : option C :=
+    match l1, l2 with
+    | nil, nil => Some base
+    | x1 :: t1, x2 :: t2 => option_bind (fold t1 t2) (f x1 x2) 
+    | _, _ => None
+    end.
+
+(*gives a map from vars to types such that [v_subst s t1] = t2 if one exists*)
+Fixpoint ty_match (t1 t2: vty) (s: amap typevar vty) : option (amap typevar vty) :=
+  match t1, t2 with
+  | vty_cons ts1 tys1, vty_cons ts2 tys2 =>
+    if typesym_eqb ts1 ts2 then
+    fold_right2_opt ty_match s tys1 tys2
+    else None
+  | vty_var n1, _ =>
+    (*See if n1 is mapped to t2 (OK) or nothing (add), else None*)
+    match amap_get typevar_eq_dec s n1 with
+    | Some ty3 => if vty_eqb t2 ty3 then Some s else None
+    | None => Some (amap_set typevar_eq_dec s n1 t2)
+    end
+  | _, _ => if vty_eqb t1 t2 then Some s else None
+  end.
+
+(*Now use this to infer type map for functions*)
+(*Is there a type substitution sigma such that sigma (args) = *)
+Definition find_fpsym_map (f: fpsym) (tys: list vty) : option (amap typevar vty) :=
+  fold_right2_opt ty_match amap_empty (s_args f) tys.
+
+Definition find_param_vals (params: list typevar) (s: amap typevar vty) : list vty :=
+  map (fun p => 
+    match amap_get typevar_eq_dec s p with
+    | Some t => t
+    | None => vty_int (*not used so instantiate to anything*)
+    end) params.
+
+Definition tfun_infer (f: funsym) (tys: list vty) (tms: list term) : option term :=
+  match (find_fpsym_map f tys) with
+  | Some s => 
+    (*Find values for all type params from s - if not there, not used, so we can
+      just assign it int (or whatever)*)
+    Some (Tfun f (find_param_vals (s_params f) s) tms)
+  | None => None
+  end.
+
+(*TODO: prove doesnt happen (how?)*)
+Definition tfun_infer' (f: funsym) (tys: list vty) (tms: list term) : term :=
+match tfun_infer f tys tms with | Some t => t | _ => tm_d end.
+    
+
 
 Section ElimADT.
 
@@ -234,6 +286,10 @@ Definition map_join_left {A B: Type} (map: A -> B) (join: B -> B -> B) (l: list 
   | _ => None
   end.
 
+(*It is often difficult to figure out what the type arguments for functions should be.
+  We will do it as they do, trying to instantiate a type mapping*)
+
+
 Fixpoint rewriteT (t: term) : term :=
   match t with
   | Tmatch t1 ty pats => 
@@ -278,8 +334,12 @@ Fixpoint rewriteT (t: term) : term :=
       | tl => (*Get *) 
         (*Get the type - NOTE: use fact that not empty*)
         let ty1 := match pat_match_ty pats with | Some t => t | None => ty end in 
-        Tfun (amap_get_def typesym_eq_dec s.(mt_map) ts id_fs) (*TODO: prove not default*)
-        (*this gives projection*) (ty :: repeat ty1 (length tl)) (t1 :: tl) (*what is ty?*) 
+        tfun_infer' (amap_get_def typesym_eq_dec s.(mt_map) ts id_fs) (ty :: repeat ty1 (length tl))
+          (t1 :: tl) (*TODO: prove not default*)
+        (*return type: list a -> b -> b -> b, so give [vty_var a; ty1] if a is list var
+          (types of args are [(ty :: repeat ty1 (length tl))])*)
+          (*Don;t know if this type is right?*)
+        (*this gives projection*) (*(map vty_var (ts_args ts) ++ [ty1]) (t1 :: tl) (*what is ty?*)*) 
         (*Type should be original type of term - can we tell this?
           arguments have type: [ty; ty1; ty1, ... ty1] if elements in pat match have type ty1. 
           We may need to carry around this information*)
@@ -329,7 +389,7 @@ with rewriteF (av: list vsymbol) (sign: bool) (f: formula) : formula :=
         end
         in
         let vl := fst res in let e := snd res in
-        let hd := Tfun (amap_get_def funsym_eq_dec (s.(cc_map)) cs id_fs) (map snd vl) (map Tvar vl) in
+        let hd := tfun_infer' (amap_get_def funsym_eq_dec (s.(cc_map)) cs id_fs) (map snd vl) (map Tvar vl) in
         match t1 with
         | Tvar v => if in_dec vsymbol_eq_dec v av then
           let hd := Flet hd v e in if sign then fforalls vl hd else fexists vl hd
@@ -419,7 +479,8 @@ Definition add_param_decl (t: task) (f: funsym) : task :=
 Definition add_axiom (t: task) (n: string) (f: formula) : task :=
   (task_gamma t, (n, f) :: task_delta t, task_goal t).
 
-Definition add_selector (st: state * task) (ts: typesym) (ty: vty) (csl: list funsym) :=
+(*NOTE: will prob need to separate out for proof purposes (e.g. map2 vs fold_left2 and separate function)*)
+Definition add_selector_aux (st: state * task) (ts: typesym) (ty: vty) (csl: list funsym) :=
   let s := fst st in
   let tsk := snd st in
   if s.(no_sel) then (s, tsk) else
@@ -448,14 +509,54 @@ Definition add_selector (st: state * task) (ts: typesym) (ty: vty) (csl: list fu
     let vl := rev (combine varnames2 (s_args cs)) in
     (* let vl = List.rev_map (create_vsymbol (id_fresh "u")) cs.ls_args in *)
     let newcs := amap_get_def funsym_eq_dec (s.(cc_map)) cs id_fs in (*TODO: show have*)
-    let hd := Tfun newcs (rev_map snd vl) (rev_map Tvar vl) in (*TODO: is return type right? - they say f_ret cs*)
-    let hd := Tfun mt_ls ((f_ret cs) :: map snd mt_vl) (hd :: mt_tl) in
+    let hd := tfun_infer' newcs (rev_map snd vl) (rev_map Tvar vl) in (*TODO: is return type right? - they say f_ret cs*)
+    let hd := tfun_infer' mt_ls ((f_ret cs) :: map snd mt_vl) (hd :: mt_tl) in
     let vl := rev_append mt_vl (rev vl) in
     let ax := fforalls vl (Feq mt_ty hd t) in
     add_axiom tsk id ax
   in 
   let task := fold_left2 mt_add csl mt_tl tsk in
   (s <|mt_map := mt_map2|>, tsk).
+
+Definition add_selector {A: Type} (acc : state * task) (ts: typesym) (ty: vty) (x: list funsym) :
+  state * task :=
+  match x with
+  | [_] => acc
+  | csl => add_selector_aux acc ts ty csl
+  end.
+
+(*TODO: move*)
+Fixpoint iota m n := 
+  match n with
+  | S n' => m :: iota (S m) n'
+  | _ => nil
+  end.
+
+Definition add_indexer (st: state * task) (ts: typesym) (ty : vty) (csl : list funsym) : state * task :=
+  let s := fst st in
+  let tsk := snd st in
+  (* declare the indexer function *)
+  let mt_id := ("index_" ++ (ts_name ts))%string in
+  let mt_ls := funsym_noconstr_noty mt_id [ty] vty_int in
+  let tsk  := add_param_decl tsk mt_ls in
+  (* define the indexer function *)
+  let mt_add tsk (cs: funsym) idx :=
+    let id := (mt_id ++ "_" ++ (s_name cs))%string in
+    (* let pr = create_prsymbol (id_derive id cs.ls_name) in *)
+    let varnames := gen_names (length (s_args cs)) "u" nil in
+    let vl := rev (combine varnames (s_args cs)) in
+    let newcs := amap_get_def funsym_eq_dec s.(cc_map) cs id_fs in
+    (*NOTE: THESE TYPES MAY BE WRONG!*)
+    let hd := tfun_infer' newcs (rev (map snd vl)) (rev_map Tvar vl) in
+    (* let hd = fs_app newcs (List.rev_map t_var vl) (Option.get cs.ls_value) in *)
+    let ax := Feq vty_int (tfun_infer' mt_ls (*TODO: what is hd type?*) [(f_ret newcs)] [hd] )  
+      (Tconst (ConstInt (Z.of_nat idx))) in
+    let ax := fforalls (rev vl) ax in
+    add_axiom tsk id ax
+  in
+  let task := fold_left2' mt_add csl (iota 0 (length csl)) tsk in
+  (s, task).
+
 
 
 End ElimADT.
