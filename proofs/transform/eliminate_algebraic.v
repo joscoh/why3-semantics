@@ -1,7 +1,7 @@
 Require Import AssocList.
 Require Import Task.
+Require Import GenElts.
 
-Print vty.
 
 (*Here, we ignore metas since they don't exist in the core language.
   We also (mostly) ignore tuples, we can prove soundness separately
@@ -14,8 +14,8 @@ Print vty.
   because we need to prove soundness in all cases
   *)
 
-(*We ignore *)
-Record state := {
+From RecordUpdate Require Import RecordSet.
+Record state := mk_state {
   mt_map : amap typesym funsym;       (* from type symbols to selector functions *)
   cc_map : amap funsym funsym;       (* from old constructors to new constructors *)
   cp_map : amap funsym (list funsym);  (* from old constructors to new projections *)
@@ -33,10 +33,15 @@ Record state := {
 }.
 
 (*Here, we can use coq-record-update*)
+
+#[export] Instance etaX : Settable _ := settable! mk_state <mt_map; cc_map; cp_map; pp_map; kept_m; no_ind; no_inv; no_sel>.
+Import RecordSetNotations. 
+
+
 Section ElimADT.
 
 Variable keep_tys : typesym -> bool.
-Print vty.
+
 Definition enc_ty (t: vty) : bool :=
   match t with
   | vty_cons ts _ => negb (keep_tys ts)
@@ -44,7 +49,6 @@ Definition enc_ty (t: vty) : bool :=
   end.
 
 (*TODO move:*)
-Check amap_get.
 Definition amap_get_def {A B: Type} eq_dec (m: amap A B) (x: A) (d: B) : B :=
   match amap_get eq_dec m x with
   | Some y => y
@@ -220,13 +224,8 @@ Definition set_diff {A: Type} (eq_dec: forall (x y: A), {x = y} + {x <> y}) (l1 
 Definition set_add {A: Type} (eq_dec: forall (x y: A), {x = y} + {x <> y}) (x: A) (l: list A) :=
   if in_dec eq_dec x l then l else x :: l.
 
-Print fold_left.
-Print funsym.
-
 (*Assume we have a list of banned variables (instantiate with term vars)*)
 Variable badvars : list vsymbol.
-
-Require Import GenElts.
 
 (*TODO: move*)
 Definition map_join_left {A B: Type} (map: A -> B) (join: B -> B -> B) (l: list A) : option B :=
@@ -365,6 +364,99 @@ with rewriteF (av: list vsymbol) (sign: bool) (f: formula) : formula :=
   end.
 
 End Rew.
+
+(*TODO: move from utils*)
+Section MoveFromUtils.
+
+Definition find_args (l: list vty) : list typevar :=
+  big_union typevar_eq_dec type_vars l.
+
+Lemma find_args_nodup l:
+  nodupb typevar_eq_dec (find_args l).
+Proof.
+  apply (ssrbool.introT (nodup_NoDup _ _)).
+  apply big_union_nodup.
+Qed.
+
+Lemma find_args_check_args_l l1 l2:
+  (forall x, In x l1 -> In x l2) ->
+  check_args (find_args l2) l1.
+Proof.
+  intros.
+  apply (ssrbool.introT (check_args_correct _ _)).
+  intros.
+  unfold find_args, sublist. intros.
+  simpl_set. exists x. split; auto.
+Qed.
+
+Lemma find_args_check_args_in x l:
+  In x l ->
+  check_sublist (type_vars x) (find_args l).
+Proof.
+  intros. apply (ssrbool.introT (check_sublist_correct _ _)).
+  unfold sublist. intros. unfold find_args. simpl_set.
+  exists x; auto.
+Qed.
+
+Definition funsym_noconstr_noty (name: string) (args: list vty) 
+  (ret: vty)  : funsym :=
+  Build_funsym (Build_fpsym name (find_args (ret :: args)) args
+    (find_args_check_args_l _ _ (fun x => in_cons _ x _)) (find_args_nodup _)) 
+    ret false 0 (find_args_check_args_in _ _ (in_eq _ _)).
+
+End MoveFromUtils.
+
+(*TODO: move from Pattern*)
+Definition rev_map {B C: Type} (f: B -> C) (l: list B) : list C :=
+  rev (map f l).
+
+
+(*Generate axioms*)
+
+Definition add_param_decl (t: task) (f: funsym) : task :=
+  (abs_fun f :: task_gamma t, task_delta t, task_goal t).
+
+Definition add_axiom (t: task) (n: string) (f: formula) : task :=
+  (task_gamma t, (n, f) :: task_delta t, task_goal t).
+
+Definition add_selector (st: state * task) (ts: typesym) (ty: vty) (csl: list funsym) :=
+  let s := fst st in
+  let tsk := snd st in
+  if s.(no_sel) then (s, tsk) else
+  (* declare the selector function *)
+  let mt_id : string := ("match_" ++ ts_name ts)%string in
+  (*TODO: does it need to be fresh?*)
+  let mt_ty : vty := vty_var "a"%string in
+  (* let mt_ty = ty_var (create_tvsymbol (id_fresh "a")) in *)
+  let mt_al := ty :: rev_map (fun _ => mt_ty) csl in
+  let mt_ls := funsym_noconstr_noty mt_id mt_al mt_ty in
+  let mt_map2 := amap_set typesym_eq_dec s.(mt_map) ts mt_ls in
+  let task  := add_param_decl tsk mt_ls in
+  (* define the selector function *)
+  (*Generate new vars*)
+  let varnames := gen_names (length csl) "z"%string nil in
+  let mt_vl : list vsymbol := rev_map (fun x => (x, mt_ty)) varnames in
+  (* let mt_vs _ = create_vsymbol (id_fresh "z") mt_ty in *)
+  (* let mt_vl = List.rev_map mt_vs csl in *)
+  let mt_tl := rev_map Tvar mt_vl in
+  let mt_add tsk (cs: funsym) t :=
+    let id := (mt_id ++ "_" ++ (s_name cs))%string in
+    (* let id = mt_ls.ls_name.id_string ^ "_" ^ cs.ls_name.id_string in *) 
+    (* let pr = create_prsymbol (id_derive id cs.ls_name) in *)
+    (*Create new vars - they can be the same among axioms (TODO: inefficient)*)
+    let varnames2 := gen_names (length (s_args cs)) "u"%string varnames in
+    let vl := rev (combine varnames2 (s_args cs)) in
+    (* let vl = List.rev_map (create_vsymbol (id_fresh "u")) cs.ls_args in *)
+    let newcs := amap_get_def funsym_eq_dec (s.(cc_map)) cs id_fs in (*TODO: show have*)
+    let hd := Tfun newcs (rev_map snd vl) (rev_map Tvar vl) in (*TODO: is return type right? - they say f_ret cs*)
+    let hd := Tfun mt_ls ((f_ret cs) :: map snd mt_vl) (hd :: mt_tl) in
+    let vl := rev_append mt_vl (rev vl) in
+    let ax := fforalls vl (Feq mt_ty hd t) in
+    add_axiom tsk id ax
+  in 
+  let task := fold_left2 mt_add csl mt_tl tsk in
+  (s <|mt_map := mt_map2|>, tsk).
+
 
 End ElimADT.
 
