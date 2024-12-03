@@ -669,7 +669,6 @@ Variable (mts: Mts.t (list (lsymbol * A))) (s: state).
 Local Open Scope err_scope.
 
 (*use fuel*)
-Check @IntFuncs.int_rect.
 (*TODO: fuel?
   Why does this terminate? Idea: csl must be constructor list for some type, so by well-foundedness
     of ADTs, terminates.

@@ -84,9 +84,22 @@ Definition tfun_infer (f: funsym) (tys: list vty) (tms: list term) : option term
   | None => None
   end.
 
+Definition tfun_infer_ret (f: funsym) (tys: list vty) (tms: list term) : option (term * vty) :=
+  match (find_fpsym_map f (f_ret f :: tys)) (*TODO: is this right?*) with
+  | Some s => 
+    (*Find values for all type params from s - if not there, not used, so we can
+      just assign it int (or whatever)*)
+    let tys := (find_param_vals (s_params f) s) in
+    Some (Tfun f tys tms, ty_subst (s_params f) tys (f_ret f))
+  | None => None
+  end.
+
 (*TODO: prove doesnt happen (how?)*)
 Definition tfun_infer' (f: funsym) (tys: list vty) (tms: list term) : term :=
 match tfun_infer f tys tms with | Some t => t | _ => tm_d end.
+Definition tfun_infer_ret' (f: funsym) (tys: list vty) (tms: list term) : term * vty :=
+match tfun_infer_ret f tys tms with | Some t => t | _ => (tm_d, vty_int) end.
+
     
 
 
@@ -285,6 +298,9 @@ Definition map_join_left {A B: Type} (map: A -> B) (join: B -> B -> B) (l: list 
   | x :: xl => Some (fold_left (fun acc x => join acc (map x)) xl (map x))
   | _ => None
   end.
+Definition map_join_left' {A B: Type} (d: B) (map: A -> B) (join: B -> B -> B) 
+  (l: list A) : B :=
+  match map_join_left map join l with | Some y => y | None => d end.
 
 (*It is often difficult to figure out what the type arguments for functions should be.
   We will do it as they do, trying to instantiate a type mapping*)
@@ -518,7 +534,7 @@ Definition add_selector_aux (st: state * task) (ts: typesym) (ty: vty) (csl: lis
   let task := fold_left2 mt_add csl mt_tl tsk in
   (s <|mt_map := mt_map2|>, tsk).
 
-Definition add_selector {A: Type} (acc : state * task) (ts: typesym) (ty: vty) (x: list funsym) :
+Definition add_selector (acc : state * task) (ts: typesym) (ty: vty) (x: list funsym) :
   state * task :=
   match x with
   | [_] => acc
@@ -532,7 +548,7 @@ Fixpoint iota m n :=
   | _ => nil
   end.
 
-Definition add_indexer (st: state * task) (ts: typesym) (ty : vty) (csl : list funsym) : state * task :=
+Definition add_indexer_aux (st: state * task) (ts: typesym) (ty : vty) (csl : list funsym) : state * task :=
   let s := fst st in
   let tsk := snd st in
   (* declare the indexer function *)
@@ -556,6 +572,189 @@ Definition add_indexer (st: state * task) (ts: typesym) (ty : vty) (csl : list f
   in
   let task := fold_left2' mt_add csl (iota 0 (length csl)) tsk in
   (s, task).
+
+Definition t_neq (ty: vty) (t1 t2: term) : formula :=
+  Fnot (Feq ty t1 t2).
+
+Definition add_discriminator (st: state * task) (ts: typesym) (ty: vty) (csl: list funsym) : state * task :=
+  let s := fst st in
+  let tsk := snd st in
+  let d_add (c1: funsym) tsk (c2: funsym) :=
+    let id : string := ((s_name c1) ++ "_" ++ (s_name c2))%string in
+    (* let pr = create_prsymbol (id_derive id ts.ts_name) in *)
+    (*Create vars - TODO: does it have to be fresh against some vars?*)
+    let ul := rev (combine (gen_names (length (s_args c1)) "u" nil) (s_args c1)) in
+    let vl := rev (combine (gen_names (length (s_args c2)) "v" nil) (s_args c2)) in
+    (* let ul := rev_map (create_vsymbol (id_fresh "u")) c1.ls_args in
+    let vl = List.rev_map (create_vsymbol (id_fresh "v")) c2.ls_args in *)
+    let newc1 := amap_get_def funsym_eq_dec (s.(cc_map)) c1 id_fs in
+    let newc2 := amap_get_def funsym_eq_dec (s.(cc_map)) c2 id_fs in
+    let t1 := tfun_infer' newc1 (rev (map snd ul)) (rev_map Tvar ul) in
+    let t2 := tfun_infer' newc2 (rev (map snd vl)) (rev_map Tvar vl) in
+    (* let t1 = fs_app newc1 (List.rev_map t_var ul) ty in
+    let t2 = fs_app newc2 (List.rev_map t_var vl) ty in *)
+    let ax := t_neq ty t1 t2 in
+    let ax := fforalls (rev vl) ax in
+    let ax := fforalls (rev ul) ax in
+    add_axiom tsk id ax 
+    (* let ax = t_forall_close (List.rev vl) [[t2]] ax in
+    let ax = t_forall_close (List.rev ul) [[t1]] ax in
+    add_prop_decl task Paxiom pr ax *)
+  in
+  let fix dl_add task l := 
+    match l with
+    | c :: cl => dl_add (fold_left (d_add c) cl task) cl
+    | _ => task
+    end
+  in
+  (s, dl_add tsk csl).
+
+Definition add_indexer (acc: state * task) (ts: typesym) (ty: vty) (cs: list funsym) := 
+  match cs with
+  | [_] => acc
+  | csl => if negb (fst acc).(no_ind) then add_indexer_aux acc ts ty csl
+    else if Nat.leb (length csl) 16 then add_discriminator acc ts ty csl 
+    else acc
+  end.
+
+Definition mapi {A B: Type} (f: nat -> A -> B) (l: list A) : list B :=
+  map (fun x => f (fst x) (snd x)) (combine (iota 0 (length l)) l).
+
+(*NOTE: complete_projections just copies over projections if they exist.
+  We do not have any projections in our data, so we only implement the "None" case.
+  TODO: we will need a predicate/typing rule asserting that projection is correct if it exists
+  or something (not sure exactly what we need - will certainly need typing info) *)
+(*ONLY creates function symbols - so projections are just user-named functions essentially - spec should
+  just be that this produces SOME function symbol of the right type*)
+Definition complete_projections (csl: list funsym) : list (funsym * list funsym) :=
+  let conv_c (c: funsym) :=
+    let conv_p (i: nat) (ty: vty) :=
+      let id := ((s_name c) ++ "_proj_" ++ (nat_to_string i))%string in
+      (*TODO: do we need option?*)(funsym_noconstr_noty id [f_ret c] ty)
+    in
+    (c, mapi conv_p (s_args c))
+  in
+  map conv_c csl.
+
+Definition add_projections {A B: Type} (st: state * task) (_ts : A) (_ty : B) (csl: list funsym) :
+  state * task :=
+  let s := fst st in
+  let tsk := snd st in
+  (* declare and define the projection functions *)
+  let pj_add x (y: funsym * _) :=
+    let '(cp_map,pp_map,tsk) := x in
+    let '(cs,pl) := y in
+    (*Fresh vars TODO*)
+    let vl := combine (gen_names (length (s_args cs)) "u" nil) (s_args cs) in
+    (* let vl = List.map (create_vsymbol (id_fresh "u")) cs.ls_args in *)
+    let tl := map Tvar vl in
+    let hd := tfun_infer' (amap_get_def funsym_eq_dec (s.(cc_map)) cs id_fs)
+      (map snd vl) tl in
+    (* let hd = fs_app (Mls.find cs state.cc_map) tl (Option.get cs.ls_value) in *)
+    (*TODO: added ty*)
+     let add (x: list funsym * amap funsym funsym * task) (tty: term * vty) (pj: funsym) :
+        list funsym * amap funsym funsym * task :=
+      let t := fst tty in let ty := snd tty in
+      let '(pjl,pp_map,tsk) := x in
+      (* let pj := option_get_Option.get pj in *)
+      let '(ls,pp_map) :=
+        match amap_get funsym_eq_dec pp_map pj with
+        | Some pj => (pj, pp_map)
+        | None =>
+          let id := (s_name pj) in
+          let ls := funsym_noconstr_noty id (s_args pj) (f_ret pj) in
+          (*NOTE: since we don't have unique ids, is this just pj? Is that a problem?*)
+          (ls, amap_set funsym_eq_dec pp_map pj ls)
+        end
+      in
+        (* match Mls.find pj pp_map with
+        | pj -> pj,pp_map
+        | exception Not_found ->
+          let id = id_clone pj.ls_name in
+          let ls = create_lsymbol id pj.ls_args pj.ls_value in
+          ls,Mls.add pj ls pp_map
+      in *)
+      let tsk := add_param_decl tsk ls in
+      let id := ((s_name ls) ++ "'def")%string in
+      (* let id = id_derive (ls.ls_name.id_string ^ "'def") ls.ls_name in
+      let pr = create_prsymbol id in *)
+      let hh := tfun_infer' ls [(f_ret cs)] [hd] in
+      (* let hh = t_app ls [hd] t.t_ty in *)
+      let ax := fforalls vl (Feq ty hh t) in
+      let tsk := add_axiom tsk id ax in
+      (*Ignore metas*)
+      (* let ax = t_forall_close vl [] (t_equ hh t) in
+      let tsk = add_prop_decl tsk Paxiom pr ax in
+      let tsk = add_meta_model_projection tsk ls in *)
+      (ls::pjl,pp_map,tsk)
+    in
+    let '(pjl,pp_map,tsk) := fold_left2' add (combine tl (map snd vl)) pl ([],pp_map,tsk)  in
+    (amap_set funsym_eq_dec cp_map cs (rev pjl), pp_map, tsk)
+  in
+  let csl := complete_projections csl in
+  let '(cp_map2, pp_map2, task) :=
+    fold_left pj_add csl (s.(cp_map), s.(pp_map), tsk)
+  in
+  (s <| cp_map := cp_map2 |> <|pp_map := pp_map2 |>, task).
+
+Definition add_inversion (st: state * task) (ts: typesym) (ty: vty) (csl: list funsym) :
+  state * task :=
+  let s := fst st in let tsk := snd st in
+  if s.(no_inv) then st else
+  (* add the inversion axiom *)
+  let ax_id := ((ts_name ts) ++ "_inversion")%string in
+  (* let ax_pr = create_prsymbol (id_derive ax_id ts.ts_name) in *)
+  (*TODO: fresh?*)
+  let ax_vs := (gen_name "u"%string nil, ty) in 
+  let ax_hd := Tvar ax_vs in
+  let mk_cs (cs: funsym) :=
+    let pjl := amap_get_def funsym_eq_dec s.(cp_map) cs nil in 
+    (*NOTE: change app to also give return type*)
+    let app pj := tfun_infer_ret' pj [ty] [ax_hd] in
+    (* let app pj = t_app_infer pj [ax_hd] in *)
+    let cs := amap_get_def funsym_eq_dec s.(cc_map) cs id_fs in
+    (* let cs = Mls.find cs state.cc_map in *)
+    let pjl' := map app pjl in
+    Feq ty ax_hd (tfun_infer' cs (map snd pjl') (map fst pjl'))
+    (* t_equ ax_hd (fs_app cs (List.map app pjl) ty) in *)
+  in
+  let ax_f := map_join_left' Ftrue mk_cs (Fbinop Tor) csl in
+  let ax_f := Fquant Tforall ax_vs ax_f (*t_forall_close [ax_vs] [] ax_f in*) in
+  (s, add_axiom tsk ax_id ax_f).
+
+(*TODO: since we don't have builtin projections, we can't do the
+  [kept_no_case] part for projections. We don't implement it at all.
+  TODO: need to figure out: do we prove only a subset of allowed behaviors sound?
+  or can we prove the rest at the higher level - assuming something about projections, etc
+  Or should we add projections? Need to figure this out!*)
+
+Definition add_axioms (st: state * task) (d: typesym * list funsym) : state * task :=
+  let s := fst st in
+  let tsk := snd st in
+  let ts := fst d in
+  let csl := snd d in
+  (*NOTE: might be very easy to infer all types - might not need infer, might just all be typesym args*)
+  let ty := vty_cons ts (map vty_var (ts_args ts)) in
+  (*TODO: SKIP KEPT_NO_CASE*)
+  if negb (null (ts_args ts)) || negb (amap_mem typesym_eq_dec ts s.(kept_m)) then
+    (* declare constructors as abstract functions *)
+    let cs_add (st: state * task) (cs: funsym) :=
+      let s := fst st in let tsk := snd st in
+      let id := s_name cs in (*TODO: no clone, is this ok*)
+      let ls := funsym_noconstr_noty id (s_args cs) (f_ret cs) in (*TODO: this is ls*)
+      (* let ls = create_lsymbol id cs.ls_args cs.ls_value in *)
+      (s <| cc_map := amap_set funsym_eq_dec s.(cc_map) cs ls |>, add_param_decl tsk ls)
+      (* { state with cc_map = Mls.add cs ls state.cc_map },add_param_decl task ls *)
+    in
+    let st := fold_left cs_add csl st in
+    (* add selector, projections, and inversion axiom *)
+    let st := add_selector st ts ty csl in
+    let st := add_indexer st ts ty csl in
+    let st := add_projections st ts ty csl in
+    add_inversion st ts ty csl
+  else st.
+
+(*Skip [add_tags] and finding infinite types - only deals with metas*)
 
 
 
