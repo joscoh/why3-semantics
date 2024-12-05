@@ -11,84 +11,6 @@ Ltac forward_gen H tac :=
 Tactic Notation "forward" constr(H) := forward_gen H ltac:(idtac).
 Tactic Notation "forward" constr(H) "by" tactic(tac) := forward_gen H tac.
 
-(*TODO: move*)
-Lemma change_gamma_adts {gamma1 gamma2} 
-  (Hm: mut_of_context gamma1 = mut_of_context gamma2)
-  (pd: pi_dom)
-  (pdf: pi_dom_full gamma1 pd):
-  (forall m srts a (m_in: mut_in_ctx m gamma2)
-    (a_in: adt_in_mut a m),
-    domain (dom_aux pd) (typesym_to_sort (adt_name a) srts) = adt_rep m srts (dom_aux pd) a a_in).
-Proof.
-  intros m srts a m_in a_in.
-  apply pdf. unfold mut_in_ctx.
-  exact (eq_trans (f_equal (fun p => in_bool mut_adt_dec m p) Hm) m_in).
-Defined.
-
-(*TODO: should we put [dom_nonempty] in pd so that we don't need lemma?*)
-Definition change_gamma_dom_full {gamma1 gamma2} 
-  (Hm: mut_of_context gamma1 = mut_of_context gamma2)
-  (pd: pi_dom)
-  (pdf: pi_dom_full gamma1 pd):
-  pi_dom_full gamma2 pd :=
-  Build_pi_dom_full gamma2 pd (change_gamma_adts Hm pd pdf).
-
-
-
-(*TODO: move*)
-Definition eq_sig (g1 g2: context) : Prop :=
-  (forall x, In x (sig_t g1) <-> In x (sig_t g2)) /\
-  (forall x, In x (sig_f g1) <-> In x (sig_f g2)) /\
-  (forall x, In x (sig_p g1) <-> In x (sig_p g2)).
-
-Lemma eq_sig_refl: forall l, eq_sig l l.
-Proof.
-  intros. unfold eq_sig; split_all; intros; reflexivity.
-Qed.
-
-Lemma eq_sig_cons: forall x l1 l2,
-  eq_sig l1 l2 ->
-  eq_sig (x :: l1) (x :: l2).
-Proof.
-  intros. unfold eq_sig in *. split_all; intros;
-  unfold sig_t, sig_f, sig_p in *; simpl;
-  rewrite !in_app_iff; apply or_iff_compat_l; auto.
-Qed.
-
-Lemma eq_sig_sublist g1 g2:
-  eq_sig g1 g2 <-> sublist_sig g1 g2 /\ sublist_sig g2 g1.
-Proof.
-  unfold eq_sig, sublist_sig. split; intros; 
-  destruct_all; split_all; unfold sublist in *; intros; auto;
-  try (apply H; auto); try (apply H0; auto); try (apply H1; auto);
-  split; intros; auto.
-Qed.
-
-Lemma eq_sig_is_sublist g1 g2:
-  eq_sig g1 g2 ->
-  sublist_sig g1 g2.
-Proof.
-  rewrite eq_sig_sublist; intros [H1 H2]; auto.
-Qed.
-
-Lemma eq_sig_sym g1 g2:
-  eq_sig g1 g2 ->
-  eq_sig g2 g1.
-Proof.
-  unfold eq_sig. intros; destruct_all; split_all; intros; auto;
-  symmetry; auto.
-Qed.
-
-(*TODO: move*)
-Lemma sublist_app2 {A: Type} (l1 l2 l3 l4: list A):
-  sublist l1 l3 ->
-  sublist l2 l4 ->
-  sublist (l1 ++ l2) (l3 ++ l4).
-Proof.
-  intros Hsub1 Hsub2 x. rewrite !in_app_iff. intros [Hinx1 | Hinx1]; [left | right]; auto.
-Qed.
-
-
 (*A why3 task consists of
    1. A context gamma (of abstract and concrete type, function, and
     predicate defs)
@@ -773,27 +695,12 @@ Proof.
   destruct d; auto.
 Qed.
 
-(*TODO: move*)
-Lemma mut_valid_sublist
-(g1 g2 : context) (m: mut_adt):
-mut_of_context g1 = mut_of_context g2 ->
-sig_t g1 = sig_t g2 -> 
-mut_valid g1 m -> mut_valid g2 m.
-Proof.
-  intros Hmut Hsig.
-  unfold mut_valid.
-  intros; destruct_all; split_all; auto.
-  revert H0. apply Forall_impl. intros a.
-  unfold adt_inhab. apply typesym_inhab_sublist; auto.
-Qed.
-
 Lemma def_map_sig_t gamma:
   sig_t (map def_map gamma) = sig_t gamma.
 Proof.
   unfold sig_t. induction gamma as [| d gamma' IH]; simpl; auto.
   rewrite typesyms_of_def_map, IH. reflexivity.
 Qed.
-
 
 (*And prove that the context is well-formed*)
 Lemma valid_context_def_map gamma:

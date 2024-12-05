@@ -427,71 +427,6 @@ Definition elim_let_rel: tm_fmla -> tm_fmla -> Prop :=
 Definition elim_let_rel_wf : well_founded elim_let_rel :=
   lexnat_wf _ _.
 
-(*Dependent mapping over a list*)
-
-
-(*Inspired by Equations/examples/RoseTree.v*)
-
-Definition map_In {A B: Type} (l: list A) 
-  (f: forall (x: A), In x l -> B) : list B :=
-  dep_map f l (all_in_refl l).
-
-Lemma dep_map_length {A B: Type} {P: A -> Prop} 
-  (f: forall x: A, P x -> B) (l: list A) (Hall: Forall P l):
-  length (dep_map f l Hall) = length l.
-Proof.
-  revert Hall.
-  induction l; simpl; intros; auto.
-Qed.
-
-Lemma dep_map_nth {A B: Type} {P: A -> Prop}
-(f: forall x: A, P x -> B) (l: list A) (Hall: Forall P l)
-(i: nat) (d1: A) (d2: B) (Hnth: P (nth i l d1)):
-i < length l ->
-nth i (dep_map f l Hall) d2 =
-f (nth i l d1) Hnth.
-Proof.
-  revert i Hall Hnth. induction l; simpl; intros; auto.
-  - lia.
-  - destruct i. f_equal. apply proof_irrel.
-    apply IHl. lia.
-Qed.
-
-Lemma map_In_length {A B: Type} (l: list A) 
-(f: forall (x: A), In x l -> B):
-length (map_In l f) = length l.
-Proof.
-  unfold map_In; rewrite dep_map_length; auto.
-Qed.
-
-Lemma map_In_spec {A B : Type} (f : A -> B) (l : list A) :
-  map_In l (fun (x : A) (_ : In x l) => f x) = map f l.
-Proof.
-  (*This is very dumb, but we need an A*)
-  destruct l; auto.
-  remember (a :: l) as l'.
-  unfold map_In.
-  apply list_eq_ext'; rewrite dep_map_length; [rewrite map_length |]; auto.
-  intros n d Hn.
-  erewrite dep_map_nth with(d1:=a); auto; [|apply nth_In; auto].
-  rewrite map_nth_inbound with(d2:=a); auto.
-Qed.
-
-Lemma in_map_In_iff {A B: Type} (l: list A)
-  (f: forall (x: A), In x l -> B) (y: B):
-  In y (map_In l f) <-> exists x Hin, f x Hin = y.
-Proof.
-  unfold map_In. split; intros.
-  - apply dep_map_in in H.
-    destruct H as [x [H [Hinx Hy]]]; subst; exists x; exists H; auto.
-  - destruct H as [x [Hin Hy]]; subst.
-    assert (Hinx:=Hin).
-    apply in_dep_map with(f:=f)(Hall:=all_in_refl l) in Hinx.
-    destruct Hinx as [Hin' Hinx].
-    assert (Hin = Hin') by apply proof_irrel.
-    subst; auto.
-Qed.
-
 (*Proof obligations about our measures*)
 Section ProofObligations.
 
@@ -751,6 +686,10 @@ rewrite Forall_forall. intros.
 rewrite in_map_iff in H.
 destruct H as [t [Hx Hint]]; subst.
 rewrite in_map_In_iff in Hint.
+2: {
+  (*TODO: could prove this but use proof irrel*)
+  intros x H1 H2; assert (H1 = H2) by (apply proof_irrel); subst; reflexivity.
+}
 destruct Hint as [x [Hinx Ht]]; subst.
 destruct_sig.
 Defined.
@@ -781,7 +720,8 @@ apply sum_0.
 rewrite Forall_forall; intros.
 rewrite in_map_iff in H.
 destruct H as [p [Hp Hinx]]; subst.
-rewrite in_map_In_iff in Hinx.
+rewrite in_map_In_iff in Hinx;
+[|intros y H1 H2; assert (H1 = H2) by (apply proof_irrel); subst; reflexivity].
 destruct Hinx as [p1 [Hin Hp]]; subst; simpl.
 destruct_sig.
 Defined.
@@ -798,7 +738,8 @@ apply sum_0.
 rewrite Forall_forall. intros.
 rewrite in_map_iff in H.
 destruct H as [t [Hx Hint]]; subst.
-rewrite in_map_In_iff in Hint.
+rewrite in_map_In_iff in Hint;
+[|intros y H1 H2; assert (H1 = H2) by (apply proof_irrel); subst; reflexivity].
 destruct Hint as [x [Hinx Ht]]; subst.
 destruct_sig.
 Defined.
@@ -829,7 +770,8 @@ apply sum_0.
 rewrite Forall_forall; intros.
 rewrite in_map_iff in H.
 destruct H as [p [Hp Hinx]]; subst.
-rewrite in_map_In_iff in Hinx.
+rewrite in_map_In_iff in Hinx;
+[|intros y H1 H2; assert (H1 = H2) by (apply proof_irrel); subst; reflexivity].
 destruct Hinx as [p1 [Hin Hp]]; subst; simpl.
 destruct_sig.
 Defined.

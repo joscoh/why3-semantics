@@ -882,13 +882,6 @@ End BuildInterp.
 
 Section FullInterp.
 
-(*Some lemmas*)
-Lemma all_in_refl {A: Type} (l: list A):
-  Forall (fun x => In x l) l.
-Proof.
-  rewrite Forall_forall; intros; auto.
-Qed.
-
 Lemma indprop_fmla_valid { gamma}
   (gamma_valid: valid_context gamma) 
   {l: list (predsym * list formula)}

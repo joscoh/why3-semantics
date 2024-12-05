@@ -74,15 +74,6 @@ Definition add_ld (which : lsymbol -> bool) md x ds :
   else
     errst_ret (abst, (ls,ld) :: defn, axl, metas).
 
-(*TODO: move*)
-Definition rev_map {A B: Type} (f: A -> B) (l: list A) : list B :=
-  let fix rmap_f accu l1 := match l1 with
-    | [] => accu
-    | a::l => rmap_f (f a :: accu) l
-  end
-  in
-  rmap_f [] l.
-
     (*add_ld should create abstract syms, definition, axioms, (metas)*)
 Definition elim_decl which meta_rewrite_def (l : list logic_decl) :
   errState (CoqBigInt.t * hashcons_full) (list tdecl_c) :=

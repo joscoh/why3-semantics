@@ -2,6 +2,7 @@ Require Export Typing.
 Require Import Coq.Lists.List.
 Require Export Hlist.
 Require Export Coq.Reals.Reals.
+Require Export Domain.
 
 (*Need eq_rect_eq for injectivity of constructors and test cases*)
 Require Import Coq.Program.Equality.
@@ -920,12 +921,7 @@ Definition sigma : vty -> Types.sort :=
 
 Variable domain_aux: Types.sort -> Set.
 
-Definition domain (s: Types.sort) : Set :=
-  match sort_to_ty s with
-  | vty_int => Z
-  | vty_real => R
-  | _ => domain_aux s
-  end.
+Notation domain := (domain domain_aux).
 
 (*Variable map - evaluate the variable after substituting with the
   sort given by the map sigma (args -> sorts)*)
@@ -957,8 +953,6 @@ Section Constr.
 
 Variable c: funsym.
 Variable c_in : constr_in_adt c t.
-
-Definition arg_list (domain: Types.sort -> Set) := hlist domain.
 
 Definition sigma_args : list Types.sort :=
   map sigma (s_args c).
@@ -1006,76 +1000,6 @@ Definition domain_sigma_int_Z (x: domain (sigma vty_int)) : Z.
 rewrite sigma_int in x. exact x.
 Defined.
 
-(*Casting domains - will be VERY useful*)
-Section DomCast.
-
-Definition dom_cast {v1 v2: Types.sort} (Heq: v1 = v2) (x: domain v1) : 
-  domain v2 :=
-  scast (f_equal domain Heq) x.
-
-Lemma dom_cast_twice: forall {v1 v2: Types.sort} (Heq: v1 = v2) x,
-  dom_cast Heq (dom_cast (esym Heq) x) = x.
-Proof.
-  intros. destruct Heq; reflexivity.
-Qed.
-
-Lemma dom_cast_inj: forall {v1 v2: Types.sort} (Heq: v1 = v2) (x1 x2: domain v1),
-  dom_cast Heq x1 = dom_cast Heq x2 ->
-  x1 = x2.
-Proof.
-  intros. destruct Heq. apply H.
-Qed.
-
-Lemma dom_cast_compose {s1 s2 s3: Types.sort}
-  (Heq1: s2 = s3) (Heq2: s1 = s2) x:
-  dom_cast Heq1 (dom_cast Heq2 x) =
-  dom_cast (eq_trans Heq2 Heq1) x.
-Proof.
-  subst. reflexivity.
-Qed.
-
-Lemma dom_cast_eq {s1 s2: Types.sort} (H1 H2: s1 = s2) x:
-  dom_cast H1 x = dom_cast H2 x.
-Proof.
-  subst. unfold dom_cast. simpl.
-  assert (H2 = erefl). apply UIP_dec. apply sort_eq_dec.
-  rewrite H.
-  reflexivity.
-Qed.
-
-Lemma dom_cast_eq'(s1 s2: Types.sort)
-  (H1 H2: s1 = s2) (x y: domain s1):
-  x = y ->
-  dom_cast H1 x = dom_cast H2 y.
-Proof.
-  intros; subst. apply dom_cast_eq.
-Qed.
-
-Lemma dom_cast_refl {s1} (H: s1 = s1) x:
-  dom_cast H x = x.
-Proof.
-  assert (H = erefl). apply UIP_dec. apply sort_eq_dec.
-  subst; reflexivity.
-Qed.
-
-Lemma rewrite_dom_cast: forall (v1 v2: Types.sort) (Heq: v1 = v2)
-  x,
-  scast (f_equal domain Heq) x = dom_cast Heq x.
-Proof.
-  intros. reflexivity.
-Qed.
-
-Lemma move_dom_cast (v1 v2 v3: Types.sort)
-  (H1: v1 = v3) (H2: v2 = v3) (x1: domain v1) (x2: domain v2):
-  x1 = dom_cast (eq_trans H2 (Logic.eq_sym H1)) x2 ->
-  dom_cast H1 x1 = dom_cast H2 x2.
-Proof.
-  intros.
-  subst. reflexivity.
-Qed.
-
-End DomCast.
-
 Definition args_to_constr_base_aux (l: list vty) 
   (a: arg_list domain (sigma_aux l)) :
   build_vty_base var_map typesym_map adts l.
@@ -1092,7 +1016,7 @@ Proof.
     + generalize dependent (ts_in_mut_list t0 adts); intros b.
       destruct b.
       * exact (IHl Hal).
-      * exact (build_sprod_cons (dom_cast (sigma_cons t0 l0) Hd) (IHl Hal)).
+      * exact (build_sprod_cons (dom_cast domain_aux (sigma_cons t0 l0) Hd) (IHl Hal)).
 Defined.
 
 Definition args_to_constr_base (a: arg_list domain sigma_args):
@@ -1120,124 +1044,6 @@ Proof.
   rewrite get_idx_fin. reflexivity.
   apply (adts_nodups gamma_valid m_in). assumption.
 Qed.
-
-(*Now we need some intermediate results about casting (some are not
-  used until later)*)
-Section Cast.
-
-(*Cast an [arg_list] - here we use a type with decidable equality*)
-Definition cast_arg_list {domain: Types.sort -> Set} {l1 l2}
-  (Heq: l1 = l2) (x: arg_list domain l1) : arg_list domain l2 :=
-  scast (f_equal (fun x => arg_list domain x) Heq) x.
-
-Lemma cast_arg_list_eq {d: Types.sort -> Set} {l1 l2: list Types.sort} (Heq1 Heq2: l1 = l2) 
-  (a: arg_list d l1):
-  cast_arg_list Heq1 a = cast_arg_list Heq2 a.
-Proof.
-  subst. assert (Heq2 = erefl). apply UIP_dec. apply list_eq_dec.
-  apply sort_eq_dec. subst. reflexivity.
-Qed.
-
-Lemma cast_arg_list_inj: forall {domain: Types.sort -> Set} 
-  {l1 l2: list Types.sort} (Heq: l1 = l2) (a1 a2: arg_list domain l1),
-  cast_arg_list Heq a1 = cast_arg_list Heq a2 ->
-  a1 = a2.
-Proof.
-  intros. destruct Heq. apply H.
-Qed.
-
-Definition cast_nth_eq {A: Set} {l1 l2: list A} (Heq: l1 = l2)
-  (i: nat) (d: A) : List.nth i l1 d = List.nth i l2 d :=
-  f_equal (fun (x: list A) => List.nth i x d) Heq.
-
-Lemma hnth_cast_arg_list {domain: Types.sort -> Set} {l1 l2}
-(Heq: l1 = l2) (x: arg_list domain l1) (i: nat) (d: Types.sort)
-  (d1: domain d):
-  hnth i (cast_arg_list Heq x) d d1 =
-  scast (f_equal domain (cast_nth_eq Heq i d)) (hnth i x d d1).
-Proof.
-  destruct Heq. reflexivity.
-Qed.
-
-Lemma cons_inj_hd {A: Type} {x y: A} {l1 l2: list A}
-  (C: x :: l1 = y :: l2):
-  x = y.
-Proof.
-  injection C; auto.
-Defined.
-
-Lemma cons_inj_tl {A: Type} {x y : A} {l1 l2: list A}:
-  x :: l1 = y :: l2 ->
-  l1 = l2.
-Proof.
-  intros C. injection C. auto.
-Defined.
-
-Lemma cast_arg_list_cons {h1 h2: Types.sort} {d: Types.sort -> Set} {s1 s2: list Types.sort} 
-  {x} {a}
-  (Heq: h1 :: s1 = h2 :: s2):
-  cast_arg_list Heq (HL_cons _ h1 s1 x a) =
-  HL_cons d h2 s2 (scast (f_equal d (cons_inj_hd Heq)) x) 
-    (cast_arg_list (cons_inj_tl Heq) a).
-Proof.
-  inversion Heq. subst.
-  assert (Heq = erefl).
-  apply UIP_dec. apply list_eq_dec. apply sort_eq_dec.
-  subst. reflexivity. 
-Qed.
-
-Lemma hlist_tl_cast {d} {s1 s2: Types.sort} {t1 t2: list Types.sort}  
-  (Heq: (s1:: t1) = (s2:: t2)) a:
-  hlist_tl (cast_arg_list Heq a) = 
-    @cast_arg_list d _ _ (cons_inj_tl Heq) (hlist_tl a).
-Proof.
-  inversion Heq. subst.
-  assert (Heq = erefl). apply UIP_dec. apply list_eq_dec.
-    apply sort_eq_dec. subst. reflexivity.
-Qed.
-
-Lemma hlist_hd_cast {d: Types.sort -> Set} 
-  {s1 s2: Types.sort} {t1 t2: list Types.sort}
-  {a: arg_list d (s1 :: t1)}
-  (Heq1: s1 :: t1 = s2 :: t2)
-  (Heq2: s1 = s2):
-  hlist_hd (cast_arg_list Heq1 a) =
-  scast (f_equal d Heq2) (hlist_hd a).
-Proof.
-  subst. inversion Heq1; subst.
-  assert (Heq1 = erefl).
-    apply UIP_dec. apply list_eq_dec. apply sort_eq_dec.
-  subst. reflexivity.
-Qed. 
-
-Lemma cast_arg_list_compose {d: Types.sort -> Set} 
-  {l1 l2 l3: list Types.sort} (Heq: l1 = l2)
-  (Heq2: l2 = l3)
-  (x: arg_list d l1):
-  cast_arg_list Heq2 (cast_arg_list Heq x) =
-  cast_arg_list (eq_trans Heq Heq2) x.
-Proof.
-  unfold cast_arg_list. rewrite scast_scast.
-  rewrite eq_trans_map_distr. reflexivity.
-Qed.
-
-Lemma cast_arg_list_same {d: Types.sort -> Set} {l: list Types.sort}
-  (Heq: l = l) (a: arg_list d l):
-  cast_arg_list Heq a = a.
-Proof.
-  assert (Heq = Logic.eq_refl). apply UIP_dec. apply list_eq_dec.
-  apply sort_eq_dec.
-  subst. reflexivity.
-Qed.
-
-Lemma cast_arg_list_twice {domain: Types.sort -> Set} {l1 l2}
-  (Heq: l1 = l2) (x: arg_list domain l2) :
-  cast_arg_list Heq (cast_arg_list (esym Heq) x) = x.
-Proof.
-  rewrite cast_arg_list_compose. apply cast_arg_list_same.
-Qed.
-
-End Cast.
 
 (*To build the recursive instance function, we do the following: 
   take the input arg list and filter out the domain elements 
@@ -1568,8 +1374,8 @@ Proof.
   + exfalso. exact (not_false Ha).
   + simpl in x.
     destruct ([seq vty_to_set var_map typesym_map i | i <- get_nonind_vtys adts l]); simpl.
-    exact (dom_cast (esym (sigma_cons _ _)) x, tt).
-    exact (dom_cast (esym (sigma_cons _ _)) x.1, x.2).
+    exact (dom_cast domain_aux (esym (sigma_cons _ _)) x, tt).
+    exact (dom_cast domain_aux (esym (sigma_cons _ _)) x.1, x.2).
 Defined. 
 
 (*While the W type uses a function from (finite n) to tuples
@@ -1863,8 +1669,8 @@ Proof.
           }
         unshelve epose (y:=_:domain (sigma (vty_cons t0 l0))). {
           clear -b. destruct ([seq vty_to_set var_map typesym_map i | i <- get_nonind_vtys adts l]).
-          exact (dom_cast (esym (sigma_cons _ _)) b).
-          exact (dom_cast (esym (sigma_cons _ _)) b.1).
+          exact (dom_cast domain_aux (esym (sigma_cons _ _)) b).
+          exact (dom_cast domain_aux (esym (sigma_cons _ _)) b.1).
         }
         specialize (IHl (uniform_list_cons Hl') b' i Hi').
         destruct IHl as [atl [Hat1 Hat2]].
@@ -2430,10 +2236,10 @@ Ltac prove_constr :=
   let He := fresh "Heq" in
   match goal with | |- mkW ?i ?a ?b ?x ?a1 ?f = mkW ?i ?a ?b ?x ?a2 ?f2 =>
     assert (He: a1 = a2);
-  [unfold eq_rect; rewrite (all_funsym_refl (Common.elimT _ _)); reflexivity|
+  [unfold eq_rect; rewrite (all_funsym_refl (CommonBool.elimT _ _)); reflexivity|
   apply (mkW_eq a b x a1 a2 He); intros; revert_eqs;
   unfold cast, eq_rec_r, eq_rec, eq_rect, eq_idx', eq_ind_r, eq_ind (*eq_rect, eq_ind_r, eq_ind, eq_rec_r), eq_rec*);
-  repeat (progress (try rewrite (all_funsym_refl (Common.elimT _ _));
+  repeat (progress (try rewrite (all_funsym_refl (CommonBool.elimT _ _));
     try rewrite (all_funsym_refl (eq_sym _)))); intros;
     repeat match goal with
     | H: ?x = ?x |- _ => let He := fresh in 

@@ -101,6 +101,9 @@ Definition typesym_eq_dec (t1 t2: typesym) : {t1 = t2} + {t1 <> t2} :=
 
 Definition ts_unit : typesym := mk_ts "unit" nil.
 
+(*A default typesym*)
+Definition ts_d : typesym := ts_unit.
+
 
 (*Value types*)
 Unset Elimination Schemes.

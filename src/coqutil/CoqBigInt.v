@@ -2,7 +2,7 @@ Require Export Coq.ZArith.BinInt.
 Require Export CoqInt.
 Require Import Coq.Strings.String.
 Require Import CoqUtil.
-From Proofs Require Import core.Common. (*For [is_true]*)
+From Proofs Require Import common.Common. (*For [is_true]*)
 Require Import Integer.
 From Proofs Require Import GenElts. (*for [nat_to_string] - is this implemented anywhere else?*)
 

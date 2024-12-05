@@ -599,6 +599,48 @@ dom_cast (dom_aux pd)
     (eq_trans lengths_eq (Logic.eq_sym (map_length _ _))) 
     nodup_params pd vt vv x).
 
+(*Reverse [val_with_args] is equivalent*)
+Lemma val_with_args_rev {vt pd} v vars {srts} (al: arg_list (domain (dom_aux pd)) srts):
+  NoDup vars ->
+  map (v_subst vt) (map snd vars) = srts -> 
+  forall x, val_with_args pd vt v (rev vars) (hlist_rev (domain (dom_aux pd)) _ al) x =
+    val_with_args pd vt v vars al x.
+Proof.
+  rewrite map_map. intros Hnodup Hsrts x; subst.
+  set (srts:=(map (fun x0 : string * vty => v_subst vt (snd x0)) vars)). 
+  destruct (in_dec vsymbol_eq_dec x vars) as [Hin | Hnotin].
+  - destruct (In_nth _ _ vs_d Hin) as [i [Hi Hx]].
+    assert (Hnth: nth i srts s_int = v_subst vt (snd x)).
+    {
+      unfold srts. rewrite map_nth_inbound with (d2:=vs_d); subst; auto.
+    }
+    rewrite (val_with_args_in') with (i:=i)(Heq:=Hnth); auto.
+    2: unfold srts; solve_len.
+    assert (Hx': nth ((length vars - S i )) (rev vars) vs_d  = x). {
+      subst. symmetry. rewrite rev_nth1; auto.
+    }
+    assert (Hnth': nth (length vars - S i) (rev srts) s_int = v_subst vt (snd x)).
+    {
+      rewrite <- Hx. rewrite (rev_nth1 vars); auto.
+      unfold srts. rewrite <- map_rev.
+      rewrite map_nth_inbound with (d2:=vs_d); auto. simpl_len.
+      destruct vars; simpl in *; lia.
+    }
+    rewrite (val_with_args_in') with (i:=(length vars - S i))(Heq:=Hnth'); auto; simpl_len; auto;
+    [| apply NoDup_rev; auto| unfold srts; solve_len |destruct vars; simpl in *; lia].
+    destruct (hlist_rev_hnth _ (length vars - S i) srts al s_int (dom_int pd)
+      ltac:(unfold srts; simpl_len; destruct vars; simpl in *; lia)) as [Heq Hrev].
+    rewrite Hrev. rewrite dom_cast_compose.
+    generalize dependent (eq_trans Heq Hnth').
+    replace (Datatypes.length srts - S (Datatypes.length vars - S i)) with i.
+    2: { unfold srts; simpl_len; destruct vars; simpl in *; try lia.
+      (*Why can't lia solve this directly?*)
+    assert (i <= length vars) by (apply PeanoNat.lt_n_Sm_le in Hi; assumption). lia.
+    }
+    intros e. apply dom_cast_eq.
+  - rewrite !val_with_args_notin; auto. rewrite <- List.in_rev. auto.
+Qed.
+
 End VTUtil.
 
 End Interp.
@@ -606,3 +648,25 @@ End Interp.
 Arguments adts {_} {_}.
 Arguments funs {_} _ _ {_}.
 Arguments preds {_} _ _ {_}.
+
+(*Change interp if gamma changes (but muts are the same)*)
+Lemma change_gamma_adts {gamma1 gamma2} 
+  (Hm: mut_of_context gamma1 = mut_of_context gamma2)
+  (pd: pi_dom)
+  (pdf: pi_dom_full gamma1 pd):
+  (forall m srts a (m_in: mut_in_ctx m gamma2)
+    (a_in: adt_in_mut a m),
+    domain (dom_aux pd) (typesym_to_sort (adt_name a) srts) = adt_rep m srts (dom_aux pd) a a_in).
+Proof.
+  intros m srts a m_in a_in.
+  apply pdf. unfold mut_in_ctx.
+  exact (eq_trans (f_equal (fun p => in_bool mut_adt_dec m p) Hm) m_in).
+Defined.
+
+(*TODO: should we put [dom_nonempty] in pd so that we don't need lemma?*)
+Definition change_gamma_dom_full {gamma1 gamma2} 
+  (Hm: mut_of_context gamma1 = mut_of_context gamma2)
+  (pd: pi_dom)
+  (pdf: pi_dom_full gamma1 pd):
+  pi_dom_full gamma2 pd :=
+  Build_pi_dom_full gamma2 pd (change_gamma_adts Hm pd pdf).

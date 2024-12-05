@@ -1,0 +1,1 @@
+Require Import eliminate_algebraic.

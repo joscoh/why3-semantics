@@ -111,7 +111,7 @@ Fixpoint t_shape (t1 t2: term_c) {struct t1} : bool :=
   | Tlet t1 (_, _, t2), Tlet t3 (_, _, t4) => t_shape t1 t3 && t_shape t2 t4
   | Tif t1 t2 t3, Tif t4 t5 t6 => t_shape t1 t4 && t_shape t2 t5 && t_shape t3 t6
   | Tcase t1 b1, Tcase t2 b2 => t_shape t1 t2 && (length b1 =? length b2) &&
-   forallb (fun x => x) (Common.map2 (fun x y => t_shape (snd x) (snd y)) b1 b2)
+   forallb (fun x => x) (CommonList.map2 (fun x y => t_shape (snd x) (snd y)) b1 b2)
   | Teps (_, _, t1), Teps (_, _, t2) => t_shape t1 t2
   | Tquant q1 (_, _, tr1, t1), Tquant q2 (_, _, tr2, t2) => quant_eqb q1 q2 && 
     t_shape t1 t2 && (length tr1 =? length tr2) &&

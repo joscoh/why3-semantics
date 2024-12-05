@@ -582,18 +582,6 @@ with term_node_eqb (t1 t2: term_node) : bool :=
   | _, _ => false
   end.
 
-(*TODO: move (from Substitution)*)
-Lemma Forall_impl_strong {A: Type} {P Q: A -> Prop} {l: list A}:
-  (forall a, In a l -> P a -> Q a) ->
-  Forall P l ->
-  Forall Q l.
-Proof.
-  induction l; simpl; auto; intros.
-  inversion H0; subst.
-  constructor; auto.
-Qed.
-  
-
 Lemma term_eqb_eq_aux: (forall t1 t2, t1 = t2 <-> term_eqb t1 t2) /\
   (forall t1 t2, t1 = t2 <-> term_node_eqb t1 t2).
 Proof.

@@ -132,14 +132,6 @@ Parameter next_ge_enum: key -> enumeration a -> enumeration a.
 
 End Types.
 
-(*Lemmas - TODO: add as needed*)
-(*Parameter equal_spec: forall {a: Type} (eqb: EqDecision a) 
-  (tag_inj: Inj eq eq T.tag) (m1 m2: t a),
-  equal eqb m1 m2 = true <-> (forall k, find_opt k m1 = find_opt k m2).*)
-
-(*Parameter set_equal_spec: forall {a b: Type} (m1: t a) (m2: t b),
-  set_equal m1 m2 = true <-> (forall k, contains m1 k = contains m2 k).*)
-
 (*Here, we do not prove that equal holds iff all elements are the
   same (in fact we need some injectivity properties). For our
   purposes, equal is just a boolean decision procedure for
@@ -284,7 +276,6 @@ Parameter equal : t -> t -> bool.
 (*But we do need that equality implies equal tags (NOTE that
 the equality is NOT always structural; e.g. alpha equivalence)
 But it MUST be compatible with tags*)
-(*It must be transitive*)
 Parameter eq_refl: forall t, equal t t.
 Parameter eq_sym: forall t1 t2, equal t1 t2 = equal t2 t1.
 Parameter eq_trans: forall t1 t2 t3, equal t1 t2 -> equal t2 t3 -> equal t1 t3.
@@ -298,131 +289,10 @@ Definition key_eq := T.equal.
 
 Definition tag x := CoqBigInt.to_Z (T.tag x).
 
-(*Local Instance key_eq : EqDecision key := T.eq.
-Local Instance key_count : Countable key :=
-  Build_Countable T.t key_eq T.tag T.untag T.tag_untag.*)
-
-(*TODO: move*)
-(*NOTE: arbitrary equality predicate*)
-Section ListEqGen.
-Context {A: Type} (eq: A -> A -> bool).
-
-Definition inb (x: A) (l: list A) : bool :=
-  existsb (eq x) l.
-
-Fixpoint uniq (l: list A) : bool :=
-  match l with
-  | x :: xs => negb (inb x xs) && uniq xs
-  | nil => true
-  end.
-
-Definition unionb (l1 l2: list A) : list A :=
-  fold_right (fun x acc => if inb x acc then acc else x :: acc) l2 l1.
-
-Lemma uniq_unionb (l1 l2: list A):
-  uniq l2 ->
-  uniq (unionb l1 l2).
-Proof.
-  induction l1 as [| h t IH]; simpl; auto.
-  intros Huniq.
-  destruct (inb h (unionb t l2)) eqn : Hinb; auto.
-  simpl. rewrite Hinb. auto.
-Qed.
-
-Variable (eq_refl: forall x, eq x x).
-Variable (eq_sym: forall x y, eq x y = eq y x).
-Variable (eq_trans: forall x y z, eq x y -> eq y z -> eq x z).
-
-Lemma inb_congr (l: list A) (x1 x2: A):
-  eq x1 x2 ->
-  inb x1 l = inb x2 l.
-Proof.
-  intros Heq. induction l as [| h1 t1 IH]; simpl; auto.
-  rewrite IH. f_equal.
-  destruct (eq x1 h1) eqn : Heq1; destruct (eq x2 h1) eqn : Heq2; auto.
-  - rewrite <- Heq2. symmetry. apply (eq_trans x2 x1 h1); auto.
-    rewrite eq_sym; auto.
-  - rewrite <- Heq1. apply (eq_trans x1 x2 h1); auto.
-Qed.
-
-Lemma inb_unionb (l1 l2: list A) (x: A):
-  inb x (unionb l1 l2) = inb x l1 || inb x l2.
-Proof.
-  revert x.
-  induction l1 as [| h1 t1 IH]; simpl; auto. intros x.
-  destruct (inb h1 (unionb t1 l2)) eqn : Hin; simpl; rewrite IH; auto.
-  - rewrite IH in Hin. 
-    destruct (eq x h1) eqn : Heq; auto.
-    simpl. rewrite !(inb_congr _ _ _ Heq). auto.
-  - rewrite orb_assoc. reflexivity.
-Qed. 
-
-Lemma inb_filter (p: A -> bool) (Hp: forall x y, eq x y -> p x -> p y) (x: A) (l: list A):
-  inb x (List.filter p l) = inb x l && p x.
-Proof.
-  induction l as [| h t IH]; simpl; auto.
-  destruct (p h) eqn : Hph.
-  - simpl. rewrite IH, andb_orb_distrib_l.
-    destruct (eq x h) eqn : Heq; simpl; auto.
-    rewrite eq_sym in Heq.
-    apply Hp in Heq; auto. rewrite Heq. auto.
-  - rewrite IH. destruct (eq x h) eqn : Heq; simpl; auto.
-    destruct (p x) eqn : Hpx; auto; [| rewrite andb_false_r; auto].
-    assert (Hph2: p h = true) by (apply (Hp x); auto).
-    rewrite Hph2 in Hph; discriminate.
-Qed.
-
-(*Unconditionally, anything in filter is in the original list*)
-Lemma inb_filter_in (p: A -> bool) (x: A) (l: list A):
-  inb x (List.filter p l) -> inb x l.
-Proof.
-  induction l as [| h t IH]; simpl; auto.
-  destruct (p h); simpl; auto.
-  - apply orb_impl_l; auto.
-  - intros Hin. apply IH in Hin; rewrite Hin, orb_true_r. auto.
-Qed. 
-
-Lemma uniq_filter (p: A -> bool) l:
-  uniq l ->
-  uniq (List.filter p l).
-Proof.
-  induction l as [| h t IH]; simpl; auto.
-  intros Hinu. apply andb_true_iff in Hinu. destruct Hinu as [Hnotin Hu].
-  destruct (p h) eqn : Hph; simpl; auto.
-  destruct (inb h (List.filter p t)) eqn : Hinf; simpl; auto.
-  apply inb_filter_in in Hinf. rewrite Hinf in Hnotin. discriminate.
-Qed.
-
-Lemma inb_In x l:
-  inb x l ->
-  exists y, In y l /\ eq x y.
-Proof.
-  induction l as [| h1 t1 IH]; simpl; auto; [discriminate|].
-  destruct (eq x h1) eqn : Hx; simpl.
-  - intros _. exists h1. auto.
-  - intros Hin. apply IH in Hin. destruct_all; eauto.
-Qed.
-
-Lemma In_inb x l:
-  In x l ->
-  inb x l.
-Proof.
-  induction l as [| h1 t1 IH]; simpl; auto.
-  intros [Heq | Hin]; subst; auto.
-  - rewrite eq_refl. auto.
-  - rewrite IH, orb_true_r; auto.
-Qed.
-
-End ListEqGen.
-
-
 (*Union, merge, etc need to know key for function, so 
-  we store it as well. We could modify gmap, maybe we will
-  do that later*)
-(*For proofs of canonicity, we need to know this invariant, so
-  we need a sigma type*)
+  we store it as well - we no longer have extensionality*)
 Definition gmap_wf {A: Type} (g: Zmap (list (key * A))) : bool :=
-  map_fold (fun k (v: list (key * A)) acc => negb (Common.null v) && 
+  map_fold (fun k (v: list (key * A)) acc => negb (CommonList.null v) && 
     uniq T.equal (map fst v) &&
     (forallb (Z.eqb k) (map tag (map fst v)) && acc)) true g.
 
@@ -486,7 +356,6 @@ Definition is_empty (m: t a): bool :=
   | _, _, _ => false
   end.
 
-  (*TODO: import AssocList?*)
 (*NOTE: this is generic boolean eq, not eq_dec*)
 Definition get_list {A: Type} (k: key) (l: list (key * A)) : option A :=
   option_map snd (find (fun x => T.equal k (fst x)) l).
@@ -522,13 +391,13 @@ Definition remove_list {A: Type} (k: key) (l: list (key * A)) : list (key * A) :
 
 (*TODO: did I prove?*)
 Lemma filter_sublist {A: Type} (p: A -> bool) (l: list A):
-  Common.sublist (List.filter p l) l.
+  CommonList.sublist (List.filter p l) l.
 Proof.
   intros x. rewrite in_filter. intros [? Hin]; auto.
 Qed. 
 
 Lemma remove_list_sublist {A: Type} (k: key) (l: list (key * A)) :
-  Common.sublist (remove_list k l) l.
+  CommonList.sublist (remove_list k l) l.
 Proof. apply filter_sublist. Qed.
 
 Lemma map_fst_remove {A: Type} (k: key) (l: list (key * A)) :
@@ -572,32 +441,6 @@ Proof.
   destruct (T.equal k1 k) eqn : Hkk1; auto.
 Qed.
 
-(* Lemma get_list_remove {A: Type} (k: key) (l: list (key * A)) k1 v1:
-  get_list k1 (remove_list k l) = Some v1 <->
-  get_list k1 l = Some v1 /\ negb (T.equal k1 k).
-Proof.
-  unfold remove_list, get_list. rewrite find_filter.
-  rewrite (find_ext _ (fun x => T.equal k1 x.1 && negb (T.equal k1 k))).
-  2: {
-    intros x. destruct (T.equal k1 x.1) eqn : Heq; simpl; auto.
-    destruct (T.equal k x.1) eqn : Heq1;
-    destruct (T.equal k1 k) eqn : Heq2; simpl; auto.
-    - rewrite <- Heq2. apply (T.eq_trans k1 x.1 k); auto. rewrite T.eq_sym; auto.
-    - rewrite <- Heq1. symmetry. apply (T.eq_trans k k1 x.1); auto. rewrite T.eq_sym; auto.
-  }
-  rewrite find_const_r.
-  destruct (T.equal k1 k) eqn : Hkk1; simpl; split; intros; destruct_all; auto; discriminate.
-Qed. *)
-
-(*TODO: move*)
-Lemma sublist_Forall {A: Type} (P: A -> Prop) (l1 l2: list A):
-  Forall P l2 ->
-  Common.sublist l1 l2 ->
-  Forall P l1.
-Proof.
-  rewrite !List.Forall_forall. unfold Common.sublist. auto.
-Qed.
-
 (*All our specs are in terms of [find_opt]*)
 Definition find_opt {A: Type} (k: key) (m: t A) : option A :=
   match (mp m) !! tag k with
@@ -620,10 +463,6 @@ Definition add_aux {A: Type} (k: key) (v: A) (m: t A) : Zmap (list (key * A)):=
     | None => nil
     | Some l => remove_list k l
     end]> (mp m).
-  (* match (mp m) !! tag k with
-  | None => <[tag k :=[(k, v)]]> (mp m)
-  | Some l => <[tag k := (k, v) :: remove_list k l]> (mp m)
-  end. *)
 
 Lemma add_wf {A: Type} (k: key) (v: A) (m: t A):
   gmap_wf (add_aux k v m).
@@ -703,7 +542,7 @@ Definition remove_aux {A: Type} (k: key) (m: t A) : Zmap (list (key * A)) :=
   match (mp m) !! tag k with
   | None => mp m
   | Some l => let l1 := remove_list k l in
-    if Common.null l1 then delete (tag k) (mp m) else <[tag k := l1]> (mp m)
+    if CommonList.null l1 then delete (tag k) (mp m) else <[tag k := l1]> (mp m)
   end.
 
 Lemma null_false {A: Type} (l: list A):
@@ -716,7 +555,7 @@ Proof.
   apply gmap_wf_iff. unfold remove_aux.
   destruct m as [m m_wf]; simpl.
   destruct (m !! tag k) eqn : Hk; [| apply gmap_wf_iff; auto].
-  destruct (Common.null (remove_list k l)) eqn : Hrem.
+  destruct (CommonList.null (remove_list k l)) eqn : Hrem.
   - apply map_Forall_delete, gmap_wf_iff. auto.
   - apply map_Forall_insert_2; [| apply gmap_wf_iff; auto].
     split; [apply null_false; auto |].
@@ -745,7 +584,7 @@ Proof.
   destruct (Z.eq_dec (tag k) (tag k1)) as [Htag | Htag].
   - rewrite Htag. destruct (m !! tag k1) as [l1|] eqn : Hmk1.
     2: { rewrite Hmk1. destruct (T.equal k k1); auto. }
-    destruct (Common.null (remove_list k1 l1)) eqn : Hnull.
+    destruct (CommonList.null (remove_list k1 l1)) eqn : Hnull.
     + rewrite lookup_delete.
       destruct (T.equal k k1) eqn : Heq; auto.
       assert (Hrem: get_list k (remove_list k1 l1) = None). {
@@ -758,14 +597,11 @@ Proof.
     1: { apply T.eq_compat in Heq. unfold tag in Htag; rewrite Heq in Htag; contradiction. }
     (*Bunch of cases*)
     destruct (m !! tag k1) as [l1 |] eqn : Hmk1.
-    + destruct (Common.null (remove_list k1 l1)) eqn : Hnull; 
+    + destruct (CommonList.null (remove_list k1 l1)) eqn : Hnull; 
       [rewrite lookup_delete_ne | rewrite lookup_insert_ne]; auto; split; intros;
       destruct_all; auto.
     + split; intros; destruct_all; auto.
 Qed.
-
-(*TODO: move*)
-(*NOTE: have to add NoDup to invars I think*)
 
 (*Merge is more complicated (but important).
   Merge (in stdpp) does not include the key; this is why we have
@@ -776,18 +612,8 @@ Qed.
 (*Specialize to list so we can prove theorems about it*)
 
 Definition fold_add_if {A B C: Type} (f: A -> option B) (g: A -> B -> C)  (l: list A) :=
-  Common.omap (fun x => Common.option_bind (f x) (fun y => Some (g x y))) l.
+  CommonOption.omap (fun x => CommonOption.option_bind (f x) (fun y => Some (g x y))) l.
 
-
-(* Search Common.omap.
-Locate omap.
-    match f x with
-    | None =>) l
-  fold_right (fun x acc =>
-    match f x with
-    | None => acc
-    | Some y => (g x y) :: acc
-    end) nil l. *)
 
 Lemma fold_add_if_in_iff {A B C: Type} (f: A -> option B) (g: A -> B -> C) (l: list A) (z: C):
   In z (fold_add_if f g l) <-> exists x y, In x l /\ f x = Some y /\ z = g x y.
@@ -1423,7 +1249,6 @@ Definition filter (f: key -> a -> bool) (m: t a) : t a :=
                         | None => None
                         end) m (@empty a). 
 
-(*TODO: move*)
 Lemma empty_spec {A: Type} k :
   find_opt k (@empty A) = None.
 Proof.

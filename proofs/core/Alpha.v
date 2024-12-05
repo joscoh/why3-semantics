@@ -1,4 +1,4 @@
-Require Export SubMulti.
+Require Export SubMulti TermWf.
 Require Import GenElts.
 Require Import PatternProofs.
 
@@ -7632,7 +7632,6 @@ Ltac gensym_case b t Heq :=
   repeat (apply orb_congr; auto);
   solve[auto].
 
-(*TODO: move to Alpha*)
 Lemma gensym_in_shape b (s: gen_sym b) t1 f1:
   (forall t2 (Hshape: shape_t t1 t2),
     gensym_in_term s t1 = gensym_in_term s t2) /\

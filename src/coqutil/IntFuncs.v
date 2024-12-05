@@ -9,6 +9,20 @@ Require Import Lia.
 
 Local Open Scope Z_scope.
 
+(*Generic Z lemmas (move?)*)
+Lemma Z2Nat_eqb_nat (z1 z2: Z):
+  0 <= z1 ->
+  0 <= z2 ->
+  Nat.eqb (Z.to_nat z1) (Z.to_nat z2) = Z.eqb z1 z2.
+Proof.
+  intros Hz1 Hz2.
+  destruct (Z.eqb_spec z1 z2); subst; simpl.
+  - apply PeanoNat.Nat.eqb_refl.
+  - destruct (PeanoNat.Nat.eqb_spec (Z.to_nat z1) (Z.to_nat z2));
+    auto.
+    apply Znat.Z2Nat.inj_iff in e; auto. contradiction.
+Qed.
+
 
 Fixpoint int_length {A: Type} (l: list A) : CoqBigInt.t :=
   match l with
@@ -34,20 +48,6 @@ Proof.
     + rewrite IHl; reflexivity.
     + apply int_length_nonneg.
 Qed. 
-
-(*TODO: move*)
-Lemma Z2Nat_eqb_nat (z1 z2: Z):
-  0 <= z1 ->
-  0 <= z2 ->
-  Nat.eqb (Z.to_nat z1) (Z.to_nat z2) = Z.eqb z1 z2.
-Proof.
-  intros Hz1 Hz2.
-  destruct (Z.eqb_spec z1 z2); subst; simpl.
-  - apply PeanoNat.Nat.eqb_refl.
-  - destruct (PeanoNat.Nat.eqb_spec (Z.to_nat z1) (Z.to_nat z2));
-    auto.
-    apply Znat.Z2Nat.inj_iff in e; auto. contradiction.
-Qed.
     
 (*A corollary*)
 Lemma int_length_eq {A: Type} (l1 l2: list A):

@@ -8,7 +8,7 @@ dependency. For now, we avoid*)
   Really, we just want a bound. We don't use ints for much
   except comparisons in OCaml*)
 Require Export Coq.ZArith.BinInt.
-From Proofs Require Import core.Common.
+From Proofs Require Import common.Common.
 
 Local Open Scope Z_scope.
 

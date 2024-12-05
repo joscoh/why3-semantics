@@ -1,5 +1,5 @@
 open CoqUtil
-open Common
+open CommonOption
 open Weakhtbl
 open Datatypes
 open Monads

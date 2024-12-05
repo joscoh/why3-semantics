@@ -207,6 +207,11 @@ Definition map_wf {A B: Type} (m: map_aux A B) : Prop :=
 Definition amap (A B: Type) := {m: map_aux A B | map_wf m}.
 Definition amap_get {A B: Type} (eq_dec: forall (x y: A), {x = y} + { x <> y}) 
   (m: amap A B) (x: A) : option B := map_get_aux eq_dec (proj1_sig m) x.
+Definition amap_get_def {A B: Type} eq_dec (m: amap A B) (x: A) (d: B) : B :=
+  match amap_get eq_dec m x with
+  | Some y => y
+  | None => d
+  end.
 Definition amap_set_proof {A B: Type} (eq_dec: forall (x y: A), {x = y} + { x <> y}) 
   (m: amap A B) (x: A) (y: B) : map_wf (map_set_aux eq_dec (proj1_sig m) x y).
 Proof.

@@ -1,4 +1,6 @@
 open BinNums
+open CommonOption
+open CommonList
 open Common
 open CoqUtil
 open Weakhtbl

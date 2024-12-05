@@ -3264,7 +3264,7 @@ Qed.
 (*Now, we give a function that transforms a term, alpha converting
   if needed if we don't already have new and distinct bound variables*)
 Definition make_tm_wf (t: term) : term :=
-  if uniq (map fst (tm_bnd t)) && disjb (map fst (tm_fv t)) (map fst (tm_bnd t))
+  if seq.uniq (map fst (tm_bnd t)) && disjb (map fst (tm_fv t)) (map fst (tm_bnd t))
   then t else a_convert_all_t t nil.
 
 Lemma make_tm_wf_wf t:
@@ -3273,7 +3273,7 @@ Lemma make_tm_wf_wf t:
 Proof.
   intros.
   unfold make_tm_wf.
-  case: (uniq (map fst (tm_bnd t))) /Typechecker.uniqP => Hbnd/=;
+  case: (seq.uniq (map fst (tm_bnd t))) /Typechecker.uniqP => Hbnd/=;
   last by apply a_convert_all_t_strong_wf.
   case: (disjb (map fst (tm_fv t)) (map fst (tm_bnd t))) /disjP => Hdisj/=;
   last by apply a_convert_all_t_strong_wf.
@@ -3286,7 +3286,7 @@ Lemma make_tm_wf_typed {t ty}:
   term_has_type gamma (make_tm_wf t) ty.
 Proof.
   unfold make_tm_wf.
-  destruct (uniq (map fst (tm_bnd t)) && disjb (map fst (tm_fv t)) (map fst (tm_bnd t))); auto.
+  destruct (seq.uniq (map fst (tm_bnd t)) && disjb (map fst (tm_fv t)) (map fst (tm_bnd t))); auto.
   intros. apply a_convert_all_t_ty; auto.
 Qed.
 
@@ -3300,7 +3300,7 @@ Lemma make_tm_wf_rep (pd: pi_dom) (pdf: pi_dom_full gamma pd)
 Proof.
   revert Hty2.
   unfold make_tm_wf.
-  destruct (uniq (map fst (tm_bnd t)) && disjb (map fst (tm_fv t)) (map fst (tm_bnd t)));
+  destruct (seq.uniq (map fst (tm_bnd t)) && disjb (map fst (tm_fv t)) (map fst (tm_bnd t)));
   intros.
   apply term_rep_irrel.
   erewrite term_rep_irrel.
@@ -3309,7 +3309,7 @@ Qed.
 
 
 Definition make_fmla_wf (f: formula) : formula :=
-  if uniq (map fst (fmla_bnd f)) && 
+  if seq.uniq (map fst (fmla_bnd f)) && 
     disjb (map fst (fmla_fv f)) (map fst (fmla_bnd f))
   then f else a_convert_all_f f nil.
 
@@ -3319,7 +3319,7 @@ Lemma make_fmla_wf_wf f:
 Proof.
   intros.
   unfold make_fmla_wf.
-  case: (uniq (map fst (fmla_bnd f))) /Typechecker.uniqP => Hbnd/=;
+  case: (seq.uniq (map fst (fmla_bnd f))) /Typechecker.uniqP => Hbnd/=;
   last by apply a_convert_all_f_strong_wf.
   case: (disjb (map fst (fmla_fv f)) (map fst (fmla_bnd f))) /disjP => Hdisj/=;
   last by apply a_convert_all_f_strong_wf.
@@ -3332,7 +3332,7 @@ Lemma make_fmla_wf_typed {f}:
   formula_typed gamma (make_fmla_wf f).
 Proof.
   unfold make_fmla_wf.
-  destruct (uniq (map fst (fmla_bnd f)) && 
+  destruct (seq.uniq (map fst (fmla_bnd f)) && 
     disjb (map fst (fmla_fv f)) (map fst (fmla_bnd f))); auto.
   intros. apply a_convert_all_f_typed; auto.
 Qed.
@@ -3347,7 +3347,7 @@ Lemma make_fmla_wf_rep (pd: pi_dom) (pdf: pi_dom_full gamma pd)
 Proof.
   revert Hty2.
   unfold make_fmla_wf.
-  destruct (uniq (map fst (fmla_bnd f)) &&
+  destruct (seq.uniq (map fst (fmla_bnd f)) &&
   disjb (map fst (fmla_fv f)) (map fst (fmla_bnd f)));
   intros.
   apply fmla_rep_irrel.
@@ -3667,7 +3667,7 @@ Lemma make_fmla_wf_type_vars f:
   fmla_type_vars (make_fmla_wf f) = fmla_type_vars f.
 Proof.
   unfold make_fmla_wf.
-  destruct ( uniq (map fst (fmla_bnd f)) && disjb (map fst (fmla_fv f)) (map fst (fmla_bnd f)));
+  destruct ( seq.uniq (map fst (fmla_bnd f)) && disjb (map fst (fmla_fv f)) (map fst (fmla_bnd f)));
   auto.
   symmetry.
   apply a_equiv_f_type_vars.

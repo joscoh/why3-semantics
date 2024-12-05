@@ -323,19 +323,6 @@ Proof.
     intros a Hval; apply Hval.
 Qed.
 
-(*TODO: move*)
-Lemma recpred_in_predsyms {gamma} {f: predsym} {l: list funpred_def}
-  (l_in: In l (mutfuns_of_context gamma))
-  (f_in: predsym_in_mutfun f l):
-  In f (predsyms_of_context gamma).
-Proof.
-  unfold predsyms_of_context. rewrite in_concat.
-  exists (predsyms_of_def (recursive_def l)).
-  split. rewrite in_map_iff. exists (recursive_def l).
-  split; auto. apply in_mutfuns in l_in; auto.
-  apply in_bool_In in f_in. auto.
-Qed.
-
 (*NOTE: only need that it is in fun/predsyms of context*)
 
 Definition sym_in_context {b: bool} (ls: gen_sym b) gamma : Prop :=

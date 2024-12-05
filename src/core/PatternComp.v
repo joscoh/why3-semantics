@@ -3,7 +3,6 @@ Require Import TermDefs TermFuncs Monads.
 Require CoqBigInt.
 Import MonadNotations.
 Require Import PatternAux.
-(* Require Import TaskDefs (*For hashcons full - TODO: move*). *)
 
 Local Open Scope err_scope.
 
@@ -105,10 +104,8 @@ Proof.
 Qed.
 Local Open Scope err_scope.
 
-(*TODO: move lemmas to aux file*)
 (*TODO: really termination metric is just size of first elt of list*)
 (*NOTE: [pat_node_of] makes this VERY annoying*)
-(*TODO: rewrite with Equations, generates LOTS of unhelpful stuff*)
 Fixpoint dispatch_aux (pla: list pattern_c * A) 
   (casewild: (Mls.t (list (list pattern_c * A)) * list (list pattern_c * A)))
   (ACC: Acc lt (list_pattern_c_size (fst pla))) :

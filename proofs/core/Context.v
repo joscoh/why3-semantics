@@ -533,3 +533,52 @@ Proof.
   - destruct Hints as [Ht | []]; subst. auto.
 Qed.
 
+(*Equivalent signatures*)
+
+Definition sublist_sig (g1 g2: context) : Prop :=
+  sublist (sig_t g1) (sig_t g2) /\
+  sublist (sig_f g1) (sig_f g2) /\
+  sublist (sig_p g1) (sig_p g2).
+
+Definition eq_sig (g1 g2: context) : Prop :=
+  (forall x, In x (sig_t g1) <-> In x (sig_t g2)) /\
+  (forall x, In x (sig_f g1) <-> In x (sig_f g2)) /\
+  (forall x, In x (sig_p g1) <-> In x (sig_p g2)).
+
+Lemma eq_sig_refl: forall l, eq_sig l l.
+Proof.
+  intros. unfold eq_sig; split_all; intros; reflexivity.
+Qed.
+
+Lemma eq_sig_cons: forall x l1 l2,
+  eq_sig l1 l2 ->
+  eq_sig (x :: l1) (x :: l2).
+Proof.
+  intros. unfold eq_sig in *. split_all; intros;
+  unfold sig_t, sig_f, sig_p in *; simpl;
+  rewrite !in_app_iff; apply or_iff_compat_l; auto.
+Qed.
+
+Lemma eq_sig_sublist g1 g2:
+  eq_sig g1 g2 <-> sublist_sig g1 g2 /\ sublist_sig g2 g1.
+Proof.
+  unfold eq_sig, sublist_sig. split; intros; 
+  destruct_all; split_all; unfold sublist in *; intros; auto;
+  try (apply H; auto); try (apply H0; auto); try (apply H1; auto);
+  split; intros; auto.
+Qed.
+
+Lemma eq_sig_is_sublist g1 g2:
+  eq_sig g1 g2 ->
+  sublist_sig g1 g2.
+Proof.
+  rewrite eq_sig_sublist; intros [H1 H2]; auto.
+Qed.
+
+Lemma eq_sig_sym g1 g2:
+  eq_sig g1 g2 ->
+  eq_sig g2 g1.
+Proof.
+  unfold eq_sig. intros; destruct_all; split_all; intros; auto;
+  symmetry; auto.
+Qed.

@@ -5,110 +5,7 @@ Require Import GenElts.
 From Equations Require Import Equations. 
 Set Bullet Behavior "Strict Subproofs".
 
-(*Some tactics to help us*)
-Ltac simpl_len :=
-  repeat (rewrite !map_length || rewrite !rev_length || 
-  rewrite !app_length || rewrite !combine_length || rewrite !gen_strs_length || rewrite !repeat_length).
-
-Ltac solve_len := simpl_len; try reflexivity; solve[auto; try lia].
-
-(*General results we need*)
-
-(*TODO: move these once casting, cast_arg_list defined*)
-
-Lemma hlist_app_cast1 {f: sort -> Set} (l1 l2 l3: list sort) (h: arg_list f l1) h2 (Heq: l1 = l2):
-  hlist_app f l2 l3 (cast_arg_list Heq h) h2 =
-  cast_arg_list (f_equal (fun x => x ++ l3) Heq) (hlist_app f l1 l3 h h2).
-Proof.
-  subst. simpl. unfold cast_arg_list; simpl. reflexivity.
-Qed.
-
-Lemma hlist_rev_cast {f: sort -> Set} (l1 l2: list sort) (Heq: l1 = l2) (h1: arg_list f l1):
-  hlist_rev f l2 (cast_arg_list Heq h1) =
-  cast_arg_list (f_equal (fun x => rev x) Heq) (hlist_rev f l1 h1).
-Proof.
-  subst. reflexivity.
-Qed.
-
-
-Lemma hlist_app_hnth1 (dom: sort -> Set) tys1 tys2 (h1 : arg_list (domain dom) tys1) (h2: arg_list (domain dom) tys2) d1 d2 n:
-  n < length tys1 ->
-  exists Heq,
-  hnth n (hlist_app _ tys1 tys2 h1 h2) d1 d2 =
-  dom_cast _ Heq (hnth n h1 d1 d2).
-Proof.
-  revert n.
-  induction tys1 as [| ty1 tys IH]; simpl.
-  - intros n Hn. lia.
-  - intros [| n'] Hn.
-    + exists eq_refl. rewrite (hlist_inv h1). reflexivity.
-    + destruct (IH (hlist_tl h1) n' (ltac:(lia))) as [Heq Hnth].
-      exists Heq. rewrite (hlist_inv h1). simp hlist_app.
-Qed.
-
-Lemma hlist_app_hnth2 (dom: sort -> Set) tys1 tys2 (h1 : arg_list (domain dom) tys1) (h2: arg_list (domain dom) tys2) d1 d2 n:
-  n >= length tys1 ->
-  exists Heq,
-  hnth n (hlist_app _ tys1 tys2 h1 h2) d1 d2 =
-  dom_cast _ Heq (hnth (n - length tys1) h2 d1 d2).
-Proof.
-  revert n.
-  induction tys1; simpl.
-  - intros n Hn. rewrite Nat.sub_0_r. exists eq_refl. reflexivity.
-  - intros n Hn.
-    remember (n - S (Datatypes.length tys1)) as j eqn : Hj.
-    destruct j as [| j']; simpl.
-    + assert (n = S (length tys1)) by lia. subst. 
-      destruct (IHtys1 (hlist_tl h1) (length tys1) (ltac:(lia))) as [Heq1 IH].
-      revert Heq1 IH. rewrite Nat.sub_diag. intros. exists Heq1.
-      rewrite (hlist_inv h1). simp hlist_app.
-    + (*assert (Hngt: n > S (length tys1)) by lia.*) destruct n as [| n']; [discriminate|].
-      assert (Hn': n' >= length tys1) by lia.
-      destruct (IHtys1 (hlist_tl h1) n' Hn') as [Heq1 IH].
-      revert Heq1 IH.
-      replace (n' - length tys1) with (S j') by lia.
-      intros. exists Heq1. rewrite (hlist_inv h1). simp hlist_app.
-Qed.
-
-Lemma hlist_rev_hnth (dom: sort -> Set) i tys (h: arg_list (domain dom) tys) d1 d2:
-  i < length tys ->
-  exists Heq,
-  hnth i (hlist_rev (domain dom) tys h) d1 d2 =
-  dom_cast dom Heq (hnth (length tys - S i) h d1 d2).
-Proof.
-  revert i. induction tys as [| ty1 tys IH]; simpl.
-  - intros i Hi; lia.
-  - intros i Hi. remember (length tys - i) as j eqn : Hj. 
-    destruct j as [| j'].
-    + assert (i = length tys) by lia. subst.
-      (*Use app2 lemma*)
-      destruct (hlist_app_hnth2 dom _ _ (hlist_rev (domain dom) tys (hlist_tl h)) 
-        (HL_cons (domain dom) ty1 [] (hlist_hd h) (HL_nil (domain dom))) d1 d2 (length tys)
-        (ltac:(solve_len))) as [Heq1 Happ].
-      revert Heq1 Happ. rewrite rev_length, Nat.sub_diag. simpl. intros.
-      exists Heq1. rewrite (hlist_inv h). simp hlist_rev.
-    + (*Need IH and app1*)
-      assert (Heq: nth j' tys d1 = nth i (rev tys ++ [ty1]) d1).
-      {
-        rewrite app_nth1 by solve_len.
-        rewrite rev_nth; try lia. 
-        f_equal. lia.
-      }
-      exists Heq.
-      rewrite (hlist_inv h).
-      simp hlist_rev.
-     (*use app1 lemma*)
-      destruct (hlist_app_hnth1 dom _ _ (hlist_rev (domain dom) tys (hlist_tl h)) 
-        (HL_cons (domain dom) ty1 [] (hlist_hd h) (HL_nil (domain dom))) d1 d2 i
-        (ltac:(solve_len))) as [Heq1 Happ].
-      rewrite Happ.
-      destruct (IH (hlist_tl h) i ltac:(lia)) as [Heq2 IH2].
-      rewrite IH2. rewrite !dom_cast_compose.
-      simpl. generalize dependent (eq_trans Heq2 Heq1).
-      replace (length tys - S i) with j' by lia. intros.
-      apply dom_cast_eq.
-Qed.
-
+Ltac simpl_len_extra ::= rewrite !gen_strs_length.
 
 Section CompileCorrect.
 (*NOTE: want gamma, but only gamma, in context. Typing should
@@ -817,7 +714,7 @@ Proof.
   {
     rewrite map_app in e. apply app_inv_tail in e.
     rewrite map_rev in e.
-    apply Common.rev_inj in e. auto.
+    apply CommonList.rev_inj in e. auto.
   }
 
   (*Case on patterns*)
@@ -1423,32 +1320,7 @@ End PatSemanticsLemmas.
 
 (*Proving the correctness of [compile]*)
 
-(*The specific functions for matches, variables, constructors, etc for generic terms*)
-
-Definition get_constructors (ts: typesym) : list funsym :=
-  match (find_ts_in_ctx gamma ts) with
-  | Some (m, a) => adt_constr_list a
-  | None => nil
-  end.
-
-Lemma get_constructors_eq {m a} (m_in: mut_in_ctx m gamma) (a_in: adt_in_mut a m):
-  get_constructors (adt_name a) = adt_constr_list a. 
-Proof.
-  unfold get_constructors.
-  assert (Hts: find_ts_in_ctx gamma (adt_name a) = Some (m, a)). {
-    apply find_ts_in_ctx_iff; auto.
-  }
-  rewrite Hts.
-  reflexivity.
-Qed.
-
-Lemma in_get_constructors {m a f} (m_in: mut_in_ctx m gamma) (a_in: adt_in_mut a m):
-  In f (get_constructors (adt_name a)) <->
-  constr_in_adt f a.
-Proof.
-  rewrite (get_constructors_eq m_in a_in).
-  rewrite constr_in_adt_eq. reflexivity. 
-Qed. 
+Notation get_constructors := (get_constructors gamma).
 
 (*Part 1: Lemmas for Typing Contradictions*)
 (*We need to know that if e.g. populate_all gives None, this gives a contradiction
@@ -2206,48 +2078,6 @@ Proof.
       destruct (vty_eq_dec _ _); auto.
 Qed.
 
-(*Reverse [val_with_args] (TODO: move?) is equivalent*)
-Lemma val_with_args_rev v vars {srts} (al: arg_list (domain (dom_aux pd)) srts):
-  NoDup vars ->
-  map (v_subst vt) (map snd vars) = srts -> 
-  forall x, val_with_args pd vt v (rev vars) (hlist_rev (domain (dom_aux pd)) _ al) x =
-    val_with_args pd vt v vars al x.
-Proof.
-  rewrite map_map. intros Hnodup Hsrts x; subst.
-  set (srts:=(map (fun x0 : string * vty => v_subst vt (snd x0)) vars)). 
-  destruct (in_dec vsymbol_eq_dec x vars) as [Hin | Hnotin].
-  - destruct (In_nth _ _ vs_d Hin) as [i [Hi Hx]].
-    assert (Hnth: nth i srts s_int = v_subst vt (snd x)).
-    {
-      unfold srts. rewrite map_nth_inbound with (d2:=vs_d); subst; auto.
-    }
-    rewrite (val_with_args_in') with (i:=i)(Heq:=Hnth); auto.
-    2: unfold srts; solve_len.
-    assert (Hx': nth ((length vars - S i )) (rev vars) vs_d  = x). {
-      subst. symmetry. rewrite rev_nth1; auto.
-    }
-    assert (Hnth': nth (length vars - S i) (rev srts) s_int = v_subst vt (snd x)).
-    {
-      rewrite <- Hx. rewrite (rev_nth1 vars); auto.
-      unfold srts. rewrite <- map_rev.
-      rewrite map_nth_inbound with (d2:=vs_d); auto. simpl_len.
-      destruct vars; simpl in *; lia.
-    }
-    rewrite (val_with_args_in') with (i:=(length vars - S i))(Heq:=Hnth'); auto; simpl_len; auto;
-    [| apply NoDup_rev; auto| unfold srts; solve_len |destruct vars; simpl in *; lia].
-    destruct (hlist_rev_hnth _ (length vars - S i) srts al s_int (dom_int pd)
-      ltac:(unfold srts; simpl_len; destruct vars; simpl in *; lia)) as [Heq Hrev].
-    rewrite Hrev. rewrite dom_cast_compose.
-    generalize dependent (eq_trans Heq Hnth').
-    replace (Datatypes.length srts - S (Datatypes.length vars - S i)) with i.
-    2: { unfold srts; simpl_len; destruct vars; simpl in *; try lia.
-      (*Why can't lia solve this directly?*)
-    assert (i <= length vars) by (apply PeanoNat.lt_n_Sm_le in Hi; assumption). lia.
-    }
-    intros e. apply dom_cast_eq.
-  - rewrite !val_with_args_notin; auto. rewrite <- List.in_rev. auto.
-Qed.
-
 Lemma terms_to_hlist_change_vv v1 v2 ts tys Hall:
   (forall t x, In t ts -> In x (tm_fv t) -> v1 x = v2 x) ->
   terms_to_hlist pd pdf pf vt v1 ts tys Hall = terms_to_hlist pd pdf pf vt v2 ts tys Hall.
@@ -2748,7 +2578,7 @@ Proof.
       rewrite ty_subst_cons. simpl. 
       assert (f_constr: f_is_constr c) by (rewrite is_constr_iff; eauto).
       rewrite f_constr.
-      apply In_in_bool, (in_get_constructors m_in a_in); auto.
+      apply In_in_bool, (in_get_constructors gamma_valid m_in a_in); auto.
     }
     rewrite Hnotconstr in Hconstr; discriminate.
   * (*Second typing contradiction: if get_heads is None*)
@@ -3722,7 +3552,7 @@ Lemma compile_prove_some_typed (P_hyps: list (term * vty) -> pat_matrix -> Prop)
       let wilds := snd casewild in
       forall
       (*Here, we can assume that our type is an ADT*)
-      {m : mut_adt} {a : alg_datatype} {args : list vty} (m_in : mut_in_ctx m gamma)
+      (m : mut_adt) (a : alg_datatype) (args : list vty) (m_in : mut_in_ctx m gamma)
       (a_in : adt_in_mut a m)
       (Hty : ty = vty_cons (adt_name a) args)
       (args_len : length args = length (m_params m))
@@ -3819,7 +3649,7 @@ Lemma compile_prove_some_typed (P_hyps: list (term * vty) -> pat_matrix -> Prop)
         let cases := fst casewild in
         let wilds := snd casewild in
       forall (*Here, we can assume that our type is an ADT*)
-      {m : mut_adt} {a : alg_datatype} {args : list vty} (m_in : mut_in_ctx m gamma)
+      (m : mut_adt) (a : alg_datatype) (args : list vty) (m_in : mut_in_ctx m gamma)
       (a_in : adt_in_mut a m)
       (Hty : ty = vty_cons (adt_name a) args)
       (args_len : length args = length (m_params m))
@@ -3866,7 +3696,7 @@ Lemma compile_prove_some_typed (P_hyps: list (term * vty) -> pat_matrix -> Prop)
         let cases := fst casewild in
         let wilds := snd casewild in
       forall (*Here, we can assume that our type is an ADT*)
-      {m : mut_adt} {a : alg_datatype} {args : list vty} (m_in : mut_in_ctx m gamma)
+      (m : mut_adt) (a : alg_datatype) (args : list vty) (m_in : mut_in_ctx m gamma)
       (a_in : adt_in_mut a m)
       (Hty : ty = vty_cons (adt_name a) args)
       (args_len : length args = length (m_params m))
@@ -4046,7 +3876,7 @@ Proof.
           unfold is_constr, is_bare, is_bare_css. simpl.
           intros. rewrite andb_true_r; reflexivity.
         }
-        rewrite (get_constructors_eq m_in a_in).
+        rewrite (get_constructors_eq gamma_valid m_in a_in).
         reflexivity.
       }
       rewrite Hiswilds in Hps1'; apply Hps1'.
@@ -4439,7 +4269,7 @@ Proof.
           revert Hnow. rewrite Hnowilds.
           intros Hnow; injection Hnow.
           unfold css'. subst ty.
-          rewrite (get_constructors_eq m_in a_in).
+          rewrite (get_constructors_eq gamma_valid m_in a_in).
           rewrite forallb_forall.
           intros Hallin.
           specialize (Hallin _ Hincs).
@@ -4791,7 +4621,7 @@ Proof.
     rewrite Hnowilds. f_equal.
     apply forallb_false.
     exists c. split; auto.
-    - unfold css'. apply (in_get_constructors m_in a_in); auto.
+    - unfold css'. apply (in_get_constructors gamma_valid m_in a_in); auto.
     - unfold types.
       rewrite amap_mem_spec.
       destruct (amap_get funsym_eq_dec (fst types_cslist) c) as [y|] eqn : Hget; auto.

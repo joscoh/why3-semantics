@@ -28,18 +28,6 @@ Definition check_vl (t: ty_c) (v: vsymbol) : errorM unit :=
   This is how one creates a [logic_decl], then passes
   it in to create a full decl *)
 
-(*TODO: move*)
-Definition map2_opt {A B C: Type} (f: A -> B -> C) :=
-    fix map2 (l1: list A) (l2: list B) : option (list C) :=
-      match l1, l2 with
-      | nil, nil => Some nil
-      | x1 :: t1, x2 :: t2 => 
-        match (map2 t1 t2) with
-        | Some l1 => Some (f x1 x2 :: l1)
-        | None => None
-        end
-      | _, _ => None
-      end.
 
 Local Open Scope errst_scope.
 
@@ -109,7 +97,9 @@ Definition ls_defn_decrease_aux (l: ls_defn) : list CoqBigInt.t :=
 
   
 (*Termination Checking*)
-(*TODO: move to DeclDefs?*)
+
+(*First, dealing with getting types and other info from context*)
+
 Definition mut_adt : Type := list data_decl.
 Definition mut_info : Type := list mut_adt * Mts.t mut_adt.
 
@@ -117,7 +107,6 @@ Definition mut_info : Type := list mut_adt * Mts.t mut_adt.
 Definition mut_adt_eqb : mut_adt -> mut_adt -> bool :=
   list_eqb data_decl_eqb.
 
-(*TODO: probably move*)
 (*Get all mutual ADT definitions.*)
 Definition get_ctx_tys (kn: Mid.t decl) : mut_info :=
   Mid.fold (fun _ d acc =>
@@ -127,6 +116,9 @@ Definition get_ctx_tys (kn: Mid.t decl) : mut_info :=
       (m :: ms, fold_right (fun t ts => Mts.add t m ts) mp (map fst m))
     | _ => acc
     end) kn (nil, Mts.empty).
+
+Definition mut_in_ctx (m: mut_adt) (kn: Mid.t decl) : bool :=
+  list_inb mut_adt_eqb m (fst (get_ctx_tys kn)).
 
 Definition is_vty_adt (ctx: mut_info) (t: ty_c) : 
   option (mut_adt * tysymbol_c * list ty_c) :=
@@ -360,13 +352,6 @@ Definition find_idx_list (l: list (lsymbol * (list vsymbol * term_c))) m vs
       end
       ) (List.combine l il))) candidates.
 
-(*TODO: move*)
-Definition list_inb {A: Type} (eq: A -> A -> bool) (x: A) (l: list A) : bool :=
-  existsb (fun y => eq x y) l.
-
-(*TODO: move above*)
-Definition mut_in_ctx (m: mut_adt) (kn: Mid.t decl) : bool :=
-  list_inb mut_adt_eqb m (fst (get_ctx_tys kn)).
 
 (*TODO: overlap w CommonSSR*)
 Definition find_elt {A B: Type} (f: A -> option B) (l: list A) :

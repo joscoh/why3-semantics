@@ -357,18 +357,6 @@ Definition all_snd {A B: Type} {P: B -> Prop} (f: forall x, P x):
   forall (x: A * B), prop_snd x :=
   fun x => f (snd x).
 
-(*TODO: move*)
-Lemma list_eqb_Forall {A: Type} {eqb: A -> A -> bool} {l1: list A}
-  (Hall: Forall (fun x => forall y, x = y <-> eqb x y) l1) l2:
-  l1 = l2 <-> list_eqb eqb l1 l2.
-Proof.
-  revert l2. induction l1 as [| h1 t1 IH]; intros [| h2 t2]; simpl;
-  try solve[solve_eqb_eq].
-  rewrite andb_true, <- (Forall_inv Hall h2), <- IH;
-  [solve_eqb_eq |].
-  apply Forall_inv_tail in Hall; auto.
-Qed.
-
 (*Induction Principle for Namespace*)
 Section NamespaceInd.
 Variable (P: namespace_c -> Prop).

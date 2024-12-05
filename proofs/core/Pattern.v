@@ -5,10 +5,6 @@ From Equations Require Import Equations.
 Require Import Coq.Sorting.Permutation.
 Require Import Init.Wf.
 
-
-Definition rev_map {B C: Type} (f: B -> C) (l: list B) : list C :=
-  rev (map f l).
-
 Section Compile.
 Context {A: Type} (get_constructors: typesym -> list funsym) 
   (mk_case: term -> vty -> list (pattern * A) -> A) (mk_let: vsymbol -> term -> A -> A).

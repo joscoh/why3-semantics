@@ -344,16 +344,6 @@ Definition sub_t_fv_notin tm x t Hnotx :=
   proj_tm (sub_fv_notin tm x Hnotx) t.
 Definition sub_f_fv_notin tm x f Hnotx :=
   proj_fmla (sub_fv_notin tm x Hnotx) f.
-
-Lemma Forall_impl_strong {A: Type} {P Q: A -> Prop} {l: list A}:
-  (forall a, In a l -> P a -> Q a) ->
-  Forall P l ->
-  Forall Q l.
-Proof.
-  induction l; simpl; auto; intros.
-  inversion H0; subst.
-  constructor; auto.
-Qed.
   
 (*3. If y is in the free vars of tm, then y is free in
   the substituted term iff either x or y were already free in t

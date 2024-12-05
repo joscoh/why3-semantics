@@ -728,8 +728,6 @@ Definition add_tags {A: Type} (mts: Mts.t (list (lsymbol * A))) (st: state * tas
     l <- add_meta tsk meta_infinite [MAts ts] ;;
     errst_ret (s, l)).
 
-(*TODO: move*)
-Definition fun_flip {A B C: Type} (f: A -> B -> C) x y := f y x.
 
 Definition has_nested_use {A: Type} (sts : Sts.t) (csl : list (lsymbol * A)) : bool :=
   let check_c x :=

@@ -194,7 +194,6 @@ Proof.
   - intros i j d x Hi Hj Hij [Hx1 Hx2]. apply (Hdisj i j d Hi Hj Hij x); auto.
 Qed.
 
-(*TODO: move*)
 Lemma P_Var' {gamma} (x: vsymbol) ty:
   valid_type gamma ty ->
   snd x = ty ->
@@ -2055,10 +2054,6 @@ Section Expand.
 (*We prove some general results about typing in
   a context with strictly more type, function, and predicate symbols
   then specialize to 2 particular cases*)
-Definition sublist_sig (g1 g2: context) : Prop :=
-  sublist (sig_t g1) (sig_t g2) /\
-  sublist (sig_f g1) (sig_f g2) /\
-  sublist (sig_p g1) (sig_p g2).
 
 Lemma in_sig_t_expand d gamma:
   sublist (sig_t gamma) (sig_t (d :: gamma)).
@@ -2270,6 +2265,19 @@ Proof.
   unfold typesym_inhab in *.
   pose proof (typesym_inhab_fun_expand d gamma nil ts H).
   simpl in H1. rewrite !Nat.sub_0_r in H1. auto.
+Qed.
+
+Lemma mut_valid_sublist
+(g1 g2 : context) (m: mut_adt):
+mut_of_context g1 = mut_of_context g2 ->
+sig_t g1 = sig_t g2 -> 
+mut_valid g1 m -> mut_valid g2 m.
+Proof.
+  intros Hmut Hsig.
+  unfold mut_valid.
+  intros; destruct_all; split_all; auto.
+  revert H0. apply Forall_impl. intros a.
+  unfold adt_inhab. apply typesym_inhab_sublist; auto.
 Qed.
 
 (*This is the core: a term/formula cannot become ill-typed by
@@ -4502,3 +4510,28 @@ Proof.
   destruct Hinner as [Htms Hinner]; rewrite map_length in Htms.
   destruct b; simpl in *; subst; constructor; auto.
 Qed.
+
+Definition get_constructors gamma (ts: typesym) : list funsym :=
+  match (find_ts_in_ctx gamma ts) with
+  | Some (m, a) => adt_constr_list a
+  | None => nil
+  end.
+
+Lemma get_constructors_eq {gamma m a} (gamma_valid: valid_context gamma) (m_in: mut_in_ctx m gamma) (a_in: adt_in_mut a m):
+  get_constructors gamma (adt_name a) = adt_constr_list a. 
+Proof.
+  unfold get_constructors.
+  assert (Hts: find_ts_in_ctx gamma (adt_name a) = Some (m, a)). {
+    apply find_ts_in_ctx_iff; auto.
+  }
+  rewrite Hts.
+  reflexivity.
+Qed.
+
+Lemma in_get_constructors {gamma m a f} (gamma_valid: valid_context gamma) (m_in: mut_in_ctx m gamma) (a_in: adt_in_mut a m):
+  In f (get_constructors gamma (adt_name a)) <->
+  constr_in_adt f a.
+Proof.
+  rewrite (get_constructors_eq gamma_valid m_in a_in).
+  rewrite constr_in_adt_eq. reflexivity. 
+Qed. 

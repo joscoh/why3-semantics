@@ -538,5 +538,4 @@ Definition map_join_left_errst {A B St: Type} (d: B)
   | _ => errst_ret d
   end.
 
-(*TODO: move*)
 Notation errst_throw e := (errst_lift2 (throw e)).

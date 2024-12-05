@@ -3,7 +3,7 @@ Require Export Coq.Strings.String.
 Require Export Coq.Lists.List.
 Require Import Coq.Init.Byte.
 Require Import Lia.
-From Proofs Require Export core.Common.
+From Proofs Require Export common.Common.
 
 (*TODO: reduce duplication of this stuff: anything in Prop we can
   use COmmon*)
@@ -50,48 +50,12 @@ Definition str_to_pos (s: string) : positive :=
   bits_to_pos (concat (map byte_to_bits (list_byte_of_string s))).
 
 (*Proof of injectivity*)
-(*TODO: move proofs somewhere else*)
 
 Lemma bits_to_pos_inj (l1 l2: list bool) : bits_to_pos l1 = bits_to_pos l2 -> l1 = l2.
 Proof.
   intros Heq.
   apply (f_equal pos_to_bits) in Heq.
   rewrite !pos_to_bits_to_pos in Heq; exact Heq.
-Qed.
-
-Lemma app_inj {A: Type} (l1 l2 l3 l4: list A):
-  length l1 = length l3 ->
-  l1 ++ l2 = l3 ++ l4 ->
-  l1 = l3 /\ l2 = l4.
-Proof.
-  revert l3. induction l1 as [| h1 t1]; simpl; intros [| h2 t2]; simpl; auto;
-  try discriminate.
-  intros Hlen Heq. injection Hlen; injection Heq. intros Heq' Hhd Hlen'; subst.
-  specialize (IHt1 _ Hlen' Heq').
-  destruct IHt1; subst; auto.
-Qed.
-
-Lemma concat_inj {A: Type} (l1 l2: list (list A)) n:
-  0 < n ->
-  Forall (fun x => length x = n) l1 ->
-  Forall (fun x => length x = n) l2 ->
-  concat l1 = concat l2 ->
-  l1 = l2.
-Proof.
-  intros Hn0.
-  revert l2. induction l1 as [| h1 t1]; simpl; intros [|h2 t2]; simpl; auto.
-  - intros _ Hall Heq.
-    pose proof (Forall_inv Hall) as Hh2; simpl in Hh2.
-    destruct h2; simpl in *; auto; try lia; discriminate.
-  - intros Hall _ Heq.
-    pose proof (Forall_inv Hall) as Hh1; simpl in Hh1.
-    destruct h1; simpl in *; auto; try lia; discriminate.
-  - intros Hall1 Hall2 Heq.
-    apply app_inj in Heq.
-    + destruct Heq; subst; f_equal; apply IHt1; auto.
-      * inversion Hall1; auto.
-      * inversion Hall2; auto.
-    + rewrite (Forall_inv Hall1), (Forall_inv Hall2); reflexivity.
 Qed.
 
 Lemma byte_to_bits_length: forall x, length (byte_to_bits x) = 8.
@@ -101,22 +65,6 @@ Proof.
   repeat (destruct p as [? p]).
   reflexivity.
 Qed.
-
-(*Is this in the stdlib?*)
-(*Lemma map_inj {A B: Type} (f: A -> B) (l1 l2: list A):
-  (forall x y, In x l1 \/ In x l2 -> f x = f y -> x = y) ->
-  map f l1 = map f l2 ->
-  l1 = l2.
-Proof.
-  revert l2. induction l1 as [| h1 t1]; simpl;
-  destruct l2 as [| h2 t2]; simpl; auto; try discriminate.
-  intros Hinj Heq.
-  injection Heq; intros Htl Hhd.
-  f_equal.
-  - apply Hinj; auto.
-  - apply IHt1; auto; intros x y Hin Hf. apply Hinj; auto.
-    destruct Hin; auto.
-Qed.*)
 
 Lemma to_bits_inj (b1 b2: byte): to_bits b1 = to_bits b2 -> b1 = b2.
 Proof.
@@ -152,85 +100,12 @@ Qed.
 
 End StrPos.
 
-Ltac solve_eqb_eq :=
-  solve[let Heq := fresh "Heq" in
-  split; intros Heq; 
-  ((progress (inversion Heq; destruct_all; subst))+
-  (*TODO: why does inversion fail sometimes?*)
-  (destruct Heq; subst) +
-  (idtac)); 
-  (* inversion Heq; destruct_all; subst; *)
-  (*Solve goals*)
-  auto; 
-  try solve[split_all; auto];
-  try discriminate; 
-  try solve[ f_equal; auto];
-  contradiction].
-
-(*TODO: move from Types to Common*)
-(*TODO: do we need this and [lists_equal] below?*)
-Definition list_eqb {A: Type} (eq: A -> A -> bool) :=
-  fix list_eqb (l1 l2: list A) : bool :=
-  match l1, l2 with
-  | x1 :: t1, x2 :: t2 => eq x1 x2 && list_eqb t1 t2
-  | nil, nil => true
-  | _, _ => false
-  end.
-
-Lemma andb_true (b1 b2: bool) :
-  b1 && b2 <-> b1 /\ b2.
-Proof.
-  unfold is_true. apply andb_true_iff.
-Qed.
-
-(*More useful in some IHs*)
-Lemma list_eqb_eq2 {A: Type} {eq: A -> A -> bool} (l1 l2 : list A)
-  (Heq: Forall (fun x => forall y, x = y <-> eq x y) l1):
-  l1 = l2 <-> list_eqb eq l1 l2.
-Proof.
-  revert l2. induction l1 as [|h1 t1]; simpl;
-  intros [| h2 t2]; simpl; auto; try solve_eqb_eq.
-  rewrite andb_true, <- (Forall_inv Heq h2), 
-    <- (IHt1 (Forall_inv_tail Heq) t2). solve_eqb_eq.
-Qed.
-
-Lemma list_eqb_eq {A: Type} {eq: A -> A -> bool} 
-  (Heq: forall x y, x = y <-> eq x y)
-  l1 l2:
-  l1 = l2 <-> list_eqb eq l1 l2.
-Proof.
-  apply list_eqb_eq2. rewrite Forall_forall; intros; auto.
-Qed.
-
-Definition isSome {A: Type} (o: option A) : bool :=
-  match o with
-  | Some _ => true
-  | _ => false
-  end.
-
-Definition isNone {A: Type} (x: option A) := negb (isSome x).
-
-(*TODO: Common?*)
-Definition option_eqb {A: Type}(eq: A -> A -> bool) (o1 o2: option A): bool :=
-  match o1, o2 with
-  | Some x, Some y => eq x y
-  | None, None => true
-  | _, _ => false
-  end.
-
-Lemma option_eqb_eq {A: Type} {eqb: A -> A -> bool}
-  (eqb_eq: forall x y, x = y <-> eqb x y)
-  o1 o2: o1 = o2 <-> option_eqb eqb o1 o2.
-Proof.
-  destruct o1 as [x|]; destruct o2 as [y|]; simpl; auto;
-  try rewrite <- eqb_eq; solve_eqb_eq.
-Qed.
 
 (*TODO: dont repeat with Common*)
 (*This awkward definition satisfies Coq's positivity checker
   for nested induction, unlike the normal one*)
 (*TODO: make nicer*)
-Definition map2 {A B C: Type} (f: A -> B -> C) := Common.map2 f.
+Definition map2 {A B C: Type} (f: A -> B -> C) := CommonList.map2 f.
 (* Definition map2 {A B C: Type} :=
   fun (f: A -> B -> C) =>
     fix map2 (l1: list A) : list B -> list C :=
@@ -254,16 +129,27 @@ Definition fold_right2 {A B C: Type} (f: A -> B -> C -> C) :=
     | _, _ => None
     end.
 
-Definition fold_left2 {A B C: Type} (f: C -> A -> B -> C) :=
-  fix fold_left2 (l1: list A) (l2: list B) (accu: C) : option C :=
-    match l1, l2 with
-    | nil, nil => Some accu
-    | a1 :: l1, a2 :: l2 => 
-      fold_left2 l1 l2 (f accu a1 a2)
-    | _, _ => None
-    end.
+Definition map2_opt {A B C: Type} (f: A -> B -> C) :=
+    fix map2 (l1: list A) (l2: list B) : option (list C) :=
+      match l1, l2 with
+      | nil, nil => Some nil
+      | x1 :: t1, x2 :: t2 => 
+        match (map2 t1 t2) with
+        | Some l1 => Some (f x1 x2 :: l1)
+        | None => None
+        end
+      | _, _ => None
+      end.
 
-Definition null {A: Type} (l: list A) : bool := Common.null l.
+Definition map_fold_left {A B C: Type} (f: A -> B -> A * C) (acc: A) (l: list B) : A * (list C) :=
+  let res := 
+  fold_left (fun x e => 
+    let y := f (fst x) e in
+    (fst y, snd y :: (snd x))
+  ) l (acc, nil) in
+  (fst res, rev' (snd res)).
+
+Definition null {A: Type} (l: list A) : bool := CommonList.null l.
 
 (* Definition null {A: Type} (l: list A) : bool :=
   match l with
@@ -359,16 +245,22 @@ Proof.
   apply eqb_true_iff.
 Qed.
 
-Definition map_fold_left {A B C: Type} (f: A -> B -> A * C) (acc: A) (l: list B) : A * (list C) :=
-  let res := 
-  fold_left (fun x e => 
-    let y := f (fst x) e in
-    (fst y, snd y :: (snd x))
-  ) l (acc, nil) in
-  (fst res, rev' (snd res)).
+Lemma list_eqb_Forall {A: Type} {eqb: A -> A -> bool} {l1: list A}
+  (Hall: Forall (fun x => forall y, x = y <-> eqb x y) l1) l2:
+  l1 = l2 <-> list_eqb eqb l1 l2.
+Proof.
+  revert l2. induction l1 as [| h1 t1 IH]; intros [| h2 t2]; simpl;
+  try solve[solve_eqb_eq].
+  rewrite andb_true, <- (Forall_inv Hall h2), <- IH;
+  [solve_eqb_eq |].
+  apply Forall_inv_tail in Hall; auto.
+Qed.
 
 Definition list_find_opt {A: Type} (p: A -> bool) (l: list A) : option A :=
   fold_right (fun x acc => if p x then Some x else acc) None l.
+
+Definition list_inb {A: Type} (eq: A -> A -> bool) (x: A) (l: list A) : bool :=
+  existsb (fun y => eq x y) l.
 
 (*In extraction, make this OCaml a * b * c, which is
   NOT equal to extracted default, (a * b) * c*)
@@ -405,3 +297,5 @@ Lemma rev_map_eq {C D: Type} (f: C -> D) (l: list C):
 Proof.
   unfold rev_map. rewrite rev_map_aux_eq, app_nil_r. reflexivity.
 Qed.
+
+Definition fun_flip {A B C: Type} (f: A -> B -> C) x y := f y x.

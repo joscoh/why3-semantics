@@ -35,6 +35,10 @@ coq-util/Bool0.ml
 coq-util/Bool0.mli
 coq-util/Byte.ml
 coq-util/Byte.mli
+coq-util/CommonList.ml
+coq-util/CommonList.mli
+coq-util/CommonOption.ml
+coq-util/CommonOption.mli
 coq-util/Common.ml
 coq-util/Common.mli
 coq-util/CoqUtil.ml
