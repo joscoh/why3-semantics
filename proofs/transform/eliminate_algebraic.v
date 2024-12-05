@@ -1,6 +1,7 @@
 Require Import AssocList.
 Require Import Task.
 Require Import GenElts.
+Require Import compile_match.
 
 
 (*Here, we ignore metas since they don't exist in the core language.
@@ -20,7 +21,7 @@ Record state := mk_state {
   cc_map : amap funsym funsym;       (* from old constructors to new constructors *)
   cp_map : amap funsym (list funsym);  (* from old constructors to new projections *)
   pp_map : amap funsym funsym;       (* from old projections to new projections *)
-  kept_m : amap typesym (list vty);         (* should we keep constructors/projections/Tcase for this type? *)
+  (*kept_m : amap typesym (list vty); *)        (* should we keep constructors/projections/Tcase for this type? *)
   (* tp_map : Mid.t (decl*theory_c); skipped tuple symbols *)
   (* inf_ts : Sts.t;               infinite types *)
   (* ma_map : Mts.t (list bool );     material type arguments *)
@@ -34,7 +35,7 @@ Record state := mk_state {
 
 (*Here, we can use coq-record-update*)
 
-#[export] Instance etaX : Settable _ := settable! mk_state <mt_map; cc_map; cp_map; pp_map; kept_m; no_ind; no_inv; no_sel>.
+#[export] Instance etaX : Settable _ := settable! mk_state <mt_map; cc_map; cp_map; pp_map; no_ind; no_inv; no_sel>.
 Import RecordSetNotations. 
 
 (*Infer args for functions - hard to get it right*)
@@ -736,7 +737,8 @@ Definition add_axioms (st: state * task) (d: typesym * list funsym) : state * ta
   (*NOTE: might be very easy to infer all types - might not need infer, might just all be typesym args*)
   let ty := vty_cons ts (map vty_var (ts_args ts)) in
   (*TODO: SKIP KEPT_NO_CASE*)
-  if negb (null (ts_args ts)) || negb (amap_mem typesym_eq_dec ts s.(kept_m)) then
+  (*Just add axioms for all maybe?*)
+  if negb (null (ts_args ts)) (*|| negb (amap_mem typesym_eq_dec ts s.(kept_m))*) then
     (* declare constructors as abstract functions *)
     let cs_add (st: state * task) (cs: funsym) :=
       let s := fst st in let tsk := snd st in
@@ -756,7 +758,104 @@ Definition add_axioms (st: state * task) (d: typesym * list funsym) : state * ta
 
 (*Skip [add_tags] and finding infinite types - only deals with metas*)
 
+(*let's go opposite direction for now*)
+(*NOTE: basically their task is a (for our purposes) : list decl,
+  where decl is either def or prop (axiom/lemma/goal). We should have way to transform
+  their task into ours/vice versa - we want unified function for this
+  Didn't encounter before because e.g. elim_inductive and definition only work on defs,
+  not on hpotheses or goal. Structure of tasks should be:
+  1. there is a single goal to be proved (at end/beginning of list)
+  2. this goal arose from goal or lemma decl originally
+  3. any prior goals are ignored, any prior lemmas are effectively axioms *)
 
+(*Ignore tuples, so don't need 2nd comp function. Instead we split into
+  2 functions: 1 for defs, 1 for hyps/goal*)
+
+Definition add_ty_decl (t: task) (ts: typesym) : task :=
+  (abs_type ts :: task_gamma t, task_delta t, task_goal t).
+ 
+(*Add subset of mut args*)
+(*TODO: do we need to do this? I suppose we could just say that all tuples should be kept with this?*)
+(*We will need to prove inhab, etc *)
+(* Definition add_data_decl (t: task) (m: mut_adt) (l: list alg_datatype) :=
+  (datatype_def (mk_mut l (m_params m) (m_nodup m))) *)
+
+(*TODO: do we need all of [def_map]? Can we assume inductives and recursive functions gone
+  already?*)
+
+
+(*Instantiate badvars with term variables*)
+Definition rewriteT' gamma s t :=
+  rewriteT gamma s ((tm_fv t) ++ (tm_bnd t)) t.
+Definition rewriteF' gamma s x y f :=
+  rewriteF gamma s ((fmla_fv f) ++ (fmla_bnd f)) x y f.
+
+Definition add_def (d: def) (t: task) : task :=
+  (d :: task_gamma t, task_delta t, task_goal t).
+
+Definition comp_ctx (d: def) (st: state * task) : state * task :=
+  let s := fst st in let tsk := snd st in
+  match d with
+  | datatype_def m =>
+    let dl := typs m in
+    (*Ignore keeping any types (for now, need to figure out)*)
+    (* let used := get_used_syms_decl d in *)
+    (*Ignore all [kept_no_case] parts*)
+    (* add type declarations *)
+    (* let concrete (a: alg_datatype) : bool := amap_mem typesym_eq_dec (s.(kept_m)) (adt_name a) in *)
+     (* Mts.mem (fst d) state.kept_m || kept_no_case used state d in *)
+    (* let '(dl_concr, dl_abs) := partition concrete dl in *)
+    let tsk := List.fold_left (fun t a => add_ty_decl t (adt_name a)) dl tsk (*_abs*) in
+    (* let task := if null dl_concr then tsk else add_data_decl add_data_decl task dl_concr in *)
+    (* add needed functions and axioms *)
+    let st := List.fold_left add_axioms (map (fun a => (adt_name a, adt_constr_list a)) dl) (s,tsk) in
+    (* add the tags for infinite types and material arguments *)
+    (* let mts := List.fold_right (fun '(t,l) => Mts.add t l) dl amap_empty in
+    let st := List.fold_left (add_tags mts) st dl in *)
+    (* return the updated state and task *)
+    st
+  | _ => 
+    (*rewriting case*)
+    (*TODO: should it be task_gamma tsk instead of separate gamma? prob*)
+    (s, add_def (TaskGen.def_map (rewriteT' (task_gamma tsk) s) (rewriteF' (task_gamma tsk) s nil true) d) tsk)
+  end.
+
+(*And for formula (easy)*)
+(* Definition comp_fmla (f: formula) (st: state * task) : state * task :=
+let s := fst st in let tsk := snd st in
+  (s, add_def (TaskGen.def_map (rewriteT' (task_gamma tsk) s) (rewriteF' (task_gamma tsk) s nil true) d) tsk). *)
+
+(*Fold version - dont use Trans.fold, easier to manually thread state through*)
+Definition fold_comp (st: state) : trans :=
+  fun t => 
+    let '(st1, tsk1) := fold_left (fun x y => comp_ctx y x) (task_gamma t) (st, t) in
+    let del1 := map (rewriteF' (task_gamma tsk1) st1 nil true) (map snd (task_delta tsk1)) in
+    let g1 := rewriteF' (task_gamma tsk1) st1 nil true (task_goal tsk1) in
+    [(task_gamma tsk1, (combine (map fst (task_delta tsk1)) del1), g1)]. 
+
+(*No infinte types or anything so just give state*)
+
+Section FullTrans.
+(*Parameterize by no_ind, no_inv, no_sel*)
+Variable (noind: bool) (noinv: bool) (nosel: bool).
+
+(*I suppose we could make all params, but prob not*)
+Definition empty_state : state := {| mt_map := amap_empty; cc_map := amap_empty;
+  cp_map := amap_empty; pp_map := amap_empty; no_ind := noind; no_inv := noinv; no_sel := nosel|}.
+
+(*Generic composition - run t2 on all resulting tasks from t1*)
+Definition compose_trans (t1 t2: trans) : trans :=
+  fun t => concat (map t2 (t1 t)).
+
+Definition eliminate_match : trans :=
+  compose_trans compile_match (fold_comp empty_state).
+
+(*Note that compile_match is the same - with extra meta stuff we don't care about*)
+
+Definition eliminate_algebraic : trans :=
+  compose_trans compile_match (fold_comp empty_state).
+
+End FullTrans.
 
 End ElimADT.
 
