@@ -617,9 +617,6 @@ Variable (noind: bool) (noinv: bool) (nosel: bool).
 Definition empty_state : state := {| mt_map := amap_empty; cc_map := amap_empty;
   cp_map := amap_empty; pp_map := amap_empty; no_ind := noind; no_inv := noinv; no_sel := nosel|}.
 
-(*Generic composition - run t2 on all resulting tasks from t1*)
-Definition compose_trans (t1 t2: trans) : trans :=
-  fun t => concat (map t2 (t1 t)).
 
 Definition eliminate_match : trans :=
   compose_trans compile_match (fold_comp empty_state).

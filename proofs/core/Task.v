@@ -867,6 +867,66 @@ Proof.
   inversion Hgoal; constructor; auto.
 Qed.
 
+(*soundness under a given condition*)
+(*Could put in gen but only need 1*)
+(*Separate out: preconditions needed for soundness, postconditions separate*)
+(*TODO: for now, boolean predicates, see if this suffices*)
+Definition sound_trans_pre (P: task -> Prop) (T: trans) : Prop :=
+  forall (t: task) (t_p: P t) (t_wf: task_typed t), 
+  (*soundness*)
+  ((forall tr: task, In tr (T t) -> task_valid tr) ->
+    task_valid t).
+
+(*Here we again require precondition because free to assume this in composition*)
+Definition trans_pre_post (P: task -> Prop) (Q: task -> Prop) (T: trans) : Prop :=
+  forall (t: task) (t_p: P t) (t_wf: task_typed t), 
+  (*postcondition holds*)
+  (forall tr, In tr (T t) -> Q tr).
+
+(*Generic composition - run t2 on all resulting tasks from t1*)
+Definition compose_trans (t1 t2: trans) : trans :=
+  fun t => concat (map t2 (t1 t)).
+
+(*2 compositions: soundness and pre/post*)
+Lemma sound_trans_comp (P1 Q1 P2: task -> Prop) (t1 t2: trans):
+  sound_trans_pre P1 t1 ->
+  sound_trans_pre P2 t2 ->
+  trans_pre_post P1 Q1 t1 ->
+  typed_trans t1 ->
+  (*typed_trans t2 ->*)
+  (forall t, Q1 t -> P2 t) ->
+  sound_trans_pre P1 (compose_trans t1 t2).
+Proof.
+  unfold sound_trans_pre, typed_trans, trans_pre_post.
+  intros Hsound1 Hsound2 Hprepost Hty1 (*Hty2*) Hpq t Hp1 Hty.
+  unfold compose_trans; setoid_rewrite in_concat; setoid_rewrite in_map_iff.
+  intros Hallval. 
+  apply Hsound1; auto.
+  intros tr Hintr.
+  apply Hsound2; auto.
+  + apply Hpq. apply (Hprepost t); auto.
+  + apply (Hty1 t); auto.
+  + intros tr2 Hintr2. apply Hallval.
+    exists (t2 tr); split; auto. exists tr; auto.
+Qed.
+
+Lemma trans_pre_post_comp (P1 Q1 P2 Q2: task -> Prop) (t1 t2: trans):
+  trans_pre_post P1 Q1 t1 ->
+  trans_pre_post P2 Q2 t2 ->
+  typed_trans t1 ->
+  (*typed_trans t2 ->*)
+  (forall t, Q1 t -> P2 t) ->
+  trans_pre_post P1 Q2 (compose_trans t1 t2).
+Proof.
+  unfold typed_trans, trans_pre_post.
+  intros Hprepost1 Hprepost2 Hty1 (*Hty2*) Hpq t Hp1 Hty tr.
+  unfold compose_trans; setoid_rewrite in_concat; setoid_rewrite in_map_iff.
+  intros [tsks [ [ts2 [Hts2 Hints2]] Hintr]]; subst.
+  eapply Hprepost2. 3: eauto.
+  - apply Hpq. eapply Hprepost1; eauto.
+  - apply (Hty1 t); auto.
+Qed.
+
 Section TaskMap.
 
 Variable (fn : term -> term) (pn: formula -> formula).

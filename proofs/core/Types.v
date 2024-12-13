@@ -32,37 +32,7 @@ Record typesym : Set := mk_ts {
   ts_args : list typevar;
   }.
 
-Fixpoint list_eqb {A: Type} (eq: A -> A -> bool) (l1 l2: list A) : bool :=
-  match l1, l2 with
-  | x1 :: t1, x2 :: t2 => eq x1 x2 && list_eqb eq t1 t2
-  | nil, nil => true
-  | _, _ => false
-  end.
 
-Lemma list_eqb_spec: forall {A: Type} (eq: A -> A -> bool)
-  (Heq: forall (x y : A), reflect (x = y) (eq x y))
-  (l1 l2: list A),
-  reflect (l1 = l2) (list_eqb eq l1 l2).
-Proof.
-  intros. revert l2. induction l1; simpl; intros.
-  - destruct l2; simpl. apply ReflectT. constructor.
-    apply ReflectF. intro C; inversion C.
-  - destruct l2; simpl. apply ReflectF. intro C; inversion C.
-    specialize (Heq a a0). destruct Heq.
-    2 : {
-      apply ReflectF. intro C; inversion C; subst; contradiction.
-    }
-    subst; simpl. specialize (IHl1 l2). destruct IHl1; subst.
-    apply ReflectT. auto. apply ReflectF. intro C; inversion C; subst; contradiction.
-Qed.
-
-(*A transparent version of [list_eq_dec]. Stdlib version
-  is opaque and this is very annoying when trying to compute*)
-
-Definition list_eq_dec' {A: Type} (eq: A -> A -> bool)
-  (Heq: forall (x y : A), reflect (x = y) (eq x y))
-  (l1 l2: list A) : {l1 = l2} + {l1 <> l2} :=
-  reflect_dec' (list_eqb_spec eq Heq l1 l2).
 
 Definition bool_eqb (b1 b2: bool) : bool :=
   match b1, b2 with
