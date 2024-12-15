@@ -101,8 +101,6 @@ match tfun_infer f tys tms with | Some t => t | _ => tm_d end.
 Definition tfun_infer_ret' (f: funsym) (tys: list vty) (tms: list term) : term * vty :=
 match tfun_infer_ret f tys tms with | Some t => t | _ => (tm_d, vty_int) end.
 
-    
-
 
 Section ElimADT.
 
@@ -567,6 +565,10 @@ Definition rewriteF' gamma s x y f :=
 Definition add_def (d: def) (t: task) : task :=
   (d :: task_gamma t, task_delta t, task_goal t).
 
+(*Add mut with params from given mut and list of ADTs (should be subset)*)
+Definition add_mut (m: mut_adt)(tys: list alg_datatype) (t: task) : task :=
+  add_def (datatype_def (mk_mut tys (m_params m) (m_nodup m))) t.
+
 Definition comp_ctx (d: def) (st: state * task) : state * task :=
   let s := fst st in let tsk := snd st in
   match d with
@@ -576,11 +578,13 @@ Definition comp_ctx (d: def) (st: state * task) : state * task :=
     (* let used := get_used_syms_decl d in *)
     (*Ignore all [kept_no_case] parts*)
     (* add type declarations *)
-    (* let concrete (a: alg_datatype) : bool := amap_mem typesym_eq_dec (s.(kept_m)) (adt_name a) in *)
+    (*Only add those not excluded*)
+    (* let concrete (a: alg_datatype) : bool :=  amap_mem typesym_eq_dec (s.(kept_m)) (adt_name a) in *)
      (* Mts.mem (fst d) state.kept_m || kept_no_case used state d in *)
-    (* let '(dl_concr, dl_abs) := partition concrete dl in *)
-    let tsk := List.fold_left (fun t a => add_ty_decl t (adt_name a)) dl tsk (*_abs*) in
-    (* let task := if null dl_concr then tsk else add_data_decl add_data_decl task dl_concr in *)
+    let '(dl_concr, dl_abs) := partition (fun a => keep_tys (adt_name a)) dl in
+    (*TODO: this does NOT preserve order, but keeps a well-typed permutation, see if this is problem*)
+    let tsk := List.fold_left (fun t a => add_ty_decl t (adt_name a)) dl_abs tsk in
+    let tsk := if null dl_concr then tsk else add_mut m dl_concr tsk in
     (* add needed functions and axioms *)
     let st := List.fold_left add_axioms (map (fun a => (adt_name a, adt_constr_list a)) dl) (s,tsk) in
     (* add the tags for infinite types and material arguments *)
@@ -602,7 +606,9 @@ let s := fst st in let tsk := snd st in
 (*Fold version - dont use Trans.fold, easier to manually thread state through*)
 Definition fold_comp (st: state) : trans :=
   fun t => 
-    let '(st1, tsk1) := fold_left (fun x y => comp_ctx y x) (task_gamma t) (st, t) in
+    let x := fold_left (fun x y => comp_ctx y x) (task_gamma t) (st, t) in
+    let st1 := fst x in
+    let tsk1 := snd x in
     let del1 := map (rewriteF' (task_gamma tsk1) st1 nil true) (map snd (task_delta tsk1)) in
     let g1 := rewriteF' (task_gamma tsk1) st1 nil true (task_goal tsk1) in
     [(task_gamma tsk1, (combine (map fst (task_delta tsk1)) del1), g1)]. 
