@@ -1,5 +1,5 @@
-Require Import compile_match eliminate_algebraic.
 Require Import Task PatternProofs.
+Require Import compile_match eliminate_algebraic.
 Set Bullet Behavior "Strict Subproofs".
 
 (*TODO: should pre and post conditions be bools so we can check manually if need be?*)
@@ -335,6 +335,84 @@ Qed.
   eliminate certain ADTs in a mutual set*)
 (*End interlude*)
 
+(*Let's just prove typing first*)
+
+(*Idea: the transformation, broadly, goes like the following:
+  for each ADT (that should be axiomatized), generate all the new
+  function symbols, add them, add axioms, and add to state (to ensure axioms consistent)
+  then, rewrite terms/formulas using these symbols instead of pattern matching (rewriteT'/rewriteF')
+
+  The main result we need to prove is that if the new symbols are interpreted appropriately, 
+  then rewriteT'/rewriteF' is semantically equivalent (I think we do need both directions)
+  We will carefully interpret the new symbols:
+  basically, we have that (for delta), assuming 
+  (forall I', I', T(gamma) |= T(Delta) => I', T(gamma) |= T (g)), 
+  need to prove that (forall I, I, gamma |= Delta => I, gamma |= g)
+  so we take I, and make I' on result by interpreting each new function symbol in the "expected"
+  way (which we prove is consistent with the axioms). Then we prove if I, gamma |= Delta, 
+  then I', T(gamma) |= T(delta), so therefore, I', T(gamma) |= T(g), 
+  Then we need the reverse direction to show that I' |= T(g) iff I |= g (T is rewriteF' here).
+
+  NOTE: going to try at first to prove all at once and see what we need auxilliary, instead
+  of proving each intermediate transformation sound with a postcondition
+  *)
+
+(*First, let us prove how gamma, delta, and goal are affected by [comp_ctx]*)
+Print def.
+
+(*[add_axioms] does the following to delta:
+  1. Keeps all existing hypotheses
+  2. Adds the adt_axioms for every type that is eliminated (TODO: define)
+  NOTE: need to define notion of 
+  f is selector_axiom  *)
+Check add_axioms.
+(*TODO: parameterize ADT by this? Or just use ID?*)
+Axiom cc_map: amap funsym funsym.
+Definition adt_ty (ts: typesym) : vty := vty_cons ts (map vty_var (ts_args ts)).
+(*NOTE: this is why the functional view of the axioms are helpful: we can easily
+  express the axioms*)
+Lemma add_axioms_delta (t: state * task) (d: typesym * list funsym): 
+  forall f, In f (task_delta (snd (add_axioms t d))) <->
+  In f (task_delta (snd t)) \/ 
+  (*TODO: define cc_map*)
+  In f (snd (selector_axiom cc_map (fst d) (adt_ty (fst d)) (snd d))) \/
+  (*TODO: indexer/discriminate with 16*)
+  In f (snd (indexer_axiom cc_map (fst d) (adt_ty (fst d)) (snd d))) \/
+  In f (discriminator_axioms cc_map (fst d) (adt_ty (fst d)) (snd d)) \/
+  (exists c, In c (snd d) /\ In f (map snd (projection_axioms cc_map c ((projection_syms c))))) \/
+  f = inversion_axiom cc_map  (fst d) (adt_ty (fst d)) (snd d).
+Admitted.
+
+
+(*[add_axioms] does not change gamma*)
+(*NOTE: this should NOT be true*)
+Locate add_axioms.
+Lemma add_axioms_gamma t ax: task_gamma (add_axioms t ax) = task_gamma t.
+Proof.
+  unfold add_axioms. simpl_task. simpl.
+  reflexivity.
+Qed.
+
+(*[add_axioms] does not change goal*)
+Lemma add_axioms_goal t ax: task_goal (add_axioms t ax) = task_goal t.
+Proof.
+  reflexivity.
+Qed.
+
+(*First, let us prove that result of [comp_ctx] does not change delta or goal*)
+Lemma comp_ctx
+
+(*[add_axioms] does not change delta or goal*)
+Lemma add_axioms_delta t ax: task_delta (add_axioms t ax) = task_delta t.
+Proof.
+  unfold add_axioms.
+  reflexivity.
+
+Lemma comp_ctx_delta keep_tys (d: def) (t: state * task) : task_delta (snd (comp_ctx keep_tys d t)) = 
+  task_delta (snd t).
+Proof.
+  destruct d; auto. simpl. 
+
 (*The core result: soundness of [fold_comp]
   TODO: probably need to generalize from [empty_state]*)
 (*We need the precondition that pattern matches have been compiled away*)
@@ -343,6 +421,54 @@ Theorem fold_comp_sound keep_tys noind noinv nosel:
   (task_and no_recfun_indpred task_pat_simpl)
   (fold_comp keep_tys (empty_state noind noinv nosel)).
 Proof.
+  unfold sound_trans_pre.
+  intros tsk Hpre Hty Hallval.
+  unfold task_valid, TaskGen.task_valid in *.
+  split; auto.
+  intros gamma_valid Hty'.
+  unfold fold_comp in Hallval.
+  specialize (Hallval _ (ltac:(left; reflexivity))).
+  destruct (fold_left
+      (fun (x : state * task) (y : def) => comp_ctx keep_tys y x)
+      (task_gamma tsk) (empty_state noind noinv nosel, tsk))
+  as [st1 [[gamma1 delta1] goal1]] eqn : Hcomp.
+  destruct tsk as [[gamma delta] goal].
+  simpl_task.
+  destruct Hallval as [Hty1 Hconseq1].
+  assert (gamma1_valid: valid_context gamma1). {
+    inversion Hty1; auto.
+  }
+  specialize (Hconseq1 gamma1_valid Hty1).
+  (*Really, things we need:
+    1. How gamma relates to gamma1 (some ADTs made abstract, axioms)
+    2. How delta relates to delta1 (same I think)
+    3. How goal relates to goal1 (same I believe)
+    4. How st1 relates (maps fully populated)*)
+  unfold log_conseq_gen in *.
+  intros pd pdf pf pf_full Hdeltasat.
+  unfold satisfies in *.
+  intros vt vv.
+  (*So we want to prove that the goal is satisfied.
+    so we need a lemma of the form: if formula_rep gamma1 (rewriteF' f), then
+      formula_rep gamma f (prob need iff) but for particular interp*)
+
+  
+
+
+
+  rewrite map_snd_combine in Hconseq1.
+  
+   simpl_task.
+  
+  Check Hallval.
+  simpl_task.
+  simpl in Hallval.
+
+  unfold log_conseq_gen.
+  Print log_conseq_gen.
+  intros pd pdf pf pf_full f_hyp Hf_hyp vv.
+
+
   unfold fold_comp.
 
   (*remember (fold_left
