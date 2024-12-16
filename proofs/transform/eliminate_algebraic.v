@@ -18,7 +18,8 @@ Require Import compile_match.
 From RecordUpdate Require Import RecordSet.
 Record state := mk_state {
   mt_map : amap typesym funsym;       (* from type symbols to selector functions *)
-  cc_map : amap funsym funsym;       (* from old constructors to new constructors *)
+  (*cc_map : amap funsym funsym;*)       (* from old constructors to new constructors - NOTE: just
+    make this a parameter*)
   cp_map : amap funsym (list funsym);  (* from old constructors to new projections *)
   (*pp_map : amap funsym funsym;       (* from old projections to new projections *)*)
   (*kept_m : amap typesym (list vty); *)        (* should we keep constructors/projections/Tcase for this type? *)
@@ -28,14 +29,15 @@ Record state := mk_state {
   (* keep_e : bool;                keep monomorphic enumeration types *)
   (* keep_r : bool;                keep non-recursive records *)
   (* keep_m : bool;                keep monomorphic data types *)
-  no_ind : bool;                (* do not generate indexing functions *)
+  (*NOTE: parameterize by these because we don't change anything - could do by typesym*)
+  (* no_ind : bool;                (* do not generate indexing functions *)
   no_inv : bool;                (* do not generate inversion axioms *)
-  no_sel : bool;                (* do not generate selector *)
+  no_sel : bool;                do not generate selector *)
 }.
 
 (*Here, we can use coq-record-update*)
 
-#[export] Instance etaX : Settable _ := settable! mk_state <mt_map; cc_map; cp_map; (*pp_map;*) no_ind; no_inv; no_sel>.
+#[export] Instance etaX : Settable _ := settable! mk_state <mt_map; (*cc_map;*) cp_map (*pp_map;*) (*no_ind; no_inv; no_sel*)>.
 Import RecordSetNotations. 
 
 (*Infer args for functions - hard to get it right*)
@@ -105,6 +107,15 @@ match tfun_infer_ret f tys tms with | Some t => t | _ => (tm_d, vty_int) end.
 Section ElimADT.
 
 Variable keep_tys : typesym -> bool.
+
+(*NOTE: we parameterize by cc_map. In our case, this is the identity, but
+  in principle it could be any map of new constructors*)
+(*This could be from a map or it could e.g. the identity function*)
+Variable (new_constr: funsym -> funsym).
+
+(*Parameterize by no_ind, no_inv, no_sel*)
+(*Ignore no_sel and no_inv - not used anywhere*)
+Variable (noind: typesym -> bool).
 
 Definition enc_ty (t: vty) : bool :=
   match t with
@@ -188,7 +199,7 @@ Fixpoint rewriteT (t: term) : term :=
     else t_map rewriteT (rewriteF nil true) t
   | Tfun ls tys args => (*map old constrs to new constr*)
     if ls.(f_is_constr) && enc_ty (f_ret ls) (*we can just pass in return type because only depends on typesym*)
-    then Tfun (amap_get_def funsym_eq_dec s.(cc_map) ls id_fs) tys args
+    then Tfun (new_constr ls) (*(amap_get_def funsym_eq_dec s.(cc_map) ls id_fs)*) tys args
     else t_map rewriteT (rewriteF nil true) t
   (*Don't have projections*)
   | _ => t_map rewriteT (rewriteF nil true) t
@@ -230,7 +241,7 @@ with rewriteF (av: list vsymbol) (sign: bool) (f: formula) : formula :=
         end
         in
         let vl := fst res in let e := snd res in
-        let hd := tfun_infer' (amap_get_def funsym_eq_dec (s.(cc_map)) cs id_fs) (map snd vl) (map Tvar vl) in
+        let hd := tfun_infer' (new_constr cs) (*(amap_get_def funsym_eq_dec (s.(cc_map)) cs id_fs)*) (map snd vl) (map Tvar vl) in
         match t1 with
         | Tvar v => if in_dec vsymbol_eq_dec v av then
           let hd := Flet hd v e in if sign then fforalls vl hd else fexists vl hd
@@ -282,7 +293,7 @@ Definition add_axiom (t: task) (n: string) (f: formula) : task :=
 (*NOTE: the cc_map is probably the identity map but we still keep it because
   it is not (for some reason) in the full version*)
 (*TODO: need condition that all funsyms in csl appear in cc_map*)
-Definition selector_axiom (cc_map : amap funsym funsym) 
+Definition selector_axiom
   (ts: typesym) (ty: vty) (csl: list funsym) : funsym * list (string * formula) (*list (funsym * formula)?*) :=
   (* declare the selector function *)
   let mt_id : string := ("match_" ++ ts_name ts)%string in
@@ -307,7 +318,7 @@ Definition selector_axiom (cc_map : amap funsym funsym)
     let varnames2 := gen_names (length (s_args cs)) "u"%string varnames in
     let vl := rev (combine varnames2 (s_args cs)) in
     (* let vl = List.rev_map (create_vsymbol (id_fresh "u")) cs.ls_args in *)
-    let newcs := amap_get_def funsym_eq_dec cc_map cs id_fs in (*TODO: show have*)
+    let newcs := new_constr cs in (*amap_get_def funsym_eq_dec cc_map cs id_fs in (*TODO: show have*)*)
     let hd := tfun_infer' newcs (rev_map snd vl) (rev_map Tvar vl) in (*TODO: is return type right? - they say f_ret cs*)
     let hd := tfun_infer' mt_ls ((f_ret cs) :: map snd mt_vl) (hd :: mt_tl) in
     let vl := rev_append mt_vl (rev vl) in
@@ -325,8 +336,8 @@ Definition add_task_axioms (t: task) (axs: list (string * formula)) : task :=
 Definition add_selector_aux (st: state * task) (ts: typesym) (ty: vty) (csl: list funsym) :=
   let s := fst st in
   let tsk := snd st in
-  if s.(no_sel) then (s, tsk) else
-  let sel := selector_axiom s.(cc_map) ts ty csl in
+  (* if s.(no_sel) then (s, tsk) else *)
+  let sel := selector_axiom ts ty csl in
   let mt_ls := fst sel in
   let axms := snd sel in
   let tsk := add_param_decl tsk mt_ls in
@@ -335,21 +346,22 @@ Definition add_selector_aux (st: state * task) (ts: typesym) (ty: vty) (csl: lis
   let mt_map2 := amap_set typesym_eq_dec s.(mt_map) ts mt_ls in
   (s <|mt_map := mt_map2|>, tsk).
 
+Definition single {A: Type} (l: list A) : bool :=
+  match l with | [_] => true | _ => false
+  end.
+
 (*Don't need selector for types with single constructor because trivial.
   NOTE: does this cause any problems with eliminating singleton types (e.g. user defined tuple)
   need to see in rewriteT*)
 Definition add_selector (acc : state * task) (ts: typesym) (ty: vty) (x: list funsym) :
   state * task :=
-  match x with
-  | [_] => acc
-  | csl => add_selector_aux acc ts ty csl
-  end.
+  if single x then acc else  add_selector_aux acc ts ty x.
 
 Definition mapi {A B: Type} (f: nat -> A -> B) (l: list A) : list B :=
   map (fun x => f (fst x) (snd x)) (combine (seq 0 (length l)) l).
 
 (*Again, define indexer axiom*)
-Definition indexer_axiom (cc_map : amap funsym funsym)  
+Definition indexer_axiom
   (ts: typesym) (ty : vty) (csl : list funsym) : funsym * list (string * formula) :=
   (* declare the indexer function *)
   let mt_id := ("index_" ++ (ts_name ts))%string in
@@ -360,7 +372,7 @@ Definition indexer_axiom (cc_map : amap funsym funsym)
     (* let pr = create_prsymbol (id_derive id cs.ls_name) in *)
     let varnames := gen_names (length (s_args cs)) "u" nil in
     let vl := rev (combine varnames (s_args cs)) in
-    let newcs := amap_get_def funsym_eq_dec cc_map cs id_fs in
+    let newcs := new_constr cs (*amap_get_def funsym_eq_dec cc_map cs id_fs in*) in
     (*NOTE: THESE TYPES MAY BE WRONG!*)
     let hd := tfun_infer' newcs (rev (map snd vl)) (rev_map Tvar vl) in
     (* let hd = fs_app newcs (List.rev_map t_var vl) (Option.get cs.ls_value) in *)
@@ -373,7 +385,7 @@ Definition indexer_axiom (cc_map : amap funsym funsym)
 Definition add_indexer_aux (st: state * task) (ts: typesym) (ty : vty) (csl : list funsym) : state * task :=
   let s := fst st in
   let tsk := snd st in
-  let indexer := indexer_axiom s.(cc_map) ts ty csl in
+  let indexer := indexer_axiom ts ty csl in
   let mt_ls := fst indexer in
   let axms := snd indexer in
   (*update task*)
@@ -395,7 +407,7 @@ Fixpoint map_pairs {A B: Type} (f: A -> A -> B) (l: list A) : list B :=
   end.
 
 (*Here, only axioms - TODO: do we want to index by funsyms: ie, return (funsym * funsym * formula)*)
-Definition discriminator_axioms (cc_map : amap funsym funsym) (ts: typesym) (ty: vty) (csl: list funsym) : 
+Definition discriminator_axioms (ts: typesym) (ty: vty) (csl: list funsym) : 
   list (string * formula) :=
   let d_add (c1: funsym) (c2: funsym) : (string * formula) :=
     let i : string := ((s_name c1) ++ "_" ++ (s_name c2))%string in
@@ -405,8 +417,8 @@ Definition discriminator_axioms (cc_map : amap funsym funsym) (ts: typesym) (ty:
     let vl := rev (combine (gen_names (length (s_args c2)) "v" nil) (s_args c2)) in
     (* let ul := rev_map (create_vsymbol (id_fresh "u")) c1.ls_args in
     let vl = List.rev_map (create_vsymbol (id_fresh "v")) c2.ls_args in *)
-    let newc1 := amap_get_def funsym_eq_dec (cc_map) c1 id_fs in
-    let newc2 := amap_get_def funsym_eq_dec (cc_map) c2 id_fs in
+    let newc1 := new_constr c1 in (*amap_get_def funsym_eq_dec (cc_map) c1 id_fs in*)
+    let newc2 := new_constr c2 in (*amap_get_def funsym_eq_dec (cc_map) c2 id_fs in*)
     let t1 := tfun_infer' newc1 (rev (map snd ul)) (rev_map Tvar ul) in
     let t2 := tfun_infer' newc2 (rev (map snd vl)) (rev_map Tvar vl) in
     (* let t1 = fs_app newc1 (List.rev_map t_var ul) ty in
@@ -422,17 +434,15 @@ Definition discriminator_axioms (cc_map : amap funsym funsym) (ts: typesym) (ty:
 Definition add_discriminator (st: state * task) (ts: typesym) (ty: vty) (csl: list funsym) : state * task :=
   let s := fst st in
   let tsk := snd st in
-  let axs := discriminator_axioms s.(cc_map) ts ty csl in
+  let axs := discriminator_axioms ts ty csl in
   (s, add_task_axioms tsk axs).
 
 (*TODO: see if we want to do this still - are there types with more than 16 constructors?*)
 Definition add_indexer (acc: state * task) (ts: typesym) (ty: vty) (cs: list funsym) := 
-  match cs with
-  | [_] => acc
-  | csl => if negb (fst acc).(no_ind) then add_indexer_aux acc ts ty csl
-    else if Nat.leb (length csl) 16 then add_discriminator acc ts ty csl 
-    else acc
-  end.
+  if single cs then acc else
+  if negb (noind ts) then add_indexer_aux acc ts ty cs
+    else if Nat.leb (length cs) 16 then add_discriminator acc ts ty cs 
+    else acc.
 
 (*NOTE: complete_projections just copies over projections if they exist.
   We do not have any projections in our data, so we only implement the "None" case.
@@ -460,14 +470,14 @@ Definition complete_projections (csl: list funsym) : list (funsym * list funsym)
   Also we never access pp_map outside of this function - useless to us *)
 (*We consider projection axioms for a single constructor and list of projection symbols
   (given by [projection_names]) - pj_add from before*)
-Definition projection_axioms (cc_map: amap funsym funsym) 
+Definition projection_axioms
   (cs: funsym) (pl: list funsym) : list (funsym * (string * formula)) :=
   (* declare and define the projection functions *)
   (*Fresh vars TODO*)
   let vl := combine (gen_names (length (s_args cs)) "u" nil) (s_args cs) in
   (* let vl = List.map (create_vsymbol (id_fresh "u")) cs.ls_args in *)
   let tl := map Tvar vl in
-  let hd := tfun_infer' (amap_get_def funsym_eq_dec (cc_map) cs id_fs)
+  let hd := tfun_infer' (new_constr cs) (*(amap_get_def funsym_eq_dec (cc_map) cs id_fs)*)
     (map snd vl) tl in
   (* let hd = fs_app (Mls.find cs state.cc_map) tl (Option.get cs.ls_value) in *)
   (*TODO: added ty*)
@@ -511,8 +521,9 @@ Definition add_projections {A B: Type} (st: state * task) (_ts : A) (_ty : B) (c
   let s := fst st in
   let tsk := snd st in
   (*For each constructor, get projections and axioms, add projection funsym and axioms to task*)
+  (*Do in 2 pieces: order doesn't matter because one affects gamma, the other affects delta*)
   let tsk := fold_left (fun acc c => 
-    let projs := projection_axioms s.(cc_map) c (projection_syms c) in
+    let projs := projection_axioms c (projection_syms c) in
     fold_left (fun tsk x => 
       let pj := fst x in
       let ax := snd x in
@@ -527,7 +538,7 @@ Definition add_projections {A B: Type} (st: state * task) (_ts : A) (_ty : B) (c
 (*TODO: do we need state at all (other than maybe constructor map) - we know exactly what is
   in the state for each - really should just need task*)
 
-Definition inversion_axiom (cc_map: amap funsym funsym) 
+Definition inversion_axiom
   (ts: typesym) (ty: vty) (csl: list funsym) : string * formula :=
   (* add the inversion axiom *)
   let ax_id := ((ts_name ts) ++ "_inversion")%string in
@@ -542,7 +553,7 @@ Definition inversion_axiom (cc_map: amap funsym funsym)
     (*NOTE: change app to also give return type*)
     let app pj := tfun_infer_ret' pj [ty] [ax_hd] in
     (* let app pj = t_app_infer pj [ax_hd] in *)
-    let cs := amap_get_def funsym_eq_dec cc_map cs id_fs in
+    let cs := new_constr cs (*amap_get_def funsym_eq_dec cc_map cs id_fs in*) in
     (* let cs = Mls.find cs state.cc_map in *)
     let pjl' := map app pjl in
     Feq ty ax_hd (tfun_infer' cs (map snd pjl') (map fst pjl'))
@@ -556,8 +567,8 @@ Definition inversion_axiom (cc_map: amap funsym funsym)
 Definition add_inversion (st: state * task) (ts: typesym) (ty: vty) (csl: list funsym) :
   state * task :=
   let s := fst st in let tsk := snd st in
-  if s.(no_inv) then st else
-  let inv := inversion_axiom s.(cc_map) ts ty csl in
+  (* if s.(no_inv) then st else *)
+  let inv := inversion_axiom ts ty csl in
   (s, add_axiom tsk (fst inv) (snd inv)).
 
 (*TODO: since we don't have builtin projections, we can't do the
@@ -565,6 +576,8 @@ Definition add_inversion (st: state * task) (ts: typesym) (ty: vty) (csl: list f
   TODO: need to figure out: do we prove only a subset of allowed behaviors sound?
   or can we prove the rest at the higher level - assuming something about projections, etc
   Or should we add projections? Need to figure this out!*)
+
+
 
 Definition add_axioms (st: state * task) (d: typesym * list funsym) : state * task :=
   let s := fst st in
@@ -575,23 +588,25 @@ Definition add_axioms (st: state * task) (d: typesym * list funsym) : state * ta
   let ty := vty_cons ts (map vty_var (ts_args ts)) in
   (*TODO: SKIP KEPT_NO_CASE*)
   (*Just add axioms for all maybe?*)
-  if negb (null (ts_args ts)) (*|| negb (amap_mem typesym_eq_dec ts s.(kept_m))*) then
+  (*if negb (null (ts_args ts)) (*|| negb (amap_mem typesym_eq_dec ts s.(kept_m))*) then*)
     (* declare constructors as abstract functions *)
-    let cs_add (st: state * task) (cs: funsym) :=
+    (*let cs_add (st: state * task) (cs: funsym) :=
       let s := fst st in let tsk := snd st in
-      let id := s_name cs in (*TODO: no clone, is this ok*)
+      (s <| cc_map := amap_set funsym_eq_dec s.(cc_map) cs (new_constr cs) |>, 
+        add_param_decl tsk (new_constr cs))
+      (* let id := s_name cs in (*TODO: no clone, is this ok*)
       let ls := funsym_noconstr_noty id (s_args cs) (f_ret cs) in (*TODO: this is ls*)
       (* let ls = create_lsymbol id cs.ls_args cs.ls_value in *)
-      (s <| cc_map := amap_set funsym_eq_dec s.(cc_map) cs ls |>, add_param_decl tsk ls)
+      (s <| cc_map := amap_set funsym_eq_dec s.(cc_map) cs ls |>, add_param_decl tsk ls) *)
       (* { state with cc_map = Mls.add cs ls state.cc_map },add_param_decl task ls *)
     in
-    let st := fold_left cs_add csl st in
+    let st := fold_left cs_add csl st in*)
     (* add selector, projections, and inversion axiom *)
     let st := add_selector st ts ty csl in
     let st := add_indexer st ts ty csl in
     let st := add_projections st ts ty csl in
-    add_inversion st ts ty csl
-  else st.
+    add_inversion st ts ty csl.
+  (*else st.*)
 
 (*Skip [add_tags] and finding infinite types - only deals with metas*)
 
@@ -681,12 +696,11 @@ Definition fold_comp (st: state) : trans :=
 (*No infinte types or anything so just give state*)
 
 Section FullTrans.
-(*Parameterize by no_ind, no_inv, no_sel*)
-Variable (noind: bool) (noinv: bool) (nosel: bool).
+
 
 (*I suppose we could make all params, but prob not*)
-Definition empty_state : state := {| mt_map := amap_empty; cc_map := amap_empty;
-  cp_map := amap_empty; (*pp_map := amap_empty;*) no_ind := noind; no_inv := noinv; no_sel := nosel|}.
+Definition empty_state : state := {| mt_map := amap_empty; (*cc_map := amap_empty;*)
+  cp_map := amap_empty; (*pp_map := amap_empty;*) (*no_ind := noind; no_inv := noinv; no_sel := nosel*)|}.
 
 
 Definition eliminate_match : trans :=

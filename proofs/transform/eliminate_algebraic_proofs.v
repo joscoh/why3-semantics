@@ -367,21 +367,133 @@ Print def.
   f is selector_axiom  *)
 Check add_axioms.
 (*TODO: parameterize ADT by this? Or just use ID?*)
-Axiom cc_map: amap funsym funsym.
+
+Section ContextSpecs.
+
 Definition adt_ty (ts: typesym) : vty := vty_cons ts (map vty_var (ts_args ts)).
+
+(*TODO: can we just assume that this is the identity?*)
+Variable (new_constrs: funsym -> funsym).
+
+(* Definition cc_maps (l: list funsym) : amap funsym funsym :=
+  fold_right (fun c acc => amap_set funsym_eq_dec acc c (new_constrs c)) amap_empty l. *)
+
+(* Variable (cc_maps: list funsym -> amap funsym funsym). *)
+Variable (noind: typesym -> bool).
+
+Ltac replace_prop p1 p2 :=
+  let Hiff := fresh "Hiff" in 
+  assert (Hiff: p1 <-> p2); [| rewrite Hiff; clear Hiff].
+
+Lemma add_param_decl_delta tsk f: task_delta (add_param_decl tsk f) = task_delta tsk.
+Proof.
+  reflexivity.
+Qed.
+
+(*Do [add_projections] separately*)
+Lemma add_projections_delta {A B: Type} (st: state * task) (ts: A) (ty: B) (cs: list funsym):
+  forall f, In f (task_delta (snd (add_projections new_constrs st ts ty cs))) <->
+    In f (task_delta (snd st)) \/
+    (exists c, In c cs /\ In f (map snd (projection_axioms new_constrs  c ((projection_syms c))))).
+Proof.
+  intros f. Opaque projection_axioms. Opaque projection_syms. simpl.
+  rewrite <- fold_left_rev_right.
+  setoid_rewrite In_rev at 3.
+  induction (rev cs) as [| c ctl IHc]; simpl; auto.
+  - split; [intros Hin | intros; destruct_all]; auto. contradiction.
+  - (*again, go to fold_right*) 
+    rewrite <- fold_left_rev_right.
+    setoid_rewrite <- (rev_involutive (map snd (projection_axioms _ _ _))).
+    setoid_rewrite <- map_rev.
+    setoid_rewrite <- In_rev.
+    (*Need to rewrite existential for induction*)
+    replace_prop (exists c0 : funsym,
+    (c = c0 \/ In c0 ctl) /\ In f (map snd (rev
+      (projection_axioms new_constrs c0 (projection_syms c0)))))
+    (In f (map snd (rev (projection_axioms new_constrs c (projection_syms c)))) \/
+    (exists c0 : funsym, In c0 ctl /\ In f (map snd (rev
+      (projection_axioms new_constrs c0 (projection_syms c0)))))).
+    { split; intros; destruct_all; subst; eauto. }
+    (*Now we can ignore tail part except in IH*)
+    induction (rev (projection_axioms new_constrs c (projection_syms c))) as [| h1 t1 IH2]; simpl; auto.
+    + rewrite IHc. setoid_rewrite map_rev. setoid_rewrite <- In_rev.
+      split; intros; destruct_all; eauto. contradiction.
+    + destruct h1 as [fs1 [n1 ax1]]; simpl in *. rewrite add_param_decl_delta, IH2.
+      tauto.
+Qed.
+
+Lemma add_task_axioms_delta tsk ax:
+  task_delta (add_task_axioms tsk ax) = rev ax ++ task_delta tsk.
+Proof.
+  unfold add_task_axioms.
+  revert tsk. induction ax as [| h tl IH]; simpl; auto.
+  intros tsk. rewrite IH. simpl_task. destruct h; rewrite <- app_assoc; auto.
+Qed.
+
+Opaque inversion_axiom.
+Opaque selector_axiom.
+Opaque discriminator_axioms.
+Opaque indexer_axiom.
+Opaque projection_axioms.
+Opaque projection_syms.
+Opaque add_projections.
+  
 (*NOTE: this is why the functional view of the axioms are helpful: we can easily
   express the axioms*)
-Lemma add_axioms_delta (t: state * task) (d: typesym * list funsym): 
-  forall f, In f (task_delta (snd (add_axioms t d))) <->
+Lemma add_axioms_delta (t: state * task) (ts: typesym) (cs: list funsym): 
+  forall f, In f (task_delta (snd (add_axioms new_constrs noind t (ts, cs)))) <->
   In f (task_delta (snd t)) \/ 
   (*TODO: define cc_map*)
-  In f (snd (selector_axiom cc_map (fst d) (adt_ty (fst d)) (snd d))) \/
-  (*TODO: indexer/discriminate with 16*)
-  In f (snd (indexer_axiom cc_map (fst d) (adt_ty (fst d)) (snd d))) \/
-  In f (discriminator_axioms cc_map (fst d) (adt_ty (fst d)) (snd d)) \/
-  (exists c, In c (snd d) /\ In f (map snd (projection_axioms cc_map c ((projection_syms c))))) \/
-  f = inversion_axiom cc_map  (fst d) (adt_ty (fst d)) (snd d).
-Admitted.
+  (if single cs then False else 
+    In f (snd (selector_axiom new_constrs ts (adt_ty ts) cs))) \/
+  (*An awkward condition but consistent with theirs*)
+  (if single cs then False else if negb (noind ts) then In f (snd (indexer_axiom new_constrs  ts (adt_ty ts) cs))
+    else if Nat.leb (length cs) 16 then 
+    In f (discriminator_axioms new_constrs  ts (adt_ty ts) cs)
+    else False) \/
+  (exists c, In c cs /\ In f (map snd (projection_axioms new_constrs  c ((projection_syms c))))) \/
+  f = inversion_axiom new_constrs  ts (adt_ty ts) cs.
+Proof.
+  intros f.
+  destruct t as [s [[gamma delta] goal]].
+  unfold add_axioms.
+  unfold add_inversion.
+  simpl.
+  (*First, deal with inversion axioms*)
+  rewrite or_comm.
+  rewrite <- !or_assoc.
+  apply or_iff.
+  2: {
+    symmetry. rewrite (surjective_pairing (inversion_axiom _ ts (adt_ty ts) cs)) at 1. split;
+    symmetry; auto.
+  }
+  (*Step 2: projections*)
+  rewrite add_projections_delta.
+  apply or_iff; [| reflexivity].
+  unfold add_indexer, add_selector, add_discriminator.
+  (*Now some case analysis*)
+  destruct (single cs); [auto; split; intros; destruct_all; auto; contradiction|].
+  destruct (noind ts); simpl; [destruct (length cs <=? 16)|]; simpl;
+  (*simplification to get bunch of "if"*)
+  repeat (rewrite add_param_decl_delta + rewrite add_task_axioms_delta);
+  try rewrite or_false_r; rewrite !in_app_iff, <- !In_rev;
+  (*Need to adjust order*)
+  repeat (rewrite or_comm; apply or_iff; try solve[reflexivity]).
+Qed.
+
+
+(*START: plan: formulate theorem correctly (with cc, cases) - should paramterize section
+  by them so we only have to prove once
+  Then prove similar for gamma (with new funsyms from e.g. selectors) - but need to
+  get order correct - e.g. have original gamma with a bunch of inorder declarations
+  goal is easy
+  Step 2: lift this to comp_ctx - delta is the same, gamma now replaces (some) types with
+  abstract types and adds same funsyms as above. Bit complicated is nonrec case if not eliminated
+  (b/c of alt-ergo really) - can't represnt as map I think because rewriteT should depend on gamma?
+  (NOTE: only depends on gamma bc we need to get constructors - could parameterize by map and add
+  to this lemma - constructor map is constant does not need fold - might be good to do this)
+  Step 3: go back to fold_comp - now know context, goals, etc, need to start proving
+  (e.g.) axioms true, well typed, etc*)
 
 
 (*[add_axioms] does not change gamma*)
