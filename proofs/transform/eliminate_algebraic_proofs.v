@@ -357,26 +357,11 @@ Qed.
   of proving each intermediate transformation sound with a postcondition
   *)
 
-(*First, let us prove how gamma, delta, and goal are affected by [comp_ctx]*)
-Print def.
-
-(*[add_axioms] does the following to delta:
-  1. Keeps all existing hypotheses
-  2. Adds the adt_axioms for every type that is eliminated (TODO: define)
-  NOTE: need to define notion of 
-  f is selector_axiom  *)
-Check add_axioms.
-(*TODO: parameterize ADT by this? Or just use ID?*)
-
-Section ContextSpecs.
-
-Definition adt_ty (ts: typesym) : vty := vty_cons ts (map vty_var (ts_args ts)).
-
-(*TODO: can we just assume that this is the identity?*)
+Section Proofs.
+(*TODO: will we need to case on this?*)
 Variable (new_constrs: funsym -> funsym).
 
-(* Definition cc_maps (l: list funsym) : amap funsym funsym :=
-  fold_right (fun c acc => amap_set funsym_eq_dec acc c (new_constrs c)) amap_empty l. *)
+Definition adt_ty (ts: typesym) : vty := vty_cons ts (map vty_var (ts_args ts)).
 
 (* Variable (cc_maps: list funsym -> amap funsym funsym). *)
 Variable (noind: typesym -> bool).
@@ -385,42 +370,36 @@ Ltac replace_prop p1 p2 :=
   let Hiff := fresh "Hiff" in 
   assert (Hiff: p1 <-> p2); [| rewrite Hiff; clear Hiff].
 
+(*Step 1: Prove (syntactically) how gamma, delta, and goal are affected by transformation*)
+
+Section ContextSpecs.
+
+(*[add_param_decl]*)
+
 Lemma add_param_decl_delta tsk f: task_delta (add_param_decl tsk f) = task_delta tsk.
 Proof.
   reflexivity.
 Qed.
 
-(*Do [add_projections] separately*)
-Lemma add_projections_delta {A B: Type} (st: state * task) (ts: A) (ty: B) (cs: list funsym):
-  forall f, In f (task_delta (snd (add_projections new_constrs st ts ty cs))) <->
-    In f (task_delta (snd st)) \/
-    (exists c, In c cs /\ In f (map snd (projection_axioms new_constrs  c ((projection_syms c))))).
+Lemma add_param_decl_gamma tsk f: task_gamma (add_param_decl tsk f) = abs_fun f :: task_gamma tsk.
 Proof.
-  intros f. Opaque projection_axioms. Opaque projection_syms. simpl.
-  rewrite <- fold_left_rev_right.
-  setoid_rewrite In_rev at 3.
-  induction (rev cs) as [| c ctl IHc]; simpl; auto.
-  - split; [intros Hin | intros; destruct_all]; auto. contradiction.
-  - (*again, go to fold_right*) 
-    rewrite <- fold_left_rev_right.
-    setoid_rewrite <- (rev_involutive (map snd (projection_axioms _ _ _))).
-    setoid_rewrite <- map_rev.
-    setoid_rewrite <- In_rev.
-    (*Need to rewrite existential for induction*)
-    replace_prop (exists c0 : funsym,
-    (c = c0 \/ In c0 ctl) /\ In f (map snd (rev
-      (projection_axioms new_constrs c0 (projection_syms c0)))))
-    (In f (map snd (rev (projection_axioms new_constrs c (projection_syms c)))) \/
-    (exists c0 : funsym, In c0 ctl /\ In f (map snd (rev
-      (projection_axioms new_constrs c0 (projection_syms c0)))))).
-    { split; intros; destruct_all; subst; eauto. }
-    (*Now we can ignore tail part except in IH*)
-    induction (rev (projection_axioms new_constrs c (projection_syms c))) as [| h1 t1 IH2]; simpl; auto.
-    + rewrite IHc. setoid_rewrite map_rev. setoid_rewrite <- In_rev.
-      split; intros; destruct_all; eauto. contradiction.
-    + destruct h1 as [fs1 [n1 ax1]]; simpl in *. rewrite add_param_decl_delta, IH2.
-      tauto.
+  reflexivity.
 Qed.
+
+Lemma add_param_decl_goal tsk f: task_goal (add_param_decl tsk f) = task_goal tsk.
+Proof.
+  reflexivity.
+Qed.
+
+(*[add_axiom]*)
+
+Lemma add_axiom_gamma t n f: task_gamma (add_axiom t n f) = task_gamma t.
+Proof. reflexivity. Qed.
+
+Lemma add_axiom_delta t n f: task_delta (add_axiom t n f) = (n, f) :: task_delta t.
+Proof. reflexivity. Qed.
+
+(**[add_task_axioms]*)
 
 Lemma add_task_axioms_delta tsk ax:
   task_delta (add_task_axioms tsk ax) = rev ax ++ task_delta tsk.
@@ -429,6 +408,68 @@ Proof.
   revert tsk. induction ax as [| h tl IH]; simpl; auto.
   intros tsk. rewrite IH. simpl_task. destruct h; rewrite <- app_assoc; auto.
 Qed.
+
+Lemma add_task_axioms_gamma tsk ax:
+  task_gamma (add_task_axioms tsk ax) = task_gamma tsk.
+Proof.
+  unfold add_task_axioms.
+  revert tsk. induction ax as [| h tl IH]; simpl; auto.
+  intros tsk. rewrite IH. simpl_task. reflexivity.
+Qed.
+
+Lemma add_task_axioms_goal tsk ax:
+  task_goal (add_task_axioms tsk ax) = task_goal tsk.
+Proof.
+  unfold add_task_axioms.
+  revert tsk. induction ax as [| h tl IH]; simpl; auto.
+  intros tsk. rewrite IH. simpl_task. reflexivity.
+Qed.
+
+(*[add_projections] (We do separately because of the nested induction - we convert
+  each [fold_left] to [fold_right])*)
+
+(*Should we just define it this way?*)
+(*Note, might need In version*)
+Lemma add_projections_delta {A B: Type} (st: state * task) (ts: A) (ty: B) (cs: list funsym):
+  task_delta (snd (add_projections new_constrs st ts ty cs)) =
+  (concat (map (fun c => (rev (map snd (projection_axioms new_constrs  c ((projection_syms c)))))) (rev cs))) ++
+  task_delta (snd st).
+Proof.
+  Opaque projection_axioms. Opaque projection_syms. simpl.
+  rewrite <- fold_left_rev_right.
+  induction (rev cs) as [| c ctl IHc]; simpl; auto.
+  (*again, go to fold_right*) 
+  rewrite <- fold_left_rev_right.
+  rewrite <- map_rev.
+  induction (rev (projection_axioms new_constrs c (projection_syms c))) as [| h t IH2]; simpl; auto.
+  rewrite add_axiom_delta. f_equal; auto. destruct (snd h); reflexivity.
+Qed.
+
+Lemma add_projections_gamma {A B: Type} (st: state * task) (ts: A) (ty: B) (cs: list funsym):
+  task_gamma (snd (add_projections new_constrs st ts ty cs)) =
+  map abs_fun (concat (map (fun c => rev (map fst (projection_axioms new_constrs c ((projection_syms c))))) (rev cs))) ++
+  task_gamma (snd st).
+Proof.
+  simpl. rewrite <- fold_left_rev_right.
+  induction (rev cs) as [|c ctl IH]; simpl; auto.
+  rewrite <- fold_left_rev_right.
+  rewrite map_app, <-  map_rev.
+  induction (rev (projection_axioms new_constrs c (projection_syms c))) as [| h t IH2]; simpl; auto.
+  rewrite add_axiom_gamma, add_param_decl_gamma. f_equal.
+  rewrite IH2,  <- app_assoc. reflexivity.
+Qed. 
+
+Lemma add_projections_goal {A B: Type} (st: state * task) (ts: A) (ty: B) (cs: list funsym):
+  task_goal (snd (add_projections new_constrs st ts ty cs)) =
+  task_goal (snd st).
+Proof.
+  simpl. rewrite <- fold_left_rev_right.
+  induction (rev cs) as [|c ctl IH]; simpl; auto.
+  rewrite <- fold_left_rev_right.
+  induction (rev (projection_axioms new_constrs c (projection_syms c))) as [| h t IH2]; simpl; auto.
+Qed. 
+
+(*[add_axioms] - The first interesting part*)
 
 Opaque inversion_axiom.
 Opaque selector_axiom.
@@ -441,45 +482,80 @@ Opaque add_projections.
 (*NOTE: this is why the functional view of the axioms are helpful: we can easily
   express the axioms*)
 Lemma add_axioms_delta (t: state * task) (ts: typesym) (cs: list funsym): 
-  forall f, In f (task_delta (snd (add_axioms new_constrs noind t (ts, cs)))) <->
-  In f (task_delta (snd t)) \/ 
-  (*TODO: define cc_map*)
-  (if single cs then False else 
-    In f (snd (selector_axiom new_constrs ts (adt_ty ts) cs))) \/
-  (*An awkward condition but consistent with theirs*)
-  (if single cs then False else if negb (noind ts) then In f (snd (indexer_axiom new_constrs  ts (adt_ty ts) cs))
-    else if Nat.leb (length cs) 16 then 
-    In f (discriminator_axioms new_constrs  ts (adt_ty ts) cs)
-    else False) \/
-  (exists c, In c cs /\ In f (map snd (projection_axioms new_constrs  c ((projection_syms c))))) \/
-  f = inversion_axiom new_constrs  ts (adt_ty ts) cs.
+  task_delta (snd (add_axioms new_constrs noind t (ts, cs))) =
+  [inversion_axiom new_constrs  ts (adt_ty ts) cs] ++
+  (*Projections are trickiest*)
+  (concat (map (fun c => rev (map snd (projection_axioms new_constrs  c ((projection_syms c))))) (rev cs))) ++
+  rev (if single cs then nil else if negb (noind ts) then
+    snd (indexer_axiom new_constrs  ts (adt_ty ts) cs)
+    else if (length cs) <=? 16 then
+    discriminator_axioms new_constrs  ts (adt_ty ts) cs
+    else nil) ++
+  (*selector*)
+  (if single cs then nil else rev (snd (selector_axiom new_constrs ts (adt_ty ts) cs))) ++
+  task_delta (snd t).
 Proof.
-  intros f.
   destruct t as [s [[gamma delta] goal]].
   unfold add_axioms.
   unfold add_inversion.
   simpl.
-  (*First, deal with inversion axioms*)
-  rewrite or_comm.
-  rewrite <- !or_assoc.
-  apply or_iff.
-  2: {
-    symmetry. rewrite (surjective_pairing (inversion_axiom _ ts (adt_ty ts) cs)) at 1. split;
-    symmetry; auto.
-  }
-  (*Step 2: projections*)
-  rewrite add_projections_delta.
-  apply or_iff; [| reflexivity].
+  rewrite add_axiom_delta.
+  (*inversion axiom*)
+  f_equal.
+  (*projections*)
+  rewrite add_projections_delta. f_equal.
   unfold add_indexer, add_selector, add_discriminator.
   (*Now some case analysis*)
   destruct (single cs); [auto; split; intros; destruct_all; auto; contradiction|].
   destruct (noind ts); simpl; [destruct (length cs <=? 16)|]; simpl;
-  (*simplification to get bunch of "if"*)
-  repeat (rewrite add_param_decl_delta + rewrite add_task_axioms_delta);
-  try rewrite or_false_r; rewrite !in_app_iff, <- !In_rev;
-  (*Need to adjust order*)
-  repeat (rewrite or_comm; apply or_iff; try solve[reflexivity]).
+  repeat (rewrite !add_task_axioms_delta, !add_param_decl_delta); reflexivity.
 Qed.
+
+Lemma add_axioms_gamma (t: state * task) (ts: typesym) (cs: list funsym): 
+  task_gamma (snd (add_axioms new_constrs noind t (ts, cs))) =
+  map abs_fun (concat (map (fun c => rev (map fst (projection_axioms new_constrs  c (projection_syms c)))) (rev cs))) ++
+  (if negb (single cs) && negb (noind ts) then [abs_fun (fst (indexer_axiom new_constrs  ts (adt_ty ts) cs))]
+    else nil) ++
+  (if negb (single cs) then [abs_fun (fst (selector_axiom new_constrs ts (adt_ty ts) cs))] else nil) ++
+  task_gamma (snd t).
+Proof.
+  destruct t as [s [[gamma delta] goal]].
+  unfold add_axioms.
+  unfold add_inversion.
+  simpl.
+  rewrite add_axiom_gamma.
+  (*handle projections*)
+  rewrite add_projections_gamma.
+  f_equal.
+  unfold add_indexer, add_selector, add_discriminator.
+  (*case analysis*)
+  destruct (single cs); [reflexivity|].
+  destruct (noind ts); simpl;
+  [destruct (length cs <=? 16); simpl|];
+  repeat (rewrite !add_task_axioms_gamma, !add_param_decl_gamma);
+  reflexivity.
+Qed.
+
+(*The goal is the easiest*)
+Lemma add_axioms_goal (t: state * task) (ts: typesym) (cs: list funsym): 
+  task_goal (snd (add_axioms new_constrs noind t (ts, cs))) = task_goal (snd t).
+Proof.
+  destruct t as [s [[gamma delta] goal]].
+  unfold add_axioms.
+  unfold add_inversion.
+  simpl.
+  rewrite add_projections_goal.
+  unfold add_indexer, add_selector, add_discriminator.
+  destruct (single cs); [reflexivity|].
+  destruct (noind ts); simpl;
+  [destruct (length cs <=? 16)|]; simpl;
+  repeat (rewrite !add_task_axioms_goal, !add_param_decl_goal); reflexivity.
+Qed.
+
+End ContextSpecs.
+
+
+
 
 
 (*START: plan: formulate theorem correctly (with cc, cases) - should paramterize section
@@ -495,30 +571,6 @@ Qed.
   Step 3: go back to fold_comp - now know context, goals, etc, need to start proving
   (e.g.) axioms true, well typed, etc*)
 
-
-(*[add_axioms] does not change gamma*)
-(*NOTE: this should NOT be true*)
-Locate add_axioms.
-Lemma add_axioms_gamma t ax: task_gamma (add_axioms t ax) = task_gamma t.
-Proof.
-  unfold add_axioms. simpl_task. simpl.
-  reflexivity.
-Qed.
-
-(*[add_axioms] does not change goal*)
-Lemma add_axioms_goal t ax: task_goal (add_axioms t ax) = task_goal t.
-Proof.
-  reflexivity.
-Qed.
-
-(*First, let us prove that result of [comp_ctx] does not change delta or goal*)
-Lemma comp_ctx
-
-(*[add_axioms] does not change delta or goal*)
-Lemma add_axioms_delta t ax: task_delta (add_axioms t ax) = task_delta t.
-Proof.
-  unfold add_axioms.
-  reflexivity.
 
 Lemma comp_ctx_delta keep_tys (d: def) (t: state * task) : task_delta (snd (comp_ctx keep_tys d t)) = 
   task_delta (snd t).
