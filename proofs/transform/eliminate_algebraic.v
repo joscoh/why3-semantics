@@ -123,160 +123,6 @@ Definition enc_ty (t: vty) : bool :=
   | _ => false
   end.
 
-Section Rew.
-Variable (gamma: context).
-Variable (s: state).
-
-(*TODO: bad, can we find the type differently?*)
-Definition pat_match_ty (pats: list (pattern * term)) : option vty :=
-  match pats with
-  | nil => None
-  | (p, t) :: _ => Typechecker.typecheck_term gamma t
-  end.
-
-
-(*Assume we have a list of banned variables (instantiate with term vars)*)
-Variable badvars : list vsymbol.
-
-(*It is often difficult to figure out what the type arguments for functions should be.
-  We will do it as they do, trying to instantiate a type mapping*)
-
-
-Fixpoint rewriteT (t: term) : term :=
-  match t with
-  | Tmatch t1 ty pats => 
-    if enc_ty ty then
-      let t1 := rewriteT t1 in
-      let mk_br (x: option term * amap funsym term) (br: pattern * term) :=
-        let w := fst x in
-        let m := snd x in
-        let e := rewriteT (snd br) in
-        match (fst br) with
-        | Pconstr cs tys pl =>
-          let add_var e p pj :=
-            match p with
-            | Pvar v => Tlet (Tfun pj [snd v] [t1]) v e
-            | _ => tm_d (*NOTE: default, because we never hit it anyway by assumption*)
-            end
-            in
-            let pjl := amap_get_def funsym_eq_dec s.(cp_map) cs nil in 
-             (*match amap_get funsym_eq_dec s.(cp_map) cs with
-            | Some cp => cp
-            | None => nil (*TODO: prove don't hit (basically, will prove by knowing that all
-              defined types appeared before and hence have already been added to map)*)
-            end in*)
-            let e := fold_left2' add_var pl pjl e in
-            (w, amap_set funsym_eq_dec m cs e)
-        | Pwild => (Some e, m)
-        | _ => (*Prove don't hit*) x
-        end
-      in
-      let res := fold_left mk_br pats (None, amap_empty) in
-      let w := fst res in
-      let m := snd res in (*gives map constructors to new terms*)
-      let find x := 
-        match amap_get funsym_eq_dec m x with
-        | Some e => e
-        | None => match w with | Some x => x | None => (*impossible*) tm_d end
-        end
-      in
-      let ts := match ty with | vty_cons ts _ => ts | _ => ts_d (*impossible*) end in
-      match map find (get_constructors gamma ts) with
-      | [t] => t
-      | tl => (*Get *) 
-        (*Get the type - NOTE: use fact that not empty*)
-        let ty1 := match pat_match_ty pats with | Some t => t | None => ty end in 
-        tfun_infer' (amap_get_def typesym_eq_dec s.(mt_map) ts id_fs) (ty :: repeat ty1 (length tl))
-          (t1 :: tl) (*TODO: prove not default*)
-        (*return type: list a -> b -> b -> b, so give [vty_var a; ty1] if a is list var
-          (types of args are [(ty :: repeat ty1 (length tl))])*)
-          (*Don;t know if this type is right?*)
-        (*this gives projection*) (*(map vty_var (ts_args ts) ++ [ty1]) (t1 :: tl) (*what is ty?*)*) 
-        (*Type should be original type of term - can we tell this?
-          arguments have type: [ty; ty1; ty1, ... ty1] if elements in pat match have type ty1. 
-          We may need to carry around this information*)
-      end
-    else t_map rewriteT (rewriteF nil true) t
-  | Tfun ls tys args => (*map old constrs to new constr*)
-    if ls.(f_is_constr) && enc_ty (f_ret ls) (*we can just pass in return type because only depends on typesym*)
-    then Tfun (new_constr ls) (*(amap_get_def funsym_eq_dec s.(cc_map) ls id_fs)*) tys args
-    else t_map rewriteT (rewriteF nil true) t
-  (*Don't have projections*)
-  | _ => t_map rewriteT (rewriteF nil true) t
-  end
-with rewriteF (av: list vsymbol) (sign: bool) (f: formula) : formula := 
-  match f with
-  | Fmatch t1 ty1 pats =>
-    if enc_ty ty1 then
-      let t1 := rewriteT t1 in
-      let av' := set_diff vsymbol_eq_dec av (tm_fv t1) in (*TODO: what is this doing?*)
-      let mk_br (x: option formula * amap funsym (list vsymbol * formula)) br :=
-        let p := fst br in
-        let e := snd br in
-        let w := fst x in
-        let m := snd x in
-        let e := rewriteF av' sign e in
-        match p with
-        | Pconstr cs tys pl =>
-          let get_var p := match p with
-            | Pvar v => v
-            | _ => (*TODO: prove don't hit*) vs_d
-          end in
-          (w, amap_set funsym_eq_dec m cs (map get_var pl, e))
-        | Pwild => (Some e, m)
-        | _ => (*TODO: prove dont hit*) x
-        end in
-      let res := fold_left mk_br pats (None, amap_empty) in
-      let w := fst res in
-      let m := snd res in
-      let find cs :=
-        let res := match amap_get funsym_eq_dec m cs with
-        | Some y => y
-        | None => (*Need fresh vars - TODO: *)
-            let projs := amap_get_def funsym_eq_dec (s.(cp_map)) cs nil in
-            let names := gen_strs (length projs) badvars in
-            (*NOTE: I think type should be ty_subst (s_params s) [ty1] (s_ret s) - they use t_app_infer*)
-            let vars := map2 (fun n (p: funsym) => (n, ty_subst (s_params p) [ty1] (f_ret p))) names projs : list vsymbol in
-            (vars, match w with | Some y => y | None => Ftrue end) (*TODO: prove dont hit*)
-        end
-        in
-        let vl := fst res in let e := snd res in
-        let hd := tfun_infer' (new_constr cs) (*(amap_get_def funsym_eq_dec (s.(cc_map)) cs id_fs)*) (map snd vl) (map Tvar vl) in
-        match t1 with
-        | Tvar v => if in_dec vsymbol_eq_dec v av then
-          let hd := Flet hd v e in if sign then fforalls vl hd else fexists vl hd
-          else
-          let hd := Feq ty1 t1 hd (*TODO: ty1?*) in if sign then fforalls vl (Fbinop Timplies hd e)
-          else fexists vl (Fbinop Tand hd e)
-        | _ => let hd := Feq ty1 t1 hd (*TODO: ty1?*) in if sign then fforalls vl (Fbinop Timplies hd e)
-          else fexists vl (Fbinop Tand hd e)
-        end
-      in
-      let ts :=
-        match ty1 with | vty_cons ts _ => ts | _ => ts_d end (*TODO: show dont hit*) in
-      let op := if sign then (Fbinop Tand) else (Fbinop Tor) in
-      match map_join_left find op (get_constructors gamma ts) with
-      | Some f => f
-      | None => Ftrue (*TODO: prove don't hit*)
-      end
-    else f_map_sign (fun _ => rewriteT) (rewriteF nil) sign f
-  | Fquant q v f1 =>
-    if (quant_eqb q Tforall && sign) || (quant_eqb q Texists && negb sign) then
-      let av := fold_right (set_add vsymbol_eq_dec) [v] av in
-      Fquant q v (rewriteF av sign f1)
-    else f_map_sign (fun _ => rewriteT) (rewriteF nil) sign f
-  | Fbinop o _ _ =>
-    if (binop_eqb o Tand && sign) || (binop_eqb o Tor && negb sign) then
-      f_map_sign (fun _ => rewriteT) (rewriteF av) sign f (*not nil*)
-    else f_map_sign (fun _ => rewriteT) (rewriteF nil) sign f
-  | Flet t1 _ _ =>
-    let av := set_diff vsymbol_eq_dec av (tm_fv t1) in
-    f_map_sign (fun _ => rewriteT) (rewriteF av) sign f 
-  | _ => f_map_sign (fun _ => rewriteT) (rewriteF nil) sign f
-  end.
-
-End Rew.
-
 
 (*Generate axioms*)
 
@@ -450,15 +296,12 @@ Definition add_indexer (acc: state * task) (ts: typesym) (ty: vty) (cs: list fun
   or something (not sure exactly what we need - will certainly need typing info) *)
 (*ONLY creates function symbols - so projections are just user-named functions essentially - spec should
   just be that this produces SOME function symbol of the right type*)
-
-(*A functional version of the projection function symbol*)
 Definition projection_syms (c: funsym) : list funsym :=
   let conv_p (i: nat) (ty: vty) :=
     let id := ((s_name c) ++ "_proj_" ++ (nat_to_string i))%string in
     (*TODO: do we need option?*)(funsym_noconstr_noty id [f_ret c] ty)
   in
   mapi conv_p (s_args c).
-
 
 Definition complete_projections (csl: list funsym) : list (funsym * list funsym) :=
   map (fun c => (c, projection_syms c)) csl.
@@ -577,6 +420,8 @@ Definition add_inversion (st: state * task) (ts: typesym) (ty: vty) (csl: list f
   or can we prove the rest at the higher level - assuming something about projections, etc
   Or should we add projections? Need to figure this out!*)
 
+Definition add_param_decls (l: list funsym) (tsk: task) : task :=
+  fold_left add_param_decl l tsk.
 
 
 Definition add_axioms (st: state * task) (d: typesym * list funsym) : state * task :=
@@ -589,7 +434,9 @@ Definition add_axioms (st: state * task) (d: typesym * list funsym) : state * ta
   (*TODO: SKIP KEPT_NO_CASE*)
   (*Just add axioms for all maybe?*)
   (*if negb (null (ts_args ts)) (*|| negb (amap_mem typesym_eq_dec ts s.(kept_m))*) then*)
-    (* declare constructors as abstract functions *)
+  (* declare constructors as abstract functions *)
+  let tsk := add_param_decls (map new_constr csl) tsk in
+  let st := (s, tsk) in
     (*let cs_add (st: state * task) (cs: funsym) :=
       let s := fst st in let tsk := snd st in
       (s <| cc_map := amap_set funsym_eq_dec s.(cc_map) cs (new_constr cs) |>, 
@@ -599,16 +446,184 @@ Definition add_axioms (st: state * task) (d: typesym * list funsym) : state * ta
       (* let ls = create_lsymbol id cs.ls_args cs.ls_value in *)
       (s <| cc_map := amap_set funsym_eq_dec s.(cc_map) cs ls |>, add_param_decl tsk ls) *)
       (* { state with cc_map = Mls.add cs ls state.cc_map },add_param_decl task ls *)
-    in
-    let st := fold_left cs_add csl st in*)
-    (* add selector, projections, and inversion axiom *)
-    let st := add_selector st ts ty csl in
-    let st := add_indexer st ts ty csl in
-    let st := add_projections st ts ty csl in
-    add_inversion st ts ty csl.
+  in
+  let st := fold_left cs_add csl st in*)
+  (* add selector, projections, and inversion axiom *)
+  let st := add_selector st ts ty csl in
+  let st := add_indexer st ts ty csl in
+  let st := add_projections st ts ty csl in
+  add_inversion st ts ty csl.
   (*else st.*)
 
 (*Skip [add_tags] and finding infinite types - only deals with metas*)
+
+(*rewriting*)
+
+
+Section Rew.
+Variable (gamma: context).
+(* Variable (s: state). *)
+(*We do use a map for selectors (for now)*)
+Variable mt_map: amap typesym funsym.
+
+
+(*TODO: bad, can we find the type differently?*)
+Definition pat_match_ty (pats: list (pattern * term)) : option vty :=
+  match pats with
+  | nil => None
+  | (p, t) :: _ => Typechecker.typecheck_term gamma t
+  end.
+
+
+(*Assume we have a list of banned variables (instantiate with term vars)*)
+Variable badvars : list vsymbol.
+
+(*It is often difficult to figure out what the type arguments for functions should be.
+  We will do it as they do, trying to instantiate a type mapping*)
+
+(*Don't use state, use functional view of projection symbols*)
+(*A functional version of the projection function symbol*)
+
+
+(*Then, the function giving the projection symbols for a function is:*)
+Definition get_proj_list (c: funsym) : list funsym :=
+  (rev (projection_syms c)).
+
+
+Fixpoint rewriteT (t: term) : term :=
+  match t with
+  | Tmatch t1 ty pats => 
+    if enc_ty ty then
+      let t1 := rewriteT t1 in
+      let mk_br (x: option term * amap funsym term) (br: pattern * term) :=
+        let w := fst x in
+        let m := snd x in
+        let e := rewriteT (snd br) in
+        match (fst br) with
+        | Pconstr cs tys pl =>
+          let add_var e p pj :=
+            match p with
+            | Pvar v => Tlet (Tfun pj [snd v] [t1]) v e
+            | _ => tm_d (*NOTE: default, because we never hit it anyway by assumption*)
+            end
+            in
+            let pjl := get_proj_list cs (*amap_get_def funsym_eq_dec s.(cp_map) cs nil*) in 
+             (*match amap_get funsym_eq_dec s.(cp_map) cs with
+            | Some cp => cp
+            | None => nil (*TODO: prove don't hit (basically, will prove by knowing that all
+              defined types appeared before and hence have already been added to map)*)
+            end in*)
+            let e := fold_left2' add_var pl pjl e in
+            (w, amap_set funsym_eq_dec m cs e)
+        | Pwild => (Some e, m)
+        | _ => (*Prove don't hit*) x
+        end
+      in
+      let res := fold_left mk_br pats (None, amap_empty) in
+      let w := fst res in
+      let m := snd res in (*gives map constructors to new terms*)
+      let find x := 
+        match amap_get funsym_eq_dec m x with
+        | Some e => e
+        | None => match w with | Some x => x | None => (*impossible*) tm_d end
+        end
+      in
+      let ts := match ty with | vty_cons ts _ => ts | _ => ts_d (*impossible*) end in
+      match map find (get_constructors gamma ts) with
+      | [t] => t
+      | tl => (*Get *) 
+        (*Get the type - NOTE: use fact that not empty*)
+        let ty1 := match pat_match_ty pats with | Some t => t | None => ty end in 
+        tfun_infer' (amap_get_def typesym_eq_dec mt_map ts id_fs) (ty :: repeat ty1 (length tl))
+          (t1 :: tl) (*TODO: prove not default*)
+        (*return type: list a -> b -> b -> b, so give [vty_var a; ty1] if a is list var
+          (types of args are [(ty :: repeat ty1 (length tl))])*)
+          (*Don;t know if this type is right?*)
+        (*this gives projection*) (*(map vty_var (ts_args ts) ++ [ty1]) (t1 :: tl) (*what is ty?*)*) 
+        (*Type should be original type of term - can we tell this?
+          arguments have type: [ty; ty1; ty1, ... ty1] if elements in pat match have type ty1. 
+          We may need to carry around this information*)
+      end
+    else t_map rewriteT (rewriteF nil true) t
+  | Tfun ls tys args => (*map old constrs to new constr*)
+    if ls.(f_is_constr) && enc_ty (f_ret ls) (*we can just pass in return type because only depends on typesym*)
+    then Tfun (new_constr ls) (*(amap_get_def funsym_eq_dec s.(cc_map) ls id_fs)*) tys args
+    else t_map rewriteT (rewriteF nil true) t
+  (*Don't have projections*)
+  | _ => t_map rewriteT (rewriteF nil true) t
+  end
+with rewriteF (av: list vsymbol) (sign: bool) (f: formula) : formula := 
+  match f with
+  | Fmatch t1 ty1 pats =>
+    if enc_ty ty1 then
+      let t1 := rewriteT t1 in
+      let av' := set_diff vsymbol_eq_dec av (tm_fv t1) in (*TODO: what is this doing?*)
+      let mk_br (x: option formula * amap funsym (list vsymbol * formula)) br :=
+        let p := fst br in
+        let e := snd br in
+        let w := fst x in
+        let m := snd x in
+        let e := rewriteF av' sign e in
+        match p with
+        | Pconstr cs tys pl =>
+          let get_var p := match p with
+            | Pvar v => v
+            | _ => (*TODO: prove don't hit*) vs_d
+          end in
+          (w, amap_set funsym_eq_dec m cs (map get_var pl, e))
+        | Pwild => (Some e, m)
+        | _ => (*TODO: prove dont hit*) x
+        end in
+      let res := fold_left mk_br pats (None, amap_empty) in
+      let w := fst res in
+      let m := snd res in
+      let find cs :=
+        let res := match amap_get funsym_eq_dec m cs with
+        | Some y => y
+        | None => (*Need fresh vars - TODO: *)
+            let projs := get_proj_list cs (*amap_get_def funsym_eq_dec (s.(cp_map)) cs nil*) in
+            let names := gen_strs (length projs) badvars in
+            (*NOTE: I think type should be ty_subst (s_params s) [ty1] (s_ret s) - they use t_app_infer*)
+            let vars := map2 (fun n (p: funsym) => (n, ty_subst (s_params p) [ty1] (f_ret p))) names projs : list vsymbol in
+            (vars, match w with | Some y => y | None => Ftrue end) (*TODO: prove dont hit*)
+        end
+        in
+        let vl := fst res in let e := snd res in
+        let hd := tfun_infer' (new_constr cs) (*(amap_get_def funsym_eq_dec (s.(cc_map)) cs id_fs)*) (map snd vl) (map Tvar vl) in
+        match t1 with
+        | Tvar v => if in_dec vsymbol_eq_dec v av then
+          let hd := Flet hd v e in if sign then fforalls vl hd else fexists vl hd
+          else
+          let hd := Feq ty1 t1 hd (*TODO: ty1?*) in if sign then fforalls vl (Fbinop Timplies hd e)
+          else fexists vl (Fbinop Tand hd e)
+        | _ => let hd := Feq ty1 t1 hd (*TODO: ty1?*) in if sign then fforalls vl (Fbinop Timplies hd e)
+          else fexists vl (Fbinop Tand hd e)
+        end
+      in
+      let ts :=
+        match ty1 with | vty_cons ts _ => ts | _ => ts_d end (*TODO: show dont hit*) in
+      let op := if sign then (Fbinop Tand) else (Fbinop Tor) in
+      match map_join_left find op (get_constructors gamma ts) with
+      | Some f => f
+      | None => Ftrue (*TODO: prove don't hit*)
+      end
+    else f_map_sign (fun _ => rewriteT) (rewriteF nil) sign f
+  | Fquant q v f1 =>
+    if (quant_eqb q Tforall && sign) || (quant_eqb q Texists && negb sign) then
+      let av := fold_right (set_add vsymbol_eq_dec) [v] av in
+      Fquant q v (rewriteF av sign f1)
+    else f_map_sign (fun _ => rewriteT) (rewriteF nil) sign f
+  | Fbinop o _ _ =>
+    if (binop_eqb o Tand && sign) || (binop_eqb o Tor && negb sign) then
+      f_map_sign (fun _ => rewriteT) (rewriteF av) sign f (*not nil*)
+    else f_map_sign (fun _ => rewriteT) (rewriteF nil) sign f
+  | Flet t1 _ _ =>
+    let av := set_diff vsymbol_eq_dec av (tm_fv t1) in
+    f_map_sign (fun _ => rewriteT) (rewriteF av) sign f 
+  | _ => f_map_sign (fun _ => rewriteT) (rewriteF nil) sign f
+  end.
+
+End Rew.
 
 (*let's go opposite direction for now*)
 (*NOTE: basically their task is a (for our purposes) : list decl,
@@ -637,10 +652,10 @@ Definition add_ty_decl (t: task) (ts: typesym) : task :=
 
 
 (*Instantiate badvars with term variables*)
-Definition rewriteT' gamma s t :=
-  rewriteT gamma s ((tm_fv t) ++ (tm_bnd t)) t.
-Definition rewriteF' gamma s x y f :=
-  rewriteF gamma s ((fmla_fv f) ++ (fmla_bnd f)) x y f.
+Definition rewriteT' gamma mt_map t :=
+  rewriteT gamma mt_map ((tm_fv t) ++ (tm_bnd t)) t.
+Definition rewriteF' gamma mt_map x y f :=
+  rewriteF gamma mt_map ((fmla_fv f) ++ (fmla_bnd f)) x y f.
 
 Definition add_def (d: def) (t: task) : task :=
   (d :: task_gamma t, task_delta t, task_goal t).
@@ -649,7 +664,8 @@ Definition add_def (d: def) (t: task) : task :=
 Definition add_mut (m: mut_adt)(tys: list alg_datatype) (t: task) : task :=
   add_def (datatype_def (mk_mut tys (m_params m) (m_nodup m))) t.
 
-Definition comp_ctx (d: def) (st: state * task) : state * task :=
+(*NOTE: adding context here because we want a uniform context for [rewriteT']*)
+Definition comp_ctx (gamma: context) (d: def) (st: state * task) : state * task :=
   let s := fst st in let tsk := snd st in
   match d with
   | datatype_def m =>
@@ -675,7 +691,7 @@ Definition comp_ctx (d: def) (st: state * task) : state * task :=
   | _ => 
     (*rewriting case*)
     (*TODO: should it be task_gamma tsk instead of separate gamma? prob*)
-    (s, add_def (TaskGen.def_map (rewriteT' (task_gamma tsk) s) (rewriteF' (task_gamma tsk) s nil true) d) tsk)
+    (s, add_def (TaskGen.def_map (rewriteT' gamma s.(mt_map)) (rewriteF' gamma s.(mt_map) nil true) d) tsk)
   end.
 
 (*And for formula (easy)*)
@@ -686,11 +702,13 @@ let s := fst st in let tsk := snd st in
 (*Fold version - dont use Trans.fold, easier to manually thread state through*)
 Definition fold_comp (st: state) : trans :=
   fun t => 
-    let x := fold_left (fun x y => comp_ctx y x) (task_gamma t) (st, t) in
+  (*TODO: we CANNOT fold over t - should be empty task I believe (at least empty gamma)*)
+    (*NEED to start from empty context and build up defs - TODO: do we need to reverse result?*)
+    let x := fold_left (fun x y => comp_ctx (task_gamma t) y x) (task_gamma t) (st, (nil, task_delta t, task_goal t)) in
     let st1 := fst x in
     let tsk1 := snd x in
-    let del1 := map (rewriteF' (task_gamma tsk1) st1 nil true) (map snd (task_delta tsk1)) in
-    let g1 := rewriteF' (task_gamma tsk1) st1 nil true (task_goal tsk1) in
+    let del1 := map (rewriteF' (task_gamma tsk1) st1.(mt_map) nil true) (map snd (task_delta tsk1)) in
+    let g1 := rewriteF' (task_gamma tsk1) st1.(mt_map) nil true (task_goal tsk1) in
     [(task_gamma tsk1, (combine (map fst (task_delta tsk1)) del1), g1)]. 
 
 (*No infinte types or anything so just give state*)
