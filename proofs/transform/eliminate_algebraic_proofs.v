@@ -362,7 +362,6 @@ Section Proofs.
 Variable (new_constrs: funsym -> funsym).
 Variable keep_tys : typesym -> bool.
 
-Definition adt_ty (ts: typesym) : vty := vty_cons ts (map vty_var (ts_args ts)).
 
 (* Variable (cc_maps: list funsym -> amap funsym funsym). *)
 Variable (noind: typesym -> bool).
@@ -464,12 +463,12 @@ Proof. reflexivity. Qed.
 
 (*Should we just define it this way?*)
 (*Note, might need In version*)
-Lemma add_projections_delta {A B: Type} (st: state * task) (ts: A) (ty: B) (cs: list funsym):
-  task_delta (snd (add_projections new_constrs st ts ty cs)) =
+Lemma add_projections_delta {A B: Type} (tsk: task) (ts: A) (ty: B) (cs: list funsym):
+  task_delta (add_projections new_constrs tsk ts ty cs) =
   (concat (map (fun c => (rev (map snd (projection_axioms new_constrs  c ((projection_syms c)))))) (rev cs))) ++
-  task_delta (snd st).
+  task_delta tsk.
 Proof.
-  Opaque projection_axioms. Opaque projection_syms. simpl.
+  Opaque projection_axioms. Opaque projection_syms. unfold add_projections. simpl.
   rewrite <- fold_left_rev_right.
   induction (rev cs) as [| c ctl IHc]; simpl; auto.
   (*again, go to fold_right*) 
@@ -479,12 +478,12 @@ Proof.
   rewrite add_axiom_delta. f_equal; auto. destruct (snd h); reflexivity.
 Qed.
 
-Lemma add_projections_gamma {A B: Type} (st: state * task) (ts: A) (ty: B) (cs: list funsym):
-  task_gamma (snd (add_projections new_constrs st ts ty cs)) =
+Lemma add_projections_gamma {A B: Type} (tsk: task) (ts: A) (ty: B) (cs: list funsym):
+  task_gamma (add_projections new_constrs tsk ts ty cs) =
   map abs_fun (concat (map (fun c => rev (map fst (projection_axioms new_constrs c ((projection_syms c))))) (rev cs))) ++
-  task_gamma (snd st).
+  task_gamma tsk.
 Proof.
-  simpl. rewrite <- fold_left_rev_right.
+  simpl. unfold add_projections. rewrite <- fold_left_rev_right.
   induction (rev cs) as [|c ctl IH]; simpl; auto.
   rewrite <- fold_left_rev_right.
   rewrite map_app, <-  map_rev.
@@ -493,11 +492,11 @@ Proof.
   rewrite IH2,  <- app_assoc. reflexivity.
 Qed. 
 
-Lemma add_projections_goal {A B: Type} (st: state * task) (ts: A) (ty: B) (cs: list funsym):
-  task_goal (snd (add_projections new_constrs st ts ty cs)) =
-  task_goal (snd st).
+Lemma add_projections_goal {A B: Type} (tsk: task) (ts: A) (ty: B) (cs: list funsym):
+  task_goal (add_projections new_constrs tsk ts ty cs) =
+  task_goal tsk.
 Proof.
-  simpl. rewrite <- fold_left_rev_right.
+  simpl. unfold add_projections. rewrite <- fold_left_rev_right.
   induction (rev cs) as [|c ctl IH]; simpl; auto.
   rewrite <- fold_left_rev_right.
   induction (rev (projection_axioms new_constrs c (projection_syms c))) as [| h t IH2]; simpl; auto.
@@ -529,13 +528,13 @@ Definition add_axioms_delta (ts: typesym) (cs: list funsym) :=
   (if single cs then nil else rev (snd (selector_axiom new_constrs ts (adt_ty ts) cs))).
 
 
-Lemma add_axioms_delta_eq (t: state * task) (ts: typesym) (cs: list funsym): 
-  task_delta (snd (add_axioms new_constrs noind t (ts, cs))) =
+Lemma add_axioms_delta_eq (t: task) (ts: typesym) (cs: list funsym): 
+  task_delta (add_axioms new_constrs noind t (ts, cs)) =
   add_axioms_delta ts cs ++ 
-  task_delta (snd t).
+  task_delta t.
 Proof.
   unfold add_axioms_delta.
-  destruct t as [s [[gamma delta] goal]].
+  destruct t as [[gamma delta] goal].
   unfold add_axioms.
   unfold add_inversion.
   simpl.
@@ -549,6 +548,7 @@ Proof.
   (*Now some case analysis*)
   destruct (single cs); simpl; [rewrite add_param_decls_delta; reflexivity |].
   destruct (noind ts); simpl; [destruct (length cs <=? 16)|]; simpl;
+  unfold add_selector_aux, add_indexer_aux;
   repeat (rewrite !add_task_axioms_delta, !add_param_decl_delta; try rewrite !add_param_decls_delta);
   reflexivity.
 Qed.
@@ -565,12 +565,12 @@ Definition add_axioms_gamma (ts: typesym) (cs: list funsym) :=
   (rev (map abs_fun (map new_constrs cs))).
 
 
-Lemma add_axioms_gamma_eq (t: state * task) (ts: typesym) (cs: list funsym): 
-  task_gamma (snd (add_axioms new_constrs noind t (ts, cs))) =
-  add_axioms_gamma ts cs ++ task_gamma (snd t).
+Lemma add_axioms_gamma_eq (t: task) (ts: typesym) (cs: list funsym): 
+  task_gamma (add_axioms new_constrs noind t (ts, cs)) =
+  add_axioms_gamma ts cs ++ task_gamma t.
 Proof.
   unfold add_axioms_gamma; rewrite <- !app_assoc.
-  destruct t as [s [[gamma delta] goal]].
+  destruct t as [[gamma delta] goal].
   unfold add_axioms.
   unfold add_inversion.
   simpl.
@@ -581,17 +581,17 @@ Proof.
   unfold add_indexer, add_selector, add_discriminator.
   (*case analysis*)
   destruct (single cs); simpl; [rewrite add_param_decls_gamma; reflexivity|].
-  destruct (noind ts); simpl;
+  destruct (noind ts); simpl; unfold add_selector_aux, add_indexer_aux;
   [destruct (length cs <=? 16); simpl|];
   repeat (rewrite !add_task_axioms_gamma, !add_param_decl_gamma; try rewrite !add_param_decls_gamma);
   reflexivity.
 Qed.
 
 (*The goal is the easiest*)
-Lemma add_axioms_goal (t: state * task) (ts: typesym) (cs: list funsym): 
-  task_goal (snd (add_axioms new_constrs noind t (ts, cs))) = task_goal (snd t).
+Lemma add_axioms_goal (t: task) (ts: typesym) (cs: list funsym): 
+  task_goal (add_axioms new_constrs noind t (ts, cs)) = task_goal t.
 Proof.
-  destruct t as [s [[gamma delta] goal]].
+  destruct t as[[gamma delta] goal].
   unfold add_axioms.
   unfold add_inversion.
   simpl.
@@ -599,6 +599,7 @@ Proof.
   unfold add_indexer, add_selector, add_discriminator.
   destruct (single cs); simpl; [rewrite add_param_decls_goal; reflexivity|].
   destruct (noind ts); simpl;
+  unfold add_selector_aux, add_indexer_aux;
   [destruct (length cs <=? 16)|]; simpl;
   repeat (rewrite !add_task_axioms_goal, !add_param_decl_goal; try rewrite add_param_decls_goal); reflexivity.
 Qed.
@@ -610,7 +611,7 @@ Opaque add_axioms.
   In their implementation, they use the known_map from the current task
   we fold over (OK because task is essentially a list, so we have all the previous
   things in list) - not sure best way, for now separate context*)
-Definition comp_ctx_gamma (d: def) (mt_map: amap typesym funsym) (gamma: context) : list def :=
+Definition comp_ctx_gamma (d: def) (gamma: context) : list def :=
   match d with
   | datatype_def m =>
     let p :=  partition (fun a => keep_tys (adt_name a)) (typs m) in
@@ -618,16 +619,16 @@ Definition comp_ctx_gamma (d: def) (mt_map: amap typesym funsym) (gamma: context
     (*mut is at end (after abstract typesyms defined)*)
     (if null (fst p) then nil else [datatype_def (mk_mut (fst p) (m_params m) (m_nodup m))]) ++
     (rev (map (fun a => abs_type (adt_name a)) (snd p)))
-  | _ => [(TaskGen.def_map (rewriteT' keep_tys new_constrs gamma mt_map) (rewriteF' keep_tys new_constrs gamma mt_map nil true) d)]
+  | _ => [(TaskGen.def_map (rewriteT' keep_tys new_constrs gamma) (rewriteF' keep_tys new_constrs gamma nil true) d)]
   end.
 
 Lemma add_mut_gamma m tys tsk: task_gamma (add_mut m tys tsk) = 
   datatype_def (mk_mut tys (m_params m) (m_nodup m))  :: task_gamma tsk.
 Proof. reflexivity. Qed.
 
-Lemma comp_ctx_gamma_eq (d: def) st (gamma: context) :
-  task_gamma (snd (comp_ctx keep_tys new_constrs noind gamma d st)) = 
-  comp_ctx_gamma d (fst st).(mt_map) gamma ++ task_gamma (snd st). 
+Lemma comp_ctx_gamma_eq (d: def) t (gamma: context) :
+  task_gamma (comp_ctx keep_tys new_constrs noind gamma d t) = 
+  comp_ctx_gamma d gamma ++ task_gamma t. 
 Proof.
   unfold comp_ctx. destruct d; try reflexivity.
   unfold comp_ctx_gamma.
@@ -636,13 +637,13 @@ Proof.
   (*Need in multiple places*)
   assert (Habs: task_gamma
     (fold_left
-    (fun (t : task) (a : alg_datatype) =>
-    add_ty_decl t (adt_name a)) dl_abs (snd st)) = 
+    (fun (t1 : task) (a : alg_datatype) =>
+    add_ty_decl t1 (adt_name a)) dl_abs t) = 
     rev (map (fun a : alg_datatype => abs_type (adt_name a)) dl_abs) ++
-    task_gamma (snd st)).
+    task_gamma t).
   {
     rewrite <- fold_left_rev_right, <- map_rev.
-    induction (rev dl_abs) as [| h t IH]; simpl; auto.
+    induction (rev dl_abs) as [| h tl IH]; simpl; auto.
     rewrite add_ty_decl_gamma. f_equal; auto.
   }
   induction (rev (typs m)) as [| hd tl IH]; simpl; auto.
@@ -654,16 +655,16 @@ Proof.
 Qed.
 
 (*Delta is easier: it adds nothing except axioms*)
-Definition comp_ctx_delta (d: def) (mt_map: amap typesym funsym) (gamma: context) : list (string * formula) :=
+Definition comp_ctx_delta (d: def) : list (string * formula) :=
   match d with
   | datatype_def m =>
     concat (map (fun a => add_axioms_delta (adt_name a) (adt_constr_list a)) (rev (typs m)))
   | _ => nil
   end.
 
-Lemma comp_ctx_delta_eq (d: def) st (gamma: context) :
-  task_delta (snd (comp_ctx keep_tys new_constrs noind gamma d st)) = 
-  comp_ctx_delta d (fst st).(mt_map) gamma ++ task_delta (snd st).
+Lemma comp_ctx_delta_eq (d: def) t (gamma: context) :
+  task_delta (comp_ctx keep_tys new_constrs noind gamma d t) = 
+  comp_ctx_delta d ++ task_delta t.
 Proof.
   Opaque add_axioms_delta.
   unfold comp_ctx. destruct d; try reflexivity.
@@ -671,11 +672,11 @@ Proof.
   destruct (partition _ (typs m)) as [dl_concr dl_abs]; simpl.
   rewrite <- fold_left_rev_right. rewrite <- (map_rev _ (typs m)).
   assert (Habs: task_delta (fold_left
-    (fun (t : task) (a : alg_datatype) =>
-    add_ty_decl t (adt_name a)) dl_abs (snd st)) = 
-    task_delta (snd st)).
+    (fun (t1 : task) (a : alg_datatype) =>
+    add_ty_decl t1 (adt_name a)) dl_abs t) = 
+    task_delta t).
   {
-    generalize dependent (snd st).
+    generalize dependent t.
     induction dl_abs as [| h t IH]; simpl; auto. intros tsk.
     rewrite IH, add_ty_decl_delta.
     reflexivity.
@@ -686,19 +687,19 @@ Proof.
     apply IH.
 Qed.
 
-Lemma comp_ctx_goal_eq (d: def) st (gamma: context) :
-  task_goal (snd (comp_ctx keep_tys new_constrs noind gamma d st)) = 
-  task_goal (snd st).
+Lemma comp_ctx_goal_eq (d: def) t (gamma: context) :
+  task_goal (comp_ctx keep_tys new_constrs noind gamma d t) = 
+  task_goal t.
 Proof.
   unfold comp_ctx. destruct d; try reflexivity.
   destruct (partition _ (typs m)) as [dl_concr dl_abs]; simpl.
   rewrite <- fold_left_rev_right. rewrite <- (map_rev _ (typs m)).
   assert (Habs: task_goal (fold_left
-    (fun (t : task) (a : alg_datatype) =>
-    add_ty_decl t (adt_name a)) dl_abs (snd st)) = 
-    task_goal (snd st)).
+    (fun (t1 : task) (a : alg_datatype) =>
+    add_ty_decl t1 (adt_name a)) dl_abs t) = 
+    task_goal t).
   {
-    generalize dependent (snd st).
+    generalize dependent t.
     induction dl_abs as [| h t IH]; simpl; auto. intros tsk.
     rewrite IH, add_ty_decl_goal.
     reflexivity.
@@ -708,6 +709,54 @@ Proof.
   - rewrite add_axioms_goal. apply IH.
 Qed.
 
+(*[fold_all_ctx]*)
+
+Definition fold_all_ctx_gamma t : context :=
+  concat (map (fun d => comp_ctx_gamma d (task_gamma t)) (rev (task_gamma t))).
+
+Lemma fold_all_ctx_gamma_eq t:
+  task_gamma (fold_all_ctx keep_tys new_constrs noind t) = fold_all_ctx_gamma t.
+Proof.
+  unfold fold_all_ctx, fold_all_ctx_gamma.
+  (*Basically, we need to split the task_gamma t up*)
+  remember (task_gamma t) as gamma.
+  (*Weird: if we rewrite without occurrence rewrites under binders but not with numbers*)
+  rewrite Heqgamma at 1 2.
+  clear Heqgamma.
+  rewrite <- fold_left_rev_right.
+  induction (rev (task_gamma t)); simpl; auto.
+  rewrite comp_ctx_gamma_eq.
+  f_equal; auto.
+Qed.
+
+Definition fold_all_ctx_delta t:= concat (map comp_ctx_delta (rev (task_gamma t))).
+
+Lemma fold_all_ctx_delta_eq t:
+  task_delta (fold_all_ctx keep_tys new_constrs noind t) = fold_all_ctx_delta t ++ task_delta t.
+Proof.
+  unfold fold_all_ctx, fold_all_ctx_delta.
+  remember (task_gamma t) as gamma.
+  rewrite Heqgamma at 1 2.
+  clear Heqgamma.
+  rewrite <- fold_left_rev_right.
+  induction (rev (task_gamma t)); simpl; auto.
+  rewrite comp_ctx_delta_eq.
+  rewrite <- app_assoc.
+  f_equal; auto.
+Qed.
+
+Lemma fold_all_ctx_goal_eq t:
+  task_goal (fold_all_ctx keep_tys new_constrs noind t) = task_goal t.
+Proof.
+  unfold fold_all_ctx.
+  remember (task_gamma t) as gamma.
+  rewrite Heqgamma at 1.
+  clear Heqgamma.
+  rewrite <- fold_left_rev_right.
+  induction (rev (task_gamma t)); simpl; auto.
+  rewrite comp_ctx_goal_eq.
+  assumption.
+Qed.
 
 End ContextSpecs.
 
@@ -732,76 +781,65 @@ End ContextSpecs.
 (*The core result: soundness of [fold_comp]
   TODO: probably need to generalize from [empty_state]*)
 (*We need the precondition that pattern matches have been compiled away*)
-Theorem fold_comp_sound keep_tys noind noinv nosel:
+Theorem fold_comp_sound:
   sound_trans_pre
   (task_and no_recfun_indpred task_pat_simpl)
-  (fold_comp keep_tys (empty_state noind noinv nosel)).
+  (fold_comp keep_tys new_constrs noind).
 Proof.
   unfold sound_trans_pre.
   intros tsk Hpre Hty Hallval.
   unfold task_valid, TaskGen.task_valid in *.
   split; auto.
   intros gamma_valid Hty'.
+  (*Temp*) Opaque fold_all_ctx.
   unfold fold_comp in Hallval.
+  (*Use gamma, delta, goal lemmas*)
+  rewrite fold_all_ctx_gamma_eq, fold_all_ctx_delta_eq, fold_all_ctx_goal_eq in Hallval.
+  set (newtsk := (fold_all_ctx_gamma tsk,
+    combine (map fst (fold_all_ctx_delta tsk ++ task_delta tsk))
+      (map (rewriteF' keep_tys new_constrs (fold_all_ctx_gamma tsk) [] true)
+        (map snd (fold_all_ctx_delta tsk ++ task_delta tsk))),
+    rewriteF' keep_tys new_constrs (fold_all_ctx_gamma tsk) [] true (task_goal tsk)))in *.
+  simpl in Hallval.
   specialize (Hallval _ (ltac:(left; reflexivity))).
-  destruct (fold_left
-      (fun (x : state * task) (y : def) => comp_ctx keep_tys y x)
-      (task_gamma tsk) (empty_state noind noinv nosel, tsk))
-  as [st1 [[gamma1 delta1] goal1]] eqn : Hcomp.
-  destruct tsk as [[gamma delta] goal].
-  simpl_task.
   destruct Hallval as [Hty1 Hconseq1].
+  set (gamma1:= fold_all_ctx_gamma tsk) in *.
+  assert (Hgamma1: task_gamma newtsk = gamma1) by reflexivity.
   assert (gamma1_valid: valid_context gamma1). {
     inversion Hty1; auto.
   }
   specialize (Hconseq1 gamma1_valid Hty1).
-  (*Really, things we need:
-    1. How gamma relates to gamma1 (some ADTs made abstract, axioms)
-    2. How delta relates to delta1 (same I think)
-    3. How goal relates to goal1 (same I believe)
-    4. How st1 relates (maps fully populated)*)
+  assert (Hdelta: map snd (task_delta newtsk) = 
+    map (fun x => rewriteF' keep_tys new_constrs gamma1 [] true (snd x))
+      (fold_all_ctx_delta tsk ++ task_delta tsk)).
+  {
+    unfold newtsk. simpl_task. rewrite map_snd_combine; [rewrite map_map| solve_len].
+    reflexivity.
+  }
+  generalize dependent (task_delta_typed newtsk).
+  rewrite Hdelta; clear Hdelta (*TODO: need?*).
+  intros Hdelta1_typed Hconseq1.
+  assert (Hgoal: task_goal newtsk =
+    rewriteF' keep_tys new_constrs gamma1 [] true (task_goal tsk)) by reflexivity.
+  generalize dependent (task_goal_typed newtsk).
+  rewrite Hgoal; intros Hgoal1_typed Hconseq1.
+  (*So now we have to prove that if T(gamma), T(delta) |= T(goal), then gamma, delta |= goal
+    where T(gamma) = fold_all_ctx_gamma tsk, etc*)
   unfold log_conseq_gen in *.
   intros pd pdf pf pf_full Hdeltasat.
   unfold satisfies in *.
   intros vt vv.
+  (*Now we need to transform our pd and pf into the appropriate pd and pf on the modified
+    gamma*)
+
   (*So we want to prove that the goal is satisfied.
     so we need a lemma of the form: if formula_rep gamma1 (rewriteF' f), then
       formula_rep gamma f (prob need iff) but for particular interp*)
-
-  
-
-
-
-  rewrite map_snd_combine in Hconseq1.
-  
-   simpl_task.
-  
-  Check Hallval.
-  simpl_task.
-  simpl in Hallval.
-
-  unfold log_conseq_gen.
-  Print log_conseq_gen.
-  intros pd pdf pf pf_full f_hyp Hf_hyp vv.
-
-
-  unfold fold_comp.
-
-  (*remember (fold_left
-(fun (x : state * task) (y : def) =>
-comp_ctx keep_tys y x) (task_gamma t)
-(empty_state noind noinv nosel, t)) as comp.
-  unfold fold_comp. simpl_task.
-
-
-
-  rewrite (surjective_pairing (fold_left _ _ _)).
-  Search fst snd. simpl.*)
 Admitted.
 
-Theorem eliminate_algebraic_sound keep_tys noind noinv nosel : 
+Theorem eliminate_algebraic_sound : 
   sound_trans_pre no_recfun_indpred
-  (eliminate_algebraic keep_tys noind noinv nosel).
+  (eliminate_algebraic keep_tys new_constrs noind).
 Proof.
   unfold eliminate_algebraic.
   apply sound_trans_comp with (Q1:=
@@ -812,7 +850,7 @@ Proof.
     apply sound_trans_pre_true.
     apply compile_match_valid.
   - (*Sound trans of elim ADT (main part)*)
-    admit.
+    apply fold_comp_sound.
   - (*pre and postconditions of [compile_match]*)
     apply task_post_combine.
     + apply compile_match_pres_no_recfun_indpred.
@@ -820,5 +858,6 @@ Proof.
       apply compile_match_simple.
   - apply compile_match_typed.
   - auto.
-Admitted.
+Qed.
 
+End Proofs.
