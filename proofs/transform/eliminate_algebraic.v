@@ -16,7 +16,7 @@ Require Import compile_match.
   *)
 
 From RecordUpdate Require Import RecordSet.
-Record state := mk_state {
+(*Record state := mk_state {
   mt_map : amap typesym funsym;       (* from type symbols to selector functions *)
   (*cc_map : amap funsym funsym;*)       (* from old constructors to new constructors - NOTE: just
     make this a parameter*)
@@ -33,12 +33,12 @@ Record state := mk_state {
   (* no_ind : bool;                (* do not generate indexing functions *)
   no_inv : bool;                (* do not generate inversion axioms *)
   no_sel : bool;                do not generate selector *)
-}.
+}.*)
 
 (*Here, we can use coq-record-update*)
 
-#[export] Instance etaX : Settable _ := settable! mk_state <mt_map; (*cc_map;*) cp_map (*pp_map;*) (*no_ind; no_inv; no_sel*)>.
-Import RecordSetNotations. 
+(* #[export] Instance etaX : Settable _ := settable! mk_state <mt_map; (*cc_map;*) cp_map (*pp_map;*) (*no_ind; no_inv; no_sel*)>.
+Import RecordSetNotations.  *)
 
 (*Infer args for functions - hard to get it right*)
 
@@ -179,9 +179,7 @@ Definition add_task_axioms (t: task) (axs: list (string * formula)) : task :=
   fold_left (fun acc x => add_axiom acc (fst x) (snd x)) axs t.
 
 (*NOTE: will prob need to separate out for proof purposes (e.g. map2 vs fold_left2 and separate function)*)
-Definition add_selector_aux (st: state * task) (ts: typesym) (ty: vty) (csl: list funsym) :=
-  let s := fst st in
-  let tsk := snd st in
+Definition add_selector_aux (tsk: task) (ts: typesym) (ty: vty) (csl: list funsym) :=
   (* if s.(no_sel) then (s, tsk) else *)
   let sel := selector_axiom ts ty csl in
   let mt_ls := fst sel in
@@ -189,8 +187,9 @@ Definition add_selector_aux (st: state * task) (ts: typesym) (ty: vty) (csl: lis
   let tsk := add_param_decl tsk mt_ls in
   let tsk := add_task_axioms tsk axms in
   (*update state*)
-  let mt_map2 := amap_set typesym_eq_dec s.(mt_map) ts mt_ls in
-  (s <|mt_map := mt_map2|>, tsk).
+  (* let mt_map2 := amap_set typesym_eq_dec s.(mt_map) ts mt_ls in *)
+  tsk.
+  (* (s <|mt_map := mt_map2|>, tsk). *)
 
 Definition single {A: Type} (l: list A) : bool :=
   match l with | [_] => true | _ => false
@@ -199,8 +198,8 @@ Definition single {A: Type} (l: list A) : bool :=
 (*Don't need selector for types with single constructor because trivial.
   NOTE: does this cause any problems with eliminating singleton types (e.g. user defined tuple)
   need to see in rewriteT*)
-Definition add_selector (acc : state * task) (ts: typesym) (ty: vty) (x: list funsym) :
-  state * task :=
+Definition add_selector (acc : task) (ts: typesym) (ty: vty) (x: list funsym) :
+  task :=
   if single x then acc else  add_selector_aux acc ts ty x.
 
 Definition mapi {A B: Type} (f: nat -> A -> B) (l: list A) : list B :=
@@ -228,16 +227,14 @@ Definition indexer_axiom
     (id, ax) in
   (mt_ls, mapi mt_add csl). 
 
-Definition add_indexer_aux (st: state * task) (ts: typesym) (ty : vty) (csl : list funsym) : state * task :=
-  let s := fst st in
-  let tsk := snd st in
+Definition add_indexer_aux (tsk: task) (ts: typesym) (ty : vty) (csl : list funsym) : task :=
   let indexer := indexer_axiom ts ty csl in
   let mt_ls := fst indexer in
   let axms := snd indexer in
   (*update task*)
   let tsk := add_param_decl tsk mt_ls in
   let tsk := add_task_axioms tsk axms in
-  (s, tsk).
+  tsk.
 
 Definition t_neq (ty: vty) (t1 t2: term) : formula :=
   Fnot (Feq ty t1 t2).
@@ -277,14 +274,12 @@ Definition discriminator_axioms (ts: typesym) (ty: vty) (csl: list funsym) :
   map_pairs d_add csl.
 
 
-Definition add_discriminator (st: state * task) (ts: typesym) (ty: vty) (csl: list funsym) : state * task :=
-  let s := fst st in
-  let tsk := snd st in
+Definition add_discriminator (tsk: task) (ts: typesym) (ty: vty) (csl: list funsym) : task :=
   let axs := discriminator_axioms ts ty csl in
-  (s, add_task_axioms tsk axs).
+  add_task_axioms tsk axs.
 
 (*TODO: see if we want to do this still - are there types with more than 16 constructors?*)
-Definition add_indexer (acc: state * task) (ts: typesym) (ty: vty) (cs: list funsym) := 
+Definition add_indexer (acc: task) (ts: typesym) (ty: vty) (cs: list funsym) := 
   if single cs then acc else
   if negb (noind ts) then add_indexer_aux acc ts ty cs
     else if Nat.leb (length cs) 16 then add_discriminator acc ts ty cs 
@@ -359,10 +354,8 @@ Definition projection_axioms
 
 (*NOTE: this changed A LOT from the Why3 version, need to make sure it is correct (and possibly
   harder to prove equivalent)*)
-Definition add_projections {A B: Type} (st: state * task) (_ts : A) (_ty : B) (csl: list funsym) :
-  state * task :=
-  let s := fst st in
-  let tsk := snd st in
+Definition add_projections {A B: Type} (tsk: task) (_ts : A) (_ty : B) (csl: list funsym) :
+  task :=
   (*For each constructor, get projections and axioms, add projection funsym and axioms to task*)
   (*Do in 2 pieces: order doesn't matter because one affects gamma, the other affects delta*)
   let tsk := fold_left (fun acc c => 
@@ -374,9 +367,9 @@ Definition add_projections {A B: Type} (st: state * task) (_ts : A) (_ty : B) (c
     ) projs acc
     ) csl tsk in
   (*update state with projections - should be just rev (projection_syms) (TODO make sure)*)
-  let cp_map2 := fold_left (fun acc x => amap_set funsym_eq_dec acc x (rev (projection_syms x))) csl s.(cp_map) in
-  let st := s <| cp_map := cp_map2 |> in
-  (st, tsk).
+  (* let cp_map2 := fold_left (fun acc x => amap_set funsym_eq_dec acc x (rev (projection_syms x))) csl s.(cp_map) in *)
+  (* let st := s <| cp_map := cp_map2 |> in *)
+  tsk.
 
 (*TODO: do we need state at all (other than maybe constructor map) - we know exactly what is
   in the state for each - really should just need task*)
@@ -407,12 +400,11 @@ Definition inversion_axiom
   (ax_id, ax_f).
 
 
-Definition add_inversion (st: state * task) (ts: typesym) (ty: vty) (csl: list funsym) :
-  state * task :=
-  let s := fst st in let tsk := snd st in
+Definition add_inversion (tsk: task) (ts: typesym) (ty: vty) (csl: list funsym) :
+  task :=
   (* if s.(no_inv) then st else *)
   let inv := inversion_axiom ts ty csl in
-  (s, add_axiom tsk (fst inv) (snd inv)).
+  add_axiom tsk (fst inv) (snd inv).
 
 (*TODO: since we don't have builtin projections, we can't do the
   [kept_no_case] part for projections. We don't implement it at all.
@@ -423,20 +415,19 @@ Definition add_inversion (st: state * task) (ts: typesym) (ty: vty) (csl: list f
 Definition add_param_decls (l: list funsym) (tsk: task) : task :=
   fold_left add_param_decl l tsk.
 
+Definition adt_ty (ts: typesym) : vty := vty_cons ts (map vty_var (ts_args ts)).
 
-Definition add_axioms (st: state * task) (d: typesym * list funsym) : state * task :=
-  let s := fst st in
-  let tsk := snd st in
+Definition add_axioms (tsk: task) (d: typesym * list funsym) : task :=
   let ts := fst d in
   let csl := snd d in
   (*NOTE: might be very easy to infer all types - might not need infer, might just all be typesym args*)
-  let ty := vty_cons ts (map vty_var (ts_args ts)) in
+  let ty := adt_ty ts in
   (*TODO: SKIP KEPT_NO_CASE*)
   (*Just add axioms for all maybe?*)
   (*if negb (null (ts_args ts)) (*|| negb (amap_mem typesym_eq_dec ts s.(kept_m))*) then*)
   (* declare constructors as abstract functions *)
   let tsk := add_param_decls (map new_constr csl) tsk in
-  let st := (s, tsk) in
+  (* let st := (s, tsk) in *)
     (*let cs_add (st: state * task) (cs: funsym) :=
       let s := fst st in let tsk := snd st in
       (s <| cc_map := amap_set funsym_eq_dec s.(cc_map) cs (new_constr cs) |>, 
@@ -449,10 +440,10 @@ Definition add_axioms (st: state * task) (d: typesym * list funsym) : state * ta
   in
   let st := fold_left cs_add csl st in*)
   (* add selector, projections, and inversion axiom *)
-  let st := add_selector st ts ty csl in
-  let st := add_indexer st ts ty csl in
-  let st := add_projections st ts ty csl in
-  add_inversion st ts ty csl.
+  let tsk := add_selector tsk ts ty csl in
+  let tsk := add_indexer tsk ts ty csl in
+  let tsk := add_projections tsk ts ty csl in
+  add_inversion tsk ts ty csl.
   (*else st.*)
 
 (*Skip [add_tags] and finding infinite types - only deals with metas*)
@@ -464,8 +455,16 @@ Section Rew.
 Variable (gamma: context).
 (* Variable (s: state). *)
 (*We do use a map for selectors (for now)*)
-Variable mt_map: amap typesym funsym.
+(*We parameterize by a function, instantiate with looking up in context
+  (much easier in proofs than using state)*)
 
+(*We can define the function giving [mt_map]*)
+
+Definition get_mt_map (t: typesym) : funsym :=
+  match (find_ts_in_ctx gamma t) with
+  | Some (m, a) => fst (selector_axiom t (adt_ty t) (adt_constr_list a))
+  | _ => id_fs
+  end.
 
 (*TODO: bad, can we find the type differently?*)
 Definition pat_match_ty (pats: list (pattern * term)) : option vty :=
@@ -534,7 +533,7 @@ Fixpoint rewriteT (t: term) : term :=
       | tl => (*Get *) 
         (*Get the type - NOTE: use fact that not empty*)
         let ty1 := match pat_match_ty pats with | Some t => t | None => ty end in 
-        tfun_infer' (amap_get_def typesym_eq_dec mt_map ts id_fs) (ty :: repeat ty1 (length tl))
+        tfun_infer' (get_mt_map ts) (*(amap_get_def typesym_eq_dec mt_map ts id_fs)*) (ty :: repeat ty1 (length tl))
           (t1 :: tl) (*TODO: prove not default*)
         (*return type: list a -> b -> b -> b, so give [vty_var a; ty1] if a is list var
           (types of args are [(ty :: repeat ty1 (length tl))])*)
@@ -652,10 +651,11 @@ Definition add_ty_decl (t: task) (ts: typesym) : task :=
 
 
 (*Instantiate badvars with term variables*)
-Definition rewriteT' gamma mt_map t :=
-  rewriteT gamma mt_map ((tm_fv t) ++ (tm_bnd t)) t.
-Definition rewriteF' gamma mt_map x y f :=
-  rewriteF gamma mt_map ((fmla_fv f) ++ (fmla_bnd f)) x y f.
+
+Definition rewriteT' gamma t :=
+  rewriteT gamma ((tm_fv t) ++ (tm_bnd t)) t.
+Definition rewriteF' gamma x y f :=
+  rewriteF gamma ((fmla_fv f) ++ (fmla_bnd f)) x y f.
 
 Definition add_def (d: def) (t: task) : task :=
   (d :: task_gamma t, task_delta t, task_goal t).
@@ -665,8 +665,8 @@ Definition add_mut (m: mut_adt)(tys: list alg_datatype) (t: task) : task :=
   add_def (datatype_def (mk_mut tys (m_params m) (m_nodup m))) t.
 
 (*NOTE: adding context here because we want a uniform context for [rewriteT']*)
-Definition comp_ctx (gamma: context) (d: def) (st: state * task) : state * task :=
-  let s := fst st in let tsk := snd st in
+Definition comp_ctx (gamma: context) (d: def) (tsk: task) : task :=
+  (* let s := fst st in let tsk := snd st in *)
   match d with
   | datatype_def m =>
     let dl := typs m in
@@ -682,7 +682,7 @@ Definition comp_ctx (gamma: context) (d: def) (st: state * task) : state * task 
     let tsk := List.fold_left (fun t a => add_ty_decl t (adt_name a)) dl_abs tsk in
     let tsk := if null dl_concr then tsk else add_mut m dl_concr tsk in
     (* add needed functions and axioms *)
-    let st := List.fold_left add_axioms (map (fun a => (adt_name a, adt_constr_list a)) dl) (s,tsk) in
+    let st := List.fold_left add_axioms (map (fun a => (adt_name a, adt_constr_list a)) dl) tsk in
     (* add the tags for infinite types and material arguments *)
     (* let mts := List.fold_right (fun '(t,l) => Mts.add t l) dl amap_empty in
     let st := List.fold_left (add_tags mts) st dl in *)
@@ -691,7 +691,7 @@ Definition comp_ctx (gamma: context) (d: def) (st: state * task) : state * task 
   | _ => 
     (*rewriting case*)
     (*TODO: should it be task_gamma tsk instead of separate gamma? prob*)
-    (s, add_def (TaskGen.def_map (rewriteT' gamma s.(mt_map)) (rewriteF' gamma s.(mt_map) nil true) d) tsk)
+    add_def (TaskGen.def_map (rewriteT' gamma) (rewriteF' gamma nil true) d) tsk
   end.
 
 (*And for formula (easy)*)
@@ -699,16 +699,17 @@ Definition comp_ctx (gamma: context) (d: def) (st: state * task) : state * task 
 let s := fst st in let tsk := snd st in
   (s, add_def (TaskGen.def_map (rewriteT' (task_gamma tsk) s) (rewriteF' (task_gamma tsk) s nil true) d) tsk). *)
 
+Definition fold_all_ctx (t: task) : task :=
+  fold_left (fun x y => comp_ctx (task_gamma t) y x) (task_gamma t) (nil, task_delta t, task_goal t).
+
 (*Fold version - dont use Trans.fold, easier to manually thread state through*)
-Definition fold_comp (st: state) : trans :=
+Definition fold_comp : trans :=
   fun t => 
   (*TODO: we CANNOT fold over t - should be empty task I believe (at least empty gamma)*)
     (*NEED to start from empty context and build up defs - TODO: do we need to reverse result?*)
-    let x := fold_left (fun x y => comp_ctx (task_gamma t) y x) (task_gamma t) (st, (nil, task_delta t, task_goal t)) in
-    let st1 := fst x in
-    let tsk1 := snd x in
-    let del1 := map (rewriteF' (task_gamma tsk1) st1.(mt_map) nil true) (map snd (task_delta tsk1)) in
-    let g1 := rewriteF' (task_gamma tsk1) st1.(mt_map) nil true (task_goal tsk1) in
+    let tsk1 := fold_all_ctx t in
+    let del1 := map (rewriteF' (task_gamma tsk1) nil true) (map snd (task_delta tsk1)) in
+    let g1 := rewriteF' (task_gamma tsk1) nil true (task_goal tsk1) in
     [(task_gamma tsk1, (combine (map fst (task_delta tsk1)) del1), g1)]. 
 
 (*No infinte types or anything so just give state*)
@@ -717,17 +718,17 @@ Section FullTrans.
 
 
 (*I suppose we could make all params, but prob not*)
-Definition empty_state : state := {| mt_map := amap_empty; (*cc_map := amap_empty;*)
-  cp_map := amap_empty; (*pp_map := amap_empty;*) (*no_ind := noind; no_inv := noinv; no_sel := nosel*)|}.
+(* Definition empty_state : state := {| mt_map := amap_empty; (*cc_map := amap_empty;*)
+  cp_map := amap_empty; (*pp_map := amap_empty;*) (*no_ind := noind; no_inv := noinv; no_sel := nosel*)|}. *)
 
 
 Definition eliminate_match : trans :=
-  compose_trans compile_match (fold_comp empty_state).
+  compose_trans compile_match fold_comp.
 
 (*Note that compile_match is the same - with extra meta stuff we don't care about*)
 
 Definition eliminate_algebraic : trans :=
-  compose_trans compile_match (fold_comp empty_state).
+  compose_trans compile_match fold_comp.
 
 End FullTrans.
 
