@@ -2,6 +2,7 @@ Require Import AssocList.
 Require Import Task TermMap.
 Require Import GenElts.
 Require Import compile_match.
+Set Bullet Behavior "Strict Subproofs".
 
 
 (*Here, we ignore metas since they don't exist in the core language.
@@ -15,7 +16,7 @@ Require Import compile_match.
   because we need to prove soundness in all cases
   *)
 
-From RecordUpdate Require Import RecordSet.
+(* From RecordUpdate Require Import RecordSet. *)
 (*Record state := mk_state {
   mt_map : amap typesym funsym;       (* from type symbols to selector functions *)
   (*cc_map : amap funsym funsym;*)       (* from old constructors to new constructors - NOTE: just
@@ -149,8 +150,8 @@ Definition add_axiom (t: task) (n: string) (f: formula) : task :=
 
 (*In all of these, we separate out the definition of the axioms/funsyms and the
   "stateful" (in the monadic sense) function that updates the task and state*)
-Require Import GenElts.
-Set Bullet Behavior "Strict Subproofs".
+
+
 
 (*For inclusion of types, need type fixed. For nodup, we 
   call the nodup function on (ts_args ts). Since this arises from an adt,
@@ -296,12 +297,39 @@ Definition add_selector (acc : task) (ts: typesym) (x: list funsym) :
 Definition mapi {A B: Type} (f: nat -> A -> B) (l: list A) : list B :=
   map (fun x => f (fst x) (snd x)) (combine (seq 0 (length l)) l).
 
+(*Indexer funsym - similarly as selector, we fix the type for well-formed*)
+
+Lemma indexer_check_args (ts: typesym) :
+  let ty := vty_cons ts (map vty_var (ts_args ts)) in
+  check_args (nodup typevar_eq_dec (ts_args ts)) [ty].
+Proof.
+  simpl. rewrite andb_true_r.
+  apply (reflect_iff _ _ (check_sublist_correct _ _)).
+  intros x Hinx. rewrite nodup_In. simpl_set. destruct Hinx as [y [Hiny Hinx]].
+  rewrite in_map_iff in Hiny. destruct Hiny as [v [Hy Hinv]]; subst.
+  simpl in Hinx. destruct Hinx as [Hxv | []]; subst; auto.
+Qed.
+
+Lemma nodupb_nodup {A: Type} eq_dec (l: list A):
+  nodupb eq_dec (nodup eq_dec l).
+Proof.
+  apply (reflect_iff _ _ (nodup_NoDup _ _)), NoDup_nodup.
+Qed.
+
+(*Again, will prove nodup does nothing*)
+Definition indexer_funsym (ts: typesym) : funsym :=
+  let ty := vty_cons ts (map vty_var (ts_args ts)) in
+  let mt_id := ("index_" ++ (ts_name ts))%string in
+  Build_funsym (Build_fpsym mt_id (nodup typevar_eq_dec (ts_args ts)) [ty] 
+    (indexer_check_args ts) (nodupb_nodup _ _)) vty_int false 0 eq_refl.
+
+
 (*Again, define indexer axiom*)
 Definition indexer_axiom
-  (ts: typesym) (ty : vty) (csl : list funsym) : funsym * list (string * formula) :=
+  (ts: typesym) (*(ty : vty)*) (csl : list funsym) : funsym * list (string * formula) :=
   (* declare the indexer function *)
   let mt_id := ("index_" ++ (ts_name ts))%string in
-  let mt_ls := funsym_noconstr_noty mt_id [ty] vty_int in
+  let mt_ls := indexer_funsym ts in (*funsym_noconstr_noty mt_id [ty] vty_int in*)
   (* define the indexer function *)
   let mt_add idx (cs: funsym) :=
     let id := (mt_id ++ "_" ++ (s_name cs))%string in
@@ -318,8 +346,8 @@ Definition indexer_axiom
     (id, ax) in
   (mt_ls, mapi mt_add csl). 
 
-Definition add_indexer_aux (tsk: task) (ts: typesym) (ty : vty) (csl : list funsym) : task :=
-  let indexer := indexer_axiom ts ty csl in
+Definition add_indexer_aux (tsk: task) (ts: typesym) (*(ty : vty)*) (csl : list funsym) : task :=
+  let indexer := indexer_axiom ts csl in
   let mt_ls := fst indexer in
   let axms := snd indexer in
   (*update task*)
@@ -372,11 +400,10 @@ Definition add_discriminator (tsk: task) (ts: typesym) (ty: vty) (csl: list funs
 (*TODO: see if we want to do this still - are there types with more than 16 constructors?*)
 Definition add_indexer (acc: task) (ts: typesym) (ty: vty) (cs: list funsym) := 
   if single cs then acc else
-  if negb (noind ts) then add_indexer_aux acc ts ty cs
+  if negb (noind ts) then add_indexer_aux acc ts cs
     else if Nat.leb (length cs) 16 then add_discriminator acc ts ty cs 
     else acc.
 
-Check dep_map_in.
 Lemma dep_mapi_forall {A B: Type} {P} {l1: list A} {l2: list B}: 
   Forall P l2 ->
   Forall (fun x => P (snd x)) (combine l1 l2).

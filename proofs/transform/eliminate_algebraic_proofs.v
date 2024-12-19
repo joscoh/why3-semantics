@@ -520,7 +520,7 @@ Definition add_axioms_delta (ts: typesym) (cs: list funsym) :=
   (*Projections are trickiest*)
   (concat (map (fun c => rev (map snd (projection_axioms new_constr_name  c ((projection_syms c))))) (rev cs))) ++
   rev (if single cs then nil else if negb (noind ts) then
-    snd (indexer_axiom new_constr_name  ts (adt_ty ts) cs)
+    snd (indexer_axiom new_constr_name  ts cs)
     else if (length cs) <=? 16 then
     discriminator_axioms new_constr_name  ts (adt_ty ts) cs
     else nil) ++
@@ -557,7 +557,7 @@ Definition add_axioms_gamma (ts: typesym) (cs: list funsym) :=
   (*projection symbols*)
   map abs_fun (concat (map (fun c => rev (map fst (projection_axioms new_constr_name  c (projection_syms c)))) (rev cs))) ++
   (*indexer symbols*)
-  (if negb (single cs) && negb (noind ts) then [abs_fun (fst (indexer_axiom new_constr_name  ts (adt_ty ts) cs))]
+  (if negb (single cs) && negb (noind ts) then [abs_fun (fst (indexer_axiom new_constr_name  ts cs))]
     else nil) ++
   (*selector symbols*)
   (if negb (single cs) then [abs_fun (fst (selector_axiom new_constr_name ts cs))] else nil) ++
@@ -958,6 +958,31 @@ Qed.
 
 (*Given a projection, its argument is the ADT (we don't need the equality
   to define the function, but we will need it later and this is better than making it transparent)*)
+
+(*First prove: [sym_sigma_args] is an ADT, we can 
+  construct an adt_rep*)
+Definition get_hd_adt_rep {m a f} (m_in: mut_in_ctx m gamma) (a_in: adt_in_mut a m)
+  {srts: list sort} (srts_len: length srts = length (m_params m))
+  (args: arg_list (domain (dom_aux pd)) (sym_sigma_args f srts))
+  (Heq: sym_sigma_args f srts = [typesym_to_sort (adt_name a) srts]):
+  { x: adt_rep m srts (dom_aux pd) a a_in |
+    args = cast_arg_list (eq_sym Heq)
+      (HL_cons (domain (dom_aux pd)) _ _ (scast (eq_sym (adts pdf m srts a m_in a_in)) x) (HL_nil _))}.
+Proof.
+  (*This proof can be opaque, since we give the rewrite rule in a sigma type*)
+  generalize dependent args.
+  rewrite Heq.
+  simpl.
+  intros args.
+  rewrite (hlist_inv args).
+  set (x := hlist_hd args) in *.
+  apply (exist _ (scast (adts pdf m srts a m_in a_in) x)).
+  unfold cast_arg_list. simpl.
+  rewrite scast_eq_sym.
+  f_equal.
+  apply hlist_nil.
+Qed.
+
 Definition proj_args_eq (c: funsym) (f: funsym) (n: nat) 
   (*We take in index, easier this way*)
   (Hn: n < length (s_args c))
@@ -974,18 +999,7 @@ Definition proj_args_eq (c: funsym) (f: funsym) (n: nat)
       m_in a_in c_in srts_len)) 
       (HL_cons (domain (dom_aux pd)) _ _ (scast (eq_sym (adts pdf m srts a m_in a_in)) x) (HL_nil _))}.
 Proof.
-  (*This proof can be opaque, since we give the rewrite rule in a sigma type*)
-  generalize dependent args.
-  rewrite (projection_syms_sigma_args srts (in_proj_syms Hn f_nth) m_in a_in c_in srts_len).
-  simpl.
-  intros args.
-  rewrite (hlist_inv args).
-  set (x := hlist_hd args) in *.
-  apply (exist _ (scast (adts pdf m srts a m_in a_in) x)).
-  unfold cast_arg_list. simpl.
-  rewrite scast_eq_sym.
-  f_equal.
-  apply hlist_nil.
+  apply get_hd_adt_rep, srts_len.
 Qed.
 
 (*One final typecast we need*)
@@ -1159,7 +1173,7 @@ Proof.
   - destruct (eq_dec x h); try lia. apply IH in Hinxt. lia.
 Qed.
 
-Lemma index_nth {A: Type} (eq_dec: forall (x y: A), {x = y} + {x <> y}) (d: A) (x: A) (l: list A):
+Lemma index_nth {A: Type} (eq_dec: forall (x y: A), {x = y} + {x <> y}) (d: A) {x: A} {l: list A}:
   In x l ->
   nth (index eq_dec x l) l d = x.
 Proof.
@@ -1210,10 +1224,210 @@ Definition selector_interp {m a} (m_in: mut_in_ctx m gamma) (a_in: adt_in_mut a 
   (*And finally cast*)
   dom_cast _ (selector_nth_args_ret m_in a_in Hidx) y.
 
+(*Part 4: Interpret indexer as index in [adt_constr_list]*)
+
+(*Prove args, params, ret for sym (easier)*)
+Lemma indexer_funsym_args {m a} (m_in: mut_in_ctx m gamma) (a_in: adt_in_mut a m):
+  s_args (indexer_funsym (adt_name a)) = [vty_cons (adt_name a) (map vty_var (m_params m))].
+Proof.
+  simpl. rewrite (adt_args gamma_valid m_in a_in).
+  reflexivity.
+Qed.
+
+Lemma indexer_funsym_params {m a} (m_in: mut_in_ctx m gamma) (a_in: adt_in_mut a m):
+  s_params (indexer_funsym (adt_name a)) = m_params m.
+Proof.
+  simpl. rewrite (adt_args gamma_valid m_in a_in).
+  apply nodup_fixed_point, m_params_Nodup; auto.
+Qed.
+
+Lemma indexer_funsym_ret ts:
+  f_ret (indexer_funsym ts) = vty_int.
+Proof. reflexivity. Qed.
+
+(*Prove [sym_sigma_args]*)
+Lemma indexer_sigma_args {m a srts} (m_in: mut_in_ctx m gamma) (a_in: adt_in_mut a m)
+  (srts_len: length srts = (length (m_params m))):
+  sym_sigma_args (indexer_funsym (adt_name a)) srts =
+  [typesym_to_sort (adt_name a) srts].
+Proof.
+  unfold sym_sigma_args.
+  rewrite (indexer_funsym_params m_in a_in), (indexer_funsym_args m_in a_in).
+  simpl.
+  rewrite ty_subst_s_cons. f_equal. f_equal.
+  unfold ty_subst_list_s.
+  rewrite map_map.
+  apply ty_subst_s_params_id; auto.
+  apply m_params_Nodup; auto.
+Qed.
+
+(*Get adt_rep*)
+
+Definition indexer_args_eq
+  {m: mut_adt} {a: alg_datatype} 
+  (m_in: mut_in_ctx m gamma) (a_in: adt_in_mut a m)
+  {srts: list sort} 
+  (srts_len: length srts = length (m_params m))
+  (args: arg_list (domain (dom_aux pd)) (sym_sigma_args (indexer_funsym (adt_name a)) srts)):
+  { x: adt_rep m srts (dom_aux pd) a a_in |
+    args = cast_arg_list (eq_sym (indexer_sigma_args m_in a_in srts_len)) 
+      (HL_cons (domain (dom_aux pd)) _ _ (scast (eq_sym (adts pdf m srts a m_in a_in)) x) (HL_nil _))}.
+Proof.
+  apply get_hd_adt_rep, srts_len.
+Qed.
+
+(*Finally, ret is int*)
+Lemma indexer_sigma_ret ts srts:
+  funsym_sigma_ret (indexer_funsym ts) srts = s_int.
+Proof.
+  unfold funsym_sigma_ret. rewrite indexer_funsym_ret.
+  apply sort_inj.
+  reflexivity.
+Qed.
+
+Definition indexer_interp {m a} (m_in: mut_in_ctx m gamma) (a_in: adt_in_mut a m)
+  (srts: list sort) (srts_len: length srts = length (m_params m))
+  (args: arg_list (domain (dom_aux pd))
+    (sym_sigma_args (indexer_funsym (adt_name a)) srts)):
+  domain (dom_aux pd) (funsym_sigma_ret (indexer_funsym (adt_name a)) srts) :=
+  (*Step 1: get ADT rep*)
+  let x := proj1_sig (indexer_args_eq m_in a_in srts_len args) in
+  (*Step 2: use [find_constr_rep] on x to get the constructor and arguments*)
+  let Hrep := (find_constr_rep gamma_valid m m_in srts srts_len _ a a_in (adts pdf m srts)
+    (gamma_all_unif gamma_valid _ m_in) x) in
+  let c1 : funsym := projT1 Hrep in
+  (*Now just get the index of c1 in the constr list*)
+  let y := Z.of_nat (index funsym_eq_dec c1 (adt_constr_list a)) in
+  dom_cast (dom_aux pd) (indexer_sigma_ret (adt_name a) srts) y.
+
+(*Put everything together and define the full function*)
+
+(*Iterate over all mutual ADTs*)
+Lemma all_typs_in m:
+  Forall (fun a : alg_datatype => adt_in_mut a m) (typs m).
+Proof. 
+  rewrite Forall_forall. unfold adt_in_mut.
+  intros x Hinx. apply In_in_bool; auto.
+Qed.
+
+Lemma all_mut_in:
+  Forall (fun m => mut_in_ctx m gamma) (mut_of_context gamma).
+Proof.
+  rewrite Forall_forall. unfold mut_in_ctx. intros x Hinx.
+  apply In_in_bool; auto.
+Qed.
+
+Lemma all_constr_in a:
+  Forall (fun c => constr_in_adt c a) (adt_constr_list a).
+Proof.
+  rewrite Forall_forall. intros x. rewrite constr_in_adt_eq. auto.
+Qed. 
+
+(*TODO: do we want to use another gamma to avoid annoying induction issues - 
+  can have g2 with property that sublist g2 gamma (maybe)*)
+Definition map_adts {A: Type} (f: forall (m: mut_adt) (m_in: mut_in_ctx m gamma)  
+  (a: alg_datatype) (a_in: adt_in_mut a m), A) : list A :=
+  concat (dep_map (fun m (m_in: mut_in_ctx m gamma) => 
+    dep_map (fun a (a_in: adt_in_mut a m) => f m m_in a a_in) (typs m) (all_typs_in m)
+  ) (mut_of_context gamma) (all_mut_in)).
+(*Idea: map over all (easier with dependent types than fold) then give option, and return
+  option*)
+
+Definition dep_foldr {A B: Type} {P: A -> Prop} (f: forall (x: A), P x -> B -> B) (b: B) :=
+  fix dep_foldr (l: list A) (Hall: Forall P l): B :=
+  match l as l' return Forall P l' -> B with
+  | nil => fun _ => b
+  | x :: tl => fun Hforall => f x (Forall_inv Hforall) (dep_foldr tl (Forall_inv_tail Hforall))
+  end Hall.
+
+Definition fold_adts {A: Type} (f: forall (m: mut_adt) (m_in: mut_in_ctx m gamma)  
+  (a: alg_datatype) (a_in: adt_in_mut a m), A -> A) (base: A) : A :=
+  dep_foldr (fun m (m_in: mut_in_ctx m gamma) (acc: A) =>
+    dep_foldr (fun a (a_in: adt_in_mut a m) (acc2: A) => f m m_in a a_in acc2) acc 
+      (typs m) (all_typs_in m))
+  base (mut_of_context gamma) (all_mut_in).
+
+(*Maybe easier to create list of {f: funsym & a: domain (dom_aux pd) (funsym_sigma_ret f srts)}
+  Then function is just going through list *)
+(*Length for index*)
+Lemma proj_syms_index_bound {f c} (Hinf: In f (projection_syms c)):
+  index funsym_eq_dec f (projection_syms c) < length (s_args c).
+Proof.
+  rewrite <- projection_syms_length.
+  apply in_index, Hinf.
+Qed.
+
+(*Idea: for every mutual ADT and adt*)
+Definition funs_new_map (srts: list sort) :
+  list {g: funsym & arg_list (domain (dom_aux pd)) (sym_sigma_args g srts) ->
+    domain (dom_aux pd) (funsym_sigma_ret g srts)} :=
+  concat (map_adts (fun m m_in a a_in => 
+    (*First, add new constructors*)
+    map (fun c => 
+      existT _ (new_constr c) (new_constr_interp c srts)
+    ) (adt_constr_list a) ++
+    (*2. Projections*)
+    concat (dep_map (fun c (c_in: constr_in_adt c a) =>
+      (*If srts has wrong length dont add anything*)
+      match Nat.eq_dec (length srts) (length (m_params m)) with
+      | left srts_len => 
+        (*Add all new projection functions per constructor*)
+        map_In (projection_syms c) (fun f Hinf => 
+          let n := index funsym_eq_dec f (projection_syms c) in
+          existT _ f (proj_interp c f n (proj_syms_index_bound Hinf) 
+            (index_nth funsym_eq_dec id_fs Hinf) m_in a_in c_in srts srts_len)
+        )
+      | right srts_len => nil
+      end
+    ) (adt_constr_list a) (all_constr_in a)) ++
+    (*3. selector (easier)*)
+    (*Make sure srts is OK*)
+    match srts with
+    | s1 :: srts =>
+      match Nat.eq_dec (length srts) (length (m_params m)) with
+      | left srts_len =>  
+        [existT _ (selector_funsym (adt_name a) (adt_constr_list a))
+          (selector_interp m_in a_in s1 srts srts_len)]
+      | _ => nil
+      end
+    | _ => nil
+    end ++
+    (*4. indexer*)
+    match Nat.eq_dec (length srts) (length (m_params m)) with
+    | left srts_len => [existT _ (indexer_funsym (adt_name a))
+          (indexer_interp m_in a_in srts srts_len)]
+    | _ => nil
+    end
+  )).
+
+(*Then, the full funs just looks up the funsym in the map*)
+
+Definition funs_new (f: funsym) (srts: list sort)
+  (a: arg_list (domain (dom_aux pd)) (sym_sigma_args f srts)):
+  domain (dom_aux pd) (funsym_sigma_ret f srts) :=
+  fold_right (fun (x:
+    {g : funsym &
+  arg_list (domain (dom_aux pd)) (sym_sigma_args g srts) ->
+  domain (dom_aux pd) (funsym_sigma_ret g srts)}) 
+  (acc : domain (dom_aux pd) (funsym_sigma_ret f srts)) =>
+    match funsym_eq_dec f (projT1 x) with
+    | left Heq => (*Need 2 casts here*) 
+      dom_cast _ (eq_sym (f_equal (fun (x: funsym) => funsym_sigma_ret x srts) Heq)) 
+        ((projT2 x) 
+          (cast_arg_list (f_equal (fun (x: funsym) => sym_sigma_args x srts) Heq) a))
+    | right Hneq => acc
+    end
+  ) (*default is pf*)(funs gamma_valid pd pf f srts a) 
+  (funs_new_map srts).
+  
+(*Now we need to prove the relevant theorems:
+  1. Any old constructor is an old constructor still
+  2. The new constructors, projections, selector, and indexer for each ADT
+    are mapped to their interpretation (as defined above)
+  We will need to show that everything is unique (TODO: implement)*)
 
 End Funs.
 End NewInterp.
-
 
 (*START: plan: formulate theorem correctly (with cc, cases) - should paramterize section
   by them so we only have to prove once
