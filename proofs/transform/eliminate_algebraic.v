@@ -106,22 +106,37 @@ match tfun_infer_ret f tys tms with | Some t => t | _ => (tm_d, vty_int) end.
 
 Section ElimADT.
 
-Variable keep_tys : typesym -> bool.
+(*NOTE: originally, had generic keep_tys: typesym -> bool.
+  The problem is if we choose to keep some ADTs in a mutual block but not others,
+  things become very complicated to reason about - we need typecasting
+  and a new pi_dom*)
+Variable keep_muts: mut_adt -> bool.
+Definition keep_tys (gamma: context) : typesym -> bool :=
+  fun ts =>
+  match find_ts_in_ctx gamma ts with
+  | Some (m, a) => keep_muts m
+  | None => (*doesn't matter, not ADT*) true
+  end.
+(* Variable keep_tys : typesym -> bool. *)
 
 (*NOTE: we parameterize by cc_map. In our case, this is the identity, but
   in principle it could be any map of new constructors*)
 (*This could be from a map or it could e.g. the identity function*)
-Variable (new_constr: funsym -> funsym).
+(*We only map to new names, we don't change the types (in real Why3, this is a clone)*)
+
+Definition fpsym_clone (f: fpsym) (n: string) : fpsym :=
+  Build_fpsym n (s_params f) (s_args f) (s_args_wf f) (s_params_nodup f).
+Definition funsym_clone (f: funsym) (n: string) : funsym :=
+  Build_funsym (fpsym_clone f n) (f_ret f) (f_is_constr f) (f_num_constrs f) (f_ret_wf f).
+
+(*Should it be funsym -> string or string -> string?*)
+Variable (new_constr_name: funsym -> string).
+
+Definition new_constr (f: funsym) : funsym := funsym_clone f (new_constr_name f).
 
 (*Parameterize by no_ind, no_inv, no_sel*)
 (*Ignore no_sel and no_inv - not used anywhere*)
 Variable (noind: typesym -> bool).
-
-Definition enc_ty (t: vty) : bool :=
-  match t with
-  | vty_cons ts _ => negb (keep_tys ts)
-  | _ => false
-  end.
 
 
 (*Generate axioms*)
@@ -285,18 +300,64 @@ Definition add_indexer (acc: task) (ts: typesym) (ty: vty) (cs: list funsym) :=
     else if Nat.leb (length cs) 16 then add_discriminator acc ts ty cs 
     else acc.
 
+Check dep_map_in.
+Lemma dep_mapi_forall {A B: Type} {P} {l1: list A} {l2: list B}: 
+  Forall P l2 ->
+  Forall (fun x => P (snd x)) (combine l1 l2).
+Proof.
+  revert l1. induction l2 as [| h t IH]; simpl; intros [| h1 t1]; simpl; auto.
+  intros Hall. inversion Hall; subst. constructor; auto.
+Qed.
+
+Definition dep_mapi {A B: Type} (P: A -> Prop) (f: nat -> forall (x: A), P x -> B)
+  (l: list A) (Hall: Forall P l) : list B :=
+  dep_map (fun x => f (fst x) (snd x)) (combine (seq 0 (length l)) l)
+  (dep_mapi_forall Hall).
+
 (*NOTE: complete_projections just copies over projections if they exist.
   We do not have any projections in our data, so we only implement the "None" case.
   TODO: we will need a predicate/typing rule asserting that projection is correct if it exists
   or something (not sure exactly what we need - will certainly need typing info) *)
 (*ONLY creates function symbols - so projections are just user-named functions essentially - spec should
   just be that this produces SOME function symbol of the right type*)
+(*TODO: START: define params explicitly, need to prove for types of args and ret - so need
+  dependent mapi - ty is in s_args (or carry around Hall hypothesis)*)
+(*TODO: is this computable now? Does it matter?*)
+
+(*We need to prove the nodup, sublist, etc for the projection symbols. The argument is always
+  [f_ret c] and the return type is one of [s_args c], so we can always give the params of c
+  (and it is important later that we do so; it might have extra params but this is OK)*)
+
+(*Prove 3 obligations*)
+Lemma check_args_ret (c: funsym):
+  check_args (s_params c) [f_ret c].
+Proof.
+  simpl. rewrite andb_true_r.
+  destruct c; simpl. auto.
+Qed.
+
+Lemma in_args_check_sublist (c: funsym) (ty: vty) (Hty: In ty (s_args c)):
+  check_sublist (type_vars ty) (s_params c).
+Proof.
+  destruct c; simpl in *. 
+  destruct f_sym; simpl in *.
+  unfold is_true in s_args_wf.
+  rewrite <- (reflect_iff _ _ (check_args_correct _ _)) in s_args_wf. unfold is_true.
+  rewrite <- (reflect_iff _ _ (check_sublist_correct _ _)).
+  auto.
+Qed.
+
+Definition proj_funsym (c: funsym) (n: string) (ty: vty) (Hty: In ty (s_args c)) : funsym :=
+  Build_funsym (Build_fpsym n (s_params c) [f_ret c] (check_args_ret c) (s_params_nodup c)) 
+    ty false 0 (in_args_check_sublist c ty Hty).
+
 Definition projection_syms (c: funsym) : list funsym :=
-  let conv_p (i: nat) (ty: vty) :=
+  let conv_p (i: nat) (ty: vty) (Hty: In ty (s_args c)) :=
     let id := ((s_name c) ++ "_proj_" ++ (nat_to_string i))%string in
-    (*TODO: do we need option?*)(funsym_noconstr_noty id [f_ret c] ty)
+    proj_funsym c id ty Hty
+    (* TODO: do we need option?(funsym_noconstr_noty id [f_ret c] ty) *)
   in
-  mapi conv_p (s_args c).
+  dep_mapi _ conv_p (s_args c) (all_in_refl _).
 
 Definition complete_projections (csl: list funsym) : list (funsym * list funsym) :=
   map (fun c => (c, projection_syms c)) csl.
@@ -488,6 +549,11 @@ Variable badvars : list vsymbol.
 Definition get_proj_list (c: funsym) : list funsym :=
   (rev (projection_syms c)).
 
+Definition enc_ty (t: vty) : bool :=
+  match t with
+  | vty_cons ts _ => negb (keep_tys gamma ts)
+  | _ => false
+  end.
 
 Fixpoint rewriteT (t: term) : term :=
   match t with
@@ -677,10 +743,13 @@ Definition comp_ctx (gamma: context) (d: def) (tsk: task) : task :=
     (*Only add those not excluded*)
     (* let concrete (a: alg_datatype) : bool :=  amap_mem typesym_eq_dec (s.(kept_m)) (adt_name a) in *)
      (* Mts.mem (fst d) state.kept_m || kept_no_case used state d in *)
-    let '(dl_concr, dl_abs) := partition (fun a => keep_tys (adt_name a)) dl in
+    (*All types are either abstract or concrete*)
+    let tsk := if (keep_muts m) then add_def d tsk else List.fold_left (fun t a => add_ty_decl t (adt_name a)) dl tsk
+    in
+    (*let '(dl_concr, dl_abs) := partition (fun a => keep_tys (adt_name a)) dl in
     (*TODO: this does NOT preserve order, but keeps a well-typed permutation, see if this is problem*)
     let tsk := List.fold_left (fun t a => add_ty_decl t (adt_name a)) dl_abs tsk in
-    let tsk := if null dl_concr then tsk else add_mut m dl_concr tsk in
+    let tsk := if null dl_concr then tsk else add_mut m dl_concr tsk in*)
     (* add needed functions and axioms *)
     let st := List.fold_left add_axioms (map (fun a => (adt_name a, adt_constr_list a)) dl) tsk in
     (* add the tags for infinite types and material arguments *)
