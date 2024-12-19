@@ -1,4 +1,4 @@
-Require Import Task PatternProofs.
+Require Import Task PatternProofs GenElts.
 Require Import compile_match eliminate_algebraic.
 Set Bullet Behavior "Strict Subproofs".
 
@@ -525,7 +525,7 @@ Definition add_axioms_delta (ts: typesym) (cs: list funsym) :=
     discriminator_axioms new_constr_name  ts (adt_ty ts) cs
     else nil) ++
   (*selector*)
-  (if single cs then nil else rev (snd (selector_axiom new_constr_name ts (adt_ty ts) cs))).
+  (if single cs then nil else rev (snd (selector_axiom new_constr_name ts cs))).
 
 
 Lemma add_axioms_delta_eq (t: task) (ts: typesym) (cs: list funsym): 
@@ -560,7 +560,7 @@ Definition add_axioms_gamma (ts: typesym) (cs: list funsym) :=
   (if negb (single cs) && negb (noind ts) then [abs_fun (fst (indexer_axiom new_constr_name  ts (adt_ty ts) cs))]
     else nil) ++
   (*selector symbols*)
-  (if negb (single cs) then [abs_fun (fst (selector_axiom new_constr_name ts (adt_ty ts) cs))] else nil) ++
+  (if negb (single cs) then [abs_fun (fst (selector_axiom new_constr_name ts cs))] else nil) ++
   (*constructor symbols*)
   (rev (map abs_fun (map (new_constr new_constr_name) cs))).
 
@@ -1029,6 +1029,187 @@ Definition proj_interp (c: funsym) (f: funsym) (n: nat)
     let y := hnth n args1 s_int (dom_int pd) in
     dom_cast _ (proj_nth_args_ret Hn f_nth srts Heq) y
   end.
+
+(*Part 3: For selectors, interpret as pattern match
+  Idea: similarly as above, get adt of first element, use [find_constr_rep],
+  this time just see what constructor it is and return index*)
+
+(*TODO: move*)
+Lemma m_params_Nodup {m} (m_in: mut_in_ctx m gamma) :
+  NoDup (m_params m).
+Proof.
+  apply (reflect_iff _ _ (nodup_NoDup typevar_eq_dec _)), m_nodup.
+Qed. 
+
+(*Prove similar lemmas*)
+Lemma selector_funsym_params {m a} csl (m_in: mut_in_ctx m gamma) (a_in: adt_in_mut a m):
+  s_params (selector_funsym (adt_name a) csl) = GenElts.gen_name "a" (m_params m) :: m_params m.
+Proof.
+  simpl. rewrite (adt_args gamma_valid m_in a_in).
+  f_equal. apply nodup_fixed_point.
+  apply m_params_Nodup; auto.
+Qed.
+
+Lemma selector_funsym_args {m a} csl (m_in: mut_in_ctx m gamma) (a_in: adt_in_mut a m):
+  s_args (selector_funsym (adt_name a) csl) = vty_cons (adt_name a) (map vty_var (m_params m)) ::
+    repeat (vty_var (GenElts.gen_name "a" (m_params m))) (length csl).
+Proof.
+  simpl. rewrite (adt_args gamma_valid m_in a_in).
+  f_equal.
+  unfold rev_map. rewrite <- map_rev.
+  replace (length csl) with (length (rev csl)) by solve_len.
+  apply map_const.
+Qed.
+
+Lemma selector_funsym_ret {m a} csl (m_in: mut_in_ctx m gamma) (a_in: adt_in_mut a m):
+  f_ret (selector_funsym (adt_name a) csl) = (vty_var (GenElts.gen_name "a" (m_params m))).
+Proof.
+  simpl. rewrite (adt_args gamma_valid m_in a_in). reflexivity.
+Qed.
+
+Lemma ty_subst_s_nohead v1 vs t1 tys ty:
+  ~ In v1 (type_vars ty) ->
+  ty_subst_s (v1 :: vs) (t1 :: tys) ty =
+  ty_subst_s vs tys ty.
+Proof.
+  intros Hnotin.
+  apply sort_inj; simpl.
+  apply v_subst_aux_ext. intros x Hinx.
+  destruct (typevar_eq_dec x v1); auto. subst. contradiction.
+Qed.
+
+Lemma ty_subst_list_s_onlyhead v1 vs t1 tys n:
+  ty_subst_list_s (v1 :: vs) (t1 :: tys) (repeat (vty_var v1) n) =
+  repeat t1 n.
+Proof.
+  induction n as [| n' IH]; simpl; auto.
+  f_equal; auto.
+  apply sort_inj; simpl. destruct (typevar_eq_dec v1 v1); auto. contradiction.
+Qed.
+
+(*Now prove the [funsym_sigma_args]*)
+Lemma selector_sigma_args {m a s1 srts} csl (m_in: mut_in_ctx m gamma) (a_in: adt_in_mut a m)
+  (srts_len: length srts = (length (m_params m))):
+  sym_sigma_args (selector_funsym (adt_name a) csl) (s1 :: srts) =
+  typesym_to_sort (adt_name a) srts :: repeat s1 (length csl).
+Proof.
+  unfold sym_sigma_args.
+  rewrite (selector_funsym_params csl m_in a_in), (selector_funsym_args csl m_in a_in).
+  simpl. f_equal.
+  - rewrite ty_subst_s_nohead.
+    2: {
+      simpl. intros Hinx.
+      simpl_set. destruct Hinx as [t [Hint Hinx]]. 
+      rewrite in_map_iff in Hint. destruct Hint as [v [Ht Hinv]]; subst.
+      simpl in Hinx.
+      destruct Hinx as [Hv | []]; subst.
+      apply gen_name_notin in Hinv; auto.
+    }
+    apply sort_inj. simpl. f_equal.
+    apply list_eq_ext'; rewrite !map_length; auto.
+    (*TODO: should really be separate lemma*)
+    intros n d Hn.
+    rewrite !map_map.
+    rewrite !map_nth_inbound with (d2:=""%string) by solve_len.
+    simpl. 
+    rewrite ty_subst_fun_nth with (s:=s_int); try solve_len.
+    + apply nth_indep. solve_len.
+    + unfold sorts_to_tys. solve_len.
+    + apply m_params_Nodup; auto.
+  - apply ty_subst_list_s_onlyhead.
+Qed.
+
+(*Now a lemma letting us get the [arg_list]*)
+Lemma selector_args_eq {m a} csl (m_in: mut_in_ctx m gamma) (a_in: adt_in_mut a m)
+  (s1: sort) (srts: list sort) (srts_len: length srts = length (m_params m))
+  (args: arg_list (domain (dom_aux pd)) 
+    (sym_sigma_args (selector_funsym (adt_name a) csl) (s1 :: srts))):
+  {x : adt_rep m srts (dom_aux pd) a a_in * 
+    (*TODO: arg_list or just (length sl) arguments*)
+    arg_list (domain (dom_aux pd)) (repeat s1 (length csl)) |
+    args = cast_arg_list (eq_sym (selector_sigma_args csl m_in a_in srts_len)) 
+      (HL_cons _ _ _ (scast (eq_sym (adts pdf m srts a m_in a_in)) (fst x)) (snd x))
+  }.
+Proof.
+  generalize dependent args.
+  rewrite (@selector_sigma_args _ _ s1 _ csl m_in a_in srts_len).
+  simpl. intros args.
+  rewrite (hlist_inv args).
+  set (x := hlist_hd args) in *.
+  apply (exist _ ((scast (adts pdf m srts a m_in a_in) x), hlist_tl args)).
+  unfold cast_arg_list. simpl.
+  rewrite scast_eq_sym.
+  reflexivity.
+Qed.
+
+(*TODO: is this somewhere?*)
+Definition index {A: Type} (eq_dec: forall (x y: A), {x = y} + {x <> y}) (x: A)  :=
+  fix index (l: list A) : nat :=
+  match l with
+  | y :: t => if eq_dec x y then 0 else S (index t)
+  | nil => 0
+  end.
+
+Lemma in_index {A: Type} (eq_dec: forall (x y: A), {x = y} + {x <> y}) {x: A} {l: list A}:
+  In x l -> index eq_dec x l < length l.
+Proof.
+  induction l as [| h t IH]; simpl; [contradiction|].
+  intros [Hhx | Hinxt]; subst; auto.
+  - destruct (eq_dec x x); auto. lia. contradiction.
+  - destruct (eq_dec x h); try lia. apply IH in Hinxt. lia.
+Qed.
+
+Lemma index_nth {A: Type} (eq_dec: forall (x y: A), {x = y} + {x <> y}) (d: A) (x: A) (l: list A):
+  In x l ->
+  nth (index eq_dec x l) l d = x.
+Proof.
+  induction l as [| h t IH]; simpl; [contradiction|].
+  intros [Hhx | Hinx]; subst.
+  - destruct (eq_dec x x); simpl; auto. contradiction.
+  - destruct (eq_dec x h); subst; simpl; auto.
+Qed.
+
+(*One final typecast we need*)
+Lemma selector_nth_args_ret {m a s1 srts n csl} (m_in: mut_in_ctx m gamma) (a_in: adt_in_mut a m)
+  (Hn: n < length csl):
+  nth n (repeat s1 (length csl)) s_int =
+  funsym_sigma_ret (selector_funsym (adt_name a) csl) (s1 :: srts).
+Proof.
+  unfold funsym_sigma_ret. rewrite (selector_funsym_ret csl m_in a_in).
+  rewrite (selector_funsym_params csl m_in a_in).
+  apply sort_inj. simpl.
+  destruct (typevar_eq_dec _ _); [|contradiction]; simpl.
+  f_equal.
+  rewrite nth_indep with (d':=s1).
+  - apply nth_repeat.
+  - solve_len.
+Qed.
+
+
+(*Any constructor list is fine*)
+Definition selector_interp {m a} (m_in: mut_in_ctx m gamma) (a_in: adt_in_mut a m)
+  (s1: sort) (srts: list sort) (srts_len: length srts = length (m_params m))
+   (args: arg_list (domain (dom_aux pd)) 
+    (sym_sigma_args (selector_funsym (adt_name a) (adt_constr_list a)) (s1 :: srts))):
+  domain (dom_aux pd) (funsym_sigma_ret (selector_funsym (adt_name a) (adt_constr_list a)) (s1 :: srts)) :=
+  let csl := (adt_constr_list a) in
+  (*Step 1: we know from [selector_args_eq] that args first has an [adt_rep]*)
+  let x := proj1_sig (selector_args_eq csl m_in a_in s1 srts srts_len args) in
+  let x1 := fst x in (*adt rep*)
+  let x2 := snd x in (*hlist with (length cs) args*)
+  (*Step 2: use [find_constr_rep] on x to get the constructor and arguments*)
+  let Hrep := (find_constr_rep gamma_valid m m_in srts srts_len _ a a_in (adts pdf m srts)
+    (gamma_all_unif gamma_valid _ m_in) x1) in
+  let c1 : funsym := projT1 Hrep in
+  let c1_in : constr_in_adt c1 a := fst (proj1_sig (projT2 Hrep)) in
+  let Hinc: In c1 csl := (proj1 (constr_in_adt_eq c1 a) c1_in) in
+  (*Now just get the corresponding element for c1 - based on position in csl*)
+  let idx := index funsym_eq_dec c1 csl in
+  let Hidx := in_index funsym_eq_dec Hinc in
+  let y := hnth idx x2 s_int (dom_int pd) in
+  (*And finally cast*)
+  dom_cast _ (selector_nth_args_ret m_in a_in Hidx) y.
+
 
 End Funs.
 End NewInterp.

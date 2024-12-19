@@ -149,20 +149,96 @@ Definition add_axiom (t: task) (n: string) (f: formula) : task :=
 
 (*In all of these, we separate out the definition of the axioms/funsyms and the
   "stateful" (in the monadic sense) function that updates the task and state*)
+Require Import GenElts.
+Set Bullet Behavior "Strict Subproofs".
+
+(*For inclusion of types, need type fixed. For nodup, we 
+  call the nodup function on (ts_args ts). Since this arises from an adt,
+  in a well-typed context, (ts_args ts = m_params m), which has nodups.
+  But we prove this later because we don't use any context info*)
+
+(*TODO: move*)
+(* Lemma sublist_iff_r {A: Type} (l1 l2 l3: list A):
+  (forall x, In x l2 -> In x l3) ->
+  sublist l1 l2 ->
+  sublist l1 l3.
+Proof.
+  intros Heq Hsub. intros x Hinx. auto.
+Qed. *)
+
+(*NOTE: here we fix ty to [vty_cons ts (map vty_var (ts_args ts))] (i.e. adt_ty ts),
+  or else we cannot prove the type variable inclusion*)
+(*TODO: reduce duplication*)
+Lemma selector_check_args (ts: typesym) (csl: list funsym):
+  let mt_var := gen_name "a" (ts_args ts) in
+  let mt_ty : vty := vty_var mt_var in
+  let ty := vty_cons ts (map vty_var (ts_args ts)) in
+  let mt_al := ty :: rev_map (fun _ => mt_ty) csl in
+(check_args (mt_var :: nodup string_dec (ts_args ts)) mt_al).
+Proof.
+  apply (reflect_iff _ _ (check_args_correct _ _)).
+  intros x. simpl. intros [Hx | Hinx].
+  - subst. simpl.
+    apply sublist_cons. apply sublist_trans with (l2:=ts_args ts).
+    + (*Just use induction, should prove*)
+      induction (ts_args ts) as [| h t IH]; simpl; auto; [apply sublist_refl|].
+      destruct (in_dec _ _ _); [apply sublist_cons|apply sublist_cons_l]; auto.
+    + intros x. rewrite nodup_In. auto.
+  - unfold rev_map in Hinx. rewrite <- In_rev, in_map_iff in Hinx.
+    destruct Hinx as [f [Hf Hinf]]; subst. simpl.
+    apply sublist_cons_l, sublist_nil_l.
+Qed. 
+
+Lemma selector_args_nodup (ts: typesym):
+  let mt_var := gen_name "a" (ts_args ts) in
+  nodupb typevar_eq_dec (mt_var :: nodup string_dec (ts_args ts)).
+Proof.
+  simpl.
+  apply (reflect_iff _ _ (nodup_NoDup _ _)).
+  constructor.
+  - rewrite nodup_In. apply gen_name_notin.
+  - apply NoDup_nodup.
+Qed.
+
+Lemma selector_ret_sublist (ts: typesym)  :
+  let mt_var := gen_name "a" (ts_args ts) in
+  let mt_ty : vty := vty_var mt_var in
+  check_sublist (type_vars mt_ty) (mt_var :: nodup string_dec (ts_args ts)).
+Proof.
+  apply (reflect_iff _ _ (check_sublist_correct _ _)).
+  simpl. apply sublist_cons_l, sublist_nil_l.
+Qed.
+
+Definition selector_funsym(ts: typesym) (csl: list funsym) : funsym :=
+  let mt_id : string := ("match_" ++ ts_name ts)%string in
+  let mt_var := gen_name "a" (ts_args ts) in
+  let mt_ty : vty := vty_var mt_var in
+  let ty := vty_cons ts (map vty_var (ts_args ts)) in
+  (*Params: new name + all params in ts*)
+  (*args are ty and then bunch of copies of mt_ty, 1 per constructor*)
+  let mt_al := ty :: rev_map (fun _ => mt_ty) csl in
+  Build_funsym (Build_fpsym mt_id (mt_var :: nodup string_dec (ts_args ts)) mt_al 
+    (selector_check_args ts csl) (selector_args_nodup ts)) mt_ty false 0 (selector_ret_sublist ts).
+
 
 (*The selector axiom for a given typesym and constructor list*)
 (*NOTE: the cc_map is probably the identity map but we still keep it because
   it is not (for some reason) in the full version*)
 (*TODO: need condition that all funsyms in csl appear in cc_map*)
 Definition selector_axiom
-  (ts: typesym) (ty: vty) (csl: list funsym) : funsym * list (string * formula) (*list (funsym * formula)?*) :=
+  (ts: typesym) (*(ty: vty)*) (csl: list funsym) : funsym * list (string * formula) (*list (funsym * formula)?*) :=
+  (*fix ty*)
+  let ty := vty_cons ts (map vty_var (ts_args ts)) in
   (* declare the selector function *)
   let mt_id : string := ("match_" ++ ts_name ts)%string in
-  (*TODO: does it need to be fresh?*)
-  let mt_ty : vty := vty_var "a"%string in
+  (*TODO: does it need to be fresh? Yes, cannot be in params of ts*)
+  let mt_var := gen_name "a" (ts_args ts) in
+  let mt_ty : vty := vty_var mt_var in
   (* let mt_ty = ty_var (create_tvsymbol (id_fresh "a")) in *)
   let mt_al := ty :: rev_map (fun _ => mt_ty) csl in
-  let mt_ls := funsym_noconstr_noty mt_id mt_al mt_ty in
+  (*Create with params START*)
+  let mt_ls := selector_funsym ts csl in
+  (* let mt_ls := funsym_noconstr_noty mt_id mt_al mt_ty in *)
   (* let mt_map2 := amap_set typesym_eq_dec s.(mt_map) ts mt_ls in *)
   (* define the selector function *)
   (*Generate new vars*)
@@ -194,9 +270,9 @@ Definition add_task_axioms (t: task) (axs: list (string * formula)) : task :=
   fold_left (fun acc x => add_axiom acc (fst x) (snd x)) axs t.
 
 (*NOTE: will prob need to separate out for proof purposes (e.g. map2 vs fold_left2 and separate function)*)
-Definition add_selector_aux (tsk: task) (ts: typesym) (ty: vty) (csl: list funsym) :=
+Definition add_selector_aux (tsk: task) (ts: typesym) (csl: list funsym) :=
   (* if s.(no_sel) then (s, tsk) else *)
-  let sel := selector_axiom ts ty csl in
+  let sel := selector_axiom ts csl in
   let mt_ls := fst sel in
   let axms := snd sel in
   let tsk := add_param_decl tsk mt_ls in
@@ -213,9 +289,9 @@ Definition single {A: Type} (l: list A) : bool :=
 (*Don't need selector for types with single constructor because trivial.
   NOTE: does this cause any problems with eliminating singleton types (e.g. user defined tuple)
   need to see in rewriteT*)
-Definition add_selector (acc : task) (ts: typesym) (ty: vty) (x: list funsym) :
+Definition add_selector (acc : task) (ts: typesym) (x: list funsym) :
   task :=
-  if single x then acc else  add_selector_aux acc ts ty x.
+  if single x then acc else  add_selector_aux acc ts x.
 
 Definition mapi {A B: Type} (f: nat -> A -> B) (l: list A) : list B :=
   map (fun x => f (fst x) (snd x)) (combine (seq 0 (length l)) l).
@@ -501,7 +577,7 @@ Definition add_axioms (tsk: task) (d: typesym * list funsym) : task :=
   in
   let st := fold_left cs_add csl st in*)
   (* add selector, projections, and inversion axiom *)
-  let tsk := add_selector tsk ts ty csl in
+  let tsk := add_selector tsk ts csl in
   let tsk := add_indexer tsk ts ty csl in
   let tsk := add_projections tsk ts ty csl in
   add_inversion tsk ts ty csl.
@@ -523,7 +599,7 @@ Variable (gamma: context).
 
 Definition get_mt_map (t: typesym) : funsym :=
   match (find_ts_in_ctx gamma t) with
-  | Some (m, a) => fst (selector_axiom t (adt_ty t) (adt_constr_list a))
+  | Some (m, a) => fst (selector_axiom t (adt_constr_list a))
   | _ => id_fs
   end.
 
