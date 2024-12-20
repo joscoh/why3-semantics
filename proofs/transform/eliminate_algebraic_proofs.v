@@ -362,6 +362,9 @@ Section Proofs.
 Variable (new_constr_name: funsym -> string).
 Variable keep_muts : mut_adt -> bool.
 
+Variable badnames : list string.
+(*TODO: assume that badnames includes all ids in gamma*)
+
 
 (* Variable (cc_maps: list funsym -> amap funsym funsym). *)
 Variable (noind: typesym -> bool).
@@ -464,8 +467,8 @@ Proof. reflexivity. Qed.
 (*Should we just define it this way?*)
 (*Note, might need In version*)
 Lemma add_projections_delta {A B: Type} (tsk: task) (ts: A) (ty: B) (cs: list funsym):
-  task_delta (add_projections new_constr_name tsk ts ty cs) =
-  (concat (map (fun c => (rev (map snd (projection_axioms new_constr_name  c ((projection_syms c)))))) (rev cs))) ++
+  task_delta (add_projections new_constr_name badnames tsk ts ty cs) =
+  (concat (map (fun c => (rev (map snd (projection_axioms new_constr_name badnames c ((projection_syms badnames c)))))) (rev cs))) ++
   task_delta tsk.
 Proof.
   Opaque projection_axioms. Opaque projection_syms. unfold add_projections. simpl.
@@ -474,32 +477,32 @@ Proof.
   (*again, go to fold_right*) 
   rewrite <- fold_left_rev_right.
   rewrite <- map_rev.
-  induction (rev (projection_axioms new_constr_name c (projection_syms c))) as [| h t IH2]; simpl; auto.
+  induction (rev (projection_axioms new_constr_name badnames c (projection_syms badnames c))) as [| h t IH2]; simpl; auto.
   rewrite add_axiom_delta. f_equal; auto. destruct (snd h); reflexivity.
 Qed.
 
 Lemma add_projections_gamma {A B: Type} (tsk: task) (ts: A) (ty: B) (cs: list funsym):
-  task_gamma (add_projections new_constr_name tsk ts ty cs) =
-  map abs_fun (concat (map (fun c => rev (map fst (projection_axioms new_constr_name c ((projection_syms c))))) (rev cs))) ++
+  task_gamma (add_projections new_constr_name badnames tsk ts ty cs) =
+  map abs_fun (concat (map (fun c => rev (map fst (projection_axioms new_constr_name badnames c ((projection_syms badnames c))))) (rev cs))) ++
   task_gamma tsk.
 Proof.
   simpl. unfold add_projections. rewrite <- fold_left_rev_right.
   induction (rev cs) as [|c ctl IH]; simpl; auto.
   rewrite <- fold_left_rev_right.
   rewrite map_app, <-  map_rev.
-  induction (rev (projection_axioms new_constr_name c (projection_syms c))) as [| h t IH2]; simpl; auto.
+  induction (rev (projection_axioms new_constr_name badnames c (projection_syms badnames c))) as [| h t IH2]; simpl; auto.
   rewrite add_axiom_gamma, add_param_decl_gamma. f_equal.
   rewrite IH2,  <- app_assoc. reflexivity.
 Qed. 
 
 Lemma add_projections_goal {A B: Type} (tsk: task) (ts: A) (ty: B) (cs: list funsym):
-  task_goal (add_projections new_constr_name tsk ts ty cs) =
+  task_goal (add_projections new_constr_name badnames tsk ts ty cs) =
   task_goal tsk.
 Proof.
   simpl. unfold add_projections. rewrite <- fold_left_rev_right.
   induction (rev cs) as [|c ctl IH]; simpl; auto.
   rewrite <- fold_left_rev_right.
-  induction (rev (projection_axioms new_constr_name c (projection_syms c))) as [| h t IH2]; simpl; auto.
+  induction (rev (projection_axioms new_constr_name badnames c (projection_syms badnames c))) as [| h t IH2]; simpl; auto.
 Qed. 
 
 (*[add_axioms] - The first interesting part*)
@@ -516,20 +519,20 @@ Opaque add_projections.
   express the axioms*)
 
 Definition add_axioms_delta (ts: typesym) (cs: list funsym) :=
-[inversion_axiom new_constr_name  ts (adt_ty ts) cs] ++
+[inversion_axiom new_constr_name badnames ts (adt_ty ts) cs] ++
   (*Projections are trickiest*)
-  (concat (map (fun c => rev (map snd (projection_axioms new_constr_name  c ((projection_syms c))))) (rev cs))) ++
+  (concat (map (fun c => rev (map snd (projection_axioms new_constr_name badnames c ((projection_syms badnames c))))) (rev cs))) ++
   rev (if single cs then nil else if negb (noind ts) then
-    snd (indexer_axiom new_constr_name  ts cs)
+    snd (indexer_axiom new_constr_name badnames ts cs)
     else if (length cs) <=? 16 then
-    discriminator_axioms new_constr_name  ts (adt_ty ts) cs
+    discriminator_axioms new_constr_name badnames ts (adt_ty ts) cs
     else nil) ++
   (*selector*)
-  (if single cs then nil else rev (snd (selector_axiom new_constr_name ts cs))).
+  (if single cs then nil else rev (snd (selector_axiom new_constr_name badnames ts cs))).
 
 
 Lemma add_axioms_delta_eq (t: task) (ts: typesym) (cs: list funsym): 
-  task_delta (add_axioms new_constr_name noind t (ts, cs)) =
+  task_delta (add_axioms new_constr_name badnames noind t (ts, cs)) =
   add_axioms_delta ts cs ++ 
   task_delta t.
 Proof.
@@ -555,18 +558,18 @@ Qed.
 
 Definition add_axioms_gamma (ts: typesym) (cs: list funsym) :=
   (*projection symbols*)
-  map abs_fun (concat (map (fun c => rev (map fst (projection_axioms new_constr_name  c (projection_syms c)))) (rev cs))) ++
+  map abs_fun (concat (map (fun c => rev (map fst (projection_axioms new_constr_name badnames c (projection_syms badnames c)))) (rev cs))) ++
   (*indexer symbols*)
-  (if negb (single cs) && negb (noind ts) then [abs_fun (fst (indexer_axiom new_constr_name  ts cs))]
+  (if negb (single cs) && negb (noind ts) then [abs_fun (fst (indexer_axiom new_constr_name badnames ts cs))]
     else nil) ++
   (*selector symbols*)
-  (if negb (single cs) then [abs_fun (fst (selector_axiom new_constr_name ts cs))] else nil) ++
+  (if negb (single cs) then [abs_fun (fst (selector_axiom new_constr_name badnames ts cs))] else nil) ++
   (*constructor symbols*)
-  (rev (map abs_fun (map (new_constr new_constr_name) cs))).
+  (rev (map abs_fun (map (new_constr new_constr_name badnames) cs))).
 
 
 Lemma add_axioms_gamma_eq (t: task) (ts: typesym) (cs: list funsym): 
-  task_gamma (add_axioms new_constr_name noind t (ts, cs)) =
+  task_gamma (add_axioms new_constr_name badnames noind t (ts, cs)) =
   add_axioms_gamma ts cs ++ task_gamma t.
 Proof.
   unfold add_axioms_gamma; rewrite <- !app_assoc.
@@ -589,7 +592,7 @@ Qed.
 
 (*The goal is the easiest*)
 Lemma add_axioms_goal (t: task) (ts: typesym) (cs: list funsym): 
-  task_goal (add_axioms new_constr_name noind t (ts, cs)) = task_goal t.
+  task_goal (add_axioms new_constr_name badnames noind t (ts, cs)) = task_goal t.
 Proof.
   destruct t as[[gamma delta] goal].
   unfold add_axioms.
@@ -616,7 +619,7 @@ Definition comp_ctx_gamma (d: def) (gamma: context) : list def :=
   | datatype_def m =>
     concat (map (fun a => add_axioms_gamma (adt_name a) (adt_constr_list a)) (rev (typs m))) ++
     (if keep_muts m then [datatype_def m] else (rev (map (fun a => abs_type (adt_name a)) (typs m))))
-  | _ => [(TaskGen.def_map (rewriteT' keep_muts new_constr_name gamma) (rewriteF' keep_muts new_constr_name gamma nil true) d)]
+  | _ => [(TaskGen.def_map (rewriteT' keep_muts new_constr_name badnames gamma) (rewriteF' keep_muts new_constr_name badnames gamma nil true) d)]
   end.
 
 Lemma add_mut_gamma m tys tsk: task_gamma (add_mut m tys tsk) = 
@@ -624,7 +627,7 @@ Lemma add_mut_gamma m tys tsk: task_gamma (add_mut m tys tsk) =
 Proof. reflexivity. Qed.
 
 Lemma comp_ctx_gamma_eq (d: def) t (gamma: context) :
-  task_gamma (comp_ctx keep_muts new_constr_name noind gamma d t) = 
+  task_gamma (comp_ctx keep_muts new_constr_name badnames noind gamma d t) = 
   comp_ctx_gamma d gamma ++ task_gamma t. 
 Proof.
   unfold comp_ctx. destruct d; try reflexivity.
@@ -661,7 +664,7 @@ Definition comp_ctx_delta (d: def) : list (string * formula) :=
   end.
 
 Lemma comp_ctx_delta_eq (d: def) t (gamma: context) :
-  task_delta (comp_ctx keep_muts new_constr_name noind gamma d t) = 
+  task_delta (comp_ctx keep_muts new_constr_name badnames noind gamma d t) = 
   comp_ctx_delta d ++ task_delta t.
 Proof.
   Opaque add_axioms_delta.
@@ -687,7 +690,7 @@ Proof.
 Qed.
 
 Lemma comp_ctx_goal_eq (d: def) t (gamma: context) :
-  task_goal (comp_ctx keep_muts new_constr_name noind gamma d t) = 
+  task_goal (comp_ctx keep_muts new_constr_name badnames noind gamma d t) = 
   task_goal t.
 Proof.
   unfold comp_ctx. destruct d; try reflexivity.
@@ -714,7 +717,7 @@ Definition fold_all_ctx_gamma t : context :=
   concat (map (fun d => comp_ctx_gamma d (task_gamma t)) (rev (task_gamma t))).
 
 Lemma fold_all_ctx_gamma_eq t:
-  task_gamma (fold_all_ctx keep_muts new_constr_name noind t) = fold_all_ctx_gamma t.
+  task_gamma (fold_all_ctx keep_muts new_constr_name badnames noind t) = fold_all_ctx_gamma t.
 Proof.
   unfold fold_all_ctx, fold_all_ctx_gamma.
   (*Basically, we need to split the task_gamma t up*)
@@ -731,7 +734,7 @@ Qed.
 Definition fold_all_ctx_delta t:= concat (map comp_ctx_delta (rev (task_gamma t))).
 
 Lemma fold_all_ctx_delta_eq t:
-  task_delta (fold_all_ctx keep_muts new_constr_name noind t) = fold_all_ctx_delta t ++ task_delta t.
+  task_delta (fold_all_ctx keep_muts new_constr_name badnames noind t) = fold_all_ctx_delta t ++ task_delta t.
 Proof.
   unfold fold_all_ctx, fold_all_ctx_delta.
   remember (task_gamma t) as gamma.
@@ -745,7 +748,7 @@ Proof.
 Qed.
 
 Lemma fold_all_ctx_goal_eq t:
-  task_goal (fold_all_ctx keep_muts new_constr_name noind t) = task_goal t.
+  task_goal (fold_all_ctx keep_muts new_constr_name badnames noind t) = task_goal t.
 Proof.
   unfold fold_all_ctx.
   remember (task_gamma t) as gamma.
@@ -853,7 +856,7 @@ Context {gamma: context} (gamma_valid: valid_context gamma).
 Variable (pd: pi_dom) (pdf: pi_dom_full gamma pd).
 Variable (pf: pi_funpred gamma_valid pd pdf).
 
-Notation new_constr f := (funsym_clone f (new_constr_name f)).
+Notation new_constr f := (funsym_clone f (gen_id badnames (new_constr_name f))).
 
 (*Part 1: new constructors are old constructors*)
 Definition new_constr_interp (c: funsym) (srts: list sort):
@@ -866,7 +869,7 @@ Definition new_constr_interp (c: funsym) (srts: list sort):
 (*Do everything in separate lemmas to make definition usable*)
 
 (*First, prove 3 parts of f we need:*)
-Lemma projection_syms_args {c: funsym} {f: funsym} (Hin: In f (projection_syms c)):
+Lemma projection_syms_args {c: funsym} {f: funsym} (Hin: In f (projection_syms badnames c)):
   s_args f = [f_ret c].
 Proof.
   unfold projection_syms in Hin.
@@ -876,7 +879,7 @@ Proof.
   reflexivity.
 Qed.
 
-Lemma projection_syms_params {c: funsym} {f: funsym} (Hin: In f (projection_syms c)):
+Lemma projection_syms_params {c: funsym} {f: funsym} (Hin: In f (projection_syms badnames c)):
   s_params f = s_params c.
 Proof.
   unfold projection_syms in Hin.
@@ -887,7 +890,7 @@ Proof.
 Qed.
 
 Lemma projection_syms_ret {c f: funsym} {n: nat} (Hn: n < length (s_args c))
-  (f_nth: nth n (projection_syms c) id_fs = f):
+  (f_nth: nth n (projection_syms badnames c) id_fs = f):
   f_ret f = nth n (s_args c) vty_int.
 Proof.
   subst. unfold projection_syms, dep_mapi.
@@ -906,7 +909,7 @@ Proof.
   - simpl_len. rewrite seq_length. lia. (*TODO: add seq to simpl/solve_len*)
 Qed. 
 
-Lemma projection_syms_length c: length (projection_syms c) = length (s_args c).
+Lemma projection_syms_length c: length (projection_syms badnames c) = length (s_args c).
 Proof.
   unfold projection_syms, dep_mapi. rewrite dep_map_length, combine_length, seq_length. lia.
 Qed.
@@ -928,7 +931,7 @@ Proof.
 Qed.
 
 (*One of the typecasts we need: the sym_sigma_args is really just a single ADT type*)
-Lemma projection_syms_sigma_args {m a c f} srts (Hin: In f (projection_syms c))
+Lemma projection_syms_sigma_args {m a c f} srts (Hin: In f (projection_syms badnames c))
   (m_in: mut_in_ctx m gamma) (a_in: adt_in_mut a m) (c_in: constr_in_adt c a)
   (Hlen: length srts = length (m_params m)):
   sym_sigma_args f srts = 
@@ -951,7 +954,7 @@ Proof.
 Qed.
 
 Lemma in_proj_syms {c f: funsym} {n: nat} (Hn: n < length (s_args c))
-  (f_nth: nth n (projection_syms c) id_fs = f) : In f (projection_syms c).
+  (f_nth: nth n (projection_syms badnames c) id_fs = f) : In f (projection_syms badnames c).
 Proof.
   subst. apply nth_In. rewrite projection_syms_length. auto.
 Qed.
@@ -986,7 +989,7 @@ Qed.
 Definition proj_args_eq (c: funsym) (f: funsym) (n: nat) 
   (*We take in index, easier this way*)
   (Hn: n < length (s_args c))
-  (f_nth: nth n (projection_syms c) id_fs = f)
+  (f_nth: nth n (projection_syms badnames c) id_fs = f)
   (*We need to c to be a constr*)
   {m: mut_adt} {a: alg_datatype} 
   (m_in: mut_in_ctx m gamma) (a_in: adt_in_mut a m)
@@ -1005,7 +1008,7 @@ Qed.
 (*One final typecast we need*)
 Lemma proj_nth_args_ret {f c1 n} {c: funsym}
   (Hn : n < Datatypes.length (s_args c))
-  (f_nth : nth n (projection_syms c) id_fs = f) srts (e: c = c1):
+  (f_nth : nth n (projection_syms badnames c) id_fs = f) srts (e: c = c1):
   nth n (sym_sigma_args c1 srts) s_int = funsym_sigma_ret f srts.
 Proof.
   subst c1.
@@ -1016,12 +1019,14 @@ Proof.
   reflexivity.
 Qed.
 
+Search Nat.ltb.
+
 
 (*We do afor 1 that is in the list*)
 Definition proj_interp (c: funsym) (f: funsym) (n: nat) 
   (*We take in index, easier this way*)
-  (Hn: n < length (s_args c))
-  (f_nth: nth n (projection_syms c) id_fs = f)
+  (Hn: n <? length (s_args c)) (*For proof irrelevance*)
+  (f_nth: nth n (projection_syms badnames c) id_fs = f)
   (*We need to c to be a constr*)
   {m: mut_adt} {a: alg_datatype} 
   (m_in: mut_in_ctx m gamma) (a_in: adt_in_mut a m) (c_in: constr_in_adt c a)
@@ -1029,7 +1034,8 @@ Definition proj_interp (c: funsym) (f: funsym) (n: nat)
   (args: arg_list (domain (dom_aux pd)) (sym_sigma_args f srts)) :
   domain (dom_aux pd) (funsym_sigma_ret f srts) :=
   (*Step 1: we know (from [proj_args_eq]) that args is really just an [adt_rep] x*)
-  let x := proj1_sig (proj_args_eq c f n Hn f_nth m_in a_in c_in srts srts_len args) in
+  let x := proj1_sig (proj_args_eq c f n 
+    (proj1 (Nat.ltb_lt _ _) Hn) f_nth m_in a_in c_in srts srts_len args) in
   (*Step 2: use [find_constr_rep] on x to get the constructor and arguments*)
   let Hrep := (find_constr_rep gamma_valid m m_in srts srts_len _ a a_in (adts pdf m srts)
     (gamma_all_unif gamma_valid _ m_in) x) in
@@ -1041,7 +1047,7 @@ Definition proj_interp (c: funsym) (f: funsym) (n: nat)
   | right Hneq => funs gamma_valid pd pf f srts args
   | left Heq => (*Otherwise, get the nth element of args1 and cast*)
     let y := hnth n args1 s_int (dom_int pd) in
-    dom_cast _ (proj_nth_args_ret Hn f_nth srts Heq) y
+    dom_cast _ (proj_nth_args_ret (proj1 (Nat.ltb_lt _ _) Hn) f_nth srts Heq) y
   end.
 
 (*Part 3: For selectors, interpret as pattern match
@@ -1057,7 +1063,7 @@ Qed.
 
 (*Prove similar lemmas*)
 Lemma selector_funsym_params {m a} csl (m_in: mut_in_ctx m gamma) (a_in: adt_in_mut a m):
-  s_params (selector_funsym (adt_name a) csl) = GenElts.gen_name "a" (m_params m) :: m_params m.
+  s_params (selector_funsym badnames (adt_name a) csl) = GenElts.gen_name "a" (m_params m) :: m_params m.
 Proof.
   simpl. rewrite (adt_args gamma_valid m_in a_in).
   f_equal. apply nodup_fixed_point.
@@ -1065,7 +1071,7 @@ Proof.
 Qed.
 
 Lemma selector_funsym_args {m a} csl (m_in: mut_in_ctx m gamma) (a_in: adt_in_mut a m):
-  s_args (selector_funsym (adt_name a) csl) = vty_cons (adt_name a) (map vty_var (m_params m)) ::
+  s_args (selector_funsym badnames (adt_name a) csl) = vty_cons (adt_name a) (map vty_var (m_params m)) ::
     repeat (vty_var (GenElts.gen_name "a" (m_params m))) (length csl).
 Proof.
   simpl. rewrite (adt_args gamma_valid m_in a_in).
@@ -1076,7 +1082,7 @@ Proof.
 Qed.
 
 Lemma selector_funsym_ret {m a} csl (m_in: mut_in_ctx m gamma) (a_in: adt_in_mut a m):
-  f_ret (selector_funsym (adt_name a) csl) = (vty_var (GenElts.gen_name "a" (m_params m))).
+  f_ret (selector_funsym badnames (adt_name a) csl) = (vty_var (GenElts.gen_name "a" (m_params m))).
 Proof.
   simpl. rewrite (adt_args gamma_valid m_in a_in). reflexivity.
 Qed.
@@ -1104,7 +1110,7 @@ Qed.
 (*Now prove the [funsym_sigma_args]*)
 Lemma selector_sigma_args {m a s1 srts} csl (m_in: mut_in_ctx m gamma) (a_in: adt_in_mut a m)
   (srts_len: length srts = (length (m_params m))):
-  sym_sigma_args (selector_funsym (adt_name a) csl) (s1 :: srts) =
+  sym_sigma_args (selector_funsym badnames (adt_name a) csl) (s1 :: srts) =
   typesym_to_sort (adt_name a) srts :: repeat s1 (length csl).
 Proof.
   unfold sym_sigma_args.
@@ -1137,7 +1143,7 @@ Qed.
 Lemma selector_args_eq {m a} csl (m_in: mut_in_ctx m gamma) (a_in: adt_in_mut a m)
   (s1: sort) (srts: list sort) (srts_len: length srts = length (m_params m))
   (args: arg_list (domain (dom_aux pd)) 
-    (sym_sigma_args (selector_funsym (adt_name a) csl) (s1 :: srts))):
+    (sym_sigma_args (selector_funsym badnames (adt_name a) csl) (s1 :: srts))):
   {x : adt_rep m srts (dom_aux pd) a a_in * 
     (*TODO: arg_list or just (length sl) arguments*)
     arg_list (domain (dom_aux pd)) (repeat s1 (length csl)) |
@@ -1187,7 +1193,7 @@ Qed.
 Lemma selector_nth_args_ret {m a s1 srts n csl} (m_in: mut_in_ctx m gamma) (a_in: adt_in_mut a m)
   (Hn: n < length csl):
   nth n (repeat s1 (length csl)) s_int =
-  funsym_sigma_ret (selector_funsym (adt_name a) csl) (s1 :: srts).
+  funsym_sigma_ret (selector_funsym badnames (adt_name a) csl) (s1 :: srts).
 Proof.
   unfold funsym_sigma_ret. rewrite (selector_funsym_ret csl m_in a_in).
   rewrite (selector_funsym_params csl m_in a_in).
@@ -1200,12 +1206,11 @@ Proof.
 Qed.
 
 
-(*Any constructor list is fine*)
 Definition selector_interp {m a} (m_in: mut_in_ctx m gamma) (a_in: adt_in_mut a m)
   (s1: sort) (srts: list sort) (srts_len: length srts = length (m_params m))
    (args: arg_list (domain (dom_aux pd)) 
-    (sym_sigma_args (selector_funsym (adt_name a) (adt_constr_list a)) (s1 :: srts))):
-  domain (dom_aux pd) (funsym_sigma_ret (selector_funsym (adt_name a) (adt_constr_list a)) (s1 :: srts)) :=
+    (sym_sigma_args (selector_funsym badnames (adt_name a) (adt_constr_list a)) (s1 :: srts))):
+  domain (dom_aux pd) (funsym_sigma_ret (selector_funsym badnames (adt_name a) (adt_constr_list a)) (s1 :: srts)) :=
   let csl := (adt_constr_list a) in
   (*Step 1: we know from [selector_args_eq] that args first has an [adt_rep]*)
   let x := proj1_sig (selector_args_eq csl m_in a_in s1 srts srts_len args) in
@@ -1228,27 +1233,27 @@ Definition selector_interp {m a} (m_in: mut_in_ctx m gamma) (a_in: adt_in_mut a 
 
 (*Prove args, params, ret for sym (easier)*)
 Lemma indexer_funsym_args {m a} (m_in: mut_in_ctx m gamma) (a_in: adt_in_mut a m):
-  s_args (indexer_funsym (adt_name a)) = [vty_cons (adt_name a) (map vty_var (m_params m))].
+  s_args (indexer_funsym badnames (adt_name a)) = [vty_cons (adt_name a) (map vty_var (m_params m))].
 Proof.
   simpl. rewrite (adt_args gamma_valid m_in a_in).
   reflexivity.
 Qed.
 
 Lemma indexer_funsym_params {m a} (m_in: mut_in_ctx m gamma) (a_in: adt_in_mut a m):
-  s_params (indexer_funsym (adt_name a)) = m_params m.
+  s_params (indexer_funsym badnames (adt_name a)) = m_params m.
 Proof.
   simpl. rewrite (adt_args gamma_valid m_in a_in).
   apply nodup_fixed_point, m_params_Nodup; auto.
 Qed.
 
 Lemma indexer_funsym_ret ts:
-  f_ret (indexer_funsym ts) = vty_int.
+  f_ret (indexer_funsym badnames ts) = vty_int.
 Proof. reflexivity. Qed.
 
 (*Prove [sym_sigma_args]*)
 Lemma indexer_sigma_args {m a srts} (m_in: mut_in_ctx m gamma) (a_in: adt_in_mut a m)
   (srts_len: length srts = (length (m_params m))):
-  sym_sigma_args (indexer_funsym (adt_name a)) srts =
+  sym_sigma_args (indexer_funsym badnames (adt_name a)) srts =
   [typesym_to_sort (adt_name a) srts].
 Proof.
   unfold sym_sigma_args.
@@ -1268,7 +1273,7 @@ Definition indexer_args_eq
   (m_in: mut_in_ctx m gamma) (a_in: adt_in_mut a m)
   {srts: list sort} 
   (srts_len: length srts = length (m_params m))
-  (args: arg_list (domain (dom_aux pd)) (sym_sigma_args (indexer_funsym (adt_name a)) srts)):
+  (args: arg_list (domain (dom_aux pd)) (sym_sigma_args (indexer_funsym badnames (adt_name a)) srts)):
   { x: adt_rep m srts (dom_aux pd) a a_in |
     args = cast_arg_list (eq_sym (indexer_sigma_args m_in a_in srts_len)) 
       (HL_cons (domain (dom_aux pd)) _ _ (scast (eq_sym (adts pdf m srts a m_in a_in)) x) (HL_nil _))}.
@@ -1278,7 +1283,7 @@ Qed.
 
 (*Finally, ret is int*)
 Lemma indexer_sigma_ret ts srts:
-  funsym_sigma_ret (indexer_funsym ts) srts = s_int.
+  funsym_sigma_ret (indexer_funsym badnames ts) srts = s_int.
 Proof.
   unfold funsym_sigma_ret. rewrite indexer_funsym_ret.
   apply sort_inj.
@@ -1288,8 +1293,8 @@ Qed.
 Definition indexer_interp {m a} (m_in: mut_in_ctx m gamma) (a_in: adt_in_mut a m)
   (srts: list sort) (srts_len: length srts = length (m_params m))
   (args: arg_list (domain (dom_aux pd))
-    (sym_sigma_args (indexer_funsym (adt_name a)) srts)):
-  domain (dom_aux pd) (funsym_sigma_ret (indexer_funsym (adt_name a)) srts) :=
+    (sym_sigma_args (indexer_funsym badnames (adt_name a)) srts)):
+  domain (dom_aux pd) (funsym_sigma_ret (indexer_funsym badnames (adt_name a)) srts) :=
   (*Step 1: get ADT rep*)
   let x := proj1_sig (indexer_args_eq m_in a_in srts_len args) in
   (*Step 2: use [find_constr_rep] on x to get the constructor and arguments*)
@@ -1310,8 +1315,8 @@ Proof.
   intros x Hinx. apply In_in_bool; auto.
 Qed.
 
-Lemma all_mut_in:
-  Forall (fun m => mut_in_ctx m gamma) (mut_of_context gamma).
+Lemma all_mut_in {g2} (g2_sub: sublist (mut_of_context g2) (mut_of_context gamma)):
+  Forall (fun m => mut_in_ctx m gamma) (mut_of_context g2).
 Proof.
   rewrite Forall_forall. unfold mut_in_ctx. intros x Hinx.
   apply In_in_bool; auto.
@@ -1325,15 +1330,55 @@ Qed.
 
 (*TODO: do we want to use another gamma to avoid annoying induction issues - 
   can have g2 with property that sublist g2 gamma (maybe)*)
-Definition map_adts {A: Type} (f: forall (m: mut_adt) (m_in: mut_in_ctx m gamma)  
+Definition map_adts (g2: context) (g2_sub: sublist (mut_of_context g2) (mut_of_context gamma)) 
+  {A: Type} (f: forall (m: mut_adt) (m_in: mut_in_ctx m gamma)  
   (a: alg_datatype) (a_in: adt_in_mut a m), A) : list A :=
   concat (dep_map (fun m (m_in: mut_in_ctx m gamma) => 
     dep_map (fun a (a_in: adt_in_mut a m) => f m m_in a a_in) (typs m) (all_typs_in m)
-  ) (mut_of_context gamma) (all_mut_in)).
+  ) (mut_of_context g2) (all_mut_in g2_sub)).
+
+Lemma map_adts_in (g2: context) (g2_sub: sublist (mut_of_context g2) (mut_of_context gamma))
+  {A: Type} (f: forall (m: mut_adt) (m_in: mut_in_ctx m gamma)  
+  (a: alg_datatype) (a_in: adt_in_mut a m), A) x:
+  In x (map_adts g2 g2_sub f) <-> exists (m: mut_adt) (a: alg_datatype)
+    (m_in: mut_in_ctx m gamma) (a_in: adt_in_mut a m) (Hinm: In m (mut_of_context g2)),
+    x = f m m_in a a_in.
+Proof.
+  unfold map_adts.
+  generalize dependent (all_mut_in g2_sub). clear g2_sub.
+  induction (mut_of_context g2) as [| d gtl IH]; simpl.
+  - intros _. split; intros; destruct_all; contradiction.
+  - intros Hall. rewrite in_app_iff.
+    rewrite IH.
+    split.
+    + intros [Hin | [m [a [m_in [a_in [Hingtl Hx]]]]]].
+      * exists d. apply dep_map_in in Hin.
+        destruct Hin as [a [a_in [Hina Hx]]]; subst.
+        exists a. exists (Forall_inv Hall). exists a_in.
+        assert (Hd: d = d \/ In d gtl) by (left; reflexivity).
+        exists Hd. reflexivity.
+      * subst. exists m. exists a. exists m_in. exists a_in.
+        assert (Hd: d = m \/ In m gtl) by (right; auto).
+        exists Hd. reflexivity.
+    + intros [m [a [m_in [a_in [Hm Hx]]]]].
+      destruct Hm as [?| Hinm]; [subst|].
+      * left.
+        assert (Hin: In a (typs m)). {
+          unfold adt_in_mut in a_in. clear -a_in. apply in_bool_In in a_in. auto.
+        }
+        apply in_dep_map with (f := fun a a_in => f m (Forall_inv Hall) a a_in)
+          (Hall:=all_typs_in m) in Hin.
+        destruct Hin as [a2_in Hin].
+        assert (a2_in =a_in) by apply bool_irrelevance.
+        assert (m_in = Forall_inv Hall) by apply bool_irrelevance.
+        subst. auto.
+      * right. eauto 6.
+Qed.
+
 (*Idea: map over all (easier with dependent types than fold) then give option, and return
   option*)
 
-Definition dep_foldr {A B: Type} {P: A -> Prop} (f: forall (x: A), P x -> B -> B) (b: B) :=
+(* Definition dep_foldr {A B: Type} {P: A -> Prop} (f: forall (x: A), P x -> B -> B) (b: B) :=
   fix dep_foldr (l: list A) (Hall: Forall P l): B :=
   match l as l' return Forall P l' -> B with
   | nil => fun _ => b
@@ -1345,24 +1390,32 @@ Definition fold_adts {A: Type} (f: forall (m: mut_adt) (m_in: mut_in_ctx m gamma
   dep_foldr (fun m (m_in: mut_in_ctx m gamma) (acc: A) =>
     dep_foldr (fun a (a_in: adt_in_mut a m) (acc2: A) => f m m_in a a_in acc2) acc 
       (typs m) (all_typs_in m))
-  base (mut_of_context gamma) (all_mut_in).
+  base (mut_of_context gamma) (all_mut_in). *)
 
 (*Maybe easier to create list of {f: funsym & a: domain (dom_aux pd) (funsym_sigma_ret f srts)}
   Then function is just going through list *)
 (*Length for index*)
-Lemma proj_syms_index_bound {f c} (Hinf: In f (projection_syms c)):
-  index funsym_eq_dec f (projection_syms c) < length (s_args c).
+Lemma proj_syms_index_bound {f c} (Hinf: In f (projection_syms badnames c)):
+  index funsym_eq_dec f (projection_syms badnames c) <? length (s_args c).
 Proof.
   rewrite <- projection_syms_length.
+  apply Nat.ltb_lt.
   apply in_index, Hinf.
 Qed.
 
 (*Idea: for every mutual ADT and adt*)
-Definition funs_new_map (srts: list sort) :
+
+(*PLAN: separate out into new vals for single ADT.
+  Then prove in iff for single ADT
+  then prove in iff for whole thing
+  Then prove nodup for whole thing
+  Then prove that since nodup can just look at the single one it is in
+  *)
+Definition funs_new_map_single (srts: list sort) (m: mut_adt) (m_in: mut_in_ctx m gamma)
+  (a: alg_datatype) (a_in: adt_in_mut a m) : 
   list {g: funsym & arg_list (domain (dom_aux pd)) (sym_sigma_args g srts) ->
     domain (dom_aux pd) (funsym_sigma_ret g srts)} :=
-  concat (map_adts (fun m m_in a a_in => 
-    (*First, add new constructors*)
+  (*First, add new constructors*)
     map (fun c => 
       existT _ (new_constr c) (new_constr_interp c srts)
     ) (adt_constr_list a) ++
@@ -1372,8 +1425,8 @@ Definition funs_new_map (srts: list sort) :
       match Nat.eq_dec (length srts) (length (m_params m)) with
       | left srts_len => 
         (*Add all new projection functions per constructor*)
-        map_In (projection_syms c) (fun f Hinf => 
-          let n := index funsym_eq_dec f (projection_syms c) in
+        map_In (projection_syms badnames c) (fun f Hinf => 
+          let n := index funsym_eq_dec f (projection_syms badnames c) in
           existT _ f (proj_interp c f n (proj_syms_index_bound Hinf) 
             (index_nth funsym_eq_dec id_fs Hinf) m_in a_in c_in srts srts_len)
         )
@@ -1386,7 +1439,7 @@ Definition funs_new_map (srts: list sort) :
     | s1 :: srts =>
       match Nat.eq_dec (length srts) (length (m_params m)) with
       | left srts_len =>  
-        [existT _ (selector_funsym (adt_name a) (adt_constr_list a))
+        [existT _ (selector_funsym badnames (adt_name a) (adt_constr_list a))
           (selector_interp m_in a_in s1 srts srts_len)]
       | _ => nil
       end
@@ -1394,37 +1447,605 @@ Definition funs_new_map (srts: list sort) :
     end ++
     (*4. indexer*)
     match Nat.eq_dec (length srts) (length (m_params m)) with
-    | left srts_len => [existT _ (indexer_funsym (adt_name a))
+    | left srts_len => [existT _ (indexer_funsym badnames (adt_name a))
           (indexer_interp m_in a_in srts srts_len)]
     | _ => nil
-    end
-  )).
+    end.
+  
+
+(*The whole map just concats the definitions for all adts in g2 (separated for induction)*)
+Definition funs_new_map
+  (g2: context) (g2_sub: sublist (mut_of_context g2) (mut_of_context gamma)) 
+  (srts: list sort) :
+  list {g: funsym & arg_list (domain (dom_aux pd)) (sym_sigma_args g srts) ->
+    domain (dom_aux pd) (funsym_sigma_ret g srts)} :=
+  concat (map_adts g2 g2_sub (funs_new_map_single srts)).
+
+(*The specs (maybe move)*)
+
+Definition funs_new_map_single_in (srts: list sort) (m: mut_adt) (m_in: mut_in_ctx m gamma)
+  (a: alg_datatype) (a_in: adt_in_mut a m) x : Prop :=
+  (*new constructor*)
+  (exists c (c_in: constr_in_adt c a), x = existT _ (new_constr c) (new_constr_interp c srts)) \/
+  (*projections - most useful part because dep_maps are awful*)
+  (exists c (c_in: constr_in_adt c a) 
+    (srts_len: length srts = length (m_params m)) (f: funsym)
+    (Hinf: In f (projection_syms badnames c)),
+    let n := index funsym_eq_dec f (projection_syms badnames c) in
+    x = existT _ f (proj_interp c f n (proj_syms_index_bound Hinf) 
+            (index_nth funsym_eq_dec id_fs Hinf) m_in a_in c_in srts srts_len)
+    ) \/
+  (*selector - awkward to phrase for dependent types*)
+  (match srts as s return {g: funsym & arg_list (domain (dom_aux pd)) (sym_sigma_args g s) ->
+    domain (dom_aux pd) (funsym_sigma_ret g s)} -> Prop with
+    | s1 :: srts1 => fun x => exists (srts_len: length srts1 = length (m_params m)),
+      x = existT _ (selector_funsym badnames (adt_name a) (adt_constr_list a))
+          (selector_interp m_in a_in s1 srts1 srts_len)
+    | _ => fun _ => False
+  end) x \/
+  (*indexer*)
+  (exists (srts_len: length srts = length (m_params m)),
+    x = existT _ (indexer_funsym badnames (adt_name a))
+          (indexer_interp m_in a_in srts srts_len)).
+
+Lemma funs_new_map_single_in_spec (srts: list sort) (m: mut_adt) (m_in: mut_in_ctx m gamma)
+  (a: alg_datatype) (a_in: adt_in_mut a m) x:
+  In x (funs_new_map_single srts m m_in a a_in) <->
+  funs_new_map_single_in srts m m_in a a_in x
+  .
+Proof.
+  unfold funs_new_map_single, funs_new_map_single_in.
+  rewrite !in_app_iff. apply or_iff.
+  {
+    (*First one*)
+    rewrite in_map_iff. split.
+    - intros [c [Hx Hinc]].
+      subst. exists c. rewrite <- constr_in_adt_eq in Hinc.
+      exists Hinc. reflexivity.
+    - intros [c [c_in Hx]]; subst.
+      exists c. split; auto.
+      apply constr_in_adt_eq. auto.
+  }
+  apply or_iff.
+  {
+    (*second one - harder*)
+    rewrite in_concat. split.
+    - intros [l [Hl Hinx]].
+      apply dep_map_in in Hl.
+      destruct Hl as [c [c_in [Hinc Hl]]].
+      destruct (Nat.eq_dec (length srts) (length (m_params m))); [| subst; contradiction].
+      subst l.
+      unfold map_In in Hinx.
+      apply dep_map_in in Hinx.
+      destruct Hinx as [f [Hinf [Hinf2 Hx]]]. subst x.
+      exists c. exists c_in. exists e. exists f. exists Hinf. reflexivity.
+    - intros [c [c_in [srts_len [f [Hinf Hx]]]]].
+      destruct (Nat.eq_dec (length srts) (length (m_params m))); [|contradiction].
+      assert (e = srts_len) by (apply UIP_dec, Nat.eq_dec).
+      (*Unfortunately, need to give dependent types explicitly*) subst.
+      exists (map_In (projection_syms badnames c) (fun f Hinf => 
+          let n := index funsym_eq_dec f (projection_syms badnames c) in
+          existT _ f (proj_interp c f n (proj_syms_index_bound Hinf) 
+            (index_nth funsym_eq_dec id_fs Hinf) m_in a_in c_in srts srts_len)
+        )).
+      split.
+      + assert (Hinl: In c (adt_constr_list a)) by (apply constr_in_adt_eq; auto).
+        eapply in_dep_map with (f:= fun c c_in =>
+          map_In (projection_syms badnames c)
+            (fun f Hinf =>  let n := index funsym_eq_dec f (projection_syms badnames c) in
+          existT _ f (proj_interp c f n (proj_syms_index_bound Hinf) 
+            (index_nth funsym_eq_dec id_fs Hinf) m_in a_in c_in srts srts_len)
+        )) (Hall:=all_constr_in a) in Hinl.
+        destruct Hinl as [c_in2 Hinl].
+        assert (c_in = c_in2) by apply bool_irrelevance. subst.
+        apply Hinl.
+      + (*Again, prove dep map In*)
+        unfold map_In.
+        assert (Hinf2:=Hinf).
+        eapply in_dep_map with (f:= fun f Hinf =>
+          existT _ f (proj_interp c f (index funsym_eq_dec f
+          (projection_syms badnames c)) (proj_syms_index_bound Hinf) 
+                      (index_nth funsym_eq_dec id_fs Hinf) m_in a_in c_in srts srts_len)
+                  ) (Hall:=(all_in_refl (projection_syms badnames c))) in Hinf2.
+        destruct Hinf2 as [Hinf2 Hin].
+        (*Now prove irrel*)
+        revert Hin.
+        generalize dependent (proj_syms_index_bound Hinf2).
+        generalize dependent (proj_syms_index_bound Hinf) .
+        intros i i1. assert (i = i1) by (apply bool_irrelevance); subst.
+        generalize dependent (index_nth funsym_eq_dec id_fs Hinf2).
+        generalize dependent (index_nth funsym_eq_dec id_fs Hinf).
+        intros e e1. assert (e = e1) by (apply UIP_dec, funsym_eq_dec).
+        subst. auto.
+  }
+  (*3rd part*)
+  apply or_iff.
+  {
+    destruct srts as [| s1 srts]; [reflexivity|].
+    destruct (Nat.eq_dec (length srts) (length (m_params m))).
+    2: {
+      split; [contradiction| intros [srts_len _]; contradiction].
+    }
+    simpl. split.
+    - intros [Hx | []]; subst. exists e. reflexivity.
+    - intros [srts_len Hx]. subst. assert (e = srts_len) by (apply UIP_dec, Nat.eq_dec).
+      subst. auto.
+  }
+  (*last part*)
+  {
+    destruct (Nat.eq_dec (length srts) (length (m_params m))).
+    2: {
+      split; [contradiction| intros [srts_len _]; contradiction].
+    }
+    simpl. split.
+    - intros [Hx | []]; subst. exists e. reflexivity.
+    - intros [srts_len Hx]. subst. assert (e = srts_len) by (apply UIP_dec, Nat.eq_dec).
+      subst. auto.
+  }
+Qed.
+
+(*Now prove for multiple*)
+Lemma funs_new_map_in_spec (g2 : context)
+  (g2_sub: sublist (mut_of_context g2) (mut_of_context gamma)) (srts: list sort) x:
+  In x (funs_new_map g2 g2_sub srts) <->
+  exists (m: mut_adt) (a: alg_datatype) (m_in: mut_in_ctx m gamma) (a_in: adt_in_mut a m)
+    (Hm: In m (mut_of_context g2)),
+  funs_new_map_single_in srts m m_in a a_in x.
+Proof.
+  unfold funs_new_map.
+  rewrite in_concat. 
+  setoid_rewrite map_adts_in.
+  split.
+  - intros [l [[m [a [m_in [a_in [Hinm Hl]]]]] Hinx]].
+    subst. exists m. exists a. exists m_in. exists a_in.
+    exists Hinm.
+    apply funs_new_map_single_in_spec, Hinx.
+  - intros [m [a [m_in [a_in [Hinm Hfuns]]]]].
+    exists (funs_new_map_single srts m m_in a a_in).
+    split.
+    + eauto 6.
+    + apply funs_new_map_single_in_spec, Hfuns.
+Qed.
+
+(*Now we can prove versions for just funsyms - we need for NoDup*)
+Lemma funs_new_map_single_funsym_in (srts: list sort) (m: mut_adt) (m_in: mut_in_ctx m gamma)
+  (a: alg_datatype) (a_in: adt_in_mut a m) f:
+  In f (map (fun x => projT1 x) (funs_new_map_single srts m m_in a a_in)) ->
+  (*new constr*)
+  (exists c, constr_in_adt c a /\ f = (new_constr c)) \/
+  (*projection*)
+  (exists c, constr_in_adt c a /\ In f (projection_syms badnames c)) \/
+  (*selector*)
+  (f = (selector_funsym badnames (adt_name a) (adt_constr_list a))) \/
+  (*indexer*)
+  (f = (indexer_funsym badnames (adt_name a))).
+Proof.
+  rewrite in_map_iff. intros [x [Hf Hinx]]. subst f.
+  apply funs_new_map_single_in_spec in Hinx.
+  unfold funs_new_map_single_in in Hinx.
+  destruct Hinx as [Hconstr | [Hproj | [Hsel | Hidx]]].
+  - left. destruct Hconstr as [c [c_in Hx]]; subst. simpl.
+    eauto.
+  - right; left. destruct Hproj as [c [c_in [srts_len [f [Hinf Hx]]]]]. subst; simpl.
+    eauto.
+  - right; right; left. destruct srts; [contradiction|].
+    destruct Hsel as [srts_len Hx]; subst; simpl. reflexivity.
+  - right; right; right. destruct Hidx as [srts_len Hx]; subst; simpl. reflexivity.
+Qed.  
+
+(*Now prove NoDups of resulting funsym (name) map*)
+
+(*We need [new_constr_name] to be injective, or at least not repeat for constructors*)
+Variable (new_constr_name_inj: forall m a, mut_in_ctx m gamma -> adt_in_mut a m ->
+  forall c1 c2,
+  constr_in_adt c1 a -> constr_in_adt c2 a -> new_constr_name c1 = new_constr_name c2 ->
+  c1 = c2).
+
+(*TODO: move*)
+
+Lemma gen_notin_in {A: Type} (f: nat -> A) eq_dec (n: nat) (l: list A) x:
+  In x (gen_notin f eq_dec n l) ->
+  In x (gen_dist f (n + length l)) /\ ~ In x l.
+Proof.
+  unfold gen_notin. intros Hinx. apply In_firstn in Hinx.
+  rewrite in_filter in Hinx.
+  destruct Hinx as [Hnotin Hinx]; split; auto.
+  destruct (in_dec eq_dec x l); auto.
+Qed.
+
+Lemma gen_names_inj n p1 p2 l s:
+  In s (gen_names n p1 l) ->
+  In s (gen_names n p2 l) ->
+  p1 = p2.
+Proof.
+  unfold gen_names.
+  intros Hin1 Hin2.
+  apply gen_notin_in in Hin1, Hin2.
+  destruct Hin1 as [Hin1 _];destruct Hin2 as [Hin2 _].
+  unfold gen_dist in Hin1, Hin2.
+  rewrite in_map_iff in Hin1, Hin2.
+  destruct Hin1 as [n1 [Hs Hin1]]; destruct Hin2 as [n2 [Hs2 Hin2]].
+  subst.
+  (*ugh not actually true: e.g. one is foo the other is foo1 and we add 12 to first and 2 to second
+    just dont do gen but require distinct?
+
+    options
+    1. require new_constrs do not end in number, prove this gives uniqueness
+    2. just require that new_constrs not in badnames (although this rules out identity function -
+    but we could just replace with old_constr + constant/number), remove gen_name
+
+    probably 2 is the best
+
+    projection_syms: s_name c ++ _proj_ ++ number
+      this is fine because s_name disjoint, then we know we have a _proj_x* where x* is number
+      so we could split into before (final) proj, after know has to be equal, so get inj
+    selector funsym: match_ ++ (adt_name a)
+      in principle could have problem - e.g. if type name is list1 or whatever
+    indexer funsym: index_ ++ (adt_name a)
+
+    possible solution - add special symbol to end, require that no idents have that
+    symbol - let us use like ^ or something - ensures that everything is fine
+    so we have e.g. index_list1^23 and index_list^123
+
+    dont even need to disallow: just know that we can split on last ^, if not
+    equal on both sides, not equal, so we know that index_(name) has to be equal
+    and hence name is equal - doesnt work with numbers because not fixed number
+    of characters - can just use _
+
+    this is way to go: add extra "_" at end, do same to new_constrs,
+    prove that if we have 2 strings, we can split on last ocurrence of element
+    and both must be equal, then show injectivity
+
+    what they actually do: no user symbol can contain '+extra letters
+    so their special symbol is '
+
+    probably do this: need to require on context (easy to check)
+
+    
+
+  *)
+
+
+Print gen_names.
+Print gen_name.
+Lemma gen_strs_inj
+
+nth 0 (gen_notin (fun x : nat => (s1 ++ nth_str x)%string) string_dec
+1 l) ""%string =
+nth 0 (gen_notin (fun x : nat => (s2 ++ nth_str x)%string) string_dec
+1 l) ""%string -> s1 = s2
+Lemma gen_notin_inj
+
+Lemma gen_name_inj s1 s2 l:
+  gen_name s1 l = gen_name s2 l ->
+  s1 = s2.
+Proof.
+  unfold gen_name.
+  unfold gen_names.
+  unfold gen_notin.
+  simpl.
+  destruct 
+
+  Search gen_notin.
+   simpl.
+  simpl.
+  Search gen_names.
+
+Lemma funs_new_map_single_nodup srts {m a} m_in a_in:
+  NoDup (map (fun (x: {x: funsym & _}) => s_name (projT1 x)) 
+    ((funs_new_map_single srts m m_in a a_in))).
+Proof.
+  unfold funs_new_map_single.
+  rewrite !map_app. rewrite !map_map. simpl.
+  rewrite !NoDup_app_iff'. split_all.
+  - (*Part 1: Prove nodup of new constructors*)
+    setoid_rewrite constr_in_adt_eq in new_constr_name_inj.
+    specialize (new_constr_name_inj m a m_in a_in).
+    induction (adt_constr_list a) as [| c1 cs IH]; simpl; [constructor|].
+    constructor; simpl in *; auto.
+    rewrite in_map_iff. intros [x [Hxeq Hinx]].
+    unfold gen_id in Hxeq.
+    Search gen_name.
+    intros Hin.
+    r
+
+
+    Search constr_in_adt adt_constr_list.
+    unfold constr_in_adt in new_constr_name_inj.
+  
+   unfold new_constr_name.
+  
+  
+   rewrite !map_m
+  all: auto.
+
+Lemma funs_new_map_nodup (g2: context) (g2_sub: sublist (mut_of_context g2) (mut_of_context gamma)) 
+  srts:
+  NoDup (map (fun (x: {x: funsym & _}) => s_name (projT1 x)) (funs_new_map g2 g2_sub srts)).
+Proof.
+  unfold funs_new_map, map_adts.
+  generalize dependent (all_mut_in g2_sub). clear g2_sub.
+  induction g2 as [| d g2 IH].
+  - simpl. constructor.
+  - intros Hallin. destruct d as [m | | | | | |]; auto.
+    simpl.
+    rewrite !concat_app, !map_app.
+    apply NoDup_app_iff'. split_all; auto.
+    (*2 goals: prove In and NoDup*)
+    + (*First, prove NoDup (separate lemma?)*)
+
+
+
+
+  Search 
+  funs_new_map_single_in srts m m_in a a_in x \/
+
+  .
+
+
+ exists m. exists a. exists m_in. exists a_in.
+
+      assert (Hinm: In m (mut_of_context g2))
+    
+     eauto 10.
+    split; eauto 10.
+
+
+  funs_new_map_single_in_spec:
+forall (srts : list sort) (m : mut_adt) (m_in : mut_in_ctx m gamma)
+(a : alg_datatype) (a_in : adt_in_mut a m)
+(x : {g : funsym &
+arg_list (domain (dom_aux pd)) (sym_sigma_args g srts) ->
+domain (dom_aux pd) (funsym_sigma_ret g srts)}),
+In x (funs_new_map_single srts m m_in a a_in) <->
+funs_new_map_single_in srts m m_in a a_in x
+
+
+    Search funs_new_map_single_in.
+  
+   [m [a [m_in [a_in Hl]]]]].
+
+
+(m: mut_adt) (m_in: mut_in_ctx m gamma)
+  (a: alg_datatype) (a_in: adt_in_mut a m)
+
+(**)
+
+
+        (*Show Hinf/Hinf2 irrel*)
+        
+        
+         apply Hin.
+        split.
+
+        assert (Hin: In )
+      
+      
+       subst x.
+        ) in Hinl.
+        destruct Hinl as [H Hin].
+        apply Hin.
+
+          Search adt_constr_list constr_in_adt.
+      } eapply in_dep_map in 
+      
+       in_dep_map:
+  forall {A B : Type} {P : A -> Prop} (f : forall x : A, P x -> B)
+    (l : list A) (Hall : Forall P l) (x : A),
+  In x l -> exists H : P x, In (f x H) (dep_map f l Hall)
+      
+      
+       Search In dep_map.
+
+
+      unfold map_In. eexists. rewrite dep_map_comp.
+      eexists. split.
+      + assert (Hinc: In c (adt_constr_list a)) pose proof (in_dep_map).
+      
+       Search In dep_map.
+
+
+
+in_dep_map:
+forall {A B : Type} {P : A -> Prop} (f : forall x : A, P x -> B)
+(l : list A) (Hall : Forall P l) (x : A),
+In x l -> exists H : P x, In (f x H) (dep_map f l Hall)
+
+      Search map_In.
+       rewrite in_map_In_iff in Hinx.
+      2: {
+        intros f H1 H2. f_equal. apply functional_extensionality_dep. intros args.
+        Check (proj_syms_index_bound H1).
+      }
+      
+      
+       Search map_In.
+      Search In dep_map.
+  }
+
+    
+    
+     Search constr_in_adt adt_constr_list.
+  }
+  Search (?P \/ ?Q <-> ?R \/ ?S).
+  rewrite !map_app.
+
+  match Nat.eq_dec (length srts) (length (m_params m)) with
+    | left srts_len => [existT _ (indexer_funsym badnames (adt_name a))
+          (indexer_interp m_in a_in srts srts_len)]
+  .
+    
+    
+    exists s1 srts1 (srts_len: length srts1 = length (m_params m))
+    (Heq: s1 :: srts1 = srts),
+    x = existT _ (selector_funsym badnames (adt_name a) (adt_constr_list a))
+          (selector_interp m_in a_in s1 srts1 srts_len)).
+
+
+    x = (*eq_rect (s1 :: srts1) _ *)
+    (selector_funsym badnames (adt_name a) (adt_constr_list a))
+          (selector_interp m_in a_in s1 srts1 srts_len)) srts Heq)
+  .
+
+Proof.
+
+
+  match srts with
+    | s1 :: srts =>
+      match Nat.eq_dec (length srts) (length (m_params m)) with
+      | left srts_len =>  
+        [existT _ (selector_funsym badnames (adt_name a) (adt_constr_list a))
+          (selector_interp m_in a_in s1 srts srts_len)]
+      | _ => nil
+      end
+    | _ => nil
+    end ++
+  
+  concat (dep_map (fun c (c_in: constr_in_adt c a) =>
+      (*If srts has wrong length dont add anything*)
+      match Nat.eq_dec (length srts) (length (m_params m)) with
+      | left srts_len => 
+        (*Add all new projection functions per constructor*)
+        map_In (projection_syms badnames c) (fun f Hinf => 
+          let n := index funsym_eq_dec f (projection_syms badnames c) in
+          existT _ f (proj_interp c f n (proj_syms_index_bound Hinf) 
+            (index_nth funsym_eq_dec id_fs Hinf) m_in a_in c_in srts srts_len)
+        )
+      | right srts_len => nil
+      end
+    ) (adt_constr_list a) (all_constr_in a)) ++
+  
+  
+   f = new_constr c /\ x = new_constr_interp c srts).
+
+
+  map (fun c => 
+      existT _ (new_constr c) (new_constr_interp c srts)
+    ) (adt_constr_list a) ++
+
+(*Let's try this first*)
+
+Lemma funs_new_map_in (g2: context) (g2_sub: sublist (mut_of_context g2) (mut_of_context gamma)) 
+  srts f:
+  In f (map (fun x => projT1 x) (funs_new_map g2 g2_sub)) srts <->
+  (*new constructor*)
+  (exists )
+
+ map (fun c => 
+      existT _ (new_constr c) (new_constr_interp c srts)
+    ) (adt_constr_list a) ++
+
+
+Lemma funs_new_map_nodup (g2: context) (g2_sub: sublist (mut_of_context g2) (mut_of_context gamma)) 
+  srts:
+  NoDup (map (fun (x: {x: funsym & _}) => s_name (projT1 x)) (funs_new_map g2 g2_sub srts)).
+Proof.
+  unfold funs_new_map, map_adts.
+  generalize dependent (all_mut_in g2_sub). clear g2_sub.
+  induction g2 as [| d g2 IH].
+  - simpl. constructor.
+  - intros Hallin. destruct d as [m | | | | | |]; auto.
+    simpl.
+    rewrite !concat_app, !map_app.
+    apply NoDup_app_iff'. split_all; auto.
+    (*2 goals: prove In and NoDup*)
+
+
+    rewrite !map_app.
+    + admit.
+    + unfold funs_new_map, map_adts in *. simpl. auto. apply IH.
+    
+    
+     apply IH.
+    
+    
+     unfold funs_new_map, map_adts.
+
+    unfold mut_of_context; simpl.
+    simpl.
+  
+   unfold funs_new_map. simpl.
+    rewrite concat_app.
+    fold funs_new_map.
+  
+  
+   auto. simpl.
+
 
 (*Then, the full funs just looks up the funsym in the map*)
+
+(*Lookup in this kind of map*)
+Definition dep_assoc_list_lookup {A: Type} {B: A -> Type} 
+  (eq_dec: forall (x y: A), {x = y} + {x <> y}) (x: A) 
+  : list {a: A & B a} -> option {y: {a: A & B a} | projT1 y = x} :=
+  fix lookup (l: list {a: A & B a}) :=
+    match l with
+    | nil => None
+    | h :: t => 
+      match eq_dec (projT1 h) x with
+      | left Heq => 
+        Some (exist _ h Heq)
+      | right _ => lookup t
+      end
+    end.
+
+Lemma dep_assoc_list_app {A: Type} {B: A -> Type} 
+  (eq_dec: forall (x y: A), {x = y} + {x <> y}) (x: A) (l1 l2: list {a: A & B a}):
+  dep_assoc_list_lookup eq_dec x (l1 ++ l2) =
+  match (dep_assoc_list_lookup eq_dec x l1) with
+  | Some y => Some y
+  | None => dep_assoc_list_lookup eq_dec x l2
+  end.
+Proof.
+  induction l1 as [| h1 t1 IH]; simpl; auto.
+  destruct (eq_dec (projT1 h1) x); auto.
+Qed.
+
+Lemma dep_assoc_list_concat {A: Type} {B: A -> Type} 
+  (eq_dec: forall (x y: A), {x = y} + {x <> y}) (x: A) (l: list (list {a: A & B a}))
+  (Hn: NoDup ())
+
 
 Definition funs_new (f: funsym) (srts: list sort)
   (a: arg_list (domain (dom_aux pd)) (sym_sigma_args f srts)):
   domain (dom_aux pd) (funsym_sigma_ret f srts) :=
-  fold_right (fun (x:
-    {g : funsym &
-  arg_list (domain (dom_aux pd)) (sym_sigma_args g srts) ->
-  domain (dom_aux pd) (funsym_sigma_ret g srts)}) 
-  (acc : domain (dom_aux pd) (funsym_sigma_ret f srts)) =>
-    match funsym_eq_dec f (projT1 x) with
-    | left Heq => (*Need 2 casts here*) 
-      dom_cast _ (eq_sym (f_equal (fun (x: funsym) => funsym_sigma_ret x srts) Heq)) 
-        ((projT2 x) 
-          (cast_arg_list (f_equal (fun (x: funsym) => sym_sigma_args x srts) Heq) a))
-    | right Hneq => acc
-    end
-  ) (*default is pf*)(funs gamma_valid pd pf f srts a) 
-  (funs_new_map srts).
+  match dep_assoc_list_lookup funsym_eq_dec f (funs_new_map srts) with
+  | Some x =>
+    let y := proj1_sig x in
+    let Heq := proj2_sig x in
+     dom_cast _ (f_equal (fun (x: funsym) => funsym_sigma_ret x srts) Heq)
+        ((projT2 y) 
+          (cast_arg_list (f_equal (fun (x: funsym) => sym_sigma_args x srts) (eq_sym Heq)) a))
+  | None => (funs gamma_valid pd pf f srts a) 
+  end.
+
   
 (*Now we need to prove the relevant theorems:
   1. Any old constructor is an old constructor still
   2. The new constructors, projections, selector, and indexer for each ADT
     are mapped to their interpretation (as defined above)
   We will need to show that everything is unique (TODO: implement)*)
+
+Definition context_names (g: context) : list string :=
+  map (fun (x: funsym) => s_name x) (funsyms_of_context g).
+
+Variable badnames_incl: sublist (context_names gamma) badnames.
+
+(*Now show the specs*)
+(*NOTE: first prove for everything in terms of old gamma.
+  Will show for new gamma later*)
+Lemma funs_new_constrs (m: mut_adt) (a: alg_datatype) (c: funsym)
+  (m_in: mut_in_ctx m gamma) (a_in: adt_in_mut a m)
+  (c_in: constr_in_adt c a) srts (srts_len: length srts = length (m_params m))
+  (args: arg_list (domain (dom_aux pd)) (sym_sigma_args c srts)):
+  funs_new c srts args = 
+  (*NOTE: will have to argue how [constr_rep] changes even with fewer muts*)
+  constr_rep_dom gamma_valid m m_in srts srts_len (dom_aux pd)
+  a a_in c c_in (adts pdf m srts) args.
+Proof.
+  unfold funs_new, funs_new_map.
+  rewrite concat_app.
+Print pi_funpred.
 
 End Funs.
 End NewInterp.
