@@ -138,7 +138,12 @@ Variable badnames: list string.
 
 Definition gen_id s := gen_name s badnames.
 
-Definition new_constr (f: funsym) : funsym := funsym_clone f (gen_id (new_constr_name f)).
+Definition n_str : string := "n_".
+Definition under_str : string := "_".
+
+(*To disambiguate: prefix with n and put _ before numbers*)
+Definition new_constr (f: funsym) : funsym := funsym_clone f (gen_id 
+  (n_str ++ (new_constr_name f) ++ under_str)).
 
 (*Parameterize by no_ind, no_inv, no_sel*)
 (*Ignore no_sel and no_inv - not used anywhere*)
@@ -216,7 +221,7 @@ Proof.
 Qed.
 
 Definition selector_funsym(ts: typesym) (csl: list funsym) : funsym :=
-  let mt_id : string := gen_id ("match_" ++ ts_name ts)%string in
+  let mt_id : string := gen_id ("match_" ++ ts_name ts ++ "_")%string in
   let mt_var := gen_name "a" (ts_args ts) in
   let mt_ty : vty := vty_var mt_var in
   let ty := vty_cons ts (map vty_var (ts_args ts)) in
@@ -236,7 +241,7 @@ Definition selector_axiom
   (*fix ty*)
   let ty := vty_cons ts (map vty_var (ts_args ts)) in
   (* declare the selector function *)
-  let mt_id : string := gen_id ("match_" ++ ts_name ts)%string in
+  let mt_id : string := gen_id ("match_" ++ ts_name ts ++ "_")%string in
   (*TODO: does it need to be fresh? Yes, cannot be in params of ts*)
   let mt_var := gen_name "a" (ts_args ts) in
   let mt_ty : vty := vty_var mt_var in
@@ -324,7 +329,7 @@ Qed.
 (*Again, will prove nodup does nothing*)
 Definition indexer_funsym (ts: typesym) : funsym :=
   let ty := vty_cons ts (map vty_var (ts_args ts)) in
-  let mt_id := gen_id ("index_" ++ (ts_name ts))%string in
+  let mt_id := gen_id ("index_" ++ (ts_name ts) ++ "_")%string in
   Build_funsym (Build_fpsym mt_id (nodup typevar_eq_dec (ts_args ts)) [ty] 
     (indexer_check_args ts) (nodupb_nodup _ _)) vty_int false 0 eq_refl.
 
@@ -333,7 +338,7 @@ Definition indexer_funsym (ts: typesym) : funsym :=
 Definition indexer_axiom
   (ts: typesym) (*(ty : vty)*) (csl : list funsym) : funsym * list (string * formula) :=
   (* declare the indexer function *)
-  let mt_id := gen_id ("index_" ++ (ts_name ts))%string in
+  let mt_id := gen_id ("index_" ++ (ts_name ts) ++ "_")%string in
   let mt_ls := indexer_funsym ts in (*funsym_noconstr_noty mt_id [ty] vty_int in*)
   (* define the indexer function *)
   let mt_add idx (cs: funsym) :=
@@ -461,7 +466,7 @@ Definition proj_funsym (c: funsym) (n: string) (ty: vty) (Hty: In ty (s_args c))
 
 Definition projection_syms (c: funsym) : list funsym :=
   let conv_p (i: nat) (ty: vty) (Hty: In ty (s_args c)) :=
-    let id := gen_id ((s_name c) ++ "_proj_" ++ (nat_to_string i))%string in
+    let id := gen_id ("p" ++ (s_name c) ++ "_proj_" ++ (nat_to_string i) ++ "_")%string in
     proj_funsym c id ty Hty
     (* TODO: do we need option?(funsym_noconstr_noty id [f_ret c] ty) *)
   in

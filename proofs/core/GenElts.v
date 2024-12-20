@@ -525,15 +525,15 @@ Qed.
 
 (*No variables, just names with a prefix*)
 Definition gen_names (n: nat) (pref: string) (l: list string) : list string :=
-  gen_notin (fun x => (pref ++ nth_str x)%string) string_dec n l.
+  gen_notin (fun x => (pref ++ nat_to_string x)%string) string_dec n l.
 
 Lemma gen_names_inj pref: forall (n1 n2: nat),
-  (pref ++ nth_str n1)%string =
-  (pref ++ nth_str n2)%string ->
+  (pref ++ nat_to_string n1)%string =
+  (pref ++ nat_to_string n2)%string ->
   n1 = n2.
 Proof.
   intros. apply append_inj in H; auto. destruct H; subst.
-  apply nth_str_inj in H0; auto.
+  apply nat_to_string_inj in H0; auto.
 Qed.
 
 Lemma gen_names_length n p l:

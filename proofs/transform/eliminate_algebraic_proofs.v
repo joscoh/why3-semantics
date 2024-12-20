@@ -856,7 +856,10 @@ Context {gamma: context} (gamma_valid: valid_context gamma).
 Variable (pd: pi_dom) (pdf: pi_dom_full gamma pd).
 Variable (pf: pi_funpred gamma_valid pd pdf).
 
-Notation new_constr f := (funsym_clone f (gen_id badnames (new_constr_name f))).
+Notation new_constr := (new_constr new_constr_name badnames).
+
+(* Notation new_constr f := (funsym_clone f (gen_id badnames 
+  (n_str ++ (new_constr_name f) ++ under_str))). *)
 
 (*Part 1: new constructors are old constructors*)
 Definition new_constr_interp (c: funsym) (srts: list sort):
@@ -1395,7 +1398,7 @@ Definition fold_adts {A: Type} (f: forall (m: mut_adt) (m_in: mut_in_ctx m gamma
 (*Maybe easier to create list of {f: funsym & a: domain (dom_aux pd) (funsym_sigma_ret f srts)}
   Then function is just going through list *)
 (*Length for index*)
-Lemma proj_syms_index_bound {f c} (Hinf: In f (projection_syms badnames c)):
+Lemma proj_syms_index_bound {c f} (Hinf: In f (projection_syms badnames c)):
   index funsym_eq_dec f (projection_syms badnames c) <? length (s_args c).
 Proof.
   rewrite <- projection_syms_length.
@@ -1653,59 +1656,8 @@ Proof.
   destruct (in_dec eq_dec x l); auto.
 Qed.
 
-Lemma gen_names_inj n p1 p2 l s:
-  In s (gen_names n p1 l) ->
-  In s (gen_names n p2 l) ->
-  p1 = p2.
-Proof.
-  unfold gen_names.
-  intros Hin1 Hin2.
-  apply gen_notin_in in Hin1, Hin2.
-  destruct Hin1 as [Hin1 _];destruct Hin2 as [Hin2 _].
-  unfold gen_dist in Hin1, Hin2.
-  rewrite in_map_iff in Hin1, Hin2.
-  destruct Hin1 as [n1 [Hs Hin1]]; destruct Hin2 as [n2 [Hs2 Hin2]].
-  subst.
-  (*ugh not actually true: e.g. one is foo the other is foo1 and we add 12 to first and 2 to second
-    just dont do gen but require distinct?
 
-    options
-    1. require new_constrs do not end in number, prove this gives uniqueness
-    2. just require that new_constrs not in badnames (although this rules out identity function -
-    but we could just replace with old_constr + constant/number), remove gen_name
-
-    probably 2 is the best
-
-    projection_syms: s_name c ++ _proj_ ++ number
-      this is fine because s_name disjoint, then we know we have a _proj_x* where x* is number
-      so we could split into before (final) proj, after know has to be equal, so get inj
-    selector funsym: match_ ++ (adt_name a)
-      in principle could have problem - e.g. if type name is list1 or whatever
-    indexer funsym: index_ ++ (adt_name a)
-
-    possible solution - add special symbol to end, require that no idents have that
-    symbol - let us use like ^ or something - ensures that everything is fine
-    so we have e.g. index_list1^23 and index_list^123
-
-    dont even need to disallow: just know that we can split on last ^, if not
-    equal on both sides, not equal, so we know that index_(name) has to be equal
-    and hence name is equal - doesnt work with numbers because not fixed number
-    of characters - can just use _
-
-    this is way to go: add extra "_" at end, do same to new_constrs,
-    prove that if we have 2 strings, we can split on last ocurrence of element
-    and both must be equal, then show injectivity
-
-    what they actually do: no user symbol can contain '+extra letters
-    so their special symbol is '
-
-    probably do this: need to require on context (easy to check)
-
-    
-
-  *)
-
-
+(* 
 Print gen_names.
 Print gen_name.
 Lemma gen_strs_inj
@@ -1729,22 +1681,445 @@ Proof.
   Search gen_notin.
    simpl.
   simpl.
-  Search gen_names.
+  Search gen_names. *)
+
+(*Is s a string of numbers?*)
+
+
+(*A dumb way to check*)
+Definition is_ascii_num (x: Ascii.ascii) : bool :=
+  (48 <=? (Ascii.nat_of_ascii x)) && ((Ascii.nat_of_ascii x) <=? 57).
+
+Definition is_string_num (s: string) : bool :=
+  forallb is_ascii_num (list_ascii_of_string s).
+
+Lemma list_ascii_app (s1 s2: string):
+  list_ascii_of_string (s1 ++ s2) = list_ascii_of_string s1 ++ list_ascii_of_string s2.
+Proof.
+  induction s1; simpl; auto. rewrite IHs1; auto.
+Qed.
+
+Lemma list_ascii_concat (l: list string):
+  list_ascii_of_string (String.concat "" l) = concat (map list_ascii_of_string l).
+Proof.
+  induction l as [| h t IH]; simpl; auto.
+  destruct t as [| h2 t]; [rewrite app_nil_r; auto|].
+  rewrite !list_ascii_app, IH. reflexivity.
+Qed.
+
+(*TODO: move*)
+Lemma catrev_eq {A: Type} (l1 l2: list A):
+  seq.catrev l1 l2 = (rev l1) ++ l2.
+Proof.
+  revert l2.
+  induction l1 as [| h1 t1 IH]; simpl; auto.
+  intros l2. rewrite IH, <- app_assoc. simpl. reflexivity.
+Qed. 
+
+Lemma rev_eq {A: Type} (l: list A):
+  seq.rev l = rev l.
+Proof.
+  unfold seq.rev.
+  rewrite catrev_eq, app_nil_r.
+  reflexivity.
+Qed.
+
+Lemma nat_to_digit_is_num n:
+  forallb is_ascii_num (list_ascii_of_string (nat_to_digit n)).
+Proof.
+  repeat (destruct n as [| n]; auto).
+Qed.
+
+Lemma nat_to_digits_is_num n:
+  forallb (fun x : string =>
+forallb is_ascii_num (list_ascii_of_string x))
+(nat_to_digits n).
+Proof.
+  apply nat_to_digits_ind; simpl.
+  - intros n1 Hn1. rewrite nat_to_digit_is_num. reflexivity.
+  - intros n1 b Hb; subst. intros Heq Hall.
+    rewrite nat_to_digit_is_num; auto.
+Qed.
+
+Lemma nat_to_string_num (n: nat):
+  is_string_num (nat_to_string n).
+Proof.
+  unfold is_string_num, nat_to_string.
+  unfold digits_to_string.
+  rewrite list_ascii_concat.
+  rewrite forallb_concat, forallb_map, rev_eq, forallb_rev.
+  apply nat_to_digits_is_num.
+Qed.
+
+(*gen_names just adds a number onto the end of the prefix*)
+Lemma gen_names_eq s l n s1:
+  In s1 (gen_names n s l) ->
+  exists n1, s1 = (s ++ n1)%string /\ is_string_num n1.
+Proof.
+  unfold gen_names; intros Hin.
+  apply gen_notin_in in Hin.
+  destruct Hin as [Hin Hnotin].
+  unfold gen_dist in Hin.
+  rewrite in_map_iff in Hin.
+  destruct Hin as [n1 [Hs1 Hinn1]]; subst.
+  exists (nat_to_string n1)%string. split; auto.
+  apply nat_to_string_num.
+Qed.
+
+Lemma gen_name_eq s l:
+  exists n,
+    gen_name s l = (s ++ n)%string /\ is_string_num n.
+Proof.
+  unfold gen_name.
+  assert (Hin: In (nth 0 (gen_names 1 s l) ""%string) (gen_names 1 s l)).
+  {
+    apply nth_In. rewrite gen_names_length. lia.
+  }
+  apply gen_names_eq in Hin.
+  auto.
+Qed.
+
+(*Idea: suppose we have s ++ under_str ++ n where n is a number,
+  then if s ++ under_str ++ n1 = s ++ under_str ++ n2, then 
+  *)
+Definition under_ascii := Ascii.Ascii true true true true true false true false.
+Opaque under_ascii.
+
+Lemma under_str_rewrite: under_str = String under_ascii "".
+Proof. reflexivity. Qed.
+
+Lemma under_ascii_not_num: is_ascii_num under_ascii = false.
+Proof. reflexivity. Qed.
+
+Lemma under_not_num: is_string_num under_str = false.
+Proof. reflexivity. Qed.
+
+Opaque under_str.
+
+Lemma str_num_inj s1 s2 n1 n2:
+  (s1 ++ under_str ++ n1 = s2 ++ under_str ++ n2)%string ->
+  is_string_num n1 ->
+  is_string_num n2 ->
+  s1 = s2.
+Proof.
+  intros Heq Hnum1 Hnum2. generalize dependent s2.
+  induction s1 as [| a1 s1 IH]; intros s2 Heq.
+  - simpl in Heq.
+    destruct s2 as [| a2 s2]; auto.
+    simpl in Heq. rewrite under_str_rewrite in Heq.
+    simpl in Heq. inversion Heq; subst.
+    (*contradicts fact that under not str*)
+    unfold is_string_num in Hnum1.
+    rewrite list_ascii_app, forallb_app in Hnum1.
+    simpl in Hnum1.
+    rewrite under_ascii_not_num in Hnum1. simpl in Hnum1.
+    rewrite andb_false_r in Hnum1. discriminate.
+  - destruct s2 as [| a2 s2].
+    + (*Same contradiction*)
+      simpl in Heq.
+      rewrite under_str_rewrite in Heq.
+      simpl in Heq; inversion Heq; subst.
+      unfold is_string_num in Hnum2.
+      rewrite list_ascii_app, forallb_app in Hnum2.
+      simpl in Hnum2.
+      rewrite under_ascii_not_num in Hnum2. simpl in Hnum2.
+      rewrite andb_false_r in Hnum2. discriminate.
+    + inversion Heq; subst; auto. f_equal. apply IH; auto.
+Qed.
+
+Lemma str_app_assoc (s1 s2 s3: string):
+  (s1 ++ s2 ++ s3 = (s1 ++ s2) ++ s3)%string.
+Proof.
+  induction s1 as [| c1 s1 IH]; simpl; auto; f_equal; auto.
+Qed.
+
+
+Opaque n_str.
+Opaque under_str.
+
+Lemma str_app_inj_l (s1 s2 s3: string):
+  (s1 ++ s2 = s1 ++ s3)%string ->
+  s2 = s3.
+Proof.
+  intros Heq. apply append_inj in Heq; auto.
+  apply Heq.
+Qed.
+
+Lemma pre_post_inj p s1 s2:
+  gen_id badnames (p ++ s1 ++ under_str) =
+  gen_id badnames (p ++ s2 ++ under_str) ->
+  s1 = s2.
+Proof.
+  unfold gen_id. intros Hxeq.
+  pose proof (gen_name_eq (p ++ s1 ++ under_str) badnames) as [n1 [Heq1 Hn1]].
+  pose proof (gen_name_eq (p ++ s2 ++ under_str) badnames) as [n2 [Heq2 Hn2]].
+  rewrite Hxeq in Heq1. rewrite Heq1 in Heq2.
+  rewrite !str_app_assoc in Heq2.
+  rewrite <- !(str_app_assoc _ under_str _) in Heq2.
+  apply str_num_inj in Heq2; auto.
+  apply str_app_inj_l in Heq2.
+  auto.
+Qed.
+
+Lemma constr_list_Nodup {m a} (m_in: mut_in_ctx m gamma) (a_in: adt_in_mut a m):
+  NoDup (adt_constr_list a).
+Proof.
+  pose proof (valid_context_wf _ gamma_valid) as Hwf;
+  apply wf_context_alt in Hwf;
+  destruct Hwf as [Hvalf [Hvalp [Hn1 [Hn2 Hn3]]]].
+  unfold funsyms_of_context in Hn2.
+  apply in_concat_NoDup with (l1:=def_concrete_funsyms (datatype_def m)) in Hn2; 
+  [| apply funsym_eq_dec |].
+  2: {
+    rewrite in_map_iff. exists (datatype_def m). split; auto. apply mut_in_ctx_eq2; auto.
+  }
+  simpl in Hn2.
+  unfold funsyms_of_mut in Hn2.
+  apply in_concat_NoDup with (l1:=adt_constr_list a) in Hn2; auto; [apply funsym_eq_dec |].
+  rewrite in_map_iff. exists a. split; auto.
+  apply in_bool_In in a_in; auto.
+Qed.
+
+Lemma funsym_clone_inj f1 s1 f2 s2:
+  funsym_clone f1 s1 = funsym_clone f2 s2 ->
+  s1 = s2.
+Proof.
+  intros Hf. inversion Hf; subst. auto.
+Qed. 
+
+(*TODO: think we need to require that names distinct, not just funsyms*)
+
+Lemma ltb_n_Sn {n1 n2}:
+  n1 <? n2 ->
+  S n1 <? S n2.
+Proof.
+  unfold is_true.
+  rewrite !Nat.ltb_lt. lia.
+Qed.
+
+Lemma map_dep_map {A B C: Type} {P: A -> Prop} (f: forall (x: A), P x -> B) (g: B -> C)
+  (l: list A) (Hall: Forall P l):
+  map g (dep_map f l Hall) =
+  dep_map (fun (x: A) (Hx: P x) => g (f x Hx)) l Hall.
+Proof.
+  revert Hall. induction l as [| h t IH]; simpl; auto. intros Hall.
+  f_equal; auto.
+Qed.
+
+Lemma dep_map_nondep {A B: Type} {P: A -> Prop} (f: A -> B) (l: list A) (Hall: Forall P l):
+  dep_map (fun x _ => f x) l Hall = map f l.
+Proof.
+  revert Hall.
+  induction l; simpl; auto; intros; f_equal; auto.
+Qed.
+
+
+(*Prove equivalence of map*)
+Lemma funs_new_map_single_funsyms srts {m a} m_in a_in:
+  map (fun (x: {x: funsym & _}) => (projT1 x)) 
+    ((funs_new_map_single srts m m_in a a_in)) =
+  map new_constr (adt_constr_list a) ++
+  (*proj*)
+  concat (map (fun c =>
+  match Nat.eq_dec (length srts) (length (m_params m)) with
+      | left srts_len => 
+        projection_syms badnames c
+      | _ => nil
+  end
+  ) (adt_constr_list a)) ++
+  (*sel*)
+  match srts with
+    | s1 :: srts =>
+      match Nat.eq_dec (length srts) (length (m_params m)) with
+      | left srts_len =>  
+        [(selector_funsym badnames (adt_name a) (adt_constr_list a))]
+      | _ => nil
+      end
+    | _ => nil
+    end ++
+  (*index*)
+   match Nat.eq_dec (length srts) (length (m_params m)) with
+    | left srts_len => [indexer_funsym badnames (adt_name a) ]
+    | _ => nil
+   end.
+Proof.
+  unfold funs_new_map_single.
+  rewrite !map_app, !map_map.
+  f_equal.
+  f_equal.
+  {
+    (*projections*)
+    rewrite !concat_map. f_equal.
+    generalize dependent (all_constr_in a).
+    induction (adt_constr_list a) as [| h t IH]; simpl; auto.
+    intros Hall.
+    destruct (Nat.eq_dec (Datatypes.length srts) (Datatypes.length (m_params m))); f_equal; auto.
+    unfold map_In.
+    rewrite map_dep_map. simpl. 
+    rewrite dep_map_nondep.
+    apply map_id.
+  }
+  f_equal.
+  {
+    (*selector*)
+    destruct srts as [| s1 srts]; simpl; auto.
+    destruct (Nat.eq_dec (length srts) (length (m_params m))); reflexivity.
+  }
+  (*indexder*)
+  destruct (Nat.eq_dec (length srts) (length (m_params m))); reflexivity.
+Qed.
+
+Lemma concat_map_nil {A B: Type} (l: list A):
+  concat (map (fun _ => @nil B) l) = nil.
+Proof.
+  induction l; simpl; auto.
+Qed.
+
+(*For a single constructor, projections are nodup
+  Easier to prove stronger lemma - names unique*)
+  Print projection_syms.
+Lemma proj_nodup
+
+srts : list sort
+m : mut_adt
+a : alg_datatype
+m_in : mut_in_ctx m gamma
+a_in : adt_in_mut a m
+e : Datatypes.length srts = Datatypes.length (m_params m)
+f : funsym
+Hinf : In f (adt_constr_list a)
+(1 / 1)
+NoDup (projection_syms badnames f)
 
 Lemma funs_new_map_single_nodup srts {m a} m_in a_in:
-  NoDup (map (fun (x: {x: funsym & _}) => s_name (projT1 x)) 
+  NoDup (map (fun (x: {x: funsym & _}) => (projT1 x)) 
     ((funs_new_map_single srts m m_in a a_in))).
 Proof.
+  rewrite funs_new_map_single_funsyms.
+  (*Now have to reason about concat*)
+  rewrite !NoDup_app_iff'. split_all.
+  - (*Part 1: Prove nodup of new constructors*)
+    (*TODO: some of this might have to be in separate lemma for 
+      well-typed context*)
+    setoid_rewrite constr_in_adt_eq in new_constr_name_inj.
+    specialize (new_constr_name_inj m a m_in a_in).
+    pose proof (constr_list_Nodup m_in a_in) as Hnodup.
+    induction (adt_constr_list a) as [| c1 cs IH]; simpl; [constructor|].
+    inversion Hnodup as [| ? ? Hnotin Hnodup2]; subst.
+    constructor; simpl in *; auto.
+    rewrite in_map_iff. intros [x [Hxeq Hinx]].
+    unfold new_constr in Hxeq.
+    apply funsym_clone_inj in Hxeq.
+    apply pre_post_inj in Hxeq.
+    apply new_constr_name_inj in Hxeq; auto. subst.
+    contradiction.
+  - (*Part 2: Prove nodup of new projections*)
+    destruct (Nat.eq_dec (length srts) (length (m_params m))); 
+    [| simpl; rewrite concat_map_nil; constructor].
+    apply NoDup_concat_iff; rewrite !map_length. split.
+    + (*Each list of proj syms added has nodups*)
+      intros l. rewrite in_map_iff. intros [f [Hl Hinf]]; subst.
+      (*TODO: separate lemma (will be useful)*)
+      unfold projection_syms.
+      unfold dep_mapi.
+      match goal with
+      | |- context [dep_map ?f ?l ?Hall] => generalize dependent Hall
+      end.
+      Print proj_funsym.
+      induction (s_args f) as [| h1 t1 IH].
+
+
+
+      generalize dependent (@dep_mapi_forall vty _ _ (s_args f) _ (all_in_refl (s_args f))).
+      
+      
+       simpl.
+    2: .
+      rewrite <- concat_map.
+    }
+    rewrite concat_map.
+    apply NoDup_concat_iff. rewrite !map_length, !dep_map_length.
+    split.
+    + (*Prove in each constr, new funsyms added unique*)
+      intros x. rewrite in_map_iff.
+      intros [l1 [Hx Hinx]]. subst.
+      apply dep_map_in in Hinx.
+      destruct Hinx as [f [f_in [Hinf Hl1]]]; subst.
+      destruct (Nat.eq_dec (length srts) (length (m_params m))); [|constructor].
+
+
+  rewrite NoDup_nth with (d:=id_fs).
+  rewrite map_length.
+  intros i j Hi Hj.
+  unfold funs_new_map_single.
+  rewrite map_nth_inbound with (d2:=id_fs).
+  Search NoDup nth.
+Lemma funs_new_map_single_funsym_in (srts: list sort) (m: mut_adt) (m_in: mut_in_ctx m gamma)
+  (a: alg_datatype) (a_in: adt_in_mut a m) f:
+  In f (map (fun x => projT1 x) (funs_new_map_single srts m m_in a a_in)) ->
+  (*new constr*)
+  (exists c, constr_in_adt c a /\ f = (new_constr c)) \/
+  (*projection*)
+  (exists c, constr_in_adt c a /\ In f (projection_syms badnames c)) \/
+  (*selector*)
+  (f = (selector_funsym badnames (adt_name a) (adt_constr_list a))) \/
+  (*indexer*)
+  (f = (indexer_funsym badnames (adt_name a))).
+
+
   unfold funs_new_map_single.
   rewrite !map_app. rewrite !map_map. simpl.
   rewrite !NoDup_app_iff'. split_all.
   - (*Part 1: Prove nodup of new constructors*)
+    (*TODO: some of this might have to be in separate lemma for 
+      well-typed context*)
     setoid_rewrite constr_in_adt_eq in new_constr_name_inj.
     specialize (new_constr_name_inj m a m_in a_in).
+    pose proof (constr_list_Nodup m_in a_in) as Hnodup.
     induction (adt_constr_list a) as [| c1 cs IH]; simpl; [constructor|].
+    inversion Hnodup as [| ? ? Hnotin Hnodup2]; subst.
     constructor; simpl in *; auto.
     rewrite in_map_iff. intros [x [Hxeq Hinx]].
+    unfold new_constr in Hxeq.
+    apply funsym_clone_inj in Hxeq.
+    apply pre_post_inj in Hxeq.
+    apply new_constr_name_inj in Hxeq; auto. subst.
+    contradiction.
+  - (*Part 2: Prove nodup of new projections*)
+    rewrite concat_map.
+    apply NoDup_concat_iff. rewrite !map_length, !dep_map_length.
+    split.
+    + (*Prove in each constr, new funsyms added unique*)
+      intros x. rewrite in_map_iff.
+      intros [l1 [Hx Hinx]]. subst.
+      apply dep_map_in in Hinx.
+      destruct Hinx as [f [f_in [Hinf Hl1]]]; subst.
+      destruct (Nat.eq_dec (length srts) (length (m_params m))); [|constructor].
+
+
+
+      Search In dep_map.
+
+
+    Search dep_map length.
+    generalize dependent (all_constr_in a).
+    rewrite map_map.
+  Search NoDup map.
+    rewrite Nodup_map. rewrite NoDup_concat_iff.
+
+
+
     unfold gen_id in Hxeq.
+    pose proof (gen_name_eq (n_str ++ new_constr_name x ++ under_str) badnames) as [n1 [Heq1 Hn1]].
+    pose proof (gen_name_eq (n_str ++ new_constr_name c1 ++ under_str) badnames) as [n2 [Heq2 Hn2]].
+    rewrite Hxeq in Heq1. rewrite Heq1 in Heq2.
+    (*Now prove equality*)
+    
+    apply append_inj in Heq2.
+    Search (?x ++ ?y = ?z ++ ?w)%string.
+
+    unfold new_constr_name in Heq2.
+
     Search gen_name.
     intros Hin.
     r
