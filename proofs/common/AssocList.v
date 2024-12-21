@@ -317,18 +317,6 @@ Proof.
   intros Hinx1; apply combine_common_in_fst in Hinx1; auto.
 Qed.
 
-Lemma nodup_map_filter {A B: Type} (f: A -> B) (p: A -> bool) (l: list A):
-  NoDup (map f l) ->
-  NoDup (map f (filter p l)).
-Proof.
-  induction l as [| h t IH]; simpl; auto.
-  intros Hn; inversion Hn as [|? ? Hnotin Hn1]; subst.
-  destruct (p h); auto. simpl; constructor; auto.
-  rewrite in_map_iff. intros [x [Hxh Hinx]].
-  apply Hnotin. rewrite in_map_iff. exists x. split; auto.
-  rewrite in_filter in Hinx. apply Hinx.
-Qed. 
-
 Lemma nodup_map_partition_fst {A B: Type} (f: A -> B) (p: A -> bool) (l: list A):
   NoDup (map f l) ->
   NoDup (map f (fst (partition p l))).

@@ -582,3 +582,173 @@ Proof.
   unfold eq_sig. intros; destruct_all; split_all; intros; auto;
   symmetry; auto.
 Qed.
+
+(*Idents*)
+
+Definition idents_of_def (d: def) : list string :=
+  map (fun (x: funsym) => s_name x) (funsyms_of_def d) ++ 
+  map (fun (x: predsym) => s_name x) (predsyms_of_def d) ++ 
+  map ts_name (typesyms_of_def d).
+
+Definition idents_of_context (gamma: context) : list string :=
+  concat (map idents_of_def gamma).
+
+Lemma idents_of_context_app l1 l2:
+  idents_of_context (l1 ++ l2) = idents_of_context l1 ++ idents_of_context l2.
+Proof.
+  induction l1 as [| h1 t1 IH]; simpl; auto.
+  unfold idents_of_context in *; simpl in *.
+  rewrite IH, <- app_assoc.
+  reflexivity.
+Qed. 
+
+Lemma idents_of_context_split gamma:
+  Permutation (idents_of_context gamma)
+    (concat (map (fun d => map (fun x : funsym => s_name x) (funsyms_of_def d)) gamma) ++
+     concat (map (fun d => map (fun x : predsym => s_name x) (predsyms_of_def d)) gamma) ++
+     concat (map (fun d => map ts_name (typesyms_of_def d)) gamma)).
+Proof.
+  induction gamma as [| d gamma IH]; simpl; auto.
+  unfold idents_of_context in *; simpl.
+  unfold idents_of_def.
+  (*Now we need to do all the reordering*)
+  (*First is easy*)
+  rewrite <- !app_assoc.
+  apply Permutation_app_head.
+  eapply Permutation_trans.
+  2: apply Permutation_app_swap_app.
+  apply Permutation_app_head.
+  rewrite app_assoc.
+  eapply Permutation_trans.
+  2:  apply Permutation_app_swap_app.
+  rewrite <- !app_assoc.
+  apply Permutation_app_head. apply IH.
+Qed.
+
+Lemma typesyms_of_context_idents gamma:
+  sublist_strong string_dec (map ts_name (typesyms_of_context gamma)) (idents_of_context gamma).
+Proof.
+  induction gamma as [| d gamma IH]; simpl; auto.
+  unfold idents_of_context; simpl.
+  unfold typesyms_of_context in *.
+  destruct d; try solve[apply sublist_strong_app_l; auto].
+  simpl. rewrite map_app.
+  apply sublist_strong_app; auto.
+  unfold idents_of_def.
+  rewrite !app_assoc.
+  apply sublist_strong_app_l, sublist_strong_refl.
+Qed. 
+
+Lemma funsyms_of_context_idents gamma:
+  sublist_strong string_dec (map (fun (x: funsym) => s_name x) (funsyms_of_context gamma)) (idents_of_context gamma).
+Proof.
+  induction gamma as [| d gamma IH]; simpl; auto.
+  unfold idents_of_context; simpl.
+  unfold funsyms_of_context in *.
+  destruct d; try solve[apply sublist_strong_app_l; auto];
+  simpl; rewrite map_app; apply sublist_strong_app; auto;
+  unfold idents_of_def; apply sublist_strong_app_r; auto;
+  apply sublist_strong_refl.
+Qed.
+
+Lemma predsyms_of_context_idents gamma:
+  sublist_strong string_dec (map (fun (x: predsym) => s_name x) (predsyms_of_context gamma)) (idents_of_context gamma).
+Proof.
+  induction gamma as [| d gamma IH]; simpl; auto.
+  unfold idents_of_context; simpl.
+  unfold predsyms_of_context in *.
+  destruct d; try solve[apply sublist_strong_app_l; auto];
+  simpl; rewrite map_app; apply sublist_strong_app; auto;
+  unfold idents_of_def; 
+  apply sublist_strong_app_l, sublist_strong_app_r, sublist_strong_refl.
+Qed.
+
+Lemma sig_t_in_idents gamma:
+  sublist (map ts_name (sig_t gamma)) (idents_of_context gamma).
+Proof.
+  induction gamma as [| d1 g1 IH]; simpl; auto.
+  - apply sublist_refl.
+  - unfold sig_t, idents_of_context in *; simpl; auto.
+    rewrite map_app. apply sublist_app2; auto.
+    unfold idents_of_def. rewrite app_assoc. 
+    apply sublist_app_r.
+Qed. 
+
+Lemma sig_f_in_idents gamma:
+  sublist (map (fun (x: funsym) => s_name x) (sig_f gamma)) (idents_of_context gamma).
+Proof.
+  induction gamma as [| d1 g1 IH]; simpl; auto.
+  - apply sublist_refl.
+  - unfold sig_f, idents_of_context in *; simpl; auto.
+    rewrite map_app. apply sublist_app2; auto.
+    unfold idents_of_def. apply sublist_app_l. 
+Qed. 
+
+Lemma sig_p_in_idents gamma:
+  sublist (map (fun (x: predsym) => s_name x) (sig_p gamma)) (idents_of_context gamma).
+Proof.
+  induction gamma as [| d1 g1 IH]; simpl; auto.
+  - apply sublist_refl.
+  - unfold sig_p, idents_of_context in *; simpl; auto.
+    rewrite map_app. apply sublist_app2; auto.
+    unfold idents_of_def. eapply sublist_trans. 2: apply sublist_app_r. 
+    apply sublist_app_l. 
+Qed. 
+
+Lemma sub_sig_idents g1 g2:
+  sublist_sig g1 g2 ->
+  (forall x, In x (idents_of_context g1) -> In x (idents_of_context g2)).
+Proof.
+  unfold sublist_sig.
+  unfold sig_t, sig_f, sig_p, idents_of_context, idents_of_def.
+  intros [Ht [Hf Hp]] x.
+  rewrite !in_concat. setoid_rewrite in_map_iff. 
+  intros [l [[d [Hl Hind]] Hinx]]; subst.
+  rewrite !in_app_iff in Hinx.
+  destruct Hinx as [Hinx | [Hinx | Hinx]].
+  - rewrite in_map_iff in Hinx. destruct Hinx as [f [Hx Hinf]]; subst.
+    specialize (Hf f). forward Hf.
+    { rewrite in_concat. exists (funsyms_of_def d). split; auto. rewrite in_map_iff;
+      eauto. }
+    rewrite in_concat in Hf. destruct Hf as [fs [Hinfs Hinf2]].
+    rewrite in_map_iff in Hinfs.
+    destruct Hinfs as [d2 [Hfs Hind2]]; subst.
+    (*Now we have g2, can instantiate exists*)
+    eexists. split.
+    + exists d2. split. reflexivity. auto.
+    + rewrite !in_app_iff. left. rewrite in_map_iff. exists f; auto.
+  - (*predsym*)
+    rewrite in_map_iff in Hinx. destruct Hinx as [f [Hx Hinf]]; subst.
+    specialize (Hp f). forward Hp.
+    { rewrite in_concat. exists (predsyms_of_def d). split; auto. rewrite in_map_iff;
+      eauto. }
+    rewrite in_concat in Hp. destruct Hp as [fs [Hinfs Hinf2]].
+    rewrite in_map_iff in Hinfs.
+    destruct Hinfs as [d2 [Hfs Hind2]]; subst.
+    (*Now we have g2, can instantiate exists*)
+    eexists. split.
+    + exists d2. split. reflexivity. auto.
+    + rewrite !in_app_iff. right; left. rewrite in_map_iff. exists f; auto.
+  - (*typesym*)
+    rewrite in_map_iff in Hinx. destruct Hinx as [f [Hx Hinf]]; subst.
+    specialize (Ht f). forward Ht.
+    { rewrite in_concat. exists (typesyms_of_def d). split; auto. rewrite in_map_iff;
+      eauto. }
+    rewrite in_concat in Ht. destruct Ht as [fs [Hinfs Hinf2]].
+    rewrite in_map_iff in Hinfs.
+    destruct Hinfs as [d2 [Hfs Hind2]]; subst.
+    (*Now we have g2, can instantiate exists*)
+    eexists. split.
+    + exists d2. split. reflexivity. auto.
+    + rewrite !in_app_iff. right; right. rewrite in_map_iff. exists f; auto.
+Qed.
+
+Lemma eq_sig_idents g1 g2:
+  eq_sig g1 g2 ->
+  (forall x, In x (idents_of_context g1) <-> In x (idents_of_context g2)).
+Proof.
+  rewrite eq_sig_sublist.
+  intros [Hsub1 Hsub2].
+  intros x.
+  split; intros Hinx; eapply sub_sig_idents; eauto.
+Qed.

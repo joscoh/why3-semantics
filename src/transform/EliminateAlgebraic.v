@@ -894,8 +894,7 @@ Definition on_empty_state {A: Type} (t: state -> trans_errst A) : trans_errst A 
       no_ind := false; no_inv := false; no_sel := false
     |} in 
     t empty_state))).
-Check MAls.
-Print lsymbol.
+
 (* We need to rewrite metas *after* the main pass, because we need to know the
     final state. Some metas may mention symbols declared after the meta. *)
 

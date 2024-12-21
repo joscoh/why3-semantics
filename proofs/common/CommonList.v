@@ -696,6 +696,35 @@ Proof.
   - apply IHl; auto.
 Qed.
 
+Lemma nodup_map_filter {A B: Type} (f: A -> B) (p: A -> bool) (l: list A):
+  NoDup (map f l) ->
+  NoDup (map f (filter p l)).
+Proof.
+  induction l as [| h t IH]; simpl; auto.
+  intros Hn; inversion Hn as [|? ? Hnotin Hn1]; subst.
+  destruct (p h); auto. simpl; constructor; auto.
+  rewrite in_map_iff. intros [x [Hxh Hinx]].
+  apply Hnotin. rewrite in_map_iff. exists x. split; auto.
+  rewrite in_filter in Hinx. apply Hinx.
+Qed. 
+
+Lemma nodup_map_filter_app {A B C: Type} (f1: A -> C) (f2: B -> C)
+  (p1: A -> bool) (p2: B -> bool) (l1: list A) (l2: list B):
+  NoDup (map f1 l1 ++ map f2 l2) ->
+  NoDup (map f1 (filter p1 l1) ++ map f2 (filter p2 l2)).
+Proof.
+  rewrite !NoDup_app_iff'.
+  intros [Hn1 [Hn2 Hdisj]].
+  split_all; try apply nodup_map_filter; auto.
+  intros x [Hinx1 Hinx2].
+  rewrite in_map_iff in Hinx1, Hinx2.
+  destruct Hinx1 as [y1 [Hx1 Hiny1]];
+  destruct Hinx2 as [y2 [Hx2 Hiny2]]; subst.
+  rewrite !in_filter in Hiny1. rewrite in_filter in Hiny2.
+  destruct Hiny1 as [Hp1 Hiny1]; destruct Hiny2 as [Hp2 Hiny2].
+  apply (Hdisj (f1 y1)). rewrite <- Hx2 at 2. rewrite !in_map_iff; split; eauto.
+Qed.
+
 End NoDupLemmas.
 
 Section InBool.
@@ -1209,6 +1238,13 @@ Proof.
   apply Hinj in H1; subst. erewrite IHl1; auto.
 Qed.
 
+Lemma map_concat_map {A B D} (f: A -> B) (g: D -> list A) l:
+  concat (map (fun (d: D) => map f (g d)) l) =
+  map f (concat (map g l)).
+Proof.
+  induction l as [| h t IH]; simpl; auto. rewrite map_app; f_equal; auto.
+Qed.
+
 End Map.
 
 
@@ -1502,6 +1538,16 @@ Lemma disj_sublist2(l1 l2 l3: list A):
 Proof.
   unfold sublist, disj. intros Hsub Hdisj x [Hinx1 Hinx2].
   apply (Hdisj x); auto.
+Qed.
+
+Lemma prove_disj_app_r (l1 l2 l3: list A):
+  disj l1 l2 ->
+  disj l1 l3 ->
+  disj l1 (l2 ++ l3).
+Proof.
+  unfold disj. intros Hdisj1 Hdisj2 x [Hinx1 Hinx2].
+  rewrite in_app_iff in Hinx2.
+  destruct Hinx2 as [Hinx2 | Hinx2]; [apply (Hdisj1 x) | apply (Hdisj2 x)]; auto.
 Qed.
 
 End Disj.
@@ -2106,6 +2152,49 @@ Proof.
   unfold is_true in *.
   rewrite forallb_forall in Hall |-  *. auto.
 Qed.
+
+Lemma sublist_strong_app_l {A: Type} eq_dec (l1 l2 l3: list A):
+  sublist_strong eq_dec l1 l2 ->
+  sublist_strong eq_dec l1 (l3 ++ l2).
+Proof.
+rewrite <- (app_nil_l l1) at 2.
+intros Hsub.
+apply sublist_strong_app; auto.
+apply sublist_strong_nil.
+Qed.
+
+Lemma sublist_strong_app_r {A: Type} eq_dec (l1 l2 l3: list A):
+  sublist_strong eq_dec l1 l2 ->
+  sublist_strong eq_dec l1 (l2 ++ l3).
+Proof.
+rewrite <- (app_nil_r l1) at 2.
+intros Hsub.
+apply sublist_strong_app; auto.
+apply sublist_strong_nil.
+Qed.
+
+Lemma sublist_strong_map {A B: Type} eq_dec1 eq_dec2 (f: A -> B) (l1 l2: list A):
+  sublist_strong eq_dec1 l1 l2 ->
+  sublist_strong eq_dec2 (map f l1) (map f l2).
+Proof.
+  revert l1. induction l2 as [| h1 t1 IH]; simpl; intros [|h t]; simpl; auto.
+  destruct (eq_dec1 h h1); simpl; auto.
+  - unfold is_true at 1. rewrite orb_true_iff.
+    intros [Hsub | Hsub]; apply IH in Hsub; simpl in Hsub; rewrite Hsub; simpl;
+    [rewrite andb_true_r | rewrite orb_true_r]; simpl; auto.
+    subst. destruct (eq_dec2 (f h1) (f h1)); auto; contradiction.
+  - intros Hsub; apply IH in Hsub; simpl in Hsub; rewrite Hsub, orb_true_r; auto.
+Qed.
+
+Lemma filter_sublist_strong {A: Type} eq_dec (p: A -> bool) (l: list A):
+  sublist_strong eq_dec (filter p l) l.
+Proof.
+  induction l as [| h t IH]; simpl; auto.
+  destruct (p h) eqn : Hp.
+  - rewrite IH. destruct (eq_dec h h); auto.
+  - rewrite IH. destruct (filter p t); auto.
+    apply orb_true_r.
+Qed.  
 
 End SublistStrong.
 

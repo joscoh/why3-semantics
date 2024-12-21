@@ -3445,7 +3445,7 @@ Proof.
     f_equal; auto.
 Qed.
 
-(*TODO: see if we need above*)
+(*idents*)
 
 Lemma get_indpred_defs_idents (l: list indpred_def):
   concat (map idents_of_def (get_indpred_defs l)) =
@@ -3492,12 +3492,6 @@ Lemma valid_ctx_abstract_app {gamma} (l: list def):
   Forall (wf_predsym gamma) (concat (map predsyms_of_def l)) ->
   disj (idents_of_context l) (idents_of_context gamma) ->
   NoDup (idents_of_context l) ->
-  (* Forall (fun t => ~ In t (sig_t gamma)) (concat (map typesyms_of_def l)) ->
-  Forall (fun f => ~ In f (sig_f gamma)) (concat (map funsyms_of_def l)) ->
-  Forall (fun p => ~ In p (sig_p gamma)) (concat (map predsyms_of_def l)) ->
-  NoDup (concat (map typesyms_of_def l)) ->
-  NoDup (concat (map funsyms_of_def l)) ->
-  NoDup (concat (map predsyms_of_def l)) -> *)
   Forall (fun f => f_is_constr f = false) (concat (map funsyms_of_def l)) ->
   valid_context gamma ->
   valid_context (l ++ gamma).
@@ -3505,7 +3499,6 @@ Proof.
   induction l; simpl; auto; intros.
   rewrite Forall_app in *. destruct_all.
   inversion H; subst.
-  (* rewrite !NoDup_app_iff in *. destruct_all. *)
   constructor; auto.
   - apply IHl; auto.
     + eapply disj_sublist2. 2: apply H2.

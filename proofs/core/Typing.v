@@ -101,9 +101,6 @@ Inductive term_has_type: context -> term -> vty -> Prop :=
     term_has_type s tm ty1 ->
     (forall x, In x ps -> pattern_has_type s (fst x) ty1) ->
     (forall x, In x ps -> term_has_type s (snd x) ty2) ->
-    (*need this to ensure that typing is decidable*)
-    (*TODO: don't need anymore*)
-    (* negb (null ps) -> *)
     (*the pattern match is exhaustive*)
     isSome (compile_bare_single true false tm ty1 ps) ->
     term_has_type s (Tmatch tm ty1 ps) ty2
@@ -161,8 +158,6 @@ with formula_typed: context -> formula -> Prop :=
     (forall x, In x ps -> formula_typed s (snd x)) ->
     (*the pattern match is exhaustive*)
     isSome (compile_bare_single false false tm ty ps) ->
-    (*See comment in term*)
-    (* negb (null ps) -> *)
     formula_typed s (Fmatch tm ty ps).
 (*
 Notation "s '|-' t ':' ty" := (term_has_type s t ty) (at level 40).
@@ -1999,14 +1994,6 @@ Definition nonempty_def (d: def) : bool :=
     rely on the previous ones.
   *)
 
-(*TODO: move*)
-Definition idents_of_def (d: def) : list string :=
-  map (fun (x: funsym) => s_name x) (funsyms_of_def d) ++ 
-  map (fun (x: predsym) => s_name x) (predsyms_of_def d) ++ 
-  map ts_name (typesyms_of_def d).
-Definition idents_of_context (gamma: context) : list string :=
-  concat (map idents_of_def gamma).
-
 Inductive valid_context : context -> Prop :=
   | valid_ctx_nil: valid_context nil
   | valid_ctx_cons: forall d gamma,
@@ -2015,19 +2002,8 @@ Inductive valid_context : context -> Prop :=
     Forall (wf_funsym (d :: gamma)) (funsyms_of_def d) ->
     Forall (wf_predsym (d :: gamma)) (predsyms_of_def d) ->
     (*uniqueness*)
-    (* Forall (fun f => ~ In (s_name f) (idents_of_context gamma)) (funsyms_of_def d) ->
-    Forall (fun p => ~ In (s_name p) (idents_of_context gamma)) (predsyms_of_def d) ->
-    Forall (fun t => ~ In (ts_name t) (idents_of_context gamma)) (typesyms_of_def d) -> *)
     disj (idents_of_def d) (idents_of_context gamma) ->
     NoDup (idents_of_def d) ->
-    (* disj (map s_name )
-    disj (map s_name (funsyms_of_def d)) (map s_name (sig_f gamma)) ->
-    Forall (fun f => ~ In (s_name f) (sig_f gamma)) (funsyms_of_def d) ->
-    Forall (fun f => ~ In f (sig_p gamma)) (predsyms_of_def d) ->
-    Forall (fun ts => ~ In ts (sig_t gamma)) (typesyms_of_def d) -> *)
-    (* NoDup (funsyms_of_def d) ->
-    NoDup (predsyms_of_def d) ->
-    NoDup (typesyms_of_def d) -> *)
     (*nonempty*)
     nonempty_def d ->
     (*constr metadata is correct*)
@@ -2045,12 +2021,6 @@ Inductive wf_context : context -> Prop :=
   wf_context gamma ->
   Forall (wf_funsym (d :: gamma)) (funsyms_of_def d) ->
   Forall (wf_predsym (d :: gamma)) (predsyms_of_def d) ->
-  (* Forall (fun f => ~ In f (sig_f gamma)) (funsyms_of_def d) ->
-  Forall (fun f => ~ In f (sig_p gamma)) (predsyms_of_def d) ->
-  Forall (fun ts => ~ In ts (sig_t gamma)) (typesyms_of_def d) ->
-  NoDup (funsyms_of_def d) ->
-  NoDup (predsyms_of_def d) ->
-  NoDup (typesyms_of_def d) -> *)
   disj (idents_of_def d) (idents_of_context gamma) ->
     NoDup (idents_of_def d) ->
   wf_context (d:: gamma).
@@ -2545,7 +2515,7 @@ Proof.
   - simpl. unfold funsyms_of_context, predsyms_of_context, typesyms_of_context; 
     simpl. split_all; constructor.
   - split_all.
-    + clear -H0 H4. (*clear -H0 H8.*) (*i think*) 
+    + clear -H0 H4.
       unfold funsyms_of_context in *. simpl. destruct d; simpl;
       try rewrite Forall_app; try split; auto;
       revert H4; apply Forall_impl; intros;
@@ -2557,67 +2527,6 @@ Proof.
       apply wf_predsym_expand; auto.
     + simpl. unfold idents_of_context. simpl.
       apply NoDup_app_iff'. split_all; auto.
-Qed.
-
-(*TODO: move*)
-
-Lemma sublist_strong_app_l {A: Type} eq_dec (l1 l2 l3: list A):
-  sublist_strong eq_dec l1 l2 ->
-  sublist_strong eq_dec l1 (l3 ++ l2).
-Proof.
-rewrite <- (app_nil_l l1) at 2.
-intros Hsub.
-apply sublist_strong_app; auto.
-apply sublist_strong_nil.
-Qed.
-
-Lemma sublist_strong_app_r {A: Type} eq_dec (l1 l2 l3: list A):
-  sublist_strong eq_dec l1 l2 ->
-  sublist_strong eq_dec l1 (l2 ++ l3).
-Proof.
-rewrite <- (app_nil_r l1) at 2.
-intros Hsub.
-apply sublist_strong_app; auto.
-apply sublist_strong_nil.
-Qed.
-
-
-Lemma typesyms_of_context_idents gamma:
-  sublist_strong string_dec (map ts_name (typesyms_of_context gamma)) (idents_of_context gamma).
-Proof.
-  induction gamma as [| d gamma IH]; simpl; auto.
-  unfold idents_of_context; simpl.
-  unfold typesyms_of_context in *.
-  destruct d; try solve[apply sublist_strong_app_l; auto].
-  simpl. rewrite map_app.
-  apply sublist_strong_app; auto.
-  unfold idents_of_def.
-  rewrite !app_assoc.
-  apply sublist_strong_app_l, sublist_strong_refl.
-Qed. 
-
-Lemma funsyms_of_context_idents gamma:
-  sublist_strong string_dec (map (fun (x: funsym) => s_name x) (funsyms_of_context gamma)) (idents_of_context gamma).
-Proof.
-  induction gamma as [| d gamma IH]; simpl; auto.
-  unfold idents_of_context; simpl.
-  unfold funsyms_of_context in *.
-  destruct d; try solve[apply sublist_strong_app_l; auto];
-  simpl; rewrite map_app; apply sublist_strong_app; auto;
-  unfold idents_of_def; apply sublist_strong_app_r; auto;
-  apply sublist_strong_refl.
-Qed.
-
-Lemma predsyms_of_context_idents gamma:
-  sublist_strong string_dec (map (fun (x: predsym) => s_name x) (predsyms_of_context gamma)) (idents_of_context gamma).
-Proof.
-  induction gamma as [| d gamma IH]; simpl; auto.
-  unfold idents_of_context; simpl.
-  unfold predsyms_of_context in *.
-  destruct d; try solve[apply sublist_strong_app_l; auto];
-  simpl; rewrite map_app; apply sublist_strong_app; auto;
-  unfold idents_of_def; 
-  apply sublist_strong_app_l, sublist_strong_app_r, sublist_strong_refl.
 Qed.
 
 (*For legacy reasons*)
@@ -2640,39 +2549,6 @@ Proof.
   - pose proof (sublist_strong_nodup _ _ _ (predsyms_of_context_idents gamma) Hnodup) as Hn.
     apply NoDup_map_inv in Hn; auto.
 Qed.
-
-(*TODO: move*)
-Lemma sig_t_in_idents gamma:
-  sublist (map ts_name (sig_t gamma)) (idents_of_context gamma).
-Proof.
-  induction gamma as [| d1 g1 IH]; simpl; auto.
-  - apply sublist_refl.
-  - unfold sig_t, idents_of_context in *; simpl; auto.
-    rewrite map_app. apply sublist_app2; auto.
-    unfold idents_of_def. rewrite app_assoc. 
-    apply sublist_app_r.
-Qed. 
-
-Lemma sig_f_in_idents gamma:
-  sublist (map (fun (x: funsym) => s_name x) (sig_f gamma)) (idents_of_context gamma).
-Proof.
-  induction gamma as [| d1 g1 IH]; simpl; auto.
-  - apply sublist_refl.
-  - unfold sig_f, idents_of_context in *; simpl; auto.
-    rewrite map_app. apply sublist_app2; auto.
-    unfold idents_of_def. apply sublist_app_l. 
-Qed. 
-
-Lemma sig_p_in_idents gamma:
-  sublist (map (fun (x: predsym) => s_name x) (sig_p gamma)) (idents_of_context gamma).
-Proof.
-  induction gamma as [| d1 g1 IH]; simpl; auto.
-  - apply sublist_refl.
-  - unfold sig_p, idents_of_context in *; simpl; auto.
-    rewrite map_app. apply sublist_app2; auto.
-    unfold idents_of_def. eapply sublist_trans. 2: apply sublist_app_r. 
-    apply sublist_app_l. 
-Qed. 
 
 (*The expand lemmas allow us to prove that all defs
   are valid with respect to the current context (not
@@ -2751,23 +2627,6 @@ Proof.
   - rewrite in_map_iff. eauto.
   - rewrite Hd. simpl; auto.
 Qed.
-
-(*TODO: see*)
-(*Lemma wf_context_sig_Nodup g:
-  wf_context g ->
-  NoDup (sig_f g) /\
-  NoDup (sig_p g) /\
-  NoDup (sig_t g).
-Proof.
-  clear.
-  intros. unfold sig_f, sig_p, sig_t. 
-  induction H; simpl; split_all; auto;
-  try solve[constructor];
-  rewrite Forall_forall in H2, H3, H4;
-  rewrite NoDup_app_iff; split_all; auto;
-  intros x Hinx1 Hinx2; 
-  [apply (H2 x) | apply (H3 x) | apply (H4 x)]; auto.
-Qed.*)
 
 End ContextGenLemmas.
 

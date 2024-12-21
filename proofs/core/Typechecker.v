@@ -1333,8 +1333,6 @@ Qed.
 
 End ContextCheck.
 
-Print valid_context.
-(*START: check disj, then check nodup*)
 Definition check_disj {A: eqType} (l1 l2: list A) : bool :=
   all (fun x => x \notin l2) l1.
 
@@ -1362,12 +1360,6 @@ Definition check_context_cons (d: def) (gamma: context) : bool :=
   all (check_wf_predsym (d :: gamma)) preds &&
   check_disj (idents_of_def d) (idents_of_context gamma) &&
   uniq (idents_of_def d) &&
-  (* all (fun f => f \notin (sig_f gamma)) funs &&
-  all (fun p => p \notin (sig_p gamma)) preds &&
-  all (fun t => t \notin (sig_t gamma)) tys &&
-  uniq funs &&
-  uniq preds &&
-  uniq tys && *)
   nonempty_def d &&
   valid_constrs_def d &&
   valid_def_check (d :: gamma) d.
@@ -1400,29 +1392,6 @@ Proof.
   (*Nodup*)
   case:(uniq (idents_of_def d)) /uniqP => Hnodupf; last by reflF.
 
-  (* Now, sig_t checks
-  case: (all (fun f => f \notin sig_f gamma) (funsyms_of_def d))
-    /(all_Forall (fun f => ~ In f (sig_f gamma)));
-  last by move=> Hall; reflF.
-    by move=> x Hinx; apply negPP, inP.
-  move=> Hsigf.
-
-  case: (all (fun p => p \notin sig_p gamma) (predsyms_of_def d))
-    /(all_Forall (fun p => ~ In p (sig_p gamma)));
-  last by move=> Hall; reflF.
-    by move=> x Hinx; apply negPP, inP.
-  move=> Hsigp.
-
-  case: (all (fun t => t \notin sig_t gamma) (typesyms_of_def d))
-    /(all_Forall (fun t => ~ In t (sig_t gamma)));
-  last by move=> Hall; reflF.
-    by move=> x Hinx; apply negPP, inP.
-  move=> Hsigt.
-
-  (*Now NoDups checks for new definitions*)
-  case: (uniq (funsyms_of_def d)) /uniqP => Hnodupf; last by reflF.
-  case: (uniq (predsyms_of_def d)) /uniqP => Hnodupp; last by reflF.
-  case: (uniq (typesyms_of_def d)) /uniqP => Hnodupt; last by reflF. *)
   case Hemp: (nonempty_def d); last
     by (apply ReflectF => C; inversion C; subst; rewrite Hemp in H6).
   case Hconstrs: (valid_constrs_def d); last by
