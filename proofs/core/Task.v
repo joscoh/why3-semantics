@@ -695,6 +695,19 @@ Proof.
   destruct d; auto.
 Qed.
 
+Lemma idents_of_def_map d: idents_of_def (def_map d) = idents_of_def d.
+Proof.
+  destruct d; simpl; auto.
+  destruct f; simpl; auto.
+Qed.
+
+Lemma idents_of_context_map g: idents_of_context (map def_map g) = idents_of_context g.
+Proof.
+  induction g as [| d g IH]; simpl; auto.
+  unfold idents_of_context in *. simpl.
+  rewrite idents_of_def_map; f_equal; auto.
+Qed.
+
 Lemma def_map_sig_t gamma:
   sig_t (map def_map gamma) = sig_t gamma.
 Proof.
@@ -737,35 +750,26 @@ Proof.
     intros f. apply wf_funsym_sublist; apply Hsubt.
   - (*wf_predsym*) revert H0. rewrite predsyms_of_def_map. apply Forall_impl.
     intros f. apply wf_predsym_sublist; apply Hsubt.
-  - (*funsym unique*)
-    rewrite funsyms_of_def_map. revert H1. apply Forall_impl.
-    setoid_rewrite Hfseq. auto.
-  - (*predsym unique*)
-    rewrite predsyms_of_def_map. revert H2. apply Forall_impl.
-    setoid_rewrite Hpseq. auto.
-  - (*typesym unique*)
-    rewrite typesyms_of_def_map. revert H3. apply Forall_impl.
-    setoid_rewrite Htseq. auto.
-  - (*nodup funs*) rewrite funsyms_of_def_map. assumption.
-  - (*nodup preds*) rewrite predsyms_of_def_map; assumption.
-  - (*nodup types*) rewrite typesyms_of_def_map; assumption.
+  - (*idents disjoint*) 
+    rewrite idents_of_def_map, idents_of_context_map. auto.
+  - (*idents nodup*) rewrite idents_of_def_map. auto.
   - (*nonempty def*) destruct d; auto.
   - (*valid constructors*)
     pose proof (funsyms_of_def_map d) as Hfuns. 
-    destruct d; simpl in H8, Hfuns |- *; auto.
+    destruct d; simpl in H5, Hfuns |- *; auto.
     rewrite Hfuns. assumption.
   - (*valid def*)
-    destruct d; simpl in H9 |- *; auto.
-    + revert H9. apply mut_valid_sublist; auto.
+    destruct d; simpl in H5 |- *; auto.
+    + revert H5. apply mut_valid_sublist; auto.
       pose proof (def_map_sig_t gamma) as Hsigteq.
       unfold sig_t in Hsigteq |- *; simpl;
       rewrite Hsigteq; reflexivity.
-    + revert H9. apply funpred_valid_sublist; auto.
+    + revert H5. apply funpred_valid_sublist; auto.
       rewrite Hmut; apply sublist_refl.
-    + revert H9. apply indprop_valid_sublist; auto.
+    + revert H5. apply indprop_valid_sublist; auto.
       rewrite Hmut; apply sublist_refl.
     + (*interesting case: nonrec*)
-      destruct H9 as [Hvaltype Hnonrec].
+      destruct H5 as [Hvaltype Hnonrec].
       split.
       * unfold funpred_def_valid_type in Hvaltype |- *.
         destruct f; simpl in Hvaltype |-*;

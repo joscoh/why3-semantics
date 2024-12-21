@@ -3445,6 +3445,29 @@ Proof.
     f_equal; auto.
 Qed.
 
+(*TODO: see if we need above*)
+
+Lemma get_indpred_defs_idents (l: list indpred_def):
+  concat (map idents_of_def (get_indpred_defs l)) =
+idents_of_def (inductive_def l).
+Proof.
+  unfold idents_of_def;
+  induction l as [| d l IH]; simpl in *; auto.
+  destruct d; simpl; auto. f_equal; auto.
+Qed.
+
+Lemma gen_new_ctx_idents gamma:
+  idents_of_context (gen_new_ctx_gamma gamma) = idents_of_context gamma.
+Proof.
+  unfold gen_new_ctx_gamma. induction gamma as [| d gamma]; simpl; auto.
+  destruct (is_ind d) eqn : Hind; auto.
+  - destruct d; inversion Hind; subst.
+    unfold idents_of_context in *; simpl.
+    rewrite map_app, concat_app. f_equal; auto.
+    apply get_indpred_defs_idents.
+  - unfold idents_of_context in *; simpl. f_equal; auto.
+Qed.
+
 (*If we add a bunch of abstract defs to a context, then the
   only conditions we have to check are nodups and wf fun/predsyms*)
 
@@ -3467,12 +3490,14 @@ Lemma valid_ctx_abstract_app {gamma} (l: list def):
   Forall (fun x => concrete_def x = false) l ->
   Forall (wf_funsym gamma) (concat (map funsyms_of_def l)) ->
   Forall (wf_predsym gamma) (concat (map predsyms_of_def l)) ->
-  Forall (fun t => ~ In t (sig_t gamma)) (concat (map typesyms_of_def l)) ->
+  disj (idents_of_context l) (idents_of_context gamma) ->
+  NoDup (idents_of_context l) ->
+  (* Forall (fun t => ~ In t (sig_t gamma)) (concat (map typesyms_of_def l)) ->
   Forall (fun f => ~ In f (sig_f gamma)) (concat (map funsyms_of_def l)) ->
   Forall (fun p => ~ In p (sig_p gamma)) (concat (map predsyms_of_def l)) ->
   NoDup (concat (map typesyms_of_def l)) ->
   NoDup (concat (map funsyms_of_def l)) ->
-  NoDup (concat (map predsyms_of_def l)) ->
+  NoDup (concat (map predsyms_of_def l)) -> *)
   Forall (fun f => f_is_constr f = false) (concat (map funsyms_of_def l)) ->
   valid_context gamma ->
   valid_context (l ++ gamma).
@@ -3480,36 +3505,35 @@ Proof.
   induction l; simpl; auto; intros.
   rewrite Forall_app in *. destruct_all.
   inversion H; subst.
-  rewrite !NoDup_app_iff in *. destruct_all.
+  (* rewrite !NoDup_app_iff in *. destruct_all. *)
   constructor; auto.
+  - apply IHl; auto.
+    + eapply disj_sublist2. 2: apply H2.
+      unfold idents_of_context; simpl.
+      apply sublist_app_r.
+    + clear -H3. unfold idents_of_context in H3 |- *.
+      simpl in H3. apply NoDup_app in H3. apply H3.
   - revert H0. apply Forall_impl.
     intros. apply wf_funsym_expand.
     apply wf_funsym_expand_app; auto.
   - revert H1. apply Forall_impl.
     intros. apply wf_predsym_expand.
     apply wf_predsym_expand_app; auto.
-  - rewrite Forall_forall; intros.
-    unfold sig_f.
-    rewrite map_app, concat_app, in_app_iff.
-    intros [Hinx | Hinx]; auto.
-    + apply (H22 x); auto.
-    + rewrite Forall_forall in H3; apply (H3 x); auto.
-  - rewrite Forall_forall; intros.
-    unfold sig_p.
-    rewrite map_app, concat_app, in_app_iff.
-    intros [Hinx | Hinx]; auto.
-    + apply (H17 x); auto.
-    + rewrite Forall_forall in H4; apply (H4 x); auto.
-  - rewrite Forall_forall; intros.
-    unfold sig_t.
-    rewrite map_app, concat_app, in_app_iff.
-    intros [Hinx | Hinx]; auto.
-    + apply (H25 x); auto.
-    + rewrite Forall_forall in H2; apply (H2 x); auto.
-  - destruct a; inversion H16; auto.
+  - (*disj follows from disj and nodup*)
+    clear -H2 H3. unfold idents_of_context in *.
+    simpl in *. rewrite map_app, concat_app.
+    rewrite NoDup_app_iff' in H3. destruct H3 as [_ [_ Hdisj]].
+    intros x [Hinx1 Hinx2].
+    rewrite in_app_iff in Hinx2. destruct Hinx2 as [Hinx2 | Hinx2]. 
+    + apply (Hdisj x); auto.
+    + apply (H2 x). rewrite in_app_iff; auto.
+  - (*nodup is easy*)
+    unfold idents_of_context in H3. simpl in H3.
+    apply NoDup_app in H3; apply H3.
+  - destruct a; inversion H12; auto.
   - destruct a; auto. simpl. simpl in *.
-    inversion H8; subst. rewrite H29; auto.
-  - destruct a; inversion H18; auto; simpl; auto.
+    inversion H4; subst. rewrite H13; auto.
+  - destruct a; inversion H11; auto; simpl; auto.
 Qed.
 
 (*And finally, the new context is valid*)
@@ -3544,9 +3568,9 @@ Proof.
     + revert Hallwfp. apply Forall_impl.
       intros a. apply wf_predsym_sublist.
       intros x. apply Htseq.
-    + rewrite Forall_forall; intros p Hinp.
-      rewrite Hpseq.
-      rewrite Forall_forall in H3; auto.
+    + pose proof (gen_new_ctx_idents gamma) as Hg. unfold gen_new_ctx_gamma in Hg.
+      rewrite Hg. unfold idents_of_context. rewrite get_indpred_defs_idents. auto.
+    + unfold idents_of_context; rewrite get_indpred_defs_idents; auto.
   - (*No change in context*)
     pose proof (gen_new_ctx_gamma_eq_sig (d :: gamma)) as Heq2.
     unfold gen_new_ctx_gamma in Heq2.
@@ -3560,25 +3584,18 @@ Proof.
     + revert H1. apply Forall_impl. intros a.
       apply wf_predsym_sublist.
       apply eq_sig_is_sublist, eq_sig_sym; auto.
-    + rewrite Forall_forall. intros x Hinx.
-      rewrite Hfseq.
-      rewrite Forall_forall in H2; apply (H2 x); auto.
-    + rewrite Forall_forall. intros x Hinx.
-      rewrite Hpseq.
-      rewrite Forall_forall in H3; apply (H3 x); auto.
-    + rewrite Forall_forall. intros x Hinx.
-      rewrite Htseq.
-      rewrite Forall_forall in H4; apply (H4 x); auto.
+    + pose proof (gen_new_ctx_idents gamma) as Hg. unfold gen_new_ctx_gamma in Hg.
+      rewrite Hg. auto.
     + (*The difficult part: proving that def is still valid*)
-      revert H10.
+      revert H6.
       apply valid_def_sublist.
       * apply eq_sig_is_sublist, eq_sig_sym; auto.
       * pose proof (gen_new_ctx_gamma_sig_t (d :: gamma)).
-        unfold gen_new_ctx_gamma in H10.
-        simpl in H10. rewrite Hind in H10. auto.
+        unfold gen_new_ctx_gamma in H6.
+        simpl in H6. rewrite Hind in H6. auto.
       * pose proof (gen_new_ctx_gamma_mut (d :: gamma)).
-        unfold gen_new_ctx_gamma in H10.
-        simpl in H10. rewrite Hind in H10. auto.
+        unfold gen_new_ctx_gamma in H6.
+        simpl in H6. rewrite Hind in H6. auto.
 Qed.
 
 (*Convert an interpretation from gamma into one onto

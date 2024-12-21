@@ -1333,6 +1333,24 @@ Qed.
 
 End ContextCheck.
 
+Print valid_context.
+(*START: check disj, then check nodup*)
+Definition check_disj {A: eqType} (l1 l2: list A) : bool :=
+  all (fun x => x \notin l2) l1.
+
+Lemma disjP {A: eqType} (l1 l2: list A):
+  reflect (disj l1 l2) (check_disj l1 l2).
+Proof.
+  rewrite /disj/check_disj.
+  case: (all (fun x => x \notin l2) l1) /allP => [Hall | Hnotall].
+  - apply ReflectT => x [/inP Hinx1 /inP Hinx2].
+    move: Hall => /(_ _ Hinx1).
+    by rewrite Hinx2.
+  - apply ReflectF => Hdisj. apply Hnotall => x /inP Hinx1.
+    case: (x \in l2) /inP =>// Hinx2.
+    exfalso. by apply (Hdisj x).
+Qed.
+
 (*Now we show that we can incrementally check the context,
   since we don't want to have to check it each time*)
 
@@ -1342,12 +1360,14 @@ Definition check_context_cons (d: def) (gamma: context) : bool :=
   let tys := typesyms_of_def d in
   all (check_wf_funsym (d :: gamma)) funs &&
   all (check_wf_predsym (d :: gamma)) preds &&
-  all (fun f => f \notin (sig_f gamma)) funs &&
+  check_disj (idents_of_def d) (idents_of_context gamma) &&
+  uniq (idents_of_def d) &&
+  (* all (fun f => f \notin (sig_f gamma)) funs &&
   all (fun p => p \notin (sig_p gamma)) preds &&
   all (fun t => t \notin (sig_t gamma)) tys &&
   uniq funs &&
   uniq preds &&
-  uniq tys &&
+  uniq tys && *)
   nonempty_def d &&
   valid_constrs_def d &&
   valid_def_check (d :: gamma) d.
@@ -1373,7 +1393,14 @@ Proof.
     by move=> x Hinx; apply check_wf_predsym_spec.
   move=> Hpredswf.
 
-  (*Now, sig_t checks*)
+  (*Now disj*)
+  case: (check_disj (idents_of_def d) (idents_of_context gamma)) 
+    /disjP => Hdisj; last by reflF.
+
+  (*Nodup*)
+  case:(uniq (idents_of_def d)) /uniqP => Hnodupf; last by reflF.
+
+  (* Now, sig_t checks
   case: (all (fun f => f \notin sig_f gamma) (funsyms_of_def d))
     /(all_Forall (fun f => ~ In f (sig_f gamma)));
   last by move=> Hall; reflF.
@@ -1395,11 +1422,11 @@ Proof.
   (*Now NoDups checks for new definitions*)
   case: (uniq (funsyms_of_def d)) /uniqP => Hnodupf; last by reflF.
   case: (uniq (predsyms_of_def d)) /uniqP => Hnodupp; last by reflF.
-  case: (uniq (typesyms_of_def d)) /uniqP => Hnodupt; last by reflF.
-  case Hemp: (nonempty_def d); last 
-    by (apply ReflectF => C; inversion C; subst; rewrite Hemp in H10).
+  case: (uniq (typesyms_of_def d)) /uniqP => Hnodupt; last by reflF. *)
+  case Hemp: (nonempty_def d); last
+    by (apply ReflectF => C; inversion C; subst; rewrite Hemp in H6).
   case Hconstrs: (valid_constrs_def d); last by
-    (apply ReflectF => C; inversion C; subst; rewrite Hconstrs in H11).
+    (apply ReflectF => C; inversion C; subst; rewrite Hconstrs in H7).
   (*At this point, wf_context holds, so we can use the
     def check lemma (the recfun case needs a wf_context)*)
   have Hwf: wf_context (d :: gamma). {

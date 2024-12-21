@@ -1999,6 +1999,14 @@ Definition nonempty_def (d: def) : bool :=
     rely on the previous ones.
   *)
 
+(*TODO: move*)
+Definition idents_of_def (d: def) : list string :=
+  map (fun (x: funsym) => s_name x) (funsyms_of_def d) ++ 
+  map (fun (x: predsym) => s_name x) (predsyms_of_def d) ++ 
+  map ts_name (typesyms_of_def d).
+Definition idents_of_context (gamma: context) : list string :=
+  concat (map idents_of_def gamma).
+
 Inductive valid_context : context -> Prop :=
   | valid_ctx_nil: valid_context nil
   | valid_ctx_cons: forall d gamma,
@@ -2007,12 +2015,19 @@ Inductive valid_context : context -> Prop :=
     Forall (wf_funsym (d :: gamma)) (funsyms_of_def d) ->
     Forall (wf_predsym (d :: gamma)) (predsyms_of_def d) ->
     (*uniqueness*)
-    Forall (fun f => ~ In f (sig_f gamma)) (funsyms_of_def d) ->
+    (* Forall (fun f => ~ In (s_name f) (idents_of_context gamma)) (funsyms_of_def d) ->
+    Forall (fun p => ~ In (s_name p) (idents_of_context gamma)) (predsyms_of_def d) ->
+    Forall (fun t => ~ In (ts_name t) (idents_of_context gamma)) (typesyms_of_def d) -> *)
+    disj (idents_of_def d) (idents_of_context gamma) ->
+    NoDup (idents_of_def d) ->
+    (* disj (map s_name )
+    disj (map s_name (funsyms_of_def d)) (map s_name (sig_f gamma)) ->
+    Forall (fun f => ~ In (s_name f) (sig_f gamma)) (funsyms_of_def d) ->
     Forall (fun f => ~ In f (sig_p gamma)) (predsyms_of_def d) ->
-    Forall (fun ts => ~ In ts (sig_t gamma)) (typesyms_of_def d) ->
-    NoDup (funsyms_of_def d) ->
+    Forall (fun ts => ~ In ts (sig_t gamma)) (typesyms_of_def d) -> *)
+    (* NoDup (funsyms_of_def d) ->
     NoDup (predsyms_of_def d) ->
-    NoDup (typesyms_of_def d) ->
+    NoDup (typesyms_of_def d) -> *)
     (*nonempty*)
     nonempty_def d ->
     (*constr metadata is correct*)
@@ -2030,12 +2045,14 @@ Inductive wf_context : context -> Prop :=
   wf_context gamma ->
   Forall (wf_funsym (d :: gamma)) (funsyms_of_def d) ->
   Forall (wf_predsym (d :: gamma)) (predsyms_of_def d) ->
-  Forall (fun f => ~ In f (sig_f gamma)) (funsyms_of_def d) ->
+  (* Forall (fun f => ~ In f (sig_f gamma)) (funsyms_of_def d) ->
   Forall (fun f => ~ In f (sig_p gamma)) (predsyms_of_def d) ->
   Forall (fun ts => ~ In ts (sig_t gamma)) (typesyms_of_def d) ->
   NoDup (funsyms_of_def d) ->
   NoDup (predsyms_of_def d) ->
-  NoDup (typesyms_of_def d) ->
+  NoDup (typesyms_of_def d) -> *)
+  disj (idents_of_def d) (idents_of_context gamma) ->
+    NoDup (idents_of_def d) ->
   wf_context (d:: gamma).
 
 Lemma valid_context_wf gamma:
@@ -2517,6 +2534,93 @@ Proof.
 Qed.
 (*This lets us reason about the whole context's uniqueness
   instead of having to reason inductively*)
+
+Lemma wf_context_full gamma:
+  wf_context gamma ->
+  Forall (wf_funsym gamma) (funsyms_of_context gamma) /\
+  Forall (wf_predsym gamma) (predsyms_of_context gamma) /\
+  NoDup (idents_of_context gamma).
+Proof.
+  intros. induction H.
+  - simpl. unfold funsyms_of_context, predsyms_of_context, typesyms_of_context; 
+    simpl. split_all; constructor.
+  - split_all.
+    + clear -H0 H4. (*clear -H0 H8.*) (*i think*) 
+      unfold funsyms_of_context in *. simpl. destruct d; simpl;
+      try rewrite Forall_app; try split; auto;
+      revert H4; apply Forall_impl; intros;
+      apply wf_funsym_expand; auto.
+    + clear -H1 H5.
+      unfold predsyms_of_context in *; simpl; destruct d; simpl;
+      try rewrite Forall_app; try split; auto;
+      revert H5; apply Forall_impl; intros;
+      apply wf_predsym_expand; auto.
+    + simpl. unfold idents_of_context. simpl.
+      apply NoDup_app_iff'. split_all; auto.
+Qed.
+
+(*TODO: move*)
+
+Lemma sublist_strong_app_l {A: Type} eq_dec (l1 l2 l3: list A):
+  sublist_strong eq_dec l1 l2 ->
+  sublist_strong eq_dec l1 (l3 ++ l2).
+Proof.
+rewrite <- (app_nil_l l1) at 2.
+intros Hsub.
+apply sublist_strong_app; auto.
+apply sublist_strong_nil.
+Qed.
+
+Lemma sublist_strong_app_r {A: Type} eq_dec (l1 l2 l3: list A):
+  sublist_strong eq_dec l1 l2 ->
+  sublist_strong eq_dec l1 (l2 ++ l3).
+Proof.
+rewrite <- (app_nil_r l1) at 2.
+intros Hsub.
+apply sublist_strong_app; auto.
+apply sublist_strong_nil.
+Qed.
+
+
+Lemma typesyms_of_context_idents gamma:
+  sublist_strong string_dec (map ts_name (typesyms_of_context gamma)) (idents_of_context gamma).
+Proof.
+  induction gamma as [| d gamma IH]; simpl; auto.
+  unfold idents_of_context; simpl.
+  unfold typesyms_of_context in *.
+  destruct d; try solve[apply sublist_strong_app_l; auto].
+  simpl. rewrite map_app.
+  apply sublist_strong_app; auto.
+  unfold idents_of_def.
+  rewrite !app_assoc.
+  apply sublist_strong_app_l, sublist_strong_refl.
+Qed. 
+
+Lemma funsyms_of_context_idents gamma:
+  sublist_strong string_dec (map (fun (x: funsym) => s_name x) (funsyms_of_context gamma)) (idents_of_context gamma).
+Proof.
+  induction gamma as [| d gamma IH]; simpl; auto.
+  unfold idents_of_context; simpl.
+  unfold funsyms_of_context in *.
+  destruct d; try solve[apply sublist_strong_app_l; auto];
+  simpl; rewrite map_app; apply sublist_strong_app; auto;
+  unfold idents_of_def; apply sublist_strong_app_r; auto;
+  apply sublist_strong_refl.
+Qed.
+
+Lemma predsyms_of_context_idents gamma:
+  sublist_strong string_dec (map (fun (x: predsym) => s_name x) (predsyms_of_context gamma)) (idents_of_context gamma).
+Proof.
+  induction gamma as [| d gamma IH]; simpl; auto.
+  unfold idents_of_context; simpl.
+  unfold predsyms_of_context in *.
+  destruct d; try solve[apply sublist_strong_app_l; auto];
+  simpl; rewrite map_app; apply sublist_strong_app; auto;
+  unfold idents_of_def; 
+  apply sublist_strong_app_l, sublist_strong_app_r, sublist_strong_refl.
+Qed.
+
+(*For legacy reasons*)
 Lemma wf_context_alt gamma:
   wf_context gamma ->
   Forall (wf_funsym gamma) (funsyms_of_context gamma) /\
@@ -2525,47 +2629,50 @@ Lemma wf_context_alt gamma:
   NoDup (funsyms_of_context gamma) /\
   NoDup (predsyms_of_context gamma).
 Proof.
-  intros. induction H.
-  - simpl. unfold funsyms_of_context, predsyms_of_context, typesyms_of_context; 
-    simpl. split_all; constructor.
-  - split_all.
-    + clear -H0 H8. (*i think*) 
-      unfold funsyms_of_context in *. simpl. destruct d; simpl;
-      try rewrite Forall_app; try split; auto;
-      revert H8; apply Forall_impl; intros;
-      apply wf_funsym_expand; auto.
-    + clear -H1 H9.
-      unfold predsyms_of_context in *; simpl; destruct d; simpl;
-      try rewrite Forall_app; try split; auto;
-      revert H9; apply Forall_impl; intros;
-      apply wf_predsym_expand; auto.
-    + clear -H10 H4 H7.
-      unfold typesyms_of_context, typesyms_of_def in *. simpl.
-      destruct d; simpl; auto.
-      rewrite NoDup_app_iff. split_all; auto;
-      (*Just need to show that these are disjoint - use previous lemma*)
-      intros x Hinx1 Hinx2;
-      rewrite Forall_forall in H4;
-      apply (H4 x); auto;
-      pose proof (concrete_in_sig gamma) as [Hall _];
-      rewrite Forall_forall in Hall; apply Hall; auto.
-    + clear -H11 H5 H2.
-      unfold funsyms_of_context, funsyms_of_def in *. simpl.
-      rewrite Forall_forall in H2.
-      pose proof (concrete_in_sig gamma) as [ _ [ Hall _]].
-      rewrite Forall_forall in Hall.
-      destruct d; simpl; auto; rewrite NoDup_app_iff; split_all; auto;
-      intros x Hinx1 Hinx2;
-      apply (H2 x); auto.
-    + clear -H12 H6 H3.
-      unfold predsyms_of_context, predsyms_of_def in *. simpl.
-      rewrite Forall_forall in H3.
-      pose proof (concrete_in_sig gamma) as [ _ [ _ Hall]].
-      rewrite Forall_forall in Hall.
-      destruct d; simpl; auto; rewrite NoDup_app_iff; split_all; auto;
-      intros x Hinx1 Hinx2;
-      apply (H3 x); auto.
+  intros gamma_wf.
+  apply wf_context_full in gamma_wf.
+  destruct gamma_wf as [Hwf1 [Hwf2 Hnodup]]; split; [auto | split]; auto.
+  split_all.
+  - pose proof (sublist_strong_nodup _ _ _ (typesyms_of_context_idents gamma) Hnodup) as Hn.
+    apply NoDup_map_inv in Hn; auto.
+  - pose proof (sublist_strong_nodup _ _ _ (funsyms_of_context_idents gamma) Hnodup) as Hn.
+    apply NoDup_map_inv in Hn; auto.
+  - pose proof (sublist_strong_nodup _ _ _ (predsyms_of_context_idents gamma) Hnodup) as Hn.
+    apply NoDup_map_inv in Hn; auto.
 Qed.
+
+(*TODO: move*)
+Lemma sig_t_in_idents gamma:
+  sublist (map ts_name (sig_t gamma)) (idents_of_context gamma).
+Proof.
+  induction gamma as [| d1 g1 IH]; simpl; auto.
+  - apply sublist_refl.
+  - unfold sig_t, idents_of_context in *; simpl; auto.
+    rewrite map_app. apply sublist_app2; auto.
+    unfold idents_of_def. rewrite app_assoc. 
+    apply sublist_app_r.
+Qed. 
+
+Lemma sig_f_in_idents gamma:
+  sublist (map (fun (x: funsym) => s_name x) (sig_f gamma)) (idents_of_context gamma).
+Proof.
+  induction gamma as [| d1 g1 IH]; simpl; auto.
+  - apply sublist_refl.
+  - unfold sig_f, idents_of_context in *; simpl; auto.
+    rewrite map_app. apply sublist_app2; auto.
+    unfold idents_of_def. apply sublist_app_l. 
+Qed. 
+
+Lemma sig_p_in_idents gamma:
+  sublist (map (fun (x: predsym) => s_name x) (sig_p gamma)) (idents_of_context gamma).
+Proof.
+  induction gamma as [| d1 g1 IH]; simpl; auto.
+  - apply sublist_refl.
+  - unfold sig_p, idents_of_context in *; simpl; auto.
+    rewrite map_app. apply sublist_app2; auto.
+    unfold idents_of_def. eapply sublist_trans. 2: apply sublist_app_r. 
+    apply sublist_app_l. 
+Qed. 
 
 (*The expand lemmas allow us to prove that all defs
   are valid with respect to the current context (not
@@ -2579,6 +2686,15 @@ Proof.
   revert IHHval. apply Forall_impl.
   intros.
   apply valid_def_expand; auto.
+  (*TODO: separate lemma?*)
+  rewrite Forall_forall.
+  intros x Hinx1 Hinx2.
+  apply (H1 (ts_name x)).
+  split.
+  - unfold idents_of_def. rewrite !in_app_iff. right. right.
+    rewrite in_map_iff. eauto.
+  - unfold idents_of_context.
+    apply sig_t_in_idents. rewrite in_map_iff; eauto.
 Qed.
 
 Lemma valid_context_nonemp gamma:
@@ -2598,78 +2714,46 @@ Qed.
 (*Now we prove that gamma has NoDups. This follows from the
   uniqueness of each symbol type and the fact that no definition
   is empty*)
+
+Lemma idents_of_def_nonemp d:
+  nonempty_def d ->
+  negb (null (idents_of_def d)).
+Proof.
+unfold idents_of_def.
+destruct d; simpl; auto; intros Hn.
+- rewrite null_app, !null_map, negb_andb.
+  unfold funsyms_of_mut, typesyms_of_mut.
+  rewrite null_map, Hn, orb_true_r; auto.
+- rewrite app_nil_r, null_app, !null_map.
+  unfold funsyms_of_rec, predsyms_of_rec.
+  destruct l; try inversion Hn. simpl.
+  destruct f; simpl; auto.
+  rewrite andb_false_r; auto.
+- rewrite app_nil_r, null_map.
+  unfold predsyms_of_indprop; rewrite null_map.
+  apply andb_true_iff in Hn. apply Hn.
+- rewrite app_nil_r, null_app, !null_map.
+  unfold funsyms_of_nonrec, predsyms_of_nonrec.
+  destruct f; simpl; auto.
+Qed. 
+
 Lemma valid_context_Nodup gamma:
   valid_context gamma ->
   NoDup gamma.
 Proof.
   intros Hval. induction Hval; constructor; auto.
-  intros Hin.
-  pose proof (concrete_in_sig gamma).
-  destruct_all.
-  rewrite !Forall_forall in *.
-  destruct d; auto; simpl in *.
-  - unfold typesyms_of_mut in H3.
-    destruct (typs m) eqn : Htyps; [inversion H7 |].
-    apply (H3 (adt_name a)); simpl; auto.
-    apply H10.
-    unfold typesyms_of_context.
-    rewrite in_concat. exists (map adt_name (typs m)).
-    split; auto; [| rewrite in_map_iff; exists a; split; auto;
-    rewrite Htyps; simpl; auto].
-    rewrite in_map_iff. exists m. split; auto.
-    apply mut_in_ctx_eq.
-    apply mut_in_ctx_eq2. auto.
-  - (*function - has either function or predicate symbol*)
-    destruct l; [inversion H7 |].
-    destruct f.
-    + (*function case*)
-      apply (H1 f); simpl; auto.
-      apply H11. unfold funsyms_of_context.
-      rewrite in_concat. exists (funsyms_of_rec (fun_def f l0 t :: l)).
-      split; simpl; auto.
-      rewrite in_map_iff. exists (recursive_def (fun_def f l0 t :: l)).
-      auto.
-    + (*pred*)
-      apply (H2 p); simpl; auto.
-      apply H12. unfold predsyms_of_context.
-      rewrite in_concat. exists (predsyms_of_rec (pred_def p l0 f :: l)).
-      split; simpl; auto.
-      rewrite in_map_iff. exists (recursive_def (pred_def p l0 f :: l));
-      auto.
-  - (*inductive def has a predsym*)
-    destruct l; [inversion H7 |].
-    destruct i. apply (H2 p); simpl; auto.
-    apply H12. unfold predsyms_of_context.
-    rewrite in_concat. exists (predsyms_of_indprop (ind_def p l0 :: l)).
-    split; simpl; auto.
-    rewrite in_map_iff. exists (inductive_def (ind_def p l0 :: l));
-    auto.
-  - (*non-recursive def has a funsym or predsym*)
-    destruct f.
-    + simpl in H1. apply (H1 f); auto.
-      unfold sig_f.
-      rewrite in_concat. exists (funsyms_of_nonrec (fun_def f l t)).
-      split; simpl; auto.
-      rewrite in_map_iff. exists (nonrec_def (fun_def f l t)); auto.
-    + simpl in H2. apply (H2 p); auto.
-      unfold sig_p.
-      rewrite in_concat. exists (predsyms_of_nonrec (pred_def p l f)).
-      split; simpl; auto.
-      rewrite in_map_iff. exists (nonrec_def (pred_def p l f)); auto.
-  - apply (H3 t); auto.
-    (*For abstract, use definition of sig_t*)
-    unfold sig_t. rewrite in_concat. exists [t].
-    split; simpl; auto.
-    rewrite in_map_iff. exists (abs_type t); auto.
-  - apply (H1 f); auto. unfold sig_f. rewrite in_concat.
-    exists [f]. split; simpl; auto.
-    rewrite in_map_iff. exists (abs_fun f); auto.
-  - apply (H2 p); auto. unfold sig_p. rewrite in_concat.
-    exists [p]. split; simpl; auto.
-    rewrite in_map_iff. exists (abs_pred p); auto.
+  intros Hind.
+  assert (Hnotnull: negb (null (idents_of_def d))) by (apply (idents_of_def_nonemp d); auto).
+  destruct (idents_of_def d) as [| x1 xs] eqn : Hd; try discriminate.
+  apply (H1 x1); simpl; split; auto.
+  unfold idents_of_context. rewrite in_concat. exists (idents_of_def d).
+  split; auto.
+  - rewrite in_map_iff. eauto.
+  - rewrite Hd. simpl; auto.
 Qed.
 
-Lemma wf_context_sig_Nodup g:
+(*TODO: see*)
+(*Lemma wf_context_sig_Nodup g:
   wf_context g ->
   NoDup (sig_f g) /\
   NoDup (sig_p g) /\
@@ -2683,7 +2767,7 @@ Proof.
   rewrite NoDup_app_iff; split_all; auto;
   intros x Hinx1 Hinx2; 
   [apply (H2 x) | apply (H3 x) | apply (H4 x)]; auto.
-Qed.
+Qed.*)
 
 End ContextGenLemmas.
 
@@ -3008,25 +3092,40 @@ Lemma valid_context_ordered gamma:
 Proof.
   intros Hval. induction Hval; [| destruct d]; constructor; auto.
   - intros f d Hfinl Hind Hinfd.
-    rewrite Forall_forall in H1.
-    apply (H1 f). simpl. apply in_bool_In in Hfinl; auto. 
-    eapply funsym_in_def_in_sig; auto. apply Hind. auto.
-  - intros p d Hpinl Hind Hinpd.
-    rewrite Forall_forall in H2.
-    apply (H2 p); simpl. apply in_bool_In in Hpinl; auto.
-    eapply predsym_in_def_in_sig; auto. apply Hind. auto.
-  - intros p d Hpinl Hind Hinpd.
-    rewrite Forall_forall in H2.
-    apply (H2 p). simpl. apply pred_in_indpred_iff; auto.
-    eapply predsym_in_def_in_sig; auto. apply Hind. auto.
-  - intros fs d Hinf Hind Hinfsd.
-    rewrite Forall_forall in H1.
-    apply (H1 fs); auto.
-    eapply funsym_in_def_in_sig; auto. apply Hind. auto.
-  - intros p d Hinp Hind Hinpd.
-    rewrite Forall_forall in H2; apply (H2 p); auto.
-    eapply predsym_in_def_in_sig; auto. apply Hind. auto.
-Qed. 
+    (*Prob not most direct way but works*)
+    apply (H1 (s_name f)). split.
+    + unfold idents_of_def. simpl. rewrite !in_app_iff.
+      left. rewrite in_map_iff. exists f; split; auto.
+      apply in_bool_In in Hfinl. auto.
+    + apply sig_f_in_idents. rewrite in_map_iff. exists f; split; auto.
+      eapply funsym_in_def_in_sig; eauto.
+  - intros f d Hfinl Hind Hinfd.
+    apply (H1 (s_name f)). split.
+    + unfold idents_of_def. simpl. rewrite !in_app_iff. right. left.
+      rewrite in_map_iff. exists f; split; auto.
+      apply in_bool_In in Hfinl. auto.
+    + apply sig_p_in_idents. rewrite in_map_iff. exists f; split; auto.
+      eapply predsym_in_def_in_sig; eauto.
+  - intros f d Hfinl Hind Hinfd.
+    apply (H1 (s_name f)). split.
+    + unfold idents_of_def. simpl. rewrite !in_app_iff.
+      left. rewrite in_map_iff. exists f; split; auto.
+      apply pred_in_indpred_iff; auto.
+    + apply sig_p_in_idents. rewrite in_map_iff. exists f; split; auto.
+      eapply predsym_in_def_in_sig; eauto.
+  - intros f1 d Hfinl Hind Hinfd.
+    apply (H1 (s_name f1)). split.
+    + unfold idents_of_def. simpl. rewrite !in_app_iff.
+      left. rewrite in_map_iff. exists f1; split; auto.
+    + apply sig_f_in_idents. rewrite in_map_iff. exists f1; split; auto.
+      eapply funsym_in_def_in_sig; eauto.
+  - intros f1 d Hfinl Hind Hinfd.
+    apply (H1 (s_name f1)). split.
+    + unfold idents_of_def. simpl. rewrite !in_app_iff. right; left.
+      rewrite in_map_iff. exists f1; split; auto.
+    + apply sig_p_in_idents. rewrite in_map_iff. exists f1; split; auto.
+      eapply predsym_in_def_in_sig; eauto.
+Qed.
  
 End CtxOrder.
 
@@ -3386,17 +3485,19 @@ Lemma funsym_multiple_defs (d1 d2: def) (f: funsym)
   False.
 Proof.
   apply valid_context_wf in gamma_valid.
-  apply wf_context_sig_Nodup in gamma_valid.
-  destruct gamma_valid as [Hn _].
-  unfold sig_f in Hn.
+  apply wf_context_full in gamma_valid.
+  destruct gamma_valid as [_ [_ Hn]].
+  unfold idents_of_context in Hn.
   rewrite NoDup_concat_iff in Hn.
+  rewrite map_length in Hn.
   destruct Hn as [_ Hn].
   destruct (In_nth _ _ def_d d1_in) as [i1 [Hi1 Hd1]]; subst.
   destruct (In_nth _ _ def_d d2_in) as [i2 [Hi2 Hd2]]; subst.
-  rewrite map_length in Hn.
   destruct (Nat.eq_dec i1 i2); subst; auto.
-  apply (Hn _ _ nil f Hi1 Hi2 n).
+  apply (Hn _ _ nil (s_name f) Hi1 Hi2 n).
   rewrite !map_nth_inbound with (d2:=def_d); auto.
+  unfold idents_of_def. rewrite !in_app_iff. split; left;
+  rewrite in_map_iff; eauto.
 Qed.
 
 Lemma predsym_multiple_defs (d1 d2: def) (p: predsym)
@@ -3406,17 +3507,19 @@ Lemma predsym_multiple_defs (d1 d2: def) (p: predsym)
   False.
 Proof.
   apply valid_context_wf in gamma_valid.
-  apply wf_context_sig_Nodup in gamma_valid.
-  destruct gamma_valid as [_ [Hn _]].
-  unfold sig_p in Hn.
+  apply wf_context_full in gamma_valid.
+  destruct gamma_valid as [_ [_ Hn]].
+  unfold idents_of_context in Hn.
   rewrite NoDup_concat_iff in Hn.
+  rewrite map_length in Hn.
   destruct Hn as [_ Hn].
   destruct (In_nth _ _ def_d d1_in) as [i1 [Hi1 Hd1]]; subst.
   destruct (In_nth _ _ def_d d2_in) as [i2 [Hi2 Hd2]]; subst.
-  rewrite map_length in Hn.
   destruct (Nat.eq_dec i1 i2); subst; auto.
-  apply (Hn _ _ nil p Hi1 Hi2 n).
+  apply (Hn _ _ nil (s_name p) Hi1 Hi2 n).
   rewrite !map_nth_inbound with (d2:=def_d); auto.
+  unfold idents_of_def. rewrite !in_app_iff. split; right; left;
+  rewrite in_map_iff; eauto.
 Qed.
 
 
@@ -3723,28 +3826,28 @@ Lemma abs_not_concrete_ty t:
   (forall m a, mut_in_ctx m gamma -> adt_in_mut a m ->
     t <> adt_name a).
 Proof.
+  intros Hint1 m a m_in a_in Ht; subst.
   apply valid_context_wf in gamma_valid.
-  apply wf_context_sig_Nodup in gamma_valid.
+  apply wf_context_full in gamma_valid.
   destruct gamma_valid as [_ [_ Hn]].
-  intros Hin.
-  unfold sig_t in Hn.
+  unfold idents_of_context in Hn.
   rewrite NoDup_concat_iff in Hn.
-  destruct Hn as [_ Hn].
-  destruct (In_nth _ _ def_d Hin) as [i1 [Hi1 Habst]].
-  intros m a m_in a_in.
-  apply mut_in_ctx_eq2 in m_in.
-  destruct (In_nth _ _ def_d m_in) as [i2 [Hi2 Hdatm]].
-  destruct (Nat.eq_dec i1 i2).
-  { subst. rewrite Habst in Hdatm; discriminate. }
   rewrite map_length in Hn.
-  intro Ht; subst.
-  apply (Hn i1 i2 nil (adt_name a) Hi1 Hi2 n).
-  rewrite !map_nth_inbound with(d2:=def_d); auto.
-  rewrite Habst, Hdatm; simpl; split; auto.
-  unfold typesyms_of_mut.
-  rewrite in_map_iff. exists a; split; auto.
-  apply in_bool_In in a_in; auto.
+  destruct Hn as [_ Hn].
+  destruct (In_nth _ _ def_d Hint1) as [i1 [Hi1 Hd1]]; subst.
+  assert (Hinm: In (datatype_def m) gamma) by (apply mut_in_ctx_eq2; auto).
+  destruct (In_nth _ _ def_d Hinm) as [i2 [Hi2 Hd2]]; subst.
+  destruct (Nat.eq_dec i1 i2); subst; auto.
+  { rewrite Hd1 in Hd2. discriminate. }
+  apply (Hn _ _ nil (ts_name (adt_name a)) Hi1 Hi2 n).
+  rewrite !map_nth_inbound with (d2:=def_d); auto.
+  unfold idents_of_def. rewrite !in_app_iff. split; right; right;
+  rewrite in_map_iff; exists (adt_name a); split; auto;
+  [ rewrite Hd1 | rewrite Hd2]; simpl; auto.
+  apply in_bool_In in a_in. 
+  unfold typesyms_of_mut. rewrite in_map_iff; eauto.
 Qed.
+
 
 End UniqLemmas.
 
@@ -3777,12 +3880,11 @@ Lemma predsyms_of_indprop_Nodup
   NoDup (predsyms_of_indprop l).
 Proof.
   apply valid_context_wf in gamma_valid.
-  apply wf_context_sig_Nodup in gamma_valid.
-  destruct gamma_valid as [_ [Hn _ ]].
-  unfold sig_p in Hn.
-  rewrite NoDup_concat_iff in Hn.
-  destruct Hn as [Hn _]; apply Hn.
-  rewrite in_map_iff. exists (inductive_def l); auto.
+  apply wf_context_alt in gamma_valid.
+  destruct gamma_valid as [_ [_ [_ [_ Hn]]]].
+  unfold predsyms_of_context in Hn.
+  eapply in_concat_NoDup in Hn. apply Hn. apply predsym_eq_dec.
+  rewrite in_map_iff. exists (inductive_def l); split; auto.
 Qed.
 
 (*Finally, use above and prove that all types in

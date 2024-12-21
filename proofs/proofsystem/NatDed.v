@@ -803,8 +803,7 @@ Qed.
 Definition forallI_trans name : trans :=
   fun t =>
   (*Ensure that name does not appear in signature*)
-  if in_bool string_dec name 
-    (map (fun (x: funsym) => s_name x) (sig_f (task_gamma t))) then [t]
+  if in_bool string_dec name (idents_of_context (task_gamma t)) then [t]
   else
   match task_goal t with
   | Fquant Tforall x f => [mk_task 
@@ -954,7 +953,11 @@ Proof.
   (*Key: this constant not used before*)
   assert (Hconstnew: ~ In (const_noconstr name s) (sig_f gamma)). {
     inversion gamma_valid'; subst.
-    simpl in H4. inversion H4; subst; auto.
+    intros Hins.
+    apply (H4 (s_name (const_noconstr name s))).
+    split; simpl; auto.
+    apply sig_f_in_idents. rewrite in_map_iff.
+    eexists; auto. split; [| apply Hins]; auto.
   }
   unfold full_interp. split_all; simpl; intros.
   - rewrite funs_with_const_diff.
@@ -1047,7 +1050,7 @@ Proof.
   unfold sound_trans_closed, TaskGen.sound_trans, forallI_trans.
   intros.
   destruct (in_bool_spec string_dec name
-  (map (fun x : funsym => s_name x) (sig_f (task_gamma t))));
+  (idents_of_context (task_gamma t)));
   [apply H; simpl; auto|].
   destruct (task_goal t) eqn : Ht; simpl in H; try solve[apply H; auto].
   destruct q; simpl in H; try solve[apply H; auto].
@@ -1066,7 +1069,8 @@ Proof.
     apply union_nil in f_mono. apply f_mono.
   }
   assert (Hnotused: ~ In (const_noconstr name (snd v)) (sig_f gamma)). {
-    intro C. apply n. rewrite in_map_iff. exists (const_noconstr name (snd v)).
+    intro C. apply n. apply sig_f_in_idents. 
+    rewrite in_map_iff. exists (const_noconstr name (snd v)).
     split; auto.
   }
   assert (Htyval: valid_type gamma (snd v)). {
@@ -1076,12 +1080,13 @@ Proof.
   }
   (*First, prove new context is valid*)
   assert (gamma_valid': valid_context (abs_fun (const_noconstr name (snd v)) :: gamma)). {
-    constructor; simpl; auto; constructor; auto; try solve[constructor].
-    unfold wf_funsym. simpl. constructor; auto.
-    split.
-    + revert Htyval. apply valid_type_sublist.
-      apply expand_sublist_sig.
-    + rewrite Hsort; auto.
+    constructor; simpl; auto; try constructor; auto; try solve[constructor].
+    - unfold wf_funsym. simpl. constructor; auto.
+      split.
+      + revert Htyval. apply valid_type_sublist.
+        apply expand_sublist_sig.
+      + rewrite Hsort; auto.
+    - unfold idents_of_def; simpl. intros x [[Heq | []] Hinx2]; subst; contradiction.
   }
   specialize (Hval gamma_valid' Hwf).
   (*Now, things get complicated*)
@@ -1166,7 +1171,7 @@ Proof.
     erewrite funs_with_const_same.
     unfold cast_dom_vty. subst d'. rewrite !dom_cast_compose.
     apply dom_cast_refl.
-  }
+  } 
   rewrite H2 in Hval.
   (*And now we go from pf' -> pf because d does not appear*)
   erewrite fmla_change_gamma_pf.
@@ -1190,8 +1195,7 @@ Qed.
   then gamma |- forall x, f*)
 Theorem D_forallI gamma delta x f c:
   (*c is not used*)
-  negb (in_bool string_dec c (map (fun (x: funsym) => s_name x) 
-    (sig_f gamma))) ->
+  negb (in_bool string_dec c (idents_of_context gamma)) ->
   (*delta and f are typed under gamma (they do not use the new symbol)*)
   Forall (formula_typed gamma) (map snd delta) ->
   closed gamma (Fquant Tforall x f) ->
@@ -1566,8 +1570,7 @@ Definition existsE_trans name (f: formula) (x: vsymbol) hyp :
   fun t =>
   (*New symbol not in signature*)
   (*New symbol does not appear in delta, and does not appear in f*)
-  if in_bool string_dec name 
-  (map (fun (x: funsym) => s_name x) (sig_f (task_gamma t)))
+  if in_bool string_dec name (idents_of_context (task_gamma t))
   then [t]
   else
     [task_with_goal t (Fquant Texists x f);
@@ -1599,7 +1602,7 @@ Proof.
   intros.
   unfold sound_trans_closed, TaskGen.sound_trans, existsE_trans. intros.
   destruct t as [[gamma delta] goal]. simpl_task.
-  destruct (in_bool_spec string_dec name (map (fun x : funsym => s_name x) (sig_f gamma)));
+  destruct (in_bool_spec string_dec name (idents_of_context gamma));
   [apply H; simpl; auto |]. simpl in H.
   assert (H':=H).
   specialize (H _ ltac:(left; auto)).
@@ -1619,7 +1622,8 @@ Proof.
     apply union_nil in f_mono. apply f_mono.
   }
   assert (Hnotused: ~ In (const_noconstr name (snd x)) (sig_f gamma)). {
-   intro C. apply n. rewrite in_map_iff. exists (const_noconstr name (snd x)).
+    intro C. apply n. apply sig_f_in_idents. rewrite in_map_iff. 
+    exists (const_noconstr name (snd x)).
     split; auto.
   }
   assert (Htyval: valid_type gamma (snd x)). {
@@ -1629,12 +1633,13 @@ Proof.
   }
   (*First, prove new context is valid*)
   assert (gamma_valid': valid_context (abs_fun (const_noconstr name (snd x)) :: gamma)). {
-    constructor; simpl; auto; constructor; auto; try solve[constructor].
-    unfold wf_funsym. simpl. constructor; auto.
-    split.
-    + revert Htyval. apply valid_type_sublist.
-      apply expand_sublist_sig.
-    + rewrite Hsort; auto.
+    constructor; simpl; auto; try constructor; auto; try solve[constructor].
+    - unfold wf_funsym. simpl. constructor; auto.
+      split.
+      + revert Htyval. apply valid_type_sublist.
+        apply expand_sublist_sig.
+      + rewrite Hsort; auto.
+    - unfold idents_of_def; simpl. intros y [[Heq | []] Hinx2]; subst; contradiction.
   }
   specialize (Hval2 gamma_valid' Hwf2).
   unfold log_conseq_gen in *.
@@ -1779,8 +1784,7 @@ Qed.
   then gamma, delta |- g*)
 Theorem D_existsE gamma delta x f c g hyp:
   (*c is not used*)
-  negb (in_bool string_dec c (map (fun (x: funsym) => s_name x) 
-    (sig_f gamma))) ->
+  negb (in_bool string_dec c (idents_of_context gamma)) ->
   (*g must be typed under gamma*)
   formula_typed gamma g ->
   derives (gamma, delta, Fquant Texists x f) ->

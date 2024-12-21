@@ -836,8 +836,7 @@ Qed.
 (*A more useful form of existential elimination for our proof system:*)
 Lemma derives_destruct_ex gamma delta goal name c x f:
   find_hyp delta name = Some (Fquant Texists x f) ->
-  negb (in_bool string_dec c (map (fun (x: funsym) => s_name x) 
-  (sig_f gamma))) ->
+  negb (in_bool string_dec c  (idents_of_context gamma)) ->
   formula_typed gamma goal ->
   task_wf (gamma, delta, Fquant Texists x f) ->
   derives (abs_fun (const_noconstr c (snd x)) :: gamma, 
