@@ -2133,172 +2133,8 @@ Proof. intros Hi; inversion Hi. Qed.
 Opaque match_str.
 Opaque index_str.
 
-(*TODO: we will want to take some stuff out:
-  e.g. No projection is ever equal to indexer even if come from different ADTs,
-    etc - since we need in both lemmas*)
- 
-Lemma funs_new_map_single_nodup srts {m a} m_in a_in:
-  NoDup (map (fun (x: funsym) => s_name x) (map (fun (x: {x: funsym & _}) => (projT1 x)) 
-    ((funs_new_map_single srts m m_in a a_in)))).
-Proof.
-  rewrite funs_new_map_single_funsyms.
-  rewrite !map_app.
-  (*Now have to reason about concat*)
-  rewrite !NoDup_app_iff'. split_all.
-  - (*Part 1: Prove nodup of new constructors*)
-    (*TODO: some of this might have to be in separate lemma for 
-      well-typed context*)
-    setoid_rewrite constr_in_adt_eq in new_constr_name_inj.
-    specialize (new_constr_name_inj m m a a m_in m_in a_in a_in).
-    pose proof (constr_list_names_Nodup m_in a_in) as Hnodup.
-    induction (adt_constr_list a) as [| c1 cs IH]; simpl; [constructor|].
-    inversion Hnodup as [| ? ? Hnotin Hnodup2]; subst.
-    constructor; simpl in *; auto.
-    rewrite map_map.
-    rewrite in_map_iff. intros [x [Hxeq Hinx]].
-    unfold new_constr in Hxeq.
-    simpl in Hxeq.
-    rewrite !str_app_assoc in Hxeq.
-    apply under_inj in Hxeq.
-    apply str_app_inj_l in Hxeq.
-    apply new_constr_name_inj in Hxeq; auto. subst.
-    apply Hnotin. rewrite in_map_iff. eauto.
-  - (*Part 2: Prove nodup of new projections*)
-    destruct (Nat.eq_dec (length srts) (length (m_params m))); 
-    [| simpl; rewrite concat_map_nil; constructor].
-    rewrite concat_map. rewrite !map_map.
-    apply NoDup_concat_iff; rewrite !map_length. split.
-    + (*Each list of proj syms added has nodups*)
-      intros l. rewrite in_map_iff. intros [f [Hl Hinf]]; subst.
-      apply proj_names_nodup.
-    + (*No common elts across different projections - idea: follows from fact
-        that constr names across ADTs are different*)
-      intros i1 i2 d x Hi1 Hi2 Hi12.
-      rewrite !map_nth_inbound with (d2:=id_fs); auto.
-      unfold projection_syms, dep_mapi.
-      rewrite !map_dep_map.  simpl.
-      rewrite !dep_map_nondep.
-      rewrite !in_map_iff.
-      intros [[f1 [Hx1 Hinf1]] [f2 [Hx2 Hinf2]]].
-      subst.
-      (*Now get that names must be equal*)
-      rewrite !str_app_assoc in Hx2.
-      apply under_inj in Hx2.
-      rewrite <- !str_app_assoc in Hx2.
-      apply str_app_inj_l in Hx2.
-      (*Now use num lemma to show that names equal*)
-      rewrite !proj_str_eq in Hx2.
-      rewrite <- !str_app_assoc in Hx2.
-      rewrite !str_app_assoc_22 in Hx2.
-      apply str_num_inj in Hx2; try apply nat_to_string_num.
-      apply str_app_inj_r in Hx2.
-      (*Use fact that constr list has nodups*)
-      pose proof (constr_list_names_Nodup m_in a_in) as Hnodup.
-      assert (Hntheq: (nth i2 (adt_constr_list a) id_fs) =
-      (nth i1 (adt_constr_list a) id_fs)).
-      {
-        eapply NoDup_map_in in Hnodup. apply Hnodup. all: auto.
-        all: apply nth_In; auto.
-      }
-      apply NoDup_map_inv in Hnodup.
-      rewrite NoDup_nth with (d:=id_fs) in Hnodup.
-      (*contradicts i <> j*)
-      auto.
-  - (*selector is easy: only 1*)
-    destruct srts as [| s1 srts]; simpl; [constructor|].
-    destruct (Nat.eq_dec (length srts) (length (m_params m))); repeat (constructor; auto).
-  - (*same for indexer*)
-    destruct (Nat.eq_dec (length srts) (length (m_params m))); repeat (constructor; auto).
-  - (*Now show selector not indexer*)
-    destruct srts as [| s1 srts].
-    { simpl. intros x [[] _]. }
-    destruct (Nat.eq_dec (length srts) (length (m_params m))).
-    2: { simpl. intros x [[] _]. }
-    destruct (Nat.eq_dec (length (s1 :: srts)) (length (m_params m))).
-    2: { simpl. intros x [_ []]. }
-    (*not possible to be both (although both not equal)*)
-    simpl in *. lia.
-  - (*projection not selector or indexer - because of prefixes*)
-    destruct (Nat.eq_dec (length srts) (length (m_params m))).
-    2: { simpl. rewrite concat_map_nil. simpl. intros x [[] _]. }
-    simpl.
-    intros x [Hinx1 Hinx2].
-    rewrite in_app_iff in Hinx2.
-    (*simplify proj*)
-    revert Hinx1. rewrite concat_map, !map_map.
-    rewrite in_concat. intros [l1 [Hinl1 Hinx1]].
-    revert Hinl1. rewrite in_map_iff. intros [f1 [Hl1 Hinf1]]; subst.
-    revert Hinx1.
-    unfold projection_syms, dep_mapi. simpl.
-    rewrite !map_dep_map. simpl.
-    rewrite !dep_map_nondep.
-    rewrite in_map_iff. intros [[n ty] [Hx Hinn]]. subst.
-    (*Now cases for contradictions*)
-    destruct Hinx2 as [Hinx2 | Hinx2].
-    + destruct srts as [| s1 srts]; [contradiction|].
-      destruct (Nat.eq_dec (length srts) (length (m_params m))); [|contradiction].
-      simpl in *; lia.
-    + destruct Hinx2 as [Heq | []].
-      (*Idea: i <> p as strings (why we need prefix)*)
-      rewrite !str_app_assoc in Heq. apply under_inj in Heq.
-      rewrite index_str_eq in Heq.
-      rewrite <- !str_app_assoc in Heq.
-      apply append_inj in Heq; [| apply i_s_len].
-      destruct Heq as [Heq _]. apply (i_s_neq Heq).
-  - (*new constr not in proj, selector, indexer - (again from prefix)*)
-    intros x [Hinx1 Hinx2].
-    rewrite !in_app_iff in Hinx2.
-    (*Simplify Hinx1*)
-    rewrite in_map_iff in Hinx1.
-    destruct Hinx1 as [f1 [Hname1 Hinf1]].
-    rewrite in_map_iff in Hinf1.
-    destruct Hinf1 as [f2 [Hf1 Hinf2]]; subst.
-    simpl in Hinx2.
-    destruct Hinx2 as [Hinx2 | [Hinx2 | Hinx2]].
-    + (*not in proj*)
-      destruct (Nat.eq_dec (length srts) (length (m_params m))); [|
-      rewrite concat_map_nil in Hinx2; contradiction].
-      revert Hinx2. (*TODO: repetitive*) rewrite concat_map, !map_map.
-      rewrite in_concat. intros [l1 [Hinl1 Hinx2]].
-      revert Hinl1. rewrite in_map_iff. intros [f1 [Hl1 Hinf1]]; subst.
-      revert Hinx2.
-      unfold projection_syms, dep_mapi. simpl.
-      rewrite !map_dep_map. simpl.
-      rewrite !dep_map_nondep.
-      rewrite in_map_iff. intros [[n ty] [Hx Hinn]]. subst.
-      (*Now contradiction from beginning of string*)
-      rewrite !str_app_assoc in Hx.
-      apply under_inj in Hx.
-      rewrite <- !str_app_assoc in Hx.
-      (*p <> n*)
-      apply append_inj in Hx; [| apply n_p_len].
-      destruct Hx as [Heq _]. apply (p_n_neq Heq).
-    + (*not selector*)
-      destruct srts as [| s1 srts]; [contradiction|].
-      destruct (Nat.eq_dec (length srts) (length (m_params m))) ; [|contradiction].
-      destruct Hinx2 as [Heq | []].
-      simpl in Heq.
-      rewrite match_str_eq, !str_app_assoc in Heq.
-      apply under_inj in Heq.
-      rewrite <- !str_app_assoc in Heq.
-      (*m <> n*)
-      apply append_inj in Heq; [| apply m_n_len].
-      destruct Heq as [Heq _]; apply (m_n_neq Heq).
-    + (*Not indexer*)
-      destruct (Nat.eq_dec (length srts) (length (m_params m))); [|contradiction].
-      destruct Hinx2 as [Heq | []].
-      simpl in Heq. rewrite !str_app_assoc in Heq.
-      apply under_inj in Heq. rewrite index_str_eq in Heq.
-      rewrite <- !str_app_assoc in Heq.
-      (*i <> n*)
-      apply append_inj in Heq; [| apply i_n_len].
-      destruct Heq as [Heq _]; apply (i_n_neq Heq).
-Qed.
-
 Definition adt_d : alg_datatype :=
   alg_def ts_d (list_to_ne_list [id_fs] eq_refl).
-
-Search mut_in_ctx constr_in_adt (_ = _).
 
 (*TODO: subsumes [constr_in_one_adt]*)
 Lemma constr_names_uniq {m1 m2: mut_adt} {a1 a2: alg_datatype} {c1 c2: funsym} 
@@ -2625,14 +2461,176 @@ Proof.
   apply (adt_names_uniq m1_in m2_in) in Hnames; auto.
 Qed.
 
-
-(*TODO: redo single lemma using these*)
-
 End Cases.
 
+(*Use these to prove the results we need*)
+
+Opaque selector_funsym.
+Opaque indexer_funsym.
+
+(*First, for fixed mut and adt, added funsyms have unique names*)
+Lemma funs_new_map_single_nodup srts {m a} m_in a_in:
+  NoDup (map (fun (x: funsym) => s_name x) (map (fun (x: {x: funsym & _}) => (projT1 x)) 
+    ((funs_new_map_single srts m m_in a a_in)))).
+Proof.
+  rewrite funs_new_map_single_funsyms.
+  rewrite !map_app.
+  (*Now have to reason about concat*)
+  rewrite !NoDup_app_iff'. split_all.
+  - (*Part 1: Prove nodup of new constructors*)
+    (*TODO: move from Alpha*)
+    rewrite map_map. apply Alpha.NoDup_map_inj.
+    + intros c1 c2 c1_in c2_in Heq.
+      apply (new_constr_names_uniq m_in m_in a_in a_in) in Heq; auto;
+      try (apply constr_in_adt_eq; auto); destruct_all; auto.
+    + eapply NoDup_map_inv. 
+      apply (constr_list_names_Nodup m_in a_in).
+  - (*Part 2: Prove nodup of new projections*)
+    destruct (Nat.eq_dec (length srts) (length (m_params m))); 
+    [| simpl; rewrite concat_map_nil; constructor].
+    rewrite concat_map. rewrite !map_map.
+    apply NoDup_concat_iff; rewrite !map_length. split.
+    + (*Each list of proj syms added has nodups*)
+      intros l. rewrite in_map_iff. intros [f [Hl Hinf]]; subst.
+      apply proj_names_nodup.
+    + (*No common elts across different projections - 
+      from previous lemma*)
+      intros i1 i2 d x Hi1 Hi2 Hi12.
+      rewrite !map_nth_inbound with (d2:=id_fs); auto.
+      rewrite !in_map_iff.
+      intros [[f1 [Hname1 Hinf1]] [f2 [Hname2 Hinf2]]].
+      subst.
+      set (c1:= (nth i1 (adt_constr_list a) id_fs)) in *.
+      set (c2:= (nth i2 (adt_constr_list a) id_fs)) in *.
+      assert (c1_in: constr_in_adt c1 a) by (apply constr_in_adt_eq; apply nth_In; auto).
+      assert (c2_in: constr_in_adt c2 a) by (apply constr_in_adt_eq; apply nth_In; auto).
+      (*Contradiction: c1 = c2*)
+      assert (Hc: c1 = c2 /\ f1 = f2). {
+        pose proof (proj_names_uniq m_in m_in a_in a_in c1_in c2_in Hinf1 Hinf2 (eq_sym Hname2)).
+        destruct_all; auto.
+      }
+      destruct Hc as [Hc Hf]; subst.
+      (*Contradicts Nodups of adt_constr_list*)
+      pose proof (constr_list_names_Nodup m_in a_in) as Hnodup.
+      apply NoDup_map_inv in Hnodup.
+      rewrite NoDup_nth with (d:=id_fs) in Hnodup.
+      apply Hi12; eauto.
+  -(*selector is easy: only 1*)
+    destruct srts as [| s1 srts]; simpl; [constructor|].
+    destruct (Nat.eq_dec (length srts) (length (m_params m))); repeat (constructor; auto).
+  - (*same for indexer*)
+    destruct (Nat.eq_dec (length srts) (length (m_params m))); repeat (constructor; auto).
+  - (*selector not indexer*)
+    destruct srts as [| s1 srts].
+    { simpl. intros x [[] _]. }
+    destruct (Nat.eq_dec (length srts) (length (m_params m))).
+    2: { simpl. intros x [[] _]. }
+    destruct (Nat.eq_dec (length (s1 :: srts)) (length (m_params m))).
+    2: { simpl. intros x [_ []]. }
+    (*not possible to be both (although both not equal)*)
+    simpl in *. lia.
+  - (*projection not selector or indexer*)
+    destruct (Nat.eq_dec (length srts) (length (m_params m))).
+    2: { simpl. rewrite concat_map_nil. simpl. intros x [[] _]. }
+    simpl.
+    intros x [Hinx1 Hinx2].
+    rewrite in_app_iff in Hinx2.
+    (*simplify proj*)
+    revert Hinx1. rewrite concat_map, !map_map.
+    rewrite in_concat. intros [l1 [Hinl1 Hinx1]].
+    revert Hinl1. rewrite in_map_iff. intros [f1 [Hl1 Hinf1]]; subst.
+    revert Hinx1.
+    rewrite in_map_iff. intros [f2 [Hname2 Hf2]]; subst.
+    (*Now cases for contradictions*)
+    destruct Hinx2 as [Hinx2 | Hinx2].
+    + destruct srts as [| s1 srts]; [contradiction|].
+      destruct (Nat.eq_dec (length srts) (length (m_params m))); [|contradiction].
+      simpl in *; lia.
+    + destruct Hinx2 as [Heq | []].
+      apply (proj_indexer_names Hf2 (eq_sym Heq)).
+  - (*new constr not in proj, selector, indexer*)
+    intros x [Hinx1 Hinx2].
+    rewrite !in_app_iff in Hinx2.
+    (*Simplify Hinx1*)
+    rewrite in_map_iff in Hinx1.
+    destruct Hinx1 as [f1 [Hname1 Hinf1]].
+    rewrite in_map_iff in Hinf1.
+    destruct Hinf1 as [f2 [Hf1 Hinf2]]; subst.
+    simpl in Hinx2.
+    destruct Hinx2 as [Hinx2 | [Hinx2 | Hinx2]].
+    + (*not in proj*)
+      destruct (Nat.eq_dec (length srts) (length (m_params m))); [|
+      rewrite concat_map_nil in Hinx2; contradiction].
+      revert Hinx2. (*TODO: repetitive*) 
+      rewrite in_map_iff. intros [f1 [Hf1 Hinf1]]; subst.
+      rewrite in_concat in Hinf1. destruct Hinf1 as [l1 [Hinl1 Hinf1]].
+      rewrite in_map_iff in Hinl1. destruct Hinl1 as [f3 [Hl1 Hinf3]]; subst.
+      apply (new_constr_proj_names _ Hinf1 (eq_sym Hf1)).
+    + (*not selector*)
+      destruct srts as [| s1 srts]; [contradiction|].
+      destruct (Nat.eq_dec (length srts) (length (m_params m))) ; [|contradiction].
+      destruct Hinx2 as [Heq | []].
+      apply (new_constr_selector_names (eq_sym Heq)).
+    + (*Not indexer*)
+      destruct (Nat.eq_dec (length srts) (length (m_params m))); [|contradiction].
+      destruct Hinx2 as [Heq | []].
+      apply (new_constr_indexer_names (eq_sym Heq)).
+Qed.
+
+(*More general uniqueness for [funs_new_map_single]*)
+Lemma funs_new_map_single_uniq {m1 m2 a1 a2 srts f1 f2}
+  (m1_in: mut_in_ctx m1 gamma) (m2_in: mut_in_ctx m2 gamma)
+  (a1_in: adt_in_mut a1 m1) (a2_in: adt_in_mut a2 m2)
+  (Hinf1: In f1 (map (fun x => projT1 x) (funs_new_map_single srts m1 m1_in a1 a1_in)))
+  (Hinf2: In f2 (map (fun x => projT1 x) (funs_new_map_single srts m2 m2_in a2 a2_in)))
+  (Heq: s_name f1 = s_name f2):
+  m1 = m2 /\ a1 = a2 /\ f1 = f2.
+Proof.
+  apply funs_new_map_single_funsym_in in Hinf1, Hinf2.
+  (*Now just a LOT of cases*)
+  destruct Hinf1 as [[c1 [c1_in Hf1]] | [[c1 [c1_in Hinf1]] | [Hinf1 | Hinf1]]]; 
+  destruct Hinf2 as [[c2 [c2_in Hf2]] | [[c2 [c2_in Hinf2]]| [Hinf2 | Hinf2]]].
+  -- (*Both new funsyms*) subst.
+    pose proof (new_constr_names_uniq m1_in m2_in a1_in a2_in c1_in c2_in Heq);
+    destruct_all; subst; auto.
+  -- (*new constr and projection*)
+    subst. exfalso. apply (new_constr_proj_names f2 Hinf2 Heq).
+  -- (*new constr and selector*)
+    subst. exfalso. apply (new_constr_selector_names Heq).
+  -- (*new constr and indexer*)
+    subst. exfalso. apply (new_constr_indexer_names Heq).
+  -- (*projection and new constr*)
+    subst. exfalso. apply (new_constr_proj_names f1 Hinf1 (eq_sym Heq)).
+  -- (*two projections*)
+    pose proof (proj_names_uniq m1_in m2_in a1_in a2_in c1_in c2_in
+      Hinf1 Hinf2 Heq). destruct_all; subst; auto.
+  -- (*projection and selector*)
+    subst. exfalso. apply (proj_selector_names Hinf1 Heq).
+  -- (*projection and indexer*)
+    subst. exfalso. apply (proj_indexer_names Hinf1 Heq).
+  -- (*selector and new constr*)
+    subst. exfalso. apply (new_constr_selector_names (eq_sym Heq)).
+  -- (*selector and projection*)
+    subst. exfalso. apply (proj_selector_names Hinf2 (eq_sym Heq)).
+  -- (*2 selectors*)
+    subst. pose proof (selectors_uniq m1_in m2_in a1_in a2_in Heq).
+    destruct_all; subst; auto.
+  -- (*selector and indexer*)
+    subst. exfalso. apply (selector_indexer_names Heq).
+  -- (*indexer and new constr*)
+    subst. exfalso. apply (new_constr_indexer_names (eq_sym Heq)).
+  -- (*indexer and proj*)
+    subst. exfalso. apply (proj_indexer_names Hinf2 (eq_sym Heq)).
+  -- (*indexer and selector*)
+    subst. exfalso. apply (selector_indexer_names (eq_sym Heq)).
+  -- (*both indexer*)
+    subst. pose proof (indexers_uniq m1_in m2_in a1_in a2_in Heq).
+    destruct_all; subst; auto.
+Qed.
 
 (*Now lift NoDup to whole map*)
-Lemma funs_new_map_nodup (g2: context) (g2_sub: sublist (mut_of_context g2) (mut_of_context gamma)) 
+Lemma funs_new_map_nodup (g2: context) (g2_nodup: NoDup (mut_of_context g2))
+  (g2_sub: sublist (mut_of_context g2) (mut_of_context gamma)) 
   srts:
   NoDup (map (fun (x: funsym) => s_name x)
     (map (fun (x: {x: funsym & _}) => (projT1 x)) (funs_new_map g2 g2_sub srts))).
@@ -2642,6 +2640,7 @@ Proof.
   induction g2 as [| d g2 IH].
   - simpl. constructor.
   - intros Hallin. destruct d as [m | | | | | |]; auto.
+    simpl in g2_nodup. inversion g2_nodup as [| ? ? m_notin g2_nodup']; subst.
     simpl.
     rewrite !concat_app, !map_app.
     apply NoDup_app_iff'. split_all; auto.
@@ -2677,8 +2676,6 @@ Proof.
         rewrite !in_map_iff.
         intros [[f1 [Hname1 Hinf1]] [f2 [Hname2 Hinf2]]]; subst.
         (*Since we have funsyms, can apply easier lemma*)
-        apply funs_new_map_single_funsym_in in Hinf1, Hinf2.
-        (*TODO: separate lemma?*)
         (*We will prove: no constr names in common bewteen a1 and a2*)
         set (a1:=(nth i1 (typs m) adt_d)) in *.
         set (a2:=(nth i2 (typs m) adt_d)) in *.
@@ -2690,316 +2687,37 @@ Proof.
           intros Heq; subst.
           apply Hi12. apply (Hn i1 i2); auto.
         }
-        (*Now just a LOT of cases*)
-        destruct Hinf1 as [[c1 [c1_in Hf1]] | [[c1 [c1_in Hinf1]] | [Hinf1 | Hinf1]]]; 
-        destruct Hinf2 as [[c2 [c2_in Hf2]] | [[c2 [c2_in Hinf2]]| [Hinf2 | Hinf2]]].
-        -- (*Both new funsyms*) subst.
-          pose proof (new_constr_names_uniq m_in m_in a1_in a2_in c1_in c2_in (eq_sym Hname2));
-          destruct_all; subst; contradiction.
-        -- (*new constr and projection*)
-          subst. apply (new_constr_proj_names f2 Hinf2 (eq_sym Hname2)).
-        -- (*new constr and selector*)
-          subst. apply (new_constr_selector_names (eq_sym Hname2)).
-        -- (*new constr and indexer*)
-          subst. apply (new_constr_indexer_names (eq_sym Hname2)).
-        -- (*projection and new constr*)
-          subst. apply (new_constr_proj_names f1 Hinf1 Hname2).
-        -- (*two projections*)
-          pose proof (proj_names_uniq m_in m_in a1_in a2_in c1_in c2_in
-            Hinf1 Hinf2 (eq_sym Hname2)). destruct_all; subst; contradiction.
-        -- (*projection and selector*)
-          subst. apply (proj_selector_names Hinf1 (eq_sym Hname2)).
-        -- (*projection and indexer*)
-          subst. apply (proj_indexer_names Hinf1 (eq_sym Hname2)).
-        -- (*selector and new constr*)
-          subst. apply (new_constr_selector_names Hname2).
-        -- (*selector and projection*)
-          subst.  apply (proj_selector_names Hinf2 Hname2).
-        -- (*2 selectors*)
-          subst. pose proof (selectors_uniq m_in m_in a1_in a2_in (eq_sym Hname2)).
-          destruct_all; subst; contradiction.
-        -- (*selector and indexer*)
-          subst. apply (selector_indexer_names (eq_sym Hname2)).
-        -- (*indexer and new constr*)
-          subst. apply (new_constr_indexer_names Hname2).
-        -- (*indexer and proj*)
-          subst. apply (proj_indexer_names Hinf2 Hname2).
-        -- (*indexer and selector*)
-          subst. apply (selector_indexer_names Hname2).
-        -- (*both indexer*)
-          subst. pose proof (indexers_uniq m_in m_in a1_in a2_in (eq_sym Hname2)).
-          destruct_all; subst; contradiction.
+        (*Use previous result*)
+        pose proof (funs_new_map_single_uniq m_in m_in a1_in a2_in Hinf1 Hinf2 (eq_sym Hname2))
+          as [Nmeq [Haeq Hfeq]]; subst; contradiction.
     + (*Here, show if in different muts, not equiv*)
-      (*TODO: START*)
-      (*TODO: probably redo - this is the same proof 3 times (for fixed m and a,
-        for fixed m, and for different m.
-        Can we just do NoDup_concat directly and prove all possibilities at once?
-        Use lemmas above*)
-
-        
-
-
-
-
-
-
-
-
-         simpl in Hname2.
-          rewrite !str_app_assoc in Hname2.
-          apply under_inj in Hname2.
-          apply str_app_inj_l in Hname2.
-          (*use injectivity of [new_constr_name]*)
-          assert (c1 = c2) by (apply (new_constr_name_inj m m a1 a2); auto); subst.
-          (*Now contradicts ADTs different*)
-          apply Haneq.
-          apply (constr_in_one_adt gamma_valid c2 _ _ _ _ m_in m_in a1_in a2_in); auto.
-        -- (*One is new_constr, one is projection_sym*)
-          (*Prove in separate lemma and can use before also*)
-          Search gen_id under_str.
-        
-        
-         destruct Hinf1 as [c1 [c1_in Hf1]]; destruct Hinf2 as 
-
-          subst.
-
-        } 
-        assert (forall c1 c2, constr_in_adt a1 c1 -> constr_in_adt a2 c2 ->
-          s_name c1 = s_name c2 -> a1 = a2
-          )
-        (*Now we have a bunch of cases (TODO: prove)*)
-        admit.
-    + (*Prove nothing in common between ADTs*)
-
-
-        Search funs_new_map_single.
-        rewrite in_map_iff in Hinf1, Hinf2.
-
-
-        all: try solve[exact a1_in].
-        2: {
-          intros a a_in a_in2. 
-          assert (a_in = a_in2) by (apply bool_irrelevance); subst; reflexivity.
-        }
-        2: auto.
-        Unshelve.
-        2: exact a1_in. (*for some reason, doesn't work to give directly*)
-
-        2: auto.
-         (Hnth:=a1_in).
-        Unshelve.
-        Search nth dep_map.
-        erewrite map_nth_inbound with (d2:=nil).
-        Unshelve.
-        
-         with (d2:=id_fs).
-
-        Search dep_map In.
-
-Lemma funs_new_map_single_nodup srts {m a} m_in a_in:
-  NoDup (map (fun (x: funsym) => s_name x) (map (fun (x: {x: funsym & _}) => (projT1 x)) 
-    ((funs_new_map_single srts m m_in a a_in)))).
-    
-    
-     (*First, prove NoDup (separate lemma?)*)
-
-
-
-
-  Search 
-  funs_new_map_single_in srts m m_in a a_in x \/
-
-  .
-
-
- exists m. exists a. exists m_in. exists a_in.
-
-      assert (Hinm: In m (mut_of_context g2))
-    
-     eauto 10.
-    split; eauto 10.
-
-
-  funs_new_map_single_in_spec:
-forall (srts : list sort) (m : mut_adt) (m_in : mut_in_ctx m gamma)
-(a : alg_datatype) (a_in : adt_in_mut a m)
-(x : {g : funsym &
-arg_list (domain (dom_aux pd)) (sym_sigma_args g srts) ->
-domain (dom_aux pd) (funsym_sigma_ret g srts)}),
-In x (funs_new_map_single srts m m_in a a_in) <->
-funs_new_map_single_in srts m m_in a a_in x
-
-
-    Search funs_new_map_single_in.
-  
-   [m [a [m_in [a_in Hl]]]]].
-
-
-(m: mut_adt) (m_in: mut_in_ctx m gamma)
-  (a: alg_datatype) (a_in: adt_in_mut a m)
-
-(**)
-
-
-        (*Show Hinf/Hinf2 irrel*)
-        
-        
-         apply Hin.
-        split.
-
-        assert (Hin: In )
-      
-      
-       subst x.
-        ) in Hinl.
-        destruct Hinl as [H Hin].
-        apply Hin.
-
-          Search adt_constr_list constr_in_adt.
-      } eapply in_dep_map in 
-      
-       in_dep_map:
-  forall {A B : Type} {P : A -> Prop} (f : forall x : A, P x -> B)
-    (l : list A) (Hall : Forall P l) (x : A),
-  In x l -> exists H : P x, In (f x H) (dep_map f l Hall)
-      
-      
-       Search In dep_map.
-
-
-      unfold map_In. eexists. rewrite dep_map_comp.
-      eexists. split.
-      + assert (Hinc: In c (adt_constr_list a)) pose proof (in_dep_map).
-      
-       Search In dep_map.
-
-
-
-in_dep_map:
-forall {A B : Type} {P : A -> Prop} (f : forall x : A, P x -> B)
-(l : list A) (Hall : Forall P l) (x : A),
-In x l -> exists H : P x, In (f x H) (dep_map f l Hall)
-
-      Search map_In.
-       rewrite in_map_In_iff in Hinx.
-      2: {
-        intros f H1 H2. f_equal. apply functional_extensionality_dep. intros args.
-        Check (proj_syms_index_bound H1).
-      }
-      
-      
-       Search map_In.
-      Search In dep_map.
-  }
-
-    
-    
-     Search constr_in_adt adt_constr_list.
-  }
-  Search (?P \/ ?Q <-> ?R \/ ?S).
-  rewrite !map_app.
-
-  match Nat.eq_dec (length srts) (length (m_params m)) with
-    | left srts_len => [existT _ (indexer_funsym badnames (adt_name a))
-          (indexer_interp m_in a_in srts srts_len)]
-  .
-    
-    
-    exists s1 srts1 (srts_len: length srts1 = length (m_params m))
-    (Heq: s1 :: srts1 = srts),
-    x = existT _ (selector_funsym badnames (adt_name a) (adt_constr_list a))
-          (selector_interp m_in a_in s1 srts1 srts_len)).
-
-
-    x = (*eq_rect (s1 :: srts1) _ *)
-    (selector_funsym badnames (adt_name a) (adt_constr_list a))
-          (selector_interp m_in a_in s1 srts1 srts_len)) srts Heq)
-  .
-
-Proof.
-
-
-  match srts with
-    | s1 :: srts =>
-      match Nat.eq_dec (length srts) (length (m_params m)) with
-      | left srts_len =>  
-        [existT _ (selector_funsym badnames (adt_name a) (adt_constr_list a))
-          (selector_interp m_in a_in s1 srts srts_len)]
-      | _ => nil
-      end
-    | _ => nil
-    end ++
-  
-  concat (dep_map (fun c (c_in: constr_in_adt c a) =>
-      (*If srts has wrong length dont add anything*)
-      match Nat.eq_dec (length srts) (length (m_params m)) with
-      | left srts_len => 
-        (*Add all new projection functions per constructor*)
-        map_In (projection_syms badnames c) (fun f Hinf => 
-          let n := index funsym_eq_dec f (projection_syms badnames c) in
-          existT _ f (proj_interp c f n (proj_syms_index_bound Hinf) 
-            (index_nth funsym_eq_dec id_fs Hinf) m_in a_in c_in srts srts_len)
-        )
-      | right srts_len => nil
-      end
-    ) (adt_constr_list a) (all_constr_in a)) ++
-  
-  
-   f = new_constr c /\ x = new_constr_interp c srts).
-
-
-  map (fun c => 
-      existT _ (new_constr c) (new_constr_interp c srts)
-    ) (adt_constr_list a) ++
-
-(*Let's try this first*)
-
-Lemma funs_new_map_in (g2: context) (g2_sub: sublist (mut_of_context g2) (mut_of_context gamma)) 
-  srts f:
-  In f (map (fun x => projT1 x) (funs_new_map g2 g2_sub)) srts <->
-  (*new constructor*)
-  (exists )
-
- map (fun c => 
-      existT _ (new_constr c) (new_constr_interp c srts)
-    ) (adt_constr_list a) ++
-
-
-Lemma funs_new_map_nodup (g2: context) (g2_sub: sublist (mut_of_context g2) (mut_of_context gamma)) 
-  srts:
-  NoDup (map (fun (x: {x: funsym & _}) => s_name (projT1 x)) (funs_new_map g2 g2_sub srts)).
-Proof.
-  unfold funs_new_map, map_adts.
-  generalize dependent (all_mut_in g2_sub). clear g2_sub.
-  induction g2 as [| d g2 IH].
-  - simpl. constructor.
-  - intros Hallin. destruct d as [m | | | | | |]; auto.
-    simpl.
-    rewrite !concat_app, !map_app.
-    apply NoDup_app_iff'. split_all; auto.
-    (*2 goals: prove In and NoDup*)
-
-
-    rewrite !map_app.
-    + admit.
-    + unfold funs_new_map, map_adts in *. simpl. auto. apply IH.
-    
-    
-     apply IH.
-    
-    
-     unfold funs_new_map, map_adts.
-
-    unfold mut_of_context; simpl.
-    simpl.
-  
-   unfold funs_new_map. simpl.
-    rewrite concat_app.
-    fold funs_new_map.
-  
-  
-   auto. simpl.
-
+      setoid_rewrite in_map_iff.
+      intros x [[f1 [Hname1 Hinf1]] [f2 [Hname2 Hinf2]]]. subst.
+      revert Hinf1 Hinf2.
+      rewrite !in_map_iff; intros [x1 [Hf1 Hinx1]] [x2 [Hf2 Hinx2]]; subst.
+      rewrite in_concat in Hinx1, Hinx2.
+      destruct Hinx1 as [l1 [Hinl1 Hinx1]].
+      destruct Hinx2 as [l2 [Hinl2 Hinx2]].
+      rewrite in_concat in Hinl2.
+      destruct Hinl2 as [l3 [Hinl3 Hinl2]].
+      (*Now eliminate dep_map*)
+      apply dep_map_in in Hinl1, Hinl3.
+      destruct Hinl1 as [a1 [a1_in [Hina1 Hl1]]].
+      destruct Hinl3 as [m2 [m2_in [Hinm2 Hl3]]].
+      subst.
+      apply dep_map_in in Hinl2.
+      destruct Hinl2 as [a2 [a2_in [Hina2 Hl2]]]; subst.
+      (*Easier to work with map*)
+      apply in_map with (f:=(fun x => projT1 x)) in Hinx1, Hinx2.
+      (* apply in_map with (f:=(fun (x: funsym) => s_name x)) in Hinx1, Hinx2. *)
+      (*Again, use previous result*)
+      set (m1_in :=Forall_inv Hallin) in *.
+      pose proof (funs_new_map_single_uniq m1_in m2_in a1_in a2_in Hinx1 Hinx2 (eq_sym Hname2))
+          as [Hmeq [Haeq Hfeq]]; subst.
+      (*Now use contradiction of unique mut adts*)
+      apply m_notin.
+      apply mut_in_ctx_eq; auto.
+Qed.
 
 (*Then, the full funs just looks up the funsym in the map*)
 
