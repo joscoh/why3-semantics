@@ -887,8 +887,12 @@ Definition comp_ctx (gamma: context) (d: def) (tsk: task) : task :=
 let s := fst st in let tsk := snd st in
   (s, add_def (TaskGen.def_map (rewriteT' (task_gamma tsk) s) (rewriteF' (task_gamma tsk) s nil true) d) tsk). *)
 
+(*NOTE: we use [fold_right] because our contexts are reverse-ordered
+  There may be incompatibility with why3, or they may just be reversing twice.
+  But for our typing, it is very important that the resulting context is still
+  well-ordered*)
 Definition fold_all_ctx (t: task) : task :=
-  fold_left (fun x y => comp_ctx (task_gamma t) y x) (task_gamma t) (nil, task_delta t, task_goal t).
+  fold_right (comp_ctx (task_gamma t)) (nil, task_delta t, task_goal t) (task_gamma t).
 
 (*Fold version - dont use Trans.fold, easier to manually thread state through*)
 Definition fold_comp : trans :=

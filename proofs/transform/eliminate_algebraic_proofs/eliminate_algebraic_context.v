@@ -357,7 +357,7 @@ Qed.
 (*[fold_all_ctx]*)
 
 Definition fold_all_ctx_gamma t : context :=
-  concat (map (fun d => comp_ctx_gamma d (task_gamma t)) (rev (task_gamma t))).
+  concat (map (fun d => comp_ctx_gamma d (task_gamma t)) (task_gamma t)).
 
 Lemma fold_all_ctx_gamma_eq t:
   task_gamma (fold_all_ctx keep_muts new_constr_name badnames noind t) = fold_all_ctx_gamma t.
@@ -366,25 +366,24 @@ Proof.
   (*Basically, we need to split the task_gamma t up*)
   remember (task_gamma t) as gamma.
   (*Weird: if we rewrite without occurrence rewrites under binders but not with numbers*)
-  rewrite Heqgamma at 1 2.
+  rewrite Heqgamma at 2 3.
   clear Heqgamma.
-  rewrite <- fold_left_rev_right.
-  induction (rev (task_gamma t)); simpl; auto.
+  induction (task_gamma t); simpl; auto.
   rewrite comp_ctx_gamma_eq.
+  simpl.
   f_equal; auto.
 Qed.
 
-Definition fold_all_ctx_delta t:= concat (map comp_ctx_delta (rev (task_gamma t))).
+Definition fold_all_ctx_delta t:= concat (map comp_ctx_delta (task_gamma t)).
 
 Lemma fold_all_ctx_delta_eq t:
   task_delta (fold_all_ctx keep_muts new_constr_name badnames noind t) = fold_all_ctx_delta t ++ task_delta t.
 Proof.
   unfold fold_all_ctx, fold_all_ctx_delta.
   remember (task_gamma t) as gamma.
-  rewrite Heqgamma at 1 2.
+  rewrite Heqgamma at 2 3.
   clear Heqgamma.
-  rewrite <- fold_left_rev_right.
-  induction (rev (task_gamma t)); simpl; auto.
+  induction (task_gamma t); simpl; auto.
   rewrite comp_ctx_delta_eq.
   rewrite <- app_assoc.
   f_equal; auto.
@@ -395,10 +394,9 @@ Lemma fold_all_ctx_goal_eq t:
 Proof.
   unfold fold_all_ctx.
   remember (task_gamma t) as gamma.
-  rewrite Heqgamma at 1.
+  rewrite Heqgamma at 2.
   clear Heqgamma.
-  rewrite <- fold_left_rev_right.
-  induction (rev (task_gamma t)); simpl; auto.
+  induction (task_gamma t); simpl; auto.
   rewrite comp_ctx_goal_eq.
   assumption.
 Qed.
