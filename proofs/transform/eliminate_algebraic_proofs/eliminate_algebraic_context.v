@@ -356,13 +356,16 @@ Qed.
 
 (*[fold_all_ctx]*)
 
+Definition fold_all_ctx_gamma_gen g1 g2 : context :=
+  concat (map (fun d => comp_ctx_gamma d g2) g1).
+
 Definition fold_all_ctx_gamma t : context :=
-  concat (map (fun d => comp_ctx_gamma d (task_gamma t)) (task_gamma t)).
+  fold_all_ctx_gamma_gen (task_gamma t) (task_gamma t).
 
 Lemma fold_all_ctx_gamma_eq t:
   task_gamma (fold_all_ctx keep_muts new_constr_name badnames noind t) = fold_all_ctx_gamma t.
 Proof.
-  unfold fold_all_ctx, fold_all_ctx_gamma.
+  unfold fold_all_ctx, fold_all_ctx_gamma, fold_all_ctx_gamma_gen.
   (*Basically, we need to split the task_gamma t up*)
   remember (task_gamma t) as gamma.
   (*Weird: if we rewrite without occurrence rewrites under binders but not with numbers*)
