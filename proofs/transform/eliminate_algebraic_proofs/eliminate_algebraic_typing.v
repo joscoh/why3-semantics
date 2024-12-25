@@ -478,25 +478,229 @@ Qed.
 Lemma sig_t_cons d gamma:
   sig_t (d :: gamma) = typesyms_of_def d ++ sig_t gamma.
 Proof. reflexivity. Qed.
+Lemma sig_f_cons d gamma:
+  sig_f (d :: gamma) = funsyms_of_def d ++ sig_f gamma.
+Proof. reflexivity. Qed.
 Lemma idents_of_context_cons d gamma:
   idents_of_context (d :: gamma) = idents_of_def d ++ idents_of_context gamma.
 Proof. reflexivity. Qed.
 
 (*Assume badnames include everything in gamma*)
 
+(*TODO copied*)
+
+(*TODO: *)
+Definition no_recfun_indpred_gamma (gamma: context) : bool :=
+  forallb (fun x =>
+    match x with
+    | recursive_def _ => false
+    | inductive_def _ => false
+    | _ => true
+    end) gamma.
+
+(*We cannot prove [valid_context] unconditionally: it very important that
+  the preconditions of [eliminate_algebraic] actually hold.
+  Reasons: 1. cannot have recursive_def or inductive_def because we do NOT
+  use rewriteT/rewriteF so they may refer to constructors that are no longer in sig
+  2. rewriteT/rewriteF not correct if non-simple patterns present*)
+
+(*Typesym and funsym not same*)
+(*TODO: move*)
+(* Lemma funsym_typesym_name_disj {gamma} (gamma_valid: valid_context gamma) f t d1 d2
+  (Hind1: In d1 gamma)
+  (Hind2: In d2 gamma)
+  (Hinf: In f (funsyms_of_def d1))
+  (Hint: In t (typesyms_of_def d2)):
+  ts_name t <> s_name f.
+Proof.
+  intros Hn.
+  apply valid_context_wf in gamma_valid.
+  apply wf_context_full in gamma_valid. destruct gamma_valid as [_ [_ Hnodup]].
+  apply (Permutation_NoDup (idents_of_context_split gamma)) in Hnodup.
+  rewrite !NoDup_app_iff' in Hnodup.
+  destruct Hnodup as [_ [_ Hdisj]].
+  apply (Hdisj (ts_name t)).
+  rewrite in_app_iff. rewrite !in_concat. setoid_rewrite in_map_iff. split.
+  - exists (map (fun (x: funsym) => s_name x) (funsyms_of_def d1)). split; eauto.
+    rewrite in_map_iff. exists f; auto.
+  - right. exists (map ts_name (typesyms_of_def d2)). split; eauto. apply in_map. auto.
+Qed. *)
+
+(*Handle disj cases all at once*)
+Lemma new_gamma_gen_disj gamma gamma2 l
+  (Hbad: sublist (idents_of_context (l ++ gamma)) badnames)
+  (Hval: valid_context (l ++ gamma))
+  (Hdisj: disj (idents_of_context l) (idents_of_context gamma)):
+  disj (idents_of_context l) (idents_of_context (concat
+    (map (fun d => comp_ctx_gamma new_constr_name keep_muts badnames noind d gamma2) gamma))).
+Proof.
+  intros x [Hinx Hinx2].
+  apply idents_of_new_gamma in Hinx2.
+  (*Idea: none of new can be equal to anything in badnames*)
+  assert (Hinbad: In x badnames). {
+    apply Hbad. rewrite idents_of_context_app, in_app_iff; auto. 
+  }
+  (*Each case is a contradiction*)
+  destruct Hinx2 as [[m [a [c [m_in [a_in [c_in Hname]]]]]] | 
+    [[m [a [c [f [m_in [a_in [c_in [Hinf Hname]]]]]]]]| 
+    [[m [a [m_in [a_in [Hconstrs Hname]]]]]| 
+    [[m [a [m_in [a_in [Hconstrs Hname]]]]]| Hinx2]]]]; subst.
+  + apply new_constr_badnames in Hinbad; auto. 
+  + (*also in badnames*)
+    eapply (proj_badnames); eauto.
+  + apply selector_badnames in Hinbad; auto.
+  + apply indexer_badnames in Hinbad; auto.
+  + (*Different contradiction - from disj*)
+    apply (Hdisj x); auto.
+Qed.
+
+Require Import eliminate_inductive eliminate_definition. (*TODO: move [valid_ctx_abstract_app]*)
+
+
 Lemma new_gamma_gen_valid gamma gamma2 (Hbad: sublist (idents_of_context gamma) badnames):
   valid_context gamma ->
+  no_recfun_indpred_gamma gamma ->
   valid_context (fold_all_ctx_gamma_gen new_constr_name keep_muts badnames noind gamma gamma2).
 Proof.
-  unfold fold_all_ctx_gamma_gen. intros Hval.
+  unfold fold_all_ctx_gamma_gen. intros Hval Hnori.
   induction gamma as [| d gamma IH]; simpl; auto.
   assert (Hbad2: sublist (idents_of_context gamma) badnames). {
     rewrite idents_of_context_cons in Hbad.
     intros x Hinx. apply Hbad. rewrite in_app_iff; auto.
   }
+  simpl in Hnori.
   inversion Hval; subst.
   (*Proceed by cases - TODO: see how to factor out other cases*)
-  destruct d; simpl.
+  destruct d; simpl; try discriminate.
+  (*First 3 cases: abstract symbols. TODO: these proofs are very similar*)
+  3: {
+    (*Abstract typesym*)
+    apply (valid_ctx_abstract_app) with (l:=[abs_type t]); simpl; auto.
+    apply (new_gamma_gen_disj gamma gamma2 [abs_type t]); auto.
+  }
+  3: {
+    (*Abstract funsym*)
+    apply (valid_ctx_abstract_app) with (l:=[abs_fun f]); simpl; auto.
+    - (*wf*)
+      simpl in *. revert H2. apply Forall_impl. intros f1.
+      apply wf_funsym_sublist. rewrite sig_t_cons. simpl.
+      rewrite <- sig_t_new_gamma_gen with (gamma2:=gamma2). 
+      apply sublist_refl.
+    - (*disj*)
+      apply (new_gamma_gen_disj gamma gamma2 [abs_fun f]); auto.
+    - (*Prove not constr from valid*)
+      constructor; auto. destruct (f_is_constr f) eqn : Hconstr; auto.
+      apply (is_constr_iff _ Hval) in Hconstr; [| rewrite sig_f_cons; simpl; auto].
+      destruct Hconstr as [m [a [m_in [a_in c_in]]]].
+      exfalso. apply (proj1 (abs_not_concrete_fun Hval f (ltac:(simpl; auto))) m a); auto.
+  }
+  3: {
+    (*Abstract predsym*)
+    apply (valid_ctx_abstract_app) with (l:=[abs_pred p]); simpl; auto.
+    - (*wf*)
+      simpl in *. revert H3. apply Forall_impl. intros f1.
+      apply wf_predsym_sublist. rewrite sig_t_cons. simpl.
+      rewrite <- sig_t_new_gamma_gen with (gamma2:=gamma2). 
+      apply sublist_refl.
+    - (*disj*)
+      apply (new_gamma_gen_disj gamma gamma2 [abs_pred p]); auto.
+  }
+  (*2 remaining cases: datatype and nonrec fun*)
+  2: {
+    (*nonrec fun: here we need to reason about rewriteT/F*)
+    constructor; auto.
+    - (*wf*)
+      revert H2.
+      destruct f; simpl; auto.
+      apply Forall_impl. intros f1.
+      apply wf_funsym_sublist. rewrite !sig_t_cons. simpl.
+      rewrite <- sig_t_new_gamma_gen with (gamma2:=gamma2). 
+      apply sublist_refl.
+    - (*wf predsym*)
+      revert H3.
+      destruct f; simpl; auto.
+      apply Forall_impl. intros f1.
+      apply wf_predsym_sublist. rewrite !sig_t_cons. simpl.
+      rewrite <- sig_t_new_gamma_gen with (gamma2:=gamma2). 
+      apply sublist_refl.
+    - (*disjoint*)
+      destruct f; simpl; unfold idents_of_def in *; simpl in *.
+      + apply (new_gamma_gen_disj gamma gamma2 [nonrec_def (fun_def f l t)]); auto.
+      + apply (new_gamma_gen_disj gamma gamma2 [nonrec_def (pred_def p l f)]); auto.
+    - (*NoDup*)
+      destruct f; simpl; auto.
+    - (*valid_constrs_def*)
+      destruct f; simpl; auto.
+    - (*valid_def (interesting one)*)
+      simpl. destruct f as [f params body |]; simpl.
+      + (*We need to prove 4 things about rewriteT:
+        1. well-typed (according to NEW context)
+        2. has same fv
+        3. has same type vars
+        4. funsyms in it are either
+          A. in original term
+          B. new constr
+          (NOTE: we don't YET need to prove that no constrs
+          that we remove are in it but maybe we do for typing)
+          TODO: START WITH THIS*)
+      Print funpred_def_valid_type.
+
+  }
+
+      Search f_is_constr valid_context.
+      Search "abs_not".
+
+
+      is_constr_iff:
+  forall gamma : context,
+  valid_context gamma ->
+  forall f : funsym,
+  In f (sig_f gamma) ->
+  f_is_constr f <->
+  (exists (m : mut_adt) (a : alg_datatype),
+     mut_in_ctx m gamma /\ adt_in_mut a m /\ constr_in_adt f a)
+  }
+
+
+  abs_not_concrete_fun:
+  forall {gamma : context},
+  valid_context gamma ->
+  forall f : funsym,
+  In (abs_fun f) gamma ->
+  (forall (m : mut_adt) (a : alg_datatype),
+   mut_in_ctx m gamma -> adt_in_mut a m -> ~ constr_in_adt f a) /\
+  (forall fs : list funpred_def,
+   In fs (mutfuns_of_context gamma) -> ~ In f (funsyms_of_rec fs))
+
+
+
+      apply (funsym_typesym_name_disj Hval f t ()).
+
+    
+    eapply (proj_badnames); eauto.
+    + apply selector_badnames in Hinbad; auto.
+    + apply indexer_badnames in Hinbad; auto.
+    + (*Different contradiction - from disj*)
+      apply (H4 x); auto.
+
+
+
+.
+
+
+    Search (valid_context (_ ++ _)).
+
+    valid_ctx_abstract_app:
+  forall {gamma : context} (l : list def),
+  Forall (fun x : def => concrete_def x = false) l ->
+  Forall (wf_funsym gamma) (concat (map funsyms_of_def l)) ->
+  Forall (wf_predsym gamma) (concat (map predsyms_of_def l)) ->
+  disj (idents_of_context l) (idents_of_context gamma) ->
+  NoDup (idents_of_context l) ->
+  Forall (fun f : funsym => f_is_constr f = false)
+    (concat (map funsyms_of_def l)) ->
+  valid_context gamma -> valid_context (l ++ gamma)
+  }
   2: {
     constructor; auto.
     - revert H2. apply Forall_impl. intros f. apply wf_funsym_sublist.

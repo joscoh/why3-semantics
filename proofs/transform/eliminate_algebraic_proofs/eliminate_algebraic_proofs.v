@@ -7,13 +7,13 @@ Set Bullet Behavior "Strict Subproofs".
 
 (*First condition we need: no recursive functions or inductive predicates*)
 (*TODO: prove for [eliminate_recursive]/[eliminate_definition]/[eliminate_inductive]*)
-Definition no_recfun_indpred_gamma (gamma: context) : bool :=
+(* Definition no_recfun_indpred_gamma (gamma: context) : bool :=
   forallb (fun x =>
     match x with
     | recursive_def _ => false
     | inductive_def _ => false
     | _ => false
-    end) gamma.
+    end) gamma. *)
 
 Definition no_recfun_indpred (t: task) : Prop :=
   no_recfun_indpred_gamma (task_gamma t).
