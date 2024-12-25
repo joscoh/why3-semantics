@@ -261,7 +261,7 @@ Definition comp_ctx_gamma (d: def) (gamma: context) : list def :=
   match d with
   | datatype_def m =>
     concat (map (fun a => add_axioms_gamma (adt_name a) (adt_constr_list a)) (rev (typs m))) ++
-    (if keep_muts m then [datatype_def m] else (rev (map (fun a => abs_type (adt_name a)) (typs m))))
+    (if keep_muts m then [datatype_def m] else (map (fun a => abs_type (adt_name a)) (typs m)))
   | _ => [(TaskGen.def_map (rewriteT' keep_muts new_constr_name badnames gamma) (rewriteF' keep_muts new_constr_name badnames gamma nil true) d)]
   end.
 
@@ -280,16 +280,14 @@ Proof.
   rewrite <- fold_left_rev_right. rewrite <- (map_rev _ (typs m)).
   (*Need in multiple places*)
   assert (Habs: forall dl, task_gamma
-    (fold_left
-    (fun (t1 : task) (a : alg_datatype) =>
-    add_ty_decl t1 (adt_name a)) dl t) = 
-    rev (map (fun a : alg_datatype => abs_type (adt_name a)) dl) ++
+    (fold_right
+    (fun (a : alg_datatype) (t1 : task)  =>
+    add_ty_decl t1 (adt_name a)) t dl) = 
+    map (fun a : alg_datatype => abs_type (adt_name a)) dl ++
     task_gamma t).
   {
-    intros dl.
-    rewrite <- fold_left_rev_right, <- map_rev.
-    induction (rev dl) as [| h tl IH]; simpl; auto.
-    rewrite add_ty_decl_gamma. f_equal; auto.
+    induction dl as [| h tl IH]; simpl; auto.
+    rewrite add_ty_decl_gamma, IH. reflexivity.
   }
   induction (rev (typs m)) as [| hd tl IH]; simpl; auto.
   - destruct (keep_muts m); simpl; auto.
@@ -315,16 +313,12 @@ Proof.
   unfold comp_ctx_delta.
   (* destruct (partition _ (typs m)) as [dl_concr dl_abs]; simpl. *)
   rewrite <- fold_left_rev_right. rewrite <- (map_rev _ (typs m)).
-  assert (Habs: forall dl, task_delta (fold_left
-    (fun (t1 : task) (a : alg_datatype) =>
-    add_ty_decl t1 (adt_name a)) dl t) = 
+  assert (Habs: forall dl, task_delta (fold_right
+    (fun (a : alg_datatype) (t1 : task) =>
+    add_ty_decl t1 (adt_name a)) t dl) = 
     task_delta t).
   {
-    intros dl.
-    generalize dependent t.
-    induction dl as [| h t1 IH]; simpl; auto. intros tsk.
-    rewrite IH, add_ty_decl_delta.
-    reflexivity.
+    induction dl as [| h t1 IH]; simpl; auto.
   }
   induction (rev (typs m)) as [| hd tl IH]; simpl; auto.
   - destruct (keep_muts m); simpl; auto.
@@ -338,16 +332,12 @@ Lemma comp_ctx_goal_eq (d: def) t (gamma: context) :
 Proof.
   unfold comp_ctx. destruct d; try reflexivity.
   rewrite <- fold_left_rev_right. rewrite <- (map_rev _ (typs m)).
-  assert (Habs: forall dl, task_goal (fold_left
-    (fun (t1 : task) (a : alg_datatype) =>
-    add_ty_decl t1 (adt_name a)) dl t) = 
+  assert (Habs: forall dl, task_goal (fold_right
+    (fun (a : alg_datatype) (t1 : task) =>
+    add_ty_decl t1 (adt_name a)) t dl) = 
     task_goal t).
   {
-    intros dl.
-    generalize dependent t.
-    induction dl as [| h t IH]; simpl; auto. intros tsk.
-    rewrite IH, add_ty_decl_goal.
-    reflexivity.
+    induction dl as [| h tl IH]; simpl; auto.
   }
   induction (rev (typs m)) as [| hd tl IH]; simpl; auto.
   - destruct (keep_muts m); simpl; auto.
@@ -455,10 +445,9 @@ Proof.
   destruct (keep_muts m).
   - simpl. apply sublist_cons_l; auto.
   - (*Here, abstract typesyms dont add to mut*)
-    replace (mut_of_context (rev (map _ _))) with (@nil mut_adt); simpl.
+    replace (mut_of_context ((map _ _))) with (@nil mut_adt); simpl.
     2: {
-      rewrite <- map_rev.
-      induction (rev (typs m)) as [| h t IH2]; simpl; auto. 
+      induction (typs m) as [| h t IH2]; simpl; auto. 
     }
     apply sublist_cons; auto.
 Qed.

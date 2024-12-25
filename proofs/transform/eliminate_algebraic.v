@@ -863,7 +863,9 @@ Definition comp_ctx (gamma: context) (d: def) (tsk: task) : task :=
     (* let concrete (a: alg_datatype) : bool :=  amap_mem typesym_eq_dec (s.(kept_m)) (adt_name a) in *)
      (* Mts.mem (fst d) state.kept_m || kept_no_case used state d in *)
     (*All types are either abstract or concrete*)
-    let tsk := if (keep_muts m) then add_def d tsk else List.fold_left (fun t a => add_ty_decl t (adt_name a)) dl tsk
+    (*JOSH: made it fold_right to keep same order as context - should change in real version too*)
+    let tsk := if (keep_muts m) then add_def d tsk else 
+      List.fold_right (fun a t => add_ty_decl t (adt_name a)) tsk dl
     in
     (*let '(dl_concr, dl_abs) := partition (fun a => keep_tys (adt_name a)) dl in
     (*TODO: this does NOT preserve order, but keeps a well-typed permutation, see if this is problem*)

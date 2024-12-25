@@ -82,6 +82,12 @@ Proof.
   unfold sig_f; rewrite map_app, concat_app; reflexivity.
 Qed.
 
+Lemma sig_t_app (g1 g2: context):
+  sig_t (g1 ++ g2) = sig_t g1 ++ sig_t g2.
+Proof.
+  unfold sig_t; rewrite map_app, concat_app; reflexivity.
+Qed.
+
 Require Import GenElts.
 
 Lemma projection_axioms_syms (c: funsym) l:
@@ -218,8 +224,7 @@ Proof.
         rewrite in_app_iff; auto.
       ++ exfalso. clear -Hin.
         (*Could do separate lemma?*)
-        rewrite <- map_rev in Hin.
-        induction (rev (typs m)) as [| h t IH]; simpl in Hin; auto.
+        induction (typs m) as [| h t IH]; simpl in Hin; auto.
   - (*In rest*)
     apply IH in Hinold; clear IH.
     assert (Hmimpl: forall m, mut_in_ctx m gamma -> mut_in_ctx m (d :: gamma)).
@@ -331,6 +336,82 @@ Proof.
       -- unfold add_axioms_gamma. rewrite !map_app.
         rewrite !in_app_iff. right. left. rewrite Hconstr. simpl. auto.
 Qed.
+
+Lemma prove_concat_nil {A: Type} (l1 l2: list A):
+  l1 = nil ->
+  l2 = nil ->
+  l1 ++ l2 = nil.
+Proof.
+  intros; subst; auto.
+Qed.
+
+(*[sig_t] is easier to specify*)
+Lemma sig_t_new_gamma_gen gamma gamma2:
+  sig_t (fold_all_ctx_gamma_gen new_constr_name keep_muts badnames noind gamma gamma2) =
+  sig_t gamma.
+Proof.
+  unfold fold_all_ctx_gamma_gen.
+  induction gamma as [| d gamma IH]; simpl; auto.
+  destruct d; simpl; unfold sig_t in *; simpl in *; auto; [|f_equal; auto].
+  rewrite !map_app, !concat_app. f_equal; auto. clear IH.
+  (*First is nil - no typesyms added*)
+  match goal with
+  | |- ?l1 ++ ?l2 = ?l3 => let H := fresh in assert (H: l1 = nil); [| rewrite H; clear H; simpl]
+  end.
+  - induction (rev (typs m)) as [| h t IH]; simpl; auto.
+    rewrite map_app, concat_app, IH.
+    rewrite app_nil_r.
+    unfold add_axioms_gamma.
+    rewrite !map_app, !concat_app, !map_map. simpl.
+    rewrite concat_map_nil. simpl.
+    repeat apply prove_concat_nil.
+    + destruct (_ && _); simpl; auto.
+    + destruct (negb _); auto.
+    + rewrite map_rev, map_map. simpl.
+      rewrite <- map_rev, concat_map_nil.
+      reflexivity.
+  - destruct (keep_muts m); simpl; [rewrite app_nil_r |]; auto.
+    rewrite map_map. simpl.
+    unfold typesyms_of_mut.
+    induction (typs m) as [| h t IH]; simpl; auto. f_equal; auto.
+Qed.
+
+(*Same with [sig_p]*)
+Lemma sig_p_new_gamma_gen gamma gamma2:
+  sig_p (fold_all_ctx_gamma_gen new_constr_name keep_muts badnames noind gamma gamma2) =
+  sig_p gamma.
+Proof.
+  unfold fold_all_ctx_gamma_gen.
+  induction gamma as [| d gamma IH]; simpl; auto.
+  destruct d; simpl; unfold sig_p in *; simpl in *; auto; try solve[f_equal; auto].
+  2: { unfold TaskGen.funpred_def_map. destruct f; simpl; auto; f_equal; auto. }
+  rewrite !map_app, !concat_app. rewrite IH. clear IH.
+  (*First is nil - no typesyms added*)
+  match goal with
+  | |- (?l1 ++ ?l2) ++ ?l3 = ?l4 => 
+    let H1 := fresh in
+    let H2 := fresh in 
+    assert (H1: l1 = nil);
+    [|assert (H2: l2 = nil); [| rewrite H1; rewrite H2; clear H1; clear H2; simpl; auto]]
+  end.
+  - induction (rev (typs m)) as [| h t IH]; simpl; auto.
+    rewrite map_app, concat_app, IH.
+    rewrite app_nil_r.
+    unfold add_axioms_gamma.
+    rewrite !map_app, !concat_app, !map_map. simpl.
+    rewrite concat_map_nil. simpl.
+    repeat apply prove_concat_nil.
+    + destruct (_ && _); simpl; auto.
+    + destruct (negb _); auto.
+    + rewrite map_rev, map_map. simpl.
+      rewrite <- map_rev, concat_map_nil.
+      reflexivity.
+  - destruct (keep_muts m); simpl; auto.
+    rewrite map_map. simpl. rewrite concat_map_nil. reflexivity.
+Qed.
+
+
+
 
 (*TODO: later, prove that if context is valid, then everything in old
   signature EXCEPT for constructors for ADTs such that [keep_muts] is false,
