@@ -1596,6 +1596,38 @@ Qed.
 
 End Cases.
 
+(*Also prove that names not equal to any badvars*)
+Lemma new_constr_badnames c:
+  ~ In (s_name (new_constr c)) badnames.
+Proof.
+  unfold new_constr. simpl. unfold gen_id.
+  apply gen_name_notin.
+Qed.
+
+Lemma proj_badnames {c f} (Hinx: In f (projection_syms badnames c)):
+  ~ In (s_name f) badnames.
+Proof.
+  unfold projection_syms in Hinx. unfold dep_mapi in Hinx.
+  apply (in_map (fun (x: funsym) => s_name x)) in Hinx.
+  rewrite map_dep_map in Hinx. simpl in Hinx.
+  rewrite dep_map_nondep in Hinx. 
+  rewrite in_map_iff in Hinx.
+  destruct Hinx as [x [Hname Hinx]]. rewrite <- Hname.
+  apply gen_name_notin.
+Qed.
+
+Lemma selector_badnames {ts l}:
+  ~ In (s_name (selector_funsym badnames ts l)) badnames.
+Proof.
+  simpl. apply gen_name_notin.
+Qed.
+
+Lemma indexer_badnames {ts}:
+  ~ In (s_name (indexer_funsym badnames ts)) badnames.
+Proof.
+  simpl. apply gen_name_notin.
+Qed.
+
 (*Use these to prove the results we need*)
 
 Opaque selector_funsym.
@@ -2085,27 +2117,14 @@ Proof.
     unfold funs_new_map_single_in in Hinx.
     destruct Hinx as [Hinx | [Hinx | [Hinx | Hinx]]].
     - destruct Hinx as [c [c_in Hx]]; subst. simpl in *.
-      unfold gen_id in Hin.
       apply (gen_name_notin _ _ Hin).
     - destruct Hinx as [c [c_in [srts_len [f [Hinf Hx]]]]]; subst.
       simpl in *.
-      unfold projection_syms in Hinf.
-      unfold dep_mapi in Hinf.
-      apply (in_map (fun (x: funsym) => s_name x)) in Hinf.
-      rewrite map_dep_map in Hinf.
-      simpl in Hinf.
-      rewrite dep_map_nondep in Hinf.
-      rewrite in_map_iff in Hinf.
-      destruct Hinf as [nt [Hname Hinx]].
-      rewrite <- Hname in Hin.
-      unfold gen_id in Hin.
-      apply (gen_name_notin _ _ Hin).
+      apply (proj_badnames Hinf Hin).
     - destruct srts as [| s1 srts]; [contradiction|].
       destruct Hinx as [srts_len Hx]; subst; simpl in *.
-      unfold gen_id in Hin.
       apply (gen_name_notin _ _ Hin).
     - destruct Hinx as [srts_len Hx]; subst; simpl in *.
-      unfold gen_id in Hin.
       apply (gen_name_notin _ _ Hin).
   }
   rewrite <- dep_assoc_list_notin in Hnotin.

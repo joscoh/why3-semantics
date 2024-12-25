@@ -410,6 +410,166 @@ Proof.
     rewrite map_map. simpl. rewrite concat_map_nil. reflexivity.
 Qed.
 
+(*TODO: move*)
+Lemma idents_of_context_sig gamma:
+  forall x, In x (idents_of_context gamma) <->
+  (exists f, In f (sig_f gamma) /\ x = s_name f) \/
+  (exists p, In p (sig_p gamma) /\x = s_name p) \/
+  (exists t, In t (sig_t gamma) /\ x = ts_name t).
+Proof.
+  intros x. unfold idents_of_context, idents_of_def, sig_f, sig_p, sig_t.
+  setoid_rewrite in_concat. setoid_rewrite in_map_iff.
+  split.
+  - intros [l1 [[d [Hl1 Hind]] Hinx]]; subst.
+    rewrite !in_app_iff in Hinx.
+    rewrite !in_map_iff in Hinx.
+    destruct Hinx as [[f [Hx Hinf]] | [[p [Hx Hinp]] | [t [Hx Hint]]]]; subst.
+    + left. exists f. split; auto. exists (funsyms_of_def d). split; auto. eauto.
+    + right. left. exists p. split; auto. exists (predsyms_of_def d). split; auto. eauto.
+    + right. right. exists t. split; auto. exists (typesyms_of_def d). split; auto. eauto.
+  - intros [[f [[l1 [[d [Hl1 Hind]] Hinf]] Hx]] | [
+      [p [[l1 [[d [Hl1 Hind]] Hinp]] Hx]] | 
+      [t [[l1 [[d [Hl1 Hind]] Hint]] Hx]]]]; subst.
+    + eexists. split. exists d. split; [reflexivity| auto].
+      rewrite !in_app_iff. left. rewrite in_map_iff. eauto.
+    + eexists. split. exists d. split; [reflexivity| auto].
+      rewrite !in_app_iff. right; left. rewrite in_map_iff. eauto.
+    + eexists. split. exists d. split; [reflexivity| auto].
+      rewrite !in_app_iff. right; right. rewrite in_map_iff. eauto.
+Qed.
+
+(*TODO: do we need both directions?*)
+Lemma idents_of_new_gamma gamma gamma2:
+  forall x, In x (idents_of_context 
+    (fold_all_ctx_gamma_gen new_constr_name keep_muts badnames noind gamma gamma2)) ->
+  (*new constrs*)
+  (exists m a c, mut_in_ctx m gamma /\ adt_in_mut a m /\ constr_in_adt c a /\
+    x = s_name (new_constr new_constr_name badnames c)) \/
+  (*projections*)
+  (exists m a c f, mut_in_ctx m gamma /\ adt_in_mut a m /\ constr_in_adt c a /\
+    In f (projection_syms badnames c) /\
+    x = s_name f) \/
+  (*selector*)
+  (exists m a, mut_in_ctx m gamma /\ adt_in_mut a m /\
+    negb (single (adt_constr_list a)) /\
+    x = s_name (selector_funsym badnames  (adt_name a) (adt_constr_list a))) \/
+  (*indexer*)
+  (exists m a, mut_in_ctx m gamma /\ adt_in_mut a m /\
+    negb (single (adt_constr_list a)) && negb (noind (adt_name a)) /\
+    x = s_name (indexer_funsym badnames (adt_name a))) \/
+  (*in previous*)
+  In x (idents_of_context gamma).
+Proof.
+  intros x Hinx. apply idents_of_context_sig in Hinx.
+  destruct Hinx as [[f [Hinf Hx]] | [[p [Hinp Hx]] | [t [Hint Hx]]]]; subst.
+  - apply in_sig_f_new_gamma_gen in Hinf.
+    destruct_all; eauto 11.
+    repeat right.
+    apply idents_of_context_sig; eauto.
+  - rewrite sig_p_new_gamma_gen in Hinp.
+    repeat right. apply idents_of_context_sig; eauto.
+  - rewrite sig_t_new_gamma_gen in Hint.
+    repeat right. apply idents_of_context_sig; eauto.
+Qed.
+  
+(*Prove context valid*)
+
+(*TODO: move*)
+Lemma sig_t_cons d gamma:
+  sig_t (d :: gamma) = typesyms_of_def d ++ sig_t gamma.
+Proof. reflexivity. Qed.
+Lemma idents_of_context_cons d gamma:
+  idents_of_context (d :: gamma) = idents_of_def d ++ idents_of_context gamma.
+Proof. reflexivity. Qed.
+
+(*Assume badnames include everything in gamma*)
+
+Lemma new_gamma_gen_valid gamma gamma2 (Hbad: sublist (idents_of_context gamma) badnames):
+  valid_context gamma ->
+  valid_context (fold_all_ctx_gamma_gen new_constr_name keep_muts badnames noind gamma gamma2).
+Proof.
+  unfold fold_all_ctx_gamma_gen. intros Hval.
+  induction gamma as [| d gamma IH]; simpl; auto.
+  assert (Hbad2: sublist (idents_of_context gamma) badnames). {
+    rewrite idents_of_context_cons in Hbad.
+    intros x Hinx. apply Hbad. rewrite in_app_iff; auto.
+  }
+  inversion Hval; subst.
+  (*Proceed by cases - TODO: see how to factor out other cases*)
+  destruct d; simpl.
+  2: {
+    constructor; auto.
+    - revert H2. apply Forall_impl. intros f. apply wf_funsym_sublist.
+      rewrite !sig_t_cons. apply sublist_app2; [apply sublist_refl|].
+      rewrite <- sig_t_new_gamma_gen with (gamma2:=gamma2). 
+      apply sublist_refl.
+    - revert H3. apply Forall_impl. intros f. apply wf_predsym_sublist.
+      rewrite !sig_t_cons. apply sublist_app2; [apply sublist_refl|].
+      rewrite <- sig_t_new_gamma_gen with (gamma2:=gamma2). 
+      apply sublist_refl.
+    - (*Disjoint*)
+      intros x [Hinx1 Hinx2].
+      apply idents_of_new_gamma in Hinx2.
+      (*Idea: none of new can be equal to anything in badnames*)
+      assert (Hinbad: In x badnames). {
+        apply Hbad. rewrite idents_of_context_cons. rewrite in_app_iff; auto.
+      }
+      (*Each case is a contradiction*)
+      destruct_all; subst.
+      + apply new_constr_badnames in Hinbad; auto. 
+      + eapply (proj_badnames); eauto.
+      + apply selector_badnames in Hinbad; auto.
+      + apply indexer_badnames in Hinbad; auto.
+      + (*Different contradiction - from disj*)
+        apply (H4 x); auto.
+    - (*valid def*)
+      (*Idea: we need the following:
+        1. Stronger version of [valid_def_sublist] - should be:
+          if gamma includes all of the type, fun, and pred syms
+          used in the def then valid_def holds - problem is that this
+          is harder: ex. recursive dependencies of types (so should
+            do just for sublist of fun and pred syms)
+        2. Assume we have no recursive and inductive defs
+        3. For nonrec, we have rewriteT, need to show that 
+          all fun/pred syms present in rewriteT are in new context
+          so it CANNOT include the old constructors*)
+      revert H8.
+      (**)
+      apply valid_def_sublist.
+      eapply valid_def_expand; auto.
+      Search valid_def.
+
+
+      
+       Search s_name new_constr.
+
+
+        unfold idents_of_def; simpl simpl.
+      }
+
+
+      simpl.
+      Search 
+
+    
+    
+     Search wf_funsym.
+  }
+
+
+Lemma sig_p_new_gamma_gen gamma gamma2:
+  sig_p (fold_all_ctx_gamma_gen new_constr_name keep_muts badnames noind gamma gamma2) =
+  sig_p gamma.
+
+Lemma fold_all_ctx_gamma_valid tsk (Hty: task_typed tsk):
+  valid_context (fold_all_ctx_gamma new_constr_name keep_muts badnames noind tsk).
+Proof.
+  (*Really just need that tsk is valid (I think) - might also need to assume badnames
+    is subset of existing*)
+  assert (gamma_valid: valid_context (task_gamma tsk)). { inversion Hty; subst; auto. }
+  clear Hty.
+  unfold fold_all_ctx_gamma. *)
+
 
 
 
