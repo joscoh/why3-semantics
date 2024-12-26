@@ -2204,7 +2204,9 @@ Definition simple_pat (p: pattern) : bool :=
 Definition simple_pat_match (ps: list pattern) : bool :=
   forallb simple_pat ps &&
   nodupb funsym_eq_dec (omap 
-    (fun p => match p with | Pconstr c _ _ => Some c | _ => None end) ps).
+    (fun p => match p with | Pconstr c _ _ => Some c | _ => None end) ps) &&
+  (*At least 1 constructor - or else we compiled the whole match away*)
+  (existsb (fun p => match p with | Pconstr _ _ _ => true | _ => false end) ps).
 
 Fixpoint term_simple_pats (t: term) : bool :=
   match t with
@@ -2461,7 +2463,7 @@ Proof.
       rewrite <- Hopt. rewrite map_app. simpl.
       rewrite !map_rev, !map_map.
       unfold simple_pat_match.
-      apply andb_true_iff. split.
+      repeat (apply andb_true_iff; split).
       * rewrite forallb_app. apply andb_true_iff; split.
         -- (*Prove all pats are simple - they are vars*)
           rewrite forallb_rev, forallb_map.
@@ -2492,6 +2494,16 @@ Proof.
         clear.
         induction (snd (types_cslist)) as [| x xs IH]; simpl; auto.
         destruct x as [[cs tys1] pats1]; simpl in *. rewrite IH; auto.
+      * rewrite existsb_app. apply orb_true_iff; left.
+        rewrite existsb_rev, existsb_map.
+        (*Idea: cslist not null, so there must be a constr, cslist not null because types not empty*)
+        destruct cslist as [| [[c tys] pats] csl] eqn : Hcslist; [|solve[auto]].
+        exfalso. rewrite (amap_not_empty_exists funsym_eq_dec) in Hisemp.
+        destruct Hisemp as [f [pats Hget]].
+        assert (Hex: exists tys, In (f, tys, pats) cslist). {
+          unfold cslist. apply (populate_all_fst_snd_full _ _ _ Hsimpl Hpop). auto.
+        }
+        rewrite Hcslist in Hex. destruct_all; contradiction.
   - (*constr case*)
     intros.  destruct Hhyps as [Hsimp1 Hsimp2]. simpl in Hsimp1. 
     apply andb_prop in Hsimp1. destruct Hsimp1 as [Hsimpt Hsimptl]. 
@@ -3052,7 +3064,7 @@ Proof.
     apply forallb_forall.
     setoid_rewrite in_map_iff.
     unfold simple_pat_match in Hsimp.
-    apply andb_true_iff in Hsimp; destruct Hsimp as [Hsimp _].
+    do 2 (apply andb_true_iff in Hsimp; destruct Hsimp as [Hsimp _]).
     rewrite forallb_forall in Hsimp.
     intros x [y [Hx Hiny]]; subst. simpl. apply Hsimp_pat, Hsimp.
     rewrite in_map_iff. exists y; unfold ps; simpl; auto. 
@@ -3184,6 +3196,8 @@ Proof.
     intros cs.
     clear -Hsimp.
     unfold simple_pat_match in Hsimp.
+    apply andb_true_iff in Hsimp.
+    destruct Hsimp as [Hsimp _].
     apply andb_true_iff in Hsimp.
     destruct Hsimp as [Hsimp _].
     subst rl.
@@ -4220,7 +4234,7 @@ Proof.
         rewrite Hmapfstpats.
         rewrite map_app, map_rev, map_map.
         unfold simple_pat_match.
-        apply andb_true_iff. split.
+        repeat (apply andb_true_iff; split).
         + rewrite forallb_app. apply andb_true_iff; split.
           * (*Prove all pats are simple - they are vars*)
             rewrite forallb_rev, forallb_map.
@@ -4251,6 +4265,17 @@ Proof.
           clear.
           induction (snd (types_cslist)) as [| x xs IH]; simpl; auto.
           destruct x as [[cs tys1] pats1]; simpl in *. rewrite IH; auto.
+        + (*constructor exists again by cslist nonempty*)
+          rewrite existsb_app. apply orb_true_iff; left.
+          rewrite existsb_rev, existsb_map.
+          (*Idea: cslist not null, so there must be a constr, cslist not null because types not empty*)
+          destruct cslist as [| [[c tys] pats1] csl] eqn : Hcslist; [|solve[auto]].
+          exfalso. rewrite (amap_not_empty_exists funsym_eq_dec) in Htypesemp.
+          destruct Htypesemp as [f [pats1 Hget]].
+          assert (Hex: exists tys, In (f, tys, pats1) cslist). {
+            unfold cslist. apply (populate_all_fst_snd_full _ _ _ Hsimp Hpop). auto.
+          }
+          rewrite Hcslist in Hex. destruct_all; contradiction.
       }
       (*Now prove that this match is exhaustive*)
       assert (Hexhaust: (simple_exhaust (map fst pats) a)).
