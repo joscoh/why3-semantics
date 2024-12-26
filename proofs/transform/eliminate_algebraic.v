@@ -674,12 +674,46 @@ Definition enc_ty (t: vty) : bool :=
   | _ => false
   end.
 
+(*Separate rewriteT/F (pat match case) into multiple functions to
+  make it easier to reason about*)
+  (*Idea: for a given constructor, gives term (ex:)
+  match l with
+  x :: t -> f (x, t) 
+  becomes
+  let x := proj_cons_1(l) in let t := proj_cons_2(l) in f(x, t)
+  in map m, maps cons -> (let x := ...)
+  in w, set if there is a wild or not - if there is wild, gives term
+  *)
+Definition mk_br_tm t1 (x: option term * amap funsym term) (br: pattern * term) :=
+  let w := fst x in
+  let m := snd x in
+  let e := rewriteT (snd br) in
+  match (fst br) with
+  | Pconstr cs tys pl =>
+    let add_var e p pj :=
+      match p with
+      | Pvar v => Tlet (Tfun pj [snd v] [t1]) v e
+      | _ => tm_d (*NOTE: default, because we never hit it anyway by assumption*)
+      end
+      in
+      let pjl := get_proj_list cs (*amap_get_def funsym_eq_dec s.(cp_map) cs nil*) in 
+        (*match amap_get funsym_eq_dec s.(cp_map) cs with
+      | Some cp => cp
+      | None => nil (*TODO: prove don't hit (basically, will prove by knowing that all
+        defined types appeared before and hence have already been added to map)*)
+      end in*)
+      let e := fold_left2' add_var pl pjl e in
+      (w, amap_set funsym_eq_dec m cs e)
+  | Pwild => (Some e, m)
+  | _ => (*Prove don't hit*) x
+  end.
+
 Fixpoint rewriteT (t: term) : term :=
   match t with
   | Tmatch t1 ty pats => 
     if enc_ty ty then
       let t1 := rewriteT t1 in
-      let mk_br (x: option term * amap funsym term) (br: pattern * term) :=
+      (* let mk_br (x: option term * amap funsym term) (br: pattern * term) :=
         let w := fst x in
         let m := snd x in
         let e := rewriteT (snd br) in
@@ -702,21 +736,29 @@ Fixpoint rewriteT (t: term) : term :=
         | Pwild => (Some e, m)
         | _ => (*Prove don't hit*) x
         end
-      in
-      let res := fold_left mk_br pats (None, amap_empty) in
+      in *)
+      let res := fold_left (mk_br_tm t1) pats (None, amap_empty) in
       let w := fst res in
       let m := snd res in (*gives map constructors to new terms*)
+      (*find: for each constructor, get the term, if the term is not there,
+        get wild info (NOTE: cannot be None by exhaustiveness)*)
       let find x := 
         match amap_get funsym_eq_dec m x with
         | Some e => e
         | None => match w with | Some x => x | None => (*impossible*) tm_d end
         end
       in
+      (*By typing, has to be an ADT*)
       let ts := match ty with | vty_cons ts _ => ts | _ => ts_d (*impossible*) end in
       match map find (get_constructors gamma ts) with
       | [t] => t
       | tl => (*Get *) 
-        (*Get the type - NOTE: use fact that not empty*)
+        (*Get the type - NOTE: use fact that not empty (also TODO: see if we need 
+          this or if we can tell the type by hand)
+          Build using the selector symbol - becomes
+          match_list : list 'a -> 'b -> 'b -> 'b (I think)
+          match_list l (let x := ...) (nilcase) - so we need the return type
+            of the pattern match (or the type of e) - dont like using typechecker there*)
         let ty1 := match pat_match_ty pats with | Some t => t | None => ty end in 
         tfun_infer' (get_mt_map ts) (*(amap_get_def typesym_eq_dec mt_map ts id_fs)*) (ty :: repeat ty1 (length tl))
           (t1 :: tl) (*TODO: prove not default*)

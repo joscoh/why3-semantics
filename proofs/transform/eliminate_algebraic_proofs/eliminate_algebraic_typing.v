@@ -481,6 +481,9 @@ Proof. reflexivity. Qed.
 Lemma sig_f_cons d gamma:
   sig_f (d :: gamma) = funsyms_of_def d ++ sig_f gamma.
 Proof. reflexivity. Qed.
+Lemma sig_p_cons d gamma:
+  sig_p (d :: gamma) = predsyms_of_def d ++ sig_p gamma.
+Proof. reflexivity. Qed.
 Lemma idents_of_context_cons d gamma:
   idents_of_context (d :: gamma) = idents_of_def d ++ idents_of_context gamma.
 Proof. reflexivity. Qed.
@@ -526,6 +529,254 @@ Proof.
   - right. exists (map ts_name (typesyms_of_def d2)). split; eauto. apply in_map. auto.
 Qed. *)
 
+(*Lemmas about [rewriteT/F]*)
+
+(*1. rewriteT/F does not change free variables*)
+
+(* Lemma in_big_union_elts {A B: Type} eq_dec (f: A -> list B) (g: A -> A) (l: list A):
+  Forall (fun (a: A) => forall x, In x (f (g a)) <-> In x (f a)) l ->
+  forall x,
+  In x (big_union eq_dec f (map g l)) <-> In x (big_union eq_dec f l).
+Proof.
+  rewrite Forall_forall. intros Hall x.
+  simpl_set. setoid_rewrite in_map_iff. split.
+  - intros [a [[y [Ha Hiny]] Hinx]]; subst.
+    rewrite  Hall in Hinx; auto; eauto.
+  - intros [y [Hiny Hinx]].
+    rewrite <- Hall in Hinx; auto. eauto.
+Qed. *)
+
+(*Prove things about well-typed*)
+Check term_formula_ind.
+Check T_Fun.
+Print ty_subst_list.
+(*TODO: should go back and use this a lot more*)
+(*Basically, prove with dependent typing instead of proving hypotheses every time*)
+(*NOTE: in fun/pred and match, keep typing hypothesis because it gives us
+  other info (lengths, exhaustiveness, etc)*)
+Lemma term_formula_ind_typed (gamma: context) (P1: term -> vty -> Prop) (P2: formula -> Prop)
+  (Hconstint: forall c, P1 (Tconst (ConstInt c)) vty_int)
+  (Hconstreal: forall r, P1 (Tconst (ConstReal r)) vty_real)
+  (Hvar: forall v, P1 (Tvar v) (snd v))
+  (*Lose info here, how to include? maybe*)
+  (Hfun: forall (f1: funsym) (tys: list vty) (tms: list term)
+    (IH: Forall2 P1 tms (ty_subst_list (s_params f1) tys (s_args f1)))
+    (Hty: term_has_type gamma (Tfun f1 tys tms) (ty_subst (s_params f1) tys (f_ret f1))),
+    P1 (Tfun f1 tys tms) (ty_subst (s_params f1) tys (f_ret f1)))
+  (Htlet: forall (tm1: term) (v: vsymbol) (tm2: term) (ty: vty)
+    (IH1: P1 tm1 (snd v)) (IH2: P1 tm2 ty),
+    P1 (Tlet tm1 v tm2) ty)
+  (Htif: forall (f: formula) (t1 t2: term) (ty: vty) 
+    (IH1: P2 f) (IH2: P1 t1 ty) (IH3: P1 t2 ty),
+    P1 (Tif f t1 t2) ty)
+  (*TODO: we lose pattern typing info, do we need? Or should we
+    include 3rd param which is patterns? Also doesn't include exhaustiveness*)
+  (Htmatch: forall (tm1: term) (ty1: vty) (ps: list (pattern * term)) (ty: vty)
+    (IH1: P1 tm1 ty1) (IH2: Forall (fun x => P1 x ty) (map snd ps))
+    (Hty: term_has_type gamma (Tmatch tm1 ty1 ps) ty),
+    P1  (Tmatch tm1 ty1 ps) ty)
+  (Hteps: forall (f: formula) (v: vsymbol)(IH: P2 f),
+    P1 (Teps f v) (snd v))
+  (Hpred: forall (p: predsym) (tys: list vty) (tms: list term)
+    (IH: Forall2 P1 tms (ty_subst_list (s_params p) tys (s_args p)))
+    (Hty: formula_typed gamma (Fpred p tys tms)),
+    P2 (Fpred p tys tms))
+  (Hquant: forall (q: quant) (v: vsymbol) (f: formula)
+    (IH: P2 f), P2 (Fquant q v f))
+  (Heq: forall (ty: vty) (t1 t2: term) (IH1: P1 t1 ty) (IH2: P1 t2 ty),
+    P2 (Feq ty t1 t2))
+  (Hbinop: forall (b: binop) (f1 f2: formula) (IH1: P2 f1) (IH2: P2 f2),
+    P2 (Fbinop b f1 f2))
+  (Hnot: forall (f: formula) (IH: P2 f), P2 (Fnot f))
+  (Htrue: P2 Ftrue)
+  (Hfalse: P2 Ffalse)
+  (Hflet: forall (tm1: term) (v: vsymbol) (f: formula)
+    (IH1: P1 tm1 (snd v)) (IH2: P2 f),
+    P2 (Flet tm1 v f))
+  (Hfif: forall (f1 f2 f3: formula)
+    (IH1: P2 f1) (IH2: P2 f2) (IH3: P2 f3),
+    P2 (Fif f1 f2 f3))
+  (Hfmatch: forall (tm1: term) (ty1: vty) (ps: list (pattern * formula))
+    (IH1: P1 tm1 ty1) (IH2: Forall P2 (map snd ps))
+    (Hty: formula_typed gamma (Fmatch tm1 ty1 ps)),
+    P2 (Fmatch tm1 ty1 ps)):
+  forall (tm : term) (f : formula), 
+    (forall ty (Hty: term_has_type gamma tm ty), 
+      P1 tm ty) /\ 
+    (forall (Hty: formula_typed gamma f), 
+      P2 f).
+Proof.
+  apply term_formula_ind; auto.
+  - intros c ty Hty. inversion Hty; subst; auto.
+  - intros v ty Hty. inversion Hty; subst; auto.
+  - intros f1 tys tms IH ty Hty. inversion Hty; subst.
+    apply Hfun; auto.
+    rewrite Forall2_combine.
+    unfold ty_subst_list. simpl_len. split; auto.
+    clear -H9 IH H6. rewrite !Forall_forall in *.
+    intros x Hinx. apply IH; auto.
+    rewrite in_combine_iff in Hinx; [| solve_len].
+    destruct Hinx as [i [Hi Hx]]. specialize (Hx tm_d vty_int).
+    subst. simpl. apply nth_In; auto.
+  - intros tm1 v tm2 IH1 IH2 ty Hty. inversion Hty; subst.
+    auto.
+  - intros f t1 t2 IH1 IH2 IH3 ty Hty. inversion Hty; subst.
+    auto.
+  - intros tm ty ps IH1 IH2 ty1 Hty1. inversion Hty1; subst.
+    apply Htmatch; auto. rewrite Forall_map, Forall_forall in IH2 |- *. auto.
+  - intros f v IH ty Hty. inversion Hty; subst. auto.
+  - intros p tys tms IH Hty. inversion Hty; subst. apply Hpred; auto.
+    rewrite Forall2_combine.
+    unfold ty_subst_list. simpl_len. split; auto.
+    clear -H7 IH H5. rewrite !Forall_forall in *.
+    intros x Hinx. apply IH; auto.
+    rewrite in_combine_iff in Hinx; [| solve_len].
+    destruct Hinx as [i [Hi Hx]]. specialize (Hx tm_d vty_int).
+    subst. simpl. apply nth_In; auto.
+  - intros q v f IH Hty; inversion Hty; subst. auto.
+  - intros v t1 t2 IH1 IH2 Hty; inversion Hty; subst; auto.
+  - intros b f1 f2 IH1 IH2 Hty; inversion Hty; subst; auto.
+  - intros f IH Hty; inversion Hty; auto.
+  - intros tm v f IH1 IH Hty; inversion Hty; auto.
+  - intros f1 f2 f3 IH1 IH2 IH3 Hty; inversion Hty; auto.
+  - intros tm ty ps IH1 IH2 Hty.
+    inversion Hty; subst; auto. apply Hfmatch; auto.
+    rewrite Forall_map, Forall_forall in IH2 |- *. auto.
+Qed. 
+
+Lemma forall2_snd_irrel {A B: Type} (f: A -> Prop) (l1: list A) (l2: list B):
+  length l1 = length l2 ->
+  Forall2 (fun (x: A) (_: B) => f x) l1 l2 <-> Forall f l1.
+Proof.
+  revert l2. induction l1 as [| h1 t1 IH]; simpl; intros [| h2 t2]; auto; 
+  try discriminate; simpl.
+  - intros _. split; constructor.
+  - intros Hlen. split; intros Hall; inversion Hall; subst; constructor; auto;
+    apply (IH t2); auto.
+Qed.
+
+(*TODO: move*)
+Require Import PatternProofs.
+(*For anything with all simple patterns, every pattern matches on an ADT*)
+Lemma simple_pat_match_adt {gamma: context} (gamma_valid: valid_context gamma)
+  {t ty ps ty1} (Hsimp: simple_pat_match (map fst ps)) 
+  (Hty: term_has_type gamma (Tmatch t ty ps) ty1):
+  exists m a, mut_in_ctx m gamma /\ adt_in_mut a m /\ exists args, ty = vty_cons (adt_name a) args.
+Proof.
+  unfold simple_pat_match in Hsimp.
+  apply andb_true_iff in Hsimp. destruct Hsimp as [_ Hex].
+  inversion Hty; subst.
+  rewrite existsb_map in Hex.
+  apply existsb_exists in Hex.
+  destruct Hex as [[p1 t1] [Hinpt Hp1]]; simpl in Hp1.
+  destruct p1 as [| c tys pats | | |]; try discriminate.
+  apply H4 in Hinpt.
+  simpl in Hinpt. inversion Hinpt; subst.
+  destruct H15 as [m [a [m_in [a_in c_in]]]].
+  exists m. exists a. split_all; auto.
+  unfold sigma.
+  rewrite (adt_constr_subst_ret gamma_valid m_in a_in c_in); auto.
+  exists tys; auto.
+Qed.
+
+(*From the result of [compile_match]*)
+
+
+(*TODO: could prove iff but we don't need it*)
+(*NOTE: assume typing, or else we can't handle e.g. defaults, lengths, etc
+  rewriteT really needs well-typing and simple patterns, though this particular
+  lemma MAY be true without*)
+(*We do need simple patterns or else we run into problems if matching on
+  a non-ADT*)
+Lemma rewrite_fv {gamma} (gamma_valid: valid_context gamma) names t f:
+  (forall ty (Hty: term_has_type gamma t ty) (Hsimp: term_simple_pats t), 
+    sublist (tm_fv (rewriteT keep_muts new_constr_name badnames gamma names t)) (tm_fv t)) /\
+  (forall (Hty: formula_typed gamma f) (Hsimp: fmla_simple_pats f) av sign, 
+    sublist (fmla_fv (rewriteF keep_muts new_constr_name badnames gamma names av sign f))
+      (fmla_fv f)).
+Proof.
+  revert t f; apply term_formula_ind_typed; simpl; auto;
+  try solve[intros; bool_hyps; solve_subset].
+  - (*Tfun*)
+    intros f1 tys tms IH Hty Hsimp.
+    destruct (_ && _) eqn : Hf1.
+    + simpl. apply sublist_refl.
+    + simpl. apply sublist_big_union_map. auto.
+      apply forall2_snd_irrel in IH; auto.
+      * unfold is_true in Hsimp. rewrite forallb_forall in Hsimp.
+        rewrite Forall_forall in IH |- *; auto.
+      * unfold ty_subst_list. inversion Hty; subst; solve_len.
+  - (*Tmatch - interesting case*)
+    intros tm1 ty1 ps ty IH1 IH2 Hty Hsimp.
+    unfold is_true in Hsimp. rewrite !andb_true_iff in Hsimp.
+    destruct Hsimp as [[Hsimp1 Hsimp2] Hsimpps].
+    destruct (enc_ty keep_muts gamma ty1) eqn : Henc.
+    2: {
+      simpl.
+      apply sublist_union; auto.
+      apply sublist_big_union_map. simpl.
+      rewrite Forall_forall. rewrite forallb_forall in Hsimp2.
+      intros x Hinx; specialize (Hsimp2 x Hinx).
+      rewrite Forall_map, Forall_forall in IH2. solve_subset.
+    }
+    (*From simple, know it is ADT*)
+    destruct (simple_pat_match_adt gamma_valid Hsimpps Hty) as [m [a [m_in [a_in [args Htyeq]]]]].
+    subst ty1. simpl.
+    (*simplify [get_constructors]*)
+    rewrite (get_constructors_eq gamma_valid m_in a_in).
+    (*TODO: know it is not nil because constrs not nil
+      Need to proceed by cases*)
+    destruct (map _ (adt_constr_list a)) as [| x1 xs] eqn : Hmap.
+    (*START*)
+
+
+    Search get_constructors.
+
+
+get_constructors_eq:
+  forall {gamma : context} {m : mut_adt} {a : alg_datatype},
+  valid_context gamma ->
+  mut_in_ctx m gamma ->
+  adt_in_mut a m -> get_constructors gamma (adt_name a) = adt_constr_list a
+    simple_pat_match_adt {gamma: context} (gamma_valid: valid_context gamma)
+  {t ty ps ty1} (Hsimp: simple_pat_match (map fst ps)) 
+  (Hty: term_has_type gamma (Tmatch t ty ps) ty1):
+  exists m a, mut_in_ctx m gamma /\ adt_in_mut a m /\ exists args, ty = vty_cons (adt_name a) args.
+
+    destruct (enc_ty keep_muts gamma ty1) eqn : Henc; [| simpl; solve_subset].
+    (*Now, simplify ty1 since we know it is ADT*)
+    inversion Hty; subst.
+    unfold enc_ty in Henc. destruct ty1 as [| | | ts args]; try discriminate.
+    (*NOTE: it may be possible that *)
+    Print get_constructors.
+    Search Pattern.compile_bare_single.
+
+
+    
+    2: {
+      (*If not encode, easier*)
+      simpl. solve_subset.
+    } 
+  
+  
+  (*Tlet*)
+    intros tm1 v tm2 IH1 IH2. solve_subset.
+    Search sublist union.
+    simpl_set_small. rewrite IH1, IH2. reflexivity.
+  - (*Tif*)
+    intros f t1 t2 IH1 IH2 IH3 x.
+    simpl_set_small. rewrite IH1, IH2, IH3. reflexivity.
+  - (*Tmatch - interesting case*)
+
+
+    
+     Search big_union map.
+  
+  
+   simpl. *) 
+
+
+
 (*Handle disj cases all at once*)
 Lemma new_gamma_gen_disj gamma gamma2 l
   (Hbad: sublist (idents_of_context (l ++ gamma)) badnames)
@@ -556,17 +807,55 @@ Qed.
 
 Require Import eliminate_inductive eliminate_definition. (*TODO: move [valid_ctx_abstract_app]*)
 
+Lemma sublist_remove_app_l {A: Type} (l1 l2 l3: list A):
+  sublist (l1 ++ l2) l3 ->
+  sublist l2 l3.
+Proof.
+  intros Hsub x Hinx.
+  apply Hsub. rewrite in_app_iff; auto.
+Qed.
+
+(*TODO: move*)
+Lemma mut_of_context_cons d l:
+  mut_of_context (d :: l) = 
+  (match d with 
+  | datatype_def m => [m]
+  | _ => nil
+  end) ++ mut_of_context l.
+Proof.
+  destruct d; reflexivity.
+Qed.
 
 Lemma new_gamma_gen_valid gamma gamma2 (Hbad: sublist (idents_of_context gamma) badnames):
   valid_context gamma ->
   no_recfun_indpred_gamma gamma ->
+  (*For gamma2, everything well-typed in gamma should be well-typed in gamma2
+    (basically, gamma2 is whole thing, which might be larger than current gamma)*)
+  sublist_sig gamma gamma2 ->
+  sublist (mut_of_context gamma) (mut_of_context gamma2) ->
+  (forall t ty, term_has_type gamma t ty -> term_has_type gamma2 t ty) ->
   valid_context (fold_all_ctx_gamma_gen new_constr_name keep_muts badnames noind gamma gamma2).
 Proof.
-  unfold fold_all_ctx_gamma_gen. intros Hval Hnori.
+  unfold fold_all_ctx_gamma_gen. intros Hval Hnori Hsubsig Hsubmut Hallty.
   induction gamma as [| d gamma IH]; simpl; auto.
   assert (Hbad2: sublist (idents_of_context gamma) badnames). {
     rewrite idents_of_context_cons in Hbad.
     intros x Hinx. apply Hbad. rewrite in_app_iff; auto.
+  }
+  assert (Hsubsig2: sublist_sig gamma gamma2). {
+    clear -Hsubsig. unfold sublist_sig in *.
+    rewrite sig_t_cons, sig_f_cons, sig_p_cons in Hsubsig.
+    destruct Hsubsig as [Hs1 [Hs2 Hs3]].
+    apply sublist_remove_app_l in Hs1, Hs2, Hs3. auto.
+  }
+  assert (Hsubmut2: sublist (mut_of_context gamma) (mut_of_context gamma2)). {
+    clear -Hsubmut.
+    rewrite mut_of_context_cons in Hsubmut. apply sublist_remove_app_l in Hsubmut.
+    auto.
+  }
+  assert (Hty2: forall t ty, term_has_type gamma t ty -> term_has_type gamma2 t ty).
+  {
+    intros t ty. apply term_has_type_sublist; auto.
   }
   simpl in Hnori.
   inversion Hval; subst.
@@ -633,7 +922,14 @@ Proof.
       destruct f; simpl; auto.
     - (*valid_def (interesting one)*)
       simpl. destruct f as [f params body |]; simpl.
-      + (*We need to prove 4 things about rewriteT:
+      + simpl in H8. 
+        (*TEMP*)
+        assert (Hty: term_has_type gamma2 body (f_ret f)). {
+          apply Hallty. apply H8.
+        }
+        (*so it is safe to assume this*)
+      
+      (*We need to prove 4 things about rewriteT:
         1. well-typed (according to NEW context)
         2. has same fv
         3. has same type vars
