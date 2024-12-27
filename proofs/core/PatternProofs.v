@@ -2201,12 +2201,177 @@ Definition simple_pat (p: pattern) : bool :=
   | _ => false
   end.
 
+Definition is_wild (p: pattern) : bool :=
+  match p with
+| Pwild => true
+| _ => false
+end.
+
+Definition pat_is_constr (p: pattern) : bool :=
+  match p with
+  | Pconstr _ _ _ => true
+  | _ => false
+  end.
+
+Definition is_this_constr (p: pattern) (c: funsym) : bool :=
+  match p with
+  | Pconstr f _ _ => funsym_eq_dec f c
+  | _ => false
+  end.
+
+
+(*Structure: all constrs at beginning, then wild
+  NOTE: the wild follows from before*)
+Definition constrs_then_wild (ps: list pattern) : bool :=
+  match (rev ps) with
+  | p :: ps1 => forallb pat_is_constr ps1
+  | nil => true
+  end.
+
 Definition simple_pat_match (ps: list pattern) : bool :=
   forallb simple_pat ps &&
   nodupb funsym_eq_dec (omap 
     (fun p => match p with | Pconstr c _ _ => Some c | _ => None end) ps) &&
   (*At least 1 constructor - or else we compiled the whole match away*)
-  (existsb (fun p => match p with | Pconstr _ _ _ => true | _ => false end) ps).
+  (existsb pat_is_constr ps) &&
+  (*All constructors at beginning, then maybe one wild*)
+  constrs_then_wild ps
+.
+
+(*TODO: move*)
+Lemma nodupb_rev {A: Type} eq_dec (l: list A):
+  nodupb eq_dec (rev l) = nodupb eq_dec l.
+Proof.
+  apply is_true_eq.
+  rewrite <- (reflect_iff _ _ (nodup_NoDup eq_dec (rev l))), <- (reflect_iff _ _ (nodup_NoDup eq_dec l)).
+  split.
+  - intros Hn. rewrite <- (rev_involutive l). apply NoDup_rev; auto.
+  - apply NoDup_rev.
+Qed.
+
+Lemma simpl_constr_get_vars {f tys pats}:
+  simple_pat (Pconstr f tys pats) ->
+  exists vars, pats = map Pvar vars.
+Proof.
+  simpl. induction pats as [| h t IH]; simpl; auto.
+  - intros _. exists nil; auto.
+  - destruct h; try discriminate.
+    simpl. intros Hall; apply IH in Hall.
+    destruct Hall as [vars Ht]; subst. exists (v :: vars); auto.
+Qed.
+
+(*A more useful form*)
+Lemma simple_pat_match_structure (ps: list pattern):
+  simple_pat_match ps ->
+  exists (b: bool) (cs: list (funsym * list vty * list vsymbol)),
+    NoDup (map fst cs) /\
+    ps = (map (fun x => Pconstr (fst (fst x)) (snd (fst x)) (map Pvar (snd x))) cs) ++
+      (if b then [Pwild] else nil).
+Proof.
+  unfold simple_pat_match. unfold is_true.
+  rewrite !andb_true_iff. intros [[[Hsimp Hnodup] Hex] Hwild].
+  unfold constrs_then_wild in Hwild.
+  destruct (rev ps) as [| p1 ps1] eqn : Hrev.
+  { (*contradiction - exists*)
+    assert (Hps: ps = nil). {
+      apply length_zero_iff_nil; rewrite <- rev_length, Hrev. reflexivity.
+    }
+    subst; discriminate.
+  }
+  assert (Hps: ps = rev ps1 ++ [p1]).
+  {
+    rewrite <- (rev_involutive ps), Hrev. reflexivity.
+  }
+  subst ps. clear Hrev.
+  (*More useful form of Hex: ps1 is null implies p1 is a constr*)
+  assert (Hex': null (rev ps1) -> pat_is_constr p1). {
+    rewrite existsb_app in Hex. simpl in Hex. 
+    destruct (rev ps1); simpl; auto. simpl in Hex.
+    destruct (pat_is_constr p1); auto.
+  }
+  clear Hex.
+  rewrite <- forallb_rev in Hwild. rewrite forallb_app in Hsimp.
+  simpl in *.
+  rewrite !andb_true_iff in Hsimp.
+  destruct Hsimp as [Hsimp [Hsimp1 _]].
+  (*rewrite existsb_rev in Hex.*)
+  rewrite omap_app in Hnodup.
+  apply(reflect_iff _ _ (nodup_NoDup eq_dec _)) in Hnodup.
+  rewrite NoDup_app_iff' in Hnodup.
+  simpl in Hnodup.
+  destruct Hnodup as [Hn1 [_ Hdisj]].
+  exists (is_wild p1).
+  (*Maybe can do it in 1 but gets messy. Casing on p1 first*)
+  destruct p1 as [| f1 tys1 pats1 | | |]; try discriminate.
+  - simpl. setoid_rewrite app_nil_r.
+    clear Hex'.
+    induction (rev ps1) as [| h t IH].
+    + simpl. 
+      destruct (simpl_constr_get_vars Hsimp1) as [vars Hpats]; subst.
+      exists [(f1, tys1, vars)].
+      simpl. split; auto. repeat (constructor; auto).
+    + forward IH.
+      { simpl in Hn1. destruct h; auto. inversion Hn1; subst; auto. }
+      forward IH.
+      { intros x [Hinx1 [Hxf1 | []]]; subst.
+        apply (Hdisj x). simpl. split; auto.
+        destruct h; simpl; auto.
+      }
+      simpl in Hsimp, Hwild.
+      apply andb_true_iff in Hsimp, Hwild.
+      specialize (IH (proj2 Hsimp) (proj2 Hwild)).
+      destruct IH as [cs [Hnodup Ht]].
+      simpl. rewrite Ht.
+      destruct Hwild as [Hconstr Hwild].
+      destruct h as [| f2 tys2 pats2 | | |]; try discriminate.
+      destruct (simpl_constr_get_vars (proj1 Hsimp)) as [vars Hpats]; subst.
+      exists ((f2, tys2, vars) :: cs); split; simpl; auto.
+      constructor; auto.
+      intros Hin. rewrite in_map_iff in Hin.
+      simpl in Hn1. inversion Hn1 as [| ? ? Hnt Hnotin]; subst.
+      destruct Hin as [[[f3 tys3] pat3] [Hfeq Hinf]].
+      simpl in Hfeq; subst. inversion Hfeq; subst.
+      (*Annoying contradiction: f2 is in cs, so either in t or in last (f1) contradicts disj*)
+      clear -Hnt Hinf Hdisj Ht.
+      assert (Hnot12: f1 <> f2). {
+        simpl in Hdisj.
+        intros Hf; subst; apply (Hdisj f2); auto.
+      } clear Hdisj. (*TODO: see*)
+      apply (f_equal (fun x => rev x)) in Ht.
+      rewrite <- map_rev in Ht.
+      rewrite rev_app_distr in Ht. simpl in Ht.
+      rewrite In_rev in Hinf.
+      destruct (rev cs) as [| h1 t1]; inversion Ht; subst.
+      simpl in Hinf. destruct Hinf as [Hh1 | Hint1]; subst; auto.
+      apply Hnt.
+      apply (f_equal (fun x => rev x)) in H3.
+      rewrite rev_involutive in H3. subst.
+      rewrite in_omap_iff. exists (Pconstr f2 tys2 (map Pvar pat3)).
+      split; auto. rewrite <- In_rev. rewrite in_map_iff.
+      exists (f2, tys2, pat3); auto.
+  - (*Case 2: wild at end, so only constrs in ps*)
+    simpl. clear Hsimp1. clear Hex'. clear Hdisj.
+    (*easier*)
+    induction (rev ps1) as [| h t IH]; simpl; auto.
+    { exists nil; split; auto. constructor. }
+    simpl in *.
+    destruct h as [| f1 tys1 pats1 | | |]; try discriminate. 
+    inversion Hn1 as [| ? ? Hnotin Hn2]; subst.
+    rewrite andb_true_iff in Hsimp, Hwild.
+    destruct Hsimp as [Hsimp1 Hsimp];
+    destruct Hwild as [_ Hconstr].
+    specialize (IH Hn2 Hsimp Hconstr).
+    destruct IH as [cs [Hnodup Ht]].
+    apply app_inv_tail in Ht. subst; clear Hn2 Hn1.
+    destruct (simpl_constr_get_vars Hsimp1) as [vars Hpats]; subst.
+    exists ((f1, tys1, vars) :: cs).
+    simpl. split; auto. constructor; auto.
+    (*Contradiction easier*)
+    rewrite in_map_iff. intros [[[f2 tys2] vars2] [Hfs Hinx]]. simpl in Hfs; inversion Hfs; subst; clear Hfs.
+    apply Hnotin. rewrite in_omap_iff. exists (Pconstr f1 tys1 (map Pvar vars2)). split; auto.
+    rewrite in_map_iff. exists (f1, tys1, vars2). auto.
+Qed.
+
 
 Fixpoint term_simple_pats (t: term) : bool :=
   match t with
@@ -2504,6 +2669,20 @@ Proof.
           unfold cslist. apply (populate_all_fst_snd_full _ _ _ Hsimpl Hpop). auto.
         }
         rewrite Hcslist in Hex. destruct_all; contradiction.
+      * unfold constrs_then_wild. rewrite rev_app_distr. rewrite rev_involutive.
+        (*Main case:*)
+        match goal with
+        |- match (?l1 ++ ?l2) with | nil => _ | _ :: _ => _ end = _ =>
+           assert (Hmap: forallb pat_is_constr l2)
+        end.
+        {
+          rewrite forallb_map. simpl. apply forallb_forall.
+          intros [[f tys] pats]; auto.
+        }
+        (*Proceed by cases*)
+        destruct Hps1' as [[Hps1 _] | [_ [t2 [Ht Hps1]]]]; subst; auto.
+        simpl. clear -Hmap. destruct (map _ cslist) eqn : Hm; auto.
+        simpl in Hmap. apply andb_true_iff in Hmap. apply Hmap.
   - (*constr case*)
     intros.  destruct Hhyps as [Hsimp1 Hsimp2]. simpl in Hsimp1. 
     apply andb_prop in Hsimp1. destruct Hsimp1 as [Hsimpt Hsimptl]. 
@@ -3064,7 +3243,7 @@ Proof.
     apply forallb_forall.
     setoid_rewrite in_map_iff.
     unfold simple_pat_match in Hsimp.
-    do 2 (apply andb_true_iff in Hsimp; destruct Hsimp as [Hsimp _]).
+    do 3 (apply andb_true_iff in Hsimp; destruct Hsimp as [Hsimp _]).
     rewrite forallb_forall in Hsimp.
     intros x [y [Hx Hiny]]; subst. simpl. apply Hsimp_pat, Hsimp.
     rewrite in_map_iff. exists y; unfold ps; simpl; auto. 
@@ -3196,10 +3375,8 @@ Proof.
     intros cs.
     clear -Hsimp.
     unfold simple_pat_match in Hsimp.
-    apply andb_true_iff in Hsimp.
-    destruct Hsimp as [Hsimp _].
-    apply andb_true_iff in Hsimp.
-    destruct Hsimp as [Hsimp _].
+    do 3 (apply andb_true_iff in Hsimp;
+    destruct Hsimp as [Hsimp _]).
     subst rl.
     induction ps as [| phd1 ptl1]; simpl; [contradiction|].
     simpl in Hsimp.
@@ -4276,6 +4453,20 @@ Proof.
             unfold cslist. apply (populate_all_fst_snd_full _ _ _ Hsimp Hpop). auto.
           }
           rewrite Hcslist in Hex. destruct_all; contradiction.
+        + unfold constrs_then_wild. rewrite rev_app_distr. rewrite rev_involutive.
+          (*Main case:*)
+          match goal with
+          |- match (?l1 ++ ?l2) with | nil => _ | _ :: _ => _ end = _ =>
+             assert (Hmap: forallb pat_is_constr l2)
+          end.
+          {
+            rewrite forallb_map. simpl. apply forallb_forall.
+            intros [[f tys] pats1]; auto.
+          }
+          (*Proceed by cases*)
+          destruct now; simpl; auto.
+          clear -Hmap. destruct (map _ cslist) eqn : Hm; auto.
+          simpl in Hmap. apply andb_true_iff in Hmap. apply Hmap.
       }
       (*Now prove that this match is exhaustive*)
       assert (Hexhaust: (simple_exhaust (map fst pats) a)).
