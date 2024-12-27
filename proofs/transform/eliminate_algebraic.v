@@ -684,16 +684,21 @@ Definition enc_ty (t: vty) : bool :=
   in map m, maps cons -> (let x := ...)
   in w, set if there is a wild or not - if there is wild, gives term
   *)
-Definition mk_br_tm t1 (x: option term * amap funsym term) (br: pattern * term) :=
+(*Note: change fold_left2' to map and then fold_let so easier to prove*)
+Definition fold_let {A: Type} (tlet: term -> vsymbol -> A -> A)
+  (l: list (term * vsymbol)) (b: A) : A :=
+  fold_right (fun x acc => tlet (fst x) (snd x) acc) b l.
+
+Definition mk_br_tm (rewriteT: term -> term) t1 (x: option term * amap funsym term) (br: pattern * term) :=
   let w := fst x in
   let m := snd x in
   let e := rewriteT (snd br) in
   match (fst br) with
   | Pconstr cs tys pl =>
-    let add_var e p pj :=
+    let add_var p pj :=
       match p with
-      | Pvar v => Tlet (Tfun pj [snd v] [t1]) v e
-      | _ => tm_d (*NOTE: default, because we never hit it anyway by assumption*)
+      | Pvar v => (Tfun pj [snd v] [t1], v)
+      | _ => (tm_d, vs_d) (*NOTE: default, because we never hit it anyway by assumption*)
       end
       in
       let pjl := get_proj_list cs (*amap_get_def funsym_eq_dec s.(cp_map) cs nil*) in 
@@ -702,11 +707,16 @@ Definition mk_br_tm t1 (x: option term * amap funsym term) (br: pattern * term) 
       | None => nil (*TODO: prove don't hit (basically, will prove by knowing that all
         defined types appeared before and hence have already been added to map)*)
       end in*)
-      let e := fold_left2' add_var pl pjl e in
+      let e := fold_let Tlet (map2 add_var pl pjl) e in
+      (* let e := fold_left2' add_var pl pjl e in *)
       (w, amap_set funsym_eq_dec m cs e)
   | Pwild => (Some e, m)
   | _ => (*Prove don't hit*) x
   end.
+
+(*TODO: generalize?*)
+Definition mk_brs_tm (rewriteT: term -> term) (t1: term) (pats: list (pattern * term)) :=
+  fold_left (mk_br_tm rewriteT t1) pats (None, amap_empty).
 
 Fixpoint rewriteT (t: term) : term :=
   match t with
@@ -737,7 +747,7 @@ Fixpoint rewriteT (t: term) : term :=
         | _ => (*Prove don't hit*) x
         end
       in *)
-      let res := fold_left (mk_br_tm t1) pats (None, amap_empty) in
+      let res := mk_brs_tm rewriteT t1 pats in
       let w := fst res in
       let m := snd res in (*gives map constructors to new terms*)
       (*find: for each constructor, get the term, if the term is not there,
