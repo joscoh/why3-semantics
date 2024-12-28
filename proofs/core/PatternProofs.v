@@ -2264,7 +2264,8 @@ Qed.
 Lemma simple_pat_match_structure (ps: list pattern):
   simple_pat_match ps ->
   exists (b: bool) (cs: list (funsym * list vty * list vsymbol)),
-    NoDup (map fst cs) /\
+    negb (null cs) /\
+    NoDup (map (fun x => fst (fst x)) cs) /\
     ps = (map (fun x => Pconstr (fst (fst x)) (snd (fst x)) (map Pvar (snd x))) cs) ++
       (if b then [Pwild] else nil).
 Proof.
@@ -2309,7 +2310,7 @@ Proof.
     + simpl. 
       destruct (simpl_constr_get_vars Hsimp1) as [vars Hpats]; subst.
       exists [(f1, tys1, vars)].
-      simpl. split; auto. repeat (constructor; auto).
+      simpl. split; auto. split; auto. repeat (constructor; auto).
     + forward IH.
       { simpl in Hn1. destruct h; auto. inversion Hn1; subst; auto. }
       forward IH.
@@ -2320,17 +2321,17 @@ Proof.
       simpl in Hsimp, Hwild.
       apply andb_true_iff in Hsimp, Hwild.
       specialize (IH (proj2 Hsimp) (proj2 Hwild)).
-      destruct IH as [cs [Hnodup Ht]].
+      destruct IH as [cs [Hnotnull [Hnodup Ht]]].
       simpl. rewrite Ht.
       destruct Hwild as [Hconstr Hwild].
       destruct h as [| f2 tys2 pats2 | | |]; try discriminate.
       destruct (simpl_constr_get_vars (proj1 Hsimp)) as [vars Hpats]; subst.
-      exists ((f2, tys2, vars) :: cs); split; simpl; auto.
+      exists ((f2, tys2, vars) :: cs); split; simpl; auto. split; auto.
       constructor; auto.
       intros Hin. rewrite in_map_iff in Hin.
       simpl in Hn1. inversion Hn1 as [| ? ? Hnt Hnotin]; subst.
       destruct Hin as [[[f3 tys3] pat3] [Hfeq Hinf]].
-      simpl in Hfeq; subst. inversion Hfeq; subst.
+      simpl in Hfeq; subst.
       (*Annoying contradiction: f2 is in cs, so either in t or in last (f1) contradicts disj*)
       clear -Hnt Hinf Hdisj Ht.
       assert (Hnot12: f1 <> f2). {
@@ -2346,30 +2347,97 @@ Proof.
       apply Hnt.
       apply (f_equal (fun x => rev x)) in H3.
       rewrite rev_involutive in H3. subst.
-      rewrite in_omap_iff. exists (Pconstr f2 tys2 (map Pvar pat3)).
+      rewrite in_omap_iff. exists (Pconstr f2 tys3 (map Pvar pat3)).
       split; auto. rewrite <- In_rev. rewrite in_map_iff.
-      exists (f2, tys2, pat3); auto.
+      exists (f2, tys3, pat3); simpl; auto.
   - (*Case 2: wild at end, so only constrs in ps*)
-    simpl. clear Hsimp1. clear Hex'. clear Hdisj.
+    simpl. clear Hsimp1. assert (Hnotnull: negb (null (rev ps1))). {
+      destruct (null (rev ps1)); auto.
+    }
+    clear Hex' Hdisj.
     (*easier*)
     induction (rev ps1) as [| h t IH]; simpl; auto.
-    { exists nil; split; auto. constructor. }
+    { discriminate. }
     simpl in *.
     destruct h as [| f1 tys1 pats1 | | |]; try discriminate. 
     inversion Hn1 as [| ? ? Hnotin Hn2]; subst.
     rewrite andb_true_iff in Hsimp, Hwild.
     destruct Hsimp as [Hsimp1 Hsimp];
     destruct Hwild as [_ Hconstr].
-    specialize (IH Hn2 Hsimp Hconstr).
-    destruct IH as [cs [Hnodup Ht]].
-    apply app_inv_tail in Ht. subst; clear Hn2 Hn1.
     destruct (simpl_constr_get_vars Hsimp1) as [vars Hpats]; subst.
+    (*Need to see if t is null or not*)
+    destruct (null t) eqn : Hnull.
+    { destruct t; try discriminate. simpl.
+      (*Only 1 constr*)
+      exists [(f1, tys1, vars)]. split_all; auto.
+    }
+    (*Now can use IH*)
+    specialize (IH Hn2 Hsimp Hconstr eq_refl).
+    destruct IH as [cs [Hcsnull [Hnodup Ht]]].
+    apply app_inv_tail in Ht. subst; clear Hn2 Hn1.
     exists ((f1, tys1, vars) :: cs).
-    simpl. split; auto. constructor; auto.
+    simpl. split_all; auto. constructor; auto.
     (*Contradiction easier*)
-    rewrite in_map_iff. intros [[[f2 tys2] vars2] [Hfs Hinx]]. simpl in Hfs; inversion Hfs; subst; clear Hfs.
-    apply Hnotin. rewrite in_omap_iff. exists (Pconstr f1 tys1 (map Pvar vars2)). split; auto.
-    rewrite in_map_iff. exists (f1, tys1, vars2). auto.
+    rewrite in_map_iff. intros [[[f2 tys2] vars2] [Hfs Hinx]]. simpl in Hfs; subst.
+    apply Hnotin. rewrite in_omap_iff. exists (Pconstr f1 tys2 (map Pvar vars2)). split; auto.
+    rewrite in_map_iff. exists (f1, tys2, vars2). auto.
+Qed.
+
+(*TODO: move*)
+Lemma omap_some_map {A B: Type} (f: A -> B) (l: list A):
+  omap (fun x => Some (f x)) l = map f l.
+Proof.
+  induction l as [| h t IH]; simpl; auto.
+Qed.
+
+(*And the reverse direction*)
+Lemma simple_pat_match_structure_inv (ps: list pattern) (b1: bool)
+  (cs: list (funsym * list vty * list vsymbol)):
+  negb (null cs) ->
+  NoDup (map (fun x => fst (fst x)) cs) ->
+  ps = (map (fun x => Pconstr (fst (fst x)) (snd (fst x)) (map Pvar (snd x))) cs) ++
+    (if b1 then [Pwild] else nil) ->
+  simple_pat_match ps.
+Proof.
+  intros Hnotnull Hnodup Hps; subst.
+  unfold simple_pat_match, is_true.
+  rewrite !andb_true_iff; split_all.
+  - rewrite forallb_app, forallb_map. simpl.
+    apply andb_true_iff. split; [| destruct b1; auto].
+    apply forallb_forall. intros x Hinx.
+    rewrite forallb_map. apply forallb_forall; auto.
+  - rewrite omap_app.
+    replace (omap _ (if b1 then [Pwild] else [])) with (@nil funsym).
+    2: { destruct b1; auto. }
+    rewrite app_nil_r.
+    rewrite omap_map, omap_some_map.
+    apply (reflect_iff _ _ (nodup_NoDup _ _)). auto.
+  - rewrite existsb_app.
+    apply orb_true_iff. left. rewrite existsb_map.
+    simpl. destruct cs; auto; try discriminate.
+  - unfold constrs_then_wild. rewrite rev_app_distr.
+    assert (Hall: forallb pat_is_constr (rev (map
+        (fun x => Pconstr (fst (fst x)) (snd (fst x)) (map Pvar (snd x))) cs))).
+    {
+      rewrite forallb_rev, forallb_map. simpl. apply forallb_forall; auto.
+    }
+    destruct b1; simpl; auto.
+    destruct (rev (map _ _)) eqn : Hrev; auto.
+    simpl in Hall. apply andb_true_iff in Hall; apply Hall.
+Qed.
+
+Lemma simple_pat_match_iff (ps: list pattern):
+  simple_pat_match ps <->
+  exists (b: bool) (cs: list (funsym * list vty * list vsymbol)),
+    negb (null cs) /\
+    NoDup (map (fun x => fst (fst x)) cs) /\
+    ps = (map (fun x => Pconstr (fst (fst x)) (snd (fst x)) (map Pvar (snd x))) cs) ++
+      (if b then [Pwild] else nil).
+Proof.
+  split.
+  - apply simple_pat_match_structure.
+  - intros [b1 [cs [Hnull [Hnodup Hps]]]].
+    eapply simple_pat_match_structure_inv; eauto.
 Qed.
 
 
