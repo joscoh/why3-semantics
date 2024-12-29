@@ -661,7 +661,10 @@ Require Import PatternProofs.
 Lemma simple_pat_match_adt {gamma: context} (gamma_valid: valid_context gamma)
   {t ty ps ty1} (Hsimp: simple_pat_match (map fst ps)) 
   (Hty: term_has_type gamma (Tmatch t ty ps) ty1):
-  exists m a, mut_in_ctx m gamma /\ adt_in_mut a m /\ exists args, ty = vty_cons (adt_name a) args.
+  exists m a, mut_in_ctx m gamma /\ adt_in_mut a m /\ exists args,
+    length args = length (m_params m) /\ 
+    Forall (valid_type gamma) args /\
+    ty = vty_cons (adt_name a) args.
 Proof.
   unfold simple_pat_match in Hsimp. unfold is_true in Hsimp.
   rewrite !andb_true_iff in Hsimp.
@@ -677,7 +680,8 @@ Proof.
   exists m. exists a. split_all; auto.
   unfold sigma.
   rewrite (adt_constr_subst_ret gamma_valid m_in a_in c_in); auto.
-  exists tys; auto.
+  exists tys; split; auto.
+  rewrite <- (adt_constr_params gamma_valid m_in a_in c_in); auto.
 Qed.
 
 (*TODO: move*)
@@ -723,9 +727,30 @@ Proof.
       simpl. rewrite IH. split; intros; destruct_all; subst; eauto. inversion H.
 Qed.
 
+Lemma mk_brs_tm_fst_iff rewriteT t1 pats
+  (Hsimp: forallb simple_pat (map fst pats)):
+  isSome (fst (mk_brs_tm badnames rewriteT t1 pats)) <->
+  In Pwild (map fst pats).
+Proof.
+  unfold mk_brs_tm.
+  rewrite <- forallb_rev, <- map_rev in Hsimp.
+  rewrite <- fold_left_rev_right.
+  rewrite (In_rev (map fst pats)), <- map_rev.
+  induction (rev pats) as [| h t IH]; simpl; auto.
+  - split; intros; destruct_all; try discriminate; contradiction.
+  - simpl in Hsimp. apply andb_true_iff in Hsimp. destruct Hsimp as [Hsimp1 Hsimp]. 
+    unfold mk_br_tm. destruct h as [p2 t2]. simpl in *. 
+    specialize (IH Hsimp).
+    destruct p2 as [| f1 tys1 tms1 | | |]; try discriminate.
+    + (*Case 1: constr*)
+      simpl. rewrite IH.
+      split; intros; destruct_all; eauto. inversion H.
+    + (*Case 2: wild*)
+      simpl. split; auto.
+Qed.
+
 (*Another structural result (TODO: which is better)*)
 
-Print get_proj_list.
 Lemma mk_brs_tm_snd_get rewriteT t1 pats c tm
   (Hsimp: forallb simple_pat (map fst pats)):
   amap_get funsym_eq_dec (snd (mk_brs_tm badnames rewriteT t1 pats)) c = Some tm ->
@@ -756,6 +781,31 @@ Proof.
       intros Hsome; apply IH in Hsome; clear IH. destruct_all; subst; eauto 7.
 Qed.
 
+(*NOTE (maybe TODO) - can prove other direction assuming simple_pattern and use lemma*)
+
+Lemma mk_brs_tm_fst_some rewriteT t1 pats x
+  (Hsimp: forallb simple_pat (map fst pats)):
+  fst (mk_brs_tm badnames rewriteT t1 pats) = Some x ->
+  exists tm, In (Pwild, tm) pats /\ x = rewriteT tm.
+Proof.
+  unfold mk_brs_tm.
+  rewrite <- forallb_rev, <- map_rev in Hsimp.
+  rewrite <- fold_left_rev_right.
+  setoid_rewrite (In_rev pats).
+  induction (rev pats) as [| h t IH]; simpl; auto; [discriminate|].
+  simpl in Hsimp. apply andb_true_iff in Hsimp. destruct Hsimp as [Hsimp1 Hsimp]. 
+  destruct h as [p2 t2]. simpl in *. 
+  specialize (IH Hsimp).
+  destruct p2 as [| f1 tys1 tms1 | | |]; try discriminate.
+  + (*Case 1: constr*)
+    simpl.
+    intros Hsome; apply IH in Hsome.
+    destruct Hsome as [tm [Hintm Hx]]; subst.
+    exists tm. auto.
+  + (*Case 2: wild*)
+    simpl. intros Hsome; inversion Hsome; subst. exists t2; auto.
+Qed.
+
 
 (*free variables for [fold_let]*)
 (*Only prove sublist, probably could prove whole*)
@@ -772,7 +822,6 @@ Proof.
   apply IH in Hinx. simpl_set_small. destruct Hinx as [Hinx | Hinx]; auto.
   simpl_set_small. destruct Hinx as [Hinx Hnotinx]; auto.
 Qed.
-Print T_Match.
 
 (*TODO: move*)
 (*Only 1 direction bc we dont require length*)
@@ -845,6 +894,19 @@ Proof.
     destruct Hinxp as [Heq | []]; subst; auto.
 Qed. 
 
+Lemma mk_brs_tm_fst_fv (*gamma ty*) rewriteT t1 pats tm
+  (Hsimp: forallb simple_pat (map fst pats))
+  (*(Hallty: Forall (fun x => pattern_has_type gamma (fst x) ty) pats)*): (*need for len*)
+  fst (mk_brs_tm badnames rewriteT t1 pats) = Some tm ->
+  exists t, In (Pwild, t) pats /\
+    sublist (tm_fv tm) (tm_fv (rewriteT t)).
+Proof.
+  intros Hget. apply mk_brs_tm_fst_some in Hget; auto.
+  destruct Hget as [t [Hint Htm]]; subst.
+  exists t. split; auto. apply sublist_refl.
+Qed.
+
+
 (*Need to prove things about [mk_br_tm]:
         1. Every constr is in the map (of snd) iff it is present in
           the pattern list and
@@ -874,9 +936,10 @@ Qed.
 
 
 
+
 (*From the result of [compile_match]*)
 
-
+Require Import Exhaustive.
 (*TODO: could prove iff but we don't need it*)
 (*NOTE: assume typing, or else we can't handle e.g. defaults, lengths, etc
   rewriteT really needs well-typing and simple patterns, though this particular
@@ -884,27 +947,30 @@ Qed.
 (*We do need simple patterns or else we run into problems if matching on
   a non-ADT*)
 Lemma rewrite_fv {gamma} (gamma_valid: valid_context gamma) names t f:
-  (forall ty (Hty: term_has_type gamma t ty) (Hsimp: term_simple_pats t), 
+  (forall ty (Hty: term_has_type gamma t ty) (Hsimp: term_simple_pats t)
+    (Hexh: @term_simple_exhaust gamma t), 
     sublist (tm_fv (rewriteT keep_muts new_constr_name badnames gamma names t)) (tm_fv t)) /\
-  (forall (Hty: formula_typed gamma f) (Hsimp: fmla_simple_pats f) av sign, 
+  (forall (Hty: formula_typed gamma f) (Hsimp: fmla_simple_pats f)
+    (Hexh: @fmla_simple_exhaust gamma f) av sign, 
     sublist (fmla_fv (rewriteF keep_muts new_constr_name badnames gamma names av sign f))
       (fmla_fv f)).
 Proof.
   revert t f; apply term_formula_ind_typed; simpl; auto;
   try solve[intros; bool_hyps; solve_subset].
   - (*Tfun*)
-    intros f1 tys tms IH Hty Hsimp.
+    intros f1 tys tms IH Hty Hsimp Hexh.
     destruct (_ && _) eqn : Hf1.
     + simpl. apply sublist_refl.
     + simpl. apply sublist_big_union_map. auto.
       apply forall2_snd_irrel in IH; auto.
-      * unfold is_true in Hsimp. rewrite forallb_forall in Hsimp.
+      * unfold is_true in Hsimp, Hexh. rewrite forallb_forall in Hsimp, Hexh.
         rewrite Forall_forall in IH |- *; auto.
       * unfold ty_subst_list. inversion Hty; subst; solve_len.
   - (*Tmatch - interesting case*)
-    intros tm1 ty1 ps ty IH1 IH2 Hty Hsimp.
-    unfold is_true in Hsimp. rewrite !andb_true_iff in Hsimp.
+    intros tm1 ty1 ps ty IH1 IH2 Hty Hsimp Hexh.
+    unfold is_true in Hsimp, Hexh. rewrite !andb_true_iff in Hsimp, Hexh.
     destruct Hsimp as [[Hsimp1 Hsimp2] Hsimpps].
+    destruct Hexh as [[Hexh Hexhtm] Hexhps].
     destruct (enc_ty keep_muts gamma ty1) eqn : Henc.
     2: {
       simpl.
@@ -913,9 +979,12 @@ Proof.
       rewrite Forall_forall. rewrite forallb_forall in Hsimp2.
       intros x Hinx; specialize (Hsimp2 x Hinx).
       rewrite Forall_map, Forall_forall in IH2. solve_subset.
+      apply IH2; auto.
+      rewrite forallb_forall in Hexhps; auto.
     }
     (*From simple, know it is ADT*)
-    destruct (simple_pat_match_adt gamma_valid Hsimpps Hty) as [m [a [m_in [a_in [args Htyeq]]]]].
+    destruct (simple_pat_match_adt gamma_valid Hsimpps Hty) as 
+    [m [a [m_in [a_in [args [Hargslen [Hvalargs Htyeq]]]]]]].
     subst ty1. simpl.
     (*simplify [get_constructors]*)
     rewrite (get_constructors_eq gamma_valid m_in a_in).
@@ -931,6 +1000,11 @@ Proof.
     + destruct (adt_constr_list a) as [| c1 cs] eqn : Hconstrlist; try discriminate.
       destruct cs; try discriminate.
       simpl in Hmap. inversion Hmap as [Heq]; clear Hmap.
+      set (mp:= snd(mk_brs_tm badnames
+        (rewriteT keep_muts new_constr_name badnames gamma
+        names)
+        (rewriteT keep_muts new_constr_name badnames gamma
+        names tm1) ps)) in *.
       destruct (amap_get funsym_eq_dec _ c1) as [t2|] eqn : Hgetc1.
       * subst. 
         inversion Hty; subst.
@@ -953,8 +1027,145 @@ Proof.
         apply (IH2 (Pconstr c1 tys1 pats1, t2)) in Hinx; auto.
         simpl.
         rewrite forallb_forall in Hsimp2.
-        specialize (Hsimp2 _ Hinps). auto.
-      * (*Case 2: get is None - now have to reason about wilds (TODO: prove)*)
+        specialize (Hsimp2 _ Hinps). auto. simpl.
+        rewrite forallb_forall in Hexhps. apply Hexhps in Hinps. auto.
+      * (*Case 2: get is None - from [simple_exhaust], we show that wilds
+          is nonempty*)
+        assert (Hallsimp: forallb simple_pat (map fst ps)). {
+          unfold simple_pat_match in Hsimpps.
+          rewrite !andb_true_iff in Hsimpps; apply Hsimpps.
+        }
+        set (w := (fst
+          (mk_brs_tm badnames
+          (rewriteT keep_muts new_constr_name badnames gamma
+          names)
+          (rewriteT keep_muts new_constr_name badnames gamma
+          names tm1) ps))) in *.
+        (*TODO: put in separate lemma*)
+        assert (Hx: isSome w). {
+          (*idea: we know that c1 is not in match,
+            so there has to be a wild (bc syntactically exhaustive),
+            so fst (mk_brs_tm) must be Some*)
+          apply mk_brs_tm_fst_iff; auto.
+          (*Use [simple_exhaust_notin] from Exhaustive.v to show if no constr,
+            then Pwild must be there*)
+          assert (c_in: constr_in_adt c1 a). {
+            apply constr_in_adt_eq. rewrite Hconstrlist; simpl; auto.
+          }
+          apply (simple_exhaust_notin _ a _ c_in); auto.
+          - apply (term_simple_exhaust_exact gamma_valid m_in a_in args Hargslen true _ ps _ Hty); auto.
+          - (*Now, know that this constr not in map by amap_get = None*)
+            apply eq_true_not_negb. intros Hex.
+            rewrite existsb_exists in Hex.
+            destruct Hex as [p [Hinp Hc1]].
+            destruct p as [| f1 tys1 pats1 | | |]; try discriminate.
+            simpl in Hc1. destruct (funsym_eq_dec f1 c1); subst; try discriminate.
+            rewrite in_map_iff in Hinp.
+            destruct Hinp as [[p1 t1] [Hp1 Hinpt]]. simpl in Hp1; subst.
+            assert (Hmem: amap_mem funsym_eq_dec c1 mp).
+            {
+              apply mk_brs_tm_snd_iff; auto.
+              exists tys1; exists pats1; exists t1; auto.
+            }
+            rewrite amap_mem_spec in Hmem.
+            rewrite Hgetc1 in Hmem.
+            discriminate.
+        }
+        (*Now we know that w must be some*)
+        destruct w as [w1|] eqn : Hw; [|discriminate]. subst.
+        destruct (mk_brs_tm_fst_fv _ _ _ _ Hallsimp Hw) as [t1 [Hint1 Hsub]].
+        eapply sublist_trans; [apply Hsub|].
+        rewrite Forall_map, Forall_forall in IH2.
+        eapply sublist_trans; [apply (IH2 (Pwild, t1))|]; auto.
+        -- rewrite forallb_forall in Hsimp2; apply Hsimp2; auto.
+        -- rewrite forallb_forall in Hexhps; apply Hexhps; auto.
+        -- simpl. intros x Hinx.
+          simpl_set. right. exists (Pwild, t1). auto.
+    + (*Other case: multiple, put all in funsym*)
+        (*TODO: maybe do typing first so we can make sure it is all right*)
+          
+           split; auto.
+         simpl. rewrite forall
+
+
+mk_brs_tm_fst_fv:
+  forall (rewriteT : term -> term) (t1 : term) (pats : list (pattern * term))
+    (tm : term),
+  forallb simple_pat (map fst pats) ->
+  fst (mk_brs_tm badnames rewriteT t1 pats) = Some tm ->
+  exists t : term,
+    In (Pwild, t) pats /\ sublist (tm_fv tm) (tm_fv (rewriteT t))
+
+
+        Search fst mk_brs_tm tm_fv.
+         subst w.
+            Search (~ (?b = true) -> negb ?b = true).
+
+
+mk_brs_tm_snd_iff:
+  forall (rewriteT : term -> term) (t1 : term) (pats : list (pattern * term))
+    (c : funsym),
+  forallb simple_pat (map fst pats) ->
+  amap_mem funsym_eq_dec c (snd (mk_brs_tm badnames rewriteT t1 pats)) <->
+  (exists (tys : list vty) (vs : list pattern) (t : term),
+     In (Pconstr c tys vs, t) pats)
+
+            Search snd mk_brs_tm.
+
+          Lemma term_simple_exhaust_exact {gamma: context} (gamma_valid: valid_context gamma)
+  {m a} (m_in: mut_in_ctx m gamma) (a_in: adt_in_mut a m) args
+  (Hargslen: length args = length (m_params m))
+  (* (Hvalargs: Forall (valid_type gamma) args) *)
+  (b: bool) (tm: term) (ps: list (pattern * gen_term b)) (ret_ty: gen_type b)
+  (Hpatty: gen_typed gamma b (gen_match tm (vty_cons (adt_name a) args) ps) ret_ty)
+  (Hexh: existsb (fun a => simple_exhaust (map fst ps) a) (adts_of_context gamma))
+  (Hsimp: simple_pat_match (map fst ps)):
+  simple_exhaust (map fst ps) a.
+
+
+          Lemma simple_exhaust_notin (ps: list pattern) (a: alg_datatype) (c: funsym)
+  (c_in: constr_in_adt c a)
+  (Hsimp: simple_pat_match ps)
+  (Hex: simple_exhaust ps a)
+  (Hnotin: negb (existsb (fun x => is_this_constr x c) ps)):
+  In Pwild ps.
+          - 
+          Serach simple_pat_match
+
+
+          Lemma mk_brs_tm_fst_iff rewriteT t1 pats
+  (Hsimp: forallb simple_pat (map fst pats)):
+  isSome (fst (mk_brs_tm badnames rewriteT t1 pats)) <->
+  In Pwild (map fst pats).
+        }
+        destruct x eqn : Hx.
+        2: {
+          
+          
+        }
+        destruct (fst
+          (mk_brs_tm badnames
+          (rewriteT keep_muts new_constr_name badnames gamma
+          names)
+          (rewriteT keep_muts new_constr_name badnames gamma
+          names tm1) ps)) as [x|] eqn : Hfst.
+        2: {
+          (*contradiction: we know that c1 is not in match,
+            so there has to be a wild (bc syntactically exhaustive),
+            so fst (mk_brs_tm) must be Some*)
+          
+        }
+      
+      
+       now have to reason about wilds (TODO: prove)*)
+        (*From exhaustiveness, need to show that wilds is nonempty*)
+        inversion Hty; subst.
+
+        inversion H2; subst.
+
+        mk_brs_tm_fst_fv
+
+
         apply union_sublist.
 
 
