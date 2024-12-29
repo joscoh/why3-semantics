@@ -299,6 +299,16 @@ Definition single {A: Type} (l: list A) : bool :=
   match l with | [_] => true | _ => false
   end.
 
+(*An informative one - this is nicer in proofs than pattern matching*)
+Definition get_single {A: Set} (l: list A) :
+  Either {x: A | l = [x]} (forall x, l <> [x]).
+Proof.
+  destruct l as [| h [| h1 t1]]; [apply Right | apply Left | apply Right].
+  - intros x; discriminate.
+  - apply (exist _ h). reflexivity.
+  - intros x; discriminate.
+Qed.
+
 (*Don't need selector for types with single constructor because trivial.
   NOTE: does this cause any problems with eliminating singleton types (e.g. user defined tuple)
   need to see in rewriteT*)
@@ -652,6 +662,11 @@ Definition pat_match_ty (pats: list (pattern * term)) : option vty :=
   | nil => None
   | (p, t) :: _ => Typechecker.typecheck_term gamma t
   end.
+Definition pat_match_ty' pats :=
+  match pat_match_ty pats with
+  | Some t => t
+  | _ => vty_int
+  end.
 
 
 (*Assume we have a list of banned variables (instantiate with term vars)*)
@@ -718,6 +733,7 @@ Definition mk_br_tm (rewriteT: term -> term) t1 (x: option term * amap funsym te
 Definition mk_brs_tm (rewriteT: term -> term) (t1: term) (pats: list (pattern * term)) :=
   fold_left (mk_br_tm rewriteT t1) pats (None, amap_empty).
 
+
 Fixpoint rewriteT (t: term) : term :=
   match t with
   | Tmatch t1 ty pats => 
@@ -760,6 +776,19 @@ Fixpoint rewriteT (t: term) : term :=
       in
       (*By typing, has to be an ADT*)
       let ts := match ty with | vty_cons ts _ => ts | _ => ts_d (*impossible*) end in
+      let args := match ty with | vty_cons _ args => args | _ => nil (*impossible*) end in
+      let tl := map find (get_constructors gamma ts) in
+      match (get_single tl) with 
+      | Left x => proj1_sig x
+      | Right _ =>
+        (*Types: return type is foo a b c ... -> a1 -> a1 -> a1 (a1 is first param)
+          We apply this to t1 (which has type ts(args), which must (adt_name a) args)
+          so the type arguments should be (type of return) :: args
+          type of return is not present in here, unfortunately, so we use [pat_match_ty]*)
+        Tfun (get_mt_map ts) (pat_match_ty' pats :: args) (t1 :: tl)
+      end
+      (* if single tl then
+      
       match map find (get_constructors gamma ts) with
       | [t] => t
       | tl => (*Get *) 
@@ -779,11 +808,12 @@ Fixpoint rewriteT (t: term) : term :=
         (*Type should be original type of term - can we tell this?
           arguments have type: [ty; ty1; ty1, ... ty1] if elements in pat match have type ty1. 
           We may need to carry around this information*)
-      end
+      end *)
     else t_map rewriteT (rewriteF nil true) t
   | Tfun ls tys args => (*map old constrs to new constr*)
     if ls.(f_is_constr) && enc_ty (f_ret ls) (*we can just pass in return type because only depends on typesym*)
-    then Tfun (new_constr ls) (*(amap_get_def funsym_eq_dec s.(cc_map) ls id_fs)*) tys args
+    then Tfun (new_constr ls) (*(amap_get_def funsym_eq_dec s.(cc_map) ls id_fs)*) tys 
+      (map rewriteT args)
     else t_map rewriteT (rewriteF nil true) t
   (*Don't have projections*)
   | _ => t_map rewriteT (rewriteF nil true) t
