@@ -680,8 +680,9 @@ Variable badvars : list vsymbol.
 
 
 (*Then, the function giving the projection symbols for a function is:*)
+(*NOTE: changed to [fold_right], so not rev anymore*)
 Definition get_proj_list (c: funsym) : list funsym :=
-  (rev (projection_syms c)).
+  (*(rev*) (projection_syms c)(*)*).
 
 Definition enc_ty (t: vty) : bool :=
   match t with
@@ -704,7 +705,8 @@ Definition fold_let {A: Type} (tlet: term -> vsymbol -> A -> A)
   (l: list (term * vsymbol)) (b: A) : A :=
   fold_right (fun x acc => tlet (fst x) (snd x) acc) b l.
 
-Definition mk_br_tm (rewriteT: term -> term) t1 (x: option term * amap funsym term) (br: pattern * term) :=
+Definition mk_br_tm (rewriteT: term -> term) (args: list vty)  t1
+  (x: option term * amap funsym term) (br: pattern * term) :=
   let w := fst x in
   let m := snd x in
   let e := rewriteT (snd br) in
@@ -712,7 +714,7 @@ Definition mk_br_tm (rewriteT: term -> term) t1 (x: option term * amap funsym te
   | Pconstr cs tys pl =>
     let add_var p pj :=
       match p with
-      | Pvar v => (Tfun pj [snd v] [t1], v)
+      | Pvar v => (Tfun pj args [t1], v)
       | _ => (tm_d, vs_d) (*NOTE: default, because we never hit it anyway by assumption*)
       end
       in
@@ -730,8 +732,8 @@ Definition mk_br_tm (rewriteT: term -> term) t1 (x: option term * amap funsym te
   end.
 
 (*TODO: generalize?*)
-Definition mk_brs_tm (rewriteT: term -> term) (t1: term) (pats: list (pattern * term)) :=
-  fold_left (mk_br_tm rewriteT t1) pats (None, amap_empty).
+Definition mk_brs_tm (rewriteT: term -> term) (args: list vty) (t1: term) (pats: list (pattern * term)) :=
+  fold_left (mk_br_tm rewriteT args t1) pats (None, amap_empty).
 
 
 Fixpoint rewriteT (t: term) : term :=
@@ -763,7 +765,10 @@ Fixpoint rewriteT (t: term) : term :=
         | _ => (*Prove don't hit*) x
         end
       in *)
-      let res := mk_brs_tm rewriteT t1 pats in
+      (*By typing, has to be an ADT*)
+      let ts := match ty with | vty_cons ts _ => ts | _ => ts_d (*impossible*) end in
+      let args := match ty with | vty_cons _ args => args | _ => nil (*impossible*) end in
+      let res := mk_brs_tm rewriteT args t1 pats in
       let w := fst res in
       let m := snd res in (*gives map constructors to new terms*)
       (*find: for each constructor, get the term, if the term is not there,
@@ -774,9 +779,7 @@ Fixpoint rewriteT (t: term) : term :=
         | None => match w with | Some x => x | None => (*impossible*) tm_d end
         end
       in
-      (*By typing, has to be an ADT*)
-      let ts := match ty with | vty_cons ts _ => ts | _ => ts_d (*impossible*) end in
-      let args := match ty with | vty_cons _ args => args | _ => nil (*impossible*) end in
+     
       let tl := map find (get_constructors gamma ts) in
       match (get_single tl) with 
       | Left x => proj1_sig x
