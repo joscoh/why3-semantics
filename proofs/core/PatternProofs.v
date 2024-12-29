@@ -5198,6 +5198,298 @@ Proof.
   rewrite Hrep in Hmatch. discriminate. apply Hdisj.
 Qed. 
 
+
+(*Proving syntactic exhaustiveness*)
+
+(*Once [compile] succeeds, all pattern matches are clearly and syntactically
+  exhaustive, according to [simple_exhaust]. Since that depends on an
+  ADT, we just prove existence. We can find the correct ADT later by typing*)
+
+(*TODO: move*)
+Definition adts_of_context gamma:=
+  concat (map typs (mut_of_context gamma)).
+Section Exhaust.
+
+Fixpoint term_simple_exhaust (t: term) : bool :=
+  match t with
+  | Tfun c tys tms => forallb term_simple_exhaust tms
+  | Tlet t1 x t2 => term_simple_exhaust t1 && term_simple_exhaust t2
+  | Tif f t1 t2 => fmla_simple_exhaust f && term_simple_exhaust t1 && term_simple_exhaust t2
+  | Teps f v => fmla_simple_exhaust f
+  | Tmatch t ty pats => existsb (fun a => simple_exhaust (map fst pats) a) (adts_of_context gamma)
+      && term_simple_exhaust t
+      && forallb (fun x => term_simple_exhaust (snd x)) pats
+  | _ => true
+  end
+with fmla_simple_exhaust (f: formula) : bool :=
+  match f with
+  | Fpred p tys tms => forallb term_simple_exhaust tms
+  | Flet t x f => term_simple_exhaust t && fmla_simple_exhaust f
+  | Fif f1 f2 f3 => fmla_simple_exhaust f1 && fmla_simple_exhaust f2 && fmla_simple_exhaust f3
+  | Feq ty t1 t2 => term_simple_exhaust t1 && term_simple_exhaust t2
+  | Fbinop b f1 f2 => fmla_simple_exhaust f1 && fmla_simple_exhaust f2
+  | Fmatch t ty pats =>  existsb (fun a => simple_exhaust (map fst pats) a) (adts_of_context gamma) && 
+      term_simple_exhaust t && forallb (fun x => fmla_simple_exhaust (snd x)) pats
+  | Fnot f => fmla_simple_exhaust f
+  | _ => true
+  end.
+
+(*Almost the exact same proof as [gen_simple_pats]*)
+
+Definition gen_simple_exhaust (t: gen_term b) : bool :=
+  match b return gen_term b -> bool with
+  | true => term_simple_exhaust
+  | false => fmla_simple_exhaust
+  end t.
+
+Lemma gen_simple_exhaust_let v t1 t2:
+  term_simple_exhaust t1 ->
+  gen_simple_exhaust t2 ->
+  gen_simple_exhaust (gen_let v t1 t2).
+Proof.
+  unfold gen_simple_exhaust, gen_let. destruct b; simpl; intros Hsimp1 Hsimp2;
+  rewrite Hsimp1; auto.
+Qed.
+
+Lemma gen_simple_exhaust_simplify_single t x:
+  term_simple_exhaust t ->
+  gen_simple_exhaust (snd x) ->
+  forallb gen_simple_exhaust (map snd (simplify_single gen_let t x)).
+Proof.
+  intros Hsimp1 Hsimp2. unfold simplify_single. destruct x as [ps t1]; simpl in *.
+  destruct ps as [| phd ptl]; simpl; [rewrite Hsimp2|]; auto.
+  rewrite !map_map. simpl. rewrite forallb_map. generalize dependent t1.
+  induction phd; simpl; intros t1 Hsimp2; try solve[rewrite Hsimp2; auto].
+  - rewrite gen_simple_exhaust_let; auto.
+  - rewrite forallb_app, IHphd1, IHphd2; auto.
+  - apply IHphd. apply gen_simple_exhaust_let; auto.
+Qed.
+
+
+Lemma gen_simple_exhaust_simplify t rl:
+  term_simple_exhaust t ->
+  forallb gen_simple_exhaust (map snd rl) ->
+  forallb gen_simple_exhaust (map snd (simplify gen_let t rl)).
+Proof.
+  intros Hsimp1 Hsimp2. unfold simplify.
+  rewrite concat_map.
+  rewrite forallb_concat. rewrite !map_map.
+  rewrite !forallb_map.
+  apply forallb_forall. intros x Hinx.
+  apply gen_simple_exhaust_simplify_single; auto.
+  unfold is_true in Hsimp2.
+  rewrite forallb_forall in Hsimp2; apply Hsimp2; auto.
+  rewrite in_map_iff. exists x; auto.
+Qed.
+
+Lemma gen_simple_exhaust_default rl:
+  forallb gen_simple_exhaust (map snd rl) ->
+  forallb gen_simple_exhaust (map snd (default rl)).
+Proof.
+  induction rl; simpl; auto.
+  intros Hsimp. apply andb_prop in Hsimp.
+  destruct Hsimp as [Ha Hrl].
+  destruct a as [ps a]; simpl in *.
+  destruct ps as [| phd ptl]; simpl; auto.
+  destruct phd; auto. simpl.
+  rewrite Ha; auto.
+Qed.
+
+Lemma gen_simple_exhaust_match t ty ps:
+  gen_simple_exhaust (gen_match t ty ps) =
+   existsb (fun a => simple_exhaust (map fst ps) a) (adts_of_context gamma)
+      && term_simple_exhaust t
+      && forallb (fun x => gen_simple_exhaust (snd x)) ps.
+Proof.
+  unfold gen_simple_exhaust, gen_match.
+  destruct b; auto.
+Qed.
+
+Lemma gen_simple_exhaust_spec rl cs
+  (Hsimpl: simplified rl)
+  (Hsimp1: forallb gen_simple_exhaust (map snd rl)):
+  forallb gen_simple_exhaust(map snd (spec rl cs)).
+Proof.
+  induction rl as [| [phd a] rtl IH]; simpl in *; auto.
+  apply andb_true_iff in Hsimp1.
+  destruct Hsimp1 as [Hsimpa Hsimptl].
+  destruct phd as [| p1 ptl]; simpl in *; auto.
+  destruct p1 as [| f1 tys1 pats1 | | |]; try discriminate; simpl in *.
+  - destruct (funsym_eqb_spec f1 cs); subst; auto.
+    simpl. rewrite Hsimpa; auto.
+  - rewrite Hsimpa; auto.
+Qed.
+
+(*Here, we rely on typing so we can get ADT info*)
+Lemma compile_is_simple_exhaust bare simpl_constr (tms: list (term * vty)) (P: pat_matrix) t
+  (Htmtys: Forall2 (term_has_type gamma) (map fst tms) (map snd tms))
+  (Hp: pat_matrix_typed (map snd tms) P)
+  (Hsimp: forallb term_simple_exhaust (map fst tms) /\ forallb gen_simple_exhaust (map snd P)):
+  compile get_constructors gen_match gen_let gen_getvars bare simpl_constr tms P = Some t ->
+  gen_simple_exhaust t.
+Proof.
+  intros Hcomp.
+  revert Htmtys Hp Hcomp Hsimp.
+  assert (Ht: True) by auto; revert Ht.
+  revert t. 
+  apply (compile_prove_some_typed bare simpl_constr (fun _ _ => True)
+    (fun tms P t _ _ => 
+      forallb term_simple_exhaust (map fst tms) /\ forallb gen_simple_exhaust (map snd P) ->
+      gen_simple_exhaust t)); clear tms P; auto.
+  - (*simplify*) intros t ty tms rl Hty Hp tm1 Hcomp Hsimp _ Hexh.
+    specialize (Hsimp (ltac:(auto))).
+    destruct Hexh as [Hex1 Hex2].
+    apply Hsimp; split; auto. apply gen_simple_exhaust_simplify; auto. simpl in Hex1. 
+    apply andb_true_iff in Hex1; apply Hex1.
+  - (*Empty List*)
+    simpl. intros a l _ _ [_ Hex]. apply andb_true_iff in Hex; apply Hex.
+  - (*wilds case*)
+    intros.
+    specialize (IHwilds _ (ltac:(auto)) Hcomp).
+    apply IHwilds.
+    simpl in H. destruct H as [Hex Hexrl].
+    apply andb_true_iff in Hex.
+    destruct Hex as [Hext Hextl]; split; auto.
+    apply gen_simple_exhaust_default; auto.
+  - (*full case*) intros.
+    destruct H as [Hex Hexrl].
+    rewrite gen_simple_exhaust_match.
+    (*Handle each goal separately*)
+    unfold is_true; rewrite !andb_true_iff. split_all.
+    + (*Choose a as ADT*)
+      (*NOTE: copied, bad*)
+      set (comp_cases := fun (cs : funsym) (al : list (term * vty)) =>
+      comp_cases (compile get_constructors gen_match gen_let gen_getvars bare simpl_constr) cases tl cs al) in *.
+      set (comp_wilds := compile get_constructors gen_match gen_let gen_getvars bare simpl_constr tl wilds) 
+        in *.
+      assert (Hiswild: exists b, no_wilds = Some b). { destruct Hps1'; destruct_all; subst; auto; eauto. }
+      destruct Hiswild as [now Hnow].
+      assert (Hmapfstpats: map fst ps =
+        map fst (rev (map (add_map gen_getvars comp_cases t (vty_cons (adt_name a) args) tl rl)
+          cslist) ++ (if now then [] else [(Pwild, comp_wilds)]))).
+      {
+        replace (map fst ps) with (map fst (map (fun x : pattern * gen_term b => (fst x, Some (snd x))) ps))
+          by (rewrite !map_map; auto).
+        rewrite <- Hopt, !map_app. subst ty; f_equal. rewrite !map_map.
+        destruct Hps1' as [ [Hps1' Hnowilds1] | [Hnowilds1 [t2 [_ Hps1']]]]; subst ps1; subst no_wilds;
+        rewrite Hnowilds1 in Hnow; inversion Hnow as [Hb1]; auto. 
+      }
+      assert (Hexhaust: (simple_exhaust (map fst ps) a)).
+      {
+        rewrite Hmapfstpats.
+        rewrite map_app, map_rev, map_map.
+        unfold simple_pat_match.
+        destruct now eqn : Hwilds.
+        - (*Case 1: no_wilds is true, so constrs all in*)
+          simpl; rewrite app_nil_r.
+          apply orb_true_iff.
+          left.
+          apply forallb_forall.
+          intros cs Hincs.
+          rewrite existsb_rev.
+          revert Hnow. rewrite Hnowilds.
+          intros Hnow; injection Hnow.
+          subst ty.
+          rewrite (get_constructors_eq gamma_valid m_in a_in).
+          rewrite forallb_forall.
+          intros Hallin.
+          specialize (Hallin _ Hincs).
+          (*Since cs in types, cs is cslist, so we can get the element*)
+          rewrite amap_mem_spec in Hallin.
+          destruct (amap_get funsym_eq_dec types cs) as [ps2 |] eqn : Hget; [|discriminate].
+          unfold types in Hget.
+          rewrite (proj2 (populate_all_fst_snd_full _ _ _ Hsimpl Hpop)) in Hget.
+          destruct Hget as [tys1 Hincs1].
+          unfold cslist.
+          apply existsb_exists.
+          setoid_rewrite in_map_iff.
+          eexists. split.
+          eexists. split; [| apply Hincs1]. reflexivity.
+          simpl. destruct (funsym_eqb_spec cs cs); auto.
+        - (*Case 2: we have a wild*)
+          apply orb_true_iff. right.
+          rewrite existsb_app. simpl. rewrite orb_true_r.
+          reflexivity.
+      }
+      apply existsb_exists.
+      exists a. split; auto.
+      unfold adts_of_context.
+      rewrite in_concat. exists (typs m). 
+      split; [apply in_map; apply mut_in_ctx_eq; auto |apply in_bool_In in a_in; auto].
+    + simpl in Hex. apply andb_true_iff in Hex; apply Hex.
+    + (*Now need to prove inductive for ps*)
+      rewrite <- forallb_map.
+      apply forallb_forall. intros tm Hintm.
+      assert (Hintm': In (Some tm) (map snd (map (fun x : pattern * gen_term b => (fst x, Some (snd x))) ps))).
+      {
+        rewrite in_map_iff in Hintm; destruct Hintm as [x [Htm Hinx]]; subst.
+        rewrite map_map. simpl. rewrite in_map_iff. eauto.
+      }
+      revert Hintm'. rewrite <- Hopt, map_app, map_rev, in_app_iff, <- In_rev, !map_map. simpl.
+      intros [Hinconstrs | Hinwild].
+      * rewrite in_map_iff in Hinconstrs. destruct Hinconstrs as [[[f1 tys1] pats1] [Htm Hinx]].
+        simpl in Htm. unfold comp_cases in Htm.
+        assert (Hgetf: amap_get funsym_eq_dec cases f1 = Some (spec rl f1)).
+        {
+          assert (Hgetty: amap_get funsym_eq_dec types f1 = Some pats1).
+          { apply (populate_all_fst_snd_full _ _ _ Hsimpl Hpop).
+            exists tys1; auto.
+          }
+          assert (Hmem: amap_mem funsym_eq_dec f1 types).
+          { rewrite amap_mem_spec; rewrite Hgetty; auto. }
+          unfold cases; rewrite Hcasewild; apply (dispatch1_equiv_spec _ _ _ Hsimpl Hpop Hp Hmem).
+        }
+        rewrite Hgetf in Htm.
+        (*simplify in compile*)
+        revert Htm.
+        specialize (Hclist_len _ _ _ Hinx).
+        unfold rev_map.
+        rewrite !map_rev, !rev_involutive.
+        rewrite map_snd_combine.
+        2: rewrite gen_strs_length; solve_len.
+        intros Htm.
+        apply IHconstrs in Htm; auto.
+        (*Now have to prove the hyps of IH - i.e. for spec*)
+        split. 
+        -- rewrite map_app, map_rev, forallb_app, forallb_rev, map_fst_combine; [| unfold vsymbol in *; solve_len].
+          simpl in Hex. apply andb_true_iff in Hex; destruct Hex as [Hex1 Hex2].
+          apply andb_true_iff; split; auto.
+          rewrite forallb_map. simpl.
+          apply forallb_t.
+        -- (*Prove spec*)
+          apply gen_simple_exhaust_spec; auto.
+      * (*default case*)
+        rewrite in_map_iff in Hinwild. destruct Hinwild as [[p1 t1] [Htm Hinpt]].
+        inversion Htm; subst; clear Htm.
+        destruct Hps1' as [[Hps1 _] | [_ [t2 [Hcomp2 Hps1]]]]; subst ps1; [contradiction|].
+        destruct Hinpt as [Heq | []]; inversion Heq; subst.
+        apply IHwilds in Hcomp2; auto.
+        simpl in Hex. apply andb_true_iff in Hex; destruct Hex as [Hex1 Hex2].
+        split; auto. apply gen_simple_exhaust_default; auto.
+  - (*Second wild case*)
+    intros. destruct H as [Hex Hexrl].
+    simpl in Hex. apply andb_true_iff in Hex. destruct Hex as [Hex1 Hex2].
+    apply IHwilds in Hcomp; auto. split; auto. apply gen_simple_exhaust_default; auto.
+  - (*constr case*)
+    intros. destruct H as [Hex Hexrl].
+    simpl in Hex. apply andb_true_iff in Hex. destruct Hex as [Hex1 Hex2].
+    unfold comp_cases in Hcomp.
+    assert (Hgetf: amap_get funsym_eq_dec cases cs = Some (spec rl cs)).
+    {
+      unfold cases; rewrite Hcasewild; apply (dispatch1_equiv_spec _ _ _ Hsimpl Hpop Hp Hmem).
+    }
+    rewrite Hgetf in Hcomp. subst params.
+    apply (IHfun tm1 (ltac:(auto))) in Hcomp; auto.
+    split. 
+    + rewrite map_app, map_rev, forallb_app, forallb_rev, map_fst_combine; [| unfold vsymbol in *; solve_len].
+      apply andb_true_iff; split; auto.
+      (*From inductive on terms*)
+      subst t. simpl in Hex1. auto.
+    + apply gen_simple_exhaust_spec; auto.
+Qed.
+
+End Exhaust.
+
 End CompileCorrect.
 
 (*Robustness of Exhaustiveness Checking*)

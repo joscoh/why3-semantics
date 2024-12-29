@@ -364,7 +364,7 @@ Proof. intros; subst; reflexivity. Qed.
   Suppose we have a well-typed, exhaustive, simple pattern match.
   Then it satisfies [simple_exhaust]*)
 (*TODO: remove dependency on pd, pdf*)
-Lemma exhaustive_simple_exhaust {gamma: context} (gamma_valid: valid_context gamma)
+(*Lemma exhaustive_simple_exhaust {gamma: context} (gamma_valid: valid_context gamma)
   (pd: pi_dom) (pdf: pi_dom_full gamma pd)
   {m a} (m_in: mut_in_ctx m gamma) (a_in: adt_in_mut a m) args
   (Hargslen: length args = length (m_params m))
@@ -573,6 +573,74 @@ Proof.
       eapply match_val_single_constr_nomatch; eauto.
   }
   rewrite Hmatch1 in Hmatch; discriminate.
+Qed.*)
+
+(*TODO: move, maybe use in PatternProofs*)
+Lemma in_adts_of_context_iff gamma a:
+  In a (adts_of_context gamma) <-> (exists m, mut_in_ctx m gamma /\ adt_in_mut a m).
+Proof.
+  unfold adts_of_context. rewrite in_concat. setoid_rewrite in_map_iff.
+  split.
+  - intros [ts [[m[Hts Hinm]] Hina]]; subst.
+    exists m. split.
+    + apply mut_in_ctx_eq; auto.
+    + apply In_in_bool; auto.
+  - intros [m [m_in a_in]]. exists (typs m). split; [| apply in_bool_In in a_in; auto].
+    exists m; split; auto; apply mut_in_ctx_eq; auto.
+Qed.
+
+(*If we have a [simple_exhaust] pattern match, it is exhaustive wrt to the
+  correct type*)
+
+Lemma term_simple_exhaust_exact {gamma: context} (gamma_valid: valid_context gamma)
+  {m a} (m_in: mut_in_ctx m gamma) (a_in: adt_in_mut a m) args
+  (Hargslen: length args = length (m_params m))
+  (* (Hvalargs: Forall (valid_type gamma) args) *)
+  (b: bool) (tm: term) (ps: list (pattern * gen_term b)) (ret_ty: gen_type b)
+  (Hpatty: gen_typed gamma b (gen_match tm (vty_cons (adt_name a) args) ps) ret_ty)
+  (Hexh: existsb (fun a => simple_exhaust (map fst ps) a) (adts_of_context gamma))
+  (Hsimp: simple_pat_match (map fst ps)):
+  simple_exhaust (map fst ps) a.
+Proof.
+  apply existsb_exists in Hexh. destruct Hexh as [a1 [Hina1 Hexh]]. 
+  destruct (adt_dec a a1); subst; auto.
+  unfold simple_exhaust in Hexh |- *.
+  apply orb_true_iff in Hexh.
+  apply orb_true_iff.
+  destruct Hexh as [Hall | Hex]; auto.
+  (*Idea: everything is either constr or wild. If there is a constr, then
+    it has to have type (adt_name a) args, (has to be constructor of a).
+    But then we have something else with a different type (adt_name a1) args
+    in ps, contradicting uniformity of types*)
+  rewrite forallb_forall in Hall.
+  pose proof (gen_match_typed_inv gamma b tm _ ps ret_ty Hpatty) as [Htmty [Hallty Hcomp]].
+  assert (Hc: exists c, In c (adt_constr_list a1)). {
+    unfold adt_constr_list. apply ne_list_nonemp.
+  }
+  destruct Hc as [c Hinc].
+  specialize (Hall _ Hinc).
+  (*Get info*)
+  apply in_adts_of_context_iff in Hina1.
+  destruct Hina1 as [m1 [m1_in a1_in]].
+  assert (c_in: constr_in_adt c a1).
+  { apply constr_in_adt_eq; auto. }
+  rewrite existsb_map in Hall.
+  rewrite existsb_exists in Hall.
+  destruct Hall as [[p1 t2] [Hinpt Hp1]]; simpl in Hp1.
+  destruct p1 as [| f1 tys1 pats1 | | |]; try discriminate.
+  destruct (funsym_eqb_spec f1 c); auto. subst.
+  rewrite Forall_forall in Hallty. apply Hallty in Hinpt.
+  destruct Hinpt as [Hty _].
+  simpl in Hty.
+  inversion Hty; subst.
+  unfold sigma in H2.
+  rewrite (adt_constr_subst_ret gamma_valid m1_in a1_in c_in) in H2; auto.
+  inversion H2; subst.
+  (*Now use injectivity of adt names*)
+  assert (Hmeq: m = m1) by (apply (mut_adts_inj (valid_context_wf _ gamma_valid) m_in m1_in a_in a1_in); auto).
+  subst.
+  exfalso; apply n.
+  apply (adt_names_inj' gamma_valid a_in a1_in m_in); auto.
 Qed.
 
 (*TODO: move*)

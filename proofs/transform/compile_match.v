@@ -874,5 +874,133 @@ Proof.
   apply a_convert_all_f_typed; eauto.
 Qed.
 
+
+(*Part 3: Exhaustive patterns*)
+
+Lemma rewrite_simple_exhaust {gamma} (gamma_valid: valid_context gamma) t f:
+  (forall ty (Hty: term_has_type gamma t ty),
+    @term_simple_exhaust gamma (rewriteT t)) /\
+  (forall (Hty: formula_typed gamma f),
+    @fmla_simple_exhaust gamma (rewriteF f)).
+Proof.
+  revert t f; apply term_formula_ind; simpl; auto;
+  try solve[intros; inversion Hty; subst; unfold is_true in *; eauto;
+    apply andb_true_iff; split; try (apply andb_true_iff; split); eauto ].
+  - (*Tfun*) 
+    intros f1 tys tms IH ty Hty.
+    rewrite forallb_map. 
+    apply forallb_forall. intros x Hinx.
+    rewrite Forall_forall in IH.
+    apply tfun_tms_typed in Hty.
+    rewrite Forall_forall in Hty.
+    specialize (Hty _ Hinx).
+    destruct Hty as [ty1 Hty1]. 
+    eapply IH; eauto.
+  - (*Tmatch*)
+    intros tm ty ps IHtm IHps ty1 Hty1.
+    destruct (compile_bare_single _ _ _ _) as [o1|] eqn : Hcomp.
+    + eapply (@compile_is_simple_exhaust gamma gamma_valid true) with (simpl_constr:=true); split_all; auto. 
+      (*From [compile]*)
+      5: erewrite compile_bare_equiv; apply Hcomp. all: simpl; auto; inversion Hty1; subst.
+      * constructor; auto. apply rewriteT_typed; auto.
+      * apply compile_bare_single_pat_typed; simpl;
+        rewrite map_map; simpl; rewrite Forall_map, Forall_forall; auto.
+        intros x Hinx. apply rewriteT_typed; auto.
+      * rewrite andb_true_r. eapply IHtm; eauto.
+      * rewrite !map_map. simpl.
+        rewrite forallb_map. rewrite Forall_map in IHps.
+        rewrite Forall_forall in IHps. apply forallb_forall.
+        intros x Hinx.
+        eapply IHps; eauto.
+    + (*Show that we do not hit the other case - from exhaustiveness checking*)
+      inversion Hty1; subst.
+      assert (Hsome: isSome (compile_bare_single true false (rewriteT tm) ty
+        (map (fun x : pattern * term => (fst x, rewriteT (snd x))) ps))).
+      {
+        eapply compile_bare_single_ext_simpl. 2: eauto. rewrite map_map. reflexivity.
+      }
+      (*Now we need fact that exhaustiveness check is only stricter than the
+        full, constructor-simplifying transformation*)
+      inversion Hty1; subst.
+      apply @compile_bare_single_simpl_constr with (gamma:=gamma) (t2:=(rewriteT tm)) (ret_ty:=ty1) in Hsome;
+      eauto.
+      * rewrite Hcomp in Hsome. discriminate.
+      * apply rewriteT_typed; auto.
+      * apply rewriteT_typed; auto.
+      * rewrite Forall_map, Forall_forall. auto.
+      * rewrite Forall_map, Forall_forall; auto.
+        intros x Hinx. apply rewriteT_typed; auto.
+  - (*Fpred*)
+    intros f1 tys tms IH Hty.
+    rewrite forallb_map. 
+    apply forallb_forall. intros x Hinx.
+    rewrite Forall_forall in IH.
+    apply fpred_tms_typed in Hty.
+    rewrite Forall_forall in Hty.
+    specialize (Hty _ Hinx).
+    destruct Hty as [ty1 Hty1]. 
+    eapply IH; eauto.
+  - (*Fmatch*)
+    intros tm ty ps IHtm IHps Hty1.
+    destruct (compile_bare_single _ _ _ _) as [o1|] eqn : Hcomp.
+    + eapply (@compile_is_simple_exhaust gamma gamma_valid false) with (simpl_constr:=true); split_all; auto. 
+      (*From [compile]*)
+      5: erewrite compile_bare_equiv; apply Hcomp. all: simpl; auto; inversion Hty1; subst.
+      * constructor; auto. apply rewriteT_typed; auto.
+      * apply compile_bare_single_pat_typed; simpl;
+        rewrite map_map; simpl; rewrite Forall_map, Forall_forall; auto.
+        intros x Hinx. apply rewriteF_typed; auto.
+      * rewrite andb_true_r. eapply IHtm; eauto.
+      * rewrite !map_map. simpl.
+        rewrite forallb_map. rewrite Forall_map in IHps.
+        rewrite Forall_forall in IHps. apply forallb_forall.
+        intros x Hinx.
+        eapply IHps; eauto.
+        Unshelve. exact tt.
+    + (*Show that we do not hit the other case*)
+      inversion Hty1; subst.
+      assert (Hsome: isSome (compile_bare_single false false (rewriteT tm) ty
+        (map (fun x : pattern * formula => (fst x, rewriteF (snd x))) ps))).
+      {
+        eapply compile_bare_single_ext_simpl. 2: eauto. rewrite map_map. reflexivity.
+      }
+      (*Now we need fact that exhaustiveness check is only stricter than the
+        full, constructor-simplifying transformation*)
+      inversion Hty1; subst.
+      apply @compile_bare_single_simpl_constr with (gamma:=gamma) (t2:=(rewriteT tm)) (ret_ty:=tt) in Hsome;
+      eauto.
+      * rewrite Hcomp in Hsome. discriminate.
+      * apply rewriteT_typed; auto.
+      * apply rewriteT_typed; auto.
+      * rewrite Forall_map, Forall_forall. auto.
+      * rewrite Forall_map, Forall_forall; auto.
+        intros x Hinx. apply rewriteF_typed; auto.
+Qed.
+
+Definition rewriteT_simple_exhaust {gamma} (gamma_valid: valid_context gamma) t
+  ty (Hty: term_has_type gamma t ty): 
+  term_simple_exhaust (rewriteT t) :=
+  proj_tm (rewrite_simple_exhaust gamma_valid) t ty Hty.
+Definition rewriteF_simple_exhaust {gamma} (gamma_valid: valid_context gamma) f
+  (Hty: formula_typed gamma f): 
+  fmla_simple_exhaust (rewriteF f) :=
+  proj_fmla (rewrite_simple_exhaust gamma_valid) f Hty.
+
+Corollary rewriteT_simple_exhaust' {gamma} (gamma_valid: valid_context gamma) t
+  ty (Hty: term_has_type gamma t ty): 
+  @term_simple_exhaust gamma (rewriteT' t).
+Proof.
+  eapply rewriteT_simple_exhaust; eauto.
+  apply a_convert_all_t_ty; eauto.
+Qed.
+
+Corollary rewriteF_simple_exhaust' {gamma} (gamma_valid: valid_context gamma) f
+  (Hty: formula_typed gamma f): 
+  @fmla_simple_exhaust gamma (rewriteF' f).
+Proof.
+  eapply rewriteF_simple_exhaust; eauto.
+  apply a_convert_all_f_typed; eauto.
+Qed.
+
 (*If we need, can prove that all nonrec defs, hypotheses, and the goal
   now have simple patterns*)
