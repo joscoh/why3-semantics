@@ -2460,6 +2460,7 @@ with fmla_simple_pats (f: formula) : bool :=
   | Fbinop b f1 f2 => fmla_simple_pats f1 && fmla_simple_pats f2
   | Fmatch t ty pats => term_simple_pats t && forallb (fun x => fmla_simple_pats (snd x)) pats &&
     simple_pat_match (map fst pats)
+  | Fquant q v f => fmla_simple_pats f
   | Fnot f => fmla_simple_pats f
   | _ => true
   end.
@@ -5231,6 +5232,7 @@ with fmla_simple_exhaust (f: formula) : bool :=
   | Fmatch t ty pats =>  existsb (fun a => simple_exhaust (map fst pats) a) (adts_of_context gamma) && 
       term_simple_exhaust t && forallb (fun x => fmla_simple_exhaust (snd x)) pats
   | Fnot f => fmla_simple_exhaust f
+  | Fquant q v f => fmla_simple_exhaust f
   | _ => true
   end.
 
