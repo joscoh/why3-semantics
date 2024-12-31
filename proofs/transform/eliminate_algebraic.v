@@ -735,36 +735,90 @@ Definition mk_br_tm (rewriteT: term -> term) (args: list vty)  t1
 Definition mk_brs_tm (rewriteT: term -> term) (args: list vty) (t1: term) (pats: list (pattern * term)) :=
   fold_left (mk_br_tm rewriteT args t1) pats (None, amap_empty).
 
+(*And formula case*)
+(*Note: stores juts pattern list info:
+  ex: cons -> ([h;t], 1 + length t)*)
+Definition mk_br_fmla (rewriteF: formula -> formula)
+  (x: option formula * amap funsym (list vsymbol * formula)) (br: pattern * formula) :=
+    let p := fst br in
+    let e := snd br in
+    let w := fst x in
+    let m := snd x in
+    let e := rewriteF e in (*rewriteF av' sign e in*)
+    match p with
+    | Pconstr cs tys pl =>
+      let get_var p : vsymbol := match p with
+        | Pvar v => v
+        | _ => (*TODO: prove don't hit*) vs_d
+      end in
+      (w, amap_set funsym_eq_dec m cs (map get_var pl, e))
+    | Pwild => (Some e, m)
+    | _ => (*TODO: prove dont hit*) x
+    end .
+
+Definition mk_brs_fmla (rewriteF: formula -> formula) (pats : list (pattern * formula) ) :=
+  fold_left (mk_br_fmla rewriteF) pats (None, amap_empty).
+
+(*Instead of matching on t1 to find var, have custom informative match to give only 2 cases*)
+Definition is_tm_var (t: term) :
+  Either {v: vsymbol | t = Tvar v} (forall v, t <> Tvar v).
+Proof.
+  destruct t; try solve[apply Right; intros; discriminate].
+  apply Left. apply (exist _ v). apply eq_refl.
+Defined.
+
+(*Kind of silly, but separate out default case so dont have to prove twice*)
+Definition rewriteF_default_case ty1 t1 (sign: bool) vl hd e : formula :=
+  let hd := Feq ty1 t1 hd (*TODO: ty1?*) in if sign then fforalls vl (Fbinop Timplies hd e)
+    else fexists vl (Fbinop Tand hd e).
+
+(*Also separate out [find]*)
+Definition rewriteF_find (t1: term) (ty1: vty) (args: list vty) (av: list vsymbol) (sign: bool)
+  (m: amap funsym (list vsymbol * formula))
+  (w: option formula) (cs: funsym) : 
+  formula :=
+  let res := match amap_get funsym_eq_dec m cs with
+  | Some y => y
+  | None => (*Need fresh vars - TODO: *)
+      (*If wild, we give fresh vars w1, w2 then wild value
+        vars need correct type - it is just (ty_subst (s_params c) args (s_args c))
+        (TODO make sure)*)
+      (* let projs := get_proj_list cs (*amap_get_def funsym_eq_dec (s.(cp_map)) cs nil*) in *)
+      (*NOTE: this is going to be very difficult to show, relies on lots of well-typing*)
+      let names := gen_strs (length (s_args cs)) badvars in
+      let tys := ty_subst_list (s_params cs) args (s_args cs) in
+      let vars := combine names tys : list vsymbol in
+      
+      (*NOTE: I think type should be ty_subst (s_params s) [ty1] (s_ret s) - they use t_app_infer*)
+      (* let vars := map2 (fun n (p: funsym) => (n, ty_subst (s_params p) [ty1] (f_ret p))) names projs : list vsymbol in *)
+      (vars, match w with | Some y => y | None => Ftrue end) (*TODO: prove dont hit*)
+  end
+  in
+  let vl := fst res in let e := snd res in
+  (*NOTE: use args here*)
+  let hd := Tfun (new_constr cs) args (map Tvar vl) in
+  (* tfun_infer' (new_constr cs) (*(amap_get_def funsym_eq_dec (s.(cc_map)) cs id_fs)*) (map snd vl) (map Tvar vl) in *)
+  match (is_tm_var t1) with
+  | Left s =>
+    let v := proj1_sig s in
+    if in_dec vsymbol_eq_dec v av then
+    let hd := Flet hd v e in if sign then fforalls vl hd else fexists vl hd
+    else
+    rewriteF_default_case ty1 t1 sign vl hd e 
+    (* let hd := Feq ty1 t1 hd (*TODO: ty1?*) in if sign then fforalls vl (Fbinop Timplies hd e)
+    else fexists vl (Fbinop Tand hd e) *)
+  | Right _ =>
+    rewriteF_default_case ty1 t1 sign vl hd e
+    (* let hd := Feq ty1 t1 hd (*TODO: ty1?*) in if sign then fforalls vl (Fbinop Timplies hd e)
+    else fexists vl (Fbinop Tand hd e) *)
+  end.
+
 
 Fixpoint rewriteT (t: term) : term :=
   match t with
   | Tmatch t1 ty pats => 
     if enc_ty ty then
       let t1 := rewriteT t1 in
-      (* let mk_br (x: option term * amap funsym term) (br: pattern * term) :=
-        let w := fst x in
-        let m := snd x in
-        let e := rewriteT (snd br) in
-        match (fst br) with
-        | Pconstr cs tys pl =>
-          let add_var e p pj :=
-            match p with
-            | Pvar v => Tlet (Tfun pj [snd v] [t1]) v e
-            | _ => tm_d (*NOTE: default, because we never hit it anyway by assumption*)
-            end
-            in
-            let pjl := get_proj_list cs (*amap_get_def funsym_eq_dec s.(cp_map) cs nil*) in 
-             (*match amap_get funsym_eq_dec s.(cp_map) cs with
-            | Some cp => cp
-            | None => nil (*TODO: prove don't hit (basically, will prove by knowing that all
-              defined types appeared before and hence have already been added to map)*)
-            end in*)
-            let e := fold_left2' add_var pl pjl e in
-            (w, amap_set funsym_eq_dec m cs e)
-        | Pwild => (Some e, m)
-        | _ => (*Prove don't hit*) x
-        end
-      in *)
       (*By typing, has to be an ADT*)
       let ts := match ty with | vty_cons ts _ => ts | _ => ts_d (*impossible*) end in
       let args := match ty with | vty_cons _ args => args | _ => nil (*impossible*) end in
@@ -790,28 +844,6 @@ Fixpoint rewriteT (t: term) : term :=
           type of return is not present in here, unfortunately, so we use [pat_match_ty]*)
         Tfun (get_mt_map ts) (pat_match_ty' pats :: args) (t1 :: tl)
       end
-      (* if single tl then
-      
-      match map find (get_constructors gamma ts) with
-      | [t] => t
-      | tl => (*Get *) 
-        (*Get the type - NOTE: use fact that not empty (also TODO: see if we need 
-          this or if we can tell the type by hand)
-          Build using the selector symbol - becomes
-          match_list : list 'a -> 'b -> 'b -> 'b (I think)
-          match_list l (let x := ...) (nilcase) - so we need the return type
-            of the pattern match (or the type of e) - dont like using typechecker there*)
-        let ty1 := match pat_match_ty pats with | Some t => t | None => ty end in 
-        tfun_infer' (get_mt_map ts) (*(amap_get_def typesym_eq_dec mt_map ts id_fs)*) (ty :: repeat ty1 (length tl))
-          (t1 :: tl) (*TODO: prove not default*)
-        (*return type: list a -> b -> b -> b, so give [vty_var a; ty1] if a is list var
-          (types of args are [(ty :: repeat ty1 (length tl))])*)
-          (*Don;t know if this type is right?*)
-        (*this gives projection*) (*(map vty_var (ts_args ts) ++ [ty1]) (t1 :: tl) (*what is ty?*)*) 
-        (*Type should be original type of term - can we tell this?
-          arguments have type: [ty; ty1; ty1, ... ty1] if elements in pat match have type ty1. 
-          We may need to carry around this information*)
-      end *)
     else t_map rewriteT (rewriteF nil true) t
   | Tfun ls tys args => (*map old constrs to new constr*)
     if ls.(f_is_constr) && enc_ty (f_ret ls) (*we can just pass in return type because only depends on typesym*)
@@ -827,7 +859,7 @@ with rewriteF (av: list vsymbol) (sign: bool) (f: formula) : formula :=
     if enc_ty ty1 then
       let t1 := rewriteT t1 in
       let av' := set_diff vsymbol_eq_dec av (tm_fv t1) in (*TODO: what is this doing?*)
-      let mk_br (x: option formula * amap funsym (list vsymbol * formula)) br :=
+      (* let mk_br (x: option formula * amap funsym (list vsymbol * formula)) br :=
         let p := fst br in
         let e := snd br in
         let w := fst x in
@@ -842,23 +874,35 @@ with rewriteF (av: list vsymbol) (sign: bool) (f: formula) : formula :=
           (w, amap_set funsym_eq_dec m cs (map get_var pl, e))
         | Pwild => (Some e, m)
         | _ => (*TODO: prove dont hit*) x
-        end in
-      let res := fold_left mk_br pats (None, amap_empty) in
+        end in *)
+      let res := mk_brs_fmla (rewriteF av' sign) pats in
       let w := fst res in
       let m := snd res in
-      let find cs :=
+      (*By typing, has to be an ADT*)
+      let ts := match ty1 with | vty_cons ts _ => ts | _ => ts_d (*impossible*) end in
+      let args := match ty1 with | vty_cons _ args => args | _ => nil (*impossible*) end in
+      (* let find cs :=
         let res := match amap_get funsym_eq_dec m cs with
         | Some y => y
         | None => (*Need fresh vars - TODO: *)
-            let projs := get_proj_list cs (*amap_get_def funsym_eq_dec (s.(cp_map)) cs nil*) in
-            let names := gen_strs (length projs) badvars in
+            (*If wild, we give fresh vars w1, w2 then wild value
+              vars need correct type - it is just (ty_subst (s_params c) args (s_args c))
+              (TODO make sure)*)
+            (* let projs := get_proj_list cs (*amap_get_def funsym_eq_dec (s.(cp_map)) cs nil*) in *)
+            (*NOTE: this is going to be very difficult to show, relies on lots of well-typing*)
+            let names := gen_strs (length (s_args cs)) badvars in
+            let tys := ty_subst_list (s_params cs) args (s_args cs) in
+            let vars := combine names tys : list vsymbol in
+            
             (*NOTE: I think type should be ty_subst (s_params s) [ty1] (s_ret s) - they use t_app_infer*)
-            let vars := map2 (fun n (p: funsym) => (n, ty_subst (s_params p) [ty1] (f_ret p))) names projs : list vsymbol in
+            (* let vars := map2 (fun n (p: funsym) => (n, ty_subst (s_params p) [ty1] (f_ret p))) names projs : list vsymbol in *)
             (vars, match w with | Some y => y | None => Ftrue end) (*TODO: prove dont hit*)
         end
         in
         let vl := fst res in let e := snd res in
-        let hd := tfun_infer' (new_constr cs) (*(amap_get_def funsym_eq_dec (s.(cc_map)) cs id_fs)*) (map snd vl) (map Tvar vl) in
+        (*NOTE: use args here*)
+        let hd := Tfun (new_constr cs) args (map Tvar vl) in
+        (* tfun_infer' (new_constr cs) (*(amap_get_def funsym_eq_dec (s.(cc_map)) cs id_fs)*) (map snd vl) (map Tvar vl) in *)
         match t1 with
         | Tvar v => if in_dec vsymbol_eq_dec v av then
           let hd := Flet hd v e in if sign then fforalls vl hd else fexists vl hd
@@ -868,14 +912,11 @@ with rewriteF (av: list vsymbol) (sign: bool) (f: formula) : formula :=
         | _ => let hd := Feq ty1 t1 hd (*TODO: ty1?*) in if sign then fforalls vl (Fbinop Timplies hd e)
           else fexists vl (Fbinop Tand hd e)
         end
-      in
-      let ts :=
-        match ty1 with | vty_cons ts _ => ts | _ => ts_d end (*TODO: show dont hit*) in
+      in *)
+      (* let ts :=
+        match ty1 with | vty_cons ts _ => ts | _ => ts_d end (*TODO: show dont hit*) in *)
       let op := if sign then (Fbinop Tand) else (Fbinop Tor) in
-      match map_join_left find op (get_constructors gamma ts) with
-      | Some f => f
-      | None => Ftrue (*TODO: prove don't hit*)
-      end
+      map_join_left' Ftrue (rewriteF_find t1 ty1 args av sign m w) op (get_constructors gamma ts)
     else f_map_sign (fun _ => rewriteT) (rewriteF nil) sign f
   | Fquant q v f1 =>
     if (quant_eqb q Tforall && sign) || (quant_eqb q Texists && negb sign) then
