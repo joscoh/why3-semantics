@@ -5217,7 +5217,9 @@ Fixpoint term_simple_exhaust (t: term) : bool :=
   | Tlet t1 x t2 => term_simple_exhaust t1 && term_simple_exhaust t2
   | Tif f t1 t2 => fmla_simple_exhaust f && term_simple_exhaust t1 && term_simple_exhaust t2
   | Teps f v => fmla_simple_exhaust f
-  | Tmatch t ty pats => existsb (fun a => simple_exhaust (map fst pats) a) (adts_of_context gamma)
+  | Tmatch t ty pats => 
+      (existsb (fun a => simple_exhaust (map fst pats) a) (adts_of_context gamma) ||
+        existsb is_wild (map fst pats))
       && term_simple_exhaust t
       && forallb (fun x => term_simple_exhaust (snd x)) pats
   | _ => true
@@ -5229,7 +5231,9 @@ with fmla_simple_exhaust (f: formula) : bool :=
   | Fif f1 f2 f3 => fmla_simple_exhaust f1 && fmla_simple_exhaust f2 && fmla_simple_exhaust f3
   | Feq ty t1 t2 => term_simple_exhaust t1 && term_simple_exhaust t2
   | Fbinop b f1 f2 => fmla_simple_exhaust f1 && fmla_simple_exhaust f2
-  | Fmatch t ty pats =>  existsb (fun a => simple_exhaust (map fst pats) a) (adts_of_context gamma) && 
+  | Fmatch t ty pats =>  
+    (existsb (fun a => simple_exhaust (map fst pats) a) (adts_of_context gamma) ||
+      existsb is_wild (map fst pats)) && 
       term_simple_exhaust t && forallb (fun x => fmla_simple_exhaust (snd x)) pats
   | Fnot f => fmla_simple_exhaust f
   | Fquant q v f => fmla_simple_exhaust f
@@ -5299,7 +5303,8 @@ Qed.
 
 Lemma gen_simple_exhaust_match t ty ps:
   gen_simple_exhaust (gen_match t ty ps) =
-   existsb (fun a => simple_exhaust (map fst ps) a) (adts_of_context gamma)
+   (existsb (fun a => simple_exhaust (map fst ps) a) (adts_of_context gamma) ||
+    existsb is_wild (map fst ps))
       && term_simple_exhaust t
       && forallb (fun x => gen_simple_exhaust (snd x)) ps.
 Proof.
@@ -5413,6 +5418,7 @@ Proof.
           rewrite existsb_app. simpl. rewrite orb_true_r.
           reflexivity.
       }
+      apply orb_true_iff; left.
       apply existsb_exists.
       exists a. split; auto.
       unfold adts_of_context.
