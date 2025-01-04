@@ -127,8 +127,9 @@ Definition keep_tys (gamma: context) : typesym -> bool :=
 
 Definition fpsym_clone (f: fpsym) (n: string) : fpsym :=
   Build_fpsym n (s_params f) (s_args f) (s_args_wf f) (s_params_nodup f).
+  (*If cloned, not constr*)
 Definition funsym_clone (f: funsym) (n: string) : funsym :=
-  Build_funsym (fpsym_clone f n) (f_ret f) (f_is_constr f) (f_num_constrs f) (f_ret_wf f).
+  Build_funsym (fpsym_clone f n) (f_ret f) false 0 (f_ret_wf f).
 
 (*Should it be funsym -> string or string -> string?*)
 Variable (new_constr_name: funsym -> string).

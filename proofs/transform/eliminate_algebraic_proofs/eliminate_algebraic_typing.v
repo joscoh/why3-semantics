@@ -5027,6 +5027,253 @@ Proof.
   apply mut_in_ctx_eq2; auto.
 Qed.
 
+(*Prove NoDup separately - TODO: do we need to generalize to 2 muts here? still true*)
+Lemma add_axioms_uniq {gamma} (gamma_valid: valid_context gamma) 
+  (Hnewconstrs: forall (m1 m2 : mut_adt) (a1 a2 : alg_datatype),
+    mut_in_ctx m1 gamma ->
+    mut_in_ctx m2 gamma ->
+    adt_in_mut a1 m1 ->
+    adt_in_mut a2 m2 ->
+    forall c1 c2 : funsym,
+    constr_in_adt c1 a1 ->
+    constr_in_adt c2 a2 -> new_constr_name c1 = new_constr_name c2 -> c1 = c2)
+  {m: mut_adt} {a1 a2: alg_datatype}
+  {d1 d2: def}
+  (m_in: mut_in_ctx m gamma) (a1_in: adt_in_mut a1 m) (a2_in: adt_in_mut a2 m) (f1 f2: funsym):
+  In d1 (add_axioms_gamma new_constr_name badnames noind (adt_name a1) (adt_constr_list a1)) ->
+  In d2 (add_axioms_gamma new_constr_name badnames noind (adt_name a2) (adt_constr_list a2)) ->
+  In f1 (funsyms_of_def d1) ->
+  In f2 (funsyms_of_def d2) ->
+  s_name f1 = s_name f2 ->
+  a1 = a2 /\ f1 = f2.
+Proof.
+  intros Hind1 Hind2 Hinf1 Hinf2 Hname.
+  apply in_add_axioms_gamma in Hind1, Hind2.
+  destruct Hind1 as [ [c1 [i1 [c1_in [Hi1 Hd1]]]] | [Hd1 | [Hd1 | [c1 [c1_in Hd1]]]]];
+  destruct Hind2 as [ [c2 [i2 [c2_in [Hi2 Hd2]]]] | [Hd2 | [Hd2 | [c2 [c2_in Hd2]]]]]; subst; auto;
+  try destruct Hinf1 as [Hf1 | []]; destruct Hinf2 as [Hf2 | []]; subst.
+  - eapply (proj_names_uniq gamma_valid badnames m_in m_in a1_in a2_in c1_in c2_in) in Hname; eauto;
+    try solve[apply nth_In; rewrite projection_syms_length; lia].
+    destruct_all; subst; auto.
+  - eapply proj_indexer_names in Hname; eauto. contradiction. apply nth_In. 
+    rewrite projection_syms_length; lia.
+  - eapply proj_selector_names in Hname; eauto. contradiction. apply nth_In. 
+    rewrite projection_syms_length; lia.
+  - symmetry in Hname; eapply new_constr_proj_names in Hname; eauto. contradiction.  apply nth_In. 
+    rewrite projection_syms_length; lia.
+  - symmetry in Hname; eapply proj_indexer_names in Hname; eauto. contradiction. apply nth_In. 
+    rewrite projection_syms_length; lia.
+  - eapply indexers_uniq in Hname; eauto. destruct_all; auto.
+  - symmetry in Hname. apply selector_indexer_names in Hname. contradiction.
+  - symmetry in Hname; apply new_constr_indexer_names in Hname. contradiction.
+  - symmetry in Hname; eapply proj_selector_names in Hname; eauto. contradiction. apply nth_In. 
+    rewrite projection_syms_length; lia.
+  - apply selector_indexer_names in Hname. contradiction.
+  - eapply selectors_uniq in Hname; eauto. destruct_all; auto.
+  - symmetry in Hname; apply new_constr_selector_names in Hname. contradiction.
+  - eapply new_constr_proj_names in Hname; eauto. contradiction. apply nth_In. 
+    rewrite projection_syms_length; lia.
+  - apply new_constr_indexer_names in Hname. contradiction.
+  - apply new_constr_selector_names in Hname; contradiction.
+  - eapply (new_constr_names_uniq _ gamma_valid badnames Hnewconstrs m_in m_in a1_in a2_in c1_in c2_in) in Hname; eauto.
+    destruct_all; auto.
+Qed.
+
+
+Opaque new_constr.
+Opaque selector_funsym.
+Opaque indexer_funsym.
+
+Ltac simpl_and_destruct :=
+  repeat (subst; simpl in *; destruct_all; try contradiction).
+
+Ltac destruct_list_in :=
+  repeat (match goal with
+    | H: In ?x (concat ?l) |- _ => rewrite in_concat in H
+    | H: In ?x (map ?f ?l) |- _ => rewrite in_map_iff in H
+    | H: In ?x (rev ?l) |- _ => rewrite <- In_rev in H
+    | H: In ?x (?l1 ++ ?l2) |- _ => rewrite in_app_iff in H
+    end; simpl_and_destruct).
+
+Lemma map_fst_proj_axioms c:
+  map fst (projection_axioms new_constr_name badnames c (projection_syms badnames c)) =
+  projection_syms badnames c.
+Proof.
+  unfold projection_axioms. rewrite map2_combine. rewrite map_map. simpl.
+  rewrite !map_snd_combine; auto. unfold vsymbol; simpl_len. 
+  rewrite projection_syms_length, gen_names_length; lia.
+Qed.
+
+(*Nodup for adding axioms for single ADT
+  TODO: would be nice to prove this with less repetition*)
+Lemma add_axioms_nodup_adt {gamma m a} (gamma_valid: valid_context gamma)
+  (Hnewconstrs: forall (m1 m2 : mut_adt) (a1 a2 : alg_datatype),
+    mut_in_ctx m1 gamma ->
+    mut_in_ctx m2 gamma ->
+    adt_in_mut a1 m1 ->
+    adt_in_mut a2 m2 ->
+    forall c1 c2 : funsym,
+    constr_in_adt c1 a1 ->
+    constr_in_adt c2 a2 -> new_constr_name c1 = new_constr_name c2 -> c1 = c2)
+ (m_in: mut_in_ctx m gamma)
+  (a_in: adt_in_mut a m):
+  NoDup
+  (concat
+     (map (fun d : def => map (fun x : funsym => s_name x) (funsyms_of_def d))
+        (add_axioms_gamma new_constr_name badnames noind (adt_name a) (adt_constr_list a)))).
+Proof.
+  unfold add_axioms_gamma. rewrite !map_app, !concat_app.
+  repeat (apply NoDup_app_iff'; split; [|split]).
+  - (*Prove for projections*)
+    rewrite map_map. simpl. rewrite concat_map, !map_map.
+    assert (Hallin: forall c, In c (rev (adt_constr_list a)) -> constr_in_adt c a).
+    { intros c. rewrite <- In_rev. apply constr_in_adt_eq. }
+    assert (Hnodup: NoDup (map (fun (x: funsym) => s_name x) (rev (adt_constr_list a)))). {
+      rewrite map_rev. apply NoDup_rev.
+      apply (constr_list_names_Nodup gamma_valid m_in a_in).
+    }
+    induction (rev (adt_constr_list a)) as [| c cs IH]; simpl; [constructor|].
+    simpl in Hallin. inversion Hnodup as [| ? ? Hnotinc Hncs]; subst.
+    rewrite !concat_app.
+    rewrite map_fst_proj_axioms.
+    apply NoDup_app_iff'; split_all; auto.
+    + replace (concat _) with (map (fun x: funsym => s_name x) (rev (projection_syms badnames c))).
+      2: {
+        induction (rev _); simpl; auto; f_equal; auto.
+      }
+      rewrite map_rev. apply NoDup_rev. apply proj_names_nodup.
+    + (*Now prove that cannot have name in projs for 2 different constrs*)
+      intros x. rewrite !in_concat. intros [[strs1 [Hinstrs1 Hinx1]] [strs2 [Hinstrs2 Hinx2]]].
+      rewrite in_map_iff in Hinstrs1. destruct Hinstrs1 as [f1 [Hstrs1 Hinf1]].
+      rewrite <- In_rev in Hinf1. subst. destruct Hinx1 as [Hx1 | []]; subst.
+      rewrite in_concat in Hinstrs2. destruct Hinstrs2 as [l2 [Hinl2 Hinstrs2]].
+      rewrite in_map_iff in Hinl2. destruct Hinl2 as [f2 [Hl2 Hinf2]]. subst.
+      rewrite in_map_iff in Hinstrs2. destruct Hinstrs2 as [f3 [Hstrs2 Hinf3]]. subst.
+      destruct Hinx2 as [Heq | []]. 
+      rewrite <- In_rev in Hinf3. rewrite map_fst_proj_axioms in Hinf3.
+      pose proof (proj_names_uniq gamma_valid badnames m_in m_in a_in a_in (Hallin c (ltac:(auto)))
+        (Hallin f2 (ltac:(auto))) Hinf1 Hinf3 (eq_sym Heq)) as Heq2. destruct_all; subst.
+      (*contradiction: c not in cs*)
+      apply Hnotinc. rewrite in_map_iff. exists f2; auto.
+  - (*easy case - indexer*)
+    destruct (_ && _); simpl; constructor; auto. constructor.
+  - (*selector also easy*)
+    destruct (negb _); simpl; repeat (constructor; auto).
+  - (*prove new_constrs nodups*)
+    rewrite map_map. simpl.
+    assert (Hallin: forall c, In c (adt_constr_list a) -> constr_in_adt c a).
+    { intros c. apply constr_in_adt_eq. }
+    assert (Hnodup: NoDup (map (fun (x: funsym) => s_name x) (adt_constr_list a))). {
+      apply (constr_list_names_Nodup gamma_valid m_in a_in).
+    }
+    induction (adt_constr_list a) as [| c cs IH]; simpl; [constructor|].
+    simpl in Hallin. inversion Hnodup as [| ? ? Hnotinc Hncs]; subst.
+    rewrite !map_app, !concat_app.
+    (* assert (Hproj:forall c,  map fst (projection_axioms new_constr_name badnames c (projection_syms badnames c)) =
+      (projection_syms badnames c)).
+    {
+      intros c1.
+      unfold projection_axioms. rewrite map2_combine. rewrite map_map. simpl.
+      rewrite !map_snd_combine; auto. unfold vsymbol; simpl_len. 
+      rewrite projection_syms_length, gen_names_length; lia.
+    } *)
+    apply NoDup_app_iff'; split_all; auto.
+    + simpl. repeat (constructor; auto). 
+    + (*Now prove that cannot have name in new constrs for 2 different constrs*)
+      intros x [Hinx1 Hinx2]. destruct_list_in.
+      eapply new_constr_names_uniq in H; eauto. destruct_all; subst.
+      apply Hnotinc. rewrite in_map_iff. eauto.
+  - (*not selector and new constr*)
+    intros x [Hinx1 Hinx2]. destruct_list_in.
+    destruct (negb _); [|contradiction]. simpl_and_destruct.
+    symmetry in H; apply new_constr_selector_names in H; auto.
+  - (*not indexer and selector/new constr*)
+    intros x [Hinx1 Hinx2]. destruct_list_in.
+    + destruct (_ && _); [|contradiction].
+      destruct (negb _); [|contradiction].
+      simpl_and_destruct. 
+      apply selector_indexer_names in H; auto.
+    + destruct (_ && _); [|contradiction].
+      simpl_and_destruct. apply new_constr_indexer_names in H; auto.
+  - (*proj is not indexer/selector/new*)
+    intros x [Hinx1 Hinx2]; destruct_list_in.
+    + apply (in_map fst) in H0. rewrite map_fst_proj_axioms in H0.
+      destruct (_ && _); [|contradiction].
+      simpl_and_destruct.
+      symmetry in H; eapply proj_indexer_names in H; eauto.
+    + apply (in_map fst) in H0. rewrite map_fst_proj_axioms in H0.
+      destruct (negb _); [|contradiction].
+      simpl_and_destruct.
+      symmetry in H. eapply proj_selector_names in H; eauto.
+    + apply (in_map fst) in H0. rewrite map_fst_proj_axioms in H0.  
+      eapply new_constr_proj_names in H; eauto.
+Qed.
+  
+
+(*And for all ADTs in a mut*)
+Lemma add_axioms_nodup gamma m
+  (gamma_valid: valid_context gamma)
+  (m_in: mut_in_ctx m gamma)
+  (Hnewconstrs: forall (m1 m2 : mut_adt) (a1 a2 : alg_datatype),
+    mut_in_ctx m1 gamma ->
+    mut_in_ctx m2 gamma ->
+    adt_in_mut a1 m1 ->
+    adt_in_mut a2 m2 ->
+    forall c1 c2 : funsym,
+    constr_in_adt c1 a1 ->
+    constr_in_adt c2 a2 -> new_constr_name c1 = new_constr_name c2 -> c1 = c2):
+NoDup
+  (idents_of_context
+     (concat
+        (map
+           (fun a : alg_datatype =>
+            add_axioms_gamma new_constr_name badnames noind (adt_name a) (adt_constr_list a))
+           (rev (typs m))))).
+Proof.
+  (*First, deal in terms of funsyms*)
+  apply (Permutation_NoDup (Permutation_sym (idents_of_context_split _))).
+  (*Prove that last 2 are nil*)
+  match goal with
+  | |- NoDup (?l1 ++ ?l2 ++ ?l3) =>
+      let H := fresh in
+      let H1 := fresh in
+      assert (H: l2 = nil); [| assert (H1: l3 = nil); [| rewrite H, H1; clear H H1]]
+   end.
+  - clear. induction (rev (typs m)) as [| h t IH]; auto.
+    simpl. rewrite map_app, concat_app, IH, app_nil_r. clear.
+    rewrite concat_nil_Forall. rewrite Forall_forall.
+    intros strs. rewrite in_map_iff. intros [d [Hstrs Hind]]; subst.
+    apply in_add_axioms_gamma  in Hind; destruct_all; subst; auto.
+  - clear. induction (rev (typs m)) as [| h t IH]; auto.
+    simpl. rewrite map_app, concat_app, IH, app_nil_r. clear.
+    rewrite concat_nil_Forall. rewrite Forall_forall.
+    intros strs. rewrite in_map_iff. intros [d [Hstrs Hind]]; subst.
+    apply in_add_axioms_gamma  in Hind; destruct_all; subst; auto.
+  - rewrite !app_nil_r.
+    assert (Hallina: forall a, In a (rev (typs m)) -> adt_in_mut a m). {
+      intros a. rewrite <- In_rev. apply In_in_bool. }
+    assert (Hnodups: NoDup (rev (typs m))). { apply NoDup_rev.
+      eapply adts_nodups; eauto. }
+    induction (rev (typs m)) as [| a tl IH]; simpl; [constructor|].
+    rewrite !map_app, concat_app. apply NoDup_app_iff'. simpl in Hallina.
+    inversion Hnodups as [| ? ? Hatl Hntl]; subst.
+    split_all; auto.
+    + (*Can prove within 1 adt, add_axioms nodup*)
+      eapply add_axioms_nodup_adt; eauto.
+    + (*Nothing across multiple ADTs by previous lemma*)
+      intros x [Hinx1 Hinx2].
+      rewrite in_concat in Hinx1, Hinx2. destruct Hinx1 as [strs1 [Hinstrs1 Hinx1]].
+      destruct Hinx2 as [strs2 [Hinstrs2 Hinx2]]. rewrite in_map_iff in Hinstrs1, Hinstrs2.
+      destruct Hinstrs1 as [d1 [Hstrs1 Hind1]]; destruct Hinstrs2 as [d2 [Hstrs2 Hind2]].
+      subst. rewrite in_concat in Hind2. destruct Hind2 as [ds [Hinds Hind2]].
+      rewrite in_map_iff in Hinds. destruct Hinds as [a1 [Hds Hina1]]; subst.
+      rewrite in_map_iff in Hinx1, Hinx2. destruct Hinx1 as [f1 [Hx1 Hinf1]];
+      destruct Hinx2 as [f2 [Hx2 Hinf2]]; subst.
+      destruct (@add_axioms_uniq _ gamma_valid Hnewconstrs m a a1 d1 d2 m_in
+        (Hallina a (ltac:(auto))) (Hallina a1 (ltac:(auto))) _ _ Hind1 Hind2 Hinf1 Hinf2 (eq_sym Hx2)); subst.
+      contradiction.
+Qed.
+
 
 Lemma new_gamma_gen_valid gamma gamma2 (Hbad: sublist (idents_of_context gamma) badnames):
   valid_context gamma ->
@@ -5453,6 +5700,183 @@ Proof.
     + (*Case 3: in old*)
       apply Hnotinold. unfold idents_of_context; simpl; rewrite in_app_iff. right; auto.
   - (*NoDups - use uniqueness results*)
+    eapply (add_axioms_nodup (datatype_def m :: gamma)); eauto. rewrite mut_in_ctx_cons.
+    destruct (mut_adt_dec m m); auto.
+  - (*Show constrs false*)
+    rewrite Forall_concat, Forall_map, Forall_concat, Forall_map. apply Forall_rev.
+    rewrite Forall_forall. intros a Hina.
+    rewrite Forall_forall. intros d Hind.
+    apply in_add_axioms_gamma in Hind.
+    destruct Hind as [ [c [i [c_in [Hi Hd]]]] | [Hd | [Hd | [c [c_in Hd]]]]]; subst; auto; simpl; 
+    constructor; auto. 
+    (*Only 1 case*)
+    unfold projection_syms. unfold dep_mapi.
+    erewrite dep_map_nth. simpl; auto.
+    + intros x Hinx1 Hinx2. unfold proj_funsym. f_equal.
+      apply bool_irrelevance.
+    + simpl_len. rewrite seq_length. lia.
+    Unshelve.
+    { exact (0, vty_int). }
+    { rewrite combine_nth; [| rewrite seq_length; lia].
+      rewrite seq_nth; auto. simpl. apply nth_In; lia.
+    }
+  - (*Now: prove validity of type + modified old context. We have 2 cases*)
+    pose proof (sig_t_new_gamma_gen (gamma) gamma2) as Hteq2.
+    unfold fold_all_ctx_gamma_gen in Hteq2.
+    destruct (keep_muts m); simpl; auto.
+    + (*Case 1: keep mut. Need to show everything is still valid*)
+      constructor; auto.
+      * (*Show still wf*)
+        revert H2. apply Forall_impl. intros a.
+        apply wf_funsym_sublist. rewrite <- Hteq. apply sublist_refl.
+      * (*Still disj*)
+        unfold idents_of_def; simpl. intros x [Hinx1 Hinx2].
+        apply idents_of_new_gamma in Hinx2.
+        (*Rule out first 4 from badnames, last from old disj*)
+        admit.
+      * (*still valid def*)
+        simpl. simpl in H8. unfold mut_valid in *.
+        destruct H8 as [Htys [Hinhab [Hval1 Hunif]]]; split_all; auto.
+        revert Hinhab.
+        (*TODO: use version of stronger [adt_inhab] lemma (though just need that muts are subset*)
+        admit.
+    + (*Case 2: abstract symbols*) apply valid_ctx_abstract_app; auto.
+      * rewrite Forall_map. simpl. rewrite Forall_forall; auto.
+      * rewrite map_map. simpl. rewrite concat_map_nil. constructor.
+      * rewrite map_map. simpl. rewrite concat_map_nil. constructor.
+      * (*Will be very similar as above*)
+        admit.
+      * (*Easy to show*)
+        apply (Permutation_NoDup (Permutation_sym (idents_of_context_split _))).
+        rewrite !map_map; simpl. rewrite !concat_map_nil. simpl.
+        replace (concat _) with (map ts_name (typesyms_of_mut m)).
+        2: {
+          clear. unfold typesyms_of_mut. rewrite map_map.
+          clear; induction (typs m); simpl; auto; f_equal; auto.
+        }
+        unfold idents_of_def in H5. simpl in H5.
+        apply NoDup_app in H5; apply H5.
+      * rewrite map_map. simpl. rewrite concat_map_nil. constructor.
+
+ Search typesym_inhab. apply Forall_forall.
+
+ Print mut_valid.
+        Search idents_of_context fold_all_ctx_gamma_gen.
+ rewrite !sig_t_cons.
+        Search wf_funsym "sub".
+        Search wf_funsym 
+
+ reflexivity.
+        rewrite nth_seq.
+      *
+       simpl. 
+
+ Search nth dep_map.
+    
+
+    clear -Hval Hnewconstrs.
+    (*TODO: prove similar lemma as before for this*)
+    
+  
+ (*TODO: do we need anything else? should we make this separate?*)
+    assert (m_in: mut_in_ctx m (datatype_def m :: gamma)) by (rewrite mut_in_ctx_cons; destruct (mut_adt_dec m m); auto).
+    assert (Hallin: forall a, In a (rev (typs m)) -> adt_in_mut a m). {
+      intros a. rewrite <- In_rev. apply In_in_bool. }
+    induction (rev (typs m)) as [| a tl IH]; simpl; [constructor|].
+    rewrite idents_of_context_app. apply NoDup_app_iff'. simpl in Hallin.
+    split_all; auto.
+    + (*Prove [add_axioms_gamma] nodups (i.e. within single ADT)*)
+      clear IH. specialize (Hallin a (ltac:(auto))). rename Hallin into a_in.
+      unfold idents_of_context. unfold add_axioms_gamma.
+      rewrite !map_app, !concat_app.
+      rewrite !map_map. rewrite <- map_rev. rewrite !map_map.
+      (*Lots of cases again - TODO can we abstract?*)
+      repeat (apply NoDup_app_iff'; split; [|split]).
+      * (*projection syms have nodups*)
+        clear Hnewconstrs. unfold idents_of_def; simpl. rewrite concat_map.
+        rewrite map_map.
+        assert (Hallin: forall c, In c (rev (adt_constr_list a)) -> constr_in_adt c a).
+        { intros c. rewrite <- In_rev. apply constr_in_adt_eq. }
+        induction (rev (adt_constr_list a)) as [| c cs IH]; [constructor|].
+        simpl. simpl in Hallin. rewrite concat_app. apply NoDup_app_iff'; split_all; auto.
+        -- specialize (Hallin c (ltac:(auto))). rename Hallin into c_in.
+          clear IH. apply NoDup_concat_iff. simpl_len. split_all.
+          ++ intros x. rewrite in_map_iff. intros [f [Hx Hinf]]; subst; auto. constructor; auto. constructor.
+          ++ (*Prove no two projection syms are equal*)
+            intros i1 i2 d x.
+            (*First, lots of simplification*) rewrite !map_rev.
+            unfold projection_axioms. rewrite map2_combine, !map_map. simpl. unfold vsymbol. simpl_len.
+            rewrite !gen_names_length, projection_syms_length.
+            intros Hi1 Hi2 Hi12. assert (Hi': i1 < length (s_args c)) by lia.
+            assert (Hi2': i2 < length (s_args c)) by lia. clear Hi1 Hi2.
+            rewrite map_snd_combine by (rewrite gen_names_length; auto).
+            rewrite <- (map_map (fun x => snd x) (fun (x: funsym) => [s_name x])).
+            rewrite map_snd_combine by (simpl_len; rewrite gen_names_length, projection_syms_length; lia).
+            (*Finally, a reasonable goal*)
+            pose proof (projection_syms_length badnames c) as Hlen.
+            rewrite !rev_nth by solve_len.
+            set (n1:=length (s_args c) - S i1) in *.
+            set (n2:= length (s_args c) - S i2) in *.
+            assert (Hn1: n1 < length (s_args c)) by (unfold n1; lia).
+            assert (Hn2: n2 < length (s_args c)) by (unfold n2; lia).
+            rewrite !map_nth_inbound with (d2:=id_fs); try solve_len.
+            simpl. simpl_len. rewrite Hlen. fold n1. fold n2. 
+            intros [[Hx1 | []] [Hx2 | []]]; subst.
+            (*Now use previous NoDup result*)
+            pose proof (proj_names_nodup badnames c) as Hnodup.
+            rewrite NoDup_nth with (d:=""%string) in Hnodup.
+            specialize (Hnodup n1 n2 (ltac:(simpl_len; lia)) (ltac:(simpl_len; lia))).
+            rewrite !map_nth_inbound with (d2:=id_fs) in Hnodup; try lia.
+            specialize (Hnodup (eq_sym Hx2)). (*contradicts n1 <> n2*) lia.
+        -- (*Prove distinct across 2 
+          ++
+
+
+ subst.
+            forward Hnodup.
+            {
+             
+            Search NoDup nth iff.
+
+Check NoDup_map_in.
+            eapply NoDup_map_in in Hnodup.
+            Search NoDup map (?f ?x = ?f ?y -> ?x = ?y).
+            apply NoDup_map_inj in Hnodup.
+            Search NoDup map In.
+
+proj_names_nodup
+
+            apply (proj_names_uniq Hval badnames m_in m_in a_in a_in c_in c_in) in Hx2; auto;
+            try solve[apply nth_In; lia].
+            destruct_all; subst.
+            Search projection_syms.
+
+
+Lemma proj_names_uniq {f1 f2} 
+  (Hinf1: In f1 (projection_syms badnames c1))
+  (Hinf2: In f2 (projection_syms badnames c2))
+  (Heq: s_name f1 = s_name f2):
+  m1 = m2 /\ a1 = a2 /\ c1 = c2 /\ f1 = f2.
+            
+
+
+  (fun x => snd x)).
+            rewrite map_nth_inbound 
+
+ simpl_len.
+
+ Search constr_in_adt adt_constr_list.
+ simpl.
+    
+    unfold idents_of_context.
+    apply (Permutation_NoDup (perm_concat_rev _)).
+    Search concat rev.
+    Search NoDup Permutation.
+
+perm_concat_rev: forall {B : Type} (l : list (list B)), Permutation (concat (rev l)) (concat l)
+
+    rewrite concat_rev.
+
     admit.
   - (*None constrs - just show*)
     admit.
