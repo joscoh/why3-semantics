@@ -881,6 +881,10 @@ Definition sound_trans_pre (P: task -> Prop) (T: trans) : Prop :=
   ((forall tr: task, In tr (T t) -> task_valid tr) ->
     task_valid t).
 
+Definition typed_trans_pre (P: task -> Prop) (T: trans) : Prop :=
+  forall (t: task) (t_p: P t) (t_ty: task_typed t),
+    forall tr, In tr (T t) -> task_typed tr.
+
 (*Here we again require precondition because free to assume this in composition*)
 Definition trans_pre_post (P: task -> Prop) (Q: task -> Prop) (T: trans) : Prop :=
   forall (t: task) (t_p: P t) (t_wf: task_typed t), 
@@ -896,12 +900,12 @@ Lemma sound_trans_comp (P1 Q1 P2: task -> Prop) (t1 t2: trans):
   sound_trans_pre P1 t1 ->
   sound_trans_pre P2 t2 ->
   trans_pre_post P1 Q1 t1 ->
-  typed_trans t1 ->
+  typed_trans_pre P1 t1 ->
   (*typed_trans t2 ->*)
   (forall t, Q1 t -> P2 t) ->
   sound_trans_pre P1 (compose_trans t1 t2).
 Proof.
-  unfold sound_trans_pre, typed_trans, trans_pre_post.
+  unfold sound_trans_pre, typed_trans_pre, trans_pre_post.
   intros Hsound1 Hsound2 Hprepost Hty1 (*Hty2*) Hpq t Hp1 Hty.
   unfold compose_trans; setoid_rewrite in_concat; setoid_rewrite in_map_iff.
   intros Hallval. 
@@ -917,7 +921,7 @@ Qed.
 Lemma trans_pre_post_comp (P1 Q1 P2 Q2: task -> Prop) (t1 t2: trans):
   trans_pre_post P1 Q1 t1 ->
   trans_pre_post P2 Q2 t2 ->
-  typed_trans t1 ->
+  typed_trans_pre P1 t1 ->
   (*typed_trans t2 ->*)
   (forall t, Q1 t -> P2 t) ->
   trans_pre_post P1 Q2 (compose_trans t1 t2).

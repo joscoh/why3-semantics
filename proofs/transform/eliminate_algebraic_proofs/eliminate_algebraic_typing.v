@@ -1,17 +1,60 @@
-Require Import Task eliminate_algebraic eliminate_algebraic_context.
+Require Import Task compile_match (*TODO: move*) eliminate_algebraic eliminate_algebraic_context.
+Require Import GenElts.
+(*TODO: can move projection_syms_length*)
+Require Import eliminate_algebraic_interp.
+(*TODO: move - for [simple_pat_match_adt]*)
+Require Import PatternProofs.
+Require Import Exhaustive.
 Set Bullet Behavior "Strict Subproofs".
+
+(*TODO change in def:*)
+(*TODO: change*)
+Arguments term_simple_exhaust : clear implicits.
+Arguments fmla_simple_exhaust : clear implicits.
+
+(*NOTE: we need to assume that [new_constr_names] is injective. We give an example of such a function
+  (s_name) to show that the natural choice satisfies our condition, but we do not restrict ourselves yet*)
+Definition new_constr_name_cond (new_constr_name: funsym -> string) : Prop :=
+  forall (gamma: context) (gamma_valid: valid_context gamma) (m1 m2: mut_adt) (a1 a2: alg_datatype) (c1 c2: funsym)
+    (m1_in: mut_in_ctx m1 gamma) (m2_in: mut_in_ctx m2 gamma) 
+    (a1_in: adt_in_mut a1 m1) (a2_in: adt_in_mut a2 m2) 
+    (c1_in: constr_in_adt c1 a1) (c2_in: constr_in_adt c2 a2),
+    new_constr_name c1 = new_constr_name c2 -> c1 = c2.
+
+Lemma new_constr_name_id : new_constr_name_cond s_name.
+Proof.
+  unfold new_constr_name_cond. 
+  intros gamma gamma_valid m1 m2 a1 a2 c1 c2 m1_in m2_in a1_in a2_in c1_in c2_in Hname.
+  (*TODO: should prob prove in typing*)
+  apply valid_context_wf, wf_context_full in gamma_valid.
+  destruct gamma_valid as [_ [_ Hn]].
+  apply (Permutation_NoDup (idents_of_context_split gamma)) in Hn.
+  apply NoDup_app in Hn. destruct Hn as [Hn _].
+  rewrite map_concat_map in Hn.
+  apply @NoDup_map_in with (x1:=c1)(x2:=c2) in Hn; auto.
+  - rewrite in_concat. exists (funsyms_of_def (datatype_def m1)).
+    split.
+    + apply in_map. apply mut_in_ctx_eq2; auto.
+    + simpl. eapply constr_in_adt_def; eauto.
+  - rewrite in_concat. exists (funsyms_of_def (datatype_def m2)).
+    split.
+    + apply in_map. apply mut_in_ctx_eq2; auto.
+    + simpl. eapply constr_in_adt_def; eauto.
+Qed.
 
 Section Proofs.
 (*TODO: will we need to case on this?*)
 Variable (new_constr_name: funsym -> string).
 Variable keep_muts : mut_adt -> bool.
 
+(* Variable (cc_maps: list funsym -> amap funsym funsym). *)
+Variable (noind: typesym -> bool).
+
+Section BadNames.
+
 Variable badnames : list string.
 (*TODO: assume that badnames includes all ids in gamma*)
 
-
-(* Variable (cc_maps: list funsym -> amap funsym funsym). *)
-Variable (noind: typesym -> bool).
 
 (*Let's do delta first*)
 
@@ -88,8 +131,6 @@ Proof.
   unfold sig_t; rewrite map_app, concat_app; reflexivity.
 Qed.
 
-Require Import GenElts.
-
 Lemma projection_axioms_syms (c: funsym) l:
   length l = length (s_args c) ->
   map fst (projection_axioms new_constr_name badnames c l) = l.
@@ -107,9 +148,6 @@ Proof.
   induction l as [| h1 t1 IH]; intros [| h2 t2]; simpl; auto; try discriminate.
   intros Hlen. f_equal; auto.
 Qed.
-
-(*TODO: can move projection_syms_length*)
-Require Import eliminate_algebraic_interp.
 
 Lemma mut_in_ctx_cons d gamma m:
   mut_in_ctx m (d :: gamma) =
@@ -785,8 +823,6 @@ Proof.
     apply (IH t2); auto.
 Qed.
 
-(*TODO: move*)
-Require Import PatternProofs.
 (*For anything with all simple patterns, every pattern matches on an ADT*)
 Lemma simple_pat_match_adt {gamma: context} (gamma_valid: valid_context gamma) b
   {t ty ps} ty1 (Hsimp: simple_pat_match (map fst ps)) 
@@ -1230,8 +1266,6 @@ Qed.
 
 (*From the result of [compile_match]*)
 
-Require Import Exhaustive.
-
 Lemma tfun_ty_change_sym gamma (f1 f2: funsym) tys tms ty:
   s_args f1 = s_args f2 ->
   s_params f1 = s_params f2 ->
@@ -1409,6 +1443,7 @@ Lemma map_join_left_typed {B: Type} gamma (sign : bool) (f: B -> formula) (l: li
 Proof.
   intros Hall.
   unfold map_join_left'.
+  Locate map_join_left.
   destruct (map_join_left _ _ _) as [y|] eqn : Hjoin; [|constructor].
   unfold map_join_left in Hjoin.
   destruct l as [| h t]; simpl in *; try discriminate.
@@ -1800,12 +1835,12 @@ Qed.
 (*First, prove typing*)
 Lemma rewrite_typed(gamma_valid: valid_context gamma) names t f:
   (forall ty (Hty: term_has_type gamma t ty) (Hsimp: term_simple_pats t)
-    (Hexh: @term_simple_exhaust gamma t), 
+    (Hexh: term_simple_exhaust gamma t), 
     term_has_type 
       (fold_all_ctx_gamma_gen new_constr_name keep_muts badnames noind gamma gamma2) 
       (rewriteT keep_muts new_constr_name badnames gamma2 names t) ty) /\
   (forall (Hty: formula_typed gamma f) (Hsimp: fmla_simple_pats f)
-    (Hexh: @fmla_simple_exhaust gamma f) av sign, 
+    (Hexh: fmla_simple_exhaust gamma f) av sign, 
     formula_typed 
       (fold_all_ctx_gamma_gen new_constr_name keep_muts badnames noind gamma gamma2) 
       (rewriteF keep_muts new_constr_name badnames gamma2 names av sign f)).
@@ -2407,7 +2442,7 @@ Qed.
 
 Definition rewriteT_typed (gamma_valid: valid_context gamma) names t ty
   (Hty: term_has_type gamma t ty) (Hsimp: term_simple_pats t)
-  (Hexh: @term_simple_exhaust gamma t):
+  (Hexh: term_simple_exhaust gamma t):
   term_has_type 
       (fold_all_ctx_gamma_gen new_constr_name keep_muts badnames noind gamma gamma2) 
       (rewriteT keep_muts new_constr_name badnames gamma2 names t) ty :=
@@ -2415,7 +2450,7 @@ Definition rewriteT_typed (gamma_valid: valid_context gamma) names t ty
 
 Definition rewriteF_typed (gamma_valid: valid_context gamma) names f 
   (Hty: formula_typed gamma f) (Hsimp: fmla_simple_pats f)
-  (Hexh: @fmla_simple_exhaust gamma f) av sign:
+  (Hexh: fmla_simple_exhaust gamma f) av sign:
   formula_typed 
       (fold_all_ctx_gamma_gen new_constr_name keep_muts badnames noind gamma gamma2) 
       (rewriteF keep_muts new_constr_name badnames gamma2 names av sign f) :=
@@ -2660,10 +2695,10 @@ Qed.
 (*2: Prove free vars for rewrite*)
 Lemma rewrite_fv (gamma_valid: valid_context gamma) names t f:
   (forall ty (Hty: term_has_type gamma t ty) (Hsimp: term_simple_pats t)
-    (Hexh: @term_simple_exhaust gamma t), 
+    (Hexh: term_simple_exhaust gamma t), 
     sublist (tm_fv (rewriteT keep_muts new_constr_name badnames gamma2 names t)) (tm_fv t)) /\
   (forall (Hty: formula_typed gamma f) (Hsimp: fmla_simple_pats f)
-    (Hexh: @fmla_simple_exhaust gamma f) av sign, 
+    (Hexh: fmla_simple_exhaust gamma f) av sign, 
     sublist (fmla_fv (rewriteF keep_muts new_constr_name badnames gamma2 names av sign f))
       (fmla_fv f)).
 Proof.
@@ -2961,12 +2996,12 @@ Qed.
 
 Definition rewriteT_fv (gamma_valid: valid_context gamma) names t
   ty (Hty: term_has_type gamma t ty) (Hsimp: term_simple_pats t)
-  (Hexh: @term_simple_exhaust gamma t):
+  (Hexh: term_simple_exhaust gamma t):
   sublist (tm_fv (rewriteT keep_muts new_constr_name badnames gamma2 names t)) (tm_fv t) :=
   proj_tm (rewrite_fv gamma_valid names) t ty Hty Hsimp Hexh.
 Definition rewriteF_fv (gamma_valid: valid_context gamma) names f
   (Hty: formula_typed gamma f) (Hsimp: fmla_simple_pats f)
-  (Hexh: @fmla_simple_exhaust gamma f) av sign:
+  (Hexh: fmla_simple_exhaust gamma f) av sign:
   sublist (fmla_fv (rewriteF keep_muts new_constr_name badnames gamma2 names av sign f))
       (fmla_fv f) :=
   proj_fmla (rewrite_fv gamma_valid names) f Hty Hsimp Hexh av sign.
@@ -3191,10 +3226,10 @@ Proof. reflexivity. Qed.
 (*3. rewriteT/F type vars*)
 Lemma rewrite_type_vars (gamma_valid: valid_context gamma) names t f:
   (forall ty (Hty: term_has_type gamma t ty) (Hsimp: term_simple_pats t)
-    (Hexh: @term_simple_exhaust gamma t), 
+    (Hexh: term_simple_exhaust gamma t), 
     sublist (tm_type_vars (rewriteT keep_muts new_constr_name badnames gamma2 names t)) (tm_type_vars t)) /\
   (forall (Hty: formula_typed gamma f) (Hsimp: fmla_simple_pats f)
-    (Hexh: @fmla_simple_exhaust gamma f) av sign, 
+    (Hexh: fmla_simple_exhaust gamma f) av sign, 
     sublist (fmla_type_vars (rewriteF keep_muts new_constr_name badnames gamma2 names av sign f))
       (fmla_type_vars f)).
 Proof.
@@ -3564,12 +3599,12 @@ Qed.
 
 Definition rewriteT_type_vars (gamma_valid: valid_context gamma) names t
   ty (Hty: term_has_type gamma t ty) (Hsimp: term_simple_pats t)
-    (Hexh: @term_simple_exhaust gamma t):
+    (Hexh: term_simple_exhaust gamma t):
   sublist (tm_type_vars (rewriteT keep_muts new_constr_name badnames gamma2 names t)) (tm_type_vars t) :=
   proj_tm (rewrite_type_vars gamma_valid names) t ty Hty Hsimp Hexh.
 Definition rewriteF_type_vars(gamma_valid: valid_context gamma) names f
   (Hty: formula_typed gamma f) (Hsimp: fmla_simple_pats f)
-  (Hexh: @fmla_simple_exhaust gamma f) av sign :
+  (Hexh: fmla_simple_exhaust gamma f) av sign :
   sublist (fmla_type_vars (rewriteF keep_muts new_constr_name badnames gamma2 names av sign f))
       (fmla_type_vars f):=
   proj_fmla (rewrite_type_vars gamma_valid names) f Hty Hsimp Hexh av sign.
@@ -3745,12 +3780,12 @@ Ltac solve_funsyms_cases IH1 IH2 IH3 :=
 
 Lemma rewrite_funsyms (gamma_valid: valid_context gamma) names t f:
   (forall ty (Hty: term_has_type gamma t ty) (Hsimp: term_simple_pats t)
-    (Hexh: @term_simple_exhaust gamma t)
+    (Hexh: term_simple_exhaust gamma t)
     (fs: funsym),
     funsym_in_tm fs (rewriteT keep_muts new_constr_name badnames gamma2 names t) ->
     funsym_in_tm fs t \/ is_new_constr gamma fs \/ is_proj gamma fs \/ is_selector gamma fs) /\
   (forall (Hty: formula_typed gamma f) (Hsimp: fmla_simple_pats f)
-    (Hexh: @fmla_simple_exhaust gamma f) av sign
+    (Hexh: fmla_simple_exhaust gamma f) av sign
     (fs: funsym),
     funsym_in_fmla fs (rewriteF keep_muts new_constr_name badnames gamma2 names av sign f) ->
     funsym_in_fmla fs f \/ is_new_constr gamma fs \/ is_proj gamma fs \/ is_selector gamma fs).
@@ -4089,14 +4124,14 @@ Qed.
 
 Definition rewriteT_funsyms(gamma_valid: valid_context gamma) names t ty 
   (Hty: term_has_type gamma t ty) (Hsimp: term_simple_pats t)
-  (Hexh: @term_simple_exhaust gamma t)
+  (Hexh: term_simple_exhaust gamma t)
   (fs: funsym):
   funsym_in_tm fs (rewriteT keep_muts new_constr_name badnames gamma2 names t) ->
   funsym_in_tm fs t \/ is_new_constr gamma fs \/ is_proj gamma fs \/ is_selector gamma fs :=
   proj_tm (rewrite_funsyms gamma_valid names) t ty Hty Hsimp Hexh fs.
 Definition rewriteF_funsyms(gamma_valid: valid_context gamma) names f
   (Hty: formula_typed gamma f) (Hsimp: fmla_simple_pats f)
-  (Hexh: @fmla_simple_exhaust gamma f) av sign
+  (Hexh: fmla_simple_exhaust gamma f) av sign
   (fs: funsym):
   funsym_in_fmla fs (rewriteF keep_muts new_constr_name badnames gamma2 names av sign f) ->
   funsym_in_fmla fs f \/ is_new_constr gamma fs \/ is_proj gamma fs \/ is_selector gamma fs :=
@@ -4236,12 +4271,12 @@ Qed.
 
 Lemma rewrite_predsyms (gamma_valid: valid_context gamma) names t f:
   (forall ty (Hty: term_has_type gamma t ty) (Hsimp: term_simple_pats t)
-    (Hexh: @term_simple_exhaust gamma t)
+    (Hexh: term_simple_exhaust gamma t)
     (p: predsym),
     predsym_in_tm p (rewriteT keep_muts new_constr_name badnames gamma2 names t) ->
     predsym_in_tm p t) /\
   (forall (Hty: formula_typed gamma f) (Hsimp: fmla_simple_pats f)
-    (Hexh: @fmla_simple_exhaust gamma f) av sign
+    (Hexh: fmla_simple_exhaust gamma f) av sign
     (p: predsym),
     predsym_in_fmla p (rewriteF keep_muts new_constr_name badnames gamma2 names av sign f) ->
     predsym_in_fmla p f).
@@ -4508,14 +4543,14 @@ Qed.
 
 Definition rewriteT_predsyms (gamma_valid: valid_context gamma) names t ty 
   (Hty: term_has_type gamma t ty) (Hsimp: term_simple_pats t)
-  (Hexh: @term_simple_exhaust gamma t)
+  (Hexh: term_simple_exhaust gamma t)
   (p: predsym):
   predsym_in_tm p (rewriteT keep_muts new_constr_name badnames gamma2 names t) ->
   predsym_in_tm p t :=
   proj_tm (rewrite_predsyms gamma_valid names) t ty Hty Hsimp Hexh p.
 Definition rewriteF_predsyms (gamma_valid: valid_context gamma) names f
   (Hty: formula_typed gamma f) (Hsimp: fmla_simple_pats f)
-  (Hexh: @fmla_simple_exhaust gamma f) av sign
+  (Hexh: fmla_simple_exhaust gamma f) av sign
   (p: predsym):
   predsym_in_fmla p (rewriteF keep_muts new_constr_name badnames gamma2 names av sign f) ->
   predsym_in_fmla p f:=
@@ -4553,8 +4588,6 @@ Proof.
     apply (Hdisj x); auto.
 Qed.
 
-Require Import eliminate_inductive eliminate_definition. (*TODO: move [valid_ctx_abstract_app]*)
-
 Lemma sublist_remove_app_l {A: Type} (l1 l2 l3: list A):
   sublist (l1 ++ l2) l3 ->
   sublist l2 l3.
@@ -4572,13 +4605,13 @@ Definition funpred_def_simple_pats (f: funpred_def) : bool :=
   end.
 Definition funpred_def_simple_exhaust gamma (f: funpred_def) : bool :=
   match f with
-  | fun_def _ _ t => @term_simple_exhaust gamma t
-  | pred_def _ _ f => @fmla_simple_exhaust gamma f
+  | fun_def _ _ t => term_simple_exhaust gamma t
+  | pred_def _ _ f => fmla_simple_exhaust gamma f
   end.
 Definition gen_simple_exhaust (b: bool) gamma (t: gen_term b) : bool :=
   match b return gen_term b -> bool with
-  | true => @term_simple_exhaust gamma
-  | false => @fmla_simple_exhaust gamma
+  | true => term_simple_exhaust gamma
+  | false => fmla_simple_exhaust gamma
   end t.
 
 (*TODO: is it bad to use full gamma?*)
@@ -4612,8 +4645,8 @@ Qed.
 (*First, prove datatype*)
 Lemma simple_exhaust_weaken_notmut (d: def) (gamma: context)
   (Hd: forall m, d <> datatype_def m) t f:
-  (@term_simple_exhaust (d:: gamma) t -> @term_simple_exhaust gamma t) /\
-  (@fmla_simple_exhaust (d :: gamma) f -> @fmla_simple_exhaust gamma f).
+  (term_simple_exhaust (d:: gamma) t -> term_simple_exhaust gamma t) /\
+  (fmla_simple_exhaust (d :: gamma) f -> fmla_simple_exhaust gamma f).
 Proof.
   revert t f;
   apply term_formula_ind; simpl; auto.
@@ -4636,11 +4669,11 @@ Qed.
 
 Definition term_simple_exhaust_weaken_notmut (d: def) (gamma: context)
   (Hd: forall m, d <> datatype_def m) t :
-  (@term_simple_exhaust (d:: gamma) t -> @term_simple_exhaust gamma t) :=
+  (term_simple_exhaust (d:: gamma) t -> term_simple_exhaust gamma t) :=
   proj_tm (simple_exhaust_weaken_notmut d gamma Hd) t.
 Definition fmla_simple_exhaust_weaken_notmut (d: def) (gamma: context)
   (Hd: forall m, d <> datatype_def m) f :
-  (@fmla_simple_exhaust (d:: gamma) f -> @fmla_simple_exhaust gamma f) :=
+  (fmla_simple_exhaust (d:: gamma) f -> fmla_simple_exhaust gamma f) :=
   proj_fmla (simple_exhaust_weaken_notmut d gamma Hd) f.
 
 (*TODO: prove typed version*)
@@ -4662,7 +4695,7 @@ Qed.
 (*The key case for well-typed*)
 Lemma simple_exhaust_weaken_typed_match (b: bool) (d: def) (gamma: context)
   (gamma_valid: valid_context (d :: gamma)) tm ty1 ps ty
-  (IH1: @term_simple_exhaust (d :: gamma) tm -> @term_simple_exhaust gamma tm)
+  (IH1: term_simple_exhaust (d :: gamma) tm -> term_simple_exhaust gamma tm)
   (IH2: Forall (fun (x: gen_term b) => gen_simple_exhaust b (d :: gamma) x ->
     gen_simple_exhaust b gamma x) (map snd ps))
   (Hty: gen_typed gamma b (gen_match tm ty1 ps) ty):
@@ -4732,11 +4765,11 @@ Qed.
 Lemma simple_exhaust_weaken_typed (d: def) (gamma: context) 
   (gamma_valid: valid_context (d :: gamma)) t f:
   (forall ty (Hty: term_has_type gamma t ty), 
-    @term_simple_exhaust (d:: gamma) t -> 
-    @term_simple_exhaust gamma t) /\
+    term_simple_exhaust (d:: gamma) t -> 
+    term_simple_exhaust gamma t) /\
   (forall (Hty: formula_typed gamma f), 
-    @fmla_simple_exhaust (d :: gamma) f -> 
-    @fmla_simple_exhaust gamma f).
+    fmla_simple_exhaust (d :: gamma) f -> 
+    fmla_simple_exhaust gamma f).
 Proof.
   revert t f;
   apply term_formula_ind_typed; simpl; auto.
@@ -4766,13 +4799,13 @@ Qed.
 
 Definition term_simple_exhaust_weaken_typed (d: def) (gamma: context) 
   (gamma_valid: valid_context (d :: gamma)) t ty (Hty: term_has_type gamma t ty): 
-    @term_simple_exhaust (d:: gamma) t -> 
-    @term_simple_exhaust gamma t :=
+    term_simple_exhaust (d:: gamma) t -> 
+    term_simple_exhaust gamma t :=
   proj_tm (simple_exhaust_weaken_typed d gamma gamma_valid) t ty Hty.
 Definition fmla_simple_exhaust_weaken_typed (d: def) (gamma: context) 
   (gamma_valid: valid_context (d :: gamma)) f (Hty: formula_typed gamma f):
-    @fmla_simple_exhaust (d :: gamma) f -> 
-    @fmla_simple_exhaust gamma f :=
+    fmla_simple_exhaust (d :: gamma) f -> 
+    fmla_simple_exhaust gamma f :=
   proj_fmla (simple_exhaust_weaken_typed d gamma gamma_valid) f Hty.
 
 Lemma valid_type_weaken (d: def) (gamma: context) (Hdty: typesyms_of_def d = nil) ty:
@@ -4958,9 +4991,6 @@ Definition fmla_typed_weaken (d: def) (gamma: context) (gamma_valid: valid_conte
     formula_typed gamma f :=
   proj_fmla (typed_weaken d gamma gamma_valid Hdty) f Hty Hfs Hps.
 
-(*TODO: change*)
-Arguments term_simple_exhaust : clear implicits.
-Arguments fmla_simple_exhaust : clear implicits.
 
 (*Much easier than the reverse*)
 Lemma term_has_type_cons d gamma t ty:
@@ -5321,6 +5351,8 @@ Lemma sublist_filter {A: Type} (b: A -> bool) (l: list A):
 Proof.
   intros x. rewrite in_filter. intros Hin; apply Hin.
 Qed.
+
+Require Import eliminate_inductive eliminate_definition. (*TODO: move [valid_ctx_abstract_app]*)
 
 Lemma new_gamma_gen_valid gamma gamma2 (Hbad: sublist (idents_of_context gamma) badnames):
   valid_context gamma ->
@@ -5850,48 +5882,293 @@ Proof.
   - apply sublist_refl.
 Qed.
 
-(*TODO: need typed_trans with preconditions*)
-Theorem fold_comp_sound:
-  typed_trans
-  (fold_comp keep_muts new_constr_name badnames noind).
+End BadNames.
+
+(*The conditions we need on tasks*)
+
+(*TODO: copied from [eliminate_algebraic_proofs], some should move*)
+Definition no_recfun_indpred (t: task) : Prop :=
+  no_recfun_indpred_gamma (task_gamma t).
+
+Definition fmla_simple_and_exhaust gamma (f: formula) : bool :=
+  fmla_simple_pats f && fmla_simple_exhaust gamma f.
+
+Definition task_pat_simpl (t: task) : Prop :=
+  ctx_pat_simpl (task_gamma t) &&
+  forallb (fun x => fmla_simple_and_exhaust (task_gamma t) (snd x)) (task_delta t) &&
+  fmla_simple_and_exhaust (task_gamma t) (task_goal t).
+
+(*TODO: use bools somewhere?*)
+Definition task_and (P1 P2: task -> Prop) : task -> Prop :=
+  fun t => (P1 t /\ P2 t).
+
+Lemma task_post_combine (P1 Q1 Q2: task -> Prop) (t: trans) :
+  trans_pre_post P1 Q1 t ->
+  trans_pre_post P1 Q2 t ->
+  trans_pre_post P1 (task_and Q1 Q2) t.
 Proof.
-  unfold typed_trans, TaskGen.typed_trans.
-  intros tsk Hty tr [Htr | []]; subst.
+  unfold trans_pre_post, task_and. intros; split; eauto.
+Qed.
+
+Definition compile_match_post : task -> Prop :=
+  task_and no_recfun_indpred task_pat_simpl.
+
+(*TODO: move somewhere (compile_match)?*)
+(*[trans_map] preserves no_recfun_indpred*)
+Lemma trans_map_pres_no_recfun_indpred f1 f2:
+  trans_pre_post no_recfun_indpred no_recfun_indpred (trans_map f1 f2).
+Proof.
+  unfold trans_pre_post, trans_map, TaskGen.trans_map, single_trans, TaskGen.task_map.
+  simpl.
+  unfold no_recfun_indpred.
+  intros t Hnorec Hty tr [Htr | []].
+  subst. simpl_task. unfold no_recfun_indpred_gamma in *.
+  rewrite forallb_map.
+  revert Hnorec. apply forallb_impl. intros x Hinx.
+  destruct x; auto.
+Qed.
+
+(*TODO: move all this*)
+Lemma sound_trans_pre_true (t: trans):
+  sound_trans t ->
+  sound_trans_pre (fun _ => True) t.
+Proof. 
+  unfold sound_trans, TaskGen.sound_trans, sound_trans_pre. intros Hsound tsk _ Hty Hallval.
+  apply Hsound; auto.
+Qed.
+
+Lemma typed_trans_pre_true (t: trans):
+  typed_trans t ->
+  typed_trans_pre (fun _ => True) t.
+Proof. 
+  unfold typed_trans, TaskGen.typed_trans, typed_trans_pre. intros Hsound tsk _ Hty Hallval.
+  apply Hsound; auto.
+Qed.
+
+Lemma trans_weaken_pre (P1 P2 Q1: task -> Prop) (t: trans):
+  (forall t, P1 t -> P2 t) ->
+  trans_pre_post P2 Q1 t ->
+  trans_pre_post P1 Q1 t.
+Proof.
+  unfold trans_pre_post.
+  intros; eauto.
+Qed.
+
+Lemma sound_trans_weaken_pre (P1 P2: task -> Prop) (t: trans):
+  (forall t, P1 t -> P2 t) ->
+  sound_trans_pre P2 t ->
+  sound_trans_pre P1 t.
+Proof.
+  unfold sound_trans_pre.
+  intros Hp12 Hsound1 tsk Hp1 Hty Hallval.
+  apply Hsound1; auto.
+Qed. 
+
+Lemma typed_trans_weaken_pre (P1 P2: task -> Prop) (t: trans):
+  (forall t, P1 t -> P2 t) ->
+  typed_trans_pre P2 t ->
+  typed_trans_pre P1 t.
+Proof.
+  unfold typed_trans_pre.
+  intros Hp12 Hsound1 tsk Hp1 Hty Hallval.
+  apply Hsound1; auto.
+Qed. 
+
+(*[compile_match] preserves [no_recfun_indpred]*)
+Lemma compile_match_pres_no_recfun_indpred:
+  trans_pre_post no_recfun_indpred no_recfun_indpred compile_match.compile_match.
+Proof.
+  apply trans_map_pres_no_recfun_indpred.
+Qed.
+
+(*[compile_match] results in [task_pat_simpl] i.e. simplifies pattern matches (TODO: move)*)
+Lemma compile_match_simple:
+  trans_pre_post (fun _ => True) task_pat_simpl compile_match.compile_match.
+Proof.
+  pose proof (compile_match_typed) as Hty. revert Hty.
+  unfold trans_pre_post, compile_match.compile_match, trans_map, TaskGen.trans_map, single_trans, typed_trans. simpl.
+  unfold TaskGen.task_map, TaskGen.typed_trans. simpl. intros Hty1.
+  intros t _ Hty tr [Htr | []]; subst.
+  specialize (Hty1 _ Hty _ (ltac:(left; reflexivity))).
+  unfold task_pat_simpl; simpl_task.
+  rewrite !forallb_map; simpl.
+  (*Need type info*)
+  destruct t as [[gamma delta] goal]; simpl in *.
+  inversion Hty. simpl_task.
+  (*Some useful things*)
+  assert (Hval: valid_context (map (TaskGen.def_map compile_match.rewriteT' compile_match.rewriteF') gamma)). {
+    inversion Hty1; auto.
+  }
+  assert (Hsig: sublist_sig gamma (map (TaskGen.def_map compile_match.rewriteT' compile_match.rewriteF') gamma)). {
+    apply eq_sig_sublist, TaskGen.def_map_eq_sig.
+  }
+  assert (Hmuts: sublist (mut_of_context gamma) (mut_of_context (map (TaskGen.def_map compile_match.rewriteT' compile_match.rewriteF') gamma))).
+  { rewrite TaskGen.def_map_gamma_mut. apply sublist_refl. }
+  bool_to_prop. split_all.
+  - unfold ctx_pat_simpl. rewrite forallb_map. apply forallb_forall. intros x Hinx.
+    destruct x; simpl; auto.
+    destruct f; simpl; auto.
+    + assert (Htyt: term_has_type gamma t (f_ret f)). {
+        apply nonrec_body_ty in Hinx; auto.
+      } apply andb_true_iff; split. 
+      * eapply (rewriteT_simple_pats' task_gamma_valid); eauto.
+      * eapply rewriteT_simple_exhaust'; eauto. 
+        eapply term_has_type_sublist; eauto.
+    + assert (Htyf: formula_typed gamma f). { apply nonrec_body_typed in Hinx; auto. }
+      apply andb_true_iff; split. 
+      * eapply (rewriteF_simple_pats' task_gamma_valid); eauto.
+      * eapply rewriteF_simple_exhaust'; eauto.
+        eapply formula_typed_sublist; eauto.
+  - (*delta*)
+    apply forallb_forall. intros x Hinx.
+    rewrite Forall_map, Forall_forall in task_delta_typed.
+    apply andb_true_iff. split.
+    + eapply (rewriteF_simple_pats' task_gamma_valid); eauto.
+    + eapply rewriteF_simple_exhaust'; eauto.
+      eapply formula_typed_sublist; eauto.
+  - (*goal*)
+    apply andb_true_iff. split.
+    + eapply (rewriteF_simple_pats' task_gamma_valid); eauto.
+    + eapply rewriteF_simple_exhaust'; eauto.
+      eapply formula_typed_sublist; eauto.
+Qed.
+
+(*TODO: prove this elsewhere, dont need here but including to make sure provable*)
+Lemma compile_match_pre_post: trans_pre_post no_recfun_indpred compile_match_post compile_match.compile_match.
+Proof.
+  apply task_post_combine.
+  - apply compile_match_pres_no_recfun_indpred.
+  - apply trans_weaken_pre with (P2:=fun _ => True); auto.
+    apply compile_match_simple.
+Qed.
+
+(*TODO: move to Task*)
+Lemma typed_trans_comp (P1 Q1 P2: task -> Prop) (t1 t2: trans):
+  typed_trans_pre P1 t1 ->
+  typed_trans_pre P2 t2 ->
+  trans_pre_post P1 Q1 t1 ->
+  (*typed_trans t2 ->*)
+  (forall t, Q1 t -> P2 t) ->
+  typed_trans_pre P1 (compose_trans t1 t2).
+Proof.
+  unfold typed_trans_pre, trans_pre_post.
+  intros Hty1 Hty2 Hprepost Hpq t Hp1 Hty.
+  unfold compose_trans; setoid_rewrite in_concat; setoid_rewrite in_map_iff.
+  intros tk2 [l [[tsk [Hl Hintsk]] Hintsk2]]; subst.
+  eapply Hty2.
+  + apply Hpq. eapply Hprepost.
+    * apply Hp1.
+    * auto.
+    * apply Hintsk.
+  + eapply Hty1; eauto.
+  + auto.
+Qed.
+
+(*Main result: fold_comp is well-typed under preconditions*)
+
+Theorem fold_comp_sound:
+  new_constr_name_cond new_constr_name ->
+  typed_trans_pre compile_match_post (fold_comp keep_muts new_constr_name noind).
+Proof.
+  intros Hnewconstr.
+  unfold typed_trans_pre.
+  intros tsk Hpre Hty tr [Htr | []]; subst. 
+  rewrite fold_all_ctx_gamma_eq,fold_all_ctx_delta_eq, fold_all_ctx_goal_eq.
+  destruct tsk as [[gamma delta] goal].
+  inversion Hty; subst. simpl_task.
   constructor.
-  - rewrite fold_all_ctx_gamma_eq. simpl_task.
+  - (*prove gamma valid - main part done above*) 
+    simpl_task. unfold fold_all_ctx_gamma. simpl_task. apply new_gamma_gen_valid'; auto.
+    + apply sublist_refl.
+    + apply Hpre.
+    + unfold compile_match_post in Hpre. unfold task_and in Hpre.
+      destruct Hpre as [_ Hsimp]. unfold task_pat_simpl in Hsimp.
+      unfold is_true in Hsimp.
+      rewrite !andb_true_iff in Hsimp. apply Hsimp.
+    + intros m1 m2 a1 a2 m1_in m2_in a1_in a2_in c1 c2 c1_in c2_in.
+      apply (Hnewconstr _ task_gamma_valid m1 m2 a1 a2 c1 c2); auto.
+  - simpl_task. rewrite map_snd_combine by solve_len.
+    (*Prove delta typed - mix of existing rewriteT/F lemmas and proving new axioms typed*)
+    rewrite map_map, Forall_map.
+    rewrite Forall_app. split.
+    2: {
+      rewrite Forall_map in task_delta_typed.
+      revert task_delta_typed.
+      unfold compile_match_post in Hpre. destruct Hpre as [_ Hsimpl].
+      unfold task_pat_simpl in Hsimpl. unfold is_true in Hsimpl; rewrite !andb_true_iff in Hsimpl.
+      destruct Hsimpl as [[_ Hsimpl]_].
+      simpl_task. rewrite forallb_forall in Hsimpl.
+      apply Forall_impl_strong. intros [name f] Hinf; simpl.
+      specialize (Hsimpl _ Hinf). apply andb_true_iff in Hsimpl.
+      destruct Hsimpl as [Hsimpl Hexh].
+      intros Htyf.
+      apply rewriteF_typed; auto.
+      apply sublist_refl.
+    }
+    (*Now prove well-typed axioms added*)
+    rewrite Forall_forall.
+    intros [name f].
+    unfold fold_all_ctx_delta. simpl.
+    rewrite in_concat. intros [axs [Hinaxs Hinf]]. 
+    rewrite in_map_iff in Hinaxs. destruct Hinaxs as [d [Haxs Hind]]. subst.
+    simpl_task. unfold comp_ctx_delta in Hinf.
+    destruct d as [m | | | | | |]; try contradiction.
+    rewrite in_concat in Hinf. destruct Hinf as [axs [Hinaxs Hinf]].
+    rewrite in_map_iff in Hinaxs. destruct Hinaxs as [a [Haxs Hina]]; subst.
+    rewrite <- In_rev in Hina.
+    (*PLAN: prove 2 things
+      0. Formulate notion of no pattern matches
+      1. If term/formula has no pattern matches, rewriteT/rewriteF does nothing (or at least
+        if typed under gamma, rewriteT typed under gamma - maybe sign_map changes term)
+      2. Prove that formulas in add_axioms have no pattern matches
+      3. Then prove that formulas in axioms well-typed under new context*) 
     admit.
-  - rewrite fold_all_ctx_gamma_eq, fold_all_ctx_delta_eq. simpl_task.
-    rewrite map_snd_combine by solve_len.
-    rewrite map_map.
-    rewrite Forall_map, Forall_forall.
-    intros [n f] Hin. simpl.
-    unfold rewriteF'.
-    Print rewriteF'.
+  - (*goal*) simpl_task.
+    unfold compile_match_post in Hpre. destruct Hpre as [_ Hsimpl].
+    unfold task_pat_simpl in Hsimpl. unfold is_true in Hsimpl; rewrite !andb_true_iff in Hsimpl.
+    destruct Hsimpl as [_ Hsimpl].
+    simpl_task. apply andb_true_iff in Hsimpl. destruct Hsimpl as [Hsimpl Hexh].
+    apply rewriteF_typed; auto.
+    apply sublist_refl.
+Admitted.
 
 
-    2: rewrite !map_length.
+Theorem eliminate_algebraic_typed :
+  new_constr_name_cond new_constr_name ->
+  typed_trans_pre no_recfun_indpred
+    (eliminate_algebraic keep_muts new_constr_name noind).
+Proof.
+  intros Hconstrname.
+  unfold eliminate_algebraic.
+  apply typed_trans_comp with (Q1:=compile_match_post)
+  (P2:=compile_match_post); auto.
+  - (*compile_match typing*)
+    apply typed_trans_weaken_pre with (fun _ => True); auto.
+    apply typed_trans_pre_true, compile_match_typed.
+  - (*TODO*) apply fold_comp_sound; auto.
+  - (*pre and postconditions of [compile_match]*)
+    apply compile_match_pre_post.
+Qed.
 
 
-
-  
-  
-  
-   Search task_gamma fold_all_ctx.
-  
-   simpl.
-  Print task_typed.
-
-
-  unfold fold_comp. simpl.
-
-
-  unfold task_valid, TaskGen.task_valid in *.
-  split; auto.
-  intros gamma_valid Hty'.
-  (*Temp*) Opaque fold_all_ctx.
-  unfold fold_comp in Hallval.
-  (*Use gamma, delta, goal lemmas*)
-  
-  
-   simpl.
-  Print typed_trans.
+(* Theorem eliminate_algebraic_sound : 
+  sound_trans_pre no_recfun_indpred
+  (eliminate_algebraic keep_muts new_constr_name badnames noind).
+Proof.
+  unfold eliminate_algebraic.
+  apply sound_trans_comp with (Q1:=compile_match_post)
+  (P2:=compile_match_post).
+  - (*compile match soundness*)
+    admit.
+    (*apply sound_trans_weaken_pre with (P2:=fun _ => True); auto.
+    apply sound_trans_pre_true.
+    apply compile_match_valid.*)
+  - (*Sound trans of elim ADT (main part)*)
+    admit. (*apply fold_comp_sound.*)
+  - (*pre and postconditions of [compile_match]*)
+    apply compile_match_pre_post.
+  - apply typed_trans_weaken_pre with (fun _ => True); auto.
+    apply typed_trans_pre_true, compile_match_typed.
+  - auto.
+Admitted. *)
+   

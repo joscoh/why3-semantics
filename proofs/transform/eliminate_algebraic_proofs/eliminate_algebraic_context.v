@@ -175,7 +175,7 @@ Definition add_axioms_delta (ts: typesym) (cs: list funsym) :=
 
 
 Lemma add_axioms_delta_eq (t: task) (ts: typesym) (cs: list funsym): 
-  task_delta (add_axioms new_constr_name badnames noind t (ts, cs)) =
+  task_delta (add_axioms new_constr_name noind badnames t (ts, cs)) =
   add_axioms_delta ts cs ++ 
   task_delta t.
 Proof.
@@ -212,7 +212,7 @@ Definition add_axioms_gamma (ts: typesym) (cs: list funsym) :=
 
 
 Lemma add_axioms_gamma_eq (t: task) (ts: typesym) (cs: list funsym): 
-  task_gamma (add_axioms new_constr_name badnames noind t (ts, cs)) =
+  task_gamma (add_axioms new_constr_name noind badnames t (ts, cs)) =
   add_axioms_gamma ts cs ++ task_gamma t.
 Proof.
   unfold add_axioms_gamma; rewrite <- !app_assoc.
@@ -235,7 +235,7 @@ Qed.
 
 (*The goal is the easiest*)
 Lemma add_axioms_goal (t: task) (ts: typesym) (cs: list funsym): 
-  task_goal (add_axioms new_constr_name badnames noind t (ts, cs)) = task_goal t.
+  task_goal (add_axioms new_constr_name noind badnames t (ts, cs)) = task_goal t.
 Proof.
   destruct t as[[gamma delta] goal].
   unfold add_axioms.
@@ -270,7 +270,7 @@ Lemma add_mut_gamma m tys tsk: task_gamma (add_mut m tys tsk) =
 Proof. reflexivity. Qed.
 
 Lemma comp_ctx_gamma_eq (d: def) t (gamma: context) :
-  task_gamma (comp_ctx keep_muts new_constr_name badnames noind gamma d t) = 
+  task_gamma (comp_ctx keep_muts new_constr_name noind badnames gamma d t) = 
   comp_ctx_gamma d gamma ++ task_gamma t. 
 Proof.
   unfold comp_ctx. destruct d; try reflexivity.
@@ -305,7 +305,7 @@ Definition comp_ctx_delta (d: def) : list (string * formula) :=
   end.
 
 Lemma comp_ctx_delta_eq (d: def) t (gamma: context) :
-  task_delta (comp_ctx keep_muts new_constr_name badnames noind gamma d t) = 
+  task_delta (comp_ctx keep_muts new_constr_name noind badnames gamma d t) = 
   comp_ctx_delta d ++ task_delta t.
 Proof.
   Opaque add_axioms_delta.
@@ -327,7 +327,7 @@ Proof.
 Qed.
 
 Lemma comp_ctx_goal_eq (d: def) t (gamma: context) :
-  task_goal (comp_ctx keep_muts new_constr_name badnames noind gamma d t) = 
+  task_goal (comp_ctx keep_muts new_constr_name noind badnames gamma d t) = 
   task_goal t.
 Proof.
   unfold comp_ctx. destruct d; try reflexivity.
@@ -353,7 +353,7 @@ Definition fold_all_ctx_gamma t : context :=
   fold_all_ctx_gamma_gen (task_gamma t) (task_gamma t).
 
 Lemma fold_all_ctx_gamma_eq t:
-  task_gamma (fold_all_ctx keep_muts new_constr_name badnames noind t) = fold_all_ctx_gamma t.
+  task_gamma (fold_all_ctx keep_muts new_constr_name noind badnames t) = fold_all_ctx_gamma t.
 Proof.
   unfold fold_all_ctx, fold_all_ctx_gamma, fold_all_ctx_gamma_gen.
   (*Basically, we need to split the task_gamma t up*)
@@ -370,7 +370,7 @@ Qed.
 Definition fold_all_ctx_delta t:= concat (map comp_ctx_delta (task_gamma t)).
 
 Lemma fold_all_ctx_delta_eq t:
-  task_delta (fold_all_ctx keep_muts new_constr_name badnames noind t) = fold_all_ctx_delta t ++ task_delta t.
+  task_delta (fold_all_ctx keep_muts new_constr_name noind badnames t) = fold_all_ctx_delta t ++ task_delta t.
 Proof.
   unfold fold_all_ctx, fold_all_ctx_delta.
   remember (task_gamma t) as gamma.
@@ -383,7 +383,7 @@ Proof.
 Qed.
 
 Lemma fold_all_ctx_goal_eq t:
-  task_goal (fold_all_ctx keep_muts new_constr_name badnames noind t) = task_goal t.
+  task_goal (fold_all_ctx keep_muts new_constr_name noind badnames t) = task_goal t.
 Proof.
   unfold fold_all_ctx.
   remember (task_gamma t) as gamma.

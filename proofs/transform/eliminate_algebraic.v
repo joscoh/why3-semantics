@@ -134,6 +134,11 @@ Definition funsym_clone (f: funsym) (n: string) : funsym :=
 (*Should it be funsym -> string or string -> string?*)
 Variable (new_constr_name: funsym -> string).
 
+(*Parameterize by no_ind, no_inv, no_sel*)
+(*Ignore no_sel and no_inv - not used anywhere*)
+Variable (noind: typesym -> bool).
+
+Section Badnames.
 (*We need to make sure new funsym names are unique*)
 Variable badnames: list string.
 
@@ -145,10 +150,6 @@ Definition under_str : string := "_".
 (*To disambiguate: prefix with n and put _ before numbers*)
 Definition new_constr (f: funsym) : funsym := funsym_clone f (gen_id 
   (n_str ++ under_str ++ (new_constr_name f) ++ under_str)).
-
-(*Parameterize by no_ind, no_inv, no_sel*)
-(*Ignore no_sel and no_inv - not used anywhere*)
-Variable (noind: typesym -> bool).
 
 
 (*Generate axioms*)
@@ -1021,16 +1022,27 @@ let s := fst st in let tsk := snd st in
   But for our typing, it is very important that the resulting context is still
   well-ordered*)
 Definition fold_all_ctx (t: task) : task :=
-  fold_right (comp_ctx (task_gamma t)) (nil, task_delta t, task_goal t) (task_gamma t).
+  fold_right (comp_ctx 
+    (task_gamma t)) (nil, task_delta t, task_goal t) (task_gamma t).
+
+End Badnames.
+
+(*Instantiate badnames with syms in context*)
 
 (*Fold version - dont use Trans.fold, easier to manually thread state through*)
 Definition fold_comp : trans :=
   fun t => 
   (*TODO: we CANNOT fold over t - should be empty task I believe (at least empty gamma)*)
     (*NEED to start from empty context and build up defs - TODO: do we need to reverse result?*)
-    let tsk1 := fold_all_ctx t in
-    let del1 := map (rewriteF' (task_gamma tsk1) nil true) (map snd (task_delta tsk1)) in
-    let g1 := rewriteF' (task_gamma tsk1) nil true (task_goal tsk1) in
+    let badnames := idents_of_context (task_gamma t) in (*NOTE: easier to prove with*)
+    let tsk1 := fold_all_ctx badnames t in
+    (*NOTE: HAS to be (task_gamma t) here when we do this way - or else
+      nothing has constructors (if eliminate all types
+      this is because we are folding whole context at once instead of
+      doing each definition and then task (NOTE: this is a substantive difference
+      from theirs!))*)
+    let del1 := map (rewriteF' badnames (task_gamma t) nil true) (map snd (task_delta tsk1)) in
+    let g1 := rewriteF' badnames (task_gamma t) nil true (task_goal tsk1) in
     [(task_gamma tsk1, (combine (map fst (task_delta tsk1)) del1), g1)]. 
 
 (*No infinte types or anything so just give state*)
