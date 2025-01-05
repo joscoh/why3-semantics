@@ -507,8 +507,11 @@ Definition projection_axioms
   let vl := combine (gen_names (length (s_args cs)) "u" nil) (s_args cs) in
   (* let vl = List.map (create_vsymbol (id_fresh "u")) cs.ls_args in *)
   let tl := map Tvar vl in
-  let hd := tfun_infer' (new_constr cs) (*(amap_get_def funsym_eq_dec (cc_map) cs id_fs)*)
-    (map snd vl) tl in
+  (*Types: new_constr has type (e.g. a -> list a -> list a),
+    should instantiate w (map vty_var (s_args c))*)
+  let hd := Tfun (new_constr cs) (map vty_var (s_params cs)) tl in
+  (*let hd := tfun_infer' (new_constr cs) (*(amap_get_def funsym_eq_dec (cc_map) cs id_fs)*)
+    (map snd vl) tl in*)
   (* let hd = fs_app (Mls.find cs state.cc_map) tl (Option.get cs.ls_value) in *)
   (*TODO: added ty*)
   (*NOTE: not creating new funsym because we don't have unique IDs, just use pj*)
@@ -531,7 +534,10 @@ Definition projection_axioms
     let id := ((s_name ls) ++ "'def")%string in
     (* let id = id_derive (ls.ls_name.id_string ^ "'def") ls.ls_name in
     let pr = create_prsymbol id in *)
-    let hh := tfun_infer' ls [(f_ret cs)] [hd] in
+    (*Types: ls is projection, has type (e.g. cons a -> a),
+      we apply to [hd], which has type e.g. list a - just give params*)
+    let hh := Tfun ls (map vty_var (s_params cs)) [hd] in
+    (* let hh := tfun_infer' ls [(f_ret cs)] [hd] in *)
     (* let hh = t_app ls [hd] t.t_ty in *)
     let ax := fforalls vl (Feq ty hh t) in
     (* let tsk := add_axiom tsk id ax in *) (*TODO*)
