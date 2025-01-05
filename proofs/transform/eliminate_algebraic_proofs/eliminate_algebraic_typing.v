@@ -6177,9 +6177,9 @@ Lemma in_add_axioms_delta ts badnames cs x:
   In x (add_axioms_delta new_constr_name badnames noind ts cs) ->
   (x = (inversion_axiom new_constr_name badnames ts (adt_ty ts) cs)) \/
   (exists c, In c cs /\ In x (map snd (projection_axioms new_constr_name badnames c (projection_syms badnames c)))) \/
-  (In x (snd (indexer_axiom new_constr_name badnames ts cs))) \/
+  (negb (single cs) /\ negb (noind ts) /\ In x (snd (indexer_axiom new_constr_name badnames ts cs))) \/
   (In x (discriminator_axioms new_constr_name badnames ts (adt_ty ts) cs)) \/
-  (In x (snd (selector_axiom new_constr_name badnames ts cs))).
+  (negb (single cs) /\ In x (snd (selector_axiom new_constr_name badnames ts cs))).
 Proof.
   unfold add_axioms_delta. rewrite !in_app_iff. intros Hin.
   destruct Hin as [Hin | [Hin | [Hin | Hin]]].
@@ -6190,9 +6190,10 @@ Proof.
   - rewrite <- In_rev in Hin.
     destruct (single cs); try contradiction.
     destruct (negb _); auto.
+    { right. right. left. split_all; auto. }
     destruct (_ <=? _); auto. contradiction.
   - destruct (single cs); [contradiction|].
-    rewrite <- In_rev in Hin. auto.
+    rewrite <- In_rev in Hin. repeat right. split; auto.
 Qed.
 
 (*Prove typing for axioms*)
@@ -6334,7 +6335,7 @@ Proof.
     rewrite (adt_constr_params gamma_valid m_in a_in c_in). reflexivity.
 Qed.
 
-Lemma projections_typed {gamma gamma2} (gamma_valid: valid_context gamma)
+Lemma projection_axioms_typed {gamma gamma2} (gamma_valid: valid_context gamma)
   {m a c} (m_in: mut_in_ctx m gamma) (a_in: adt_in_mut a m) (c_in: constr_in_adt c a) badnames x:
   In x (map snd (projection_axioms new_constr_name badnames c (projection_syms badnames c))) ->
 formula_typed (fold_all_ctx_gamma_gen new_constr_name keep_muts badnames noind gamma gamma2) (snd x).
@@ -6421,6 +6422,77 @@ Proof.
     rewrite (projection_syms_ret badnames Hi); auto. 
     rewrite Hcparams, (subst_params_adt_args_ith gamma_valid m_in a_in c_in); auto.
 Qed.
+(*TODO: better way? Name indexer_name?*)
+Opaque indexer_name.
+Opaque under_str.
+Lemma indexer_axiom_typed {gamma gamma2} (gamma_valid: valid_context gamma)
+  {m a} (m_in: mut_in_ctx m gamma) (a_in: adt_in_mut a m) badnames
+  (Hsingle : negb (single (adt_constr_list a)))
+  (Hnoind : negb (noind (adt_name a))) x:
+  In x (snd (indexer_axiom new_constr_name badnames (adt_name a) (adt_constr_list a))) ->
+  formula_typed (fold_all_ctx_gamma_gen new_constr_name keep_muts badnames noind gamma gamma2) (snd x).
+Proof.
+  unfold indexer_axiom. simpl.
+  unfold mapi. rewrite in_map_iff.
+  intros [y [Hx Hiny]]; subst; simpl.
+  rewrite rev_involutive. unfold rev_map. rewrite map_rev, rev_involutive.
+  destruct y as [i c]; simpl in *.
+  (*Don't care about i, but need to know c is constr*)
+  assert (c_in: constr_in_adt c a).
+  {
+    apply in_combine_snd in Hiny. simpl in Hiny.
+    apply constr_in_adt_eq; auto.
+  }
+  apply fforalls_typed.
+  2: {
+    rewrite <- (Forall_map snd). rewrite map_snd_combine; [| rewrite gen_names_length; lia].
+    apply new_ctx_all_valid_type.
+    rewrite Forall_forall. apply (constr_ret_valid gamma_valid m_in a_in c_in).
+  }
+  constructor; [| constructor].
+  (*Here, prove the function applications are well typed*)
+  assert (Hargs: ts_args (adt_name a) = m_params m). {
+    rewrite (adt_args gamma_valid m_in a_in); auto.
+  }
+  assert (Hcparams: s_params c = m_params m). {
+    rewrite (adt_constr_params gamma_valid m_in a_in c_in). reflexivity.
+  }
+  rewrite Hargs.
+  apply T_Fun'; auto.
+  - apply new_in_sig_f_new_gamma_gen. right. right. right. exists m. exists a. split_all; auto.
+    apply andb_true_iff; auto.
+  - rewrite Forall_map, Forall_forall. intros; constructor.
+  - rewrite indexer_funsym_ret. constructor.
+  - rewrite (indexer_funsym_params gamma_valid badnames m_in a_in); solve_len.
+  - (*Prove types*)
+    rewrite  (indexer_funsym_params gamma_valid badnames m_in a_in).
+    rewrite (indexer_funsym_args gamma_valid badnames m_in a_in). simpl.
+    (*Simplify return type*)
+    rewrite <- (adt_constr_ret gamma_valid m_in a_in c_in).
+    rewrite (subst_params_adt_ret gamma_valid m_in a_in c_in).
+    constructor; [| constructor]. simpl.
+    (*Now prove other Tfun - TODO: can I separate some of these out?*)
+    apply T_Fun'.
+    + apply new_in_sig_f_new_gamma_gen. left. eauto 7.
+    + rewrite Forall_map, Forall_forall. intros; constructor.
+    + simpl. apply new_ctx_valid_type, (constr_ret_valid' gamma_valid m_in a_in c_in).
+    + simpl. unfold vsymbol; simpl_len. rewrite gen_names_length; lia.
+    + simpl. rewrite Hcparams. solve_len.
+    + simpl. rewrite Hcparams.
+      rewrite (subst_params_adt_args gamma_valid m_in a_in c_in).
+      rewrite Forall_forall. intros [tm ty]. rewrite in_combine_iff;
+      [| unfold vsymbol; simpl_len; rewrite gen_names_length; lia].
+      replace (length (map _ _)) with (length (s_args c)) by
+        (unfold vsymbol; simpl_len; rewrite gen_names_length; lia).
+      intros [n [Hn Htmty]].
+      specialize (Htmty tm_d vty_int). inversion Htmty; subst; clear Htmty. simpl.
+      rewrite map_nth_inbound with (d2:=(""%string, vty_int));
+      [| unfold vsymbol; simpl_len; rewrite gen_names_length; lia].
+      rewrite combine_nth; [| rewrite gen_names_length; lia].
+      apply T_Var'; auto.
+      apply new_ctx_valid_type, (constr_ret_valid gamma_valid m_in a_in c_in), nth_In; auto.
+    + simpl. rewrite Hcparams. symmetry; apply (subst_params_adt_ret gamma_valid m_in a_in c_in).
+Qed.
 
 
 Lemma in_add_axioms_typed {gamma gamma2} (gamma_valid: valid_context gamma)
@@ -6429,10 +6501,10 @@ Lemma in_add_axioms_typed {gamma gamma2} (gamma_valid: valid_context gamma)
   formula_typed (fold_all_ctx_gamma_gen new_constr_name keep_muts badnames noind gamma gamma2) (snd x).
 Proof.
   intros Hinx. apply in_add_axioms_delta in Hinx.
-  destruct Hinx as [Hx | [[c [Hinc Hinx]] | [Hinx | [Hinx | Hinx]]]].
+  destruct Hinx as [Hx | [[c [Hinc Hinx]] | [[Hsingle [Hnoind Hinx]] | [Hinx | Hinx]]]].
   - subst. eapply inversion_axiom_typed; eauto.
-  - apply constr_in_adt_eq in Hinc. eapply projections_typed; eauto.
-  - 
+  - apply constr_in_adt_eq in Hinc. eapply projection_axioms_typed; eauto.
+  - eapply indexer_axiom_typed; eauto.
 Admitted.
 
 (*Prove no pattern matches or constructors*)
@@ -6492,6 +6564,17 @@ Proof.
   apply dep_map_in in Hiny. destruct y as [y1 y2]; simpl in *. destruct_all; subst; auto.
 Qed.
 
+Lemma indexer_no_patmatch badnames ts cs x:
+  In x (snd (indexer_axiom new_constr_name badnames ts cs)) ->
+  fmla_no_patmatch (snd x).
+Proof.
+  unfold indexer_axiom. simpl. 
+  unfold mapi. rewrite in_map_iff. intros [[i fs] [Hx Hinifs]]; subst; simpl.
+  rewrite fmlas_no_patmatch_fforalls. simpl. 
+  unfold rev_map. rewrite forallb_rev, forallb_map, forallb_rev.
+  simpl. rewrite forallb_t. auto.
+Qed.
+
 (*We need to prove a few things about the axioms. 
   First, they have no pattern matches or constructors*)
 Lemma in_add_axioms_no_patmatch ts badnames cs x:
@@ -6499,9 +6582,10 @@ Lemma in_add_axioms_no_patmatch ts badnames cs x:
   fmla_no_patmatch (snd x).
 Proof.
   intros Hinx. apply in_add_axioms_delta in Hinx.
-  destruct Hinx as [Hx | [[c [Hinc Hinx]] | [Hinx | [Hinx | Hinx]]]].
+  destruct Hinx as [Hx | [[c [Hinc Hinx]] | [[Hsingle [Hnoind Hinx]] | [Hinx | Hinx]]]].
   - subst. apply inversion_no_patmatch.
-  - eapply proj_no_patmatch; eauto. 
+  - eapply proj_no_patmatch; eauto.
+  - eapply indexer_no_patmatch; eauto.  
  Admitted.
 
 

@@ -1447,6 +1447,7 @@ Proof.
   intros Heq.
   simpl in Heq.
    (*Idea: n <> i (as strings)*)
+  unfold indexer_name in Heq.
   rewrite !str_app_assoc in Heq.
   apply under_inj in Heq.
   rewrite index_str_eq in Heq.
@@ -1541,6 +1542,7 @@ Proof.
   intros [nt [Hname Hin]].
   rewrite <- Hname in Heq. simpl in Heq.
   (*Idea: p <> i (as strings)*)
+  unfold indexer_name in Heq.
   rewrite !str_app_assoc in Heq.
   apply under_inj in Heq.
   rewrite index_str_eq in Heq.
@@ -1572,6 +1574,7 @@ Proof.
   intros Heq.
   simpl in Heq.
    (*Idea: m <> i (as strings)*)
+  unfold indexer_name in Heq.
   rewrite !str_app_assoc in Heq.
   apply under_inj in Heq.
   rewrite index_str_eq, match_str_eq in Heq.
@@ -1587,6 +1590,7 @@ Lemma indexers_uniq:
   m1 = m2 /\ a1 = a2.
 Proof.
   intros Hnames. simpl in Hnames.
+  unfold indexer_name in Hnames.
   rewrite !str_app_assoc in Hnames.
   apply under_inj in Hnames.
   apply str_app_inj_l in Hnames.

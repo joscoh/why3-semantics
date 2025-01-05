@@ -342,9 +342,12 @@ Qed.
 
 (*Again, will prove nodup does nothing*)
 Definition index_str := "index_"%string.
+Definition indexer_name (ts: typesym) : string :=
+  (index_str ++ (ts_name ts) ++ under_str)%string.
+
 Definition indexer_funsym (ts: typesym) : funsym :=
   let ty := vty_cons ts (map vty_var (ts_args ts)) in
-  let mt_id := gen_id (index_str ++ (ts_name ts) ++ under_str)%string in
+  let mt_id := gen_id (indexer_name ts) in
   Build_funsym (Build_fpsym mt_id (nodup typevar_eq_dec (ts_args ts)) [ty] 
     (indexer_check_args ts) (nodupb_nodup _ _)) vty_int false 0 eq_refl.
 
@@ -353,19 +356,24 @@ Definition indexer_funsym (ts: typesym) : funsym :=
 Definition indexer_axiom
   (ts: typesym) (*(ty : vty)*) (csl : list funsym) : funsym * list (string * formula) :=
   (* declare the indexer function *)
-  let mt_id := gen_id (index_str ++ (ts_name ts) ++ under_str)%string in
+  let mt_id := gen_id (indexer_name ts) in
   let mt_ls := indexer_funsym ts in (*funsym_noconstr_noty mt_id [ty] vty_int in*)
   (* define the indexer function *)
   let mt_add idx (cs: funsym) :=
-    let id := (mt_id ++ "_" ++ (s_name cs))%string in
+    let id := (mt_id ++ under_str ++ (s_name cs))%string in
     (* let pr = create_prsymbol (id_derive id cs.ls_name) in *)
     let varnames := gen_names (length (s_args cs)) "u" nil in
     let vl := rev (combine varnames (s_args cs)) in
     let newcs := new_constr cs (*amap_get_def funsym_eq_dec cc_map cs id_fs in*) in
     (*NOTE: THESE TYPES MAY BE WRONG!*)
-    let hd := tfun_infer' newcs (rev (map snd vl)) (rev_map Tvar vl) in
+    (*Types: newcs has constr type, apply args, just use params*)
+    let hd := Tfun newcs (map vty_var (ts_args ts)) (rev_map Tvar vl) in
+    (* let hd := tfun_infer' newcs (rev (map snd vl)) (rev_map Tvar vl) in *)
     (* let hd = fs_app newcs (List.rev_map t_var vl) (Option.get cs.ls_value) in *)
-    let ax := Feq vty_int (tfun_infer' mt_ls (*TODO: what is hd type?*) [(f_ret newcs)] [hd] )  
+    (*Types: mt_ls has type (e.g. list a -> int), apply to type (list a), again
+      use params*)
+    let ax := Feq vty_int (Tfun mt_ls (map vty_var (ts_args ts)) [hd])
+    (* tfun_infer' mt_ls [(f_ret newcs)] [hd] )   *)
       (Tconst (ConstInt (Z.of_nat idx))) in
     let ax := fforalls (rev vl) ax in
     (id, ax) in
