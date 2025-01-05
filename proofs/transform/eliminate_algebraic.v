@@ -576,15 +576,21 @@ Definition inversion_axiom
   let ax_hd := Tvar ax_vs in
   let mk_cs (cs: funsym) : formula :=
     (*NOTE: we know the pjl from the projections*)
-    let pjl := rev (projection_syms cs) in
+    let pjl := projection_syms cs in
     (* let pjl := amap_get_def funsym_eq_dec s.(cp_map) cs nil in  *)
+    (*Types: projection type is list a b -> (type of ith)
+      ty is (list a b) arg is same type, so just need ts_params as arguments*)
+    let app pj := Tfun pj (map vty_var (ts_args ts)) [ax_hd] in
+
     (*NOTE: change app to also give return type*)
-    let app pj := tfun_infer_ret' pj [ty] [ax_hd] in
+    (* let app pj := tfun_infer_ret' pj [ty] [ax_hd] in *)
     (* let app pj = t_app_infer pj [ax_hd] in *)
     let cs := new_constr cs (*amap_get_def funsym_eq_dec cc_map cs id_fs in*) in
     (* let cs = Mls.find cs state.cc_map in *)
     let pjl' := map app pjl in
-    Feq ty ax_hd (tfun_infer' cs (map snd pjl') (map fst pjl'))
+    (*Types: doing: cons (proj1 x, proj2 x). The type args should again by (ts_args ts)*)
+    Feq ty ax_hd (Tfun cs (map vty_var (ts_args ts)) pjl')
+    (* (tfun_infer' cs (map snd pjl') (map fst pjl'))*)
     (* t_equ ax_hd (fs_app cs (List.map app pjl) ty) in *)
   in
   let ax_f := map_join_left' Ftrue mk_cs (Fbinop Tor) csl in
