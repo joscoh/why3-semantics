@@ -224,8 +224,10 @@ Qed.
 
 Definition match_str : string := "match_".
 
+Definition selector_name ts : string := (match_str ++ ts_name ts ++ under_str)%string.
+
 Definition selector_funsym(ts: typesym) (csl: list funsym) : funsym :=
-  let mt_id : string := gen_id (match_str ++ ts_name ts ++ under_str)%string in
+  let mt_id : string := gen_id (selector_name ts)  in
   let mt_var := gen_name "a" (ts_args ts) in
   let mt_ty : vty := vty_var mt_var in
   let ty := vty_cons ts (map vty_var (ts_args ts)) in
@@ -245,7 +247,7 @@ Definition selector_axiom
   (*fix ty*)
   let ty := vty_cons ts (map vty_var (ts_args ts)) in
   (* declare the selector function *)
-  let mt_id : string := gen_id (match_str ++ ts_name ts ++ under_str)%string in
+  let mt_id : string := gen_id (selector_name ts) in
   (*TODO: does it need to be fresh? Yes, cannot be in params of ts*)
   let mt_var := gen_name "a" (ts_args ts) in
   let mt_ty : vty := vty_var mt_var in
@@ -263,7 +265,7 @@ Definition selector_axiom
   (* let mt_vl = List.rev_map mt_vs csl in *)
   let mt_tl := rev_map Tvar mt_vl in
   let mt_add (cs: funsym) t :=
-    let id := (mt_id ++ "_" ++ (s_name cs))%string in
+    let id := (mt_id ++ under_str ++ (s_name cs))%string in
     (* let id = mt_ls.ls_name.id_string ^ "_" ^ cs.ls_name.id_string in *) 
     (* let pr = create_prsymbol (id_derive id cs.ls_name) in *)
     (*Create new vars - they can be the same among axioms (TODO: inefficient)*)
@@ -271,8 +273,13 @@ Definition selector_axiom
     let vl := rev (combine varnames2 (s_args cs)) in
     (* let vl = List.rev_map (create_vsymbol (id_fresh "u")) cs.ls_args in *)
     let newcs := new_constr cs in (*amap_get_def funsym_eq_dec cc_map cs id_fs in (*TODO: show have*)*)
-    let hd := tfun_infer' newcs (rev_map snd vl) (rev_map Tvar vl) in (*TODO: is return type right? - they say f_ret cs*)
-    let hd := tfun_infer' mt_ls ((f_ret cs) :: map snd mt_vl) (hd :: mt_tl) in
+    (*Typing: constr get ADT args*)
+    let hd := Tfun newcs (map vty_var (ts_args ts)) (rev_map Tvar vl)  in
+    (* let hd := tfun_infer' newcs (rev_map snd vl) (rev_map Tvar vl) in TODO: is return type right? - they say f_ret cs *)
+    (*Typing: selector funsym has extra type arg (representing return type)
+      just substitute with mt_ty (this is return type of whole funsyms)*)
+    let hd := Tfun mt_ls (mt_ty :: (map vty_var (ts_args ts))) (hd :: mt_tl) in
+    (* let hd := tfun_infer' mt_ls ((f_ret cs) :: map snd mt_vl) (hd :: mt_tl) in *)
     let vl := rev_append mt_vl (rev vl) in
     let ax := fforalls vl (Feq mt_ty hd t) in
     (id, ax)
