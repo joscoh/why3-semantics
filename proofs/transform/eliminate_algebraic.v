@@ -414,8 +414,12 @@ Definition discriminator_axioms (ts: typesym) (ty: vty) (csl: list funsym) :
     let vl = List.rev_map (create_vsymbol (id_fresh "v")) c2.ls_args in *)
     let newc1 := new_constr c1 in (*amap_get_def funsym_eq_dec (cc_map) c1 id_fs in*)
     let newc2 := new_constr c2 in (*amap_get_def funsym_eq_dec (cc_map) c2 id_fs in*)
-    let t1 := tfun_infer' newc1 (rev (map snd ul)) (rev_map Tvar ul) in
-    let t2 := tfun_infer' newc2 (rev (map snd vl)) (rev_map Tvar vl) in
+    (*Types: constr, apply to constr, given args, so just give params
+      Important that both constrs are in  *)
+    let t1 := Tfun newc1 (map vty_var (ts_args ts)) (rev_map Tvar ul) in
+    let t2 := Tfun newc2 (map vty_var (ts_args ts)) (rev_map Tvar vl) in
+    (* let t1 := tfun_infer' newc1 (rev (map snd ul)) (rev_map Tvar ul) in
+    let t2 := tfun_infer' newc2 (rev (map snd vl)) (rev_map Tvar vl) in *)
     (* let t1 = fs_app newc1 (List.rev_map t_var ul) ty in
     let t2 = fs_app newc2 (List.rev_map t_var vl) ty in *)
     let ax := t_neq ty t1 t2 in

@@ -6259,6 +6259,103 @@ Proof.
   eapply subst_params_adt_args_ith; eauto.
 Qed.
 
+(*Prove types for new_constr*)
+Lemma new_constr_app_type {gamma gamma2} (gamma_valid: valid_context gamma)
+  {m a c} (m_in: mut_in_ctx m gamma) (a_in: adt_in_mut a m) (c_in: constr_in_adt c a) badnames tms:
+  length tms = length (s_args c) ->
+  (forall i, i < length (s_args c) -> term_has_type 
+    (fold_all_ctx_gamma_gen new_constr_name keep_muts badnames noind gamma gamma2) 
+    (nth i tms tm_d) (nth i (s_args c) vty_int)) ->
+  term_has_type (fold_all_ctx_gamma_gen new_constr_name keep_muts badnames noind gamma gamma2)
+  (Tfun (new_constr new_constr_name badnames c) (map vty_var (m_params m)) tms)
+  (vty_cons (adt_name a) (map vty_var (m_params m))).
+Proof.
+  intros Hlen Htys. apply T_Fun'.
+  - (*in new sig_f*) apply new_in_sig_f_new_gamma_gen. left. eauto 7.
+  - (*vars valid*) rewrite Forall_map, Forall_forall. intros; constructor.
+  - (*f_ret valid*)
+    simpl. apply new_ctx_valid_type. eapply constr_ret_valid'; eauto.
+  - (*lengths*) simpl. auto.
+  - simpl. rewrite (adt_constr_params gamma_valid m_in a_in c_in). solve_len.
+  - (*prove types*)
+    simpl. rewrite (adt_constr_params gamma_valid m_in a_in c_in).
+    rewrite (subst_params_adt_args gamma_valid m_in a_in c_in).
+    rewrite Forall_forall. intros x. rewrite in_combine_iff; auto.
+    rewrite Hlen. intros [i [Hi Hx]]. specialize (Hx tm_d vty_int); subst; simpl; auto.
+  - simpl. rewrite <- (adt_constr_params gamma_valid m_in a_in c_in). 
+    rewrite (adt_constr_subst_ret gamma_valid m_in a_in c_in); [| solve_len].
+    reflexivity.
+Qed.
+
+Lemma proj_app_type {gamma gamma2} (gamma_valid: valid_context gamma)
+  {m a c} (m_in: mut_in_ctx m gamma) (a_in: adt_in_mut a m) (c_in: constr_in_adt c a) badnames i
+  (Hi: i < length (s_args c)) x:
+  term_has_type (fold_all_ctx_gamma_gen new_constr_name keep_muts badnames noind gamma gamma2) x 
+    (vty_cons (adt_name a) (map vty_var (m_params m))) ->
+  term_has_type (fold_all_ctx_gamma_gen new_constr_name keep_muts badnames noind gamma gamma2)
+  (Tfun (nth i (projection_syms badnames c) id_fs) (map vty_var (m_params m)) [x])
+  (nth i (s_args c) vty_int).
+Proof.
+  intros Hty.
+  assert (Hnthin: In (nth i (projection_syms badnames c) id_fs) (projection_syms badnames c)).
+  { apply nth_In. rewrite projection_syms_length; auto. }
+  apply T_Fun'.
+  + (*proj in ctx*) apply new_in_sig_f_new_gamma_gen. right. left. exists m. exists a. exists c. split_all; auto.
+  + (*vars valid*) rewrite Forall_map, Forall_forall. intros; constructor.
+  + (*ret valid*)
+    rewrite (projection_syms_ret badnames Hi); auto.
+    apply new_ctx_valid_type.
+    apply (constr_ret_valid gamma_valid m_in a_in c_in), nth_In; auto.
+  + (*lengths*) simpl. rewrite (projection_syms_args badnames Hnthin); auto.
+  + simpl_len. rewrite (projection_syms_params badnames Hnthin).
+    rewrite (adt_constr_params gamma_valid m_in a_in c_in); reflexivity.
+  + (*prove types*)
+    rewrite (projection_syms_params badnames Hnthin), (adt_constr_params gamma_valid m_in a_in c_in),
+    (projection_syms_args badnames Hnthin); auto. simpl.
+    rewrite (subst_params_adt_ret gamma_valid m_in a_in c_in).
+    constructor; simpl; [|constructor].
+    rewrite (adt_constr_ret gamma_valid m_in a_in c_in).
+    auto.
+  + (*Prove ret eq*) rewrite (projection_syms_ret badnames Hi); auto.
+    rewrite (projection_syms_params badnames Hnthin), (adt_constr_params gamma_valid m_in a_in c_in).
+    symmetry; apply (subst_params_adt_args_ith gamma_valid m_in a_in c_in); auto.
+Qed.
+
+Lemma indexer_app_type {gamma gamma2} (gamma_valid: valid_context gamma)
+  {m a} (m_in: mut_in_ctx m gamma) (a_in: adt_in_mut a m) badnames x
+  (Hsingle : negb (single (adt_constr_list a)))
+  (Hnoind : negb (noind (adt_name a))):
+  term_has_type (fold_all_ctx_gamma_gen new_constr_name keep_muts badnames noind gamma gamma2) x 
+    (vty_cons (adt_name a) (map vty_var (m_params m))) ->
+  term_has_type (fold_all_ctx_gamma_gen new_constr_name keep_muts badnames noind gamma gamma2)
+    (Tfun (indexer_funsym badnames (adt_name a)) (map vty_var (m_params m)) [x]) vty_int.
+Proof.
+  intros Hty.
+  apply T_Fun'; auto.
+  - apply new_in_sig_f_new_gamma_gen. right. right. right. exists m. exists a. split_all; auto.
+    apply andb_true_iff; auto.
+  - rewrite Forall_map, Forall_forall. intros; constructor.
+  - rewrite indexer_funsym_ret. constructor.
+  - rewrite (indexer_funsym_params gamma_valid badnames m_in a_in); solve_len.
+  - (*Prove types*)
+    rewrite (indexer_funsym_params gamma_valid badnames m_in a_in).
+    rewrite (indexer_funsym_args gamma_valid badnames m_in a_in).
+    simpl.
+    (*Simplify return type*)
+    (*easier to do w constr*)
+    assert (Hc: exists c, constr_in_adt c a). {
+      pose proof (adt_constr_nil_not_null a) as Hnull.
+      destruct (adt_constr_list a) as [| c1 cs] eqn : Hconstrlist; [discriminate|].
+      exists c1. apply constr_in_adt_eq. rewrite Hconstrlist; simpl; auto.
+    }
+    (*Simplify return type*)
+    destruct Hc as [c c_in].
+    rewrite <- (adt_constr_ret gamma_valid m_in a_in c_in).
+    rewrite (subst_params_adt_ret gamma_valid m_in a_in c_in).
+    constructor; [| constructor]. simpl.
+    rewrite (adt_constr_ret gamma_valid m_in a_in c_in).
+    auto.
+Qed.
 
 Lemma inversion_axiom_typed {gamma gamma2} (gamma_valid: valid_context gamma)
   {m a} (m_in: mut_in_ctx m gamma) (a_in: adt_in_mut a m) badnames:
@@ -6281,59 +6378,15 @@ Proof.
   (*Prove equality typed*)
   constructor; [constructor; auto|].
   (*More interesting part: prove constructor applications*)
-  (*Useful in a few places*)
-  assert (Hargs: ts_args (adt_name a) = m_params m). {
-    rewrite (adt_args gamma_valid m_in a_in); auto.
-  }
-  assert (Hcparams: s_params c = m_params m). {
-    rewrite (adt_constr_params gamma_valid m_in a_in c_in). reflexivity.
-  }
-  apply T_Fun'.
-  - (*in new sig_f*) apply new_in_sig_f_new_gamma_gen. left. eauto 7.
-  - (*vars valid*) rewrite Forall_map, Forall_forall. intros; constructor.
-  - (*f_ret valid*)
-    simpl. apply new_ctx_valid_type. eapply constr_ret_valid'; eauto.
-  - (*lengths*) simpl_len. simpl. rewrite projection_syms_length. reflexivity.
-  - simpl. simpl_len. f_equal; congruence. 
-  - (*arg types - most complicated*)
-    simpl. rewrite Hargs, Hcparams.
-    rewrite (subst_params_adt_args gamma_valid m_in a_in c_in).
-    rewrite Forall_forall.
-    intros x.
-    rewrite in_combine_iff; simpl_len; rewrite projection_syms_length; auto.
-    intros [i [Hi Hx]]. specialize (Hx tm_d vty_int). subst; simpl.
-    rewrite map_nth_inbound with (d2:=id_fs); [| simpl_len; rewrite projection_syms_length; auto].
-    (*Again, need to prove Tfun has correct type - this time, for proj*)
-    assert (Hnthin: In (nth i (projection_syms badnames c) id_fs) (projection_syms badnames c)).
-    { apply nth_In. rewrite projection_syms_length; auto. }
-    apply T_Fun'.
-    + (*proj in ctx*) apply new_in_sig_f_new_gamma_gen. right. left. exists m. exists a. exists c. split_all; auto.
-    + (*vars valid*) rewrite Forall_map, Forall_forall. intros; constructor.
-    + (*ret valid*)
-      rewrite (projection_syms_ret badnames Hi); auto.
-      apply new_ctx_valid_type.
-      apply (constr_ret_valid gamma_valid m_in a_in c_in), nth_In; auto.
-    + (*lengths*) simpl. rewrite (projection_syms_args badnames Hnthin); auto.
-    + simpl_len. rewrite (projection_syms_params badnames Hnthin).
-      rewrite Hcparams; reflexivity.
-    + (*prove types*)
-      rewrite (projection_syms_params badnames Hnthin).
-      rewrite Hcparams. 
-      rewrite (projection_syms_args badnames Hnthin); auto. simpl.
-      rewrite (subst_params_adt_ret gamma_valid m_in a_in c_in).
-      constructor; simpl; [|constructor].
-      apply T_Var'; simpl.
-      * apply new_ctx_valid_type.
-        apply (constr_ret_valid' gamma_valid m_in a_in c_in).
-      * rewrite (adt_constr_ret gamma_valid m_in a_in c_in). reflexivity.
-    + (*Prove ret eq*) rewrite (projection_syms_ret badnames Hi); auto.
-      rewrite (projection_syms_params badnames Hnthin).
-      rewrite Hcparams. symmetry; apply (subst_params_adt_args_ith gamma_valid m_in a_in c_in); auto.
-  - (*f_ret type*) 
-    simpl. rewrite (adt_constr_subst_ret gamma_valid m_in a_in c_in); [| simpl_len];
-    rewrite (adt_args gamma_valid m_in a_in); auto.
-    rewrite (adt_constr_params gamma_valid m_in a_in c_in). reflexivity.
+  rewrite  (adt_args gamma_valid m_in a_in).
+  apply new_constr_app_type; auto.
+  { simpl_len. rewrite projection_syms_length; auto. }
+  intros i Hi.
+  rewrite map_nth_inbound with (d2:=id_fs); [| simpl_len; rewrite projection_syms_length; auto].
+  apply (proj_app_type gamma_valid m_in a_in c_in); auto.
+  apply T_Var'; simpl; auto.
 Qed.
+
 
 Lemma projection_axioms_typed {gamma gamma2} (gamma_valid: valid_context gamma)
   {m a c} (m_in: mut_in_ctx m gamma) (a_in: adt_in_mut a m) (c_in: constr_in_adt c a) badnames x:
@@ -6371,57 +6424,20 @@ Proof.
   }
   (*Prove funs*)
   rewrite combine_nth; [| unfold vsymbol; simpl_len; rewrite gen_names_length; lia].
-  simpl.
-  (*Useful results*)
-  assert (Hini: In (nth i (projection_syms badnames c) id_fs) (projection_syms badnames c)).
-  { apply nth_In. rewrite projection_syms_length. auto. }
-  assert (Hargs: ts_args (adt_name a) = m_params m). {
-    rewrite (adt_args gamma_valid m_in a_in); auto.
-  }
-  assert (Hcparams: s_params c = m_params m). {
-    rewrite (adt_constr_params gamma_valid m_in a_in c_in). reflexivity.
-  }
-  apply T_Fun'.
-  - apply new_in_sig_f_new_gamma_gen. right. left. eauto 7.
-  - rewrite Forall_map, Forall_forall. intros; constructor.
-  - rewrite (projection_syms_ret badnames Hi); auto.
-    apply new_ctx_valid_type.
-    apply (constr_ret_valid gamma_valid m_in a_in c_in), nth_In; auto.
-  - simpl. rewrite (projection_syms_args badnames Hini); auto.
-  - simpl_len. rewrite (projection_syms_params badnames Hini). reflexivity.
-  - (*prove types*)
-    rewrite (projection_syms_args badnames Hini).
-    rewrite (projection_syms_params badnames Hini).
-    simpl. rewrite Hcparams, (subst_params_adt_ret gamma_valid m_in a_in c_in).
-    constructor; [simpl|constructor].
-    (*Prove new constr Tfun*)
-    apply T_Fun'.
-    + apply new_in_sig_f_new_gamma_gen; left. eauto 7.
-    + rewrite Forall_map, Forall_forall. intros; constructor.
-    + apply new_ctx_valid_type.
-      apply (constr_ret_valid' gamma_valid m_in a_in c_in).
-    + simpl. unfold vsymbol; simpl_len. rewrite gen_names_length; lia.
-    + simpl. rewrite Hcparams. solve_len.
-    + (*Prove types*)
-      simpl. rewrite Hcparams, (subst_params_adt_args gamma_valid m_in a_in c_in).
-      rewrite Forall_forall.
-      intros x. rewrite in_combine_iff.
-      2: { unfold vsymbol; simpl_len; rewrite gen_names_length; lia. }
-      replace (length (map _ _)) with (length (s_args c)) by
-        (unfold vsymbol; simpl_len; rewrite gen_names_length; lia).
-      intros [n [Hn Hx]]. specialize (Hx tm_d vty_int); subst; simpl.
-      rewrite map_nth_inbound with (d2:=(""%string, vty_int));
+  simpl. rewrite (adt_constr_params gamma_valid m_in a_in c_in).
+  apply (proj_app_type gamma_valid m_in a_in c_in); auto.
+  apply new_constr_app_type; auto.
+  { unfold vsymbol; simpl_len; rewrite gen_names_length; lia. }
+  intros j Hj.
+  rewrite map_nth_inbound with (d2:=(""%string, vty_int));
       [| unfold vsymbol; simpl_len; rewrite gen_names_length; lia].
-      (*TODO: add to simpl_len_extra for gen_names_length*)
-      rewrite combine_nth; [| rewrite gen_names_length; lia].
-      apply T_Var'; auto.
-      apply new_ctx_valid_type.
-      apply (constr_ret_valid gamma_valid m_in a_in c_in), nth_In; auto.
-    + simpl. rewrite Hcparams, (subst_params_adt_ret gamma_valid m_in a_in c_in). reflexivity.
-  - rewrite (projection_syms_params badnames Hini).
-    rewrite (projection_syms_ret badnames Hi); auto. 
-    rewrite Hcparams, (subst_params_adt_args_ith gamma_valid m_in a_in c_in); auto.
+  (*TODO: add to simpl_len_extra for gen_names_length*)
+  rewrite combine_nth; [| rewrite gen_names_length; lia].
+  apply T_Var'; auto.
+  apply new_ctx_valid_type.
+  apply (constr_ret_valid gamma_valid m_in a_in c_in), nth_In; auto.
 Qed.
+
 (*TODO: better way? Name indexer_name?*)
 Opaque indexer_name.
 Opaque under_str.
@@ -6451,47 +6467,118 @@ Proof.
   }
   constructor; [| constructor].
   (*Here, prove the function applications are well typed*)
-  assert (Hargs: ts_args (adt_name a) = m_params m). {
-    rewrite (adt_args gamma_valid m_in a_in); auto.
-  }
-  assert (Hcparams: s_params c = m_params m). {
-    rewrite (adt_constr_params gamma_valid m_in a_in c_in). reflexivity.
-  }
-  rewrite Hargs.
-  apply T_Fun'; auto.
-  - apply new_in_sig_f_new_gamma_gen. right. right. right. exists m. exists a. split_all; auto.
-    apply andb_true_iff; auto.
-  - rewrite Forall_map, Forall_forall. intros; constructor.
-  - rewrite indexer_funsym_ret. constructor.
-  - rewrite (indexer_funsym_params gamma_valid badnames m_in a_in); solve_len.
-  - (*Prove types*)
-    rewrite  (indexer_funsym_params gamma_valid badnames m_in a_in).
-    rewrite (indexer_funsym_args gamma_valid badnames m_in a_in). simpl.
-    (*Simplify return type*)
-    rewrite <- (adt_constr_ret gamma_valid m_in a_in c_in).
-    rewrite (subst_params_adt_ret gamma_valid m_in a_in c_in).
-    constructor; [| constructor]. simpl.
-    (*Now prove other Tfun - TODO: can I separate some of these out?*)
-    apply T_Fun'.
-    + apply new_in_sig_f_new_gamma_gen. left. eauto 7.
-    + rewrite Forall_map, Forall_forall. intros; constructor.
-    + simpl. apply new_ctx_valid_type, (constr_ret_valid' gamma_valid m_in a_in c_in).
-    + simpl. unfold vsymbol; simpl_len. rewrite gen_names_length; lia.
-    + simpl. rewrite Hcparams. solve_len.
-    + simpl. rewrite Hcparams.
-      rewrite (subst_params_adt_args gamma_valid m_in a_in c_in).
-      rewrite Forall_forall. intros [tm ty]. rewrite in_combine_iff;
+  rewrite (adt_args gamma_valid m_in a_in).
+  apply indexer_app_type; auto.
+  apply new_constr_app_type; auto.
+  { unfold vsymbol; simpl_len. rewrite gen_names_length; lia. }
+  intros j Hj. 
+  rewrite map_nth_inbound with (d2:=(""%string, vty_int));
       [| unfold vsymbol; simpl_len; rewrite gen_names_length; lia].
-      replace (length (map _ _)) with (length (s_args c)) by
-        (unfold vsymbol; simpl_len; rewrite gen_names_length; lia).
-      intros [n [Hn Htmty]].
-      specialize (Htmty tm_d vty_int). inversion Htmty; subst; clear Htmty. simpl.
-      rewrite map_nth_inbound with (d2:=(""%string, vty_int));
-      [| unfold vsymbol; simpl_len; rewrite gen_names_length; lia].
-      rewrite combine_nth; [| rewrite gen_names_length; lia].
-      apply T_Var'; auto.
-      apply new_ctx_valid_type, (constr_ret_valid gamma_valid m_in a_in c_in), nth_In; auto.
-    + simpl. rewrite Hcparams. symmetry; apply (subst_params_adt_ret gamma_valid m_in a_in c_in).
+  rewrite combine_nth; [| rewrite gen_names_length; lia].
+  apply T_Var'; auto.
+  apply new_ctx_valid_type, (constr_ret_valid gamma_valid m_in a_in c_in), nth_In; auto.
+Qed.
+
+(*Note: really, iff is exists i j, i < j and x = f (nth i l) (nth j l)*)
+
+Lemma in_map_pairs_iff {A B: Type} (f: A -> A -> B) (l: list A) (d: A) x:
+  In x (map_pairs f l) <-> exists i j, i < j /\ j < length l /\ x = f (nth i l d) (nth j l d).
+Proof.
+  induction l as [| h t IH]; simpl.
+  - split; [contradiction|]. intros; destruct_all; lia.
+  - rewrite in_app_iff.
+    split.
+    + intros [Hinfst | Hin].
+      * rewrite in_map_iff in Hinfst. destruct Hinfst as [y [Hx Hiny]]; subst.
+        destruct (In_nth _ _ d Hiny) as [j [Hj Hy]]; subst.
+        exists 0. exists (S j). split_all; auto; lia.
+      * apply IH in Hin.
+        destruct Hin as [i [j [Hij [Hj Hx]]]]; subst.
+        exists (S i). exists (S j). split_all; auto; lia.
+    + intros [i [j [Hij [Hj Hx]]]].
+      destruct i as [| i'].
+      * left. destruct j as [| j']; try lia. rewrite in_map_iff. subst.
+        eexists; split; [reflexivity|]. apply nth_In; lia.
+      * right. apply IH. destruct j as [| j']; try lia.
+        exists i'. exists j'. split_all; auto; lia.
+Qed.
+
+(*For now, only need the first direction. Working with explicit indices is annoying.
+  We could just show 2 elements in l, but this is not sufficient for the semantics, where
+  we need them to be different.
+  We instead show that if l has NoDup (as a constr_list does), then indeed we can find 2 distinct elements*)
+Lemma in_map_pairs_nodup {A B: Type} (f: A -> A -> B) (l: list A) (Hn: NoDup l) x:
+  In x (map_pairs f l) ->
+  exists y1 y2, y1 <> y2 /\ In y1 l /\ In y2 l /\ x = f y1 y2.
+Proof.
+  (*Kind of silly, but need an A*)
+  intros Hinx.
+  assert (d: A). {
+    destruct l as [| h t]; [contradiction|]; auto.
+  }
+  rewrite in_map_pairs_iff with (d:=d) in Hinx.
+  destruct Hinx as [i [j [Hij [Hj Hx]]]]; subst.
+  exists (nth i l d). exists (nth j l d). split_all; auto;
+  try solve[apply nth_In; lia].
+  rewrite NoDup_nth with (d:=d) in Hn.
+  intros Heq. apply Hn in Heq; auto; lia.
+Qed.
+
+(*A weaker version that does not require NoDups*)
+Lemma in_map_pairs {A B: Type} (f: A -> A -> B) (l: list A) x:
+  In x (map_pairs f l) ->
+  exists y1 y2, In y1 l /\ In y2 l /\ x = f y1 y2.
+Proof.
+  (*Kind of silly, but need an A*)
+  intros Hinx.
+  assert (d: A). {
+    destruct l as [| h t]; [contradiction|]; auto.
+  }
+  rewrite in_map_pairs_iff with (d:=d) in Hinx.
+  destruct Hinx as [i [j [Hij [Hj Hx]]]]; subst.
+  exists (nth i l d). exists (nth j l d). split_all; auto;
+  apply nth_In; lia.
+Qed.
+
+
+Lemma discriminator_axiom_typed {gamma gamma2} (gamma_valid: valid_context gamma)
+  {m a} (m_in: mut_in_ctx m gamma) (a_in: adt_in_mut a m) badnames x:
+  In x (discriminator_axioms new_constr_name badnames (adt_name a) (adt_ty (adt_name a))
+            (adt_constr_list a)) ->
+  formula_typed (fold_all_ctx_gamma_gen new_constr_name keep_muts badnames noind gamma gamma2) (snd x).
+Proof.
+  unfold discriminator_axioms.
+  intros Hinx. apply in_map_pairs_nodup in Hinx.
+  2: { apply (NoDup_map_inv _ _ (constr_list_names_Nodup gamma_valid m_in a_in)). }
+  destruct Hinx as [c1 [c2 [Hc12 [Hinc1 [Hinc2 Hx]]]]]; subst; simpl.
+  assert (c1_in: constr_in_adt c1 a) by (apply constr_in_adt_eq; auto).
+  assert (c2_in: constr_in_adt c2 a) by (apply constr_in_adt_eq; auto).
+  unfold rev_map. rewrite !map_rev, !rev_involutive.
+  apply fforalls_typed.
+  2: { rewrite <- (Forall_map snd), map_snd_combine; [| rewrite gen_names_length; lia].
+    apply new_ctx_all_valid_type.
+    rewrite Forall_forall.
+    apply (constr_ret_valid gamma_valid m_in a_in); auto.
+  }
+  apply fforalls_typed.
+  2: { rewrite <- (Forall_map snd), map_snd_combine; [| rewrite gen_names_length; lia].
+    apply new_ctx_all_valid_type.
+    rewrite Forall_forall.
+    apply (constr_ret_valid gamma_valid m_in a_in); auto.
+  }
+  unfold t_neq. 
+  rewrite (adt_ty_adt gamma_valid m_in a_in).
+  constructor.
+  rewrite (adt_args gamma_valid m_in a_in).
+  constructor; apply new_constr_app_type; auto; (*both sides identical*)
+  try solve[unfold vsymbol; simpl_len; rewrite gen_names_length; lia];
+  intros i Hi;
+  rewrite map_nth_inbound with (d2:=(""%string, vty_int)) by
+    (unfold vsymbol; simpl_len; rewrite gen_names_length; lia);
+  rewrite combine_nth by (rewrite gen_names_length; lia);
+  apply T_Var'; auto; apply new_ctx_valid_type;
+  [ apply (constr_ret_valid gamma_valid m_in a_in c1_in) |
+    apply (constr_ret_valid gamma_valid m_in a_in c2_in)]; apply nth_In; auto.
 Qed.
 
 
@@ -6505,6 +6592,7 @@ Proof.
   - subst. eapply inversion_axiom_typed; eauto.
   - apply constr_in_adt_eq in Hinc. eapply projection_axioms_typed; eauto.
   - eapply indexer_axiom_typed; eauto.
+  - eapply discriminator_axiom_typed; eauto.
 Admitted.
 
 (*Prove no pattern matches or constructors*)
@@ -6575,6 +6663,19 @@ Proof.
   simpl. rewrite forallb_t. auto.
 Qed.
 
+Lemma discriminator_no_patmatch badnames ts ty cs x:
+  In x (discriminator_axioms new_constr_name badnames ts ty cs) ->
+  fmla_no_patmatch (snd x).
+Proof.
+  unfold discriminator_axioms.
+  intros Hinx. apply in_map_pairs in Hinx. destruct Hinx as [c1 [c2 [Hinc1 [Hinc2 Hx]]]]; subst.
+  simpl. rewrite !fmlas_no_patmatch_fforalls.
+  simpl.
+  unfold rev_map; rewrite !map_rev, !rev_involutive, !forallb_map; simpl.
+  rewrite !forallb_t. reflexivity.
+Qed.
+
+
 (*We need to prove a few things about the axioms. 
   First, they have no pattern matches or constructors*)
 Lemma in_add_axioms_no_patmatch ts badnames cs x:
@@ -6586,6 +6687,8 @@ Proof.
   - subst. apply inversion_no_patmatch.
   - eapply proj_no_patmatch; eauto.
   - eapply indexer_no_patmatch; eauto.  
+  - eapply discriminator_no_patmatch; eauto.
+  -
  Admitted.
 
 
