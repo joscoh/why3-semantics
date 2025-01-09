@@ -349,13 +349,14 @@ Qed.
 Definition fold_all_ctx_gamma_gen g1 g2 : context :=
   concat (map (fun d => comp_ctx_gamma d g2) g1).
 
-Definition fold_all_ctx_gamma t : context :=
-  fold_all_ctx_gamma_gen (task_gamma t) (task_gamma t).
+Definition new_ctx g := fold_all_ctx_gamma_gen g g.
+
+Definition fold_all_ctx_gamma t : context := new_ctx (task_gamma t).
 
 Lemma fold_all_ctx_gamma_eq t:
   task_gamma (fold_all_ctx keep_muts new_constr_name noind badnames t) = fold_all_ctx_gamma t.
 Proof.
-  unfold fold_all_ctx, fold_all_ctx_gamma, fold_all_ctx_gamma_gen.
+  unfold fold_all_ctx, fold_all_ctx_gamma, new_ctx, fold_all_ctx_gamma_gen.
   (*Basically, we need to split the task_gamma t up*)
   remember (task_gamma t) as gamma.
   (*Weird: if we rewrite without occurrence rewrites under binders but not with numbers*)
@@ -398,6 +399,8 @@ End ContextSpecs.
 
 (*Some results about context*)
 
+(* Print fold_all_ctx_gamma_gen.
+
 (*TODO: generalize?*)
 Definition new_gamma (gamma: context) : context :=
   concat (map (fun d => comp_ctx_gamma d gamma) (rev gamma)).
@@ -405,7 +408,7 @@ Definition new_gamma (gamma: context) : context :=
 Definition new_gamma_gen (g1 g2: context) : context :=
   concat (map (fun d => comp_ctx_gamma d g1) g2).
 Lemma new_gamma_eq gamma: new_gamma gamma = new_gamma_gen gamma (rev gamma).
-Proof. reflexivity. Qed.
+Proof. reflexivity. Qed. *)
 
 
 (*TODO: move (from eliminate_inductive.v)*)
@@ -423,10 +426,10 @@ Proof.
 Qed.
 (*mutual ADTs of [new_gamma_gen] are subset of original*)
 Lemma mut_of_context_new_gamma (g1 g2: context) :
-  sublist (mut_of_context (new_gamma_gen g1 g2)) (mut_of_context g2).
+  sublist (mut_of_context (fold_all_ctx_gamma_gen g1 g2)) (mut_of_context g1).
 Proof.
-  induction g2 as [| d g2 IH]; simpl; [apply sublist_refl|].
-  unfold new_gamma_gen; simpl.
+  induction g1 as [| d g1 IH]; simpl; [apply sublist_refl|].
+  unfold fold_all_ctx_gamma_gen; simpl.
   rewrite mut_of_context_app.
   destruct d; simpl; auto.
   (*Now prove that the [concat] part is empty, case in [keep_muts]*)
@@ -453,8 +456,8 @@ Proof.
 Qed.
 
 Lemma mut_in_ctx_new_gamma (g1 g2: context) (m: mut_adt):
-  mut_in_ctx m (new_gamma_gen g1 g2) ->
-  mut_in_ctx m g2.
+  mut_in_ctx m (fold_all_ctx_gamma_gen g1 g2) ->
+  mut_in_ctx m g1.
 Proof.
   unfold mut_in_ctx.
   intros Hin.

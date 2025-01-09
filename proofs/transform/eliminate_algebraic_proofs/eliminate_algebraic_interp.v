@@ -2151,7 +2151,7 @@ End FunDef.
 
 (*Define the new interpretation on the new context*)
 
-Notation new_gamma := (new_gamma new_constr_name keep_muts 
+Notation new_gamma := (new_ctx new_constr_name keep_muts 
   (idents_of_context gamma) noind).
 
 Definition funs_new_full := funs_new (idents_of_context gamma).
@@ -2174,10 +2174,8 @@ Lemma pd_new_full:
 Proof.
   inversion pdf.
   constructor.
-  intros m srts a m_in Hin.
-  rewrite new_gamma_eq in m_in.
+  intros m srts a m_in Hin. unfold new_gamma in m_in.
   apply mut_in_ctx_new_gamma in m_in.
-  rewrite mut_in_ctx_rev in m_in.
   apply adts. exact m_in.
 Qed.
 
@@ -2198,9 +2196,9 @@ Proof.
   intros m a c m_in a_in c_in srts srts_len args.
   unfold funs_new_full.
   assert (m_in': mut_in_ctx m gamma). {
-    rewrite new_gamma_eq in m_in.
+    unfold new_gamma in m_in.
     apply mut_in_ctx_new_gamma in m_in. 
-    rewrite mut_in_ctx_rev in m_in. auto.
+    auto.
   }
   rewrite funs_new_old_names.
   2: {

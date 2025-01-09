@@ -389,8 +389,6 @@ Proof. reflexivity. Qed.
 Lemma idents_of_context_cons d gamma:
   idents_of_context (d :: gamma) = idents_of_def d ++ idents_of_context gamma.
 Proof. reflexivity. Qed.
-Print keep_tys.
-Print find_ts_in_ctx.
 
 (*TODO: move*)
 Lemma mut_of_context_cons d l:
@@ -714,9 +712,6 @@ Proof.
 Qed. *)
 
 (*Prove things about well-typed*)
-Check term_formula_ind.
-Check T_Fun.
-Print ty_subst_list.
 (*TODO: should go back and use this a lot more*)
 (*Basically, prove with dependent typing instead of proving hypotheses every time*)
 (*NOTE: in fun/pred and match, keep typing hypothesis because it gives us
@@ -1443,7 +1438,6 @@ Lemma map_join_left_typed {B: Type} gamma (sign : bool) (f: B -> formula) (l: li
 Proof.
   intros Hall.
   unfold map_join_left'.
-  Locate map_join_left.
   destruct (map_join_left _ _ _) as [y|] eqn : Hjoin; [|constructor].
   unfold map_join_left in Hjoin.
   destruct l as [| h t]; simpl in *; try discriminate.
@@ -5003,7 +4997,7 @@ Proof.
   - rewrite mut_of_context_cons. destruct d; try apply sublist_refl.
     apply sublist_app_r.
 Qed.
-Check indexer_funsym.
+
 (*Annoying to do over and over again*)
 Lemma in_add_axioms_gamma {a: alg_datatype} {d: def}:
 In d (add_axioms_gamma new_constr_name badnames noind (adt_name a) (adt_constr_list a)) ->
@@ -5684,9 +5678,6 @@ Proof.
     rewrite in_map_iff in Hinnames.
     destruct Hinnames as [d [Hnames Hind]]; subst.
     apply in_add_axioms_gamma in Hind.
-    (*simplify Hinx2*)
-    Search idents_of_context Permutation.
-    Print idents_of_context.
     (*Suffices to show different from (idents_of_context (datatype_def m))*)
     assert (Hsubid: sublist (idents_of_context (if keep_muts m then [datatype_def m] else 
       (map (fun a => abs_type (adt_name a)) (typs m)))) (idents_of_def (datatype_def m))).
@@ -6148,9 +6139,6 @@ Definition rewriteF_no_patmatch_typed gamma gamma1 badnames names f
   (Hty: formula_typed gamma f) (Hn: fmla_no_patmatch f) av sign:
   formula_typed gamma (rewriteF keep_muts new_constr_name badnames gamma1 names av sign f) :=
   proj_fmla (rewrite_no_patmatch_typed gamma gamma1 badnames names) f Hty Hn av sign.
-
-Print add_axioms_delta.
-Print adt_ty.
 
 Lemma adt_ty_adt {gamma m a} (gamma_valid: valid_context gamma) 
   (m_in: mut_in_ctx m gamma) (a_in: adt_in_mut a m):
@@ -6925,4 +6913,4 @@ Proof.
     apply typed_trans_pre_true, compile_match_typed.
   - auto.
 Admitted. *)
-   
+End Proofs.

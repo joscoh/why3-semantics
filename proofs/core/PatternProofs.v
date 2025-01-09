@@ -315,14 +315,14 @@ Definition spec(P: pat_matrix) (c: funsym) : pat_matrix :=
 
 (*A predicate that says "term t has semantic meaning c(al), where c is a constructor
   in ADT a in mutual m"*)
-Definition tm_semantic_constr (t: term) {m: mut_adt} (m_in : mut_in_ctx m gamma)
+Definition semantic_constr {m: mut_adt} (m_in : mut_in_ctx m gamma)
   {a: alg_datatype} (a_in: adt_in_mut a m) {c: funsym} (c_in: constr_in_adt c a) 
   {args: list vty} (args_len: length args = length (m_params m))
-  (Hty: term_has_type gamma t (vty_cons (adt_name a) args))
+  (d: domain (dom_aux pd) (v_subst vt (vty_cons (adt_name a) args)))
   (al: arg_list (domain (dom_aux pd)) (sym_sigma_args c (map (v_subst vt) args)))
    : Prop :=
   (*[[t]] =*)
-  term_rep gamma_valid pd pdf vt pf v t _ Hty = dom_cast (dom_aux pd) (*Need 2 casts*)
+  d = dom_cast (dom_aux pd) (*Need 2 casts*)
     (eq_sym (v_subst_cons (adt_name a) args)) 
   (scast 
     (eq_sym (adts pdf m (map (v_subst vt) args) a m_in a_in))
@@ -331,26 +331,34 @@ Definition tm_semantic_constr (t: term) {m: mut_adt} (m_in : mut_in_ctx m gamma)
     (map (v_subst vt) args) (eq_trans (map_length _ _) args_len) (dom_aux pd) a a_in 
       c c_in (adts pdf m (map (v_subst vt) args)) 
          al)).
+Definition tm_semantic_constr (t: term) {m: mut_adt} (m_in : mut_in_ctx m gamma)
+  {a: alg_datatype} (a_in: adt_in_mut a m) {c: funsym} (c_in: constr_in_adt c a) 
+  {args: list vty} (args_len: length args = length (m_params m))
+  (Hty: term_has_type gamma t (vty_cons (adt_name a) args))
+  (al: arg_list (domain (dom_aux pd)) (sym_sigma_args c (map (v_subst vt) args)))
+   : Prop :=
+  semantic_constr m_in a_in c_in args_len (term_rep gamma_valid pd pdf vt pf v t _ Hty) al.
+
 
 (*If a term has type a(args) for ADT a, then we can find the constructor and arguments
   that its term_rep is equal to. This is a nicer, higher level interface for [find_constr_rep];
   it is a straightforward application*)
-Lemma find_semantic_constr (t: term) {m: mut_adt} (m_in : mut_in_ctx m gamma)
+Lemma find_semantic_constr {m: mut_adt} (m_in : mut_in_ctx m gamma)
   {a: alg_datatype} (a_in: adt_in_mut a m)  
   {args: list vty} (args_len: length args = length (m_params m))
-  (Hty: term_has_type gamma t (vty_cons (adt_name a) args)) :
+  (d: domain (dom_aux pd) (v_subst vt (vty_cons (adt_name a) args)))
+  (*(Hty: term_has_type gamma t (vty_cons (adt_name a) args))*) :
   {f : funsym & {Hf: constr_in_adt f a * arg_list (domain (dom_aux pd)) (sym_sigma_args f (map (v_subst vt) args))
-    |  tm_semantic_constr t m_in a_in (fst Hf) args_len Hty (snd Hf) }}.
+    |  semantic_constr m_in a_in (fst Hf) args_len d (snd Hf) }}.
 Proof.
-  unfold tm_semantic_constr.
+  unfold semantic_constr.
   assert (srts_len: length (map (v_subst vt) args) = length (m_params m)) by solve_len.
   assert (Hunif: uniform m) by (apply (gamma_all_unif gamma_valid); auto). 
   (*Of course, use [find_constr_rep]*)
   destruct (find_constr_rep gamma_valid _ m_in (map (v_subst vt) args) srts_len (dom_aux pd) a a_in
     (adts pdf m (map (v_subst vt) args)) Hunif
     (scast (adts pdf m (map (v_subst vt) args) a m_in a_in) (dom_cast (dom_aux pd) (v_subst_cons (adt_name a) args) 
-      (term_rep gamma_valid pd pdf vt pf v t
-  (vty_cons (adt_name a) args) Hty)))) as [f [[c_in al] Hrep]]. simpl in Hrep.
+      d))) as [f [[c_in al] Hrep]]. simpl in Hrep.
   apply (existT _ f).
   apply (exist _ (c_in , al)). simpl.
   assert (Heq: srts_len = (eq_trans (map_length (v_subst vt) args) args_len)). { apply UIP_dec, Nat.eq_dec.  }
@@ -360,6 +368,15 @@ Proof.
   rewrite <- eq_sym_map_distr, scast_eq_sym.
   reflexivity.
 Qed.
+
+Definition find_tm_semantic_constr (t: term) {m: mut_adt} (m_in : mut_in_ctx m gamma)
+  {a: alg_datatype} (a_in: adt_in_mut a m)  
+  {args: list vty} (args_len: length args = length (m_params m))
+  (Hty: term_has_type gamma t (vty_cons (adt_name a) args)) :
+  {f : funsym & {Hf: constr_in_adt f a * arg_list (domain (dom_aux pd)) (sym_sigma_args f (map (v_subst vt) args))
+    |  tm_semantic_constr t m_in a_in (fst Hf) args_len Hty (snd Hf) }} :=
+  find_semantic_constr m_in a_in args_len (term_rep gamma_valid pd pdf vt pf v t _ Hty).
+
 
 Section SpecProof.
 
@@ -455,18 +472,19 @@ Qed.
   then [match_val_single] is the same as [matches_row] on the argument list.
   This lemma needs UIP*)
 Lemma match_val_single_constr_row 
-  (t: term) {m: mut_adt} (m_in : mut_in_ctx m gamma)
+  (*(t: term)*) {m: mut_adt} (m_in : mut_in_ctx m gamma)
   {a: alg_datatype} (a_in: adt_in_mut a m) {c: funsym} (c_in: constr_in_adt c a) 
   {args: list vty} (args_len: length args = length (m_params m))
-  (Hty: term_has_type gamma t (vty_cons (adt_name a) args))
+  (*(Hty: term_has_type gamma t (vty_cons (adt_name a) args))*)
+  (d: domain (dom_aux pd) (v_subst vt (vty_cons (adt_name a) args)))
   (al1: arg_list (domain (dom_aux pd)) (sym_sigma_args c (map (v_subst vt) args)))
-  (Ht: tm_semantic_constr t m_in a_in c_in args_len Hty al1)
+  (Ht: semantic_constr m_in a_in c_in args_len d al1)
   params tms 
   (Hp :  pattern_has_type gamma (Pconstr c params tms) (vty_cons (adt_name a) args)) 
-  (Hty1 : term_has_type gamma t (vty_cons (adt_name a) args)) Heq
+  (*(Hty1 : term_has_type gamma t (vty_cons (adt_name a) args))*) Heq
   (Hrow: row_typed (ty_subst_list (s_params c) args (s_args c)) tms):
   match_val_single gamma_valid pd pdf vt (vty_cons (adt_name a) args) (Pconstr c params tms) Hp 
-    (term_rep gamma_valid pd pdf vt pf v t (vty_cons (adt_name a) args) Hty1) =
+    d =
   matches_row (ty_subst_list (s_params c) args (s_args c))
     (cast_arg_list Heq al1) tms Hrow.
 Proof.
@@ -493,9 +511,8 @@ Proof.
   case_find_constr.
   intros s.
   destruct s as [f' Hf']. destruct Hf' as [[f_in1 arg1] Haarg]. simpl in *; subst.
-  (*Need info about how [tm_semantic_constr] interacts with this [find_constr_rep]*)
-  unfold tm_semantic_constr in Ht.
-  erewrite term_rep_irrel in Haarg.
+  (*Need info about how [semantic_constr] interacts with this [find_constr_rep]*)
+  unfold semantic_constr in Ht.
   unfold ty1 in Haarg.
   rewrite Ht in Haarg.
   unfold dom_cast in Haarg.
@@ -525,18 +542,18 @@ Qed.
 
 (*4. If the [term_rep] matches a different constructor [match_val_single] gives None*)
 Lemma match_val_single_constr_nomatch
-  (t: term) {m: mut_adt} (m_in : mut_in_ctx m gamma)
+  (*(t: term)*) {m: mut_adt} (m_in : mut_in_ctx m gamma)
   {a: alg_datatype} (a_in: adt_in_mut a m) {c1 c2: funsym} (c1_in: constr_in_adt c1 a) 
   {args: list vty} (args_len: length args = length (m_params m))
-  (Hty: term_has_type gamma t (vty_cons (adt_name a) args))
+  (*(Hty: term_has_type gamma t (vty_cons (adt_name a) args))*)
+  (d: domain (dom_aux pd) (v_subst vt (vty_cons (adt_name a) args)))
   (al1: arg_list (domain (dom_aux pd)) (sym_sigma_args c1 (map (v_subst vt) args)))
-  (Ht: tm_semantic_constr t m_in a_in c1_in args_len Hty al1)
+  (Ht: semantic_constr m_in a_in c1_in args_len d al1)
   params tms 
   (Hp :  pattern_has_type gamma (Pconstr c2 params tms) (vty_cons (adt_name a) args)) 
-  (Hty1 : term_has_type gamma t (vty_cons (adt_name a) args)) 
+  (*(Hty1 : term_has_type gamma t (vty_cons (adt_name a) args))*) 
   (Hneq: c1 <> c2):
-  match_val_single gamma_valid pd pdf vt (vty_cons (adt_name a) args) (Pconstr c2 params tms) Hp 
-    (term_rep gamma_valid pd pdf vt pf v t (vty_cons (adt_name a) args) Hty1) =
+  match_val_single gamma_valid pd pdf vt (vty_cons (adt_name a) args) (Pconstr c2 params tms) Hp d =
   None.
 Proof.
   rewrite match_val_single_rewrite.
@@ -562,9 +579,8 @@ Proof.
   case_find_constr.
   intros s.
   destruct s as [f' Hf']. destruct Hf' as [[f_in1 arg1] Haarg]. simpl in *; subst.
-  (*Need info about how [tm_semantic_constr] interacts with this [find_constr_rep]*)
-  unfold tm_semantic_constr in Ht.
-  erewrite term_rep_irrel in Haarg.
+  (*Need info about how [semantic_constr] interacts with this [find_constr_rep]*)
+  unfold semantic_constr in Ht.
   unfold ty1 in Haarg.
   rewrite Ht in Haarg.
   unfold dom_cast in Haarg.
@@ -754,11 +770,12 @@ Proof.
           [match_val_single] for a constructor is equivalent to [matches_row] 
           on the arg_list*)
         simp matches_row. simp terms_to_hlist. simpl hlist_hd.
+        rewrite term_rep_irrel with (Hty2:=Hty).
         (*Coq is just awful at unifying things; this is really annoying*)
         match goal with
         | |- context [match_val_single ?v ?pd ?pdf ?vt ?ty ?p ?Hp (term_rep _ _ _ _ _ _ _ _ ?Hty)] =>
-          pose proof (match_val_single_constr_row _ m_in a_in c_in args_len _ al1 Ht params tms
-          Hp Hty Heq2 (Forall2_rev_inv Hrow1)) as Hconstreq; rewrite Hconstreq
+          pose proof (match_val_single_constr_row m_in a_in c_in args_len _ al1 Ht params tms
+          Hp Heq2 (Forall2_rev_inv Hrow1)) as Hconstreq; rewrite Hconstreq
         end.
         (*Remove the [rev] by using the permutation result*)
         pose proof (matches_row_rev (ty_subst_list (s_params c) args (s_args c)) 
@@ -801,6 +818,7 @@ Proof.
             erewrite <- IHrtl with (Htyp:=(pat_matrix_typed_tail Htyp))(Htsty:=Htsty); [| apply 
               (simplified_tl _ _ Hpsimp)].
             simp terms_to_hlist.
+            erewrite term_rep_irrel.
             erewrite terms_to_hlist_irrel; reflexivity.
         ++ (*first match is None - by Hrev, know second is as well*)
           destruct (matches_row
@@ -814,12 +832,14 @@ Proof.
           erewrite <- IHrtl with (Htyp:=(pat_matrix_typed_tail Htyp))(Htsty:=Htsty); [| apply 
               (simplified_tl _ _ Hpsimp)].
           simp terms_to_hlist.
+          erewrite term_rep_irrel.
           erewrite terms_to_hlist_irrel; reflexivity. Unshelve. auto.
       -- (*funsym doesn't match - here, we do not have a match with the [match_val_single]*)
         simp matches_row terms_to_hlist. simpl hlist_hd. 
         (*Use nomatch result*) 
         rewrite match_val_single_constr_nomatch with (m_in := m_in) (a_in:=a_in)(c1_in:=c_in)
-          (args_len:=args_len)(al1:=al1)(Hty:=Hty); auto.
+          (args_len:=args_len)(al1:=al1); auto.
+        2: { erewrite term_rep_irrel; apply Ht. }
         simpl.
         (*Thus, IH case*)
         erewrite <- IHrtl with (Htyp:=(pat_matrix_typed_tail Htyp))(Htsty:=Htsty); [| apply 
@@ -907,8 +927,9 @@ Proof.
       (*Use fact that different constructor gives None*)
       rewrite terms_to_hlist_equation_4 at 1. simpl hlist_hd.
       rewrite match_val_single_constr_nomatch with (m_in:=m_in)(a_in:=a_in)(c1_in:=c_in)
-        (args_len:=args_len)(Hty:=Hty)(al1:=al1); auto.
+        (args_len:=args_len)(al1:=al1); auto.
       simpl. apply IHrtl; auto.
+      erewrite term_rep_irrel; eauto.
     + (*Pwild*)
       simp matches_row. simpl.
       rewrite terms_to_hlist_tl.
@@ -1804,7 +1825,7 @@ Lemma tfun_semantic_constr
     (terms_to_hlist pd pdf pf vt v tms
     (ty_subst_list (s_params f) args (s_args f)) Htms)).
 Proof.
-  unfold tm_semantic_constr in Hsem.
+  unfold tm_semantic_constr, semantic_constr in Hsem.
   simp term_rep in Hsem.
   erewrite fun_arg_list_eq with (constrs_len:=constrs_len) (Htms:=Htms) in Hsem .
   (*Now lots of casting until we can get to injectivity*)
@@ -4621,7 +4642,7 @@ Proof.
   (*One more simplification of [pats] - we can split it into [pats1] and [pats2] corresponding to each list*)
   symmetry in Hpats.
   apply map_eq_app in Hpats. destruct Hpats as [pats1 [pats2 [Hpats [Hpats1 Hpats2]]]]. subst pats.
-  destruct (find_semantic_constr pd pdf pf vt v t m_in a_in args_len Htty) as [c [[c_in al] Hsem]]; simpl in Hsem.
+  destruct (find_tm_semantic_constr pd pdf pf vt v t m_in a_in args_len Htty) as [c [[c_in al] Hsem]]; simpl in Hsem.
   destruct (in_dec funsym_eq_dec c (map (fun x => fst (fst x)) cslist)).
   - (*Case 1: c is in [cslist]*)
     rewrite in_map_iff in i.
@@ -4678,7 +4699,7 @@ Proof.
       (*Use [match_val_single_constr_nomatch] to show that all None*)
       intros [p1 a1] Hp' Hinp'.
       destruct (Hcnotin _ _ Hinp') as [f2 [vs2 [ps3 [Hx Hf12]]]]; subst. simpl fst.
-      eapply (match_val_single_constr_nomatch _ _ _ _ _ _ m_in a_in c_in args_len); eauto.
+      eapply (match_val_single_constr_nomatch _ _ _ m_in a_in c_in args_len); eauto.
     }
     (*So patsa is irrelevant, and we can manually simplify [match_rep]*)
     revert Hpatsty Hactty.
@@ -4712,7 +4733,7 @@ Proof.
       apply constr_typed_row in Hpcty. auto.
     }
     (*Now we have all the typing info to rewrite the [match_val_single]*)
-    rewrite (match_val_single_constr_row _ _ _ _ _ _ m_in a_in c_in args_len Htty al Hsem _ _ _ _ Heq Hvarsty).
+    rewrite (match_val_single_constr_row _ _ _ m_in a_in c_in args_len _ al Hsem _ _ _ Heq Hvarsty).
     (*We can solve this explicitly: we know that [matches_row] succeeds here (these are all variables)
       and each variable is mapped to the corresponding element of the hlist*)
     (*Rest of proof (sketch):
@@ -4896,7 +4917,7 @@ Proof.
     (*Use [match_val_single_constr_nomatch] to show that all None*)
     intros [p1 a1] Hp' Hinp'.
     destruct (Hpats1c _ _ Hinp') as [f2 [vs2 [ps2 [Hx Hf12]]]]; subst. simpl fst.
-    eapply (match_val_single_constr_nomatch _ _ _ _ _ _ m_in a_in c_in args_len); eauto.
+    eapply (match_val_single_constr_nomatch _ _  _ m_in a_in c_in args_len); eauto.
   }
   (*Similarly, pats1 is irrelevant, so we go to pats2 (wild)*)
   rewrite match_rep_app2; [|assumption].
@@ -5008,7 +5029,7 @@ Proof.
       }
       apply is_vty_adt_some in Hisadt.
       destruct Hisadt as [Hty [a_in m_in]]; subst. set (rl:=(rhd :: rtl)) in *.
-      destruct (find_semantic_constr pd pdf pf vt v t m_in a_in args_len (Forall2_inv_head Htmtys))
+      destruct (find_tm_semantic_constr pd pdf pf vt v t m_in a_in args_len (Forall2_inv_head Htmtys))
       as [f [[c_in al] Hrep]].
       simpl in Hrep.
       assert (Hnotin: constr_at_head_ex f rl = false).
@@ -5050,7 +5071,7 @@ Proof.
     {
       intros pd pdf pf vt v.
       (*First, destruct [find_semantic_constr], then use [tfun_semantic_constr]*)
-      destruct (find_semantic_constr pd pdf pf vt v (Tfun cs args tms) m_in a_in args_len Hcsty) as 
+      destruct (find_tm_semantic_constr pd pdf pf vt v (Tfun cs args tms) m_in a_in args_len Hcsty) as 
         [c [[c_in al] Hrep]]; simpl in Hrep.
       destruct (tfun_semantic_constr _ _ _ _ _ _ _ f_in _ _ _ _ _ constrs_len _ Htms'  Hrep) as [Heq Hal];
       subst. simpl in Hrep. unfold cast_arg_list at 1 in Hrep; simpl in Hrep.
@@ -5089,7 +5110,7 @@ Proof.
     {
       intros pd pdf pf vt v.
       (*First, destruct [find_semantic_constr], then use [tfun_semantic_constr]*)
-      destruct (find_semantic_constr pd pdf pf vt v (Tfun cs args tms) m_in a_in args_len Hcsty) as 
+      destruct (find_tm_semantic_constr pd pdf pf vt v (Tfun cs args tms) m_in a_in args_len Hcsty) as 
         [c [[c_in al] Hrep]]; simpl in Hrep.
       destruct (tfun_semantic_constr _ _ _ _ _ _ _ f_in _ _ _ _ _ constrs_len _ Htms'  Hrep) as [Heq Hal];
       subst. simpl in Hrep. unfold cast_arg_list at 1 in Hrep; simpl in Hrep.
