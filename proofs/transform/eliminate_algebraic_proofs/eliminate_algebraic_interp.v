@@ -197,7 +197,6 @@ Proof.
   reflexivity.
 Qed.
 
-
 (*We do afor 1 that is in the list*)
 Definition proj_interp (c: funsym) (f: funsym) (n: nat) 
   (*We take in index, easier this way*)

@@ -2461,6 +2461,33 @@ Proof.
     eapply simple_pat_match_structure_inv; eauto.
 Qed.
 
+(*Another condition we need: the variables we add to a pattern match are disjoint from those
+  in the term we match on*)
+
+Definition pat_vars_disj (l: list vsymbol) (p: pattern) : bool :=
+  forallb (fun x => negb (in_dec vsymbol_eq_dec x l)) (pat_fv p).
+Definition match_vars_disj (l: list vsymbol) (ps: list pattern) : bool :=
+  forallb (pat_vars_disj l) ps.
+
+Lemma pat_vars_disj_equiv l p:
+  pat_vars_disj l p <-> disj l (pat_fv p).
+Proof.
+  unfold pat_vars_disj, is_true. rewrite forallb_forall.
+  split.
+  - intros Hall x [Hinx1 Hinx2].
+    specialize (Hall _ Hinx2). destruct (in_dec _ _ _); auto.
+  - intros Hdisj x Hinx. destruct (in_dec _ _ _); auto.
+    exfalso. apply (Hdisj x); auto.
+Qed.
+
+Lemma match_vars_disj_equiv l ps:
+  match_vars_disj l ps <-> forall p, In p ps -> disj l (pat_fv p).
+Proof.
+  unfold is_true, match_vars_disj; rewrite forallb_forall.
+  setoid_rewrite pat_vars_disj_equiv. reflexivity.
+Qed. 
+
+
 
 Fixpoint term_simple_pats (t: term) : bool :=
   match t with
@@ -2469,7 +2496,7 @@ Fixpoint term_simple_pats (t: term) : bool :=
   | Tif f t1 t2 => fmla_simple_pats f && term_simple_pats t1 && term_simple_pats t2
   | Teps f v => fmla_simple_pats f
   | Tmatch t ty pats => term_simple_pats t && forallb (fun x => term_simple_pats (snd x)) pats &&
-    simple_pat_match (map fst pats)
+    simple_pat_match (map fst pats) && match_vars_disj (tm_fv t) (map fst pats)
   | _ => true
   end
 with fmla_simple_pats (f: formula) : bool :=
@@ -2480,7 +2507,7 @@ with fmla_simple_pats (f: formula) : bool :=
   | Feq ty t1 t2 => term_simple_pats t1 && term_simple_pats t2
   | Fbinop b f1 f2 => fmla_simple_pats f1 && fmla_simple_pats f2
   | Fmatch t ty pats => term_simple_pats t && forallb (fun x => fmla_simple_pats (snd x)) pats &&
-    simple_pat_match (map fst pats)
+    simple_pat_match (map fst pats) && match_vars_disj (tm_fv t) (map fst pats)
   | Fquant q v f => fmla_simple_pats f
   | Fnot f => fmla_simple_pats f
   | _ => true
@@ -2593,6 +2620,7 @@ Lemma gen_simple_pats_match t ty pats:
   term_simple_pats t ->
   forallb gen_simple_pats (map snd pats) ->
   simple_pat_match (map fst pats) ->
+  match_vars_disj (tm_fv t) (map fst pats) ->
   gen_simple_pats (gen_match t ty pats).
 Proof.
   intros Hsimp1. unfold gen_simple_pats, gen_match. destruct b; simpl; bool_to_prop;
@@ -2773,6 +2801,23 @@ Proof.
         destruct Hps1' as [[Hps1 _] | [_ [t2 [Ht Hps1]]]]; subst; auto.
         simpl. clear -Hmap. destruct (map _ cslist) eqn : Hm; auto.
         simpl in Hmap. apply andb_true_iff in Hmap. apply Hmap.
+    + (*Show free vars disjoin because vars fresh*)
+      replace (map fst ps) with (map fst (map (fun x : pattern * gen_term b => (fst x, Some (snd x))) ps))
+        by (rewrite map_map; auto).
+      rewrite <- Hopt. rewrite map_app, map_rev,!map_map.
+      rewrite match_vars_disj_equiv. intros p. rewrite in_app_iff.
+      rewrite <- In_rev. intros [Hinp | Hinp].
+      * (*constr case more interesting*)
+        rewrite in_map_iff in Hinp. destruct Hinp as [[[f1 tys1] pats1] [Hp Hinp]].
+        simpl in Hp. subst. simpl. unfold rev_map. rewrite !map_rev, rev_involutive.
+        intros x [Hinx1 Hinx2]. simpl_set. destruct Hinx2 as [p1 [Hinp1 Hinx2]].
+        rewrite in_map_iff in Hinp1. destruct Hinp1 as [v1 [Hp1 Hinv1]]; subst.
+        simpl in Hinx2. destruct Hinx2 as [Heq | []]; subst.
+        apply in_combine_fst in Hinv1. apply gen_strs_notin in Hinv1. 
+        apply Hinv1. unfold compile_fvs, tmlist_vars. simpl. rewrite !in_app_iff; auto.
+      * (*No vars in wild*)
+        destruct Hps1'; destruct_all; subst; simpl in Hinp; [contradiction|]. 
+        destruct Hinp as [Hp | []]; subst; simpl. intros ? [? []].
   - (*constr case*)
     intros.  destruct Hhyps as [Hsimp1 Hsimp2]. simpl in Hsimp1. 
     apply andb_prop in Hsimp1. destruct Hsimp1 as [Hsimpt Hsimptl]. 

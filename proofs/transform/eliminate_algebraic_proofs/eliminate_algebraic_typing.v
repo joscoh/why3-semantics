@@ -1918,7 +1918,7 @@ Proof.
     intros [[Hsimp1 Hsimp2] Hsimp3] [[Hex1 Hex2] Hex3]. constructor; auto.
   - (*Tmatch - most interesting case*)
     intros tm1 ty1 ps ty IH1 IH2 Hty. simpl. unfold is_true; rewrite !andb_true_iff.
-    intros [[Hsimp1 Hsimp2] Hsimppat] [[Hsimpexh Hex1] Hex2].
+    intros [[[Hsimp1 Hsimp2] Hsimppat] _] [[Hsimpexh Hex1] Hex2].
     destruct (ty_match_inv Hty) as [Hty1 [Hallpat Hallty]].
     (*Know the type is an ADT*)
     destruct (simple_pat_match_adt gamma_valid true ty Hsimppat Hty) as 
@@ -2209,7 +2209,7 @@ Proof.
     destruct sign; solve[repeat (constructor; auto)].
   - (*Fmatch*)
     intros tm1 ty1 ps IH1 IH2 Hty. simpl. unfold is_true; rewrite !andb_true_iff.
-    intros [[Hsimp1 Hsimp2] Hsimppat] [[Hsimpexh Hex1] Hex2] av sign.
+    intros [[[Hsimp1 Hsimp2] Hsimppat] _] [[Hsimpexh Hex1] Hex2] av sign.
     destruct (typed_match_inv Hty) as [Hty1 [Hallpat Hallty]].
     (*Know the type is an ADT*)
     destruct (simple_pat_match_adt gamma_valid false tt Hsimppat Hty) as 
@@ -2716,7 +2716,7 @@ Proof.
     destruct (_ && _) eqn : Hf1; auto.
   - (*Tmatch - interesting case*)
     intros tm1 ty1 ps ty IH1 IH2 Hty. simpl. unfold is_true; rewrite !andb_true_iff.
-    intros [[Hsimp1 Hsimp2] Hsimppat] [[Hsimpexh Hex1] Hex2].
+    intros [[[Hsimp1 Hsimp2] Hsimppat] _] [[Hsimpexh Hex1] Hex2].
     destruct (ty_match_inv Hty) as [Hty1 [Hallpat Hallty]].
     (*Know the type is an ADT*)
     destruct (simple_pat_match_adt gamma_valid true ty Hsimppat Hty) as 
@@ -2832,7 +2832,7 @@ Proof.
       try solve [apply IH3 in Hinx; auto]).
   - (*Fmatch*)
     intros tm1 ty1 ps IH1 IH2 Hty. simpl. unfold is_true; rewrite !andb_true_iff.
-    intros [[Hsimp1 Hsimp2] Hsimppat] [[Hsimpexh Hex1] Hex2] av sign.
+    intros [[[Hsimp1 Hsimp2] Hsimppat] _] [[Hsimpexh Hex1] Hex2] av sign.
     destruct (typed_match_inv Hty) as [Hty1 [Hallpat Hallty]].
     (*Know the type is an ADT*)
     destruct (simple_pat_match_adt gamma_valid false tt Hsimppat Hty) as 
@@ -3246,7 +3246,7 @@ Proof.
   - (*Tmatch*)
     Opaque tm_type_vars. simpl. (*use [tm_type_vars_tmatch] instead*)
     intros tm1 ty1 ps ty IH1 IH2 Hty. simpl. unfold is_true; rewrite !andb_true_iff.
-    intros [[Hsimp1 Hsimp2] Hsimppat] [[Hsimpexh Hex1] Hex2].
+    intros [[[Hsimp1 Hsimp2] Hsimppat] _] [[Hsimpexh Hex1] Hex2].
     destruct (ty_match_inv Hty) as [Hty1 [Hallpat Hallty]].
     (*Know the type is an ADT*)
     destruct (simple_pat_match_adt gamma_valid true ty Hsimppat Hty) as 
@@ -3385,7 +3385,7 @@ Proof.
   - (*Fmatch*)
     Opaque fmla_type_vars.
     intros tm1 ty1 ps IH1 IH2 Hty. simpl. unfold is_true; rewrite !andb_true_iff.
-    intros [[Hsimp1 Hsimp2] Hsimppat] [[Hsimpexh Hex1] Hex2] av sign.
+    intros [[[Hsimp1 Hsimp2] Hsimppat] _] [[Hsimpexh Hex1] Hex2] av sign.
     destruct (typed_match_inv Hty) as [Hty1 [Hallpat Hallty]].
     (*Know the type is an ADT*)
     destruct (simple_pat_match_adt gamma_valid false tt Hsimppat Hty) as 
@@ -3833,7 +3833,7 @@ Proof.
     solve_funsyms_cases IH1 IH2 IH3.
   - (*Tmatch*)
     intros tm1 ty1 ps ty IH1 IH2 Hty. simpl. unfold is_true; rewrite !andb_true_iff.
-    intros [[Hsimp1 Hsimp2] Hsimppat] [[Hsimpexh Hex1] Hex2].
+    intros [[[Hsimp1 Hsimp2] Hsimppat] _] [[Hsimpexh Hex1] Hex2].
     destruct (ty_match_inv Hty) as [Hty1 [Hallpat Hallty]].
     (*Know the type is an ADT*)
     destruct (simple_pat_match_adt gamma_valid true ty Hsimppat Hty) as 
@@ -3968,7 +3968,7 @@ Proof.
     destruct sign; simpl; solve_funsyms_cases IH1 IH2 IH3.
   - (*Fmatch*) 
     intros tm1 ty1 ps IH1 IH2 Hty. simpl. unfold is_true; rewrite !andb_true_iff.
-    intros [[Hsimp1 Hsimp2] Hsimppat] [[Hsimpexh Hex1] Hex2] av sign.
+    intros [[[Hsimp1 Hsimp2] Hsimppat] _] [[Hsimpexh Hex1] Hex2] av sign.
     destruct (typed_match_inv Hty) as [Hty1 [Hallpat Hallty]].
     (*Know the type is an ADT*)
     destruct (simple_pat_match_adt gamma_valid false tt Hsimppat Hty) as 
@@ -4303,7 +4303,7 @@ Proof.
     repeat (apply prove_orb_impl; auto). apply IH1; auto.
   - (*Tmatch*)
     intros tm1 ty1 ps ty IH1 IH2 Hty. simpl. unfold is_true; rewrite !andb_true_iff.
-    intros [[Hsimp1 Hsimp2] Hsimppat] [[Hsimpexh Hex1] Hex2].
+    intros [[[Hsimp1 Hsimp2] Hsimppat] _] [[Hsimpexh Hex1] Hex2].
     destruct (ty_match_inv Hty) as [Hty1 [Hallpat Hallty]].
     (*Know the type is an ADT*)
     destruct (simple_pat_match_adt gamma_valid true ty Hsimppat Hty) as 
@@ -4406,7 +4406,7 @@ Proof.
     destruct sign; simpl; solve_funsyms_cases IH1 IH2 IH3.
   - (*Fmatch*)
     intros tm1 ty1 ps IH1 IH2 Hty. simpl. unfold is_true; rewrite !andb_true_iff.
-    intros [[Hsimp1 Hsimp2] Hsimppat] [[Hsimpexh Hex1] Hex2] av sign.
+    intros [[[Hsimp1 Hsimp2] Hsimppat] _] [[Hsimpexh Hex1] Hex2] av sign.
     destruct (typed_match_inv Hty) as [Hty1 [Hallpat Hallty]].
     (*Know the type is an ADT*)
     destruct (simple_pat_match_adt gamma_valid false tt Hsimppat Hty) as 
