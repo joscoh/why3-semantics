@@ -1350,7 +1350,71 @@ Proof.
       unfold dom_cast; simpl. (*No more casting!*)
       (*Now we appeal to our previous result*)
       eapply rewriteT_match_ith; eauto.
-  -  
+  - (*Teps*) intros f v IH ty Hty. simpl. intros Hsimp Hexh Hty2 vv.
+    simpl_rep_full. f_equal. apply functional_extensionality_dep. intros x.
+    generalize dependent (f_equal (v_subst vt) (proj2' (ty_eps_inv Hty2))).
+    generalize dependent (f_equal (v_subst vt) (proj2' (ty_eps_inv Hty))).
+    intros Heq1 Heq2. assert (Heq1 = Heq2) by (apply UIP_dec, sort_eq_dec). subst.
+    erewrite IH by auto. reflexivity.
+  - (*Fpred*) intros p tys tms IH Hty1. simpl. intros Hsimp Hexh _ _ Hty2 vv.
+    unfold preds_new. f_equal. 
+    apply get_arg_list_ext; [solve_len|].
+    rewrite map_length. intros i Hi ty' Hty' Hty''.
+    rewrite Forall_forall in IH.
+    unfold is_true in Hsimp, Hexh.
+    rewrite forallb_forall in Hsimp, Hexh.
+    revert Hty'.
+    rewrite map_nth_inbound with (d2:=tm_d); auto. intros Hty'.
+    assert (Hin: In (nth i tms tm_d) tms). {
+      apply nth_In; auto.
+    }
+    auto.
+  - (*Fquant*) intros q v f IH Hty1. simpl. intros Hsimp Hexh av sign.
+    (*Need to case on quantifier cases*)
+    destruct (quant_eqb q Tforall && sign || quant_eqb q Texists && negb sign) eqn : Hq.
+    + simpl_rep_full. intros Hty2 vv. destruct q; apply all_dec_eq; 
+      setoid_rewrite IH; [reflexivity| | | reflexivity | |]; auto.
+    + simpl_rep_full. intros Hty2 vv. destruct q; apply all_dec_eq; 
+      setoid_rewrite IH; [reflexivity| | | reflexivity | |]; auto.
+  - (*Feq*) intros v t1 t2 IH1 IH2 Hty1. simpl. unfold is_true; rewrite !andb_true_iff.
+    intros [Hsimp1 Hsimp2] [Hexh1 Hexh2] _ _ Hty2 vv.
+    apply all_dec_eq. erewrite IH1 by auto. erewrite IH2 by auto. reflexivity.
+  - (*Fbinop*) intros b f1 f2 IH1 IH2 Hty1. simpl. unfold is_true; rewrite !andb_true_iff.
+    intros [Hsimp1 Hsimp2] [Hexh1 Hexh2] av sign Hty2 vv. revert Hty2.
+    (*Lots of cases - note: both cases exactly the same, should automate*)
+    assert (Hb1: forall b1 b2, implb b1 b2 && implb b2 b1 = eqb b1 b2).
+    { intros [|] [|]; auto. }
+    assert (Hb2: forall b1 b2, implb (b1 || b2) (b1 && b2) = eqb b1 b2).
+    { intros [|] [|]; auto. }
+    destruct (_ || _) eqn : Handor.
+    + destruct b; intros Hty2; try solve[simpl_rep_full; erewrite IH1 by auto; erewrite IH2 by auto; reflexivity].
+      destruct (formula_eqb _ _ && _) eqn : Heq; try solve[simpl_rep_full; erewrite IH1 by auto; erewrite IH2 by auto; reflexivity].
+      destruct sign; simpl_rep_full; erewrite !IH1 by auto; erewrite !IH2 by auto; [apply Hb1| apply Hb2].
+    + destruct b; intros Hty2; try solve[simpl_rep_full; erewrite IH1 by auto; erewrite IH2 by auto; reflexivity].
+      destruct (formula_eqb _ _ && _) eqn : Heq; try solve[simpl_rep_full; erewrite IH1 by auto; erewrite IH2 by auto; reflexivity].
+      destruct sign; simpl_rep_full; erewrite !IH1 by auto; erewrite !IH2 by auto; [apply Hb1| apply Hb2].
+  - (*Fnot*) intros f IH Hty1. simpl. intros Hsimp Hexh _ sign Hty2 vv.
+    f_equal; auto.
+  - simpl; auto.
+  - simpl; auto.
+  - (*Flet*) intros tm v f IH1 IH2 Hty1. simpl. unfold is_true; rewrite !andb_true_iff.
+    intros [Hsimp1 Hsimp2] [Hexh1 Hexh2] av sign Hty2 vv.
+    erewrite IH1 by auto. apply IH2; auto.
+  - (*Fif*) intros f1 f2 f3 IH1 IH2 IH3 Hty1. simpl. unfold is_true; rewrite !andb_true_iff.
+    intros [[Hsimp1 Hsimp2] Hsimp3] [[Hexh1 Hexh2] Hexh3] av sign Hty2 vv.
+    (*Again, cases*)
+    destruct (formula_eqb _ _) eqn : Heqb.
+    + simpl_rep_full. erewrite IH1 by auto. erewrite IH2 by auto. erewrite IH3 by auto. reflexivity.
+    + destruct sign.
+      * simpl_rep_full. erewrite !IH1 by auto. erewrite !IH2 by auto. erewrite !IH3 by auto.
+        assert (Hb: forall b1 b2 b3, implb b1 b2 && implb (negb b1) b3 = if b1 then b2 else b3).
+        { intros [|] [|] [|]; auto. }
+        apply Hb.
+      * simpl_rep_full. erewrite !IH1 by auto. erewrite !IH2 by auto. erewrite !IH3 by auto.
+        assert (Hb: forall b1 b2 b3, b1 && b2 || negb b1 && b3 = if b1 then b2 else b3).
+        { intros [|] [|] [|]; auto. }
+        apply Hb.
+  - (*Fmatch*)
 Admitted.
 
 End Proofs.
