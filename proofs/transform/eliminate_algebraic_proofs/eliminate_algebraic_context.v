@@ -262,7 +262,7 @@ Definition comp_ctx_gamma (d: def) (gamma: context) : list def :=
   | datatype_def m =>
     concat (map (fun a => add_axioms_gamma (adt_name a) (adt_constr_list a)) (rev (typs m))) ++
     (if keep_muts m then [datatype_def m] else (map (fun a => abs_type (adt_name a)) (typs m)))
-  | _ => [(TaskGen.def_map (rewriteT' keep_muts new_constr_name badnames gamma) (rewriteF' keep_muts new_constr_name badnames gamma nil true) d)]
+  | _ => [(TaskGen.def_map (rewriteT' keep_muts new_constr_name badnames gamma) (rewriteF' keep_muts new_constr_name badnames gamma true) d)]
   end.
 
 Lemma add_mut_gamma m tys tsk: task_gamma (add_mut m tys tsk) = 

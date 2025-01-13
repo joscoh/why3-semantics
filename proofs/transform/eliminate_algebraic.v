@@ -801,12 +801,13 @@ Proof.
 Defined.
 
 (*Kind of silly, but separate out default case so dont have to prove twice*)
+(*TODO: now we can inline*)
 Definition rewriteF_default_case ty1 t1 (sign: bool) vl hd e : formula :=
   let hd := Feq ty1 t1 hd (*TODO: ty1?*) in if sign then fforalls vl (Fbinop Timplies hd e)
     else fexists vl (Fbinop Tand hd e).
 
 (*Also separate out [find]*)
-Definition rewriteF_find (t1: term) (ty1: vty) (args: list vty) (av: list vsymbol) (sign: bool)
+Definition rewriteF_find (t1: term) (ty1: vty) (args: list vty) (sign: bool)
   (m: amap funsym (list vsymbol * formula))
   (w: option formula) (cs: funsym) : 
   formula :=
@@ -830,8 +831,10 @@ Definition rewriteF_find (t1: term) (ty1: vty) (args: list vty) (av: list vsymbo
   let vl := fst res in let e := snd res in
   (*NOTE: use args here*)
   let hd := Tfun (new_constr cs) args (map Tvar vl) in
+  (*JOSH - removing let case - not any faster (on Why3 test suite) and MUCH harder to prove correct*)
+  rewriteF_default_case ty1 t1 sign vl hd e 
   (* tfun_infer' (new_constr cs) (*(amap_get_def funsym_eq_dec (s.(cc_map)) cs id_fs)*) (map snd vl) (map Tvar vl) in *)
-  match (is_tm_var t1) with
+  (* match (is_tm_var t1) with
   | Left s =>
     let v := proj1_sig s in
     if in_dec vsymbol_eq_dec v av then
@@ -844,7 +847,7 @@ Definition rewriteF_find (t1: term) (ty1: vty) (args: list vty) (av: list vsymbo
     rewriteF_default_case ty1 t1 sign vl hd e
     (* let hd := Feq ty1 t1 hd (*TODO: ty1?*) in if sign then fforalls vl (Fbinop Timplies hd e)
     else fexists vl (Fbinop Tand hd e) *)
-  end.
+  end. *).
 
 
 Fixpoint rewriteT (t: term) : term :=
@@ -877,21 +880,21 @@ Fixpoint rewriteT (t: term) : term :=
           type of return is not present in here, unfortunately, so we use [pat_match_ty]*)
         Tfun (get_mt_map ts) (pat_match_ty' pats :: args) (t1 :: tl)
       end
-    else t_map rewriteT (rewriteF nil true) t
+    else t_map rewriteT (rewriteF true) t
   | Tfun ls tys args => (*map old constrs to new constr*)
     if ls.(f_is_constr) && enc_ty (f_ret ls) (*we can just pass in return type because only depends on typesym*)
     then Tfun (new_constr ls) (*(amap_get_def funsym_eq_dec s.(cc_map) ls id_fs)*) tys 
       (map rewriteT args)
-    else t_map rewriteT (rewriteF nil true) t
+    else t_map rewriteT (rewriteF true) t
   (*Don't have projections*)
-  | _ => t_map rewriteT (rewriteF nil true) t
+  | _ => t_map rewriteT (rewriteF true) t
   end
-with rewriteF (av: list vsymbol) (sign: bool) (f: formula) : formula := 
+with rewriteF (sign: bool) (f: formula) : formula := 
   match f with
   | Fmatch t1 ty1 pats =>
     if enc_ty ty1 then
       let t1 := rewriteT t1 in
-      let av' := set_diff vsymbol_eq_dec av (tm_fv t1) in (*TODO: what is this doing?*)
+      (* let av' := set_diff vsymbol_eq_dec av (tm_fv t1) in TODO: what is this doing? *)
       (* let mk_br (x: option formula * amap funsym (list vsymbol * formula)) br :=
         let p := fst br in
         let e := snd br in
@@ -908,7 +911,7 @@ with rewriteF (av: list vsymbol) (sign: bool) (f: formula) : formula :=
         | Pwild => (Some e, m)
         | _ => (*TODO: prove dont hit*) x
         end in *)
-      let res := mk_brs_fmla (rewriteF av' sign) pats in
+      let res := mk_brs_fmla (rewriteF sign) pats in
       let w := fst res in
       let m := snd res in
       (*By typing, has to be an ADT*)
@@ -949,21 +952,21 @@ with rewriteF (av: list vsymbol) (sign: bool) (f: formula) : formula :=
       (* let ts :=
         match ty1 with | vty_cons ts _ => ts | _ => ts_d end (*TODO: show dont hit*) in *)
       let op := if sign then (Fbinop Tand) else (Fbinop Tor) in
-      map_join_left' Ftrue (rewriteF_find t1 ty1 args av sign m w) op (get_constructors gamma ts)
-    else f_map_sign (fun _ => rewriteT) (rewriteF nil) sign f
+      map_join_left' Ftrue (rewriteF_find t1 ty1 args sign m w) op (get_constructors gamma ts)
+    else f_map_sign (fun _ => rewriteT) rewriteF sign f
   | Fquant q v f1 =>
     if (quant_eqb q Tforall && sign) || (quant_eqb q Texists && negb sign) then
-      let av := fold_right (set_add vsymbol_eq_dec) [v] av in
-      Fquant q v (rewriteF av sign f1)
-    else f_map_sign (fun _ => rewriteT) (rewriteF nil) sign f
+      (* let av := fold_right (set_add vsymbol_eq_dec) [v] av in *)
+      Fquant q v (rewriteF sign f1)
+    else f_map_sign (fun _ => rewriteT) rewriteF sign f
   | Fbinop o _ _ =>
     if (binop_eqb o Tand && sign) || (binop_eqb o Tor && negb sign) then
-      f_map_sign (fun _ => rewriteT) (rewriteF av) sign f (*not nil*)
-    else f_map_sign (fun _ => rewriteT) (rewriteF nil) sign f
+      f_map_sign (fun _ => rewriteT) rewriteF sign f (*not nil*)
+    else f_map_sign (fun _ => rewriteT) rewriteF sign f
   | Flet t1 _ _ =>
-    let av := set_diff vsymbol_eq_dec av (tm_fv t1) in
-    f_map_sign (fun _ => rewriteT) (rewriteF av) sign f 
-  | _ => f_map_sign (fun _ => rewriteT) (rewriteF nil) sign f
+    (* let av := set_diff vsymbol_eq_dec av (tm_fv t1) in *)
+    f_map_sign (fun _ => rewriteT) rewriteF sign f 
+  | _ => f_map_sign (fun _ => rewriteT) rewriteF sign f
   end.
 
 End Rew.
@@ -998,8 +1001,8 @@ Definition add_ty_decl (t: task) (ts: typesym) : task :=
 
 Definition rewriteT' gamma t :=
   rewriteT gamma ((tm_fv t) ++ (tm_bnd t)) t.
-Definition rewriteF' gamma x y f :=
-  rewriteF gamma ((fmla_fv f) ++ (fmla_bnd f)) x y f.
+Definition rewriteF' gamma x f :=
+  rewriteF gamma ((fmla_fv f) ++ (fmla_bnd f)) x f.
 
 Definition add_def (d: def) (t: task) : task :=
   (d :: task_gamma t, task_delta t, task_goal t).
@@ -1040,7 +1043,7 @@ Definition comp_ctx (gamma: context) (d: def) (tsk: task) : task :=
   | _ => 
     (*rewriting case*)
     (*TODO: should it be task_gamma tsk instead of separate gamma? prob*)
-    add_def (TaskGen.def_map (rewriteT' gamma) (rewriteF' gamma nil true) d) tsk
+    add_def (TaskGen.def_map (rewriteT' gamma) (rewriteF' gamma true) d) tsk
   end.
 
 (*And for formula (easy)*)
@@ -1072,8 +1075,8 @@ Definition fold_comp : trans :=
       this is because we are folding whole context at once instead of
       doing each definition and then task (NOTE: this is a substantive difference
       from theirs!))*)
-    let del1 := map (rewriteF' badnames (task_gamma t) nil true) (map snd (task_delta tsk1)) in
-    let g1 := rewriteF' badnames (task_gamma t) nil true (task_goal tsk1) in
+    let del1 := map (rewriteF' badnames (task_gamma t) true) (map snd (task_delta tsk1)) in
+    let g1 := rewriteF' badnames (task_gamma t) true (task_goal tsk1) in
     [(task_gamma tsk1, (combine (map fst (task_delta tsk1)) del1), g1)]. 
 
 (*No infinte types or anything so just give state*)
