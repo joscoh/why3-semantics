@@ -6612,6 +6612,49 @@ Proof.
   - eapply selector_no_patmatch; eauto.
 Qed.
 
+(*Prove 3 things about delta:
+  1. typed according to new context
+  2. all have [fmla_no_patmatch]
+  3. all rewriteF typed
+  Prove intermediate allowing us to use add_axioms results*)
+Lemma fold_all_ctx_delta_in badnames {gamma} (gamma_valid: valid_context gamma) x:
+  In x (concat (map (comp_ctx_delta new_constr_name badnames noind) gamma)) ->
+  exists m a (m_in: mut_in_ctx m gamma) (a_in: adt_in_mut a m),
+    In x (add_axioms_delta new_constr_name badnames noind (adt_name a) (adt_constr_list a)).
+Proof.
+  revert x.
+  intros [name f].
+  rewrite in_concat. intros [axs [Hinaxs Hinf]]. 
+  rewrite in_map_iff in Hinaxs. destruct Hinaxs as [d [Haxs Hind]]. subst.
+  unfold comp_ctx_delta in Hinf.
+  destruct d as [m | | | | | |]; try contradiction.
+  rewrite in_concat in Hinf. destruct Hinf as [axs [Hinaxs Hinf]].
+  rewrite in_map_iff in Hinaxs. destruct Hinaxs as [a [Haxs Hina]]; subst.
+  rewrite <- In_rev in Hina.
+  assert (m_in: mut_in_ctx m gamma). { apply mut_in_ctx_eq2; auto. }
+  assert (a_in: adt_in_mut a m) by (apply In_in_bool; auto).
+  eauto.
+Qed.
+
+Lemma fold_all_ctx_delta_typed badnames {gamma} (gamma_valid: valid_context gamma) gamma2 x:
+ In x (concat (map (comp_ctx_delta new_constr_name badnames noind) gamma)) ->
+ formula_typed (fold_all_ctx_gamma_gen new_constr_name keep_muts badnames noind gamma gamma2) (snd x).
+Proof.
+  intros Hinx.
+  apply fold_all_ctx_delta_in in Hinx; auto.
+  destruct Hinx as [m [a [m_in [a_in Hinx]]]].
+  eapply in_add_axioms_typed; eauto.
+Qed.
+
+Lemma fold_all_ctx_delta_no_patmatch badnames {gamma} (gamma_valid: valid_context gamma) x:
+ In x (concat (map (comp_ctx_delta new_constr_name badnames noind) gamma)) ->
+ fmla_no_patmatch (snd x).
+Proof.
+  intros Hinx.
+  apply fold_all_ctx_delta_in in Hinx; auto.
+  destruct Hinx as [m [a [m_in [a_in Hinx]]]].
+  eapply in_add_axioms_no_patmatch; eauto.
+Qed.
 
 (*Main result: fold_comp is well-typed under preconditions*)
 
@@ -6655,27 +6698,10 @@ Proof.
       apply sublist_refl.
     }
     (*Now prove well-typed axioms added*)
-    rewrite Forall_forall.
-    intros [name f].
-    unfold fold_all_ctx_delta. simpl.
-    rewrite in_concat. intros [axs [Hinaxs Hinf]]. 
-    rewrite in_map_iff in Hinaxs. destruct Hinaxs as [d [Haxs Hind]]. subst.
-    simpl_task. unfold comp_ctx_delta in Hinf.
-    destruct d as [m | | | | | |]; try contradiction.
-    rewrite in_concat in Hinf. destruct Hinf as [axs [Hinaxs Hinf]].
-    rewrite in_map_iff in Hinaxs. destruct Hinaxs as [a [Haxs Hina]]; subst.
-    rewrite <- In_rev in Hina.
-    (*PLAN: prove 2 things
-      0. Formulate notion of no pattern matches
-      1. If term/formula has no pattern matches, rewriteT/rewriteF does nothing (or at least
-        if typed under gamma, rewriteT typed under gamma - maybe sign_map changes term)
-      2. Prove that formulas in add_axioms have no pattern matches
-      3. Then prove that formulas in axioms well-typed under new context*) 
+    rewrite Forall_forall. unfold fold_all_ctx_delta. intros x Hinx.
     apply rewriteF_no_patmatch_typed.
-    + assert (m_in: mut_in_ctx m gamma). { apply mut_in_ctx_eq2; auto. }
-      assert (a_in: adt_in_mut a m) by (apply In_in_bool; auto).
-      replace f with (snd (name, f)) by reflexivity. eapply in_add_axioms_typed; eauto.
-    + apply in_add_axioms_no_patmatch in Hinf; auto.
+    + eapply fold_all_ctx_delta_typed in Hinx; eauto.
+    + apply fold_all_ctx_delta_no_patmatch in Hinx; auto.
   - (*goal*) simpl_task.
     unfold compile_match_post in Hpre. destruct Hpre as [_ Hsimpl].
     unfold task_pat_simpl in Hsimpl. unfold is_true in Hsimpl; rewrite !andb_true_iff in Hsimpl.
@@ -6703,25 +6729,4 @@ Proof.
     apply compile_match_pre_post.
 Qed.
 
-
-(* Theorem eliminate_algebraic_sound : 
-  sound_trans_pre no_recfun_indpred
-  (eliminate_algebraic keep_muts new_constr_name badnames noind).
-Proof.
-  unfold eliminate_algebraic.
-  apply sound_trans_comp with (Q1:=compile_match_post)
-  (P2:=compile_match_post).
-  - (*compile match soundness*)
-    admit.
-    (*apply sound_trans_weaken_pre with (P2:=fun _ => True); auto.
-    apply sound_trans_pre_true.
-    apply compile_match_valid.*)
-  - (*Sound trans of elim ADT (main part)*)
-    admit. (*apply fold_comp_sound.*)
-  - (*pre and postconditions of [compile_match]*)
-    apply compile_match_pre_post.
-  - apply typed_trans_weaken_pre with (fun _ => True); auto.
-    apply typed_trans_pre_true, compile_match_typed.
-  - auto.
-Admitted. *)
 End Proofs.

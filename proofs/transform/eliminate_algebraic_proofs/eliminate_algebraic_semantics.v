@@ -933,6 +933,8 @@ Section Proofs.
 Variable (keep_muts: mut_adt -> bool) (new_constr_name: funsym -> string)
   (noind: typesym -> bool).
 
+Section Rewrite.
+
 
 Context {gamma: context} (gamma_valid: valid_context gamma). (*old context*)
 
@@ -2514,5 +2516,292 @@ Proof.
   - apply sublist_app_r.
 Qed.
 
+End Rewrite.
+
+
+(*If a term/formula has no pattern matches, rewriteT/F are semantically equal*)
+Lemma rewrite_no_patmatch_rep {gamma} (gamma_valid: valid_context gamma) gamma1 badnames names
+  pd pdf vt pf t f:
+  (forall ty (Hty: term_has_type gamma t ty) 
+    (Hty1: term_has_type gamma (rewriteT keep_muts new_constr_name badnames gamma1 names t) ty) 
+    (Hn: tm_no_patmatch t) (vv: val_vars pd vt),
+    term_rep gamma_valid pd pdf vt pf vv (rewriteT keep_muts new_constr_name badnames gamma1 names t) ty Hty1 =
+    term_rep gamma_valid pd pdf vt pf vv t ty Hty) /\
+  (forall (Hty: formula_typed gamma f) sign
+    (Hty1: formula_typed gamma (rewriteF keep_muts new_constr_name badnames gamma1 names sign f))
+    (Hn: fmla_no_patmatch f) (vv: val_vars pd vt),
+    formula_rep gamma_valid pd pdf vt pf vv (rewriteF keep_muts new_constr_name badnames gamma1 names sign f) Hty1 =
+    formula_rep gamma_valid pd pdf vt pf vv f Hty).
+Proof.
+  revert t f; apply term_formula_ind; simpl; auto; try discriminate.
+  - (*Tconst*) intros; apply term_rep_irrel.
+  - (*Tvar*) intros; apply term_rep_irrel.
+  - (*Tfun*) intros f1 tys1 tms IH ty Hty Hty1. unfold is_true; rewrite andb_true_iff.
+    intros [Hnotconstr Hnomatch]. destruct (f_is_constr f1); [discriminate|]. simpl in *.
+    intros vv. simpl_rep_full.
+    f_equal; [apply UIP_dec, vty_eq_dec |].
+    f_equal; [apply UIP_dec, sort_eq_dec |].
+    f_equal. apply get_arg_list_ext; simpl_len; auto.
+    intros i Hi ty'. rewrite map_nth_inbound with (d2:=tm_d) by auto. intros.
+    assert (Hini: In (nth i tms tm_d) tms) by (apply nth_In; auto).
+    rewrite Forall_forall in IH; apply IH; auto.
+    rewrite forallb_forall in Hnomatch; apply Hnomatch; auto.
+  - (*Tlet*)
+    intros tm1 v tm2 IH1 IH2 ty Hty1 Hty2.
+    unfold is_true; rewrite andb_true_iff. intros [Hno1 Hno2] vv.
+    simpl_rep_full. rewrite IH1 with (Hty:=(proj1' (ty_let_inv Hty1))) by auto.
+    apply IH2; auto.
+  - (*Tif*)
+    intros f t1 t2 IH1 IH2 IH3 ty Hty1 Hty2.
+    unfold is_true; rewrite !andb_true_iff. intros [[Hno1 Hno2] Hno3] vv.
+    simpl_rep_full. erewrite IH1 by auto. erewrite IH2 by auto. erewrite IH3 by auto. reflexivity.
+  - (*Teps*)
+    intros f v IH ty Hty Hty1 Hno vv. simpl_rep_full.
+    f_equal. apply functional_extensionality_dep; intros y.
+    assert (Heq: (proj2' (ty_eps_inv Hty1)) = (proj2' (ty_eps_inv Hty))) by (apply UIP_dec, vty_eq_dec).
+    rewrite Heq.
+    erewrite IH by auto. reflexivity.
+  - (*Fpred*) intros p tys1 tms IH Hty _ Hty1 Hallno vv.
+    simpl_rep_full. f_equal. apply get_arg_list_ext; simpl_len; auto.
+    intros i Hi ty'. rewrite map_nth_inbound with (d2:=tm_d) by auto. intros.
+    assert (Hini: In (nth i tms tm_d) tms) by (apply nth_In; auto).
+    rewrite Forall_forall in IH; apply IH; auto. unfold is_true in Hallno.
+    rewrite forallb_forall in Hallno; apply Hallno; auto.
+  - (*Fquant - more cases but still easy*)
+    intros q v f IH Hty sign.
+    destruct (_ || _) eqn : Hq; 
+    (destruct q; simpl in Hq; intros Hty1 Hno vv; simpl_rep_full; apply all_dec_eq;
+      setoid_rewrite IH; auto; reflexivity).
+  - (*Feq*) intros ty1 t1 t2 IH1 IH2 Hty1 sign Hty2.
+    unfold is_true; rewrite andb_true_iff. intros [Hno1 Hno2] vv.
+    apply all_dec_eq. setoid_rewrite IH1; auto. setoid_rewrite IH2; auto. reflexivity.
+  - (*Fbinop - complicated because of rewrites*)
+    (*TODO: copied*)
+    assert (Hb1: forall b1 b2, implb b1 b2 && implb b2 b1 = eqb b1 b2).
+    { intros [|] [|]; auto. }
+    assert (Hb2: forall b1 b2, implb (b1 || b2) (b1 && b2) = eqb b1 b2).
+    { intros [|] [|]; auto. }
+    intros b f1 f2 IH1 IH2 Hty1 sign Hty2.
+    unfold is_true; rewrite andb_true_iff. intros [Hno1 Hno2] vv.
+    revert Hty2.
+    destruct (_ || _) eqn : Hb.
+    + destruct b; intros Hty2; simpl_rep_full;
+      try solve[erewrite IH1 by auto; erewrite IH2 by auto; reflexivity].
+      revert Hty2.
+      destruct (formula_eqb _ _ && _) eqn : Heqb; intros Hty2.
+      * simpl_rep_full. erewrite IH1 by auto; erewrite IH2 by auto; reflexivity.
+      * destruct sign; simpl_rep_full.
+        -- repeat (erewrite IH1 by auto). repeat (erewrite IH2 by auto). apply Hb1.
+        -- repeat (erewrite IH1 by auto). repeat (erewrite IH2 by auto). apply Hb2.
+    + destruct b; intros Hty2; simpl_rep_full;
+      try solve[erewrite IH1 by auto; erewrite IH2 by auto; reflexivity].
+      revert Hty2. destruct (formula_eqb _ _ && _) eqn : Heqb; intros Hty2.
+      * simpl_rep_full. erewrite IH1 by auto; erewrite IH2 by auto; reflexivity.
+      * destruct sign; simpl_rep_full.
+        -- repeat (erewrite IH1 by auto). repeat (erewrite IH2 by auto). apply Hb1.
+        -- repeat (erewrite IH1 by auto). repeat (erewrite IH2 by auto). apply Hb2.
+  - (*Fnot*) intros f IH Hty sign Hty1 Hno vv; f_equal; apply IH; auto.
+  - (*Flet*) intros tm1 v f IH1 IH2 ty Hty1 Hty2.
+    unfold is_true; rewrite andb_true_iff. intros [Hno1 Hno2] vv.
+    simpl_rep_full. erewrite IH1 by auto.
+    apply IH2; auto.
+  - (*Fif - also complicated*) intros f1 f2 f3  IH1 IH2 IH3 Hty1 sign Hty2.
+    unfold is_true; rewrite !andb_true_iff. intros [[Hno1 Hno2] Hno3] vv.
+    revert Hty2. destruct (formula_eqb _ _) eqn : Heqb;
+    [intros Hty2; simpl_rep_full; erewrite IH1 by auto; erewrite IH2 by auto; erewrite IH3 by auto; reflexivity |].
+    destruct sign; intros Hty2; simpl_rep_full.
+    + erewrite !IH1 by auto. erewrite !IH2 by auto. erewrite !IH3 by auto.
+      assert (Hb: forall b1 b2 b3, implb b1 b2 && implb (negb b1) b3 = if b1 then b2 else b3).
+      { intros [|] [|] [|]; auto. }
+      apply Hb.
+    + erewrite !IH1 by auto. erewrite !IH2 by auto. erewrite !IH3 by auto.
+      assert (Hb: forall b1 b2 b3, b1 && b2 || negb b1 && b3 = if b1 then b2 else b3).
+      { intros [|] [|] [|]; auto. }
+      apply Hb.
+Qed.
+
+Definition rewriteT_no_patmatch_rep {gamma} (gamma_valid: valid_context gamma) gamma1 badnames names
+  pd pdf vt pf t ty (Hty: term_has_type gamma t ty) 
+    (Hty1: term_has_type gamma (rewriteT keep_muts new_constr_name badnames gamma1 names t) ty) 
+    (Hn: tm_no_patmatch t) (vv: val_vars pd vt):
+    term_rep gamma_valid pd pdf vt pf vv (rewriteT keep_muts new_constr_name badnames gamma1 names t) ty Hty1 =
+    term_rep gamma_valid pd pdf vt pf vv t ty Hty :=
+  proj_tm (rewrite_no_patmatch_rep gamma_valid gamma1 badnames names pd pdf vt pf) t ty Hty Hty1 Hn vv.
+Definition rewriteF_no_patmatch_rep {gamma} (gamma_valid: valid_context gamma) gamma1 badnames names
+  pd pdf vt pf f (Hty: formula_typed gamma f) sign
+  (Hty1: formula_typed gamma (rewriteF keep_muts new_constr_name badnames gamma1 names sign f))
+  (Hn: fmla_no_patmatch f) (vv: val_vars pd vt):
+  formula_rep gamma_valid pd pdf vt pf vv (rewriteF keep_muts new_constr_name badnames gamma1 names sign f) Hty1 =
+  formula_rep gamma_valid pd pdf vt pf vv f Hty :=
+  proj_fmla (rewrite_no_patmatch_rep gamma_valid gamma1 badnames names pd pdf vt pf) f Hty sign Hty1 Hn vv.
+
+
+(*The core result: soundness of [fold_comp]
+  TODO: probably need to generalize from [empty_state]*)
+(*We need the precondition that pattern matches have been compiled away*)
+Theorem fold_comp_sound:
+  new_constr_name_cond new_constr_name ->
+  sound_trans_pre
+  (task_and no_recfun_indpred task_pat_simpl)
+  (fold_comp keep_muts new_constr_name noind).
+Proof.
+  intros Hconstrname.
+  unfold sound_trans_pre.
+  intros tsk Hpre Hty Hallval.
+  unfold task_valid, TaskGen.task_valid in *.
+  split; auto.
+  intros gamma_valid Hty'.
+  (*Temp*) Opaque fold_all_ctx.
+  unfold fold_comp in Hallval.
+  (*Use gamma, delta, goal lemmas*)
+  rewrite fold_all_ctx_gamma_eq, fold_all_ctx_delta_eq, fold_all_ctx_goal_eq in Hallval.
+  (* destruct tsk as [[gamma delta] goal]. simpl_task. *)
+  set (badnames := (idents_of_context (task_gamma tsk))) in *.
+  set (gamma1 := fold_all_ctx_gamma new_constr_name keep_muts badnames noind tsk) in *.
+  set (new_delta := fold_all_ctx_delta new_constr_name badnames noind tsk) in *.
+  set (newtsk := (gamma1,
+              combine (map fst (new_delta ++ task_delta tsk))
+                (map (rewriteF' keep_muts new_constr_name badnames (task_gamma tsk) true)
+                   (map snd (new_delta ++ task_delta tsk))),
+              rewriteF' keep_muts new_constr_name badnames (task_gamma tsk) true (task_goal tsk))) in *.
+  specialize (Hallval _ (ltac:(left; reflexivity))).
+  destruct Hallval as [Hty1 Hconseq1].
+  assert (Hgamma1: task_gamma newtsk = gamma1) by reflexivity.
+  assert (Hgamma1': gamma1 = @new_gamma (task_gamma tsk)) by reflexivity.
+  assert (gamma1_valid: valid_context gamma1). {
+    inversion Hty1; auto.
+  }
+  specialize (Hconseq1 gamma1_valid Hty1).
+  assert (Hdelta: map snd (task_delta newtsk) = 
+    map (fun x => rewriteF' keep_muts new_constr_name badnames (task_gamma tsk) true (snd x))
+      (new_delta ++ task_delta tsk)).
+  {
+    unfold newtsk. simpl_task. rewrite map_snd_combine; [rewrite map_map| solve_len].
+    reflexivity.
+  }
+  generalize dependent (task_delta_typed newtsk).
+  rewrite Hdelta; clear Hdelta. (*TODO: need?*)
+  intros Hdelta1_typed Hconseq1.
+  assert (Hgoal: task_goal newtsk =
+    rewriteF' keep_muts new_constr_name badnames (task_gamma tsk) true (task_goal tsk)) by reflexivity.
+  generalize dependent (task_goal_typed newtsk).
+  rewrite Hgoal; intros Hgoal1_typed Hconseq1.
+  (*So now we have to prove that if T(gamma), T(delta) |= T(goal), then gamma, delta |= goal
+    where T(gamma) = fold_all_ctx_gamma tsk, etc*)
+  unfold log_conseq_gen in *.
+  intros pd pdf pf pf_full Hdeltasat.
+  unfold satisfies in *.
+  intros vt vv.
+  (*Now we need to transform our pd and pf into the appropriate pd and pf on the modified
+    gamma*)
+  set (pdf' := new_pdf pd pdf) in *.
+  set (pf' := new_pf gamma_valid gamma1_valid pd pdf pf) in *.
+  (*NOTE: need to prove full_interp (TODO)*)
+  assert (pf_full': full_interp gamma1_valid pd pf') by admit.
+  specialize (Hconseq1 pd pdf' pf' pf_full').
+  (*Will be useful*)
+  assert (Hconstrname': forall (m1 m2 : mut_adt) (a1 a2 : alg_datatype),
+  mut_in_ctx m1 (task_gamma tsk) ->
+  mut_in_ctx m2 (task_gamma tsk) ->
+  adt_in_mut a1 m1 ->
+  adt_in_mut a2 m2 ->
+  forall c1 c2 : funsym,
+  constr_in_adt c1 a1 -> constr_in_adt c2 a2 -> new_constr_name c1 = new_constr_name c2 -> c1 = c2).
+  { intros m1 m2 a1 a2 m1_in m2_in a1_in a2_in c1 c2 c1_in c2_in.
+    apply (Hconstrname _ gamma_valid m1 m2 a1 a2 c1 c2); auto.
+  }
+  destruct Hpre as [Hnorecind Hsimpl].
+  unfold task_pat_simpl in Hsimpl. 
+  unfold is_true in Hsimpl; rewrite !andb_true_iff in Hsimpl.
+  destruct Hsimpl as [[Hsimpgamma Hsimpd] Hsimpg].
+  (*Now we prove that under this modified interp, all of the axioms are true*)
+  forward Hconseq1.
+  {
+    intros d Hind. generalize dependent (Forall_In Hdelta1_typed Hind).
+    rewrite in_map_iff in Hind. destruct Hind as [[n f] [Hd Hinnf]].
+    subst d. simpl. 
+    (*2 cases: either in new_delta (i.e. axioms) or old hyps*)
+    rewrite in_app_iff in Hinnf.
+    (*Problem: f (the new axiom) is NOT well-typed wrt gamma, only new_gamma*)
+    (*We need another result: suppose we have a formula which satisfies the same [fmla_no_patmatch] condition.
+      Then we can remove the rewriteT/F (for semantics) - but remain in new_gamma*)
+    destruct Hinnf as [Hinf | Hinf].
+    - (*Here, prove that axioms are sound*)
+      intros Htyf vt' vv'. revert Htyf.
+      unfold pdf', pf', badnames. intros Htyf.
+      (*Note, these formulas are NOT well typed wrt gamma - we use [rewriteF_no_patmatch_rep] to
+        show equivalence because these axioms don't have pattern matches*)
+      assert (Htyf': formula_typed gamma1 f). {
+        eapply fold_all_ctx_delta_typed in Hinf; auto.
+        apply Hinf.
+      }
+      assert (Hnof': fmla_no_patmatch f). {
+        eapply fold_all_ctx_delta_no_patmatch in Hinf; auto.
+      }
+      unfold rewriteF'.
+      rewrite rewriteF_no_patmatch_rep with (Hty:=Htyf'); auto.
+      (*Now just show that axioms are sound wrt new context*)
+      (*TODO: prove this*)
+      admit.
+    - (*Old delta still sound by correctness of rewriteF*)
+      intros Htyf vt' vv'.
+      assert (Htyf': formula_typed (task_gamma tsk) f).
+      {
+        inversion Hty'. rewrite Forall_forall in task_delta_typed.
+        apply task_delta_typed. rewrite in_map_iff. exists (n, f); auto.
+      }
+      rewrite forallb_forall in Hsimpd.
+      specialize (Hsimpd _ Hinf).
+      unfold fmla_simple_and_exhaust in Hsimpd.
+      rewrite andb_true_iff in Hsimpd.
+      destruct Hsimpd as [Hsimp Hexh].
+      unfold pf', pdf', rewriteF', badnames.
+      erewrite fmla_rep_irrel.
+      rewrite (rewriteF_rep' gamma_valid Hconstrname' gamma1_valid pd pdf pf vt' f Htyf' Hsimp Hexh true).
+      (*Now use fact that we assume all hyps are true*)
+      assert (Hinsnd: In f (map snd (task_delta tsk))). {
+        rewrite in_map_iff; exists (n, f); auto.
+      }
+      specialize (Hdeltasat f Hinsnd vt' vv').
+      erewrite fmla_rep_irrel; apply Hdeltasat.
+  }
+  (*Now we know that [rewriteF goal] holds under the new context and interp.
+    Using rewrite lemma in opposite direction (NOTE: why we NEED equality, not implication)
+    to finish*)
+  specialize (Hconseq1 vt vv).
+  unfold fmla_simple_and_exhaust in Hsimpg.
+  rewrite andb_true_iff in Hsimpg. destruct Hsimpg as [Hsimpg Hexhg].
+  unfold pf', pdf', rewriteF', badnames in Hconseq1.
+  erewrite fmla_rep_irrel in Hconseq1.
+  rewrite (rewriteF_rep' gamma_valid Hconstrname' gamma1_valid pd pdf pf vt (task_goal tsk) (task_goal_typed tsk)
+    Hsimpg Hexhg true) in Hconseq1.
+  apply Hconseq1.
+Admitted.
+
+Require Import compile_match.
+
+
+
+Theorem eliminate_algebraic_sound: 
+  new_constr_name_cond new_constr_name ->
+  sound_trans_pre no_recfun_indpred
+  (eliminate_algebraic keep_muts new_constr_name noind).
+Proof.
+  intros Hconstrnew.
+  unfold eliminate_algebraic.
+  apply sound_trans_comp with (Q1:=compile_match_post)
+  (P2:=compile_match_post).
+  - (*compile match soundness*)
+    apply sound_trans_weaken_pre with (P2:=fun _ => True); auto.
+    apply sound_trans_pre_true.
+    apply compile_match_valid.
+  - (*Sound trans of elim ADT (main part)*)
+    apply fold_comp_sound; auto.
+  - (*pre and postconditions of [compile_match]*)
+    apply compile_match_pre_post.
+  - apply typed_trans_weaken_pre with (fun _ => True); auto.
+    apply typed_trans_pre_true, compile_match_typed.
+  - auto.
+Qed.
 
 End Proofs.
