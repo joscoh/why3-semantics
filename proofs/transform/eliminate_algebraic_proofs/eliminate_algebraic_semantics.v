@@ -2854,6 +2854,272 @@ Proof.
   - intros; exfalso; eapply Hind; eauto.
 Qed.
 
+(*Part 2: Validity of the axioms*)
+
+Lemma prove_map_join_left_or_rep {A: Type} {gamma} (gamma_valid: valid_context gamma) pd pdf pf vt vv
+  (f: A -> formula) (l: list A) (Hl: negb (null l)) Hty:
+  (exists a, In a l /\ forall Htya, formula_rep gamma_valid pd pdf vt pf vv (f a) Htya) ->
+  formula_rep gamma_valid pd pdf vt pf vv
+    (map_join_left' Ftrue f (Fbinop Tor) l) Hty.
+Proof.
+  intros [a [Hina Hrep]].
+  rewrite map_join_left_or_rep by auto.
+  apply existsb_exists.
+  assert (Htya: formula_typed gamma (f a)). {
+    apply map_join_left_typed_inv in Hty. rewrite Forall_map in Hty. 
+    rewrite Forall_forall in Hty; auto.
+  }
+  exists (formula_rep gamma_valid pd pdf vt pf vv (f a) Htya).
+  split; auto; [| apply Hrep].
+  destruct (in_dep_map (fun a Htya => formula_rep gamma_valid pd pdf vt pf vv a Htya) (map f l)
+    (map_join_left_typed_inv Hty) (f a) (in_map _ _ _ Hina)) as [Hty2 Hindep].
+  erewrite fmla_rep_irrel. apply Hindep. 
+Qed.
+
+(*TODO: move [get_arg_list_hnth_unif]*)
+Require Import eliminate_inductive.
+(*TODO: generalize ther so we dont need params here separately*)
+
+Lemma arg_list_hnth_eq' (s: fpsym) {i: nat} {args: list vty} {params}
+  (Hparams: params = map vty_var (s_params s))
+  (Hi: i < length args) vt:
+  v_subst vt (ty_subst (s_params s) params (nth i args vty_int)) =
+  nth i (ty_subst_list_s (s_params s) (map (v_subst vt) params)
+    args) s_int.
+Proof.
+  subst.
+  unfold ty_subst_list_s.
+  rewrite map_nth_inbound with(d2:=vty_int);
+  auto.
+  apply funsym_subst_eq.
+  apply s_params_Nodup. rewrite map_length; auto.
+Qed.
+
+Lemma get_arg_list_hnth_unif {gamma: context} 
+(pd : pi_dom) (v: val_typevar)
+(s: fpsym) (ts: list term) 
+(reps: forall (t: term) (ty: vty),
+  term_has_type gamma t ty ->
+  domain (dom_aux pd) (v_subst v ty))
+(Hreps: forall (t: term) (ty: vty)
+  (Hty1 Hty2: term_has_type gamma t ty),
+  reps t ty Hty1 = reps t ty Hty2)
+{args: list vty}
+{params}
+(Heqparams: params = map vty_var (s_params s))
+(Hlents: length ts = length args)
+(Hlenvs: length params  = length (s_params s))
+(Hall: Forall (fun x => term_has_type gamma (fst x) (snd x))
+  (combine ts (map (ty_subst (s_params s) params) args)))
+(i: nat)
+(Hi: i < length args):
+hnth i
+  (get_arg_list pd v params ts reps (s_params_Nodup s) Hlents Hlenvs Hall) s_int (dom_int pd) =
+  dom_cast (dom_aux pd) (arg_list_hnth_eq' s Heqparams Hi v)
+  (reps (nth i ts tm_d) (ty_subst (s_params s) 
+    (params) (nth i args vty_int))
+  (arg_list_hnth_ty Hlents Hall Hi)).
+Proof.
+  apply get_arg_list_hnth; auto.
+Qed. 
+
+Opaque projection_syms.
+Print new_constr.
+Opaque under_str.
+Opaque n_str. (*TODO: why does Coq make it so damn hard to make something opaque?!?*)
+(*1. inversion axiom holds under new interp*)
+(*TODO: if needed can make u unique from badnames*)
+Lemma inversion_axiom_true {gamma} (gamma_valid: valid_context gamma)
+  (Hnewconstr: forall (m1 m2 : mut_adt) (a1 a2 : alg_datatype),
+    mut_in_ctx m1 gamma ->
+    mut_in_ctx m2 gamma ->
+    adt_in_mut a1 m1 ->
+    adt_in_mut a2 m2 ->
+    forall c1 c2 : funsym,
+    constr_in_adt c1 a1 -> constr_in_adt c2 a2 -> new_constr_name c1 = new_constr_name c2 -> c1 = c2)
+  (gamma1_valid : valid_context (@new_gamma gamma))
+  {m a} (m_in: mut_in_ctx m gamma) (a_in: adt_in_mut a m)
+  (pd: pi_dom) (pdf: pi_dom_full gamma pd) 
+  (pf: pi_funpred gamma_valid pd pdf) vt vv Hty:
+  formula_rep gamma1_valid pd (new_pdf pd pdf) vt (new_pf gamma_valid gamma1_valid pd pdf pf) vv
+  (snd (inversion_axiom new_constr_name (idents_of_context gamma) (adt_name a) (adt_ty (adt_name a)) (adt_constr_list a)))
+  Hty.
+Proof.
+  revert Hty.
+  simpl. intros Hty.
+  rewrite simpl_all_dec. intros d.
+  set (tyn := (GenElts.gen_name "u" [], adt_ty (adt_name a))) in *.
+  apply prove_map_join_left_or_rep; [apply adt_constr_nil_not_null|].
+  (*Use [find_semantic_constr] to get the constructor and args*)
+  unfold adt_ty in *.
+  set (args := (map vty_var (ts_args (adt_name a)))) in *.
+  assert (args_len: length args = length (m_params m)).
+  {
+    unfold args. simpl_len. f_equal. apply (adt_args gamma_valid m_in a_in). 
+  }
+  destruct (find_semantic_constr gamma_valid pd pdf vt m_in a_in args_len d) as [c [[c_in al] Hsem]].
+  simpl in Hsem.
+  exists c. split; [apply constr_in_adt_eq; auto|].
+  intros Htya.
+  simpl.
+  rewrite simpl_all_dec. 
+  (*Now we have to prove equivalent to the interpretations of the projections.
+    As usual, we will do element by element*)
+  (*First simplify casts and LHS*)
+  simpl_rep_full.
+  unfold cast_dom_vty. rewrite !dom_cast_compose.
+  gen_dom_cast. intros Heq1 Heq2.
+  assert (Heq2 = eq_refl) by (apply UIP_dec, sort_eq_dec). subst Heq2. 
+  unfold dom_cast at 1; simpl.  
+  unfold var_to_dom, substi at 1.
+  destruct (vsymbol_eq_dec tyn tyn); [|contradiction].
+  assert (e = eq_refl) by (apply UIP_dec, vsymbol_eq_dec); subst e. simpl.
+  (*Now simplfy RHS*)
+  unfold funs_new_full.
+  rewrite (funs_new_new_constrs new_constr_name gamma_valid pd pdf pf (idents_of_context gamma)) with (m:=m) (a:=a); auto.
+  unfold new_constr_interp. 
+  assert (Hlen': length (map (v_subst vt) args) = length (m_params m)).
+  { rewrite map_length. auto. }
+  erewrite (constrs gamma_valid pd pdf pf m a c m_in a_in c_in (map (v_subst vt) args) Hlen').
+  unfold constr_rep_dom, dom_cast. rewrite !scast_scast.
+  (*Now use [tm_semantic_constr]*)
+  assert (Hsem':=Hsem). unfold semantic_constr in Hsem'.
+  rewrite Hsem'; clear Hsem'.
+  unfold dom_cast; rewrite !scast_scast.
+  apply scast_eq_uip'.
+  (*Proving the [constr_rep] equal amounts to proving the arg lists equal*)
+  f_equal; [apply UIP_dec, Nat.eq_dec|].
+  (*TODO: do we need?*) clear Heq1.
+  match goal with |- context [scast ?H ?x] => generalize dependent H end.
+  intros Heq1.
+  apply hlist_ext_eq with (d:=s_int)(d':=dom_int _).
+  intros i Hi.
+  unfold sym_sigma_args, ty_subst_list_s in Hi. rewrite map_length in Hi.
+  unfold fun_arg_list.
+  assert (Hargs: args = map vty_var (s_params c)). {
+    unfold args. f_equal. rewrite (adt_args gamma_valid m_in a_in), (adt_constr_params gamma_valid m_in a_in c_in).
+    reflexivity.
+  }
+  (*Very annoying to do this because of implicit arguments and args/params that are
+    equal after simplification but "rewrite" cannot tell*)
+  pose proof (get_arg_list_hnth_unif pd vt (new_constr new_constr_name (idents_of_context gamma) c)
+    (map (fun pj : funsym => Tfun pj args [Tvar tyn]) (projection_syms (idents_of_context gamma) c))
+    (term_rep gamma1_valid pd (new_pdf pd pdf) vt (new_pf gamma_valid gamma1_valid pd pdf pf)
+        (substi pd vt vv tyn
+           (scast Heq1
+              (constr_rep gamma_valid m m_in (map (v_subst vt) args)
+                 (eq_trans (map_length (v_subst vt) args) args_len) (dom_aux pd) a a_in c c_in
+                 (adts pdf m (map (v_subst vt) args)) al))))
+    (ltac:(intros; apply term_rep_irrel)) Hargs
+      (proj1' (fun_ty_inv (proj2' (typed_eq_inv Htya))))
+      (proj1' (proj2' (fun_ty_inv (proj2' (typed_eq_inv Htya)))))
+      ((proj1' (proj2' (proj2' (fun_ty_inv (proj2' (typed_eq_inv Htya))))))) i Hi) as Hith.
+  unfold sym_sigma_args in *. simpl in *. rewrite Hith; clear Hith.
+  gen_dom_cast.
+  intros Heq2.
+  (*Now simplify term_rep and use projection definition*)
+  match goal with |- context [term_rep _ _ _ _ _ _ _ _ ?Hty] => generalize dependent Hty end.
+  simpl.
+  rewrite map_nth_inbound with (d2:=id_fs); [| rewrite projection_syms_length; auto].
+  intros Htyith.
+  (*TODO: should prove different lemma about projection_sym rep probably*)
+  set (f:=(nth i (projection_syms (idents_of_context gamma) c) id_fs)) in *.
+  assert (Hinf: In f (projection_syms (idents_of_context gamma) c)).
+  { apply nth_In. rewrite projection_syms_length; auto. } 
+  simpl_rep_full.
+  unfold cast_dom_vty; rewrite !dom_cast_compose. gen_dom_cast.
+  intros Heq3.
+  unfold funs_new_full.
+  (*Unfold function application of projection*)
+  rewrite (funs_new_proj _ gamma_valid pd pdf pf _ Hnewconstr m_in a_in c_in _ Hinf _ _ Hlen').
+  (*need to simplify the [proj_interp] before the [fun_arg_list]*)
+  unfold proj_interp. 
+  destruct (proj_args_eq _ _ _ _ _ _ _ _ _ _ _) as [x Hx]. simpl. simpl in Hx.
+  destruct (find_constr_rep _ _ _ _ _ _ _ _ _ _ _) as [c1 Hc1]. simpl.
+  (*Idea: from [semantic_constr] and this info, can show c and c1 are equal*)
+  (*TODO: copied, can we abstract?*)
+  (*First, simplify in Hx - idea: s_args f is just ADT. This is very, very annoying
+    thanks to the dependent types*)
+  unfold fun_arg_list in Hx; simpl in Hx. revert Hx.
+  gen_dom_cast. gen_dom_cast.
+  (*A hack*)
+  do 3(match goal with |- context [@proj1' ?t ?x ?y] => generalize dependent (@proj1' t x y) end).
+  unfold sym_sigma_args in *.
+   match goal with | |- context [cast_arg_list ?Heq ?x] => generalize dependent Heq end. simpl.
+  rewrite (projection_syms_args _ Hinf).
+  simpl. intros Heq3 Hall1 _ Heq4. 
+  revert Hall1 Heq3 Heq4. 
+  simpl. intros Hall1 Heq3 Heq4 Heq5. rewrite cast_arg_list_cons.
+  (*Finally, something useful*)
+  intros Hx. apply (f_equal hlist_hd) in Hx. simpl in Hx.
+  rewrite !scast_scast in Hx.
+  apply scast_switch in Hx.
+  revert Hx.
+  match goal with |- context [scast ?H ?x] => generalize dependent H end.
+  intros Heq6 Hx.
+  (*Finally, we have x in terms of a cast of a [term_rep] - this is useful*)
+  (*Just need to handle types and IH*)
+  assert (Hsubstret: (ty_subst (s_params f) args (f_ret c)) = vty_cons (adt_name a) args).
+  { 
+    rewrite (projection_syms_params _ Hinf).
+    rewrite (adt_constr_subst_ret gamma_valid m_in a_in c_in); auto. 
+    rewrite (adt_constr_params gamma_valid m_in a_in c_in); auto.
+  }
+  generalize dependent (ty_subst (s_params f) args (f_ret c)). intros ty2 Hall1 Heq7 Hx Hty2; subst ty2.
+  (*Now simplify Hx with substi*)
+  revert Hx. simpl_rep_full.
+  unfold var_to_dom. unfold substi at 1. destruct (vsymbol_eq_dec tyn tyn); [|contradiction].
+  unfold dom_cast at 1; rewrite !scast_scast.
+  match goal with |- context [scast ?H ?x] => generalize dependent H end.
+  intros Heqtemp. (*we already used UIP*) assert (Heqtemp = eq_refl) by (apply Cast.UIP). subst Heqtemp.
+  simpl. intros Hx.
+  (*Now x is a pure [constr_rep] - we can use injectivity*)
+  (*Now, we prove that we again satisfy [semantic_constr] and hence we can use injectivity*)
+  destruct Hc1 as [[c1_in al2] Hx'].
+  assert (Hlen' = (eq_trans (map_length (v_subst vt) args) args_len)) by (apply UIP_dec, Nat.eq_dec); subst Hlen'.
+  assert (Hcs: c = c1). {
+    clear -Hx Hx'. subst. destruct (funsym_eq_dec c c1); subst; auto.
+    exfalso. apply (constr_rep_disjoint) in Hx; auto.
+  }
+  subst c1. assert (c1_in = c_in) by (apply bool_irrelevance). subst c1_in.
+  assert (al2 = al). {
+    clear -Hx Hx'. subst. apply constr_rep_inj in Hx; auto. apply (gamma_all_unif gamma_valid); auto.
+  }
+  subst al2.
+  (*Now at last we can simplify the goal*)
+  destruct (funsym_eq_dec c c); [|contradiction].
+  simpl. (*Easy goal: just show that index equiv and that elts are equal*)
+  rewrite !dom_cast_compose. gen_dom_cast.
+  unfold f.
+  rewrite index_eq_nodup.
+  - clear. intros Heq. assert (Heq = eq_refl) by (apply UIP_dec, sort_eq_dec). subst; reflexivity.
+  - eapply NoDup_map_inv. apply proj_names_nodup.
+  - rewrite projection_syms_length; auto.
+Qed. 
+
+Theorem fold_all_ctx_delta_true {gamma} (gamma_valid: valid_context gamma) 
+  (Hnewconstr: forall (m1 m2 : mut_adt) (a1 a2 : alg_datatype),
+    mut_in_ctx m1 gamma ->
+    mut_in_ctx m2 gamma ->
+    adt_in_mut a1 m1 ->
+    adt_in_mut a2 m2 ->
+    forall c1 c2 : funsym,
+    constr_in_adt c1 a1 -> constr_in_adt c2 a2 -> new_constr_name c1 = new_constr_name c2 -> c1 = c2)
+  (gamma1_valid : valid_context (@new_gamma gamma)) (pd: pi_dom) (pdf: pi_dom_full gamma pd) 
+  (pf: pi_funpred gamma_valid pd pdf) vt vv x Hty:
+  In x (concat (map (comp_ctx_delta new_constr_name (idents_of_context gamma) noind) gamma)) ->
+  formula_rep gamma1_valid pd (new_pdf pd pdf) vt (new_pf gamma_valid gamma1_valid pd pdf pf) vv (snd x) Hty.
+Proof.
+  intros Hinx.
+  apply fold_all_ctx_delta_in in Hinx; [|solve[auto]].
+  destruct Hinx as [m [a [m_in [a_in Hinx]]]].
+  apply in_add_axioms_delta in Hinx.
+  (*5 cases: 1 per axiom*)
+  destruct Hinx as [Hx | [[c [Hinc Hinx]] | [[Hsingle [Hnoind Hinx]] | [Hinx | [Hsingle Hinx]]]]].
+  - subst. eapply (inversion_axiom_true gamma_valid); eauto.
+  - admit.
+Admitted.
+
 
 (*The core result: soundness of [fold_comp]
   TODO: probably need to generalize from [empty_state]*)
@@ -2961,8 +3227,7 @@ Proof.
       unfold rewriteF'.
       rewrite rewriteF_no_patmatch_rep with (Hty:=Htyf'); auto.
       (*Now just show that axioms are sound wrt new context*)
-      (*TODO: prove this*)
-      admit.
+      eapply fold_all_ctx_delta_true in Hinf. apply Hinf.
     - (*Old delta still sound by correctness of rewriteF*)
       intros Htyf vt' vv'.
       assert (Htyf': formula_typed (task_gamma tsk) f).
@@ -2996,7 +3261,7 @@ Proof.
   rewrite (rewriteF_rep' gamma_valid Hconstrname' gamma1_valid pd pdf pf vt (task_goal tsk) (task_goal_typed tsk)
     Hsimpg Hexhg true) in Hconseq1.
   apply Hconseq1.
-Admitted.
+Qed.
 
 Require Import compile_match.
 
