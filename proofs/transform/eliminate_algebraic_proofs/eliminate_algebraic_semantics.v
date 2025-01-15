@@ -3305,11 +3305,6 @@ Proof.
   reflexivity.
 Qed.
 
-(* Check dom_cast_compose.
-
-(*Sometimes the sorts are not definitionally equal*)
-Lemma dom_cast_compose_gen (dom_aux: sort -> Set) (s1 s2 s3 s4 : sort) (Heq1: 
- *)
 (*3. indexer axioms sound*)
 
 (*This is conceptually simple - we don't even have to reason about [arg_lists]. But 
@@ -3439,6 +3434,71 @@ Proof.
   apply constr_rep_disjoint in Hx; auto. contradiction.
 Qed.
 
+Lemma prove_negb (b: bool):
+  ~ b -> negb b = true.
+Proof.
+  destruct b; auto.
+Qed.
+
+(*4. Discriminator axiom sound*)
+
+(*This one is easy: basically just unfold everything and use [constr_rep_disjoint]*)
+Lemma discriminator_axioms_true {gamma} (gamma_valid: valid_context gamma)
+  (Hnewconstr: forall (m1 m2 : mut_adt) (a1 a2 : alg_datatype),
+    mut_in_ctx m1 gamma ->
+    mut_in_ctx m2 gamma ->
+    adt_in_mut a1 m1 ->
+    adt_in_mut a2 m2 ->
+    forall c1 c2 : funsym,
+    constr_in_adt c1 a1 -> constr_in_adt c2 a2 -> new_constr_name c1 = new_constr_name c2 -> c1 = c2)
+  (gamma1_valid : valid_context (@new_gamma gamma))
+  {m a} (m_in: mut_in_ctx m gamma) (a_in: adt_in_mut a m)
+  (pd: pi_dom) (pdf: pi_dom_full gamma pd) 
+  (pf: pi_funpred gamma_valid pd pdf) vt vv x
+  (Hinx: In x
+         (discriminator_axioms new_constr_name (idents_of_context gamma) (adt_name a)
+            (adt_ty (adt_name a)) (adt_constr_list a))) Hty:
+  formula_rep gamma1_valid pd (new_pdf pd pdf) vt (new_pf gamma_valid gamma1_valid pd pdf pf) vv (snd x) Hty.
+Proof.
+  unfold discriminator_axioms in Hinx.
+  (*We don't actually care that we have index i, j, where i < j, but we do need to know that the two
+    constructors are not equal*)
+  apply in_map_pairs_nodup in Hinx.
+  2: { eapply NoDup_map_inv. apply (constr_list_names_Nodup gamma_valid m_in a_in). }
+  destruct Hinx as [c1 [c2 [Hc12 [Hinc1 [Hinc2 Hx]]]]].
+  assert (c1_in: constr_in_adt c1 a) by (apply constr_in_adt_eq; auto).
+  assert (c2_in: constr_in_adt c2 a) by (apply constr_in_adt_eq; auto).
+  subst; simpl. revert Hty.
+  unfold rev_map. rewrite !map_rev. rewrite !rev_involutive.
+  set (vars1:=(combine (gen_names (Datatypes.length (s_args c1)) "u" []) (s_args c1))) in *.
+  set (vars2:=(combine (gen_names (Datatypes.length (s_args c2)) "v" []) (s_args c2))) in *.
+  simpl. intros Hty.
+  set (Hty1:=proj1'(fforalls_typed_inv _ _ Hty)).
+  rewrite fforalls_rep' with (Hval1:=Hty1).
+  rewrite simpl_all_dec. intros h1.
+  set (Hty2:=proj1'(fforalls_typed_inv _ _ Hty1)).
+  rewrite fforalls_rep' with (Hval1:=Hty2).
+  rewrite simpl_all_dec. intros h2.
+  (*Now simplify inequality*)
+  unfold t_neq. simpl_rep_full.
+  apply prove_negb.
+  intros Hdec.
+  rewrite simpl_all_dec in Hdec. revert Hdec.
+  unfold cast_dom_vty.
+  unfold funs_new_full.
+  rewrite !(funs_new_new_constrs) with (m:=m)(a:=a) by auto.
+  unfold new_constr_interp.
+  assert (Hlen: length (map (v_subst vt) (map vty_var (ts_args (adt_name a)))) = length (m_params m)).
+  { simpl_len. f_equal. apply (adt_args gamma_valid m_in a_in). }
+  rewrite (constrs gamma_valid pd pdf pf _ _ _ m_in a_in c1_in) with (Hlens:=Hlen).
+  rewrite (constrs gamma_valid pd pdf pf _ _ _ m_in a_in c2_in) with (Hlens:=Hlen).
+  unfold constr_rep_dom.
+  (*Now, easy to unfold cast, use disjointness, and get contradiction*)
+  unfold dom_cast; rewrite !scast_scast. rewrite scast_eq_uip_iff.
+  intros Hconstr. apply constr_rep_disjoint in Hconstr; auto.
+Qed.
+
+
 Theorem fold_all_ctx_delta_true {gamma} (gamma_valid: valid_context gamma) 
   (Hnewconstr: forall (m1 m2 : mut_adt) (a1 a2 : alg_datatype),
     mut_in_ctx m1 gamma ->
@@ -3461,6 +3521,7 @@ Proof.
   - subst. eapply (inversion_axiom_true gamma_valid); eauto.
   - apply constr_in_adt_eq in Hinc. eapply projection_axioms_true; eauto.
   - eapply indexer_axioms_true; eauto.
+  - eapply discriminator_axioms_true; eauto. 
   - admit.
 Admitted.
 
