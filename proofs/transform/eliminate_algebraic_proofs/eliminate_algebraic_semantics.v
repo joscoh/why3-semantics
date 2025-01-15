@@ -3097,6 +3097,208 @@ Proof.
   - rewrite projection_syms_length; auto.
 Qed. 
 
+Require Import GenElts.
+
+(*2. Projection axioms sound*)
+Lemma projection_axioms_true {gamma} (gamma_valid: valid_context gamma)
+  (Hnewconstr: forall (m1 m2 : mut_adt) (a1 a2 : alg_datatype),
+    mut_in_ctx m1 gamma ->
+    mut_in_ctx m2 gamma ->
+    adt_in_mut a1 m1 ->
+    adt_in_mut a2 m2 ->
+    forall c1 c2 : funsym,
+    constr_in_adt c1 a1 -> constr_in_adt c2 a2 -> new_constr_name c1 = new_constr_name c2 -> c1 = c2)
+  (gamma1_valid : valid_context (@new_gamma gamma))
+  {m a c} (m_in: mut_in_ctx m gamma) (a_in: adt_in_mut a m) (c_in: constr_in_adt c a)
+  (pd: pi_dom) (pdf: pi_dom_full gamma pd) 
+  (pf: pi_funpred gamma_valid pd pdf) vt vv x
+  (Hinx: In x (map snd (projection_axioms new_constr_name (idents_of_context gamma) c
+    (projection_syms (idents_of_context gamma) c)))) Hty:
+  formula_rep gamma1_valid pd (new_pdf pd pdf) vt (new_pf gamma_valid gamma1_valid pd pdf pf) vv (snd x) Hty.
+Proof.
+  unfold projection_axioms in Hinx.
+  rewrite in_map_iff in Hinx.
+  destruct Hinx as [[projf [n f]] [Hx Hinf]].
+  simpl in Hx; subst x. revert Hinf. simpl.
+  rewrite in_map2_iff with (d1:=(tm_d, vty_int))(d2:=id_fs).
+  2: { unfold vsymbol. simpl_len. rewrite projection_syms_length, gen_names_length. lia. }
+  replace (length (combine _ _)) with (length (s_args c)).
+  2: { unfold vsymbol; simpl_len. rewrite gen_names_length; lia. }
+  intros [i [Hi Heq]].
+  inversion Heq; subst; clear Heq.
+  simpl in *.
+  (*Some simplification*)
+  revert Hty.
+  rewrite combine_nth by (unfold vsymbol; solve_len).
+  rewrite map_snd_combine by (rewrite gen_names_length; lia).
+  rewrite map_nth_inbound with (d2:=(""%string, vty_int)).
+  2: { simpl_len. rewrite gen_names_length; lia. }
+  rewrite combine_nth by (rewrite gen_names_length; lia).
+  set (f:=(nth i (projection_syms (idents_of_context gamma) c) id_fs)) in *.
+  set (tyi:=(nth i (s_args c) vty_int)) in *.
+  set (namei:=(nth i (gen_names (Datatypes.length (s_args c)) "u" []) ""%string)) in *.
+  simpl. (*TODO: do I need to adjust (map vty_var (s_params c)) ? See*)
+  set (newvars := (combine (gen_names (Datatypes.length (s_args c)) "u" []) (s_args c))) in *.
+  intros Hty.
+  (*Now start simplifying rep*)
+  rewrite fforalls_rep' with (Hval1:=proj1' (fforalls_typed_inv _ _ Hty)).
+  rewrite simpl_all_dec.
+  intros h.
+  match goal with |- context [@proj1' ?t ?x ?y] => generalize dependent (@proj1' t x y) end.
+  intros Htyeq.
+  simpl_rep_full.
+  rewrite simpl_all_dec. unfold var_to_dom.
+  unfold cast_dom_vty. rewrite !dom_cast_compose. gen_dom_cast.
+  intros Heq1 Heq2. assert (Heq1 = eq_refl) by (apply UIP_dec, sort_eq_dec). subst Heq1.
+  unfold dom_cast at 2; simpl.
+  (*Simplify RHS by substituting in the correct variable*)
+  assert (Hith: (namei, tyi) = nth i newvars vs_d). {
+    unfold newvars, namei, tyi, vsymbol, vs_d. 
+    rewrite combine_nth; auto. rewrite gen_names_length; lia.
+  }
+  assert (Hi': i < length newvars). {
+    unfold newvars. simpl_len. rewrite gen_names_length; lia.
+  }
+  (*Need to do separately because of dependent types*)
+  assert (Hcast1: snd (nth i newvars vs_d) = tyi). {
+    unfold newvars. simpl. unfold vsymbol, vs_d; rewrite combine_nth; auto.
+    rewrite gen_names_length; lia.
+  }
+  (*subst tyi*)
+  generalize dependent tyi. intros; subst.
+  replace (substi_mult pd vt vv newvars h (namei, snd (nth i newvars vs_d))) with
+    (*(dom_cast (dom_aux pd) Hcast*)
+      (dom_cast (dom_aux pd) (substi_mult_nth_lemma (v_subst vt) snd newvars i Hi' s_int vs_d) 
+        (hnth i h s_int (dom_int pd))).
+  2: {
+    symmetry. rewrite <- substi_mult_nth' with (vv:=vv); auto.
+    - unfold newvars, vsymbol, vs_d. rewrite combine_nth; auto.
+      rewrite gen_names_length; lia.
+    - unfold newvars. apply NoDup_combine_l, gen_names_nodup.
+  }
+  (*Now simplify projection interp*)
+  unfold funs_new_full.
+  assert (Hinf: In f (projection_syms (idents_of_context gamma) c)).
+  { apply nth_In. rewrite projection_syms_length; auto. } 
+  assert (Hlen': length (map (v_subst vt) (map vty_var (s_params c))) = length (m_params m)).
+  { rewrite !map_length. f_equal. apply (adt_constr_params gamma_valid m_in a_in c_in). } 
+  rewrite (funs_new_proj _ gamma_valid pd pdf pf _ Hnewconstr m_in a_in c_in _ Hinf _ _ Hlen').
+  (*TODO: repetitive, but dependent types make it hard to abstract*)
+  unfold proj_interp. 
+  destruct (proj_args_eq _ _ _ _ _ _ _ _ _ _ _) as [x Hx]. simpl. simpl in Hx.
+  destruct (find_constr_rep _ _ _ _ _ _ _ _ _ _ _) as [c1 Hc1]. simpl.
+  (*Idea: from [semantic_constr] and this info, can show c and c1 are equal*)
+  (*First, simplify in Hx - idea: s_args f is just ADT. This is very, very annoying
+    thanks to the dependent types*)
+  unfold fun_arg_list in Hx; simpl in Hx. revert Hx.
+  gen_dom_cast. gen_dom_cast.
+  (*A hack*)
+  do 3(match goal with |- context [@proj1' ?t ?x ?y] => generalize dependent (@proj1' t x y) end).
+  unfold sym_sigma_args in *.
+  match goal with | |- context [cast_arg_list ?Heq ?x] => generalize dependent Heq end. simpl.
+  rewrite (projection_syms_args _ Hinf).
+  simpl. simpl. intros Heq1 Hall1 _ Heq2 Heq3 Heq4. 
+  rewrite cast_arg_list_cons.
+  (*Finally, something useful*)
+  intros Hx. apply (f_equal hlist_hd) in Hx. simpl in Hx.
+  rewrite !scast_scast in Hx.
+  apply scast_switch in Hx.
+  revert Hx.
+  match goal with |- context [scast ?H ?x] => generalize dependent H end.
+  intros Heq5 Hx.
+  (*Now simplify constr symbol*)
+  revert Hx. simpl_rep_full.
+  unfold cast_dom_vty, dom_cast; rewrite !scast_scast.
+  match goal with |- context [scast ?H ?x] => generalize dependent H end.
+  clear Heq5; intros Heq5.
+  unfold funs_new_full.
+  rewrite (funs_new_new_constrs) with (m:=m)(a:=a) by auto.
+  unfold new_constr_interp.
+  rewrite (constrs gamma_valid pd pdf pf _ _ _ m_in a_in c_in) with (Hlens:=Hlen').
+  unfold constr_rep_dom. rewrite !scast_scast.
+  match goal with |- context [scast ?H ?x] => generalize dependent H end.
+  clear Heq5; intros Heq5.
+  assert (Heq5 = eq_refl) by (apply Cast.UIP). subst Heq5; simpl.
+  intros Hx.
+  (*Now we combine Hx with the info we already have about Hx to show constrs
+    and arg lists equiv*)
+  destruct Hc1 as [[c1_in al2] Hx']. simpl.
+  assert (Hcs: c = c1). {
+    clear -Hx Hx'. subst. destruct (funsym_eq_dec c c1); subst; auto.
+    exfalso. apply (constr_rep_disjoint) in Hx; auto.
+  }
+  subst c1. assert (c1_in = c_in) by (apply bool_irrelevance). subst c1_in.
+  (*And we will show that the two [arg_lists] are the same*)
+  assert (Hcast: (map (v_subst vt) (map snd newvars)) =
+    (ty_subst_list_s (s_params c) (map (v_subst vt) (map vty_var (s_params c))) (s_args c))).
+  {
+    (*TODO: is there an easier proof?*)
+    unfold newvars. rewrite map_snd_combine. 2: rewrite gen_names_length; lia.
+    apply list_eq_ext'; simpl_len; [unfold ty_subst_list_s; solve_len|].
+    intros n d Hn.
+    rewrite map_nth_inbound with (d2:=vty_int) by auto.
+    unfold ty_subst_list_s. rewrite map_nth_inbound with (d2:=vty_int) by auto.
+    apply v_ty_subst_eq.
+    - apply s_params_Nodup.
+    - solve_len.
+    - intros j Hj. rewrite !map_map.
+      rewrite map_nth_inbound with (d2:=""%string) by solve_len.
+      apply sort_inj; simpl. reflexivity.
+    - intros tv Hintv.
+      assert (c_wf: wf_funsym gamma c).
+      { clear -gamma_valid m_in a_in c_in. apply valid_context_wf in gamma_valid.
+        apply wf_context_full in gamma_valid.
+        destruct gamma_valid as [Hwf _].
+        rewrite Forall_forall in Hwf. apply Hwf.
+        eapply constrs_in_funsyms; eauto.
+      }
+      unfold wf_funsym in c_wf.
+      rewrite Forall_forall in c_wf.
+      specialize (c_wf (nth n (s_args c) vty_int)).
+      forward c_wf.
+      { simpl; right; apply nth_In; auto. }
+      destruct c_wf as [_ c_wf].
+      rewrite Forall_forall in c_wf; auto.
+  }
+  assert (Hal: al2 = (cast_arg_list Hcast h)).
+  {
+    (*Idea: use constr rep injectivity, then simplify [fun_arg_list]*)
+    subst. apply constr_rep_inj in Hx. 2: apply (gamma_all_unif gamma_valid); auto.
+    simpl in Hx. rewrite Hx.
+    clear Hx.
+    (*Prove element by element*)
+    apply hlist_ext_eq with (d:=s_int)(d':=dom_int _).
+    unfold ty_subst_list_s. simpl_len. intros j Hj.
+    unfold fun_arg_list.
+    (*Once again, can't just rewrite because of implicits*)
+    pose proof (get_arg_list_hnth_unif pd vt (new_constr new_constr_name (idents_of_context gamma) c)
+      (map Tvar newvars)
+      (term_rep gamma1_valid pd (new_pdf pd pdf) vt (new_pf gamma_valid gamma1_valid pd pdf pf)
+        (substi_mult pd vt vv newvars h)) (ltac:(intros; apply term_rep_irrel)) eq_refl
+      (proj1' (fun_ty_inv (Forall_inv Hall1))) (proj1' (proj2' (fun_ty_inv (Forall_inv Hall1))))
+     (proj1' (proj2' (proj2' (fun_ty_inv (Forall_inv Hall1))))) j Hj) as Hjth.
+    unfold sym_sigma_args, ty_subst_list_s in *. simpl in *. rewrite Hjth; clear Hjth.
+    match goal with |- context [term_rep _ _ _ _ _ _ _ _ ?Hty] => generalize dependent Hty end.
+    simpl. assert (Hnewvars: length newvars = length (s_args c)). {
+      unfold newvars. simpl_len. rewrite gen_names_length; lia. }
+    rewrite map_nth_inbound with (d2:=(""%string, vty_int)) by lia.
+    intros Htyt. simpl_rep_full.
+    unfold var_to_dom. assert (Hj': j < length newvars) by lia. 
+    rewrite substi_mult_nth' with (Hi:=Hj').
+    2: { apply NoDup_combine_l, gen_names_nodup. }
+    rewrite hnth_cast_arg_list. rewrite rewrite_dom_cast, !dom_cast_compose. apply dom_cast_eq.
+  }
+  (*Now finish up*)
+  destruct (funsym_eq_dec c c); [| contradiction]. simpl.
+  rewrite !rewrite_dom_cast, !dom_cast_compose.
+  gen_dom_cast.
+  unfold f. rewrite index_eq_nodup.
+  2: { eapply NoDup_map_inv. apply proj_names_nodup. }
+  2: { rewrite projection_syms_length. auto. }
+  intros. subst al2. rewrite hnth_cast_arg_list.
+  rewrite rewrite_dom_cast, !dom_cast_compose. apply dom_cast_eq.
+Qed.
+
 Theorem fold_all_ctx_delta_true {gamma} (gamma_valid: valid_context gamma) 
   (Hnewconstr: forall (m1 m2 : mut_adt) (a1 a2 : alg_datatype),
     mut_in_ctx m1 gamma ->
@@ -3117,7 +3319,8 @@ Proof.
   (*5 cases: 1 per axiom*)
   destruct Hinx as [Hx | [[c [Hinc Hinx]] | [[Hsingle [Hnoind Hinx]] | [Hinx | [Hsingle Hinx]]]]].
   - subst. eapply (inversion_axiom_true gamma_valid); eauto.
-  - admit.
+  - apply constr_in_adt_eq in Hinc. eapply projection_axioms_true; eauto.
+  -  admit.
 Admitted.
 
 
