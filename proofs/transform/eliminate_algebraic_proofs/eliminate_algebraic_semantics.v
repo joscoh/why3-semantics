@@ -2636,6 +2636,225 @@ Definition rewriteF_no_patmatch_rep {gamma} (gamma_valid: valid_context gamma) g
   proj_fmla (rewrite_no_patmatch_rep gamma_valid gamma1 badnames names pd pdf vt pf) f Hty sign Hty1 Hn vv.
 
 
+(*1. recursive def in new gamma iff in old gamma
+      2. nonrec def in new gamma iff in map rewriteT/F of old gamma
+      3. indpred in new gamma iff in old gamma*)
+Lemma recursive_def_new_gamma gamma l:
+  In (recursive_def l) (@new_gamma gamma) <-> In (recursive_def l) gamma.
+Proof.
+  unfold new_gamma, new_ctx, fold_all_ctx_gamma_gen.
+  rewrite in_concat.
+  setoid_rewrite in_map_iff.
+  unfold comp_ctx_gamma.
+  split.
+  - intros [l1 [[d [Hl1 Hind]] Hinl]]; subst.
+    destruct d; simpl in Hinl; try (destruct Hinl as [Hl | []]; subst; auto; try discriminate).
+    2: { inversion Hl; subst; auto. }
+    (*TODO: separate lemma?*)
+    rewrite in_app_iff in Hinl.
+    rewrite in_concat in Hinl.
+    destruct Hinl as [Hinl | Hinl].
+    + destruct Hinl as [ld [Hinld Hinl]].
+      rewrite in_map_iff in Hinld. destruct_all; subst.
+      apply in_add_axioms_gamma in Hinl. destruct_all; subst; discriminate.
+    + destruct (keep_muts m); [destruct Hinl as [Hl |[]]; discriminate|].
+      rewrite in_map_iff in Hinl; destruct_all; discriminate.
+  - intros Hl. exists [recursive_def l].
+    split; simpl; auto.
+    exists (recursive_def l). simpl. auto.
+Qed.
+
+(*Nonrec is more interesting*)
+
+Definition funpred_def_rewrite_rel gamma (fd1 fd2: funpred_def) : Prop :=
+  match fd1, fd2 with
+  | fun_def f1 vs1 t1, fun_def f2 vs2 t2 => f1 = f2 /\ vs1 = vs2 /\ 
+    t1 = rewriteT' keep_muts new_constr_name (idents_of_context gamma) gamma t2
+  | pred_def p1 vs1 f1, pred_def p2 vs2 f2 => p1 = p2 /\ vs1 = vs2 /\
+    f1 = rewriteF' keep_muts new_constr_name (idents_of_context gamma) gamma true f2
+  | _ , _ => False
+  end.
+
+Lemma nonrec_def_new_gamma gamma fd:
+  In (nonrec_def fd) (@new_gamma gamma) <-> exists fd1, In (nonrec_def fd1) gamma /\
+    funpred_def_rewrite_rel gamma fd fd1.
+Proof.
+  unfold new_gamma, new_ctx, fold_all_ctx_gamma_gen.
+  rewrite in_concat.
+  setoid_rewrite in_map_iff.
+  unfold comp_ctx_gamma.
+  split.
+  - intros [l1 [[d [Hl1 Hind]] Hinl]]; subst.
+    destruct d; simpl in Hinl; try (destruct Hinl as [Hl | []]; subst; auto; try discriminate).
+    + (*TODO: separate lemma? - copied*)
+      rewrite in_app_iff in Hinl.
+      rewrite in_concat in Hinl.
+      destruct Hinl as [Hinl | Hinl].
+      * destruct Hinl as [ld [Hinld Hinl]].
+        rewrite in_map_iff in Hinld. destruct_all; subst.
+        apply in_add_axioms_gamma in Hinl. destruct_all; subst; discriminate.
+      * destruct (keep_muts m); [destruct Hinl as [Hl |[]]; discriminate|].
+        rewrite in_map_iff in Hinl; destruct_all; discriminate.
+    + (*nonrec case*)
+      inversion Hl; subst; clear Hl.
+      exists f. split; auto.
+      destruct f; simpl; auto.
+  - intros [fd1 [Hinfd2 Hfd]].
+    exists [nonrec_def fd]. simpl; split; auto.
+    exists (nonrec_def fd1); auto.
+    split; auto. simpl. f_equal. unfold funpred_def_rewrite_rel in Hfd.
+    destruct fd; destruct fd1; try contradiction; destruct_all; subst; auto.
+Qed.
+
+
+(*indpred same as recfun - same proof should fix*)
+Lemma inductive_def_new_gamma gamma l:
+  In (inductive_def l) (@new_gamma gamma) <-> In (inductive_def l) gamma.
+Proof.
+  unfold new_gamma, new_ctx, fold_all_ctx_gamma_gen.
+  rewrite in_concat.
+  setoid_rewrite in_map_iff.
+  unfold comp_ctx_gamma.
+  split.
+  - intros [l1 [[d [Hl1 Hind]] Hinl]]; subst.
+    destruct d; simpl in Hinl; try (destruct Hinl as [Hl | []]; subst; auto; try discriminate).
+    2: { inversion Hl; subst; auto. }
+    rewrite in_app_iff in Hinl.
+    rewrite in_concat in Hinl.
+    destruct Hinl as [Hinl | Hinl].
+    + destruct Hinl as [ld [Hinld Hinl]].
+      rewrite in_map_iff in Hinld. destruct_all; subst.
+      apply in_add_axioms_gamma in Hinl. destruct_all; subst; discriminate.
+    + destruct (keep_muts m); [destruct Hinl as [Hl |[]]; discriminate|].
+      rewrite in_map_iff in Hinl; destruct_all; discriminate.
+  - intros Hl. exists [inductive_def l].
+    split; simpl; auto.
+    exists (inductive_def l). simpl. auto.
+Qed.
+
+Lemma pf_new_full {gamma} 
+  (gamma_valid: valid_context gamma)
+  (Hnewconstr: forall (m1 m2 : mut_adt) (a1 a2 : alg_datatype),
+    mut_in_ctx m1 gamma ->
+    mut_in_ctx m2 gamma ->
+    adt_in_mut a1 m1 ->
+    adt_in_mut a2 m2 ->
+    forall c1 c2 : funsym,
+    constr_in_adt c1 a1 -> constr_in_adt c2 a2 -> new_constr_name c1 = new_constr_name c2 -> c1 = c2)
+  (gamma1_valid: valid_context (@new_gamma gamma))
+  (Hnorecind : no_recfun_indpred_gamma gamma)
+  (Hsimp: ctx_pat_simpl gamma)
+  (pd: pi_dom) (pdf: pi_dom_full gamma pd) (pf: pi_funpred gamma_valid pd pdf)
+  (pf_full: full_interp gamma_valid pd pf):
+  full_interp gamma1_valid pd (new_pf gamma_valid gamma1_valid pd pdf pf).
+Proof.
+  unfold full_interp in *.
+  destruct pf_full as [Hfuns [Hpreds [Hind1 Hind2]]].
+  unfold no_recfun_indpred_gamma in Hnorecind.
+  unfold is_true in Hnorecind; rewrite forallb_forall in Hnorecind. 
+  (*2 cases the same*)
+  assert (Hind: forall l : list (predsym * list formula),
+    In l (indpreds_of_context (@new_gamma gamma)) ->
+    False).
+  {
+    intros l Hinl. exfalso.
+    apply in_indpreds_of_context in Hinl.
+    destruct Hinl as [l2 [Hinl2 Hl]]; subst.
+    rewrite inductive_def_new_gamma in Hinl2.
+    specialize (Hnorecind _ Hinl2).
+    discriminate.
+  }
+  split_all.
+  - (*funs*)
+    intros f args body f_in srts srts_len a vt vv.
+    unfold new_pf. simpl.
+    (*2 cases: recursive or nonrecursive. In first contradiction. In 2nd, use lemma*)
+    assert (f_in':=f_in). unfold fun_defined in f_in'.
+    destruct f_in' as [[fs [Hinfs Hinf]] | Hinf].
+    + apply in_mutfuns in Hinfs. rewrite recursive_def_new_gamma in Hinfs.
+      (*contradicts no recfun*)
+      apply Hnorecind in Hinfs. discriminate.
+    + (*use rewriteT*)
+      apply nonrec_def_new_gamma in Hinf.
+      destruct Hinf as [fd1 [Hinfd1 Hrewrite]].
+      (*Reconstructor [concrete_def*)
+      destruct fd1 as [f2 args2 body2 | ? ? ?]; unfold funpred_def_rewrite_rel in Hrewrite;
+      [|contradiction].
+      destruct_all; subst.
+      (*Now rewrite with rewriteT*)
+      assert (Htyf: term_has_type gamma body2 (f_ret f2)). {
+        apply nonrec_body_ty in Hinfd1; auto.
+      }
+      unfold ctx_pat_simpl in Hsimp.
+      unfold is_true in Hsimp; rewrite forallb_forall in Hsimp.
+      specialize (Hsimp _ Hinfd1). simpl in Hsimp. 
+      rewrite andb_true_iff in Hsimp.
+      destruct Hsimp as [Hsimpf Hexhh].
+      erewrite term_rep_irrel. 
+      fold (@new_pf gamma gamma_valid gamma1_valid pd pdf pf).
+      rewrite (rewriteT_rep' gamma_valid Hnewconstr gamma1_valid pd pdf pf 
+        (vt_with_args vt (s_params f2) srts) body2 (f_ret f2) Htyf Hsimpf Hexhh).
+      (*and now use existing hypothesis*)
+      unfold funs_new_full.
+      rewrite funs_new_old_names.
+      2: {
+        apply sig_f_in_idents.
+        rewrite in_map_iff.
+        exists f2; split; auto.
+        unfold sig_f.
+        rewrite in_concat.
+        exists (funsyms_of_nonrec (fun_def f2 args2 body2)). split; simpl; auto.
+        rewrite in_map_iff. exists (nonrec_def (fun_def f2 args2 body2)); split; auto.
+      }
+      assert (f_in': fun_defined gamma f2 args2 body2). {
+        unfold fun_defined; auto.
+      }
+      specialize (Hfuns f2 args2 body2 f_in' srts srts_len a vt vv).
+      rewrite Hfuns. f_equal.
+      { apply UIP_dec, sort_eq_dec. }
+      apply term_rep_irrel.
+  - (*preds - almost exactly the same, a bit simpler because no new preds*)
+    intros p args body p_in srts srts_len a vt vv.
+    unfold new_pf. simpl.
+    assert (p_in':=p_in). unfold pred_defined in p_in'.
+    destruct p_in' as [[fs [Hinfs Hinf]] | Hinf].
+    + apply in_mutfuns in Hinfs. rewrite recursive_def_new_gamma in Hinfs.
+      (*contradicts no recfun*)
+      apply Hnorecind in Hinfs. discriminate.
+    + (*use rewriteF*)
+      apply nonrec_def_new_gamma in Hinf.
+      destruct Hinf as [fd1 [Hinfd1 Hrewrite]].
+      (*Reconstructor [concrete_def*)
+      destruct fd1 as [? ? ? |p2 args2 body2]; unfold funpred_def_rewrite_rel in Hrewrite;
+      [contradiction|].
+      destruct_all; subst.
+      (*Now rewrite with rewriteT*)
+      assert (Htyf: formula_typed gamma body2). {
+        apply nonrec_body_typed in Hinfd1; auto.
+      }
+      unfold ctx_pat_simpl in Hsimp.
+      unfold is_true in Hsimp; rewrite forallb_forall in Hsimp.
+      specialize (Hsimp _ Hinfd1). simpl in Hsimp. 
+      rewrite andb_true_iff in Hsimp.
+      destruct Hsimp as [Hsimpf Hexhh].
+      erewrite fmla_rep_irrel. 
+      fold (@new_pf gamma gamma_valid gamma1_valid pd pdf pf).
+      rewrite (rewriteF_rep' gamma_valid Hnewconstr gamma1_valid pd pdf pf 
+        (vt_with_args vt (s_params p2) srts) body2 Htyf Hsimpf Hexhh).
+      (*and now use existing hypothesis*)
+      unfold preds_new.
+      assert (p_in': pred_defined gamma p2 args2 body2). {
+        unfold pred_defined; auto.
+      }
+      specialize (Hpreds p2 args2 body2 p_in' srts srts_len a vt vv).
+      rewrite Hpreds.
+      apply fmla_rep_irrel.
+  - (*Contradiction - no indpreds*)
+    intros; exfalso; eapply Hind; eauto.
+  - intros; exfalso; eapply Hind; eauto.
+Qed.
+
+
 (*The core result: soundness of [fold_comp]
   TODO: probably need to generalize from [empty_state]*)
 (*We need the precondition that pattern matches have been compiled away*)
@@ -2696,10 +2915,12 @@ Proof.
     gamma*)
   set (pdf' := new_pdf pd pdf) in *.
   set (pf' := new_pf gamma_valid gamma1_valid pd pdf pf) in *.
-  (*NOTE: need to prove full_interp (TODO)*)
-  assert (pf_full': full_interp gamma1_valid pd pf') by admit.
-  specialize (Hconseq1 pd pdf' pf' pf_full').
-  (*Will be useful*)
+  destruct Hpre as [Hnorecind Hsimpl].
+  unfold task_pat_simpl in Hsimpl. 
+  unfold is_true in Hsimpl; rewrite !andb_true_iff in Hsimpl.
+  destruct Hsimpl as [[Hsimpgamma Hsimpd] Hsimpg].
+  unfold no_recfun_indpred in Hnorecind.
+  (*Will be useful (TODO: separate lemma? probably*)
   assert (Hconstrname': forall (m1 m2 : mut_adt) (a1 a2 : alg_datatype),
   mut_in_ctx m1 (task_gamma tsk) ->
   mut_in_ctx m2 (task_gamma tsk) ->
@@ -2710,10 +2931,9 @@ Proof.
   { intros m1 m2 a1 a2 m1_in m2_in a1_in a2_in c1 c2 c1_in c2_in.
     apply (Hconstrname _ gamma_valid m1 m2 a1 a2 c1 c2); auto.
   }
-  destruct Hpre as [Hnorecind Hsimpl].
-  unfold task_pat_simpl in Hsimpl. 
-  unfold is_true in Hsimpl; rewrite !andb_true_iff in Hsimpl.
-  destruct Hsimpl as [[Hsimpgamma Hsimpd] Hsimpg].
+  (*We shoed full interp*)
+  assert (pf_full': full_interp gamma1_valid pd pf') by (apply pf_new_full; auto).
+  specialize (Hconseq1 pd pdf' pf' pf_full').
   (*Now we prove that under this modified interp, all of the axioms are true*)
   forward Hconseq1.
   {
