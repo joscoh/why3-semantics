@@ -3299,6 +3299,146 @@ Proof.
   rewrite rewrite_dom_cast, !dom_cast_compose. apply dom_cast_eq.
 Qed.
 
+Lemma dom_cast_refl {s: sort} dom (x: domain dom s):
+  dom_cast dom eq_refl x = x.
+Proof.
+  reflexivity.
+Qed.
+
+(* Check dom_cast_compose.
+
+(*Sometimes the sorts are not definitionally equal*)
+Lemma dom_cast_compose_gen (dom_aux: sort -> Set) (s1 s2 s3 s4 : sort) (Heq1: 
+ *)
+(*3. indexer axioms sound*)
+
+(*This is conceptually simple - we don't even have to reason about [arg_lists]. But 
+  Coq's poor support for dependent types make it painful*)
+Lemma indexer_axioms_true {gamma} (gamma_valid: valid_context gamma)
+  (Hnewconstr: forall (m1 m2 : mut_adt) (a1 a2 : alg_datatype),
+    mut_in_ctx m1 gamma ->
+    mut_in_ctx m2 gamma ->
+    adt_in_mut a1 m1 ->
+    adt_in_mut a2 m2 ->
+    forall c1 c2 : funsym,
+    constr_in_adt c1 a1 -> constr_in_adt c2 a2 -> new_constr_name c1 = new_constr_name c2 -> c1 = c2)
+  (gamma1_valid : valid_context (@new_gamma gamma))
+  {m a} (m_in: mut_in_ctx m gamma) (a_in: adt_in_mut a m)
+  (pd: pi_dom) (pdf: pi_dom_full gamma pd) 
+  (pf: pi_funpred gamma_valid pd pdf) vt vv x
+  (Hinx: In x  (snd (indexer_axiom new_constr_name (idents_of_context gamma) (adt_name a) 
+      (adt_constr_list a)))) Hty:
+  formula_rep gamma1_valid pd (new_pdf pd pdf) vt (new_pf gamma_valid gamma1_valid pd pdf pf) vv (snd x) Hty.
+Proof.
+  unfold indexer_axiom in Hinx. simpl in Hinx.
+  unfold mapi in Hinx.
+  rewrite in_map_iff in Hinx. destruct Hinx as [[i c] [Hif Hinf]].
+  simpl in Hif. subst; simpl in *.
+  (*Simplify the in - we need to know that i is the index*)
+  rewrite in_combine_iff in Hinf by (rewrite seq_length; lia).
+  rewrite seq_length in Hinf.
+  destruct Hinf as [j [Hj Hic]].
+  specialize (Hic 0 id_fs). rewrite seq_nth in Hic by auto.
+  simpl in Hic. inversion Hic; subst; clear Hic.
+  set (c := nth j (adt_constr_list a) id_fs) in *.
+  revert Hty.
+  unfold rev_map. rewrite map_rev, !rev_involutive.
+  set (names:=(gen_names (Datatypes.length (s_args c)) "u" [])) in *.
+  set (newvars := combine names (s_args c)) in *.
+  assert (Hjidx: j = index funsym_eq_dec c (adt_constr_list a)).
+  {
+    unfold c. rewrite index_eq_nodup; auto.
+    eapply NoDup_map_inv.
+    apply (constr_list_names_Nodup gamma_valid m_in a_in).
+  }
+  intros Hty.
+  (*First, simplify rep*)
+  rewrite fforalls_rep' with (Hval1:=proj1'(fforalls_typed_inv _ _ Hty)).
+  rewrite simpl_all_dec.
+  intros h.
+  match goal with |- context [@proj1' ?t ?x ?y] => generalize dependent (@proj1' t x y) end.
+  intros Hty2.
+  Opaque indexer_funsym.
+  simpl_rep_full.
+  rewrite simpl_all_dec.
+  unfold cast_dom_vty.
+  unfold funs_new_full.
+  assert (Hlen': length (map (v_subst vt) (map vty_var (ts_args (adt_name a)))) = length (m_params m)).
+  { simpl_len. f_equal. apply (adt_args gamma_valid m_in a_in). }
+  rewrite (funs_new_indexer _ gamma_valid pd pdf pf _ Hnewconstr m_in a_in _ _ Hlen').
+  unfold indexer_interp.   
+  unfold funsym_sigma_ret.
+  (*Simplfy constr list*)
+  destruct (indexer_args_eq _ _ _ _ _ _ _ _ ) as [x Hx]. simpl. simpl in Hx.
+  destruct (find_constr_rep _ _ _ _ _ _ _ _ _ _ _) as [c1 Hc1]. simpl.
+  assert (Hcastint: v_subst vt vty_int = s_int). { apply sort_inj; reflexivity. }
+  unfold funsym_sigma_ret in *.
+  rewrite !dom_cast_compose. gen_dom_cast.
+  (*NOTE: this is extremely tricky because Coq's dependent types suck. 
+    The [indexer_interp] is in terms of s_int, while the
+    function gives [v_subst vt vty_int]. These are propositionally equal, and for each, domain (dom_aux pd) x
+    is definitionally equal to Z, but Coq will not let us rewrite, generalize, etc. A solution is to
+    lift everything to [scast], where we need UIP. Then we can "change" everything manually to Z,
+    and finally use UIP to remove the cast. This is horrible*)
+  unfold dom_cast. intros Heq1 Heq2 Heq3. rewrite scast_scast.
+  match goal with |- scast ?H ?x = _ => generalize dependent H end.
+  simpl.
+  (*Some simplification now*)
+  intros Heq. assert (Heq1 = eq_refl) by (apply UIP_dec, sort_eq_dec); subst Heq1; simpl.
+  revert Heq.
+  rewrite (indexer_funsym_params gamma_valid (idents_of_context gamma)  m_in a_in).
+  (*Idea: manually "change" types so that Coq can finally tell they are the same thing*)
+  Transparent indexer_funsym. simpl. (*Note: very annoying that I have to do this*) Opaque indexer_funsym.
+  change (domain (dom_aux pd) (v_subst vt vty_int)) with Z.
+  change (domain (dom_aux pd)
+        (ty_subst_s (m_params m)
+           (@map vty sort (v_subst vt) (@map typevar vty vty_var (ts_args (adt_name a)))) vty_int)) with 
+  Z.
+  (*Now finally, we have a provable goal*)
+  intros Heq. assert (Heq = eq_refl) by (apply Cast.UIP); subst Heq; simpl.
+  (*And now we can prove what we actually wanted: j is the index of c1*)
+  rewrite Hjidx. f_equal. f_equal.
+  (*Thus, we need to show that c = c1*)
+  unfold fun_arg_list in Hx; simpl in Hx. revert Hx.
+  gen_dom_cast.
+  (*A hack*)
+  do 3(match goal with |- context [@proj1' ?t ?x ?y] => generalize dependent (@proj1' t x y) end).
+  generalize dependent (eq_sym (indexer_sigma_args gamma_valid (idents_of_context gamma) m_in a_in Hlen')).
+  unfold sym_sigma_args in *.
+  (*Now general enough to simplify args*)
+  rewrite (indexer_funsym_args gamma_valid (idents_of_context gamma) m_in a_in). simpl. clear Heq2 Heq3.
+  intros Heq1 Hall1 _ Heq2.
+  gen_dom_cast. revert Heq1 Hall1.
+  (*General enough for params*)
+  rewrite (indexer_funsym_params gamma_valid (idents_of_context gamma)  m_in a_in).
+  intros Heq1 Hall1 Heq3.
+  rewrite cast_arg_list_cons.
+  intros Hx. apply (f_equal hlist_hd) in Hx. simpl in Hx.
+  rewrite !scast_scast in Hx.
+  apply scast_switch in Hx.
+  revert Hx.
+  match goal with |- context [scast ?H ?x] => generalize dependent H end.
+  intros Heq4.
+  (*Now simplify the fun and get a [constr_rep]*)
+  simpl_rep_full. unfold funs_new_full.
+  assert (c_in: constr_in_adt c a). {
+    unfold c. apply constr_in_adt_eq. apply nth_In; auto. 
+  }
+  rewrite (funs_new_new_constrs) with (m:=m)(a:=a) by auto.
+  unfold new_constr_interp.
+  rewrite (constrs gamma_valid pd pdf pf _ _ _ m_in a_in c_in) with (Hlens:=Hlen').
+  unfold constr_rep_dom.
+  unfold cast_dom_vty, dom_cast. rewrite !scast_scast.
+  match goal with |- context [scast ?H ?x] => generalize dependent H end.
+  intros Heqa. assert (Heqa = eq_refl) by (apply Cast.UIP). subst Heqa; simpl.
+  intros Hx.
+  (*Now use constr_rep disjointness*)
+  destruct Hc1 as [[c1_in al2] Hx'].
+  subst x.
+  destruct (funsym_eq_dec c c1); auto.
+  apply constr_rep_disjoint in Hx; auto. contradiction.
+Qed.
+
 Theorem fold_all_ctx_delta_true {gamma} (gamma_valid: valid_context gamma) 
   (Hnewconstr: forall (m1 m2 : mut_adt) (a1 a2 : alg_datatype),
     mut_in_ctx m1 gamma ->
@@ -3320,7 +3460,8 @@ Proof.
   destruct Hinx as [Hx | [[c [Hinc Hinx]] | [[Hsingle [Hnoind Hinx]] | [Hinx | [Hsingle Hinx]]]]].
   - subst. eapply (inversion_axiom_true gamma_valid); eauto.
   - apply constr_in_adt_eq in Hinc. eapply projection_axioms_true; eauto.
-  -  admit.
+  - eapply indexer_axioms_true; eauto.
+  - admit.
 Admitted.
 
 
