@@ -1,9 +1,269 @@
 Require Export CommonTactics CommonList CommonBool.
+From stdpp Require base gmap.
 (** Union on lists with decidable equality **)
+
+(*TODO: change names (do we need this for lists?)*)
 
 Section Union.
 
-Context {A: Type}.
+Import base gmap.
+
+Context (A: Type)  `{A_count: Countable A}.
+
+Definition aset := gset A.
+
+Definition aset_empty : aset := ∅.
+
+Definition aset_is_empty (a: aset) : bool := Nat.eqb (size a) 0.
+
+Definition aset_mem (x: A) (s: aset) : Prop :=
+  x ∈ s.
+
+Definition aset_union (s1 s2: aset) : gset A := s1 ∪ s2.
+
+(*TODO: see if this needs to be set anywhere?*)
+Definition aset_big_union {B: Type} (*`{B_count: Countable B} *)
+  (f: B -> aset) (l: list B) :=
+  ⋃ (map f l).
+(*   set_fold (fun x acc => aset_union (f x) acc) aset_empty s. *)
+
+Lemma aset_big_union_cons {B: Type} (f: B -> aset) (x: B) (l: list B):
+  aset_big_union f (x :: l) = aset_union (f x) (aset_big_union f l).
+Proof. reflexivity. Qed.
+
+Definition aset_singleton (x: A) : aset := singleton x.
+
+(*Lemmas about [aset_empty]*)
+
+Lemma aset_empty_is_empty: 
+  aset_is_empty aset_empty.
+Proof.
+  reflexivity.
+Qed.
+
+Lemma aset_union_empty s1 s2:
+  aset_is_empty (aset_union s1 s2) = aset_is_empty s1 && aset_is_empty s2.
+Proof.
+  unfold aset_is_empty, aset_union.
+  apply is_true_eq.
+  unfold is_true; rewrite andb_true_iff.
+  rewrite !Nat.eqb_eq.
+  rewrite !size_empty_iff.
+  apply empty_union.
+Qed.
+
+Lemma aset_big_union_empty {B: Type} (*`{B_count: Countable B} *)
+  (f: B -> gset A) (l: list B):
+  aset_is_empty (aset_big_union f l) = forallb (fun x => aset_is_empty (f x)) l. 
+Proof.
+  induction l as [| h t IH]; simpl.
+  - apply aset_empty_is_empty.
+  - rewrite aset_big_union_cons, aset_union_empty, IH. reflexivity.
+Qed.
+
+Lemma aset_singleton_not_empty x:
+  aset_is_empty (aset_singleton x) = false.
+Proof. 
+  unfold aset_is_empty, aset_singleton.
+  rewrite size_singleton.
+  reflexivity.
+Qed.
+
+(*Results about [aset_mem]*)
+Lemma aset_mem_empty x:
+  ~ aset_mem x aset_empty.
+Proof.
+  unfold aset_mem, aset_empty. set_unfold. auto.
+Qed.
+
+Lemma aset_mem_singleton x y:
+  aset_mem x (aset_singleton y) <-> (x = y).
+Proof.
+  apply elem_of_singleton.
+Qed.
+
+Lemma aset_mem_union x s1 s2:
+  aset_mem x (aset_union s1 s2) <-> aset_mem x s1 \/ aset_mem x s2.
+Proof.
+  unfold aset_mem, aset_union. set_unfold. reflexivity.
+Qed.
+
+Lemma aset_mem_big_union {B: Type} (f: B -> aset) l x:
+  aset_mem x (aset_big_union f l) <-> exists y, In y l /\ aset_mem x (f y).
+Proof.
+  unfold aset_big_union.
+  induction l as [| h t IH]; simpl.
+  - split; [| intros; destruct_all; contradiction].
+    intros Hemp. apply aset_mem_empty in Hemp. contradiction.
+  - rewrite aset_mem_union, IH. clear IH. split.
+    + intros [Hmem | [y [Hiny Hmem]]].
+      * exists h. auto.
+      * exists y; auto.
+    + intros [y [[Hy|Hy] Hmem]]; subst; auto.
+      right; exists y; auto.
+Qed.
+
+(*subset*)
+Definition asubset (s1 s2: aset) : Prop := s1 ⊆ s2.
+
+(*TODO: we will need*)
+Lemma asubset_def s1 s2: asubset s1 s2 <->  forall x, aset_mem x s1 -> aset_mem x s2.
+Proof.
+  reflexivity.
+Qed.
+
+Definition check_asubset (s1 s2: aset) : {asubset s1 s2} + {~ asubset s1 s2} :=
+  gset_subseteq_dec s1 s2.
+
+(*list to set*)
+Definition list_to_aset (l: list A) : aset := list_to_set l.
+
+(*Stdpp uses different In*)
+Lemma in_equiv {C: Type} (x: C) (l: list C):
+  elem_of_list x l ↔ In x l.
+Proof.
+  induction l as [| h t IH]; simpl.
+  - split; try contradiction. intros Hin; inversion Hin.
+  - split.
+    + intros Helem. inversion Helem; subst; auto.
+      right; auto. apply IH; auto.
+    + intros [Hx | Hinx]; subst; [constructor; auto|].
+      constructor. apply IH; auto.
+Qed.
+
+Lemma aset_mem_list_to_aset x l:
+  aset_mem x (list_to_aset l) <-> In x l.
+Proof.
+  unfold aset_mem, list_to_aset. rewrite elem_of_list_to_set.
+  apply in_equiv.
+Qed.
+
+(*set to list*)
+Definition aset_to_list (a: aset) : list A := elements a.
+
+Lemma aset_to_list_in x a: 
+  In x (aset_to_list a) <-> aset_mem x a.
+Proof.
+  unfold aset_to_list.
+  rewrite <- in_equiv.
+  apply elem_of_elements.
+Qed.
+
+(*Need equiv for NoDup*)
+Lemma NoDup_equiv {C: Type} (l: list C):
+  NoDup l <-> List.NoDup l.
+Proof.
+  induction l as [| h t IH].
+  - split; constructor.
+  - split; intros Hn; inversion Hn; subst; constructor; try solve[apply IH; auto].
+    + rewrite <- in_equiv; auto.
+    + unfold elem_of. rewrite in_equiv; auto.
+Qed.
+
+Lemma aset_to_list_nodup (a: aset) : List.NoDup (aset_to_list a).
+Proof. apply NoDup_equiv, NoDup_elements. Qed.
+
+(*Remove*)
+Definition aset_remove (x: A) (s: aset) : aset :=
+  s ∖ (aset_singleton x).
+
+Lemma aset_mem_remove y s x:
+  aset_mem x (aset_remove y s) <-> aset_mem x s /\ x <> y.
+Proof.
+  unfold aset_mem, aset_remove, aset_singleton.
+  set_unfold. reflexivity.
+Qed.
+
+(*Remove_all (just diff)*)
+Definition aset_diff (s1 s2: aset) : aset :=
+  s2 ∖ s1.
+
+Lemma aset_mem_diff (s1 s2: aset) (x: A):
+  (aset_mem x s2 /\ ~ aset_mem x s1) <-> aset_mem x (aset_diff s1 s2).
+Proof.
+  unfold aset_mem, aset_diff. set_unfold. reflexivity.
+Qed. 
+
+
+(*TODO: do we need to prove inverse?*)
+
+End Union.
+
+#[global]Arguments aset_mem {_} {_} {_}.
+#[global]Arguments aset_empty {_} {_} {_}.
+#[global]Arguments aset_is_empty {_} {_} {_}.
+#[global]Arguments aset_singleton {_} {_} {_}.
+#[global]Arguments aset_union {_} {_} {_}.
+#[global]Arguments aset_big_union {_} {_} {_} {_}.
+#[global]Arguments asubset {_} {_} {_}.
+#[global]Arguments list_to_aset {_} {_} {_}.
+#[global]Arguments aset_to_list {_} {_} {_}.
+#[global]Arguments aset_remove {_} {_} {_}.
+#[global]Arguments aset_diff {_} {_} {_}.
+#[global]Arguments check_asubset {_} {_} {_}.
+
+Ltac simpl_set_goal_small :=
+  repeat match goal with
+  (*remove*)
+  | H: aset_mem ?x (aset_remove ?y ?l) |- _ => rewrite aset_mem_remove in H
+  | |- context [ aset_mem ?x (aset_remove ?y ?l)] => rewrite aset_mem_remove
+  (*union*)
+  | H: aset_mem ?x (aset_union ?l1 ?l2) |- _ => rewrite aset_mem_union in H
+  | |- context [ aset_mem ?x (aset_union ?l1 ?l2)] => rewrite aset_mem_union
+  (*big union simpl*)
+  | H: aset_mem ?x (aset_big_union ?f (?y :: ?l)) |- _ => rewrite aset_big_union_cons in H
+  | |- context [aset_mem ?x (aset_big_union ?f (?y :: ?l))] => rewrite aset_big_union_cons
+  (*cons - should do without simpl*)
+  (* | H: In ?x (?y :: ?t) |-_ => simpl in H
+  | |- context [In ?x (?y :: ?t)] => simpl *)
+  (*remove \/ False from In goals*)
+  | H: ?P \/ False |- _ => rewrite or_false_r in H
+  | |- context [ ?P \/ False] => rewrite or_false_r
+  (*diff*)
+  | H: aset_mem ?x (aset_diff ?l1 ?l2) |- _ => rewrite <- aset_mem_diff in H
+  | |- context [aset_mem ?x (aset_diff ?l1 ?l2)] => rewrite <- aset_mem_diff
+  (*list_to_aset*)
+  | H: aset_mem ?x (list_to_aset ?l) |- _ => rewrite aset_mem_list_to_aset in H
+  | |- context [aset_mem ?x (list_to_aset ?l)] => rewrite aset_mem_list_to_aset
+  (*aset to list*)
+  | H: In ?x (aset_to_list ?s) |- _ => rewrite aset_to_list_in in H
+  | |- context [In ?x (aset_to_list ?s) ] => rewrite aset_to_list_in
+  (*singleton*)
+  | H: aset_mem ?x (aset_singleton ?y) |- _ => rewrite aset_mem_singleton in H
+  | |- context [ aset_mem ?x (aset_singleton ?y)] => rewrite aset_mem_singleton
+  (*empty*)
+  | H: aset_mem ?x aset_empty |- _ => apply aset_mem_empty in H; contradiction 
+  end.
+
+Ltac simpl_set_goal :=
+  simpl_set_goal_small;
+  repeat match goal with
+  (*big_union*)
+  | H: aset_mem ?x (aset_big_union ?f ?l) |- _ => rewrite aset_mem_big_union in H
+  | |- context [ aset_mem ?x (aset_big_union ?f ?l)] => rewrite aset_mem_big_union
+  end.
+
+Ltac simpl_set_small :=
+  simpl_set_goal_small;
+  repeat match goal with
+  | H: ~ aset_mem ?x (aset_diff ?l1 ?l2) |- _ => revert H; simpl_set_goal_small; intros
+  | H: ~ aset_mem ?x (aset_union ?l1 ?l2) |- _ => revert H; simpl_set_goal_small; intros
+  | H: ~ aset_mem ?x (aset_big_union ?f ?l) |- _ => revert H; simpl_set_goal_small; intros
+  | H: ~ aset_mem ?x (aset_remove ?y ?l) |- _ => revert H; simpl_set_goal_small; intros
+  end.
+
+Ltac simpl_set :=
+  simpl_set_goal;
+  repeat match goal with
+  | H: ~ aset_mem ?x (aset_diff ?l1 ?l2) |- _ => revert H; simpl_set_goal; intros
+  | H: ~ aset_mem ?x (aset_union ?l1 ?l2) |- _ => revert H; simpl_set_goal; intros
+  | H: ~ aset_mem ?x (aset_big_union ?f ?l) |- _ => revert H; simpl_set_goal; intros
+  | H: ~ aset_mem ?x (aset_remove ?y ?l) |- _ => revert H; simpl_set_goal; intros
+  end.
+
+
+
+(* 
 Variable eq_dec: forall (x y : A), {x = y} + {x <> y}.
 
 (*Add all elements in l1 not in l2*)
@@ -737,4 +997,4 @@ Ltac solve_subset :=
   | H: Forall ?P (map ?f ?l) |- Forall ?Q ?l => rewrite Forall_map in H; 
     revert H; apply Forall_impl; auto; simpl; intros
   | |- Forall ?P ?l => rewrite Forall_forall; auto; simpl; intros; simpl
-  end.
+  end. *)

@@ -1,36 +1,66 @@
 (*Simple map based on association lists*)
+(*TODO: rename stuff after*)
 Require Import Common.
-Definition get_assoc_list {A B: Type} (eq_dec: forall (x y: A), {x = y} + { x <> y}) 
-  (l: list (A * B)) (x: A) : option B :=
-  fold_right (fun y acc => if eq_dec x (fst y) then Some (snd y) else acc) None l.
+Require Import ListSet.
+From stdpp Require gmap.
 
-Lemma get_assoc_list_some {A B: Type} 
-(eq_dec: forall (x y: A), {x = y} + { x <> y}) 
-(l: list (A * B)) (x: A) (res: B):
-  get_assoc_list eq_dec l x = Some res ->
-  In (x, res) l.
+Section Map.
+
+Import gmap.
+
+Context (A B: Type) `{A_eq: EqDecision A} `{A_count: Countable A}.
+
+Definition amap := gmap A B. (*NOTE: we DONT want to export stdpp everywhere, so we provide our own defs*)
+
+Definition amap_mem (x: A * B) (m: amap) : Prop :=
+  match m !! (fst x) with
+  | Some y => y = snd x
+  | None => False
+  end.
+
+(*TODO: see what we need for keys - will also need
+  Countable for B if *)
+
+Definition keys (m: amap) : aset A := map_to_set (fun x _ => x) m.
+
+Definition get_assoc_list (m: amap) (x: A) : option B :=
+  m !! x. 
+
+Lemma get_assoc_list_some (m: amap) (x: A) (res: B):
+  get_assoc_list m x = Some res ->
+  amap_mem (x, res) m.
 Proof.
-  induction l; simpl. intro C; inversion C.
-  destruct (eq_dec x (fst a)); subst. intro C; inversion C; subst.
-  left. destruct a; auto.
-  intros. right. apply IHl. assumption.
+  unfold get_assoc_list, amap_mem. simpl.
+  destruct (m !! x); [|discriminate].
+  intros Hsome; inversion Hsome; auto.
 Qed.
 
-Lemma get_assoc_list_none {A B: Type} 
-(eq_dec: forall (x y: A), {x = y} + { x <> y}) 
-(l: list (A * B)) (x: A) :
-  get_assoc_list eq_dec l x = None <->
-  ~ In x (map fst l).
+Lemma get_assoc_list_none 
+(m: amap) (x: A) :
+  get_assoc_list m x = None <->
+  ~ aset_mem x (keys m).
 Proof.
-  induction l; simpl; split; intros; auto.
-  - intro C. destruct (eq_dec x (fst a)); subst.
-    inversion H. destruct C. subst. contradiction.
-    apply IHl; auto.
-  - destruct (eq_dec x (fst a)); subst. exfalso. apply H. left; auto.
-    apply IHl. intro C. apply H. right; assumption.
+  unfold get_assoc_list, aset_mem, keys, aset, amap.
+  rewrite elem_of_map_to_set.
+  split.
+  - intros Hnone [i [y [Hget Hix]]]; subst.
+    rewrite Hnone in Hget. discriminate.
+  - intros Hnotex. destruct (m !! x) as [y|] eqn : Hget; auto.
+    exfalso; apply Hnotex. exists x. exists y. auto.
 Qed.
 
-Lemma get_assoc_list_nodup {A B: Type} 
+(*[get_assoc_list_nodup] is always true now*)
+Lemma get_assoc_list_nodup
+  (m: amap) (x: A) (y: B)
+  (Hin: amap_mem (x, y) m):
+  get_assoc_list m x = Some y.
+Proof.
+  unfold amap_mem in Hin. simpl in Hin.
+  unfold get_assoc_list. destruct (m !! x); [|contradiction].
+  subst; auto.
+Qed.
+
+(* Lemma get_assoc_list_nodup {A B: Type} 
   (eq_dec: forall (x y: A), {x=y} +{x<> y})
   (l: list (A * B)) (x: A) (y: B)
   (Hnodup: NoDup (map fst l))
@@ -45,9 +75,12 @@ Proof.
   destruct a as [h1 h2]; subst; simpl in *.
   destruct (eq_dec x h1); subst; auto.
   exfalso. apply H1. rewrite in_map_iff. exists (h1, y); auto.
-Qed.
+Qed. *)
 
-Lemma get_assoc_list_app {A B: Type} (eq_dec: forall (x y: A), {x = y} + {x <> y}) (l1 l2: list (A * B)) (x: A):
+End Map.
+
+(*Let's see what we need*)
+(* Lemma get_assoc_list_app {A B: Type} (eq_dec: forall (x y: A), {x = y} + {x <> y}) (l1 l2: list (A * B)) (x: A):
   get_assoc_list eq_dec (l1 ++ l2) x =
   match (get_assoc_list eq_dec l1 x) with
   | Some y => Some y
@@ -799,4 +832,4 @@ Definition amap_change {A B: Type} (eq_dec: forall (x y: A), {x = y} + { x <> y}
   (f: option B -> B) (x: A) (m: amap A B) : amap A B :=
   amap_replace eq_dec m x (fun _ b => f (Some b)) (f None).
 
-End MapProofs.
+End MapProofs. *)

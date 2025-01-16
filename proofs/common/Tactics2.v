@@ -66,12 +66,12 @@ Ltac case_in :=
     destruct (in_bool_spec e x l)
   end.
 
-Ltac eq_mem_tac :=
+(* Ltac eq_mem_tac :=
   repeat match goal with
   | |- eq_mem ?l ?l => apply eq_mem_refl
   | |- eq_mem (union ?dec ?l1 ?l2) (union ?dec ?l2 ?l1) => apply eq_mem_union_comm
   | |- eq_mem (union ?dec ?l1 ?l2) (union ?dec ?l3 ?l4) => apply eq_mem_union
-  end; auto.
+  end; auto. *)
 
 (*TODO: use elsewhere*)
 Ltac nodup_inj :=

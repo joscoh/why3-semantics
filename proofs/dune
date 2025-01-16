@@ -3,4 +3,4 @@
  (name Proofs)
  (flags :standard -w 
  "-ambiguous-paths -notation-overridden -hiding-delimiting-key -redundant-canonical-projection")
- (theories Equations mathcomp HB elpi RecordUpdate))
+ (theories Equations mathcomp HB elpi RecordUpdate stdpp))

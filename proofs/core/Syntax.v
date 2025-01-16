@@ -7,7 +7,7 @@ Set Bullet Behavior "Strict Subproofs".
 (*We use bools rather than props so that we get decidable equality (like ssreflect)*)
 
 (*Check for sublist (to enable building these structures)*)
-Definition check_sublist (l1 l2: list typevar) : bool :=
+(* Definition check_sublist (l1 l2: list typevar) : bool :=
   forallb (fun x => in_dec typevar_eq_dec x l2) l1.
 
 Lemma check_sublist_correct: forall l1 l2,
@@ -22,43 +22,37 @@ Proof.
       apply forallb_forall. intros. simpl_sumbool.
     }
     rewrite H0 in Hsub; inversion Hsub.
-Qed.
+Qed. *)
 
 Definition check_args (params: list typevar) (args: list vty) : bool :=
-  forallb (fun x => check_sublist (type_vars x) params) args.
+  forallb (fun x => check_asubset (type_vars x) (list_to_aset params)) args.
 
 (*Would be easier with ssreflect*)
 Lemma check_args_correct: forall params args,
-  reflect (forall x, In x args -> sublist (type_vars x) params) (check_args params args).
+  reflect (forall x, In x args -> asubset (type_vars x) (list_to_aset params)) (check_args params args).
 Proof.
-  intros. destruct (check_args params args) eqn : Hargs.
-  - unfold check_args in Hargs. rewrite forallb_forall in Hargs.
-    apply ReflectT. intros. apply Hargs in H.
-    apply (reflect_iff _  _ (check_sublist_correct (type_vars x) params)) in H. auto.
-  - apply ReflectF. intro C.
-    assert (check_args params args = true). {
-      apply forallb_forall. intros. apply C in H.
-      apply (reflect_iff _ _ (check_sublist_correct (type_vars x) params)). auto.
-    }
-    rewrite H in Hargs; inversion Hargs.
+  intros. unfold check_args. apply iff_reflect.
+  rewrite forallb_forall. split; intros Hall x Hinx; [|specialize (Hall x Hinx)];
+  destruct (check_asubset (type_vars x) (list_to_aset params)); simpl; auto.
+  discriminate.
 Qed.
 
 (*Easy corollaries, need these for arguments to other functions which don't know
   about the decidable versions*)
 
 Lemma check_args_prop {params args} :
-  check_args params args -> forall x, In x args -> sublist (type_vars x) params.
+  check_args params args -> forall x, In x args -> asubset (type_vars x) (list_to_aset params).
 Proof.
   intros Hcheck. apply (reflect_iff _ _ (check_args_correct params args)).
   apply Hcheck.
 Qed.
 
-Lemma check_sublist_prop {l1 l2}:
+(* Lemma check_sublist_prop {l1 l2}:
   check_sublist l1 l2 ->
   sublist l1 l2.
 Proof.
   intros. apply (reflect_iff _ _ (check_sublist_correct l1 l2)), H.
-Qed.
+Qed. *)
 
 (*We separate out the name, args, and params because they
   are common; this helps us avoid duplicating some results.
@@ -76,8 +70,8 @@ Record funsym: Set :=
     f_ret: vty;
     f_is_constr : bool; (*is the funsym a constructor?*)
     f_num_constrs : nat; (*if so, how many constrs in ADT?*)
-    f_ret_wf : check_sublist (type_vars f_ret) 
-      (s_params f_sym) }.
+    f_ret_wf : is_true (check_asubset (type_vars f_ret) 
+      (list_to_aset (s_params f_sym))) }.
 
 Coercion f_sym : funsym >-> fpsym.
 
@@ -206,14 +200,17 @@ End SymEqDec.
 
 (*Create function symbols*)
 Definition find_args (l: list vty) : list typevar :=
-  big_union typevar_eq_dec type_vars l.
+  aset_to_list (aset_big_union type_vars l).
+
 
 Lemma find_args_nodup l:
   nodupb typevar_eq_dec (find_args l).
 Proof.
+  unfold find_args.
   apply (ssrbool.introT (nodup_NoDup _ _)).
-  apply big_union_nodup.
+  apply aset_to_list_nodup.
 Qed.
+
 
 Lemma find_args_check_args_l l1 l2:
   (forall x, In x l1 -> In x l2) ->
@@ -222,16 +219,18 @@ Proof.
   intros.
   apply (ssrbool.introT (check_args_correct _ _)).
   intros.
-  unfold find_args, sublist. intros.
-  simpl_set. exists x. split; auto.
+  unfold find_args. rewrite asubset_def. intros.
+  simpl_set.
+  exists x. split; auto.
 Qed.
 
 Lemma find_args_check_args_in x l:
   In x l ->
-  check_sublist (type_vars x) (find_args l).
+  check_asubset (type_vars x) (list_to_aset (find_args l)).
 Proof.
-  intros. apply (ssrbool.introT (check_sublist_correct _ _)).
-  unfold sublist. intros. unfold find_args. simpl_set.
+  intros. destruct (check_asubset _ _); simpl; auto.
+  exfalso; apply n. rewrite asubset_def. intros y Hiny.
+  simpl_set. unfold find_args. simpl_set.
   exists x; auto.
 Qed.
 
@@ -275,6 +274,16 @@ Qed.
 
 Definition vsymbol_eq_dec (x y: vsymbol): 
   {x = y} + {x <> y} := reflect_dec' (vsymbol_eqb_spec x y).
+
+(* Instance vsymbol_EqDecision : @base.RelDecision vsymbol vsymbol eq.
+Proof.
+  unfold vsymbol.
+  eapply decidable.prod_eq_dec.
+Unshelve. 
+  unfold base.RelDecision. apply vsymbol_eq_dec.
+Defined. *)
+(*TODO: do we even need this?*)
+(* Instance vsymbol_countable : countable.Countable vsymbol := countable.prod_countable. *)
 
 Unset Elimination Schemes.
 Inductive pattern : Set :=
@@ -419,7 +428,7 @@ Fixpoint term_ind (tm: term) : P1 tm :=
     ((fix term_list_ind (l: list term) : Forall P1 l :=
     match l with
     | nil => (@Forall_nil _ P1)
-    | x :: t => Forall_cons _ (term_ind x) (term_list_ind t)
+    | x :: t => Forall_cons _ _ _ (term_ind x) (term_list_ind t)
     end) tms)
   | Tlet t1 v t2 => tlet t1 v t2 (term_ind t1) (term_ind t2)
   | Tif f t1 t2 => tif f t1 t2 (formula_ind f) (term_ind t1) (term_ind t2)
@@ -427,7 +436,7 @@ Fixpoint term_ind (tm: term) : P1 tm :=
     ((fix snd_ind (l: list (pattern * term)) : Forall P1 (map snd l) :=
     match l as l' return Forall P1 (map snd l') with
     | nil => (@Forall_nil _ P1)
-    | (x, y) :: t => Forall_cons _ (term_ind y) (snd_ind t)
+    | (x, y) :: t => Forall_cons _ _ _ (term_ind y) (snd_ind t)
     end) ps)
   | Teps f v => teps f v (formula_ind f)
   end
@@ -437,7 +446,7 @@ with formula_ind (f: formula) : P2 f :=
     ((fix term_list_ind (l: list term) : Forall P1 l :=
     match l with
     | nil => (@Forall_nil _ P1)
-    | x :: t => Forall_cons _ (term_ind x) (term_list_ind t)
+    | x :: t => Forall_cons _ _ _ (term_ind x) (term_list_ind t)
     end) tms)
   | Fquant q v f => fquant q v f (formula_ind f)
   | Feq ty t1 t2 => feq ty t1 t2 (term_ind t1) (term_ind t2)
@@ -452,7 +461,7 @@ with formula_ind (f: formula) : P2 f :=
     ((fix snd_ind (l: list (pattern * formula)) : Forall P2 (map snd l) :=
     match l as l' return Forall P2 (map snd l') with
     | nil => (@Forall_nil _ P2)
-    | (x, y) :: t => Forall_cons _ (formula_ind y) (snd_ind t)
+    | (x, y) :: t => Forall_cons _ _ _(formula_ind y) (snd_ind t)
     end) ps)
   end.
 
@@ -1231,17 +1240,18 @@ Definition gen_sym_ret {b: bool} (f: gen_sym b) : gen_type b :=
 Lemma typevars_in_params (s: fpsym) i:
 (i < length (s_args s))%nat ->
 forall v : typevar,
-In v (type_vars (nth i (s_args s) vty_int)) -> In v (s_params s).
+aset_mem v (type_vars (nth i (s_args s) vty_int)) -> In v (s_params s).
 Proof.
   intros. destruct s; simpl in *.
   assert (Hwf:=s_args_wf0).
-  apply check_args_prop with(x:=List.nth i s_args0 vty_int) in Hwf; auto.
-  apply nth_In; auto.
+  apply check_args_prop with(x:=List.nth i s_args0 vty_int) in Hwf; auto; [|apply nth_In; auto].
+  rewrite asubset_def in Hwf. apply Hwf in H0.
+  simpl_set. auto.
 Qed.
 
 Lemma gen_typevars_in_params {x v b} (ls: gen_sym b)
   (Hinx: In x (gen_sym_args ls))
-  (Hinv: In v (type_vars x)):
+  (Hinv: aset_mem v (type_vars x)):
   In v (gen_sym_params ls).
 Proof.
   destruct (In_nth _ _ vty_int Hinx) as [i [Hi Hx]]; subst.
@@ -1258,12 +1268,12 @@ Definition gen_funpred_def (b: bool) (f: gen_sym b) (l: list vsymbol) (t: gen_te
 
 Definition gen_funpred_def_match (x: funpred_def) : {b: bool & (gen_sym b * list vsymbol * gen_term b)%type} :=
   match x with
-  | fun_def ls vs t => existT _ true (ls, vs, t)
-  | pred_def ls vs f => existT _ false (ls, vs, f)
+  | fun_def ls vs t => existT true (ls, vs, t)
+  | pred_def ls vs f => existT false (ls, vs, f)
   end.
 
 Lemma gen_funpred_def_match_eq (x: funpred_def) b ls vs tms:
-  gen_funpred_def_match x = existT _ b (ls, vs, tms) <-> gen_funpred_def b ls vs tms = x.
+  gen_funpred_def_match x = existT b (ls, vs, tms) <-> gen_funpred_def b ls vs tms = x.
 Proof.
   unfold gen_funpred_def_match, gen_funpred_def. destruct x; simpl.
   - split; intros Hex; [|destruct b]; inversion Hex; subst; auto.

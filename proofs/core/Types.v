@@ -69,6 +69,21 @@ HB.instance Definition _ := hasDecEq.Build typesym typesym_eqb_spec.
 Definition typesym_eq_dec (t1 t2: typesym) : {t1 = t2} + {t1 <> t2} :=
   reflect_dec' (typesym_eqb_spec t1 t2).
 
+(*Countable*)
+
+Definition typesym_to_tup (ts: typesym) : string * (list typevar) := (ts_name ts, ts_args ts).
+Definition typesym_of_tup (x: string * list typevar) : typesym := mk_ts (fst x) (snd x).
+Lemma typesym_to_tup_inj: forall x, typesym_of_tup (typesym_to_tup x) = x.
+Proof.
+  intros [x1 x2]; simpl. reflexivity.
+Qed. 
+
+Instance typesym_EqDecision : @base.RelDecision typesym typesym eq.
+Proof. unfold base.RelDecision. apply typesym_eq_dec. Defined.
+
+Instance typesym_countable : countable.Countable typesym :=
+  countable.inj_countable' typesym_to_tup typesym_of_tup typesym_to_tup_inj.
+
 Definition ts_unit : typesym := mk_ts "unit" nil.
 
 (*A default typesym*)
@@ -102,7 +117,7 @@ Fixpoint vty_ind (t: vty) : P t :=
     ((fix vty_ind_list (l: list vty) : Forall P l :=
       match l with
       | nil => Forall_nil _
-      | x :: t => Forall_cons _ (vty_ind x) (vty_ind_list t)
+      | x :: t => Forall_cons _ _ _(vty_ind x) (vty_ind_list t)
       end) vs)
   end.
 
@@ -192,27 +207,77 @@ HB.instance Definition _ := hasDecEq.Build vty vty_eq_spec.
 Definition vty_eq_dec (v1 v2: vty): {v1 = v2} + {v1 <> v2} :=
   reflect_dec' (vty_eq_spec v1 v2).
 
+(*Countable*)
+
+Instance vsymbol_EqDecision : @base.RelDecision vty vty eq.
+Proof. unfold base.RelDecision. apply vty_eq_dec. Defined.
+
+(*Idea: map to [gen_tree]*)
+
+(*Silly to write it this way but easier for Countable*)
+Definition vty_nonind := ((unit + unit)%type + typevar)%type.
+
+Fixpoint vty_to_gen_tree (v: vty) : countable.gen_tree vty_nonind :=
+  match v with
+  | vty_int => countable.GenLeaf (inl (inl tt))
+  | vty_real => countable.GenLeaf (inl (inr tt))
+  | vty_var v => countable.GenLeaf (inr v)
+  | vty_cons ts tys => countable.GenNode (Pos.to_nat (countable.encode ts)) (map vty_to_gen_tree tys)
+  end.
+
+
+Definition fold_list_option {A: Type} (l: list (option A)) : option (list A) :=
+  fold_right (fun x acc => option_bind x (fun h => option_bind acc (fun t => Some (h :: t)))) (Some nil) l.
+
+Fixpoint gen_tree_to_vty (g: countable.gen_tree vty_nonind) : option vty :=
+  match g with
+  | countable.GenLeaf (inl (inl _)) => Some vty_int
+  | countable.GenLeaf (inl (inr _)) => Some vty_real
+  | countable.GenLeaf (inr v) => Some (vty_var v)
+  | countable.GenNode n ts =>
+      option_bind (countable.decode (Pos.of_nat n)) (fun (t: typesym) =>
+        option_bind (fold_list_option (map gen_tree_to_vty ts)) (fun l => Some (vty_cons t l)))
+  end.
+
+(*Prove the partial injection*)
+Lemma vty_to_gen_tree_inj: forall x,
+  gen_tree_to_vty (vty_to_gen_tree x) = Some x.
+Proof.
+  intros ty. induction ty; simpl; auto.
+  rewrite -> Pos2Nat.id, countable.decode_encode.
+  simpl.
+  assert (Hvs: (fold_list_option [seq gen_tree_to_vty i | i <- [seq vty_to_gen_tree i | i <- vs]]) = (Some vs)).
+  { induction vs as [| h t IH]; simpl; auto. inversion H as [| ? ? Heq Ht]; subst; auto.
+    rewrite Heq. simpl. rewrite IH; auto.
+  }
+  rewrite Hvs. simpl. reflexivity.
+Qed.
+
+(*And thus, a countable instance (the sum allows the [vty_nonind] instance to be inferred*)
+Instance vty_countable : countable.Countable vty :=
+  countable.inj_countable vty_to_gen_tree gen_tree_to_vty vty_to_gen_tree_inj.
+
 (* Sorts *)
 
 (*Get the type variables in a type, with no duplicates*)
-Fixpoint type_vars (t: vty) : list typevar :=
+Fixpoint type_vars (t: vty) : aset typevar :=
   match t with
-  | vty_int => nil
-  | vty_real => nil
-  | vty_var v => [v]
-  | vty_cons sym ts => big_union typevar_eq_dec type_vars ts
+  | vty_int => aset_empty
+  | vty_real => aset_empty
+  | vty_var v => aset_singleton v
+  | vty_cons sym ts => aset_big_union type_vars ts
   end.
 
-Lemma type_vars_unique: forall t,
+(* Lemma type_vars_unique: forall t,
   NoDup (type_vars t).
 Proof.
   destruct t; simpl; try solve[constructor].
   - constructor; auto. constructor.
   - apply big_union_nodup.
-Qed.  
+Qed.   *)
   
 Definition is_sort (t: vty) : bool :=
-  null (type_vars t).
+  aset_is_empty (type_vars t).
 
 Definition sort : Set := {t: vty | is_sort t}.
 
@@ -254,6 +319,8 @@ Definition sort_eq_dec (s1 s2: sort) :
   {s1 = s2} + {s1 <> s2} :=
   reflect_dec _ _ (sort_eqb_spec s1 s2).
 
+(*TODO: do we need Countable?*)
+
 Lemma int_is_sort: is_sort vty_int.
 Proof.
   unfold is_sort; simpl. auto.
@@ -269,20 +336,18 @@ Qed.
 Definition s_real : sort := exist _ vty_real real_is_sort.
 
 Lemma sort_type_vars: forall (s: sort),
-  type_vars s = nil.
+  aset_is_empty (type_vars s).
 Proof.
-  intros s. destruct s; simpl. unfold is_sort in i.
-  destruct (type_vars x); auto. inversion i.
+  intros [x Hx]. simpl. apply Hx.
 Qed.
 
 Definition typesym_to_sort_proof: forall (t: typesym) (s: list sort),
-  null (type_vars (vty_cons t (map sort_to_ty s))).
+  aset_is_empty (type_vars (vty_cons t (map sort_to_ty s))).
 Proof.
-  intros. assert (type_vars (vty_cons t (map sort_to_ty s)) = nil).
-  2: { rewrite H; auto. } simpl. apply big_union_nil_eq. intros x Hinx.
-  rewrite in_map_iff in Hinx. destruct Hinx as [y [Hy Hiny]]; subst.
-  destruct y; simpl in *. unfold is_sort in i. clear Hiny.
-  destruct (type_vars x); auto. inversion i.
+  intros. simpl. rewrite aset_big_union_empty.
+  rewrite forallb_map.
+  apply forallb_forall. intros [x Hsort] Hinx.
+  simpl. apply Hsort.
 Qed.
 
 Definition typesym_to_sort (t: typesym) (s: list sort)  : sort :=
@@ -313,13 +378,14 @@ Lemma v_subst_aux_sort: forall (v: typevar -> sort) t,
   is_sort (v_subst_aux v t).
 Proof.
   intros v t. unfold is_sort.
-  assert (H: type_vars (v_subst_aux v t) = nil); [|rewrite H; auto].
-  induction t; simpl; intros; auto.
-  apply sort_type_vars.
-  induction vs; simpl; intros; auto.
-  inversion H; subst.
-  rewrite H2. auto.
-Qed. 
+  induction t; simpl.
+  - apply aset_empty_is_empty.
+  - apply aset_empty_is_empty.
+  - apply sort_type_vars.
+  - rewrite aset_big_union_empty. rewrite Forall_forall in H.
+    rewrite forallb_map.
+    apply forallb_forall. auto.
+Qed.
 
 Definition v_subst (v: typevar -> sort) (t: vty) : sort :=
   exist _ (v_subst_aux v t) (v_subst_aux_sort v t).
@@ -334,9 +400,12 @@ Fixpoint ty_subst_fun (vs: list typevar) (s: list vty) (d: vty) : typevar -> vty
 Lemma ty_subst_fun_sort: forall vs (s: list sort) (d: sort) (t: typevar),
   is_sort (ty_subst_fun vs (sorts_to_tys s) d t).
 Proof.
-  intros. revert s. induction vs; simpl; intros; auto. destruct d; auto.
-  destruct s; simpl. destruct d; auto.
-  destruct (typevar_eq_dec t a); subst. destruct s; auto. apply IHvs.
+  intros. revert s. induction vs; simpl; intros; auto.
+  - destruct d; auto.
+  - destruct s as [| h tl]; simpl; [destruct d; auto|].
+    destruct (typevar_eq_dec t a); subst; simpl.
+    + destruct h; auto. 
+    + apply IHvs.
 Qed.
 
 Definition ty_subst_fun_s (vs: list typevar) (s: list sort) (d: sort) : typevar -> sort :=
@@ -361,13 +430,9 @@ Lemma is_sort_cons_iff: forall (ts: typesym) (l: list vty),
   is_sort (vty_cons ts l) <->
   forall x, In x l -> is_sort x.
 Proof.
-  intros. split; intros.
-  - unfold is_sort in *. simpl in H.
-    rewrite -> null_nil in *.
-    eapply big_union_nil in H. apply H. assumption.
-  - unfold is_sort in *. simpl. rewrite -> null_nil in *.
-    apply big_union_nil_eq. intros.
-    rewrite <- null_nil. apply H. auto.
+  intros ts l. unfold is_sort. simpl.
+  rewrite aset_big_union_empty. unfold is_true; rewrite forallb_forall.
+  reflexivity.
 Qed.
 
 Lemma is_sort_cons: forall (ts: typesym) (l: list vty),
@@ -382,12 +447,12 @@ Section TySubstLemmas.
 
 (*Lemmas about [ty_subst_s]*)
 
-Lemma type_vars_cons: forall ts (vs: list vty),
+(* Lemma type_vars_cons: forall ts (vs: list vty),
   type_vars (vty_cons ts vs) = nil ->
   (forall x, In x vs -> type_vars x = nil).
 Proof.
   intros. apply big_union_nil with(x:=x) in H; auto.
-Qed. 
+Qed.  *)
 
 Lemma ty_subst_s_cons: forall (vs: list typevar) (ts: list Types.sort)
   (t: typesym) (args: list vty),
@@ -466,11 +531,13 @@ Qed.
 Lemma subst_is_sort_eq (t: vty) (Ht: is_sort t) (v: typevar -> vty):
   t = v_subst_aux v t.
 Proof.
-  induction t; simpl in *; auto. inversion Ht.
-  f_equal. apply list_eq_ext'; [rewrite map_length|]; auto; intros.
-  rewrite -> map_nth_inbound with (d2:=d); auto.
-  rewrite Forall_nth in H. apply H; auto.
-  apply (is_sort_cons _ _ Ht). apply nth_In; auto.
+  induction t; simpl in *; auto.
+  - unfold is_sort in Ht. simpl in Ht.
+    rewrite aset_singleton_not_empty in Ht. discriminate.
+  - f_equal. apply list_eq_ext'; [rewrite map_length|]; auto; intros.
+    rewrite -> map_nth_inbound with (d2:=d); auto.
+    rewrite Forall_nth in H. apply H; auto.
+    apply (is_sort_cons _ _ Ht). apply nth_In; auto.
 Qed. 
 
 Lemma subst_sort_eq: forall (s: sort) (v: typevar -> sort),
@@ -483,20 +550,21 @@ Qed.
 (*Extensionality*)
 
 Lemma v_subst_aux_ext (v1 v2: typevar -> vty) ty:
-  (forall x, In x (type_vars ty) -> v1 x = v2 x ) ->
+  (forall x, aset_mem x (type_vars ty) -> v1 x = v2 x ) ->
   v_subst_aux v1 ty = v_subst_aux v2 ty.
 Proof.
   intros. induction ty; simpl; auto.
-  rewrite H; simpl; auto.
-  f_equal. simpl in H. induction vs; simpl in *; auto.
-  inversion H0; subst.
-  f_equal.
-  - apply H3. intros; apply H. simpl_set; triv.
-  - apply IHvs; auto. intros. apply H; simpl_set; auto.
+  - rewrite H; simpl; auto.
+    rewrite aset_mem_singleton. auto.
+  - f_equal. simpl in H. induction vs; simpl in *; auto.
+    inversion H0; subst.
+    f_equal.
+    + apply H3. intros; apply H. rewrite aset_mem_union. auto.
+    + apply IHvs; auto. intros. apply H; rewrite aset_mem_union; auto.
 Qed.
 
 Lemma v_subst_ext (v1 v2: typevar -> sort) ty:
-  (forall x, In x (type_vars ty) -> v1 x = v2 x) ->
+  (forall x, aset_mem x (type_vars ty) -> v1 x = v2 x) ->
   v_subst v1 ty = v_subst v2 ty.
 Proof.
   intros. apply sort_inj, v_subst_aux_ext.
@@ -516,7 +584,7 @@ Lemma v_ty_subst_eq_aux (params: list typevar) (srts: list sort)
   (Hlen: length srts = length params):
   (forall i, (i < length params)%coq_nat -> 
     v (List.nth i params EmptyString) = List.nth i srts s_int) ->
-  (forall x, In x (type_vars ty) -> In x params) ->
+  (forall x, aset_mem x (type_vars ty) -> In x params) ->
   v_subst_aux v ty = ty_subst params (sorts_to_tys srts) ty.
 Proof.
   intros.
@@ -539,7 +607,7 @@ Lemma v_ty_subst_eq (params: list typevar) (srts: list sort)
   (Hlen: length srts = length params):
   (forall i, (i < length params)%coq_nat -> 
     v (List.nth i params EmptyString) = List.nth i srts s_int) ->
-  (forall x, In x (type_vars ty) -> In x params) ->
+  (forall x, aset_mem x (type_vars ty) -> In x params) ->
   v_subst v ty = ty_subst_s params srts ty.
 Proof.
   intros.
@@ -558,16 +626,16 @@ Proof.
 Qed.
 
 Lemma v_subst_aux_sort_eq (v: typevar -> vty) (t: vty):
-  (forall x, In x (type_vars t) -> is_sort (v x)) ->
+  (forall x, aset_mem x (type_vars t) -> is_sort (v x)) ->
   is_sort (v_subst_aux v t).
 Proof.
   intros. induction t; simpl; intros; auto.
-  apply H. left; auto.
-  apply is_sort_cons_iff.
-  intros. rewrite in_map_iff in H1.
-  destruct H1 as [y [Hy Hiny]]; subst.
-  rewrite Forall_forall in H0. apply H0; auto.
-  intros. apply H. simpl. simpl_set. exists y. split; auto.
+  - apply H. simpl. rewrite aset_mem_singleton. auto.
+  - apply is_sort_cons_iff.
+    intros. rewrite in_map_iff in H1.
+    destruct H1 as [y [Hy Hiny]]; subst.
+    rewrite Forall_forall in H0. apply H0; auto.
+    intros. apply H. simpl. rewrite aset_mem_big_union. exists y. split; auto.
 Qed.
 
 Lemma v_subst_cons {f} ts vs:
@@ -598,32 +666,32 @@ Proof.
 Qed.
 
 Lemma v_subst_aux_type_vars (v: typevar -> vty) (t: vty):
-  forall x, In x (type_vars (v_subst_aux v t)) ->
-    exists y, In y (type_vars t) /\ In x (type_vars (v y)).
+  forall x, aset_mem x (type_vars (v_subst_aux v t)) ->
+    exists y, aset_mem y (type_vars t) /\ aset_mem x (type_vars (v y)).
 Proof.
-  intros x. induction t; simpl; try contradiction.
-  - intros Hinx. exists v0. auto.
-  - simpl_set. intros [t [Hint Hinx]].
+  intros x. induction t; simpl; try (intros Hex; apply aset_mem_empty in Hex; contradiction).
+  - intros Hinx. exists v0. rewrite aset_mem_singleton. auto.
+  - rewrite aset_mem_big_union. intros [t [Hint Hinx]].
     rewrite in_map_iff in Hint.
     destruct Hint as [t2 [Ht Hint2]]; subst.
     rewrite Forall_forall in H.
     specialize (H _ Hint2 Hinx).
     destruct H as [y [Hiny Hinx2]].
-    exists y. split; auto. simpl_set. exists t2. auto.
+    exists y. split; auto. rewrite aset_mem_big_union. exists t2. auto.
 Qed. 
 
 Lemma ty_subst_type_vars params tys ty:
-  sublist (type_vars (ty_subst params tys ty)) 
-    (big_union typevar_eq_dec type_vars tys).
+  asubset (type_vars (ty_subst params tys ty)) 
+    (aset_big_union type_vars tys).
 Proof.
-  unfold ty_subst.
+  unfold ty_subst. rewrite asubset_def.
   intros x Hinx.
   apply v_subst_aux_type_vars in Hinx.
   destruct Hinx as [y [Hiny Hinx]].
   generalize dependent tys.
-  induction params as [| phd ptl IH]; simpl; [contradiction|];
-  intros [|thd ttl]; [contradiction|].
-  simpl. simpl_set_small. destruct (typevar_eq_dec y phd); subst; simpl; auto.
+  induction params as [| phd ptl IH]; simpl; [intros ? Hex; apply aset_mem_empty in Hex; contradiction|];
+  intros [| thd ttl]; [simpl; intros Hex; apply aset_mem_empty in Hex; contradiction|].
+  simpl. rewrite aset_big_union_cons aset_mem_union. destruct (typevar_eq_dec y phd); subst; simpl; auto.
 Qed.
 
 End TySubstLemmas.
@@ -675,18 +743,20 @@ Proof.
 Qed.
 
 Lemma ty_subst_equiv params tys ty:
-  (sublist (type_vars ty) params) ->
+  (asubset (type_vars ty) (list_to_aset params)) ->
   ty_subst params tys ty = ty_subst' params tys ty.
 Proof.
+  rewrite asubset_def.
   intros. unfold ty_subst. induction ty; simpl; auto.
   - destruct (in_dec typevar_eq_dec v params); simpl; auto.
     exfalso. simpl in H.
-    apply n, H; simpl; auto.
+    apply n. rewrite <- aset_mem_list_to_aset. apply H.
+    rewrite aset_mem_singleton. auto.
   - f_equal. apply map_ext_in.
     intros. rewrite Forall_forall in H0.
     apply H0; auto.
     simpl in H. intros x Hinx.
-    apply H. simpl_set. exists a; auto.
+    apply H. rewrite aset_mem_big_union. exists a; auto.
 Qed.
 
 End TySubstAlt.
