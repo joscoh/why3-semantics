@@ -4,11 +4,13 @@ From stdpp Require base gmap.
 
 (*TODO: change names (do we need this for lists?)*)
 
-Section Union.
+Section Aset.
 
 Import base gmap.
 
-Context (A: Type)  `{A_count: Countable A}.
+Section FixA.
+
+Context (A: Type)  `{Countable A}.
 
 Definition aset := gset A.
 
@@ -184,10 +186,23 @@ Proof.
   unfold aset_mem, aset_diff. set_unfold. reflexivity.
 Qed. 
 
+End FixA.
+
+(*Map over elts of set*)
+Definition aset_map {A B: Type} `{Countable A} `{Countable B} 
+  (f: A -> B) (s: aset A) : aset B :=
+  set_map f s.
+
+Definition aset_mem_map {A B: Type} `{A_count: Countable A} `{B_count: Countable B} 
+  (f: A -> B) (s: aset A) (y: B):
+  aset_mem _ y (aset_map f s) <-> exists x, y = f x /\ aset_mem _ x s.
+Proof.
+  unfold aset_mem, aset_map. rewrite elem_of_map. reflexivity.
+Qed.
 
 (*TODO: do we need to prove inverse?*)
 
-End Union.
+End Aset.
 
 #[global]Arguments aset_mem {_} {_} {_}.
 #[global]Arguments aset_empty {_} {_} {_}.
@@ -201,6 +216,8 @@ End Union.
 #[global]Arguments aset_remove {_} {_} {_}.
 #[global]Arguments aset_diff {_} {_} {_}.
 #[global]Arguments check_asubset {_} {_} {_}.
+
+
 
 Ltac simpl_set_goal_small :=
   repeat match goal with
@@ -241,6 +258,9 @@ Ltac simpl_set_goal :=
   (*big_union*)
   | H: aset_mem ?x (aset_big_union ?f ?l) |- _ => rewrite aset_mem_big_union in H
   | |- context [ aset_mem ?x (aset_big_union ?f ?l)] => rewrite aset_mem_big_union
+  (*set map*)
+  | H: aset_mem ?x (aset_map ?f ?l) |- _ => rewrite aset_mem_map in H
+  | |- context [ aset_mem ?x (aset_map ?f ?l)] => rewrite aset_mem_map
   end.
 
 Ltac simpl_set_small :=
@@ -261,6 +281,56 @@ Ltac simpl_set :=
   | H: ~ aset_mem ?x (aset_remove ?y ?l) |- _ => revert H; simpl_set_goal; intros
   end.
 
+(*For legacy reasons, keep same lemmas*)
+(*Dealing with maps and unions/big unions*)
+
+(*Convert between list map and set map*)
+Lemma in_map_aset_map {A B: Type} `{countable.Countable A} `{countable.Countable B} (f: A -> B) x s:
+  In x (map f (aset_to_list s)) <-> aset_mem x (aset_map f s).
+Proof.
+  simpl_set. rewrite in_map_iff. setoid_rewrite aset_to_list_in.
+  split; intros; destruct_all; subst; eauto.
+Qed.
+
+(*map over union*)
+Lemma aset_mem_map_union {B C: Type} `{countable.Countable B} `{countable.Countable C} (f: B -> C) s1 s2 x:
+  aset_mem x (aset_map f (aset_union s1 s2)) <->
+  aset_mem x (aset_map f s1) \/ aset_mem x (aset_map f s2).
+Proof.
+  simpl_set. setoid_rewrite aset_mem_union.
+  split; intros; destruct_all; simpl_set; destruct_all; eauto.
+Qed.
+
+(*map over remove*)
+Lemma aset_mem_map_remove {A B: Type} `{countable.Countable A} `{countable.Countable B} (f: A -> B) s y x:
+  aset_mem x (aset_map f s) /\ f y <> x ->
+  aset_mem x (aset_map f (aset_remove y s)).
+Proof.
+  simpl_set. setoid_rewrite aset_mem_remove. 
+  intros [[x1 [Hx Hinx1]] Hnot]; subst.
+  exists x1; split_all; auto. intro C1; subst; contradiction.
+Qed.
+
+(*map over big_union*)
+Lemma aset_mem_map_big_union {B C D: Type} `{countable.Countable C} `{countable.Countable D} (f: B -> aset C) (g: C -> D) 
+  (l: list B) (x: D):
+  aset_mem x (aset_map g (aset_big_union f l)) <->
+  aset_mem x (aset_big_union (fun x => aset_map g (f x)) l).
+Proof.
+  simpl_set. setoid_rewrite aset_mem_big_union.
+  setoid_rewrite aset_mem_map. split; intros; destruct_all; eauto.
+Qed.
+
+(*map over set diff*)
+Lemma aset_mem_map_diff {B C: Type} `{countable.Countable B} `{countable.Countable C} (f: B -> C) s1 s2 x:
+  aset_mem x (aset_map f s2) /\ ~ aset_mem x (aset_map f s1) ->
+  aset_mem x (aset_map f (aset_diff s1 s2)).
+Proof.
+  simpl_set. setoid_rewrite <- aset_mem_diff.
+  intros [[x1 [Hx Hinx1]] Hnot]; subst.
+  exists x1; split_all; auto. intro C1; subst.
+  apply Hnot. exists x1; auto.
+Qed.
 
 
 (* 

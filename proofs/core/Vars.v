@@ -88,31 +88,43 @@ End FreeVars.
 
 Section BoundVars.
 
-(*Define bound variables of formula and term *)
-Fixpoint fmla_bnd (f: formula) : aset vsymbol :=
+(*Define bound variables of formula and term. This is a list, NOT a set,
+  since we need to reason about absense of duplicates *)
+Fixpoint fmla_bnd (f: formula) : list vsymbol :=
   match f with
-  | Fpred p tys tms => aset_big_union tm_bnd tms
-  | Fquant q v f' => aset_union (aset_singleton v) (fmla_bnd f')
-  | Feq ty t1 t2 => aset_union (tm_bnd t1) (tm_bnd t2)
-  | Fbinop b f1 f2 => aset_union (fmla_bnd f1) (fmla_bnd f2)
+  | Fpred p tys tms => concat (map tm_bnd tms)
+  | Fquant q v f' =>
+    v :: fmla_bnd f'
+  | Feq ty t1 t2 =>
+    tm_bnd t1 ++ tm_bnd t2
+  | Fbinop b f1 f2 =>
+    fmla_bnd f1 ++ fmla_bnd f2
   | Fnot f' => fmla_bnd f'
-  | Ftrue => aset_empty
-  | Ffalse => aset_empty
-  | Flet tm v f' => aset_union (aset_singleton v) (aset_union (tm_bnd tm) (fmla_bnd f'))
-  | Fif f1 f2 f3 => aset_union (fmla_bnd f1) (aset_union (fmla_bnd f2) (fmla_bnd f3))
-  | Fmatch tm ty ps => aset_union (tm_bnd tm) (aset_big_union 
-    (fun p => aset_union (pat_fv (fst p)) (fmla_bnd (snd p))) ps)
+  | Ftrue => nil
+  | Ffalse => nil
+  | Flet tm v f' =>
+    v :: tm_bnd tm ++ fmla_bnd f' 
+  | Fif f1 f2 f3 =>
+    fmla_bnd f1 ++ fmla_bnd f2 ++ fmla_bnd f3
+  | Fmatch tm ty ps =>
+    tm_bnd tm ++ concat (map 
+      (fun p => (aset_to_list (pat_fv (fst p))) ++ fmla_bnd (snd p)) ps)
   end
-with tm_bnd (t: term) : aset vsymbol :=
+with tm_bnd (t: term) : list vsymbol :=
   match t with
-  | Tconst c => aset_empty
-  | Tvar v  => aset_empty
-  | Tfun fs tys tms => aset_big_union tm_bnd tms
-  | Tlet tm1 v tm2 => aset_union (aset_singleton v) (aset_union (tm_bnd tm1) (tm_bnd tm2))
-  | Tif f1 t1 t2 => aset_union (fmla_bnd f1) (aset_union (tm_bnd t1) (tm_bnd t2))
-  | Tmatch tm ty ps => aset_union (tm_bnd tm) (aset_big_union 
-    (fun p => aset_union (pat_fv (fst p)) (tm_bnd (snd p))) ps)
-  | Teps f1 v => aset_union (aset_singleton v) (fmla_bnd f1)
+  | Tconst c => nil
+  | Tvar v  => nil 
+  | Tfun fs tys tms =>
+    concat (map tm_bnd tms)
+  | Tlet tm1 v tm2 =>
+    v :: tm_bnd tm1 ++ tm_bnd tm2
+  | Tif f1 t1 t2 =>
+    fmla_bnd f1 ++ tm_bnd t1 ++ tm_bnd t2
+  | Tmatch tm ty ps =>
+    tm_bnd tm ++ concat (map
+      (fun p => aset_to_list (pat_fv (fst p)) ++ tm_bnd (snd p)) ps)
+  | Teps f1 v =>
+    v :: fmla_bnd f1
   end.
 
 End BoundVars.
@@ -394,29 +406,43 @@ Qed.
 
 (*Also for bound vars - easier to prove separately*)
 Lemma bnd_vars_type_vars x y (t: term) (f: formula):
-  (aset_mem x (tm_bnd t) -> aset_mem y (type_vars (snd x)) ->
+  (In x (tm_bnd t) -> aset_mem y (type_vars (snd x)) ->
     aset_mem y (tm_type_vars t)) /\
-  (aset_mem x (fmla_bnd f) -> aset_mem y (type_vars (snd x)) ->
+  (In x (fmla_bnd f) -> aset_mem y (type_vars (snd x)) ->
     aset_mem y (fmla_type_vars f)).
 Proof.
   revert t f. apply term_formula_ind; simpl; intros; auto;
   try solve[repeat(simpl_set; destruct_all; try rewrite in_app_iff in *); auto]; try contradiction.
-  (*Only 4 interesting cases: fun/pred and match.*)
-  - simpl_set_small. right. simpl_set.
-    rewrite Forall_forall in H. destruct_all. eauto.
-  - simpl_set_small. destruct_all; auto. simpl_set. rewrite Forall_map, Forall_forall in H0. 
-    repeat (destruct_all; simpl_set; eauto). 
-    + left. right. setoid_rewrite in_map_iff. eexists; split. 2: eapply fv_pat_vars_type_vars.
-      all: eauto.
-    + right. left. eauto.
-  - simpl_set_small. right. simpl_set.
-    rewrite Forall_forall in H. destruct_all. eauto.
-  - simpl_set_small. destruct_all; auto. simpl_set. rewrite Forall_map, Forall_forall in H0. 
-    repeat (destruct_all; simpl_set; eauto). 
-    + left. right. setoid_rewrite in_map_iff. eexists; split. 2: eapply fv_pat_vars_type_vars.
-      all: eauto.
-    + right. left. eauto.
+  (*Only 4 interesting cases: fun/pred and match. These cases are 
+    a tiny bit more interesting above, but not too bad*)
+  - simpl_set_small. right.
+    induction l1; simpl in *; try contradiction.
+    rewrite in_app_iff in H0. 
+    inversion H; subst.
+    simpl_set_small.
+    destruct H0; [left | right]; auto.
+  - simpl_set_small. rewrite in_app_iff in H1. destruct H1; auto.
+    induction ps; auto; [contradiction|].
+    simpl in H1. rewrite !in_app_iff in H1. inversion H0; subst.
+    destruct a as [p t]; simpl in *. 
+    repeat(simpl_set_small; destruct_all); auto.
+    + left. right. left. eapply fv_pat_vars_type_vars. apply H1. auto.
+    + specialize (IHps H6 H1). destruct_all; auto.
+  - simpl_set_small. right.
+    induction tms; simpl in *; try contradiction.
+    rewrite in_app_iff in H0. 
+    inversion H; subst.
+    simpl_set_small.
+    destruct H0; [left | right]; auto.
+  - simpl_set_small. rewrite in_app_iff in H1. destruct H1; auto.
+    induction ps; auto; [contradiction|].
+    simpl in H1. rewrite !in_app_iff in H1. inversion H0; subst.
+    destruct a as [p t]; simpl in *. 
+    repeat(simpl_set_small; destruct_all); auto.
+    + left. right. left. eapply fv_pat_vars_type_vars. apply H1. auto.
+    + specialize (IHps H6 H1). destruct_all; auto.
 Qed.
+
 
 Definition tm_fv_vars_type_vars t: forall x y,
 aset_mem x (tm_fv t) -> aset_mem y (type_vars (snd x)) ->
@@ -429,12 +455,12 @@ aset_mem y (fmla_type_vars f) := fun x y =>
 proj2 (fv_vars_type_vars x y tm_d f).
 
 Definition tm_bnd_vars_type_vars t: forall x y,
-aset_mem x (tm_bnd t) -> aset_mem y (type_vars (snd x)) ->
+In x (tm_bnd t) -> aset_mem y (type_vars (snd x)) ->
 aset_mem y (tm_type_vars t) := fun x y =>
 proj1 (bnd_vars_type_vars x y t Ftrue).
 
 Definition fmla_bnd_vars_type_vars f: forall x y,
-aset_mem x (fmla_bnd f) -> aset_mem y (type_vars (snd x)) ->
+In x (fmla_bnd f) -> aset_mem y (type_vars (snd x)) ->
 aset_mem y (fmla_type_vars f) := fun x y =>
 proj2 (bnd_vars_type_vars x y tm_d f).
 
@@ -454,14 +480,15 @@ Definition gen_fv {b: bool} (t: gen_term b) : aset vsymbol :=
   | false => fmla_fv
   end t.
 
-Definition gen_bnd {b: bool} (t: gen_term b) : aset vsymbol :=
-  match b return gen_term b -> aset vsymbol with
+Definition gen_bnd {b: bool} (t: gen_term b) : list vsymbol :=
+  match b return gen_term b -> list vsymbol with
   | true => tm_bnd
   | false => fmla_bnd
   end t.
 
+(*TODO: make sure OK to send to list and not other way around*)
 Definition gen_getvars {b: bool} (x: gen_term b) : aset vsymbol :=
-  aset_union (gen_fv x) (gen_bnd x).
+  aset_union (gen_fv x) (list_to_aset (gen_bnd x)).
 
 Lemma gen_fv_getvars {b: bool} (t: gen_term b) : forall x, aset_mem x (gen_fv t) -> aset_mem x (gen_getvars t).
 Proof.
@@ -470,11 +497,11 @@ Qed.
 
 Lemma gen_getvars_let {b} (v1: vsymbol) (tm: term) (a: gen_term b) (x: vsymbol):
   aset_mem x (gen_getvars (gen_let v1 tm a)) <->
-  v1 = x \/ aset_mem x (tm_bnd tm) \/ aset_mem x (tm_fv tm) \/ aset_mem x (gen_getvars a).
+  v1 = x \/ In x (tm_bnd tm) \/ aset_mem x (tm_fv tm) \/ aset_mem x (gen_getvars a).
 Proof.
   unfold gen_let, gen_getvars.
-  destruct b; simpl; simpl_set_small; split; intros; destruct_all; auto;
-  destruct (vsymbol_eq_dec v1 x); auto.
+  destruct b; simpl; simpl_set_small; simpl in *; rewrite !in_app_iff; simpl_set_small;
+  split; intros; destruct_all; auto; destruct (vsymbol_eq_dec v1 x); auto.
 Qed.
 
 Lemma gen_type_vars_let {b} t1 v (t2: gen_term b):
@@ -498,7 +525,7 @@ Proof.
 Qed.
 
 Lemma gen_fun_bnd {b: bool} (s: gen_sym b) (tys: list vty) (tms: list term):
-  gen_bnd (gen_fun s tys tms) = aset_big_union tm_bnd tms.
+  gen_bnd (gen_fun s tys tms) = concat (map tm_bnd tms).
 Proof. destruct b; reflexivity. Qed.
 
 Lemma gen_fun_fv {b: bool} (s: gen_sym b) (tys: list vty) (tms: list term):
@@ -506,7 +533,7 @@ Lemma gen_fun_fv {b: bool} (s: gen_sym b) (tys: list vty) (tms: list term):
 Proof. destruct b; reflexivity. Qed.
 
 Lemma gen_let_bnd  {b: bool} {tm1: term} {tm2: gen_term b} {x}:
-  gen_bnd (gen_let x tm1 tm2) = aset_union (aset_singleton x) (aset_union (tm_bnd tm1) (gen_bnd tm2)). 
+  gen_bnd (gen_let x tm1 tm2) = x :: tm_bnd tm1 ++ gen_bnd tm2.
 Proof. destruct b; reflexivity. Qed.
 
 Lemma gen_let_fv  {b: bool} {tm1: term} {tm2: gen_term b} {x}:
@@ -515,7 +542,7 @@ Lemma gen_let_fv  {b: bool} {tm1: term} {tm2: gen_term b} {x}:
 Proof. destruct b; reflexivity. Qed.
 
 Lemma gen_if_bnd  {b: bool} (f: formula) (t1 t2: gen_term b):
-  gen_bnd (gen_if f t1 t2) = aset_union (fmla_bnd f) (aset_union (gen_bnd t1) (gen_bnd t2)).
+  gen_bnd (gen_if f t1 t2) = fmla_bnd f ++ gen_bnd t1 ++ gen_bnd t2.
 Proof. destruct b; reflexivity. Qed.
 
 Lemma gen_if_fv  {b: bool} (f: formula) (t1 t2: gen_term b):
@@ -526,7 +553,7 @@ Proof. destruct b; reflexivity. Qed.
 
 Lemma gen_match_bnd {b: bool} (t: term) (ty: vty) (ps: list (pattern * gen_term b)):
   gen_bnd (gen_match t ty ps) = 
-    aset_union (tm_bnd t) (aset_big_union (fun p => aset_union (pat_fv (fst p)) (gen_bnd (snd p))) ps).
+    tm_bnd t ++ concat (map (fun p => (aset_to_list (pat_fv (fst p))) ++ gen_bnd (snd p)) ps).
 Proof. destruct b; reflexivity. Qed.
 
 Lemma gen_match_fv {b: bool} (t: term) (ty: vty) (ps: list (pattern * gen_term b)):

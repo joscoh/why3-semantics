@@ -330,7 +330,7 @@ Proof.
     by rewrite Hlen1 Hlen2 Hlen3.
   - move=> Heq.
     have: length x1 + length y1 + length (concat "" (z1 :: l1)) =
-      length x2 by rewrite -Heq !append_length addnA.
+      length x2 by rewrite -Heq !append_length !addnA.
     rewrite Hlen1 Hlen2 Hlen3 => Heq2. 
     by have: 1 + 1 <= 1 by rewrite -{3}Heq2.
 Qed.

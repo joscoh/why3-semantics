@@ -8,9 +8,9 @@ Set Bullet Behavior "Strict Subproofs".
   to alpha-convert our term/formula into this form. The function
   and proofs are in Alpha.v*)
 Definition term_name_wf (t: term) : Prop :=
-  NoDup (map fst (tm_bnd t)) /\ disj (map fst (tm_fv t)) (map fst (tm_bnd t)).
+  NoDup (map fst (tm_bnd t)) /\ disj (map fst (aset_to_list (tm_fv t))) (map fst (tm_bnd t)).
 Definition fmla_name_wf (f: formula) : Prop :=
-  NoDup (map fst (fmla_bnd f)) /\ disj (map fst (fmla_fv f)) (map fst (fmla_bnd f)).
+  NoDup (map fst (fmla_bnd f)) /\ disj (map fst (aset_to_list (fmla_fv f))) (map fst (fmla_bnd f)).
 Definition gen_name_wf {b: bool} (t: gen_term b) : Prop :=
   match b return gen_term b -> Prop with
   | true => term_name_wf
@@ -19,7 +19,7 @@ Definition gen_name_wf {b: bool} (t: gen_term b) : Prop :=
 
 Lemma gen_name_wf_eq {b: bool} (t: gen_term b) :
   gen_name_wf t <->
-  NoDup (map fst (gen_bnd t)) /\ disj (map fst (gen_fv t)) (map fst (gen_bnd t)).
+  NoDup (map fst (gen_bnd t)) /\ disj (map fst (aset_to_list (gen_fv t))) (map fst (gen_bnd t)).
 Proof.
   destruct b; reflexivity.
 Qed.
@@ -38,8 +38,8 @@ Proof.
     rewrite in_map_iff. exists (tm_bnd t); rewrite in_map_iff; eauto.
   - intros x [Hinx1 Hinx2].
     apply (Hfb x).
-    split; [rewrite in_map_big_union|].
-    + simpl_set. eauto. Unshelve. exact string_dec.
+    split; [rewrite in_map_aset_map, aset_mem_map_big_union|].
+    + simpl_set. rewrite in_map_aset_map in Hinx1. eauto.
     + rewrite concat_map, !map_map. 
       rewrite in_concat. eexists. split; [| apply Hinx2].
       rewrite in_map_iff. eauto.
@@ -56,9 +56,11 @@ Proof.
   rewrite map_app in Hn2.
   apply NoDup_app in Hn2. destruct Hn2 as [Hn1 Hn2].
   split_all; auto; intros y [Hiny1 Hiny2]; apply (Hfb y);
-  rewrite in_map_union; simpl_set; simpl; rewrite map_app, in_app_iff; auto.
-  split; auto. right. apply in_map_remove. split; auto.
-  intro C; subst. apply Hnotin. rewrite map_app, in_app_iff; auto.
+  rewrite !in_map_aset_map in *.
+  - rewrite aset_mem_map_union. simpl. rewrite map_app, in_app_iff. auto.
+  - rewrite aset_mem_map_union. simpl_set_small; simpl; rewrite map_app, in_app_iff; auto.
+    split; auto. right. apply aset_mem_map_remove. split; auto.
+    intro C; subst. apply Hnotin. rewrite map_app, in_app_iff; auto.
 Qed.
 
 Lemma wf_genif (b : bool) {f} {t1 t2 : gen_term b} 
@@ -77,7 +79,9 @@ Proof.
   unfold disj in Hfb.
   do 2 (setoid_rewrite in_app_iff in Hfb).
   split_all; auto; intros x [Hinx1 Hinx2]; apply (Hfb x);
-  rewrite !in_map_union; simpl_set; auto.
+  repeat (rewrite !in_map_union; simpl_set_small);
+  rewrite !in_map_aset_map in *;
+  rewrite !aset_mem_map_union; auto.
 Qed.
 
 Lemma wf_genmatch (b: bool) {tm ty} {ps: list (pattern * gen_term b)} 
@@ -92,14 +96,15 @@ Proof.
   apply NoDup_app_iff in Hn.
   destruct Hn as [Hn1 [Hn2  [Hn12 _]]].
   split_all; auto.
-  - eapply disj_sublist_lr. apply Hdisj.
-    intros x Hinx. rewrite in_map_union. auto.
-    apply sublist_app_l.
+  - eapply disj_sublist_lr. 
+    + apply Hdisj.
+    + intros x Hinx. rewrite !in_map_aset_map in *. rewrite aset_mem_map_union; auto.
+    + apply sublist_app_l.
   - rewrite Forall_forall. intros x Hinx.
     rewrite gen_name_wf_eq.
     rewrite concat_map in Hn2.
     assert (Hn3:
-      NoDup (map fst (pat_fv (fst x)) ++ map fst (gen_bnd (snd x)))).
+      NoDup (map fst (aset_to_list (pat_fv (fst x))) ++ map fst (gen_bnd (snd x)))).
     {
       eapply in_concat_NoDup; [apply string_dec | apply Hn2 |].
       rewrite in_map_iff. eexists.
@@ -110,16 +115,16 @@ Proof.
     + apply NoDup_app in Hn3. apply Hn3.
     + intros y [Hiny1 Hiny2].
       (*Because in [tm_bnd], cannot be in [pat_fv]*)
-      assert (Hnotin: ~ In y (map fst (pat_fv (fst x)))). {
+      assert (Hnotin: ~ In y (map fst (aset_to_list (pat_fv (fst x))))). {
         intro C.
         apply NoDup_app_iff in Hn3.
         apply Hn3 in C; auto; contradiction.
       }
-      apply (Hdisj y). split.
-      * rewrite in_map_union. right.
-        rewrite in_map_big_union with (eq_dec1:=string_dec).
-        simpl_set. exists x. split; auto.
-        apply in_map_remove_all. auto.
+      apply (Hdisj y). rewrite !in_map_aset_map in *. split.
+      * rewrite aset_mem_map_union. right.
+        rewrite aset_mem_map_big_union.
+        rewrite aset_mem_big_union. exists x. split; auto.
+        apply aset_mem_map_diff; auto.
       * rewrite in_app_iff. right. rewrite concat_map, map_map, in_concat.
         eexists. split; [rewrite in_map_iff; eexists; split; [| apply Hinx]; reflexivity |].
         rewrite map_app, in_app_iff; auto.
@@ -134,7 +139,7 @@ Proof.
   intros x [Hinx1 Hinx2].
   assert (x <> fst v) by (intro C; subst; contradiction).
   apply (Hdisj x); split.
-  - apply in_map_remove. auto.
+  - rewrite !in_map_aset_map in *. apply aset_mem_map_remove. auto.
   - simpl. auto.
 Qed.
 
@@ -147,7 +152,7 @@ Proof.
   intros x [Hinx1 Hinx2].
   assert (x <> fst v) by (intro C; subst; contradiction).
   apply (Hdisj x); split.
-  - apply in_map_remove. auto.
+  - rewrite !in_map_aset_map in *. apply aset_mem_map_remove. auto.
   - simpl. auto.
 Qed.
 
@@ -160,7 +165,7 @@ Proof.
   apply NoDup_app in Hn1. destruct Hn1 as [Hn1 Hn2]. split_all; auto;
   eapply disj_sublist_lr; try solve[apply Hdisj];
   try solve[apply sublist_app_r]; try solve[apply sublist_app_l];
-  intros x Hinx; apply in_map_union; auto.
+  intros x Hinx; rewrite !in_map_aset_map in *; apply aset_mem_map_union; auto.
 Qed.
 
 Lemma wf_fbinop {b f1 f2} (Hwf: fmla_name_wf (Fbinop b f1 f2)):
@@ -172,7 +177,7 @@ Proof.
   apply NoDup_app in Hn1. destruct Hn1 as [Hn1 Hn2]. split_all; auto;
   eapply disj_sublist_lr; try solve[apply Hdisj];
   try solve[apply sublist_app_r]; try solve[apply sublist_app_l];
-  intros x Hinx; apply in_map_union; auto.
+  intros x Hinx; rewrite !in_map_aset_map in *; apply aset_mem_map_union; auto.
 Qed.
 
 Lemma wf_fnot {f} (Hwf: fmla_name_wf (Fnot f)):
@@ -183,9 +188,9 @@ Qed.
 
 (*For legacy reasons (TODO remove)*)
 Definition term_wf (t: term) : Prop :=
-  NoDup (tm_bnd t) /\ forall x, ~ (In x (tm_fv t) /\ In x (tm_bnd t)).
+  NoDup (tm_bnd t) /\ forall x, ~ (In x (aset_to_list (tm_fv t)) /\ In x (tm_bnd t)).
 Definition fmla_wf (f: formula) : Prop :=
-  NoDup (fmla_bnd f) /\ forall x, ~ (In x (fmla_fv f) /\ In x (fmla_bnd f)).
+  NoDup (fmla_bnd f) /\ forall x, ~ (In x (aset_to_list (fmla_fv f)) /\ In x (fmla_bnd f)).
 
 Lemma term_name_wf_wf (t: term):
   term_name_wf t ->
@@ -232,13 +237,8 @@ Lemma wf_binop (b: binop) (f1 f2: formula) :
   fmla_wf f1 /\ fmla_wf f2.
 Proof.
   unfold fmla_wf. simpl. rewrite NoDup_app_iff.
-  intros. split_all; auto; intros x C; split_all.
-  - apply (H0 x).
-    split_all. apply union_elts. auto. 
-    apply in_or_app. auto.
-  - apply (H0 x).
-    split_all. apply union_elts. auto.
-    apply in_or_app. auto. 
+  intros. split_all; auto; intros x C; split_all; apply (H0 x);
+  split_all; try solve[simpl_set_small; auto]; apply in_or_app; auto.
 Qed.
 
 Lemma wf_let (t: term) (v: vsymbol) (f: formula) :
@@ -250,7 +250,7 @@ Proof.
   - rewrite NoDup_app_iff in H4; apply H4.
   - intros x C. split_all.
     apply (H0 x). split.
-    + simpl_set; right. split; auto. intro Heq; subst.
+    + simpl_set. right. split; auto. intro Heq; subst.
       inversion H; subst.
       apply H7. apply in_or_app. auto. 
     + right. apply in_or_app. auto.
