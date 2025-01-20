@@ -198,6 +198,85 @@ Definition predsym_eq_dec (p1 p2: predsym) : {p1 = p2} + {p1 <> p2} :=
 
 End SymEqDec.
 
+(*Countable*)
+
+(*Do in 2 layers (similarly to how they do sigma types - first show injective to send to tuple*)
+
+Definition fpsym_to_tup (f: fpsym) : (string * list typevar * list vty) :=
+  (s_name f, s_params f, s_args f).
+
+Definition tup_to_fpsym (x: string * list typevar * list vty) : option fpsym :=
+  let n := fst (fst x) in
+  let p := snd (fst x) in
+  let a := snd x in
+  match (check_args p a) as b1 return check_args p a = b1 -> option fpsym with
+  | true => fun a_wf =>
+      match (nodupb typevar_eq_dec p) as b2 return nodupb typevar_eq_dec p = b2 -> option fpsym with
+      | true => fun p_nodup => Some (Build_fpsym n p a a_wf p_nodup)
+      | false => fun _ => None
+      end eq_refl
+  | false => fun _ => None
+  end eq_refl.
+
+Lemma fpsym_to_tup_inj: forall x,
+  tup_to_fpsym (fpsym_to_tup x) = Some x.
+Proof.
+  intros [n p a a_wf p_nodup].
+  unfold fpsym_to_tup. simpl. unfold tup_to_fpsym.
+  simpl.
+  generalize dependent (@eq_refl bool (check_args p a)).
+  generalize dependent (@eq_refl bool (nodupb typevar_eq_dec p)).
+  generalize dependent ((Build_fpsym n p a)).
+  rewrite a_wf, p_nodup; intros; subst; auto.
+  f_equal; f_equal; apply bool_irrelevance.
+Qed.
+
+Instance fpsym_EqDecision : @base.RelDecision fpsym fpsym eq.
+Proof. unfold base.RelDecision. apply fpsym_eq_dec. Defined.
+
+Instance fpsym_Countable : countable.Countable fpsym :=
+  countable.inj_countable fpsym_to_tup tup_to_fpsym fpsym_to_tup_inj.
+
+(*Now for fun and predsyms*)
+
+Definition funsym_to_tup (f: funsym) : fpsym * vty * bool * nat :=
+  (f_sym f, f_ret f, f_is_constr f, f_num_constrs f).
+Definition tup_to_funsym (x: fpsym * vty * bool * nat) : option funsym :=
+  let s := fst (fst (fst x)) in
+  let r := snd (fst (fst x)) in
+  let i := snd (fst x) in
+  let n := snd x in
+  match proj_sumbool _ _ (check_asubset (type_vars r) (list_to_aset (s_params s))) as b return
+    proj_sumbool _ _ (check_asubset (type_vars r) (list_to_aset (s_params s))) = b -> option funsym with
+  | true => fun r_wf => Some (Build_funsym s r i n r_wf)
+  | false => fun _ => None
+  end eq_refl.
+
+Lemma funsym_to_tup_inj: forall x,
+  tup_to_funsym (funsym_to_tup x) = Some x.
+Proof.
+  intros [s r i n r_wf].
+  unfold funsym_to_tup. simpl. unfold tup_to_funsym.
+  simpl.
+  generalize dependent (@eq_refl bool (proj_sumbool _ _ (check_asubset (type_vars r) (list_to_aset (s_params s))))).
+  generalize dependent (Build_funsym s r i n).
+  rewrite r_wf. intros; f_equal; f_equal; apply bool_irrelevance.
+Qed.
+
+Instance funsym_EqDecision : @base.RelDecision funsym funsym eq.
+Proof. unfold base.RelDecision. apply funsym_eq_dec. Defined.
+
+Instance funsym_Countable : countable.Countable funsym :=
+  countable.inj_countable funsym_to_tup tup_to_funsym funsym_to_tup_inj.
+
+(*Predsym much easier*)
+
+Instance predsym_EqDecision : @base.RelDecision predsym predsym eq.
+Proof. unfold base.RelDecision. apply predsym_eq_dec. Defined.
+
+Instance predsym_Countable : countable.Countable predsym :=
+  countable.inj_countable' p_sym Build_predsym (ltac:(intros [x]; reflexivity)).
+
 (*Create function symbols*)
 Definition find_args (l: list vty) : list typevar :=
   aset_to_list (aset_big_union type_vars l).

@@ -12,7 +12,7 @@ Context {A: Type} (get_constructors: typesym -> list funsym)
 (*Part 1: Define parts of compile function. We separate out helper functions to make proofs easier*)
 
 Definition add_case (fs: funsym) (pl: list pattern) (a: A) (cases : amap funsym (list (list pattern * A))) :=
-    amap_change funsym_eq_dec (fun o =>
+    amap_change (fun o =>
       match o with
       | None => [(pl, a)]
       | Some rl => (pl, a) :: rl
@@ -22,9 +22,9 @@ Definition add_case (fs: funsym) (pl: list pattern) (a: A) (cases : amap funsym 
 Definition union_cases (pl: list pattern) (a: A) (types: amap funsym (list pattern)) 
     (cases: amap funsym (list (list pattern * A))) : amap funsym (list (list pattern * A)) :=
     let add pl _ := Pwild :: pl in
-    let wild (c: funsym) ql  := [(fold_left add ql pl, a)] in
-    let join _ wl rl := Some (wl ++ rl) in
-    amap_union funsym_eq_dec join (amap_map_key wild types) cases . 
+    let wild ql  := [(fold_left add ql pl, a)] in
+    let join wl rl := Some (wl ++ rl) in
+    amap_union join (amap_map wild types) cases . 
 
 (*Part 1: The dispatch function they implement in OCaml
   This is more efficient (1 pass) but harder to directly reason about*)
@@ -191,7 +191,7 @@ Proof.
   - split; intros; destruct_all; discriminate.
   - simpl in *. rewrite dispatch_equation_5. destruct (dispatch_opt (q :: pl, a) (cases, wilds)) as [l1 |] eqn : Hq; simpl.
     + rewrite H0. specialize (H l1). destruct H as [Hl1 _].
-      specialize (Hl1 eq_refl). destruct Hl1; subst; auto. reflexivity.
+      specialize (Hl1 eq_refl). destruct Hl1; subst; auto.
     + split; try discriminate. apply dispatch_opt_none in Hq. discriminate.
   - rewrite dispatch_equation_6. apply H.
 Qed. 
@@ -249,8 +249,8 @@ Fixpoint populate  (acc : (amap funsym (list pattern) * list (funsym * list vty 
         | Pconstr fs params ps =>
             let (css, csl) := acc in
             if is_constr fs then
-              if amap_mem funsym_eq_dec fs css then Some acc else
-              Some (amap_set funsym_eq_dec css fs ps, (fs, params, ps) :: csl)
+              if amap_mem fs css then Some acc else
+              Some (amap_set css fs ps, (fs, params, ps) :: csl)
             else None (*exception - impossible by typing*)
         | Por p1 p2 => option_bind (populate acc p1) (fun x => populate x p2)
         | Pbind p _ => populate acc p
@@ -293,9 +293,9 @@ Definition wild_at_head_ex rl := existsb (pat_at_head Pwild) rl.
 (*First structural lemma: if neither a constructor nor Pwild appears in the first column, 
   S is empty*)
 Lemma dispatch2_gen_fst_notin (types: amap funsym (list pattern)) rl cs:
-  amap_mem funsym_eq_dec cs types ->
+  amap_mem cs types ->
   (constr_at_head_ex cs rl || wild_at_head_ex rl) = false <->
-  amap_get funsym_eq_dec (fst (dispatch2_gen types rl)) cs = None.
+  amap_lookup (fst (dispatch2_gen types rl)) cs = None.
 Proof.
   intros Htypes. induction rl as [| [ps a] rtl IH]; simpl; [split; auto|].
   destruct (dispatch2_gen types rtl) as [cases wilds] eqn : Hd; simpl in *.
@@ -304,17 +304,17 @@ Proof.
   destruct phd; simpl; auto.
   - unfold add_case, amap_change. destruct (funsym_eqb_spec f cs); subst; simpl.
     + split; try discriminate.
-      destruct (amap_get funsym_eq_dec cases cs) eqn : Hget.
-      * erewrite amap_replace_get_same1. discriminate. apply Hget.
-      * rewrite amap_replace_get_same2; auto. discriminate.
-    + rewrite amap_replace_get_diff; auto.
+      destruct (amap_lookup cases cs) eqn : Hget.
+      * erewrite amap_replace_lookup_same1. discriminate. apply Hget.
+      * rewrite amap_replace_lookup_same2; auto. discriminate.
+    + rewrite amap_replace_lookup_diff; auto.
   - rewrite orb_true_r. split; try discriminate.
     unfold union_cases.
     rewrite amap_mem_spec in Htypes.
-    destruct (amap_get funsym_eq_dec types cs) eqn : Hget1; try discriminate.
-    destruct (amap_get funsym_eq_dec cases cs) eqn : Hget2. 
-    + erewrite amap_union_inboth. discriminate. erewrite amap_map_key_get_some. reflexivity. apply Hget1. apply Hget2.
-    + erewrite amap_union_inl. discriminate. erewrite amap_map_key_get_some. reflexivity. apply Hget1. auto.
+    destruct (amap_lookup types cs) eqn : Hget1; try discriminate.
+    destruct (amap_lookup cases cs) eqn : Hget2. 
+    + erewrite amap_union_inboth. discriminate. erewrite amap_map_lookup_some. reflexivity. apply Hget1. apply Hget2.
+    + erewrite amap_union_inl. discriminate. erewrite amap_map_lookup_some. reflexivity. apply Hget1. auto.
 Qed.
 
 Lemma omap_nil_pat_false rl cs m:
@@ -338,9 +338,9 @@ Qed.
   result of filtering all of the other constructors out, appending the arguments of the matching
   constructors and the correct number of wildcards for a Pwild*)
 Lemma dispatch2_gen_fst_in (types: amap funsym (list pattern)) ys rl cs:
-  amap_get funsym_eq_dec types cs = Some ys ->
+  amap_lookup types cs = Some ys ->
   (constr_at_head_ex cs rl || wild_at_head_ex rl) ->
-  amap_get funsym_eq_dec (fst (dispatch2_gen types rl)) cs = Some
+  amap_lookup (fst (dispatch2_gen types rl)) cs = Some
     (omap (fun x =>
       let ps := fst x in
       let a := snd x in
@@ -362,7 +362,7 @@ Proof.
   destruct (dispatch2_gen types rtl) as [cases wilds] eqn : Hd; simpl in *.
   unfold constr_at_head, pat_at_head in Hhead; simpl in Hhead.
   destruct ps as [| phd ptl]; simpl in *; auto.
-  assert (Hmem: amap_mem funsym_eq_dec cs types). {
+  assert (Hmem: amap_mem cs types). {
     rewrite amap_mem_spec, Htypes; auto. }
   destruct phd; auto.
   - unfold add_case, amap_change; simpl.
@@ -370,13 +370,13 @@ Proof.
     + simpl in Hhead. 
       (*Need to see what recursive case is: preveious lemma gives more info*)
       destruct (constr_at_head_ex cs rtl || wild_at_head_ex rtl) eqn : Hhd2.
-      * simpl in IH. erewrite amap_replace_get_same1.
+      * simpl in IH. erewrite amap_replace_lookup_same1.
         2: apply IH; auto. reflexivity. auto.
-      * rewrite amap_replace_get_same2. 
+      * rewrite amap_replace_lookup_same2. 
         -- rewrite omap_nil_pat_false. reflexivity. auto.
         -- pose proof (dispatch2_gen_fst_notin types rtl cs Hmem) as Hnone.
            rewrite Hd in Hnone; apply Hnone. auto.
-    + simpl in Hhead. rewrite amap_replace_get_diff; auto.
+    + simpl in Hhead. rewrite amap_replace_lookup_diff; auto.
   - unfold union_cases; simpl.
     assert (Hrepeat: forall (ql: list pattern), fold_left (fun (pl : list pattern) (_ : pattern) => Pwild :: pl) ql ptl =
       repeat Pwild (Datatypes.length ql) ++ ptl).
@@ -392,11 +392,11 @@ Proof.
     }
     destruct (constr_at_head_ex cs rtl || wild_at_head_ex rtl) eqn : Hhead2.
     + erewrite amap_union_inboth. 3: { apply IH. apply Htypes. auto. }
-      2: { apply amap_map_key_get_some. apply Htypes. } simpl. f_equal.
+      2: { apply amap_map_lookup_some. apply Htypes. } simpl. f_equal.
       f_equal. f_equal. auto. 
     + (*here, recursive get is false and list is nil*)
       rewrite omap_nil_pat_false; auto.
-      erewrite amap_union_inl. reflexivity. erewrite amap_map_key_get_some.
+      erewrite amap_union_inl. reflexivity. erewrite amap_map_lookup_some.
       f_equal. f_equal. f_equal. apply Hrepeat.
       apply Htypes. pose proof (dispatch2_gen_fst_notin types rtl cs Hmem) as Hnone.
       rewrite Hd in Hnone; apply Hnone. auto.
@@ -778,15 +778,15 @@ Qed.
 
 (*3. expand_size (S(cs, rl)) <= expand_size rl*)
 Lemma expand_size_dispatch2_gen_fst types cs rl l:
-  amap_mem funsym_eq_dec cs types ->
-  amap_get funsym_eq_dec (fst (dispatch2_gen types rl)) cs = Some l ->
+  amap_mem cs types ->
+  amap_lookup (fst (dispatch2_gen types rl)) cs = Some l ->
   expand_size l <= expand_size rl.
 Proof.
   intros Htypes.
   destruct (constr_at_head_ex cs rl || wild_at_head_ex rl) eqn : Hin.
   2: { rewrite dispatch2_gen_fst_notin in Hin. 2: apply Htypes. rewrite Hin. discriminate. }
   rewrite amap_mem_spec in Htypes.
-  destruct (amap_get funsym_eq_dec types cs) as [ys |] eqn : Hget; try discriminate.
+  destruct (amap_lookup types cs) as [ys |] eqn : Hget; try discriminate.
   rewrite dispatch2_gen_fst_in with (ys:=ys); auto.
   clear Htypes Hget Hin.
   revert ys l.
@@ -812,8 +812,8 @@ Proof.
 Qed.
 
 Lemma expand_size_s t types rl cs l:
-  amap_mem funsym_eq_dec cs types ->
-  amap_get funsym_eq_dec (fst (dispatch1 t types rl)) cs = Some l ->
+  amap_mem cs types ->
+  amap_lookup (fst (dispatch1 t types rl)) cs = Some l ->
   expand_size l <= expand_size rl.
 Proof.
   intros Htypes.
@@ -1276,9 +1276,9 @@ Qed.
   We add at most (length ys) wilds per each row of the expanded matrix, but
   we reduce by n. This allows us to set n large enough*)
 Theorem dispatch2_gen_bound_in n types rl cs l (ys: list pattern):
-  amap_get funsym_eq_dec types cs = Some ys ->
+  amap_lookup types cs = Some ys ->
   constr_at_head_ex cs rl ->
-  amap_get funsym_eq_dec (fst (dispatch2_gen types rl)) cs = Some l ->
+  amap_lookup (fst (dispatch2_gen types rl)) cs = Some l ->
   compile_size n l + n <= compile_size n rl + (expand_size rl) * (length ys).
 Proof.
   intros Hget Hconstr.
@@ -1309,9 +1309,9 @@ Qed.
 
 (*And the corollary for the full S matrix*)
 Lemma s_matrix_bound_in n t types rl cs l (ys: list pattern):
-  amap_get funsym_eq_dec types cs = Some ys ->
+  amap_lookup types cs = Some ys ->
   constr_at_head_ex cs (simplify t rl) ->
-  amap_get funsym_eq_dec (fst (dispatch1 t types rl)) cs = Some l ->
+  amap_lookup (fst (dispatch1 t types rl)) cs = Some l ->
   compile_size n l + n <= compile_size n rl + (expand_size rl) * (length ys).
 Proof.
   intros Htypes. rewrite dispatch_equiv. unfold dispatch2.
@@ -1380,7 +1380,7 @@ Proof.
   induction p; simpl; auto; intros a acc.
   - destruct acc as [css csl]; simpl.
     destruct (is_constr f); auto.
-    destruct (amap_mem funsym_eq_dec f css); auto.
+    destruct (amap_mem f css); auto.
   - rewrite map_app, fold_left_opt_app, (IHp1 a).
     apply option_bind_ext. auto.
 Qed.
@@ -1392,7 +1392,7 @@ Proof.
   unfold populate_all. rewrite <- !get_full_heads.
   rewrite get_full_simplify, option_map_comp.
   destruct (get_full rl) eqn : Hfull; simpl; auto.
-  generalize dependent (@amap_empty funsym (list pattern), (@nil (funsym * list vty * list pattern))).
+  generalize dependent (@amap_empty funsym (list pattern) funsym_EqDecision funsym_Countable, (@nil (funsym * list vty * list pattern))).
   clear Hfull.
   induction l as [| h tl IH]; simpl; auto.
   intros p.
@@ -1480,7 +1480,7 @@ Qed.
 Lemma populate_all_in is_constr rl o cs:
   simplified rl ->
   populate_all is_constr rl = Some o ->
-  amap_mem funsym_eq_dec cs (fst o) <-> constr_at_head_ex cs rl.
+  amap_mem cs (fst o) <-> constr_at_head_ex cs rl.
 Proof.
   intros Hsimpl. unfold populate_all.
   destruct (get_heads rl) as[heads|] eqn : Hhead; [|discriminate].
@@ -1511,7 +1511,7 @@ Proof.
     destruct phd; simpl in *; auto; try discriminate.
     + destruct p as [css csl]; simpl in *.
       destruct (is_constr f); try discriminate.
-      destruct (amap_mem funsym_eq_dec f css) eqn : Hmem.
+      destruct (amap_mem f css) eqn : Hmem.
       * inv Hsome. simpl. 
         destruct (funsym_eqb_spec f o); simpl; subst; auto.
         -- split; auto.
@@ -1520,21 +1520,20 @@ Proof.
       * inv Hsome. 
         simpl.
         destruct (funsym_eqb_spec f o); simpl; subst.
-        2: { rewrite amap_mem_spec, amap_set_get_diff; auto.
+        2: { rewrite amap_mem_spec, amap_set_lookup_diff; auto.
           rewrite <- (IH Hsimpl _ _ _ eq_refl Hfold); auto.
-          simpl. rewrite amap_mem_spec. destruct (amap_get funsym_eq_dec css o); split; auto.
         }
-        rewrite amap_mem_spec, amap_set_get_same. split; auto.
+        rewrite amap_mem_spec, amap_set_lookup_same. split; auto.
     + inv Hsome. eapply IH. assumption. reflexivity. auto.
 Qed.
 
 (*And now we prove the same for [dispatch1]*)
 
 (*Not most general but oh well*)
-Lemma amap_mem_union_some {B C: Type} (eq_dec: forall x y, {x = y} + {x <> y})
-  (f: B -> C -> C -> option C) (m1 m2: amap B C) x
+(* Lemma amap_mem_union_some {B C: Type} (eq_dec: forall x y, {x = y} + {x <> y})
+  (f: C -> C -> option C) (m1 m2: amap B C) x
   (Hsome: forall b c1 c2, isSome (f b c1 c2)):
-  amap_mem eq_dec x (amap_union eq_dec f m1 m2) = amap_mem eq_dec x m1 || amap_mem eq_dec x m2.
+  amap_mem eq_dec x (amap_union f m1 m2) = amap_mem eq_dec x m1 || amap_mem eq_dec x m2.
 Proof.
   rewrite !amap_mem_spec.
   destruct (amap_get eq_dec m1 x) eqn : Hget1; destruct (amap_get eq_dec m2 x) eqn : Hget2.
@@ -1543,12 +1542,12 @@ Proof.
   - erewrite amap_union_inl; eauto.
   - erewrite amap_union_inr; eauto.
   - erewrite amap_union_notin; auto.
-Qed. 
+Qed.  *)
 
 Lemma dispatch1_in_types rl t types cs:
-  amap_mem funsym_eq_dec cs (fst (dispatch1 t types rl)) ->
+  amap_mem cs (fst (dispatch1 t types rl)) ->
   constr_at_head_ex cs (simplify t rl) \/
-  amap_mem funsym_eq_dec cs types.
+  amap_mem cs types.
 Proof.
   rewrite dispatch_equiv.
   unfold dispatch2.
@@ -1561,24 +1560,24 @@ Proof.
     + unfold add_case, amap_change.
       rewrite amap_mem_spec.
       destruct (funsym_eqb_spec f cs); subst; auto.
-      rewrite amap_replace_get_diff; auto.
+      rewrite amap_replace_lookup_diff; auto.
     + unfold union_cases.
       rewrite amap_mem_union_some; auto.
       rewrite amap_mem_spec.
-      destruct (amap_get funsym_eq_dec types cs) eqn : Hget; auto.
+      destruct (amap_lookup types cs) eqn : Hget; auto.
       * intros _. right. rewrite amap_mem_spec. rewrite Hget; auto.
-      * rewrite amap_map_key_get_none; auto.
+      * rewrite amap_map_lookup_none; auto.
 Qed.
 
 (*The main lemma we need, a corollary of the above:*)
 Lemma constrs_in_types t rl cs l is_constr o:
-  amap_get funsym_eq_dec (fst (dispatch1 t (fst o) rl)) cs = Some l ->
+  amap_lookup (fst (dispatch1 t (fst o) rl)) cs = Some l ->
   populate_all is_constr rl = Some o ->
-  amap_mem funsym_eq_dec cs (fst o).
+  amap_mem cs (fst o).
 Proof.
   intros Hget Hpop.
   (*First, see if we are already good*)
-  destruct (amap_mem funsym_eq_dec cs (fst o)) eqn : Htypes; auto.
+  destruct (amap_mem cs (fst o)) eqn : Htypes; auto.
   (*Cannot use any lemmas because we always assumed in types*)
   rewrite populate_all_simplify with (t:=t) in Hpop.
   assert (Hin: constr_at_head_ex cs (simplify t rl)). {
@@ -1672,7 +1671,7 @@ In c (get_constrs_in (simplify_single t h))  <-> In c (get_constrs_pat_list (fst
 Proof.
   unfold simplify_single.
   destruct h as [ps a].
-  destruct ps as [| p ptl]; simpl; auto; [reflexivity|].
+  destruct ps as [| p ptl]; simpl; auto.
   rewrite get_constrs_pat_list_cons.
   unfold get_constrs_in. rewrite !map_map. simpl.
   revert a.
@@ -1684,7 +1683,7 @@ Qed.
 Lemma get_constrs_in_simplify (rl: list (list pattern * A)) t (c: funsym * nat):
   In c (get_constrs_in (simplify t rl)) <-> In c (get_constrs_in rl).
 Proof.
-  induction rl as [| rhd rtl IH]; simpl; auto; [reflexivity|].
+  induction rl as [| rhd rtl IH]; simpl; auto.
   unfold simplify in *; simpl in *. rewrite get_constrs_in_app, get_constrs_in_cons, !in_app_iff.
   rewrite IH. rewrite get_constrs_in_simplify_single. reflexivity.
 Qed.
@@ -1716,7 +1715,7 @@ Qed.
 Lemma populate_all_in_strong is_constr rl o cs pats:
   simplified rl ->
   populate_all is_constr rl = Some o ->
-  amap_get funsym_eq_dec (fst o) cs = Some pats -> 
+  amap_lookup (fst o) cs = Some pats -> 
     existsb (constr_args_at_head cs pats) rl.
 Proof.
   intros Hsimpl. unfold populate_all.
@@ -1750,7 +1749,7 @@ Proof.
     + destruct p as [css csl]; simpl in *.
       destruct (is_constr f); try discriminate.
       rewrite amap_mem_spec.
-      destruct (amap_get funsym_eq_dec css f) as [fy|] eqn : Hmem.
+      destruct (amap_lookup css f) as [fy|] eqn : Hmem.
       * inv Hsome. simpl in *. 
         destruct (funsym_eqb_spec f cs); simpl; subst; auto.
         -- destruct (list_eqb_spec _ pattern_eqb_spec o l0); subst; auto.
@@ -1760,16 +1759,16 @@ Proof.
       * inv Hsome. 
         simpl.
         destruct (funsym_eqb_spec f cs); simpl; subst.
-        2: { rewrite amap_set_get_diff; auto. intros; eapply IH; eauto.
+        2: { rewrite amap_set_lookup_diff; auto. intros; eapply IH; eauto.
         }
-        rewrite amap_set_get_same. inv Hsome.
+        rewrite amap_set_lookup_same. inv Hsome.
         destruct (list_eqb_spec _ pattern_eqb_spec o o); subst; auto.
     + inv Hsome. eapply IH. assumption. reflexivity. auto.
 Qed.
 
 Lemma populate_all_get_constrs_in is_constr rl o cs ps:
   populate_all is_constr rl = Some o ->
-  amap_get funsym_eq_dec (fst o) cs = Some ps ->
+  amap_lookup (fst o) cs = Some ps ->
   In (cs, length ps) (get_constrs_in rl).
 Proof.
   rewrite populate_all_simplify with (t:=tm_d).
@@ -1787,15 +1786,15 @@ Definition compile_size_bound (rl: list (list pattern * A)) : nat :=
 (*And now, If n is above our bound, S matrix size decreases*)
 Lemma s_matrix_bound_large_n is_constr n t rl cs l o:
   populate_all is_constr rl = Some o ->
-  amap_mem funsym_eq_dec cs (fst o) ->
+  amap_mem cs (fst o) ->
   constr_at_head_ex cs (simplify t rl) ->
-  amap_get funsym_eq_dec (fst (dispatch1 t (fst o) rl)) cs = Some l ->
+  amap_lookup (fst (dispatch1 t (fst o) rl)) cs = Some l ->
   n > compile_size_bound rl ->
   compile_size n l < compile_size n rl.
 Proof.
   intros Hpop Htypes Hconstr Hget Hn.
   rewrite amap_mem_spec in Htypes.
-  destruct (amap_get funsym_eq_dec (fst o) cs) as [ys |] eqn : Htypes'; try discriminate.
+  destruct (amap_lookup (fst o) cs) as [ys |] eqn : Htypes'; try discriminate.
   pose proof (s_matrix_bound_in n _ _ _ _ _ _ Htypes' Hconstr Hget).
   revert Hn. unfold compile_size_bound.
   assert (length ys <= iter_max (map snd (get_constrs_in rl)));[| nia].
@@ -1889,15 +1888,15 @@ Proof.
 Qed.
 
 Lemma dispatch2_gen_fst_constrs c cs types rl l:
-  amap_mem funsym_eq_dec cs types ->
-  amap_get funsym_eq_dec (fst (dispatch2_gen types rl)) cs = Some l ->
+  amap_mem cs types ->
+  amap_lookup (fst (dispatch2_gen types rl)) cs = Some l ->
   In c (get_constrs_in l) -> In c (get_constrs_in rl).
 Proof.
   intros Htypes.
   destruct (constr_at_head_ex cs rl || wild_at_head_ex rl) eqn : Hconstr.
   2: { rewrite dispatch2_gen_fst_notin in Hconstr; eauto. rewrite Hconstr; auto. discriminate. }
   rewrite amap_mem_spec in Htypes. 
-  destruct (amap_get funsym_eq_dec types cs) as [ys|] eqn : Htypes'; try discriminate.
+  destruct (amap_lookup types cs) as [ys|] eqn : Htypes'; try discriminate.
   rewrite dispatch2_gen_fst_in with (ys:=ys); auto.
   clear Hconstr.
   intros Hsome; inversion Hsome; subst; clear Hsome.
@@ -1922,8 +1921,8 @@ Proof.
 Qed.
 
 Lemma s_matrix_constrs cs c t types rl l:
-  amap_mem funsym_eq_dec cs types ->
-  amap_get funsym_eq_dec (fst (dispatch1 t types rl)) cs = Some l ->
+  amap_mem cs types ->
+  amap_lookup (fst (dispatch1 t types rl)) cs = Some l ->
   In c (get_constrs_in l) -> In c (get_constrs_in rl).
 Proof.
   intros Htypes Hget Hinc.
@@ -1937,8 +1936,8 @@ Proof.
 Qed.
 
 Lemma s_matrix_compile_bound_get_smaller t types rl cs l:
-  amap_mem funsym_eq_dec cs types ->
-  amap_get funsym_eq_dec (fst (dispatch1 t types rl)) cs = Some l ->
+  amap_mem cs types ->
+  amap_lookup (fst (dispatch1 t types rl)) cs = Some l ->
   compile_size_bound l <= (compile_size_bound rl).
 Proof.
   intros Htypes Hget.
@@ -1954,28 +1953,31 @@ Qed.
 
 (*It is important that the variables we add do not overlap with the other variables
   present in the matrix*)
-Definition row_fv (row: list pattern * A) : list vsymbol :=
-  big_union vsymbol_eq_dec pat_fv (fst row).
-Definition pat_mx_fv (P: list (list pattern * A)) : list vsymbol :=
-  big_union vsymbol_eq_dec row_fv P.
+Definition row_fv (row: list pattern * A) : aset vsymbol :=
+  aset_big_union pat_fv (fst row).
+Definition pat_mx_fv (P: list (list pattern * A)) : aset vsymbol :=
+  aset_big_union row_fv P.
 
 (*Variables in pattern actions*)
-Variable (a_vars: A -> list vsymbol).
+(*TODO (JOSH): think set is OK for disjoint, make sure*)
+Variable (a_vars: A -> aset vsymbol).
 (*NOTE: include both bound and fv, not sure if we need all*)
 Variable (a_let_vars: forall (v: vsymbol) (tm: term) (a: A),
-  forall x, In x (a_vars (mk_let v tm a)) <-> v = x \/ In x (tm_bnd tm) \/ In x (tm_fv tm) \/
-    In x (a_vars a)).
+  forall x, aset_mem x (a_vars (mk_let v tm a)) <-> v = x \/ In x (tm_bnd tm) \/ aset_mem x (tm_fv tm) \/
+    aset_mem x (a_vars a)).
 
-Definition pat_mx_act_vars (P: list (list pattern * A)) : list vsymbol :=
-  big_union vsymbol_eq_dec (fun x => a_vars (snd x)) P.
+Definition pat_mx_act_vars (P: list (list pattern * A)) : aset vsymbol :=
+  aset_big_union (fun x => a_vars (snd x)) P.
 
-Definition tmlist_vars (tl: list (term * vty)) : list vsymbol :=
-  concat (map (fun x => tm_fv (fst x) ++ tm_bnd (fst x)) tl) .
+(*TODO: again, switched to set*)
+Definition tmlist_vars (tl: list (term * vty)) : aset vsymbol :=
+  aset_big_union (fun x => aset_union (tm_fv (fst x)) (list_to_aset (tm_bnd (fst x)))) tl.
 
 (*Get all variables in the input*)
 (*Problem is that this is very slow, don't want to precompute, should be OK for our purposes now*)
+(*TODO: also aset now*)
 Definition compile_fvs (tl: list (term * vty)) (rl: list (list pattern * A)) :=
-  tmlist_vars tl ++ pat_mx_fv rl ++ pat_mx_act_vars rl.
+  aset_union (tmlist_vars tl) (aset_union (pat_mx_fv rl) (pat_mx_act_vars rl)).
 
 (*Part 9: Define the function*)
 
@@ -1985,14 +1987,17 @@ Definition compile_measure (rl: list (list pattern * A)) : nat :=
   compile_size (S (compile_size_bound rl)) rl.
 
 (*Some more intermediate functions, for proofs:*)
-Definition comp_cases (compile: list (term * vty) -> list (list pattern * A) -> option A) cases (tl: list (term * vty)) 
+Definition comp_cases (compile: list (term * vty) -> list (list pattern * A) -> option A) 
+  (cases: amap funsym (list (list pattern * A))) (tl: list (term * vty)) 
   := fun
   cs (al : list (term * vty)) =>
-   match (amap_get funsym_eq_dec cases cs ) as o return amap_get funsym_eq_dec cases cs = o -> _ with
+   match (amap_lookup cases cs ) as o return amap_lookup cases cs = o -> _ with
     | None => fun _ => None (*impossible*)
     | Some l => fun Hget => compile (rev al ++ tl) l
     end eq_refl
         .
+
+(*TODO change [gen_elts] to set after*)
 
 Definition add (comp_cases: funsym -> list (term * vty) -> option A) 
   (t: term) (ty: vty) (rl: list (list pattern * A)) (tl: list (term * vty)) := fun
@@ -2001,7 +2006,7 @@ acc (x: funsym * list vty * list pattern) =>
   let '(cs, params, ql) := x in
   (*create variables*)
   let pat_tys :=  (map (ty_subst (s_params cs) params) (s_args cs)) in
-  let new_var_names := gen_strs (length ql) (compile_fvs ((t, ty) :: tl) rl) in
+  let new_var_names := gen_strs (length ql) (aset_to_list (compile_fvs ((t, ty) :: tl) rl)) in
   let typed_vars := (combine new_var_names pat_tys) in
   let vl := rev typed_vars in 
   let pl := rev_map Pvar vl in
@@ -2028,7 +2033,7 @@ Definition comp_full (is_bare: bool) (comp_wilds : unit -> option A) comp_cases
         option_bind (option_map (fun x => match x with | (cs, _, _) => cs end)
           (List.head cslist)) (fun x =>
           Some (Nat.eqb (amap_size types) (f_num_constrs x))) 
-      else Some (forallb (fun f => amap_mem funsym_eq_dec f types) css) in
+      else Some (forallb (fun f => amap_mem f types) css) in
     let base : option (list (pattern * A)) :=
       option_bind no_wilds (fun b => if b then Some nil else
     option_map (fun x => [(Pwild, x)]) (comp_wilds tt))
@@ -2092,7 +2097,7 @@ Equations compile (tl: list (term * vty)) (rl: list (list pattern * A))
 
 
     let comp_cases cs (al : list (term * vty)) :=
-         match (amap_get funsym_eq_dec cases cs ) as o return amap_get funsym_eq_dec cases cs = o -> _ with
+         match (amap_lookup cases cs ) as o return amap_lookup cases cs = o -> _ with
           | None => fun _ => None (*impossible*)
           | Some l => fun Hget => compile (rev al ++ tl) l
           end eq_refl
@@ -2108,7 +2113,7 @@ Equations compile (tl: list (term * vty)) (rl: list (list pattern * A))
       | Left Hconstr =>
         let '(cs, params, al) := proj1_sig Hconstr in
           if is_constr cs then
-          if amap_mem funsym_eq_dec cs types then comp_cases cs (combine al
+          if amap_mem cs types then comp_cases cs (combine al
             (map (ty_subst (s_params cs) params) (s_args cs))) else comp_wilds tt
           else comp_full tt
       | Right Hnotconstr =>
@@ -2152,7 +2157,7 @@ fold rl.
 unfold compile_measure.
 pose proof (s_matrix_compile_bound_get_smaller t types rl cs l) as Hsmall.
 revert Hget. unfold cases. rewrite Hcasewild. intros Hget.
-assert (Htypes: amap_mem funsym_eq_dec cs types) by (eapply constrs_in_types; eauto).
+assert (Htypes: amap_mem cs types) by (eapply constrs_in_types; eauto).
 specialize (Hsmall Htypes Hget).
 eapply Nat.le_lt_trans.
 - apply compile_size_mono_le, le_n_S. apply Hsmall.
@@ -2226,55 +2231,57 @@ Qed.
 (*[compile_fv] is invariant under simplifying*)
 
 Lemma tmlist_vars_cons t tms: tmlist_vars (t :: tms) =
-  tm_fv (fst t) ++ tm_bnd (fst t) ++ tmlist_vars tms.
-Proof. unfold tmlist_vars; simpl. rewrite app_assoc; auto.
+  aset_union (aset_union (tm_fv (fst t)) (list_to_aset (tm_bnd (fst t)))) (tmlist_vars tms).
+Proof. unfold tmlist_vars; simpl.
+  rewrite aset_big_union_cons. reflexivity.
 Qed.
 
 Lemma pat_mx_fv_app x p1 p2:
-  In x (pat_mx_fv (p1 ++ p2)) <-> In x (pat_mx_fv p1) \/ In x (pat_mx_fv p2).
+  aset_mem x (pat_mx_fv (p1 ++ p2)) <-> aset_mem x (pat_mx_fv p1) \/ aset_mem x (pat_mx_fv p2).
 Proof.
-  unfold pat_mx_fv. rewrite big_union_app. simpl_set_small. reflexivity.
+  unfold pat_mx_fv. rewrite aset_big_union_app. simpl_set_small. reflexivity.
 Qed.
 
 Lemma pat_mx_act_vars_app x p1 p2:
-  In x (pat_mx_act_vars (p1 ++ p2)) <-> In x (pat_mx_act_vars p1) \/ In x (pat_mx_act_vars p2).
+  aset_mem x (pat_mx_act_vars (p1 ++ p2)) <-> aset_mem x (pat_mx_act_vars p1) \/ aset_mem x (pat_mx_act_vars p2).
 Proof.
-  unfold pat_mx_act_vars. rewrite big_union_app. simpl_set_small. reflexivity.
+  unfold pat_mx_act_vars. rewrite aset_big_union_app. simpl_set_small. reflexivity.
 Qed. 
 
 Lemma compile_fv_simplify (tms: list (term * vty)) (P: list (list pattern * A)) t ty:
   forall x, 
-    In x (compile_fvs ((t, ty) :: tms) P) <->
-    In x (compile_fvs ((t, ty) :: tms) (simplify t P)).
+    aset_mem x (compile_fvs ((t, ty) :: tms) P) <->
+    aset_mem x (compile_fvs ((t, ty) :: tms) (simplify t P)).
 Proof.
   unfold simplify. unfold compile_fvs.
-  intros x.
-  rewrite !in_app_iff.
+  intros x. simpl_set_small.
   rewrite !tmlist_vars_cons. simpl. 
-  rewrite !in_app_iff.
+  (* rewrite !in_app_iff. *)
   induction P as [| rhd rtl IH]; [reflexivity|simpl].
   simpl_set_small.
   rewrite !pat_mx_fv_app, ! pat_mx_act_vars_app.
   (*We need 2 directions: if in [simplify_single] vars, then in original
     and if in original, then in [simplify_single] vars or in term*)
   assert (Hsingle1: 
-    In x (pat_mx_fv (simplify_single t rhd)) \/
-    In x (pat_mx_act_vars (simplify_single t rhd)) ->
-    In x (row_fv rhd) \/ In x (a_vars (snd rhd)) \/ In x (tm_fv t) \/ In x (tm_bnd t)
+    aset_mem x (pat_mx_fv (simplify_single t rhd)) \/
+    aset_mem x (pat_mx_act_vars (simplify_single t rhd)) ->
+    aset_mem x (row_fv rhd) \/ aset_mem x (a_vars (snd rhd)) \/ aset_mem x (tm_fv t) \/ In x (tm_bnd t)
   ).
   {
-    clear -a_let_vars. destruct rhd as [ps a]. simpl.
+    clear IH. destruct rhd as [ps a]. simpl.
     destruct ps as [| phd ptl]; simpl. 
-    { simpl_set_small; simpl. intros; destruct_all; auto. }
+    { simpl_set_small; simpl; intros; destruct_all; auto. unfold pat_mx_act_vars in *; simpl_set_small;
+      destruct_all; auto.
+    }
     unfold row_fv; simpl. simpl_set_small.
     generalize dependent a.
-    induction phd; simpl; intros a; try solve[
-      unfold row_fv; simpl; simpl_set_small; simpl;
-      try(rewrite a_let_vars); intros; destruct_all; auto; contradiction 
-    ].
+    induction phd; simpl; intros a;
+    try solve[ unfold pat_mx_fv, pat_mx_act_vars; simpl_set_small; unfold row_fv; simpl;
+      simpl_set_small; simpl;  try(rewrite a_let_vars); intros; destruct_all; auto;
+      try (rewrite aset_big_union_nil in *); exfalso; eapply aset_mem_empty; eauto]. 
     - (*Por*)
       unfold pat_mx_fv in *. 
-      rewrite !map_app, !big_union_app; simpl_set_small.
+      rewrite !map_app, !aset_big_union_app; simpl_set_small.
       rewrite pat_mx_act_vars_app.
       intros [[Hin1 | Hin2] | [Hin1 | Hin2]];
       [specialize (IHphd1 _ (or_introl Hin1)) | 
@@ -2289,22 +2296,25 @@ Proof.
   }
   (*And the other direction*)
   assert (Hsingle2: 
-    In x (row_fv rhd) \/ In x (a_vars (snd rhd)) ->
-    In x (pat_mx_fv (simplify_single t rhd)) \/
-    In x (pat_mx_act_vars (simplify_single t rhd))).
-  {
+    aset_mem x (row_fv rhd) \/ aset_mem x (a_vars (snd rhd)) ->
+    aset_mem x (pat_mx_fv (simplify_single t rhd)) \/
+    aset_mem x (pat_mx_act_vars (simplify_single t rhd))).
+  { Unshelve.
     clear -a_let_vars. destruct rhd as [ps a]. simpl.
     destruct ps as [| phd ptl]; simpl. 
-    { simpl_set_small; simpl. intros; destruct_all; auto. }
+    { simpl_set_small; simpl. intros; destruct_all; auto.
+      unfold pat_mx_act_vars; simpl_set_small; auto.
+    }
     unfold row_fv; simpl. simpl_set_small.
     generalize dependent a.
     induction phd; simpl; intros a; try solve[
+      unfold  pat_mx_fv, pat_mx_act_vars; simpl_set_small;
       unfold row_fv; simpl; simpl_set_small; simpl;
       try(rewrite a_let_vars); intros; destruct_all; auto 10; contradiction 
     ].
     -  (*Por*)
       unfold pat_mx_fv in *. 
-      rewrite !map_app, !big_union_app; simpl_set_small.
+      rewrite !map_app, !aset_big_union_app; simpl_set_small.
       rewrite pat_mx_act_vars_app.
       intros [[[Hin | Hin] | Hin] | Hin];
       [specialize (IHphd1 a (or_introl (or_introl Hin))) |
@@ -2318,23 +2328,27 @@ Proof.
   }
   (*Now we can solve this (by lots of cases)*)
   destruct IH as [IH1 IH2]; split.
-  -
-  intros; destruct_all; auto;
+  - unfold pat_mx_fv at 1; unfold pat_mx_act_vars at 1;
+    unfold pat_mx_fv at 1 in IH1. rewrite !aset_big_union_cons. simpl_set_small.
+    intros; destruct_all; auto;
     (forward Hsingle2; [solve[auto]|]) +
     (forward IH1; [solve[auto]|]);
-    destruct_all; auto.
-  - intros; destruct_all; auto;
+    repeat (destruct_all; simpl_set_small; auto).
+  - unfold pat_mx_fv at 3. unfold pat_mx_act_vars at 3. rewrite !aset_big_union_cons.
+    simpl_set_small.
+    intros; destruct_all; auto;
     (forward Hsingle1; [solve[auto]|]) +
     (forward IH2; [solve[auto]|]);
-    destruct_all; auto.
+    repeat (destruct_all; simpl_set_small; auto).
 Qed.
 
 (*And therefore, [gen_strs] are equivalent*)
+(*TODO: CHANGE*)
 Lemma compile_gen_strs_simplify (tms: list (term * vty)) (P: list (list pattern * A)) t ty n:
-  gen_strs n (compile_fvs ((t, ty) :: tms) (simplify t P)) =
-  gen_strs n (compile_fvs ((t, ty) :: tms) P).
+  gen_strs n (aset_to_list (compile_fvs ((t, ty) :: tms) (simplify t P))) =
+  gen_strs n (aset_to_list (compile_fvs ((t, ty) :: tms) P)).
 Proof.
-apply gen_strs_ext. intros; rewrite <- compile_fv_simplify. reflexivity.
+apply gen_strs_ext. intros; simpl_set_small; rewrite <- compile_fv_simplify. reflexivity.
 Qed.
 
 Lemma fold_left_opt_change_f {B C: Type} (f1 f2: B -> C -> option B) (l: list C) (x: B):
@@ -2486,7 +2500,7 @@ Lemma compile_ind (P: list (term * vty) -> list (list pattern * A) -> option A -
         let wilds := snd casewild in
         (*wilds*)
         P tl wilds (compile tl wilds) /\
-        (forall cs al l (Hget: amap_get funsym_eq_dec cases cs = Some l),
+        (forall cs al l (Hget: amap_lookup cases cs = Some l),
           P (rev al ++ tl) l (compile (rev al ++ tl) l)) ->
     P ((t, ty) :: tl) rl (
       let comp_wilds (_: unit) := compile tl wilds in
@@ -2503,7 +2517,7 @@ Lemma compile_ind (P: list (term * vty) -> list (list pattern * A) -> option A -
         | Left Hconstr =>
           let '(cs, params, al) := proj1_sig Hconstr in
             if is_constr cs then
-            if amap_mem funsym_eq_dec cs types then comp_cases cs (combine al
+            if amap_mem cs types then comp_cases cs (combine al
               (map (ty_subst (s_params cs) params) (s_args cs))) else comp_wilds tt
             else comp_full tt
         | Right Hnotconstr =>
@@ -2609,7 +2623,7 @@ Proof.
     unfold compile_measure.
     pose proof (s_matrix_compile_bound_get_smaller t (fst types_cslist) rl' cs l) as Hsmall.
     revert Hget. rewrite Hcasewild. intros Hget.
-    assert (Htypes: amap_mem funsym_eq_dec cs (fst types_cslist)) by (eapply constrs_in_types; eauto).
+    assert (Htypes: amap_mem cs (fst types_cslist)) by (eapply constrs_in_types; eauto).
     specialize (Hsmall Htypes Hget).
     eapply Nat.le_lt_trans.
     + apply compile_size_mono_le, le_n_S. apply Hsmall.
@@ -2684,7 +2698,7 @@ Lemma compile_ind' (P: list (term * vty) -> list (list pattern * A) -> option A 
     forall (Hwild: wilds = default rl) (IHwilds: P tl (default rl) (compile tl wilds))
     (Hwildcases: amap_is_empty types \/ amap_is_empty types = false /\
       simpl_constr = true /\
-      exists cs params al, t = Tfun cs params al /\ is_constr cs /\ amap_mem funsym_eq_dec cs types = false),
+      exists cs params al, t = Tfun cs params al /\ is_constr cs /\ amap_mem cs types = false),
     P ((t, ty) :: tl) rl (compile tl wilds))
   (Hfullcase: forall t ty tl rl rhd rtl,
     let is_bare_css :=
@@ -2705,7 +2719,7 @@ Lemma compile_ind' (P: list (term * vty) -> list (list pattern * A) -> option A 
       let wilds := snd casewild in
       forall
       (IHwilds: P tl (default rl) (compile tl wilds))
-      (IHconstrs: forall cs al l (Hget: amap_get funsym_eq_dec cases cs = Some l),
+      (IHconstrs: forall cs al l (Hget: amap_lookup cases cs = Some l),
         P (rev al ++ tl) l (compile (rev al ++ tl) l))
       (Hisemp: amap_is_empty types = false),
     P ((t, ty) :: tl) rl (
@@ -2735,13 +2749,13 @@ Lemma compile_ind' (P: list (term * vty) -> list (list pattern * A) -> option A 
         let cases := fst casewild in
         let wilds := snd casewild in
       forall (IHwilds: P tl (default rl) (compile tl wilds))
-        (IHconstrs: forall cs al l (Hget: amap_get funsym_eq_dec cases cs = Some l),
+        (IHconstrs: forall cs al l (Hget: amap_lookup cases cs = Some l),
           P (rev al ++ tl) l (compile (rev al ++ tl) l))
         (Hisemp: amap_is_empty types = false)
         (Hsimplconstr: simpl_constr = true)
         (Ht: t = Tfun cs params tms)
         (Hisconstr: is_constr cs)
-        (Hmem: amap_mem funsym_eq_dec cs types),
+        (Hmem: amap_mem cs types),
     
     P ((t, ty) :: tl) rl (
        comp_cases compile cases tl cs (combine tms
@@ -2765,7 +2779,7 @@ Proof.
     specialize (Hwildscase t ty tl rl rhd rtl).
     destruct (is_fun t) as [[[ [cs params] tms] Ht]|]; [| eapply Hfullcase; eauto; rewrite <- Hwilds; auto].
     simpl in Ht |- *.  destruct (is_constr cs) eqn : Hconstr; [| eapply Hfullcase; eauto; rewrite <- Hwilds; auto].
-    destruct (amap_mem funsym_eq_dec cs types) eqn : Hmem; [eapply Hconstrcase; eauto; rewrite <- Hwilds; auto|].
+    destruct (amap_mem cs types) eqn : Hmem; [eapply Hconstrcase; eauto; rewrite <- Hwilds; auto|].
     eapply Hwildscase; eauto. rewrite <- Hwilds; auto. right. simpl. split_all; auto.
     exists cs. exists params. exists tms. auto.
 Qed.
@@ -2780,7 +2794,7 @@ ty tl rl :=
 (fun (x: funsym * list vty * list pattern) =>
           let '(cs, params, ql) := x in 
           let pat_tys := map (ty_subst (s_params cs) params) (s_args cs) in 
-          let new_var_names := gen_strs (Datatypes.length ql) (compile_fvs ((t, ty) :: tl) rl) in
+          let new_var_names := gen_strs (Datatypes.length ql) (aset_to_list (compile_fvs ((t, ty) :: tl) rl)) in
           let typed_vars := (combine new_var_names pat_tys) in
           let vl := rev typed_vars in 
           let pl := rev_map Pvar vl in 
@@ -2803,7 +2817,7 @@ Proof.
     let params := snd (fst x) in
     let ql := snd x in
     let pat_tys := map (ty_subst (s_params cs) params) (s_args cs) in 
-    let new_var_names := gen_strs (Datatypes.length ql) (compile_fvs ((t, ty) :: tl) rl) in
+    let new_var_names := gen_strs (Datatypes.length ql) (aset_to_list (compile_fvs ((t, ty) :: tl) rl)) in
     let typed_vars := (combine new_var_names pat_tys) in
     let vl := rev typed_vars in 
     let pl := rev_map Pvar vl in 
@@ -2814,7 +2828,7 @@ Proof.
       let params := snd (fst x) in
       let ql := snd x in
       let pat_tys := map (ty_subst (s_params cs) params) (s_args cs) in 
-      let new_var_names := gen_strs (Datatypes.length ql) (compile_fvs ((t, ty) :: tl) rl) in
+      let new_var_names := gen_strs (Datatypes.length ql) (aset_to_list (compile_fvs ((t, ty) :: tl) rl)) in
       let typed_vars :=(combine new_var_names pat_tys) in
       let vl := rev typed_vars in 
       let pl := rev_map Pvar vl in 
@@ -2862,7 +2876,7 @@ Lemma compile_prove_some (P_hyps: list (term * vty) -> list (list pattern * A) -
       compile tl wilds = Some tm1 -> P_goal tl (default rl) tm1)
     (Hwildcases: amap_is_empty types \/ amap_is_empty types = false /\
       simpl_constr = true /\
-      exists cs params al, t = Tfun cs params al /\ is_constr cs /\ amap_mem funsym_eq_dec cs types = false) tm1
+      exists cs params al, t = Tfun cs params al /\ is_constr cs /\ amap_mem cs types = false) tm1
     (Hmt1: compile tl wilds = Some tm1)
     (Hhyps: P_hyps ((t, ty) :: tl) rl),
     P_goal ((t, ty) :: tl) rl tm1)
@@ -2886,7 +2900,7 @@ Lemma compile_prove_some (P_hyps: list (term * vty) -> list (list pattern * A) -
       forall
       (IHwilds: forall tm1, P_hyps tl (default rl) -> 
         compile tl wilds = Some tm1 -> P_goal tl (default rl) tm1)
-      (IHconstrs: forall cs al l (Hget: amap_get funsym_eq_dec cases cs = Some l) tm1,
+      (IHconstrs: forall cs al l (Hget: amap_lookup cases cs = Some l) tm1,
         P_hyps (rev al ++ tl) l ->
         compile (rev al ++ tl) l = Some tm1 ->
         P_goal (rev al ++ tl) l tm1)
@@ -2906,7 +2920,7 @@ Lemma compile_prove_some (P_hyps: list (term * vty) -> list (list pattern * A) -
             (option_map
                (fun x : funsym * list vty * list pattern => let (y, _) := x in let (cs, _) := y in cs)
                (hd_error cslist)) (fun x : funsym => Some (amap_size types =? f_num_constrs x))
-         else Some (forallb (fun f : funsym => amap_mem funsym_eq_dec f types) css)) in
+         else Some (forallb (fun f : funsym => amap_mem f types) css)) in
       forall
       (*Much more useful than destructing and simplifying each time*)
       (Hps1' : ps1 = [] /\ is_wilds = Some true \/ is_wilds = Some false /\
@@ -2943,7 +2957,7 @@ Lemma compile_prove_some (P_hyps: list (term * vty) -> list (list pattern * A) -
         let wilds := snd casewild in
       forall (IHwilds: forall tm1, P_hyps tl (default rl) -> 
         compile tl wilds = Some tm1 -> P_goal tl (default rl) tm1)
-      (IHconstrs: forall cs al l (Hget: amap_get funsym_eq_dec cases cs = Some l) tm1,
+      (IHconstrs: forall cs al l (Hget: amap_lookup cases cs = Some l) tm1,
         P_hyps (rev al ++ tl) l ->
         compile (rev al ++ tl) l = Some tm1 ->
         P_goal (rev al ++ tl) l tm1)
@@ -2951,7 +2965,7 @@ Lemma compile_prove_some (P_hyps: list (term * vty) -> list (list pattern * A) -
       (Hsimplconstr: simpl_constr = true)
       (Ht: t = Tfun cs params tms)
       (Hisconstr: is_constr cs)
-      (Hmem: amap_mem funsym_eq_dec cs types) tm1
+      (Hmem: amap_mem cs types) tm1
       (Hcomp: comp_cases compile cases tl cs (combine tms
             (map (ty_subst (s_params cs) params) (s_args cs))) = Some tm1)
       (Hhyps: P_hyps ((t, ty) :: tl) rl), 

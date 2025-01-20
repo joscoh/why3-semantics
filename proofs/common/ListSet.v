@@ -105,6 +105,12 @@ Proof.
       right; exists y; auto.
 Qed.
 
+Lemma aset_big_union_nil {B: Type} (f: B -> aset):
+  aset_big_union f nil = aset_empty.
+Proof.
+  unfold aset_big_union, aset_empty. reflexivity.
+Qed.
+
 (*subset*)
 Definition asubset (s1 s2: aset) : Prop := s1 ⊆ s2.
 
@@ -186,6 +192,15 @@ Proof.
   unfold aset_mem, aset_diff. set_unfold. reflexivity.
 Qed. 
 
+(*NOTE: extensional, so we can prove equality here*)
+Lemma aset_big_union_app {B: Type} (f: B -> aset) (l1 l2: list B) :
+  aset_big_union f (l1 ++ l2) = aset_union (aset_big_union f l1) (aset_big_union f l2).
+Proof.
+  unfold aset_big_union, aset_union.
+  set_unfold. setoid_rewrite map_app. setoid_rewrite union_list_app.
+  set_unfold. reflexivity.
+Qed.
+
 End FixA.
 
 (*Map over elts of set*)
@@ -201,6 +216,8 @@ Proof.
 Qed.
 
 (*TODO: do we need to prove inverse?*)
+
+
 
 End Aset.
 

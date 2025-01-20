@@ -209,7 +209,7 @@ Definition vty_eq_dec (v1 v2: vty): {v1 = v2} + {v1 <> v2} :=
 
 (*Countable*)
 
-Instance vsymbol_EqDecision : @base.RelDecision vty vty eq.
+Instance vty_EqDecision : @base.RelDecision vty vty eq.
 Proof. unfold base.RelDecision. apply vty_eq_dec. Defined.
 
 (*Idea: map to [gen_tree]*)
