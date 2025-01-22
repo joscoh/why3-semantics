@@ -1404,14 +1404,14 @@ Definition funpred_def_valid_type (fd: funpred_def) : Prop :=
   match fd with
   | fun_def f vars t =>
     term_has_type gamma t (f_ret f) /\
-    subset (tm_fv t) (list_to_aset vars) /\
-    subset (tm_type_vars t) (list_to_aset (s_params f)) /\
+    asubset (tm_fv t) (list_to_aset vars) /\
+    asubset (tm_type_vars t) (list_to_aset (s_params f)) /\
     NoDup (map fst vars) /\
     map snd vars = s_args f (*types of args correct*)
   | pred_def p vars f =>
     formula_typed gamma f /\
-    subset (fmla_fv f) (list_to_aset vars) /\
-    subset (fmla_type_vars f) (list_to_aset (s_params p)) /\
+    asubset (fmla_fv f) (list_to_aset vars) /\
+    asubset (fmla_type_vars f) (list_to_aset (s_params p)) /\
     NoDup (map fst vars) /\
     map snd vars = s_args p (*types of args correct*)
   end.
@@ -1754,7 +1754,7 @@ Definition indprop_valid_type (i: indpred_def) : Prop :=
     valid_ind_form p f /\
     (*And all type variables appearing in the formula appear
       in the parameters of p*)
-    subset (fmla_type_vars f) (list_to_aset (s_params p))) 
+    asubset (fmla_type_vars f) (list_to_aset (s_params p))) 
     (map snd lf)
   end.
 

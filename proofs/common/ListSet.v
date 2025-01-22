@@ -300,7 +300,7 @@ Definition aset_fold {B: Type} (f: A -> B -> B) (b: B) (s: aset) : B :=
   set_fold f b s.
 
 (*Useful*)
-Definition subset (s1 s2: aset) : Prop :=
+(* Definition subset (s1 s2: aset) : Prop :=
   s1 ⊆ s2.
 
 Lemma subset_equiv (s1 s2: aset) :
@@ -308,7 +308,49 @@ Lemma subset_equiv (s1 s2: aset) :
 Proof.
   unfold subset, aset_mem. set_unfold. reflexivity.
 Qed.
+
+Definition subset_dec (s1 s2: aset) : {subset s1 s2} + {~ subset s1 s2} := gset_subseteq_dec s1 s2. *)
   
+(*Decidable equality*)
+Definition aset_eq_dec (s1 s2: aset) : {s1 = s2} + {s1 <> s2} := gset_eq_dec s1 s2.
+
+Lemma aset_is_empty_mem (s: aset) (x: A) :
+  aset_is_empty s ->
+  ~ (aset_mem x s).
+Proof.
+  unfold aset_is_empty, aset_mem.
+  intros Hsz. destruct (Nat.eqb_spec (size s) 0); try discriminate.
+  apply size_empty_inv in e. set_unfold. auto.
+Qed.
+
+Lemma aset_is_empty_false (s: aset) :
+  aset_is_empty s = false <-> exists x, aset_mem x s.
+Proof.
+  unfold aset_is_empty, aset_mem. split.
+  - destruct (Nat.eqb_spec (size s) 0);try discriminate.
+    intros _. apply size_pos_elem_of. lia.
+  - intros [x Hinx].
+    destruct (Nat.eqb_spec (size s) 0); auto.
+    apply size_empty_inv in e. set_unfold.
+    apply e in Hinx. contradiction.
+Qed.
+
+(*forallb*)
+Definition aset_forall (b: A -> bool) (s: aset) : bool :=
+  aset_fold (fun x y => b x && y) true s.
+
+Lemma aset_forall_forall (b: A -> bool) (s: aset):
+  aset_forall b s <-> forall x, aset_mem x s -> b x.
+Proof.
+  unfold aset_forall, aset_fold, set_fold.
+  setoid_rewrite <- aset_to_list_in.
+  unfold aset_to_list.
+  (*easiest to prove by list*)
+  unfold compose.
+  induction (elements s) as [| h t IH]; simpl; auto.
+  - split; auto.
+  - rewrite andb_true, IH. clear IH. split; intros; auto. destruct_all; subst; auto.
+Qed.
 
 End FixA.
 
@@ -349,7 +391,8 @@ End Aset.
 #[global]Arguments aset_intersect {_} {_} {_}.
 #[global]Arguments aset_filter {_} {_} {_}.
 #[global]Arguments aset_fold {_} {_} {_} {_}.
-#[global]Arguments subset {_} {_} {_}.
+#[global]Arguments aset_eq_dec {_} {_} {_}.
+#[global]Arguments aset_forall {_} {_} {_}.
 
 
 

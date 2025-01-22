@@ -52,7 +52,7 @@ Proof.
     by rewrite Hall.
 Qed.
 
-Definition sublistb {A: eqType} (l1 l2: seq A) : bool :=
+(* Definition sublistb {A: eqType} (l1 l2: seq A) : bool :=
   (all (fun x => x \in l2) l1).
 
 Lemma sublistbP {A: eqType} (l1 l2: seq A):
@@ -63,7 +63,7 @@ Proof.
   2: apply Forall_forall.
   apply all_Forall. move=> x Hinx.
   apply inP.
-Qed.
+Qed. *)
 
 (*maybe use instead of nodupb*)
 Lemma uniqP {A: eqType} (l: list A):
@@ -163,10 +163,10 @@ Fixpoint typecheck_pattern (gamma: context) (p: pattern) (v: vty) : bool :=
   | Por p1 p2 => 
     typecheck_pattern gamma p1 v &&
     typecheck_pattern gamma p2 v &&
-    (eq_memb (pat_fv p2) (pat_fv p1))
+    (aset_eq_dec (pat_fv p2) (pat_fv p1))
   | Pbind p x =>
     (v == (snd x)) &&
-    (x \notin (pat_fv p)) &&
+    (negb (aset_mem_dec x (pat_fv p))) &&
     (typecheck_pattern gamma p v)
   | Pconstr f params ps => 
     (v == ty_subst (s_params f) params (f_ret f)) &&
@@ -187,7 +187,7 @@ Fixpoint typecheck_pattern (gamma: context) (p: pattern) (v: vty) : bool :=
     (all_in_range (length ps) (fun x =>
       all_in_range (length ps) (fun y =>
       (x != y) ==>
-      null (seqI (pat_fv (nth Pwild ps x)) (pat_fv (nth Pwild ps y)))))) &&
+      aset_is_empty (aset_intersect (pat_fv (nth Pwild ps x)) (pat_fv (nth Pwild ps y)))))) &&
     (is_funsym_constr gamma f)
   end.
 
@@ -211,6 +211,7 @@ Ltac refl_destruct_extra := idtac.
 Ltac refl_destruct :=
   match goal with
     | |- context [?x \in ?l] => case: (inP x l); intros
+     | |- context [aset_mem_dec ?x ?l] => case: (aset_mem_dec x l); intros
     | |- context [?x == ?l] => case: (@eqP _ x l); intros
     | H: reflect ?P ?b |- context [?b] => destruct H; intros
     | H: forall (x: ?A), reflect (?P x) (?b x) |- context [ ?b ?y] =>
@@ -271,33 +272,32 @@ Proof.
       (j < Datatypes.length ps)%coq_nat ->
       i <> j ->
       ~
-      (In x (pat_fv (List.nth i ps d)) /\
-      In x (pat_fv (List.nth j ps d)))))
+      (aset_mem x (pat_fv (List.nth i ps d)) /\
+      aset_mem x (pat_fv (List.nth j ps d)))))
     (all_in_range (Datatypes.length ps)
     (fun x : nat =>
      all_in_range (Datatypes.length ps)
        (fun y : nat =>
-        (x != y) ==> null (seqI (pat_fv (nth Pwild ps x)) (pat_fv (nth Pwild ps y)))))). {
+        (x != y) ==> aset_is_empty (aset_intersect (pat_fv (nth Pwild ps x)) (pat_fv (nth Pwild ps y)))))). {
         (*Have to prove manually*)
         case: (all_in_range_spec (length ps) _
           (fun i => forall j, (j < length ps) ->
-            i <> j -> forall d x, ~ (In x (pat_fv (List.nth i ps d)) /\ In x (pat_fv (List.nth j ps d))))).
+            i <> j -> forall d x, ~ (aset_mem x (pat_fv (List.nth i ps d)) /\ aset_mem x (pat_fv (List.nth j ps d))))).
         - move=> n Hn.
           apply all_in_range_spec.
           move=> m Hm.
           apply implyPP. apply negPP. apply eqP.
-          case: (nullP (seqI (pat_fv (nth Pwild ps n)) (pat_fv (nth Pwild ps m)))).
-          + move=> /eqP. rewrite /seqI -(negbK (_ == _)) -has_filter => Hnone.
+          case Hemp: (aset_is_empty (aset_intersect (pat_fv (nth Pwild ps n)) (pat_fv (nth Pwild ps m)))).
+          + (*move=> /eqP. rewrite /seqI -(negbK (_ == _)) -has_filter => Hnone.*)
             apply ReflectT => d x [Hinx1 Hinx2].
-            apply /negP. apply Hnone.
-            apply /hasP. 
-            by exists x; apply /inP; rewrite -nth_eq (nth_indep _ _ d) //;
-            apply /ltP.
-          + move /eqP. rewrite /seqI -has_filter => /hasP Hhas.
+            assert (Hmem: aset_mem x (aset_intersect (pat_fv (nth Pwild ps n)) (pat_fv (nth Pwild ps m)))).
+            { simpl_set_small. rewrite- !nth_eq !(nth_indep _ _ d) //; by apply /ltP. }
+            apply (aset_is_empty_mem _ _ _ Hemp Hmem).
+          + (*move /eqP. rewrite /seqI -has_filter => /hasP Hhas.*)
             apply ReflectF => C.
-            case: Hhas => [x /inP Hinx1 /inP Hinx2].
-            apply (C Pwild x);
-            by rewrite !nth_eq.
+            rewrite aset_is_empty_false in Hemp.
+            case: Hemp => v Hinv. simpl_set_small.
+            by apply (C Pwild v); rewrite !nth_eq. 
         - move=> Hall1.
           apply ReflectT.
           move=> i j d x /ltP Hi /ltP Hj Hij. by apply Hall1.
@@ -333,9 +333,8 @@ Proof.
       /(ForallT_hd _ _ _  Hall) => Hhasty//= Hcheck.
       move=> x [Hx/= | Hinx]; subst=>//=.
       by apply (IH _ _ _ Hlen (ForallT_tl _ _ _ Hall) Hcheck).
-  - intros; simpl_reflect; [reflT | reflF]; auto; simpl in *.
-    + intros; symmetry; auto.
-    + apply H1. rewrite <- eq_mem_In; simpl; intros; symmetry; auto. 
+  - intros p1 p2 IH1 IH2 v. simpl_reflect.
+    by destruct (aset_eq_dec (pat_fv p2) (pat_fv p1)); [reflT | reflF]; auto. 
 Qed.
 
 (*Terms and formulas*)
@@ -747,7 +746,7 @@ Variable gamma: context.
 
 Definition check_wf_funsym (f: funsym) : bool :=
   all (fun t => typecheck_type gamma t &&
-    all (fun x => x \in (s_params f)) (type_vars t))
+    aset_forall (fun x => x \in (s_params f)) (type_vars t))
   (f_ret f :: s_args f).
 
 Lemma check_wf_funsym_spec (f: funsym):
@@ -756,13 +755,15 @@ Proof.
   rewrite /check_wf_funsym/wf_funsym.
   apply all_Forall=> x Hinx.
   apply andPP; first by apply typecheck_type_correct.
-  apply all_Forall=> v Hinv.
-  apply /inP.
+  apply iff_reflect.
+  rewrite fold_is_true aset_forall_forall.
+  split; intros; apply /inP; by auto.
 Qed.
+
 
 Definition check_wf_predsym (p: predsym) : bool :=
   all (fun t => typecheck_type gamma t &&
-    all (fun x => x \in (s_params p)) (type_vars t))
+    aset_forall (fun x => x \in (s_params p)) (type_vars t))
   (s_args p).
 
 Lemma check_wf_predsym_spec (p: predsym):
@@ -771,8 +772,9 @@ Proof.
   rewrite /check_wf_predsym/wf_predsym.
   apply all_Forall => x Hinx.
   apply andPP; first by apply typecheck_type_correct.
-  apply all_Forall => v Hinv.
-  apply /inP.
+  apply iff_reflect.
+  rewrite fold_is_true aset_forall_forall.
+  split; intros; apply /inP; by auto.
 Qed.
 
 (*Part 2: definition check*)
@@ -856,14 +858,14 @@ Definition check_funpred_def_valid_type (fd: funpred_def) : bool :=
   match fd with
   | fun_def f vars t =>
     (typecheck_term gamma t == Some (f_ret f)) &&
-    sublistb (tm_fv t) vars &&
-    sublistb (tm_type_vars t) (s_params f) &&
+    check_asubset (tm_fv t) (list_to_aset vars) &&
+    check_asubset (tm_type_vars t) (list_to_aset (s_params f)) &&
     uniq (map fst vars) &&
     (map snd vars == s_args f)
   | pred_def p vars f =>
     (typecheck_formula gamma f) &&
-    sublistb (fmla_fv f) vars &&
-    sublistb (fmla_type_vars f) (s_params p) &&
+    check_asubset (fmla_fv f) (list_to_aset vars) &&
+    check_asubset (fmla_type_vars f) (list_to_aset (s_params p)) &&
     uniq (map fst vars) &&
     (map snd vars == s_args p)
   end.
@@ -877,15 +879,15 @@ Proof.
   - rewrite -andbA -andbA -andbA.
     repeat (apply andPP; [| apply andPP]). 
     + apply typecheck_term_correct.
-    + apply sublistbP.
-    + apply sublistbP.
+    + apply decidable.bool_decide_reflect. 
+    + apply decidable.bool_decide_reflect.
     + apply uniqP.
     + apply eqP.
   - rewrite -andbA -andbA -andbA.
      repeat (apply andPP; [|apply andPP]).
     + apply typecheck_formula_correct.
-    + apply sublistbP.
-    + apply sublistbP.
+    + apply decidable.bool_decide_reflect.
+    + apply decidable.bool_decide_reflect.
     + apply uniqP.
     + apply eqP.
 Qed.
@@ -921,14 +923,14 @@ Definition funpred_def_valid_type_check (fd: funpred_def): bool :=
   match fd with
   | fun_def f vars t =>
     (typecheck_term gamma t == Some (f_ret f)) &&
-    (sublistb (tm_fv t) vars) &&
-    (sublistb (tm_type_vars t) (s_params f)) &&
+    (check_asubset (tm_fv t) (list_to_aset vars)) &&
+    (check_asubset (tm_type_vars t) (list_to_aset (s_params f))) &&
     (uniq (map fst vars)) &&
     (map snd vars == (s_args f))
   | pred_def p vars f =>
     (typecheck_formula gamma f) &&
-    (sublistb (fmla_fv f) vars) &&
-    (sublistb (fmla_type_vars f) (s_params p)) &&
+    (check_asubset (fmla_fv f) (list_to_aset vars)) &&
+    (check_asubset (fmla_type_vars f) (list_to_aset (s_params p))) &&
     (uniq (map fst vars)) &&
     ((map snd vars) == (s_args p))
   end.
@@ -940,7 +942,7 @@ Proof.
   rewrite /funpred_def_valid_type/funpred_def_valid_type_check.
   case: fd => [f vars t | p vars f];
   rewrite -!andbA; repeat (apply andPP);
-  try (apply sublistbP);
+  try (apply decidable.bool_decide_reflect);
   try (apply uniqP);
   try (apply eqP).
   - apply typecheck_term_correct.
@@ -1024,7 +1026,7 @@ Definition indprop_valid_type_check (i: indpred_def) : bool :=
       typecheck_formula gamma f &&
       closed_formula f &&
       valid_ind_form_check p f &&
-      sublistb (fmla_type_vars f) (s_params p)
+      check_asubset (fmla_type_vars f) (list_to_aset (s_params p))
       ) (map snd lf)
   end.
 
@@ -1038,7 +1040,7 @@ Proof.
   - apply typecheck_formula_correct.
   - apply idP.
   - apply valid_ind_form_check_spec.
-  - apply sublistbP.
+  - apply decidable.bool_decide_reflect.
 Qed.
 
 (*Now [indpred_positive]*)
