@@ -2006,7 +2006,7 @@ acc (x: funsym * list vty * list pattern) =>
   let '(cs, params, ql) := x in
   (*create variables*)
   let pat_tys :=  (map (ty_subst (s_params cs) params) (s_args cs)) in
-  let new_var_names := gen_strs (length ql) (aset_to_list (compile_fvs ((t, ty) :: tl) rl)) in
+  let new_var_names := gen_strs (length ql) (compile_fvs ((t, ty) :: tl) rl) in
   let typed_vars := (combine new_var_names pat_tys) in
   let vl := rev typed_vars in 
   let pl := rev_map Pvar vl in
@@ -2345,8 +2345,8 @@ Qed.
 (*And therefore, [gen_strs] are equivalent*)
 (*TODO: CHANGE*)
 Lemma compile_gen_strs_simplify (tms: list (term * vty)) (P: list (list pattern * A)) t ty n:
-  gen_strs n (aset_to_list (compile_fvs ((t, ty) :: tms) (simplify t P))) =
-  gen_strs n (aset_to_list (compile_fvs ((t, ty) :: tms) P)).
+  gen_strs n (compile_fvs ((t, ty) :: tms) (simplify t P)) =
+  gen_strs n (compile_fvs ((t, ty) :: tms) P).
 Proof.
 apply gen_strs_ext. intros; simpl_set_small; rewrite <- compile_fv_simplify. reflexivity.
 Qed.
@@ -2794,7 +2794,7 @@ ty tl rl :=
 (fun (x: funsym * list vty * list pattern) =>
           let '(cs, params, ql) := x in 
           let pat_tys := map (ty_subst (s_params cs) params) (s_args cs) in 
-          let new_var_names := gen_strs (Datatypes.length ql) (aset_to_list (compile_fvs ((t, ty) :: tl) rl)) in
+          let new_var_names := gen_strs (Datatypes.length ql) (compile_fvs ((t, ty) :: tl) rl) in
           let typed_vars := (combine new_var_names pat_tys) in
           let vl := rev typed_vars in 
           let pl := rev_map Pvar vl in 
@@ -2817,7 +2817,7 @@ Proof.
     let params := snd (fst x) in
     let ql := snd x in
     let pat_tys := map (ty_subst (s_params cs) params) (s_args cs) in 
-    let new_var_names := gen_strs (Datatypes.length ql) (aset_to_list (compile_fvs ((t, ty) :: tl) rl)) in
+    let new_var_names := gen_strs (Datatypes.length ql) (compile_fvs ((t, ty) :: tl) rl) in
     let typed_vars := (combine new_var_names pat_tys) in
     let vl := rev typed_vars in 
     let pl := rev_map Pvar vl in 
@@ -2828,7 +2828,7 @@ Proof.
       let params := snd (fst x) in
       let ql := snd x in
       let pat_tys := map (ty_subst (s_params cs) params) (s_args cs) in 
-      let new_var_names := gen_strs (Datatypes.length ql) (aset_to_list (compile_fvs ((t, ty) :: tl) rl)) in
+      let new_var_names := gen_strs (Datatypes.length ql) (compile_fvs ((t, ty) :: tl) rl) in
       let typed_vars :=(combine new_var_names pat_tys) in
       let vl := rev typed_vars in 
       let pl := rev_map Pvar vl in 

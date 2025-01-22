@@ -257,6 +257,11 @@ Qed.
 Instance vty_countable : countable.Countable vty :=
   countable.inj_countable vty_to_gen_tree gen_tree_to_vty vty_to_gen_tree_inj.
 
+Instance vty_inhab : base.Inhabited vty.
+Proof.
+  exact (base.populate vty_int).
+Defined.
+
 (* Sorts *)
 
 (*Get the type variables in a type, with no duplicates*)

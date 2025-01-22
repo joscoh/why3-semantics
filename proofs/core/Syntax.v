@@ -1,5 +1,6 @@
 Require Import Coq.QArith.QArith_base.
 Require Export Types.
+From stdpp Require infinite.
 Set Bullet Behavior "Strict Subproofs".
 
 (** Function and Predicate Symbols **)
@@ -353,6 +354,11 @@ Qed.
 
 Definition vsymbol_eq_dec (x y: vsymbol): 
   {x = y} + {x <> y} := reflect_dec' (vsymbol_eqb_spec x y).
+
+Instance vsymbol_inf : base.Infinite vsymbol.
+Proof.
+apply infinite.prod_infinite_l.
+Defined.
 
 (* Instance vsymbol_EqDecision : @base.RelDecision vsymbol vsymbol eq.
 Proof.

@@ -3,13 +3,21 @@
   elements of the type not present in some input list.
   This is useful for generating new free variables and
   unique names.*)
+(*TODO: could make this more efficient with a BFS search of the ptree. Is it worth it?*)
 Require Import Coq.Lists.List.
 Require Import Coq.Logic.FinFun.
 Require Import Coq.Arith.PeanoNat.
 Require Import Common.
+
+(*TODO: just use "fresh" from stdpp, repeat n times*)
+
+(*NOTE: have 2 versions: old, which has structure where we have prefix followed by number,
+  and version using "fresh", which we can just use directly*)
+
 Section NoDupsList.
 
 Context {A: Type}.
+
 Variable (f: nat -> A).
 (*We have an injection nat -> A*)
 Variable (Hinj: forall n1 n2, f n1 = f n2 -> n1 = n2).
@@ -32,71 +40,108 @@ Qed.
 
 (*Generate list of n distinct elements, all of which are not
   in l*)
-Variable eq_dec: forall (x y: A), {x=y} +{x<>y}.
-Definition gen_notin (n: nat) (l: list A): list A :=
+Context `{A_count: countable.Countable A} (*`{A_inf: base.Infinite A}*).
+Definition gen_notin (n: nat) (s: aset A): list A :=
+(*   aset_fresh_list n s. *)
   firstn n 
-    (filter (fun x => negb(in_dec eq_dec x l)) (gen_dist (n + length l))).
+    (filter (fun x => negb(aset_mem_dec x s)) (gen_dist (n + aset_size s))).
+
+(*Should we generate set or list? list prob OK for now, just not symmetric wihch is annoying*)
+
+(*TODO: move*)
+
+(*TODO: replace*)
+
+Lemma filter_in_notin {B: Type} `{B_count: countable.Countable B} 
+  (s1: aset B) (l2: list B) (x: B):
+  ~ In x l2 ->
+  filter (fun y => negb (aset_mem_dec y (aset_union (aset_singleton x) s1))) l2 =
+  filter (fun y => negb (aset_mem_dec y s1)) l2.
+Proof.
+  intros Hnotin.
+  apply filter_ext_in; intros a Hina.
+  destruct (aset_mem_dec a (aset_union (aset_singleton x) s1)) as [Hmem | Hnotmem]; simpl;
+  simpl_set_small.
+  - destruct Hmem as [Hmem | Hmem]; simpl_set_small; subst; auto; [contradiction|].
+    destruct (aset_mem_dec _ _); auto.
+  - destruct (aset_mem_dec _ _); simpl; auto; exfalso; apply Hnotmem; auto.
+Qed. 
+
+
 
 (*Proving that this is correct is not trivial*)
 (*A version of the pigeonhole principle: given two lists l1 and l2,
   if l2 is larger and has no duplicates, it has at least 
     (length l2) - (length l1) elements that are not in l1*)
-Lemma php (l1 l2: list A):
+Lemma php (s: aset A) (l2: list A):
   NoDup l2 -> 
-  length l1 <= length l2 ->
-  length l2 - length l1 <= 
-    length (filter (fun x => negb(in_dec eq_dec x l1)) l2).
+  aset_size s <= length l2 ->
+  length l2 - aset_size s <= 
+    length (filter (fun x => negb(aset_mem_dec x s)) l2).
 Proof.
   (*Try alternate, then go back*)
-  revert l2. induction l1; intros; auto.
-  - simpl. rewrite Nat.sub_0_r.
-    assert ((filter (fun _ : A => true) l2) = l2). {
-      apply all_filter. apply forallb_forall. auto.
+  revert l2.
+  (*TODO: write induction principle on ssets based on theirs*)
+  apply aset_ind with (P:=(fun s => forall l2, NoDup l2 -> aset_size s <= length l2 -> length l2 - aset_size s <=
+    length (filter (fun x => negb (aset_mem_dec x s)) l2))); clear s.
+  - intros l2 Hl2. rewrite aset_size_empty, Nat.sub_0_r.
+    assert (Hl2': filter (fun x => negb (aset_mem_dec x aset_empty)) l2 = l2).
+    {
+      apply all_filter, forallb_forall. intros x Hinx.
+      destruct (aset_mem_dec _ _); auto. exfalso.
+      apply (aset_mem_empty _ x); auto.
     }
-    rewrite H1. auto.
-  - destruct (in_dec eq_dec a l2).
+    rewrite Hl2'. auto.
+  - intros x s Hnotin IH l2 Hlnodup.
+    rewrite size_union_singleton.
+    destruct (in_dec EqDecision0 x l2).
     2: {
       rewrite filter_in_notin; auto; simpl.
-      specialize (IHl1 _ H). lia.
+      specialize (IH _ Hlnodup). lia.
     }
     (*For this one, we have to split l2 depending on
       where a appears*)
     apply in_split in i.
     destruct i as [p1 [p2 Hl2]].
     rewrite Hl2, filter_app, filter_cons.
-    assert (Hnodup:=H).
-    rewrite Hl2 in H.
-    rewrite NoDup_app_iff in H. destruct H as [Hn1 [Hn2 [Hnotin1 Hnotin2]]].
-    inversion Hn2. subst x l.
-    assert (~ In a p1). {
+    assert (Hnodup:=Hlnodup).
+    rewrite Hl2 in Hnodup.
+    rewrite NoDup_app_iff in Hnodup. destruct Hnodup as [Hn1 [Hn2 [Hnotin1 Hnotin2]]].
+    inversion Hn2. subst x0 l.
+    assert (~ In x p1). {
       apply Hnotin2. left; auto.
     } 
     rewrite !filter_in_notin; auto.
-    simpl. destruct (eq_dec a a); auto; try contradiction.
-    simpl. rewrite <- filter_app.
+    simpl. (*destruct (eq_dec a a); auto; try contradiction.
+    simpl.*) (*rewrite <- filter_app.*)
     assert (Hn3: NoDup (p1 ++ p2)). {
       rewrite NoDup_app_iff. repeat split; auto.
-      - intros; intro C. apply (Hnotin1 x H1). right; auto.
+      - intros; intro C. apply (Hnotin1 x0 H0). right; auto.
       - intros; apply Hnotin2. right; auto.
     }
-    specialize (IHl1 _ Hn3).
-    rewrite !app_length; simpl. simpl in H0.
-    rewrite !app_length in IHl1. lia.
+    specialize (IH _ Hn3).
+    rewrite !app_length; simpl.
+    rewrite !app_length in IH.
+    destruct (aset_mem_dec x (aset_union (aset_singleton x) s)); simpl.
+    2: { exfalso. apply n. simpl_set_small. auto. }
+    rewrite filter_app, app_length in IH.
+    destruct (aset_mem_dec x s); simpl in *; try lia.
+    contradiction.
 Qed.
 
 (*Now we can prove our function correct*)
-Lemma gen_notin_length (n: nat) (l: list A):
-  length (gen_notin n l) = n.
+Lemma gen_notin_length (n: nat) (s: aset A):
+  length (gen_notin n s) = n.
 Proof.
   unfold gen_notin.
   rewrite firstn_length_le; auto.
-  pose proof (php l (gen_dist (n + length l))).
-  rewrite gen_dist_length in H.
-  specialize (H (gen_dist_correct _)). lia.
+  pose proof (php s (gen_dist (n + aset_size s))) as Hp.
+  rewrite gen_dist_length in Hp.
+  specialize (Hp (gen_dist_correct _)). lia.
 Qed.
 
-Lemma gen_notin_nodup (n: nat) (l: list A):
-  NoDup (gen_notin n l).
+Lemma gen_notin_nodup (n: nat) (s: aset A):
+  NoDup (gen_notin n s).
 Proof.
   unfold gen_notin.
   apply NoDup_firstn.
@@ -104,16 +149,18 @@ Proof.
   apply gen_dist_correct.
 Qed.
 
-Lemma gen_notin_notin (n: nat) (l: list A):
-  forall y, In y (gen_notin n l) -> ~ In y l.
+Lemma gen_notin_notin (n: nat) (s: aset A):
+  forall y, In y (gen_notin n s) -> ~ aset_mem y s.
 Proof.
-  intros. unfold gen_notin in H.
-  apply In_firstn in H.
-  rewrite in_filter in H. destruct H.
-  destruct (in_dec eq_dec y l); auto. inversion H.
+  intros y Hiny. unfold gen_notin in Hiny.
+  apply In_firstn in Hiny.
+  rewrite in_filter in Hiny. destruct Hiny.
+  destruct (aset_mem_dec y s); auto. discriminate.
 Qed.
 
-Lemma add_notin_nodup (l1: list A) n:
+(*TODO: see if we need version of this*)
+(*
+Lemma add_notin_nodup (: list A) n:
   NoDup l1 ->
   NoDup (l1 ++ gen_notin n l1).
 Proof.
@@ -122,11 +169,22 @@ Proof.
   + apply gen_notin_nodup; apply nth_vs_inj.
   + intros. intro C. apply gen_notin_notin in C. contradiction.
   + intros. apply gen_notin_notin in H0. auto.
-Qed.
+Qed.*)
 
 (*We can change the list in question as long as it has equivalent elements (even if a different
   length, although this is not trivial to show*)
-Lemma gen_notin_ext_aux (l1 l2: list A) (n: nat):
+(*NOTE: this is now almost trivial by extensionality*)
+Lemma gen_notin_ext (s1 s2: aset A) (n: nat):
+  (forall x, aset_mem x s1 <-> aset_mem x s2) ->
+  gen_notin n s1 = gen_notin n s2.
+Proof.
+  intros Hin.
+  assert (Hs1: s1 = s2). {
+    apply aset_ext; auto.
+  }
+  subst. reflexivity.
+Qed.
+(* Lemma gen_notin_ext_aux (l1 l2: list A) (n: nat):
   (forall x, In x l1 <-> In x l2) ->
   length l1 <= length l2 ->
   gen_notin n l1 = gen_notin n l2.
@@ -149,9 +207,9 @@ Proof.
   2: { symmetry; apply Nat.sub_0_le; auto. }
   rewrite firstn_O, app_nil_r.
   reflexivity.
-Qed.
+Qed. *)
 
-Lemma gen_notin_ext (l1 l2: list A) (n: nat):
+(* Lemma gen_notin_ext (l1 l2: list A) (n: nat):
   (forall x, In x l1 <-> In x l2) ->
   gen_notin n l1 = gen_notin n l2.
 Proof.
@@ -159,7 +217,7 @@ Proof.
   unfold gen_notin.
   destruct (Nat.le_ge_cases (length l1) (length l2)); [|symmetry]; apply gen_notin_ext_aux; auto.
   intros; rewrite Hiff; reflexivity.
-Qed.
+Qed. *)
 
 End NoDupsList.
 
@@ -170,6 +228,7 @@ End NoDupsList.
   nats to strings is surprisingly difficult*)
 
 (*Apply this to vsymbols*)
+(*TODO: likely delete this*)
 Require Import Types.
 Require Import Syntax.
 Require Import Coq.Strings.String.
@@ -462,70 +521,71 @@ Qed.
 
 (*We give a specific function for generating n distinct
   vsymbols not in list l*)
-Definition gen_vars (n: nat) (l: list vsymbol) :=
-  gen_notin nth_vs vsymbol_eq_dec n l.
+(*TODO: is this useful (vs generating names?)*)
+Definition gen_vars (n: nat) (s: aset vsymbol) :=
+  gen_notin nth_vs n s.
 
-Lemma gen_vars_length (n: nat) (l: list vsymbol):
-  List.length (gen_vars n l) = n.
+Lemma gen_vars_length (n: nat) (s: aset vsymbol):
+  List.length (gen_vars n s) = n.
 Proof.
   apply gen_notin_length. apply nth_vs_inj.
 Qed.
 
-Lemma gen_vars_nodup (n: nat) (l: list vsymbol):
-  NoDup (gen_vars n l).
+Lemma gen_vars_nodup (n: nat) (s: aset vsymbol):
+  NoDup (gen_vars n s).
 Proof.
   apply gen_notin_nodup. apply nth_vs_inj.
 Qed.
 
-Lemma gen_vars_notin (n: nat) (l: list vsymbol):
-  forall x, In x (gen_vars n l) -> ~ In x l.
+Lemma gen_vars_notin (n: nat) (s: aset vsymbol):
+  forall x, In x (gen_vars n s) -> ~ aset_mem x s.
 Proof.
   apply gen_notin_notin.
 Qed.
 
 (*And one to generate new variable names*)
-Definition gen_strs (n: nat) (l: list vsymbol) : list string :=
-  gen_notin nth_str string_dec n (map fst l).
+Definition gen_strs (n: nat) (s: aset vsymbol) : list string :=
+  gen_notin nth_str n (aset_map fst s).
 
-Lemma gen_strs_length n l:
-  List.length (gen_strs n l) = n.
+Lemma gen_strs_length n s:
+  List.length (gen_strs n s) = n.
 Proof.
   apply gen_notin_length. apply nth_str_inj.
 Qed.
 
-Lemma gen_strs_nodup n l:
-  NoDup (gen_strs n l).
+Lemma gen_strs_nodup n s:
+  NoDup (gen_strs n s).
 Proof.
   apply gen_notin_nodup. apply nth_str_inj.
 Qed.
 
-Lemma gen_strs_notin (n: nat) (l: list vsymbol):
-  forall (x: vsymbol), In (fst x) (gen_strs n l) -> ~ In x l.
+Lemma gen_strs_notin (n: nat) (s: aset vsymbol):
+  forall (x: vsymbol), In (fst x) (gen_strs n s) -> ~ aset_mem x s.
 Proof.
-  intros. apply gen_notin_notin in H.
-  rewrite in_map_iff in H. intro Hin.
-  apply H. exists x. split; auto.
+  intros x Hin. apply gen_notin_notin in Hin.
+  rewrite aset_mem_map in Hin.
+  intro Hin1.
+  apply Hin. exists x. split; auto.
 Qed.
 
-Lemma gen_strs_notin' (n: nat) (l: list vsymbol):
-forall (s: string), In s (gen_strs n l) -> ~ In s (map fst l).
+Lemma gen_strs_notin' (n: nat) (s: aset vsymbol):
+forall (str: string), In str (gen_strs n s) -> ~ aset_mem str (aset_map fst s).
 Proof.
-  intros. apply gen_notin_notin in H. auto.
+  intros str Hin. apply gen_notin_notin in Hin. auto.
 Qed.
 
-Lemma gen_strs_ext (n: nat) (l1 l2: list vsymbol)
-  (Hl12: forall x, In x l1 <-> In x l2):
-  gen_strs n l1 = gen_strs n l2.
+Lemma gen_strs_ext (n: nat) (s1 s2: aset vsymbol)
+  (Hl12: forall x, aset_mem x s1 <-> aset_mem x s2):
+  gen_strs n s1 = gen_strs n s2.
 Proof.
   unfold gen_strs.
   apply gen_notin_ext.
-  - apply nth_str_inj.
-  - intros x. rewrite !in_map_iff; split; intros [y [Hy Hiny]]; subst; exists y; split; auto; apply Hl12; auto.
+  intros x. apply aset_ext in Hl12. subst. reflexivity.
 Qed.
 
 (*No variables, just names with a prefix*)
-Definition gen_names (n: nat) (pref: string) (l: list string) : list string :=
-  gen_notin (fun x => (pref ++ nat_to_string x)%string) string_dec n l.
+Definition gen_names (n: nat) (pref: string) (s: aset string) : list string :=
+  gen_notin (fun x => (pref ++ nat_to_string x)%string) n s.
 
 Lemma gen_names_inj pref: forall (n1 n2: nat),
   (pref ++ nat_to_string n1)%string =
@@ -536,36 +596,36 @@ Proof.
   apply nat_to_string_inj in H0; auto.
 Qed.
 
-Lemma gen_names_length n p l:
-  List.length (gen_names n p l) = n.
+Lemma gen_names_length n p s:
+  List.length (gen_names n p s) = n.
 Proof.
   apply gen_notin_length, gen_names_inj.
 Qed.
 
-Lemma gen_names_nodup n p l:
-  NoDup (gen_names n p l).
+Lemma gen_names_nodup n p s:
+  NoDup (gen_names n p s).
 Proof.
   apply gen_notin_nodup, gen_names_inj. 
 Qed.
 
-Lemma gen_names_notin (n: nat) p (l: list string):
-  forall x, In x (gen_names n p l) -> ~ In x l.
+Lemma gen_names_notin (n: nat) p (s: aset string):
+  forall x, In x (gen_names n p s) -> ~ aset_mem x s.
 Proof.
-  intros. apply gen_notin_notin in H. auto.
+  intros x Hinx. apply gen_notin_notin in Hinx. auto.
 Qed.
 
-Definition gen_name (p: string) (l: list string) : string :=
-  List.nth 0 (gen_names 1 p l) EmptyString.
+Definition gen_name (p: string) (s: aset string) : string :=
+  List.nth 0 (gen_names 1 p s) EmptyString.
 
-Lemma gen_name_notin p (l: list string):
-  ~ In (gen_name p l) l.
+Lemma gen_name_notin p (s: aset string):
+  ~ aset_mem (gen_name p s) s.
 Proof.
   unfold gen_name.
-  pose proof (gen_names_length 1 p l).
-  destruct (gen_names 1 p l) eqn : Heqs;
-  inversion H.
-  destruct l0; inversion H1.
+  pose proof (gen_names_length 1 p s) as Hlen.
+  destruct (gen_names 1 p s) eqn : Heqs;
+  inversion Hlen.
+  destruct l; try discriminate.
   simpl. 
-  pose proof (gen_names_notin 1 p l s).
-  apply H0. rewrite Heqs; simpl; auto.
+  pose proof (gen_names_notin 1 p s s0) as Hnotin.
+  apply Hnotin. rewrite Heqs; simpl; auto.
 Qed.

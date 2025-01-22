@@ -1,12 +1,12 @@
 Require Export CommonTactics CommonList CommonBool.
-From stdpp Require base gmap.
+From stdpp Require base gmap fin_sets.
 (** Union on lists with decidable equality **)
 
 (*TODO: change names (do we need this for lists?)*)
 
 Section Aset.
 
-Import base gmap.
+Import base gmap fin_sets.
 
 Section FixA.
 
@@ -21,7 +21,12 @@ Definition aset_is_empty (a: aset) : bool := Nat.eqb (size a) 0.
 Definition aset_mem (x: A) (s: aset) : Prop :=
   x ∈ s.
 
-Definition aset_union (s1 s2: aset) : gset A := s1 ∪ s2.
+Definition aset_mem_dec (x: A) (s: aset) : {aset_mem x s} + {~ aset_mem x s} :=
+  gset_elem_of_dec _ s.
+
+Definition aset_union (s1 s2: aset) : aset := s1 ∪ s2.
+
+Definition aset_size (s: aset) : nat := size s.
 
 (*TODO: see if this needs to be set anywhere?*)
 Definition aset_big_union {B: Type} (*`{B_count: Countable B} *)
@@ -158,7 +163,7 @@ Proof.
 Qed.
 
 (*Need equiv for NoDup*)
-Lemma NoDup_equiv {C: Type} (l: list C):
+(* Lemma NoDup_equiv {C: Type} (l: list C):
   NoDup l <-> List.NoDup l.
 Proof.
   induction l as [| h t IH].
@@ -167,9 +172,9 @@ Proof.
     + rewrite <- in_equiv; auto.
     + unfold elem_of. rewrite in_equiv; auto.
 Qed.
-
+ *)
 Lemma aset_to_list_nodup (a: aset) : List.NoDup (aset_to_list a).
-Proof. apply NoDup_equiv, NoDup_elements. Qed.
+Proof. apply NoDup_ListNoDup, NoDup_elements. Qed.
 
 (*Remove*)
 Definition aset_remove (x: A) (s: aset) : aset :=
@@ -201,6 +206,62 @@ Proof.
   set_unfold. reflexivity.
 Qed.
 
+(*Generate fresh element*)
+Definition aset_fresh_list `{Infinite A} (n: nat) (s: aset) : list A :=
+  fresh_list n s.
+
+Lemma aset_fresh_list_length `{Infinite A} (n: nat) (s: aset) : length (aset_fresh_list n s) = n.
+Proof. apply fresh_list_length. Qed.
+
+Lemma aset_fresh_list_nodup `{Infinite A} (n: nat) (s: aset) : List.NoDup (aset_fresh_list n s).
+Proof. rewrite <- NoDup_ListNoDup. apply NoDup_fresh_list. Qed.
+
+Lemma aset_fresh_list_notin `{Infinite A} (n: nat) (s: aset) : forall x, List.In x (aset_fresh_list n s) -> 
+  ~ aset_mem x s.
+Proof.
+  intros x.
+  rewrite <- elem_of_list_In. intros Hin. apply fresh_list_is_fresh in Hin.
+  auto.
+Qed.
+
+(*Extensionality is useful*)
+Lemma aset_ext (s1 s2: aset):
+  (forall x, aset_mem x s1 <-> aset_mem x s2) ->
+  s1 = s2.
+Proof.
+  unfold aset_mem. set_unfold.
+Qed.
+
+(*An induction principle for sets*)
+Lemma aset_ind (P: aset -> Prop):
+  P aset_empty -> (forall (x: A) (s: aset), ~ aset_mem x s -> P s -> P (aset_union (aset_singleton x) s)) ->
+  forall (s: aset), P s.
+Proof.
+  apply set_ind.
+  intros x y Hxy. assert (Hxy': x = y). { set_unfold. auto. } subst.
+  intros Hy. auto.
+Qed.
+
+(*TODO: organize*)
+Lemma aset_size_empty:
+  aset_size aset_empty = 0.
+Proof. reflexivity. Qed.
+
+Lemma size_union_singleton x s:
+  aset_size (aset_union (aset_singleton x) s) =
+  (if aset_mem_dec x s then 0 else 1) + aset_size s.
+Proof.
+  unfold aset_size, aset_union, aset_singleton, aset_mem_dec.
+  destruct (gset_elem_of_dec x s).
+  - assert (Heq: {[x]} ∪ s = s). {
+      set_unfold. intros y. split; auto. intros [Heq | Hin]; subst; auto.
+    }
+    rewrite Heq. reflexivity.
+  - rewrite size_union.
+    + rewrite size_singleton. reflexivity.
+    + set_unfold. intros y Heq Hiny; subst; auto.
+Qed. 
+
 End FixA.
 
 (*Map over elts of set*)
@@ -221,8 +282,10 @@ Qed.
 
 End Aset.
 
+#[global]Arguments aset_mem_dec {_} {_} {_}.
 #[global]Arguments aset_mem {_} {_} {_}.
 #[global]Arguments aset_empty {_} {_} {_}.
+#[global]Arguments aset_size {_} {_} {_}.
 #[global]Arguments aset_is_empty {_} {_} {_}.
 #[global]Arguments aset_singleton {_} {_} {_}.
 #[global]Arguments aset_union {_} {_} {_}.
@@ -233,7 +296,7 @@ End Aset.
 #[global]Arguments aset_remove {_} {_} {_}.
 #[global]Arguments aset_diff {_} {_} {_}.
 #[global]Arguments check_asubset {_} {_} {_}.
-
+#[global]Arguments aset_fresh_list {_} {_} {_} {_}.
 
 
 Ltac simpl_set_goal_small :=
