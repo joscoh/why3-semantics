@@ -1248,6 +1248,91 @@ Qed.
 Definition def_eq_dec (d1 d2: def) : {d1 = d2} + {d1 <> d2} :=
   reflect_dec' (def_eqb_spec d1 d2).
 
+(*And countable instances*)
+
+(*ne_list*)
+(*TODO: move?*)
+Section NEListCount.
+Context {A: Set} `{A_count: countable.Countable A}.
+
+#[global] Instance ne_list_EqDecision: @base.RelDecision (ne_list A) (ne_list A) eq.
+Proof. unfold base.RelDecision. apply ne_list_eq_dec. apply EqDecision0. Defined.
+
+(*Injection to list*)
+
+Definition list_to_ne_list' (l: list A): option (ne_list A) :=
+  match negb (null l) as b return negb (null l) = b -> _ with
+  | true => fun Hn => Some (list_to_ne_list l Hn)
+  | _ => fun _ => None
+  end eq_refl.
+
+Lemma list_to_ne_list_inj' l:
+  list_to_ne_list' (ne_list_to_list l) = Some l.
+Proof.
+  unfold list_to_ne_list'.
+  generalize dependent (@eq_refl bool (negb (null (ne_list_to_list l)))).
+  (*Need a property of [list_to_ne_list] before we generalize*)
+  pose proof (@ne_list_list_inv A l) as Hinv.
+  generalize dependent (ne_list_to_list_size l).
+  generalize dependent (@list_to_ne_list A (ne_list_to_list l)).
+  (*Finally, can destruct*)
+  destruct (negb (null (ne_list_to_list l))); simpl; [|discriminate].
+  intros. subst. f_equal. f_equal. apply bool_irrelevance.
+Qed.
+
+#[global]Instance ne_list_Countable : countable.Countable (ne_list A) :=
+  countable.inj_countable ne_list_to_list list_to_ne_list' list_to_ne_list_inj'.
+
+End NEListCount.
+
+
+
+(*ADT*)
+Definition adt_to_tup (a: alg_datatype) : typesym * ne_list funsym :=
+  (adt_name a, adt_constrs a).
+Definition tup_to_adt (x: typesym * ne_list funsym) : alg_datatype :=
+  alg_def (fst x) (snd x).
+Lemma adt_to_tup_inj a: tup_to_adt (adt_to_tup a) = a.
+Proof.
+destruct a; auto.
+Qed.
+
+Instance alg_datatype_EqDecision: @base.RelDecision alg_datatype alg_datatype eq.
+Proof. unfold base.RelDecision. apply adt_dec. Defined.
+
+Instance alg_datatype_Countable : countable.Countable alg_datatype :=
+  countable.inj_countable' adt_to_tup tup_to_adt adt_to_tup_inj.
+
+(*mut adt*)
+
+Definition mut_to_tup (m: mut_adt) : list alg_datatype * list typevar :=
+  (typs m, m_params m).
+Definition tup_to_mut (x: list alg_datatype * list typevar) : option mut_adt :=
+  let t := fst x in
+  let p := snd x in
+  match (nodupb typevar_eq_dec p) as b return (nodupb typevar_eq_dec p) = b -> _ with
+  | true => fun m_nodup => Some (mk_mut t p m_nodup)
+  | false => fun _ => None
+  end eq_refl.
+
+Lemma mut_to_tup_inj: forall x,
+  tup_to_mut (mut_to_tup x) = Some x.
+Proof.
+  intros [t p p_nodup].
+  unfold mut_to_tup, tup_to_mut. simpl.
+  generalize dependent (@eq_refl bool (nodupb typevar_eq_dec p)).
+  generalize dependent ((mk_mut t p)).
+  rewrite p_nodup. intros; subst; auto.
+  f_equal; f_equal; apply bool_irrelevance.
+Qed.
+
+Instance mut_adt_EqDecision : @base.RelDecision mut_adt mut_adt eq.
+Proof. unfold base.RelDecision. apply mut_adt_dec. Defined.
+
+Instance mut_adt_Countable : countable.Countable mut_adt :=
+  countable.inj_countable mut_to_tup tup_to_mut mut_to_tup_inj.
+
+
 (*In many cases, it is inconvenient to use terms and formulas
   separately. With a bit of dependent typing, we can generalize.
   This will be very useful, particularly for pattern-matching:*)

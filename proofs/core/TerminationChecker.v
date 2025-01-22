@@ -25,7 +25,7 @@ Definition pn_d : pn :=
   [decrease_fun] and [decrease_pred], assuming we already
   have fs and ps*)
 Fixpoint check_decrease_fun (fs: list fn) (ps: list pn)
-  (small: list vsymbol) (hd: option vsymbol) (m: mut_adt)
+  (small: aset vsymbol) (hd: option vsymbol) (m: mut_adt)
   (vs: list vty) (t: term) : bool :=
   match t with
   | Tfun f l ts =>
@@ -33,7 +33,7 @@ Fixpoint check_decrease_fun (fs: list fn) (ps: list pn)
     | Some f_decl =>
          match nth tm_d ts (sn_idx f_decl) with
         | Tvar x => 
-          (x \in small) &&
+          (aset_mem_dec x small) &&
           (l == map vty_var (s_params f)) &&
           all (check_decrease_fun fs ps small hd m vs) ts
         | _ => false
@@ -50,41 +50,41 @@ Fixpoint check_decrease_fun (fs: list fn) (ps: list pn)
         if check_var_case hd small mvar then
           all (fun x =>
           check_decrease_fun fs ps
-          (union vsymbol_eq_dec (vsyms_in_m m vs (pat_constr_vars m vs (fst x))) 
-          (remove_all vsymbol_eq_dec (pat_fv (fst x)) 
+          (aset_union (vsyms_in_m' m vs (pat_constr_vars m vs (fst x))) 
+          (aset_diff (pat_fv (fst x)) 
           small)) (upd_option_iter hd (pat_fv (fst x))) m vs (snd x)
           ) pats
         (*Non-smaller cases - TODO: less repetition?*)
         else 
           all (fun x =>
             check_decrease_fun fs ps 
-            (remove_all vsymbol_eq_dec (pat_fv (fst x)) small) 
+            (aset_diff (pat_fv (fst x)) small) 
             (upd_option_iter hd (pat_fv (fst x))) m vs (snd x)) pats
     | Tfun c l tms =>
         all (fun x => check_decrease_fun fs ps
-          (union vsymbol_eq_dec
-            (vsyms_in_m m vs (get_constr_smaller small hd m vs c l tms x.1))
-            (remove_all vsymbol_eq_dec (pat_fv x.1) small))
+          (aset_union
+            (vsyms_in_m' m vs (get_constr_smaller small hd m vs c l tms x.1))
+            (aset_diff (pat_fv x.1) small))
           (upd_option_iter hd (pat_fv x.1)) m vs x.2) pats
     | _ => all (fun x =>
       check_decrease_fun fs ps 
-      (remove_all vsymbol_eq_dec (pat_fv (fst x)) small) 
+      (aset_diff (pat_fv (fst x)) small) 
       (upd_option_iter hd (pat_fv (fst x))) m vs (snd x)) pats
     end
   | Tlet t1 v t2 =>
     check_decrease_fun fs ps small hd m vs t1 &&
-    check_decrease_fun fs ps (remove vsymbol_eq_dec v small) (upd_option hd v) m vs t2
+    check_decrease_fun fs ps (aset_remove v small) (upd_option hd v) m vs t2
   | Tif f1 t1 t2 =>
     check_decrease_pred fs ps small hd m vs f1 &&
     check_decrease_fun fs ps small hd m vs t1 &&
     check_decrease_fun fs ps small hd m vs t2
   | Teps f v =>
-    check_decrease_pred fs ps (remove vsymbol_eq_dec v small) (upd_option hd v) m vs f
+    check_decrease_pred fs ps (aset_remove v small) (upd_option hd v) m vs f
   | _ => true
   end
 
 with check_decrease_pred (fs: list fn) (ps: list pn)
-  (small: list vsymbol) (hd: option vsymbol) (m: mut_adt)
+  (small: aset vsymbol) (hd: option vsymbol) (m: mut_adt)
   (vs: list vty) (f: formula) : bool :=
   match f with
   | Fpred p l ts =>
@@ -92,7 +92,7 @@ with check_decrease_pred (fs: list fn) (ps: list pn)
     | Some p_decl =>
          match nth tm_d ts (sn_idx p_decl) with
         | Tvar x => 
-          (x \in small) &&
+          (aset_mem_dec x small) &&
           (l == map vty_var (s_params p)) &&
           all (check_decrease_fun fs ps small hd m vs) ts
         | _ => false
@@ -108,30 +108,30 @@ with check_decrease_pred (fs: list fn) (ps: list pn)
         if check_var_case hd small mvar then
           all (fun x =>
           check_decrease_pred fs ps
-          (union vsymbol_eq_dec (vsyms_in_m m vs (pat_constr_vars m vs (fst x))) 
-          (remove_all vsymbol_eq_dec (pat_fv (fst x)) 
+          (aset_union (vsyms_in_m' m vs (pat_constr_vars m vs (fst x))) 
+          (aset_diff (pat_fv (fst x)) 
           small)) (upd_option_iter hd (pat_fv (fst x))) m vs (snd x)
           ) pats
         else 
           all (fun x =>
             check_decrease_pred fs ps 
-            (remove_all vsymbol_eq_dec (pat_fv (fst x)) small) 
+            (aset_diff (pat_fv (fst x)) small) 
             (upd_option_iter hd (pat_fv (fst x))) m vs (snd x)) pats
     | Tfun c l tms =>
         all (fun x => check_decrease_pred fs ps
-          (union vsymbol_eq_dec
-            (vsyms_in_m m vs (get_constr_smaller small hd m vs c l tms x.1))
-            (remove_all vsymbol_eq_dec (pat_fv x.1) small))
+          (aset_union
+            (vsyms_in_m' m vs (get_constr_smaller small hd m vs c l tms x.1))
+            (aset_diff (pat_fv x.1) small))
           (upd_option_iter hd (pat_fv x.1)) m vs x.2) pats
     | _ => all (fun x =>
       check_decrease_pred fs ps 
-      (remove_all vsymbol_eq_dec (pat_fv (fst x)) small) 
+      (aset_diff (pat_fv (fst x)) small) 
       (upd_option_iter hd (pat_fv (fst x))) m vs (snd x)) pats
     end
   | Fnot f =>
     check_decrease_pred fs ps small hd m vs f 
   | Fquant q v f =>
-    check_decrease_pred fs ps (remove vsymbol_eq_dec v small) (upd_option hd v) m vs f
+    check_decrease_pred fs ps (aset_remove v small) (upd_option hd v) m vs f
   | Feq ty t1 t2 =>
     check_decrease_fun fs ps small hd m vs t1 &&
     check_decrease_fun fs ps small hd m vs t2
@@ -140,7 +140,7 @@ with check_decrease_pred (fs: list fn) (ps: list pn)
     check_decrease_pred fs ps small hd m vs f2
   | Flet t1 v f =>
     check_decrease_fun fs ps small hd m vs t1 &&
-    check_decrease_pred fs ps (remove vsymbol_eq_dec v small) (upd_option hd v) m vs f
+    check_decrease_pred fs ps (aset_remove v small) (upd_option hd v) m vs f
   | Fif f1 f2 f3 =>
     check_decrease_pred fs ps small hd m vs f1 &&
     check_decrease_pred fs ps small hd m vs f2 &&
@@ -161,10 +161,10 @@ Ltac tfun_triv t :=
 (*Destruct things we need for reflection*)
 Ltac refl_destruct :=
   match goal with
-    | |- context [?x \in ?l] => case: (inP x l); intros
+    | |- context [aset_mem_dec ?x ?l] => case: (aset_mem_dec x l); intros
     | |- context [?x == ?l] => case: (@eqP _ x l); intros
     | |- context [check_var_case ?hd ?small ?v] => destruct (check_var_case_spec hd small v); intros
-    | H: forall (small : list vsymbol) (hd: option vsymbol),
+    | H: forall (small : aset vsymbol) (hd: option vsymbol),
       reflect (?P _ _ small hd _ _ ?t)
         (?b _ _ small hd _ _ ?t) |-
       context [?b _ _ ?s1 ?h1 _ _ ?t] => 
@@ -188,7 +188,7 @@ Qed.
 
 Ltac refl_destruct_full :=
   first[ match goal with
-  | H: ForallT (fun (t: term) => forall (small : list vsymbol) (hd : option vsymbol), 
+  | H: ForallT (fun (t: term) => forall (small : aset vsymbol) (hd : option vsymbol), 
           reflect (?P1 _ _ small hd _ _ t)
           (?b1 _ _ small hd _ _ t)) ?tms |-
         context [reflect ?P (all (?b1 _ _ ?s1 ?h1 _ _) ?tms)] =>
@@ -216,7 +216,7 @@ Qed.
 
 Ltac match_case small hd Halliff constr :=
   let Hall2 := fresh in
-  case: (Halliff (fun x => remove_all vsymbol_eq_dec (pat_fv x.1) small) 
+  case: (Halliff (fun x => aset_diff (pat_fv x.1) small) 
         (fun x => upd_option_iter hd (pat_fv x.1))) => Hall2;
           [ apply ReflectT, constr | reflF].
 
@@ -240,9 +240,9 @@ Proof.
       destruct Helt as [Hinfs Hf1]; subst.
       destruct (List.nth (sn_idx f_decl) tms tm_d) eqn : Hnth;
       try solve[tfun_triv (List.nth (sn_idx f_decl) tms tm_d)].
+      refl_destruct;  [| tfun_triv (List.nth (sn_idx f_decl) tms tm_d)].
       (*Only var case is interesting*)
-      refl_destruct; [| tfun_triv (List.nth (sn_idx f_decl) tms tm_d)].
-      refl_destruct; [| tfun_triv (List.nth (sn_idx f_decl) tms tm_d)].  simpl.
+      refl_destruct; [| tfun_triv (List.nth (sn_idx f_decl) tms tm_d)]. simpl.
       refl_destruct_full.
       * apply ReflectT. apply Dec_fun_in with (x:=v)(f_decl:=f_decl); auto.
         rewrite Forall_forall; auto.
@@ -258,13 +258,13 @@ Proof.
     simpl. destruct tm as [| v | f tys tms | | | | ]; try solve[ match_case small hd Halliff Dec_tmatch_rec; auto].
     + (*Tvar*)
       refl_destruct; [|match_case small hd Halliff Dec_tmatch_rec; auto].
-      destruct (Halliff (fun x => (union vsymbol_eq_dec (vsyms_in_m m vs (pat_constr_vars m vs x.1))
-           (remove_all vsymbol_eq_dec (pat_fv x.1) small)))
+      destruct (Halliff (fun x => (aset_union (vsyms_in_m' m vs (pat_constr_vars m vs x.1))
+           (aset_diff (pat_fv x.1) small)))
         (fun x => (upd_option_iter hd (pat_fv x.1))));
       [apply ReflectT, Dec_tmatch | reflF]; solve[auto].
     + (*Tconstr*)
-      destruct (Halliff (fun x => (union vsymbol_eq_dec (vsyms_in_m m vs (get_constr_smaller small hd m vs f tys tms x.1))
-           (remove_all vsymbol_eq_dec (pat_fv x.1) small)))
+      destruct (Halliff (fun x => (aset_union (vsyms_in_m' m vs (get_constr_smaller small hd m vs f tys tms x.1))
+           (aset_diff (pat_fv x.1) small)))
         (fun x => (upd_option_iter hd (pat_fv x.1))));
       [apply ReflectT, Dec_tmatch_constr | reflF]; solve[auto].
   - (*Fpred - very similar*)
@@ -292,13 +292,13 @@ Proof.
     simpl. destruct tm as [| v | f tys tms | | | | ]; try solve[ match_case small hd Halliff Dec_fmatch_rec; auto].
     + (*Tvar*)
       refl_destruct; [|match_case small hd Halliff Dec_fmatch_rec; auto].
-      destruct (Halliff (fun x => (union vsymbol_eq_dec (vsyms_in_m m vs (pat_constr_vars m vs x.1))
-           (remove_all vsymbol_eq_dec (pat_fv x.1) small)))
+      destruct (Halliff (fun x => (aset_union (vsyms_in_m' m vs (pat_constr_vars m vs x.1))
+           (aset_diff (pat_fv x.1) small)))
         (fun x => (upd_option_iter hd (pat_fv x.1))));
       [apply ReflectT, Dec_fmatch | reflF]; solve[auto].
     + (*Tconstr*)
-      destruct (Halliff (fun x => (union vsymbol_eq_dec (vsyms_in_m m vs (get_constr_smaller small hd m vs f tys tms x.1))
-           (remove_all vsymbol_eq_dec (pat_fv x.1) small)))
+      destruct (Halliff (fun x => (aset_union (vsyms_in_m' m vs (get_constr_smaller small hd m vs f tys tms x.1))
+           (aset_diff (pat_fv x.1) small)))
         (fun x => (upd_option_iter hd (pat_fv x.1))));
       [apply ReflectT, Dec_fmatch_constr | reflF]; solve[auto].
 Qed.
@@ -332,13 +332,13 @@ Context {gamma: context} (gamma_wf: wf_context gamma) .
   the vsymbol list*)
 (*NOTE: we CANNOT use [list_eq_dec] from stdlib because it is
   defined with Qed, and terms will get stuck*)
-Definition get_adts_present (l: list (list vsymbol)) : list (mut_adt * list vty) :=
+
+Definition get_adts_present (l: list (list vsymbol)) : aset (mut_adt * list vty) :=
   fold_right (fun v acc => match (is_vty_adt gamma (snd v)) with
-                            | Some (m, a, vs) => union 
-                                  (tuple_eq_dec' mut_adt_eqb_spec (list_eqb_spec _ vty_eq_spec))
-                                [(m, vs)] acc
+                            | Some (m, a, vs) => aset_union 
+                                (aset_singleton (m, vs)) acc
                             | None => acc
-                            end) nil (concat l).
+                            end) aset_empty (concat l).
 
 (*Generate the candidate index lists: for a given ADT, consists
   of all of the possible indices for each funsym/predsym*)
@@ -368,7 +368,7 @@ Definition get_idx_lists_aux
       let l2 := if List.existsb null l then nil else l in
       (m, vs, l2))
 
-  (get_adts_present vsyms).
+  (aset_to_list (get_adts_present vsyms)). (*TODO: keep aset?*)
 
 Definition get_idx_lists 
   (mutfun: list (funsym * list vsymbol * term))
@@ -402,12 +402,12 @@ Definition find_idx_list l m vs
   List.find (fun il =>
     all (fun (f : fn) => check_decrease_fun  
       (funpred_defs_to_sns l il).1 
-      (funpred_defs_to_sns l il).2 [::] 
+      (funpred_defs_to_sns l il).2 aset_empty 
       (Some (List.nth (sn_idx f) (sn_args f) vs_d)) m vs (fn_body f))
       (funpred_defs_to_sns l il).1 &&
     all (fun (p : pn) => check_decrease_pred
       (funpred_defs_to_sns l il).1 
-      (funpred_defs_to_sns l il).2 [::] 
+      (funpred_defs_to_sns l il).2 aset_empty
       (Some (List.nth (sn_idx p) (sn_args p) vs_d)) m vs (pn_body p))
       (funpred_defs_to_sns l il).2) candidates.
 
@@ -471,11 +471,11 @@ Lemma find_idx_list_some l m vs candidates il
   find_idx_list l
     m vs candidates = Some il ->
   Forall (fun f : fn => decrease_fun (funpred_defs_to_sns l il).1 
-    (funpred_defs_to_sns l il).2 [::] 
+    (funpred_defs_to_sns l il).2 aset_empty
     (Some (List.nth (sn_idx f) (sn_args f) vs_d)) m vs (fn_body f)) 
   (funpred_defs_to_sns l il).1 /\
   Forall (fun p : pn => decrease_pred (funpred_defs_to_sns l il).1 
-    (funpred_defs_to_sns l il).2 [::] 
+    (funpred_defs_to_sns l il).2 aset_empty
     (Some (List.nth (sn_idx p) (sn_args p) vs_d)) m vs (pn_body p)) 
   (funpred_defs_to_sns l il).2.
 Proof.
@@ -501,11 +501,11 @@ Lemma find_idx_list_none l m vs candidates
   forall il, In il candidates ->
   ~ 
   (Forall (fun f : fn => decrease_fun (funpred_defs_to_sns l il).1 
-    (funpred_defs_to_sns l il).2 [::] 
+    (funpred_defs_to_sns l il).2 aset_empty 
     (Some (List.nth (sn_idx f) (sn_args f) vs_d)) m vs (fn_body f)) 
   (funpred_defs_to_sns l il).1 /\
   Forall (fun p : pn => decrease_pred (funpred_defs_to_sns l il).1 
-    (funpred_defs_to_sns l il).2 [::] 
+    (funpred_defs_to_sns l il).2 aset_empty
     (Some (List.nth (sn_idx p) (sn_args p) vs_d)) m vs (pn_body p)) 
   (funpred_defs_to_sns l il).2).
 Proof.
@@ -517,7 +517,7 @@ Proof.
   rewrite andb_false_iff => [[Hfun | Hpred]].
   - move: Hfun => /forallb_ForallP => 
     /(_ (fun f : fn => decrease_fun (funpred_defs_to_sns l il).1 
-    (funpred_defs_to_sns l il).2 [::] 
+    (funpred_defs_to_sns l il).2 aset_empty 
     (Some (List.nth (sn_idx f) (sn_args f) vs_d)) m vs (fn_body f))).
     move=> Hfun. apply Hfun=>// x Hinx.
     by apply check_decrease_fun_spec;
@@ -525,7 +525,7 @@ Proof.
     apply Hcand.
   - move: Hpred => /forallb_ForallP => 
     /(_ (fun p : pn => decrease_pred (funpred_defs_to_sns l il).1 
-    (funpred_defs_to_sns l il).2 [::] 
+    (funpred_defs_to_sns l il).2 aset_empty
     (Some (List.nth (sn_idx p) (sn_args p) vs_d)) m vs (pn_body p))).
     move=> Hpred. apply Hpred=>// x Hinx.
     by apply check_decrease_pred_spec;
@@ -597,30 +597,29 @@ Qed.
 
 Lemma get_adts_present_in (l: list (list vsymbol)) m vs
   (m_in: mut_in_ctx m gamma):
-  In (m, vs) (get_adts_present l) <->
+  aset_mem (m, vs) (get_adts_present l) <->
   exists v, In v (concat l) /\ vty_in_m m vs (snd v).
 Proof.
   rewrite /get_adts_present.
   elim: (concat l) => [| h t IH].
-  - split=>//. intros; destruct_all; auto.
-  - (*hack*) Opaque union. rewrite /=.
+  - split=>//. intros; destruct_all; auto. contradiction.
+  - (*hack*) rewrite /=.
     case Hisadt: (is_vty_adt gamma h.2) => [[[m1 a1] vs1]|].
-    + rewrite union_elts IH. simpl.
+    + simpl_set_small. rewrite IH.
       split.
-      * move=> [[[] Hm1 Hvs | []] | [v [Hinv Hinm]]]; subst.
+      * move => [[] Hm1 Hvs | [v [Hinv Hinm]]]; subst.
         { exists h. split; auto. apply is_vty_adt_in_m=>//. by exists a1. }
         { exists v. split; auto. }
       * move=> [v [[Hhv | Hinv] Hinm]]; subst.
-        { left. left. apply is_vty_adt_in_m in Hinm=>//.
+        { apply is_vty_adt_in_m in Hinm=>//.
           case: Hinm => [a2 Hisadt2].
-          rewrite Hisadt2 in Hisadt. by inversion Hisadt; subst. }
+          rewrite Hisadt2 in Hisadt. left; by inversion Hisadt; subst. }
         { right. by exists v. }
     + rewrite IH. split.
       * move=> [v [Hinv Hinm]]. exists v. by auto.
       * move=> [v [[Hhv | Hinv] Hinm]]; last by exists v; auto.
         subst. rewrite is_vty_adt_in_m in Hinm=>//.
         case: Hinm => [a Hisadt']. by rewrite Hisadt' in Hisadt.
-Transparent union.
 Qed.
 
 (*Proofs about [get_idx_lists] - this is the hardest part*)
@@ -738,6 +737,7 @@ Proof.
       exists (m, vs). split.
       (*Easier - show (m, vs) is in [get_adts_present]*)
       2: {
+        simpl_set_small.
         apply get_adts_present_in=>//.
         move: Hil => /(_ 0 (ltac:(lia))) => Hinm.
         eexists. split; last by apply Hinm.

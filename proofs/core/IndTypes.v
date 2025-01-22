@@ -721,15 +721,15 @@ Definition get_funsym_base (ts: typesym)
     {b1: build_constr_base m f | b = get_constr_type m ts l f Hin b1}}}.
 Proof.
   induction l; simpl in b.
-  - simpl. apply (existT _ a).
+  - simpl. apply (existT a).
     destruct (funsym_eq_dec a a);[|contradiction]; simpl.
-    apply (existT _ isT).
+    apply (existT isT).
     apply (exist _ b).
     unfold eq_rect. assert (e = erefl) by (apply UIP_dec; apply funsym_eq_dec).
     rewrite H; reflexivity.
   - simpl. destruct b.
-    + apply (existT _ a). destruct (funsym_eq_dec a a); [|contradiction].
-      simpl. apply (existT _ isT). apply (exist _ b). f_equal.
+    + apply (existT a). destruct (funsym_eq_dec a a); [|contradiction].
+      simpl. apply (existT isT). apply (exist _ b). f_equal.
       unfold eq_rect.
       assert (e = erefl) by (apply UIP_dec; apply funsym_eq_dec).
       rewrite H. reflexivity.
@@ -738,11 +738,11 @@ Proof.
       destruct Huniq as [Heq Huniq].
       specialize (IHl Huniq b).
       destruct IHl as [f [Hinf [b1 Hb1]]].
-      apply (existT _ f).
+      apply (existT f).
       destruct (funsym_eq_dec f a).
       * subst. rewrite <- in_bool_ne_equiv in Heq. 
         rewrite Hinf in Heq. inversion Heq.
-      * apply (existT _ Hinf). apply (exist _ b1). f_equal. apply Hb1.
+      * apply (existT Hinf). apply (exist _ b1). f_equal. apply Hb1.
 Qed.
 
 Lemma constrs_in_list
@@ -780,7 +780,7 @@ Proof.
   }
   destruct (get_funsym_base (adt_name constrs) (adt_constrs constrs) Huniqc a)
     as [f' [Hin [b1 Ha]]].
-  apply (existT _ f').
+  apply (existT f').
   (*construct the function we need*)
   unshelve epose (g:=_ : forall j: finite (Datatypes.length m),
     finite (count_rec_occ (adt_name (fin_nth m j)) f') ->
@@ -1764,7 +1764,7 @@ Proof.
   specialize (X x).
   destruct X as [f Hf].
   destruct Hf as [[[Hinf base] inds] Hx]. (*subst.*)
-  apply (existT _ f). subst.
+  apply (existT f). subst.
   assert (f_in: constr_in_adt f t). {
     rewrite get_idx_correct in Hinf. apply Hinf. 
   }
@@ -2084,7 +2084,7 @@ Proof.
   (adt_constrs (fin_nth (typs m) (get_idx adt_dec t (adts m) t_in)))
     m_in1 (constrs_in_list (typs m) (get_idx adt_dec t (adts m) t_in)))).
   2: {
-    rewrite H. 
+    rewrite H.
     destruct (get_funsym_base (var_map m srts domain_aux) (typesym_map m srts domain_aux) 
     (typs m) (adt_name (fin_nth (typs m) (get_idx adt_dec t (adts m) t_in)))
     (adt_constrs (fin_nth (typs m) (get_idx adt_dec t (adts m) t_in)))

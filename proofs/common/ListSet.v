@@ -262,6 +262,54 @@ Proof.
     + set_unfold. intros y Heq Hiny; subst; auto.
 Qed. 
 
+Definition aset_disj (s1 s2: aset) : Prop :=
+  s1 ## s2.
+
+Lemma aset_disj_equiv (s1 s2: aset): aset_disj s1 s2 <-> (forall x, ~ (aset_mem x s1 /\ aset_mem x s2)).
+Proof.
+  unfold aset_disj, aset_mem. set_unfold. split; intros Hdisj x.
+  - intros [Hinx1 Hinx2]; apply (Hdisj x); auto.
+  - intros Hinx1 Hinx2; apply (Hdisj x); auto.
+Qed.
+
+(*Intersection*)
+Definition aset_intersect (s1 s2: aset) : aset :=
+  s1 ∩ s2.
+
+Lemma aset_mem_intersect x s1 s2:
+  aset_mem x (aset_intersect s1 s2) <-> aset_mem x s1 /\ aset_mem x s2.
+Proof.
+  unfold aset_mem, aset_intersect. set_unfold. reflexivity.
+Qed.
+
+(*Filter*)
+Definition aset_filter (f: A -> bool) (s: aset) : aset :=
+  filter f s.
+
+Lemma aset_mem_filter x f s:
+  aset_mem x (aset_filter f s) <-> aset_mem x s /\ f x.
+Proof.
+  unfold aset_mem, aset_filter. set_unfold. apply and_comm.
+Qed.
+
+(*fold*)
+
+(*It just folds over the elements list*)
+(*TODO: see what we need*)
+Definition aset_fold {B: Type} (f: A -> B -> B) (b: B) (s: aset) : B :=
+  set_fold f b s.
+
+(*Useful*)
+Definition subset (s1 s2: aset) : Prop :=
+  s1 ⊆ s2.
+
+Lemma subset_equiv (s1 s2: aset) :
+  subset s1 s2 <-> forall x, aset_mem x s1 -> aset_mem x s2.
+Proof.
+  unfold subset, aset_mem. set_unfold. reflexivity.
+Qed.
+  
+
 End FixA.
 
 (*Map over elts of set*)
@@ -297,6 +345,12 @@ End Aset.
 #[global]Arguments aset_diff {_} {_} {_}.
 #[global]Arguments check_asubset {_} {_} {_}.
 #[global]Arguments aset_fresh_list {_} {_} {_} {_}.
+#[global]Arguments aset_disj {_} {_} {_}.
+#[global]Arguments aset_intersect {_} {_} {_}.
+#[global]Arguments aset_filter {_} {_} {_}.
+#[global]Arguments aset_fold {_} {_} {_} {_}.
+#[global]Arguments subset {_} {_} {_}.
+
 
 
 Ltac simpl_set_goal_small :=
@@ -330,6 +384,9 @@ Ltac simpl_set_goal_small :=
   | |- context [ aset_mem ?x (aset_singleton ?y)] => rewrite aset_mem_singleton
   (*empty*)
   | H: aset_mem ?x aset_empty |- _ => apply aset_mem_empty in H; contradiction 
+  (*intersect*)
+  | H: aset_mem ?x (aset_intersect ?l1 ?l2) |- _ => rewrite aset_mem_intersect in H
+  | |- context [ aset_mem ?x (aset_intersect ?l1 ?l2)] => rewrite aset_mem_intersect
   end.
 
 Ltac simpl_set_goal :=
