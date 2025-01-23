@@ -141,9 +141,9 @@ Notation val x :=  (v_subst x).
   match, default to existing val*)
 Definition extend_val_with_list (v: val_typevar) 
   (vv: val_vars pd v)
-  (l: list (vsymbol * {s: sort & domain s })):
+  (l: amap vsymbol {s: sort & domain s }):
   val_vars pd v := fun x =>
-  match (get_assoc_list vsymbol_eq_dec l x) with
+  match (amap_lookup l x) with
   | Some a => 
     match (sort_eq_dec (val v (snd x)) (projT1 a)) with
     | left Heq =>
@@ -155,80 +155,72 @@ Definition extend_val_with_list (v: val_typevar)
 
   
 (*Lemmas about [extend_val_with_list]*)
-  
 Lemma extend_val_substi_in (vv: val_vars pd vt) 
   (x: vsymbol)
-  (d: domain (val vt (snd x))) (l: list (vsymbol * {s: sort & 
-    domain s}))
-  (Hl: forall x y, In (x, y) l -> projT1 y = val vt (snd x)):
-    In x (map fst l) ->
+  (d: domain (val vt (snd x))) (l: amap vsymbol {s: sort & domain s})
+  (Hl: forall x y, amap_lookup l x = Some y -> projT1 y = val vt (snd x)):
+    amap_mem x l ->
     extend_val_with_list vt (substi vv x d) l =
     extend_val_with_list vt vv l.
 Proof.
   unfold extend_val_with_list.
   intros Hinl. apply functional_extensionality_dep; intros v.
-  destruct (get_assoc_list vsymbol_eq_dec l v) eqn : Ha.
-  - apply get_assoc_list_some in Ha.
-    apply Hl in Ha.
+  destruct (amap_lookup l v) eqn : Ha.
+  - apply Hl in Ha. 
     destruct (sort_eq_dec (val vt (snd v)) (projT1 s)); auto.
     rewrite Ha in n.
     contradiction.
-  - rewrite get_assoc_list_none in Ha.
-    unfold substi. 
+  - unfold substi. rewrite amap_mem_spec in Hinl. 
     destruct (vsymbol_eq_dec v x); auto.
-    subst. contradiction.
+    subst. rewrite Ha in Hinl. discriminate.
 Qed.
   
 Lemma extend_val_substi_notin (vv: val_vars pd vt) 
   (x: vsymbol)
   (d: domain (val vt (snd x))) 
-  (l: list (vsymbol * {s: sort & domain s}))
-  (Hl: forall x y, In (x, y) l -> projT1 y = val vt (snd x)):
-    ~In x (map fst l) ->
+  (l: amap vsymbol {s: sort & domain s})
+  (Hl: forall x y, amap_lookup l x = Some y -> projT1 y = val vt (snd x)):
+    amap_mem x l = false ->
     extend_val_with_list vt (substi vv x d) l =
     substi (extend_val_with_list vt vv l) x d.
 Proof.
   intros. unfold extend_val_with_list.
   unfold substi.
   apply functional_extensionality_dep; intros v.
-  destruct (get_assoc_list vsymbol_eq_dec l v) eqn : Ha; auto.
+  destruct (amap_lookup l v) eqn : Ha; auto.
   destruct (vsymbol_eq_dec v x); subst; auto.
-  exfalso. assert (get_assoc_list vsymbol_eq_dec l x = None).
-  apply get_assoc_list_none. auto. rewrite H0 in Ha. inversion Ha.
-Qed. 
+  exfalso. rewrite amap_mem_spec in H. rewrite Ha in H. discriminate.
+Qed.
   
 Lemma extend_val_in_agree
   (v1 v2: val_vars pd vt) l x
   (Htys: forall (x : vsymbol) t,
-  In (x, t) l -> projT1 t = val vt (snd x)):
-  In x (map fst l) ->
+  amap_lookup l x = Some t -> projT1 t = val vt (snd x)):
+  amap_mem x l ->
   extend_val_with_list vt v1 l x =
   extend_val_with_list vt v2 l x.
 Proof.
   intros Hin.
   unfold extend_val_with_list.
-  destruct (get_assoc_list vsymbol_eq_dec l x) eqn : Hassoc.
-  + apply get_assoc_list_some in Hassoc.
-    apply Htys in Hassoc.
-    destruct (sort_eq_dec (val vt (snd x)) (projT1 s)); auto; try contradiction.
-    rewrite Hassoc in n; contradiction.
-  + rewrite get_assoc_list_none in Hassoc. contradiction.
+  rewrite amap_mem_spec in Hin.
+  destruct (amap_lookup l x) eqn : Hassoc; try discriminate.
+  apply Htys in Hassoc.
+  destruct (sort_eq_dec (val vt (snd x)) (projT1 s)); auto; try contradiction.
+  rewrite Hassoc in n; contradiction.
 Qed.
   
 Lemma extend_val_notin  (vv : val_vars pd vt) (x : vsymbol)
-(l : list (vsymbol * {s: sort & domain s})):
-~ In x (map fst l) ->
+(l : amap vsymbol {s: sort & domain s}):
+amap_mem x l = false ->
 extend_val_with_list vt vv l x = vv x.
 Proof.
   intros. unfold extend_val_with_list.
-  rewrite <- get_assoc_list_none in H.
-  rewrite H.
-  reflexivity.
+  rewrite amap_mem_spec in H. destruct (amap_lookup l x); auto; discriminate.
 Qed.
   
 Lemma extend_val_lookup (v: val_vars pd vt) l x t:
-  NoDup (map fst l) ->
-  In (x, t) l ->
+  (* NoDup (map fst l) -> *)
+  amap_lookup l x = Some t ->
   extend_val_with_list vt v l x =
     match (sort_eq_dec (val vt (snd x)) (projT1 t))  with
     | left Heq =>
@@ -237,32 +229,34 @@ Lemma extend_val_lookup (v: val_vars pd vt) l x t:
     | right _ => v x
     end.
 Proof.
-  intros. unfold extend_val_with_list.
-  destruct (get_assoc_list vsymbol_eq_dec l x) eqn : ha.
+  intros. unfold extend_val_with_list. rewrite H; auto.
+Qed.
+(*   destruct (get_assoc_list vsymbol_eq_dec l x) eqn : ha.
   - apply get_assoc_list_some in ha.
     assert (t = s). apply (nodup_fst_inj H H0 ha). subst.
     reflexivity.
   - apply get_assoc_list_none in ha.
     exfalso. apply ha. rewrite in_map_iff. exists (x, t). auto.
-Qed.
+Qed. *)
 
-
+(*NOTE: union fn doesnt really matter but consistent with before to choose first*)
 Lemma extend_val_app v l1 l2 x:
-  extend_val_with_list vt v (l1 ++ l2) x =
-  if in_dec vsymbol_eq_dec x (map fst l1) then
+  extend_val_with_list vt v (amap_union (fun x _ => Some x) l1 l2) x =
+  if amap_mem x l1 then
     extend_val_with_list vt v l1 x
   else extend_val_with_list vt v l2 x.
 Proof.
   unfold extend_val_with_list.
-  rewrite get_assoc_list_app.
-  destruct (get_assoc_list vsymbol_eq_dec l1 x) eqn : Hsome; simpl;
-  destruct (in_dec vsymbol_eq_dec x (map fst l1)); auto.
-  - apply get_assoc_list_some in Hsome.
-    exfalso; apply n; rewrite in_map_iff; exists (x, s); auto.
-  - apply get_assoc_list_none in Hsome. contradiction.
+  rewrite amap_mem_spec.
+  destruct (amap_lookup l1 x) as [y1|] eqn : Hget;
+  destruct (amap_lookup l2 x) as [y2|] eqn : Hget2.
+  - erewrite amap_union_inboth; eauto.
+  - erewrite amap_union_inl; eauto.
+  - erewrite amap_union_inr; eauto.
+  - erewrite amap_union_notin; eauto.
 Qed.
 
-Lemma extend_val_perm v l1 l2 x:
+(* Lemma extend_val_perm v l1 l2 x:
   NoDup (map fst l1) ->
   Permutation l1 l2 ->
   extend_val_with_list vt v l1 x = extend_val_with_list vt v l2 x.
@@ -294,7 +288,7 @@ Proof.
   - apply extend_val_perm; auto.
   - apply Hiff in Hin1; contradiction.
   - apply Hiff in Hin2; contradiction.
-Qed. 
+Qed.  *)
   
 End ExtendVal.
 
