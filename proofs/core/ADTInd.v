@@ -174,7 +174,7 @@ Proof.
   - intro C.
     apply (sub_not_whole ts tys). rewrite <- C.
     apply nth_In; auto.
-  - rewrite nth_overflow; auto. intro C; inversion C.
+  - rewrite nth_overflow; auto.
 Qed. 
 
 Theorem adts_from_constrs {m: mut_adt} (m_in: mut_in_ctx m gamma)
@@ -424,23 +424,23 @@ Defined.
 (*Injectivity for [existT]*)
 
 Lemma existT_inj_dec {U: Type} {P: U -> Type} (eq_dec: forall x y : U, {x = y} + {x <> y}) {x1 x2: U} {H1: P x1} (H2: P x2):
-  existT P x1 H1 = existT P x2 H2 ->
+  existT x1 H1 = existT x2 H2 ->
   {Heq: x1 = x2 & H2 = cast (f_equal P Heq) H1}.
 Proof.
   intros. assert (Hex:=H).
   apply EqdepFacts.eq_sigT_fst in H. subst.
   apply inj_pair2_eq_dec in Hex. 2: apply eq_dec. subst.
-  apply (existT _ (Logic.eq_refl)). reflexivity.
+  apply (existT (Logic.eq_refl)). reflexivity.
 Qed.
 
 Lemma existT_inj {U: Type} {P: U -> Type} {x1 x2: U} {H1: P x1} (H2: P x2):
-  existT P x1 H1 = existT P x2 H2 ->
+  existT x1 H1 = existT x2 H2 ->
   {Heq: x1 = x2 & H2 = cast (f_equal P Heq) H1}.
 Proof.
   intros. assert (Hex:=H).
   apply EqdepFacts.eq_sigT_fst in H. subst.
   apply Eqdep.EqdepTheory.inj_pair2 in Hex. subst.
-  apply (existT _ (Logic.eq_refl)). reflexivity.
+  apply (existT (Logic.eq_refl)). reflexivity.
 Qed.
 
 Notation domain := (domain (dom_aux pd)).

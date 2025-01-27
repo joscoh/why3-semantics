@@ -360,13 +360,13 @@ Proof.
 apply infinite.prod_infinite_l.
 Defined.
 
-(* Instance vsymbol_EqDecision : @base.RelDecision vsymbol vsymbol eq.
+(*Useful for inference*)
+Instance vsymbol_EqDecision : @base.RelDecision vsymbol vsymbol eq.
 Proof.
   unfold vsymbol.
-  eapply decidable.prod_eq_dec.
-Unshelve. 
-  unfold base.RelDecision. apply vsymbol_eq_dec.
-Defined. *)
+  apply decidable.prod_eq_dec.
+Defined.
+
 (*TODO: do we even need this?*)
 (* Instance vsymbol_countable : countable.Countable vsymbol := countable.prod_countable. *)
 

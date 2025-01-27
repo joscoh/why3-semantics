@@ -206,6 +206,12 @@ Proof.
   set_unfold. reflexivity.
 Qed.
 
+(*Union is idempotent*)
+Lemma aset_union_refl (s: aset) : aset_union s s = s.
+Proof.
+  unfold aset_union. set_unfold. intros x. apply or_idem.
+Qed. 
+
 (*Generate fresh element*)
 Definition aset_fresh_list `{Infinite A} (n: nat) (s: aset) : list A :=
   fresh_list n s.
@@ -510,6 +516,36 @@ Proof.
   intros [[x1 [Hx Hinx1]] Hnot]; subst.
   exists x1; split_all; auto. intro C1; subst.
   apply Hnot. exists x1; auto.
+Qed.
+
+(*TODO: maybe replace other*)
+Definition disj_map' {A B: Type} `{B_count: countable.Countable B} (f: A -> aset B) (l: list A) : Prop :=
+  forall i j (d: A) (x: B),
+    i < j ->
+    j < length l ->
+    ~ (aset_mem x (f (nth i l d)) /\ aset_mem x (f (nth j l d))).
+
+Lemma disj_map_cons_iff {A B: Type} `{countable.Countable B} (f: A -> aset B) (a: A) (l: list A):
+  disj_map' f (a :: l) <->
+  disj_map' f l /\ 
+  forall i d x, i < length l -> ~ (aset_mem x (f a) /\ aset_mem x (f (nth i l d))).
+Proof.
+  unfold disj_map'. split; intros.
+  - split; intros.
+    + simpl in *. apply (H0 (S i) (S j) d x ltac:(lia) ltac:(lia)).
+    + simpl in H0. 
+      apply (H0 0 (S i) d x ltac:(lia) ltac:(lia)).
+  - destruct j; destruct i; try lia.
+    + simpl. apply (proj2 H0). simpl in H2; lia.
+    + simpl in H2 |- *. apply (proj1 H0); lia.
+Qed.
+
+Lemma disj_map_cons_impl {A B: Type} `{countable.Countable B} {f: A -> aset B} {a: A} {l: list A}:
+  disj_map' f (a :: l) ->
+  disj_map' f l.
+Proof.
+  rewrite disj_map_cons_iff. 
+  intros Hd; apply Hd.
 Qed.
 
 

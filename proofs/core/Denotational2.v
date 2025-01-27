@@ -160,7 +160,7 @@ Lemma substi_multi_let_ext pf
 (Hn: NoDup (map fst vs))
 Hall1 Hall2 x
 (Hin: In x (map fst vs))
-(Htms: forall x t, In t (map snd vs) -> In x (tm_fv t) ->
+(Htms: forall x t, In t (map snd vs) -> aset_mem x (tm_fv t) ->
   vv1 x = vv2 x):
 substi_multi_let pf vv1 vs Hall1 x =
 substi_multi_let pf vv2 vs Hall2 x.
@@ -399,7 +399,7 @@ Proof.
 Qed.
 
 Lemma iter_fand_fv fs:
-  fmla_fv (iter_fand fs) = big_union vsymbol_eq_dec fmla_fv fs.
+  fmla_fv (iter_fand fs) = aset_big_union fmla_fv fs.
 Proof.
   induction fs; simpl; auto.
   rewrite IHfs; auto.

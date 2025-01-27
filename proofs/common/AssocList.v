@@ -57,6 +57,8 @@ Qed.
 Definition amap_set (m: amap) (x: A) (y: B) : amap :=
   <[x:=y]> m.
 
+Definition amap_singleton x y := amap_set amap_empty x y.
+
 (*Map ops for pattern*)
 
 (*We want our [replace] function to take in a key, so we can't just use their "alter" method*)
@@ -84,7 +86,7 @@ Definition amap_is_empty (m: amap) : bool := Nat.eqb (size m) 0.
 
 Ltac unfold_amap :=
   repeat (progress (unfold amap, amap_empty, amap_in, amap_lookup, amap_set, amap_replace, amap_change,
-  amap_union, amap_size, amap_is_empty in *)).
+  amap_union, amap_size, amap_is_empty, amap_singleton in *)).
 Ltac simpl_amap := unfold_amap; simplify_map_eq.
 Ltac solve_amap := unfold_amap; simplify_map_eq; solve[auto].
 
@@ -177,6 +179,101 @@ Proof.
   - erewrite amap_union_notin; auto.
 Qed.
 
+(*Lemmas about [keys]*)
+Lemma keys_empty: keys amap_empty = aset_empty.
+Proof. reflexivity. Qed.
+
+Lemma keys_singleton x y: keys (amap_singleton x y) = aset_singleton x.
+Proof.
+  simpl_amap. unfold keys.
+  set_unfold. intros x1. split.
+  - intros [[x2 y2] [Hx1 Hin]].
+    subst. simpl. apply elem_of_map_to_list in Hin.
+    destruct (A_eq x x2); subst; auto.
+    rewrite lookup_insert_ne in Hin; auto.
+    solve_amap.
+  - intros Hx; subst. exists (x, y). split; auto.
+    apply elem_of_map_to_list. solve_amap.
+Qed.
+
+(*NOTE: only holds if maps are disjoint*)
+Lemma keys_union f m1 m2:
+  (forall x, ~ (aset_mem x (keys m1) /\ aset_mem x (keys m2))) ->
+   keys (amap_union f m1 m2) =
+  aset_union (keys m1) (keys m2).
+Proof.
+  unfold keys. unfold aset_mem, aset_union, amap_union.
+  set_unfold.
+  intros Heq x. split.
+  - intros [[x1 y1] [Hx Hiny]]. simpl in *. subst.
+    apply elem_of_map_to_list in Hiny.
+    rewrite lookup_union_with_Some in Hiny.
+    destruct Hiny as [[Hm1 Hm2] | [[Hm1 Hm2] | [y2 [y3 [Hm1 _]]]]].
+    + left. exists (x1, y1). simpl. split; auto. apply elem_of_map_to_list; auto.
+    + right. exists (x1, y1). split; auto. apply elem_of_map_to_list; auto.
+    + left.  exists (x1, y2). simpl. split; auto. apply elem_of_map_to_list; auto.
+  - (*For this direction, need disj*)
+    intros [[[x1 y1] [Hx Hinx1]] | [[x1 y1] [Hx Hinx1]]]; subst;
+    exists (x1, y1); split; auto; apply elem_of_map_to_list; rewrite lookup_union_with_Some;
+    apply elem_of_map_to_list in Hinx1.
+    + (*Use disj*)
+      destruct (m2 !! x1) as [y2|] eqn : Hinx2.
+      * exfalso. apply (Heq x1). split; [exists (x1, y1) | exists (x1, y2)]; split; auto;
+        apply elem_of_map_to_list; auto.
+      * left. auto.
+    + destruct (m1 !! x1) as [y2|] eqn : Hinx2.
+      * exfalso. apply (Heq x1). split; [exists (x1, y2) | exists (x1, y1)]; split; auto;
+        apply elem_of_map_to_list; auto.
+      * right. left. auto.
+Qed.
+
+Lemma keys_set_disj m x y:
+  ~ aset_mem x (keys m) ->
+  keys (amap_set m x y) = aset_union (keys m) (aset_singleton x).
+Proof.
+  unfold amap, keys, aset_mem, aset_union, aset_singleton, amap_set.
+  set_unfold. intros Hnotin x1. split; unfold amap in *.
+  - intros [[x2 y2] [Hx1 Hin]]; subst; simpl.
+    apply elem_of_map_to_list in Hin. 
+    destruct (A_eq x x2); subst; auto.
+    rewrite lookup_insert_ne in Hin by auto.
+    left. exists (x2, y2). split; auto.
+    apply elem_of_map_to_list. auto.
+  - intros [[[x2 y2] [Hx1 Hin]]| Hx]; subst; simpl.
+    + apply elem_of_map_to_list in Hin.
+      exists (x2, y2); split; auto. 
+      (*use disj*)
+      apply elem_of_map_to_list.
+      rewrite lookup_insert_ne; auto.
+      intro C; subst. apply Hnotin. exists (x2, y2); split; auto.
+      apply elem_of_map_to_list; auto.
+    + exists (x, y). split; auto. apply elem_of_map_to_list.
+      rewrite lookup_insert. reflexivity.
+Qed.
+
+(*Need extensionality*)
+Lemma amap_ext (m1 m2: amap):
+  (forall x, amap_lookup m1 x = amap_lookup m2 x) ->
+  m1 = m2.
+Proof.
+  apply map_eq.
+Qed.
+
+Lemma amap_mem_keys x m :
+  amap_mem x m <-> aset_mem x (keys m).
+Proof.
+  unfold amap_mem, amap_lookup, aset_mem, keys.
+  set_unfold. destruct (m !! x) as [y|] eqn : Hget.
+  - simpl. split; auto. intros _. exists (x, y); split; auto.
+    apply elem_of_map_to_list. auto.
+  - simpl. split; try discriminate. intros [[x1 y1] [Hx Hin]]. 
+    simpl in Hx; subst. apply elem_of_map_to_list in Hin.
+    (*NOTE: Coq can't rewrite*)
+    assert (Some y1 = None) by (rewrite <- Hget, <- Hin; reflexivity).
+    discriminate.
+Qed.
+
+
 
 (*[get_assoc_list_nodup] is always true now*)
 (* Lemma amap_lookup_nodup
@@ -217,9 +314,11 @@ Definition amap_map {A B C: Type} `{A_eq: EqDecision A} `{A_count: Countable A}
 
 End Map.
 
+Arguments keys {_} {_} {_} {_}.
 Arguments amap_empty {_} {_} {_} {_}.
 Arguments amap_in {_} {_} {_} {_}.
 Arguments amap_lookup {_} {_} {_} {_}.
+Arguments amap_singleton {_} {_} {_} {_}.
 Arguments amap_set {_} {_} {_} {_}.
 Arguments amap_replace {_} {_} {_} {_}.
 Arguments amap_change {_} {_} {_} {_}.
@@ -232,7 +331,7 @@ Arguments amap_is_empty {_} {_} {_} {_}.
 From stdpp Require Import fin_maps.
 Ltac unfold_amap :=
   repeat (progress (unfold amap, amap_empty, amap_in, amap_lookup, amap_set, amap_replace, amap_change,
-  amap_union, amap_map, amap_size, amap_is_empty in *)).
+  amap_union, amap_map, amap_size, amap_is_empty, amap_singleton in *)).
 Ltac simpl_amap := unfold_amap; simplify_map_eq.
 Ltac solve_amap := unfold_amap; simplify_map_eq; solve[auto].
 
@@ -252,6 +351,7 @@ Proof.
   intros; solve_amap.
 Qed.
 
+(*NOTE: we DO need associat*)
 
 
 (*Let's see what we need*)
