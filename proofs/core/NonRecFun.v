@@ -100,7 +100,9 @@ Proof.
     apply vt_with_args_in_eq; auto. apply s_params_Nodup.
     intros.
     pose proof (f_ret_wf f).
-    apply check_sublist_prop in H0; auto.
+    destruct (check_asubset _ _) as [Hsub | Hsub]; try discriminate. clear H0.
+    rewrite asubset_def in Hsub. 
+    apply Hsub in H. simpl_set. auto.
   }
   (*Get info about term from typing*)
   pose proof (valid_context_defs _ gamma_valid).
@@ -115,12 +117,14 @@ Proof.
   - rewrite !dom_cast_compose. apply dom_cast_eq.
   - intros x Hinx.
     (*Follows from type var condition*)
-    assert (In x (s_params f)) by auto. 
+    assert (In x (s_params f)).
+    { rewrite asubset_def in Htyvar. apply Htyvar in Hinx. simpl_set; auto. } 
     destruct (In_nth _ _ EmptyString H) as [i [Hi Hx]]; subst.
     rewrite !vt_with_args_nth; auto; apply s_params_Nodup.
   - intros x Hinx Heq1.
     (*And similarly, from free vars*)
-    assert (In x args) by auto.
+    assert (In x args).
+    { rewrite asubset_def in Hfv. apply Hfv in Hinx. simpl_set; auto. }
     destruct (In_nth _ _ vs_d H) as [i [Hi Hx]].
     subst.
     assert (Hargslen: length args = length (s_args f)). {
@@ -136,10 +140,11 @@ Proof.
       symmetry. rewrite <- Hargs, map_nth_inbound with (d2:=vs_d); auto.
       apply vt_with_args_cast; auto; [| apply s_params_Nodup].
       intros.
-      pose proof (s_args_wf f). 
-      apply check_args_prop with (x:=(snd (nth i args vs_d))) in H1; auto.
-      rewrite <- Hargs. rewrite in_map_iff.
-      exists (nth i args vs_d); auto.
+      pose proof (s_args_wf f) as Hargs'.
+      apply check_args_prop with (x:=(snd (nth i args vs_d))) in Hargs'; auto.
+      - rewrite asubset_def in Hargs'. apply Hargs' in H0. simpl_set; auto. 
+      - rewrite <- Hargs. rewrite in_map_iff.
+        exists (nth i args vs_d); auto.
     }
     erewrite !val_with_args_in; auto;
     try (unfold sym_sigma_args, ty_subst_list_s; rewrite map_length; auto);
@@ -193,12 +198,14 @@ Proof.
   apply fmla_change_vt.
   - intros x Hinx.
     (*Follows from type var condition*)
-    assert (In x (s_params p)) by auto. 
+    assert (In x (s_params p)).
+    { rewrite asubset_def in Htyvar. apply Htyvar in Hinx. simpl_set; auto. } 
     destruct (In_nth _ _ EmptyString H) as [i [Hi Hx]]; subst.
     rewrite !vt_with_args_nth; auto; apply s_params_Nodup.
   - intros x Hinx Heq1.
     (*And similarly, from free vars*)
-    assert (In x args) by auto.
+    assert (In x args).
+     { rewrite asubset_def in Hfv. apply Hfv in Hinx. simpl_set; auto. }
     destruct (In_nth _ _ vs_d H) as [i [Hi Hx]].
     subst.
     assert (Hargslen: length args = length (s_args p)). {
@@ -214,10 +221,11 @@ Proof.
       symmetry. rewrite <- Hargs, map_nth_inbound with (d2:=vs_d); auto.
       apply vt_with_args_cast; auto; [| apply s_params_Nodup].
       intros.
-      pose proof (s_args_wf p). 
-      apply check_args_prop with (x:=(snd (nth i args vs_d))) in H1; auto.
-      rewrite <- Hargs. rewrite in_map_iff.
-      exists (nth i args vs_d); auto.
+      pose proof (s_args_wf p) as Hargs'. 
+      apply check_args_prop with (x:=(snd (nth i args vs_d))) in Hargs'; auto.
+      - rewrite asubset_def in Hargs'. apply Hargs' in H0. simpl_set; auto. 
+      - rewrite <- Hargs. rewrite in_map_iff.
+        exists (nth i args vs_d); auto.
     }
     erewrite !val_with_args_in; auto;
     try (unfold sym_sigma_args, ty_subst_list_s; rewrite map_length; auto);

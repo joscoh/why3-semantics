@@ -89,7 +89,7 @@ Proof.
     {
       apply all_filter, forallb_forall. intros x Hinx.
       destruct (aset_mem_dec _ _); auto. exfalso.
-      apply (aset_mem_empty _ x); auto.
+      apply (aset_mem_empty x); auto.
     }
     rewrite Hl2'. auto.
   - intros x s Hnotin IH l2 Hlnodup.

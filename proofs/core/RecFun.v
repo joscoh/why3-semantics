@@ -88,18 +88,18 @@ Qed.
 
 Variable f_typevars: forall f, In f fs -> 
   forall ty, In ty (f_ret (fn_sym f) :: s_args (fn_sym f)) ->
-  forall x, In x (type_vars ty) ->
+  forall x, aset_mem x (type_vars ty) ->
   In x params.
 
 Variable p_typevars: forall p, In p ps ->
   forall ty, In ty (s_args (pn_sym p)) ->
-  forall x, In x (type_vars ty) ->
+  forall x, aset_mem x (type_vars ty) ->
   In x params.
 
 (*Here we lose info for funsyms*)
 Lemma s_typevars: forall s, In s sns ->
   forall ty, In ty (s_args (sn_sym s)) ->
-  forall x, In x (type_vars ty) ->
+  forall x, aset_mem x (type_vars ty) ->
   In x params.
 Proof.
   intros. unfold sns in H. rewrite in_app_iff in H.
@@ -215,8 +215,7 @@ Proof.
   (*Here, we use induction*)
   apply (adt_rep_ind gamma_valid pdf m m_in srts Hlen (fun t t_in x =>
     forall s Heq, s = typesym_to_sort (adt_name t) srts ->
-    Acc adt_smaller (existT (fun s => domain s) s 
-      (scast Heq x)))); auto.
+    Acc adt_smaller (existT s (scast Heq x)))); auto.
   intros t t_in x c Hc args Hx IH ty1 Heq Hty1.
   constructor.
   intros y Hsmall.
@@ -279,7 +278,7 @@ Proof.
     (eq_sym ((Interp.adts pdf m srts a1 m_in a_in1))) eq_refl).
   (*We don't need UIP here if we build a proof term carefully*)
   match goal with
-  | H: Acc ?y (existT ?g1 ?ty1 ?x1) |- Acc ?y (existT ?g ?ty2 ?x2) =>
+  | H: Acc ?y (existT ?ty1 ?x1) |- Acc ?y (existT ?ty2 ?x2) =>
     let Heq := fresh "Heq" in
     assert (Heq: x1 = x2); [|rewrite <- Heq; auto]
   end. clear.
@@ -371,7 +370,7 @@ Definition adt_smaller_trans_wf := R_trans_wf adt_smaller adt_smaller_wf.
   This definition is unusable when we have types who are not
   equal but their valuations are*)
 Definition hide_ty {s: sort} (d: domain s) : {s: sort & domain s} :=
-  existT _ s d.
+  existT s d.
 
 End WellFounded.
 End Smaller.
@@ -388,9 +387,9 @@ Variable funs_recurse_on_adt: forall f, In f fs ->
 Variable preds_recurse_on_adt: forall p, In p ps ->
   vty_in_m m vs (snd (nth (sn_idx p) (sn_args p) vs_d)).
 
-Variable fs_dec: Forall (fun (f: fn) => decrease_fun fs ps nil 
+Variable fs_dec: Forall (fun (f: fn) => decrease_fun fs ps aset_empty 
   (Some (nth (sn_idx f) (sn_args f) vs_d)) m vs (fn_body f)) fs.
-Variable ps_dec: Forall (fun (p: pn) => decrease_pred fs ps nil 
+Variable ps_dec: Forall (fun (p: pn) => decrease_pred fs ps aset_empty 
   (Some (nth (sn_idx p) (sn_args p) vs_d)) m vs (pn_body p)) ps.
 
 Lemma recurse_on_adt: forall s, In s sns ->
@@ -448,16 +447,16 @@ Theorem match_val_single_smaller (vt: val_typevar) (v: val_vars pd vt) (ty: vty)
   (Hp: pattern_has_type gamma p ty)
   (Hty: vty_in_m m vs ty)
   (d: domain(v_subst vt ty))
-  (l: list (vsymbol * {s: sort & domain s})):
+  (l: amap vsymbol {s: sort & domain s}):
   match_val_single gamma_valid pd pdf vt ty p Hp d = Some l ->
     (*For [pat_constr_vars_inner], either same or smaller*)
-    (forall x y, In (x, y) l ->
-      In x (pat_constr_vars_inner m vs p) ->
+    (forall x y, amap_lookup l x = Some y ->
+      aset_mem x (pat_constr_vars_inner m vs p) ->
       y = hide_ty d \/
       adt_smaller_trans y (hide_ty d)) /\
     (*For [pat_constr_vars], strictly smaller*)
-    (forall x y, In (x, y) l ->
-      In x (pat_constr_vars m vs p) ->
+    (forall x y, amap_lookup l x = Some y ->
+      aset_mem x (pat_constr_vars m vs p) ->
     adt_smaller_trans y (hide_ty d)).
 Proof.
   clear -fs ps Hty m_in vs_len.
@@ -465,14 +464,15 @@ Proof.
   revert d l. generalize dependent ty.
   induction p; intros.
   - (*Var case is easy - it is the same*) simpl in H. simpl.
-    split; [intros |intros x y Hin [] ].
+    split. 2: { intros; exfalso; eapply aset_mem_empty; eauto. }
+    intros x y Hlookup Hmem.
     inversion Hp; subst.
-    unfold vsym_in_m in H1. rewrite Hty in H1.
-    destruct H1 as [Hxv | []]; subst.
-    inversion H; subst. clear H.
-    destruct H0 as [Hy | []]. inversion Hy; subst. clear Hy.
-    left. unfold hide_ty. 
-    reflexivity.
+    unfold vsym_in_m in Hmem. rewrite Hty in Hmem.
+    simpl_set. subst.
+    inversion H; subst; clear H.
+    unfold amap_singleton in Hlookup.
+    rewrite amap_set_lookup_same in Hlookup. inversion Hlookup; subst.
+    left. reflexivity.
   - (*Constr case is the hard and interesting one.*)
     revert H0.
     rewrite pat_constr_vars_inner_eq.
@@ -648,7 +648,7 @@ Proof.
           destruct p eqn: Hp end.
         all: try discriminate.
         intro C; inversion C; subst. clear C.
-        apply in_app_or in H0. destruct H0.
+        apply amap_union_or in H0. destruct H0.
         * clear Hmatch0.
           destruct (constr_in_m f m && list_eq_dec vty_eq_dec vs0 vs2 &&
           (Datatypes.length (p :: ps0) =? S (Datatypes.length l0))) eqn : Hconds;
@@ -657,24 +657,25 @@ Proof.
           (*2 cases are the same: we do in a separate lemma*)
           assert (Hdupfv: forall x' y l,
             length ps0 = length l0 ->
-            In x' (big_union vsymbol_eq_dec (pat_constr_vars_inner m vs2)
+            aset_mem x' (aset_big_union (pat_constr_vars_inner m vs2)
             (map fst
                 (filter
                   (fun x : pattern * vty => vty_in_m m (map vty_var (m_params m)) (snd x))
                   (combine ps0 l0)))) ->
-            In (x', y) l ->
+            amap_lookup l x' = Some y ->
             match_val_single gamma_valid pd pdf vt (ty_subst (s_params f) vs2 a) p
               (Forall_inv f0) (hlist_hd (cast_arg_list e a0)) = 
               Some l ->
             False). {
-              intros x' y' Hlens Hinx1 Hinx2 l' Hmatch1.
-              assert (Hinxfv1: In x' (pat_fv p)). {
-                apply (match_val_single_free_var _ _ _ _ _ _ _ _ _ _ Hmatch1).
-                rewrite in_map_iff. exists (x', y'). auto.
+              intros x' y' l' Hlens Hinx1 Hinx2 Hmatch1.
+              assert (Hinxfv1: aset_mem x' (pat_fv p)). {
+                rewrite <- (match_val_single_fv _ _ _ _ _ _ _ _ Hmatch1).
+                rewrite <- amap_mem_keys. unfold amap_mem.
+                rewrite Hinx2. auto.
               }
               (*now we need to find the pattern in ps0 that it is in*)
               simpl_set.
-              destruct Hinx2 as [p' [Hinp' Hinx0]].
+              destruct Hinx1 as [p' [Hinp' Hinx0]].
               rewrite in_map_iff in Hinp'.
               destruct Hinp' as [pt [Hp' Hinpt]]; subst.
               rewrite in_filter in Hinpt.
@@ -685,7 +686,7 @@ Proof.
               destruct Hinpt as [i' [Hi' Hpteq]].
               specialize (Hpteq Pwild vty_int).
               inversion Hpteq; subst.
-              assert (Hinxfv2: In x' (pat_fv (nth i' ps0 Pwild))). {
+              assert (Hinxfv2: aset_mem x' (pat_fv (nth i' ps0 Pwild))). {
                 apply pat_constr_vars_inner_fv in Hinx0; auto.
               }
               (*Contradicts disjointness*)
@@ -695,7 +696,7 @@ Proof.
               apply (Hdisj i' Pwild x'); auto.
           }
           destruct (vty_in_m m (map vty_var (m_params m)) a) eqn : Hadtv.
-          -- simpl in H2. rewrite union_elts in H2.
+          -- simpl in H2. rewrite aset_big_union_cons, aset_mem_union in H2.
             destruct H2.
             ++ (*This is the hard case - need to show that
                 contr var in p is actually smaller*) inversion H1; subst.
@@ -739,11 +740,11 @@ Proof.
                 apply Rrefl_R.
                 rewrite <- Haleq. apply H3.
             ++ (*Contradiction case*)
-              exfalso. apply (Hdupfv x0 y l1); auto.
+              exfalso. eapply (Hdupfv x0 y); eauto.
               bool_hyps. simpl in H4.
               apply Nat.eqb_eq in H4. auto.
           -- (*Identical contradiction case*)
-            exfalso. apply (Hdupfv x0 y l1); auto.
+            exfalso. eapply (Hdupfv x0 y); eauto.
             bool_hyps. simpl in H4.
             apply Nat.eqb_eq in H4; auto.
         * (*Once again, get 2 cases depending on whether
@@ -754,7 +755,7 @@ Proof.
           [| inversion H2].
           (*This time, the IH case appears twice - we will do in separate lemma*)
           assert (
-            In x0 (big_union vsymbol_eq_dec (pat_constr_vars_inner m vs2)
+            aset_mem x0 (aset_big_union (pat_constr_vars_inner m vs2)
               (map fst (filter
               (fun x : pattern * vty =>
                vty_in_m m (map vty_var (m_params m)) (snd x)) 
@@ -765,7 +766,7 @@ Proof.
             intros Hinx1.
             rewrite hlist_tl_cast in Hmatch0.
             apply IHl0 with(ps0:=ps0)(a:=hlist_tl a0)(f:=Forall_inv_tail f0)
-            (e:=(cons_inj_tl e))(l:=l2); auto.
+            (e:=(cons_inj_tl e))(l:=a2); auto.
             -- intros.
               apply (Hithcast (S i0) ltac:(lia)).
             -- inversion H1; subst; auto.
@@ -776,20 +777,20 @@ Proof.
           rewrite hlist_tl_cast in Hmatch0.
           destruct (vty_in_m m (map vty_var (m_params m)) a) eqn : Hinm; auto.
           simpl in H2.
-          rewrite union_elts in H2; destruct H2; auto.
+          rewrite aset_big_union_cons, aset_mem_union in H2; destruct H2; auto.
           (*Now just contradiction case - much easier*)
-          assert (Hinx1: In x0 (pat_fv p)). {
+          assert (Hinx1: aset_mem x0 (pat_fv p)). {
             apply pat_constr_vars_inner_fv in H2; auto.
           }
           (*Need iterated version of [match_val_single_perm/free_var]*)
-          assert (Hinx2: In x0 (big_union vsymbol_eq_dec pat_fv ps0)).
+          assert (Hinx2: aset_mem x0 (aset_big_union pat_fv ps0)).
           {
-            apply iter_arg_list_free_var with(x:=x0) in Hmatch0.
-            - apply Hmatch0. rewrite in_map_iff.
-              exists (x0, y). split; auto.
+            apply iter_arg_list_fv in Hmatch0; auto.
+            - rewrite <- Hmatch0, <- amap_mem_keys.
+              unfold amap_mem; rewrite H0; auto. 
             - apply disj_map_cons_impl in Hp; auto.
-            - rewrite Forall_forall; intros.
-              apply match_val_single_perm in H5; auto.
+            - rewrite Forall_forall; intros. auto.
+              apply match_val_single_fv in H5; auto.
           }
           simpl_set. destruct Hinx2 as [p' [Hinp' Hinx2]].
           destruct (In_nth _ _ Pwild Hinp') as [j [Hj Hp']]; subst.
@@ -802,8 +803,8 @@ Proof.
   - (*Pwild is contradiction*)  
     inversion H; subst; split; intros; inversion H0.
   - (*Por just by IH*)
-    split; intros; simpl in H, H1;
-    rewrite intersect_elts in H1; destruct H1 as [Hfv1 Hfv2];
+    split; intros; simpl in H, H1; simpl_set_small;
+    destruct H1 as [Hfv1 Hfv2];
     destruct (match_val_single gamma_valid pd pdf vt ty p1 (proj1' (pat_or_inv Hp)) d) eqn : Hmatch1.
     + inversion H; subst.
       apply (proj1' (IHp1 _ _ Hty _ _ Hmatch1) x y); auto.
@@ -815,30 +816,24 @@ Proof.
     simpl. simpl in H.
     inversion Hp; subst.
     split; intros.
-    + unfold vsym_in_m in H1. rewrite Hty in H1.
-      rewrite union_elts in H1.
+    + unfold vsym_in_m in H1. rewrite Hty in H1. simpl_set_small.
       destruct (match_val_single gamma_valid pd pdf vt (snd v) p (proj1' (pat_bind_inv Hp)) d) eqn: Hmatch1;
       [|discriminate].
       inversion H; subst.
-      destruct H0 as [Hxy | Hinl0].
-      * inversion Hxy; subst. left. reflexivity.
-      * destruct H1 as [[Hxv | []] | Hinx]; subst.
-        -- (*Contradicts uniqueness of free vars*)
-          exfalso. apply H3.
-          apply match_val_single_free_var with(x:=x) in Hmatch1.
-          apply Hmatch1. rewrite in_map_iff. exists (x, y); auto.
+      destruct (vsymbol_eq_dec x v); subst.
+      * rewrite amap_set_lookup_same in H0. inversion H0; subst. left; reflexivity.
+      * rewrite amap_set_lookup_diff in H0 by auto. destruct H1 as [Hmem | Hmem]. 
+        -- simpl_set_small. subst. contradiction.
         -- (*IH case*)
           apply (proj1' (IHp _ _ Hty _ _ Hmatch1) x y); auto.
     + destruct (match_val_single gamma_valid pd pdf vt (snd v) p (proj1' (pat_bind_inv Hp)) d) eqn : Hmatch1;
       [|discriminate].
       inversion H; subst.
-      destruct H0 as [Hxy | Hinx]; subst.
-      * inversion Hxy; subst.
-        (*Contradiction: x in pat_fv bc in constr_vars*)
-        apply pat_constr_vars_fv in H1. contradiction.
-      * (*IH case*)
-        apply (proj2' (IHp _ _ Hty _ _ Hmatch1) x y); auto.
-Qed.
+      destruct (vsymbol_eq_dec x v); subst.
+      * (*Contradiction: x in pat_fv bc in constr_vars*)
+         apply pat_constr_vars_fv in H1. contradiction.
+      * rewrite amap_set_lookup_diff in H0 by auto. apply (proj2' (IHp _ _ Hty _ _ Hmatch1) x y); auto.
+Qed.  
 
 End MatchSmallerLemma.
 
@@ -1009,14 +1004,14 @@ Qed.
 
 (*Case analysis for [tmatch]*)
 
-Definition match_rec_case (tm: term) (hd: option vsymbol) (small: list vsymbol) : Prop :=
+Definition match_rec_case (tm: term) (hd: option vsymbol) (small: aset vsymbol) : Prop :=
   match tm with
   | Tvar var => ~ var_case hd small var
   | Tfun f l tms => False
   | _ => True
 end.
 
-Definition tmatch_case (tm: term) (hd: option vsymbol) (small: list vsymbol) :
+Definition tmatch_case (tm: term) (hd: option vsymbol) (small: aset vsymbol) :
   Either (Either {mvar: vsymbol | tm = Tvar mvar /\ var_case hd small mvar}
     { x: funsym * list vty * list term | tm = Tfun (fst (fst x)) (snd (fst x)) (snd x) })
     (match_rec_case tm hd small).
@@ -1035,7 +1030,7 @@ Section DecInversion.
 
 (*Invert [decrease_fun] for funs - 2 cases*)
 
-Lemma dec_inv_tfun_in {small: list vsymbol} {hd: option vsymbol} {f: funsym}
+Lemma dec_inv_tfun_in {small: aset vsymbol} {hd: option vsymbol} {f: funsym}
   {l: list vty} {ts: list term}
   (Hde: decrease_fun fs ps small hd m vs (Tfun f l ts)) 
   {fn_def: fn} 
@@ -1049,13 +1044,13 @@ Proof.
   - exfalso. apply H5. rewrite in_map_iff. exists fn_def. split; auto.
 Qed.
 
-Lemma dec_inv_tfun_arg {small: list vsymbol} {hd: option vsymbol} {f: funsym}
+Lemma dec_inv_tfun_arg {small: aset vsymbol} {hd: option vsymbol} {f: funsym}
 {l: list vty} {ts: list term}
 (Hde: decrease_fun fs ps small hd m vs (Tfun f l ts)) 
 {fn_def: fn} 
 (Hin: In fn_def fs)
 (Hfeq: f = fn_sym fn_def):
-exists x, In x small /\  nth (sn_idx fn_def) ts tm_d = Tvar x.
+exists x, aset_mem x small /\  nth (sn_idx fn_def) ts tm_d = Tvar x.
 Proof.
   inversion Hde; subst.
   - assert (fn_def = f_decl). apply (NoDup_map_in fs_uniq Hin H2 H3).
@@ -1063,7 +1058,7 @@ Proof.
   - exfalso. apply H5. rewrite in_map_iff. exists fn_def. split; auto.
 Qed. 
 
-Lemma dec_inv_tfun_notin {small: list vsymbol} {hd: option vsymbol} {f: funsym}
+Lemma dec_inv_tfun_notin {small: aset vsymbol} {hd: option vsymbol} {f: funsym}
 {l: list vty} {ts: list term}
 (Hde: decrease_fun fs ps small hd m vs (Tfun f l ts)) 
 (Hnotin: ~ In f (map fn_sym fs)) :
@@ -1076,7 +1071,7 @@ Proof.
 Qed.
 
 (*As a corollary, we get that [decrease_fun] holds recursively*)
-Corollary dec_inv_tfun_rec {small: list vsymbol} {hd: option vsymbol} {f: funsym}
+Corollary dec_inv_tfun_rec {small: aset vsymbol} {hd: option vsymbol} {f: funsym}
   {l: list vty} {ts: list term}
   (Hde: decrease_fun fs ps small hd m vs (Tfun f l ts)) :
   Forall (fun t => decrease_fun fs ps small hd m vs t) ts.
@@ -1090,7 +1085,7 @@ Qed.
 
 (*And we prove these for Fpred as well*)
 
-Lemma dec_inv_fpred_in {small: list vsymbol} {hd: option vsymbol} 
+Lemma dec_inv_fpred_in {small: aset vsymbol} {hd: option vsymbol} 
   {p: predsym} {l: list vty} {ts: list term}
   (Hde: decrease_pred fs ps small hd m vs (Fpred p l ts)) 
   {pn_def: pn} 
@@ -1104,14 +1099,14 @@ Proof.
   - exfalso. apply H5. rewrite in_map_iff. exists pn_def. split; auto.
 Qed.
 
-Lemma dec_inv_fpred_arg {small: list vsymbol} {hd: option vsymbol} 
+Lemma dec_inv_fpred_arg {small: aset vsymbol} {hd: option vsymbol} 
 {p: predsym}
 {l: list vty} {ts: list term}
 (Hde: decrease_pred fs ps small hd m vs (Fpred p l ts)) 
 {pn_def: pn} 
 (Hin: In pn_def ps)
 (Hpeq: p = pn_sym pn_def):
-exists x, In x small /\  nth (sn_idx pn_def) ts tm_d = Tvar x.
+exists x, aset_mem x small /\  nth (sn_idx pn_def) ts tm_d = Tvar x.
 Proof.
   inversion Hde; subst.
   - assert (pn_def = p_decl). apply (NoDup_map_in ps_uniq Hin H2 H3).
@@ -1119,7 +1114,7 @@ Proof.
   - exfalso. apply H5. rewrite in_map_iff. exists pn_def. split; auto.
 Qed. 
 
-Lemma dec_inv_fpred_notin {small: list vsymbol} {hd: option vsymbol} 
+Lemma dec_inv_fpred_notin {small: aset vsymbol} {hd: option vsymbol} 
 {p: predsym}
 {l: list vty} {ts: list term}
 (Hde: decrease_pred fs ps small hd m vs (Fpred p l ts)) 
@@ -1133,7 +1128,7 @@ Proof.
 Qed.
 
 (*As a corollary, we get that [decrease_fun] holds recursively*)
-Corollary dec_inv_fpred_rec {small: list vsymbol} {hd: option vsymbol} 
+Corollary dec_inv_fpred_rec {small: aset vsymbol} {hd: option vsymbol} 
   {p: predsym}
   {l: list vty} {ts: list term}
   (Hde: decrease_pred fs ps small hd m vs (Fpred p l ts)) :
@@ -1160,7 +1155,7 @@ Ltac solve_dec_inv :=
 Lemma dec_inv_tlet {fs' ps' tm1 x tm2 small y}:
   decrease_fun fs' ps' small y m vs (Tlet tm1 x tm2) ->
   decrease_fun fs' ps' small y m vs tm1 /\
-  decrease_fun fs' ps' (remove vsymbol_eq_dec x small) (upd_option y x) m vs tm2.
+  decrease_fun fs' ps' (aset_remove x small) (upd_option y x) m vs tm2.
 Proof.
   solve_dec_inv.
 Qed.
@@ -1176,7 +1171,7 @@ Qed.
 
 Lemma dec_inv_teps {fs' ps' f v small hd}:
   decrease_fun fs' ps' small hd m vs (Teps f v) ->
-  decrease_pred fs' ps' (remove vsymbol_eq_dec v small) 
+  decrease_pred fs' ps' (aset_remove v small) 
     (upd_option hd v) m vs f.
 Proof.
   solve_dec_inv.
@@ -1204,9 +1199,9 @@ Lemma dec_inv_tmatch_var {fs' ps' tm small hd mvar v pats}
   Forall
   (fun x : pattern * term =>
    decrease_fun fs' ps'
-     (union vsymbol_eq_dec
-        (vsyms_in_m m vs (pat_constr_vars m vs (fst x)))
-        (remove_all vsymbol_eq_dec (pat_fv (fst x)) small))
+     (aset_union
+        (vsyms_in_m' m vs (pat_constr_vars m vs (fst x)))
+        (aset_diff (pat_fv (fst x)) small))
       (upd_option_iter hd (pat_fv (fst x))) m vs (snd x)) pats.
 Proof.
   intros. inversion H; subst.
@@ -1217,15 +1212,15 @@ Proof.
 Qed.
 
 (*Proof identical*)
-Lemma dec_inv_fmatch_var {fs' ps' tm small hd mvar v pats}
-  (Htm: tm = Tvar mvar /\ (hd = Some mvar \/ In mvar small)):
+Lemma dec_inv_fmatch_var {fs': list fn} {ps' : list pn} {tm small hd mvar v pats}
+  (Htm: tm = Tvar mvar /\ (hd = Some mvar \/ aset_mem mvar small)):
   decrease_pred fs' ps' small hd m vs (Fmatch tm v pats) ->
   Forall
   (fun x : pattern * formula =>
    decrease_pred fs' ps'
-     (union vsymbol_eq_dec
-        (vsyms_in_m m vs (pat_constr_vars m vs (fst x)))
-        (remove_all vsymbol_eq_dec (pat_fv (fst x)) small))
+     (aset_union
+        (vsyms_in_m' m vs (pat_constr_vars m vs (fst x)))
+        (aset_diff (pat_fv (fst x)) small))
       (upd_option_iter hd (pat_fv (fst x))) m vs (snd x)) pats.
 Proof.
   intros. inversion H; subst.
@@ -1242,10 +1237,10 @@ Lemma dec_inv_tmatch_constr {fs' ps' tm small hd f l tms v pats}
   Forall
   (fun x : pattern * term =>
    decrease_fun fs' ps'
-     (union vsymbol_eq_dec
-        (vsyms_in_m m vs 
+     (aset_union
+        (vsyms_in_m' m vs 
           (get_constr_smaller small hd m vs f l tms (fst x)))
-        (remove_all vsymbol_eq_dec (pat_fv (fst x)) small))
+        (aset_diff (pat_fv (fst x)) small))
       (upd_option_iter hd (pat_fv (fst x))) m vs (snd x)) pats.
 Proof.
   intros Hdec. inversion Hdec; subst; try discriminate.
@@ -1258,10 +1253,10 @@ Lemma dec_inv_fmatch_constr {fs' ps' tm small hd f l tms v pats}
   Forall
   (fun x : pattern * formula =>
    decrease_pred fs' ps'
-     (union vsymbol_eq_dec
-        (vsyms_in_m m vs 
+     (aset_union
+        (vsyms_in_m' m vs 
           (get_constr_smaller small hd m vs f l tms (fst x)))
-        (remove_all vsymbol_eq_dec (pat_fv (fst x)) small))
+        (aset_diff (pat_fv (fst x)) small))
       (upd_option_iter hd (pat_fv (fst x))) m vs (snd x)) pats.
 Proof.
   intros Hdec. inversion Hdec; subst; try discriminate.
@@ -1272,7 +1267,7 @@ Lemma dec_inv_tmatch_notvar {fs' ps' v pats} small hd tm
   (Htm: match_rec_case tm hd small):
   decrease_fun fs' ps' small hd m vs (Tmatch tm v pats) ->
   Forall (fun x => decrease_fun fs' ps' 
-    (remove_all vsymbol_eq_dec (pat_fv (fst x)) small) 
+    (aset_diff (pat_fv (fst x)) small) 
     ((upd_option_iter hd (pat_fv (fst x)))) m vs (snd x)) pats.
 Proof.
   intros. inversion H; subst; try contradiction; try discriminate.
@@ -1284,7 +1279,7 @@ Lemma dec_inv_fmatch_notvar {fs' ps' tm small hd v pats}
   (Htm: match_rec_case tm hd small):
   decrease_pred fs' ps' small hd m vs (Fmatch tm v pats) ->
   Forall (fun x => decrease_pred fs' ps' 
-    (remove_all vsymbol_eq_dec (pat_fv (fst x)) small) 
+    (aset_diff (pat_fv (fst x)) small) 
     ((upd_option_iter hd (pat_fv (fst x)))) m vs (snd x)) pats.
 Proof.
   intros. inversion H; subst; try contradiction; try discriminate.
@@ -1308,7 +1303,7 @@ Qed.
 
 Lemma dec_inv_quant {fs' ps' q v f small hd}:
   decrease_pred fs' ps' small hd m vs (Fquant q v f) ->
-  decrease_pred fs' ps' (remove vsymbol_eq_dec v small) 
+  decrease_pred fs' ps' (aset_remove v small) 
     (upd_option hd v) m vs f.
 Proof.
   solve_dec_inv.
@@ -1325,7 +1320,7 @@ Qed.
 Lemma dec_inv_flet {fs' ps' t1 v f small hd}:
   decrease_pred fs' ps' small hd m vs (Flet t1 v f) ->
   decrease_fun fs' ps' small hd m vs t1 /\
-  decrease_pred fs' ps' (remove vsymbol_eq_dec v small)
+  decrease_pred fs' ps' (aset_remove v small)
     (upd_option hd v) m vs f.
 Proof.
   solve_dec_inv.
@@ -1416,18 +1411,18 @@ Lemma arg_list_case_1
 (s: fpsym)
 (vs': list vty)
 (hd: option vsymbol)
-(small: list vsymbol)
-(Hsmall: forall x : vsymbol, In x small ->
+(small: aset vsymbol)
+(Hsmall: forall x : vsymbol, aset_mem x small ->
   vty_in_m m vs (snd x) /\
    adt_smaller_trans (hide_ty (v x)) d)
 (Hhd: forall h, hd = Some h ->
    vty_in_m m vs (snd h) /\
    hide_ty (v h) = d)
-(rep: forall (t : term) (ty : vty) (small : list vsymbol)
+(rep: forall (t : term) (ty : vty) (small : aset vsymbol)
         (hd: option vsymbol)
         (Hty : term_has_type gamma t ty),
       decrease_fun fs ps small hd m vs t ->
-      (forall x : vsymbol, In x small ->
+      (forall x : vsymbol, aset_mem x small ->
       vty_in_m m vs (snd x) /\
        adt_smaller_trans (hide_ty (v x)) d) ->
       (forall h, hd = Some h ->
@@ -1475,19 +1470,19 @@ Proof.
 Defined.
 
 (*The function we need*)
-Definition get_arg_list_recfun {v : val_vars pd vt} {hd d} (s: fpsym)
+Definition get_arg_list_recfun {v : val_vars pd vt} {hd: option vsymbol} {d: {s : sort & domain s}} (s: fpsym)
   {vs': list vty}
-  {small}
-  (Hsmall: forall x, In x small ->
+  {small : aset vsymbol}
+  (Hsmall: forall x, aset_mem x small ->
   vty_in_m m vs (snd x) /\
   adt_smaller_trans (hide_ty (v x)) d)
   (Hhd: forall h, hd = Some h ->
     vty_in_m m vs (snd h) /\
     hide_ty (v h) = d)
-  (rep: forall (t: term) (ty: vty) (small: list vsymbol) hd
+  (rep: forall (t: term) (ty: vty) (small: aset vsymbol) hd
       (Hty: term_has_type gamma t ty)
       (Hdec: decrease_fun fs ps small hd m vs t)
-      (Hsmall: forall x, In x small ->
+      (Hsmall: forall x, aset_mem x small ->
       vty_in_m m vs (snd x) /\
           adt_smaller_trans (hide_ty (v x)) d)
       (Hhd: forall h, hd = Some h ->
@@ -1634,13 +1629,13 @@ Definition combine_args_fun (pa: packed_args) (f: fn)
   (Hin: In f fs)
   (Hf: fn_sn f = proj1_sig (projT1 pa)) :
   combined_args :=
-  existT _ pa (Left _ _ (exist _ f (conj Hin Hf))).
+  existT pa (Left _ _ (exist _ f (conj Hin Hf))).
 
 Definition combine_args_pred (pa: packed_args) (p: pn)
   (Hin: In p ps)
   (Hp: pn_sn p = proj1_sig (projT1 pa)) :
   combined_args :=
-  existT _ pa (Right _ _ (exist _ p (conj Hin Hp))).
+  existT pa (Right _ _ (exist _ p (conj Hin Hp))).
 
 (*Finally, we pack it all together with the valuation and
   some conditions on the srts list*)
@@ -1654,7 +1649,7 @@ Definition pack_args (fa: combined_args) (v: val_vars pd vt)
   (Hsrts: length (projT1 (projT2 (projT1 fa))) = length params /\
   vt_eq (projT1 (projT2 (projT1 fa)))) :
   packed_args2 :=
-  existT _ fa (v, Hsrts). 
+  existT fa (v, Hsrts). 
 
 (*The return type - depends on whether this is a function
   or predicate definition*)
@@ -1714,11 +1709,11 @@ Proof.
 Qed.
 
 Lemma ty_subst_params_id: forall params x,
-  (forall v, In v (type_vars x) -> In v params) ->
+  (forall v, aset_mem v (type_vars x) -> In v params) ->
   ty_subst params (map vty_var params) x = x.
 Proof.
   intros. unfold ty_subst. induction x; simpl; auto.
-  apply ty_subst_fun_params_id. apply H. simpl; auto.
+  apply ty_subst_fun_params_id. apply H. simpl. simpl_set. auto.
   f_equal. apply map_id'.
   revert H0. rewrite !Forall_forall; intros.
   apply H0; auto. intros. apply H. simpl. simpl_set; auto.
@@ -1807,11 +1802,11 @@ let d:= hide_ty
    (arg_nth_eq srts (sn_sym f1) (sn_idx f1) (sn_idx_bound f1
     (proj2_sig (projT1 fa))))
    (hnth (sn_idx f1) a1 s_int (dom_int pd))) in
-forall (small: list vsymbol) hd
+forall (small: aset vsymbol) hd
   (s1: fpsym) (sn_def: sn) (s_eq: s1 = sn_sym sn_def)
   (sn_in: In sn_def sns) (l: list vty) (ts: list term)
   (Hsmall: forall x : vsymbol,
-    In x small -> 
+    aset_mem x small -> 
     vty_in_m m vs (snd x) /\
     adt_smaller_trans (hide_ty (v x)) d)
     (Hhd: forall h, hd = Some h ->
@@ -1830,7 +1825,7 @@ forall (small: list vsymbol) hd
 (Hparamslen: length l = length (s_params s1))
 (l_eq: l = map vty_var (s_params s1))
 (srts_eq:  map (fun x0 : vty => val x0) (map vty_var (s_params s1)) = srts)
-(Harg: exists x, In x small /\  nth (sn_idx sn_def) ts tm_d = Tvar x),
+(Harg: exists x, aset_mem x small /\  nth (sn_idx sn_def) ts tm_d = Tvar x),
 
 let s2 := sn_sym sn_def in 
 let l_eq2: srts = map (fun x0 : vty => val x0) l := eq_trans (eq_sym srts_eq)
@@ -1845,19 +1840,11 @@ let args'': arg_list domain (sym_sigma_args (sn_sym sn_def) srts):= scast
    (fun x : fpsym => arg_list domain (sym_sigma_args x srts))
    s_eq) args' in
 let ind_arg:= existT
-               (fun x : {s : sn | In s sns} =>
-                {srts : list sort &
-                arg_list domain (sym_sigma_args (sn_sym (proj1_sig x)) srts)})
                (exist (fun s : sn => In s sns) sn_def sn_in)
                (existT
-                  (fun srts : list sort =>
-                   arg_list domain
-                     (sym_sigma_args
-                        (sn_sym
-                           (proj1_sig (exist (fun s : sn => In s sns) sn_def sn_in)))
-                        srts)) srts args'') : packed_args in
+                   srts args'') : packed_args in
 forall o, 
-let ind_comb : combined_args := existT _ ind_arg o in
+let ind_comb : combined_args := existT ind_arg o in
 let ind_arg':= pack_args ind_comb v (conj srts_len vt_eq_srts) in
 R_projT1
      (fun fa : combined_args =>
@@ -1879,11 +1866,8 @@ Proof.
   eapply (AL_small 
     (*We need to give the 1st arg or else Coq has problems*)
     (existT
-     (fun x : {s : sn | In s sns} =>
-      {srts : list sort & arg_list domain (sym_sigma_args (sn_sym (proj1_sig x)) srts)})
      (exist (fun s : sn => In s sns) sn_def sn_in)
      (existT
-        (fun srts : list sort => arg_list domain (sym_sigma_args (sn_sym sn_def) srts))
         (projT1 (projT2 (projT1 (projT1 input))))
         (scast
            (f_equal
@@ -1975,24 +1959,24 @@ let d:= hide_ty
    (arg_nth_eq srts (sn_sym f1) (sn_idx f1) (sn_idx_bound f1
     (proj2_sig (projT1 fa))))
    (hnth (sn_idx f1) a1 s_int (dom_int pd))) in
-forall (small: list vsymbol) hd
+forall (small: aset vsymbol) hd
   (ty: vty) (f: funsym) (l: list vty) (ts: list term)
   (Hty': term_has_type gamma (Tfun f l ts) ty)
   (Hdec': decrease_fun fs ps small hd m vs (Tfun f l ts))
   (x: {f' : fn | In f' fs /\ f = fn_sym f'})
   (Hsmall: forall x : vsymbol,
-    In x small ->
+    aset_mem x small ->
     vty_in_m m vs (snd x) /\
      adt_smaller_trans (hide_ty (v x)) d)
   (Hhd: forall h, hd = Some h ->
      vty_in_m m vs (snd h) /\
      hide_ty (v h) = d)
   (term_rep_aux: forall v (t : term) 
-      (ty : vty) (small : list vsymbol) hd
+      (ty : vty) (small : aset vsymbol) hd
       (Hty : term_has_type gamma t ty),
     decrease_fun fs ps small hd m vs t ->
     (forall x : vsymbol,
-    In x small -> 
+    aset_mem x small -> 
     vty_in_m m vs (snd x) /\
     adt_smaller_trans (hide_ty (v x)) d) ->
     (forall h, hd = Some h ->
@@ -2037,17 +2021,8 @@ let args'':= scast
 (fun x : fpsym => arg_list domain (sym_sigma_args x srts))
 s_eq) args' in
 let ind_arg:= existT
-       (fun x : {s : sn | In s sns} =>
-        {srts : list sort &
-        arg_list domain (sym_sigma_args (sn_sym (proj1_sig x)) srts)})
        (exist (fun s : sn => In s sns) sn_def sn_in)
-       (existT
-          (fun srts : list sort =>
-           arg_list domain
-             (sym_sigma_args
-                (sn_sym
-                   (proj1_sig (exist (fun s : sn => In s sns) sn_def sn_in)))
-                srts)) srts args'') : packed_args in
+       (existT srts args'') : packed_args in
 let ind_comb := combine_args_fun ind_arg fn_def fn_in eq_refl in
 let ind_arg':= pack_args ind_comb v (conj srts_len vt_eq_srts) in
 R_projT1
@@ -2087,24 +2062,24 @@ let d:= hide_ty
    (arg_nth_eq srts (sn_sym f1) (sn_idx f1) (sn_idx_bound f1
    (proj2_sig (projT1 fa))))
    (hnth (sn_idx f1) a1 s_int (dom_int pd))) in
-forall (small: list vsymbol) hd
+forall (small: aset vsymbol) hd
   (p: predsym) (l: list vty) (ts: list term)
   (Hty': formula_typed gamma (Fpred p l ts))
   (Hdec': decrease_pred fs ps small hd m vs (Fpred p l ts))
   (x: {p' : pn | In p' ps /\ p = pn_sym p'})
   (Hsmall: forall x : vsymbol,
-    In x small ->
+    aset_mem x small ->
     vty_in_m m vs (snd x) /\
      adt_smaller_trans (hide_ty (v x)) d)
   (Hhd: forall h, hd = Some h ->
      vty_in_m m vs (snd h) /\
      hide_ty (v h) = d)
   (term_rep_aux: forall v (t : term) 
-      (ty : vty) (small : list vsymbol) hd
+      (ty : vty) (small : aset vsymbol) hd
       (Hty : term_has_type gamma t ty),
     decrease_fun fs ps small hd m vs t ->
     (forall x : vsymbol,
-    In x small -> 
+    aset_mem x small -> 
     vty_in_m m vs (snd x) /\
     adt_smaller_trans (hide_ty (v x)) d) ->
     (forall h, hd = Some h ->
@@ -2148,17 +2123,8 @@ let args'':= scast
 (fun x : fpsym => arg_list domain (sym_sigma_args x srts))
 s_eq) args' in
 let ind_arg:= existT
-       (fun x : {s : sn | In s sns} =>
-        {srts : list sort &
-        arg_list domain (sym_sigma_args (sn_sym (proj1_sig x)) srts)})
        (exist (fun s : sn => In s sns) sn_def sn_in)
-       (existT
-          (fun srts : list sort =>
-           arg_list domain
-             (sym_sigma_args
-                (sn_sym
-                   (proj1_sig (exist (fun s : sn => In s sns) sn_def sn_in)))
-                srts)) srts args'') : packed_args in
+       (existT srts args'') : packed_args in
 let ind_comb := combine_args_pred ind_arg pn_def pn_in eq_refl in
 let ind_arg':= pack_args ind_comb v (conj srts_len vt_eq_srts) in
 R_projT1
@@ -2192,10 +2158,10 @@ Section SmallHdLemmas.
 
 Lemma small_remove_lemma (v: val_vars pd vt) (x: vsymbol)
   (t: domain (val (snd x))) {small d} 
-  (Hsmall: forall x, In x small ->
+  (Hsmall: forall x, aset_mem x small ->
     vty_in_m m vs (snd x) /\
     adt_smaller_trans (hide_ty (v x)) d):
-  forall y, In y (remove vsymbol_eq_dec x small) ->
+  forall y, aset_mem y (aset_remove x small) ->
   vty_in_m m vs (snd y) /\
   adt_smaller_trans (hide_ty (substi pd vt v x t y)) d.
 Proof.
@@ -2229,27 +2195,28 @@ Qed.
   In other words, the variables we add are actually smaller.
   This is where we use [match_val_single_smaller].
   *)
-Lemma small_match_lemma { tm v ty1 p Hty dom_t small d l mvar hd}
+Lemma small_match_lemma { tm : term} {v: val_vars pd vt} {ty1 : vty} {p: pattern} {Hty: pattern_has_type gamma p ty1} 
+  {dom_t : domain (v_subst vt ty1)}  {small: aset vsymbol} {d l mvar hd}
   (Hmatch: match_val_single gamma_valid pd pdf vt ty1 p Hty dom_t =Some l)
   (Hty1: term_has_type gamma tm ty1)
-  (Htm: tm = Tvar mvar /\ (hd = Some mvar \/ In mvar small))
+  (Htm: tm = Tvar mvar /\ (hd = Some mvar \/ aset_mem mvar small))
   (Hdomt: dom_t = dom_cast _ (f_equal (fun x => val x) 
       (eq_sym (ty_var_inv (term_has_type_cast (proj1' Htm) Hty1))))
       (var_to_dom _ vt v mvar))
   (Hsmall: forall x,
-    In x small ->
+    aset_mem x small ->
     vty_in_m m vs (snd x) /\ adt_smaller_trans (hide_ty (v x)) d)
   (Hhd : forall h : vsymbol, hd = Some h -> 
     vty_in_m m vs (snd h) /\ hide_ty (v h) = d):
   forall x,
-    In x (union vsymbol_eq_dec (vsyms_in_m m vs (pat_constr_vars m vs p))
-      (remove_all vsymbol_eq_dec (pat_fv p) small)) ->
+    aset_mem x (aset_union (vsyms_in_m' m vs (pat_constr_vars m vs p))
+      (aset_diff (pat_fv p) small)) ->
     vty_in_m m vs (snd x) /\
     adt_smaller_trans (hide_ty (extend_val_with_list pd vt v l x)) d.
 Proof.
   intros.
   simpl_set. destruct H.
-  - unfold vsyms_in_m in H. rewrite in_filter in H.
+  - unfold vsyms_in_m' in H. rewrite aset_mem_filter in H.
     destruct H. split; auto.
     destruct Htm as [Htm Hmvar]. subst.
     assert (Hty1m: vty_in_m m vs ty1). {
@@ -2258,35 +2225,32 @@ Proof.
       apply Hsmall; auto.
     }
     (*Now we get the domain val in the list l mapped from x*)
-    assert (Hinx: In x (map fst l)). {
-      apply (match_val_single_free_var _ _ _ _ _ _ _ _ _ _ Hmatch).
-      eapply pat_constr_vars_fv. apply H0.
+    assert (Hinx: aset_mem x (keys l)). {
+      erewrite (match_val_single_fv); eauto. eapply pat_constr_vars_fv; eauto.
     }
-    rewrite in_map_iff in Hinx. destruct Hinx as [[x' y'] [Hfst Hinxy]]; subst.
-    simpl in *.
+    rewrite <- amap_mem_keys in Hinx.
+    unfold amap_mem in Hinx.
+    destruct (amap_lookup l x) as [y'|] eqn : Hlookup; [|discriminate].
     rewrite (extend_val_lookup _ _ _ _ _ y'); auto.
-    2: {
-      apply (match_val_single_nodup _ _ _ _ _ _ _ _ Hmatch).
-    }
-    assert (val (snd x') = projT1 y'). {
+    assert (val (snd x) = projT1 y'). {
       symmetry.
       apply (match_val_single_typs _ _ _ _ _ _ _ _ _ Hmatch). auto.
     }
-    destruct (sort_eq_dec (val (snd x')) (projT1 y')); try contradiction.
-    apply (proj2' (match_val_single_smaller vt v _ _ Hty Hty1m _ _ Hmatch)) with(y:=y') in H0; auto.
+    destruct (sort_eq_dec (val (snd x)) (projT1 y')); try contradiction.
+    apply (proj2' (match_val_single_smaller vt v _ _ Hty Hty1m _ _ Hmatch)) with(y:=y') in Hlookup; auto.
     (*First, we do some things that will simplify the casting*)
-    destruct x' as [x1' x2']; simpl in *; subst.
+    destruct x as [x1' x2']; simpl in *; subst.
     destruct y' as [y1 y2]. simpl in *; subst.
     assert (e = eq_refl). { apply UIP_dec. apply sort_eq_dec. }
     subst. unfold dom_cast. simpl.
     (*replace (hide_ty y2) with (existT ) by (destruct y'; reflexivity).*)
     inversion Hty1; subst.
-    revert H0.
+    revert Hlookup.
     match goal with 
       | |- adt_smaller_trans ?y (hide_ty (dom_cast ?d ?E ?x)) -> ?P =>
         assert (E = eq_refl) by (apply UIP_dec; apply sort_eq_dec)
         end.
-    rewrite H0; clear H0. unfold dom_cast; simpl.
+    rewrite H1; clear H1. unfold dom_cast; simpl.
     unfold var_to_dom. intros.
     (*Now the goals are much clearer, we consider each case*)
     (*Now consider each case*)
@@ -2294,33 +2258,34 @@ Proof.
     + subst. (*If mvar = h, have equality, then use match result to
       get smaller*)
       specialize (Hhd mvar eq_refl).
-      rewrite (proj2' Hhd) in H0; auto.
+      rewrite (proj2' Hhd) in Hlookup; auto.
     + (*In this case, mvar is in small, so follows from
         transitivity*)
       specialize (Hsmall _ H1).
-      apply (R_trans_trans H0). apply Hsmall.
+      apply (R_trans_trans Hlookup). apply Hsmall.
   - (*Otherwise, not in l, so follows from assumption*)
     simpl_set. destruct H.
     rewrite extend_val_notin; auto.
-    rewrite <- (match_val_single_free_var _ _ _ _ _ _ _ _ _ _ Hmatch).
-    auto.
+    erewrite <- (match_val_single_fv) in H0 by eauto.
+    rewrite <- amap_mem_keys in H0. destruct (amap_mem x l); auto. exfalso; auto.
 Qed.
 
 (*First (recursive) case for small lemma when we add valuations
   from [match_val_single]*)
 Lemma match_val_single_small1 { v ty1 dom_t p Hty l small d}:
   match_val_single gamma_valid pd pdf vt ty1 p Hty dom_t = Some l ->
-  (forall x, In x small ->
+  (forall x, aset_mem x small ->
     vty_in_m m vs (snd x) /\
     adt_smaller_trans (hide_ty (v x)) d) ->
-  (forall x, In x (remove_all vsymbol_eq_dec (pat_fv p) small) ->
+  (forall x, aset_mem x (aset_diff (pat_fv p) small) ->
   vty_in_m m vs (snd x) /\
     adt_smaller_trans (hide_ty (extend_val_with_list pd vt v l x)) d).
 Proof.
   intros. simpl_set. destruct_all.
   split; [apply H0; auto|].
   rewrite extend_val_notin; auto; [apply H0; auto|].
-  eapply match_val_single_free_var in H. rewrite <- H. auto.
+  eapply match_val_single_fv in H. rewrite <- H, <- amap_mem_keys in H2.
+  destruct (amap_mem x l); auto. exfalso; auto.
 Qed.
 
 Lemma upd_option_some (hd: option vsymbol) (x: vsymbol):
@@ -2334,16 +2299,20 @@ Proof.
   - split; intros; destruct_all; inversion H; subst; auto.
 Qed.
 
-Lemma upd_option_iter_some (hd: option vsymbol) (l: list vsymbol):
+Lemma upd_option_iter_some (hd: option vsymbol) (l: aset vsymbol):
   forall h,
-    upd_option_iter hd l = Some h <-> hd = Some h /\ ~ In h l.
+    upd_option_iter hd l = Some h <-> hd = Some h /\ ~ aset_mem h l.
 Proof.
-  intros. induction l; simpl.
-  - split; intros; auto. apply H.
-  - rewrite upd_option_some, IHl, and_assoc.
-    split; intros; destruct_all; subst; auto; split; auto.
-    intro C. destruct C; subst; contradiction.
-Qed. 
+  intros. unfold upd_option_iter.
+  apply aset_fold_ind with (P:=fun b s => b = Some h <-> hd = Some h /\ ~ aset_mem h s).
+  - split.
+    + intros Hhd; subst; split; auto. apply aset_mem_empty.
+    + intros [Hhd _]; subst; auto.
+  - intros x s b Hnotin IH.
+    rewrite upd_option_some, IH, and_assoc.
+    simpl_set. rewrite demorgan_or. apply and_iff_compat_l.
+    apply and_comm.
+Qed.
 
 (*hd invariant with upd_option and upd_option_iter*)
 Lemma match_val_single_upd_option
@@ -2361,8 +2330,8 @@ Proof.
   split; [apply Hhd; auto|].
   rewrite extend_val_notin; auto.
   apply Hhd; auto.
-  rewrite <- (match_val_single_free_var _ _ _ _ _ _ _ _ _ _ Hmatch).
-  auto.
+  rewrite <- (match_val_single_fv _ _ _ _ _ _ _ _ Hmatch) in H0.
+  rewrite <- amap_mem_keys in H0. destruct (amap_mem h l); auto. exfalso; auto.
 Qed.
 
 End SmallHdLemmas.
@@ -2536,46 +2505,40 @@ End FinalLemmas.
 (*Need to reason about the different parts of [iter_arg_list]; in particular,
   if a variable is set, it was set in some particular and unique single pattern match*)
 
-Lemma get_assoc_list_app1 {A B: Set} (eq_dec: forall (x y : A), {x = y} + {x <> y}) (l1 l2: list (A * B))
-  (x: A) (Hinx: In x (map fst l1)):
-  get_assoc_list eq_dec (l1 ++ l2) x = get_assoc_list eq_dec l1 x.
-Proof.
-  induction l1 as [| h t IH]; simpl in *; try contradiction.
-  destruct (eq_dec x (fst h)); auto.
-  destruct Hinx; subst; auto. contradiction.
-Qed.
-
-Lemma get_assoc_list_app2 {A B: Set} (eq_dec: forall (x y : A), {x = y} + {x <> y}) (l1 l2: list (A * B))
-  (x: A) (Hinx: ~ In x (map fst l1)):
-  get_assoc_list eq_dec (l1 ++ l2) x = get_assoc_list eq_dec l2 x.
-Proof.
-  induction l1 as [| h t IH]; simpl in *; auto.
-  destruct (eq_dec x (fst h)); subst; auto.
-  exfalso; apply Hinx; auto.
-Qed.
-
-Lemma extend_val_with_list_app1 v l1 l2 x
-  (Hinx: In x (map fst l1)):
-  extend_val_with_list pd vt v (l1 ++ l2) x = extend_val_with_list pd vt v l1 x.
+(*TODO: move to interp I think*)
+Lemma extend_val_with_list_union1 v m1 m2 x
+  (Hinx: aset_mem x (keys m1)):
+  extend_val_with_list pd vt v (amap_union (fun y _ => Some y) m1 m2) x = extend_val_with_list pd vt v m1 x.
 Proof.
   unfold extend_val_with_list.
-  rewrite get_assoc_list_app1; auto. 
+  rewrite <- amap_mem_keys in Hinx.
+  unfold amap_mem in Hinx.
+  destruct (amap_lookup m1 x) as [y1|] eqn : Hget1; [|discriminate].
+  destruct (amap_lookup m2 x) as [y2|] eqn : Hget2.
+  - rewrite (amap_union_inboth _ _ _ _ _ _ y1 y2) by auto.
+    reflexivity.
+  - erewrite amap_union_inl; eauto.
 Qed.
 
-Lemma extend_val_with_list_app2 v l1 l2 x
-  (Hinx: ~ In x (map fst l1)):
-  extend_val_with_list pd vt v (l1 ++ l2) x = extend_val_with_list pd vt v l2 x.
+Lemma extend_val_with_list_union2 v m1 m2 x
+  (Hinx: ~ aset_mem x (keys m1)):
+  extend_val_with_list pd vt v (amap_union (fun y _ => Some y) m1 m2) x = extend_val_with_list pd vt v m2 x.
 Proof.
   unfold extend_val_with_list.
-  rewrite get_assoc_list_app2; auto. 
+  rewrite <- amap_mem_keys in Hinx.
+  unfold amap_mem in Hinx. 
+  destruct (amap_lookup m1 x) as [y1|] eqn : Hget1; [exfalso; apply Hinx; auto|].
+  destruct (amap_lookup m2 x) as [y2|] eqn : Hget2.
+  - erewrite amap_union_inr; eauto.
+  - rewrite amap_union_notin; auto.
 Qed.
 
 Lemma iter_arg_list_single_match (v: val_vars pd vt) {tys a pats Hall l i x}
   (Hiter: @iter_arg_list gamma gamma_valid pd pdf vt tys a pats Hall = Some l)
   (Hlen: length pats = length tys) 
-  (Hdisj: disj_map pat_fv pats)
+  (Hdisj: disj_map' pat_fv pats)
   (Hi: i < length pats)
-  (Hx: In x (pat_fv (nth i pats Pwild))):
+  (Hx: aset_mem x (pat_fv (nth i pats Pwild))):
   exists Hty l1 Heq,
     match_val_single gamma_valid pd pdf vt (nth i tys vty_int) (nth i pats Pwild) Hty (dom_cast (dom_aux pd) Heq (hnth i a s_int (dom_int pd))) = Some l1 /\
     extend_val_with_list pd vt v l x =
@@ -2587,10 +2550,10 @@ Proof.
     simpl in Hall |- *. exists (Forall_inv Hall). simpl in Hiter.
     revert Hiter. case_match_hyp; try discriminate.
     intros Hlists; inversion Hlists; subst; clear Hlists.
-    exists l0. exists eq_refl. unfold dom_cast; simpl. 
+    exists a0. exists eq_refl. unfold dom_cast; simpl. 
     split; auto.
-    apply extend_val_with_list_app1.
-    eapply match_val_single_free_var. apply Hmatch. apply Hx.
+    erewrite <- match_val_single_fv in Hx; eauto.
+    apply extend_val_with_list_union1; assumption.
   - simpl in Hx. destruct tys as [| thd ttl]; [simpl in *; lia|].
     simpl in Hall |- *. 
     (*Need to use IH*)
@@ -2599,17 +2562,17 @@ Proof.
     intros Hl; inversion Hl; subst; clear Hl.
     assert (Hlen': length ptl = length ttl) by (simpl in Hlen; lia).
     assert (Hi': i < length ptl) by (simpl in Hi; lia).
-    destruct (IHp (disj_map_cons_impl Hdisj) l1 ttl (hlist_tl a) (Forall_inv_tail Hall) Hmatch0 Hlen' i Hi' Hx)
+    destruct (IHp (disj_map_cons_impl Hdisj) a1 ttl (hlist_tl a) (Forall_inv_tail Hall) Hmatch0 Hlen' i Hi' Hx)
       as [Hty [l2 [Heq [Hmatchith Hextend]]]]; clear IHp.
     exists Hty. exists l2. exists Heq. split; auto.
-    assert (Hnotin: ~ In x (map fst l0)). {
-      erewrite <- match_val_single_free_var. 2: apply Hmatch.
+    assert (Hnotin: ~ aset_mem x (keys a0)). {
+      erewrite match_val_single_fv; eauto.
       rewrite disj_map_cons_iff in Hdisj.
       destruct Hdisj as [_ Hd]. intro Hinx.
       apply (Hd i Pwild x Hi'). auto.
     }
     rewrite <- Hextend.
-    apply extend_val_with_list_app2; assumption.
+    apply extend_val_with_list_union2; assumption.
 Qed.
 
 (*This result isn't doing anything fancy; it uses [small_match_lemma] after going into
@@ -2626,13 +2589,13 @@ Lemma constr_match_lemma {tm v ty1 p Hty dom_t small d l hd c tys tms}
        dom_t = dom_cast (dom_aux pd) (fun_ret_cast Heq Hty1) (funs gamma_valid pd pf f _ a) /\
        arg_list_var_nth_cond v tms a)
   (Hsmall: forall x,
-    In x small ->
+    aset_mem x small ->
     vty_in_m m vs (snd x) /\ adt_smaller_trans (hide_ty (v x)) d)
    (Hhd : forall h : vsymbol, hd = Some h -> 
     vty_in_m m vs (snd h) /\ hide_ty (v h) = d):
     forall x,
-    In x (union vsymbol_eq_dec (vsyms_in_m m vs (get_constr_smaller small hd m vs c tys tms p))
-       (remove_all vsymbol_eq_dec (pat_fv p) small)) ->
+    aset_mem x (aset_union (vsyms_in_m' m vs (get_constr_smaller small hd m vs c tys tms p))
+       (aset_diff (pat_fv p) small)) ->
     vty_in_m m vs (snd x) /\
     adt_smaller_trans (hide_ty (extend_val_with_list pd vt v l x)) d.
 Proof.
@@ -2644,20 +2607,21 @@ Proof.
     erewrite hide_ty_eq with (Hs:=eq_refl). apply Hsmall.
     unfold dom_cast; simpl. symmetry.
     apply extend_val_notin. 
-    erewrite <- match_val_single_free_var. apply Hnotfv.
-    apply Hmatch.
+    erewrite <- match_val_single_fv in Hnotfv by eauto.
+    rewrite <- amap_mem_keys in Hnotfv. destruct (amap_mem x l); auto; exfalso; auto.
   }
   (*The interesting case*)
   unfold get_constr_smaller in Hinx.
-  destruct p as [| f tys' pats | | | ]; try contradiction.
-  destruct (funsym_eqb_spec c f); simpl in Hinx; [| contradiction].
-  destruct (list_eqb_spec _ vty_eq_spec tys tys'); [| contradiction].
+  destruct p as [| f tys' pats | | | ]; try solve[
+  apply aset_mem_empty in Hinx; exfalso; auto].
+  destruct (funsym_eqb_spec c f); simpl in Hinx; [| apply aset_mem_empty in Hinx; exfalso; auto].
+  destruct (list_eqb_spec _ vty_eq_spec tys tys'); [| apply aset_mem_empty in Hinx; exfalso; auto].
   subst.
-  unfold vsyms_in_m in Hinx.
-  rewrite in_filter in Hinx.
-  destruct Hinx as [Hm Hinx].
+  unfold vsyms_in_m' in Hinx.
+  rewrite aset_mem_filter in Hinx.
+  destruct Hinx as [Hinx Hm].
   split; auto.
-  rewrite in_concat in Hinx.
+  simpl_set.
   destruct Hinx as [vars [Hinvars Hinx]].
   assert (Hlens: length tms = length pats). {
     inversion Hty; inversion Hty1; lia.
@@ -2666,8 +2630,8 @@ Proof.
   destruct Hinvars as [i [Hi Hvars]].
   subst. 
   unfold tm_var_case in Hinx.
-  destruct (nth i tms tm_d) as [| y | | | | | ]  eqn : Hith; try contradiction.
-  destruct (check_var_case_spec hd small y); [| contradiction].
+  destruct (nth i tms tm_d) as [| y | | | | | ]  eqn : Hith; try solve[apply aset_mem_empty in Hinx; exfalso; auto].
+  destruct (check_var_case_spec hd small y); [| apply aset_mem_empty in Hinx; exfalso; auto].
   unfold Typing.var_case in *.
   (*Get mutual type information*)
   assert (Hconstrs:  exists (m : mut_adt) (a : alg_datatype), 
@@ -2740,7 +2704,7 @@ Proof.
   intros Hiter.
   (*Use previous result to get portion of l that x belongs to (we need for [small_match_lemma]*)
   assert (Hi': i < length pats) by lia.
-  assert (Hinx': In x (pat_fv (nth i pats Pwild))). {
+  assert (Hinx': aset_mem x (pat_fv (nth i pats Pwild))). {
     apply pat_constr_vars_fv in Hinx; auto.
   }
   assert (Hlenmap: length pats = length (ty_subst_list (s_params f) tys' (s_args f))). {
@@ -2774,7 +2738,7 @@ Proof.
           s_int (dom_int pd)) by reflexivity.
     rewrite Hnthtriv, Hhnth.
     unfold dom_cast. rewrite !scast_scast. apply scast_eq_uip.
-  - left. unfold vsyms_in_m. rewrite in_filter. auto.
+  - left. unfold vsyms_in_m'. rewrite aset_mem_filter. auto.
 Qed.
 
 (*Finally, start building the real function. We separate into
@@ -2816,13 +2780,13 @@ Definition gen_decrease (fs' : list fn) (ps': list pn) small hd m vs (b: bool)
   end t.
 
 Definition match_rep_aux 
-  (v : val_vars pd vt) (hd : option vsymbol) (small: list vsymbol) 
+  (v : val_vars pd vt) (hd : option vsymbol) (small: aset vsymbol) 
   (term_rep_aux: forall v (t : term) 
-      (ty : vty) (small : list vsymbol) hd
+      (ty : vty) (small : aset vsymbol) hd
       (Hty : term_has_type gamma t ty),
     decrease_fun fs ps small hd m vs t ->
     (forall x : vsymbol,
-    In x small -> 
+    aset_mem x small -> 
     vty_in_m m vs (snd x) /\
     adt_smaller_trans (hide_ty (v x)) d) ->
     (forall h, hd = Some h ->
@@ -2831,11 +2795,11 @@ Definition match_rep_aux
     {d : domain (val ty)
     | term_rep_aux_ret v Hty d} )
   (formula_rep_aux: forall v (f :formula) 
-      (small : list vsymbol) hd
+      (small : aset vsymbol) hd
       (Hty : formula_typed gamma f),
     decrease_pred fs ps small hd m vs f ->
     (forall x : vsymbol,
-    In x small -> 
+    aset_mem x small -> 
     vty_in_m m vs (snd x) /\
     adt_smaller_trans (hide_ty (v x)) d) ->
     (forall h, hd = Some h ->
@@ -2846,10 +2810,10 @@ Definition match_rep_aux
   (Hhd: forall h, hd = Some h ->
     vty_in_m m vs (snd h) /\
     hide_ty (v h) = d)
-  (newlist: list vsymbol -> pattern -> list vsymbol) 
+  (newlist: aset vsymbol -> pattern -> aset vsymbol) 
   (Hinvar : forall (p: pattern) (Hp: pattern_has_type gamma p ty1) l
       (Hpat: match_val_single gamma_valid pd pdf vt ty1 p Hp dom_t = Some l),
-      (forall x, In x (newlist small p) -> vty_in_m m vs (snd x) /\
+      (forall x, aset_mem x (newlist small p) -> vty_in_m m vs (snd x) /\
       adt_smaller_trans (hide_ty (extend_val_with_list pd vt v l x)) d)) :=
     fix match_rep (pats: list (pattern * (gen_term b))) 
       (Hall: Forall (fun x => gen_typed gamma b (snd x) ty) pats)
@@ -2885,25 +2849,26 @@ Definition match_rep_aux
     end Hall Hpats Hdec.
 
 (*The arguments to [match_rep] in different cases:*)
-Definition match_var_vars : list vsymbol -> pattern -> list vsymbol :=
-  fun small p =>  union vsymbol_eq_dec (vsyms_in_m m vs (pat_constr_vars m vs p))
-          (remove_all vsymbol_eq_dec (pat_fv p) small).
+Definition match_var_vars : aset vsymbol -> pattern -> aset vsymbol :=
+  fun small p => aset_union (vsyms_in_m' m vs (pat_constr_vars m vs p))
+          (aset_diff (pat_fv p) small).
 
-Definition match_constr_vars (small : list vsymbol) hd (c: funsym) (l: list vty) (tms: list term) : list vsymbol -> pattern -> list vsymbol :=
-  fun small p => (union vsymbol_eq_dec (vsyms_in_m m vs (get_constr_smaller small hd m vs c l tms p))
-          (remove_all vsymbol_eq_dec (pat_fv p) small)).
+Definition match_constr_vars (small : aset vsymbol) (hd: option vsymbol) (c: funsym) (l: list vty) (tms: list term) : 
+  aset vsymbol -> pattern -> aset vsymbol :=
+  fun (small: aset vsymbol) p => (aset_union (vsyms_in_m' m vs (get_constr_smaller small hd m vs c l tms p))
+          (aset_diff (pat_fv p) small)).
 
-Definition match_rec_vars: list vsymbol -> pattern -> list vsymbol :=
-  fun small p => (remove_all vsymbol_eq_dec (pat_fv p) small).
+Definition match_rec_vars: aset vsymbol -> pattern -> aset vsymbol :=
+  fun small p => (aset_diff (pat_fv p) small).
 
 
 (*The body of [term_rep_aux]*)
 Definition term_rep_aux_body 
 (term_rep_aux: forall (v: val_vars pd vt) 
-  (t: term) (ty: vty) (small: list vsymbol) (hd: option vsymbol)
+  (t: term) (ty: vty) (small: aset vsymbol) (hd: option vsymbol)
   (Hty: term_has_type gamma t ty)
   (Hdec: decrease_fun fs ps small hd m vs t)
-  (Hsmall: forall x, In x small ->
+  (Hsmall: forall x, aset_mem x small ->
     vty_in_m m vs (snd x) /\
     adt_smaller_trans (hide_ty (v x)) d)
   (Hhd: forall h, hd = Some h ->
@@ -2911,10 +2876,10 @@ Definition term_rep_aux_body
     hide_ty (v h) = d),
   {d: domain (val ty) | term_rep_aux_ret v Hty d})
 (formula_rep_aux: forall (v: val_vars pd vt) 
-(f: formula) (small: list vsymbol) (hd: option vsymbol)
+(f: formula) (small: aset vsymbol) (hd: option vsymbol)
 (Hval: formula_typed gamma f)
 (Hdec: decrease_pred fs ps small hd m vs f)
-(Hsmall: forall x, In x small ->
+(Hsmall: forall x, aset_mem x small ->
   vty_in_m m vs (snd x) /\
   adt_smaller_trans (hide_ty (v x)) d)
 (Hhd: forall h, hd = Some h ->
@@ -2924,11 +2889,11 @@ bool)
 (v: val_vars pd vt)
 (t: term)
 (ty: vty)
-(small: list vsymbol)
+(small: aset vsymbol)
 (hd: option vsymbol)
 (Hty: term_has_type gamma t ty)
 (Hdec: decrease_fun fs ps small hd m vs t)
-(Hsmall: forall x, In x small ->
+(Hsmall: forall x, aset_mem x small ->
   vty_in_m m vs (snd x) /\
   adt_smaller_trans (hide_ty (v x)) d)
 (Hhd: forall h, hd = Some h ->
@@ -3027,8 +2992,8 @@ bool)
 
     let ind_arg : packed_args
     
-    := existT _ (exist _ (sn_def) sn_in) 
-      (existT _ srts args'') in
+    := existT (exist _ (sn_def) sn_in) 
+      (existT srts args'') in
     let ind_comb: combined_args :=
       combine_args_fun ind_arg fn_def fn_in eq_refl in
     let ind_arg' : packed_args2 :=
@@ -3087,14 +3052,14 @@ bool)
       proj2' (ty_let_inv Hty') in 
     let Hdec1 : decrease_fun fs ps small hd m vs tm1 := 
       proj1' (dec_inv_tlet Hdec') in
-    let Hdec2 : decrease_fun fs ps (remove vsymbol_eq_dec v1 small) (upd_option hd v1) m vs tm2 := 
+    let Hdec2 : decrease_fun fs ps (aset_remove v1 small) (upd_option hd v1) m vs tm2 := 
       proj2' (dec_inv_tlet Hdec') in
 
     (*This is [[tm2]]_(v->[[tm1]]), but we need [small_remove_lemma]
     and [small_hd_lemma] to prove that the invariants are preserved*)
     exist _ (proj1_sig (term_rep_aux (substi pd vt v v1 
       (proj1_sig (term_rep_aux v tm1 (snd v1) small hd Ht1 Hdec1 Hsmall Hhd))) 
-    tm2 ty (remove vsymbol_eq_dec v1 small) (upd_option hd v1) Ht2 Hdec2 
+    tm2 ty (aset_remove v1 small) (upd_option hd v1) Ht2 Hdec2 
     (small_remove_lemma v v1 _ Hsmall)
     (small_hd_lemma v v1 _ Hhd))) 
     (tlet_ret_case Hty')
@@ -3147,12 +3112,12 @@ bool)
     | Left (Left z) =>
       let mvar : vsymbol := proj1_sig z in
       let tm_eq : t = Tvar mvar := proj1' (proj2_sig z) in
-      let mvar_small : hd = Some mvar \/ In mvar small :=
+      let mvar_small : hd = Some mvar \/ aset_mem mvar small :=
         proj2' (proj2_sig z) in
 
       let Hdec2 : Forall (fun x => decrease_fun fs ps
-        (union vsymbol_eq_dec (vsyms_in_m m vs (pat_constr_vars m vs (fst x)))
-          (remove_all vsymbol_eq_dec (pat_fv (fst x)) small))
+        (aset_union (vsyms_in_m' m vs (pat_constr_vars m vs (fst x)))
+          (aset_diff (pat_fv (fst x)) small))
         (upd_option_iter hd (pat_fv (fst x))) m vs (snd x)) pats :=
         dec_inv_tmatch_var (proj2_sig z) Hdec' in
 
@@ -3170,9 +3135,9 @@ bool)
       let tm_eq : t = Tfun c l tms := proj2_sig z in
 
       let Hdec2 : Forall (fun x : pattern * term =>
-        decrease_fun fs ps (union vsymbol_eq_dec
-        (vsyms_in_m m vs (get_constr_smaller small hd m vs c l tms (fst x)))
-        (remove_all vsymbol_eq_dec (pat_fv (fst x)) small))
+        decrease_fun fs ps (aset_union
+        (vsyms_in_m' m vs (get_constr_smaller small hd m vs c l tms (fst x)))
+        (aset_diff (pat_fv (fst x)) small))
         (upd_option_iter hd (pat_fv (fst x))) m vs (snd x)) pats :=
         dec_inv_tmatch_constr tm_eq Hdec' in
 
@@ -3186,7 +3151,7 @@ bool)
       (*Easier, recursive case*)
       let Hdec2 : 
         Forall (fun x => decrease_fun fs ps 
-          (remove_all vsymbol_eq_dec (pat_fv (fst x)) small) 
+          (aset_diff (pat_fv (fst x)) small) 
           (upd_option_iter hd (pat_fv (fst x))) m vs (snd x)) pats :=
         dec_inv_tmatch_notvar small hd t Hnotvar Hdec' in
 
@@ -3210,7 +3175,7 @@ bool)
   (ClassicalEpsilon.epsilon (inhabits def) (fun (y: domain (val ty)) =>
     is_true (formula_rep_aux 
       (substi pd vt v x (dom_cast _ (f_equal (fun x => val x) Heq) y)) 
-      f (remove vsymbol_eq_dec x small) (upd_option hd x) Hval Hdec1
+      f (aset_remove x small) (upd_option hd x) Hval Hdec1
       (small_remove_lemma v x _ Hsmall)
       (small_hd_lemma v x _ Hhd))))
   (teps_ret_case Hty')
@@ -3219,10 +3184,10 @@ end Hty Hdec.
 
 Definition formula_rep_aux_body 
 (term_rep_aux: forall (v: val_vars pd vt) 
-  (t: term) (ty: vty) (small: list vsymbol) (hd: option vsymbol)
+  (t: term) (ty: vty) (small: aset vsymbol) (hd: option vsymbol)
   (Hty: term_has_type gamma t ty)
   (Hdec: decrease_fun fs ps small hd m vs t)
-  (Hsmall: forall x, In x small ->
+  (Hsmall: forall x, aset_mem x small ->
     vty_in_m m vs (snd x) /\
     adt_smaller_trans (hide_ty (v x)) d)
   (Hhd: forall h, hd = Some h ->
@@ -3230,10 +3195,10 @@ Definition formula_rep_aux_body
     hide_ty (v h) = d),
   {d: domain (val ty) | term_rep_aux_ret v Hty d})
 (formula_rep_aux: forall (v: val_vars pd vt) 
-(f: formula) (small: list vsymbol) (hd: option vsymbol)
+(f: formula) (small: aset vsymbol) (hd: option vsymbol)
 (Hval: formula_typed gamma f)
 (Hdec: decrease_pred fs ps small hd m vs f)
-(Hsmall: forall x, In x small ->
+(Hsmall: forall x, aset_mem x small ->
   vty_in_m m vs (snd x) /\
   adt_smaller_trans (hide_ty (v x)) d)
 (Hhd: forall h, hd = Some h ->
@@ -3242,11 +3207,11 @@ Definition formula_rep_aux_body
 bool)
 (v: val_vars pd vt)
 (f: formula)
-(small: list vsymbol)
+(small: aset vsymbol)
 (hd: option vsymbol)
 (Hval: formula_typed gamma f)
 (Hdec: decrease_pred fs ps small hd m vs f)
-(Hsmall: forall x, In x small ->
+(Hsmall: forall x, aset_mem x small ->
   vty_in_m m vs (snd x) /\
   adt_smaller_trans (hide_ty (v x)) d)
 (Hhd: forall h, hd = Some h ->
@@ -3287,7 +3252,7 @@ bool :=
     and [small_hd_lemma] to prove that the invariants are preserved*)
   formula_rep_aux (substi pd vt v x 
     (proj1_sig (term_rep_aux v t (snd x) small hd Ht Hdec1 Hsmall Hhd)))
-  f' (remove vsymbol_eq_dec x small) (upd_option hd x) Hf' Hdec2
+  f' (aset_remove x small) (upd_option hd x) Hf' Hdec2
   (small_remove_lemma v x _ Hsmall)
   (small_hd_lemma v x _ Hhd)
 | Fquant Tforall x f' => fun Hval' Hdec' =>
@@ -3296,7 +3261,7 @@ bool :=
   let Hdec1 := dec_inv_quant Hdec' in
   (*NOTE: HERE is where we need the classical axiom assumptions*)
   all_dec (forall d, formula_rep_aux (substi pd vt v x d) f'
-    (remove vsymbol_eq_dec x small) (upd_option hd x) Hf' Hdec1
+    (aset_remove x small) (upd_option hd x) Hf' Hdec1
     (small_remove_lemma v x _ Hsmall)
     (small_hd_lemma v x _ Hhd))
 
@@ -3306,7 +3271,7 @@ bool :=
   let Hdec1 := dec_inv_quant Hdec' in
   (*NOTE: HERE is where we need the classical axiom assumptions*)
   all_dec (exists d, formula_rep_aux (substi pd vt v x d) f' 
-    (remove vsymbol_eq_dec x small) (upd_option hd x) Hf' Hdec1
+    (aset_remove x small) (upd_option hd x) Hf' Hdec1
     (small_remove_lemma v x _ Hsmall)
     (small_hd_lemma v x _ Hhd))
 
@@ -3362,12 +3327,12 @@ bool :=
   | Left (Left z) =>
     let mvar : vsymbol := proj1_sig z in
     let tm_eq : t = Tvar mvar := proj1' (proj2_sig z) in
-    let mvar_small : hd = Some mvar \/ In mvar small :=
+    let mvar_small : hd = Some mvar \/ aset_mem mvar small :=
       proj2' (proj2_sig z) in
 
     let Hdec2 : Forall (fun x => decrease_pred fs ps
-      (union vsymbol_eq_dec (vsyms_in_m m vs (pat_constr_vars m vs (fst x)))
-        (remove_all vsymbol_eq_dec (pat_fv (fst x)) small))
+      (aset_union (vsyms_in_m' m vs (pat_constr_vars m vs (fst x)))
+        (aset_diff (pat_fv (fst x)) small))
       (upd_option_iter hd (pat_fv (fst x))) m vs (snd x)) pats :=
       dec_inv_fmatch_var (proj2_sig z) Hdec' in
 
@@ -3384,9 +3349,9 @@ bool :=
       let tm_eq : t = Tfun c l tms := proj2_sig z in
 
       let Hdec2 : Forall (fun x : pattern * formula =>
-        decrease_pred fs ps (union vsymbol_eq_dec
-        (vsyms_in_m m vs (get_constr_smaller small hd m vs c l tms (fst x)))
-        (remove_all vsymbol_eq_dec (pat_fv (fst x)) small))
+        decrease_pred fs ps (aset_union
+        (vsyms_in_m' m vs (get_constr_smaller small hd m vs c l tms (fst x)))
+        (aset_diff (pat_fv (fst x)) small))
         (upd_option_iter hd (pat_fv (fst x))) m vs (snd x)) pats :=
         dec_inv_fmatch_constr tm_eq Hdec' in
 
@@ -3398,7 +3363,7 @@ bool :=
       (*Easier, recursive case*)
       let Hdec2 : 
         Forall (fun x => decrease_pred fs ps 
-          (remove_all vsymbol_eq_dec (pat_fv (fst x)) small) 
+          (aset_diff (pat_fv (fst x)) small) 
           (upd_option_iter hd (pat_fv (fst x))) m vs (snd x)) pats :=
         dec_inv_fmatch_notvar  Hnotvar Hdec' in
 
@@ -3468,8 +3433,8 @@ bool :=
 
     let ind_arg : packed_args
     
-    := existT _ (exist _ (sn_def) sn_in) 
-      (existT _ srts args'') in
+    := existT (exist _ (sn_def) sn_in) 
+      (existT srts args'') in
     let ind_comb: combined_args :=
       combine_args_pred ind_arg pn_def pn_in eq_refl in
     let ind_arg' : packed_args2 :=
@@ -3505,11 +3470,11 @@ Fixpoint term_rep_aux
 (v: val_vars pd vt)
 (t: term)
 (ty: vty)
-(small: list vsymbol)
+(small: aset vsymbol)
 (hd: option vsymbol)
 (Hty: term_has_type gamma t ty)
 (Hdec: decrease_fun fs ps small hd m vs t)
-(Hsmall: forall x, In x small ->
+(Hsmall: forall x, aset_mem x small ->
 vty_in_m m vs (snd x) /\
   adt_smaller_trans (hide_ty (v x)) d)
 (Hhd: forall h, hd = Some h ->
@@ -3522,11 +3487,11 @@ term_rep_aux_body term_rep_aux formula_rep_aux v t ty small hd Hty Hdec Hsmall H
 with formula_rep_aux 
 (v: val_vars pd vt)
 (f: formula)
-(small: list vsymbol)
+(small: aset vsymbol)
 (hd: option vsymbol)
 (Hval: formula_typed gamma f)
 (Hdec: decrease_pred fs ps small hd m vs f)
-(Hsmall: forall x, In x small ->
+(Hsmall: forall x, aset_mem x small ->
 vty_in_m m vs (snd x) /\
   adt_smaller_trans (hide_ty (v x)) d)
 (Hhd: forall h, hd = Some h ->
@@ -3560,13 +3525,13 @@ Lemma func_smaller_case' (v:val_vars pd vt)  :
      (arg_nth_eq srts (sn_sym f1) (sn_idx f1) (sn_idx_bound f1
       (proj2_sig (projT1 fa))))
      (hnth (sn_idx f1) a1 s_int (dom_int pd))) in
-  forall (small: list vsymbol) hd
+  forall (small: aset vsymbol) hd
     (ty: vty) (f: funsym) (l: list vty) (ts: list term)
     (Hty': term_has_type gamma (Tfun f l ts) ty)
     (Hdec': decrease_fun fs ps small hd m vs (Tfun f l ts))
     (x: {f' : fn | In f' fs /\ f = fn_sym f'})
     (Hsmall: forall x : vsymbol,
-      In x small ->
+      aset_mem x small ->
       vty_in_m m vs (snd x) /\
        adt_smaller_trans (hide_ty (v x)) d)
     (Hhd: forall h, hd = Some h ->
@@ -3608,17 +3573,8 @@ Lemma func_smaller_case' (v:val_vars pd vt)  :
   (fun x : fpsym => arg_list domain (sym_sigma_args x srts))
   s_eq) args' in
   let ind_arg:= existT
-         (fun x : {s : sn | In s sns} =>
-          {srts : list sort &
-          arg_list domain (sym_sigma_args (sn_sym (proj1_sig x)) srts)})
          (exist (fun s : sn => In s sns) sn_def sn_in)
-         (existT
-            (fun srts : list sort =>
-             arg_list domain
-               (sym_sigma_args
-                  (sn_sym
-                     (proj1_sig (exist (fun s : sn => In s sns) sn_def sn_in)))
-                  srts)) srts args'') : packed_args in
+         (existT srts args'') : packed_args in
   let ind_comb := combine_args_fun ind_arg fn_def fn_in eq_refl in
   let ind_arg':= pack_args ind_comb v (conj srts_len vt_eq_srts) in
   R_projT1
@@ -3648,13 +3604,13 @@ let d:= hide_ty
    (arg_nth_eq srts (sn_sym f1) (sn_idx f1) (sn_idx_bound f1
    (proj2_sig (projT1 fa))))
    (hnth (sn_idx f1) a1 s_int (dom_int pd))) in
-forall (small: list vsymbol) hd
+forall (small: aset vsymbol) hd
   (p: predsym) (l: list vty) (ts: list term)
   (Hty': formula_typed gamma (Fpred p l ts))
   (Hdec': decrease_pred fs ps small hd m vs (Fpred p l ts))
   (x: {p' : pn | In p' ps /\ p = pn_sym p'})
   (Hsmall: forall x : vsymbol,
-    In x small ->
+    aset_mem x small ->
     vty_in_m m vs (snd x) /\
      adt_smaller_trans (hide_ty (v x)) d)
   (Hhd: forall h, hd = Some h ->
@@ -3696,17 +3652,8 @@ let args'':= scast
 (fun x : fpsym => arg_list domain (sym_sigma_args x srts))
 s_eq) args' in
 let ind_arg:= existT
-       (fun x : {s : sn | In s sns} =>
-        {srts : list sort &
-        arg_list domain (sym_sigma_args (sn_sym (proj1_sig x)) srts)})
        (exist (fun s : sn => In s sns) sn_def sn_in)
-       (existT
-          (fun srts : list sort =>
-           arg_list domain
-             (sym_sigma_args
-                (sn_sym
-                   (proj1_sig (exist (fun s : sn => In s sns) sn_def sn_in)))
-                srts)) srts args'') : packed_args in
+       (existT srts args'') : packed_args in
 let ind_comb := combine_args_pred ind_arg pn_def pn_in eq_refl in
 let ind_arg':= pack_args ind_comb v (conj srts_len vt_eq_srts) in
 R_projT1
@@ -3731,7 +3678,7 @@ Proof.
 (*Only difference is that termination proof is opaque*)
 Lemma term_rep_aux_fun (v: val_vars pd vt)
 (f: funsym) (l: list vty) (ts: list term) (ty: vty) 
-(small: list vsymbol)
+(small: aset vsymbol)
 (hd: option vsymbol) Hty Hdec Hsmall Hhd:
 term_rep_aux v (Tfun f l ts) ty small hd Hty Hdec Hsmall Hhd =
 let fa := (projT1 (projT1 input)) in
@@ -3808,8 +3755,8 @@ let vt_eq_srts := (proj2' Hsrts) in
 
     let ind_arg : packed_args
     
-    := existT _ (exist _ (sn_def) sn_in) 
-      (existT _ srts args'') in
+    := existT (exist _ (sn_def) sn_in) 
+      (existT srts args'') in
     let ind_comb: combined_args :=
       combine_args_fun ind_arg fn_def fn_in eq_refl in
     let ind_arg' : packed_args2 :=
@@ -3868,7 +3815,7 @@ Qed.
 
 Lemma formula_rep_aux_pred (v: val_vars pd vt)
 (p: predsym) (l: list vty) (ts: list term)
-(small: list vsymbol)
+(small: aset vsymbol)
 (hd: option vsymbol) Hval Hdec Hsmall Hhd:
 formula_rep_aux v (Fpred p l ts) small hd Hval Hdec Hsmall Hhd =
 let fa := (projT1 (projT1 input)) in
@@ -3932,8 +3879,8 @@ match (find_pn p ps) with
 
   let ind_arg : packed_args
   
-  := existT _ (exist _ (sn_def) sn_in) 
-    (existT _ srts args'') in
+  := existT (exist _ (sn_def) sn_in) 
+    (existT srts args'') in
   let ind_comb: combined_args :=
     combine_args_pred ind_arg pn_def pn_in eq_refl in
   let ind_arg' : packed_args2 :=
@@ -4036,7 +3983,7 @@ Definition funcs_rep_aux_body (input: packed_args2)
   (R_projT1 _ (R_projT1 _ arg_list_smaller)) y i ->
   funrep_ret (projT1 y)) -> funrep_ret (projT1 i) with
   (*We do each case separately*)
-  | existT (existT packed (Left fndata)) valsrts => fun rec => 
+  | @existT _ _ (existT packed (Left fndata)) valsrts => fun rec => 
 
     let s1 := proj1_sig (projT1 packed) in
     let s_in := proj2_sig (projT1 packed) in
@@ -4050,7 +3997,7 @@ Definition funcs_rep_aux_body (input: packed_args2)
     let vt_eq_srts := proj2' (snd valsrts) in
 
     let input : packed_args2 := 
-      existT _ (existT _ packed (Left _ _ fndata)) valsrts in
+      existT (existT packed (Left _ _ fndata)) valsrts in
 
     let y := nth (sn_idx s1) (sn_args s1) vs_d in
 
@@ -4061,13 +4008,13 @@ Definition funcs_rep_aux_body (input: packed_args2)
     let tm :=
     (proj1_sig (term_rep_aux input rec
       (val_with_args pd vt v (sn_args s1) a1) (fn_body f) 
-        (f_ret (fn_sym f))  nil
+        (f_ret (fn_sym f))  aset_empty
       (Some y)
       (*proofs we need for [term_rep_aux]*)
       (Forall_In fs_typed Hinf)
       (eq_ind _ (fun x => decrease_fun fs ps _ x m vs _)  
         (Forall_In fs_dec Hinf) _ (f_equal Some (eq_sym y_eq)))
-      (fun x Hx => match Hx with end)
+      (fun x Hx => False_rect _ (aset_mem_empty _ Hx))
       (y_eq_d input) )) in
 
     (*Then we cast the result*)
@@ -4095,7 +4042,7 @@ Definition funcs_rep_aux_body (input: packed_args2)
     let vt_eq_srts := proj2' (snd valsrts) in
 
     let input : packed_args2 := 
-      existT _ (existT _ packed (Right _ _ pndata)) valsrts in
+      existT (existT packed (Right _ _ pndata)) valsrts in
 
     let y := nth (sn_idx s1) (sn_args s1) vs_d in
 
@@ -4104,16 +4051,16 @@ Definition funcs_rep_aux_body (input: packed_args2)
 
     (formula_rep_aux input rec
       (val_with_args pd vt v (sn_args s1) a1) (pn_body p) 
-      nil
+      aset_empty
       (Some y)
       (*proofs we need for [term_rep_aux]*)
       (Forall_In ps_typed Hinp)
       (eq_ind _ (fun x => decrease_pred fs ps _ x m vs _)  
         (Forall_In ps_dec Hinp) _ (f_equal Some (eq_sym y_eq)))
-      (fun x Hx => match Hx with end)
+      (fun x Hx => False_rect _ (aset_mem_empty _ Hx))
       (y_eq_d input) )
-
   end rec.
+
 
 (*Define final function with Fix*)
 Definition funcs_rep_aux (pa: packed_args2) :
@@ -4187,12 +4134,12 @@ Definition funs_rep_aux (vv: val_vars pd vt) (f: fn) (f_in: In f fs)
   domain (funsym_sigma_ret (fn_sym f) srts) :=
   (*Pack everything up*)
   let pa: packed_args :=
-    existT _ (exist _ (fn_sn f) (in_fs_sns f_in))
-    (existT _ srts a) in
+    existT (exist _ (fn_sn f) (in_fs_sns f_in))
+    (existT srts a) in
   let ca : combined_args :=
     combine_args_fun pa f f_in eq_refl in
   let pa2: packed_args2 :=
-    existT _ ca (vv, conj srts_len vt_eq_srts) in
+    existT ca (vv, conj srts_len vt_eq_srts) in
   (*and call the function*)
   funcs_rep_aux pa2.
 
@@ -4205,12 +4152,12 @@ Definition preds_rep_aux (vv: val_vars pd vt) (p: pn) (p_in: In p ps)
   bool :=
   (*Pack everything up*)
   let pa: packed_args :=
-    existT _ (exist _ (pn_sn p) (in_ps_sns p_in))
-    (existT _ srts a) in
+    existT (exist _ (pn_sn p) (in_ps_sns p_in))
+    (existT srts a) in
   let ca : combined_args :=
     combine_args_pred pa p p_in eq_refl in
   let pa2: packed_args2 :=
-    existT _ ca (vv, conj srts_len vt_eq_srts) in
+    existT ca (vv, conj srts_len vt_eq_srts) in
   (*and call the function*)
   funcs_rep_aux pa2.
 
@@ -4315,8 +4262,21 @@ Proof.
     auto.
 Qed.
 
-Definition gen_rep_aux (v: val_vars pd vt) input rec (b: bool) (t: gen_term b) (ty: gen_type b)
-  (small: list vsymbol) hd (Hty: gen_typed gamma b t ty)
+(*TODO: some typeclass bug with stdpp, it thinks rec has type [finite vsymbol] unless I give explicit type,
+  which is super annoying*)
+Definition gen_rep_aux (v: val_vars pd vt) input (rec:
+  (forall y : packed_args2,
+        R_projT1
+          (fun fa : combined_args =>
+           (val_vars pd vt *
+            (Datatypes.length (projT1 (projT2 (projT1 fa))) = Datatypes.length params /\
+             vt_eq (projT1 (projT2 (projT1 fa)))))%type)
+          (R_projT1
+             (fun pa : packed_args =>
+              Either {f : fn | In f fs /\ fn_sn f = proj1_sig (projT1 pa)}
+                {p : pn | In p ps /\ pn_sn p = proj1_sig (projT1 pa)}) arg_list_smaller) y input ->
+        funrep_ret (projT1 y))) (b: bool) (t: gen_term b) (ty: gen_type b)
+  (small: aset vsymbol) hd (Hty: gen_typed gamma b t ty)
   (Hdec: gen_decrease fs ps small hd m vs b t) Hsmall Hhd:
   gen_ret pd vt b ty :=
   match b return forall (t: gen_term b) (ty: gen_type b) (Hty: gen_typed gamma b t ty),
@@ -4354,7 +4314,7 @@ Qed.
 Theorem term_fmla_rep_aux_eq (t: term) (f: formula) :
   (forall (input: packed_args2)
     (v: val_vars pd vt)
-    (ty: vty) (small: list vsymbol) (hd: option vsymbol)
+    (ty: vty) (small: aset vsymbol) (hd: option vsymbol)
     (Hty: term_has_type gamma t ty)
     (Hdec: decrease_fun fs ps small hd m vs t)
     Hsmall Hhd,
@@ -4363,7 +4323,7 @@ Theorem term_fmla_rep_aux_eq (t: term) (f: formula) :
   ) /\
   (forall (input: packed_args2)
     (v: val_vars pd vt)
-    (small: list vsymbol) (hd: option vsymbol)
+    (small: aset vsymbol) (hd: option vsymbol)
     (Hval: formula_typed gamma f)
     (Hdec: decrease_pred fs ps small hd m vs f)
     Hsmall Hhd,
@@ -4421,12 +4381,12 @@ Proof.
         proves the equalities equal with UIP (which we probably
         don't need), then solves the trivial goals*)
       match goal with
-      | |- funcs_rep_aux (existT _ (combine_args_fun 
-        (existT _ _ (existT _ _ (scast ?Heq 
+      | |- funcs_rep_aux (existT (combine_args_fun 
+        (existT _ (existT _ (scast ?Heq 
         (proj1_sig (get_arg_list_recfun _ _ _ 
         (term_rep_aux ?inp ?re _) _ _ _ _ _))))) _ _ _) _) = 
-        funcs_rep_aux (existT _ (combine_args_fun 
-        (existT _ _ (existT _ _ (scast ?Heq2 _))) _ _ _) _) => 
+        funcs_rep_aux (existT (combine_args_fun 
+        (existT _ (existT _ (scast ?Heq2 _))) _ _ _) _) => 
         set (input := inp) in *;
         set (rec := re) in *;
         rewrite <- (get_arg_list_aux_eq input l1 rec v 
@@ -4501,12 +4461,12 @@ Proof.
       rewrite !scast_scast.
       (*Similar as fun case*)
       match goal with
-      | |- funcs_rep_aux (existT _ (combine_args_pred 
-        (existT _ _ (existT _ _ (scast ?Heq 
+      | |- funcs_rep_aux (existT (combine_args_pred 
+        (existT _ (existT _ (scast ?Heq 
         (proj1_sig (get_arg_list_recfun _ _ _ 
         (term_rep_aux ?inp ?re _) _ _ _ _ _))))) _ _ _) _) = 
-        funcs_rep_aux (existT _ (combine_args_pred 
-        (existT _ _ (existT _ _ (scast ?Heq2 _))) _ _ _) _) => 
+        funcs_rep_aux (existT (combine_args_pred 
+        (existT _ (existT _ (scast ?Heq2 _))) _ _ _) _) => 
         set (input := inp) in *;
         set (rec := re) in *;
         rewrite <- (get_arg_list_aux_eq input tms rec v (pn_sym p') small Hsmall hd Hhd tys
@@ -4625,7 +4585,7 @@ forall
     Hall Hpats Hinvar1 Hinvar2
   (Hpseq: Forall (fun (x: gen_term b) =>
     forall (v: val_vars pd vt) (ty: gen_type b)
-      (small: list vsymbol) (hd: option vsymbol) (Hty: gen_typed gamma b x ty)
+      (small: aset vsymbol) (hd: option vsymbol) (Hty: gen_typed gamma b x ty)
       (Hdec : gen_decrease fs ps small hd m vs b x) Hsmall1 Hsmall2 Hhd,
     gen_rep_aux vt pf1 v input rec1 b x ty small hd Hty Hdec Hsmall1 Hhd =
     gen_rep_aux vt pf2 v input rec2 b x ty small hd Hty Hdec Hsmall2 Hhd)
@@ -4658,7 +4618,7 @@ Theorem term_fmla_rep_change_pf (pf1 pf2: pi_funpred gamma_valid pd pdf)
   (small: R_projT1 _ (R_projT1 _ (arg_list_smaller vt)) y input),
   funcs_rep_aux vt pf1 y = funcs_rep_aux vt pf2 y)
   (v: val_vars pd vt) 
-  (ty: vty) (small: list vsymbol) (hd: option vsymbol)
+  (ty: vty) (small: aset vsymbol) (hd: option vsymbol)
   (Hty: term_has_type gamma t ty)
   (Hdec: decrease_fun fs ps small hd m vs t)
   Hsmall1 Hsmall2 Hhd,
@@ -4672,7 +4632,7 @@ Theorem term_fmla_rep_change_pf (pf1 pf2: pi_funpred gamma_valid pd pdf)
   (small: R_projT1 _ (R_projT1 _ (arg_list_smaller vt)) y input),
   funcs_rep_aux vt pf1 y = funcs_rep_aux vt pf2 y)
   (v: val_vars pd vt)
-  (small: list vsymbol) (hd: option vsymbol)
+  (small: aset vsymbol) (hd: option vsymbol)
   (Hval: formula_typed gamma f)
   (Hdec: decrease_pred fs ps small hd m vs f)
   Hsmall1 Hsmall2 Hhd,
@@ -4801,11 +4761,11 @@ Lemma get_arg_list_aux_change_val:
     Hargslen Hall Hdec,
   Forall (fun tm => forall v1 v2 ty small hd Hty Hdec Hsmall1 Hsmall2
     Hhd1 Hhd2,
-    (forall x : vsymbol, In x (tm_fv tm) -> v1 x = v2 x) ->
+    (forall x : vsymbol, aset_mem x (tm_fv tm) -> v1 x = v2 x) ->
     proj1_sig (@term_rep_aux vt pf in1 (fun x _ => funcs_rep_aux vt pf x) v1 tm ty small hd Hty Hdec Hsmall1 Hhd1) =
     proj1_sig (@term_rep_aux vt pf in2 (fun x _ => funcs_rep_aux vt pf x) v2 tm ty small hd Hty Hdec Hsmall2 Hhd2)
   ) ts ->
-  (forall x, In x (big_union vsymbol_eq_dec tm_fv ts) -> v1 x = v2 x) ->
+  (forall x, aset_mem x (aset_big_union tm_fv ts) -> v1 x = v2 x) ->
   proj1_sig (@get_arg_list_recfun vt pf v1 hd _ s vs small Hsmall1 Hhd1
     (term_rep_aux vt pf in1 (fun x _ => funcs_rep_aux vt pf x) v1) Hparamslen ts (s_args s) Hargslen Hall Hdec) =
     proj1_sig (@get_arg_list_recfun vt pf v2 hd _ s vs small Hsmall2 Hhd2
@@ -4834,15 +4794,15 @@ forall
  Hhd1 Hhd2 (ty: gen_type b) Hall Hpats Hinvar1 Hinvar2
   (Hpseq: Forall (fun (tm: (gen_term b)) =>
     forall (v1 v2: val_vars pd vt) (ty: gen_type b)
-    (small: list vsymbol) (hd: option vsymbol) (Hty: gen_typed gamma b tm ty)
+    (small: aset vsymbol) (hd: option vsymbol) (Hty: gen_typed gamma b tm ty)
     (Hdec : gen_decrease fs ps small hd m vs b tm) Hsmall1 Hsmall2 Hhd1 Hhd2
-    (Hv: forall x, In x (gen_fv tm) -> v1 x = v2 x),
+    (Hv: forall x, aset_mem x (gen_fv tm) -> v1 x = v2 x),
     gen_rep_aux vt pf v1 in1 (fun x _ => funcs_rep_aux vt pf x) b tm ty small hd Hty Hdec Hsmall1 Hhd1 =
     gen_rep_aux vt pf v2 in2 (fun x _ => funcs_rep_aux vt pf x) b tm ty small hd Hty Hdec Hsmall2 Hhd2)
   (map snd pats)),
-  (forall x, In x (big_union vsymbol_eq_dec
+  (forall x, aset_mem x (aset_big_union
   (fun x : pattern * (gen_term b) =>
-   remove_all vsymbol_eq_dec (pat_fv (fst x)) (gen_fv (snd x))) pats) ->
+   aset_diff (pat_fv (fst x)) (gen_fv (snd x))) pats) ->
    v1 x = v2 x) ->
   
   match_rep_aux vt pf in1 v1 hd small (term_rep_aux vt pf in1 (fun x _ => funcs_rep_aux vt pf x)) 
@@ -4862,20 +4822,20 @@ Proof.
   - intros.
     (*Prove both cases from [extend_val_with_list]*)
     assert (Hext: forall x : vsymbol,
-      In x (gen_fv tm) ->
-      extend_val_with_list pd vt v1 l x = extend_val_with_list pd vt v2 l x).
+      aset_mem x (gen_fv tm) ->
+      extend_val_with_list pd vt v1 a x = extend_val_with_list pd vt v2 a x).
     {
-      intros y Hiny. destruct (in_bool_spec vsymbol_eq_dec y (map fst l)).
+      intros y Hiny. destruct (aset_mem_dec y (keys a)).
       + apply extend_val_in_agree; auto.
-        apply (match_val_single_typs _ _ _ _ _ _ _ _ _ Hmatch).
+        * apply (match_val_single_typs _ _ _ _ _ _ _ _ _ Hmatch).
+        * rewrite amap_mem_keys; assumption.
       + (*Here notin, so equal*)
-        rewrite !extend_val_notin; auto.
+        rewrite !extend_val_notin; auto;
+        try solve[rewrite <- amap_mem_keys in n; destruct (amap_mem y a); auto; exfalso; auto].
         apply H.
         simpl. simpl_set. left.
-        split; auto.
-        rewrite (match_val_single_free_var gamma_valid) with(l:=l).
-        exact n.
-        apply Hmatch.
+        split; auto. simpl.
+        erewrite <- (match_val_single_fv) by eauto. assumption.
     }
     destruct b; apply (Forall_inv Hpseq); apply Hext.
   - intros. apply IH. apply (Forall_inv_tail Hpseq). intros; apply H; simpl; auto.
@@ -4893,8 +4853,8 @@ Theorem term_fmla_rep_change_val (pf: pi_funpred gamma_valid pd pdf)
 (t: term) (f: formula) :
 (forall 
   (v1 v2: val_vars pd vt)
-  (Hv: forall x, In x (tm_fv t) -> v1 x = v2 x)
-  (ty: vty) (small: list vsymbol) (hd: option vsymbol)
+  (Hv: forall x, aset_mem x (tm_fv t) -> v1 x = v2 x)
+  (ty: vty) (small: aset vsymbol) (hd: option vsymbol)
   (Hty: term_has_type gamma t ty)
   (Hdec: decrease_fun fs ps small hd m vs t)
   Hsmall1 Hsmall2 Hhd1 Hhd2,
@@ -4906,8 +4866,8 @@ Theorem term_fmla_rep_change_val (pf: pi_funpred gamma_valid pd pdf)
 ) /\
 (forall 
   (v1 v2: val_vars pd vt)
-  (Hv: forall x, In x (fmla_fv f) -> v1 x = v2 x)
-  (small: list vsymbol) (hd: option vsymbol)
+  (Hv: forall x, aset_mem x (fmla_fv f) -> v1 x = v2 x)
+  (small: aset vsymbol) (hd: option vsymbol)
   (Hval: formula_typed gamma f)
   (Hdec: decrease_pred fs ps small hd m vs f)
   Hsmall1 Hsmall2 Hhd1 Hhd2,
@@ -4921,7 +4881,7 @@ Proof.
   revert t f. apply term_formula_ind; intros.
   - simpl. destruct c; reflexivity.
   - simpl. unfold var_to_dom. f_equal. apply Hv.
-    simpl; auto.
+    simpl; auto. simpl_set; auto.
   - rewrite !term_rep_aux_fun. cbn zeta.
     destruct (find_fn f1 fs).
     + simpl. unfold cast_dom_vty.
@@ -5088,10 +5048,10 @@ Qed.
 (*Here, we need to know that all free vars are in args*)
 Variable fs_body_fv: forall f,
   In f fs ->
-  forall x, In x (tm_fv (fn_body f)) -> In x (sn_args f).
+  forall x, aset_mem x (tm_fv (fn_body f)) -> In x (sn_args f).
 Variable ps_body_fv: forall p,
   In p ps ->
-  forall x, In x (fmla_fv (pn_body p)) -> In x (sn_args p).
+  forall x, aset_mem x (fmla_fv (pn_body p)) -> In x (sn_args p).
 Variable fs_args_uniq: forall f,
   In f fs ->
   NoDup (sn_args f).
@@ -5166,12 +5126,12 @@ Qed.
 
 Theorem funcs_rep_aux_change_val (fa: combined_args) 
   (v1 v2: val_vars pd vt) Hsrts pf:
-  funcs_rep_aux vt pf (existT _ fa (v1, Hsrts)) =
-  funcs_rep_aux vt pf (existT _ fa (v2, Hsrts)).
+  funcs_rep_aux vt pf (existT fa (v1, Hsrts)) =
+  funcs_rep_aux vt pf (existT fa (v2, Hsrts)).
 Proof.
   rewrite funcs_rep_aux_change_val_aux with
-    (pa1:=(existT _ fa (v1, Hsrts)))
-    (pa2:= (existT _ fa (v2, Hsrts))) (Heq1:= eq_refl).
+    (pa1:=(existT fa (v1, Hsrts)))
+    (pa2:= (existT fa (v2, Hsrts))) (Heq1:= eq_refl).
   reflexivity.
 Qed.
 

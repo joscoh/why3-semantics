@@ -305,6 +305,17 @@ Qed.
 Definition aset_fold {B: Type} (f: A -> B -> B) (b: B) (s: aset) : B :=
   set_fold f b s.
 
+(*Induction principle to prove things about fold*)
+Lemma aset_fold_ind {B: Type} (P: B -> aset -> Prop) (f: A -> B -> B) (b: B)
+  (Hemp: P b aset_empty)
+  (Hind: forall (x: A) (s: aset) (b: B), ~ aset_mem x s -> P b s -> P (f x b) (aset_union (aset_singleton x) s)):
+  forall (s: aset), P (aset_fold f b s) s.
+Proof.
+  apply set_fold_ind; auto.
+  intros x. unfold Proper. intros s1 s2 Heq.
+  apply set_eq in Heq. subst. intros Hi. auto.
+Qed.
+
 (*Useful*)
 (* Definition subset (s1 s2: aset) : Prop :=
   s1 ⊆ s2.
@@ -399,6 +410,7 @@ End Aset.
 #[global]Arguments aset_fold {_} {_} {_} {_}.
 #[global]Arguments aset_eq_dec {_} {_} {_}.
 #[global]Arguments aset_forall {_} {_} {_}.
+#[global]Arguments aset_mem_empty {_} {_} {_}.
 
 
 

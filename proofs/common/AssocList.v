@@ -273,6 +273,18 @@ Proof.
     discriminate.
 Qed.
 
+Lemma amap_union_or m1 m2 x y: 
+  amap_lookup (amap_union (fun y _ => Some y) m1 m2) x = Some y ->
+  amap_lookup m1 x = Some y \/ amap_lookup m2 x = Some y.
+Proof.
+  (*Reason by cases*)
+  destruct (amap_lookup m1 x) as [y1|] eqn : Hget1;
+  destruct (amap_lookup m2 x) as [y2|] eqn : Hget2.
+  - rewrite (amap_union_inboth _ _ _ _ y1 y2); auto.
+  - erewrite (amap_union_inl); eauto.
+  - erewrite amap_union_inr; eauto.
+  - rewrite amap_union_notin; auto.
+Qed.
 
 
 (*[get_assoc_list_nodup] is always true now*)

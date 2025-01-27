@@ -87,7 +87,7 @@ Lemma funpred_defs_to_sns_typevars1 {l: list funpred_def}
   In f (fst (funpred_defs_to_sns l il)) ->
   forall ty : vty,
   In ty (f_ret (fn_sym f) :: s_args (fn_sym f)) ->
-  forall x : typevar, In x (type_vars ty) -> In x params).
+  forall x : typevar, aset_mem x (type_vars ty) -> In x params).
 Proof.
   intros Hlen. intros.
   apply valid_context_wf in gamma_valid.
@@ -117,8 +117,7 @@ Proof.
   rewrite Forall_forall in Hallin.
   specialize (Hallin _ H0).
   rewrite <- (Hparams _ Hin); auto.
-  simpl. destruct Hallin. rewrite Forall_forall in H3.
-  apply H3; auto.
+  simpl. destruct Hallin. auto.
 Qed.
 
 Lemma funpred_defs_to_sns_typevars2 {l: list funpred_def} 
@@ -132,7 +131,7 @@ Lemma funpred_defs_to_sns_typevars2 {l: list funpred_def}
   In p (snd (funpred_defs_to_sns l il)) ->
   forall ty : vty,
   In ty (s_args (pn_sym p)) ->
-  forall x : typevar, In x (type_vars ty) -> In x params).
+  forall x : typevar, aset_mem x (type_vars ty) -> In x params).
 Proof.
   intros Hlen. intros.
   apply valid_context_wf in gamma_valid.
@@ -162,8 +161,7 @@ Proof.
   rewrite Forall_forall in Hallin.
   specialize (Hallin _ H0).
   rewrite <- (Hparams _ Hin); auto.
-  simpl. destruct Hallin. rewrite Forall_forall in H3.
-  apply H3; auto.
+  simpl. destruct Hallin. auto.
 Qed.
 
 Lemma recdefs_not_constrs {l: list funpred_def} {il: list nat}
@@ -543,7 +541,7 @@ Proof.
 Qed.
 
 Lemma vt_with_args_cast vt params srts ty:
-  (forall x, In x (type_vars ty) -> In x params) ->
+  (forall x, aset_mem x (type_vars ty) -> In x params) ->
   NoDup params ->
   length srts = length params ->
   v_subst (vt_with_args vt params srts) ty =
@@ -595,7 +593,6 @@ Proof.
   specialize (Hwf _ f_in).
   unfold wf_funsym in Hwf.
   rewrite Forall_forall in Hwf.
-  rewrite <- Forall_forall. 
   apply Hwf; simpl; auto.
 Qed.
 
@@ -669,7 +666,7 @@ Lemma vt_with_args_in_eq (ty: vty) (vt1 vt2: val_typevar)
   params srts:
   length params = length srts ->
   NoDup params ->
-  (forall x, In x (type_vars ty) -> In x params) ->
+  (forall x, aset_mem x (type_vars ty) -> In x params) ->
   v_subst (vt_with_args vt1 params srts) ty =
   v_subst (vt_with_args vt2 params srts) ty.
 Proof.
@@ -755,13 +752,13 @@ Lemma pf_funs l
 (Hfdec: Forall
           (fun f : fn =>
            decrease_fun (fst (funpred_defs_to_sns l il))
-             (snd (funpred_defs_to_sns l il)) []
+             (snd (funpred_defs_to_sns l il)) aset_empty
              (Some (nth (sn_idx f) (sn_args f) vs_d)) m vs 
              (fn_body f)) (fst (funpred_defs_to_sns l il)))
 (Hpdec: Forall
           (fun p : pn =>
            decrease_pred (fst (funpred_defs_to_sns l il))
-             (snd (funpred_defs_to_sns l il)) []
+             (snd (funpred_defs_to_sns l il)) aset_empty
              (Some (nth (sn_idx p) (sn_args p) vs_d)) m vs 
              (pn_body p)) (snd (funpred_defs_to_sns l il))):
 forall (vv0 : val_vars pd (vt_with_args triv_val_typevar params srts))
@@ -908,10 +905,18 @@ Proof.
   (*Trivial goals*)
   + intros.
     apply in_fs_def in H; auto.
-    apply Hall in H. simpl in H. apply H. auto.
+    apply Hall in H. simpl in H.
+    rewrite <- aset_mem_list_to_aset.
+    destruct H as [_ [Hsub _]].
+    rewrite asubset_def in Hsub.
+    apply Hsub; auto.
   + intros.
     apply in_ps_def in H; auto.
-    apply Hall in H. apply H. auto.
+    apply Hall in H. simpl in H.
+    rewrite <- aset_mem_list_to_aset.
+    destruct H as [_ [Hsub _]].
+    rewrite asubset_def in Hsub.
+    apply Hsub; auto.
   + intros. apply in_fs_def in H; auto.
     apply Hall in H. simpl in H. destruct_all.
     apply (NoDup_map_inv _ _ H2).
@@ -978,13 +983,13 @@ Lemma pf_preds l
 (Hfdec: Forall
           (fun f : fn =>
            decrease_fun (fst (funpred_defs_to_sns l il))
-             (snd (funpred_defs_to_sns l il)) []
+             (snd (funpred_defs_to_sns l il)) aset_empty
              (Some (nth (sn_idx f) (sn_args f) vs_d)) m vs 
              (fn_body f)) (fst (funpred_defs_to_sns l il)))
 (Hpdec: Forall
           (fun p : pn =>
            decrease_pred (fst (funpred_defs_to_sns l il))
-             (snd (funpred_defs_to_sns l il)) []
+             (snd (funpred_defs_to_sns l il)) aset_empty
              (Some (nth (sn_idx p) (sn_args p) vs_d)) m vs 
              (pn_body p)) (snd (funpred_defs_to_sns l il))):
 forall (vv0 : val_vars pd (vt_with_args triv_val_typevar params srts))
@@ -1130,10 +1135,18 @@ Proof.
   (*Easy goals*)
   + intros.
     apply in_fs_def in H; auto.
-    apply Hall in H. simpl in H. apply H. auto.
+    apply Hall in H. simpl in H.
+    rewrite <- aset_mem_list_to_aset.
+    destruct H as [_ [Hsub _]].
+    rewrite asubset_def in Hsub.
+    apply Hsub; auto.
   + intros.
     apply in_ps_def in H; auto.
-    apply Hall in H. apply H. auto.
+    apply Hall in H; simpl in H.
+    rewrite <- aset_mem_list_to_aset.
+    destruct H as [_ [Hsub _]].
+    rewrite asubset_def in Hsub.
+    apply Hsub; auto.
   + intros. apply in_fs_def in H; auto.
     apply Hall in H. simpl in H. destruct_all.
     apply (NoDup_map_inv _ _ H2).
@@ -1335,13 +1348,23 @@ Proof.
     rewrite (term_rep_irrel) with(Hty2:=f_body_type l_in f_in).
     apply tm_change_vt.
     + intros x Hinx.
-      assert (In x (s_params (fn_sym f'))) by auto. 
+      assert (In x (s_params (fn_sym f'))).
+      {
+        rewrite asubset_def in Hsub2.
+        rewrite <- aset_mem_list_to_aset.
+        apply Hsub2. auto.
+      }
       destruct (In_nth _ _ EmptyString H) as [i [Hi Hx]]; subst.
       rewrite !vt_with_args_nth; auto; apply s_params_Nodup.
     + intros x Hinx Heq.
       (*Here, we prove that the valuations for all free vars
         are equal*)
-      assert (In x (sn_args f')) by auto.
+      assert (In x (sn_args f')).
+      {
+        rewrite asubset_def in Hsub1.
+        rewrite <- aset_mem_list_to_aset.
+        apply Hsub1. auto.
+      }
       destruct (In_nth _ _ vs_d H) as [i [ Hi Hx]]; subst.
       assert (Heq1: forall vt, nth i (sym_sigma_args (fn_sym f') srts) s_int =
       v_subst (vt_with_args vt (s_params (fn_sym f')) srts) (snd (nth i (sn_args f') vs_d))). {
@@ -1456,13 +1479,23 @@ Proof.
     rewrite (fmla_rep_irrel) with(Hval2:=p_body_type l_in p_in).
     apply fmla_change_vt.
     + intros x Hinx.
-      assert (In x (s_params (pn_sym p'))) by auto. 
+      assert (In x (s_params (pn_sym p'))).
+      {
+        rewrite asubset_def in Hsub2.
+        rewrite <- aset_mem_list_to_aset.
+        apply Hsub2. auto.
+      } 
       destruct (In_nth _ _ EmptyString H) as [i [Hi Hx]]; subst.
       rewrite !vt_with_args_nth; auto; apply s_params_Nodup.
     + intros x Hinx Heq.
       (*Here, we prove that the valuations for all free vars
         are equal*)
-      assert (In x (sn_args p')) by auto.
+      assert (In x (sn_args p')).
+      {
+        rewrite asubset_def in Hsub1.
+        rewrite <- aset_mem_list_to_aset.
+        apply Hsub1. auto.
+      }
       destruct (In_nth _ _ vs_d H) as [i [ Hi Hx]]; subst.
       assert (Heq1: forall vt, nth i (sym_sigma_args (pn_sym p') srts) s_int =
       v_subst (vt_with_args vt (s_params (pn_sym p')) srts) (snd (nth i (sn_args p') vs_d))). {

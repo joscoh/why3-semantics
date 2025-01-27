@@ -969,7 +969,7 @@ Lemma pat_constr_vars_subset (m: mut_adt) (vs: list vty) (p: pattern):
   aset_mem x (pat_constr_vars_inner m vs p).
 Proof.
   intros x. induction p.
-  - simpl; intros. exfalso; apply (aset_mem_empty _ x); auto. 
+  - simpl; intros. exfalso; apply (aset_mem_empty x); auto. 
   - (*constr case is super easy - they are equal*) 
     rewrite pat_constr_vars_inner_eq. auto.
   - auto.
