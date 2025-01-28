@@ -369,6 +369,47 @@ Proof.
   - rewrite andb_true, IH. clear IH. split; intros; auto. destruct_all; subst; auto.
 Qed.
 
+(*size and lengths*)
+Lemma asubset_size s1 s2:
+  asubset s1 s2 ->
+  aset_size s1 <= aset_size s2.
+Proof.
+  apply subseteq_size.
+Qed.
+
+Lemma list_to_aset_size l:
+  aset_size (list_to_aset l) <= length l.
+Proof.
+  unfold aset_size, list_to_aset.
+  induction l as [| h t IH].
+  - rewrite list_to_set_nil, size_empty. simpl. lia.
+  - simpl.
+    destruct (in_dec EqDecision0 h t).
+    + rewrite subseteq_union_1; [lia|].
+      set_unfold. intros x Hx; subst; auto. apply elem_of_list_In; auto.
+    + rewrite size_union.
+      * rewrite size_singleton. lia.
+      * set_unfold. intros x Hx; subst. rewrite elem_of_list_In. auto.
+Qed. 
+
+(*Need stronger*)
+Lemma list_to_aset_size_nodup l:
+  List.NoDup l ->
+  aset_size (list_to_aset l) = length l.
+Proof.
+  intros Hnodup. apply size_list_to_set, NoDup_ListNoDup. auto.
+Qed.
+
+(*If we have two subsets but the other is larger, they are equal*)
+Lemma asubset_size_eq s1 s2:
+  asubset s1 s2 ->
+  aset_size s2 <= aset_size s1 ->
+  s1 = s2.
+Proof.
+  intros Hsub Hsz. apply set_eq.
+  apply set_subseteq_size_equiv; auto.
+Qed.
+
 End FixA.
 
 (*Map over elts of set*)
@@ -422,6 +463,9 @@ Ltac simpl_set_goal_small :=
   (*union*)
   | H: aset_mem ?x (aset_union ?l1 ?l2) |- _ => rewrite aset_mem_union in H
   | |- context [ aset_mem ?x (aset_union ?l1 ?l2)] => rewrite aset_mem_union
+  (*big union nil*)
+  | H: aset_mem ?x (aset_big_union ?f nil) |- _ => rewrite aset_big_union_nil in H
+  | |- context [aset_big_union ?f nil] => rewrite aset_big_union_nil
   (*big union simpl*)
   | H: aset_mem ?x (aset_big_union ?f (?y :: ?l)) |- _ => rewrite aset_big_union_cons in H
   | |- context [aset_mem ?x (aset_big_union ?f (?y :: ?l))] => rewrite aset_big_union_cons

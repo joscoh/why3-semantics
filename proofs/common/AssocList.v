@@ -286,6 +286,65 @@ Proof.
   - rewrite amap_union_notin; auto.
 Qed.
 
+Lemma amap_union_empty_l f m:
+  amap_union f amap_empty m = m.
+Proof.
+  simpl_amap. apply map_eq.
+  intros i. rewrite lookup_union_with.
+  destruct (m !! i); reflexivity.
+Qed.
+
+Lemma amap_union_empty_r f m:
+  amap_union f m amap_empty = m.
+Proof.
+  simpl_amap. apply map_eq.
+  intros i. rewrite lookup_union_with.
+  destruct (m !! i); reflexivity.
+Qed.
+
+Lemma amap_not_empty_exists (m: amap):
+  amap_is_empty m = false <-> exists x y, amap_lookup m x = Some y.
+Proof.
+  simpl_amap. destruct (Nat.eqb_spec (size m) 0).
+  - split; try discriminate. apply map_size_empty_inv in e.
+    subst. intros; destruct_all. solve_amap.
+  - apply map_size_ne_0_lookup_1 in n. split; auto.
+Qed.
+
+Lemma keys_size m:
+  aset_size (keys m) = amap_size m.
+Proof.
+  unfold keys, aset_size.
+  unfold map_to_set.
+  rewrite size_list_to_set.
+  - rewrite fmap_length. apply map_to_list_length.
+  - apply NoDup_fmap_fst.
+    + intros x y1 y2. intros Hin1 Hin2. apply elem_of_map_to_list in Hin1, Hin2.
+      rewrite Hin2 in Hin1. inversion Hin1; subst; auto.
+    + apply NoDup_map_to_list.
+Qed. 
+
+Lemma same_elts_size (m1 m2: amap):
+  (forall x, amap_mem x m1 = amap_mem x m2) ->
+  amap_size m1 = amap_size m2.
+Proof.
+  (*Idea: reduce to sets*)
+  rewrite <- !keys_size.
+  intros Hmem.
+  assert (Heq: keys m1 = keys m2). {
+    apply aset_ext.
+    intros x. rewrite <- !amap_mem_keys. rewrite Hmem; reflexivity.
+  }
+  rewrite Heq.
+  reflexivity.
+Qed.
+
+Lemma amap_size_emp (m: amap):
+  amap_is_empty m <-> amap_size m = 0.
+Proof.
+  unfold amap_is_empty, amap_size.
+  apply Nat.eqb_eq.
+Qed.
 
 (*[get_assoc_list_nodup] is always true now*)
 (* Lemma amap_lookup_nodup
