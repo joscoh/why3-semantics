@@ -2505,34 +2505,6 @@ End FinalLemmas.
 (*Need to reason about the different parts of [iter_arg_list]; in particular,
   if a variable is set, it was set in some particular and unique single pattern match*)
 
-(*TODO: move to interp I think*)
-Lemma extend_val_with_list_union1 v m1 m2 x
-  (Hinx: aset_mem x (keys m1)):
-  extend_val_with_list pd vt v (amap_union (fun y _ => Some y) m1 m2) x = extend_val_with_list pd vt v m1 x.
-Proof.
-  unfold extend_val_with_list.
-  rewrite <- amap_mem_keys in Hinx.
-  unfold amap_mem in Hinx.
-  destruct (amap_lookup m1 x) as [y1|] eqn : Hget1; [|discriminate].
-  destruct (amap_lookup m2 x) as [y2|] eqn : Hget2.
-  - rewrite (amap_union_inboth _ _ _ _ _ _ y1 y2) by auto.
-    reflexivity.
-  - erewrite amap_union_inl; eauto.
-Qed.
-
-Lemma extend_val_with_list_union2 v m1 m2 x
-  (Hinx: ~ aset_mem x (keys m1)):
-  extend_val_with_list pd vt v (amap_union (fun y _ => Some y) m1 m2) x = extend_val_with_list pd vt v m2 x.
-Proof.
-  unfold extend_val_with_list.
-  rewrite <- amap_mem_keys in Hinx.
-  unfold amap_mem in Hinx. 
-  destruct (amap_lookup m1 x) as [y1|] eqn : Hget1; [exfalso; apply Hinx; auto|].
-  destruct (amap_lookup m2 x) as [y2|] eqn : Hget2.
-  - erewrite amap_union_inr; eauto.
-  - rewrite amap_union_notin; auto.
-Qed.
-
 Lemma iter_arg_list_single_match (v: val_vars pd vt) {tys a pats Hall l i x}
   (Hiter: @iter_arg_list gamma gamma_valid pd pdf vt tys a pats Hall = Some l)
   (Hlen: length pats = length tys) 

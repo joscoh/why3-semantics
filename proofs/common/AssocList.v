@@ -273,6 +273,13 @@ Proof.
     discriminate.
 Qed.
 
+Lemma amap_mem_keys_false (x: A) (m: amap):
+  amap_mem x m = false <-> ~ aset_mem x (keys m).
+Proof.
+  rewrite <- amap_mem_keys. destruct (amap_mem x m); split; auto; try discriminate;
+  intros; exfalso; auto.
+Qed.
+
 Lemma amap_union_or m1 m2 x y: 
   amap_lookup (amap_union (fun y _ => Some y) m1 m2) x = Some y ->
   amap_lookup m1 x = Some y \/ amap_lookup m2 x = Some y.
@@ -337,6 +344,37 @@ Proof.
   }
   rewrite Heq.
   reflexivity.
+Qed.
+
+(*Results about emptiness*)
+
+Lemma amap_not_empty_mem (m: amap):
+  amap_is_empty m = false <-> exists x, amap_mem x m.
+Proof.
+  setoid_rewrite amap_mem_spec.
+  rewrite amap_not_empty_exists.
+  split; intros [x Hin].
+  - destruct Hin as [y Hget]. exists x. rewrite Hget. auto.
+  - exists x. destruct (amap_lookup m x) as [y|] eqn : Hget; eauto. discriminate.
+Qed.
+
+Lemma amap_is_empty_lookup (m: amap):
+  amap_is_empty m <-> forall x, amap_lookup m x = None.
+Proof.
+  destruct (amap_is_empty m) eqn : Hemp; split; auto; try discriminate.
+  - intros _. intros x. destruct (amap_lookup m x) as [y|] eqn : Hget; auto.
+    assert (Hemp': amap_is_empty m = false) by (apply amap_not_empty_exists; eauto).
+    rewrite Hemp' in Hemp; auto. discriminate.
+  - rewrite amap_not_empty_exists in Hemp. destruct Hemp as [x [y Hlookup]].
+    intros Hnone. rewrite Hnone in Hlookup. discriminate.
+Qed.
+
+Lemma amap_is_empty_mem (m: amap):
+  amap_is_empty m <-> forall x, amap_mem x m = false.
+Proof.
+  setoid_rewrite amap_mem_spec.
+  rewrite amap_is_empty_lookup.
+  split; intros Hin x; specialize (Hin x); destruct (amap_lookup m x); auto; discriminate.
 Qed.
 
 Lemma amap_size_emp (m: amap):
@@ -406,7 +444,7 @@ Ltac unfold_amap :=
 Ltac simpl_amap := unfold_amap; simplify_map_eq.
 Ltac solve_amap := unfold_amap; simplify_map_eq; solve[auto].
 
-Lemma amap_map_lookup_some {A B C: Type} `{A_eq: EqDecision A} `{A_count: countable.Countable A}  
+Lemma amap_map_lookup_some {A B C: Type} `{A_count: countable.Countable A}  
   (f: B -> C) (m: amap A B) (x: A) (y: B):
   amap_lookup m x = Some y ->
   amap_lookup (amap_map f m) x = Some (f y).
@@ -414,13 +452,101 @@ Proof.
   intros. solve_amap.
 Qed.
 
-Lemma amap_map_lookup_none {A B C: Type} `{A_eq: EqDecision A} `{A_count: countable.Countable A} 
+Lemma amap_map_lookup_none {A B C: Type} `{A_count: countable.Countable A} 
   (f: B -> C) (m: amap A B) (x: A):
   amap_lookup m x = None ->
   amap_lookup (amap_map f m) x = None.
 Proof.
   intros; solve_amap.
 Qed.
+
+Section UnionSome.
+
+(*A specialized case that is useful for us for [extend_val_with_list]*)
+Lemma amap_union_lookup {A B: Type} `{A_count: countable.Countable A} (m1 m2: amap A B) (x: A):
+  amap_lookup (amap_union (fun y _ => Some y) m1 m2) x =
+  match amap_lookup m1 x with
+  | Some y => Some y
+  | _ => amap_lookup m2 x
+  end.
+Proof.
+  destruct (amap_lookup m1 x) as [y1|] eqn : Hget1;
+  destruct (amap_lookup m2 x) as [y2|] eqn : Hget2.
+  - erewrite amap_union_inboth; eauto.
+  - erewrite amap_union_inl; eauto.
+  - erewrite amap_union_inr; eauto.
+  - rewrite amap_union_notin; auto.
+Qed.
+
+(*And in this union case, the keys are equal*)
+Lemma amap_union_keys {A B: Type} `{A_count: countable.Countable A} (m1 m2: amap A B):
+  keys (amap_union (fun y _ => Some y) m1 m2) =
+  aset_union (keys m1) (keys m2).
+Proof.
+  apply aset_ext. intros x.
+  rewrite <- !amap_mem_keys, amap_mem_union_some by auto.
+  rewrite aset_mem_union.
+  rewrite <- !amap_mem_keys. unfold is_true.
+  rewrite orb_true_iff.
+  reflexivity.
+Qed.
+
+(*require disjointness*)
+Lemma amap_union_comm {A B: Type} `{A_count: countable.Countable A} (m1 m2: amap A B):
+  (forall x, ~ (aset_mem x (keys m1) /\ aset_mem x (keys m2))) ->
+  amap_union (fun y _ => Some y) m1 m2 = amap_union (fun y _ => Some y) m2 m1.
+Proof.
+  intros Hdisj.
+  apply amap_ext. intros x. rewrite !amap_union_lookup.
+  destruct (amap_lookup m1 x) as [y1|] eqn : Hget1;
+  destruct (amap_lookup m2 x) as [y2|] eqn : Hget2; auto.
+  exfalso. apply (Hdisj x). rewrite <- !amap_mem_keys.
+  unfold amap_mem. rewrite Hget1, Hget2. auto.
+Qed.
+
+Lemma option_bind_unioncomp {A B: Type} `{A_count: countable.Countable A} (o1 o2: option (amap A B)) (m: amap A B):
+  CommonOption.option_bind (CommonOption.option_bind o1 (fun x => CommonOption.option_bind o2 (fun y => 
+    Some (amap_union (fun y _ => Some y) x y)))) (fun x => Some (amap_union (fun y _ => Some y) m x)) =
+  CommonOption.option_bind (CommonOption.option_bind o1 (fun x => Some (amap_union (fun y _ => Some y) m x))) 
+    (fun y => CommonOption.option_bind o2 (fun x => Some (amap_union (fun y _ => Some y) y x))).
+Proof.
+  destruct o1 as [m1|]; destruct o2 as [m2|]; simpl; auto.
+  f_equal.
+  apply amap_ext.
+  intros x.
+  rewrite !amap_union_lookup.
+  destruct (amap_lookup m x); auto.
+Qed.
+
+Lemma amap_lookup_union_set {A B: Type} `{A_count: countable.Countable A} (m1 m2: amap A B) (x: A) (y: B):
+  amap_lookup (amap_union (fun z _ => Some z) (amap_set m1 x y) m2)  x= Some y.
+Proof.
+  rewrite amap_union_lookup.
+  rewrite amap_set_lookup_same. reflexivity.
+Qed.
+
+Lemma amap_lookup_union_set_diff {A B: Type} `{A_count: countable.Countable A} (m1 m2: amap A B) (x z: A) (y: B):
+  x <> z ->
+  amap_lookup (amap_union (fun z _ => Some z) (amap_set m1 x y) m2) z = amap_lookup (amap_union (fun z _ => Some z) m1 m2) z.
+Proof.
+  rewrite !amap_union_lookup. intros Hneq.
+  rewrite amap_set_lookup_diff by auto. reflexivity.
+Qed.
+
+Lemma amap_lookup_union_singleton {A B: Type} `{A_count: countable.Countable A} (m: amap A B) (x: A) (y: B):
+  amap_lookup (amap_union (fun z _ => Some z) (amap_singleton x y) m)  x= Some y.
+Proof. apply amap_lookup_union_set. Qed.
+
+Lemma amap_lookup_union_singleton_diff {A B: Type} `{A_count: countable.Countable A} (m: amap A B) (x z: A) (y: B):
+  x <> z ->
+  amap_lookup (amap_union (fun z _ => Some z) (amap_singleton x y) m)  z = amap_lookup m z.
+Proof.
+  intros Hxz. unfold amap_singleton. rewrite amap_lookup_union_set_diff by auto.
+  rewrite amap_union_empty_l. reflexivity.
+Qed.
+
+End UnionSome.
+
 
 (*NOTE: we DO need associat*)
 

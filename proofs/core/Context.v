@@ -151,6 +151,9 @@ Proof.
   reflexivity.
 Qed.
 
+Definition adts_of_context gamma:=
+  concat (map typs (mut_of_context gamma)).
+
 
 (*Now we need utilities for finding the ADT/mutual adt that a
   type belongs to*)

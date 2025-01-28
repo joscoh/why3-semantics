@@ -238,217 +238,7 @@ Qed.
 
 End NoDupDec.
 
-Section CombineLemmas.
-
-Lemma map_snd_combine {A B: Type} (l1: list A) (l2: list B) :
-  length l1 = length l2 ->
-  map snd (combine l1 l2) = l2.
-Proof.
-  revert l2. induction l1; destruct l2; simpl; intros; auto;
-  inversion H.
-  rewrite IHl1; auto.
-Qed.
-
-Lemma map_fst_combine {A B: Type} (l1: list A) (l2: list B) :
-  length l1 = length l2 ->
-  map fst (combine l1 l2) = l1.
-Proof.
-  revert l2. induction l1; destruct l2; simpl; intros; auto;
-  inversion H.
-  rewrite IHl1; auto.
-Qed.
-
-Lemma in_combine_rev: forall {A B: Type} (l1 : list A) (l2: list B) x y,
-  In (x, y) (combine l1 l2) -> In (y, x) (combine l2 l1).
-Proof.
-  intros A B l1 l2 x y. revert l2; induction l1; simpl; intros; auto;
-  destruct l2; auto.
-  simpl in H. destruct H. inversion H; subst. left; auto.
-  right. auto.
-Qed. 
-
-Lemma in_combine_iff {A B: Type} (l1: list A) (l2: list B) (x: A * B) :
-  length l1 = length l2 ->
-  In x (combine l1 l2) <->
-  exists i, i < length l1 /\
-  forall d1 d2,
-  x = (nth i l1 d1, nth i l2 d2).
-Proof.
-  revert l2. induction l1; simpl; intros; destruct l2; inversion H;
-  split; intros; auto; destruct H0; try lia; subst.
-  - exists 0; split; auto; lia.
-  - apply IHl1 in H0; auto.
-    destruct H0 as [i [Hi Hx]].
-    exists (S i); simpl. split; auto; try lia.
-  - rename x0 into i. destruct H0 as [Hi Hx].
-    simpl.
-    destruct i; simpl in Hx.
-    + left. rewrite Hx; auto.
-    + right. apply IHl1; auto. exists i; split; auto; lia.
-Qed.
-
-Lemma in_combine_same {A: Type} (l: list A):
-  forall (x: A * A), In x (combine l l) -> fst x = snd x.
-Proof.
-  intros. rewrite in_combine_iff in H; auto.
-  destruct H as [i [Hi Hx]].
-  destruct x; simpl.
-  specialize (Hx a a). inversion Hx; subst; auto.
-  apply nth_indep; auto.
-Qed. 
-
-Lemma combine_eq {A B: Type} (l: list (A * B)):
-  combine (map fst l) (map snd l) = l.
-Proof.
-  induction l; simpl; auto. destruct a; simpl; rewrite IHl; auto.
-Qed.
-
-(*Need this to avoid length arguments*)
-Lemma map_fst_combine_nodup {A B: Type} (l1: list A) (l2: list B):
-  NoDup l1 ->
-  NoDup (map fst (combine l1 l2)).
-Proof.
-  intros. revert l2. induction l1; simpl; intros; auto.
-  inversion H; subst. destruct l2; simpl; constructor.
-  - intro C. rewrite in_map_iff in C.
-    destruct C as [t [Ha Hint]]; subst.
-    destruct t.
-    apply in_combine_l in Hint. simpl in H2. contradiction.
-  - apply IHl1; auto.
-Qed.
-
-Lemma map_snd_combine_nodup {A B: Type} (l1: list A) (l2: list B):
-  NoDup l2 ->
-  NoDup (map snd (combine l1 l2)).
-Proof.
-  intros. generalize dependent l2. induction l1; simpl; intros; auto.
-  constructor. 
-  destruct l2; simpl; inversion H; subst; constructor.
-  - intro C. rewrite in_map_iff in C.
-    destruct C as [t [Ha Hint]]; subst.
-    destruct t.
-    apply in_combine_r in Hint. simpl in H2. contradiction.
-  - apply IHl1; auto.
-Qed.
-
-Lemma NoDup_combine_l {A B: Type} (l1: list A) (l2: list B):
-  NoDup l1 ->
-  NoDup (combine l1 l2).
-Proof.
-  revert l2. induction l1; simpl; intros. constructor.
-  destruct l2. constructor.
-  inversion H; subst.
-  constructor; auto.
-  intro Hin.
-  apply in_combine_l in Hin. contradiction.
-Qed.
-
-Lemma specialize_combine {A B: Type} {l1: list A} {l2: list B}
-  {P: A * B -> Prop} (d1: A) (d2: B)
-  (Hp: forall x, In x (combine l1 l2) -> P x)
-  (Hlen: length l1 = length l2):
-  forall i, (i < length l1) ->
-  P (List.nth i l1 d1, List.nth i l2 d2).
-Proof.
-  intros. apply Hp. rewrite in_combine_iff; auto.
-  exists i; split; auto. intros.
-  f_equal; apply nth_indep; auto. lia.
-Qed.
-
-Lemma combine_app {A B: Type} (l1 l2: list A) (l3 l4: list B):
-  length l1 = length l3 ->
-  combine (l1 ++ l2) (l3 ++ l4) = combine l1 l3 ++ combine l2 l4.
-Proof.
-  revert l3. induction l1 as [| h1 t1 IH]; simpl; intros [| h3 t3]; simpl; auto; try discriminate.
-  intros Hlen. f_equal. apply IH. lia.
-Qed.
-
-Lemma rev_combine {A B: Type} (l1 : list A) (l2: list B):
-  length l1 = length l2 ->
-  rev (combine l1 l2) = combine (rev l1) (rev l2).
-Proof.
-  revert l2. induction l1 as [|h1 t1 IH]; simpl; auto.
-  intros [| h2 t2] Hlen; simpl in *.
-  - rewrite combine_nil. reflexivity.
-  - rewrite combine_app.
-    + rewrite IH; auto.
-    + rewrite !rev_length; auto.
-Qed.
-
-Lemma in_combine_snd {A B: Type} (l1 : list A) (l2: list B) x:
-  In x (combine l1 l2) ->
-  In (snd x) l2.
-Proof.
-  destruct x as [x y]. apply in_combine_r.
-Qed.
-
-Lemma in_combine_fst {A B: Type} (l1 : list A) (l2: list B) x:
-  In x (combine l1 l2) ->
-  In (fst x) l1.
-Proof.
-  destruct x as [x y]. apply in_combine_l.
-Qed.
-
-Lemma existsb_map_fst_combine {A B: Type} (l: list A) (l2: list B) (f: A -> bool):
-  existsb f (map fst (combine l l2)) ->
-  existsb f l.
-Proof.
-  revert l2. induction l as [|h1 t1]; simpl; auto; intros [| h2 t2]; simpl; auto; [discriminate|].
-  unfold is_true; rewrite !orb_true_iff; intros; destruct_all; auto.
-  rewrite IHt1; eauto.
-Qed.
-
-End CombineLemmas.
-
-
-(*Flip: switch tuples in list*)
-Section Flip.
-
-Definition flip {A B: Type} (l: list (A * B)) : list (B * A) :=
-  map (fun x => (snd x, fst x)) l.
-
-Lemma map_fst_flip {A B: Type} (l: list (A * B)) :
-  map fst (flip l) = map snd l.
-Proof.
-  induction l; simpl; auto; rewrite IHl; auto.
-Qed.
-
-Lemma map_snd_flip {A B: Type} (l: list (A * B)) :
-  map snd (flip l) = map fst l.
-Proof.
-  induction l; simpl; auto; rewrite IHl; auto.
-Qed.
-
-Lemma in_flip_iff {A B: Type} (x: A) (y: B) (l: list (A * B)) :
-  In (y, x) (flip l) <-> In (x, y) l.
-Proof.
-  unfold flip. rewrite in_map_iff. split; intros;
-  destruct_all. inversion H; subst; auto. destruct x0; auto.
-  exists (x, y). split; auto.
-Qed.
-
-Lemma flip_flip {A B: Type} (l: list (A * B)):
-  flip (flip l) = l.
-Proof.
-  induction l; simpl; auto. rewrite IHl. f_equal.
-  destruct a; auto.
-Qed.
-
-Lemma flip_combine {A B: Type} (l1: list A) (l2: list B):
-  flip (combine l1 l2) = combine l2 l1.
-Proof.
-  revert l2. induction l1; simpl; intros; destruct l2; auto.
-  simpl.
-  rewrite IHl1; auto.
-Qed.
-
-Lemma flip_app {A B: Type} (l1 l2: list (A * B)) :
-  flip (l1 ++ l2) = flip l1 ++ flip l2.
-Proof.
-  unfold flip. rewrite map_app. auto.
-Qed.
-
-End Flip.
+(*Other NoDup*)
 
 Section NoDupLemmas.
 
@@ -625,27 +415,6 @@ Proof.
     + exfalso. apply H4. rewrite in_map_iff. exists (x1, y); auto.
 Qed.  
 
-Lemma combine_NoDup_r: forall {A B: Type} (l1: list A) (l2: list B) (x1 x2 : A) (y: B),
-  NoDup l2 ->
-  In (x1, y) (combine l1 l2) ->
-  In (x2, y) (combine l1 l2) ->
-  x1 = x2.
-Proof.
-  intros.
-  eapply nodup_snd_inj. 2: apply H0. all: auto.
-  apply map_snd_combine_nodup; auto.
-Qed.
-
-Lemma combine_NoDup_l: forall {A B: Type} (l1: list A) (l2: list B) x y1 y2,
-  NoDup l1 ->
-  In (x, y1) (combine l1 l2) ->
-  In (x, y2) (combine l1 l2) ->
-  y1 = y2.
-Proof.
-  intros. apply in_combine_rev in H0, H1.
-  apply (combine_NoDup_r _ _ _ _ _ H H0 H1).
-Qed.
-
 Lemma in_nth_concat_nodup {A: Type} {l: list (list A)} {i1 i2: nat}
   {x: A} {d: list A}:
   In x (nth i1 l d) ->
@@ -660,22 +429,6 @@ Proof.
   destruct (PeanoNat.Nat.eq_dec i1 i2); subst; auto.
   exfalso.
   apply (H4 i1 i2 d x H2 H3 n); auto.
-Qed.
-
-Lemma NoDup_firstn {A: Type} (l: list A) (n: nat) :
-  NoDup l ->
-  NoDup (firstn n l).
-Proof.
-  rewrite <- (firstn_skipn n) at 1.
-  rewrite NoDup_app_iff; intros; split_all; auto.
-Qed.
-
-Lemma NoDup_skipn {A: Type} (l: list A) (n: nat) :
-  NoDup l ->
-  NoDup (skipn n l).
-Proof.
-  rewrite <- (firstn_skipn n) at 1.
-  rewrite NoDup_app_iff; intros; split_all; auto.
 Qed.
 
 Lemma NoDup_map_in: forall {A B: Type} {f: A -> B} {l: list A} {x1 x2: A},
@@ -725,7 +478,254 @@ Proof.
   apply (Hdisj (f1 y1)). rewrite <- Hx2 at 2. rewrite !in_map_iff; split; eauto.
 Qed.
 
+Lemma NoDup_firstn {A: Type} (l: list A) (n: nat) :
+  NoDup l ->
+  NoDup (firstn n l).
+Proof.
+  rewrite <- (firstn_skipn n) at 1.
+  rewrite NoDup_app_iff; intros; split_all; auto.
+Qed.
+
+Lemma NoDup_skipn {A: Type} (l: list A) (n: nat) :
+  NoDup l ->
+  NoDup (skipn n l).
+Proof.
+  rewrite <- (firstn_skipn n) at 1.
+  rewrite NoDup_app_iff; intros; split_all; auto.
+Qed.
+
 End NoDupLemmas.
+
+Section CombineLemmas.
+
+Lemma map_fst_combine_eq {A B: Type} (l1: list A) (l2: list B):
+  map fst (combine l1 l2) = firstn (Nat.min (length l1) (length l2)) l1.
+Proof.
+  revert l2. induction l1 as [| h1 t1 IH]; simpl; auto; intros [| h2 t2]; auto.
+  simpl. f_equal. auto.
+Qed.
+
+Lemma map_snd_combine_eq {A B: Type} (l1: list A) (l2: list B):
+  map snd (combine l1 l2) = firstn (Nat.min (length l1) (length l2)) l2.
+Proof.
+  revert l2. induction l1 as [| h1 t1 IH]; simpl; auto; intros [| h2 t2]; auto.
+  simpl. f_equal. auto.
+Qed.
+
+Lemma map_fst_combine {A B: Type} (l1: list A) (l2: list B) :
+  length l1 = length l2 ->
+  map fst (combine l1 l2) = l1.
+Proof.
+  intros Hlen. rewrite map_fst_combine_eq, <- Hlen, Nat.min_id, firstn_all.
+  reflexivity.
+Qed.
+
+Lemma map_snd_combine {A B: Type} (l1: list A) (l2: list B) :
+  length l1 = length l2 ->
+  map snd (combine l1 l2) = l2.
+Proof.
+  intros Hlen. rewrite map_snd_combine_eq, Hlen, Nat.min_id, firstn_all.
+  reflexivity.
+Qed.
+
+Lemma in_combine_rev: forall {A B: Type} (l1 : list A) (l2: list B) x y,
+  In (x, y) (combine l1 l2) -> In (y, x) (combine l2 l1).
+Proof.
+  intros A B l1 l2 x y. revert l2; induction l1; simpl; intros; auto;
+  destruct l2; auto.
+  simpl in H. destruct H. inversion H; subst. left; auto.
+  right. auto.
+Qed. 
+
+Lemma in_combine_iff {A B: Type} (l1: list A) (l2: list B) (x: A * B) :
+  length l1 = length l2 ->
+  In x (combine l1 l2) <->
+  exists i, i < length l1 /\
+  forall d1 d2,
+  x = (nth i l1 d1, nth i l2 d2).
+Proof.
+  revert l2. induction l1; simpl; intros; destruct l2; inversion H;
+  split; intros; auto; destruct H0; try lia; subst.
+  - exists 0; split; auto; lia.
+  - apply IHl1 in H0; auto.
+    destruct H0 as [i [Hi Hx]].
+    exists (S i); simpl. split; auto; try lia.
+  - rename x0 into i. destruct H0 as [Hi Hx].
+    simpl.
+    destruct i; simpl in Hx.
+    + left. rewrite Hx; auto.
+    + right. apply IHl1; auto. exists i; split; auto; lia.
+Qed.
+
+Lemma in_combine_same {A: Type} (l: list A):
+  forall (x: A * A), In x (combine l l) -> fst x = snd x.
+Proof.
+  intros. rewrite in_combine_iff in H; auto.
+  destruct H as [i [Hi Hx]].
+  destruct x; simpl.
+  specialize (Hx a a). inversion Hx; subst; auto.
+  apply nth_indep; auto.
+Qed. 
+
+Lemma combine_eq {A B: Type} (l: list (A * B)):
+  combine (map fst l) (map snd l) = l.
+Proof.
+  induction l; simpl; auto. destruct a; simpl; rewrite IHl; auto.
+Qed.
+
+(*Need this to avoid length arguments*)
+Lemma map_fst_combine_nodup {A B: Type} (l1: list A) (l2: list B):
+  NoDup l1 ->
+  NoDup (map fst (combine l1 l2)).
+Proof.
+  intros Hn.
+  rewrite map_fst_combine_eq. apply NoDup_firstn; auto.
+Qed.
+
+Lemma map_snd_combine_nodup {A B: Type} (l1: list A) (l2: list B):
+  NoDup l2 ->
+  NoDup (map snd (combine l1 l2)).
+Proof.
+  intros Hn.
+  rewrite map_snd_combine_eq. apply NoDup_firstn; auto.
+Qed.
+
+Lemma NoDup_combine_l {A B: Type} (l1: list A) (l2: list B):
+  NoDup l1 ->
+  NoDup (combine l1 l2).
+Proof.
+  intros Hn.
+  apply (NoDup_map_inv fst), map_fst_combine_nodup; assumption.
+Qed.
+
+Lemma specialize_combine {A B: Type} {l1: list A} {l2: list B}
+  {P: A * B -> Prop} (d1: A) (d2: B)
+  (Hp: forall x, In x (combine l1 l2) -> P x)
+  (Hlen: length l1 = length l2):
+  forall i, (i < length l1) ->
+  P (List.nth i l1 d1, List.nth i l2 d2).
+Proof.
+  intros. apply Hp. rewrite in_combine_iff; auto.
+  exists i; split; auto. intros.
+  f_equal; apply nth_indep; auto. lia.
+Qed.
+
+Lemma combine_app {A B: Type} (l1 l2: list A) (l3 l4: list B):
+  length l1 = length l3 ->
+  combine (l1 ++ l2) (l3 ++ l4) = combine l1 l3 ++ combine l2 l4.
+Proof.
+  revert l3. induction l1 as [| h1 t1 IH]; simpl; intros [| h3 t3]; simpl; auto; try discriminate.
+  intros Hlen. f_equal. apply IH. lia.
+Qed.
+
+Lemma rev_combine {A B: Type} (l1 : list A) (l2: list B):
+  length l1 = length l2 ->
+  rev (combine l1 l2) = combine (rev l1) (rev l2).
+Proof.
+  revert l2. induction l1 as [|h1 t1 IH]; simpl; auto.
+  intros [| h2 t2] Hlen; simpl in *.
+  - rewrite combine_nil. reflexivity.
+  - rewrite combine_app.
+    + rewrite IH; auto.
+    + rewrite !rev_length; auto.
+Qed.
+
+Lemma in_combine_snd {A B: Type} (l1 : list A) (l2: list B) x:
+  In x (combine l1 l2) ->
+  In (snd x) l2.
+Proof.
+  destruct x as [x y]. apply in_combine_r.
+Qed.
+
+Lemma in_combine_fst {A B: Type} (l1 : list A) (l2: list B) x:
+  In x (combine l1 l2) ->
+  In (fst x) l1.
+Proof.
+  destruct x as [x y]. apply in_combine_l.
+Qed.
+
+Lemma existsb_map_fst_combine {A B: Type} (l: list A) (l2: list B) (f: A -> bool):
+  existsb f (map fst (combine l l2)) ->
+  existsb f l.
+Proof.
+  revert l2. induction l as [|h1 t1]; simpl; auto; intros [| h2 t2]; simpl; auto; [discriminate|].
+  unfold is_true; rewrite !orb_true_iff; intros; destruct_all; auto.
+  rewrite IHt1; eauto.
+Qed.
+
+Lemma combine_NoDup_r: forall {A B: Type} (l1: list A) (l2: list B) (x1 x2 : A) (y: B),
+  NoDup l2 ->
+  In (x1, y) (combine l1 l2) ->
+  In (x2, y) (combine l1 l2) ->
+  x1 = x2.
+Proof.
+  intros.
+  eapply nodup_snd_inj. 2: apply H0. all: auto.
+  apply map_snd_combine_nodup; auto.
+Qed.
+
+Lemma combine_NoDup_l: forall {A B: Type} (l1: list A) (l2: list B) x y1 y2,
+  NoDup l1 ->
+  In (x, y1) (combine l1 l2) ->
+  In (x, y2) (combine l1 l2) ->
+  y1 = y2.
+Proof.
+  intros. apply in_combine_rev in H0, H1.
+  apply (combine_NoDup_r _ _ _ _ _ H H0 H1).
+Qed.
+
+End CombineLemmas.
+
+
+(*Flip: switch tuples in list*)
+Section Flip.
+
+Definition flip {A B: Type} (l: list (A * B)) : list (B * A) :=
+  map (fun x => (snd x, fst x)) l.
+
+Lemma map_fst_flip {A B: Type} (l: list (A * B)) :
+  map fst (flip l) = map snd l.
+Proof.
+  induction l; simpl; auto; rewrite IHl; auto.
+Qed.
+
+Lemma map_snd_flip {A B: Type} (l: list (A * B)) :
+  map snd (flip l) = map fst l.
+Proof.
+  induction l; simpl; auto; rewrite IHl; auto.
+Qed.
+
+Lemma in_flip_iff {A B: Type} (x: A) (y: B) (l: list (A * B)) :
+  In (y, x) (flip l) <-> In (x, y) l.
+Proof.
+  unfold flip. rewrite in_map_iff. split; intros;
+  destruct_all. inversion H; subst; auto. destruct x0; auto.
+  exists (x, y). split; auto.
+Qed.
+
+Lemma flip_flip {A B: Type} (l: list (A * B)):
+  flip (flip l) = l.
+Proof.
+  induction l; simpl; auto. rewrite IHl. f_equal.
+  destruct a; auto.
+Qed.
+
+Lemma flip_combine {A B: Type} (l1: list A) (l2: list B):
+  flip (combine l1 l2) = combine l2 l1.
+Proof.
+  revert l2. induction l1; simpl; intros; destruct l2; auto.
+  simpl.
+  rewrite IHl1; auto.
+Qed.
+
+Lemma flip_app {A B: Type} (l1 l2: list (A * B)) :
+  flip (l1 ++ l2) = flip l1 ++ flip l2.
+Proof.
+  unfold flip. rewrite map_app. auto.
+Qed.
+
+End Flip.
+
 
 Section InBool.
 
@@ -895,6 +895,14 @@ Lemma existsb_map {A B: Type} (f: A -> B) (g: B -> bool) (l: list A):
   existsb g (map f l) = existsb (fun x => g (f x)) l.
 Proof.
   induction l; simpl; auto; rewrite IHl; auto.
+Qed.
+
+Lemma forallb_firstn {A: Type} (p: A -> bool) (n: nat) (l: list A):
+  forallb p l ->
+  forallb p (firstn n l).
+Proof.
+  revert n. induction l as [| h t IH]; simpl; intros [| n']; simpl; auto.
+  destruct (p h); simpl; auto.
 Qed.
 
 End Forallb.
@@ -1551,14 +1559,6 @@ Proof.
 Qed.
 
 End Disj.
-
-Lemma disj_map_inv {B C: Type} (f: B -> C) (l1 l2: list B):
-  disj (map f l1) (map f l2) ->
-  disj l1 l2.
-Proof.
-  unfold disj. intros Hdisj x [Hinx1 Hinx2].
-  apply (Hdisj (f x)); rewrite !in_map_iff; split; exists x; auto.
-Qed.
 
 (*Another notion - disjointness of mapped lists*)
 Section DisjMap.

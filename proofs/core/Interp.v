@@ -219,7 +219,6 @@ Proof.
 Qed.
   
 Lemma extend_val_lookup (v: val_vars pd vt) l x t:
-  (* NoDup (map fst l) -> *)
   amap_lookup l x = Some t ->
   extend_val_with_list vt v l x =
     match (sort_eq_dec (val vt (snd x)) (projT1 t))  with
@@ -231,64 +230,30 @@ Lemma extend_val_lookup (v: val_vars pd vt) l x t:
 Proof.
   intros. unfold extend_val_with_list. rewrite H; auto.
 Qed.
-(*   destruct (get_assoc_list vsymbol_eq_dec l x) eqn : ha.
-  - apply get_assoc_list_some in ha.
-    assert (t = s). apply (nodup_fst_inj H H0 ha). subst.
-    reflexivity.
-  - apply get_assoc_list_none in ha.
-    exfalso. apply ha. rewrite in_map_iff. exists (x, t). auto.
-Qed. *)
 
-(*NOTE: union fn doesnt really matter but consistent with before to choose first*)
-Lemma extend_val_app v l1 l2 x:
-  extend_val_with_list vt v (amap_union (fun x _ => Some x) l1 l2) x =
-  if amap_mem x l1 then
-    extend_val_with_list vt v l1 x
-  else extend_val_with_list vt v l2 x.
+Lemma extend_val_with_list_union1 v m1 m2 x
+  (Hinx: aset_mem x (keys m1)):
+  extend_val_with_list vt v (amap_union (fun y _ => Some y) m1 m2) x = extend_val_with_list vt v m1 x.
 Proof.
   unfold extend_val_with_list.
-  rewrite amap_mem_spec.
-  destruct (amap_lookup l1 x) as [y1|] eqn : Hget;
-  destruct (amap_lookup l2 x) as [y2|] eqn : Hget2.
-  - erewrite amap_union_inboth; eauto.
-  - erewrite amap_union_inl; eauto.
-  - erewrite amap_union_inr; eauto.
-  - erewrite amap_union_notin; eauto.
+  rewrite <- amap_mem_keys in Hinx.
+  unfold amap_mem in Hinx.
+  rewrite amap_union_lookup.
+  destruct (amap_lookup m1 x) as [y1|] eqn : Hget1; [|discriminate].
+  reflexivity.
 Qed.
 
-(* Lemma extend_val_perm v l1 l2 x:
-  NoDup (map fst l1) ->
-  Permutation l1 l2 ->
-  extend_val_with_list vt v l1 x = extend_val_with_list vt v l2 x.
+Lemma extend_val_with_list_union2 v m1 m2 x
+  (Hinx: ~ aset_mem x (keys m1)):
+  extend_val_with_list vt v (amap_union (fun y _ => Some y) m1 m2) x = extend_val_with_list vt v m2 x.
 Proof.
-  intros Hn Hp.
-  destruct (in_dec vsymbol_eq_dec x (map fst l1)) as [Hin | Hnotin].
-  - rewrite in_map_iff in Hin. destruct Hin as [[x1 d1] [Hx Hinx1]]; simpl in *; subst.
-    rewrite !extend_val_lookup with (t:=d1); auto.
-    + eapply Permutation_NoDup. apply Permutation_map. apply Hp. auto.
-    + eapply Permutation_in. apply Hp. auto.
-  - rewrite !extend_val_notin; auto.
-    erewrite perm_in_iff. apply Hnotin. apply Permutation_sym, Permutation_map; auto.
+  unfold extend_val_with_list.
+  rewrite <- amap_mem_keys in Hinx.
+  rewrite amap_union_lookup.
+  unfold amap_mem in Hinx. 
+  destruct (amap_lookup m1 x) as [y1|] eqn : Hget1; [exfalso; apply Hinx; auto|].
+  reflexivity.
 Qed.
-
-(*The exact one we need (in PatternProofs.v)*)
-Lemma extend_val_app_perm v m1 m2 m3 x:
-NoDup (map fst m1) ->
-Permutation m1 m2 ->
-extend_val_with_list vt v (m1 ++ m3) x =
-extend_val_with_list vt v (m2 ++ m3) x.
-Proof.
-  intros Hn Hperm.
-  rewrite !extend_val_app.
-  assert (Hiff: In x (map fst m1) <-> In x (map fst m2)). {
-    apply perm_in_iff, Permutation_map; auto.
-  }
-  destruct (in_dec vsymbol_eq_dec x (map fst m1)) as [Hin1 | Hnotin1];
-  destruct (in_dec vsymbol_eq_dec x (map fst m2)) as [Hin2 | Hnotin2]; auto.
-  - apply extend_val_perm; auto.
-  - apply Hiff in Hin1; contradiction.
-  - apply Hiff in Hin2; contradiction.
-Qed.  *)
   
 End ExtendVal.
 

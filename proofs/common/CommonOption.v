@@ -63,15 +63,6 @@ Lemma option_bind_some {A B: Type} (f: A -> option B) (o: option A) y:
 Proof. destruct o; simpl; [|discriminate]. intros Ha. exists a. auto.
 Qed.
 
-(*Technically works for anything associative, can change*)
-Lemma option_bind_appcomp {A: Type} (o1 o2: option (list A)) (m: list A):
-  option_bind (option_bind o1 (fun x => option_bind o2 (fun y => Some (x ++ y)))) (fun x => Some (m ++ x)) =
-  option_bind (option_bind o1 (fun x => Some (m ++ x))) (fun y => option_bind o2 (fun x => Some (y ++ x))).
-Proof.
-  destruct o1; destruct o2; simpl; auto.
-  rewrite app_assoc. reflexivity.
-Qed.
-
 Definition isSome {B: Type} (o: option B) : bool :=
   match o with | Some _ => true | _ => false end.
 
@@ -180,6 +171,12 @@ Lemma in_omap_iff {A B: Type} (f: A -> option B) (l: list A) (y: B):
 Proof.
   split. apply omap_in.
   intros [z [Hiny Hfy]]. apply (in_omap _ _ _ _ Hiny Hfy).
+Qed.
+
+Lemma omap_some_map {A B: Type} (f: A -> B) (l: list A):
+  omap (fun x => Some (f x)) l = map f l.
+Proof.
+  induction l as [| h t IH]; simpl; auto.
 Qed.
 
 End OMap.

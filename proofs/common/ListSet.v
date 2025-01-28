@@ -40,6 +40,14 @@ Proof. reflexivity. Qed.
 
 Definition aset_singleton (x: A) : aset := singleton x.
 
+(*Extensionality is useful*)
+Lemma aset_ext (s1 s2: aset):
+  (forall x, aset_mem x s1 <-> aset_mem x s2) ->
+  s1 = s2.
+Proof.
+  unfold aset_mem. set_unfold.
+Qed.
+
 (*Lemmas about [aset_empty]*)
 
 Lemma aset_empty_is_empty: 
@@ -119,7 +127,6 @@ Qed.
 (*subset*)
 Definition asubset (s1 s2: aset) : Prop := s1 ⊆ s2.
 
-(*TODO: we will need*)
 Lemma asubset_def s1 s2: asubset s1 s2 <->  forall x, aset_mem x s1 -> aset_mem x s2.
 Proof.
   reflexivity.
@@ -162,17 +169,6 @@ Proof.
   apply elem_of_elements.
 Qed.
 
-(*Need equiv for NoDup*)
-(* Lemma NoDup_equiv {C: Type} (l: list C):
-  NoDup l <-> List.NoDup l.
-Proof.
-  induction l as [| h t IH].
-  - split; constructor.
-  - split; intros Hn; inversion Hn; subst; constructor; try solve[apply IH; auto].
-    + rewrite <- in_equiv; auto.
-    + unfold elem_of. rewrite in_equiv; auto.
-Qed.
- *)
 Lemma aset_to_list_nodup (a: aset) : List.NoDup (aset_to_list a).
 Proof. apply NoDup_ListNoDup, NoDup_elements. Qed.
 
@@ -206,6 +202,21 @@ Proof.
   set_unfold. reflexivity.
 Qed.
 
+Lemma aset_big_union_rev {B: Type} (f: B -> aset) (l: list B):
+  aset_big_union f (rev l) = aset_big_union f l.
+Proof.
+  apply aset_ext.
+  intros x. rewrite !aset_mem_big_union. setoid_rewrite <- (List.in_rev l). reflexivity.
+Qed.
+
+Lemma aset_big_union_repeat {B: Type} (f: B -> aset) (x: B) n y:
+  aset_mem y (aset_big_union f (repeat x n)) -> aset_mem y (f x).
+Proof.
+  rewrite aset_mem_big_union.
+  intros [z [Hinz Hiny]].
+  apply repeat_spec in Hinz. subst; auto.
+Qed.
+
 (*Union is idempotent*)
 Lemma aset_union_refl (s: aset) : aset_union s s = s.
 Proof.
@@ -230,13 +241,7 @@ Proof.
   auto.
 Qed.
 
-(*Extensionality is useful*)
-Lemma aset_ext (s1 s2: aset):
-  (forall x, aset_mem x s1 <-> aset_mem x s2) ->
-  s1 = s2.
-Proof.
-  unfold aset_mem. set_unfold.
-Qed.
+
 
 (*An induction principle for sets*)
 Lemma aset_ind (P: aset -> Prop):
@@ -316,18 +321,6 @@ Proof.
   apply set_eq in Heq. subst. intros Hi. auto.
 Qed.
 
-(*Useful*)
-(* Definition subset (s1 s2: aset) : Prop :=
-  s1 ⊆ s2.
-
-Lemma subset_equiv (s1 s2: aset) :
-  subset s1 s2 <-> forall x, aset_mem x s1 -> aset_mem x s2.
-Proof.
-  unfold subset, aset_mem. set_unfold. reflexivity.
-Qed.
-
-Definition subset_dec (s1 s2: aset) : {subset s1 s2} + {~ subset s1 s2} := gset_subseteq_dec s1 s2. *)
-  
 (*Decidable equality*)
 Definition aset_eq_dec (s1 s2: aset) : {s1 = s2} + {s1 <> s2} := gset_eq_dec s1 s2.
 
@@ -408,6 +401,25 @@ Lemma asubset_size_eq s1 s2:
 Proof.
   intros Hsub Hsz. apply set_eq.
   apply set_subseteq_size_equiv; auto.
+Qed.
+
+(*[aset_disj] and [asubset]*)
+
+(*TODO:  might not need list ones)*)
+Lemma aset_disj_subset_lr{l1 l2 l3 l4: aset}:
+  aset_disj l2 l4 ->
+  asubset l1 l2 ->
+  asubset l3 l4 ->
+  aset_disj l1 l3.
+Proof.
+  rewrite !asubset_def, !aset_disj_equiv; intros Hd Hin1 Hin2 x [Hinx1 Hinx2].
+  apply (Hd x); split; auto.
+Qed.
+
+Lemma aset_union_empty_l (s: aset):
+  aset_union aset_empty s = s.
+Proof.
+  apply set_eq, union_empty_l.
 Qed.
 
 End FixA.
@@ -523,6 +535,13 @@ Ltac simpl_set :=
   | H: ~ aset_mem ?x (aset_remove ?y ?l) |- _ => revert H; simpl_set_goal; intros
   end.
 
+Ltac asubset_apply H1 H2 :=
+  let H := fresh in
+  (pose proof H1 as H);
+  setoid_rewrite asubset_def in H;
+  apply H in H2;
+  clear H.
+
 (*For legacy reasons, keep same lemmas*)
 (*Dealing with maps and unions/big unions*)
 
@@ -574,6 +593,8 @@ Proof.
   apply Hnot. exists x1; auto.
 Qed.
 
+(*Disj results*)
+
 (*TODO: maybe replace other*)
 Definition disj_map' {A B: Type} `{B_count: countable.Countable B} (f: A -> aset B) (l: list A) : Prop :=
   forall i j (d: A) (x: B),
@@ -603,6 +624,75 @@ Proof.
   rewrite disj_map_cons_iff. 
   intros Hd; apply Hd.
 Qed.
+
+Lemma aset_disj_map_inv {B C: Type} `{countable.Countable B} `{countable.Countable C} (f: B -> C) (s1 s2: aset B):
+  aset_disj (aset_map f s1) (aset_map f s2) ->
+  aset_disj s1 s2.
+Proof.
+  rewrite !aset_disj_equiv. intros Hdisj x [Hinx1 Hinx2].
+  apply (Hdisj (f x)); rewrite !aset_mem_map; split; exists x; auto.
+Qed.
+
+(*Results about [asubset] - TODO: remove corresponding list lemmas*)
+
+Lemma asubset_map {A B: Type} `{countable.Countable A} `{countable.Countable B} (f: A -> B) (a1 a2: aset A):
+  asubset a1 a2 ->
+  asubset (aset_map f a1) (aset_map f a2).
+Proof.
+  rewrite !asubset_def. setoid_rewrite aset_mem_map. intros Hsub x [y [Hy Hinx]].
+  subst. exists y; auto.
+Qed.
+
+Lemma asubset_refl {A} `{countable.Countable A} (s: aset A): asubset s s.
+Proof.
+  rewrite asubset_def. auto.
+Qed.
+Lemma asubset_trans {A} `{countable.Countable A} (s1 s2 s3: aset A):
+  asubset s1 s2 ->
+  asubset s2 s3 ->
+  asubset s1 s3.
+Proof.
+  rewrite !asubset_def. auto.
+Qed.
+Lemma union_asubset_r {A} `{countable.Countable A} (s1 s2: aset A):
+  asubset s2 (aset_union s1 s2).
+Proof.
+  rewrite asubset_def. 
+  intros x. simpl_set. intros; auto.
+Qed.
+Lemma union_asubset_l {A} `{countable.Countable A} (s1 s2: aset A):
+  asubset s1 (aset_union s1 s2).
+Proof.
+  rewrite asubset_def. 
+  intros x. simpl_set. intros; auto.
+Qed.
+Lemma asubset_union {A} `{countable.Countable A}
+  (s1 s2 s3 s4: aset A):
+  asubset s1 s2 ->
+  asubset s3 s4 ->
+  asubset (aset_union s1 s3) (aset_union s2 s4).
+Proof.
+  rewrite !asubset_def. intros. simpl_set.
+  destruct_all; auto.
+Qed.
+
+(*NOTE: of course, these sets are the same but this is useful to not have to give
+  the other set*)
+Lemma asubset_iff_l {A} `{countable.Countable A} (s1 s2 s3: aset A):
+  (forall x, aset_mem x s1 <-> aset_mem x s2) ->
+  asubset s1 s3 ->
+  asubset s2 s3.
+Proof.
+  rewrite !asubset_def.
+  intros Heq Hsub. intros x Hinx.
+  rewrite <- Heq in Hinx.
+  apply Hsub; auto.
+Qed.
+
+
+
+
+
 
 
 (* 

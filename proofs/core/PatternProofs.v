@@ -244,49 +244,6 @@ Proof.
   reflexivity.
 Qed.
 
-(*TODO: move*)
-(*A specialized case that is useful for us (TODO: should use more)*)
-Lemma amap_union_lookup {A B: Type} `{A_count: countable.Countable A} (m1 m2: amap A B) (x: A):
-  amap_lookup (amap_union (fun y _ => Some y) m1 m2) x =
-  match amap_lookup m1 x with
-  | Some y => Some y
-  | _ => amap_lookup m2 x
-  end.
-Proof.
-  destruct (amap_lookup m1 x) as [y1|] eqn : Hget1;
-  destruct (amap_lookup m2 x) as [y2|] eqn : Hget2.
-  - erewrite amap_union_inboth; eauto.
-  - erewrite amap_union_inl; eauto.
-  - erewrite amap_union_inr; eauto.
-  - rewrite amap_union_notin; auto.
-Qed.
-
-(*And in this union case, the keys are equal*)
-Lemma amap_union_keys {A B: Type} `{A_count: countable.Countable A} (m1 m2: amap A B):
-  keys (amap_union (fun y _ => Some y) m1 m2) =
-  aset_union (keys m1) (keys m2).
-Proof.
-  apply aset_ext. intros x.
-  rewrite <- !amap_mem_keys, amap_mem_union_some by auto.
-  rewrite aset_mem_union.
-  rewrite <- !amap_mem_keys. unfold is_true.
-  rewrite orb_true_iff.
-  reflexivity.
-Qed.
-(*TODO: move*)
-(*require disjointness*)
-Lemma amap_union_comm {A B: Type} `{A_count: countable.Countable A} (m1 m2: amap A B):
-  (forall x, ~ (aset_mem x (keys m1) /\ aset_mem x (keys m2))) ->
-  amap_union (fun y _ => Some y) m1 m2 = amap_union (fun y _ => Some y) m2 m1.
-Proof.
-  intros Hdisj.
-  apply amap_ext. intros x. rewrite !amap_union_lookup.
-  destruct (amap_lookup m1 x) as [y1|] eqn : Hget1;
-  destruct (amap_lookup m2 x) as [y2|] eqn : Hget2; auto.
-  exfalso. apply (Hdisj x). rewrite <- !amap_mem_keys.
-  unfold amap_mem. rewrite Hget1, Hget2. auto.
-Qed.
-
 (*NOTE: do NOT need disjoint here, can prove equality*)
 Lemma matches_row_vars {tys al ps Hty l}:
   matches_row tys al ps Hty = Some l ->
@@ -469,23 +426,6 @@ Therefore, we need 4 intermediate lemmas:
 (4) if [[t]] = c(al), then [match_val_single c'(ps), [[t]]] = None
 (5) proving that matching a row of all wildcards gives Some []*)
 
-
-
-(*TODO: move*)
-Lemma option_bind_unioncomp {A B: Type} `{A_count: countable.Countable A} (o1 o2: option (amap A B)) (m: amap A B):
-  option_bind (option_bind o1 (fun x => option_bind o2 (fun y => 
-    Some (amap_union (fun y _ => Some y) x y)))) (fun x => Some (amap_union (fun y _ => Some y) m x)) =
-  option_bind (option_bind o1 (fun x => Some (amap_union (fun y _ => Some y) m x))) 
-    (fun y => option_bind o2 (fun x => Some (amap_union (fun y _ => Some y) y x))).
-Proof.
-  destruct o1 as [m1|]; destruct o2 as [m2|]; simpl; auto.
-  f_equal.
-  apply amap_ext.
-  intros x.
-  rewrite !amap_union_lookup.
-  destruct (amap_lookup m x); auto.
-Qed.
-
 (*1. Decompose [match_row] for [app]*)
 
 Lemma matches_row_app (tys1 tys2: list vty) 
@@ -589,8 +529,7 @@ Proof.
   assert (f_in1 = c_in) by (apply bool_irrelevance). subst.
   apply constr_rep_inj in Hconstr; auto; [|apply (gamma_all_unif gamma_valid); auto].
   subst. clear Heq1. simpl.
-  (*Now it is simple: prove that [matches_row] and [iter_arg_list] are equal
-    (TODO: do we really need both? Prob not) *)
+  (*Now it is simple: prove that [matches_row] and [iter_arg_list] are equal*)
   match goal with | |- context [cast_arg_list ?Heq ?x] => generalize dependent Heq end.
   (*Why we needed to state the lemma with this exact type/cast for the matches_row: we need
     these two equality proofs to be equal - we CANNOT have casting
@@ -656,11 +595,9 @@ Proof.
   subst. apply constr_rep_disjoint in Hconstr; auto. contradiction.
 Qed.
 
-(*3. We can reverse the lists in [match_row]; the result is a permutation*)
+(*3. We can reverse the lists in [match_row]; the result is equal*)
 
-(*The relationship is annoying: they are permutations*)
-(*NOTE: advantage of maps: now equality, not permutation! (TODO remove this comment)*)
-(*TODO: NOTE: we CANNOT say anything useful without disj hypothesis - see what we need!*)
+(*NOTE: we CANNOT say anything useful without disj hypothesis, but get equality with it*)
 Lemma matches_row_rev tys al ps Hty1 Hty2:
     disj_map' pat_fv ps ->
     matches_row tys al ps Hty1 =
@@ -716,64 +653,6 @@ Proof.
   destruct Hdisj as [_ Hdisj].
   apply (Hdisj n Pwild x); auto.
 Qed.
-(* 
-Lemma matches_row_rev tys al ps Hty1 Hty2:
-  
-  opt_related (@Permutation _) 
-    (matches_row tys al ps Hty1)
-    (matches_row (rev tys) 
-    (cast_arg_list (eq_sym (map_rev _ _)) (hlist_rev _ _ al)) (rev ps) Hty2).
-Proof.
-  generalize dependent (eq_sym (map_rev (v_subst vt) tys)).
-  revert Hty1 Hty2.
-  revert ps. induction tys as [| ty1 tys IH]; simpl; intros [| p1 ps]; simpl; intros; auto;
-  try solve[inversion Hty1];  unfold opt_related; simp matches_row; auto.
-  assert (Hty2':=Hty2).
-  assert (Hlen: length ps = length tys). {
-    inversion Hty1; subst. eapply Forall2_length; eauto.
-  }
-  apply Forall2_app_inv in Hty2'; [| solve_len].
-  destruct Hty2' as [Hrowrev Hrowhd].
-  (*Need correct typecast*)
-  set (h2:=(HL_cons (domain (dom_aux pd)) (v_subst vt ty1) (map (v_subst vt) nil) 
-    (hlist_hd al) (HL_nil _)) : arg_list (domain (dom_aux pd)) (map (v_subst vt) [ty1])).
-
-  rewrite matches_row_app with (h1:=cast_arg_list (eq_sym (map_rev _ _)) 
-    (hlist_rev _ (map (v_subst vt) tys) (hlist_tl al)))(h2:=h2)(Hr2:=Hrowrev)(Hr3:=Hrowhd); auto; [| | solve_len].
-  2: {
-    rewrite hlist_app_cast1. rewrite !cast_arg_list_compose.
-    simpl in *. rewrite (hlist_inv al) at 1.
-    simp hlist_rev. simpl.
-    apply cast_arg_list_eq.
-  }
-  simp matches_row. simpl.
-  (*Using the IH is a bit complicated*)
-  unfold option_bind.
-  specialize (IH (hlist_tl al) ps (Forall2_inv_tail Hty1) Hrowrev (eq_sym (map_rev (v_subst vt) tys))).
-  unfold opt_related in IH.
-  (*Now lots of destructing*)
-  destruct (matches_row tys (hlist_tl al) ps
-    (Forall2_inv_tail Hty1)) as [m1|] eqn : Hmatch1.
-  - destruct (matches_row (rev tys)
-      (cast_arg_list (eq_sym (map_rev (v_subst vt) tys))
-      (hlist_rev (domain (dom_aux pd)) (map (v_subst vt) tys)
-      (hlist_tl al)))
-      (rev ps) Hrowrev) as [m2|] eqn : Hmatch2; [|contradiction].
-    (*Left with only [match_val_single]*)
-    rewrite match_val_single_irrel with (Hval2:=Forall2_inv_head Hrowhd).
-    destruct (match_val_single gamma_valid pd pdf vt ty1 p1
-      (Forall2_inv_head Hrowhd) (hlist_hd al)); auto.
-    rewrite app_nil_r. eapply Permutation_trans. apply Permutation_app_comm.
-    apply Permutation_app_tail; assumption.
-  - destruct (matches_row (rev tys)
-      (cast_arg_list (eq_sym (map_rev (v_subst vt) tys))
-      (hlist_rev (domain (dom_aux pd)) (map (v_subst vt) tys)
-      (hlist_tl al)))
-      (rev ps) Hrowrev) as [m2|] eqn : Hmatch2; [contradiction|].
-    destruct (match_val_single gamma_valid pd pdf vt ty1 p1
-      (Forall2_inv_head Hty1) (hlist_hd al)); auto.
-Qed. *)
-
 
 (*5. If a pattern list is all wilds, everything matches it and gives no bound vars*)
 Lemma matches_row_all_wilds tys h ps Hty (Hall: forall p, In p ps -> p = Pwild):
@@ -1150,42 +1029,6 @@ Lemma pat_matrix_vars_disj_inv_tail tms p P:
   pat_matrix_vars_disj tms P.
 Proof.
   rewrite !pat_matrix_vars_disj_equiv. intros Hall; inversion Hall; auto.
-Qed.
-
-(*TODO: move*)
-
-Lemma amap_lookup_union_set {A B: Type} `{A_count: countable.Countable A} (m1 m2: amap A B) (x: A) (y: B):
-  amap_lookup (amap_union (fun z _ => Some z) (amap_set m1 x y) m2)  x= Some y.
-Proof.
-  rewrite amap_union_lookup.
-  rewrite amap_set_lookup_same. reflexivity.
-Qed.
-
-Lemma amap_lookup_union_set_diff {A B: Type} `{A_count: countable.Countable A} (m1 m2: amap A B) (x z: A) (y: B):
-  x <> z ->
-  amap_lookup (amap_union (fun z _ => Some z) (amap_set m1 x y) m2) z = amap_lookup (amap_union (fun z _ => Some z) m1 m2) z.
-Proof.
-  rewrite !amap_union_lookup. intros Hneq.
-  rewrite amap_set_lookup_diff by auto. reflexivity.
-Qed.
-
-Lemma amap_lookup_union_singleton {A B: Type} `{A_count: countable.Countable A} (m: amap A B) (x: A) (y: B):
-  amap_lookup (amap_union (fun z _ => Some z) (amap_singleton x y) m)  x= Some y.
-Proof. apply amap_lookup_union_set. Qed.
-
-Lemma amap_lookup_union_singleton_diff {A B: Type} `{A_count: countable.Countable A} (m: amap A B) (x z: A) (y: B):
-  x <> z ->
-  amap_lookup (amap_union (fun z _ => Some z) (amap_singleton x y) m)  z = amap_lookup m z.
-Proof.
-  intros Hxz. unfold amap_singleton. rewrite amap_lookup_union_set_diff by auto.
-  rewrite amap_union_empty_l. reflexivity.
-Qed.
-
-(*TODO: move (and maybe replace)*)
-Lemma amap_mem_keys_false {A B: Type} `{A_count: countable.Countable A} (x: A) (m: amap A B):
-  amap_mem x m = false <-> ~ aset_mem x (keys m).
-Proof.
-  rewrite <- amap_mem_keys. destruct (amap_mem x m); split; auto; intros; exfalso; auto.
 Qed.
 
 (*The interesting part: expanding with [simplify_single] is the same as matching the
@@ -1600,15 +1443,6 @@ Qed.
 Definition pat_matrix_var_names_disj (tms: list term) (P: pat_matrix) :=
   aset_disj (aset_map fst (aset_big_union tm_fv tms)) (aset_map fst (pat_mx_fv P)).
 
-(*TODO: replace disj_map_inv with this*)
-Lemma aset_disj_map_inv {B C: Type} `{countable.Countable B} `{countable.Countable C} (f: B -> C) (s1 s2: aset B):
-  aset_disj (aset_map f s1) (aset_map f s2) ->
-  aset_disj s1 s2.
-Proof.
-  rewrite !aset_disj_equiv. intros Hdisj x [Hinx1 Hinx2].
-  apply (Hdisj (f x)); rewrite !aset_mem_map; split; exists x; auto.
-Qed.
-
 Lemma pat_matrix_var_names_vars_disj tms P:
   pat_matrix_var_names_disj tms P ->
   pat_matrix_vars_disj tms P.
@@ -1736,30 +1570,6 @@ Proof.
   unfold row_fv at 1 in Hinx; destruct_all; auto. simpl in *. simpl_set_small; auto.
 Qed.
 
-(*TODO: move (move all these, might not need list ones)*)
-Lemma aset_disj_subset_lr {A: Type} `{countable.Countable A} {l1 l2 l3 l4: aset A}:
-  aset_disj l2 l4 ->
-  asubset l1 l2 ->
-  asubset l3 l4 ->
-  aset_disj l1 l3.
-Proof.
-  rewrite !asubset_def, !aset_disj_equiv; intros Hd Hin1 Hin2 x [Hinx1 Hinx2].
-  apply (Hd x); split; auto.
-Qed.
-
-(*TODO: move*)
-Lemma asubset_map {A B: Type} `{countable.Countable A} `{countable.Countable B} (f: A -> B) (a1 a2: aset A):
-  asubset a1 a2 ->
-  asubset (aset_map f a1) (aset_map f a2).
-Proof.
-  rewrite !asubset_def. setoid_rewrite aset_mem_map. intros Hsub x [y [Hy Hinx]].
-  subst. exists y; auto.
-Qed.
-
-(*TODO: move*)
-Ltac simpl_asubset :=
-  rewrite !asubset_def in *; repeat progress (simpl_set; intros; auto).
-
 Lemma disj_default t ts rl:
   pat_matrix_var_names_disj (t :: ts) rl ->
   pat_matrix_var_names_disj ts (default rl).
@@ -1768,7 +1578,8 @@ Proof.
   intros Hdisj.
   eapply aset_disj_subset_lr.
   - apply Hdisj.
-  - rewrite aset_big_union_cons. apply asubset_map. simpl_asubset.
+  - rewrite aset_big_union_cons. apply asubset_map.
+    rewrite asubset_def. intros x Hinx. simpl_set_small. auto.
   - apply asubset_map, default_vars_subset.
 Qed. 
 
@@ -1859,14 +1670,6 @@ Proof.
   apply (constr_ret_valid gamma_valid m_in a_in f_in).
 Qed.
 
-(*TODO: move, likely replace list version*)
-Lemma aset_big_union_rev {B C: Type} `{countable.Countable C} (f: B -> aset C) (l: list B):
-  aset_big_union f (rev l) = aset_big_union f l.
-Proof.
-  apply aset_ext.
-  intros x. simpl_set. setoid_rewrite <- (List.in_rev l). reflexivity.
-Qed.
-
 (*disj for [spec] - we need 2 results*)
 
 Lemma spec_vars_subset rl f:
@@ -1906,10 +1709,6 @@ Proof.
   apply asubset_map, spec_vars_subset.
 Qed.
 
-(*TODO: move*)
-Ltac simpl_asubset_small :=
-  rewrite !asubset_def in *; repeat progress (simpl_set_small; intros; auto).
-
 Lemma disj_spec {f args tms tl rl}:
   pat_matrix_var_names_disj
     (Tfun f args tms :: tl) rl ->
@@ -1927,14 +1726,6 @@ Proof.
     rewrite !aset_mem_map_union. auto.
   - apply spec_names_subset.
 Qed.
-
-(*TODO: move*)
-Ltac asubset_apply H1 H2 :=
-  let H := fresh in
-  (pose proof H1 as H);
-  setoid_rewrite asubset_def in H;
-  apply H in H2;
-  clear H.
 
 Lemma disj_spec1 {f t tms tl rl}:
   pat_matrix_var_names_disj (t :: tl) rl ->
@@ -2462,19 +2253,8 @@ Definition simple_pat_match (ps: list pattern) : bool :=
   (*At least 1 constructor - or else we compiled the whole match away*)
   (existsb pat_is_constr ps) &&
   (*All constructors at beginning, then maybe one wild*)
-  constrs_then_wild ps
-.
+  constrs_then_wild ps.
 
-(*TODO: move*)
-Lemma nodupb_rev {A: Type} eq_dec (l: list A):
-  nodupb eq_dec (rev l) = nodupb eq_dec l.
-Proof.
-  apply is_true_eq.
-  rewrite <- (reflect_iff _ _ (nodup_NoDup eq_dec (rev l))), <- (reflect_iff _ _ (nodup_NoDup eq_dec l)).
-  split.
-  - intros Hn. rewrite <- (rev_involutive l). apply NoDup_rev; auto.
-  - apply NoDup_rev.
-Qed.
 
 Lemma simpl_constr_get_vars {f tys pats}:
   simple_pat (Pconstr f tys pats) ->
@@ -2564,7 +2344,7 @@ Proof.
       assert (Hnot12: f1 <> f2). {
         simpl in Hdisj.
         intros Hf; subst; apply (Hdisj f2); auto.
-      } clear Hdisj. (*TODO: see*)
+      } clear Hdisj.
       apply (f_equal (fun x => rev x)) in Ht.
       rewrite <- map_rev in Ht.
       rewrite rev_app_distr in Ht. simpl in Ht.
@@ -2608,13 +2388,6 @@ Proof.
     rewrite in_map_iff. intros [[[f2 tys2] vars2] [Hfs Hinx]]. simpl in Hfs; subst.
     apply Hnotin. rewrite in_omap_iff. exists (Pconstr f1 tys2 (map Pvar vars2)). split; auto.
     rewrite in_map_iff. exists (f1, tys2, vars2). auto.
-Qed.
-
-(*TODO: move*)
-Lemma omap_some_map {A B: Type} (f: A -> B) (l: list A):
-  omap (fun x => Some (f x)) l = map f l.
-Proof.
-  induction l as [| h t IH]; simpl; auto.
 Qed.
 
 (*And the reverse direction*)
@@ -2832,29 +2605,6 @@ Lemma gen_simple_pats_match t ty pats:
 Proof.
   intros Hsimp1. unfold gen_simple_pats, gen_match. destruct b; simpl; bool_to_prop;
   rewrite !forallb_map; intros; destruct_all; split_all; auto.
-Qed.
-
-(*TODO: do other version in terms of this*)
-Lemma map_fst_combine_eq {A B: Type} (l1: list A) (l2: list B):
-  map fst (combine l1 l2) = firstn (Nat.min (length l1) (length l2)) l1.
-Proof.
-  revert l2. induction l1 as [| h1 t1 IH]; simpl; auto; intros [| h2 t2]; auto.
-  simpl. f_equal. auto.
-Qed.
-
-Lemma map_snd_combine_eq {A B: Type} (l1: list A) (l2: list B):
-  map snd (combine l1 l2) = firstn (Nat.min (length l1) (length l2)) l2.
-Proof.
-  revert l2. induction l1 as [| h1 t1 IH]; simpl; auto; intros [| h2 t2]; auto.
-  simpl. f_equal. auto.
-Qed.
-
-Lemma forallb_firstn {A: Type} (p: A -> bool) (n: nat) (l: list A):
-  forallb p l ->
-  forallb p (firstn n l).
-Proof.
-  revert n. induction l as [| h t IH]; simpl; intros [| n']; simpl; auto.
-  destruct (p h); simpl; auto.
 Qed.
 
 (*Move?*)
@@ -3189,17 +2939,6 @@ Proof.
     apply Hvarwild. right. rewrite in_app_iff. auto.
 Qed.
 
-(*TODO move, replace existing*)
-Lemma amap_not_empty_mem {A B: Type} `{countable.Countable A} (m: amap A B):
-  amap_is_empty m = false <-> exists x, amap_mem x m.
-Proof.
-  setoid_rewrite amap_mem_spec.
-  rewrite amap_not_empty_exists.
-  split; intros [x Hin].
-  - destruct Hin as [y Hget]. exists x. rewrite Hget. auto.
-  - exists x. destruct (amap_lookup m x) as [y|] eqn : Hget; eauto. discriminate.
-Qed.
-
 (*Here we do NOT use simpl_constr - even though we could
   prove for both, only need for exhaustiveness check*)
 Lemma compile_all_wild constrs (tms: list (term * vty)) (P: pat_matrix)
@@ -3518,21 +3257,6 @@ Proof.
     apply Htyps2; auto.
 Qed.
 
-(*TODO: move*)
-Lemma amap_is_empty_lookup {A B} `{countable.Countable A} (m: amap A B):
-  amap_is_empty m <-> forall x, amap_lookup m x = None.
-Proof.
-  destruct (amap_is_empty m) eqn : Hemp; split; auto; try discriminate.
-  - intros _. intros x. destruct (amap_lookup m x) as [y|] eqn : Hget; auto.
-    assert (Hemp': amap_is_empty m = false).
-    {
-      apply amap_not_empty_exists. exists x. exists y. auto.
-    }
-    rewrite Hemp' in Hemp; auto. discriminate.
-  - rewrite amap_not_empty_exists in Hemp. destruct Hemp as [x [y Hlookup]].
-    intros Hnone. rewrite Hnone in Hlookup. discriminate.
-Qed.
-
 Lemma populate_all_snd_hd_none {A: Type} {constr} 
   {rl: list (list pattern * A)} {o}:
   simplified rl ->
@@ -3560,16 +3284,6 @@ Proof.
   exists tys. destruct (snd o); simpl in Hhd; [discriminate|];
   inversion Hhd; subst; simpl; auto.
 Qed.
-
-(*TODO: move*)
-Lemma amap_is_empty_mem {A B} `{countable.Countable A} (m: amap A B):
-  amap_is_empty m <-> forall x, amap_mem x m = false.
-Proof.
-  setoid_rewrite amap_mem_spec.
-  rewrite amap_is_empty_lookup.
-  split; intros Hin x; specialize (Hin x); destruct (amap_lookup m x); auto; discriminate.
-Qed.
-  
 
 (*Now we prove that if we have a simple, exhaustive pattern match, 
   then [compile] returns Some*)
@@ -4328,7 +4042,7 @@ Proof.
       destruct (amap_empty_get_adt Hsimpl Hpop Hisemp Hp) as [m [a [args [m_in [a_in [Hty args_len]]]]]].
       simpl in Hty; subst. (* eapply Hconstrnotincase; eauto. *)
       (*Crucially, need [f_is_constr] here*)
-      assert (f_constr: f_is_constr cs) (*TODO: just need this, prove*).
+      assert (f_constr: f_is_constr cs).
       { unfold is_constr, is_bare, css, is_bare_css in Hisconstr. 
         apply andb_true_iff in Hisconstr; apply Hisconstr. }
       (*Get typing info*)
@@ -4470,7 +4184,7 @@ Proof.
     destruct (amap_empty_get_adt Hsimpl Hpop Hisemp Hp) as [m [a [args [m_in [a_in [Hty args_len]]]]]].
     simpl in Hty; subst. (* eapply Hconstrnotincase; eauto. *)
     (*Crucially, need [f_is_constr] here*)
-    assert (f_constr: f_is_constr cs) (*TODO: just need this, prove*).
+    assert (f_constr: f_is_constr cs).
     { unfold is_constr, is_bare, css, is_bare_css in Hisconstr. 
       apply andb_true_iff in Hisconstr; apply Hisconstr. }
     (*Get typing info*)
@@ -4770,7 +4484,7 @@ Proof.
         destruct Hps as [  [Hps1 Hnowilds1]| [Hnowilds1 [tm2 [Hcomp2 Hps1]]]]; subst; auto; rewrite Hnow in Hnowilds1;
         inversion Hnowilds1; subst; simpl; reflexivity.
       }
-      (*TODO: we proved this for [simple] already - can we use?
+      (*NOTE: we proved this for [simple] already - can we use?
         copied for now*)
       assert (Hsimpl: (simple_pat_match (map fst pats))).
       {
@@ -5503,10 +5217,6 @@ Qed.
 (*Once [compile] succeeds, all pattern matches are clearly and syntactically
   exhaustive, according to [simple_exhaust]. Since that depends on an
   ADT, we just prove existence. We can find the correct ADT later by typing*)
-
-(*TODO: move*)
-Definition adts_of_context gamma:=
-  concat (map typs (mut_of_context gamma)).
 Section Exhaust.
 
 Fixpoint term_simple_exhaust (t: term) : bool :=
@@ -7432,6 +7142,28 @@ Definition pat_mx_type_vars {b} (P: list (list pattern * gen_term b)) : aset typ
 Definition tm_list_type_vars (tm: list (term * vty)) : aset typevar :=
   aset_big_union (fun x => aset_union (tm_type_vars (fst x)) (type_vars (snd x))) tm.
 
+(*Simplification lemmas we need*)
+Lemma pat_mx_type_vars_cons {b} (P: list (list pattern * gen_term b)) x:
+  pat_mx_type_vars (x :: P) =
+  aset_union (aset_union (aset_big_union pat_type_vars (fst x)) (gen_type_vars (snd x)))
+  (pat_mx_type_vars P).
+Proof.
+  unfold pat_mx_type_vars. rewrite !aset_big_union_cons. reflexivity.
+Qed.
+
+Lemma tm_list_type_vars_cons x tm:
+  tm_list_type_vars (x :: tm) =
+  aset_union (aset_union (tm_type_vars (fst x)) (type_vars (snd x))) (tm_list_type_vars tm).
+Proof.
+  apply aset_big_union_cons.
+Qed.
+
+Lemma tm_list_type_vars_nil:
+  tm_list_type_vars nil = aset_empty.
+Proof.
+  apply aset_big_union_nil.
+Qed.
+
 Lemma pat_mx_type_vars_simp b t (P: list (list pattern * gen_term b)):
   forall x, aset_mem x (pat_mx_type_vars (simplify gen_let t P)) -> 
   aset_mem x (pat_mx_type_vars P) \/ aset_mem x (tm_type_vars t).
@@ -7468,46 +7200,6 @@ Proof.
     repeat (destruct_all; simpl_set_small; auto).
 Qed. 
 
-(*TODO: move*)
-Lemma asubset_refl {A} `{countable.Countable A} (s: aset A): asubset s s.
-Proof.
-  rewrite asubset_def. auto.
-Qed.
-Lemma asubset_trans {A} `{countable.Countable A} (s1 s2 s3: aset A):
-  asubset s1 s2 ->
-  asubset s2 s3 ->
-  asubset s1 s3.
-Proof.
-  rewrite !asubset_def. auto.
-Qed.
-Lemma union_asubset_r {A} `{countable.Countable A} (s1 s2: aset A):
-  asubset s2 (aset_union s1 s2).
-Proof.
-  rewrite asubset_def. 
-  intros x. simpl_set. intros; auto.
-Qed.
-Lemma union_asubset_l {A} `{countable.Countable A} (s1 s2: aset A):
-  asubset s1 (aset_union s1 s2).
-Proof.
-  rewrite asubset_def. 
-  intros x. simpl_set. intros; auto.
-Qed.
-Lemma asubset_union {A} `{countable.Countable A}
-  (s1 s2 s3 s4: aset A):
-  asubset s1 s2 ->
-  asubset s3 s4 ->
-  asubset (aset_union s1 s3) (aset_union s2 s4).
-Proof.
-  rewrite !asubset_def. intros. simpl_set.
-  destruct_all; auto.
-Qed.
-(*TODO: move*)
-Lemma aset_union_empty_l {A} `{countable.Countable A} (s: aset A):
-  aset_union aset_empty s = s.
-Proof.
-  apply aset_ext. intros x. simpl_set. split; intros; destruct_all; auto; simpl_set.
-Qed.
-
 Lemma pat_mx_type_vars_default {b} (P: list (list pattern * gen_term b)):
   asubset (pat_mx_type_vars (default P)) (pat_mx_type_vars P).
 Proof.
@@ -7518,23 +7210,6 @@ Proof.
     simpl. apply asubset_union; auto.
     simpl. rewrite aset_big_union_cons. simpl. rewrite aset_union_empty_l.
     apply asubset_refl.
-Qed.
-
-(*TODO: move*)
-Lemma pat_mx_type_vars_cons {b} (P: list (list pattern * gen_term b)) x:
-  pat_mx_type_vars (x :: P) =
-  aset_union (aset_union (aset_big_union pat_type_vars (fst x)) (gen_type_vars (snd x)))
-  (pat_mx_type_vars P).
-Proof.
-  unfold pat_mx_type_vars. rewrite !aset_big_union_cons. reflexivity.
-Qed.
-
-(*TODO: move*)
-Lemma aset_big_union_repeat {A B: Type} `{countable.Countable A} (f: B -> aset A) (x: B) n y:
-  aset_mem y (aset_big_union f (repeat x n)) -> aset_mem y (f x).
-Proof.
-  simpl_set. intros [z [Hinz Hiny]].
-  apply repeat_spec in Hinz. subst; auto.
 Qed.
 
 Lemma pat_mx_type_vars_spec {b} n cs rl:
@@ -7574,35 +7249,6 @@ Proof.
       (*Pwild has no vars*)
       apply aset_big_union_repeat in Hinx. simpl in Hinx. solve[simpl_set].
 Qed.
-
-(*TODO: move*)
-Lemma tm_list_type_vars_cons x tm:
-  tm_list_type_vars (x :: tm) =
-  aset_union (aset_union (tm_type_vars (fst x)) (type_vars (snd x))) (tm_list_type_vars tm).
-Proof.
-  apply aset_big_union_cons.
-Qed.
-
-Lemma tm_list_type_vars_nil:
-  tm_list_type_vars nil = aset_empty.
-Proof.
-  apply aset_big_union_nil.
-Qed.
-
-(*TODO: move*)
-(*NOTE: of course, these sets are the same but this is useful to not have to give
-  the other set*)
-Lemma asubset_iff_l {A} `{countable.Countable A} (s1 s2 s3: aset A):
-  (forall x, aset_mem x s1 <-> aset_mem x s2) ->
-  asubset s1 s3 ->
-  asubset s2 s3.
-Proof.
-  rewrite !asubset_def.
-  intros Heq Hsub. intros x Hinx.
-  rewrite <- Heq in Hinx.
-  apply Hsub; auto.
-Qed.
-
 
 Opaque dispatch1_opt.
 Opaque dispatch1.
@@ -8774,7 +8420,7 @@ Proof.
       end.
       (*simplify list*)
       revert Hcomp.
-      unfold rev_map; rewrite!map_rev,!rev_involutive,map_snd_combine_eq; simpl_len. (*TODO: do we need exact length from typing?*)
+      unfold rev_map; rewrite!map_rev,!rev_involutive,map_snd_combine_eq; simpl_len.
       intros Hcomp. 
       apply none_isSome_false in Hcomp. exfalso; apply Hcomp.
       assert (Hin: In (cs, params, pats) (snd types_cslist)) by (rewrite Hcslist, in_app_iff; simpl; auto).
@@ -8792,7 +8438,6 @@ Proof.
         apply Forall2_rev.
         rewrite Forall2_nth. simpl_len; split; [lia|].
         intros i di d2 Hi.
-        (*TODO: should really prove an induction principle for typing to avoid all this repetition*)
         rewrite map_nth_inbound with (d2:=("x"%string, vty_int)) by solve_len.
         rewrite combine_nth by solve_len. 
         apply T_Var'; [|simpl; apply nth_indep; solve_len].

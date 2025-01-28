@@ -1011,17 +1011,13 @@ Proof.
         destruct p eqn: Hp end.
       all: intro C; inversion C.
       subst. inversion Hall; subst.
-      (*Annoying case analysis*)
+      rewrite amap_union_lookup in H0.
       destruct (amap_lookup a1 x) as [y1|] eqn : Hget1;
-      destruct (amap_lookup a2 x) as [y2|] eqn : Hget2.
-      * erewrite amap_union_inboth in H0; eauto.
-        inversion H0; subst. eauto.
-      * erewrite amap_union_inl in H0; eauto. inversion H0; subst. eauto.
-      * erewrite amap_union_inr in H0; eauto. inversion H0; subst.
-        rewrite hlist_tl_cast in Hmatch0.
-        apply IHl with(x:=x)(t:=t) in Hmatch0; auto.
-        apply (disj_map_cons_impl Hps).
-      * erewrite amap_union_notin in H0; eauto. discriminate.
+      destruct (amap_lookup a2 x) as [y2|] eqn : Hget2;
+      inversion H0; subst; eauto.
+      rewrite hlist_tl_cast in Hmatch0.
+      apply IHl with(x:=x)(t:=t) in Hmatch0; auto.
+      apply (disj_map_cons_impl Hps).
   - intros. inversion H; subst. inversion H0.
   - intros. destruct (match_val_single v ty p1 (proj1' (pat_or_inv Hty')) d) eqn : Hm.
     + apply (IH1 _ H); auto.
@@ -1594,13 +1590,6 @@ Lemma match_val_single_ext {gamma1 gamma2: context}
       exists y2 (Heq: projT1 y1 = projT1 y2),
       amap_lookup m2 x1 = Some y2 /\ 
       projT2 y2 = dom_cast (dom_aux pd) Heq (projT2 y1))
-(* 
-    Forall2 (fun p1 p2 =>
-      let '(x1, y1) := p1 in
-      let '(x2, y2) := p2 in
-      x1 = x2 /\
-      exists (Heq: projT1 y1 = projT1 y2),
-        projT2 y2 = dom_cast (dom_aux pd) Heq (projT2 y1)) l1 l2) *)
     (match_val_single gamma_valid1 pd pdf1 vt1 ty p Hval1
       (dom_cast (dom_aux pd) Heq d))
     (match_val_single gamma_valid2 pd pdf2 vt2 ty p Hval2 d).
@@ -1802,44 +1791,37 @@ Proof.
           rewrite Hlookup in Hget1. discriminate.
       } 
       (*Bunch of cases for union*)
+      setoid_rewrite amap_union_lookup.
       destruct (amap_lookup l1 x1) as [y1|] eqn : Hget1;
       destruct (amap_lookup l3 x1) as [y3|] eqn : Hget3;
       assert (Hget1':=Hget1); assert (Hget3':=Hget3);
       try (apply Hsome1 in Hget1'); try (apply Hsome2 in Hget3').
       * destruct Hget1' as [y2' [Heq' [Hy2' Hproj2']]].
-        destruct Hget3' as [y2'' [Heq'' [Hy2'' Hproj2'']]].
-        erewrite amap_union_inboth by eauto. setoid_rewrite amap_union_inboth; try solve[eauto].
+        destruct Hget3' as [y2'' [Heq'' [Hy2'' Hproj2'']]]. setoid_rewrite Hy2'.
         split.
         -- intros Hy12; inversion Hy12; subst; clear Hy12. eauto.
         -- intros [y4 [Heq4 [Hy24 Hproj24]]]; subst.
           destruct y1; destruct y2; destruct y2'; destruct y2''; destruct y4; simpl in *; subst.
           unfold dom_cast in Hy24; simpl in Hy24. auto. 
-      * destruct Hget1' as [y2' [Heq' [Hy2' Hproj2']]].
-        erewrite amap_union_inl by eauto. setoid_rewrite amap_union_inl; eauto.
-        2: { rewrite <-  Hnone; eauto. }
-        (*Now do both cases again*)
-        split. (*TODO: automate*)
+      * destruct Hget1' as [y2' [Heq' [Hy2' Hproj2']]]. setoid_rewrite Hy2'.
+        split.
         -- intros Hy12; inversion Hy12; subst; clear Hy12. eauto.
         -- intros [y4 [Heq4 [Hy24 Hproj24]]]; subst.
           destruct y1; destruct y2; destruct y2'; destruct y4; simpl in *; subst.
           unfold dom_cast in Hy24; simpl in Hy24. auto. 
       * (*Mirror of previous*)
         destruct Hget3' as [y2'' [Heq'' [Hy2'' Hproj2'']]].
-        erewrite amap_union_inr by eauto. setoid_rewrite amap_union_inr; eauto.
-        2: { rewrite <- Hnone; eauto. }
+        assert (Hl2: amap_lookup l2 x1 = None) by (rewrite <- Hnone; eauto).
+        setoid_rewrite Hl2. setoid_rewrite Hy2''.
         (*Now do both cases again*)
         split. (*TODO: automate*)
         -- intros Hy12; inversion Hy12; subst; clear Hy12. eauto.
         -- intros [y4 [Heq4 [Hy24 Hproj24]]]; subst.
           destruct y2''; destruct y2; destruct y3; destruct y4; simpl in *; subst.
           unfold dom_cast in Hy24; simpl in Hy24. auto.
-      * (*In neither*)
-        rewrite amap_union_notin by auto.
-        split; try discriminate.
-        setoid_rewrite amap_union_notin.
-        -- intros; destruct_all; discriminate.
-        -- rewrite <- (Hnone l1 l2); eauto.
-        -- rewrite <- (Hnone l3 l4); eauto.
+      * assert (Hl2: amap_lookup l2 x1 = None) by (rewrite <- (Hnone l1 l2); eauto).
+        assert (Hl4: amap_lookup l4 x1 = None) by (rewrite <- (Hnone l3 l4); eauto).
+        setoid_rewrite Hl2. setoid_rewrite Hl4. split; intros; intros; destruct_all; discriminate.
   - (*Pwild*) simpl. intros x1 y1. setoid_rewrite amap_empty_get. 
     split; intros; destruct_all; discriminate.
   - (*Por*) simpl.
