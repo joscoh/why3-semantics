@@ -299,3 +299,9 @@ Proof.
 Qed.
 
 End Cast.
+
+Ltac gen_dom_cast := repeat match goal with |- context [dom_cast ?pd ?Heq ?x] =>
+            let y := fresh "y" in
+            set (y := dom_cast pd Heq x) in *; 
+            generalize dependent Heq 
+          end; simpl.

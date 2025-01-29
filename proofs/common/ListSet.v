@@ -158,6 +158,21 @@ Proof.
   apply in_equiv.
 Qed.
 
+Lemma list_to_aset_cons (x: A) (l: list A):
+  list_to_aset (x :: l) = aset_union (aset_singleton x) (list_to_aset l).
+Proof.
+  apply aset_ext. 
+  intros y. rewrite aset_mem_union, aset_mem_singleton, !aset_mem_list_to_aset. 
+  simpl. split; intros; destruct_all; auto.
+Qed.
+
+Lemma list_to_aset_app  (l1 l2: list A):
+  list_to_aset (l1 ++ l2) = aset_union (list_to_aset l1) (list_to_aset l2).
+Proof.
+  apply aset_ext. 
+  intros y. rewrite aset_mem_union, !aset_mem_list_to_aset, in_app_iff; reflexivity.
+Qed.
+
 (*set to list*)
 Definition aset_to_list (a: aset) : list A := elements a.
 
@@ -420,6 +435,12 @@ Lemma aset_union_empty_l (s: aset):
   aset_union aset_empty s = s.
 Proof.
   apply set_eq, union_empty_l.
+Qed.
+
+Lemma aset_union_empty_r (s: aset):
+  aset_union s aset_empty = s.
+Proof.
+  apply set_eq, union_empty_r.
 Qed.
 
 End FixA.
@@ -688,6 +709,33 @@ Proof.
   rewrite <- Heq in Hinx.
   apply Hsub; auto.
 Qed.
+
+Lemma union_both_asubset {A: Type} `{countable.Countable A} (s1 s2 s3: aset A):
+  asubset s1 s3 ->
+  asubset s2 s3 ->
+  asubset (aset_union s1 s2) s3.
+Proof.
+  rewrite !asubset_def. intros. simpl_set. destruct_all; auto.
+Qed.
+
+Lemma asubset_concat_map {A B: Type} `{countable.Countable B} (f: A -> list B) x (l: list A):
+  In x l ->
+  asubset (list_to_aset (f x)) (list_to_aset (concat (map f l))).
+Proof.
+  intros Hin.
+  rewrite asubset_def. intros y Hiny. simpl_set. 
+  rewrite in_concat. exists (f x). rewrite in_map_iff. eauto.
+Qed.
+
+Lemma asubset_big_union_ext {A B: Type} `{countable.Countable A} (f: B -> aset A)
+  (l1 l2: list B):
+  incl l1 l2 ->
+  asubset (aset_big_union f l1) (aset_big_union f l2).
+Proof.
+  intros Hsub. rewrite asubset_def. intros x Hinx. simpl_set.
+  destruct_all; eauto.
+Qed.
+
 
 
 

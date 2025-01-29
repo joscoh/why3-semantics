@@ -534,7 +534,87 @@ Proof.
   - intros [_ Hall2]. apply map_Forall_to_list. revert Hall2.
     apply List.Forall_impl. intros [x y]; auto.
 Qed.
-  
+
+(*More about elements, keylist, vals*)
+Lemma elements_singleton (x: A) (y: B): 
+  elements (amap_singleton x y) = [(x, y)].
+Proof.
+  unfold elements. unfold amap_singleton, amap_set, amap_empty.
+  simpl_amap.
+  rewrite insert_empty.
+  apply map_to_list_singleton.
+Qed.
+
+Lemma keylist_singleton (x: A) (y: B):
+  keylist (amap_singleton x y) = [x].
+Proof.
+  unfold keylist. rewrite elements_singleton; reflexivity.
+Qed.
+
+Lemma vals_singleton (x: A) (y: B):
+  vals (amap_singleton x y) = [y].
+Proof.
+  unfold vals. rewrite elements_singleton; reflexivity.
+Qed.
+
+Lemma mem_keys_keylist (m: amap) (x: A):
+  In x (keylist m) <-> aset_mem x (keys m).
+Proof.
+  rewrite in_keylist_iff, amap_mem_keys. reflexivity.
+Qed.
+
+(*More [diff] results (TODO: organize better*)
+Lemma diff_singleton_in s (x: A) (y: B):
+  aset_mem x s ->
+  amap_diff (amap_singleton x y) s = amap_empty.
+Proof.
+  intros Hmem. apply amap_ext. intros z.
+  rewrite amap_empty_get.
+  destruct (aset_mem_dec z s).
+  - rewrite amap_diff_in; auto.
+  - rewrite amap_diff_notin; auto.
+    unfold amap_singleton. rewrite amap_set_lookup_diff; auto.
+    intros Heq; subst; contradiction.
+Qed.
+
+Lemma diff_singleton_notin s (x: A) (y: B):
+  ~ aset_mem x s ->
+  amap_diff (amap_singleton x y) s = amap_singleton x y.
+Proof.
+  intros Hmem. apply amap_ext. intros z.
+  destruct (aset_mem_dec z s).
+  - rewrite amap_diff_in by auto. unfold amap_singleton.
+    rewrite amap_set_lookup_diff; auto. intros C; subst; contradiction.
+  - rewrite amap_diff_notin by auto. reflexivity.
+Qed.
+
+Lemma amap_diff_Forall(P: A -> B -> Prop) (m: amap) s:
+  amap_Forall P m ->
+  amap_Forall P (amap_diff m s).
+Proof.
+  rewrite !amap_Forall_forall.
+  intros Hall x y Hlookup.
+  apply amap_diff_lookup_impl in Hlookup. auto.
+Qed.
+
+(*Singleton results*)
+Lemma lookup_singleton_impl (x z: A) (y w: B):
+  amap_lookup (amap_singleton x y) z = Some w ->
+  z = x /\ w = y.
+Proof.
+  unfold amap_singleton. destruct (EqDecision0 x z); subst; intros Hlookup.
+  - rewrite amap_set_lookup_same in Hlookup. inversion Hlookup; auto.
+  - rewrite amap_set_lookup_diff in Hlookup by auto. 
+    rewrite amap_empty_get in Hlookup. discriminate.
+Qed.
+
+Lemma amap_Forall_singleton (P: A -> B -> Prop) (x: A) (y: B) :
+  amap_Forall P (amap_singleton x y) <-> P x y.
+Proof.
+  rewrite amap_Forall_forall. split.
+  - intros Hall. apply Hall. unfold amap_singleton. rewrite amap_set_lookup_same; auto.
+  - intros Hp x1 y1 Hlookup. apply lookup_singleton_impl in Hlookup. destruct_all; subst; auto.
+Qed.
 
 (*Get values as set - NOTE dont do because dont want countable*)
 (* Section BCount.

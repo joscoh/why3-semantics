@@ -724,6 +724,13 @@ Proof.
   unfold flip. rewrite map_app. auto.
 Qed.
 
+Lemma Forall_flip {A B: Type} (P: A * B -> Prop) (l: list (A * B)):
+  Forall P l <-> Forall (fun x => P (snd x, fst x)) (flip l).
+Proof.
+  unfold flip. rewrite Forall_map. simpl.
+  split; apply Forall_impl; intros [x y]; auto.
+Qed.
+
 End Flip.
 
 
