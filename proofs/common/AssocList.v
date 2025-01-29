@@ -10,7 +10,7 @@ Import gmap.
 
 Section FixTypes.
 
-Context (A B: Type) `{A_eq: EqDecision A} `{A_count: Countable A}.
+Context (A B: Type) `{A_count: Countable A}.
 
 Definition amap := gmap A B. (*NOTE: we DONT want to export stdpp everywhere, so we provide our own defs*)
 
@@ -82,11 +82,17 @@ Definition amap_size (m: amap) : nat := size m.
 
 Definition amap_is_empty (m: amap) : bool := Nat.eqb (size m) 0.
 
+(*map diff - but we want to remove a subset of keys*)
+Definition amap_remove (x: A) (m: amap) := delete x m.
+
+Definition amap_diff (m: amap) (s: aset A) : amap :=
+  set_fold amap_remove m s.
+
 (*Proofs*)
 
 Ltac unfold_amap :=
   repeat (progress (unfold amap, amap_empty, amap_in, amap_lookup, amap_set, amap_replace, amap_change,
-  amap_union, amap_size, amap_is_empty, amap_singleton in *)).
+  amap_union, amap_size, amap_is_empty, amap_singleton, amap_remove, amap_diff in *)).
 Ltac simpl_amap := unfold_amap; simplify_map_eq.
 Ltac solve_amap := unfold_amap; simplify_map_eq; solve[auto].
 
@@ -179,6 +185,55 @@ Proof.
   - erewrite amap_union_notin; auto.
 Qed.
 
+Lemma amap_remove_same x m:
+  amap_lookup (amap_remove x m) x = None.
+Proof.
+  solve_amap.
+Qed.
+
+Lemma amap_remove_diff x m y:
+  x <> y ->
+  amap_lookup (amap_remove x m) y = amap_lookup m y.
+Proof.
+  intros Hxy. solve_amap.
+Qed.
+
+Lemma amap_diff_in m s x:
+  aset_mem x s ->
+  amap_lookup (amap_diff m s) x = None.
+Proof.
+  unfold amap_diff.
+  apply aset_fold_ind with (P:=fun r s => aset_mem x s -> amap_lookup r x = None).
+  - intros Hmem. simpl_set.
+  - intros y s1 b Hnotin IH Hin.
+    simpl_set. destruct (EqDecision0 x y); subst.
+    + rewrite amap_remove_same. auto.
+    + destruct Hin; [simpl_set; subst; contradiction|].
+      rewrite amap_remove_diff; auto.
+Qed.
+
+Lemma amap_diff_notin m s x:
+  ~ aset_mem x s ->
+  amap_lookup (amap_diff m s) x = amap_lookup m x.
+Proof.
+  unfold amap_diff.
+  apply aset_fold_ind with (P:=fun r s => ~ aset_mem x s -> amap_lookup r x = amap_lookup m x); auto.
+  intros y s1 b Hnotin IH Hin.
+  simpl_set. destruct (EqDecision0 x y); subst.
+  - exfalso; apply Hin; auto.
+  - rewrite amap_remove_diff; auto.
+Qed.
+
+Lemma amap_diff_lookup_impl m s x y:
+  amap_lookup (amap_diff m s) x = Some y ->
+  amap_lookup m x = Some y.
+Proof.
+  intros Hlookup.
+  destruct (aset_mem_dec x s).
+  - rewrite amap_diff_in in Hlookup; auto. discriminate.
+  - rewrite amap_diff_notin in Hlookup; auto.
+Qed.
+
 (*Lemmas about [keys]*)
 Lemma keys_empty: keys amap_empty = aset_empty.
 Proof. reflexivity. Qed.
@@ -189,7 +244,7 @@ Proof.
   set_unfold. intros x1. split.
   - intros [[x2 y2] [Hx1 Hin]].
     subst. simpl. apply elem_of_map_to_list in Hin.
-    destruct (A_eq x x2); subst; auto.
+    destruct (EqDecision0 x x2); subst; auto.
     rewrite lookup_insert_ne in Hin; auto.
     solve_amap.
   - intros Hx; subst. exists (x, y). split; auto.
@@ -235,7 +290,7 @@ Proof.
   set_unfold. intros Hnotin x1. split; unfold amap in *.
   - intros [[x2 y2] [Hx1 Hin]]; subst; simpl.
     apply elem_of_map_to_list in Hin. 
-    destruct (A_eq x x2); subst; auto.
+    destruct (EqDecision0 x x2); subst; auto.
     rewrite lookup_insert_ne in Hin by auto.
     left. exists (x2, y2). split; auto.
     apply elem_of_map_to_list. auto.
@@ -384,6 +439,123 @@ Proof.
   apply Nat.eqb_eq.
 Qed.
 
+(*Get values as list*)
+Definition elements (m: amap) : list (A * B) := map_to_list m.
+
+Lemma in_elements_iff x y (m: amap):
+  List.In (x, y) (elements m) <-> amap_lookup m x = Some y.
+Proof.
+  unfold elements, amap_lookup.
+  rewrite <- elem_of_list_In. apply elem_of_map_to_list.
+Qed.
+
+Definition keylist (m: amap) : list A := map fst (elements m).
+
+Lemma in_keylist_iff x (m: amap):
+  List.In x (keylist m) <-> amap_mem x m.
+Proof.
+  unfold keylist. rewrite in_map_iff; unfold amap_mem. split.
+  - intros [[x1 y1] [Hx Hinxy]]. subst; simpl. 
+    apply in_elements_iff in Hinxy. rewrite Hinxy; auto.
+  - destruct (amap_lookup m x) as [y|] eqn : Hlookup; try discriminate.
+    intros _. exists (x, y). split; auto; apply in_elements_iff; auto.
+Qed.
+
+Definition vals (m: amap) : list B := map snd (elements m).
+
+Definition in_vals_iff y (m: amap):
+  List.In y (vals m) <-> exists x, amap_lookup m x = Some y.
+Proof.
+  unfold vals. rewrite in_map_iff.
+  split.
+  - intros [[x1 y1] [Hy Hin]]. 
+    rewrite in_elements_iff in Hin. subst. simpl.
+    eauto.
+  - intros [x Hlookup]. exists (x, y). split; auto.
+    apply in_elements_iff. auto.
+Qed.
+
+Lemma elements_eq m: elements m = combine (keylist m) (vals m).
+Proof.
+  unfold keylist, vals. symmetry; apply combine_eq.
+Qed. 
+
+(*lengths*)
+Lemma elements_length m:
+  length (elements m) = amap_size m.
+Proof.
+  apply map_to_list_length.
+Qed.
+Lemma keylist_length m:
+  length (keylist m) = amap_size m.
+Proof.
+  unfold keylist. simpl_len. apply elements_length. 
+Qed.
+
+Lemma vals_length m:
+  length (vals m) = amap_size m.
+Proof.
+  unfold vals. simpl_len. apply elements_length.
+Qed.
+
+(*NoDup*)
+Lemma elements_Nodup m:
+  List.NoDup (elements m).
+Proof.
+  apply NoDup_ListNoDup, NoDup_map_to_list.
+Qed.
+
+Lemma keylist_Nodup m:
+  List.NoDup (keylist m).
+Proof.
+  unfold keylist. apply NoDup_ListNoDup.
+  apply NoDup_fst_map_to_list.
+Qed.
+
+(*Forall over map*)
+Definition amap_Forall (P: A -> B -> Prop) (m: amap) : Prop :=
+  map_Forall P m.
+
+Lemma amap_Forall_forall (P: A -> B -> Prop) (m: amap):
+  amap_Forall P m <-> forall x y, amap_lookup m x = Some y -> P x y.
+Proof.
+  unfold amap_Forall. apply map_Forall_lookup.
+Qed.
+
+Lemma amap_Forall_elements (P: A -> B -> Prop) (m: amap) :
+  amap_Forall P m <-> Forall2 P (keylist m) (vals m).
+Proof.
+  unfold amap_Forall. rewrite Forall2_combine.
+  assert (Hlen: length (keylist m) = length (vals m)) by (unfold keylist, vals; solve_len).
+  rewrite <- elements_eq. unfold elements.
+  split. (*have to split bc rewrite doesnt work*) 
+  - intros Hall. apply map_Forall_to_list in Hall. split; auto.
+    revert Hall. apply List.Forall_impl. intros [x y]; auto.
+  - intros [_ Hall2]. apply map_Forall_to_list. revert Hall2.
+    apply List.Forall_impl. intros [x y]; auto.
+Qed.
+  
+
+(*Get values as set - NOTE dont do because dont want countable*)
+(* Section BCount.
+
+Context `{countable.Countable B}.
+
+Definition vals (m: amap) : aset B := map_to_set (fun _ (x: B) => x) m.
+
+Lemma amap_mem_vals (y: B) (m: amap): aset_mem y (vals m) <-> exists (x: A), amap_lookup m x = Some y.
+Proof.
+  unfold amap_lookup, aset_mem, vals.
+  set_unfold.
+  split.
+  - intros [[x1 y1] [Hy Hinx]]. subst; simpl.
+    exists x1. apply elem_of_map_to_list in Hinx. auto.
+  - intros [x Hlookup]. exists (x, y). split; auto. apply elem_of_map_to_list. auto.
+Qed.
+
+End BCount. *)
+
+
 (*[get_assoc_list_nodup] is always true now*)
 (* Lemma amap_lookup_nodup
   (m: amap) (x: A) (y: B)
@@ -417,9 +589,23 @@ Qed. *)
 
 End FixTypes.
 
-Definition amap_map {A B C: Type} `{A_eq: EqDecision A} `{A_count: Countable A} 
+Definition amap_map {A B C: Type} `{A_count: Countable A} 
   (f: B -> C) (m: amap A B) : amap A C :=
   fmap f m.
+
+(*Dependent map - NOTE: this is inefficient, since we convert to a list and back*)
+(*Definition amap_dep_map {A B C: Type} {P: A -> B -> Prop} (f: forall x y, P x y -> C) (m: amap A B)
+  (Hall: amap_Forall P m) : amap A C :=
+  
+
+
+Definition dep_map {A B: Type} {P: A -> Prop} (f: forall x, P x -> B) := 
+fix dep_map (l: list A) (Hall: Forall P l) : list B :=
+  match l as l' return Forall P l' -> list B with
+  | nil => fun _ => nil
+  | x :: tl => fun Hforall => f x (Forall_inv Hforall) ::
+    dep_map tl (Forall_inv_tail Hforall)
+  end Hall. *)
 
 End Map.
 
@@ -435,6 +621,12 @@ Arguments amap_union {_} {_} {_} {_}.
 Arguments amap_mem {_} {_} {_} {_}.
 Arguments amap_size {_} {_} {_} {_}.
 Arguments amap_is_empty {_} {_} {_} {_}.
+Arguments amap_diff {_} {_} {_} {_}.
+Arguments elements {_} {_} {_} {_}.
+Arguments vals {_} {_} {_} {_}.
+Arguments keylist {_} {_} {_} {_}.
+Arguments amap_Forall {_} {_} {_} {_}.
+
 
 (*TODO: let's try this instead of lemmas maybe?*)
 From stdpp Require Import fin_maps.

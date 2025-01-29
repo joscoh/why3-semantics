@@ -1098,8 +1098,6 @@ Proof.
     keys l = pat_fv p)
   (fun _ _ => True)); auto; try solve[intros; discriminate].
   - intros. inversion H; subst. simpl. unfold vsymbol. apply keys_singleton.
-    (*Why do we get this?*)
-    apply decidable.prod_eq_dec.
   - intros. apply (iter_arg_list_fv v f vs2 l ps Hps Hall a e f0).
     auto. 
   - intros. inversion H; subst. apply keys_empty.
@@ -1116,8 +1114,7 @@ Proof.
     inversion H; subst; simpl.
     specialize (IH _ eq_refl). rewrite <- IH in H3.
     rewrite keys_set_disj; auto.
-    + rewrite IH; auto.
-    + apply decidable.prod_eq_dec.
+    rewrite IH; auto.
 Qed.
 
 (*Corollaries*)
