@@ -1,6 +1,216 @@
 (*Derived forms and transformations built on the
   Denotational semantics*)
 Require Export Denotational.
+From Equations Require Import Equations.
+Set Bullet Behavior "Strict Subproofs".
+
+
+(*Lots of ways to do this, but we want to "map" term_rep over a term list to produce
+  the appropriate [arg_list]. We can do this easily with Equations*)
+Section TermsToHlist.
+
+Context {gamma} (gamma_valid: valid_context gamma) (pd: pi_dom)
+  (pdf: pi_dom_full gamma pd) (pf: pi_funpred gamma_valid pd pdf)
+  (vt: val_typevar).
+
+Section FixV.
+
+Variable (v: val_vars pd vt).
+
+Equations terms_to_hlist (ts: list term) (tys: list vty)
+  (Hty: Forall2 (fun t ty => term_has_type gamma t ty) ts tys) :
+  arg_list (domain (dom_aux pd)) (map (v_subst vt) tys) :=
+terms_to_hlist nil nil Hty := HL_nil _;
+terms_to_hlist (t :: ts) (ty :: tys) Hty :=
+  HL_cons _ _ _ (term_rep gamma_valid pd pdf vt pf v t ty (Forall2_inv_head Hty)) 
+    (terms_to_hlist ts tys (Forall2_inv_tail Hty)).
+(*Equations is very nice*)
+
+(*Lots of lemmas*)
+
+Lemma terms_to_hlist_tl t ts ty tys Hty:
+  hlist_tl (terms_to_hlist (t :: ts) (ty :: tys) Hty) =
+  terms_to_hlist ts tys (Forall2_inv_tail Hty).
+Proof.
+  simp terms_to_hlist. reflexivity.
+Qed.
+
+Lemma terms_to_hlist_irrel ts tys H1 H2:
+  terms_to_hlist ts tys H1 = terms_to_hlist ts tys H2.
+Proof.
+  revert tys H1 H2. induction ts as [| tm ts IH]; simpl; intros [| ty1 tys];
+  intros Hall1 Hall2; auto; try solve[inversion Hall1].
+  simp terms_to_hlist.
+  rewrite term_rep_irrel with (Hty2:=(Forall2_inv_head Hall2)).
+  f_equal. apply IH.
+Qed.
+
+Lemma terms_to_hlist_app (tys1 tys2 : list vty) (tms1 tms2 : list term) Hty Hty1 Hty2:
+  length tys1 = length tms1 ->
+  terms_to_hlist (tms1 ++ tms2) (tys1 ++ tys2)  Hty =
+  cast_arg_list (eq_sym (map_app (v_subst vt) tys1 tys2))
+    (hlist_app _ _ _ (terms_to_hlist tms1 tys1 Hty1) (terms_to_hlist tms2 tys2 Hty2)).
+Proof.
+  intros Hlen.
+  generalize dependent (eq_sym (map_app (v_subst vt) tys1 tys2)).
+  generalize dependent tms1.
+  induction tys1 as [| ty1 tys1 IH]; simpl; intros [| tm1 tms1]; intros; simpl; simp hlist_app; auto;
+  try discriminate.
+  - assert (e = eq_refl). { apply UIP_dec, list_eq_dec, sort_eq_dec.  } subst.
+    erewrite terms_to_hlist_irrel. reflexivity.
+  - simp terms_to_hlist.
+    simp hlist_app.
+    rewrite cast_arg_list_cons. erewrite IH; auto. f_equal.
+    generalize dependent (cons_inj_hd e). intros Heq.
+    assert (Heq = eq_refl). { apply UIP_dec, sort_eq_dec. } subst.
+    simpl. apply term_rep_irrel.
+Qed.
+
+Lemma terms_to_hlist_rev tys tms Hty Htyrev:
+  terms_to_hlist (rev tms) (rev tys) Htyrev =
+  cast_arg_list (eq_sym (map_rev _ _))
+    (hlist_rev _ _ (terms_to_hlist tms tys Hty)).
+Proof.
+  generalize dependent (eq_sym (map_rev (v_subst vt) tys)).
+  revert Hty Htyrev.
+  revert tms.
+  induction tys as [| ty tys IH]; simpl; intros[| tm1 tms]; intros; simpl; try solve[inversion Hty].
+  - simp hlist_rev. assert (e = eq_refl). { apply UIP_dec, list_eq_dec, sort_eq_dec. } subst.
+    reflexivity.
+  - simp terms_to_hlist. simp hlist_rev.
+    rewrite terms_to_hlist_app with (Hty1:=Forall2_rev (Forall2_inv_tail Hty))
+      (Hty2:=(Forall2_cons _ _ (Forall2_inv_head Hty) (Forall2_nil _))).
+    2: { simpl_len; auto. apply Forall2_length in Hty. simpl in Hty. lia. }
+    assert (Happeq: rev (map (v_subst vt) tys) = map (v_subst vt) (rev tys)).
+    {
+      rewrite map_app in e. simpl in e.
+      apply app_inj_tail_iff in e. destruct_all; auto.
+    }
+    rewrite IH with (Hty:=(Forall2_inv_tail Hty))(e:=Happeq).
+    simpl in *.
+    rewrite hlist_app_cast1.
+    simp terms_to_hlist. simpl.
+    erewrite term_rep_irrel with (Hty2:=Forall2_inv_head Hty).
+    rewrite cast_arg_list_compose.
+    apply cast_arg_list_eq.
+Qed.
+
+(*We can also express [get_arg_list] in terms of this nicer function*)
+(*Express [get_arg_list] via [terms_to_hlist]*)
+Lemma get_arg_list_eq (f: funsym) (ty: vty) (tys: list vty) (tms: list term) 
+  (Hty: term_has_type gamma (Tfun f tys tms) ty) Hp Hlents Hlenvs Hall Htms constrs_len:
+  get_arg_list pd vt tys tms (term_rep gamma_valid pd pdf vt pf v) Hp Hlents Hlenvs Hall =
+  cast_arg_list  (eq_sym (sym_sigma_args_map vt f tys constrs_len))
+    (terms_to_hlist tms ((ty_subst_list (s_params f) tys (s_args f))) Htms).
+Proof.
+  revert Hp Hlents Hlenvs Hall Htms.
+  generalize dependent (eq_sym (sym_sigma_args_map vt f tys constrs_len)).
+  unfold sym_sigma_args.
+  generalize dependent (s_args f).
+  intros args; revert args. clear.
+  induction tms as [| thd ttl IH]; simpl; intros.
+  - destruct args as [| ahd atl]; auto; [| inversion Htms].
+    simpl in *. assert (e = eq_refl). { apply UIP_dec, list_eq_dec, sort_eq_dec. }
+    subst. reflexivity.
+  - destruct args as [| ahd atl]; auto; [inversion Htms|].
+    simpl.
+    simp terms_to_hlist.
+    rewrite cast_arg_list_cons.
+    erewrite IH. f_equal. unfold dom_cast.
+    repeat match goal with
+    | |- context [scast (f_equal _ ?Heq)] => generalize dependent Heq 
+    end.
+    intros Heq1 Heq2. assert (Heq1 = Heq2). { apply UIP_dec, sort_eq_dec. }
+    subst.
+    erewrite term_rep_irrel. reflexivity.
+Qed.
+
+Lemma fun_arg_list_eq (f: funsym) (ty: vty) (tys: list vty) (tms: list term) 
+  (Hty: term_has_type gamma (Tfun f tys tms) ty) Htms constrs_len:
+  fun_arg_list pd vt f tys tms (term_rep gamma_valid pd pdf vt pf v) Hty =
+  cast_arg_list  (eq_sym (sym_sigma_args_map vt f tys constrs_len))
+    (terms_to_hlist tms ((ty_subst_list (s_params f) tys (s_args f))) Htms).
+Proof.
+  unfold fun_arg_list.
+  eapply get_arg_list_eq. apply Hty.
+Qed.
+
+(*Prove [nth], need intermediate cast*)
+
+Lemma terms_to_hlist_eq {tys: list vty} {i: nat}
+  (Hi: i < length tys):
+  v_subst vt (nth i tys vty_int) = nth i (map (v_subst vt) tys) s_int.
+Proof.
+  rewrite map_nth_inbound with (d2:=vty_int); auto.
+Qed.
+
+Lemma terms_to_hlist_nth_ty {tms tys} {i: nat} (Hi: i < length tys)
+  (Hall: Forall2 (term_has_type gamma) tms tys):
+  term_has_type gamma (nth i tms tm_d) (nth i tys vty_int).
+Proof.
+  rewrite Forall2_nth in Hall. destruct Hall as [Hlen Hall].
+  apply Hall. lia.
+Qed.
+
+
+Lemma terms_to_hlist_nth (tms: list term) (tys: list vty) (Hty: Forall2 (term_has_type gamma) tms tys)
+  (i: nat) (Hi: i < length tys):
+  hnth i (terms_to_hlist tms tys Hty) s_int (dom_int pd) =
+  dom_cast (dom_aux pd) (terms_to_hlist_eq Hi) 
+    (term_rep gamma_valid pd pdf vt pf v (nth i tms tm_d) (nth i tys vty_int) (terms_to_hlist_nth_ty Hi Hty)).
+Proof.
+  generalize dependent (terms_to_hlist_eq Hi).
+  generalize dependent (terms_to_hlist_nth_ty Hi Hty).
+  generalize dependent i.
+  generalize dependent tys. 
+  induction tms as [| tm tms IH]; simpl; intros [| tyh tytl]; intros; try solve[inversion Hty].
+  - simpl in Hi; lia.
+  - destruct i.
+    + simpl. simp terms_to_hlist. simpl. simpl in e. 
+      assert (e = eq_refl) by (apply UIP_dec, sort_eq_dec); subst e;
+      apply term_rep_irrel.
+    + simpl. simp terms_to_hlist. simpl. apply IH. simpl in Hi; lia.
+Qed.
+
+End FixV.
+
+Lemma terms_to_hlist_change_vv (v1 v2 : val_vars pd vt) ts tys Hall:
+  (forall t x, In t ts -> aset_mem x (tm_fv t) -> v1 x = v2 x) ->
+  terms_to_hlist v1 ts tys Hall = terms_to_hlist v2 ts tys Hall.
+Proof.
+  intros Halleq. generalize dependent tys. induction ts as [| t ts IH]; intros [| ty1 tys] Hall;
+  try solve[inversion Hall]; auto.
+  simp terms_to_hlist. simpl in *.
+  rewrite tm_change_vv with (v2:=v2) by (intros x Hinx; apply (Halleq t); auto).
+  rewrite IH; auto.
+  intros t1 x Hint1 Hinx; apply (Halleq t1 x); auto.
+Qed.
+
+(*[terms_to_hlist] on vars vs under valuation (vs -> al) is just al*)
+Lemma terms_to_hlist_val_with_args v vars tys {srts1} (Heq: srts1 = map (v_subst vt) tys) al Htys (Hn: NoDup vars):
+  terms_to_hlist (val_with_args pd vt v vars al) (map Tvar vars) tys Htys = 
+  cast_arg_list Heq al.
+Proof.
+  subst. unfold cast_arg_list; simpl.
+  generalize dependent tys. induction vars as [| v1 vars IH]; intros [| ty1 tys]; simpl; intros
+  al Htys; try solve[inversion Htys]; auto.
+  - simp terms_to_hlist. symmetry. apply hlist_nil.
+  - simp terms_to_hlist. simpl. simp term_rep. simpl.
+    unfold var_to_dom. rewrite (hlist_inv al). simpl.
+    inversion Htys; subst. inversion H2; subst.
+    destruct (vty_eq_dec _ _); [|contradiction].
+    destruct (vsymbol_eq_dec _ _); [| contradiction].
+    inversion Hn; subst; auto.
+    erewrite terms_to_hlist_change_vv with (v2:=val_with_args pd vt v vars (hlist_tl al)).
+    + rewrite IH; auto. f_equal. rewrite !dom_cast_compose. apply dom_cast_refl.
+    + intros t x Hint Hinx.
+      rewrite in_map_iff in Hint. destruct Hint as [y [Ht Hiny]]; subst.
+      simpl in Hinx. simpl_set_small. subst.
+      destruct (vsymbol_eq_dec v1 y); subst; [contradiction|].
+      destruct (vty_eq_dec _ _); auto.
+Qed.
+
+End TermsToHlist.
 
 (*Iterated version of forall, let, and*)
 Section Iter.
@@ -12,6 +222,7 @@ Context {gamma} (gamma_valid: valid_context gamma) (pd: pi_dom)
 Notation domain := (domain (dom_aux pd)).
 Notation term_rep := (term_rep gamma_valid pd pdf vt).
 Notation formula_rep := (formula_rep gamma_valid pd pdf vt).
+
 
 (*First, we define iterated substitution in 2 forms: 
   for substituting multiple values with an hlist of values
@@ -184,38 +395,38 @@ Proof.
     + apply (Htms _ t0); auto.
 Qed. 
   
-  Lemma substi_multi_let_change_pf
-  (pf1 pf2: pi_funpred gamma_valid pd pdf) 
-  (vv: val_vars pd vt)
-  (vs: list (vsymbol * term))
-  Hall
-  (Hn: NoDup (map fst vs))
-  (Hagree1: forall t p srts a, In t (map snd vs) -> predsym_in_tm p t ->
-    preds gamma_valid pd pf1 p srts a = preds gamma_valid pd pf2 p srts a)
-  (Hagree2: forall t f srts a, In t (map snd vs) -> funsym_in_tm f t ->
-    funs gamma_valid pd pf1 f srts a = funs gamma_valid pd pf2 f srts a):
-  forall x,
-  substi_multi_let pf1 vv vs Hall x =
-  substi_multi_let pf2 vv vs Hall x.
-  Proof.
-    intros x. revert Hall.
-    revert vv.
-    induction vs; simpl; intros; auto.
-    destruct a; simpl in *.
-    inversion Hn; subst.
-    rewrite IHvs; auto.
-    - destruct (in_dec vsymbol_eq_dec x (map fst vs)).
-      + apply substi_multi_let_ext; auto.
-        intros. unfold substi.
-        vsym_eq x0 v.
-        f_equal. apply tm_change_pf; intros s srts a Hin; 
-        [apply (Hagree1 t) | apply (Hagree2 t)]; auto.  
-      + rewrite !substi_multi_let_notin; auto.
-        unfold substi. vsym_eq x v. f_equal.
-        apply tm_change_pf; intros s srts a Hin; 
-        [apply (Hagree1 t) | apply (Hagree2 t)]; auto.
-    - intros. apply (Hagree1 t0); auto.
-    - intros. apply (Hagree2 t0); auto.
+Lemma substi_multi_let_change_pf
+(pf1 pf2: pi_funpred gamma_valid pd pdf) 
+(vv: val_vars pd vt)
+(vs: list (vsymbol * term))
+Hall
+(Hn: NoDup (map fst vs))
+(Hagree1: forall t p srts a, In t (map snd vs) -> predsym_in_tm p t ->
+  preds gamma_valid pd pf1 p srts a = preds gamma_valid pd pf2 p srts a)
+(Hagree2: forall t f srts a, In t (map snd vs) -> funsym_in_tm f t ->
+  funs gamma_valid pd pf1 f srts a = funs gamma_valid pd pf2 f srts a):
+forall x,
+substi_multi_let pf1 vv vs Hall x =
+substi_multi_let pf2 vv vs Hall x.
+Proof.
+  intros x. revert Hall.
+  revert vv.
+  induction vs; simpl; intros; auto.
+  destruct a; simpl in *.
+  inversion Hn; subst.
+  rewrite IHvs; auto.
+  - destruct (in_dec vsymbol_eq_dec x (map fst vs)).
+    + apply substi_multi_let_ext; auto.
+      intros. unfold substi.
+      vsym_eq x0 v.
+      f_equal. apply tm_change_pf; intros s srts a Hin; 
+      [apply (Hagree1 t) | apply (Hagree2 t)]; auto.  
+    + rewrite !substi_multi_let_notin; auto.
+      unfold substi. vsym_eq x v. f_equal.
+      apply tm_change_pf; intros s srts a Hin; 
+      [apply (Hagree1 t) | apply (Hagree2 t)]; auto.
+  - intros. apply (Hagree1 t0); auto.
+  - intros. apply (Hagree2 t0); auto.
 Qed.
 
 End IterSub.

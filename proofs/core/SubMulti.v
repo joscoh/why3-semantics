@@ -5,7 +5,8 @@
   We prove the single-substitution case (used more often) as a
   corollary*)
 Require Import Typechecker.
-Require Export Denotational.
+Require Export Denotational2.
+From Equations Require Import Equations. (*for tactics*)
 Set Bullet Behavior "Strict Subproofs".
 
 Definition remove_bindings (subs: amap vsymbol term) (vs: aset vsymbol) :=
@@ -56,32 +57,23 @@ with sub_fs (subs: amap vsymbol term) (f : formula) {struct f}: formula :=
   end.
 
 (*Create an [arg_list] by mapping [term_rep]*)
-(*TODO: replace this with [terms_to_hlist] and move that*)
+(*NOTE: here for legacy reasons, should remove*)
+Definition map_arg_list_forall {tms tys gamma}
+(Hlen: length tms = length tys)
+(Htys: Forall (fun x => term_has_type gamma (fst x) (snd x)) (combine tms tys)):
+Forall2 (term_has_type gamma) tms tys.
+Proof.
+  apply Forall2_combine. split; auto.
+Qed.
+
 Definition map_arg_list {gamma: context} (gamma_valid: valid_context gamma)
 (pd: pi_dom) (pdf: pi_dom_full gamma pd) (vt: val_typevar) (pf: pi_funpred gamma_valid pd pdf)
 (vv: val_vars pd vt)
 (tms: list term) (tys: list vty)
 (Hlen: length tms = length tys)
 (Htys: Forall (fun x => term_has_type gamma (fst x) (snd x)) (combine tms tys)):
-arg_list (domain (dom_aux pd)) (map (v_subst vt) tys).
- (*  (terms_to_hlist gamma_valid pd pdf pf vt vv tms tys (proj2 (Forall2_combine _ _ _) (conj Hlen Htys))). *)
- (*  apply Forall2_combine. exact (conj Hlen Htys).
-Defined.
-Print map_arg_list.
-  Search Forall2 combine.*)
-  generalize dependent tys.
-  induction tms; simpl.
-  - intros tys Htys Hall.
-    destruct tys.
-    + exact (HL_nil _).
-    + exact (False_rect _ (Nat.neq_0_succ _ Htys)).
-  - intros tys Htys Hall.
-    destruct tys.
-    + exact (False_rect _ (Nat.neq_succ_0 _ Htys)).
-    + apply HL_cons.
-      * exact (term_rep gamma_valid pd pdf vt pf vv a v (Forall_inv Hall)).
-      * exact (IHtms tys (Nat.succ_inj _ _ Htys) (Forall_inv_tail Hall)).
-Defined.
+arg_list (domain (dom_aux pd)) (map (v_subst vt) tys) :=
+ (terms_to_hlist gamma_valid pd pdf pf vt vv tms tys (map_arg_list_forall Hlen Htys)).
 
 Lemma map_arg_list_nth_eq (vt: val_typevar) (tys: list vty) (i: nat)
   (Hi: i < length tys):
@@ -115,17 +107,7 @@ hnth i (map_arg_list gamma_valid pd pdf vt pf vv tms tys Hlen Htys)
       (map_arg_list_nth_ty Hlen Hi Htys)).
 Proof.
   unfold map_arg_list.
-  generalize dependent (map_arg_list_nth_eq vt tys i Hi).
-  generalize dependent (map_arg_list_nth_ty Hlen Hi Htys).
-  generalize dependent i.
-  generalize dependent tys.
-  induction tms; simpl; intros.
-  - destruct tys; simpl in *; try lia.
-  - destruct tys; simpl in *; try lia.
-    destruct i; simpl in *.
-    + rewrite term_rep_irrel with (Hty2:=t). symmetry.
-      apply dom_cast_refl.
-    + apply IHtms. lia.
+  rewrite terms_to_hlist_nth with (Hi:=Hi). erewrite term_rep_irrel. apply dom_cast_eq.
 Qed.
 
 (*A bunch of small lemmas we need*)
@@ -1203,11 +1185,12 @@ Proof.
   rewrite sub_ts_rep with (Hall:=Hall)(Hty2:=Hty2).
   - apply tm_change_vv.
     intros.
-    match goal with |- context [map_snd_fst_len ?x] => generalize dependent (map_snd_fst_len x) end.
-    revert Hall.
+    unfold map_arg_list.
+    match goal with |- context [@map_arg_list_forall ?a ?b ?c ?x ?y] => generalize dependent (@map_arg_list_forall a b c x y) end.
+    clear Hall.
     (*need to generalize*) simpl. unfold keylist, vals, vsymbol in *. 
     rewrite elements_singleton.
-    simpl. intros Hall _.
+    simpl. intros Hall. simp terms_to_hlist. simpl. 
     destruct (vty_eq_dec (v_subst_aux (fun x1 : typevar => vt x1) (snd x0))
     (v_subst_aux (fun x1 : typevar => vt x1) ty1)); unfold substi.
     + vsym_eq (x, ty1) x0.
@@ -1251,11 +1234,12 @@ Proof.
   rewrite sub_fs_rep with (Hall:=Hall)(Hty2:=Hval2).
   - apply fmla_change_vv.
     intros.
-    match goal with |- context [map_snd_fst_len ?x] => generalize dependent (map_snd_fst_len x) end.
-    revert Hall.
+    unfold map_arg_list.
+    match goal with |- context [@map_arg_list_forall ?a ?b ?c ?x ?y] => generalize dependent (@map_arg_list_forall a b c x y) end.
+    clear Hall.
     (*need to generalize*) simpl. unfold keylist, vals, vsymbol in *. 
     rewrite elements_singleton.
-    simpl. intros Hall _.
+    simpl. intros Hall. simp terms_to_hlist. simpl. 
     destruct (vty_eq_dec (v_subst_aux (fun x1 : typevar => vt x1) (snd x0))
     (v_subst_aux (fun x1 : typevar => vt x1) ty1)); unfold substi.
     + vsym_eq (x, ty1) x0.
