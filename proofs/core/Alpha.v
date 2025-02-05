@@ -4967,7 +4967,7 @@ Section AlphaTypes.
 
 
 
-
+(* 
 
 
 (*Can we prove separately?
@@ -4978,146 +4978,7 @@ Section AlphaTypes.
 
 (*NOTE: will probably need some condition on m and res - see*)
 (*I think I need: no free var in p appears in *)
-Lemma alpha_equiv_p_type (p1 p2: pattern) (m res: amap vsymbol vsymbol * amap vsymbol vsymbol) (ty: vty)
-  (Halpha: alpha_equiv_p m p1 p2 = Some res)
-  (Hty: pattern_has_type gamma p1 ty):
-  pattern_has_type gamma p2 ty.
-Proof.
-  generalize dependent ty.
-  generalize dependent res. revert m.
-  revert p2.
-  induction p1 as [v1 | f1 tys1 ps1 IH | | p1 q1 IH1 IH2 | p1 v1 IH]; intros.
-  - destruct p2 as [v2 | | | |]; try discriminate. simpl in Halpha. (*Here is why we need the vty_eqb check in Pvar*)
-    destruct (vty_eq_spec (snd v1) (snd v2)); [|discriminate]. 
-    inversion Hty; subst. rewrite e. constructor; auto. rewrite <- e; auto.
-  - destruct p2 as [| f2 tys2 ps2 | | |]; try discriminate. simpl in Halpha.
-    destruct (funsym_eq_dec f1 f2); subst; [|discriminate].
-    destruct (Nat.eqb_spec (length ps1) (length ps2)) as [Hlen | Hlen]; [|discriminate].
-    destruct (list_eq_dec _ _); subst ;[|discriminate].
-    simpl in *.
-    unfold option_collapse in *.
-    destruct (fold_left2 _ _ _ _) as [[r1|]|] eqn : Hfold; [|discriminate | discriminate].
-    inversion Halpha; subst; clear Halpha.
-    (*Need typing and disjoint results but that is it*)
-    (* assert (Hlensubst: length (ty_subst_list (s_params f2) tys2 (s_args f2)) = length ps1). {
-      inversion Hty; subst; unfold ty_subst_list. solve_len.
-    } *)
-    assert (Htys1: Forall2 (pattern_has_type gamma) ps1 (ty_subst_list (s_params f2) tys2 (s_args f2))).
-    { inversion Hty; subst. rewrite Forall2_combine, Forall_forall; split; auto. unfold ty_subst_list; solve_len. }
-    assert (Htys2: Forall2 (pattern_has_type gamma) ps2 (ty_subst_list (s_params f2) tys2 (s_args f2))).
-    { (*Do by induction*)
-      clear Hty.
-      generalize dependent (ty_subst_list (s_params f2) tys2 (s_args f2)).
-      generalize dependent res. generalize dependent m. generalize dependent ps2.
-      induction ps1 as [| p1 ps1 IHps]; intros [| p2 ps2] Hlen; try discriminate; simpl; 
-      intros m res Hfold [| ty1 tys] Htys; inversion Htys; subst; auto.
-      simpl in Hlen. inversion IH; subst.
-      assert (Halpha:=Hfold); apply fold_left2_bind_base_some in Halpha.
-      destruct Halpha as [r1 Halpha].
-      rewrite Halpha in Hfold. eauto.
-    }
-    assert (Hdisj:=pat_constr_disj_map Hty).
-    (*This goal is extremely difficult - we needed lots of intermediate results*)
-    assert (Hdisj2: disj_map' pat_fv ps2). { eapply alpha_equiv_p_disj_map_fold; eauto. }
-    (*Now prove result, use previous lemma for disj*)
-    inversion Hty; subst;
-    eapply P_Constr'; auto.
-    intros i j d Hi Hj Hij.
-    rewrite aset_disj_equiv. intros x.
-    assert (Hor: i < j \/ j < i) by lia. destruct Hor;
-    [apply (Hdisj2 i j d)| rewrite and_comm; apply (Hdisj2 j i)]; auto.
-  - destruct p2; try discriminate. auto.
-  - (*Por*)
-    destruct p2 as [| | | p2 q2 |]; try discriminate. simpl in Halpha.
-    apply option_bind_some in Halpha. destruct Halpha as [r1 [Halpha Horcmp]].
-    destruct (or_cmp (fst r1) (snd r1) q1 q2) eqn : Horcmp'; [|discriminate].
-    inversion Horcmp; subst. inversion Hty; subst.
-    constructor; eauto.
-    Print or_cmp.
-    (*Need 2 lemmas for the or case
-      1. If [or_cmp] succeeds, then one well typed iff other one is
-      2. If [or_cmp] succeeds, then free vars equal
-      NOTE: might need some conditions on map
-        probably something like: types equal for all mappings
-        free var proof should be easier
-        for constr case again need disjoint, not sure how to prove*)
-    
 
- intros Hlookup. apply IH1 in Halpha; auto.
-    simpl. simpl_set.
-    destruct_all; auto.
-
-
-    
-
-      eapply H1 in Halpha; eauto.
-    
-
-
-      assert (Hmem': amap_mem v3 (snd r1)) by (eapply alpha_equiv_p_var_expand; eauto).
-      eapply IHps in Hfold; eauto. simpl_set_small.
-      specialize (H1 _ ty1 (Forall2_inv_head Htys) _ Hmem _ Halpha).
-      intros [Hinv | Hinv]; auto; contradiction.
-      generalize dependent 
-
-
- inversion Hty2; subst. rewrite Forall2_combine, Forall_forall; split; auto; lia. }
-    inversion Hty; subst.
-
-Forall2 (pattern_has_type gamma) ps2 (ty_subst_list (s_params f2) tys2 (s_args f2))
-
- apply P_Constr'; auto; try lia.
-    
-
- constructor; auto; try lia. Check P_Constr'. Check P_Match. Check P_Match'.
-    2: {
-      (*Idea: if x is in fv of (nth i ps2 d), then know it is in *)
-    
-
-
-    (*Now nested induction*)
-    inversion H0; subst; clear H0.
-    generalize dependent res. generalize dependent m. generalize dependent ps2.
-    induction ps1 as [| p1 ps1 IHps]; intros [| p2 ps2] Hlen; try discriminate; simpl; intros m res Hfold.
-    + inversion Hfold; subst; auto.
-    + inversion IH; subst.
-      (*Get single equiv*)
-      assert (Halpha:=Hfold); apply fold_left2_bind_base_some in Halpha.
-      destruct Halpha as [r1 Halpha].
-      rewrite Halpha in Hfold.
-      specialize (IHps H2 ps2 (ltac:(simpl in Hlen; lia)) _ _ Hfold).
-      intros Hmem. simpl_set_small.
-      apply IHps in Hmem; destruct Hmem; auto.
-      * eapply H1 in H; eauto. destruct_all; auto.
-      * destruct_all; auto.
-  - intros [| | | |]; intros; inversion Halpha; subst; auto.
-  - (*Por case*)
-    intros [| | | p2 q2 |] m res Halpha; inversion Halpha; subst; clear Halpha.
-    apply option_bind_some in H0. destruct H0 as [r1 [Halpha Horcmp]].
-    (*Easy: we don't change map in [or_cmp]*)
-    destruct (or_cmp (fst r1) (snd r1) q1 q2); [|discriminate].
-    inversion Horcmp; subst. intros Hlookup. apply IH1 in Halpha; auto.
-    simpl. simpl_set.
-    destruct_all; auto.
-  - (*Pbind*)
-    intros [| | | | p2 v2] m res Halpha; inversion Halpha; subst; clear Halpha.
-    apply option_bind_some in H0. destruct H0 as [r1 [Halpha Hvar]].
-    intros Hlookup.
-    simpl. simpl_set. 
-    apply alpha_p_var_some in Hvar. subst; simpl in *.
-    destruct (vsymbol_eq_dec x v1); subst; auto.
-    + rewrite amap_set_lookup_same in Hlookup by auto. inversion Hlookup; subst; auto.
-    + rewrite amap_set_lookup_diff in Hlookup by auto.
-      eapply IH with (p2:=p2) in Hlookup; eauto.
-      destruct_all; auto.
-    
-
-
-    unfold alpha_p_var in Halpha.
-    (*NOTE: need condition about types in map*)
-    destruct (amap_lookup (fst m) v1) eqn : Hlook1; [discriminate|].
-    destruct (amap_lookup (snd m) v2) eqn : Hlook2; [discriminate|].
-    inversion Halpha; subst.
 
 (*As long as the vars list includes all free vars of p1
   and has no duplicates, any two patterns that are
@@ -5247,7 +5108,7 @@ Proof.
   - apply map_snd_combine_nodup; apply NoDup_pat_fv.
   - intros. rewrite map_fst_combine; auto.
 Qed.
-
+ *)
 Fixpoint shape_p (p1 p2: pattern) :=
   match p1, p2 with
   | Pwild, Pwild => true
@@ -5282,7 +5143,64 @@ Proof.
   - intros; bool_hyps; rewrite IHp1_1, IHp1_2; auto.
 Qed.
 
-Lemma alpha_p_shape vars p1 p2
+(*We prove directly so we don't need typing*)
+
+Lemma or_cmp_shape m1 m2 p1 p2
+  (Heq: or_cmp m1 m2 p1 p2):
+  shape_p p1 p2.
+Proof.
+  generalize dependent p2. 
+  induction p1 as [v1 | f1 tys1 ps1 IH | | p1 q1 IH1 IH2 | p1 v1 IH]; intros;
+  destruct p2 as [v2 | f2 tys2 ps2 | | p2 q2 | p2 v2]; try discriminate; simpl in Heq; auto; simpl.
+  - destruct (funsym_eq_dec f1 f2); subst; [|discriminate].
+    destruct (Nat.eqb_spec (length ps1) (length ps2)) as [Hlen | Hlen]; [|discriminate].
+    destruct (list_eq_dec _ _); subst ;[|discriminate].
+    simpl in *. generalize dependent ps2. 
+    induction ps1 as [| p1 ps1 IHps]; intros [| p2 ps2]; try discriminate; auto.
+    rewrite !all2_cons, !andb_true. simpl. intros [Hor Hall] Hlen. inversion IH; subst.
+    auto.
+  - rewrite andb_true in Heq |- *. destruct Heq; split; auto.
+  - bool_hyps; auto.
+Qed.
+
+Lemma alpha_p_shape m res p1 p2
+  (Heq: alpha_equiv_p m p1 p2 = Some res):
+  shape_p p1 p2.
+Proof.
+  generalize dependent res. revert m.
+  generalize dependent p2. 
+  induction p1 as [v1 | f1 tys1 ps1 IH | | p1 q1 IH1 IH2 | p1 v1 IH]; intros;
+  destruct p2 as [v2 | f2 tys2 ps2 | | p2 q2 | p2 v2]; try discriminate; simpl in Heq; auto; simpl.
+  - (*Pconstr*)
+    destruct (funsym_eq_dec f1 f2); subst; [|discriminate].
+    destruct (Nat.eqb_spec (length ps1) (length ps2)) as [Hlen | Hlen]; [|discriminate].
+    destruct (list_eq_dec _ _); subst ;[|discriminate].
+    simpl in *.
+    unfold option_collapse in *.
+    destruct (fold_left2 _ _ _ _) as [[r1|]|] eqn : Hfold; [|discriminate | discriminate].
+    inversion Heq; subst; clear Heq.
+    generalize dependent res. generalize dependent m. generalize dependent ps2.
+    induction ps1 as [| p1 ps1 IHps]; intros [| p2 ps2] Hlen (*Hdisj2*); try discriminate; simpl; 
+    intros m res Hfold; auto.
+    rewrite all2_cons, andb_true. inversion IH; subst.
+     (*Get info from IH*)
+    assert (Halpha:=Hfold); apply fold_left2_bind_base_some in Halpha.
+    destruct Halpha as [r1 Halpha].
+    rewrite Halpha in Hfold. assert (Hfold':=Hfold).
+    apply H1 in Halpha. apply IHps in Hfold'; auto.
+  - (*Por*)
+    apply option_bind_some in Heq. destruct Heq as [r1 [Halpha Horcmp]].
+    destruct (or_cmp (fst r1) (snd r1) q1 q2) eqn : Hor; [|discriminate].
+    inversion Horcmp; subst. rewrite andb_true. apply IH1 in Halpha; split; auto.
+    apply or_cmp_shape in Hor. auto.
+  - (*Pbind*)
+    apply option_bind_some in Heq. destruct Heq as [r1 [Halpha Hvar]].
+    destruct (vty_eq_spec (snd v1) (snd v2)); [|discriminate]. 
+    apply IH in Halpha; auto.
+Qed. 
+
+
+(* Lemma alpha_p_shape vars p1 p2
   (Heq: alpha_equiv_p vars p1 p2):
   shape_p p1 p2.
 Proof.
@@ -5293,7 +5211,7 @@ Proof.
     rewrite all2_cons in H1 |- *. bool_hyps.
     rewrite (Hp p), (IHps Hforall _ H2); auto.
   - rewrite IHp1_1, IHp1_2; auto.
-Qed.
+Qed. *)
 
 
 (*TODO: change*)
@@ -5320,220 +5238,241 @@ Proof.
   - apply Himpl; auto.
   - apply IH; auto.
 Qed. 
-    
-(*alpha equivalence preserves well-typedness*)
-Lemma alpha_equiv_type (t: term) (f: formula):
-  (forall t1 (vars: list (vsymbol * vsymbol)) (ty: vty)
-    (Heq: alpha_equiv_t vars t t1)
-    (Hvars: forall x y, In (x, y) vars -> snd x = snd y),
-    term_has_type gamma t ty ->
-    term_has_type gamma t1 ty) /\
-  (forall f1 (vars: list (vsymbol * vsymbol))
-    (Heq: alpha_equiv_f vars f f1)
-    (Hvars: forall x y, In (x, y) vars -> snd x = snd y),
-    formula_typed gamma f ->
-    formula_typed gamma f1).
+
+(*TODO: move above - remove assumption about free vars*)
+Lemma a_equiv_p_res_types {res} {p1 p2: pattern} {ty}
+  (Hty: pattern_has_type gamma p1 ty)
+  (Halpha: a_equiv_p p1 p2 = Some res):
+  forall x y (Hxy: amap_lookup (fst res) x = Some y), snd x = snd y.
 Proof.
-  revert t f; apply term_formula_ind; simpl; intros.
-  - alpha_case t1 Heq.
-    simpl_sumbool.
-  - alpha_case t1 Heq.
-    rewrite eq_var_eq in Heq.
-    bool_hyps; destruct Heq; bool_hyps; repeat simpl_sumbool.
-    apply in_firstb_in in H0.
-    apply Hvars in H0.
-    inversion H; subst.
-    rewrite H0. constructor. rewrite <- H0; auto.
-  - alpha_case t1 Heq. bool_hyps; repeat simpl_sumbool.
-    apply Nat.eqb_eq in H4.
-    inversion H0; subst. constructor; auto; try lia.
-    clear -H13 H2 H H10 H4 Hvars.
-    assert (length l1 = length (map (ty_subst (s_params f) l0) (s_args f))) by wf_tac.
-    generalize dependent (map (ty_subst (s_params f) l0) (s_args f)).
-    intros typs; revert typs.
-    clear H10. generalize dependent l2. induction l1; simpl; intros; auto;
-    destruct typs; inversion H0.
-    + destruct l2; inversion H4. constructor.
-    + destruct l2; inversion H4. inversion H13; subst.
-      inversion H; subst.
-      rewrite all2_cons in H2; bool_hyps.
-      constructor; auto; simpl.
-      eapply H9. apply H1. auto. apply H7.
-  - alpha_case t1 Heq; bool_hyps; repeat simpl_sumbool.
-    inversion H1; subst. constructor; auto.
-    + eapply H. apply H4. intros; auto. rewrite <- e; auto.
-    + eapply H0. apply H3. 2: auto. simpl; intros x y [Heq | Hin].
-      * inversion Heq; subst; auto.
-      * auto.
-  - alpha_case t0 Heq. bool_hyps.
-    inversion H2; subst.
-    constructor; [apply (H _ _ H3) | apply (H0 _ _ _ H5) | apply (H1 _ _ _ H4)]; auto.
-  - alpha_case t1 Heq. bool_hyps; repeat simpl_sumbool.
-    apply Nat.eqb_eq in H5.
-    inversion H1; subst.
-    rewrite fold_is_true in H3.
-    assert (Hall2:=H3).
-    rewrite all2_forall with(d1:=(Pwild, tm_d)) (d2:=(Pwild, tm_d)) in H3; auto.
-    apply T_Match; [ apply (H _ _ _ H2); auto | | | ].
-    + intros. destruct (In_nth _ _ (Pwild, tm_d) H4) as [n [Hn Hx]]; 
-      subst.
-      specialize (H3 n ltac:(lia)). simpl in H3.
-      bool_hyps. rename H3 into Heqp.
-      apply alpha_equiv_p_type_full with(ty:=v0) in Heqp; auto.
-      apply alpha_equiv_p_fv_len_full; auto.
-      apply H10. wf_tac.
-    + intros. destruct (In_nth _ _ (Pwild, tm_d) H4) as [n [Hn Hx]]; 
-      subst.
-      specialize (H3 n ltac:(lia)).
-      bool_hyps. rename H3 into Heqp. rename H6 into Heqt.
-      rewrite Forall_forall in H0.
-      eapply H0. 2: apply Heqt.
-      * wf_tac.
-      * unfold add_vals.
-        intros. rewrite in_app_iff in H3.
-        destruct H3; auto.
-        rewrite (alpha_equiv_p_fv_full _ _ Heqp) in H3.
-        rewrite in_combine_iff in H3; wf_tac.
-        destruct H3 as [i [Hi Hxy]].
-        specialize (Hxy vs_d vs_d). inversion Hxy; subst. clear Hxy.
-        rewrite map_nth_inbound with(d2:=vs_d); auto.
-        rewrite mk_fun_vars_eq_full; auto.
-        wf_tac.
-      * apply H12. wf_tac.
-    + revert H13. apply compile_bare_single_ext; eauto; [apply ty_rel_refl|].
-      revert Hall2.
-      rewrite all2_map.
-      apply all2_impl.
-      intros x y.
-      unfold is_true; rewrite andb_true_iff; intros [Hps _].
-      apply alpha_p_shape in Hps; auto.
-      apply shape_p_impl; auto.
-  - (*Teps*)
-    alpha_case t1 Heq.
-    bool_hyps; simpl_sumbool.
-    inversion H0; subst.
-    rewrite e. constructor.
-    + apply H in H2; auto. simpl; intros x y [Hxy | Hinxy]; auto.
-      inversion Hxy; subst; auto.
-    + rewrite <- e; assumption.
-  - (*Fpred*)
-    alpha_case f1 Heq.
-    bool_hyps; repeat simpl_sumbool.
-    apply Nat.eqb_eq in H4.
-    inversion H0; subst. constructor; auto; try lia.
-    clear -H11 H2 H H9 H4 Hvars. 
-    assert (length l0 = length (map (ty_subst (s_params p0) l) (s_args p0))) by wf_tac.
-    generalize dependent (map (ty_subst (s_params p0) l) (s_args p0)).
-    intros typs; revert typs.
-    clear H9. rename l0 into tms2. generalize dependent tms2. 
-    induction tms; simpl; intros; auto;
-    destruct typs; inversion H0;
-    destruct tms2; inversion H4; simpl; try solve[constructor];
-    rewrite all2_cons in H2.
-    inversion H11; subst.
-    inversion H; subst.
-    bool_hyps.
-    constructor; auto; simpl.
-    eapply H9. apply H1. auto. apply H7.
-  - (*Fquant*)
-    alpha_case f1 Heq. bool_hyps; repeat simpl_sumbool.
-    inversion H0; subst.
-    constructor; [rewrite <- e |]; auto.
-    apply H in H2; auto. simpl; intros x y [Hxy | Hinxy]; auto.
-    inversion Hxy; subst; auto.
-  - (*Feq*)
-    alpha_case f1 Heq. bool_hyps; simpl_sumbool.
-    inversion H1; subst.
-    constructor; [apply H with(ty:=v0) in H4 | 
-      apply H0 with(ty:=v0) in H3]; auto.
-  - (*Fbinop - same*)
-    alpha_case f0 Heq. bool_hyps; simpl_sumbool.
-    inversion H1; subst.
-    constructor; [apply H in H4 | apply H0 in H3]; auto.
-  - (*Fnot*)
-    alpha_case f1 Heq. 
-    inversion H0; subst.
-    constructor.
-    apply H in Heq; auto.
-  - (*Ftrue*)
-    alpha_case f1 Heq; constructor.
-  - (*Ffalse*)
-    alpha_case f1 Heq; constructor.
-  - (*Flet*)
-    alpha_case f1 Heq; bool_hyps; simpl_sumbool.
-    inversion H1; subst. constructor; auto.
-    + eapply H. apply H4. intros; auto. rewrite <- e; auto.
-    + eapply H0. apply H3. 2: auto. simpl; intros x y [Heq | Hin].
-      * inversion Heq; subst; auto.
-      * auto.
-  - (*Fif*)
-    alpha_case f0 Heq; bool_hyps.
-    inversion H2; subst.
-    constructor; [apply (H _ _ H3) | apply (H0 _ _  H5) | apply (H1 _ _ H4)]; auto.
-  - (*Fmatch*)
-    alpha_case f1 Heq. bool_hyps; repeat simpl_sumbool.
-    apply Nat.eqb_eq in H5.
-    inversion H1; subst.
-    rewrite fold_is_true in H3.
-    assert (Hall2:=H3).
-    rewrite all2_forall with(d1:=(Pwild, Ftrue))(d2:=(Pwild, Ftrue)) in H3; auto.
-    constructor; auto; [apply (H _ _ _ H2); auto | | |].
-    + intros. 
-      destruct (In_nth _ _ (Pwild, Ftrue) H4) as [n [Hn Hx]]; subst.
-      specialize (H3 n ltac:(lia)).
-      bool_hyps. rename H3 into Heqp.
-      apply alpha_equiv_p_type_full with(ty:=v0) in Heqp; auto.
-      apply alpha_equiv_p_fv_len_full; auto.
-      apply H10. wf_tac.
-    + intros. 
-      destruct (In_nth _ _ (Pwild, Ftrue) H4) as [n [Hn Hx]]; subst.
-      specialize (H3 n ltac:(lia)).
-      bool_hyps; rename H3 into Heqp; rename H6 into Heqt.
-      rewrite Forall_forall in H0.
-      eapply H0. 2: apply Heqt.
-      * wf_tac.
-      * unfold add_vals.
-        intros. rewrite in_app_iff in H3.
-        destruct H3; auto.
-        rewrite (alpha_equiv_p_fv_full _ _ Heqp) in H3.
-        rewrite in_combine_iff in H3; wf_tac.
-        destruct H3 as [i [Hi Hxy]].
-        specialize (Hxy vs_d vs_d). inversion Hxy; subst. clear Hxy.
-        rewrite map_nth_inbound with(d2:=vs_d); auto.
-        rewrite mk_fun_vars_eq_full; auto.
-        wf_tac.
-      * apply H11. wf_tac.
-    + revert H12. apply compile_bare_single_ext; eauto; [apply ty_rel_refl|].
-      revert Hall2.
-      rewrite all2_map.
-      apply all2_impl.
-      intros x y.
-      unfold is_true; rewrite andb_true_iff; intros [Hps _].
-      apply alpha_p_shape in Hps; auto.
-      apply shape_p_impl; auto.
+  intros x y Hlookup.
+  eapply alpha_equiv_p_res_types; eauto.
+  destruct (aset_mem_dec x (pat_fv p1)); auto.
+  eapply alpha_equiv_p_var_notin in Halpha; eauto. rewrite <- Halpha in Hlookup.
+  simpl in Hlookup. rewrite amap_empty_get in Hlookup. discriminate.
 Qed. 
 
+(*alpha equivalence preserves well-typedness*)
+Print alpha_equiv_var.
+Lemma alpha_equiv_type (t1: term) (f1: formula):
+  (forall t2 (m1 m2: amap vsymbol vsymbol) (ty: vty)
+    (Heq: alpha_equiv_t m1 m2 t1 t2)
+    (Hvars: forall x y, amap_lookup m1 x = Some y -> snd x = snd y)
+    (Hty: term_has_type gamma t1 ty),
+    term_has_type gamma t2 ty) /\
+  (forall f2 (m1 m2: amap vsymbol vsymbol)
+    (Heq: alpha_equiv_f m1 m2 f1 f2)
+    (Hvars: forall x y,  amap_lookup m1 x = Some y -> snd x = snd y)
+    (Hty: formula_typed gamma f1),
+    formula_typed gamma f2).
+Proof.
+  revert t1 f1; apply term_formula_ind; simpl; intros.
+  - (**Tconst*)destruct t2; try discriminate. 
+    destruct (const_eq_dec _ _); subst; auto.
+    discriminate.
+  - (*Tvar*) destruct t2 as [| v2 | | | | |]; try discriminate.
+    inversion Hty; subst. unfold alpha_equiv_var in Heq.
+    destruct (amap_lookup m1 _) as [v3|] eqn : Hget1; 
+    destruct (amap_lookup m2 _) as [v4|] eqn : Hget2; try discriminate.
+    + destruct (vsymbol_eq_dec v2 v3); subst; [|discriminate].
+      destruct (vsymbol_eq_dec _ v4); subst; [|discriminate].
+      apply Hvars in Hget1. rewrite Hget1. constructor; auto.
+      rewrite <- Hget1; auto.
+    + destruct (vsymbol_eq_dec _ _); subst; auto. discriminate.
+  - (*Tfun*)
+    destruct t2 as [| | f2 tys2 tms2 | | | |]; try discriminate.
+    rename l into tys1; rename l1 into tms1; rename H into IH.
+    destruct (funsym_eq_dec _ _); subst; [|discriminate].
+    destruct (Nat.eqb_spec (length tms1) (length tms2)) as [Hlen|?]; subst; [|discriminate].
+    destruct (list_eq_dec _ _ _); subst; [|discriminate]. simpl in Heq.
+    inversion Hty; subst; constructor; auto; try lia.
+    (*Only need to show inner types*)
+    clear -H9 H6 Heq Hvars IH Hlen.
+    assert (Hlen': length tms2 = length (map (ty_subst (s_params f2) tys2) (s_args f2))) by solve_len.
+    generalize dependent (map (ty_subst (s_params f2) tys2) (s_args f2)).
+    generalize dependent tms2. clear -Hvars IH.
+    induction tms1 as [| tm1 tms1 IHtms]; intros [| tm2 tms2]; try discriminate; auto.
+    rewrite all2_cons, andb_true. simpl. intros [Halpha Hall] Hlen [| ty1 tys]; try discriminate.
+    simpl. intros Hallty Hlen'. inversion Hallty; subst. inversion IH; subst.
+    constructor; eauto.
+  - (*Tlet*)
+    destruct t2 as [| | | tm3 x2 tm4 | | |]; try discriminate.
+    rename v into x1. destruct (vty_eq_dec _ _) as [Htyeq |?]; [|discriminate].
+    simpl in Heq. rewrite andb_true in Heq. destruct Heq as [Halpha1 Halpha2].
+    inversion Hty; subst.
+    constructor; auto.
+    + eapply H; eauto. rewrite <- Htyeq; auto.
+    + eapply H0; eauto. (*Prove types condition preserved*)
+      intros x y Hlook. destruct (vsymbol_eq_dec x x1); subst.
+      * rewrite amap_set_lookup_same in Hlook. inversion Hlook; subst; auto.
+      * rewrite amap_set_lookup_diff in Hlook by auto. auto.
+  - (*Tif*)
+    destruct t0 as [| | | | f2 tm3 tm4 | |]; try discriminate.
+    rewrite !andb_true in Heq. destruct_all. inversion Hty; subst. constructor; eauto.
+  - (*Tmatch*)
+    destruct t2 as [| | | | | tm2 ty2 ps2 |]; try discriminate.
+    rename v into ty1. rename ps into ps1. rename tm into tm1. rename H into IH1. rename H0 into IH2.
+    rewrite !andb_true in Heq. destruct Heq as [[[Halpha Hlenps] Htyeq] Hallps].
+    destruct (vty_eq_dec _ _); subst; [|discriminate]. clear Htyeq.
+    apply Nat.eqb_eq in Hlenps.
+    inversion Hty; subst.
+    (*Prove two cases at once:*)
+    assert (Halltys: forall x, In x ps2 -> 
+        pattern_has_type gamma (fst x) ty2 /\ term_has_type gamma (snd x) ty).
+    {
+      rewrite all2_forall with(d1:=(Pwild, tm_d)) (d2:=(Pwild, tm_d)) in Hallps; auto.
+      intros x Hinx. destruct (In_nth _ _ (Pwild, tm_d) Hinx) as [n [Hn Hx]]; 
+      subst.
+      specialize (Hallps n ltac:(lia)).
+      destruct (a_equiv_p _ _) as [[res1 res2]|] eqn : Halphap; [|discriminate].
+      assert (Hinx': In (nth n ps1 (Pwild, tm_d)) ps1) by (apply nth_In; lia).
+      split.
+      - (*Prove pattern*)
+        eapply a_equiv_p_type in Halphap; eauto.
+      - (*Prove term*)
+        rewrite Forall_forall in IH2. eapply IH2; eauto.
+        + apply in_map. auto.
+        + (*Map preservation*)
+          intros x y Hlookup. rewrite amap_union_lookup in Hlookup.
+          destruct (amap_lookup res1 x) as [y1|] eqn : Hlook1; auto.
+          inversion Hlookup; subst.
+          (*Use pattern types result*)
+          eapply a_equiv_p_res_types in Halphap; eauto.
+    }
+    apply T_Match; eauto.
+    + intros x Hinx. apply (Halltys x Hinx).
+    + intros x Hinx. apply (Halltys x Hinx).
+    + (*show exhaustiveness checking preserved by shape_p*)
+      revert H7. apply compile_bare_single_ext; eauto; [apply ty_rel_refl|].
+      revert Hallps.
+      rewrite all2_map.
+      apply all2_impl.
+      intros x y.
+      destruct (a_equiv_p (fst x) (fst y)) as [res|] eqn : Halphap; [|discriminate].
+      intros _.
+      apply alpha_p_shape in Halphap; auto.
+      apply shape_p_impl; auto.
+  - (*Teps*)
+    destruct t2 as [| | | | | | f2 x2]; try discriminate.
+    rename f into f1. rename v into x1. rename H into IH.
+    destruct (vty_eq_dec _ _) as [Htyeq |?]; [|discriminate].
+    simpl in Heq. inversion Hty; subst. rewrite Htyeq. constructor; auto.
+    + eapply IH; eauto. intros x y Hlook. destruct (vsymbol_eq_dec x x1); subst.
+      * rewrite amap_set_lookup_same in Hlook. inversion Hlook; subst; auto.
+      * rewrite amap_set_lookup_diff in Hlook by auto. auto.
+    + rewrite <- Htyeq; auto.
+  - (*Fpred*)
+    destruct f2 as [ p2 tys2 tms2 | | | | | | | | |]; try discriminate.
+    rename p into p1. rename tys into tys1; rename tms into tms1; rename H into IH.
+    destruct (predsym_eq_dec _ _); subst; [|discriminate].
+    destruct (Nat.eqb_spec (length tms1) (length tms2)) as [Hlen|?]; subst; [|discriminate].
+    destruct (list_eq_dec _ _ _); subst; [|discriminate]. simpl in Heq.
+    inversion Hty; subst; constructor; auto; try lia.
+    (*Only need to show inner types*)
+    clear -H7 H5 Heq Hvars IH Hlen.
+    assert (Hlen': length tms2 = length (map (ty_subst (s_params p2) tys2) (s_args p2))) by solve_len.
+    generalize dependent (map (ty_subst (s_params p2) tys2) (s_args p2)).
+    generalize dependent tms2. clear -Hvars IH.
+    induction tms1 as [| tm1 tms1 IHtms]; intros [| tm2 tms2]; try discriminate; auto.
+    rewrite all2_cons, andb_true. simpl. intros [Halpha Hall] Hlen [| ty1 tys]; try discriminate.
+    simpl. intros Hallty Hlen'. inversion Hallty; subst. inversion IH; subst.
+    constructor; eauto.
+  - (*Fquant*)
+    destruct f2 as [ | q2 x2 f2 | | | | | | | |]; try discriminate.
+    rename v into x1.
+    destruct (quant_eq_dec _ _); subst; [|discriminate].
+    destruct (vty_eq_dec _ _) as [Htyeq |]; subst; [|discriminate].
+    simpl in Heq. inversion Hty; subst. constructor; auto; [rewrite <- Htyeq; auto |].
+    eapply H; eauto. intros x y Hlook. destruct (vsymbol_eq_dec x x1); subst.
+    + rewrite amap_set_lookup_same in Hlook. inversion Hlook; subst; auto.
+    + rewrite amap_set_lookup_diff in Hlook by auto. auto.
+  - (*Feq*)
+    destruct f2; try discriminate; bool_hyps; simpl_sumbool.
+    inversion Hty; subst. constructor; eauto.
+  - (*Fbinop*) destruct f0; try discriminate; bool_hyps; simpl_sumbool.
+    inversion Hty; subst. constructor; eauto.
+  - (*Fnot*) destruct f2; try discriminate. 
+    inversion Hty; subst. constructor; eauto.
+  - (*Ftrue*) destruct f2; try discriminate. auto.
+  - (*Ffalse*) destruct f2; try discriminate. auto.
+  - (*Flet*)
+    destruct f2 as [ | | | | | | | tm2 x2 f2 | |]; try discriminate.
+    rename v into x1. destruct (vty_eq_dec _ _) as [Htyeq |?]; [|discriminate].
+    simpl in Heq. rewrite andb_true in Heq. destruct Heq as [Halpha1 Halpha2].
+    inversion Hty; subst.
+    constructor; auto.
+    + eapply H; eauto. rewrite <- Htyeq; auto.
+    + eapply H0; eauto.
+      intros x y Hlook. destruct (vsymbol_eq_dec x x1); subst.
+      * rewrite amap_set_lookup_same in Hlook. inversion Hlook; subst; auto.
+      * rewrite amap_set_lookup_diff in Hlook by auto. auto.
+  - (*Fif*) destruct f0; try discriminate; bool_hyps.
+    inversion Hty; subst. constructor; eauto.
+  - (*Fmatch*)
+    destruct f2 as [ | | | | | | | | | tm2 ty2 ps2]; try discriminate.
+    rename v into ty1. rename ps into ps1. rename tm into tm1. rename H into IH1. rename H0 into IH2.
+    rewrite !andb_true in Heq. destruct Heq as [[[Halpha Hlenps] Htyeq] Hallps].
+    destruct (vty_eq_dec _ _); subst; [|discriminate]. clear Htyeq.
+    apply Nat.eqb_eq in Hlenps.
+    inversion Hty; subst.
+    (*Prove two cases at once:*)
+    assert (Halltys: forall x, In x ps2 -> 
+        pattern_has_type gamma (fst x) ty2 /\ formula_typed gamma (snd x)).
+    {
+      rewrite all2_forall with(d1:=(Pwild, Ftrue)) (d2:=(Pwild, Ftrue)) in Hallps; auto.
+      intros x Hinx. destruct (In_nth _ _ (Pwild, Ftrue) Hinx) as [n [Hn Hx]]; 
+      subst.
+      specialize (Hallps n ltac:(lia)).
+      destruct (a_equiv_p _ _) as [[res1 res2]|] eqn : Halphap; [|discriminate].
+      assert (Hinx': In (nth n ps1 (Pwild, Ftrue)) ps1) by (apply nth_In; lia).
+      split.
+      - (*Prove pattern*)
+        eapply a_equiv_p_type in Halphap; eauto.
+      - (*Prove term*)
+        rewrite Forall_forall in IH2. eapply IH2; eauto.
+        + apply in_map. auto.
+        + (*Map preservation*)
+          intros x y Hlookup. rewrite amap_union_lookup in Hlookup.
+          destruct (amap_lookup res1 x) as [y1|] eqn : Hlook1; auto.
+          inversion Hlookup; subst.
+          (*Use pattern types result*)
+          eapply a_equiv_p_res_types in Halphap; eauto.
+    }
+    apply F_Match; eauto.
+    + intros x Hinx. apply (Halltys x Hinx).
+    + intros x Hinx. apply (Halltys x Hinx).
+    + (*show exhaustiveness checking preserved by shape_p*)
+      revert H6. apply compile_bare_single_ext; eauto; [apply ty_rel_refl|].
+      revert Hallps.
+      rewrite all2_map.
+      apply all2_impl.
+      intros x y.
+      destruct (a_equiv_p (fst x) (fst y)) as [res|] eqn : Halphap; [|discriminate].
+      intros _.
+      apply alpha_p_shape in Halphap; auto.
+      apply shape_p_impl; auto.
+Qed.
+
+
 Definition alpha_equiv_t_type t := proj_tm alpha_equiv_type t.
-Definition alpha_equiv_f_valid f := proj_fmla alpha_equiv_type f.
+Definition alpha_equiv_f_typed f := proj_fmla alpha_equiv_type f.
 
 Corollary a_equiv_t_type (t1 t2: term) (ty: vty):
   a_equiv_t t1 t2 ->
   term_has_type gamma t1 ty ->
   term_has_type gamma t2 ty.
 Proof.
-  unfold a_equiv_t. intros Heq.
-  apply alpha_equiv_t_type with(vars:=nil); auto.
-  simpl; intros ? ? [].
+  intros Heq. eapply alpha_equiv_t_type; eauto.
+  intros x y. rewrite amap_empty_get; discriminate.
 Qed.
 
-Corollary a_equiv_f_valid (f1 f2: formula):
+Corollary a_equiv_f_typed (f1 f2: formula):
   a_equiv_f f1 f2 ->
   formula_typed gamma f1 ->
   formula_typed gamma f2.
 Proof.
-  unfold a_equiv_f. intros Heq.
-  apply alpha_equiv_f_valid with(vars:=nil); auto.
-  simpl; intros ? ? [].
+  intros Heq. eapply alpha_equiv_f_typed; eauto.
+  intros x y. rewrite amap_empty_get; discriminate.
 Qed.
 
 End AlphaTypes.
