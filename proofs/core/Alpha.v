@@ -3553,16 +3553,43 @@ Definition amap_comp {A: Type} `{countable.Countable A} (m1 m2: amap A A): amap 
     | None => acc
     end) amap_empty (elements m1).
 
+(*TODO: move*)
+Lemma notin_in_elements_iff {A B: Type} `{countable.Countable A} (x: A) (m: amap A B):
+  ~ In x (map fst (elements m)) <-> amap_lookup m x = None.
+Proof.
+  split.
+  - intros Hnotin. destruct (amap_lookup m x) as [y|] eqn : Hlook; auto.
+    apply in_elements_iff in Hlook. exfalso. apply Hnotin. rewrite in_map_iff.
+    exists (x, y); auto.
+  - intros Hlookup Hinx. rewrite in_map_iff in Hinx.
+    destruct Hinx as [[x1 y1] [Hx Hinx]]; subst; simpl in Hlookup.
+    apply in_elements_iff in Hinx. rewrite Hinx in Hlookup. discriminate.
+Qed. 
+
 (*TODO: START (or do later) - see what we need exactly in term/formula lemma*)
-(* Lemma amap_comp_elts {A: Type} `{countable.Countable A} (m1 m2: amap A A) x:
+Lemma amap_comp_lookup {A: Type} `{countable.Countable A} (m1 m2: amap A A) x:
   amap_lookup (amap_comp m1 m2) x =
     match amap_lookup m1 x with
     | Some y => amap_lookup m2 y
     | None => None
     end.
 Proof.
-  unfold amap_comp.
+  unfold amap_comp. 
   (*First prove notin case*)
+  assert (Hnotin: forall l (Hget : ~ In x (map fst l)),
+    amap_lookup
+      (fold_right
+         (fun (x0 : A * A) (acc : amap A A) =>
+          match amap_lookup m2 (snd x0) with
+          | Some y => amap_set acc (fst x0) y
+          | None => acc
+          end) amap_empty l) x = None).
+  {
+    clear. induction l as [| h t IH]; simpl; auto.
+    intros Hnotin.
+    destruct (amap_lookup m2 (snd h)) as [y|] eqn : Hlook; auto.
+    rewrite amap_set_lookup_diff; auto.
+  }
   destruct (amap_lookup m1 x) as [y1|] eqn : Hget.
   - rewrite <- in_elements_iff in Hget.
     assert (Hnodup: NoDup (map fst (elements m1))) by (apply keylist_Nodup).
@@ -3571,33 +3598,73 @@ Proof.
     inversion Hnodup; subst.
     destruct Hget as [Hx | Hinx]; subst.
     + simpl. destruct (amap_lookup m2 y1) as [z1|] eqn : Hget2; auto.
-      * 
-    Search keylist.
+      rewrite amap_set_lookup_same; auto.
+    + destruct (amap_lookup m2 (snd h1)) as [z1|] eqn : Hget2; auto.
+      rewrite amap_set_lookup_diff; auto.
+      intro Hx; subst x. apply H2. rewrite in_map_iff. exists (fst h1, y1); auto.
+  - rewrite <- notin_in_elements_iff in Hget. auto.
+Qed.
 
-
-keylist_Nodup:
-  forall (A B : Type) {EqDecision0 : base.RelDecision eq} {A_count : countable.Countable A}
-    (m : amap A B), NoDup (keylist m)
-elements_Nodup
-
-    Search elements NoDup.
-
-
-
- Search elements amap_lookup.
-
-Lemma map_pat_comp m1 m2 p:
+(*TODO: do we need assumptions that all free vars of p are in m1?*)
+Lemma map_pat_comp m1 m2 p
+  (Hallin: forall x, aset_mem x (pat_fv p) -> amap_mem x m1)
+  (Hcomp: composable m1 m2):
   map_pat m2 (map_pat m1 p) = map_pat (amap_comp m1 m2) p.
 Proof.
-  induction p as [x1 | f1 tys1 ps1 IH | | p1 q1 IH1 IH2 | p1 x1 IH]; simpl.
-  - unfold mk_fun, lookup_default.
-    destruct (amap_lookup m1 x1) as [y1|] eqn : Hget1.
-    + 
-    
-     
+  unfold composable in Hcomp.
+  induction p as [x1 | f1 tys1 ps1 IH | | p1 q1 IH1 IH2 | p1 x1 IH]; simpl in Hallin |- *; auto.
+  - f_equal. unfold mk_fun, lookup_default. rewrite amap_comp_lookup.
+    specialize (Hallin x1 ltac:(simpl_set; auto)). rewrite amap_mem_spec in Hallin.
+    destruct (amap_lookup m1 x1) as [y1|] eqn : Hget1; auto; [|discriminate].
+    specialize (Hcomp _ _ Hget1). rewrite amap_mem_spec in Hcomp. destruct (amap_lookup m2 y1); auto.
+    discriminate.
+  - f_equal. rewrite map_map. induction ps1 as [| p1 ps1 IHps]; simpl; auto.
+    revert Hallin. setoid_rewrite aset_big_union_cons. setoid_rewrite aset_mem_union.
+    intros. inversion IH; subst; f_equal; auto.
+  - revert Hallin. setoid_rewrite aset_mem_union; intros. f_equal; auto.
+  - revert Hallin. setoid_rewrite aset_mem_union. intros. f_equal; auto.
+    unfold mk_fun, lookup_default. rewrite amap_comp_lookup.
+    specialize (Hallin x1 ltac:(simpl_set; auto)). rewrite amap_mem_spec in Hallin.
+    destruct (amap_lookup m1 x1) as [y1|] eqn : Hget1; auto; [|discriminate].
+    specialize (Hcomp _ _ Hget1). rewrite amap_mem_spec in Hcomp. destruct (amap_lookup m2 y1); auto.
+    discriminate.
+Qed.
 
+Lemma bij_map_comp m1 m2 m3 m4:
+  bij_map m1 m2 ->
+  bij_map m3 m4 ->
+  bij_map (amap_comp m1 m3) (amap_comp m4 m2).
+Proof.
+  unfold bij_map.
+  intros Hbij1 Hbij2.
+  intros x y. rewrite !amap_comp_lookup.
+  destruct (amap_lookup m1 x) as [y1|] eqn : Hlook1.
+  - apply Hbij1 in Hlook1.
+    split.
+    + intros Hlook2. apply Hbij2 in Hlook2.
+      rewrite Hlook2. auto.
+    + destruct (amap_lookup m4 y) as [x1|] eqn : Hlook2; [|discriminate].
+      intros Hlook3. apply Hbij2.
+      (*Use injectivity of bij maps*)
+      assert (y1 = x1). {
+        eapply (bij_map_inj_l (proj1 (bij_map_sym _ _) Hbij1)); eauto.
+      }
+      subst. auto.
+  - split; [discriminate|].
+    destruct (amap_lookup m4 y) as [x1|] eqn : Hlook2; try discriminate.
+    intros Hlook3. apply Hbij1 in Hlook3. rewrite Hlook3 in Hlook1; discriminate.
+Qed.
 
-map_pat m3 (map_pat m1 p1) = map_pat (amap_comp m1 m3) p1
+Lemma amap_mem_comp {A: Type} `{countable.Countable A} (m1 m2: amap A A)
+  (Hcomp: composable m1 m2) x:
+  amap_mem x (amap_comp m1 m2) = amap_mem x m1.
+Proof.
+  unfold composable in Hcomp.
+  rewrite !amap_mem_spec.
+  rewrite amap_comp_lookup.
+  destruct (amap_lookup m1 x) as [y|] eqn : Hlook1; auto.
+  apply Hcomp in Hlook1. rewrite amap_mem_spec in Hlook1. rewrite Hlook1. auto.
+Qed.
 
 Lemma a_equiv_p_trans m1 m2 m3 m4 p1 p2 p3:
   a_equiv_p p1 p2 = Some (m1, m2) ->
@@ -3610,10 +3677,43 @@ Proof.
   rewrite !a_equiv_p_iff; simpl.
   intros [Hp2 [Hbij1 [Hm1 [Htys1 Hinj1]]]].
   intros [Hp3 [Hbij3 [Hm3 [Htys3 Hinj3]]]].
+  assert (Hcomp: composable m1 m3).
+  {
+    unfold composable. (*Idea: if (x, y) is in m1, then y must be in free vars of pat_fv (pat_pat m1 p1)*)
+    intros x y Hlookup. apply Hm3.
+    apply alpha_equiv_p_vars in Halpha1. destruct Halpha1 as [Hin _].
+    apply Hin in Hlookup. simpl in Hlookup. rewrite amap_empty_get in Hlookup.
+    destruct_all; auto. discriminate.
+  }
   split_all; auto.
-  - subst.  *)
-  
-
+  - subst. apply map_pat_comp; auto.
+    intros x Hmem. rewrite <- Hm1; auto.
+  - apply bij_map_comp; auto.
+  - intros x. rewrite amap_mem_comp; auto.
+  - intros x y. (*Here, need both type lemmas and use transivity of equality*)
+    intros Hinfv. assert (Hmem: amap_mem x m1) by (apply Hm1; auto).
+    rewrite amap_mem_spec in Hmem; rewrite amap_comp_lookup.
+    destruct (amap_lookup m1 x) as [y1|] eqn : Hlook; [|discriminate]. clear Hmem.
+    intros Hlook2.
+    assert (Hinfv2: aset_mem y1 (pat_fv p2)). {
+      apply Hm3. rewrite amap_mem_spec, Hlook2; auto.
+    }
+    apply Htys1 in Hlook; auto. apply Htys3 in Hlook2; auto.
+    congruence.
+  - (*Finally, prove injectivity*)
+    intros x y Hinfvx Hinfvy.
+    rewrite !amap_comp_lookup.
+    specialize (Hinj1 _ _ Hinfvx Hinfvy).
+    apply Hm1 in Hinfvx, Hinfvy.
+    rewrite !amap_mem_spec in Hinfvx, Hinfvy.
+    destruct (amap_lookup m1 x) as [z1|] eqn : Hlook1; [|discriminate].
+    destruct (amap_lookup m1 y) as [z2|] eqn : Hlook2; [|discriminate].
+    apply alpha_equiv_p_vars in Halpha1. destruct Halpha1 as [Hin1 _].
+    simpl in Hin1.
+    apply Hin1 in Hlook1, Hlook2.
+    rewrite amap_empty_get in Hlook1, Hlook2. destruct_all; try discriminate.
+    intros Hlookeq. apply Hinj3 in Hlookeq; subst; auto.
+Qed.
 
 
 
@@ -5108,12 +5208,6 @@ Proof.
   - rewrite amap_set_lookup_diff by auto. apply Hid; auto.
 Qed.
 
-(*START:
-  NOTE: have to decide - we will either have to add typing all over the place
-  OR
-  revert the Some/None stuff in alpha equiv p and prove bij_map with typing assumption
-  (which we need elsewhere anyway)*)
-
 (*NOTE: here, we can assume equivalence of the two maps, since the patterns are the same also.
   So we just use m twice*)
 (*Note for patterns that we need well-typed*)
@@ -5390,191 +5484,684 @@ Proof.
   - split_all; [simpl_sumbool; simpl; rewrite e0 in n; contradiction |
     | apply (IHp1 p2); auto].
     apply in_firstb_trans with(y:=v0); auto.
+Qed.*)
+
+(** Transitivity *)
+
+(*Proving transivity of alpha equivalence is very hard. The problem is that two variables
+  are related iff (1) x maps to y in m1 and y maps to x in m2 OR (2) x is not in m1 and y is not in m2 
+  and x = y. When we reason about transitivity, we have 3 cases: (1) (x, y) is in m1, (y, z) is in m2
+  OR (2) (x, z) is in m1, z not in m1' OR (2) x not in m1 (x, z) in m1' (and the other direction too).
+  We can build a map saitisfying this, though case analysis is tricky.
+  But this still isn't enough: while this does satisfy the [alpha_equiv_var] condition, it does NOT
+  match our IH for the bound variable case. Instead, we need to show that we can "weaken" a set of
+  maps as long as they preserve this relation. Then we prove (in a very tedious lemma) that our
+  bound variable cases (variables and pattern matching) preserve the relation.
+  In the end, we put this together to prove transivity over empty maps, which is what we wanted*)
+
+
+Definition alpha_comp_lookup (m1 m1': amap vsymbol vsymbol) (x: vsymbol) : option vsymbol :=
+  match amap_lookup m1 x with
+  | Some y =>
+    (*m1[x] = y*)
+    match amap_lookup m1' y with
+    | Some z => Some z
+    | None => Some y
+    end
+  | None =>amap_lookup m1' x
+  end.
+
+Lemma alpha_comp_lookup_some m1 m1' x z:
+  alpha_comp_lookup m1 m1' x = Some z <-> 
+  ((exists y, amap_lookup m1 x = Some y /\ amap_lookup m1' y = Some z) \/
+   (amap_lookup m1 x = Some z /\ amap_lookup m1' z = None) \/
+   (amap_lookup m1 x = None /\ amap_lookup m1' x = Some z)).
+Proof.
+  unfold alpha_comp_lookup.
+  split.
+  - intros Hsome. destruct (amap_lookup m1 x) as [y|] eqn : Hm1x.
+    + destruct (amap_lookup m1' y) as [z1|] eqn : Hm1y'.
+      * inversion Hsome; subst. eauto.
+      * inversion Hsome; subst. eauto.
+    + eauto.
+  - intros [[y [Hm1x Hm1y]] | [[Hm1x Hm1z'] | [Hm1x Hm1x']]].
+    + rewrite Hm1x, Hm1y. auto.
+    + rewrite Hm1x, Hm1z'. auto.
+    + rewrite Hm1x; auto.
+Qed. 
+
+Lemma alpha_comp_lookup_none m1 m1' x:
+  alpha_comp_lookup m1 m1' x = None <->
+  (amap_lookup m1 x = None /\ amap_lookup m1' x = None).
+Proof.
+  unfold alpha_comp_lookup.
+  split.
+  - destruct (amap_lookup m1 x) as [y|] eqn : Hm1x; auto.
+    destruct (amap_lookup m1' y); discriminate.
+  - intros [Hm1x Hm1x']; rewrite Hm1x, Hm1x'. auto.
 Qed.
 
-(*Now the transitivity lemma. This is annoying to prove*)
-Lemma alpha_equiv_trans (t: term) (f: formula) :
-  (forall t1 t2 (v1 v2: list (vsymbol * vsymbol))
-    (Hl: map snd v1 = map fst v2)
-    (Heq1: alpha_equiv_t v1 t t1)
-    (Heq2: alpha_equiv_t v2 t1 t2),
-    alpha_equiv_t (alist_trans v1 v2) t t2) /\
-  (forall f1 f2 (v1 v2: list (vsymbol * vsymbol))
-    (Hl: map snd v1 = map fst v2)
-    (Heq1: alpha_equiv_f v1 f f1)
-    (Heq2: alpha_equiv_f v2 f1 f2),
-    alpha_equiv_f (alist_trans v1 v2) f f2).
+
+(*Build a map satisfying this - inefficient*)
+Definition alpha_comp_gen (m1 m1' : amap vsymbol vsymbol) (base: amap vsymbol vsymbol) 
+    (l: list (vsymbol * vsymbol)): amap vsymbol vsymbol :=
+  fold_right (fun x acc => 
+    match (alpha_comp_lookup m1 m1' (fst x)) with
+    | Some y => amap_set acc (fst x) y
+    | None => acc
+    end) base l.
+
+Lemma alpha_comp_gen_notin_lookup (m1 m1' : amap vsymbol vsymbol) (base: amap vsymbol vsymbol) 
+    (l: list (vsymbol * vsymbol)) x:
+  ~ In x (map fst l) ->
+  amap_lookup (alpha_comp_gen m1 m1' base l) x = amap_lookup base x.
 Proof.
-  revert t f; apply term_formula_ind; simpl; intros.
-  - (*Tconst*) 
-    alpha_case t1 Heq1; alpha_case t2 Heq2.
-    simpl_sumbool.
-  - (*Tvar*)
-    alpha_case t1 Heq1; alpha_case t2 Heq2.
-    eapply eq_var_trans.
-    apply Hl. apply Heq1. apply Heq2.
+  induction l as [| h t IH]; simpl; auto.
+  intros Hnotin.
+  destruct (alpha_comp_lookup m1 m1' (fst h)) as [y|] eqn : Hcomp; auto.
+  rewrite amap_set_lookup_diff; auto.
+Qed.
+
+Lemma alpha_comp_gen_in_lookup (m1 m1' : amap vsymbol vsymbol) (base: amap vsymbol vsymbol) 
+    (l: list (vsymbol * vsymbol)) x:
+  (forall x y, amap_lookup base x = Some y -> alpha_comp_lookup m1 m1' x = Some y) ->
+  In x (map fst l) ->
+  amap_lookup (alpha_comp_gen m1 m1' base l) x = alpha_comp_lookup m1 m1' x.
+Proof.
+  intros Hbase.
+  induction l as [| h t IH]; simpl; [contradiction|]. simpl in *.
+  intros Hx.
+  destruct (vsymbol_eq_dec x (fst h)); subst.
+  - destruct (alpha_comp_lookup m1 m1' (fst h)) as [y|] eqn : Hcomp.
+    + rewrite amap_set_lookup_same; auto.
+    + destruct (in_dec vsymbol_eq_dec (fst h) (map fst t)); auto.
+      rewrite alpha_comp_gen_notin_lookup; auto.
+      destruct (amap_lookup base (fst h)) eqn : Hlook; auto.
+      apply Hbase in Hlook. rewrite Hlook in Hcomp. discriminate.
+  - destruct Hx; [subst; contradiction|].
+    destruct (alpha_comp_lookup m1 m1' (fst h)) as [y|] eqn : Hcomp; auto.
+    destruct (vsymbol_eq_dec x (fst h)); subst; auto.
+    + rewrite amap_set_lookup_same; auto.
+    + rewrite amap_set_lookup_diff; auto.
+Qed.
+
+Definition alpha_comp (m1 m1' : amap vsymbol vsymbol) : amap vsymbol vsymbol :=
+  alpha_comp_gen m1 m1' amap_empty (elements m1 ++ elements m1').
+
+Lemma alpha_comp_lookup_some_or m1 m1' x z:
+  alpha_comp_lookup m1 m1' x = Some z ->
+  amap_mem x m1 \/ amap_mem x m1'.
+Proof.
+  rewrite alpha_comp_lookup_some. rewrite !amap_mem_spec.
+  intros [[y [Hx _]] | [[Hx _] | [_ Hx]]]; rewrite Hx; auto.
+Qed.
+
+Lemma alpha_comp_elts  (m1 m1' : amap vsymbol vsymbol) x:
+  amap_lookup (alpha_comp m1 m1') x = alpha_comp_lookup m1 m1' x.
+Proof.
+  unfold alpha_comp.
+  destruct (in_dec vsymbol_eq_dec x (map fst (elements m1 ++ elements m1'))) as [Hin | Hnotin].
+  - rewrite alpha_comp_gen_in_lookup; auto. intros ? ?; rewrite amap_empty_get; discriminate.
+  - rewrite alpha_comp_gen_notin_lookup; auto.
+    rewrite amap_empty_get.
+    destruct (alpha_comp_lookup m1 m1' x) eqn : Hcomp; auto.
+    apply alpha_comp_lookup_some_or in Hcomp.
+    exfalso; apply Hnotin. rewrite map_app, in_app_iff. rewrite <- !in_keylist_iff in Hcomp; auto.
+Qed.
+
+(*Variable case for transivity is easy*)
+Lemma alpha_comp_var_trans (m1 m2 m1' m2' : amap vsymbol vsymbol) x y z:
+  alpha_equiv_var m1 m2 x y ->
+  alpha_equiv_var m1' m2' y z ->
+  alpha_equiv_var (alpha_comp m1 m1') (alpha_comp m2' m2) x z.
+Proof.
+  rewrite !alpha_equiv_var_iff.
+  rewrite !alpha_comp_elts.
+  rewrite !alpha_comp_lookup_some, !alpha_comp_lookup_none.
+  intros; destruct_all; subst; eauto 10.
+Qed.
+
+(*Now prove weakening lemma*)
+
+(*Lots of hypotheses we want to simplify - use here and in trans*)
+Ltac simpl_map_hyp :=
+  repeat match goal with
+  | H: Some ?x = Some ?y |- _ => let H1 := fresh in assert (H1: x = y) by (inversion H; subst; auto); 
+      subst y; clear H
+  | H: amap_lookup (amap_set ?m ?x ?y) ?a = None |- _ => 
+        let Hneq := fresh in
+        assert (Hneq: x <> a) by (intro C; subst; rewrite amap_set_lookup_same in H; discriminate);
+        rewrite amap_set_lookup_diff in H by auto
+  | H: amap_lookup (amap_set ?m ?x ?y) ?x = _ |- _ => rewrite amap_set_lookup_same in H
+  | H: amap_lookup (amap_set ?m ?x ?y) ?z = _, H1: ?x <> ?z |- _ => rewrite amap_set_lookup_diff in H by auto
+  (*Cases for composable*)
+  | H: composable ?m1 ?m2, H1: amap_lookup ?m1 ?x = Some ?y, H2: amap_lookup ?m2 ?y = None |- _ =>
+                apply H in H1; rewrite amap_mem_spec, H2 in H1; discriminate
+  (*And for bijection*)
+  | H: bij_map ?m1 ?m2, H1: amap_lookup ?m1 ?x = None, H2: amap_lookup ?m2 ?y = Some ?x |- _ =>
+    apply H in H2; rewrite H2 in H1; discriminate
+  | H: bij_map ?m2 ?m1, H1: amap_lookup ?m1 ?x = None, H2: amap_lookup ?m2 ?y = Some ?x |- _ =>
+    apply H in H2; rewrite H2 in H1; discriminate
+  end; try contradiction; try discriminate.
+
+(*Prove pattern ext*)
+Lemma alpha_match_weaken s m1 m2 m3 m4 r1 r2 (Hbij: bij_map r1 r2):
+  (forall x y : vsymbol,
+  aset_mem x s -> ~ amap_mem x r1 ->
+  alpha_equiv_var m1 m2 x y -> alpha_equiv_var m3 m4 x y) ->
+  (forall x y : vsymbol,
+  aset_mem x s ->
+  alpha_equiv_var (aunion r1 m1) (aunion r2 m2) x y -> alpha_equiv_var (aunion r1 m3) (aunion r2 m4) x y).
+Proof.
+  intros Himpl. intros x y Hmem.
+  setoid_rewrite alpha_equiv_var_iff in Himpl.
+  rewrite !alpha_equiv_var_iff. rewrite !aunion_lookup.
+  intros [[Hlook1 Hlook2] |[ Hlook1 [Hlook2 Heq]]]; subst.
+  - destruct (amap_lookup r1 x) as [y1|] eqn : Hr1; simpl_map_hyp.
+    + left. split; auto. destruct (amap_lookup r2 y1) as [y2|] eqn : Hr2; simpl_map_hyp; auto.
+    + assert (Hnotmap: ~ amap_mem x r1) by (rewrite amap_mem_spec, Hr1; auto).
+      destruct (amap_lookup r2 y) as [y1|] eqn : Hr2; simpl_map_hyp. auto.
+  - destruct (amap_lookup r1 y) as [y1|] eqn : Hr1; simpl_map_hyp.
+    assert (Hnotmap: ~ amap_mem y r1) by (rewrite amap_mem_spec, Hr1; auto).
+    destruct (amap_lookup r2 y) as [y1|] eqn : Hr2; simpl_map_hyp.
+    auto.
+Qed.
+
+(*TODO: move*)
+Lemma amap_set_aunion {A B: Type} `{countable.Countable A} (m: amap A B) (x: A) (y: B):
+  amap_set m x y = aunion (amap_singleton x y) m.
+Proof.
+  apply amap_ext. intros a. rewrite aunion_lookup. unfold amap_singleton.
+  destruct (EqDecision0 x a); subst.
+  - rewrite !amap_set_lookup_same; auto.
+  - rewrite !amap_set_lookup_diff; auto.
+Qed. 
+
+(*TODO: move*)
+Lemma bij_map_singleton a b:
+  bij_map (amap_singleton a b) (amap_singleton b a).
+Proof.
+  unfold bij_map. intros x y. unfold amap_singleton. vsym_eq x a.
+  - rewrite amap_set_lookup_same. split.
+    + intros; simpl_map_hyp. rewrite amap_set_lookup_same; auto.
+    + vsym_eq b y. rewrite amap_set_lookup_diff by auto.
+      rewrite amap_empty_get; discriminate.
+  - rewrite amap_set_lookup_diff by auto.
+    rewrite amap_empty_get. split; try discriminate.
+    vsym_eq y b.
+    + rewrite amap_set_lookup_same. intros; simpl_map_hyp.
+    + rewrite amap_set_lookup_diff by auto. rewrite amap_empty_get. discriminate.
+Qed.
+
+(*And the let case*)
+Lemma alpha_update_weaken s m1 m2 m3 m4 a b:
+  (forall x y : vsymbol,
+       aset_mem x s /\ x <> a ->
+       alpha_equiv_var m1 m2 x y -> alpha_equiv_var m3 m4 x y) ->
+  (forall x y: vsymbol,
+    aset_mem x s ->
+    alpha_equiv_var (amap_set m1 a b) (amap_set m2 b a) x y ->
+    alpha_equiv_var (amap_set m3 a b) (amap_set m4 b a) x y).
+Proof.
+  intros Hext.
+  intros x y Hmem. rewrite !amap_set_aunion.
+  apply alpha_match_weaken with (s:=s); auto.
+  - apply bij_map_singleton.
+  - intros z1 z2 Hmem1 Hnotin. apply Hext.
+    split; auto. intros Hc; subst. apply Hnotin.
+    unfold amap_singleton. rewrite amap_mem_spec, amap_set_lookup_same. auto.
+Qed.
+
+Lemma alpha_equiv_weaken t1 f1:
+  (forall t2 m1 m2 m3 m4
+    (Hsub: forall x y, aset_mem x (tm_fv t1) -> alpha_equiv_var m1 m2 x y -> alpha_equiv_var m3 m4 x y)
+    (Halpha: alpha_equiv_t m1 m2 t1 t2),
+    alpha_equiv_t m3 m4 t1 t2) /\
+  (forall f2 m1 m2 m3 m4
+    (Hsub: forall x y, aset_mem x (fmla_fv f1) -> alpha_equiv_var m1 m2 x y -> alpha_equiv_var m3 m4 x y)
+    (Halpha: alpha_equiv_f m1 m2 f1 f2),
+    alpha_equiv_f m3 m4 f1 f2).
+Proof.
+  revert t1 f1; apply term_formula_ind; simpl; intros.
+  - destruct t2; try discriminate. auto.
+  - destruct t2; try discriminate.
+    apply Hsub; simpl_set; auto.
   - (*Tfun*)
-    alpha_case t1 Heq1; alpha_case t2 Heq2.
-    bool_hyps; repeat simpl_sumbool; simpl.
-    apply Nat.eqb_eq in H7, H3.
-    rewrite H7, H3, Nat.eqb_refl. simpl.
-    rename H7 into Hlen1.
-    rename H3 into Hlen2.
-    generalize dependent l2.
-    generalize dependent l4.
-    induction l1; simpl; intros; destruct l2; inversion Hlen1;
-    destruct l4; inversion Hlen2; auto; rewrite all2_cons in H5, H1 |- *.
-    bool_hyps.
-    inversion H; subst. bool_to_prop; split.
-    + apply H8 with(t1:=t); auto.
-    + apply IHl1 with(l2:=l2); auto.
-  - (*Tlet*)
-    alpha_case t1 Heq1; alpha_case t2 Heq2.
-    bool_hyps; repeat simpl_sumbool.
-    bool_to_prop; split_all.
-    + simpl_sumbool. exfalso. rewrite e0 in n. contradiction.
-    + apply H with(t1:=t1_1); auto.
-    + assert (Hmap: map snd ((v, v0) :: v1) = map fst ((v0, v3) :: v2)). {
-        simpl. f_equal. auto. 
-      }
-      apply (H0 _ _ _ _ Hmap H5 H2).
-  - (*Tif*)
-    alpha_case t0 Heq1; alpha_case t3 Heq2.
-    bool_hyps. bool_to_prop.
-    split_all; [apply (H f0) | apply (H0 t0_1) | apply (H1 t0_2)]; auto.
+    destruct t2; try discriminate.
+    rewrite !andb_true in Halpha. destruct Halpha as [[[Hfuns Hlen] Htys] Hall].
+    repeat simpl_sumbool. rewrite Hlen. simpl.
+    apply Nat.eqb_eq in Hlen.
+    rewrite all2_forall with (d1:=tm_d)(d2:=tm_d) in Hall |- *; try lia.
+    intros i Hi. rewrite Forall_nth in H.
+    eapply H. 3: apply Hall. all: auto. intros x y Hmem. apply Hsub.
+    simpl_set. eexists; split; [| apply Hmem]. apply nth_In; auto.
+  - (*Tlet*) destruct t2; try discriminate.
+    rewrite !andb_true in Halpha. destruct Halpha as [[Htydec Halpha1] Halpha2].
+    setoid_rewrite aset_mem_union in Hsub.
+    setoid_rewrite aset_mem_remove in Hsub.
+    rewrite !andb_true; split_all; auto.
+    + eapply (H _ m1 m2); eauto.
+    + eapply H0. 2: eapply Halpha2. apply alpha_update_weaken; auto.
+  - destruct t0; try discriminate. repeat (setoid_rewrite aset_mem_union in Hsub). bool_hyps.
+    bool_to_prop. split_all; [eapply H | eapply H0 | eapply H1]; eauto.
   - (*Tmatch*)
-    alpha_case t1 Heq1; alpha_case t2 Heq2.
-    bool_hyps; repeat simpl_sumbool.
-    apply Nat.eqb_eq in H8, H4.
-    bool_to_prop; split_all; auto.
-    + apply (H t1); auto.
-    + rewrite H8, H4; apply Nat.eqb_refl.
-    + clear H H5 H1.
-      rename l into ps2.
-      rename l0 into ps3.
-      rename H8 into Hlen1.
-      rename H4 into Hlen2.
-      generalize dependent ps2.
-      generalize dependent ps3.
-      induction ps; intros;
-      destruct ps2; inversion Hlen1;
-      destruct ps3; inversion Hlen2; auto.
-      destruct a as [p1 tm1].
-      destruct p as [p2 tm2].
-      destruct p0 as [p3 tm3].
-      rewrite all2_cons in H6, H2 |- *; bool_hyps.
-      pose proof (alpha_equiv_p_fv_len_full _ _ H5) as Hlenp1.
-      pose proof (alpha_equiv_p_fv_len_full _ _ H) as Hlenp2.
-      bool_to_prop.
-      inversion H0; subst.
-      split_all.
-      * rewrite <- combine_alist_trans with(l2:=pat_fv p2); auto.
-        apply alpha_equiv_p_trans with(p2:=p2); auto.
-        rewrite map_snd_combine, map_fst_combine; auto.
-      * unfold add_vals.
-        rewrite <- combine_alist_trans with(l2:=pat_fv p2); auto.
-        rewrite alist_trans_app.
-        -- apply H10 with(t1:=tm2); auto.
-          rewrite !map_app, Hl, map_fst_combine, map_snd_combine; auto.
-        -- rewrite !combine_length. lia.
-      * apply IHps with(ps2:=ps2); auto.
+    setoid_rewrite aset_mem_union in Hsub.
+    destruct t2 as [| | | | | tm2 ty2 ps2 |]; try discriminate.
+    rename tm into tm1; rename v into ty1; rename ps into ps1; rename H into IH1; rename H0 into IHps.
+    rewrite !andb_true in Halpha |- *. destruct Halpha as [[[Halpha Hlen] Hty] Hall].
+    simpl_sumbool. split_all; auto.
+    { eapply IH1; eauto. }
+    assert(Hsub1: forall x y, aset_mem x
+         (aset_big_union (fun x0 => aset_diff (pat_fv (fst x0)) (tm_fv (snd x0))) ps1) ->
+       alpha_equiv_var m1 m2 x y -> alpha_equiv_var m3 m4 x y).
+    { intros x y Hmem; apply Hsub; auto. }
+    clear Hsub IH1 Halpha. generalize dependent ps2. induction ps1 as [| [p1 t1] ps1 IH]; intros [| [p2 t2] ps2];
+    try discriminate; auto.
+    simpl. rewrite !all2_cons, !andb_true. simpl.
+    intros Hlen [Halpha Hall].
+    setoid_rewrite aset_big_union_cons in Hsub1.
+    setoid_rewrite aset_mem_union in Hsub1. simpl in Hsub1.
+    inversion IHps as [| ? ? IH1 IH2]; subst.
+    split.
+    2: { eapply IH; eauto. }
+    destruct (a_equiv_p p1 p2) as [[r1 r2]|] eqn : Halphap; [|discriminate].
+    eapply IH1. 2: eauto.
+    apply alpha_match_weaken.
+    + apply a_equiv_p_bij in Halphap; auto.
+    + apply a_equiv_p_vars_iff in Halphap. destruct Halphap as [Hiff _].
+      setoid_rewrite Hiff. auto. intros x y Hmem1 Hmem2. apply Hsub1. left. simpl_set; auto.
   - (*Teps*)
-    alpha_case t1 Heq1; alpha_case t2 Heq2.
-    bool_hyps; repeat simpl_sumbool.
-    bool_to_prop; split.
-    + simpl_sumbool. simpl. rewrite e0 in n. contradiction.
-    + assert (Hmap: map snd ((v, v0) :: v1) = map fst ((v0, v3) :: v2)). {
-        simpl. f_equal. auto.
-      }
-      apply (H _ _ _ _ Hmap H3 H1).
+    destruct t2; try discriminate. rewrite andb_true in Halpha. destruct Halpha as [Hty Halpha].
+    simpl_sumbool; simpl. setoid_rewrite aset_mem_remove in Hsub.
+    eapply H. 2: apply Halpha. apply alpha_update_weaken; auto.
   - (*Fpred*)
-    alpha_case f1 Heq1; alpha_case f2 Heq2.
-    bool_hyps; repeat simpl_sumbool; simpl.
-    apply Nat.eqb_eq in H7, H3.
-    rewrite H7, H3, Nat.eqb_refl. simpl.
-    rename H7 into Hlen1.
-    rename H3 into Hlen2.
-    generalize dependent l2.
-    generalize dependent l0.
-    induction tms; simpl; intros; destruct l0; inversion Hlen1;
-    destruct l2; inversion Hlen2; auto; rewrite all2_cons in H5, H1 |- *.
-    bool_hyps. bool_to_prop.
-    inversion H; subst. split.
-    + apply H8 with (t1:=t); auto.
-    + apply IHtms with(l0:=l0); auto.
-  - (*Fquant*)
-    alpha_case f1 Heq1; alpha_case f2 Heq2.
-    bool_hyps; repeat simpl_sumbool. simpl.
-    bool_to_prop; split_all.
-    + simpl_sumbool. simpl. rewrite e0 in n. contradiction.
-    + assert (Hmap: map snd ((v, v0) :: v1) = map fst ((v0, v3) :: v2)). {
-        simpl. f_equal. auto.
-      }
-      apply (H _ _ _ _ Hmap H4 H1).
-  - (*Feq*)
-    alpha_case f1 Heq1; alpha_case f2 Heq2; bool_hyps;
-    repeat simpl_sumbool; simpl.
-    bool_to_prop; split; [apply (H t) | apply (H0 t0)]; auto.
-  - (*Fbinop*)
-    alpha_case f0 Heq1; alpha_case f3 Heq2; bool_hyps;
-    repeat simpl_sumbool; simpl.
-    bool_to_prop; split; [apply (H f0_1) | apply (H0 f0_2)]; auto.
-  - (*Fnot*)
-    alpha_case f1 Heq1; alpha_case f2 Heq2.
-    apply (H f1); auto.
-  - (*Ftrue*)
-    alpha_case f1 Heq1; alpha_case f2 Heq2; auto.
-  - (*Ffalse*) 
-    alpha_case f1 Heq1; alpha_case f2 Heq2; auto.
-  - (*Flet*)
-    alpha_case f1 Heq1; alpha_case f2 Heq2; bool_hyps;
-    repeat simpl_sumbool.
-    bool_to_prop; split_all.
-    + simpl_sumbool. simpl. rewrite e0 in n. contradiction.
-    + apply (H t); auto.
-    + assert (Hmap: map snd ((v, v0) :: v1) = map fst ((v0, v3) :: v2)). {
-        simpl. f_equal. auto. 
-      }
-      apply (H0 _ _ _ _ Hmap H5 H2).
+    destruct f2; try discriminate.
+    rewrite !andb_true in Halpha. destruct Halpha as [[[Hfuns Hlen] Htys] Hall].
+    repeat simpl_sumbool. rewrite Hlen. simpl.
+    apply Nat.eqb_eq in Hlen.
+    rewrite all2_forall with (d1:=tm_d)(d2:=tm_d) in Hall |- *; try lia.
+    intros i Hi. rewrite Forall_nth in H.
+    eapply H. 3: apply Hall. all: auto. intros x y Hmem. apply Hsub.
+    simpl_set. eexists; split; [| apply Hmem]. apply nth_In; auto.
+  - (*Fquant*) destruct f2; try discriminate. rewrite !andb_true in Halpha. destruct Halpha as [[Hq Hty] Halpha];
+    repeat simpl_sumbool; simpl. setoid_rewrite aset_mem_remove in Hsub.
+    eapply H. 2: apply Halpha. apply alpha_update_weaken; auto.
+  - (*Feq*) destruct f2; try discriminate. repeat (setoid_rewrite aset_mem_union in Hsub). bool_hyps.
+    bool_to_prop. repeat simpl_sumbool. split_all; auto; [eapply H | eapply H0]; eauto.
+  - (*Fbinop*) destruct f0; try discriminate. repeat (setoid_rewrite aset_mem_union in Hsub). bool_hyps.
+    bool_to_prop. repeat simpl_sumbool. split_all; auto; [eapply H | eapply H0]; eauto.
+  - (*Fnot*) destruct f2; try discriminate. eapply H; eauto.
+  - (*Ftrue*) destruct f2; try discriminate; auto.
+  - (*Ffalse*) destruct f2; try discriminate; auto.
+  - (*Flet*) destruct f2; try discriminate.
+    rewrite !andb_true in Halpha. destruct Halpha as [[Htydec Halpha1] Halpha2].
+    setoid_rewrite aset_mem_union in Hsub.
+    setoid_rewrite aset_mem_remove in Hsub.
+    rewrite !andb_true; split_all; auto.
+    + eapply (H _ m1 m2); eauto.
+    + eapply H0. 2: eapply Halpha2. apply alpha_update_weaken; auto.
+  - (*Fif*) destruct f0; try discriminate. repeat (setoid_rewrite aset_mem_union in Hsub). bool_hyps.
+    bool_to_prop. split_all; [eapply H | eapply H0 | eapply H1]; eauto.
+  - (*Fmatch*)
+    setoid_rewrite aset_mem_union in Hsub.
+    destruct f2 as [| | | | | | | | | tm2 ty2 ps2]; try discriminate.
+    rename tm into tm1; rename v into ty1; rename ps into ps1; rename H into IH1; rename H0 into IHps.
+    rewrite !andb_true in Halpha |- *. destruct Halpha as [[[Halpha Hlen] Hty] Hall].
+    simpl_sumbool. split_all; auto.
+    { eapply IH1; eauto. }
+    assert(Hsub1: forall x y, aset_mem x
+         (aset_big_union (fun x0 => aset_diff (pat_fv (fst x0)) (fmla_fv (snd x0))) ps1) ->
+       alpha_equiv_var m1 m2 x y -> alpha_equiv_var m3 m4 x y).
+    { intros x y Hmem; apply Hsub; auto. }
+    clear Hsub IH1 Halpha. generalize dependent ps2. induction ps1 as [| [p1 t1] ps1 IH]; intros [| [p2 t2] ps2];
+    try discriminate; auto.
+    simpl. rewrite !all2_cons, !andb_true. simpl.
+    intros Hlen [Halpha Hall].
+    setoid_rewrite aset_big_union_cons in Hsub1.
+    setoid_rewrite aset_mem_union in Hsub1. simpl in Hsub1.
+    inversion IHps as [| ? ? IH1 IH2]; subst.
+    split.
+    2: { eapply IH; eauto. }
+    destruct (a_equiv_p p1 p2) as [[r1 r2]|] eqn : Halphap; [|discriminate].
+    eapply IH1. 2: eauto.
+    apply alpha_match_weaken.
+    + apply a_equiv_p_bij in Halphap; auto.
+    + apply a_equiv_p_vars_iff in Halphap. destruct Halphap as [Hiff _].
+      setoid_rewrite Hiff. auto. intros x y Hmem1 Hmem2. apply Hsub1. left. simpl_set; auto.
+Qed.
+
+Definition alpha_equiv_t_weaken t := proj_tm alpha_equiv_weaken t.
+Definition alpha_equiv_f_weaken f := proj_fmla alpha_equiv_weaken f.
+
+(*Now prove weakening for transitivity - very tedious*)
+
+
+(*Can we prove this?*)
+Lemma alpha_equiv_var_comp_set (m1 m2 m1' m2' : amap vsymbol vsymbol) x y z a b:
+  alpha_equiv_var (alpha_comp (amap_set m1 x y) (amap_set m1' y z))
+    (alpha_comp (amap_set m2' z y) (amap_set m2 y x)) a b ->
+  alpha_equiv_var (amap_set (alpha_comp m1 m1') x z) (amap_set (alpha_comp m2' m2) z x) a b.
+Proof.
+  rewrite !alpha_equiv_var_iff.
+  intros [[Hsome1 Hsome2] | [Hnone1 [Hnone2 Heq]]].
+  - rewrite alpha_comp_elts in Hsome1, Hsome2.
+    rewrite !alpha_comp_lookup_some in Hsome1, Hsome2.
+    (*First, see if x = a*)
+    vsym_eq x a.
+    + revert Hsome1 Hsome2. setoid_rewrite amap_set_lookup_same.
+      vsym_eq z b.
+      * setoid_rewrite amap_set_lookup_same. auto.
+      * setoid_rewrite (amap_set_lookup_diff _ _ _ z _ b); auto.
+        intros. destruct_all; try discriminate; simpl_map_hyp.
+    + revert Hsome1 Hsome2. setoid_rewrite (amap_set_lookup_diff _ _ _ x _ a); auto.
+      vsym_eq z b.
+      * setoid_rewrite amap_set_lookup_same.
+        intros. left. rewrite alpha_comp_elts, alpha_comp_lookup_some.
+        destruct Hsome1 as [[y1 [Hy1 Hlooky1]] | [[Hyb Hm1b] | [Hc1 Hc2]]];
+        simpl_map_hyp; destruct_all; try discriminate; simpl_map_hyp.
+      * (*Interesting cases*) setoid_rewrite (amap_set_lookup_diff _ _ _ z _ b); auto.
+        intros. rewrite !alpha_comp_elts, !alpha_comp_lookup_some, !alpha_comp_lookup_none. 
+        destruct Hsome1 as [[y1 [Hy1 Hlooky1]] | [[Hyb Hm1b] | [Hc1 Hc2]]].
+        -- (*TODO: do we need?*) vsym_eq y y1; simpl_map_hyp.
+          destruct Hsome2 as [[y2 [Hy2 Hlooky2]] | [[Hm2b Hm2a] | [Hm2b Hm2a]]].
+          ** vsym_eq y y2; simpl_map_hyp.
+            (*have a -> y1 -> b in LHS, a -> y2 -> b in RHS*)
+            left; eauto 10.
+          ** simpl_map_hyp. 
+            left. (*Here have a -> y1 -> b in LHS, have b -> a -> X in RHS*)
+            eauto 10.
+          ** vsym_eq y b; simpl_map_hyp. 
+            (*Here, have a -> y1 -> b in LHS, have X -> b -> a in RHS*)
+            left; eauto 10.
+        -- simpl_map_hyp.  (*Here, have a -> b -> X in LHS*)
+          destruct Hsome2 as [[y2 [Hy2 Hlooky2]] | [[Hm2b Hm2a] | [Hm2b Hm2a]]]; simpl_map_hyp.
+          ++ vsym_eq y y2; simpl_map_hyp.
+              (*RHS is a -> y2 -> b*) left. eauto 10.
+          ++ (*RHS is X -> a -> b*) left; eauto 10.
+          ++ (*RHS is a -> b -> X*) left; eauto 10.
+        -- vsym_eq y a; simpl_map_hyp. 
+          (*LHS is X -> a -> b*)
+          destruct Hsome2 as [[y2 [Hy2 Hlooky2]] | [[Hm2b Hm2a] | [Hm2b Hm2a]]]; simpl_map_hyp.
+          ++ vsym_eq y y2; simpl_map_hyp. 
+            (*RHS is a -> y2 -> b*) left; eauto 10.
+          ++ (*RHS is X -> a -> b*) left; eauto 10.
+          ++ vsym_eq y b; simpl_map_hyp. 
+             (*RHS is a -> b -> X*) left; eauto 10.
+  - (*Here, we know that both are None, only1 case*) subst b.
+    rewrite alpha_comp_elts in Hnone1, Hnone2.
+    rewrite !alpha_comp_lookup_none in Hnone1, Hnone2.
+    destruct Hnone1 as [Hlook1 Hlook2]. destruct Hnone2 as [Hlook3 Hlook4].
+    simpl_map_hyp.
+    rewrite !amap_set_lookup_diff; auto.
+    right. rewrite !alpha_comp_elts, !alpha_comp_lookup_none. auto.
+Qed.
+
+(*Version with aunion*)
+(*NOTE: we know that r1 and r2 are bij_maps, same for r3, r4*)
+(*This lemma is very tedious (though the above automation helps) and not particularly
+  interesting: lots of case analysis*)
+Lemma alpha_equiv_var_comp_union (m1 m2 m1' m2' r1 r2 r3 r4 : amap vsymbol vsymbol) a b
+  (Hbij1: bij_map r1 r2) (Hbij2: bij_map r3 r4)
+  (Hcomp: composable r1 r3) (Hcomp2: composable r4 r2):
+alpha_equiv_var (alpha_comp (aunion r1 m1) (aunion r3 m1')) (alpha_comp (aunion r4 m2') (aunion r2 m2)) a b ->
+alpha_equiv_var (aunion (amap_comp r1 r3) (alpha_comp m1 m1')) (aunion (amap_comp r4 r2) (alpha_comp m2' m2)) a b.
+Proof.
+  rewrite !alpha_equiv_var_iff.
+  intros [[Hsome1 Hsome2] | [Hnone1 [Hnone2 Heq]]].
+  - rewrite alpha_comp_elts in Hsome1, Hsome2.
+    rewrite !alpha_comp_lookup_some in Hsome1, Hsome2.
+    (*First, see if a is in r1*)
+    setoid_rewrite aunion_lookup in Hsome1.
+    setoid_rewrite aunion_lookup in Hsome2.
+    rewrite !aunion_lookup, !amap_comp_lookup, !alpha_comp_elts.
+    (*Strategy: case on maps BEFORE Hsome, etc - do these lazily, when we need more info.
+      Overall, annoying bc lots of cases - need to rule out all cases other than those
+      giving info about m1, m1', etc*)
+    destruct (amap_lookup r1 a) as [c1|] eqn : Har1; simpl_map_hyp.
+    + destruct Hsome1 as [[y1 [Hy1 Hy2]] | [[Hcb Hr3] | [Hc1 Hc2]]]; [| | discriminate]; simpl_map_hyp.
+      * destruct (amap_lookup r3 c1) as [c2|] eqn : Hcr3; simpl_map_hyp.
+        left. split; auto.
+        destruct Hsome2 as [[y2 [Hy3 Hy4]] | [[Hr4 Hr2] | [Hr4 Hr2]]].
+        -- destruct (amap_lookup r4 c2) as [c4|] eqn : Hcr4; simpl_map_hyp.
+          destruct (amap_lookup r2 c4) as [c3|] eqn : Hcr2; simpl_map_hyp; reflexivity.
+        -- assert (Hcr4: amap_lookup r4 c2 = Some c1) by (apply Hbij2; auto).
+          rewrite Hcr4 in Hr4 |- *. simpl_map_hyp.
+          assert (Hcr2: amap_lookup r2 c1 = Some c1) by (apply Hbij1; auto).
+          rewrite Hcr2 in Hr2. discriminate.
+        -- assert (Hcr4: amap_lookup r4 c2 = Some c1) by (apply Hbij2; auto).
+          rewrite Hcr4 in Hr4 |- *. discriminate.
+      * destruct (amap_lookup r3 c1) as [c2|] eqn : Hcr3; simpl_map_hyp.
+    + (*Now we have m1*) 
+      destruct Hsome1 as [[y1 [Hy1 Hy2]] | [[Hcb Hr3] | [Hc1 Hc2]]]; simpl_map_hyp.
+      * destruct (amap_lookup r3 y1) as [c1|] eqn : Hcr3; simpl_map_hyp.
+        -- assert (Hcr4: amap_lookup r4 c1 = Some y1) by (apply Hbij2 in Hcr3; auto).
+          setoid_rewrite Hcr4 in Hsome2. rewrite Hcr4.
+          destruct Hsome2 as [[y2 [Hy3 Hy4]] | [[Hr4 Hr2] | [Hr4 Hr2]]]; simpl_map_hyp;
+          destruct (amap_lookup r2 y1) as [c2|] eqn : Hcy1; simpl_map_hyp.
+        -- (*have m1 and m1'*) 
+          destruct Hsome2 as [[y2 [Hy3 Hy4]] | [[Hr4 Hr2] | [Hr4 Hr2]]]; simpl_map_hyp.
+          ++ destruct (amap_lookup r2 y2) as [c1|] eqn : Hcr2; simpl_map_hyp.
+            destruct (amap_lookup r4 b) as [c2|] eqn : Hcr4; simpl_map_hyp.
+            (*Have all 4 - non contradiction case*)
+            left. rewrite !alpha_comp_lookup_some; eauto 10.
+          ++ destruct (amap_lookup r2 a) as [c1|] eqn : Hcr2; simpl_map_hyp.
+            destruct (amap_lookup r4 b) as [c2|] eqn : Hcr4; simpl_map_hyp.
+            left. rewrite !alpha_comp_lookup_some; eauto 10.
+          ++ destruct (amap_lookup r2 b) as [c1|] eqn : Hcr2; simpl_map_hyp.
+            destruct (amap_lookup r4 b) as [c2|] eqn : Hcr4; simpl_map_hyp.
+            left. rewrite !alpha_comp_lookup_some; eauto 10.
+      * destruct (amap_lookup r3 b) as [c1|] eqn : Hcr3; simpl_map_hyp.
+        (*have a -> b -> X*)
+        destruct Hsome2 as [[y2 [Hy3 Hy4]] | [[Hr4 Hr2] | [Hr4 Hr2]]]; simpl_map_hyp.
+        -- destruct (amap_lookup r2 y2) as [c1|] eqn : Hcr2; simpl_map_hyp.
+          destruct (amap_lookup r4 b) as [c2|] eqn : Hcr4; simpl_map_hyp.
+          left; rewrite !alpha_comp_lookup_some; eauto 10.
+        -- destruct (amap_lookup r2 a) as [c1|] eqn : Hcr2; simpl_map_hyp.
+          destruct (amap_lookup r4 b) as [c2|] eqn : Hcr4; simpl_map_hyp.
+          left; rewrite !alpha_comp_lookup_some; eauto 10.
+        -- destruct (amap_lookup r2 b) as [c1|] eqn : Hcr2; simpl_map_hyp.
+          destruct (amap_lookup r4 b) as [c2|] eqn : Hcr4; simpl_map_hyp.
+          left; rewrite !alpha_comp_lookup_some; eauto 10.
+      * destruct (amap_lookup r3 a) as [c1|] eqn : Hcr3; simpl_map_hyp.
+        -- (*More contradiction cases: when r3 has a*)
+          assert (Hcr4: amap_lookup r4 c1 = Some a) by (apply Hbij2; auto).
+          setoid_rewrite Hcr4 in Hsome2. rewrite Hcr4.
+          destruct Hsome2 as [[y2 [Hy3 Hy4]] | [[Hr4 Hr2] | [Hr4 Hr2]]]; simpl_map_hyp;
+          destruct (amap_lookup r2 a) as [c2|] eqn : Hcr2; simpl_map_hyp.
+        -- (*have X -> a -> b*)
+          destruct Hsome2 as [[y2 [Hy3 Hy4]] | [[Hr4 Hr2] | [Hr4 Hr2]]]; simpl_map_hyp.
+          ++ destruct (amap_lookup r2 y2) as [c1|] eqn : Hcr2; simpl_map_hyp.
+            destruct (amap_lookup r4 b) as [c2|] eqn : Hcr4; simpl_map_hyp.
+            left; rewrite !alpha_comp_lookup_some; eauto 10.
+          ++ destruct (amap_lookup r2 a) as [c1|] eqn : Hcr2; simpl_map_hyp.
+            destruct (amap_lookup r4 b) as [c2|] eqn : Hcr4; simpl_map_hyp.
+            left. rewrite !alpha_comp_lookup_some; eauto 10.
+          ++ destruct (amap_lookup r2 b) as [c1|] eqn : Hcr2; simpl_map_hyp.
+            destruct (amap_lookup r4 b) as [c2|] eqn : Hcr4; simpl_map_hyp.
+            left. rewrite !alpha_comp_lookup_some; eauto 10.
+  - (*None case - must easier*)
+    subst. rewrite !alpha_comp_elts in Hnone1, Hnone2.
+    rewrite !alpha_comp_lookup_none in Hnone1, Hnone2.
+    rewrite !aunion_lookup in Hnone1, Hnone2 |- *.
+    destruct Hnone1 as [Hm1 Hm2]; destruct Hnone2 as [Hm3 Hm4].
+    rewrite !amap_comp_lookup.
+    destruct (amap_lookup r1 b) eqn : Hr1; [discriminate|].
+    destruct (amap_lookup r2 b) eqn : Hr2; [discriminate|].
+    destruct (amap_lookup r3 b) eqn : Hr3; [discriminate|].
+    destruct (amap_lookup r4 b) eqn : Hr4; [discriminate|].
+    right. rewrite !alpha_comp_elts, !alpha_comp_lookup_none. auto.
+Qed.
+
+
+(*Finally, transitivity*)
+Lemma alpha_equiv_trans (t1: term) (f1: formula) :
+  (forall t2 t3 (m1 m2 m1' m2' : amap vsymbol vsymbol) 
+    (Heq1: alpha_equiv_t m1 m2 t1 t2)
+    (Heq2: alpha_equiv_t m1' m2' t2 t3),
+    alpha_equiv_t (alpha_comp m1 m1') (alpha_comp m2' m2) t1 t3) /\
+  (forall f2 f3 (m1 m2 m1' m2': amap vsymbol vsymbol)
+    (Heq1: alpha_equiv_f m1 m2 f1 f2)
+    (Heq2: alpha_equiv_f m1' m2' f2 f3),
+    alpha_equiv_f (alpha_comp m1 m1') (alpha_comp m2' m2) f1 f3).
+Proof.
+  revert t1 f1; apply term_formula_ind; simpl; intros.
+  - (*Tconst*) 
+    destruct t2; try discriminate. destruct t3; auto. simpl in Heq2. simpl_sumbool.
+  - (*Tvar*)
+    destruct t2; try discriminate. destruct t3; try discriminate.
+    simpl in Heq2. eapply alpha_comp_var_trans; eauto.
+  - (*Tfun*) rename l into tys1; rename l1 into tms1; rename H into IHtms.
+    destruct t2 as [| | f2 tys2 tms2 | | | |]; try discriminate; simpl in Heq2.
+    destruct t3 as [| | f3 tys3 tms3 | | | |]; try discriminate.
+    rewrite !andb_true in Heq1, Heq2.
+    destruct Heq1 as [[[Hfeq1 Hlen1] Htyseq1] Hall1].
+    destruct Heq2 as [[[Hfeq2 Hlen2] Htyseq2] Hall2].
+    repeat simpl_sumbool. simpl. apply Nat.eqb_eq in Hlen1, Hlen2.
+    rewrite Hlen1, Hlen2, Nat.eqb_refl. simpl.
+    rewrite !all2_forall with (d1:=tm_d)(d2:=tm_d) in Hall1, Hall2 |- *; try lia.
+    intros i Hi. rewrite Forall_nth in IHtms. eapply IHtms; eauto.
+    apply Hall2; lia.
+  - (*Tlet*)
+    destruct t2; try discriminate. destruct t3; try discriminate. simpl in Heq2.
+    bool_hyps; repeat simpl_sumbool.
+    bool_to_prop. split_all; auto. 
+    + simpl_sumbool; congruence.
+    + eapply H; eauto.
+    + (*Idea: these maps are NOT equal, but the relations they represent are compatible*)
+      eapply alpha_equiv_t_weaken. 2: eapply H0; eauto. intros ? ? ?; apply alpha_equiv_var_comp_set.
   - (*Tif*)
-    alpha_case f0 Heq1; alpha_case f4 Heq2; bool_hyps.
-    bool_to_prop; split_all; 
-    [apply (H f0_1) | apply (H0 f0_2) | apply (H1 f0_3)]; auto.
+    destruct t0; try discriminate. destruct t3; try discriminate. simpl in *; bool_hyps.
+    bool_to_prop; split_all; [eapply H | eapply H0 | eapply H1]; eauto.
   - (*Tmatch*)
-    alpha_case f1 Heq1; alpha_case f2 Heq2; bool_hyps;
+    destruct t2 as [| | | | | tm2 ty2 ps2 |]; try discriminate.
+    destruct t3 as [| | | | | tm3 ty3 ps3 |]; try discriminate.
+    rename tm into tm1; rename v into ty1; rename ps into ps1; rename H into IH1; rename H0 into IHps.
+    simpl in Heq2.
+    rewrite !andb_true in Heq1, Heq2.
+    destruct Heq1 as [[[Halpha1 Hlen1] Hty1] Hall1].
+    destruct Heq2 as [[[Halpha2 Hlen2] Hty2] Hall2].
     repeat simpl_sumbool.
-    apply Nat.eqb_eq in H8, H4.
-    rewrite (H t), H8, H4, Nat.eqb_refl; auto; simpl.
-    clear H H5 H1.
-    rename l into ps2.
-    rename l0 into ps3.
-    rename H8 into Hlen1.
-    rename H4 into Hlen2.
-    generalize dependent ps2.
-    generalize dependent ps3.
-    induction ps; intros;
-    destruct ps2; inversion Hlen1;
-    destruct ps3; inversion Hlen2; auto.
-    destruct a as [p1 tm1].
-    destruct p as [p2 tm2].
-    destruct p0 as [p3 tm3].
-    revert H6 H2; bool_to_prop; intros;
-    destruct_all; rewrite all2_cons in H6, H2 |- *.
-    bool_hyps.
-    pose proof (alpha_equiv_p_fv_len_full _ _ H5) as Hlenp1.
-    pose proof (alpha_equiv_p_fv_len_full _ _ H) as Hlenp2.
-    inversion H0; subst.
-    bool_to_prop; split_all.
-    * rewrite <- combine_alist_trans with(l2:=pat_fv p2); auto.
-      apply alpha_equiv_p_trans with(p2:=p2); auto.
-      rewrite map_snd_combine, map_fst_combine; auto.
-    * unfold add_vals.
-      rewrite <- combine_alist_trans with(l2:=pat_fv p2); auto.
-      rewrite alist_trans_app.
-      -- apply (H10 tm2); auto.
-        rewrite !map_app, Hl, map_fst_combine, map_snd_combine; auto.
-      -- rewrite !combine_length. lia.
-    * apply IHps with(ps2:=ps2); auto.
+    apply Nat.eqb_eq in Hlen1, Hlen2.
+    rewrite Hlen1, Hlen2, Nat.eqb_refl.
+    rewrite !andb_true; split_all; auto.
+    { eapply IH1; eauto. }
+    clear Halpha1 Halpha2 IH1.
+    (*Now need induction*)
+    generalize dependent ps3. generalize dependent ps2.
+    induction ps1 as [| [p1 t1] ps1 IH]; intros [| [p2 t2] ps2]; try discriminate.
+    { intros _ _ [|]; try discriminate; auto. }
+    simpl. rewrite all2_cons. rewrite andb_true.
+    intros Hlen1 [Halpha1 Hall1] [| [p3 t3] ps3]; try discriminate.
+    simpl. rewrite !all2_cons. rewrite !andb_true.
+    intros Hlen2 [Halpha2 Hall2]. 
+    inversion IHps as [| ? ? IH1 IH2]; subst.
+    split.
+    2: { apply IH with (ps2:=ps2); eauto. }
+    clear IH IH2 Hall1 Hall2 IHps.
+    (*Now we prove the transivitiy for patterns*)
+    simpl in *.
+    destruct (a_equiv_p p1 p2) as [[r1 r2]|] eqn :Halphap1; [|discriminate].
+    destruct (a_equiv_p p2 p3) as [[r3 r4]|] eqn : Halphap2; [|discriminate].
+    rewrite (a_equiv_p_trans _ _ _ _ _ _ _ Halphap1 Halphap2).
+    (*Now again need lemma*)
+    eapply alpha_equiv_t_weaken.
+    2: { eapply IH1; eauto. }
+    intros ? ? ?; apply alpha_equiv_var_comp_union.
+    + apply a_equiv_p_bij in Halphap1; auto.
+    + apply a_equiv_p_bij in Halphap2; auto.
+    + unfold composable. intros a b Hlookup.
+      apply (a_equiv_p_vars Halphap1) in Hlookup.
+      apply a_equiv_p_vars_iff in Halphap2.
+      apply Halphap2. apply Hlookup.
+    + unfold composable. intros a b. intros Hlookup.
+      assert (Halphap2':=Halphap2). apply a_equiv_p_bij in Halphap2'.
+      apply Halphap2' in Hlookup. simpl in Hlookup.
+      apply (a_equiv_p_vars Halphap2) in Hlookup.
+      apply a_equiv_p_vars_iff in Halphap1.
+      apply Halphap1. apply Hlookup.
+  - (*Teps*) destruct t2; try discriminate; simpl in Heq2; destruct t3; try discriminate.
+    bool_hyps. repeat simpl_sumbool. bool_to_prop.
+    split; [destruct (vty_eq_dec _ _); auto; congruence |].
+    eapply alpha_equiv_f_weaken. 2: eapply H; eauto. intros ? ? ?; apply alpha_equiv_var_comp_set.
+  - (*Fpred*) rename tms into tms1; rename H into IHtms.
+    destruct f2; try discriminate; simpl in Heq2.
+    destruct f3; try discriminate; simpl in Heq2.
+    rewrite !andb_true in Heq1, Heq2.
+    destruct Heq1 as [[[Hfeq1 Hlen1] Htyseq1] Hall1].
+    destruct Heq2 as [[[Hfeq2 Hlen2] Htyseq2] Hall2].
+    repeat simpl_sumbool. simpl. apply Nat.eqb_eq in Hlen1, Hlen2.
+    rewrite Hlen1, Hlen2, Nat.eqb_refl. simpl.
+    rewrite !all2_forall with (d1:=tm_d)(d2:=tm_d) in Hall1, Hall2 |- *; try lia.
+    intros i Hi. rewrite Forall_nth in IHtms. eapply IHtms; eauto.
+    apply Hall2; lia.
+  - (*Fquant*) destruct f2; try discriminate; simpl in Heq2; destruct f3; try discriminate.
+    bool_hyps. repeat simpl_sumbool. bool_to_prop.
+    split; [destruct (vty_eq_dec _ _); auto; congruence |].
+    eapply alpha_equiv_f_weaken. 2: eapply H; eauto. intros ? ? ?; apply alpha_equiv_var_comp_set.
+  - (*Feq*) destruct f2; try discriminate. destruct f3; try discriminate. simpl in *; bool_hyps.
+    repeat simpl_sumbool. simpl.
+    bool_to_prop; split_all; [eapply H | eapply H0]; eauto.
+  - (*Fbinop*) destruct f0; try discriminate. destruct f3; try discriminate. simpl in *; bool_hyps.
+    repeat simpl_sumbool. simpl.
+    bool_to_prop; split_all; [eapply H | eapply H0]; eauto.
+  - (*Fnot*) destruct f2; try discriminate. destruct f3; try discriminate. eapply H; eauto.
+  - (*Ftrue*) destruct f2; try discriminate. destruct f3; try discriminate. auto.
+  - (*Ffalse*) destruct f2; try discriminate. destruct f3; try discriminate. auto.
+  - (*Flet*) destruct f2; try discriminate. destruct f3; try discriminate. simpl in Heq2.
+    bool_hyps; repeat simpl_sumbool.
+    bool_to_prop. split_all; auto. 
+    + simpl_sumbool; congruence.
+    + eapply H; eauto.
+    + eapply alpha_equiv_f_weaken. 2: eapply H0; eauto. intros ? ? ?; apply alpha_equiv_var_comp_set.
+  - (*Fif*) destruct f0; try discriminate. destruct f4; try discriminate. simpl in *; bool_hyps.
+    bool_to_prop; split_all; [eapply H | eapply H0 | eapply H1]; eauto.
+  - (*Fmatch*)
+    destruct f2 as [ | | | | | | | | | tm2 ty2 ps2]; try discriminate.
+    destruct f3 as [| | | | | | | | | tm3 ty3 ps3]; try discriminate.
+    rename tm into tm1; rename v into ty1; rename ps into ps1; rename H into IH1; rename H0 into IHps.
+    simpl in Heq2.
+    rewrite !andb_true in Heq1, Heq2.
+    destruct Heq1 as [[[Halpha1 Hlen1] Hty1] Hall1].
+    destruct Heq2 as [[[Halpha2 Hlen2] Hty2] Hall2].
+    repeat simpl_sumbool.
+    apply Nat.eqb_eq in Hlen1, Hlen2.
+    rewrite Hlen1, Hlen2, Nat.eqb_refl.
+    rewrite !andb_true; split_all; auto.
+    { eapply IH1; eauto. }
+    clear Halpha1 Halpha2 IH1.
+    (*Now need induction*)
+    generalize dependent ps3. generalize dependent ps2.
+    induction ps1 as [| [p1 t1] ps1 IH]; intros [| [p2 t2] ps2]; try discriminate.
+    { intros _ _ [|]; try discriminate; auto. }
+    simpl. rewrite all2_cons. rewrite andb_true.
+    intros Hlen1 [Halpha1 Hall1] [| [p3 t3] ps3]; try discriminate.
+    simpl. rewrite !all2_cons. rewrite !andb_true.
+    intros Hlen2 [Halpha2 Hall2]. 
+    inversion IHps as [| ? ? IH1 IH2]; subst.
+    split.
+    2: { apply IH with (ps2:=ps2); eauto. }
+    clear IH IH2 Hall1 Hall2 IHps.
+    (*Now we prove the transivitiy for patterns*)
+    simpl in *.
+    destruct (a_equiv_p p1 p2) as [[r1 r2]|] eqn :Halphap1; [|discriminate].
+    destruct (a_equiv_p p2 p3) as [[r3 r4]|] eqn : Halphap2; [|discriminate].
+    rewrite (a_equiv_p_trans _ _ _ _ _ _ _ Halphap1 Halphap2).
+    (*Now again need lemma*)
+    eapply alpha_equiv_f_weaken.
+    2: { eapply IH1; eauto. }
+    intros ? ? ?; apply alpha_equiv_var_comp_union.
+    + apply a_equiv_p_bij in Halphap1; auto.
+    + apply a_equiv_p_bij in Halphap2; auto.
+    + unfold composable. intros a b Hlookup.
+      apply (a_equiv_p_vars Halphap1) in Hlookup.
+      apply a_equiv_p_vars_iff in Halphap2.
+      apply Halphap2. apply Hlookup.
+    + unfold composable. intros a b. intros Hlookup.
+      assert (Halphap2':=Halphap2). apply a_equiv_p_bij in Halphap2'.
+      apply Halphap2' in Hlookup. simpl in Hlookup.
+      apply (a_equiv_p_vars Halphap2) in Hlookup.
+      apply a_equiv_p_vars_iff in Halphap1.
+      apply Halphap1. apply Hlookup.
 Qed.
 
 Definition alpha_equiv_t_trans t := proj_tm alpha_equiv_trans t.
@@ -5597,7 +6184,6 @@ Proof.
 Qed.
 
 End Equivalence.
- *)
 (*Now we show that alpha equivalence preserves typing*)
 
 Section AlphaTypes.
@@ -8290,8 +8876,7 @@ Qed.
 
 (*And from transitivity:*)
 (*TODO: transitivity*)
-(*START*)
-(* Lemma alpha_convert_tlet':
+Lemma alpha_convert_tlet':
 forall v1 v2 : vsymbol,
   snd v1 = snd v2 ->
   forall tm1 tm2 tm3 tm4 : term,
@@ -8305,7 +8890,7 @@ Proof.
   eapply a_equiv_t_trans.
   2: apply alpha_convert_tlet; auto.
   apply alpha_tlet_congr; auto.
-Qed. *)
+Qed.
 
 Lemma alpha_teps_congr v f1 f2:
   a_equiv_f f1 f2 ->
@@ -8316,19 +8901,19 @@ Proof.
   rewrite amap_singleton_set, <- a_equiv_f_expand_single; auto.
 Qed.
 
-(*TODO*)
-(* Lemma alpha_convert_teps': forall v1 v2,
+Lemma alpha_convert_teps': forall v1 v2,
   snd v1 = snd v2 ->
   forall f1 f2: formula,
   ~ In v2 (fmla_bnd f2) ->
-  ~ In v2 (fmla_fv f2) ->
+  ~ aset_mem v2 (fmla_fv f2) ->
   a_equiv_f f1 f2 ->
   a_equiv_t (Teps f1 v1) (Teps (sub_var_f v1 v2 f2) v2).
 Proof.
-  intros. eapply a_equiv_t_trans.
+  intros v1 v2 Heq f1 f2 Hnotbnd Hnotfv Ha.
+  eapply a_equiv_t_trans.
   2: apply alpha_convert_teps; auto.
   apply alpha_teps_congr; auto.
-Qed. *)
+Qed.
 
 Lemma alpha_quant_congr q v f1 f2:
   a_equiv_f f1 f2 ->
@@ -8339,11 +8924,11 @@ Proof.
   rewrite amap_singleton_set, <- a_equiv_f_expand_single; auto.
 Qed.
 
-(* Lemma alpha_convert_quant': forall q v1 v2,
+Lemma alpha_convert_quant': forall q v1 v2,
   snd v1 = snd v2 ->
   forall f1 f2: formula,
   ~ In v2 (fmla_bnd f2) ->
-  ~ In v2 (fmla_fv f2) ->
+  ~ aset_mem v2 (fmla_fv f2) ->
   a_equiv_f f1 f2 ->
   a_equiv_f (Fquant q v1 f1) (Fquant q v2 (sub_var_f v1 v2 f2)).
 Proof.
@@ -8351,7 +8936,7 @@ Proof.
   2: apply alpha_convert_quant; auto.
   apply alpha_quant_congr; auto.
 Qed.
- *)
+
 Lemma alpha_tfun_congr f tys tms1 tms2:
   length tms1 = length tms2 ->
   Forall (fun x => a_equiv_t (fst x) (snd x)) (combine tms1 tms2) ->
@@ -8419,12 +9004,12 @@ Proof.
 Qed.
 
 (*And from transitivity:*)
-(* Lemma alpha_convert_flet':
+Lemma alpha_convert_flet':
 forall v1 v2 : vsymbol,
   snd v1 = snd v2 ->
   forall tm1 tm2 f1 f2,
   ~ In v2 (fmla_bnd f2) ->
-  ~ In v2 (fmla_fv f2) ->
+  ~ aset_mem v2 (fmla_fv f2) ->
   a_equiv_t tm1 tm2 ->
   a_equiv_f f1 f2 ->
   a_equiv_f (Flet tm1 v1 f1) (Flet tm2 v2 (sub_var_f v1 v2 f2)).
@@ -8433,7 +9018,7 @@ Proof.
   eapply a_equiv_f_trans.
   2: apply alpha_convert_flet; auto.
   apply alpha_flet_congr; auto.
-Qed. *)
+Qed.
 
 Lemma alpha_fif_congr f1 f2 f3 f4 f5 f6:
   a_equiv_f f1 f2 ->
