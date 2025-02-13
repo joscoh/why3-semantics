@@ -11860,11 +11860,14 @@ End ConvertFn.
 (*Now our second, much simpler conversion function (see description
   above). This only renames selected variables and keeps syntactically
   identical variables identical. Not wf, but much more readable*)
+(*TODO: see if we need, *)
 Section ConvertMap.
 
 (*Replace a variable with element from map if one exists*)
-Definition replace_var (l: list (string * string)) (x: vsymbol) : vsymbol :=
-  match (get_assoc_list string_dec l (fst x)) with
+(*TODO: changed to vsymbol map for pattern map*)
+
+(* Definition replace_var (m: amap vsymbol vsymbol) (x: vsymbol) : vsymbol :=
+  match (amap_lookup m (x) with
   | Some y => (y, snd x)
   | None => x
   end.
@@ -11873,9 +11876,11 @@ Lemma replace_var_ty l x:
   snd (replace_var l x) = snd x.
 Proof.
   unfold replace_var.
-  destruct (get_assoc_list string_dec l (fst x)); auto.
-Qed.
+  destruct (amap_lookup l (fst x)); auto.
+Qed. *)
 
+(*TODO: see what we need*)
+(* 
 Lemma replace_var_inj l x y
   (Hn: NoDup (map snd l)):
   ~ In (fst x) (map snd l) ->
@@ -11920,12 +11925,13 @@ Proof.
   apply get_assoc_list_some in Ha.
   exfalso.
   apply H. rewrite in_map_iff. exists (fst x, s). auto.
-Qed.
+Qed. *)
 
 (*Converting patterns is easy*)
-Definition a_convert_map_p (l: list (string * string)) (p: pattern) :
+(*NOTE: changing from strings to vsymbols*)
+(* Definition a_convert_map_p (m: amap vsymbol vsymbol) (p: pattern) :
   pattern :=
-  map_pat (replace_var l) p.
+  map_pat (replace_var m) p.
 
 Lemma a_convert_map_p_fv l p
   (Hn: NoDup (map snd l))
@@ -11960,52 +11966,173 @@ Proof.
       vsym_eq (replace_var l x) (replace_var l a).
       exfalso.
       apply replace_var_inj in e; auto.
-Qed.
+Qed. *)
 
 (*Now define the conversion function*)
-Fixpoint a_convert_map_t (l: list (string * string))
-  (bnd: list vsymbol) (t: term) : term :=
+Fixpoint a_convert_map_t (m: amap vsymbol vsymbol) (*(l: list (string * string))*)
+  (bnd: aset vsymbol) (t: term) : term :=
   match t with
   | Tvar v =>
-    Tvar (if in_bool vsymbol_eq_dec v bnd then 
-    replace_var l v else v)
-  | Tfun fs tys tms => Tfun fs tys (map (a_convert_map_t l bnd) tms)
+    Tvar (if aset_mem_dec v bnd then mk_fun m v else v)
+  | Tfun fs tys tms => Tfun fs tys (map (a_convert_map_t m bnd) tms)
   | Tlet t1 v t2 =>
-    Tlet (a_convert_map_t l bnd t1) (replace_var l v) 
-      (a_convert_map_t l (v :: bnd) t2)
+    Tlet (a_convert_map_t m bnd t1) (mk_fun m v) 
+      (a_convert_map_t m (aset_union (aset_singleton v) bnd) t2)
   | Tif f1 t1 t2 =>
-    Tif (a_convert_map_f l bnd f1) (a_convert_map_t l bnd t1) (a_convert_map_t l bnd t2)
+    Tif (a_convert_map_f m bnd f1) (a_convert_map_t m bnd t1) (a_convert_map_t m bnd t2)
   | Tmatch tm ty ps =>
-    Tmatch (a_convert_map_t l bnd tm) ty
-      (map (fun x => (a_convert_map_p l (fst x), 
-        (a_convert_map_t l (pat_fv (fst x) ++ bnd) (snd x)))) ps)
-  | Teps f v => Teps (a_convert_map_f l (v :: bnd) f) (replace_var l v)
+    Tmatch (a_convert_map_t m bnd tm) ty
+      (map (fun x => (map_pat m (fst x), 
+        (a_convert_map_t m (aset_union (pat_fv (fst x)) bnd) (snd x)))) ps)
+  | Teps f v => Teps (a_convert_map_f m (aset_union (aset_singleton v) bnd) f) (mk_fun m v)
   | _ => t
   end
-with a_convert_map_f (l: list (string * string)) 
-  (bnd: list vsymbol) (f: formula) : formula :=
+with a_convert_map_f (m: amap vsymbol vsymbol) 
+  (bnd: aset vsymbol) (f: formula) : formula :=
   match f with
-  | Fpred p tys tms => Fpred p tys (map (a_convert_map_t l bnd) tms)
-  | Fquant q v f => Fquant q (replace_var l v) (a_convert_map_f l (v :: bnd) f)
-  | Feq ty t1 t2 => Feq ty (a_convert_map_t l bnd t1) (a_convert_map_t l bnd t2)
-  | Fbinop b f1 f2 => Fbinop b (a_convert_map_f l bnd f1) (a_convert_map_f l bnd f2)
-  | Fnot f => Fnot (a_convert_map_f l bnd f)
-  | Flet t v f => Flet (a_convert_map_t l bnd t) (replace_var l v)
-    (a_convert_map_f l (v :: bnd) f)
-  | Fif f1 f2 f3 => Fif (a_convert_map_f l bnd f1) (a_convert_map_f l  bnd f2)
-    (a_convert_map_f l bnd f3)
+  | Fpred p tys tms => Fpred p tys (map (a_convert_map_t m bnd) tms)
+  | Fquant q v f => Fquant q (mk_fun m v) (a_convert_map_f m (aset_union (aset_singleton v) bnd) f)
+  | Feq ty t1 t2 => Feq ty (a_convert_map_t m bnd t1) (a_convert_map_t m bnd t2)
+  | Fbinop b f1 f2 => Fbinop b (a_convert_map_f m bnd f1) (a_convert_map_f m bnd f2)
+  | Fnot f => Fnot (a_convert_map_f m bnd f)
+  | Flet t v f => Flet (a_convert_map_t m bnd t) (mk_fun m v)
+    (a_convert_map_f m (aset_union (aset_singleton v) bnd) f)
+  | Fif f1 f2 f3 => Fif (a_convert_map_f m bnd f1) (a_convert_map_f m bnd f2)
+    (a_convert_map_f m bnd f3)
   | Fmatch tm ty ps =>
-    Fmatch (a_convert_map_t l bnd tm) ty
-    (map (fun x => (a_convert_map_p l (fst x), 
-      (a_convert_map_f l (pat_fv (fst x) ++ bnd) (snd x)))) ps)
+    Fmatch (a_convert_map_t m bnd tm) ty
+    (map (fun x => (map_pat m (fst x), 
+      (a_convert_map_f m (aset_union (pat_fv (fst x)) bnd) (snd x)))) ps)
   | _ => f
   end.
 
 (*The list for the alpha conversion definition (needed for
   proofs) - bnd is the list of currently bound vars*)
-Definition mk_alpha_list (l: list (string * string)) (bnd: list vsymbol) :=
-  map (fun v => (v, replace_var l v)) bnd.
+(*Note: 1 direction is bnd -> image of bnd in m, other direction is amap_flip*)
+Definition mk_alpha_map (m: amap vsymbol vsymbol) (bnd: aset vsymbol) : amap vsymbol vsymbol :=
+  fold_right (fun x acc => amap_set acc x (mk_fun m x)) amap_empty (aset_to_list bnd).
 
+Lemma mk_alpha_map_lookup_some m bnd x y:
+  amap_lookup (mk_alpha_map m bnd) x = Some y <-> aset_mem x bnd /\ y = mk_fun m x.
+Proof.
+  unfold mk_alpha_map. rewrite <- aset_to_list_in.
+  induction (aset_to_list bnd) as [| h t IH]; simpl; auto.
+  - rewrite amap_empty_get. split; try discriminate. intros; destruct_all; contradiction.
+  - split.
+    + vsym_eq x h.
+      * rewrite amap_set_lookup_same. intros Hsome; inversion Hsome; subst. auto.
+      * rewrite amap_set_lookup_diff; auto. rewrite IH; auto. intros [Hint Hy]; subst; auto.
+    + intros [Hh Hy]; subst. vsym_eq x h.
+      * rewrite amap_set_lookup_same; auto.
+      * rewrite amap_set_lookup_diff; auto. apply IH; auto. destruct Hh; subst; auto; contradiction.
+Qed.
+
+Lemma mk_alpha_map_lookup_none m bnd x:
+  amap_lookup (mk_alpha_map m bnd) x = None <-> ~ (aset_mem x bnd).
+Proof.
+  unfold mk_alpha_map. rewrite <- aset_to_list_in.
+  induction (aset_to_list bnd) as [| h t IH]; simpl; auto.
+  - rewrite amap_empty_get. split; auto. 
+  - split.
+    + vsym_eq x h.
+      * rewrite amap_set_lookup_same. discriminate.
+      * rewrite amap_set_lookup_diff; auto. rewrite IH; auto. intros Hnotin C; destruct_all; subst; contradiction.
+    + intros Hnotin. vsym_eq h x; [exfalso; apply Hnotin; auto|].
+      rewrite amap_set_lookup_diff; auto.
+      rewrite IH; auto.
+Qed.
+
+Lemma mk_alpha_map_inj m bnd 
+  (Hinj: amap_inj m)
+  (Hall: forall x, aset_mem x bnd -> ~ In x (vals m)):
+  amap_inj (mk_alpha_map m bnd).
+Proof.
+  unfold amap_inj. intros x1 x2 y. rewrite !mk_alpha_map_lookup_some; auto.
+  intros [Hbnd1 Hy] [Hbnd2 Hy1]; subst.
+  (*Idea: if x1 is in m, then if x2 in m, good. Otherwise, x2 not there, so x1 maps to x2, contradicting
+    the Hall hypothesis.
+    Basically, this is all because if we have (x -> y) in map and y not in map but bound, get problem
+  *)
+  unfold mk_fun, lookup_default in Hy1.
+  destruct (amap_lookup m x1) as [y1|] eqn : Hlook1; subst.
+  - destruct (amap_lookup m x2) as [y2|] eqn : Hlook2.
+    + eapply Hinj; eauto.
+    + apply Hall in Hbnd2. rewrite in_vals_iff in Hbnd2. exfalso.
+      apply Hbnd2. exists x1; auto.
+  - destruct (amap_lookup m x2) as [y2|] eqn : Hlook2; auto.
+    apply Hall in Hbnd1. exfalso; apply Hbnd1. rewrite in_vals_iff.
+    exists x2; auto.
+Qed.
+
+Lemma mk_alpha_map_in (m: amap vsymbol vsymbol) (bnd: aset vsymbol)
+  (Hinj: amap_inj m)
+  (Hall: forall x, aset_mem x bnd -> ~ In x (vals m)) v:
+  aset_mem v bnd ->
+  alpha_equiv_var (mk_alpha_map m bnd) (amap_flip (mk_alpha_map m bnd)) v (mk_fun m v).
+Proof.
+  intros Hmem.
+  rewrite alpha_equiv_var_iff.
+  rewrite amap_flip_elts; auto; [| apply mk_alpha_map_inj; auto].
+  rewrite !mk_alpha_map_lookup_some; auto.
+Qed.
+
+(*TODO: move*)
+Lemma amap_flip_none {A B: Type} `{countable.Countable A} `{countable.Countable B} (m: amap A B) x:
+  amap_lookup (amap_flip m) x = None <-> ~ In x (vals m).
+Proof.
+  unfold amap_flip. replace (vals m) with (map snd (elements m)) by reflexivity.
+  induction (elements m) as [| [h1 h2] t IH]; simpl; auto.
+  - rewrite amap_empty_get. split; auto. 
+  - split.
+    + destruct (EqDecision1 x h2); subst.
+      * rewrite amap_set_lookup_same. discriminate.
+      * rewrite amap_set_lookup_diff; auto. rewrite IH; auto. intros Hnotin C; destruct_all; subst; contradiction.
+    + intros Hnotin. destruct (EqDecision1 h2 x); subst; [exfalso; apply Hnotin; auto|].
+      rewrite amap_set_lookup_diff; auto.
+      rewrite IH; auto.
+Qed.
+
+Lemma mk_alpha_map_notin (m: amap vsymbol vsymbol) (bnd: aset vsymbol) v:
+  ~ aset_mem v bnd ->
+  ~ In v (vals m) ->
+   alpha_equiv_var (mk_alpha_map m bnd) (amap_flip (mk_alpha_map m bnd)) v v.
+Proof.
+  intros Hbnd Hvals.
+  rewrite alpha_equiv_var_iff. right.
+  rewrite !mk_alpha_map_lookup_none.
+  rewrite amap_flip_none.
+  split_all; auto.
+  intro C. rewrite in_vals_iff in C.
+  destruct C as [x Hlookup].
+  rewrite mk_alpha_map_lookup_some in Hlookup.
+  destruct Hlookup as [Hmemx Hv]; subst.
+  unfold mk_fun, lookup_default in *.
+  destruct (amap_lookup m x) as [y|] eqn : Hlook; auto.
+  rewrite in_vals_iff in Hvals. apply Hvals. exists x; auto.
+Qed.
+ 
+
+  (*Is amap_flip correct? Let's think
+    if we have v in map, find v', have correct mapping
+    if we have v not in map
+
+    IDEA: map m contains the variables we want to substitue for (maybe not all) and fresh names
+      so we encounter a bound variable and look it up in the map, replacing if we find it, otherwise not
+      so the mapping is
+      for all v in bnd
+        if (v -> v') in m, want (v -> v') and (v' -> v)
+        otherwise, have (v -> v) and (v -> v)
+
+        problem: what if we have (x -> y) and y not in map - this is why nothing in codomain of map
+          can be in bound vars
+*)
+  
+  
+
+(* 
+Definition mk_alpha_list (l: list (string * string)) (bnd: list vsymbol) :=
+  map (fun v => (v, replace_var l v)) bnd. *)
+(* 
 Lemma mk_alpha_list_in  (l: list (string * string)) (bnd: list vsymbol)
   (Hn: NoDup (map snd l))
   (Hall: forall x, In x bnd -> ~ In (fst x) (map snd l)) v:
@@ -12069,13 +12196,121 @@ Ltac bnd_case v Hfree :=
   let Hinx := fresh "Hinx" in
   intros x Hinx;
   vsym_eq x v;
-  apply Hfree; simpl_set; auto.
+  apply Hfree; simpl_set; auto. *)
+
+Lemma mk_fun_snd (m: amap vsymbol vsymbol)
+  (Htys: forall x y, amap_lookup m x = Some y -> snd x = snd y):
+  forall x, snd (mk_fun m x) = snd x.
+Proof.
+  intros x. unfold mk_fun, lookup_default.
+  destruct (amap_lookup m x) eqn : Hlook; auto.
+  apply Htys in Hlook. auto.
+Qed.
+
+Lemma mk_alpha_map_set m bnd x:
+  amap_set (mk_alpha_map m bnd) x (mk_fun m x) =
+  mk_alpha_map m (aset_union (aset_singleton x) bnd).
+Proof.
+  apply amap_ext. intros y.
+  vsym_eq x y.
+  - rewrite amap_set_lookup_same.
+    symmetry. apply mk_alpha_map_lookup_some. 
+    simpl_set. auto.
+  - rewrite amap_set_lookup_diff by auto.
+    destruct (amap_lookup (mk_alpha_map m bnd) y) as [z|] eqn : Hlook1.
+    + symmetry. rewrite mk_alpha_map_lookup_some in Hlook1 |- *.
+      simpl_set. destruct Hlook1; auto.
+    + symmetry. rewrite mk_alpha_map_lookup_none in Hlook1 |- *.
+      simpl_set. intros [C1 | C2]; subst; contradiction.
+Qed.
+
+Lemma mk_alpha_map_flip_set m bnd
+  (Hinj: amap_inj m)
+  (Hall: forall x, aset_mem x bnd -> ~ In x (vals m)) x (Hx: ~ In x (vals m)):
+  amap_set (amap_flip (mk_alpha_map m bnd)) (mk_fun m x) x =
+  amap_flip (mk_alpha_map m (aset_union (aset_singleton x) bnd)).
+Proof.
+  apply amap_ext. intros y.
+  assert (Hinj': amap_inj (mk_alpha_map m (aset_union (aset_singleton x) bnd))).
+  {
+    apply mk_alpha_map_inj; auto. intros z. simpl_set. intros [Hyx | Hmem]; subst; auto.
+  }
+  vsym_eq (mk_fun m x) y.
+  - rewrite amap_set_lookup_same.
+    symmetry. apply amap_flip_elts; auto.
+    apply mk_alpha_map_lookup_some. simpl_set. auto.
+  - rewrite amap_set_lookup_diff by auto.
+    destruct (amap_lookup (amap_flip (mk_alpha_map m bnd)) y) as [z|] eqn : Hlook1.
+    + symmetry. rewrite amap_flip_elts in Hlook1 |- *; auto; [| apply mk_alpha_map_inj; auto].
+      rewrite mk_alpha_map_lookup_some in Hlook1 |- *.
+      simpl_set. destruct Hlook1; auto.
+    + symmetry. rewrite amap_flip_none in Hlook1 |- *.
+      intros C. rewrite in_vals_iff in Hlook1, C.
+      destruct C as [z Hlookz].
+      rewrite mk_alpha_map_lookup_some in Hlookz. destruct Hlookz as [Hmemz Hy]; subst.
+      simpl_set. destruct Hmemz as [Hzx | Hzbnd]; simpl_set; subst; [contradiction|].
+      apply Hlook1. exists z. apply mk_alpha_map_lookup_some. auto.
+Qed.
+
 
 (*Then we prove alpha equivalence. The proof is easier than above,
   since this is just a map. Only the match cases are a bit annoying*)
 (*The new strings cannot be in the free vars (for capture), the
   currently bound vars (or else forall x y, x + y = z can become
     forall y y, y + y = z) or bnd, for IH*)
+Lemma a_convert_alpha (m: amap vsymbol vsymbol) (Hinj: amap_inj m)
+  (Htys: forall x y, amap_lookup m x = Some y -> snd x = snd y) (t: term) (f: formula):
+  (forall bnd
+    (Hvars: forall x, aset_mem x (tm_vars t) -> ~ In x (vals m))
+    (Hbnd: forall x, aset_mem x bnd -> ~ In x (vals m)),
+    alpha_equiv_t (mk_alpha_map m bnd) (amap_flip (mk_alpha_map m bnd)) t (a_convert_map_t m bnd t)) /\
+  (forall bnd
+    (Hvars: forall x, aset_mem x (fmla_vars f) -> ~ In x (vals m))
+    (Hbnd: forall x, aset_mem x bnd -> ~ In x (vals m)),
+    alpha_equiv_f (mk_alpha_map m bnd) (amap_flip (mk_alpha_map m bnd)) f (a_convert_map_f m bnd f)).
+Proof.
+  revert t f; apply term_formula_ind; simpl; auto.
+  - intros. apply eq_dec_refl.
+  - (*Tvar*) intros v bnd Hvars Hbnd. destruct (aset_mem_dec v bnd).
+    + apply mk_alpha_map_in; auto.
+    + apply mk_alpha_map_notin; auto. apply Hvars. simpl_set; auto.
+  - admit.
+  - (*Tlet*)
+    intros tm1 v tm2 IH1 IH2 bnd Hvars Hbnd.
+    repeat(setoid_rewrite aset_mem_union in Hvars).
+    setoid_rewrite aset_mem_singleton in Hvars. 
+    rewrite mk_fun_snd by auto. rewrite eq_dec_refl. simpl.
+    rewrite IH1 by auto.
+    simpl.
+    rewrite mk_alpha_map_set,mk_alpha_map_flip_set; auto.
+    apply IH2; auto. intros y Hin. simpl_set. destruct Hin; auto. simpl_set; subst; auto.
+  - admit.
+  - (*Tmatch*)
+
+    (*START*)
+
+    Search map_pat amap_flip.
+
+
+ setoid_rewrite aset_mem_union. setoid_rewrit 
+    
+    Search mk_fun snd.
+    
+    
+  
+ (l: list (string * string))
+  (Hn: NoDup (map snd l))
+  (t: term) (f: formula) :
+  (forall bnd
+    (Hfree: forall x, In x (tm_fv t) -> ~ In (fst x) (map snd l))
+    (Hbnd1: forall x, In x (tm_bnd t) -> ~ In (fst x) (map snd l))
+    (Hbnd2: forall x, In x bnd -> ~ In (fst x) (map snd l)), 
+    alpha_equiv_t (mk_alpha_list l bnd) t (a_convert_map_t l bnd t)) /\
+  (forall bnd
+    (Hfree: forall x, In x (fmla_fv f) -> ~ In (fst x) (map snd l))
+    (Hbnd1: forall x, In x (fmla_bnd f) -> ~ In (fst x) (map snd l))
+    (Hbnd2: forall x, In x bnd -> ~ In (fst x) (map snd l)),
+    alpha_equiv_f (mk_alpha_list l bnd) f (a_convert_map_f l bnd f)).
 Lemma a_convert_alpha (l: list (string * string))
   (Hn: NoDup (map snd l))
   (t: term) (f: formula) :
