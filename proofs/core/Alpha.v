@@ -11457,11 +11457,11 @@ with shape_f (f1 f2: formula) {struct f1} : bool :=
   end.
 
 Lemma alpha_shape t1 f1:
-  (forall t2 vars
-    (Heq: alpha_equiv_t vars t1 t2),
+  (forall t2 m1 m2
+    (Heq: alpha_equiv_t m1 m2 t1 t2),
     shape_t t1 t2) /\
-  (forall f2 vars
-    (Heq: alpha_equiv_f vars f1 f2),
+  (forall f2 m1 m2
+    (Heq: alpha_equiv_f m1 m2 f1 f2),
     shape_f f1 f2).
 Proof.
   revert t1 f1. apply term_formula_ind; simpl; auto;
@@ -11471,39 +11471,37 @@ Proof.
   - alpha_case t2 Heq; bool_hyps; repeat simpl_sumbool.
     rewrite H3. simpl. nested_ind_case.
     rewrite all2_cons in H1 |- *. bool_hyps.
-    rewrite (Hp t vars), (IHl1 Hforall _ H2); auto.
+    rewrite (Hp t m1 m2), (IHl1 Hforall _ H2); auto.
   - alpha_case t2 Heq; bool_hyps.
-    rewrite (H t2_1 vars), (H0 t2_2 ((v, v0) :: vars)); auto.
+    erewrite H; eauto.
   - alpha_case t0 Heq; bool_hyps.
-    rewrite (H f0 vars), (H0 t0_1 vars), (H1 t0_2 vars); auto.
+    erewrite H, H0, H1; eauto.
   - alpha_case t2 Heq; bool_hyps; repeat simpl_sumbool.
-    rewrite (H t2 vars); auto. clear H H1. rewrite H4; simpl.
+    rewrite (H t2 m1 m2); auto. clear H H1. rewrite H4; simpl.
     nested_ind_case. rewrite all2_cons in H2 |- *; bool_hyps.
-    rewrite (alpha_p_shape (combine (pat_fv (fst a)) (pat_fv (fst p)))),
-      (Hp _ (add_vals (pat_fv (fst a)) (pat_fv (fst p)) vars) ),
-      (IHps Hforall _ H1); auto.
-  - alpha_case t2 Heq. bool_hyps. apply (H _ ((v, v0) :: vars)); auto.
+    destruct (a_equiv_p _ _) as [[r1 r2]|] eqn : Halphap; [|discriminate].
+    apply alpha_p_shape in Halphap. rewrite Halphap. simpl.
+    erewrite Hp; eauto.
+  - alpha_case t2 Heq. bool_hyps. erewrite H; eauto.
   - alpha_case f2 Heq; bool_hyps; repeat simpl_sumbool.
     rewrite H3. simpl. nested_ind_case.
     rewrite all2_cons in H1 |- *. bool_hyps.
-    rewrite (Hp t vars), (IHtms Hforall _ H2); auto.
+    rewrite (Hp t m1 m2), (IHtms Hforall _ H2); auto.
   - alpha_case f2 Heq. bool_hyps; repeat simpl_sumbool.
-    apply (H _ ((v, v0) :: vars)); auto.
+    erewrite H; eauto.
   - alpha_case f2 Heq; bool_hyps; repeat simpl_sumbool.
-    rewrite (H t vars), (H0 t0 vars); auto.
+    erewrite H, H0; eauto.
   - alpha_case f0 Heq; bool_hyps; repeat simpl_sumbool.
-    rewrite (H f0_1 vars), (H0 f0_2 vars); auto.
-  - alpha_case f2 Heq; apply (H _ vars); auto.
-  - alpha_case f2 Heq; bool_hyps.
-    rewrite (H t vars), (H0 f2 ((v, v0) :: vars)); auto.
-  - alpha_case f0 Heq; bool_hyps.
-    rewrite (H f0_1 vars), (H0 f0_2 vars), (H1 f0_3 vars); auto.
+    erewrite H, H0; eauto.
+  - alpha_case f2 Heq; erewrite H; eauto.
+  - alpha_case f2 Heq; bool_hyps. erewrite H, H0; eauto.
+  - alpha_case f0 Heq; bool_hyps. erewrite H, H0, H1; eauto.
   - alpha_case f2 Heq; bool_hyps; repeat simpl_sumbool.
-    rewrite (H t vars); auto. clear H H1. rewrite H4; simpl.
+    erewrite H; eauto. clear H H1. rewrite H4; simpl.
     nested_ind_case. rewrite all2_cons in H2 |- *; bool_hyps.
-    rewrite (alpha_p_shape (combine (pat_fv (fst a)) (pat_fv (fst p)))),
-      (Hp _ (add_vals (pat_fv (fst a)) (pat_fv (fst p)) vars) ),
-      (IHps Hforall _ H1); auto.
+    destruct (a_equiv_p _ _) as [[r1 r2]|] eqn : Halphap; [|discriminate].
+    apply alpha_p_shape in Halphap. rewrite Halphap. simpl.
+    erewrite Hp; eauto.
 Qed.
 
 Definition alpha_shape_t t := proj_tm alpha_shape t.
@@ -11650,38 +11648,40 @@ End Shape.
 Section ConvertFn.
 
 (*Alpha convert the term t and give new bound variables not in l*)
-Definition a_convert_all_t (t: term) (l: list vsymbol) :=
-  alpha_t_aux t (gen_strs (length (tm_bnd t)) (l ++ tm_bnd t ++ tm_fv t)).
+(**)
+Definition a_convert_all_t (t: term) (l: aset vsymbol) :=
+  alpha_t_aux t (gen_strs (length (tm_bnd t)) (aset_union l (tm_vars t))).
 
-Definition a_convert_all_f (f: formula) (l: list vsymbol) :=
-  alpha_f_aux f (gen_strs (length (fmla_bnd f)) (l ++ fmla_bnd f ++ fmla_fv f)).
+Definition a_convert_all_f (f: formula) (l: aset vsymbol) :=
+  alpha_f_aux f (gen_strs (length (fmla_bnd f)) (aset_union l (fmla_vars f))).
 
 (*Correctness*)
 
 Theorem a_convert_all_t_equiv t l:
   a_equiv_t t (a_convert_all_t t l).
 Proof.
-  apply alpha_t_aux_equiv; 
-  [apply gen_strs_nodup | apply gen_strs_length | |];
-  intros y Hy Hy2; apply gen_strs_notin in Hy; apply Hy; in_tac.
+  apply alpha_t_aux_equiv;
+  [apply gen_strs_nodup | apply gen_strs_length | ].
+  intros y Hy Hy2.
+  apply gen_strs_notin in Hy2. simpl_set; auto.
 Qed.
 
 Theorem a_convert_all_t_name_wf t l :
   term_name_wf (a_convert_all_t t l).
 Proof.
   unfold term_name_wf.
-  pose proof (gen_strs_nodup (length (tm_bnd t)) (l ++ tm_bnd t ++ tm_fv t)) as Hnodup.
-  pose proof (gen_strs_length (length (tm_bnd t)) (l ++ tm_bnd t ++ tm_fv t)) as Hlen.
-  pose proof (gen_strs_notin (length (tm_bnd t)) (l ++ tm_bnd t ++ tm_fv t)) as Hnotin.
+  pose proof (gen_strs_nodup (length (tm_bnd t)) (aset_union l (tm_vars t))) as Hnodup.
+  pose proof (gen_strs_length (length (tm_bnd t)) (aset_union l (tm_vars t))) as Hlen.
+  pose proof (gen_strs_notin (length (tm_bnd t)) (aset_union l (tm_vars t))) as Hnotin.
   split.
-  -  apply alpha_t_aux_bnd; auto.
+  - apply alpha_t_aux_bnd'; auto.
   - intros x [Hinx1 Hinx2].
     rewrite in_map_iff in Hinx2; destruct Hinx2 as [v2 [Hv2 Hinx2]].
-    apply alpha_t_aux_bnd in Hinx2; auto.
-    rewrite in_map_iff in Hinx1; destruct Hinx1 as [v1 [Hv1 Hinx1]].
+    apply alpha_t_aux_bnd' in Hinx2; auto.
+    rewrite in_map_iff in Hinx1; destruct Hinx1 as [v1 [Hv1 Hinx1]]. simpl_set.
     rewrite <- alpha_equiv_t_fv in Hinx1; [| apply a_convert_all_t_equiv].
     subst x. rewrite Hv2 in Hinx2.
-    apply Hnotin in Hinx2. apply Hinx2. in_tac.
+    apply Hnotin in Hinx2. rewrite tm_vars_eq in Hinx2. simpl_set. auto.
 Qed.
 
 (*And the corollaries:*)
@@ -11698,28 +11698,28 @@ Corollary a_convert_all_t_rep v t l ty
   term_rep v t ty Hty = 
   term_rep v (a_convert_all_t t l) ty (a_convert_all_t_ty t l ty Hty).
 Proof.
-  apply a_equiv_t_equiv.
+  apply a_equiv_t_rep.
   apply a_convert_all_t_equiv.
 Qed.
 
 Lemma a_convert_all_t_bnd_nodup t l:
   NoDup (map fst (tm_bnd (a_convert_all_t t l))).
 Proof.
-  apply alpha_t_aux_bnd.
+  apply alpha_t_aux_bnd'.
   apply gen_strs_nodup.
   rewrite gen_strs_length; auto.
 Qed.
 
 Lemma a_convert_all_t_bnd_notin t l:
   forall s, In s (map fst (tm_bnd (a_convert_all_t t l))) ->
-    ~ In s (map fst (tm_fv t)) /\ ~ In s (map fst l).
+    ~ aset_mem s (aset_map fst (tm_fv t)) /\ ~ aset_mem s (aset_map fst l).
 Proof.
-  intros. rewrite in_map_iff in H.
-  destruct H as [v1 [Hv1 Hinv1]]; subst.
-  apply alpha_t_aux_bnd in Hinv1.
+  intros s Hins. rewrite in_map_iff in Hins.
+  destruct Hins as [v1 [Hv1 Hinv1]]; subst.
+  apply alpha_t_aux_bnd' in Hinv1.
   - apply gen_strs_notin' in Hinv1.
-    rewrite !map_app, !in_app_iff in Hinv1.
-    not_or Hinv1; auto.
+    revert Hinv1. rewrite tm_vars_eq, !aset_map_union. simpl_set_small.
+    intros Hnotin. not_or Hinv1. auto.
   - apply gen_strs_nodup.
   - apply gen_strs_length.
 Qed.
@@ -11737,26 +11737,27 @@ Theorem a_convert_all_f_equiv f l:
   a_equiv_f f (a_convert_all_f f l).
 Proof.
   apply alpha_f_aux_equiv;
-  [apply gen_strs_nodup | apply gen_strs_length | |];
-  intros y Hy Hy2; apply gen_strs_notin in Hy; apply Hy; in_tac.
+  [apply gen_strs_nodup | apply gen_strs_length | ].
+  intros y Hy Hy2.
+  apply gen_strs_notin in Hy2. simpl_set; auto.
 Qed.
 
 Theorem a_convert_all_f_name_wf f l:
   fmla_name_wf (a_convert_all_f f l).
 Proof.
   unfold fmla_name_wf.
-  pose proof (gen_strs_nodup (length (fmla_bnd f)) (l ++ fmla_bnd f ++ fmla_fv f)) as Hnodup.
-  pose proof (gen_strs_length (length (fmla_bnd f)) (l ++ fmla_bnd f ++ fmla_fv f)) as Hlen.
-  pose proof (gen_strs_notin (length (fmla_bnd f)) (l ++ fmla_bnd f ++ fmla_fv f)) as Hnotin.
+  pose proof (gen_strs_nodup (length (fmla_bnd f)) (aset_union l (fmla_vars f))) as Hnodup.
+  pose proof (gen_strs_length (length (fmla_bnd f)) (aset_union l (fmla_vars f))) as Hlen.
+  pose proof (gen_strs_notin (length (fmla_bnd f)) (aset_union l (fmla_vars f))) as Hnotin.
   split.
-  - apply alpha_f_aux_bnd; auto.
+  - apply alpha_f_aux_bnd'; auto.
   - intros x [Hinx1 Hinx2].
     rewrite in_map_iff in Hinx2; destruct Hinx2 as [v2 [Hv2 Hinx2]].
-    apply alpha_f_aux_bnd in Hinx2; auto.
-    rewrite in_map_iff in Hinx1; destruct Hinx1 as [v1 [Hv1 Hinx1]].
+    apply alpha_f_aux_bnd' in Hinx2; auto.
+    rewrite in_map_iff in Hinx1; destruct Hinx1 as [v1 [Hv1 Hinx1]]. simpl_set.
     rewrite <- alpha_equiv_f_fv in Hinx1; [| apply a_convert_all_f_equiv].
     subst x. rewrite Hv2 in Hinx2.
-    apply Hnotin in Hinx2. apply Hinx2. in_tac.
+    apply Hnotin in Hinx2. rewrite fmla_vars_eq in Hinx2. simpl_set. auto.
 Qed.
 
 (*And the corollaries:*)
@@ -11764,7 +11765,7 @@ Corollary a_convert_all_f_typed f l:
   formula_typed gamma f ->
   formula_typed gamma (a_convert_all_f f l).
 Proof.
-  apply a_equiv_f_valid.
+  apply a_equiv_f_typed.
   apply a_convert_all_f_equiv.
 Qed.
 
@@ -11773,38 +11774,39 @@ Corollary a_convert_all_f_rep v f l
   formula_rep v f Hval = 
   formula_rep v (a_convert_all_f f l) (a_convert_all_f_typed f l Hval).
 Proof.
-  apply a_equiv_f_equiv.
+  apply a_equiv_f_rep.
   apply a_convert_all_f_equiv.
 Qed.
 
 Lemma a_convert_all_f_bnd_nodup f l:
   NoDup (map fst (fmla_bnd (a_convert_all_f f l))).
 Proof.
-  apply alpha_f_aux_bnd.
+  apply alpha_f_aux_bnd'.
   apply gen_strs_nodup.
   rewrite gen_strs_length; auto.
 Qed.
 
 Lemma a_convert_all_f_bnd_notin f l:
   forall s, In s (map fst (fmla_bnd (a_convert_all_f f l))) ->
-    ~ In s (map fst (fmla_fv f)) /\ ~ In s (map fst l).
+    ~ aset_mem s (aset_map fst (fmla_fv f)) /\ ~ aset_mem s (aset_map fst l).
 Proof.
-  intros. rewrite in_map_iff in H.
-  destruct H as [v1 [Hv1 Hinv1]]; subst.
-  apply alpha_f_aux_bnd in Hinv1.
+  intros s Hins. rewrite in_map_iff in Hins.
+  destruct Hins as [v1 [Hv1 Hinv1]]; subst.
+  apply alpha_f_aux_bnd' in Hinv1.
   - apply gen_strs_notin' in Hinv1.
-    rewrite !map_app, !in_app_iff in Hinv1.
-    not_or Hinv1; auto.
+    revert Hinv1. rewrite fmla_vars_eq, !aset_map_union. simpl_set_small.
+    intros Hnotin. not_or Hinv1. auto.
   - apply gen_strs_nodup.
   - apply gen_strs_length.
 Qed.
+
 
 Corollary a_convert_all_f_valid_ind_form p f l:
   valid_ind_form p f ->
   valid_ind_form p (a_convert_all_f f l).
 Proof.
   intros. eapply shape_ind_form. 2: apply H.
-  apply alpha_shape_f with(vars:=nil).
+  apply alpha_shape_f with(m1:=amap_empty)(m2:=amap_empty).
   apply a_convert_all_f_equiv.
 Qed.
 
@@ -11813,7 +11815,7 @@ Corollary a_convert_all_f_pos ps f l:
   ind_positive ps (a_convert_all_f f l).
 Proof.
   intros. eapply shape_ind_positive. 2: apply H.
-  apply alpha_shape_f with (vars:=nil).
+  apply alpha_shape_f with (m1:=amap_empty)(m2:=amap_empty).
   apply a_convert_all_f_equiv.
 Qed.
 
@@ -11822,34 +11824,27 @@ Lemma alpha_closed (f1 f2: formula):
   a_equiv_f f1 f2 ->
   closed_formula f1 = closed_formula f2.
 Proof.
-  intros.
+  intros Halpha.
   unfold closed_formula.
-  apply is_true_eq.
-  rewrite !null_nil.
-  pose proof (alpha_equiv_f_fv f1 f2 H).
-  split; intros Hfv; rewrite Hfv in H0; simpl in H0.
-  - destruct (fmla_fv f2); auto. exfalso. apply (H0 v); simpl; auto.
-  - destruct (fmla_fv f1); auto. exfalso. apply (H0 v); simpl; auto.
+  apply a_equiv_f_fv in Halpha. rewrite Halpha. reflexivity.
 Qed.
 
 Lemma a_convert_all_f_bnd_NoDup f vs:
 NoDup (fmla_bnd (a_convert_all_f f vs)).
 Proof.
   eapply NoDup_map_inv.
-  apply alpha_f_aux_bnd.
+  apply alpha_f_aux_bnd'.
   apply gen_strs_nodup.
   rewrite gen_strs_length. auto.
 Qed.
 
 Lemma a_convert_all_f_bnd f vs:
   forall x, In x (fmla_bnd (a_convert_all_f f vs)) ->
-  ~ In x vs.
+  ~ aset_mem x vs.
 Proof.
   intros x Hinx1 Hinx2.
-  apply alpha_f_aux_bnd in Hinx1.
-  - apply gen_strs_notin in Hinx1.
-    rewrite !in_app_iff in Hinx1. not_or Hinx.
-    contradiction.
+  apply alpha_f_aux_bnd' in Hinx1.
+  - apply gen_strs_notin in Hinx1. simpl_set. auto.
   - apply gen_strs_nodup.
   - rewrite gen_strs_length; auto.
 Qed.
