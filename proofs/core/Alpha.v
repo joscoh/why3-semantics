@@ -11968,6 +11968,101 @@ Proof.
       apply replace_var_inj in e; auto.
 Qed. *)
 
+(*We need to adjust the map for [map_pat]; since there may be free variables missing,
+  we add identity pairings for all variables not there. By assumption, these new bindings
+  will be unique*)
+(*Turn m's keys into s, adding identities for anything not there already*)
+Definition add_ids {A: Type} `{countable.Countable A} (m: amap A A) (s: aset A) : amap A A :=
+  fold_right (fun x acc => 
+    match amap_lookup m x with
+    | Some y => amap_set acc x y
+    | None => amap_set acc x x
+    end) amap_empty (aset_to_list s).
+
+Lemma add_ids_lookup {A: Type} `{countable.Countable A} (m: amap A A) (s: aset A) x y:
+  amap_lookup (add_ids m s) x = Some y <-> aset_mem x s /\
+    (amap_lookup m x = Some y \/ amap_lookup m x = None /\ x = y).
+Proof.
+  unfold add_ids. rewrite <- aset_to_list_in.
+  induction (aset_to_list s) as [| h t IH]; simpl.
+  - rewrite amap_empty_get. split; try discriminate.
+    intros [[] _].
+  - destruct (amap_lookup m h) as [h1|] eqn : Hlookh.
+    + destruct (EqDecision0 x h); subst.
+      * rewrite amap_set_lookup_same. split.
+        -- intros Hsome; inversion Hsome; subst; auto.
+        -- intros [_ [Hlook1 | [Hlook1 Hhy]]].
+          ++ rewrite Hlook1 in Hlookh; auto.
+          ++ rewrite Hlook1 in Hlookh; discriminate.
+      * rewrite amap_set_lookup_diff by auto.
+        rewrite IH. split; intros; destruct_all; subst; auto; contradiction.
+    + destruct (EqDecision0 x h); subst.
+      * rewrite amap_set_lookup_same. split.
+        -- intros Hsome; inversion Hsome; subst; auto.
+        -- intros [_ [Hlook1 | [Hlook1 Hhy]]].
+          ++ rewrite Hlook1 in Hlookh; discriminate.
+          ++ rewrite Hlook1 in Hlookh; subst; auto.
+      * rewrite amap_set_lookup_diff by auto. rewrite IH.
+        split; intros; destruct_all; subst; auto; contradiction.
+Qed. 
+
+(*Corollariues*)
+Lemma add_ids_mem  {A: Type} `{countable.Countable A} (m: amap A A) (s: aset A) x:
+  amap_mem x (add_ids m s) <-> aset_mem x s.
+Proof.
+  rewrite amap_mem_spec.
+  split.
+  - destruct (amap_lookup (add_ids m s) x) as [y|] eqn : Hlook; [|discriminate].
+    apply add_ids_lookup in Hlook.
+    intros _. apply Hlook.
+  - intros Hmem. destruct (amap_lookup m x) as [y|] eqn : Hlook.
+    + assert (Hl: amap_lookup (add_ids m s) x = Some y). { apply add_ids_lookup. split; auto. }
+      rewrite Hl. auto.
+    + assert (Hl: amap_lookup (add_ids m s) x = Some x). { apply add_ids_lookup. split; auto. }
+      rewrite Hl; auto.
+Qed.
+
+Lemma add_ids_invar {A B: Type} `{countable.Countable A} (f: A -> B) (m: amap A A) (s: aset A)
+  (Hm: forall x y, amap_lookup m x = Some y -> f x = f y):
+  forall x y, amap_lookup (add_ids m s) x = Some y -> f x = f y.
+Proof.
+  intros x y Hlookup. apply add_ids_lookup in Hlookup.
+  destruct Hlookup as [Hmems [Hlook1 | [Hlook1 Heq]]]; subst; auto.
+Qed.
+
+(*Only injective if we ensure we never add anything in codomain*)
+Lemma add_ids_inj {A: Type} `{countable.Countable A} (m: amap A A) (s: aset A)
+  (Hinj: amap_inj m)
+  (Hnotin: forall x, aset_mem x s -> ~ In x (vals m)):
+  forall x y, aset_mem x s -> aset_mem y s -> amap_lookup (add_ids m s) x = amap_lookup (add_ids m s) y -> x = y.
+Proof.
+  intros x y Hmem1 Hmem2 Heq.
+  destruct (amap_lookup m x) as [z|] eqn : Hlook1.
+  - assert (Hids1: amap_lookup (add_ids m s) x = Some z). { apply add_ids_lookup; auto. }
+    rewrite Hids1 in Heq. symmetry in Heq. apply add_ids_lookup in Heq.
+    destruct Heq as [_ [Hlook | [Hlook Heq]]]; subst; auto.
+    + unfold amap_inj in Hinj. eapply Hinj; eauto.
+    + specialize (Hnotin z Hmem2). rewrite in_vals_iff in Hnotin. exfalso; apply Hnotin; eauto.
+  - assert (Hids1: amap_lookup (add_ids m s) x = Some x). { apply add_ids_lookup; auto. }
+    rewrite Hids1 in Heq. symmetry in Heq. apply add_ids_lookup in Heq.
+    destruct Heq as [_ [Hlook | [Hlook Heq]]]; subst; auto.
+    specialize (Hnotin x Hmem1). exfalso; apply Hnotin, in_vals_iff; eauto.
+Qed.
+
+Lemma add_ids_amap_inj {A: Type} `{countable.Countable A} (m: amap A A) (s: aset A)
+  (Hinj: amap_inj m)
+  (Hnotin: forall x, aset_mem x s -> ~ In x (vals m)):
+  amap_inj (add_ids m s).
+Proof.
+  unfold amap_inj.
+  intros x1 x2 y Hlook1 Hlook2.
+  assert (Hinx1: aset_mem x1 s).
+  { apply add_ids_lookup in Hlook1; apply Hlook1. }
+  assert (Hinx2: aset_mem x2 s).
+  { apply add_ids_lookup in Hlook2; apply Hlook2. }
+  rewrite <- Hlook2 in Hlook1. apply add_ids_inj in Hlook1; auto.
+Qed.
+
 (*Now define the conversion function*)
 Fixpoint a_convert_map_t (m: amap vsymbol vsymbol) (*(l: list (string * string))*)
   (bnd: aset vsymbol) (t: term) : term :=
@@ -11982,7 +12077,7 @@ Fixpoint a_convert_map_t (m: amap vsymbol vsymbol) (*(l: list (string * string))
     Tif (a_convert_map_f m bnd f1) (a_convert_map_t m bnd t1) (a_convert_map_t m bnd t2)
   | Tmatch tm ty ps =>
     Tmatch (a_convert_map_t m bnd tm) ty
-      (map (fun x => (map_pat m (fst x), 
+      (map (fun x => (map_pat (add_ids m (pat_fv (fst x))) (fst x), 
         (a_convert_map_t m (aset_union (pat_fv (fst x)) bnd) (snd x)))) ps)
   | Teps f v => Teps (a_convert_map_f m (aset_union (aset_singleton v) bnd) f) (mk_fun m v)
   | _ => t
@@ -12001,7 +12096,7 @@ with a_convert_map_f (m: amap vsymbol vsymbol)
     (a_convert_map_f m bnd f3)
   | Fmatch tm ty ps =>
     Fmatch (a_convert_map_t m bnd tm) ty
-    (map (fun x => (map_pat m (fst x), 
+    (map (fun x => (map_pat (add_ids m (pat_fv (fst x))) (fst x), 
       (a_convert_map_f m (aset_union (pat_fv (fst x)) bnd) (snd x)))) ps)
   | _ => f
   end.
@@ -12252,6 +12347,72 @@ Proof.
       apply Hlook1. exists z. apply mk_alpha_map_lookup_some. auto.
 Qed.
 
+Lemma mk_alpha_map_aunion m bnd s:
+  aunion (add_ids m s) (mk_alpha_map m bnd) =
+  mk_alpha_map m (aset_union s bnd).
+Proof.
+  apply amap_ext. intros x. rewrite aunion_lookup.
+  destruct (aset_mem_dec x s).
+  - destruct (amap_lookup m x) as [y|] eqn : Hlook.
+    + replace (amap_lookup (add_ids m s) x) with (Some y) by (symmetry; apply add_ids_lookup; auto).
+      symmetry. apply mk_alpha_map_lookup_some. simpl_set. rewrite (mk_fun_some Hlook). auto.
+    + replace (amap_lookup (add_ids m s) x) with (Some x) by (symmetry; apply add_ids_lookup; auto).
+      symmetry. apply mk_alpha_map_lookup_some. simpl_set. unfold mk_fun, lookup_default. rewrite Hlook.
+      auto.
+  - assert (Hnotin: ~amap_mem x (add_ids m s)) by (rewrite add_ids_mem; auto).
+    rewrite amap_mem_spec in Hnotin. destruct (amap_lookup (add_ids m s) x); auto; [exfalso; apply Hnotin; auto|].
+    clear Hnotin.
+    destruct (amap_lookup (mk_alpha_map m bnd) x) as [y|] eqn : Hlook1.
+    + symmetry; rewrite mk_alpha_map_lookup_some in Hlook1 |- *.
+      simpl_set. destruct Hlook1; auto.
+    + symmetry. rewrite mk_alpha_map_lookup_none in Hlook1 |- *.
+      simpl_set. intros [C1 | C2]; subst; contradiction.
+Qed.
+
+Lemma mk_alpha_map_flip_aunion m bnd s
+  (Hinj: amap_inj m)
+  (Hall: forall x, aset_mem x bnd -> ~ In x (vals m)) (Hs: forall x, aset_mem x s -> ~ In x (vals m)):
+  aunion (amap_flip (add_ids m s)) (amap_flip (mk_alpha_map m bnd)) =
+  amap_flip (mk_alpha_map m (aset_union s bnd)).
+Proof.
+  apply amap_ext. intros x.
+  assert (Hinj': amap_inj (mk_alpha_map m (aset_union s bnd))).
+  {
+    apply mk_alpha_map_inj; auto. intros z. simpl_set. intros [Hyx | Hmem]; subst; auto.
+  }
+  rewrite aunion_lookup. 
+  destruct (amap_lookup (amap_flip (add_ids m s)) x) as [y|] eqn : Hlook.
+  - rewrite amap_flip_elts in Hlook; auto; [| apply add_ids_amap_inj; auto].
+    symmetry. apply amap_flip_elts; auto.
+    rewrite mk_alpha_map_lookup_some. simpl_set.
+    unfold mk_fun, lookup_default.
+    apply add_ids_lookup in Hlook.
+    destruct Hlook as [Hmemy [Hlook | [Hlook Heq]]]; subst; rewrite Hlook; auto.
+  - rewrite amap_flip_none in Hlook.
+    destruct (amap_lookup (amap_flip (mk_alpha_map m bnd)) x) as [y|] eqn : Hlook1.
+    + rewrite amap_flip_elts in Hlook1; auto; [| apply mk_alpha_map_inj; auto].
+      symmetry. apply amap_flip_elts; auto. 
+      rewrite mk_alpha_map_lookup_some in Hlook1 |- *.
+      simpl_set. destruct Hlook1; auto.
+    + symmetry. rewrite amap_flip_none in Hlook1 |- *.
+      intros C. rewrite in_vals_iff in C.
+      destruct C as [x1 Hlookx1].
+      rewrite mk_alpha_map_lookup_some in Hlookx1.
+      destruct Hlookx1 as [Hmemx1 Hx].
+      simpl_set. unfold mk_fun, lookup_default in Hx.
+      destruct (amap_lookup m x1) as [y1|] eqn : Hlookxm1; subst.
+      * destruct Hmemx1 as [Hmemx1 | Hmemx1].
+        -- apply Hlook. (*contradictinon - in add_ids*)  
+          rewrite in_vals_iff. exists x1. apply add_ids_lookup. auto.
+        -- apply Hlook1. rewrite in_vals_iff. exists x1. apply mk_alpha_map_lookup_some; auto.
+          rewrite (mk_fun_some Hlookxm1); auto.
+      * destruct Hmemx1 as [Hmemx1 | Hmemx1].
+        -- apply Hlook. (*contradictinon - in add_ids*)  
+          rewrite in_vals_iff. exists x1. apply add_ids_lookup. auto.
+        -- apply Hlook1. rewrite in_vals_iff. exists x1. apply mk_alpha_map_lookup_some; auto.
+          unfold mk_fun, lookup_default. rewrite Hlookxm1. auto.
+Qed.
+
 
 (*Then we prove alpha equivalence. The proof is easier than above,
   since this is just a map. Only the match cases are a bit annoying*)
@@ -12274,7 +12435,12 @@ Proof.
   - (*Tvar*) intros v bnd Hvars Hbnd. destruct (aset_mem_dec v bnd).
     + apply mk_alpha_map_in; auto.
     + apply mk_alpha_map_notin; auto. apply Hvars. simpl_set; auto.
-  - admit.
+  - (*Tfun*) intros f1 tys1 tms1 IH bnd Hvars Hbnd.
+    rewrite !eq_dec_refl. rewrite map_length, Nat.eqb_refl; simpl.
+    induction tms1 as [| tm tms IHtms]; simpl; auto.
+    rewrite all2_cons. inversion IH as [| ? ? IH1 IH2]; subst; clear IH.
+    setoid_rewrite aset_big_union_cons in Hvars.
+    setoid_rewrite aset_mem_union in Hvars. apply andb_true; split; auto.
   - (*Tlet*)
     intros tm1 v tm2 IH1 IH2 bnd Hvars Hbnd.
     repeat(setoid_rewrite aset_mem_union in Hvars).
@@ -12284,198 +12450,134 @@ Proof.
     simpl.
     rewrite mk_alpha_map_set,mk_alpha_map_flip_set; auto.
     apply IH2; auto. intros y Hin. simpl_set. destruct Hin; auto. simpl_set; subst; auto.
-  - admit.
+  - (*Tif*)
+    intros f t1 t2 IH1 IH2 IH3 bnd Hvars Hbnd.
+    repeat (setoid_rewrite aset_mem_union in Hvars).
+    rewrite !andb_true; split_all; auto.
   - (*Tmatch*)
-
-    (*START*)
-
-    Search map_pat amap_flip.
-
-
- setoid_rewrite aset_mem_union. setoid_rewrit 
-    
-    Search mk_fun snd.
-    
-    
-  
- (l: list (string * string))
-  (Hn: NoDup (map snd l))
-  (t: term) (f: formula) :
-  (forall bnd
-    (Hfree: forall x, In x (tm_fv t) -> ~ In (fst x) (map snd l))
-    (Hbnd1: forall x, In x (tm_bnd t) -> ~ In (fst x) (map snd l))
-    (Hbnd2: forall x, In x bnd -> ~ In (fst x) (map snd l)), 
-    alpha_equiv_t (mk_alpha_list l bnd) t (a_convert_map_t l bnd t)) /\
-  (forall bnd
-    (Hfree: forall x, In x (fmla_fv f) -> ~ In (fst x) (map snd l))
-    (Hbnd1: forall x, In x (fmla_bnd f) -> ~ In (fst x) (map snd l))
-    (Hbnd2: forall x, In x bnd -> ~ In (fst x) (map snd l)),
-    alpha_equiv_f (mk_alpha_list l bnd) f (a_convert_map_f l bnd f)).
-Lemma a_convert_alpha (l: list (string * string))
-  (Hn: NoDup (map snd l))
-  (t: term) (f: formula) :
-  (forall bnd
-    (Hfree: forall x, In x (tm_fv t) -> ~ In (fst x) (map snd l))
-    (Hbnd1: forall x, In x (tm_bnd t) -> ~ In (fst x) (map snd l))
-    (Hbnd2: forall x, In x bnd -> ~ In (fst x) (map snd l)), 
-    alpha_equiv_t (mk_alpha_list l bnd) t (a_convert_map_t l bnd t)) /\
-  (forall bnd
-    (Hfree: forall x, In x (fmla_fv f) -> ~ In (fst x) (map snd l))
-    (Hbnd1: forall x, In x (fmla_bnd f) -> ~ In (fst x) (map snd l))
-    (Hbnd2: forall x, In x bnd -> ~ In (fst x) (map snd l)),
-    alpha_equiv_f (mk_alpha_list l bnd) f (a_convert_map_f l bnd f)).
-Proof.
-  revert t f; apply term_formula_ind; simpl; intros; auto.
-  - apply eq_dec_refl.
-  - (*Tvar*) destruct (in_bool_spec vsymbol_eq_dec v bnd).
-    + apply mk_alpha_list_in; auto.
-    + apply mk_alpha_list_notin; auto.
-  - (*Tfun*) rewrite map_length, !eq_dec_refl, Nat.eqb_refl. simpl.
-    rewrite all2_forall with(d1:=tm_d)(d2:=tm_d); [|rewrite map_length; auto].
-    intros i Hi.
-    rewrite Forall_forall in H.
-    rewrite map_nth_inbound with (d2:=tm_d); auto.
-    assert (Hin: In (nth i l1 tm_d) l1) by (apply nth_In; auto).
-    apply H; auto; solve_invars Hfree Hbnd1 Hbnd2.
-  - (*Tlet*) simpl. rewrite replace_var_ty, eq_dec_refl. simpl.
-    rewrite H; auto.
-    2: { bnd_case v Hfree. }
-    2: { solve_invars Hfree Hbnd1 Hbnd2. } 
+    intros tm ty ps IH1 IHps bnd Hvars Hbnd.
+    setoid_rewrite aset_mem_union in Hvars.
+    rewrite IH1; auto. simpl. rewrite map_length, Nat.eqb_refl. simpl.
+    rewrite eq_dec_refl. simpl.
+    clear IH1.
+    assert (Hvars': forall x, aset_mem x (aset_big_union (fun x => aset_union (pat_fv (fst x)) (tm_vars (snd x))) ps) ->
+      ~ In x (vals m)) by (intros x Hinx; apply Hvars; auto).
+    clear Hvars. induction ps as [| [p1 t1] ps IH]; simpl; auto.
+    rewrite all2_cons. inversion IHps as [| ? ? IH1 IH2]; subst; clear IHps.
+    setoid_rewrite aset_big_union_cons in Hvars'.
+    setoid_rewrite aset_mem_union in Hvars'. simpl in Hvars'. rewrite IH; auto.
+    rewrite andb_true_r; clear IH IH2.
+    simpl. 
+    (*First, prove alpha equiv for p*)
+    setoid_rewrite aset_mem_union in Hvars'.
+    rewrite map_pat_alpha_equiv.
+    (*Lots of conditions to prove*)
+    2: {  apply add_ids_mem. }
+    2: { intros x y _. apply add_ids_invar; auto. }
+    2: { apply add_ids_inj; auto. }
+    (*Now need to rewrite to mk_alpha_map*)
+    rewrite mk_alpha_map_aunion, mk_alpha_map_flip_aunion; auto.
+    apply IH1; auto.
+    setoid_rewrite aset_mem_union; intros x [Hinx | Hinx]; auto.
+  - (*Teps*)
+    intros f v IH bnd Hvars Hbnd.
+    repeat(setoid_rewrite aset_mem_union in Hvars).
+    setoid_rewrite aset_mem_singleton in Hvars. 
+    rewrite mk_fun_snd by auto. rewrite eq_dec_refl. simpl.
+    rewrite mk_alpha_map_set,mk_alpha_map_flip_set; auto.
+    apply IH; auto. intros y Hin. simpl_set. destruct Hin; auto. simpl_set; subst; auto.
+  - (*Fpred*) intros f1 tys1 tms1 IH bnd Hvars Hbnd.
+    rewrite !eq_dec_refl. rewrite map_length, Nat.eqb_refl; simpl.
+    induction tms1 as [| tm tms IHtms]; simpl; auto.
+    rewrite all2_cons. inversion IH as [| ? ? IH1 IH2]; subst; clear IH.
+    setoid_rewrite aset_big_union_cons in Hvars.
+    setoid_rewrite aset_mem_union in Hvars. apply andb_true; split; auto.
+  - (*Fquant*)
+    intros q v f IH bnd Hvars Hbnd.
+    repeat(setoid_rewrite aset_mem_union in Hvars).
+    setoid_rewrite aset_mem_singleton in Hvars. 
+    rewrite mk_fun_snd by auto. rewrite !eq_dec_refl. simpl.
+    rewrite mk_alpha_map_set,mk_alpha_map_flip_set; auto.
+    apply IH; auto. intros y Hin. simpl_set. destruct Hin; auto. simpl_set; subst; auto.
+  - (*Feq*) intros ty t1 t2 IH1 IH2  bnd Hvars Hbnd.
+    repeat (setoid_rewrite aset_mem_union in Hvars).
+    rewrite eq_dec_refl.
+    rewrite !andb_true; split_all; auto.
+  - (*Fbinop*) intros b t1 t2 IH1 IH2  bnd Hvars Hbnd.
+    repeat (setoid_rewrite aset_mem_union in Hvars).
+    rewrite eq_dec_refl.
+    rewrite !andb_true; split_all; auto.
+  - (*Flet*)
+    intros tm1 v tm2 IH1 IH2 bnd Hvars Hbnd.
+    repeat(setoid_rewrite aset_mem_union in Hvars).
+    setoid_rewrite aset_mem_singleton in Hvars. 
+    rewrite mk_fun_snd by auto. rewrite eq_dec_refl. simpl.
+    rewrite IH1 by auto.
     simpl.
-    apply (H0 (v :: bnd)); simpl; [bnd_case v Hfree | |];
-      solve_invars Hfree Hbnd1 Hbnd2.
-  - (*Tif*) rewrite H, H0, H1; auto;  solve_invars Hfree Hbnd1 Hbnd2.
-  - (*Tmatch*) rewrite H; auto; try solve[solve_invars Hfree Hbnd1 Hbnd2].
-    simpl. rewrite map_length, Nat.eqb_refl, eq_dec_refl. simpl.
-    rewrite all2_forall with(d1:=(Pwild, tm_d))(d2:=(Pwild, tm_d)).
-    2: rewrite map_length; auto.
-    intros i Hi.
-    rewrite map_nth_inbound with (d2:=(Pwild, tm_d)); auto. simpl.
-    set (t := (nth i ps (Pwild, tm_d))) in *.
-    (*Results we need*)
-    assert (Hint: In t ps). {
-      apply nth_In; auto.
-    }
-    assert (Hbndi: forall x, In x (pat_fv (fst t)) \/ In x (tm_bnd (snd t)) ->
-    ~ In (fst x) (map snd l)). {
-      intros. apply Hbnd1; rewrite !in_app_iff, in_concat.
-      right. exists (pat_fv (fst t) ++ tm_bnd (snd t)).
-      split; [rewrite in_map_iff |
-      rewrite in_app_iff]; auto.
-      exists t. split; auto.
-    }
-    assert (Hfvi: forall x, In x (tm_fv (snd t)) ->
-      ~ In (fst x) (map snd l)). {
-      intros x Hinx.
-      destruct (in_bool_spec vsymbol_eq_dec x (pat_fv (fst t))); auto.
-      apply Hfree. simpl_set. right.
-      exists t. split; auto. simpl_set; auto.
-    }
-    rewrite a_convert_alpha_p; auto; simpl.
-    rewrite Forall_map in H0.
-    rewrite Forall_forall in H0.
-    unfold add_vals.
-    rewrite a_convert_map_p_fv; auto.
-    replace (combine (pat_fv (fst t))
-    (map (replace_var l) (pat_fv (fst t))) ++
-    mk_alpha_list l bnd) with 
-    (mk_alpha_list l (pat_fv (fst t) ++ bnd)) .
-    2: {
-      unfold mk_alpha_list. rewrite map_app.
-      f_equal.
-      rewrite <- (combine_eq (map _ _)).
-      rewrite !map_map. simpl. f_equal.
-      rewrite map_id; auto.
-    }
-    apply H0; auto.
-    intros x. rewrite in_app_iff; intros [Hx | Hx]; auto.
-  - (*Teps*) rewrite replace_var_ty, eq_dec_refl. simpl.
-    apply (H (v :: bnd)); simpl;[bnd_case v Hfree | |];
-    solve_invars Hfree Hbnd1 Hbnd2.
-  - (*Fpred*)
-    rewrite map_length, !eq_dec_refl, Nat.eqb_refl. simpl.
-    rewrite all2_forall with(d1:=tm_d)(d2:=tm_d); [|rewrite map_length; auto].
-    intros i Hi.
-    rewrite Forall_forall in H.
-    rewrite map_nth_inbound with (d2:=tm_d); auto.
-    assert (Hin: In (nth i tms tm_d) tms) by (apply nth_In; auto).
-    apply H; auto; solve_invars Hfree Hbnd1 Hbnd2.
-  - (*Fquant*) rewrite replace_var_ty, !eq_dec_refl. simpl.
-    apply (H (v :: bnd)); simpl;[bnd_case v Hfree | |];
-    solve_invars Hfree Hbnd1 Hbnd2.
-  - (*Feq*)
-    rewrite eq_dec_refl, H, H0; auto;
-    solve_invars Hfree Hbnd1 Hbdn2.
-  - (*binop*)
-    rewrite eq_dec_refl, H, H0; auto;
-    solve_invars Hfree Hbnd1 Hbdn2.
-  - (*Flet*) rewrite replace_var_ty, eq_dec_refl. simpl.
-    rewrite H; auto; [|bnd_case v Hfree | solve_invars Hfree Hbnd1 Hbnd2].
-    simpl.
-    apply (H0 (v :: bnd)); simpl; [bnd_case v Hfree | |];
-      solve_invars Hfree Hbnd1 Hbnd2.
-  - (*Fif*) rewrite H, H0, H1; auto; solve_invars Hfree Hbnd1 Hbnd2.
-  - (*Fmatch*) rewrite H; auto; try solve[solve_invars Hfree Hbnd1 Hbnd2].
-    simpl. rewrite map_length, Nat.eqb_refl, eq_dec_refl. simpl.
-    rewrite all2_forall with(d1:=(Pwild, Ftrue))(d2:=(Pwild, Ftrue)).
-    2: rewrite map_length; auto.
-    intros i Hi.
-    rewrite map_nth_inbound with (d2:=(Pwild, Ftrue)); auto. simpl.
-    set (t := (nth i ps (Pwild, Ftrue))) in *.
-    (*Results we need*)
-    assert (Hint: In t ps). {
-      apply nth_In; auto.
-    }
-    assert (Hbndi: forall x, In x (pat_fv (fst t)) \/ In x (fmla_bnd (snd t)) ->
-    ~ In (fst x) (map snd l)). {
-      intros. apply Hbnd1; rewrite !in_app_iff, in_concat.
-      right. exists (pat_fv (fst t) ++ fmla_bnd (snd t)).
-      split; [rewrite in_map_iff |
-      rewrite in_app_iff]; auto.
-      exists t. split; auto.
-    }
-    assert (Hfvi: forall x, In x (fmla_fv (snd t)) ->
-      ~ In (fst x) (map snd l)). {
-      intros x Hinx.
-      destruct (in_bool_spec vsymbol_eq_dec x (pat_fv (fst t))); auto.
-      apply Hfree. simpl_set. right.
-      exists t. split; auto. simpl_set; auto.
-    }
-    rewrite a_convert_alpha_p; auto; simpl.
-    rewrite Forall_map in H0.
-    rewrite Forall_forall in H0.
-    unfold add_vals.
-    rewrite a_convert_map_p_fv; auto.
-    replace (combine (pat_fv (fst t))
-    (map (replace_var l) (pat_fv (fst t))) ++
-    mk_alpha_list l bnd) with 
-    (mk_alpha_list l (pat_fv (fst t) ++ bnd)) .
-    2: {
-      unfold mk_alpha_list. rewrite map_app.
-      f_equal.
-      rewrite <- (combine_eq (map _ _)).
-      rewrite !map_map. simpl. f_equal.
-      rewrite map_id; auto.
-    }
-    apply H0; auto.
-    intros x. rewrite in_app_iff; intros [Hx | Hx]; auto.
+    rewrite mk_alpha_map_set,mk_alpha_map_flip_set; auto.
+    apply IH2; auto. intros y Hin. simpl_set. destruct Hin; auto. simpl_set; subst; auto.
+  - (*Fif*)
+    intros f1 f2 f3 IH1 IH2 IH3 bnd Hvars Hbnd.
+    repeat (setoid_rewrite aset_mem_union in Hvars).
+    rewrite !andb_true; split_all; auto.
+  - (*Fmatch*)
+    intros tm ty ps IH1 IHps bnd Hvars Hbnd.
+    setoid_rewrite aset_mem_union in Hvars.
+    rewrite IH1; auto. simpl. rewrite map_length, Nat.eqb_refl. simpl.
+    rewrite eq_dec_refl. simpl.
+    clear IH1.
+    assert (Hvars': forall x, aset_mem x (aset_big_union (fun x => aset_union (pat_fv (fst x)) (fmla_vars (snd x))) ps) ->
+      ~ In x (vals m)) by (intros x Hinx; apply Hvars; auto).
+    clear Hvars. induction ps as [| [p1 t1] ps IH]; simpl; auto.
+    rewrite all2_cons. inversion IHps as [| ? ? IH1 IH2]; subst; clear IHps.
+    setoid_rewrite aset_big_union_cons in Hvars'.
+    setoid_rewrite aset_mem_union in Hvars'. simpl in Hvars'. rewrite IH; auto.
+    rewrite andb_true_r; clear IH IH2.
+    simpl. 
+    setoid_rewrite aset_mem_union in Hvars'.
+    rewrite map_pat_alpha_equiv.
+    2: { apply add_ids_mem. }
+    2: { intros x y _. apply add_ids_invar; auto. }
+    2: { apply add_ids_inj; auto. }
+    rewrite mk_alpha_map_aunion, mk_alpha_map_flip_aunion; auto.
+    apply IH1; auto.
+    setoid_rewrite aset_mem_union; intros x [Hinx | Hinx]; auto.
 Qed.
 
 (*Corollaries*)
-Theorem a_convert_map_t_alpha (l: list (string * string))
-  (Hn: NoDup (map snd l))
-  (t: term)
-  (Hfree: forall x, In x (tm_fv t) -> ~ In (fst x) (map snd l))
-  (Hbnd: forall x, In x (tm_bnd t) -> ~ In (fst x) (map snd l)):
-  a_equiv_t t (a_convert_map_t l nil t).
+
+Lemma mk_alpha_map_empty m:
+  mk_alpha_map m aset_empty = amap_empty.
 Proof.
-  unfold a_equiv_t.
-  assert (mk_alpha_list l nil = nil) by reflexivity. 
-  rewrite <- H.
-  apply a_convert_alpha; auto. apply Ftrue.
+  reflexivity.
 Qed.
 
-Theorem a_convert_map_f_alpha (l: list (string * string))
+Theorem a_convert_map_t_alpha (m: amap vsymbol vsymbol) (Hinj: amap_inj m) 
+  (Htys: forall x y, amap_lookup m x = Some y -> snd x = snd y) t
+  (Hvars: forall x, aset_mem x (tm_vars t) -> ~ In x (vals m)):
+  a_equiv_t t (a_convert_map_t m aset_empty t).
+Proof.
+  unfold a_equiv_t.
+  rewrite <- mk_alpha_map_empty with (m:=m) at 1.
+  rewrite <- flip_empty.
+  rewrite <- mk_alpha_map_empty with (m:=m) at 1.
+  apply a_convert_alpha; auto. apply Ftrue. intros; simpl_set.
+Qed.
+
+Theorem a_convert_map_f_alpha (m: amap vsymbol vsymbol) (Hinj: amap_inj m) 
+  (Htys: forall x y, amap_lookup m x = Some y -> snd x = snd y) f
+  (Hvars: forall x, aset_mem x (fmla_vars f) -> ~ In x (vals m)):
+  a_equiv_f f (a_convert_map_f m aset_empty f).
+Proof.
+  unfold a_equiv_f.
+  rewrite <- mk_alpha_map_empty with (m:=m) at 1.
+  rewrite <- flip_empty.
+  rewrite <- mk_alpha_map_empty with (m:=m) at 1.
+  apply a_convert_alpha; auto. apply tm_d. intros; simpl_set.
+Qed.
+
+
+(* Theorem a_convert_map_f_alpha (l: list (string * string))
   (Hn: NoDup (map snd l))
   (f: formula)
   (Hfree: forall x, In x (fmla_fv f) -> ~ In (fst x) (map snd l))
@@ -12486,11 +12588,11 @@ Proof.
   assert (mk_alpha_list l nil = nil) by reflexivity. 
   rewrite <- H.
   apply a_convert_alpha; auto. apply tm_d.
-Qed.
+Qed. *)
 
 (*And now we show how the bound variables have changed. These
   proofs are a bit tedious*)
-
+(* 
 Lemma a_convert_map_p_bnd (l: list (string * string))
   (p: pattern):
   forall x, In x (pat_fv (a_convert_map_p l p)) ->
@@ -12525,25 +12627,29 @@ Proof.
       * right. exists v. split; simpl_set; auto. 
         apply replace_var_in; auto.
       * left. rewrite replace_var_notin; auto.
-Qed.
+Qed. *)
 
-Lemma a_convert_map_bnd (l: list (string * string))
+Lemma a_convert_map_bnd (m: amap vsymbol vsymbol) (Hinj: amap_inj m)
+(*  (l: list (string * string))
   (Hn: NoDup (map snd l))
-  (t: term) (f: formula) :
-  (forall bnd x, In x (tm_bnd (a_convert_map_t l bnd t)) ->
-    ((In x (tm_bnd t) /\ ~ In (fst x) (map fst l)) \/
-    (exists y, In y (tm_bnd t) /\In (fst y, fst x) l))) /\
-  (forall bnd x, In x (fmla_bnd (a_convert_map_f l bnd f)) ->
-    ((In x (fmla_bnd f) /\ ~ In (fst x) (map fst l)) \/
-    (exists y, In y (fmla_bnd f) /\In (fst y, fst x) l))) .
+ *)  (t: term) (f: formula) :
+  (forall bnd x (Hvars: forall x, aset_mem x (tm_vars t) -> ~ In x (vals m)), 
+    In x (tm_bnd (a_convert_map_t m bnd t)) ->
+    ((In x (tm_bnd t) /\ ~ amap_mem x m) \/
+    (exists y, In y (tm_bnd t) /\ amap_lookup m y = Some x))) /\
+  (forall bnd x (Hvars: forall x, aset_mem x (fmla_vars f) -> ~ In x (vals m)), 
+    In x (fmla_bnd (a_convert_map_f m bnd f)) ->
+    ((In x (fmla_bnd f) /\ ~ amap_mem x m) \/
+    (exists y, In y (fmla_bnd f) /\ amap_lookup m y = Some x))) .
 Proof.
   revert t f; apply term_formula_ind; simpl; auto.
-  - intros ? ? ? ? ? ?. rewrite !in_concat, map_map.
+  - intros ? ? ? ? ? ? ?. rewrite !in_concat, map_map.
     intros. destruct_all.
     rewrite in_map_iff in H0.
     destruct_all.
     rewrite Forall_forall in H.
     apply H in H1; auto.
+    2: { intros y Hmemy. apply Hvars. simpl_set; eauto. }
     destruct_all.
     + left. split; auto. exists (tm_bnd x1). split; auto.
       rewrite in_map_iff. exists x1; auto.
@@ -12551,25 +12657,29 @@ Proof.
       exists (tm_bnd x1). split; auto. rewrite in_map_iff.
       exists x1; auto.
   - intros. rewrite !in_app_iff in H1.
+    repeat (setoid_rewrite aset_mem_union in Hvars).
+    setoid_rewrite aset_mem_singleton in Hvars.
     destruct_all.
-    + destruct (in_bool_spec string_dec (fst v) (map fst l)).
-      * right. exists v. split; auto. apply replace_var_in; auto.
-      * left. rewrite replace_var_notin; auto.
-    + apply H in H1. destruct_all; [left | right; exists x0];
+    + destruct (amap_lookup m v) as [v1|] eqn : Hlookup.
+      * rewrite (mk_fun_some Hlookup). right. exists v. auto.
+      * left. rewrite amap_mem_spec. unfold mk_fun, lookup_default. rewrite !Hlookup. auto.
+    + apply H in H1; auto. destruct_all; [left | right; exists x0];
       rewrite in_app_iff; auto.
-    + apply H0 in H1; destruct_all; [left | right; exists x0];
+    + apply H0 in H1; auto; destruct_all; [left | right; exists x0];
       rewrite in_app_iff; auto.
   - (*Tif*) intros.
+    repeat (setoid_rewrite aset_mem_union in Hvars).
     rewrite !in_app_iff in H2 |- *.
     destruct_all; [apply H in H2 | apply H0 in H2 | apply H1 in H2]; destruct_all; auto;
     right; exists x0; rewrite !in_app_iff; auto.
   - (*Tmatch*) intros.
+    setoid_rewrite aset_mem_union in Hvars.
     rewrite in_app_iff in H1 |- *.
     (*First, deal with first term*)
     destruct H1.
     {
       apply H in H1. destruct_all; [left | right]; auto.
-      exists x0. rewrite in_app_iff; auto.
+      exists x0. rewrite in_app_iff; auto. auto.
     }
     clear H.
     (*Now handle recursion*)
@@ -12581,23 +12691,32 @@ Proof.
     rewrite !in_app_iff in H1.
     (*Need many times*)
     assert (Hconcat: forall t x, In t ps ->
-      In x (pat_fv (fst t)) \/ In x (tm_bnd (snd t)) ->
-      In x (concat (map (fun p : pattern * term => pat_fv (fst p) ++ tm_bnd (snd p)) ps))). {
+      aset_mem x (pat_fv (fst t)) \/ In x (tm_bnd (snd t)) ->
+      In x (concat (map (fun p : pattern * term => aset_to_list (pat_fv (fst p)) ++ tm_bnd (snd p)) ps))). {
       intros. rewrite in_concat.
-      exists (pat_fv (fst t) ++ (tm_bnd (snd t))); split.
+      exists (aset_to_list (pat_fv (fst t)) ++ (tm_bnd (snd t))); split.
       - rewrite in_map_iff. exists t; auto.
-      - rewrite in_app_iff; auto.
+      - rewrite in_app_iff; auto. simpl_set. auto.
     }
     destruct H1.
     + (*We know how to handle patterns*)
-      apply a_convert_map_p_bnd in H.
-      destruct_all.
-      * left. split; auto. right.
-        apply (Hconcat x1); auto.
-      * right. exists x0; split; auto.
-        rewrite in_app_iff; right.
-        apply (Hconcat x1); auto.
+      simpl_set_small. rewrite map_pat_free_vars in H.
+      2: { apply add_ids_inj; auto. intros y Hmemy. apply Hvars. 
+           simpl_set; right; exists x1; simpl_set; auto.
+      }
+      rewrite aset_mem_map in H. destruct H as [y [Hx Hmemy]].
+      unfold mk_fun, lookup_default in Hx.
+      destruct (amap_lookup m y) as [z|] eqn : Hlooky.
+      * replace (amap_lookup (add_ids m (pat_fv (fst x1))) y) with (Some z) in Hx.
+        2: { symmetry; apply add_ids_lookup; auto. }
+        subst. right. exists y. split; auto. rewrite in_app_iff. 
+        right; apply Hconcat with (t:=x1); auto.
+      * replace (amap_lookup (add_ids m (pat_fv (fst x1))) y ) with (Some y) in Hx.
+        2: { symmetry; apply add_ids_lookup; auto. }
+        subst. left. rewrite amap_mem_spec, Hlooky. split; auto. right. 
+        apply Hconcat with (t:=x1); auto.
     + apply H0 in H; auto.
+      2: { intros y Hmemy; apply Hvars. right. simpl_set. exists x1. split; simpl_set; auto. }
       destruct_all.
       * left. split; auto. right.
         apply (Hconcat x1); auto.
@@ -12606,59 +12725,69 @@ Proof.
         apply (Hconcat x1); auto.
   - (*Teps*)
     intros.
+    setoid_rewrite aset_mem_union in Hvars.
+    setoid_rewrite aset_mem_singleton in Hvars.
     destruct_all.
-    + destruct (in_bool_spec string_dec (fst v) (map fst l)).
-      * right. exists v. split; auto. apply replace_var_in; auto.
-      * left. rewrite replace_var_notin; auto.
-    + apply H in H0. destruct_all; [left | right; exists x0]; auto.
-  - (*Fpred*) intros ? ? ? ? ? ?. rewrite !in_concat, map_map.
+     + destruct (amap_lookup m v) as [v1|] eqn : Hlookup.
+      * rewrite (mk_fun_some Hlookup). right. exists v. auto.
+      * left. rewrite amap_mem_spec. unfold mk_fun, lookup_default. rewrite !Hlookup. auto.
+    + apply H in H0; auto. destruct_all; [left | right; exists x0]; auto. 
+  - (*Fpred*) intros ? ? ? ? ? ? ?. rewrite !in_concat, map_map.
     intros. destruct_all.
     rewrite in_map_iff in H0.
     destruct_all.
     rewrite Forall_forall in H.
     apply H in H1; auto.
+    2: { intros y Hmemy. apply Hvars. simpl_set; eauto. }
     destruct_all.
     + left. split; auto. exists (tm_bnd x1). split; auto.
       rewrite in_map_iff. exists x1; auto.
     + right. exists x0. split; auto. rewrite in_concat.
       exists (tm_bnd x1). split; auto. rewrite in_map_iff.
       exists x1; auto.
-  - (*Fquant*) intros. destruct_all.
-    + destruct (in_bool_spec string_dec (fst v) (map fst l)).
-      * right. exists v. split; auto. apply replace_var_in; auto.
-      * left. rewrite replace_var_notin; auto.
-    + apply H in H0. destruct_all; [left | right; exists x0]; auto.
+  - (*Fquant*) intros.
+    setoid_rewrite aset_mem_union in Hvars.
+    setoid_rewrite aset_mem_singleton in Hvars.
+    destruct_all.
+     + destruct (amap_lookup m v) as [v1|] eqn : Hlookup.
+      * rewrite (mk_fun_some Hlookup). right. exists v. auto.
+      * left. rewrite amap_mem_spec. unfold mk_fun, lookup_default. rewrite !Hlookup. auto.
+    + apply H in H0; auto. destruct_all; [left | right; exists x0]; auto. 
   - (*Feq*)
-    intros. rewrite in_app_iff in H1 |- *.
+    intros. setoid_rewrite aset_mem_union in Hvars. rewrite in_app_iff in H1 |- *.
     destruct H1; [apply H in H1 | apply H0 in H1]; destruct_all; auto;
     right; exists x0; rewrite in_app_iff; auto.
   - (*Fbinop*)
-    intros. rewrite in_app_iff in H1 |- *.
+    intros. setoid_rewrite aset_mem_union in Hvars. rewrite in_app_iff in H1 |- *.
     destruct H1; [apply H in H1 | apply H0 in H1]; destruct_all; auto;
     right; exists x0; rewrite in_app_iff; auto.
   - (*Flet*)
     intros. rewrite !in_app_iff in H1.
+    repeat (setoid_rewrite aset_mem_union in Hvars).
+    setoid_rewrite aset_mem_singleton in Hvars.
     destruct_all.
-    + destruct (in_bool_spec string_dec (fst v) (map fst l)).
-      * right. exists v. split; auto. apply replace_var_in; auto.
-      * left. rewrite replace_var_notin; auto.
-    + apply H in H1. destruct_all; [left | right; exists x0];
+    + destruct (amap_lookup m v) as [v1|] eqn : Hlookup.
+      * rewrite (mk_fun_some Hlookup). right. exists v. auto.
+      * left. rewrite amap_mem_spec. unfold mk_fun, lookup_default. rewrite !Hlookup. auto.
+    + apply H in H1; auto. destruct_all; [left | right; exists x0];
       rewrite in_app_iff; auto.
-    + apply H0 in H1; destruct_all; [left | right; exists x0];
+    + apply H0 in H1; auto; destruct_all; [left | right; exists x0];
       rewrite in_app_iff; auto.
   - (*Fif*)
-    intros. rewrite !in_app_iff in *; destruct_all;
-    [apply H in H2 | apply H0 in H2 | apply H1 in H2];
-    destruct_all; auto; right; exists x0; 
-    rewrite !in_app_iff; auto.
+    intros.
+    repeat (setoid_rewrite aset_mem_union in Hvars).
+    rewrite !in_app_iff in H2 |- *.
+    destruct_all; [apply H in H2 | apply H0 in H2 | apply H1 in H2]; destruct_all; auto;
+    right; exists x0; rewrite !in_app_iff; auto.
   - (*Fmatch*)
     intros.
+    setoid_rewrite aset_mem_union in Hvars.
     rewrite in_app_iff in H1 |- *.
     (*First, deal with first term*)
     destruct H1.
     {
       apply H in H1. destruct_all; [left | right]; auto.
-      exists x0. rewrite in_app_iff; auto.
+      exists x0. rewrite in_app_iff; auto. auto.
     }
     clear H.
     (*Now handle recursion*)
@@ -12670,23 +12799,32 @@ Proof.
     rewrite !in_app_iff in H1.
     (*Need many times*)
     assert (Hconcat: forall t x, In t ps ->
-      In x (pat_fv (fst t)) \/ In x (fmla_bnd (snd t)) ->
-      In x (concat (map (fun p  => pat_fv (fst p) ++ fmla_bnd (snd p)) ps))). {
+      aset_mem x (pat_fv (fst t)) \/ In x (fmla_bnd (snd t)) ->
+      In x (concat (map (fun p : pattern * formula => aset_to_list (pat_fv (fst p)) ++ fmla_bnd (snd p)) ps))). {
       intros. rewrite in_concat.
-      exists (pat_fv (fst t) ++ (fmla_bnd (snd t))); split.
+      exists (aset_to_list (pat_fv (fst t)) ++ (fmla_bnd (snd t))); split.
       - rewrite in_map_iff. exists t; auto.
-      - rewrite in_app_iff; auto.
+      - rewrite in_app_iff; auto. simpl_set. auto.
     }
     destruct H1.
     + (*We know how to handle patterns*)
-      apply a_convert_map_p_bnd in H.
-      destruct_all.
-      * left. split; auto. right.
-        apply (Hconcat x1); auto.
-      * right. exists x0; split; auto.
-        rewrite in_app_iff; right.
-        apply (Hconcat x1); auto.
+      simpl_set_small. rewrite map_pat_free_vars in H.
+      2: { apply add_ids_inj; auto. intros y Hmemy. apply Hvars. 
+           simpl_set; right; exists x1; simpl_set; auto.
+      }
+      rewrite aset_mem_map in H. destruct H as [y [Hx Hmemy]].
+      unfold mk_fun, lookup_default in Hx.
+      destruct (amap_lookup m y) as [z|] eqn : Hlooky.
+      * replace (amap_lookup (add_ids m (pat_fv (fst x1))) y) with (Some z) in Hx.
+        2: { symmetry; apply add_ids_lookup; auto. }
+        subst. right. exists y. split; auto. rewrite in_app_iff. 
+        right; apply Hconcat with (t:=x1); auto.
+      * replace (amap_lookup (add_ids m (pat_fv (fst x1))) y ) with (Some y) in Hx.
+        2: { symmetry; apply add_ids_lookup; auto. }
+        subst. left. rewrite amap_mem_spec, Hlooky. split; auto. right. 
+        apply Hconcat with (t:=x1); auto.
     + apply H0 in H; auto.
+      2: { intros y Hmemy; apply Hvars. right. simpl_set. exists x1. split; simpl_set; auto. }
       destruct_all.
       * left. split; auto. right.
         apply (Hconcat x1); auto.
@@ -12696,91 +12834,219 @@ Proof.
 Qed.
 
 (*Now we can write some alpha conversion functions*)
-Definition a_convert_t (t: term) (l: list vsymbol) : term :=
-  a_convert_map_t (combine (map fst l) 
-    (gen_strs (length l) (l ++ tm_bnd t ++ tm_fv t))) nil t.
 
-Definition a_convert_f (f: formula) (l: list vsymbol) : formula :=
+(*We construct the map via a list of bindings*)
+(*TODO: move, maybe use elsewhere*)
+Definition list_to_amap {A B: Type} `{countable.Countable A} (l: list (A * B)) : amap A B :=
+  fold_right (fun x acc => amap_set acc (fst x) (snd x)) amap_empty l.
+
+Lemma list_to_amap_lookup {A B: Type} `{countable.Countable A} (l: list (A * B)) (Hn: NoDup (map fst l)) x y:
+  amap_lookup (list_to_amap l) x = Some y <-> In (x, y) l.
+Proof.
+  induction l as [| [x1 y1] t IH]; simpl.
+  - rewrite amap_empty_get. split; try discriminate; contradiction.
+  - inversion Hn as [| ? ? Hnotin Hn']; subst.
+    destruct (EqDecision0 x x1); subst.
+    + rewrite amap_set_lookup_same. split.
+      * intros Hsome; inversion Hsome; auto.
+      * intros [Heq | Hint]; [inversion Heq; subst; auto|].
+        exfalso; apply Hnotin. rewrite in_map_iff; exists (x1, y); auto.
+    + rewrite amap_set_lookup_diff by auto. rewrite IH by auto.
+      split; auto.
+      intros [Heq | Hint]; auto; inversion Heq; subst; contradiction.
+Qed.
+
+(*Other results we need*)
+
+(*An unconditional version of 1 direction of above*)
+Lemma list_to_amap_in {A B: Type} `{countable.Countable A} (l: list (A * B)) x y:
+  amap_lookup (list_to_amap l) x = Some y -> In (x, y) l.
+Proof.
+  induction l as [| [x1 y1] t IH]; simpl.
+  - rewrite amap_empty_get. discriminate.
+  - destruct (EqDecision0 x x1); subst.
+    + rewrite amap_set_lookup_same. intros Hsome; inversion Hsome; auto.
+    + rewrite amap_set_lookup_diff by auto. intros Hlook; apply IH in Hlook; auto.
+Qed.
+
+Lemma list_to_amap_inj  {A B: Type} `{countable.Countable A} (l: list (A * B)) (Hn: NoDup (map snd l)):
+  amap_inj (list_to_amap l).
+Proof.
+  induction l as [| [x1 y1] t IH]; simpl.
+  - unfold amap_inj. intros ? ? ?. rewrite amap_empty_get. discriminate.
+  - inversion Hn as [| ? ? Hnotin Hn']; subst. 
+    unfold amap_inj in *.
+    intros z1 z2 y. destruct (EqDecision0 x1 z1); subst.
+    + rewrite amap_set_lookup_same. intros Hsome; inversion Hsome; subst.
+      destruct (EqDecision0 z1 z2); subst; auto.
+      rewrite amap_set_lookup_diff by auto.
+      intros Hlook. apply list_to_amap_in in Hlook. exfalso; apply Hnotin.
+      rewrite in_map_iff. exists (z2, y); auto.
+    + rewrite amap_set_lookup_diff by auto.
+      destruct (EqDecision0 x1 z2); subst; auto.
+      * rewrite amap_set_lookup_same. intros Hlook Hsome; inversion Hsome; subst.
+        apply list_to_amap_in in Hlook. exfalso; apply Hnotin.
+        rewrite in_map_iff. exists (z1, y); auto.
+      * rewrite amap_set_lookup_diff by auto. apply IH; auto.
+Qed.
+
+Lemma list_to_amap_mem {A B: Type} `{countable.Countable A} (l: list (A * B)) x:
+  amap_mem x (list_to_amap l) <-> In x (map fst l).
+Proof.
+  rewrite amap_mem_spec.
+  split.
+  - destruct (amap_lookup (list_to_amap l) x) eqn : Hlook; try discriminate.
+    apply list_to_amap_in in Hlook. intros _. rewrite in_map_iff. eexists. split; [| apply Hlook]; auto.
+  - intros Hinx. destruct (amap_lookup (list_to_amap l) x) eqn : Hlook; auto.
+    exfalso. induction l as [| [x1 y1] xs IH]; simpl in *; [contradiction|].
+    destruct (EqDecision0 x x1); subst.
+    + rewrite amap_set_lookup_same in Hlook. discriminate.
+    + rewrite amap_set_lookup_diff in Hlook by auto. destruct Hinx; subst; try contradiction. auto.
+Qed.
+
+      
+
+Definition a_convert_t (t: term) (l: aset vsymbol) : term :=
+  a_convert_map_t (list_to_amap 
+    (map2 (fun x y => (x, (y, snd x))) (aset_to_list l)
+      (gen_strs (aset_size l) (aset_union l (tm_vars t))))) aset_empty t.
+
+Definition a_convert_f (f: formula) (l: aset vsymbol) : formula :=
+  a_convert_map_f (list_to_amap 
+    (map2 (fun x y => (x, (y, snd x))) (aset_to_list l)
+      (gen_strs (aset_size l) (aset_union l (fmla_vars f))))) aset_empty f.
+
+(* Definition a_convert_f (f: formula) (l: list vsymbol) : formula :=
   a_convert_map_f (combine (map fst l)
-    (gen_strs (length l) (l ++ fmla_bnd f ++ fmla_fv f))) nil f.
+    (gen_strs (length l) (l ++ fmla_bnd f ++ fmla_fv f))) nil f. *)
 
 (*Correctness*)
+
+Lemma a_convert_map_nodup_snd l1 l2 l3:
+  NoDup (map snd (map2 (fun (v: vsymbol) (y: string) => (v, (y, snd v))) l1 (gen_strs l2 l3))).
+Proof.
+  rewrite map2_combine, !map_map. simpl.
+  apply NoDup_map_inv with (f:=fst).
+  rewrite map_map; simpl.
+  apply map_snd_combine_nodup, gen_strs_nodup.
+Qed.
+
+Lemma a_convert_map_nodup_fst l1 l2 l3: NoDup l1 ->
+  NoDup (map fst (map2 (fun (v: vsymbol) (y: string) => (v, (y, snd v))) l1 (gen_strs l2 l3))).
+Proof.
+  intros Hn.
+  rewrite map2_combine, !map_map. simpl.
+  apply map_fst_combine_nodup; auto.
+Qed.
 
 Theorem a_convert_t_equiv t l:
   a_equiv_t t (a_convert_t t l).
 Proof.
-  assert (Hlen: length (map fst l) =
-  length (gen_strs (length l) (l ++ tm_bnd t ++ tm_fv t))). {
-    rewrite gen_strs_length, map_length; auto.
-  }
-  apply a_convert_map_t_alpha;
-  rewrite map_snd_combine; auto;
-  [apply gen_strs_nodup | |];
-  intros x Hinx1 Hinx2;
-  apply gen_strs_notin in Hinx2;
-  rewrite !in_app_iff in Hinx2;
-  not_or Hinx; contradiction.
+  apply a_convert_map_t_alpha.
+  - apply list_to_amap_inj,  a_convert_map_nodup_snd.
+  - intros x y Hlook. apply list_to_amap_lookup in Hlook; [|apply a_convert_map_nodup_fst, aset_to_list_nodup].
+    rewrite in_map2_iff with (d1:=vs_d) (d2:=""%string) in Hlook.
+    2: rewrite gen_strs_length, aset_to_list_length; reflexivity.
+    destruct Hlook as [i [Hi Hxy]]. inversion Hxy; subst; simpl; reflexivity.
+  - intros x Hmemx Hinv. rewrite in_vals_iff in Hinv.
+    destruct Hinv as [y Hlook].
+    apply list_to_amap_in in Hlook.
+    rewrite in_map2_iff with (d1:=vs_d) (d2:=""%string) in Hlook.
+    2: rewrite gen_strs_length, aset_to_list_length; reflexivity.
+    destruct Hlook as [i [Hi Hxy]]. destruct x as [x1 x2]; simpl in *. 
+    inversion Hxy; subst; simpl in *.
+    eapply gen_strs_notin with (s:= (aset_union l (tm_vars t)))(n:=(aset_size l)).
+    2: simpl_set; right; apply Hmemx.
+    simpl. apply nth_In. rewrite gen_strs_length. rewrite aset_to_list_length in Hi; auto.
 Qed.
 
 Theorem a_convert_f_equiv f l:
   a_equiv_f f (a_convert_f f l).
 Proof.
-  assert (Hlen: length (map fst l) =
-  length (gen_strs (length l) (l ++ fmla_bnd f ++ fmla_fv f))). {
-    rewrite gen_strs_length, map_length; auto.
-  }
-  apply a_convert_map_f_alpha;
-  rewrite map_snd_combine; auto;
-  [apply gen_strs_nodup | |];
-  intros x Hinx1 Hinx2;
-  apply gen_strs_notin in Hinx2;
-  rewrite !in_app_iff in Hinx2;
-  not_or Hinx; contradiction.
+  apply a_convert_map_f_alpha.
+  - apply list_to_amap_inj,  a_convert_map_nodup_snd.
+  - intros x y Hlook. apply list_to_amap_lookup in Hlook; [|apply a_convert_map_nodup_fst, aset_to_list_nodup].
+    rewrite in_map2_iff with (d1:=vs_d) (d2:=""%string) in Hlook.
+    2: rewrite gen_strs_length, aset_to_list_length; reflexivity.
+    destruct Hlook as [i [Hi Hxy]]. inversion Hxy; subst; simpl; reflexivity.
+  - intros x Hmemx Hinv. rewrite in_vals_iff in Hinv.
+    destruct Hinv as [y Hlook].
+    apply list_to_amap_in in Hlook.
+    rewrite in_map2_iff with (d1:=vs_d) (d2:=""%string) in Hlook.
+    2: rewrite gen_strs_length, aset_to_list_length; reflexivity.
+    destruct Hlook as [i [Hi Hxy]]. destruct x as [x1 x2]; simpl in *. 
+    inversion Hxy; subst; simpl in *.
+    eapply gen_strs_notin with (s:= (aset_union l (fmla_vars f)))(n:=(aset_size l)).
+    2: simpl_set; right; apply Hmemx.
+    simpl. apply nth_In. rewrite gen_strs_length. rewrite aset_to_list_length in Hi; auto.
 Qed.
 
 (*And the "l" part: no vsymbols in l are in
   the bound vars*)
 Theorem a_convert_t_bnd t l:
-  forall x, In x l ->
+  forall x, aset_mem x l ->
   ~ In x (tm_bnd (a_convert_t t l)).
 Proof.
   intros. intro C.
-  assert (Hlen: length (map fst l) =
-  length (gen_strs (length l) (l ++ tm_bnd t ++ tm_fv t))). {
-    rewrite gen_strs_length, map_length; auto.
-  }
   apply a_convert_map_bnd in C; try apply Ftrue.
-  - destruct_all.
-    + rewrite map_fst_combine in H1; auto.
-      apply H1. rewrite in_map_iff. exists x; auto.
-    + apply in_combine_r in H1.
-      apply gen_strs_notin in H1.
-      rewrite !in_app_iff in H1.
-      not_or Hinx; contradiction.
-  - rewrite map_snd_combine; auto.
-    apply gen_strs_nodup.
+  - destruct C as [[Hinx Hnotin] | [y [Hiny Hlook]]].
+    + apply Hnotin. rewrite list_to_amap_mem.
+      rewrite map2_combine, !map_map. simpl. rewrite map_fst_combine; simpl_set; auto.
+      rewrite aset_to_list_length, gen_strs_length; reflexivity.
+    + (*Idea: new elements not in l*)
+      apply list_to_amap_in in Hlook.
+      apply (in_map snd) in Hlook. simpl in Hlook.
+      rewrite map2_combine, !map_map in Hlook. simpl in Hlook.
+      apply (in_map fst) in Hlook. rewrite map_map in Hlook. simpl in Hlook.
+      rewrite map_snd_combine in Hlook.
+      * apply gen_strs_notin in Hlook. apply Hlook; simpl_set; auto.
+      * rewrite aset_to_list_length, gen_strs_length; reflexivity.
+  - apply list_to_amap_inj, a_convert_map_nodup_snd.
+  - (*TODO: bad, copied*)
+    intros x' Hmemx Hinv. rewrite in_vals_iff in Hinv.
+    destruct Hinv as [y Hlook].
+    apply list_to_amap_in in Hlook.
+    rewrite in_map2_iff with (d1:=vs_d) (d2:=""%string) in Hlook.
+    2: rewrite gen_strs_length, aset_to_list_length; reflexivity.
+    destruct Hlook as [i [Hi Hxy]]. destruct x as [x1 x2]; simpl in *. 
+    inversion Hxy; subst; simpl in *.
+    eapply gen_strs_notin with (s:= (aset_union l (tm_vars t)))(n:=(aset_size l)).
+    2: simpl_set; right; apply Hmemx.
+    simpl. apply nth_In. rewrite gen_strs_length. rewrite aset_to_list_length in Hi; auto.
 Qed.
 
 Theorem a_convert_f_bnd f l:
-  forall x, In x l ->
+  forall x, aset_mem x l ->
   ~ In x (fmla_bnd (a_convert_f f l)).
 Proof.
   intros. intro C.
-  assert (Hlen: length (map fst l) =
-  length (gen_strs (length l) (l ++ fmla_bnd f ++ fmla_fv f))). {
-    rewrite gen_strs_length, map_length; auto.
-  }
   apply a_convert_map_bnd in C; try apply tm_d.
-  - destruct_all.
-    + rewrite map_fst_combine in H1; auto.
-      apply H1. rewrite in_map_iff. exists x; auto.
-    + apply in_combine_r in H1.
-      apply gen_strs_notin in H1.
-      rewrite !in_app_iff in H1.
-      not_or Hinx; contradiction.
-  - rewrite map_snd_combine; auto.
-    apply gen_strs_nodup.
+  - destruct C as [[Hinx Hnotin] | [y [Hiny Hlook]]].
+    + apply Hnotin. rewrite list_to_amap_mem.
+      rewrite map2_combine, !map_map. simpl. rewrite map_fst_combine; simpl_set; auto.
+      rewrite aset_to_list_length, gen_strs_length; reflexivity.
+    + (*Idea: new elements not in l*)
+      apply list_to_amap_in in Hlook.
+      apply (in_map snd) in Hlook. simpl in Hlook.
+      rewrite map2_combine, !map_map in Hlook. simpl in Hlook.
+      apply (in_map fst) in Hlook. rewrite map_map in Hlook. simpl in Hlook.
+      rewrite map_snd_combine in Hlook.
+      * apply gen_strs_notin in Hlook. apply Hlook; simpl_set; auto.
+      * rewrite aset_to_list_length, gen_strs_length; reflexivity.
+  - apply list_to_amap_inj, a_convert_map_nodup_snd.
+  - (*TODO: bad, copied*)
+    intros x' Hmemx Hinv. rewrite in_vals_iff in Hinv.
+    destruct Hinv as [y Hlook].
+    apply list_to_amap_in in Hlook.
+    rewrite in_map2_iff with (d1:=vs_d) (d2:=""%string) in Hlook.
+    2: rewrite gen_strs_length, aset_to_list_length; reflexivity.
+    destruct Hlook as [i [Hi Hxy]]. destruct x as [x1 x2]; simpl in *. 
+    inversion Hxy; subst; simpl in *.
+    eapply gen_strs_notin with (s:= (aset_union l (fmla_vars f)))(n:=(aset_size l)).
+    2: simpl_set; right; apply Hmemx.
+    simpl. apply nth_In. rewrite gen_strs_length. rewrite aset_to_list_length in Hi; auto.
 Qed.
+
 
 (*And the corollaries:*)
 Corollary a_convert_t_ty t l ty:
@@ -12796,7 +13062,7 @@ Corollary a_convert_t_rep v t l ty
   term_rep v t ty Hty = 
   term_rep v (a_convert_t t l) ty (a_convert_t_ty t l ty Hty).
 Proof.
-  apply a_equiv_t_equiv.
+  apply a_equiv_t_rep.
   apply a_convert_t_equiv.
 Qed.
 
@@ -12806,7 +13072,7 @@ Corollary a_convert_f_typed f l:
   formula_typed gamma f ->
   formula_typed gamma (a_convert_f f l).
 Proof.
-  apply a_equiv_f_valid.
+  apply a_equiv_f_typed.
   apply a_convert_f_equiv.
 Qed.
 
@@ -12815,7 +13081,7 @@ Corollary a_convert_f_rep v f l
   formula_rep v f Hval = 
   formula_rep v (a_convert_f f l) (a_convert_f_typed f l Hval).
 Proof.
-  apply a_equiv_f_equiv.
+  apply a_equiv_f_rep.
   apply a_convert_f_equiv.
 Qed.
 
