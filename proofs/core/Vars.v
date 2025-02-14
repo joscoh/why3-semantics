@@ -129,6 +129,106 @@ with tm_bnd (t: term) : list vsymbol :=
 
 End BoundVars.
 
+Section AllVars.
+
+(*Get all vars as a set - nicer because simplifies in induction*)
+Fixpoint tm_vars (t: term) : aset vsymbol :=
+  match t with
+  | Tconst _ => aset_empty
+  | Tvar x => aset_singleton x
+  | Tfun f vtys tms => aset_big_union tm_vars tms
+  | Tlet t1 v t2 => aset_union (aset_singleton v) (aset_union (tm_vars t1) (tm_vars t2))
+  | Tif f t1 t2 => aset_union (fmla_vars f) (aset_union (tm_vars t1) (tm_vars t2))
+  | Tmatch t ty l => aset_union (tm_vars t) (aset_big_union (fun x => aset_union (pat_fv (fst x)) (tm_vars (snd x))) l)
+  | Teps f x  => aset_union (aset_singleton x) (fmla_vars f)
+  end
+
+with fmla_vars (f: formula) : aset vsymbol :=
+  match f with
+  | Fpred p tys tms => aset_big_union tm_vars tms
+  | Fquant q v f => aset_union (aset_singleton v) (fmla_vars f)
+  | Feq _ t1 t2 => aset_union (tm_vars t1) (tm_vars t2)
+  | Fbinop b f1 f2 => aset_union (fmla_vars f1) (fmla_vars f2)
+  | Fnot f => fmla_vars f
+  | Ftrue => aset_empty
+  | Ffalse => aset_empty
+  | Flet t v f => aset_union (aset_singleton v) (aset_union (tm_vars t) (fmla_vars f))
+  | Fif f1 f2 f3 => aset_union (fmla_vars f1) (aset_union (fmla_vars f2) (fmla_vars f3))
+  | Fmatch t ty l => aset_union (tm_vars t) (aset_big_union (fun x => aset_union (pat_fv (fst x)) (fmla_vars (snd x))) l)
+  end.
+
+
+(*TODO: make sure works*)
+Lemma vars_eq (t: term) (f: formula):
+  tm_vars t = aset_union (tm_fv t) (list_to_aset (tm_bnd t)) /\
+  fmla_vars f = aset_union (fmla_fv f) (list_to_aset (fmla_bnd f)).
+Proof.
+  revert t f; apply term_formula_ind; simpl; auto.
+  - intros v. rewrite list_to_aset_nil,aset_union_empty_r; reflexivity.
+  - intros _ _ tms IH. induction tms as [| t1 tms IHtms]; simpl; auto.
+    rewrite !aset_big_union_cons. inversion IH as [| ? ? IH1 IH2]; subst.
+    rewrite IH1. rewrite list_to_aset_app. rewrite IHtms; auto.
+    rewrite <- !aset_union_assoc. f_equal.
+    rewrite !aset_union_assoc.
+    rewrite (aset_union_comm (list_to_aset (tm_bnd t1))). reflexivity.
+  - intros tm1 x tm2 IH1 IH2.
+    rewrite list_to_aset_cons, list_to_aset_app.
+    rewrite IH1, IH2.
+    (*Easier to prove directly*)
+    apply aset_ext. intros y. simpl_set. destruct (vsymbol_eq_dec y x); tauto.
+  - intros f1 t2 t3 IH1 IH2 IH3. rewrite IH1, IH2, IH3.
+    rewrite !list_to_aset_app. apply aset_ext. intros y. simpl_set. tauto.
+  - intros tm _ ps IH1 IHps. rewrite IH1. rewrite list_to_aset_app.
+    rewrite <- !aset_union_assoc. f_equal.
+    rewrite (aset_union_comm _ (aset_union (list_to_aset (tm_bnd tm)) _)).
+    rewrite <- !aset_union_assoc. f_equal.
+    clear IH1. induction ps as [| [p1 t1] ps IH]; simpl; auto.
+    inversion IHps as [| ? ? IH1 IH2]; subst.
+    simpl in *. rewrite !aset_big_union_cons.
+    rewrite !list_to_aset_app. rewrite IH; auto. simpl.
+    rewrite IH1; auto.
+    (*Just brute force*)
+    apply aset_ext. intros y. simpl_set.
+    destruct (aset_mem_dec y (pat_fv p1)); tauto.
+  - intros f x IH. rewrite IH. rewrite list_to_aset_cons.
+    apply aset_ext. intros y. simpl_set. destruct (vsymbol_eq_dec y x); tauto.
+  - intros _ _ tms IH. induction tms as [| t1 tms IHtms]; simpl; auto.
+    rewrite !aset_big_union_cons. inversion IH as [| ? ? IH1 IH2]; subst.
+    rewrite IH1. rewrite list_to_aset_app. rewrite IHtms; auto.
+    rewrite <- !aset_union_assoc. f_equal.
+    rewrite !aset_union_assoc.
+    rewrite (aset_union_comm (list_to_aset (tm_bnd t1))). reflexivity.
+  - intros _ x f IH. rewrite IH. rewrite list_to_aset_cons.
+    apply aset_ext. intros y. simpl_set. destruct (vsymbol_eq_dec y x); tauto.
+  - intros _ t1 t2 IH1 IH2.  rewrite IH1, IH2, list_to_aset_app.
+    apply aset_ext. intros y. simpl_set. tauto.
+  - intros _ t1 t2 IH1 IH2.  rewrite IH1, IH2, list_to_aset_app.
+    apply aset_ext. intros y. simpl_set. tauto.
+  - intros tm1 x tm2 IH1 IH2.
+    rewrite list_to_aset_cons, list_to_aset_app.
+    rewrite IH1, IH2.
+    apply aset_ext. intros y. simpl_set. destruct (vsymbol_eq_dec y x); tauto.
+  - intros f1 t2 t3 IH1 IH2 IH3. rewrite IH1, IH2, IH3.
+    rewrite !list_to_aset_app. apply aset_ext. intros y. simpl_set. tauto.
+  - intros tm _ ps IH1 IHps. rewrite IH1. rewrite list_to_aset_app.
+    rewrite <- !aset_union_assoc. f_equal.
+    rewrite (aset_union_comm _ (aset_union (list_to_aset (tm_bnd tm)) _)).
+    rewrite <- !aset_union_assoc. f_equal.
+    clear IH1. induction ps as [| [p1 t1] ps IH]; simpl; auto.
+    inversion IHps as [| ? ? IH1 IH2]; subst.
+    simpl in *. rewrite !aset_big_union_cons.
+    rewrite !list_to_aset_app. rewrite IH; auto. simpl.
+    rewrite IH1; auto.
+    (*Just brute force*)
+    apply aset_ext. intros y. simpl_set. destruct (aset_mem_dec y (pat_fv p1)); tauto.
+Qed.
+
+
+Definition tm_vars_eq t := proj_tm vars_eq t.
+Definition fmla_vars_eq f := proj_fmla vars_eq f.
+
+End AllVars.
+
 Section FunPredSym.
 
 Fixpoint predsym_in_fmla (p: predsym) (f: formula) {struct f}  : bool :=
@@ -466,6 +566,8 @@ proj2 (bnd_vars_type_vars x y tm_d f).
 
 End Typevars.
 
+
+
 (*Some "gen" results:*)
 
 Definition gen_type_vars {b: bool} (t: gen_term b) : aset typevar :=
@@ -588,4 +690,15 @@ Lemma gensym_in_gen_let {b1 b2: bool} (f: gen_sym b1)
   gensym_in_term f t || gensym_in_gen_term f t2.
 Proof.
   destruct b1; destruct b2; auto.
+Qed.
+
+Definition gen_term_vars {b: bool} : gen_term b -> aset vsymbol :=
+  match b return gen_term b -> aset vsymbol with
+  | true => tm_vars
+  | false => fmla_vars
+  end.
+
+Lemma gen_term_vars_eq {b: bool} (t: gen_term b): gen_term_vars t = aset_union (gen_fv t) (list_to_aset (gen_bnd t)).
+Proof.
+  destruct b; [apply tm_vars_eq | apply fmla_vars_eq].
 Qed.

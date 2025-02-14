@@ -1,4 +1,5 @@
 Require Export Typing.
+Require Export AssocList.
 Set Bullet Behavior "Strict Subproofs".
 
 Ltac list_tac2 :=
@@ -639,17 +640,38 @@ Fixpoint sub_p (x y: vsymbol) (p: pattern) :=
   end.
 
 (*Substitute multiple vars according to map*)
+(*TODO: is this obsolete with SubMulti.v?*)
 Definition sub_mult {A: Type} (sub: vsymbol -> vsymbol -> A -> A) 
-  (l: list (vsymbol * string)) (x: A) : A :=
-  fold_right (fun x acc => sub (fst x) ((snd x), snd (fst x)) acc) x l.
+  (m: amap vsymbol vsymbol) (x: A) : A :=
+  fold_right (fun x acc => sub (fst x) (snd x) acc) x (elements m).
   
 (*Substitute multiple vars in term according to map*)
-Definition sub_var_ts: list (vsymbol * string) -> term -> term:=
-  sub_mult sub_var_t.
+Definition sub_var {b: bool} (x y: vsymbol) (t: gen_term b) : gen_term b :=
+  match b return gen_term b -> gen_term b with
+  | true => sub_var_t x y
+  | false => sub_var_f x y
+  end t.
 
-(*Substitite multiple vars in formula according to map*)
-Definition sub_var_fs: list (vsymbol * string) -> formula -> formula :=
-  sub_mult sub_var_f.
+Definition sub_vars {b: bool} (m: amap vsymbol vsymbol) (t: gen_term b) : gen_term b :=
+  sub_mult sub_var m t.
+Definition sub_var_ts := @sub_vars true.
+Definition sub_var_fs := @sub_vars false.
+
+Lemma bnd_sub_var_ts m t:
+  tm_bnd (sub_var_ts m t) = tm_bnd t.
+Proof.
+  unfold sub_var_ts, sub_vars, sub_mult.
+  induction (elements m) as [| x xs IH]; simpl; auto.
+  rewrite bnd_sub_var_t; auto.
+Qed.
+
+Lemma bnd_sub_var_fs m t:
+  fmla_bnd (sub_var_fs m t) = fmla_bnd t.
+Proof.
+  unfold sub_var_fs, sub_vars, sub_mult.
+  induction (elements m) as [| x xs IH]; simpl; auto.
+  rewrite bnd_sub_var_f; auto.
+Qed.
 
 (*We need a lot of results about how substition affects free
   variables*)
@@ -693,6 +715,64 @@ Qed.
 
 Definition sub_var_t_eq t := proj_tm sub_eq t. 
 Definition sub_var_f_eq f := proj_fmla sub_eq f. 
+
+(*A weaker result*)
+Lemma sub_fv_in_impl tm x y t f:
+  (forall (Hin: aset_mem y (tm_fv (sub_t tm x t))), aset_mem y (tm_fv t) \/ aset_mem y (tm_fv tm)) /\
+  (forall (Hin: aset_mem y (fmla_fv (sub_f tm x f))), aset_mem y (fmla_fv f) \/ aset_mem y (tm_fv tm)).
+Proof.
+  revert t f; apply term_formula_ind; simpl; auto.
+  - intros v. vsym_eq x v.
+  - intros _ _ tms IH. rewrite Forall_forall in IH. simpl_set. intros [t1 [Hint1 Hiny]].
+    rewrite in_map_iff in Hint1. destruct Hint1 as [t2 [Ht1 Hint2]]; subst. assert (Hin:=Hint2).
+    apply IH in Hint2; auto. destruct Hint2; eauto.
+  - intros tm1 v tm2 IH1 IH2. simpl_set.
+    intros [Hmem | Hmem]; auto; [apply IH1 in Hmem; destruct_all; auto|].
+    vsym_eq x v. destruct Hmem as [Hmem Hneq].
+    apply IH2 in Hmem. destruct_all; auto.
+  - intros f t1 t2 IH1 IH2 IH3. simpl_set. intros [Hmem | [Hmem | Hmem]];
+    [apply IH1 in Hmem | apply IH2 in Hmem | apply IH3 in Hmem]; destruct_all; auto.
+  - intros tm1 _ ps IH1 IHps. simpl_set_small. intros [Hmem | Hmem]; [apply IH1 in Hmem; destruct_all; auto|].
+    clear IH1. rewrite Forall_map, Forall_forall in IHps.
+    simpl_set. destruct Hmem as [pt [Hinpt Hiny]]. simpl_set.
+    rewrite in_map_iff in Hinpt. destruct Hinpt as [[p1 t1] [Hpt2 Hinpt]]; subst. simpl in *.
+    destruct Hiny as [Hiny Hnotiny].
+    destruct (aset_mem_dec x (pat_fv p1)); auto.
+    + left. right. exists (p1, t1); auto. simpl_set; auto.
+    + specialize (IHps _ Hinpt Hiny). destruct IHps as [Hmem1 | Hmem2]; auto.
+      left. right. exists (p1, t1); auto. simpl_set; auto.
+  - intros f v IH. vsym_eq x v. simpl. simpl_set. intros [Hmem Hnotin].
+    apply IH in Hmem. destruct_all; auto.
+  - intros _ _ tms IH. rewrite Forall_forall in IH. simpl_set. intros [t1 [Hint1 Hiny]].
+    rewrite in_map_iff in Hint1. destruct Hint1 as [t2 [Ht1 Hint2]]; subst. assert (Hin:=Hint2).
+    apply IH in Hint2; auto. destruct Hint2; eauto.
+  - intros q v f IH. vsym_eq x v. simpl. simpl_set. intros [Hmem Hnotin].
+    apply IH in Hmem; destruct_all; auto.
+  - intros _ t1 t2 IH1 IH2. simpl_set. intros [Hmem | Hmem]; [apply IH1 in Hmem | apply IH2 in Hmem]; 
+    destruct_all; auto.
+  - intros _ t1 t2 IH1 IH2. simpl_set. intros [Hmem | Hmem]; [apply IH1 in Hmem | apply IH2 in Hmem]; 
+    destruct_all; auto.
+  - intros tm1 v tm2 IH1 IH2. simpl_set.
+    intros [Hmem | Hmem]; auto; [apply IH1 in Hmem; destruct_all; auto|].
+    vsym_eq x v. destruct Hmem as [Hmem Hneq].
+    apply IH2 in Hmem. destruct_all; auto.
+  - intros f t1 t2 IH1 IH2 IH3. simpl_set. intros [Hmem | [Hmem | Hmem]];
+    [apply IH1 in Hmem | apply IH2 in Hmem | apply IH3 in Hmem]; destruct_all; auto.
+  - intros tm1 _ ps IH1 IHps. simpl_set_small. intros [Hmem | Hmem]; [apply IH1 in Hmem; destruct_all; auto|].
+    clear IH1. rewrite Forall_map, Forall_forall in IHps.
+    simpl_set. destruct Hmem as [pt [Hinpt Hiny]]. simpl_set.
+    rewrite in_map_iff in Hinpt. destruct Hinpt as [[p1 t1] [Hpt2 Hinpt]]; subst. simpl in *.
+    destruct Hiny as [Hiny Hnotiny].
+    destruct (aset_mem_dec x (pat_fv p1)); auto.
+    + left. right. exists (p1, t1); auto. simpl_set; auto.
+    + specialize (IHps _ Hinpt Hiny). destruct IHps as [Hmem1 | Hmem2]; auto.
+      left. right. exists (p1, t1); auto. simpl_set; auto.
+Qed.
+
+Definition sub_t_fv_in_impl tm x y t :=
+  proj_tm (sub_fv_in_impl tm x y) t.
+Definition sub_f_fv_in_impl tm x y f :=
+  proj_fmla (sub_fv_in_impl tm x y) f.
 
 (*The rest are corollaries of above*)
 

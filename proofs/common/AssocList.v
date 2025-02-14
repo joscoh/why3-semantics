@@ -734,6 +734,8 @@ Qed.
 
 Section UnionSome.
 
+(*TODO: replace with [aunion]*)
+
 (*A specialized case that is useful for us for [extend_val_with_list]*)
 Lemma amap_union_lookup {A B: Type} `{A_count: countable.Countable A} (m1 m2: amap A B) (x: A):
   amap_lookup (amap_union (fun y _ => Some y) m1 m2) x =
@@ -818,6 +820,415 @@ Proof.
 Qed.
 
 End UnionSome.
+
+(*Lots of other lemmas*)
+
+Lemma lookup_singleton_iff {A B: Type} `{countable.Countable A} (x z: A) (y w: B) :
+  amap_lookup (amap_singleton x y) z = Some w <-> z = x /\ w = y.
+Proof.
+  split.
+  - apply lookup_singleton_impl.
+  - intros [Hx Hy]; subst. unfold amap_singleton; rewrite amap_set_lookup_same; auto.
+Qed.
+
+Lemma amap_set_lookup_iff {A B: Type} `{countable.Countable A} (m: amap A B) (x1 x2 : A) (y1 y2: B):
+  amap_lookup (amap_set m x1 y1) x2 = Some y2 <-> (x1 = x2 /\ y1 = y2) \/ (x1 <> x2 /\ amap_lookup m x2 = Some y2).
+Proof.
+  destruct (EqDecision0 x1 x2); subst.
+  - rewrite amap_set_lookup_same. split.
+    + intros Hsome; inversion Hsome; auto.
+    + intros; destruct_all; subst; auto. contradiction.
+  - rewrite amap_set_lookup_diff by auto. 
+    split; intros; destruct_all; subst; auto. contradiction.
+Qed. 
+
+Lemma amap_set_lookup_none_iff {A B: Type} `{countable.Countable A} (m: amap A B) (x1 x2 : A) (y1: B):
+  amap_lookup (amap_set m x1 y1) x2 = None <-> (x1 <> x2 /\ amap_lookup m x2 = None).
+Proof.
+  destruct (EqDecision0 x1 x2); subst.
+  - rewrite amap_set_lookup_same. split; try discriminate. intros; destruct_all; contradiction.
+  - rewrite amap_set_lookup_diff by auto. split; intros; destruct_all; auto.
+Qed. 
+
+Lemma amap_mem_expand {A B: Type} `{countable.Countable A} (m: amap A B) x y z:
+  amap_mem z m ->
+  amap_mem z (amap_set m x y).
+Proof.
+  rewrite !amap_mem_spec.
+  destruct (EqDecision0 x z); subst.
+  - rewrite amap_set_lookup_same. auto.
+  - rewrite amap_set_lookup_diff; auto.
+Qed.
+
+Definition lookup_default {A B: Type} `{countable.Countable A} (m: amap A B) (x: A) (y: B) : B :=
+  match amap_lookup m x with
+  | Some z => z
+  | _ => y
+  end.
+
+Lemma notin_in_elements_iff {A B: Type} `{countable.Countable A} (x: A) (m: amap A B):
+  ~ In x (map fst (AssocList.elements m)) <-> amap_lookup m x = None.
+Proof.
+  split.
+  - intros Hnotin. destruct (amap_lookup m x) as [y|] eqn : Hlook; auto.
+    apply in_elements_iff in Hlook. exfalso. apply Hnotin. rewrite in_map_iff.
+    exists (x, y); auto.
+  - intros Hlookup Hinx. rewrite in_map_iff in Hinx.
+    destruct Hinx as [[x1 y1] [Hx Hinx]]; subst; simpl in Hlookup.
+    apply in_elements_iff in Hinx. rewrite Hinx in Hlookup. discriminate.
+Qed.
+
+(*Useful: the keys not in a map after adding a value are those not equal and not in the original map*)
+Lemma notin_amap_set {A B: Type} `{countable.Countable A} (m: amap A B) (x: A) (y: B) (z: A):
+negb (amap_mem z (amap_set m x y)) = negb (EqDecision0 x z) && negb (amap_mem z m).
+Proof.
+  rewrite !amap_mem_spec.
+  destruct (EqDecision0 x z); subst; simpl.
+  - rewrite amap_set_lookup_same. auto.
+  - rewrite amap_set_lookup_diff by auto. reflexivity.
+Qed.
+
+(*set and remove*)
+
+Lemma amap_set_remove_same {A B: Type} `{countable.Countable A} (m: amap A B) (x1: A) (y: B):
+  amap_set (amap_remove _ _ x1 m) x1 y =
+  amap_set m x1 y.
+Proof.
+  apply amap_ext. intros x.
+  destruct (EqDecision0 x x1); subst.
+  - rewrite !amap_set_lookup_same; auto.
+  - rewrite !amap_set_lookup_diff by auto.
+    rewrite amap_remove_diff; auto.
+Qed.
+
+Lemma amap_set_remove_diff {A B: Type} `{countable.Countable A} (m: amap A B) (x1 x2: A) (y: B):
+  x1 <> x2 ->
+  amap_set (amap_remove _ _ x2 m) x1 y =
+  amap_remove _ _ x2 (amap_set m x1 y).
+Proof.
+  intros Hneq. apply amap_ext. intros x.
+  destruct (EqDecision0 x x1); subst.
+  - rewrite amap_set_lookup_same.
+    rewrite amap_remove_diff by auto.
+    rewrite amap_set_lookup_same. auto.
+  - rewrite amap_set_lookup_diff by auto.
+    destruct (EqDecision0 x x2); subst.
+    + rewrite !amap_remove_same. auto.
+    + rewrite !amap_remove_diff; auto.
+      rewrite amap_set_lookup_diff; auto.
+Qed.
+
+Lemma amap_set_twice {A B: Type} `{countable.Countable A} (m: amap A B) (x1: A) (y1 y2: B):
+  amap_set (amap_set m x1 y1) x1 y2 = amap_set m x1 y2.
+Proof.
+  apply amap_ext. intros x.
+  destruct (EqDecision0 x x1); subst.
+  - rewrite !amap_set_lookup_same; auto.
+  - rewrite !amap_set_lookup_diff; auto.
+Qed.
+
+Lemma amap_set_reorder {A B: Type} `{countable.Countable A} (m: amap A B) (x1 x2: A) (y1 y2: B):
+  x1 <> x2 ->
+  amap_set (amap_set m x1 y1) x2 y2 = amap_set (amap_set m x2 y2) x1 y1.
+Proof.
+  intros Hneq. apply amap_ext. intros x.
+  destruct (EqDecision0 x x2); subst.
+  - rewrite amap_set_lookup_same. rewrite amap_set_lookup_diff; auto.
+    rewrite amap_set_lookup_same; reflexivity.
+  - rewrite amap_set_lookup_diff by auto.
+    destruct (EqDecision0 x x1); subst.
+    + rewrite !amap_set_lookup_same; auto.
+    + rewrite !amap_set_lookup_diff; auto.
+Qed.
+
+Lemma amap_remove_set_same {A B: Type} `{countable.Countable A} (m: amap A B) (x: A) (y: B):
+  amap_remove _ _ x (amap_set m x y) = amap_remove _ _ x m.
+Proof.
+  apply amap_ext. intros x1.
+  destruct (EqDecision0 x x1); subst.
+  - rewrite !amap_remove_same. auto.
+  - rewrite !amap_remove_diff by auto.
+    rewrite amap_set_lookup_diff; auto.
+Qed.
+
+Lemma amap_remove_notin {A B: Type} `{countable.Countable A} (m: amap A B) (x: A):
+  ~ amap_mem x m ->
+  amap_remove _ _ x m = m.
+Proof.
+  rewrite amap_mem_spec. intros Hmem.
+  apply amap_ext. intros x1.
+  destruct (EqDecision0 x x1); subst.
+  - rewrite amap_remove_same.
+    destruct (amap_lookup m x1); auto. exfalso; apply Hmem; auto.
+  - rewrite amap_remove_diff; auto.
+Qed. 
+
+Lemma notin_amap_mem_set {A B: Type} `{countable.Countable A} (m: amap A B) (x1 x2: A) (y: B):
+  x1 <> x2 ->
+  ~ amap_mem x2 m ->
+  ~ amap_mem x2 (amap_set m x1 y).
+Proof.
+  intros Heq. rewrite !amap_mem_spec.
+  rewrite amap_set_lookup_diff; auto.
+Qed.
+
+Lemma amap_singleton_set {A B: Type} `{countable.Countable A} (x: A) (y: B):
+  amap_set amap_empty x y = amap_singleton x y.
+Proof. reflexivity. Qed.
+
+(*TODO: use (e.g. in [match_val_single] - delete above*)
+Definition aunion {A B: Type} `{countable.Countable A} (m1 m2: amap A B) : amap A B :=
+  amap_union (fun u _ => Some u) m1 m2.
+
+Lemma aunion_lookup {A B: Type} `{countable.Countable A} (m1 m2: amap A B) x:
+  amap_lookup (aunion m1 m2) x =
+  match amap_lookup m1 x with | Some y => Some y | None => amap_lookup m2 x end.
+Proof. apply amap_union_lookup. Qed.
+
+Lemma amap_set_aunion {A B: Type} `{countable.Countable A} (m: amap A B) (x: A) (y: B):
+  amap_set m x y = aunion (amap_singleton x y) m.
+Proof.
+  apply amap_ext. intros a. rewrite aunion_lookup. unfold amap_singleton.
+  destruct (EqDecision0 x a); subst.
+  - rewrite !amap_set_lookup_same; auto.
+  - rewrite !amap_set_lookup_diff; auto.
+Qed.  
+
+Lemma amap_mem_aunion_some {A B: Type} `{countable.Countable A} (m1 m2: amap A B) x:
+  amap_mem x (aunion m1 m2) = amap_mem x m1 || amap_mem x m2.
+Proof. apply amap_mem_union_some; auto. Qed.
+
+(*[aunion] and remove*)
+
+Lemma aunion_remove_infst {A B: Type} `{countable.Countable A} (m1 m2: amap A B) (x1: A) :
+  amap_mem x1 m1 ->
+  aunion m1 (amap_remove _ _ x1 m2) = aunion m1 m2.
+Proof.
+  rewrite amap_mem_spec. intros Hmem.
+  apply amap_ext. intros x.
+  rewrite !aunion_lookup.
+  destruct (EqDecision0 x x1); subst.
+  - rewrite amap_remove_same; auto. destruct (amap_lookup m1 x1); auto. discriminate.
+  - rewrite amap_remove_diff; auto.
+Qed.
+
+Lemma aunion_remove_not_infst {A B: Type} `{countable.Countable A} (m1 m2: amap A B) (x1: A) :
+  ~ amap_mem x1 m1 ->
+  aunion  m1 (amap_remove _ _ x1 m2) = 
+  amap_remove _ _ x1 (aunion m1 m2).
+Proof.
+  rewrite amap_mem_spec. intros Hmem.
+  apply amap_ext. intros x.
+  rewrite !aunion_lookup.
+  destruct (EqDecision0 x x1); subst.
+  - rewrite !amap_remove_same. destruct (amap_lookup m1 x1); auto. exfalso; apply Hmem; auto.
+  - rewrite !amap_remove_diff; auto. rewrite !aunion_lookup. auto.
+Qed.
+
+Lemma amap_set_aunion_fst  {A B: Type} `{countable.Countable A} (m1 m2: amap A B) x y:
+  amap_set (aunion m1 m2) x y = aunion (amap_set m1 x y) m2.
+Proof.
+  apply amap_ext. intros z. rewrite aunion_lookup.
+  destruct (EqDecision0 x z); subst.
+  - rewrite !amap_set_lookup_same; auto.
+  - rewrite !amap_set_lookup_diff by auto. rewrite aunion_lookup; auto.
+Qed.
+
+Lemma amap_union_assoc  {A B: Type} `{countable.Countable A} (m1 m2 m3: amap A B):
+  aunion m1 (aunion m2 m3) = aunion (aunion m1 m2) m3.
+Proof.
+  apply amap_ext. intros x. rewrite !aunion_lookup.
+  destruct (amap_lookup m1 x); auto.
+Qed.
+
+(*Note that it is very important we choose the first such variable in the union - we want to
+  overwrite with newly bound pattern variables*)
+Lemma aunion_set_infst {A B: Type} `{countable.Countable A} (m1 m2: amap A B) (x: A) (y: B):
+  amap_mem x m1 ->
+  aunion m1 (amap_set m2 x y) = aunion m1 m2.
+Proof.
+  intros Hmem.
+  apply amap_ext. intros z.
+  rewrite !aunion_lookup.
+  rewrite amap_mem_spec in Hmem.
+  destruct (EqDecision0 x z); subst.
+  - rewrite amap_set_lookup_same.
+    destruct (amap_lookup m1 z); auto. discriminate.
+  - rewrite amap_set_lookup_diff; auto.
+Qed.
+
+Lemma aunion_set_not_infst {A B: Type} `{countable.Countable A} (m1 m2: amap A B) (x: A) (y: B):
+  ~ amap_mem x m1 ->
+  aunion m1 (amap_set m2 x y) = amap_set (aunion m1 m2) x y.
+Proof.
+  intros Hmem.
+  apply amap_ext. intros z.
+  rewrite !aunion_lookup.
+  rewrite amap_mem_spec in Hmem.
+  destruct (EqDecision0 x z); subst.
+  - rewrite !amap_set_lookup_same.
+    destruct (amap_lookup m1 z); auto. exfalso; apply Hmem; auto.
+  - rewrite !amap_set_lookup_diff; auto.
+    rewrite aunion_lookup. auto.
+Qed.
+
+Lemma notin_amap_mem_union {A B: Type} `{countable.Countable A} (m1 m2: amap A B) (x: A):
+  ~ amap_mem x m1 ->
+  ~ amap_mem x m2 ->
+  ~ amap_mem x (aunion m1 m2).
+Proof.
+  rewrite amap_mem_aunion_some.
+  destruct (amap_mem x m1); auto.
+Qed.
+
+Lemma aunion_empty_r {A B: Type} `{countable.Countable A} (m: amap A B):
+  aunion m amap_empty = m.
+Proof.
+  apply amap_ext. intros x. rewrite aunion_lookup, amap_empty_get.
+  destruct (amap_lookup m x); auto.
+Qed.
+
+(*Rewrite map m to a fold over its elements*)
+Lemma amap_eq_fold {A B: Type} `{countable.Countable A} (m: amap A B) :
+  m = fold_right (fun x acc => amap_set acc (fst x) (snd x)) amap_empty (AssocList.elements m).
+Proof.
+  apply amap_ext.
+  intros x.
+  assert (Hn: List.NoDup (map fst (AssocList.elements m))) by (apply keylist_Nodup).
+  destruct (amap_lookup m x) as [y|] eqn : Hlook.
+  - rewrite <- in_elements_iff in Hlook.
+    induction (AssocList.elements m) as [| [x1 y1] tl IH]; simpl in *; [contradiction|].
+    inversion Hn as [| ? ? Hnotin Hn']; subst.
+    destruct (EqDecision0 x1 x); subst.
+    + rewrite amap_set_lookup_same. destruct Hlook as [Heq | Hin]; [inversion Heq; subst; auto|].
+      exfalso; apply Hnotin. rewrite in_map_iff; exists (x, y); auto.
+    + rewrite amap_set_lookup_diff by auto. apply IH; auto.
+      destruct Hlook as [Heq |]; auto. inversion Heq; subst; contradiction.
+  - rewrite <- notin_in_elements_iff in Hlook.
+    induction (AssocList.elements m) as [| [x1 y1] tl IH]; simpl in *; auto.
+    inversion Hn as [| ? ? Hnotin Hn']; subst.
+    destruct (EqDecision0 x1 x); subst.
+    + exfalso; apply Hlook; auto.
+    + rewrite amap_set_lookup_diff by auto. apply IH; auto.
+Qed.
+
+(*Injective map*)
+Definition amap_inj {A B} `{countable.Countable A} (m: amap A B) : Prop :=
+  forall x1 x2 y, amap_lookup m x1 = Some y -> amap_lookup m x2 = Some y -> x1 = x2.
+
+
+(*Construction of specific maps (mainly for alpha equiv)*)
+
+(*flip keys and values*)
+
+Definition amap_flip {A B} `{countable.Countable A} `{countable.Countable B}
+  (m: amap A B) : amap B A :=
+  fold_right (fun x (acc: amap B A) => amap_set acc (snd x) (fst x)) amap_empty (AssocList.elements m).
+
+Lemma amap_flip_elts {A B} `{countable.Countable A} `{countable.Countable B} (m: amap A B)
+  (Hinj: amap_inj m):
+  forall x y, 
+  amap_lookup (amap_flip m) x = Some y <-> amap_lookup m y = Some x.
+Proof.
+  intros x y. unfold amap_flip.
+  rewrite <- (in_elements_iff _ _ y x m).
+  unfold amap_inj in Hinj.
+  repeat (setoid_rewrite <- (in_elements_iff _ _ _ _ m) in Hinj).
+  induction (AssocList.elements m) as [|h t IH]; simpl.
+  - rewrite amap_empty_get; split; try discriminate; contradiction.
+  - simpl in Hinj. destruct (EqDecision1 x (snd h)); subst.
+    + rewrite amap_set_lookup_same. split.
+      * intros Hsome; inversion Hsome; subst. left; destruct h; auto.
+      * intros [Hh | Hiny].
+        -- rewrite Hh. reflexivity.
+        -- f_equal. symmetry; apply (Hinj y (fst h) (snd h)); auto. 
+          left; destruct h; auto.
+    + rewrite amap_set_lookup_diff by auto.
+      rewrite IH; auto.
+      * split; auto. intros [Hh | Hiny]; auto.
+        rewrite Hh in n. contradiction.
+      * intros; eapply Hinj; eauto.
+Qed.
+
+
+Lemma amap_flip_none {A B: Type} `{countable.Countable A} `{countable.Countable B} (m: amap A B) x:
+  amap_lookup (amap_flip m) x = None <-> ~ In x (vals m).
+Proof.
+  unfold amap_flip. replace (vals m) with (map snd (AssocList.elements m)) by reflexivity.
+  induction (AssocList.elements m) as [| [h1 h2] t IH]; simpl; auto.
+  - rewrite amap_empty_get. split; auto. 
+  - split.
+    + destruct (EqDecision1 x h2); subst.
+      * rewrite amap_set_lookup_same. discriminate.
+      * rewrite amap_set_lookup_diff; auto. rewrite IH; auto. intros Hnotin C; destruct_all; subst; contradiction.
+    + intros Hnotin. destruct (EqDecision1 h2 x); subst; [exfalso; apply Hnotin; auto|].
+      rewrite amap_set_lookup_diff; auto.
+      rewrite IH; auto.
+Qed.
+
+Lemma flip_empty {A B: Type} `{countable.Countable A} `{countable.Countable B}: 
+  amap_flip (@amap_empty A B _ _) = amap_empty.
+Proof.
+  reflexivity.
+Qed.
+
+(*Map with identical elements*)
+Definition id_map {A: Type} `{countable.Countable A} (s: aset A) : amap A A :=
+  fold_right (fun x acc => amap_set acc x x) amap_empty (aset_to_list s).
+
+Lemma id_map_lookup {A: Type} `{countable.Countable A} (s: aset A) x y:
+  amap_lookup (id_map s) x = Some y <-> x = y /\ aset_mem x s.
+Proof.
+  unfold id_map. rewrite <- aset_to_list_in.
+  induction (aset_to_list) as [| h t IH]; simpl; auto.
+  - rewrite amap_empty_get. split; [discriminate| intros; destruct_all; contradiction].
+  - destruct (EqDecision0 x h); subst.
+    + rewrite amap_set_lookup_same. split; intros Hsome; destruct_all; auto. inversion Hsome; auto.
+    + rewrite amap_set_lookup_diff by auto. rewrite IH. split; intros; destruct_all; auto. contradiction.
+Qed.
+
+Lemma id_map_lookup_none {A: Type} `{countable.Countable A} (s: aset A) x:
+  amap_lookup (id_map s) x = None <-> ~ aset_mem x s.
+Proof.
+  pose proof (id_map_lookup s x x) as Hlook.
+  assert (Hsimpl: x = x /\ aset_mem x s <-> aset_mem x s) by (split; intros; destruct_all; auto).
+  rewrite Hsimpl in Hlook; clear Hsimpl. rewrite <- Hlook.
+  split; intros Hlookup.
+  - rewrite Hlookup. auto.
+  - destruct (amap_lookup (id_map s) x) as [y|] eqn : Hget; auto.
+    apply id_map_lookup in Hget. destruct Hget; subst; contradiction.
+Qed.
+
+Lemma id_map_id {A: Type} `{countable.Countable A} (s: aset A):
+  forall x y, amap_lookup (id_map s) x = Some y -> x = y.
+Proof.
+  intros x y Hlook. apply id_map_lookup in Hlook. apply Hlook.
+Qed.
+
+Lemma id_map_elts {A: Type} `{countable.Countable A} (s: aset A):
+  forall x, amap_mem x (id_map s) <-> aset_mem x s.
+Proof.
+  intros x. rewrite amap_mem_spec.
+  destruct (amap_lookup (id_map s) x) as [y|] eqn : Hlook; split; auto; try discriminate.
+  - apply id_map_lookup in Hlook. intros _. apply Hlook.
+  - apply id_map_lookup_none in Hlook. intros Hmem; contradiction.
+Qed.
+
+Lemma id_map_singleton {A: Type} `{countable.Countable A} (x: A):
+  id_map (aset_singleton x) = amap_singleton x x.
+Proof.
+  apply amap_ext. intros y. unfold amap_singleton.
+  destruct (EqDecision0 x y); subst.
+  - rewrite amap_set_lookup_same. apply id_map_lookup. split; simpl_set; auto.
+  - rewrite amap_set_lookup_diff by auto. rewrite amap_empty_get.
+    apply id_map_lookup_none. simpl_set. auto.
+Qed.
+
+
+(**)
+
+
+
 
 
 (*NOTE: we DO need associat*)

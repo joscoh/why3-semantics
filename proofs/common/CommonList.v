@@ -494,6 +494,19 @@ Proof.
   rewrite NoDup_app_iff; intros; split_all; auto.
 Qed.
 
+Lemma NoDup_map_inj {A B: Type} (f: A -> B) (l: list A)
+  (Hinj: forall x y, List.In x l -> List.In y l -> f x = f y -> x = y):
+  NoDup l ->
+  NoDup (map f l).
+Proof.
+  induction l; simpl; intros; constructor; auto; inversion H; subst; 
+  simpl in *; auto.
+  intro C. simpl in *. rewrite in_map_iff in C.
+  destruct C as [b [Hab Hinb]].
+  assert (a = b) by (apply Hinj; auto).
+  subst. contradiction.
+Qed.
+
 End NoDupLemmas.
 
 Section CombineLemmas.
@@ -1135,6 +1148,17 @@ Proof.
   unfold all2. rewrite map2_map. reflexivity.
 Qed.
 
+Lemma all2_impl {A B: Type} {f1 f2: A -> B -> bool} l1 l2:
+  (forall x y, f1 x y -> f2 x y) ->
+  all2 f1 l1 l2 ->
+  all2 f2 l1 l2.
+Proof.
+  intros Himpl. revert l2. induction l1 as [| h1 t1 IH]; intros [| h2 t2]; simpl; auto.
+  rewrite !all2_cons. unfold is_true. rewrite !andb_true_iff; intros [Hf Ht]; split; auto.
+  - apply Himpl; auto.
+  - apply IH; auto.
+Qed. 
+
 End All2.
 
 Section Forall2.
@@ -1743,6 +1767,13 @@ Proof.
   rewrite app_nil_r.
   eapply Permutation_trans. apply Permutation_app_comm.
   apply Permutation_app_head; auto.
+Qed.
+
+Lemma permutation_refl' {A: Type} (l1 l2: list A):
+  l1 = l2 ->
+  Permutation l1 l2.
+Proof.
+  intros; subst; apply Permutation_refl.
 Qed.
 
 End Perm.

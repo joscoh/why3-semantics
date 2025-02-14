@@ -187,6 +187,13 @@ Qed.
 Lemma aset_to_list_nodup (a: aset) : List.NoDup (aset_to_list a).
 Proof. apply NoDup_ListNoDup, NoDup_elements. Qed.
 
+Lemma aset_to_list_to_aset (l: list A) (Hn: List.NoDup l):
+  Permutation (aset_to_list (list_to_aset l)) l.
+Proof.
+  unfold aset_to_list, list_to_aset. 
+  apply elements_list_to_set, NoDup_ListNoDup; auto.
+Qed.
+
 (*Remove*)
 Definition aset_remove (x: A) (s: aset) : aset :=
   s ∖ (aset_singleton x).
@@ -457,6 +464,21 @@ Proof.
   unfold aset_mem, aset_map. rewrite elem_of_map. reflexivity.
 Qed.
 
+Lemma map_aset_to_list {A B: Type} `{A_count: Countable A} `{B_count: Countable B} 
+  (f: A -> B) (s: aset A) 
+  (Hinj: forall x y, aset_mem _ x s -> aset_mem _  y s -> f x = f y -> x = y)   :
+  Permutation (map f (aset_to_list _  s)) (aset_to_list _ (aset_map f s)).
+Proof.
+  unfold aset_to_list, aset_map. unfold set_map.
+  assert  (Hmap: (f <$> elements s) = (map f (elements s))).
+  { reflexivity. }
+  rewrite Hmap.
+  symmetry. apply elements_list_to_set.
+  apply NoDup_ListNoDup. apply NoDup_map_inj.
+  - unfold aset_mem in Hinj.
+    intros x y Hinx Hiny. apply Hinj; rewrite <- elem_of_elements; apply elem_of_list_In; auto.
+  - apply NoDup_ListNoDup, NoDup_elements.
+Qed. 
 (*TODO: do we need to prove inverse?*)
 
 
@@ -520,6 +542,9 @@ Ltac simpl_set_goal_small :=
   (*singleton*)
   | H: aset_mem ?x (aset_singleton ?y) |- _ => rewrite aset_mem_singleton in H
   | |- context [ aset_mem ?x (aset_singleton ?y)] => rewrite aset_mem_singleton
+  (*filter*)
+  | H: aset_mem ?x (aset_filter ?f ?y) |- _ => rewrite aset_mem_filter in H
+  | |- context [ aset_mem ?x (aset_filter ?f ?y)] => rewrite aset_mem_filter
   (*empty*)
   | H: aset_mem ?x aset_empty |- _ => apply aset_mem_empty in H; contradiction 
   (*intersect*)
@@ -638,6 +663,16 @@ Proof.
     + simpl in H2 |- *. apply (proj1 H0); lia.
 Qed.
 
+Lemma disj_cons_big_union {A B: Type} `{countable.Countable B} (f: A -> aset B) (x: A) (l: list A):
+  disj_map' f (x :: l) ->
+  forall y, ~ (aset_mem y (f x) /\ aset_mem y (aset_big_union f l)).
+Proof.
+  rewrite disj_map_cons_iff. intros [_ Hdisj] y [Hin1 Hin2]. simpl_set.
+  destruct Hin2 as [z [Hinz Hin2]]. 
+  destruct (In_nth _ _ x Hinz) as [i [Hi Hz]]; subst z.
+  apply (Hdisj i x y); auto.
+Qed.
+
 Lemma disj_map_cons_impl {A B: Type} `{countable.Countable B} {f: A -> aset B} {a: A} {l: list A}:
   disj_map' f (a :: l) ->
   disj_map' f l.
@@ -645,6 +680,22 @@ Proof.
   rewrite disj_map_cons_iff. 
   intros Hd; apply Hd.
 Qed.
+
+(*Nicer for induction (TODO: should probably just use this and put in Typing rules)*)
+Lemma disj_map_cons_iff' {A B: Type} `{countable.Countable B} {f: A -> aset B} (x: A) (l: list A):
+  disj_map' f (x :: l) <->
+  disj_map' f l /\ aset_disj (f x) (aset_big_union f l).
+Proof.
+  split.
+  - intros Hdisj. split.
+    + apply disj_map_cons_impl in Hdisj; auto.
+    + rewrite aset_disj_equiv. intros y. apply disj_cons_big_union with (y:=y) in Hdisj; auto.
+  - intros [Hdisj1 Hdisj2]. rewrite disj_map_cons_iff. split; auto.
+    intros i d y Hi [Hiny1 Hiny2].
+    rewrite aset_disj_equiv in Hdisj2. specialize (Hdisj2 y).
+    apply Hdisj2. split; auto. simpl_set. exists (nth i l d). split; auto. apply nth_In; auto.
+Qed.
+
 
 Lemma aset_disj_map_inv {B C: Type} `{countable.Countable B} `{countable.Countable C} (f: B -> C) (s1 s2: aset B):
   aset_disj (aset_map f s1) (aset_map f s2) ->
@@ -736,10 +787,109 @@ Proof.
   destruct_all; eauto.
 Qed.
 
+(*Other lemmas*)
+
+Lemma aset_filter_big_union {A B: Type} `{countable.Countable A} (f: B -> aset A) (p: A -> bool) (l: list B):
+  aset_filter p (aset_big_union f l) =
+  aset_big_union (fun x => aset_filter p (f x)) l.
+Proof.
+  apply aset_ext. intros x. rewrite aset_mem_filter. simpl_set.
+  setoid_rewrite aset_mem_filter.
+  split; intros; destruct_all; eauto.
+Qed.
 
 
+Lemma aset_big_union_ext {A B: Type} `{countable.Countable A} (l1 l2: list B)
+  (f1 f2: B -> aset A):
+  length l1 = length l2 ->
+  Forall (fun t => f1 (fst t) = f2 (snd t)) (combine l1 l2) ->
+  aset_big_union f1 l1 = aset_big_union f2 l2.
+Proof.
+  revert l2. induction l1 as [| h1 t1 IH]; intros [| h2 t2]; simpl; try discriminate; auto.
+  intros Hlen Hall. inversion Hall; subst.
+  rewrite !aset_big_union_cons. f_equal; auto.
+Qed. 
+
+(*NOTE: these proofs become much simpler when we can reason by extensionality*)
+Lemma aset_filter_union {A: Type} `{countable.Countable A} (p: A -> bool) (s1 s2: aset A):
+  aset_filter p (aset_union s1 s2) =
+  aset_union (aset_filter p s1) (aset_filter p s2).
+Proof.
+  apply aset_ext. intros x. simpl_set. tauto. 
+Qed.
+
+Definition aset_remove_filter {A: Type} `{countable.Countable A} (* (p: A -> bool) *) (x: A) (s: aset A) :
+  aset_remove x s = aset_filter (fun y => negb (EqDecision0 x y)) s.
+Proof.
+  apply aset_ext. intros y. simpl_set.
+  split; intros; destruct_all; subst; split; auto;
+  destruct (EqDecision0 x y); subst; auto.
+Qed.
+
+Lemma aset_diff_filter {A: Type} `{countable.Countable A} (s1: aset A) (s: aset A):
+  aset_diff s1 s = aset_filter (fun y => negb (aset_mem_dec y s1)) s.
+Proof.
+  apply aset_ext. intros y. simpl_set.
+  split; intros; destruct_all; destruct (aset_mem_dec y s1); auto. discriminate.
+Qed.
+
+Lemma aset_filter_filter {A: Type} `{countable.Countable A} (p1 p2: A -> bool) (s: aset A):
+  aset_filter p2 (aset_filter p1 s) = aset_filter (fun x => p1 x && p2 x) s.
+Proof.
+  apply aset_ext. intros. simpl_set. rewrite andb_true. apply and_assoc.
+Qed.
+
+Lemma aset_filter_ext {A: Type} `{countable.Countable A} (p1 p2: A -> bool)
+  (Hext: forall x, p1 x = p2 x) (s: aset A):
+  aset_filter p1 s = aset_filter p2 s.
+Proof.
+  apply aset_ext. intros. simpl_set. rewrite !Hext. reflexivity.
+Qed.
+
+Lemma aset_to_list_length {A: Type} `{countable.Countable A} (s: aset A):
+  length (aset_to_list s) = aset_size s.
+Proof. reflexivity. Qed.
 
 
+Lemma list_to_aset_nil {A: Type} `{countable.Countable A}:
+  list_to_aset (@nil A) = aset_empty.
+Proof.
+  reflexivity.
+Qed.
+
+Lemma aset_union_assoc {A: Type} `{countable.Countable A} (s1 s2 s3: aset A):
+  aset_union s1 (aset_union s2 s3) = aset_union (aset_union s1 s2) s3.
+Proof.
+  apply aset_ext. intros x. simpl_set. tauto.
+Qed.
+
+Lemma aset_union_comm {A: Type} `{countable.Countable A} (s1 s2: aset A):
+  aset_union s1 s2 = aset_union s2 s1.
+Proof.
+  apply aset_ext. intros x. simpl_set; tauto.
+Qed.
+
+Lemma aset_filter_true {A: Type} `{countable.Countable A} (p: A -> bool) (s: aset A)
+  (Hall: forall x, aset_mem x s -> p x):
+  aset_filter p s = s.
+Proof.
+  apply aset_ext. intros y. rewrite aset_mem_filter.
+  split; intros; destruct_all; auto.
+Qed.
+
+Lemma aset_map_union {A B: Type} `{countable.Countable A} `{countable.Countable B} (f: A -> B)
+  (s1 s2: aset A) :
+  aset_map f (aset_union s1 s2) = aset_union (aset_map f s1) (aset_map f s2).
+Proof.
+  apply aset_ext. intros x. simpl_set_small. apply aset_mem_map_union.
+Qed.
+
+Lemma aset_map_singleton {A B: Type} `{countable.Countable A} `{countable.Countable B} (f: A -> B) (x: A):
+  aset_map f (aset_singleton x) = aset_singleton (f x).
+Proof.
+  apply aset_ext. intros z. simpl_set. setoid_rewrite aset_mem_singleton.
+  split; intros; destruct_all; subst; eauto.
+Qed.
 
 
 
