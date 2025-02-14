@@ -13090,92 +13090,106 @@ End ConvertMap.
 (*Safe substitution*)
 Section SafeSub.
 
+Definition check_disj {A: Type} `{countable.Countable A} (s1 s2: aset A) : bool :=
+  forallb (fun x => negb (aset_mem_dec x s2)) (aset_to_list s1).
+
+Lemma check_disjP {A: Type} `{countable.Countable A} (s1 s2: aset A):
+  reflect (aset_disj s1 s2) (check_disj s1 s2).
+Proof.
+  apply iff_reflect.
+  unfold check_disj. rewrite aset_disj_equiv.
+  rewrite forallb_forall.
+  setoid_rewrite aset_to_list_in.
+  split.
+  - intros Hdisj x Hinx. destruct (aset_mem_dec x s2); auto.
+    exfalso. apply (Hdisj x); auto.
+  - intros Hdisj x [Hinx1 Hinx2]. specialize (Hdisj _ Hinx1).
+    destruct (aset_mem_dec x s2); auto.
+Qed.
+
 (*Multiple safe substitution - should combine into one,
   but nicer to have single to define alpha conversion.
   Keep both for now with lemma relating them*)
-Definition safe_sub_ts (subs: list (vsymbol * term)) (t: term) :=
-  if disjb' vsymbol_eq_dec (big_union vsymbol_eq_dec tm_fv (map snd subs)) (tm_bnd t)
+Definition safe_sub_ts (subs: amap vsymbol term) (t: term) :=
+  if check_disj (aset_big_union tm_fv (vals subs)) (list_to_aset (tm_bnd t))
   then sub_ts subs t else
-  sub_ts subs (a_convert_t t (big_union vsymbol_eq_dec tm_fv (map snd subs))).
+  sub_ts subs (a_convert_t t (aset_big_union tm_fv (vals subs))).
 
 Lemma safe_sub_ts_rep subs t
-  (Hn: NoDup (map fst subs))
-  (Hall : Forall (fun x => term_has_type gamma (fst x) (snd x))
-    (combine (map snd subs) (map snd (map fst subs))))
+  (Hall : Forall (fun x : term * vty => term_has_type gamma (fst x) (snd x))
+                   (combine (vals subs) (map snd (keylist subs))))
   (vv : val_vars pd vt) (ty : vty)
   (Hty1 : term_has_type gamma (safe_sub_ts subs t) ty)
   (Hty2 : term_has_type gamma t ty):
   term_rep vv (safe_sub_ts subs t) ty Hty1 =
-  term_rep (val_with_args pd vt vv (map fst subs)
+  term_rep (val_with_args pd vt vv (keylist subs)
       (map_arg_list gamma_valid pd pdf vt pf vv 
-          (map snd subs) (map snd (map fst subs)) 
-          (map_snd_fst_len subs) Hall)) t ty Hty2.
+          (vals subs) (map snd (keylist subs)) 
+          (map_snd_fst_len (elements subs)) Hall)) t ty Hty2.
 Proof.
   revert Hty1.
   unfold safe_sub_ts.
   match goal with
-  | |- context [if (disjb' ?d ?l1 ?l2) then ?c else ?e] =>
-    destruct (disjP' d l1 l2)
+  | |- context [if (check_disj ?s1 ?s2) then ?c else ?e] =>
+    destruct (check_disjP s1 s2)
   end.
   - intros. apply sub_ts_rep; auto.
   - intros. erewrite sub_ts_rep; auto.
     rewrite <- a_convert_t_rep; auto.
-    intros x [Hinx1 Hinx2].
+    rewrite aset_disj_equiv.
+    intros x [Hinx1 Hinx2]. simpl_set_small.
     apply (a_convert_t_bnd t _ _ Hinx1); auto.
 Qed.
 
-Definition safe_sub_fs (subs: list (vsymbol * term)) (f: formula) :=
-  if disjb' vsymbol_eq_dec (big_union vsymbol_eq_dec tm_fv (map snd subs)) (fmla_bnd f)
+Definition safe_sub_fs (subs: amap vsymbol term) (f: formula) :=
+  if check_disj (aset_big_union tm_fv (vals subs)) (list_to_aset (fmla_bnd f))
   then sub_fs subs f else
-  sub_fs subs (a_convert_f f (big_union vsymbol_eq_dec tm_fv (map snd subs))).
+  sub_fs subs (a_convert_f f (aset_big_union tm_fv (vals subs))).
 
 Lemma safe_sub_fs_rep subs f
-  (Hn: NoDup (map fst subs))
-  (Hall : Forall (fun x => term_has_type gamma (fst x) (snd x))
-    (combine (map snd subs) (map snd (map fst subs))))
-  (vv : val_vars pd vt)
+  (Hall : Forall (fun x : term * vty => term_has_type gamma (fst x) (snd x))
+                   (combine (vals subs) (map snd (keylist subs))))
+  (vv : val_vars pd vt) (ty : vty)
   (Hty1 : formula_typed gamma (safe_sub_fs subs f))
   (Hty2 : formula_typed gamma f):
   formula_rep vv (safe_sub_fs subs f) Hty1 =
-  formula_rep (val_with_args pd vt vv (map fst subs)
+  formula_rep (val_with_args pd vt vv (keylist subs)
       (map_arg_list gamma_valid pd pdf vt pf vv 
-          (map snd subs) (map snd (map fst subs)) 
-          (map_snd_fst_len subs) Hall)) f Hty2.
+          (vals subs) (map snd (keylist subs)) 
+          (map_snd_fst_len (elements subs)) Hall)) f Hty2.
 Proof.
   revert Hty1.
   unfold safe_sub_fs.
   match goal with
-  | |- context [if (disjb' ?d ?l1 ?l2) then ?c else ?e] =>
-    destruct (disjP' d l1 l2)
+  | |- context [if (check_disj ?s1 ?s2) then ?c else ?e] =>
+    destruct (check_disjP s1 s2)
   end.
   - intros. apply sub_fs_rep; auto.
   - intros. erewrite sub_fs_rep; auto.
     rewrite <- a_convert_f_rep; auto.
-    intros x [Hinx1 Hinx2].
+    rewrite aset_disj_equiv.
+    intros x [Hinx1 Hinx2]. simpl_set_small.
     apply (a_convert_f_bnd f _ _ Hinx1); auto.
 Qed.
 
-
 Lemma safe_sub_ts_ty t ty (Hty1: term_has_type gamma t ty)
-  (subs: list (vsymbol * term))
-  (Hsubs: Forall (fun x => term_has_type gamma (snd x) (snd (fst x)))
-    subs):
+  (subs: amap vsymbol term)
+  (Hall: amap_Forall (fun (x : string * vty) (t : term) => term_has_type gamma t (snd x)) subs):
   term_has_type gamma (safe_sub_ts subs t) ty.
 Proof.
   unfold safe_sub_ts.
-  destruct (disjb' vsymbol_eq_dec (big_union vsymbol_eq_dec tm_fv (map snd subs)) (tm_bnd t)).
+  destruct (check_disj (aset_big_union tm_fv (vals subs)) (list_to_aset (tm_bnd t))).
   - apply sub_ts_ty; auto.
   - apply sub_ts_ty; auto. apply a_convert_t_ty; auto.
 Qed.
 
 Lemma safe_sub_fs_ty f (Hty1: formula_typed gamma f)
-  (subs: list (vsymbol * term))
-  (Hsubs: Forall (fun x => term_has_type gamma (snd x) (snd (fst x)))
-    subs):
+  (subs: amap vsymbol term)
+  (Hall: amap_Forall (fun (x : string * vty) (t : term) => term_has_type gamma t (snd x)) subs):
   formula_typed gamma (safe_sub_fs subs f).
 Proof.
   unfold safe_sub_fs.
-  destruct (disjb' vsymbol_eq_dec (big_union vsymbol_eq_dec tm_fv (map snd subs)) (fmla_bnd f)).
+  destruct (check_disj (aset_big_union tm_fv (vals subs)) (list_to_aset (fmla_bnd f))).
   - apply sub_fs_ty; auto.
   - apply sub_fs_ty; auto. apply a_convert_f_typed; auto.
 Qed.
@@ -13183,9 +13197,9 @@ Qed.
 (*t2[t1/x], renaming bound vars if needed*)
 Definition safe_sub_t (t1: term) (x: vsymbol) (t2: term) : term :=
   (*Don't do alpha conversion if the variable isn't even in the term*)
-  if in_bool vsymbol_eq_dec x (tm_fv t2) then
+  if aset_mem_dec x (tm_fv t2) then
   sub_t t1 x
-  (if (existsb (fun x => in_bool vsymbol_eq_dec x (tm_bnd t2)) (tm_fv t1)) then
+  (if (existsb (fun x => in_bool vsymbol_eq_dec x (tm_bnd t2)) (aset_to_list (tm_fv t1))) then
      (a_convert_t t2 (tm_fv t1)) else t2)
   else t2.
 
@@ -13196,8 +13210,9 @@ Lemma safe_sub_t_typed (t1: term) (x: string) (t2: term) (ty1 ty2: vty):
 Proof.
   intros.
   unfold safe_sub_t.
-  destruct (in_bool vsymbol_eq_dec (x, ty1) (tm_fv t2)); auto. 
-  destruct (existsb (fun x0 : vsymbol => in_bool vsymbol_eq_dec x0 (tm_bnd t2)) (tm_fv t1));
+  unfold vsymbol in *.
+  destruct (aset_mem_dec (x, ty1) (tm_fv t2)); auto. unfold vsymbol in *.
+  match goal with |- context [ if ?b then ?c else ?d] => destruct b end;
   apply sub_t_typed; auto.
   apply a_convert_t_ty; auto.
 Qed.
@@ -13214,9 +13229,9 @@ Lemma safe_sub_t_rep (t1 t2: term) (x: string)
 Proof.
   revert Hty3.
   unfold safe_sub_t.
-  destruct (in_bool_spec vsymbol_eq_dec (x, ty1) (tm_fv t2)).
-  - destruct (existsb (fun x0 : vsymbol => in_bool vsymbol_eq_dec x0 (tm_bnd t2)) (tm_fv t1)) eqn : Hex;
-    intros.
+  unfold vsymbol in *.
+  destruct (aset_mem_dec (x, ty1) (tm_fv t2)).
+  -  match goal with |- context [ if ?b then ?c else ?d] => destruct b eqn : Hex end; intros.
     + erewrite sub_t_rep with(Hty1:=Hty1).
       rewrite <- a_convert_t_rep.
       reflexivity.
@@ -13225,8 +13240,10 @@ Proof.
     + erewrite sub_t_rep with(Hty1:=Hty1). reflexivity.
       rewrite existsb_false in Hex.
       rewrite Forall_forall in Hex.
-      intros. intro C. specialize (Hex x0 H).
-      destruct (in_bool_spec vsymbol_eq_dec x0 (tm_bnd t2)); auto.
+      intros. intro C. setoid_rewrite aset_to_list_in in Hex. specialize (Hex x0 H).
+      (*Coq is horrible at unifying everything*)
+      revert Hex. match goal with |- context [@in_bool ?t ?dec ?x ?y] => destruct (@in_bool_spec t dec x y) end;
+      try discriminate. contradiction.
   - intros.
     erewrite term_rep_irrel.
     apply tm_change_vv.
@@ -13236,15 +13253,15 @@ Qed.
 
 (*We can also prove a nicer theorem about free vars*)
 Lemma safe_sub_t_fv (tm: term) (x: vsymbol) (t: term):
-  In x (tm_fv t) ->
+  aset_mem x (tm_fv t) ->
   forall y,
-  In y (tm_fv (safe_sub_t tm x t)) <->
-    (In y (tm_fv tm)) \/ ((In y (tm_fv t)) /\ y <> x).
+  aset_mem y (tm_fv (safe_sub_t tm x t)) <->
+    (aset_mem y (tm_fv tm)) \/ ((aset_mem y (tm_fv t)) /\ y <> x).
 Proof.
   intros.
-  unfold safe_sub_t.
-  destruct (in_bool_spec vsymbol_eq_dec x (tm_fv t)); try contradiction.
-  destruct (existsb (fun x0 : vsymbol => in_bool vsymbol_eq_dec x0 (tm_bnd t)) (tm_fv tm)) eqn : Hex.
+  unfold safe_sub_t. unfold vsymbol in *.
+  destruct (aset_mem_dec x (tm_fv t)); try contradiction.
+  match goal with |- context [ if ?b then ?c else ?d] => destruct b eqn : Hex end.
   - rewrite sub_t_fv.
     + rewrite (alpha_equiv_t_fv t). reflexivity.
       apply a_convert_t_equiv.
@@ -13258,28 +13275,29 @@ Proof.
     intros z Hz1 Hz2.
     rewrite existsb_false in Hex.
     rewrite Forall_forall in Hex.
-    specialize (Hex _ Hz2).
-    destruct (in_bool_spec vsymbol_eq_dec z (tm_bnd t)); auto.
+    setoid_rewrite aset_to_list_in in Hex. specialize (Hex _ Hz2).
+    revert Hex. match goal with |- context [@in_bool ?t ?dec ?x ?y] => destruct (@in_bool_spec t dec x y) end;
+    try discriminate. contradiction.
 Qed.
 
 Lemma safe_sub_t_notin (tm: term) (x: vsymbol) (t: term):
-  ~ In x (tm_fv t) ->
+  ~ aset_mem x (tm_fv t) ->
   safe_sub_t tm x t = t.
 Proof.
-  intros. unfold safe_sub_t.
-  destruct (in_bool_spec vsymbol_eq_dec x (tm_fv t)); auto;
-  contradiction.
+  intros. unfold safe_sub_t. unfold vsymbol in *.
+  destruct (aset_mem_dec x (tm_fv t)); auto; contradiction.
 Qed.
 
 (*And for formulas*)
 
 (*f[t1/x], renaming bound vars if needed*)
 Definition safe_sub_f (t1: term) (x: vsymbol) (f: formula) : formula :=
-  if in_bool vsymbol_eq_dec x (fmla_fv f) then
+  if aset_mem_dec x (fmla_fv f) then
   sub_f t1 x
-  (if (existsb (fun x => in_bool vsymbol_eq_dec x (fmla_bnd f)) (tm_fv t1)) then
+  (if (existsb (fun x => in_bool vsymbol_eq_dec x (fmla_bnd f)) (aset_to_list (tm_fv t1))) then
      (a_convert_f f (tm_fv t1)) else f)
   else f.
+
 
 Lemma safe_sub_f_typed (t1: term) (x: string) (f: formula) (ty1: vty):
   term_has_type gamma t1 ty1 ->
@@ -13288,8 +13306,9 @@ Lemma safe_sub_f_typed (t1: term) (x: string) (f: formula) (ty1: vty):
 Proof.
   intros.
   unfold safe_sub_f.
-  destruct (in_bool vsymbol_eq_dec (x, ty1) (fmla_fv f)); auto. 
-  destruct (existsb (fun x0 : vsymbol => in_bool vsymbol_eq_dec x0 (fmla_bnd f)) (tm_fv t1));
+  unfold vsymbol in *.
+  destruct (aset_mem_dec (x, ty1) (fmla_fv f)); auto. unfold vsymbol in *.
+  match goal with |- context [ if ?b then ?c else ?d] => destruct b end;
   apply sub_f_typed; auto.
   apply a_convert_f_typed; auto.
 Qed.
@@ -13306,9 +13325,9 @@ Lemma safe_sub_f_rep (t1: term) (x: string) (f: formula)
 Proof.
   revert Hty3.
   unfold safe_sub_f.
-  destruct (in_bool_spec vsymbol_eq_dec (x, ty1) (fmla_fv f)).
-  - destruct (existsb (fun x0 : vsymbol => in_bool vsymbol_eq_dec x0 (fmla_bnd f)) (tm_fv t1)) eqn : Hex;
-    intros.
+   unfold vsymbol in *.
+  destruct (aset_mem_dec (x, ty1) (fmla_fv f)).
+  - match goal with |- context [ if ?b then ?c else ?d] => destruct b eqn : Hex end; intros.
     + erewrite sub_f_rep with(Hty1:=Hty1).
       rewrite <- a_convert_f_rep.
       reflexivity.
@@ -13317,8 +13336,9 @@ Proof.
     + erewrite sub_f_rep with(Hty1:=Hty1). reflexivity.
       rewrite existsb_false in Hex.
       rewrite Forall_forall in Hex.
-      intros. intro C. specialize (Hex x0 H).
-      destruct (in_bool_spec vsymbol_eq_dec x0 (fmla_bnd f)); auto.
+      intros. intro C. setoid_rewrite aset_to_list_in in Hex. specialize (Hex x0 H).
+      revert Hex. match goal with |- context [@in_bool ?t ?dec ?x ?y] => destruct (@in_bool_spec t dec x y) end;
+      try discriminate. contradiction.
   - intros.
     erewrite fmla_rep_irrel.
     apply fmla_change_vv.
@@ -13327,15 +13347,15 @@ Proof.
 Qed.
 
 Lemma safe_sub_f_fv (tm: term) (x: vsymbol) (f: formula):
-  In x (fmla_fv f) ->
+  aset_mem x (fmla_fv f) ->
   forall y,
-  In y (fmla_fv (safe_sub_f tm x f)) <->
-    (In y (tm_fv tm)) \/ ((In y (fmla_fv f)) /\ y <> x).
+  aset_mem y (fmla_fv (safe_sub_f tm x f)) <->
+    (aset_mem y (tm_fv tm)) \/ ((aset_mem y (fmla_fv f)) /\ y <> x).
 Proof.
   intros.
-  unfold safe_sub_f.
-  destruct (in_bool_spec vsymbol_eq_dec x (fmla_fv f)); try contradiction.
-  destruct (existsb (fun x0 : vsymbol => in_bool vsymbol_eq_dec x0 (fmla_bnd f)) (tm_fv tm)) eqn : Hex.
+  unfold safe_sub_f. unfold vsymbol in *.
+  destruct (aset_mem_dec x (fmla_fv f)); try contradiction.
+  match goal with |- context [ if ?b then ?c else ?d] => destruct b eqn : Hex end.
   - rewrite sub_f_fv.
     + rewrite (alpha_equiv_f_fv f). reflexivity.
       apply a_convert_f_equiv.
@@ -13349,17 +13369,17 @@ Proof.
     intros z Hz1 Hz2.
     rewrite existsb_false in Hex.
     rewrite Forall_forall in Hex.
-    specialize (Hex _ Hz2).
-    destruct (in_bool_spec vsymbol_eq_dec z (fmla_bnd f)); auto.
+    setoid_rewrite aset_to_list_in in Hex. specialize (Hex _ Hz2).
+    revert Hex. match goal with |- context [@in_bool ?t ?dec ?x ?y] => destruct (@in_bool_spec t dec x y) end;
+    try discriminate. contradiction.
 Qed.
 
 Lemma safe_sub_f_notin (tm: term) (x: vsymbol) (f: formula):
-  ~ In x (fmla_fv f) ->
+  ~ aset_mem x (fmla_fv f) ->
   safe_sub_f tm x f = f.
 Proof.
-  intros. unfold safe_sub_f.
-  destruct (in_bool_spec vsymbol_eq_dec x (fmla_fv f)); auto;
-  contradiction.
+  intros. unfold safe_sub_f. unfold vsymbol in *;
+  destruct (aset_mem_dec x (fmla_fv f)); auto; contradiction.
 Qed.
 
 End SafeSub.
