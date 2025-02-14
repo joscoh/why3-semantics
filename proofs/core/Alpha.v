@@ -7013,7 +7013,7 @@ End FreeVar.
   alter the list without changing alpha equivalence.
   We need these to reason about substitution and alpha
   equivalence*)
-Section AlterList.
+(* Section AlterList. *)
 (* 
 (*1. We can always remove the second identical binding from the list*)
 Lemma alpha_equiv_full_dup (t: term) (f: formula):
@@ -13388,7 +13388,7 @@ End SafeSub.
 Section TypeVars.
 
 (*Don't need induction here, from previous lemmas*)
-Lemma alpha_equiv_p_snd p1 p2
+(* Lemma alpha_equiv_p_snd p1 p2
 (Heq: alpha_equiv_p (combine (pat_fv p1) (pat_fv p2)) p1 p2):
 map snd (pat_fv p1) = map snd (pat_fv p2).
 Proof.
@@ -13437,103 +13437,130 @@ Proof.
   - apply alpha_equiv_p_fv_len_full; auto.
   - apply alpha_equiv_p_fv_len_full; auto.
 Qed. 
+ *)
+
+Lemma or_cmp_type_vars m1 m2 (Hm1: forall x y, amap_lookup m1 x = Some y -> snd x = snd y) p1 p2
+  (Hor: or_cmp m1 m2 p1 p2):
+  pat_type_vars p1 = pat_type_vars p2.
+Proof.
+  generalize dependent p2.
+  induction p1 as [x1 | f1 tys1 ps1 IH | | p1 q1 IH1 IH2 | p1 x1 IH];
+  intros [x2| f2 tys2 ps2 | | p2 q2 | p2 x2]; try discriminate; simpl; auto.
+  - unfold or_cmp_vsym. unfold vsymbol in *. destruct (amap_lookup m1 x1) as [v3|] eqn : Hlook1; [|discriminate].
+    apply Hm1 in Hlook1. destruct (amap_lookup m2 x2) as [v4|] eqn : Hlook2; [|discriminate].
+    vsym_eq x2 v3; simpl; try discriminate. vsym_eq x1 v4; simpl; try discriminate. rewrite Hlook1; reflexivity.
+  - destruct (funsym_eq_dec _ _); subst; try discriminate.
+    destruct (Nat.eqb_spec (length ps1) (length ps2)); try discriminate.
+    destruct (list_eq_dec _ _ _); subst; try discriminate.
+    simpl. intros Hall. f_equal.
+    generalize dependent ps2. induction ps1 as [| p1 ps1 IHps]; intros [| p2 ps2]; try discriminate; auto; simpl.
+    intros Hlen. rewrite all2_cons, andb_true. intros [Hor Hall]. rewrite !aset_big_union_cons.
+    inversion IH as [| ? ? IH1 IH2]; subst. f_equal; auto.
+  - rewrite andb_true; intros [Hor1 Hor2]. f_equal; auto.
+  - rewrite andb_true; intros [Hor Hvar]. simpl. f_equal; auto.
+    revert Hvar. unfold or_cmp_vsym. unfold vsymbol in *. 
+    destruct (amap_lookup m1 x1) as [v3|] eqn : Hlook1; [|discriminate].
+    apply Hm1 in Hlook1. destruct (amap_lookup m2 x2) as [v4|] eqn : Hlook2; [|discriminate].
+    vsym_eq x2 v3; simpl; try discriminate. vsym_eq x1 v4; simpl; try discriminate. rewrite Hlook1; reflexivity.
+Qed.
+
+Lemma a_equiv_p_type_vars p1 p2 r (Halpha: a_equiv_p p1 p2 = Some r):
+  pat_type_vars p1 = pat_type_vars p2.
+Proof.
+  assert (Hor: or_cmp (fst r) (snd r) p1 p2) by (apply a_equiv_p_or_cmp_iff in Halpha; apply Halpha).
+  eapply or_cmp_type_vars; eauto.
+  apply a_equiv_p_res_types in Halpha. apply Halpha.
+Qed.
+
 
 Lemma alpha_equiv_type_vars t1 f1:
-  (forall t2 vars (Hvars: forall x y, In (x, y) vars -> snd x = snd y) 
-    (Heq: alpha_equiv_t vars t1 t2),
+  (forall t2 m1 m2 (Hvars: forall x y, amap_lookup m1 x = Some y -> snd x = snd y) 
+    (Heq: alpha_equiv_t m1 m2 t1 t2),
     tm_type_vars t1 = tm_type_vars t2) /\
-  (forall f2 vars (Hvars: forall x y, In (x, y) vars -> snd x = snd y) 
-    (Heq: alpha_equiv_f vars f1 f2),
+  (forall f2 m1 m2 (Hvars: forall x y, amap_lookup m1 x = Some y -> snd x = snd y) 
+    (Heq: alpha_equiv_f m1 m2 f1 f2),
     fmla_type_vars f1 = fmla_type_vars f2).
 Proof.
   revert t1 f1; apply term_formula_ind; simpl; intros.
   - alpha_case t2 Heq. auto.
-  - alpha_case t2 Heq. rewrite eq_var_eq in Heq.
-    destruct (in_firstb vsymbol_eq_dec vsymbol_eq_dec (v, v0) vars) eqn : Hin;
-    simpl in Heq.
-    + apply in_firstb_in in Hin.
-      apply Hvars in Hin. rewrite Hin. reflexivity.
-    + bool_hyps. repeat simpl_sumbool.
+  - alpha_case t2 Heq. rewrite alpha_equiv_var_iff in Heq.
+    destruct Heq as [[Hlook _] | [_ [_ Heq]]]; subst; auto.
+    f_equal; auto.
   - alpha_case t2 Heq. bool_hyps. repeat simpl_sumbool.
     f_equal. nested_ind_case.
     rewrite all2_cons in H1. bool_hyps.
-    rewrite -> Hp with(t2:=t) (vars:=vars); auto. f_equal. auto.
+    rewrite !aset_big_union_cons.
+    rewrite -> Hp with(t2:=t)(m1:=m1)(m2:=m2); auto. f_equal. auto.
   - alpha_case t2 Heq. bool_hyps. repeat simpl_sumbool.
-    rewrite -> e, (H t2_1 vars), (H0 t2_2 ((v, v0) :: vars)); auto;
-    simpl; intros; destruct_all; auto. inversion H1; subst; auto. 
+    rewrite -> e, (H t2_1 m1 m2), (H0 t2_2 (amap_set m1 v v0) (amap_set m2 v0 v)); auto;
+    simpl; intros; destruct_all; auto.
+    apply amap_set_lookup_iff in H1. destruct_all; auto.
   - alpha_case t0 Heq. bool_hyps.
-    rewrite -> (H f0 vars), (H0 t0_1 vars), (H1 t0_2 vars); auto.
+    rewrite -> (H f0 m1 m2), (H0 t0_1 m1 m2), (H1 t0_2 m1 m2); auto.
   - alpha_case t2 Heq. bool_hyps. repeat simpl_sumbool.
-    rewrite (H t2 vars); auto.
+    rewrite (H t2 m1 m2); auto.
     f_equal.
     + f_equal. 
       nested_ind_case.
       rewrite all2_cons in H2.
-      bool_hyps.
-      rewrite (alpha_equiv_p_type_vars _ _ H2). f_equal. auto.
+      bool_hyps. rewrite !aset_big_union_cons.
+      destruct (a_equiv_p (fst a) (fst p)) eqn : Halphap; [|discriminate].
+      rewrite (a_equiv_p_type_vars _ _ _  Halphap). f_equal; auto.
     + f_equal. nested_ind_case. destruct a; destruct p.
       rewrite all2_cons in H2.
       bool_hyps.
-      simpl in Hp.
-      rewrite (Hp t0 (add_vals (pat_fv (fst (p0, t))) (pat_fv (fst (p, t0))) vars));
-      auto. f_equal; auto.
-      unfold add_vals.
-      simpl. intros x y.
-      rewrite in_app_iff; intros [Hinxy | Hinxy]; auto.
-      rewrite in_combine_iff in Hinxy;
-      [| apply alpha_equiv_p_fv_len_full; auto].
-      destruct Hinxy as [i [Hi Hxy]].
-      specialize (Hxy vs_d vs_d); inversion Hxy; subst; auto.
-      simpl in H2.
-      rewrite (alpha_equiv_p_fv_full _ _ H2).
-      simpl. rewrite -> map_nth_inbound with (d2:=vs_d); auto.
-      erewrite <- mk_fun_vars_eq_full; auto. apply nth_In; auto.
+      simpl in Hp. rewrite !aset_big_union_cons. simpl.
+      simpl in *. destruct (a_equiv_p p0 p) as [[r1 r2]|] eqn : Halphap; [|discriminate].
+      erewrite Hp. 3: apply H2.
+      * f_equal; auto.
+      * intros x y. rewrite aunion_lookup.  apply a_equiv_p_res_types in Halphap.
+        destruct Halphap as [Ha1 _]. unfold vsymbol in *.
+        destruct (amap_lookup r1 x) as [z|] eqn : Hlook; auto; 
+        intros Hsome; inversion Hsome; subst; auto.
   - alpha_case t2 Heq. bool_hyps; repeat simpl_sumbool.
-    rewrite -> e, (H f0 ((v, v0) :: vars)); auto; simpl; intros;
-    destruct_all; auto. inversion H0; subst; auto.
+    f_equal; [|f_equal; auto]. eapply H; [| apply H1].
+    intros x y Hlook. apply amap_set_lookup_iff in Hlook. destruct_all; auto.
   - alpha_case f2 Heq. bool_hyps. repeat simpl_sumbool.
     f_equal. nested_ind_case.
     rewrite all2_cons in H1. bool_hyps.
-    rewrite -> Hp with(t2:=t) (vars:=vars); auto. f_equal. auto.
+    rewrite !aset_big_union_cons.
+    rewrite -> Hp with(t2:=t)(m1:=m1)(m2:=m2); auto. f_equal. auto.
   - alpha_case f2 Heq. bool_hyps; repeat simpl_sumbool.
-    rewrite -> e, (H f2 ((v, v0) :: vars)); auto; simpl; intros;
-    destruct_all; auto. inversion H0; subst; auto.
+    rewrite e. f_equal. eapply H. 2: apply H1.
+    intros x y Hlook. apply amap_set_lookup_iff in Hlook. destruct_all; auto.
   - alpha_case f2 Heq. bool_hyps; repeat simpl_sumbool.
-    rewrite -> (H t vars), (H0 t0 vars); auto.
-  - alpha_case f0 Heq. bool_hyps.
-    rewrite -> (H f0_1 vars), (H0 f0_2 vars); auto.
-  - alpha_case f2 Heq. apply (H _ vars); auto.
+    rewrite -> (H t m1 m2), (H0 t0 m1 m2); auto.
+  - alpha_case f0 Heq. bool_hyps. 
+    rewrite -> (H f0_1 m1 m2), (H0 f0_2 m1 m2); auto.
+  - alpha_case f2 Heq. apply (H _ m1 m2); auto.
   - alpha_case f2 Heq. auto.
   - alpha_case f2 Heq; auto.
   - alpha_case f2 Heq. bool_hyps; repeat simpl_sumbool.
-    rewrite -> e, (H t vars), (H0 f2 ((v, v0) :: vars)); auto;
-    simpl; intros; destruct_all; auto. inversion H1; subst; auto.
+    rewrite -> e, (H t m1 m2), (H0 f2 (amap_set m1 v v0) (amap_set m2 v0 v)); auto;
+    simpl; intros; destruct_all; auto.
+    apply amap_set_lookup_iff in H1. destruct_all; auto.
   - alpha_case f0 Heq. bool_hyps.
-    rewrite -> (H f0_1 vars), (H0 f0_2 vars), (H1 f0_3 vars); auto.
+    rewrite -> (H f0_1 m1 m2), (H0 f0_2 m1 m2), (H1 f0_3 m1 m2); auto.
   - alpha_case f2 Heq. bool_hyps. repeat simpl_sumbool.
-    rewrite (H t vars); auto.
+    rewrite (H t m1 m2); auto.
     f_equal.
     + f_equal. 
       nested_ind_case.
       rewrite all2_cons in H2.
-      bool_hyps.
-      rewrite (alpha_equiv_p_type_vars _ _ H2). f_equal. auto.
+      bool_hyps. rewrite !aset_big_union_cons.
+      destruct (a_equiv_p (fst a) (fst p)) eqn : Halphap; [|discriminate].
+      rewrite (a_equiv_p_type_vars _ _ _  Halphap). f_equal; auto.
     + f_equal. nested_ind_case. destruct a; destruct p.
       rewrite all2_cons in H2.
-      bool_hyps. simpl in Hp.
-      rewrite (Hp f0 (add_vals (pat_fv p0) (pat_fv p) vars));
-      auto. f_equal; auto.
-      unfold add_vals.
-      simpl. intros x y.
-      rewrite in_app_iff; intros [Hinxy | Hinxy]; auto.
-      rewrite in_combine_iff in Hinxy;
-      [| apply alpha_equiv_p_fv_len_full; auto].
-      destruct Hinxy as [i [Hi Hxy]].
-      specialize (Hxy vs_d vs_d); inversion Hxy; subst; auto.
-      simpl in H2.
-      rewrite (alpha_equiv_p_fv_full _ _ H2).
-      simpl. rewrite -> map_nth_inbound with (d2:=vs_d); auto.
-      erewrite <- mk_fun_vars_eq_full; auto. apply nth_In; auto.
+      bool_hyps.
+      simpl in Hp. rewrite !aset_big_union_cons. simpl.
+      simpl in *. destruct (a_equiv_p p0 p) as [[r1 r2]|] eqn : Halphap; [|discriminate].
+      erewrite Hp. 3: apply H2.
+      * f_equal; auto.
+      * intros x y. rewrite aunion_lookup.  apply a_equiv_p_res_types in Halphap.
+        destruct Halphap as [Ha1 _]. unfold vsymbol in *.
+        destruct (amap_lookup r1 x) as [z|] eqn : Hlook; auto; 
+        intros Hsome; inversion Hsome; subst; auto.
 Qed.
 
 Definition alpha_equiv_t_type_vars t1 := proj_tm alpha_equiv_type_vars t1.
@@ -13544,16 +13571,16 @@ Corollary a_equiv_t_type_vars t1 t2:
   a_equiv_t t1 t2 ->
   tm_type_vars t1 = tm_type_vars t2.
 Proof.
-  intros. apply alpha_equiv_t_type_vars with (vars:=nil); simpl; auto;
-  intros; contradiction.
+  intros. apply alpha_equiv_t_type_vars with (m1:=amap_empty)(m2:=amap_empty); auto. 
+  setoid_rewrite amap_empty_get. discriminate.
 Qed.
 
 Corollary a_equiv_f_type_vars f1 f2:
   a_equiv_f f1 f2 ->
   fmla_type_vars f1 = fmla_type_vars f2.
 Proof.
-  intros. apply alpha_equiv_f_type_vars with (vars:=nil); simpl; auto;
-  intros; contradiction.
+  intros. apply alpha_equiv_f_type_vars with (m1:=amap_empty)(m2:=amap_empty); auto. 
+  setoid_rewrite amap_empty_get. discriminate.
 Qed.
 
 Lemma safe_sub_f_mono tm x f:
@@ -13561,16 +13588,15 @@ Lemma safe_sub_f_mono tm x f:
   mono f ->
   mono (safe_sub_f tm x f).
 Proof.
-  intros. unfold safe_sub_f.
-  destruct (in_bool_spec vsymbol_eq_dec x (fmla_fv f)); auto.
-  destruct ( existsb (fun x0 : vsymbol => in_bool vsymbol_eq_dec x0 (fmla_bnd f)) (tm_fv tm));
-  apply sub_f_mono; auto.
+  intros. unfold safe_sub_f. unfold vsymbol in *.
+  destruct (aset_mem_dec x (fmla_fv f)); auto.
+  match goal with |- context [ if ?b then ?c else ?d] => destruct b eqn : Hex end; apply sub_f_mono; auto.
   unfold mono.
   (*rewrite eq_mem_null with(l2:=fmla_type_vars f); auto.*)
-  erewrite <- alpha_equiv_f_type_vars with(vars:=nil).
+  erewrite <- alpha_equiv_f_type_vars with(m1:=amap_empty)(m2:=amap_empty).
   3: apply a_convert_f_equiv.
   apply H0.
-  simpl. intros; contradiction. 
+  setoid_rewrite amap_empty_get. discriminate.
 Qed.
 
 End TypeVars.
@@ -13690,14 +13716,14 @@ End Syms.
 
 End Alpha.
 
-Definition a_convert_gen {b: bool} (t: gen_term b) (vs: list vsymbol) : gen_term b :=
+Definition a_convert_gen {b: bool} (t: gen_term b) (vs: aset vsymbol) : gen_term b :=
   match b return gen_term b -> gen_term b with
   | true => fun t => a_convert_t t vs
   | false => fun f => a_convert_f f vs
   end t.
 
-Lemma gen_rep_a_convert {b: bool} {gamma} (gamma_valid: valid_context gamma) pd pdf pf vt vv (ty: gen_type b)
-  (e: gen_term b) (vs: list vsymbol) Hty1 Hty2:
+Lemma gen_rep_a_convert {b: bool} {gamma} (gamma_valid: valid_context gamma) pd pdf (pf: pi_funpred gamma_valid pd pdf) vt (vv: val_vars pd vt) (ty: gen_type b)
+  (e: gen_term b) (vs: aset vsymbol) Hty1 Hty2:
   gen_rep gamma_valid pd pdf pf vt vv ty (a_convert_gen e vs) Hty1 =
   gen_rep gamma_valid pd pdf pf vt vv ty e Hty2.
 Proof.
