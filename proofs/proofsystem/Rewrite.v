@@ -17,19 +17,19 @@ Fixpoint replace_tm_t (t: term) :=
   | Tlet t1 v t2 =>
     Tlet (replace_tm_t t1) v 
     (*Avoid capture -*)
-    (if in_bool vsymbol_eq_dec v (tm_fv tm_o) then t2
+    (if aset_mem_dec  v (tm_fv tm_o) then t2
     else (replace_tm_t t2))
   | Tif f t1 t2 =>
     Tif (replace_tm_f f) (replace_tm_t t1) (replace_tm_t t2)
   | Tmatch tm ty ps =>
     Tmatch (replace_tm_t tm) ty
     (map (fun x => (fst x, 
-      if existsb (fun v => in_bool vsymbol_eq_dec v (tm_fv tm_o))
-       (pat_fv (fst x))
+      if existsb (fun v => aset_mem_dec v (tm_fv tm_o))
+       (aset_to_list (pat_fv (fst x)))
          then
       snd x else (replace_tm_t (snd x)))) ps)
   | Teps f v =>
-    Teps (if in_bool vsymbol_eq_dec v (tm_fv tm_o) then f else
+    Teps (if aset_mem_dec v (tm_fv tm_o) then f else
       replace_tm_f f) v
   | _ => t
   end
@@ -38,21 +38,21 @@ with replace_tm_f (f: formula) :=
   | Fpred p tys tms =>
     Fpred p tys (map replace_tm_t tms)
   | Fquant q v f =>
-    Fquant q v (if in_bool vsymbol_eq_dec v (tm_fv tm_o) then f else
+    Fquant q v (if aset_mem_dec v (tm_fv tm_o) then f else
       replace_tm_f f)
   | Feq ty t1 t2 => Feq ty (replace_tm_t t1) (replace_tm_t t2)
   | Fbinop b f1 f2 => Fbinop b (replace_tm_f f1) (replace_tm_f f2)
   | Fnot f => Fnot (replace_tm_f f)
   | Flet t v f => Flet (replace_tm_t t) v
-    (if in_bool vsymbol_eq_dec v (tm_fv tm_o) then f 
+    (if aset_mem_dec v (tm_fv tm_o) then f 
       else (replace_tm_f f))
   | Fif f1 f2 f3 => Fif (replace_tm_f f1) (replace_tm_f f2)
     (replace_tm_f f3)
   | Fmatch tm ty ps =>
     Fmatch (replace_tm_t tm) ty
     (map (fun x => (fst x, 
-      if existsb (fun v => in_bool vsymbol_eq_dec v (tm_fv tm_o))
-      (pat_fv (fst x))
+      if existsb (fun v => aset_mem_dec v (tm_fv tm_o))
+      (aset_to_list (pat_fv (fst x)))
         then
       snd x else (replace_tm_f (snd x)))) ps)
   | _ => f
@@ -97,7 +97,7 @@ Lemma replace_tm_ty {gamma: context} tm_o tm_n
 Proof.
   revert t f. apply term_formula_ind; intros; cbn;
   try tm_case; try simpl_tys; inversion Hty; subst;
-  try case_in; constructor; auto;
+  try destruct_if; constructor; auto;
   (*solve some easy ones*)
   try solve[rewrite map_length; auto];
   try solve[rewrite null_map; auto];
@@ -180,7 +180,7 @@ Proof.
     revert Hty0.
     rewrite map_nth_inbound with (d2:=tm_d); auto; intros.
     rewrite Forall_forall in H. apply H. apply nth_In; auto.
-  - simpl_rep_full. (*Tlet*) case_in.
+  - simpl_rep_full. (*Tlet*) destruct_if.
     + erewrite H. apply term_rep_irrel.
     + erewrite H. apply H0. (*Um, why don't we need 
       to know about capture? - aha, because we assert
@@ -210,7 +210,7 @@ Proof.
     replace (f_equal (v_subst vt) (proj2' (ty_eps_inv Htysub))) with
       (f_equal (v_subst vt) (proj2' (ty_eps_inv Htyt))) by
       (apply UIP_dec; apply sort_eq_dec).
-    case_in. 
+    destruct_if.
     + erewrite fmla_rep_irrel. reflexivity.
     + erewrite H. reflexivity. 
   - (*Fpred*)
@@ -221,7 +221,7 @@ Proof.
     rewrite map_nth_inbound with (d2:=tm_d); auto; intros.
     rewrite Forall_forall in H. apply H. apply nth_In; auto.
   - (*Fquant*)
-    destruct q; apply all_dec_eq; case_in;
+    destruct q; apply all_dec_eq; destruct_if;
     split; try (intros [d Hall]; exists d); try (intros Hall d;
       specialize (Hall d));
     try solve[erewrite fmla_rep_irrel; apply Hall];
@@ -229,7 +229,7 @@ Proof.
   - (*Feq*) erewrite H, H0; reflexivity.
   - (*Fbinop*) erewrite H, H0; reflexivity.
   - (*Fnot*) erewrite H; reflexivity.
-  - (*Flet*) case_in.
+  - (*Flet*) destruct_if.
     + erewrite H. apply fmla_rep_irrel.
     + erewrite H. apply H0.
   - (*Fif*) erewrite H, H0, H1; reflexivity.
@@ -283,19 +283,19 @@ Fixpoint replace_fmla_t (t: term) :=
   | Tlet t1 v t2 =>
     Tlet (replace_fmla_t t1) v 
     (*Avoid capture -*)
-    (if in_bool vsymbol_eq_dec v (fmla_fv fmla_o) then t2
+    (if aset_mem_dec v (fmla_fv fmla_o) then t2
     else (replace_fmla_t t2))
   | Tif f t1 t2 =>
     Tif (replace_fmla_f f) (replace_fmla_t t1) (replace_fmla_t t2)
   | Tmatch tm ty ps =>
     Tmatch (replace_fmla_t tm) ty
     (map (fun x => (fst x, 
-      if existsb (fun v => in_bool vsymbol_eq_dec v (fmla_fv fmla_o))
-       (pat_fv (fst x))
+      if existsb (fun v => aset_mem_dec v (fmla_fv fmla_o))
+       (aset_to_list (pat_fv (fst x)))
          then
       snd x else (replace_fmla_t (snd x)))) ps)
   | Teps f v =>
-    Teps (if in_bool vsymbol_eq_dec v (fmla_fv fmla_o) then f else
+    Teps (if aset_mem_dec v (fmla_fv fmla_o) then f else
     replace_fmla_f f) v
   | _ => t
   end
@@ -305,21 +305,21 @@ if formula_eq_dec fmla_o f then fmla_n else
   | Fpred p tys tms =>
     Fpred p tys (map replace_fmla_t tms)
   | Fquant q v f =>
-    Fquant q v (if in_bool vsymbol_eq_dec v (fmla_fv fmla_o) then f else
+    Fquant q v (if aset_mem_dec v (fmla_fv fmla_o) then f else
     replace_fmla_f f)
   | Feq ty t1 t2 => Feq ty (replace_fmla_t t1) (replace_fmla_t t2)
   | Fbinop b f1 f2 => Fbinop b (replace_fmla_f f1) (replace_fmla_f f2)
   | Fnot f => Fnot (replace_fmla_f f)
   | Flet t v f => Flet (replace_fmla_t t) v
-    (if in_bool vsymbol_eq_dec v (fmla_fv fmla_o) then f 
+    (if aset_mem_dec v (fmla_fv fmla_o) then f 
       else (replace_fmla_f f))
   | Fif f1 f2 f3 => Fif (replace_fmla_f f1) (replace_fmla_f f2)
     (replace_fmla_f f3)
   | Fmatch tm ty ps =>
     Fmatch (replace_fmla_t tm) ty
     (map (fun x => (fst x, 
-      if existsb (fun v => in_bool vsymbol_eq_dec v (fmla_fv fmla_o))
-      (pat_fv (fst x))
+      if existsb (fun v => aset_mem_dec v (fmla_fv fmla_o))
+      (aset_to_list (pat_fv (fst x)))
         then
       snd x else (replace_fmla_f (snd x)))) ps)
   | _ => f
@@ -348,7 +348,7 @@ Lemma replace_fmla_ty {gamma: context} fmla_o fmla_n
 Proof.
   revert t f. apply term_formula_ind; intros; cbn;
   try fmla_case; try simpl_tys; inversion Hty; subst;
-  try case_in; constructor; auto;
+  try destruct_if; constructor; auto;
   (*solve some easy ones*)
   try solve[rewrite map_length; auto];
   try solve[rewrite null_map; auto];
@@ -433,7 +433,7 @@ Proof.
     revert Hty0.
     rewrite map_nth_inbound with (d2:=tm_d); auto; intros.
     rewrite Forall_forall in H. apply H. apply nth_In; auto.
-  - simpl_rep_full. (*Tlet*) case_in.
+  - simpl_rep_full. (*Tlet*) destruct_if.
     + erewrite H. apply term_rep_irrel.
     + erewrite H. apply H0. (*Um, why don't we need 
       to know about capture? - aha, because we assert
@@ -469,7 +469,7 @@ Proof.
     replace (f_equal (v_subst vt) (proj2' (ty_eps_inv Htysub))) with
       (f_equal (v_subst vt) (proj2' (ty_eps_inv Htyt))) by
       (apply UIP_dec; apply sort_eq_dec).
-    case_in. 
+    destruct_if. 
     + erewrite fmla_rep_irrel. reflexivity.
     + erewrite H. reflexivity. 
   - (*Fpred*)
@@ -480,7 +480,7 @@ Proof.
     rewrite map_nth_inbound with (d2:=tm_d); auto; intros.
     rewrite Forall_forall in H. apply H. apply nth_In; auto.
   - (*Fquant*)
-    destruct q; simpl_rep_full; apply all_dec_eq; case_in;
+    destruct q; simpl_rep_full; apply all_dec_eq; destruct_if;
     split; try (intros [d Hall]; exists d); try (intros Hall d;
       specialize (Hall d));
     try solve[erewrite fmla_rep_irrel; apply Hall];
@@ -488,7 +488,7 @@ Proof.
   - (*Feq*) simpl_rep_full. erewrite H, H0; reflexivity.
   - (*Fbinop*) simpl_rep_full. erewrite H, H0; reflexivity.
   - (*Fnot*) simpl_rep_full. erewrite H; reflexivity.
-  - (*Flet*) simpl_rep_full. case_in.
+  - (*Flet*) simpl_rep_full. destruct_if.
     + erewrite H. apply fmla_rep_irrel.
     + erewrite H. apply H0.
   - (*Fif*) simpl_rep_full. erewrite H, H0, H1; reflexivity.

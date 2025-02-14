@@ -21,29 +21,50 @@ Lemma typed_pat_match_alpha {gamma: context} (gamma_valid: valid_context gamma)
     (*Pairwise alpha equivalent and terms/length equivalent*)
     all2 (fun p1 p2 =>
       gen_term_eq_dec (snd p1) (snd p2) &&
-      (length (pat_fv (fst p1)) =? length (pat_fv (fst p2))) &&
+      isSome (a_equiv_p (fst p1) (fst p2))
+      (* (length (pat_fv (fst p1)) =? length (pat_fv (fst p2))) &&
       alpha_equiv_p (combine (pat_fv (fst p1)) (pat_fv (fst p2))) 
-        (fst p1) (fst p2)) ps ps1 /\
+        (fst p1) (fst p2) *)) ps ps1 /\
     (*length the same*)
     length ps = length ps1 /\
     (*Satisfies disjointness condition*)
-    disj (map fst (tm_fv tm)) (map fst (big_union vsymbol_eq_dec pat_fv (map fst ps1))) /\
+    aset_disj (aset_map fst (tm_fv tm)) (aset_map fst (aset_big_union pat_fv (map fst ps1))) /\
     (*typing*)
     forall x, In x ps1 ->
       pattern_has_type gamma (fst x) ty1 /\ gen_typed gamma b (snd x) ret_ty.
 Proof.
   set (ps1:= map (fun pt => 
+    (map_pat (mk_fun_str (pat_fv (fst pt)) 
+      (GenElts.gen_strs (aset_size (pat_fv (fst pt))) (aset_union (tm_fv tm) (pat_fv (fst pt)))))
+      (fst pt), snd pt)) ps : list (pattern * gen_term b)).
+  exists ps1.
+(*       
     (a_convert_map_p (combine 
       (map fst (pat_fv (fst pt)))
       (GenElts.gen_strs (length (pat_fv (fst pt))) (tm_fv tm ++ pat_fv (fst pt)))) (fst pt), 
     snd pt)) ps : list (pattern * gen_term b)).
-  exists ps1.
+  exists ps1. *)
   apply prove_and_with_impl.
   (*First, prove alpha because we need later*)
   { clear.
     subst ps1. induction ps as [| h t IH]; simpl; auto.
     rewrite all2_cons. simpl.
-    (*Need a lot*)
+    destruct (gen_term_eq_dec (snd h) (snd h)); [simpl|contradiction].
+    rewrite andb_true. split; auto.
+    rewrite map_pat_alpha_equiv; auto.
+    - intros x. rewrite amap_lookup_mk_fun_str_elts; auto. solve_len.
+    - intros x y Hmem Hlook. 
+      apply amap_lookup_mk_fun_str_some in Hlook; auto; [symmetry; apply Hlook|solve_len].
+    - intros x y Hmemx Hmemy Hlook.
+      (*NOTE: should be different lemma*)
+      destruct (amap_lookup _ _) as [z|] eqn : Hlook1.
+      + symmetry in Hlook.  eapply aset_map_mk_fun_str_inj; eauto. solve_len. apply gen_strs_nodup.
+      + rewrite <- amap_lookup_mk_fun_str_elts in Hmemx.
+        * rewrite amap_mem_spec in Hmemx. rewrite Hlook1 in Hmemx. discriminate.
+        * solve_len.
+  }
+
+   (*  (*Need a lot*)
     assert (Hlen: length (map fst (pat_fv (fst h))) =
       length (gen_strs (length (pat_fv (fst h))) (tm_fv tm ++ pat_fv
       (fst h)))).
@@ -59,13 +80,12 @@ Proof.
     + apply gen_strs_nodup.
     + intros x Hinx Hinx2. apply gen_strs_notin in Hinx2.
       apply Hinx2. rewrite in_app_iff; auto.
-  }
+  } *)
   intros Halpha. apply prove_and_with_impl.
   { subst ps1; solve_len. }
   intros Hlen.
   split.
-  - intros x [Hinx1 Hinx2].
-    rewrite in_map_iff in Hinx1, Hinx2.
+  - rewrite aset_disj_equiv. intros x [Hinx1 Hinx2]. simpl_set.
     destruct Hinx1 as [[x1 y1] [Hx Hinx1]]; subst; simpl in *.
     destruct Hinx2 as [[x2 y2] [Hx Hinx2]]; subst; simpl in *.
     simpl_set.
@@ -75,24 +95,24 @@ Proof.
     rewrite in_map_iff in Hinp; destruct Hinp as [[p2 g2] [Hpg Hinpg]];
     subst; simpl in *.
     (*Now, we get our contradiction*)
-    apply a_convert_map_p_bnd in Hinx2.
-    simpl in Hinx2.
-    destruct Hinx2 as [[Hinfv Hnotin] | [y [Hiny Hinx2]]].
-    + apply Hnotin. rewrite map_fst_combine.
-      * rewrite in_map_iff. exists (x2, y2); auto.
-      * rewrite gen_strs_length, map_length. reflexivity.
-    + assert (Hingen: In x2 (gen_strs (Datatypes.length (pat_fv p2)) (tm_fv tm ++ pat_fv p2))).
-      {
-        rewrite in_combine_iff in Hinx2;
-        [| rewrite gen_strs_length, map_length; reflexivity].
-        destruct Hinx2 as [i [Hi Hyx2]].
-        specialize (Hyx2 ""%string ""%string); inversion Hyx2; subst; auto; clear Hyx2.
-        apply nth_In; rewrite gen_strs_length; auto.
-        rewrite map_length in Hi; auto.
-      }
-      apply gen_strs_notin' in Hingen.
-      rewrite map_app, in_app_iff in Hingen.
-      apply Hingen; left. rewrite in_map_iff; exists (x2, y1); auto.
+    rewrite map_pat_free_vars in Hinx2.
+    2: { (*injectivity again TODO*)
+      intros x y Hmemx Hmemy Hlook.
+      (*NOTE: should be different lemma*)
+      destruct (amap_lookup _ _) as [z|] eqn : Hlook1.
+      + symmetry in Hlook.  eapply aset_map_mk_fun_str_inj; eauto. solve_len. apply gen_strs_nodup.
+      + rewrite <- amap_lookup_mk_fun_str_elts in Hmemx.
+        * rewrite amap_mem_spec in Hmemx. rewrite Hlook1 in Hmemx. discriminate.
+        * solve_len.
+    }
+    simpl_set. destruct Hinx2 as [x [Hxy2 Hmemx]].
+    unfold mk_fun, lookup_default in Hxy2.
+    destruct (amap_lookup _ x) as [y|] eqn : Hlook.
+    2: { rewrite amap_lookup_mk_fun_str_none in Hlook; auto. solve_len. }
+    apply amap_lookup_mk_fun_str_some in Hlook; [|solve_len].
+    subst. simpl in Hlook. destruct Hlook as [_ [Hinx2 Hy2]]; subst.
+    replace x2 with (fst (x2, y1)) in Hinx2 by auto.
+    apply gen_strs_notin in Hinx2. simpl_set. auto.
   - (*Need induction from [all2]*)
     pose proof (gen_match_typed_inv gamma b tm ty1 ps ret_ty Hpatty) as [_ [Hallty _]].
     clear -Halpha Hallty Hlen.
@@ -101,17 +121,17 @@ Proof.
     try contradiction; try discriminate.
     rewrite !all2_cons. unfold is_true.
     rewrite !andb_true_iff.
-    intros [[[Heqsnd Hlenh] Halpha] Hall] Hlen.
+    intros [[Heqsnd Halpha] Hall] Hlen.
     destruct (gen_term_eq_dec (snd h) (snd h2)); [|discriminate].
     inversion Hallty; subst.
     specialize (IH H2 _ Hall (ltac:(lia))).
     intros x [Hx | Hinx]; subst; auto.
+    destruct (a_equiv_p (fst h) (fst x)) as [[r1 r2]|] eqn : Halphap; [|discriminate].
     split.
     + (*From alpha quiv*)
-      eapply alpha_equiv_p_type_full.
-      * apply Halpha.
-      * apply Nat.eqb_eq in Hlenh; apply Hlenh.
-      * destruct_all; assumption.
+      eapply a_equiv_p_type.
+      * apply Halphap.
+      * apply H1.
     + rewrite <- e. apply H1.
 Qed.
     
@@ -138,8 +158,9 @@ Proof.
     - apply ty_rel_refl.
     - rewrite all2_map. 
       revert Halpha. apply all2_impl.
-      intros x y. unfold is_true. rewrite !andb_true_iff. intros Halpha.
-      apply shape_p_impl. eapply alpha_p_shape. apply Halpha.
+      intros x y. rewrite andb_true. intros [Hxy Halpha].
+      destruct (a_equiv_p (fst x) (fst y)) eqn : Halphap; [|discriminate].
+      apply shape_p_impl. eapply alpha_p_shape. apply Halphap.
   }
   (*Prove hypotheses for theorem*)
   assert (Htys:Forall2 (term_has_type gamma) (map fst [(tm, ty1)]) (map snd [(tm, ty1)])).
@@ -167,12 +188,11 @@ Proof.
     destruct (match_val_single _ _ _ _ _ p1 _ _) as [o2|] eqn : Hmatch2; 
     simpl; auto.
     (*use fact that [match_val_single] preserved by alpha equiv*)
-    rewrite match_val_single_alpha_p_none_iff in Hmatch2.
-    erewrite term_rep_irrel in Hmatch2.
-    rewrite Hmatch in Hmatch2. discriminate.
-    rewrite all2_cons in Hall.
-    simpl in Hall.
-    bool_hyps; eauto.
+    rewrite all2_cons, !andb_true in Hall. simpl in Hall.
+    destruct Hall as [[Ha12 Halpha] Hall].
+    destruct (a_equiv_p p1 p2) as [[r1 r2]|] eqn : Halphap; [|discriminate].
+    eapply match_val_single_alpha_p_full in Halphap. rewrite Hmatch2, Hmatch in Halphap.
+    contradiction.
   - (*IH case*) simpl. 
     intros Hmatch1 Hall Hlen Htyps.
     destruct (IH ph1 (Forall_inv_tail Hp) (Forall_inv_tail Htys2)  Hmatch1)
@@ -193,18 +213,20 @@ Proof.
 Qed.
 
 (*Prove simple_pat preserved by alpha equivalence*)
-Lemma simple_pat_alpha {l p1 p2}:
-  alpha_equiv_p l p1 p2 ->
+Lemma simple_pat_alpha {l p1 p2 r1 r2}:
+  alpha_equiv_p l p1 p2 = Some (r1, r2) ->
   simple_pat p1 ->
   simple_pat p2.
 Proof.
+  intros Halphap. apply alpha_equiv_p_or_cmp in Halphap.
+  simpl in Halphap.
   destruct p1 as [| f1 tys1 ps1 | | |]; destruct p2 as [| f2 tys2 ps2 | | |]; auto; try discriminate.
-  simpl. unfold is_true. rewrite !andb_true_iff.
+  revert Halphap; simpl. rewrite !andb_true.
   intros [[[_ Hlen] _] Hall].
   generalize dependent ps2. induction ps1 as [| h1 t1 IH]; intros [|h2 t2]; simpl;
   auto; try discriminate.
-  intros Hlen. rewrite all2_cons.
-  rewrite andb_true_iff. intros [Halpha Hall].
+  intros Hlen. rewrite all2_cons. rewrite andb_true.
+  intros [Halpha Hall].
   destruct h1; destruct h2; auto. simpl.
   auto.
 Qed.
@@ -232,9 +254,9 @@ Proof.
   destruct (null l1); auto.
 Qed.
 
-
+ 
 (*easier to prove this using [simple_pat_match_iff] - structural view*)
-Lemma simple_pat_match_alpha (f: pattern -> pattern -> list (vsymbol * vsymbol)) ps1 ps2:
+(* Lemma simple_pat_match_alpha (f: pattern -> pattern -> list (vsymbol * vsymbol)) ps1 ps2:
   length ps1 = length ps2 ->
   all2 (fun p1 p2 => alpha_equiv_p (f p1 p2) p1 p2) ps1 ps2 ->
   simple_pat_match ps1 ->
@@ -299,10 +321,10 @@ Proof.
   - rewrite <- (map_map fst) in Hnodup |- *.
     rewrite map_fst_combine; [| rewrite map_length; auto]. auto.
 Qed. 
-
+ *)
 (*Easier to prove for [simple_exhaust]*)
 (*Implication goes the other way for convienience but everything is symmetric*)
-Lemma simple_exhaust_alpha (f: pattern -> pattern -> list (vsymbol * vsymbol)) ps1 ps2 a:
+(* Lemma simple_exhaust_alpha (f: pattern -> pattern -> list (vsymbol * vsymbol)) ps1 ps2 a:
   length ps1 = length ps2 ->
   all2 (fun p1 p2 => alpha_equiv_p (f p1 p2) p1 p2) ps1 ps2 ->
   simple_exhaust ps2 a ->
@@ -330,7 +352,7 @@ Proof.
     intros Halpha. apply andb_true_iff in Halpha.
     destruct Halpha as [Halpha Hall].
     destruct h2; simpl; try discriminate; destruct h1; simpl; try discriminate; eauto.
-Qed.
+Qed. *)
 
 (*TODO: move and rename previous*)
 Lemma constr_ret_valid' {gamma} (gamma_valid: valid_context gamma): forall {c a m},
