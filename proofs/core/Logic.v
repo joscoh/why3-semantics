@@ -142,11 +142,10 @@ Proof.
   apply iff_reflect. unfold satisfies. split; intros.
   - apply H. (*trivial*)
   - erewrite fmla_change_vt. apply H.
-    + pose proof (f_mono Hc). unfold mono in H0. rewrite null_nil in H0.
-      rewrite H0. simpl. intros x [].
+    + pose proof (f_mono Hc). unfold mono in H0. intros x Hmem.
+      apply aset_is_empty_mem with (x:=x) in H0; contradiction.
     + pose proof (f_closed Hc). unfold closed_formula in H0.
-      rewrite null_nil in H0. rewrite H0.
-      intros x [].
+      intros x Hmem. apply aset_is_empty_mem with (x:=x) in H0. contradiction.
 Qed.
 
 Lemma closed_satisfies_rep
@@ -210,7 +209,7 @@ Theorem log_conseq_equiv (Delta: list formula) (f: formula)
 (Delta_ty: Forall (formula_typed gamma) Delta) 
 (Hc: closed gamma f):
 log_conseq Delta f Hc Delta_ty <->
-~ (sat_set (Fnot f :: Delta) (Forall_cons _ (f_ty (closed_not Hc)) Delta_ty)).
+~ (sat_set (Fnot f :: Delta) (Forall_cons _ _ _ (f_ty (closed_not Hc)) Delta_ty)).
 Proof.
   unfold log_conseq, sat_set.
   split.
@@ -233,16 +232,17 @@ Qed.
 
 Lemma closed_binop {b f g} (Hc1: closed gamma f) (Hc2: closed gamma g):
   closed gamma (Fbinop b f g).
-constructor.
-- apply F_Binop; [apply Hc1|apply Hc2].
-- pose proof (f_closed Hc1).
-  pose proof (f_closed Hc2).
-  unfold closed_formula in *; simpl;
-  rewrite null_nil in *; rewrite H, H0; auto.
-- pose proof (f_mono Hc1).
-  pose proof (f_mono Hc2).
-  unfold mono in *; simpl;
-  rewrite null_nil in *; rewrite H, H0; auto.
+Proof.
+  constructor.
+  - apply F_Binop; [apply Hc1|apply Hc2].
+  - pose proof (f_closed Hc1).
+    pose proof (f_closed Hc2).
+    unfold closed_formula in *; simpl.
+    rewrite aset_union_empty, andb_true; split; auto.
+  - pose proof (f_mono Hc1).
+    pose proof (f_mono Hc2).
+    unfold mono in *; simpl.
+    rewrite aset_union_empty, andb_true; split; auto.
 Qed.
 
 Lemma closed_binop_inv { b f1 f2} (Hc: closed gamma (Fbinop b f1 f2)):
@@ -250,9 +250,10 @@ Lemma closed_binop_inv { b f1 f2} (Hc: closed gamma (Fbinop b f1 f2)):
 Proof.
   inversion Hc; split; constructor;
   try (solve[inversion f_ty0; auto]);
-  unfold closed_formula, mono in *; rewrite null_nil in *; 
-  try solve[apply union_nil in f_closed0; apply f_closed0];
-  apply union_nil in f_mono0; apply f_mono0.
+  unfold closed_formula, mono in *; simpl in *;
+  rewrite aset_union_empty, andb_true in f_closed0;
+  rewrite aset_union_empty, andb_true in f_mono0;
+  try apply f_closed0; apply f_mono0.
 Qed.
 
 (*A key lemma for the theorem: I |= (f -> g)
@@ -279,7 +280,7 @@ Theorem semantic_deduction (Delta: list formula)
   (Delta_ty: Forall (formula_typed gamma) Delta)
   (Hc1: closed gamma f) (Hc2: closed gamma g):
   log_conseq (f :: Delta) g Hc2
-    (Forall_cons _ (f_ty Hc1) Delta_ty) <->
+    (Forall_cons _ _ _ (f_ty Hc1) Delta_ty) <->
   log_conseq Delta (Fbinop Timplies f g)
     (closed_binop Hc1 Hc2) Delta_ty .
 Proof.

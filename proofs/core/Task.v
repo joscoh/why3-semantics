@@ -352,13 +352,13 @@ Variable (pn_rep: forall gamma (gamma_valid: valid_context gamma)
 Variable (fn_fv: forall gamma t ty,
   valid_context gamma -> (*NOTE: we need context and typing for [compile_match]*)
   term_has_type gamma t ty ->
-  sublist (tm_fv (fn t)) (tm_fv t)).
+  asubset (tm_fv (fn t)) (tm_fv t)).
 Variable (pn_fv: forall gamma t, 
   valid_context gamma ->
   formula_typed gamma t ->
-  sublist (fmla_fv (pn t)) (fmla_fv t)).
-Variable (fn_type_vars: forall t, sublist (tm_type_vars (fn t)) (tm_type_vars t)).
-Variable (pn_type_vars: forall t, sublist (fmla_type_vars (pn t)) (fmla_type_vars t)).
+  asubset (fmla_fv (pn t)) (fmla_fv t)).
+Variable (fn_type_vars: forall t, asubset (tm_type_vars (fn t)) (tm_type_vars t)).
+Variable (pn_type_vars: forall t, asubset (fmla_type_vars (pn t)) (fmla_type_vars t)).
 Variable (fn_funsym_in: forall f t, funsym_in_tm f (fn t) -> funsym_in_tm f t).
 Variable (pn_predsym_in: forall f t, predsym_in_fmla f (pn t) -> predsym_in_fmla f t).
 (*Prove context part*)
@@ -777,12 +777,12 @@ Proof.
         split_all; auto.
         -- apply term_has_type_sublist with (g1:=nonrec_def (fun_def f l t) :: gamma); auto.
           simpl. rewrite def_map_gamma_mut. apply sublist_refl.
-        -- eapply sublist_trans. 2: apply Hsubfv. eapply fn_fv; eauto.
-        -- eapply sublist_trans. 2: apply Hsubty. apply fn_type_vars.
+        -- eapply asubset_trans. 2: apply Hsubfv. eapply fn_fv; eauto.
+        -- eapply asubset_trans. 2: apply Hsubty. apply fn_type_vars.
         -- apply formula_typed_sublist with (g1:=nonrec_def (pred_def p l f) :: gamma); auto.
           simpl. rewrite def_map_gamma_mut. apply sublist_refl. 
-        -- eapply sublist_trans. 2: apply Hsubfv. eapply pn_fv; eauto.
-        -- eapply sublist_trans. 2: apply Hsubty. apply pn_type_vars.
+        -- eapply asubset_trans. 2: apply Hsubfv. eapply pn_fv; eauto.
+        -- eapply asubset_trans. 2: apply Hsubty. apply pn_type_vars.
       * destruct f; simpl in Hnonrec |- *. unfold nonrec_def_nonrec.
         -- destruct (funsym_in_tm f (fn t)) eqn : Hf; auto.
           apply fn_funsym_in in Hf.
@@ -963,13 +963,13 @@ Variable (pn_rep: forall gamma (gamma_valid: valid_context gamma)
 Variable (fn_fv: forall gamma t ty,
   valid_context gamma -> (*NOTE: we need context and typing for [compile_match]*)
   term_has_type gamma t ty ->
-  sublist (tm_fv (fn t)) (tm_fv t)).
+  asubset (tm_fv (fn t)) (tm_fv t)).
 Variable (pn_fv: forall gamma t, 
   valid_context gamma ->
   formula_typed gamma t ->
-  sublist (fmla_fv (pn t)) (fmla_fv t)).
-Variable (fn_type_vars: forall t, sublist (tm_type_vars (fn t)) (tm_type_vars t)).
-Variable (pn_type_vars: forall t, sublist (fmla_type_vars (pn t)) (fmla_type_vars t)).
+  asubset (fmla_fv (pn t)) (fmla_fv t)).
+Variable (fn_type_vars: forall t, asubset (tm_type_vars (fn t)) (tm_type_vars t)).
+Variable (pn_type_vars: forall t, asubset (fmla_type_vars (pn t)) (fmla_type_vars t)).
 Variable (fn_funsym_in: forall f t, funsym_in_tm f (fn t) -> funsym_in_tm f t).
 Variable (pn_predsym_in: forall f t, predsym_in_fmla f (pn t) -> predsym_in_fmla f t).
 (*Prove context part*)
