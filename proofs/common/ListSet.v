@@ -891,6 +891,104 @@ Proof.
   split; intros; destruct_all; subst; eauto.
 Qed.
 
+(*More lemmas (TODO: should order better)*)
+
+
+Lemma empty_to_list {A: Type} `{countable.Countable A}: aset_to_list (@aset_empty A _ _) = nil.
+Proof. reflexivity. Qed.
+
+(*Lemmas about mapping over [aset_to_list] (mostly for TySubst)*)
+
+(*Much easier to prove this and show rest are corollary*)
+Lemma nodup_map_subset {A B: Type} `{countable.Countable A}
+  (f: A -> B) (s1 s2: aset A) (Hsub: asubset s1 s2):
+  NoDup (map f (aset_to_list s2)) ->
+  NoDup (map f (aset_to_list s1)).
+Proof.
+  intros Hnodup.
+  apply NoDup_map_inj; [| apply aset_to_list_nodup].
+  intros x y. simpl_set. intros Hmemx Hmemy Hf.
+  rewrite asubset_def in Hsub.
+  apply Hsub in Hmemx, Hmemy.
+  eapply NoDup_map_in in Hnodup; simpl_set; eauto.
+Qed.
+
+Lemma nodup_map_aset_union_inv {A B: Type} `{countable.Countable A}
+  (f: A -> B) (l1 l2: aset A):
+  NoDup (map f (aset_to_list (aset_union l1 l2))) ->
+  NoDup (map f (aset_to_list l1)) /\ NoDup (map f (aset_to_list l2)).
+Proof.
+  intros Hnodup.
+  split; revert Hnodup; apply nodup_map_subset; rewrite asubset_def; intros x; simpl_set; auto.
+Qed.
+
+Lemma nodup_map_aset_big_union_inv {A B C: Type} `{countable.Countable B}
+  (f: B -> C) (g: A -> aset B) (l: list A):
+  NoDup (map f (aset_to_list (aset_big_union g l))) ->
+  forall x, In x l ->
+  NoDup (map f (aset_to_list (g x))).
+Proof.
+  intros Hnodup x Hinx.
+  revert Hnodup; apply nodup_map_subset. rewrite asubset_def. intros y Hmemy.
+  simpl_set. exists x. auto.
+Qed.
+
+Lemma nodup_map_aset_union_inv' {A B: Type} `{countable.Countable A} `{countable.Countable B}
+  (f: A -> B) (l1 l2: aset A):
+  (forall x, ~ (aset_mem x l1 /\ aset_mem x l2)) ->
+  NoDup (map f (aset_to_list (aset_union l1 l2))) ->
+  forall x, ~ (aset_mem x (aset_map f l1) /\ aset_mem x (aset_map f l2)).
+Proof.
+  intros Hdisj Hnodup. intros x [Hinx1 Hinx2].
+  simpl_set. destruct Hinx1 as [x1 [Hx Hinx1]]. destruct Hinx2 as [x2 [Hx' Hinx2]]; subst.
+  eapply NoDup_map_in in Hnodup.
+  2: simpl_set; left; apply Hinx1.
+  2: simpl_set; right; apply Hinx2.
+  2: auto.
+  subst. apply (Hdisj x2); auto.
+Qed.
+
+Lemma nodup_map_aset_big_union_inv' {A B C: Type} `{countable.Countable B} `{countable.Countable C}
+(f: B -> C) (g: A -> aset B) (l: list A)
+(Hdisj: forall i j, (i < length l) -> (j < length l) ->
+  i <> j ->
+  forall d x, ~ (aset_mem x (g (List.nth i l d)) /\ aset_mem x (g (List.nth j l d)))):
+NoDup (map f (aset_to_list (aset_big_union g l))) ->
+forall i j, (i < length l) -> (j < length l) -> i <> j ->
+forall d x, ~(aset_mem x (aset_map f (g (List.nth i l d))) /\ 
+  aset_mem x (aset_map f (g (List.nth j l d)))).
+Proof.
+  intros Hnodup i j Hi Hj Hij d x [Hinx1 Hinx2].
+  simpl_set.
+  destruct Hinx1 as [x1 [Hx Hinx1]]. destruct Hinx2 as [x2 [Hx' Hinx2]]; subst.
+  eapply NoDup_map_in in Hnodup.
+  2: { simpl_set. exists (List.nth i l d). split; eauto. apply nth_In; auto. }
+  2: { simpl_set. exists (List.nth j l d). split; eauto. apply nth_In; auto. }
+  2: auto.
+  subst.
+  apply (Hdisj i j Hi Hj Hij d x2); auto.
+Qed.
+
+(*More lemmas*)
+
+(*We do need sublist in a few places e.g. for NoDups*)
+Lemma sublist_aset_to_list {A : Type} `{countable.Countable A} {s1 s2: aset A}:
+  sublist (aset_to_list s1) (aset_to_list s2) <-> asubset s1 s2.
+Proof.
+  unfold sublist. rewrite asubset_def.
+  setoid_rewrite aset_to_list_in. reflexivity.
+Qed.
+
+Lemma asubset_big_union {A B: Type} `{countable.Countable A}
+(f: B -> aset A) (l: list B)
+(x: B):
+In x l ->
+asubset (f x) (aset_big_union f l).
+Proof.
+  intros Hin. rewrite asubset_def. intros y Hmem.
+  simpl_set. exists x; auto.
+Qed.
+
 
 
 (* 

@@ -235,88 +235,6 @@ Proof.
       by exists x.
 Qed. 
 
-(*TODO: move*)
-Lemma empty_to_list {A: Type} `{countable.Countable A}: aset_to_list (@aset_empty A _ _) = nil.
-Proof. reflexivity. Qed.
-
-(*TODO: move*)
-(*Much easier to prove this and show rest are corollary*)
-Lemma nodup_map_subset {A B: Type} `{countable.Countable A}
-  (f: A -> B) (s1 s2: aset A) (Hsub: asubset s1 s2):
-  NoDup (map f (aset_to_list s2)) ->
-  NoDup (map f (aset_to_list s1)).
-Proof.
-  intros Hnodup.
-  apply NoDup_map_inj; [| apply aset_to_list_nodup].
-  intros x y. simpl_set. intros Hmemx Hmemy Hf.
-  rewrite asubset_def in Hsub.
-  apply Hsub in Hmemx, Hmemy.
-  eapply NoDup_map_in in Hnodup; simpl_set; eauto.
-Qed.
-
-Lemma nodup_map_aset_union_inv {A B: Type} `{countable.Countable A}
-  (f: A -> B) (l1 l2: aset A):
-  NoDup (map f (aset_to_list (aset_union l1 l2))) ->
-  NoDup (map f (aset_to_list l1)) /\ NoDup (map f (aset_to_list l2)).
-Proof.
-  intros Hnodup.
-  split; revert Hnodup; apply nodup_map_subset; rewrite asubset_def; intros x; simpl_set; auto.
-Qed.
-
-Lemma nodup_map_aset_big_union_inv {A B C: Type} `{countable.Countable B}
-  (f: B -> C) (g: A -> aset B) (l: list A)
-  (* (Hg: forall x, In x l -> NoDup (g x)) *):
-  NoDup (map f (aset_to_list (aset_big_union g l))) ->
-  forall x, In x l ->
-  NoDup (map f (aset_to_list (g x))).
-Proof.
-  intros Hnodup x Hinx.
-  revert Hnodup; apply nodup_map_subset. rewrite asubset_def. intros y Hmemy.
-  simpl_set. exists x. auto.
-Qed.
-
-(*TODO: see if we need or just for next*)
-Lemma nodup_map_aset_union_inv' {A B: Type} `{countable.Countable A} `{countable.Countable B}
-  (f: A -> B) (l1 l2: aset A):
-  (* NoDup l1 ->
-  NoDup l2 -> *)
-  (forall x, ~ (aset_mem x l1 /\ aset_mem x l2)) ->
-  NoDup (map f (aset_to_list (aset_union l1 l2))) ->
-  forall x, ~ (aset_mem x (aset_map f l1) /\ aset_mem x (aset_map f l2)).
-Proof.
-  intros Hdisj Hnodup. intros x [Hinx1 Hinx2].
-  simpl_set. destruct Hinx1 as [x1 [Hx Hinx1]]. destruct Hinx2 as [x2 [Hx' Hinx2]]; subst.
-  eapply NoDup_map_in in Hnodup.
-  2: simpl_set; left; apply Hinx1.
-  2: simpl_set; right; apply Hinx2.
-  2: auto.
-  subst. apply (Hdisj x2); auto.
-Qed.
-
-(*TODO: maybe dont need all of these, see*)
-Lemma nodup_map_aset_big_union_inv' {A B C: Type} `{countable.Countable B} `{countable.Countable C}
-(f: B -> C) (g: A -> aset B) (l: list A)
-(* (Hg: forall x, In x l -> NoDup (g x)) *)
-(Hdisj: forall i j, (i < length l)%coq_nat -> (j < length l)%coq_nat ->
-  i <> j ->
-  forall d x, ~ (aset_mem x (g (List.nth i l d)) /\ aset_mem x (g (List.nth j l d)))):
-NoDup (map f (aset_to_list (aset_big_union g l))) ->
-forall i j, (i < length l)%coq_nat -> (j < length l)%coq_nat -> i <> j ->
-forall d x, ~(aset_mem x (aset_map f (g (List.nth i l d))) /\ 
-  aset_mem x (aset_map f (g (List.nth j l d)))).
-Proof.
-  intros Hnodup i j Hi Hj Hij d x [Hinx1 Hinx2].
-  simpl_set.
-  destruct Hinx1 as [x1 [Hx Hinx1]]. destruct Hinx2 as [x2 [Hx' Hinx2]]; subst.
-  eapply NoDup_map_in in Hnodup.
-  2: { simpl_set. exists (List.nth i l d). split; eauto. apply nth_In; auto. }
-  2: { simpl_set. exists (List.nth j l d). split; eauto. apply nth_In; auto. }
-  2: auto.
-  subst.
-  apply (Hdisj i j Hi Hj Hij d x2); auto.
-Qed.
-
-
 (*[pat_names_uniq] is a complicated (recursive) condition, but really
     it is just well-typed+unique names*)
 Lemma pat_names_uniq_nodup gamma (p: pattern) ty:
@@ -1191,10 +1109,6 @@ Qed.
 (*First:if we cast d, it does not change whether the
   match succeeds or not. The dependent types make this
   very difficult to prove*)   
-(*NEED to use regular rewrite (rewrite ->) - ssreflect
-  rewrite gives additional shelved goals and leads to Qed that
-  doesn't work*)
-(*TODO: change to [opt_related] and combine these lemmas!*)
 Lemma match_val_single_ty_subst pd pdf vt (ty: vty) 
   (p: pattern)
   (Hp1: pattern_has_type gamma p ty)
@@ -1461,489 +1375,14 @@ Proof.
       }
       setoid_rewrite amap_set_lookup_diff; eauto.
 Qed.
- (* 
-
-Lemma match_val_single_ty_subst_none pd pdf vt (ty: vty) 
-  (p: pattern)
-  (Hp1: pattern_has_type gamma p ty)
-  (Hp2: pattern_has_type gamma (ty_subst_p p) (ty_subst' params tys ty))
-  (Heq: v_subst (vt_with_args vt params (map (v_subst vt) tys)) ty = 
-    v_subst vt (ty_subst' params tys ty))
-  (d: domain (dom_aux pd) (v_subst (vt_with_args vt params (map (v_subst vt) tys)) ty)):
-  match_val_single gamma_valid pd pdf vt (ty_subst' params tys ty) 
-    (ty_subst_p p) Hp2
-    (dom_cast (dom_aux pd) Heq d) = None <->
-  match_val_single gamma_valid pd pdf
-    (vt_with_args vt params (map (v_subst vt) tys)) ty p Hp1 d = None.
-Proof.
-  revert ty vt Hp1 Hp2 Heq d.
-  induction p; intros; auto; try reflexivity.
-  - split; intros C; inversion C.
-  - (*constructor case is hard*)
-    rewrite -> !match_val_single_rewrite.
-    revert Hp2. cbn. intros.
-    generalize dependent (@is_vty_adt_some gamma (ty_subst' params tys ty)).
-    generalize dependent (@is_vty_adt_some gamma ty).
-    generalize dependent (@adt_vty_length_eq gamma gamma_valid (ty_subst' params tys ty)).
-    generalize dependent (@adt_vty_length_eq gamma gamma_valid ty).
-    generalize dependent (@constr_length_eq _ gamma_valid (ty_subst' params tys ty)).
-    generalize dependent (@constr_length_eq _ gamma_valid ty).
-    destruct (is_vty_adt gamma ty) eqn : Hisadt1.
-    2: {
-      (*Show that both are none from constr assumption*)
-      assert (Hisadt2: is_vty_adt gamma (ty_subst' params tys ty) = None); [|rewrite -> Hisadt2; intros; reflexivity].
-      apply (constr_pat_is_vty_adt_none Hp1 Hp2). apply Hisadt1.
-    }
-    destruct p as [[m1 a1] vs1].
-    assert (Hvs1: vs1 = vs). {
-      apply (constr_pat_adt_args _ _ _ Hp1) in Hisadt1. auto.
-    }
-    (*Now show that other is Some with same m , a, related vs*)
-    assert (Hisadt2:=Hisadt1).
-    apply (constr_pat_is_vty_adt_some _ _ _ Hp1 Hp2) in Hisadt2.
-    rewrite -> Hisadt2.
-    intros Hvslen1 Hvslen2 Hvslen3 Hvslen4 Hadtspec1 Hadtspec2.
-    destruct (Hadtspec1 m1 a1 vs1 Logic.eq_refl) as [Hty1 [a_in m_in]].
-    destruct (Hadtspec2 m1 a1 (ty_subst_list' params tys vs1) Logic.eq_refl)
-    as [Hty2 [a_in' m_in']].
-    (*We can do a bit of simplification*)
-    assert (a_in = a_in') by (apply bool_irrelevance).
-    assert (m_in = m_in') by (apply bool_irrelevance).
-    subst m_in' a_in'; simpl.
-    generalize dependent (eq_trans (map_length (v_subst vt) (ty_subst_list' params tys vs1))
-    (Hvslen4 m1 a1 (ty_subst_list' params tys vs1) erefl
-       (pat_has_type_valid gamma
-          (Pconstr f (ty_subst_list' params tys vs) (map ty_subst_p ps))
-          (ty_subst' params tys ty) Hp2))).
-    generalize dependent (eq_trans
-    (map_length (v_subst (vt_with_args vt params (map (v_subst vt) tys))) vs1)
-    (Hvslen3 m1 a1 vs1 erefl
-       (pat_has_type_valid gamma (Pconstr f vs ps) ty Hp1))) .
-    intros.
-    clear Hvslen3 Hvslen4.
-    (*We need to know things about the [find_constr_rep]. *)
-    case_find_constr.
-    intros [f1 [[x_in1 args1] Hcast1]] [f2 [[x_in2 args2] Hcast2]]; simpl in *;
-    subst.
-    (*Finally, a reasonable goal*)
-    rewrite dom_cast_compose in Hcast2.
-    rewrite -> !eq_trans_refl_l in Hcast1.
-    assert (Heq2: map (v_subst vt) (ty_subst_list' params tys vs) =
-    map (v_subst (vt_with_args vt params (map (v_subst vt) tys))) vs). {
-      unfold ty_subst_list'.
-      apply list_eq_ext'; rewrite -> !map_length; auto.
-      intros n d' Hn.
-      rewrite -> !map_nth_inbound with (d2:=vty_int); try rewrite -> map_length; auto.
-      apply v_subst_vt_with_args'; auto.
-    }
-    (*Now we can relate the two constr_reps*)
-    assert (
-      constr_rep gamma_valid m1 m_in
-           (map (v_subst vt) (ty_subst_list' params tys vs)) e0 
-           (dom_aux pd) a1 a_in f2 x_in2
-           (adts pdf m1 (map (v_subst vt) (ty_subst_list' params tys vs))) args2 =
-      scast (f_equal 
-      (fun x => adt_rep m1 x (dom_aux pd) a1 a_in) (Logic.eq_sym Heq2)) 
-      (constr_rep gamma_valid m1 m_in
-      (map (v_subst (vt_with_args vt params (map (v_subst vt) tys))) vs) e
-      (dom_aux pd) a1 a_in f1 x_in1
-      (adts pdf m1
-         (map (v_subst (vt_with_args vt params (map (v_subst vt) tys))) vs))
-      args1)
-    ).
-    {
-      rewrite <- Hcast1, <- Hcast2. unfold dom_cast.
-      rewrite -> !scast_scast.
-      apply scast_eq_uip.
-    }
-    clear Hcast1 Hcast2.
-    (*Now, we first show that f1 = f2*)
-    assert (f1 = f2). {
-      (*Get rid of cast in H0 - cant' do in general bc of dep types*)
-      generalize dependent (map (v_subst vt) (ty_subst_list' params tys vs)).
-      intros; subst; simpl in H0.
-      assert (e = e0). apply UIP_dec. apply Nat.eq_dec.
-      subst.
-      (*Now, we show that if x <> x0, this contradicts disjointness*)
-      destruct (funsym_eq_dec f1 f2); subst; auto.
-      exfalso. 
-      apply (constr_rep_disjoint gamma_valid m1 m_in _ e0 (dom_aux pd) a1
-      a_in _ args1 args2 (ltac:(auto)) (Logic.eq_sym H0)).
-    }
-    subst.
-    assert (x_in2 = x_in1) by (apply bool_irrelevance); subst.
-    (*And now we can show that a1 = a2 (with casting)*)
-    assert (args1 = cast_arg_list (f_equal (sym_sigma_args f2) Heq2) args2). {
-      (*Get rid of cast in H0 - cant' do in general bc of dep types*)
-      generalize dependent (map (v_subst vt) (ty_subst_list' params tys vs)).
-      intros; subst; simpl in H0.
-      assert (e = e0). apply UIP_dec. apply Nat.eq_dec.
-      subst.
-      (*Now we use injectivity of constructors (knowing that f1 = f2)*)
-      simpl. unfold cast_arg_list. simpl.
-      apply (constr_rep_inj) in H0; auto.
-      apply (gamma_all_unif gamma_valid); auto.
-    }
-    subst.
-    (*Now that we know all of this information, we can simplify for induction*)
-    destruct (funsym_eq_dec f2 f); try reflexivity. subst.
-    (*Deal with Hvslen1*)
-    repeat match goal with
-    | |- context [sym_sigma_args_map ?vt ?f ?vs ?H] => generalize dependent H
-    end.
-    intros.
-    clear Hvslen1 Hvslen2. simpl.
-    rewrite -> cast_arg_list_compose.
-    (*Only want 1 cast in induction*)
-    repeat match goal with
-    | |- context [cast_arg_list ?H ?a] => generalize dependent H
-    end.
-    intros.
-    assert (cast_arg_list e4 args2 = cast_arg_list (eq_trans (Logic.eq_sym e3) e4) (cast_arg_list e3 args2)).
-    {  rewrite -> !cast_arg_list_compose. apply cast_arg_list_eq. }
-    rewrite -> H1. clear H1.
-    generalize dependent (cast_arg_list e3 args2).
-    generalize dependent (eq_trans (Logic.eq_sym e3) e4).
-    clear e3 e4 e1 e2. intros ? a3. clear H0 args2.
-    (*Now generalize for induction*)
-    match goal with
-    | |- (iter_arg_list ?val ?pd ?pdf ?l1 ?a1 ?ps1 ?H1 = None) <->
-      iter_arg_list ?val ?pd ?pdf ?l2 ?a2 ?ps2 ?H2 = None =>
-      generalize dependent H1;
-      generalize dependent H2
-    end.
-    unfold sym_sigma_args in *.
-    assert (Hlenvs: length vs = length (s_params f)). {
-      inversion Hp1; subst; auto.
-    }
-    clear Hadtspec1 Hadtspec2 Hisadt1 Hisadt2 Hp1 Hp2.
-    generalize dependent ps.
-    generalize dependent a3.
-    clear -Hlenvs params_len params_nodup.
-    generalize dependent (s_args f).
-    induction l; intros; simpl.
-    + destruct ps; reflexivity.
-    + destruct ps; try reflexivity.
-      simpl.
-      inversion H; subst.
-      symmetry. split; case_match_hyp; try solve[intro C; inversion C];
-      intros _; case_match_goal.
-      * exfalso. rewrite -> hlist_tl_cast in Hmatch2.
-        inversion f0; subst.
-        (*Why doesn't Coq let me name this: has f and*)
-        rewrite <- (IHl (cons_inj_tl e1) (hlist_tl a3) ps (Forall_inv_tail H)
-          (Forall_inv_tail f0) (Forall_inv_tail f1)) in Hmatch0.
-        assert (Some l2 = None); [|discriminate].
-        rewrite <- Hmatch2, <- Hmatch0. (*rewriting directly doesn't work*) 
-        reflexivity.
-        
-      * exfalso.
-        rewrite -> hlist_hd_cast with (Heq2:=cons_inj_hd e1) in Hmatch0.
-        rewrite -> rewrite_dom_cast in Hmatch0.
-        (*Need one more typecast*)
-        assert (Heqty: (ty_subst' params tys (ty_subst (s_params f) vs a)) =
-        (ty_subst (s_params f) (ty_subst_list' params tys vs) a) ). {
-          apply ty_subst_twice; auto. apply s_params_Nodup.
-        }
-        assert (Htyp: pattern_has_type gamma (ty_subst_p p)
-        (ty_subst' params tys (ty_subst (s_params f) vs a))).
-        {
-          inversion f1; subst; auto. simpl in *.
-          rewrite -> ty_subst_twice; auto. apply s_params_Nodup.
-        }
-        rewrite <- H2 with(Heq:=
-        (eq_trans (cons_inj_hd e1) (f_equal (v_subst vt) 
-          (Logic.eq_sym Heqty)))) (Hp2:=Htyp) in Hmatch.
-        rewrite -> match_val_single_change_ty with 
-          (Heq:=(Logic.eq_sym (Heqty)))(Hp2:=Htyp) in Hmatch0.
-        rewrite -> !dom_cast_compose in Hmatch0.
-        assert (Some l0 = None);[|discriminate].
-        rewrite <- Hmatch0, <- Hmatch; reflexivity.
-      * exfalso. 
-        rewrite -> hlist_tl_cast in Hmatch0.
-        inversion f0; subst.
-        rewrite -> IHl in Hmatch0; auto.
-        assert (C: Some l2 = None); [|inversion C].
-        rewrite <- Hmatch2, <- Hmatch0. (*Why can't I rewrite directly?*) 
-        reflexivity.
-      * exfalso. rewrite -> hlist_hd_cast with (Heq2:=cons_inj_hd e1) in Hmatch.
-        rewrite -> rewrite_dom_cast in Hmatch.
-        assert (Heqty: (ty_subst' params tys (ty_subst (s_params f) vs a)) =
-        (ty_subst (s_params f) (ty_subst_list' params tys vs) a) ). {
-          apply ty_subst_twice; auto. apply s_params_Nodup.
-        }
-        assert (Hpty: pattern_has_type gamma (ty_subst_p p)
-        (ty_subst' params tys (ty_subst (s_params f) vs a))).
-        {
-          inversion f1; subst; simpl in H4.
-          rewrite -> ty_subst_twice; auto.
-          apply s_params_Nodup.
-        }
-        rewrite -> match_val_single_change_ty with 
-          (Heq:=(Logic.eq_sym (Heqty)))(Hp2:=Hpty) in Hmatch.
-        rewrite -> !dom_cast_compose in Hmatch.
-        rewrite -> H2 with(Hp2:=Hpty) in Hmatch.
-        assert (C: Some l0 = None); [|inversion C].
-        rewrite <- Hmatch0, <- Hmatch. reflexivity.
-  - (*Por case*)
-    simpl. 
-    split; case_match_hyp; try solve[intro C; inversion C].
-    + rewrite -> IHp2. intros Hm; rewrite -> Hm.
-      rewrite -> IHp1 in Hmatch. rewrite -> Hmatch. reflexivity.
-      Unshelve. all: inversion Hp1; subst; auto.
-    + rewrite <- IHp2. intros Hm; rewrite -> Hm.
-      rewrite <- IHp1 in Hmatch. rewrite -> Hmatch. reflexivity.
-      Unshelve. all: inversion Hp2; subst; auto.
-  - (*Pbind case*)
-    simpl.
-    split; case_match_hyp; try solve[intro C; inversion C]; intros _.
-    + rewrite -> IHp in Hmatch. rewrite -> Hmatch. reflexivity.
-    + rewrite <- IHp in Hmatch. rewrite -> Hmatch. reflexivity.
-Qed.  *)
 
 Ltac inv H := inversion H; subst; clear H.
-(* 
-Lemma match_val_single_ty_subst_some pd pdf vt (ty: vty) 
-  (p: pattern)
-  (Hp1: pattern_has_type gamma p ty)
-  (Hp2: pattern_has_type gamma (ty_subst_p p) (ty_subst' params tys ty))
-  (Heq: v_subst (vt_with_args vt params (map (v_subst vt) tys)) ty = 
-    v_subst vt (ty_subst' params tys ty))
-  (d: domain (dom_aux pd) (v_subst (vt_with_args vt params (map (v_subst vt) tys)) ty))
-  l1 l2:
-  match_val_single gamma_valid pd pdf vt (ty_subst' params tys ty) 
-    (ty_subst_p p) Hp2
-    (dom_cast (dom_aux pd) Heq d) = Some l1 ->
-  match_val_single gamma_valid pd pdf
-    (vt_with_args vt params (map (v_subst vt) tys)) ty p Hp1 d = Some l2 ->
-  forall x y,
-  In (x, y) l2 ->
-  exists z Heq,
-    In (ty_subst_var x, z) l1 /\
-    projT2 z = dom_cast (dom_aux pd) Heq (projT2 y).
-Proof.
-  revert ty vt Hp1 Hp2 Heq d l1 l2.
-  induction p; intros ty vt Hp1 Hp2 Heq d l1 l2; auto.
-  - (*Pvar (base case)*) simpl; intros.
-    inv H; inv H0. simpl in *. destruct H1 as [Hxy | []]. inv Hxy.
-    simpl. exists ( existT (domain (dom_aux pd)) (v_subst vt (ty_subst' params tys ty))
-    (dom_cast (dom_aux pd) Heq d)).
-    simpl.
-    exists (Logic.eq_sym (v_subst_vt_with_args' params tys params_len params_nodup vt ty)).
-    split; auto. apply dom_cast_eq.
-  - (*Pconstr - hard case*)
-     (*constructor case is hard*)
-    rewrite -> !match_val_single_rewrite.
-    revert Hp2. cbn. intros Hp2. 
-    generalize dependent (@is_vty_adt_some gamma (ty_subst' params tys ty)).
-    generalize dependent (@is_vty_adt_some gamma ty).
-    generalize dependent (@adt_vty_length_eq gamma gamma_valid (ty_subst' params tys ty)).
-    generalize dependent (@adt_vty_length_eq gamma gamma_valid ty).
-    generalize dependent (@constr_length_eq _ gamma_valid (ty_subst' params tys ty)).
-    generalize dependent (@constr_length_eq _ gamma_valid ty).
-    destruct (is_vty_adt gamma ty) eqn : Hisadt1.
-    2: {
-      (*Show that both are none from constr assumption*)
-      assert (Hisadt2: is_vty_adt gamma (ty_subst' params tys ty) = None); [|discriminate].
-      apply (constr_pat_is_vty_adt_none Hp1 Hp2). apply Hisadt1.
-    }
-    destruct p as [[m1 a1] vs1].
-    assert (Hvs1: vs1 = vs). {
-      apply (constr_pat_adt_args _ _ _ Hp1) in Hisadt1. auto.
-    }
-    (*Now show that other is Some with same m , a, related vs*)
-    assert (Hisadt2:=Hisadt1).
-    apply (constr_pat_is_vty_adt_some _ _ _ Hp1 Hp2) in Hisadt2.
-    rewrite -> Hisadt2.
-    intros Hvslen1 Hvslen2 Hvslen3 Hvslen4 Hadtspec1 Hadtspec2.
-    destruct (Hadtspec1 m1 a1 vs1 Logic.eq_refl) as [Hty1 [a_in m_in]].
-    destruct (Hadtspec2 m1 a1 (ty_subst_list' params tys vs1) Logic.eq_refl)
-    as [Hty2 [a_in' m_in']].
-    (*We can do a bit of simplification*)
-    assert (a_in = a_in') by (apply bool_irrelevance).
-    assert (m_in = m_in') by (apply bool_irrelevance).
-    subst m_in' a_in'; simpl.
-    generalize dependent (eq_trans (map_length (v_subst vt) (ty_subst_list' params tys vs1))
-    (Hvslen4 m1 a1 (ty_subst_list' params tys vs1) erefl
-       (pat_has_type_valid gamma
-          (Pconstr f (ty_subst_list' params tys vs) (map ty_subst_p ps))
-          (ty_subst' params tys ty) Hp2))).
-    generalize dependent (eq_trans
-    (map_length (v_subst (vt_with_args vt params (map (v_subst vt) tys))) vs1)
-    (Hvslen3 m1 a1 vs1 erefl
-       (pat_has_type_valid gamma (Pconstr f vs ps) ty Hp1))) .
-    intros ? ?.
-    clear Hvslen3 Hvslen4.
-    (*We need to know things about the [find_constr_rep]. *)
-    case_find_constr.
-    intros [f1 [[x_in1 args1] Hcast1]] [f2 [[x_in2 args2] Hcast2]]; simpl in *;
-    subst.
-    (*Finally, a reasonable goal*)
-    rewrite dom_cast_compose in Hcast2.
-    rewrite -> !eq_trans_refl_l in Hcast1.
-    assert (Heq2: map (v_subst vt) (ty_subst_list' params tys vs) =
-    map (v_subst (vt_with_args vt params (map (v_subst vt) tys))) vs). {
-      unfold ty_subst_list'.
-      apply list_eq_ext'; rewrite -> !map_length; auto.
-      intros n d' Hn.
-      rewrite -> !map_nth_inbound with (d2:=vty_int); try rewrite -> map_length; auto.
-      apply v_subst_vt_with_args'; auto.
-    }
-    (*Now we can relate the two constr_reps*)
-    assert (
-      constr_rep gamma_valid m1 m_in
-           (map (v_subst vt) (ty_subst_list' params tys vs)) e0 
-           (dom_aux pd) a1 a_in f2 x_in2
-           (adts pdf m1 (map (v_subst vt) (ty_subst_list' params tys vs))) args2 =
-      scast (f_equal 
-      (fun x => adt_rep m1 x (dom_aux pd) a1 a_in) (Logic.eq_sym Heq2)) 
-      (constr_rep gamma_valid m1 m_in
-      (map (v_subst (vt_with_args vt params (map (v_subst vt) tys))) vs) e
-      (dom_aux pd) a1 a_in f1 x_in1
-      (adts pdf m1
-         (map (v_subst (vt_with_args vt params (map (v_subst vt) tys))) vs))
-      args1)
-    ).
-    {
-      rewrite <- Hcast1, <- Hcast2. unfold dom_cast.
-      rewrite -> !scast_scast.
-      apply scast_eq_uip.
-    }
-    clear Hcast1 Hcast2.
-    (*Now, we first show that f1 = f2*)
-    assert (f1 = f2). {
-      (*Get rid of cast in H0 - cant' do in general bc of dep types*)
-      generalize dependent (map (v_subst vt) (ty_subst_list' params tys vs)).
-      intros; subst; simpl in H0.
-      assert (e = e0). apply UIP_dec. apply Nat.eq_dec.
-      subst.
-      (*Now, we show that if x <> x0, this contradicts disjointness*)
-      destruct (funsym_eq_dec f1 f2); subst; auto.
-      exfalso. 
-      apply (constr_rep_disjoint gamma_valid m1 m_in _ e0 (dom_aux pd) a1
-      a_in _ args1 args2 (ltac:(auto)) (Logic.eq_sym H0)).
-    }
-    subst.
-    assert (x_in2 = x_in1) by (apply bool_irrelevance); subst.
-    (*And now we can show that a1 = a2 (with casting)*)
-    assert (args1 = cast_arg_list (f_equal (sym_sigma_args f2) Heq2) args2). {
-      (*Get rid of cast in H0 - cant' do in general bc of dep types*)
-      generalize dependent (map (v_subst vt) (ty_subst_list' params tys vs)).
-      intros; subst; simpl in H0.
-      assert (e = e0). apply UIP_dec. apply Nat.eq_dec.
-      subst.
-      (*Now we use injectivity of constructors (knowing that f1 = f2)*)
-      simpl. unfold cast_arg_list. simpl.
-      apply (constr_rep_inj) in H0; auto.
-      apply (gamma_all_unif gamma_valid); auto.
-    }
-    subst.
-    (*Now that we know all of this information, we can simplify for induction*)
-    destruct (funsym_eq_dec f2 f); [|discriminate]. subst.
-    (*Deal with Hvslen1*)
-    repeat match goal with
-    | |- context [sym_sigma_args_map ?vt ?f ?vs ?H] => generalize dependent H
-    end.
-    intros ? ?.
-    clear Hvslen1 Hvslen2. simpl.
-    rewrite -> cast_arg_list_compose.
-    (*Only want 1 cast in induction*)
-    repeat match goal with
-    | |- context [cast_arg_list ?H ?a] => generalize dependent H
-    end.
-    intros ? ?.
-    assert (cast_arg_list e4 args2 = cast_arg_list (eq_trans (Logic.eq_sym e3) e4) (cast_arg_list e3 args2)).
-    {  rewrite -> !cast_arg_list_compose. apply cast_arg_list_eq. }
-    rewrite -> H1. clear H1.
-    generalize dependent (cast_arg_list e3 args2).
-    generalize dependent (eq_trans (Logic.eq_sym e3) e4).
-    clear e3 e4 e1 e2. intros ? a3. clear H0 args2.
-    (*Now generalize for induction*)
-    match goal with
-    | |- (iter_arg_list ?val ?pd ?pdf ?l1 ?a1 ?ps1 ?H1 = Some _) ->
-      iter_arg_list ?val ?pd ?pdf ?l2 ?a2 ?ps2 ?H2 = Some _ -> _ =>
-      generalize dependent H1;
-      generalize dependent H2
-    end.
-    unfold sym_sigma_args in *.
-    assert (Hlenvs: length vs = length (s_params f)). {
-      inversion Hp1; subst; auto.
-    }
-    clear Hadtspec1 Hadtspec2 Hisadt1 Hisadt2 Hp1 Hp2.
-    generalize dependent ps.
-    generalize dependent a3.
-    clear -Hlenvs params_len params_nodup.
-    revert l1 l2.
-    generalize dependent (s_args f).
-    induction l; intros; revert H0 H1.
-    + destruct ps; try discriminate.
-      intros. inversion H0; inversion H1; subst. destruct H2. 
-    + destruct ps; try discriminate. simpl.
-      inversion H; subst.
-      case_match_hyp; try discriminate. intro Hl; inv Hl.
-      case_match_hyp; try discriminate. intro Hl; inv Hl. 
-      (*Here, we actually prove the claim via the IHs. It is not hard*)
-      rewrite -> in_app_iff in H2. destruct H2.
-      * rewrite -> hlist_hd_cast with (Heq2:=cons_inj_hd e1) in Hmatch.
-        rewrite -> rewrite_dom_cast in Hmatch.
-        (*Need a cast*)
-        assert (Heqty: ty_subst (s_params f) (ty_subst_list' params tys vs) a =
-        ty_subst' params tys (ty_subst (s_params f) vs a)).
-        {
-          rewrite ty_subst_twice; auto. apply s_params_Nodup.
-        }
-        assert (Hp2': pattern_has_type gamma (ty_subst_p p) (ty_subst' params tys (ty_subst (s_params f) vs a))).
-        {
-          rewrite <- Heqty. inversion f1; subst; auto.
-        }
-        erewrite -> match_val_single_change_ty with
-          (ty2:=(ty_subst' params tys (ty_subst (s_params f) vs a)))
-          (Heq:=Heqty)  (Hp2:=Hp2')in Hmatch.
-        rewrite dom_cast_compose in Hmatch.
-        destruct (H3 _ _ _ _ _ _ _ _ Hmatch Hmatch1 x y H0) as [z [Heq [Hinxz Hz2]]].
-        exists z. exists Heq. split; auto. rewrite in_app_iff; auto.
-      * rewrite hlist_tl_cast in Hmatch0.
-        destruct (IHl _ _ _ _ _ H4 _ _ Hmatch0 Hmatch2 x y H0) as [z [Heq [Hinxz Hz2]]].
-        exists z. exists Heq. split; auto.
-        rewrite in_app_iff; auto.
-  - (*Pwild is trivial*)
-    simpl. intros H1 H2; inv H1; inv H2; contradiction.
-  - (*Por - just from induction and using previous lemma*) 
-    simpl. case_match_hyp.
-    + intros Hl; inv Hl.
-      case_match_hyp.
-      * intros Hl; inv Hl.
-        eapply IHp1. apply Hmatch. apply Hmatch0.
-      * (*Here, use contradiction from previous lemma*)
-        rewrite <- match_val_single_ty_subst_none in Hmatch0.
-        rewrite -> Hmatch0 in Hmatch. inversion Hmatch.
-    + intros Hmatch1. case_match_hyp.
-      * (*Another contradiction*) 
-        rewrite -> match_val_single_ty_subst_none in Hmatch.
-        rewrite -> Hmatch in Hmatch0. inversion Hmatch0.
-      * eapply IHp2. apply Hmatch1.
-  - (*Pbind*)
-    simpl. case_match_hyp; try discriminate.
-    intros Hl; inv Hl.
-    case_match_hyp; try discriminate.
-    intros Hl; inv Hl. simpl.
-    intros x y [Hxy | Hinxy].
-    + inv Hxy. simpl.
-      exists (existT (domain (dom_aux pd)) (v_subst vt (ty_subst' params tys ty))
-      (dom_cast (dom_aux pd) Heq d)).
-      simpl.
-      exists Heq. split; auto.
-    + destruct (IHp _ _ _ _ _ _ _ _ Hmatch Hmatch0 x y Hinxy) as [z [Heq1 [Hinxz Hz2]]].
-      exists z. exists Heq1. split; auto.
-Qed. *)
-
-(*START*)
 
 (*And now, the rep lemma. This is hard to prove*)
 
 (*The above works because v is bound and x is free, so
   name cannot overlap*)
-  Lemma ty_subst_tf_rep {pd: pi_dom} {pdf: pi_dom_full gamma pd} 
+Lemma ty_subst_tf_rep {pd: pi_dom} {pdf: pi_dom_full gamma pd} 
   {pf: pi_funpred gamma_valid pd pdf}
   (t: term) (f: formula):
   (forall (vt: val_typevar) (vv1: val_vars pd vt)
@@ -1952,7 +1391,7 @@ Qed. *)
     (Hwf: tm_wf_strong_rec t)
     (Hty1: term_has_type gamma t ty1)
     (Hty2: term_has_type gamma (ty_subst_tm t) ty2)
-    (Hvv: forall x Heq, In x (tm_fv t) -> vv2 x = dom_cast (dom_aux pd) Heq 
+    (Hvv: forall x Heq, aset_mem x (tm_fv t) -> vv2 x = dom_cast (dom_aux pd) Heq 
       (vv1 (ty_subst_var x)))
     Heq,
     (*[term_rep] version is ugly because of cast, but we mostly
@@ -1967,7 +1406,7 @@ Qed. *)
     (Hwf: fmla_wf_strong_rec f)
     (Hty1: formula_typed gamma f)
     (Hty2: formula_typed gamma (ty_subst_fmla f))
-    (Hvv: forall x Heq, In x (fmla_fv f) -> vv2 x = dom_cast (dom_aux pd) Heq 
+    (Hvv: forall x Heq, aset_mem x (fmla_fv f) -> vv2 x = dom_cast (dom_aux pd) Heq 
       (vv1 (ty_subst_var x))),
     formula_rep gamma_valid pd pdf vt pf vv1 (ty_subst_fmla f) Hty2 =
     formula_rep gamma_valid pd pdf
@@ -2007,7 +1446,7 @@ Proof.
     rewrite Hvv. auto. intros.
     rewrite !dom_cast_compose.
     (*If we do not use upd_vv_args'', this is not provable*)
-    apply dom_cast_eq. auto.
+    apply dom_cast_eq. simpl_set; auto.
   - (*Function case - hard because of casting already and
     need nested inductive lemma for get_arg_list*)
     unfold cast_dom_vty. rewrite !dom_cast_compose.
@@ -2113,15 +1552,15 @@ Proof.
     (*From Hwf, get info we need about bnd and free vars*)
     assert (Hbndfree: forall p t x y,
       In (p, t) ps ->
-      In x (pat_fv p) ->
-      In y (tm_fv t) ->
+      aset_mem x (pat_fv p) ->
+      aset_mem y (tm_fv t) ->
       fst x = fst y ->
       x = y).
     {
       intros p t x y Hinpt Hinx Hiny Hxy. 
       unfold tm_wf_strong in Hwf; simpl in Hwf.
       vsym_eq x y.
-      destruct (in_dec vsymbol_eq_dec y (pat_fv p)).
+      destruct (aset_mem_dec y (pat_fv p)).
       {
         destruct Hwf as [_ [Hwf _]].
         revert Hwf.
@@ -2132,7 +1571,7 @@ Proof.
         split; try (rewrite in_map_iff);
         try (eexists; split; [reflexivity | auto]);
         try apply Hinpt;
-        rewrite !in_app_iff; auto.
+        rewrite !in_app_iff; simpl_set; auto.
       }
       (*Now y not in, so can use 3rd part of Hwf*)
       destruct Hwf as [_ [_ Hwf]].
@@ -2146,7 +1585,7 @@ Proof.
         rewrite in_map_iff. exists x. split; auto.
         rewrite in_concat. eexists.
         split. rewrite in_map_iff. eexists; split; [reflexivity | auto].
-        apply Hinpt. rewrite in_app_iff; auto.
+        apply Hinpt. rewrite in_app_iff; simpl_set; auto.
     }
     clear Hwf. rewrite Forall_map in Hpall.
     induction ps; simpl; intros.
@@ -2167,88 +1606,67 @@ Proof.
     auto.
     2: { intros; rewrite Hvv; auto; simpl_set; auto. }
     simpl.
-    case_match_goal.
-    2: {
-      rewrite -> match_val_single_ty_subst_none in Hmatch.
-      rewrite -> Hmatch.
+    (*Now use [match_val_single] lemma*)
+    pose proof (match_val_single_ty_subst pd pdf vt v p (Forall_inv Hpat1)
+       (Forall_inv Hpat2) Heq1 
+        (term_rep gamma_valid pd pdf (vt_with_args vt params (map (v_subst vt) tys)) pf vv2 tm v Hty1)) as Hmatch.
+    destruct (match_val_single _ _ _ _ _ p _ _) as [a1|] eqn : Hmatch1;
+    destruct (match_val_single _ _ _ _ _ (ty_subst_p p) _ _) as [a2|] eqn : Hmatch2;
+    simpl in Hmatch |- *; auto; try contradiction.
+    + (*Both Some*)
+      apply H3.
+      { apply (Forall_inv Hpall). }
+      intros x Hinx Heq'.
+      destruct (aset_mem_dec x (pat_fv p)).
+      2: {
+        (*Not in: follows from Hvv*)
+        rewrite !extend_val_notin; auto.
+        - erewrite Hvv. reflexivity.
+          simpl. simpl_set; auto.
+        - rewrite amap_mem_keys_false. erewrite match_val_single_fv; eauto.
+          rewrite ty_subst_p_fv. simpl_set.
+          intros [y [Hxy Hiny]].
+          (*Contradicts fact that no names shared between bnd and free vars*)
+          assert (x = y). {
+            symmetry.
+            apply (Hbndfree p t y x); simpl; auto.
+            apply ty_subst_var_fst in Hxy; auto.
+          }
+          subst. contradiction.
+        - rewrite amap_mem_keys_false. erewrite match_val_single_fv; eauto.
+      }
+      (*So now we know that x is in (pat_fv p), and
+        therefore we know that it is in a1)*)
+      assert (Hina1: amap_mem x a1). {
+        rewrite amap_mem_keys. erewrite match_val_single_fv; eauto.
+      }
+      rewrite amap_mem_spec in Hina1.
+      destruct (amap_lookup a1 x) as [y|] eqn : Hlook; [|discriminate]. assert (Hlook':=Hlook).
+      apply Hmatch in Hlook.
+      destruct Hlook as [z [Heqyz [Hz Hy]]].
+      rewrite -> extend_val_lookup with (t:=y) by auto.
+      rewrite -> extend_val_lookup with (t:=z) by auto.
+      (*Now just a lot of casting*)
+      assert (projT1 y = (v_subst (vt_with_args vt params (map (v_subst vt) tys)) x.2)).
+      {
+        eapply match_val_single_typs. apply Hmatch1. auto.
+      }
+      destruct (sort_eq_dec (v_subst (vt_with_args vt params (map (v_subst vt) tys)) x.2) (projT1 y));
+      try (exfalso; apply n; auto).
+      assert (projT1 z = (v_subst vt (ty_subst_var x).2)). {
+        rewrite <- Heqyz. rewrite v_subst_vt_with_args'; auto.
+      }
+      destruct (sort_eq_dec (v_subst vt (ty_subst_var x).2) (projT1 z));
+      [| exfalso; apply n; auto].
+      rewrite Hy. rewrite !dom_cast_compose. apply dom_cast_eq.
+    + (*Both None - IH*)
       rewrite <- H with(vv1:=vv1)(Hty2:=Hty2). auto. simpl. 
-      apply IHps. all: auto.
-      - intros. apply Hvv. simpl; simpl_set_small; auto.
+      apply IHps; auto. all: auto.
+      * intros. apply Hvv. simpl; simpl_set_small; auto.
         destruct H1; auto.
-      - intros. apply (Hbndfree p0 t0 x y); simpl; auto.  
-      - inversion Hpall; subst; auto.
-      - intros. apply Hvv. simpl; simpl_set_small; auto.
-    }
-    symmetry.
-    destruct (match_val_single gamma_valid pd pdf (vt_with_args vt params (map (v_subst vt) tys)) v p
-    (Forall_inv Hpat1)
-    (term_rep gamma_valid pd pdf (vt_with_args vt params (map (v_subst vt) tys)) pf vv2
-       tm v Hty1)) eqn : Hmatch1.
-    2: {
-      rewrite <- match_val_single_ty_subst_none in Hmatch1.
-      rewrite -> Hmatch1 in Hmatch. inversion Hmatch.
-      (*Contradiction from [match_val_single_ty_subst_none]*)
-    }
-    symmetry.
-    apply H3.
-    { apply (Forall_inv Hpall). }
-    intros x Hinx Heq'.
-    destruct (in_dec vsymbol_eq_dec x (pat_fv p)).
-    2: {
-      (*Not in: follows from Hvv*)
-      rewrite !extend_val_notin; auto.
-      - erewrite Hvv. reflexivity.
-        simpl. simpl_set; auto.
-      - rewrite <- (match_val_single_free_var gamma_valid pd pdf vt). 
-        2: apply Hmatch.
-        rewrite ty_subst_p_fv.
-        rewrite in_map_iff.
-        intros C. destruct C as [y [Hxy Hiny]].
-        (*Contradicts fact that no names shared between bnd and free vars*)
-        assert (x = y). {
-          symmetry.
-          apply (Hbndfree p t y x); simpl; auto.
-          apply ty_subst_var_fst in Hxy; auto.
-        }
-        subst. contradiction.
-      - rewrite <- (match_val_single_free_var gamma_valid pd pdf
-        (vt_with_args vt params (map (v_subst vt) tys))).
-        2: apply Hmatch1. apply n.
-    }
-    (*So now we know that x is in (pat_fv p), and
-      therefore we know that it is in (map fst l0)*)
-    assert (In x (map fst l0)). {
-      rewrite <- (match_val_single_free_var gamma_valid pd pdf
-        (vt_with_args vt params (map (v_subst vt) tys))).
-      apply i. apply Hmatch1.
-    }
-    rewrite in_map_iff in H1.
-    destruct H1 as [[x1 y1] [Hx Hinx1]]; subst; simpl in *.
-    rewrite -> extend_val_lookup with (t:=y1); auto.
-    2:  apply match_val_single_nodup in Hmatch1; auto.
-    assert (projT1 y1 = (v_subst (vt_with_args vt params (map (v_subst vt) tys)) x1.2)).
-    {
-      eapply match_val_single_typs. apply Hmatch1. auto.
-    }
-    destruct (sort_eq_dec (v_subst (vt_with_args vt params (map (v_subst vt) tys)) x1.2) (projT1 y1));
-    try (exfalso; apply n; auto).
-    assert (exists z Heq,
-      In (ty_subst_var x1, z) l /\
-      projT2 z = dom_cast (dom_aux pd) Heq (projT2 y1)
-    ).
-    { eapply match_val_single_ty_subst_some. apply Hmatch. 
-      apply Hmatch1. auto. }
-    destruct H2 as [z [Hz1 [Hinz Hz2]]].
-    rewrite -> extend_val_lookup with (t:=z); auto.
-    2: apply match_val_single_nodup in Hmatch; auto.
-    assert (projT1 z = (v_subst vt (ty_subst_var x1).2)). {
-      rewrite <- Hz1, <- e. symmetry.
-      apply v_subst_vt_with_args'; auto.
-    }
-    destruct (sort_eq_dec (v_subst vt (ty_subst_var x1).2) (projT1 z));
-    [| exfalso; apply n; auto].
-    rewrite Hz2. rewrite !dom_cast_compose. apply dom_cast_eq.
-    (*So all that remains is to prove [match_val_single] Some lemma*)
+      * intros. apply (Hbndfree p0 t0 x y); simpl; auto.  
+      * inversion Hpall; subst; auto.
+      * intros. apply Hvv. simpl; simpl_set_small; auto.
   - (*Teps*)
     (*First, cast inhabited*)
     assert (match domain_ne pd (v_subst vt ty2) with
@@ -2429,25 +1847,25 @@ Proof.
     rewrite -> H1 with (vv2:=vv2)(Hty1:=proj2' (proj2' (typed_if_inv Hty1)));
     [| apply Hwf | intros; apply Hvv; simpl_set; auto].
     reflexivity.
-  -(*Fmatch*)
+  - (*Fmatch*)
     iter_match_gen Hty1 Htm1 Hpat1 Hty1.
     iter_match_gen Hty2 Htm2 Hpat2 Hty2.
     cbn in Hwf. destruct Hwf as [Hwf [Hptm Hpall]].
     (*From Hwf, get info we need about bnd and free vars*)
     assert (Hbndfree: forall p f x y,
       In (p, f) ps ->
-      In x (pat_fv p) ->
-      In y (fmla_fv f) ->
+      aset_mem x (pat_fv p) ->
+      aset_mem y (fmla_fv f) ->
       fst x = fst y ->
       x = y).
     {
-      intros p f x y Hinpt Hinx Hiny Hxy. 
-      unfold fmla_wf_strong in Hwf; simpl in Hwf.
+      intros p t x y Hinpt Hinx Hiny Hxy. 
+      unfold tm_wf_strong in Hwf; simpl in Hwf.
       vsym_eq x y.
-      destruct (in_dec vsymbol_eq_dec y (pat_fv p)).
+      destruct (aset_mem_dec y (pat_fv p)).
       {
         destruct Hwf as [_ [Hwf _]].
-        revert Hwf.
+        revert Hwf. simpl.
         rewrite -> map_app, NoDup_app_iff.
         intros [_ [Hwf _]].
         eapply NoDup_map_in. apply Hwf. all: auto;
@@ -2455,7 +1873,7 @@ Proof.
         split; try (rewrite in_map_iff);
         try (eexists; split; [reflexivity | auto]);
         try apply Hinpt;
-        rewrite !in_app_iff; auto.
+        rewrite !in_app_iff; simpl_set; auto.
       }
       (*Now y not in, so can use 3rd part of Hwf*)
       destruct Hwf as [_ [_ Hwf]].
@@ -2463,13 +1881,13 @@ Proof.
       apply (Hwf (fst x)).
       rewrite map_app. split.
       - rewrite !in_map_iff. exists y.
-        split; auto. simpl_set. right. exists (p, f); split; auto.
+        split; auto. simpl. simpl_set. right. exists (p, t); split; auto.
         simpl_set; auto.
       - rewrite in_app_iff. right.
         rewrite in_map_iff. exists x. split; auto.
         rewrite in_concat. eexists.
         split. rewrite in_map_iff. eexists; split; [reflexivity | auto].
-        apply Hinpt. rewrite in_app_iff; auto.
+        apply Hinpt. rewrite in_app_iff; simpl_set; auto.
     }
     clear Hwf. rewrite Forall_map in Hpall.
     induction ps; simpl; intros; auto.
@@ -2485,87 +1903,67 @@ Proof.
     auto.
     2: { intros; rewrite Hvv; auto; simpl_set; auto. }
     simpl.
-    case_match_goal.
-    2: {
-      rewrite -> match_val_single_ty_subst_none in Hmatch.
-      rewrite -> Hmatch.
+    (*Now use [match_val_single] lemma*)
+    pose proof (match_val_single_ty_subst pd pdf vt v p (Forall_inv Hpat1)
+       (Forall_inv Hpat2) Heq1 
+        (term_rep gamma_valid pd pdf (vt_with_args vt params (map (v_subst vt) tys)) pf vv2 tm v Hty1)) as Hmatch.
+    destruct (match_val_single _ _ _ _ _ p _ _) as [a1|] eqn : Hmatch1;
+    destruct (match_val_single _ _ _ _ _ (ty_subst_p p) _ _) as [a2|] eqn : Hmatch2;
+    simpl in Hmatch |- *; auto; try contradiction.
+    + (*Both Some*)
+      apply H3.
+      { apply (Forall_inv Hpall). }
+      intros x Hinx Heq'.
+      destruct (aset_mem_dec x (pat_fv p)).
+      2: {
+        (*Not in: follows from Hvv*)
+        rewrite !extend_val_notin; auto.
+        - erewrite Hvv. reflexivity.
+          simpl. simpl_set; auto.
+        - rewrite amap_mem_keys_false. erewrite match_val_single_fv; eauto.
+          rewrite ty_subst_p_fv. simpl_set.
+          intros [y [Hxy Hiny]].
+          (*Contradicts fact that no names shared between bnd and free vars*)
+          assert (x = y). {
+            symmetry.
+            apply (Hbndfree p f y x); simpl; auto.
+            apply ty_subst_var_fst in Hxy; auto.
+          }
+          subst. contradiction.
+        - rewrite amap_mem_keys_false. erewrite match_val_single_fv; eauto.
+      }
+      (*So now we know that x is in (pat_fv p), and
+        therefore we know that it is in a1)*)
+      assert (Hina1: amap_mem x a1). {
+        rewrite amap_mem_keys. erewrite match_val_single_fv; eauto.
+      }
+      rewrite amap_mem_spec in Hina1.
+      destruct (amap_lookup a1 x) as [y|] eqn : Hlook; [|discriminate]. assert (Hlook':=Hlook).
+      apply Hmatch in Hlook.
+      destruct Hlook as [z [Heqyz [Hz Hy]]].
+      rewrite -> extend_val_lookup with (t:=y) by auto.
+      rewrite -> extend_val_lookup with (t:=z) by auto.
+      (*Now just a lot of casting*)
+      assert (projT1 y = (v_subst (vt_with_args vt params (map (v_subst vt) tys)) x.2)).
+      {
+        eapply match_val_single_typs. apply Hmatch1. auto.
+      }
+      destruct (sort_eq_dec (v_subst (vt_with_args vt params (map (v_subst vt) tys)) x.2) (projT1 y));
+      try (exfalso; apply n; auto).
+      assert (projT1 z = (v_subst vt (ty_subst_var x).2)). {
+        rewrite <- Heqyz. rewrite v_subst_vt_with_args'; auto.
+      }
+      destruct (sort_eq_dec (v_subst vt (ty_subst_var x).2) (projT1 z));
+      [| exfalso; apply n; auto].
+      rewrite Hy. rewrite !dom_cast_compose. apply dom_cast_eq.
+    + (*Both None - IH*)
       rewrite <- H with(vv1:=vv1)(Hty2:=Hty2). auto. simpl. 
-      apply IHps. all: auto.
-      - intros. apply Hvv. simpl; simpl_set_small; auto.
+      apply IHps; auto. all: auto.
+      * intros. apply Hvv. simpl; simpl_set_small; auto.
         destruct H1; auto.
-      - intros. apply (Hbndfree p0 f0 x y); simpl; auto.  
-      - inversion Hpall; subst; auto.
-      - intros. apply Hvv. simpl; simpl_set_small; auto.
-    }
-    symmetry.
-    destruct (match_val_single gamma_valid pd pdf (vt_with_args vt params (map (v_subst vt) tys)) v p
-    (Forall_inv Hpat1)
-    (term_rep gamma_valid pd pdf (vt_with_args vt params (map (v_subst vt) tys)) pf vv2
-      tm v Hty1)) eqn : Hmatch1.
-    2: {
-      rewrite <- match_val_single_ty_subst_none in Hmatch1.
-      rewrite -> Hmatch1 in Hmatch. inversion Hmatch.
-      (*Contradiction from [match_val_single_ty_subst_none]*)
-    }
-    symmetry.
-    apply H3.
-    { apply (Forall_inv Hpall). }
-    intros x Hinx Heq'.
-    destruct (in_dec vsymbol_eq_dec x (pat_fv p)).
-    2: {
-      (*Not in: follows from Hvv*)
-      rewrite !extend_val_notin; auto.
-      - erewrite Hvv. reflexivity.
-        simpl. simpl_set; auto.
-      - rewrite <- (match_val_single_free_var gamma_valid pd pdf vt). 
-        2: apply Hmatch.
-        rewrite ty_subst_p_fv.
-        rewrite in_map_iff.
-        intros C. destruct C as [y [Hxy Hiny]].
-        (*Contradicts fact that no names shared between bnd and free vars*)
-        assert (x = y). {
-          symmetry.
-          apply (Hbndfree p f y x); simpl; auto.
-          apply ty_subst_var_fst in Hxy; auto.
-        }
-        subst. contradiction.
-      - rewrite <- (match_val_single_free_var gamma_valid pd pdf
-        (vt_with_args vt params (map (v_subst vt) tys))).
-        2: apply Hmatch1. apply n.
-    }
-    (*So now we know that x is in (pat_fv p), and
-      therefore we know that it is in (map fst l0)*)
-    assert (In x (map fst l0)). {
-      rewrite <- (match_val_single_free_var gamma_valid pd pdf
-        (vt_with_args vt params (map (v_subst vt) tys))).
-      apply i. apply Hmatch1.
-    }
-    rewrite in_map_iff in H1.
-    destruct H1 as [[x1 y1] [Hx Hinx1]]; subst; simpl in *.
-    rewrite -> extend_val_lookup with (t:=y1); auto.
-    2:  apply match_val_single_nodup in Hmatch1; auto.
-    assert (projT1 y1 = (v_subst (vt_with_args vt params (map (v_subst vt) tys)) x1.2)).
-    {
-      eapply match_val_single_typs. apply Hmatch1. auto.
-    }
-    destruct (sort_eq_dec (v_subst (vt_with_args vt params (map (v_subst vt) tys)) x1.2) (projT1 y1));
-    try (exfalso; apply n; auto).
-    assert (exists z Heq,
-      In (ty_subst_var x1, z) l /\
-      projT2 z = dom_cast (dom_aux pd) Heq (projT2 y1)
-    ).
-    { eapply match_val_single_ty_subst_some. apply Hmatch. 
-      apply Hmatch1. auto. }
-    destruct H2 as [z [Hz1 [Hinz Hz2]]].
-    rewrite -> extend_val_lookup with (t:=z); auto.
-    2: apply match_val_single_nodup in Hmatch; auto.
-    assert (projT1 z = (v_subst vt (ty_subst_var x1).2)). {
-      rewrite <- Hz1, <- e. symmetry.
-      apply v_subst_vt_with_args'; auto.
-    }
-    destruct (sort_eq_dec (v_subst vt (ty_subst_var x1).2) (projT1 z));
-    [| exfalso; apply n; auto].
-    rewrite Hz2. rewrite !dom_cast_compose. apply dom_cast_eq.
+      * intros. apply (Hbndfree p0 f0 x y); simpl; auto.  
+      * inversion Hpall; subst; auto.
+      * intros. apply Hvv. simpl; simpl_set_small; auto.
 Qed.
 
 Definition ty_subst_t_rep {pd pdf} t (pf: pi_funpred gamma_valid pd pdf) := 
@@ -2607,10 +2005,10 @@ Ltac auto_hyp :=
   
 Lemma subterm_fv_in x tm t f:
   (In tm (subterms_t t) -> 
-    In x (tm_fv tm) -> In x (tm_fv t) \/
+    aset_mem x (tm_fv tm) -> aset_mem x (tm_fv t) \/
     In x (tm_bnd t)) /\
   (In tm (subterms_f f) -> 
-  In x (tm_fv tm) -> In x (fmla_fv f) \/
+  aset_mem x (tm_fv tm) -> aset_mem x (fmla_fv f) \/
   In x (fmla_bnd f)).
 Proof.
   revert t f. apply term_formula_ind; simpl; intros; 
@@ -2629,10 +2027,10 @@ Proof.
     destruct H1; [auto_hyp; destruct_all; auto_hyp| simpl_in].
     simpl_forall. rewrite Forall_forall in H0.
     specialize (H0 _ H4).
-    destruct (in_dec vsymbol_eq_dec x (pat_fv x1.1)).
+    destruct (aset_mem_dec x (pat_fv x1.1)).
     + right. right. eexists. rewrite in_map_iff.
       split. eexists. split;[reflexivity |]. apply H4.
-      simpl_in; auto.
+      simpl_in; simpl_set; auto.
     + repeat (destruct_all; auto_hyp); [left | right]; right.
       * exists x1. split; auto. simpl_set. auto.
       * eexists. split. rewrite in_map_iff.
@@ -2653,10 +2051,10 @@ Proof.
     destruct H1; [auto_hyp; destruct_all; auto_hyp| simpl_in].
     simpl_forall. rewrite Forall_forall in H0.
     specialize (H0 _ H4).
-    destruct (in_dec vsymbol_eq_dec x (pat_fv x1.1)).
+    destruct (aset_mem_dec x (pat_fv x1.1)).
     + right. right. eexists. rewrite in_map_iff.
       split. eexists. split;[reflexivity |]. apply H4.
-      simpl_in; auto.
+      simpl_in; simpl_set; auto.
     + repeat (destruct_all; auto_hyp); [left | right]; right.
       * exists x1. split; auto. simpl_set. auto.
       * eexists. split. rewrite in_map_iff.
@@ -2670,10 +2068,10 @@ Definition subterm_f_fv_in f tm x := proj_fmla (subterm_fv_in x tm) f.
 (*And for subformulas (the same proof, should reduce dup)*)
 Lemma subfmla_fv_in x f1 t f:
   (In f1 (subfmla_t t) -> 
-    In x (fmla_fv f1) -> In x (tm_fv t) \/
+    aset_mem x (fmla_fv f1) -> aset_mem x (tm_fv t) \/
     In x (tm_bnd t)) /\
   (In f1 (subfmla_f f) -> 
-  In x (fmla_fv f1) -> In x (fmla_fv f) \/
+  aset_mem x (fmla_fv f1) -> aset_mem x (fmla_fv f) \/
   In x (fmla_bnd f)).
 Proof.
   revert t f. apply term_formula_ind; simpl; intros; 
@@ -2692,10 +2090,10 @@ Proof.
     destruct H1; [auto_hyp; destruct_all; auto_hyp| simpl_in].
     simpl_forall. rewrite Forall_forall in H0.
     specialize (H0 _ H4).
-    destruct (in_dec vsymbol_eq_dec x (pat_fv x1.1)).
+    destruct (aset_mem_dec x (pat_fv x1.1)).
     + right. right. eexists. rewrite in_map_iff.
       split. eexists. split;[reflexivity |]. apply H4.
-      simpl_in; auto.
+      simpl_in; simpl_set; auto.
     + repeat (destruct_all; auto_hyp); [left | right]; right.
       * exists x1. split; auto. simpl_set. auto.
       * eexists. split. rewrite in_map_iff.
@@ -2716,10 +2114,10 @@ Proof.
     destruct H1; [auto_hyp; destruct_all; auto_hyp| simpl_in].
     simpl_forall. rewrite Forall_forall in H0.
     specialize (H0 _ H4).
-    destruct (in_dec vsymbol_eq_dec x (pat_fv x1.1)).
+    destruct (aset_mem_dec x (pat_fv x1.1)).
     + right. right. eexists. rewrite in_map_iff.
       split. eexists. split;[reflexivity |]. apply H4.
-      simpl_in; auto.
+      simpl_in; simpl_set; auto.
     + repeat (destruct_all; auto_hyp); [left | right]; right.
       * exists x1. split; auto. simpl_set. auto.
       * eexists. split. rewrite in_map_iff.
@@ -2776,7 +2174,7 @@ Proof.
     rewrite in_map_iff in H1; destruct_all.
     rewrite -> Forall_map, Forall_forall in H0.
     eapply H0. apply H3. all: auto.
-    specialize (Hn2 (map fst (pat_fv (fst x0) ++ tm_bnd (snd x0)))).
+    specialize (Hn2 (map fst (aset_to_list (pat_fv (fst x0)) ++ tm_bnd (snd x0)))).
     prove_hyp Hn2.
     { rewrite in_map_iff. exists x0; auto. }
     rewrite -> map_app, NoDup_app_iff in Hn2.
@@ -2822,7 +2220,7 @@ Proof.
     rewrite in_map_iff in H1; destruct_all.
     rewrite -> Forall_map, Forall_forall in H0.
     eapply H0. apply H3. all: auto.
-    specialize (Hn2 (map fst (pat_fv (fst x0) ++ fmla_bnd (snd x0)))).
+    specialize (Hn2 (map fst (aset_to_list (pat_fv (fst x0)) ++ fmla_bnd (snd x0)))).
     prove_hyp Hn2.
     { rewrite in_map_iff. exists x0; auto. }
     rewrite -> map_app, NoDup_app_iff in Hn2.
@@ -2871,7 +2269,7 @@ Proof.
     rewrite in_map_iff in H1; destruct_all.
     rewrite -> Forall_map, Forall_forall in H0.
     eapply H0. apply H3. all: auto.
-    specialize (Hn2 (map fst (pat_fv (fst x0) ++ tm_bnd (snd x0)))).
+    specialize (Hn2 (map fst (aset_to_list (pat_fv (fst x0)) ++ tm_bnd (snd x0)))).
     prove_hyp Hn2.
     { rewrite in_map_iff. exists x0; auto. }
     rewrite -> map_app, NoDup_app_iff in Hn2.
@@ -2918,7 +2316,7 @@ Proof.
     rewrite in_map_iff in H1; destruct_all.
     rewrite -> Forall_map, Forall_forall in H0.
     eapply H0. apply H3. all: auto.
-    specialize (Hn2 (map fst (pat_fv (fst x0) ++ fmla_bnd (snd x0)))).
+    specialize (Hn2 (map fst (aset_to_list (pat_fv (fst x0)) ++ fmla_bnd (snd x0)))).
     prove_hyp Hn2.
     { rewrite in_map_iff. exists x0; auto. }
     rewrite -> map_app, NoDup_app_iff in Hn2.
@@ -2927,6 +2325,7 @@ Qed.
   
 Definition bnd_nodup_subfmla_t t := proj_tm bnd_nodup_subfmla t.
 Definition bnd_nodup_subfmla_f f := proj_fmla bnd_nodup_subfmla f.
+
   
 (*3. From these, we show that there is no overlap in subterms*)
 
@@ -2934,13 +2333,13 @@ Definition bnd_nodup_subfmla_f f := proj_fmla bnd_nodup_subfmla f.
   follow from previous - we need induction*)
 Lemma subterm_disj tm t f:
   (forall (Hn: NoDup (map fst (tm_bnd t)))
-    (Hd: disj (map fst (tm_fv t)) (map fst (tm_bnd t)))
+    (Hd: disj (map fst (aset_to_list (tm_fv t))) (map fst (tm_bnd t)))
     (Hsub: In tm (subterms_t t)),
-    disj (map fst (tm_fv tm)) (map fst (tm_bnd tm))) /\
+    disj (map fst (aset_to_list (tm_fv tm))) (map fst (tm_bnd tm))) /\
   (forall (Hn: NoDup (map fst (fmla_bnd f)))
-    (Hd: disj (map fst (fmla_fv f)) (map fst (fmla_bnd f)))
+    (Hd: disj (map fst (aset_to_list (fmla_fv f))) (map fst (fmla_bnd f)))
     (Hsub: In tm (subterms_f f)),
-    disj (map fst (tm_fv tm)) (map fst (tm_bnd tm))).
+    disj (map fst (aset_to_list (tm_fv tm))) (map fst (tm_bnd tm))).
 Proof.
   revert t f; apply term_formula_ind; simpl; intros; auto;
   try contradiction.
@@ -2957,8 +2356,8 @@ Proof.
     + rewrite -> NoDup_concat_iff in Hn.
       destruct Hn as [Hn _].
       apply Hn; rewrite in_map_iff. exists t1; auto.
-    + apply (disj_sublist_lr Hd); apply sublist_map;
-      [apply sublist_big_union | apply sublist_concat_map]; auto. 
+    + apply (disj_sublist_lr Hd); apply sublist_map; 
+      [rewrite sublist_aset_to_list; apply asubset_big_union | apply sublist_concat_map]; auto.
   - (*Tlet*) destruct Hsub as [Hsub | Hsub]; subst; auto.
     inversion Hn; subst.
     rewrite -> map_app, NoDup_app_iff in H4.
@@ -2966,7 +2365,7 @@ Proof.
     rewrite in_app_iff in Hsub; destruct Hsub;
     [apply H | apply H0]; auto.
     + apply (disj_sublist_lr Hd).
-      * apply sublist_map. apply union_sublist_l.
+      * apply sublist_map. rewrite sublist_aset_to_list. apply union_asubset_l.
       * apply incl_tl. apply sublist_map. apply sublist_app_l.
     + clear -Hd H3. (*need nodups for bound vars*)
       unfold disj in *.
@@ -2989,14 +2388,14 @@ Proof.
     destruct Hn as [Hn1 [[Hn2 [Hn3 _]] _]].
     destruct_all; [apply H | apply H0 | apply H1]; auto;
     apply (disj_sublist_lr Hd); apply sublist_map.
-    + apply union_sublist_l.
+    + rewrite sublist_aset_to_list. apply union_asubset_l.
     + apply sublist_app_l.
-    + eapply sublist_trans. apply union_sublist_l.
-      apply union_sublist_r.
+    + rewrite sublist_aset_to_list. eapply asubset_trans. apply union_asubset_l.
+      apply union_asubset_r.
     + eapply sublist_trans. apply sublist_app_l.
       apply sublist_app_r.
-    + eapply sublist_trans. apply union_sublist_r.
-      apply union_sublist_r.
+    + rewrite sublist_aset_to_list. eapply asubset_trans. apply union_asubset_r.
+      apply union_asubset_r.
     + eapply sublist_trans. apply sublist_app_r.
       apply sublist_app_r.
   - (*Tmatch case*)
@@ -3007,7 +2406,7 @@ Proof.
     destruct Hsub as [Hsub | Hsub].
     + apply H; auto.
       apply (disj_sublist_lr Hd); apply sublist_map.
-      * apply union_sublist_l.
+      * rewrite sublist_aset_to_list. apply union_asubset_l.
       * apply sublist_app_l.
     + clear H Hn1. rewrite in_concat in Hsub.
       rewrite -> Forall_map, Forall_forall in H0.
@@ -3016,7 +2415,7 @@ Proof.
       destruct Hints as [pt [Hts Hinpt]]; subst.
       rewrite -> concat_map, !map_map, NoDup_concat_iff in Hn2.
       destruct Hn2 as [Hn2 _].
-      specialize (Hn2 (map fst (pat_fv pt.1 ++ tm_bnd pt.2))).
+      specialize (Hn2 (map fst (aset_to_list (pat_fv pt.1) ++ tm_bnd pt.2))).
       prove_hyp Hn2.
       {  rewrite in_map_iff. exists pt; auto. }
       rewrite -> map_app, NoDup_app_iff in Hn2.
@@ -3024,7 +2423,7 @@ Proof.
       apply (H0 _ Hinpt); auto.
       (*Prove manually*)
       intros x [Hinxfv Hinxbnd].
-      destruct (in_dec string_dec x (map fst (pat_fv pt.1))).
+      destruct (in_dec string_dec x (map fst (aset_to_list (pat_fv pt.1)))).
       * (*If in pat_fv contradicts nodup*)
         apply (Hnotin _ i Hinxbnd).
       * (*Otherwise, use disj assumption*)
@@ -3036,10 +2435,10 @@ Proof.
         -- rewrite in_map_iff. exists v1. split; auto.
           simpl_set. right. exists pt. split; auto.
           simpl_set. split; auto. intro C.
-          apply n. rewrite in_map_iff. exists v1. auto.
+          apply n. rewrite in_map_iff. exists v1. simpl_set; auto.
         -- rewrite in_map_iff. exists v2. split; auto.
           rewrite in_app_iff. right. rewrite in_concat.
-          exists (pat_fv pt.1 ++ tm_bnd pt.2).
+          exists (aset_to_list (pat_fv pt.1) ++ tm_bnd pt.2).
           split; auto.
           ++ rewrite in_map_iff. exists pt; auto.
           ++ rewrite in_app_iff; auto.
@@ -3068,8 +2467,8 @@ Proof.
     + rewrite -> NoDup_concat_iff in Hn.
       destruct Hn as [Hn _].
       apply Hn; rewrite in_map_iff. exists t1; auto.
-    + apply (disj_sublist_lr Hd); apply sublist_map;
-      [apply sublist_big_union | apply sublist_concat_map]; auto. 
+    + apply (disj_sublist_lr Hd); apply sublist_map; 
+      [rewrite sublist_aset_to_list; apply asubset_big_union | apply sublist_concat_map]; auto.
   - (*Fquant - same as Teps*)
     inversion Hn; subst.
     apply H; auto.
@@ -3088,17 +2487,17 @@ Proof.
     destruct Hn as [Hn1 [Hn2 _]].
     rewrite in_app_iff in Hsub.
     destruct Hsub; [apply H | apply H0]; auto;
-    apply (disj_sublist_lr Hd); apply sublist_map;
-    [apply union_sublist_l | apply sublist_app_l |
-      apply union_sublist_r | apply sublist_app_r].
+    apply (disj_sublist_lr Hd); apply sublist_map; try rewrite sublist_aset_to_list;
+    [apply union_asubset_l | apply sublist_app_l |
+      apply union_asubset_r | apply sublist_app_r].
   - (*Fbinop*)
     rewrite -> map_app, NoDup_app_iff in Hn.
     destruct Hn as [Hn1 [Hn2 _]].
     rewrite in_app_iff in Hsub.
     destruct Hsub; [apply H | apply H0]; auto;
-    apply (disj_sublist_lr Hd); apply sublist_map;
-    [apply union_sublist_l | apply sublist_app_l |
-    apply union_sublist_r | apply sublist_app_r].
+    apply (disj_sublist_lr Hd); apply sublist_map; try rewrite sublist_aset_to_list;
+    [apply union_asubset_l | apply sublist_app_l |
+    apply union_asubset_r | apply sublist_app_r].
   - (*Flet*)
     inversion Hn; subst.
     rewrite -> map_app, NoDup_app_iff in H4.
@@ -3106,7 +2505,7 @@ Proof.
     rewrite in_app_iff in Hsub; destruct Hsub;
     [apply H | apply H0]; auto.
     + apply (disj_sublist_lr Hd).
-      * apply sublist_map. apply union_sublist_l.
+      * apply sublist_map. rewrite sublist_aset_to_list. apply union_asubset_l.
       * apply incl_tl. apply sublist_map. apply sublist_app_l.
     + clear -Hd H3. (*need nodups for bound vars*)
       unfold disj in *.
@@ -3127,25 +2526,25 @@ Proof.
     rewrite -> !map_app, !NoDup_app_iff in Hn.
     destruct Hn as [Hn1 [[Hn2 [Hn3 _]] _]].
     destruct_all; [apply H | apply H0 | apply H1]; auto;
-    apply (disj_sublist_lr Hd); apply sublist_map.
-    + apply union_sublist_l.
+    apply (disj_sublist_lr Hd); apply sublist_map; try rewrite sublist_aset_to_list.
+    + apply union_asubset_l.
     + apply sublist_app_l.
-    + eapply sublist_trans. apply union_sublist_l.
-      apply union_sublist_r.
+    + eapply asubset_trans. apply union_asubset_l.
+      apply union_asubset_r.
     + eapply sublist_trans. apply sublist_app_l.
       apply sublist_app_r.
-    + eapply sublist_trans. apply union_sublist_r.
-      apply union_sublist_r.
+    + eapply asubset_trans. apply union_asubset_r.
+      apply union_asubset_r.
     + eapply sublist_trans. apply sublist_app_r.
       apply sublist_app_r.
   - (*Tmatch case*)
     rewrite in_app_iff in Hsub.
     rewrite -> !map_app, NoDup_app_iff in Hn.
     destruct Hn as [Hn1 [Hn2 _]].
-    destruct Hsub as [Hsub | Hsub].
+    destruct Hsub as [Hsub | Hsub]; subst; auto.
     + apply H; auto.
       apply (disj_sublist_lr Hd); apply sublist_map.
-      * apply union_sublist_l.
+      * rewrite sublist_aset_to_list. apply union_asubset_l.
       * apply sublist_app_l.
     + clear H Hn1. rewrite in_concat in Hsub.
       rewrite -> Forall_map, Forall_forall in H0.
@@ -3154,7 +2553,7 @@ Proof.
       destruct Hints as [pt [Hts Hinpt]]; subst.
       rewrite -> concat_map, !map_map, NoDup_concat_iff in Hn2.
       destruct Hn2 as [Hn2 _].
-      specialize (Hn2 (map fst (pat_fv pt.1 ++ fmla_bnd pt.2))).
+      specialize (Hn2 (map fst (aset_to_list (pat_fv pt.1) ++ fmla_bnd pt.2))).
       prove_hyp Hn2.
       {  rewrite in_map_iff. exists pt; auto. }
       rewrite -> map_app, NoDup_app_iff in Hn2.
@@ -3162,7 +2561,7 @@ Proof.
       apply (H0 _ Hinpt); auto.
       (*Prove manually*)
       intros x [Hinxfv Hinxbnd].
-      destruct (in_dec string_dec x (map fst (pat_fv pt.1))).
+      destruct (in_dec string_dec x (map fst (aset_to_list (pat_fv pt.1)))).
       * (*If in pat_fv contradicts nodup*)
         apply (Hnotin _ i Hinxbnd).
       * (*Otherwise, use disj assumption*)
@@ -3174,10 +2573,10 @@ Proof.
         -- rewrite in_map_iff. exists v1. split; auto.
           simpl_set. right. exists pt. split; auto.
           simpl_set. split; auto. intro C.
-          apply n. rewrite in_map_iff. exists v1. auto.
+          apply n. rewrite in_map_iff. exists v1. simpl_set; auto.
         -- rewrite in_map_iff. exists v2. split; auto.
           rewrite in_app_iff. right. rewrite in_concat.
-          exists (pat_fv pt.1 ++ fmla_bnd pt.2).
+          exists (aset_to_list (pat_fv pt.1) ++ fmla_bnd pt.2).
           split; auto.
           ++ rewrite in_map_iff. exists pt; auto.
           ++ rewrite in_app_iff; auto.
@@ -3191,13 +2590,13 @@ Definition subterm_f_disj f Hn Hd tm :=
 (*Subformula (lots of repetition bad)*)
 Lemma subfmla_disj f1 t f:
   (forall (Hn: NoDup (map fst (tm_bnd t)))
-    (Hd: disj (map fst (tm_fv t)) (map fst (tm_bnd t)))
+    (Hd: disj (map fst (aset_to_list (tm_fv t))) (map fst (tm_bnd t)))
     (Hsub: In f1 (subfmla_t t)),
-    disj (map fst (fmla_fv f1)) (map fst (fmla_bnd f1))) /\
+    disj (map fst (aset_to_list (fmla_fv f1))) (map fst (fmla_bnd f1))) /\
   (forall (Hn: NoDup (map fst (fmla_bnd f)))
-    (Hd: disj (map fst (fmla_fv f)) (map fst (fmla_bnd f)))
+    (Hd: disj (map fst (aset_to_list (fmla_fv f))) (map fst (fmla_bnd f)))
     (Hsub: In f1 (subfmla_f f)),
-    disj (map fst (fmla_fv f1)) (map fst (fmla_bnd f1))).
+    disj (map fst (aset_to_list (fmla_fv f1))) (map fst (fmla_bnd f1))).
 Proof.
   revert t f; apply term_formula_ind; simpl; intros; auto;
   try contradiction.
@@ -3211,8 +2610,8 @@ Proof.
     + rewrite -> NoDup_concat_iff in Hn.
       destruct Hn as [Hn _].
       apply Hn; rewrite in_map_iff. exists t1; auto.
-    + apply (disj_sublist_lr Hd); apply sublist_map;
-      [apply sublist_big_union | apply sublist_concat_map]; auto. 
+    + apply (disj_sublist_lr Hd); apply sublist_map; 
+      [rewrite sublist_aset_to_list; apply asubset_big_union | apply sublist_concat_map]; auto.
   - (*Tlet*)
     inversion Hn; subst.
     rewrite -> map_app, NoDup_app_iff in H4.
@@ -3220,7 +2619,7 @@ Proof.
     rewrite in_app_iff in Hsub; destruct Hsub;
     [apply H | apply H0]; auto.
     + apply (disj_sublist_lr Hd).
-      * apply sublist_map. apply union_sublist_l.
+      * apply sublist_map. rewrite sublist_aset_to_list. apply union_asubset_l.
       * apply incl_tl. apply sublist_map. apply sublist_app_l.
     + clear -Hd H3. (*need nodups for bound vars*)
       unfold disj in *.
@@ -3241,15 +2640,15 @@ Proof.
     rewrite -> !map_app, !NoDup_app_iff in Hn.
     destruct Hn as [Hn1 [[Hn2 [Hn3 _]] _]].
     destruct_all; [apply H | apply H0 | apply H1]; auto;
-    apply (disj_sublist_lr Hd); apply sublist_map.
-    + apply union_sublist_l.
+    apply (disj_sublist_lr Hd); apply sublist_map; try rewrite sublist_aset_to_list.
+    + apply union_asubset_l.
     + apply sublist_app_l.
-    + eapply sublist_trans. apply union_sublist_l.
-      apply union_sublist_r.
+    + eapply asubset_trans. apply union_asubset_l.
+      apply union_asubset_r.
     + eapply sublist_trans. apply sublist_app_l.
       apply sublist_app_r.
-    + eapply sublist_trans. apply union_sublist_r.
-      apply union_sublist_r.
+    + eapply asubset_trans. apply union_asubset_r.
+      apply union_asubset_r.
     + eapply sublist_trans. apply sublist_app_r.
       apply sublist_app_r.
   - (*Tmatch case*)
@@ -3259,7 +2658,7 @@ Proof.
     destruct Hsub as [Hsub | Hsub].
     + apply H; auto.
       apply (disj_sublist_lr Hd); apply sublist_map.
-      * apply union_sublist_l.
+      * rewrite sublist_aset_to_list. apply union_asubset_l.
       * apply sublist_app_l.
     + clear H Hn1. rewrite in_concat in Hsub.
       rewrite -> Forall_map, Forall_forall in H0.
@@ -3268,7 +2667,7 @@ Proof.
       destruct Hints as [pt [Hts Hinpt]]; subst.
       rewrite -> concat_map, !map_map, NoDup_concat_iff in Hn2.
       destruct Hn2 as [Hn2 _].
-      specialize (Hn2 (map fst (pat_fv pt.1 ++ tm_bnd pt.2))).
+      specialize (Hn2 (map fst (aset_to_list (pat_fv pt.1) ++ tm_bnd pt.2))).
       prove_hyp Hn2.
       {  rewrite in_map_iff. exists pt; auto. }
       rewrite -> map_app, NoDup_app_iff in Hn2.
@@ -3276,7 +2675,7 @@ Proof.
       apply (H0 _ Hinpt); auto.
       (*Prove manually*)
       intros x [Hinxfv Hinxbnd].
-      destruct (in_dec string_dec x (map fst (pat_fv pt.1))).
+      destruct (in_dec string_dec x (map fst (aset_to_list (pat_fv pt.1)))).
       * (*If in pat_fv contradicts nodup*)
         apply (Hnotin _ i Hinxbnd).
       * (*Otherwise, use disj assumption*)
@@ -3288,10 +2687,10 @@ Proof.
         -- rewrite in_map_iff. exists v1. split; auto.
           simpl_set. right. exists pt. split; auto.
           simpl_set. split; auto. intro C.
-          apply n. rewrite in_map_iff. exists v1. auto.
+          apply n. rewrite in_map_iff. exists v1. simpl_set; auto.
         -- rewrite in_map_iff. exists v2. split; auto.
           rewrite in_app_iff. right. rewrite in_concat.
-          exists (pat_fv pt.1 ++ tm_bnd pt.2).
+          exists (aset_to_list (pat_fv pt.1) ++ tm_bnd pt.2).
           split; auto.
           ++ rewrite in_map_iff. exists pt; auto.
           ++ rewrite in_app_iff; auto.
@@ -3320,8 +2719,8 @@ Proof.
     + rewrite -> NoDup_concat_iff in Hn.
       destruct Hn as [Hn _].
       apply Hn; rewrite in_map_iff. exists t1; auto.
-    + apply (disj_sublist_lr Hd); apply sublist_map;
-      [apply sublist_big_union | apply sublist_concat_map]; auto. 
+    + apply (disj_sublist_lr Hd); apply sublist_map; 
+      [rewrite sublist_aset_to_list; apply asubset_big_union | apply sublist_concat_map]; auto.
   - (*Fquant - same as Teps*)
     destruct Hsub as [Hsub | Hsub]; subst; auto.
     inversion Hn; subst.
@@ -3342,18 +2741,18 @@ Proof.
     destruct Hn as [Hn1 [Hn2 _]].
     rewrite in_app_iff in Hsub.
     destruct Hsub; [apply H | apply H0]; auto;
-    apply (disj_sublist_lr Hd); apply sublist_map;
-    [apply union_sublist_l | apply sublist_app_l |
-      apply union_sublist_r | apply sublist_app_r].
+    apply (disj_sublist_lr Hd); apply sublist_map; try rewrite sublist_aset_to_list;
+    [apply union_asubset_l | apply sublist_app_l |
+    apply union_asubset_r | apply sublist_app_r].
   - (*Fbinop*)
     destruct Hsub as [Hsub | Hsub]; subst; auto.
     rewrite -> map_app, NoDup_app_iff in Hn.
     destruct Hn as [Hn1 [Hn2 _]].
     rewrite in_app_iff in Hsub.
     destruct Hsub; [apply H | apply H0]; auto;
-    apply (disj_sublist_lr Hd); apply sublist_map;
-    [apply union_sublist_l | apply sublist_app_l |
-    apply union_sublist_r | apply sublist_app_r].
+    apply (disj_sublist_lr Hd); apply sublist_map; try rewrite sublist_aset_to_list;
+    [apply union_asubset_l | apply sublist_app_l |
+    apply union_asubset_r | apply sublist_app_r].
   - destruct Hsub; subst; auto.
   - destruct Hsub; subst; auto; contradiction.
   - destruct Hsub; subst; auto; contradiction.
@@ -3365,7 +2764,7 @@ Proof.
     rewrite in_app_iff in Hsub; destruct Hsub;
     [apply H | apply H0]; auto.
     + apply (disj_sublist_lr Hd).
-      * apply sublist_map. apply union_sublist_l.
+      * apply sublist_map. rewrite sublist_aset_to_list. apply union_asubset_l.
       * apply incl_tl. apply sublist_map. apply sublist_app_l.
     + clear -Hd H3. (*need nodups for bound vars*)
       unfold disj in *.
@@ -3387,15 +2786,15 @@ Proof.
     rewrite -> !map_app, !NoDup_app_iff in Hn.
     destruct Hn as [Hn1 [[Hn2 [Hn3 _]] _]].
     destruct_all; [apply H | apply H0 | apply H1]; auto;
-    apply (disj_sublist_lr Hd); apply sublist_map.
-    + apply union_sublist_l.
+    apply (disj_sublist_lr Hd); apply sublist_map; try rewrite sublist_aset_to_list.
+    + apply union_asubset_l.
     + apply sublist_app_l.
-    + eapply sublist_trans. apply union_sublist_l.
-      apply union_sublist_r.
+    + eapply asubset_trans. apply union_asubset_l.
+      apply union_asubset_r.
     + eapply sublist_trans. apply sublist_app_l.
       apply sublist_app_r.
-    + eapply sublist_trans. apply union_sublist_r.
-      apply union_sublist_r.
+    + eapply asubset_trans. apply union_asubset_r.
+      apply union_asubset_r.
     + eapply sublist_trans. apply sublist_app_r.
       apply sublist_app_r.
   - (*Tmatch case*)
@@ -3406,7 +2805,7 @@ Proof.
     destruct Hsub as [Hsub | Hsub].
     + apply H; auto.
       apply (disj_sublist_lr Hd); apply sublist_map.
-      * apply union_sublist_l.
+      * rewrite sublist_aset_to_list. apply union_asubset_l.
       * apply sublist_app_l.
     + clear H Hn1. rewrite in_concat in Hsub.
       rewrite -> Forall_map, Forall_forall in H0.
@@ -3415,7 +2814,7 @@ Proof.
       destruct Hints as [pt [Hts Hinpt]]; subst.
       rewrite -> concat_map, !map_map, NoDup_concat_iff in Hn2.
       destruct Hn2 as [Hn2 _].
-      specialize (Hn2 (map fst (pat_fv pt.1 ++ fmla_bnd pt.2))).
+      specialize (Hn2 (map fst (aset_to_list (pat_fv pt.1) ++ fmla_bnd pt.2))).
       prove_hyp Hn2.
       {  rewrite in_map_iff. exists pt; auto. }
       rewrite -> map_app, NoDup_app_iff in Hn2.
@@ -3423,7 +2822,7 @@ Proof.
       apply (H0 _ Hinpt); auto.
       (*Prove manually*)
       intros x [Hinxfv Hinxbnd].
-      destruct (in_dec string_dec x (map fst (pat_fv pt.1))).
+      destruct (in_dec string_dec x (map fst (aset_to_list (pat_fv pt.1)))).
       * (*If in pat_fv contradicts nodup*)
         apply (Hnotin _ i Hinxbnd).
       * (*Otherwise, use disj assumption*)
@@ -3435,10 +2834,10 @@ Proof.
         -- rewrite in_map_iff. exists v1. split; auto.
           simpl_set. right. exists pt. split; auto.
           simpl_set. split; auto. intro C.
-          apply n. rewrite in_map_iff. exists v1. auto.
+          apply n. rewrite in_map_iff. exists v1. simpl_set; auto.
         -- rewrite in_map_iff. exists v2. split; auto.
           rewrite in_app_iff. right. rewrite in_concat.
-          exists (pat_fv pt.1 ++ fmla_bnd pt.2).
+          exists (aset_to_list (pat_fv pt.1) ++ fmla_bnd pt.2).
           split; auto.
           ++ rewrite in_map_iff. exists pt; auto.
           ++ rewrite in_app_iff; auto.
@@ -3456,28 +2855,28 @@ Definition subfmla_f_disj f Hn Hd f1 :=
 
 Lemma fv_nodup_subterm tm t f:
   (forall (Hbnd: NoDup (map fst (tm_bnd t))) 
-    (Hfv: NoDup (map fst (tm_fv t)))
-    (Hdisj: disj (map fst (tm_fv t)) (map fst (tm_bnd t)))
+    (Hfv: NoDup (map fst (aset_to_list (tm_fv t))))
+    (Hdisj: disj (map fst (aset_to_list (tm_fv t))) (map fst (tm_bnd t)))
     (Hsub: In tm (subterms_t t)),
-    NoDup (map fst (tm_fv tm))) /\
+    NoDup (map fst (aset_to_list (tm_fv tm)))) /\
   (forall (Hbnd: NoDup (map fst (fmla_bnd f))) 
-    (Hfv: NoDup (map fst (fmla_fv f)))
-    (Hdisj: disj (map fst (fmla_fv f)) (map fst (fmla_bnd f)))
+    (Hfv: NoDup (map fst (aset_to_list (fmla_fv f))))
+    (Hdisj: disj (map fst (aset_to_list (fmla_fv f))) (map fst (fmla_bnd f)))
     (Hsub: In tm (subterms_f f)),
-    NoDup (map fst (tm_fv tm))).
+    NoDup (map fst (aset_to_list (tm_fv tm)))).
 Proof.
   split; intros;
-  apply NoDup_map_inj; try apply tm_fv_nodup;
-  intros x y Hinx Hiny Hxy;
+  apply NoDup_map_inj; try apply aset_to_list_nodup;
+  intros x y Hinx Hiny Hxy; simpl_set;
   [apply subterm_t_fv_in with(t:=t) in Hinx, Hiny |
     apply subterm_f_fv_in with(f:=f) in Hinx, Hiny]; auto;
   destruct Hinx; destruct Hiny;
-  try solve[apply (NoDup_map_in Hbnd); auto];
-  try solve[apply (NoDup_map_in Hfv); auto];
+  try solve[apply (NoDup_map_in Hbnd); simpl_set; auto];
+  try solve[apply (NoDup_map_in Hfv); simpl_set; auto];
   exfalso; apply (Hdisj (fst x));
   split; rewrite in_map_iff;
-  try solve[exists x; auto];
-  solve[exists y; auto].
+  try solve[exists x; simpl_set; auto];
+  solve[exists y; simpl_set; auto].
 Qed.
   
 Definition fv_nodup_subterm_t t Hbnd Hfv Hdisj tm :=
@@ -3487,28 +2886,28 @@ Definition fv_nodup_subterm_f f Hbnd Hfv Hdisj tm :=
 
 Lemma fv_nodup_subfmla f1 t f:
   (forall (Hbnd: NoDup (map fst (tm_bnd t))) 
-    (Hfv: NoDup (map fst (tm_fv t)))
-    (Hdisj: disj (map fst (tm_fv t)) (map fst (tm_bnd t)))
+    (Hfv: NoDup (map fst (aset_to_list (tm_fv t))))
+    (Hdisj: disj (map fst (aset_to_list (tm_fv t))) (map fst (tm_bnd t)))
     (Hsub: In f1 (subfmla_t t)),
-    NoDup (map fst (fmla_fv f1))) /\
+    NoDup (map fst (aset_to_list (fmla_fv f1)))) /\
   (forall (Hbnd: NoDup (map fst (fmla_bnd f))) 
-    (Hfv: NoDup (map fst (fmla_fv f)))
-    (Hdisj: disj (map fst (fmla_fv f)) (map fst (fmla_bnd f)))
+    (Hfv: NoDup (map fst (aset_to_list (fmla_fv f))))
+    (Hdisj: disj (map fst (aset_to_list (fmla_fv f))) (map fst (fmla_bnd f)))
     (Hsub: In f1 (subfmla_f f)),
-    NoDup (map fst (fmla_fv f1))).
+    NoDup (map fst (aset_to_list (fmla_fv f1)))).
 Proof.
   split; intros;
-  apply NoDup_map_inj; try apply fmla_fv_nodup;
-  intros x y Hinx Hiny Hxy;
+  apply NoDup_map_inj; try apply aset_to_list_nodup;
+  intros x y Hinx Hiny Hxy; simpl_set;
   [apply subfmla_t_fv_in with(t:=t) in Hinx, Hiny |
     apply subfmla_f_fv_in with(f:=f) in Hinx, Hiny]; auto;
   destruct Hinx; destruct Hiny;
-  try solve[apply (NoDup_map_in Hbnd); auto];
-  try solve[apply (NoDup_map_in Hfv); auto];
+  try solve[apply (NoDup_map_in Hbnd); simpl_set; auto];
+  try solve[apply (NoDup_map_in Hfv); simpl_set; auto];
   exfalso; apply (Hdisj (fst x));
   split; rewrite in_map_iff;
-  try solve[exists x; auto];
-  solve[exists y; auto].
+  try solve[exists x; simpl_set; auto];
+  solve[exists y; simpl_set; auto].
 Qed.
   
 Definition fv_nodup_subfmla_t t Hbnd Hfv Hdisj tm :=
@@ -3555,7 +2954,7 @@ Definition fmla_wf_strong_rec_holds f :=
   if given a term with no duplicate free variables names*)
 
 Lemma a_convert_all_t_strong_wf t l:
-  NoDup (map fst (tm_fv t)) ->
+  NoDup (map fst (aset_to_list (tm_fv t))) ->
   tm_wf_strong (a_convert_all_t t l).
 Proof.
   intros Hnodup.
@@ -3569,14 +2968,14 @@ Proof.
     destruct Hinbnd.
     apply H. clear -Hinfv.
     rewrite -> !in_map_iff in *.
-    destruct_all. exists x0. split; auto.
+    destruct_all. simpl_set. exists x0. split; auto.
     erewrite alpha_equiv_t_fv.
     apply H0.
     apply a_convert_all_t_equiv.
 Qed.
 
 Lemma a_convert_all_f_strong_wf f l:
-  NoDup (map fst (fmla_fv f)) ->
+  NoDup (map fst (aset_to_list (fmla_fv f))) ->
   fmla_wf_strong (a_convert_all_f f l).
 Proof.
   intros Hnodup.
@@ -3590,7 +2989,7 @@ Proof.
     destruct Hinbnd.
     apply H. clear -Hinfv.
     rewrite -> !in_map_iff in *.
-    destruct_all. exists x0. split; auto.
+    destruct_all. simpl_set. exists x0. split; auto.
     erewrite alpha_equiv_f_fv.
     apply H0.
     apply a_convert_all_f_equiv.
@@ -3619,18 +3018,18 @@ Qed.
 (*Now, we give a function that transforms a term, alpha converting
   if needed if we don't already have new and distinct bound variables*)
 Definition make_tm_wf (t: term) : term :=
-  if seq.uniq (map fst (tm_bnd t)) && disjb (map fst (tm_fv t)) (map fst (tm_bnd t))
-  then t else a_convert_all_t t nil.
+  if seq.uniq (map fst (tm_bnd t)) && disjb (map fst (aset_to_list (tm_fv t))) (map fst (tm_bnd t))
+  then t else a_convert_all_t t aset_empty.
 
 Lemma make_tm_wf_wf t:
-  NoDup (map fst (tm_fv t)) ->
+  NoDup (map fst (aset_to_list (tm_fv t))) ->
   tm_wf_strong (make_tm_wf t).
 Proof.
   intros.
   unfold make_tm_wf.
   case: (seq.uniq (map fst (tm_bnd t))) /Typechecker.uniqP => Hbnd/=;
   last by apply a_convert_all_t_strong_wf.
-  case: (disjb (map fst (tm_fv t)) (map fst (tm_bnd t))) /disjP => Hdisj/=;
+  case: (disjb (map fst (aset_to_list (tm_fv t))) (map fst (tm_bnd t))) /disjP => Hdisj/=;
   last by apply a_convert_all_t_strong_wf.
   rewrite /tm_wf_strong; split_all; auto.
 Qed.
@@ -3641,7 +3040,7 @@ Lemma make_tm_wf_typed {t ty}:
   term_has_type gamma (make_tm_wf t) ty.
 Proof.
   unfold make_tm_wf.
-  destruct (seq.uniq (map fst (tm_bnd t)) && disjb (map fst (tm_fv t)) (map fst (tm_bnd t))); auto.
+  destruct (seq.uniq (map fst (tm_bnd t)) && disjb (map fst (aset_to_list (tm_fv t))) (map fst (tm_bnd t))); auto.
   intros. apply a_convert_all_t_ty; auto.
 Qed.
 
@@ -3655,7 +3054,7 @@ Lemma make_tm_wf_rep (pd: pi_dom) (pdf: pi_dom_full gamma pd)
 Proof.
   revert Hty2.
   unfold make_tm_wf.
-  destruct (seq.uniq (map fst (tm_bnd t)) && disjb (map fst (tm_fv t)) (map fst (tm_bnd t)));
+  destruct (seq.uniq (map fst (tm_bnd t)) && disjb (map fst (aset_to_list (tm_fv t))) (map fst (tm_bnd t)));
   intros.
   apply term_rep_irrel.
   erewrite term_rep_irrel.
@@ -3665,18 +3064,18 @@ Qed.
 
 Definition make_fmla_wf (f: formula) : formula :=
   if seq.uniq (map fst (fmla_bnd f)) && 
-    disjb (map fst (fmla_fv f)) (map fst (fmla_bnd f))
-  then f else a_convert_all_f f nil.
+    disjb (map fst (aset_to_list (fmla_fv f))) (map fst (fmla_bnd f))
+  then f else a_convert_all_f f aset_empty.
 
 Lemma make_fmla_wf_wf f:
-  NoDup (map fst (fmla_fv f)) ->
+  NoDup (map fst (aset_to_list (fmla_fv f))) ->
   fmla_wf_strong (make_fmla_wf f).
 Proof.
   intros.
   unfold make_fmla_wf.
   case: (seq.uniq (map fst (fmla_bnd f))) /Typechecker.uniqP => Hbnd/=;
   last by apply a_convert_all_f_strong_wf.
-  case: (disjb (map fst (fmla_fv f)) (map fst (fmla_bnd f))) /disjP => Hdisj/=;
+  case: (disjb (map fst (aset_to_list (fmla_fv f))) (map fst (fmla_bnd f))) /disjP => Hdisj/=;
   last by apply a_convert_all_f_strong_wf.
   rewrite /fmla_wf_strong; split_all; auto.
 Qed.
@@ -3688,7 +3087,7 @@ Lemma make_fmla_wf_typed {f}:
 Proof.
   unfold make_fmla_wf.
   destruct (seq.uniq (map fst (fmla_bnd f)) && 
-    disjb (map fst (fmla_fv f)) (map fst (fmla_bnd f))); auto.
+    disjb (map fst (aset_to_list (fmla_fv f))) (map fst (fmla_bnd f))); auto.
   intros. apply a_convert_all_f_typed; auto.
 Qed.
 
@@ -3703,7 +3102,7 @@ Proof.
   revert Hty2.
   unfold make_fmla_wf.
   destruct (seq.uniq (map fst (fmla_bnd f)) &&
-  disjb (map fst (fmla_fv f)) (map fst (fmla_bnd f)));
+  disjb (map fst (aset_to_list (fmla_fv f))) (map fst (fmla_bnd f)));
   intros.
   apply fmla_rep_irrel.
   erewrite fmla_rep_irrel.
@@ -3723,7 +3122,7 @@ Definition ty_subst_wf_tm (t: term) : term :=
   ty_subst_tm (make_tm_wf t).
 
 Lemma ty_subst_wf_tm_typed t ty:
-  NoDup (map fst (tm_fv t)) ->
+  NoDup (map fst (aset_to_list (tm_fv t))) ->
   term_has_type gamma t ty ->
   term_has_type gamma (ty_subst_wf_tm t) (ty_subst' params tys ty).
 Proof.
@@ -3745,7 +3144,7 @@ Theorem ty_subst_wf_tm_rep (pd: pi_dom) (pdf: pi_dom_full gamma pd)
   (vt: val_typevar) (vv: val_vars pd vt) t ty
   (Hty1: term_has_type gamma t ty)
   (Hty2: term_has_type gamma (ty_subst_wf_tm t) (ty_subst' params tys ty)):
-  NoDup (map fst (tm_fv t)) ->
+  NoDup (map fst (aset_to_list (tm_fv t))) ->
   term_rep gamma_valid pd pdf vt pf vv (ty_subst_wf_tm t) 
     (ty_subst' params tys ty) Hty2 =
   dom_cast (dom_aux pd) (Logic.eq_sym (v_subst_vt_with_args' 
@@ -3768,7 +3167,7 @@ Definition ty_subst_wf_fmla (f: formula) : formula :=
   ty_subst_fmla (make_fmla_wf f).
 
 Lemma ty_subst_wf_fmla_typed f:
-  NoDup (map fst (fmla_fv f)) ->
+  NoDup (map fst (aset_to_list (fmla_fv f))) ->
   formula_typed gamma f ->
   formula_typed gamma (ty_subst_wf_fmla f).
 Proof.
@@ -3790,7 +3189,7 @@ Theorem ty_subst_wf_fmla_rep (pd: pi_dom) (pdf: pi_dom_full gamma pd)
   (vt: val_typevar) (vv: val_vars pd vt) f 
   (Hty1: formula_typed gamma f)
   (Hty2: formula_typed gamma (ty_subst_wf_fmla f)):
-  NoDup (map fst (fmla_fv f)) ->
+  NoDup (map fst (aset_to_list (fmla_fv f))) ->
   formula_rep gamma_valid pd pdf vt pf vv (ty_subst_wf_fmla f) Hty2 =
   formula_rep gamma_valid pd pdf
     (vt_with_args vt params (map (v_subst vt) tys))
@@ -3808,60 +3207,33 @@ Qed.
 (*Type Vars of result*)
 
 Lemma type_vars_subst_sort ty:
-  (forall x, In x (type_vars ty) -> In x params) ->
+  (forall x, aset_mem x (type_vars ty) -> In x params) ->
   (forall t, In t tys -> is_sort t) ->
-  null (type_vars (ty_subst' params tys ty)).
+  aset_is_empty (type_vars (ty_subst' params tys ty)).
 Proof.
   intros. induction ty; simpl; auto.
-  - simpl in H. specialize (H _ (ltac:(auto))).
+  - simpl in H. specialize (H v (ltac:(simpl_set;auto))).
     destruct (in_dec typevar_eq_dec v params); try contradiction.
     simpl. unfold ty_subst; simpl.
     destruct (ty_subst_fun_cases params tys vty_int v).
     + apply H0. auto.
     + rewrite H1. reflexivity.
-  - rewrite null_nil. apply big_union_nil_eq.
-    rewrite Forall_forall in H1.
-    intros. rewrite in_map_iff in H2.
-    destruct H2 as [ty [Hx Hinty]]; subst.
-    rewrite <- null_nil. apply H1; auto.
-    intros. apply H. simpl.
-    simpl_set. exists ty; auto.
-Qed.
-
-(*Two lists with the same elements have equal null*)
-Lemma same_elts_null {A: Type} (l1 l2: list A):
-  (forall x, In x l1 <-> In x l2) ->
-  null l1 = null l2.
-Proof.
-  intros. destruct l1; destruct l2; simpl in *; auto; exfalso;
-  apply (H a); auto.
-Qed.
-
-Lemma pat_type_vars_null p:
-  null (pat_type_vars p) =
-  null (match p with
-| Pvar v => type_vars (snd v)
-| Pconstr f tys ps => union typevar_eq_dec 
-  (big_union typevar_eq_dec type_vars tys)
-  (big_union typevar_eq_dec pat_type_vars ps)
-| Por p1 p2 => union typevar_eq_dec (pat_type_vars p1) (pat_type_vars p2)
-| Pwild => nil
-| Pbind p x => union typevar_eq_dec (pat_type_vars p) (type_vars (snd x))
-end).
-Proof.
-  destruct p; reflexivity.
+  - rewrite aset_big_union_empty. unfold is_true; rewrite forallb_forall.
+    setoid_rewrite in_map_iff. intros x [y [Hx Hiny]].
+    subst. rewrite Forall_forall in H1; apply H1; auto.
+    simpl in H. intros x Hinx. apply H. simpl_set; eauto.
 Qed.
 
 Lemma ty_subst_srts_vars_p p
-  (Hallin: forall x, In x (pat_type_vars p) -> In x params)
+  (Hallin: forall x, aset_mem x (pat_type_vars p) -> In x params)
   (Hsrts: forall t, In t tys -> is_sort t):
-  null (pat_type_vars (ty_subst_p p)).
+  aset_is_empty (pat_type_vars (ty_subst_p p)).
 Proof.
   induction p; simpl; auto.
   - apply type_vars_subst_sort; auto.
-  - apply union_null_eq.
-    + apply big_union_null_eq.
-      intros ty.
+  - rewrite aset_union_empty andb_true !aset_big_union_empty. 
+    unfold is_true; rewrite !forallb_forall. split.
+    + intros ty.
       unfold ty_subst_list'.
       rewrite in_map_iff.
       intros [ty1 [Hty Hinty1]].
@@ -3870,8 +3242,7 @@ Proof.
       simpl in Hallin. intros x Hinx.
       apply Hallin. simpl_set_small; auto. left.
       simpl_set. exists ty1. auto.
-    + apply big_union_null_eq.
-      intros p.
+    + intros p.
       rewrite in_map_iff.
       intros [p1 [Hp Hinp1]]; subst.
       rewrite Forall_forall in H.
@@ -3880,137 +3251,116 @@ Proof.
       apply Hallin. simpl. simpl_set.
       right.
       exists p1; auto.
-  - apply union_null_eq; 
-    [apply IHp1 | apply IHp2]; intros; apply Hallin; simpl;
-    simpl_set; auto.
-  - apply union_null_eq.
-    + apply IHp; intros; apply Hallin; simpl;
-      simpl_set; auto.
-    + apply type_vars_subst_sort; auto; intros; apply Hallin; simpl;
+  - simpl in *. setoid_rewrite aset_mem_union in Hallin. 
+    rewrite -> aset_union_empty, IHp1, IHp2; auto.
+  - simpl in *. setoid_rewrite aset_mem_union in Hallin.
+    rewrite -> aset_union_empty, IHp; auto.
+    simpl. apply type_vars_subst_sort; auto; intros; apply Hallin; simpl;
       simpl_set; auto.
 Qed.
 
 (*Could prove stronger theorem but this is ok*)
 Lemma ty_subst_srts_vars
   (Hsrts: forall t, In t tys -> is_sort t) t f:
-  (forall (Hallin: forall x, In x (tm_type_vars t) -> In x params),
-    null (tm_type_vars (ty_subst_tm t))) /\
-  (forall (Hallin: forall x, In x (fmla_type_vars f) -> In x params),
-    null (fmla_type_vars (ty_subst_fmla f))).
+  (forall (Hallin: forall x, aset_mem x (tm_type_vars t) -> In x params),
+    aset_is_empty (tm_type_vars (ty_subst_tm t))) /\
+  (forall (Hallin: forall x, aset_mem x (fmla_type_vars f) -> In x params),
+    aset_is_empty (fmla_type_vars (ty_subst_fmla f))).
 Proof.
   revert t f; apply term_formula_ind; intros; auto.
   - apply type_vars_subst_sort; auto.
-  - cbn. apply union_null_eq.
-    + apply big_union_null_eq.
-      unfold ty_subst_list'.
+  - cbn. rewrite -> aset_union_empty, !aset_big_union_empty, !andb_true.
+    unfold is_true; rewrite !forallb_forall. split.
+    + unfold ty_subst_list'.
       intros ty. rewrite in_map_iff.
       intros [ty' [Hty Hinty']]; subst.
       apply type_vars_subst_sort; auto.
       intros. apply Hallin. simpl. simpl_set.
       left. exists ty'; auto.
-    + apply big_union_null_eq.
-      intros tm. rewrite in_map_iff.
+    + intros tm. rewrite in_map_iff.
       intros [tm1 [Htm Hintm1]]; subst.
       rewrite Forall_forall in H.
       apply H; auto.
       intros.
       apply Hallin; simpl; simpl_set.
       right. exists tm1; auto.
-  - apply union_null_eq; [apply union_null_eq |];
-    [apply H | apply H0 | apply type_vars_subst_sort]; auto;
-    intros; apply Hallin; simpl; simpl_set; auto.
-  - apply union_null_eq; [| apply union_null_eq];
-    [apply H | apply H0 | apply H1]; intros;
-    apply Hallin; simpl; simpl_set; auto.
-  - setoid_rewrite tm_type_vars_tmatch in Hallin.
-    rewrite tm_type_vars_tmatch. 
-    apply union_null_eq.
-    + apply union_null_eq.
-      * apply H; auto; intros; apply Hallin; intros; simpl_set; auto.
-      * apply big_union_null_eq.
-        intros p.
-        rewrite in_map_iff.
-        intros [p1 [Hp1 Hinp1]]; subst.
-        rewrite in_map_iff in Hinp1.
-        destruct Hinp1 as [pt [Hp1 Hinpt]]; subst; simpl.
-        apply ty_subst_srts_vars_p; auto.
-        intros; apply Hallin; simpl_set; left.
-        right. exists (fst pt); split; auto.
-        rewrite in_map_iff. exists pt; auto.
-    + apply union_null_eq.
-      * apply big_union_null_eq.
-        intros pt.
-        rewrite in_map_iff.
-        intros [pt1 [Hpt Inpt1]]; subst; simpl.
-        rewrite -> Forall_map, Forall_forall in H0.
-        apply H0; auto.
-        intros. apply Hallin; simpl_set.
-        right. left. exists pt1. auto.
-      * apply type_vars_subst_sort; auto.
-        intros. apply Hallin; simpl_set; auto.
+  - simpl. simpl in Hallin. repeat (setoid_rewrite aset_mem_union in Hallin).
+    rewrite -> !aset_union_empty, H, H0; auto.
+    simpl. apply type_vars_subst_sort; auto.
+  - simpl. simpl in Hallin. repeat (setoid_rewrite aset_mem_union in Hallin).
+    rewrite -> !aset_union_empty, H, H0, H1; auto.
+  - simpl in Hallin. repeat (setoid_rewrite aset_mem_union in Hallin).
+    simpl. rewrite -> !aset_union_empty, H; auto. simpl.
+    rewrite -> !aset_big_union_empty,  type_vars_subst_sort; auto.
+    rewrite -> andb_true_r, andb_true. unfold is_true; split; rewrite forallb_forall.
+    + intros p.
+      rewrite in_map_iff.
+      intros [p1 [Hp1 Hinp1]]; subst.
+      rewrite in_map_iff in Hinp1.
+      destruct Hinp1 as [pt [Hp1 Hinpt]]; subst; simpl.
+      apply ty_subst_srts_vars_p; auto.
+      intros; apply Hallin; simpl_set; left.
+      right. exists (fst pt); split; auto.
+      rewrite in_map_iff. exists pt; auto.
+    + intros pt.
+      rewrite in_map_iff.
+      intros [pt1 [Hpt Inpt1]]; subst; simpl.
+      rewrite -> Forall_map, Forall_forall in H0.
+      apply H0; auto.
+      intros. apply Hallin; simpl_set.
+      right. left. exists pt1. auto.
   - cbn in *.
-    apply union_null_eq.
-    + apply H. intros; apply Hallin; simpl_set; auto.
-    + apply type_vars_subst_sort; auto; intros; apply Hallin;
-      simpl_set; auto.
-  - cbn. apply union_null_eq.
-    + apply big_union_null_eq.
-      unfold ty_subst_list'.
+    repeat (setoid_rewrite aset_mem_union in Hallin).
+    rewrite -> aset_union_empty,H, type_vars_subst_sort; auto.
+  - cbn in *. repeat (setoid_rewrite aset_mem_union in Hallin).
+    rewrite -> aset_union_empty, !aset_big_union_empty, !andb_true.
+    unfold is_true; rewrite !forallb_forall. split.
+    + unfold ty_subst_list'.
       intros ty. rewrite in_map_iff.
       intros [ty' [Hty Hinty']]; subst.
       apply type_vars_subst_sort; auto.
-      intros. apply Hallin. simpl. simpl_set.
+      intros. apply Hallin. simpl_set.
       left. exists ty'; auto.
-    + apply big_union_null_eq.
-      intros tm. rewrite in_map_iff.
+    + intros tm. rewrite in_map_iff.
       intros [tm1 [Htm Hintm1]]; subst.
       rewrite Forall_forall in H.
       apply H; auto.
       intros.
       apply Hallin; simpl; simpl_set.
       right. exists tm1; auto.
-  - apply union_null_eq.
-    + apply type_vars_subst_sort; auto;
-      intros; apply Hallin; simpl; simpl_set; auto.
-    + apply H; intros; apply Hallin; simpl; simpl_set; auto.
-  - apply union_null_eq; [| apply union_null_eq];
-    [apply type_vars_subst_sort | apply H | apply H0];
-    auto; intros; apply Hallin; simpl; simpl_set; auto.
-  - apply union_null_eq; [apply H | apply H0]; auto;
-    intros; apply Hallin; simpl; simpl_set; auto.
-  - apply union_null_eq; [apply union_null_eq |];
-    [apply H | apply H0 | apply type_vars_subst_sort];
-    auto; intros; apply Hallin; simpl; simpl_set; auto.
-  - apply union_null_eq; [|apply union_null_eq];
-    [apply H | apply H0 | apply H1]; intros;
-    apply Hallin; simpl; simpl_set; auto.
-  - setoid_rewrite tm_type_vars_fmatch in Hallin.
-    rewrite tm_type_vars_fmatch. 
-    apply union_null_eq.
-    + apply union_null_eq.
-      * apply H; auto; intros; apply Hallin; intros; simpl_set; auto.
-      * apply big_union_null_eq.
-        intros p.
-        rewrite in_map_iff.
-        intros [p1 [Hp1 Hinp1]]; subst.
-        rewrite in_map_iff in Hinp1.
-        destruct Hinp1 as [pt [Hp1 Hinpt]]; subst; simpl.
-        apply ty_subst_srts_vars_p; auto.
-        intros; apply Hallin; simpl_set; left.
-        right. exists (fst pt); split; auto.
-        rewrite in_map_iff. exists pt; auto.
-    + apply union_null_eq.
-      * apply big_union_null_eq.
-        intros pt.
-        rewrite in_map_iff.
-        intros [pt1 [Hpt Inpt1]]; subst; simpl.
-        rewrite -> Forall_map, Forall_forall in H0.
-        apply H0; auto.
-        intros. apply Hallin; simpl_set.
-        right. left. exists pt1. auto.
-      * apply type_vars_subst_sort; auto.
-        intros. apply Hallin; simpl_set; auto.
+  - cbn in *.
+    repeat (setoid_rewrite aset_mem_union in Hallin).
+    rewrite -> aset_union_empty,H, type_vars_subst_sort; auto.
+  - simpl. simpl in Hallin. repeat (setoid_rewrite aset_mem_union in Hallin).
+    rewrite -> !aset_union_empty, H, H0, type_vars_subst_sort; auto.
+  - simpl. simpl in Hallin. repeat (setoid_rewrite aset_mem_union in Hallin).
+    rewrite -> !aset_union_empty, H, H0; auto.
+  - simpl. simpl in Hallin. repeat (setoid_rewrite aset_mem_union in Hallin).
+    rewrite -> !aset_union_empty, H, H0, type_vars_subst_sort; auto.
+  - simpl. simpl in Hallin. repeat (setoid_rewrite aset_mem_union in Hallin).
+    rewrite -> !aset_union_empty, H, H0, H1; auto.
+  - simpl in Hallin. repeat (setoid_rewrite aset_mem_union in Hallin).
+    simpl. rewrite -> !aset_union_empty, H; auto. simpl.
+    rewrite -> !aset_big_union_empty,  type_vars_subst_sort; auto.
+    rewrite -> andb_true_r, andb_true. unfold is_true; split; rewrite forallb_forall.
+    + intros p.
+      rewrite in_map_iff.
+      intros [p1 [Hp1 Hinp1]]; subst.
+      rewrite in_map_iff in Hinp1.
+      destruct Hinp1 as [pt [Hp1 Hinpt]]; subst; simpl.
+      apply ty_subst_srts_vars_p; auto.
+      intros; apply Hallin; simpl_set; left.
+      right. exists (fst pt); split; auto.
+      rewrite in_map_iff. exists pt; auto.
+    + intros pt.
+      rewrite in_map_iff.
+      intros [pt1 [Hpt Inpt1]]; subst; simpl.
+      rewrite -> Forall_map, Forall_forall in H0.
+      apply H0; auto.
+      intros. apply Hallin; simpl_set.
+      right. left. exists pt1. auto.
 Qed.
+
 
 Definition ty_subst_srts_vars_t Hsrts t :=
   proj_tm (ty_subst_srts_vars Hsrts) t.
@@ -4022,7 +3372,7 @@ Lemma make_fmla_wf_type_vars f:
   fmla_type_vars (make_fmla_wf f) = fmla_type_vars f.
 Proof.
   unfold make_fmla_wf.
-  destruct ( seq.uniq (map fst (fmla_bnd f)) && disjb (map fst (fmla_fv f)) (map fst (fmla_bnd f)));
+  destruct ( seq.uniq (map fst (fmla_bnd f)) && disjb (map fst (aset_to_list (fmla_fv f))) (map fst (fmla_bnd f)));
   auto.
   symmetry.
   apply a_equiv_f_type_vars.
