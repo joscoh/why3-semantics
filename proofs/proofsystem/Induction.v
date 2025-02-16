@@ -38,7 +38,7 @@ Definition is_rec (x: vty) : bool :=
 Definition constr_case (f: funsym) (goal: formula) (x: vsymbol) : formula :=
   (*Generate names for each arg*)
   let names := gen_strs (length (s_args f)) 
-    (x :: fmla_fv goal (*should be x maybe remove*)++ fmla_bnd goal) in
+    (aset_union (aset_union (aset_singleton x) (fmla_fv goal)) (*should be x maybe remove*) (list_to_aset (fmla_bnd goal))) in
   let vars := combine names (ty_subst_list' (s_params f) tys (s_args f)) in
   fforalls vars
     (iter_fimplies
@@ -64,7 +64,7 @@ term_has_type gamma
      (map Tvar
         (combine
            (gen_strs (Datatypes.length (s_args f))
-              ((x, vty_cons (adt_name a) vs) :: fmla_fv goal ++ fmla_bnd goal))
+              (aset_union (aset_union (aset_singleton (x, vty_cons (adt_name a) vs)) (fmla_fv goal)) (list_to_aset (fmla_bnd goal))))
            (ty_subst_list' (s_params f) vs (s_args f))))) (vty_cons (adt_name a) vs).
 Proof.
   intros m_in a_in c_in Hval Hlen Hty.
@@ -352,7 +352,7 @@ Proof.
     (map snd
         (combine
           (gen_strs (Datatypes.length (s_args c))
-              ((x, vty_cons (adt_name a) vs) :: fmla_fv goal ++ fmla_bnd goal))
+              (aset_union (aset_union (aset_singleton (x, vty_cons (adt_name a) vs)) (fmla_fv goal)) (list_to_aset (fmla_bnd goal))))
           (ty_subst_list' (s_params c) vs (s_args c))))).
   {
     rewrite map_snd_combine.
@@ -385,11 +385,11 @@ Proof.
   }
   (*Need this in 2 cases: nothing in the added vars is in the
     goal, so substitution is the same*)
-  assert (Hsubstsame: forall v, In v (fmla_fv goal) ->
+  assert (Hsubstsame: forall v, aset_mem v (fmla_fv goal) ->
   substi_mult pd vt vv
     (combine
        (gen_strs (Datatypes.length (s_args c))
-          ((x, vty_cons (adt_name a) vs) :: fmla_fv goal ++ fmla_bnd goal))
+          (aset_union (aset_union (aset_singleton (x, vty_cons (adt_name a) vs)) (fmla_fv goal)) (list_to_aset (fmla_bnd goal))))
        (ty_subst_list' (s_params c) vs (s_args c))) (cast_arg_list Heqargs args) v = 
   vv v).
   { 
@@ -402,13 +402,12 @@ Proof.
     specialize (Hv EmptyString vty_int).
     subst.
     eapply (gen_strs_notin' (length (s_args c))
-    ((x, vty_cons (adt_name a) vs) :: fmla_fv goal ++ fmla_bnd goal)).
-    2: {
-      simpl. right. rewrite map_app, in_app_iff. left.
-      rewrite in_map_iff. eexists. split;[|apply Hinv].
-      simpl. reflexivity. 
+    (aset_union (aset_union (aset_singleton (x, vty_cons (adt_name a) vs)) (fmla_fv goal)) (list_to_aset (fmla_bnd goal)))).
+    2: { simpl_set. eexists. split.
+      2: { simpl_set. left; right. apply Hinv. }
+      simpl. reflexivity.
     }
-    apply nth_In. rewrite gen_strs_length; auto.
+    apply nth_In. rewrite gen_strs_length. eauto.
   }
   (*Now we have to show that the conclusion of Hval
     is equal to our goal. This is difficult: Hval is syntactic,
@@ -420,7 +419,8 @@ Proof.
        (map Tvar
           (combine
              (gen_strs (Datatypes.length (s_args c))
-                ((x, vty_cons (adt_name a) vs) :: fmla_fv goal ++ fmla_bnd goal))
+                (aset_union (aset_union (aset_singleton (x, vty_cons (adt_name a) vs)) (fmla_fv goal)) 
+                    (list_to_aset (fmla_bnd goal))))
              (ty_subst_list' (s_params c) vs (s_args c))))) (vty_cons (adt_name a) vs)).
     {
       apply constr_case_goal_ty with(m:=m); auto.
@@ -460,7 +460,9 @@ Proof.
        (map Tvar
           (combine
              (gen_strs (Datatypes.length (s_args c))
-                ((x, vty_cons (adt_name a) vs) :: fmla_fv goal ++ fmla_bnd goal))
+                (aset_union (aset_union (aset_singleton (x, vty_cons (adt_name a) vs)) (fmla_fv goal)) 
+                    (list_to_aset (fmla_bnd goal))))
+                (* ((x, vty_cons (adt_name a) vs) :: fmla_fv goal ++ fmla_bnd goal)) *)
              (ty_subst_list' (s_params c) vs (s_args c)))) tm_d)
     (ty_subst (s_params c) vs (nth i (s_args c) vty_int))).
     {
@@ -484,7 +486,8 @@ Proof.
         (substi_mult pd vt vv
            (combine
               (gen_strs (Datatypes.length (s_args c))
-                 ((x, vty_cons (adt_name a) vs) :: fmla_fv goal ++ fmla_bnd goal))
+                  (aset_union (aset_union (aset_singleton (x, vty_cons (adt_name a) vs)) 
+                    (fmla_fv goal)) (list_to_aset (fmla_bnd goal))))
               (ty_subst_list' (s_params c) vs (s_args c))) 
            (cast_arg_list Heqargs args))) (ltac:(intros; apply term_rep_irrel)) (s_params_Nodup c) 
      _ _
@@ -502,7 +505,8 @@ Proof.
     Datatypes.length
       (combine
          (gen_strs (Datatypes.length (s_args c))
-            ((x, vty_cons (adt_name a) vs) :: fmla_fv goal ++ fmla_bnd goal))
+            (aset_union (aset_union (aset_singleton (x, vty_cons (adt_name a) vs)) (fmla_fv goal)) 
+                (list_to_aset (fmla_bnd goal))))
          (seq.map (ty_subst' (s_params c) vs) (s_args c)))).
     {
       rewrite combine_length, map_length, gen_strs_length; lia.
@@ -568,7 +572,8 @@ Proof.
     (Tvar
        (nth i
           (gen_strs (Datatypes.length (s_args c))
-             ((x, vty_cons (adt_name a) vs) :: fmla_fv goal ++ fmla_bnd goal)) ""%string,
+              (aset_union (aset_union (aset_singleton (x, vty_cons (adt_name a) vs)) (fmla_fv goal)) 
+                (list_to_aset (fmla_bnd goal))))""%string,
         vty_cons (adt_name a) vs)) (vty_cons (adt_name a) vs)).
     {
       apply T_Var. simpl. 
@@ -601,19 +606,22 @@ Proof.
     Datatypes.length
       (combine
          (gen_strs (Datatypes.length (s_args c))
-            ((x, vty_cons (adt_name a) vs) :: fmla_fv goal ++ fmla_bnd goal))
+            (aset_union (aset_union (aset_singleton (x, vty_cons (adt_name a) vs)) (fmla_fv goal)) 
+              (list_to_aset (fmla_bnd goal))))
          (seq.map (ty_subst' (s_params c) vs) (s_args c)))).
     {
       rewrite combine_length, gen_strs_length, map_length; auto; lia.
     }
     assert (Heq3: (nth i
         (gen_strs (Datatypes.length (s_args c))
-          ((x, vty_cons (adt_name a) vs) :: fmla_fv goal ++ fmla_bnd goal))
+          (aset_union (aset_union (aset_singleton (x, vty_cons (adt_name a) vs)) (fmla_fv goal)) 
+              (list_to_aset (fmla_bnd goal))))
         ""%string, vty_cons (adt_name a) vs) =
     nth i
       (combine
           (gen_strs (Datatypes.length (s_args c))
-            ((x, vty_cons (adt_name a) vs) :: fmla_fv goal ++ fmla_bnd goal))
+            (aset_union (aset_union (aset_singleton (x, vty_cons (adt_name a) vs)) (fmla_fv goal)) 
+                (list_to_aset (fmla_bnd goal))))
           (seq.map (ty_subst' (s_params c) vs) (s_args c))) vs_d).
     {
       unfold vs_d.

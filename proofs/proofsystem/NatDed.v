@@ -10,6 +10,34 @@ Require Export Rewrite.
 From mathcomp Require all_ssreflect.
 Set Bullet Behavior "Strict Subproofs".
 
+(*TODO: move*)
+Lemma check_asubset_prop {A: Type} `{countable.Countable A} {s1 s2: aset A}:
+  check_asubset s1 s2 ->
+  asubset s1 s2.
+Proof.
+  destruct (check_asubset s1 s2); auto. discriminate.
+Qed.
+
+(*TODO: move*)
+Lemma is_empty_empty {A: Type} `{countable.Countable A} (s: aset A):
+  aset_is_empty s ->
+  s = aset_empty.
+Proof.
+  intros Hemp. apply aset_ext. intros x.
+  split; intros Hmem; simpl_set.
+  apply aset_is_empty_mem with (x:=x) in Hemp; contradiction.
+Qed.
+
+(*TODO: move*)
+Lemma find_args_sort ty:
+  is_sort ty ->
+  find_args [ty] = nil.
+Proof.
+  unfold is_sort; intros Hsort.
+  unfold find_args. rewrite aset_big_union_cons, aset_big_union_nil, aset_union_empty_r.
+  apply is_empty_empty in Hsort. rewrite Hsort. reflexivity.
+Qed.
+
 (*See if a term has a type (without ssreflect, for external use)*)
 Module CheckTy.
 
@@ -45,6 +73,23 @@ Lemma check_fmla_ty_iff gamma f:
 Proof.
   symmetry. apply reflect_iff, check_fmla_ty_spec.
 Qed.
+
+(*TODO: move?*)
+Import CommonSSR.
+Definition sublistb {A: eqType} (l1 l2: seq A) : bool :=
+  (all (fun x => x \in l2) l1).
+
+Lemma sublistbP {A: eqType} (l1 l2: seq A):
+  reflect (sublist l1 l2) (sublistb l1 l2).
+Proof.
+  rewrite /sublist/sublistb.
+  eapply equivP.
+  2: apply Forall_forall.
+  apply all_Forall. move=> x Hinx.
+  apply inP.
+Qed. 
+
+(*NOTE: in real proof system, would want string -> hyp map, not list. But OK for now*)
 
 End CheckTy.
 
@@ -164,6 +209,7 @@ Qed.
 (*Weakening*)
 
 (*Removing or reordering hypotheses*)
+
 
 Definition weaken_trans delta' : trans :=
   fun t =>
@@ -834,15 +880,8 @@ refine (fun f =>
 assert (funsym_sigma_ret f srts = s). {
   rewrite Heq.
   unfold funsym_sigma_ret. simpl.
-  assert (type_vars s = nil). {
-    destruct s as [ty Hs].
-    unfold is_sort in Hs. simpl. clear -Hs.
-    rewrite null_nil in Hs; auto.
-  }
-  rewrite H. simpl.
-  apply sort_inj; simpl.
-  symmetry.
-  apply subst_is_sort_eq. destruct s; auto.
+  unfold ty_subst_s.
+  symmetry; apply subst_sort_eq.
 }
 exact (dom_cast _ (eq_sym H) d).
 Defined.
@@ -1041,7 +1080,8 @@ Proof.
 Qed.    
 
 End InterpWithConst.
-   
+  
+
 (*Finally, we can prove the transformation sound.
   It is quite difficult.*)
 Lemma forallI_trans_sound name:
@@ -1061,12 +1101,12 @@ Proof.
   split; auto.
   intros.
   destruct H as [Hwf Hval].
-  assert (Hsort: type_vars (snd v) = nil). {
+  assert (Hsort: aset_is_empty (type_vars (snd v))). {
     destruct t_wf. simpl_task.
-    destruct task_goal_closed.
-    unfold mono in f_mono. simpl in f_mono.
-    rewrite null_nil in f_mono.
-    apply union_nil in f_mono. apply f_mono.
+    destruct task_goal_closed. 
+    unfold mono in f_mono. simpl in f_mono. 
+    rewrite aset_union_empty, andb_true in f_mono.
+    apply f_mono.
   }
   assert (Hnotused: ~ In (const_noconstr name (snd v)) (sig_f gamma)). {
     intro C. apply n. apply sig_f_in_idents. 
@@ -1085,7 +1125,7 @@ Proof.
       split.
       + revert Htyval. apply valid_type_sublist.
         apply expand_sublist_sig.
-      + rewrite Hsort; auto.
+      + intros tv Hmem. apply aset_is_empty_mem with (x:=tv) in Hsort. contradiction.
     - unfold idents_of_def; simpl. intros x [[Heq | []] Hinx2]; subst; contradiction.
   }
   specialize (Hval gamma_valid' Hwf).
@@ -1104,10 +1144,7 @@ Proof.
     and sends funs c to d
     *)
   destruct v as [vn vty]; simpl in *.
-  assert (Hsort': null (type_vars vty)). {
-    rewrite null_nil; auto.
-  }
-  set (sty := exist _ vty Hsort' : sort).
+  set (sty := exist _ vty Hsort : sort).
   assert (v_subst vt vty = sty).
   {
     apply sort_inj; simpl.
@@ -1148,14 +1185,12 @@ Proof.
     unfold t_constsym.
     assert (vty = ty_subst (s_params (const_noconstr name vty)) nil (f_ret
       (const_noconstr name vty))). {
-      simpl. rewrite Hsort. simpl.
-      unfold ty_subst.
-      rewrite <- subst_is_sort_eq; auto.
+      simpl. unfold ty_subst. rewrite <- subst_is_sort_eq; auto.
     }
     rewrite H2 at 3.
     constructor; simpl; auto.
-    revert Htyval. apply valid_type_sublist, expand_sublist_sig. 
-    rewrite Hsort; reflexivity.
+    revert Htyval. apply valid_type_sublist, expand_sublist_sig.
+    rewrite find_args_sort; auto.
   }
   assert (f_ty: formula_typed gamma f). {
     destruct t_wf.
@@ -1184,7 +1219,7 @@ Proof.
   apply f_ty. auto.
   Unshelve.
   - unfold funsym_sigma_ret. simpl.
-    rewrite Hsort. simpl.  apply sort_inj. simpl.
+    apply sort_inj. simpl.
     rewrite <- subst_is_sort_eq; auto.
   - revert f_ty. apply formula_typed_sublist.
     apply expand_sublist_sig.
@@ -1265,7 +1300,7 @@ Qed.
 
 Lemma safe_sub_f_closed gamma t x f:
   closed_tm t ->
-  sublist (fmla_fv f) [x] ->
+  asubset (fmla_fv f) (aset_singleton x) ->
   mono f ->
   term_has_type gamma t (snd x) ->
   formula_typed gamma f ->
@@ -1274,27 +1309,20 @@ Proof.
   intros.
   constructor.
   - destruct x; apply safe_sub_f_typed; auto.
-  - destruct (in_bool_spec vsymbol_eq_dec x (fmla_fv f)).
-    + unfold closed_formula. rewrite null_nil.
-      destruct (fmla_fv (safe_sub_f t x f)) eqn : Hfv; auto.
-      assert (In v (fmla_fv (safe_sub_f t x f))) by (rewrite Hfv; simpl; auto).
-      apply safe_sub_f_fv in H4; auto.
-      destruct_all.
-      * destruct H. unfold closed_term in t_closed.
-        rewrite null_nil in t_closed.
-        rewrite t_closed in H4. inversion H4.
-      * apply H0 in H4.
-        destruct H4 as [Heq | []]; subst; contradiction.
+  - destruct (aset_mem_dec x (fmla_fv f)).
+    + unfold closed_formula.
+      destruct (aset_is_empty (fmla_fv (safe_sub_f t x f))) eqn : Hemp; auto.
+      rewrite aset_is_empty_false in Hemp. destruct Hemp as [v Hmemv].
+      apply safe_sub_f_fv in Hmemv; auto.
+      destruct Hmemv as [Hmemv | [Hmemv Hvx]]. 
+      * inversion H. unfold closed_term in t_closed.
+        apply aset_is_empty_mem with (x:=v) in t_closed; contradiction.
+      * rewrite asubset_def in H0. apply H0 in Hmemv. simpl_set. subst; contradiction.
     + rewrite safe_sub_f_notin; auto.
       unfold closed_formula.
-      rewrite null_nil.
-      unfold sublist in H0. 
-      destruct (fmla_fv f); auto.
-      exfalso. apply n.
-      simpl.
-      left.
-      specialize (H0 v ltac:(simpl; left; auto)).
-      destruct H0 as [Heq | []]; subst; auto.
+      destruct (aset_is_empty (fmla_fv f)) eqn : Hemp; auto.
+      rewrite aset_is_empty_false in Hemp. destruct Hemp as [v Hmemv]. assert (Hmem:=Hmemv).
+      rewrite asubset_def in H0. apply H0 in Hmemv. simpl_set; subst. contradiction.
   - apply safe_sub_f_mono; auto.
     destruct H; auto.
 Qed. 
@@ -1316,17 +1344,13 @@ Proof.
       destruct task_goal_closed.
       unfold closed_formula in f_closed.
       simpl in f_closed.
-      rewrite null_nil in f_closed.
-      simpl.
-      vsym_eq x x0.
-      assert (In x0 nil). {
-        rewrite <- f_closed. simpl_set. split; auto.
-      }
-      destruct H4.
+      rewrite asubset_def. intros v Hmemv.
+      simpl_set. vsym_eq v x. 
+      apply aset_is_empty_mem with (x:=v) in f_closed.
+      exfalso; apply f_closed. simpl_set. auto.
     + destruct task_goal_closed; auto.
       unfold mono in *. simpl in f_mono.
-      rewrite null_nil in *.
-      apply union_nil in f_mono; destruct_all; auto.
+      rewrite aset_union_empty, andb_true in f_mono. apply f_mono.
     + destruct task_goal_closed. inversion f_ty; auto.
   - apply forallE_trans_sound.
   - unfold forallE_trans. simpl_task.
@@ -1579,20 +1603,17 @@ Definition existsE_trans name (f: formula) (x: vsymbol) hyp :
         (task_goal t) ].
 
 Lemma t_constsym_ty gamma name ty:
-  type_vars ty = nil ->
+  aset_is_empty (type_vars ty) ->
   valid_type gamma ty ->
   In (const_noconstr name ty) (sig_f gamma) ->
   term_has_type gamma (t_constsym name ty) ty.
 Proof.
   intros. unfold t_constsym.
   assert (ty = ty_subst (s_params (const_noconstr name ty)) nil (f_ret (const_noconstr name ty))). {
-    simpl. rewrite H. simpl.
-    symmetry. apply ty_subst_params_id.
-    rewrite H. auto.
+    simpl. unfold ty_subst. apply subst_is_sort_eq; auto.
   }
   rewrite H2 at 2.
-  constructor; auto; simpl.
-  rewrite H; reflexivity.
+  constructor; auto; simpl. rewrite find_args_sort; auto.
 Qed. 
 
 (*This is a tricky proof, trickier than forallI*)
@@ -1613,13 +1634,12 @@ Proof.
   split; auto.
   intros.
   specialize (Hval1 gamma_valid Hwf1).
-  assert (Hsort: type_vars (snd x) = nil). {
+  assert (Hsort: aset_is_empty (type_vars (snd x))). {
     destruct Hwf1; simpl_task.
     destruct task_goal_closed.
     unfold mono in f_mono. simpl in f_mono.
     clear -f_mono.
-    rewrite null_nil in f_mono.
-    apply union_nil in f_mono. apply f_mono.
+    rewrite aset_union_empty, andb_true in f_mono. apply f_mono.
   }
   assert (Hnotused: ~ In (const_noconstr name (snd x)) (sig_f gamma)). {
     intro C. apply n. apply sig_f_in_idents. rewrite in_map_iff. 
@@ -1638,7 +1658,7 @@ Proof.
       split.
       + revert Htyval. apply valid_type_sublist.
         apply expand_sublist_sig.
-      + rewrite Hsort; auto.
+      + intros tv Hmem. apply aset_is_empty_mem with (x:=tv) in Hsort; contradiction.
     - unfold idents_of_def; simpl. intros y [[Heq | []] Hinx2]; subst; contradiction.
   }
   specialize (Hval2 gamma_valid' Hwf2).
@@ -1715,29 +1735,26 @@ Proof.
           destruct task_goal_closed.
           unfold mono in f_mono.
           clear -f_mono H1.
-          rewrite null_nil in f_mono.
-          simpl in f_mono.
-          apply union_nil in f_mono. destruct f_mono.
-          rewrite H0 in H1. inversion H1.
+          simpl in f_mono. rewrite aset_union_empty, andb_true in f_mono.
+          destruct f_mono as [_ Hsort].
+          apply aset_is_empty_mem with (x:=x) in Hsort; contradiction.
         + (*Now prove that the change of vv is OK. This is because we
             set c to go to d'*)
             intros.
             (*Only fv of f is (xn, xty)*)
-            assert (Hfvs: sublist (fmla_fv f) [(xn, xty)]). {
+            assert (Hfvs: asubset (fmla_fv f) (aset_singleton (xn, xty))). {
               destruct Hwf1. simpl_task. destruct task_goal_closed.
               clear -f_closed.
-              unfold closed_formula in f_closed.
-              rewrite null_nil in f_closed; simpl in f_closed.
-              intros y Hiny. simpl.
-              vsym_eq (xn, xty) y.
-              exfalso. assert (In y nil). { 
-                rewrite <- f_closed; simpl_set; auto. }
-              inversion H.
+              unfold closed_formula in f_closed. simpl in f_closed.
+              rewrite asubset_def. intros x Hmemx. simpl_set.
+              vsym_eq x (xn, xty). apply aset_is_empty_mem with (x:=x) in f_closed.
+              exfalso; apply f_closed; simpl_set; auto.
             }
             unfold substi.
             unfold sublist in Hfvs. simpl in Hfvs.
             assert ((xn, xty) = x). {
-              apply Hfvs in Hinx; destruct_all; auto. contradiction.
+              rewrite asubset_def in Hfvs.
+              apply Hfvs in Hinx; destruct_all; auto. simpl_set; subst. auto.
             } subst.
             vsym_eq (xn, xty) (xn, xty).
             assert (e = eq_refl). {
@@ -1836,19 +1853,16 @@ Proof.
 Qed.
 
 Lemma type_vars_ty_subst (l: list typevar) (tys: list vty) (t: vty):
-  (forall x, In x (type_vars t) -> In x l) ->
+  (forall x, aset_mem x (type_vars t) -> In x l) ->
   length tys = length l ->
   NoDup l ->
-  forall y, In y (type_vars (ty_subst l tys t)) ->
-  In y (big_union typevar_eq_dec type_vars tys).
+  forall y, aset_mem y (type_vars (ty_subst l tys t)) ->
+  aset_mem y (aset_big_union type_vars tys).
 Proof.
   intros.
   unfold ty_subst in H2.
-  induction t; simpl in *; auto.
-  - destruct H2.
-  - destruct H2.
-  - simpl_set.
-    specialize (H _ ltac:(left; auto)).
+  induction t; simpl in *; auto; simpl_set.
+  - specialize (H _ ltac:(simpl_set; auto)).
     destruct (In_nth _ _ EmptyString H) as [n [Hn Hv]]; subst.
     rewrite ty_subst_fun_nth with(s:=s_int) in H2; auto.
     exists (nth n tys vty_int). split; auto.
@@ -1866,7 +1880,7 @@ Qed.
   the type variables*)
 Lemma ty_type_vars_in (gamma: context) (tm: term)
   (ty: vty) (Hty: term_has_type gamma tm ty):
-  (forall y, In y (type_vars ty) -> In y (tm_type_vars tm)).
+  (forall y, aset_mem y (type_vars ty) -> aset_mem y (tm_type_vars tm)).
 Proof.
   intros. induction Hty; simpl in *; auto;
   try solve[simpl_set; auto].
@@ -1875,7 +1889,8 @@ Proof.
       intros. destruct f; simpl in *.
       destruct f_sym; simpl in *.
       assert (A:=f_ret_wf).
-      apply check_sublist_prop in A. auto.
+      apply check_asubset_prop in A. rewrite asubset_def in A. 
+      specialize (A _ H6). simpl_set; auto.
     }
     2: { apply s_params_Nodup. }
     simpl_set; auto.
@@ -1883,8 +1898,7 @@ Proof.
     right. left.
     destruct ps; try discriminate. 
     destruct p as [p1 t1].
-    simpl in *. simpl_set. left. 
-    specialize (H2 _ (ltac:(left; auto)) H); auto.
+    simpl in *. exists (p1, t1). auto.
 Qed.
 
 Theorem D_eq_refl gamma delta (ty: vty) (t: term):
@@ -1904,15 +1918,14 @@ Proof.
     + constructor; auto.
     + unfold closed_formula. simpl.
       unfold closed_term in t_closed.
-      rewrite null_nil in *.
-      rewrite t_closed; reflexivity.
+      rewrite aset_union_empty, t_closed; reflexivity.
     + unfold mono; simpl. unfold mono_t in t_mono.
-      rewrite null_nil in *. rewrite t_mono. simpl.
-      destruct (type_vars ty) eqn : Hvars; auto.
-      pose proof (ty_type_vars_in gamma _ _ H3 t0).
-      prove_hyp H2.
-      rewrite Hvars; simpl; auto.
-      rewrite t_mono in H2; inversion H2.
+      rewrite !aset_union_empty, t_mono.
+      rewrite andb_true_r. destruct (aset_is_empty (type_vars ty)) eqn : Hemp; auto.
+      rewrite aset_is_empty_false in Hemp.
+      destruct Hemp as [tv Hmem]. 
+      pose proof (ty_type_vars_in gamma _ _ H3 _ Hmem).
+      apply aset_is_empty_mem with (x:=tv) in t_mono. contradiction.
   - apply refl_trans_sound.
   - unfold refl_trans. simpl_task. destruct (term_eqb_spec t t);
     try contradiction.
@@ -1960,11 +1973,9 @@ Proof.
     destruct task_goal_closed. constructor.
     + inversion f_ty; subst. constructor; auto.
     + unfold closed_formula in *. simpl in *.
-      erewrite eq_mem_null. apply f_closed.
-      eq_mem_tac.
+      rewrite aset_union_comm. auto.
     + unfold mono in *. simpl in *.
-      erewrite eq_mem_null. apply f_mono.
-      eq_mem_tac.
+      rewrite (aset_union_comm (tm_type_vars t2)). auto.
   - apply sym_trans_sound.
   - unfold sym_trans. simpl_task. intros x [<- | []]; auto.
 Qed.
@@ -2026,14 +2037,10 @@ Proof.
     constructor; auto.
     + inversion f_ty; inversion f_ty0; subst; constructor; auto.
     + unfold closed_formula in *; simpl in *.
-      rewrite !null_nil in *.
-      apply union_nil in f_closed, f_closed0; destruct_all.
-      rewrite H5, H3. reflexivity.
-    + unfold mono in *; simpl in *.
-      rewrite !null_nil in *.
-      apply union_nil in f_mono, f_mono0; destruct_all;
-      apply union_nil in H6, H3; destruct_all.
-      rewrite H1, H6, H8. reflexivity.
+      clear -f_closed f_closed0. rewrite !aset_union_empty in *.
+      bool_hyps. bool_to_prop; auto.
+    + unfold mono in *; simpl in *. clear -f_mono f_mono0.
+      rewrite !aset_union_empty in *. bool_hyps. bool_to_prop; auto.
   - apply trans_trans_sound.
   - unfold trans_trans. simpl_task.
     intros x [<- | [<- | []]]; auto.
@@ -2154,7 +2161,7 @@ Qed.
 Lemma D_f_equal gamma delta (f: funsym) (tys: list vty) 
   (tms1 tms2: list term) (ty: vty)
   (*tys must be closed*)
-  (Htys: forallb (fun x => null (type_vars x)) tys):
+  (Htys: forallb (fun x => aset_is_empty (type_vars x)) tys):
   length tms1 = length tms2 ->
   term_has_type gamma (Tfun f tys tms1) ty ->
   term_has_type gamma (Tfun f tys tms2) ty -> 
@@ -2213,55 +2220,34 @@ Proof.
       inversion Hall; subst; inversion H6; simpl_task;
       destruct task_goal_closed0; constructor;
       try (unfold closed_term; unfold closed_formula in f_closed;
-      simpl in f_closed);
+      simpl in f_closed); 
       try (unfold mono_t; unfold mono in f_mono; simpl in f_mono);
-      rewrite !null_nil in *;
-      try (apply union_nil in f_closed);
-      try (apply union_nil in f_mono);
-      destruct_all; auto;
-      apply union_nil in H11; destruct_all; auto.
+      repeat(progress(try (rewrite !aset_union_empty, !andb_true in f_closed);
+        try (rewrite !aset_union_empty, !andb_true in f_mono)));
+      try apply f_closed; try apply f_mono.
     }
     constructor.
     + constructor; auto.
-    + unfold closed_formula. rewrite null_nil.
-      simpl. apply union_nil_eq; apply big_union_nil_eq;
-      intros; rewrite <- null_nil; apply Hclosed; auto.
-    + unfold mono. simpl. rewrite null_nil.
-      assert (Hclosed1: (big_union typevar_eq_dec type_vars tys) = nil). {
-        apply big_union_nil_eq.
-        intros.
-        unfold is_true in Htys.
-        rewrite forallb_forall in Htys.
-        apply Htys in H4.
-        destruct (type_vars x); auto. inversion H4. 
+    + unfold closed_formula. simpl.  rewrite aset_union_empty, !aset_big_union_empty, !andb_true;
+      unfold is_true; rewrite !forallb_forall; split; intros x Hinx; apply Hclosed; auto.
+    + unfold mono. simpl. 
+      assert (Hclosed1: aset_is_empty (aset_big_union type_vars tys)). {
+        rewrite aset_big_union_empty; auto.
       }
-      assert (Hclosed2: (big_union typevar_eq_dec tm_type_vars tms1) = nil). {
-        apply big_union_nil_eq.
-        intros.
-        specialize (Hclosed _ ltac:(left; apply H4)).
-        destruct Hclosed.
-        unfold mono_t in t_mono.
-        rewrite null_nil in t_mono. auto.
+      assert (Hclosed2: aset_is_empty (aset_big_union tm_type_vars tms1)). {
+        rewrite aset_big_union_empty. unfold is_true. rewrite forallb_forall; intros x Hinx.
+        specialize (Hclosed x ltac:(auto)). destruct Hclosed. auto.
       }
-      assert (Hclosed3: (big_union typevar_eq_dec tm_type_vars tms2) = nil). {
-        apply big_union_nil_eq.
-        intros.
-        specialize (Hclosed _ ltac:(right; apply H4)).
-        destruct Hclosed.
-        unfold mono_t in t_mono.
-        rewrite null_nil in t_mono. auto.
+      assert (Hclosed3: aset_is_empty (aset_big_union tm_type_vars tms2)). {
+        rewrite aset_big_union_empty.  unfold is_true. rewrite forallb_forall; intros x Hinx.
+        specialize (Hclosed x ltac:(auto)). destruct Hclosed. auto.
       }
-      apply union_nil_eq.
-      * destruct (type_vars ty) eqn : Hvars; auto.
-        assert (In t (tm_type_vars (Tfun f tys tms1))). {
-          eapply ty_type_vars_in. apply H0. rewrite Hvars;
-          simpl; auto.
-        }
-        simpl in H4. simpl_set.
-        destruct H4.
-        -- rewrite Hclosed1 in H4. inversion H4.
-        -- rewrite Hclosed2 in H4. inversion H4.
-      * rewrite Hclosed1, Hclosed2, Hclosed3. reflexivity.
+      rewrite !aset_union_empty, Hclosed1, Hclosed2, Hclosed3, andb_true_r. 
+      destruct (aset_is_empty (type_vars ty)) eqn : Hemp; auto.
+      rewrite aset_is_empty_false in Hemp. destruct Hemp as [tv Hmemtv].
+      eapply ty_type_vars_in in Hmemtv; [| apply H0]. simpl in Hmemtv.
+      apply aset_is_empty_mem in Hmemtv; auto.
+      rewrite aset_union_empty, Hclosed1; auto.
   - apply f_equal_trans_sound.
   - unfold f_equal_trans. simpl. destruct (funsym_eqb_spec f f); try contradiction.
     destruct (list_eqb_spec _ (vty_eq_spec) tys tys); try contradiction.
