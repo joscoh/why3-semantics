@@ -25,7 +25,7 @@ Definition t_constsym name s : term :=
   Tfun (const_noconstr name s) nil nil.
 
 Lemma t_constsym_fv name s:
-  tm_fv (t_constsym name s) = nil.
+  tm_fv (t_constsym name s) = aset_empty.
 Proof.
   reflexivity.
 Qed.

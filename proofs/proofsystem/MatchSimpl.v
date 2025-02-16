@@ -3,14 +3,61 @@ Require Import Denotational.
 Require Import Alpha.
 Require Import Typechecker.
 Set Bullet Behavior "Strict Subproofs".
+
+(*TODO: maybe move*)
+
+(*To prove something about the combine of vals and keylist of aunion, we
+  can prove for each*)
+Lemma forall_combine_aunion {A B: Type} `{countable.Countable A} (m1 m2: amap A B)
+  (P: B * A ->  Prop):
+  Forall P (combine (vals m1) (keylist m1)) ->
+  Forall P (combine (vals m2) (keylist m2)) ->
+  Forall P (combine (vals (aunion m1 m2)) (keylist (aunion m1 m2))).
+Proof.
+  unfold vals, keylist. 
+  rewrite Forall_flip.
+  rewrite flip_combine, combine_eq. intros Hall1.
+  rewrite Forall_flip, flip_combine, combine_eq; intros Hall2.
+  rewrite Forall_flip, flip_combine, combine_eq.
+  rewrite !Forall_forall in *. intros [x1 x2] Hinx. simpl.
+  rewrite in_elements_iff in Hinx.
+  rewrite aunion_lookup in Hinx.
+  destruct (amap_lookup m1 x1) as [y1|] eqn : Hlook1.
+  - inversion Hinx; subst. rewrite <- in_elements_iff in Hlook1.
+    apply Hall1 in Hlook1. auto.
+  - rewrite <- in_elements_iff in Hinx. apply Hall2 in Hinx. auto.
+Qed.
+
+(*version for set*)
+Lemma forall_combine_set {A B: Type} `{countable.Countable A} (m: amap A B) x y
+  (P: B * A ->  Prop):
+  Forall P (combine (vals m) (keylist m)) ->
+  P (y, x) ->
+  Forall P (combine (vals (amap_set m x y)) (keylist (amap_set m x y))).
+Proof.
+  rewrite amap_set_aunion.
+  intros Hall1 Hall2. apply forall_combine_aunion; auto.
+  rewrite vals_singleton, keylist_singleton. constructor; auto.
+Qed.
+
+(*TODO: move*)
+Lemma forall_combine_map_r {A B C: Type} (f: B -> C) (P: A * C -> Prop) (l1: list A) (l2: list B):
+  Forall P (combine l1 (map f l2)) <-> Forall (fun x => P (fst x, f (snd x))) (combine l1 l2).
+Proof.
+  revert l2. induction l1 as [| h1 t1 IH]; intros [| h2 t2]; simpl;
+  try solve[split; intros; constructor].
+  split; intros Hall; inversion Hall; subst; constructor; auto; apply IH; auto.
+Qed.
+
+
 (*This only simplifies the outermost pattern matches; it does not
   recursive inside.*)
 
 (*Does a pattern match a term?*)
-Inductive match_result : Set :=
+Inductive match_result : Type :=
   | DontKnow : match_result
   | NoMatch : match_result
-  | Matches : list (vsymbol * term) -> match_result.
+  | Matches : amap vsymbol term -> match_result.
 
 (*We need the "don't know" case because [match_val_single]
   will always say yes or no, but we don't know which one
@@ -18,15 +65,15 @@ Inductive match_result : Set :=
   We can always safely return "don't know" and avoid simplification*)
 Fixpoint matches gamma (p: pattern) (t: term) : match_result :=
   match p, t with
-  | Pvar x, _ => Matches [(x, t)]
-  | Pwild, _ => Matches nil
+  | Pvar x, _ => Matches (amap_singleton x t)
+  | Pwild, _ => Matches amap_empty
   | Por p1 p2, _ => 
     match (matches gamma p1 t) with
     | NoMatch => matches gamma p2 t
     | r => r
     end
   | Pbind p1 x, _ => match (matches gamma p1 t) with
-                  | Matches l => Matches ((x, t) :: l)
+                  | Matches l => Matches (amap_set l x t)
                   | r => r
                   end
   (*The interesting case*)
@@ -39,12 +86,12 @@ Fixpoint matches gamma (p: pattern) (t: term) : match_result :=
       match p1, t1 with
       | p :: ps, t :: ts => 
         match matches gamma p t, nested_matches ps ts with
-        | Matches l1, Matches l2 => Matches (l1 ++ l2)
+        | Matches l1, Matches l2 => Matches (aunion l1 l2)
         | DontKnow, _ => DontKnow
         | _, DontKnow => DontKnow
         | _, _ => NoMatch
         end
-      | nil, nil => Matches nil
+      | nil, nil => Matches amap_empty
       | _, _ => (*Impossible*) DontKnow
       end) ps tms
     else
@@ -63,12 +110,12 @@ Fixpoint nested_matches gamma (ps: list pattern) (ts: list term) : match_result 
   match ps, ts with
     | p :: ps, t :: ts => 
       match matches gamma p t, nested_matches gamma ps ts with
-      | Matches l1, Matches l2 => Matches (l1 ++ l2)
+      | Matches l1, Matches l2 => Matches (aunion l1 l2)
       | DontKnow, _ => DontKnow
       | _, DontKnow => DontKnow
       | _, _ => NoMatch
       end
-    | nil, nil => Matches nil
+    | nil, nil => Matches amap_empty
     | _, _ => (*Impossible*) DontKnow
   end.
 
@@ -535,26 +582,28 @@ Lemma match_val_single_matches_some {gamma} (gamma_valid: valid_context gamma)
   (pd: pi_dom) (pdf: pi_dom_full gamma pd) (vt: val_typevar) (ty: vty) (p: pattern) 
     (Hty: pattern_has_type gamma p ty) (t: term) (pf: pi_funpred gamma_valid pd pdf) 
     (vv: val_vars pd vt) (Hty2: term_has_type gamma t ty)
-    (l: list (vsymbol * term)) l1:
+    (l: amap vsymbol term) l1:
   matches gamma p t = Matches l ->
   match_val_single gamma_valid pd pdf vt ty p Hty
   (term_rep gamma_valid pd pdf vt pf vv t ty Hty2) = Some l1 ->
-  map fst l1 = map fst l /\
-  Forall
-    (fun x : {x : sort & domain (dom_aux pd) x} * term =>
-     exists ty1 Hty1 (Heq: v_subst vt ty1 = projT1 (fst x)),
-       projT2 (fst x) =
-       dom_cast (dom_aux pd) Heq (term_rep gamma_valid pd pdf vt pf vv (snd x) ty1 Hty1))
-    (combine (map snd l1) (map snd l)).
+  keys l1 = keys l /\
+  (forall x y, amap_lookup l1 x = Some y ->
+    exists t, amap_lookup l x = Some t /\
+    exists ty1 Hty1 (Heq: v_subst vt ty1 = projT1 y), 
+       projT2 y =
+       dom_cast (dom_aux pd) Heq (term_rep gamma_valid pd pdf vt pf vv t ty1 Hty1)).
 Proof.
   generalize dependent t. revert Hty. revert ty.
   revert l. revert l1. induction p; intros; auto.
   - (*Variable case*)
     simpl in *. inversion H; inversion H0; subst.
-    simpl. split; auto. 
-    constructor; auto.
-    simpl. exists ty. exists Hty2. exists eq_refl.
-    reflexivity.
+    simpl. split; auto.
+    + rewrite !keys_singleton. reflexivity.
+    + intros x y Hlookup. apply lookup_singleton_iff in Hlookup.
+      destruct Hlookup as [Hx Hy]; subst. simpl.
+      exists t. split.
+      * rewrite lookup_singleton_iff. auto.
+      * exists ty. exists Hty2. exists eq_refl. reflexivity.
   - (*constructor case - hard one*)
     rewrite matches_constr_rewrite in H0. revert H1.
     rewrite match_val_single_rewrite.
@@ -640,7 +689,8 @@ Proof.
     + destruct l0; simpl; try inversion e0.
       destruct ps; simpl; try inversion Hlenpsl0.
       simpl in H0. inversion H0. subst.
-      simpl in H1. inversion H1; subst. auto.
+      simpl in H1. inversion H1; subst. split; auto.
+      setoid_rewrite amap_empty_get. discriminate.
     + destruct l0; simpl; try inversion e0.
       destruct ps; simpl in *; try inversion Hlenpsl0.
       revert H1.
@@ -665,17 +715,24 @@ Proof.
         inversion H; subst.
         specialize (H7 _ _ _ _ _ _ Hmatcha Hmatch).
         specialize (IHl2 _ _ _ _ H8 H5 Hnest H5 _ _ _ _ _ _ Hmatch0).
-        rewrite !map_app.
-        destruct H7 as [Hmap1 Hall1].
-        destruct IHl2 as [Hmap2 Hall2].
-        split.
-        -- rewrite Hmap1, Hmap2. reflexivity.
-        -- rewrite combine_app_l.
-          ++ rewrite Forall_app; auto.
-          ++ rewrite !map_length, <- (map_length fst), Hmap1, 
-            map_length; auto.
+        destruct H7 as [Hkeys1 Hlook1]; destruct IHl2 as [Hkeys2 Hlook2].
+        split. 
+        -- rewrite amap_union_keys, Hkeys1, Hkeys2. unfold aunion. rewrite amap_union_keys. reflexivity.
+        -- intros x y. rewrite amap_union_lookup. destruct (amap_lookup a1 x) as [y1|] eqn : Hlookup.
+          ++ inv Hsome. apply Hlook1 in Hlookup.
+            destruct Hlookup as [t1 [Hlookup2 [ty1 [Hty1 [Heq Hy]]]]].
+            exists t1. rewrite aunion_lookup, Hlookup2. split; eauto.
+          ++ intros Hlookup2. apply Hlook2 in Hlookup2.
+            destruct Hlookup2 as [t1 [Hlookup3 [ty1 [Hty1 [Heq Hy]]]]].
+            exists t1. rewrite aunion_lookup.
+            assert (Hnone: amap_lookup a0 x = None). {
+              clear -Hkeys1 Hlookup.
+              rewrite !amap_lookup_none in Hlookup |- *. rewrite Hkeys1 in Hlookup. auto.
+            }
+            rewrite Hnone. split; eauto.
   - (*Pwild*)
-    simpl in *. inversion H; inversion H0; subst; auto. 
+    simpl in *. inversion H; inversion H0; subst; auto. split; auto.
+    setoid_rewrite amap_empty_get. discriminate. 
   - (*Por*)
     simpl in *. revert H0. destruct (matches gamma p1 t) eqn : Hmatch1;
     try solve[inversion H].
@@ -699,9 +756,16 @@ Proof.
     simpl. specialize (IHp _ _ _ _ _ _ Hmatch Hmatch0).
     destruct IHp as [Hmap Hall].
     split; auto.
-    + f_equal; auto.
-    + constructor; simpl; auto.
-      exists ty. exists Hty2. exists eq_refl. reflexivity.
+    + rewrite !keys_set_disj.
+      * rewrite Hmap; auto.
+      * rewrite <- Hmap. erewrite match_val_single_fv; eauto. inversion Hty; subst; auto.
+      * erewrite match_val_single_fv; eauto. inversion Hty; subst; auto.
+    + intros x y Hlookup. rewrite amap_set_lookup_iff in Hlookup.
+      destruct Hlookup as [[Hx Hy] | [Hx Hy]]; subst; auto.
+      * simpl. exists t. rewrite amap_set_lookup_same. split; auto.
+        exists ty. exists Hty2. exists eq_refl. reflexivity.
+      * apply Hall in Hy. destruct Hy as [t1 [Hlook [ty1 [Hty1 [Heq Hy]]]]]; exists t1.
+        split; eauto. rewrite amap_set_lookup_diff; auto.
 Qed.
 
 (*The combined theorem we want*)
@@ -709,31 +773,29 @@ Lemma match_val_single_matches_some' {gamma} (gamma_valid: valid_context gamma)
   (pd: pi_dom) (pdf: pi_dom_full gamma pd) (vt: val_typevar) (ty: vty) (p: pattern) 
     (Hty: pattern_has_type gamma p ty) (t: term) (pf: pi_funpred gamma_valid pd pdf) 
     (vv: val_vars pd vt) (Hty2: term_has_type gamma t ty)
-    (l: list (vsymbol * term)):
+    (l: amap vsymbol term):
   matches gamma p t = Matches l ->
 
   exists l1,
   match_val_single gamma_valid pd pdf vt ty p Hty
     (term_rep gamma_valid pd pdf vt pf vv t ty Hty2) = Some l1 /\
-  map fst l1 = map fst l /\
-  Forall
-    (fun x : {x : sort & domain (dom_aux pd) x} * term =>
-     exists ty1 Hty1 (Heq: v_subst vt ty1 = projT1 (fst x)),
-       projT2 (fst x) =
-       dom_cast (dom_aux pd) Heq (term_rep gamma_valid pd pdf vt pf vv (snd x) ty1 Hty1))
-    (combine (map snd l1) (map snd l)).
+  keys l1 = keys l /\
+  (forall x y, amap_lookup l1 x = Some y ->
+    exists t, amap_lookup l x = Some t /\
+    exists ty1 Hty1 (Heq: v_subst vt ty1 = projT1 y), 
+       projT2 y =
+       dom_cast (dom_aux pd) Heq (term_rep gamma_valid pd pdf vt pf vv t ty1 Hty1)).
 Proof.
   intros.
   destruct (match_val_single gamma_valid pd pdf vt ty p Hty
   (term_rep gamma_valid pd pdf vt pf vv t ty Hty2)) eqn : Hmatch.
-  - exists l0. split; auto.
-    eapply match_val_single_matches_some.
-    apply H. apply Hmatch.
+  - exists a. split; auto.
+    eapply match_val_single_matches_some; eauto.
   - exfalso. eapply match_val_single_matches_not_none. apply H. apply Hmatch.
 Qed.
 
 
-Fixpoint check_match gamma {A: Type} (sub: list (vsymbol * term) -> A -> A)
+Fixpoint check_match (gamma: context) {A: Type} (sub: amap vsymbol term -> A -> A)
 (t: term) (ret: A) (l: list (pattern * A)) : A :=
 match l with
 | nil => ret
@@ -778,19 +840,19 @@ term_rep gamma_valid pd pdf vt pf vv t2 ty Hty2.
 Proof. intros. subst. apply term_rep_irrel. Qed.
 
 
-
 (*All the pairs have the correct types*)
 Lemma matches_tys {gamma: context} (p: pattern) (t: term) (ty: vty) l
   (Hpty: pattern_has_type gamma p ty)
   (Hty: term_has_type gamma t ty):
   matches gamma p t = Matches l ->
   Forall (fun x => term_has_type gamma (fst x) (snd x))
-    (combine (map snd l) (map snd (map fst l))).
+    (combine (vals l) (map snd (keylist l))).
 Proof.
   revert t ty l Hpty Hty.
   induction p; intros; auto.
   - simpl in H.
     inversion H; subst. simpl. inversion Hpty; subst.
+    rewrite vals_singleton, keylist_singleton. 
     constructor; simpl; auto.
   - rewrite matches_constr_rewrite in H0.
     destruct t; try solve[inversion H0].
@@ -815,17 +877,22 @@ Proof.
       * destruct (nested_matches gamma ps l1) eqn : Hmatch2; inversion H0.
       * destruct (nested_matches gamma ps l1) eqn : Hmatch2; try solve[inversion H0].
         inversion H0; subst.
-        rewrite !map_app.
-        rewrite combine_app_l; [| rewrite !map_length; auto].
-        rewrite Forall_app. simpl in H11.
-        split.
-        (*The head case*)
-        -- apply H5 with(ty:=ty_subst (s_params f0) l0 v)(t:=t); auto.
-          ++ apply (H11 (a, ty_subst (s_params f0) l0 v)); auto.
+        (*This is a bit tricky because of the aunion*)
+        rewrite forall_combine_map_r. apply forall_combine_aunion.
+        -- setoid_rewrite forall_combine_map_r in H5. 
+           apply H5 with(ty:=ty_subst (s_params f0) l0 v)(t:=t); auto.
+          ++ apply (H11 (a, ty_subst (s_params f0) l0 v)); simpl; auto.
           ++ inversion H19; auto.
-        (*IH case*)
-        -- eapply IHps; auto. apply H3. auto.
-          apply H2. all: auto. inversion H19; auto.
+        -- setoid_rewrite forall_combine_map_r in IHps.
+          eapply IHps; auto.
+          ++ simpl. clear -H6. revert H6. apply Forall_impl. intros p Hall.
+            setoid_rewrite (forall_combine_map_r) in Hall. auto.
+          ++ apply H3.
+          ++ auto. simpl in *. auto.
+          ++ apply H2.
+          ++ simpl in *. inversion H19; subst; auto.
+            rewrite forall_combine_map_r in H10. auto.
+          ++ auto.
   - inversion H; subst. constructor.
   - simpl in H.
     destruct (matches gamma p1 t) eqn : Hmatch1; try solve[inversion H].
@@ -834,8 +901,10 @@ Proof.
       eapply IHp1. apply H2. apply Hty. auto.
   - simpl in H. destruct (matches gamma p t) eqn : Hmatch;
     inversion H; subst. inversion Hpty; subst.
-    simpl. constructor; simpl; auto.
-    eapply IHp. apply H5. apply Hty. auto.
+    setoid_rewrite forall_combine_map_r in IHp.
+    rewrite forall_combine_map_r.
+    apply forall_combine_set; auto. inversion Hpty; subst.
+    eapply IHp; eauto.
 Qed.
 
 (*2 different ways of extending a valuation with multiple
@@ -846,109 +915,95 @@ Lemma extend_val_with_args_eq {gamma} (gamma_valid: valid_context gamma)
   (pd: pi_dom) (pdf: pi_dom_full gamma pd) (vt: val_typevar) 
   (pf: pi_funpred gamma_valid pd pdf)
   (vv: val_vars pd vt)
-  (l1: list (vsymbol * {s : sort & domain (dom_aux pd) s}))
-  (l2: list (vsymbol * term))
-  (Hfst: map fst l1 = map fst l2)
-  (Hnodup: NoDup (map fst l1))
-  (Hsnd: Forall
+  (m1: amap vsymbol {s : sort & domain (dom_aux pd) s})
+  (m2: amap vsymbol term)
+  (Hfst: keys m1 = keys m2)
+  (* (Hnodup: NoDup (map fst l1)) *)
+  (Hsnd: (forall x y, amap_lookup m1 x = Some y ->
+    exists t, amap_lookup m2 x = Some t /\
+    exists ty1 Hty1 (Heq: v_subst vt ty1 = projT1 y), 
+       projT2 y =
+       dom_cast (dom_aux pd) Heq (term_rep gamma_valid pd pdf vt pf vv t ty1 Hty1)))
+  (* (Hsnd: Forall
     (fun x : {x : sort & domain (dom_aux pd) x} * term =>
     exists
       (ty : vty) (Hty : term_has_type gamma (snd x) ty) 
     (Heq : v_subst vt ty = projT1 (fst x)),
       projT2 (fst x) =
       dom_cast (dom_aux pd) Heq (term_rep gamma_valid pd pdf vt pf vv (snd x) ty Hty))
-    (combine (map snd l1) (map snd l2)))
+    (combine (map snd l1) (map snd l2))) *)
   (Hall: Forall (fun x : term * vty => term_has_type gamma (fst x) (snd x))
-    (combine (map snd l2) (map snd (map fst l2)))):
+    (combine (vals m2) (map snd (keylist m2)))):
   forall x, 
-    (val_with_args pd vt vv (map fst l2)
-    (map_arg_list gamma_valid pd pdf vt pf vv (map snd l2) (map snd (map fst l2))
-      (map_snd_fst_len l2) Hall)) x =
-  (extend_val_with_list pd vt vv l1) x.
+    (val_with_args pd vt vv (keylist m2)
+    (map_arg_list gamma_valid pd pdf vt pf vv (vals m2) (map snd (keylist m2))
+      (map_snd_fst_len (elements m2)) Hall)) x =
+  (extend_val_with_list pd vt vv m1) x.
 Proof.
   intros x.
-  destruct (in_dec vsymbol_eq_dec x (map fst l1)).
+  destruct (amap_mem x m1) eqn : Hmemx.
   2: {
     rewrite extend_val_notin; auto.
     rewrite val_with_args_notin; auto.
-    rewrite <- Hfst; auto.
+    rewrite mem_keys_keylist, <- Hfst,  <- amap_mem_keys, Hmemx. auto.
   }
-  rewrite in_map_iff in i.
-  destruct i as [[y sd] [Hx Hinsd]]; simpl in *; subst.
-  rewrite extend_val_lookup with(t:=sd); auto.
-  rewrite Forall_forall in Hsnd.
-  assert (Hleneq: length l1 = length l2). {
-    rewrite <- (map_length fst), Hfst, map_length; auto.
-  }
-  assert (d: {s : sort & domain (dom_aux pd) s}). {
-    exists s_int. apply dom_int.
-  }
-  destruct (In_nth _ _ (vs_d, d) Hinsd) as [i [Hi Hxsd]].
-  assert (Hinc: In (sd, snd (nth i l2 (vs_d, tm_d))) (combine (map snd l1) (map snd l2))). {
-    rewrite in_combine_iff; rewrite !map_length; auto.
-    exists i. split; auto. intros.
-    rewrite !map_nth_inbound with (d2:=(vs_d, d)); auto.
-    rewrite map_nth_inbound with (d2:=(vs_d, tm_d)); try lia.
-    rewrite Hxsd; auto.
-  }
-  specialize (Hsnd _ Hinc).
-  destruct Hsnd as [ty1 [Hty1 [Heq Hnth]]].
-  assert (x = (fst (nth i l2 (vs_d, tm_d)))). {
-    replace x with (fst (nth i l1 (vs_d, d))) by (rewrite Hxsd; auto).
-    rewrite <- (map_nth_inbound fst) with (d1:=vs_d); auto.
-    rewrite Hfst, map_nth_inbound with (d2:=(vs_d, tm_d)); auto. lia.
-  }
+  rewrite amap_mem_spec in Hmemx.
+  destruct (amap_lookup m1 x) as [y|] eqn : Hlookup; [|discriminate].
+  rewrite extend_val_lookup with (t:=y); auto.
+  apply Hsnd in Hlookup.
+  destruct Hlookup as [t2 [Hlook2 [ty1 [Hty2 [Heq Hy]]]]].
+  assert (Hall':=Hall).
+  (*First, get type info from Hall', need Hall' in usable form*)
+  rewrite forall_combine_map_r in Hall'.
+  revert Hall'. rewrite Forall_flip. simpl.
+  rewrite flip_combine. intros Hall'. unfold keylist, vals in Hall'. 
+  rewrite combine_eq in Hall'.
+  assert (Hin: In (x, t2) (elements m2)) by (rewrite in_elements_iff; auto).
   assert (ty1 = snd x). {
-    rewrite Forall_forall in Hall.
-    simpl in *.
-    specialize (Hall (snd (nth i l2 (vs_d, tm_d)), snd (fst (nth i l2 (vs_d, tm_d))))).
-    simpl in Hall.
-    prove_hyp Hall.
-    {
-      rewrite in_combine_iff; rewrite !map_length; auto.
-      exists i. split; try lia. intros.
-      rewrite !map_map, !map_nth_inbound with (d2:=(vs_d, tm_d)); try lia; auto.
-    }
-    subst. eapply term_has_type_unique. apply Hty1.
-    auto.
+    rewrite Forall_forall in Hall'.
+    specialize (Hall' (x, t2) Hin). simpl in Hall'.
+    eapply term_has_type_unique; eauto.
   }
-  simpl in *.
-  destruct (sort_eq_dec (v_subst vt (snd x)) (projT1 sd));
-  [| subst; contradiction].
-  assert (Hx: x = nth i (map fst l1) vs_d). {
-    rewrite Hfst, map_nth_inbound with (d2:=(vs_d, tm_d)); auto. lia.
+  subst. 
+  (*Now we can simplify the cast*)
+  destruct (sort_eq_dec (v_subst vt (snd x)) (projT1 y)); [|contradiction].
+  (*Simplifying the [val_with_args] is annoying: we need the index in the keylist/vals*)
+  destruct (In_nth _ _ (vs_d, tm_d) Hin) as [i [Hi Hxy]].
+  assert (Hi1: nth i (keylist m2) vs_d = x). {
+    unfold keylist. rewrite map_nth_inbound with (d2:=(vs_d, tm_d)); auto. 
+    rewrite Hxy; auto.
   }
-  subst.
-  assert (Heq1: nth i (map (v_subst vt) (map snd (map fst l2))) s_int =
-  v_subst vt (snd (fst (nth i l2 (vs_d, tm_d))))). {
-    rewrite !map_map, map_nth_inbound with (d2:=(vs_d, tm_d)); auto. lia.
+  assert (Hi2: nth i (vals m2) tm_d = t2). {
+    unfold vals. rewrite map_nth_inbound with (d2:=(vs_d, tm_d)); auto. 
+    rewrite Hxy; auto.
   }
-  rewrite val_with_args_in' with (Heq:=Heq1);
-  try rewrite !map_length; auto; try lia.
-  2: {
-    rewrite <- Hfst; auto.
+  rewrite elements_length in Hi.
+  assert (Heq': nth i (map (v_subst vt) (map snd (keylist m2))) s_int = v_subst vt (snd x)).
+  {
+    rewrite map_map, map_nth_inbound with (d2:=vs_d); auto.
+    - rewrite Hi1. reflexivity.
+    - rewrite keylist_length; auto.
   }
-  2: {
-    rewrite map_nth_inbound with (d2:=(vs_d, tm_d)); auto. lia.
-  }
-  rewrite Hnth.
-  assert (Hi2: i < Datatypes.length (map snd (map fst l2)))
-  by (rewrite !map_length; lia).
-  erewrite map_arg_list_nth with (Hi:=Hi2).
-  rewrite !dom_cast_compose.
-  (*Now, just need some casting and equality stuff*)
-  clear Hnth.
-  repeat match goal with
-  | |- context [dom_cast ?d ?H ?x ] => generalize dependent H
-  end.
+  rewrite val_with_args_in' with (i:=i)(Heq:=Heq'); auto.
+  (*Bunch of easy goals*)
+  2: { apply keylist_Nodup. }
+  2: { solve_len. }
+  2: { rewrite keylist_length; auto. }
+  (*Now simplify hnth*)
+  assert (Hi': i < length (map snd (keylist m2))) by (simpl_len; rewrite keylist_length; auto).
+  rewrite map_arg_list_nth with (Hi:=Hi').
+  (*Now just casting*)
+  gen_dom_cast. intros e1 e2 e3. rewrite Hy. rewrite !dom_cast_compose.
+  gen_dom_cast. clear -Hi1 Hi2 Hi.
   repeat match goal with
   | |- context [term_rep ?g ?pd ?pdf ?vt ?of ?vv ?t ?ty ?Hty] =>
     generalize dependent Hty
-  end.
-  rewrite !map_map, !map_nth_inbound with (d2:=(vs_d, tm_d)); try lia.
-  intros.
-  assert (e0 = e1). apply UIP_dec. apply sort_eq_dec.
-  subst. f_equal. 
+  end. clear Hall. rewrite Hi2. intros Hty2.
+  rewrite (map_nth_inbound snd) with (d2:=(vs_d)) by (rewrite keylist_length; lia).
+  unfold vsymbol in *.
+  rewrite Hi1. intros Hty1 Heq1 Heq2.
+  assert (Heq1 = eq_refl) by (apply UIP_dec, sort_eq_dec);
+  assert (Heq2 = eq_refl) by (apply UIP_dec, sort_eq_dec); subst; unfold dom_cast; simpl.
   apply term_rep_irrel.
 Qed.
 
@@ -1008,30 +1063,26 @@ Proof.
     + (*Case 2: Some*)
       destruct a as [p1 t1]; simpl in *. intros.
       (*Let's see lemma*)
-      assert (exists l1,
+      assert (Hmatch: exists l1,
         match_val_single gamma_valid pd pdf vt v p1 (Forall_inv Hpat2)
           (term_rep gamma_valid pd pdf vt pf vv tm v Hty2) = Some l1 /\
-        map fst l1 = map fst l /\
-        Forall (fun x => exists ty Hty Heq ,
-          projT2 (fst x) = dom_cast (dom_aux pd) Heq 
-            (term_rep gamma_valid pd pdf vt pf vv (snd x) ty Hty) 
-        ) (combine (map snd l1) (map snd l))
-      )  .
+        keys l1 = keys a0 /\
+        (forall x y, amap_lookup l1 x = Some y ->
+          exists t, amap_lookup a0 x = Some t /\
+          exists ty1 Hty1 (Heq: v_subst vt ty1 = projT1 y), 
+             projT2 y =
+             dom_cast (dom_aux pd) Heq (term_rep gamma_valid pd pdf vt pf vv t ty1 Hty1))).
       {
         apply match_val_single_matches_some'.
         auto.
       }
-      destruct H1 as [l1 [Hmatch [Hfstl1 Hl1]]].
+      destruct Hmatch as [l1 [Hmatch [Hfstl1 Hl1]]].
       rewrite Hmatch.
       assert (Hall: Forall (fun x : term * vty => term_has_type gamma (fst x) (snd x))
-      (combine (map snd l) (map snd (map fst l)))).
+        (combine (vals a0) (map snd (keylist a0)))).
       {
         apply (matches_tys p1 tm v); auto.
         inversion Hpat2; subst; auto.
-      }
-      assert (Hnodup: NoDup (map fst l)). {
-        rewrite <- Hfstl1.
-        apply (match_val_single_nodup _ _ _ _ _ _ _ _ Hmatch).
       }
       erewrite safe_sub_ts_rep; auto.
       Unshelve.
@@ -1040,8 +1091,6 @@ Proof.
       unfold vsymbol in *.
       apply tm_change_vv. intros.
       apply extend_val_with_args_eq; auto.
-      unfold vsymbol in *.
-      rewrite Hfstl1. auto.
   - (*Teps*)
     simpl_rep_full. f_equal. apply functional_extensionality_dep;
     intros. replace (proj2' (ty_eps_inv Hty1)) with
@@ -1101,30 +1150,26 @@ Proof.
     + (*Case 2: Some*)
       destruct a as [p1 t1]; simpl in *. intros.
       (*Let's see lemma*)
-      assert (exists l1,
+      assert (Hmatch: exists l1,
         match_val_single gamma_valid pd pdf vt v p1 (Forall_inv Hpat2)
           (term_rep gamma_valid pd pdf vt pf vv tm v Hty2) = Some l1 /\
-        map fst l1 = map fst l /\
-        Forall (fun x => exists ty Hty Heq ,
-          projT2 (fst x) = dom_cast (dom_aux pd) Heq 
-            (term_rep gamma_valid pd pdf vt pf vv (snd x) ty Hty) 
-        ) (combine (map snd l1) (map snd l))
-      )  .
+        keys l1 = keys a0 /\
+        (forall x y, amap_lookup l1 x = Some y ->
+          exists t, amap_lookup a0 x = Some t /\
+          exists ty1 Hty1 (Heq: v_subst vt ty1 = projT1 y), 
+             projT2 y =
+             dom_cast (dom_aux pd) Heq (term_rep gamma_valid pd pdf vt pf vv t ty1 Hty1))).
       {
         apply match_val_single_matches_some'.
         auto.
       }
-      destruct H1 as [l1 [Hmatch [Hfstl1 Hl1]]].
+      destruct Hmatch as [l1 [Hmatch [Hfstl1 Hl1]]].
       rewrite Hmatch.
       assert (Hall: Forall (fun x : term * vty => term_has_type gamma (fst x) (snd x))
-      (combine (map snd l) (map snd (map fst l)))).
+        (combine (vals a0) (map snd (keylist a0)))).
       {
         apply (matches_tys p1 tm v); auto.
         inversion Hpat2; subst; auto.
-      }
-      assert (Hnodup: NoDup (map fst l)). {
-        rewrite <- Hfstl1.
-        apply (match_val_single_nodup _ _ _ _ _ _ _ _ Hmatch).
       }
       erewrite safe_sub_fs_rep; auto.
       Unshelve.
@@ -1133,8 +1178,6 @@ Proof.
       unfold vsymbol in *.
       apply fmla_change_vv; intros.
       apply extend_val_with_args_eq; auto.
-      unfold vsymbol in *.
-      rewrite Hfstl1. auto.
 Qed.
 
 Definition simpl_match_t_rep {gamma} (gamma_valid: valid_context gamma)
@@ -1180,16 +1223,12 @@ Proof.
     destruct (matches gamma (fst a) tm) eqn : Hmatcha; try contradiction; auto.
     apply safe_sub_ts_ty; auto.
     pose proof (matches_tys _ _ _ _ H5 Hty Hmatcha).
-    revert H.
-    rewrite !Forall_forall; intros.
-    destruct x as [[n1 ty1] tm1]; simpl.
-    specialize (H (tm1, ty1)). apply H.
-    rewrite in_combine_iff; rewrite !map_length; auto.
-    destruct (In_nth _ _ (vs_d, tm_d) H0) as [i [Hi Heq]].
-    exists i. split; auto.
-    intros.
-    rewrite !map_map, !map_nth_inbound with (d2:=(vs_d, tm_d));
-    auto; rewrite Heq; auto.
+    revert H. rewrite forall_combine_map_r. unfold keylist, vals.
+    rewrite Forall_flip, flip_combine, combine_eq. simpl. 
+    rewrite !Forall_forall; intros Hall.
+    rewrite amap_Forall_forall. intros [n1 ty1] tm1 Hlook. simpl.
+    specialize (Hall ((n1, ty1), tm1)). apply Hall.
+    rewrite in_elements_iff. auto.
   - inversion Hty; subst. constructor; auto.
     rewrite !map_length; auto.
     revert H8 H.
@@ -1217,16 +1256,12 @@ Proof.
     destruct (matches gamma (fst a) tm) eqn : Hmatcha; try contradiction; auto.
     apply safe_sub_fs_ty; auto.
     pose proof (matches_tys _ _ _ _ H5 Hty Hmatcha).
-    revert H.
-    rewrite !Forall_forall; intros.
-    destruct x as [[n1 ty1] tm1]; simpl.
-    specialize (H (tm1, ty1)). apply H.
-    rewrite in_combine_iff; rewrite !map_length; auto.
-    destruct (In_nth _ _ (vs_d, tm_d) H0) as [i [Hi Heq]].
-    exists i. split; auto.
-    intros.
-    rewrite !map_map, !map_nth_inbound with (d2:=(vs_d, tm_d));
-    auto; rewrite Heq; auto.
+    revert H. rewrite forall_combine_map_r. unfold keylist, vals.
+    rewrite Forall_flip, flip_combine, combine_eq. simpl. 
+    rewrite !Forall_forall; intros Hall.
+    rewrite amap_Forall_forall. intros [n1 ty1] tm1 Hlook. simpl.
+    specialize (Hall ((n1, ty1), tm1)). apply Hall.
+    rewrite in_elements_iff. auto.
 Qed.
 
 Definition simpl_match_t_ty gamma t :=
