@@ -4,6 +4,7 @@
 Require Import Types Hlist.
 Require Export Coq.Reals.Reals.
 From Equations Require Import Equations.
+Set Bullet Behavior "Strict Subproofs".
 
 Definition arg_list (domain: Types.sort -> Set) := hlist domain.
 
@@ -232,7 +233,7 @@ Proof.
   - intros [| n'] Hn.
     + exists eq_refl. rewrite (hlist_inv h1). reflexivity.
     + destruct (IH (hlist_tl h1) n' (ltac:(lia))) as [Heq Hnth].
-      exists Heq. rewrite (hlist_inv h1). simp hlist_app.
+      exists Heq. rewrite (hlist_inv h1). simp hlist_app. simpl. auto.
 Qed.
 
 Lemma hlist_app_hnth2 (dom: sort -> Set) tys1 tys2 (h1 : arg_list (domain dom) tys1) (h2: arg_list (domain dom) tys2) d1 d2 n:
@@ -250,13 +251,13 @@ Proof.
     + assert (n = S (length tys1)) by lia. subst. 
       destruct (IHtys1 (hlist_tl h1) (length tys1) (ltac:(lia))) as [Heq1 IH].
       revert Heq1 IH. rewrite Nat.sub_diag. intros. exists Heq1.
-      rewrite (hlist_inv h1). simp hlist_app.
+      rewrite (hlist_inv h1). simp hlist_app. simpl. auto.
     + (*assert (Hngt: n > S (length tys1)) by lia.*) destruct n as [| n']; [discriminate|].
       assert (Hn': n' >= length tys1) by lia.
       destruct (IHtys1 (hlist_tl h1) n' Hn') as [Heq1 IH].
       revert Heq1 IH.
       replace (n' - length tys1) with (S j') by lia.
-      intros. exists Heq1. rewrite (hlist_inv h1). simp hlist_app.
+      intros. exists Heq1. rewrite (hlist_inv h1). simp hlist_app. simpl. auto.
 Qed.
 
 Lemma hlist_rev_hnth (dom: sort -> Set) i tys (h: arg_list (domain dom) tys) d1 d2:
@@ -274,8 +275,8 @@ Proof.
       destruct (hlist_app_hnth2 dom _ _ (hlist_rev (domain dom) tys (hlist_tl h)) 
         (HL_cons (domain dom) ty1 [] (hlist_hd h) (HL_nil (domain dom))) d1 d2 (length tys)
         (ltac:(solve_len))) as [Heq1 Happ].
-      revert Heq1 Happ. rewrite rev_length, Nat.sub_diag. simpl. intros.
-      exists Heq1. rewrite (hlist_inv h). simp hlist_rev.
+      revert Heq1 Happ. rewrite length_rev, Nat.sub_diag. simpl. intros.
+      exists Heq1. rewrite (hlist_inv h). simp hlist_rev. simpl; auto.
     + (*Need IH and app1*)
       assert (Heq: nth j' tys d1 = nth i (rev tys ++ [ty1]) d1).
       {

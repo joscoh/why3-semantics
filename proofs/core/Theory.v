@@ -3,15 +3,6 @@ Require Export FullInterp.
 Set Bullet Behavior "Strict Subproofs".
 (*Why3 Theories*)
 
-(*TODO: move*)
-Definition add_map_elts {A B: Type} `{countable.Countable A} (m: amap A B) (l: list (A * B)) : amap A B :=
-  fold_right (fun x acc => amap_set acc (fst x) (snd x)) m l.
-
-(*TODO: move*)
-Definition amap_map_key_val {A B C D : Type} `{countable.Countable A} `{countable.Countable C} (f: A -> C) (g: B -> D)
-  (m: amap A B) : amap C D :=
-  add_map_elts amap_empty (map (fun x => (f (fst x), g (snd x))) (elements m)).
-
 
 (*We depart from Why3 notation slightly here, since we make a distinction
   between a context (with declarations) and a theory
@@ -114,7 +105,7 @@ Proof.
   try apply sub_tys_vars.
   induction vs; simpl in *; try apply asubset_refl.
   inversion H; subst.
-  rewrite !aset_big_union_cons. apply asubset_union; auto.
+  apply asubset_union; auto.
 Qed.
 
 Lemma check_args_sub {params args}:
@@ -325,7 +316,6 @@ Proof.
   induction t; simpl; auto.
   induction vs; simpl; auto.
   inversion H; subst.
-  rewrite !aset_big_union_cons.
   rewrite H2. f_equal. auto.
 Qed.
 

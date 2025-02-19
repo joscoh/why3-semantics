@@ -96,8 +96,8 @@ Ltac prove_hyp H := forward H.
 Ltac simpl_len_extra := idtac.
 
 Ltac simpl_len :=
-  repeat (rewrite !map_length || rewrite !rev_length || 
-  rewrite !app_length || rewrite !combine_length || rewrite !repeat_length || simpl_len_extra).
+  repeat (rewrite !length_map || rewrite !length_rev || 
+  rewrite !length_app || rewrite !length_combine || rewrite !repeat_length || simpl_len_extra).
 
 Ltac solve_len := simpl_len; try reflexivity; solve[auto; try lia].
 

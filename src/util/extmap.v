@@ -315,7 +315,7 @@ Lemma gmap_wf_iff {A: Type} (g: Zmap (list (key * A))):
     Forall (fun x => k = tag (fst x)) v) g. 
 Proof.
   unfold gmap_wf.
-  apply (map_fold_ind (fun r m =>
+  apply (map_fold_weak_ind (fun r m =>
     is_true r <-> map_Forall (fun k v => v <> nil /\ uniq T.equal (map fst v) /\ 
     Forall (fun x => k = tag (fst x)) v) m
   )).

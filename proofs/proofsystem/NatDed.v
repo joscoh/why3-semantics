@@ -10,34 +10,6 @@ Require Export Rewrite.
 From mathcomp Require all_ssreflect.
 Set Bullet Behavior "Strict Subproofs".
 
-(*TODO: move*)
-Lemma check_asubset_prop {A: Type} `{countable.Countable A} {s1 s2: aset A}:
-  check_asubset s1 s2 ->
-  asubset s1 s2.
-Proof.
-  destruct (check_asubset s1 s2); auto. discriminate.
-Qed.
-
-(*TODO: move*)
-Lemma is_empty_empty {A: Type} `{countable.Countable A} (s: aset A):
-  aset_is_empty s ->
-  s = aset_empty.
-Proof.
-  intros Hemp. apply aset_ext. intros x.
-  split; intros Hmem; simpl_set.
-  apply aset_is_empty_mem with (x:=x) in Hemp; contradiction.
-Qed.
-
-(*TODO: move*)
-Lemma find_args_sort ty:
-  is_sort ty ->
-  find_args [ty] = nil.
-Proof.
-  unfold is_sort; intros Hsort.
-  unfold find_args. rewrite aset_big_union_cons, aset_big_union_nil, aset_union_empty_r.
-  apply is_empty_empty in Hsort. rewrite Hsort. reflexivity.
-Qed.
-
 (*See if a term has a type (without ssreflect, for external use)*)
 Module CheckTy.
 
@@ -2113,12 +2085,12 @@ Proof.
   (map (ty_subst (s_params f0) l1) (s_args f0)))(nil, nil, Ftrue))).
   prove_hyp H.
   {
-    apply nth_In; rewrite map2_length, map_length, combine_length. lia.
+    apply nth_In; rewrite map2_length, length_map, length_combine. lia.
   }
   unfold task_valid in H.
   (*We need to make H nicer*)
   rewrite map2_nth with(d1:=(tm_d, tm_d))(d2:=vty_int) in H; 
-  try (rewrite combine_length, ?map_length; lia).
+  try (rewrite length_combine, ?length_map; lia).
   simpl_task.
   rewrite map_nth_inbound with(d2:=vty_int) in H; try lia.
   rewrite combine_nth in H; auto. simpl in H.
@@ -2140,13 +2112,13 @@ Proof.
     eapply Typechecker.term_has_type_unique. apply Hty1.
     rewrite Forall_forall in H11.
     specialize (H11 (nth i (combine l0 (map (ty_subst (s_params f0) l1) (s_args f0))) (tm_d, vty_int))).
-    rewrite combine_nth in H11; [|rewrite map_length; auto].
+    rewrite combine_nth in H11; [|rewrite length_map; auto].
     simpl in H11.
     prove_hyp H11.
     {
-      rewrite in_combine_iff; [| rewrite map_length; auto].
+      rewrite in_combine_iff; [| rewrite length_map; auto].
       exists i. split; auto. intros. f_equal; apply nth_indep; auto;
-      rewrite map_length; auto. lia.
+      rewrite length_map; auto. lia.
     }
     rewrite map_nth_inbound with(d2:=vty_int) in H11; auto.
     lia.
@@ -2203,11 +2175,11 @@ Proof.
       inversion H0; inversion H1; subst.
       prove_hyp H3.
       {
-        apply nth_In. rewrite map2_length, map_length, combine_length;
+        apply nth_In. rewrite map2_length, length_map, length_combine;
         lia.
       } 
       rewrite map2_nth with(d1:=(tm_d, tm_d))(d2:=vty_int) in H3;
-      try rewrite combine_length, ?map_length; try lia.
+      try rewrite length_combine, ?length_map; try lia.
       rewrite combine_nth in H3; auto. simpl in H3.
       rewrite map_nth_inbound with(d2:=vty_int) in H3; try lia.
       auto.
@@ -2255,11 +2227,11 @@ Proof.
     rewrite Forall_forall in H3.
     intros.
     rewrite in_map2_iff with(d1:=(tm_d, tm_d))(d2:=vty_int) in H4; 
-    [| inversion H0; subst; rewrite combine_length, map_length; lia].
+    [| inversion H0; subst; rewrite length_combine, length_map; lia].
     destruct H4 as [i [Hi Hx]]; subst; simpl_task.
     apply H3.
     rewrite in_map2_iff with(d1:=(tm_d, tm_d))(d2:=vty_int) ; 
-    [| inversion H0; subst; rewrite combine_length, map_length; lia].
+    [| inversion H0; subst; rewrite length_combine, length_map; lia].
     exists i. auto.
 Qed. 
 

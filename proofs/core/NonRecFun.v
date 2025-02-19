@@ -128,7 +128,7 @@ Proof.
     destruct (In_nth _ _ vs_d H) as [i [Hi Hx]].
     subst.
     assert (Hargslen: length args = length (s_args f)). {
-      rewrite <- Hargs, map_length; auto.
+      rewrite <- Hargs, length_map; auto.
     }
     (*Casting lemmas*)
     assert (Heq2: forall vt, nth i (sym_sigma_args f srts) s_int =
@@ -147,7 +147,7 @@ Proof.
         exists (nth i args vs_d); auto.
     }
     erewrite !val_with_args_in; auto;
-    try (unfold sym_sigma_args, ty_subst_list_s; rewrite map_length; auto);
+    try (unfold sym_sigma_args, ty_subst_list_s; rewrite length_map; auto);
     try (apply NoDup_map_inv in Hnargs; auto).
     Unshelve. all: auto.
     rewrite !dom_cast_compose.
@@ -209,7 +209,7 @@ Proof.
     destruct (In_nth _ _ vs_d H) as [i [Hi Hx]].
     subst.
     assert (Hargslen: length args = length (s_args p)). {
-      rewrite <- Hargs, map_length; auto.
+      rewrite <- Hargs, length_map; auto.
     }
     (*Casting lemmas*)
     assert (Heq2: forall vt, nth i (sym_sigma_args p srts) s_int =
@@ -228,7 +228,7 @@ Proof.
         exists (nth i args vs_d); auto.
     }
     erewrite !val_with_args_in; auto;
-    try (unfold sym_sigma_args, ty_subst_list_s; rewrite map_length; auto);
+    try (unfold sym_sigma_args, ty_subst_list_s; rewrite length_map; auto);
     try (apply NoDup_map_inv in Hnargs; auto).
     Unshelve. all: auto.
     rewrite !dom_cast_compose.

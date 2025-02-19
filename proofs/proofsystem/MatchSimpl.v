@@ -4,52 +4,6 @@ Require Import Alpha.
 Require Import Typechecker.
 Set Bullet Behavior "Strict Subproofs".
 
-(*TODO: maybe move*)
-
-(*To prove something about the combine of vals and keylist of aunion, we
-  can prove for each*)
-Lemma forall_combine_aunion {A B: Type} `{countable.Countable A} (m1 m2: amap A B)
-  (P: B * A ->  Prop):
-  Forall P (combine (vals m1) (keylist m1)) ->
-  Forall P (combine (vals m2) (keylist m2)) ->
-  Forall P (combine (vals (aunion m1 m2)) (keylist (aunion m1 m2))).
-Proof.
-  unfold vals, keylist. 
-  rewrite Forall_flip.
-  rewrite flip_combine, combine_eq. intros Hall1.
-  rewrite Forall_flip, flip_combine, combine_eq; intros Hall2.
-  rewrite Forall_flip, flip_combine, combine_eq.
-  rewrite !Forall_forall in *. intros [x1 x2] Hinx. simpl.
-  rewrite in_elements_iff in Hinx.
-  rewrite aunion_lookup in Hinx.
-  destruct (amap_lookup m1 x1) as [y1|] eqn : Hlook1.
-  - inversion Hinx; subst. rewrite <- in_elements_iff in Hlook1.
-    apply Hall1 in Hlook1. auto.
-  - rewrite <- in_elements_iff in Hinx. apply Hall2 in Hinx. auto.
-Qed.
-
-(*version for set*)
-Lemma forall_combine_set {A B: Type} `{countable.Countable A} (m: amap A B) x y
-  (P: B * A ->  Prop):
-  Forall P (combine (vals m) (keylist m)) ->
-  P (y, x) ->
-  Forall P (combine (vals (amap_set m x y)) (keylist (amap_set m x y))).
-Proof.
-  rewrite amap_set_aunion.
-  intros Hall1 Hall2. apply forall_combine_aunion; auto.
-  rewrite vals_singleton, keylist_singleton. constructor; auto.
-Qed.
-
-(*TODO: move*)
-Lemma forall_combine_map_r {A B C: Type} (f: B -> C) (P: A * C -> Prop) (l1: list A) (l2: list B):
-  Forall P (combine l1 (map f l2)) <-> Forall (fun x => P (fst x, f (snd x))) (combine l1 l2).
-Proof.
-  revert l2. induction l1 as [| h1 t1 IH]; intros [| h2 t2]; simpl;
-  try solve[split; intros; constructor].
-  split; intros Hall; inversion Hall; subst; constructor; auto; apply IH; auto.
-Qed.
-
-
 (*This only simplifies the outermost pattern matches; it does not
   recursive inside.*)
 
@@ -158,7 +112,7 @@ Lemma map_subst_params params tys:
 Proof.
   rewrite !map_map; simpl.
   intros.
-  apply list_eq_ext'; rewrite !map_length; auto.
+  apply list_eq_ext'; rewrite !length_map; auto.
   intros n d Hn.
   rewrite map_nth_inbound with (d2:=EmptyString); auto.
   rewrite ty_subst_fun_nth with (s:=d); auto.
@@ -244,7 +198,7 @@ Proof.
       }
       subst.
       erewrite (constrs gamma_valid pd pdf pf m adt f0 m_in a_in c_in).
-      Unshelve. 2: exact (eq_trans (map_length (v_subst vt) vs2) e).
+      Unshelve. 2: exact (eq_trans (length_map (v_subst vt) vs2) e).
       unfold constr_rep_dom, cast_dom_vty, dom_cast.
       rewrite !scast_scast.
       assert (Hinmut = a_in) by apply bool_irrelevance.
@@ -311,7 +265,7 @@ Proof.
     revert e1.
     simpl_rep_full.
     erewrite (constrs gamma_valid pd pdf pf m adt f0 Hinctx Hinmut c_in).
-    Unshelve. 2: exact (eq_trans (map_length (v_subst vt) vs2) e) .
+    Unshelve. 2: exact (eq_trans (length_map (v_subst vt) vs2) e) .
     unfold constr_rep_dom, cast_dom_vty, dom_cast.
     rewrite !scast_scast.
     rewrite scast_refl_uip.
@@ -453,7 +407,7 @@ Proof.
       }
       subst.
       erewrite (constrs gamma_valid pd pdf pf m adt f0 Hinctx Hinmut c_in).
-      Unshelve. 2: exact (eq_trans (map_length (v_subst vt) vs2) e).
+      Unshelve. 2: exact (eq_trans (length_map (v_subst vt) vs2) e).
       unfold constr_rep_dom, cast_dom_vty, dom_cast.
       rewrite !scast_scast.
       rewrite scast_refl_uip.
@@ -500,7 +454,7 @@ Proof.
     revert e0.
     simpl_rep_full.
     erewrite (constrs gamma_valid pd pdf pf m adt f0 Hinctx Hinmut c_in).
-    Unshelve. 2: exact (eq_trans (map_length (v_subst vt) vs2) e) .
+    Unshelve. 2: exact (eq_trans (length_map (v_subst vt) vs2) e) .
     unfold constr_rep_dom, cast_dom_vty, dom_cast.
     rewrite !scast_scast.
     rewrite scast_refl_uip.
@@ -665,7 +619,7 @@ Proof.
     revert e0.
     simpl_rep_full.
     erewrite (constrs gamma_valid pd pdf pf m adt f0 Hinctx Hinmut c_in).
-    Unshelve. 2: exact (eq_trans (map_length (v_subst vt) vs2) e) .
+    Unshelve. 2: exact (eq_trans (length_map (v_subst vt) vs2) e) .
     unfold constr_rep_dom, cast_dom_vty, dom_cast.
     rewrite !scast_scast.
     rewrite scast_refl_uip.
@@ -1028,7 +982,7 @@ Proof.
     replace  (ty_fun_ind_ret Hty1) with (ty_fun_ind_ret Hty2) by
     (apply UIP_dec; apply vty_eq_dec).
     f_equal. f_equal. apply UIP_dec. apply sort_eq_dec.
-    f_equal. apply get_arg_list_ext; rewrite !map_length; auto.
+    f_equal. apply get_arg_list_ext; rewrite !length_map; auto.
     intros i Hi.
     rewrite map_nth_inbound with (d2:=tm_d); auto; intros.
     rewrite Forall_forall in H; apply H. apply nth_In; auto.
@@ -1098,7 +1052,7 @@ Proof.
     erewrite H. reflexivity.
   - (*Fpred*)
     simpl_rep_full.
-    f_equal. apply get_arg_list_ext; rewrite !map_length; auto.
+    f_equal. apply get_arg_list_ext; rewrite !length_map; auto.
     intros i Hi.
     rewrite map_nth_inbound with (d2:=tm_d); auto; intros.
     rewrite Forall_forall in H; apply H. apply nth_In; auto.
@@ -1197,17 +1151,17 @@ Proof.
   revert t f; apply term_formula_ind; simpl; intros; auto;
   try solve[inversion Hty; subst; constructor; auto].
   - inversion Hty; subst. constructor; auto.
-    rewrite !map_length; auto.
+    rewrite !length_map; auto.
     revert H10 H.
     rewrite !Forall_forall; intros.
-    rewrite in_combine_iff in H0; [| rewrite !map_length; auto].
+    rewrite in_combine_iff in H0; [| rewrite !length_map; auto].
     destruct H0 as [i [Hi Hx]].
-    rewrite map_length in Hi.
+    rewrite length_map in Hi.
     specialize (Hx tm_d vty_int); subst; simpl.
     rewrite map_nth_inbound with (d2:=tm_d); auto.
     apply H; [apply nth_In; auto |].
     apply specialize_combine with (d1:=tm_d)(d2:=vty_int)(i:=i) in H10;
-    auto; rewrite !map_length; auto.
+    auto; rewrite !length_map; auto.
   - destruct (term_eq_dec (check_match gamma safe_sub_ts tm (Tmatch tm v ps) ps)
       (Tmatch tm v ps)).
     {
@@ -1230,17 +1184,17 @@ Proof.
     specialize (Hall ((n1, ty1), tm1)). apply Hall.
     rewrite in_elements_iff. auto.
   - inversion Hty; subst. constructor; auto.
-    rewrite !map_length; auto.
+    rewrite !length_map; auto.
     revert H8 H.
     rewrite !Forall_forall; intros.
-    rewrite in_combine_iff in H0; [| rewrite !map_length; auto].
+    rewrite in_combine_iff in H0; [| rewrite !length_map; auto].
     destruct H0 as [i [Hi Hx]].
-    rewrite map_length in Hi.
+    rewrite length_map in Hi.
     specialize (Hx tm_d vty_int); subst; simpl.
     rewrite map_nth_inbound with (d2:=tm_d); auto.
     apply H; [apply nth_In; auto |].
     apply specialize_combine with (d1:=tm_d)(d2:=vty_int)(i:=i) in H8;
-    auto; rewrite !map_length; auto.
+    auto; rewrite !length_map; auto.
   - destruct (formula_eq_dec (check_match gamma safe_sub_fs tm (Fmatch tm v ps) ps)
       (Fmatch tm v ps)).
     {

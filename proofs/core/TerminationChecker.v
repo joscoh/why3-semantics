@@ -333,12 +333,42 @@ Context {gamma: context} (gamma_wf: wf_context gamma) .
 (*NOTE: we CANNOT use [list_eq_dec] from stdlib because it is
   defined with Qed, and terms will get stuck*)
 
-Definition get_adts_present (l: list (list vsymbol)) : aset (mut_adt * list vty) :=
+(*NOTE: this "should" be an [aset], since we only care about membership.
+  But mutual adts, adts, etc are too nested and produce such huge positives with stdpp's countable
+  instances that Coq can't handle them. So we revert to lists, need version of union for sets*)
+
+Section ListSet.
+Context {A: Type}.
+Variable eq_dec: forall (x y : A), {x = y} + {x <> y}.
+
+(*Add all elements in l1 not in l2*)
+Definition union (l1 l2: list A) :=
+    fold_right (fun x acc => if in_dec eq_dec x acc then acc else x :: acc) l2 l1.
+
+Lemma union_elts: forall (l1 l2: list A) (x: A),
+  In x (union l1 l2) <-> In x l1 \/ In x l2.
+Proof.
+  intros l1 l2. induction l1; simpl; auto.
+  - intros x; split; intros; auto. destruct H as [[] |]; auto.
+  - intros x; split; intros Hin; destruct (in_dec eq_dec a (union l1 l2)).
+    + apply IHl1 in Hin. destruct Hin; solve_or.
+    + destruct Hin; subst; try solve_or. apply IHl1 in H; destruct H; solve_or.
+    + apply IHl1. destruct Hin as [Hin |?]; [destruct Hin; subst |]; try solve_or.
+      apply IHl1; auto.
+    + simpl. destruct Hin as [Hin|?]; [destruct Hin; subst|]; try solve_or.
+      all: right; apply IHl1; solve_or.
+Qed.
+
+End ListSet.
+
+
+Definition get_adts_present (l: list (list vsymbol)) : list (mut_adt * list vty) :=
   fold_right (fun v acc => match (is_vty_adt gamma (snd v)) with
-                            | Some (m, a, vs) => aset_union 
-                                (aset_singleton (m, vs)) acc
+                            | Some (m, a, vs) => union 
+                                  (tuple_eq_dec' mut_adt_eqb_spec (list_eqb_spec _ vty_eq_spec))
+                                [(m, vs)] acc
                             | None => acc
-                            end) aset_empty (concat l).
+                            end) nil (concat l).
 
 (*Generate the candidate index lists: for a given ADT, consists
   of all of the possible indices for each funsym/predsym*)
@@ -368,7 +398,7 @@ Definition get_idx_lists_aux
       let l2 := if List.existsb null l then nil else l in
       (m, vs, l2))
 
-  (aset_to_list (get_adts_present vsyms)). (*TODO: keep aset?*)
+  (get_adts_present vsyms). (*TODO: keep aset?*)
 
 Definition get_idx_lists 
   (mutfun: list (funsym * list vsymbol * term))
@@ -597,29 +627,30 @@ Qed.
 
 Lemma get_adts_present_in (l: list (list vsymbol)) m vs
   (m_in: mut_in_ctx m gamma):
-  aset_mem (m, vs) (get_adts_present l) <->
+  In (m, vs) (get_adts_present l) <->
   exists v, In v (concat l) /\ vty_in_m m vs (snd v).
 Proof.
   rewrite /get_adts_present.
   elim: (concat l) => [| h t IH].
-  - split=>//. intros; destruct_all; auto. contradiction.
-  - (*hack*) rewrite /=.
+  - split=>//. intros; destruct_all; auto.
+  - (*hack*) Opaque union. rewrite /=.
     case Hisadt: (is_vty_adt gamma h.2) => [[[m1 a1] vs1]|].
-    + simpl_set_small. rewrite IH.
+    + rewrite union_elts IH. simpl.
       split.
-      * move => [[] Hm1 Hvs | [v [Hinv Hinm]]]; subst.
+      * move=> [[[] Hm1 Hvs | []] | [v [Hinv Hinm]]]; subst.
         { exists h. split; auto. apply is_vty_adt_in_m=>//. by exists a1. }
         { exists v. split; auto. }
       * move=> [v [[Hhv | Hinv] Hinm]]; subst.
-        { apply is_vty_adt_in_m in Hinm=>//.
+        { left. left. apply is_vty_adt_in_m in Hinm=>//.
           case: Hinm => [a2 Hisadt2].
-          rewrite Hisadt2 in Hisadt. left; by inversion Hisadt; subst. }
+          rewrite Hisadt2 in Hisadt. by inversion Hisadt; subst. }
         { right. by exists v. }
     + rewrite IH. split.
       * move=> [v [Hinv Hinm]]. exists v. by auto.
       * move=> [v [[Hhv | Hinv] Hinm]]; last by exists v; auto.
         subst. rewrite is_vty_adt_in_m in Hinm=>//.
         case: Hinm => [a Hisadt']. by rewrite Hisadt' in Hisadt.
+Transparent union.
 Qed.
 
 (*Proofs about [get_idx_lists] - this is the hardest part*)
@@ -651,26 +682,26 @@ Proof.
     split.
     { move => C. by rewrite C in Hnotnull. }
     subst.
-    rewrite !map_length.
+    rewrite !length_map.
     split_all.
-    + by rewrite app_length !map_length.
-    + intros i. rewrite app_length !map_length. intros Hi.
+    + by rewrite length_app !length_map.
+    + intros i. rewrite length_app !length_map. intros Hi.
       split.
       { apply existsb_false in Hnullex.
         rewrite Forall_forall in Hnullex.
         move=> Heqnull.
         have: @null nat nil by []. rewrite -Heqnull.
         rewrite Hnullex //. apply nth_In.
-        by rewrite !map_length app_length !map_length.
+        by rewrite !length_map length_app !length_map.
       }
       intros n.
       rewrite -> !map_nth_inbound with (d2:=nil);
-      last by rewrite app_length !map_length; lia.
+      last by rewrite length_app !length_map; lia.
       rewrite in_map_iff. intros [[j ty] [Hn Hint]]; subst.
       revert Hint.
       rewrite in_filter. simpl. intros [Htym Hinj].
       revert Hinj. rewrite in_combine_iff; last
-        by rewrite -size_length size_iota !map_length.
+        by rewrite -size_length size_iota !length_map.
       move=> [k]. rewrite -size_length size_iota.
       move=> [Hk Hallnthk].
       specialize (Hallnthk 0 vty_int).
@@ -712,7 +743,7 @@ Proof.
   {
     move=> k Hk. rewrite in_filter. split; first by apply Hil.
     rewrite in_combine_iff -(size_length (iota _ _)) size_iota;
-      last by rewrite map_length.
+      last by rewrite length_map.
     exists (List.nth k il 0). split; first by apply Hilbound.
     move=> d1 d2. f_equal.
     * rewrite (nth_eq _ (iota _ _)) nth_iota //. by apply /ltP; apply Hilbound.
@@ -743,7 +774,7 @@ Proof.
         eexists. split; last by apply Hinm.
         rewrite in_concat. eexists.
         split; last by apply nth_In; apply Hilbound; lia.
-        apply nth_In. rewrite app_length !map_length. lia.
+        apply nth_In. rewrite length_app !length_map. lia.
       }
       (*Harder - show not null*)
       f_equal.
@@ -760,15 +791,15 @@ Proof.
       move: Hnull1 => /null_filter Hallfalse.
       destruct (In_nth _ _ nil Hinvars) as [j [Hj Hvars]]; subst.
       (*Contradiction - we know that there is an element where vty_in_m is true*)
-      move: Hj. rewrite app_length !map_length -Hlen => Hj.
+      move: Hj. rewrite length_app !length_map -Hlen => Hj.
       move: Hincomb => /(_ _ Hj). rewrite in_filter/= => [[Hinm' Hinj]] .
       move: Hallfalse => /( _ _ Hinj)/=.
       by rewrite Hinm'.
   - (*Now, we need to prove the last part - that il appears in cands.
       We did most of the work already in [Hincomb]*)
-    move=> i. rewrite !map_length app_length !map_length -Hlen => Hi.
+    move=> i. rewrite !length_map length_app !length_map -Hlen => Hi.
     rewrite -> map_nth_inbound with (d2:=nil)=>//;
-      last by rewrite app_length !map_length; lia.
+      last by rewrite length_app !length_map; lia.
     rewrite in_map_iff. 
     by eexists; split; [| apply (Hincomb _ Hi)].
 Qed.
@@ -813,17 +844,17 @@ Proof.
   rewrite Forall_forall in Hall.
   set (t:=(split_funpred_defs l)) in *.
   have [Hi' | Hi']: ((i < length t.1)%coq_nat \/ (length t.1 <= i)%coq_nat) by lia.
-  - rewrite !app_nth1; try by rewrite map_length.
+  - rewrite !app_nth1; try by rewrite length_map.
     rewrite -> !map_nth_inbound with (d2:=(id_fs, nil, tm_d)); try by [].
     have : In (List.nth i t.1 (id_fs, [::], tm_d)) t.1
       by apply nth_In.
     rewrite Hin1 => Hinl.
     apply Hall in Hinl.
     move: Hinl. rewrite //=. intros H; apply H.
-  - rewrite !app_nth2; try by rewrite map_length.
+  - rewrite !app_nth2; try by rewrite length_map.
     rewrite -> !map_nth_inbound with (d2:=(id_ps, nil, Ftrue)); try 
-      by rewrite !map_length; lia.
-    rewrite !map_length.
+      by rewrite !length_map; lia.
+    rewrite !length_map.
     have : In (List.nth (i - length t.1)%coq_nat t.2 (id_ps, [::], Ftrue)) t.2 by
       apply nth_In; lia.
     rewrite Hin2 => Hinl.
@@ -885,21 +916,21 @@ Proof.
     move: Hcandspec => /(_ i ltac:(lia)).
     move=> [Hnotnil] /(_ _ Hincands) [Hlt] _ .
     rewrite -funpred_def_valid_args //.
-    rewrite !map_length. apply Hlt. lia.
+    rewrite !length_map. apply Hlt. lia.
   - move=> f. rewrite funpred_defs_to_sns_in_fst //.
     move=> [i [Hi /= Hf]]. subst; simpl.
     move: Hallil => /(_ i ltac:(unfold t in *; lia)) => Hincands.
     move: Hcandspec => /(_ i ltac:(unfold t in *; lia)) => [[Hnotnil]]
     /(_ _ Hincands) [] Hlt.
-    rewrite app_nth1; last by rewrite map_length; unfold t; lia.
+    rewrite app_nth1; last by rewrite length_map; unfold t; lia.
     by rewrite -> map_nth_inbound with (d2:= (id_fs, nil, tm_d)).
   - move=> p. rewrite funpred_defs_to_sns_in_snd //.
     move=> [i [Hi /= Hf]]. subst; simpl.
     move: Hallil => /(_ (length t.1 + i)%coq_nat ltac:(unfold t in *; lia)) => Hincands.
     move: Hcandspec => /(_ (length t.1 + i)%coq_nat ltac:(unfold t in *; lia)) => [[Hnotnil]]
     /(_ _ Hincands) [] Hlt.
-    rewrite app_nth2; last by rewrite map_length; unfold t; lia.
-    rewrite !map_length combine_length firstn_length min_l; last by
+    rewrite app_nth2; last by rewrite length_map; unfold t; lia.
+    rewrite !length_map length_combine length_firstn min_l; last by
       unfold t in *; lia.
     rewrite plus_minus.
     by rewrite -> map_nth_inbound with (d2:= (id_ps, nil, Ftrue)).
@@ -939,7 +970,7 @@ Proof.
     - move=> Hnotnil.
       pose proof (split_funpred_defs_length l).
       apply (f_equal (@length _)) in Hnotnil.
-      rewrite app_length !map_length in Hnotnil; unfold t in *; simpl in *.
+      rewrite length_app !length_map in Hnotnil; unfold t in *; simpl in *.
       have: length l = 0 by lia.
       by rewrite length_zero_iff_nil.
     - move=> x. rewrite mem_cat => /orP[/inP | /inP];
@@ -953,7 +984,7 @@ Proof.
         move: Hpparams => /(_ (preddef_to_pn f vars tm (List.nth (length t.1 + i)%coq_nat il 0)))->//.
         apply funpred_defs_to_sns_in_snd =>//.
         exists i. split=>//. rewrite Hf/=.
-        rewrite map_length combine_length firstn_length min_l//.
+        rewrite length_map length_combine length_firstn min_l//.
         pose proof (split_funpred_defs_length l); lia.
   }
   rewrite Hfindeq'/=.
@@ -975,7 +1006,7 @@ Proof.
     {
       move=> i Hi. move: Hargsnth => /(_ i Hi).
       rewrite -funpred_def_valid_args//; try lia; first by
-        rewrite map_length.
+        rewrite length_map.
     }
     prove_hyp Hget.
     {
@@ -985,19 +1016,19 @@ Proof.
       - set (y:=(List.nth i t.1 (id_fs, nil, tm_d))). 
         move: Hfvty => /(_ (fundef_to_fn y.1.1 y.1.2 y.2  (List.nth i il 0))).
         rewrite funpred_defs_to_sns_in_fst//= => Hfvty.
-        rewrite app_nth1; last by rewrite map_length.
+        rewrite app_nth1; last by rewrite length_map.
         rewrite -> map_nth_inbound with (d2:= (id_fs, nil, tm_d))=>//.
         apply Hfvty.
         by exists i. 
       - set (y:=(List.nth (i - length t.1)%coq_nat t.2 (id_ps, nil, Ftrue))). 
         move: Hpty => /(_ (preddef_to_pn y.1.1 y.1.2 y.2  (List.nth i il 0))).
         rewrite funpred_defs_to_sns_in_snd//= => Hpvty.
-        rewrite app_nth2 map_length//.
+        rewrite app_nth2 length_map//.
         rewrite -> map_nth_inbound with (d2:= (id_ps, nil, Ftrue))=>//; last by lia.
         apply Hpvty.
-        exists (i - (length t.1))%coq_nat. rewrite !map_length. split.
+        exists (i - (length t.1))%coq_nat. rewrite !length_map. split.
         + unfold t in *; lia.
-        + rewrite combine_length firstn_length min_l=>//;
+        + rewrite length_combine length_firstn min_l=>//;
             last by unfold t in *; lia.
           f_equal. f_equal. unfold t in *. lia.
     }

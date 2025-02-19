@@ -255,7 +255,7 @@ Proof.
       inversion H0; subst.
       destruct (In_nth _ _ Pwild H2) as [i [Hi Hx]]; subst.
       apply specialize_combine with(d1:=Pwild)(d2:=vty_int)(i:=i) in H12; auto;
-      [| rewrite map_length; auto].
+      [| rewrite length_map; auto].
       simpl in H12.
       eapply H; eauto.
     }
@@ -415,9 +415,9 @@ Proof.
       intros [y [Hy Hiny]]; subst.
       apply valid_type_ty_subst'; auto.
       rewrite Forall_forall in H4. apply H4; auto.
-    + rewrite map_length; auto.
-    + rewrite map_length; auto.
-    + intros x. rewrite in_combine_iff; rewrite !map_length; auto.
+    + rewrite length_map; auto.
+    + rewrite length_map; auto.
+    + intros x. rewrite in_combine_iff; rewrite !length_map; auto.
       intros [i [Hi Hx]]. specialize (Hx Pwild vty_int); subst; simpl.
       rewrite -> !map_nth_inbound with(d2:=vty_int); try lia.
       rewrite -> map_nth_inbound with (d2:=Pwild); auto.
@@ -428,11 +428,11 @@ Proof.
         rewrite Forall_map in H0.
         rewrite Forall_forall in H0. apply H0. apply nth_In; auto.
       * apply (H9 (List.nth i ps Pwild,  (ty_subst (s_params f) vs (List.nth i (s_args f) vty_int)))).
-        rewrite in_combine_iff; try rewrite !map_length; auto.
+        rewrite in_combine_iff; try rewrite !length_map; auto.
         exists i. split; auto. intros.
         f_equal; try apply nth_indep; auto.
         rewrite -> map_nth_inbound with (d2:=vty_int); auto; lia.
-    + rewrite !map_length. intros.
+    + rewrite !length_map. intros.
       rewrite -> !map_nth_inbound with (d2:=Pwild); auto.
       rewrite !ty_subst_p_fv. simpl_set.
       intros [Hex1 Hex2]; destruct_all; subst.
@@ -468,7 +468,7 @@ Lemma subst_p_shape p:
 Proof.
   induction p as [| f tys1 ps1 | | |]; simpl; auto; [| rewrite IHp1 IHp2; auto].
   destruct (funsym_eq_dec f f); [| contradiction]; simpl.
-  unfold ty_subst_list' at 1. rewrite !map_length !Nat.eqb_refl. simpl.
+  unfold ty_subst_list' at 1. rewrite !length_map !Nat.eqb_refl. simpl.
   rewrite andb_true_r.
   apply andb_true_iff. split.
   - clear. induction tys1 as [| ty1 tl1 IH]; auto.
@@ -499,11 +499,11 @@ Proof.
       rewrite in_map_iff in H0. destruct H0 as [ty [Hx Hinty]]; subst.
       apply valid_type_ty_subst'; auto. rewrite Forall_forall in H4.
       apply H4; auto.
-    + rewrite map_length; auto.
-    + rewrite map_length; auto.
+    + rewrite length_map; auto.
+    + rewrite length_map; auto.
     + revert H10 H. rewrite !Forall_forall; intros.
       revert H0.
-      rewrite in_combine_iff; rewrite !map_length; auto.
+      rewrite in_combine_iff; rewrite !length_map; auto.
       intros [i [Hi Hx]]; subst. specialize (Hx tm_d vty_int); subst;
       simpl.
       rewrite -> !map_nth_inbound with (d2:=vty_int); try lia.
@@ -512,7 +512,7 @@ Proof.
       apply H; auto.
       * apply nth_In; auto.
       * apply (H10 ((List.nth i l1 tm_d), (ty_subst (s_params f1) l (List.nth i (s_args f1) vty_int)))).
-        rewrite in_combine_iff; [| rewrite map_length; auto].
+        rewrite in_combine_iff; [| rewrite length_map; auto].
         exists i. split; auto.
         intros. rewrite -> !map_nth_inbound with (d2:=vty_int); try lia.
         f_equal. apply nth_indep; auto.
@@ -531,7 +531,7 @@ Proof.
       * rewrite Forall_map Forall_forall in Hallp.
         apply Hallp; auto.
     + revert H9. apply compile_bare_single_ext.
-      * rewrite map_length; reflexivity.
+      * rewrite length_map; reflexivity.
       * apply ty_rel_subst'.
       * rewrite map_map.
         clear. induction ps as [| phd ptl IH]; simpl; auto.
@@ -542,11 +542,11 @@ Proof.
       rewrite in_map_iff in H0. destruct H0 as [ty [Hx Hinty]]; subst.
       apply valid_type_ty_subst'; auto. rewrite Forall_forall in H4.
       apply H4; auto.
-    + rewrite map_length; auto.
-    + rewrite map_length; auto.
+    + rewrite length_map; auto.
+    + rewrite length_map; auto.
     + revert H8 H. rewrite !Forall_forall; intros.
       revert H0.
-      rewrite in_combine_iff; rewrite !map_length; auto.
+      rewrite in_combine_iff; rewrite !length_map; auto.
       intros [i [Hi Hx]]; subst. specialize (Hx tm_d vty_int); subst;
       simpl.
       rewrite -> !map_nth_inbound with (d2:=vty_int); try lia.
@@ -555,7 +555,7 @@ Proof.
       apply H; auto.
       * apply nth_In; auto.
       * apply (H8 ((nth i tms tm_d), (ty_subst (s_params p) tys0 (nth i (s_args p) vty_int)))).
-        rewrite in_combine_iff; [| rewrite map_length; auto].
+        rewrite in_combine_iff; [| rewrite length_map; auto].
         exists i. split; auto.
         intros. rewrite -> !map_nth_inbound with (d2:=vty_int); try lia.
         f_equal. apply nth_indep; auto.
@@ -573,7 +573,7 @@ Proof.
       * rewrite Forall_map Forall_forall in Hallp.
         apply Hallp; auto.
     + revert H8. apply compile_bare_single_ext.
-      * rewrite map_length; reflexivity.
+      * rewrite length_map; reflexivity.
       * apply ty_rel_subst'.
       * rewrite map_map.
         clear. induction ps as [| phd ptl IH]; simpl; auto.
@@ -932,7 +932,7 @@ Proof.
     destruct (In_nth _ _ tm_d H) as [i [Hi Hx]]; subst.
     rewrite Forall_forall in H10.
     apply specialize_combine with(d1:=tm_d)(d2:=vty_int)(i:=i) in H10;
-    auto; [| rewrite map_length; auto].
+    auto; [| rewrite length_map; auto].
     simpl in H10.
     eapply H2. apply H10. rewrite Forall_forall in H1; apply H1;
     auto.
@@ -968,7 +968,7 @@ Proof.
     destruct (In_nth _ _ tm_d H) as [i [Hi Hx]]; subst.
     rewrite Forall_forall in H8.
     apply specialize_combine with(d1:=tm_d)(d2:=vty_int)(i:=i) in H8;
-    auto; [| rewrite map_length; auto].
+    auto; [| rewrite length_map; auto].
     simpl in H8.
     eapply H2. apply H8. rewrite Forall_forall in H1; apply H1;
     auto.
@@ -1056,12 +1056,12 @@ Proof.
   destruct p as [m2 a2].
   intros. inversion H0; subst.
   f_equal. f_equal.
-  apply list_eq_ext'; rewrite !map_length; auto.
+  apply list_eq_ext'; rewrite !length_map; auto.
   intros n d Hn.
   unfold ty_subst_list'.
   rewrite -map_comp.
   rewrite -> !map_nth_inbound with (d2:=vty_int);
-  try rewrite map_length; auto.
+  try rewrite length_map; auto.
   rewrite -> !map_nth_inbound with (d2:=EmptyString); auto. simpl.
   rewrite ty_subst_twice; auto.
   apply s_params_Nodup.
@@ -1085,9 +1085,9 @@ Proof.
   inversion H0; subst.
   pose proof (adt_constr_params gamma_valid m_in1 a_in1 f_in1).
   rewrite H9.
-  apply list_eq_ext'; rewrite !map_length; rewrite <- H9; auto.
+  apply list_eq_ext'; rewrite !length_map; rewrite <- H9; auto.
   intros n d Hn.
-  rewrite -> !map_nth_inbound with (d2 := vty_int); [| rewrite map_length; auto].
+  rewrite -> !map_nth_inbound with (d2 := vty_int); [| rewrite length_map; auto].
   rewrite -> map_nth_inbound with (d2:=EmptyString); auto.
   unfold ty_subst; simpl.
   rewrite -> ty_subst_fun_nth with(s:=s_int); auto. apply nth_indep; lia.
@@ -1167,13 +1167,13 @@ Proof.
     assert (a_in = a_in') by (apply bool_irrelevance).
     assert (m_in = m_in') by (apply bool_irrelevance).
     subst m_in' a_in'; simpl.
-    generalize dependent (eq_trans (map_length (v_subst vt) (ty_subst_list' params tys vs1))
+    generalize dependent (eq_trans (length_map (v_subst vt) (ty_subst_list' params tys vs1))
     (Hvslen4 m1 a1 (ty_subst_list' params tys vs1) erefl
        (pat_has_type_valid gamma
           (Pconstr f1 (ty_subst_list' params tys tys1) (map ty_subst_p ps1))
           (ty_subst' params tys ty) Hp2))).
     generalize dependent (eq_trans
-    (map_length (v_subst (vt_with_args vt params (map (v_subst vt) tys))) vs1)
+    (length_map (v_subst (vt_with_args vt params (map (v_subst vt) tys))) vs1)
     (Hvslen3 m1 a1 vs1 erefl
        (pat_has_type_valid gamma (Pconstr f1 tys1 ps1) ty Hp1))) .
     intros ? ?.
@@ -1188,9 +1188,9 @@ Proof.
     assert (Heq2: map (v_subst vt) (ty_subst_list' params tys tys1) =
     map (v_subst (vt_with_args vt params (map (v_subst vt) tys))) tys1). {
       unfold ty_subst_list'.
-      apply list_eq_ext'; rewrite -> !map_length; auto.
+      apply list_eq_ext'; rewrite -> !length_map; auto.
       intros n d' Hn.
-      rewrite -> !map_nth_inbound with (d2:=vty_int); try rewrite -> map_length; auto.
+      rewrite -> !map_nth_inbound with (d2:=vty_int); try rewrite -> length_map; auto.
       apply v_subst_vt_with_args'; auto.
     }
     (*Now we can relate the two constr_reps*)
@@ -1340,7 +1340,7 @@ Proof.
             (*Prove row typed*)
             assert (Hty:=Forall_inv_tail f0). clear -Hty Hlen.
             unfold row_typed. rewrite Forall2_combine.
-            unfold ty_subst_list. rewrite !map_length. split; auto. lia.
+            unfold ty_subst_list. rewrite !length_map. split; auto. lia.
           }
           (*Now get disjoint*)
           exfalso. rewrite aset_disj_equiv in Hdisj2. apply (Hdisj2 (ty_subst_var x)); auto.
@@ -1452,7 +1452,7 @@ Proof.
     unfold cast_dom_vty. rewrite !dom_cast_compose.
     assert (Hmap: (map (v_subst vt) (ty_subst_list' params tys l)) =
     (map (v_subst (vt_with_args vt params (map (v_subst vt) tys))) l)). {
-      apply list_eq_ext'; rewrite !map_length; auto.
+      apply list_eq_ext'; rewrite !length_map; auto.
       intros n d Hn. unfold ty_subst_list'.
       rewrite !map_map.
       rewrite -> !map_nth_inbound with (d2:=vty_int); auto.
@@ -1474,7 +1474,7 @@ Proof.
     {
       unfold fun_arg_list.
       apply get_arg_list_vt_ext with(Heq:=Hmap);
-      rewrite map_length; auto.
+      rewrite length_map; auto.
       revert H; rewrite Forall_forall; intros.
       revert Hty0. rewrite -> map_nth_inbound with (d2:=tm_d); auto.
       intros.
@@ -1720,7 +1720,7 @@ Proof.
   - (*Fpred*)
     assert (Hmap: (map (v_subst vt) (ty_subst_list' params tys tys0)) =
     (map (v_subst (vt_with_args vt params (map (v_subst vt) tys))) tys0)). {
-      apply list_eq_ext'; rewrite !map_length; auto.
+      apply list_eq_ext'; rewrite !length_map; auto.
       intros n d Hn. unfold ty_subst_list'.
       rewrite !map_map.
       rewrite -> !map_nth_inbound with (d2:=vty_int); auto.
@@ -1736,7 +1736,7 @@ Proof.
     {
       unfold pred_arg_list.
       apply get_arg_list_vt_ext with(Heq:=Hmap);
-      rewrite map_length; auto.
+      rewrite length_map; auto.
       revert H; rewrite Forall_forall; intros.
       revert Hty0. rewrite -> map_nth_inbound with (d2:=tm_d); auto.
       intros.

@@ -308,7 +308,7 @@ Proof.
     + destruct n.
       * destruct x. reflexivity.
       * destruct x.
-        -- rewrite IHn. simpl in Hn. inversion Hn. rewrite map_length.
+        -- rewrite IHn. simpl in Hn. inversion Hn. rewrite length_map.
            reflexivity.
            intros. simpl.
            apply fin_nth_aux_irrel.
@@ -1098,7 +1098,7 @@ Lemma filter_args_length (l: list vty) (a: arg_list domain (sigma_aux l))
     ) 
   (dom_adts_fin x)) = count_rec_occ_aux l (adt_name (fin_nth adts x)) c.
 Proof.
-  rewrite cast_list_length hlist_to_list_length hlength_eq map_length.
+  rewrite cast_list_length hlist_to_list_length hlength_eq length_map.
   reflexivity.
 Qed.
 
@@ -1205,7 +1205,7 @@ Proof.
   }
   unfold fin_nth in H.
   assert (length (map adt_name adts) = length adts). {
-    rewrite map_length. reflexivity.
+    rewrite length_map. reflexivity.
   }
   rewrite -> !fin_nth_aux_map with(f:=adt_name)(Hn2:=H1) in H.
   apply fin_nth_aux_inj in H; auto.
@@ -1474,10 +1474,10 @@ Ltac solve_cast_list_eq l :=
     f_equal;
   apply list_eq_ext';
   rewrite !hlist_to_list_length 
-    !hlength_eq !map_length //;
+    !hlength_eq !length_map //;
   intros n d Hn;
   assert (Hn': (n < length (map sigma (filter (rec_occ_fun (adt_name (fin_nth adts x)))l)))%coq_nat) by 
-    (rewrite map_length; apply Hn);
+    (rewrite length_map; apply Hn);
   assert (Hsint: domain s_int) by (unfold domain; simpl; apply 0%Z);
   erewrite -> !hlist_to_list_nth_dec' with(Hi:=Hn') (d1:=s_int) (d2:=Hsint);
   try apply sort_eq_dec;

@@ -186,7 +186,7 @@ Lemma P_Constr' {gamma} (params: list vty) (ps: list pattern) (f: funsym) ty:
 Proof.
   intros Hinf Hallval Hval Hlenparams Hallty Hdisj Hadt Ht; subst. constructor; auto.
   - apply Forall2_length in Hallty. unfold ty_subst_list in Hallty.
-    rewrite map_length in Hallty. auto.
+    rewrite length_map in Hallty. auto.
   - rewrite <- Forall_forall. rewrite Forall2_combine in Hallty. apply Hallty.
   - intros i j d x Hi Hj Hij [Hx1 Hx2]. apply (Hdisj i j d Hi Hj Hij x); auto.
 Qed.
@@ -224,7 +224,7 @@ Proof.
   intros. induction ty; simpl; auto.
   inversion H; subst.
   constructor; auto.
-  - rewrite map_length; auto.
+  - rewrite length_map; auto.
   - intros x Hinx.
     rewrite in_map_iff in Hinx. 
     destruct Hinx as [v [Hx Hinv]]; subst.
@@ -544,7 +544,7 @@ Proof.
     rewrite forallb_forall in H3.
     inversion H; subst.
     destruct (find_ts_in_ctx gamma tsym) as [p |] eqn : Hts.
-    2 : { apply Habs; auto. rewrite map_length; auto.
+    2 : { apply Habs; auto. rewrite length_map; auto.
       rewrite Forall_map, Forall_forall. intros.
       apply valid_type_subst; auto. 
       rewrite Forall_map. revert H4. rewrite !Forall_forall; intros.
@@ -555,7 +555,7 @@ Proof.
     destruct H0 as [c [c_in Hallvs]].
     specialize (Hallvs (map (v_subst_aux f) vs)).
     prove_hyp Hallvs.
-    { rewrite map_length; auto. }
+    { rewrite length_map; auto. }
     prove_hyp Hallvs.
     { rewrite Forall_map. revert H4.
       rewrite !Forall_forall; intros. apply H4; auto. }
@@ -695,7 +695,7 @@ Proof.
     + apply (Hconstrargs m _ c _ H0 H1); simpl; auto.
     + rewrite Hcparams; lia.
     + rewrite Forall_forall; intros x.
-      rewrite in_combine_iff; [| rewrite map_length; auto].
+      rewrite in_combine_iff; [| rewrite length_map; auto].
       intros [j [Hj Hx]].
       specialize (Hx tm_d vty_int).
       subst. simpl. 
@@ -1366,7 +1366,7 @@ Lemma fundef_fn_wf (f: funsym) (vars: list vsymbol) (t: term)
   fn_wf (fundef_to_fn f vars t i).
 Proof.
   assert (length vars = length (s_args f)) by
-    (rewrite <- Hargs, map_length; auto).
+    (rewrite <- Hargs, length_map; auto).
   unfold fn_wf. split; auto.
   unfold sn_wf. repeat (split; auto).
   simpl. lia.
@@ -1382,7 +1382,7 @@ Lemma preddef_pn_wf (p: predsym) (vars: list vsymbol) (f: formula)
   pn_wf (preddef_to_pn p vars f i).
 Proof.
   assert (length vars = length (s_args p)) by
-    (rewrite <- Hargs, map_length; auto).
+    (rewrite <- Hargs, length_map; auto).
   unfold pn_wf. split; auto.
   unfold sn_wf. split; auto.
   simpl; lia.
@@ -1468,8 +1468,8 @@ Lemma funpred_defs_to_sns_length l is:
   length (snd (funpred_defs_to_sns l is)) = length l.
 Proof.
   intros. unfold funpred_defs_to_sns.
-  simpl. rewrite !map_length, !combine_length, !firstn_length, 
-  !skipn_length.
+  simpl. rewrite !length_map, !length_combine, !length_firstn, 
+  !length_skipn.
   pose proof (split_funpred_defs_length l). lia.
 Qed.
 
@@ -1523,7 +1523,7 @@ Proof.
     specialize (Hy (id_fs, nil, tm_d) 0). subst. simpl. f_equal.
     (*Ugh, need firstn nth*)
     rewrite firstn_nth; auto.
-    rewrite firstn_length, <- Hlen. lia.
+    rewrite length_firstn, <- Hlen. lia.
   - destruct H as [i [Hi Hx]]. subst.
     exists (nth i (fst (split_funpred_defs l)) (id_fs, nil, tm_d), nth i is 0).
     split; auto.
@@ -1533,7 +1533,7 @@ Proof.
     (*need nth firstn again*)
     f_equal; apply nth_indep; auto.
     rewrite <- Hlen. lia.
-    rewrite firstn_length, <- Hlen. lia.
+    rewrite length_firstn, <- Hlen. lia.
 Qed.
 
 (*This is not great*)
@@ -1559,22 +1559,22 @@ Proof.
     destruct Hiny as [i [Hi Hy]].
     exists i. split; auto.
     specialize (Hy (id_ps, nil, Ftrue) 0). subst. simpl. f_equal.
-    rewrite map_length, combine_length.
+    rewrite length_map, length_combine.
     + rewrite skipn_nth. f_equal. f_equal.
-      rewrite firstn_length. lia.
-    + rewrite skipn_length. lia.
+      rewrite length_firstn. lia.
+    + rewrite length_skipn. lia.
   - destruct H as [i [Hi Hx]]. subst.
     exists (nth i (snd (split_funpred_defs l)) (id_ps, nil, Ftrue), 
       nth (length (fst (split_funpred_defs l)) + i) is 0).
     split; simpl; auto.
-    + f_equal. rewrite map_length, combine_length, firstn_length.
+    + f_equal. rewrite length_map, length_combine, length_firstn.
       f_equal. lia.
     + rewrite in_combine_iff. exists i.
       split; auto. intros.
       rewrite skipn_nth; auto.
       (*need nth firstn again*)
       f_equal; apply nth_indep; auto. lia.
-      rewrite skipn_length, <- Hlen. lia.
+      rewrite length_skipn, <- Hlen. lia.
 Qed.
 
 Lemma split_funpred_defs_in_l (l: list funpred_def):
@@ -1621,7 +1621,7 @@ Proof.
     destruct_all.
     apply fundef_fn_wf; auto.
     + specialize (Hall i ltac:(lia)).
-      revert Hall. rewrite app_nth1 by (rewrite map_length; auto).
+      revert Hall. rewrite app_nth1 by (rewrite length_map; auto).
       rewrite map_nth_inbound with (d2:=(id_fs, nil, tm_d)); auto.
     + apply NoDup_map_inv in H2; auto.
   - (*Very similar*)
@@ -1639,16 +1639,16 @@ Proof.
     destruct_all.
     apply preddef_pn_wf; auto.
     + specialize (Hall (length (fst (split_funpred_defs l)) + i) ltac:(lia)).
-      revert Hall. rewrite app_nth2 by (rewrite map_length; lia).
-      rewrite map_length.
+      revert Hall. rewrite app_nth2 by (rewrite length_map; lia).
+      rewrite length_map.
       replace (length (fst (split_funpred_defs l)) + i -
         length (fst (split_funpred_defs l))) with i by lia.
       rewrite map_nth_inbound with (d2:=(id_ps, nil, Ftrue)); auto.
-      subst y; simpl. rewrite map_length.
+      subst y; simpl. rewrite length_map.
       replace (length (combine (fst (split_funpred_defs l))
       (firstn (Datatypes.length (fst (split_funpred_defs l))) is)))
       with (length (fst (split_funpred_defs l))); auto.
-      rewrite combine_length, firstn_length. lia.
+      rewrite length_combine, length_firstn. lia.
     + apply (NoDup_map_inv) in H2. auto.
 Qed.
 
@@ -2219,7 +2219,7 @@ Proof.
   - inversion H0.
   - (*Here, n2 must be S n3*)
     assert (length (sig_t (d :: gamma)) >= length (sig_t gamma)). {
-      unfold sig_t. simpl. rewrite app_length; lia.
+      unfold sig_t. simpl. rewrite length_app; lia.
     }
     destruct n2; try lia.
     rewrite typesym_inhab_fun_eq in *.
@@ -2742,7 +2742,7 @@ Proof.
   try solve[inversion Hinfs]; subst; auto.
   - bool_hyps. destruct Hinfs; try simpl_sumbool.
     assert (length l1 = length (map (ty_subst (s_params f1) l) (s_args f1))). {
-      rewrite map_length; auto.
+      rewrite length_map; auto.
     }
     clear H4 H5 H7 H9 Hty H3. 
     generalize dependent (map (ty_subst (s_params f1) l) (s_args f1));
@@ -2763,7 +2763,7 @@ Proof.
     destruct H1; auto.
     apply (H3 ty); auto.
   - assert (length tms = length (map (ty_subst (s_params p) tys) 
-      (s_args p))) by (rewrite map_length; auto).
+      (s_args p))) by (rewrite length_map; auto).
     clear -H Hinfs H8 H0.
     generalize dependent (map (ty_subst (s_params p) tys) (s_args p));
     induction tms; simpl; intros; destruct l; inversion H0;
@@ -2801,7 +2801,7 @@ Proof.
   inversion Hty; simpl in Hinfs;
   try solve[inversion Hinfs]; subst; auto.
   - assert (length l1 = length (map (ty_subst (s_params f1) l) (s_args f1))). {
-      rewrite map_length; auto.
+      rewrite length_map; auto.
     }
     clear -H0 H Hinfs H10.
     generalize dependent (map (ty_subst (s_params f1) l) (s_args f1));
@@ -2822,7 +2822,7 @@ Proof.
     apply (H3 ty); auto.
   - bool_hyps. destruct Hinfs as [? | Hinfs]; try simpl_sumbool.
     assert (length tms = length (map (ty_subst (s_params p) tys) 
-      (s_args p))) by (rewrite map_length; auto).
+      (s_args p))) by (rewrite length_map; auto).
     clear -H Hinfs H8 H0.
     generalize dependent (map (ty_subst (s_params p) tys) (s_args p));
     induction tms; simpl; intros; destruct l; inversion H0;
@@ -3014,7 +3014,7 @@ Proof.
   destruct gamma_wf as [_ [_ [Hnodup _]]].
   unfold typesyms_of_context in Hnodup.
   rewrite NoDup_concat_iff in Hnodup.
-  rewrite map_length in Hnodup.
+  rewrite length_map in Hnodup.
   destruct Hnodup as [_ Hnodup].
   rewrite mut_in_ctx_eq in m_in1, m_in2.
   assert (m: mut_adt) by (apply m1).
@@ -3047,7 +3047,7 @@ Proof.
   unfold predsyms_of_context in Hwf2.
   unfold funpred_defs_to_sns; simpl; rewrite !map_map; simpl.
   pose proof (split_funpred_defs_length l) as Hlenfstsnd.
-  rewrite !map_fst_fst_fst_combine; [| rewrite skipn_length | rewrite firstn_length]; try lia.
+  rewrite !map_fst_fst_fst_combine; [| rewrite length_skipn | rewrite length_firstn]; try lia.
   rewrite !NoDup_concat_iff in Hwf1.
   rewrite !NoDup_concat_iff in Hwf2.
   destruct Hwf1 as [Hwf1 _ ].
@@ -3352,7 +3352,7 @@ Proof.
   destruct gamma_valid as [_ [_ Hn]].
   unfold idents_of_context in Hn.
   rewrite NoDup_concat_iff in Hn.
-  rewrite map_length in Hn.
+  rewrite length_map in Hn.
   destruct Hn as [_ Hn].
   destruct (In_nth _ _ def_d d1_in) as [i1 [Hi1 Hd1]]; subst.
   destruct (In_nth _ _ def_d d2_in) as [i2 [Hi2 Hd2]]; subst.
@@ -3374,7 +3374,7 @@ Proof.
   destruct gamma_valid as [_ [_ Hn]].
   unfold idents_of_context in Hn.
   rewrite NoDup_concat_iff in Hn.
-  rewrite map_length in Hn.
+  rewrite length_map in Hn.
   destruct Hn as [_ Hn].
   destruct (In_nth _ _ def_d d1_in) as [i1 [Hi1 Hd1]]; subst.
   destruct (In_nth _ _ def_d d2_in) as [i2 [Hi2 Hd2]]; subst.
@@ -3639,7 +3639,7 @@ Proof.
     }
     unfold funsyms_of_mut in Hnodup.
     rewrite NoDup_concat_iff in Hnodup.
-    rewrite map_length in Hnodup.
+    rewrite length_map in Hnodup.
     (*Look across, not in, adts*)
     destruct Hnodup as [_ Hnodup].
     exfalso.
@@ -3661,7 +3661,7 @@ Proof.
     with(eq_dec:=funsym_eq_dec); auto.
   - (*This time in different m1 and m2*)
     destruct Hn2 as [_ Hnodup].
-    rewrite map_length in Hnodup.
+    rewrite length_map in Hnodup.
     assert (Hin1: In (datatype_def m1) gamma) by (apply mut_in_ctx_eq2; auto).
     assert (Hin2: In (datatype_def m2) gamma) by (apply mut_in_ctx_eq2; auto).
     destruct (In_nth _ _ def_d Hin1) as [i1 [Hi1 Hm1]].
@@ -3689,7 +3689,7 @@ Proof.
   destruct gamma_valid as [_ [_ Hn]].
   unfold idents_of_context in Hn.
   rewrite NoDup_concat_iff in Hn.
-  rewrite map_length in Hn.
+  rewrite length_map in Hn.
   destruct Hn as [_ Hn].
   destruct (In_nth _ _ def_d Hint1) as [i1 [Hi1 Hd1]]; subst.
   assert (Hinm: In (datatype_def m) gamma) by (apply mut_in_ctx_eq2; auto).
@@ -4033,7 +4033,7 @@ Proof.
       apply H. left; auto.
     + apply IHl in H0. destruct H0 as [Hin [Ha Hn]]. repeat split; auto.
       intros. apply H. right; auto.
-      simpl in Hnodup. rewrite map_app in Hnodup. apply NoDup_app in Hnodup.
+      simpl in Hnodup. rewrite map_app in Hnodup. apply NoDup_app_impl in Hnodup.
       apply Hnodup.
   - destruct H0 as [[Ham | Hinm] [Ha Hn]]; subst.
     + assert (find_ts_in_mut (adt_name a) m = Some a). {
@@ -4467,7 +4467,7 @@ Lemma gen_fun_typed {b: bool} gamma (ls: gen_sym b) (tys: list vty) (tms: list t
   : gen_typed gamma b (gen_fun ls tys tms) ty.
 Proof.
   rewrite Forall2_combine in Hinner.
-  destruct Hinner as [Htms Hinner]; rewrite map_length in Htms.
+  destruct Hinner as [Htms Hinner]; rewrite length_map in Htms.
   destruct b; simpl in *; subst; constructor; auto.
 Qed.
 

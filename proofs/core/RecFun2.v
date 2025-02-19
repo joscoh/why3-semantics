@@ -204,7 +204,7 @@ Proof.
     unfold funpred_defs_to_sns; simpl.
     pose proof (split_funpred_defs_length l).
     rewrite !map_map. simpl. rewrite map_fst_fst_fst_combine by
-      (rewrite firstn_length; lia).
+      (rewrite length_firstn; lia).
     clear. induction l; simpl; auto; destruct a; simpl; auto.
     f_equal; auto.
   }
@@ -229,7 +229,7 @@ Proof.
     unfold funpred_defs_to_sns; simpl.
     pose proof (split_funpred_defs_length l).
     rewrite !map_map. simpl. rewrite map_fst_fst_fst_combine by
-      (rewrite skipn_length; lia).
+      (rewrite length_skipn; lia).
     clear. induction l; simpl; auto; destruct a; simpl; auto.
     f_equal; auto.
   }
@@ -1370,13 +1370,13 @@ Proof.
       v_subst (vt_with_args vt (s_params (fn_sym f')) srts) (snd (nth i (sn_args f') vs_d))). {
         intros vt1.
         unfold sym_sigma_args.  unfold ty_subst_list_s.
-        rewrite map_nth_inbound with(d2:=vty_int); [| rewrite <- Hargs, map_length; auto].
+        rewrite map_nth_inbound with(d2:=vty_int); [| rewrite <- Hargs, length_map; auto].
         erewrite <- vt_with_args_cast with(vt:=vt1); auto.
         - rewrite <- Hargs. rewrite map_nth_inbound with(d2:=vs_d); auto.
         - intros. 
           apply (@funpred_defs_to_sns_typevars1 l il) with(f:=f')(ty:=(nth i (s_args (fn_sym f')) vty_int));
           auto. simpl; auto. right.
-          apply nth_In. rewrite <- Hargs, map_length; auto.
+          apply nth_In. rewrite <- Hargs, length_map; auto.
         - apply s_params_Nodup.
       }
       rewrite val_with_args_in with (Heq:=Heq1 vt); auto.
@@ -1385,7 +1385,7 @@ Proof.
       }
       2: {
         unfold sym_sigma_args, ty_subst_list_s.
-        rewrite map_length, <- Hargs, map_length.
+        rewrite length_map, <- Hargs, length_map.
         reflexivity.
       }
       (*Now we need to rewrite the other one*)
@@ -1395,7 +1395,7 @@ Proof.
       }
       2: {
         unfold sym_sigma_args, ty_subst_list_s.
-        rewrite map_length, <- Hargs, map_length.
+        rewrite length_map, <- Hargs, length_map.
         reflexivity.
       }
       rewrite !dom_cast_compose.
@@ -1501,13 +1501,13 @@ Proof.
       v_subst (vt_with_args vt (s_params (pn_sym p')) srts) (snd (nth i (sn_args p') vs_d))). {
         intros vt1.
         unfold sym_sigma_args.  unfold ty_subst_list_s.
-        rewrite map_nth_inbound with(d2:=vty_int); [| rewrite <- Hargs, map_length; auto].
+        rewrite map_nth_inbound with(d2:=vty_int); [| rewrite <- Hargs, length_map; auto].
         erewrite <- vt_with_args_cast with(vt:=vt1); auto.
         - rewrite <- Hargs. rewrite map_nth_inbound with(d2:=vs_d); auto.
         - intros. 
           apply (@funpred_defs_to_sns_typevars2 l il) with(p:=p')(ty:=(nth i (s_args (pn_sym p')) vty_int));
           auto. 
-          apply nth_In. rewrite <- Hargs, map_length; auto.
+          apply nth_In. rewrite <- Hargs, length_map; auto.
         - apply s_params_Nodup.
       }
       rewrite val_with_args_in with (Heq:=Heq1 vt); auto.
@@ -1516,7 +1516,7 @@ Proof.
       }
       2: {
         unfold sym_sigma_args, ty_subst_list_s.
-        rewrite map_length, <- Hargs, map_length.
+        rewrite length_map, <- Hargs, length_map.
         reflexivity.
       }
       (*Now we need to rewrite the other one*)
@@ -1526,7 +1526,7 @@ Proof.
       }
       2: {
         unfold sym_sigma_args, ty_subst_list_s.
-        rewrite map_length, <- Hargs, map_length.
+        rewrite length_map, <- Hargs, length_map.
         reflexivity.
       }
       rewrite !dom_cast_compose.

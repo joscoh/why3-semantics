@@ -467,7 +467,7 @@ Lemma constr_pattern_var_types {gamma} {m a c} (m_in: mut_in_ctx m gamma)
   map snd vars = ty_subst_list (s_params c) args (s_args c).
 Proof.
   inversion Hty; subst. unfold ty_subst_list.
-  apply list_eq_ext'; rewrite !map_length in *; auto.
+  apply list_eq_ext'; rewrite !length_map in *; auto.
   intros n d Hn.
   specialize (H9 (Pvar (nth n vars vs_d), ty_subst (s_params c) args (nth n (s_args c) d))).
   forward H9.
@@ -814,7 +814,7 @@ Proof.
   inversion Hp; subst.
   rewrite NoDup_nth with (d:=vs_d).
   intros i1 j Hi1 Hj Heq. clear -H10 Heq Hi1 Hj.
-  rewrite map_length in H10. specialize (H10 i1 j Pwild (nth i1 vars vs_d)).
+  rewrite length_map in H10. specialize (H10 i1 j Pwild (nth i1 vars vs_d)).
   destruct (Nat.eq_dec i1 j); subst; auto.
   specialize (H10 Hi1 Hj n). exfalso; apply H10; clear H10.
   rewrite !map_nth_inbound with (d2:=vs_d); auto. simpl.
@@ -995,7 +995,7 @@ Proof.
   (*Has to be better way*)
   rewrite <- (combine_eq ps1) in Hinc1, Hinc2.
   rewrite in_combine_iff in Hinc1, Hinc2; try solve_len.
-  rewrite map_length in Hinc1, Hinc2.
+  rewrite length_map in Hinc1, Hinc2.
   destruct Hinc1 as [i1 [Hi1 Heq1]]; destruct Hinc2 as [i2 [Hi2 Heq2]].
   specialize (Heq1 Pwild (gen_d _)). specialize (Heq2 Pwild (gen_d _)).
   inversion Heq1 as [Heq3]; subst; clear Heq1. inversion Heq2 as [Heq4]; subst; clear Heq2.
@@ -1005,7 +1005,7 @@ Proof.
   rewrite map_nth_inbound with (d2:=(id_fs, nil, nil)) in Heq3, Heq4; try lia.
   inversion Heq3; inversion Heq4; subst; clear Heq3; clear Heq4.
   assert (Hi12: i1 = i2). {
-    rewrite NoDup_nth with (d:=id_fs) in Hnodup. rewrite map_length in Hnodup.
+    rewrite NoDup_nth with (d:=id_fs) in Hnodup. rewrite length_map in Hnodup.
     specialize (Hnodup i1 i2 (ltac:(lia)) (ltac:(lia))).
     rewrite !map_nth_inbound with (d2:=(id_fs, nil, nil)) in Hnodup by lia.
     auto.
@@ -1155,7 +1155,7 @@ Proof.
       }
       assert (Hlen: length vars = length (get_proj_list badnames c)).
       { unfold get_proj_list. rewrite projection_syms_length.
-        inversion Hpty; subst; auto. rewrite <- (map_length Pvar); auto.
+        inversion Hpty; subst; auto. rewrite <- (length_map Pvar); auto.
       }
       assert (Hsnd: map snd l = vars). {
         unfold l. clear -Hlen.
@@ -1211,7 +1211,7 @@ Proof.
       {
         (*Prove element by element*)
         apply hlist_ext_eq with (d:=s_int)(d':=dom_int _).
-        rewrite !map_length. intros i1 Hi1.
+        rewrite !length_map. intros i1 Hi1.
         assert (Hi': i1 < Datatypes.length (map snd (map snd l))) by solve_len.
         rewrite terms_to_hlist_hnth with (Hi:=Hi').
         rewrite hnth_cast_arg_list.
@@ -1223,7 +1223,7 @@ Proof.
         (*TODO: see what we need*) clear -Hi1 Hlen m_in a_in c_in Hargslen new_constrs_inj Hsem IH1 Hsimp1 Hex1 Htytm.
         rewrite !map_map.
         rewrite !map_nth_inbound with (d2:=(tm_d, vs_d)) by auto.
-        rewrite map2_length in Hi1. rewrite map_length in Hi1.
+        rewrite map2_length in Hi1. rewrite length_map in Hi1.
         rewrite map2_nth with (d1:=Pwild) (d2:=id_fs); try solve_len.
         rewrite map_nth_inbound with (d2:=vs_d); auto; try lia.
         (*Finally, a reasonable goal*)
@@ -1499,7 +1499,7 @@ Proof.
       apply gen_strs_notin in Hinx2. contradiction.
   }
   assert (Hlenvs: length (fst z) = length (s_args c1)).
-  { rewrite <- (map_length snd), Hztys. unfold ty_subst_list; solve_len. }
+  { rewrite <- (length_map snd), Hztys. unfold ty_subst_list; solve_len. }
   (*Note TODO: will we need to repeat all of this in the 2nd lemma?*)
   assert (Heq2: forall i, i < length (s_args c1) -> 
     v_subst vt (ty_subst (s_params c1) args (nth i (s_args c1) vty_int)) =
@@ -1562,7 +1562,7 @@ Proof.
     unfold semantic_constr in Hsem. unfold d in Hsem. rewrite Hsem.
     unfold new_constr_interp.
     rewrite (constrs gamma_valid pd pdf pf _ _ _ m_in a_in c1_in) with 
-      (Hlens:=(eq_trans (map_length (v_subst vt) args) Hargslen)).
+      (Hlens:=(eq_trans (length_map (v_subst vt) args) Hargslen)).
     unfold constr_rep_dom. unfold dom_cast. rewrite !scast_scast.
     rewrite scast_eq_uip_iff, constr_rep_inj_iff_strong.
     (*Now prove arg_lists equiv on each side - prove elt by elt*)
@@ -1571,7 +1571,7 @@ Proof.
       exists eq_refl. simpl. rewrite cast_arg_list_compose, eq_trans_refl_l.
       (*Now prove elt by elt*)
       apply hlist_ext_eq with (d:=s_int)(d':=dom_int _).
-      unfold sym_sigma_args, ty_subst_list_s. rewrite !map_length. intros i Hi.
+      unfold sym_sigma_args, ty_subst_list_s. rewrite !length_map. intros i Hi.
       rewrite hnth_cast_arg_list.
       unfold fun_arg_list.
       assert (Hi': i < length (s_args c)) by lia.
@@ -1593,7 +1593,7 @@ Proof.
       unfold cast_arg_list at 2; simpl.
       (*And prove by elt*)
       apply hlist_ext_eq with (d:=s_int)(d':=dom_int _).
-      unfold sym_sigma_args, ty_subst_list_s. rewrite !map_length. intros i Hi.
+      unfold sym_sigma_args, ty_subst_list_s. rewrite !length_map. intros i Hi.
       unfold fun_arg_list.
       assert (Hi': i < length (fst z)) by lia.
       rewrite (get_arg_list_hnth pd vt id_fs args (map Tvar (fst z))
@@ -2161,7 +2161,7 @@ Proof.
   - (*Fpred*) intros p tys tms IH Hty1. simpl. intros Hsimp Hexh Hbad1 Hbad2 _ Hty2 vv.
     unfold preds_new. f_equal. 
     apply get_arg_list_ext; [solve_len|].
-    rewrite map_length. intros i Hi ty' Hty' Hty''.
+    rewrite length_map. intros i Hi ty' Hty' Hty''.
     rewrite Forall_forall in IH.
     unfold is_true in Hsimp, Hexh.
     rewrite forallb_forall in Hsimp, Hexh.
@@ -2892,7 +2892,7 @@ Proof.
   rewrite map_nth_inbound with(d2:=vty_int);
   auto.
   apply funsym_subst_eq.
-  apply s_params_Nodup. rewrite map_length; auto.
+  apply s_params_Nodup. rewrite length_map; auto.
 Qed.
 
 Lemma get_arg_list_hnth_unif {gamma: context} 
@@ -2979,7 +2979,7 @@ Proof.
   rewrite (funs_new_new_constrs new_constr_name gamma_valid pd pdf pf (idents_of_context gamma)) with (m:=m) (a:=a); auto.
   unfold new_constr_interp. 
   assert (Hlen': length (map (v_subst vt) args) = length (m_params m)).
-  { rewrite map_length. auto. }
+  { rewrite length_map. auto. }
   erewrite (constrs gamma_valid pd pdf pf m a c m_in a_in c_in (map (v_subst vt) args) Hlen').
   unfold constr_rep_dom, dom_cast. rewrite !scast_scast.
   (*Now use [tm_semantic_constr]*)
@@ -2994,7 +2994,7 @@ Proof.
   intros Heq1.
   apply hlist_ext_eq with (d:=s_int)(d':=dom_int _).
   intros i Hi.
-  unfold sym_sigma_args, ty_subst_list_s in Hi. rewrite map_length in Hi.
+  unfold sym_sigma_args, ty_subst_list_s in Hi. rewrite length_map in Hi.
   unfold fun_arg_list.
   assert (Hargs: args = map vty_var (s_params c)). {
     unfold args. f_equal. rewrite (adt_args gamma_valid m_in a_in), (adt_constr_params gamma_valid m_in a_in c_in).
@@ -3008,7 +3008,7 @@ Proof.
         (substi pd vt vv tyn
            (scast Heq1
               (constr_rep gamma_valid m m_in (map (v_subst vt) args)
-                 (eq_trans (map_length (v_subst vt) args) args_len) (dom_aux pd) a a_in c c_in
+                 (eq_trans (length_map (v_subst vt) args) args_len) (dom_aux pd) a a_in c c_in
                  (adts pdf m (map (v_subst vt) args)) al))))
     (ltac:(intros; apply term_rep_irrel)) Hargs
       (proj1' (fun_ty_inv (proj2' (typed_eq_inv Htya))))
@@ -3076,7 +3076,7 @@ Proof.
   (*Now x is a pure [constr_rep] - we can use injectivity*)
   (*Now, we prove that we again satisfy [semantic_constr] and hence we can use injectivity*)
   destruct Hc1 as [[c1_in al2] Hx'].
-  assert (Hlen' = (eq_trans (map_length (v_subst vt) args) args_len)) by (apply UIP_dec, Nat.eq_dec); subst Hlen'.
+  assert (Hlen' = (eq_trans (length_map (v_subst vt) args) args_len)) by (apply UIP_dec, Nat.eq_dec); subst Hlen'.
   assert (Hcs: c = c1). {
     clear -Hx Hx'. subst. destruct (funsym_eq_dec c c1); subst; auto.
     exfalso. apply (constr_rep_disjoint) in Hx; auto.
@@ -3181,7 +3181,7 @@ Proof.
   assert (Hinf: In f (projection_syms (idents_of_context gamma) c)).
   { apply nth_In. rewrite projection_syms_length; auto. } 
   assert (Hlen': length (map (v_subst vt) (map vty_var (s_params c))) = length (m_params m)).
-  { rewrite !map_length. f_equal. apply (adt_constr_params gamma_valid m_in a_in c_in). } 
+  { rewrite !length_map. f_equal. apply (adt_constr_params gamma_valid m_in a_in c_in). } 
   rewrite (funs_new_proj _ gamma_valid pd pdf pf _ Hnewconstr m_in a_in c_in _ Hinf _ _ Hlen').
   (*TODO: repetitive, but dependent types make it hard to abstract*)
   unfold proj_interp. 

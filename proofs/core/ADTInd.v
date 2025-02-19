@@ -210,7 +210,7 @@ Proof.
         (*We get contradiction: can't have srts inside srts
           This proves that this case cannot happen*)
         apply (list_srts_not_whole n (sorts_to_tys srts) (adt_name t')); auto.
-      * unfold sorts_to_tys. rewrite map_length, Hlen, Hparams.
+      * unfold sorts_to_tys. rewrite length_map, Hlen, Hparams.
         reflexivity.
       * apply s_params_Nodup.
     + rewrite ty_subst_fun_notin in H0; auto. inversion H0.
@@ -774,7 +774,7 @@ Proof.
             (rec_occ_fun
               (adt_name (fin_nth (typs m) (get_idx adt_dec t' (typs m) t_in'))))
             (s_args c)))). {
-    rewrite map_length. apply Hn'. }
+    rewrite length_map. apply Hn'. }
     rewrite hlist_to_list_nth_dec_set' with(Hi:=Hn2)(d1:=s_int)(d2:=dom_int pd).
     2: apply sort_eq_dec.
     (*4. Push through [hlist_map_filter]. Here we need

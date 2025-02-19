@@ -80,7 +80,7 @@ Proof.
   revert t f; apply term_formula_ind; simpl; intros; auto.
   - vsym_eq x v. exfalso. apply H; auto. apply aset_mem_singleton. auto.
   - simpl_set. f_equal.
-    apply list_eq_ext'; rewrite map_length; auto.
+    apply list_eq_ext'; rewrite length_map; auto.
     intros n d Hn.
     rewrite map_nth_inbound with (d2:=d); auto.
     rewrite Forall_forall in H. apply H; [apply nth_In |]; auto.
@@ -93,7 +93,7 @@ Proof.
   - simpl_set. rewrite H, H0, H1; auto.
   - simpl_set_small. not_or Hx.
     rewrite H; auto. f_equal. clear H Hx.
-    apply list_eq_ext'; rewrite map_length; auto.
+    apply list_eq_ext'; rewrite length_map; auto.
     intros n d Hn.
     rewrite map_nth_inbound with (d2:=d); auto.
     destruct (aset_mem_dec x (pat_fv (fst (nth n ps d)))); auto.
@@ -106,7 +106,7 @@ Proof.
       simpl_set. auto. 
   - simpl_set. vsym_eq x v. rewrite H; auto.
   - simpl_set. f_equal.
-    apply list_eq_ext'; rewrite map_length; auto.
+    apply list_eq_ext'; rewrite length_map; auto.
     intros n d Hn.
     rewrite map_nth_inbound with (d2:=d); auto.
     rewrite Forall_forall in H. apply H; [apply nth_In |]; auto.
@@ -122,7 +122,7 @@ Proof.
   - simpl_set. rewrite H, H0, H1; auto.
   - simpl_set_small. not_or Hx.
     rewrite H; auto. f_equal. clear H Hx.
-    apply list_eq_ext'; rewrite map_length; auto.
+    apply list_eq_ext'; rewrite length_map; auto.
     intros n d Hn.
     rewrite map_nth_inbound with (d2:=d); auto.
     destruct (aset_mem_dec x (pat_fv (fst (nth n ps d)))); auto.
@@ -265,11 +265,11 @@ Lemma sub_fv_diff y tm x (Hnot: y <> x) (Hnoty: ~ aset_mem y (tm_fv tm))
 Proof.
   revert t f; apply term_formula_ind; simpl; intros; auto.
   - vsym_eq x v. vsym_eq y v. simpl. apply free_in_t_negb; auto.
-  - apply existsb_eq; [ rewrite map_length |]; auto.
+  - apply existsb_eq; [ rewrite length_map |]; auto.
     rewrite Forall_combine_map. auto.
   - rewrite H. f_equal. vsym_eq x v. rewrite H0; auto.
   - rewrite H, H0, H1; auto.
-  - rewrite H. f_equal. apply existsb_eq; [rewrite map_length|]; auto.
+  - rewrite H. f_equal. apply existsb_eq; [rewrite length_map|]; auto.
     rewrite Forall_combine_map; simpl.
     rewrite Forall_map in H0.
     revert H0. apply Forall_impl.
@@ -277,14 +277,14 @@ Proof.
     simpl; auto.
     rewrite H0; auto.
   - vsym_eq x v; simpl. rewrite H; auto.
-  - apply existsb_eq; [ rewrite map_length |]; auto.
+  - apply existsb_eq; [ rewrite length_map |]; auto.
     rewrite Forall_combine_map. auto.
   - vsym_eq x v; simpl. rewrite H; auto.
   - rewrite H, H0; auto.
   - rewrite H, H0; auto.
   - rewrite H. f_equal. vsym_eq x v. rewrite H0; auto.
   - rewrite H, H0, H1; auto.
-  - rewrite H. f_equal. apply existsb_eq; [rewrite map_length|]; auto.
+  - rewrite H. f_equal. apply existsb_eq; [rewrite length_map|]; auto.
     rewrite Forall_combine_map; simpl.
     rewrite Forall_map in H0.
     revert H0. apply Forall_impl.
@@ -361,7 +361,7 @@ Proof.
   - vsym_eq x v; simpl.
     apply free_in_t_spec; auto.
   - rewrite existsb_orb.
-    apply existsb_eq; [rewrite map_length |]; auto.
+    apply existsb_eq; [rewrite length_map |]; auto.
     rewrite Forall_combine_map.
     revert H.
     apply Forall_impl_strong; simpl; intros.
@@ -384,7 +384,7 @@ Proof.
     rewrite orb_assoc, (orb_comm (free_in_t y tm0)).
     rewrite <- !orb_assoc. f_equal. f_equal.
     rewrite existsb_orb.
-    apply existsb_eq; [rewrite map_length |]; auto.
+    apply existsb_eq; [rewrite length_map |]; auto.
     rewrite Forall_combine_map; simpl.
     revert H0. rewrite Forall_map.
     apply Forall_impl_strong; intros.
@@ -407,7 +407,7 @@ Proof.
   - vsym_eq x v; simpl; vsym_eq y v; simpl.
     exfalso; apply (Hbnd v); auto.
   - rewrite existsb_orb.
-    apply existsb_eq; [rewrite map_length |]; auto.
+    apply existsb_eq; [rewrite length_map |]; auto.
     rewrite Forall_combine_map.
     revert H.
     apply Forall_impl_strong; simpl; intros.
@@ -437,7 +437,7 @@ Proof.
     rewrite orb_assoc, (orb_comm (free_in_t y tm0)).
     rewrite <- !orb_assoc. f_equal. f_equal.
     rewrite existsb_orb.
-    apply existsb_eq; [rewrite map_length |]; auto.
+    apply existsb_eq; [rewrite length_map |]; auto.
     rewrite Forall_combine_map; simpl.
     revert H0. rewrite Forall_map.
     apply Forall_impl_strong; intros.
@@ -685,19 +685,19 @@ Lemma sub_eq (t: term) (f: formula) :
 Proof.
   revert t f; apply term_formula_ind; simpl; auto; intros.
   - destruct (vsymbol_eq_dec x v); subst; auto.
-  - f_equal. apply list_eq_ext'; rewrite map_length; auto; intros.
+  - f_equal. apply list_eq_ext'; rewrite length_map; auto; intros.
     rewrite map_nth_inbound with(d2:=d); auto.
     rewrite Forall_forall in H; apply H; list_tac2.
   - rewrite H. destruct (vsymbol_eq_dec x v); subst; auto.
     rewrite H0; auto.
   - rewrite H, H0, H1; auto.
-  - rewrite H. f_equal. apply list_eq_ext'; rewrite map_length; auto;
+  - rewrite H. f_equal. apply list_eq_ext'; rewrite length_map; auto;
     intros. rewrite map_nth_inbound with(d2:=d); auto.
     rewrite Forall_forall in H0; rewrite H0; list_tac2.
     destruct (aset_mem_dec _ _); auto.
     destruct (nth n ps d); auto.
   - destruct (vsymbol_eq_dec x v); subst; auto. rewrite H; auto.
-  - f_equal. apply list_eq_ext'; rewrite map_length; auto; intros.
+  - f_equal. apply list_eq_ext'; rewrite length_map; auto; intros.
     rewrite map_nth_inbound with(d2:=d); auto.
     rewrite Forall_forall in H; apply H; list_tac2.
   - destruct (vsymbol_eq_dec x v); subst; auto. rewrite H; auto.
@@ -706,7 +706,7 @@ Proof.
   - rewrite H; auto.
   - rewrite H, H0. destruct (vsymbol_eq_dec x v); auto.
   - rewrite H, H0, H1; auto.
-  - rewrite H. f_equal. apply list_eq_ext'; rewrite map_length; auto;
+  - rewrite H. f_equal. apply list_eq_ext'; rewrite length_map; auto;
     intros. rewrite map_nth_inbound with(d2:=d); auto.
     rewrite Forall_forall in H0; rewrite H0; list_tac2.
     destruct (aset_mem_dec _ _); auto.

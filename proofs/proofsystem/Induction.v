@@ -99,25 +99,25 @@ Proof.
   + rewrite (adt_constr_ret gamma_valid m_in a_in c_in).
     inversion Hvalty; subst.
     constructor; auto.
-    * rewrite !map_length. lia.
+    * rewrite !length_map. lia.
     * intros y. rewrite in_map_iff. intros [z [Hy Hinz]]; subst.
       constructor.
-  + rewrite map_length. unfold vsymbol, ty_subst_list'. 
-    rewrite combine_length, gen_strs_length, map_length. lia.
+  + rewrite length_map. unfold vsymbol, ty_subst_list'. 
+    rewrite length_combine, gen_strs_length, length_map. lia.
   + rewrite (adt_constr_params gamma_valid m_in a_in c_in); auto.
   + rewrite Forall_forall.
     intros tv.
-    rewrite in_combine_iff; rewrite !map_length;
-    unfold vsymbol, ty_subst_list'; rewrite combine_length, 
-      gen_strs_length, !map_length, Nat.min_id; auto.
+    rewrite in_combine_iff; rewrite !length_map;
+    unfold vsymbol, ty_subst_list'; rewrite length_combine, 
+      gen_strs_length, !length_map, Nat.min_id; auto.
     intros [i [Hi Htyeq]].
     specialize (Htyeq tm_d vty_int); subst; simpl.
     rewrite map_nth_inbound with (d2:=vty_int); auto.
     rewrite map_nth_inbound with (d2:=vs_d); unfold vsymbol;
-    [| rewrite combine_length, gen_strs_length, map_length; lia].
+    [| rewrite length_combine, gen_strs_length, length_map; lia].
     unfold vs_d.
     rewrite combine_nth;
-    [| rewrite gen_strs_length, map_length; auto].
+    [| rewrite gen_strs_length, length_map; auto].
     apply T_Var'; simpl.
     * apply valid_type_ty_subst; auto.
       apply (constr_ret_valid gamma_valid m_in a_in c_in).
@@ -147,7 +147,7 @@ Proof.
   2: {
     rewrite <- (Forall_map snd).
     rewrite map_snd_combine; unfold ty_subst_list'; 
-    [|rewrite gen_strs_length, map_length; auto].
+    [|rewrite gen_strs_length, length_map; auto].
     rewrite Forall_map.
     rewrite Forall_forall.
     intros y Hiny. apply valid_type_ty_subst'; auto.
@@ -290,7 +290,7 @@ Proof.
     inversion f_ty; subst.
     simpl in H5.
     inversion H5; subst.
-    rewrite map_length, H8. f_equal. 
+    rewrite length_map, H8. f_equal. 
     apply (adt_args gamma_valid m_in a_in).
   }
   (*Now, we will apply our induction theorem for ADTs*)
@@ -356,7 +356,7 @@ Proof.
           (ty_subst_list' (s_params c) vs (s_args c))))).
   {
     rewrite map_snd_combine.
-    2: rewrite gen_strs_length; unfold ty_subst_list'; rewrite map_length; auto.
+    2: rewrite gen_strs_length; unfold ty_subst_list'; rewrite length_map; auto.
     unfold sym_sigma_args, ty_subst_list_s, ty_subst_list'.
     rewrite !map_map.
     apply map_ext_in. intros.
@@ -366,7 +366,7 @@ Proof.
     apply check_args_prop with (x:=a0) in H2; auto.
     apply s_params_Nodup.
     rewrite (adt_constr_params gamma_valid m_in a_in c_in).
-    rewrite <- Hlen, map_length; auto.
+    rewrite <- Hlen, length_map; auto.
   }
   specialize (Hval (cast_arg_list Heqargs args)).
   revert Hval.
@@ -397,7 +397,7 @@ Proof.
     rewrite substi_mult_notin; auto.
     unfold ty_subst_list', vsymbol.
     rewrite in_combine_iff; rewrite gen_strs_length;
-    [| rewrite map_length; auto].
+    [| rewrite length_map; auto].
     intros [i [Hi Hv]].
     specialize (Hv EmptyString vty_int).
     subst.
@@ -424,7 +424,7 @@ Proof.
              (ty_subst_list' (s_params c) vs (s_args c))))) (vty_cons (adt_name a) vs)).
     {
       apply constr_case_goal_ty with(m:=m); auto.
-      rewrite map_length in Hlen; auto.
+      rewrite length_map in Hlen; auto.
     }
     erewrite safe_sub_f_rep.
     Unshelve.
@@ -443,7 +443,7 @@ Proof.
     f_equal.
     (*Need to show these arg_lists equal, we do so extensionally*)
     eapply hlist_ext_eq with(d:=s_int)(d':=dom_int pd).
-    unfold sym_sigma_args, ty_subst_list_s. rewrite map_length.
+    unfold sym_sigma_args, ty_subst_list_s. rewrite length_map.
     intros i Hi.
     unfold fun_arg_list.
     assert (Heq2: v_subst vt (ty_subst (s_params c) vs (nth i (s_args c) vty_int)) =
@@ -453,7 +453,7 @@ Proof.
       apply funsym_subst_eq; auto.
       apply s_params_Nodup.
       rewrite (adt_constr_params gamma_valid m_in a_in c_in);
-      rewrite map_length in Hlen; auto.
+      rewrite length_map in Hlen; auto.
     }
     assert (Hty2: term_has_type gamma
     (nth i
@@ -468,9 +468,9 @@ Proof.
     {
       (*repetitive with above*)
       rewrite map_nth_inbound with (d2:=vs_d); unfold vsymbol,
-      ty_subst_list'; [|rewrite combine_length, gen_strs_length, map_length; lia].
+      ty_subst_list'; [|rewrite length_combine, gen_strs_length, length_map; lia].
       unfold vs_d.
-      rewrite combine_nth; [| rewrite gen_strs_length, map_length; auto].
+      rewrite combine_nth; [| rewrite gen_strs_length, length_map; auto].
       rewrite map_nth_inbound with (d2:=vty_int); auto.
       apply T_Var'; simpl.
       - apply valid_type_ty_subst; auto.
@@ -497,7 +497,7 @@ Proof.
     revert Hty2.
     rewrite map_nth_inbound with (d2:=vs_d);
     unfold ty_subst_list', vsymbol;
-    [| rewrite combine_length, gen_strs_length, map_length; lia].
+    [| rewrite length_combine, gen_strs_length, length_map; lia].
     intros. simpl_rep_full.
     unfold var_to_dom.
     rewrite dom_cast_compose.
@@ -509,7 +509,7 @@ Proof.
                 (list_to_aset (fmla_bnd goal))))
          (seq.map (ty_subst' (s_params c) vs) (s_args c)))).
     {
-      rewrite combine_length, map_length, gen_strs_length; lia.
+      rewrite length_combine, length_map, gen_strs_length; lia.
     }
     erewrite substi_mult_nth'.
     Unshelve. all: auto.
@@ -537,7 +537,7 @@ Proof.
     unfold vsymbol in Hiny.
     revert Hiny.
     rewrite in_combine_iff; unfold ty_subst_list';
-    rewrite gen_strs_length; [| rewrite map_length; auto].
+    rewrite gen_strs_length; [| rewrite length_map; auto].
     intros [i [Hi Hy]].
     specialize (Hy EmptyString vty_int).
     inversion Hy; clear Hy.
@@ -553,7 +553,7 @@ Proof.
       rewrite <- funsym_subst_eq; auto.
       2: apply s_params_Nodup.
       2: rewrite (adt_constr_params gamma_valid m_in a_in c_in);
-         rewrite <- Hlen, map_length; auto.
+         rewrite <- Hlen, length_map; auto.
       rewrite ty_subst_equiv.
       2: {
         pose proof (s_args_wf c).
@@ -587,7 +587,7 @@ Proof.
         * simpl. unfold typesyms_of_mut. rewrite in_map_iff.
           exists a; split; auto. clear -a_in. apply in_bool_In in a_in; auto.
       + rewrite (adt_args gamma_valid m_in a_in); auto.
-        rewrite map_length in Hlen; auto.
+        rewrite length_map in Hlen; auto.
       + rewrite <- Forall_forall; auto.
     }
     erewrite safe_sub_f_rep.
@@ -610,7 +610,7 @@ Proof.
               (list_to_aset (fmla_bnd goal))))
          (seq.map (ty_subst' (s_params c) vs) (s_args c)))).
     {
-      rewrite combine_length, gen_strs_length, map_length; auto; lia.
+      rewrite length_combine, gen_strs_length, length_map; auto; lia.
     }
     assert (Heq3: (nth i
         (gen_strs (Datatypes.length (s_args c))
@@ -625,7 +625,7 @@ Proof.
           (seq.map (ty_subst' (s_params c) vs) (s_args c))) vs_d).
     {
       unfold vs_d.
-      rewrite combine_nth; [| rewrite gen_strs_length, map_length; auto].
+      rewrite combine_nth; [| rewrite gen_strs_length, length_map; auto].
       rewrite map_nth_inbound with (d2:=vty_int); auto.
       rewrite <- Hithty; auto.
     }

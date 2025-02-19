@@ -36,7 +36,7 @@ Proof.
   destruct l; auto; inversion H.
   rewrite <- IHlens.
   rewrite firstn_skipn; auto.
-  rewrite skipn_length, <- H, Nat.add_comm, Nat.add_sub; auto.
+  rewrite length_skipn, <- H, Nat.add_comm, Nat.add_sub; auto.
 Qed.
 
 Lemma split_lens_nodup {A: Type} (l: list A) (lens: list nat) :
@@ -50,7 +50,7 @@ Proof.
   destruct i.
   - apply NoDup_firstn; assumption.
   - apply IHlens; try lia.
-    + rewrite skipn_length, <- H, Nat.add_comm, Nat.add_sub; auto.
+    + rewrite length_skipn, <- H, Nat.add_comm, Nat.add_sub; auto.
     + apply NoDup_skipn; assumption.
 Qed. 
 
@@ -61,11 +61,11 @@ Lemma split_lens_ith {A: Type} (l: list A) (lens: list nat) (i: nat) :
 Proof.
   revert l i. induction lens; simpl; intros; auto; try lia.
   destruct i.
-  - rewrite firstn_length.
+  - rewrite length_firstn.
     apply Nat.min_l. lia.
   - specialize (IHlens (skipn a l) i).
     rewrite IHlens; auto; try lia.
-    rewrite skipn_length, <- H, Nat.add_comm, Nat.add_sub; auto.
+    rewrite length_skipn, <- H, Nat.add_comm, Nat.add_sub; auto.
 Qed.
 
 Lemma in_split_lens_ith {A: Type} (l: list A) (lens: list nat) (i: nat) x (d: list A) :
@@ -78,7 +78,7 @@ Proof.
   - apply In_firstn in H1; auto.
   - apply IHlens in H1; try lia.
     + apply In_skipn in H1; auto.
-    + rewrite skipn_length, <- H. lia.
+    + rewrite length_skipn, <- H. lia.
 Qed.
 
 (*Some tactics that will be useful:*)
@@ -526,7 +526,7 @@ Proof.
       specialize (IHps IH2 ps2 (ltac:(simpl in Hlen; lia)) _ _ Hfold).
       destruct IHps as [IHps1 IHps2].
       specialize (IH1 _ _ _ Halpha). clear IH2. destruct IH1 as [IH1 IH2].
-      setoid_rewrite aset_big_union_cons. setoid_rewrite aset_mem_union.
+      setoid_rewrite aset_mem_union.
       split; intros x y Hmem; simpl_set_small.
       * apply IHps1 in Hmem; destruct Hmem; auto.
         -- eapply IH1 in H; eauto. destruct_all; auto.
@@ -578,7 +578,7 @@ Proof.
     apply IH in Hfold; auto.
     apply alpha_equiv_p_vars in Halpha.
     destruct Hfold as [IHps1 IHps2]. destruct Halpha as [IH1 IH2].
-    setoid_rewrite aset_big_union_cons. setoid_rewrite aset_mem_union.
+    setoid_rewrite aset_mem_union.
     split; intros x y Hmem; simpl_set_small.
     * apply IHps1 in Hmem; destruct Hmem; auto.
       -- eapply IH1 in H; eauto. destruct_all; auto.
@@ -770,7 +770,7 @@ Proof.
     rewrite Halpha in Hfold.
     eapply IHps in Hfold; eauto.
     eapply IH1 in Halpha; eauto.
-    destruct Hfold as [Hf1 Hf2]; destruct Halpha as [Ha1 Ha2]; setoid_rewrite aset_big_union_cons; setoid_rewrite aset_mem_union; split;
+    destruct Hfold as [Hf1 Hf2]; destruct Halpha as [Ha1 Ha2]; setoid_rewrite aset_mem_union; split;
     intros.
     + rewrite Ha1 by auto. auto. 
     + rewrite Ha2 by auto. auto.
@@ -816,7 +816,7 @@ Proof.
   rewrite Halpha' in Hfold.
   apply IH in Hfold; auto.
   apply alpha_equiv_p_var_notin in Halpha'; auto.
-  setoid_rewrite aset_big_union_cons. setoid_rewrite aset_mem_union.
+  setoid_rewrite aset_mem_union.
   destruct Hfold as [Hf1 Hf2]; destruct Halpha' as [Ha1 Ha2].
   split; intros; auto; [rewrite Ha1 | rewrite Ha2]; auto.
 Qed.
@@ -849,7 +849,7 @@ Proof.
       generalize dependent res. generalize dependent m. generalize dependent ps2.
       induction ps1 as [| p1 ps1 IHps]; intros [| p2 ps2] Hlen; try discriminate; simpl; 
       intros m res Hfold.
-      rewrite !aset_big_union_cons in Hmem. simpl_set_small. simpl in Hlen.
+      simpl_set_small. simpl in Hlen.
       inversion IH; subst.
       (*Get info from IH*)
       assert (Halpha:=Hfold); apply fold_left2_bind_base_some in Halpha.
@@ -864,8 +864,7 @@ Proof.
     + intros.
       generalize dependent res. generalize dependent m. generalize dependent ps2.
       induction ps1 as [| p1 ps1 IHps]; intros [| p2 ps2] Hlen Hmem; try discriminate; simpl; 
-      intros m res Hfold. 
-      rewrite !aset_big_union_cons in Hmem. simpl_set_small. simpl in Hlen. 
+      intros m res Hfold. simpl_set_small. simpl in Hlen. 
       inversion IH; subst.
       assert (Halpha:=Hfold); apply fold_left2_bind_base_some in Halpha.
       destruct Halpha as [r1 Halpha].
@@ -938,7 +937,7 @@ Proof.
     intros m Hm1 Hm2 res Hfold.
     { inversion Hfold; auto. }
     inversion IH as [| ? ? IH1 IH2]; subst; clear IH.
-    revert Hm1 Hm2. setoid_rewrite aset_big_union_cons.
+    revert Hm1 Hm2.
     setoid_rewrite aset_mem_union. intros.
     (*Get info from IH*)
     assert (Halpha:=Hfold); apply fold_left2_bind_base_some in Halpha.
@@ -992,7 +991,7 @@ Proof.
     induction ps1 as [| p1 ps1 IHps]; intros [| p2 ps2] Hlen; try discriminate; simpl; 
     intros m res Hfold.
     { simpl_set. split; intros; simpl_set. }
-    setoid_rewrite aset_big_union_cons. setoid_rewrite aset_mem_union.
+    setoid_rewrite aset_mem_union.
      (*Get info from IH*)
     assert (Halpha:=Hfold); apply fold_left2_bind_base_some in Halpha.
     destruct Halpha as [r1 Halpha].
@@ -1394,7 +1393,7 @@ Proof.
     simpl in *.
     generalize dependent ps2. induction ps1 as [| p1 ps1 IHps]; intros [| p2 ps2]; try discriminate; auto.
     revert Hm1.
-    setoid_rewrite aset_big_union_cons. setoid_rewrite aset_mem_union. intros Hm1 Hm2.
+    setoid_rewrite aset_mem_union. intros Hm1 Hm2.
     rewrite !all2_cons, !andb_true. simpl. intros Hlen [Hor1 Hall].
     inversion IH; subst. auto.
   - (*Por*) intros p2; destruct p2; auto; try discriminate. simpl in *. revert Hm1.
@@ -1532,7 +1531,6 @@ Proof.
     induction ps1 as [| p1 ps1 IHps]; simpl; intros [| p2 ps2]; try discriminate; auto.
     { intros _ _ m Hbij _ _. simpl. exists m. split; auto. split; intros; simpl_set. }
     simpl. rewrite all2_cons, andb_true. revert Htys.
-    setoid_rewrite aset_big_union_cons.
     setoid_rewrite aset_mem_union.
     intros Htys Hlen [Hor Hallor] m Hbij Hm1 Hm2.
     inversion IH as [| ? ? IH1 IH2]; subst. clear IH.
@@ -1811,7 +1809,6 @@ Proof.
     generalize dependent m. generalize dependent ps2.
     induction ps1 as [| p1 ps1 IHps]; intros [|p2 ps2]; simpl; try discriminate; auto.
     intros Hlen Hdisj2 m Hbij.
-    setoid_rewrite aset_big_union_cons.
     setoid_rewrite aset_mem_union.
     intros Hnotin1 Hnotin2 [| ty1 tys] Htys1 Htys2; [inversion Htys1|].
     inversion IH as [| ? ? IH1 IH2]; clear IH.
@@ -1953,7 +1950,6 @@ Proof.
   - simpl in Hfv. f_equal. rewrite map_map.
     induction ps1 as [| p1 ps1 IHps]; simpl; auto.
     inversion IH; subst.
-    setoid_rewrite aset_big_union_cons in Hfv.
     setoid_rewrite aset_mem_union in Hfv.
     f_equal; auto.
   - simpl in Hfv. setoid_rewrite aset_mem_union in Hfv. rewrite IH1, IH2 at 1; auto.
@@ -1976,7 +1972,7 @@ Proof.
   - simpl in Hinj.
     induction ps1 as [|p1 ps1 IHps]; simpl in *; auto.
     inversion IH; subst.
-    rewrite !aset_big_union_cons, aset_map_union.
+    rewrite aset_map_union.
     rewrite H1, IHps; auto; intros; apply Hinj; auto; simpl_set; auto.
   - simpl in Hinj. rewrite aset_map_union, IH1, IH2; auto;
     intros; apply Hinj; simpl_set; auto.
@@ -1996,7 +1992,6 @@ Proof.
     rewrite Hequiv by (simpl_set; auto).
     reflexivity.
   - f_equal. induction ps1 as [|p ps1 IHps]; simpl in *; auto; inversion IH; subst; auto.
-    setoid_rewrite aset_big_union_cons in Hequiv.
     setoid_rewrite aset_mem_union in Hequiv.
     f_equal; auto.
   - setoid_rewrite aset_mem_union in Hequiv. rewrite IH1, IH2; auto.
@@ -2067,15 +2062,13 @@ Proof.
     destruct (vsymbol_eq_dec y1 y1); auto.
     destruct (vsymbol_eq_dec x1 x1); auto.
   - destruct (funsym_eq_dec f1 f1); auto.
-    rewrite map_length, Nat.eqb_refl.
+    rewrite length_map, Nat.eqb_refl.
     destruct (list_eq_dec _ tys1 tys1); auto. simpl.
     simpl in Hagree, Hallin.
     clear e e0.
     induction ps1 as [| p1 ps1 IHps]; simpl; auto.
     rewrite all2_cons. inversion IH; subst.
-    setoid_rewrite aset_big_union_cons in Hagree.
     setoid_rewrite aset_mem_union in Hagree.
-    setoid_rewrite aset_big_union_cons in Hallin.
     setoid_rewrite aset_mem_union in Hallin.
     specialize (IHps ltac:(auto) ltac:(auto) ltac:(auto)).
     rewrite IHps, andb_true_r.
@@ -2245,12 +2238,9 @@ Proof.
       clear -Hdisj Hinj Hallin Htys. simpl in Hinj, Hallin, Htys. 
       induction ps1 as [| p1 ps1 IH]; simpl; auto.
       rewrite !disj_map_cons_iff' in Hdisj |- *.
-      destruct Hdisj as [Hdisj1 Hdisj2].
-      setoid_rewrite aset_big_union_cons in Hinj.
+      destruct Hdisj as [Hdisj1 Hdisj2]. simpl in *.
       setoid_rewrite aset_mem_union in Hinj. 
-      setoid_rewrite aset_big_union_cons in Htys.
       setoid_rewrite aset_mem_union in Htys. 
-      setoid_rewrite aset_big_union_cons in Hallin.
       setoid_rewrite aset_mem_union in Hallin. 
       split; [ apply IH; eauto|].
       rewrite aset_disj_equiv. intros x [Hinx1 Hinx2].
@@ -2284,11 +2274,9 @@ Proof.
       clear -IH H8 Hlen Hinj Hallin Htys. simpl in Hinj, Hallin. 
       generalize dependent (map (ty_subst (s_params f1) tys1) (s_args f1)).
       induction ps1 as [|p1 ps1 IHps]; intros [| ty1 tys]; try discriminate; auto.
-      simpl. setoid_rewrite aset_big_union_cons in Hinj.
+      simpl in *.
       setoid_rewrite aset_mem_union in Hinj. 
-      setoid_rewrite aset_big_union_cons in Hallin.
       setoid_rewrite aset_mem_union in Hallin. 
-      setoid_rewrite aset_big_union_cons in Htys.
       setoid_rewrite aset_mem_union in Htys. 
       inversion IH; subst. intros Hallty Hlen x [Hx | Hinx]; subst; eauto.
       * simpl. apply H1; eauto. specialize (Hallty (p1, ty1) (ltac:(auto))). auto.
@@ -2479,7 +2467,7 @@ Proof.
     specialize (Hcomp _ _ Hget1). rewrite amap_mem_spec in Hcomp. destruct (amap_lookup m2 y1); auto.
     discriminate.
   - f_equal. rewrite map_map. induction ps1 as [| p1 ps1 IHps]; simpl; auto.
-    revert Hallin. setoid_rewrite aset_big_union_cons. setoid_rewrite aset_mem_union.
+    revert Hallin. setoid_rewrite aset_mem_union.
     intros. inversion IH; subst; f_equal; auto.
   - revert Hallin. setoid_rewrite aset_mem_union; intros. f_equal; auto.
   - revert Hallin. setoid_rewrite aset_mem_union. intros. f_equal; auto.
@@ -3599,7 +3587,6 @@ Proof.
     try discriminate; auto.
     simpl. rewrite !all2_cons, !andb_true. simpl.
     intros Hlen [Halpha Hall].
-    setoid_rewrite aset_big_union_cons in Hsub1.
     setoid_rewrite aset_mem_union in Hsub1. simpl in Hsub1.
     inversion IHps as [| ? ? IH1 IH2]; subst.
     split.
@@ -3657,7 +3644,6 @@ Proof.
     try discriminate; auto.
     simpl. rewrite !all2_cons, !andb_true. simpl.
     intros Hlen [Halpha Hall].
-    setoid_rewrite aset_big_union_cons in Hsub1.
     setoid_rewrite aset_mem_union in Hsub1. simpl in Hsub1.
     inversion IHps as [| ? ? IH1 IH2]; subst.
     split.
@@ -5086,7 +5072,7 @@ Proof.
         rewrite amap_set_lookup_diff; auto.
   - destruct t2 as [ | | f2 tys2 tms2 | | | | ]; try discriminate. simpl.
     rename l into tys1; rename l1 into tms1; rename H into IH.
-    destruct (funsym_eq_dec _ _); subst; auto. rewrite map_length.
+    destruct (funsym_eq_dec _ _); subst; auto. rewrite length_map.
     destruct (Nat.eqb_spec (length tms1) (length tms2)) as [Hlen |]; [|discriminate].
     destruct (list_eq_dec _ _ _); subst; auto. simpl in *.
     (*Now nested induction*)
@@ -5132,7 +5118,7 @@ Proof.
     destruct Hsame as [[_ Hsame1] Hallsame].
     rewrite andb_true in Heq.
     destruct Heq as [[[Halpha1 Hlen] Htyeq] Hallalpha].
-    simpl_sumbool. apply Nat.eqb_eq in Hlen. rewrite map_length, Hlen, Nat.eqb_refl.
+    simpl_sumbool. apply Nat.eqb_eq in Hlen. rewrite length_map, Hlen, Nat.eqb_refl.
     rewrite IH1; auto. simpl. clear IH1.
     (*need induction - get Hfree and Hbnd in better form *)
     apply Decidable.not_or  in Hfree, Hbnd. clear Hsame1 Halpha1.
@@ -5204,7 +5190,7 @@ Proof.
   - (*Fpred*)
     destruct f2 as [p2 tys2 tms2 | | | | | | | | |]; try discriminate; simpl.
     rename tys into tys1; rename tms into tms1; rename p into p1; rename H into IH.
-    destruct (predsym_eq_dec _ _); subst; auto. rewrite map_length.
+    destruct (predsym_eq_dec _ _); subst; auto. rewrite length_map.
     destruct (Nat.eqb_spec (length tms1) (length tms2)) as [Hlen |]; [|discriminate].
     destruct (list_eq_dec _ _ _); subst; auto. simpl in *.
     (*Now nested induction*)
@@ -5283,7 +5269,7 @@ Proof.
     destruct Hsame as [[_ Hsame1] Hallsame].
     rewrite andb_true in Heq.
     destruct Heq as [[[Halpha1 Hlen] Htyeq] Hallalpha].
-    simpl_sumbool. apply Nat.eqb_eq in Hlen. rewrite map_length, Hlen, Nat.eqb_refl.
+    simpl_sumbool. apply Nat.eqb_eq in Hlen. rewrite length_map, Hlen, Nat.eqb_refl.
     rewrite IH1; auto. simpl. clear IH1.
     (*need induction - get Hfree and Hbnd in better form *)
     apply Decidable.not_or  in Hfree, Hbnd. clear Hsame1 Halpha1.
@@ -5413,7 +5399,7 @@ Proof.
     + apply same_in_t_refl.
     + apply H0; auto.
   - rewrite H, H0, H1; auto.
-  - rewrite H, map_length, Nat.eqb_refl; auto. simpl.
+  - rewrite H, length_map, Nat.eqb_refl; auto. simpl.
     induction ps; simpl; intros; auto.
     rewrite all2_cons. inversion H0; subst.
     destruct (aset_mem_dec _ _).
@@ -5434,7 +5420,7 @@ Proof.
   - rewrite H, eqb_reflx; auto.
     vsym_eq x v; [apply same_in_f_refl | apply H0]; auto.
   - rewrite H, H0, H1; auto.
-  - rewrite H, map_length, Nat.eqb_refl; auto; simpl.
+  - rewrite H, length_map, Nat.eqb_refl; auto; simpl.
     induction ps; simpl; auto.
     rewrite all2_cons. inversion H0; subst.
     destruct (aset_mem_dec _ _); rewrite same_in_p_refl; simpl.
@@ -5621,6 +5607,8 @@ Proof.
   - apply alpha_equiv_sub_var_f; auto.
 Qed.
 
+Opaque amap_set.
+
 Lemma alpha_convert_teps
   (v1 v2: vsymbol) (Heq: snd v1 = snd v2) (f: formula)
   (Hbnd: ~In v2 (fmla_bnd f))
@@ -5634,12 +5622,14 @@ Qed.
 
 (*Congruences*)
 
+Opaque amap_empty.
+
 Lemma alpha_tlet_congr v1 tm1 tm2 tm3 tm4:
   a_equiv_t tm1 tm3 ->
   a_equiv_t tm2 tm4 ->
   a_equiv_t (Tlet tm1 v1 tm2) (Tlet tm3 v1 tm4).
 Proof.
-  intros Ha1 Ha2. unfold a_equiv_t; simpl.
+  intros Ha1 Ha2. unfold a_equiv_t. simpl.
   rewrite eq_dec_refl. simpl. rewrite andb_true; split; auto.
   rewrite amap_singleton_set, <- a_equiv_t_expand_single; auto.
 Qed.
@@ -6093,7 +6083,7 @@ Qed.
 
 Ltac bnd_tac :=
   try solve[
-    repeat(progress((apply NoDup_firstn + apply NoDup_skipn + rewrite firstn_length + rewrite skipn_length); auto; try lia))].
+    repeat(progress((apply NoDup_firstn + apply NoDup_skipn + rewrite length_firstn + rewrite length_skipn); auto; try lia))].
 
 (*1. The bound variables, after conversion, are a permutation of the input list*)
 Lemma alpha_aux_bnd (t: term) (f: formula) :
@@ -6108,7 +6098,7 @@ Proof.
     rewrite concat_map. rewrite !map_map.
     generalize dependent l. induction tms as [| t1 tms1 IHtms]; simpl.
     + intros l _ Hlenl. apply length_zero_iff_nil in Hlenl. subst; auto.
-    + intros l Hnodup. rewrite app_length. intros Hlenl.
+    + intros l Hnodup. rewrite length_app. intros Hlenl.
       rewrite <- (firstn_skipn (length (tm_bnd t1)) l) at 3.
       inversion IH as [| ? ? IH1 IH2]; subst.
       apply Permutation_app; auto. 2: apply IHtms; eauto; bnd_tac.
@@ -6117,14 +6107,14 @@ Proof.
     intros tm1 x1 tm2 IH1 IH2 [| str l]; try discriminate.
     intros Hnodup; simpl; intros Hlen.
     apply perm_skip.
-    rewrite map_app. rewrite app_length in Hlen.
+    rewrite map_app. rewrite length_app in Hlen.
     rewrite <- (firstn_skipn (length (tm_bnd tm1)) l) at 3.
     inversion Hnodup; subst.
     apply Permutation_app; auto.
     + apply IH1; bnd_tac.
     + rewrite bnd_sub_var_t. apply IH2; bnd_tac.
   - (*Tif*)
-    intros f1 t1 t2 IH1 IH2 IH3 l Hnodup. rewrite !app_length.
+    intros f1 t1 t2 IH1 IH2 IH3 l Hnodup. rewrite !length_app.
     intros Hlen.
     rewrite !map_app.
     rewrite <- (firstn_skipn (length (fmla_bnd f1)) l) at 4.
@@ -6135,7 +6125,7 @@ Proof.
       * apply IH2; bnd_tac.
       * apply IH3; bnd_tac.
   - (*Tmatch*)
-    intros tm1 _ ps IH1 IHps l Hnodup. rewrite app_length.
+    intros tm1 _ ps IH1 IHps l Hnodup. rewrite length_app.
     intros Hlen.
     rewrite !map_app. 
     rewrite <- (firstn_skipn (length (tm_bnd tm1)) l) at 3.
@@ -6149,7 +6139,7 @@ Proof.
     (*Now induction*)
     induction ps as [| [p1 t1] ps IH]; simpl.
     + intros l Hlenl _. apply length_zero_iff_nil in Hlenl. subst; auto.
-    + intros l. rewrite !app_length. intros Hlenl Hnodup.
+    + intros l. rewrite !length_app. intros Hlenl Hnodup.
       rewrite !map_app. rewrite <- !app_assoc. 
       rewrite <- (firstn_skipn (length (aset_to_list (pat_fv p1))) l) at 5.
       rewrite aset_to_list_length in Hlenl.
@@ -6207,7 +6197,7 @@ Proof.
     rewrite concat_map. rewrite !map_map.
     generalize dependent l. induction tms as [| t1 tms1 IHtms]; simpl.
     + intros l _ Hlenl. apply length_zero_iff_nil in Hlenl. subst; auto.
-    + intros l Hnodup. rewrite app_length. intros Hlenl.
+    + intros l Hnodup. rewrite length_app. intros Hlenl.
       rewrite <- (firstn_skipn (length (tm_bnd t1)) l) at 3.
       inversion IH as [| ? ? IH1 IH2]; subst.
       apply Permutation_app; auto. 2: apply IHtms; eauto; bnd_tac.
@@ -6217,13 +6207,13 @@ Proof.
     apply perm_skip.
     inversion Hnodup; subst.
     rewrite bnd_sub_var_f. apply IH; auto.
-  - (*Feq*) intros _ t1 t2 IH1 IH2 l Hnodup. rewrite app_length; intros Hlen.
+  - (*Feq*) intros _ t1 t2 IH1 IH2 l Hnodup. rewrite length_app; intros Hlen.
     rewrite map_app.
     rewrite <- (firstn_skipn (length (tm_bnd t1)) l) at 3.
     apply Permutation_app; auto.
     + apply IH1; bnd_tac.
     + apply IH2; bnd_tac.
-  - (*Fbinop*) intros _ f1 f2 IH1 IH2 l Hnodup. rewrite app_length; intros Hlen.
+  - (*Fbinop*) intros _ f1 f2 IH1 IH2 l Hnodup. rewrite length_app; intros Hlen.
     rewrite map_app.
     rewrite <- (firstn_skipn (length (fmla_bnd f1)) l) at 3.
     apply Permutation_app; auto.
@@ -6234,14 +6224,14 @@ Proof.
     intros tm1 x1 f2 IH1 IH2 [| str l]; try discriminate.
     intros Hnodup; simpl; intros Hlen.
     apply perm_skip.
-    rewrite map_app. rewrite app_length in Hlen.
+    rewrite map_app. rewrite length_app in Hlen.
     rewrite <- (firstn_skipn (length (tm_bnd tm1)) l) at 3.
     inversion Hnodup; subst.
     apply Permutation_app; auto.
     + apply IH1; bnd_tac.
     + rewrite bnd_sub_var_f. apply IH2; bnd_tac.
   - (*Fif*)
-    intros f1 f2 f3 IH1 IH2 IH3 l Hnodup. rewrite !app_length.
+    intros f1 f2 f3 IH1 IH2 IH3 l Hnodup. rewrite !length_app.
     intros Hlen.
     rewrite !map_app.
     rewrite <- (firstn_skipn (length (fmla_bnd f1)) l) at 4.
@@ -6252,7 +6242,7 @@ Proof.
       * apply IH2; bnd_tac.
       * apply IH3; bnd_tac.
   - (*Fmatch*)
-    intros tm1 _ ps IH1 IHps l Hnodup. rewrite app_length.
+    intros tm1 _ ps IH1 IHps l Hnodup. rewrite length_app.
     intros Hlen.
     rewrite !map_app. 
     rewrite <- (firstn_skipn (length (tm_bnd tm1)) l) at 3.
@@ -6266,7 +6256,7 @@ Proof.
     (*Now induction*)
     induction ps as [| [p1 t1] ps IH]; simpl.
     + intros l Hlenl _. apply length_zero_iff_nil in Hlenl. subst; auto.
-    + intros l. rewrite !app_length. intros Hlenl Hnodup.
+    + intros l. rewrite !length_app. intros Hlenl Hnodup.
       rewrite !map_app. rewrite <- !app_assoc. 
       rewrite <- (firstn_skipn (length (aset_to_list (pat_fv p1))) l) at 5.
       rewrite aset_to_list_length in Hlenl.
@@ -6692,7 +6682,7 @@ Proof.
   assert (Hsum: sum (map (fun x => aset_size (pat_fv (fst x)) + length (gen_bnd (snd x))) ps) = 
     length l - length (tm_bnd tm)).
   {
-    rewrite Hlen, length_concat, TerminationChecker.plus_minus.
+    rewrite Hlen, CommonList.length_concat, TerminationChecker.plus_minus.
     rewrite !map_map.
     f_equal. apply map_ext. intros a. simpl_len. rewrite aset_to_list_length. reflexivity.
   }
@@ -6748,6 +6738,8 @@ Proof.
       * show_in. apply in_split_lens_ith in Hinx2; wf_tac.
 Qed.
 
+Opaque aset_singleton.
+
 
 (*Finally, our last main theorem: this conversion
   function is alpha equivalent to the original term/formula
@@ -6779,7 +6771,7 @@ Proof.
     + simpl_set. exists (nth i tms1 tm_d); split; wf_tac.
     + apply in_split_lens_ith in Hiny; auto; wf_tac.
   - (*Tlet*) simpl.
-    intros tm1 x tm2 IH1 IH2 [| str l]; try discriminate. simpl. rewrite app_length.
+    intros tm1 x tm2 IH1 IH2 [| str l]; try discriminate. simpl. rewrite length_app.
     intros Hnodup Hlen.
     repeat(setoid_rewrite aset_mem_union). setoid_rewrite aset_mem_singleton.
     intros Hnotin. inversion Hnodup; subst.
@@ -6806,12 +6798,12 @@ Proof.
       intros y Hiny Hinskip.
       apply In_skipn in Hinskip. 
       apply (Hnotin y); auto.
-  - (*Tif*) intros f1 t2 t3 IH1 IH2 IH3 l Hnodup. simpl; rewrite !app_length.
+  - (*Tif*) intros f1 t2 t3 IH1 IH2 IH3 l Hnodup. simpl; rewrite !length_app.
     repeat (setoid_rewrite aset_mem_union).
     intros Hlen Hnotin.
     apply alpha_tif_congr; [apply IH1 | apply IH2 | apply IH3]; auto; wf_tac;
     intros x Hinx Hnotinx; show_in; auto; apply (Hnotin x); auto.
-  - (*Tmatch*) intros tm ty ps IH1 IHps l Hnodup. simpl. rewrite app_length.
+  - (*Tmatch*) intros tm ty ps IH1 IHps l Hnodup. simpl. rewrite length_app.
     intros Hlen.
     setoid_rewrite aset_mem_union. intros Hnotin.
     apply (@alpha_convert_match' true); auto.
@@ -6865,13 +6857,13 @@ Proof.
     + apply IH; wf_tac.
       intros y Hiny Hinfst. apply (Hnotin y); auto.
   - (*Feq*) simpl.
-    intros ty t1 t2 IH1 IH2 l Hn. rewrite app_length.
+    intros ty t1 t2 IH1 IH2 l Hn. rewrite length_app.
     repeat (setoid_rewrite aset_mem_union).
     intros Hlen Hnotin.
     apply alpha_feq_congr; [apply IH1 | apply IH2]; auto; wf_tac;
     intros x Hinx Hnotinx; show_in; auto; apply (Hnotin x); auto.
   - (*Fbinop*) simpl.
-    intros b f1 f2 IH1 IH2 l Hn. rewrite app_length.
+    intros b f1 f2 IH1 IH2 l Hn. rewrite length_app.
     repeat (setoid_rewrite aset_mem_union).
     intros Hlen Hnotin.
     apply alpha_fbinop_congr; [apply IH1 | apply IH2]; auto; wf_tac;
@@ -6879,7 +6871,7 @@ Proof.
   - (*Fnot*) simpl. intros f IH l Hn Hlen Hnotin.
     simpl. apply alpha_fnot_congr; auto.
   - (*Flet*) simpl.
-    intros tm1 x tm2 IH1 IH2 [| str l]; try discriminate. simpl. rewrite app_length.
+    intros tm1 x tm2 IH1 IH2 [| str l]; try discriminate. simpl. rewrite length_app.
     intros Hnodup Hlen.
     repeat(setoid_rewrite aset_mem_union). setoid_rewrite aset_mem_singleton.
     intros Hnotin. inversion Hnodup; subst.
@@ -6906,12 +6898,12 @@ Proof.
       intros y Hiny Hinskip.
       apply In_skipn in Hinskip. 
       apply (Hnotin y); auto.
-  - (*Fif*) intros f1 t2 t3 IH1 IH2 IH3 l Hnodup. simpl; rewrite !app_length.
+  - (*Fif*) intros f1 t2 t3 IH1 IH2 IH3 l Hnodup. simpl; rewrite !length_app.
     repeat (setoid_rewrite aset_mem_union).
     intros Hlen Hnotin.
     apply alpha_fif_congr; [apply IH1 | apply IH2 | apply IH3]; auto; wf_tac;
     intros x Hinx Hnotinx; show_in; auto; apply (Hnotin x); auto.
-  - (*Fmatch*) intros tm ty ps IH1 IHps l Hnodup. simpl. rewrite app_length.
+  - (*Fmatch*) intros tm ty ps IH1 IHps l Hnodup. simpl. rewrite length_app.
     intros Hlen.
     setoid_rewrite aset_mem_union. intros Hnotin.
     apply (@alpha_convert_match' false); auto.
@@ -7748,6 +7740,8 @@ Proof.
           unfold mk_fun, lookup_default. rewrite Hlookxm1. auto.
 Qed.
 
+Opaque aset_singleton.
+
 
 (*Then we prove alpha equivalence. The proof is easier than above,
   since this is just a map. Only the match cases are a bit annoying*)
@@ -7771,10 +7765,9 @@ Proof.
     + apply mk_alpha_map_in; auto.
     + apply mk_alpha_map_notin; auto. apply Hvars. simpl_set; auto.
   - (*Tfun*) intros f1 tys1 tms1 IH bnd Hvars Hbnd.
-    rewrite !eq_dec_refl. rewrite map_length, Nat.eqb_refl; simpl.
+    rewrite !eq_dec_refl. rewrite length_map, Nat.eqb_refl; simpl.
     induction tms1 as [| tm tms IHtms]; simpl; auto.
     rewrite all2_cons. inversion IH as [| ? ? IH1 IH2]; subst; clear IH.
-    setoid_rewrite aset_big_union_cons in Hvars.
     setoid_rewrite aset_mem_union in Hvars. apply andb_true; split; auto.
   - (*Tlet*)
     intros tm1 v tm2 IH1 IH2 bnd Hvars Hbnd.
@@ -7792,14 +7785,13 @@ Proof.
   - (*Tmatch*)
     intros tm ty ps IH1 IHps bnd Hvars Hbnd.
     setoid_rewrite aset_mem_union in Hvars.
-    rewrite IH1; auto. simpl. rewrite map_length, Nat.eqb_refl. simpl.
+    rewrite IH1; auto. simpl. rewrite length_map, Nat.eqb_refl. simpl.
     rewrite eq_dec_refl. simpl.
     clear IH1.
     assert (Hvars': forall x, aset_mem x (aset_big_union (fun x => aset_union (pat_fv (fst x)) (tm_vars (snd x))) ps) ->
       ~ In x (vals m)) by (intros x Hinx; apply Hvars; auto).
     clear Hvars. induction ps as [| [p1 t1] ps IH]; simpl; auto.
     rewrite all2_cons. inversion IHps as [| ? ? IH1 IH2]; subst; clear IHps.
-    setoid_rewrite aset_big_union_cons in Hvars'.
     setoid_rewrite aset_mem_union in Hvars'. simpl in Hvars'. rewrite IH; auto.
     rewrite andb_true_r; clear IH IH2.
     simpl. 
@@ -7822,10 +7814,9 @@ Proof.
     rewrite mk_alpha_map_set,mk_alpha_map_flip_set; auto.
     apply IH; auto. intros y Hin. simpl_set. destruct Hin; auto. simpl_set; subst; auto.
   - (*Fpred*) intros f1 tys1 tms1 IH bnd Hvars Hbnd.
-    rewrite !eq_dec_refl. rewrite map_length, Nat.eqb_refl; simpl.
+    rewrite !eq_dec_refl. rewrite length_map, Nat.eqb_refl; simpl.
     induction tms1 as [| tm tms IHtms]; simpl; auto.
     rewrite all2_cons. inversion IH as [| ? ? IH1 IH2]; subst; clear IH.
-    setoid_rewrite aset_big_union_cons in Hvars.
     setoid_rewrite aset_mem_union in Hvars. apply andb_true; split; auto.
   - (*Fquant*)
     intros q v f IH bnd Hvars Hbnd.
@@ -7858,14 +7849,13 @@ Proof.
   - (*Fmatch*)
     intros tm ty ps IH1 IHps bnd Hvars Hbnd.
     setoid_rewrite aset_mem_union in Hvars.
-    rewrite IH1; auto. simpl. rewrite map_length, Nat.eqb_refl. simpl.
+    rewrite IH1; auto. simpl. rewrite length_map, Nat.eqb_refl. simpl.
     rewrite eq_dec_refl. simpl.
     clear IH1.
     assert (Hvars': forall x, aset_mem x (aset_big_union (fun x => aset_union (pat_fv (fst x)) (fmla_vars (snd x))) ps) ->
       ~ In x (vals m)) by (intros x Hinx; apply Hvars; auto).
     clear Hvars. induction ps as [| [p1 t1] ps IH]; simpl; auto.
     rewrite all2_cons. inversion IHps as [| ? ? IH1 IH2]; subst; clear IHps.
-    setoid_rewrite aset_big_union_cons in Hvars'.
     setoid_rewrite aset_mem_union in Hvars'. simpl in Hvars'. rewrite IH; auto.
     rewrite andb_true_r; clear IH IH2.
     simpl. 
@@ -8550,7 +8540,7 @@ Proof.
     destruct (list_eq_dec _ _ _); subst; try discriminate.
     simpl. intros Hall. f_equal.
     generalize dependent ps2. induction ps1 as [| p1 ps1 IHps]; intros [| p2 ps2]; try discriminate; auto; simpl.
-    intros Hlen. rewrite all2_cons, andb_true. intros [Hor Hall]. rewrite !aset_big_union_cons.
+    intros Hlen. rewrite all2_cons, andb_true. intros [Hor Hall].
     inversion IH as [| ? ? IH1 IH2]; subst. f_equal; auto.
   - rewrite andb_true; intros [Hor1 Hor2]. f_equal; auto.
   - rewrite andb_true; intros [Hor Hvar]. simpl. f_equal; auto.
@@ -8584,7 +8574,6 @@ Proof.
   - alpha_case t2 Heq. bool_hyps. repeat simpl_sumbool.
     f_equal. nested_ind_case.
     rewrite all2_cons in H1. bool_hyps.
-    rewrite !aset_big_union_cons.
     rewrite -> Hp with(t2:=t)(m1:=m1)(m2:=m2); auto. f_equal. auto.
   - alpha_case t2 Heq. bool_hyps. repeat simpl_sumbool.
     rewrite -> e, (H t2_1 m1 m2), (H0 t2_2 (amap_set m1 v v0) (amap_set m2 v0 v)); auto;
@@ -8598,13 +8587,13 @@ Proof.
     + f_equal. 
       nested_ind_case.
       rewrite all2_cons in H2.
-      bool_hyps. rewrite !aset_big_union_cons.
+      bool_hyps.
       destruct (a_equiv_p (fst a) (fst p)) eqn : Halphap; [|discriminate].
       rewrite (a_equiv_p_type_vars _ _ _  Halphap). f_equal; auto.
     + f_equal. nested_ind_case. destruct a; destruct p.
       rewrite all2_cons in H2.
       bool_hyps.
-      simpl in Hp. rewrite !aset_big_union_cons. simpl.
+      simpl in Hp. simpl.
       simpl in *. destruct (a_equiv_p p0 p) as [[r1 r2]|] eqn : Halphap; [|discriminate].
       erewrite Hp. 3: apply H2.
       * f_equal; auto.
@@ -8618,7 +8607,6 @@ Proof.
   - alpha_case f2 Heq. bool_hyps. repeat simpl_sumbool.
     f_equal. nested_ind_case.
     rewrite all2_cons in H1. bool_hyps.
-    rewrite !aset_big_union_cons.
     rewrite -> Hp with(t2:=t)(m1:=m1)(m2:=m2); auto. f_equal. auto.
   - alpha_case f2 Heq. bool_hyps; repeat simpl_sumbool.
     rewrite e. f_equal. eapply H. 2: apply H1.
@@ -8642,13 +8630,13 @@ Proof.
     + f_equal. 
       nested_ind_case.
       rewrite all2_cons in H2.
-      bool_hyps. rewrite !aset_big_union_cons.
+      bool_hyps.
       destruct (a_equiv_p (fst a) (fst p)) eqn : Halphap; [|discriminate].
       rewrite (a_equiv_p_type_vars _ _ _  Halphap). f_equal; auto.
     + f_equal. nested_ind_case. destruct a; destruct p.
       rewrite all2_cons in H2.
       bool_hyps.
-      simpl in Hp. rewrite !aset_big_union_cons. simpl.
+      simpl in Hp. simpl.
       simpl in *. destruct (a_equiv_p p0 p) as [[r1 r2]|] eqn : Halphap; [|discriminate].
       erewrite Hp. 3: apply H2.
       * f_equal; auto.

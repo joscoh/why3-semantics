@@ -278,7 +278,7 @@ Proof.
       apply Hx. right; auto.
 Qed.
 
-Lemma NoDup_app: forall {A: Type} (l1 l2: list A),
+Lemma NoDup_app_impl: forall {A: Type} (l1 l2: list A),
   NoDup (l1 ++ l2) ->
   NoDup l1 /\ NoDup l2.
 Proof.
@@ -640,7 +640,7 @@ Proof.
   - rewrite combine_nil. reflexivity.
   - rewrite combine_app.
     + rewrite IH; auto.
-    + rewrite !rev_length; auto.
+    + rewrite !length_rev; auto.
 Qed.
 
 Lemma in_combine_snd {A B: Type} (l1 : list A) (l2: list B) x:
@@ -1061,7 +1061,7 @@ Proof.
   revert l2.
   induction l1 as [| h1 t1 IH]; intros [| h2 t2]; try discriminate; simpl; auto.
   intros Hlen.
-  rewrite !map2_app; [| rewrite !rev_length; lia].
+  rewrite !map2_app; [| rewrite !length_rev; lia].
   simpl. f_equal; auto.
 Qed.
 
@@ -1224,13 +1224,13 @@ Lemma Forall2_nth {B C: Type} {P: B -> C -> Prop} (l1: list B) (l2: list C):
 Proof.
   rewrite Forall2_combine. split; intros [Hlen Hith]; split; auto.
   - rewrite Forall_nth in Hith.
-    rewrite combine_length, Hlen, Nat.min_id in Hith.
+    rewrite length_combine, Hlen, Nat.min_id in Hith.
     intros i d1 d2 Hi.
     rewrite Hlen in Hi.
     specialize (Hith i (d1, d2) Hi).
     rewrite combine_nth in Hith; auto.
   - apply Forall_nth.
-    intros i [d1 d2]. rewrite combine_length, Hlen, Nat.min_id, combine_nth; auto.
+    intros i [d1 d2]. rewrite length_combine, Hlen, Nat.min_id, combine_nth; auto.
     intros Hi. apply Hith; lia.
 Qed.
 
@@ -1248,6 +1248,14 @@ Proof.
   induction l as [| h t IH]; simpl; [split; constructor|].
   destruct IH as [IH1 IH2].
   split; intros Hall; inversion Hall; constructor; auto.
+Qed.
+
+Lemma forall_combine_map_r {A B C: Type} (f: B -> C) (P: A * C -> Prop) (l1: list A) (l2: list B):
+  Forall P (combine l1 (map f l2)) <-> Forall (fun x => P (fst x, f (snd x))) (combine l1 l2).
+Proof.
+  revert l2. induction l1 as [| h1 t1 IH]; intros [| h2 t2]; simpl;
+  try solve[split; intros; constructor].
+  split; intros Hall; inversion Hall; subst; constructor; auto; apply IH; auto.
 Qed.
 
 End Forall2.
@@ -1336,7 +1344,7 @@ Proof.
   }
   rewrite <- H.
   destruct (nth_split (d1, d2) (combine l1 l2) i) as [l3 [l4 Hl]].
-    rewrite combine_length. lia.
+    rewrite length_combine. lia.
   exists l3. exists l4. split_all; auto. lia.
 Qed.
 
@@ -1354,7 +1362,7 @@ Proof.
   }
   rewrite <- H.
   destruct (nth_split (d1, d2) (combine l1 l2) i) as [l3 [l4 Hl]].
-    rewrite combine_length. lia.
+    rewrite length_combine. lia.
   exists l3. exists l4. split_all; auto.
 Qed.
 
@@ -1686,7 +1694,7 @@ Proof.
   revert n m.
   induction l as [| h t]; simpl; auto.
   - intros; subst. auto.
-  - intros n m Hn Hall. subst. rewrite app_length.
+  - intros n m Hn Hall. subst. rewrite length_app.
     rewrite (IHt (length t) m); auto; [| inversion Hall; auto].
     replace (length h) with m by (inversion Hall; auto). lia.
 Qed.
@@ -1695,7 +1703,7 @@ Lemma length_concat {A: Type} (l: list (list A)):
   length (concat l) = sum (map (@length A) l).
 Proof.
   induction l; simpl; auto.
-  rewrite app_length, IHl; auto.
+  rewrite length_app, IHl; auto.
 Qed.
 
 Lemma concat_map_singleton {B: Type} (l: list B):
@@ -1915,7 +1923,7 @@ Lemma rev_nth1 {A: Type} (l: list A) (d: A) (n: nat):
 Proof.
   intros Hn.
   rewrite <- (rev_involutive l) at 1.
-  rewrite rev_nth; rewrite rev_length; auto.
+  rewrite rev_nth; rewrite length_rev; auto.
 Qed.
 
 Lemma rev_inj {A: Type} (l1 l2: list A):
@@ -2045,6 +2053,16 @@ Lemma sublist_Forall {A: Type} (P: A -> Prop) (l1 l2: list A):
 Proof.
   rewrite !List.Forall_forall. unfold sublist. auto.
 Qed.
+
+Lemma app_sublist {A: Type} {l1 l2 l3: list A}:
+  sublist l1 l3 ->
+  sublist l2 l3 ->
+  sublist (l1 ++ l2) l3.
+Proof.
+  unfold sublist. intros. rewrite in_app_iff in H1.
+  destruct H1; auto.
+Qed.
+
 
 End Sublist.
 
@@ -2332,7 +2350,7 @@ Definition map_In {A B: Type} (l: list A)
   (f: forall (x: A), In x l -> B) : list B :=
   dep_map f l (all_in_refl l).
 
-Lemma dep_map_length {A B: Type} {P: A -> Prop} 
+Lemma dep_length_map {A B: Type} {P: A -> Prop} 
   (f: forall x: A, P x -> B) (l: list A) (Hall: Forall P l):
   length (dep_map f l Hall) = length l.
 Proof.
@@ -2358,7 +2376,7 @@ Lemma map_In_length {A B: Type} (l: list A)
 (f: forall (x: A), In x l -> B):
 length (map_In l f) = length l.
 Proof.
-  unfold map_In; rewrite dep_map_length; auto.
+  unfold map_In; rewrite dep_length_map; auto.
 Qed.
 
 Lemma map_In_spec {A B : Type} (f : A -> B) (l : list A) :
@@ -2368,7 +2386,7 @@ Proof.
   destruct l; auto.
   remember (a :: l) as l'.
   unfold map_In.
-  apply list_eq_ext'; rewrite dep_map_length; [rewrite map_length |]; auto.
+  apply list_eq_ext'; rewrite dep_length_map; [rewrite length_map |]; auto.
   intros n d Hn.
   erewrite dep_map_nth with(d1:=a); auto; [|apply nth_In; auto].
   rewrite map_nth_inbound with(d2:=a); auto.
@@ -2617,3 +2635,56 @@ Proof.
 Qed.
 
 End ListEqGen.
+
+Section AssocList.
+
+
+(*NOTE: we actually do need association lists occasionally, at least for proofs*)
+Definition get_assoc_list {A B: Type} (eq_dec: forall (x y: A), {x = y} + { x <> y}) 
+  (l: list (A * B)) (x: A) : option B :=
+  fold_right (fun y acc => if eq_dec x (fst y) then Some (snd y) else acc) None l.
+
+Lemma get_assoc_list_some {A B: Type} 
+(eq_dec: forall (x y: A), {x = y} + { x <> y}) 
+(l: list (A * B)) (x: A) (res: B):
+  get_assoc_list eq_dec l x = Some res ->
+  In (x, res) l.
+Proof.
+  induction l; simpl. intro C; inversion C.
+  destruct (eq_dec x (fst a)); subst. intro C; inversion C; subst.
+  left. destruct a; auto.
+  intros. right. apply IHl. assumption.
+Qed.
+
+Lemma get_assoc_list_none {A B: Type} 
+(eq_dec: forall (x y: A), {x = y} + { x <> y}) 
+(l: list (A * B)) (x: A) :
+  get_assoc_list eq_dec l x = None <->
+  ~ In x (map fst l).
+Proof.
+  induction l; simpl; split; intros; auto.
+  - intro C. destruct (eq_dec x (fst a)); subst.
+    inversion H. destruct C. subst. contradiction.
+    apply IHl; auto.
+  - destruct (eq_dec x (fst a)); subst. exfalso. apply H. left; auto.
+    apply IHl. intro C. apply H. right; assumption.
+Qed.
+
+Lemma get_assoc_list_nodup {A B: Type} 
+  (eq_dec: forall (x y: A), {x=y} +{x<> y})
+  (l: list (A * B)) (x: A) (y: B)
+  (Hnodup: NoDup (map fst l))
+  (Hin: In (x, y) l):
+  get_assoc_list eq_dec l x = Some y.
+Proof.
+  unfold get_assoc_list. induction l; simpl; auto.
+  inversion Hin.
+  inversion Hnodup; subst.
+  destruct Hin as [Heq | Hin]; subst; auto; simpl in *.
+  destruct (eq_dec x x); try contradiction; auto.
+  destruct a as [h1 h2]; subst; simpl in *.
+  destruct (eq_dec x h1); subst; auto.
+  exfalso. apply H1. rewrite in_map_iff. exists (h1, y); auto.
+Qed.
+
+End AssocList.

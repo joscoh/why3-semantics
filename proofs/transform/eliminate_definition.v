@@ -47,7 +47,7 @@ Definition add_ld (which: forall b, gen_sym b -> bool) (x: funpred_def)
       let ty := gen_sym_ret ls in
       (*Axiom: forall n, fact n = e*)
       (*First, alpha convert e so there are no freevars in common*)
-      let e' := a_convert_gen e vl in
+      let e' := a_convert_gen e (list_to_aset vl) in
       let ax1 := fforalls vl (t_insert_gen ty hd e') in
       let ax2 := (pr, ax1) in
       (*abstract logical symbol*)
@@ -107,7 +107,7 @@ Definition rec_axiom {b: bool} (ls: gen_sym b)
   let pr := ((gen_sym_name ls) ++ "_'def")%string in
   let hd := gen_fun ls (map vty_var (gen_sym_params ls)) (map Tvar vl) in
   let ty := gen_sym_ret ls in
-  let e' := a_convert_gen e vl in
+  let e' := a_convert_gen e (list_to_aset vl) in
   let ax1 := fforalls vl (t_insert_gen ty hd e') in
   (pr, ax1).
 
@@ -292,12 +292,13 @@ Proof.
     rewrite map_map; reflexivity.
 Qed.
 
+
 Definition gen_funpred_def_valid_type gamma {b: bool} (ls: gen_sym b) (vs: list vsymbol)
   (t: gen_term b):
   funpred_def_valid_type gamma (gen_funpred_def b ls vs t) <->
   gen_typed gamma b t (gen_sym_ret ls) /\
-  sublist (gen_fv t) vs /\
-  sublist (gen_type_vars t) (gen_sym_params ls) /\
+  asubset (gen_fv t) (list_to_aset vs) /\
+  asubset (gen_type_vars t) (list_to_aset (gen_sym_params ls)) /\
   NoDup (map fst vs) /\
   map snd vs = gen_sym_args ls.
 Proof.
@@ -353,7 +354,7 @@ Qed.
 
 Lemma a_convert_gen_typed {b: bool} gamma (t: gen_term b) (vs: list vsymbol) (ty: gen_type b):
   gen_typed gamma b t ty ->
-  gen_typed gamma b (a_convert_gen t vs) ty.
+  gen_typed gamma b (a_convert_gen t (list_to_aset vs)) ty.
 Proof.
   intros Hty. destruct b; simpl in *.
   - apply a_convert_t_ty; assumption.
@@ -404,7 +405,7 @@ Proof.
    apply gen_fun_typed; auto.
   + apply (recursive_def_in_gen_sig _ Hinctx).
   + rewrite Forall_map. rewrite Forall_forall. intros x Hinsym. constructor.
-  + rewrite map_length; reflexivity.
+  + rewrite length_map; reflexivity.
   + (*The nontrivial part: prove that the arguments are correct*)
     rewrite map_id'.
     2: {
@@ -417,22 +418,22 @@ Proof.
     2: { rewrite <- Hvs, combine_eq. reflexivity. }
     rewrite Forall2_nth.
     assert (Hvslen: length vs = length (gen_sym_args ls)). {
-      rewrite <- Hvs, map_length; reflexivity.
+      rewrite <- Hvs, length_map; reflexivity.
     }
-    split; unfold vsymbol in *; rewrite map_length, combine_length, map_length, Hvslen, Nat.min_id; [reflexivity|].
+    split; unfold vsymbol in *; rewrite length_map, length_combine, length_map, Hvslen, Nat.min_id; [reflexivity|].
     intros i d1 d2 Hi. rewrite map_nth_inbound with (d2:=(""%string, vty_int));
-    [| rewrite combine_length, map_length; lia].
+    [| rewrite length_combine, length_map; lia].
     apply T_Var'; auto.
     * rewrite Forall_nth in Hvalargs. auto.
-    * rewrite combine_nth; [| rewrite map_length; lia]. simpl. apply nth_indep, Hi.
+    * rewrite combine_nth; [| rewrite length_map; lia]. simpl. apply nth_indep, Hi.
   + (*And return type*)
     (*Just case on b*)
     destruct b; simpl in *; auto.
     symmetry; apply ty_subst_params_id.
     intros v Hinv.
-    assert (ls_wf: check_sublist (type_vars (f_ret ls)) (s_params ls)) by (destruct ls; auto).
-    apply (reflect_iff _ _ (check_sublist_correct _ _) ) in ls_wf.
-    apply ls_wf, Hinv.
+    assert (ls_wf: check_asubset (type_vars (f_ret ls)) (list_to_aset (s_params ls))) by (destruct ls; auto).
+    destruct (check_asubset _ _); try discriminate. clear ls_wf. rewrite asubset_def in a.
+    apply a in Hinv. simpl_set; auto.
 Qed.
 
 
@@ -537,19 +538,19 @@ Ltac split_all_dec_eq :=
     let H1 := fresh in let H2 := fresh in
     assert (H1: x = a); [| assert (H2: y = b); [| rewrite H1, H2]]
   end.
-  
+
 
 (*A key result: t_insert_gen*)
 (*It must be the case that the free vars of t1 do not intersect with the boundvars of t2*)
 Lemma t_insert_rep {gamma} (gamma_valid: valid_context gamma) pd pdf vt pf vv ty t1 t2 Hty Hty1 Hty2
-  (Hdisj: disj (tm_fv t1) (tm_bnd t2)):
+  (Hdisj: aset_disj (tm_fv t1) (list_to_aset (tm_bnd t2))):
   formula_rep gamma_valid pd pdf vt pf vv (t_insert ty t1 t2) Hty =
   all_dec (term_rep gamma_valid pd pdf vt pf vv t1 ty Hty1 =
     term_rep gamma_valid pd pdf vt pf vv t2 ty Hty2).
 Proof.
   revert vv t1 Hdisj Hty Hty1 Hty2.
   apply (term_ind (fun t2 => forall vv t1,
-    disj (tm_fv t1) (tm_bnd t2) ->
+    aset_disj (tm_fv t1) (list_to_aset (tm_bnd t2)) ->
     forall Hty Hty1 Hty2,
     formula_rep gamma_valid pd pdf vt pf vv
     (t_insert ty t1 t2) Hty =
@@ -559,25 +560,28 @@ Proof.
   - split_all_dec_eq; auto; apply term_rep_irrel.
   - split_all_dec_eq; auto; [apply term_rep_irrel | apply dom_cast_eq].
   - split_all_dec_eq; auto; [apply term_rep_irrel |].
-    unfold fun_arg_list. erewrite get_arg_list_eq.
+    unfold fun_arg_list. erewrite Denotational.get_arg_list_eq.
     unfold cast_dom_vty. rewrite !dom_cast_compose. apply dom_cast_eq.
     rewrite Forall_forall; intros; apply term_rep_irrel.
   - (*First interesting case: Tlet*)
     rewrite H0 with (Hty1:=Hty1) (Hty2:=(proj2' (ty_let_inv Hty2))).
-    2: { eapply disj_sublist. apply H1. apply sublist_cons. apply sublist_app_r. }
+    2: { eapply disj_asubset. apply H1. rewrite list_to_aset_cons, list_to_aset_app.
+      eapply asubset_trans. 2: apply union_asubset_r. apply union_asubset_r. }
     (*Use disj*)
     rewrite tm_change_vv with (v2:=vv); auto.
     + erewrite (term_rep_irrel _ _ _ _ _ _ tm1). reflexivity.
     + intros x Hinx. unfold substi. destruct (vsymbol_eq_dec x v); subst; auto.
-      exfalso. apply (H1 v); split; simpl; auto.
+      exfalso. rewrite aset_disj_equiv in H1. apply (H1 v); split; simpl; auto.
+      simpl_set. simpl. auto.
   - (*Tif*)
     rewrite fmla_rep_irrel with (Hval2:= (proj2' (proj2' (ty_if_inv Hty2)))).
     destruct (formula_rep _ _ _ _ _ _ f _) eqn : Hrep.
     + erewrite H0; [reflexivity|].
-      eapply disj_sublist. apply H2. eapply sublist_trans. apply sublist_app_l.
-      apply sublist_app_r.
+      eapply disj_asubset. apply H2. rewrite !list_to_aset_app. 
+      eapply asubset_trans. 2: apply union_asubset_r. apply union_asubset_l.
     + erewrite H1; [reflexivity|].
-      eapply disj_sublist. apply H2. rewrite app_assoc. apply sublist_app_r.
+      eapply disj_asubset. apply H2. rewrite !list_to_aset_app. 
+      eapply asubset_trans. 2: apply union_asubset_r. apply union_asubset_r.
   - (*Tmatch*)
     rewrite term_rep_irrel with (Hty2:=(proj1' (ty_match_inv Hty2))).
     generalize dependent (proj1' (proj2' (typed_match_inv Hty))).
@@ -602,14 +606,18 @@ Proof.
       * (*use original IH*) rewrite Forall_forall in H0; rewrite H0 with (Hty1:=Hty1)(Hty2:=Forall_inv Hall1); simpl; auto.
         -- rewrite tm_change_vv with (t:=t1)(v2:=vv); [reflexivity|].
           intros x Hinx. rewrite extend_val_notin; auto.
-          rewrite <- (match_val_single_free_var _ _ _ _ _ _ _ _ _ _ Hmatch).
-          intros Hinx1.
-          apply (H1 x); split; auto. rewrite !in_app_iff; auto.
-        -- eapply disj_sublist. apply H1. eapply sublist_trans. apply sublist_app_r.
-          eapply sublist_trans. apply sublist_app_l. apply sublist_app_r.
+          rewrite amap_mem_keys_false.
+          rewrite (match_val_single_fv _ _ _ _ _ _ _ _ Hmatch).
+          intros Hinx1. rewrite aset_disj_equiv in H1.
+          apply (H1 x); split; auto. simpl_set. rewrite !in_app_iff; auto. simpl_set. auto.
+        -- eapply disj_asubset. apply H1. rewrite !list_to_aset_app. 
+          eapply asubset_trans. 2: apply union_asubset_r.
+          eapply asubset_trans. 2: apply union_asubset_l.
+          apply union_asubset_r.
       * (*Use IH*) apply IH; auto.
         -- inversion H0; subst; auto.
-        -- eapply disj_sublist. apply H1. unfold sublist. intros x. rewrite !in_app_iff.
+        -- eapply disj_asubset. apply H1. apply sublist_asubset. 
+          unfold sublist. intros x. rewrite !in_app_iff.
           intros; destruct_all; auto.
         -- destruct Hinp; subst; auto.
           (*Contradicts [match_val_single] exhaustive*)
@@ -627,14 +635,14 @@ Qed.
 Opaque formula_rep.
 (*And the same for formulas - can we prove easier?*)
 Lemma f_insert_rep {gamma} (gamma_valid: valid_context gamma) pd pdf vt pf vv f1 f2 Hty Hty1 Hty2
-  (Hdisj: disj (fmla_fv f1) (fmla_bnd f2)):
+  (Hdisj: aset_disj (fmla_fv f1) (list_to_aset (fmla_bnd f2))):
   formula_rep gamma_valid pd pdf vt pf vv (f_insert f1 f2) Hty =
   eqb (formula_rep gamma_valid pd pdf vt pf vv f1 Hty1)
     (formula_rep gamma_valid pd pdf vt pf vv f2 Hty2).
 Proof.
   revert vv f1 Hdisj Hty Hty1 Hty2.
   apply (formula_ind (fun _ => True) (fun f2 => forall vv f1,
-    disj (fmla_fv f1) (fmla_bnd f2) ->
+    aset_disj (fmla_fv f1) (list_to_aset (fmla_bnd f2)) ->
     forall Hty Hty1 Hty2,
     formula_rep gamma_valid pd pdf vt pf vv
     (f_insert f1 f2) Hty =
@@ -644,26 +652,29 @@ Proof.
   try solve[f_equal; try solve[apply fmla_rep_irrel]; auto; 
     solve[repeat(f_equal; auto; apply fmla_rep_irrel)]].
   - (*Fpred*)
-    f_equal; [apply fmla_rep_irrel |f_equal]. apply get_arg_list_eq.
+    f_equal; [apply fmla_rep_irrel |f_equal]. apply Denotational.get_arg_list_eq.
     rewrite Forall_forall; intros; apply term_rep_irrel.
   - (*Feq*) f_equal; [apply fmla_rep_irrel|].
     split_all_dec_eq; [| | reflexivity]; apply term_rep_irrel.
   - (*Flet*) 
     rewrite H0 with (Hty1:=Hty1)(Hty2:=(proj2' (typed_let_inv Hty2))).
-    2: { eapply disj_sublist. apply H1. apply sublist_cons. apply sublist_app_r. }
+    2: {eapply disj_asubset. apply H1. rewrite list_to_aset_cons, list_to_aset_app.
+      eapply asubset_trans. 2: apply union_asubset_r. apply union_asubset_r. }
     (*Use disj*)
     rewrite fmla_change_vv with (v2:=vv); auto.
     + erewrite (term_rep_irrel _ _ _ _ _ _ tm). reflexivity.
     + intros x Hinx. unfold substi. destruct (vsymbol_eq_dec x v); subst; auto.
-      exfalso. apply (H1 v); split; simpl; auto.
+      exfalso. rewrite aset_disj_equiv in H1. apply (H1 v); split; simpl; auto.
+      simpl_set. simpl. auto.
   - (*Fif*)
     rewrite fmla_rep_irrel with (Hval2:= (proj1' (typed_if_inv Hty2))).
     destruct (formula_rep _ _ _ _ _ _ f1 _) eqn : Hrep.
     + erewrite H0; [reflexivity|].
-      eapply disj_sublist. apply H2. eapply sublist_trans. apply sublist_app_l.
-      apply sublist_app_r.
+      eapply disj_asubset. apply H2. rewrite !list_to_aset_app. 
+      eapply asubset_trans. 2: apply union_asubset_r. apply union_asubset_l.
     + erewrite H1; [reflexivity|].
-      eapply disj_sublist. apply H2. rewrite app_assoc. apply sublist_app_r.
+      eapply disj_asubset. apply H2. rewrite !list_to_aset_app. 
+      eapply asubset_trans. 2: apply union_asubset_r. apply union_asubset_r.
   - (*Fmatch*)
     rewrite term_rep_irrel with (Hty2:=(proj1' (typed_match_inv Hty2))).
     generalize dependent (proj1' (proj2' (typed_match_inv Hty))).
@@ -687,14 +698,18 @@ Proof.
       * (*use original IH*) rewrite Forall_forall in H0; rewrite H0 with (Hty1:=Hty1)(Hty2:=Forall_inv Hall1); simpl; auto.
         -- rewrite fmla_change_vv with (f:=f1)(v2:=vv); [reflexivity|].
           intros x Hinx. rewrite extend_val_notin; auto.
-          rewrite <- (match_val_single_free_var _ _ _ _ _ _ _ _ _ _ Hmatch).
-          intros Hinx1.
-          apply (H1 x); split; auto. rewrite !in_app_iff; auto.
-        -- eapply disj_sublist. apply H1. eapply sublist_trans. apply sublist_app_r.
-          eapply sublist_trans. apply sublist_app_l. apply sublist_app_r.
+          rewrite amap_mem_keys_false.
+          rewrite (match_val_single_fv _ _ _ _ _ _ _ _ Hmatch).
+          intros Hinx1. rewrite aset_disj_equiv in H1.
+          apply (H1 x); split; auto. simpl_set. rewrite !in_app_iff; auto. simpl_set. auto.
+        -- eapply disj_asubset. apply H1. rewrite !list_to_aset_app. 
+          eapply asubset_trans. 2: apply union_asubset_r.
+          eapply asubset_trans. 2: apply union_asubset_l.
+          apply union_asubset_r.
       * (*Use IH*) apply IH; auto.
         -- inversion H0; subst; auto.
-        -- eapply disj_sublist. apply H1. unfold sublist. intros x. rewrite !in_app_iff.
+        -- eapply disj_asubset. apply H1. apply sublist_asubset. 
+          unfold sublist. intros x. rewrite !in_app_iff.
           intros; destruct_all; auto.
         -- destruct Hinp; subst; auto.
           (*Contradicts [match_val_single] exhaustive*)
@@ -713,7 +728,7 @@ Qed.
 
 Lemma t_insert_gen_rep {gamma} (gamma_valid: valid_context gamma) pd pdf vt pf vv {b: bool}
   (t1 t2: gen_term b) (ty: gen_type b) Hty Hty1 Hty2
-  (Hdisj: disj (gen_fv t1) (gen_bnd t2)):
+  (Hdisj: aset_disj (gen_fv t1) (list_to_aset (gen_bnd t2))):
   formula_rep gamma_valid pd pdf vt pf vv (t_insert_gen ty t1 t2) Hty =
   all_dec (gen_rep gamma_valid pd pdf pf vt vv ty t1 Hty1 = gen_rep gamma_valid pd pdf pf vt vv ty t2 Hty2).
 Proof.
@@ -813,8 +828,8 @@ Proof.
   - apply f_insert_typed_inv; auto.
 Qed.
 
-Lemma a_convert_gen_bnd {b: bool} (t: gen_term b) (l: list vsymbol) (x: vsymbol):
-  In x l ->
+Lemma a_convert_gen_bnd {b: bool} (t: gen_term b) (l: aset vsymbol) (x: vsymbol):
+  aset_mem x l ->
   ~ In x (gen_bnd (a_convert_gen t l)).
 Proof.
   destruct b; simpl in *.
@@ -851,7 +866,7 @@ Proof.
     (t_insert_gen (gen_sym_ret ls)
     (gen_fun ls (map vty_var (gen_sym_params ls))
     (map Tvar vs))
-    (a_convert_gen e vs))).
+    (a_convert_gen e (list_to_aset vs)))).
   { unfold rec_axiom in Hty; simpl in Hty.
     apply fforalls_typed_inv in Hty; apply Hty.
   }
@@ -864,12 +879,13 @@ Proof.
   2: {
     (*Prove disj*)
     rewrite gen_fun_fv. clear.
+    rewrite aset_disj_equiv.
     intros x [Hinx1 Hinx2].
     simpl_set. destruct Hinx1 as [t [Hint Hinx1]].
     rewrite in_map_iff in Hint.
     destruct Hint as [v [Ht Hinv]]; subst.
-    simpl in Hinx1. destruct Hinx1 as [Hvx | []]; subst.
-    apply (a_convert_gen_bnd _ _ _ Hinv Hinx2).
+    simpl in Hinx1. simpl_set; subst. 
+    apply a_convert_gen_bnd in Hinx2; auto. simpl_set; auto.
   }
   apply simpl_all_dec.
   (*First, simplify alpha**)
@@ -881,7 +897,7 @@ Proof.
   set (srts := (map (v_subst vt) (map vty_var (s_params ls')))) in *.
   assert (srts_len: length srts = length (s_params ls')).
   {
-    subst srts. rewrite !map_length; auto.
+    subst srts. rewrite !length_map; auto.
   }
   assert (srts_eq: srts = map vt (s_params ls')). {
     unfold srts. rewrite !map_map. apply map_ext. intros a.
@@ -894,7 +910,7 @@ Proof.
     apply s_params_Nodup.
   }
   assert (Hvveq: forall x
-        (Hinxfv: In x (gen_fv e))
+        (Hinxfv: aset_mem x (gen_fv e))
         (Heq: v_subst (vt_with_args vt (s_params ls') srts)
           (snd x) =
         v_subst vt (snd x))
@@ -916,7 +932,8 @@ Proof.
           x)).
   {
     intros x Hinxfv Heq Hlen1 Hlen2 Hall.
-    assert (Hinvs: In x vs) by (apply Hsubfv in Hinxfv; auto).
+    assert (Hinvs: In x vs).
+    { rewrite asubset_def in Hsubfv. apply Hsubfv in Hinxfv; auto; simpl_set; auto. }
     (*So look at nth*)
     destruct (In_nth _ _ vs_d Hinvs) as [j [Hj Hx]]; subst x.
     rewrite substi_mult_nth' with (Hi:=Hj); [| apply NoDup_map_inv in Hnodup; assumption].
@@ -925,7 +942,7 @@ Proof.
     assert (Hlslen: length (s_args ls') = length (gen_sym_args ls)). {
       destruct b; auto.
     }
-    assert (Hvslen: length (s_args ls') = length vs) by (rewrite Hlslen, <- Hvs; rewrite map_length; auto).
+    assert (Hvslen: length (s_args ls') = length vs) by (rewrite Hlslen, <- Hvs; rewrite length_map; auto).
     assert (Heqjth: nth j (sym_sigma_args ls' srts) s_int =
       v_subst (vt_with_args vt (s_params ls') srts) (snd (nth j vs vs_d))).
     {
@@ -939,13 +956,16 @@ Proof.
       - rewrite Hvt. destruct b; reflexivity.
       - intros x Hinx. pose proof (s_args_wf ls') as Hsub. unfold is_true in Hsub.
         rewrite <- (reflect_iff _ _ (check_args_correct _ _) ) in Hsub.
-        specialize (Hsub (nth j (s_args ls') vty_int)); apply Hsub; auto.
+        specialize (Hsub (nth j (s_args ls') vty_int)).
+        rewrite asubset_def in Hsub.
+        setoid_rewrite aset_mem_list_to_aset in Hsub.
+        apply Hsub; auto.
         apply nth_In. lia.
       - apply s_params_Nodup.
     }
     rewrite val_with_args_in' with (i:=j)(Heq:=Heqjth); auto;
     [| apply NoDup_map_inv in Hnodup; assumption | unfold sym_sigma_args, ty_subst_list_s; 
-      rewrite map_length; lia].
+      rewrite length_map; lia].
     rewrite !dom_cast_compose.
     (*Now deal with [get_arg_list]*) 
     assert (Hj': j < Datatypes.length (s_args ls')) by lia. 
@@ -1590,14 +1610,14 @@ Proof.
     + (*First, do funsyms*)
       apply (sublist_strong_nodup _ _ _ Hfunsyms). apply NoDup_rev.
       revert Hnodup. unfold idents_of_def; simpl. rewrite app_nil_r.
-      intros Hnodup; apply NoDup_app in Hnodup; apply Hnodup.
+      intros Hnodup; apply NoDup_app_impl in Hnodup; apply Hnodup.
     + (*predsyms*)
       eapply Permutation_NoDup.
       { eapply Permutation_sym. apply perm_concat_map_app. }
       rewrite Htynil, app_nil_r.
       apply (sublist_strong_nodup _ _ _ Hpredsyms). apply NoDup_rev.
       revert Hnodup. unfold idents_of_def; simpl. rewrite app_nil_r.
-      intros Hnodup; apply NoDup_app in Hnodup; apply Hnodup.
+      intros Hnodup; apply NoDup_app_impl in Hnodup; apply Hnodup.
     + (*Nothing in common (disj)*)
       intros x [Hinx1 Hinx2].
       apply Hfunsyms1 in Hinx1.
@@ -1739,11 +1759,11 @@ Proof.
         apply IH in Hsub.
         destruct Hsub as [idxs [Hlen [Hall Ht1]]].
         exists (0 :: (map S idxs)).
-        simpl. rewrite map_length, map_map, <- Ht1. split_all; auto.
+        simpl. rewrite length_map, map_map, <- Ht1. split_all; auto.
         constructor; auto. lia. rewrite Forall_map. revert Hall. apply Forall_impl; intros; lia.
       * apply IH in Hsub.
         destruct Hsub as [idxs [Hlen [Hall Hht]]].
-        exists (map S idxs). rewrite map_length, map_map, Forall_map. split_all; auto.
+        exists (map S idxs). rewrite length_map, map_map, Forall_map. split_all; auto.
         revert Hall. apply Forall_impl; intros; lia.
 Qed.
 
@@ -1753,7 +1773,7 @@ Lemma funpred_defs_to_sns_fst_length l is:
 Proof.
   intros Hlen.
   unfold funpred_defs_to_sns.
-  simpl. rewrite map_length, combine_length, firstn_length.
+  simpl. rewrite length_map, length_combine, length_firstn.
   pose proof (split_funpred_defs_length l). lia.
 Qed.
 
@@ -1907,8 +1927,8 @@ Proof.
     }
     (*Then indicies are (is1 ++ is2)*)
     exists (is1 ++ is2).
-    assert (Hlen3: length is1 = length (fst (split_funpred_defs l1))) by (unfold is1; rewrite map_length; auto).
-    assert (Hlen4: length is2 = length (snd (split_funpred_defs l1))) by (unfold is2; rewrite map_length; auto).
+    assert (Hlen3: length is1 = length (fst (split_funpred_defs l1))) by (unfold is1; rewrite length_map; auto).
+    assert (Hlen4: length is2 = length (snd (split_funpred_defs l1))) by (unfold is2; rewrite length_map; auto).
     pose proof (split_funpred_defs_length l1) as Hsplitlen.
     pose proof (split_funpred_defs_length l2) as Hsplitlen2.
     (*Need for fun/pred termination*)
@@ -1916,7 +1936,7 @@ Proof.
     (fst (funpred_defs_to_sns l2 is))).
     {
       intros x.
-      rewrite !funpred_defs_to_sns_in_fst; [| lia | rewrite app_length; lia]; simpl.
+      rewrite !funpred_defs_to_sns_in_fst; [| lia | rewrite length_app; lia]; simpl.
       intros [i [Hi Hx]]; subst.
       specialize (Hij1 i (ltac:(lia))).
       destruct Hij1 as [j [Hj [Hnthij Hnthij2]]].
@@ -1927,8 +1947,8 @@ Proof.
     (snd (funpred_defs_to_sns l2 is))).
     {
       intros x.
-      rewrite !funpred_defs_to_sns_in_snd; [| lia | rewrite app_length; lia].
-      rewrite !funpred_defs_to_sns_fst_length; [| lia|  rewrite app_length; lia]. simpl.
+      rewrite !funpred_defs_to_sns_in_snd; [| lia | rewrite length_app; lia].
+      rewrite !funpred_defs_to_sns_fst_length; [| lia|  rewrite length_app; lia]. simpl.
       intros [i [Hi Hx]]; subst.
       specialize (Hij2 i (ltac:(lia))).
       destruct Hij2 as [j [Hj [Hnthij Hnthij2]]].
@@ -1940,31 +1960,31 @@ Proof.
 
     unfold funpred_def_term. split_all; auto.
     + eapply mut_in_ctx_sublist; eassumption.
-    + rewrite app_length. lia.
+    + rewrite length_app. lia.
     + (*Prove bound on nth*) intros i Hi.
-      rewrite app_length in Hi.
+      rewrite length_app in Hi.
       assert (Hi2: i < length is1 \/ length is1 <= i < length l1) by lia.
       destruct Hi2 as [Hi2 | Hi2].
-      * rewrite !app_nth1; auto; [|rewrite map_length; lia].
+      * rewrite !app_nth1; auto; [|rewrite length_map; lia].
         rewrite map_nth_inbound with (d2:=(id_fs, nil, tm_d)) by lia.
         specialize (Hij1 i (ltac:(lia))).
         destruct Hij1 as [j [Hj [Hnthij Hnthij2]]].
         rewrite Hnthij, Hnthij2.
         specialize (His j (ltac:(lia))).
-        revert His. rewrite app_nth1 by (rewrite map_length; lia).
+        revert His. rewrite app_nth1 by (rewrite length_map; lia).
         rewrite map_nth_inbound with (d2:=(id_fs, nil, tm_d)); auto.
-      * rewrite !app_nth2; auto; [|rewrite map_length; lia| lia].
-        rewrite map_length, map_nth_inbound with (d2:=(id_ps, nil, Ftrue)) by lia.
+      * rewrite !app_nth2; auto; [|rewrite length_map; lia| lia].
+        rewrite length_map, map_nth_inbound with (d2:=(id_ps, nil, Ftrue)) by lia.
         specialize (Hij2 (i - length is1) (ltac:(lia))).
         destruct Hij2 as [j [Hj [Hnthij Hnthij2]]].
         rewrite <- Hlen3, Hnthij, Hnthij2.
         specialize (His (length (fst (split_funpred_defs l2)) + j) (ltac:(lia))).
-        revert His. rewrite app_nth2; rewrite map_length; [|lia].
+        revert His. rewrite app_nth2; rewrite length_map; [|lia].
         rewrite TerminationChecker.plus_minus.
         rewrite map_nth_inbound with (d2:=(id_ps, nil, Ftrue)); auto.
     + (*And prove all [decrease_fun]*)
       rewrite Forall_forall.
-      intros f.  rewrite funpred_defs_to_sns_in_fst by (rewrite app_length; lia).
+      intros f.  rewrite funpred_defs_to_sns_in_fst by (rewrite length_app; lia).
       intros [i [Hi Hy]].
       set (y:=nth i (fst (split_funpred_defs l1)) (id_fs, [], tm_d)) in *.
       simpl in Hy; subst.
@@ -1983,8 +2003,8 @@ Proof.
       all: eapply funpred_defs_to_sns_NoDup; eauto.
     + (*[decrease_pred] similar*)
       rewrite Forall_forall.
-      intros f.  rewrite funpred_defs_to_sns_in_snd by (rewrite app_length; lia).
-      rewrite funpred_defs_to_sns_fst_length by (rewrite app_length; lia).
+      intros f.  rewrite funpred_defs_to_sns_in_snd by (rewrite length_app; lia).
+      rewrite funpred_defs_to_sns_fst_length by (rewrite length_app; lia).
       intros [i [Hi Hy]].
       set (y:=nth i (snd (split_funpred_defs l1)) (id_ps, [], Ftrue)) in *.
       simpl in Hy; subst.
@@ -2145,7 +2165,7 @@ Proof.
   intros.
   pose proof (gen_new_ctx_gamma_mut which nonrec gamma) as Hmuts.
   pose proof (gen_new_ctx_gamma_sig_t which nonrec gamma) as Hsigteq.
-  induction H; simpl; try solve[constructor]. (*TODO: see if we put here or just prove at end*)
+  induction H; simpl; try solve[constructor].
   assert (Hval2: valid_context (d :: gamma)) by (constructor; auto).
   unfold gen_new_ctx_gamma' in *. simpl in Hmuts, Hsigteq |- *.
   assert (Heqctx:=gen_new_ctx_gamma_eq_sig which nonrec gamma).
@@ -2205,7 +2225,7 @@ Proof.
       intros ts Hints.
       apply Htseq; auto.
     }
-    (*Second part: prove that adding the recursive definition is OK (TODO: separate lemma)*)
+    (*Second part: prove that adding the recursive definition is OK (separate lemma)*)
     (*I think prove the [sublist_strong] again*)
     apply valid_ctx_concrete_def; auto.
     + (*wf_funsym*) revert H0. 
@@ -2248,7 +2268,7 @@ Proof.
           map (fun (x: predsym) => s_name x) (predsyms_of_rec l))).
         {
           clear -H3. unfold idents_of_def in H3.
-          rewrite app_assoc in H3. apply NoDup_app in H3; apply H3.
+          rewrite app_assoc in H3. apply NoDup_app_impl in H3; apply H3.
         }
         rewrite NoDup_app_iff' in Hnodup.
         destruct Hnodup as [Hnodupf [Hnodupp Hdisj]].
@@ -2350,8 +2370,7 @@ Proof.
         rewrite rev_app_distr,  mut_of_context_app in Hmut2.
         apply app_nil_iff in Hmut2.
         apply Hmut2.
-      * unfold l1; inv Hlist.
-      * simpl. auto.
+      * simpl. auto. 
   - (*nonrec case*)
     destruct d; inversion Hrec; subst. simpl in *.
     unfold decl_list_of_def at 1.

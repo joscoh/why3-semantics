@@ -59,7 +59,7 @@ Ltac simpl_sub :=
   try unfold sub_funs;
   simpl;
   try unfold sub_tys;
-  try unfold sub_from_map;
+  try unfold lookup_default;
   simpl.
 
 (*NOTE: extra_simpl allows the user to define a custom
@@ -491,6 +491,23 @@ Proof.
   - inversion H; subst. destruct H0; destruct task_wf_typed; auto.
 Qed.
 
+(*NOTE: do need association lists here, for now - TODO should use map for this too probably*)
+Definition get_assoc_list {A B: Type} (eq_dec: forall (x y: A), {x = y} + { x <> y}) 
+  (l: list (A * B)) (x: A) : option B :=
+  fold_right (fun y acc => if eq_dec x (fst y) then Some (snd y) else acc) None l.
+
+Lemma get_assoc_list_some {A B: Type} 
+(eq_dec: forall (x y: A), {x = y} + { x <> y}) 
+(l: list (A * B)) (x: A) (res: B):
+  get_assoc_list eq_dec l x = Some res ->
+  In (x, res) l.
+Proof.
+  induction l; simpl. intro C; inversion C.
+  destruct (eq_dec x (fst a)); subst. intro C; inversion C; subst.
+  left. destruct a; auto.
+  intros. right. apply IHl. assumption.
+Qed.
+
 Definition find_hyp (delta: list (string * formula)) name :=
   get_assoc_list string_dec delta name.
 
@@ -761,7 +778,7 @@ Ltac wrewrite_with_tac H o b args :=
   (*First, generate new hypothesis*)
   match goal with
   | |- derives (?g, ?d, ?goal) =>
-    let new := constr:(gen_name EmptyString (map fst d)) in
+    let new := constr:(gen_name EmptyString (list_to_aset (map fst d))) in
     wcopy H new;
     wspecialize_tac2 new args;
     match o with
@@ -898,11 +915,9 @@ Proof.
     inversion Hd; subst. destruct H; simpl_task; destruct task_wf_typed;
     apply prove_task_wf; auto.
   }
-  assert (Hwfvar: NoDup (List.map fst (fmla_fv f))). {
+  assert (Hwfvar: NoDup (List.map fst (aset_to_list (fmla_fv f)))). {
     unfold closed_formula in Hclosed.
-    rewrite null_nil in Hclosed.
-    rewrite Hclosed.
-    constructor.
+    apply is_empty_empty in Hclosed. rewrite -> Hclosed, empty_to_list. constructor.
   }
   assert (Hinsnd: In f (map snd delta)). {
     unfold find_hyp in Hhyp.
@@ -925,7 +940,7 @@ Proof.
     }
     unfold satisfies in Hfrep.
     erewrite ty_subst_wf_fmla_rep; auto.
-    Unshelve. all: auto. rewrite !map_length; auto.
+    Unshelve. all: auto. rewrite !length_map; auto.
   - apply ty_subst_wf_fmla_typed; auto.
 Qed.
 
@@ -1090,6 +1105,16 @@ Ltac wsimpl_match :=
   unfold safe_sub_ts, safe_sub_fs; simpl;
   extra_simpl.
 
+(*TODO: might need to move*)
+Ltac simpl_gen_strs := 
+  try match goal with
+  |- context [GenElts.gen_strs ?x ?y] => 
+    let z := fresh in 
+    set (z := GenElts.gen_strs x y) in *;
+    cbv in z;
+    unfold z
+  end.
+
 (*Induction tactic*)
 Require Import Induction.
 Ltac winduction :=
@@ -1097,8 +1122,8 @@ Ltac winduction :=
   | |- derives (?g, ?d, Fquant Tforall ?x ?f) =>
     eapply D_induction;
     [reflexivity | reflexivity | reflexivity | prove_closed | ];
-    simpl; split_all; auto;
-    unfold constr_case; simpl; unfold safe_sub_f; simpl;
+    split_all; auto;
+    unfold constr_case; unfold safe_sub_f; simpl_gen_strs; (*Must do before simpl*) simpl;
     try extra_simpl
   | |- _ => fail "Induction requires generalization:
     goal must be in form (Forall (x: a(vs)), f

@@ -1304,7 +1304,7 @@ Proof.
     rewrite Forall_map in Hclosed.
     rewrite Forall_forall in Hclosed.
     specialize (Hclosed _ Hint). auto.
-    rewrite map_length.
+    rewrite length_map.
     inversion Hvalf; subst; auto.
   - rewrite !bool_of_binop_impl, !simpl_all_dec.
     intros Hinpl Hval.

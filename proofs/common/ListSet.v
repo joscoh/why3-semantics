@@ -1,6 +1,8 @@
 Require Export CommonTactics CommonList CommonBool.
-From stdpp Require base gmap fin_sets.
+Require gmap.
+From stdpp Require base fin_sets.
 (** Union on lists with decidable equality **)
+
 
 (*TODO: change names (do we need this for lists?)*)
 
@@ -14,31 +16,81 @@ Context (A: Type)  `{Countable A}.
 
 Definition aset := gset A.
 
-Definition aset_empty : aset := ∅.
+(* Search gset Empty.
+Print gset_empty.
+Print mapset.mapset_empty.*)
+
+Definition aset_empty : aset.
+unfold aset. constructor. constructor. apply GEmpty.
+Defined.
+Lemma aset_empty_eq: aset_empty = ∅. Proof. reflexivity. Qed.
+
+(* Definition aset_empty : aset := ∅. *)
 
 Definition aset_is_empty (a: aset) : bool := Nat.eqb (size a) 0.
 
 Definition aset_mem (x: A) (s: aset) : Prop :=
   x ∈ s.
 
-Definition aset_mem_dec (x: A) (s: aset) : {aset_mem x s} + {~ aset_mem x s} :=
-  gset_elem_of_dec _ s.
+(*do NOT use stdpp's it is terrible and does not compute*)
+Definition aset_mem_dec (x: A) (s: aset) : {aset_mem x s} + {~ aset_mem x s}.
+Proof.
+  unfold aset_mem. unfold elem_of. unfold gset_elem_of.
+  unfold mapset.mapset_elem_of.
+  unfold mapset.mapset_car.
+  destruct s.
+  destruct (mapset_car !! x).
+  - left. destruct u. reflexivity.
+  - right. discriminate.
+Defined.
 
-Definition aset_union (s1 s2: aset) : aset := s1 ∪ s2.
+(* Locate "∪".
+Print union.
+Search gset Union.
+Print gset_union.
+Print mapset.mapset_union. *)
+
+Definition aset_union (s1 s2: aset) : aset.
+unfold aset in *.
+unfold gset in *.
+destruct s1 as [s1]. destruct s2 as [s2].
+constructor.
+exact (gmap_merge _ _  _ (union_with (fun x _ => Some x)) s1 s2).
+Defined.
+
+Lemma aset_union_eq s1 s2: aset_union s1 s2 = s1 ∪ s2. Proof. reflexivity. Qed.
 
 Definition aset_size (s: aset) : nat := size s.
 
+
 (*TODO: see if this needs to be set anywhere?*)
-Definition aset_big_union {B: Type} (*`{B_count: Countable B} *)
-  (f: B -> aset) (l: list B) :=
-  ⋃ (map f l).
+Definition aset_big_union {B: Type} (f: B -> aset) (l: list B) : aset :=
+  fold_right (fun x acc => aset_union (f x) acc) aset_empty l.
+Lemma aset_big_union_eq {B: Type}
+  (f: B -> aset) (l: list B) :
+  aset_big_union f l = ⋃ (map f l).
+Proof.
+  induction l; simpl; auto. rewrite IHl; reflexivity.
+Qed.
+
+(* Definition aset_big_union {B: Type} (*`{B_count: Countable B} *)
+  (f: B -> aset) (l: list B) : aset :=
+  ⋃ (map f l). *)
 (*   set_fold (fun x acc => aset_union (f x) acc) aset_empty s. *)
 
 Lemma aset_big_union_cons {B: Type} (f: B -> aset) (x: B) (l: list B):
   aset_big_union f (x :: l) = aset_union (f x) (aset_big_union f l).
 Proof. reflexivity. Qed.
 
-Definition aset_singleton (x: A) : aset := singleton x.
+(*TODO: not sure if we need explicit one*)
+Definition aset_singleton (x: A) : aset.
+  unfold aset. unfold gset. constructor.
+  destruct (aset_empty) as [y].
+  exact (gmap_partial_alter (fun _ => Some tt) x y).
+Defined.
+(* Definition aset_singleton (x: A) : aset := singleton x. *)
+Lemma aset_singleton_eq x: aset_singleton x = singleton x.
+Proof. reflexivity. Qed. 
 
 (*Extensionality is useful*)
 Lemma aset_ext (s1 s2: aset):
@@ -59,7 +111,8 @@ Qed.
 Lemma aset_union_empty s1 s2:
   aset_is_empty (aset_union s1 s2) = aset_is_empty s1 && aset_is_empty s2.
 Proof.
-  unfold aset_is_empty, aset_union.
+  rewrite aset_union_eq.
+  unfold aset_is_empty.
   apply is_true_eq.
   unfold is_true; rewrite andb_true_iff.
   rewrite !Nat.eqb_eq.
@@ -73,13 +126,14 @@ Lemma aset_big_union_empty {B: Type} (*`{B_count: Countable B} *)
 Proof.
   induction l as [| h t IH]; simpl.
   - apply aset_empty_is_empty.
-  - rewrite aset_big_union_cons, aset_union_empty, IH. reflexivity.
+  - rewrite aset_union_empty, IH. reflexivity.
 Qed.
 
 Lemma aset_singleton_not_empty x:
   aset_is_empty (aset_singleton x) = false.
-Proof. 
-  unfold aset_is_empty, aset_singleton.
+Proof.
+  rewrite aset_singleton_eq. 
+  unfold aset_is_empty.
   rewrite size_singleton.
   reflexivity.
 Qed.
@@ -88,7 +142,8 @@ Qed.
 Lemma aset_mem_empty x:
   ~ aset_mem x aset_empty.
 Proof.
-  unfold aset_mem, aset_empty. set_unfold. auto.
+  rewrite aset_empty_eq.
+  unfold aset_mem. set_unfold. auto.
 Qed.
 
 Lemma aset_mem_singleton x y:
@@ -100,13 +155,13 @@ Qed.
 Lemma aset_mem_union x s1 s2:
   aset_mem x (aset_union s1 s2) <-> aset_mem x s1 \/ aset_mem x s2.
 Proof.
-  unfold aset_mem, aset_union. set_unfold. reflexivity.
+  rewrite aset_union_eq.
+  unfold aset_mem. set_unfold. reflexivity.
 Qed.
 
 Lemma aset_mem_big_union {B: Type} (f: B -> aset) l x:
   aset_mem x (aset_big_union f l) <-> exists y, In y l /\ aset_mem x (f y).
 Proof.
-  unfold aset_big_union.
   induction l as [| h t IH]; simpl.
   - split; [| intros; destruct_all; contradiction].
     intros Hemp. apply aset_mem_empty in Hemp. contradiction.
@@ -124,6 +179,17 @@ Proof.
   unfold aset_big_union, aset_empty. reflexivity.
 Qed.
 
+(*Decidable equality*)
+(*Once again, this version is different; it simplifies*)
+Definition aset_eq_dec (s1 s2: aset) : {s1 = s2} + {s1 <> s2}.
+Proof.
+  unfold aset in s1, s2.
+  unfold gset in s1, s2.
+  destruct s1 as [s1]. destruct s2 as [s2].
+  destruct (gmap_eq_dec unit_eq_dec s1 s2).
+  - left. congruence.
+  - right. intro C. injection C. intros Heq. contradiction.
+Defined.
 (*subset*)
 Definition asubset (s1 s2: aset) : Prop := s1 ⊆ s2.
 
@@ -132,11 +198,23 @@ Proof.
   reflexivity.
 Qed.
 
-Definition check_asubset (s1 s2: aset) : {asubset s1 s2} + {~ asubset s1 s2} :=
-  gset_subseteq_dec s1 s2.
+(*We also need our own version*)
+(*Idea: check if s1 union s2 = s2*)
+Definition check_asubset (s1 s2: aset) : {asubset s1 s2} + {~ asubset s1 s2}.
+Proof.
+  destruct (aset_eq_dec (aset_union s1 s2) s2).
+  - left. apply mapset.mapset_subseteq_dec_subproof. auto.
+  - right. apply mapset.mapset_subseteq_dec_subproof0. auto.
+Defined.
 
 (*list to set*)
+(* Print list_to_set. *)
+(*Write our own (see*)
+(* Definition list_to_aset (l: list A) : aset :=
+  fold_right (fun x acc => aset_union (aset_singleton x) acc) aset_empty l. *)
+
 Definition list_to_aset (l: list A) : aset := list_to_set l.
+
 
 (*Stdpp uses different In*)
 Lemma in_equiv {C: Type} (x: C) (l: list C):
@@ -198,10 +276,11 @@ Qed.
 Definition aset_remove (x: A) (s: aset) : aset :=
   s ∖ (aset_singleton x).
 
+
 Lemma aset_mem_remove y s x:
   aset_mem x (aset_remove y s) <-> aset_mem x s /\ x <> y.
 Proof.
-  unfold aset_mem, aset_remove, aset_singleton.
+  unfold aset_mem, aset_remove. rewrite aset_singleton_eq.
   set_unfold. reflexivity.
 Qed.
 
@@ -219,7 +298,7 @@ Qed.
 Lemma aset_big_union_app {B: Type} (f: B -> aset) (l1 l2: list B) :
   aset_big_union f (l1 ++ l2) = aset_union (aset_big_union f l1) (aset_big_union f l2).
 Proof.
-  unfold aset_big_union, aset_union.
+  rewrite aset_union_eq, !aset_big_union_eq.
   set_unfold. setoid_rewrite map_app. setoid_rewrite union_list_app.
   set_unfold. reflexivity.
 Qed.
@@ -242,7 +321,7 @@ Qed.
 (*Union is idempotent*)
 Lemma aset_union_refl (s: aset) : aset_union s s = s.
 Proof.
-  unfold aset_union. set_unfold. intros x. apply or_idem.
+  rewrite aset_union_eq. set_unfold. intros x. apply or_idem.
 Qed. 
 
 (*Generate fresh element*)
@@ -250,7 +329,7 @@ Definition aset_fresh_list `{Infinite A} (n: nat) (s: aset) : list A :=
   fresh_list n s.
 
 Lemma aset_fresh_list_length `{Infinite A} (n: nat) (s: aset) : length (aset_fresh_list n s) = n.
-Proof. apply fresh_list_length. Qed.
+Proof. apply length_fresh_list. Qed.
 
 Lemma aset_fresh_list_nodup `{Infinite A} (n: nat) (s: aset) : List.NoDup (aset_fresh_list n s).
 Proof. rewrite <- NoDup_ListNoDup. apply NoDup_fresh_list. Qed.
@@ -284,13 +363,13 @@ Lemma size_union_singleton x s:
   aset_size (aset_union (aset_singleton x) s) =
   (if aset_mem_dec x s then 0 else 1) + aset_size s.
 Proof.
-  unfold aset_size, aset_union, aset_singleton, aset_mem_dec.
-  destruct (gset_elem_of_dec x s).
-  - assert (Heq: {[x]} ∪ s = s). {
+  rewrite aset_union_eq, aset_singleton_eq.
+  unfold aset_size,  aset_singleton. destruct (aset_mem_dec x s).
+  - unfold aset_mem in a. assert (Heq: {[x]} ∪ s = s). {
       set_unfold. intros y. split; auto. intros [Heq | Hin]; subst; auto.
     }
     rewrite Heq. reflexivity.
-  - rewrite size_union.
+  - unfold aset_mem in n. rewrite size_union.
     + rewrite size_singleton. reflexivity.
     + set_unfold. intros y Heq Hiny; subst; auto.
 Qed. 
@@ -314,6 +393,7 @@ Lemma aset_mem_intersect x s1 s2:
 Proof.
   unfold aset_mem, aset_intersect. set_unfold. reflexivity.
 Qed.
+
 
 (*Filter*)
 Definition aset_filter (f: A -> bool) (s: aset) : aset :=
@@ -343,9 +423,6 @@ Proof.
   apply set_eq in Heq. subst. intros Hi. auto.
 Qed.
 
-(*Decidable equality*)
-Definition aset_eq_dec (s1 s2: aset) : {s1 = s2} + {s1 <> s2} := gset_eq_dec s1 s2.
-
 Lemma aset_is_empty_mem (s: aset) (x: A) :
   aset_is_empty s ->
   ~ (aset_mem x s).
@@ -370,6 +447,7 @@ Qed.
 (*forallb*)
 Definition aset_forall (b: A -> bool) (s: aset) : bool :=
   aset_fold (fun x y => b x && y) true s.
+
 
 Lemma aset_forall_forall (b: A -> bool) (s: aset):
   aset_forall b s <-> forall x, aset_mem x s -> b x.
@@ -453,15 +531,23 @@ Qed.
 End FixA.
 
 (*Map over elts of set*)
+
 Definition aset_map {A B: Type} `{Countable A} `{Countable B} 
   (f: A -> B) (s: aset A) : aset B :=
-  set_map f s.
+  list_to_aset _ (map f (aset_to_list _ s)).
+Lemma aset_map_eq {A B: Type} `{Countable A} `{Countable B} (f: A -> B) s:
+  aset_map f s = set_map f s.
+Proof. reflexivity. Qed.
+
+Definition aset_map' {A B: Type} `{Countable A} `{Countable B} 
+  (f: A -> B) (s: aset A) : aset B := set_map f s.
+
 
 Definition aset_mem_map {A B: Type} `{A_count: Countable A} `{B_count: Countable B} 
   (f: A -> B) (s: aset A) (y: B):
   aset_mem _ y (aset_map f s) <-> exists x, y = f x /\ aset_mem _ x s.
 Proof.
-  unfold aset_mem, aset_map. rewrite elem_of_map. reflexivity.
+  unfold aset_mem; rewrite aset_map_eq. rewrite elem_of_map. reflexivity.
 Qed.
 
 Lemma map_aset_to_list {A B: Type} `{A_count: Countable A} `{B_count: Countable B} 
@@ -469,7 +555,7 @@ Lemma map_aset_to_list {A B: Type} `{A_count: Countable A} `{B_count: Countable 
   (Hinj: forall x y, aset_mem _ x s -> aset_mem _  y s -> f x = f y -> x = y)   :
   Permutation (map f (aset_to_list _  s)) (aset_to_list _ (aset_map f s)).
 Proof.
-  unfold aset_to_list, aset_map. unfold set_map.
+  unfold aset_to_list; rewrite aset_map_eq. unfold set_map.
   assert  (Hmap: (f <$> elements s) = (map f (elements s))).
   { reflexivity. }
   rewrite Hmap.
@@ -481,7 +567,33 @@ Proof.
 Qed. 
 (*TODO: do we need to prove inverse?*)
 
+(*Tests for computability*)
+(*
+Eval simpl in (aset_is_empty _ (aset_empty _)).
+Eval simpl in (proj_sumbool _ _ (aset_eq_dec _ (aset_singleton _ 2) (aset_singleton _ 2))).
+Eval simpl in (proj_sumbool _ _ (check_asubset _ (aset_singleton _ 2) (aset_union _ (aset_singleton _ 2) 
+  (aset_singleton _ 1)))).
+Eval simpl in (proj_sumbool _ _ (aset_mem_dec _ 1 (aset_union _ (aset_singleton _ 3) (aset_singleton _ 2)))).
+Eval simpl in (proj_sumbool _ _ (aset_mem_dec _ 1 (aset_big_union _ (fun x => aset_singleton _ x) [2;3]))).
+Eval simpl in (proj_sumbool _ _ (check_asubset _ (aset_singleton _ 1) (aset_union _ (aset_singleton _ 3) (aset_singleton _ 1)))).
+Eval simpl in (proj_sumbool _ _ (aset_mem_dec _ 1 (list_to_aset _ [1;2;3]))).
+Eval simpl in (aset_to_list _ (aset_singleton _ 1)). (*NOTE: positives are not unfolded, does this cause problems?*)
+Eval simpl in (proj_sumbool _ _  (aset_mem_dec _ 1 (aset_remove _ 2 (aset_singleton _ 1)))).
+Eval simpl in (proj_sumbool _ _  (aset_mem_dec _ 1 (aset_diff _ (aset_singleton _ 1) (aset_singleton _ 1)))).
+Eval simpl in (proj_sumbool _ _  (aset_mem_dec _ 1 (aset_intersect _ (aset_singleton _ 1) (aset_singleton _ 1)))).
+Eval simpl in (proj_sumbool _ _  (aset_mem_dec _ 1 (aset_filter _ (fun x => x =? 2) (aset_singleton _ 1)))).
+Eval simpl in (aset_forall _ (fun x => x =? 1) (aset_singleton _ 1)). (*NOTE: doesnt simplify because of nats,
+  see if this is problem*)
+Eval simpl in (proj_sumbool _ _ (aset_mem_dec _ 1 (aset_map (fun _ => 2) (aset_singleton _ 2)))).
+Eval cbv in (aset_map (fun x => x) (aset_singleton _ 2)).
+Require Import strings.
 
+Lemma test: aset_map' (fun x => x) (aset_singleton _ "x"%string) = aset_singleton _ "x"%string.
+Proof.
+  cbv.
+  simpl.
+
+*)
 
 End Aset.
 
@@ -806,8 +918,7 @@ Lemma aset_big_union_ext {A B: Type} `{countable.Countable A} (l1 l2: list B)
   aset_big_union f1 l1 = aset_big_union f2 l2.
 Proof.
   revert l2. induction l1 as [| h1 t1 IH]; intros [| h2 t2]; simpl; try discriminate; auto.
-  intros Hlen Hall. inversion Hall; subst.
-  rewrite !aset_big_union_cons. f_equal; auto.
+  intros Hlen Hall. inversion Hall; subst. f_equal; auto.
 Qed. 
 
 (*NOTE: these proofs become much simpler when we can reason by extensionality*)
@@ -836,7 +947,7 @@ Qed.
 Lemma aset_filter_filter {A: Type} `{countable.Countable A} (p1 p2: A -> bool) (s: aset A):
   aset_filter p2 (aset_filter p1 s) = aset_filter (fun x => p1 x && p2 x) s.
 Proof.
-  apply aset_ext. intros. simpl_set. rewrite andb_true. apply and_assoc.
+  apply aset_ext. intros. simpl_set. rewrite andb_true. apply Logic.and_assoc.
 Qed.
 
 Lemma aset_filter_ext {A: Type} `{countable.Countable A} (p1 p2: A -> bool)
@@ -902,8 +1013,8 @@ Proof. reflexivity. Qed.
 (*Much easier to prove this and show rest are corollary*)
 Lemma nodup_map_subset {A B: Type} `{countable.Countable A}
   (f: A -> B) (s1 s2: aset A) (Hsub: asubset s1 s2):
-  NoDup (map f (aset_to_list s2)) ->
-  NoDup (map f (aset_to_list s1)).
+  List.NoDup (map f (aset_to_list s2)) ->
+  List.NoDup (map f (aset_to_list s1)).
 Proof.
   intros Hnodup.
   apply NoDup_map_inj; [| apply aset_to_list_nodup].
@@ -915,8 +1026,8 @@ Qed.
 
 Lemma nodup_map_aset_union_inv {A B: Type} `{countable.Countable A}
   (f: A -> B) (l1 l2: aset A):
-  NoDup (map f (aset_to_list (aset_union l1 l2))) ->
-  NoDup (map f (aset_to_list l1)) /\ NoDup (map f (aset_to_list l2)).
+  List.NoDup (map f (aset_to_list (aset_union l1 l2))) ->
+  List.NoDup (map f (aset_to_list l1)) /\ List.NoDup (map f (aset_to_list l2)).
 Proof.
   intros Hnodup.
   split; revert Hnodup; apply nodup_map_subset; rewrite asubset_def; intros x; simpl_set; auto.
@@ -924,9 +1035,9 @@ Qed.
 
 Lemma nodup_map_aset_big_union_inv {A B C: Type} `{countable.Countable B}
   (f: B -> C) (g: A -> aset B) (l: list A):
-  NoDup (map f (aset_to_list (aset_big_union g l))) ->
+  List.NoDup (map f (aset_to_list (aset_big_union g l))) ->
   forall x, In x l ->
-  NoDup (map f (aset_to_list (g x))).
+  List.NoDup (map f (aset_to_list (g x))).
 Proof.
   intros Hnodup x Hinx.
   revert Hnodup; apply nodup_map_subset. rewrite asubset_def. intros y Hmemy.
@@ -936,7 +1047,7 @@ Qed.
 Lemma nodup_map_aset_union_inv' {A B: Type} `{countable.Countable A} `{countable.Countable B}
   (f: A -> B) (l1 l2: aset A):
   (forall x, ~ (aset_mem x l1 /\ aset_mem x l2)) ->
-  NoDup (map f (aset_to_list (aset_union l1 l2))) ->
+  List.NoDup (map f (aset_to_list (aset_union l1 l2))) ->
   forall x, ~ (aset_mem x (aset_map f l1) /\ aset_mem x (aset_map f l2)).
 Proof.
   intros Hdisj Hnodup. intros x [Hinx1 Hinx2].
@@ -953,7 +1064,7 @@ Lemma nodup_map_aset_big_union_inv' {A B C: Type} `{countable.Countable B} `{cou
 (Hdisj: forall i j, (i < length l) -> (j < length l) ->
   i <> j ->
   forall d x, ~ (aset_mem x (g (List.nth i l d)) /\ aset_mem x (g (List.nth j l d)))):
-NoDup (map f (aset_to_list (aset_big_union g l))) ->
+List.NoDup (map f (aset_to_list (aset_big_union g l))) ->
 forall i j, (i < length l) -> (j < length l) -> i <> j ->
 forall d x, ~(aset_mem x (aset_map f (g (List.nth i l d))) /\ 
   aset_mem x (aset_map f (g (List.nth j l d)))).
@@ -973,9 +1084,9 @@ Qed.
 
 (*We do need sublist in a few places e.g. for NoDups*)
 Lemma sublist_aset_to_list {A : Type} `{countable.Countable A} {s1 s2: aset A}:
-  sublist (aset_to_list s1) (aset_to_list s2) <-> asubset s1 s2.
+  CommonList.sublist (aset_to_list s1) (aset_to_list s2) <-> asubset s1 s2.
 Proof.
-  unfold sublist. rewrite asubset_def.
+  unfold CommonList.sublist. rewrite asubset_def.
   setoid_rewrite aset_to_list_in. reflexivity.
 Qed.
 
@@ -989,6 +1100,145 @@ Proof.
   simpl_set. exists x; auto.
 Qed.
 
+Lemma check_asubset_prop {A: Type} `{countable.Countable A} {s1 s2: aset A}:
+  check_asubset s1 s2 ->
+  asubset s1 s2.
+Proof.
+  destruct (check_asubset s1 s2); auto. discriminate.
+Qed.
+
+Lemma is_empty_empty {A: Type} `{countable.Countable A} (s: aset A):
+  aset_is_empty s ->
+  s = aset_empty.
+Proof.
+  intros Hemp. apply aset_ext. intros x.
+  split; intros Hmem; simpl_set.
+  apply aset_is_empty_mem with (x:=x) in Hemp; contradiction.
+Qed.
+
+Lemma aset_to_list_to_aset_eq {A: Type} `{countable.Countable A} {s: aset A}:
+  list_to_aset (aset_to_list s) = s.
+Proof.
+  apply aset_ext.
+  intros x.
+  simpl_set. reflexivity.
+Qed.
+
+Lemma sublist_asubset {A: Type} `{countable.Countable A} {l1 l2: list A}:
+  CommonList.sublist l1 l2 <-> asubset (list_to_aset l1) (list_to_aset l2).
+Proof.
+  rewrite asubset_def. unfold CommonList.sublist.
+  setoid_rewrite aset_mem_list_to_aset. auto.
+Qed.
+
+Lemma asubset_big_union_map {A B: Type} `{countable.Countable A} 
+  (f: B -> aset A) (l: list B) (g: B -> B):
+  List.Forall (fun x => asubset (f (g x)) (f x)) l ->
+  asubset (aset_big_union f (map g l)) (aset_big_union f l).
+Proof.
+  rewrite Forall_forall. intros Hall.
+  rewrite asubset_def. intros x. simpl_set.
+  setoid_rewrite in_map_iff.
+  intros [y [[x1 [Hy Hinx1]] Hmemy]]. subst.
+  specialize (Hall _ Hinx1). rewrite asubset_def in Hall.
+  eauto.
+Qed.
+
+Lemma asubset_remove {A: Type} `{countable.Countable A}
+  v (l1 l2: aset A):
+  asubset l1 l2 ->
+  asubset (aset_remove v l1) (aset_remove v l2).
+Proof.
+  rewrite !asubset_def; intros Hsub x. simpl_set. intros; destruct_all; split; auto.
+Qed.
+
+Lemma asubset_diff  {A: Type} `{countable.Countable A}
+  (l1 l2 l3: aset A):
+  asubset l2 l3 ->
+  asubset (aset_diff l1 l2) (aset_diff l1 l3).
+Proof.
+  rewrite !asubset_def; intros Hsub x. simpl_set. intros; destruct_all; auto.
+Qed.
+
+Ltac solve_asubset :=
+  repeat match goal with
+  | |- asubset ?x ?x => apply asubset_refl
+  | |- asubset (aset_union ?l1 ?l2) (aset_union ?l3 ?l4) =>
+    apply asubset_union; auto
+  | |- asubset (aset_remove ?x ?l1) (aset_remove ?x ?l2) =>
+    apply asubset_remove; auto
+  | |- asubset (aset_big_union ?f (map ?g ?l)) (aset_big_union ?f ?l) =>
+    apply asubset_big_union_map; auto
+  | |- asubset (aset_diff ?l1 ?l2) (aset_diff ?l1 ?l3) =>
+    apply asubset_diff; auto 
+  | H: Forall ?P (map ?f ?l) |- Forall ?Q ?l => rewrite Forall_map in H; 
+    revert H; apply Forall_impl; auto; simpl; intros
+  | |- Forall ?P ?l => rewrite Forall_forall; auto; simpl; intros; simpl
+  end. 
+
+
+Lemma disj_asubset2 {A: Type} `{countable.Countable A} (l1 l2 l3: aset A):
+  asubset l1 l2 ->
+  aset_disj l2 l3 ->
+  aset_disj l1 l3.
+Proof.
+  rewrite asubset_def, !aset_disj_equiv. intros Hsub Hdisj x [Hinx1 Hinx2].
+  apply (Hdisj x); auto.
+Qed.
+
+Lemma disj_aset_disj_map {A B: Type} `{countable.Countable A} `{countable.Countable B} (f: A -> B) (l1 l2: list A):
+  disj (map f l1) (map f l2) <-> aset_disj (aset_map f (list_to_aset l1)) (aset_map f (list_to_aset l2)).
+Proof.
+  rewrite aset_disj_equiv. unfold disj.
+  setoid_rewrite in_map_iff.
+  setoid_rewrite aset_mem_map.
+  setoid_rewrite aset_mem_list_to_aset.
+  setoid_rewrite (eq_sym_iff (f _)).
+  reflexivity.
+Qed.
+
+Lemma disj_asubset {A: Type} `{countable.Countable A} {l1 l2 l3: aset A}:
+  aset_disj l1 l2 ->
+  asubset l3 l2 ->
+  aset_disj l1 l3.
+Proof.
+  rewrite !aset_disj_equiv, asubset_def; intros Hsub Hdisj x [Hinx1 Hinx2].
+  apply (Hsub x); split; auto.
+Qed.
+
+
+(*
+Eval simpl in (aset_mem_dec 1  (aset_union (aset_singleton 2) aset_empty)).
+
+
+Lemma test: aset_mem_dec 2 (aset_union (aset_singleton 2) aset_empty) = true.
+Proof.
+  simpl. unfold aset_mem.
+  Locate elem_of. About elem_of. About stdpp.base.elem_of. unfold elem_of.
+  About gset_elem_of. unfold gset_elem_of. cbn. simpl.
+  About mapset.mapset_elem_of .
+  unfold mapset.mapset_elem_of . cbn. simpl.
+  About gmap_lookup. cbn. simpl.
+  unfold gmap_lookup. simpl.
+
+
+stdpp.base.elem_of
+ repeat (simpl; cbn).
+  unfold elem_of. cbn. unfold gset_elem_of. unfold mapset.mapset_elem_of. cbn.
+  simpl. cbn. simpl. unfold gmap_lookup.
+
+
+ Locate mapset.mapset_elem_of.
+  unfold mapset.mapset_elem_of . simpl. unfold mapset.mapset_car. simpl.
+  unfold gmap_lookup. simpl.
+  Locate gmap_lookup.
+
+ simpl. Locate gset_elem_of. simpl.
+
+ simpl. *)
+
+
+(* Eval simpl in (aset_mem 2 (aset_union (aset_singleton 2) aset_empty)). *)
 
 
 (* 

@@ -157,6 +157,9 @@ with fmla_vars (f: formula) : aset vsymbol :=
   | Fmatch t ty l => aset_union (tm_vars t) (aset_big_union (fun x => aset_union (pat_fv (fst x)) (fmla_vars (snd x))) l)
   end.
 
+Opaque aset_union.
+Opaque aset_big_union.
+
 
 (*TODO: make sure works*)
 Lemma vars_eq (t: term) (f: formula):

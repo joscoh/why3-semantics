@@ -577,10 +577,10 @@ Proof.
   induction l as [| h t IH]; auto.
   simpl.
   apply length_concat_mult.
-  - rewrite !map_length. auto.
+  - rewrite !length_map. auto.
   - rewrite Forall_forall. intros x.
     rewrite in_map_iff. intros [b [Hx Hinb]]; subst.
-    rewrite map_length. auto.
+    rewrite length_map. auto.
 Qed.
 
 Lemma choose_all_null {B: Type} (l: list (list B)):
@@ -718,9 +718,9 @@ Lemma expand_pat_length p:
   length (expand_pat p) = expand_size_pat p.
 Proof.
   induction p; simpl; auto.
-  - rewrite map_length, choose_all_length.
+  - rewrite length_map, choose_all_length.
     f_equal. rewrite !map_map. apply map_ext_Forall; auto.
-  - rewrite app_length; lia.
+  - rewrite length_app; lia.
 Qed.
 
 Lemma expand_pat_list_length l:
@@ -729,17 +729,17 @@ Proof.
   induction l as [| p ps IH]; auto.
   rewrite expand_pat_list_cons, expand_size_pat_list_cons.
   apply length_concat_mult.
-  - rewrite map_length, expand_pat_length. reflexivity.
+  - rewrite length_map, expand_pat_length. reflexivity.
   - rewrite Forall_forall. intros x.
     rewrite in_map_iff. intros [p1 [Hx Hinp1]]; subst.
-    rewrite map_length. auto.
+    rewrite length_map. auto.
 Qed.
 
 Lemma expand_full_length rl:
   length (expand_full rl) = expand_size rl.
 Proof.
   induction rl as [| rhd rtl IH]; auto.
-  rewrite expand_full_cons, expand_size_cons, app_length, IH. f_equal.
+  rewrite expand_full_cons, expand_size_cons, length_app, IH. f_equal.
   apply expand_pat_list_length.
 Qed.
 
@@ -1114,9 +1114,9 @@ Qed.
 Lemma combinewith_cons_length {B: Type} (x: list B) (l: list (list B)):
   length (combinewith cons x l) =  (length x) * (length l).
 Proof.
-  unfold combinewith. rewrite length_concat. rewrite !map_map.
+  unfold combinewith. rewrite CommonList.length_concat. rewrite !map_map.
   erewrite map_ext.
-  2: { intros. rewrite map_length. reflexivity. }
+  2: { intros. rewrite length_map. reflexivity. }
   rewrite map_const.
   apply sum_repeat.
 Qed. 
@@ -1141,7 +1141,7 @@ Proof.
   apply Permutation_map. auto.
 Qed.
 
-Lemma expand_pat_list_rev_length (l: list pattern) :
+Lemma expand_pat_list_length_rev (l: list pattern) :
   length (expand_pat_list (rev l)) = length (expand_pat_list l).
 Proof.
   apply expand_pat_list_length_perm. apply Permutation_sym. apply Permutation_rev.
@@ -1153,9 +1153,9 @@ Lemma pat_list_list_size_rev n l:
 Proof.
   induction l; simpl; auto.
   rewrite expand_pat_list_cons, expand_pat_list_app, combinewith_cons_app,
-    !pat_list_list_size_combinewith_app, !map_length, <- IHl, !expand_pat_list_cons, expand_pat_list_nil.
+    !pat_list_list_size_combinewith_app, !length_map, <- IHl, !expand_pat_list_cons, expand_pat_list_nil.
   unfold combinewith; simpl.
-  rewrite concat_map_singleton, !map_length, expand_pat_list_rev_length.
+  rewrite concat_map_singleton, !length_map, expand_pat_list_length_rev.
   lia.
 Qed.
 
@@ -1187,7 +1187,7 @@ Proof.
   rewrite expand_size_pat_list_cons, !compile_size_cons. simpl.
   rewrite expand_pat_list_cons, expand_pat_list_app, pat_list_list_size_combinewith_app, 
     combinewith_cons_app. simpl.
-  rewrite !map_map, pat_list_list_size_combinewith_app, map_length.
+  rewrite !map_map, pat_list_list_size_combinewith_app, length_map.
   fold (expand_pat_list l0).
   (*Main result we need)*)
   assert (Hconstrbound: Datatypes.length (expand_pat_list ptl) * pat_list_list_size n (expand_pat_list ( l0)) + n <=
@@ -1217,7 +1217,7 @@ Proof.
     assert (length (expand_pat_list ptl) >= 1); [|nia].
     pose proof (expand_pat_list_null ptl); destruct (expand_pat_list ptl); simpl; [discriminate | lia].
   }
-  rewrite expand_pat_list_rev_length, pat_list_list_size_rev.
+  rewrite expand_pat_list_length_rev, pat_list_list_size_rev.
   lia.
 Qed.
 
@@ -2232,9 +2232,7 @@ Qed.
 
 Lemma tmlist_vars_cons t tms: tmlist_vars (t :: tms) =
   aset_union (aset_union (tm_fv (fst t)) (list_to_aset (tm_bnd (fst t)))) (tmlist_vars tms).
-Proof. unfold tmlist_vars; simpl.
-  rewrite aset_big_union_cons. reflexivity.
-Qed.
+Proof. reflexivity. Qed.
 
 Lemma pat_mx_fv_app x p1 p2:
   aset_mem x (pat_mx_fv (p1 ++ p2)) <-> aset_mem x (pat_mx_fv p1) \/ aset_mem x (pat_mx_fv p2).
@@ -2247,6 +2245,8 @@ Lemma pat_mx_act_vars_app x p1 p2:
 Proof.
   unfold pat_mx_act_vars. rewrite aset_big_union_app. simpl_set_small. reflexivity.
 Qed. 
+
+Opaque aset_union.
 
 Lemma compile_fv_simplify (tms: list (term * vty)) (P: list (list pattern * A)) t ty:
   forall x, 
@@ -2270,15 +2270,14 @@ Proof.
   {
     clear IH. destruct rhd as [ps a]. simpl.
     destruct ps as [| phd ptl]; simpl. 
-    { simpl_set_small; simpl; intros; destruct_all; auto. unfold pat_mx_act_vars in *; simpl_set_small;
-      destruct_all; auto.
+    { simpl_set_small; simpl; intros; destruct_all; auto. 
     }
     unfold row_fv; simpl. simpl_set_small.
     generalize dependent a.
     induction phd; simpl; intros a;
     try solve[ unfold pat_mx_fv, pat_mx_act_vars; simpl_set_small; unfold row_fv; simpl;
       simpl_set_small; simpl;  try(rewrite a_let_vars); intros; destruct_all; auto;
-      try (rewrite aset_big_union_nil in *); exfalso; eapply aset_mem_empty; eauto]. 
+      try (rewrite aset_big_union_nil in *); exfalso; eapply aset_mem_empty; eauto].
     - (*Por*)
       unfold pat_mx_fv in *. 
       rewrite !map_app, !aset_big_union_app; simpl_set_small.
@@ -2303,7 +2302,6 @@ Proof.
     clear -a_let_vars. destruct rhd as [ps a]. simpl.
     destruct ps as [| phd ptl]; simpl. 
     { simpl_set_small; simpl. intros; destruct_all; auto.
-      unfold pat_mx_act_vars; simpl_set_small; auto.
     }
     unfold row_fv; simpl. simpl_set_small.
     generalize dependent a.
@@ -2329,12 +2327,12 @@ Proof.
   (*Now we can solve this (by lots of cases)*)
   destruct IH as [IH1 IH2]; split.
   - unfold pat_mx_fv at 1; unfold pat_mx_act_vars at 1;
-    unfold pat_mx_fv at 1 in IH1. rewrite !aset_big_union_cons. simpl_set_small.
+    unfold pat_mx_fv at 1 in IH1. simpl_set_small.
     intros; destruct_all; auto;
     (forward Hsingle2; [solve[auto]|]) +
     (forward IH1; [solve[auto]|]);
     repeat (destruct_all; simpl_set_small; auto).
-  - unfold pat_mx_fv at 3. unfold pat_mx_act_vars at 3. rewrite !aset_big_union_cons.
+  - unfold pat_mx_fv at 3. unfold pat_mx_act_vars at 3.
     simpl_set_small.
     intros; destruct_all; auto;
     (forward Hsingle1; [solve[auto]|]) +

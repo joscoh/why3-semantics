@@ -29,7 +29,7 @@ Proof.
   apply valid_context_wf, wf_context_full in gamma_valid.
   destruct gamma_valid as [_ [_ Hn]].
   apply (Permutation_NoDup (idents_of_context_split gamma)) in Hn.
-  apply NoDup_app in Hn. destruct Hn as [Hn _].
+  apply NoDup_app_impl in Hn. destruct Hn as [Hn _].
   rewrite map_concat_map in Hn.
   apply @NoDup_map_in with (x1:=c1)(x2:=c2) in Hn; auto.
   - rewrite in_concat. exists (funsyms_of_def (datatype_def m1)).
@@ -1031,7 +1031,7 @@ Proof.
     destruct Hiny as [[tm v] [Hy Hintmv]]. simpl in Hy; subst.
     apply in_map2 with (d1:=Pwild)(d2:=id_fs) in Hintmv.
     destruct Hintmv as [i [Hi1 [Hi2 Hyv]]].
-    rewrite map_length in Hi1.
+    rewrite length_map in Hi1.
     rewrite map_nth_inbound with (d2:=vs_d) in Hyv; auto.
     inversion Hyv; subst; clear Hyv. simpl in Hinx.
     simpl_set. destruct Hinx as [Hinx | []]; auto.
@@ -1053,7 +1053,7 @@ Proof.
       exists i. split. auto. reflexivity.
     }
     (*Know has to be var*)
-    rewrite map_length in Hi.
+    rewrite length_map in Hi.
     rewrite map_nth_inbound with (d2:=vs_d) in Hinxp |- *; auto. simpl.
     destruct Hinxp as [Heq | []]; subst; auto.
 Qed.  *)
@@ -1491,7 +1491,7 @@ Lemma var_pattern_var_types {gamma m a args} {c vs tys}
 Proof.
   destruct (constr_pattern_is_constr gamma_valid m_in a_in Hp) as [c_in Htys]; subst.
   inversion Hp; subst.
-  rewrite map_length in H6.
+  rewrite length_map in H6.
   apply list_eq_ext'; [unfold ty_subst_list; solve_len | simpl_len].
   intros n d Hn. 
   specialize (H9 (Pvar (nth n vs vs_d), nth n (ty_subst_list (s_params c) args (s_args c)) d));
@@ -1773,7 +1773,7 @@ Proof.
   intros Hval. apply valid_context_wf, wf_context_full in Hval.
   destruct Hval as [_ [_ Hnodup]].
   apply (Permutation_NoDup (idents_of_context_split gamma)) in Hnodup.
-  repeat (apply NoDup_app in Hnodup; destruct Hnodup as [_ Hnodup]).
+  repeat (apply NoDup_app_impl in Hnodup; destruct Hnodup as [_ Hnodup]).
   induction gamma as [| d1 gamma IH]; simpl in *; auto. constructor.
   rewrite NoDup_app_iff' in Hnodup. destruct Hnodup as [Hn1 [Hn2 Hdisj]].
   destruct d1; simpl in *; auto.
@@ -2373,7 +2373,7 @@ Proof.
       assert (Hlen: length l = length (s_args c)).
       {
         unfold vsymbol in *.
-        rewrite <- (map_length snd l), Hsndl. unfold ty_subst_list. solve_len.
+        rewrite <- (length_map snd l), Hsndl. unfold ty_subst_list. solve_len.
       }
       apply T_Fun'.
       - apply new_in_sig_f_new_gamma_gen. left. exists m; exists a; exists c; auto.
@@ -2381,7 +2381,7 @@ Proof.
       - simpl. apply new_ctx_valid_type. apply (constr_ret_valid' gamma_valid m_in a_in c_in).
       - simpl. solve_len.
       - simpl. rewrite (adt_constr_params gamma_valid m_in a_in c_in); auto.
-      - simpl. rewrite Forall_forall. intros x. rewrite in_combine_iff; rewrite !map_length; auto.
+      - simpl. rewrite Forall_forall. intros x. rewrite in_combine_iff; rewrite !length_map; auto.
         intros [i [Hi Hx]]. specialize (Hx tm_d vty_int); subst; simpl.
         rewrite map_nth_inbound with (d2:=vs_d); auto.
         apply T_Var'; auto.
@@ -2470,7 +2470,7 @@ Proof.
   assert (Hlen: length vs = length (get_proj_list badnames c)).
   {
     unfold get_proj_list. rewrite projection_syms_length.
-    inversion Hty; rewrite <-(map_length Pvar); auto.
+    inversion Hty; rewrite <-(length_map Pvar); auto.
   }
   (*Idea: just prove sublist of the particular element we care about*)
   apply sublist_trans with (l2:=
@@ -2997,7 +2997,7 @@ Proof.
   assert (Hlen: length vs = length (get_proj_list badnames c)).
   {
     inversion Hallty; subst. unfold get_proj_list.
-    rewrite projection_syms_length,<- (map_length Pvar); auto.
+    rewrite projection_syms_length,<- (length_map Pvar); auto.
   }
   replace (map snd (map2 _ _ _)) with vs.
   2: {
@@ -3028,7 +3028,7 @@ Proof.
   intros t. rewrite in_map_iff.
   intros [[t' v1] [Ht Hintv]]; simpl in Ht; subst t'.
   rewrite in_map2_iff with (d1:=Pwild)(d2:=id_fs) in Hintv by solve_len.
-  destruct Hintv as [i [Ht Htv]]. rewrite map_length in Ht.
+  destruct Hintv as [i [Ht Htv]]. rewrite length_map in Ht.
   rewrite map_nth_inbound with (d2:=vs_d) in Htv; auto.
   inversion Htv; subst; clear Htv.
   simpl.
@@ -3543,7 +3543,7 @@ Proof.
   apply simpl_constr_get_vars in Hsimp.
   destruct Hsimp as [vars Hps]; subst.
   destruct Hintv as [i [Hi Htv]].
-  rewrite map_length in Hi.
+  rewrite length_map in Hi.
   rewrite map_nth_inbound with (d2:=vs_d) in Htv; auto.
   inversion Htv; subst; clear Htv.
   simpl in Hinfs.
@@ -3558,7 +3558,7 @@ Proof.
     exists m. exists a. exists c. split_all; auto.
     apply nth_In. rewrite projection_syms_length.
     inversion Hty; subst; auto.
-    rewrite map_length in *. lia.
+    rewrite length_map in *. lia.
   - apply Ht1' in Hinfs. destruct_all; auto.
 Qed. 
 
@@ -4029,7 +4029,7 @@ Proof.
     apply simpl_constr_get_vars in Hsimp.
     destruct Hsimp as [vars Hps]; subst.
     destruct Hintv as [i [Hi Htv]].
-    rewrite map_length in Hi.
+    rewrite length_map in Hi.
     rewrite map_nth_inbound with (d2:=vs_d) in Htv; auto.
     inversion Htv; subst; clear Htv.
     simpl in Hinp.
@@ -5672,7 +5672,7 @@ Proof.
           clear; induction (typs m); simpl; auto; f_equal; auto.
         }
         unfold idents_of_def in H5. simpl in H5.
-        apply NoDup_app in H5; apply H5.
+        apply NoDup_app_impl in H5; apply H5.
       * rewrite map_map. simpl. rewrite concat_map_nil. constructor.
 Qed.
 

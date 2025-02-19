@@ -3,10 +3,12 @@ Require Export Coq.ZArith.BinInt.
 Require Export Coq.Arith.PeanoNat.
 Require Export Lia.
 
+
 Require Export Common.
 From HB Require Import structures.
 From mathcomp Require Import all_ssreflect.
 Set Bullet Behavior "Strict Subproofs".
+Require countable strings.
 
 (*Type variable (ex: a)*)
 Definition typevar : Set := string. 
@@ -215,28 +217,27 @@ Proof. unfold base.RelDecision. apply vty_eq_dec. Defined.
 (*Idea: map to [gen_tree]*)
 
 (*Silly to write it this way but easier for Countable*)
-Definition vty_nonind := ((unit + unit)%type + typevar)%type.
+Definition vty_nonind := (((unit + unit)%type + typevar) + typesym)%type.
 
 Fixpoint vty_to_gen_tree (v: vty) : countable.gen_tree vty_nonind :=
   match v with
-  | vty_int => countable.GenLeaf (inl (inl tt))
-  | vty_real => countable.GenLeaf (inl (inr tt))
-  | vty_var v => countable.GenLeaf (inr v)
-  | vty_cons ts tys => countable.GenNode (Pos.to_nat (countable.encode ts)) (map vty_to_gen_tree tys)
+  | vty_int => countable.GenLeaf (inl (inl (inl tt)))
+  | vty_real => countable.GenLeaf (inl (inl (inr tt)))
+  | vty_var v => countable.GenLeaf (inl (inr v))
+  | vty_cons ts tys => countable.GenNode 0 (countable.GenLeaf (inr ts) :: (map vty_to_gen_tree tys))
   end.
 
-
 Definition fold_list_option {A: Type} (l: list (option A)) : option (list A) :=
-  fold_right (fun x acc => option_bind x (fun h => option_bind acc (fun t => Some (h :: t)))) (Some nil) l.
+  fold_right (fun x acc => CommonOption.option_bind x (fun h => CommonOption.option_bind acc (fun t => Some (h :: t)))) (Some nil) l.
 
 Fixpoint gen_tree_to_vty (g: countable.gen_tree vty_nonind) : option vty :=
   match g with
-  | countable.GenLeaf (inl (inl _)) => Some vty_int
-  | countable.GenLeaf (inl (inr _)) => Some vty_real
-  | countable.GenLeaf (inr v) => Some (vty_var v)
-  | countable.GenNode n ts =>
-      option_bind (countable.decode (Pos.of_nat n)) (fun (t: typesym) =>
-        option_bind (fold_list_option (map gen_tree_to_vty ts)) (fun l => Some (vty_cons t l)))
+  | countable.GenLeaf (inl (inl (inl _))) => Some vty_int
+  | countable.GenLeaf (inl (inl (inr _))) => Some vty_real
+  | countable.GenLeaf (inl (inr v)) => Some (vty_var v)
+  | countable.GenNode 0 (countable.GenLeaf (inr ts) :: xs) => 
+    CommonOption.option_bind (fold_list_option (map gen_tree_to_vty xs)) (fun l => Some (vty_cons ts l))
+  | _ => None
   end.
 
 (*Prove the partial injection*)
@@ -244,8 +245,6 @@ Lemma vty_to_gen_tree_inj: forall x,
   gen_tree_to_vty (vty_to_gen_tree x) = Some x.
 Proof.
   intros ty. induction ty; simpl; auto.
-  rewrite -> Pos2Nat.id, countable.decode_encode.
-  simpl.
   assert (Hvs: (fold_list_option [seq gen_tree_to_vty i | i <- [seq vty_to_gen_tree i | i <- vs]]) = (Some vs)).
   { induction vs as [| h t IH]; simpl; auto. inversion H as [| ? ? Heq Ht]; subst; auto.
     rewrite Heq. simpl. rewrite IH; auto.
@@ -465,9 +464,9 @@ Lemma ty_subst_s_cons: forall (vs: list typevar) (ts: list Types.sort)
 Proof.
   intros. unfold ty_subst_list_s, ty_subst_s, v_subst. simpl. apply sort_inj; simpl.
   f_equal.
-  apply list_eq_ext'; rewrite !map_length; auto.
+  apply list_eq_ext'; rewrite !length_map; auto.
   intros n d Hn. rewrite -> !(map_nth_inbound) with (d2:=d) by auto.
-  rewrite -> (map_nth_inbound) with (d2:=s_int) by (rewrite map_length; auto).
+  rewrite -> (map_nth_inbound) with (d2:=s_int) by (rewrite length_map; auto).
   rewrite -> (map_nth_inbound) with (d2:=d) by auto.
   reflexivity.
 Qed.
@@ -509,9 +508,9 @@ Lemma map_ty_subst_var (vars: list typevar) (vs2: list vty):
   map (ty_subst vars vs2) (map vty_var vars) = vs2.
 Proof.
   intros.
-  apply list_eq_ext'; rewrite !map_length; auto.
+  apply list_eq_ext'; rewrite !length_map; auto.
   intros n d Hn.
-  rewrite -> map_nth_inbound with (d2:=vty_int); [|rewrite map_length; auto].
+  rewrite -> map_nth_inbound with (d2:=vty_int); [|rewrite length_map; auto].
   rewrite -> map_nth_inbound with (d2:=EmptyString); auto.
   unfold ty_subst. simpl. apply ty_subst_fun_nth; auto.
 Qed.
@@ -526,7 +525,7 @@ Proof.
   unfold sorts_to_tys at 1.
   rewrite <- !map_comp.
   pose proof (map_ty_subst_var vars (sorts_to_tys srts) 
-    (ltac:(rewrite map_length; auto)) H0).
+    (ltac:(rewrite length_map; auto)) H0).
   rewrite <- map_comp in H1.
   unfold "\o" in *. simpl in *. 
   auto.
@@ -539,7 +538,7 @@ Proof.
   induction t; simpl in *; auto.
   - unfold is_sort in Ht. simpl in Ht.
     rewrite aset_singleton_not_empty in Ht. discriminate.
-  - f_equal. apply list_eq_ext'; [rewrite map_length|]; auto; intros.
+  - f_equal. apply list_eq_ext'; [rewrite length_map|]; auto; intros.
     rewrite -> map_nth_inbound with (d2:=d); auto.
     rewrite Forall_nth in H. apply H; auto.
     apply (is_sort_cons _ _ Ht). apply nth_In; auto.
@@ -603,7 +602,7 @@ Proof.
   - unfold sorts_to_tys.
     rewrite -> map_nth_inbound with(d2:=s_int); auto.
     rewrite Hlen; auto.
-  - unfold sorts_to_tys. rewrite map_length. auto.
+  - unfold sorts_to_tys. rewrite length_map. auto.
 Qed.
 
 Lemma v_ty_subst_eq (params: list typevar) (srts: list sort)
@@ -648,9 +647,9 @@ Lemma v_subst_cons {f} ts vs:
   typesym_to_sort ts (map (v_subst f) vs).
 Proof.
   apply sort_inj. simpl.
-  f_equal. apply list_eq_ext'; rewrite !map_length; auto.
+  f_equal. apply list_eq_ext'; rewrite !length_map; auto.
   intros n d Hn.
-  rewrite -> !map_nth_inbound with (d2:=s_int); [|rewrite map_length; auto].
+  rewrite -> !map_nth_inbound with (d2:=s_int); [|rewrite length_map; auto].
   rewrite -> !map_nth_inbound with (d2:=vty_int); auto.
 Qed.
 
@@ -663,7 +662,7 @@ Proof.
   induction ty; simpl; auto.
   rewrite <- subst_is_sort_eq; auto.
   f_equal. rewrite <- map_comp.
-  apply list_eq_ext'; rewrite !map_length; auto.
+  apply list_eq_ext'; rewrite !length_map; auto.
   intros n d Hn.
   rewrite -> !map_nth_inbound with (d2:=vty_int); auto.
   rewrite Forall_forall in H. apply H.
@@ -696,7 +695,7 @@ Proof.
   generalize dependent tys.
   induction params as [| phd ptl IH]; simpl; [intros ? Hex; apply aset_mem_empty in Hex; contradiction|];
   intros [| thd ttl]; [simpl; intros Hex; apply aset_mem_empty in Hex; contradiction|].
-  simpl. rewrite aset_big_union_cons aset_mem_union. destruct (typevar_eq_dec y phd); subst; simpl; auto.
+  simpl. rewrite aset_mem_union. destruct (typevar_eq_dec y phd); subst; simpl; auto.
 Qed.
 
 End TySubstLemmas.
@@ -735,15 +734,15 @@ Proof.
   induction ty; simpl; auto.
   - destruct (in_dec typevar_eq_dec v params1).
     + destruct (In_nth _ _ EmptyString i) as [j [Hj Hv]]; subst.
-      rewrite -> !ty_subst_fun_nth with (s:=s_int); auto; [| rewrite map_length; auto].
+      rewrite -> !ty_subst_fun_nth with (s:=s_int); auto; [| rewrite length_map; auto].
       rewrite -> map_nth_inbound with(d2:=vty_int); [| rewrite <- Hlen1; auto].
       reflexivity.
     + rewrite !ty_subst_fun_notin; auto. 
   - f_equal.
-    apply list_eq_ext'; rewrite !map_length; auto.
+    apply list_eq_ext'; rewrite !length_map; auto.
     intros n d Hn'.
     rewrite -> !map_nth_inbound with (d2:=vty_int); auto;
-    [| rewrite map_length; auto].
+    [| rewrite length_map; auto].
     rewrite Forall_forall in H. apply H. apply nth_In; auto.
 Qed.
 

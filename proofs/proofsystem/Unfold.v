@@ -38,52 +38,6 @@ with find_fun_app_f (f1: formula) : list (list vty * list term) :=
   | _ => nil
   end.
 
-(*TODO: move*)
-Definition list_to_amap {A B: Type} `{countable.Countable A} (l: list (A * B)) : amap A B :=
-  fold_right (fun x acc => amap_set acc (fst x) (snd x)) amap_empty l.
-
-Lemma list_to_amap_lookup {A B: Type} `{countable.Countable A} (l: list (A * B)) (Hn: NoDup (map fst l)) x y:
-  amap_lookup (list_to_amap l) x = Some y <-> In (x, y) l.
-Proof.
-  induction l as [| [x1 y1] t IH]; simpl.
-  - rewrite amap_empty_get. split; try discriminate; contradiction.
-  - inversion Hn as [| ? ? Hnotin Hn']; subst.
-    destruct (EqDecision0 x x1); subst.
-    + rewrite amap_set_lookup_same. split.
-      * intros Hsome; inversion Hsome; auto.
-      * intros [Heq | Hint]; [inversion Heq; subst; auto|].
-        exfalso; apply Hnotin. rewrite in_map_iff; exists (x1, y); auto.
-    + rewrite amap_set_lookup_diff by auto. rewrite IH by auto.
-      split; auto.
-      intros [Heq | Hint]; auto; inversion Heq; subst; contradiction.
-Qed.
-
-(*TODO: prove, and move*)
-Lemma amap_set_size_in {A B: Type} `{countable.Countable A} (m: amap A B) (x: A) (y: B):
-  amap_mem x m ->
-  amap_size (amap_set m x y) = amap_size m.
-Proof.
-Admitted.
-
-Lemma amap_set_size_notin {A B: Type} `{countable.Countable A} (m: amap A B) (x: A) (y: B):
-  amap_mem x m = false ->
-  amap_size (amap_set m x y) = 1 + amap_size m.
-Proof.
-Admitted.
-
-
-(*TODO: move*)
-Lemma list_to_amap_size {A B: Type} `{countable.Countable A} (l: list (A * B)) (Hn: NoDup (map fst l)):
-  amap_size (list_to_amap l) = length l.
-Proof.
-  induction l as [| [x1 y1] t IH]; simpl; [reflexivity|].
-  inversion Hn; subst.
-  destruct (amap_mem x1 (list_to_amap t)) eqn : Hmem.
-  - (*contradicts uniqueness*) 
-    rewrite amap_mem_spec in Hmem. destruct (amap_lookup (list_to_amap t) x1) as [y2|] eqn : Hlook; [|discriminate].
-    apply list_to_amap_lookup in Hlook; auto. exfalso. apply H2. rewrite in_map_iff. exists (x1, y2); auto.
-  - rewrite amap_set_size_notin; auto.
-Qed.
 
 Definition sub_body_t (args: list vsymbol) (body: term) tys tms :=
   safe_sub_ts (list_to_amap (combine (map (ty_subst_var (s_params f) tys) args) tms)) 
@@ -103,32 +57,6 @@ Definition unfold_f_aux (f1: formula) (args: list vsymbol) (body: term) :=
     unfold_f_single_aux acc args body x) (find_fun_app_f f1) f1.
 
 End FindFun.
-
-(*TODO: move*)
-Lemma aset_to_list_to_aset {A: Type} `{countable.Countable A} {s: aset A}:
-  list_to_aset (aset_to_list s) = s.
-Proof.
-  apply aset_ext.
-  intros x.
-  simpl_set. reflexivity.
-Qed.
-
-(*TODO: move*)
-Lemma sublist_asubset {A: Type} `{countable.Countable A} {l1 l2: list A}:
-  sublist l1 l2 <-> asubset (list_to_aset l1) (list_to_aset l2).
-Proof.
-  rewrite asubset_def. unfold sublist.
-  setoid_rewrite aset_mem_list_to_aset. auto.
-Qed.
-
-(*TODO: move delete, copied from MatchSimpl*)
-Lemma forall_combine_map_r {A B C: Type} (f: B -> C) (P: A * C -> Prop) (l1: list A) (l2: list B):
-  Forall P (combine l1 (map f l2)) <-> Forall (fun x => P (fst x, f (snd x))) (combine l1 l2).
-Proof.
-  revert l2. induction l1 as [| h1 t1 IH]; intros [| h2 t2]; simpl;
-  try solve[split; intros; constructor].
-  split; intros Hall; inversion Hall; subst; constructor; auto; apply IH; auto.
-Qed.
 
 Lemma val_with_args_lookup {gamma} (gamma_valid: valid_context gamma)
   (pd: pi_dom) (pdf: pi_dom_full gamma pd) 
@@ -173,7 +101,6 @@ Proof.
   subst Heq. apply term_rep_irrel.
 Qed.
 
-
 (*The theorem we want: substituting the types and terms into the
   function body is the same as evaluating the function on the arguments*)
 Theorem sub_body_t_rep {gamma} (gamma_valid: valid_context gamma)
@@ -201,7 +128,7 @@ Proof.
     inversion Hty2; subst; auto.
   }
   assert (Hmaplen: length (map (v_subst vt) tys) = length (s_params f)). {
-    rewrite map_length; auto.
+    rewrite length_map; auto.
   }
   rewrite (Hfuns f args body f_in (map (v_subst vt) tys) Hmaplen
   (fun_arg_list pd vt f tys tms (term_rep gamma_valid pd pdf vt pf vv) Hty2) vt vv).
@@ -224,7 +151,7 @@ Proof.
     rewrite amap_Forall_forall. intros x y Hlookup.
     rewrite list_to_amap_lookup in Hlookup; auto.
     rewrite in_combine_iff in Hlookup; [|solve_len].
-    rewrite map_length in Hlookup.
+    rewrite length_map in Hlookup.
     destruct Hlookup as [i [Hi Hxy]].
     specialize (Hxy vs_d tm_d). inversion Hxy; subst.
     inversion Hty2; subst.
@@ -242,48 +169,17 @@ Proof.
     - rewrite <- Hargs. rewrite in_map_iff. exists (nth i args vs_d). split; auto.
       apply nth_In; auto.
   }
- 
-(* 
-  assert (Hall: Forall (fun x : term * vty => term_has_type gamma (fst x) (snd x))
-  (combine (map snd (combine (map (ty_subst_var (s_params f) tys) args) tms))
-     (map snd (map fst (combine (map (ty_subst_var (s_params f) tys) args) tms))))).
-  {
-    inversion Hty2; subst.
-    rewrite map_fst_combine, map_snd_combine; auto;
-    try rewrite !map_length; auto.
-    rewrite map_map. simpl.
-    rewrite <- Hargs in H9.
-    rewrite !map_map in H9.
-    clear -H9 Hargs. revert H9.
-    rewrite !Forall_forall; intros.
-    apply H9.
-    erewrite map_ext_in.
-    apply H.
-    intros. simpl. apply ty_subst_equiv; auto.
-    assert (In (snd a) (s_args f)). {
-      rewrite <-Hargs, in_map_iff. exists a; auto.
-    }
-    pose proof (s_args_wf f).
-    apply check_args_prop with(x:=(snd a)) in H2; auto.
-  } *)
   assert (Htysubst: term_has_type gamma (ty_subst_wf_tm (s_params f) tys body) ty).
   {
     inversion Hty2; subst.
     rewrite ty_subst_equiv.
     apply ty_subst_wf_tm_typed; auto.
     - apply (NoDup_map_sublist _ _ args); auto; [apply aset_to_list_nodup|].
-      rewrite sublist_asubset, aset_to_list_to_aset. auto.
+      rewrite sublist_asubset, aset_to_list_to_aset_eq. auto.
     - pose proof (f_ret_wf f).
       apply check_asubset_prop in H. auto.
   }
   erewrite safe_sub_ts_rep with (Hall:=Hall)(Hty2:=Htysubst).
-  (* Unshelve.
-  
-  2: {
-    rewrite map_fst_combine; try rewrite !map_length; auto.
-    eapply NoDup_map_inv with(f:=fst). rewrite !map_map.
-    simpl. auto.
-  } *)
   assert (ty = ty_subst' (s_params f) tys (f_ret f)).
   {
     inversion Hty2; subst.
@@ -295,10 +191,8 @@ Proof.
   erewrite ty_subst_wf_tm_rep; auto.
   2: {
     apply (NoDup_map_sublist _ _ args); auto; [apply aset_to_list_nodup|].
-    rewrite sublist_asubset, aset_to_list_to_aset. auto.
+    rewrite sublist_asubset, aset_to_list_to_aset_eq. auto.
   }
-  (* 2: apply (NoDup_map_sublist _ _ args); auto
-    apply aset_to_list_nodup. *)
   Unshelve.
   all: auto.
   2: apply s_params_Nodup.
@@ -335,8 +229,8 @@ Proof.
   }
   erewrite val_with_args_in with(Heq:=Heq1); auto.
   2: { apply NoDup_map_inv in Hnargs; auto. }
-  2: { unfold sym_sigma_args, ty_subst_list_s. rewrite map_length; auto.
-    rewrite <- Hargs, map_length; auto. }
+  2: { unfold sym_sigma_args, ty_subst_list_s. rewrite length_map; auto.
+    rewrite <- Hargs, length_map; auto. }
   (*Now simplify the other side*)
   (**)
   set (m:=(list_to_amap (combine (map (ty_subst_var (s_params f) tys) args) tms))) in *.
@@ -366,7 +260,7 @@ Proof.
     rewrite !map_nth_inbound with (d2:=vty_int); auto.
     apply funsym_subst_eq; auto.
     apply s_params_Nodup.
-    rewrite <- Hargs, map_length; auto.
+    rewrite <- Hargs, length_map; auto.
   }
   assert (Hsize: amap_size m = length args). {
     unfold m. rewrite list_to_amap_size; auto. solve_len.
@@ -377,7 +271,7 @@ Proof.
     rewrite <- Hargs. rewrite map_nth_inbound with (d2:=vs_d); auto.
   }
   assert (Hty3: term_has_type gamma (nth i tms tm_d) (ty_subst (s_params f) tys (nth i (s_args f) vty_int))). {
-    apply map_arg_list_nth_ty with(i:=i) in Hall; try rewrite !map_length; auto.
+    apply map_arg_list_nth_ty with(i:=i) in Hall; try rewrite !length_map; auto.
     2: rewrite vals_length, keylist_length; auto.
     2: rewrite keylist_length; lia. 
     unfold v in Htytm. simpl in Htytm.
@@ -533,7 +427,7 @@ Proof.
       auto.
     }
     rewrite in_combine_iff in Hlookup; [|solve_len].
-    rewrite map_length in Hlookup.
+    rewrite length_map in Hlookup.
     destruct Hlookup as [i [Hi Hvtm]].
     specialize (Hvtm vs_d tm_d). 
     specialize (Hall (v, tm)).
@@ -580,8 +474,8 @@ Proof.
       eapply H. apply Hintm. auto.
       rewrite Forall_forall in H11.
       eapply (H11 (nth j l1 tm_d, (nth j (map (ty_subst (s_params f0) l) (s_args f0)) vty_int))).
-      rewrite in_combine_iff; try rewrite map_length; auto.
-      exists j. split; auto. intros. f_equal; apply nth_indep; try rewrite map_length; auto. lia.
+      rewrite in_combine_iff; try rewrite length_map; auto.
+      exists j. split; auto. intros. f_equal; apply nth_indep; try rewrite length_map; auto. lia.
       auto.
   - inversion Hty; subst. cbn in Hin.
     rewrite in_app_iff in Hin. destruct Hin; [apply (H (snd v)) | apply (H0 ty)]; auto.
@@ -610,8 +504,8 @@ Proof.
     eapply H. apply Hintm. all: auto.
     rewrite Forall_forall in H8.
     eapply (H8 (nth j tms tm_d, (nth j (map (ty_subst (s_params p) tys) (s_args p)) vty_int))).
-    rewrite in_combine_iff; try rewrite map_length; auto.
-    exists j. split; auto. intros. f_equal; apply nth_indep; try rewrite map_length; auto. lia.
+    rewrite in_combine_iff; try rewrite length_map; auto.
+    exists j. split; auto. intros. f_equal; apply nth_indep; try rewrite length_map; auto. lia.
   - cbn in Hin. inversion Hty; subst. apply H; auto.
   - cbn in Hin. rewrite in_app_iff in Hin. inversion Hty; subst.
     destruct Hin; [apply (H v) | apply (H0 v)]; auto.
@@ -655,21 +549,21 @@ term_has_type gamma (sub_body_t f args body (fst a) (snd a))
   (ty_subst' (s_params f) (fst a) (f_ret f)).
 Proof.
   apply sub_body_t_ty; auto.
-  + apply (f_equal length) in Hargs. rewrite map_length in Hargs; lia.
+  + apply (f_equal length) in Hargs. rewrite length_map in Hargs; lia.
   + eapply NoDup_map_sublist. apply Hnargs. apply aset_to_list_nodup.
-    rewrite sublist_asubset, aset_to_list_to_aset; auto.
+    rewrite sublist_asubset, aset_to_list_to_aset_eq; auto.
   + rewrite !Forall_forall. intros x.
     assert (length (snd a) = length args). {
-      rewrite Halen1, <- Hargs, map_length; auto.
+      rewrite Halen1, <- Hargs, length_map; auto.
     }
-    rewrite in_combine_iff; try rewrite !map_length; auto.
+    rewrite in_combine_iff; try rewrite !length_map; auto.
     intros [i [Hi Hx]].
     specialize (Hx vs_d tm_d); subst; simpl.
     rewrite !map_nth_inbound with (d2:=vs_d); auto.
     simpl.
     revert Hallty. rewrite !Forall_forall. intros.
     apply specialize_combine with(d1:=tm_d)(d2:=vty_int)(i:=i) in Hallty;
-    auto; try rewrite !map_length; auto.
+    auto; try rewrite !length_map; auto.
     2: rewrite H; auto. (*why doesn't lia work?*)
     simpl in Hallty.
     rewrite map_nth_inbound with (d2:=vty_int) in Hallty;
@@ -814,7 +708,7 @@ Proof.
       intros.
       erewrite sub_body_t_rep. reflexivity. all: auto.
       + inversion Hty0; subst. 
-        rewrite H7. rewrite <- Hargs, !map_length; auto.
+        rewrite H7. rewrite <- Hargs, !length_map; auto.
       + inversion Hty0; subst. auto.
   }
   intros.
@@ -877,7 +771,7 @@ Proof.
   intros.
   erewrite sub_body_t_rep. reflexivity. all: auto.
   + inversion Hty0; subst. 
-    rewrite H6. rewrite <- Hargs, !map_length; auto.
+    rewrite H6. rewrite <- Hargs, !length_map; auto.
   + inversion Hty0; subst. auto.
 Qed.
 
@@ -949,7 +843,7 @@ with find_pred_app_f (f1: formula) : list (list vty * list term) :=
   end.
 
 Definition sub_body_f (args: list vsymbol) (body: formula) tys tms :=
-  safe_sub_fs (combine (map (ty_subst_var (s_params p) tys) args) tms) 
+  safe_sub_fs (list_to_amap (combine (map (ty_subst_var (s_params p) tys) args) tms) )
     (ty_subst_wf_fmla (s_params p) tys body).
 
 Definition sub_pred_body_f (args: list vsymbol) (body: formula) tys tms (f1: formula) :=
@@ -992,51 +886,58 @@ Proof.
     inversion Hty2; subst; auto.
   }
   assert (Hmaplen: length (map (v_subst vt) tys) = length (s_params p)). {
-    rewrite map_length; auto.
+    rewrite length_map; auto.
   }
   rewrite (Hpreds p args body p_in (map (v_subst vt) tys) Hmaplen
   (pred_arg_list pd vt p tys tms (term_rep gamma_valid pd pdf vt pf vv) Hty2) vt vv).
   (*Simplify LHS*)
   revert Hty1. unfold sub_body_f.
   intros.
-  assert (Hall: Forall (fun x : term * vty => term_has_type gamma (fst x) (snd x))
-  (combine (map snd (combine (map (ty_subst_var (s_params p) tys) args) tms))
-     (map snd (map fst (combine (map (ty_subst_var (s_params p) tys) args) tms))))).
+  assert (Hnodup: NoDup (map fst (combine (map (ty_subst_var (s_params p) tys) args) tms))).
   {
+    rewrite map_fst_combine; try solve_len.
+    apply (NoDup_map_inv fst). rewrite map_map. simpl.
+    auto.
+  }
+  assert (Hall: Forall (fun x : term * vty => term_has_type gamma (fst x) (snd x))
+    (combine (vals (list_to_amap (combine (map (ty_subst_var (s_params p) tys) args) tms)))
+       (map snd (keylist (list_to_amap (combine (map (ty_subst_var (s_params p) tys) args) tms)))))).
+  {
+    apply amap_Forall_vals_subs.
+    rewrite amap_Forall_forall. intros x y Hlookup.
+    rewrite list_to_amap_lookup in Hlookup; auto.
+    rewrite in_combine_iff in Hlookup; [|solve_len].
+    rewrite length_map in Hlookup.
+    destruct Hlookup as [i [Hi Hxy]].
+    specialize (Hxy vs_d tm_d). inversion Hxy; subst.
     inversion Hty2; subst.
-    rewrite map_fst_combine, map_snd_combine; auto;
-    try rewrite !map_length; auto.
-    rewrite map_map. simpl.
     rewrite <- Hargs in H7.
-    rewrite !map_map in H7.
-    clear -H7 Hargs. revert H7.
+    rewrite !map_map in H7. revert H7.
     rewrite !Forall_forall; intros.
-    apply H7.
-    erewrite map_ext_in.
-    apply H.
-    intros. simpl. apply ty_subst_equiv; auto.
-    assert (In (snd a) (s_args p)). {
-      rewrite <-Hargs, in_map_iff. exists a; auto.
-    }
+    specialize (H7 (nth i tms tm_d, (snd (nth i (map (ty_subst_var (s_params p) tys) args) vs_d)))).
+    apply H7. rewrite in_combine_iff; [|solve_len].
+    exists i. split; try lia. intros d1 d2. rewrite !map_nth_inbound with (d2:=vs_d); auto. simpl.
+    f_equal; [apply nth_indep; auto; lia|]. symmetry; apply ty_subst_equiv.
+    rewrite asubset_def. intros x Hmemx.
     pose proof (s_args_wf p).
-    apply check_args_prop with(x:=(snd a)) in H2; auto.
+    apply check_args_prop with (x:= (snd (nth i args vs_d))) in H.
+    - rewrite asubset_def in H. auto.
+    - rewrite <- Hargs. rewrite in_map_iff. exists (nth i args vs_d). split; auto.
+      apply nth_In; auto.
   }
   assert (Htysubst: formula_typed gamma (ty_subst_wf_fmla (s_params p) tys body)).
   {
     inversion Hty2; subst.
     apply ty_subst_wf_fmla_typed; auto.
-    apply (NoDup_map_sublist _ _ args); auto.
-    apply fmla_fv_nodup.
-  }
-  rewrite safe_sub_fs_rep with(Hall:=Hall)(Hty2:=Htysubst).
-  2: {
-    rewrite map_fst_combine; try rewrite !map_length; auto.
-    eapply NoDup_map_inv with(f:=fst). rewrite !map_map.
-    simpl. auto.
-  }
+    apply (NoDup_map_sublist _ _ args); auto; [apply aset_to_list_nodup|].
+    rewrite sublist_asubset, aset_to_list_to_aset_eq. auto.
+  } 
+  rewrite safe_sub_fs_rep with(Hall:=Hall)(Hty2:=Htysubst); auto. 2: exact vty_int.
   erewrite ty_subst_wf_fmla_rep; auto.
-  2: apply (NoDup_map_sublist _ _ args); auto;
-    apply fmla_fv_nodup.
+  2: {
+    apply (NoDup_map_sublist _ _ args); auto; [apply aset_to_list_nodup|].
+    rewrite sublist_asubset, aset_to_list_to_aset_eq. auto.
+  }
   Unshelve.
   all: auto.
   2: apply s_params_Nodup.
@@ -1047,7 +948,7 @@ Proof.
   intros x Hinx.
   unfold upd_vv_args.
   assert (In x args). {
-    apply Hfvargs; auto.
+    rewrite asubset_def in Hfvargs. specialize (Hfvargs _ Hinx). simpl_set; auto.
   }
   destruct (In_nth _ _ vs_d H) as [i [Hi Hx]]; subst.
   assert (Heq1: nth i (sym_sigma_args p (map (v_subst vt) tys)) s_int =
@@ -1068,87 +969,89 @@ Proof.
   }
   erewrite val_with_args_in with(Heq:=Heq1); auto.
   2: { apply NoDup_map_inv in Hnargs; auto. }
-  2: { unfold sym_sigma_args, ty_subst_list_s. rewrite map_length; auto.
-    rewrite <- Hargs, map_length; auto. }
+  2: { unfold sym_sigma_args, ty_subst_list_s. rewrite length_map; auto.
+    rewrite <- Hargs, length_map; auto. }
   (*Now simplify the other side*)
-  assert (Hnthx: nth i (map fst (combine (map (ty_subst_var (s_params p) tys) args) tms)) vs_d =
-  (ty_subst_var (s_params p) tys (nth i args vs_d))).
+  (**)
+  set (m:=(list_to_amap (combine (map (ty_subst_var (s_params p) tys) args) tms))) in *.
+  set (v:=(nth i args vs_d)) in *.
+  (*Note: NOT same i in keylist, but we have lookup, so we can use previous lemma*)
+  assert (Hlookup: amap_lookup m (ty_subst_var (s_params p) tys v) = Some (nth i tms tm_d)).
   {
-    rewrite map_fst_combine; try rewrite !map_length; auto.
-    rewrite map_nth_inbound with (d2:=vs_d); auto.
+    unfold m. apply list_to_amap_lookup; auto.
+    rewrite in_combine_iff; simpl_len; auto. exists i. split; auto.
+    intros d1 d2. rewrite map_nth_inbound with (d2:=vs_d); auto.
+    f_equal. apply nth_indep; lia.
   }
-  assert (Heq2: nth i
-  (map (v_subst vt)
-     (map snd (map fst (combine (map (ty_subst_var (s_params p) tys) args) tms)))) s_int =
-  v_subst vt (snd (ty_subst_var (s_params p) tys (nth i args vs_d)))).
+  assert (Htytm: term_has_type gamma (nth i tms tm_d) (snd (ty_subst_var (s_params p) tys v))).
   {
-    rewrite map_fst_combine; try rewrite !map_length; auto.
-    unfold ty_subst_var. simpl. rewrite !map_map. simpl.
-    rewrite map_nth_inbound with (d2:=vs_d); auto. 
+    apply amap_Forall_vals_subs in Hall.
+    rewrite amap_Forall_forall in Hall.
+    apply Hall in Hlookup. auto.
   }
-  erewrite val_with_args_in' with(i:=i)(Heq:=Heq2); auto;
-  try rewrite !map_length; auto.
-  2: rewrite map_fst_combine; try rewrite !map_length; auto;
-    apply (NoDup_map_inv fst); rewrite !map_map; simpl; auto.
-  2: rewrite combine_length, map_length; lia.
-  rewrite !dom_cast_compose.
-  (*Now we simplify each of the hnths*)
-  assert (Hi2: i <
-  Datatypes.length (map snd (map fst (combine (map (ty_subst_var (s_params p) tys) args) tms)))).
-  { rewrite !map_length, combine_length, !map_length; lia. }
-  erewrite map_arg_list_nth with(Hi:=Hi2).
-  (*And the other side (harder)*)
-  unfold fun_arg_list.
-  assert (Heq3: v_subst vt (ty_subst (s_params p) tys (nth i (s_args p) vty_int)) =
-  nth i (ty_subst_list_s (s_params p) (map (v_subst vt) tys) (s_args p)) s_int).
+  erewrite val_with_args_lookup with (t:=(nth i tms tm_d))(Hty2:=Htytm); auto.
+  (*Now simplify the hnth (very annoying*)
+  unfold pred_arg_list.
+  (*2 lemmas we need*)
+  assert (Hcast: v_subst vt (ty_subst (s_params p) tys (nth i (s_args p) vty_int)) =
+    nth i (ty_subst_list_s (s_params p) (map (v_subst vt) tys) (s_args p)) s_int).
   {
     unfold ty_subst_list_s.
     rewrite !map_nth_inbound with (d2:=vty_int); auto.
     apply funsym_subst_eq; auto.
     apply s_params_Nodup.
-    rewrite <- Hargs, map_length; auto.
+    rewrite <- Hargs, length_map; auto.
+  }
+  assert (Hsize: amap_size m = length args). {
+    unfold m. rewrite list_to_amap_size; auto. solve_len. 
+  }
+  assert (Hsndv: snd v = nth i (s_args p) vty_int).
+  {
+    apply (f_equal (fun x => nth i x vty_int)) in Hargs.
+    rewrite <- Hargs. rewrite map_nth_inbound with (d2:=vs_d); auto.
   }
   assert (Hty3: term_has_type gamma (nth i tms tm_d) (ty_subst (s_params p) tys (nth i (s_args p) vty_int))). {
-    apply map_arg_list_nth_ty with(i:=i) in Hall; try rewrite !map_length; auto.
-    2: rewrite combine_length, map_length; lia.
-    rewrite map_snd_combine, map_fst_combine in Hall;
-    try rewrite !map_length; auto.
-    rewrite <- Hargs.
-    rewrite !map_map in Hall.
-    rewrite map_nth_inbound with(d2:=vs_d) in Hall; auto.
-    rewrite map_nth_inbound with (d2:=vs_d); auto.
-    unfold ty_subst_var in Hall. simpl in Hall.
+    apply map_arg_list_nth_ty with(i:=i) in Hall; try rewrite !length_map; auto.
+    2: rewrite vals_length, keylist_length; auto.
+    2: rewrite keylist_length; lia. 
+    unfold v in Htytm. simpl in Htytm.
+    rewrite <- Hsndv. 
     erewrite ty_subst_equiv; auto.
+    rewrite asubset_def.
     intros y Hiny.
     pose proof (s_args_wf p).
-    apply check_args_prop with (x:=snd (nth i args vs_d)) in H0; auto.
-    rewrite <- Hargs. rewrite in_map_iff. exists (nth i args vs_d); auto.
+    apply check_args_prop with(x:=(snd (nth i args vs_d))) in H0.
+    - apply H0. auto.
+    - rewrite <- Hargs. rewrite in_map_iff.
+      exists (nth i args vs_d); auto.
   }
   erewrite (get_arg_list_hnth pd vt p tys tms (term_rep gamma_valid pd pdf vt pf vv) 
   (ltac:(intros; apply term_rep_irrel)) (s_params_Nodup p) (proj1' (pred_val_inv Hty2)) (proj1' (proj2' (pred_val_inv Hty2)))
   (proj2' (proj2' (pred_val_inv Hty2)))).
   Unshelve.
-  3: exact Heq3.
-  3: exact Hty3.
-  2: rewrite <-Hargs, map_length; auto.
+  all: auto.
+  2: { inversion Hty2; subst; lia. }
+  (*Now easy goal, remove casts*)
   rewrite !dom_cast_compose.
-  repeat match goal with
-  | |- context [dom_cast ?d ?H ?x] => generalize dependent H
-  end.
+  gen_dom_cast.
   repeat match goal with
   | |- context [term_rep ?g ?pd ?pdf ?vt ?pf ?vv ?t ?ty ?Hty] =>
     generalize dependent Hty
   end.
-  rewrite map_snd_combine; [| rewrite !map_length; auto].
-  rewrite !map_fst_combine; [| rewrite !map_length; auto].
-  generalize dependent (ty_subst (s_params p) tys (nth i (s_args p) vty_int)).
-  generalize dependent (nth i (map snd (map (ty_subst_var (s_params p) tys) args)) vty_int).
-  intros. assert (v = v0). {
-    eapply term_has_type_unique. apply t. auto.
+  erewrite ty_subst_equiv; auto.
+  2: {
+    rewrite asubset_def.
+    intros y Hiny.
+    pose proof (s_args_wf p).
+    apply check_args_prop with(x:=(nth i (s_args p) vty_int)) in H0.
+    - rewrite asubset_def in H0; apply H0; auto.
+    - apply nth_In; inversion Hty2; subst; lia.
   }
-  subst. assert (e = e0). apply UIP_dec. apply sort_eq_dec.
-  subst. f_equal. apply term_rep_irrel.
+  rewrite <- Hsndv.
+  intros Hty' Hty'' Heq' Heq''.
+  erewrite term_rep_irrel. apply dom_cast_eq.
 Qed.
+
 
 Definition get_rec_pred_body_args (gamma: context) (p: predsym) :
 option (formula * list vsymbol) :=
@@ -1237,19 +1140,41 @@ Definition unfold_p_single (gamma: context) (p: predsym) (i: nat)
   end.
 
 Lemma sub_body_f_ty (p: predsym) gamma args body tys tms:
+  length args = length tms -> (*added*)
   Forall (valid_type gamma) tys ->
-  NoDup (map fst (fmla_fv body)) ->
+  NoDup (map fst args) -> (*added*)
+  NoDup (map fst (aset_to_list (fmla_fv body))) ->
   Forall (fun x : string * vty * term => term_has_type gamma (snd x) (snd (fst x)))
   (combine (map (ty_subst_var (s_params p) tys) args) tms) ->
   formula_typed gamma body ->
   formula_typed gamma (sub_body_f p args body tys tms).
 Proof.
-  intros.
+  intros Hlen Hval Hnodup1 Hnodup2 Hall Hty.
   unfold sub_body_f.
   apply safe_sub_fs_ty.
   - apply ty_subst_wf_fmla_typed; auto.
-  - auto.
-Qed. 
+  - (*TODO: separate lemma?*)
+    rewrite amap_Forall_forall.
+    intros v tm Hlookup.
+    rewrite Forall_forall in Hall.
+    apply list_to_amap_lookup in Hlookup.
+    2: {
+      (*should be separate lemma*)
+      rewrite map_fst_combine; try solve_len.
+      apply (NoDup_map_inv fst). rewrite map_map. simpl.
+      auto.
+    }
+    rewrite in_combine_iff in Hlookup; [|solve_len].
+    rewrite length_map in Hlookup.
+    destruct Hlookup as [i [Hi Hvtm]].
+    specialize (Hvtm vs_d tm_d). 
+    specialize (Hall (v, tm)).
+    inversion Hvtm; subst; clear Hvtm.
+    apply Hall.
+    rewrite in_combine_iff; [|solve_len].
+    simpl_len. exists i. split; auto. intros d1 d2.
+    f_equal; apply nth_indep; simpl_len; unfold vsymbol in *; lia.
+Qed.
 
 Lemma sub_pred_body_p_typed gamma p args body tys tms f1:
   formula_typed gamma (Fpred p tys tms) ->
@@ -1282,8 +1207,8 @@ Proof.
     eapply H. apply Hintm. all: auto.
     rewrite Forall_forall in H10.
     eapply (H10 (nth j l1 tm_d, (nth j (map (ty_subst (s_params f1) l) (s_args f1)) vty_int))).
-    rewrite in_combine_iff; try rewrite map_length; auto.
-    exists j. split; auto. intros. f_equal; apply nth_indep; try rewrite map_length; auto. lia.
+    rewrite in_combine_iff; try rewrite length_map; auto.
+    exists j. split; auto. intros. f_equal; apply nth_indep; try rewrite length_map; auto. lia.
   - inversion Hty; subst. cbn in Hin.
     rewrite in_app_iff in Hin. destruct Hin; [apply (H (snd v)) | apply (H0 ty)]; auto.
   - cbn in Hin. inversion Hty; subst.
@@ -1315,8 +1240,8 @@ Proof.
     eapply H. apply Hintm. auto.
     rewrite Forall_forall in H9.
     eapply (H9 (nth j tms tm_d, (nth j (map (ty_subst (s_params p0) tys) (s_args p0)) vty_int))).
-    rewrite in_combine_iff; try rewrite map_length; auto.
-    exists j. split; auto. intros. f_equal; apply nth_indep; try rewrite map_length; auto. lia.
+    rewrite in_combine_iff; try rewrite length_map; auto.
+    exists j. split; auto. intros. f_equal; apply nth_indep; try rewrite length_map; auto. lia.
     auto.
   - cbn in Hin. inversion Hty; subst. apply H; auto.
   - cbn in Hin. rewrite in_app_iff in Hin. inversion Hty; subst.
@@ -1351,7 +1276,7 @@ Lemma sub_body_f_ty' gamma (p: predsym)
 (body: formula)
 (Hnargs: NoDup (map fst args))
 (Htyb: formula_typed gamma body)
-(Hfvargs: sublist (fmla_fv body) args)
+(Hfvargs: asubset (fmla_fv body) (list_to_aset args))
 (Hargs: map snd args = s_args p)
 (Hall: Forall (valid_type gamma) (fst a))
 (Halen1: Datatypes.length (snd a) = Datatypes.length (s_args p))
@@ -1360,20 +1285,21 @@ Lemma sub_body_f_ty' gamma (p: predsym)
 formula_typed gamma (sub_body_f p args body (fst a) (snd a)).
 Proof.
   apply sub_body_f_ty; auto.
-  + eapply NoDup_map_sublist. apply Hnargs. all: auto.
-    apply fmla_fv_nodup.
+  + apply (f_equal length) in Hargs. rewrite length_map in Hargs; lia.
+  + eapply NoDup_map_sublist. apply Hnargs. apply aset_to_list_nodup.
+    rewrite sublist_asubset, aset_to_list_to_aset_eq; auto.
   + rewrite !Forall_forall. intros x.
     assert (length (snd a) = length args). {
-      rewrite Halen1, <- Hargs, map_length; auto.
+      rewrite Halen1, <- Hargs, length_map; auto.
     }
-    rewrite in_combine_iff; try rewrite !map_length; auto.
+    rewrite in_combine_iff; try rewrite !length_map; auto.
     intros [i [Hi Hx]].
     specialize (Hx vs_d tm_d); subst; simpl.
     rewrite !map_nth_inbound with (d2:=vs_d); auto.
     simpl.
     revert Hallty. rewrite !Forall_forall. intros.
     apply specialize_combine with(d1:=tm_d)(d2:=vty_int)(i:=i) in Hallty;
-    auto; try rewrite !map_length; auto.
+    auto; try rewrite !length_map; auto.
     2: rewrite H; auto. (*why doesn't lia work?*)
     simpl in Hallty.
     rewrite map_nth_inbound with (d2:=vty_int) in Hallty;
@@ -1393,7 +1319,7 @@ Lemma unfold_p_ty_aux {gamma} (gamma_valid: valid_context gamma)
 (p: predsym) l base args body
 (Hnargs : NoDup (map fst args))
 (Htyb: formula_typed gamma body)
-(Hfvargs: sublist (fmla_fv body) args)
+(Hfvargs: asubset (fmla_fv body) (list_to_aset args))
 (Hargs: map snd args = s_args p)
 (Hl: forall x y, In (x, y) l -> 
   formula_typed gamma (Fpred p x y)):
@@ -1484,7 +1410,7 @@ Proof.
       intros.
       erewrite sub_body_f_rep. reflexivity. all: auto.
       + inversion Hty0; subst. 
-        rewrite H6. rewrite <- Hargs, !map_length; auto.
+        rewrite H6. rewrite <- Hargs, !length_map; auto.
       + inversion Hty0; subst. auto.
   }
   intros.
@@ -1538,7 +1464,7 @@ Proof.
   intros.
   erewrite sub_body_f_rep. reflexivity. all: auto.
   + inversion Hty0; subst. 
-    rewrite H5. rewrite <- Hargs, !map_length; auto.
+    rewrite H5. rewrite <- Hargs, !length_map; auto.
   + inversion Hty0; subst. auto.
 Qed.
 

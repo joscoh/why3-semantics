@@ -432,7 +432,7 @@ vt_eq vt params srts ->
 map (v_subst vt) (map vty_var params) = srts.
 Proof.
   intros srts_len vt_eq.
-  rewrite map_map. apply list_eq_ext'; rewrite map_length; auto;
+  rewrite map_map. apply list_eq_ext'; rewrite length_map; auto;
   intros n d Hn.
   rewrite map_nth_inbound with(d2:= EmptyString); auto.
   apply sort_inj. simpl.
@@ -450,7 +450,7 @@ Proof.
   - destruct (in_dec typevar_eq_dec v vars); auto.
     apply valid_type_ty_subst; auto.
   - inversion H; subst. constructor; auto.
-    rewrite map_length; auto.
+    rewrite length_map; auto.
     intros x. rewrite in_map_iff. intros [y [Hx Hiny]]; subst.
     rewrite Forall_forall in H1. apply H1; auto.
 Qed.
@@ -469,15 +469,15 @@ Proof.
     + destruct (In_nth _ _ EmptyString i) as [j [Hj Hv]]; subst.
       rewrite vt_with_args_nth; auto. unfold ty_subst. simpl.
       rewrite ty_subst_fun_nth with(s:=s_int);
-      unfold sorts_to_tys; auto; [|rewrite map_length]; auto.
+      unfold sorts_to_tys; auto; [|rewrite length_map]; auto.
       rewrite map_nth_inbound with(d2:=s_int); [| rewrite <- Hlen]; auto.
       rewrite <- subst_is_sort_eq; auto.
       destruct (nth j args s_int); auto.
     + rewrite vt_with_args_notin; auto.
-  - f_equal. apply list_eq_ext'; rewrite !map_length; auto.
+  - f_equal. apply list_eq_ext'; rewrite !length_map; auto.
     intros n d Hn. rewrite !map_nth_inbound with (d2:=vty_int); auto.
     rewrite Forall_forall in H. apply H. apply nth_In. auto.
-    rewrite map_length; auto.
+    rewrite length_map; auto.
 Qed.
   
 (*A very important lemma that we need*)
@@ -486,7 +486,7 @@ Lemma v_subst_vt_with_args' params tys (params_len: length params = length tys)
   v_subst vt (ty_subst' params tys v) =
   v_subst (vt_with_args vt params (map (v_subst vt) tys)) v.
 Proof.
-  rewrite v_subst_vt_with_args; auto. 2: rewrite map_length; auto.
+  rewrite v_subst_vt_with_args; auto. 2: rewrite length_map; auto.
   simpl.
   (*Idea: typevars assigned vt, either now or later*)
   induction v; simpl; auto.
@@ -496,9 +496,9 @@ Proof.
     unfold ty_subst. simpl.
     rewrite -> !ty_subst_fun_nth with(s:=s_int); auto;
     unfold sorts_to_tys;
-    [| rewrite !map_length; auto].
+    [| rewrite !length_map; auto].
     rewrite -> !map_nth_inbound with (d2:=s_int);
-    [| rewrite map_length, <- params_len; auto].
+    [| rewrite length_map, <- params_len; auto].
     rewrite -> map_nth_inbound with (d2:=vty_int);
     [| rewrite <- params_len; auto].
     simpl.
@@ -506,7 +506,7 @@ Proof.
     intros. destruct (vt x); auto.
   - apply sort_inj; simpl. f_equal.
     rewrite !map_map.
-    apply list_eq_ext'; rewrite !map_length; auto.
+    apply list_eq_ext'; rewrite !length_map; auto.
     intros n d Hn.
     rewrite -> !map_nth_inbound with (d2:=vty_int); auto.
     rewrite Forall_forall in H.
@@ -532,10 +532,10 @@ Lemma map_v_subst_sorts vt srts:
   map (v_subst vt) (sorts_to_tys srts) = srts.
 Proof.
   unfold sorts_to_tys.
-  apply list_eq_ext'; rewrite !map_length; auto.
+  apply list_eq_ext'; rewrite !length_map; auto.
   intros n d Hn.
   rewrite -> !map_nth_inbound with (d2:=vty_int); auto;
-  [| rewrite map_length; auto].
+  [| rewrite length_map; auto].
   rewrite -> map_nth_inbound with (d2:=s_int); auto.
   apply sort_inj; simpl.
   rewrite <- subst_is_sort_eq; auto.
@@ -555,7 +555,7 @@ dom_cast (dom_aux pd)
   (f_equal (fun y => v_subst (vt_with_args vt params y) (snd x)) 
     (map_v_subst_sorts vt srts))
   (upd_vv_args params (sorts_to_tys srts) 
-    (eq_trans lengths_eq (Logic.eq_sym (map_length _ _))) 
+    (eq_trans lengths_eq (Logic.eq_sym (length_map _ _))) 
     nodup_params pd vt vv x).
 
 (*Reverse [val_with_args] is equivalent*)

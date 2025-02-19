@@ -68,12 +68,12 @@ Proof.
     assert (Hlen: length (map fst (pat_fv (fst h))) =
       length (gen_strs (length (pat_fv (fst h))) (tm_fv tm ++ pat_fv
       (fst h)))).
-    { rewrite gen_strs_length, map_length; reflexivity. }
+    { rewrite gen_strs_length, length_map; reflexivity. }
     rewrite a_convert_alpha_p; auto;
     try rewrite !map_snd_combine; auto. 
     + destruct (gen_term_eq_dec (snd h) (snd h)); [simpl|contradiction]. 
       rewrite a_convert_map_p_fv; try rewrite !map_snd_combine; auto.
-      * rewrite map_length, Nat.eqb_refl; auto.
+      * rewrite length_map, Nat.eqb_refl; auto.
       * apply gen_strs_nodup.
       * intros x Hinx Hinx2. apply gen_strs_notin in Hinx2.
         apply Hinx2. rewrite in_app_iff; auto.
@@ -267,7 +267,7 @@ Proof.
   intros [b1 [cs [Hnotnull [Hnodup Hps1]]]]. subst.
   exists b1. 
   (*Idea: by alpha equivalence, can find corresponding list*)
-  rewrite app_length, map_length in Hlen.
+  rewrite length_app, length_map in Hlen.
   assert (Hvars: exists (vars: list (list vsymbol)),
     length vars = length cs /\
     ps2 = map (fun x => Pconstr (fst (fst x)) (snd (fst x)) (map Pvar (snd x)))
@@ -290,7 +290,7 @@ Proof.
       simpl in Halpha. destruct h2 as [| f2 ty2 ps2 | | |]; try discriminate.
       destruct h1 as [[f1 ty1] ps1]; simpl in *.
       destruct (funsym_eq_dec f1 f2); subst; try discriminate.
-      rewrite map_length in Halpha.
+      rewrite length_map in Halpha.
       destruct (length ps1 =? length ps2) eqn : Hlenps; try discriminate.
       destruct (list_eq_dec vty_eq_dec ty1 ty2); subst; try discriminate.
       simpl in Halpha.
@@ -317,9 +317,9 @@ Proof.
   exists (combine (map fst cs) vars). split_all; auto.
   - rewrite null_combine_lens1; auto.
     + rewrite null_map; auto.
-    + rewrite map_length; auto.
+    + rewrite length_map; auto.
   - rewrite <- (map_map fst) in Hnodup |- *.
-    rewrite map_fst_combine; [| rewrite map_length; auto]. auto.
+    rewrite map_fst_combine; [| rewrite length_map; auto]. auto.
 Qed. 
  *)
 (*Easier to prove for [simple_exhaust]*)
@@ -403,12 +403,12 @@ Proof.
   (*Prove that ps1 preserves simple_pat_match and simple_exhaust*)
   assert (Hsimp1: simple_pat_match (map fst ps1)). {
     apply (simple_pat_match_alpha (fun p1 p2 => combine (pat_fv p1) (pat_fv p2)) (map fst ps)); auto.
-    - rewrite !map_length; auto.
+    - rewrite !length_map; auto.
     - rewrite all2_map. revert Halpha. apply all2_impl.
       intros x y. unfold is_true; rewrite andb_true_iff; intros H; apply H.
   }
   apply (simple_exhaust_alpha (fun p1 p2 => combine (pat_fv p1) (pat_fv p2)) (map fst ps) (map fst ps1)); auto.
-  { rewrite !map_length; auto. }
+  { rewrite !length_map; auto. }
   { rewrite all2_map. revert Halpha. apply all2_impl.
     intros x y. unfold is_true; rewrite andb_true_iff; intros H; apply H. }
   assert (Hcomp2: isSome (compile_bare_single b false tm (vty_cons (adt_name a) args) ps1)).

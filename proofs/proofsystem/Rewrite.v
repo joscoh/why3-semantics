@@ -99,7 +99,7 @@ Proof.
   try tm_case; try simpl_tys; inversion Hty; subst;
   try destruct_if; constructor; auto;
   (*solve some easy ones*)
-  try solve[rewrite map_length; auto];
+  try solve[rewrite length_map; auto];
   try solve[rewrite null_map; auto];
   (*Deal with pattern match cases*)
   try(intros x Hx; rewrite in_map_iff in Hx;
@@ -110,32 +110,32 @@ Proof.
     but annoying*)
   - revert H10 H. rewrite !Forall_forall; intros.
     (*Annoying because of combine*)
-    rewrite in_combine_iff in H0 by (rewrite !map_length; auto).
+    rewrite in_combine_iff in H0 by (rewrite !length_map; auto).
     destruct H0 as [i [Hi Hx]].
     specialize (Hx tm_d vty_int). subst. simpl.
-    rewrite map_length in Hi.
+    rewrite length_map in Hi.
     rewrite map_nth_inbound with (d2:=tm_d); auto.
     apply H. apply nth_In. auto.
     specialize (H10 ((nth i l1 tm_d), (nth i (map (ty_subst (s_params f1) l) (s_args f1)) vty_int))).
     apply H10.
-    rewrite in_combine_iff by (rewrite map_length; auto).
+    rewrite in_combine_iff by (rewrite length_map; auto).
     exists i. split; auto. intros.
-    f_equal; apply nth_indep; rewrite ?map_length; lia.
+    f_equal; apply nth_indep; rewrite ?length_map; lia.
   - revert H9. apply compile_bare_single_ext_simpl; eauto.
     rewrite !map_map. reflexivity.
   - revert H8 H. rewrite !Forall_forall; intros.
     (*Annoying because of combine*)
-    rewrite in_combine_iff in H0 by (rewrite !map_length; auto).
+    rewrite in_combine_iff in H0 by (rewrite !length_map; auto).
     destruct H0 as [i [Hi Hx]].
     specialize (Hx tm_d vty_int). subst. simpl.
-    rewrite map_length in Hi.
+    rewrite length_map in Hi.
     rewrite map_nth_inbound with (d2:=tm_d); auto.
     apply H. apply nth_In. auto.
     specialize (H8 ((nth i tms tm_d), (nth i (map (ty_subst (s_params p) tys) (s_args p)) vty_int))).
     apply H8.
-    rewrite in_combine_iff by (rewrite map_length; auto).
+    rewrite in_combine_iff by (rewrite length_map; auto).
     exists i. split; auto. intros.
-    f_equal; apply nth_indep; rewrite ?map_length; lia.
+    f_equal; apply nth_indep; rewrite ?length_map; lia.
   - revert H8. apply compile_bare_single_ext_simpl; eauto.
     rewrite !map_map. reflexivity.
 Qed.
@@ -175,7 +175,7 @@ Proof.
   try simpl_tys; try apply term_rep_irrel.
   - simpl_rep_full. f_equal. apply UIP_dec. apply vty_eq_dec.
     f_equal. apply UIP_dec. apply sort_eq_dec.
-    f_equal. apply get_arg_list_ext; rewrite map_length; auto.
+    f_equal. apply get_arg_list_ext; rewrite length_map; auto.
     intros.
     revert Hty0.
     rewrite map_nth_inbound with (d2:=tm_d); auto; intros.
@@ -215,7 +215,7 @@ Proof.
     + erewrite H. reflexivity. 
   - (*Fpred*)
     simpl_rep_full. f_equal. 
-    apply get_arg_list_ext; rewrite map_length; auto.
+    apply get_arg_list_ext; rewrite length_map; auto.
     intros.
     revert Hty0.
     rewrite map_nth_inbound with (d2:=tm_d); auto; intros.
@@ -350,7 +350,7 @@ Proof.
   try fmla_case; try simpl_tys; inversion Hty; subst;
   try destruct_if; constructor; auto;
   (*solve some easy ones*)
-  try solve[rewrite map_length; auto];
+  try solve[rewrite length_map; auto];
   try solve[rewrite null_map; auto];
   (*Deal with pattern match cases*)
   try(intros x Hx; rewrite in_map_iff in Hx;
@@ -361,32 +361,32 @@ Proof.
     but annoying*)
   - revert H10 H. rewrite !Forall_forall; intros.
     (*Annoying because of combine*)
-    rewrite in_combine_iff in H0 by (rewrite !map_length; auto).
+    rewrite in_combine_iff in H0 by (rewrite !length_map; auto).
     destruct H0 as [i [Hi Hx]].
     specialize (Hx tm_d vty_int). subst. simpl.
-    rewrite map_length in Hi.
+    rewrite length_map in Hi.
     rewrite map_nth_inbound with (d2:=tm_d); auto.
     apply H. apply nth_In. auto.
     specialize (H10 ((nth i l1 tm_d), (nth i (map (ty_subst (s_params f1) l) (s_args f1)) vty_int))).
     apply H10.
-    rewrite in_combine_iff by (rewrite map_length; auto).
+    rewrite in_combine_iff by (rewrite length_map; auto).
     exists i. split; auto. intros.
-    f_equal; apply nth_indep; rewrite ?map_length; lia.
+    f_equal; apply nth_indep; rewrite ?length_map; lia.
   - revert H9. apply compile_bare_single_ext_simpl; eauto.
     rewrite !map_map. reflexivity.
   - revert H8 H. rewrite !Forall_forall; intros.
     (*Annoying because of combine*)
-    rewrite in_combine_iff in H0 by (rewrite !map_length; auto).
+    rewrite in_combine_iff in H0 by (rewrite !length_map; auto).
     destruct H0 as [i [Hi Hx]].
     specialize (Hx tm_d vty_int). subst. simpl.
-    rewrite map_length in Hi.
+    rewrite length_map in Hi.
     rewrite map_nth_inbound with (d2:=tm_d); auto.
     apply H. apply nth_In. auto.
     specialize (H8 ((nth i tms tm_d), (nth i (map (ty_subst (s_params p) tys) (s_args p)) vty_int))).
     apply H8.
-    rewrite in_combine_iff by (rewrite map_length; auto).
+    rewrite in_combine_iff by (rewrite length_map; auto).
     exists i. split; auto. intros.
-    f_equal; apply nth_indep; rewrite ?map_length; lia.
+    f_equal; apply nth_indep; rewrite ?length_map; lia.
   - revert H8. apply compile_bare_single_ext_simpl; eauto.
     rewrite !map_map. reflexivity.
 Qed.
@@ -428,7 +428,7 @@ Proof.
   try simpl_tys; try apply term_rep_irrel.
   - simpl_rep_full. f_equal. apply UIP_dec. apply vty_eq_dec.
     f_equal. apply UIP_dec. apply sort_eq_dec.
-    f_equal. apply get_arg_list_ext; rewrite map_length; auto.
+    f_equal. apply get_arg_list_ext; rewrite length_map; auto.
     intros.
     revert Hty0.
     rewrite map_nth_inbound with (d2:=tm_d); auto; intros.
@@ -474,7 +474,7 @@ Proof.
     + erewrite H. reflexivity. 
   - (*Fpred*)
     simpl_rep_full. f_equal. 
-    apply get_arg_list_ext; rewrite map_length; auto.
+    apply get_arg_list_ext; rewrite length_map; auto.
     intros.
     revert Hty0.
     rewrite map_nth_inbound with (d2:=tm_d); auto; intros.

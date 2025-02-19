@@ -565,9 +565,9 @@ Proof.
         rewrite !map_map.
         f_equal.
         assert (Hlensrts: length srts = length (m_params m)). {
-          subst srts. rewrite map_length. auto.
+          subst srts. rewrite length_map. auto.
         }
-        apply list_eq_ext'; rewrite !map_length; auto. 
+        apply list_eq_ext'; rewrite !length_map; auto. 
         intros n d' Hn.
         rewrite !map_nth_inbound with (d2:=EmptyString); auto.
         rewrite <- subst_is_sort_eq.
@@ -582,7 +582,7 @@ Proof.
         rewrite <- Hparams.
         rewrite ty_subst_fun_nth with(s:=s_int); auto.
         + simpl. rewrite map_nth_inbound with (d2:=s_int); auto. lia.
-        + rewrite map_length, Hparams. auto.
+        + rewrite length_map, Hparams. auto.
         + rewrite Hparams; auto. 
         + apply s_params_Nodup.
       }
@@ -629,7 +629,7 @@ Proof.
       apply pat_constr_disj_map in Hp.
       generalize dependent ps0.
       assert (length (sym_sigma_args f srts) = length (s_args f)). {
-        unfold sym_sigma_args, ty_subst_list_s. rewrite map_length; reflexivity.
+        unfold sym_sigma_args, ty_subst_list_s. rewrite length_map; reflexivity.
       }
       unfold sym_sigma_args in *.
       (*generalize dependent ((sym_sigma_args f srts)).*)
@@ -696,7 +696,7 @@ Proof.
               apply (Hdisj i' Pwild x'); auto.
           }
           destruct (vty_in_m m (map vty_var (m_params m)) a) eqn : Hadtv.
-          -- simpl in H2. rewrite aset_big_union_cons, aset_mem_union in H2.
+          -- simpl in H2. rewrite aset_mem_union in H2.
             destruct H2.
             ++ (*This is the hard case - need to show that
                 contr var in p is actually smaller*) inversion H1; subst.
@@ -777,7 +777,7 @@ Proof.
           rewrite hlist_tl_cast in Hmatch0.
           destruct (vty_in_m m (map vty_var (m_params m)) a) eqn : Hinm; auto.
           simpl in H2.
-          rewrite aset_big_union_cons, aset_mem_union in H2; destruct H2; auto.
+          rewrite aset_mem_union in H2; destruct H2; auto.
           (*Now just contradiction case - much easier*)
           assert (Hinx1: aset_mem x0 (pat_fv p)). {
             apply pat_constr_vars_inner_fv in H2; auto.
@@ -1918,7 +1918,7 @@ Proof.
       replace (snd (nth (sn_idx sn_def) (sn_args sn_def) vs_d)) with
       (nth (sn_idx sn_def) (s_args (sn_sym sn_def)) vty_int).
       - apply Hall.
-        rewrite in_combine_iff; [|rewrite map_length; assumption].
+        rewrite in_combine_iff; [|rewrite length_map; assumption].
         exists (sn_idx sn_def).
         split. apply Hidx.
         intros. f_equal. apply nth_indep; auto.
@@ -1931,7 +1931,7 @@ Proof.
       - rewrite <- args_agree; auto.
         rewrite map_nth_inbound with (d2:=vs_d); auto.
         rewrite <- args_agree in Hargslen; auto.
-        rewrite map_length in Hargslen. unfold vsymbol. 
+        rewrite length_map in Hargslen. unfold vsymbol. 
         rewrite <- Hargslen; assumption.
     }
     pose proof (term_has_type_unique _ _ _ _ Hty2 H) as Heqty.
@@ -2456,7 +2456,7 @@ Proof.
   pose proof (Hargs:=args_agree s Hin).
   assert (Hleneq: length (sn_args s) = length (s_args (sn_sym s))). {
     pose proof (f_equal (fun x => length x) Hargs) as Hlen.
-    rewrite map_length in Hlen. unfold vsymbol. rewrite Hlen. auto.
+    rewrite length_map in Hlen. unfold vsymbol. rewrite Hlen. auto.
   }
   assert (Hitheq: (snd (nth i (sn_args s) vs_d) =
   (nth i (s_args (sn_sym s)) vty_int))). {
@@ -2489,7 +2489,7 @@ Proof.
     + unfold sorts_to_tys. rewrite map_nth_inbound with(d2:=s_int); auto.
       * destruct (nth j srts s_int); auto.
       * rewrite Hsrtslen. auto.
-    + unfold sorts_to_tys. rewrite map_length.
+    + unfold sorts_to_tys. rewrite length_map.
       auto.
     + rewrite <- (params_eq _ Hin).
       apply s_params_Nodup.
@@ -2652,7 +2652,7 @@ Proof.
   revert Haarg.
   rewrite (constrs gamma_valid pd pdf pf m1 a1 f (proj2' (proj2' (Hadtinfo m1 a1 tys' eq_refl)))
       (proj1' (proj2' (Hadtinfo m1 a1 tys' eq_refl))) f_in1 (map (v_subst vt) tys')
-      (eq_trans (map_length (v_subst vt) tys')
+      (eq_trans (length_map (v_subst vt) tys')
            (Hlen2 m1 a1 tys' eq_refl (pat_has_type_valid gamma (Pconstr f tys' pats) ty1 Hty))) 
       ).
   unfold constr_rep_dom, dom_cast. rewrite !scast_scast.
@@ -2680,7 +2680,7 @@ Proof.
     apply pat_constr_vars_fv in Hinx; auto.
   }
   assert (Hlenmap: length pats = length (ty_subst_list (s_params f) tys' (s_args f))). {
-    unfold ty_subst_list; rewrite map_length.
+    unfold ty_subst_list; rewrite length_map.
     inversion Hty; subst; auto.
   }
   destruct (iter_arg_list_single_match v Hiter Hlenmap (pat_constr_disj_map Hty) Hi' Hinx') as 
@@ -2693,9 +2693,9 @@ Proof.
     (*TODO: I should really really do this in a separate lemma somewhere*)
     specialize (H9 i (tm_d, vty_int)).
     prove_hyp H9.
-    { rewrite combine_length, map_length. lia. }
+    { rewrite length_combine, length_map. lia. }
     simpl in H9.
-    rewrite combine_nth in H9; auto. rewrite map_length; auto.
+    rewrite combine_nth in H9; auto. rewrite length_map; auto.
   }
   pose proof (@small_match_lemma _ v _ _ _ _ _ d _ _ _ Hl1 Htyith (conj Hith v0)) as Hsmaller.
   apply Hsmaller; auto; [| simpl_set; auto].
@@ -3932,7 +3932,7 @@ Proof.
       apply hide_ty_dom_cast.
     + apply sn_args_Nodup. auto. 
     + unfold sym_sigma_args, ty_subst_list_s. 
-      rewrite map_length, <- (args_agree _ Hin), map_length; auto.
+      rewrite length_map, <- (args_agree _ Hin), length_map; auto.
     + apply sn_idx_bound'. auto.
 Qed.
 (*The body of the outer function - calls [term_rep_aux]
@@ -5072,9 +5072,9 @@ Proof.
     erewrite !val_with_args_in. reflexivity. Unshelve.
     all: auto.
     all: try (unfold sym_sigma_args, ty_subst_list_s;
-    rewrite !map_length; rewrite <- fs_wf_eq; auto;
+    rewrite !length_map; rewrite <- fs_wf_eq; auto;
     rewrite <- fs_args; auto;
-    rewrite map_length; auto).
+    rewrite length_map; auto).
     apply arg_list_args_eq; auto.
     simpl in t1, t2. apply t2. apply t2.
   - rewrite !funcs_rep_aux_eq. simpl.
@@ -5089,9 +5089,9 @@ Proof.
     erewrite !val_with_args_in. reflexivity. Unshelve.
     all: auto.
     all: try (unfold sym_sigma_args, ty_subst_list_s;
-    rewrite !map_length; rewrite <- ps_wf_eq; auto;
+    rewrite !length_map; rewrite <- ps_wf_eq; auto;
     rewrite <- ps_args; auto;
-    rewrite map_length; auto).
+    rewrite length_map; auto).
     apply arg_list_args_eq; auto.
     simpl in t1, t2. apply t2. apply t2.
 Qed.

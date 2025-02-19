@@ -54,7 +54,7 @@ Proof.
   destruct Hwf as [Hnodup Hfb].
   inversion Hnodup as [| ? ? Hnotin Hn2]; subst.
   rewrite map_app in Hn2.
-  apply NoDup_app in Hn2. destruct Hn2 as [Hn1 Hn2].
+  apply NoDup_app_impl in Hn2. destruct Hn2 as [Hn1 Hn2].
   split_all; auto; intros y [Hiny1 Hiny2]; apply (Hfb y);
   rewrite !in_map_aset_map in *.
   - rewrite aset_mem_map_union. simpl. rewrite map_app, in_app_iff. auto.
@@ -72,9 +72,9 @@ Proof.
   rewrite gen_if_bnd, gen_if_fv in Hwf.
   destruct Hwf as [Hnodup Hfb].
   rewrite !map_app in Hnodup, Hfb.
-  apply NoDup_app in Hnodup.
+  apply NoDup_app_impl in Hnodup.
   destruct Hnodup as [Hn1 Hn2].
-  apply NoDup_app in Hn2.
+  apply NoDup_app_impl in Hn2.
   destruct Hn2 as [Hn2 Hn3].
   unfold disj in Hfb.
   do 2 (setoid_rewrite in_app_iff in Hfb).
@@ -112,7 +112,7 @@ Proof.
       rewrite in_map_iff; eauto.
     }
     split.
-    + apply NoDup_app in Hn3. apply Hn3.
+    + apply NoDup_app_impl in Hn3. apply Hn3.
     + intros y [Hiny1 Hiny2].
       (*Because in [tm_bnd], cannot be in [pat_fv]*)
       assert (Hnotin: ~ In y (map fst (aset_to_list (pat_fv (fst x))))). {
@@ -162,7 +162,7 @@ Proof.
   unfold term_name_wf, fmla_name_wf in *; simpl in *.
   rewrite map_app in Hwf.
   destruct Hwf as [Hn1 Hdisj].
-  apply NoDup_app in Hn1. destruct Hn1 as [Hn1 Hn2]. split_all; auto;
+  apply NoDup_app_impl in Hn1. destruct Hn1 as [Hn1 Hn2]. split_all; auto;
   eapply disj_sublist_lr; try solve[apply Hdisj];
   try solve[apply sublist_app_r]; try solve[apply sublist_app_l];
   intros x Hinx; rewrite !in_map_aset_map in *; apply aset_mem_map_union; auto.
@@ -174,7 +174,7 @@ Proof.
   unfold fmla_name_wf in *; simpl in *.
   rewrite map_app in Hwf.
   destruct Hwf as [Hn1 Hdisj].
-  apply NoDup_app in Hn1. destruct Hn1 as [Hn1 Hn2]. split_all; auto;
+  apply NoDup_app_impl in Hn1. destruct Hn1 as [Hn1 Hn2]. split_all; auto;
   eapply disj_sublist_lr; try solve[apply Hdisj];
   try solve[apply sublist_app_r]; try solve[apply sublist_app_l];
   intros x Hinx; rewrite !in_map_aset_map in *; apply aset_mem_map_union; auto.

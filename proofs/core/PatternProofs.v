@@ -7,6 +7,10 @@ Set Bullet Behavior "Strict Subproofs".
 
 Ltac simpl_len_extra ::= rewrite !gen_strs_length.
 
+Opaque amap_union.
+Opaque aset_union.
+Opaque aset_big_union.
+
 Section CompileCorrect.
 (*NOTE: want gamma, but only gamma, in context. Typing should
   not rely on interpretations, and it is easier to prove it
@@ -116,7 +120,7 @@ matches_row nil al nil Htys := Some amap_empty;
 matches_row (t1 :: tys1) al (p :: ps) Htys :=
   option_bind ((match_val_single gamma_valid pd pdf vt _ p (Forall2_inv_head Htys) (hlist_hd al)))
       (fun l => option_bind (matches_row tys1 (hlist_tl al) ps (Forall2_inv_tail Htys)) 
-        (fun l1 => Some (amap_union (fun y _ => Some y) l l1))).
+        (fun l1 => Some (aunion l l1))). 
 
 (*Semantics for whole matrix matching*)
 Equations matches_matrix  (tys: list vty) 
@@ -252,7 +256,7 @@ Definition semantic_constr {m: mut_adt} (m_in : mut_in_ctx m gamma)
     (eq_sym (adts pdf m (map (v_subst vt) args) a m_in a_in))
   (* [[c]](al)*)
   (constr_rep gamma_valid m m_in 
-    (map (v_subst vt) args) (eq_trans (map_length _ _) args_len) (dom_aux pd) a a_in 
+    (map (v_subst vt) args) (eq_trans (length_map _ _) args_len) (dom_aux pd) a a_in 
       c c_in (adts pdf m (map (v_subst vt) args)) 
          al)).
 Definition tm_semantic_constr (t: term) {m: mut_adt} (m_in : mut_in_ctx m gamma)
@@ -285,7 +289,7 @@ Proof.
       d))) as [f [[c_in al] Hrep]]. simpl in Hrep.
   apply (existT f).
   apply (exist _ (c_in , al)). simpl.
-  assert (Heq: srts_len = (eq_trans (map_length (v_subst vt) args) args_len)). { apply UIP_dec, Nat.eq_dec.  }
+  assert (Heq: srts_len = (eq_trans (length_map (v_subst vt) args) args_len)). { apply UIP_dec, Nat.eq_dec.  }
   subst.
   rewrite <- Hrep, scast_eq_sym.
   unfold dom_cast.
@@ -350,7 +354,6 @@ Therefore, we need 4 intermediate lemmas:
 (5) proving that matching a row of all wildcards gives Some []*)
 
 (*1. Decompose [match_row] for [app]*)
-
 Lemma matches_row_app (tys1 tys2: list vty) 
   (h1: arg_list (domain (dom_aux pd)) (map (v_subst vt) tys1))
   (h2: arg_list (domain (dom_aux pd)) (map (v_subst vt) tys2))
@@ -365,7 +368,7 @@ Lemma matches_row_app (tys1 tys2: list vty)
   (Hr3: row_typed tys2 ps2):
   matches_row (tys1 ++ tys2) h3 (ps1 ++ ps2) Hr1 =
   option_bind (matches_row tys1 h1 ps1 Hr2) (fun l => 
-    option_bind (matches_row tys2 h2 ps2 Hr3) (fun l1 => Some (amap_union (fun y _ => Some y) l l1))).
+    option_bind (matches_row tys2 h2 ps2 Hr3) (fun l1 => Some (aunion l l1))).
 Proof.
   generalize dependent (eq_sym (map_app (v_subst vt) tys1 tys2)).
   revert Hr1 Hr2 Hr3.
@@ -373,7 +376,7 @@ Proof.
   - intros ps1 Hlen1. destruct ps1; try discriminate. simpl.
     intros. subst. simp matches_row. simpl. simp hlist_app.
     rewrite option_bind_ext with (f2:=fun l1 => Some l1).
-    2: { intros x. f_equal. apply amap_union_empty_l. }
+    2: { intros x. simpl. f_equal. apply amap_union_empty_l. }
     rewrite option_bind_id.
     assert (e = eq_refl) by (apply UIP_dec, list_eq_dec, sort_eq_dec).
     subst. unfold cast_arg_list; simpl.
@@ -554,7 +557,7 @@ Proof.
   (*Using the IH is a bit complicated*)
   rewrite <- (IH (hlist_tl al) ps (Forall2_inv_tail Hty1) Hrowrev (eq_sym (map_rev (v_subst vt) tys))).
   2: { eapply disj_map_cons_impl; eauto. }
-  rewrite option_bind_ext with (f1:=fun l => Some (amap_union (fun y _ => Some y) l amap_empty)) (f2:=fun l => Some l).
+  rewrite option_bind_ext with (f1:=fun l => Some (aunion l amap_empty)) (f2:=fun l => Some l).
   2: { intros x.  f_equal. apply amap_union_empty_r. }
   rewrite option_bind_id.
   (*Relies on commutativity of union because of disj*)
@@ -988,7 +991,7 @@ Proof.
       intros x Hinx.
       unfold substi. destruct (vsymbol_eq_dec x v0); subst.
       * unfold extend_val_with_list at 2. simpl.
-        rewrite amap_lookup_union_singleton. simpl.
+        rewrite aunion_lookup. unfold amap_singleton. rewrite amap_set_lookup_same. simpl.
         assert (ty1 = (snd v0)). {
           inversion Hp2; subst. inversion H2; subst. reflexivity.
         }
@@ -1000,7 +1003,7 @@ Proof.
         apply tm_change_vv.
         intros v1 Hinv1.
         apply extend_val_notin.
-        rewrite amap_union_empty_l.
+        rewrite aunion_empty_l.
         rewrite amap_mem_keys_false.
         rewrite (matches_row_vars Hmatch1).
         unfold pat_row_vars_disj in Hvars.
@@ -1008,9 +1011,9 @@ Proof.
         apply (Hvars v1). unfold row_fv. simpl fst.
         rewrite !aset_big_union_cons. simpl_set_small. auto.
       * unfold extend_val_with_list at 2.
-        rewrite amap_lookup_union_singleton_diff by auto. 
-        unfold extend_val_with_list.
-        rewrite amap_union_empty_l.
+        unfold amap_singleton.
+        rewrite aunion_lookup, amap_set_lookup_diff by auto.
+        unfold extend_val_with_list. rewrite aunion_empty_l, amap_empty_get.
         reflexivity.
     + (*Pconstr case*)
       (*constr not simplified so case is easy*)
@@ -1164,7 +1167,7 @@ Proof.
         unfold substi.
         destruct (vsymbol_eq_dec x v0); subst.
         -- simpl. unfold extend_val_with_list at 2.
-          rewrite amap_lookup_union_set. simpl.
+          rewrite aunion_lookup, amap_set_lookup_same. simpl.
           assert (ty1 = (snd v0)). {
             inversion Hp2; subst. inversion H2; subst. reflexivity.
           }
@@ -1175,7 +1178,7 @@ Proof.
           apply tm_change_vv.
           intros v1 Hinv1.
           apply extend_val_notin.
-          rewrite amap_mem_union_some by auto.
+          rewrite amap_mem_aunion_some.
           rewrite orb_false_iff, !amap_mem_keys_false.
           rewrite (matches_row_vars Hmatch3).
           rewrite (match_val_single_fv _ _ _ _ _ _ _ _ Hmatch2).
@@ -1185,7 +1188,8 @@ Proof.
           setoid_rewrite aset_big_union_cons in Hdisj.
           split; intros Hinv2; apply (Hdisj v1); simpl_set_small; auto.
         -- unfold extend_val_with_list at 2.
-          rewrite amap_lookup_union_set_diff by auto. reflexivity.
+          rewrite aunion_lookup, amap_set_lookup_diff by auto.
+          unfold extend_val_with_list. rewrite aunion_lookup. reflexivity.
       * (*Case 2: LHS doesnt match. Show same for RHS*)
         rewrite match_val_single_irrel with (Hval2:=(Forall2_inv_head Hr2)).
         destruct (match_val_single _ _ _ _ _ rhd _ _) as [m2|] eqn : Hmatch2; simpl in *; [| auto].
@@ -1706,7 +1710,7 @@ Proof.
   erewrite fun_arg_list_eq with (constrs_len:=constrs_len) (Htms:=Htms) in Hsem .
   (*Now lots of casting until we can get to injectivity*)
   rewrite (constrs gamma_valid pd pdf pf m a f m_in a_in f_in (map (v_subst vt) args) 
-    (eq_trans (map_length (v_subst vt) args) args_len)) in Hsem.
+    (eq_trans (length_map (v_subst vt) args) args_len)) in Hsem.
   unfold constr_rep_dom in Hsem. 
   unfold cast_dom_vty, dom_cast in Hsem.
   rewrite !scast_scast in Hsem.
@@ -1961,17 +1965,18 @@ Proof.
     destruct (vsymbol_eq_dec var1 x); subst.
     + destruct (vty_eq_dec _ _); [|contradiction].
       unfold extend_val_with_list; simpl. destruct (vsymbol_eq_dec x x); [|contradiction].
-      rewrite amap_lookup_union_singleton. simpl. 
+      unfold amap_singleton.
+      rewrite aunion_lookup, amap_set_lookup_same. simpl.
       destruct (sort_eq_dec _ _); [|contradiction].
       apply dom_cast_eq.
     + (*Both cases identical*)
       assert (extend_val_with_list pd vt v
-        (amap_union (fun y _ : {s : sort & domain (dom_aux pd) s} => Some y)
-           (amap_singleton var1 (existT (v_subst vt (snd var1)) (hlist_hd al))) l1) x =
+        (aunion (amap_singleton var1 (existT (v_subst vt (snd var1)) (hlist_hd al))) l1) x =
               val_with_args pd vt v vars (hlist_tl al) x).
       {
-        unfold extend_val_with_list. simpl.
-        rewrite amap_lookup_union_singleton_diff by auto.
+        unfold extend_val_with_list. unfold amap_singleton.
+        rewrite aunion_lookup, amap_set_lookup_diff by auto.
+        rewrite amap_empty_get.
         apply Hvals.
       }
       destruct (vty_eq_dec _ _); auto.
@@ -2127,7 +2132,7 @@ Proof.
   destruct (rev ps) as [| p1 ps1] eqn : Hrev.
   { (*contradiction - exists*)
     assert (Hps: ps = nil). {
-      apply length_zero_iff_nil; rewrite <- rev_length, Hrev. reflexivity.
+      apply length_zero_iff_nil; rewrite <- length_rev, Hrev. reflexivity.
     }
     subst; discriminate.
   }
@@ -2631,7 +2636,7 @@ Proof.
     eapply IHconstrs; eauto; split.
     + subst t. simpl in Hsimpt. 
       rewrite map_app, forallb_app, Hsimptl, andb_true_r.
-      rewrite map_rev, map_fst_combine_eq, map_length, forallb_rev.
+      rewrite map_rev, map_fst_combine_eq, length_map, forallb_rev.
       apply forallb_firstn; auto.
     + (*use gen_simple_pats_spec*)
       revert Hget.
@@ -3489,7 +3494,7 @@ Forall2 P (map fst (rev (combine tms new_typs) ++ tl))
    (map snd (rev (combine tms new_typs) ++ tl)).
 Proof.
   simpl. intros Hall1 Hall2. rewrite !map_app. apply Forall2_app; auto.
-  rewrite !map_rev. apply Forall2_rev. rewrite !map_fst_combine_eq, !map_snd_combine_eq, !map_length.
+  rewrite !map_rev. apply Forall2_rev. rewrite !map_fst_combine_eq, !map_snd_combine_eq, !length_map.
   apply Forall2_firstn; auto.
 Qed.
 
@@ -3945,7 +3950,7 @@ Proof.
         apply Forall2_nth; simpl_len; split; [auto|].
         intros i d1 d2 Hi.
         assert (Hi': i < length (s_args cs)) by
-          (rewrite Hvarstyps in Hi; unfold new_typs in Hi; rewrite map_length in Hi; exact Hi).
+          (rewrite Hvarstyps in Hi; unfold new_typs in Hi; rewrite length_map in Hi; exact Hi).
         rewrite map_nth_inbound with (d2:=(""%string, vty_int)) by auto. 
         apply T_Var'.
         -- (*We proved [valid_type] already*)
@@ -4306,7 +4311,7 @@ Proof.
       intros x [Hall1 Hall2]. split; auto.
     - (*Use fact that types not empty to show pats not null*)
       assert (Hlen: length pats <> 0). {
-        erewrite <- map_length, <- Hpats. simpl_len.
+        erewrite <- length_map, <- Hpats. simpl_len.
         rewrite amap_not_empty_exists in Htypesemp. destruct Htypesemp as  [fs [pats1 Hget]].
         unfold types in Hget.
         rewrite (proj2 (populate_all_fst_snd_full _ _ _ Hsimp Hpop)) in Hget.
@@ -5633,9 +5638,7 @@ Proof.
   intros P1; induction P1 as [| [ps1 a1] t1 IH].
   - intros _. intros [| [ps2 a2] t2]; try discriminate. simpl; auto.
     intros _ _ l1 Hsome1 l2 Hsome2 Hall Hlen.
-    inversion Hsome1; inversion Hsome2; subst; simpl.
-    setoid_rewrite amap_empty_get.
-    split; simpl; auto. 
+    inversion Hsome1; inversion Hsome2; subst; simpl. auto.
   - intros Hsimp1 [| [ps2 a2] t2] Hlens; [discriminate|].
     rewrite lens_mx_cons in Hlens.
     intros Hsimp2 hds1 Hhds1 hds2 Hhds2 Hshapes Hlenheads.
@@ -6724,7 +6727,7 @@ Lemma compile_bare_single_ext_simpl {b1 b2} t1 t2 ty ps1 ps2
   isSome (compile_bare_single b2 false t2 ty ps2).
 Proof.
   apply compile_bare_single_ext; auto.
-  - rewrite <-(map_length fst), Hps,map_length; reflexivity.
+  - rewrite <-(length_map fst), Hps,length_map; reflexivity.
   - apply ty_rel_refl.
   - rewrite Hps. clear. induction (map fst ps2); simpl; auto.
     rewrite all2_cons, IHl, shape_p_refl; auto.
@@ -7049,12 +7052,14 @@ Lemma pat_mx_type_vars_default {b} (P: list (list pattern * gen_term b)):
   asubset (pat_mx_type_vars (default P)) (pat_mx_type_vars P).
 Proof.
   induction P as [| [ps a] rtl]; simpl; [apply asubset_refl|].
+  rewrite pat_mx_type_vars_cons. simpl.
   destruct ps as [| phd ptl]; simpl.
-  - eapply asubset_trans. apply IHrtl. apply union_asubset_r.
+  - eapply asubset_trans. apply IHrtl. rewrite aset_big_union_nil, aset_union_empty_l. 
+    apply union_asubset_r.
   - destruct phd; try solve[eapply asubset_trans; [apply IHrtl | apply union_asubset_r]].
-    simpl. apply asubset_union; auto.
-    simpl. rewrite aset_big_union_cons. simpl. rewrite aset_union_empty_l.
-    apply asubset_refl.
+    simpl. rewrite !pat_mx_type_vars_cons. simpl.
+    rewrite aset_big_union_cons. simpl.
+    rewrite aset_union_empty_l. apply asubset_union; auto. apply asubset_refl.
 Qed.
 
 Lemma pat_mx_type_vars_spec {b} n cs rl:
@@ -7069,26 +7074,26 @@ Lemma pat_mx_type_vars_spec {b} n cs rl:
       end) rl)) (pat_mx_type_vars rl).
 Proof.
   induction rl as [| [ps a] rtl IH]; simpl; [apply asubset_refl|].
+  rewrite pat_mx_type_vars_cons. simpl.
   destruct ps as [| phd ptl]; simpl; auto.
   - eapply asubset_trans. apply IH. apply union_asubset_r.
   - destruct phd as [| f1 tys1 ps1 | | |]; try solve[eapply asubset_trans; [apply IH | apply union_asubset_r]].
     + (*funsym case*)
       destruct (funsym_eqb_spec f1 cs); [| solve[eapply asubset_trans; [apply IH | apply union_asubset_r]]].
       subst. simpl. rewrite !asubset_def in IH |- *.
-      intros x Hinx. rewrite pat_mx_type_vars_cons in Hinx |- *. simpl in Hinx. simpl_set_small.
+      intros x Hinx. rewrite pat_mx_type_vars_cons in Hinx. simpl in Hinx. simpl_set_small.
       destruct Hinx as [Hinx | Hinx]; auto.
       simpl_set_small. destruct Hinx as [Hinx | Hinx]; auto.
       rewrite aset_big_union_app in Hinx. simpl_set_small. simpl.
-      rewrite !aset_big_union_cons.
       simpl_set_small.
       destruct Hinx as [Hinx | Hinx]; auto.
       rewrite aset_big_union_rev in Hinx. simpl. simpl_set_small; auto.
     + (*wild case*)
       rewrite !asubset_def in IH |- *.
-      intros x Hinx. rewrite pat_mx_type_vars_cons in Hinx |- *. simpl in Hinx. simpl_set_small.
+      intros x Hinx. rewrite pat_mx_type_vars_cons in Hinx. simpl in Hinx. simpl_set_small.
       destruct Hinx as [Hinx | Hinx]; auto.
       simpl_set_small. destruct Hinx as [Hinx | Hinx]; auto.
-      simpl. rewrite aset_big_union_cons. simpl. simpl_set_small.
+      simpl. simpl. simpl_set_small.
       rewrite aset_big_union_app in Hinx. simpl_set_small.
       destruct Hinx as [Hinx | Hinx]; auto.
       (*Pwild has no vars*)
@@ -7128,7 +7133,7 @@ Proof.
     intros. apply IHwilds in Hmt1; auto.
     eapply asubset_trans; [apply Hmt1|].
     apply asubset_union.
-    + apply union_asubset_r.
+    + rewrite tm_list_type_vars_cons. apply union_asubset_r.
     + eapply asubset_trans; [ apply pat_mx_type_vars_default| apply asubset_refl].
   - (*full*)
     intros.
@@ -7447,11 +7452,12 @@ Lemma pat_mx_tv_fv_default b rl:
   asubset (pat_mx_tm_fv b (default rl)) (pat_mx_tm_fv b rl).
 Proof.
   induction rl as [| [ps a] rtl IH]; simpl; [apply asubset_refl|].
+  rewrite pat_mx_tm_fv_cons.
   destruct ps as [| phd ptl]; simpl;
   [eapply asubset_trans; [apply IH | apply union_asubset_r]|].
   destruct phd; try solve[eapply asubset_trans; [apply IH | apply union_asubset_r]].
   rewrite pat_mx_tm_fv_cons.
-  simpl. rewrite !pat_mx_tm_fv_cons. simpl.
+  simpl. simpl.
   rewrite !asubset_def in IH |- *.
   intros x Hinx. simpl_set_small.
   destruct Hinx as [Hinx | ?]; auto.
@@ -7464,6 +7470,7 @@ Lemma pat_mx_tv_fv_spec b rl cs:
   asubset (pat_mx_tm_fv b (spec b rl cs)) (pat_mx_tm_fv b rl).
 Proof.
   induction rl as [|[ps a] rtl IH]; simpl; [apply asubset_refl|].
+  rewrite pat_mx_tm_fv_cons. simpl.
   destruct ps as [| phd ptl]; [apply (asubset_trans _ _ _ IH),
     union_asubset_r|].
   destruct phd as [| f1 tys1 ps1 | | |]; try solve[apply (asubset_trans _ _ _ IH), union_asubset_r].
@@ -8180,7 +8187,7 @@ Proof.
         apply T_Var'; [| simpl; apply nth_indep; solve_len].
         pose proof (in_cslist_val _ _ Htyrl Hpop Hsimpl Hincslist) as Hallval.
         rewrite Forall_nth in Hallval.
-        apply Hallval; rewrite map_length; lia.
+        apply Hallval; rewrite length_map; lia.
       - (*pat matrix typed*)
         rewrite map_app, !map_rev.
         rewrite !map_snd_combine by solve_len.

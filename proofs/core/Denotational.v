@@ -103,13 +103,13 @@ Proof.
       simpl.
       unfold sorts_to_tys. rewrite map_map. simpl. 
       rewrite -> ty_subst_fun_nth with(s:=s_int); auto; 
-        [| rewrite map_length; auto].
+        [| rewrite length_map; auto].
       rewrite -> map_nth_inbound with(d2:=vty_int); auto.
       rewrite <- H0; auto.
     + rewrite -> !ty_subst_fun_notin by assumption. auto.
-  - f_equal. apply list_eq_ext'; rewrite !map_length; auto.
+  - f_equal. apply list_eq_ext'; rewrite !length_map; auto.
     intros n d Hn. rewrite -> !map_nth_inbound with (d2:=vty_int); auto.
-    2: rewrite map_length; auto. rewrite Forall_forall in H1. apply H1.
+    2: rewrite length_map; auto. rewrite Forall_forall in H1. apply H1.
     apply nth_In. auto.
 Qed.
 
@@ -406,10 +406,10 @@ Lemma sym_sigma_args_map (v: val_typevar) (f: funsym)
 Proof.
   intros Hlen.
   unfold sym_sigma_args, ty_subst_list_s, ty_subst_list.
-  apply list_eq_ext'; rewrite !map_length; auto.
+  apply list_eq_ext'; rewrite !length_map; auto.
   intros n d Hn.
   rewrite !map_nth_inbound with (d2:=vty_int); auto;
-  [|rewrite map_length]; auto.
+  [|rewrite length_map]; auto.
   symmetry. apply funsym_subst_eq; auto.
   apply s_params_Nodup.
 Qed.
@@ -438,9 +438,9 @@ Proof.
   rewrite (adt_constr_ret gamma_valid m_in a_in c_in).
   rewrite (adt_constr_params gamma_valid m_in a_in c_in) in Hlen |- *.
   unfold ty_subst. simpl. f_equal.
-  apply list_eq_ext'; rewrite !map_length; auto.
+  apply list_eq_ext'; rewrite !length_map; auto.
   intros n d Hn.
-  rewrite map_nth_inbound with (d2:=vty_int); [|rewrite map_length; auto].
+  rewrite map_nth_inbound with (d2:=vty_int); [|rewrite length_map; auto].
   rewrite (map_nth_inbound) with (d2:=EmptyString); auto.
   simpl.
   rewrite ty_subst_fun_nth with(s:=d); auto.
@@ -538,7 +538,7 @@ Fixpoint match_val_single (v: val_typevar) (ty: vty)
 
       (*Need a lemma about lengths for [find_constr_rep]*)
       let lengths_eq : length srts = length (m_params m) := 
-        eq_trans (map_length _ _)
+        eq_trans (length_map _ _)
           (adt_vty_length_eq gamma gamma_valid Hisadt 
           (pat_has_type_valid _ _ _ Hty')) in
 
@@ -718,7 +718,7 @@ Lemma match_val_single_rewrite  (v: val_typevar) (ty: vty)
           valeq d) in
 
       let lengths_eq : length srts = length (m_params m) := 
-        eq_trans (map_length _ _)
+        eq_trans (length_map _ _)
           (adt_vty_length_eq gamma gamma_valid Hisadt 
           (pat_has_type_valid _ _ _ Hty')) in
 
@@ -830,7 +830,7 @@ Lemma match_val_single_ind
   (Hvslen2: Datatypes.length vs2 = Datatypes.length (m_params m)),
   projT1
   (find_constr_rep gamma_valid m Hinctx (map (val v) vs2)
-    (eq_trans (map_length (val v) vs2)
+    (eq_trans (length_map (val v) vs2)
         (Hvslen2)) 
     (dom_aux pd) adt Hinmut (adts pdf m (map (val v) vs2)) 
     (gamma_all_unif gamma_valid m Hinctx)
@@ -860,7 +860,7 @@ Lemma match_val_single_ind
   (e: scast (adts pdf m (map (val v) vs2) adt Hinctx Hinmut)
         (dom_cast (dom_aux pd) (eq_trans eq_refl (v_subst_cons (adt_name adt) vs2)) d) =
       constr_rep gamma_valid m Hinctx (map (val v) vs2)
-        (eq_trans (map_length (val v) vs2) (Hvslen2 m adt vs2 eq_refl Hval)) 
+        (eq_trans (length_map (val v) vs2) (Hvslen2 m adt vs2 eq_refl Hval)) 
         (dom_aux pd) adt Hinmut f i (adts pdf m (map (val v) vs2)) a),
     Q _ a)
 (Hconstr3: forall (v: val_typevar) (f: funsym) (params: list vty)
@@ -1072,7 +1072,7 @@ Proof.
     apply IHl in Hmatch0; auto.
     apply H3 in Hmatch.
     rewrite keys_union.
-    * rewrite Hmatch, Hmatch0. rewrite aset_big_union_cons. reflexivity.
+    * rewrite Hmatch, Hmatch0. reflexivity.
     * (*Prove disj - exactly the same*)
       rewrite disj_map_cons_iff in H.
       intros x [Hinx1 Hinx2].
@@ -1653,12 +1653,12 @@ Proof.
     rewrite eq_trans_refl_l in Hcast1, Hcast2. 
     assert (Hconstr:
       (constr_rep gamma_valid2 m Hinctx1 (map (v_subst vt2) vs2)
-        (eq_trans (map_length (v_subst vt2) vs2) e0) (dom_aux pd) adt Hinmut2 f1
+        (eq_trans (length_map (v_subst vt2) vs2) e0) (dom_aux pd) adt Hinmut2 f1
         x_in1 (adts pdf2 m (map (v_subst vt2) vs2)) a1 =
        scast (f_equal 
         (fun x => adt_rep m x (dom_aux pd) adt Hinmut2) (eq_sym Heq2))
       (constr_rep gamma_valid1 m Hinctx2 (map (v_subst vt1) vs2)
-        (eq_trans (map_length (v_subst vt1) vs2) e0) (dom_aux pd) adt Hinmut2 f2
+        (eq_trans (length_map (v_subst vt1) vs2) e0) (dom_aux pd) adt Hinmut2 f2
         x_in2 (adts pdf1 m (map (v_subst vt1) vs2)) a2))).
     {
       rewrite <- Hcast1, <- Hcast2. unfold dom_cast.
@@ -1669,13 +1669,13 @@ Proof.
     (*Now, we put everything in gamma1*)
     erewrite (constr_rep_change_gamma gamma_valid2 gamma_valid1 m Hinctx1
       Hinctx2 (map (v_subst vt2) vs2)
-      (eq_trans (map_length (v_subst vt2) vs2) e0) (dom_aux pd))
+      (eq_trans (length_map (v_subst vt2) vs2) e0) (dom_aux pd))
     with (adts2:=(adts pdf1 m (map (v_subst vt2) vs2))) in Hconstr.
     (*Now both constrs are in gamma1, so we can begin to relate them*)
     (*Now, we first show that f1 = f2*)
     assert (f1 = f2). {
-      generalize dependent (eq_trans (map_length (v_subst vt2) vs2) e0).
-      generalize dependent (eq_trans (map_length (v_subst vt1) vs2) e0).
+      generalize dependent (eq_trans (length_map (v_subst vt2) vs2) e0).
+      generalize dependent (eq_trans (length_map (v_subst vt1) vs2) e0).
       generalize dependent (map (v_subst vt2) vs2).
       intros. subst. (*simpl in H0.*)
       (*Now, we show that if x <> x0, this contradicts disjointness*)
@@ -1688,8 +1688,8 @@ Proof.
     subst f1.
     (*And now we can show that a1 = a2 (with casting)*)
     assert (a1 = (cast_arg_list (f_equal (sym_sigma_args f2) (eq_sym Heq2)) a2)). {
-      generalize dependent (eq_trans (map_length (v_subst vt2) vs2) e0).
-      generalize dependent (eq_trans (map_length (v_subst vt1) vs2) e0).
+      generalize dependent (eq_trans (length_map (v_subst vt2) vs2) e0).
+      generalize dependent (eq_trans (length_map (v_subst vt1) vs2) e0).
       generalize dependent (map (v_subst vt2) vs2).
       intros. subst.
       (*Now we use injectivity of constructors (knowing that f1 = f2)*) 
@@ -1714,10 +1714,10 @@ Proof.
       map (v_subst vt2) (ty_subst_list (s_params f) vs2 (s_args f)) =
       map (v_subst vt1) (ty_subst_list (s_params f) vs2 (s_args f))).
     {
-      apply list_eq_ext'; rewrite !map_length; auto.
-      intros n d'. unfold ty_subst_list; rewrite map_length; intros.
+      apply list_eq_ext'; rewrite !length_map; auto.
+      intros n d'. unfold ty_subst_list; rewrite length_map; intros.
       rewrite !map_nth_inbound with(d2:=vty_int); auto;
-      try rewrite map_length; auto.
+      try rewrite length_map; auto.
       rewrite !funsym_subst_eq; auto; try apply s_params_Nodup.
       rewrite Heq2. reflexivity.
     }
@@ -2481,7 +2481,7 @@ Proof.
     need nested inductive lemma for get_arg_list*)
     unfold cast_dom_vty. rewrite !dom_cast_compose.
     assert (Hmap: map (v_subst vt2) l = map (v_subst vt1) l). {
-      apply list_eq_ext'; rewrite !map_length; auto.
+      apply list_eq_ext'; rewrite !length_map; auto.
       intros n d Hn.
       rewrite !(map_nth_inbound) with(d2:=vty_int); auto.
       apply v_subst_ext. intros.
@@ -2674,7 +2674,7 @@ Proof.
     reflexivity.
   - (*Preds case*)
     assert (Hmap: map (v_subst vt2) tys = map (v_subst vt1) tys). {
-      apply list_eq_ext'; rewrite !map_length; auto.
+      apply list_eq_ext'; rewrite !length_map; auto.
       intros n d Hn.
       rewrite !(map_nth_inbound) with(d2:=vty_int); auto.
       apply v_subst_ext. intros.

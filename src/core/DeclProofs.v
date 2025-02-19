@@ -10,19 +10,18 @@ Lemma ty_unif_equiv_aux (params: list typevar) (t: vty) (subs: list vty) (i: nat
   (Hlen: length params = length subs)
   (Hn: NoDup params)
   (Hi: i < length params)
-  (Hinith: In (nth i params ""%string) (type_vars t))
+  (Hinith: aset_mem (nth i params ""%string) (type_vars t))
   (Heq: t = ty_subst params subs t):
   nth i subs vty_int = vty_var (nth i params ""%string).
 Proof.
   induction t; try solve[inversion Hinith].
-  - simpl in Hinith. destruct Hinith as [Hv | []]; subst.
+  - simpl in Hinith. simpl_set. subst.
     unfold ty_subst in Heq; simpl in Heq.
     rewrite ty_subst_fun_nth with (s:=vty_int) in Heq; auto.
   - rewrite ty_subst_cons in Heq.
     injection Heq. intros Hvs.
     (*Get the type that this var is in*)
-    simpl in Hinith.
-    rewrite <- big_union_elts in Hinith.
+    simpl in Hinith. simpl_set.
     destruct Hinith as [t1 [Hint1 Hinvar]].
     rewrite Forall_forall in H.
     specialize (H t1 Hint1 Hinvar).
@@ -39,11 +38,11 @@ Lemma ty_unif_equiv (args: list vty) (params: list typevar)
   (subs: list vty)
   (Hlen: length params = length subs)
   (Hn: NoDup params)
-  (Hvars: forall x, In x params -> exists t, In t args /\ In x (type_vars t))
+  (Hvars: forall x, In x params -> exists t, In t args /\ aset_mem x (type_vars t))
   (Heq: args = map (ty_subst params subs) args):
   subs = map vty_var params.
 Proof.
-  apply list_eq_ext'; [rewrite map_length; auto |].
+  apply list_eq_ext'; [rewrite length_map; auto |].
   intros n d Hn'.
   rewrite nth_indep with (d':=vty_int); auto.
   assert (Hn1: n < length params) by lia.

@@ -181,6 +181,9 @@ Qed.
 Definition funsym_eq_dec (f1 f2: funsym) : {f1 = f2} + {f1 <> f2} :=
   reflect_dec' (funsym_eqb_spec f1 f2).
 
+(* Eval cbn in (vty_eq_dec (vty_cons ts_d [vty_int]) (vty_cons ts_d [vty_int])).
+Eval cbn in (funsym_eq_dec id_fs id_fs). *)
+
 (*We do the same for predicate symbols*)
 
 Definition predsym_eqb (p1 p2: predsym) : bool :=
@@ -279,6 +282,9 @@ Instance predsym_Countable : countable.Countable predsym :=
   countable.inj_countable' p_sym Build_predsym (ltac:(intros [x]; reflexivity)).
 
 (*Create function symbols*)
+(*NOTE: DO NOT USE in non-proof settings!
+  This does compute, but ONLY with [vm_compute], so it is dangerous to use
+  e.g. when comparing equality, will not reduce*)
 Definition find_args (l: list vty) : list typevar :=
   aset_to_list (aset_big_union type_vars l).
 
@@ -312,6 +318,15 @@ Proof.
   exfalso; apply n. rewrite asubset_def. intros y Hiny.
   simpl_set. unfold find_args. simpl_set.
   exists x; auto.
+Qed.
+
+Lemma find_args_sort ty:
+  is_sort ty ->
+  find_args [ty] = nil.
+Proof.
+  unfold is_sort; intros Hsort.
+  unfold find_args. rewrite aset_big_union_cons, aset_big_union_nil, aset_union_empty_r.
+  apply is_empty_empty in Hsort. rewrite Hsort. reflexivity.
 Qed.
 
 Definition funsym_noconstr_noty (name: string) (args: list vty) 
@@ -368,7 +383,8 @@ Proof.
 Defined.
 
 (*TODO: do we even need this?*)
-(* Instance vsymbol_countable : countable.Countable vsymbol := countable.prod_countable. *)
+(*Useful, for some reason cant infer now*)
+(* Global Instance vsymbol_countable : countable.Countable vsymbol := countable.prod_countable. *)
 
 Unset Elimination Schemes.
 Inductive pattern : Set :=

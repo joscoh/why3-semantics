@@ -52,7 +52,7 @@ Definition fold_right2_opt {A B C: Type} (f: A -> B -> C -> option C) (base: C) 
     end.
 
 (*gives a map from vars to types such that [v_subst s t1] = t2 if one exists*)
-Fixpoint ty_match (t1 t2: vty) (s: amap typevar vty) : option (amap typevar vty) :=
+(* Fixpoint ty_match (t1 t2: vty) (s: amap typevar vty) : option (amap typevar vty) :=
   match t1, t2 with
   | vty_cons ts1 tys1, vty_cons ts2 tys2 =>
     if typesym_eqb ts1 ts2 then
@@ -60,16 +60,16 @@ Fixpoint ty_match (t1 t2: vty) (s: amap typevar vty) : option (amap typevar vty)
     else None
   | vty_var n1, _ =>
     (*See if n1 is mapped to t2 (OK) or nothing (add), else None*)
-    match amap_get typevar_eq_dec s n1 with
+    match amap_lookup s n1 with
     | Some ty3 => if vty_eqb t2 ty3 then Some s else None
     | None => Some (amap_set typevar_eq_dec s n1 t2)
     end
   | _, _ => if vty_eqb t1 t2 then Some s else None
-  end.
+  end. *)
 
 (*Now use this to infer type map for functions*)
 (*Is there a type substitution sigma such that sigma (args) = *)
-Definition find_fpsym_map (f: fpsym) (tys: list vty) : option (amap typevar vty) :=
+(* Definition find_fpsym_map (f: fpsym) (tys: list vty) : option (amap typevar vty) :=
   fold_right2_opt ty_match amap_empty (s_args f) tys.
 
 Definition find_param_vals (params: list typevar) (s: amap typevar vty) : list vty :=
@@ -102,7 +102,7 @@ Definition tfun_infer_ret (f: funsym) (tys: list vty) (tms: list term) : option 
 Definition tfun_infer' (f: funsym) (tys: list vty) (tms: list term) : term :=
 match tfun_infer f tys tms with | Some t => t | _ => tm_d end.
 Definition tfun_infer_ret' (f: funsym) (tys: list vty) (tms: list term) : term * vty :=
-match tfun_infer_ret f tys tms with | Some t => t | _ => (tm_d, vty_int) end.
+match tfun_infer_ret f tys tms with | Some t => t | _ => (tm_d, vty_int) end *)
 
 
 Section ElimADT.
@@ -140,7 +140,7 @@ Variable (noind: typesym -> bool).
 
 Section Badnames.
 (*We need to make sure new funsym names are unique*)
-Variable badnames: list string.
+Variable badnames: aset string.
 
 Definition gen_id s := gen_name s badnames.
 
@@ -170,20 +170,11 @@ Definition add_axiom (t: task) (n: string) (f: formula) : task :=
   in a well-typed context, (ts_args ts = m_params m), which has nodups.
   But we prove this later because we don't use any context info*)
 
-(*TODO: move*)
-(* Lemma sublist_iff_r {A: Type} (l1 l2 l3: list A):
-  (forall x, In x l2 -> In x l3) ->
-  sublist l1 l2 ->
-  sublist l1 l3.
-Proof.
-  intros Heq Hsub. intros x Hinx. auto.
-Qed. *)
-
 (*NOTE: here we fix ty to [vty_cons ts (map vty_var (ts_args ts))] (i.e. adt_ty ts),
   or else we cannot prove the type variable inclusion*)
 (*TODO: reduce duplication*)
 Lemma selector_check_args (ts: typesym) (csl: list funsym):
-  let mt_var := gen_name "a" (ts_args ts) in
+  let mt_var := gen_name "a" (list_to_aset (ts_args ts)) in
   let mt_ty : vty := vty_var mt_var in
   let ty := vty_cons ts (map vty_var (ts_args ts)) in
   let mt_al := ty :: rev_map (fun _ => mt_ty) csl in
@@ -191,35 +182,38 @@ Lemma selector_check_args (ts: typesym) (csl: list funsym):
 Proof.
   apply (reflect_iff _ _ (check_args_correct _ _)).
   intros x. simpl. intros [Hx | Hinx].
-  - subst. simpl.
-    apply sublist_cons. apply sublist_trans with (l2:=ts_args ts).
-    + (*Just use induction, should prove*)
-      induction (ts_args ts) as [| h t IH]; simpl; auto; [apply sublist_refl|].
-      destruct (in_dec _ _ _); [apply sublist_cons|apply sublist_cons_l]; auto.
-    + intros x. rewrite nodup_In. auto.
+  - subst. simpl. rewrite list_to_aset_cons.
+    eapply asubset_trans. 2: apply union_asubset_r.
+    apply asubset_trans with (s2:=(list_to_aset (ts_args ts))).
+    + rewrite asubset_def. intros x. simpl_set. setoid_rewrite in_map_iff.
+      intros [y [[x1 [Hy Hinx1]] Hmemx]]; subst.
+      simpl in Hmemx. simpl_set. subst. auto.
+    + rewrite asubset_def. intros x. simpl_set. apply nodup_In.
   - unfold rev_map in Hinx. rewrite <- In_rev, in_map_iff in Hinx.
     destruct Hinx as [f [Hf Hinf]]; subst. simpl.
-    apply sublist_cons_l, sublist_nil_l.
+    rewrite list_to_aset_cons. apply union_asubset_l.
 Qed. 
 
 Lemma selector_args_nodup (ts: typesym):
-  let mt_var := gen_name "a" (ts_args ts) in
+  let mt_var := gen_name "a" (list_to_aset (ts_args ts)) in
   nodupb typevar_eq_dec (mt_var :: nodup string_dec (ts_args ts)).
 Proof.
   simpl.
   apply (reflect_iff _ _ (nodup_NoDup _ _)).
   constructor.
-  - rewrite nodup_In. apply gen_name_notin.
+  - rewrite nodup_In. intros Hx.
+    apply gen_name_notin with (s:= (list_to_aset (ts_args ts)))(p:="a"%string).
+    simpl_set; auto.
   - apply NoDup_nodup.
 Qed.
 
 Lemma selector_ret_sublist (ts: typesym)  :
-  let mt_var := gen_name "a" (ts_args ts) in
+  let mt_var := gen_name "a" (list_to_aset (ts_args ts)) in
   let mt_ty : vty := vty_var mt_var in
-  check_sublist (type_vars mt_ty) (mt_var :: nodup string_dec (ts_args ts)).
+  check_asubset (type_vars mt_ty) (list_to_aset (mt_var :: nodup string_dec (ts_args ts))).
 Proof.
-  apply (reflect_iff _ _ (check_sublist_correct _ _)).
-  simpl. apply sublist_cons_l, sublist_nil_l.
+  destruct (check_asubset _ _); simpl; auto. exfalso.
+  apply n. simpl. rewrite list_to_aset_cons. apply union_asubset_l.
 Qed.
 
 Definition match_str : string := "match_".
@@ -228,7 +222,7 @@ Definition selector_name ts : string := (match_str ++ ts_name ts ++ under_str)%s
 
 Definition selector_funsym(ts: typesym) (csl: list funsym) : funsym :=
   let mt_id : string := gen_id (selector_name ts)  in
-  let mt_var := gen_name "a" (ts_args ts) in
+  let mt_var := gen_name "a" (list_to_aset (ts_args ts)) in
   let mt_ty : vty := vty_var mt_var in
   let ty := vty_cons ts (map vty_var (ts_args ts)) in
   (*Params: new name + all params in ts*)
@@ -249,7 +243,7 @@ Definition selector_axiom
   (* declare the selector function *)
   let mt_id : string := gen_id (selector_name ts) in
   (*TODO: does it need to be fresh? Yes, cannot be in params of ts*)
-  let mt_var := gen_name "a" (ts_args ts) in
+  let mt_var := gen_name "a" (list_to_aset (ts_args ts)) in
   let mt_ty : vty := vty_var mt_var in
   (* let mt_ty = ty_var (create_tvsymbol (id_fresh "a")) in *)
   let mt_al := ty :: rev_map (fun _ => mt_ty) csl in
@@ -259,7 +253,7 @@ Definition selector_axiom
   (* let mt_map2 := amap_set typesym_eq_dec s.(mt_map) ts mt_ls in *)
   (* define the selector function *)
   (*Generate new vars*)
-  let varnames := gen_names (length csl) "z"%string nil in
+  let varnames := gen_names (length csl) "z"%string aset_empty in
   let mt_vl : list vsymbol := rev_map (fun x => (x, mt_ty)) varnames in
   (* let mt_vs _ = create_vsymbol (id_fresh "z") mt_ty in *)
   (* let mt_vl = List.rev_map mt_vs csl in *)
@@ -269,7 +263,7 @@ Definition selector_axiom
     (* let id = mt_ls.ls_name.id_string ^ "_" ^ cs.ls_name.id_string in *) 
     (* let pr = create_prsymbol (id_derive id cs.ls_name) in *)
     (*Create new vars - they can be the same among axioms (TODO: inefficient)*)
-    let varnames2 := gen_names (length (s_args cs)) "u"%string varnames in
+    let varnames2 := gen_names (length (s_args cs)) "u"%string (list_to_aset varnames) in
     let vl := rev (combine varnames2 (s_args cs)) in
     (* let vl = List.rev_map (create_vsymbol (id_fresh "u")) cs.ls_args in *)
     let newcs := new_constr cs in (*amap_get_def funsym_eq_dec cc_map cs id_fs in (*TODO: show have*)*)
@@ -335,10 +329,11 @@ Lemma indexer_check_args (ts: typesym) :
   check_args (nodup typevar_eq_dec (ts_args ts)) [ty].
 Proof.
   simpl. rewrite andb_true_r.
-  apply (reflect_iff _ _ (check_sublist_correct _ _)).
-  intros x Hinx. rewrite nodup_In. simpl_set. destruct Hinx as [y [Hiny Hinx]].
+  destruct (check_asubset _ _); simpl; auto. exfalso; apply n.
+  rewrite asubset_def.
+  intros x Hinx. simpl_set_small. rewrite nodup_In. simpl_set. destruct Hinx as [y [Hiny Hinx]].
   rewrite in_map_iff in Hiny. destruct Hiny as [v [Hy Hinv]]; subst.
-  simpl in Hinx. destruct Hinx as [Hxv | []]; subst; auto.
+  simpl in Hinx. simpl_set. subst; auto.
 Qed.
 
 Lemma nodupb_nodup {A: Type} eq_dec (l: list A):
@@ -352,11 +347,25 @@ Definition index_str := "index_"%string.
 Definition indexer_name (ts: typesym) : string :=
   (index_str ++ (ts_name ts) ++ under_str)%string.
 
+(*TODO: is this OK?*)
+(*NOTE: because it is efficient: inefficient is checking each elt, which would reduce*)
+Lemma check_asubset_empty {A: Type} `{countable.Countable A} (s: aset A):
+  check_asubset aset_empty s.
+Proof.
+  destruct (check_asubset _ _); auto.
+  exfalso. apply n. rewrite asubset_def. intros x Hinx.  simpl_set.
+Qed.
+
 Definition indexer_funsym (ts: typesym) : funsym :=
+  let ty := vty_cons ts (map vty_var (ts_args ts))in
+  let mt_id := gen_id (indexer_name ts) in
+  Build_funsym (Build_fpsym mt_id (nodup typevar_eq_dec (ts_args ts)) [ty] 
+    (indexer_check_args ts) (nodupb_nodup _ _)) vty_int false 0 (check_asubset_empty _).
+(* 
   let ty := vty_cons ts (map vty_var (ts_args ts)) in
   let mt_id := gen_id (indexer_name ts) in
   Build_funsym (Build_fpsym mt_id (nodup typevar_eq_dec (ts_args ts)) [ty] 
-    (indexer_check_args ts) (nodupb_nodup _ _)) vty_int false 0 eq_refl.
+    (indexer_check_args ts) (nodupb_nodup _ _)) vty_int false 0 ltac:(reflexivity). *)
 
 
 (*Again, define indexer axiom*)
@@ -369,7 +378,7 @@ Definition indexer_axiom
   let mt_add idx (cs: funsym) :=
     let id := (mt_id ++ under_str ++ (s_name cs))%string in
     (* let pr = create_prsymbol (id_derive id cs.ls_name) in *)
-    let varnames := gen_names (length (s_args cs)) "u" nil in
+    let varnames := gen_names (length (s_args cs)) "u" aset_empty in
     let vl := rev (combine varnames (s_args cs)) in
     let newcs := new_constr cs (*amap_get_def funsym_eq_dec cc_map cs id_fs in*) in
     (*NOTE: THESE TYPES MAY BE WRONG!*)
@@ -415,8 +424,8 @@ Definition discriminator_axioms (ts: typesym) (ty: vty) (csl: list funsym) :
     let i : string := gen_id ((s_name c1) ++ "_" ++ (s_name c2))%string in
     (* let pr = create_prsymbol (id_derive id ts.ts_name) in *)
     (*Create vars - TODO: does it have to be fresh against some vars?*)
-    let ul := rev (combine (gen_names (length (s_args c1)) "u" nil) (s_args c1)) in
-    let vl := rev (combine (gen_names (length (s_args c2)) "v" nil) (s_args c2)) in
+    let ul := rev (combine (gen_names (length (s_args c1)) "u" aset_empty) (s_args c1)) in
+    let vl := rev (combine (gen_names (length (s_args c2)) "v" aset_empty) (s_args c2)) in
     (* let ul := rev_map (create_vsymbol (id_fresh "u")) c1.ls_args in
     let vl = List.rev_map (create_vsymbol (id_fresh "v")) c2.ls_args in *)
     let newc1 := new_constr c1 in (*amap_get_def funsym_eq_dec (cc_map) c1 id_fs in*)
@@ -484,14 +493,12 @@ Proof.
 Qed.
 
 Lemma in_args_check_sublist (c: funsym) (ty: vty) (Hty: In ty (s_args c)):
-  check_sublist (type_vars ty) (s_params c).
+  check_asubset (type_vars ty) (list_to_aset (s_params c)).
 Proof.
   destruct c; simpl in *. 
   destruct f_sym; simpl in *.
-  unfold is_true in s_args_wf.
-  rewrite <- (reflect_iff _ _ (check_args_correct _ _)) in s_args_wf. unfold is_true.
-  rewrite <- (reflect_iff _ _ (check_sublist_correct _ _)).
-  auto.
+  destruct (check_args_correct s_params s_args); [|discriminate].
+  destruct (check_asubset (type_vars ty) _); simpl; auto.
 Qed.
 
 Definition proj_funsym (c: funsym) (n: string) (ty: vty) (Hty: In ty (s_args c)) : funsym :=
@@ -523,7 +530,7 @@ Definition projection_axioms
   (cs: funsym) (pl: list funsym) : list (funsym * (string * formula)) :=
   (* declare and define the projection functions *)
   (*Fresh vars TODO*)
-  let vl := combine (gen_names (length (s_args cs)) "u" nil) (s_args cs) in
+  let vl := combine (gen_names (length (s_args cs)) "u" aset_empty) (s_args cs) in
   (* let vl = List.map (create_vsymbol (id_fresh "u")) cs.ls_args in *)
   let tl := map Tvar vl in
   (*Types: new_constr has type (e.g. a -> list a -> list a),
@@ -597,7 +604,7 @@ Definition inversion_axiom
   let ax_id := ((ts_name ts) ++ "_inversion")%string in
   (* let ax_pr = create_prsymbol (id_derive ax_id ts.ts_name) in *)
   (*TODO: fresh?*)
-  let ax_vs := (gen_name "u"%string nil, ty) in 
+  let ax_vs := (gen_name "u"%string aset_empty, ty) in 
   let ax_hd := Tvar ax_vs in
   let mk_cs (cs: funsym) : formula :=
     (*NOTE: we know the pjl from the projections*)
@@ -703,7 +710,7 @@ Definition pat_match_ty' pats :=
 
 
 (*Assume we have a list of banned variables (instantiate with term vars)*)
-Variable badvars : list vsymbol.
+Variable badvars : aset vsymbol.
 
 (*It is often difficult to figure out what the type arguments for functions should be.
   We will do it as they do, trying to instantiate a type mapping*)
@@ -759,7 +766,7 @@ Definition mk_br_tm (rewriteT: term -> term) (args: list vty)  t1
       end in*)
       let e := fold_let Tlet (map2 add_var pl pjl) e in
       (* let e := fold_left2' add_var pl pjl e in *)
-      (w, amap_set funsym_eq_dec m cs e)
+      (w, amap_set m cs e)
   | Pwild => (Some e, m)
   | _ => (*Prove don't hit*) x
   end.
@@ -784,7 +791,7 @@ Definition mk_br_fmla (rewriteF: formula -> formula)
         | Pvar v => v
         | _ => (*TODO: prove don't hit*) vs_d
       end in
-      (w, amap_set funsym_eq_dec m cs (map get_var pl, e))
+      (w, amap_set m cs (map get_var pl, e))
     | Pwild => (Some e, m)
     | _ => (*TODO: prove dont hit*) x
     end .
@@ -811,7 +818,7 @@ Definition rewriteF_find (t1: term) (ty1: vty) (args: list vty) (sign: bool)
   (m: amap funsym (list vsymbol * formula))
   (w: option formula) (cs: funsym) : 
   formula :=
-  let res := match amap_get funsym_eq_dec m cs with
+  let res := match amap_lookup m cs with
   | Some y => y
   | None => (*Need fresh vars - TODO: *)
       (*If wild, we give fresh vars w1, w2 then wild value
@@ -864,7 +871,7 @@ Fixpoint rewriteT (t: term) : term :=
       (*find: for each constructor, get the term, if the term is not there,
         get wild info (NOTE: cannot be None by exhaustiveness)*)
       let find x := 
-        match amap_get funsym_eq_dec m x with
+        match amap_lookup m x with
         | Some e => e
         | None => match w with | Some x => x | None => (*impossible*) tm_d end
         end
@@ -1000,9 +1007,9 @@ Definition add_ty_decl (t: task) (ts: typesym) : task :=
 (*Instantiate badvars with term variables*)
 
 Definition rewriteT' gamma t :=
-  rewriteT gamma ((tm_fv t) ++ (tm_bnd t)) t.
+  rewriteT gamma (aset_union (tm_fv t) (list_to_aset (tm_bnd t))) t.
 Definition rewriteF' gamma x f :=
-  rewriteF gamma ((fmla_fv f) ++ (fmla_bnd f)) x f.
+  rewriteF gamma (aset_union (fmla_fv f) (list_to_aset (fmla_bnd f))) x f.
 
 Definition add_def (d: def) (t: task) : task :=
   (d :: task_gamma t, task_delta t, task_goal t).
@@ -1068,7 +1075,7 @@ Definition fold_comp : trans :=
   fun t => 
   (*TODO: we CANNOT fold over t - should be empty task I believe (at least empty gamma)*)
     (*NEED to start from empty context and build up defs - TODO: do we need to reverse result?*)
-    let badnames := idents_of_context (task_gamma t) in (*NOTE: easier to prove with*)
+    let badnames := list_to_aset (idents_of_context (task_gamma t)) in (*NOTE: easier to prove with*)
     let tsk1 := fold_all_ctx badnames t in
     (*NOTE: HAS to be (task_gamma t) here when we do this way - or else
       nothing has constructors (if eliminate all types

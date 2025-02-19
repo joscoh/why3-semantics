@@ -51,9 +51,9 @@ Lemma elim_let_typed gamma bt bf (t: term) (f: formula) :
 Proof.
   revert t f; apply term_formula_ind; simpl; auto; intros;
   inversion Hty; subst; try solve[constructor; auto].
-  - constructor; auto. rewrite map_length; auto.
+  - constructor; auto. rewrite length_map; auto.
     assert (Hlen: length (map (ty_subst (s_params f1) l) (s_args f1)) =
-      length l1) by (rewrite map_length; auto).
+      length l1) by (rewrite length_map; auto).
     clear -H10 Hlen H.
     generalize dependent l1.
     induction (map (ty_subst (s_params f1) l) (s_args f1)); simpl;
@@ -74,9 +74,9 @@ Proof.
       destruct H; subst; simpl; auto.
     + revert H9. apply compile_bare_single_ext_simpl.
       rewrite map_map; auto.
-  - constructor; auto. rewrite map_length; auto.
+  - constructor; auto. rewrite length_map; auto.
     assert (Hlen: length (map (ty_subst (s_params p) tys) (s_args p)) =
-      length tms) by (rewrite map_length; auto).
+      length tms) by (rewrite length_map; auto).
     clear -H8 Hlen H.
     generalize dependent tms.
     induction (map (ty_subst (s_params p) tys) (s_args p)); simpl;
@@ -110,35 +110,34 @@ Definition elim_let_f_typed bt bf f gamma := proj_fmla
 (*Need sublist (not eq) because the var to sub may not
   be in the term*)
 Lemma elim_let_fv bt bf (t: term) (f: formula) :
-  (sublist (tm_fv (elim_let_t bt bf t)) (tm_fv t)) /\
-  (sublist (fmla_fv (elim_let_f bt bf f)) (fmla_fv f)).
+  (asubset (tm_fv (elim_let_t bt bf t)) (tm_fv t)) /\
+  (asubset (fmla_fv (elim_let_f bt bf f)) (fmla_fv f)).
 Proof.
   revert t f; apply term_formula_ind; simpl; intros; auto;
-  solve_subset. (*Only 2 nontrivial - let *)
+  solve_asubset. (*Only 2 nontrivial - let *)
   - destruct bt; simpl.
     + (*Need to know if var to sub appears freely in term or not*) 
-      destruct (in_dec vsymbol_eq_dec v  (tm_fv (elim_let_t true bf tm2))).
-      * unfold sublist. intros x.
+      destruct (aset_mem_dec v  (tm_fv (elim_let_t true bf tm2))).
+      * rewrite asubset_def in *. intros x.
         rewrite safe_sub_t_fv; auto; simpl_set. intros;
         destruct_all; auto.
       * rewrite safe_sub_t_notin; auto.
-        unfold sublist. intros.
+        rewrite asubset_def in *. intros.
         simpl_set.
         right. split; auto.
         intro C; subst; contradiction. 
-    + solve_subset.
+    + solve_asubset.
   - destruct bf; simpl.
-    + destruct (in_dec vsymbol_eq_dec v  (fmla_fv (elim_let_f bt true f))).
-      * unfold sublist. intros x.
+    + destruct (aset_mem_dec v  (fmla_fv (elim_let_f bt true f))).
+      * rewrite asubset_def in *. intros x.
         rewrite safe_sub_f_fv; auto; simpl_set. intros;
         destruct_all; auto.
       * rewrite safe_sub_f_notin; auto.
-        unfold sublist. intros.
+        rewrite asubset_def in *. intros.
         simpl_set.
         right. split; auto.
         intro C; subst; contradiction.
-    + apply sublist_union; auto.
-      apply sublist_remove; auto.
+    + solve_asubset.
 Qed.
 
 Definition elim_let_f_fv bt bf f :=
@@ -169,7 +168,7 @@ Proof.
   - assert (ty_fun_ind_ret Hty2 = ty_fun_ind_ret Hty1).
       apply UIP_dec. apply vty_eq_dec.
     rewrite H0. f_equal. f_equal. apply UIP_dec. apply sort_eq_dec.
-    f_equal. apply get_arg_list_ext; rewrite map_length; auto.
+    f_equal. apply get_arg_list_ext; rewrite length_map; auto.
     intros.
     rewrite Forall_forall in H.
     revert Hty0.
@@ -200,7 +199,7 @@ Proof.
       apply UIP_dec. apply vty_eq_dec.
     }
     erewrite H0, H. reflexivity.
-  - f_equal. apply get_arg_list_ext; rewrite map_length; auto;
+  - f_equal. apply get_arg_list_ext; rewrite length_map; auto;
     intros. revert Hty0.
     rewrite map_nth_inbound with(d2:=tm_d); auto; intros.
     rewrite Forall_forall in H; apply H; auto.
@@ -454,7 +453,7 @@ Proof.
     induction ps; simpl in *; auto.
     inversion H0; subst.
     rewrite IHps; auto.
-    destruct (in_bool vsymbol_eq_dec x (pat_fv (fst a))); simpl; auto.
+    destruct (aset_mem_dec x (pat_fv (fst a))); simpl; auto.
     rewrite H3; auto.
   - vsym_eq x v.
   - f_equal. induction tms; simpl; auto.
@@ -465,7 +464,7 @@ Proof.
     induction ps; simpl in *; auto.
     inversion H0; subst.
     rewrite IHps; auto.
-    destruct (in_bool vsymbol_eq_dec x (pat_fv (fst a))); simpl; auto.
+    destruct (aset_mem_dec x (pat_fv (fst a))); simpl; auto.
     rewrite H3; auto.
 Qed.
 
@@ -533,11 +532,11 @@ Lemma count_let_safe_sub_t tm x t (Htm: count_let_t tm = 0):
   count_let_t (safe_sub_t tm x t) = count_let_t t.
 Proof.
   unfold safe_sub_t.
-  destruct (in_bool vsymbol_eq_dec x (tm_fv t)); auto.
+  destruct (aset_mem_dec x (tm_fv t)); auto.
   rewrite count_let_sub_t; auto.
-  destruct (existsb (fun x0 : vsymbol => in_bool vsymbol_eq_dec x0 (tm_bnd t)) (tm_fv tm)); auto.
+  destruct (existsb (fun x0 : vsymbol => in_bool vsymbol_eq_dec x0 (tm_bnd t)) (aset_to_list (tm_fv tm))); auto.
   apply count_let_shape_t.
-  apply alpha_shape_t with(vars:=nil).
+  apply alpha_shape_t with(m1:=amap_empty)(m2:=amap_empty). 
   rewrite a_equiv_t_sym.
   apply a_convert_t_equiv.
 Qed.
@@ -546,11 +545,11 @@ Lemma count_let_safe_sub_f tm x f (Htm: count_let_t tm = 0):
   count_let_f (safe_sub_f tm x f) = count_let_f f.
 Proof.
   unfold safe_sub_f.
-  destruct (in_bool vsymbol_eq_dec x (fmla_fv f)); auto.
+  destruct (aset_mem_dec x (fmla_fv f)); auto.
   rewrite count_let_sub_f; auto.
-  destruct (existsb (fun x0 : vsymbol => in_bool vsymbol_eq_dec x0 (fmla_bnd f)) (tm_fv tm)); auto.
+  destruct (existsb (fun x0 : vsymbol => in_bool vsymbol_eq_dec x0 (fmla_bnd f)) (aset_to_list (tm_fv tm))); auto.
   apply count_let_shape_f.
-  apply alpha_shape_f with(vars:=nil).
+  apply alpha_shape_f with(m1:=amap_empty)(m2:=amap_empty).
   rewrite a_equiv_f_sym.
   apply a_convert_f_equiv.
 Qed.
@@ -942,9 +941,9 @@ Proof.
   apply elim_let_tm_fmla_elim; intros; simpl; intros; auto; simpl in *.
   - inversion H1; subst; auto.
     rewrite map_In_spec. constructor; auto;
-    [rewrite map_length; auto|].
+    [rewrite length_map; auto|].
     assert (length tms = length (map (ty_subst (s_params f) tys) (s_args f)))
-      by (rewrite map_length; auto).
+      by (rewrite length_map; auto).
     generalize dependent (map (ty_subst (s_params f) tys) (s_args f)).
     clear -H.
     induction tms; simpl; intros; auto.
@@ -967,9 +966,9 @@ Proof.
     rewrite map_map; auto.
   - inversion H1; subst. constructor; auto.
   - inversion H1; subst. rewrite map_In_spec; constructor; auto;
-    try rewrite map_length; auto.
+    try rewrite length_map; auto.
     assert (length tms = length (map (ty_subst (s_params p) tys) (s_args p)))
-      by (rewrite map_length; auto).
+      by (rewrite length_map; auto).
     generalize dependent (map (ty_subst (s_params p) tys) (s_args p)).
     clear -H.
     induction tms; simpl; intros; auto.
@@ -1021,26 +1020,26 @@ Section FreeVars.
 Definition elim_let_tm_fmla_fv_sublist (x: tm_fmla) (y: tm_fmla_ty x) : Prop :=
   match x as x' return tm_fmla_ty x' -> Prop with
   | Left t1 => fun t2 => 
-    sublist (tm_fv t2) (tm_fv t1)
+    asubset (tm_fv t2) (tm_fv t1)
   | Right f1 => fun f2 =>
-    sublist (fmla_fv f2) (fmla_fv f1)
+    asubset (fmla_fv f2) (fmla_fv f1)
   end y.
 
 Lemma elim_let_tm_fmla_fv (x: tm_fmla) b1 b2 Heq1 Heq2:
 elim_let_tm_fmla_fv_sublist x (proj1_sig (elim_let_tm_fmla x b1 b2 Heq1 Heq2)).
 Proof.
   apply elim_let_tm_fmla_elim; intros; simpl; intros; auto; simpl in *;
-  try (rewrite map_In_spec); solve_subset;
+  try (rewrite map_In_spec); solve_asubset;
   try solve[ rewrite Forall_forall; auto]. 
   (*Only 2 nontrivial goals - let*) 
-  - eapply sublist_trans. apply H0. unfold sublist. intros.
-    destruct (in_dec vsymbol_eq_dec x0 (tm_fv tm2)).
+  - eapply asubset_trans. apply H0. rewrite asubset_def in *. intros.
+    destruct (aset_mem_dec x0 (tm_fv tm2)).
     + rewrite safe_sub_t_fv in H1; auto.
       simpl_set. destruct H1; auto.
     + rewrite safe_sub_t_notin in H1; auto.
       simpl_set. right; split; auto. intro C; subst; contradiction.
-  - eapply sublist_trans. apply H0. unfold sublist. intros.
-    destruct (in_dec vsymbol_eq_dec x0 (fmla_fv f)).
+  - eapply asubset_trans. apply H0. rewrite asubset_def in *. intros.
+    destruct (aset_mem_dec x0 (fmla_fv f)).
     + rewrite safe_sub_f_fv in H1; auto.
       simpl_set. destruct H1; auto.
     + rewrite safe_sub_f_notin in H1; auto.
@@ -1049,7 +1048,7 @@ Qed.
 
 (*Corollary:*)
 Lemma elim_let_fmla_fv (f: formula):
-  sublist (fmla_fv (elim_let_fmla f)) (fmla_fv f).
+  asubset (fmla_fv (elim_let_fmla f)) (fmla_fv f).
 Proof.
   apply (elim_let_tm_fmla_fv (Right f) bt bf eq_refl eq_refl);
   auto.
@@ -1088,7 +1087,7 @@ Proof.
     rewrite H1. f_equal. f_equal. apply UIP_dec. apply sort_eq_dec.
     f_equal. clear H1. revert Hty2.
     rewrite map_In_spec; intros.
-    apply get_arg_list_ext; rewrite map_length; auto.
+    apply get_arg_list_ext; rewrite length_map; auto.
     intros.
     revert Hty0.
     rewrite map_nth_inbound with(d2:=tm_d); auto; intros.
@@ -1123,7 +1122,7 @@ Proof.
     erewrite H, H1. reflexivity.
   - f_equal. revert Hty2. 
     rewrite map_In_spec; intros.
-    apply get_arg_list_ext; rewrite map_length; auto.
+    apply get_arg_list_ext; rewrite length_map; auto.
     intros.
     revert Hty0.
     rewrite map_nth_inbound with(d2:=tm_d); auto; intros.

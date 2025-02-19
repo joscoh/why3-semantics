@@ -115,7 +115,7 @@ Qed.
 Lemma map_snd_fst_len {A B C: Type} (l: list ((A * B) * C)):
   length (map snd l) = length (map snd (map fst l)).
 Proof.
-  rewrite !map_length; auto.
+  rewrite !length_map; auto.
 Qed.
 
 Lemma remove_bindings_incl subs vs:
@@ -257,16 +257,16 @@ Proof.
         reflexivity.
       }
       rewrite val_with_args_in with(Heq:=Heq); auto; 
-      try rewrite !map_length; auto.
+      try rewrite !length_map; auto.
       3: unfold vsymbol in *; lia. (*This is super annoying, why is Coq awful at unifying everything?*)
       2: apply keylist_Nodup.
       assert (Hi1: i < Datatypes.length (map snd (keylist subs))) by
-        (rewrite !map_length; lia).
+        (rewrite !length_map; lia).
       rewrite map_arg_list_nth with (Hi:=Hi1).
       rewrite !dom_cast_compose.
       assert (ty =  (nth i (map snd (keylist subs)) vty_int)). {
         eapply term_has_type_unique. apply Hty1. auto.
-        apply map_arg_list_nth_ty; auto; rewrite !map_length; auto. lia.
+        apply map_arg_list_nth_ty; auto; rewrite !length_map; auto. lia.
       }
       subst.
       rewrite term_rep_irrel with (Hty2:=(map_arg_list_nth_ty (map_snd_fst_len (elements subs)) Hi1 Hall)).
@@ -282,8 +282,8 @@ Proof.
     (tfun_params_length Hty2);
     [| apply UIP_dec, Nat.eq_dec].
     f_equal. f_equal. f_equal.
-    apply get_arg_list_ext; [rewrite map_length; auto |].
-    intros i Hi. rewrite map_length in Hi.
+    apply get_arg_list_ext; [rewrite length_map; auto |].
+    intros i Hi. rewrite length_map in Hi.
     rewrite !map_nth_inbound with (d2:=tm_d); auto.
     intros.
     rewrite Forall_forall in H. apply H; auto. apply nth_In; auto.
@@ -328,7 +328,7 @@ Proof.
         rewrite !map_nth_inbound with (d2:=(""%string, vty_int)); auto.
         rewrite keylist_length; lia.
       }
-      rewrite val_with_args_in with(Heq:=Heq1); auto; try rewrite !map_length; auto.
+      rewrite val_with_args_in with(Heq:=Heq1); auto; try rewrite !length_map; auto.
       (*simplify substi*)
       unfold substi at 2.
       vsym_eq (nth j (keylist (remove_binding subs v)) vs_d) v.
@@ -347,7 +347,7 @@ Proof.
           rewrite !map_nth_inbound with (d2:=(""%string, vty_int)); auto.
           rewrite keylist_length; auto.
         }
-        rewrite val_with_args_in with(Heq:=Heq2); auto; try rewrite !map_length; auto.
+        rewrite val_with_args_in with(Heq:=Heq2); auto; try rewrite !length_map; auto.
         2: apply keylist_Nodup.
         2: rewrite keylist_length; lia.
         (*Now we can simplify the hnth*)
@@ -449,7 +449,7 @@ Proof.
           rewrite !map_map, !map_nth_inbound with (d2:=(""%string, vty_int)); auto.
           rewrite keylist_length; lia.
         }
-        rewrite val_with_args_in with(Heq:=Heq1); auto; try rewrite !map_length; auto.
+        rewrite val_with_args_in with(Heq:=Heq1); auto; try rewrite !length_map; auto.
         (*By assumption, not in list l*)
         rewrite extend_val_notin.
         2: {
@@ -568,7 +568,7 @@ Proof.
         rewrite !map_nth_inbound with (d2:=(""%string, vty_int)); auto.
         rewrite keylist_length; lia.
       }
-      rewrite val_with_args_in with(Heq:=Heq1); auto; try rewrite !map_length; auto; [| apply keylist_Nodup|
+      rewrite val_with_args_in with(Heq:=Heq1); auto; try rewrite !length_map; auto; [| apply keylist_Nodup|
         rewrite keylist_length; lia].
       (*simplify substi*)
       unfold substi at 2.
@@ -642,8 +642,8 @@ Proof.
         contradiction.
   - (*Fpred*)
     simpl_rep_full. f_equal.
-    apply get_arg_list_ext; [rewrite map_length; auto |].
-    intros i Hi. rewrite map_length in Hi.
+    apply get_arg_list_ext; [rewrite length_map; auto |].
+    intros i Hi. rewrite length_map in Hi.
     rewrite !map_nth_inbound with (d2:=tm_d); auto.
     intros.
     rewrite Forall_forall in H. apply H; auto. apply nth_In; auto.
@@ -687,7 +687,7 @@ Proof.
           rewrite !map_nth_inbound with (d2:=(""%string, vty_int)); auto.
           rewrite keylist_length; lia.
         }
-        rewrite val_with_args_in with(Heq:=Heq1); auto; try rewrite !map_length; auto; [| apply keylist_Nodup|
+        rewrite val_with_args_in with(Heq:=Heq1); auto; try rewrite !length_map; auto; [| apply keylist_Nodup|
           rewrite keylist_length; lia].
         (*simplify substi*)
         unfold substi at 2.
@@ -818,7 +818,7 @@ Proof.
         rewrite !map_nth_inbound with (d2:=(""%string, vty_int)); auto.
         rewrite keylist_length; lia.
       }
-      rewrite val_with_args_in with(Heq:=Heq1); auto; try rewrite !map_length; auto.
+      rewrite val_with_args_in with(Heq:=Heq1); auto; try rewrite !length_map; auto.
       (*simplify substi*)
       unfold substi at 2.
       vsym_eq (nth j (keylist (remove_binding subs v)) vs_d) v.
@@ -838,7 +838,7 @@ Proof.
           rewrite !map_nth_inbound with (d2:=(""%string, vty_int)); auto.
           rewrite keylist_length; auto.
         }
-        rewrite val_with_args_in with(Heq:=Heq2); auto; try rewrite !map_length; auto.
+        rewrite val_with_args_in with(Heq:=Heq2); auto; try rewrite !length_map; auto.
         2: apply keylist_Nodup.
         2: rewrite keylist_length; lia.
         (*Now we can simplify the hnth*)
@@ -939,7 +939,7 @@ Proof.
           rewrite !map_map, !map_nth_inbound with (d2:=(""%string, vty_int)); auto.
           rewrite keylist_length; lia.
         }
-        rewrite val_with_args_in with(Heq:=Heq1); auto; try rewrite !map_length; auto.
+        rewrite val_with_args_in with(Heq:=Heq1); auto; try rewrite !length_map; auto.
         (*By assumption, not in list l*)
         rewrite extend_val_notin.
         2: {
@@ -1312,16 +1312,16 @@ Proof.
     rewrite amap_Forall_forall in Hsubs. inversion Hty1; subst.
     apply Hsubs in Ha. auto. 
   - inversion Hty1; subst.
-    constructor; auto; try rewrite !map_length; auto.
+    constructor; auto; try rewrite !length_map; auto.
     revert H H10. rewrite !Forall_forall; intros.
-    rewrite in_combine_iff in H0; try rewrite !map_length; auto.
+    rewrite in_combine_iff in H0; try rewrite !length_map; auto.
     destruct H0 as [i [Hi Hx]].
     specialize (Hx tm_d vty_int); subst; simpl in *.
-    rewrite map_length in Hi.
+    rewrite length_map in Hi.
     rewrite map_nth_inbound with (d2:=tm_d); auto.
     apply H; auto. apply nth_In; auto.
     apply specialize_combine with (d1:=tm_d) (d2:=vty_int)(i:=i) in H10;
-    auto; rewrite map_length; auto.
+    auto; rewrite length_map; auto.
   - inversion Hty1; subst.
     constructor; auto. apply H0; auto.
     apply remove_bindings_forall'; auto.
@@ -1337,16 +1337,16 @@ Proof.
   - inversion Hty1; subst. constructor; auto.
     apply H; auto. apply remove_bindings_forall'; auto.
   - inversion Hty1; subst.
-    constructor; auto; try rewrite !map_length; auto.
+    constructor; auto; try rewrite !length_map; auto.
     revert H H8. rewrite !Forall_forall; intros.
-    rewrite in_combine_iff in H0; try rewrite !map_length; auto.
+    rewrite in_combine_iff in H0; try rewrite !length_map; auto.
     destruct H0 as [i [Hi Hx]].
     specialize (Hx tm_d vty_int); subst; simpl in *.
-    rewrite map_length in Hi.
+    rewrite length_map in Hi.
     rewrite map_nth_inbound with (d2:=tm_d); auto.
     apply H; auto. apply nth_In; auto.
     apply specialize_combine with (d1:=tm_d) (d2:=vty_int)(i:=i) in H8;
-    auto; rewrite map_length; auto.
+    auto; rewrite length_map; auto.
   - inversion Hty1; subst. constructor; auto.
     apply H; auto. apply remove_bindings_forall'; auto.
   - inversion Hty1; subst. constructor; auto.

@@ -8,6 +8,7 @@ Require Import Coq.Lists.List.
 Require Import Coq.Logic.FinFun.
 Require Import Coq.Arith.PeanoNat.
 Require Import Common.
+Set Bullet Behavior "Strict Subproofs".
 
 (*TODO: just use "fresh" from stdpp, repeat n times*)
 
@@ -28,7 +29,7 @@ Definition gen_dist (n: nat) : list A :=
 
 Lemma gen_dist_length (n: nat): length (gen_dist n) = n.
 Proof.
-  unfold gen_dist. rewrite map_length, seq_length. reflexivity.
+  unfold gen_dist. rewrite length_map, length_seq. reflexivity.
 Qed.
 
 Lemma gen_dist_correct (n: nat): NoDup (gen_dist n).
@@ -111,8 +112,7 @@ Proof.
     assert (~ In x p1). {
       apply Hnotin2. left; auto.
     } 
-    rewrite !filter_in_notin; auto.
-    simpl. (*destruct (eq_dec a a); auto; try contradiction.
+    rewrite !filter_in_notin; auto.  (*destruct (eq_dec a a); auto; try contradiction.
     simpl.*) (*rewrite <- filter_app.*)
     assert (Hn3: NoDup (p1 ++ p2)). {
       rewrite NoDup_app_iff. repeat split; auto.
@@ -120,12 +120,12 @@ Proof.
       - intros; apply Hnotin2. right; auto.
     }
     specialize (IH _ Hn3).
-    rewrite !app_length; simpl.
-    rewrite !app_length in IH.
+    rewrite !length_app.
+    rewrite !length_app in IH.
     destruct (aset_mem_dec x (aset_union (aset_singleton x) s)); simpl.
     2: { exfalso. apply n. simpl_set_small. auto. }
-    rewrite filter_app, app_length in IH.
-    destruct (aset_mem_dec x s); simpl in *; try lia.
+    rewrite filter_app, length_app in IH.
+    destruct (aset_mem_dec x s); try lia.
     contradiction.
 Qed.
 
@@ -194,7 +194,7 @@ Proof.
   unfold gen_notin. 
   replace (n + length l2) with ((n + length l1) + (length l2 - length l1)) by lia.
   unfold gen_dist.
-  rewrite firstn_length.
+  rewrite length_firstn.
   rewrite Nat.min_l_iff.
   intros Hlenge.
   (*Now prove that this prefix is equivalent to the longer one*)

@@ -3,7 +3,6 @@ Require Import Task.
 Require Import Pattern PatternProofs Alpha.
 Set Bullet Behavior "Strict Subproofs".
 
-(*TODO: does this work?*)
 Section Map.
 Variable (fn: term -> term) (pn: formula -> formula).
 
@@ -61,8 +60,8 @@ with rewriteF (f: formula) : formula :=
   | _ => f_map rewriteT rewriteF f
   end.
 
-Definition rewriteT' t := rewriteT (a_convert_all_t t nil).
-Definition rewriteF' f := rewriteF (a_convert_all_f f nil).
+Definition rewriteT' t := rewriteT (a_convert_all_t t aset_empty).
+Definition rewriteF' f := rewriteF (a_convert_all_f f aset_empty).
 
 (*And the transformation*)
 Definition compile_match : trans := trans_map rewriteT' rewriteF'.
@@ -83,9 +82,9 @@ Proof.
   - (*Tfun*) intros f1 tys tms IH ty Hty.
     inversion Hty; subst.
     constructor; auto.
-    + rewrite map_length; auto.
+    + rewrite length_map; auto.
     + assert (Hlen: length tms = length (map (ty_subst (s_params f1) tys) (s_args f1))).
-      { rewrite map_length; auto. }
+      { rewrite length_map; auto. }
       generalize dependent (map (ty_subst (s_params f1) tys) (s_args f1)).
       revert IH.
       clear.
@@ -107,9 +106,9 @@ Proof.
     intros f1 tys tms IH Hty.
     inversion Hty; subst.
     constructor; auto.
-    + rewrite map_length; auto.
+    + rewrite length_map; auto.
     + assert (Hlen: length tms = length (map (ty_subst (s_params f1) tys) (s_args f1))).
-      { rewrite map_length; auto. }
+      { rewrite length_map; auto. }
       generalize dependent (map (ty_subst (s_params f1) tys) (s_args f1)).
       revert IH.
       clear.
@@ -145,9 +144,9 @@ Proof.
   destruct (In_nth _ _ tm_d Hinx) as [n [Hn Hx]]; subst.
   exists (nth n (map (ty_subst (s_params f) tys) (s_args f)) vty_int).
   specialize (H9 (nth n tms tm_d, nth n (map (ty_subst (s_params f) tys) (s_args f)) vty_int)).
-  apply H9. rewrite in_combine_iff; [|rewrite map_length; auto].
+  apply H9. rewrite in_combine_iff; [|rewrite length_map; auto].
   exists n. split; auto. intros. f_equal; apply nth_indep; auto.
-  rewrite map_length; auto. lia.
+  rewrite length_map; auto. lia.
 Qed.
 
 Lemma fpred_tms_typed gamma f tys tms:
@@ -160,25 +159,25 @@ Proof.
   destruct (In_nth _ _ tm_d Hinx) as [n [Hn Hx]]; subst.
   exists (nth n (map (ty_subst (s_params f) tys) (s_args f)) vty_int).
   specialize (H7 (nth n tms tm_d, nth n (map (ty_subst (s_params f) tys) (s_args f)) vty_int)).
-  apply H7. rewrite in_combine_iff; [|rewrite map_length; auto].
+  apply H7. rewrite in_combine_iff; [|rewrite length_map; auto].
   exists n. split; auto. intros. f_equal; apply nth_indep; auto.
-  rewrite map_length; auto. lia.
+  rewrite length_map; auto. lia.
 Qed.
 
 
 Lemma rewrite_fv {gamma} (gamma_valid: valid_context gamma) t f:
   (forall ty (Hty: term_has_type gamma t ty), 
-    sublist (tm_fv (rewriteT t)) (tm_fv t)) /\
+    asubset (tm_fv (rewriteT t)) (tm_fv t)) /\
   (forall (Hty: formula_typed gamma f),
-    sublist (fmla_fv (rewriteF f)) (fmla_fv f)).
+    asubset (fmla_fv (rewriteF f)) (fmla_fv f)).
 Proof.
   revert t f; apply term_formula_ind; auto;
-  try solve[simpl; intros; apply sublist_refl];
-  try solve[simpl; intros; inversion Hty; subst; solve_subset; eauto].
+  try solve[simpl; intros; apply asubset_refl];
+  try solve[simpl; intros; inversion Hty; subst; solve_asubset; eauto].
   - (*Tfun*) 
     intros f1 tys tms Hall ty Hty. simpl.
     apply tfun_tms_typed in Hty.
-    apply sublist_big_union_map.
+    apply asubset_big_union_map.
     rewrite Forall_forall in Hall, Hty |- *.
     intros x Hinx.
     specialize (Hty _ Hinx).
@@ -187,7 +186,7 @@ Proof.
   - (*Tmatch*) intros tm v ps Hsubtm Hall ty Hty.
     simpl rewriteT.
     destruct (compile_bare_single _ _ _) eqn : Hcomp.
-    2: { simpl. solve_subset. }
+    2: { simpl. solve_asubset. }
     inversion Hty; subst.
     eapply compile_bare_single_fv in Hcomp; eauto.
     (*Prove typing*)
@@ -199,7 +198,8 @@ Proof.
     }
     (*And now prove sublist*)
     simpl in *.
-    apply (sublist_trans _ _ _ Hcomp).
+    apply (asubset_trans _ _ _ Hcomp).
+    rewrite asubset_def.
     intros x Hinx. simpl_set_small.
     destruct Hinx as [Hinx | Hinx].
     + (*Use first IH*)
@@ -217,7 +217,7 @@ Proof.
   - (*Fpred*)
     intros f1 tys tms Hall Hty. simpl.
     apply fpred_tms_typed in Hty.
-    apply sublist_big_union_map.
+    apply asubset_big_union_map.
     rewrite Forall_forall in Hall, Hty |- *.
     intros x Hinx.
     specialize (Hty _ Hinx).
@@ -226,7 +226,7 @@ Proof.
   - (*Fmatch*) intros tm v ps Hsubtm Hall Hty.
     simpl rewriteF.
     destruct (compile_bare_single _ _ _) eqn : Hcomp.
-    2: { simpl. solve_subset. }
+    2: { simpl. solve_asubset. }
     inversion Hty; subst.
     eapply compile_bare_single_fv in Hcomp; eauto.
     (*Prove typing*)
@@ -238,7 +238,8 @@ Proof.
     }
     (*And now prove sublist*)
     simpl in *.
-    apply (sublist_trans _ _ _ Hcomp).
+    apply (asubset_trans _ _ _ Hcomp).
+    rewrite asubset_def.
     intros x Hinx. simpl_set_small.
     destruct Hinx as [Hinx | Hinx].
     + (*Use first IH*)
@@ -267,23 +268,24 @@ Definition rewriteF_fv {gamma} (gamma_valid: valid_context gamma) f
 (*1.3 Type vars*)
 
 Lemma rewrite_type_vars t f:
-  (sublist (tm_type_vars (rewriteT t)) (tm_type_vars t)) /\
-  (sublist (fmla_type_vars (rewriteF f)) (fmla_type_vars f)).
+  (asubset (tm_type_vars (rewriteT t)) (tm_type_vars t)) /\
+  (asubset (fmla_type_vars (rewriteF f)) (fmla_type_vars f)).
 Proof.
   revert t f; apply term_formula_ind; auto;
-  try solve[intros; apply sublist_refl];
-  try solve[simpl; intros; solve_subset].
+  try solve[intros; apply asubset_refl];
+  try solve[simpl; intros; solve_asubset].
   - (*Tmatch*)
     intros tm ty pats IHtm IHps. simpl rewriteT.
     destruct (compile_bare_single _ _ _) eqn : Hcomp.
-    2: { simpl. solve_subset. }
+    2: { simpl. solve_asubset. }
     apply compile_bare_single_type_vars in Hcomp.
-    rewrite tm_type_vars_tmatch.
-    apply (sublist_trans _ _ _ Hcomp).
+    simpl.
+    apply (asubset_trans _ _ _ Hcomp).
+    rewrite asubset_def.
     intros x Hinx.
     rewrite gen_type_vars_match in Hinx.
     rewrite !map_map in Hinx. simpl in Hinx.
-    simpl_set_small.
+    simpl_set_small. rewrite asubset_def in IHtm.
     destruct Hinx as [Hinx | Hinx].
     + simpl_set_small. destruct Hinx as [Hinx | Hinx]; auto.
     + simpl_set_small. destruct Hinx as [Hinx | Hinx]; auto.
@@ -297,10 +299,11 @@ Proof.
   - (*Fmatch*)
     intros tm ty pats IHtm IHps. simpl rewriteF.
     destruct (compile_bare_single _ _ _) eqn : Hcomp.
-    2: { simpl. solve_subset. }
+    2: { simpl. solve_asubset. }
     apply compile_bare_single_type_vars in Hcomp.
-    rewrite tm_type_vars_fmatch.
-    apply (sublist_trans _ _ _ Hcomp).
+    simpl.
+    apply (asubset_trans _ _ _ Hcomp).
+    rewrite asubset_def in IHtm |- *.
     intros x Hinx.
     rewrite gen_type_vars_match in Hinx.
     rewrite !map_map in Hinx. simpl in Hinx.
@@ -390,29 +393,29 @@ Proof.
     apply rewriteF_typed; auto.
     apply a_convert_all_f_typed; auto.
   - intros gamma t ty gamma_valid Hty.
-    eapply sublist_trans.
+    eapply asubset_trans.
     eapply rewriteT_fv; eauto.
     apply a_convert_all_t_ty; eauto.
-    erewrite a_equiv_t_fv. apply sublist_refl.
+    erewrite a_equiv_t_fv. apply asubset_refl.
     rewrite a_equiv_t_sym.
     apply a_convert_all_t_equiv.
   - intros gamma t gamma_valid Hty.
-    eapply sublist_trans.
+    eapply asubset_trans.
     eapply rewriteF_fv; eauto.
     apply a_convert_all_f_typed; eauto.
-    erewrite a_equiv_f_fv. apply sublist_refl.
+    erewrite a_equiv_f_fv. apply asubset_refl.
     rewrite a_equiv_f_sym.
     apply a_convert_all_f_equiv.
   - intros t.
-    eapply sublist_trans.
+    eapply asubset_trans.
     apply rewriteT_type_vars.
-    erewrite a_equiv_t_type_vars. apply sublist_refl.
+    erewrite a_equiv_t_type_vars. apply asubset_refl.
     rewrite a_equiv_t_sym.
     apply a_convert_all_t_equiv.
   - intros t.
-    eapply sublist_trans.
+    eapply asubset_trans.
     apply rewriteF_type_vars.
-    erewrite a_equiv_f_type_vars. apply sublist_refl.
+    erewrite a_equiv_f_type_vars. apply asubset_refl.
     rewrite a_equiv_f_sym.
     apply a_convert_all_f_equiv.
   - intros f t Hf.
@@ -420,7 +423,7 @@ Proof.
     apply (rewriteT_gen_sym true) in Hf.
     simpl in Hf.
     erewrite (@gensym_in_shape_t true) in Hf; [apply Hf|].
-    eapply alpha_shape_t with (vars:=nil).
+    eapply alpha_shape_t with (m1:=amap_empty)(m2:=amap_empty).
     rewrite a_equiv_t_sym.
     apply a_convert_all_t_equiv.
   - intros f t Hf.
@@ -428,7 +431,7 @@ Proof.
     apply (rewriteF_gen_sym false) in Hf.
     simpl in Hf.
     erewrite (@gensym_in_shape_f false) in Hf; [apply Hf|].
-    eapply alpha_shape_f with (vars:=nil).
+    eapply alpha_shape_f with (m1:=amap_empty)(m2:=amap_empty).
     rewrite a_equiv_f_sym.
     apply a_convert_all_f_equiv.
 Qed.
@@ -470,6 +473,7 @@ Proof.
   destruct b; [apply rewriteT_typed|apply rewriteF_typed]; assumption.
 Qed.
 
+  
 (*Prove interesting case (match) separately, so we can generalize*)
 Lemma rewrite_rep_match_case (b: bool) {gamma} 
   (gamma_valid: valid_context gamma)
@@ -523,32 +527,35 @@ Proof.
   destruct Hallps as [Hallpats Halltms].
   erewrite gen_match_rep with (Hty1:=Hty1')(Hpats1:=Hallpats)(Hpats2:=Halltms); auto.
   (*Why we needed wf*)
-  assert (Hdisj: disj (map fst (tm_fv (rewriteT tm)))
-  (map fst
-      (big_union vsymbol_eq_dec pat_fv
-        (map fst
-            (map (fun x => (fst x, gen_rewrite (snd x))) ps))))).
+  assert (Hdisj: aset_disj (aset_map fst (tm_fv (rewriteT tm)))
+  (aset_map fst
+     (aset_big_union pat_fv
+        (map fst (map (fun x : pattern * gen_term b => (fst x, gen_rewrite (snd x))) ps))))).
   {
     rewrite map_map. simpl.
     (*Now use wf assumption*)
     rewrite gen_name_wf_eq in Hwf.
     rewrite gen_match_bnd, gen_match_fv in Hwf.
     destruct Hwf as [_ Hwf].
-    eapply disj_sublist2.
-    { apply sublist_map. eapply rewriteT_fv; eauto. }
-    eapply disj_sublist_lr. apply Hwf.
+    eapply disj_asubset2.
+    { apply asubset_map. eapply rewriteT_fv; eauto. }
+    eapply aset_disj_subset_lr.
+    - apply disj_aset_disj_map in Hwf.
+      rewrite aset_to_list_to_aset_eq in Hwf. apply Hwf.
     - (*Prove fv sublist*)
-      simpl. 
-      intros x Hinx. rewrite in_map_union. auto.
+      simpl.
+      rewrite asubset_def. intros x Hinx. rewrite aset_mem_map_union. auto.
     - (*Prove bnd sublist*)
-      simpl. rewrite map_app, concat_map, map_map.
-      intros x. rewrite in_map_big_union with (eq_dec1:=string_dec).
-      rewrite in_app_iff, in_concat. simpl_set. intros [p [Hinp Hinx]].
-      right.
-      rewrite in_map_iff in Hinp. destruct Hinp as [pt [Hp Hinpt]].
-      subst p. eexists. split.
-      + rewrite in_map_iff. exists pt. split; [reflexivity| auto].
-      + rewrite map_app, in_app_iff; auto.
+      rewrite list_to_aset_app.
+      eapply asubset_trans.
+      2: { rewrite aset_map_union. apply union_asubset_r. }
+      apply asubset_map.
+      (*Prove this manually*)
+      rewrite asubset_def. intros x. simpl_set. setoid_rewrite in_map_iff.
+      intros [y [[x1 [Hy Hinx1]] Hmemy]]; subst.
+      rewrite in_concat. exists (aset_to_list (pat_fv (fst x1)) ++ gen_bnd (snd x1)).
+      split; [rewrite in_map_iff; eexists; split; [reflexivity| auto] |].
+      rewrite in_app_iff. simpl_set. auto.
   }
   (*Typing results we need*)
   assert (Htyr: term_has_type gamma (rewriteT tm) ty). {
@@ -607,8 +614,8 @@ Proof.
     f_equal; [apply UIP_dec, vty_eq_dec |].
     f_equal; [apply UIP_dec, sort_eq_dec|].
     f_equal.
-    apply get_arg_list_ext; [rewrite map_length; auto|].
-    intros i. rewrite map_length. intros Hi ty1.
+    apply get_arg_list_ext; [rewrite length_map; auto|].
+    intros i. rewrite length_map. intros Hi ty1.
     rewrite map_nth_inbound with (d2:=tm_d) by auto.
     intros Hty3 Hty4.
     rewrite Forall_nth in IH; apply IH; auto.
@@ -641,8 +648,8 @@ Proof.
     intros f1 tys tms IH vv Hty1 Hty2 Hwf.
     simpl_rep_full.
     f_equal.
-    apply get_arg_list_ext; [rewrite map_length; auto|].
-    intros i. rewrite map_length. intros Hi ty1.
+    apply get_arg_list_ext; [rewrite length_map; auto|].
+    intros i. rewrite length_map. intros Hi ty1.
     rewrite map_nth_inbound with (d2:=tm_d) by auto.
     intros Hty3 Hty4.
     rewrite Forall_nth in IH; apply IH; auto.

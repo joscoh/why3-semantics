@@ -89,7 +89,7 @@ Qed.
 
 Lemma projection_syms_length c: length (projection_syms badnames c) = length (s_args c).
 Proof.
-  unfold projection_syms, dep_mapi. rewrite dep_map_length, combine_length, seq_length. lia.
+  unfold projection_syms, dep_mapi. rewrite dep_length_map, length_combine, seq_length. lia.
 Qed.
 
 (*TODO: move*)
@@ -99,13 +99,13 @@ Lemma ty_subst_s_params_id: forall params srts,
   map (fun x => ty_subst_s params srts (vty_var x)) params = srts.
 Proof.
   intros params srts Hlen Hnodup.
-  apply list_eq_ext'; rewrite !map_length; auto.
+  apply list_eq_ext'; rewrite !length_map; auto.
   intros n d Hn.
   rewrite map_nth_inbound with (d2:=""%string); auto.
   apply sort_inj. simpl.
   rewrite ty_subst_fun_nth with (s:=d); unfold sorts_to_tys; simpl; auto.
   - rewrite map_nth_inbound with (d2:=d); auto. lia.
-  - rewrite map_length; lia.
+  - rewrite length_map; lia.
 Qed.
 
 (*One of the typecasts we need: the sym_sigma_args is really just a single ADT type*)
@@ -301,7 +301,7 @@ Proof.
       apply gen_name_notin in Hinv; auto.
     }
     apply sort_inj. simpl. f_equal.
-    apply list_eq_ext'; rewrite !map_length; auto.
+    apply list_eq_ext'; rewrite !length_map; auto.
     (*TODO: should really be separate lemma*)
     intros n d Hn.
     rewrite !map_map.
@@ -1007,7 +1007,7 @@ Opaque n_str.
 Opaque under_str.
 
 (*TODO: move (have ssr version prob in genelts)*)
-Lemma str_app_length (s1 s2: string):
+Lemma str_length_app (s1 s2: string):
   String.length (s1 ++ s2) = String.length s1 + String.length s2.
 Proof.
   induction s1; simpl; auto.
@@ -1020,7 +1020,7 @@ Proof.
   intros Heq. apply append_inj in Heq; auto.
   apply Heq.
   apply (f_equal String.length) in Heq.
-  rewrite !str_app_length in Heq. lia.
+  rewrite !str_length_app in Heq. lia.
 Qed.
 
 Lemma under_inj s1 s2:
@@ -1058,7 +1058,7 @@ Proof.
   [| apply string_dec |].
   2: rewrite in_map_iff; exists (datatype_def m); split; auto; apply mut_in_ctx_eq2; auto.
   unfold idents_of_def in Hnodup. simpl in Hnodup.
-  apply NoDup_app in Hnodup. destruct Hnodup as [Hnodup _].
+  apply NoDup_app_impl in Hnodup. destruct Hnodup as [Hnodup _].
   unfold funsyms_of_mut in Hnodup.
   rewrite concat_map in Hnodup.
   eapply in_concat_NoDup in Hnodup. apply Hnodup.
@@ -1285,7 +1285,7 @@ Proof.
   destruct gamma_valid as [_ [_ Hnodup]].
   unfold idents_of_context in Hnodup.
   rewrite NoDup_concat_iff in Hnodup.
-  rewrite map_length in Hnodup.
+  rewrite length_map in Hnodup.
   destruct Hnodup as [Hallno Hdisj].
   (*Get indices of muts*)
   assert (Hinm1: In (datatype_def m1) gamma) by (apply mut_in_ctx_eq2; auto).
@@ -1318,7 +1318,7 @@ Proof.
         [constr_in_one_adt], but we prove directly so that we can 
         base that lemma on this one*)
       unfold funsyms_of_mut in Hnoconstr.
-      rewrite concat_map, NoDup_concat_iff, !map_length in Hnoconstr.
+      rewrite concat_map, NoDup_concat_iff, !length_map in Hnoconstr.
       destruct Hnoconstr as [_ Hdisj].
       specialize (Hdisj i1 i2 nil (s_name c1) Hi1 Hi2 n).
       exfalso. apply Hdisj. rewrite !map_map, !map_nth_inbound with (d2:=adt_d); auto.
@@ -1346,7 +1346,7 @@ Proof.
   destruct gamma_valid as [_ [_ Hnodup]].
   unfold idents_of_context in Hnodup.
   rewrite NoDup_concat_iff in Hnodup.
-  rewrite map_length in Hnodup.
+  rewrite length_map in Hnodup.
   destruct Hnodup as [Hallno Hdisj].
   (*Get indices of muts*)
   assert (Hinm1: In (datatype_def m1) gamma) by (apply mut_in_ctx_eq2; auto).
@@ -1660,7 +1660,7 @@ Proof.
     destruct (Nat.eq_dec (length srts) (length (m_params m))); 
     [| simpl; rewrite concat_map_nil; constructor].
     rewrite concat_map. rewrite !map_map.
-    apply NoDup_concat_iff; rewrite !map_length. split.
+    apply NoDup_concat_iff; rewrite !length_map. split.
     + (*Each list of proj syms added has nodups*)
       intros l. rewrite in_map_iff. intros [f [Hl Hinf]]; subst.
       apply proj_names_nodup.
@@ -1819,7 +1819,7 @@ Proof.
     + rewrite concat_map.
       rewrite map_dep_map.
       rewrite concat_map.
-      rewrite NoDup_concat_iff; rewrite !map_length, dep_map_length.
+      rewrite NoDup_concat_iff; rewrite !length_map, dep_length_map.
       split.
       * intros l1. rewrite in_map_iff. intros [l2 [Hl1 Hinl2]]; subst.
         apply dep_map_in in Hinl2.

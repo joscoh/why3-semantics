@@ -2,10 +2,10 @@ Require Import CommonList ListSet.
 Require Export Coq.Lists.List.
 Ltac len_tac :=
   repeat match goal with
-  | |- context [length (firstn ?n ?l)] => rewrite firstn_length
-  | |- context [length (skipn ?n ?l)] => rewrite skipn_length
+  | |- context [length (firstn ?n ?l)] => rewrite length_firstn
+  | |- context [length (skipn ?n ?l)] => rewrite length_skipn
   | H: length ?l = ?x |- context [length ?l] => rewrite H
-  | |- context [length (?x ++ ?y)] => rewrite app_length
+  | |- context [length (?x ++ ?y)] => rewrite length_app
   end; try lia.
   
 (*Deal with In (firstn) and similar goals*)
@@ -34,9 +34,9 @@ Ltac list_tac :=
     rewrite map_fst_combine
   | |- NoDup (firstn ?n ?l) => apply NoDup_firstn
   | |- NoDup (skipn ?n ?l) => apply NoDup_skipn
-  | |- context [length (map ?f ?x)] => rewrite map_length
-  | |- context [length (firstn ?n ?l)] => rewrite firstn_length
-  | |- context [length (skipn ?n ?l)] => rewrite skipn_length
+  | |- context [length (map ?f ?x)] => rewrite length_map
+  | |- context [length (firstn ?n ?l)] => rewrite length_firstn
+  | |- context [length (skipn ?n ?l)] => rewrite length_skipn
   | |- In (nth ?i ?l ?x) ?l =>
     apply nth_In
   | |- context [length (map2 ?f ?l1 ?l2)] =>
@@ -54,10 +54,10 @@ Ltac list_tac :=
   | |- exists y, ?f y = ?f ?x /\ ?P => exists x; split
   (*Solve the sum length goal*)
   | H: length ?l = length (concat (map ?f ?l1)) |-
-    sum (map ?g ?l1) = length ?l => rewrite length_concat in H;
+    sum (map ?g ?l1) = length ?l => rewrite CommonList.length_concat in H;
     rewrite H; f_equal; rewrite map_map; apply map_ext
   | H: length (?x :: ?l) = ?n |- _ => simpl in H
-  | H: ?x = length (?l1 ++ ?l2) |- _ => rewrite app_length in H
+  | H: ?x = length (?l1 ++ ?l2) |- _ => rewrite length_app in H
   end); auto; try lia. 
 
 Ltac case_in :=
