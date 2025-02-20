@@ -1009,5 +1009,113 @@ Proof.
   apply a_convert_all_f_typed; eauto.
 Qed.
 
+(*Finally, we need to show it satisfies the pre- and post-conditions for [eliminate_algebraic]*)
+
+(*Condition 1: if there are no recfun or indpred before, there are still none*)
+Definition no_recfun_indpred (t: task) : Prop :=
+  no_recfun_indpred_gamma (task_gamma t).
+
+(*[trans_map] preserves no_recfun_indpred*)
+Lemma trans_map_pres_no_recfun_indpred f1 f2:
+  trans_pre_post no_recfun_indpred no_recfun_indpred (trans_map f1 f2).
+Proof.
+  unfold trans_pre_post, trans_map, TaskGen.trans_map, single_trans, TaskGen.task_map.
+  simpl.
+  unfold no_recfun_indpred.
+  intros t Hnorec Hty tr [Htr | []].
+  subst. simpl_task. unfold no_recfun_indpred_gamma in *.
+  rewrite forallb_map.
+  revert Hnorec. apply forallb_impl. intros x Hinx.
+  destruct x; auto.
+Qed.
+
+(*[compile_match] preserves [no_recfun_indpred]*)
+Lemma compile_match_pres_no_recfun_indpred:
+  trans_pre_post no_recfun_indpred no_recfun_indpred compile_match.
+Proof.
+  apply trans_map_pres_no_recfun_indpred.
+Qed.
+
+(*Condition 2: All patterns are simple and exhaustive. This one will hold unconditionally;
+  this is the point of [compile_match]*)
+
+Definition fmla_simple_and_exhaust gamma (f: formula) : bool :=
+  fmla_simple_pats f && fmla_simple_exhaust gamma f.
+
+Definition task_pat_simpl (t: task) : Prop :=
+  ctx_pat_simpl (task_gamma t) &&
+  forallb (fun x => fmla_simple_and_exhaust (task_gamma t) (snd x)) (task_delta t) &&
+  fmla_simple_and_exhaust (task_gamma t) (task_goal t).
+
+(*[compile_match] results in [task_pat_simpl] i.e. simplifies pattern matches*)
+Lemma compile_match_simple:
+  trans_pre_post (fun _ => True) task_pat_simpl compile_match.
+Proof.
+  pose proof (compile_match_typed) as Hty. revert Hty.
+  unfold trans_pre_post, compile_match.compile_match, trans_map, TaskGen.trans_map, single_trans, typed_trans. simpl.
+  unfold TaskGen.task_map, TaskGen.typed_trans. simpl. intros Hty1.
+  intros t _ Hty tr [Htr | []]; subst.
+  specialize (Hty1 _ Hty _ (ltac:(left; reflexivity))).
+  unfold task_pat_simpl; simpl_task.
+  rewrite !forallb_map; simpl.
+  (*Need type info*)
+  destruct t as [[gamma delta] goal]; simpl in *.
+  inversion Hty. simpl_task.
+  (*Some useful things*)
+  assert (Hval: valid_context (map (TaskGen.def_map compile_match.rewriteT' compile_match.rewriteF') gamma)). {
+    inversion Hty1; auto.
+  }
+  assert (Hsig: sublist_sig gamma (map (TaskGen.def_map compile_match.rewriteT' compile_match.rewriteF') gamma)). {
+    apply eq_sig_sublist, TaskGen.def_map_eq_sig.
+  }
+  assert (Hmuts: sublist (mut_of_context gamma) (mut_of_context (map (TaskGen.def_map compile_match.rewriteT' compile_match.rewriteF') gamma))).
+  { rewrite TaskGen.def_map_gamma_mut. apply sublist_refl. }
+  bool_to_prop. split_all.
+  - unfold ctx_pat_simpl. rewrite forallb_map. apply forallb_forall. intros x Hinx.
+    destruct x; simpl; auto.
+    destruct f; simpl; auto.
+    + assert (Htyt: term_has_type gamma t (f_ret f)). {
+        apply nonrec_body_ty in Hinx; auto.
+      } apply andb_true_iff; split. 
+      * eapply (rewriteT_simple_pats' task_gamma_valid); eauto.
+      * eapply rewriteT_simple_exhaust'; eauto. 
+        eapply term_has_type_sublist; eauto.
+    + assert (Htyf: formula_typed gamma f). { apply nonrec_body_typed in Hinx; auto. }
+      apply andb_true_iff; split. 
+      * eapply (rewriteF_simple_pats' task_gamma_valid); eauto.
+      * eapply rewriteF_simple_exhaust'; eauto.
+        eapply formula_typed_sublist; eauto.
+  - (*delta*)
+    apply forallb_forall. intros x Hinx.
+    rewrite Forall_map, Forall_forall in task_delta_typed.
+    apply andb_true_iff. split.
+    + eapply (rewriteF_simple_pats' task_gamma_valid); eauto.
+    + eapply rewriteF_simple_exhaust'; eauto.
+      eapply formula_typed_sublist; eauto.
+  - (*goal*)
+    apply andb_true_iff. split.
+    + eapply (rewriteF_simple_pats' task_gamma_valid); eauto.
+    + eapply rewriteF_simple_exhaust'; eauto.
+      eapply formula_typed_sublist; eauto.
+Qed.
+
+(*The combined spec*)
+
+Definition compile_match_post : task -> Prop :=
+  task_and no_recfun_indpred task_pat_simpl.
+
+Lemma compile_match_pre_post: trans_pre_post no_recfun_indpred compile_match_post compile_match.compile_match.
+Proof.
+  apply task_post_combine.
+  - apply compile_match_pres_no_recfun_indpred.
+  - apply trans_weaken_pre with (P2:=fun _ => True); auto.
+    apply compile_match_simple.
+Qed.
+
+
+
+(*Beyond [simple_exhaust], we also need another condition for [eliminate_algebraic]:
+  if *)
+
 (*If we need, can prove that all nonrec defs, hypotheses, and the goal
   now have simple patterns*)

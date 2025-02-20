@@ -215,6 +215,38 @@ Proof.
   unfold is_true. apply andb_true_iff.
 Qed.
 
+Lemma prove_orb_impl (b1 b2 b3 b4: bool):
+  (b1 ->b3) ->
+  (b2 -> b4) ->
+  (b1 || b2) -> (b3 || b4).
+Proof.
+  intros Hb1 Hb2.
+  destruct b1; destruct b2; auto; destruct b3; auto.
+Qed.
+
+Lemma prove_andb_impl (b1 b2 b3 b4: bool):
+  (b1 ->b3) ->
+  (b2 -> b4) ->
+  (b1 && b2) -> (b3 && b4).
+Proof.
+  intros Hb1 Hb2.
+  destruct b1; destruct b2; auto; destruct b3; auto.
+Qed.
+
+Lemma impl_negb_orb {A: Type} {P: A -> Prop} (b1 b2: A -> bool):
+  (forall (x: A), P x -> negb ((b1 x) || (b2 x))) ->
+  (forall (x: A), P x -> negb (b1 x)) /\ (forall (x: A), P x -> negb (b2 x)).
+Proof.
+  intros Hnot. split; intros a Hp; specialize (Hnot a Hp);
+  destruct (b1 a); auto. simpl in Hnot. discriminate.
+Qed.
+
+Lemma prove_negb (b: bool):
+  ~ b -> negb b = true.
+Proof.
+  destruct b; auto.
+Qed.
+
 
 
 Ltac bool_to_prop :=

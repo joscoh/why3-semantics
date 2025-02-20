@@ -945,6 +945,12 @@ Proof.
   destruct (p h); simpl; auto.
 Qed.
 
+Lemma existsb_all_false {A: Type} (l: list A):
+  existsb (fun _ => false) l = false.
+Proof.
+  induction l as [| h t IH]; auto.
+Qed.
+
 End Forallb.
 
 Section Map2.
@@ -1299,6 +1305,17 @@ Proof.
   split; intros Hall; inversion Hall; subst; constructor; auto; apply IH; auto.
 Qed.
 
+Lemma forall2_snd_irrel {A B: Type} (f: A -> Prop) (l1: list A) (l2: list B):
+  length l1 = length l2 ->
+  Forall2 (fun (x: A) (_: B) => f x) l1 l2 <-> Forall f l1.
+Proof.
+  revert l2. induction l1 as [| h1 t1 IH]; simpl; intros [| h2 t2]; auto; 
+  try discriminate; simpl.
+  - intros _. split; constructor.
+  - intros Hlen. split; intros Hall; inversion Hall; subst; constructor; auto;
+    apply (IH t2); auto.
+Qed.
+
 End Forall2.
 
 Section Map.
@@ -1360,6 +1377,26 @@ Lemma in_split {A: Type} (x: A) (l: list A):
 Proof.
   intros. destruct (In_nth _ _ x H) as [n [Hn Hx]].
   rewrite <- Hx. apply nth_split; auto.
+Qed.
+
+
+(*Find the unique element satisfying the map*)
+Lemma in_split_nodup {A B: Type} {f: A -> B} {x: A} {l: list A}
+  (Hn: NoDup (map f l))
+  (Hin: In x l):
+  exists l1 l2: list A, l = l1 ++ x :: l2 /\ forall y, In y l1 \/ In y l2 -> f y <> f x.
+Proof.
+  destruct (in_split _ _ Hin) as [l1 [l2 Hl]]. subst.
+  exists l1. exists l2. split; auto.
+  intros y Hiny.
+  rewrite map_app in Hn. simpl in Hn.
+  rewrite NoDup_app_iff' in Hn.
+  destruct Hn as [_ [Hn Hnotin]].
+  destruct Hiny as [Hiny | Hiny].
+  - intros Hfeq. apply (Hnotin (f x)). simpl. split; auto.
+    rewrite in_map_iff. exists y; auto.
+  - clear Hnotin. inversion Hn as [| ? ? Hnotin ?]; subst.
+    intros Hfeq. apply Hnotin. rewrite in_map_iff. exists y; auto.
 Qed.
 
 Lemma in_app_iff_simpl {A: Type} (l1 l2 l3 l4 : list A) x y :
@@ -2110,6 +2147,19 @@ Proof.
   destruct H1; auto.
 Qed.
 
+Lemma sublist_remove_app_l {A: Type} (l1 l2 l3: list A):
+  sublist (l1 ++ l2) l3 ->
+  sublist l2 l3.
+Proof.
+  intros Hsub x Hinx.
+  apply Hsub. rewrite in_app_iff; auto.
+Qed.
+
+Lemma sublist_filter {A: Type} (b: A -> bool) (l: list A):
+  sublist (filter b l) l.
+Proof.
+  intros x. rewrite in_filter. intros Hin; apply Hin.
+Qed.
 
 End Sublist.
 
@@ -2470,6 +2520,79 @@ Proof.
   induction l; simpl; auto; intros; f_equal; auto.
 Qed.
 
+(*Prove that if no elements in list satisfy predicate, then [dep_map] satisfies predicate*)
+Lemma forallb_dep_map_notin {A: Type} (eq_dec: forall x y : A, {x = y} + {x <> y}) {P: A -> Prop} (f: forall x: A, P x -> bool) 
+  (Hf: forall x Hx1 Hx2, f x Hx1 = f x Hx2) (l: list A) (Hall: Forall P l)
+  (x: A) (Hnotin: ~ In x l) (*(Hl: negb (null l))*):
+  (forall y (Hiny: In y l) (Hpy: P y), x <> y -> f y Hpy = true) ->
+  forallb (fun x => x) (dep_map f l Hall) = true.
+Proof.
+  revert Hall. induction l as [| h t IH]; simpl; auto.
+  simpl in *. intros Hall Hneq. rewrite Hneq; auto. 
+  apply IH; auto.
+Qed.
+
+(*Then, if all except one element dont satisfy predicate, [dep_map] satisfies predicate iff that element satisfies*)
+Lemma forallb_dep_map_one {A: Type} (eq_dec: forall x y : A, {x = y} + {x <> y}) {P: A -> Prop} (f: forall x: A, P x -> bool) 
+  (Hf: forall x Hx1 Hx2, f x Hx1 = f x Hx2) (l: list A) (Hall: Forall P l)
+  (x: A) (Hinx: In x l) (Hx: P x):
+  (forall y (Hiny: In y l) (Hpy: P y), x <> y -> f y Hpy = true) ->
+  forallb (fun x => x) (dep_map f l Hall) = f x Hx.
+Proof.
+  generalize dependent Hall.
+  induction l as [| h t IH]; simpl; [contradiction|].
+  simpl in Hinx.
+  intros Hall Hother.
+  destruct (eq_dec x h); [subst h|].
+  - rewrite (Hf _ _ Hx).
+    (*See if x in t or not (need eq_dec)*)
+    destruct (in_dec eq_dec x t) as [Hin | Hnotin].
+    * (*Use IH*)
+      specialize (IH Hin). rewrite IH; auto.
+      apply andb_diag.
+    * (*Use previous lemma*)
+      rewrite forallb_dep_map_notin with (x:=x); auto.
+      rewrite andb_true_r. reflexivity.
+  - rewrite Hother; auto. simpl. apply IH; auto.
+    destruct Hinx; subst; auto. contradiction.
+Qed.
+
+(*And versions for [existsb] Here, we show that all others are false*)
+Lemma existsb_dep_map_notin {A: Type} (eq_dec: forall x y : A, {x = y} + {x <> y}) {P: A -> Prop} (f: forall x: A, P x -> bool) 
+  (Hf: forall x Hx1 Hx2, f x Hx1 = f x Hx2) (l: list A) (Hall: Forall P l)
+  (x: A) (Hnotin: ~ In x l):
+  (forall y (Hiny: In y l) (Hpy: P y), x <> y -> f y Hpy = false) ->
+  existsb (fun x => x) (dep_map f l Hall) = false.
+Proof.
+  revert Hall. induction l as [| h t IH]; simpl; auto.
+  simpl in *. intros Hall Hneq. rewrite Hneq; auto. 
+  apply IH; auto.
+Qed.
+
+Lemma existsb_dep_map_one {A: Type} (eq_dec: forall x y : A, {x = y} + {x <> y}) {P: A -> Prop} (f: forall x: A, P x -> bool) 
+  (Hf: forall x Hx1 Hx2, f x Hx1 = f x Hx2) (l: list A) (Hall: Forall P l)
+  (x: A) (Hinx: In x l) (Hx: P x):
+  (forall y (Hiny: In y l) (Hpy: P y), x <> y -> f y Hpy = false) ->
+  existsb (fun x => x) (dep_map f l Hall) = f x Hx.
+Proof.
+  generalize dependent Hall.
+  induction l as [| h t IH]; simpl; [contradiction|].
+  simpl in Hinx.
+  intros Hall Hother.
+  destruct (eq_dec x h); [subst h|].
+  - rewrite (Hf _ _ Hx).
+    (*See if x in t or not (need eq_dec)*)
+    destruct (in_dec eq_dec x t) as [Hin | Hnotin].
+    * (*Use IH*)
+      specialize (IH Hin). rewrite IH; auto.
+      apply orb_diag.
+    * (*Use previous lemma*)
+      rewrite existsb_dep_map_notin with (x:=x); auto.
+      rewrite orb_false_r. reflexivity.
+  - rewrite Hother; auto. simpl. apply IH; auto.
+    destruct Hinx; subst; auto. contradiction.
+Qed.
+
 
 End DepMap.
 
@@ -2793,3 +2916,21 @@ Proof.
 Qed.
 
 End Index.
+
+(*Miscellaneous*)
+
+Lemma prove_app_nil {A: Type} (l1 l2: list A):
+  l1 = nil ->
+  l2 = nil ->
+  l1 ++ l2 = nil.
+Proof.
+  intros; subst; auto.
+Qed.
+
+Lemma nth_repeat' {A: Type} (a: A) (m n: nat) (d: A):
+  n < m ->
+  nth n (repeat a m) d = a.
+Proof.
+  intros Hn. generalize dependent n. induction m as [| m' IH]; simpl; intros n;
+  [lia|]. intros Hn. destruct n as [| n']; auto. apply IH; auto. lia.
+Qed.

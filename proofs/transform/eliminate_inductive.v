@@ -2086,23 +2086,6 @@ Proof.
   subst. reflexivity.
 Qed. 
 
-(*For dependent type issues that make Coq completely
-  useless:*)
-Lemma substi_mult_nth_eq {pd : pi_dom} (vt : val_typevar) (vv : val_vars pd vt)
-(vs : list vsymbol)
-  (vals : arg_list (domain (dom_aux pd)) (map (v_subst vt) (map snd vs)))
-  (i : nat) (Hi : i < Datatypes.length vs) x
-  (Heq: x = nth i vs vs_d):
-  NoDup vs ->
-  substi_mult pd vt vv vs vals x =
-  dom_cast (dom_aux pd)
-    (eq_trans (substi_mult_nth_lemma 
-      (v_subst vt) snd vs i Hi s_int vs_d) (f_equal (fun x => v_subst vt (snd x)) (eq_sym Heq))) 
-    (hnth i vals s_int (dom_int pd)).
-Proof.
-  subst. simpl. apply substi_mult_nth'.
-Qed.
-
 Lemma iter_fand_strictly_pos ps fs:
   ind_strictly_positive ps (iter_fand fs) <->
   (forall x, In x fs -> ind_strictly_positive ps x).

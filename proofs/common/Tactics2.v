@@ -80,3 +80,14 @@ Ltac nodup_inj :=
     (apply (NoDup_map_in Hn1); assumption);
     subst y; clear H
   end.
+
+Ltac simpl_and_destruct :=
+  repeat (subst; simpl in *; destruct_all; try contradiction).
+
+Ltac destruct_list_in :=
+  repeat (match goal with
+    | H: In ?x (concat ?l) |- _ => rewrite in_concat in H
+    | H: In ?x (map ?f ?l) |- _ => rewrite in_map_iff in H
+    | H: In ?x (rev ?l) |- _ => rewrite <- In_rev in H
+    | H: In ?x (?l1 ++ ?l2) |- _ => rewrite in_app_iff in H
+    end; simpl_and_destruct).

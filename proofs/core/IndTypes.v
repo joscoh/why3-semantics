@@ -2095,6 +2095,52 @@ Proof.
   apply bool_irrelevance.
 Qed.
 
+(*Two other helpful results about [constr_rep]*)
+
+Lemma constr_rep_inj_iff_strong {gamma} (gamma_valid: valid_context gamma) {m a c1 c2} 
+  (m_in: mut_in_ctx m gamma) (a_in: adt_in_mut a m) (c1_in: constr_in_adt c1 a) (c2_in: constr_in_adt c2 a)
+  {srts} (srts_len: length srts = length (m_params m)) (domain_aux: Types.sort -> Set)
+  (dom_adts : forall a : alg_datatype,
+                     mut_in_ctx m gamma ->
+                     forall Hin : adt_in_mut a m,
+                     domain domain_aux (typesym_to_sort (adt_name a) srts) =
+                     adt_rep m srts domain_aux a Hin)
+  (a1: arg_list (domain domain_aux) (sym_sigma_args c1 srts))
+  (a2: arg_list (domain domain_aux) (sym_sigma_args c2 srts)):
+  constr_rep gamma_valid m m_in srts srts_len domain_aux a a_in c1 c1_in dom_adts a1 =
+  constr_rep gamma_valid m m_in srts srts_len domain_aux a a_in c2 c2_in dom_adts a2 <->
+  exists (Heq: c1 = c2), a2 = cast_arg_list (f_equal (fun (c: funsym) => sym_sigma_args c srts) Heq )a1.
+Proof.
+  split.
+  - intros Hrep. destruct (funsym_eq_dec c1 c2); subst.
+    + assert (c1_in = c2_in) by (apply bool_irrelevance); subst. apply constr_rep_inj in Hrep; auto;
+      [| apply (gamma_all_unif gamma_valid); auto].
+      exists Logic.eq_refl. subst. reflexivity.
+    + exfalso. revert Hrep. apply constr_rep_disjoint; auto.
+  - intros [Heq Ha2]. subst. simpl. assert (c1_in = c2_in) by (apply bool_irrelevance).
+    subst; reflexivity.
+Qed.
+
+Lemma constr_rep_inj_iff {gamma} (gamma_valid: valid_context gamma) {m a c} 
+  (m_in: mut_in_ctx m gamma) (a_in: adt_in_mut a m) (c_in: constr_in_adt c a)
+  {srts} (srts_len: length srts = length (m_params m)) (domain_aux: Types.sort -> Set)
+  (dom_adts : forall a : alg_datatype,
+                     mut_in_ctx m gamma ->
+                     forall Hin : adt_in_mut a m,
+                     domain domain_aux (typesym_to_sort (adt_name a) srts) =
+                     adt_rep m srts domain_aux a Hin)
+  (a1 a2: arg_list (domain domain_aux) (sym_sigma_args c srts)):
+  constr_rep gamma_valid m m_in srts srts_len domain_aux a a_in c c_in dom_adts a1 =
+  constr_rep gamma_valid m m_in srts srts_len domain_aux a a_in c c_in dom_adts a2 <->
+  a1 = a2.
+Proof.
+  rewrite constr_rep_inj_iff_strong.
+  split; intros Heq; subst; auto.
+  - destruct Heq as [Heq Ha2]; subst.
+    assert (Heq = Logic.eq_refl) by (apply UIP_dec, funsym_eq_dec); subst; reflexivity.
+  - exists Logic.eq_refl; reflexivity.
+Qed.
+
 (** Testing **)
 
 Lemma all_funsym_refl: forall {f: funsym} (H: f = f),

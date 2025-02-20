@@ -311,3 +311,41 @@ Proof.
     destruct Hwild as [p [Hinp Hp]].
     destruct p; try discriminate. auto.
 Qed.
+
+(*Not directly related to exhaustiveness, but given a simple
+  match, all constrs are unique*)
+Lemma simple_pat_match_constrs_uniq (b1: bool) {ps: list (pattern * gen_term b1)} 
+  (Hps: simple_pat_match (map fst ps)) {c tys1 tys2 pats1 pats2 t1 t2}
+  (Hinc1: In (Pconstr c tys1 pats1, t1) ps)
+  (Hinc2: In (Pconstr c tys2 pats2, t2) ps):
+  tys1 = tys2 /\ pats1 = pats2 /\ t1 = t2.
+Proof.
+  apply simple_pat_match_structure in Hps.
+  destruct Hps as [b [cs [Hnotnull [Hnodup Hmap]]]].
+  apply map_eq_app in Hmap.
+  destruct Hmap as [ps1 [ps2 [Hps [Hmap1 Hmap2]]]]. subst.
+  rewrite in_app_iff in Hinc1, Hinc2. destruct Hinc1 as [Hinc1 | Hinc1].
+  2: { apply (in_map fst) in Hinc1. rewrite Hmap2 in Hinc1; destruct b; [|contradiction].
+    destruct Hinc1 as [Heq | []]; discriminate. }
+  destruct Hinc2 as [Hinc2 | Hinc2].
+  2: { apply (in_map fst) in Hinc2. rewrite Hmap2 in Hinc2; destruct b; [|contradiction].
+    destruct Hinc2 as [Heq | []]; discriminate. }
+  (*Has to be better way*)
+  rewrite <- (combine_eq ps1) in Hinc1, Hinc2.
+  rewrite in_combine_iff in Hinc1, Hinc2; try solve_len.
+  rewrite length_map in Hinc1, Hinc2.
+  destruct Hinc1 as [i1 [Hi1 Heq1]]; destruct Hinc2 as [i2 [Hi2 Heq2]].
+  specialize (Heq1 Pwild (gen_d _)). specialize (Heq2 Pwild (gen_d _)).
+  inversion Heq1 as [Heq3]; subst; clear Heq1. inversion Heq2 as [Heq4]; subst; clear Heq2.
+  rewrite Hmap1 in Heq3, Heq4.
+  assert (Hlen: length ps1 = length cs). { apply (f_equal (fun x => length x)) in Hmap1. revert Hmap1.
+    solve_len. }
+  rewrite map_nth_inbound with (d2:=(id_fs, nil, nil)) in Heq3, Heq4; try lia.
+  inversion Heq3; inversion Heq4; subst; clear Heq3; clear Heq4.
+  assert (Hi12: i1 = i2). {
+    rewrite NoDup_nth with (d:=id_fs) in Hnodup. rewrite length_map in Hnodup.
+    specialize (Hnodup i1 i2 (ltac:(lia)) (ltac:(lia))).
+    rewrite !map_nth_inbound with (d2:=(id_fs, nil, nil)) in Hnodup by lia.
+    auto.
+  } subst. auto.
+Qed.

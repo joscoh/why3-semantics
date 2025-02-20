@@ -713,6 +713,23 @@ Proof.
   - rewrite length_map; lia.
 Qed.
 
+Lemma ty_subst_cons_notin v1 vs ty1 tys x:
+  ~ aset_mem v1 (type_vars x) ->
+  ty_subst (v1 :: vs) (ty1 :: tys) x =
+  ty_subst vs tys x.
+Proof.
+  intros Hnotin. induction x as [| | | ts args]; simpl; auto.
+  - simpl in Hnotin. unfold ty_subst. simpl.
+    destruct (typevar_eq_dec v v1); subst; auto.
+    exfalso. apply Hnotin; auto. simpl_set; auto.
+  - unfold ty_subst in *. simpl in *. f_equal.
+    induction args as [| h t IH]; simpl in *; auto.
+    inversion H as [| ? ? Heq1 Heq2]; subst.
+    f_equal; auto.
+    + apply Heq1. intros Hinv; apply Hnotin. simpl_set; auto.
+    + apply IH; auto.  intros Hinv; apply Hnotin; simpl_set_small; auto.
+Qed. 
+
 End TySubstLemmas.
 
 (*A version of [ty_subst] that only changes the mapped

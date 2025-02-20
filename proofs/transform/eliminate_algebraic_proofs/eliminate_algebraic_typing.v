@@ -1,7 +1,6 @@
 Require Import Task compile_match eliminate_algebraic eliminate_algebraic_context.
 Require Import GenElts.
 Require Import eliminate_algebraic_interp.
-(*TODO: move - for [simple_pat_match_adt]*)
 Require Import PatternProofs.
 Require Import Exhaustive.
 Set Bullet Behavior "Strict Subproofs".
@@ -384,15 +383,6 @@ Proof.
     exfalso; apply Hnotin, mut_in_ctx_eq2 . auto.
 Qed. 
 
-(*TODO: move?*)
-Lemma prove_app_nil {A: Type} (l1 l2: list A):
-  l1 = nil ->
-  l2 = nil ->
-  l1 ++ l2 = nil.
-Proof.
-  intros; subst; auto.
-Qed.
-
 (*[sig_t] is easier to specify*)
 Lemma sig_t_new_gamma_gen gamma gamma2:
   sig_t (fold_all_ctx_gamma_gen new_constr_name keep_muts badnames noind gamma gamma2) =
@@ -653,18 +643,6 @@ Proof.
     inversion Hty; subst; auto. apply Hfmatch; auto.
     rewrite Forall_map, Forall_forall in IH2 |- *. auto.
 Qed. 
-
-(*TODO: move*)
-Lemma forall2_snd_irrel {A B: Type} (f: A -> Prop) (l1: list A) (l2: list B):
-  length l1 = length l2 ->
-  Forall2 (fun (x: A) (_: B) => f x) l1 l2 <-> Forall f l1.
-Proof.
-  revert l2. induction l1 as [| h1 t1 IH]; simpl; intros [| h2 t2]; auto; 
-  try discriminate; simpl.
-  - intros _. split; constructor.
-  - intros Hlen. split; intros Hall; inversion Hall; subst; constructor; auto;
-    apply (IH t2); auto.
-Qed.
 
 (*For anything with all simple patterns, every pattern matches on an ADT*)
 Lemma simple_pat_match_adt {gamma: context} (gamma_valid: valid_context gamma) b
@@ -1209,20 +1187,6 @@ Proof.
   rewrite Forall_forall in Htys; apply Htys in Hinpats; auto.
 Qed.
 
-(*Useful in several places*)
-(*TODO: move*)
-Lemma ty_subst_adt_args_valid {gamma m a c args}
-  (gamma_valid: valid_context gamma)
-  (m_in: mut_in_ctx m gamma) (a_in: adt_in_mut a m) (c_in: constr_in_adt c a)
-  (* (Hlenargs: length args = length (m_params m)) *)
-  (Hargs: Forall (valid_type gamma) args):
-  Forall (valid_type gamma) (map (ty_subst (s_params c) args) (s_args c)).
-Proof.
-  apply Forall_forall. intros x.
-  unfold ty_subst_list. rewrite in_map_iff. intros [ty [Hx Hinty]]; subst.
-  apply valid_type_ty_subst; auto.
-  apply (constr_args_valid gamma_valid m_in a_in c_in); auto.
-Qed.
 
 (*And will help to know that these vars are valid*)
 Lemma mk_brs_fmla_snd_vars_valid {gamma m a args} {rewriteF pats c vs f}
@@ -1270,16 +1234,7 @@ End Typing.
 (*Free variables*)
 Section FreeVar.
 
-
 Opaque aset_union.
-
-(*TODO: move*)
-Lemma aset_diff_empty {A: Type} `{countable.Countable A} (s: aset A):
-  aset_diff aset_empty s = s.
-Proof.
-  apply aset_ext. intros x. simpl_set. split; intros; destruct_all; simpl_set; auto.
-  split; simpl_set; auto. intro C; simpl_set.
-Qed.
 
 (*free variables for [fold_let]*)
 (*Only prove subset, probably could prove whole*)
@@ -1405,34 +1360,6 @@ Proof.
   intros x Hinx. simpl_set. right. eexists. split; [apply Hinwild|]. simpl_set. simpl.
   split; auto. intro C; simpl_set.
 Qed.
-
-(*TODO: move*)
-Lemma asubset_empty_l {A: Type} `{countable.Countable A} (s: aset A):
-  asubset aset_empty s.
-Proof.
-  rewrite asubset_def. intros x Hx. simpl_set.
-Qed.
-
-(*TODO: move*)
-Lemma prove_asubset_union {A: Type} `{countable.Countable A}
-  (s1 s2 s3: aset A):
-  asubset s1 s3 ->
-  asubset s2 s3 ->
-  asubset (aset_union s1 s2) s3.
-Proof.
-  rewrite !asubset_def.
-  intros Hsub1 Hsub2 x Hinx. simpl_set; destruct_all; auto.
-Qed.
-
-Lemma prove_asubset_big_union {A B: Type} `{countable.Countable B} (f: A -> aset B) (l: list A) (s2: aset B):
-  (forall x, In x l -> asubset (f x) s2) ->
-  asubset (aset_big_union f l) s2.
-Proof.
-  intros Hallin. induction l as [| h t IH]; simpl; auto.
-  - apply asubset_empty_l.
-  - simpl in *. apply prove_asubset_union; auto.
-Qed.
-
 
 Lemma map_join_left_fv {B: Type} (sign : bool) (f: B -> formula) (l: list B) (l1: aset vsymbol):
   Forall (fun fmla => asubset (fmla_fv fmla) l1) (map f l) ->
@@ -1683,37 +1610,6 @@ Proof.
   right. left. eexists; split; [apply Hinw |]; auto.
 Qed.
 
-(*Why do we need this?*)
-(*TODO: delete if dont need*)
-(* Lemma tm_type_vars_fun (f: funsym) (tys: list vty) (tms: list term):
-  tm_type_vars (Tfun f tys tms) = 
-     aset_union (aset_big_union type_vars tys)
-      (aset_big_union tm_type_vars tms).
-Proof.
-  reflexivity.
-Qed. *)
-
-(*TODO: move*)
-Lemma tm_type_vars_typed {gamma} {t ty}
-  (Hty: term_has_type gamma t ty):
-  asubset (type_vars ty) (tm_type_vars t).
-Proof.
-  clear -Hty.
-  induction Hty; try solve[apply asubset_refl].
-  - simpl. eapply asubset_trans; [apply ty_subst_type_vars|].
-    apply union_asubset_l.
-  - simpl. eapply asubset_trans; [apply IHHty2|].
-    rewrite asubset_def in *.
-    intros y Hiny; simpl_set; auto.
-  - simpl. rewrite asubset_def in *. intros y Hiny; simpl_set; auto.
-  - simpl. assert (Hnull: negb (null ps)) by (destruct ps; auto; discriminate).
-    destruct ps as [| phd ptl]; [discriminate|].
-    simpl. simpl in H1.
-    eapply asubset_trans; [apply H1; auto|]. rewrite asubset_def.
-    intros y Hiny; simpl_set; auto.
-  - simpl. apply union_asubset_r.
-Qed.
-
 (*Exact same proof as above can we generalize?*)
 Lemma map_join_left_type_vars {B: Type} (sign : bool) (f: B -> formula) (l: list B) (l1: aset typevar):
   Forall (fun fmla => asubset (fmla_type_vars fmla) l1) (map f l) ->
@@ -1901,19 +1797,6 @@ Proof.
   apply IH; auto.
   destruct sign; simpl; intros fs1; unfold is_true; rewrite orb_true_iff;
   intros; destruct_all; eauto.
-Qed.
-
-(*TODO: move these two*)
-Lemma funsym_in_fmla_fforalls fs vs f:
-  funsym_in_fmla fs (fforalls vs f) = funsym_in_fmla fs f.
-Proof.
-  induction vs as [| v vs IH]; simpl; auto.
-Qed.
-
-Lemma funsym_in_fmla_fexists fs vs f:
-  funsym_in_fmla fs (fexists vs f) = funsym_in_fmla fs f.
-Proof.
-  induction vs as [| v vs IH]; simpl; auto.
 Qed.
 
 End FunSyms.
@@ -2112,51 +1995,7 @@ Qed.
 
 End FindTs.
 
-
-(*1. Results about [mk_br_tm]*)
-
-
-
-
-
-(*TODO: move*)
-Lemma ty_subst_cons_notin v1 vs ty1 tys x:
-  ~ aset_mem v1 (type_vars x) ->
-  ty_subst (v1 :: vs) (ty1 :: tys) x =
-  ty_subst vs tys x.
-Proof.
-  intros Hnotin. induction x as [| | | ts args]; simpl; auto.
-  - simpl in Hnotin. unfold ty_subst. simpl.
-    destruct (typevar_eq_dec v v1); subst; auto.
-    exfalso. apply Hnotin; auto. simpl_set; auto.
-  - unfold ty_subst in *. simpl in *. f_equal.
-    induction args as [| h t IH]; simpl in *; auto.
-    inversion H as [| ? ? Heq1 Heq2]; subst.
-    f_equal; auto.
-    + apply Heq1. intros Hinv; apply Hnotin. simpl_set; auto.
-    + apply IH; auto.  intros Hinv; apply Hnotin; simpl_set_small; auto.
-Qed.   
-
-(*TODO: move*)
-Lemma nth_repeat' {A: Type} (a: A) (m n: nat) (d: A):
-  n < m ->
-  nth n (repeat a m) d = a.
-Proof.
-  intros Hn. generalize dependent n. induction m as [| m' IH]; simpl; intros n;
-  [lia|]. intros Hn. destruct n as [| n']; auto. apply IH; auto. lia.
-Qed.
-
 End MkBr.
-
-(*TODO: move*)
-(*Follows from exhaustiveness check*)
-Lemma typed_pattern_not_null {gamma} {tm1 ty1 ps ty}
-  (Hty: term_has_type gamma (Tmatch tm1 ty1 ps) ty):
-  negb (null ps).
-Proof.
-  inversion Hty; subst. destruct ps; try discriminate. auto.
-Qed.
-
 
 (*Now prove properties of rewriteT/F*)
 Section RewriteLemmas.
@@ -3400,13 +3239,6 @@ Definition rewriteF_type_vars(gamma_valid: valid_context gamma) names f
 
 (*4. Rewrite T/F funsyms*)
 
-(*TODO: move*)
-Lemma existsb_all_false {A: Type} (l: list A):
-  existsb (fun _ => false) l = false.
-Proof.
-  induction l as [| h t IH]; auto.
-Qed.
-
 
 (*3rd can be repeated if needed*)
 Ltac solve_funsyms_cases IH1 IH2 IH3 :=
@@ -3749,16 +3581,6 @@ Definition rewriteF_funsyms(gamma_valid: valid_context gamma) names f
 
 (*5. RewriteT/F predsyms*)
 
-(*TODO: move*)
-Lemma prove_orb_impl (b1 b2 b3 b4: bool):
-  (b1 ->b3) ->
-  (b2 -> b4) ->
-  (b1 || b2) -> (b3 || b4).
-Proof.
-  intros Hb1 Hb2.
-  destruct b1; destruct b2; auto; destruct b3; auto.
-Qed.
-
 Lemma rewrite_predsyms (gamma_valid: valid_context gamma) names t f:
   (forall ty (Hty: term_has_type gamma t ty) (Hsimp: term_simple_pats t)
     (Hexh: term_simple_exhaust gamma t)
@@ -4053,17 +3875,8 @@ Proof.
     apply (Hdisj x); auto.
 Qed.
 
-(*TODO: move*)
-Lemma sublist_remove_app_l {A: Type} (l1 l2 l3: list A):
-  sublist (l1 ++ l2) l3 ->
-  sublist l2 l3.
-Proof.
-  intros Hsub x Hinx.
-  apply Hsub. rewrite in_app_iff; auto.
-Qed.
+(*Conditions we need about simple patterns*)
 
-(*The condition we need for pattern matches (from compile_match)*)
-(*TODO: beginning of file? not sure*)
 Definition funpred_def_simple_pats (f: funpred_def) : bool :=
   match f with
   | fun_def _ _ t => term_simple_pats t
@@ -4093,16 +3906,6 @@ Section Weaken.
   as long as the term is well type wrt the smaller context.
   This is a preliminary; we want to prove that we can weaken the context
   and preserve well-typing as long as the term does not use anything from the new definition*)
-
-(*TODO: move*)
-Lemma prove_andb_impl (b1 b2 b3 b4: bool):
-  (b1 ->b3) ->
-  (b2 -> b4) ->
-  (b1 && b2) -> (b3 && b4).
-Proof.
-  intros Hb1 Hb2.
-  destruct b1; destruct b2; auto; destruct b3; auto.
-Qed.
 
 
 (*The key case for well-typed*)
@@ -4227,15 +4030,6 @@ Proof.
   intros Hval. remember (d :: gamma) as gamma'. 
   induction Hval; constructor; auto. subst.
   unfold sig_t in H. simpl in H. rewrite Hdty in H. auto.
-Qed.
-
-(*TODO: move*)
-Lemma impl_negb_orb {A: Type} {P: A -> Prop} (b1 b2: A -> bool):
-  (forall (x: A), P x -> negb ((b1 x) || (b2 x))) ->
-  (forall (x: A), P x -> negb (b1 x)) /\ (forall (x: A), P x -> negb (b2 x)).
-Proof.
-  intros Hnot. split; intros a Hp; specialize (Hnot a Hp);
-  destruct (b1 a); auto.
 Qed.
 
 (*Now prove full weakening result for patterns*)
@@ -4522,17 +4316,6 @@ Opaque new_constr.
 Opaque selector_funsym.
 Opaque indexer_funsym.
 
-Ltac simpl_and_destruct :=
-  repeat (subst; simpl in *; destruct_all; try contradiction).
-
-Ltac destruct_list_in :=
-  repeat (match goal with
-    | H: In ?x (concat ?l) |- _ => rewrite in_concat in H
-    | H: In ?x (map ?f ?l) |- _ => rewrite in_map_iff in H
-    | H: In ?x (rev ?l) |- _ => rewrite <- In_rev in H
-    | H: In ?x (?l1 ++ ?l2) |- _ => rewrite in_app_iff in H
-    end; simpl_and_destruct).
-
 Lemma map_fst_proj_axioms c:
   map fst (projection_axioms new_constr_name badnames c (projection_syms badnames c)) =
   projection_syms badnames c.
@@ -4748,13 +4531,6 @@ Proof.
       simpl. lia. auto.
 Qed. 
 
-(*TODO: move*)
-Lemma sublist_filter {A: Type} (b: A -> bool) (l: list A):
-  sublist (filter b l) l.
-Proof.
-  intros x. rewrite in_filter. intros Hin; apply Hin.
-Qed.
-
 Lemma adt_name_vars_valid {gamma m a} (gamma_valid: valid_context gamma) (m_in: mut_in_ctx m gamma)
   (a_in: adt_in_mut a m):
   valid_type gamma (vty_cons (adt_name a) (map vty_var (m_params m))).
@@ -4768,9 +4544,6 @@ Proof.
     constructor.
 Qed.
 
-(* Require Import eliminate_inductive eliminate_definition. *) (*TODO: move [valid_ctx_abstract_app]*)
-
-(*TODO: move somewhere*)
 Definition no_recfun_indpred_gamma (gamma: context) : bool :=
   forallb (fun x =>
     match x with
@@ -5306,122 +5079,16 @@ Qed.
 
 End BadNames.
 
-(*START*)
+(*Now prove things about the axioms and typing*)
+Section AxiomTyping.
 
-(*The conditions we need on tasks*)
-
-(*TODO: copied from [eliminate_algebraic_proofs], some should move*)
-Definition no_recfun_indpred (t: task) : Prop :=
-  no_recfun_indpred_gamma (task_gamma t).
-
-Definition fmla_simple_and_exhaust gamma (f: formula) : bool :=
-  fmla_simple_pats f && fmla_simple_exhaust gamma f.
-
-Definition task_pat_simpl (t: task) : Prop :=
-  ctx_pat_simpl (task_gamma t) &&
-  forallb (fun x => fmla_simple_and_exhaust (task_gamma t) (snd x)) (task_delta t) &&
-  fmla_simple_and_exhaust (task_gamma t) (task_goal t).
-
-(*TODO: use bools somewhere?*)
-Definition task_and (P1 P2: task -> Prop) : task -> Prop :=
-  fun t => (P1 t /\ P2 t).
-
-Lemma task_post_combine (P1 Q1 Q2: task -> Prop) (t: trans) :
-  trans_pre_post P1 Q1 t ->
-  trans_pre_post P1 Q2 t ->
-  trans_pre_post P1 (task_and Q1 Q2) t.
-Proof.
-  unfold trans_pre_post, task_and. intros; split; eauto.
-Qed.
-
-Definition compile_match_post : task -> Prop :=
-  task_and no_recfun_indpred task_pat_simpl.
-
-(*TODO: move somewhere (compile_match)?*)
-(*[trans_map] preserves no_recfun_indpred*)
-Lemma trans_map_pres_no_recfun_indpred f1 f2:
-  trans_pre_post no_recfun_indpred no_recfun_indpred (trans_map f1 f2).
-Proof.
-  unfold trans_pre_post, trans_map, TaskGen.trans_map, single_trans, TaskGen.task_map.
-  simpl.
-  unfold no_recfun_indpred.
-  intros t Hnorec Hty tr [Htr | []].
-  subst. simpl_task. unfold no_recfun_indpred_gamma in *.
-  rewrite forallb_map.
-  revert Hnorec. apply forallb_impl. intros x Hinx.
-  destruct x; auto.
-Qed.
-
-
-(*[compile_match] preserves [no_recfun_indpred]*)
-Lemma compile_match_pres_no_recfun_indpred:
-  trans_pre_post no_recfun_indpred no_recfun_indpred compile_match.compile_match.
-Proof.
-  apply trans_map_pres_no_recfun_indpred.
-Qed.
-
-(*[compile_match] results in [task_pat_simpl] i.e. simplifies pattern matches (TODO: move)*)
-Lemma compile_match_simple:
-  trans_pre_post (fun _ => True) task_pat_simpl compile_match.compile_match.
-Proof.
-  pose proof (compile_match_typed) as Hty. revert Hty.
-  unfold trans_pre_post, compile_match.compile_match, trans_map, TaskGen.trans_map, single_trans, typed_trans. simpl.
-  unfold TaskGen.task_map, TaskGen.typed_trans. simpl. intros Hty1.
-  intros t _ Hty tr [Htr | []]; subst.
-  specialize (Hty1 _ Hty _ (ltac:(left; reflexivity))).
-  unfold task_pat_simpl; simpl_task.
-  rewrite !forallb_map; simpl.
-  (*Need type info*)
-  destruct t as [[gamma delta] goal]; simpl in *.
-  inversion Hty. simpl_task.
-  (*Some useful things*)
-  assert (Hval: valid_context (map (TaskGen.def_map compile_match.rewriteT' compile_match.rewriteF') gamma)). {
-    inversion Hty1; auto.
-  }
-  assert (Hsig: sublist_sig gamma (map (TaskGen.def_map compile_match.rewriteT' compile_match.rewriteF') gamma)). {
-    apply eq_sig_sublist, TaskGen.def_map_eq_sig.
-  }
-  assert (Hmuts: sublist (mut_of_context gamma) (mut_of_context (map (TaskGen.def_map compile_match.rewriteT' compile_match.rewriteF') gamma))).
-  { rewrite TaskGen.def_map_gamma_mut. apply sublist_refl. }
-  bool_to_prop. split_all.
-  - unfold ctx_pat_simpl. rewrite forallb_map. apply forallb_forall. intros x Hinx.
-    destruct x; simpl; auto.
-    destruct f; simpl; auto.
-    + assert (Htyt: term_has_type gamma t (f_ret f)). {
-        apply nonrec_body_ty in Hinx; auto.
-      } apply andb_true_iff; split. 
-      * eapply (rewriteT_simple_pats' task_gamma_valid); eauto.
-      * eapply rewriteT_simple_exhaust'; eauto. 
-        eapply term_has_type_sublist; eauto.
-    + assert (Htyf: formula_typed gamma f). { apply nonrec_body_typed in Hinx; auto. }
-      apply andb_true_iff; split. 
-      * eapply (rewriteF_simple_pats' task_gamma_valid); eauto.
-      * eapply rewriteF_simple_exhaust'; eauto.
-        eapply formula_typed_sublist; eauto.
-  - (*delta*)
-    apply forallb_forall. intros x Hinx.
-    rewrite Forall_map, Forall_forall in task_delta_typed.
-    apply andb_true_iff. split.
-    + eapply (rewriteF_simple_pats' task_gamma_valid); eauto.
-    + eapply rewriteF_simple_exhaust'; eauto.
-      eapply formula_typed_sublist; eauto.
-  - (*goal*)
-    apply andb_true_iff. split.
-    + eapply (rewriteF_simple_pats' task_gamma_valid); eauto.
-    + eapply rewriteF_simple_exhaust'; eauto.
-      eapply formula_typed_sublist; eauto.
-Qed.
-
-(*TODO: prove this elsewhere, dont need here but including to make sure provable*)
-Lemma compile_match_pre_post: trans_pre_post no_recfun_indpred compile_match_post compile_match.compile_match.
-Proof.
-  apply task_post_combine.
-  - apply compile_match_pres_no_recfun_indpred.
-  - apply trans_weaken_pre with (P2:=fun _ => True); auto.
-    apply compile_match_simple.
-Qed.
-
-(*maybe move*)
+(*There is a small complication: we run [rewriteF] on the added axioms.
+  We need to show that typing is preseved (and later, semantics).
+  We can't use our main rewrite typing lemma because these axioms are NOT well-typed in the old
+  context, only the new ones. But these terms have no pattern matches and no constructors,
+  so we can prove directly.
+  Note we CANNOT prove syntactic equality: the polarity map changes this. But typing and (later)
+  semantics are preserved *)
 
 (*A term/formula has no pattern matches*)
 (*We also need no constr funsyms - doing in 1 condition*)
@@ -5494,6 +5161,8 @@ Definition rewriteF_no_patmatch_typed gamma gamma1 badnames names f
   formula_typed gamma (rewriteF keep_muts new_constr_name badnames gamma1 names sign f) :=
   proj_fmla (rewrite_no_patmatch_typed gamma gamma1 badnames names) f Hty Hn sign.
 
+(*Now prove typing for added axioms*)
+
 Lemma adt_ty_adt {gamma m a} (gamma_valid: valid_context gamma) 
   (m_in: mut_in_ctx m gamma) (a_in: adt_in_mut a m):
   adt_ty (adt_name a) = vty_cons (adt_name a) (map vty_var (m_params m)).
@@ -5502,19 +5171,7 @@ Proof.
   f_equal. apply (adt_args gamma_valid); auto.
 Qed.
 
-(*TODO: dont reepat*)
-Ltac simpl_and_destruct :=
-  repeat (subst; simpl in *; destruct_all; try contradiction).
 
-Ltac destruct_list_in :=
-  repeat (match goal with
-    | H: In ?x (concat ?l) |- _ => rewrite in_concat in H
-    | H: In ?x (map ?f ?l) |- _ => rewrite in_map_iff in H
-    | H: In ?x (rev ?l) |- _ => rewrite <- In_rev in H
-    | H: In ?x (?l1 ++ ?l2) |- _ => rewrite in_app_iff in H
-    end; simpl_and_destruct).
-
-(*TODO: should we prove unconditional one?*)
 Lemma in_add_axioms_delta ts badnames cs x:
   In x (add_axioms_delta new_constr_name badnames noind ts cs) ->
   (x = (inversion_axiom new_constr_name badnames ts (adt_ty ts) cs)) \/
@@ -5578,7 +5235,7 @@ Proof.
   specialize (Hwf (nth i (s_args c) d)).
   forward Hwf.
   { right. apply nth_In; auto. }
-  destruct Hwf as [_ Hvars]. rewrite Forall_forall in Hvars. apply Hvars; auto.
+  destruct Hwf as [_ Hvars]. apply Hvars; auto.
 Qed.
 
 Lemma subst_params_adt_ret {gamma m a c} (gamma_valid: valid_context gamma) (m_in: mut_in_ctx m gamma)
@@ -5601,7 +5258,9 @@ Proof.
   eapply subst_params_adt_args_ith; eauto.
 Qed.
 
-(*Prove types for new_constr*)
+(*Prove typing for new function symbols*)
+
+(*new constrs*)
 Lemma new_constr_app_type {gamma gamma2} (gamma_valid: valid_context gamma)
   {m a c} (m_in: mut_in_ctx m gamma) (a_in: adt_in_mut a m) (c_in: constr_in_adt c a) badnames tms:
   length tms = length (s_args c) ->
@@ -5629,6 +5288,7 @@ Proof.
     reflexivity.
 Qed.
 
+(*projections*)
 Lemma proj_app_type {gamma gamma2} (gamma_valid: valid_context gamma)
   {m a c} (m_in: mut_in_ctx m gamma) (a_in: adt_in_mut a m) (c_in: constr_in_adt c a) badnames i
   (Hi: i < length (s_args c)) x:
@@ -5663,6 +5323,7 @@ Proof.
     symmetry; apply (subst_params_adt_args_ith gamma_valid m_in a_in c_in); auto.
 Qed.
 
+(*indexer*)
 Lemma indexer_app_type {gamma gamma2} (gamma_valid: valid_context gamma)
   {m a} (m_in: mut_in_ctx m gamma) (a_in: adt_in_mut a m) badnames x
   (Hsingle : negb (single (adt_constr_list a)))
@@ -5699,6 +5360,8 @@ Proof.
     auto.
 Qed.
 
+(*And now the typing for each axiom:*)
+
 Lemma inversion_axiom_typed {gamma gamma2} (gamma_valid: valid_context gamma)
   {m a} (m_in: mut_in_ctx m gamma) (a_in: adt_in_mut a m) badnames:
 formula_typed (fold_all_ctx_gamma_gen new_constr_name keep_muts badnames noind gamma gamma2)
@@ -5729,6 +5392,7 @@ Proof.
   apply T_Var'; simpl; auto.
 Qed.
 
+Ltac simpl_len_extra ::= rewrite !gen_strs_length || rewrite !gen_names_length.
 
 Lemma projection_axioms_typed {gamma gamma2} (gamma_valid: valid_context gamma)
   {m a c} (m_in: mut_in_ctx m gamma) (a_in: adt_in_mut a m) (c_in: constr_in_adt c a) badnames x:
@@ -5737,19 +5401,17 @@ formula_typed (fold_all_ctx_gamma_gen new_constr_name keep_muts badnames noind g
 Proof.
   rewrite in_map_iff. intros [[fs [n f]] [Hx Hinfs]]. subst. simpl.
   unfold projection_axioms in Hinfs.
-  rewrite map_snd_combine in Hinfs; [| rewrite gen_names_length; lia].
+  rewrite map_snd_combine in Hinfs by solve_len.
   rewrite in_map2_iff with (d1:=(tm_d, vty_int)) (d2:=id_fs) in Hinfs.
-  2: { rewrite projection_syms_length. unfold vsymbol. simpl_len.
-    rewrite gen_names_length; lia. }
+  2: { rewrite projection_syms_length. unfold vsymbol. solve_len. }
   replace (length (combine _ _)) with (length (s_args c)) in Hinfs.
-  2: { unfold vsymbol; simpl_len. rewrite gen_names_length; lia. }
+  2: { unfold vsymbol; solve_len. }
   destruct Hinfs as [i [Hi Heq]].
   inversion Heq; subst; clear Heq.
   (*Now prove each part*)
   apply fforalls_typed.
   2: { rewrite <- (Forall_map snd).
-    rewrite map_snd_combine; [| rewrite gen_names_length; lia].
-    (*TODO: do I need to separate this out?*)
+    rewrite map_snd_combine by solve_len.
     apply new_ctx_all_valid_type.
     rewrite Forall_forall. apply (constr_args_valid gamma_valid m_in a_in c_in).
   }
@@ -5757,32 +5419,30 @@ Proof.
   constructor.
   2: {
     (*Prove vars*)
-    rewrite combine_nth; [| unfold vsymbol; simpl_len; rewrite gen_names_length; lia]. 
-    simpl. rewrite map_nth_inbound with (d2:=(""%string, vty_int)); [| simpl_len; rewrite gen_names_length; lia].
-    rewrite combine_nth; [| rewrite gen_names_length; lia].
+    rewrite combine_nth; [| unfold vsymbol; solve_len]. 
+    simpl. rewrite map_nth_inbound with (d2:=(""%string, vty_int)) by solve_len.
+    rewrite combine_nth by solve_len.
     apply T_Var'; auto.
     apply new_ctx_valid_type.
     apply (constr_args_valid gamma_valid m_in a_in c_in), nth_In; auto.
   }
   (*Prove funs*)
-  rewrite combine_nth; [| unfold vsymbol; simpl_len; rewrite gen_names_length; lia].
+  rewrite combine_nth; [| unfold vsymbol; solve_len].
   simpl. rewrite (adt_constr_params gamma_valid m_in a_in c_in).
   apply (proj_app_type gamma_valid m_in a_in c_in); auto.
   apply new_constr_app_type; auto.
-  { unfold vsymbol; simpl_len; rewrite gen_names_length; lia. }
+  { unfold vsymbol; solve_len. }
   intros j Hj.
-  rewrite map_nth_inbound with (d2:=(""%string, vty_int));
-      [| unfold vsymbol; simpl_len; rewrite gen_names_length; lia].
-  (*TODO: add to simpl_len_extra for gen_names_length*)
-  rewrite combine_nth; [| rewrite gen_names_length; lia].
+  rewrite map_nth_inbound with (d2:=(""%string, vty_int)); [| unfold vsymbol; solve_len].
+  rewrite combine_nth by solve_len.
   apply T_Var'; auto.
   apply new_ctx_valid_type.
   apply (constr_args_valid gamma_valid m_in a_in c_in), nth_In; auto.
 Qed.
 
-(*TODO: better way? Name indexer_name?*)
 Opaque indexer_name.
 Opaque under_str.
+
 Lemma indexer_axiom_typed {gamma gamma2} (gamma_valid: valid_context gamma)
   {m a} (m_in: mut_in_ctx m gamma) (a_in: adt_in_mut a m) badnames
   (Hsingle : negb (single (adt_constr_list a)))
@@ -5803,7 +5463,7 @@ Proof.
   }
   apply fforalls_typed.
   2: {
-    rewrite <- (Forall_map snd). rewrite map_snd_combine; [| rewrite gen_names_length; lia].
+    rewrite <- (Forall_map snd). rewrite map_snd_combine by solve_len.
     apply new_ctx_all_valid_type.
     rewrite Forall_forall. apply (constr_args_valid gamma_valid m_in a_in c_in).
   }
@@ -5812,16 +5472,15 @@ Proof.
   rewrite (adt_args gamma_valid m_in a_in).
   apply indexer_app_type; auto.
   apply new_constr_app_type; auto.
-  { unfold vsymbol; simpl_len. rewrite gen_names_length; lia. }
+  { unfold vsymbol; solve_len. }
   intros j Hj. 
-  rewrite map_nth_inbound with (d2:=(""%string, vty_int));
-      [| unfold vsymbol; simpl_len; rewrite gen_names_length; lia].
-  rewrite combine_nth; [| rewrite gen_names_length; lia].
+  rewrite map_nth_inbound with (d2:=(""%string, vty_int)); [| unfold vsymbol; solve_len].
+  rewrite combine_nth by solve_len.
   apply T_Var'; auto.
   apply new_ctx_valid_type, (constr_args_valid gamma_valid m_in a_in c_in), nth_In; auto.
 Qed.
 
-(*Note: really, iff is exists i j, i < j and x = f (nth i l) (nth j l)*)
+(*A few lemmas about [map_pairs]*)
 
 Lemma in_map_pairs_iff {A B: Type} (f: A -> A -> B) (l: list A) (d: A) x:
   In x (map_pairs f l) <-> exists i j, i < j /\ j < length l /\ x = f (nth i l d) (nth j l d).
@@ -5871,7 +5530,6 @@ Lemma in_map_pairs {A B: Type} (f: A -> A -> B) (l: list A) x:
   In x (map_pairs f l) ->
   exists y1 y2, In y1 l /\ In y2 l /\ x = f y1 y2.
 Proof.
-  (*Kind of silly, but need an A*)
   intros Hinx.
   assert (d: A). {
     destruct l as [| h t]; [contradiction|]; auto.
@@ -5897,13 +5555,13 @@ Proof.
   assert (c2_in: constr_in_adt c2 a) by (apply constr_in_adt_eq; auto).
   unfold rev_map. rewrite !map_rev, !rev_involutive.
   apply fforalls_typed.
-  2: { rewrite <- (Forall_map snd), map_snd_combine; [| rewrite gen_names_length; lia].
+  2: { rewrite <- (Forall_map snd), map_snd_combine by solve_len.
     apply new_ctx_all_valid_type.
     rewrite Forall_forall.
     apply (constr_args_valid gamma_valid m_in a_in); auto.
   }
   apply fforalls_typed.
-  2: { rewrite <- (Forall_map snd), map_snd_combine; [| rewrite gen_names_length; lia].
+  2: { rewrite <- (Forall_map snd), map_snd_combine by solve_len.
     apply new_ctx_all_valid_type.
     rewrite Forall_forall.
     apply (constr_args_valid gamma_valid m_in a_in); auto.
@@ -5913,11 +5571,11 @@ Proof.
   constructor.
   rewrite (adt_args gamma_valid m_in a_in).
   constructor; apply new_constr_app_type; auto; (*both sides identical*)
-  try solve[unfold vsymbol; simpl_len; rewrite gen_names_length; lia];
+  try solve[unfold vsymbol; solve_len];
   intros i Hi;
   rewrite map_nth_inbound with (d2:=(""%string, vty_int)) by
-    (unfold vsymbol; simpl_len; rewrite gen_names_length; lia);
-  rewrite combine_nth by (rewrite gen_names_length; lia);
+    (unfold vsymbol; solve_len);
+  rewrite combine_nth by solve_len;
   apply T_Var'; auto; apply new_ctx_valid_type;
   [ apply (constr_args_valid gamma_valid m_in a_in c1_in) |
     apply (constr_args_valid gamma_valid m_in a_in c2_in)]; apply nth_In; auto.
@@ -5931,11 +5589,10 @@ Lemma selector_axiom_typed {gamma gamma2} (gamma_valid: valid_context gamma)
 Proof.
   unfold selector_axiom.
   simpl. unfold rev_map. rewrite !map_rev, !rev_involutive.
-  rewrite in_map2_iff with (d1:=id_fs)(d2:=tm_d).
-  2: { simpl_len. rewrite gen_names_length; auto. }
+  rewrite in_map2_iff with (d1:=id_fs)(d2:=tm_d) by solve_len.
   intros [i [Hi Hx]]; subst; simpl.
   rewrite rev_append_rev. rewrite !rev_involutive.
-  set (a_ts:=(gen_name "a" (ts_args (adt_name a)))) in *.
+  set (a_ts:=(gen_name "a" (list_to_aset (ts_args (adt_name a))))) in *.
   set (a_ty := vty_var a_ts) in *.
   set (c:=(nth i (adt_constr_list a) id_fs)) in *.
   assert (c_in: constr_in_adt c a). {
@@ -5947,8 +5604,7 @@ Proof.
     rewrite Forall_app; split.
     - rewrite <- (Forall_map snd). rewrite map_map. simpl.
       rewrite Forall_map, Forall_forall. intros; constructor.
-    - rewrite <- (Forall_map snd), map_snd_combine.
-      2: { rewrite !gen_names_length; auto. }
+    - rewrite <- (Forall_map snd), map_snd_combine by solve_len.
       apply new_ctx_all_valid_type.
       rewrite Forall_forall.
       apply (constr_args_valid gamma_valid m_in a_in c_in).
@@ -5956,28 +5612,27 @@ Proof.
   constructor.
   2: {
     (*Prove var typed*)
-    rewrite map_nth_inbound with (d2:=(""%string, vty_int)); [| simpl_len; rewrite gen_names_length; lia].
+    rewrite map_nth_inbound with (d2:=(""%string, vty_int)) by solve_len.
     apply T_Var'; auto; [constructor|].
-    rewrite map_nth_inbound with (d2:=""%string); [| rewrite gen_names_length; lia].
+    rewrite map_nth_inbound with (d2:=""%string) by solve_len.
     reflexivity.
   }
-  (*TODO: should we prove selector in separate lemma?*)
+  (*should we prove selector in separate lemma?*)
   rewrite map_rev, rev_involutive.
   apply T_Fun'.
   - (*In sig*) apply new_in_sig_f_new_gamma_gen. right. right. left. eauto 7.
   - (*valid*) constructor; [constructor|].
     rewrite Forall_map, Forall_forall; intros; constructor.
   - (*valid ret*) simpl. constructor.
-  - rewrite (selector_funsym_args gamma_valid badnames _ m_in a_in). simpl.
-    simpl_len. rewrite gen_names_length; reflexivity.
+  - rewrite (selector_funsym_args gamma_valid badnames _ m_in a_in). simpl. solve_len.
   - rewrite (selector_funsym_params gamma_valid badnames _ m_in a_in); simpl.
     rewrite (adt_args gamma_valid m_in a_in); solve_len.
   - (*Types*)
     rewrite (selector_funsym_args gamma_valid badnames _ m_in a_in).
     rewrite (selector_funsym_params gamma_valid badnames _ m_in a_in); simpl.
     rewrite (adt_args gamma_valid m_in a_in).
-    (*TODO: bad*) subst a_ty a_ts.
-    set (a_ts:=(gen_name "a" (m_params m))).
+    subst a_ty a_ts.
+    set (a_ts:=(gen_name "a" (list_to_aset (m_params m)))).
     set (a_ty := vty_var a_ts) in *.
     constructor.
     + simpl. (*Prove constr typed*)
@@ -5985,32 +5640,27 @@ Proof.
       rewrite ty_subst_cons_notin.
       2: {
         simpl. simpl_set. setoid_rewrite in_map_iff. intros [y [[tv [Hy Hintv]] Hinats]]; subst.
-        simpl in Hinats. destruct Hinats as [Heq | []]; subst. 
-        apply gen_name_notin in Hintv. auto.
+        simpl in Hinats. simpl_set; subst; auto.
+        apply (gen_name_notin "a" (list_to_aset (m_params m))); simpl_set; auto.
       }
       (*Simplify return type*)
       rewrite <- (adt_constr_ret gamma_valid m_in a_in c_in).
       rewrite (subst_params_adt_ret gamma_valid m_in a_in c_in).
       rewrite (adt_constr_ret gamma_valid m_in a_in c_in).
-      apply new_constr_app_type; auto.
-      { simpl_len. rewrite !gen_names_length; lia. }
+      apply new_constr_app_type; auto; [solve_len|].
       intros j Hj. 
-      rewrite map_nth_inbound with (d2:=(""%string, vty_int)).
-      2: { simpl_len. rewrite gen_names_length; lia. }
+      rewrite map_nth_inbound with (d2:=(""%string, vty_int)) by solve_len.
       apply T_Var'; auto.
       * apply new_ctx_valid_type.
         apply (constr_args_valid gamma_valid m_in a_in c_in); auto.
         apply nth_In; auto.
-      * rewrite combine_nth; auto. rewrite !gen_names_length. reflexivity.
+      * rewrite combine_nth; auto. solve_len.
     + (*Prove vars have correct type (a)*)
       rewrite Forall_forall. intros x.
-      rewrite in_combine_iff.
-      2: { simpl_len. rewrite gen_names_length; lia. }
-      replace (length (map _ _)) with (length (adt_constr_list a)).
-      2: { simpl_len. rewrite gen_names_length; lia. }
+      rewrite in_combine_iff by solve_len.
+      replace (length (map _ _)) with (length (adt_constr_list a)) by solve_len.
       intros [j [Hj Hx]]. specialize (Hx tm_d vty_int); subst; simpl.
-      rewrite map_nth_inbound with (d2:=(""%string, vty_int)).
-      2: { simpl_len. rewrite gen_names_length; lia. }
+      rewrite map_nth_inbound with (d2:=(""%string, vty_int)) by solve_len.
       rewrite map_nth_inbound with (d2:=vty_int) by solve_len.
       rewrite nth_repeat' by auto.
       rewrite (adt_args gamma_valid m_in a_in).
@@ -6020,8 +5670,7 @@ Proof.
         reflexivity.
       }
       apply T_Var'; auto; [constructor|].
-      rewrite map_nth_inbound with (d2:=""%string); auto.
-      rewrite gen_names_length. auto.
+      rewrite map_nth_inbound with (d2:=""%string); auto; solve_len.
   - (*prove return type*)
     rewrite (selector_funsym_params gamma_valid badnames _ m_in a_in); simpl.
     rewrite (adt_args gamma_valid m_in a_in).
@@ -6079,7 +5728,6 @@ Proof.
   induction vs; simpl; auto.
 Qed.
 
-
 Lemma proj_no_patmatch badnames c x:
   In x (map snd (projection_axioms new_constr_name badnames c (projection_syms badnames c))) ->
   fmla_no_patmatch (snd x).
@@ -6129,19 +5777,16 @@ Lemma selector_no_patmatch badnames ts cs x:
 Proof.
   unfold selector_axiom.
   unfold rev_map. simpl.
-  rewrite in_map2_iff with (d1:=id_fs) (d2:=tm_d).
-  2: { simpl_len. rewrite gen_names_length; auto. }
+  rewrite in_map2_iff with (d1:=id_fs) (d2:=tm_d) by solve_len.
   intros [i [Hi Hx]]; subst; simpl.
   rewrite !rev_append_rev, !map_rev, !rev_involutive.
   rewrite fmlas_no_patmatch_fforalls. simpl.
   rewrite !forallb_map; simpl. rewrite !forallb_t.
-  simpl. rewrite map_nth_inbound with (d2:=(""%string, vty_int)); [| simpl_len; rewrite gen_names_length; lia].
+  simpl. rewrite map_nth_inbound with (d2:=(""%string, vty_int)) by solve_len. 
   reflexivity.
 Qed.
 
-
-(*We need to prove a few things about the axioms. 
-  First, they have no pattern matches or constructors*)
+(*Thus, all of the axioms have no pattern matches or constrs*)
 Lemma in_add_axioms_no_patmatch ts badnames cs x:
   In x (add_axioms_delta new_constr_name badnames noind ts cs) ->
   fmla_no_patmatch (snd x).
@@ -6199,6 +5844,8 @@ Proof.
   eapply in_add_axioms_no_patmatch; eauto.
 Qed.
 
+End AxiomTyping.
+
 (*Main result: fold_comp is well-typed under preconditions*)
 
 Theorem fold_comp_typed:
@@ -6214,7 +5861,7 @@ Proof.
   constructor.
   - (*prove gamma valid - main part done above*) 
     simpl_task. unfold fold_all_ctx_gamma. simpl_task. apply new_gamma_gen_valid'; auto.
-    + apply sublist_refl.
+    + apply asubset_refl.
     + apply Hpre.
     + unfold compile_match_post in Hpre. unfold task_and in Hpre.
       destruct Hpre as [_ Hsimp]. unfold task_pat_simpl in Hsimp.
@@ -6254,7 +5901,7 @@ Proof.
     apply sublist_refl.
 Qed.
 
-
+(*Thus, under the preconditions, [eliminate_algebraic] is well-typed*)
 Theorem eliminate_algebraic_typed :
   new_constr_name_cond new_constr_name ->
   typed_trans_pre no_recfun_indpred
@@ -6267,7 +5914,7 @@ Proof.
   - (*compile_match typing*)
     apply typed_trans_weaken_pre with (fun _ => True); auto.
     apply typed_trans_pre_true, compile_match_typed.
-  - (*TODO*) apply fold_comp_typed; auto.
+  - (*[fold_comp] typing*) apply fold_comp_typed; auto.
   - (*pre and postconditions of [compile_match]*)
     apply compile_match_pre_post.
 Qed.

@@ -1206,6 +1206,64 @@ Proof.
   apply (Hsub x); split; auto.
 Qed.
 
+Lemma aset_diff_empty {A: Type} `{countable.Countable A} (s: aset A):
+  aset_diff aset_empty s = s.
+Proof.
+  apply aset_ext. intros x. simpl_set. split; intros; destruct_all; simpl_set; auto.
+  split; simpl_set; auto. intro C; simpl_set.
+Qed.
+
+Lemma asubset_empty_l {A: Type} `{countable.Countable A} (s: aset A):
+  asubset aset_empty s.
+Proof.
+  rewrite asubset_def. intros x Hx. simpl_set.
+Qed.
+
+Lemma prove_asubset_union {A: Type} `{countable.Countable A}
+  (s1 s2 s3: aset A):
+  asubset s1 s3 ->
+  asubset s2 s3 ->
+  asubset (aset_union s1 s2) s3.
+Proof.
+  rewrite !asubset_def.
+  intros Hsub1 Hsub2 x Hinx. simpl_set; destruct_all; auto.
+Qed.
+
+Lemma prove_asubset_big_union {A B: Type} `{countable.Countable B} (f: A -> aset B) (l: list A) (s2: aset B):
+  (forall x, In x l -> asubset (f x) s2) ->
+  asubset (aset_big_union f l) s2.
+Proof.
+  intros Hallin. induction l as [| h t IH]; simpl; auto.
+  - apply asubset_empty_l.
+  - simpl in *. apply prove_asubset_union; auto.
+Qed.
+
+Lemma asubset_union_iff {A : Type} `{countable.Countable A} (s1 s2 s3: aset A):
+  asubset (aset_union s1 s2) s3 <-> asubset s1 s3 /\ asubset s2 s3.
+Proof.
+  rewrite !asubset_def. split. 
+  - intros Hmem. split; intros x Hmemx; apply Hmem; simpl_set; auto.
+  - intros [Hmem1 Hmem2] x Hmem. simpl_set. destruct Hmem; auto.
+Qed.
+
+Lemma asubset_app_iff {A : Type} `{countable.Countable A} (l1 l2: list A) (s: aset A):
+  asubset (list_to_aset (l1 ++ l2)) s <-> asubset (list_to_aset l1) s /\ asubset (list_to_aset l2) s.
+Proof.
+  rewrite !list_to_aset_app, asubset_union_iff. reflexivity.
+Qed.
+
+Lemma asubset_app3_iff {A : Type} `{countable.Countable A} (l1 l2 l3: list A) (s: aset A):
+  asubset (list_to_aset (l1 ++ l2 ++ l3)) s <-> asubset (list_to_aset l1) s /\ 
+  asubset (list_to_aset l2) s /\ asubset (list_to_aset l3) s.
+Proof.
+  rewrite !asubset_app_iff. reflexivity.
+Qed.
+
+Lemma asubset_union3_iff {A : Type} `{countable.Countable A} (s1 s2 s3 s4: aset A):
+  asubset (aset_union s1 (aset_union s2 s3)) s4 <-> asubset s1 s4 /\ asubset s2 s4 /\ asubset s3 s4.
+Proof.
+  rewrite !asubset_union_iff. reflexivity.
+Qed. 
 
 (*
 Eval simpl in (aset_mem_dec 1  (aset_union (aset_singleton 2) aset_empty)).

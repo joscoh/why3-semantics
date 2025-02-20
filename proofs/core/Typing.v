@@ -3321,7 +3321,17 @@ Proof.
   auto.
 Qed.
 
-(*TODO: move and rename previous*)
+Lemma ty_subst_adt_args_valid {m a c args}
+  (m_in: mut_in_ctx m gamma) (a_in: adt_in_mut a m) (c_in: constr_in_adt c a)
+  (Hargs: Forall (valid_type gamma) args):
+  Forall (valid_type gamma) (map (ty_subst (s_params c) args) (s_args c)).
+Proof.
+  apply Forall_forall. intros x.
+  unfold ty_subst_list. rewrite in_map_iff. intros [ty [Hx Hinty]]; subst.
+  apply valid_type_ty_subst; auto.
+  apply (constr_args_valid m_in a_in c_in); auto.
+Qed.
+
 Lemma constr_ret_valid: forall {c a m},
   mut_in_ctx m gamma ->
   adt_in_mut a m ->
@@ -4584,6 +4594,51 @@ Proof.
   - destruct a; auto. simpl. simpl in *.
     inversion H4; subst. rewrite H13; auto.
   - destruct a; inversion H11; auto; simpl; auto.
+Qed.
+
+(*A result about [type_vars]*)
+Lemma tm_type_vars_typed {gamma} {t ty}
+  (Hty: term_has_type gamma t ty):
+  asubset (type_vars ty) (tm_type_vars t).
+Proof.
+  clear -Hty.
+  induction Hty; try solve[apply asubset_refl].
+  - simpl. eapply asubset_trans; [apply ty_subst_type_vars|].
+    apply union_asubset_l.
+  - simpl. eapply asubset_trans; [apply IHHty2|].
+    rewrite asubset_def in *.
+    intros y Hiny; simpl_set; auto.
+  - simpl. rewrite asubset_def in *. intros y Hiny; simpl_set; auto.
+  - simpl. assert (Hnull: negb (null ps)) by (destruct ps; auto; discriminate).
+    destruct ps as [| phd ptl]; [discriminate|].
+    simpl. simpl in H1.
+    eapply asubset_trans; [apply H1; auto|]. rewrite asubset_def.
+    intros y Hiny; simpl_set; auto.
+  - simpl. apply union_asubset_r.
+Qed.
+
+(*A few small results about typing and pattern matches*)
+
+(*Follows from exhaustiveness check*)
+Lemma typed_pattern_not_null {gamma} {tm1 ty1 ps ty}
+  (Hty: term_has_type gamma (Tmatch tm1 ty1 ps) ty):
+  negb (null ps).
+Proof.
+  inversion Hty; subst. destruct ps; try discriminate. auto.
+Qed.
+
+Lemma constr_vars_typed_nodup {gamma} {c tys vars ty}
+  (Hp: pattern_has_type gamma (Pconstr c tys (map Pvar vars)) ty):
+  NoDup vars.
+Proof.
+  inversion Hp; subst.
+  rewrite NoDup_nth with (d:=vs_d).
+  intros i1 j Hi1 Hj Heq. clear -H10 Heq Hi1 Hj.
+  rewrite length_map in H10. specialize (H10 i1 j Pwild (nth i1 vars vs_d)).
+  destruct (Nat.eq_dec i1 j); subst; auto.
+  specialize (H10 Hi1 Hj n). exfalso; apply H10; clear H10.
+  rewrite !map_nth_inbound with (d2:=vs_d); auto. simpl.
+  simpl_set. auto.
 Qed.
 
 (*Gen*)

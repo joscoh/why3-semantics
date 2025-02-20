@@ -293,6 +293,23 @@ Proof.
   - intros. erewrite IHvs. reflexivity. auto. lia.
 Qed.
 
+(*For dependent type issues that make Coq completely
+  useless:*)
+Lemma substi_mult_nth_eq (vv : val_vars pd vt)
+(vs : list vsymbol)
+  (vals : arg_list (domain) (map (v_subst vt) (map snd vs)))
+  (i : nat) (Hi : i < Datatypes.length vs) x
+  (Heq: x = nth i vs vs_d):
+  NoDup vs ->
+  substi_mult vv vs vals x =
+  dom_cast (dom_aux pd)
+    (eq_trans (substi_mult_nth_lemma 
+      (v_subst vt) snd vs i Hi s_int vs_d) (f_equal (fun x => v_subst vt (snd x)) (eq_sym Heq))) 
+    (hnth i vals s_int (dom_int pd)).
+Proof.
+  subst. simpl. apply substi_mult_nth'.
+Qed.
+
 (*Next we give the valuation for an iterated let. This time,
   we don't need to worry about hlists*)
 Fixpoint substi_multi_let pf (vv: val_vars pd vt) 
@@ -431,6 +448,47 @@ Qed.
 
 End IterSub.
 
+(*And relationships between iterated valuations*)
+
+(*NOTE: what is the difference between [substi_mult] and [val_with_args]? Are they redundant?*)
+(*Yes, this lemma shows that they are the same. oops (TODO: remove one)*)
+Lemma substi_mult_val_with_args vv vs al x:
+  NoDup vs ->
+  substi_mult vv vs al x = val_with_args pd vt vv vs al x.
+Proof.
+  intros Hn.
+  destruct (in_dec vsymbol_eq_dec x vs) as [Hin| Hnotin].
+  2: { rewrite substi_mult_notin; auto. rewrite val_with_args_notin; auto. }
+  destruct (In_nth _ _ vs_d Hin) as [i [Hi Hx]]; subst.
+  assert (Heq: nth i (map (v_subst vt) (map snd vs)) s_int = v_subst vt (snd (nth i vs vs_d))).
+  { rewrite map_map. rewrite map_nth_inbound with (d2:=vs_d); auto. }
+  rewrite val_with_args_in with (Heq:=Heq); auto; [|solve_len].
+  rewrite substi_mult_nth' with (Hi:=Hi); auto.
+  apply dom_cast_eq.
+Qed.
+
+Lemma substi_mult_let_equiv
+    pf (vv: val_vars pd vt) (vs: list (vsymbol * term))
+  (Hall: Forall (fun x => term_has_type gamma (snd x) (snd (fst x))) vs)
+  (Hdisj: forall v t, In v (map fst vs) -> In t (map snd vs) -> ~ aset_mem v (tm_fv t))
+  (Hall2: Forall2 (fun (t : term) (ty : vty) => term_has_type gamma t ty) (map snd vs) (map snd (map fst vs))) x:
+  substi_multi_let pf vv vs Hall x =
+  substi_mult vv (map fst vs) (terms_to_hlist gamma_valid pd pdf pf vt vv (map snd vs) (map snd (map fst vs))
+    Hall2) x.
+Proof.
+  (*Have to prove by induction because we didn't prove anything about values of [substi_multi_let]*)
+  revert vv.
+  induction vs as [| [v1 t1] vs]; simpl; intros vv; auto.
+  simp terms_to_hlist. simpl in Hdisj. simpl.
+  rewrite term_rep_irrel with (Hty2:=(Forall2_inv_head Hall2)).
+  rewrite IHvs with (Hall2:=(Forall2_inv_tail Hall2)); auto. simpl.
+  (*Use disjointness result*)
+  erewrite terms_to_hlist_change_vv. reflexivity.
+  intros tm v Hintm Hinv. unfold substi.
+  destruct (vsymbol_eq_dec v v1); subst; auto.
+  exfalso. apply (Hdisj v1 tm); auto.
+Qed. 
+
 Variable  (pf: pi_funpred gamma_valid pd pdf).
 
 (*Then we define iterated logical operators*)
@@ -509,6 +567,12 @@ Proof.
   apply fforalls_typed_inv  in A. split_all.
   rewrite fmla_rep_irrel with(Hval2:=(fforalls_typed vs f Hval1 H0)).
   apply fforalls_rep.
+Qed.
+
+Lemma funsym_in_fmla_fforalls fs vs f:
+  funsym_in_fmla fs (fforalls vs f) = funsym_in_fmla fs f.
+Proof.
+  induction vs as [| v vs IH]; simpl; auto.
 Qed.
 
 End Forall.
@@ -683,6 +747,30 @@ Proof.
       exists (hlist_tl h).
       auto.
 Qed.  
+
+Lemma fexists_rep'
+  (vv: val_vars pd vt) 
+  (vs: list vsymbol) (f: formula) 
+  Hval1 Hval2:
+  formula_rep pf vv (fexists vs f)
+    Hval2 =
+  all_dec
+    (exists
+      h : arg_list domain (map (v_subst vt) (map snd vs)),
+    formula_rep pf (substi_mult vv vs h) f Hval1).
+Proof.
+  assert (A:=Hval2).
+  apply fexists_typed_inv  in A. split_all.
+  rewrite fmla_rep_irrel with(Hval2:=(fexists_typed vs f Hval1 H0)).
+  apply fexists_rep.
+Qed.
+
+Lemma funsym_in_fmla_fexists fs vs f:
+  funsym_in_fmla fs (fexists vs f) = funsym_in_fmla fs f.
+Proof.
+  induction vs as [| v vs IH]; simpl; auto.
+Qed.
+
 
 End Exists.
 

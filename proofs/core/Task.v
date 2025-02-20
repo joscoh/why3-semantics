@@ -1004,6 +1004,18 @@ Proof.
   + auto.
 Qed.
 
+(*should we use bools?*)
+Definition task_and (P1 P2: task -> Prop) : task -> Prop :=
+  fun t => (P1 t /\ P2 t).
+
+Lemma task_post_combine (P1 Q1 Q2: task -> Prop) (t: trans) :
+  trans_pre_post P1 Q1 t ->
+  trans_pre_post P1 Q2 t ->
+  trans_pre_post P1 (task_and Q1 Q2) t.
+Proof.
+  unfold trans_pre_post, task_and. intros; split; eauto.
+Qed.
+
 Section TaskMap.
 
 Variable (fn : term -> term) (pn: formula -> formula).
