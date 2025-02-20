@@ -3,21 +3,13 @@ Require Import Task PatternProofs eliminate_algebraic eliminate_algebraic_contex
   eliminate_algebraic_typing.
 Set Bullet Behavior "Strict Subproofs".
 
+(*NOTE: this exists already (TODO)*)
 Lemma dom_cast_inj (dom_aux: sort -> Set) {v1 v2 : sort} (H1 H2: v1 = v2) (d1 d2: domain dom_aux v1):
   dom_cast dom_aux H1 d1 = dom_cast dom_aux H2 d2 ->
   d1 = d2.
 Proof.
   subst. assert (H2 = eq_refl) by (apply UIP_dec, sort_eq_dec). subst.
   unfold dom_cast; simpl. subst; auto.
-Qed.
-
-Lemma scast_inj_uip {S1 S2: Set} (H1 H2: S1 = S2) (x1 x2: S1):
-  scast H1 x1 = scast H2 x2 ->
-  x1 = x2.
-Proof.
-  subst. simpl. intros Hx1; subst.
-  assert (H2 = eq_refl) by (apply UIP).
-  subst; auto.
 Qed.
 
 Lemma semantic_constr_inj_c {g1 g2} (g1_valid: valid_context g1) (g2_valid: valid_context g2) 
@@ -484,6 +476,7 @@ Proof.
 Qed.
 
 (*TODO: move*)
+(*TODO: use [terms_to_hlist_nth, replace*)
 
 Lemma tm_hlist_cast {tys i} vt (Hi: i < length tys): 
   v_subst vt (nth i tys vty_int) = nth i (map (v_subst vt) tys) s_int.
@@ -538,54 +531,16 @@ find_constr_rep
        {Hf : constr_in_adt f t * arg_list (domain domain_aux) (sym_sigma_args f srts)
        | x = constr_rep gamma_valid m m_in srts srts_len domain_aux t t_in f (fst Hf) dom_adts (snd Hf)}} *)
 
-Lemma scast_switch {A B C: Set} (H1: A = B) (H2: C = B) (x1: A) (x2: C):
-  scast H1 x1 = scast H2 x2 ->
-  x2 = scast (eq_trans H1 (eq_sym H2)) x1.
-Proof.
-  intros Hcast. subst. simpl in Hcast. subst. simpl. reflexivity.
-Qed.
 
+
+(*TODO: in Domain*)
 Ltac gen_dom_cast := repeat match goal with |- context [dom_cast ?pd ?Heq ?x] =>
             let y := fresh "y" in
             set (y := dom_cast pd Heq x) in *; 
             generalize dependent Heq 
           end; simpl.
 
-Lemma scast_eq_uip' {A1 A2 : Set} (H1 H2 : A1 = A2) (x y : A1):
-  x = y ->
-  scast H1 x = scast H2 y.
-Proof.
-  intros; subst. simpl. (*ugh Equations ruins this*)
-  assert (H2 = eq_refl) by (apply Cast.UIP). subst; reflexivity.
-Qed.
 
-Lemma scast_eq_uip_iff {A1 A2 : Set} (H1 H2 : A1 = A2) (x y : A1):
-  scast H1 x = scast H2 y <-> x = y.
-Proof.
-  split; [| apply scast_eq_uip'].
-  intros Hcast. subst. simpl in Hcast; subst.
-  assert (H2 = eq_refl) by (apply Cast.UIP). subst; reflexivity.
-Qed.
-
-(*TODO: move*)
-
-Lemma index_eq_nodup {A: Type} eq_dec (d: A) {l: list A} (Hn: NoDup l) {i: nat} (Hi: i < length l):
-  index eq_dec (nth i l d) l = i.
-Proof.
-  generalize dependent i. induction l as [| h t IH]; simpl; [lia|].
-  intros [| i'] Hi.
-  - destruct (eq_dec h h); auto. contradiction.
-  - inversion Hn as [| ? ? Hnotin Hn2]; subst; auto.
-    destruct (eq_dec (nth i' t d) h) as [Heq | Hneq]; auto. 2: f_equal; apply IH; auto; lia.
-    subst. exfalso. apply Hnotin. apply nth_In; lia.
-Qed.
-
-Lemma cast_arg_list_switch {dom} {l1 l2: list sort} (Heq: l1 = l2) (a: arg_list dom l1) (a2: arg_list dom l2):
-  cast_arg_list Heq a = a2 ->
-  a = cast_arg_list (eq_sym Heq) a2.
-Proof.
-  intros; subst. reflexivity.
-Qed.
 
 Lemma map_join_left_typed_inv_aux {A} gamma (f: A -> formula) b base l:
   formula_typed gamma (fold_left (fun (acc : formula) (x : A) => Fbinop b acc (f x)) l base) ->
@@ -1524,7 +1479,7 @@ Proof.
     rewrite <- Hztys. constructor. rewrite Hztys.
     unfold new_gamma, new_ctx. apply new_ctx_valid_type.
     apply valid_type_ty_subst; auto.
-    apply (constr_ret_valid gamma_valid m_in a_in c1_in); auto.
+    apply (constr_args_valid gamma_valid m_in a_in c1_in); auto.
     apply nth_In; lia.
   }
   assert (Hznodup: NoDup (fst z)). {

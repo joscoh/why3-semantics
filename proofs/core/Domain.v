@@ -203,6 +203,13 @@ Proof.
   rewrite cast_arg_list_compose. apply cast_arg_list_same.
 Qed.
 
+Lemma cast_arg_list_switch {dom} {l1 l2: list sort} (Heq: l1 = l2) (a: arg_list dom l1) (a2: arg_list dom l2):
+  cast_arg_list Heq a = a2 ->
+  a = cast_arg_list (eq_sym Heq) a2.
+Proof.
+  intros; subst. reflexivity.
+Qed.
+
 (*Results we will need later for PatternProofs. These results hold in general,
   but we can give nicer casting results (dom_cast) if we assume arg_lists rather
   than arbitrary hlists*)

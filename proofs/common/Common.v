@@ -237,3 +237,75 @@ Proof.
 Defined.
 
 End Tup.
+
+
+Lemma plus_minus (n m: nat):
+  (n + m) - n = m.
+Proof.
+  lia.
+Qed.
+
+Lemma ltb_n_Sn {n1 n2}:
+  n1 <? n2 ->
+  S n1 <? S n2.
+Proof.
+  unfold is_true.
+  rewrite !Nat.ltb_lt. lia.
+Qed.
+
+(*Strings*)
+
+Require Import Coq.Strings.String.
+
+Lemma str_app_assoc (s1 s2 s3: string):
+  (s1 ++ s2 ++ s3 = (s1 ++ s2) ++ s3)%string.
+Proof.
+  induction s1 as [| c1 s1 IH]; simpl; auto.
+  (*why does std++ block simpl here?*)
+  clear -IH. cbv in *. f_equal; rewrite IH. auto.
+Qed.
+
+Lemma str_length_app (s1 s2: string):
+  String.length (s1 ++ s2) = String.length s1 + String.length s2.
+Proof.
+  induction s1; simpl; auto.
+Qed.
+
+Lemma append_inj (s1 s2 s3 s4 : string) :
+  length s1 = length s2 ->
+  (s1 ++ s3 = s2 ++ s4)%string ->
+  s1 = s2 /\ s3 = s4.
+Proof.
+  revert s2. induction s1 as [| c1 s1 IH]; intros [| c2 s2]; try discriminate; simpl; auto.
+  intros Hlen Happ.
+  specialize (IH s2 ltac:(auto)).
+  forward IH.
+  { (*bc no simpl*) clear -Happ. cbv in Happ; inversion Happ; auto. }
+  assert (c1 = c2) by (clear -Happ; cbv in Happ; inversion Happ; auto).
+  destruct_all; subst; auto.
+Qed.
+
+Lemma str_app_inj_l (s1 s2 s3: string):
+  (s1 ++ s2 = s1 ++ s3)%string ->
+  s2 = s3.
+Proof.
+  intros Heq. apply append_inj in Heq; auto.
+  apply Heq.
+Qed.
+
+Lemma str_app_inj_r (s1 s2 s3: string):
+  (s1 ++ s2 = s3 ++ s2)%string ->
+  s1 = s3.
+Proof.
+  intros Heq. apply append_inj in Heq; auto.
+  apply Heq.
+  apply (f_equal String.length) in Heq.
+  rewrite !str_length_app in Heq. lia.
+Qed.
+
+Lemma str_app_assoc_22 (s1 s2 s3 s4: string):
+  (s1 ++ s2 ++ s3 ++ s4)%string =
+  ((s1 ++ s2) ++ s3 ++ s4)%string.
+Proof.
+  rewrite !str_app_assoc; reflexivity.
+Qed.

@@ -120,7 +120,7 @@ Proof.
     [| rewrite gen_strs_length, length_map; auto].
     apply T_Var'; simpl.
     * apply valid_type_ty_subst; auto.
-      apply (constr_ret_valid gamma_valid m_in a_in c_in).
+      apply (constr_args_valid gamma_valid m_in a_in c_in).
       apply nth_In; auto.
     * rewrite map_nth_inbound with (d2:=vty_int); auto.
       symmetry.
@@ -151,7 +151,7 @@ Proof.
     rewrite Forall_map.
     rewrite Forall_forall.
     intros y Hiny. apply valid_type_ty_subst'; auto.
-    apply (constr_ret_valid gamma_valid m_in a_in c_in y Hiny).
+    apply (constr_args_valid gamma_valid m_in a_in c_in y Hiny).
   }
   assert (Hvalty: valid_type gamma (vty_cons (adt_name a) vs)). {
     constructor.
@@ -474,7 +474,7 @@ Proof.
       rewrite map_nth_inbound with (d2:=vty_int); auto.
       apply T_Var'; simpl.
       - apply valid_type_ty_subst; auto.
-        apply (constr_ret_valid gamma_valid m_in a_in c_in).
+        apply (constr_args_valid gamma_valid m_in a_in c_in).
         apply nth_In; auto.
       - symmetry. apply ty_subst_equiv.
         pose proof (s_args_wf c).

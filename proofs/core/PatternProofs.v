@@ -1595,7 +1595,7 @@ Lemma spec_typed_adt {a m f} (m_in: mut_in_ctx m gamma) (a_in: adt_in_mut a m) (
 Proof.
   apply spec_typed with (ts:=adt_name a); auto.
   rewrite Forall_forall.
-  apply (constr_ret_valid gamma_valid m_in a_in f_in).
+  apply (constr_args_valid gamma_valid m_in a_in f_in).
 Qed.
 
 (*disj for [spec] - we need 2 results*)
@@ -8198,7 +8198,7 @@ Proof.
         rewrite (adt_constr_subst_ret gamma_valid m_in a_in c_in) in H9; auto.
         subst ty.
         eapply spec_typed; subst; eauto.
-        rewrite Forall_forall. apply (constr_ret_valid gamma_valid m_in a_in); auto.
+        rewrite Forall_forall. apply (constr_args_valid gamma_valid m_in a_in); auto.
       - (*And the equality*)
         rewrite map_app, <- Htms3. f_equal; auto.
         rewrite !map_rev. rewrite !map_snd_combine by solve_len.

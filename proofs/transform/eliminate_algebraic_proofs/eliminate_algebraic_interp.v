@@ -9,10 +9,12 @@ Variable keep_muts : mut_adt -> bool.
 
 Variable (noind: typesym -> bool).
 
+Ltac simpl_len_extra ::= rewrite !length_seq.
+
 
 (*Define the modified interpretation*)
 
-(*pd does not change (TODO: maybe have to only allow keeping entire mutual ADT)*)
+(*pd does not change*)
 
 (*pf: idea
   1. new constructors matched to interp of old constructors
@@ -32,7 +34,7 @@ Variable (pf: pi_funpred gamma_valid pd pdf).
 
 Section FunDef. 
 (*badnames is here so we can instantiate it later*)
-Variable badnames : list string.
+Variable badnames : aset string.
 
 Notation new_constr := (new_constr new_constr_name badnames).
 
@@ -75,38 +77,23 @@ Proof.
   assert (Hnth: In (snd (nth n
     (combine (seq 0 (length (s_args c))) (s_args c)) (0, vty_int))) (s_args c)).
   {
-    rewrite combine_nth; simpl; [| rewrite seq_length; auto].
+    rewrite combine_nth; simpl; [| solve_len].
     apply nth_In; auto.
   }
   erewrite dep_map_nth with (d1:=(0, vty_int)). (*For some reason, cant instantiate directly*)
   Unshelve. all: auto.
-  - simpl. rewrite combine_nth; simpl; auto. rewrite seq_length; auto.
+  - simpl. rewrite combine_nth; simpl; auto. solve_len.
   - intros x Hin1 Hin2.
     unfold proj_funsym. f_equal. 
     apply bool_irrelevance.
-  - simpl_len. rewrite seq_length. lia. (*TODO: add seq to simpl/solve_len*)
+  - solve_len.
 Qed. 
 
 Lemma projection_syms_length c: length (projection_syms badnames c) = length (s_args c).
 Proof.
-  unfold projection_syms, dep_mapi. rewrite dep_length_map, length_combine, seq_length. lia.
+  unfold projection_syms, dep_mapi. rewrite dep_length_map. solve_len.
 Qed.
 
-(*TODO: move*)
-Lemma ty_subst_s_params_id: forall params srts,
-  length params = length srts ->
-  NoDup params ->
-  map (fun x => ty_subst_s params srts (vty_var x)) params = srts.
-Proof.
-  intros params srts Hlen Hnodup.
-  apply list_eq_ext'; rewrite !length_map; auto.
-  intros n d Hn.
-  rewrite map_nth_inbound with (d2:=""%string); auto.
-  apply sort_inj. simpl.
-  rewrite ty_subst_fun_nth with (s:=d); unfold sorts_to_tys; simpl; auto.
-  - rewrite map_nth_inbound with (d2:=d); auto. lia.
-  - rewrite length_map; lia.
-Qed.
 
 (*One of the typecasts we need: the sym_sigma_args is really just a single ADT type*)
 Lemma projection_syms_sigma_args {m a c f} srts (Hin: In f (projection_syms badnames c))
@@ -123,7 +110,6 @@ Proof.
   }
   rewrite <- Hparams. 
   rewrite (adt_constr_params gamma_valid m_in a_in c_in).
-  (*TODO: prove version of [ty_subst_params_id] for s*)
   unfold ty_subst_list_s.
   rewrite map_map. simpl.
   apply ty_subst_s_params_id; auto.
@@ -229,16 +215,11 @@ Definition proj_interp (c: funsym) (f: funsym) (n: nat)
   Idea: similarly as above, get adt of first element, use [find_constr_rep],
   this time just see what constructor it is and return index*)
 
-(*TODO: move*)
-Lemma m_params_Nodup {m} (m_in: mut_in_ctx m gamma) :
-  NoDup (m_params m).
-Proof.
-  apply (reflect_iff _ _ (nodup_NoDup typevar_eq_dec _)), m_nodup.
-Qed. 
+
 
 (*Prove similar lemmas*)
 Lemma selector_funsym_params {m a} csl (m_in: mut_in_ctx m gamma) (a_in: adt_in_mut a m):
-  s_params (selector_funsym badnames (adt_name a) csl) = GenElts.gen_name "a" (m_params m) :: m_params m.
+  s_params (selector_funsym badnames (adt_name a) csl) = GenElts.gen_name "a" (list_to_aset (m_params m)) :: m_params m.
 Proof.
   simpl. rewrite (adt_args gamma_valid m_in a_in).
   f_equal. apply nodup_fixed_point.
@@ -247,7 +228,7 @@ Qed.
 
 Lemma selector_funsym_args {m a} csl (m_in: mut_in_ctx m gamma) (a_in: adt_in_mut a m):
   s_args (selector_funsym badnames (adt_name a) csl) = vty_cons (adt_name a) (map vty_var (m_params m)) ::
-    repeat (vty_var (GenElts.gen_name "a" (m_params m))) (length csl).
+    repeat (vty_var (GenElts.gen_name "a" (list_to_aset (m_params m)))) (length csl).
 Proof.
   simpl. rewrite (adt_args gamma_valid m_in a_in).
   f_equal.
@@ -257,13 +238,13 @@ Proof.
 Qed.
 
 Lemma selector_funsym_ret {m a} csl (m_in: mut_in_ctx m gamma) (a_in: adt_in_mut a m):
-  f_ret (selector_funsym badnames (adt_name a) csl) = (vty_var (GenElts.gen_name "a" (m_params m))).
+  f_ret (selector_funsym badnames (adt_name a) csl) = (vty_var (GenElts.gen_name "a" (list_to_aset (m_params m)))).
 Proof.
   simpl. rewrite (adt_args gamma_valid m_in a_in). reflexivity.
 Qed.
 
 Lemma ty_subst_s_nohead v1 vs t1 tys ty:
-  ~ In v1 (type_vars ty) ->
+  ~ aset_mem v1 (type_vars ty) ->
   ty_subst_s (v1 :: vs) (t1 :: tys) ty =
   ty_subst_s vs tys ty.
 Proof.
@@ -296,13 +277,11 @@ Proof.
       simpl. intros Hinx.
       simpl_set. destruct Hinx as [t [Hint Hinx]]. 
       rewrite in_map_iff in Hint. destruct Hint as [v [Ht Hinv]]; subst.
-      simpl in Hinx.
-      destruct Hinx as [Hv | []]; subst.
-      apply gen_name_notin in Hinv; auto.
+      simpl in Hinx. simpl_set; subst.
+      apply (gen_name_notin "a"%string (list_to_aset (m_params m))); simpl_set; auto.
     }
     apply sort_inj. simpl. f_equal.
     apply list_eq_ext'; rewrite !length_map; auto.
-    (*TODO: should really be separate lemma*)
     intros n d Hn.
     rewrite !map_map.
     rewrite !map_nth_inbound with (d2:=""%string) by solve_len.
@@ -320,7 +299,6 @@ Lemma selector_args_eq {m a} csl (m_in: mut_in_ctx m gamma) (a_in: adt_in_mut a 
   (args: arg_list (domain (dom_aux pd)) 
     (sym_sigma_args (selector_funsym badnames (adt_name a) csl) (s1 :: srts))):
   {x : adt_rep m srts (dom_aux pd) a a_in * 
-    (*TODO: arg_list or just (length sl) arguments*)
     arg_list (domain (dom_aux pd)) (repeat s1 (length csl)) |
     args = cast_arg_list (eq_sym (selector_sigma_args csl m_in a_in srts_len)) 
       (HL_cons _ _ _ (scast (eq_sym (adts pdf m srts a m_in a_in)) (fst x)) (snd x))
@@ -335,33 +313,6 @@ Proof.
   unfold cast_arg_list. simpl.
   rewrite scast_eq_sym.
   reflexivity.
-Qed.
-
-(*TODO: is this somewhere?*)
-Definition index {A: Type} (eq_dec: forall (x y: A), {x = y} + {x <> y}) (x: A)  :=
-  fix index (l: list A) : nat :=
-  match l with
-  | y :: t => if eq_dec x y then 0 else S (index t)
-  | nil => 0
-  end.
-
-Lemma in_index {A: Type} (eq_dec: forall (x y: A), {x = y} + {x <> y}) {x: A} {l: list A}:
-  In x l -> index eq_dec x l < length l.
-Proof.
-  induction l as [| h t IH]; simpl; [contradiction|].
-  intros [Hhx | Hinxt]; subst; auto.
-  - destruct (eq_dec x x); auto. lia. contradiction.
-  - destruct (eq_dec x h); try lia. apply IH in Hinxt. lia.
-Qed.
-
-Lemma index_nth {A: Type} (eq_dec: forall (x y: A), {x = y} + {x <> y}) (d: A) {x: A} {l: list A}:
-  In x l ->
-  nth (index eq_dec x l) l d = x.
-Proof.
-  induction l as [| h t IH]; simpl; [contradiction|].
-  intros [Hhx | Hinx]; subst.
-  - destruct (eq_dec x x); simpl; auto. contradiction.
-  - destruct (eq_dec x h); subst; simpl; auto.
 Qed.
 
 (*One final typecast we need*)
@@ -503,8 +454,7 @@ Proof.
   rewrite Forall_forall. intros x. rewrite constr_in_adt_eq. auto.
 Qed. 
 
-(*TODO: do we want to use another gamma to avoid annoying induction issues - 
-  can have g2 with property that sublist g2 gamma (maybe)*)
+(*Use another gamma to generalize for induction*)
 Definition map_adts (g2: context) (g2_sub: sublist (mut_of_context g2) (mut_of_context gamma)) 
   {A: Type} (f: forall (m: mut_adt) (m_in: mut_in_ctx m gamma)  
   (a: alg_datatype) (a_in: adt_in_mut a m), A) : list A :=
@@ -550,25 +500,6 @@ Proof.
       * right. eauto 6.
 Qed.
 
-(*Idea: map over all (easier with dependent types than fold) then give option, and return
-  option*)
-
-(* Definition dep_foldr {A B: Type} {P: A -> Prop} (f: forall (x: A), P x -> B -> B) (b: B) :=
-  fix dep_foldr (l: list A) (Hall: Forall P l): B :=
-  match l as l' return Forall P l' -> B with
-  | nil => fun _ => b
-  | x :: tl => fun Hforall => f x (Forall_inv Hforall) (dep_foldr tl (Forall_inv_tail Hforall))
-  end Hall.
-
-Definition fold_adts {A: Type} (f: forall (m: mut_adt) (m_in: mut_in_ctx m gamma)  
-  (a: alg_datatype) (a_in: adt_in_mut a m), A -> A) (base: A) : A :=
-  dep_foldr (fun m (m_in: mut_in_ctx m gamma) (acc: A) =>
-    dep_foldr (fun a (a_in: adt_in_mut a m) (acc2: A) => f m m_in a a_in acc2) acc 
-      (typs m) (all_typs_in m))
-  base (mut_of_context gamma) (all_mut_in). *)
-
-(*Maybe easier to create list of {f: funsym & a: domain (dom_aux pd) (funsym_sigma_ret f srts)}
-  Then function is just going through list *)
 (*Length for index*)
 Lemma proj_syms_index_bound {c f} (Hinf: In f (projection_syms badnames c)):
   index funsym_eq_dec f (projection_syms badnames c) <? length (s_args c).
@@ -578,21 +509,17 @@ Proof.
   apply in_index, Hinf.
 Qed.
 
-(*Idea: for every mutual ADT and adt*)
+(*Easier to create list of {f: funsym & a: domain (dom_aux pd) (funsym_sigma_ret f srts)}
+  Then function is just going through list *)
 
-(*PLAN: separate out into new vals for single ADT.
-  Then prove in iff for single ADT
-  then prove in iff for whole thing
-  Then prove nodup for whole thing
-  Then prove that since nodup can just look at the single one it is in
-  *)
+(*function for single ADT*)
 Definition funs_new_map_single (srts: list sort) (m: mut_adt) (m_in: mut_in_ctx m gamma)
   (a: alg_datatype) (a_in: adt_in_mut a m) : 
   list {g: funsym & arg_list (domain (dom_aux pd)) (sym_sigma_args g srts) ->
     domain (dom_aux pd) (funsym_sigma_ret g srts)} :=
   (*First, add new constructors*)
     map (fun c => 
-      existT _ (new_constr c) (new_constr_interp c srts)
+      existT (new_constr c) (new_constr_interp c srts)
     ) (adt_constr_list a) ++
     (*2. Projections*)
     concat (dep_map (fun c (c_in: constr_in_adt c a) =>
@@ -602,7 +529,7 @@ Definition funs_new_map_single (srts: list sort) (m: mut_adt) (m_in: mut_in_ctx 
         (*Add all new projection functions per constructor*)
         map_In (projection_syms badnames c) (fun f Hinf => 
           let n := index funsym_eq_dec f (projection_syms badnames c) in
-          existT _ f (proj_interp c f n (proj_syms_index_bound Hinf) 
+          existT f (proj_interp c f n (proj_syms_index_bound Hinf) 
             (index_nth funsym_eq_dec id_fs Hinf) m_in a_in c_in srts srts_len)
         )
       | right srts_len => nil
@@ -614,7 +541,7 @@ Definition funs_new_map_single (srts: list sort) (m: mut_adt) (m_in: mut_in_ctx 
     | s1 :: srts =>
       match Nat.eq_dec (length srts) (length (m_params m)) with
       | left srts_len =>  
-        [existT _ (selector_funsym badnames (adt_name a) (adt_constr_list a))
+        [existT (selector_funsym badnames (adt_name a) (adt_constr_list a))
           (selector_interp m_in a_in s1 srts srts_len)]
       | _ => nil
       end
@@ -622,7 +549,7 @@ Definition funs_new_map_single (srts: list sort) (m: mut_adt) (m_in: mut_in_ctx 
     end ++
     (*4. indexer*)
     match Nat.eq_dec (length srts) (length (m_params m)) with
-    | left srts_len => [existT _ (indexer_funsym badnames (adt_name a))
+    | left srts_len => [existT (indexer_funsym badnames (adt_name a))
           (indexer_interp m_in a_in srts srts_len)]
     | _ => nil
     end.
@@ -636,31 +563,31 @@ Definition funs_new_map
     domain (dom_aux pd) (funsym_sigma_ret g srts)} :=
   concat (map_adts g2 g2_sub (funs_new_map_single srts)).
 
-(*The specs (maybe move)*)
+(*The specs*)
 
 Definition funs_new_map_single_in (srts: list sort) (m: mut_adt) (m_in: mut_in_ctx m gamma)
   (a: alg_datatype) (a_in: adt_in_mut a m) x : Prop :=
   (*new constructor*)
-  (exists c (c_in: constr_in_adt c a), x = existT _ (new_constr c) (new_constr_interp c srts)) \/
+  (exists c (c_in: constr_in_adt c a), x = existT (new_constr c) (new_constr_interp c srts)) \/
   (*projections - most useful part because dep_maps are awful*)
   (exists c (c_in: constr_in_adt c a) 
     (srts_len: length srts = length (m_params m)) (f: funsym)
     (Hinf: In f (projection_syms badnames c)),
     let n := index funsym_eq_dec f (projection_syms badnames c) in
-    x = existT _ f (proj_interp c f n (proj_syms_index_bound Hinf) 
+    x = existT f (proj_interp c f n (proj_syms_index_bound Hinf) 
             (index_nth funsym_eq_dec id_fs Hinf) m_in a_in c_in srts srts_len)
     ) \/
   (*selector - awkward to phrase for dependent types*)
   (match srts as s return {g: funsym & arg_list (domain (dom_aux pd)) (sym_sigma_args g s) ->
     domain (dom_aux pd) (funsym_sigma_ret g s)} -> Prop with
     | s1 :: srts1 => fun x => exists (srts_len: length srts1 = length (m_params m)),
-      x = existT _ (selector_funsym badnames (adt_name a) (adt_constr_list a))
+      x = existT (selector_funsym badnames (adt_name a) (adt_constr_list a))
           (selector_interp m_in a_in s1 srts1 srts_len)
     | _ => fun _ => False
   end) x \/
   (*indexer*)
   (exists (srts_len: length srts = length (m_params m)),
-    x = existT _ (indexer_funsym badnames (adt_name a))
+    x = existT (indexer_funsym badnames (adt_name a))
           (indexer_interp m_in a_in srts srts_len)).
 
 Lemma funs_new_map_single_in_spec (srts: list sort) (m: mut_adt) (m_in: mut_in_ctx m gamma)
@@ -700,7 +627,7 @@ Proof.
       (*Unfortunately, need to give dependent types explicitly*) subst.
       exists (map_In (projection_syms badnames c) (fun f Hinf => 
           let n := index funsym_eq_dec f (projection_syms badnames c) in
-          existT _ f (proj_interp c f n (proj_syms_index_bound Hinf) 
+          existT f (proj_interp c f n (proj_syms_index_bound Hinf) 
             (index_nth funsym_eq_dec id_fs Hinf) m_in a_in c_in srts srts_len)
         )).
       split.
@@ -708,7 +635,7 @@ Proof.
         eapply in_dep_map with (f:= fun c c_in =>
           map_In (projection_syms badnames c)
             (fun f Hinf =>  let n := index funsym_eq_dec f (projection_syms badnames c) in
-          existT _ f (proj_interp c f n (proj_syms_index_bound Hinf) 
+          existT f (proj_interp c f n (proj_syms_index_bound Hinf) 
             (index_nth funsym_eq_dec id_fs Hinf) m_in a_in c_in srts srts_len)
         )) (Hall:=all_constr_in a) in Hinl.
         destruct Hinl as [c_in2 Hinl].
@@ -718,7 +645,7 @@ Proof.
         unfold map_In.
         assert (Hinf2:=Hinf).
         eapply in_dep_map with (f:= fun f Hinf =>
-          existT _ f (proj_interp c f (index funsym_eq_dec f
+          existT f (proj_interp c f (index funsym_eq_dec f
           (projection_syms badnames c)) (proj_syms_index_bound Hinf) 
                       (index_nth funsym_eq_dec id_fs Hinf) m_in a_in c_in srts srts_len)
                   ) (Hall:=(all_in_refl (projection_syms badnames c))) in Hinf2.
@@ -820,20 +747,17 @@ Variable (new_constr_name_inj: forall m1 m2 a1 a2,
   constr_in_adt c1 a1 -> constr_in_adt c2 a2 -> new_constr_name c1 = new_constr_name c2 ->
   c1 = c2).
 
-(*TODO: move*)
-
-Lemma gen_notin_in {A: Type} (f: nat -> A) eq_dec (n: nat) (l: list A) x:
-  In x (gen_notin f eq_dec n l) ->
-  In x (gen_dist f (n + length l)) /\ ~ In x l.
+Lemma gen_notin_in {A: Type} `{countable.Countable A} (f: nat -> A) (n: nat) (l: aset A) x:
+  In x (gen_notin f n l) ->
+  In x (gen_dist f (n + aset_size l)) /\ ~ aset_mem x l.
 Proof.
   unfold gen_notin. intros Hinx. apply In_firstn in Hinx.
   rewrite in_filter in Hinx.
   destruct Hinx as [Hnotin Hinx]; split; auto.
-  destruct (in_dec eq_dec x l); auto.
-Qed.
+  destruct (aset_mem_dec x l); auto.
+Qed. 
 
 (*Is s a string of numbers?*)
-
 
 (*A dumb way to check*)
 Definition is_ascii_num (x: Ascii.ascii) : bool :=
@@ -845,7 +769,7 @@ Definition is_string_num (s: string) : bool :=
 Lemma list_ascii_app (s1 s2: string):
   list_ascii_of_string (s1 ++ s2) = list_ascii_of_string s1 ++ list_ascii_of_string s2.
 Proof.
-  induction s1; simpl; auto. rewrite IHs1; auto.
+  induction s1; simpl; auto. fold append. rewrite IHs1; auto.
 Qed.
 
 Lemma list_ascii_concat (l: list string):
@@ -854,23 +778,6 @@ Proof.
   induction l as [| h t IH]; simpl; auto.
   destruct t as [| h2 t]; [rewrite app_nil_r; auto|].
   rewrite !list_ascii_app, IH. reflexivity.
-Qed.
-
-(*TODO: move*)
-Lemma catrev_eq {A: Type} (l1 l2: list A):
-  seq.catrev l1 l2 = (rev l1) ++ l2.
-Proof.
-  revert l2.
-  induction l1 as [| h1 t1 IH]; simpl; auto.
-  intros l2. rewrite IH, <- app_assoc. simpl. reflexivity.
-Qed. 
-
-Lemma rev_eq {A: Type} (l: list A):
-  seq.rev l = rev l.
-Proof.
-  unfold seq.rev.
-  rewrite catrev_eq, app_nil_r.
-  reflexivity.
 Qed.
 
 Lemma nat_to_digit_is_num n:
@@ -896,7 +803,7 @@ Proof.
   unfold is_string_num, nat_to_string.
   unfold digits_to_string.
   rewrite list_ascii_concat.
-  rewrite forallb_concat, forallb_map, rev_eq, forallb_rev.
+  rewrite forallb_concat, forallb_map, CommonSSR.rev_eq, forallb_rev.
   apply nat_to_digits_is_num.
 Qed.
 
@@ -928,9 +835,9 @@ Proof.
   auto.
 Qed.
 
-(*Idea: suppose we have s ++ under_str ++ n where n is a number,
-  then if s ++ under_str ++ n1 = s ++ under_str ++ n2, then 
-  *)
+(*Idea: we disambiguate each by ending with an underscore and a unique numeric tag.
+  We need to show that this is injective*)
+
 Definition under_ascii := Ascii.Ascii true true true true true false true false.
 Opaque under_ascii.
 
@@ -976,20 +883,6 @@ Proof.
     + inversion Heq; subst; auto. f_equal. apply IH; auto.
 Qed.
 
-Lemma str_app_assoc (s1 s2 s3: string):
-  (s1 ++ s2 ++ s3 = (s1 ++ s2) ++ s3)%string.
-Proof.
-  induction s1 as [| c1 s1 IH]; simpl; auto; f_equal; auto.
-Qed.
-
-Lemma str_app_inj_l (s1 s2 s3: string):
-  (s1 ++ s2 = s1 ++ s3)%string ->
-  s2 = s3.
-Proof.
-  intros Heq. apply append_inj in Heq; auto.
-  apply Heq.
-Qed.
-
 Lemma str_num_inj_strong s1 s2 n1 n2:
   (s1 ++ under_str ++ n1 = s2 ++ under_str ++ n2)%string ->
   is_string_num n1 ->
@@ -1005,23 +898,6 @@ Qed.
 
 Opaque n_str.
 Opaque under_str.
-
-(*TODO: move (have ssr version prob in genelts)*)
-Lemma str_length_app (s1 s2: string):
-  String.length (s1 ++ s2) = String.length s1 + String.length s2.
-Proof.
-  induction s1; simpl; auto.
-Qed.
-
-Lemma str_app_inj_r (s1 s2 s3: string):
-  (s1 ++ s2 = s3 ++ s2)%string ->
-  s1 = s3.
-Proof.
-  intros Heq. apply append_inj in Heq; auto.
-  apply Heq.
-  apply (f_equal String.length) in Heq.
-  rewrite !str_length_app in Heq. lia.
-Qed.
 
 Lemma under_inj s1 s2:
   gen_id badnames (s1 ++ under_str) =
@@ -1045,61 +921,12 @@ Proof.
   apply str_app_inj_l in Hxeq. auto.
 Qed.
 
-
-(*TODO: move*)
-Lemma constr_list_names_Nodup {m a} (m_in: mut_in_ctx m gamma) (a_in: adt_in_mut a m):
-  NoDup (map (fun (x: funsym) => s_name x) (adt_constr_list a)).
-Proof.
-  pose proof (valid_context_wf _ gamma_valid) as Hwf;
-  apply wf_context_full in Hwf.
-  destruct Hwf as [_ [_ Hnodup]].
-  unfold idents_of_context in Hnodup.
-  apply in_concat_NoDup with (l1:=idents_of_def (datatype_def m)) in Hnodup;
-  [| apply string_dec |].
-  2: rewrite in_map_iff; exists (datatype_def m); split; auto; apply mut_in_ctx_eq2; auto.
-  unfold idents_of_def in Hnodup. simpl in Hnodup.
-  apply NoDup_app_impl in Hnodup. destruct Hnodup as [Hnodup _].
-  unfold funsyms_of_mut in Hnodup.
-  rewrite concat_map in Hnodup.
-  eapply in_concat_NoDup in Hnodup. apply Hnodup.
-  apply string_dec. rewrite in_map_iff. exists (adt_constr_list a); split; auto.
-  rewrite in_map_iff. exists a; split; auto. apply in_bool_In in a_in; auto.
-Qed.
-
-
 Lemma funsym_clone_inj f1 s1 f2 s2:
   funsym_clone f1 s1 = funsym_clone f2 s2 ->
   s1 = s2.
 Proof.
   intros Hf. inversion Hf; subst. auto.
 Qed. 
-
-(*TODO: think we need to require that names distinct, not just funsyms*)
-
-Lemma ltb_n_Sn {n1 n2}:
-  n1 <? n2 ->
-  S n1 <? S n2.
-Proof.
-  unfold is_true.
-  rewrite !Nat.ltb_lt. lia.
-Qed.
-
-Lemma map_dep_map {A B C: Type} {P: A -> Prop} (f: forall (x: A), P x -> B) (g: B -> C)
-  (l: list A) (Hall: Forall P l):
-  map g (dep_map f l Hall) =
-  dep_map (fun (x: A) (Hx: P x) => g (f x Hx)) l Hall.
-Proof.
-  revert Hall. induction l as [| h t IH]; simpl; auto. intros Hall.
-  f_equal; auto.
-Qed.
-
-Lemma dep_map_nondep {A B: Type} {P: A -> Prop} (f: A -> B) (l: list A) (Hall: Forall P l):
-  dep_map (fun x _ => f x) l Hall = map f l.
-Proof.
-  revert Hall.
-  induction l; simpl; auto; intros; f_equal; auto.
-Qed.
-
 
 (*Prove equivalence of map*)
 Lemma funs_new_map_single_funsyms srts {m a} m_in a_in:
@@ -1156,11 +983,6 @@ Proof.
   destruct (Nat.eq_dec (length srts) (length (m_params m))); reflexivity.
 Qed.
 
-Lemma concat_map_nil {A B: Type} (l: list A):
-  concat (map (fun _ => @nil B) l) = nil.
-Proof.
-  induction l; simpl; auto.
-Qed.
 
 (*For a single constructor, projections are nodup
   Easier to prove stronger lemma - names unique*)
@@ -1190,9 +1012,8 @@ Proof.
   intros Hin. rewrite in_map_iff in Hin.
   destruct Hin as [[n ty] [Hideq Hinn]].
   (*Idea: nat_to_string is injective*)
-  rewrite in_combine_iff in Hinn.
-  2: { rewrite seq_length. reflexivity. }
-  rewrite seq_length in Hinn.
+  rewrite in_combine_iff in Hinn by solve_len.
+  rewrite length_seq in Hinn.
   destruct Hinn as [i [Hi Hnty]].
   specialize (Hnty 0 vty_int); inversion Hnty; subst; clear Hnty.
   simpl in Hideq.
@@ -1203,27 +1024,16 @@ Proof.
   rewrite seq_nth in Hideq; lia.
 Qed.
 
-Lemma str_app_assoc_22 (s1 s2 s3 s4: string):
-  (s1 ++ s2 ++ s3 ++ s4)%string =
-  ((s1 ++ s2) ++ s3 ++ s4)%string.
-Proof.
-  rewrite !str_app_assoc; reflexivity.
-Qed.
+(*Between addeed symbols, prove uniqueness because each prefix is different*)
+
 Definition i_str := "i"%string.
 Definition index_rest_str := "ndex_"%string.
 Lemma index_str_eq: index_str = (i_str ++ index_rest_str)%string.
 Proof. reflexivity. Qed.
 
-Lemma i_s_len: String.length i_str = String.length p_str.
-Proof. reflexivity. Qed.
-Lemma i_s_neq: i_str <> p_str. Proof. intro Hi; inversion Hi. Qed. 
-
 Lemma n_p_len: String.length n_str = String.length p_str.
 Proof. reflexivity. Qed.
 Lemma n_p_neq: n_str <> p_str.
-Proof. intro Hi; inversion Hi. Qed.
-(*TODO: remove later*)
-Lemma p_n_neq: p_str <> n_str.
 Proof. intro Hi; inversion Hi. Qed.
 
 Definition m_str := "m"%string.
@@ -1235,16 +1045,10 @@ Lemma m_n_len: String.length m_str = String.length n_str.
 Proof. reflexivity. Qed.
 Lemma n_m_neq: n_str <> m_str.
 Proof. intro Hi; inversion Hi. Qed.
-(*TODO: remove*)
-Lemma m_n_neq: m_str <> n_str.
-Proof. intro Hi; inversion Hi. Qed.
 
 Lemma i_n_len: String.length i_str = String.length n_str.
 Proof. reflexivity. Qed.
 Lemma n_i_neq: n_str <> i_str.
-Proof. intros Hi; inversion Hi. Qed.
-(*TODO: move*)
-Lemma i_n_neq: i_str <> n_str.
 Proof. intros Hi; inversion Hi. Qed.
 
 Lemma p_m_len: String.length p_str = String.length m_str.
@@ -1265,118 +1069,8 @@ Proof. intros Hi; inversion Hi. Qed.
 Opaque match_str.
 Opaque index_str.
 
-Definition adt_d : alg_datatype :=
-  alg_def ts_d (list_to_ne_list [id_fs] eq_refl).
 
-(*TODO: subsumes [constr_in_one_adt]*)
-Lemma constr_names_uniq {m1 m2: mut_adt} {a1 a2: alg_datatype} {c1 c2: funsym} 
-  (m1_in: mut_in_ctx m1 gamma)
-  (m2_in: mut_in_ctx m2 gamma)
-  (a1_in: adt_in_mut a1 m1)
-  (a2_in: adt_in_mut a2 m2)
-  (c1_in: constr_in_adt c1 a1)
-  (c2_in: constr_in_adt c2 a2)
-  (Heq: s_name c1 = s_name c2):
-  m1 = m2 /\ a1 = a2 /\ c1 = c2.
-Proof.
-  clear -m1_in m2_in a1_in a2_in c1_in c2_in Heq gamma_valid.
-  apply valid_context_wf in gamma_valid.
-  apply wf_context_full in gamma_valid.
-  destruct gamma_valid as [_ [_ Hnodup]].
-  unfold idents_of_context in Hnodup.
-  rewrite NoDup_concat_iff in Hnodup.
-  rewrite length_map in Hnodup.
-  destruct Hnodup as [Hallno Hdisj].
-  (*Get indices of muts*)
-  assert (Hinm1: In (datatype_def m1) gamma) by (apply mut_in_ctx_eq2; auto).
-  assert (Hinm2: In (datatype_def m2) gamma) by (apply mut_in_ctx_eq2; auto).
-  destruct (In_nth gamma (datatype_def m1) def_d Hinm1) as [n1 [Hn1 Hm1]].
-  destruct (In_nth gamma (datatype_def m2) def_d Hinm2) as [n2 [Hn2 Hm2]].
-  (*First case, muts equal*)
-  destruct (Nat.eq_dec n1 n2); subst.
-  - subst. rewrite Hm1 in Hm2; inversion Hm2; subst. clear Hdisj.
-    specialize (Hallno (idents_of_def (datatype_def m2))).
-    forward Hallno.
-    { rewrite in_map_iff; exists (datatype_def m2); split; auto. }
-    unfold idents_of_def in Hallno.
-    simpl in Hallno.
-    rewrite NoDup_app_iff' in Hallno.
-    destruct Hallno as [Hnoconstr [Hnoadt Hdisj]].
-    (*Get indices of adts - TODO maybe move above*)
-    destruct (In_nth (typs m2) a1 adt_d (in_bool_In _ _ _ a1_in)) as [i1 [Hi1 Ha1]]; subst.
-    destruct (In_nth (typs m2) a2 adt_d (in_bool_In _ _ _ a2_in)) as [i2 [Hi2 Ha2]]; subst.
-    (*Again case, see if adts equal*)
-    destruct (Nat.eq_dec i1 i2); subst.
-    + (*If adts equal, use nodups of funsyms in that adt*)
-      clear Hnoadt Hdisj.
-      split; [reflexivity | split; [reflexivity|]].
-      eapply @NoDup_map_in with (x1:=c1)(x2:=c2) in Hnoconstr; auto;
-      eapply constr_in_adt_def; eauto.
-    + (*If adts not equal, use contradicts from Nodup of all adts*)
-      clear Hnoadt Hdisj.
-      (*NOTE: could prove that constrs equal as before and appeal to
-        [constr_in_one_adt], but we prove directly so that we can 
-        base that lemma on this one*)
-      unfold funsyms_of_mut in Hnoconstr.
-      rewrite concat_map, NoDup_concat_iff, !length_map in Hnoconstr.
-      destruct Hnoconstr as [_ Hdisj].
-      specialize (Hdisj i1 i2 nil (s_name c1) Hi1 Hi2 n).
-      exfalso. apply Hdisj. rewrite !map_map, !map_nth_inbound with (d2:=adt_d); auto.
-      rewrite !in_map_iff.
-      split; [exists c1 | exists c2]; split; auto; apply constr_in_adt_eq; auto.
-  - clear Hallno. specialize (Hdisj n1 n2 nil (s_name c1) Hn1 Hn2 n).
-    exfalso.
-    apply Hdisj. rewrite !map_nth_inbound with (d2:=def_d); auto.
-    rewrite Hm1, Hm2. unfold idents_of_def; simpl.
-    rewrite !in_app_iff, !in_map_iff; split; left;
-    [exists c1 | exists c2]; split; auto; eapply constr_in_adt_def; eauto.
-Qed.
-
-Lemma adt_names_uniq {m1 m2: mut_adt} {a1 a2: alg_datatype}
-  (m1_in: mut_in_ctx m1 gamma)
-  (m2_in: mut_in_ctx m2 gamma)
-  (a1_in: adt_in_mut a1 m1)
-  (a2_in: adt_in_mut a2 m2)
-  (Heq: ts_name (adt_name a1) = ts_name (adt_name a2)):
-  m1 = m2 /\ a1 = a2.
-Proof.
-  clear -m1_in m2_in a1_in a2_in Heq gamma_valid.
-  apply valid_context_wf in gamma_valid.
-  apply wf_context_full in gamma_valid.
-  destruct gamma_valid as [_ [_ Hnodup]].
-  unfold idents_of_context in Hnodup.
-  rewrite NoDup_concat_iff in Hnodup.
-  rewrite length_map in Hnodup.
-  destruct Hnodup as [Hallno Hdisj].
-  (*Get indices of muts*)
-  assert (Hinm1: In (datatype_def m1) gamma) by (apply mut_in_ctx_eq2; auto).
-  assert (Hinm2: In (datatype_def m2) gamma) by (apply mut_in_ctx_eq2; auto).
-  destruct (In_nth gamma (datatype_def m1) def_d Hinm1) as [n1 [Hn1 Hm1]].
-  destruct (In_nth gamma (datatype_def m2) def_d Hinm2) as [n2 [Hn2 Hm2]].
-  (*First case, muts equal*)
-  destruct (Nat.eq_dec n1 n2); subst.
-  - subst. rewrite Hm1 in Hm2; inversion Hm2; subst. clear Hdisj.
-    specialize (Hallno (idents_of_def (datatype_def m2))).
-    forward Hallno.
-    { rewrite in_map_iff; exists (datatype_def m2); split; auto. }
-    unfold idents_of_def in Hallno.
-    simpl in Hallno.
-    rewrite NoDup_app_iff' in Hallno.
-    destruct Hallno as [_ [Hnoadt _]].
-    split; auto.
-    unfold typesyms_of_mut in Hnoadt.
-    rewrite map_map in Hnoadt.
-    apply @NoDup_map_in with (x1:=a1)(x2:=a2) in Hnoadt; auto;
-    eapply in_bool_In; eauto.
-  - clear Hallno. specialize (Hdisj n1 n2 nil (ts_name (adt_name a1)) Hn1 Hn2 n).
-    exfalso.
-    apply Hdisj. rewrite !map_nth_inbound with (d2:=def_d); auto.
-    rewrite Hm1, Hm2. unfold idents_of_def; simpl. unfold typesyms_of_mut;
-    rewrite !map_map, !in_app_iff, !in_map_iff; split; right;
-    [exists a1 | exists a2]; split; auto; eapply in_bool_In; eauto. 
-Qed.
-
-(*Lemmas for each case*)
+(*Lemmas for each case (also useful in typing)*)
 
 Section Cases.
 Context {m1 m2 a1 a2 c1 c2} 
@@ -1395,7 +1089,7 @@ Proof.
   apply str_app_inj_l in Hnames.
   (*use injectivity of [new_constr_name]*)
   assert (c1 = c2) by (apply (new_constr_name_inj m1 m2 a1 a2); auto); subst.
-  apply constr_names_uniq; auto.
+  eapply constr_names_uniq; eauto.
 Qed.
 
 (*Cannot have new_constr with same name as proj*)
@@ -1493,7 +1187,7 @@ Proof.
   apply str_app_inj_r, str_app_inj_l in Heq.
   apply nat_to_string_inj in Hneq. subst.
   (*So now we can do the first 3 by constr name in common*)
-  pose proof (constr_names_uniq m1_in m2_in a1_in a2_in c1_in c2_in Heq); 
+  pose proof (constr_names_uniq gamma_valid m1_in m2_in a1_in a2_in c1_in c2_in Heq); 
   destruct_all; subst.
   repeat (split; [reflexivity|]).
   (*Proved f before*)
@@ -1564,7 +1258,7 @@ Proof.
   apply under_inj in Hnames.
   apply str_app_inj_l in Hnames.
   (*Use injectivity of ADT names*)
-  apply (adt_names_uniq m1_in m2_in) in Hnames; auto.
+  apply (adt_names_uniq gamma_valid m1_in m2_in) in Hnames; auto.
 Qed.
 
 (*selector and indexer cannot have same name*)
@@ -1597,21 +1291,21 @@ Proof.
   apply under_inj in Hnames.
   apply str_app_inj_l in Hnames.
   (*Use injectivity of ADT names*)
-  apply (adt_names_uniq m1_in m2_in) in Hnames; auto.
+  apply (adt_names_uniq gamma_valid m1_in m2_in) in Hnames; auto.
 Qed.
 
 End Cases.
 
 (*Also prove that names not equal to any badvars*)
 Lemma new_constr_badnames c:
-  ~ In (s_name (new_constr c)) badnames.
+  ~ aset_mem (s_name (new_constr c)) badnames.
 Proof.
   unfold new_constr. simpl. unfold gen_id.
   apply gen_name_notin.
 Qed.
 
 Lemma proj_badnames {c f} (Hinx: In f (projection_syms badnames c)):
-  ~ In (s_name f) badnames.
+  ~ aset_mem (s_name f) badnames.
 Proof.
   unfold projection_syms in Hinx. unfold dep_mapi in Hinx.
   apply (in_map (fun (x: funsym) => s_name x)) in Hinx.
@@ -1623,13 +1317,13 @@ Proof.
 Qed.
 
 Lemma selector_badnames {ts l}:
-  ~ In (s_name (selector_funsym badnames ts l)) badnames.
+  ~ aset_mem (s_name (selector_funsym badnames ts l)) badnames.
 Proof.
   simpl. apply gen_name_notin.
 Qed.
 
 Lemma indexer_badnames {ts}:
-  ~ In (s_name (indexer_funsym badnames ts)) badnames.
+  ~ aset_mem (s_name (indexer_funsym badnames ts)) badnames.
 Proof.
   simpl. apply gen_name_notin.
 Qed.
@@ -1649,13 +1343,12 @@ Proof.
   (*Now have to reason about concat*)
   rewrite !NoDup_app_iff'. split_all.
   - (*Part 1: Prove nodup of new constructors*)
-    (*TODO: move from Alpha*)
-    rewrite map_map. apply Alpha.NoDup_map_inj.
+    rewrite map_map. apply NoDup_map_inj.
     + intros c1 c2 c1_in c2_in Heq.
       apply (new_constr_names_uniq m_in m_in a_in a_in) in Heq; auto;
       try (apply constr_in_adt_eq; auto); destruct_all; auto.
     + eapply NoDup_map_inv. 
-      apply (constr_list_names_Nodup m_in a_in).
+      apply (constr_list_names_Nodup gamma_valid m_in a_in).
   - (*Part 2: Prove nodup of new projections*)
     destruct (Nat.eq_dec (length srts) (length (m_params m))); 
     [| simpl; rewrite concat_map_nil; constructor].
@@ -1682,7 +1375,7 @@ Proof.
       }
       destruct Hc as [Hc Hf]; subst.
       (*Contradicts Nodups of adt_constr_list*)
-      pose proof (constr_list_names_Nodup m_in a_in) as Hnodup.
+      pose proof (constr_list_names_Nodup gamma_valid m_in a_in) as Hnodup.
       apply NoDup_map_inv in Hnodup.
       rewrite NoDup_nth with (d:=id_fs) in Hnodup.
       apply Hi12; eauto.
@@ -1732,7 +1425,7 @@ Proof.
     + (*not in proj*)
       destruct (Nat.eq_dec (length srts) (length (m_params m))); [|
       rewrite concat_map_nil in Hinx2; contradiction].
-      revert Hinx2. (*TODO: repetitive*) 
+      revert Hinx2.
       rewrite in_map_iff. intros [f1 [Hf1 Hinf1]]; subst.
       rewrite in_concat in Hinf1. destruct Hinf1 as [l1 [Hinl1 Hinf1]].
       rewrite in_map_iff in Hinl1. destruct Hinl1 as [f3 [Hl1 Hinf3]]; subst.
@@ -1841,7 +1534,7 @@ Proof.
           assert (a_in = a_in2) by (apply bool_irrelevance); subst; reflexivity
         ].
         Unshelve.
-        2: exact a1_in. (*TODO: can't give explicitly, why?*)
+        2: exact a1_in. (* can't give explicitly, why?*)
         2: exact a2_in.
         (*do NOT want map_map - want funsym, not dependent type*)
         rewrite !in_map_iff.
@@ -1898,7 +1591,7 @@ Transparent indexer_funsym.
 (*Lookup in this kind of map*)
 Definition dep_assoc_list_lookup {A: Type} {B: A -> Type} 
   (eq_dec: forall (x y: A), {x = y} + {x <> y}) (x: A) 
-  : list {a: A & B a} -> option (B x) := (*y: {a: A & B a} | projT1 y = x} :=*)
+  : list {a: A & B a} -> option (B x) :=
   fix lookup (l: list {a: A & B a}) :=
     match l with
     | nil => None
@@ -1925,7 +1618,7 @@ Qed.
 Lemma dep_assoc_list_nodup {A: Type} {B: A -> Type} 
   (eq_dec: forall (x y: A), {x = y} + {x <> y}) (l: list {a: A & B a})
   (Hn: NoDup (map (fun x => projT1 x) l)) (x: A) (y: B x):
-  In (existT _ x y) l ->
+  In (existT x y) l ->
   dep_assoc_list_lookup eq_dec x l = Some y.
 Proof.
   induction l as [| h t IH]; simpl; auto; [contradiction|].
@@ -1958,51 +1651,8 @@ Definition funs_new (f: funsym) (srts: list sort)
   domain (dom_aux pd) (funsym_sigma_ret f srts) :=
   match dep_assoc_list_lookup funsym_eq_dec f (funs_new_map gamma (sublist_refl _) srts) with
   | Some x => x a
-    (*let y := proj1_sig x in
-    let Heq := proj2_sig x in
-     dom_cast _ (f_equal (fun (x: funsym) => funsym_sigma_ret x srts) Heq)
-        ((projT2 y) 
-          (cast_arg_list (f_equal (fun (x: funsym) => sym_sigma_args x srts) (eq_sym Heq)) a))*)
   | None => (funs gamma_valid pd pf f srts a) 
   end.
-
-  (*TODO: move*)
-
-Lemma NoDup_concat_map_inv {A B: Type} (f: A -> list B) (l: list A)
-  (Hnonemp: forall x, In x l -> negb (null (f x))):
-  NoDup (concat (map f l)) ->
-  NoDup l.
-Proof.
-  induction l as [| h t IH]; [constructor|].
-  simpl.
-  rewrite NoDup_app_iff'.
-  intros [Hfh [Ht Hnotin]]. simpl in *.
-  constructor; auto.
-  intros Hin.
-  specialize (Hnonemp h (ltac:(auto))).
-  destruct (f h) as [| b] eqn : Hfheq; try discriminate.
-  simpl in Hnotin.
-  apply (Hnotin b); split; auto.
-  rewrite in_concat. exists (f h). split.
-  - rewrite in_map_iff. exists h; auto.
-  - rewrite Hfheq. simpl; auto.
-Qed.
-
-Lemma mut_of_context_nodup: NoDup (mut_of_context gamma).
-Proof.
-  assert (Hn:=gamma_valid).
-  apply no_adt_name_dups in Hn.
-  apply NoDup_map_inv in Hn.
-  apply NoDup_concat_map_inv in Hn; auto.
-  (*Just need that all ADTs not empty*)
-  intros m Hinm.
-  assert (Hv:=gamma_valid).
-  apply valid_context_nonemp in Hv.
-  rewrite Forall_forall in Hv.
-  rewrite <- mut_in_ctx_eq in Hinm.
-  apply mut_in_ctx_eq2 in Hinm.
-  specialize (Hv _ Hinm). auto.
-Qed.
 
 (*Now we can prove the lemmas about [funs_new]*)
 
@@ -2012,7 +1662,7 @@ Lemma funs_new_new_constrs {m a c} (m_in: mut_in_ctx m gamma) (a_in: adt_in_mut 
   funs_new (new_constr c) srts args = new_constr_interp c srts args.
 Proof.
   unfold funs_new.
-  assert (Hin: In (existT _ (new_constr c) (new_constr_interp c srts)) 
+  assert (Hin: In (existT (new_constr c) (new_constr_interp c srts)) 
     (funs_new_map gamma (sublist_refl (mut_of_context gamma)) srts)).
   {
     apply funs_new_map_in_spec. exists m. exists a. exists m_in. exists a_in.
@@ -2022,7 +1672,7 @@ Proof.
     exists c. exists c_in. reflexivity.
   }
   apply dep_assoc_list_nodup with (eq_dec:=funsym_eq_dec) in Hin;
-  [| eapply NoDup_map_inv; apply funs_new_map_nodup]; [| apply mut_of_context_nodup].
+  [| eapply NoDup_map_inv; apply funs_new_map_nodup]; [| apply mut_of_context_nodup]; auto.
   rewrite Hin. simpl.
   reflexivity.
 Qed.
@@ -2039,7 +1689,7 @@ Lemma funs_new_proj {m a c} (m_in: mut_in_ctx m gamma) (a_in: adt_in_mut a m)
     m_in a_in c_in srts srts_len args.
 Proof.
   unfold funs_new.
-  assert (Hin: In (existT _ f 
+  assert (Hin: In (existT f 
     (proj_interp c f (index funsym_eq_dec f (projection_syms badnames c))
     (proj_syms_index_bound Hinf) 
     (index_nth funsym_eq_dec id_fs Hinf) 
@@ -2053,7 +1703,7 @@ Proof.
     exists c. exists c_in. exists srts_len. exists f. exists Hinf. reflexivity.
   }
   apply dep_assoc_list_nodup with (eq_dec:=funsym_eq_dec) in Hin;
-  [| eapply NoDup_map_inv; apply funs_new_map_nodup]; [| apply mut_of_context_nodup].
+  [| eapply NoDup_map_inv; apply funs_new_map_nodup]; [| apply mut_of_context_nodup]; auto.
   rewrite Hin. simpl.
   reflexivity.
 Qed.
@@ -2066,7 +1716,7 @@ Lemma funs_new_selector {m a} (m_in: mut_in_ctx m gamma) (a_in: adt_in_mut a m)
   selector_interp m_in a_in s1 srts srts_len args.
 Proof.
   unfold funs_new.
-  assert (Hin: In (existT _ (selector_funsym badnames (adt_name a) (adt_constr_list a))
+  assert (Hin: In (existT (selector_funsym badnames (adt_name a) (adt_constr_list a))
     (selector_interp m_in a_in s1 srts srts_len))
     (funs_new_map gamma (sublist_refl (mut_of_context gamma)) (s1 :: srts))).
   {
@@ -2077,7 +1727,7 @@ Proof.
     exists srts_len. reflexivity.
   }
   apply dep_assoc_list_nodup with (eq_dec:=funsym_eq_dec) in Hin;
-  [| eapply NoDup_map_inv; apply funs_new_map_nodup]; [| apply mut_of_context_nodup].
+  [| eapply NoDup_map_inv; apply funs_new_map_nodup]; [| apply mut_of_context_nodup]; auto.
   rewrite Hin. simpl.
   reflexivity.
 Qed.
@@ -2090,7 +1740,7 @@ Lemma funs_new_indexer {m a} (m_in: mut_in_ctx m gamma) (a_in: adt_in_mut a m)
   indexer_interp m_in a_in srts srts_len args.
 Proof.
   unfold funs_new.
-  assert (Hin: In (existT _ (indexer_funsym badnames (adt_name a))
+  assert (Hin: In (existT (indexer_funsym badnames (adt_name a))
     (indexer_interp m_in a_in srts srts_len))
     (funs_new_map gamma (sublist_refl (mut_of_context gamma)) srts)).
   {
@@ -2101,14 +1751,14 @@ Proof.
     exists srts_len. reflexivity.
   }
   apply dep_assoc_list_nodup with (eq_dec:=funsym_eq_dec) in Hin;
-  [| eapply NoDup_map_inv; apply funs_new_map_nodup]; [| apply mut_of_context_nodup].
+  [| eapply NoDup_map_inv; apply funs_new_map_nodup]; [| apply mut_of_context_nodup]; auto.
   rewrite Hin. simpl.
   reflexivity.
 Qed.
 
 (*5. Everything in badnames has the old value*)
 Lemma funs_new_old_names (f: funsym) srts args:
-  In (s_name f) badnames ->
+  aset_mem (s_name f) badnames ->
   funs_new f srts args = funs gamma_valid pd pf f srts args.
 Proof.
   intros Hin.
@@ -2140,32 +1790,17 @@ Qed.
 
 End FunDef.
 
-(*Then instantiate badnames and show old constrs (and hence new constrs)
-  still same*)
-
-(*TODO: probably move this later after typing (which might rely on some of
-  these lemmas) and rewriteT semantics (for proving full funpred for nonrec)*)
-
 (*Finally, bundle up into interpretations*)
 
 (*Define the new interpretation on the new context*)
 
 Notation new_gamma := (new_ctx new_constr_name keep_muts 
-  (idents_of_context gamma) noind).
+  (list_to_aset (idents_of_context gamma)) noind).
 
-Definition funs_new_full := funs_new (idents_of_context gamma).
+Definition funs_new_full := funs_new (list_to_aset (idents_of_context gamma)).
 
 (*The preds are the same*)
 Definition preds_new := preds gamma_valid pd pf.
-
-(*TODO: move*)
-Lemma mut_in_ctx_rev g m:
-  mut_in_ctx m (rev g) = mut_in_ctx m g.
-Proof.
-  apply is_true_eq. rewrite !mut_in_ctx_eq.
-  unfold mut_of_context. rewrite omap_rev, <- In_rev.
-  reflexivity.
-Qed.
 
 (*Prove [pd_full]*)
 Lemma pd_new_full:
@@ -2181,7 +1816,7 @@ Qed.
 
 (*Prove constrs*)
 
-(*TODO: remove [gamma_valid] param when we prove typing*)
+(*NOTE: after typing can remove new_gamma_valid assumption*)
 Lemma funs_new_full_constr (new_gamma_valid: valid_context (new_gamma gamma)): 
   forall (m: mut_adt) (a: alg_datatype)
   (c: funsym) (m_in: mut_in_ctx m (new_gamma gamma)) (a_in: adt_in_mut a m)
@@ -2201,6 +1836,7 @@ Proof.
   }
   rewrite funs_new_old_names.
   2: {
+    simpl_set.
     unfold idents_of_context. rewrite in_concat.
     exists (idents_of_def (datatype_def m)).
     split.
@@ -2223,9 +1859,8 @@ Proof.
   apply constr_rep_change_gamma.
 Qed.
 
-(*Now finally, we can define the [pi_funpred] - should move*)
+(*Now finally, we can define the [pi_funpred]*)
 
-(*TODO: remove assumption*)
 Definition pf_new (new_gamma_valid: valid_context (new_gamma gamma)) : 
   pi_funpred new_gamma_valid pd pd_new_full :=
   Build_pi_funpred new_gamma_valid pd pd_new_full funs_new_full preds_new

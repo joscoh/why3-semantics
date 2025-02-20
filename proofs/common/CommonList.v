@@ -507,6 +507,26 @@ Proof.
   subst. contradiction.
 Qed.
 
+Lemma NoDup_concat_map_inv {A B: Type} (f: A -> list B) (l: list A)
+  (Hnonemp: forall x, In x l -> negb (null (f x))):
+  NoDup (concat (map f l)) ->
+  NoDup l.
+Proof.
+  induction l as [| h t IH]; [constructor|].
+  simpl.
+  rewrite NoDup_app_iff'.
+  intros [Hfh [Ht Hnotin]]. simpl in *.
+  constructor; auto.
+  intros Hin.
+  specialize (Hnonemp h (ltac:(auto))).
+  destruct (f h) as [| b] eqn : Hfheq; try discriminate.
+  simpl in Hnotin.
+  apply (Hnotin b); split; auto.
+  rewrite in_concat. exists (f h). split.
+  - rewrite in_map_iff. exists h; auto.
+  - rewrite Hfheq. simpl; auto.
+Qed.
+
 End NoDupLemmas.
 
 Section CombineLemmas.
@@ -944,6 +964,19 @@ Definition map2 {A B C: Type} :=
         end
       end.
 
+(*Only 1 direction bc we dont require length*)
+Lemma in_map2 {A B C: Type} (f: A -> B -> C) (l1: list A) (l2: list B)
+  (d1: A) (d2: B) (x: C):
+  In x (map2 f l1 l2) ->
+  exists i, i < length l1 /\ i < length l2 /\ x = f (nth i l1 d1) (nth i l2 d2).
+Proof.
+  revert l2. induction l1 as [| h1 t1 IH]; intros [| h2 t2]; simpl; try contradiction.
+  intros [Hx | Hinx]; subst.
+  - exists 0. split_all; auto; lia.
+  - apply IH in Hinx. destruct Hinx as [i [Hi1 [Hi2 hx]]]; subst.
+    exists (S i). split_all; auto; lia.
+Qed.
+
 Lemma in_map2_iff {A B C: Type} (f: A -> B -> C) (l1: list A) 
   (l2: list B) (d1: A) (d2: B) (x: C) :
   length l1 = length l2 ->
@@ -1005,6 +1038,14 @@ Proof.
   destruct l2; simpl in *; auto.
   rewrite IHl1. reflexivity.
 Qed.
+
+Lemma combine_map_l {A B C: Type} (f: A -> B) (l: list A) (l2: list C):
+  combine (map f l) l2 = map (fun x => (f (fst x), snd x)) (combine l l2).
+Proof.
+  revert l2. induction l as [| h1 t1 IH]; simpl; auto.
+  intros [| h2 t2]; simpl; auto. rewrite IH; auto.
+Qed.
+
 
 Lemma combine_map2 {A B: Type} (l1: list A) (l2: list B):
   combine l1 l2 = map2 (fun x y => (x, y)) l1 l2.
@@ -1754,6 +1795,12 @@ Proof.
   simpl in *. destruct t1; auto; simpl in *; lia.
 Qed.
 
+Lemma concat_map_nil {A B: Type} (l: list A):
+  concat (map (fun _ => @nil B) l) = nil.
+Proof.
+  induction l; simpl; auto.
+Qed.
+
 End Concat.
 
 Section Perm.
@@ -2407,6 +2454,23 @@ Proof.
     erewrite f_irrel. apply Hinx.
 Qed.
 
+Lemma map_dep_map {A B C: Type} {P: A -> Prop} (f: forall (x: A), P x -> B) (g: B -> C)
+  (l: list A) (Hall: Forall P l):
+  map g (dep_map f l Hall) =
+  dep_map (fun (x: A) (Hx: P x) => g (f x Hx)) l Hall.
+Proof.
+  revert Hall. induction l as [| h t IH]; simpl; auto. intros Hall.
+  f_equal; auto.
+Qed.
+
+Lemma dep_map_nondep {A B: Type} {P: A -> Prop} (f: A -> B) (l: list A) (Hall: Forall P l):
+  dep_map (fun x _ => f x) l Hall = map f l.
+Proof.
+  revert Hall.
+  induction l; simpl; auto; intros; f_equal; auto.
+Qed.
+
+
 End DepMap.
 
 Section Inj.
@@ -2688,3 +2752,44 @@ Proof.
 Qed.
 
 End AssocList.
+
+Section Index.
+
+Definition index {A: Type} (eq_dec: forall (x y: A), {x = y} + {x <> y}) (x: A)  :=
+  fix index (l: list A) : nat :=
+  match l with
+  | y :: t => if eq_dec x y then 0 else S (index t)
+  | nil => 0
+  end.
+
+Lemma in_index {A: Type} (eq_dec: forall (x y: A), {x = y} + {x <> y}) {x: A} {l: list A}:
+  In x l -> index eq_dec x l < length l.
+Proof.
+  induction l as [| h t IH]; simpl; [contradiction|].
+  intros [Hhx | Hinxt]; subst; auto.
+  - destruct (eq_dec x x); auto. lia. contradiction.
+  - destruct (eq_dec x h); try lia. apply IH in Hinxt. lia.
+Qed.
+
+Lemma index_nth {A: Type} (eq_dec: forall (x y: A), {x = y} + {x <> y}) (d: A) {x: A} {l: list A}:
+  In x l ->
+  nth (index eq_dec x l) l d = x.
+Proof.
+  induction l as [| h t IH]; simpl; [contradiction|].
+  intros [Hhx | Hinx]; subst.
+  - destruct (eq_dec x x); simpl; auto. contradiction.
+  - destruct (eq_dec x h); subst; simpl; auto.
+Qed.
+
+Lemma index_eq_nodup {A: Type} eq_dec (d: A) {l: list A} (Hn: NoDup l) {i: nat} (Hi: i < length l):
+  index eq_dec (nth i l d) l = i.
+Proof.
+  generalize dependent i. induction l as [| h t IH]; simpl; [lia|].
+  intros [| i'] Hi.
+  - destruct (eq_dec h h); auto. contradiction.
+  - inversion Hn as [| ? ? Hnotin Hn2]; subst; auto.
+    destruct (eq_dec (nth i' t d) h) as [Heq | Hneq]; auto. 2: f_equal; apply IH; auto; lia.
+    subst. exfalso. apply Hnotin. apply nth_In; lia.
+Qed.
+
+End Index.

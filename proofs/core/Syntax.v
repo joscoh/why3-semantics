@@ -1143,6 +1143,12 @@ Proof.
   intros. destruct d; auto. destruct H.
 Qed.
 
+Lemma adt_constr_nil_not_null a:
+  negb (null (adt_constr_list a)).
+Proof.
+  apply ne_list_to_list_size.
+Qed.
+
 (*Decidable equality*)
 Local Ltac reflF := solve[apply ReflectF; intro C; inversion C; subst; auto; contradiction].
 
@@ -1348,6 +1354,11 @@ Proof. unfold base.RelDecision. apply mut_adt_dec. Defined.
 Instance mut_adt_Countable : countable.Countable mut_adt :=
   countable.inj_countable mut_to_tup tup_to_mut mut_to_tup_inj.
 
+Lemma m_params_Nodup {m}:
+  NoDup (m_params m).
+Proof.
+  apply (reflect_iff _ _ (nodup_NoDup typevar_eq_dec _)), m_nodup.
+Qed. 
 
 (*In many cases, it is inconvenient to use terms and formulas
   separately. With a bit of dependent typing, we can generalize.

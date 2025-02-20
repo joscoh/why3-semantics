@@ -642,65 +642,6 @@ Section AxiomsTrue.
 
 (*First, lots of lemmas that we need*)
 
-(*Version of [get_arg_list_hnth] with typing lemmas, 
-specialized to fun or predsym args*)
-Lemma arg_list_hnth_eq (s: fpsym) {i: nat} {args: list vty}
-  (Hi: i < length args) vt:
-  v_subst vt (ty_subst (s_params s) (map vty_var (s_params s)) (nth i args vty_int)) =
-  nth i (ty_subst_list_s (s_params s) (map (v_subst vt) (map vty_var (s_params s)))
-    args) s_int.
-Proof.
-  unfold ty_subst_list_s.
-  rewrite map_nth_inbound with(d2:=vty_int);
-  auto.
-  apply funsym_subst_eq.
-  apply s_params_Nodup. rewrite length_map; auto.
-Qed.
-
-Lemma arg_list_hnth_ty {gamma} {s: fpsym} {ts: list term} 
-{vs: list vty} {args: list vty}
-(Hlents : length ts = length args)
-(Hall : Forall
-  (fun x : term * vty => term_has_type gamma (fst x) (snd x))
-  (combine ts (map (ty_subst (s_params s) vs) args)))
-{i: nat} (Hi: i < length args): 
-term_has_type gamma (nth i ts tm_d) (ty_subst (s_params s) vs (nth i args vty_int)).
-Proof.
-  rewrite Forall_forall in Hall.
-  apply (Hall (nth i ts tm_d, ty_subst (s_params s) vs (nth i args vty_int))).
-  rewrite in_combine_iff; [| rewrite length_map; auto].
-  exists i. split; try lia. intros.
-  f_equal; [apply nth_indep |]; try lia.
-  rewrite map_nth_inbound with (d2:=vty_int); auto.
-Qed.
-
-(*When our params are [map vty_var (s_params p)]*)
-Lemma get_arg_list_hnth_unif {gamma: context} 
-(pd : pi_dom) (v: val_typevar)
-(s: fpsym) (ts: list term) 
-(reps: forall (t: term) (ty: vty),
-  term_has_type gamma t ty ->
-  domain (dom_aux pd) (v_subst v ty))
-(Hreps: forall (t: term) (ty: vty)
-  (Hty1 Hty2: term_has_type gamma t ty),
-  reps t ty Hty1 = reps t ty Hty2)
-{args: list vty}
-(Hlents: length ts = length args)
-(Hlenvs: length (map vty_var (s_params s))  = length (s_params s))
-(Hall: Forall (fun x => term_has_type gamma (fst x) (snd x))
-  (combine ts (map (ty_subst (s_params s) (map vty_var (s_params s))) args)))
-(i: nat)
-(Hi: i < length args):
-hnth i
-  (get_arg_list pd v (map vty_var (s_params s)) ts reps (s_params_Nodup s) Hlents Hlenvs Hall) s_int (dom_int pd) =
-  dom_cast (dom_aux pd) (arg_list_hnth_eq s Hi v)
-  (reps (nth i ts tm_d) (ty_subst (s_params s) 
-    (map vty_var (s_params s)) (nth i args vty_int))
-  (arg_list_hnth_ty Hlents Hall Hi)).
-Proof.
-  apply get_arg_list_hnth; auto.
-Qed. 
-
 Lemma sym_sigma_args_params vt (s: fpsym):
   sym_sigma_args s (map (v_subst vt) (map vty_var (s_params s))) =
   map (v_subst vt) (s_args s).
@@ -2848,7 +2789,7 @@ Proof.
           (substi_mult pd vt vv
              (create_vsymbols (concat (map fmla_bnd (map snd l0))) (s_args p)) h))
           (ltac:(intros; apply term_rep_irrel))
-             (proj1' (pred_val_inv (proj1' (typed_binop_inv Hty1)))))
+             eq_refl (proj1' (pred_val_inv (proj1' (typed_binop_inv Hty1)))))
         with(Hi:=Hi).
         generalize dependent (arg_list_hnth_ty (proj1' (pred_val_inv (proj1' (typed_binop_inv Hty1))))
         (proj2' (proj2' (pred_val_inv (proj1' (typed_binop_inv Hty1))))) Hi).
@@ -3182,7 +3123,7 @@ Proof.
                        (tup_1 (indpred_decomp (a_convert_all_f constr (list_to_aset vs)))) h')
                     (tup_2 (indpred_decomp (a_convert_all_f constr (list_to_aset vs)))) Halltup2))
               (ltac:(intros; apply term_rep_irrel))
-              (proj1' (pred_val_inv Hty4))
+              eq_refl (proj1' (pred_val_inv Hty4))
               (proj1' (proj2' (pred_val_inv Hty4)))
               (proj2' (proj2' (pred_val_inv Hty4)))).
             (*Giving Hj' explicitly fails for some reason*)
@@ -3384,13 +3325,6 @@ Proof.
   - simpl. rewrite IHgamma; auto.
 Qed.
 
-Lemma mut_of_context_app l1 l2:
-  mut_of_context (l1 ++ l2) = mut_of_context l1 ++ mut_of_context l2.
-Proof.
-  induction l1; simpl; auto.
-  destruct a; simpl; auto. f_equal; auto.
-Qed.
-
 Lemma gen_new_ctx_gamma_mut gamma:
   mut_of_context (gen_new_ctx_gamma gamma) = mut_of_context gamma.
 Proof.
@@ -3444,50 +3378,6 @@ wf_predsym gamma p -> wf_predsym (l ++ gamma) p.
 Proof.
   induction l; simpl; intros; auto.
   apply wf_predsym_expand; auto.
-Qed.
-
-(*Not iff, a sufficient but not necessary condition*)
-Lemma valid_ctx_abstract_app {gamma} (l: list def):
-  Forall (fun x => concrete_def x = false) l ->
-  Forall (wf_funsym gamma) (concat (map funsyms_of_def l)) ->
-  Forall (wf_predsym gamma) (concat (map predsyms_of_def l)) ->
-  disj (idents_of_context l) (idents_of_context gamma) ->
-  NoDup (idents_of_context l) ->
-  Forall (fun f => f_is_constr f = false) (concat (map funsyms_of_def l)) ->
-  valid_context gamma ->
-  valid_context (l ++ gamma).
-Proof.
-  induction l; simpl; auto; intros.
-  rewrite Forall_app in *. destruct_all.
-  inversion H; subst.
-  constructor; auto.
-  - apply IHl; auto.
-    + eapply disj_sublist2. 2: apply H2.
-      unfold idents_of_context; simpl.
-      apply sublist_app_r.
-    + clear -H3. unfold idents_of_context in H3 |- *.
-      simpl in H3. apply NoDup_app_impl in H3. apply H3.
-  - revert H0. apply Forall_impl.
-    intros. apply wf_funsym_expand.
-    apply wf_funsym_expand_app; auto.
-  - revert H1. apply Forall_impl.
-    intros. apply wf_predsym_expand.
-    apply wf_predsym_expand_app; auto.
-  - (*disj follows from disj and nodup*)
-    clear -H2 H3. unfold idents_of_context in *.
-    simpl in *. rewrite map_app, concat_app.
-    rewrite NoDup_app_iff' in H3. destruct H3 as [_ [_ Hdisj]].
-    intros x [Hinx1 Hinx2].
-    rewrite in_app_iff in Hinx2. destruct Hinx2 as [Hinx2 | Hinx2]. 
-    + apply (Hdisj x); auto.
-    + apply (H2 x). rewrite in_app_iff; auto.
-  - (*nodup is easy*)
-    unfold idents_of_context in H3. simpl in H3.
-    apply NoDup_app_impl in H3; apply H3.
-  - destruct a; inversion H12; auto.
-  - destruct a; auto. simpl. simpl in *.
-    inversion H4; subst. rewrite H13; auto.
-  - destruct a; inversion H11; auto; simpl; auto.
 Qed.
 
 (*And finally, the new context is valid*)

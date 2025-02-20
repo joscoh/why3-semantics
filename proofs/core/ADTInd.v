@@ -97,10 +97,6 @@ Proof.
   simpl. reflexivity.
 Qed.
 
-Lemma map_map_eq {A B: Type} (f: A -> B) (l: list A):
-  seq.map f l = map f l.
-Proof. reflexivity. Qed.
-
 (*We show that if the interpretation of a type is
   the ADT applied to sorts, the type of the constructor
   must have been the ADT name applied to the args.

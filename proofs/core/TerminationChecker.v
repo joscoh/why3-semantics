@@ -862,12 +862,6 @@ Proof.
     move: Hinl. rewrite //=. intros H; apply H.
 Qed.
 
-Lemma plus_minus (n m: nat):
-  ((n + m)%coq_nat - n)%coq_nat = m.
-Proof.
-  lia.
-Qed.
-
 (*The correctness theorems*)
 
 (*Part 1: [check_termination] gives valid indices/params/type*)

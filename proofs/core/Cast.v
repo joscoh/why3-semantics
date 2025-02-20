@@ -50,6 +50,15 @@ Proof.
   intros. destruct Heq. apply H.
 Qed.
 
+Lemma scast_inj_uip {S1 S2: Set} (H1 H2: S1 = S2) (x1 x2: S1):
+  scast H1 x1 = scast H2 x2 ->
+  x1 = x2.
+Proof.
+  subst. simpl. intros Hx1; subst.
+  assert (H2 = eq_refl) by (apply UIP).
+  subst; auto.
+Qed.
+
 Lemma scast_scast {A B C: Set} (H1: B = A) (H2: C = B) x:
   scast H1 (scast H2 x) = scast (eq_trans H2 H1) x.
 Proof.
@@ -61,6 +70,22 @@ Lemma scast_eq_uip {A1 A2: Set} (H1 H2: A1 = A2) x:
 Proof.
   subst. assert (H2 = eq_refl). apply UIP. subst.
   reflexivity.
+Qed.
+
+Lemma scast_eq_uip' {A1 A2 : Set} (H1 H2 : A1 = A2) (x y : A1):
+  x = y ->
+  scast H1 x = scast H2 y.
+Proof.
+  intros; subst. simpl. (*ugh Equations ruins this*)
+  assert (H2 = eq_refl) by (apply Cast.UIP). subst; reflexivity.
+Qed.
+
+Lemma scast_eq_uip_iff {A1 A2 : Set} (H1 H2 : A1 = A2) (x y : A1):
+  scast H1 x = scast H2 y <-> x = y.
+Proof.
+  split; [| apply scast_eq_uip'].
+  intros Hcast. subst. simpl in Hcast; subst.
+  assert (H2 = eq_refl) by (apply Cast.UIP). subst; reflexivity.
 Qed.
 
 Lemma scast_rev {A B: Set} (H: A = B) {x y} (Heq: x = scast H y) :
@@ -80,6 +105,13 @@ Lemma scast_refl_uip {A: Set} (H: A = A) x:
 Proof.
   assert (H = eq_refl) by apply UIP.
   subst. reflexivity.
+Qed.
+
+Lemma scast_switch {A B C: Set} (H1: A = B) (H2: C = B) (x1: A) (x2: C):
+  scast H1 x1 = scast H2 x2 ->
+  x2 = scast (eq_trans H1 (eq_sym H2)) x1.
+Proof.
+  intros Hcast. subst. simpl in Hcast. subst. simpl. reflexivity.
 Qed.
 
 (*Basically UIP for x = y instead of x = x*)

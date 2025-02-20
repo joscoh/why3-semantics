@@ -20,6 +20,16 @@ Definition sig_f (ctx: context) : list funsym :=
 Definition sig_p (ctx: context) : list predsym :=
   concat (map predsyms_of_def ctx).
 
+Lemma sig_t_cons d gamma:
+  sig_t (d :: gamma) = typesyms_of_def d ++ sig_t gamma.
+Proof. reflexivity. Qed.
+Lemma sig_f_cons d gamma:
+  sig_f (d :: gamma) = funsyms_of_def d ++ sig_f gamma.
+Proof. reflexivity. Qed.
+Lemma sig_p_cons d gamma:
+  sig_p (d :: gamma) = predsyms_of_def d ++ sig_p gamma.
+Proof. reflexivity. Qed.
+
 (*Now we give some helpful utilities for the defined
   funsyms, predsyms, and bodies*)
 
@@ -56,6 +66,23 @@ Definition nonrec_of_context gamma : list funpred_def :=
     | _ => acc
     end) nil gamma.
 
+Lemma mut_of_context_app l1 l2:
+  mut_of_context (l1 ++ l2) = mut_of_context l1 ++ mut_of_context l2.
+Proof.
+  induction l1; simpl; auto.
+  destruct a; simpl; auto. f_equal; auto.
+Qed.
+
+Lemma mut_of_context_cons d l:
+  mut_of_context (d :: l) = 
+  (match d with 
+  | datatype_def m => [m]
+  | _ => nil
+  end) ++ mut_of_context l.
+Proof.
+  destruct d; reflexivity.
+Qed.
+
 (*The concrete list of typesyms, funsyms, and predsyms*)
 Definition typesyms_of_context (c: context) : list typesym :=
   concat (map typesyms_of_mut (mut_of_context c)).
@@ -91,6 +118,15 @@ Proof.
   - destruct H as [d [Hind Hm]].
     destruct d; inversion Hm; subst; auto.
 Qed.
+
+Lemma mut_in_ctx_rev g m:
+  mut_in_ctx m (rev g) = mut_in_ctx m g.
+Proof.
+  apply is_true_eq. rewrite !mut_in_ctx_eq.
+  unfold mut_of_context. rewrite omap_rev, <- In_rev.
+  reflexivity.
+Qed.
+
 
 Definition mut_typs_in_ctx (l: list alg_datatype) (gamma: context) :=
   exists (vars: list typevar) (H: nodupb typevar_eq_dec vars), 
@@ -150,6 +186,7 @@ Proof.
   rewrite (reflect_iff _ _ (in_bool_spec funsym_eq_dec _ _)).
   reflexivity.
 Qed.
+
 
 Definition adts_of_context gamma:=
   concat (map typs (mut_of_context gamma)).
@@ -437,6 +474,25 @@ Qed.
 
 End FindTS.
 
+
+Lemma find_ts_in_ctx_cons d gamma ts:
+  find_ts_in_ctx (d :: gamma) ts =
+  match
+    match d with
+    | datatype_def m => option_bind (find_ts_in_mut ts m) (fun a => Some (m, a))
+    | _ => None
+    end
+  with
+  | Some x => Some x
+  | None => find_ts_in_ctx gamma ts
+  end.
+Proof.
+  unfold find_ts_in_ctx.
+  rewrite mut_of_context_cons.
+  destruct d; simpl; auto.
+  destruct (find_ts_in_mut ts m); auto.
+Qed.
+
 (*Lemmas about signature*)
 Lemma constr_in_adt_def a m f:
   adt_in_mut a m ->
@@ -586,6 +642,19 @@ Proof.
   symmetry; auto.
 Qed.
 
+(*Helpful rewriting*)
+Lemma in_funsyms_of_mut_iff {m f}:
+  In f (funsyms_of_mut m) <-> exists a, adt_in_mut a m /\ constr_in_adt f a.
+Proof.
+  split.
+  - unfold funsyms_of_mut. rewrite in_concat. setoid_rewrite in_map_iff.
+    intros [constrs [[a [Hconstrs Hina]] Hinf]]; subst.
+    exists a. split.
+    + apply In_in_bool; auto.
+    + apply constr_in_adt_eq; auto.
+  - intros [a [a_in c_in]]; eapply constr_in_adt_def; eauto.
+Qed. 
+
 (*Idents*)
 
 Definition idents_of_def (d: def) : list string :=
@@ -595,6 +664,10 @@ Definition idents_of_def (d: def) : list string :=
 
 Definition idents_of_context (gamma: context) : list string :=
   concat (map idents_of_def gamma).
+
+Lemma idents_of_context_cons d gamma:
+  idents_of_context (d :: gamma) = idents_of_def d ++ idents_of_context gamma.
+Proof. reflexivity. Qed.
 
 Lemma idents_of_context_app l1 l2:
   idents_of_context (l1 ++ l2) = idents_of_context l1 ++ idents_of_context l2.
@@ -754,4 +827,31 @@ Proof.
   intros [Hsub1 Hsub2].
   intros x.
   split; intros Hinx; eapply sub_sig_idents; eauto.
+Qed.
+
+Lemma idents_of_context_sig gamma:
+  forall x, In x (idents_of_context gamma) <->
+  (exists f, In f (sig_f gamma) /\ x = s_name f) \/
+  (exists p, In p (sig_p gamma) /\x = s_name p) \/
+  (exists t, In t (sig_t gamma) /\ x = ts_name t).
+Proof.
+  intros x. unfold idents_of_context, idents_of_def, sig_f, sig_p, sig_t.
+  setoid_rewrite in_concat. setoid_rewrite in_map_iff.
+  split.
+  - intros [l1 [[d [Hl1 Hind]] Hinx]]; subst.
+    rewrite !in_app_iff in Hinx.
+    rewrite !in_map_iff in Hinx.
+    destruct Hinx as [[f [Hx Hinf]] | [[p [Hx Hinp]] | [t [Hx Hint]]]]; subst.
+    + left. exists f. split; auto. exists (funsyms_of_def d). split; auto. eauto.
+    + right. left. exists p. split; auto. exists (predsyms_of_def d). split; auto. eauto.
+    + right. right. exists t. split; auto. exists (typesyms_of_def d). split; auto. eauto.
+  - intros [[f [[l1 [[d [Hl1 Hind]] Hinf]] Hx]] | [
+      [p [[l1 [[d [Hl1 Hind]] Hinp]] Hx]] | 
+      [t [[l1 [[d [Hl1 Hind]] Hint]] Hx]]]]; subst.
+    + eexists. split. exists d. split; [reflexivity| auto].
+      rewrite !in_app_iff. left. rewrite in_map_iff. eauto.
+    + eexists. split. exists d. split; [reflexivity| auto].
+      rewrite !in_app_iff. right; left. rewrite in_map_iff. eauto.
+    + eexists. split. exists d. split; [reflexivity| auto].
+      rewrite !in_app_iff. right; right. rewrite in_map_iff. eauto.
 Qed.

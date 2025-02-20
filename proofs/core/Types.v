@@ -698,6 +698,21 @@ Proof.
   simpl. rewrite aset_mem_union. destruct (typevar_eq_dec y phd); subst; simpl; auto.
 Qed.
 
+Lemma ty_subst_s_params_id: forall params srts,
+  length params = length srts ->
+  NoDup params ->
+  map (fun x => ty_subst_s params srts (vty_var x)) params = srts.
+Proof.
+  intros params srts Hlen Hnodup.
+  apply list_eq_ext'; rewrite !length_map; auto.
+  intros n d Hn.
+  rewrite -> map_nth_inbound with (d2:=""%string); auto.
+  apply sort_inj. simpl.
+  rewrite -> ty_subst_fun_nth with (s:=d); unfold sorts_to_tys; simpl; auto.
+  - rewrite -> map_nth_inbound with (d2:=d); auto. lia.
+  - rewrite length_map; lia.
+Qed.
+
 End TySubstLemmas.
 
 (*A version of [ty_subst] that only changes the mapped

@@ -972,7 +972,7 @@ Proof.
     rewrite (get_arg_list_hnth_unif pd vt ls'
       (map Tvar vs) (term_rep gamma_valid pd pdf vt pf
       (substi_mult pd vt vv vs h)) (ltac:(intros; apply term_rep_irrel))
-      Hlen1 
+      eq_refl Hlen1 
       ) with (Hi:=Hj').
     rewrite !dom_cast_compose. symmetry.
     gen_dom_cast_eq.
@@ -1980,7 +1980,7 @@ Proof.
         rewrite <- Hlen3, Hnthij, Hnthij2.
         specialize (His (length (fst (split_funpred_defs l2)) + j) (ltac:(lia))).
         revert His. rewrite app_nth2; rewrite length_map; [|lia].
-        rewrite TerminationChecker.plus_minus.
+        rewrite plus_minus.
         rewrite map_nth_inbound with (d2:=(id_ps, nil, Ftrue)); auto.
     + (*And prove all [decrease_fun]*)
       rewrite Forall_forall.

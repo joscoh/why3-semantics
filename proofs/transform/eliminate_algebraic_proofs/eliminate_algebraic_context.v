@@ -6,8 +6,8 @@ Section Proofs.
 Variable (new_constr_name: funsym -> string).
 Variable keep_muts : mut_adt -> bool.
 
-Variable badnames : list string.
-(*TODO: assume that badnames includes all ids in gamma*)
+Variable badnames : aset string.
+(*NOTE: will assume that badnames includes all ids in gamma*)
 
 
 Variable (noind: typesym -> bool).
@@ -252,11 +252,9 @@ Qed.
 
 (*[comp_ctx]*)
 Opaque add_axioms.
-(*NOTE: the gamma is for rewriteT (TODO: see if we can eliminate gamma)
-  We will instantiate with full context.
-  In their implementation, they use the known_map from the current task
-  we fold over (OK because task is essentially a list, so we have all the previous
-  things in list) - not sure best way, for now separate context*)
+(*NOTE: the gamma is for rewriteT
+  We will instantiate with full context.*)
+
 Definition comp_ctx_gamma (d: def) (gamma: context) : list def :=
   match d with
   | datatype_def m =>
@@ -275,8 +273,6 @@ Lemma comp_ctx_gamma_eq (d: def) t (gamma: context) :
 Proof.
   unfold comp_ctx. destruct d; try reflexivity.
   unfold comp_ctx_gamma.
-  (* destruct (keep_muts m)
-  destruct (partition _ (typs m)) as [dl_concr dl_abs]; simpl. *)
   rewrite <- fold_left_rev_right. rewrite <- (map_rev _ (typs m)).
   (*Need in multiple places*)
   assert (Habs: forall dl, task_gamma
@@ -311,7 +307,6 @@ Proof.
   Opaque add_axioms_delta.
   unfold comp_ctx. destruct d; try reflexivity.
   unfold comp_ctx_delta.
-  (* destruct (partition _ (typs m)) as [dl_concr dl_abs]; simpl. *)
   rewrite <- fold_left_rev_right. rewrite <- (map_rev _ (typs m)).
   assert (Habs: forall dl, task_delta (fold_right
     (fun (a : alg_datatype) (t1 : task) =>
@@ -399,31 +394,13 @@ End ContextSpecs.
 
 (*Some results about context*)
 
-(* Print fold_all_ctx_gamma_gen.
-
-(*TODO: generalize?*)
-Definition new_gamma (gamma: context) : context :=
-  concat (map (fun d => comp_ctx_gamma d gamma) (rev gamma)).
-(*NOTE: an easier definition for induction: we need to do induction only over gamma2, not gamma1*)
-Definition new_gamma_gen (g1 g2: context) : context :=
-  concat (map (fun d => comp_ctx_gamma d g1) g2).
-Lemma new_gamma_eq gamma: new_gamma gamma = new_gamma_gen gamma (rev gamma).
-Proof. reflexivity. Qed. *)
-
-
-(*TODO: move (from eliminate_inductive.v)*)
-Lemma mut_of_context_app l1 l2:
-  mut_of_context (l1 ++ l2) = mut_of_context l1 ++ mut_of_context l2.
-Proof.
-  induction l1; simpl; auto.
-  destruct a; simpl; auto. f_equal; auto.
-Qed.
 
 Lemma mut_of_context_abs_fun l:
   mut_of_context (map abs_fun l) = nil.
 Proof.
   induction l; simpl; auto.
 Qed.
+
 (*mutual ADTs of [new_gamma_gen] are subset of original*)
 Lemma mut_of_context_new_gamma (g1 g2: context) :
   sublist (mut_of_context (fold_all_ctx_gamma_gen g1 g2)) (mut_of_context g1).

@@ -6185,7 +6185,7 @@ Proof.
         inversion IHps as [| ? ? IH1 IH2]; subst.
         apply Permutation_app; auto.
         -- (*Show term part, much easier*)
-          rewrite bnd_sub_var_ts, skipn_firstn_comm,TerminationChecker.plus_minus.
+          rewrite bnd_sub_var_ts, skipn_firstn_comm, plus_minus.
           apply IH1; bnd_tac.
         -- rewrite skipn_skipn. rewrite (Nat.add_comm (length (tm_bnd t1)) (aset_size (pat_fv p1))). 
           apply IH; auto; bnd_tac.
@@ -6302,7 +6302,7 @@ Proof.
         inversion IHps as [| ? ? IH1 IH2]; subst.
         apply Permutation_app; auto.
         -- (*Show term part, much easier*)
-          rewrite bnd_sub_var_fs, skipn_firstn_comm,TerminationChecker.plus_minus.
+          rewrite bnd_sub_var_fs, skipn_firstn_comm,plus_minus.
           apply IH1; bnd_tac.
         -- rewrite skipn_skipn. rewrite (Nat.add_comm (length (fmla_bnd t1)) (aset_size (pat_fv p1))). 
           apply IH; auto; bnd_tac.
@@ -6682,7 +6682,7 @@ Proof.
   assert (Hsum: sum (map (fun x => aset_size (pat_fv (fst x)) + length (gen_bnd (snd x))) ps) = 
     length l - length (tm_bnd tm)).
   {
-    rewrite Hlen, CommonList.length_concat, TerminationChecker.plus_minus.
+    rewrite Hlen, CommonList.length_concat, plus_minus.
     rewrite !map_map.
     f_equal. apply map_ext. intros a. simpl_len. rewrite aset_to_list_length. reflexivity.
   }

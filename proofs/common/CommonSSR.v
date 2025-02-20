@@ -156,3 +156,24 @@ Proof.
         by apply Hall.
       * move=> Hint. apply Hall. by rewrite in_cons Hint orbT.
 Qed. 
+
+Lemma map_map_eq {A B: Type} (f: A -> B) (l: list A):
+  seq.map f l = List.map f l.
+Proof. reflexivity. Qed.
+
+
+Lemma catrev_eq {A: Type} (l1 l2: list A):
+  seq.catrev l1 l2 = ((List.rev l1) ++ l2)%list.
+Proof.
+  revert l2.
+  induction l1 as [| h1 t1 IH]; simpl; auto.
+  intros l2. rewrite IH -app_assoc. simpl. reflexivity.
+Qed. 
+
+Lemma rev_eq {A: Type} (l: list A):
+  seq.rev l = List.rev l.
+Proof.
+  unfold seq.rev.
+  rewrite catrev_eq app_nil_r.
+  reflexivity.
+Qed.

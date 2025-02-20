@@ -191,6 +191,69 @@ Proof.
     + apply IHts. lia.
 Qed. 
 
+(*Version of [get_arg_list_hnth] with typing lemmas, 
+specialized to fun or predsym args*)
+Lemma arg_list_hnth_eq (s: fpsym) {i: nat} {args: list vty} {params}
+  (Hparams: params = map vty_var (s_params s))
+  (Hi: i < length args) vt:
+  v_subst vt (ty_subst (s_params s) params (nth i args vty_int)) =
+  nth i (ty_subst_list_s (s_params s) (map (v_subst vt) params)
+    args) s_int.
+Proof.
+  subst.
+  unfold ty_subst_list_s.
+  rewrite map_nth_inbound with(d2:=vty_int);
+  auto.
+  apply funsym_subst_eq.
+  apply s_params_Nodup. rewrite length_map; auto.
+Qed.
+
+Lemma arg_list_hnth_ty{s: fpsym} {ts: list term} 
+{vs: list vty} {args: list vty}
+(Hlents : length ts = length args)
+(Hall : Forall
+  (fun x : term * vty => term_has_type gamma (fst x) (snd x))
+  (combine ts (map (ty_subst (s_params s) vs) args)))
+{i: nat} (Hi: i < length args): 
+term_has_type gamma (nth i ts tm_d) (ty_subst (s_params s) vs (nth i args vty_int)).
+Proof.
+  rewrite Forall_forall in Hall.
+  apply (Hall (nth i ts tm_d, ty_subst (s_params s) vs (nth i args vty_int))).
+  rewrite in_combine_iff; [| rewrite length_map; auto].
+  exists i. split; try lia. intros.
+  f_equal; [apply nth_indep |]; try lia.
+  rewrite map_nth_inbound with (d2:=vty_int); auto.
+Qed.
+
+(*When our params are [map vty_var (s_params p)]*)
+Lemma get_arg_list_hnth_unif 
+(v: val_typevar)
+(s: fpsym) (ts: list term) 
+(reps: forall (t: term) (ty: vty),
+  term_has_type gamma t ty ->
+  domain  (v_subst v ty))
+(Hreps: forall (t: term) (ty: vty)
+  (Hty1 Hty2: term_has_type gamma t ty),
+  reps t ty Hty1 = reps t ty Hty2)
+{args: list vty}
+{params}
+(Heqparams: params = map vty_var (s_params s))
+(Hlents: length ts = length args)
+(Hlenvs: length params  = length (s_params s))
+(Hall: Forall (fun x => term_has_type gamma (fst x) (snd x))
+  (combine ts (map (ty_subst (s_params s) params) args)))
+(i: nat)
+(Hi: i < length args):
+hnth i
+  (get_arg_list v params ts reps (s_params_Nodup s) Hlents Hlenvs Hall) s_int (dom_int pd) =
+  dom_cast (dom_aux pd) (arg_list_hnth_eq s Heqparams Hi v)
+  (reps (nth i ts tm_d) (ty_subst (s_params s) 
+    (params) (nth i args vty_int))
+  (arg_list_hnth_ty Hlents Hall Hi)).
+Proof.
+  apply get_arg_list_hnth; auto.
+Qed. 
+
 (*The function version*)
 
 Lemma fun_ty_inv {s} {f: funsym} 

@@ -935,6 +935,75 @@ Proof.
   - apply (Hty1 t); auto.
 Qed.
 
+(*Other properties of pre/post conditions*)
+
+Lemma sound_trans_pre_true (t: trans):
+  sound_trans t ->
+  sound_trans_pre (fun _ => True) t.
+Proof. 
+  unfold sound_trans, TaskGen.sound_trans, sound_trans_pre. intros Hsound tsk _ Hty Hallval.
+  apply Hsound; auto.
+Qed.
+
+Lemma typed_trans_pre_true (t: trans):
+  typed_trans t ->
+  typed_trans_pre (fun _ => True) t.
+Proof. 
+  unfold typed_trans, TaskGen.typed_trans, typed_trans_pre. intros Hsound tsk _ Hty Hallval.
+  apply Hsound; auto.
+Qed.
+
+Lemma trans_weaken_pre (P1 P2 Q1: task -> Prop) (t: trans):
+  (forall t, P1 t -> P2 t) ->
+  trans_pre_post P2 Q1 t ->
+  trans_pre_post P1 Q1 t.
+Proof.
+  unfold trans_pre_post.
+  intros; eauto.
+Qed.
+
+Lemma sound_trans_weaken_pre (P1 P2: task -> Prop) (t: trans):
+  (forall t, P1 t -> P2 t) ->
+  sound_trans_pre P2 t ->
+  sound_trans_pre P1 t.
+Proof.
+  unfold sound_trans_pre.
+  intros Hp12 Hsound1 tsk Hp1 Hty Hallval.
+  apply Hsound1; auto.
+Qed. 
+
+Lemma typed_trans_weaken_pre (P1 P2: task -> Prop) (t: trans):
+  (forall t, P1 t -> P2 t) ->
+  typed_trans_pre P2 t ->
+  typed_trans_pre P1 t.
+Proof.
+  unfold typed_trans_pre.
+  intros Hp12 Hsound1 tsk Hp1 Hty Hallval.
+  apply Hsound1; auto.
+Qed. 
+
+(*compose typed trans*)
+Lemma typed_trans_comp (P1 Q1 P2: task -> Prop) (t1 t2: trans):
+  typed_trans_pre P1 t1 ->
+  typed_trans_pre P2 t2 ->
+  trans_pre_post P1 Q1 t1 ->
+  (*typed_trans t2 ->*)
+  (forall t, Q1 t -> P2 t) ->
+  typed_trans_pre P1 (compose_trans t1 t2).
+Proof.
+  unfold typed_trans_pre, trans_pre_post.
+  intros Hty1 Hty2 Hprepost Hpq t Hp1 Hty.
+  unfold compose_trans; setoid_rewrite in_concat; setoid_rewrite in_map_iff.
+  intros tk2 [l [[tsk [Hl Hintsk]] Hintsk2]]; subst.
+  eapply Hty2.
+  + apply Hpq. eapply Hprepost.
+    * apply Hp1.
+    * auto.
+    * apply Hintsk.
+  + eapply Hty1; eauto.
+  + auto.
+Qed.
+
 Section TaskMap.
 
 Variable (fn : term -> term) (pn: formula -> formula).

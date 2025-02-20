@@ -394,17 +394,6 @@ Proof.
     by have: 1 + 1 <= 1 by rewrite -{3}Heq2.
 Qed.
 
-Lemma append_inj s1 s2 s3 s4:
-  length s1 = length s2 ->
-  s1 ++ s3 = s2 ++ s4 ->
-  s1 = s2 /\ s3 = s4.
-Proof.
-  revert s2.
-  elim: s1 => [[| a2 s2]//=| a1 s1/= IH [| a2 s2]//= [Hlen] [Hstr] Heq].
-  apply IH in Heq=>//. case: Heq => [Hseq Hseq2].
-  by subst.
-Qed.
-
 Lemma concat_cons x1 x2 l1 l2:
   (forall x, In x (x1 :: l1) -> length x = 1) ->
   (forall x, In x (x2 :: l2) -> length x = 1) ->
