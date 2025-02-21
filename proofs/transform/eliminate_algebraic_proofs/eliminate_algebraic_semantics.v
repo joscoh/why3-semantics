@@ -1229,7 +1229,7 @@ Proof.
         rewrite (IH2' (Pconstr c tys2 (map Pvar vs), f2)) with (Hty1:=(Forall_In Hallty Hinc)) by auto.
         apply fmla_change_vv.
         (*Prove valuations equal*)
-        intros x Hinx. rewrite val_with_args_cast_eq with (Heq:=Hcast)(vs2:=vs); auto.
+        intros x Hinx. rewrite val_with_args_cast_eq with (Heq:=Hcast)(l2:=vs); auto.
         apply substi_mult_val_with_args.
         apply constr_vars_typed_nodup in Hpty; auto.
       + (*Constr not in list - prove wild case*)

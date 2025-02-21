@@ -3875,31 +3875,6 @@ Proof.
     apply (Hdisj x); auto.
 Qed.
 
-(*Conditions we need about simple patterns*)
-
-Definition funpred_def_simple_pats (f: funpred_def) : bool :=
-  match f with
-  | fun_def _ _ t => term_simple_pats t
-  | pred_def _ _ f => fmla_simple_pats f
-  end.
-Definition funpred_def_simple_exhaust gamma (f: funpred_def) : bool :=
-  match f with
-  | fun_def _ _ t => term_simple_exhaust gamma t
-  | pred_def _ _ f => fmla_simple_exhaust gamma f
-  end.
-Definition gen_simple_exhaust (b: bool) gamma (t: gen_term b) : bool :=
-  match b return gen_term b -> bool with
-  | true => term_simple_exhaust gamma
-  | false => fmla_simple_exhaust gamma
-  end t.
-
-Definition ctx_pat_simpl (gamma: context) : bool :=
-  forallb (fun x =>
-    match x with
-    | nonrec_def fd => funpred_def_simple_pats fd && funpred_def_simple_exhaust gamma fd
-    | _ => true
-    end) gamma.
-
 Section Weaken.
 
 (*Now we prove that we can weaken the context and preserve [simple_exhaust]
@@ -3907,13 +3882,12 @@ Section Weaken.
   This is a preliminary; we want to prove that we can weaken the context
   and preserve well-typing as long as the term does not use anything from the new definition*)
 
-
 (*The key case for well-typed*)
 Lemma simple_exhaust_weaken_typed_match (b: bool) (d: def) (gamma: context)
   (gamma_valid: valid_context (d :: gamma)) tm ty1 ps ty
   (IH1: term_simple_exhaust (d :: gamma) tm -> term_simple_exhaust gamma tm)
-  (IH2: Forall (fun (x: gen_term b) => gen_simple_exhaust b (d :: gamma) x ->
-    gen_simple_exhaust b gamma x) (map snd ps))
+  (IH2: Forall (fun (x: gen_term b) => @gen_simple_exhaust (d :: gamma) b x ->
+    @gen_simple_exhaust gamma b x) (map snd ps))
   (Hty: gen_typed gamma b (gen_match tm ty1 ps) ty):
   existsb (fun a : alg_datatype => simple_exhaust (map fst ps) a)
   (adts_of_context (d :: gamma)) || existsb is_wild (map fst ps) ->
@@ -4543,14 +4517,6 @@ Proof.
   - intros x. rewrite in_map_iff. intros [tv [Hx Hintv]]; subst.
     constructor.
 Qed.
-
-Definition no_recfun_indpred_gamma (gamma: context) : bool :=
-  forallb (fun x =>
-    match x with
-    | recursive_def _ => false
-    | inductive_def _ => false
-    | _ => true
-    end) gamma.
 
 (*Finally, we can prove that the new context is valid*)
 Lemma new_gamma_gen_valid gamma gamma2 (Hbad: asubset (list_to_aset (idents_of_context gamma)) badnames):

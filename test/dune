@@ -1,5 +1,5 @@
-(coq.theory
- (name Test)
- (theories Proofs)
- (flags :standard -w 
- "-ambiguous-paths -notation-overridden -hiding-delimiting-key -redundant-canonical-projection"))
+;(coq.theory
+; (name Test)
+; (theories Proofs)
+; (flags :standard -w 
+; "-ambiguous-paths -notation-overridden -hiding-delimiting-key -redundant-canonical-projection"))

@@ -1010,8 +1010,17 @@ Proof.
 Qed.
 
 (*Finally, we need to show it satisfies the pre- and post-conditions for [eliminate_algebraic]*)
+Require Import PatternProofs.
 
 (*Condition 1: if there are no recfun or indpred before, there are still none*)
+Definition no_recfun_indpred_gamma (gamma: context) : bool :=
+  forallb (fun x =>
+    match x with
+    | recursive_def _ => false
+    | inductive_def _ => false
+    | _ => true
+    end) gamma.
+
 Definition no_recfun_indpred (t: task) : Prop :=
   no_recfun_indpred_gamma (task_gamma t).
 
@@ -1040,7 +1049,25 @@ Qed.
   this is the point of [compile_match]*)
 
 Definition fmla_simple_and_exhaust gamma (f: formula) : bool :=
-  fmla_simple_pats f && fmla_simple_exhaust gamma f.
+  fmla_simple_pats f && @fmla_simple_exhaust gamma f.
+
+Definition funpred_def_simple_pats (f: funpred_def) : bool :=
+  match f with
+  | fun_def _ _ t => term_simple_pats t
+  | pred_def _ _ f => fmla_simple_pats f
+  end.
+Definition funpred_def_simple_exhaust gamma (f: funpred_def) : bool :=
+  match f with
+  | fun_def _ _ t => @term_simple_exhaust gamma t
+  | pred_def _ _ f => @fmla_simple_exhaust gamma f
+  end.
+
+Definition ctx_pat_simpl (gamma: context) : bool :=
+  forallb (fun x =>
+    match x with
+    | nonrec_def fd => funpred_def_simple_pats fd && funpred_def_simple_exhaust gamma fd
+    | _ => true
+    end) gamma.
 
 Definition task_pat_simpl (t: task) : Prop :=
   ctx_pat_simpl (task_gamma t) &&
@@ -1111,11 +1138,3 @@ Proof.
   - apply trans_weaken_pre with (P2:=fun _ => True); auto.
     apply compile_match_simple.
 Qed.
-
-
-
-(*Beyond [simple_exhaust], we also need another condition for [eliminate_algebraic]:
-  if *)
-
-(*If we need, can prove that all nonrec defs, hypotheses, and the goal
-  now have simple patterns*)
