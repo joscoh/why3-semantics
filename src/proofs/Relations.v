@@ -667,6 +667,9 @@ Proof.
     see if we need this or we should just define in terms of related*)
 Admitted.
 
+(*TODO: maybe I don't actually need var alpha for funpred_def -
+  my [open_ls_defn] is stateless, so we should never actually change
+  If I change this, should be easy I believe*)
 
 
 End Relations.
