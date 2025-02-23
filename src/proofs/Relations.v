@@ -567,10 +567,18 @@ Definition eval_task (t: task) : option Task.task :=
 Definition valid_task (t: task) : Prop :=
   exists t', eval_task t = Some t' /\ Task.task_valid t'.
 
+(*NOTE: eventually I should give a type system for the augmented terms and prove this*)
+Definition typed_task (t: task) : Prop :=
+  exists t', eval_task t = Some t' /\ Task.task_typed t'.
+
 End Eval.
 
 (*Now define relations: when is a Why3 term related to a core term?
   Not just eval, we want alpha equivalence, and we need to push through defs*)
+(*NOTE: there are several ways we could generalize this, if needed
+  1. In funpred def, could allow variables to change as long as alpha equivalent under corresponding vars
+  2. Could allow renaming of fun/pred/type syms (would likely need for eliminate_algebraic)
+  3. Could allow renaming of type symbols (don't think needed) *)
 Section Relations.
 
 Definition term_related (t1: term_c) (t2: Syntax.term) : Prop :=
@@ -578,17 +586,30 @@ Definition term_related (t1: term_c) (t2: Syntax.term) : Prop :=
 Definition fmla_related (f1: term_c) (f2: Syntax.formula) : Prop :=
   exists f, eval_fmla f1 = Some f /\ a_equiv_f f f2.
 
+
 (*Now we "lift" alpha equivalence to defs. This is all in core and should be moved*)
 Definition a_equiv_funpred_def (fd1 fd2: funpred_def) : bool :=
   match fd1, fd2 with
   | fun_def f1 vs1 t1, fun_def f2 vs2 t2 =>
-    (*NOTE: variables don't have to be the same, but the terms have the be equivalent under
-      a substitution from one to the other. One way to show this is just to check
-      alpha equivalence of forall x, t1 and forall y, t2*)
-    (*NOTE: we need to transform term into formula, we just use t = t with an arbitrary type*)
-    funsym_eqb f1 f2 && a_equiv_f (fforalls vs1 (Feq vty_int t1 t1)) (fforalls vs2 (Feq vty_int t2 t2))
+    (*NOTE: for now, just require variables to be the same and terms to be alpha equivalent.
+      Eventually, if needed, could say that forall x, t1 is alpha equiv to forall y, t2.
+      However, I don't think that we ever actually alpha convert these variables, so may not
+      be necessary*)
+    (*It is NOT enough to just say that the terms are alpha equivalent, even if we assume the
+      variable lists are equal. The problem is termination: one variable could be overwritten
+      and not the other. While eventually using this information would violate alpha equivalence,
+      proving this is very tricky, and it is easier to just assume alpha equivalence under
+      the map mapping the corresponding variables *)
+
+    funsym_eqb f1 f2 && (length vs1 =? length vs2) && list_eqb vty_eqb (map snd vs1) (map snd vs2) &&
+    nodupb string_dec (map fst vs1) && nodupb string_dec (map fst vs2) &&
+    alpha_equiv_t (list_to_amap (combine vs1 vs2)) (list_to_amap (combine vs2 vs1)) t1 t2
+ (* list_eqb Syntax.vsymbol_eqb vs1 vs2 && a_equiv_t t1 t2 *)
   | pred_def p1 vs1 f1, pred_def p2 vs2 f2 =>
-    predsym_eqb p1 p2 && a_equiv_f (fforalls vs1 f1) (fforalls vs2 f2)
+    predsym_eqb p1 p2 &&  (length vs1 =? length vs2) && list_eqb vty_eqb (map snd vs1) (map snd vs2) &&
+    nodupb string_dec (map fst vs1) && nodupb string_dec (map fst vs2) &&
+    alpha_equiv_f (list_to_amap (combine vs1 vs2)) (list_to_amap (combine vs2 vs1)) f1 f2
+(* list_eqb Syntax.vsymbol_eqb vs1 vs2 && a_equiv_f f1 f2 *)
   | _, _ => false
   end.
 
@@ -625,48 +646,8 @@ Definition a_equiv_task (t1 t2: Task.task) : bool :=
   all2 a_equiv_f (map snd (task_delta t1)) (map snd (task_delta t2)) &&
   a_equiv_f (Task.task_goal t1) (Task.task_goal t2).
 
-(*Alpha equivalent tasks have the same validity*)
-Lemma a_equiv_task_valid (t1 t2: Task.task) :
-  a_equiv_task t1 t2 ->
-  task_valid t1 ->
-  task_valid t2.
-Proof.
-  unfold a_equiv_task.
-  destruct t1 as [[gamma1 delta1] goal1].
-  destruct t2 as [[gamma2 delta2] goal2].
-  simpl_task.
-  rewrite !andb_true. intros [[[Hgamma Hlendelta] Hdelta] Hgoal].
-  unfold task_valid, TaskGen.task_valid.
-  intros [Hty Hsem]. split.
-  -
-(*NOTE: should be possible to prove but annoying, full interp would be hardest bc of
-  recfun - see if we need*)
-Admitted.
-
-
-
-(*And now we can define relations. TODO: see which we need*)
 Definition task_related (t1: task) (t2: Task.task) : Prop :=
   exists t, eval_task t1 = Some t /\ a_equiv_task t t2.
-
-Lemma task_related_valid (t1: task) (t2: Task.task):
-  task_related t1 t2 ->
-  Task.task_valid t2 ->
-  valid_task t1.
-Proof.
-  unfold task_related, valid_task.
-  intros [t [Heval Halpha]] Hval.
-  exists t. split; auto.
-  (*Need to prove [a_equiv_task] symmetric*)
-  (* apply a_equiv_task_valid. *)
-  (*TODO: would have to prove that a_equiv_task preserves validity - might be annoying
-    see if we need this or we should just define in terms of related*)
-Admitted.
-
-(*TODO: maybe I don't actually need var alpha for funpred_def -
-  my [open_ls_defn] is stateless, so we should never actually change
-  If I change this, should be easy I believe*)
-
 
 End Relations.
 
