@@ -1,4 +1,4 @@
-From Proofs Require Import Task.
+From Proofs Require Import Task AssocList Alpha.
 Require Import TyDefs TyFuncs NumberDefs TermDefs TermFuncs DeclDefs TheoryDefs TaskDefs TransDefs.
 
 (*Define "eval" function: takes augmented type/term/etc, produces core type/term/etc*)
@@ -106,8 +106,6 @@ Definition fold_right2_opt {A B C: Type} (f: A -> B -> C -> option C) (base: C) 
     | x1 :: t1, x2 :: t2 => option_bind (fold t1 t2) (f x1 x2) 
     | _, _ => None
     end.
-
-Require Import AssocList.
 
 (*gives a map from vars to types such that [v_subst s t1] = t2 if one exists*)
 Fixpoint ty_match (t1 t2: vty) (s: amap typevar vty) : option (amap typevar vty) :=
@@ -571,8 +569,6 @@ Definition valid_task (t: task) : Prop :=
 
 End Eval.
 
-Require Import Alpha.
-
 (*Now define relations: when is a Why3 term related to a core term?
   Not just eval, we want alpha equivalence, and we need to push through defs*)
 Section Relations.
@@ -610,7 +606,7 @@ Definition a_equiv_indpred_def (i1 i2: indpred_def) : bool :=
   But for now just assume equiv*)
 Definition a_equiv_def (d1 d2: def) : bool :=
   match d1, d2 with
-  | datatype_def m1, datatype_def m2 => mut_adt_eqb m1 m2
+  | datatype_def m1, datatype_def m2 => Syntax.mut_adt_eqb m1 m2
   | recursive_def fs1, recursive_def fs2 => (length fs1 =? length fs2) && all2 a_equiv_funpred_def fs1 fs2
   | inductive_def il1, inductive_def il2 => (length il1 =? length il2) && all2 a_equiv_indpred_def il1 il2
   | nonrec_def f1, nonrec_def f2 => a_equiv_funpred_def f1 f2
