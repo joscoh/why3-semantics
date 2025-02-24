@@ -897,7 +897,7 @@ Lemma a_equiv_decrease_fun gamma (fs: list fn) (ps: list pn)
   (Hwf1: Forall fn_wf fs) (Hwf2: Forall pn_wf ps) (*only need wf for index*) 
     (m: mut_adt) (vs: list vty) t1 f1:
   (forall (ty: vty) (Hty: term_has_type gamma t1 ty) 
-      (small1 small2: aset vsymbol) (hd1 hd2: option vsymbol) (t2: term) (ty: vty)
+      (small1 small2: aset vsymbol) (hd1 hd2: option vsymbol) (t2: term)
       (m1 m2: amap vsymbol vsymbol)
       (*Think we need: m1(small1) = small2 and m2(small2) = small1 - OK because we only
         ever care when we add matched vars, which have nice properties*)
@@ -935,7 +935,7 @@ Proof.
   - intros. destruct t2; try discriminate. constructor.
   - intros. destruct t2; try discriminate. constructor.
   - (*Tfun - interesting case 1*)
-    intros f1 tys1 tms1 IH Hty small1 small2 hd1 hd2 t2 ty m1 m2 Hsmall1 (*Hsmall2 *) Hhd1 (*Hhd2*) Hallin1 Hinhd1 Halpha Hdec.
+    intros f1 tys1 tms1 IH Hty small1 small2 hd1 hd2 t2 m1 m2 Hsmall1 (*Hsmall2 *) Hhd1 (*Hhd2*) Hallin1 Hinhd1 Halpha Hdec.
     destruct t2 as [| | f2 tys2 tms2 | | | |]; try discriminate.
     rewrite !andb_true in Halpha. destruct Halpha as [[[Hfs Hlen] Htys] Hall].
     repeat simpl_sumbool. apply Nat.eqb_eq in Hlen. 
@@ -985,24 +985,24 @@ Proof.
     + (*Now notin*)
       apply Dec_fun_notin; eauto. rewrite Forall_forall in Hind; auto.
   - (*Tlet*)
-    intros tm1 v1 tm2 _ IH1 IH2 small1 small2 hd1 hd2 t2 _ m1 m2 Hsmall1 Hhd1 Hallin1 Hindh1 Halpha Hdec.
+    intros tm1 v1 tm2 _ IH1 IH2 small1 small2 hd1 hd2 t2 m1 m2 Hsmall1 Hhd1 Hallin1 Hindh1 Halpha Hdec.
     destruct t2 as [| | | tm3 v2 tm4 | | |]; try discriminate.
     rewrite !andb_true in Halpha.
     destruct Halpha as [[Hty Halpha1] Halpha2].
     inversion Hdec; subst.
     constructor; auto.
-    + eapply IH1; eauto. exact vty_int.
-    + eapply IH2. 6: apply Halpha2. 6: eauto. exact vty_int.
+    + eapply IH1; eauto.
+    + eapply IH2. 5: apply Halpha2. 5: eauto.
       * apply bound_small_preserved; auto.
       * apply bound_hd_preserved; auto.
       * apply bound_allin_preserved; auto.
       * apply bound_hd_in_preserved; auto.
   - (*Tif*)
-    intros f t1 t2 _ IH1 IH2 IH3 small1 small2 hd1 hd2 tm2 _ m1 m2 Hsmall1 Hhd1 Hallin1 Hinhd1 Halpha Hdec.
+    intros f t1 t2 _ IH1 IH2 IH3 small1 small2 hd1 hd2 tm2 m1 m2 Hsmall1 Hhd1 Hallin1 Hinhd1 Halpha Hdec.
     destruct tm2; try discriminate. inversion Hdec; subst. rewrite !andb_true in Halpha. destruct_all. 
     apply Dec_tif; [eapply IH1 | eapply IH2 | eapply IH3]; eauto; exact vty_int.
   - (*Tmatch is hard case*)
-    intros tm1 ty1 ps1 ty1' IH1 IHps Hty small1 small2 hd1 hd2 t2 _ m1 m2 Hsmall1 Hhd1 Hallin1 Hinhd1 Halpha Hdec.
+    intros tm1 ty1 ps1 ty1' IH1 IHps Hty small1 small2 hd1 hd2 t2 m1 m2 Hsmall1 Hhd1 Hallin1 Hinhd1 Halpha Hdec.
     destruct t2 as [| | | | | tm2 ty2 ps2 |]; try discriminate.
     rewrite !andb_true in Halpha.
     destruct Halpha as [[[Halpha Hlen] Htys] Hall].
@@ -1048,7 +1048,7 @@ Proof.
         apply Hr1iff; auto. rewrite amap_mem_spec, Hget; auto.
       }
       (*Now we apply the IH*)
-      eapply IH1. 6: apply Halpha. 1: exact vty_int.
+      eapply IH1. 5: apply Halpha.
       (*Prove map conditions*)
       * apply tmatch_small_preserved; auto. intros p x. apply pat_constr_vars_fv.
       * apply tmatch_hd_preserved; auto.
@@ -1121,7 +1121,7 @@ Proof.
         rewrite Htys with (x:=x)(y:=y); auto.
         apply Hr1iff; auto. rewrite amap_mem_spec, Hget; auto.
       }
-      eapply IH1. 6: apply Halpha. 1: exact vty_int. 5: apply Hdec1.
+      eapply IH1. 5: apply Halpha. 5: apply Hdec1.
       * apply tmatch_small_preserved; auto. intros p x. apply get_constr_smaller_fv.
       * apply tmatch_hd_preserved; auto.
       * apply tmatch_allin_preserved; auto. intros p x. apply get_constr_smaller_fv.
@@ -1153,7 +1153,7 @@ Proof.
         destruct Halphap' as [Hp2 [Hbij [Hr1iff [Htys Hinj]]]].
         subst p2.
         rewrite map_pat_free_vars; auto.
-        eapply IH1. 6: apply Halpha. 6: apply Hdec1. 1: exact vty_int.
+        eapply IH1. 5: apply Halpha. 5: apply Hdec1. 
         -- apply tmatch_small_preserved_ind; auto.
         -- apply tmatch_hd_preserved; auto.
         -- apply tmatch_allin_preserved_ind; auto.
@@ -1188,7 +1188,7 @@ Proof.
         apply Dec_tmatch_rec; auto.
         eapply IH1; eauto.
   - (*Teps*)
-    intros f v1 IH Htyval small1 small2 hd1 hd2 t2 _ m1 m2 Hsmall1 Hhd1 Hallin1 Hindh1 Halpha Hdec.
+    intros f v1 IH Htyval small1 small2 hd1 hd2 t2 m1 m2 Hsmall1 Hhd1 Hallin1 Hindh1 Halpha Hdec.
     destruct t2 as [| | | | | | f2 v2]; try discriminate.
     rewrite !andb_true in Halpha.
     destruct Halpha as [Hty Halpha].
@@ -1198,147 +1198,125 @@ Proof.
     + apply bound_hd_preserved; auto.
     + apply bound_allin_preserved; auto.
     + apply bound_hd_in_preserved; auto.
-  
-
-
-    
-
-
- }
-        (*TODO: can we combine into 1 lemma?*)
-    +
-
-
- 
-
-        eapply decrease_fun_subset. 3: eapply IH1. 9: eapply Hdec1. 8: apply Halpha.
-        
-
-
-
- 10: eauto.
-
-
-      +
-
-
- left. eauto. exists v; auto. eauto. exists v. 
-
-
-      Print decrease_fun.
-
-
-
- unfold vsyms_in_m'.
-
-
-* apply tmatch_hd_preserved; auto.
-      * apply tmatch_allin_preserved; auto. intros p x. apply pat_constr_vars_fv.
-      * apply tmatch_hd_in_preserved; auto. unfold vsyms_in_m'.
-
-
-forall x : vsymbol,
-aset_mem x
-  (aset_union (aset_filter (vsym_in_m m vs) (pat_constr_vars m vs p1)) (aset_diff (pat_fv p1) small1)) ->
-amap_mem x (aunion r1 m1)
-
-
-forall x y : vsymbol,
-amap_lookup (aunion r1 m1) x = Some y ->
-amap_lookup (aunion r2 m2) y = Some x ->
-upd_option_iter hd1 (pat_fv p1) = Some x <->
-upd_option_iter hd2 (aset_map (mk_fun r1) (pat_fv p1)) = Some y
-
-
-
-        Search get_constr_smaller pat_fv.
-
- apply get_constr_smaller_fv. 
-
-forall x y : vsymbol,
-amap_lookup (aunion r1 m1) x = Some y ->
-amap_lookup (aunion r2 m2) y = Some x ->
-aset_mem x
-  (aset_union (aset_filter (vsym_in_m m vs) (get_constr_smaller small1 hd1 m vs c2 tys2 tms p1))
-     (aset_diff (pat_fv p1) small1)) ->
-aset_mem y
-  (aset_union
-     (aset_map (fun x0 : vsymbol => lookup_default r1 x0 x0)
-        (aset_filter (vsym_in_m m vs) (get_constr_smaller small1 hd1 m vs c2 tys2 tms p1)))
-     (aset_diff (aset_map (mk_fun r1) (pat_fv p1)) small2))
-
-
-forall x y : vsymbol,
-amap_lookup (aunion r1 m1) x = Some y ->
-amap_lookup (aunion r2 m2) y = Some x ->
-aset_mem x
-  (aset_union (aset_filter (vsym_in_m m vs) (pat_constr_vars m vs p1)) (aset_diff (pat_fv p1) small1)) ->
-aset_mem y
-  (aset_union
-     (aset_map (fun x0 : vsymbol => lookup_default r1 x0 x0)
-        (aset_filter (vsym_in_m m vs) (pat_constr_vars m vs p1)))
-     (aset_diff (aset_map (mk_fun r1) (pat_fv p1)) small2))
-
-
-      +
-
-
-
- all: auto.
-
-
-
-
- unfold opt (*Prove hd*)
-        unfold option_sub. destruct (upd_option_iter hd1 (pat_fv p1)) as [v|] eqn : Hiter; auto.
-        rewrite upd_option_iter_some in Hiter |- *. destruct Hiter as [Hhd Hnotin].
-        assert (Hmem: amap_mem v m1). { apply Hinhd1; auto. }
-        rewrite amap_mem_spec in Hmem. destruct (amap_lookup m1 v) as [y|] eqn : Hlook; [|discriminate].
-        
-
-
-        split; auto.
-
-
-        Search upd_option_iter Some.
-        
-
-
-
- (aset_map (mk_fun r1) (pat_fv p1))).
-
-
-
-decrease_fun_subset
-
-
-Lemma get_constr_smaller_vars_map m1 vs (m: amap vsymbol vsymbol) (p: pattern)
-  (Hm: forall x, aset_mem x (pat_fv p) -> amap_mem x m)
-  (Htys: forall x y, amap_lookup m x = Some y -> snd x = snd y)
-  (Hinj: forall x y, aset_mem x (pat_fv p) -> aset_mem y (pat_fv p) -> 
-    amap_lookup m x = amap_lookup m y -> x = y)
-  small1 small2 hd1 hd2 c tys tms1 tms2
-  (Hlen: length tms1 = length tms2)
-  (Hvar: Forall2 (fun t1 t2 : term => tm_var_case hd1 small1 t1 -> tm_var_case hd2 small2 t2) tms1 tms2):
-  asubset (aset_map (fun x => lookup_default m x x) (get_constr_smaller small1 hd1 m1 vs c tys tms1 p))
-    (get_constr_smaller small2 hd2 m1 vs c tys tms2 (map_pat m p))
-
-        
-
-        Search check_var_case 
-
-
-        (*Maybe just prove for alpha equiv*)
-
-
-      Print get_constr_smaller.
-(get_constr_smaller small2 hd2 m vs c2 tys2 tms2 (map_pat r1 p1)))
-(get_constr_smaller small1 hd1 m vs c2 tys2 tms p1))
-
-Halpha' : all2 (fun t1 t2 : term => alpha_equiv_t m1 m2 t1 t2) tms tms2
-e : Datatypes.length tms = Datatypes.length tms2
-
-
+  - (*Fpred*)
+    intros p1 tys1 tms1 IH Hty small1 small2 hd1 hd2 f2 m1 m2 Hsmall1 Hhd1 Hallin1 Hinhd1 Halpha Hdec.
+    destruct f2 as [p2 tys2 tms2 | | | | | | | | |]; try discriminate.
+    rewrite !andb_true in Halpha. destruct Halpha as [[[Hfs Hlen] Htys] Hall].
+    repeat simpl_sumbool. apply Nat.eqb_eq in Hlen. 
+    (*inductive case is same*)
+    assert (Hold: Forall (decrease_fun fs ps small1 hd1 m vs) tms1). {
+      inversion Hdec; subst; auto.
+      rewrite Forall_forall; auto.
+    }
+    assert (Hind: Forall (decrease_fun fs ps small2 hd2 m vs) tms2). {
+      apply forall2_snd_irrel in IH.
+      2: { unfold ty_subst_list; inversion Hty; subst; solve_len. }
+      rewrite Forall_forall in IH, Hold |- *.
+      intros tm Hintm. 
+      rewrite all2_forall with (d1:=tm_d)(d2:=tm_d) in Hall by auto.
+      destruct (In_nth _ _ tm_d Hintm) as [i [Hi Htm]]. subst.
+      specialize (Hall i (ltac:(lia))).
+      apply IH with (x:=(nth i tms1 tm_d))(small1:=small1)(hd1:=hd1)(m1:=m1)(m2:=m2); auto.
+      { apply nth_In; auto. lia. }
+      apply Hold, nth_In; lia.
+    }
+    inversion Hdec; subst.
+    + (*In case*)
+      assert (Halpha: alpha_equiv_t m1 m2 (nth (sn_idx p_decl) tms1 tm_d) (nth (sn_idx p_decl) tms2 tm_d)).
+      {
+        rewrite all2_forall in Hall by auto. apply Hall.
+        rewrite Forall_forall in Hwf2. apply Hwf2 in H2. unfold pn_wf in H2.
+        unfold sn_wf in H2. destruct H2 as [[Hidx [Hlen' _]]Hsym].
+        inversion Hty; subst. clear -H6 Hidx Hlen' Hsym.
+        rewrite H6, Hsym, <- Hlen'. auto.
+      }
+      rewrite H9 in Halpha.
+      simpl in Halpha.
+      destruct (nth (sn_idx p_decl) tms2 tm_d) as [| y| | | | |] eqn : Hnth2; try discriminate.
+      assert (Hinsmall: aset_mem y small2).
+      {
+        unfold alpha_equiv_var in Halpha. assert (Hinsmall1:=H4).
+        apply Hallin1 in H4. rewrite amap_mem_spec in H4. 
+        destruct (amap_lookup m1 x) as [z|] eqn : Hget1; [|discriminate].
+        destruct (amap_lookup m2 y) as [z1|] eqn : Hget2; [|discriminate].
+        vsym_eq y z; try discriminate. vsym_eq x z1; try discriminate.
+        specialize (Hsmall1 _ _ Hget1 Hget2 Hinsmall1). auto.
+      }
+      eapply Dec_pred_in; eauto.
+    + (*Now notin*)
+      apply Dec_pred_notin; eauto. rewrite Forall_forall in Hind; auto.
+  - (*Fquant*)
+    intros q v1 f IH Htyval small1 small2 hd1 hd2 t2 m1 m2 Hsmall1 Hhd1 Hallin1 Hindh1 Halpha Hdec.
+    destruct t2; try discriminate.
+    rewrite !andb_true in Halpha.
+    destruct Halpha as [[Hq Hty] Halpha].
+    inversion Hdec; subst.
+    constructor; auto. eapply IH. 5: apply Halpha. 5: eauto.
+    + apply bound_small_preserved; auto.
+    + apply bound_hd_preserved; auto.
+    + apply bound_allin_preserved; auto.
+    + apply bound_hd_in_preserved; auto.
+  - (*Feq*)
+    intros ty t1 t2 IH1 IH2 small1 small2 hd1 hd2 tm2 m1 m2 Hsmall1 Hhd1 Hallin1 Hinhd1 Halpha Hdec.
+    destruct tm2; try discriminate. inversion Hdec; subst. rewrite !andb_true in Halpha. destruct_all. 
+    apply Dec_eq; [eapply IH1 | eapply IH2]; eauto; exact vty_int.
+  - (*Fbinop*)
+    intros b t1 t2 IH1 IH2 small1 small2 hd1 hd2 tm2 m1 m2 Hsmall1 Hhd1 Hallin1 Hinhd1 Halpha Hdec.
+    destruct tm2; try discriminate. inversion Hdec; subst. rewrite !andb_true in Halpha. destruct_all. 
+    apply Dec_binop; [eapply IH1 | eapply IH2]; eauto; exact vty_int.
+  - (*Fnot*)
+    intros f IH small1 small2 hd1 hd2 tm2 m1 m2 Hsmall1 Hhd1 Hallin1 Hinhd1 Halpha Hdec.
+    destruct tm2; try discriminate. inversion Hdec; subst.
+    apply Dec_not; eapply IH; eauto. 
+  - (*Ftrue*) intros. destruct f2; try discriminate. constructor.
+  - (*Ffalse*) intros; destruct f2; try discriminate. constructor.
+  - (*Flet*)
+    intros tm1 v1 tm2 IH1 IH2 small1 small2 hd1 hd2 t2 m1 m2 Hsmall1 Hhd1 Hallin1 Hindh1 Halpha Hdec.
+    destruct t2; try discriminate.
+    rewrite !andb_true in Halpha.
+    destruct Halpha as [[Hty Halpha1] Halpha2].
+    inversion Hdec; subst.
+    constructor; auto.
+    + eapply IH1; eauto.
+    + eapply IH2. 5: apply Halpha2. 5: eauto. 
+      * apply bound_small_preserved; auto.
+      * apply bound_hd_preserved; auto.
+      * apply bound_allin_preserved; auto.
+      * apply bound_hd_in_preserved; auto.
+  - (*Fif*)
+    intros f t1 t2 IH1 IH2 IH3 small1 small2 hd1 hd2 tm2 m1 m2 Hsmall1 Hhd1 Hallin1 Hinhd1 Halpha Hdec.
+    destruct tm2; try discriminate. inversion Hdec; subst. rewrite !andb_true in Halpha. destruct_all. 
+    apply Dec_fif; [eapply IH1 | eapply IH2 | eapply IH3]; eauto; exact vty_int.
+  - (*Fmatch -similar to Tmatch*)
+    intros tm1 ty1 ps1 IH1 IHps Hty small1 small2 hd1 hd2 t2 m1 m2 Hsmall1 Hhd1 Hallin1 Hinhd1 Halpha Hdec.
+    destruct t2 as [| | | | | | | | | tm2 ty2 ps2]; try discriminate.
+    rewrite !andb_true in Halpha.
+    destruct Halpha as [[[Halpha Hlen] Htys] Hall].
+    simpl_sumbool. apply Nat.eqb_eq in Hlen.
+    inversion Hdec; subst.
+    + (*First: case on var*)
+      destruct tm2 as [| mvar2 | | | | |]; try discriminate.
+      assert (Hvar2: var_case hd2 small2 mvar2) by (eapply var_case_impl; eauto).
+      apply Dec_fmatch; auto.
+      (*Now, prove inductive case - relies on alpha equivalence of corresponding patterns*)
+      clear IH1 Hty Halpha Hdec H5.
+      rename H7 into Halldec.
+      rewrite <- Forall_forall in Halldec |- *.
+      generalize dependent ps2. induction ps1 as [| [p1 t1] ps1 IH]; intros [| [p2 t2] ps2]; simpl; auto;
+      try discriminate.
+      intros Hlen.
+      rewrite all2_cons, andb_true. intros [Halpha Hall].
+      inversion IHps as [| ? ? IH1 IH2]; subst; clear IHps.
+      inversion Halldec as [| ? ? Hdec1 Hdec2]; subst; clear Halldec.
+      specialize (IH IH2 Hdec2 ps2 (ltac:(auto)) Hall). constructor; auto.
+      clear Hall IH2 Hdec2 IH.
+      simpl in *. destruct (a_equiv_p p1 p2) as [[r1 r2]|] eqn : Halphap; [|discriminate].
+      (*From a_equiv_p, know that p2 is [map_pat r1 p1] so we can directly
+        express [pat_constr_vars]*)
+      assert (Halphap' := Halphap).
+      apply a_equiv_p_iff in Halphap'. simpl in Halphap'.
+      destruct Halphap' as [Hp2 [Hbij [Hr1iff [Htys Hinj]]]].
+      subst p2.
       rewrite pat_constr_vars_map; auto.
       2: { intros x Hmemx; apply Hr1iff; auto. }
       2: { intros x y Hlook; apply Htys; auto. apply Hr1iff; auto. rewrite amap_mem_spec, Hlook; auto. }
@@ -1351,231 +1329,147 @@ e : Datatypes.length tms = Datatypes.length tms2
         apply Hr1iff; auto. rewrite amap_mem_spec, Hget; auto.
       }
       (*Now we apply the IH*)
-      eapply IH1. 6: apply Halpha. 1: exact vty_int.
-      (*Prove map conditions - TODO: separate lemmas*)
-      * clear -Hbij Hr1iff Hsmall1. intros x y. rewrite !aunion_lookup.
-        intros Hlook1 Hlook2. simpl_set.
-        destruct (amap_lookup r1 x) as [z1|] eqn : Hget1.
-        -- inversion Hlook1; subst z1; clear Hlook1.
-          assert (Hget2: amap_lookup r2 y = Some x) by (apply Hbij; auto).
-          intros [[Hmemx Hpx] | [Hmemx Hnotinx]].
-          2: { (*Contradiction: x must be in pat_fv*)
-            exfalso. apply Hnotinx. apply Hr1iff. rewrite amap_mem_spec, Hget1; auto. }
-          left. exists x. simpl_set. split_all; auto.
-          unfold lookup_default; rewrite Hget1; auto.
-        -- destruct (amap_lookup r2 y) as [z1|] eqn : Hget2.
-          1: { exfalso. apply Hbij in Hget2. inversion Hlook2; subst. rewrite Hget1 in Hget2; discriminate. }
-          (*Now know we must be in the second case*)
-          intros [[Hmemx _] | [Hmemx Hnotinx]].
-          1: { apply pat_constr_vars_fv in Hmemx. exfalso. apply Hr1iff in Hmemx.
-            rewrite amap_mem_spec, Hget1 in Hmemx. discriminate. }
-          right. 
-          split; eauto.
-          intros [x1 [Hy Hmemx1]].
-          unfold mk_fun, lookup_default in Hy.
-          apply Hr1iff in Hmemx1. rewrite amap_mem_spec in Hmemx1.
-          destruct (amap_lookup r1 x1) as [y1|] eqn : Hgetx1; [|discriminate].
-          subst. apply Hbij in Hgetx1. rewrite Hget2 in Hgetx1; discriminate.
-      * (*This one is easier, but still tedious - TODO: separate lemmas for these*)
-        clear -Hbij Hr1iff Hhd1.
-        intros x y. rewrite !aunion_lookup. intros Hlook1 Hlook2.
-        rewrite !upd_option_iter_some. simpl_set.
-        split.
-        -- intros [Hh1 Hnotin].
-          destruct (amap_lookup r1 x) as [y1|] eqn : Hget1.
-          1: { exfalso. apply Hnotin, Hr1iff. rewrite amap_mem_spec, Hget1; auto. }
-          destruct (amap_lookup r2 y) as [x1|] eqn : Hget2.
-          1: { exfalso. apply Hbij in Hget2. inversion Hlook2; subst.
-            rewrite Hget2 in Hget1; discriminate. }
-          rewrite Hhd1 in Hh1; eauto. split; auto.
-          intros [x1 [Hy Hmemx1]].
-          subst. 
-          apply Hr1iff in Hmemx1. 
-          rewrite amap_mem_spec in Hmemx1.
-          destruct (amap_lookup r1 x1) as [y1|] eqn : Hget3; [|discriminate].
-          rewrite (mk_fun_some Hget3) in Hlook1, Hget2.
-          apply Hbij in Hget3. rewrite Hget3 in Hget2; discriminate.
-        -- intros [Hh2 Hnotin].
-          destruct (amap_lookup r1 x) as [y1|] eqn : Hget1.
-          1: { inversion Hlook1; subst. exfalso. apply Hnotin. exists x.
-            split.
-            - rewrite (mk_fun_some Hget1); auto.
-            - apply Hr1iff. rewrite amap_mem_spec, Hget1; auto. }
-          destruct (amap_lookup r2 y) as [x1|] eqn : Hget2.
-          1: { exfalso. apply Hbij in Hget2. inversion Hlook2; subst.
-            rewrite Hget2 in Hget1; discriminate. }
-          rewrite <- Hhd1 in Hh2; eauto. split; auto.
-          rewrite Hr1iff. rewrite amap_mem_spec, Hget1. auto.
-      * (*Idea: everything we add is in fv, easy*)
-        intros x. rewrite amap_mem_aunion_some. 
-        simpl_set. intros [[Hmemx _] | [Hmemx Hnotinx]].
-        -- apply pat_constr_vars_fv in Hmemx.
-          apply Hr1iff in Hmemx; rewrite Hmemx; auto.
-        -- apply Hallin1 in Hmemx; rewrite Hmemx, orb_true_r. auto.
-      * intros x. rewrite upd_option_iter_some.
-        intros [Hh1 Hnotin]. rewrite amap_mem_aunion_some.
-        apply Hinhd1 in Hh1. rewrite Hh1, orb_true_r; auto.
-      
-
-      * (*use first IH*) eapply IH1; eauto.
-      
-
-
-
-
-
-Dec_tmatch_constr
-      Print decrease_fun.
-
-
-      Print get_constr_smaller.
-
-
- admit.
-
-
-
- rewrite
-
- apply orb_true_iff; left.
-          apply H
-            Search amap_mem aunion.
-            rewrite amap_mem_aunion.
-
-
-          intros [x1 [Hy Hmemx1]].
-          subst. 
-          apply Hr1iff in Hmemx1. 
-          rewrite amap_mem_spec in Hmemx1.
-          destruct (amap_lookup r1 x1) as [y1|] eqn : Hget3; [|discriminate].
-          rewrite (mk_fun_some Hget3) in Hlook1, Hget2.
-          apply Hbij in Hget3. rewrite Hget3 in Hget2; discriminate.
-
-
-upd_option_iter_some:
-  forall (hd : option vsymbol) (l : aset vsymbol) (h : vsymbol),
-  upd_option_iter hd l = Some h <-> hd = Some h /\ ~ aset_mem h l
-
- rewrite Hget1 in Hy.
-
-
-          intros [x1 [Hy Hmemx1]].
-
-
- right. 
-
-
-
-  forall x y : vsymbol,
-  amap_lookup m1 x = Some y -> amap_lookup m2 y = Some x -> aset_mem x small1 -> aset_mem y small2
-          
-
-
- destruct Hinj as [Hinj1 Hinj2].
-
-
- Search a_equiv_p bij_map.
-
-
-pat_constr_vars_map
-
-        (*We know that r1 and r2 are bijective*)
-        Search a_equiv_p amap_lookup.
-
-Print pat_constr_vars.
-
-
-
-
-
-a_equiv_p_iff:
-  forall (p1 p2 : pattern) (res : amap vsymbol vsymbol * amap vsymbol vsymbol),
-  a_equiv_p p1 p2 = Some res <->
-  p2 = map_pat (fst res) p1 /\
-  bij_map (fst res) (snd res) /\
-  (forall x : vsymbol, aset_mem x (pat_fv p1) <-> amap_mem x (fst res)) /\
-  (forall x y : vsymbol, aset_mem x (pat_fv p1) -> amap_lookup (fst res) x = Some y -> snd x = snd y) /\
-  (forall x y : vsymbol,
-   aset_mem x (pat_fv p1) ->
-   aset_mem y (pat_fv p1) -> amap_lookup (fst res) x = amap_lookup (fst res) y -> x = y)
-      -
-
-
-
- rename H7 into Halldec.
-
-      
-
-
-
-
-      Print decrease_fun. 
-     
-
-
-        2: { rewrite Hlook1 
-        
-
-
-
-
-
-
-
-    (*START*)
-
-
-    Print decrease_fun.
-
-
-      *
-
- Search amap_mem amap_set.
-
-        --
-            destruct hd2.
-            destruct hd2 
-
-
- unfold upd_option.
-
-
- (*How do we know that y is not v2?*)
-
-
-
- Search amap_lookup amap_set.
-
- eauto.
-
-    Print decrease_fun.
-
-
-| Dec_tlet : forall (small : aset vsymbol) (hd : option vsymbol) (m : mut_adt) 
-                 (vs : list vty) (t1 : term) (v : vsymbol) (t2 : term),
-               decrease_fun fs0 ps0 small hd m vs t1 ->
-               decrease_fun fs0 ps0 (aset_remove v small) (upd_option hd v) m vs t2 ->
-               decrease_fun fs0 ps0 small hd m vs (Tlet t1 v t2)
-
-
-
-      (*Now only inductive case left*) 
-      
-
-
-
-      Print decrease_fun.
-
-
-
-
- Print decrease_fun. 
-    inversion Hdec; subst.
-
-
-decrease_fun (fs : list fn) (ps : list pn)
-  : aset vsymbol -> option vsymbol -> mut_adt -> list vty -> term -> Prop :=
-*)
+      eapply IH1. 5: apply Halpha.
+      (*Prove map conditions*)
+      * apply tmatch_small_preserved; auto. intros p x. apply pat_constr_vars_fv.
+      * apply tmatch_hd_preserved; auto.
+      * apply tmatch_allin_preserved; auto. intros p x. apply pat_constr_vars_fv.
+      * apply tmatch_hd_in_preserved; auto.
+    + (*Case 2: terminating argument within a function*)
+      destruct tm2 as [| | c2 tys2 tms2 | | | | ]; try discriminate.
+      assert (Halpha':=Halpha).
+      simpl in Halpha'.
+      destruct (funsym_eq_dec c c2); subst; [|discriminate].
+      destruct (Nat.eqb_spec (length tms) (length tms2)); [|discriminate].
+      destruct (list_eq_dec _ l tys2); [|discriminate]; subst.
+      simpl in Halpha'.
+      apply Dec_fmatch_constr; auto; [eapply IH1; eauto|].
+      (*Again, need to prove condition on maps*)
+      clear IH1 Hty Halpha Hdec H5.
+      rename H7 into Halldec.
+      rewrite <- Forall_forall in Halldec |- *.
+      generalize dependent ps2. induction ps1 as [| [p1 t1] ps1 IH]; intros [| [p2 t2] ps2]; simpl; auto;
+      try discriminate.
+      intros Hlen.
+      rewrite all2_cons, andb_true. intros [Halpha Hall].
+      inversion IHps as [| ? ? IH1 IH2]; subst; clear IHps.
+      inversion Halldec as [| ? ? Hdec1 Hdec2]; subst; clear Halldec.
+      specialize (IH IH2 Hdec2 ps2 (ltac:(auto)) Hall). constructor; auto.
+      clear Hall IH2 Hdec2 IH.
+      (*Now, prove single*)
+      simpl in *. destruct (a_equiv_p p1 p2) as [[r1 r2]|] eqn : Halphap; [|discriminate].
+      (*From a_equiv_p, know that p2 is [map_pat r1 p1] so we can directly
+        express [pat_constr_vars]*)
+      assert (Halphap' := Halphap).
+      apply a_equiv_p_iff in Halphap'. simpl in Halphap'.
+      destruct Halphap' as [Hp2 [Hbij [Hr1iff [Htys Hinj]]]].
+      subst p2.
+      rewrite map_pat_free_vars; auto.
+      (*Now we need to know that [tm_var_case] is equivalent over tms1 and tms2*)
+      assert (Hvarcase: Forall2 (fun t1 t2 => tm_var_case hd1 small1 t1 -> tm_var_case hd2 small2 t2) tms tms2).
+      {
+        clear -e Halpha' Hsmall1 Hhd1 Hallin1 Hinhd1.
+        generalize dependent tms2.
+        induction tms as [| tm1 tms1 IH]; intros [| tm2 tms2]; try discriminate; auto.
+        simpl. rewrite all2_cons, andb_true. intros [Halpha Hall] Hlen.
+        constructor; auto.
+        destruct tm1; destruct tm2; try discriminate; auto.
+        simpl. unfold is_true.
+        rewrite <- !(reflect_iff _ _(check_var_case_spec _ _ _)).
+        eapply var_case_impl; eauto.
+      }
+      apply decrease_pred_subset with (small1:= 
+      (aset_union (vsyms_in_m' m vs
+        (aset_map (fun x => lookup_default r1 x x) (get_constr_smaller small1 hd1 m vs c2 tys2 tms p1)))
+        (aset_diff (aset_map (mk_fun r1) (pat_fv p1)) small2)))
+      (hd1:=(upd_option_iter hd2 (aset_map (mk_fun r1) (pat_fv p1)))).
+      1: { (*Prove subset*) solve_asubset. unfold vsyms_in_m'. apply asubset_filter.
+        apply get_constr_smaller_vars_map; auto.
+        - intros x Hinx; apply Hr1iff; auto.
+        - intros x y Hlook; apply Htys; auto. apply Hr1iff; auto. rewrite amap_mem_spec, Hlook; auto.
+      }
+      1 : { apply option_sub_refl. }
+      (*Now back to main proof, need to prove map preservation*)
+      unfold vsyms_in_m'.
+      rewrite aset_filter_map.
+      2: { unfold vsym_in_m. intros x. unfold lookup_default.
+        destruct (amap_lookup r1 x) as [y|] eqn : Hget; auto.
+        rewrite Htys with (x:=x)(y:=y); auto.
+        apply Hr1iff; auto. rewrite amap_mem_spec, Hget; auto.
+      }
+      eapply IH1. 5: apply Halpha. 5: apply Hdec1.
+      * apply tmatch_small_preserved; auto. intros p x. apply get_constr_smaller_fv.
+      * apply tmatch_hd_preserved; auto.
+      * apply tmatch_allin_preserved; auto. intros p x. apply get_constr_smaller_fv.
+      * apply tmatch_hd_in_preserved; auto.
+    + (*Last case: recursive*)
+      assert (Hind: forall x : pattern * formula,
+        In x ps2 ->
+        decrease_pred fs ps (aset_diff (pat_fv (fst x)) small2) (upd_option_iter hd2 (pat_fv (fst x))) m vs
+          (snd x)).
+      {
+        rewrite <- Forall_forall in H8 |- *. rename H8 into Halldec.
+        clear Hdec H6 IH1 Halpha H7 Hty.
+        generalize dependent ps2.
+        induction ps1 as [| [p1 t1] ps1 IH]; intros [|[ p2 t2] ps2]; try discriminate; auto.
+        simpl. intros Hlen. rewrite all2_cons, andb_true.
+        simpl. intros [Halpha Hall].
+        inversion IHps as [| ? ? IH1 IH2]; subst; clear IHps.
+        inversion Halldec as [| ? ? Hdec1 Hdec2]; subst; clear Halldec.
+        specialize (IH IH2 Hdec2 ps2 ltac:(auto) Hall). constructor; auto.
+        clear IH2 Hdec2 Hall IH.
+        simpl in *.
+        destruct (a_equiv_p p1 p2) as [[r1 r2] |] eqn : Halphap; [|discriminate].
+        assert (Halphap' := Halphap).
+        apply a_equiv_p_iff in Halphap'. simpl in Halphap'.
+        destruct Halphap' as [Hp2 [Hbij [Hr1iff [Htys Hinj]]]].
+        subst p2.
+        rewrite map_pat_free_vars; auto.
+        eapply IH1. 5: apply Halpha. 5: apply Hdec1. 
+        -- apply tmatch_small_preserved_ind; auto.
+        -- apply tmatch_hd_preserved; auto.
+        -- apply tmatch_allin_preserved_ind; auto.
+        -- apply tmatch_hd_in_preserved; auto.
+      }
+      (*Now we have two cases: either tm2 matches the variable or not. In the second case,
+        inductive. In the first case, use subset lemma - we still terminate even without
+        the extra variables*)
+      assert (Hcases: (exists v, tm2 = Tvar v /\ var_case hd2 small2 v) \/
+        match tm2 with
+         | Tvar var => ~ var_case hd2 small2 var
+         | Tfun _ _ _ => false
+         | _ => True
+         end).
+      {
+        destruct tm2; auto.
+        - destruct (check_var_case_spec hd2 small2 v); [left | right]; eauto.
+        - destruct tm1; discriminate. (*contradicts alpha equivalence*)
+      }
+      destruct Hcases as [[v [Htm2 Hvarcase]] | Htm2]. 
+      * (*Case 1: this one does match. *)
+        subst tm2.
+        apply Dec_fmatch; auto.
+        (*Just subset*)
+        intros x Hinx.
+        eapply decrease_pred_subset. 3: apply Hind; auto.
+        -- apply union_asubset_r.
+        -- apply option_sub_refl.
+      * (*Case 2: Now just a normal rec case, no subset*)
+        apply Dec_fmatch_rec; auto.
+        eapply IH1; eauto.
+Qed.
+
+Definition a_equiv_t_decrease_fun gamma fs ps Hwf1 Hwf2 m vs t1 t2 ty Hty small1 small2 hd1 hd2 m1 m2 Hsmall1
+  Hhd1 Hallin1 Hhdin1 Halpha Hdec :=
+  proj_tm (a_equiv_decrease_fun gamma fs ps Hwf1 Hwf2 m vs) t1 ty Hty small1 small2 hd1 hd2 t2 m1 m2 Hsmall1
+    Hhd1 Hallin1 Hhdin1 Halpha Hdec.
+
+Definition a_equiv_f_decrease_pred gamma fs ps Hwf1 Hwf2 m vs f1 f2 Hty small1 small2 hd1 hd2 m1 m2 Hsmall1
+  Hhd1 Hallin1 Hhdin1 Halpha Hdec :=
+  proj_fmla (a_equiv_decrease_fun gamma fs ps Hwf1 Hwf2 m vs) f1 Hty small1 small2 hd1 hd2 f2 m1 m2 Hsmall1
+    Hhd1 Hallin1 Hhdin1 Halpha Hdec.
+
+(*TODO: see what corollaries we need*)
 
 (*The more interesting one: [valid_def] is preserved*)
 Lemma a_equiv_valid_def gamma (d1 d2: def):
