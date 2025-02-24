@@ -1471,6 +1471,318 @@ Definition a_equiv_f_decrease_pred gamma fs ps Hwf1 Hwf2 m vs f1 f2 Hty small1 s
 
 (*TODO: see what corollaries we need*)
 
+Lemma split_funpred_defs_alpha (l1 l2: list funpred_def) (Hlen: length l1 = length l2)
+  (Hall: all2 a_equiv_funpred_def l1 l2):
+  all2 (fun x1 x2 => 
+    let vs1 := snd (fst x1) in
+    let vs2 := snd (fst x2) in
+    funsym_eq_dec (fst (fst x1)) (fst (fst x2)) && 
+    (length vs1 =? length vs2) &&
+    (list_eq_dec vty_eq_dec (map snd vs1) (map snd vs2)) &&
+    nodupb string_dec (map fst vs1) &&
+    nodupb string_dec (map fst vs2) &&
+    alpha_equiv_t (list_to_amap (combine vs1 vs2)) (list_to_amap (combine vs2 vs1)) (snd x1) (snd x2)) 
+    (fst (split_funpred_defs l1)) (fst (split_funpred_defs l2)) /\
+  all2 (fun x1 x2 => 
+    let vs1 := snd (fst x1) in
+    let vs2 := snd (fst x2) in
+    predsym_eq_dec (fst (fst x1)) (fst (fst x2)) && 
+    (length vs1 =? length vs2) &&
+    (list_eq_dec vty_eq_dec (map snd vs1) (map snd vs2)) &&
+    nodupb string_dec (map fst vs1) &&
+    nodupb string_dec (map fst vs2) &&
+    alpha_equiv_f (list_to_amap (combine vs1 vs2)) (list_to_amap (combine vs2 vs1)) (snd x1) (snd x2)) 
+    (snd (split_funpred_defs l1)) (snd (split_funpred_defs l2)).
+Proof.
+  generalize dependent l2.
+  induction l1 as [| fd1 l1 IH]; intros [| fd2 l2]; try discriminate; auto; simpl.
+  rewrite !all2_cons, !andb_true.
+  intros Hlen [Halpha Hall].
+  specialize (IH l2 ltac:(auto) Hall).
+  destruct IH as [IH1 IH2].
+  destruct fd1 as [f1 vs1 b1 | p1 vs1 b1]; destruct fd2 as [f2 vs2 b2 | p2 vs2 b2]; try discriminate; auto.
+  - simpl. rewrite !all2_cons. split; auto. simpl.
+    simpl in Halpha.
+    destruct (funsym_eqb_spec f1 f2); [|discriminate].
+    subst. destruct (funsym_eq_dec f2 f2); auto. simpl. simpl in Halpha.
+    rewrite !andb_true in Halpha. destruct Halpha as [[[[Hlen' Hfsteq] Hn1] Hn2] Halpha].
+    unfold vsymbol in Hlen'; rewrite Hlen', Hn1, Hn2.
+    destruct (list_eqb_spec _ vty_eq_spec (map snd vs1) (map snd vs2)); [|discriminate].
+    destruct (list_eq_dec _ (map snd vs1) (map snd vs2)); try contradiction. simpl.
+    unfold vsymbol in Halpha.
+    rewrite Halpha. auto.
+  - simpl. rewrite !all2_cons. split; auto. simpl.
+    simpl in Halpha.
+    destruct (predsym_eqb_spec p1 p2); [|discriminate].
+    subst. destruct (predsym_eq_dec p2 p2); auto. simpl. simpl in Halpha.
+    rewrite !andb_true in Halpha. destruct Halpha as [[[[Hlen' Hfsteq] Hn1] Hn2] Halpha].
+    destruct (list_eqb_spec _ vty_eq_spec (map snd vs1) (map snd vs2)); [|discriminate].
+    destruct (list_eq_dec _ (map snd vs1) (map snd vs2)); try contradiction. simpl.
+    unfold vsymbol in Hlen'; rewrite Hlen', Hn1, Hn2. simpl. unfold vsymbol in Halpha.
+    rewrite Halpha. auto.
+Qed.
+
+Lemma split_funpred_defs_alpha_length (l1 l2: list funpred_def) (Hlen: length l1 = length l2)
+  (Hall: all2 a_equiv_funpred_def l1 l2):
+  length (fst (split_funpred_defs l1))  = length (fst (split_funpred_defs l2)) /\
+  length (snd (split_funpred_defs l1))  = length (snd (split_funpred_defs l2)).
+Proof.
+  generalize dependent l2.
+  induction l1 as [| fd1 l1 IH]; intros [| fd2 l2]; try discriminate; auto; simpl.
+  rewrite !all2_cons, !andb_true.
+  intros Hlen [Halpha Hall].
+  specialize (IH l2 ltac:(auto) Hall).
+  destruct IH as [IH1 IH2].
+  destruct fd1; destruct fd2; try discriminate; simpl; auto.
+Qed.
+
+
+(*Corollaries:*)
+
+(*TODO: delete f_sym and make corollary if needed*)
+Lemma split_funpred_defs_alpha_syms (l1 l2: list funpred_def) (Hlen: length l1 = length l2)
+  (Hall: all2 a_equiv_funpred_def l1 l2):
+  map (fun x => f_sym (fst (fst x))) (fst (split_funpred_defs l1)) =
+  map (fun x => f_sym (fst (fst x))) (fst (split_funpred_defs l2))  /\
+  map (fun x => p_sym (fst (fst x))) (snd (split_funpred_defs l1)) =
+  map (fun x => p_sym (fst (fst x))) (snd (split_funpred_defs l2)).
+Proof.
+  pose proof (split_funpred_defs_alpha _ _ Hlen Hall) as [Hall1 Hall2].
+  pose proof (split_funpred_defs_alpha_length _ _ Hlen Hall) as [Hlen1 Hlen2].
+  split.
+  - clear Hall2 Hlen2. generalize dependent (fst (split_funpred_defs l2)).
+    generalize dependent (fst (split_funpred_defs l1)). clear.
+    intros l1 l2. revert l2. induction l1 as [| [[f1 vs1] b1] l1]; intros [| [[f2 vs2] b2] l2];
+    try discriminate;auto; simpl.
+    rewrite all2_cons. simpl.
+    destruct (funsym_eq_dec f1 f2); subst; auto; [|discriminate].
+    rewrite !andb_true. intros; destruct_all; f_equal; auto.
+  -  clear Hall1 Hlen1. generalize dependent (snd (split_funpred_defs l2)).
+    generalize dependent (snd (split_funpred_defs l1)). clear.
+    intros l1 l2. revert l2. induction l1 as [| [[f1 vs1] b1] l1]; intros [| [[f2 vs2] b2] l2];
+    try discriminate;auto; simpl.
+    rewrite all2_cons. simpl.
+    destruct (predsym_eq_dec f1 f2); subst; auto; [|discriminate].
+    rewrite !andb_true. intros; destruct_all; f_equal; auto.
+Qed.
+
+(*Version for [funpred_defs_to_sns]*)
+
+Lemma funpred_defs_to_sns_alpha (l1 l2: list funpred_def) (Hlen: length l1 = length l2)
+  (Hall: all2 a_equiv_funpred_def l1 l2) il
+  (Hleni: length il = length l1):
+  Forall2 (fun f1 f2: fn =>
+    let vs1 := (sn_args (fn_sn f1)) in
+    let vs2 := (sn_args (fn_sn f2)) in
+    fn_sym f1 = fn_sym f2 /\
+    sn_sym (fn_sn f1) = sn_sym (fn_sn f2) /\
+    map snd vs1 = map snd vs2 /\
+    (*do we need NoDups?*)
+    sn_idx (fn_sn f1) = sn_idx (fn_sn f2) /\
+    alpha_equiv_t (list_to_amap (combine vs1 vs2)) (list_to_amap (combine vs2 vs1))
+      (fn_body f1) (fn_body f2)) 
+    (fst (funpred_defs_to_sns l1 il)) (fst (funpred_defs_to_sns l2 il)) /\
+   Forall2 (fun f1 f2: pn =>
+    let vs1 := (sn_args (pn_sn f1)) in
+    let vs2 := (sn_args (pn_sn f2)) in
+    pn_sym f1 = pn_sym f2 /\
+    sn_sym (pn_sn f1) = sn_sym (pn_sn f2) /\
+    map snd vs1 = map snd vs2 /\
+    (*do we need NoDups?*)
+    sn_idx (pn_sn f1) = sn_idx (pn_sn f2) /\
+    alpha_equiv_f (list_to_amap (combine vs1 vs2)) (list_to_amap (combine vs2 vs1))
+      (pn_body f1) (pn_body f2)) 
+    (snd (funpred_defs_to_sns l1 il)) (snd (funpred_defs_to_sns l2 il)).
+Proof.
+  pose proof (split_funpred_defs_alpha _ _ Hlen Hall) as [Hall1 Hall2].
+  pose proof (split_funpred_defs_alpha_length _ _ Hlen Hall) as [Hlen1 Hlen2].
+  split.
+  - clear Hall2 Hlen2.
+    unfold funpred_defs_to_sns. simpl.
+    rewrite Hlen1. 
+    pose proof (split_funpred_defs_length l1) as Hlen'.
+    assert (Hleni': length (fst (split_funpred_defs l1)) = 
+      length (firstn (Datatypes.length (fst (split_funpred_defs l2))) il)) by (rewrite length_firstn; lia).
+    clear Hlen' Hleni Hall Hlen.
+    generalize dependent (firstn (Datatypes.length (fst (split_funpred_defs l2))) il).
+    generalize dependent (fst (split_funpred_defs l2)).
+    generalize dependent (fst (split_funpred_defs l1)). clear.
+    intros l1 l2.
+    revert l2. induction l1 as [| [[f1 vs1] b1] l1 IH]; intros [| [[f2 vs2] b2] l2]; try discriminate; auto.
+    simpl.
+    rewrite all2_cons. simpl fst; simpl snd.
+    rewrite !andb_true. intros Hhyps Hlen. destruct_all. repeat simpl_sumbool.
+    intros [| i1 il]; try discriminate. simpl. intros Hleni.
+    constructor; auto.
+  - clear Hall1.
+    unfold funpred_defs_to_sns. simpl.
+    rewrite Hlen1. 
+    pose proof (split_funpred_defs_length l2) as Hlen'.
+    assert (Hleni': length (snd (split_funpred_defs l2)) = 
+      length (skipn (Datatypes.length (fst (split_funpred_defs l2))) il)) by (rewrite length_skipn; lia).
+    clear Hlen' Hleni Hall Hlen.
+    generalize dependent (skipn (Datatypes.length (fst (split_funpred_defs l2))) il).
+    generalize dependent (snd (split_funpred_defs l2)).
+    generalize dependent (snd (split_funpred_defs l1)). clear.
+    intros l1 l2.
+    revert l2. induction l1 as [| [[f1 vs1] b1] l1 IH]; intros [| [[f2 vs2] b2] l2]; try discriminate; auto.
+    simpl.
+    rewrite all2_cons. simpl fst; simpl snd.
+    rewrite !andb_true. intros Hhyps Hlen. destruct_all. repeat simpl_sumbool.
+    intros [| i1 il]; try discriminate. simpl. intros Hleni.
+    constructor; auto.
+Qed.
+
+(*Copied from termination checker*)
+Definition fn_d : fn :=
+  (mk_fn id_fs sn_d tm_d).
+
+Definition pn_d : pn :=
+  (mk_pn (Build_predsym id_sym) sn_d Ftrue).
+
+
+(*More corollaries*)
+Lemma funpred_defs_to_sns_sym (l1 l2: list funpred_def) (Hlen: length l1 = length l2)
+  (Hall: all2 a_equiv_funpred_def l1 l2) il
+  (Hleni: length il = length l1):
+  map fn_sym (fst (funpred_defs_to_sns l1 il)) =
+  map fn_sym (fst (funpred_defs_to_sns l2 il)) /\
+  map pn_sym (snd (funpred_defs_to_sns l1 il)) =
+  map pn_sym (snd (funpred_defs_to_sns l2 il)).
+Proof.
+  pose proof (funpred_defs_to_sns_alpha _ _ Hlen Hall _ Hleni) as [Hall1 Hall2].
+  (*Do element by element to avoid induction*)
+  split; [clear Hall2 | clear Hall1].
+  - rewrite Forall2_nth in Hall1. destruct Hall1 as [Hlen' Hall1].
+    apply list_eq_ext'; [solve_len|]. simpl_len. intros n d Hn.
+    rewrite -> !map_nth_inbound with (d2:=fn_d) by (auto; lia).
+    apply Hall1; auto.
+  - rewrite Forall2_nth in Hall2. destruct Hall2 as [Hlen' Hall2].
+    apply list_eq_ext'; [solve_len|]. simpl_len. intros n d Hn.
+    rewrite -> !map_nth_inbound with (d2:=pn_d) by (auto; lia).
+    apply Hall2; auto.
+Qed.
+
+Lemma funpred_defs_to_sns_idx (l1 l2: list funpred_def) (Hlen: length l1 = length l2)
+  (Hall: all2 a_equiv_funpred_def l1 l2) il
+  (Hleni: length il = length l1):
+  map sn_idx (map fn_sn (fst (funpred_defs_to_sns l1 il))) =
+  map sn_idx (map fn_sn (fst (funpred_defs_to_sns l2 il))) /\
+  map sn_idx (map pn_sn (snd (funpred_defs_to_sns l1 il))) =
+  map sn_idx (map pn_sn (snd (funpred_defs_to_sns l2 il))).
+Proof.
+  pose proof (funpred_defs_to_sns_alpha _ _ Hlen Hall _ Hleni) as [Hall1 Hall2].
+  (*Do element by element to avoid induction*)
+  split; [clear Hall2 | clear Hall1].
+  - rewrite Forall2_nth in Hall1. destruct Hall1 as [Hlen' Hall1].
+    apply list_eq_ext'; [solve_len|]. simpl_len. intros n d Hn.
+    rewrite !map_map.
+    rewrite -> !map_nth_inbound with (d2:=fn_d) by (auto; lia).
+    apply Hall1; auto.
+  - rewrite Forall2_nth in Hall2. destruct Hall2 as [Hlen' Hall2].
+    apply list_eq_ext'; [solve_len|]. simpl_len. intros n d Hn.
+    rewrite !map_map.
+    rewrite -> !map_nth_inbound with (d2:=pn_d) by (auto; lia).
+    apply Hall2; auto.
+Qed.
+
+
+
+(*To avoid induction:
+  sometimes we don't care about the corresponding element, all we care about is
+  that there is some corresponding element*)
+Lemma all2_in_fst {A B: Type} (P: A -> B -> bool) (l1: list A) (l2: list B)
+  (Hlen: length l1 = length l2) (Hall: all2 P l1 l2) x:
+  In x l1 ->
+  exists y, In y l2 /\ P x y.
+Proof.
+  generalize dependent l2. 
+  induction l1 as [| x1 l1 IH]; intros [| x2 l2]; simpl; try discriminate; try contradiction.
+  intros Hlen. rewrite all2_cons, andb_true. intros [Hp12 Hall] [Hx | Hinx]; subst; eauto.
+  destruct (IH l2 (ltac:(auto)) Hall Hinx) as [y [Hiny Hpy]].
+  exists y. auto.
+Qed.
+
+Lemma all2_in_snd {A B: Type} (P: A -> B -> bool) (l1: list A) (l2: list B)
+  (Hlen: length l1 = length l2) (Hall: all2 P l1 l2) y:
+  In y l2 ->
+  exists x, In x l1 /\ P x y.
+Proof.
+  generalize dependent l2. 
+  induction l1 as [| x1 l1 IH]; intros [| x2 l2]; simpl; try discriminate; try contradiction.
+  intros Hlen. rewrite all2_cons, andb_true. intros [Hp12 Hall] [Hx | Hiny]; subst; eauto.
+  destruct (IH l2 (ltac:(auto)) Hall Hiny) as [x [Hinx Hpx]].
+  exists x. auto.
+Qed.
+
+
+
+(*Finally, we can change fs and ps in our termination check as long as the symbols and the indices
+  are the same
+  (NOTE: doesn't have to be map, but a bit nicer this way*)
+Check decrease_fun.
+Lemma decrease_change_fs_ps (fs1 fs2 : list fn) ps1 ps2
+  (Hfs1: map fn_sym fs1 = map fn_sym fs2)
+  (Hfs2: map sn_idx (map fn_sn fs1) = map sn_idx (map fn_sn fs2))
+  (Hps1: map pn_sym ps1 = map pn_sym ps2)
+  (Hps2: map sn_idx (map pn_sn ps1) = map sn_idx (map pn_sn ps2))
+  m vs t f:
+  (forall small hd (Hdec: decrease_fun fs1 ps1 small hd m vs t),
+    decrease_fun fs2 ps2 small hd m vs t) /\
+  (forall small hd (Hdec: decrease_pred fs1 ps1 small hd m vs f),
+    decrease_pred fs2 ps2 small hd m vs f).
+Proof.
+  revert t f; apply term_formula_ind; auto; try solve[intros; constructor];
+  try solve[intros; inversion Hdec; subst; constructor; auto].
+  - intros f1 tys1 tms1 IH small hd Hdec.
+    assert (Hlen: length fs1 = length fs2) by (erewrite <- length_map, Hfs1; solve_len). 
+    inversion Hdec; subst.
+    + destruct (In_nth fs1 f_decl fn_d ltac:(auto)) as [i [Hi Hfdec]].
+      subst. apply Dec_fun_in with(f_decl := nth i fs2 fn_d)(x:=x); auto.
+      -- apply nth_In; lia.
+      -- apply (f_equal (fun l => nth i l id_fs)) in Hfs1.
+        rewrite !map_nth_inbound with (d2:=fn_d) in Hfs1; auto; lia.
+      -- rewrite !map_map in Hfs2. (*TODO: is this better hyp?*)
+        apply (f_equal (fun l => nth i l 0)) in Hfs2.
+        rewrite !map_nth_inbound with (d2:=fn_d) in Hfs2; auto; try lia. congruence.
+      -- rewrite !Forall_forall in *; auto.
+    + rewrite Hfs1 in H5. rewrite Forall_forall in IH. apply Dec_fun_notin; auto.
+  - intros. rewrite Forall_map, Forall_forall in H0. inversion Hdec; subst.
+    + apply Dec_tmatch; auto.
+    + apply Dec_tmatch_constr; auto.
+    + apply Dec_tmatch_rec; auto.
+  - intros p1 tys1 tms1 IH small hd Hdec.
+    assert (Hlen: length ps1 = length ps2) by (erewrite <- length_map, Hps1; solve_len). 
+    inversion Hdec; subst.
+    + destruct (In_nth ps1 p_decl pn_d ltac:(auto)) as [i [Hi Hpdec]].
+      subst. apply Dec_pred_in with(p_decl := nth i ps2 pn_d)(x:=x); auto.
+      -- apply nth_In; lia.
+      -- apply (f_equal (fun l => nth i l id_ps)) in Hps1.
+        rewrite !map_nth_inbound with (d2:=pn_d) in Hps1; auto; lia.
+      -- rewrite !map_map in Hps2. (*TODO: is this better hyp?*)
+        apply (f_equal (fun l => nth i l 0)) in Hps2.
+        rewrite !map_nth_inbound with (d2:=pn_d) in Hps2; auto; try lia. congruence.
+      -- rewrite !Forall_forall in *; auto.
+    + rewrite Hps1 in H5. rewrite Forall_forall in IH. apply Dec_pred_notin; auto.
+  - intros. rewrite Forall_map, Forall_forall in H0. inversion Hdec; subst.
+    + apply Dec_fmatch; auto.
+    + apply Dec_fmatch_constr; auto.
+    + apply Dec_fmatch_rec; auto.
+Qed.
+
+Definition decrease_fun_change_fs_ps fs1 fs2 ps1 ps2 Hfs1 Hfs2 Hps1 Hps2 m vs t small hd Hdec :=
+  proj_tm (decrease_change_fs_ps fs1 fs2 ps1 ps2 Hfs1 Hfs2 Hps1 Hps2 m vs) t small hd Hdec.
+Definition decrease_pred_change_fs_ps fs1 fs2 ps1 ps2 Hfs1 Hfs2 Hps1 Hps2 m vs f small hd Hdec :=
+  proj_fmla (decrease_change_fs_ps fs1 fs2 ps1 ps2 Hfs1 Hfs2 Hps1 Hps2 m vs) f small hd Hdec.
+
+
+Definition indpred_d : indpred_def.
+constructor.
+exact id_ps.
+exact nil.
+Defined.
+
+
 (*The more interesting one: [valid_def] is preserved*)
 Lemma a_equiv_valid_def gamma (d1 d2: def):
   a_equiv_def d1 d2 ->
@@ -1500,67 +1812,369 @@ Proof.
     exists m. exists params. exists vs. exists is.
     unfold funpred_def_term in *.
     destruct Hterm as [Hl1 [Hlenvs [m_in [Hlenis [Hargs [Htys1 [Htys2 [Hparams1 [Hparams2 [Hdec1 Hdec2]]]]]]]]]].
+    apply Nat.eqb_eq in Hlen.
+    (*Prove first one (bounds) separately*)
+    assert (Hargs2: (forall i : nat,
+       i < Datatypes.length is ->
+       nth i is 0 <
+       Datatypes.length
+         (s_args
+            (nth i
+               (map (fun x : funsym * list vsymbol * term => f_sym (fst (fst x))) (fst (split_funpred_defs l2)) ++
+                map (fun x : predsym * list vsymbol * formula => p_sym (fst (fst x))) (snd (split_funpred_defs l2)))
+               id_fs)))).
+    {
+      pose proof (split_funpred_defs_alpha_syms _ _ Hlen Hall) as [Hmap1 Hmap2].
+      intros i Hi. specialize (Hargs i Hi).
+      rewrite <- Hmap1, <- Hmap2; auto.
+    }
+    (*Now we can get wf info*)
+    pose proof (funpred_def_to_sns_wf gamma l1 is ltac:(auto) Hargs Hallval) as [Hwf1 Hwf2].
+    pose proof (funpred_def_to_sns_wf gamma l2 is ltac:(lia) Hargs2 Hval2) as [Hwf3 Hwf4].
+    pose proof (funpred_defs_to_sns_alpha _ _ Hlen Hall _ Hlenis) as [Hsns1 Hsns2].
     split_all; auto.
-    * intro C; subst. destruct l1; auto.
-    * apply Nat.eqb_eq in Hlen; congruence.
-    * (*TODO: prove equivalence of [split_funpred_defs] - each is pairwise equiv/alpha equiv*)
-      admit.
-    * Print funpred_defs_to_sns. (*And likewise prove for [funpred_defs_to_sns]*)
-      admit.
-    * admit.
-    * admit.
-    * admit.
-    * (*Here is the challenging part*)
-      unfold funpred_def_valid_type in Hval2.
+    * intro C; subst. destruct l1; auto. discriminate.
+    * congruence.
+    * intros f Hinf.
+      rewrite Forall_forall in Hwf3; specialize (Hwf3 _ Hinf).
+      unfold fn_wf in Hwf3. unfold sn_wf in Hwf3.
+      (*TODO: see if we need wf*) 
+      destruct (In_nth _ _ fn_d Hinf) as [i [Hi Hf]]; subst.
+      rewrite Forall2_nth in Hsns1.
+      destruct Hsns1 as [Hlen1 Hsns1].
+      specialize (Hsns1 i fn_d fn_d ltac:(lia)). Opaque funpred_defs_to_sns. simpl in Hsns1.
+      destruct Hsns1 as [Hsym [Hsym1 [Hsnd [Hidx Halpha]]]].
+      rewrite <- Hidx.
+      (*need more wf*)
+      assert (Hinf': In (nth i (fst (funpred_defs_to_sns l1 is)) fn_d) (fst (funpred_defs_to_sns l1 is)))
+        by (apply nth_In; lia).
+      rewrite Forall_forall in Hwf1; specialize (Hwf1 _ Hinf'). unfold fn_wf, sn_wf in Hwf1.
+      (*Now need to use [map snd] result*)
+      apply (f_equal (fun l => nth (sn_idx (nth i (fst (funpred_defs_to_sns l1 is)) fn_d)) l vty_int)) in Hsnd.
+      (*Need to know that i is in bounds - use wf*)
+      rewrite !map_nth_inbound with (d2:=vs_d) in Hsnd.
+      2: { destruct_all; lia. }
+      2: { destruct_all; lia. }
+      rewrite <- Hsnd. 
+      (*Finally, use assumption*)
+      apply Htys1; auto.
+    * (*Symmetric proof*)
+      intros p Hinp.
+      rewrite Forall_forall in Hwf4; specialize (Hwf4 _ Hinp).
+      unfold pn_wf in Hwf4. unfold sn_wf in Hwf4.
+      destruct (In_nth _ _ pn_d Hinp) as [i [Hi Hp]]; subst.
+      rewrite Forall2_nth in Hsns2.
+      destruct Hsns2 as [Hlen1 Hsns2].
+      specialize (Hsns2 i pn_d pn_d ltac:(lia)). Opaque funpred_defs_to_sns. simpl in Hsns2.
+      destruct Hsns2 as [Hsym [Hsym1 [Hsnd [Hidx Halpha]]]].
+      rewrite <- Hidx.
+      (*need more wf*)
+      assert (Hinp': In (nth i (snd (funpred_defs_to_sns l1 is)) pn_d) (snd (funpred_defs_to_sns l1 is)))
+        by (apply nth_In; lia).
+      rewrite Forall_forall in Hwf2; specialize (Hwf2 _ Hinp'). unfold pn_wf, sn_wf in Hwf2.
+      (*Now need to use [map snd] result*)
+      apply (f_equal (fun l => nth (sn_idx (nth i (snd (funpred_defs_to_sns l1 is)) pn_d)) l vty_int)) in Hsnd.
+      (*Need to know that i is in bounds - use wf*)
+      rewrite !map_nth_inbound with (d2:=vs_d) in Hsnd.
+      2: { destruct_all; lia. }
+      2: { destruct_all; lia. }
+      rewrite <- Hsnd. 
+      (*Finally, use assumption*)
+      apply Htys2; auto.
+    * (*params is much easier*)
+      intros f Hinf.
+      destruct (In_nth _ _ fn_d Hinf) as [i [Hi Hf]]; subst.
+      rewrite Forall2_nth in Hsns1.
+      destruct Hsns1 as [Hlen1 Hsns1].
+      specialize (Hsns1 i fn_d fn_d ltac:(lia)). clear Hsns2.
+      simpl in Hsns1. destruct Hsns1 as [Hsym _]. rewrite <- Hsym.
+      apply Hparams1, nth_In; auto. lia.
+    * intros p Hinp.
+      destruct (In_nth _ _ pn_d Hinp) as [i [Hi Hp]]; subst.
+      rewrite Forall2_nth in Hsns2.
+      destruct Hsns2 as [Hlen2 Hsns2].
+      specialize (Hsns2 i pn_d pn_d ltac:(lia)). clear Hsns1.
+      simpl in Hsns2. destruct Hsns2 as [Hsym _]. rewrite <- Hsym.
+      apply Hparams2, nth_In; auto. lia.
+    * (*And finally, [decrease_fun]*)
+      (*Idea: change 2 things: first change fs/ps, then use alpha lemma*)
+      (*Need typing unfortunately*)
+      clear -Hsns1 Hwf1 Hwf2 Hwf3 Hwf4 Hallval Hdec1 Hlen Hall Hlenis Hval2. (*TODO: need lengths?*)
+      rewrite Forall_nth in Hdec1 |- *.
+      intros i d Hi.
+      apply decrease_fun_change_fs_ps with (fs1:=(fst (funpred_defs_to_sns l1 is)))
+        (ps1:=(snd (funpred_defs_to_sns l1 is))).
+      { apply funpred_defs_to_sns_sym; auto. }
+      { apply funpred_defs_to_sns_idx; auto. }
+      { apply funpred_defs_to_sns_sym; auto. }
+      { apply funpred_defs_to_sns_idx; auto. }
+      (*Now we use the alpha lemma*)
+      specialize (Hdec1 i d ltac:(apply Forall2_length in Hsns1; lia)).
+      revert Hdec1.
+      (*Get typing and alpha in context*)
+      rewrite Forall2_nth in Hsns1.
+      destruct Hsns1 as [Hlen' Hsns1].
+      specialize (Hsns1 i d d ltac:(lia)).
+      destruct Hsns1 as [Hsymeq [Hsym2 [Hsnd [Hid Halpha]]]].
+      (*And get typing*)
+      rewrite Forall_forall in Hallval.
+      assert (Hinl1: let f := (nth i (fst (funpred_defs_to_sns l1 is)) d) in
+        In (fun_def (fn_sym f) (sn_args f) (fn_body f)) l1).
+      { eapply in_fs_def; eauto. apply nth_In; auto. lia. }
+      specialize (Hallval _ Hinl1).
+      simpl in Hallval.
+      destruct Hallval as [Hty [Hv [Htypevar [Hnodup Hmap]]]].
+      (*And get typing info for second (for NoDups mainly)*)
+      rewrite Forall_forall in Hval2.
+      assert (Hinl2: let f := (nth i (fst (funpred_defs_to_sns l2 is)) d) in
+        In (fun_def (fn_sym f) (sn_args f) (fn_body f)) l2).
+      { eapply in_fs_def with (il:=is); try lia. apply nth_In; auto.  }
+      specialize (Hval2 _ Hinl2).
+      simpl in Hval2.
+      destruct Hval2 as [Hty2 [Hv2 [Htypevar2 [Hnodup2 Hmap2]]]].
+      (*Finally, need wf (for index length bound)*)
+      assert (Hwff1:=Hwf1). assert (Hwff2:=Hwf3).
+      rewrite Forall_nth in Hwff1, Hwff2.
+      specialize (Hwff1 i d ltac:(lia)).
+      specialize (Hwff2 i d ltac:(lia)).
+      unfold fn_wf, sn_wf in Hwff1, Hwff2.
+      destruct Hwff1 as [[Hidx1 _] _].
+      destruct Hwff2 as [[Hidx2 _] _].
+      (*TODO: need anything else from wf?*)
+      set (f1:=(nth i (fst (funpred_defs_to_sns l1 is)) d)) in *.
+      set (f2 := (nth i (fst (funpred_defs_to_sns l2 is)) d)) in *.
+      assert (Hmapeq: map snd (sn_args f1) = map snd (sn_args f2)) by congruence.
+      assert (Hlenargs: length (sn_args f1) = length (sn_args f2)) by 
+        (erewrite <- length_map; unfold vsymbol in *; rewrite Hmapeq; solve_len). 
+      eapply a_equiv_t_decrease_fun with (gamma:=gamma).
+      3: apply Hty. 7: apply Halpha.
+      all: auto.
+      (*Now, prove the map and hd hyps*)
+      -- intros x y Hlook1 Hlook2.
+        rewrite Hid.
+        apply list_to_amap_lookup in Hlook1; [| apply map_fst_combine_nodup; auto].
+        (*Idea: use nodups - know if y at some index, must be at this index*)
+        rewrite in_combine_iff in Hlook1; auto.
+        2: { apply NoDup_map_inv in Hnodup; auto. }
+        (*get first index*)
+        destruct Hlook1 as [j [Hj Hxy]]. specialize (Hxy vs_d vs_d).
+        inversion Hxy; subst; clear Hxy.
+        apply NoDup_map_inv in Hnodup, Hnodup2.
+        split; intros Hsome; inversion Hsome as [Heq]; subst;
+        apply NoDup_nth in Heq; subst; auto; unfold vsymbol in *; lia.
+      -- (*easy - small is empty*) intros; simpl_set.
+      -- (*Now prove that hd is in map - not hard*)
+        intros x. inv Hsome. 
+        rewrite amap_mem_spec.
+        destruct (amap_lookup _ _) as [y|] eqn : Hget; auto.
+        rewrite list_to_amap_none in Hget. 
+        exfalso. apply Hget. rewrite map_fst_combine by lia.
+        apply nth_In;auto.
+      * (*pred - symmetric (TODO lots of repetition)*)
+        clear -Hsns2 Hwf1 Hwf2 Hwf3 Hwf4 Hallval Hdec2 Hlen Hall Hlenis Hval2. 
+        rewrite Forall_nth in Hdec2 |- *.
+        intros i d Hi.
+        apply decrease_pred_change_fs_ps with (fs1:=(fst (funpred_defs_to_sns l1 is)))
+          (ps1:=(snd (funpred_defs_to_sns l1 is))).
+        { apply funpred_defs_to_sns_sym; auto. }
+        { apply funpred_defs_to_sns_idx; auto. }
+        { apply funpred_defs_to_sns_sym; auto. }
+        { apply funpred_defs_to_sns_idx; auto. }
+        (*Now we use the alpha lemma*)
+        specialize (Hdec2 i d ltac:(apply Forall2_length in Hsns2; lia)).
+        revert Hdec2.
+        (*Get typing and alpha in context*)
+        rewrite Forall2_nth in Hsns2.
+        destruct Hsns2 as [Hlen' Hsns2].
+        specialize (Hsns2 i d d ltac:(lia)).
+        destruct Hsns2 as [Hsymeq [Hsym2 [Hsnd [Hid Halpha]]]].
+        (*And get typing*)
+        rewrite Forall_forall in Hallval.
+        assert (Hinl1: let p := (nth i (snd (funpred_defs_to_sns l1 is)) d) in
+          In (pred_def (pn_sym p) (sn_args p) (pn_body p)) l1).
+        { eapply in_ps_def; eauto. apply nth_In; auto. lia. }
+        specialize (Hallval _ Hinl1).
+        simpl in Hallval.
+        destruct Hallval as [Hty [Hv [Htypevar [Hnodup Hmap]]]].
+        (*And get typing info for second (for NoDups mainly)*)
+        rewrite Forall_forall in Hval2.
+        assert (Hinl2: let p := (nth i (snd (funpred_defs_to_sns l2 is)) d) in
+          In (pred_def (pn_sym p) (sn_args p) (pn_body p)) l2).
+        { eapply in_ps_def with (il:=is); try lia. apply nth_In; auto.  }
+        specialize (Hval2 _ Hinl2).
+        simpl in Hval2.
+        destruct Hval2 as [Hty2 [Hv2 [Htypevar2 [Hnodup2 Hmap2]]]].
+        (*Finally, need wf (for index length bound)*)
+        assert (Hwff1:=Hwf2). assert (Hwff2:=Hwf4).
+        rewrite Forall_nth in Hwff1, Hwff2.
+        specialize (Hwff1 i d ltac:(lia)).
+        specialize (Hwff2 i d ltac:(lia)).
+        unfold pn_wf, sn_wf in Hwff1, Hwff2.
+        destruct Hwff1 as [[Hidx1 _] _].
+        destruct Hwff2 as [[Hidx2 _] _].
+        set (f1:=(nth i (snd (funpred_defs_to_sns l1 is)) d)) in *.
+        set (f2 := (nth i (snd (funpred_defs_to_sns l2 is)) d)) in *.
+        assert (Hmapeq: map snd (sn_args f1) = map snd (sn_args f2)) by congruence.
+        assert (Hlenargs: length (sn_args f1) = length (sn_args f2)) by 
+          (erewrite <- length_map; unfold vsymbol in *; rewrite Hmapeq; solve_len). 
+        eapply a_equiv_f_decrease_pred with (gamma:=gamma).
+        3: apply Hty. 7: apply Halpha.
+        all: auto.
+        (*Same proofs*)
+        -- intros x y Hlook1 Hlook2.
+          rewrite Hid.
+          apply list_to_amap_lookup in Hlook1; [| apply map_fst_combine_nodup; auto].
+          rewrite in_combine_iff in Hlook1; auto.
+          2: { apply NoDup_map_inv in Hnodup; auto. }
+          destruct Hlook1 as [j [Hj Hxy]]. specialize (Hxy vs_d vs_d).
+          inversion Hxy; subst; clear Hxy.
+          apply NoDup_map_inv in Hnodup, Hnodup2.
+          split; intros Hsome; inversion Hsome as [Heq]; subst;
+          apply NoDup_nth in Heq; subst; auto; unfold vsymbol in *; lia.
+        -- intros; simpl_set.
+        -- intros x. inv Hsome. 
+          rewrite amap_mem_spec.
+          destruct (amap_lookup _ _) as [y|] eqn : Hget; auto.
+          rewrite list_to_amap_none in Hget. 
+          exfalso. apply Hget. rewrite map_fst_combine by lia.
+          apply nth_In;auto.
+  - (*inductive predicates*)
+    unfold indprop_valid.
+    rewrite andb_true; intros [Hlen Halpha].
+    apply Nat.eqb_eq in Hlen.
+    intros [Hallval [Hpos [Hparams Hunif]]].
+    (*Useful in multiple places*)
+    assert (Heq: map (fun i => match i with| ind_def p _ => p end) l1 =
+      map (fun i => match i with| ind_def p _ => p end) l2).
+    {
+      clear -Hlen Halpha.
+      apply list_eq_ext'; simpl_len; auto.
+      intros n d Hn.
+      rewrite !map_nth_inbound with (d2:=indpred_d); try lia.
+      rewrite all2_forall with (d1:=indpred_d)(d2:=indpred_d) in Halpha; auto. specialize (Halpha _ Hn).
+      unfold a_equiv_indpred_def in Halpha.
+      destruct (nth n l1 indpred_d) as [p1 f1]; destruct (nth n l2 indpred_d ) as [p2 f2].
+      destruct (predsym_eqb_spec p1 p2); auto. discriminate.
+    }
+    (*TODO: see if we need any for another*)
+    split_all.
+    + (*Prove [indprop_valid_type]*)
+      clear Heq.
+      generalize dependent l2.
+      clear -Hallval.
+      induction l1 as [| i1 l1 IH]; intros [| i2 l2]; try discriminate; auto.
+      simpl. rewrite !all2_cons, andb_true. intros Hlen [Halpha Hall].
+      inversion Hallval as [| ? ? Hval1 Hval2]; clear Hallval; subst.
+      constructor; auto.
+      clear IH Hval2 Hall. unfold indprop_valid_type in *.
+      destruct i1 as [p1 lf1]; destruct i2 as [p2 lf2]; simpl in Halpha.
+      (*Idea: all these properties come directly from alpha equivalence*)
+      destruct (predsym_eqb_spec p1 p2); subst ;[|discriminate].
+      destruct (Nat.eqb_spec (length lf1) (length lf2)) as [Hlen2|] ;[|discriminate].
+      clear -Hval1 Halpha Hlen2. simpl in Halpha.
+      assert (Hlen: length (map snd lf1) = length (map snd lf2)) by solve_len.
+      clear Hlen2. generalize dependent (map snd lf2). generalize dependent (map snd lf1).
+      clear. induction l as [| f1 l1 IH]; intros Hall [| f2 l2]; try discriminate; auto.
+      rewrite !all2_cons, andb_true. intros [Halpha Hall2]. simpl. intros Hlen.
+      inversion Hall as [| ? ? Hall1' Hall2']; clear Hall; subst.
+      constructor; auto. clear IH Hall2' Hall2.
+      (*Use alpha props*)
+      destruct Hall1' as [Hty [Hclosed [Hindform Htypevars]]].
+      split_all.
+      * eapply a_equiv_f_typed; eauto.
+      * erewrite <- alpha_closed; eauto.
+      * eapply shape_ind_form; [|eauto].
+        apply alpha_shape_f in Halpha. auto.
+      * erewrite <- a_equiv_f_type_vars; eauto.
+    + clear -Hlen Halpha Hpos Heq. unfold indpred_positive in *.
+      (*Step 1: Show that list are equal*)
+      rewrite <- Heq. clear Heq.
+      generalize dependent (map (fun i => match i with| ind_def p _ => p end) l1).
+      (*Now we know that if alpha, then all are ind positive*)
+      generalize dependent l2. induction l1 as [| i1 l1 IH]; intros [| i2 l2]; try discriminate; auto; simpl.
+      rewrite all2_cons, andb_true. intros Hlen [Halpha Hall] ps.
+      rewrite !Forall_app. intros [Hpos1 Hpos2]. split; auto.
+      clear Hpos2 IH.
+      destruct i1 as [p1 fs1]; destruct i2 as [p2 fs2]. simpl in *.
+      destruct (predsym_eqb_spec p1 p2); [|discriminate]. subst.
+      destruct (Nat.eqb_spec (length fs1) (length fs2)) as [Hlen'|] ;[|discriminate].
+      simpl in Halpha. clear -Halpha Hlen' Hpos1. 
+      assert (Hlen: length (map snd fs1) = length (map snd fs2)) by solve_len. clear Hlen'.
+      generalize dependent (map snd fs2). generalize dependent (map snd fs1). clear.
+      induction l as [| f1 l1 IH]; intros Hall [| f2 l2]; try discriminate; auto.
+      rewrite all2_cons, andb_true. inversion Hall; subst. simpl.
+      intros [Halpha Hall'] Hlen. constructor; auto.
+      apply alpha_shape_f in Halpha. eapply shape_ind_positive; eauto.
+    + (*easy*)
+      unfold indpred_params_same in *.
+      rewrite !Forall_eq_iff in *.
+      intros x y Hinx Hiny.
+      destruct (In_nth _ _ indpred_d Hinx) as [i1 [Hi1 Hx]]; subst.
+      destruct (In_nth _ _ indpred_d Hiny) as [i2 [Hi2 Hy]]; subst.
+      assert (Heq':=Heq).
+      apply (f_equal (fun l => nth i1 l id_ps)) in Heq.
+      apply (f_equal (fun l => nth i2 l id_ps)) in Heq'.
+      rewrite !map_nth_inbound with (d2:=indpred_d) in Heq, Heq'; try lia.
+      specialize (Hparams (nth i1 l1 indpred_d) (nth i2 l1 indpred_d)).
+      forward Hparams. { apply nth_In; lia. }
+      forward Hparams. { apply nth_In; lia. }
+      destruct (nth i1 l2 indpred_d).
+      destruct (nth i1 l1 indpred_d).
+      destruct (nth i2 l1 indpred_d).
+      destruct (nth i2 l2 indpred_d).
+      subst; auto.
+    + (*uniform - we also proved this in alpha, very similar*)
+      unfold indpreds_uniform in *.
+      unfold predsyms_of_indprop in *. rewrite <- Heq. clear Heq.
+      generalize dependent (map (fun i => match i with| ind_def p _ => p end) l1).
+      intros l.
+      unfold indpred_uniform. destruct l as [|p1 ps]; auto.
+      generalize dependent (p1 :: ps).
+      clear -Hlen Halpha.
+      generalize dependent l2.
+      induction l1 as [| i1 l1 IH]; intros [| i2 l2]; try discriminate; auto.
+      simpl. rewrite all2_cons, andb_true. intros Hlen [Halpha Hall] l.
+      rewrite !forallb_app, !andb_true. intros [Hall1 Hall2]. split; auto.
+      clear Hall2 Hall IH. unfold indpred_def_constrs in *.
+      destruct i1 as [p1' fs1]; destruct i2 as [p2' fs2]. simpl in Halpha.
+      destruct (predsym_eqb_spec p1' p2'); [|discriminate]. subst.
+      destruct (Nat.eqb_spec (length fs1) (length fs2)) as [Hlen'|] ;[|discriminate].
+      simpl in Halpha. clear -Halpha Hlen' Hall1. 
+      assert (Hlen: length (map snd fs1) = length (map snd fs2)) by solve_len. clear Hlen'.
+      generalize dependent (map snd fs2). generalize dependent (map snd fs1). clear.
+      induction l0 as [| f1 l1 IH]; intros Hall [| f2 l2]; try discriminate; auto. simpl.
+      rewrite all2_cons, !andb_true. inversion Hall; subst. simpl.
+      simpl in Hall. rewrite andb_true in Hall. destruct Hall.
+      intros [Halpha Hall'] Hlen. split; auto.
+      eapply pred_with_params_fmla_alpha; eauto.
+  - (*funpred_def*)
+    intros Halpha [Hval Hnonrec]. split; [ eapply a_equiv_funpred_def_valid_type; eauto|].
+    unfold nonrec_def_nonrec in *.
+    destruct fd1 as [f1 vs1 b1 | p1 vs1 b1]; destruct fd2 as [f2 vs2 b2| p2 vs2 b2]; try discriminate;
+    simpl in Halpha.
+    + destruct (funsym_eqb_spec f1 f2); subst; [|discriminate].
+      rewrite !andb_true in Halpha; destruct_all.
+      rewrite <- (@gensym_in_shape_t) with (b:=true)(t1:=b1); auto.
+      eapply alpha_shape_t; eauto.
+    + destruct (predsym_eqb_spec p1 p2); subst; [|discriminate].
+      rewrite !andb_true in Halpha; destruct_all.
+      rewrite <- (@gensym_in_shape_f) with (b:=false)(f1:=b1); auto.
+      eapply alpha_shape_f; eauto.
+Qed.
 
-
-rewrite Forall_forall in Hval2.
-      unfold funpred
-      Print decrease_fun.
-      (*Maybe we can say: 
-        1. suppose all vars in small and hd are free in term (do we need this?). 
-          Then if two terms are alpha equivalent,
-          then they are also termination-equivalent under small and hd
-        2. If fn and fn' (and likewise for pn) are equal mod alpha equiv, then
-          termination-equivalent
-
-suppose alll vars are in *)
-
-
- Print split_funpred_defs.
-
-
-      
-      Search funpred_def_term.
-      Print funpred_def_term.
-
-
-
-
-(*TODO: funpred_def in new lemma i think*)
-    rewrite andb_true. intros [Hlen Hall]. 
-    generalize dependent l2. induction l1 as [| fd1 l1 IH]; intros [| fd2 l2]; try discriminate; auto; simpl.
-    intros Hlen. rewrite all2_cons, andb_true. intros [Halpha Hall].
-    unfold funpred_valid.
-    specialize (IH _ Hlen Hall). unfold funpred_valid in IH.
-    intros [Hval1 Hval2].
-    inversion Hval1 as [| ? ? Hvalfd1 Hvall1]; subst.
-    Print funpred_def_term_exists.
-    split. { inversion Hval1; subst. constructor; auto.
-
- 
-    Search funpred_valid.
-
- simpl.
+(*TODO: move above*)
+Lemma a_equiv_idents_of_context g1 g2 (Halpha: a_equiv_ctx g1 g2):
+  idents_of_context g1 = idents_of_context g2.
+Proof.
+  revert Halpha.
+  unfold a_equiv_ctx. rewrite andb_true.
+  intros [Hlen Halpha]. apply Nat.eqb_eq in Hlen.
+  generalize dependent g2. induction g1 as [| d1 g1 IH]; intros [| d2 g2]; try discriminate; auto.
+  simpl. intros Hlen. rewrite all2_cons. rewrite andb_true; intros [Hdef Halpha].
+  rewrite !idents_of_context_cons. f_equal; auto. apply a_equiv_idents_of_def; auto.
+Qed.
     
-
-
-
-
-Print valid_constrs_def.
-(**)
-
-
+(*And at last, valid context*)
 Lemma a_equiv_valid_context (g1 g2: context):
   a_equiv_ctx g1 g2 ->
   valid_context g1 ->
@@ -1571,35 +2185,37 @@ Proof.
   generalize dependent g2. induction g1 as [| d1 g1 IH]; intros [| d2 g2]; try discriminate; auto.
   simpl. intros Hlen. rewrite all2_cons. rewrite andb_true; intros [Hdef Halpha].
   intros Hval. inversion Hval; subst.
-  constructor; auto. Search valid_def.
-  - Search wf_funsym. Print wf_funsym.
-
-
-(*Prove 1. signatures are the same if alpha equivalent
-2. funsym_of_def (and others) same if alpha_equiv for def
-3. idents are the same if alpha_equiv for def
-4. nonempty same if alpha equiv for def
-5. valid_constrs_def (not sure)
-6. prove mut_of_context equal
-7. prove sig_t equal (really just prove each equal in 1
-8. prove valid_def equiv for def
-6. (BIG ON) valid_def is true for def - and need context change*)
-
-
-
-wf_funsym_sublist:
-  forall (g1 g2 : context) (f : funsym),
-  sublist (sig_t g1) (sig_t g2) -> wf_funsym g1 f -> wf_funsym g2 f
-
-
-
-
-
-
+  assert (Halphag: a_equiv_ctx g1 g2).
+  { unfold a_equiv_ctx. injection Hlen; intros Hlen'. rewrite Hlen', Nat.eqb_refl. auto. }
+  (*Get useful info*)
+  pose proof (a_equiv_syms_of_def _ _ Hdef) as [Hfuns [Hpreds Htys]].
+  pose proof (a_equiv_sig _ _ Halphag) as [Hsigf [Hsigp [Hsigt Hmuts]]].
+  pose proof (a_equiv_idents_of_def _ _ Hdef) as Hidents.
+  pose proof (a_equiv_idents_of_context _ _ Halphag) as Hidentg.
+  constructor; auto. 
+  - rewrite <- Hfuns. revert H2. apply Forall_impl. intros a. apply wf_funsym_sublist.
+    rewrite !sig_t_cons, <- Htys, Hsigt. apply sublist_refl.
+  - rewrite <- Hpreds. revert H3. apply Forall_impl. intros a. apply wf_predsym_sublist.
+    rewrite !sig_t_cons, <- Htys, Hsigt. apply sublist_refl.
+  - rewrite <- Hidents, <- Hidentg. auto.
+  - rewrite <- Hidents; auto.
+  - eapply a_equiv_nonempty_def; eauto.
+  - eapply a_equiv_valid_constrs_def; eauto.
+  - eapply a_equiv_valid_def; eauto.
+    revert H8. apply valid_def_sublist.
+    + unfold sublist_sig; simpl.
+      rewrite !sig_t_cons, !sig_f_cons, !sig_p_cons, Hfuns, Hpreds, Htys, Hsigf, Hsigp, Hsigt;
+      split_all; apply sublist_refl.
+    + rewrite !sig_t_cons, Htys, Hsigt. reflexivity.
+    + rewrite !mut_of_context_cons. rewrite Hmuts. f_equal.
+      (*Probably proved but whatever*)
+      destruct d1; destruct d2; try discriminate; auto.
+      simpl in Hdef. destruct (mut_adt_eqb_spec m m0); subst; auto. discriminate.
+Qed.
 
 
 (*Alpha equivalent tasks have the same typing*)
-Lemma a_equiv_task_typed (t1 t2: task) :
+Theorem a_equiv_task_typed (t1 t2: task) :
   a_equiv_task t1 t2 ->
   task_typed t1 ->
   task_typed t2.
@@ -1611,16 +2227,33 @@ Proof.
   rewrite !andb_true. intros [[[Hgamma Hlendelta] Hdelta] Hgoal].
   intros Hty. inversion Hty; simpl_task.
   constructor; simpl_task.
-  -
+  - eapply a_equiv_valid_context; eauto.
+  - (*Prove types equiv. Not hard but need induction for alpha*)
+    apply Nat.eqb_eq in Hlendelta. clear -Hlendelta Hdelta task_delta_typed Hgamma.
+    assert (Hlen: length (map snd delta1)  = length (map snd delta2)) by solve_len.
+    clear Hlendelta.
+    generalize dependent (map snd delta2).
+    induction (map snd delta1) as [| f1 l1 IH]; intros [| f2 l2]; try discriminate; auto.
+    simpl. rewrite all2_cons, andb_true. intros [Halpha Hall] Hlen.
+    inversion task_delta_typed; subst.
+    constructor; auto. 
+    eapply a_equiv_f_typed; eauto.
+    eapply formula_typed_sublist; [| |eauto].
+    + unfold sublist_sig.
+      apply a_equiv_sig in Hgamma.
+      destruct Hgamma as [Hf [Hp [Ht _]]]. rewrite Hf, Hp, Ht; split_all; apply sublist_refl.
+    + apply a_equiv_sig in Hgamma. destruct Hgamma as [_ [_ [_ Hmut]]]; rewrite Hmut; apply sublist_refl.
+  - (*Same for goal*)
+    eapply a_equiv_f_typed; eauto.
+    eapply formula_typed_sublist; [| |eauto].
+  + unfold sublist_sig.
+    apply a_equiv_sig in Hgamma.
+    destruct Hgamma as [Hf [Hp [Ht _]]]. rewrite Hf, Hp, Ht; split_all; apply sublist_refl.
+  + apply a_equiv_sig in Hgamma. destruct Hgamma as [_ [_ [_ Hmut]]]; rewrite Hmut; apply sublist_refl.
+Qed.
 
+(*TODO: semantics*)
 
-
-
-  unfold task_typed.
-  unfold task_valid, TaskGen.task_valid.
-  intros [Hty Hsem]. split.
-  
-  
 
 (*Alpha equivalent tasks have the same validity*)
 Lemma a_equiv_task_valid (t1 t2: Task.task) :
@@ -1635,7 +2268,9 @@ Proof.
   rewrite !andb_true. intros [[[Hgamma Hlendelta] Hdelta] Hgoal].
   unfold task_valid, TaskGen.task_valid.
   intros [Hty Hsem]. split.
-  -
+  - eapply a_equiv_task_typed; eauto. unfold a_equiv_task. simpl_task. 
+    rewrite !andb_true; split_all; auto.
+  - (*TODO: start, prove semantics*)
 (*NOTE: should be possible to prove but annoying, full interp would be hardest bc of
   recfun - see if we need*)
 Admitted.
