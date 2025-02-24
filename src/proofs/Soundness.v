@@ -2,7 +2,7 @@
   in the errState monad: if the initial state if wf, then if the resulting
   task(s) is/are valid, so is the initial one.*)
 From Proofs Require Import Task.
-Require Import Relations ErrStateHoare StateInvar.
+Require Import Relations ErrStateHoare StateInvar RelationProofs.
 Require Import TaskDefs TransDefs.
 
 (*Version for single tarns (not list)*)
@@ -32,6 +32,7 @@ Definition trans_errst_list_sound (trans: trans_errst (list task)) : Prop :=
 (*TODO: maybe I don't actually need var alpha for funpred_def -
   my [open_ls_defn] is stateless, so we should never actually change
   If I change this, should be easy I believe*)
+Set Bullet Behavior "Strict Subproofs".
 
 
 (*Here, just prove that related inputs -> related outputs, purely syntactic reasoning*)
@@ -45,6 +46,36 @@ Proof.
   unfold sound_trans, TaskGen.sound_trans . intros Htrans Hrel.
   unfold trans_errst_sound.
   intros t.
+  unfold typed_task.
+  destruct (eval_task t) as [t1|] eqn : Htask.
+  2: { apply (errst_spec_weaken_pre) with (P1:= fun _ => False).
+    - intros; destruct_all; discriminate.
+    - (*trivial - TODO prove in ErrStateHoare*)
+      unfold errst_spec. contradiction.
+  }
+  assert (Htaskrel: task_related t t1). {
+    unfold task_related. exists t1. split; auto. (*TODO: prove [a_equiv_task_refl]*) admit.
+  }
+  specialize (Hrel t t1).
+  apply errst_spec_weaken_pre with (P1:=fun s => st_wf t s /\ task_typed t1).
+  { intros i. intros; destruct_all; subst. inversion H0; subst; auto. }
+  (*Now just unfold errst_spec - not great*)
+  unfold errst_spec in *.
+  intros i b [Hwf Hty] Hrun.
+  specialize (Hrel i b (conj Hwf Htaskrel) Hrun).
+  (*Now use soundness result*)
+  specialize (Htrans _ Hty).
+  unfold single_trans in Htrans. simpl in Htrans.
+  intros Hvalb.
+  forward Htrans.
+  { intros tr [Htr | []]. subst. 
+    pose proof (task_related_valid b (tr1 t1) Hrel) as Hvaliff.
+    apply Hvaliff; auto.
+  }
+  pose proof (task_related_valid t t1 Htaskrel) as Hvaliff.
+  apply Hvaliff; auto.
+Admitted.
+
   (*Idea: look at [eval_task] t, know in precondition it (t1) is well-typed,
     and know that [task_related t t1], so 
     then, have precondition of Hrel, then know task_related r (tr1 t1),

@@ -890,7 +890,7 @@ Qed.
 
 (*Basically, (later) just prove we can change bodies of fn and pn and still OK*)
 (*temp*)
-Require Import eliminate_algebraic_typing.
+From Proofs Require Import eliminate_algebraic_typing.
 (*NOTE: I DO need the condition of alpha equivalence*)
 (*We need typing here because we need to know things about lengths*)
 Lemma a_equiv_decrease_fun gamma (fs: list fn) (ps: list pn)
@@ -2252,8 +2252,265 @@ Proof.
   + apply a_equiv_sig in Hgamma. destruct Hgamma as [_ [_ [_ Hmut]]]; rewrite Hmut; apply sublist_refl.
 Qed.
 
-(*TODO: semantics*)
+End Typing.
 
+
+(**Semantics are much simpler*)
+Section Semantics.
+
+Lemma a_equiv_mut_in_ctx {g1 g2: context} (*(g1_valid: valid_context g1) (g2_valid: valid_context g2)*)
+  (Halpha: a_equiv_ctx g1 g2) {m: mut_adt} (m_in: mut_in_ctx m g1): mut_in_ctx m g2.
+Proof.
+  unfold mut_in_ctx in *. apply a_equiv_sig in Halpha.
+  destruct Halpha as [_ [_ [_ Hmuts]]]. rewrite <- Hmuts. auto.
+Qed.
+
+
+(*1. prove pd_full equiv*)
+Lemma a_equiv_pd_full {g1 g2: context} (*(g1_valid: valid_context g1) (g2_valid: valid_context g2)*)
+  (Halpha: a_equiv_ctx g1 g2) {pd: pi_dom} (pdf: pi_dom_full g2 pd) : pi_dom_full g1 pd.
+Proof.
+  inversion pdf. constructor.
+  intros m srgs a m_in a_in.
+  assert (m_in':=a_equiv_mut_in_ctx Halpha m_in).
+  eapply adts; auto.
+Qed.
+
+(*Build the pf*)
+(* Definition a_equiv_constrs {g1 g2: context} (g1_valid: valid_context g1) (g2_valid: valid_context g2) 
+  {pd: pi_dom} (pdf1: pi_dom_full g1 pd)  (pdf2: pi_dom_full g2 pd) :
+  forall (m : mut_adt) (a : alg_datatype) (c : funsym) (Hm : mut_in_ctx m g1) 
+  (Ha : adt_in_mut a m) (Hc : constr_in_adt c a) (srts : list sort)
+  (Hlens : Datatypes.length srts = Datatypes.length (m_params m))
+  (args : arg_list (domain (dom_aux pd)) (sym_sigma_args c srts)),
+    (funs g1_valid _ pf pdf1) c srts args =
+    constr_rep_dom g1_valid m Hm srts Hlens (dom_aux pd) a Ha c Hc (adts pdf1 m srts) args. *)
+
+Lemma a_equiv_pf {g1 g2: context} (Halpha: a_equiv_ctx g1 g2) (g1_valid: valid_context g1) (g2_valid: valid_context g2) 
+  {pd: pi_dom} (pdf1: pi_dom_full g1 pd)  (pdf2: pi_dom_full g2 pd)
+  (pf: pi_funpred g2_valid pd pdf2) :
+  pi_funpred g1_valid pd pdf1.
+Proof.
+  (*TODO: separate?*)
+  eapply (@Build_pi_funpred) with (funs:=funs _  _ pf).
+  - exact (preds _ _ pf).
+  - intros m a c Hm Ha Hc srts Hlens args.
+    assert (m_in':=a_equiv_mut_in_ctx Halpha Hm).
+    set (x:=(constrs _ _ _ pf _ _ _ m_in' Ha Hc srts Hlens args)).
+    unfold constr_rep_dom in *.
+    refine (eq_trans x _).
+    apply scast_eq_uip'.
+    apply constr_rep_change_gamma.
+Defined.
+
+Lemma fun_defined_alpha {g1 g2: context} (Halpha: a_equiv_ctx g1 g2) {f args body}
+  (Hdef: fun_defined g1 f args body) :
+  exists args1 body1, fun_defined g2 f args1 body1 /\
+    a_equiv_funpred_def (fun_def f args body) (fun_def f args1 body1).
+Admitted.
+
+Require Import Alpha.
+
+(*2. Prove full_interp*)
+Lemma a_equiv_pf_full {g1 g2: context} (Halpha: a_equiv_ctx g1 g2) (g1_valid: valid_context g1) (g2_valid: valid_context g2) 
+  {pd: pi_dom} (pdf1: pi_dom_full g1 pd)  (pdf2: pi_dom_full g2 pd)
+  (pf: pi_funpred g2_valid pd pdf2) (pf_full: full_interp g2_valid pd pf) :
+  full_interp g1_valid pd (a_equiv_pf Halpha g1_valid g2_valid pdf1 pdf2 pf).
+Proof.
+  unfold full_interp in *.
+  destruct pf_full as [Hfuns [Hpreds [Hind1 Hind2]]].
+  split_all; [clear Hpreds Hind1 Hind2 | clear Hfuns Hind1 Hind2 | clear Hfuns Hpreds Hind2 | clear Hfuns Hpreds Hind1].
+  - intros. 
+    destruct (fun_defined_alpha Halpha f_in) as [args1 [body1 [f_in' Ha]]].
+    simpl in Ha. simpl.
+    rewrite (Hfuns f args1 body1 f_in' srts srts_len a vt vv).
+    (*a few changes: change pf and gamma*) symmetry.
+    (*We need typing*)
+    destruct (funsym_eqb_spec f f); auto; try discriminate. clear e.
+    simpl in Ha. destruct (Nat.eqb_spec (length args) (length args1)); [|discriminate].
+    simpl in Ha. destruct (list_eqb_spec _ vty_eq_spec (map snd args) (map snd args1)); [|discriminate].
+    simpl in Ha. (*Do we need NoDups?*)
+    destruct (nodup_NoDup string_dec (map fst args)) as [Hn1|]; [|discriminate].
+    destruct (nodup_NoDup string_dec (map fst args1)) as [Hn2|]; [|discriminate].
+    simpl in Ha.
+    assert (Hnargs: NoDup args) by (apply NoDup_map_inv in Hn1; auto).
+    (*Need some validity results*)
+    pose proof (fun_defined_valid g1_valid f_in) as Hval. simpl in Hval.
+    pose proof (fun_defined_valid g2_valid f_in') as Hval1. simpl in Hval1.
+    assert (Hnargs1: NoDup args1) by (apply NoDup_map_inv in Hn2; auto).
+    (*First, get typing*)
+    assert (Hty1: term_has_type g1 body1 (f_ret f)). {
+      eapply alpha_equiv_t_type. eauto. 2: apply (fun_defined_ty g1_valid f_in).
+      intros x y Hlook. apply list_to_amap_lookup in Hlook; auto.
+      2: { rewrite map_fst_combine; auto. }
+      rewrite in_combine_iff in Hlook; auto.
+      destruct Hlook as [i [Hi Hxy]]. specialize (Hxy vs_d vs_d). inversion Hxy; subst; auto.
+      apply (f_equal (fun l => nth i l vty_int)) in e0.
+      rewrite !map_nth_inbound with (d2:=vs_d) in e0 by lia.
+      auto.
+    }
+    erewrite term_change_gamma_pf with (gamma_valid2:=g1_valid)
+    (pf2:=(a_equiv_pf Halpha g1_valid g2_valid pdf1 pdf2 pf))
+    (gamma_valid1:=g2_valid)(pdf1:=pdf2)
+    (pf1:=pf)(Htty2:=Hty1); auto.
+    2: { apply a_equiv_sig in Halpha.
+      symmetry; apply Halpha.
+    }
+    (*Now use [alpha_equiv_t_rep]*)
+    erewrite alpha_equiv_t_rep; [ | eauto | |].
+    { apply dom_cast_eq. }
+    (*Now prove valuations consistent - TODO: might need free var result from typing*)
+    + intros x y Heq Hlook1 Hlook2.
+      apply list_to_amap_lookup in Hlook1; auto.
+      2: {  rewrite map_fst_combine; auto. } 
+      rewrite in_combine_iff in Hlook1; auto.
+      destruct Hlook1 as [i [Hi Hxy]]. specialize (Hxy vs_d vs_d); inversion Hxy; subst; clear Hxy.
+      (*lemma for casting*)
+      assert (Hlenargs: length args = length (s_args f)). {
+        destruct Hval as [_ [_ [_ [_ Hmap]]]]. rewrite <- Hmap; solve_len.
+      }
+      assert (Hcast: nth i (sym_sigma_args f srts) s_int =
+        v_subst (vt_with_args vt (s_params f) srts) (snd (nth i args vs_d))).
+      {
+        (*NOTE: did I prove this anywhere?*)
+        destruct Hval as [_ [_ [_ [_ Hmap]]]].
+        apply (f_equal (fun l => nth i l vty_int)) in Hmap.
+        rewrite !map_nth_inbound with (d2:=vs_d) in Hmap by lia.
+        rewrite Hmap. (*TODO: prove this separately*)
+        unfold sym_sigma_args, ty_subst_list_s.
+        rewrite map_nth_inbound with (d2:=vty_int) by lia.
+        symmetry. rewrite vt_with_args_cast; auto; [| apply s_params_Nodup].
+        (*Prove typevars*)
+        intros x Hmem.
+        assert (Hwf: wf_funsym g1 f). {
+          pose proof (wf_context_full _ (valid_context_wf _ g1_valid)) as [Hfuns' _].
+          rewrite Forall_forall in Hfuns'.
+          apply Hfuns'. eapply fun_defined_in_funsyms; eauto.
+        }
+        unfold wf_funsym in Hwf. rewrite Forall_forall in Hwf.
+        specialize (Hwf (nth i (s_args f) vty_int)). apply Hwf; auto.
+        simpl. right. apply nth_In; lia.
+      }
+      assert (Hcast1: nth i (sym_sigma_args f srts) s_int =
+        v_subst (vt_with_args vt (s_params f) srts) (snd (nth i args1 vs_d))).
+      {
+        destruct Hval1 as [_ [_ [_ [_ Hmap]]]].
+        apply (f_equal (fun l => nth i l vty_int)) in Hmap.
+        rewrite !map_nth_inbound with (d2:=vs_d) in Hmap by lia.
+        rewrite Hmap. (*TODO: prove this separately*)
+        unfold sym_sigma_args, ty_subst_list_s.
+        rewrite map_nth_inbound with (d2:=vty_int) by lia.
+        symmetry. rewrite vt_with_args_cast; auto; [| apply s_params_Nodup].
+        (*Prove typevars*)
+        intros x Hmem.
+        assert (Hwf: wf_funsym g1 f). {
+          pose proof (wf_context_full _ (valid_context_wf _ g1_valid)) as [Hfuns' _].
+          rewrite Forall_forall in Hfuns'.
+          apply Hfuns'. eapply fun_defined_in_funsyms; eauto.
+        }
+        unfold wf_funsym in Hwf. rewrite Forall_forall in Hwf.
+        specialize (Hwf (nth i (s_args f) vty_int)). apply Hwf; auto.
+        simpl. right. apply nth_In; lia.
+      }
+      rewrite val_with_args_in with (Heq:=Hcast); auto.
+      2: { unfold sym_sigma_args, ty_subst_list_s. solve_len. }
+      (*And do the same on the other side*)
+      rewrite val_with_args_in with (Heq:=Hcast1); auto; try lia.
+      2: { unfold sym_sigma_args, ty_subst_list_s. solve_len. }
+      rewrite !dom_cast_compose. apply dom_cast_eq.
+    + (*And prove none - this means not in either, easier*)
+      intros x Hlook1 Hlook2.
+      rewrite !list_to_amap_none in Hlook1, Hlook2. rewrite !map_fst_combine in Hlook1, Hlook2; auto.
+      rewrite !val_with_args_notin; auto.
+  - (*same for preds*)
+
+      Search amap_lookup list_to_amap None.
+
+
+
+      erewrite val_with_args_in; auto; try lia.
+      Unshelve.
+
+
+
+  simpl_len.
+        destruct Hval as [_ [_ [_ [_ Hmap]]]]. rewrite <- Hmap; solve_len. }
+      Unshelve.
+      Search fun_defined.
+      
+
+
+
+
+      Search val_with_args.
+
+
+
+val_with_args_in:
+  forall (pd : pi_dom) (vt : val_typevar) (vv : val_vars pd vt) (vars : list vsymbol) 
+    (srts : list sort) (a : arg_list (domain (dom_aux pd)) srts),
+  NoDup vars ->
+  Datatypes.length vars = Datatypes.length srts ->
+  forall i : nat,
+  i < Datatypes.length vars ->
+  forall Heq : nth i srts s_int = v_subst vt (snd (nth i vars vs_d)),
+  val_with_args pd vt vv vars a (nth i vars vs_d) =
+  dom_cast (dom_aux pd) Heq (hnth i a s_int (dom_int pd))
+
+
+    
+
+    Search alpha_equiv_t term_rep.
+    (**)
+
+ Search a_equiv_ctx.
+
+
+
+    Unshelve.
+
+  (Htty2:=(fun_defined_ty g2_valid f_in')).
+    Search term_rep "change".
+
+
+term_change_gamma_pf:
+  forall {gamma1 gamma2 : context} (gamma_valid1 : valid_context gamma1)
+    (gamma_valid2 : valid_context gamma2),
+  mut_of_context gamma1 = mut_of_context gamma2 ->
+  forall (pd : pi_dom) (pdf1 : pi_dom_full gamma1 pd) (pdf2 : pi_dom_full gamma2 pd)
+    (pf1 : pi_funpred gamma_valid1 pd pdf1) (pf2 : pi_funpred gamma_valid2 pd pdf2) 
+    (t : term) (ty : vty) (vt : val_typevar) (vv : val_vars pd vt) (Htty1 : term_has_type gamma1 t ty)
+    (Htty2 : term_has_type gamma2 t ty),
+  (forall (p : predsym) (srts : list sort) (a : arg_list (domain (dom_aux pd)) (sym_sigma_args p srts)),
+   predsym_in_tm p t -> preds gamma_valid1 pd pf1 p srts a = preds gamma_valid2 pd pf2 p srts a) ->
+  (forall (f : funsym) (srts : list sort) (a : arg_list (domain (dom_aux pd)) (sym_sigma_args f srts)),
+   funsym_in_tm f t -> funs gamma_valid1 pd pf1 f srts a = funs gamma_valid2 pd pf2 f srts a) ->
+  term_rep gamma_valid1 pd pdf1 vt pf1 vv t ty Htty1 =
+  term_rep gamma_valid2 pd pdf2 vt pf2 vv t ty Htty2
+
+
+
+
+    unfold a_equiv_pf. simpl.
+    simpl.
+
+  (*prove fun defined implies alpha equivalent one*)
+Print a_equiv_funpred_def.
+
+    
+  Print fun_defined.
+
+ specialize (Hfuns f args body
+
+
+  destruct pf_full.
+  destruct 
+  constructor
+
+
+
+pf_full : full_interp task_gamma_valid pd
+                (a_equiv_pf Hgamma task_gamma_valid gamma_valid pdf' pdf pf)
 
 (*Alpha equivalent tasks have the same validity*)
 Lemma a_equiv_task_valid (t1 t2: Task.task) :
@@ -2268,23 +2525,50 @@ Proof.
   rewrite !andb_true. intros [[[Hgamma Hlendelta] Hdelta] Hgoal].
   unfold task_valid, TaskGen.task_valid.
   intros [Hty Hsem]. split.
-  - eapply a_equiv_task_typed; eauto. unfold a_equiv_task. simpl_task. 
+  - (*typing*) eapply a_equiv_task_typed; eauto. unfold a_equiv_task. simpl_task. 
     rewrite !andb_true; split_all; auto.
-  - (*TODO: start, prove semantics*)
+  - (*semantics*) (*TODO: start, prove semantics*)
+    simpl. simpl_task.
+    intros gamma_valid w_ty.
+    unfold log_conseq_gen.
+    intros pd pdf pf pf_full Hall.
+    inversion Hty; subst. simpl_task.
+    specialize (Hsem task_gamma_valid Hty).
+    unfold log_conseq_gen in Hsem.
+    set (pdf':=(a_equiv_pd_full Hgamma pdf)).
+    specialize (Hsem pd pdf' (a_equiv_pf Hgamma task_gamma_valid gamma_valid pdf' pdf pf)).
+
+
+    (*3 parts:
+      1. prove pi_dom_full still holds (easy)
+      2. prove pf_full still holds (hope not too bad use generic alpha rep for recfun)
+      3. prove satisfies equiv under alpha*)
 (*NOTE: should be possible to prove but annoying, full interp would be hardest bc of
   recfun - see if we need*)
 Admitted.
 
-Lemma task_related_valid (t1: task) (t2: Task.task):
+(*NOTE: maybe iff? - with symmetry, previous can give iff*)
+Lemma task_related_valid (t1: TaskDefs.task) (t2: Task.task):
   task_related t1 t2 ->
-  Task.task_valid t2 ->
-  valid_task t1.
+  valid_task t1 <->
+  Task.task_valid t2.
 Proof.
   unfold task_related, valid_task.
-  intros [t [Heval Halpha]] Hval.
-  exists t. split; auto.
-  (*Need to prove [a_equiv_task] symmetric*)
+  intros [t [Heval Halpha]].
+  split.
+  - intros [t' [Heval' Hval]].
+    rewrite Heval' in Heval. inversion Heval; subst.
+    eapply a_equiv_task_valid; eauto.
+  - intros Hval.
+
+    exists t. split; auto.
+    assert (Halpha': a_equiv_task t2 t) by admit.
+    (*NOTE: need symmety for [a_equiv_task]*)
+    apply a_equiv_task_valid in Halpha'; auto.
+Admitted.
+(*    eapply a_equiv_task_valid; eauto.
+  (*Need to prove [a_equiv_task] symmetric - or switch arguments?*)
   (* apply a_equiv_task_valid. *)
   (*TODO: would have to prove that a_equiv_task preserves validity - might be annoying
     see if we need this or we should just define in terms of related*)
-Admitted.
+Admitted.*)
