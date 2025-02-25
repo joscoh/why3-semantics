@@ -588,6 +588,9 @@ Definition fmla_related (f1: term_c) (f2: Syntax.formula) : Prop :=
 
 
 (*Now we "lift" alpha equivalence to defs. This is all in core and should be moved*)
+(*A little trick: we cannot assume nodups, or else we lose reflexivity.
+  But we do need for typing. Solution: it is enough that either both are nodups or neither is,
+  since in typing we assume that one is*)
 Definition a_equiv_funpred_def (fd1 fd2: funpred_def) : bool :=
   match fd1, fd2 with
   | fun_def f1 vs1 t1, fun_def f2 vs2 t2 =>
@@ -602,12 +605,12 @@ Definition a_equiv_funpred_def (fd1 fd2: funpred_def) : bool :=
       the map mapping the corresponding variables *)
 
     funsym_eqb f1 f2 && (length vs1 =? length vs2) && list_eqb vty_eqb (map snd vs1) (map snd vs2) &&
-    nodupb string_dec (map fst vs1) && nodupb string_dec (map fst vs2) &&
+    (Bool.eqb (nodupb string_dec (map fst vs1)) (nodupb string_dec (map fst vs2))) &&
     alpha_equiv_t (list_to_amap (combine vs1 vs2)) (list_to_amap (combine vs2 vs1)) t1 t2
  (* list_eqb Syntax.vsymbol_eqb vs1 vs2 && a_equiv_t t1 t2 *)
   | pred_def p1 vs1 f1, pred_def p2 vs2 f2 =>
     predsym_eqb p1 p2 &&  (length vs1 =? length vs2) && list_eqb vty_eqb (map snd vs1) (map snd vs2) &&
-    nodupb string_dec (map fst vs1) && nodupb string_dec (map fst vs2) &&
+    (Bool.eqb (nodupb string_dec (map fst vs1)) (nodupb string_dec (map fst vs2)) )&&
     alpha_equiv_f (list_to_amap (combine vs1 vs2)) (list_to_amap (combine vs2 vs1)) f1 f2
 (* list_eqb Syntax.vsymbol_eqb vs1 vs2 && a_equiv_f f1 f2 *)
   | _, _ => false

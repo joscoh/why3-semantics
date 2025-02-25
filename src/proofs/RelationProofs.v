@@ -1,5 +1,7 @@
 Require Import Relations.
-From Proofs Require Import Task.
+From Proofs Require Import Task Alpha.
+(*temp - for term_formula_ind_typed*)
+From Proofs Require Import eliminate_algebraic_typing.
 Set Bullet Behavior "Strict Subproofs".
 
 (*Maybe move elsewhere not sure*)
@@ -115,8 +117,6 @@ Proof.
   - rewrite !andb_true_r. destruct (funsym_eqb_spec f1 f2); subst; auto.
 Qed.
 
-Import Alpha.
-
 (*TODO: move*)
 Lemma list_to_amap_none {A B: Type} `{countable.Countable A} (l: list (A * B)) x:
   amap_lookup (list_to_amap l) x = None <-> ~ In x (map fst l).
@@ -183,7 +183,9 @@ Proof.
   (*Now all goals are easy*)
   destruct fd1 as [f1 vs1 b1 | p1 vs1 b1]; destruct fd2 as [f2 vs2 b2 | p2 vs2 b2];
   simpl; auto; try discriminate.
-  - rewrite !andb_true. intros [[[[[Hf12 Hlen] Hmap2] _] Hn2] Halpha] [Hty [Hsubfv [Hsubty [Hnodup Hmapsnd]]]].
+  - rewrite !andb_true. intros [[[[Hf12 Hlen] Hmap2] Hn2] Halpha] [Hty [Hsubfv [Hsubty [Hnodup Hmapsnd]]]].
+    destruct (nodup_NoDup string_dec (map fst vs1)); [| contradiction]. simpl in Hn2.
+    (*This is why we need nodup equality*)
     destruct (nodup_NoDup string_dec (map fst vs2)) as [Hnodup2|]; [|discriminate].
     destruct (funsym_eqb_spec f1 f2); [subst | discriminate].
     destruct (list_eqb_spec _ vty_eq_spec (map snd vs1) (map snd vs2)) as [Heq|]; [subst | discriminate].
@@ -194,7 +196,8 @@ Proof.
     + eapply alpha_equiv_t_type_vars in Halpha; auto. rewrite <- Halpha; auto. apply Hmaptys; auto.
     + congruence.
   - (*predsyms symmetric*)
-    rewrite !andb_true. intros [[[[[Hf12 Hlen] Hmap2] _] Hn2] Halpha] [Hty [Hsubfv [Hsubty [Hnodup Hmapsnd]]]].
+    rewrite !andb_true. intros [[[[Hf12 Hlen] Hmap2] Hn2] Halpha] [Hty [Hsubfv [Hsubty [Hnodup Hmapsnd]]]].
+    destruct (nodup_NoDup string_dec (map fst vs1)); [| contradiction]. simpl in Hn2.
     destruct (nodup_NoDup string_dec (map fst vs2)) as [Hnodup2|]; [|discriminate].
     destruct (predsym_eqb_spec p1 p2); [subst | discriminate].
     destruct (list_eqb_spec _ vty_eq_spec (map snd vs1) (map snd vs2)) as [Heq|]; [subst | discriminate].
@@ -375,7 +378,6 @@ Qed.
 
 (*NOTE: do we need both directions? I think so*)
 
-(*Print get_constr_smaller.*)
 Lemma get_constr_smaller_vars_map m1 vs (m: amap vsymbol vsymbol) (p: pattern)
   (Hm: forall x, aset_mem x (pat_fv p) -> amap_mem x m)
   (Htys: forall x y, amap_lookup m x = Some y -> snd x = snd y)
@@ -406,9 +408,6 @@ Proof.
     + intros [Hmem | Hmem]; auto. simpl_set.
     + intros [Hmem | Hmem]; auto.
 Qed.
-
-(*How bad is this to prove?*)
-Check decrease_fun.
 
 (*If we view options as a single element set, the subset relation*)
 Definition option_sub {A: Type} (o1 o2: option A) : Prop :=
@@ -888,8 +887,7 @@ Qed.
 
 
 (*Basically, (later) just prove we can change bodies of fn and pn and still OK*)
-(*temp*)
-From Proofs Require Import eliminate_algebraic_typing.
+
 (*NOTE: I DO need the condition of alpha equivalence*)
 (*We need typing here because we need to know things about lengths*)
 Lemma a_equiv_decrease_fun gamma (fs: list fn) (ps: list pn)
@@ -1478,8 +1476,7 @@ Lemma split_funpred_defs_alpha (l1 l2: list funpred_def) (Hlen: length l1 = leng
     funsym_eq_dec (fst (fst x1)) (fst (fst x2)) && 
     (length vs1 =? length vs2) &&
     (list_eq_dec vty_eq_dec (map snd vs1) (map snd vs2)) &&
-    nodupb string_dec (map fst vs1) &&
-    nodupb string_dec (map fst vs2) &&
+    (Bool.eqb (nodupb string_dec (map fst vs1)) (nodupb string_dec (map fst vs2))) &&
     alpha_equiv_t (list_to_amap (combine vs1 vs2)) (list_to_amap (combine vs2 vs1)) (snd x1) (snd x2)) 
     (fst (split_funpred_defs l1)) (fst (split_funpred_defs l2)) /\
   all2 (fun x1 x2 => 
@@ -1488,8 +1485,7 @@ Lemma split_funpred_defs_alpha (l1 l2: list funpred_def) (Hlen: length l1 = leng
     predsym_eq_dec (fst (fst x1)) (fst (fst x2)) && 
     (length vs1 =? length vs2) &&
     (list_eq_dec vty_eq_dec (map snd vs1) (map snd vs2)) &&
-    nodupb string_dec (map fst vs1) &&
-    nodupb string_dec (map fst vs2) &&
+    (Bool.eqb (nodupb string_dec (map fst vs1)) (nodupb string_dec (map fst vs2))) &&
     alpha_equiv_f (list_to_amap (combine vs1 vs2)) (list_to_amap (combine vs2 vs1)) (snd x1) (snd x2)) 
     (snd (split_funpred_defs l1)) (snd (split_funpred_defs l2)).
 Proof.
@@ -1504,8 +1500,8 @@ Proof.
     simpl in Halpha.
     destruct (funsym_eqb_spec f1 f2); [|discriminate].
     subst. destruct (funsym_eq_dec f2 f2); auto. simpl. simpl in Halpha.
-    rewrite !andb_true in Halpha. destruct Halpha as [[[[Hlen' Hfsteq] Hn1] Hn2] Halpha].
-    unfold vsymbol in Hlen'; rewrite Hlen', Hn1, Hn2.
+    rewrite !andb_true in Halpha. destruct Halpha as [[[Hlen' Hfsteq] Hn2] Halpha].
+    unfold vsymbol in Hlen'; rewrite Hlen', Hn2.
     destruct (list_eqb_spec _ vty_eq_spec (map snd vs1) (map snd vs2)); [|discriminate].
     destruct (list_eq_dec _ (map snd vs1) (map snd vs2)); try contradiction. simpl.
     unfold vsymbol in Halpha.
@@ -1514,10 +1510,10 @@ Proof.
     simpl in Halpha.
     destruct (predsym_eqb_spec p1 p2); [|discriminate].
     subst. destruct (predsym_eq_dec p2 p2); auto. simpl. simpl in Halpha.
-    rewrite !andb_true in Halpha. destruct Halpha as [[[[Hlen' Hfsteq] Hn1] Hn2] Halpha].
+    rewrite !andb_true in Halpha. destruct Halpha as [[[Hlen' Hfsteq] Hn2] Halpha].
     destruct (list_eqb_spec _ vty_eq_spec (map snd vs1) (map snd vs2)); [|discriminate].
     destruct (list_eq_dec _ (map snd vs1) (map snd vs2)); try contradiction. simpl.
-    unfold vsymbol in Hlen'; rewrite Hlen', Hn1, Hn2. simpl. unfold vsymbol in Halpha.
+    unfold vsymbol in Hlen'; rewrite Hlen', Hn2. simpl. unfold vsymbol in Halpha.
     rewrite Halpha. auto.
 Qed.
 
@@ -1576,7 +1572,6 @@ Lemma funpred_defs_to_sns_alpha (l1 l2: list funpred_def) (Hlen: length l1 = len
     fn_sym f1 = fn_sym f2 /\
     sn_sym (fn_sn f1) = sn_sym (fn_sn f2) /\
     map snd vs1 = map snd vs2 /\
-    (*do we need NoDups?*)
     sn_idx (fn_sn f1) = sn_idx (fn_sn f2) /\
     alpha_equiv_t (list_to_amap (combine vs1 vs2)) (list_to_amap (combine vs2 vs1))
       (fn_body f1) (fn_body f2)) 
@@ -1587,7 +1582,6 @@ Lemma funpred_defs_to_sns_alpha (l1 l2: list funpred_def) (Hlen: length l1 = len
     pn_sym f1 = pn_sym f2 /\
     sn_sym (pn_sn f1) = sn_sym (pn_sn f2) /\
     map snd vs1 = map snd vs2 /\
-    (*do we need NoDups?*)
     sn_idx (pn_sn f1) = sn_idx (pn_sn f2) /\
     alpha_equiv_f (list_to_amap (combine vs1 vs2)) (list_to_amap (combine vs2 vs1))
       (pn_body f1) (pn_body f2)) 
@@ -1719,7 +1713,6 @@ Qed.
 (*Finally, we can change fs and ps in our termination check as long as the symbols and the indices
   are the same
   (NOTE: doesn't have to be map, but a bit nicer this way*)
-Check decrease_fun.
 Lemma decrease_change_fs_ps (fs1 fs2 : list fn) ps1 ps2
   (Hfs1: map fn_sym fs1 = map fn_sym fs2)
   (Hfs2: map sn_idx (map fn_sn fs1) = map sn_idx (map fn_sn fs2))
@@ -1837,7 +1830,6 @@ Proof.
     * intros f Hinf.
       rewrite Forall_forall in Hwf3; specialize (Hwf3 _ Hinf).
       unfold fn_wf in Hwf3. unfold sn_wf in Hwf3.
-      (*TODO: see if we need wf*) 
       destruct (In_nth _ _ fn_d Hinf) as [i [Hi Hf]]; subst.
       rewrite Forall2_nth in Hsns1.
       destruct Hsns1 as [Hlen1 Hsns1].
@@ -2365,8 +2357,6 @@ Proof.
     subst. split; auto. right. auto.
 Qed.
 
-Import Alpha.
-
 (*Need more general result*)
 Lemma indpred_defined_alpha_gen {g1 g2: context} (Halpha: a_equiv_ctx g1 g2) {l}
   (l_in : In l (indpreds_of_context g1)):
@@ -2455,15 +2445,20 @@ Proof.
     destruct (funsym_eqb_spec f f); auto; try discriminate. clear e.
     simpl in Ha. destruct (Nat.eqb_spec (length args) (length args1)); [|discriminate].
     simpl in Ha. destruct (list_eqb_spec _ vty_eq_spec (map snd args) (map snd args1)); [|discriminate].
-    simpl in Ha. (*Do we need NoDups?*)
-    destruct (nodup_NoDup string_dec (map fst args)) as [Hn1|]; [|discriminate].
-    destruct (nodup_NoDup string_dec (map fst args1)) as [Hn2|]; [|discriminate].
+    simpl in Ha. (*Do we need NoDups? - can get if we need*)
+    destruct (eqb (nodupb string_dec (map fst args)) (nodupb string_dec (map fst args1))); [|discriminate].
     simpl in Ha.
-    assert (Hnargs: NoDup args) by (apply NoDup_map_inv in Hn1; auto).
     (*Need some validity results*)
+    assert (Hnargs: NoDup args).
+    { eapply fun_defined_valid in f_in; auto. simpl in f_in. destruct f_in as [_ [_ [_ [Hnodup _]]]].
+      apply NoDup_map_inv in Hnodup; auto.
+    }
+    assert (Hnargs1: NoDup args1).
+    { eapply fun_defined_valid in f_in'; auto. simpl in f_in'. destruct f_in' as [_ [_ [_ [Hnodup _]]]].
+      apply NoDup_map_inv in Hnodup; auto.
+    }
     pose proof (fun_defined_valid g1_valid f_in) as Hval. simpl in Hval.
     pose proof (fun_defined_valid g2_valid f_in') as Hval1. simpl in Hval1.
-    assert (Hnargs1: NoDup args1) by (apply NoDup_map_inv in Hn2; auto).
     (*First, get typing*)
     assert (Hty1: term_has_type g1 body1 (f_ret f)). {
       eapply alpha_equiv_t_type. eauto. 2: apply (fun_defined_ty g1_valid f_in).
@@ -2485,7 +2480,7 @@ Proof.
     (*Now use [alpha_equiv_t_rep]*)
     erewrite alpha_equiv_t_rep; [ | eauto | |].
     { apply dom_cast_eq. }
-    (*Now prove valuations consistent - TODO: might need free var result from typing*)
+    (*Now prove valuations consistent*)
     + intros x y Heq Hlook1 Hlook2.
       apply list_to_amap_lookup in Hlook1; auto.
       2: {  rewrite map_fst_combine; auto. } 
@@ -2558,14 +2553,20 @@ Proof.
     destruct (predsym_eqb_spec p p); auto; try discriminate. clear e.
     simpl in Ha. destruct (Nat.eqb_spec (length args) (length args1)); [|discriminate].
     simpl in Ha. destruct (list_eqb_spec _ vty_eq_spec (map snd args) (map snd args1)); [|discriminate].
-    simpl in Ha. (*Do we need NoDups?*)
-    destruct (nodup_NoDup string_dec (map fst args)) as [Hn1|]; [|discriminate].
-    destruct (nodup_NoDup string_dec (map fst args1)) as [Hn2|]; [|discriminate].
+    simpl in Ha. 
+    destruct (eqb (nodupb string_dec (map fst args)) (nodupb string_dec (map fst args1))); [|discriminate].
     simpl in Ha.
-    assert (Hnargs: NoDup args) by (apply NoDup_map_inv in Hn1; auto).
+    (*Need some validity results*)
+    assert (Hnargs: NoDup args).
+    { eapply pred_defined_valid in p_in; auto. simpl in p_in. destruct p_in as [_ [_ [_ [Hnodup _]]]].
+      apply NoDup_map_inv in Hnodup; auto.
+    }
+    assert (Hnargs1: NoDup args1).
+    { eapply pred_defined_valid in p_in'; auto. simpl in p_in'. destruct p_in' as [_ [_ [_ [Hnodup _]]]].
+      apply NoDup_map_inv in Hnodup; auto.
+    }
     pose proof (pred_defined_valid g1_valid p_in) as Hval. simpl in Hval.
     pose proof (pred_defined_valid g2_valid p_in') as Hval1. simpl in Hval1.
-    assert (Hnargs1: NoDup args1) by (apply NoDup_map_inv in Hn2; auto).
     assert (Hty1: formula_typed g1 body1). {
       eapply alpha_equiv_f_typed. eauto. 2: apply (pred_defined_typed g1_valid p_in).
       intros x y Hlook. apply list_to_amap_lookup in Hlook; auto.
@@ -2780,7 +2781,7 @@ Proof.
   intros [Hty Hsem]. split.
   - (*typing*) eapply a_equiv_task_typed; eauto. unfold a_equiv_task. simpl_task. 
     rewrite !andb_true; split_all; auto.
-  - (*semantics*) (*TODO: start, prove semantics*)
+  - (*semantics*)
     simpl. simpl_task.
     intros gamma_valid w_ty.
     unfold log_conseq_gen.
@@ -2811,10 +2812,214 @@ End Semantics.
 (*TODO: move*)
 
 (*Symmetry*)
+Section Symmetry.
+
+Lemma all2_sym {A: Type} (b: A -> A -> bool) (Hsym: forall x y, b x y = b y x) l1 l2:
+  all2 b l1 l2 = all2 b l2 l1.
+Proof.
+  (*NOTE: shouldn't need length*)
+  generalize dependent l2.
+  induction l1 as [| x1 t1 IH]; intros [|x2 t2]; simpl; auto.
+  rewrite !all2_cons. f_equal; auto.
+Qed.
+
+Lemma typesym_eqb_sym t1 t2:
+  typesym_eqb t1 t2 = typesym_eqb t2 t1.
+Proof.
+  destruct (typesym_eqb_spec t1 t2); destruct (typesym_eqb_spec t2 t1); subst; auto; contradiction.
+Qed.
+
+Lemma funsym_eqb_sym f1 f2:
+  funsym_eqb f1 f2 = funsym_eqb f2 f1.
+Proof.
+  destruct (funsym_eqb_spec f1 f2); destruct (funsym_eqb_spec f2 f1); subst; auto; contradiction.
+Qed.
+
+Lemma predsym_eqb_sym p1 p2:
+  predsym_eqb p1 p2 = predsym_eqb p2 p1.
+Proof.
+  destruct (predsym_eqb_spec p1 p2); destruct (predsym_eqb_spec p2 p1); subst; auto; contradiction.
+Qed.
+
+Lemma list_eqb_sym {A: Type} {eq: A -> A -> bool} (eq_spec: forall x y, reflect (x = y) (eq x y)) l1 l2:
+  list_eqb eq l1 l2 = list_eqb eq l2 l1.
+Proof.
+  destruct (list_eqb_spec _ eq_spec l1 l2); destruct (list_eqb_spec _ eq_spec l2 l1); auto.
+  congruence.
+Qed.
+
+Lemma eqb_sym b1 b2: eqb b1 b2 = eqb b2 b1. Proof. destruct b1; destruct b2; auto. Qed.
 
 
-(*NOTE: maybe iff? - with symmetry, previous can give iff*)
-Lemma task_related_valid (t1: TaskDefs.task) (t2: Task.task):
+Lemma a_equiv_funpred_def_sym fd1 fd2:
+  a_equiv_funpred_def fd1 fd2 = a_equiv_funpred_def fd2 fd1.
+Proof.
+  destruct fd1 as [f1 vs1 b1 | p1 vs1 b1]; destruct fd2 as [f2 vs2 b2 | p2 vs2 b2]; simpl; auto.
+  - f_equal; [| apply alpha_equiv_t_sym].
+    f_equal; [| apply eqb_sym].
+    f_equal; [| apply list_eqb_sym, vty_eq_spec].
+    f_equal; [ apply funsym_eqb_sym | apply Nat.eqb_sym].
+  - f_equal; [| apply alpha_equiv_f_sym].
+    f_equal; [| apply eqb_sym].
+    f_equal; [| apply list_eqb_sym, vty_eq_spec].
+    f_equal; [ apply predsym_eqb_sym | apply Nat.eqb_sym].
+Qed.
+
+Lemma a_equiv_indpred_def_sym i1 i2:
+  a_equiv_indpred_def i1 i2 = a_equiv_indpred_def i2 i1.
+Proof.
+  destruct i1 as [p1 fs1]; destruct i2 as [p2 fs2]; simpl.
+  f_equal; [| apply all2_sym, a_equiv_f_sym].
+  f_equal; [apply predsym_eqb_sym |apply Nat.eqb_sym].
+Qed.
+
+Lemma a_equiv_def_sym d1 d2:
+  a_equiv_def d1 d2 = a_equiv_def d2 d1.
+Proof.
+  destruct d1; destruct d2; auto; simpl.
+  - destruct (mut_adt_eqb_spec m m0); destruct (mut_adt_eqb_spec m0 m); subst; auto. contradiction.
+  - f_equal; [apply Nat.eqb_sym|].
+    apply all2_sym, a_equiv_funpred_def_sym.
+  - f_equal; [apply Nat.eqb_sym|].
+    apply all2_sym, a_equiv_indpred_def_sym.
+  - apply a_equiv_funpred_def_sym.
+  - apply typesym_eqb_sym.
+  - apply funsym_eqb_sym.
+  - apply predsym_eqb_sym.
+Qed.
+
+Lemma a_equiv_ctx_sym g1 g2:
+  a_equiv_ctx g1 g2 = a_equiv_ctx g2 g1.
+Proof.
+  unfold a_equiv_ctx.
+  f_equal.
+  - apply Nat.eqb_sym.
+  - apply all2_sym, a_equiv_def_sym.
+Qed.
+
+
+Lemma a_equiv_task_sym t1 t2:
+  a_equiv_task t1 t2 = a_equiv_task t2 t1.
+Proof.
+  unfold a_equiv_task.
+  f_equal; [ | apply a_equiv_f_sym].
+  f_equal; [| apply all2_sym, a_equiv_f_sym].
+  f_equal; [| apply Nat.eqb_sym].
+  apply a_equiv_ctx_sym.
+Qed.
+
+End Symmetry.
+
+(*And reflexivity*)
+Section Refl.
+
+Lemma all2_refl {A: Type} (b: A -> A -> bool) (Hsym: forall x, b x x) l:
+  all2 b l l.
+Proof.
+  induction l as [| x1 t1 IH]; simpl; auto.
+  rewrite !all2_cons. rewrite Hsym; auto.
+Qed.
+
+Lemma typesym_eqb_refl t:
+  typesym_eqb t t.
+Proof.
+  destruct (typesym_eqb_spec t t); auto.
+Qed.
+
+Lemma funsym_eqb_refl f:
+  funsym_eqb f f.
+Proof.
+  destruct (funsym_eqb_spec f f); auto.
+Qed.
+
+Lemma predsym_eqb_refl p:
+  predsym_eqb p p.
+Proof.
+  destruct (predsym_eqb_spec p p); auto.
+Qed.
+
+Lemma list_eqb_refl {A: Type} {eq: A -> A -> bool} (eq_spec: forall x y, reflect (x = y) (eq x y)) l:
+  list_eqb eq l l.
+Proof.
+  destruct (list_eqb_spec _ eq_spec l l); auto.
+Qed.
+
+(*TODO: move*)
+(*Need [list_to_amap_lookup] without nodups*)
+Lemma list_to_amap_lookup_some {A B: Type} `{countable.Countable A} (l: list (A * B)) x y:
+  amap_lookup (list_to_amap l) x = Some y ->
+  In (x, y) l.
+Proof.
+  induction l as [| [x1 y1] t IH]; simpl; auto.
+  - rewrite amap_empty_get. discriminate.
+  - destruct (EqDecision0 x x1); subst.
+    + rewrite amap_set_lookup_same. inv Hsome. auto.
+    + rewrite amap_set_lookup_diff by auto. intros Hlook; apply IH in Hlook; auto.
+Qed.
+
+Lemma a_equiv_funpred_def_refl fd:
+  a_equiv_funpred_def fd fd.
+Proof.
+  destruct fd as [f1 vs1 b1 | p1 vs1 b1]; simpl.
+  - rewrite funsym_eqb_refl, Nat.eqb_refl, (list_eqb_refl vty_eq_spec (map snd vs1)), eqb_reflx.
+    simpl.
+    apply alpha_t_equiv_same.
+    intros x y Hlook.
+    apply list_to_amap_lookup_some in Hlook.
+    rewrite in_combine_iff in Hlook; auto.
+    destruct Hlook as [i [Hi Hxy]]. specialize (Hxy vs_d vs_d). inversion Hxy; subst; auto.
+  - rewrite predsym_eqb_refl, Nat.eqb_refl, (list_eqb_refl vty_eq_spec (map snd vs1)), eqb_reflx.
+    simpl.
+    apply alpha_f_equiv_same.
+    intros x y Hlook.
+    apply list_to_amap_lookup_some in Hlook.
+    rewrite in_combine_iff in Hlook; auto.
+    destruct Hlook as [i [Hi Hxy]]. specialize (Hxy vs_d vs_d). inversion Hxy; subst; auto.
+Qed.
+
+Lemma a_equiv_indpred_def_refl i:
+  a_equiv_indpred_def i i.
+Proof.
+  destruct i as [p1 fs1]; simpl.
+  rewrite predsym_eqb_refl, Nat.eqb_refl.
+  apply all2_refl, a_equiv_f_refl.
+Qed.
+
+Lemma a_equiv_def_refl d:
+  a_equiv_def d d .
+Proof.
+  destruct d; simpl; auto.
+  - destruct (mut_adt_eqb_spec m m); auto.
+  - rewrite Nat.eqb_refl. apply all2_refl, a_equiv_funpred_def_refl.
+  - rewrite Nat.eqb_refl. apply all2_refl, a_equiv_indpred_def_refl.
+  - apply a_equiv_funpred_def_refl.
+  - apply typesym_eqb_refl.
+  - apply funsym_eqb_refl.
+  - apply predsym_eqb_refl.
+Qed.
+
+Lemma a_equiv_ctx_refl g:
+  a_equiv_ctx g g.
+Proof.
+  unfold a_equiv_ctx.
+  rewrite Nat.eqb_refl.
+  apply all2_refl, a_equiv_def_refl.
+Qed.
+
+
+Lemma a_equiv_task_refl t:
+  a_equiv_task t t.
+Proof.
+  unfold a_equiv_task.
+  rewrite a_equiv_ctx_refl, Nat.eqb_refl, (all2_refl _ a_equiv_f_refl), a_equiv_f_refl.
+  reflexivity.
+Qed.
+
+End Refl.
+
+(*If t1 and t2 are related, the two notions of validity coincide - follows from
+  [a_equiv_task_valid]*)
+Theorem task_related_valid (t1: TaskDefs.task) (t2: Task.task):
   task_related t1 t2 ->
   valid_task t1 <->
   Task.task_valid t2.
@@ -2826,15 +3031,7 @@ Proof.
     rewrite Heval' in Heval. inversion Heval; subst.
     eapply a_equiv_task_valid; eauto.
   - intros Hval.
-
+    rewrite a_equiv_task_sym in Halpha.
     exists t. split; auto.
-    assert (Halpha': a_equiv_task t2 t) by admit.
-    (*NOTE: need symmety for [a_equiv_task]*)
-    apply a_equiv_task_valid in Halpha'; auto.
-Admitted.
-(*    eapply a_equiv_task_valid; eauto.
-  (*Need to prove [a_equiv_task] symmetric - or switch arguments?*)
-  (* apply a_equiv_task_valid. *)
-  (*TODO: would have to prove that a_equiv_task preserves validity - might be annoying
-    see if we need this or we should just define in terms of related*)
-Admitted.*)
+    apply a_equiv_task_valid in Halpha; auto.
+Qed.
