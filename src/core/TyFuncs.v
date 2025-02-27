@@ -86,6 +86,47 @@ Definition vs_o : tvsymbol :=
   (create_tvsymbol_builtin id_o).
 Definition vs_p : tvsymbol :=
   (create_tvsymbol_builtin id_p).
+Definition vs_q : tvsymbol :=
+  (create_tvsymbol_builtin id_q).
+Definition vs_r : tvsymbol :=
+  (create_tvsymbol_builtin id_r).
+Definition vs_s : tvsymbol :=
+  (create_tvsymbol_builtin id_s).
+Definition vs_t : tvsymbol :=
+  (create_tvsymbol_builtin id_t).
+
+Definition vs_a1 : tvsymbol :=
+  (create_tvsymbol_builtin id_a1).
+Definition vs_a2 : tvsymbol :=
+  (create_tvsymbol_builtin id_a2).
+Definition vs_a3 : tvsymbol :=
+  (create_tvsymbol_builtin id_a3).
+Definition vs_a4 : tvsymbol :=
+  (create_tvsymbol_builtin id_a4).
+Definition vs_a5 : tvsymbol :=
+  (create_tvsymbol_builtin id_a5).
+Definition vs_a6 : tvsymbol :=
+  (create_tvsymbol_builtin id_a6).
+Definition vs_a7 : tvsymbol :=
+  (create_tvsymbol_builtin id_a7).
+Definition vs_a8 : tvsymbol :=
+  (create_tvsymbol_builtin id_a8).
+Definition vs_a9 : tvsymbol :=
+  (create_tvsymbol_builtin id_a9).
+Definition vs_b0 : tvsymbol :=
+  (create_tvsymbol_builtin id_b0).
+Definition vs_b1 : tvsymbol :=
+  (create_tvsymbol_builtin id_b1).
+Definition vs_b2 : tvsymbol :=
+  (create_tvsymbol_builtin id_b2).
+Definition vs_b3 : tvsymbol :=
+  (create_tvsymbol_builtin id_b3).
+Definition vs_b4 : tvsymbol :=
+  (create_tvsymbol_builtin id_b4).
+Definition vs_b5 : tvsymbol :=
+  (create_tvsymbol_builtin id_b5).
+Definition vs_b6 : tvsymbol :=
+  (create_tvsymbol_builtin id_b6).
 
 
 
@@ -439,15 +480,71 @@ Definition ts_tuple15 : tysymbol_c := mk_ts_builtin id_tup15 [vs_a; vs_b; vs_c; 
   vs_h; vs_i; vs_j; vs_k; vs_l; vs_m; vs_n; vs_o] NoDef.
 Definition ts_tuple16 : tysymbol_c := mk_ts_builtin id_tup16 [vs_a; vs_b; vs_c; vs_d; vs_e; vs_f; vs_g; 
   vs_h; vs_i; vs_j; vs_k; vs_l; vs_m; vs_n; vs_o; vs_p] NoDef.
+Definition ts_tuple17 : tysymbol_c := mk_ts_builtin id_tup17 [vs_a; vs_b; vs_c; vs_d; vs_e; vs_f; vs_g; 
+  vs_h; vs_i; vs_j; vs_k; vs_l; vs_m; vs_n; vs_o; vs_p; vs_q] NoDef.
+Definition ts_tuple18 : tysymbol_c := mk_ts_builtin id_tup18 [vs_a; vs_b; vs_c; vs_d; vs_e; vs_f; vs_g; 
+  vs_h; vs_i; vs_j; vs_k; vs_l; vs_m; vs_n; vs_o; vs_p; vs_q; vs_r] NoDef.
+Definition ts_tuple19 : tysymbol_c := mk_ts_builtin id_tup19 [vs_a; vs_b; vs_c; vs_d; vs_e; vs_f; vs_g; 
+  vs_h; vs_i; vs_j; vs_k; vs_l; vs_m; vs_n; vs_o; vs_p; vs_q; vs_r; vs_s] NoDef.
+Definition ts_tuple20 : tysymbol_c := mk_ts_builtin id_tup20 [vs_a; vs_b; vs_c; vs_d; vs_e; vs_f; vs_g; 
+  vs_h; vs_i; vs_j; vs_k; vs_l; vs_m; vs_n; vs_o; vs_p; vs_q; vs_r; vs_s; vs_t] NoDef.
+
+Definition ts_tuple21 : tysymbol_c := mk_ts_builtin id_tup21 [vs_a; vs_b; vs_c; vs_d; vs_e; vs_f; vs_g; 
+  vs_h; vs_i; vs_j; vs_k; vs_l; vs_m; vs_n; vs_o; vs_p; vs_q; vs_r; vs_s; vs_t;
+  vs_a1] NoDef.
+Definition ts_tuple22 : tysymbol_c := mk_ts_builtin id_tup22 [vs_a; vs_b; vs_c; vs_d; vs_e; vs_f; vs_g; 
+  vs_h; vs_i; vs_j; vs_k; vs_l; vs_m; vs_n; vs_o; vs_p; vs_q; vs_r; vs_s; vs_t;
+  vs_a1; vs_a2] NoDef.
+Definition ts_tuple23 : tysymbol_c := mk_ts_builtin id_tup23 [vs_a; vs_b; vs_c; vs_d; vs_e; vs_f; vs_g; 
+  vs_h; vs_i; vs_j; vs_k; vs_l; vs_m; vs_n; vs_o; vs_p; vs_q; vs_r; vs_s; vs_t;
+  vs_a1; vs_a2; vs_a3] NoDef.
+Definition ts_tuple24 : tysymbol_c := mk_ts_builtin id_tup24 [vs_a; vs_b; vs_c; vs_d; vs_e; vs_f; vs_g; 
+  vs_h; vs_i; vs_j; vs_k; vs_l; vs_m; vs_n; vs_o; vs_p; vs_q; vs_r; vs_s; vs_t;
+  vs_a1; vs_a2; vs_a3; vs_a4] NoDef.
+Definition ts_tuple25 : tysymbol_c := mk_ts_builtin id_tup25 [vs_a; vs_b; vs_c; vs_d; vs_e; vs_f; vs_g; 
+  vs_h; vs_i; vs_j; vs_k; vs_l; vs_m; vs_n; vs_o; vs_p; vs_q; vs_r; vs_s; vs_t;
+  vs_a1; vs_a2; vs_a3; vs_a4; vs_a5] NoDef.
+Definition ts_tuple26 : tysymbol_c := mk_ts_builtin id_tup26 [vs_a; vs_b; vs_c; vs_d; vs_e; vs_f; vs_g; 
+  vs_h; vs_i; vs_j; vs_k; vs_l; vs_m; vs_n; vs_o; vs_p; vs_q; vs_r; vs_s; vs_t;
+  vs_a1; vs_a2; vs_a3; vs_a4; vs_a5; vs_a6] NoDef.
+Definition ts_tuple27 : tysymbol_c := mk_ts_builtin id_tup27 [vs_a; vs_b; vs_c; vs_d; vs_e; vs_f; vs_g; 
+  vs_h; vs_i; vs_j; vs_k; vs_l; vs_m; vs_n; vs_o; vs_p; vs_q; vs_r; vs_s; vs_t;
+  vs_a1; vs_a2; vs_a3; vs_a4; vs_a5; vs_a6; vs_a7] NoDef.
+Definition ts_tuple28 : tysymbol_c := mk_ts_builtin id_tup28 [vs_a; vs_b; vs_c; vs_d; vs_e; vs_f; vs_g; 
+  vs_h; vs_i; vs_j; vs_k; vs_l; vs_m; vs_n; vs_o; vs_p; vs_q; vs_r; vs_s; vs_t;
+  vs_a1; vs_a2; vs_a3; vs_a4; vs_a5; vs_a6; vs_a7; vs_a8] NoDef.
+Definition ts_tuple29 : tysymbol_c := mk_ts_builtin id_tup29 [vs_a; vs_b; vs_c; vs_d; vs_e; vs_f; vs_g; 
+  vs_h; vs_i; vs_j; vs_k; vs_l; vs_m; vs_n; vs_o; vs_p; vs_q; vs_r; vs_s; vs_t;
+  vs_a1; vs_a2; vs_a3; vs_a4; vs_a5; vs_a6; vs_a7; vs_a8; vs_a9] NoDef.
+Definition ts_tuple30 : tysymbol_c := mk_ts_builtin id_tup30 [vs_a; vs_b; vs_c; vs_d; vs_e; vs_f; vs_g; 
+  vs_h; vs_i; vs_j; vs_k; vs_l; vs_m; vs_n; vs_o; vs_p; vs_q; vs_r; vs_s; vs_t;
+  vs_a1; vs_a2; vs_a3; vs_a4; vs_a5; vs_a6; vs_a7; vs_a8; vs_a9; vs_b0] NoDef.
+Definition ts_tuple31 : tysymbol_c := mk_ts_builtin id_tup31 [vs_a; vs_b; vs_c; vs_d; vs_e; vs_f; vs_g; 
+  vs_h; vs_i; vs_j; vs_k; vs_l; vs_m; vs_n; vs_o; vs_p; vs_q; vs_r; vs_s; vs_t;
+  vs_a1; vs_a2; vs_a3; vs_a4; vs_a5; vs_a6; vs_a7; vs_a8; vs_a9; vs_b0; vs_b1] NoDef.
+  (*Terrible hack, but EasyCrypt needs a few more*)
+Definition ts_tuple33 : tysymbol_c := mk_ts_builtin id_tup33 [vs_a; vs_b; vs_c; vs_d; vs_e; vs_f; vs_g; 
+  vs_h; vs_i; vs_j; vs_k; vs_l; vs_m; vs_n; vs_o; vs_p; vs_q; vs_r; vs_s; vs_t;
+  vs_a1; vs_a2; vs_a3; vs_a4; vs_a5; vs_a6; vs_a7; vs_a8; vs_a9; vs_b0; vs_b1; vs_b2; vs_b3] NoDef.
+Definition ts_tuple36 : tysymbol_c := mk_ts_builtin id_tup36 [vs_a; vs_b; vs_c; vs_d; vs_e; vs_f; vs_g; 
+  vs_h; vs_i; vs_j; vs_k; vs_l; vs_m; vs_n; vs_o; vs_p; vs_q; vs_r; vs_s; vs_t;
+  vs_a1; vs_a2; vs_a3; vs_a4; vs_a5; vs_a6; vs_a7; vs_a8; vs_a9; vs_b0; vs_b1;
+  vs_b2; vs_b3; vs_b4; vs_b5; vs_b6] NoDef.
 
 Definition ts_tuple_list : list tysymbol_c :=  [ts_tuple0; ts_tuple1; ts_tuple2; ts_tuple3; ts_tuple4; ts_tuple5; ts_tuple6; ts_tuple7; 
-  ts_tuple8; ts_tuple9; ts_tuple10; ts_tuple11; ts_tuple12; ts_tuple13; ts_tuple14; ts_tuple15; ts_tuple16].
+  ts_tuple8; ts_tuple9; ts_tuple10; ts_tuple11; ts_tuple12; ts_tuple13; ts_tuple14; ts_tuple15; ts_tuple16;
+  ts_tuple17; ts_tuple18; ts_tuple19; ts_tuple20; ts_tuple21; ts_tuple22; ts_tuple23; ts_tuple24;
+  ts_tuple25; ts_tuple26; ts_tuple27; ts_tuple28; ts_tuple29; ts_tuple30].
 
-(*Doesn't work with tuple > 16*)
+(*Doesn't work with tuple > 30*)
 Definition ts_tuple (n: CoqBigInt.t) : errorM tysymbol_c :=
   match IntFuncs.big_nth ts_tuple_list n with
   | Some x => err_ret x
-  | None => throw (Invalid_argument "Tuple cannot be larger than 16")
+  | None => 
+    if CoqBigInt.eqb n CoqBigInt.thirtyone then err_ret ts_tuple31
+    else if CoqBigInt.eqb n CoqBigInt.thirtythree then err_ret ts_tuple33
+    else if CoqBigInt.eqb n CoqBigInt.thirtysix then err_ret ts_tuple36  
+    else throw (Invalid_argument ("Tuple cannot be larger than 30, it is " ++ CoqBigInt.to_string n))
   end.
 
 Local Open Scope errst_scope.
@@ -460,6 +557,7 @@ Definition is_ts_tuple ts : errorM bool :=
   (ts1 <- (ts_tuple (int_length (ts_args_of ts))) ;;
   err_ret (ts_equal ts ts1))%err.
 
+(*Only works up to 20 - need to change?*)
 Definition is_ts_tuple_id (i: ident) : option CoqBigInt.t :=
   (find_index id_equal id_tup_list i).
 

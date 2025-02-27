@@ -1,7 +1,7 @@
 (********************************************************************)
 (*                                                                  *)
 (*  The Why3 Verification Platform   /   The Why3 Development Team  *)
-(*  Copyright 2010-2023 --  Inria - CNRS - Paris-Saclay University  *)
+(*  Copyright 2010-2024 --  Inria - CNRS - Paris-Saclay University  *)
 (*                                                                  *)
 (*  This software is distributed under the terms of the GNU Lesser  *)
 (*  General Public License version 2.1, with the special exception  *)
@@ -318,6 +318,26 @@ val id_m : ident
 val id_n : ident
 val id_o : ident
 val id_p : ident
+val id_q : ident
+val id_r : ident
+val id_s : ident
+val id_t : ident
+val id_a1 : ident
+val id_a2 : ident
+val id_a3 : ident
+val id_a4 : ident
+val id_a5 : ident
+val id_a6 : ident
+val id_a7 : ident
+val id_a8 : ident
+val id_a9 : ident
+val id_b0 : ident
+val id_b1 : ident
+val id_b2 : ident
+val id_b3 : ident
+val id_b4 : ident
+val id_b5 : ident
+val id_b6 : ident
 val id_fun : ident
 val id_eq : ident
 val id_true : ident
@@ -341,4 +361,21 @@ val id_tup13 : ident
 val id_tup14 : ident
 val id_tup15 : ident
 val id_tup16 : ident
+val id_tup17 : ident
+val id_tup18 : ident
+val id_tup19 : ident
+val id_tup20 : ident
+val id_tup21 : ident
+val id_tup22 : ident
+val id_tup23 : ident
+val id_tup24 : ident
+val id_tup25 : ident
+val id_tup26 : ident
+val id_tup27 : ident
+val id_tup28 : ident
+val id_tup29 : ident
+val id_tup30 : ident
+val id_tup31 : ident
+val id_tup33 : ident
+val id_tup36 : ident
 val id_tup_list: ident list

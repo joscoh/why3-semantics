@@ -55,7 +55,9 @@ Definition seven : t := 7.
 Definition eight : t := 8.
 Definition nine : t := 9.
 Definition ten : t := 10.
-(*All numbers up to 30*)
+(*All numbers up to 80*)
+(*TODO: change to numbers not words*)
+(*TODO: very bad, need a ton of numbers for hard coded tuples bc EasyCrypt uses huge ones *)
 Definition eleven : t := 11.
 Definition twelve : t := 12.
 Definition thirteen : t := 13.
@@ -90,6 +92,42 @@ Definition fortyone : t := 41.
 Definition fortytwo : t := 42.
 Definition fortythree : t := 43.
 Definition fortyfour : t := 44.
+Definition fortyfive : t := 45.
+Definition fortysix : t := 46.
+Definition fortyseven : t := 47.
+Definition fortyeight : t := 48.
+Definition fortynine : t := 49.
+Definition fifty : t := 50.
+Definition fiftyone : t := 51.
+Definition fiftytwo : t := 52.
+Definition fiftythree : t := 53.
+Definition fiftyfour : t := 54.
+Definition fiftyfive : t := 55.
+Definition fiftysix : t := 56.
+Definition fiftyseven : t := 57.
+Definition fiftyeight : t := 58.
+Definition fiftynine : t := 59.
+Definition sixty : t := 60.
+Definition sixtyone : t := 61.
+Definition sixtytwo : t := 62.
+Definition sixtythree : t := 63.
+Definition sixtyfour : t := 64.
+Definition sixtyfive : t := 65.
+Definition sixtysix : t := 66.
+Definition sixtyseven : t := 67.
+Definition sixtyeight : t := 68.
+Definition sixtynine : t := 69.
+Definition seventy : t := 70.
+Definition seventyone : t := 71.
+Definition seventytwo : t := 72.
+Definition seventythree : t := 73.
+Definition seventyfour : t := 74.
+Definition seventyfive : t := 75.
+Definition seventysix : t := 76.
+Definition seventyseven : t := 77.
+Definition seventyeight : t := 78.
+Definition seventynine : t := 79.
+Definition eighty : t := 80.
 
 Definition neg_one : t := -1.
 

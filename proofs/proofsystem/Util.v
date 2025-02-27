@@ -3,7 +3,6 @@ Require Export Logic.
   variables in a function/predicate symbol*)
 
 (*NOTE: does not work with sets, sets dont compute very well except from vm_compute*)
-
 Definition constr_noty (name: string) (args: list vty) 
   (ret: vty) (num: nat) : funsym :=
   Build_funsym (Build_fpsym name (find_args (ret :: args)) args
@@ -15,10 +14,10 @@ Definition predsym_noty (name: string) (args: list vty) : predsym :=
     (find_args_check_args_l _ _ (fun x H => H))
     (find_args_nodup _)).
 (*Use notation so we can use eq_refl*)
-(* Notation mk_constr name params args ret num args1 nodup ret1 :=
+Notation mk_constr name params args ret num args1 nodup ret1 :=
   (Build_funsym (Build_fpsym name params args args1 nodup) ret true num ret1).
 Notation mk_noconstr name params args ret args1 nodup ret1 :=
-  (Build_funsym (Build_fpsym name params args args1 nodup) ret false 0 ret1). *)
+  (Build_funsym (Build_fpsym name params args args1 nodup) ret false 0 ret1).
 (* Definition mk_constr (name: string) (params: list typesym) (args: list vty) (ret: vty) (num: nat) *)
 
 (*Constant symbols*)
@@ -26,8 +25,8 @@ Notation mk_noconstr name params args ret args1 nodup ret1 :=
 (*NOTE: be careful using using (see note in Syntax.v*)
 Definition const_noconstr (name: string) (ty: vty) : funsym :=
   funsym_noconstr_noty name nil ty.
-Definition const_constr (name: string) (ty: vty) (num: nat) : funsym :=
-  constr_noty name nil ty num.
+(*Definition const_constr (name: string) (ty: vty) (num: nat) : funsym :=
+  constr_noty name nil ty num. *)
 
 (*Non-constr*)
 Definition t_constsym name s : term :=

@@ -167,7 +167,7 @@ Definition id_compare (id1 id2: ident) : CoqInt.int :=
   CoqBigInt.compare (id_hash id1) (id_hash id2).
 
 Module CtrStart <: BigIntVal.
-Definition val := CoqBigInt.fortyfour.
+Definition val := CoqBigInt.eighty.
 End CtrStart. 
 Module IdCtr := MakeCtr(CtrStart).
 (*TODO: we need to ensure that this is called in Coq - need
@@ -185,7 +185,7 @@ Definition id_register : preid -> ctr ident :=
     id_loc := p.(pre_loc);
     id_tag := CoqWeakhtbl.create_tag i |}.
 
-(*1st 10 values of the counter correspond to builtin symbols
+(*1st 50 values of the counter correspond to builtin symbols
   (so that we don't need state)*)
 Definition id_builtin (name: string) (tag: CoqBigInt.t) : ident :=
   {| id_string := name;
@@ -299,49 +299,135 @@ Definition id_tup15 : ident :=
 Definition id_tup16 : ident :=
   id_builtin "tuple16" (CoqWeakhtbl.create_tag (CoqBigInt.twentyeight)).
 
+Definition id_tup17 : ident :=
+  id_builtin "tuple17" (CoqWeakhtbl.create_tag (CoqBigInt.twentynine)).
+
+Definition id_tup18 : ident :=
+  id_builtin "tuple18" (CoqWeakhtbl.create_tag (CoqBigInt.thirty)).
+
+Definition id_tup19 : ident :=
+  id_builtin "tuple19" (CoqWeakhtbl.create_tag (CoqBigInt.thirtyone)).
+
+Definition id_tup20 : ident :=
+  id_builtin "tuple20" (CoqWeakhtbl.create_tag (CoqBigInt.thirtytwo)).
+
 Definition id_tup_list : list ident :=
   [id_tup0; id_tup1; id_tup2; id_tup3; id_tup4; id_tup5; id_tup6; id_tup7; id_tup8; id_tup9; id_tup10; 
-   id_tup11; id_tup12; id_tup13; id_tup14; id_tup15; id_tup16].
+   id_tup11; id_tup12; id_tup13; id_tup14; id_tup15; id_tup16;
+   id_tup17; id_tup18; id_tup19; id_tup20].
 
 (*And more typesymbols*)
 Definition id_c : ident :=
-  id_builtin "c" (CoqWeakhtbl.create_tag CoqBigInt.twentynine).
+  id_builtin "c" (CoqWeakhtbl.create_tag CoqBigInt.thirtythree).
 
 Definition id_d : ident :=
-  id_builtin "d" (CoqWeakhtbl.create_tag CoqBigInt.thirty).
+  id_builtin "d" (CoqWeakhtbl.create_tag CoqBigInt.thirtyfour).
 
 Definition id_e : ident :=
-  id_builtin "e" (CoqWeakhtbl.create_tag CoqBigInt.thirtyone).
+  id_builtin "e" (CoqWeakhtbl.create_tag CoqBigInt.thirtyfive).
 
 Definition id_f : ident :=
-  id_builtin "f" (CoqWeakhtbl.create_tag CoqBigInt.thirtytwo).
+  id_builtin "f" (CoqWeakhtbl.create_tag CoqBigInt.thirtysix).
 
 Definition id_g : ident :=
-  id_builtin "g" (CoqWeakhtbl.create_tag CoqBigInt.thirtythree).
+  id_builtin "g" (CoqWeakhtbl.create_tag CoqBigInt.thirtyseven).
 
 Definition id_h : ident :=
-  id_builtin "h" (CoqWeakhtbl.create_tag CoqBigInt.thirtyfour).
+  id_builtin "h" (CoqWeakhtbl.create_tag CoqBigInt.thirtyeight).
 
 Definition id_i : ident :=
-  id_builtin "i" (CoqWeakhtbl.create_tag CoqBigInt.thirtyfive).
+  id_builtin "i" (CoqWeakhtbl.create_tag CoqBigInt.thirtynine).
 
 Definition id_j : ident :=
-  id_builtin "j" (CoqWeakhtbl.create_tag CoqBigInt.thirtysix).
+  id_builtin "j" (CoqWeakhtbl.create_tag CoqBigInt.forty).
 
 Definition id_k : ident :=
-  id_builtin "k" (CoqWeakhtbl.create_tag CoqBigInt.thirtyseven).
+  id_builtin "k" (CoqWeakhtbl.create_tag CoqBigInt.fortyone).
 
 Definition id_l : ident :=
-  id_builtin "l" (CoqWeakhtbl.create_tag CoqBigInt.thirtyeight).
+  id_builtin "l" (CoqWeakhtbl.create_tag CoqBigInt.fortytwo).
 
 Definition id_m : ident :=
-  id_builtin "m" (CoqWeakhtbl.create_tag CoqBigInt.thirtynine).
+  id_builtin "m" (CoqWeakhtbl.create_tag CoqBigInt.fortythree).
 
 Definition id_n : ident :=
-  id_builtin "n" (CoqWeakhtbl.create_tag CoqBigInt.forty).
+  id_builtin "n" (CoqWeakhtbl.create_tag CoqBigInt.fortyfour).
 
 Definition id_o : ident :=
-  id_builtin "o" (CoqWeakhtbl.create_tag CoqBigInt.fortyone).
+  id_builtin "o" (CoqWeakhtbl.create_tag CoqBigInt.fortyfive).
 
 Definition id_p : ident :=
-  id_builtin "p" (CoqWeakhtbl.create_tag CoqBigInt.fortytwo).
+  id_builtin "p" (CoqWeakhtbl.create_tag CoqBigInt.fortysix).
+
+Definition id_q : ident :=
+  id_builtin "q" (CoqWeakhtbl.create_tag CoqBigInt.fortyseven).
+
+Definition id_r : ident :=
+  id_builtin "r" (CoqWeakhtbl.create_tag CoqBigInt.fortyeight).
+
+Definition id_s : ident :=
+  id_builtin "s" (CoqWeakhtbl.create_tag CoqBigInt.fortynine).
+
+Definition id_t : ident :=
+  id_builtin "t" (CoqWeakhtbl.create_tag CoqBigInt.fifty).
+
+(*The next 10 just have numbers*)
+Definition id_a1 : ident :=
+  id_builtin "a1" (CoqWeakhtbl.create_tag CoqBigInt.fiftyone).
+Definition id_a2 : ident :=
+  id_builtin "a2" (CoqWeakhtbl.create_tag CoqBigInt.fiftytwo).
+Definition id_a3 : ident :=
+  id_builtin "a3" (CoqWeakhtbl.create_tag CoqBigInt.fiftythree).
+Definition id_a4 : ident :=
+  id_builtin "a4" (CoqWeakhtbl.create_tag CoqBigInt.fiftyfour).
+Definition id_a5 : ident :=
+  id_builtin "a5" (CoqWeakhtbl.create_tag CoqBigInt.fiftyfive).
+Definition id_a6 : ident :=
+  id_builtin "a6" (CoqWeakhtbl.create_tag CoqBigInt.fiftysix).
+Definition id_a7 : ident :=
+  id_builtin "a7" (CoqWeakhtbl.create_tag CoqBigInt.fiftyseven).
+Definition id_a8 : ident :=
+  id_builtin "a8" (CoqWeakhtbl.create_tag CoqBigInt.fiftyeight).
+Definition id_a9 : ident :=
+  id_builtin "a9" (CoqWeakhtbl.create_tag CoqBigInt.fiftynine).
+Definition id_b0 : ident :=
+  id_builtin "b0" (CoqWeakhtbl.create_tag CoqBigInt.sixty).
+Definition id_b1 : ident :=
+  id_builtin "b1" (CoqWeakhtbl.create_tag CoqBigInt.sixtyone).
+Definition id_b2 : ident :=
+  id_builtin "b2" (CoqWeakhtbl.create_tag CoqBigInt.sixtytwo).
+Definition id_b3 : ident :=
+  id_builtin "b3" (CoqWeakhtbl.create_tag CoqBigInt.sixtythree).
+Definition id_b4 : ident :=
+  id_builtin "b4" (CoqWeakhtbl.create_tag CoqBigInt.sixtyfour).
+Definition id_b5 : ident :=
+  id_builtin "b5" (CoqWeakhtbl.create_tag CoqBigInt.sixtyfive).
+Definition id_b6 : ident :=
+  id_builtin "b6" (CoqWeakhtbl.create_tag CoqBigInt.sixtysix).
+
+Definition id_tup21 : ident :=
+  id_builtin "tuple21" (CoqWeakhtbl.create_tag (CoqBigInt.sixtyseven)).
+Definition id_tup22 : ident :=
+  id_builtin "tuple22" (CoqWeakhtbl.create_tag (CoqBigInt.sixtyeight)).
+Definition id_tup23 : ident :=
+  id_builtin "tuple23" (CoqWeakhtbl.create_tag (CoqBigInt.sixtynine)).
+Definition id_tup24 : ident :=
+  id_builtin "tuple24" (CoqWeakhtbl.create_tag (CoqBigInt.seventy)).
+Definition id_tup25 : ident :=
+  id_builtin "tuple25" (CoqWeakhtbl.create_tag (CoqBigInt.seventyone)).
+Definition id_tup26 : ident :=
+  id_builtin "tuple26" (CoqWeakhtbl.create_tag (CoqBigInt.seventytwo)).
+Definition id_tup27 : ident :=
+  id_builtin "tuple27" (CoqWeakhtbl.create_tag (CoqBigInt.seventythree)).
+Definition id_tup28 : ident :=
+  id_builtin "tuple28" (CoqWeakhtbl.create_tag (CoqBigInt.seventyfour)).
+Definition id_tup29 : ident :=
+  id_builtin "tuple29" (CoqWeakhtbl.create_tag (CoqBigInt.seventyfive)).
+Definition id_tup30 : ident :=
+  id_builtin "tuple30" (CoqWeakhtbl.create_tag (CoqBigInt.seventysix)).
+Definition id_tup31 : ident :=
+  id_builtin "tuple31" (CoqWeakhtbl.create_tag (CoqBigInt.seventyseven)).
+Definition id_tup33 : ident :=
+  id_builtin "tuple33" (CoqWeakhtbl.create_tag (CoqBigInt.seventyeight)).
+Definition id_tup36 : ident :=
+  id_builtin "tuple36" (CoqWeakhtbl.create_tag (CoqBigInt.seventynine)).

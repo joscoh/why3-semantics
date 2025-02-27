@@ -263,7 +263,7 @@ Fixpoint rewriteT'  (kn: known_map) (s: state) (t: term_c) : errState (CoqBigInt
       match args with
       (*Is this for tuples? see*)
       | [arg] =>
-        if (ls.(ls_proj) && enc_ty s (t_ty_of t)) then
+        if (ls.(ls_proj) && enc_ty s (t_ty_of arg)) then
           arg <- rewriteT' kn s arg ;;
           pp <- errst_lift2 (Mls.find _ ls s.(pp_map)) ;;
           t1 <- errst_tup2 (t_app pp [arg] (t_ty_of t)) ;;

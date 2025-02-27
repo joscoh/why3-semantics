@@ -4,6 +4,7 @@ From Proofs Require Import Task Alpha.
 From Proofs Require Import eliminate_algebraic_typing.
 Set Bullet Behavior "Strict Subproofs".
 
+
 (*Maybe move elsewhere not sure*)
 
 (*Reason about relations (of terms, tasks, etc) and how properties (typing, semantics, soundess) preserved*)
