@@ -1,6 +1,8 @@
 # why3-semantics
 Formal Semantics for Why3
 
+NOTE: this README is somewhat out of date; it will be updated soon
+
 This repo contains a formalization of the logic fragment of the [why3](https://why3.lri.fr/) language, 
 used as a backend for many verification tools, including [Frama-C](https://frama-c.com/).
 
