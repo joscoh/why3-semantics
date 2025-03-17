@@ -189,6 +189,35 @@ Definition tmap_not_default (_: term_c) (t: term_c) (r: term_c) : T := errst_lif
 
 End Map.
 
+(*And finally, a version to just make the term well-formed (i.e. unique binders)*)
+Definition t_make_wf (t: term_c) {St} : errState (CoqBigInt.t * St) term_c :=
+  term_map St (tmap_let_default _) (tmap_if_default _) (tmap_app_default _) 
+  (tmap_match_default _) (tmap_eps_default _) (tmap_quant_default _) (tmap_binop_default _) 
+  (tmap_not_default _) t.
+
+(*And lastly, substitution*)
+
+(*TODO: could combine in 1 to require only 1 pass, not worried about efficiency right now*)
+
+(*Do [t_subst], [t_open_bound_with], [t_subst_single]*)
+(* Definition t_subst {St} (m: Mvs.t term_c) (t: term_c) : errState (CoqBigInt.t * St) term_c :=
+  _ <- errst_lift2 (iter_err (fun x => vs_check (fst x) (snd x)) (Mvs.bindings m)) ;;
+  t1 <- t_make_wf t ;;
+  errst_ret (t_subst_unsafe m t1).
+
+Definition t_subst_single {St} (v: vsymbol) (t1: term_c) (t: term_c) : errState (CoqBigInt.t * St) term_c :=
+  t_subst (Mvs.singleton _ v t1) t. *)
+
+(*TODO: if doesnt work, just give 2*)
+Definition t_open_bound_with1 {St} (e: term_c) (tb: term_bound) : errState (CoqBigInt.t * St) term_c :=
+  let '(v, b, t) := tb in
+  _ <- errst_lift2 (vs_check v e) ;;
+  let m := Mvs.singleton _ v e in
+  _ <- errst_lift2 (iter_err (fun x => vs_check (fst x) (snd x)) (Mvs.bindings m)) ;;
+  t1 <- t_make_wf t ;;
+  errst_ret (t_subst_unsafe m t1).
+
+
 (* 
 
 (*And a version to map over terms specifically - basically only difference is that

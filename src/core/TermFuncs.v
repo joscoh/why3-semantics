@@ -1634,6 +1634,8 @@ Definition t_v_occurs v t :=
 (* replaces variables with terms in term [t] using map [m] *)
 
 (*NOTE: we need to iterate over bindings, not map directly*)
+(*NOTE: these are still somewhat unsafe (but OK for our purposes here), versions 
+  in TermTraverse.v are safe*)
 Definition t_subst m t : errorM term_c := 
   (_ <- (iter_err (fun x => vs_check (fst x) (snd x)) (Mvs.bindings m)) ;;
   err_ret (t_subst_unsafe m t))%err.
