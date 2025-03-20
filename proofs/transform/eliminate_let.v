@@ -239,23 +239,63 @@ Definition elim_let_f_rep bt bf f :=
 
 End Rep.
 
+(*TODO: bad*)
+Definition single_goal (f: formula -> formula) : task -> task :=
+  fun t => (task_gamma t, task_delta t, f(task_goal t)).
+Definition single_trans_goal (f: formula -> formula) : trans :=
+  single_trans (single_goal f).
+Check trans_goal_sound.
+Lemma single_trans_goal_sound f:
+  (forall gamma (gamma_valid: valid_context gamma) 
+  fmla (Hfmla: formula_typed gamma fmla),
+  forall pd pdf pf (pf_full: full_interp gamma_valid pd pf) 
+    (Hf: formula_typed gamma (f fmla)), 
+    (forall vt vv,
+    formula_rep gamma_valid pd pdf vt pf vv (f fmla) Hf) ->
+    forall vt vv,
+    formula_rep gamma_valid pd pdf vt pf vv fmla Hfmla)->
+  sound_trans (single_trans_goal f).
+Proof.
+  intros Hf.
+  unfold sound_trans.
+  unfold TaskGen.sound_trans.
+  intros t Hty. unfold single_trans_goal. simpl. intros Htr.
+  specialize (Htr _ (ltac:(left; reflexivity))).
+  unfold TaskGen.task_valid in *.
+  split; auto.
+  destruct t as [[gamma delta] goal]; simpl_task.
+  intros gamma_valid w_ty.
+  destruct Htr as [Hty1 Hval].
+  specialize (Hval gamma_valid Hty1).
+  simpl_task. unfold single_goal in *. simpl_task.
+  unfold log_conseq_gen in *.
+  intros pd pdf pf pf_full Hall.
+  specialize (Hval pd pdf pf pf_full).
+  forward Hval.
+  { intros d Hd. eapply satisfies_irrel. apply Hall. Unshelve. auto. }
+  unfold satisfies in *.
+  intros vt vv.
+  eapply Hf; auto.
+Qed.
+  
+
 (*Define the transformation*)
 Definition eliminate_let_term: trans :=
-  trans_goal (fun _ => elim_let_f true false).
+  single_trans_goal (elim_let_f true false).
   
 Definition eliminate_let_fmla : trans :=
-  trans_goal (fun _ => elim_let_f false true).
+  single_trans_goal (elim_let_f false true).
 
 Definition eliminate_let : trans :=
-  trans_goal (fun _ => elim_let_f true true).
+  single_trans_goal (elim_let_f true true).
 
 (*Now we prove soundness*)
 Lemma eliminate_let_sound_gen :
   forall b1 b2,
-  sound_trans (trans_goal (fun _ => elim_let_f b1 b2)).
+  sound_trans (single_trans_goal (elim_let_f b1 b2)).
 Proof.
-  intros.
-  apply trans_goal_sound.
+  intros b1 b2.
+  apply single_trans_goal_sound.
   intros. specialize (H vt vv). erewrite elim_let_f_rep in H.
   apply H.
 Qed.
