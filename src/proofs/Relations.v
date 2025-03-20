@@ -541,12 +541,20 @@ Definition eval_tdecl_goal (t: tdecl_c) := eval_tdecl_node_aux eval_decl_goal (t
 (*task_hd is not quite a list, but it is close. 
   We need 3 parts: we get gamma, delta, and the goal separately*)
 Fixpoint eval_task_gen {A} (f: tdecl_c -> option A) (t : task_hd) : option (list A) :=
-  t' <- f (task_decl t) ;;
+  (*NOT bind: basically omap - we just want to skip None entries*)
+  let t' := f (task_decl t) in
   match (task_prev t) with
-  | None => Some [t']
+  | None => option_map (fun x => [x]) t'
   | Some tsk => 
-    l <- eval_task_gen f tsk;;
-    Some (t' :: l)
+    let l := eval_task_gen f tsk in
+    match t' with
+    | None => l
+    | Some t' =>
+      match l with
+      | None => Some [t']
+      | Some l => Some (t' :: l)
+      end
+    end
   end.
 
 Definition eval_task_ctx (t: task_hd) : option context :=
