@@ -106,9 +106,13 @@ Proof.
   unfold get_goal.
   destruct (d_node d) as [| | | | | [[k pr] f1]] eqn : Hd; try solve[split; intros; destruct_all; discriminate].
   simpl in *. destruct k; try solve[split; intros; destruct_all; discriminate].
-  split.
-  - intros Heval. exists f1. exists pr. auto.
-  - intros [f2 [pr1 [Hsome Heval]]]. inversion Hsome; subst; auto.
+  destruct (eval_fmla f1) as [f2|] eqn : Heval.
+  - split.
+    + intros Hsome; inversion Hsome; subst. exists f1. exists pr. auto.
+    + intros [f2' [pr1 [Hsome Heval']]]. inversion Hsome; subst; auto. rewrite Heval in Heval'.
+      inversion Heval'; subst; auto.
+  - split; try discriminate. 
+    intros [f2' [pr1 [Hsome Heval']]]. inversion Hsome; subst; auto.  rewrite Heval in Heval'. discriminate.
 Qed.
 
 (*Another attempt*)
@@ -1521,6 +1525,47 @@ Definition elim_let_f_a_equiv b1 b2 f1 f2 (Halpha: a_equiv_f f1 f2):
   a_equiv_f (elim_let_f b1 b2 f1) (elim_let_f b1 b2 f2) :=
   elim_let_f_alpha_equiv b1 b2 f1 f2 amap_empty amap_empty Halpha.
 
+Lemma eval_task_ctx_change_tdecl tsk d d1 y x
+  (Hhd : td_node_of (task_decl tsk) = Decl d1)
+  (Hd1 : d_node d1 = Dprop y):
+  (eval_task_ctx
+     (change_tdecl_c tsk
+        (change_tdecl_node (task_decl tsk) (Decl (change_decl_node d (Dprop x)))))) =
+  eval_task_ctx tsk.
+Proof.
+  unfold eval_task_ctx. simpl.
+  destruct tsk; simpl in *. destruct task_decl; simpl in *. 
+  subst; simpl. unfold eval_decl. rewrite Hd1. simpl.
+  destruct y as [[k1 pr1] f1]; simpl. destruct x as [[k2 pr2] f2]; simpl.
+  destruct k1; destruct k2; auto.
+Qed.
+
+Lemma eval_task_hyps_change_tdecl tsk d d1 pr1 pr2 f1 f2
+  (Hhd : td_node_of (task_decl tsk) = Decl d1)
+  (Hd1 : d_node d1 = Dprop (Pgoal, pr1, f1)):
+  (eval_task_hyps
+     (change_tdecl_c tsk
+        (change_tdecl_node (task_decl tsk) (Decl (change_decl_node d (Dprop (Pgoal, pr2, f2))))))) =
+  eval_task_hyps tsk.
+Proof.
+  unfold eval_task_hyps. simpl.
+  destruct tsk; simpl in *. destruct task_decl; simpl in *. 
+  subst; simpl. unfold eval_decl. rewrite Hd1. reflexivity.
+Qed.
+
+Lemma eval_task_goal_change_tdecl tsk d d1 pr2 f2
+  (Hhd : td_node_of (task_decl tsk) = Decl d1)
+  (*(Hd1 : d_node d1 = Dprop (Pgoal, pr1, f1)) *):
+  (eval_task_goal
+     (change_tdecl_c tsk
+        (change_tdecl_node (task_decl tsk) (Decl (change_decl_node d (Dprop (Pgoal, pr2, f2))))))) =
+   eval_fmla f2.
+Proof.
+  unfold eval_task_goal. simpl.  destruct tsk; simpl in *. destruct task_decl; simpl in *.
+  subst; simpl. unfold eval_tdecl_goal. simpl.
+  unfold eval_decl_goal. simpl.
+  destruct (eval_fmla f2); auto.
+Qed.
 
 (*The main part: prove related*)
 Theorem elim_let_related (tsk1 : TaskDefs.task) (tsk2 : Task.task):
@@ -1566,22 +1611,21 @@ Proof.
   destruct (td_node_of (task_decl tsk1')) as [d | | |] eqn : Htd; try discriminate.
   destruct (d_node d) as [| | | | | [[k pr1] f1']] eqn : Hd; try discriminate.
   simpl in *. destruct k; try discriminate. inversion Hfind; subst; clear Hfind.
-  (*Now decompose bind again: first just gives us [elim_let_f goal], second
+  (*Now decompose bind again: first just gives us (alpha equiv to) [elim_let_f goal], second
     builds the task*)
-  (*TODO: think we will need to prove that result of [elim_let_f] is alpha equivalent*)
-  (*NOTE: don't think we can say eval_fmla =, need fmla_related*)
-  Check fmla_related.
   eapply prove_errst_spec_bnd with (Q1:=fun _ f2 _ => fmla_related f2 (elim_let_f true true goal))
   (Q2:=fun x _ y _ => task_related (Some y) (gamma1, delta1, elim_let_f true true goal1))
   (P2:=fun x _ => fmla_related x (elim_let_f true true goal)) (*TODO: see*); auto.
   2: { (*Prove ending spec assuming [elim_let] correct*) intros f2. apply prove_errst_spec_ret. intros _ Hf2.
     unfold task_related.
-    exists (gamma, delta, (elim_let_f true true goal)).
+    unfold fmla_related in Hf2. destruct Hf2 as [f3 [Hf23 Halphaf]].
+    exists (gamma, delta, f3). 
     split.
-    - unfold eval_task. simpl.
-      (*TODO: prove these equal in separate lemmas for [change_*] lemmas since we change goal *)
-      admit.
+    - unfold eval_task. simpl. erewrite eval_task_ctx_change_tdecl; eauto. rewrite Hgamma. simpl.
+      erewrite eval_task_hyps_change_tdecl; eauto. rewrite Hdelta. simpl.
+      erewrite eval_task_goal_change_tdecl; eauto. rewrite Hf23. reflexivity.
     - unfold a_equiv_task. simpl_task. bool_to_prop; split_all; auto.
+      eapply a_equiv_f_trans. apply Halphaf.
       (*Why we needed that a_equiv_f is preserved by elim_let_f*)
       apply elim_let_f_a_equiv; auto.
   }

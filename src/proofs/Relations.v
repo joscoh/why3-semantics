@@ -458,26 +458,6 @@ Definition eval_ind_list (i: ind_list) : option (list indpred_def) :=
     fold_list_option (map eval_ind_decl (snd i))
   else None.
 
-(*NOTE: this ONLy evaluates definitions, not hypotheses/goals, we do those later*)
-Definition eval_decl_node (d: decl_node) : option def :=
-  match d with
-  | Dtype t => Some (abs_type (eval_typesym t))
-  | Ddata l => m <- eval_data_decl_list l ;; 
-      Some (datatype_def m)
-  | Dparam l =>
-    (*Check to see if funsym or predsym*)
-    fp <- eval_lsymbol_gen l ;;
-    Some match fp with
-    | inl fs => abs_fun fs
-    | inr ps => abs_pred ps
-    end
-  | Dlogic l => eval_list_logic_decl l
-  | Dind i => 
-    l <- eval_ind_list i ;;
-    Some (inductive_def l)
-  | Dprop _ => None
-  end.
-
 (*NOTE: in tasks, all lemmas are turned into axioms, and there is only 1 goal
   I believe Why3 versions works like:
   1. [flat_tdecl] removes goals, turns lemmas into axioms, imports "use"s
@@ -495,6 +475,33 @@ Definition eval_decl_node (d: decl_node) : option def :=
 (*Props - we can ignore lemmas (they are compiled away by [split_theory] into axioms or goals).
   Also we know that there will be only 1 goal in a task, and it should be at the end*)
 
+(*NOTE: this ONLy evaluates definitions, not hypotheses/goals, we do those later*)
+(*NOTE: options are not enough: we need to distinguish bewteen ill-typed defs and non-defs*)
+
+(*The final +unit represents goals*)
+Definition eval_decl_node (d: decl_node) : option def + (option (string * formula) + unit) :=
+  match d with
+  | Dtype t => inl (Some (abs_type (eval_typesym t)))
+  | Ddata l => inl (m <- eval_data_decl_list l ;; 
+      Some (datatype_def m))
+  | Dparam l =>
+    (*Check to see if funsym or predsym*)
+    inl (fp <- eval_lsymbol_gen l ;;
+    Some match fp with
+    | inl fs => abs_fun fs
+    | inr ps => abs_pred ps
+    end)
+  | Dlogic l => inl (eval_list_logic_decl l)
+  | Dind i => 
+    inl (l <- eval_ind_list i ;;
+    Some (inductive_def l))
+  | Dprop (Paxiom, p, f) =>
+    inr (inl (f' <- eval_fmla f ;;
+    Some (eval_prsymbol p, f')))
+  | Dprop _ => inr (inr tt)
+  end.
+
+(* 
 
 Definition get_hyp (d: decl_node) : option (string * formula) :=
   match d with
@@ -502,7 +509,7 @@ Definition get_hyp (d: decl_node) : option (string * formula) :=
     f' <- eval_fmla f ;;
     Some (eval_prsymbol p, f')
   | _ => None
-  end.
+  end. *)
 
 Definition get_goal (d: decl_node) : option formula :=
   match d with
@@ -521,25 +528,66 @@ Definition get_goal (d: decl_node) : option formula :=
   applies transformations, then [do_task] sends to prover, just applies it.
   Not sure where clones are desugared, but for now we assume that all clones are gone*)
 
-Definition eval_decl (d: decl) : option def := eval_decl_node (d_node d).
-Definition eval_decl_hyp (d: decl) : option (string * formula) := get_hyp (d_node d).
+Definition eval_decl (d: decl):  option def + (option (string * formula) + unit) :=
+  eval_decl_node (d_node d).
 Definition eval_decl_goal (d: decl) : option formula := get_goal (d_node d).
 
+(* Definition eval_decl (d: decl) : option def := eval_decl_node (d_node d).
+Definition eval_decl_hyp (d: decl) : option (string * formula) := get_hyp (d_node d).
+Definition eval_decl_goal (d: decl) : option formula := get_goal (d_node d). *)
+
 (*tdecl*)
-Definition eval_tdecl_node_aux {A} (f: decl -> option A) (t: tdecl_node) : option A :=
+Definition eval_tdecl_node_aux {A} (f: decl -> A) (t: tdecl_node) : option A :=
   match t with
-  | Decl d => f d
+  | Decl d => Some (f d)
   | _ => None
   end.
 
 Definition eval_tdecl (t: tdecl_c) := eval_tdecl_node_aux eval_decl (td_node_of t).
-Definition eval_tdecl_hyp (t: tdecl_c) := eval_tdecl_node_aux eval_decl_hyp (td_node_of t).
-Definition eval_tdecl_goal (t: tdecl_c) := eval_tdecl_node_aux eval_decl_goal (td_node_of t).
+(* Definition eval_tdecl_hyp (t: tdecl_c) := eval_tdecl_node_aux eval_decl_hyp (td_node_of t). *)
+Definition eval_tdecl_goal (t: tdecl_c) := option_collapse (eval_tdecl_node_aux eval_decl_goal (td_node_of t)).
 
 (*Finally, task*)
 
-(*task_hd is not quite a list, but it is close. 
-  We need 3 parts: we get gamma, delta, and the goal separately*)
+(*task_hd is not quite a list, but it is close. First, make it into a list*)
+
+(*Dont love [task_list] maybe redefine, maybe it is more efficient. But we don't care
+  about efficiency here*)
+
+Fixpoint task_hd_decls (t: task_hd) : list tdecl_c :=
+  (task_decl t) :: 
+  match (task_prev t) with
+  | Some tsk => task_hd_decls tsk
+  | None => nil
+  end.
+
+
+Definition get_inl {A B: Type} (l: list (A + B)) : list A :=
+  omap (fun x => match x with | inl y => Some y | _ => None end) l.
+Definition get_inr {A B C: Type} (l: list (A + (B + C))) : list B :=
+  omap (fun x => match x with | inr (inl y) => Some y | _ => None end) l.
+
+(*To evaluate the context, we need all of the inl elements to be Some*)
+(*NOTE: ignoring meta (use/clone should already be compiled), not failnig on meta*)
+Definition eval_task_ctx (t: task_hd) : option context :=
+  let l := omap eval_tdecl  (task_hd_decls t) in 
+  (*only consider hyps, make sure all well-typed*)
+  fold_list_option (get_inl l).
+
+Definition eval_task_hyps (t: task_hd) : option (list (string * formula)) :=
+  let l := omap eval_tdecl  (task_hd_decls t) in 
+  fold_list_option (get_inr l).
+
+(* 
+Definition eval_task_gen {A B} f (t : task_hd) : option (list A) :=
+  let l := omap eval_tdecl (task_hd_decls t) in
+  (*Now we need all defs to be some*)
+  all_some f l.
+
+Definition eval_task_gen {A} (f: tdecl_c -> option A) (t : task_hd) : option (list A) :=
+  omap f (task_hd_decls t).
+
+  We need 3 parts: we get gamma, delta, and the goal separately
 Fixpoint eval_task_gen {A} (f: tdecl_c -> option A) (t : task_hd) : option (list A) :=
   (*NOT bind: basically omap - we just want to skip None entries*)
   let t' := f (task_decl t) in
@@ -560,7 +608,7 @@ Fixpoint eval_task_gen {A} (f: tdecl_c -> option A) (t : task_hd) : option (list
 Definition eval_task_ctx (t: task_hd) : option context :=
   eval_task_gen eval_tdecl t.
 Definition eval_task_hyps (t: task_hd) : option (list (string * formula)) :=
-  eval_task_gen eval_tdecl_hyp t.
+  eval_task_gen eval_tdecl_hyp t. *)
 (*NOTE: for goal, we assume it is at the end*)
 Definition eval_task_goal (t: task_hd) : option formula :=
   eval_tdecl_goal (task_decl t).
