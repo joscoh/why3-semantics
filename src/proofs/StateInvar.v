@@ -205,8 +205,8 @@ Definition all_in_hashtable {A} (hash: A -> Z) (eqb: A -> A -> bool)
 Definition all_idents_smaller {A} (hash: A -> Z) (l: list A) (i: Z) : Prop :=
   forall x, In x l -> (hash x < i)%Z.
 
-Definition gen_hash_wf {A} (full_fn: full_st -> hashcons_ty A) (get: task_hd -> list A) 
-  (hash: A -> Z) (eqb: A -> A -> bool) (t: task_hd) (st: full_st) : Prop :=
+Definition gen_hash_wf {A B} (full_fn: full_st -> hashcons_ty A) (get: B -> list A) 
+  (hash: A -> Z) (eqb: A -> A -> bool) (t: B) (st: full_st) : Prop :=
   all_in_hashtable hash eqb (get t) (hashcons_hash (full_fn st)) /\
   all_idents_smaller hash (get t) (hashcons_ctr (full_fn st)).
 
@@ -231,9 +231,55 @@ Definition hashcons_wf (o: task) (s: full_st) : Prop :=
   | Some t => tys_hash_wf t s /\ decls_hash_wf t s /\ tdecls_hash_wf t s /\ task_hash_wf t s
   | None => True
   end.
+
 End HashCons.
 
 (*The combined predicate*)
 Definition st_wf (t: task) (s: full_st) : Prop :=
   idents_of_task_wf t s /\ hashcons_wf t s.
 
+(*And for a specific term*)
+Section Term. 
+Definition idents_of_term_wf (t: term_c) (s: full_st) :=
+    forall i, In i (idents_of_term t) -> (id_tag i < fst s)%Z.
+
+Definition term_hash_wf (t: term_c) (s: full_st) : Prop :=
+  gen_hash_wf full_ty_hash (fun t => concat (map tys_of_ty (tys_of_term t))) ty_hash ty_eqb t s.
+
+(*TODO: may want to change def to be holds for all terms in, etc. Then next lemma trivial *)
+Definition term_st_wf (t: term_c) (s: full_st) : Prop :=
+  idents_of_term_wf t s /\ term_hash_wf t s.
+
+Set Bullet Behavior "Strict Subproofs".
+(*If a state is wf, then these two above hold of the goal (also others, but we only need goal)*)
+Lemma prop_wf (tsk: task_hd) (s: full_st) (t: term_c) k pr d
+  (Htsk: td_node_of (task_decl tsk) = Decl d)
+  (Hd:  d_node d = Dprop (k, pr, t))
+  (Hwf: st_wf (Some tsk) s):
+  term_st_wf t s.
+Proof.
+  unfold st_wf in Hwf. unfold term_st_wf.
+  destruct Hwf as [Hidents Hhash].
+  split.
+  - unfold idents_of_task_wf in Hidents.
+    unfold idents_of_term_wf. intros i Hi.
+    apply Hidents. simpl.
+    destruct tsk; simpl in *; clear Hhash. rewrite in_app_iff. left.
+    destruct task_decl; simpl in *. subst. unfold idents_of_tdecl. simpl.
+    unfold idents_of_decl_node. rewrite Hd. simpl. auto.
+  - clear Hidents.
+    unfold hashcons_wf in Hhash. destruct Hhash as [Hh _]. unfold term_hash_wf.
+    unfold tys_hash_wf in Hh.
+    unfold gen_hash_wf in *.
+    (*Both are same*)
+    assert (Hin: forall x, In x (concat (map tys_of_ty (tys_of_term t))) -> 
+      In x (concat (map tys_of_ty (tys_of_task tsk)))).
+    {
+      clear -Htsk Hd. intros x Hinx.
+      destruct tsk; simpl in *. rewrite map_app, concat_app, in_app_iff. left.
+      destruct task_decl; simpl in *. subst. unfold tys_of_tdecl_c; simpl.
+      unfold tys_of_decl. rewrite Hd; simpl. auto.
+    }
+    destruct Hh as [Hh1 Hh2]. unfold all_in_hashtable, all_idents_smaller in *. split; auto.
+Qed.
+End Term.

@@ -1567,7 +1567,15 @@ Proof.
   destruct (eval_fmla f2); auto.
 Qed.
 
-(*The main part: prove related*)
+(*Prove related for formulas (main part)*)
+Theorem elim_let_rewrite_related (f1: term_c) (g1: formula)
+  (Heval: eval_fmla f1 = Some g1):
+  errst_spec (term_st_wf f1) (elim_let_rewrite f1)
+  (fun (_ : full_st) (f2 : term_c) (s2 : full_st) =>
+   term_st_wf f2 s2 /\ fmla_related f2 (elim_let_f true true g1)).
+Admitted.
+
+(*Then lift result to transformation. This is not trivial*)
 Theorem elim_let_related (tsk1 : TaskDefs.task) (tsk2 : Task.task):
 errst_spec
   (fun s : full_st => st_wf tsk1 s /\ task_related tsk1 tsk2)
@@ -1577,8 +1585,6 @@ errst_spec
 Proof.
   apply errst_spec_pure_pre.
   intros Hrel.
-
-
   (*Need to reason about goal formula*)
   (*Lots of boilerplate to simplify tasks (TODO: separate lemma?)*)
   unfold task_related in Hrel.
@@ -1629,35 +1635,15 @@ Proof.
       (*Why we needed that a_equiv_f is preserved by elim_let_f*)
       apply elim_let_f_a_equiv; auto.
   }
-  (*TODO: prove that these transformations related. NOTE: everything up to now wasnt super
-    specific to [elim_let] and it could/should be refactored*)
-  (*TODO: weaken precondition and use separate lemma*)
-Admitted.
-(* 
+  (*We need to change the precondition*)
+  apply errst_spec_weaken with (P1:=term_st_wf f1)(Q1:=fun _ f2 s2 => term_st_wf f2 s2 /\ fmla_related f2 (elim_let_f true true goal)).
+  - intros i. eapply prop_wf; eauto.
+  - intros _ x f [_ Hrel]; auto.
+  - (*The main result*)
+    apply elim_let_rewrite_related; auto.
+Qed.
 
-eapply prove_errst_spec_bnd with (Q1:=fun _ f2 _ => eval_fmla f2 = Some (elim_let_f true true goal))
-  (Q2:=fun x _ y _ => task_related (Some y) (gamma1, delta1, elim_let_f true true goal1))
-  (P2:=fun x _ => eval_fmla x = Some (elim_let_f true true goal)) (*TODO: see*); auto.
-  2: { (*Prove ending spec assuming [elim_let] correct*) intros f2. apply prove_errst_spec_ret. intros _ Hf2.
-    unfold task_related.
-    exists (gamma, delta, (elim_let_f true true goal)).
-    split.
-    - unfold eval_task. simpl.
-      (*TODO: prove these equal in separate lemmas for [change_*] lemmas since we change goal *)
-      admit.
-    - unfold a_equiv_task. simpl_task. bool_to_prop; split_all; auto.
-
-
-
-
-      (*TODO: prove that a_equiv_f preserved by elim_let_f*)
-      admit.
-  }
-  (*TODO: prove that these transformations related. NOTE: everything up to now wasnt super
-    specific to [elim_let] and it could/should be refactored*)
-  (*TODO: weaken precondition and use separate lemma*) *)
-
-
+(*Put it all together with decomp theorem*)
 Theorem elim_let_sound: trans_errst_sound elim_let.
 Proof.
   apply prove_trans_errst_decompose with (tr1:=single_goal (elim_let_f true true)).
