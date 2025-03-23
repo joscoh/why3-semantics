@@ -120,6 +120,183 @@ Fixpoint term_traverse (tm1: term_c) (ACC: Acc lt (term_size tm1)) : T :=
 Definition tm_traverse (tm1: term_c) : T :=
   term_traverse tm1 (Wf_nat.lt_wf _).
 
+
+(*Need an induction principle*)
+
+Section Induction.
+
+Check tm_traverse.
+Print T.
+Print R.
+Variable (P: term_c -> T -> Prop).
+Check const_case.
+Variable (Pconst: forall t c, t_node_of t = Tconst c -> P t (const_case t c)).
+Variable (Pvar: forall t x, t_node_of t = Tvar x -> P t (var_case t x)).
+Variable (Pif: forall t t1 t2 t3, t_node_of t = Tif t1 t2 t3 ->
+    P t1 (tm_traverse t1) -> P t2 (tm_traverse t2) -> P t3 (tm_traverse t3) ->
+    P t (r1 <- tm_traverse t1 ;; r2 <- tm_traverse t2 ;; r3 <- tm_traverse t3 ;; 
+      (if_case t t1 t2 t3 r1 r2 r3))).
+(*With dep bind*)
+Variable (Plet: forall t (t1: term_c) (b: term_bound), t_node_of t = Tlet t1 b ->
+  P t1 (tm_traverse t1) ->
+  (forall (y: vsymbol * term_c) (s: CoqBigInt.t * St), 
+     fst (run_errState (errst_tup1 (errst_lift1 (t_open_bound b))) s) = inr y -> P (snd y) (tm_traverse (snd y))) ->
+  P t (r1 <- tm_traverse t1 ;;
+    errst_bind_dep (errst_tup1 (errst_lift1 (t_open_bound b)))
+      (fun y s Heq => 
+        r2 <- tm_traverse (snd y) ;;
+        let_case t t1 r1 (fst y) (snd y) r2))).
+(*app case needs nested induction*)
+Variable (Papp: forall t l (ts: list term_c), t_node_of t = Tapp l ts ->
+  Forall (fun x => P x (tm_traverse x)) ts ->
+  P t (recs <- errst_list (map tm_traverse ts) ;; app_case t l ts recs)).
+(*match needs both dependent bind and nested result*)
+Variable (Pcase: forall t t1 (tbs: list (pattern_c * bind_info * term_c)),
+  t_node_of t = Tcase t1 tbs ->
+  P t1 (tm_traverse t1) ->
+  Forall (fun b =>
+    (forall (y: pattern_c * term_c) (s: CoqBigInt.t * St), 
+        fst (run_errState (errst_tup1 (errst_lift1 (t_open_branch b))) s) = inr y -> 
+        P (snd y) (tm_traverse (snd y)))) tbs ->
+  P t (r1 <- tm_traverse t1 ;;
+    tbs2 <- errst_list (map (fun b =>
+        errst_bind_dep (errst_tup1 (errst_lift1 (t_open_branch b)))
+          (fun y s Heq =>
+            t2 <- tm_traverse (snd y) ;;
+            errst_ret (y, t2))
+        ) tbs) ;;
+    match_case t t1 r1 tbs2)).
+(*Others are easier*)
+Variable (Peps: forall t b, t_node_of t = Teps b ->
+  (forall (y:  vsymbol * term_c) (s: CoqBigInt.t * St), 
+    fst (run_errState (errst_tup1 (errst_lift1 (t_open_bound b))) s) = inr y -> P (snd y) (tm_traverse (snd y))) ->
+  P t (errst_bind_dep (errst_tup1 (errst_lift1 (t_open_bound b)))
+      (fun y s Heq => 
+        r2 <- tm_traverse (snd y) ;;
+        eps_case t (fst y) (snd y) r2))).
+(*Quant a bit more complicated because of double needs double nested, but not dependent so OK*)
+(*triggers depend on opening bound (y)*)
+Variable (Pquant: forall t q tq, t_node_of t = Tquant q tq ->
+  (forall (y : list vsymbol * trigger * term_c) (s: CoqBigInt.t * St), 
+    fst (run_errState (errst_tup1 (errst_lift1 (t_open_quant1 tq))) s) = inr y -> 
+     P (snd y) (tm_traverse (snd y)) /\
+     Forall (fun l1 => Forall (fun tr1 => P tr1 (tm_traverse tr1)) l1) (snd (fst y))) ->
+  P t (errst_bind_dep (errst_tup1 (errst_lift1 (t_open_quant1 tq)))
+      (fun (y : list vsymbol * trigger * term_c) s Heq => 
+        v <- (tm_traverse (snd y)) ;;
+        let vs := fst (fst y) in
+        let tr := snd (fst y) in
+        let t := snd y in
+        (*Then traverse over triggers*)
+        v2 <- errst_list (map (fun l1 =>
+          errst_list (map tm_traverse l1)) tr) ;;
+        quant_case t q vs tr v2 t v))).
+(*Easier*)
+Variable (Pbinop: forall t b t1 t2, t_node_of t = Tbinop b t1 t2 ->
+  P t1 (tm_traverse t1) -> P t2 (tm_traverse t2) ->
+  P t (r1 <- tm_traverse t1 ;; r2 <- tm_traverse t2 ;;
+      (binop_case t b t1 t1 r1 r2))).
+Variable (Pnot: forall t t1, t_node_of t = Tnot t1 ->
+  P t1 (tm_traverse t1) ->
+  P t ( r1 <- tm_traverse t1 ;; not_case t t1 r1)).
+Variable (Ptrue: forall t, t_node_of t = Ttrue -> P t (true_case t)).
+Variable (Pfalse: forall t, t_node_of t = Tfalse -> P t (false_case t)).
+
+Lemma tm_size_wf: well_founded (fun t1 t2 => term_size t1 < term_size t2).
+Proof.
+  eapply well_founded_lt_compat with (f:=term_size). auto.
+Defined.
+Set Bullet Behavior "Strict Subproofs".
+Theorem tm_traverse_ind (t: term_c) : P t (tm_traverse t).
+Proof.
+  (*Idea: do strong induction on size*) (*TODO: proof irrelevance will be terrible, right?*)
+  (*Do we need to unfold definition - assume proof irrelevance if needed*)
+  induction t using (well_founded_induction tm_size_wf). rename H into IH.
+  unfold tm_traverse.
+  destruct t as [n tyo a loc].
+  destruct n.
+  - simpl. apply Pvar. reflexivity. 
+  - simpl. apply Pconst. reflexivity.
+  - (*app*)
+    simpl.
+
+(*TODO: maybe try equations, might be simpler - just need to do nested induction properly
+  But then we get induction for free*)
+
+
+  unfold tm_traverse.
+  generalize dependent (lt_wf (term_size t)).
+  
+
+(*As above: new variable, new term, new result*)
+
+Variable (binop_case: forall (tm: term_c) (b: binop) (t1 t2: term_c) (r1 r2: R), T).
+Variable (not_case: forall (tm: term_c) (t: term_c) (r: R), T).
+Variable (true_case: term_c ->T).
+Variable (false_case : term_c ->T).
+
+  | Tbinop b t1 t2 => fun Hsz =>
+    r1 <- term_traverse t1 (Acc_inv ACC (tbinop_size1 Hsz)) ;;
+    r2 <- term_traverse t2 (Acc_inv ACC (tbinop_size2 Hsz)) ;;
+    binop_case tm1 b t1 t1 r1 r2
+  | Tnot t1 => fun Hsz =>
+    r1 <- term_traverse t1 (Acc_inv ACC (tnot_size1 Hsz)) ;;
+    not_case tm1 t1 r1
+  | Ttrue => fun _ => true_case tm1
+  | Tfalse => fun _ => false_case tm1
+
+
+
+
+| Tcase t1 tbs => fun Hsz =>
+    r1 <- term_traverse t1 (Acc_inv ACC (tmatch_size1 Hsz)) ;;
+    tbs2 <- errst_list (@dep_map _ _ (fun x => term_size (snd x) < term_size tm1)
+      (*Idea: For each element in list, use dependent bind and recursively traverse*)
+      (fun b (Hx: term_size (snd b) < term_size tm1) =>
+        errst_bind_dep (errst_tup1 (errst_lift1 (t_open_branch b)))
+          (fun y s Heq =>
+            t2 <- term_traverse (snd y) (Acc_inv ACC (tmatch_size2 Hx Heq)) ;;
+            errst_ret (y, t2))
+        ) tbs (tmatch_size3 Hsz)) ;;
+    match_case tm1 t1 r1 tbs2
+
+
+(*Again, tbs is a list of (new pattern, new term, recursive call)*)
+Variable (match_case: forall (tm: term_c) (t1: term_c) (r1: R) (tb: list (pattern_c * term_c * R)), T).
+
+
+
+Variable (app_case: forall (tm: term_c) (l: lsymbol) (tms: list term_c) (rs: list R), T).
+
+(*TODO: continue*)
+
+
+| Tapp l ts => fun Hsz =>
+    (*Need dependent map for termination proof*)
+    recs <- errst_list (@dep_map _ _ (fun t => term_size t < term_size tm1) 
+      (fun t1 (Ht1: term_size t1 < term_size tm1) => 
+        term_traverse t1 (Acc_inv ACC Ht1)) ts (tapp_size Hsz)) ;;
+    (app_case tm1 l ts recs)
+
+(*tm_traverse_elim
+     : forall P : tm -> ctr T -> Type,
+       (forall c : CoqBigInt.t, P (Tconst c) (const_case c)) ->
+       (forall x : var, P (Tvar x) (var_case x)) ->
+       (forall (o : intop) (t1 t2 : tm),
+        (T -> P t2 (tm_traverse t2)) ->
+        P t1 (tm_traverse t1) ->
+        P (Top o t1 t2) (v1 <- tm_traverse t1;; v2 <- tm_traverse t2;; op_case o t1 t2 v1 v2)) ->
+       (forall (t1 : tm) (b : var * tm),
+        (T ->
+         forall (y : var * tm) (s : CoqBigInt.t),
+         y = fst (runState (t_open_bound b) s) -> P (snd y) (tm_traverse (snd y))) ->
+        P t1 (tm_traverse t1) ->
+        P (Tlet t1 b)
+          (v1 <- tm_traverse t1;;
+           y <-- s <-- _ <-- t_open_bound b;;
+           v2 <- tm_traverse (snd y);; let_case t1 (fst y, snd b) v1 v2)) ->
+       forall tm1 : tm, P tm1 (tm_traverse tm1)*)
+
 End Traverse.
 
 
