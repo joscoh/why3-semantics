@@ -54,7 +54,7 @@ Fixpoint term_size (t: term_c) : nat :=
   | Tlet t1 (_, _, t2) => 1 + term_size t1 + term_size t2
   | Tcase t1 pats => 1 + term_size t1 + sum (map (fun x => term_size (snd x)) pats)
   | Teps (_, _, t) => 1 + term_size t
-  | Tquant _ (_, _, tr, t) => 1 + term_size t + sum (map (fun l => sum (map term_size l)) tr) 
+  | Tquant _ (_, _, tr, t) => 1 + term_size t + length tr (*need for 0-length triggers*) + sum (map (fun l => sum (map term_size l)) tr) 
   | Tbinop _ t1 t2 => 1 + term_size t1 + term_size t2
   | Tnot t => 1 + term_size t
   | Ttrue => 1
@@ -70,7 +70,7 @@ Definition term_node_size (t: term_node) : nat :=
   | Tlet t1 (_, _, t2) => 1 + term_size t1 + term_size t2
   | Tcase t1 pats => 1 + term_size t1 + sum (map (fun x => term_size (snd x)) pats)
   | Teps (_, _, t) => 1 + term_size t
-  | Tquant _ (_, _, tr, t) => 1 + term_size t + sum (map (fun l => sum (map term_size l)) tr) 
+  | Tquant _ (_, _, tr, t) => 1 + term_size t + length tr + sum (map (fun l => sum (map term_size l)) tr) 
   | Tbinop _ t1 t2 => 1 + term_size t1 + term_size t2
   | Tnot t => 1 + term_size t
   | Ttrue => 1
@@ -516,13 +516,13 @@ Proof.
     rewrite (term_size_eq tm2), t_subst_unsafe_aux_rewrite, Heq.
     simpl. rewrite term_size_attr_copy. simpl. f_equal.
     destruct (Mvs.is_empty _); auto.
-    + f_equal; auto. f_equal.
+    + unfold tr_map. rewrite length_map. f_equal; auto. f_equal.
       clear -IH1 Hm1. induction tr as [| l1 t1 IH]; simpl; auto.
       inversion IH1; subst. f_equal; auto.
       clear -H1 Hm1. induction l1 as [| h1 t1 IH]; simpl; auto.
       inversion H1; subst; auto.
-    + f_equal.
-      * apply IH2, subst_vars_ok2; auto.
+    + unfold tr_map. rewrite length_map. f_equal.
+      * f_equal. apply IH2, subst_vars_ok2; auto.
       * f_equal. clear -IH1 Hm1. induction tr as [| l1 t1 IH]; simpl; auto.
         inversion IH1; subst. f_equal; auto.
         clear -H1 Hm1. induction l1 as [| h1 t1 IH]; simpl; auto.
@@ -612,6 +612,18 @@ Proof.
   auto.
 Qed.
 
+(*Useful when hypotheses slightly different*)
+Lemma dep_bnd_size_bound' {St b y s}
+(Heq : fst
+  (run_errState
+  (@errst_tup1 CoqBigInt.t St _ (errst_lift1 (t_open_bound b))) s) =
+  inr y):
+term_size (snd y) = term_size (snd b).
+Proof.
+  apply (@dep_bnd_size_bound St b y s). intros z Hz.
+  rewrite Hz in Heq. inversion Heq; subst; auto.
+Qed.
+
 (*And the branch version*)
 
 Lemma t_open_branch_size (b: term_branch): forall s,
@@ -653,6 +665,17 @@ Proof.
   specialize (Heq v1 eq_refl). subst.
   pose proof (t_open_branch_size b (fst s)) as Hszb.
   rewrite Hrun in Hszb. simpl in Hszb. auto.
+Qed.
+
+Lemma dep_bnd_size_branch' {St b y s}
+(Heq:fst
+    (run_errState
+    (@errst_tup1 CoqBigInt.t St _ (errst_lift1 (t_open_branch b))) s) =
+    inr y):
+term_size (snd y) = term_size (snd b).
+Proof.
+  apply (@dep_bnd_size_branch St b y s). intros z Hz.
+  rewrite Hz in Heq; inversion Heq; auto.
 Qed.
 
 (*let cases*)
@@ -808,6 +831,17 @@ Proof.
   (*Now we just need to reason about [t_open_quant1] and its size*)
   pose proof (t_open_quant1_size b (fst s)) as Hszb.
   rewrite Hrun in Hszb. simpl in Hszb. auto.
+Qed.
+
+Lemma dep_bnd_size_quant' {St b y s}
+(Heq : fst
+(run_errState
+(@errst_tup1 CoqBigInt.t St _ (errst_lift1 (t_open_quant1 b)))
+s) = inr y):
+term_size (snd y) = term_size (snd b) /\
+Forall2 (Forall2 (fun x y => term_size x = term_size y)) (snd (fst y)) (snd (fst b)). 
+Proof.
+  apply (@dep_bnd_size_quant St b y s). intros z Hz. rewrite Hz in Heq. inversion Heq; auto.
 Qed.
 
 Lemma tquant_size_tr {St q tq s y tm1}
