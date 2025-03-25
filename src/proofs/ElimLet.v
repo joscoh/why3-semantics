@@ -22,7 +22,7 @@ Local Open Scope errst_scope.
 Definition elim_let_rewrite (t: term_c) : errState (CoqBigInt.t * hashcons_full) term_c :=
   term_map hashcons_full
   (*let is only interesting one*)
-  (fun t1 t2 t3 v r1 r2 =>
+  (fun t t1 r1 v t2 r2 =>
     t_subst_single1 v r1 r2)
   (tmap_if_default _)
   (tmap_app_default _)
@@ -1567,12 +1567,371 @@ Proof.
   destruct (eval_fmla f2); auto.
 Qed.
 
-(*Prove related for formulas (main part)*)
-Theorem elim_let_rewrite_related (f1: term_c) (g1: formula)
+(*TODO: move these*)
+
+(*Inversion Lemmas for eval*)
+Section EvalInv.
+
+(*Const*)
+
+Lemma eval_const_tm {f1 g1 c} 
+  (Hn: t_node_of f1 = TermDefs.Tconst c)
+  (Heval: eval_term f1 = Some g1):
+  exists c1, g1 = Tconst c1 /\ eval_const c = Some c1.
+Proof.
+  destruct f1 as [n ? ? ? ]; destruct n; simpl in *; try discriminate.
+  apply option_map_some in Heval. inversion Hn; subst. 
+  destruct Heval as [c1 [Heval Hg1]]; subst. eauto.
+Qed.
+
+Lemma eval_const_fmla {f1 g1 c} 
+  (Hn: t_node_of f1 = TermDefs.Tconst c)
   (Heval: eval_fmla f1 = Some g1):
-  errst_spec (term_st_wf f1) (elim_let_rewrite f1)
-  (fun (_ : full_st) (f2 : term_c) (s2 : full_st) =>
-   term_st_wf f2 s2 /\ fmla_related f2 (elim_let_f true true g1)).
+  False.
+Proof.
+  destruct f1 as [n ? ? ? ]; destruct n; simpl in *; discriminate.
+Qed.
+
+(*var*)
+Lemma eval_var_tm {f1 g1 v} 
+  (Hn: t_node_of f1 = TermDefs.Tvar v)
+  (Heval: eval_term f1 = Some g1):
+  g1 = Tvar (eval_vsymbol v).
+Proof.
+  destruct f1 as [n ? ? ? ]; destruct n; simpl in *; try discriminate.
+  inversion Heval; subst; auto. inversion Hn; subst; auto.
+Qed.
+
+Lemma eval_var_fmla {f1 g1 v} 
+  (Hn: t_node_of f1 = TermDefs.Tvar v)
+  (Heval: eval_fmla f1 = Some g1):
+  False.
+Proof.
+  destruct f1 as [n ? ? ? ]; destruct n; simpl in *; discriminate.
+Qed.
+
+(*if*)
+
+Lemma eval_if_tm {f1 g1 t1 t2 t3} 
+  (Hn: t_node_of f1 = TermDefs.Tif t1 t2 t3)
+  (Heval: eval_term f1 = Some g1):
+  exists e1 e2 e3, g1 = Tif e1 e2 e3 /\ eval_fmla t1 = Some e1 /\ eval_term t2 = Some e2 /\
+    eval_term t3 = Some e3.
+Proof.
+  destruct f1 as [n ? ? ? ]; destruct n; simpl in *; try discriminate. 
+  inversion Hn; subst; clear Hn.
+  apply option_bind_some in Heval. destruct Heval as [e1 [He1 Hbind]].
+  apply option_bind_some in Hbind. destruct Hbind as [e2 [He2 Hbind]].
+  apply option_bind_some in Hbind. destruct Hbind as [e3 [He3 Hbind]].
+  inversion Hbind; subst. eauto 10.
+Qed.
+
+Lemma eval_if_fmla {f1 g1 t1 t2 t3} 
+  (Hn: t_node_of f1 = TermDefs.Tif t1 t2 t3)
+  (Heval: eval_fmla f1 = Some g1):
+  exists e1 e2 e3, g1 = Fif e1 e2 e3 /\ eval_fmla t1 = Some e1 /\ eval_fmla t2 = Some e2 /\
+    eval_fmla t3 = Some e3.
+Proof.
+  destruct f1 as [n ? ? ? ]; destruct n; simpl in *; try discriminate. 
+  inversion Hn; subst; clear Hn.
+  apply option_bind_some in Heval. destruct Heval as [e1 [He1 Hbind]].
+  apply option_bind_some in Hbind. destruct Hbind as [e2 [He2 Hbind]].
+  apply option_bind_some in Hbind. destruct Hbind as [e3 [He3 Hbind]].
+  inversion Hbind; subst. eauto 10.
+Qed.
+
+
+
+(*app - trickier: can become Tfun, Fpred, or Feq*)
+
+Lemma eval_app_tm {f1 g1 l ts}
+  (Hn: t_node_of f1 = TermDefs.Tapp l ts)
+  (Heval: eval_term f1 = Some g1):
+  exists l1 tys' tys1 ts1,
+    g1 = Tfun l1 tys1 ts1 /\ eval_funsym l = Some l1 /\
+      fold_list_option (map term_type ts) = Some tys' /\
+      funpred_ty_list l1 tys' = Some tys1 /\
+      fold_list_option (map eval_term ts) = Some ts1.
+Proof.
+  destruct f1 as [n ? ? ? ]; destruct n; simpl in *; try discriminate.
+  inversion Hn; subst; clear Hn.
+  apply option_bind_some in Heval. destruct Heval as [l1 [Hl1 Hbind]]. exists l1.
+  apply option_bind_some in Hbind. destruct Hbind as [ts1 [Hts1 Hbind]].
+  apply option_bind_some in Hbind. destruct Hbind as [tys' [Htsys' Hbind]].
+  apply option_map_some in Hbind. destruct Hbind as [tys1 [Htys1 Hg1]]; subst; eauto 10.
+Qed.
+
+Lemma eval_app_fmla {f1 g1 l ts}
+  (Hn: t_node_of f1 = TermDefs.Tapp l ts)
+  (Heval: eval_fmla f1 = Some g1):
+  (l = ps_equ /\ exists t1 t2 t3 t4 ty1, ts = [t1 ; t2] /\ g1 = Feq ty1 t3 t4 /\
+    eval_term t1 = Some t3 /\ eval_term t2 = Some t4 /\ term_type t1 = Some ty1) \/
+  l <> ps_equ /\
+  exists l1 tys' tys1 ts1,
+    g1 = Fpred l1 tys1 ts1 /\ eval_predsym l = Some l1 /\
+      fold_list_option (map term_type ts) = Some tys' /\
+      funpred_ty_list l1 tys' = Some tys1 /\
+      fold_list_option (map eval_term ts) = Some ts1.
+Proof.
+  destruct f1 as [n ? ? ? ]; destruct n; simpl in *; try discriminate.
+  inversion Hn; subst; clear Hn.
+  destruct (lsymbol_eqb l ps_equ) eqn : Heq.
+  - assert (l = ps_equ). apply lsymbol_eqb_eq; auto. subst.
+    left. destruct ts as [| t1 [| t2 [| ? ?]]]; try discriminate.
+    split; auto. exists t1. exists t2. 
+    apply option_bind_some in Heval. destruct Heval as [t3 [Ht3 Hbind]].
+    apply option_bind_some in Hbind. destruct Hbind as [t4 [Ht4 Hbind]].
+    apply option_bind_some in Hbind. destruct Hbind as [ty1 [Hty1 Hbind]].
+    inversion Hbind; subst. eauto 10.
+  - assert (l <> ps_equ).
+    { intro C; subst. assert (Ht: lsymbol_eqb ps_equ ps_equ) by (apply lsymbol_eqb_eq; auto).
+      rewrite Ht in Heq; discriminate.
+    }
+    right. split; auto.
+    apply option_bind_some in Heval. destruct Heval as [l1 [Hl1 Hbind]]. exists l1.
+    apply option_bind_some in Hbind. destruct Hbind as [ts1 [Hts1 Hbind]].
+    apply option_bind_some in Hbind. destruct Hbind as [tys' [Htsys' Hbind]].
+    apply option_map_some in Hbind. destruct Hbind as [tys1 [Htys1 Hg1]]; subst; eauto 10.
+Qed.
+
+
+End EvalInv.
+
+(*TODO: move*)
+
+Section Pres.
+
+(*In general, if the state is *)
+
+(*Preservation of states (move)*)
+Print idents_of_term_wf.
+Local Open Scope Z_scope.
+(*1. If the counter only increases, everything that was wf is still wf (for idents)*)
+Lemma idents_of_term_wf_pres {A: Type} (tm: term_c) (o: errState full_st A):
+  errst_spec (fun _ => True) o (fun s1 _ s2 =>(fst s1 <= fst s2)%Z) ->
+  errst_spec (idents_of_term_wf tm) o (fun _ _ s2 => idents_of_term_wf tm s2).
+Proof.
+  intros Hspec.
+  eapply errst_spec_weaken with (P1:= fun s => True /\ idents_of_term_wf tm s)
+   (Q1:=fun s1 _ s2 => fst s1 <= fst s2 /\ idents_of_term_wf tm s1); auto.
+  - intros s1 _ s2 [Hle Hwf].
+    (*separate lemma?*)
+    unfold idents_of_term_wf in *. intros i Hi. specialize (Hwf _ Hi). lia.
+  - apply errst_spec_and; auto.
+    apply errst_spec_init.
+Qed.
+
+(*2. If the type hash counter only increases and the hash table only grows larger,
+  then [term_hash_wf] is preserved
+  NOTE: this is NOT true of weak hashtables, which Why3 uses for hashing. Reasoning
+  about garbage collection would be much trickier *)
+
+Definition hashset_subset {key} (hash: key -> CoqBigInt.t) (eqb: key -> key -> bool) (h1 h2: CoqHashtbl.hashset key)
+ : Prop := forall (k: key) v, CoqHashtbl.find_opt_hashset hash eqb h1 k = Some v ->  
+  CoqHashtbl.find_opt_hashset hash eqb h2 k = Some v.
+
+(*TODO: write definition for these*)
+Lemma term_hash_wf_pres {A: Type} (tm: term_c) (o: errState full_st A):
+  errst_spec (fun _ => True) o (fun s1 _ s2 => hashcons_ctr (full_ty_hash s1) <= hashcons_ctr (full_ty_hash s2) /\
+    hashset_subset ty_hash ty_eqb (hashcons_hash (full_ty_hash s1)) (hashcons_hash (full_ty_hash s2))) ->
+  errst_spec (term_hash_wf tm) o (fun _ _ s2 => term_hash_wf tm s2).
+Proof.
+  intros Hspec.
+  eapply errst_spec_weaken with (P1:= fun s => True /\ term_hash_wf tm s)
+   (Q1:=fun s1 _ s2 => (hashcons_ctr (full_ty_hash s1) <= hashcons_ctr (full_ty_hash s2) /\
+    hashset_subset ty_hash ty_eqb (hashcons_hash (full_ty_hash s1)) (hashcons_hash (full_ty_hash s2))) 
+    /\ term_hash_wf tm s1); auto.
+  - intros s1 _ s2 [[Hle Hhash] Hwf].
+    (*separate lemma?*)
+    unfold term_hash_wf in *.
+    unfold gen_hash_wf in *. destruct Hwf as [Hwf1 Hwf2]. split.
+    + unfold all_in_hashtable in *. intros x Hinx. specialize (Hwf1 _ Hinx).
+      apply Hhash; auto.
+    + unfold all_idents_smaller in *. intros x Hinx. specialize (Hwf2 _ Hinx).
+      lia.
+  - apply errst_spec_and; auto.
+    apply errst_spec_init.
+Qed.
+
+Definition term_wf_pres_cond (s1 s2: full_st) :=
+  (fst s1 <= fst s2)%Z /\ 
+  hashcons_ctr (full_ty_hash s1) <= hashcons_ctr (full_ty_hash s2) /\
+  hashset_subset ty_hash ty_eqb (hashcons_hash (full_ty_hash s1)) (hashcons_hash (full_ty_hash s2)).
+
+Lemma term_st_wf_pres {A: Type} (tm: term_c) (o: errState full_st A):
+  errst_spec (fun _ => True) o (fun s1 _ s2 => term_wf_pres_cond s1 s2) ->
+  errst_spec (term_st_wf tm) o (fun _ _ s2 => term_st_wf tm s2).
+Proof.
+  unfold term_st_wf, term_wf_pres_cond. intros Hspec.
+  apply errst_spec_and.
+  - apply idents_of_term_wf_pres. revert Hspec. apply errst_spec_weaken; auto.
+    intros; destruct_all; auto.
+  - apply term_hash_wf_pres. revert Hspec. apply errst_spec_weaken; auto.
+    intros; destruct_all; split; auto.
+Qed.
+
+Lemma term_wf_pres_cond_refl s: term_wf_pres_cond s s.
+Proof.
+  unfold term_wf_pres_cond. split_all; try lia.
+  unfold hashset_subset; auto.
+Qed.
+
+Lemma term_wf_pres_cond_trans s1 s2 s3: term_wf_pres_cond s1 s2 -> term_wf_pres_cond s2 s3 ->
+  term_wf_pres_cond s1 s3.
+Proof.
+  unfold term_wf_pres_cond. intros; destruct_all; split_all; try lia.
+  unfold hashset_subset in *. auto.
+Qed.
+
+
+End Pres.
+
+(*Before we can prove the main theorem, we must show that [term_st_wf] is preserved through
+  the function*)
+(*TODO: prove const, var, if, maybe app, then admit*)
+
+Lemma elim_let_rewrite_wf_aux (f1: term_c):
+  errst_spec 
+    (fun (_: full_st) => True) 
+      (elim_let_rewrite f1) 
+    (fun (s1: full_st) _ (s2: full_st) => term_wf_pres_cond s1 s2).
+Proof.
+  apply tm_traverse_ind with (P:= fun f1 t1 =>
+    errst_spec (fun _ : full_st => True) t1
+      (fun (s1 : full_st) (_ : term_c) (s2 : full_st) => term_wf_pres_cond s1 s2)); clear; auto.
+  - (*const*)
+    intros. apply prove_errst_spec_ret. intros; apply term_wf_pres_cond_refl.
+  - (*var*) intros. apply prove_errst_spec_ret. intros; apply term_wf_pres_cond_refl.
+  - (*if*) intros t t1 t2 t3 Hnode IH1 IH2 IH3.
+    (*By transitivity*)
+    unfold tmap_if_default.
+    repeat (
+    apply prove_errst_spec_bnd with (P2:=fun _ _ => True)
+    (Q1:=fun s1 _ s2 => term_wf_pres_cond s1 s2)
+    (Q2:=fun _ s1 _ s2 => term_wf_pres_cond s1 s2); auto; [| intros s1 s2 s3 _ _; apply term_wf_pres_cond_trans];
+    intros).
+    apply errst_spec_err. intros; apply term_wf_pres_cond_refl.
+  - (*let*)
+    intros t t1 tb Hnode IH1 IH2.
+    repeat (
+    apply prove_errst_spec_bnd with (P2:=fun _ _ => True)
+    (Q1:=fun s1 _ s2 => term_wf_pres_cond s1 s2)
+    (Q2:=fun _ s1 _ s2 => term_wf_pres_cond s1 s2); auto; [| intros s1 s2 s3 _ _; apply term_wf_pres_cond_trans];
+    intros).
+    (*Now dependent bind*)
+    (*TODO: better versions of these things dependent only on states for example*)
+    apply prove_errst_spec_dep_bnd with (P2:= fun _ _ => True) 
+    (Q1:= fun s1 _ s2 => term_wf_pres_cond s1 s2)
+    (Q2:=fun _ s1 _ s2 => term_wf_pres_cond s1 s2)
+    (Q3:=fun s1 _ s2 => term_wf_pres_cond s1 s2); auto; [| | intros s1 s2 s3 _ _; apply term_wf_pres_cond_trans].
+    + (*Prove [t_open_bound] - TODO*)
+      admit.
+    + (*Prove rest*)
+      intros s2 y Hy. (*bind - first from IH*)
+      (*TODO: make better*)
+      apply prove_errst_spec_bnd with (P2:=fun _ _ => True)
+      (Q1:=fun s1 _ s2 => term_wf_pres_cond s1 s2)
+      (Q2:=fun _ s1 _ s2 => term_wf_pres_cond s1 s2); auto; 
+      [| | intros s1' s2' s3' _ _; apply term_wf_pres_cond_trans].
+      * eapply IH2; eauto.
+      * (*Now need to prove for [t_subst_single1]*)
+        admit.
+  -
+Admitted.
+
+
+(*spec for other: counter increases and hash table only grows larger - NOTE
+  that this is not true of weak hashtables*)
+
+
+
+(*Any term that was already wf is still wf*)
+Lemma elim_let_rewrite_wf (t: term_c) (f1: term_c):
+  errst_spec (term_st_wf t) (elim_let_rewrite f1) (fun _ _ s2 =>
+
+(*I believe for induction purposes I need both the term and formula result*)
+
+(*Prove related for formulas (main part)*)
+Theorem elim_let_rewrite_related_aux (f1: term_c) :
+  (forall (g1: formula)
+    (Heval: eval_fmla f1 = Some g1),
+    errst_spec (term_st_wf f1) (elim_let_rewrite f1)
+    (fun (_ : full_st) (f2 : term_c) (s2 : full_st) =>
+     term_st_wf f2 s2 /\ fmla_related f2 (elim_let_f true true g1))) /\
+  (forall (g1: term)
+    (Heval: eval_term f1 = Some g1),
+    errst_spec (term_st_wf f1) (elim_let_rewrite f1)
+    (fun (_ : full_st) (f2 : term_c) (s2 : full_st) =>
+     term_st_wf f2 s2 /\ term_related f2 (elim_let_t true true g1))).
+Proof.
+  (*Use induction principle *)
+  apply tm_traverse_ind with (P:= fun f1 t1 =>
+    (forall g1 : formula,
+       eval_fmla f1 = Some g1 ->
+       errst_spec (term_st_wf f1) t1
+         (fun (_ : full_st) (f2 : term_c) (s2 : full_st) =>
+          term_st_wf f2 s2 /\ fmla_related f2 (elim_let_f true true g1))) /\
+      (forall g1 : term,
+       eval_term f1 = Some g1 ->
+       errst_spec (term_st_wf f1) t1
+         (fun (_ : full_st) (f2 : term_c) (s2 : full_st) =>
+          term_st_wf f2 s2 /\ term_related f2 (elim_let_t true true g1)))).
+  - (*const*)
+    intros t c Ht. split; intros g1 Heval.
+    + exfalso. apply (eval_const_fmla Ht Heval).
+    + destruct (eval_const_tm Ht Heval) as [c1 [Hg1 Hc1]]; subst. simpl.
+      apply prove_errst_spec_ret.
+      intros i Hwf. split; auto.
+      unfold term_related. exists (Tconst c1). split; auto.
+      apply a_equiv_t_refl.
+  - (*var*)
+    intros t c Ht. split; intros g1 Heval.
+    + exfalso. apply (eval_var_fmla Ht Heval).
+    + rewrite (eval_var_tm Ht Heval) in Heval |- *.
+      simpl. apply prove_errst_spec_ret.
+      intros i Hwf. split; auto.
+      unfold term_related. eexists. split; eauto.
+      apply a_equiv_t_refl.
+  - (*if*)
+    intros t t1 t2 t3 Ht IH1 IH2 IH3. split.
+    + (*Tif*)
+      intros g1 Heval.
+      destruct (eval_if_fmla Ht Heval) as [e1 [e2 [e3 [Hg1 [He1 [He2 He3]]]]]]. subst.
+      simpl. destruct IH1 as [IH1 _]. destruct IH2 as [IH2 _]. destruct IH3 as [IH3 _].
+      specialize (IH1 e1 He1). specialize (IH2 e2 He2). specialize (IH3 e3 He3).
+      (*Idea: use bind result 3 times: first by IH gives that r1 related to [elim_let e1],
+        second. The wfs are annoying: we have the push them through *)
+
+ intros IH1.
+    split.
+    +
+    
+    
+
+(*plan: do var, app, if, a non-let binding (if possible)*)
+
+
+
+      Search errst_spec errst_ret.
+      apply prove_errst_ret.
+
+
+
+    forall g1 : formula,
+    eval_fmla f1 = Some g1 ->
+    errst_spec (term_st_wf f1) t1
+      (fun (_ : full_st) (f2 : term_c) (s2 : full_st) =>
+       term_st_wf f2 s2 /\ fmla_related f2 (elim_let_f true true g1)) ); clear.
+  - (*const*)
+    intros f1 c Ht g1 Heval. 
+
+
+
+apply 
+    intros.
+
+
+
 Admitted.
 
 (*Then lift result to transformation. This is not trivial*)

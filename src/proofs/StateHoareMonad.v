@@ -135,7 +135,7 @@ Qed.
 
 (*Rules for dependent bind - when we need equality information*)
 
-(* Lemma prove_st_spec_dep_bnd {St A B: Type} (P1 : St -> Prop) (P2: A -> St -> Prop) 
+(*Lemma prove_st_spec_dep_bnd {St A B: Type} (P1 : St -> Prop) (P2: A -> St -> Prop) 
   Q1 Q2 Q3 (a: st St A) (b: forall (b: A) (s: St), b = fst (runState a s) -> st St B):
   (st_spec P1 a Q1) ->
   (forall x s Heq, st_spec (P2 x) (b x s Heq) (Q2 x)) ->

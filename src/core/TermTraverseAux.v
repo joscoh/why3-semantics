@@ -682,14 +682,15 @@ Qed.
 
 Lemma tlet_size2 {St t1 b y s tm}
 (Hsz: term_node_size (Tlet t1 b) = term_size tm)
-(Heq : forall z : vsymbol * term_c,
+(Heq :
   fst
   (run_errState
   (@errst_tup1 CoqBigInt.t St _ (errst_lift1 (t_open_bound b))) s) =
-  inr z -> y = z):
+  inr y):
   term_size (snd y) < term_size tm.
 Proof.
-  rewrite (dep_bnd_size_bound Heq).
+  (*TODO: change above*)
+  rewrite (dep_bnd_size_bound' Heq).
   simpl in Hsz. destruct b as [[b1 b2] b3]; simpl. lia.
 Qed.
 
@@ -726,15 +727,15 @@ Qed.
 
 Lemma tmatch_size2 {St tm1 s y b}
   (Hx: term_size (snd b) < term_size tm1)
-  (*(Hsz: term_node_size (Tcase t1 tbs)) (*TODO: do we need?*)*)
-  (Heq: forall z : pattern_c * term_c,
+  (Heq:
     fst
     (run_errState
     (@errst_tup1 CoqBigInt.t St _ (errst_lift1 (t_open_branch b))) s) =
-    inr z -> y = z):
+    inr y):
   term_size (snd y) < term_size tm1.
 Proof.
-  rewrite (dep_bnd_size_branch Heq). auto.
+  (*TODO:*)
+  rewrite (dep_bnd_size_branch' Heq). auto.
 Qed.
 
 Lemma tmatch_size3 {tm1 t1 tbs}
@@ -760,14 +761,14 @@ Qed.
 
 Lemma teps_size {St b y s tm}
 (Hsz: term_node_size (Teps b) = term_size tm)
-(Heq : forall z : vsymbol * term_c,
+(Heq :
   fst
   (run_errState
   (@errst_tup1 CoqBigInt.t St _ (errst_lift1 (t_open_bound b))) s) =
-  inr z -> y = z):
+  inr y):
   term_size (snd y) < term_size tm.
 Proof.
-  rewrite (dep_bnd_size_bound Heq). simpl in Hsz. destruct b as [[b1 b2] b3]; simpl in Hsz. 
+  rewrite (dep_bnd_size_bound' Heq). simpl in Hsz. destruct b as [[b1 b2] b3]; simpl in Hsz. 
   simpl. lia.
 Qed.
 
@@ -846,14 +847,14 @@ Qed.
 
 Lemma tquant_size_tr {St q tq s y tm1}
   (Hsz: term_node_size (Tquant q tq) = term_size tm1)
-  (Heq: forall z : list vsymbol * trigger * term_c,
+  (Heq:
     fst
     (run_errState
     (@errst_tup1 CoqBigInt.t St _ (errst_lift1 (t_open_quant1 tq)))
-    s) = inr z -> y = z):
+    s) = inr y):
   Forall (Forall (fun x : term_c => term_size x < term_size tm1)) (snd (fst y)).
-Proof.
-  pose proof (dep_bnd_size_quant Heq) as [Hsz1 Hsz2].
+Proof. (*TODO*)
+  pose proof (dep_bnd_size_quant' Heq) as [Hsz1 Hsz2].
   simpl in Hsz. clear Heq. destruct tq as [[[vs b] tr] t]; simpl in *.
   assert (Hsz': sum (map (fun l => sum (map term_size l)) tr) < term_size tm1) by lia.
   clear -Hsz' Hsz2.
@@ -869,14 +870,14 @@ Qed.
 
 Lemma tquant_size1 {St q tq s y tm1}
   (Hsz: term_node_size (Tquant q tq) = term_size tm1)
-  (Heq: forall z : list vsymbol * trigger * term_c,
+  (Heq:
     fst
     (run_errState
     (@errst_tup1 CoqBigInt.t St _ (errst_lift1 (t_open_quant1 tq)))
-    s) = inr z -> y = z):
+    s) = inr y):
   term_size (snd y) < term_size tm1.
 Proof.
-  pose proof (dep_bnd_size_quant Heq) as [Hsz1 Hsz2]. rewrite Hsz1.
+  pose proof (dep_bnd_size_quant' Heq) as [Hsz1 Hsz2]. rewrite Hsz1.
   simpl in Hsz. destruct tq as [[[vs b] tr] t]; simpl in *. lia.
 Qed.
 

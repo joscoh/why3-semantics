@@ -177,6 +177,20 @@ Definition errst_bind_dep {A B C: Type} (x: errState A B)
     end eq_refl
   )).
 
+(*NOTE: order of b is VERY important for being able to generalize correctly in ErrStateHoare*)
+Definition errst_bind_dep' {A B C: Type} (x: errState A B)
+  (f: forall (s: A) (b: B) (Heq: fst (run_errState x s) = (inr b)), errState A C) : errState A C:=
+  mkEitherT (
+    mkState 
+  (fun (s: A) =>
+    match run_errState x s as r return run_errState x s = r -> _ with
+    | (inl e, s1) => fun _ => (inl e, s1)
+    | (inr z, s1) => fun Heq => run_errState (f s z (f_equal fst Heq)) (*(fun z1 Heq1 =>
+        let Hzz1 : inr z1 = inr z := eq_trans (eq_sym Heq1) (f_equal fst Heq) in
+        eq_sym (base.inr_inj _ _ Hzz1)*) s1
+    end eq_refl
+  )).
+
 (*Plan: write traversal function over terms, generic (do errorstate, allow extra state to be arbitrary) -
   use this, problem will be map.
   Equations likely gives terrible code (does this matter?)

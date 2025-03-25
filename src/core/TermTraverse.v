@@ -68,8 +68,8 @@ Fixpoint term_traverse (tm1: term_c) (ACC: Acc lt (term_size tm1))
   | Tlet t1 b => fun Hsz =>
     v1 <- term_traverse t1 (Acc_inv ACC (tlet_size1 Hsz)) (term_size_eq' t1) ;;
     (*Need dependent types here to have enough information for the proof*)
-    errst_bind_dep (errst_tup1 (errst_lift1 (t_open_bound b)))
-      (fun y s Heq => 
+    errst_bind_dep' (errst_tup1 (errst_lift1 (t_open_bound b)))
+      (fun s y Heq => 
         v2 <- (term_traverse (snd y) (Acc_inv ACC (tlet_size2 Hsz Heq)) (term_size_eq' (snd y))) ;;
         let_case tm1 t1 v1 (fst y) (snd y) v2)
   | Tapp l ts => fun Hsz =>
@@ -84,22 +84,22 @@ Fixpoint term_traverse (tm1: term_c) (ACC: Acc lt (term_size tm1))
     tbs2 <- errst_list (@dep_map _ _ (fun x => term_size (snd x) < term_size tm1)
       (*Idea: For each element in list, use dependent bind and recursively traverse*)
       (fun b (Hx: term_size (snd b) < term_size tm1) =>
-        errst_bind_dep (errst_tup1 (errst_lift1 (t_open_branch b)))
-          (fun y s Heq =>
+        errst_bind_dep' (errst_tup1 (errst_lift1 (t_open_branch b)))
+          (fun s y Heq =>
             t2 <- term_traverse (snd y) (Acc_inv ACC (tmatch_size2 Hx Heq)) (term_size_eq' (snd y)) ;;
             errst_ret (y, t2))
         ) tbs (tmatch_size3 Hsz)) ;;
     match_case tm1 t1 r1 tbs2
   | Teps b => fun Hsz =>
-    errst_bind_dep (errst_tup1 (errst_lift1 (t_open_bound b)))
-      (fun y s Heq => 
+    errst_bind_dep' (errst_tup1 (errst_lift1 (t_open_bound b)))
+      (fun s y Heq => 
         v <- (term_traverse (snd y) (Acc_inv ACC (teps_size Hsz Heq)) (term_size_eq' (snd y))) ;;
         eps_case tm1 (fst y) (snd y) v)
   (*A slight complication from the triggers - need nested dependent match*)
   | Tquant q tq => fun Hsz =>
     (*NOTE: doing bind ... ret, need for proofs even though superflous*)
-    errst_bind_dep (errst_tup1 (errst_lift1 (t_open_quant1 tq)))
-      (fun (y : list vsymbol * trigger * term_c) s Heq => 
+    errst_bind_dep' (errst_tup1 (errst_lift1 (t_open_quant1 tq)))
+      (fun s (y : list vsymbol * trigger * term_c) Heq => 
         v <- (term_traverse (snd y) (Acc_inv ACC (tquant_size1 Hsz Heq)) (term_size_eq' (snd y))) ;;
         let vs := fst (fst y) in
         let tr := snd (fst y) in
@@ -136,8 +136,8 @@ Lemma term_traverse_rewrite (tm1: term_c) (ACC: Acc lt (term_size tm1)) Heq:
   | Tlet t1 b => fun Hsz =>
     v1 <- term_traverse t1 (Acc_inv ACC (tlet_size1 Hsz)) (term_size_eq' t1) ;;
     (*Need dependent types here to have enough information for the proof*)
-    errst_bind_dep (errst_tup1 (errst_lift1 (t_open_bound b)))
-      (fun y s Heq => 
+    errst_bind_dep' (errst_tup1 (errst_lift1 (t_open_bound b)))
+      (fun s y Heq => 
         v2 <- (term_traverse (snd y) (Acc_inv ACC (tlet_size2 Hsz Heq)) (term_size_eq' (snd y))) ;;
         let_case tm1 t1 v1 (fst y) (snd y) v2)
   | Tapp l ts => fun Hsz =>
@@ -152,22 +152,22 @@ Lemma term_traverse_rewrite (tm1: term_c) (ACC: Acc lt (term_size tm1)) Heq:
     tbs2 <- errst_list (@dep_map _ _ (fun x => term_size (snd x) < term_size tm1)
       (*Idea: For each element in list, use dependent bind and recursively traverse*)
       (fun b (Hx: term_size (snd b) < term_size tm1) =>
-        errst_bind_dep (errst_tup1 (errst_lift1 (t_open_branch b)))
-          (fun y s Heq =>
+        errst_bind_dep' (errst_tup1 (errst_lift1 (t_open_branch b)))
+          (fun s y Heq =>
             t2 <- term_traverse (snd y) (Acc_inv ACC (tmatch_size2 Hx Heq)) (term_size_eq' (snd y)) ;;
             errst_ret (y, t2))
         ) tbs (tmatch_size3 Hsz)) ;;
     match_case tm1 t1 r1 tbs2
   | Teps b => fun Hsz =>
-    errst_bind_dep (errst_tup1 (errst_lift1 (t_open_bound b)))
-      (fun y s Heq => 
+    errst_bind_dep' (errst_tup1 (errst_lift1 (t_open_bound b)))
+      (fun s y Heq => 
         v <- (term_traverse (snd y) (Acc_inv ACC (teps_size Hsz Heq)) (term_size_eq' (snd y))) ;;
         eps_case tm1 (fst y) (snd y) v)
   (*A slight complication from the triggers - need nested dependent match*)
   | Tquant q tq => fun Hsz =>
     (*NOTE: doing bind ... ret, need for proofs even though superflous*)
-    errst_bind_dep (errst_tup1 (errst_lift1 (t_open_quant1 tq)))
-      (fun (y : list vsymbol * trigger * term_c) s Heq => 
+    errst_bind_dep' (errst_tup1 (errst_lift1 (t_open_quant1 tq)))
+      (fun s (y : list vsymbol * trigger * term_c) Heq => 
         v <- (term_traverse (snd y) (Acc_inv ACC (tquant_size1 Hsz Heq)) (term_size_eq' (snd y))) ;;
         let vs := fst (fst y) in
         let tr := snd (fst y) in
@@ -235,7 +235,7 @@ Proof.
     rewrite (IH t) with (ACC2:=(a1 (term_size t) (tlet_size1 Heq))) by (simpl; lia).
     (*NOTE: need funext here I think*)
     f_equal. funext. intros x.
-    f_equal. funext. intros tb. funext. intros s. funext. intros Htb.
+    f_equal. funext. intros s. funext. intros tb. funext. intros Htb.
     rewrite (IH (snd tb)) with (ACC2:=(a1 (term_size (snd tb)) (tlet_size2 Heq Htb))); auto.
     simpl. 
     eapply @tlet_size2 with (tm:=(mk_term_c (Tlet t (v, b, t1)) tyo a loc))(t1:=t) in Htb; simpl in *; lia.
@@ -252,18 +252,18 @@ Proof.
     intros n IHn a1 a2 _ size_bound Hall. inversion Hall; subst; f_equal; auto.
     (*Now deal with head bound*)
     clear IHps.
-    f_equal. funext. intros b2. funext. intros s. funext. intros Heq.
+    f_equal. funext. intros s. funext. intros b2. funext. intros Heq.
     rewrite (IHn (snd b2)) with (ACC2:=(a2 (term_size (snd b2)) (size_bound s b2 (p1, b1, t1) (Forall_inv Hall) Heq))); auto.
-    apply dep_bnd_size_branch in Heq. simpl in *; lia.
+    apply dep_bnd_size_branch' in Heq. simpl in *; lia.
   - (*Teps*)
-    simpl. destruct p as [[v b] t1]. f_equal. funext. intros tb. funext. intros s. funext. intros Htb.
+    simpl. destruct p as [[v b] t1]. f_equal. funext. intros s. funext. intros tb. funext. intros Htb.
     rewrite (IH (snd tb)) with (ACC2:=(a1 (term_size (snd tb)) (teps_size Heq Htb))); auto.
     simpl. 
     eapply @teps_size with (tm:=(mk_term_c (Teps (v, b, t1)) tyo a loc)) in Htb; simpl in *; lia.
   - (*Tquant*) Opaque t_open_quant1. destruct p as [[[vs1 b1] tr1] t1]. simpl.
-    f_equal. funext. intros tq. funext. intros s. funext. intros Heq1.
+    f_equal. funext. intros s. funext. intros tq. funext. intros Heq1.
     assert (Htq:=Heq1).
-    apply dep_bnd_size_quant in Htq. simpl in Htq. destruct Htq as [Hszt1 Hsztr1].
+    apply dep_bnd_size_quant' in Htq. simpl in Htq. destruct Htq as [Hszt1 Hsztr1].
     rewrite (IH (snd tq)) with (ACC2:=(a1 (term_size (snd tq)) (tquant_size1 Heq Heq1))) by (simpl; lia).
     f_equal.  funext. intros x. f_equal. f_equal.
     (*Now prove trigger maps equiv*)
@@ -302,8 +302,8 @@ Lemma tm_traverse_rewrite (tm1: term_c) :
   | Tlet t1 b => fun Hsz =>
     v1 <- tm_traverse t1 ;;
     (*Need dependent types here to have enough information for the proof*)
-    errst_bind_dep (errst_tup1 (errst_lift1 (t_open_bound b)))
-      (fun y s Heq => 
+    errst_bind_dep' (errst_tup1 (errst_lift1 (t_open_bound b)))
+      (fun s y Heq => 
         v2 <- (tm_traverse (snd y)) ;;
         let_case tm1 t1 v1 (fst y) (snd y) v2)
   | Tapp l ts => fun Hsz =>
@@ -315,22 +315,22 @@ Lemma tm_traverse_rewrite (tm1: term_c) :
     r1 <- tm_traverse t1 ;;
     tbs2 <- errst_list (map (fun b =>
       (*Idea: For each element in list, use dependent bind and recursively traverse*)
-        errst_bind_dep (errst_tup1 (errst_lift1 (t_open_branch b)))
-          (fun y s Heq =>
+        errst_bind_dep' (errst_tup1 (errst_lift1 (t_open_branch b)))
+          (fun s y Heq =>
             t2 <- tm_traverse (snd y) ;;
             errst_ret (y, t2))
         ) tbs) ;;
     match_case tm1 t1 r1 tbs2
   | Teps b => fun Hsz =>
-    errst_bind_dep (errst_tup1 (errst_lift1 (t_open_bound b)))
-      (fun y s Heq => 
+    errst_bind_dep' (errst_tup1 (errst_lift1 (t_open_bound b)))
+      (fun s y Heq => 
         v <- (tm_traverse (snd y)) ;;
         eps_case tm1 (fst y) (snd y) v)
   (*A slight complication from the triggers - need nested dependent match*)
   | Tquant q tq => fun Hsz =>
     (*NOTE: doing bind ... ret, need for proofs even though superflous*)
-    errst_bind_dep (errst_tup1 (errst_lift1 (t_open_quant1 tq)))
-      (fun (y : list vsymbol * trigger * term_c) s Heq => 
+    errst_bind_dep' (errst_tup1 (errst_lift1 (t_open_quant1 tq)))
+      (fun s (y : list vsymbol * trigger * term_c) Heq => 
         v <- (tm_traverse (snd y)) ;;
         let vs := fst (fst y) in
         let tr := snd (fst y) in
@@ -387,8 +387,8 @@ Proof.
     f_equal. apply term_traverse_irrel.
   - (*eps*) simpl. f_equal. funext. intros tb. funext. intros s.
     funext. intros Heq. f_equal. apply term_traverse_irrel.
-  - (*quant*) simpl. destruct p as [[[vs1 b1] tr1] t1]. simpl. f_equal. funext. intros tq.
-    funext. intros s. funext. intros Heq. f_equal. 2: apply term_traverse_irrel.
+  - (*quant*) simpl. destruct p as [[[vs1 b1] tr1] t1]. simpl. f_equal. funext. intros s.
+    funext. intros tq. funext. intros Heq. f_equal. 2: apply term_traverse_irrel.
     funext. intros x. f_equal. f_equal.
     (*nested ind*) simpl in *.
     gen_dep_map. simpl. generalize dependent (S (term_size t1 + Datatypes.length tr1 +
@@ -421,8 +421,8 @@ Variable (Plet: forall t (t1: term_c) (b: term_bound), t_node_of t = Tlet t1 b -
   (forall (y: vsymbol * term_c) (s: CoqBigInt.t * St), 
      fst (run_errState (errst_tup1 (errst_lift1 (t_open_bound b))) s) = inr y -> P (snd y) (tm_traverse (snd y))) ->
   P t (r1 <- tm_traverse t1 ;;
-    errst_bind_dep (errst_tup1 (errst_lift1 (t_open_bound b)))
-      (fun y s Heq => 
+    errst_bind_dep' (errst_tup1 (errst_lift1 (t_open_bound b)))
+      (fun s y Heq => 
         r2 <- tm_traverse (snd y) ;;
         let_case t t1 r1 (fst y) (snd y) r2))).
 (*app case needs nested induction*)
@@ -439,8 +439,8 @@ Variable (Pcase: forall t t1 (tbs: list (pattern_c * bind_info * term_c)),
         P (snd y) (tm_traverse (snd y)))) tbs ->
   P t (r1 <- tm_traverse t1 ;;
     tbs2 <- errst_list (map (fun b =>
-        errst_bind_dep (errst_tup1 (errst_lift1 (t_open_branch b)))
-          (fun y s Heq =>
+        errst_bind_dep' (errst_tup1 (errst_lift1 (t_open_branch b)))
+          (fun s y Heq =>
             t2 <- tm_traverse (snd y) ;;
             errst_ret (y, t2))
         ) tbs) ;;
@@ -449,8 +449,8 @@ Variable (Pcase: forall t t1 (tbs: list (pattern_c * bind_info * term_c)),
 Variable (Peps: forall t b, t_node_of t = Teps b ->
   (forall (y:  vsymbol * term_c) (s: CoqBigInt.t * St), 
     fst (run_errState (errst_tup1 (errst_lift1 (t_open_bound b))) s) = inr y -> P (snd y) (tm_traverse (snd y))) ->
-  P t (errst_bind_dep (errst_tup1 (errst_lift1 (t_open_bound b)))
-      (fun y s Heq => 
+  P t (errst_bind_dep' (errst_tup1 (errst_lift1 (t_open_bound b)))
+      (fun s y Heq => 
         r2 <- tm_traverse (snd y) ;;
         eps_case t (fst y) (snd y) r2))).
 (*Quant a bit more complicated because of double needs double nested, but not dependent so OK*)
@@ -460,8 +460,8 @@ Variable (Pquant: forall t q tq, t_node_of t = Tquant q tq ->
     fst (run_errState (errst_tup1 (errst_lift1 (t_open_quant1 tq))) s) = inr y -> 
      P (snd y) (tm_traverse (snd y)) /\
      Forall (fun l1 => Forall (fun tr1 => P tr1 (tm_traverse tr1)) l1) (snd (fst y))) ->
-  P t (errst_bind_dep (errst_tup1 (errst_lift1 (t_open_quant1 tq)))
-      (fun (y : list vsymbol * trigger * term_c) s Heq => 
+  P t (errst_bind_dep' (errst_tup1 (errst_lift1 (t_open_quant1 tq)))
+      (fun s (y : list vsymbol * trigger * term_c) Heq => 
         v <- (tm_traverse (snd y)) ;;
         let vs := fst (fst y) in
         let tr := snd (fst y) in
