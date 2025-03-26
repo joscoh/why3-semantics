@@ -710,3 +710,67 @@ Definition task_related (t1: task) (t2: Task.task) : Prop :=
 
 End Relations.
 
+(*Some syntactic results about evaluation and relations (RelationProofs.v has semantic results)*)
+
+
+(*[eval_task_goal] is annoying. This lets us rewrite it in terms of [find_goal] and relate the formulas*)
+Lemma eval_task_find_goal (tsk: task_hd) (f: formula):
+  eval_task_goal tsk = Some f <->
+  exists f1 pr, find_goal (Some tsk) = Some (pr, f1) /\ eval_fmla f1 = Some f.
+Proof.
+  unfold eval_task_goal, eval_tdecl_goal, eval_tdecl_node_aux, eval_decl_goal.
+  unfold find_goal. simpl.
+  destruct (td_node_of (task_decl tsk)) as [d | | |] eqn : Htd; try solve[split; intros; destruct_all; discriminate].
+  unfold get_goal.
+  destruct (d_node d) as [| | | | | [[k pr] f1]] eqn : Hd; try solve[split; intros; destruct_all; discriminate].
+  simpl in *. destruct k; try solve[split; intros; destruct_all; discriminate].
+  destruct (eval_fmla f1) as [f2|] eqn : Heval.
+  - split.
+    + intros Hsome; inversion Hsome; subst. exists f1. exists pr. auto.
+    + intros [f2' [pr1 [Hsome Heval']]]. inversion Hsome; subst; auto. rewrite Heval in Heval'.
+      inversion Heval'; subst; auto.
+  - split; try discriminate. 
+    intros [f2' [pr1 [Hsome Heval']]]. inversion Hsome; subst; auto.  rewrite Heval in Heval'. discriminate.
+Qed.
+
+(*Now prove related by parts*)
+Section ProveRelated.
+
+Import Task.
+
+Lemma fmla_related_fif t1 t2 t3 e1 e2 e3:
+  fmla_related t1 e1 ->
+  fmla_related t2 e2 ->
+  fmla_related t3 e3 ->
+  fmla_related (t_if1 t1 t2 t3) (Fif e1 e2 e3).
+Proof.
+  intros Hrel1 Hrel2 Hrel3.
+  unfold fmla_related in *.
+  simpl. destruct Hrel1 as [f1 [He1 Ha1]].
+  destruct Hrel2 as [f2 [He2 Ha2]].
+  destruct Hrel3 as [f3 [He3 Ha3]].
+  exists (Fif f1 f2 f3). rewrite He1, He2, He3. simpl.
+  split; auto.
+  (*TODO: prove separately*)
+  unfold a_equiv_f. simpl.
+  bool_to_prop; split_all; auto.
+Qed.
+
+Lemma term_related_tif t1 t2 t3 e1 e2 e3:
+  fmla_related t1 e1 ->
+  term_related t2 e2 ->
+  term_related t3 e3 ->
+  term_related (t_if1 t1 t2 t3) (Tif e1 e2 e3).
+Proof.
+  intros Hrel1 Hrel2 Hrel3.
+  unfold fmla_related, term_related in *.
+  simpl. destruct Hrel1 as [f1 [He1 Ha1]].
+  destruct Hrel2 as [f2 [He2 Ha2]].
+  destruct Hrel3 as [f3 [He3 Ha3]].
+  exists (Tif f1 f2 f3). rewrite He1, He2, He3. simpl.
+  split; auto.
+  unfold a_equiv_t. simpl.
+  bool_to_prop; split_all; auto.
+Qed.
+
+End ProveRelated.

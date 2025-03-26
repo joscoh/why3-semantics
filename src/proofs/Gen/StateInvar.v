@@ -293,4 +293,35 @@ Definition ty_hash_wf (o: option ty_c) (s: full_st) : Prop :=
 
 Definition ty_st_wf o s := ty_hash_wf o s.
 
+Lemma term_ty_wf_aux t s:
+  term_hash_wf t s ->
+  ty_st_wf (t_ty_of t) s.
+Proof.
+  unfold term_hash_wf, ty_st_wf, ty_hash_wf, gen_hash_wf.
+  destruct t; simpl. 
+  rewrite !map_app, !concat_app.
+  unfold all_in_hashtable, all_idents_smaller.
+  setoid_rewrite in_app_iff.
+  intros [Hin1 Hin2]; split; intros x Hinx; [apply Hin1 | apply Hin2]; auto.
+Qed.
+
+Lemma term_ty_wf t s:
+  term_st_wf t s ->
+  ty_st_wf (t_ty_of t) s.
+Proof.
+  intros [_ Hhash]. apply term_ty_wf_aux; auto.
+Qed.
+
 End Ty.
+
+(*And vsymbols*)
+
+(*vsym wf has 2 parts: ident and hash*)
+Definition vsym_ident_wf (v: TermDefs.vsymbol) (s: full_st):=
+  (id_tag (vs_name v) < (fst s))%Z.
+
+Definition vsym_hash_wf (v: TermDefs.vsymbol) (s: full_st) :=
+  gen_hash_wf full_ty_hash (fun t => tys_of_ty (vs_ty t)) ty_hash ty_eqb v s.
+
+Definition vsym_st_wf (v: TermDefs.vsymbol) (s: full_st):=
+  vsym_ident_wf v s /\ vsym_hash_wf v s.

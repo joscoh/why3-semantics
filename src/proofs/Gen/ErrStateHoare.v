@@ -137,8 +137,6 @@ Proof.
   apply Hb. simpl. auto.
 Qed.
 
-Check errst_bind_dep.
-Require Import Coq.Program.Equality.
 Lemma prove_errst_spec_dep_bnd {St A B: Type} (P1 : St -> Prop) (P2: A -> St -> Prop) 
   Q1 Q2 Q3 (a: errState St A) (b: forall (s: St) (b: A), (fst (run_errState a s) = inr b) -> errState St B):
   (errst_spec P1 a Q1) ->
@@ -256,3 +254,161 @@ Proof.
   unfold errst_spec. auto.
 Qed.
 
+(*Invariants*)
+
+(*P1=P2, ignore ending - just give postcondition of A and B*)
+Lemma prove_errst_spec_bnd_invar {St A B: Type}
+  (Q1: St -> St -> Prop) (Q2 Q3: St -> St -> Prop) (a: errState St A) (b: A -> errState St B):
+  errst_spec (fun _ => True) a (fun s1 _ s2 => Q1 s1 s2) ->
+  (forall x, errst_spec (fun _ => True) (b x) (fun s1 _ s2 => Q2 s1 s2)) ->
+  (forall x1 x2 x3, Q1 x1 x2 -> Q2 x2 x3 -> Q3 x1 x3) ->
+  errst_spec (fun _ => True) (errst_bind b a) (fun s1 _ s2 => Q3 s1 s2).
+Proof.
+  intros Ha Hb Htrans. eapply prove_errst_spec_bnd; [apply Ha | apply Hb | |]; simpl; auto.
+  intros; eauto.
+Qed.
+
+(*dep version*)
+Lemma prove_errst_spec_dep_bnd_invar {St A B: Type}
+  (Q1: St -> St -> Prop) (Q2 Q3: St -> St -> Prop) (a: errState St A) 
+  (b : forall (s : St) (b : A), fst (run_errState a s) = inr b -> errState St B):
+  errst_spec (fun _ => True) a (fun s1 _ s2 => Q1 s1 s2) ->
+  (forall s x Heq, errst_spec (fun _ => True) (b s x Heq) (fun s1 _ s2 => Q2 s1 s2)) ->
+  (forall x1 x2 x3, Q1 x1 x2 -> Q2 x2 x3 -> Q3 x1 x3) ->
+  errst_spec (fun _ => True) (errst_bind_dep' a b) (fun s1 _ s2 => Q3 s1 s2).
+Proof.
+  intros Ha Hb Htrans. eapply prove_errst_spec_dep_bnd; [apply Ha | apply Hb | |]; simpl; auto.
+  intros; eauto.
+Qed.
+
+
+
+(*Loops are trickier. We prove 2 different rules: 1 for invariants that only depend on the states
+  (and are transitive) e.g. well-formed conditions and 1 for propositions that do not
+  depend on the initial state. Things gets much harder when the postcondtiion depends on all*)
+
+(*A Hoare-like loop rule - give loop invariant - in pre and post*)
+Lemma prove_errst_spec_list_invar {St A: Type} (I1: St -> Prop) (I2: St -> St -> Prop) 
+  (l: list (errState St A)):
+  (*Loop invariant preserved through loop*)
+  Forall (fun a => errst_spec I1 a (fun x _ y => I2 x y)) l ->
+  (*Ending implies beginning again*)
+  (forall s1 s2, I2 s1 s2 -> I1 s2) ->
+  (*Reflexivity*)
+  (forall s, I1 s -> I2 s s) ->
+  (*Transitivity*)
+  (forall s1 s2 s3, I2 s1 s2 -> I2 s2 s3 -> I2 s1 s3) ->
+  errst_spec I1 (errst_list l) (fun s1 _ s2 => I2 s1 s2).
+Proof.
+  unfold errst_list. intros Hinvar Hi12 Hrefl Htrans.
+  induction l as [| h t IH]; simpl; auto.
+  - apply prove_errst_spec_ret. auto.
+  - inversion Hinvar as [| ? ? Hinvar1 Hinvar2]; subst; clear Hinvar. specialize (IH Hinvar2).
+    eapply prove_errst_spec_bnd with (Q1:=fun s1 _ s2 => I2 s1 s2) (Q2:=fun _ s1 _ s2 => I2 s1 s2)(P2:=fun _ => I1); eauto.
+    intros x.
+    (*use IH, but need another bind*)
+    eapply prove_errst_spec_bnd with (Q2:=fun _ s1 _ s2 => I2 s1 s2) (P2:=fun _ => I1). 1: apply IH. all: simpl; eauto.
+    intros y. apply prove_errst_spec_ret. auto.
+Qed.
+
+
+(*TODO: see what other version we need (not sure yet)*)
+
+(*And a version for monotonic predicate that does not depend on state (e.g. *)
+
+(**)
+(* 
+(*And a version for monotonic predicates that do not depend on the initial state*)
+Lemma prove_errst_spec_list_mono {St A: Type} (I1: St -> Prop) (I2: A -> St -> Prop) 
+  (*(P1: St -> Prop)*) (* (Q1: St -> A -> St -> Prop) (Q2: St -> list A -> St -> Prop) *)  (l: list (errState St A)):
+  (*Loop invariant implied on beginning*)
+  (*(forall s, P1 s -> I1 s) ->*)
+  (*Loop invariant preserved through loop*)
+  Forall (fun a => errst_spec I1 a (fun _ x y => I2 x y)) l ->
+  (*Ending implies beginning again*)
+  (forall x s2, I2 x s2 -> I1 s2) ->
+  (*Monotonicity: TODO*)
+  Forall (fun a => errst_spec I1 a (fun _ _ s2 => I1 s2)) l ->
+  (*Reflexivity*)
+  (forall s, I1 s -> I2 s s) ->
+  (*Transitivity*)
+  (forall s1 s2 s3, I2 s1 s2 -> I2 s2 s3 -> I2 s1 s3) -> 
+  (*Exiting implies postcondition*)
+  (* (forall s1 x s2, I2 s1 x s2 -> Q1 s1 x s2) -> *)
+  (*Then post holds for all list*)
+  (*TODO: is this the right direction?*)
+  (* (forall s1 l s2, Forall (fun y => Q1 s1 y s2) l -> Q2 s1 l s2 ) ->  *)
+  errst_spec I1 (errst_list l) (fun _ x s2 => Forall (fun y => I2 y s2) x).
+Proof.
+  unfold errst_list. intros Hinvar Hi12 Hmono.
+  induction l as [| h t IH]; simpl; auto.
+  - apply prove_errst_spec_ret. intros i Hi. constructor.
+  - inversion Hinvar as [| ? ? Hinvar1 Hinvar2]; subst; clear Hinvar.
+    inversion Hmono as [| ? ? Hm1 Hm2]; subst; clear Hmono. specialize (IH Hinvar2 Hm2).
+    eapply prove_errst_spec_bnd with (Q1:=fun x s1 y s2 => I2 s1 y s2 /\ Forall (fun z => Q1 s1 z s2) y). (P2:=fun _ => I1); auto.
+    (Q2:=fun x s1 y s2 =>  Forall (fun z : A => Q1 s1 z s2) y); auto.
+
+
+
+
+ with
+
+
+
+ (Q1:=fun x s1 y s2 => I2 s1 y s2 /\ Forall (fun z => Q1 s1 z s2) y). (P2:=fun _ => I1); auto.
+    (Q2:=fun x s1 y s2 =>  Forall (fun z : A => Q1 s1 z s2) y); auto. *)
+
+
+Lemma errst_spec_tup1 {St1 St2 A: Type} (P: St1 -> A -> St1 -> Prop) (Q: St2 -> A -> St2 -> Prop) (o: errState St1 A)
+  (Q_refl: forall s x, Q s x s):
+  errst_spec (fun _ => True) o P ->
+  errst_spec (fun _ => True) (errst_tup1 o) (fun s1 x s2 => P (fst s1) x (fst s2) /\ Q (snd s1) x (snd s2)).
+Proof.
+  unfold errst_spec. intros Hspec [i1 i2] b _ Hb.
+  simpl.
+  destruct o; simpl in *. unfold run_errState in *; simpl in *.
+  specialize (Hspec i1).
+  destruct (runState unEitherT i1 ) as [x1 x2] eqn : Hrun; simpl in *; subst.
+  split; auto.
+Qed.
+
+(*We can remove a pure proposition from a precondition of errst_spec*)
+Definition errst_spec_pure_pre {St A: Type} (P1: St -> Prop) (P2: Prop) (s: errState St A) Q:
+  (P2 -> errst_spec P1 s Q) ->
+  errst_spec (fun x => P1 x /\ P2) s Q.
+Proof.
+  unfold errst_spec.
+  intros Hspec i b [Hp1 Hp2']. auto.
+Qed.
+
+Lemma errst_spec_err' {A B : Type} (P : A -> Prop) (Q : A -> B -> A -> Prop) c:
+  (forall (i : A) (x : B), c = inr x -> P i -> Q i x i) ->
+  errst_spec P (errst_lift2 c) Q.
+Proof.
+  intros Hc. destruct c.
+  - eapply errst_spec_err1; eauto.
+  - (*need stronger lemma than [errst_spec_err2]*)
+    unfold errst_spec, errst_lift2. simpl. auto.
+Qed.
+
+(*doesn't really belong here but oh well*)
+Lemma err_bnd_inr {A B: Type} (f: A -> errorM B) (x: errorM A) y:
+  err_bnd f x = inr y ->
+  exists z, x = inr z /\ f z = inr y.
+Proof.
+  unfold err_bnd. destruct x; simpl; try discriminate.
+  intros Hf. eauto.
+Qed.
+
+(*Version where intermediate assertion does not depend on initial state*)
+Lemma prove_errst_spec_bnd_nondep' {St A B: Type} (P1 : St -> Prop)
+  Q1 Q3 a (b: A -> errState St B):
+  (*Hmm, what if Q1 does not use initial state?*)
+  (errst_spec P1 a (fun _ => Q1)) ->
+  (forall x, errst_spec (Q1 x) (b x) (fun _ => Q3)) ->
+  (*Weaken rest*)
+  (* (forall s2 s3 x y, Q1 x s2 -> Q3 y s3) -> *)
+  errst_spec P1 (errst_bind b a) (fun _ => Q3).
+Proof.
+  intros Ha Hb. eapply prove_errst_spec_bnd with (Q2:=fun _ _ => Q3); eauto.
+Qed.

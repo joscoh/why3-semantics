@@ -194,3 +194,17 @@ Lemma st_spec_init {A B: Type} (x: st A B) (P: A -> Prop):
 Proof.
   unfold st_spec. auto.
 Qed.
+
+(*Prove an invariant through bind*)
+
+(*P1=P2, ignore ending - just give postcondition of A and B*)
+Lemma prove_st_spec_bnd_invar {St A B: Type}
+  (Q1: St -> St -> Prop) (Q2 Q3: St -> St -> Prop) (a: st St A) (b: A -> st St B):
+  st_spec (fun _ => True) a (fun s1 _ s2 => Q1 s1 s2) ->
+  (forall x, st_spec (fun _ => True) (b x) (fun s1 _ s2 => Q2 s1 s2)) ->
+  (forall x1 x2 x3, Q1 x1 x2 -> Q2 x2 x3 -> Q3 x1 x3) ->
+  st_spec (fun _ => True) (st_bind b a) (fun s1 _ s2 => Q3 s1 s2).
+Proof.
+  intros Ha Hb Htrans. eapply prove_st_spec_bnd; [apply Ha | apply Hb | |]; simpl; auto.
+  intros; eauto.
+Qed.
