@@ -1755,6 +1755,27 @@ Proof.
     apply errst_spec_init.
 Qed.
 
+Lemma ty_hash_wf_pres {A: Type} (t: option ty_c) (o: errState full_st A):
+  errst_spec (fun _ => True) o (fun s1 _ s2 => hashcons_ctr (full_ty_hash s1) <= hashcons_ctr (full_ty_hash s2) /\
+    hashset_subset ty_hash ty_eqb (hashcons_hash (full_ty_hash s1)) (hashcons_hash (full_ty_hash s2))) ->
+  errst_spec (ty_hash_wf t) o (fun _ _ s2 => ty_hash_wf t s2).
+Proof.
+  intros Hspec.
+  eapply errst_spec_weaken with (P1:= fun s => True /\ ty_hash_wf t s)
+   (Q1:=fun s1 _ s2 => (hashcons_ctr (full_ty_hash s1) <= hashcons_ctr (full_ty_hash s2) /\
+    hashset_subset ty_hash ty_eqb (hashcons_hash (full_ty_hash s1)) (hashcons_hash (full_ty_hash s2))) 
+    /\ ty_hash_wf t s1); auto.
+  - intros s1 _ s2 [[Hle Hhash] Hwf].
+    (*separate lemma?*)
+    unfold ty_hash_wf, gen_hash_wf in *. destruct Hwf as [Hwf1 Hwf2]. split.
+    + unfold all_in_hashtable in *. intros x Hinx. specialize (Hwf1 _ Hinx).
+      apply Hhash; auto.
+    + unfold all_idents_smaller in *. intros x Hinx. specialize (Hwf2 _ Hinx).
+      lia.
+  - apply errst_spec_and; auto.
+    apply errst_spec_init.
+Qed.
+
 Definition term_wf_pres_cond (s1 s2: full_st) :=
   (fst s1 <= fst s2)%Z /\ 
   (hashcons_ctr (full_ty_hash s1) <= hashcons_ctr (full_ty_hash s2) /\
@@ -1770,6 +1791,14 @@ Proof.
     intros; destruct_all; auto.
   - apply term_hash_wf_pres. revert Hspec. apply errst_spec_weaken; auto.
     intros; destruct_all; split; auto.
+Qed.
+
+Lemma ty_st_wf_pres {A: Type} (t: option ty_c) (o: errState full_st A):
+  errst_spec (fun _ => True) o (fun s1 _ s2 => term_wf_pres_cond s1 s2) ->
+  errst_spec (ty_st_wf t) o (fun _ _ s2 => ty_st_wf t s2).
+Proof.
+  unfold ty_st_wf, term_wf_pres_cond. intros Hspec.
+  apply ty_hash_wf_pres. revert Hspec. apply errst_spec_weaken_post. intros; destruct_all; auto.
 Qed.
 
 Lemma term_wf_pres_cond_refl s: term_wf_pres_cond s s.
@@ -2328,19 +2357,60 @@ Proof.
   apply elim_let_rewrite_pres.
 Qed.
 
+(*same for ty*)
+Lemma elim_let_rewrite_ty_wf (t: option ty_c) (f1: term_c):
+  errst_spec (ty_st_wf t) (elim_let_rewrite f1) (fun _ _ s2 =>ty_st_wf t s2).
+Proof.
+  apply ty_st_wf_pres.
+  apply elim_let_rewrite_pres.
+Qed.
+
 (*I believe for induction purposes I need both the term and formula result*)
 
 (*TODO: move*)
 
+Ltac destruct_term_node t:=
+  let n := fresh "n" in
+  destruct t as [n ? ? ?]; destruct n; try discriminate; simpl in *; subst; simpl in *.
+
+Lemma idents_of_term_eq t1 t2 (Hn: t_node_of t1 = t_node_of t2):
+  idents_of_term t1 = idents_of_term t2.
+Proof.
+  destruct_term_node t1; destruct_term_node t2; auto; inversion Hn; subst; auto.
+Qed.
+
+(*Need type wf also - TODO: move*)
+
+
 (*Decompose wf*)
 Lemma term_st_wf_if {t t1 t2 t3} (Ht: t_node_of t = TermDefs.Tif t1 t2 t3):
   forall s,
-  term_st_wf t s <-> term_st_wf t1 s /\ term_st_wf t2 s /\ term_st_wf t3 s.
+  term_st_wf t s <-> term_st_wf t1 s /\ term_st_wf t2 s /\ term_st_wf t3 s /\  ty_st_wf (t_ty_of t) s.
 Proof.
   intros s.
-  (*TODO: prove that [idents_of_term] and similar invariant under [t_node_of] - prob
-  using new induction principle*)
-Admitted.
+  unfold term_st_wf, ty_st_wf.
+  (*Easier to separate - can we generalize?*)
+  assert (Hidents: idents_of_term_wf t s <-> idents_of_term_wf t1 s /\ idents_of_term_wf t2 s /\
+    idents_of_term_wf t3 s).
+  {
+    destruct_term_node t. inversion Ht; subst. unfold idents_of_term_wf; simpl.
+    repeat (setoid_rewrite in_app_iff).
+    split.
+    - intros Hin. split_all; intros i Hini; apply Hin; auto.
+    - intros [Hin1 [Hin2 Hin3]] i Hini. destruct_all; eauto.
+  }
+  assert (Hhash: term_hash_wf t s <-> term_hash_wf t1 s /\ term_hash_wf t2 s /\ term_hash_wf t3 s /\ ty_hash_wf (t_ty_of t) s).
+  {
+    unfold term_hash_wf, ty_hash_wf, gen_hash_wf. destruct_term_node t; inversion Ht; subst; simpl.
+    rewrite !map_app, !concat_app. unfold all_in_hashtable, all_idents_smaller.
+    repeat (setoid_rewrite in_app_iff).
+    split.
+    - intros [Hi1 Hi2]. split_all; eauto.
+    - intros; destruct_all; split; intros; destruct_all; eauto.
+  }
+  rewrite Hidents, Hhash.
+  split; intros; destruct_all; split_all; auto.
+Qed.
 
 (*TODO: move*)
 
@@ -2380,6 +2450,41 @@ Proof.
   bool_to_prop; split_all; auto.
 Qed.
 
+Check prove_errst_spec_bnd_nondep.
+
+(*A version where *)
+(*Version where intermediate assertion does not depend on initial state*)
+Lemma prove_errst_spec_bnd_nondep' {St A B: Type} (P1 : St -> Prop)
+  Q1 Q3 a (b: A -> errState St B):
+  (*Hmm, what if Q1 does not use initial state?*)
+  (errst_spec P1 a (fun _ => Q1)) ->
+  (forall x, errst_spec (Q1 x) (b x) (fun _ => Q3)) ->
+  (*Weaken rest*)
+  (* (forall s2 s3 x y, Q1 x s2 -> Q3 y s3) -> *)
+  errst_spec P1 (errst_bind b a) (fun _ => Q3).
+Proof.
+  intros Ha Hb. eapply prove_errst_spec_bnd with (Q2:=fun _ _ => Q3); eauto.
+Qed.
+
+(*TODO: move*)
+Lemma term_ty_wf_aux t s:
+  term_hash_wf t s ->
+  ty_st_wf (t_ty_of t) s.
+Proof.
+  unfold term_hash_wf, ty_st_wf, ty_hash_wf, gen_hash_wf.
+  destruct t; simpl. 
+  rewrite !map_app, !concat_app.
+  unfold all_in_hashtable, all_idents_smaller.
+  setoid_rewrite in_app_iff.
+  intros [Hin1 Hin2]; split; intros x Hinx; [apply Hin1 | apply Hin2]; auto.
+Qed.
+
+Lemma term_ty_wf t s:
+  term_st_wf t s ->
+  ty_st_wf (t_ty_of t) s.
+Proof.
+  intros [_ Hhash]. apply term_ty_wf_aux; auto.
+Qed.
 
 (*Prove related for formulas (main part)*)
 Theorem elim_let_rewrite_related_aux (f1: term_c) :
@@ -2432,55 +2537,52 @@ Proof.
       (*Idea: use bind result 3 times: first by IH gives that r1 related to [elim_let e1],
         second. The wfs are annoying: we have the push them through *)
       (*First, break down st*)
-      apply errst_spec_weaken_pre with (P1:=fun s => term_st_wf t1 s /\ (term_st_wf t2 s /\ term_st_wf t3 s)).
+      apply errst_spec_weaken_pre with (P1:=fun s => term_st_wf t1 s /\ (term_st_wf t2 s /\ term_st_wf t3 s
+      /\ ty_st_wf (t_ty_of t) s)).
       { intros s.  rewrite (term_st_wf_if Ht). auto. }
       (*Now bind first*)
-      eapply prove_errst_spec_bnd_nondep with
+      eapply prove_errst_spec_bnd_nondep' with
       (Q1:=fun f2 s2 => (term_st_wf f2 s2 /\ fmla_related f2 (elim_let_f true true e1)) /\
-        (term_st_wf t2 s2 /\ term_st_wf t3 s2))
-      (*TODO: probably wrong*)
-      (Q2:=fun _ f3 s3 => term_st_wf f3 s3 /\ fmla_related f3 
-        (Fif (elim_let_f true true e1) (elim_let_f true true e2) (elim_let_f true true e3))); auto.
+        (term_st_wf t2 s2 /\ term_st_wf t3 s2 /\ ty_st_wf (t_ty_of t) s2)).
       1: { (*Prove first*) 
-        apply errst_spec_and; [apply IH1| apply errst_spec_and]; apply elim_let_rewrite_wf.
+        apply errst_spec_and; [apply IH1|]; repeat (apply errst_spec_and; try apply elim_let_rewrite_wf;
+        try apply elim_let_rewrite_ty_wf).
       }
       intros ta.
       (*Pull pure out*)
       apply errst_spec_weaken_pre with (P1:=fun s2 =>
         (term_st_wf t2 s2 /\
-        (term_st_wf ta s2 /\ term_st_wf t3 s2)) /\ fmla_related ta (elim_let_f true true e1));
+        (term_st_wf ta s2 /\ term_st_wf t3 s2 /\ ty_st_wf (t_ty_of t) s2)) /\ 
+        fmla_related ta (elim_let_f true true e1));
       [intros; destruct_all; split_all; auto|].
       apply errst_spec_pure_pre. intros Hrel1.
       (*Now use second IH*)
-      eapply prove_errst_spec_bnd_nondep with (Q1:=fun f3 s3 =>
+      eapply prove_errst_spec_bnd_nondep' with (Q1:=fun f3 s3 =>
         (term_st_wf f3 s3 /\ fmla_related f3 (elim_let_f true true e2)) /\
-        (term_st_wf ta s3 /\ term_st_wf t3 s3))
-      (*TODO: probably wrong*)
-      (Q2:=fun _ f3 s3 => term_st_wf f3 s3 /\ fmla_related f3 
-        (Fif (elim_let_f true true e1) (elim_let_f true true e2) (elim_let_f true true e3))); auto.
+        (term_st_wf ta s3 /\ term_st_wf t3 s3 /\ ty_st_wf (t_ty_of t) s3)).
       1: { (*Prove second*)
-        apply errst_spec_and; [apply IH2|apply errst_spec_and]; apply elim_let_rewrite_wf.
+        apply errst_spec_and; [apply IH2|]; repeat (apply errst_spec_and; try apply elim_let_rewrite_wf;
+        try apply elim_let_rewrite_ty_wf).
       }
       intros tb.
       (*Again, pull pure out*)
-      apply errst_spec_weaken_pre with (P1:=fun s3 => (term_st_wf t3 s3 /\
-        (term_st_wf ta s3 /\ term_st_wf tb s3)) /\ (fmla_related tb (elim_let_f true true e2)));
+      apply errst_spec_weaken_pre with (P1:=fun s3 => ((term_st_wf t3 s3 /\
+        (term_st_wf ta s3 /\ term_st_wf tb s3 /\ ty_st_wf (t_ty_of t) s3)) /\ 
+        (fmla_related tb (elim_let_f true true e2))));
       [intros; destruct_all; split_all; auto|].
       apply errst_spec_pure_pre. intros Hrel2.
       (*Use third IH*)
-      eapply prove_errst_spec_bnd_nondep with (Q1:=fun f4 s4 =>
+      eapply prove_errst_spec_bnd_nondep' with (Q1:=fun f4 s4 =>
         (term_st_wf f4 s4 /\ fmla_related f4 (elim_let_f true true e3)) /\
-        (term_st_wf ta s4 /\ term_st_wf tb s4))
-      (Q2:=fun _ f3 s3 => term_st_wf f3 s3 /\ fmla_related f3 
-        (Fif (elim_let_f true true e1) (elim_let_f true true e2) (elim_let_f true true e3))); auto.
-      (*TODO: a version of this that automatically instantiates Q2 if we don't need first*)
+        (term_st_wf ta s4 /\ term_st_wf tb s4 /\ ty_st_wf (t_ty_of t) s4)).
       1: { (*Prove third*)
-        apply errst_spec_and; [apply IH3|apply errst_spec_and]; apply elim_let_rewrite_wf.
+        apply errst_spec_and; [apply IH3|]; repeat (apply errst_spec_and; try apply elim_let_rewrite_wf;
+        try apply elim_let_rewrite_ty_wf).
       }
       (*Finally, put it all together*)
       intros tc. unfold tmap_if_default. apply errst_spec_err'.
       intros s4 x Hx. (*Get info about [t_if] - kinda breaks abstraction which isn't great*)
-      intros [[Hwfc Hrel3] [Hwfa Hwfb]].
+      intros [[Hwfc Hrel3] [Hwfa [Hwfb Hwfty]]].
       unfold t_if in Hx.
       apply err_bnd_inr in Hx. destruct Hx as [u [_ Hbind]].
       apply err_bnd_inr in Hbind. destruct Hbind as [fa [Hta Hif]]. 
@@ -2489,6 +2591,7 @@ Proof.
       destruct (negb (isSome (t_ty_of ta)) ); inversion Hta; subst; auto.
       split.
       * (*prove wf*) eapply term_st_wf_if. reflexivity. split_all; auto.
+        simpl. apply term_ty_wf in Hwfc. auto.
       * (*Now prove related*)
         apply fmla_related_fif; auto.
     + (*Tif - very similar*)

@@ -283,3 +283,14 @@ Proof.
     destruct Hh as [Hh1 Hh2]. unfold all_in_hashtable, all_idents_smaller in *. split; auto.
 Qed.
 End Term.
+
+(*And for a specific type*)
+Section Ty.
+
+(*No idents*)
+Definition ty_hash_wf (o: option ty_c) (s: full_st) : Prop :=
+  gen_hash_wf full_ty_hash (fun t => (concat (map tys_of_ty (list_of_option_id t)))) ty_hash ty_eqb o s.
+
+Definition ty_st_wf o s := ty_hash_wf o s.
+
+End Ty.
