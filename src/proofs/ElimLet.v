@@ -1699,13 +1699,15 @@ End EvalInv.
 
 (*TODO: move*)
 
+Local Open Scope Z_scope.
+
 Section Pres.
 
 (*In general, if the state is *)
 
 (*Preservation of states (move)*)
 Print idents_of_term_wf.
-Local Open Scope Z_scope.
+
 (*1. If the counter only increases, everything that was wf is still wf (for idents)*)
 Lemma idents_of_term_wf_pres {A: Type} (tm: term_c) (o: errState full_st A):
   errst_spec (fun _ => True) o (fun s1 _ s2 =>(fst s1 <= fst s2)%Z) ->
@@ -1755,8 +1757,8 @@ Qed.
 
 Definition term_wf_pres_cond (s1 s2: full_st) :=
   (fst s1 <= fst s2)%Z /\ 
-  hashcons_ctr (full_ty_hash s1) <= hashcons_ctr (full_ty_hash s2) /\
-  hashset_subset ty_hash ty_eqb (hashcons_hash (full_ty_hash s1)) (hashcons_hash (full_ty_hash s2)).
+  (hashcons_ctr (full_ty_hash s1) <= hashcons_ctr (full_ty_hash s2) /\
+  hashset_subset ty_hash ty_eqb (hashcons_hash (full_ty_hash s1)) (hashcons_hash (full_ty_hash s2))).
 
 Lemma term_st_wf_pres {A: Type} (tm: term_c) (o: errState full_st A):
   errst_spec (fun _ => True) o (fun s1 _ s2 => term_wf_pres_cond s1 s2) ->
@@ -1786,11 +1788,436 @@ Qed.
 
 End Pres.
 
-(*Before we can prove the main theorem, we must show that [term_st_wf] is preserved through
-  the function*)
-(*TODO: prove const, var, if, maybe app, then admit*)
+(*TODO: move*)
+Lemma errst_spec_tup1 {St1 St2 A: Type} (P: St1 -> A -> St1 -> Prop) (Q: St2 -> A -> St2 -> Prop) (o: errState St1 A)
+  (Q_refl: forall s x, Q s x s):
+  errst_spec (fun _ => True) o P ->
+  errst_spec (fun _ => True) (errst_tup1 o) (fun s1 x s2 => P (fst s1) x (fst s2) /\ Q (snd s1) x (snd s2)).
+Proof.
+  unfold errst_spec. intros Hspec [i1 i2] b _ Hb.
+  simpl.
+  destruct o; simpl in *. unfold run_errState in *; simpl in *.
+  specialize (Hspec i1).
+  destruct (runState unEitherT i1 ) as [x1 x2] eqn : Hrun; simpl in *; subst.
+  split; auto.
+Qed.
 
-Lemma elim_let_rewrite_wf_aux (f1: term_c):
+Require Import StateHoareMonad.
+
+(*Preserved through [t_open_bound]*)
+
+Check prove_st_spec_bnd.
+(*P1=P2, ignore ending - just give postcondition of A and B*)
+(*TODO: move*)
+Lemma prove_st_spec_bnd_invar {St A B: Type}
+  (Q1: St -> St -> Prop) (Q2 Q3: St -> St -> Prop) (a: st St A) (b: A -> st St B):
+  st_spec (fun _ => True) a (fun s1 _ s2 => Q1 s1 s2) ->
+  (forall x, st_spec (fun _ => True) (b x) (fun s1 _ s2 => Q2 s1 s2)) ->
+  (forall x1 x2 x3, Q1 x1 x2 -> Q2 x2 x3 -> Q3 x1 x3) ->
+  st_spec (fun _ => True) (x <- a ;; b x)%state (fun s1 _ s2 => Q3 s1 s2).
+Proof.
+  intros Ha Hb Htrans. eapply prove_st_spec_bnd; [apply Ha | apply Hb | |]; simpl; auto.
+  intros; eauto.
+Qed.
+
+(*Useful in multiple places*)
+Lemma fresh_vsymbol_lt v:
+  st_spec (fun _ : Z => True) (fresh_vsymbol v) (fun (s1 : Z) (_ : TermDefs.vsymbol) (s2 : Z) => s1 < s2).
+Proof.
+  unfold fresh_vsymbol, create_vsymbol.
+  apply prove_st_spec_bnd_invar with (Q1:=fun i j => i < j)(Q2:=fun i j => i <= j); [| | intros; lia].
+  2: { intros x. apply prove_st_spec_ret. intros; lia. }
+  (*Prove [id_register]*)
+  unfold id_register.
+  apply prove_st_spec_bnd_invar with (Q1:=fun i j => i < j)(Q2:=fun i j => i <= j); [| | intros; lia].
+  - (*incr*) apply IdCtr.st_spec_incr. intros.
+    (*TODO: bad*) Transparent CoqBigInt.succ. unfold CoqBigInt.succ. lia. Opaque CoqBigInt.succ.
+  - (*rest of function*) intros _.
+    apply prove_st_spec_bnd_invar with (Q1:=fun i j => i <= j)(Q2:=fun i j => i <= j); [| | intros; lia].
+    + (*get*) apply IdCtr.st_spec_get. intros; lia.
+    + intros x. apply prove_st_spec_ret. intros; lia.
+Qed.
+
+Lemma vs_rename_lt m v:
+  st_spec (fun _ : Z => True) (vs_rename m v)
+  (fun (s1 : Z) (_ : Mvs.t term_c * TermDefs.vsymbol) (s2 : Z) => s1 < s2).
+Proof.
+  unfold vs_rename.
+  apply prove_st_spec_bnd_invar with (Q1:=fun i j => i < j)(Q2:=fun i j => i <= j); [| | intros; lia].
+  2: { intros x. apply prove_st_spec_ret. intros; lia. }
+  (*Prove [fresh_vsymbol]*)
+  apply fresh_vsymbol_lt.
+Qed.
+
+
+(*NOTE: it is important that it increases the state*)
+Lemma t_open_bound_lt b:
+  st_spec (fun _ : Z => True) (t_open_bound b)
+  (fun (s1 : Z) (_ : TermDefs.vsymbol * term_c) (s2 : Z) => (s1 < s2)%Z).
+Proof.
+  unfold t_open_bound.
+  destruct b as [[v ?] t].
+  apply prove_st_spec_bnd_invar with (Q1:=fun i j => i < j)(Q2:=fun i j => i <= j); [| | intros; lia].
+  2: { intros [m t1]. apply prove_st_spec_ret. intros; lia. }
+  (*Prove [vs_rename]*)
+  apply vs_rename_lt.
+Qed.
+
+Lemma t_open_bound_pres tb:
+errst_spec (fun _ : full_st => True) (errst_tup1 (errst_lift1 (t_open_bound tb)))
+  (fun (s1 : full_st) (_ : TermDefs.vsymbol * term_c) (s2 : full_st) => term_wf_pres_cond s1 s2).
+Proof.
+  unfold term_wf_pres_cond.
+  apply errst_spec_tup1 with (P:=fun s1 _ s2 => (s1 <= s2)%Z)(Q:=fun s1 _ s2 =>
+    ((hashcons_ctr (fst (fst (fst s1))) <= hashcons_ctr (fst (fst (fst s2))))%Z /\
+   hashset_subset ty_hash ty_eqb (hashcons_hash (fst (fst (fst s1)))) (hashcons_hash (fst (fst (fst s2)))))).
+  - intros s _. split; try lia. unfold hashset_subset. auto.
+  - (*separate lemma?*)
+    apply errst_spec_st. eapply st_spec_weaken_post. 2: apply t_open_bound_lt.
+    simpl. intros; lia.
+Qed.
+
+(*And for [t_open_branch]*)
+
+(*NOTE: 2 possible specs here: if the pattern has at least one variable, we get <.
+  In all cases, get <=*)
+Lemma t_open_branch_lt b:
+  st_spec (fun _ : Z => True) (t_open_branch b)
+  (fun (s1 : Z) (_ : pattern_c * term_c) (s2 : Z) =>
+    if null (Svs.elements (pat_vars_of (fst (fst b)))) then (s1 <= s2) else (s1 < s2)%Z).
+Proof.
+  unfold t_open_branch.
+  destruct b as [[p ?] t]. simpl.
+  apply prove_st_spec_bnd_invar with 
+  (Q1:=fun i j => if null (Svs.elements (pat_vars_of p)) then i <= j else i < j)
+  (Q2:=fun i j => i <= j).
+  3: { destruct (null (Svs.elements (pat_vars_of p))); auto; intros; lia. }
+  2: { intros [m t1]. apply prove_st_spec_ret. intros; lia. }
+  (*Prove [pat_rename]*)
+  unfold pat_rename.
+  apply prove_st_spec_bnd_invar with 
+  (Q1:=fun i j => if null (Svs.elements (pat_vars_of p)) then i <= j else i < j)
+  (Q2:=fun i j => i <= j).
+  3: { destruct (null (Svs.elements (pat_vars_of p))); auto; intros; lia. }
+  2: { intros [m t1]. apply prove_st_spec_ret. intros; lia. }
+  (*Prove [add_vars]*)
+  induction (Svs.elements (pat_vars_of p)) as [| h tl IH]; simpl; auto.
+  - apply prove_st_spec_ret. intros; lia.
+  - (*bind with [fresh_vsymbol]*)
+    apply prove_st_spec_bnd_invar with (Q1:=fun i j => i < j)(Q2:=fun i j => i <= j); [| | intros; lia].
+    + apply fresh_vsymbol_lt.
+    + intros s1.
+      (*Now either way get <= result*)
+      apply prove_st_spec_bnd_invar with (Q1:=fun i j => i <= j)(Q2:=fun i j => i <= j); [| | intros; lia]; auto.
+      * eapply st_spec_weaken_post. 2: apply IH. simpl. intros. destruct (null tl); lia.
+      * intros. apply prove_st_spec_ret. intros; lia.
+Qed.
+
+Lemma t_open_branch_pres b:
+errst_spec (fun _ : full_st => True) (errst_tup1 (errst_lift1 (t_open_branch b)))
+  (fun (s1 : full_st) (_ : pattern_c * term_c) (s2 : full_st) => term_wf_pres_cond s1 s2).
+Proof.
+  unfold term_wf_pres_cond.
+  apply errst_spec_tup1 with (P:=fun s1 _ s2 => (s1 <= s2)%Z)(Q:=fun s1 _ s2 =>
+    ((hashcons_ctr (fst (fst (fst s1))) <= hashcons_ctr (fst (fst (fst s2))))%Z /\
+   hashset_subset ty_hash ty_eqb (hashcons_hash (fst (fst (fst s1)))) (hashcons_hash (fst (fst (fst s2)))))).
+  - intros s _. split; try lia. unfold hashset_subset. auto.
+  - (*separate lemma?*)
+    apply errst_spec_st. eapply st_spec_weaken_post. 2: apply t_open_branch_lt.
+    simpl. intros; destruct (null _); lia.
+Qed.
+
+(*And [t_open_quant1]*)
+
+Print term_quant.
+Lemma t_open_quant1_lt tq:
+  st_spec (fun _ : Z => True) (t_open_quant1 tq)
+  (fun (s1 : Z) (_ : (list TermDefs.vsymbol * trigger * term_c)) (s2 : Z) => 
+    if null (fst (fst (fst tq))) then s1 <= s2 else (s1 < s2)%Z).
+Proof.
+  unfold t_open_quant1.
+  destruct tq as [[[vs ?] tr] t]. simpl.
+  apply prove_st_spec_bnd_invar with (Q1:=fun i j => if null vs then i <= j else i < j)
+  (Q2:=fun i j => i <= j).
+  3: { destruct (null vs); intros; lia. }
+  2: { intros [m t1]. apply prove_st_spec_ret. intros; lia. }
+  (*Prove [vs_rename]*)
+  unfold vs_rename.
+  apply prove_st_spec_bnd_invar with (Q1:=fun i j => if null vs then i <= j else i < j)
+  (Q2:=fun i j => i <= j).
+  3: { destruct (null vs); intros; lia. }
+  2: { intros x. apply prove_st_spec_ret. intros; lia. }
+  (*[vl_rename_aux*)
+  (*NOTE: this is really annoying to work with*)
+  remember (st_ret (Mvs.empty, [])) as base.
+  assert (Hbase: st_spec (fun _ => True) base (fun s1 _ s2 => s1 <= s2)).
+  { rewrite Heqbase. apply prove_st_spec_ret. intros; lia. }
+  clear Heqbase. generalize dependent base.
+  induction vs as [| h tl IH]; simpl; auto.
+  intros base Hbase.
+  (*bind base*)
+  apply prove_st_spec_bnd_invar with (Q1:=fun i j => i <= j)(Q2:=fun i j => i < j); [| | intros; lia]; auto.
+  intros [m vls]. 
+  (*bind rename*)
+  apply prove_st_spec_bnd_invar with (Q1:=fun i j => i < j)(Q2:=fun i j => i <= j); [| | intros; lia]; auto.
+  + (*vs_rename*) apply vs_rename_lt.
+  + intros [m1 v1]. eapply st_spec_weaken_post. 2: apply IH.
+    * simpl. intros. destruct (null tl); lia.
+    * apply prove_st_spec_ret. intros; lia.
+Qed.
+
+Lemma t_open_quant1_pres tq:
+errst_spec (fun _ : full_st => True) (errst_tup1 (errst_lift1 (t_open_quant1 tq)))
+  (fun (s1 : full_st) (_ : list TermDefs.vsymbol * trigger * term_c) (s2 : full_st) =>
+   term_wf_pres_cond s1 s2).
+Proof.
+  unfold term_wf_pres_cond.
+  apply errst_spec_tup1 with (P:=fun s1 _ s2 => (s1 <= s2)%Z)(Q:=fun s1 _ s2 =>
+    ((hashcons_ctr (fst (fst (fst s1))) <= hashcons_ctr (fst (fst (fst s2))))%Z /\
+   hashset_subset ty_hash ty_eqb (hashcons_hash (fst (fst (fst s1)))) (hashcons_hash (fst (fst (fst s2)))))).
+  - intros s _. split; try lia. unfold hashset_subset. auto.
+  - (*separate lemma?*)
+    apply errst_spec_st. eapply st_spec_weaken_post. 2: apply t_open_quant1_lt.
+    simpl. destruct (null _); intros; lia.
+Qed.
+
+
+(*TODO move*)
+Lemma prove_errst_spec_bnd_invar {St A B: Type}
+  (Q1: St -> St -> Prop) (Q2 Q3: St -> St -> Prop) (a: errState St A) (b: A -> errState St B):
+  errst_spec (fun _ => True) a (fun s1 _ s2 => Q1 s1 s2) ->
+  (forall x, errst_spec (fun _ => True) (b x) (fun s1 _ s2 => Q2 s1 s2)) ->
+  (forall x1 x2 x3, Q1 x1 x2 -> Q2 x2 x3 -> Q3 x1 x3) ->
+  errst_spec (fun _ => True) (x <- a ;; b x) (fun s1 _ s2 => Q3 s1 s2).
+Proof.
+  intros Ha Hb Htrans. eapply prove_errst_spec_bnd; [apply Ha | apply Hb | |]; simpl; auto.
+  intros; eauto.
+Qed.
+
+(*dep version*)
+Lemma prove_errst_spec_dep_bnd_invar {St A B: Type}
+  (Q1: St -> St -> Prop) (Q2 Q3: St -> St -> Prop) (a: errState St A) 
+  (b : forall (s : St) (b : A), fst (run_errState a s) = inr b -> errState St B):
+  errst_spec (fun _ => True) a (fun s1 _ s2 => Q1 s1 s2) ->
+  (forall s x Heq, errst_spec (fun _ => True) (b s x Heq) (fun s1 _ s2 => Q2 s1 s2)) ->
+  (forall x1 x2 x3, Q1 x1 x2 -> Q2 x2 x3 -> Q3 x1 x3) ->
+  errst_spec (fun _ => True) (errst_bind_dep' a b) (fun s1 _ s2 => Q3 s1 s2).
+Proof.
+  intros Ha Hb Htrans. eapply prove_errst_spec_dep_bnd; [apply Ha | apply Hb | |]; simpl; auto.
+  intros; eauto.
+Qed.
+
+(*Loops are trickier. We prove 2 different rules: 1 for invariants that only depend on the states
+  (and are transitive) e.g. well-formed conditions and 1 for propositions that do not
+  depend on the initial state. Things gets much harder when the postcondtiion depends on all*)
+
+(*A Hoare-like loop rule - give loop invariant - in pre and post*)
+Lemma prove_errst_spec_list_invar {St A: Type} (I1: St -> Prop) (I2: St -> St -> Prop) 
+  (*(P1: St -> Prop)*) (* (Q1: St -> A -> St -> Prop) (Q2: St -> list A -> St -> Prop) *)  (l: list (errState St A)):
+  (*Loop invariant implied on beginning*)
+  (*(forall s, P1 s -> I1 s) ->*)
+  (*Loop invariant preserved through loop*)
+  Forall (fun a => errst_spec I1 a (fun x _ y => I2 x y)) l ->
+  (*Ending implies beginning again*)
+  (forall s1 s2, I2 s1 s2 -> I1 s2) ->
+  (*Reflexivity*)
+  (forall s, I1 s -> I2 s s) ->
+  (*Transitivity*)
+  (forall s1 s2 s3, I2 s1 s2 -> I2 s2 s3 -> I2 s1 s3) ->
+  (*Exiting implies postcondition*)
+  (* (forall s1 x s2, I2 s1 x s2 -> Q1 s1 x s2) -> *)
+  (*Then post holds for all list*)
+  (*TODO: is this the right direction?*)
+  (* (forall s1 l s2, Forall (fun y => Q1 s1 y s2) l -> Q2 s1 l s2 ) ->  *)
+  errst_spec I1 (errst_list l) (fun s1 _ s2 => I2 s1 s2).
+Proof.
+  unfold errst_list. intros Hinvar Hi12 Hrefl Htrans.
+  induction l as [| h t IH]; simpl; auto.
+  - apply prove_errst_spec_ret. auto.
+  - inversion Hinvar as [| ? ? Hinvar1 Hinvar2]; subst; clear Hinvar. specialize (IH Hinvar2).
+    eapply prove_errst_spec_bnd with (Q1:=fun s1 _ s2 => I2 s1 s2) (Q2:=fun _ s1 _ s2 => I2 s1 s2)(P2:=fun _ => I1); eauto.
+    intros x.
+    (*use IH, but need another bind*)
+    eapply prove_errst_spec_bnd with (Q2:=fun _ s1 _ s2 => I2 s1 s2) (P2:=fun _ => I1). 1: apply IH. all: simpl; eauto.
+    intros y. apply prove_errst_spec_ret. auto.
+Qed.
+
+(*TODO: see what other version we need (not sure yet)*)
+
+(*And a version for monotonic predicate that does not depend on state (e.g. *)
+
+(**)
+(* 
+(*And a version for monotonic predicates that do not depend on the initial state*)
+Lemma prove_errst_spec_list_mono {St A: Type} (I1: St -> Prop) (I2: A -> St -> Prop) 
+  (*(P1: St -> Prop)*) (* (Q1: St -> A -> St -> Prop) (Q2: St -> list A -> St -> Prop) *)  (l: list (errState St A)):
+  (*Loop invariant implied on beginning*)
+  (*(forall s, P1 s -> I1 s) ->*)
+  (*Loop invariant preserved through loop*)
+  Forall (fun a => errst_spec I1 a (fun _ x y => I2 x y)) l ->
+  (*Ending implies beginning again*)
+  (forall x s2, I2 x s2 -> I1 s2) ->
+  (*Monotonicity: TODO*)
+  Forall (fun a => errst_spec I1 a (fun _ _ s2 => I1 s2)) l ->
+  (*Reflexivity*)
+  (forall s, I1 s -> I2 s s) ->
+  (*Transitivity*)
+  (forall s1 s2 s3, I2 s1 s2 -> I2 s2 s3 -> I2 s1 s3) -> 
+  (*Exiting implies postcondition*)
+  (* (forall s1 x s2, I2 s1 x s2 -> Q1 s1 x s2) -> *)
+  (*Then post holds for all list*)
+  (*TODO: is this the right direction?*)
+  (* (forall s1 l s2, Forall (fun y => Q1 s1 y s2) l -> Q2 s1 l s2 ) ->  *)
+  errst_spec I1 (errst_list l) (fun _ x s2 => Forall (fun y => I2 y s2) x).
+Proof.
+  unfold errst_list. intros Hinvar Hi12 Hmono.
+  induction l as [| h t IH]; simpl; auto.
+  - apply prove_errst_spec_ret. intros i Hi. constructor.
+  - inversion Hinvar as [| ? ? Hinvar1 Hinvar2]; subst; clear Hinvar.
+    inversion Hmono as [| ? ? Hm1 Hm2]; subst; clear Hmono. specialize (IH Hinvar2 Hm2).
+    eapply prove_errst_spec_bnd with (Q1:=fun x s1 y s2 => I2 s1 y s2 /\ Forall (fun z => Q1 s1 z s2) y). (P2:=fun _ => I1); auto.
+    (Q2:=fun x s1 y s2 =>  Forall (fun z : A => Q1 s1 z s2) y); auto.
+
+
+
+
+ with
+
+
+
+ (Q1:=fun x s1 y s2 => I2 s1 y s2 /\ Forall (fun z => Q1 s1 z s2) y). (P2:=fun _ => I1); auto.
+    (Q2:=fun x s1 y s2 =>  Forall (fun z : A => Q1 s1 z s2) y); auto. *)
+
+
+
+
+(*Now prove preservation for substitution*)
+(*TODO: should reduce duplication by proving generically for traverse, prove for default cases*)
+
+(*Useful for these lemmas*)
+Ltac refl_case := intros; apply term_wf_pres_cond_refl.
+Ltac trans_case := intros ? ? ?; apply term_wf_pres_cond_trans.
+
+Lemma t_make_wf_pres t:
+errst_spec (fun _ : full_st => True) (t_make_wf t)
+  (fun (s1 : full_st) (_ : term_c) (s2 : full_st) => term_wf_pres_cond s1 s2).
+Proof.
+ apply tm_traverse_ind with (P:= fun f1 t1 =>
+  errst_spec (fun _ : full_st => True) t1
+    (fun (s1 : full_st) (_ : term_c) (s2 : full_st) => term_wf_pres_cond s1 s2)); clear; auto.
+  - (*const*)
+    intros. apply prove_errst_spec_ret. refl_case.
+  - (*var*) intros. apply prove_errst_spec_ret. refl_case.
+  - (*if*) intros t t1 t2 t3 Hnode IH1 IH2 IH3.
+    (*By transitivity*)
+    unfold tmap_if_default.
+    repeat (
+    apply prove_errst_spec_bnd_invar with (Q1:=term_wf_pres_cond)(Q2:=term_wf_pres_cond);
+    auto; [| trans_case]; intros).
+    apply errst_spec_err. refl_case.
+  - (*let*)
+    intros t t1 tb Hnode IH1 IH2.
+    apply prove_errst_spec_bnd_invar with (Q1:=term_wf_pres_cond)(Q2:=term_wf_pres_cond);
+    auto; [| trans_case ]. intros e1.
+    (*Now dependent bind*)
+    apply prove_errst_spec_dep_bnd_invar with (Q1:=term_wf_pres_cond)(Q2:=term_wf_pres_cond); 
+    [| | trans_case].
+    + (*t_open_bound*) apply t_open_bound_pres.
+    + (*rest*) intros s2 y Hy. (*bind - first from IH*) 
+      apply prove_errst_spec_bnd_invar with (Q1:=term_wf_pres_cond)(Q2:=term_wf_pres_cond); 
+      auto; [eapply IH2; eauto | | trans_case]. intros.
+      apply errst_spec_err. refl_case.
+  - (*app*) intros t l ts Hnode IH.
+    apply prove_errst_spec_bnd_invar with (Q1:=term_wf_pres_cond)(Q2:=term_wf_pres_cond);
+    auto; [| | trans_case].
+    2: { intros. unfold tmap_app_default. apply prove_errst_spec_ret. refl_case. }
+    (*use loop invariant*)
+    apply prove_errst_spec_list_invar; auto; [| refl_case | trans_case]. 
+    rewrite Forall_map. auto.
+  - (*case*) intros t t1 tbs Hnode IH1 IH2.
+    (*do 1st term*)
+    apply prove_errst_spec_bnd_invar with (Q1:=term_wf_pres_cond)(Q2:=term_wf_pres_cond); auto; [| trans_case].
+    intros s1.
+    (*last part*)
+    apply prove_errst_spec_bnd_invar with (Q1:=term_wf_pres_cond)(Q2:=term_wf_pres_cond);
+    auto; [| | trans_case].
+    2: { intros. unfold tmap_match_default. apply errst_spec_err. refl_case. }
+    (*loop invariant again*)
+    apply prove_errst_spec_list_invar; auto; [| refl_case | trans_case].
+    rewrite Forall_map.
+    (*This one is not quite trivial, need dependent bind*)
+    revert IH2. clear. apply Forall_impl. intros b Hb.
+    apply prove_errst_spec_dep_bnd_invar with (Q1:=term_wf_pres_cond)(Q2:=term_wf_pres_cond); 
+    [| | trans_case]; auto.
+    + apply t_open_branch_pres.
+    + intros s1 b1 Hb1.
+      (*easy bind and return*)
+      apply prove_errst_spec_bnd_invar with (Q1:=term_wf_pres_cond)(Q2:=term_wf_pres_cond); [| | trans_case].
+      * eapply Hb; eauto.
+      * intros. apply prove_errst_spec_ret. refl_case.
+  - (*eps*)
+    intros t b Hnode IH.
+    apply prove_errst_spec_dep_bnd_invar with (Q1:=term_wf_pres_cond)(Q2:=term_wf_pres_cond); 
+    [| | trans_case].
+    + (*t_open_bound*) apply t_open_bound_pres.
+    + (*rest*) intros s2 y Hy. (*bind - first from IH*) 
+      apply prove_errst_spec_bnd_invar with (Q1:=term_wf_pres_cond)(Q2:=term_wf_pres_cond); 
+      auto; [eapply IH; eauto | | trans_case]. intros.
+      apply errst_spec_err. refl_case.
+  - (*quant*) intros t q tq Hnode IH.
+    apply prove_errst_spec_dep_bnd_invar with (Q1:=term_wf_pres_cond)(Q2:=term_wf_pres_cond); 
+    [| | trans_case].
+    + (*t_open_quant1 *) apply t_open_quant1_pres.
+    + intros s1 [[vs1 tr1] t1] Hrun. simpl.
+      specialize (IH _ _ Hrun). simpl in IH. destruct IH as [IH1 IHtr].
+      (*first one*)
+      apply prove_errst_spec_bnd_invar with (Q1:=term_wf_pres_cond)(Q2:=term_wf_pres_cond); [| | trans_case]; auto.
+      intros t2. 
+      (*Do final*)
+      apply prove_errst_spec_bnd_invar with (Q1:=term_wf_pres_cond)(Q2:=term_wf_pres_cond); [| | trans_case].
+      2: { intros x. apply errst_spec_err. refl_case. }
+      (*now do list - doubly nested so trickier*)
+      apply prove_errst_spec_list_invar; auto; [| refl_case | trans_case].
+      rewrite Forall_map.
+      revert IHtr. clear. apply Forall_impl. intros l Hall.
+      apply prove_errst_spec_list_invar; auto; [| refl_case | trans_case].
+      rewrite Forall_map. auto.
+  - (*tbinop*) intros t b t1 t2 Hnode IH1 IH2.
+    repeat (apply prove_errst_spec_bnd_invar with (Q1:=term_wf_pres_cond)(Q2:=term_wf_pres_cond); 
+      [| | trans_case]; auto; intros).
+    apply errst_spec_err. refl_case.
+  - (*tnot*) intros t t1 Hnode IH. 
+    apply prove_errst_spec_bnd_invar with (Q1:=term_wf_pres_cond)(Q2:=term_wf_pres_cond); [| | trans_case]; auto.
+    intros; apply errst_spec_err. refl_case.
+  - (*Ttrue*) intros. apply prove_errst_spec_ret. refl_case.
+  - (*Tfalse*) intros. apply prove_errst_spec_ret. refl_case.
+Qed.
+
+(*TODO*)
+(*stuff to add to thesis
+  1. dependent bind (maybe) in st monad
+  2. mention loop rule w invariants in hoare state monad*)
+
+(*Therefore [t_subst_single1] preserves the invariant*)
+Lemma t_subst_single1_pres v t1 t2:
+errst_spec (fun _ : full_st => True) (t_subst_single1 v t1 t2)
+  (fun (s1 : full_st) (_ : term_c) (s2 : full_st) => term_wf_pres_cond s1 s2).
+Proof.
+  unfold t_subst_single1, t_subst1.
+  apply prove_errst_spec_bnd_invar with (Q1:=term_wf_pres_cond)(Q2:=term_wf_pres_cond); 
+  [| | trans_case].
+  1: { apply errst_spec_err. refl_case. }
+  intros _.
+  (*t_make_wf is interesting part*)
+  apply prove_errst_spec_bnd_invar with (Q1:=term_wf_pres_cond)(Q2:=term_wf_pres_cond); 
+  [apply t_make_wf_pres | | trans_case].
+  intros. apply prove_errst_spec_ret. refl_case.
+Qed.
+
+(*Now show invariant preservation through [elim_let]*)
+
+(*TODO BAD: all cases but "let" are identical to wf lemma - should factor out*)
+Lemma elim_let_rewrite_pres (f1: term_c):
   errst_spec 
     (fun (_: full_st) => True) 
       (elim_let_rewrite f1) 
@@ -1799,45 +2226,93 @@ Proof.
   apply tm_traverse_ind with (P:= fun f1 t1 =>
     errst_spec (fun _ : full_st => True) t1
       (fun (s1 : full_st) (_ : term_c) (s2 : full_st) => term_wf_pres_cond s1 s2)); clear; auto.
-  - (*const*)
-    intros. apply prove_errst_spec_ret. intros; apply term_wf_pres_cond_refl.
-  - (*var*) intros. apply prove_errst_spec_ret. intros; apply term_wf_pres_cond_refl.
+  - (*const*) intros. apply prove_errst_spec_ret. refl_case.
+  - (*var*) intros. apply prove_errst_spec_ret. refl_case.
   - (*if*) intros t t1 t2 t3 Hnode IH1 IH2 IH3.
     (*By transitivity*)
     unfold tmap_if_default.
     repeat (
-    apply prove_errst_spec_bnd with (P2:=fun _ _ => True)
-    (Q1:=fun s1 _ s2 => term_wf_pres_cond s1 s2)
-    (Q2:=fun _ s1 _ s2 => term_wf_pres_cond s1 s2); auto; [| intros s1 s2 s3 _ _; apply term_wf_pres_cond_trans];
-    intros).
-    apply errst_spec_err. intros; apply term_wf_pres_cond_refl.
+    apply prove_errst_spec_bnd_invar with (Q1:=term_wf_pres_cond)(Q2:=term_wf_pres_cond);
+    auto; [| trans_case]; intros).
+    apply errst_spec_err. refl_case.
   - (*let*)
     intros t t1 tb Hnode IH1 IH2.
-    repeat (
-    apply prove_errst_spec_bnd with (P2:=fun _ _ => True)
-    (Q1:=fun s1 _ s2 => term_wf_pres_cond s1 s2)
-    (Q2:=fun _ s1 _ s2 => term_wf_pres_cond s1 s2); auto; [| intros s1 s2 s3 _ _; apply term_wf_pres_cond_trans];
-    intros).
+    apply prove_errst_spec_bnd_invar with (Q1:=term_wf_pres_cond)(Q2:=term_wf_pres_cond);
+    auto; [| trans_case ]. intros e1.
     (*Now dependent bind*)
-    (*TODO: better versions of these things dependent only on states for example*)
-    apply prove_errst_spec_dep_bnd with (P2:= fun _ _ => True) 
-    (Q1:= fun s1 _ s2 => term_wf_pres_cond s1 s2)
-    (Q2:=fun _ s1 _ s2 => term_wf_pres_cond s1 s2)
-    (Q3:=fun s1 _ s2 => term_wf_pres_cond s1 s2); auto; [| | intros s1 s2 s3 _ _; apply term_wf_pres_cond_trans].
-    + (*Prove [t_open_bound] - TODO*)
-      admit.
-    + (*Prove rest*)
-      intros s2 y Hy. (*bind - first from IH*)
-      (*TODO: make better*)
-      apply prove_errst_spec_bnd with (P2:=fun _ _ => True)
-      (Q1:=fun s1 _ s2 => term_wf_pres_cond s1 s2)
-      (Q2:=fun _ s1 _ s2 => term_wf_pres_cond s1 s2); auto; 
-      [| | intros s1' s2' s3' _ _; apply term_wf_pres_cond_trans].
-      * eapply IH2; eauto.
-      * (*Now need to prove for [t_subst_single1]*)
-        admit.
-  -
-Admitted.
+    apply prove_errst_spec_dep_bnd_invar with (Q1:=term_wf_pres_cond)(Q2:=term_wf_pres_cond); 
+    [| | trans_case].
+    + (*t_open_bound*) apply t_open_bound_pres.
+    + (*substitution*) intros s2 y Hy. (*bind - first from IH*) 
+      apply prove_errst_spec_bnd_invar with (Q1:=term_wf_pres_cond)(Q2:=term_wf_pres_cond); 
+      auto; [eapply IH2; eauto | | trans_case].
+      intros e2. apply t_subst_single1_pres.
+  - (*app*) intros t l ts Hnode IH.
+    apply prove_errst_spec_bnd_invar with (Q1:=term_wf_pres_cond)(Q2:=term_wf_pres_cond);
+    auto; [| | trans_case].
+    2: { intros. unfold tmap_app_default. apply prove_errst_spec_ret. refl_case. }
+    (*use loop invariant*)
+    apply prove_errst_spec_list_invar; auto; [| refl_case | trans_case]. 
+    rewrite Forall_map. auto.
+  - (*case*) intros t t1 tbs Hnode IH1 IH2.
+    (*do 1st term*)
+    apply prove_errst_spec_bnd_invar with (Q1:=term_wf_pres_cond)(Q2:=term_wf_pres_cond); auto; [| trans_case].
+    intros s1.
+    (*last part*)
+    apply prove_errst_spec_bnd_invar with (Q1:=term_wf_pres_cond)(Q2:=term_wf_pres_cond);
+    auto; [| | trans_case].
+    2: { intros. unfold tmap_match_default. apply errst_spec_err. refl_case. }
+    (*loop invariant again*)
+    apply prove_errst_spec_list_invar; auto; [| refl_case | trans_case].
+    rewrite Forall_map.
+    (*This one is not quite trivial, need dependent bind*)
+    revert IH2. clear. apply Forall_impl. intros b Hb.
+    apply prove_errst_spec_dep_bnd_invar with (Q1:=term_wf_pres_cond)(Q2:=term_wf_pres_cond); 
+    [| | trans_case]; auto.
+    + apply t_open_branch_pres.
+    + intros s1 b1 Hb1.
+      (*easy bind and return*)
+      apply prove_errst_spec_bnd_invar with (Q1:=term_wf_pres_cond)(Q2:=term_wf_pres_cond); [| | trans_case].
+      * eapply Hb; eauto.
+      * intros. apply prove_errst_spec_ret. refl_case.
+  - (*eps*)
+    intros t b Hnode IH.
+    apply prove_errst_spec_dep_bnd_invar with (Q1:=term_wf_pres_cond)(Q2:=term_wf_pres_cond); 
+    [| | trans_case].
+    + (*t_open_bound*) apply t_open_bound_pres.
+    + (*rest*) intros s2 y Hy. (*bind - first from IH*) 
+      apply prove_errst_spec_bnd_invar with (Q1:=term_wf_pres_cond)(Q2:=term_wf_pres_cond); 
+      auto; [eapply IH; eauto | | trans_case]. intros.
+      apply errst_spec_err. refl_case.
+  - (*quant*) intros t q tq Hnode IH.
+    apply prove_errst_spec_dep_bnd_invar with (Q1:=term_wf_pres_cond)(Q2:=term_wf_pres_cond); 
+    [| | trans_case].
+    + (*t_open_quant1 *) apply t_open_quant1_pres.
+    + intros s1 [[vs1 tr1] t1] Hrun. simpl.
+      specialize (IH _ _ Hrun). simpl in IH. destruct IH as [IH1 IHtr].
+      (*first one*)
+      apply prove_errst_spec_bnd_invar with (Q1:=term_wf_pres_cond)(Q2:=term_wf_pres_cond); [| | trans_case]; auto.
+      intros t2. 
+      (*Do final*)
+      apply prove_errst_spec_bnd_invar with (Q1:=term_wf_pres_cond)(Q2:=term_wf_pres_cond); [| | trans_case].
+      2: { intros x. apply errst_spec_err. refl_case. }
+      (*now do list - doubly nested so trickier*)
+      apply prove_errst_spec_list_invar; auto; [| refl_case | trans_case].
+      rewrite Forall_map.
+      revert IHtr. clear. apply Forall_impl. intros l Hall.
+      apply prove_errst_spec_list_invar; auto; [| refl_case | trans_case].
+      rewrite Forall_map. auto.
+  - (*tbinop*) intros t b t1 t2 Hnode IH1 IH2.
+    repeat (apply prove_errst_spec_bnd_invar with (Q1:=term_wf_pres_cond)(Q2:=term_wf_pres_cond); 
+      [| | trans_case]; auto; intros).
+    apply errst_spec_err. refl_case.
+  - (*tnot*) intros t t1 Hnode IH. 
+    apply prove_errst_spec_bnd_invar with (Q1:=term_wf_pres_cond)(Q2:=term_wf_pres_cond); [| | trans_case]; auto.
+    intros; apply errst_spec_err. refl_case.
+  - (*Ttrue*) intros. apply prove_errst_spec_ret. refl_case.
+  - (*Tfalse*) intros. apply prove_errst_spec_ret. refl_case.
+Qed.
+      
 
 
 (*spec for other: counter increases and hash table only grows larger - NOTE
@@ -1847,9 +2322,64 @@ Admitted.
 
 (*Any term that was already wf is still wf*)
 Lemma elim_let_rewrite_wf (t: term_c) (f1: term_c):
-  errst_spec (term_st_wf t) (elim_let_rewrite f1) (fun _ _ s2 =>
+  errst_spec (term_st_wf t) (elim_let_rewrite f1) (fun _ _ s2 =>term_st_wf t s2).
+Proof.
+  apply term_st_wf_pres.
+  apply elim_let_rewrite_pres.
+Qed.
 
 (*I believe for induction purposes I need both the term and formula result*)
+
+(*TODO: move*)
+
+(*Decompose wf*)
+Lemma term_st_wf_if {t t1 t2 t3} (Ht: t_node_of t = TermDefs.Tif t1 t2 t3):
+  forall s,
+  term_st_wf t s <-> term_st_wf t1 s /\ term_st_wf t2 s /\ term_st_wf t3 s.
+Proof.
+  intros s.
+  (*TODO: prove that [idents_of_term] and similar invariant under [t_node_of] - prob
+  using new induction principle*)
+Admitted.
+
+(*TODO: move*)
+
+Lemma errst_spec_err' {A B : Type} (P : A -> Prop) (Q : A -> B -> A -> Prop) c:
+  (forall (i : A) (x : B), c = inr x -> P i -> Q i x i) ->
+  errst_spec P (errst_lift2 c) Q.
+Proof.
+  intros Hc. destruct c.
+  - eapply errst_spec_err1; eauto.
+  - (*need stronger lemma than [errst_spec_err2]*)
+    unfold errst_spec, errst_lift2. simpl. auto.
+Qed.
+
+Lemma err_bnd_inr {A B: Type} (f: A -> errorM B) (x: errorM A) y:
+  err_bnd f x = inr y ->
+  exists z, x = inr z /\ f z = inr y.
+Proof.
+  unfold err_bnd. destruct x; simpl; try discriminate.
+  intros Hf. eauto.
+Qed.
+
+Lemma fmla_related_fif t1 t2 t3 e1 e2 e3:
+  fmla_related t1 e1 ->
+  fmla_related t2 e2 ->
+  fmla_related t3 e3 ->
+  fmla_related (t_if1 t1 t2 t3) (Fif e1 e2 e3).
+Proof.
+  intros Hrel1 Hrel2 Hrel3.
+  unfold fmla_related in *.
+  simpl. destruct Hrel1 as [f1 [He1 Ha1]].
+  destruct Hrel2 as [f2 [He2 Ha2]].
+  destruct Hrel3 as [f3 [He3 Ha3]].
+  exists (Fif f1 f2 f3). rewrite He1, He2, He3. simpl.
+  split; auto.
+  (*TODO: prove separately*)
+  unfold a_equiv_f. simpl.
+  bool_to_prop; split_all; auto.
+Qed.
+
 
 (*Prove related for formulas (main part)*)
 Theorem elim_let_rewrite_related_aux (f1: term_c) :
@@ -1901,38 +2431,71 @@ Proof.
       specialize (IH1 e1 He1). specialize (IH2 e2 He2). specialize (IH3 e3 He3).
       (*Idea: use bind result 3 times: first by IH gives that r1 related to [elim_let e1],
         second. The wfs are annoying: we have the push them through *)
-
- intros IH1.
-    split.
-    +
-    
-    
-
-(*plan: do var, app, if, a non-let binding (if possible)*)
-
-
-
-      Search errst_spec errst_ret.
-      apply prove_errst_ret.
-
-
-
-    forall g1 : formula,
-    eval_fmla f1 = Some g1 ->
-    errst_spec (term_st_wf f1) t1
-      (fun (_ : full_st) (f2 : term_c) (s2 : full_st) =>
-       term_st_wf f2 s2 /\ fmla_related f2 (elim_let_f true true g1)) ); clear.
-  - (*const*)
-    intros f1 c Ht g1 Heval. 
-
-
-
-apply 
-    intros.
-
-
-
+      (*First, break down st*)
+      apply errst_spec_weaken_pre with (P1:=fun s => term_st_wf t1 s /\ (term_st_wf t2 s /\ term_st_wf t3 s)).
+      { intros s.  rewrite (term_st_wf_if Ht). auto. }
+      (*Now bind first*)
+      eapply prove_errst_spec_bnd_nondep with
+      (Q1:=fun f2 s2 => (term_st_wf f2 s2 /\ fmla_related f2 (elim_let_f true true e1)) /\
+        (term_st_wf t2 s2 /\ term_st_wf t3 s2))
+      (*TODO: probably wrong*)
+      (Q2:=fun _ f3 s3 => term_st_wf f3 s3 /\ fmla_related f3 
+        (Fif (elim_let_f true true e1) (elim_let_f true true e2) (elim_let_f true true e3))); auto.
+      1: { (*Prove first*) 
+        apply errst_spec_and; [apply IH1| apply errst_spec_and]; apply elim_let_rewrite_wf.
+      }
+      intros ta.
+      (*Pull pure out*)
+      apply errst_spec_weaken_pre with (P1:=fun s2 =>
+        (term_st_wf t2 s2 /\
+        (term_st_wf ta s2 /\ term_st_wf t3 s2)) /\ fmla_related ta (elim_let_f true true e1));
+      [intros; destruct_all; split_all; auto|].
+      apply errst_spec_pure_pre. intros Hrel1.
+      (*Now use second IH*)
+      eapply prove_errst_spec_bnd_nondep with (Q1:=fun f3 s3 =>
+        (term_st_wf f3 s3 /\ fmla_related f3 (elim_let_f true true e2)) /\
+        (term_st_wf ta s3 /\ term_st_wf t3 s3))
+      (*TODO: probably wrong*)
+      (Q2:=fun _ f3 s3 => term_st_wf f3 s3 /\ fmla_related f3 
+        (Fif (elim_let_f true true e1) (elim_let_f true true e2) (elim_let_f true true e3))); auto.
+      1: { (*Prove second*)
+        apply errst_spec_and; [apply IH2|apply errst_spec_and]; apply elim_let_rewrite_wf.
+      }
+      intros tb.
+      (*Again, pull pure out*)
+      apply errst_spec_weaken_pre with (P1:=fun s3 => (term_st_wf t3 s3 /\
+        (term_st_wf ta s3 /\ term_st_wf tb s3)) /\ (fmla_related tb (elim_let_f true true e2)));
+      [intros; destruct_all; split_all; auto|].
+      apply errst_spec_pure_pre. intros Hrel2.
+      (*Use third IH*)
+      eapply prove_errst_spec_bnd_nondep with (Q1:=fun f4 s4 =>
+        (term_st_wf f4 s4 /\ fmla_related f4 (elim_let_f true true e3)) /\
+        (term_st_wf ta s4 /\ term_st_wf tb s4))
+      (Q2:=fun _ f3 s3 => term_st_wf f3 s3 /\ fmla_related f3 
+        (Fif (elim_let_f true true e1) (elim_let_f true true e2) (elim_let_f true true e3))); auto.
+      (*TODO: a version of this that automatically instantiates Q2 if we don't need first*)
+      1: { (*Prove third*)
+        apply errst_spec_and; [apply IH3|apply errst_spec_and]; apply elim_let_rewrite_wf.
+      }
+      (*Finally, put it all together*)
+      intros tc. unfold tmap_if_default. apply errst_spec_err'.
+      intros s4 x Hx. (*Get info about [t_if] - kinda breaks abstraction which isn't great*)
+      intros [[Hwfc Hrel3] [Hwfa Hwfb]].
+      unfold t_if in Hx.
+      apply err_bnd_inr in Hx. destruct Hx as [u [_ Hbind]].
+      apply err_bnd_inr in Hbind. destruct Hbind as [fa [Hta Hif]]. 
+      unfold err_ret in Hif. inversion Hif; subst; clear Hif.
+      unfold t_prop in Hta. (*TODO: prop should be separate probably*)
+      destruct (negb (isSome (t_ty_of ta)) ); inversion Hta; subst; auto.
+      split.
+      * (*prove wf*) eapply term_st_wf_if. reflexivity. split_all; auto.
+      * (*Now prove related*)
+        apply fmla_related_fif; auto.
+    + (*Tif - very similar*)
 Admitted.
+
+
+
 
 (*Then lift result to transformation. This is not trivial*)
 Theorem elim_let_related (tsk1 : TaskDefs.task) (tsk2 : Task.task):
@@ -1999,7 +2562,7 @@ Proof.
   - intros i. eapply prop_wf; eauto.
   - intros _ x f [_ Hrel]; auto.
   - (*The main result*)
-    apply elim_let_rewrite_related; auto.
+    apply (proj1 (elim_let_rewrite_related_aux f1)); auto.
 Qed.
 
 (*Put it all together with decomp theorem*)
