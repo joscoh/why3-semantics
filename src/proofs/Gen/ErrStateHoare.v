@@ -165,7 +165,7 @@ Qed.
 
 
 (*And simpler version*)
-Lemma prove_st_spec_dep_bnd_nondep {St A B: Type} (P1 : St -> Prop)
+Lemma prove_errst_spec_dep_bnd_nondep {St A B: Type} (P1 : St -> Prop)
   Q1 Q2 Q3 a (b: forall (s: St) (b: A) , fst (run_errState a s) = inr b -> errState St B):
   (errst_spec P1 a (fun _ => Q1)) ->
   (forall x s Heq, errst_spec (Q1 x) (b s x Heq) (fun _ => (Q2 x))) ->
@@ -411,4 +411,15 @@ Lemma prove_errst_spec_bnd_nondep' {St A B: Type} (P1 : St -> Prop)
   errst_spec P1 (errst_bind b a) (fun _ => Q3).
 Proof.
   intros Ha Hb. eapply prove_errst_spec_bnd with (Q2:=fun _ _ => Q3); eauto.
+Qed.
+
+Lemma prove_errst_spec_dep_bnd_nondep' {St A B: Type} (P1 : St -> Prop)
+  Q1 Q3 a (b: forall (s: St) (b: A) , fst (run_errState a s) = inr b -> errState St B):
+  (errst_spec P1 a (fun _ => Q1)) ->
+  (forall x s Heq, errst_spec (Q1 x) (b s x Heq) (fun _ => Q3)) ->
+  (*Weaken rest*)
+  (* (forall s2 s3 x y, Q1 x s2 -> Q2 x y s3 -> Q3 y s3) -> *)
+  errst_spec P1 (errst_bind_dep' a b) (fun _ => Q3).
+Proof.
+  intros Ha Hb. eapply prove_errst_spec_dep_bnd_nondep with (Q2:=fun _ => Q3); eauto.
 Qed.

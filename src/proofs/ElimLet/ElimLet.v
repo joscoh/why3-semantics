@@ -213,6 +213,367 @@ Qed.
 
 End Invar.
 
+(*TODO move:*)
+
+Lemma t_open_bound_pres_tm_wf t tb1:
+  errst_spec (term_st_wf t) (errst_tup1 (errst_lift1 (t_open_bound tb1))) (fun _ _ s2 => term_st_wf t s2).
+Proof.
+  apply term_st_wf_pres.
+  apply t_open_bound_pres.
+Qed.
+
+Lemma t_open_bound_pres_ty_wf t tb1:
+  errst_spec (ty_st_wf t) (errst_tup1 (errst_lift1 (t_open_bound tb1))) (fun _ _ s2 => ty_st_wf t s2).
+Proof.
+  apply ty_st_wf_pres.
+  apply t_open_bound_pres.
+Qed.
+
+Lemma t_open_bound_res_wf tb1:
+  errst_spec (fun s1 => term_st_wf (snd tb1) s1)
+    (errst_tup1 (errst_lift1 (t_open_bound tb1)))
+  (fun _ (tb2: TermDefs.vsymbol * term_c) s2 => 
+    vsym_st_wf (fst tb2) s2 /\ term_st_wf (snd tb2) s2).
+Admitted.
+
+Lemma t_open_bound_var tb1:
+   errst_spec (fun _ => True)
+    (errst_tup1 (errst_lift1 (t_open_bound tb1)))
+  (fun (s1: full_st) (tb2: TermDefs.vsymbol * term_c) s2 => 
+    id_tag (vs_name (fst tb2)) = fst s1).
+Admitted.
+
+(*NOTE; need term and formula versions*)
+Lemma t_open_bound_res_tm tb1 e1:
+  eval_term (snd tb1) = Some e1 ->
+   errst_spec (fun s1 => term_st_wf (snd tb1) s1)
+    (errst_tup1 (errst_lift1 (t_open_bound tb1)))
+  (fun _ (tb2: TermDefs.vsymbol * term_c) _ => 
+    eval_term (snd tb2) = Some (sub_var_t (eval_vsymbol (fst (fst tb1))) (eval_vsymbol (fst tb2)) e1)).
+Admitted.
+
+Lemma t_open_bound_res_fmla tb1 e1:
+  eval_fmla (snd tb1) = Some e1 ->
+   errst_spec (fun s1 => term_st_wf (snd tb1) s1)
+    (errst_tup1 (errst_lift1 (t_open_bound tb1)))
+  (fun _ (tb2: TermDefs.vsymbol * term_c) s2 => 
+    eval_fmla (snd tb2) = Some (sub_var_f (eval_vsymbol (fst (fst tb1))) (eval_vsymbol (fst tb2)) e1)).
+Admitted.
+
+(*Now need to prove: suppose we have a vsymbol whose tag is s and term/fmla is well-formed wrt s.
+  Then this vsym is not in the vars*)
+
+(*Might be easier to write vars*)
+
+(*Using list so we don't have to prove Countable*)
+Fixpoint pattern_c_vars (p: pattern_c) : list TermDefs.vsymbol :=
+  match (pat_node_of p) with
+  | TermDefs.Pvar v => [v]
+  | Papp _ ps => concat (map pattern_c_vars ps)
+  | TermDefs.Por p1 p2 => pattern_c_vars p1 ++ pattern_c_vars p2
+  | Pas p1 v => v :: pattern_c_vars p1
+  | TermDefs.Pwild => nil
+  end.
+
+Fixpoint term_c_vars (t: term_c) : list TermDefs.vsymbol :=
+  match (t_node_of t) with
+  | TermDefs.Tvar v => [v]
+  | TermDefs.Tapp _ ts => concat (map term_c_vars ts)
+  | TermDefs.Tif t1 t2 t3 => term_c_vars t1 ++ term_c_vars t2 ++ term_c_vars t3
+  | TermDefs.Tlet t1 (v1, _, t2) => v1 :: term_c_vars t1 ++ term_c_vars t2
+  | TermDefs.Teps (v1, _, t1) => v1 :: term_c_vars t1
+  | TermDefs.Tcase t1 tbs => term_c_vars t1 ++
+    concat (map (fun x => pattern_c_vars (fst (fst x)) ++ term_c_vars (snd x)) tbs)
+  | TermDefs.Tquant q (vs, _, _, f) =>
+    (*ignore triggers*) vs ++ term_c_vars f
+  | TermDefs.Tbinop _ t1 t2 => term_c_vars t1 ++ term_c_vars t2
+  | TermDefs.Tnot t1 => term_c_vars t1
+  | _ => nil
+  end.
+
+Require Import TermTactics.
+
+
+Lemma term_c_vars_rewrite t:
+  term_c_vars t = match (t_node_of t) with
+  | TermDefs.Tvar v => [v]
+  | TermDefs.Tapp _ ts => concat (map term_c_vars ts)
+  | TermDefs.Tif t1 t2 t3 => term_c_vars t1 ++ term_c_vars t2 ++ term_c_vars t3
+  | TermDefs.Tlet t1 (v1, _, t2) => v1 :: term_c_vars t1 ++ term_c_vars t2
+  | TermDefs.Teps (v1, _, t1) => v1 :: term_c_vars t1
+  | TermDefs.Tcase t1 tbs => term_c_vars t1 ++
+    concat (map (fun x => pattern_c_vars (fst (fst x)) ++ term_c_vars (snd x)) tbs)
+  | TermDefs.Tquant q (vs, _, _, f) =>
+    (*ignore triggers*) vs ++ term_c_vars f
+  | TermDefs.Tbinop _ t1 t2 => term_c_vars t1 ++ term_c_vars t2
+  | TermDefs.Tnot t1 => term_c_vars t1
+  | _ => nil
+  end.
+Proof.
+  destruct_term_node t; reflexivity.
+Qed.
+
+
+Lemma fold_list_option_some {A: Type} {l: list (option A)} {l1 x}
+  (Hsome: fold_list_option l = Some l1):
+  In x l ->
+  exists y, x = Some y /\ In y l1.
+Proof.
+  generalize dependent l1.
+  induction l as [| h t IH]; simpl; intros l1 Hsome; [contradiction|].
+  apply option_bind_some in Hsome. destruct Hsome as [z [Hh Hbind]]; subst.
+  apply option_bind_some in Hbind. destruct Hbind as [t1 [Hfold Hsome]]. inversion Hsome; subst; clear Hsome.
+  simpl.
+  intros [Hx | Hinx]; subst; auto.
+  - exists z. auto.
+  - specialize (IH _ Hfold Hinx). destruct IH as [y [Hx Hiny]]; subst.
+    exists y. auto.
+Qed.
+
+Lemma fold_list_option_some' {A: Type} {l: list (option A)} {l1 x}
+  (Hsome: fold_list_option l = Some l1):
+  In x l1 ->
+  In (Some x) l.
+Proof.
+  generalize dependent l1.
+  induction l as [| h t IH]; simpl; intros l1 Hsome.
+  { inversion Hsome; subst. contradiction. }
+  apply option_bind_some in Hsome. destruct Hsome as [z [Hh Hbind]]; subst.
+  apply option_bind_some in Hbind. destruct Hbind as [t1 [Hfold Hsome]]. inversion Hsome; subst; clear Hsome.
+  simpl. intros [Hzs | Hinx]; subst; auto.
+  right. eauto.
+Qed.
+
+(*Prove the spec in 2 parts.
+  First, prove that these vars correspond to evaluated vars in the evaluated term/formula
+  (TODO: move this somewhere)*)
+
+(*An awkward lemma. The other direction is more natural but I don't think we need it (see)*)
+(*NOTE: could prove induction principle for lemmas of form: eval_term t1 = e1 -> P t1 e1
+    not sure if we need*)
+Lemma eval_term_c_vars t1:
+  (forall e1 (Heval: eval_term t1 = Some e1) x (Hmem: aset_mem x (tm_vars e1)),
+    exists y, eval_vsymbol y = x /\ In y (term_c_vars t1)) /\
+  (forall e1 (Heval: eval_fmla t1 = Some e1) x (Hmem: aset_mem x (fmla_vars e1)),
+    exists y, eval_vsymbol y = x /\ In y (term_c_vars t1)).
+Proof.
+  induction t1 using term_ind_alt; split; intros e1 Heval x Hmemx;
+  try (rewrite term_c_vars_rewrite, Heq); simpl.
+  - (*var*) rewrite (eval_var_tm Heq Heval) in Hmemx. simpl in Hmemx. simpl_set. subst. eauto.
+  - (*fmla var - contradiction*)
+    exfalso. apply (eval_var_fmla Heq Heval).
+  - (*tconst*) destruct (eval_const_tm Heq Heval) as [c1 [He1 Hc1]]; subst.
+    simpl in Hmemx; simpl_set.
+  - (*fconst*) exfalso. apply (eval_const_fmla Heq Heval).
+  - (*tapp*) destruct (eval_app_tm Heq Heval) as [fs [tys [ty1 [tms [He1 [Hfs [_ [_ Htms]]]]]]]].
+    rewrite Forall_forall in H. subst. simpl in Hmemx. simpl_set.
+    destruct Hmemx as [y [Hiny Hmemx]]. 
+    pose proof (fold_list_option_some' Htms Hiny) as Hinsome.
+    rewrite in_map_iff in Hinsome. destruct Hinsome as [ta [Heval' Hinta]].
+    specialize (H _ Hinta).
+    destruct H as [IH _]. specialize (IH _ Heval' _ Hmemx).
+    destruct IH as [v [Hx Hinv]]; subst.
+    exists v. split; auto. rewrite in_concat. exists (term_c_vars ta). split; auto.
+    apply in_map. auto.
+  - destruct (eval_app_fmla Heq Heval) as [[Hl [t1' [t2' [t3' [t4' [ty1 [Hts [He1 [Ht1' [Ht2' Hty]]]]]]]]]] | 
+    [Hl [fs [tys [ty1 [tms [He1 [Hfs [_ [_ Htms]]]]]]]]]]; subst.
+    + (*Feq*) simpl in Hmemx. simpl_set. inversion H as [| ? ? [IHt1 _] IHt2]; subst; clear H.
+      inversion IHt2 as [| ? ? [IHt2' _] _]; clear IHt2; subst.
+      simpl. rewrite app_nil_r. setoid_rewrite in_app_iff.
+      destruct Hmemx as [Hmemx | Hmemx].
+      * specialize (IHt1 _ Ht1' _ Hmemx). destruct_all; eauto.
+      * specialize (IHt2' _ Ht2' _ Hmemx); destruct_all; eauto.
+    + (*Fpred*) 
+      rewrite Forall_forall in H. subst. simpl in Hmemx. simpl_set.
+      destruct Hmemx as [y [Hiny Hmemx]]. 
+      pose proof (fold_list_option_some' Htms Hiny) as Hinsome.
+      rewrite in_map_iff in Hinsome. destruct Hinsome as [ta [Heval' Hinta]].
+      specialize (H _ Hinta).
+      destruct H as [IH _]. specialize (IH _ Heval' _ Hmemx).
+      destruct IH as [v [Hx Hinv]]; subst.
+      exists v. split; auto. rewrite in_concat. exists (term_c_vars ta). split; auto.
+      apply in_map. auto.
+  - (*Tif*) do 2 (setoid_rewrite in_app_iff).
+    destruct (eval_if_tm Heq Heval) as [e1' [e2' [e3' [He1 [He1' [He2' He3']]]]]]; subst; simpl in Hmemx.
+    destruct IHt1_1 as [_ IH1]. destruct IHt1_2 as [IH2 _]. destruct IHt1_3 as [IH3 _].
+    simpl_set. destruct Hmemx as [Hmemx | Hmemx]; simpl_set; [| destruct Hmemx as [Hmemx | Hmemx]].
+    + specialize (IH1 _ He1' _ Hmemx). destruct_all; eauto.
+    + specialize (IH2 _ He2' _ Hmemx). destruct_all; eauto.
+    + specialize (IH3 _ He3' _ Hmemx). destruct_all; eauto.
+  - (*Fif*) do 2 (setoid_rewrite in_app_iff).
+    destruct (eval_if_fmla Heq Heval) as [e1' [e2' [e3' [He1 [He1' [He2' He3']]]]]]; subst; simpl in Hmemx.
+    destruct IHt1_1 as [_ IH1]. destruct IHt1_2 as [_ IH2]. destruct IHt1_3 as [_ IH3].
+    simpl_set. destruct Hmemx as [Hmemx | Hmemx]; simpl_set; [| destruct Hmemx as [Hmemx | Hmemx]].
+    + specialize (IH1 _ He1' _ Hmemx). destruct_all; eauto.
+    + specialize (IH2 _ He2' _ Hmemx). destruct_all; eauto.
+    + specialize (IH3 _ He3' _ Hmemx). destruct_all; eauto.
+  - (*Tlet*) destruct (eval_let_tm Heq Heval) as [e1' [e2' [He1 [He1' He2']]]]; subst.
+    simpl fst in Hmemx. Opaque aset_union. (*ugh*)
+    simpl in Hmemx.
+    destruct IHt1_1 as [IH1 _]. destruct IHt1_2 as [IH2 _].
+    simpl_set. setoid_rewrite in_app_iff. 
+    destruct Hmemx as [Hmemx | Hmemx]; simpl_set; [| destruct Hmemx as [ Hmemx | Hmemx]].
+    + subst. eauto.
+    + specialize (IH1 _ He1' _ Hmemx). destruct_all; eauto.
+    + specialize (IH2 _ He2' _ Hmemx). destruct_all; eauto.
+  - (*Flet*) destruct (eval_let_fmla Heq Heval) as [e1' [e2' [He1 [He1' He2']]]]; subst.
+    simpl fst in Hmemx.
+    simpl in Hmemx.
+    destruct IHt1_1 as [IH1 _]. destruct IHt1_2 as [_ IH2].
+    simpl_set. setoid_rewrite in_app_iff. 
+    destruct Hmemx as [Hmemx | Hmemx]; simpl_set; [| destruct Hmemx as [ Hmemx | Hmemx]].
+    + subst. eauto.
+    + specialize (IH1 _ He1' _ Hmemx). destruct_all; eauto.
+    + specialize (IH2 _ He2' _ Hmemx). destruct_all; eauto.
+(*TODO: rest of cases*)
+Admitted.
+
+(*Now we prove that every variable in term_c_vars has its identifer in the [idents_of_term]*)
+Lemma pattern_c_vars_idents p x (Hinx: In x (pattern_c_vars p)):
+  In (vs_name x) (idents_of_pattern p).
+Proof.
+  (*TODO: alt ind for pattern?*)
+Admitted.
+
+Lemma term_c_vars_idents t1 x (Hinx: In x (term_c_vars t1)):
+  In (vs_name x) (idents_of_term t1).
+Proof.
+  (*This time, no eval*)
+  induction t1 using term_ind_alt.
+  - (*var*) destruct_term_node t1. destruct_all; auto.
+  - (*const*) destruct_term_node t1. contradiction.
+  - (*app*) destruct_term_node t1. inversion Heq; subst. 
+    rewrite Forall_forall in H. rewrite !in_concat in Hinx |- *.
+    destruct Hinx as [l1 [Hinl1 Hinx]]. rewrite in_map_iff in Hinl1.
+    destruct Hinl1 as [t1 [Hl1 Hint1]]; subst. 
+    specialize (H _ Hint1 Hinx). exists (idents_of_term t1). split; auto.
+    apply in_map; eauto.
+  - (*if*) destruct_term_node t1_4. inversion Heq; subst; auto.
+    rewrite !in_app_iff in Hinx |- *. destruct_all; eauto.
+  - (*let*) destruct_term_node t1_3. inversion Heq; subst. simpl in *.
+    rewrite in_app_iff in Hinx |- *. destruct_all; subst; eauto.
+  - (*case*) destruct_term_node t1_2. inversion Heq; subst; auto.
+    rewrite in_app_iff in Hinx |- *. destruct Hinx as [Hinx | Hinx]; [eauto| clear IHt1_1; right].
+    rewrite in_concat in Hinx |- *. destruct Hinx as [l1 [Hinl1 Hinx]].
+    rewrite in_map_iff in Hinl1. destruct Hinl1 as [b [Hl1 Hinb]]. subst.
+    exists (idents_of_pattern (fst (fst b)) ++ idents_of_term (snd b)). split; [apply in_map_iff; eauto|].
+    rewrite in_app_iff in Hinx |- *. destruct Hinx as [Hinx | Hinx].
+    + apply pattern_c_vars_idents in Hinx; auto.
+    + rewrite Forall_forall in H. specialize (H (snd b)). right; apply H; auto.
+      apply in_map; auto.
+  - (*eps*) destruct_term_node t1_2. inversion Heq; subst. simpl in *. destruct Hinx as [Hx | Hinx]; subst; eauto.
+  - (*quant*) destruct_term_node t1_2. inversion Heq; subst. rewrite in_app_iff in Hinx |- *.
+    destruct Hinx as [Hinx | Hinx]; auto.
+    left. apply in_map. auto.
+  - (*binop*) destruct_term_node t1_3. inversion Heq; subst. rewrite in_app_iff in Hinx |- *.
+    destruct_all; eauto.
+  - (*not*) destruct_term_node t1_2. inversion Heq; subst. eauto.
+  - (*true*) destruct_term_node t1. contradiction.
+  - (*false*) destruct_term_node t1. contradiction.
+Qed.
+
+(*We need some injectivity: if eval_vsymbol x = eval_vsymbol y, then id_tag (vs_name x) = id_tag (vs_name y)*)
+Lemma eval_vsymbol_tag_inj x y:
+  eval_vsymbol x = eval_vsymbol y ->
+  id_tag (vs_name x) = id_tag (vs_name y).
+Proof.
+  unfold eval_vsymbol. intros Heq. inversion Heq as [[Heq1 Heq2]].
+  unfold eval_ident in Heq1.
+  (*TODO: put underscore - UGH not true because of negatives - OK put underscore and then
+    a minus if negative or something - just enough to make injective*)
+Admitted.
+
+(*Therefore, if we have a variable with *)
+Lemma fresh_var_tm (t: term_c) (v: TermDefs.vsymbol) (s: full_st) t1:
+  term_st_wf t s ->
+  id_tag (vs_name v) = (fst s) ->
+  eval_term t = Some t1 ->
+  ~ aset_mem (eval_vsymbol v) (tm_vars t1).
+Proof.
+  intros Hwf Hid Heval Hmem.
+  destruct ((proj1 (eval_term_c_vars t)) _ Heval _ Hmem) as [v1 [Hv1 Hinv1]].
+  apply term_c_vars_idents in Hinv1.
+  destruct Hwf as [Hids _].
+  unfold idents_of_term_wf in Hids.
+  specialize (Hids _ Hinv1).
+  apply eval_vsymbol_tag_inj in Hv1. lia.
+Qed.
+
+Lemma fresh_var_fmla (t: term_c) (v: TermDefs.vsymbol) (s: full_st) t1:
+  term_st_wf t s ->
+  id_tag (vs_name v) = (fst s) ->
+  eval_fmla t = Some t1 ->
+  ~ aset_mem (eval_vsymbol v) (fmla_vars t1).
+Proof.
+  intros Hwf Hid Heval Hmem.
+  destruct ((proj2 (eval_term_c_vars t)) _ Heval _ Hmem) as [v1 [Hv1 Hinv1]].
+  apply term_c_vars_idents in Hinv1.
+  destruct Hwf as [Hids _].
+  unfold idents_of_term_wf in Hids.
+  specialize (Hids _ Hinv1).
+  apply eval_vsymbol_tag_inj in Hv1. lia.
+Qed.
+
+
+(*TODO: move all that stuff to binding or somewhere else*)
+
+(*TODO: move*)
+Lemma errst_spec_split {St A: Type} (P: St -> Prop) (Q1 Q2: St -> A -> St -> Prop) (o: errState St A):
+  errst_spec P o Q1 ->
+  errst_spec P o Q2 ->
+  errst_spec P o (fun x y z => Q1 x y z /\ Q2 x y z).
+Proof.
+  intros Hq1 Hq2.
+  apply errst_spec_weaken_pre with (P1:=fun x => P x /\ P x); auto.
+  apply errst_spec_and; auto.
+Qed.
+
+(*Now we can prove a derived spec*)
+Lemma t_open_bound_res_notin v1 b1 t2 e2 (Heval: eval_fmla t2 = Some e2):
+  errst_spec
+  (fun x : full_st => term_st_wf t2 x)
+  (errst_tup1 (errst_lift1 (t_open_bound (v1, b1, t2))))
+  (fun (_ : full_st) (y : TermDefs.vsymbol * term_c) (_ : full_st) =>
+   eval_fmla (snd y) = Some (sub_var_f (eval_vsymbol v1) (eval_vsymbol (fst y)) e2) /\
+   ~ aset_mem (eval_vsymbol (fst y)) (fmla_vars e2)).
+Proof.
+  apply errst_spec_weaken_post with (Q1:=fun s1 y _ =>
+    eval_fmla (snd y) = Some (sub_var_f (eval_vsymbol v1) (eval_vsymbol (fst y)) e2) /\
+    term_st_wf t2 s1 /\ id_tag (vs_name (fst y)) = fst s1).
+  - intros i x _ [Heval' [Hwf Hid]]. split_all; auto.
+    eapply fresh_var_fmla; eauto.
+  - apply errst_spec_split.
+    + eapply errst_spec_weaken_pre. 2: apply t_open_bound_res_fmla; auto. simpl. auto.
+    + apply errst_spec_split.
+      * apply errst_spec_init.
+      * eapply errst_spec_weaken_pre. 2: apply t_open_bound_var. simpl. auto.
+Qed.
+
+
+(* Lemma eval_term_vars t1 e1 (Heval: eval_term t1 = Some e1):
+  forall x, In x (term_c_vars t1) <-> aset_mem (eval_vsymbol x) (tm_vars e1).
+Proof.
+  intros x. induction t1 using term_ind_alt.
+  - destruct_term_node t1. inversion Heq; subst. inversion Heval; subst.
+    simpl. simpl_set. *)
+
+(*Which direction do we need?
+  Need to prove that new var NOT in e1
+  so we need: if x in (tm_vars e1), then 
+  there exists a y in (term_c_vars t1) such that
+  id, name, ty are the same*)
+    
+
+
+
+
+
+
+
+
+
+
+
 (*Main related result*)
 
 (*I believe for induction purposes I need both the term and formula result*)
@@ -409,6 +770,90 @@ Proof.
         apply errst_spec_and; [apply IH1|]; repeat (apply errst_spec_and; try apply elim_let_rewrite_wf;
         try apply elim_let_rewrite_ty_wf; try apply elim_let_rewrite_vsym_wf).
       }
+      intros ta.
+      (*Pull pure out*)
+      apply errst_spec_weaken_pre with (P1:=fun s1 =>
+        (term_st_wf t2 s1 /\
+        (term_st_wf ta s1 /\ vsym_st_wf v1 s1 /\ ty_st_wf (t_ty_of t) s1)) /\ 
+        term_related ta (elim_let_t true true e1));
+      [intros; destruct_all; split_all; auto|].
+      apply errst_spec_pure_pre. intros Hrel1.
+      (*Now go through dep bind*)
+      (*We cannot use simplified version because we need the result of [t_open_bound]*)
+      (*NOTE: we will need to prove that f2 evaluates to [sub_var_f *)
+      eapply prove_errst_spec_dep_bnd_nondep'
+      with (Q1:= fun (tb1: (TermDefs.vsymbol * term_c)) s2 => ( vsym_st_wf (fst tb1) s2 /\term_st_wf (snd tb1) s2) /\ 
+        ((eval_fmla (snd tb1) = Some (sub_var_f (eval_vsymbol v1) (eval_vsymbol (fst tb1)) e2) /\
+        ~ aset_mem (eval_vsymbol (fst tb1)) (fmla_vars e2)) (*TODO: need others?*) /\
+        (term_st_wf t2 s2 /\
+        term_st_wf ta s2 /\ (*TODO: prob don't need, might need new instead*) 
+        (*vsym_st_wf v1 s2 /\*) ty_st_wf (t_ty_of t) s2))).
+      1: { (*combine results about [t_open_bound]*)
+        apply errst_spec_split; [| apply errst_spec_split].
+        - (*prove wf *) eapply errst_spec_weaken_pre. 2: apply t_open_bound_res_wf.
+          simpl. intros; destruct_all; auto.
+        - (*prove sub and var*)
+          eapply errst_spec_weaken_pre. 2:
+          apply t_open_bound_res_notin; auto. simpl. intros; destruct_all; auto.
+        - (*Rest - preserved*)
+          apply errst_spec_and; [apply t_open_bound_pres_tm_wf|].
+          apply errst_spec_and; [apply t_open_bound_pres_tm_wf|].
+          apply errst_spec_weaken_pre with (P1:=ty_st_wf (t_ty_of t)); [simpl; intros; destruct_all; auto|].
+          apply t_open_bound_pres_ty_wf.
+      }
+      intros y s Hy.
+      (*Now we can use IH*)
+      specialize (IH2 _ _ Hy). destruct IH2 as [_ IH2].
+      (*Now pull out pure props (eval_fmla and fv result)*)
+      (*TODO: go up to writing spec for substitution*)
+      
+
+
+ (*should be provable but *)
+
+
+
+        Search errst_spec "/\".
+
+
+t_open_bound_res_wf
+
+(*Prove in multiple parts*)
+
+Print vsym_st_wf.
+Print vsym_ident_wf.
+Check sub_var_f.
+Print sub_var_f.
+
+
+    
+
+
+    vsym_st_wf (fst tb2) s2 /\ term_st_wf (snd tb2) s2).
+  
+
+
+ (*TODO: see if *)
+
+
+
+(*possible conditions
+  1. new var not in previously well-formed term (t2)
+  2. new var not equal to old well-formed var (NOTE: prove has number = state so not in any well-formed object)
+  3. t_open_bound does substitution correctly:
+    if we have well-formed t1 and well-formed v,
+  then result of t_open_bound is well-formed and evaluates to t1[newv/v1]
+
+  1. new var has number = state (and then prove not in any well-formed)*)
+
+
+ with
+      (Q1:= fun f2 s2 => (term_st_wf f2 s2 /\ fmla_related f2 (elim_let_f true true g1)
+      
+      
+prove_errst_spec_dep_bnd_nondep'
+      
+      
 Admitted.
 
 End RewriteProofs.
