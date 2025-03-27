@@ -564,11 +564,49 @@ Proof.
   id, name, ty are the same*)
     
 
+(*Substitution specs (TODO: move)*)
+(*hmm, suppose we know evel, result is definitely only related because we have different variable
+  generation method
+  If we assume related, then need to show that a_equiv things result in a_equiv after safe sub, which
+  we did*)
+
+(*NOTE: need t1 and t2 wf to ensure fresh (TODO: do we need t2? not 100% sure, prob need v wf also*)
+Theorem t_subst_single1_tm_spec v t1 t2 e1 e2:
+  term_related t1 e1 ->
+  term_related t2 e2 ->
+  errst_spec (fun s1 => term_st_wf t1 s1 /\ term_st_wf t2 s1 /\ vsym_st_wf v s1)
+    (t_subst_single1 v t1 t2)
+  (fun _ t3 s2 => term_related t3 (safe_sub_t' e1 (eval_vsymbol v) e2)).
+Admitted.
+
+Theorem t_subst_single1_fmla_spec v t1 t2 e1 e2:
+  term_related t1 e1 ->
+  fmla_related t2 e2 ->
+  errst_spec (fun s1 => term_st_wf t1 s1 /\ term_st_wf t2 s1 /\ vsym_st_wf v s1)
+    (t_subst_single1 v t1 t2)
+  (fun _ t3 s2 => fmla_related t3 (safe_sub_f' e1 (eval_vsymbol v) e2)).
+Admitted.
+
+(*And the result is wf*)
+Lemma t_subst_single1_wf v t1 t2:
+  errst_spec (fun s1 => term_st_wf t1 s1 /\ term_st_wf t2 s1 /\ vsym_st_wf v s1)
+    (t_subst_single1 v t1 t2)
+  (fun _ t3 s2 => term_st_wf t3 s2).
+Admitted.
 
 
+(*2 lemmas needed: *)
+(*And need term version (NOTE: may need to assume y not in vars of f*)
+Lemma elim_let_f_sub_var b1 b2 x y f:
+  elim_let_f b1 b2 (sub_var_f x y f) =
+  sub_var_f x y (elim_let_f b1 b2 f).
+Admitted.
 
-
-
+(*NOTE: almost certainly need a_equiv_f, not equality, for safe sub*)
+(*But the non-safe version should be an equality*)
+Lemma sub_sub_var_f t1 x y f:
+  a_equiv_f (safe_sub_f' t1 y (sub_var_f x y f)) (safe_sub_f' t1 x f).
+Admitted.
 
 
 
@@ -803,37 +841,57 @@ Proof.
       }
       intros y s Hy.
       (*Now we can use IH*)
-      specialize (IH2 _ _ Hy). destruct IH2 as [_ IH2].
+      specialize (IH2 _ _ Hy). destruct IH2 as [IH2 _].
       (*Now pull out pure props (eval_fmla and fv result)*)
-      (*TODO: go up to writing spec for substitution*)
-      
-
-
- (*should be provable but *)
-
-
-
-        Search errst_spec "/\".
-
-
-t_open_bound_res_wf
-
-(*Prove in multiple parts*)
-
-Print vsym_st_wf.
-Print vsym_ident_wf.
-Check sub_var_f.
-Print sub_var_f.
-
-
-    
-
-
-    vsym_st_wf (fst tb2) s2 /\ term_st_wf (snd tb2) s2).
-  
-
-
- (*TODO: see if *)
+      apply errst_spec_weaken_pre with (P1:=fun s2 =>
+        (term_st_wf (snd y) s2 /\
+        (vsym_st_wf (fst y) s2 /\
+         term_st_wf t2 s2 /\ term_st_wf ta s2 /\ ty_st_wf (t_ty_of t) s2)) /\
+        (eval_fmla (snd y) = Some (sub_var_f (eval_vsymbol v1) (eval_vsymbol (fst y)) e2) /\
+          ~ aset_mem (eval_vsymbol (fst y)) (fmla_vars e2))).
+      1: { simpl. intros; destruct_all; split_all; auto. }
+      apply errst_spec_pure_pre. intros [Hrel2 Hnotin].
+      (*Now we use IH - the result is going to be eliminate let of the substituted term (TODO: need to
+        prove something about this)*)
+      specialize (IH2 _ Hrel2).
+      apply prove_errst_spec_bnd_nondep' with (Q1:=fun f2 s2 =>
+        (term_st_wf f2 s2 /\
+        fmla_related f2 (elim_let_f true true (sub_var_f (eval_vsymbol v1) (eval_vsymbol (fst y)) e2))) /\
+        (vsym_st_wf (fst y) s2 /\ term_st_wf t2 s2 /\ term_st_wf ta s2 /\ ty_st_wf (t_ty_of t) s2)).
+      1: { apply errst_spec_and; [apply IH2 |]; 
+        repeat (apply errst_spec_and; try apply elim_let_rewrite_wf;
+        try apply elim_let_rewrite_ty_wf; try apply elim_let_rewrite_vsym_wf).
+      }
+      intros tb.
+      (*Pull out props again*)
+      apply errst_spec_weaken_pre with (P1:=fun s2 =>
+        (term_st_wf tb s2 /\ vsym_st_wf (fst y) s2 /\ term_st_wf t2 s2 /\ term_st_wf ta s2 /\ 
+          ty_st_wf (t_ty_of t) s2) /\
+        fmla_related tb (elim_let_f true true (sub_var_f (eval_vsymbol v1) (eval_vsymbol (fst y)) e2))).
+      1: { simpl. intros; destruct_all; split_all; auto. }
+      apply errst_spec_pure_pre. intros Hrel3.
+      (*Now write substitution spec*)
+      eapply errst_spec_weaken_post with (Q1:=fun _ f2 s2 =>
+        term_st_wf f2 s2 /\ fmla_related f2 (safe_sub_f' (elim_let_t true true e1) (eval_vsymbol (fst y))
+          (elim_let_f true true (sub_var_f (eval_vsymbol v1) (eval_vsymbol (fst y)) e2)))).
+      2: {
+        (*From substitution results*)
+        eapply errst_spec_weaken_pre with (P1:=fun x => term_st_wf ta x /\ term_st_wf tb x /\ vsym_st_wf (fst y) x);
+        [simpl; intros; destruct_all; split_all; auto|].
+        apply errst_spec_split.
+        - apply t_subst_single1_wf.
+        - apply (t_subst_single1_fmla_spec (fst y) _ _ _ _ Hrel1 Hrel3).
+      }
+      (*And now prove that this implies the postcondition*)
+      intros _ x s1. intros [Hwf Hrel]. split; auto.
+      simpl. 
+      rewrite elim_let_f_sub_var in Hrel.
+      unfold fmla_related in Hrel |- *.
+      destruct Hrel as [x1 [Hevalx Halpha]].
+      exists x1. split; auto. eapply a_equiv_f_trans. apply Halpha.
+      apply sub_sub_var_f.
+    +
+Admitted.
 
 
 
@@ -846,15 +904,6 @@ Print sub_var_f.
 
   1. new var has number = state (and then prove not in any well-formed)*)
 
-
- with
-      (Q1:= fun f2 s2 => (term_st_wf f2 s2 /\ fmla_related f2 (elim_let_f true true g1)
-      
-      
-prove_errst_spec_dep_bnd_nondep'
-      
-      
-Admitted.
 
 End RewriteProofs.
 
