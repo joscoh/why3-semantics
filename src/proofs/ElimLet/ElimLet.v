@@ -569,7 +569,13 @@ Proof.
   generation method
   If we assume related, then need to show that a_equiv things result in a_equiv after safe sub, which
   we did*)
+Print t_subst1.
+Print t_subst_unsafe_aux.
 
+(*Probably - *)
+Print sub_ts.
+
+Print remove_bindings.
 (*NOTE: need t1 and t2 wf to ensure fresh (TODO: do we need t2? not 100% sure, prob need v wf also*)
 Theorem t_subst_single1_tm_spec v t1 t2 e1 e2:
   term_related t1 e1 ->
@@ -594,13 +600,452 @@ Lemma t_subst_single1_wf v t1 t2:
   (fun _ t3 s2 => term_st_wf t3 s2).
 Admitted.
 
+(*Need a bunch of results about how substitutions commute*)
+
+(*Rewrite lemmas because we want [a_convert_t] to be opaque*)
+
+(*[safe_sub_t] is alpha_equivalet to [sub_t]*)
+(*TODO: subsumes some earlier*)
+(* Lemma safe_sub_t_alpha_def t x t1:
+  a_equiv_t (safe_sub_t' t x t1) (sub_t t x t1).
+Proof.
+  unfold safe_sub_t'. Search alpha_equiv_t sub_t. *)
+
+(*TODO: move*)
+(* Opaque a_convert_t. *)
+
+(*More useful than [a_convert_map_t_alpha]*)
+Check a_convert_map_t_alpha.
+Print a_convert_t.
+
+Ltac simpl_len_extra ::= rewrite !GenElts.gen_strs_length.
+
+Lemma a_convert_map_mk_fun_alpha (t: term) (l: aset vsymbol) (s: aset vsymbol) (Hs: asubset (tm_vars t) s):
+  a_equiv_t t (a_convert_map_t (mk_fun_str l (GenElts.gen_strs (aset_size l) s)) aset_empty t).
+Proof.
+  apply a_convert_map_t_alpha.
+  - apply mk_fun_str_amap_inj.
+    + solve_len.
+    + apply GenElts.gen_strs_nodup.
+  - intros x y Hlookup. apply amap_lookup_mk_fun_str_some in Hlookup; [|solve_len].
+    symmetry; apply Hlookup.
+  - intros x Hinx1 Hinx2. rewrite in_vals_iff in Hinx2.
+    destruct Hinx2 as [y Hlook].
+    apply amap_lookup_mk_fun_str_some in Hlook; [|solve_len].
+    destruct Hlook as [_ [Hin _]].
+    apply GenElts.gen_strs_notin in Hin.
+    apply Hin; simpl_set; auto. rewrite asubset_def in Hs. auto.
+Qed.
+
+(*Corollaries*)
+Lemma a_convert_t_change_s t1 s1 s2 (*(Hs1 : asubset (tm_vars t1) s1)
+  (Hs2 : asubset (tm_vars t1) s2)*):
+  a_equiv_t (a_convert_t t1 s1) (a_convert_t t1 s2).
+Proof.
+  eapply a_equiv_t_trans.
+  - rewrite a_equiv_t_sym. apply a_convert_map_mk_fun_alpha, union_asubset_r.
+  - apply a_convert_map_mk_fun_alpha, union_asubset_r.
+Qed.
+
+Lemma a_convert_t_fun f1 tys tms l:
+  a_equiv_t (a_convert_t (Tfun f1 tys tms) l) (Tfun f1 tys (map (fun t => a_convert_t t l) tms)).
+Proof.
+  unfold a_convert_t. simpl.
+  apply alpha_tfun_congr; [solve_len|].
+  rewrite Forall_forall. intros x Hinx.
+  rewrite in_combine_iff in Hinx; rewrite !length_map in *; auto.
+  destruct Hinx as [i [Hi Hx]]. specialize (Hx tm_d tm_d). subst; simpl.
+  rewrite !map_nth_inbound with (d2:=tm_d); auto.
+  eapply a_equiv_t_trans.
+  - rewrite a_equiv_t_sym. apply a_convert_map_mk_fun_alpha.
+    rewrite asubset_def. intros x Hinx. simpl_set. right. exists (nth i tms tm_d). split; auto.
+    apply nth_In; auto.
+  - apply a_convert_map_mk_fun_alpha. apply union_asubset_r.
+Qed.
+
+Opaque a_convert_t.
+
+(*A more useful form*)
+Lemma a_convert_t_bnd' t l x:
+  In x (tm_bnd (a_convert_t t l)) ->
+  ~ aset_mem x l.
+Proof.
+  intros Hin1 Hin2. apply a_convert_t_bnd with (t:=t) in Hin2. contradiction.
+Qed.
+
+(*Useful also*)
+Lemma a_convert_t_fv t s:
+  tm_fv (a_convert_t t s) = tm_fv t.
+Proof.
+  symmetry.
+  apply a_equiv_t_fv.
+  apply a_convert_t_equiv.
+Qed.
+
+Lemma sub_t_convert_change_s t x t1 s1 s2 (Hs1: asubset (tm_fv t1) s1)
+  (Hs1': asubset (tm_fv t) s1)
+  (Hs2: asubset (tm_fv t1) s2)
+  (Hs2': asubset (tm_fv t) s2):
+  (*aset_mem x (tm_fv t1) ->*)
+  a_equiv_t (sub_t t x (a_convert_t t1 s1)) (sub_t t x (a_convert_t t1 s2)).
+Proof.
+  (*First, if x not in fv, can ignore substitution*)
+  destruct (aset_mem_dec x (tm_fv t1)) as [Hx' | Hx'].
+  2: { rewrite !sub_t_notin; [apply a_convert_t_change_s | |]; rewrite a_convert_t_fv; auto. }
+  (*intros Hxfv.*)
+  apply alpha_equiv_t_sub_not_bnd.
+  - apply a_equiv_t_refl.
+  - (*Prove a_converts equiv*)
+    rewrite amap_singleton_set, <- a_equiv_t_expand_single.
+    apply a_convert_t_change_s.
+  - intros Hin. apply a_convert_t_bnd' in Hin.
+    rewrite asubset_def in Hs1. apply Hin, (Hs1 x); auto.
+  - intros Hin. apply a_convert_t_bnd' in Hin.
+    rewrite asubset_def in Hs2. apply Hin, (Hs2 x); auto.
+  - rewrite aset_disj_equiv. intros y [Hy1 Hy2]. simpl_set.
+    apply a_convert_t_bnd' in Hy1. rewrite asubset_def in Hs1'. 
+    apply Hy1, (Hs1' y); auto.
+  - rewrite aset_disj_equiv. intros y [Hy1 Hy2]. simpl_set.
+    apply a_convert_t_bnd' in Hy1. rewrite asubset_def in Hs2'. 
+    apply Hy1, (Hs2' y); auto.
+Qed.
+
+(*Aux lemma for funsyms to reduce duplication*)
+Print safe_sub_t'.
+
+(*A rewrite lemma for funsyms*)
+Lemma safe_sub_t_fun t x f1 tys tms:
+  a_equiv_t (safe_sub_t' t x (Tfun f1 tys tms)) (Tfun f1 tys (map (safe_sub_t' t x) tms)).
+Proof.
+(*   apply alpha_tfun_congr. *)
+  destruct (aset_mem_dec x (aset_big_union tm_fv tms)) as [Hinx | Hinx].
+  2: {
+    eapply a_equiv_t_trans; [apply safe_sub_t_notin'|]; simpl; auto.
+    rewrite a_equiv_t_sym.
+    apply alpha_tfun_congr; [rewrite length_map; auto|].
+    rewrite Forall_forall. intros y Hiny.
+    rewrite in_combine_iff in Hiny; rewrite !length_map in *; auto.
+    destruct Hiny as [i [Hi Hy]]. specialize (Hy tm_d tm_d); subst; simpl.
+    rewrite map_nth_inbound with (d2:=tm_d); auto.
+    apply safe_sub_t_notin'. intros Hmemx. apply Hinx. simpl_set. exists (nth i tms tm_d). split; auto.
+    apply nth_In; auto.
+  }
+  (*Need this so we know x not in bound vars of converted term*)
+  unfold safe_sub_t'. eapply a_equiv_t_trans.
+  (*Idea: want: sub_t t x (Tfun f1 tys (map a_convert_t tms))*)
+  - apply alpha_equiv_t_sub_not_bnd with (t2:=(Tfun f1 tys (map (fun t' => a_convert_t t' 
+      (aset_union (tm_fv t) (tm_fv (Tfun f1 tys tms)))) tms))) (y:=x) (tm2:=t).
+    + apply a_equiv_t_refl.
+    + rewrite amap_singleton_set, <- a_equiv_t_expand_single.
+      apply a_convert_t_fun.
+    + intros C. apply a_convert_t_bnd' in C. simpl_set_small. apply C. simpl. auto.
+    + intros C. simpl in C. rewrite in_concat in C. destruct C as [l1 [Hinl1 Hinx']].
+      rewrite map_map, in_map_iff in Hinl1. destruct Hinl1 as [tm [Hl1 Hintm]]; subst.
+      apply a_convert_t_bnd' in Hinx'. 
+      simpl_set_small. apply Hinx'; auto.
+    + rewrite aset_disj_equiv. intros y [Hy1 Hy2].
+      simpl_set_small. apply a_convert_t_bnd' in Hy1. apply Hy1; simpl_set; auto.
+    + rewrite aset_disj_equiv. intros y [Hy1 Hy2]. simpl in Hy1.
+      simpl_set_small. (*TODO: need better way to do this*)
+      rewrite in_concat in Hy1. destruct Hy1 as [l1 [Hinl1 Hinx']].
+      rewrite map_map, in_map_iff in Hinl1. destruct Hinl1 as [tm [Hl1 Hintm]]; subst.
+      apply a_convert_t_bnd' in Hinx'. apply Hinx'; simpl_set_small; auto.
+  - (*Now we can simplify the substitution*)
+    simpl.
+    apply alpha_tfun_congr; [solve_len|].
+    rewrite Forall_forall. intros y Hiny. 
+    rewrite in_combine_iff in Hiny; rewrite !length_map in *; auto.
+    destruct Hiny as [i [Hi Hy]]. specialize (Hy tm_d tm_d); subst; simpl.
+    rewrite !map_nth_inbound with (d2:=tm_d); [|solve_len | solve_len | solve_len].
+    (*And now we just need to show that these are alpha-equivalent*)
+    apply sub_t_convert_change_s.
+    + eapply asubset_trans; [|apply union_asubset_r].
+      apply asubset_big_union, nth_In; auto.
+    + apply union_asubset_l.
+    + apply union_asubset_r.
+    + apply union_asubset_l.
+Qed.
+
+Lemma safe_sub_t_var t x v:
+  safe_sub_t' t x (Tvar v) = sub_t t x (Tvar v).
+Proof.
+  reflexivity.
+Qed.
+
+Print sub_t.
+
+(*NOTE: DONT try to prove safe sub directly - prove lemma for sub assuming conditions on
+  free vars and prove satisfied - go to safe sub as late as possible*)
+
+(*Then push the tfun result inside a substitution
+  (TODO: is there a better way to do this?)*)
+(* Lemma sub_safe_sub_t_fun t2 x f1 tys tms t1:
+  a_equiv_t (sub_t t2 x (Tfun f1 tys (map (safe_sub_t' t1 x) tms)))
+    (sub_t t2 x (safe_sub_t' t1 x (Tfun f1 tys tms))).
+Proof.
+  destruct (aset_mem_dec x (aset_big_union tm_fv tms)) as [Hinx | Hinx].
+  - apply alpha_equiv_t_sub_not_bnd; auto.
+    + apply a_equiv_t_refl.
+    + rewrite amap_singleton_set, <- a_equiv_t_expand_single.
+      rewrite a_equiv_t_sym. apply safe_sub_t_fun.
+    + simpl. intros C. rewrite in_concat in C. destruct C as [l1 [Hinl1 Hinx']].
+      rewrite map_map, in_map_iff in Hinl1. destruct Hinl1 as [tm [Hl1 Hintm]]; subst.
+      Search safe_sub_t' tm_bnd. *)
+(*Hmm need to think about this
+  There has to be better way
+  
+*)
+   
+  
+
+(*TODO: move
+  If the patterns/terms/formulas are alpha-equivalent with no bound variables, they are equal.
+  NOTE: we may only need the variable case
+  TODO: maybe prove later if we need more*)
+
+(* Lemma a_equiv_no_bnd t1 f1:
+  (forall t2 (Hbnd: null (tm_bnd t1)) (Halpha: a_equiv_t t1 t2), t1 = t2) /\
+  (forall f2 (Hbnd: null (fmla_bnd f1)) (Halpha: a_equiv_f f1 f2), f1 = f2).
+Proof.
+  revert t1 f1. apply term_formula_ind; try discriminate.
+  - intros. destruct t2; try discriminate. unfold a_equiv_t in Halpha. simpl in *.
+    destruct (const_eq_dec _ _); subst; auto. discriminate.
+  - intros. destruct t2; try discriminate. unfold a_equiv_t in Halpha. simpl in Halpha.
+    unfold alpha_equiv_var in Halpha. rewrite !amap_empty_get in Halpha. 
+    destruct (vsymbol_eq_dec _ _); subst; auto. discriminate.
+  - intros f1 tys1 tms1 IH t2 Hbnd Halpha. simpl in *. 
+    destruct t2 as [| | f2 tys2 tms2 | | | |]; try discriminate. unfold a_equiv_t in Halpha.
+    simpl in Halpha. destruct (funsym_eq_dec _ _); [|discriminate]; subst.
+    destruct (Nat.eqb_spec (length tms1) (length tms2)) as [Hlen|]; [|discriminate].
+    destruct (list_eq_dec _ _ _); subst; [|discriminate]. simpl in Halpha. f_equal.
+    generalize dependent tms2. induction tms1 as [| tm1 tms1 IHtm]; intros [|tm2 tms2]; simpl; auto;
+    try discriminate. simpl in Hbnd.
+    rewrite null_app, andb_true in Hbnd. destruct Hbnd as [Hn1 Hn2].
+    inversion IH as [| ? ? IH1 IH2]; clear IH; subst.
+    rewrite all2_cons. rewrite andb_true; intros [Ha1 Ha2] Hlen. f_equal; auto.
+  - simpl. intros f1 t2 t3 IH1 IH2 IH3 t Hbnd.
+    rewrite !null_app, !andb_true in Hbnd. intros Halpha.
+    destruct t; try discriminate. unfold a_equiv_t in Halpha; simpl in Halpha.
+    rewrite !andb_true in Halpha. destruct_all; f_equal; auto.
+  - simpl. (*Annoyingly, we can have pattern matches, but without any variables or bindings*)
+    intros tm1 ty1 ps1 IH1 IHps t2 Hbnd Halpha.
+    rewrite null_app, andb_true in Hbnd. destruct Hbnd as [Hn1 Hn2].
+    destruct t2 as [| | | | | tm2 ty2 ps2 |]; try discriminate.
+    unfold a_equiv_t in Halpha; simpl in Halpha.
+    rewrite !andb_true in Halpha. destruct Halpha as [[[Halphat Hlen] Htyeq] Hall].
+    simpl_sumbool. apply Nat.eqb_eq in Hlen. f_equal; auto.
+    clear -IHps Hn2 Hall Hlen.
+    generalize dependent ps2.
+    induction ps1 as [| [p1 t1] ps1 IH]; intros [| [p2 t2] ps2]; simpl; auto; try discriminate.
+    simpl in *. rewrite !null_app, !andb_true in Hn2. destruct Hn2 as [[Hn1 Hn2] Hn3].
+    intros Hlen. rewrite !all2_cons. simpl. destruct (a_equiv_p p1 p2) as [[r1 r2]|] eqn : Halphap; [|discriminate].
+    rewrite andb_true. intros [Ha1 Ha2].
+    inversion IHps as [| ? ? IH1 IH2]; subst.
+    f_equal; auto. *)
+    
+(*First, need to prove that *)
+(* 
+Lemma safe_sub_var1 x y t1 t2 f2:
+  a_equiv_t (safe_sub_t' (sub_var_t x y t1) x t2) (sub_var_t x y (safe_sub_t' t1 x t2)) /\
+  a_equiv_f (safe_sub_f' (sub_var_t x y t1) x f2) (sub_var_f x y (safe_sub_f' t1 x f2)).
+Proof.
+  revert t2 f2. apply term_formula_ind; simpl.
+  - (*const*) intros c. apply a_equiv_t_refl.
+  - (*var*) intros v. rewrite !safe_sub_t_var. simpl.
+    vsym_eq x v; simpl; [| vsym_eq x v]; apply a_equiv_t_refl.
+  - (*tfun*) intros f1 tys tms IH.
+    eapply a_equiv_t_trans; [apply safe_sub_t_fun|].
+    eapply a_equiv_t_trans with (t2:=sub_var_t x y (Tfun f1 tys (map (safe_sub_t' t1 x) tms))).
+    2: {
+      rewrite !sub_var_t_equiv. 
+      destruct (aset_mem_dec x (aset_big_union tm_fv tms)) as [Hinx | Hinx].
+      2: {
+        eapply a_equiv_t_trans with (t2:=Tfun f1 tys tms); [rewrite sub_t_notin|]; simpl; auto. 
+        - unfold a_equiv_t. simpl. destruct (funsym_eq_dec _ _); simpl; auto. 
+          rewrite length_map, Nat.eqb_refl. simpl. destruct (list_eq_dec _ _ tys tys). 
+        rewrite a_equiv_t_sym.
+        apply alpha_tfun_congr; [rewrite length_map; auto|].
+        rewrite Forall_forall. intros y Hiny.
+        rewrite in_combine_iff in Hiny; rewrite !length_map in *; auto.
+        destruct Hiny as [i [Hi Hy]]. specialize (Hy tm_d tm_d); subst; simpl.
+        rewrite map_nth_inbound with (d2:=tm_d); auto.
+        apply safe_sub_t_notin'. intros Hmemx. apply Hinx. simpl_set. exists (nth i tms tm_d). split; auto.
+        apply nth_In; auto.
+      }
+      (*TODO: need nicer theorem*)
+      (*Again, case*)
+      destruct (aset_dec x (fv_fv 
+      
+      apply alpha_equiv_t_sub_not_bnd.
+      - unfold alpha_equiv_t. unfold alpha_equiv_var. rewrite !amap_empty_get. vsym_eq y y.
+      - rewrite amap_singleton_set, <- a_equiv_t_expand_single. rewrite a_equiv_t_sym. apply safe_sub_t_fun.
+      - simpl.
+ simpl. reflexivity.
+      
+
+
+      Search sub_var_t sub_t.
+      Search a_equiv_t sub_var_t.
+    Search sub_var_t.
+
+Lemma safe_sub_t_fun t x f1 tys tms:
+  a_equiv_t (safe_sub_t' t x (Tfun f1 tys tms)) (Tfun f1 tys (map (safe_sub_t' t x) tms)).
+
+
+ simpl.
+    rewrite safe_sub_t_fun.
+    
+
+
+
+
+  - (*var*) intros v. vsym_eq x v. simpl. vsym_eq x v.
+  - admit.
+  - 
+
+ unfold safe_sub_t'.
+
+
+
+ simpl.
+
+
+ simpl. *)
+
+Lemma test1 (v y: vsymbol) t1 t2 f2:
+  (sub_t (sub_var_t v y t1) v t2 = sub_var_t v y (sub_t t1 v t2)) /\
+  (sub_f (sub_var_t v y t1) v f2 = sub_var_f v y (sub_f t1 v f2)).
+Proof.
+  revert t2 f2; apply term_formula_ind; simpl; auto.
+  - (*var*) intros x. vsym_eq v x. simpl. vsym_eq v x.
+  - admit.
+  - (*let*) intros tm1 x tm2 IH1 IH2. rewrite IH1.
+    vsym_eq v x. f_equal. auto.
+  - intros f tm1 tm2 IH1 IH2 IH3. rewrite IH1, IH2, IH3. reflexivity.
+  - intros tm1 ty1 ps1 IH1 IHps. rewrite IH1. f_equal.
+    clear -IHps. induction ps1 as [| [p1 tm1] ps1 IH]; simpl; auto.
+    inversion IHps as [| ? ? IH1 IH2]; subst; clear IHps.
+    simpl. f_equal; auto. destruct (aset_mem_dec v (pat_fv p1)); simpl; auto.
+    + destruct (aset_mem_dec v (pat_fv p1)); simpl; auto; try contradiction.
+    + destruct (aset_mem_dec v (pat_fv p1)); simpl; auto; try contradiction.
+      f_equal; auto.
+  - (*rest should be easier*)
+Admitted.
+
+
+(* Lemma sub_t_bnd t1 x  t2 f2:
+  (tm_bnd (sub_t t1 x t2) = tm_bnd  *)
+
+(*Real problem is that safe_sub is LOCAL - only wrt current free vars, when
+  real operation is GLOBAL - everything unique*)
+
+(*go back to sub, try to prove alpha equiv with as few preconditions as possible*)
+
+(* Lemma test (v y: vsymbol) t1 t2:
+  a_equiv_t (safe_sub_t' (sub_var_t v y t1) v t2) (sub_var_t v y (safe_sub_t' t1 v t2)).
+Proof.
+  unfold safe_sub_t'.
+  (*Think no matter what we need nicer sub lemma*)
+  rewrite <- (proj1 (test1 v y t1 _ Ftrue)).
+  rewrite !sub_var_t_equiv.
+  apply alpha_equiv_t_sub. *)
+  (*nope - get new bound vars from substitution*)
+  (* Search tm_bnd sub_ts.
+  (*Idea: this all should be provable if *)
+  Search alpha_equiv_t sub_t.
+
+  Search sub_var_t sub_t.
+  apply sub_t_convert_change_s.
+  - apply union_asubset_r.
+  - apply union_asubset_l.
+  - apply union_asubset_r.
+  - apply union_asubset_
+
+
+  Search a_equiv_t sub_t. *)
+  
+
+(*
+  ~ aset_mem y (tm_fv tm2) ->
+  elim_let_t true b2 (sub_var_t v y tm2) = sub_var_t v y (elim_let_t true b2 tm2)
+IH1 :
+  ~ aset_mem y (tm_fv tm1) ->
+  elim_let_t true b2 (sub_var_t v y tm1) = sub_var_t v y (elim_let_t true b2 tm1)
+Hnotin : ~ (aset_mem y (tm_fv tm1) \/ aset_mem y (tm_fv tm2) /\ y <> v)
+______________________________________(1/1)
+safe_sub_t' (sub_var_t v y (elim_let_t true b2 tm1)) v (elim_let_t true b2 tm2) =
+sub_var_t v y (safe_sub_t' (elim_let_t true b2 tm1) v (elim_let_t true b2 tm2)) *)
+
+  (*So wts that sub_t (sub_var_t v y t1) v t2 = sub_var_t v y (sub_t t1 v t2) (really other direction)*)
+
 
 (*2 lemmas needed: *)
 (*And need term version (NOTE: may need to assume y not in vars of f*)
-Lemma elim_let_f_sub_var b1 b2 x y f:
+(*TODO: move*)
+(*TODO: think need alpha_equiv_f*)
+(*NOTE: NOT TRUE:
+  example: let x = y in (forall z, z = x) and we substitute in [v/y]
+  safe sub is LOCAL so it might choose (forall v, v = x)
+
+  then we have: elim_let, then sub: (forall v, v = y) [v/y] -> forall v, v = v
+  sub, then elim let is e(let x = v in (forall z, z = x)) - now CANNOT choose v,
+  so get ((forall q, q = x)[v/x] -> forall q, q = v
+  so NOT alpha equivalent
+  
+*)
+Lemma elim_let_sub_var b1 b2 x y t f:
+  (~ aset_mem y (tm_fv t) -> elim_let_t b1 b2 (sub_var_t x y t) = sub_var_t x y (elim_let_t b1 b2 t)) /\
+  (~ aset_mem y (fmla_fv f) -> elim_let_f b1 b2 (sub_var_f x y f) = sub_var_f x y (elim_let_f b1 b2 f)).
+Proof.
+  revert t f. apply term_formula_ind; simpl; auto.
+  - admit.
+  - (*Tlet*)
+    intros tm1 v tm2 IH1 IH2. simpl_set. intros Hnotin. rewrite IH1 by tauto.
+    destruct b1; simpl; auto.
+    + vsym_eq x v.
+      *  clear IH1 IH2. generalize dependent (elim_let_t true b2 tm1).
+        generalize dependent (elim_let_t true b2 tm2). intros t2 t1.
+        (*So we WTS: t2[t1[y/v]/v] = (t2[t1/v)[y/v]*)
+        admit.
+      * rewrite IH2. clear IH1 IH2. generalize dependent (elim_let_t true b2 tm1).
+        generalize dependent (elim_let_t true b2 tm2).
+        intros t2 t1. 
+        (*2nd result we need: if x <> v,
+          (t2[y/x])[t1[y/x] /v] = (t2[t1/v])[y/x]*)
+        admit.
+    + f_equal. vsym_eq x v.
+Admitted.
+
+
+(* safe_sub_t' (sub_var_t v y t1) v t2 = sub_var_t v y (safe_sub_t' t1 v t2)
+ x <> v ->
+safe_sub_t' (sub_var_t x y t1) v (sub_var_t x y t2) = sub_var_t x y (safe_sub_t' t1 v t2)
+
+
+ intros t1.
+
+
+ rewrite IH2. admit.
+      * 
+(*want to show t[t1[y/x]/v]/*)
+
+(*First, we need to know that *)
+
+
+ rewrite IH1.
+
+
+ rewrite IH1. *)
+
+(* Lemma elim_let_f_sub_var b1 b2 x y f:
   elim_let_f b1 b2 (sub_var_f x y f) =
   sub_var_f x y (elim_let_f b1 b2 f).
-Admitted.
+Proof.
+  
+
+
+
+Admitted. *)
 
 (*NOTE: almost certainly need a_equiv_f, not equality, for safe sub*)
 (*But the non-safe version should be an equality*)

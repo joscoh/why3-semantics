@@ -1085,7 +1085,68 @@ Proof.
   eapply alpha_not_bnd_same_in_f; eauto.
 Qed.
 
+Set Bullet Behavior "Strict Subproofs".
 
+Lemma safe_sub_t_notin' tm1 x t:
+  ~ aset_mem x (tm_fv t) ->
+  a_equiv_t (safe_sub_t' tm1 x t) t.
+Proof.
+  intros Hmem.
+  unfold safe_sub_t'.
+  rewrite sub_t_notin.
+  - rewrite a_equiv_t_sym. apply a_convert_t_equiv.
+  - erewrite <- a_equiv_t_fv; eauto. apply a_convert_t_equiv.
+Qed.
+
+Lemma safe_sub_f_notin' tm1 x f:
+  ~ aset_mem x (fmla_fv f) ->
+  a_equiv_f (safe_sub_f' tm1 x f) f.
+Proof.
+  intros Hmem.
+  unfold safe_sub_f'.
+  rewrite sub_f_notin.
+  - rewrite a_equiv_f_sym. apply a_convert_f_equiv.
+  - erewrite <- a_equiv_f_fv; eauto. apply a_convert_f_equiv.
+Qed.
+
+(*TODO: move*)
+(*Transitivity is awkward to work with, but things are much easier if 1 is alpha-equivalent
+  rather than related*)
+Lemma alpha_trans_eq_rel_t {t1 t2 m1 m2 t3}
+  (Heq: a_equiv_t t1 t2) (Halpha: alpha_equiv_t m1 m2 t2 t3):
+  alpha_equiv_t m1 m2 t1 t3.
+Proof.
+  unfold a_equiv_t in Heq.
+  pose proof (alpha_equiv_t_trans _ _ _ _ _ _ _ Heq Halpha) as Ha.
+  rewrite alpha_comp_empty_l, alpha_comp_empty_r in Ha. auto.
+Qed.
+
+Lemma alpha_trans_rel_eq_t {t1 t2 m1 m2 t3}
+  (Halpha: alpha_equiv_t m1 m2 t1 t2) (Heq: a_equiv_t t2 t3):
+  alpha_equiv_t m1 m2 t1 t3.
+Proof.
+  unfold a_equiv_t in Heq.
+  pose proof (alpha_equiv_t_trans _ _ _ _ _ _ _ Halpha Heq) as Ha.
+  rewrite alpha_comp_empty_l, alpha_comp_empty_r in Ha. auto.
+Qed.
+
+Lemma alpha_trans_eq_rel_f {f1 f2 m1 m2 f3}
+  (Heq: a_equiv_f f1 f2) (Halpha: alpha_equiv_f m1 m2 f2 f3):
+  alpha_equiv_f m1 m2 f1 f3.
+Proof.
+  unfold a_equiv_f in Heq.
+  pose proof (alpha_equiv_f_trans _ _ _ _ _ _ _ Heq Halpha) as Ha.
+  rewrite alpha_comp_empty_l, alpha_comp_empty_r in Ha. auto.
+Qed.
+
+Lemma alpha_trans_rel_eq_f {f1 f2 m1 m2 f3}
+  (Halpha: alpha_equiv_f m1 m2 f1 f2) (Heq: a_equiv_f f2 f3):
+  alpha_equiv_f m1 m2 f1 f3.
+Proof.
+  unfold a_equiv_f in Heq.
+  pose proof (alpha_equiv_f_trans _ _ _ _ _ _ _ Halpha Heq) as Ha.
+  rewrite alpha_comp_empty_l, alpha_comp_empty_r in Ha. auto.
+Qed.
 
 (*Cannot use [safe_sub_t] because if we don't alpha convert, dont have
   the tm_bnd condition (and don't have [same_in_t] necessarily*)
@@ -1094,8 +1155,11 @@ Lemma safe_sub_t_alpha m1 m2 v1 v2 t1 t2 t3 t4
   (Halpha2: alpha_equiv_t (amap_set m1 v1 v2) (amap_set m2 v2 v1) t3 t4):
   alpha_equiv_t m1 m2 (safe_sub_t' t1 v1 t3) (safe_sub_t' t2 v2 t4).
 Proof.
-  unfold safe_sub_t'.
+  pose proof (safe_sub_t_notin' t1 v1 t3) as Hfv1.
+  pose proof (safe_sub_t_notin' t2 v2 t4) as Hfv2.
+  unfold safe_sub_t' in *.
   (*Why we needed the previous: v1 in fv of t3 iff v2 in fv of t4*)
+  (*NOTE: don't need anymore, but still good to know*)
   assert (Hfvs: aset_mem v1 (tm_fv t3) <-> aset_mem v2 (tm_fv t4)). {
     eapply alpha_equiv_t_map_fv_iff; eauto.
     rewrite alpha_equiv_var_iff. rewrite !amap_set_lookup_same. auto.
@@ -1104,21 +1168,19 @@ Proof.
   destruct (aset_mem_dec v1 (tm_fv t3)) as [Hv1 | Hv1]; 
   destruct (aset_mem_dec v2 (tm_fv t4)) as [Hv2 | Hv2]; [| tauto | tauto |].
   2: { (*In this case, can remove these from the map because free vars not present*) 
-    rewrite alpha_equiv_t_extra_var in Halpha2; auto. }
+    rewrite alpha_equiv_t_extra_var in Halpha2; auto.
+    specialize (Hfv1 Hv1). specialize (Hfv2 Hv2).
+    eapply alpha_trans_eq_rel_t; [apply Hfv1|].
+    eapply alpha_trans_rel_eq_t; [apply Halpha2|].
+    rewrite a_equiv_t_sym. auto.
+  }
   set (t3':=(a_convert_t t3 (aset_union (tm_fv t1) (tm_fv t3)))).
   set (t4':=(a_convert_t t4 (aset_union (tm_fv t2) (tm_fv t4)))).
   assert (Ht3: a_equiv_t t3 t3') by apply a_convert_t_equiv.
   assert (Ht4: a_equiv_t t4 t4') by apply a_convert_t_equiv.
   assert (Ht34: alpha_equiv_t (amap_set m1 v1 v2) (amap_set m2 v2 v1) t3' t4'). {
-    pose proof (alpha_equiv_t_trans t3' t3 t4' amap_empty amap_empty (amap_set m1 v1 v2) (amap_set m2 v2 v1)) as Htrans.
-    forward Htrans.
-    { rewrite alpha_equiv_t_sym; auto. }
-    forward Htrans.
-    { pose proof (alpha_equiv_t_trans t3 t4 t4' (amap_set m1 v1 v2) (amap_set m2 v2 v1) amap_empty amap_empty Halpha2 Ht4) 
-      as Htrans1.
-      rewrite alpha_comp_empty_r, alpha_comp_empty_l in Htrans1. auto.
-    }
-    rewrite alpha_comp_empty_r, alpha_comp_empty_l in Htrans. auto.
+    eapply alpha_trans_eq_rel_t; [rewrite a_equiv_t_sym; apply Ht3|].
+    eapply alpha_trans_rel_eq_t; [apply Halpha2|]; auto.
   }
   (*Prove disj*)
   assert (Hdisj1: aset_disj (list_to_aset (tm_bnd t3')) (tm_fv t1)).
@@ -1138,6 +1200,8 @@ Lemma safe_sub_f_alpha m1 m2 v1 v2 t1 t2 f3 f4
   (Halpha2: alpha_equiv_f (amap_set m1 v1 v2) (amap_set m2 v2 v1) f3 f4):
   alpha_equiv_f m1 m2 (safe_sub_f' t1 v1 f3) (safe_sub_f' t2 v2 f4).
 Proof.
+  pose proof (safe_sub_f_notin' t1 v1 f3) as Hfv1.
+  pose proof (safe_sub_f_notin' t2 v2 f4) as Hfv2.
   unfold safe_sub_f'.
   assert (Hfvs: aset_mem v1 (fmla_fv f3) <-> aset_mem v2 (fmla_fv f4)). {
     eapply alpha_equiv_f_map_fv_iff; eauto.
@@ -1147,21 +1211,18 @@ Proof.
   destruct (aset_mem_dec v1 (fmla_fv f3)) as [Hv1 | Hv1]; 
   destruct (aset_mem_dec v2 (fmla_fv f4)) as [Hv2 | Hv2]; [| tauto | tauto |].
   2: { (*In this case, can remove these from the map because free vars not present*) 
-    rewrite alpha_equiv_f_extra_var in Halpha2; auto. }
+    rewrite alpha_equiv_f_extra_var in Halpha2; auto.
+    specialize (Hfv1 Hv1). specialize (Hfv2 Hv2).
+    eapply alpha_trans_eq_rel_f; [apply Hfv1|].
+    eapply alpha_trans_rel_eq_f; [apply Halpha2|].
+    rewrite a_equiv_f_sym. auto. }
   set (f3':=(a_convert_f f3 (aset_union (tm_fv t1) (fmla_fv f3)))).
   set (f4':=(a_convert_f f4 (aset_union (tm_fv t2) (fmla_fv f4)))).
   assert (Ht3: a_equiv_f f3 f3') by apply a_convert_f_equiv.
   assert (Ht4: a_equiv_f f4 f4') by apply a_convert_f_equiv.
   assert (Ht34: alpha_equiv_f (amap_set m1 v1 v2) (amap_set m2 v2 v1) f3' f4'). {
-    pose proof (alpha_equiv_f_trans f3' f3 f4' amap_empty amap_empty (amap_set m1 v1 v2) (amap_set m2 v2 v1)) as Htrans.
-    forward Htrans.
-    { rewrite alpha_equiv_f_sym; auto. }
-    forward Htrans.
-    { pose proof (alpha_equiv_f_trans f3 f4 f4' (amap_set m1 v1 v2) (amap_set m2 v2 v1) amap_empty amap_empty Halpha2 Ht4) 
-      as Htrans1.
-      rewrite alpha_comp_empty_r, alpha_comp_empty_l in Htrans1. auto.
-    }
-    rewrite alpha_comp_empty_r, alpha_comp_empty_l in Htrans. auto.
+    eapply alpha_trans_eq_rel_f; [rewrite a_equiv_f_sym; apply Ht3|].
+    eapply alpha_trans_rel_eq_f; [apply Halpha2|]; auto.
   }
   (*Prove disj*)
   assert (Hdisj1: aset_disj (list_to_aset (fmla_bnd f3')) (tm_fv t1)).
