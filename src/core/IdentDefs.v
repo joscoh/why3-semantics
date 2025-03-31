@@ -178,8 +178,8 @@ Definition id_ctr : ctr unit := IdCtr.create.
 
 Definition id_register : preid -> ctr ident :=
   fun p =>
+     i <- IdCtr.get tt ;;
     _ <- IdCtr.incr tt ;;
-    i <- IdCtr.get tt ;;
     st_ret {| id_string := p.(pre_name);
     id_attrs := p.(pre_attrs);
     id_loc := p.(pre_loc);

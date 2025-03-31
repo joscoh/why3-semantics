@@ -14,11 +14,11 @@ Section Pres.
 (*1. If the counter only increases, everything that was wf is still wf (for idents)*)
 Lemma idents_of_term_wf_pres {A: Type} (tm: term_c) (o: errState full_st A):
   errst_spec (fun _ => True) o (fun s1 _ s2 =>(fst s1 <= fst s2)%Z) ->
-  errst_spec (idents_of_term_wf tm) o (fun _ _ s2 => idents_of_term_wf tm s2).
+  errst_spec (fun s => idents_of_term_wf tm (fst s)) o (fun _ _ s2 => idents_of_term_wf tm (fst s2)).
 Proof.
   intros Hspec.
-  eapply errst_spec_weaken with (P1:= fun s => True /\ idents_of_term_wf tm s)
-   (Q1:=fun s1 _ s2 => fst s1 <= fst s2 /\ idents_of_term_wf tm s1); auto.
+  eapply errst_spec_weaken with (P1:= fun s => True /\ idents_of_term_wf tm (fst s))
+   (Q1:=fun s1 _ s2 => fst s1 <= fst s2 /\ idents_of_term_wf tm (fst s1)); auto.
   - intros s1 _ s2 [Hle Hwf].
     (*separate lemma?*)
     unfold idents_of_term_wf in *. intros i Hi. specialize (Hwf _ Hi). lia.
@@ -28,11 +28,11 @@ Qed.
 
 Lemma idents_of_vsym_wf_pres {A: Type} (v: vsymbol) (o: errState full_st A):
   errst_spec (fun _ => True) o (fun s1 _ s2 =>(fst s1 <= fst s2)%Z) ->
-  errst_spec (vsym_ident_wf v) o (fun _ _ s2 => vsym_ident_wf v s2).
+  errst_spec (fun s => vsym_ident_wf v (fst s)) o (fun _ _ s2 => vsym_ident_wf v (fst s2)).
 Proof.
   intros Hspec.
-  eapply errst_spec_weaken with (P1:= fun s => True /\ vsym_ident_wf v s)
-   (Q1:=fun s1 _ s2 => fst s1 <= fst s2 /\ vsym_ident_wf v s1); auto.
+  eapply errst_spec_weaken with (P1:= fun s => True /\ vsym_ident_wf v (fst s))
+   (Q1:=fun s1 _ s2 => fst s1 <= fst s2 /\ vsym_ident_wf v (fst s1)); auto.
   - intros s1 _ s2 [Hle Hwf].
     (*separate lemma?*)
     unfold vsym_ident_wf in *. lia.
@@ -51,15 +51,15 @@ Definition hashset_subset {key} (hash: key -> CoqBigInt.t) (eqb: key -> key -> b
 
 (*TODO: write definition for these*)
 Lemma term_hash_wf_pres {A: Type} (tm: term_c) (o: errState full_st A):
-  errst_spec (fun _ => True) o (fun s1 _ s2 => hashcons_ctr (full_ty_hash s1) <= hashcons_ctr (full_ty_hash s2) /\
-    hashset_subset ty_hash ty_eqb (hashcons_hash (full_ty_hash s1)) (hashcons_hash (full_ty_hash s2))) ->
-  errst_spec (term_hash_wf tm) o (fun _ _ s2 => term_hash_wf tm s2).
+  errst_spec (fun _ => True) o (fun s1 _ s2 => hashcons_ctr (full_ty_hash (snd s1)) <= hashcons_ctr (full_ty_hash (snd s2)) /\
+    hashset_subset ty_hash ty_eqb (hashcons_hash (full_ty_hash (snd s1))) (hashcons_hash (full_ty_hash (snd s2)))) ->
+  errst_spec (fun s => term_hash_wf tm (snd s)) o (fun _ _ s2 => term_hash_wf tm (snd s2)).
 Proof.
   intros Hspec.
-  eapply errst_spec_weaken with (P1:= fun s => True /\ term_hash_wf tm s)
-   (Q1:=fun s1 _ s2 => (hashcons_ctr (full_ty_hash s1) <= hashcons_ctr (full_ty_hash s2) /\
-    hashset_subset ty_hash ty_eqb (hashcons_hash (full_ty_hash s1)) (hashcons_hash (full_ty_hash s2))) 
-    /\ term_hash_wf tm s1); auto.
+  eapply errst_spec_weaken with (P1:= fun s => True /\ term_hash_wf tm (snd s))
+   (Q1:=fun s1 _ s2 => (hashcons_ctr (full_ty_hash (snd s1)) <= hashcons_ctr (full_ty_hash (snd s2)) /\
+    hashset_subset ty_hash ty_eqb (hashcons_hash (full_ty_hash (snd s1))) (hashcons_hash (full_ty_hash (snd s2)))) 
+    /\ term_hash_wf tm (snd s1)); auto.
   - intros s1 _ s2 [[Hle Hhash] Hwf].
     (*separate lemma?*)
     unfold term_hash_wf in *.
@@ -73,15 +73,15 @@ Proof.
 Qed.
 
 Lemma ty_hash_wf_pres {A: Type} (t: option ty_c) (o: errState full_st A):
-  errst_spec (fun _ => True) o (fun s1 _ s2 => hashcons_ctr (full_ty_hash s1) <= hashcons_ctr (full_ty_hash s2) /\
-    hashset_subset ty_hash ty_eqb (hashcons_hash (full_ty_hash s1)) (hashcons_hash (full_ty_hash s2))) ->
-  errst_spec (ty_hash_wf t) o (fun _ _ s2 => ty_hash_wf t s2).
+  errst_spec (fun _ => True) o (fun s1 _ s2 => hashcons_ctr (full_ty_hash (snd s1)) <= hashcons_ctr (full_ty_hash (snd s2)) /\
+    hashset_subset ty_hash ty_eqb (hashcons_hash (full_ty_hash (snd s1))) (hashcons_hash (full_ty_hash (snd s2)))) ->
+  errst_spec (fun s => ty_hash_wf t (snd s)) o (fun _ _ s2 => ty_hash_wf t (snd s2)).
 Proof.
   intros Hspec.
-  eapply errst_spec_weaken with (P1:= fun s => True /\ ty_hash_wf t s)
-   (Q1:=fun s1 _ s2 => (hashcons_ctr (full_ty_hash s1) <= hashcons_ctr (full_ty_hash s2) /\
-    hashset_subset ty_hash ty_eqb (hashcons_hash (full_ty_hash s1)) (hashcons_hash (full_ty_hash s2))) 
-    /\ ty_hash_wf t s1); auto.
+   eapply errst_spec_weaken with (P1:= fun s => True /\ ty_hash_wf t (snd s))
+   (Q1:=fun s1 _ s2 => (hashcons_ctr (full_ty_hash (snd s1)) <= hashcons_ctr (full_ty_hash (snd s2)) /\
+    hashset_subset ty_hash ty_eqb (hashcons_hash (full_ty_hash (snd s1))) (hashcons_hash (full_ty_hash (snd s2)))) 
+    /\ ty_hash_wf t (snd s1)); auto.
   - intros s1 _ s2 [[Hle Hhash] Hwf].
     (*separate lemma?*)
     unfold ty_hash_wf, gen_hash_wf in *. destruct Hwf as [Hwf1 Hwf2]. split.
@@ -94,15 +94,15 @@ Proof.
 Qed.
 
 Lemma vsym_hash_wf_pres {A: Type} (v: vsymbol) (o: errState full_st A):
-  errst_spec (fun _ => True) o (fun s1 _ s2 => hashcons_ctr (full_ty_hash s1) <= hashcons_ctr (full_ty_hash s2) /\
-    hashset_subset ty_hash ty_eqb (hashcons_hash (full_ty_hash s1)) (hashcons_hash (full_ty_hash s2))) ->
-  errst_spec (vsym_hash_wf v) o (fun _ _ s2 => vsym_hash_wf v s2).
+  errst_spec (fun _ => True) o (fun s1 _ s2 => hashcons_ctr (full_ty_hash (snd s1)) <= hashcons_ctr (full_ty_hash (snd s2)) /\
+    hashset_subset ty_hash ty_eqb (hashcons_hash (full_ty_hash (snd s1))) (hashcons_hash (full_ty_hash (snd s2)))) ->
+  errst_spec (fun s => vsym_hash_wf v (snd s)) o (fun _ _ s2 => vsym_hash_wf v (snd s2)).
 Proof.
   intros Hspec.
-  eapply errst_spec_weaken with (P1:= fun s => True /\ vsym_hash_wf v s)
-   (Q1:=fun s1 _ s2 => (hashcons_ctr (full_ty_hash s1) <= hashcons_ctr (full_ty_hash s2) /\
-    hashset_subset ty_hash ty_eqb (hashcons_hash (full_ty_hash s1)) (hashcons_hash (full_ty_hash s2))) 
-    /\ vsym_hash_wf v s1); auto.
+  eapply errst_spec_weaken with (P1:= fun s => True /\ vsym_hash_wf v (snd s))
+   (Q1:=fun s1 _ s2 => (hashcons_ctr (full_ty_hash (snd s1)) <= hashcons_ctr (full_ty_hash (snd s2)) /\
+    hashset_subset ty_hash ty_eqb (hashcons_hash (full_ty_hash (snd s1))) (hashcons_hash (full_ty_hash (snd s2)))) 
+    /\ vsym_hash_wf v (snd s1)); auto.
   - intros s1 _ s2 [[Hle Hhash] Hwf].
     (*separate lemma?*)
     unfold vsym_hash_wf, gen_hash_wf in *. destruct Hwf as [Hwf1 Hwf2]. split.
@@ -116,8 +116,8 @@ Qed.
 
 Definition term_wf_pres_cond (s1 s2: full_st) :=
   (fst s1 <= fst s2)%Z /\ 
-  (hashcons_ctr (full_ty_hash s1) <= hashcons_ctr (full_ty_hash s2) /\
-  hashset_subset ty_hash ty_eqb (hashcons_hash (full_ty_hash s1)) (hashcons_hash (full_ty_hash s2))).
+  (hashcons_ctr (full_ty_hash (snd s1)) <= hashcons_ctr (full_ty_hash (snd s2)) /\
+  hashset_subset ty_hash ty_eqb (hashcons_hash (full_ty_hash (snd s1))) (hashcons_hash (full_ty_hash (snd s2)))).
 
 Lemma term_st_wf_pres {A: Type} (tm: term_c) (o: errState full_st A):
   errst_spec (fun _ => True) o (fun s1 _ s2 => term_wf_pres_cond s1 s2) ->

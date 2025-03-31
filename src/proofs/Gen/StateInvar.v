@@ -3,11 +3,11 @@ Require Import TransDefs.
 
 Definition full_st : Type := Z * (hashcons_full).
 
-Definition full_ctr (s: full_st) : Z := fst s.
-Definition full_ty_hash (s: full_st) : hashcons_ty ty_c := fst (fst (fst (snd s))).
-Definition full_decl_hash (s: full_st) : hashcons_ty decl := snd (fst (fst (snd s))).
-Definition full_tdecl_hash (s: full_st) : hashcons_ty tdecl_c := snd (fst (snd s)).
-Definition full_task_hash (s: full_st) : hashcons_ty task_hd := snd (snd s).
+(* Definition full_ctr (s: full_st) : Z := fst s. *)
+Definition full_ty_hash (s: hashcons_full) : hashcons_ty ty_c := fst (fst (fst s)).
+Definition full_decl_hash (s: hashcons_full) : hashcons_ty decl := snd (fst (fst s)).
+Definition full_tdecl_hash (s: hashcons_full) : hashcons_ty tdecl_c := snd (fst s).
+Definition full_task_hash (s: hashcons_full) : hashcons_ty task_hd := snd s.
 
 (*1. All variable identifiers in the task are < the value of the state*)
 (*NOTE: could strengthen to all global ids (var, tyvar, lsymbol, type symbol),
@@ -82,8 +82,8 @@ Fixpoint idents_of_task (t: task_hd) : list ident :=
 
 (*The wf condition*)
 
-Definition idents_of_task_wf  (o: option task_hd) (s : full_st) : Prop :=
-  forall i, In i (list_of_option idents_of_task o) -> (id_tag i < (fst s))%Z.
+Definition idents_of_task_wf  (o: option task_hd) (s : Z) : Prop :=
+  forall i, In i (list_of_option idents_of_task o) -> (id_tag i < s)%Z.
 
 
 End Idents.
@@ -205,28 +205,29 @@ Definition all_in_hashtable {A} (hash: A -> Z) (eqb: A -> A -> bool)
 Definition all_idents_smaller {A} (hash: A -> Z) (l: list A) (i: Z) : Prop :=
   forall x, In x l -> (hash x < i)%Z.
 
-Definition gen_hash_wf {A B} (full_fn: full_st -> hashcons_ty A) (get: B -> list A) 
-  (hash: A -> Z) (eqb: A -> A -> bool) (t: B) (st: full_st) : Prop :=
+
+Definition gen_hash_wf {A B} (full_fn: hashcons_full -> hashcons_ty A) (get: B -> list A) 
+  (hash: A -> Z) (eqb: A -> A -> bool) (t: B) (st: hashcons_full) : Prop :=
   all_in_hashtable hash eqb (get t) (hashcons_hash (full_fn st)) /\
   all_idents_smaller hash (get t) (hashcons_ctr (full_fn st)).
 
 (*TODO: ensure these are the right hash functions, but should be*)
 
 (*Types*)
-Definition tys_hash_wf : task_hd -> full_st -> Prop := 
+Definition tys_hash_wf : task_hd -> hashcons_full -> Prop := 
   gen_hash_wf full_ty_hash (fun t =>  concat (map tys_of_ty (tys_of_task t))) ty_hash ty_eqb.
 (*Decls*)
-Definition decls_hash_wf : task_hd -> full_st -> Prop :=
+Definition decls_hash_wf : task_hd -> hashcons_full -> Prop :=
   gen_hash_wf full_decl_hash decls_of_task d_hash decl_eqb.
 (*Tdecls*)
-Definition tdecls_hash_wf : task_hd -> full_st -> Prop :=
+Definition tdecls_hash_wf : task_hd -> hashcons_full -> Prop :=
   gen_hash_wf full_tdecl_hash tdecls_of_task td_hash tdecl_eqb.
 (*Tasks*)
-Definition task_hash_wf : task_hd -> full_st -> Prop :=
+Definition task_hash_wf : task_hd -> hashcons_full -> Prop :=
   gen_hash_wf full_task_hash task_hds_of_task task_hd_hash task_hd_eqb.
 
 (*And the final predicate*)
-Definition hashcons_wf (o: task) (s: full_st) : Prop :=
+Definition hashcons_wf (o: task) (s: hashcons_full) : Prop :=
   match o with
   | Some t => tys_hash_wf t s /\ decls_hash_wf t s /\ tdecls_hash_wf t s /\ task_hash_wf t s
   | None => True
@@ -236,19 +237,19 @@ End HashCons.
 
 (*The combined predicate*)
 Definition st_wf (t: task) (s: full_st) : Prop :=
-  idents_of_task_wf t s /\ hashcons_wf t s.
+  idents_of_task_wf t (fst s) /\ hashcons_wf t (snd s).
 
 (*And for a specific term*)
 Section Term. 
-Definition idents_of_term_wf (t: term_c) (s: full_st) :=
-    forall i, In i (idents_of_term t) -> (id_tag i < fst s)%Z.
+Definition idents_of_term_wf (t: term_c) (s: Z) :=
+    forall i, In i (idents_of_term t) -> (id_tag i < s)%Z.
 
-Definition term_hash_wf (t: term_c) (s: full_st) : Prop :=
+Definition term_hash_wf (t: term_c) (s: hashcons_full) : Prop :=
   gen_hash_wf full_ty_hash (fun t => concat (map tys_of_ty (tys_of_term t))) ty_hash ty_eqb t s.
 
 (*TODO: may want to change def to be holds for all terms in, etc. Then next lemma trivial *)
 Definition term_st_wf (t: term_c) (s: full_st) : Prop :=
-  idents_of_term_wf t s /\ term_hash_wf t s.
+  idents_of_term_wf t (fst s) /\ term_hash_wf t (snd s).
 
 Set Bullet Behavior "Strict Subproofs".
 (*If a state is wf, then these two above hold of the goal (also others, but we only need goal)*)
@@ -288,13 +289,13 @@ End Term.
 Section Ty.
 
 (*No idents*)
-Definition ty_hash_wf (o: option ty_c) (s: full_st) : Prop :=
+Definition ty_hash_wf (o: option ty_c) (s: hashcons_full) : Prop :=
   gen_hash_wf full_ty_hash (fun t => (concat (map tys_of_ty (list_of_option_id t)))) ty_hash ty_eqb o s.
 
-Definition ty_st_wf o s := ty_hash_wf o s.
+Definition ty_st_wf o (s: full_st) := ty_hash_wf o (snd s).
 
 Lemma term_ty_wf_aux t s:
-  term_hash_wf t s ->
+  term_hash_wf t (snd s) ->
   ty_st_wf (t_ty_of t) s.
 Proof.
   unfold term_hash_wf, ty_st_wf, ty_hash_wf, gen_hash_wf.
@@ -317,11 +318,11 @@ End Ty.
 (*And vsymbols*)
 
 (*vsym wf has 2 parts: ident and hash*)
-Definition vsym_ident_wf (v: TermDefs.vsymbol) (s: full_st):=
-  (id_tag (vs_name v) < (fst s))%Z.
+Definition vsym_ident_wf (v: TermDefs.vsymbol) (s: Z):=
+  (id_tag (vs_name v) < s)%Z.
 
-Definition vsym_hash_wf (v: TermDefs.vsymbol) (s: full_st) :=
+Definition vsym_hash_wf (v: TermDefs.vsymbol) (s: hashcons_full) :=
   gen_hash_wf full_ty_hash (fun t => tys_of_ty (vs_ty t)) ty_hash ty_eqb v s.
 
 Definition vsym_st_wf (v: TermDefs.vsymbol) (s: full_st):=
-  vsym_ident_wf v s /\ vsym_hash_wf v s.
+  vsym_ident_wf v (fst s) /\ vsym_hash_wf v (snd s).

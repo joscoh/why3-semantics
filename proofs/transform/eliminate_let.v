@@ -12,12 +12,12 @@ Section ElimLetAlt.
   Nicer for proofs.
   Comments in [ElimLet.v] describe why we need this*)
 Definition safe_sub_t' (t1: term) (x: vsymbol) (t2: term) : term :=
-  if aset_mem_dec x (tm_fv t2)
-  then sub_t t1 x (a_convert_t t2 (aset_union (tm_fv t1) (tm_fv t2))) else t2.
+  (*if aset_mem_dec x (tm_fv t2)*)
+  (*then*) sub_t t1 x (a_convert_t t2 (aset_union (tm_fv t1) (tm_fv t2))) (*else t2*).
 
 Definition safe_sub_f' (t1: term) (x: vsymbol) (f2: formula) : formula :=
-  if aset_mem_dec x (fmla_fv f2)
-  then sub_f t1 x (a_convert_f f2 (aset_union (tm_fv t1) (fmla_fv f2))) else f2.
+  (* if aset_mem_dec x (fmla_fv f2) *)
+  (* then *) sub_f t1 x (a_convert_f f2 (aset_union (tm_fv t1) (fmla_fv f2))) (* else f2 *).
 
 (*TODO: move all this to Alpha.v*)
 Lemma safe_sub_t_typed' {gamma} (t1 : term) (x : string) (t2 : term) (ty1 ty2 : vty):
@@ -27,8 +27,8 @@ Lemma safe_sub_t_typed' {gamma} (t1 : term) (x : string) (t2 : term) (ty1 ty2 : 
 Proof.
   intros Hty1 Hty2.
   unfold safe_sub_t'.
-  unfold vsymbol in *.
-  destruct (aset_mem_dec (x, ty1) (tm_fv t2)); auto.
+  (* unfold vsymbol in *.
+  destruct (aset_mem_dec (x, ty1) (tm_fv t2)); auto. *)
   apply sub_t_typed; auto.
   apply a_convert_t_ty; auto.
 Qed.
@@ -40,10 +40,28 @@ Lemma safe_sub_f_typed' {gamma} (t1: term) (x: string) (f: formula) (ty1: vty):
 Proof.
   intros Hty1 Hty2.
   unfold safe_sub_f'.
-  unfold vsymbol in *.
-  destruct (aset_mem_dec (x, ty1) (fmla_fv f)); auto.
+  (* unfold vsymbol in *.
+  destruct (aset_mem_dec (x, ty1) (fmla_fv f)); auto. *)
   apply sub_f_typed; auto.
   apply a_convert_f_typed; auto.
+Qed.
+
+Lemma safe_sub_t_fv1 (tm: term) (x: vsymbol) (t: term):
+  ~ aset_mem x (tm_fv t) ->
+  tm_fv (safe_sub_t' tm x t) = tm_fv t.
+Proof.
+  intros Hmem. unfold safe_sub_t'. rewrite sub_t_notin.
+  - apply a_equiv_t_fv. rewrite a_equiv_t_sym. apply a_convert_t_equiv.
+  - erewrite <- a_equiv_t_fv; eauto. apply a_convert_t_equiv.
+Qed.
+
+Lemma safe_sub_f_fv1 (tm: term) (x: vsymbol) (f: formula):
+  ~ aset_mem x (fmla_fv f) ->
+  fmla_fv (safe_sub_f' tm x f) = fmla_fv f.
+Proof.
+  intros Hmem. unfold safe_sub_f'. rewrite sub_f_notin.
+  - erewrite <- a_equiv_f_fv; [reflexivity | apply a_convert_f_equiv].
+  - erewrite <- a_equiv_f_fv; eauto. apply a_convert_f_equiv.
 Qed.
 
 Lemma safe_sub_t_fv' (tm: term) (x: vsymbol) (t: term):
@@ -53,8 +71,8 @@ Lemma safe_sub_t_fv' (tm: term) (x: vsymbol) (t: term):
     (aset_mem y (tm_fv tm)) \/ ((aset_mem y (tm_fv t)) /\ y <> x).
 Proof.
   intros.
-  unfold safe_sub_t'. unfold vsymbol in *.
-  destruct (aset_mem_dec x (tm_fv t)); try contradiction.
+  unfold safe_sub_t'. (* unfold vsymbol in *.
+  destruct (aset_mem_dec x (tm_fv t)); try contradiction. *)
   rewrite sub_t_fv.
   + rewrite (alpha_equiv_t_fv t). reflexivity.
     apply a_convert_t_equiv.
@@ -73,8 +91,8 @@ Lemma safe_sub_f_fv' (tm: term) (x: vsymbol) (f: formula):
     (aset_mem y (tm_fv tm)) \/ ((aset_mem y (fmla_fv f)) /\ y <> x).
 Proof.
   intros.
-  unfold safe_sub_f'. unfold vsymbol in *.
-  destruct (aset_mem_dec x (fmla_fv f)); try contradiction.
+  unfold safe_sub_f'. (* unfold vsymbol in *.
+  destruct (aset_mem_dec x (fmla_fv f)); try contradiction. *)
   rewrite sub_f_fv.
   + rewrite (alpha_equiv_f_fv f). reflexivity.
     apply a_convert_f_equiv.
@@ -85,12 +103,15 @@ Proof.
     intro C.
     eapply (a_convert_f_bnd). 2: eauto. simpl_set; auto.
 Qed.
-
+(* 
 Lemma safe_sub_t_notin' (tm: term) (x: vsymbol) (t: term):
   ~ aset_mem x (tm_fv t) ->
   safe_sub_t' tm x t = t.
 Proof.
-  intros. unfold safe_sub_t'. unfold vsymbol in *.
+  intros. unfold safe_sub_t'. rewrite sub_t_notin. Search sub_t tm_fv.
+
+
+ unfold safe_sub_t'. unfold vsymbol in *.
   destruct (aset_mem_dec x (tm_fv t)); auto; contradiction.
 Qed.
 
@@ -100,7 +121,7 @@ Lemma safe_sub_f_notin' (tm: term) (x: vsymbol) (f: formula):
 Proof.
   intros. unfold safe_sub_f'. unfold vsymbol in *;
   destruct (aset_mem_dec x (fmla_fv f)); auto; contradiction.
-Qed.
+Qed. *)
 
 Section Rep.
 
@@ -122,18 +143,19 @@ Lemma safe_sub_t_rep' (t1 t2: term) (x: string)
 Proof.
   revert Hty3.
   unfold safe_sub_t'.
-  unfold vsymbol in *.
-  destruct (aset_mem_dec (x, ty1) (tm_fv t2)).
-  - intros. erewrite sub_t_rep with(Hty1:=Hty1).
-    + rewrite <- a_convert_t_rep; reflexivity.
-    + intros y Hiny1 Hiny2.
-      eapply a_convert_t_bnd. 2: eauto. simpl_set; auto.
-  - intros.
+  (* unfold vsymbol in *.
+  destruct (aset_mem_dec (x, ty1) (tm_fv t2)). *)
+  intros. erewrite sub_t_rep with(Hty1:=Hty1).
+  + rewrite <- a_convert_t_rep; reflexivity.
+  + intros y Hiny1 Hiny2.
+    eapply a_convert_t_bnd. 2: eauto. simpl_set; auto.
+Qed.
+(*   - intros.
     erewrite term_rep_irrel.
     apply tm_change_vv.
     intros.
     unfold substi. vsym_eq x0 (x, ty1).
-Qed.
+Qed. *)
 
 Lemma safe_sub_f_rep' (t1: term) (x: string) (f: formula)
   (ty1: vty) (v: val_vars pd vt)
@@ -146,17 +168,18 @@ Lemma safe_sub_f_rep' (t1: term) (x: string) (f: formula)
 Proof.
   revert Hty3.
   unfold safe_sub_f'.
-   unfold vsymbol in *.
-  destruct (aset_mem_dec (x, ty1) (fmla_fv f)).
-  - intros. erewrite sub_f_rep with(Hty1:=Hty1).
-    + rewrite <- a_convert_f_rep; reflexivity.
-    + intros y Hiny1 Hiny2. eapply a_convert_f_bnd; [| eauto]. simpl_set; auto.
-  - intros.
+ (*   unfold vsymbol in *.
+  destruct (aset_mem_dec (x, ty1) (fmla_fv f)). *)
+  intros. erewrite sub_f_rep with(Hty1:=Hty1).
+  + rewrite <- a_convert_f_rep; reflexivity.
+  + intros y Hiny1 Hiny2. eapply a_convert_f_bnd; [| eauto]. simpl_set; auto.
+Qed.
+(*   - intros.
     erewrite fmla_rep_irrel.
     apply fmla_change_vv.
     intros.
     unfold substi. vsym_eq x0 (x, ty1).
-Qed.
+Qed. *)
 
 End Rep.
 
@@ -270,26 +293,18 @@ Proof.
   solve_asubset. (*Only 2 nontrivial - let *)
   - destruct bt; simpl.
     + (*Need to know if var to sub appears freely in term or not*) 
-      destruct (aset_mem_dec v  (tm_fv (elim_let_t true bf tm2))).
-      * rewrite asubset_def in *. intros x.
-        rewrite safe_sub_t_fv'; auto; simpl_set. intros;
-        destruct_all; auto.
-      * rewrite safe_sub_t_notin'; auto.
-        rewrite asubset_def in *. intros.
-        simpl_set.
-        right. split; auto.
-        intro C; subst; contradiction. 
+      rewrite asubset_def in *. intros x Hmemx.
+      destruct (aset_mem_dec v (tm_fv (elim_let_t true bf tm2))) as [Hmemv | Hmemv].
+      * rewrite safe_sub_t_fv' in Hmemx; auto. destruct_all; simpl_set; auto.
+      * rewrite safe_sub_t_fv1 in Hmemx; auto. simpl_set; auto.
+        right. split; auto. intro C; subst; contradiction.
     + solve_asubset.
   - destruct bf; simpl.
-    + destruct (aset_mem_dec v  (fmla_fv (elim_let_f bt true f))).
-      * rewrite asubset_def in *. intros x.
-        rewrite safe_sub_f_fv'; auto; simpl_set. intros;
-        destruct_all; auto.
-      * rewrite safe_sub_f_notin'; auto.
-        rewrite asubset_def in *. intros.
-        simpl_set.
-        right. split; auto.
-        intro C; subst; contradiction.
+    + rewrite asubset_def in *. intros x Hmemx.
+      destruct (aset_mem_dec v (fmla_fv (elim_let_f bt true f))) as [Hmemv | Hmemv].
+      * rewrite safe_sub_f_fv' in Hmemx; auto. destruct_all; simpl_set; auto.
+      * rewrite safe_sub_f_fv1 in Hmemx; auto. simpl_set; auto.
+        right. split; auto. intro C; subst; contradiction.
     + solve_asubset.
 Qed.
 
@@ -397,7 +412,7 @@ Definition single_goal (f: formula -> formula) : task -> task :=
   fun t => (task_gamma t, task_delta t, f(task_goal t)).
 Definition single_trans_goal (f: formula -> formula) : trans :=
   single_trans (single_goal f).
-Check trans_goal_sound.
+
 Lemma single_trans_goal_sound f:
   (forall gamma (gamma_valid: valid_context gamma) 
   fmla (Hfmla: formula_typed gamma fmla),
