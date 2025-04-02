@@ -196,6 +196,8 @@ Parameter union_spec: forall (f: key -> a -> a -> option a)
     | None, None => None
     end.
 
+Parameter bindings_nodup: forall (m: t a), List.NoDup (List.map fst (bindings m)).
+
 Parameter bindings_spec: forall (m: t a) k v,
   find_opt k m = Some v <-> exists k1, key_eq k k1 /\ In (k1, v) (bindings m).
 
@@ -1188,6 +1190,57 @@ Proof.
     assert (Htag: tag k = tag k1) by (unfold tag; rewrite (T.eq_compat k k1); auto). 
     rewrite Htag, Hinkv2.
     apply get_list_in_iff; auto. exists k1. auto.
+Qed.
+
+(*Idea: eq must be weaker than Leibnitz equality*)
+Lemma uniq_NoDup {A: Type} (eq: A -> A -> bool) (Heq: forall x, eq x x) (l: list A):
+  uniq eq l ->
+  NoDup l.
+Proof.
+  induction l as [| h t IH]; simpl; auto; [constructor|].
+  rewrite andb_true. intros [Hnotin Huniq]. constructor; auto.
+  intros Hin. apply elem_of_list_In, (In_inb eq) in Hin; auto.
+  rewrite Hin in Hnotin. discriminate.
+Qed.
+
+Lemma bindings_nodup: forall (m: t a), List.NoDup (List.map fst (bindings m)).
+Proof.
+  intros m. unfold bindings. rewrite concat_map, map_map.
+  apply NoDup_concat_iff.
+  split.
+  - intros l. rewrite in_map_iff. intros [[k vals] [Hl Hinx]]. subst. simpl in *.
+    (* pose proof (NoDup_fst_map_to_list (mp m)) as Hn. *)
+    apply NoDup_ListNoDup. destruct m as [m m_wf]. simpl in *.
+    apply gmap_wf_iff in m_wf. rewrite map_Forall_to_list in m_wf.
+    rewrite Forall_forall in m_wf. apply elem_of_list_In in Hinx.
+    specialize (m_wf _ Hinx). simpl in m_wf. destruct m_wf as [_ [Huniq _]].
+    apply uniq_NoDup in Huniq; auto. apply T.eq_refl.
+  - rewrite !length_map. (*show unique across list - keys are different by wf*)
+    intros i1 i2 d x Hi1 Hi2 Hi12. rewrite !map_nth_inbound with (d2:=(0%Z, nil)); auto.
+    intros [Hin1 Hin2].
+    destruct m as [m m_wf]; simpl in *. apply gmap_wf_iff in m_wf.
+    rewrite map_Forall_to_list in m_wf.
+    rewrite Forall_forall in m_wf.
+    assert (Hl2:=m_wf).
+    specialize (m_wf (nth i1 (map_to_list m) (0%Z, nil))).
+    specialize (Hl2 (nth i2 (map_to_list m) (0%Z, nil))).
+    forward m_wf. { apply elem_of_list_In, nth_In; auto. }
+    forward Hl2. { apply elem_of_list_In, nth_In; auto. }
+    rewrite in_map_iff in Hin1, Hin2. destruct Hin1 as [x1 [Hx Hinx1]]. destruct Hin2 as [x2 [Hx2 Hinx2]]. subst.
+    (*Need to know that these elements are different*)
+    destruct (nth i1 (map_to_list m) (0%Z, [])) as [k1 vals1] eqn : Heq1.
+    destruct (nth i2 (map_to_list m) (0%Z, [])) as [k2 vals2] eqn : Heq2.
+    simpl in *.
+    (*Idea: prove that tag x1.1 = k1 and tag x2.1 = k2 so k1 = k2, contradicts NoDup (map fst (map_to_list m))*)
+    destruct m_wf as [_ [_ Hall1]]. destruct Hl2 as [_ [_ Hall2]].
+    rewrite Forall_forall in Hall1, Hall2. apply elem_of_list_In in Hinx1, Hinx2.
+    specialize (Hall1 _ Hinx1). specialize (Hall2 _ Hinx2).
+    assert (Hkeq: k1 = k2). { subst. f_equal; auto. } 
+    pose proof (NoDup_fst_map_to_list m) as Hn.
+    apply NoDup_ListNoDup in Hn. rewrite NoDup_nth  with (d:=0%Z) in Hn. 
+    rewrite !length_map in Hn. specialize (Hn _ _ Hi1 Hi2).
+    rewrite !map_nth_inbound with (d2:=(0%Z, [])) in Hn; auto. unfold key in *.
+    rewrite Heq1, Heq2 in Hn. simpl in Hn. specialize (Hn Hkeq). subst; contradiction.
 Qed.
 
 (*Comparison*)

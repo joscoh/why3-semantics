@@ -819,4 +819,480 @@ Proof.
       unfold ident_in_map in Hin. unfold map_idents_wf in Hmwf.
       destruct Hin as [x [y [Hxy Hin]]]. apply Hmwf in Hxy. auto.
 Qed.
+
+(*Now prove actual result (equivalent to substitution)*)
+Require Import Relations.
+From Proofs Require Import Substitution.
+
+
+
+(*TODO: move (not sure where, Relations is not best place)*)
+(*TODO: bad*)
+From Proofs Require Import eliminate_algebraic eliminate_algebraic_interp.
+(*Injectivity of [eval_ident]*)
+Section EvalInj.
+
+Lemma z_to_string_inj z1 z2:
+  z_to_string z1 = z_to_string z2 ->
+  z1 = z2.
+Proof.
+  unfold z_to_string.
+  assert (Hnotn: forall x s, ("n" ++ s)%string <> GenElts.nat_to_string x).
+  {
+    intros x s Heq. pose proof (nat_to_string_num x) as Hnum. rewrite <- Heq in Hnum.
+    unfold is_string_num in Hnum. discriminate.
+  }
+  destruct (Z.ltb_spec0 z1 0); destruct (Z.ltb_spec0 z2 0); auto; intros Heq.
+  - (*both neg*) apply str_app_inj_l, GenElts.nat_to_string_inj, Z2Nat.inj_iff in Heq; lia.
+  - (*pos+neg*) apply Hnotn in Heq. contradiction.
+  - (*same*) symmetry in Heq. apply Hnotn in Heq. contradiction.
+  - (*both pos*) apply GenElts.nat_to_string_inj, Z2Nat.inj_iff in Heq; lia.
+Qed.
+
+
+
+(*Then prove z_to_string inj and prove doesnt contain under*)
+
+Definition str_contains (s: string) (a: Ascii.ascii) : Prop :=
+  In a (list_ascii_of_string s).
+
+Lemma str_contains_app s1 s2 a:
+  str_contains (s1 ++ s2) a <-> str_contains s1 a \/ str_contains s2 a.
+Proof.
+  unfold str_contains. rewrite list_ascii_app, in_app_iff. reflexivity.
+Qed.
+
+
+
+(*Very annoying because append not unfolded (prob from stdpp)*)
+Lemma append_emp s: ("" ++ s)%string = s. Proof. reflexivity. Qed.
+
+Lemma append_char c s s1: ((String c s1) ++ s)%string = String c (s1 ++ s)%string. 
+Proof. reflexivity. Qed.
+
+(*Generalization of [str_num_inj] - TODO can get other side*)
+Lemma str_under_inj s1 s2 s3 s4:
+  (s1 ++ under_str ++ s3 = s2 ++ under_str ++ s4)%string ->
+  ~ str_contains s3 under_ascii ->
+  ~ str_contains s4 under_ascii ->
+  s1 = s2.
+Proof.
+  intros Heq Hnum1 Hnum2. generalize dependent s2.
+  induction s1 as [| a1 s1 IH]; intros s2 Heq.
+  - rewrite append_emp in Heq.
+    destruct s2 as [| a2 s2]; auto.
+    rewrite under_str_rewrite, !append_char in Heq.
+    inversion Heq as [[Heq1 Heq2]]; subst.
+    (*contradicts fact that under not in s3*)
+    rewrite !append_emp in Heq2. subst.
+    exfalso. apply Hnum1.
+    rewrite str_contains_app. right.
+    unfold str_contains. simpl. auto.
+  - destruct s2 as [| a2 s2].
+    + (*Same contradiction*)
+      rewrite append_emp, under_str_rewrite, !append_char in Heq.
+      inversion Heq as [[Heq1 Heq2]]; subst.
+      rewrite !append_emp in Heq2. subst. exfalso. apply Hnum2.
+      rewrite str_contains_app. right.
+      unfold str_contains. simpl. auto.
+    + rewrite !append_char in Heq. inversion Heq; subst; f_equal; auto.
+Qed.
+
+Lemma str_under_inj_strong s1 s2 s3 s4:
+  (s1 ++ under_str ++ s3 = s2 ++ under_str ++ s4)%string ->
+  ~ str_contains s3 under_ascii ->
+  ~ str_contains s4 under_ascii ->
+  s1 = s2 /\ s3 = s4.
+Proof.
+  intros Heq Hn1 Hn2.
+  assert (Heq2:=Heq).
+  apply str_under_inj in Heq; auto. subst. 
+  rewrite !str_app_assoc in Heq2.
+  apply str_app_inj_l in Heq2; auto.
+Qed.
+
+Lemma under_notin_num s:
+  is_string_num s ->
+  ~ str_contains s under_ascii.
+Proof.
+  unfold is_string_num, str_contains. intros Hall. unfold is_true in Hall. rewrite forallb_forall in Hall.
+  intros Hin. apply Hall in Hin. discriminate.
+Qed.
+
+Lemma under_notin_z z:
+  ~ str_contains (z_to_string z) under_ascii.
+Proof.
+  unfold z_to_string. destruct (z <?0)%Z.
+  - rewrite str_contains_app. unfold str_contains. simpl.
+    intros [[C1|[]] | c1]; try discriminate.
+    apply under_notin_num in c1; auto. apply nat_to_string_num.
+  - apply under_notin_num; auto. apply nat_to_string_num.
+Qed.
+
+(*Prove injectivity*)
+Lemma eval_ident_inj i1 i2:
+  eval_ident i1 = eval_ident i2 ->
+  id_string i1 = id_string i2 /\ id_tag i1 = id_tag i2.
+Proof.
+  unfold eval_ident. intros Heq.
+  apply str_under_inj_strong in Heq; [| apply under_notin_z | apply under_notin_z].
+  destruct Heq as [Hid Htag]. split; auto. apply z_to_string_inj in Htag. auto.
+Qed.
+
+Lemma eval_vsymbol_tag_inj x y:
+  eval_vsymbol x = eval_vsymbol y ->
+  id_tag (vs_name x) = id_tag (vs_name y).
+Proof.
+  unfold eval_vsymbol. intros Heq. inversion Heq as [[Heq1 Heq2]].
+  apply eval_ident_inj in Heq1. destruct_all; auto.
+Qed.
+
+End EvalInj.
+
+
+(*Main proof for sub*)
+
+(*Convert Mvs.t term_c to amap vsymbol term*)
+
+(*TODO: need assumption all eval to Some*)
+
+Definition eval_subs_map (m: Mvs.t term_c) : amap vsymbol term :=
+  list_to_amap (omap (fun x => option_map (fun y => (eval_vsymbol (fst x), y)) (eval_term (snd x))) (Mvs.bindings m)).
+
+(*plan: formulate all eval to Some
+  should prove in iff lemma (need inj for vsymbol probably)
+  then prove that under this assumption, eval of sub is sub of eval
+  for full sub lemma , also use assumption but can prove satisfied in this particular case with single
+*)
+
+Definition subs_map_valid (m: Mvs.t term_c) : Prop :=
+  Forall (fun x => isSome (eval_term (snd x))) (Mvs.bindings m).
+
+(**)
+
+Lemma in_omap_lemma (h: TermDefs.vsymbol * term_c) tl:
+  In (eval_vsymbol (fst h))
+  (map fst
+     (omap
+        (fun x : TermDefs.vsymbol * term_c =>
+         option_map (fun y : term => (eval_vsymbol (fst x), y)) (eval_term (snd x))) tl)) ->
+In (Mvs.tag (fst h)) (map (fun x : Mvs.key * term_c => Mvs.tag (fst x)) tl).
+Proof.
+  induction tl as [| x1 xs IH]; simpl; auto.
+  destruct (eval_term (snd x1)) eqn : Heval; simpl; auto.
+  intros [Heq | Hin]; auto.
+  left. unfold Mvs.tag, Vsym.Tg.tag, Vsym.Tg.MakeDec.tag, VsymTag.tag .
+  apply eval_vsymbol_tag_inj in Heq. rewrite <- Heq. reflexivity.
+Qed.
+
+(*TODO: see what I need - this does not hold unconditionally because it could be that the variables
+  are distinct (e.g. from loc) and their eval is the same
+  probably just assume nodups - we will only need this for single-valued things anyway
+  (NOTE: should I just prove for single-valued?)*)
+(*Need NoDup condition to avoid case where 2 vars map to same thing. Of course this is true by
+  hash consing, but we do not prove this (for our purposes, we only care about single-element maps anyway)*)
+Lemma eval_subs_map_iff m (Hn: NoDup (map Mvs.tag (map fst (Mvs.bindings m)))) (Hm: subs_map_valid m):
+  forall v t, amap_lookup (eval_subs_map m) v = Some t <-> exists v1 t1, Mvs.find_opt v1 m = Some t1 /\
+    eval_term t1 = Some t /\ eval_vsymbol v1 = v.
+Proof.
+  intros v t. unfold eval_subs_map. unfold subs_map_valid in Hm.
+  rewrite list_to_amap_lookup.
+  - (*Prove in*)
+    rewrite in_omap_iff. setoid_rewrite Mvs.bindings_spec.
+    split.
+    + intros [[v1 t1] [Hinx Hopt]]. apply option_map_some in Hopt.
+      destruct Hopt as [e1 [Heval Hvs]]. inversion Hvs; subst; simpl in *; clear Hvs. exists v1.
+      exists t1. split_all; auto. exists v1. split; auto. apply vsymbol_eqb_eq. reflexivity.
+    + intros [v1 [t1 [[k1 [Heqk Hink]] [Heval Hvs]]]].
+      apply vsymbol_eqb_eq in Heqk. subst. exists (k1, t1). split_all; auto. simpl.
+      rewrite Heval. simpl. reflexivity.
+  - (*Prove NoDup*)
+    clear Hm. rewrite map_map in Hn. induction (Mvs.bindings m) as [| h tl IH]; simpl; [constructor|].
+    set (h':= h : TermDefs.vsymbol * term_c) in *.
+    inversion Hn as [| ? ? Hnotin Hnodup]; subst; clear Hn.
+    destruct (eval_term (snd h')) eqn : heval; simpl; auto.
+    constructor; auto.
+    (*use in lemma*) intros Hin. apply in_omap_lemma in Hin. contradiction.
+Qed.
+
+(*Corollaries*)
+Lemma eval_subs_map_in m (Hn: NoDup (map Mvs.tag (map fst (Mvs.bindings m)))) (Hm: subs_map_valid m) v1 t1:
+  Mvs.find_opt v1 m = Some t1 ->
+  exists t, amap_lookup (eval_subs_map m) (eval_vsymbol v1) = Some t /\ eval_term t1 = Some t.
+Proof.
+  intros Hopt.
+  (*Know evalutes to t by subs_map_valid*)
+  assert (Hval:=Hm). unfold subs_map_valid in Hval. rewrite Forall_forall in Hval.
+  assert (Hfind:=Hopt).
+  apply Mvs.bindings_spec in Hopt. destruct Hopt as [v2 [Heq Hin]].
+  apply vsymbol_eqb_eq in Heq. subst. specialize (Hval _ Hin).
+  simpl in Hval. destruct (eval_term t1) as [t|] eqn : Heval; [|discriminate].
+  exists t. split; auto. apply eval_subs_map_iff; auto. exists v2. exists t1. auto.
+Qed.
+
+
+(*actually may not need valid here, but do need to prove In for this*) 
+    
+From Proofs Require Import SubMulti.
+Require Import InversionLemmas.
+Require Import TermTraverseAux.
+
+Lemma eval_term_rewrite t:
+  eval_term t = match t_node_of t with
+  | TermDefs.Tvar v => Some (Tvar (eval_vsymbol v))
+  | TermDefs.Tconst c => option_map Tconst (eval_const c)
+  | Tapp l ts =>
+      option_bind (eval_funsym l)
+        (fun fs : funsym =>
+         option_bind (fold_list_option (map eval_term ts))
+           (fun tms : list term =>
+            option_bind (fold_list_option (map term_type ts))
+              (fun tys : list vty =>
+               option_map (fun tys1 : list vty => Tfun fs tys1 tms) (funpred_ty_list fs tys))))
+  | TermDefs.Tif t1 t2 t3 =>
+      option_bind (eval_fmla t1)
+        (fun t1' : formula =>
+         option_bind (eval_term t2)
+           (fun t2' : term => option_bind (eval_term t3) (fun t3' : term => Some (Tif t1' t2' t3'))))
+  | TermDefs.Tlet t1 (v, _, t2) =>
+      option_bind (eval_term t1)
+        (fun t1' : term =>
+         option_bind (eval_term t2) (fun t2' : term => Some (Tlet t1' (eval_vsymbol v) t2')))
+  | Tcase tm1 pats =>
+      option_bind (eval_term tm1)
+        (fun tm1' : term =>
+         option_bind (term_type tm1)
+           (fun ty1 : vty =>
+            option_bind
+              (fold_list_option
+                 (map
+                    (fun x : pattern_c * bind_info * term_c =>
+                     option_bind (eval_pat (fst (fst x)))
+                       (fun p : pattern =>
+                        option_bind (eval_term (snd x)) (fun t0 : term => Some (p, t0)))) pats))
+              (fun ps1 : list (pattern * term) => Some (Tmatch tm1' ty1 ps1))))
+  | TermDefs.Teps (v, _, t0) =>
+      option_bind (eval_fmla t0) (fun f : formula => Some (Teps f (eval_vsymbol v)))
+  | _ => None
+  end.
+Proof. destruct t;
+reflexivity.
+Qed.
+
+(*TODO: should be true, but dont want to prove (yet)*)
+
+Lemma lex_comp_zero i1 i2:
+  IntFuncs.lex_comp i1 i2 = CoqInt.zero ->
+  i1 = CoqInt.zero /\ i2 = CoqInt.zero.
+Proof.
+  unfold IntFuncs.lex_comp.
+  unfold CoqInt.is_zero. destruct (CoqInt.int_eqb i1 CoqInt.zero) eqn : Heq.
+  - intros Hi2. apply CoqInt.int_eqb_eq in Heq. auto.
+  - intros Hi1. subst. discriminate.
+Qed.
+
+(*TODO: move*)
+Lemma coqint_compare_zero z1 z2:
+  CoqBigInt.compare z1 z2 = CoqInt.zero ->
+  z1 = z2.
+Proof.
+  (*TODO: bad*) Transparent CoqBigInt.compare. unfold CoqBigInt.compare, CoqInt.compare_to_int.
+  destruct (Z.compare z1 z2) eqn : Hcomp; try discriminate.
+  apply Z.compare_eq_iff in Hcomp. subst; auto.
+  Opaque CoqBigInt.compare.
+Qed.
+
+Lemma const_compare_eval c1 c2:
+  compare_const_aux true c1 c2 = CoqInt.zero ->
+  eval_const c1 = eval_const c2.
+Proof.
+  unfold compare_const_aux, eval_const.
+  destruct c1 as [i1 | r1 | s1]; destruct c2 as [i2 | r2 | s2]; simpl; try discriminate.
+  - destruct i1 as [k1 i1]; destruct i2 as [k2 i2]; simpl in *.
+    intros Hz. apply lex_comp_zero in Hz. destruct Hz as [Hc1 Hc2].
+    apply coqint_compare_zero in Hc2. subst; auto.
+  - (*reals*) intros Hz. destruct r1 as [k1 r1]; destruct r2 as [k2 r2]; simpl in *. unfold eval_real_value.
+    destruct r1 as [s1 t1 f1]; destruct r2 as [s2 t2 f2]; simpl in *.
+    apply lex_comp_zero in Hz. destruct Hz as [Hz1 Hz].
+    apply lex_comp_zero in Hz. destruct Hz as [Hz2 Hz].
+    apply lex_comp_zero in Hz. destruct Hz as [Hz3 Hz].
+    apply coqint_compare_zero in Hz2, Hz3, Hz. subst; auto.
+  - (*string*)  unfold IntFuncs.string_compare, CoqInt.compare_to_int.
+    destruct (compare s1 s2) eqn : Hcomp; try discriminate. auto.
+Qed.
+   
+Lemma t_similar_eval t s:
+  t_similar t s ->
+  eval_term t = eval_term s.
+Proof.
+  unfold t_similar. rewrite andb_true.
+  intros [Hoeq Hsim].
+  rewrite !eval_term_rewrite.
+  get_fast_eq.
+  destruct_term_node t; destruct_term_node s; try discriminate; auto; solve_similar.
+  apply CoqInt.int_eqb_eq, const_compare_eval in Hsim. f_equal. auto.
+Qed.
+  
+Lemma t_attr_copy_eval t s:
+  eval_term (t_attr_copy t s) = eval_term s.
+Proof.
+  unfold t_attr_copy. destruct (_ && _) eqn : Hsim.
+  - apply t_similar_eval. bool_hyps; auto.
+  - rewrite !eval_term_rewrite; simpl; auto.
+Qed. 
+
+Lemma mvs_keys_unique {A} {m: Mvs.t A} (Hn: NoDup (map Mvs.tag (map fst (Mvs.bindings m)))) {v1 v2 y1 y2}
+  (Hget1: Mvs.find_opt v1 m = Some y1) (Hget2: Mvs.find_opt v2 m = Some y2) (Heval: eval_vsymbol v1 = eval_vsymbol v2):
+  v1 = v2.
+Proof.
+  apply Mvs.bindings_spec in Hget1, Hget2. destruct Hget1 as [k1 [Heq1 Hin1]]. destruct Hget2 as [k2 [Heq2 Hin2]].
+  apply vsymbol_eqb_eq in Heq1, Heq2. subst. 
+  rewrite map_map in Hn. apply @NoDup_map_in with (x1:=(k1, y1)) (x2:=(k2, y2)) in Hn; simpl; auto.
+  - inversion Hn; auto.
+  - apply eval_vsymbol_tag_inj in Heval. auto.
+Qed.
+
+Lemma t_subst_unsafe_eval m (Hm: subs_map_valid m) (Hn: NoDup (map Mvs.tag (map fst (Mvs.bindings m)))) t1:
+  (forall e1 (Heval: eval_term t1 = Some e1), eval_term (t_subst_unsafe_aux m t1) = Some (sub_ts (eval_subs_map m) e1)) /\
+  (forall e1 (Heval: eval_fmla t1 = Some e1), eval_fmla (t_subst_unsafe_aux m t1) = Some (sub_fs (eval_subs_map m) e1)).
+Proof.
+  induction t1 using term_ind_alt.
+  - (*var*) split; intros e1 Heval.
+    + rewrite t_subst_unsafe_aux_rewrite, Heq, t_attr_copy_eval.
+      rewrite (eval_var_tm Heq Heval). simpl.
+      unfold Mvs.find_def.
+      destruct (Mvs.find_opt v m) as [t2|] eqn : Hfind.
+      * apply eval_subs_map_in in Hfind; auto.
+        destruct Hfind as [t [Hlook Hevalt2]]. rewrite Hlook. auto.
+      * destruct (amap_lookup (eval_subs_map m) (eval_vsymbol v)) eqn : Hfind2.
+        -- apply eval_subs_map_iff in Hfind2; auto. destruct Hfind2 as [v1 [t2 [Hfind2 [Hevalt Hevalv]]]].
+          (*Use fact that tags are unique*)
+
+          (* *)
+
+          Print TermDefs.vsymbol.
+          Print ident. Print Sattr.t. Print Sattr.M.t. Print attribute. Eval cbv in Attr.M.key. Print LocTy.position.
+          Print ty_c.
+          Print 
+          (*ugh this is not true - really it is because *)
+          (*Maybe condition should be: if var is in term t1 OR in map bindings, then tag injective
+            is this provable? we need more for hash - need to add to state invar in this case
+            other alternative is to encode everything in string though this is annoying
+            probably need this wf result - for hash tables should be
+
+            no this is actually a problem - DONT store idents/vsymbols in hash table
+            we could say: for all vsymbols in term, if tags equal, they are equal but need for
+            many terms - have to say this for all inputs to function and it is NOT compositional
+
+            other possible way: say that there exists map of ints -> idents 
+
+            Nicer to say that we have eval_vsymbol function that is injective but bad - extra type info
+            (could encode everything in string but super ugly)
+            really this is only because of our eval_vsymbol function, nothing unique to implementation
+            so i guess we should just make an injective eval_vsymbol function. Let's see what happens if
+            we assume this
+
+            dumb way: use countable instance for each thing, prove countable and use
+            very annoying but should be possible - think should just assume as axiom for now (countable)
+            then redefine eval_vsymbol as this - see if it works OK
+
+            *)
+            
+
+
+
+          Print TermDefs.vsymbol.
+          Print ident.
+          Print ty_c.
+          (*Ugh not true*)
+          apply (mvs_keys_unique Hn H in Hevalv.
+
+
+
+
+eval_vsymbol_tag_inj
+
+
+
+ apply eval_subs_map_iff in Hfind. 
+      (*So I believe we do need equality TODO*)
+
+
+
+ Search eval_term t_attr_copy.
+
+
+
+
+ Search t_subst_unsafe_aux. Search eval_term TermDefs.Tvar. rewrite (eval_var_tm Heq Heval). simpl.
+      
+
+
+
+  eval_term t1 = Some e1 ->
+  eval_term (t_subst_unsafe 
+
+Heval : eval_term t1 = Some e1
+v2 : TermDefs.vsymbol
+______________________________________(1/1)
+eval_term (t_subst_unsafe (Mvs.add v1 (t_var v2) Mvs.empty) t1) =
+Some (sub_var_t (eval_vsymbol v1) (eval_vsymbol v2) e1)
+
+
+
+
+Lemma t_open_bound_res_tm tb1 e1:
+  eval_term (snd tb1) = Some e1 ->
+  (*TODO: do we need wf?*)
+   errst_spec (fun (_: full_st) => True (*term_st_wf (snd tb1) s1*))
+    (errst_tup1 (errst_lift1 (t_open_bound tb1)))
+  (fun _ (tb2: TermDefs.vsymbol * term_c) _ => 
+    eval_term (snd tb2) = Some (sub_var_t (eval_vsymbol (fst (fst tb1))) (eval_vsymbol (fst tb2)) e1)).
+Proof.
+  intros Heval.
+  apply errst_spec_weaken with (P1:=fun _ => True /\ True) (Q1:=fun _ tb2 _ =>
+    eval_term (snd tb2) = Some (sub_var_t (eval_vsymbol (fst (fst tb1))) (eval_vsymbol (fst tb2)) e1) /\ True); auto;
+  [intros; tauto|].
+  apply errst_spec_tup1 with (P1:=fun _ => True) (Q1:=fun _ => True) (P2:=fun _ tb2 _ =>
+    eval_term (snd tb2) = Some (sub_var_t (eval_vsymbol (fst (fst tb1))) (eval_vsymbol (fst tb2)) e1))
+    (Q:=fun _ _ _ => True); auto.
+  apply errst_spec_st.
+  (*now state proof*)
+  unfold t_open_bound.
+  destruct tb1 as [[v1 b1] t1]; simpl in *.
+  (*we don't actually care about the output of vs_rename - we prove separately later that it is distinct*)
+  (*We do need info from map*)
+  eapply prove_st_spec_bnd_nondep with (Q1:=fun r _ => fst r = Mvs.add v1 (t_var (snd r)) Mvs.empty) 
+    (Q2:=fun x y s3 => eval_term (snd y) = Some (sub_var_t (eval_vsymbol v1) (eval_vsymbol (fst y)) e1)); auto;
+  [apply vs_rename_map|].
+  intros [t2 v2]. simpl.
+  apply prove_st_spec_ret. intros _ Ht2. simpl. subst.
+  Print sub_var_t.
+
+
+
+
+vs_rename_map:
+  forall (m : Mvs.t term_c) (v1 : TermDefs.vsymbol),
+  st_spec (fun _ : CoqBigInt.t => True) (vs_rename m v1)
+    (fun (_ : CoqBigInt.t) (r : Mvs.t term_c * TermDefs.vsymbol) (_ : CoqBigInt.t) =>
+     fst r = Mvs.add v1 (t_var (snd r)) m)
+
+
+
+  Search errst_lift1 errst_spec.
+
+
+
+
+
+Admitted.
+
+Lemma t_open_bound_res_fmla tb1 e1:
+  eval_fmla (snd tb1) = Some e1 ->
+   errst_spec (fun s1 => term_st_wf (snd tb1) s1)
+    (errst_tup1 (errst_lift1 (t_open_bound tb1)))
+  (fun _ (tb2: TermDefs.vsymbol * term_c) s2 => 
+    eval_fmla (snd tb2) = Some (sub_var_f (eval_vsymbol (fst (fst tb1))) (eval_vsymbol (fst tb2)) e1)).
+Admitted.
     

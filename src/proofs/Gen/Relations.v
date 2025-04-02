@@ -1,14 +1,25 @@
 From Proofs Require Import Task AssocList Alpha.
 Require Import TyDefs TyFuncs NumberDefs TermDefs TermFuncs DeclDefs TheoryDefs TaskDefs TransDefs.
 
+(*TODO: BAD - for under_str*)
+From Proofs Require Import eliminate_algebraic eliminate_algebraic_interp.
+
 (*Define "eval" function: takes augmented type/term/etc, produces core type/term/etc*)
 Section Eval.
 
 (*Idents*)
 
 (*An ident is evaluated to its name followed by its id (which is always positive)*)
+(*Doesn't quite work - need underscore then optional minus because for proofs we need to assume it could
+  be negative*)
+
+Definition z_to_string (z: Z) : string :=
+  if (Z.ltb z 0) then "n" ++ GenElts.nat_to_string (Z.to_nat (Z.opp z)) else
+    GenElts.nat_to_string (Z.to_nat z).
+
 Definition eval_ident (i: ident) : string :=
-  (id_string i) ++ (GenElts.nat_to_string (Z.to_nat (id_tag i))).
+  (id_string i) ++ under_str ++ (z_to_string (id_tag i)) .
+
 
 (*Types*)
 

@@ -473,6 +473,7 @@ Proof.
 Qed.
 
 (*We need some injectivity: if eval_vsymbol x = eval_vsymbol y, then id_tag (vs_name x) = id_tag (vs_name y)*)
+(*proved NOTE*)
 Lemma eval_vsymbol_tag_inj x y:
   eval_vsymbol x = eval_vsymbol y ->
   id_tag (vs_name x) = id_tag (vs_name y).
