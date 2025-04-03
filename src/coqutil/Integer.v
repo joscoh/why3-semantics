@@ -17,8 +17,10 @@ Section BoundedInt.
 Variable bound : Z. (*For Ocaml: 2 ^ 62*)
 
 (*Use boolean *)
-Record int := mk_int { int_val : Z; 
-  int_bound: Z.leb (-bound) int_val && Z.ltb int_val bound}.
+Definition int := {int_val : Z | Z.leb (-bound) int_val && Z.ltb int_val bound}.
+(* Record int := mk_int { int_val : Z; 
+  int_bound: Z.leb (-bound) int_val && Z.ltb int_val bound}. *)
+Definition int_val (i: int) : Z := proj1_sig i.
 
 Definition eqb (i1 i2: int) : bool :=
   Z.eqb (int_val i1) (int_val i2).
@@ -54,7 +56,7 @@ Lemma int63_eqb_eq (i1 i2: int63) : i1 = i2 <-> int63_eqb i1 i2.
 Proof. apply eqb_eq. Qed.
 
 Definition int63_of_Z (z: Z) (Hz: Z.leb (-ocaml_int_size) z && Z.ltb z ocaml_int_size) : int63 :=
-  mk_int _ z Hz.
+  exist _ z Hz.
 Definition int63_to_Z (i: int63) : Z := int_val _ i.
 
 Definition int63_compare := compare ocaml_int_size.

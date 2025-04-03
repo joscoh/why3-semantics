@@ -1,5 +1,6 @@
 From Proofs Require Import Task AssocList Alpha.
 Require Import TyDefs TyFuncs NumberDefs TermDefs TermFuncs DeclDefs TheoryDefs TaskDefs TransDefs.
+Require Import VsymCount.
 
 (*TODO: BAD - for under_str*)
 From Proofs Require Import eliminate_algebraic eliminate_algebraic_interp.
@@ -49,8 +50,21 @@ Fixpoint eval_ty (t: ty_c) : vty :=
   We do the second; later we would want to prove that for well-typed terms, we always get Some
   NOTE: we also send features we don't support (e.g. string constants) to None*)
 
+(*NOTE: vsymbol not compositional because we need it to be injective*)
+
+(*A super bad positive to string function - but OK for us, all we need is injectivity*)
+Fixpoint pos_to_string (p: positive) : string :=
+  match p with
+  | xI p => "1" ++ pos_to_string p
+  | xO p => "0" ++ pos_to_string p
+  | xH => "1"
+  end.
+
 Definition eval_vsymbol (v: vsymbol) : Syntax.vsymbol :=
-  (eval_ident (vs_name v), eval_ty (vs_ty v)).
+  (pos_to_string (countable.encode v), eval_ty (vs_ty v)).
+
+(* Definition eval_vsymbol (v: vsymbol) : Syntax.vsymbol :=
+  (eval_ident (vs_name v), eval_ty (vs_ty v)). *)
 
 (*NOTE: not sure semantics of constants is correct: do we need to reason about kind? Only looking 
   at value for now*)

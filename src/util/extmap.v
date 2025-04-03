@@ -3,7 +3,7 @@
   instead of balanced binary trees*)
 Require Export Monads.
 Require CoqBigInt.
-From stdpp Require Import pmap zmap.  
+From Proofs Require Import pmap zmap.  
 Require Import PmapExtra.
 (*For sorting*)
 Require mathcomp.ssreflect.path.

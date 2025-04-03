@@ -1,8 +1,9 @@
 (*Additional Theorems about Pmaps/Zmaps*)
-From stdpp Require pmap zmap. 
 Require Import CoqUtil.
+From Proofs Require pmap zmap. 
 
 Import pmap zmap.
+
 
 (*Boolean Equality for pmaps (with NO proofs)*)
 Section PmapEq.
