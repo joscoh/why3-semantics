@@ -1007,9 +1007,91 @@ Definition eval_subs_map (m: Mvs.t term_c) : amap vsymbol term :=
 Definition subs_map_valid (m: Mvs.t term_c) : Prop :=
   Forall (fun x => isSome (eval_term (snd x))) (Mvs.bindings m).
 
-(**)
+Lemma in_omap_lemma x tl:
+  In x (omap
+        (fun x : TermDefs.vsymbol * term_c =>
+         option_map (fun y : term => (eval_vsymbol (fst x), y)) (eval_term (snd x))) tl) <->
+  exists y, In y tl /\ fst x = eval_vsymbol (fst y) /\ eval_term (snd y) = Some (snd x).
+Proof.
+  rewrite in_omap_iff. split; intros [y [Hy Heq]]; exists y; split; auto.
+  - apply option_map_some in Heq. destruct Heq as [z [Heval Hx]]. subst. auto.
+  - destruct Heq as [Hfst Hsnd]. rewrite Hsnd. simpl. rewrite <- Hfst. destruct x; auto.
+Qed.
 
-Lemma in_omap_lemma (h: TermDefs.vsymbol * term_c) tl:
+(*A specific case we need for subsequent lemma*)
+Lemma in_omap_lemma' v tl:
+  In v
+  (map fst
+     (omap
+        (fun x : TermDefs.vsymbol * term_c =>
+         option_map (fun y : term => (eval_vsymbol (fst x), y)) (eval_term (snd x))) tl)) ->
+
+exists v1, v = eval_vsymbol v1 /\
+In (Mvs.tag v1) (map (fun x : Mvs.key * term_c => Mvs.tag (fst x)) tl).
+Proof.
+  rewrite in_map_iff. intros [v1 [Hv Hinv]]. subst.
+  apply in_omap_lemma in Hinv. destruct Hinv as [y [Hiny [Hfst Heval]]].
+  exists (fst y). split; auto. rewrite in_map_iff. exists y. auto.
+Qed.
+
+(*   induction tl as [| x1 xs IH]; simpl; auto; [contradiction|].
+  destruct (eval_term (snd x1)) eqn : Heval; simpl; auto.
+  - intros [Heq | Hin]; subst; eauto.
+    apply IH in Hin. destruct_all; subst; eauto.
+  - intros Hinv. apply IH in Hinv. destruct_all; eauto.
+Qed. *)
+
+(*The other direction*)
+(* Lemma in_omap_lemma' v tl:
+  In (Mvs.tag v) (map (fun x : Mvs.key * term_c => Mvs.tag (fst x)) tl) ->
+  exists v1, Mvs.tag v = Mvs.tag v1 /\
+  In (eval_vsymbol v1)
+  (map fst
+     (omap
+        (fun x : TermDefs.vsymbol * term_c =>
+         option_map (fun y : term => (eval_vsymbol (fst x), y)) (eval_term (snd x))) tl)).
+Proof.
+  induction tl as [| x1 xs IH]; simpl; auto.
+  destruct (eval_term (snd x1)) eqn : Heval; simpl; auto.
+  intros [Heq | Hin]; auto.
+  left. unfold Mvs.tag, Vsym.Tg.tag, Vsym.Tg.MakeDec.tag, VsymTag.tag .
+  apply eval_vsymbol_inj in Heq. rewrite <- Heq. reflexivity.
+Qed. *)
+
+(*The other direction*)
+
+
+
+(* Lemma in_omap_lemma v tl:
+  In v (map fst
+     (omap
+        (fun x : TermDefs.vsymbol * term_c =>
+         option_map (fun y : term => (eval_vsymbol (fst x), y)) (eval_term (snd x))) tl)) <->
+  exists v1, v = eval_vsymbol v1 /\ In (Mvs.tag v1) (map (fun x : Mvs.key * term_c => Mvs.tag (fst x)) tl).
+Proof.
+  induction tl as [| x1 xs IH]; simpl; auto.
+  { split; intros; destruct_all; contradiction. }
+  destruct IH as [IH1 IH2]. split.
+  - destruct (eval_term (snd x1)) eqn : Heval; simpl; auto.
+    + intros [Hv | Hinv]; subst; auto.
+      * exists (fst x1). split; auto.
+      * apply IH1 in Hinv. destruct Hinv as [v1 [Hv Hinv1]]; subst. eauto.
+    + intros Hinv. apply IH1 in Hinv. destruct_all; subst; eauto.
+  - destruct (eval_term (snd x1)) eqn : Heval; simpl; auto.
+    + intros [v1 [Hv [Hveq | Hinv1]]]; subst; auto.
+      * 
+
+
+
+ Print VsymTag.tag. Search id_tag. right. apply IH2. exists (
+
+
+ unfold Mvs.tag, Vsym.Tg.tag, Vsym.Tg.MakeDec.tag  in Hveq. Search eval_vsymbol.
+  -
+  intros [Heq | Hin]; auto.
+  left. unfold Mvs.tag, Vsym.Tg.tag, Vsym.Tg.MakeDec.tag, VsymTag.tag .
+  apply eval_vsymbol_inj in Heq. rewrite <- Heq. reflexivity.
+
   In (eval_vsymbol (fst h))
   (map fst
      (omap
@@ -1022,7 +1104,7 @@ Proof.
   intros [Heq | Hin]; auto.
   left. unfold Mvs.tag, Vsym.Tg.tag, Vsym.Tg.MakeDec.tag, VsymTag.tag .
   apply eval_vsymbol_inj in Heq. rewrite <- Heq. reflexivity.
-Qed.
+Qed. *)
 
 (*TODO: see what I need - this does not hold unconditionally because it could be that the variables
   are distinct (e.g. from loc) and their eval is the same
@@ -1030,7 +1112,33 @@ Qed.
   (NOTE: should I just prove for single-valued?)*)
 (*Need NoDup condition to avoid case where 2 vars map to same thing. Of course this is true by
   hash consing, but we do not prove this (for our purposes, we only care about single-element maps anyway)*)
-Lemma eval_subs_map_iff m (Hn: NoDup (map Mvs.tag (map fst (Mvs.bindings m)))) (Hm: subs_map_valid m):
+Lemma eval_subs_map_iff m (*(Hn: NoDup (map Mvs.tag (map fst (Mvs.bindings m)))) (Hm: subs_map_valid m)*):
+  forall v t, amap_lookup (eval_subs_map m) v = Some t <-> exists v1 t1, Mvs.find_opt v1 m = Some t1 /\
+    eval_term t1 = Some t /\ eval_vsymbol v1 = v.
+Proof.
+  intros v t. unfold eval_subs_map. 
+  rewrite list_to_amap_lookup.
+  - (*Prove in*)
+    rewrite in_omap_lemma. simpl. setoid_rewrite Mvs.bindings_spec.
+    split.
+    + intros [[v1 t1] [Hinx [Hv Ht]]]. subst. simpl in *. exists v1. exists t1. split_all; auto.
+      exists v1. split; auto. apply vsymbol_eqb_eq; auto.
+    + intros [v1 [t1 [[v2 [Heqv Hin]] [Heval Hv1]]]]. apply vsymbol_eqb_eq in Heqv. subst.
+      exists (v2, t1). split; auto.
+  - (*NoDup*)
+    pose proof (Mvs.bindings_nodup _ m) as Hn.
+    induction (Mvs.bindings m) as [| [v1 t1] tl IH]; simpl; auto; [constructor|].
+    simpl in Hn. inversion Hn as [| ? ? Hnotin Hn1]; subst.
+    destruct (eval_term t1) as [t2|] eqn : Hevalt; simpl; auto.
+    constructor; auto.
+    intros Hinv. rewrite in_map_iff in Hinv. destruct Hinv as [x [Hv1 Hinx]].
+    rewrite in_omap_lemma in Hinx. destruct Hinx as [y [Hiny [Heval' Hevaly]]].
+    rewrite Heval' in Hv1. apply eval_vsymbol_inj in Hv1 (*why we need vsymbol inj*). subst.
+    apply Hnotin. apply in_map. auto.
+Qed.
+
+(*Older, weaker lemma*)
+(* Lemma eval_subs_map_iff m (Hn: NoDup (map Mvs.tag (map fst (Mvs.bindings m)))) (Hm: subs_map_valid m):
   forall v t, amap_lookup (eval_subs_map m) v = Some t <-> exists v1 t1, Mvs.find_opt v1 m = Some t1 /\
     eval_term t1 = Some t /\ eval_vsymbol v1 = v.
 Proof.
@@ -1051,11 +1159,36 @@ Proof.
     inversion Hn as [| ? ? Hnotin Hnodup]; subst; clear Hn.
     destruct (eval_term (snd h')) eqn : heval; simpl; auto.
     constructor; auto.
-    (*use in lemma*) intros Hin. apply in_omap_lemma in Hin. contradiction.
+    (*use in lemma*) intros Hin. apply in_omap_lemma' in Hin; auto. destruct Hin as [v1 [Hevaleq Hin]].
+    apply eval_vsymbol_inj in Hevaleq. subst; auto.
+Qed. *)
+
+(*TODO: move*)
+(* Lemma list_to_amap_lookup_impl {A B} `{countable.Countable A} (l: list (A * B)) x y:
+  amap_lookup (list_to_amap l) x = Some y -> In (x, y) l.
+Proof.
+  unfold list_to_amap. induction l as [| [x1 y1] tl IH]; simpl.
+  - rewrite amap_empty_get. discriminate.
+  - destruct (EqDecision0 x x1); subst.
+    + rewrite amap_set_lookup_same. inv Hsome. auto.
+    + rewrite amap_set_lookup_diff; auto.
 Qed.
 
+(*Only 1 direction - without assumptions*)
+Lemma eval_subs_map_in_impl m (*(Hn: NoDup (map Mvs.tag (map fst (Mvs.bindings m)))) (Hm: subs_map_valid m)*):
+  forall v t, amap_lookup (eval_subs_map m) v = Some t -> exists v1 t1, Mvs.find_opt v1 m = Some t1 /\
+    eval_term t1 = Some t /\ eval_vsymbol v1 = v.
+Proof.
+  intros v t. unfold eval_subs_map.
+  intros Hlook. apply list_to_amap_lookup_impl in Hlook.
+  rewrite in_omap_lemma in Hlook. destruct Hlook as [[v1 t1] [Hinvt [Hv Heval]]]; simpl in *; subst.
+  exists v1. exists t1. split_all; auto. apply Mvs.bindings_spec. exists v1. split; auto. 
+  apply vsymbol_eqb_eq; auto.
+Qed.
+ *)
 (*Corollaries*)
-Lemma eval_subs_map_in m (Hn: NoDup (map Mvs.tag (map fst (Mvs.bindings m)))) (Hm: subs_map_valid m) v1 t1:
+(*TODO: see what we need*)
+Lemma eval_subs_map_in m (*(Hn: NoDup (map Mvs.tag (map fst (Mvs.bindings m))))*) (Hm: subs_map_valid m) v1 t1:
   Mvs.find_opt v1 m = Some t1 ->
   exists t, amap_lookup (eval_subs_map m) (eval_vsymbol v1) = Some t /\ eval_term t1 = Some t.
 Proof.
@@ -1069,6 +1202,46 @@ Proof.
   exists t. split; auto. apply eval_subs_map_iff; auto. exists v2. exists t1. auto.
 Qed.
 
+(*TODO: move*)
+Lemma list_to_amap_none {A B} `{countable.Countable A} (l: list (A * B)):
+  forall x, amap_lookup (list_to_amap l) x = None <-> ~ In x (map fst l).
+Proof.
+  intros x. induction l as [| h t IH]; simpl; auto.
+  - rewrite amap_empty_get. split; auto. 
+  - destruct (EqDecision0 x (fst h)); subst.
+    + rewrite amap_set_lookup_same. split; try discriminate.
+      intros Hc. not_or Heq; contradiction.
+    + rewrite amap_set_lookup_diff; auto. rewrite IH. split; auto.
+      intros Hc [C1 | C2]; subst; contradiction.
+Qed. 
+
+(*None case*)
+Lemma eval_subs_map_none m (*(Hn: NoDup (map Mvs.tag (map fst (Mvs.bindings m))))*) (*(Hm: subs_map_valid m)*):
+  forall v, amap_lookup (eval_subs_map m) v = None <-> 
+  forall v1, eval_vsymbol v1 = v -> Mvs.find_opt v1 m = None \/ exists t, Mvs.find_opt v1 m = Some t/\ eval_term t = None.
+Proof.
+  intros v. unfold eval_subs_map. rewrite list_to_amap_none.
+  split.
+  - intros Hinv v1 Heval. subst. 
+    destruct (Mvs.find_opt v1 m) as [y|] eqn : Hfind; auto.
+    assert (Hin:=Hfind). apply Mvs.bindings_spec in Hin. destruct Hin as [v2 [Heqv Hin]].
+    apply vsymbol_eqb_eq in Heqv. subst.
+    destruct (eval_term y) as [t|] eqn : Heval.
+    2: { right. eauto. }
+    exfalso. apply Hinv. rewrite in_map_iff.
+    exists (eval_vsymbol v2, t). split; auto.
+    rewrite in_omap_lemma. exists (v2, y); auto.
+  - intros Hnone. rewrite in_map_iff. intros [x [Hv Hinx]]; subst.
+    rewrite in_omap_lemma in Hinx. destruct Hinx as [y [Hiny [Hfst Heval]]].
+    assert (Hget: Mvs.find_opt (fst y) m = Some (snd y)). {
+      apply Mvs.bindings_spec. exists (fst y); split; auto.
+      - apply vsymbol_eqb_eq. auto.
+      - destruct y; auto.
+    }
+    specialize (Hnone _ (eq_sym Hfst)). destruct Hnone as [Hnone | [t [Ht Hevalt]]]; subst.
+    + rewrite Hget in Hnone; discriminate.
+    + rewrite Hget in Ht; inversion Ht; subst. rewrite Hevalt in Heval. discriminate.
+Qed. 
 
 (*actually may not need valid here, but do need to prove In for this*) 
     
@@ -1276,20 +1449,28 @@ Proof.
   - apply eval_vsymbol_tag_inj in Heval. auto.
 Qed. *)
 
-
-Definition amap_set_inter {A B: Type} `{countable.Countable A} (m: amap A B) (s: aset A) : amap A B.
-Admitted.
+(*Not the most efficient, but OK for now*)
+Definition amap_set_inter {A B: Type} `{countable.Countable A} (m: amap A B) (s: aset A) : amap A B :=
+  list_to_amap (filter (fun x => aset_mem_dec (fst x) s) (elements m)).
 
 (*The specs*)
 Lemma amap_set_inter_lookup {A B: Type} `{countable.Countable A} (m: amap A B) (s: aset A) x:
   amap_lookup (amap_set_inter m s) x = if aset_mem_dec x s then amap_lookup m x else None.
-Admitted.
+Proof.
+  unfold amap_set_inter. destruct (amap_lookup _ _) as [y|] eqn : Hlook.
+  - rewrite list_to_amap_lookup in Hlook.
+    + rewrite in_filter in Hlook. destruct Hlook as [Hins Hin]. simpl in *.
+      destruct (aset_mem_dec x s); auto; try discriminate.
+      apply in_elements_iff in Hin; auto.
+    + apply nodup_map_filter. rewrite elements_eq, map_fst_combine; [apply keylist_Nodup|].
+      rewrite keylist_length, vals_length. reflexivity.
+  - rewrite list_to_amap_none in Hlook. destruct (aset_mem_dec x s); auto.
+    destruct (amap_lookup m x) as [y|] eqn : Hget; auto.
+    exfalso; apply Hlook. rewrite in_map_iff. exists (x, y). split; auto.
+    rewrite in_filter. simpl. destruct (aset_mem_dec x s); try contradiction. split; auto.
+    apply in_elements_iff. auto.
+Qed.
 
-
-
-  
-Print sub_fs.
-Print t_subst_unsafe_aux.
 
 (*An alternate, more efficient version of substitution that removes unneeded entries in the map.
   Equivalent to [t_subst_unsafe_aux] as we show (in TODO), and to original substitution, which
@@ -1571,18 +1752,137 @@ Qed.
 Definition sub_ts_alt_equiv t := proj_tm sub_alt_equiv t.
 Definition sub_fs_alt_equiv f := proj_fmla sub_alt_equiv f.
 
+Lemma vsym_tg_eq_refl v:
+  Vsym.Tg.equal v v.
+Proof.
+  apply vsymbol_eqb_eq. reflexivity.
+Qed.
+
+Lemma eval_subs_map_remove v m:
+  eval_subs_map (Mvs.remove _ v m) = amap_remove _ _ (eval_vsymbol v) (eval_subs_map m).
+Proof.
+  apply amap_ext. intros x.
+  vsym_eq x (eval_vsymbol v).
+  - rewrite amap_remove_same.
+    rewrite eval_subs_map_none.
+    intros v1 Heq. apply eval_vsymbol_inj in Heq. subst. left. rewrite Mvs.remove_spec, vsym_tg_eq_refl.
+    reflexivity.
+  - rewrite amap_remove_diff; auto.
+    destruct (amap_lookup (eval_subs_map (Mvs.remove term_c v m)) x ) as [y|] eqn : Hget.
+    + apply eval_subs_map_iff in Hget. destruct Hget as [v1 [t1 [Hfind [Heval Hx]]]]; subst.
+      symmetry. apply eval_subs_map_iff. exists v1. exists t1. split_all; auto.
+      rewrite Mvs.remove_spec in Hfind. destruct (Vsym.Tg.equal v1 v) eqn : Heq; [discriminate|].
+      auto.
+    + rewrite eval_subs_map_none in Hget.
+      symmetry. rewrite eval_subs_map_none.
+      intros v1 Hx. subst. specialize (Hget v1 eq_refl). rewrite !Mvs.remove_spec in Hget.
+      destruct (Vsym.Tg.equal v1 v) eqn : Heq; auto.
+      apply vsymbol_eqb_eq in Heq. subst; contradiction.
+Qed.
+
+(*ints tell number of times, but we just care about existence - can we ignore this*)
+Definition eval_varset {A : Type} (s: Mvs.t A) : aset vsymbol :=
+  list_to_aset (map eval_vsymbol (Mvs.keys _ s)).
+
+(*NOTE: only map specs so use*)
+
+Lemma eval_varset_mem {A: Type} (s: Mvs.t A) x:
+  aset_mem x (eval_varset s) <-> exists y, x = eval_vsymbol y /\ Mvs.mem y s.
+Proof.
+  unfold eval_varset. simpl_set. rewrite in_map_iff.
+  setoid_rewrite Mvs.mem_spec. unfold Mvs.keys.
+  setoid_rewrite in_map_iff.
+  split.
+  - intros [x1 [Hx [x2 [Hx1 Hin]]]]. subst.
+    exists (fst x2). split; auto.
+    assert (Hfind: Mvs.find_opt (fst x2) s = Some (snd x2)). {
+      apply Mvs.bindings_spec. exists (fst x2); split; auto.
+      - apply vsymbol_eqb_eq. auto.
+      - destruct x2; auto.
+    }
+    rewrite Hfind; auto.
+  - intros [y [Hx Hfind]]. subst. exists y. split; auto.
+    destruct (Mvs.find_opt y s) as [z|] eqn : Hlook; [|discriminate].
+    exists (y, z). split; auto. apply Mvs.bindings_spec in Hlook.
+    destruct Hlook as [k1 [Heq Hin]]. apply vsymbol_eqb_eq in Heq. subst.
+    auto.
+Qed.
+
+(*2nd lemma: set_inter*)
+Lemma eval_subs_map_set_inter {A: Type} m (s: Mvs.t A):
+  eval_subs_map (Mvs.set_inter _ _ m s) = amap_set_inter (eval_subs_map m) (eval_varset s).
+Proof.
+  apply amap_ext.
+  intros x. rewrite amap_set_inter_lookup.
+  destruct (aset_mem_dec x (eval_varset s)) as [Hinx | Hnotinx].
+  - rewrite eval_varset_mem in Hinx. destruct Hinx as [y [Hx Hmemy]].
+    rewrite Mvs.mem_spec in Hmemy. destruct (Mvs.find_opt y s) as [z|] eqn : Hfindy; [|discriminate]. clear Hmemy.
+    destruct (amap_lookup (eval_subs_map m) x) as [t1|] eqn : Hget1.
+    + rewrite eval_subs_map_iff in Hget1 |- *. destruct Hget1 as [v1 [t2 [Hfind [Heval Hx']]]]. subst.
+      apply eval_vsymbol_inj in Hx'; subst.
+      exists y. exists t2. split_all; auto. rewrite Mvs.set_inter_spec, Hfind, Hfindy. auto.
+    + rewrite eval_subs_map_none in Hget1 |- *.
+      intros v1 Hx'. subst. apply eval_vsymbol_inj in Hx'. subst.
+      specialize (Hget1 _ eq_refl).
+      rewrite Mvs.set_inter_spec, Hfindy.
+      destruct Hget1 as [Hnone | [t2 [Hfind Heval]]].
+      * rewrite Hnone. auto.
+      * rewrite Hfind. right. eauto.
+  - rewrite eval_varset_mem in Hnotinx. 
+    rewrite eval_subs_map_none. intros v1 Hx.
+    rewrite Mvs.set_inter_spec.
+    subst. destruct (Mvs.find_opt v1 m) as [x1|] eqn : Hfind1; auto.
+    destruct (Mvs.find_opt v1 s) as [x2|] eqn : Hfind2; auto.
+    exfalso. apply Hnotinx. exists v1. split; auto. rewrite Mvs.mem_spec, Hfind2. auto.
+Qed. 
+
+
+(*3rd lemma: is_empty*)
+(*Here we need to know that terms eval to some*)
+Lemma eval_subs_map_is_empty m (Hm: subs_map_valid m):
+  Mvs.is_empty _ m = amap_is_empty (eval_subs_map m).
+Proof.
+  apply is_true_eq. rewrite Mvs.is_empty_spec, amap_is_empty_lookup.
+  setoid_rewrite eval_subs_map_none. split.
+  - intros Hnone x v1 Heval. left. apply Hnone.
+  - intros Hnone x.
+    specialize (Hnone (eval_vsymbol x) x eq_refl).
+    destruct Hnone as [Hnone | [t [Hfind Heval]]]; auto.
+    unfold subs_map_valid in Hm. rewrite Forall_forall in Hm.
+    rewrite Mvs.bindings_spec in Hfind. destruct Hfind as [k1 [Heq Hin]].
+    apply vsymbol_eqb_eq in Heq. subst. apply Hm in Hin. simpl in *.
+    rewrite Heval in Hin; discriminate.
+Qed.
+
+(*Making smaller still valid*)
+Lemma subs_map_submap m1 m2:
+  mvs_submap m1 m2 ->
+  subs_map_valid m2 ->
+  subs_map_valid m1.
+Proof.
+  unfold mvs_submap, subs_map_valid. intros Hsub. rewrite !Forall_forall.
+  intros Hall x Hinx.
+  assert (Hfind: Mvs.find_opt (fst x) m1 = Some (snd x)).
+  { apply Mvs.bindings_spec. exists (fst x). split; auto; [apply vsymbol_eqb_eq; auto|].
+    destruct x; auto.
+  }
+  apply Hsub in Hfind. apply Mvs.bindings_spec in Hfind. destruct Hfind as [k2 [Heq Hin]].
+  apply vsymbol_eqb_eq in Heq. subst. apply Hall. destruct x; auto.
+Qed.
+
 
 (*Now we can write a better eval_vsymbol function that is injective*)
 
 (*Do with [sub_ts_alt] for now, close to this one*)
-Lemma t_subst_unsafe_eval m (Hm: subs_map_valid m) (Hn: NoDup (map Mvs.tag (map fst (Mvs.bindings m))))
-  (Hmty: forall v t, Mvs.find_opt v m = Some t -> t_ty_of t = Some (vs_ty v)) t1
+Lemma t_subst_unsafe_eval (*(Hn: NoDup (map Mvs.tag (map fst (Mvs.bindings m))))*)  t1
   (Hwf: types_wf t1):
-  (forall e1 (Heval: eval_term t1 = Some e1), eval_term (t_subst_unsafe_aux m t1) = Some (sub_ts_alt (eval_subs_map m) e1)) /\
-  (forall e1 (Heval: eval_fmla t1 = Some e1), eval_fmla (t_subst_unsafe_aux m t1) = Some (sub_fs_alt (eval_subs_map m) e1)).
+  (forall m (Hm: subs_map_valid m) (Hmty: forall v t, Mvs.find_opt v m = Some t -> t_ty_of t = Some (vs_ty v))
+    e1 (Heval: eval_term t1 = Some e1), eval_term (t_subst_unsafe_aux m t1) = Some (sub_ts_alt (eval_subs_map m) e1)) /\
+  (forall m (Hm: subs_map_valid m) (Hmty: forall v t, Mvs.find_opt v m = Some t -> t_ty_of t = Some (vs_ty v))
+    e1 (Heval: eval_fmla t1 = Some e1), eval_fmla (t_subst_unsafe_aux m t1) = Some (sub_fs_alt (eval_subs_map m) e1)).
 Proof.
   induction t1 using term_ind_alt.
-  - (*var*) split; intros e1 Heval.
+  - (*var*) split; intros m Hm Hmty e1 Heval.
     + rewrite t_subst_unsafe_aux_rewrite, Heq, t_attr_copy_eval.
       rewrite (eval_var_tm Heq Heval). simpl.
       unfold Mvs.find_def.
@@ -1595,11 +1895,11 @@ Proof.
           apply eval_vsymbol_inj in Hevalv. subst. rewrite Hfind in Hfind2; discriminate.
         -- rewrite eval_term_rewrite, Heq. reflexivity.
     + (*formula*) exfalso. apply (eval_var_fmla Heq Heval).
-  - (*const*) split; intros e1 Heval.
+  - (*const*) split; intros m Hm Hmty e1 Heval.
     + rewrite t_subst_unsafe_aux_rewrite, Heq, t_map_unsafe_rewrite, Heq, t_attr_copy_eval.
       destruct (eval_const_tm Heq Heval) as [c1 [He1 Hcc1]]. subst. simpl. auto.
     + exfalso. apply (eval_const_fmla Heq Heval).
-  - (*app*) split; intros e1 Heval.
+  - (*app*) split; intros m Hm Hmty e1 Heval.
     + (*Tfun*) rewrite t_subst_unsafe_aux_rewrite, Heq, t_map_unsafe_rewrite, Heq, t_attr_copy_eval.
       simpl. destruct (eval_app_tm Heq Heval) as [l1 [tys' [tys1 [ts1 [He1 [Hevall [Htys [Htys1 Hts]]]]]]]].
       subst. rewrite Hevall. simpl.
@@ -1608,14 +1908,14 @@ Proof.
       assert (Hts1: (fold_list_option (map (fun x : term_c => eval_term (t_subst_unsafe_aux m x)) ts)) =
         Some (map (sub_ts_alt (eval_subs_map m)) ts1)).
       {
-        clear -Hts H Hwf. generalize dependent ts1. rename H into Hall. induction ts as [| t1 ts IH]; simpl; auto.
+        clear -Hts H Hwf Hm Hmty. generalize dependent ts1. rename H into Hall. induction ts as [| t1 ts IH]; simpl; auto.
         - intros [| ? ?]; try discriminate. auto.
         - intros ts1. inversion Hall as [| ? ? IH1 IH2]; subst; clear Hall; specialize (IH IH2); clear IH2.
           inversion Hwf as [| ? ? Hwf1 Hwf2]; subst.
           destruct IH1 as [Hall _]; auto. destruct (eval_term t1) as [t2|] eqn : Heval; simpl; try discriminate.
           intros Hbind. apply option_bind_some in Hbind. destruct Hbind as [l1 [Hfold Hsome]]. 
           inversion Hsome; subst; clear Hsome. simpl.
-          specialize (Hall _ eq_refl). rewrite Hall. simpl.
+          specialize (Hall _ Hm Hmty _ eq_refl). rewrite Hall. simpl.
           erewrite IH; eauto.
       }
       rewrite Hts1. simpl.
@@ -1639,7 +1939,7 @@ Proof.
         inversion H as [| ? ? IH1 IH2']; subst; clear H. inversion IH2' as [| ? ? IH2 _]; subst; clear IH2'.
         inversion Hwf as [| ? ? Hwf1 Hwf2']; subst; clear Hwf. inversion Hwf2' as [| ? ? Hwf2 _]; subst; clear Hwf2'.
         specialize (IH1 Hwf1); specialize (IH2 Hwf2). destruct IH1 as [IH1' _]. destruct IH2 as [IH2' _].
-        specialize (IH1' _ Ht1'). specialize (IH2' _ Ht2'). rewrite IH1', IH2'. simpl.
+        specialize (IH1' _ Hm Hmty _ Ht1'). specialize (IH2' _ Hm Hmty _ Ht2'). rewrite IH1', IH2'. simpl.
         unfold term_type in *.
         rewrite ty_subst_unsafe_aux_ty; auto. rewrite Hty. simpl. reflexivity.
       * (*Fpred*)
@@ -1650,14 +1950,14 @@ Proof.
         assert (Hts1: (fold_list_option (map (fun x : term_c => eval_term (t_subst_unsafe_aux m x)) ts)) =
           Some (map (sub_ts_alt (eval_subs_map m)) tms)).
         {
-          clear -Htms H Hwf. generalize dependent tms. rename H into Hall. induction ts as [| t1 ts IH]; simpl; auto.
+          clear -Htms H Hwf Hm Hmty. generalize dependent tms. rename H into Hall. induction ts as [| t1 ts IH]; simpl; auto.
           - intros [| ? ?]; try discriminate. auto.
           - intros ts1. inversion Hall as [| ? ? IH1 IH2]; subst; clear Hall; specialize (IH IH2); clear IH2.
             inversion Hwf as [| ? ? Hwf1 Hwf2]; subst.
             destruct IH1 as [Hall _]; auto. destruct (eval_term t1) as [t2|] eqn : Heval; simpl; try discriminate.
             intros Hbind. apply option_bind_some in Hbind. destruct Hbind as [l1 [Hfold Hsome]]. 
             inversion Hsome; subst; clear Hsome. simpl.
-            specialize (Hall _ eq_refl). rewrite Hall. simpl.
+            specialize (Hall _ Hm Hmty _ eq_refl). rewrite Hall. simpl.
             erewrite IH; eauto.
         }
         rewrite Hts1. simpl.
@@ -1675,23 +1975,56 @@ Proof.
   - rewrite types_wf_rewrite, Heq in Hwf. destruct Hwf as [Hty12 [Hty23 [Hwf1 [Hwf2 Hwf3]]]].
     specialize (IHt1_1 Hwf1). specialize (IHt1_2 Hwf2). specialize (IHt1_3 Hwf3).
     destruct IHt1_1 as [_ IH1]. destruct IHt1_2 as [IH2 IH2']. destruct IHt1_3 as [IH3 IH3'].
-    split; intros e1 Heval.
+    split; intros m Hm Hmty e1 Heval.
     + (*tif*) rewrite t_subst_unsafe_aux_rewrite, Heq, t_map_unsafe_rewrite, Heq, t_attr_copy_eval. simpl. 
       destruct (eval_if_tm Heq Heval) as [e2 [e3 [e4 [He1 [Heval1 [Heval2 Heval3]]]]]].
-      subst. simpl. rewrite (IH1 _ Heval1), (IH2 _ Heval2), (IH3 _ Heval3). reflexivity.
+      subst. simpl. rewrite (IH1 _ Hm Hmty _ Heval1), (IH2 _ Hm Hmty _ Heval2), (IH3 _ Hm Hmty _ Heval3). reflexivity.
     + (*fif*) rewrite t_subst_unsafe_aux_rewrite, Heq, t_map_unsafe_rewrite, Heq, t_attr_copy_eval_fmla. simpl. 
       destruct (eval_if_fmla Heq Heval) as [e2 [e3 [e4 [He1 [Heval1 [Heval2 Heval3]]]]]].
-      subst. simpl. rewrite (IH1 _ Heval1), (IH2' _ Heval2), (IH3' _ Heval3). reflexivity.
+      subst. simpl. rewrite (IH1 _ Hm Hmty _ Heval1), (IH2' _ Hm Hmty _ Heval2), (IH3' _ Hm Hmty _ Heval3). reflexivity.
   - rewrite types_wf_rewrite, Heq in Hwf. (*TODO: add var condition*)
     destruct Hwf as [Hwf1 Hwf2]. specialize (IHt1_1 Hwf1); specialize (IHt1_2 Hwf2). 
     destruct IHt1_1 as [IH1 _]; destruct IHt1_2 as [IH2 IH2'].
-    split; intros e1 Heval.
+    split; intros m Hm Hmty e1 Heval.
     + (*tlet*) rewrite t_subst_unsafe_aux_rewrite, Heq. simpl.
       rewrite t_attr_copy_eval. simpl. 
       destruct (eval_let_tm Heq Heval) as [e2 [e3 [He1 [Heval1 Heval2]]]]. subst; simpl.
-      rewrite (IH1 _ Heval1). simpl. simpl in Heval2.
+      rewrite (IH1 _ Hm Hmty _ Heval1). simpl. simpl in Heval2.
+      (*Simplify the maps*)
+      rewrite <- eval_subs_map_remove.
+      replace (tm_fv e3) with (eval_varset (bv_vars b)) by admit.
+      rewrite <- eval_subs_map_set_inter, eval_subs_map_is_empty.
+      2: { eapply subs_map_submap; eauto. apply binding_submap. }
+      destruct (amap_is_empty _).
+      * (*case 1: no more substitution*)
+        rewrite Heval2. reflexivity.
+      * (*case 2: substitution*)
+        rewrite IH2 with (e1:=e3); auto.
+        -- eapply subs_map_submap; eauto. apply binding_submap.
+        -- eapply mvs_preserved; eauto. apply binding_submap.
+    + (*flet*) rewrite t_subst_unsafe_aux_rewrite, Heq. simpl.
+      rewrite t_attr_copy_eval_fmla. simpl. 
+      destruct (eval_let_fmla Heq Heval) as [e2 [e3 [He1 [Heval1 Heval2]]]]. subst; simpl.
+      rewrite (IH1 _ Hm Hmty _ Heval1). simpl. simpl in Heval2.
+      (*Simplify the maps*)
+      rewrite <- eval_subs_map_remove.
+      replace (fmla_fv e3) with (eval_varset (bv_vars b)) by admit.
+      rewrite <- eval_subs_map_set_inter, eval_subs_map_is_empty.
+      2: { eapply subs_map_submap; eauto. apply binding_submap. }
+      destruct (amap_is_empty _).
+      * (*case 1: no more substitution*)
+        rewrite Heval2. reflexivity.
+      * (*case 2: substitution*)
+        rewrite IH2' with (e1:=e3); auto.
+        -- eapply subs_map_submap; eauto. apply binding_submap.
+        -- eapply mvs_preserved; eauto. apply binding_submap.
+  - (*Tcase*)
+
+  
+
+
       (*Need to prove these conditions equivalent - prove that
-        1. eval_subs_map (Mvs.remove v m) = eval_subs_map (amap_remove (eval_vsymbol v) (eval_subs_map m))
+        x 1. eval_subs_map (Mvs.remove v m) = eval_subs_map (amap_remove (eval_vsymbol v) (eval_subs_map m))
         2. eval_subs_map (Mvs.set_interp m s1) = amap_set_inter (eval_subs_map m) (eval_vset s1) TODO define eval_vset
         3. Mvs.is_empty m <-> amap_is_empty (eval_subs_map m)
         then combine these and show condition equiv and show we can use IH

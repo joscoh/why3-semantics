@@ -262,6 +262,9 @@ Parameter find_def_spec: forall (d: a) (k: key) (m: t a),
   | None => d
   end.
 
+Parameter is_empty_spec: forall (m: t a),
+  is_empty m <-> (forall x, find_opt x m = None).
+
 End Spec.
 
 End S.
@@ -352,11 +355,11 @@ Variable acc: Type.
 
 Definition empty {a: Type} : t a := exist _ Zmap_empty eq_refl.
 
-Definition is_empty (m: t a): bool :=
+(* Definition is_empty (m: t a): bool :=
   match Zmap_0 (mp m), Zmap_pos (mp m), Zmap_neg (mp m) with
   | None, PEmpty, PEmpty => true
   | _, _, _ => false
-  end.
+  end. *)
 
 (*NOTE: this is generic boolean eq, not eq_dec*)
 Definition get_list {A: Type} (k: key) (l: list (key * A)) : option A :=
@@ -1243,6 +1246,31 @@ Proof.
     rewrite Heq1, Heq2 in Hn. simpl in Hn. specialize (Hn Hkeq). subst; contradiction.
 Qed.
 
+(*Use bindings for [is_empty]
+  This is actually a bit tricky: because the key function may not be injective, we cannot
+  define is_empty as just checking emptiness of the underlying Zmap, since in principle there
+  could be (not really) elements from non-keys. But we can just define as the bindings = null
+  and prove the spec we want*)
+Definition is_empty (m: t a): bool :=
+  null (bindings m).
+
+(*And the spec*)
+Lemma is_empty_spec: forall (m: t a),
+  is_empty m <-> (forall x, find_opt x m = None).
+Proof.
+  intros m. unfold is_empty. split.
+  - intros Hnull x. destruct (find_opt x m) as [y|] eqn : Hfind; auto.
+    apply bindings_spec in Hfind. destruct Hfind as [k2 [Heq Hinxy]].
+    destruct (bindings m); try discriminate. contradiction.
+  - intros Hnone. destruct (bindings m) as [| h t] eqn : Hbind; auto.
+    assert (Hin: In h (bindings m)) by (rewrite Hbind; simpl; auto).
+    assert (Hfind: find_opt (fst h) m = Some (snd h)). {
+      apply bindings_spec. exists (fst h). split; [apply T.eq_refl |].
+      destruct h; auto.
+    }
+    rewrite Hnone in Hfind. discriminate.
+Qed.
+
 (*Comparison*)
 (*We do this very inefficiently for now: make list, sort by key (positive),
   then compare sorted lists*)
@@ -1798,7 +1826,6 @@ Proof.
   }
   subst. f_equal. apply bool_irrelevance.
 Qed.
-
 
 (*Lemma set_equal_spec: forall {a b: Type} (m1: t a) (m2: t b),
   set_equal _ _ m1 m2 = true <-> (forall k, contains _ m1 k = contains _ m2 k).
