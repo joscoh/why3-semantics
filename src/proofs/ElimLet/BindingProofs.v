@@ -1276,14 +1276,310 @@ Proof.
   - apply eval_vsymbol_tag_inj in Heval. auto.
 Qed. *)
 
+
+Definition amap_set_inter {A B: Type} `{countable.Countable A} (m: amap A B) (s: aset A) : amap A B.
+Admitted.
+
+(*The specs*)
+Lemma amap_set_inter_lookup {A B: Type} `{countable.Countable A} (m: amap A B) (s: aset A) x:
+  amap_lookup (amap_set_inter m s) x = if aset_mem_dec x s then amap_lookup m x else None.
+Admitted.
+
+
+
+  
+Print sub_fs.
+Print t_subst_unsafe_aux.
+
+(*An alternate, more efficient version of substitution that removes unneeded entries in the map.
+  Equivalent to [t_subst_unsafe_aux] as we show (in TODO), and to original substitution, which
+  we show below*)
+
+Fixpoint sub_ts_alt (subs: amap vsymbol term) (t: term) : term :=
+  match t with
+  | Tconst c => Tconst c
+  | Tvar v => match amap_lookup subs v with
+              | Some t1 => t1
+              | None => Tvar v
+              end
+  | Tfun fs tys tms => Tfun fs tys (map (sub_ts_alt subs) tms)
+  | Tlet tm1 v tm2 => 
+    let e1 := sub_ts_alt subs tm1 in
+    let m' := amap_remove _ _ v subs in
+    let m1 := (*TODO: need set_inter*) amap_set_inter m' (tm_fv tm2) in
+    let e2 := if amap_is_empty m1 then tm2 else sub_ts_alt m1 tm2 in
+    Tlet e1 v e2
+  | Tif f1 tm1 tm2 => Tif (sub_fs_alt subs f1) (sub_ts_alt subs tm1) (sub_ts_alt subs tm2)
+  | Tmatch tm ty ps =>
+    let e1 := sub_ts_alt subs tm in
+    let ps1 :=
+      map (fun x => 
+        let m' := amap_diff subs (pat_fv (fst x)) in
+        let m1 := amap_set_inter m' (tm_fv (snd x)) in
+        let e2 := if amap_is_empty m1 then snd x else sub_ts_alt m1 (snd x) in
+        (fst x, e2)) ps in
+    Tmatch e1 ty ps1
+  | Teps f1 v => 
+    let m' := amap_remove _ _ v subs in
+    let m1 := amap_set_inter m' (fmla_fv f1) in
+    let e2 := if amap_is_empty m1 then f1 else sub_fs_alt m1 f1 in
+    Teps e2 v
+  end
+with sub_fs_alt (subs: amap vsymbol term) (f: formula) : formula :=
+  match f with
+  | Fpred p tys tms => Fpred p tys (map (sub_ts_alt subs) tms) 
+  | Fquant q v f1 =>
+    let m' := amap_remove _ _ v subs in
+    let m1 := amap_set_inter m' (fmla_fv f1) in
+    let e2 := if amap_is_empty m1 then f1 else sub_fs_alt m1 f1 in
+    Fquant q v e2
+  | Feq ty tm1 tm2 => Feq ty (sub_ts_alt subs tm1) (sub_ts_alt subs tm2)
+  | Fbinop b f1 f2 => Fbinop b (sub_fs_alt subs f1) (sub_fs_alt subs f2)
+  | Fnot f1 => Fnot (sub_fs_alt subs f1)
+  | Ftrue => Ftrue
+  | Ffalse => Ffalse
+  | Flet tm v f1 =>
+    let e1 := sub_ts_alt subs tm in
+    let m' := amap_remove _ _ v subs in
+    let m1 := amap_set_inter m' (fmla_fv f1) in
+    let e2 := if amap_is_empty m1 then f1 else sub_fs_alt m1 f1 in
+    Flet e1 v e2
+  | Fif f1 f2 f3 => Fif (sub_fs_alt subs f1) (sub_fs_alt subs f2) (sub_fs_alt subs f3)
+  | Fmatch tm ty ps =>
+    let e1 := sub_ts_alt subs tm in
+    let ps1 :=
+      map (fun x => 
+        let m' := amap_diff subs (pat_fv (fst x)) in
+        let m1 := amap_set_inter m' (fmla_fv (snd x)) in
+        let e2 := if amap_is_empty m1 then snd x else sub_fs_alt m1 (snd x) in
+        (fst x, e2)) ps in
+    Fmatch e1 ty ps1
+  end
+.
+
+(*TODO: move all this*)
+Lemma remove_bindings_eq m s:
+  remove_bindings m s = amap_diff m s.
+Proof.
+  reflexivity.
+Qed.
+
+Lemma remove_binding_eq m v:
+  remove_binding m v = amap_remove _ _ v m.
+Proof.
+  unfold remove_binding. rewrite remove_bindings_eq.
+  apply amap_ext. intros x. vsym_eq v x.
+  - rewrite amap_diff_in; [|simpl_set; auto].
+    rewrite amap_remove_same. reflexivity.
+  - rewrite amap_diff_notin; [| simpl_set; auto].
+    rewrite amap_remove_diff; auto.
+Qed. 
+
+(*NOTE: is this inductive? need to see*)
+Lemma sub_change_map t f:
+  (forall m1 m2 (Hm12: forall x, aset_mem x (tm_fv t) -> amap_lookup m1 x = amap_lookup m2 x),
+    sub_ts m1 t = sub_ts m2 t) /\
+  (forall m1 m2 (Hm12: forall x, aset_mem x (fmla_fv f) -> amap_lookup m1 x = amap_lookup m2 x),
+    sub_fs m1 f = sub_fs m2 f).
+Proof.
+  revert t f; apply term_formula_ind; simpl; auto.
+  - (*var*) intros v m1 m2 Hm. specialize (Hm v). rewrite Hm by (simpl_set; auto); reflexivity.
+  - (*tfun*) intros f1 tys tms IH m1 m2 Hm.
+    f_equal. apply list_eq_ext'; rewrite !length_map; auto. intros n d Hn.
+    rewrite !map_nth_inbound with (d2:=d); auto.
+    rewrite Forall_nth in IH. apply IH; auto. intros x Hx. apply Hm. simpl_set. exists (nth n tms d).
+    split; auto. apply nth_In; auto.
+  - (*let - interesting*)
+    intros tm1 v tm2 IH1 IH2 m1 m2 Hm. setoid_rewrite aset_mem_union in Hm. erewrite IH1; auto. f_equal.
+    apply IH2.
+    intros x Hmem. rewrite !remove_binding_eq.
+    (*Works because we remove no-longer-free vars*)
+    vsym_eq v x.
+    + rewrite !amap_remove_same; auto.
+    + rewrite !amap_remove_diff; auto. apply Hm. right. simpl_set. auto.
+  - (*tif*) intros f1 t1 t2 IH1 IH2 IH3 m1 m2 Hm. repeat(setoid_rewrite aset_mem_union in Hm).
+    erewrite IH1, IH2, IH3; eauto.
+  - (*tmatch*) 
+    intros tm ty ps IH1 IHps m1 m2 Hm. setoid_rewrite aset_mem_union in Hm.
+    erewrite IH1; auto. f_equal. 
+    apply list_eq_ext'; rewrite !length_map; auto. intros n d Hn.
+    rewrite !map_nth_inbound with (d2:=d); auto.
+    f_equal. rewrite Forall_map, Forall_nth in IHps.
+    apply IHps; auto. intros x Hinx.
+    rewrite (remove_bindings_eq m1), (remove_bindings_eq m2).
+    destruct (aset_mem_dec x  (pat_fv (fst (nth n ps d)))).
+    + rewrite !amap_diff_in; auto.
+    + rewrite !amap_diff_notin; auto. apply Hm. right. simpl_set.
+      exists (nth n ps d). split; auto. 
+      * apply nth_In; auto.
+      * simpl_set. auto.
+  - (*teps*) intros f1 v IH m1 m2 Hm.
+    rewrite !remove_binding_eq. f_equal.
+    apply IH. intros x Hx.
+    vsym_eq x v.
+    + rewrite !amap_remove_same; auto.
+    + rewrite !amap_remove_diff; auto. apply Hm. simpl_set; auto.
+  - (*fpred*) intros f1 tys tms IH m1 m2 Hm.
+    f_equal. apply list_eq_ext'; rewrite !length_map; auto. intros n d Hn.
+    rewrite !map_nth_inbound with (d2:=d); auto.
+    rewrite Forall_nth in IH. apply IH; auto. intros x Hx. apply Hm. simpl_set. exists (nth n tms d).
+    split; auto. apply nth_In; auto.
+  - (*fquant*) intros q v f1 IH m1 m2 Hm. f_equal.
+    rewrite !remove_binding_eq. apply IH. intros x Hx. 
+    vsym_eq x v.
+    + rewrite !amap_remove_same; auto.
+    + rewrite !amap_remove_diff; auto. apply Hm. simpl_set; auto.
+  - (*Feq*) intros ty t1 t2 IH1 IH2 m1 m2 Hm. setoid_rewrite aset_mem_union in Hm.
+    erewrite IH1, IH2; auto.
+  - (*Fbinop*) intros b f1 f2 IH1 IH2 m1 m2 Hm. setoid_rewrite aset_mem_union in Hm.
+    erewrite IH1, IH2; auto.
+  - (*Fnot*) intros f1 IH m1 m2 Hm. f_equal. auto.
+  - (*Flet*) intros tm v f1 IH1 IH2 m1 m2 Hm. setoid_rewrite aset_mem_union in Hm. 
+    rewrite (IH1 m1 m2); auto. f_equal. apply IH2. intros x Hx. rewrite !remove_binding_eq.
+    vsym_eq v x.
+    + rewrite !amap_remove_same; auto.
+    + rewrite !amap_remove_diff; auto. apply Hm. right. simpl_set. auto.
+  - (*Fif*) intros f1 f2 f3 IH1 IH2 IH3 m1 m2 Hm. repeat (setoid_rewrite aset_mem_union in Hm).
+    erewrite IH1, IH2, IH3; auto.
+  - (*Fmatch*) intros tm ty ps IH1 IHps m1 m2 Hm. setoid_rewrite aset_mem_union in Hm.
+    erewrite IH1; auto. f_equal. 
+    apply list_eq_ext'; rewrite !length_map; auto. intros n d Hn.
+    rewrite !map_nth_inbound with (d2:=d); auto.
+    f_equal. rewrite Forall_map, Forall_nth in IHps.
+    apply IHps; auto. intros x Hinx.
+    rewrite (remove_bindings_eq m1), (remove_bindings_eq m2).
+    destruct (aset_mem_dec x  (pat_fv (fst (nth n ps d)))).
+    + rewrite !amap_diff_in; auto.
+    + rewrite !amap_diff_notin; auto. apply Hm. right. simpl_set.
+      exists (nth n ps d). split; auto. 
+      * apply nth_In; auto.
+      * simpl_set. auto.
+Qed.
+
+Definition sub_ts_change_map t m1 m2 Hm12 := proj_tm sub_change_map t m1 m2 Hm12.
+Definition sub_fs_change_map f m1 m2 Hm12 := proj_fmla sub_change_map f m1 m2 Hm12.
+
+Lemma sub_alt_equiv t f:
+  (forall m, sub_ts_alt m t = sub_ts m t) /\ (forall m, sub_fs_alt m f = sub_fs m f).
+Proof.
+  revert t f; apply term_formula_ind; simpl; auto.
+  - (*Tfun*) intros f1 tys tms IHall m.
+    f_equal. apply list_eq_ext'; rewrite !length_map; auto.
+    intros n d Hn. rewrite Forall_nth in IHall.
+    rewrite !map_nth_inbound with (d2:=tm_d); auto.
+  - (*Tlet*) intros tm1 v tm2 IH1 IH2 m. rewrite IH1. f_equal.
+    destruct (amap_is_empty _) eqn : Hisemp.
+    + (*Prove lemma: suppose m1 and m2 agree on all free variables of t. Then subs are equal
+        Then prove that empty map is identity - proved already*)
+      rewrite sub_ts_change_map with (m2:=amap_empty); [rewrite sub_ts_empty; auto|].
+      intros x Hx. rewrite !remove_binding_eq, amap_empty_get. vsym_eq x v.
+      * rewrite amap_remove_same. reflexivity.
+      * rewrite amap_remove_diff; auto.
+        rewrite fold_is_true, amap_is_empty_lookup in Hisemp.
+        specialize (Hisemp x). rewrite amap_set_inter_lookup in Hisemp.
+        destruct (aset_mem_dec x (tm_fv tm2)); try contradiction.
+        rewrite amap_remove_diff in Hisemp; auto.
+    + (*Here, again use previous lemma, show same on free vars*)
+      rewrite IH2. apply sub_ts_change_map. intros x Hx.
+      rewrite amap_set_inter_lookup. destruct (aset_mem_dec x (tm_fv tm2)); try contradiction.
+      rewrite remove_binding_eq. reflexivity.
+  - (*Tif*) intros f t1 t2 IH1 IH2 IH3 m. f_equal; auto.
+  - (*Tmatch*) intros tm ty ps IH1 IHps m.
+    (*Same proof but for match*)
+    rewrite IH1. f_equal. apply list_eq_ext'; rewrite !length_map; auto.
+    intros n d Hn. rewrite !map_nth_inbound with (d2:=d); auto.
+    f_equal. set (pt:=(nth n ps d)) in *. 
+    destruct (amap_is_empty _) eqn : Hisemp.
+    + rewrite sub_ts_change_map with (m2:=amap_empty); [rewrite sub_ts_empty; auto|].
+      intros x Hx. rewrite !remove_bindings_eq, amap_empty_get.
+      destruct (aset_mem_dec x (pat_fv (fst pt))).
+      * rewrite amap_diff_in; auto.
+      * rewrite amap_diff_notin; auto. 
+        rewrite fold_is_true, amap_is_empty_lookup in Hisemp.
+        specialize (Hisemp x). rewrite amap_set_inter_lookup in Hisemp.
+        destruct (aset_mem_dec x (tm_fv (snd pt))); try contradiction.
+        rewrite amap_diff_notin in Hisemp; auto.
+    + rewrite Forall_map, Forall_nth in IHps. unfold pt. rewrite IHps; auto.
+      apply sub_ts_change_map. intros x Hx.
+      rewrite amap_set_inter_lookup. destruct (aset_mem_dec x (tm_fv (snd (nth n ps d)))); try contradiction.
+      reflexivity.
+  - (*Teps*) intros f1 v IH m. f_equal. destruct (amap_is_empty _) eqn : Hisemp. (*basically the same, should fix*)
+    + rewrite sub_fs_change_map with (m2:=amap_empty); [rewrite sub_fs_empty; auto|].
+      intros x Hx. rewrite !remove_binding_eq, amap_empty_get. vsym_eq x v.
+      * rewrite amap_remove_same. reflexivity.
+      * rewrite amap_remove_diff; auto.
+        rewrite fold_is_true, amap_is_empty_lookup in Hisemp.
+        specialize (Hisemp x). rewrite amap_set_inter_lookup in Hisemp.
+        destruct (aset_mem_dec x (fmla_fv f1)); try contradiction.
+        rewrite amap_remove_diff in Hisemp; auto.
+    + rewrite IH. apply sub_fs_change_map. intros x Hx.
+      rewrite amap_set_inter_lookup. destruct (aset_mem_dec x (fmla_fv f1)); try contradiction.
+      rewrite remove_binding_eq. reflexivity.
+  - (*Fpred*) intros f1 tys tms IHall m.
+    f_equal. apply list_eq_ext'; rewrite !length_map; auto.
+    intros n d Hn. rewrite Forall_nth in IHall.
+    rewrite !map_nth_inbound with (d2:=tm_d); auto.
+  - (*Fquant*) intros q v f1 IH m. f_equal. destruct (amap_is_empty _) eqn : Hisemp.
+    + rewrite sub_fs_change_map with (m2:=amap_empty); [rewrite sub_fs_empty; auto|].
+      intros x Hx. rewrite !remove_binding_eq, amap_empty_get. vsym_eq x v.
+      * rewrite amap_remove_same. reflexivity.
+      * rewrite amap_remove_diff; auto.
+        rewrite fold_is_true, amap_is_empty_lookup in Hisemp.
+        specialize (Hisemp x). rewrite amap_set_inter_lookup in Hisemp.
+        destruct (aset_mem_dec x (fmla_fv f1)); try contradiction.
+        rewrite amap_remove_diff in Hisemp; auto.
+    + rewrite IH. apply sub_fs_change_map. intros x Hx.
+      rewrite amap_set_inter_lookup. destruct (aset_mem_dec x (fmla_fv f1)); try contradiction.
+      rewrite remove_binding_eq. reflexivity.
+  - (*Feq*) intros ty t1 t2 IH1 IH2 m. rewrite IH1, IH2; auto.
+  - (*Fbinop*) intros b f1 f2 IH1 IH2 m. rewrite IH1, IH2; auto.
+  - (*Fnot*) intros f IH m. f_equal; auto.
+  - (*Flet*) intros tm v f1 IH1 IH2 m. rewrite IH1. f_equal.
+    destruct (amap_is_empty _) eqn : Hisemp.
+    + rewrite sub_fs_change_map with (m2:=amap_empty); [rewrite sub_fs_empty; auto|].
+      intros x Hx. rewrite !remove_binding_eq, amap_empty_get. vsym_eq x v.
+      * rewrite amap_remove_same. reflexivity.
+      * rewrite amap_remove_diff; auto.
+        rewrite fold_is_true, amap_is_empty_lookup in Hisemp.
+        specialize (Hisemp x). rewrite amap_set_inter_lookup in Hisemp.
+        destruct (aset_mem_dec x (fmla_fv f1)); try contradiction.
+        rewrite amap_remove_diff in Hisemp; auto.
+    + rewrite IH2. apply sub_fs_change_map. intros x Hx.
+      rewrite amap_set_inter_lookup. destruct (aset_mem_dec x (fmla_fv f1)); try contradiction.
+      rewrite remove_binding_eq. reflexivity.
+  - (*Fif*) intros f1 f2 f3 IH1 IH2 IH3 m. rewrite IH1, IH2, IH3; auto.
+  - (*Fmatch*) intros tm ty ps IH1 IHps m.
+    rewrite IH1. f_equal. apply list_eq_ext'; rewrite !length_map; auto.
+    intros n d Hn. rewrite !map_nth_inbound with (d2:=d); auto.
+    f_equal. set (pt:=(nth n ps d)) in *. 
+    destruct (amap_is_empty _) eqn : Hisemp.
+    + rewrite sub_fs_change_map with (m2:=amap_empty); [rewrite sub_fs_empty; auto|].
+      intros x Hx. rewrite !remove_bindings_eq, amap_empty_get.
+      destruct (aset_mem_dec x (pat_fv (fst pt))).
+      * rewrite amap_diff_in; auto.
+      * rewrite amap_diff_notin; auto. 
+        rewrite fold_is_true, amap_is_empty_lookup in Hisemp.
+        specialize (Hisemp x). rewrite amap_set_inter_lookup in Hisemp.
+        destruct (aset_mem_dec x (fmla_fv (snd pt))); try contradiction.
+        rewrite amap_diff_notin in Hisemp; auto.
+    + rewrite Forall_map, Forall_nth in IHps. unfold pt. rewrite IHps; auto.
+      apply sub_fs_change_map. intros x Hx.
+      rewrite amap_set_inter_lookup. destruct (aset_mem_dec x (fmla_fv (snd (nth n ps d)))); try contradiction.
+      reflexivity.
+Qed.
+
+Definition sub_ts_alt_equiv t := proj_tm sub_alt_equiv t.
+Definition sub_fs_alt_equiv f := proj_fmla sub_alt_equiv f.
+
+
 (*Now we can write a better eval_vsymbol function that is injective*)
 
-
+(*Do with [sub_ts_alt] for now, close to this one*)
 Lemma t_subst_unsafe_eval m (Hm: subs_map_valid m) (Hn: NoDup (map Mvs.tag (map fst (Mvs.bindings m))))
   (Hmty: forall v t, Mvs.find_opt v m = Some t -> t_ty_of t = Some (vs_ty v)) t1
   (Hwf: types_wf t1):
-  (forall e1 (Heval: eval_term t1 = Some e1), eval_term (t_subst_unsafe_aux m t1) = Some (sub_ts (eval_subs_map m) e1)) /\
-  (forall e1 (Heval: eval_fmla t1 = Some e1), eval_fmla (t_subst_unsafe_aux m t1) = Some (sub_fs (eval_subs_map m) e1)).
+  (forall e1 (Heval: eval_term t1 = Some e1), eval_term (t_subst_unsafe_aux m t1) = Some (sub_ts_alt (eval_subs_map m) e1)) /\
+  (forall e1 (Heval: eval_fmla t1 = Some e1), eval_fmla (t_subst_unsafe_aux m t1) = Some (sub_fs_alt (eval_subs_map m) e1)).
 Proof.
   induction t1 using term_ind_alt.
   - (*var*) split; intros e1 Heval.
@@ -1310,7 +1606,7 @@ Proof.
       rewrite !map_map. rewrite types_wf_rewrite, Heq, Forall_map in Hwf. 
       (*Simplify each of these*)
       assert (Hts1: (fold_list_option (map (fun x : term_c => eval_term (t_subst_unsafe_aux m x)) ts)) =
-        Some (map (sub_ts (eval_subs_map m)) ts1)).
+        Some (map (sub_ts_alt (eval_subs_map m)) ts1)).
       {
         clear -Hts H Hwf. generalize dependent ts1. rename H into Hall. induction ts as [| t1 ts IH]; simpl; auto.
         - intros [| ? ?]; try discriminate. auto.
@@ -1352,7 +1648,7 @@ Proof.
         (*Very similar to Tfun - TODO generalize these*) rewrite Hfs. simpl. rewrite !map_map.
          (*Simplify each of these*)
         assert (Hts1: (fold_list_option (map (fun x : term_c => eval_term (t_subst_unsafe_aux m x)) ts)) =
-          Some (map (sub_ts (eval_subs_map m)) tms)).
+          Some (map (sub_ts_alt (eval_subs_map m)) tms)).
         {
           clear -Htms H Hwf. generalize dependent tms. rename H into Hall. induction ts as [| t1 ts IH]; simpl; auto.
           - intros [| ? ?]; try discriminate. auto.
@@ -1394,6 +1690,19 @@ Proof.
       rewrite t_attr_copy_eval. simpl. 
       destruct (eval_let_tm Heq Heval) as [e2 [e3 [He1 [Heval1 Heval2]]]]. subst; simpl.
       rewrite (IH1 _ Heval1). simpl. simpl in Heval2.
+      (*Need to prove these conditions equivalent - prove that
+        1. eval_subs_map (Mvs.remove v m) = eval_subs_map (amap_remove (eval_vsymbol v) (eval_subs_map m))
+        2. eval_subs_map (Mvs.set_interp m s1) = amap_set_inter (eval_subs_map m) (eval_vset s1) TODO define eval_vset
+        3. Mvs.is_empty m <-> amap_is_empty (eval_subs_map m)
+        then combine these and show condition equiv and show we can use IH
+        but need to define eval_vset and add condition to wf that implies that eval_vset (bv_vars b) = tm_fv e
+        do this by defining free var function over terms, prove in eval this is tm_fv or fmla_fv
+        then add this as condition
+ *)
+
+
+
+
       (*NOTE: easier to write a different version of sub first, then prove if condition equivalent
         NOTE: have to generalize m also - annoying bc m changes as we sub*)
       (*Plan
