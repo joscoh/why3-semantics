@@ -292,6 +292,62 @@ Proof.
   bool_hyps. apply t_similar_ty; auto.
 Qed.
 
+(*TODO: move this stuff*)
+
+(*Ignore ocurrence count*)
+
+Fixpoint p_free_vars (p: pattern_c) : Svs.t :=
+  match pat_node_of p with
+  | TermDefs.Pvar v => Svs.singleton v
+  | Papp l ps => fold_right Svs.union Svs.empty (map p_free_vars ps)
+  | TermDefs.Por p1 p2 => Svs.union (p_free_vars p1) (p_free_vars p2)
+  | Pas p v => Svs.union (p_free_vars p) (Svs.singleton v)
+  | TermDefs.Pwild => Svs.empty
+  end.
+
+Fixpoint t_free_vars (t: term_c) : Svs.t :=
+  match t_node_of t with
+  | TermDefs.Tvar v => Svs.singleton v
+  | TermDefs.Tlet t1 (v, _, t2) => Svs.union (t_free_vars t1) (Svs.remove v (t_free_vars t2))
+  | TermDefs.Tif t1 t2 t3 => Svs.union (t_free_vars t1) (Svs.union (t_free_vars t2) (t_free_vars t3))
+  | Tapp l tms => (fold_right Svs.union Svs.empty (map t_free_vars tms))
+  | Tcase t1 ps => Svs.union (t_free_vars t1) (fold_right Svs.union Svs.empty
+      (map (fun x => Svs.diff (t_free_vars (snd x)) (p_free_vars (fst (fst x)))) ps) )
+  | TermDefs.Teps (v, _, t) => Svs.remove v (t_free_vars t)
+  | Tquant _ (vs, _, _, t) => Svs.diff (t_free_vars t) (Svs.of_list vs)
+  | Tbinop _ t1 t2 => Svs.union (t_free_vars t1) (t_free_vars t2)
+  | Tnot t1 => t_free_vars t1
+  | _ => Svs.empty
+  end.
+
+(*rewrite lemmas*)
+Lemma p_free_vars_rewrite p:
+  p_free_vars p =
+  match pat_node_of p with
+  | TermDefs.Pvar v => Svs.singleton v
+  | Papp l ps => fold_right Svs.union Svs.empty (map p_free_vars ps)
+  | TermDefs.Por p1 p2 => Svs.union (p_free_vars p1) (p_free_vars p2)
+  | Pas p v => Svs.union (p_free_vars p) (Svs.singleton v)
+  | TermDefs.Pwild => Svs.empty
+  end.
+Proof. destruct p; auto. Qed.
+
+Lemma t_free_vars_rewrite t:
+  t_free_vars t = match t_node_of t with
+  | TermDefs.Tvar v => Svs.singleton v
+  | TermDefs.Tlet t1 (v, _, t2) => Svs.union (t_free_vars t1) (Svs.remove v (t_free_vars t2))
+  | TermDefs.Tif t1 t2 t3 => Svs.union (t_free_vars t1) (Svs.union (t_free_vars t2) (t_free_vars t3))
+  | Tapp l tms => (fold_right Svs.union Svs.empty (map t_free_vars tms))
+  | Tcase t1 ps => Svs.union (t_free_vars t1) (fold_right Svs.union Svs.empty
+      (map (fun x => Svs.diff (t_free_vars (snd x)) (p_free_vars (fst (fst x)))) ps) )
+  | TermDefs.Teps (v, _, t) => Svs.remove v (t_free_vars t)
+  | Tquant _ (vs, _, _, t) => Svs.diff (t_free_vars t) (Svs.of_list vs)
+  | Tbinop _ t1 t2 => Svs.union (t_free_vars t1) (t_free_vars t2)
+  | Tnot t1 => t_free_vars t1
+  | _ => Svs.empty
+  end.
+Proof. destruct t; auto. Qed.
+
 (*Need predicate that types are consistent - this is not a full type system*)
 Fixpoint types_wf (t: term_c) : Prop :=
   match t_node_of t with
@@ -299,7 +355,8 @@ Fixpoint types_wf (t: term_c) : Prop :=
   | Tconst _ => True
   | Tapp l tms => (*TODO: need anything else?*)  Forall (fun x => x) (map types_wf tms)
   | Tif t1 t2 t3 => t_ty_of t2 = t_ty_of t3 /\ t_ty_of t2 = t_ty_of t /\ types_wf t1 /\ types_wf t2 /\ types_wf t3
-  | Tlet t1 (v, _, t2) => (*t_ty_of t1 = Some (vs_ty v) /\ t_ty_of t2 = t_ty_of t /\*) types_wf t1 /\ types_wf t2
+  | Tlet t1 (v, b, t2) => Mvs.map (fun _ => tt) (bv_vars b) = t_free_vars t2 /\
+     (*t_ty_of t1 = Some (vs_ty v) /\ t_ty_of t2 = t_ty_of t /\*) types_wf t1 /\ types_wf t2
   | Tcase t1 ps => (*TODO: see*) types_wf t1 /\ 
       Forall (fun x => x) (map (fun x => types_wf (snd x)) ps) (*see if we need more*)
      (*  Forall (fun x => x) (map (fun x => t_ty_of t1 = Some (pat_ty_of (fst (fst x))) /\
@@ -317,7 +374,7 @@ Lemma types_wf_rewrite t:
   | Tconst _ => True
   | Tapp l tms => (*TODO: need anything else?*) Forall (fun x => x) (map types_wf tms)
   | Tif t1 t2 t3 => t_ty_of t2 = t_ty_of t3 /\ t_ty_of t2 = t_ty_of t /\ types_wf t1 /\ types_wf t2 /\ types_wf t3
-  | Tlet t1 (v, _, t2) => (*t_ty_of t1 = Some (vs_ty v) /\ t_ty_of t2 = t_ty_of t /\*) types_wf t1 /\ types_wf t2
+  | Tlet t1 (v, b, t2) =>  Mvs.map (fun _ => tt) (bv_vars b) = t_free_vars t2 /\ (*t_ty_of t1 = Some (vs_ty v) /\ t_ty_of t2 = t_ty_of t /\*) types_wf t1 /\ types_wf t2
   | Tcase t1 ps => types_wf t1 /\ 
       Forall (fun x => x) (map (fun x => types_wf (snd x)) ps)
   | Teps (v, _, t1) => types_wf t1
@@ -1870,6 +1927,478 @@ Proof.
   apply vsymbol_eqb_eq in Heq. subst. apply Hall. destruct x; auto.
 Qed.
 
+Print term_c.
+Print tm_fv.
+
+
+(*We have 3 things to do
+  1. Define function Mvs.t A -> Svs.t (just a map really) and prove how it commutes with
+    (eval_var_set)
+  2. Add this to typing rules
+  3. Prove that these correspond to pat_fv, tm_fv, and fmla_fv in eval*)
+
+(*Start with last one*)
+
+(*Eval Svs.t*)
+(* Definition eval_svs (s: Svs.t) : aset vsymbol :=
+  eval_varset s. *)
+
+(*Pattern first*)
+
+(*Alt ind principle*)
+Section PatternIndAlt.
+
+Variable (P: pattern_c -> Prop).
+
+Variable (Hvar: forall v p (Heq: pat_node_of p = TermDefs.Pvar v), P p).
+Variable (Happ: forall l ps p (Heq: pat_node_of p = Papp l ps), Forall P ps -> P p).
+Variable (Hor: forall p1 p2 p (Heq: pat_node_of p = TermDefs.Por p1 p2), P p1 -> P p2 -> P p).
+Variable (Has: forall p1 v p (Heq: pat_node_of p = TermDefs.Pas p1 v), P p1 -> P p).
+Variable (Hwild: forall p (Heq: pat_node_of p = TermDefs.Pwild), P p).
+
+
+Fixpoint pat_ind_alt (p: pattern_c) : P p :=
+  match pat_node_of p as p1 return pat_node_of p = p1 -> P p with
+  | TermDefs.Pvar v => Hvar v p
+  | TermDefs.Papp l ps => fun Heq => Happ l ps p Heq (mk_Forall pat_ind_alt ps)
+  | TermDefs.Por p1 p2 => fun Heq => Hor p1 p2 p Heq (pat_ind_alt p1) (pat_ind_alt p2)
+  | TermDefs.Pas p1 v => fun Heq => Has p1 v p Heq (pat_ind_alt p1)
+  | TermDefs.Pwild => Hwild p
+  end eq_refl.
+
+End PatternIndAlt.
+
+(*Inversion lemmas - TODO move*)
+
+Ltac destruct_pat_node p :=
+  let n := fresh "n" in
+  destruct p as [n ? ?]; destruct n; try discriminate; simpl in *; subst; simpl in *.
+
+Lemma eval_pat_tm {p e v} 
+  (Hn: pat_node_of p = TermDefs.Pvar v)
+  (Heval: eval_pat p = Some e):
+  e = Pvar (eval_vsymbol v).
+Proof.
+  destruct_pat_node p. inversion Hn; subst. inversion Heval; subst; auto.
+Qed.
+
+Lemma eval_pat_app {p l ps e} (Hn: pat_node_of p = TermDefs.Papp l ps)
+  (Heval: eval_pat p = Some e):
+  exists l1 (*tys'*) tys1 ps1,
+    e = Pconstr l1 tys1 ps1 /\ eval_funsym l = Some l1 /\
+      (*fold_list_option (map pat_type ps) = Some tys' /\*)
+      funpred_ty_list l1 (map pat_type ps) = Some tys1 /\
+      fold_list_option (map eval_pat ps) = Some ps1.
+Proof.
+  destruct_pat_node p. inversion Hn; subst. apply option_bind_some in Heval.
+  destruct Heval as [l1 [Heval Hbind]]. apply option_bind_some in Hbind.
+  destruct Hbind as [ps1 [Hps Hbind]]. apply option_map_some in Hbind.
+  destruct Hbind as [tys1 [Htys He]]; subst.
+  exists l1. exists tys1. exists ps1. auto.
+Qed.
+
+Lemma eval_pat_or {p p1 p2 e} (Hn: pat_node_of p = TermDefs.Por p1 p2)
+  (Heval: eval_pat p = Some e):
+  exists e1 e2, e = Por e1 e2 /\ eval_pat p1 = Some e1 /\ eval_pat p2 = Some e2.
+Proof.
+  destruct_pat_node p. inversion Hn; subst. apply option_bind_some in Heval.
+  destruct Heval as [e1 [Heval1 Hbind]]. apply option_bind_some in Hbind.
+  destruct Hbind as [e2 [Heval2 Hbind]]. inversion Hbind; subst.
+  eauto.
+Qed.
+
+Lemma eval_pat_as {p p1 v e} (Hn: pat_node_of p = TermDefs.Pas p1 v)
+  (Heval: eval_pat p = Some e):
+  exists p1', e = Pbind p1' (eval_vsymbol v) /\ eval_pat p1 = Some p1'.
+Proof.
+  destruct_pat_node p. inversion Hn; subst. apply option_bind_some in Heval. 
+  destruct Heval as [p1' [Heval Hsome]]. inversion Hsome; subst.
+  exists p1'; auto.
+Qed.
+
+Lemma eval_pat_wild {p e} (Hn: pat_node_of p = TermDefs.Pwild) (Heval: eval_pat p = Some e):
+  e = Pwild.
+Proof.
+  destruct_pat_node p. inversion Heval; auto.
+Qed.
+
+(*TODO: move with others*)
+Check Mvs.singleton.
+Lemma eval_varset_singleton {A: Type} x y:
+  @eval_varset A (Mvs.singleton _ x y) = aset_singleton (eval_vsymbol x).
+Proof.
+  apply aset_ext. intros z. simpl_set.
+  rewrite eval_varset_mem. split.
+  - intros [y1 [Hz Hiny]]; subst.
+    rewrite Mvs.mem_spec, Mvs.singleton_spec in Hiny; auto.
+    destruct (Vsym.Tg.equal y1 x) eqn : Heq; try discriminate.
+    apply vsymbol_eqb_eq in Heq. subst; auto.
+  - intros Hz; subst. exists x. split; auto.
+    rewrite Mvs.mem_spec, Mvs.singleton_spec; auto.
+    rewrite Vsym.Tg.eq_refl. auto.
+Qed.
+
+Lemma eval_varset_union (s1 s2: Svs.t):
+  eval_varset (Svs.union s1 s2) = aset_union (eval_varset s1) (eval_varset s2).
+Proof.
+  apply aset_ext. intros x. simpl_set.
+  rewrite !eval_varset_mem. setoid_rewrite Mvs.mem_spec. 
+  unfold Svs.union. setoid_rewrite Mvs.set_union_spec.
+  split.
+  - intros [y [Hxy Hmemy]]; subst. destruct (Mvs.find_opt y s1) eqn : Hfind1.
+    + left. exists y. rewrite Hfind1. auto.
+    + destruct (Mvs.find_opt y s2) eqn : Hfind2; [|discriminate].
+      right. exists y. rewrite Hfind2. auto.
+  - intros [[y [Hxy Hsome]] | [y [Hxy Hsome]]]; subst; exists y; split; auto;
+    destruct (Mvs.find_opt y s1); auto.
+Qed.
+
+Lemma eval_varset_big_union {A} (f: A -> Svs.t)(l: list A):
+  eval_varset (fold_right Svs.union Svs.empty (map f l)) =
+  aset_big_union (fun x => eval_varset (f x)) l.
+Proof.
+  induction l as [| h t IH]; simpl; auto.
+  rewrite eval_varset_union, IH. reflexivity.
+Qed. 
+
+Lemma eval_varset_empty {A}:
+  @eval_varset A Mvs.empty = aset_empty.
+Proof.
+  apply aset_ext. intros x.
+  rewrite eval_varset_mem.
+  split.
+  - intros [y [Hx Hmemy]]. subst.
+    rewrite Mvs.mem_spec, Mvs.empty_spec in Hmemy. discriminate.
+  - intros Hmem. simpl_set.
+Qed.
+
+Print Svs.remove.
+Print Mvs.remove.
+Lemma eval_varset_remove {A} (m: Mvs.t A) k:
+  eval_varset (Mvs.remove _ k m) = aset_remove (eval_vsymbol k) (eval_varset m).
+Proof.
+  apply aset_ext. intros x. simpl_set. rewrite !eval_varset_mem. setoid_rewrite Mvs.mem_spec.
+  setoid_rewrite Mvs.remove_spec. split.
+  - intros [y [Hx Heq]]. subst. 
+    destruct (Vsym.Tg.equal y k) eqn : Heq'; try discriminate.
+    split; eauto. intros Hc. apply eval_vsymbol_inj in Hc. subst. rewrite Vsym.Tg.eq_refl in Heq'.
+    discriminate.
+  - intros [[y [Hx Hsome]] Hnotx]; subst.
+    exists y. split; auto. destruct (Vsym.Tg.equal y k) eqn : Heq; auto.
+    apply vsymbol_eqb_eq in Heq. subst. contradiction.
+Qed.
+
+Lemma eval_varset_diff {A B} (m1: Mvs.t A) (m2: Mvs.t B):
+  eval_varset (Mvs.set_diff _ _ m1 m2) = aset_diff (eval_varset m2) (eval_varset m1).
+Proof.
+  apply aset_ext. intros x. simpl_set. rewrite !eval_varset_mem. setoid_rewrite Mvs.mem_spec.
+  setoid_rewrite Mvs.set_diff_spec. split.
+  - intros [y [Hx Heq]]. subst.
+    destruct (Mvs.find_opt y m1) eqn : Hfind1; try discriminate.
+    destruct (Mvs.find_opt y m2) eqn : Hfin2; try discriminate.
+    split.
+    + exists y. rewrite Hfind1. auto.
+    + intros [y1 [Heqy Hsome]]. apply eval_vsymbol_inj in Heqy. subst.
+      rewrite Hfin2 in Hsome. discriminate.
+  - intros [[y [Hx Hsome]] Hnotex]. subst. exists y. split; auto. 
+    destruct (Mvs.find_opt y m1) eqn : Hget1; try discriminate.
+    destruct (Mvs.find_opt y m2) eqn : Hget2; auto.
+    exfalso; apply Hnotex. exists y. rewrite Hget2. auto.
+Qed.
+
+Lemma p_free_vars_eval (p: pattern_c) (e: pattern) (Heval: eval_pat p = Some e):
+  eval_varset (p_free_vars p) = pat_fv e.
+Proof.
+  generalize dependent e.
+  induction p using pat_ind_alt; simpl; auto; intros e Heval; rewrite p_free_vars_rewrite, Heq.
+  - rewrite (eval_pat_tm Heq Heval); simpl.
+    apply eval_varset_singleton.
+  - rewrite eval_varset_big_union.
+    destruct (eval_pat_app Heq Heval) as [l1 [tys1 [ps2 [He [Hl [Htys1 Hps1]]]]]]; subst.
+    simpl. clear -H Hps1. generalize dependent ps2. induction ps as [| p1 t1 IH]; simpl.
+    + intros [| p2 t2]; try discriminate. auto.
+    + inversion H as [| ? ? Heq1 Heq2]; subst; clear H.
+      intros ps2 Hbind. apply option_bind_some in Hbind. destruct Hbind as [p2 [Heval1 Hbind]].
+      apply option_bind_some in Hbind. destruct Hbind as [t2 [Hopt Hsome]]. inversion Hsome; subst.
+      simpl. rewrite (Heq1 _ Heval1). f_equal. auto.
+  - rewrite eval_varset_union. destruct (eval_pat_or Heq Heval) as [e1 [e2 [He [Heval1 Heval2]]]].
+    subst. rewrite (IHp1 _ Heval1), (IHp2 _ Heval2); auto.
+  - destruct (eval_pat_as Heq Heval) as [e1 [He Heval1]]. subst. simpl.
+    rewrite eval_varset_union, (IHp1 _ Heval1). f_equal. apply eval_varset_singleton.
+  - rewrite (eval_pat_wild Heq Heval). simpl. apply eval_varset_empty.
+Qed.
+
+(*TODO: should use option_map not bind but whatever*)
+Lemma eval_match_tm {f1 t ps g1} (Hn: t_node_of f1 = Tcase t ps)
+  (Heval: eval_term f1 = Some g1):
+  exists t1 ty1 ps1, g1 = Tmatch t1 ty1 ps1 /\ eval_term t = Some t1 /\
+    term_type t = Some ty1 /\ fold_list_option (map (fun x => option_bind (eval_pat (fst (fst x)))
+      (fun p => option_bind (eval_term (snd x)) (fun t' => Some (p, t')))) ps) = Some ps1.
+Proof.
+  destruct_term_node f1. inversion Hn; subst; auto.
+  apply option_bind_some in Heval. destruct Heval as [e1 [Heval1 Hbind]].
+  apply option_bind_some in Hbind. destruct Hbind as [ty1 [Hty1 Hbind]].
+  apply option_bind_some in Hbind. destruct Hbind as [ps1 [Hfold Hsome]].
+  inversion Hsome; subst. eauto 10.
+Qed.
+
+Lemma eval_match_fmla {f1 t ps g1} (Hn: t_node_of f1 = Tcase t ps)
+  (Heval: eval_fmla f1 = Some g1):
+  exists t1 ty1 ps1, g1 = Fmatch t1 ty1 ps1 /\ eval_term t = Some t1 /\
+    term_type t = Some ty1 /\ fold_list_option (map (fun x => option_bind (eval_pat (fst (fst x)))
+      (fun p => option_bind (eval_fmla (snd x)) (fun t' => Some (p, t')))) ps) = Some ps1.
+Proof.
+  destruct_term_node f1. inversion Hn; subst; auto.
+  apply option_bind_some in Heval. destruct Heval as [e1 [Heval1 Hbind]].
+  apply option_bind_some in Hbind. destruct Hbind as [ty1 [Hty1 Hbind]].
+  apply option_bind_some in Hbind. destruct Hbind as [ps1 [Hfold Hsome]].
+  inversion Hsome; subst. eauto 10.
+Qed.
+
+Lemma eval_eps_tm {f1 tb g1} (Hn: t_node_of f1 = TermDefs.Teps tb)
+  (Heval: eval_term f1 = Some g1):
+  exists g2, g1 = Teps g2 (eval_vsymbol (fst (fst tb))) /\ eval_fmla (snd tb) = Some g2.
+Proof.
+  destruct_term_node f1. inversion Hn; subst. destruct tb as [[v1 b1] t1]; simpl in *.
+  apply option_bind_some in Heval. destruct Heval as [g2 [Heval Hsome]]; inversion Hsome; subst.
+  eauto.
+Qed.
+
+Lemma eval_eps_fmla {f1 tb g1} (Hn: t_node_of f1 = TermDefs.Teps tb)
+  (Heval: eval_fmla f1 = Some g1):
+  False.
+Proof.
+  destruct_term_node f1.
+Qed.
+
+Lemma eval_quant_fmla {f1 q tq g1} (Hn: t_node_of f1 = Tquant q tq)
+  (Heval: eval_fmla f1 = Some g1):
+  exists g2, g1 = (match q with | TermDefs.Tforall => fforalls | TermDefs.Texists => fexists end) 
+    (map eval_vsymbol (fst (fst (fst tq)))) g2 /\
+    eval_fmla (snd tq) = Some g2.
+Proof.
+  destruct_term_node f1. inversion Hn; subst. destruct tq as [[[vs b] tr] f].
+  simpl. apply option_bind_some in Heval. destruct Heval as [e1 [Heval1 Hsome]].
+  inversion Hsome; subst. destruct q; eauto.
+Qed.
+
+Lemma eval_quant_tm {f1 q tq g1} (Hn: t_node_of f1 = Tquant q tq)
+  (Heval: eval_term f1 = Some g1):
+  False.
+Proof.
+  destruct_term_node f1.
+Qed.
+
+Lemma eval_binop_fmla {f1 b t1 t2 g1} (Hn: t_node_of f1 = TermDefs.Tbinop b t1 t2)
+  (Heval: eval_fmla f1 = Some g1):
+  exists e1 e2, g1 = Fbinop (eval_binop b) e1 e2 /\ eval_fmla t1 = Some e1 /\ eval_fmla t2 = Some e2.
+Proof.
+  destruct_term_node f1. inversion Hn; subst. apply option_bind_some in Heval.
+  destruct Heval as [e1 [He1 Hbind]]. apply option_bind_some in Hbind. destruct Hbind as [e2 [He2 Hsome]].
+  inversion Hsome; subst. eauto.
+Qed.
+
+Lemma eval_binop_tm {f1 b t1 t2 g1} (Hn: t_node_of f1 = TermDefs.Tbinop b t1 t2)
+  (Heval: eval_term f1 = Some g1):
+  False.
+Proof. destruct_term_node f1. Qed.
+
+Lemma eval_not_fmla {f1 f2 g1} (Hn: t_node_of f1 = TermDefs.Tnot f2) (Heval: eval_fmla f1 = Some g1):
+  exists g2, g1 = Fnot g2 /\ eval_fmla f2 = Some g2.
+Proof.
+  destruct_term_node f1. inversion Hn; subst. apply option_bind_some in Heval.
+  destruct Heval as [g2 [Heval1 Hsome]]; inversion Hsome; eauto.
+Qed.
+
+Lemma eval_not_tm {f1 f2 g1} (Hn: t_node_of f1 = TermDefs.Tnot f2) (Heval: eval_term f1 = Some g1):
+  False.
+Proof. destruct_term_node f1. Qed.
+
+Lemma eval_true_fmla {f1 g1} (Hn: t_node_of f1 = TermDefs.Ttrue) (Heval: eval_fmla f1 = Some g1):
+  g1 = Ftrue.
+Proof.
+  destruct_term_node f1. inversion Heval; auto.
+Qed.
+
+Lemma eval_false_fmla {f1 g1} (Hn: t_node_of f1 = TermDefs.Tfalse) (Heval: eval_fmla f1 = Some g1):
+  g1 = Ffalse.
+Proof.
+  destruct_term_node f1. inversion Heval; auto.
+Qed.
+
+Lemma eval_true_tm {f1 g1} (Hn: t_node_of f1 = TermDefs.Ttrue) (Heval: eval_term f1 = Some g1):
+  False.
+Proof. destruct_term_node f1. Qed.
+
+Lemma eval_false_tm {f1 g1} (Hn: t_node_of f1 = TermDefs.Tfalse) (Heval: eval_term f1 = Some g1):
+  False.
+Proof. destruct_term_node f1. Qed.
+
+
+
+(*TODO: copied from [eliminate_algebraic_typing]; MOVE!*)
+
+Lemma fmla_fv_fforalls (vs: list vsymbol) (f: formula):
+  fmla_fv (fforalls vs f) = aset_diff (list_to_aset vs) (fmla_fv f).
+Proof.
+  induction vs as [| v vs IH]; simpl; auto.
+  - rewrite list_to_aset_nil, aset_diff_empty. reflexivity.
+  - rewrite IH. rewrite list_to_aset_cons.
+    apply aset_ext. intros x. simpl_set. 
+    split; intros; destruct_all; subst; split; auto.
+    intros [Hxv | Hinx]; subst; contradiction.
+Qed.
+
+Lemma fmla_fv_fexists (vs: list vsymbol) (f: formula):
+  fmla_fv (fexists vs f) = aset_diff (list_to_aset vs) (fmla_fv f).
+Proof.
+  induction vs as [| v vs IH]; simpl; auto.
+  - rewrite list_to_aset_nil, aset_diff_empty. reflexivity.
+  - rewrite IH. rewrite list_to_aset_cons.
+    apply aset_ext. intros x. simpl_set. 
+    split; intros; destruct_all; subst; split; auto.
+    intros [Hxv | Hinx]; subst; contradiction.
+Qed.
+
+Lemma eval_varset_add {A: Type} (m: Mvs.t A) x y:
+  eval_varset (Mvs.add x y m) = aset_union (aset_singleton (eval_vsymbol x)) (eval_varset m).
+Proof.
+  apply aset_ext. intros z. simpl_set. rewrite !eval_varset_mem.
+  setoid_rewrite Mvs.mem_spec. setoid_rewrite Mvs.add_spec.
+  split.
+  - intros [y1 [Hzy Hsome]]. subst. destruct ( Vsym.Tg.equal y1 x) eqn : Heq.
+    + apply vsymbol_eqb_eq in Heq; subst. auto.
+    + right. exists y1. auto.
+  - intros [Hz | [y1 [Hz Hsome]]]; subst; eauto.
+    + exists x. split; auto. rewrite Vsym.Tg.eq_refl. auto.
+    + exists y1. split; auto. destruct (Vsym.Tg.equal y1 x) eqn : Heq; auto.
+Qed.
+
+Lemma eval_varset_of_list l:
+  eval_varset (Svs.of_list l) = list_to_aset (map eval_vsymbol l).
+Proof.
+  induction l as [| h t IH ]; simpl; auto. unfold Svs.add.
+  rewrite list_to_aset_cons, eval_varset_add, IH. reflexivity.
+Qed.
+
+(*And for terms*)
+Lemma t_free_vars_eval (t: term_c):
+  (forall e (Heval: eval_term t = Some e), eval_varset (t_free_vars t) = tm_fv e) /\
+  (forall e (Heval: eval_fmla t = Some e), eval_varset (t_free_vars t) = fmla_fv e).
+Proof.
+  induction t using term_ind_alt; split; intros e Heval; rewrite t_free_vars_rewrite; try rewrite Heq; try rewrite Ht.
+  - (*Tvar*) rewrite (eval_var_tm Heq Heval). simpl. apply eval_varset_singleton.
+  - (*Fvar*) exfalso. apply (eval_var_fmla Heq Heval).
+  - (*Tconst*) destruct (eval_const_tm Heq Heval) as [c1 [He Hc1]]; subst.
+      simpl. apply eval_varset_empty.
+  - (*Fconst*) exfalso. apply (eval_const_fmla Heq Heval).
+  - (*Tfun*) destruct (eval_app_tm Heq Heval) as [l1 [tys' [tys1 [ts1 [He1 [Hevall [Htys [Htys1 Hts]]]]]]]]; subst.
+    simpl. rewrite eval_varset_big_union. clear -Hts H. generalize dependent ts1.
+    induction ts as [| t1 tl1 IH]; simpl; auto.
+    + intros [| t2 tl2]; try discriminate. auto.
+    + inversion H as [| ? ? [Heq1 _] Heq2]; subst; clear H.
+      intros ts1 Hbind. apply option_bind_some in Hbind. destruct Hbind as [t2 [Heval1 Hbind]].
+      apply option_bind_some in Hbind. destruct Hbind as [tl2 [Hopt Hsome]]. inversion Hsome; subst.
+      simpl. rewrite (Heq1 _ Heval1). f_equal. auto.
+  - destruct (eval_app_fmla Heq Heval) as [[Hl [t1' [t2' [t3' [t4' [ty1 [Hts [He1 [Ht1' [Ht2' Hty]]]]]]]]]] | 
+      [Hl [fs [tys [ty1 [tms [He1 [Hfs [Htys [Htys1 Htms]]]]]]]]]]; subst.
+    + (*Feq*) simpl. rewrite !eval_varset_union.
+      assert (Hemp: (eval_varset Svs.empty) = aset_empty) by (apply eval_varset_empty). rewrite Hemp, aset_union_empty_r.
+      inversion H as [| ? ? [IH1 _] Hrest]; subst. inversion Hrest as [| ? ? [IH2 _] _]; subst; clear H Hrest.
+      f_equal; auto.
+    + (*Fpred*) simpl. rewrite eval_varset_big_union. clear -Htms H. generalize dependent tms.
+      induction ts as [| t1 tl1 IH]; simpl; auto.
+      * intros [| t2 tl2]; try discriminate. auto.
+      * inversion H as [| ? ? [Heq1 _] Heq2]; subst; clear H.
+        intros ts1 Hbind. apply option_bind_some in Hbind. destruct Hbind as [t2 [Heval1 Hbind]].
+        apply option_bind_some in Hbind. destruct Hbind as [tl2 [Hopt Hsome]]. inversion Hsome; subst.
+        simpl. rewrite (Heq1 _ Heval1). f_equal. auto.
+  - (*Tif*) rewrite !eval_varset_union. destruct (eval_if_tm Heq Heval) as [e1 [e2 [e3 [He [He1 [He2 He3]]]]]]; subst.
+     simpl. destruct_all. f_equal; auto. f_equal; auto.
+  - (*Fif*) rewrite !eval_varset_union. destruct (eval_if_fmla Heq Heval) as [e1 [e2 [e3 [He [He1 [He2 He3]]]]]]; subst.
+    simpl. destruct_all. f_equal; auto. f_equal; auto.
+  - (*Tlet*) destruct (eval_let_tm Heq Heval) as [e1 [e2 [He [He1 He2]]]]. subst. simpl in *.
+    destruct IHt1 as [IH1 _]. destruct IHt2 as [IH2 _]. unfold Svs.remove.
+    rewrite !eval_varset_union, (IH1 _ He1), eval_varset_remove, (IH2 _ He2). reflexivity.
+  - (*Flet*) destruct (eval_let_fmla Heq Heval) as [e1 [e2 [He [He1 He2]]]]. subst. simpl in *.
+    destruct IHt1 as [IH1 _]. destruct IHt2 as [_ IH2]. unfold Svs.remove.
+    rewrite !eval_varset_union, (IH1 _ He1), eval_varset_remove, (IH2 _ He2). reflexivity.
+  - (*Tmatch*) destruct (eval_match_tm Heq Heval) as [e1 [ty1 [ps1 [He [He1 [Hty1 Hps1]]]]]].
+    subst. simpl. rewrite eval_varset_union. destruct IHt1 as [IH1 _]. rewrite (IH1 _ He1).
+    f_equal. rewrite eval_varset_big_union. rewrite Forall_map in H. clear -Hps1 H.
+    generalize dependent ps1. induction tbs as [| [[p1 b1] t1] tl1 IH]; simpl; auto.
+    + intros [| ? ?]; try discriminate; auto.
+    + intros ps1 Hbind. apply option_bind_some in Hbind. destruct Hbind as [pt [Hbind1 Hbind2]].
+      apply option_bind_some in Hbind1. destruct Hbind1 as [p2 [Hevalp Hbind1]].
+      apply option_bind_some in Hbind1. destruct Hbind1 as [t2 [Hevalt Hsome]]. inversion Hsome; subst; clear Hsome.
+      apply option_bind_some in Hbind2. destruct Hbind2 as [tl2 [Hfold Hsome]]. inversion Hsome; subst; clear Hsome.
+      simpl. inversion H as [| ? ? [IH1 _] IH2]; subst; clear H. simpl in *.
+      unfold Svs.diff. rewrite eval_varset_diff, (p_free_vars_eval _ _ Hevalp), (IH1 _ Hevalt). f_equal. auto.
+  - (*Fmatch*) destruct (eval_match_fmla Heq Heval) as [e1 [ty1 [ps1 [He [He1 [Hty1 Hps1]]]]]].
+    subst. simpl. rewrite eval_varset_union. destruct IHt1 as [IH1 _]. rewrite (IH1 _ He1).
+    f_equal. rewrite eval_varset_big_union. rewrite Forall_map in H. clear -Hps1 H.
+    generalize dependent ps1. induction tbs as [| [[p1 b1] t1] tl1 IH]; simpl; auto.
+    + intros [| ? ?]; try discriminate; auto.
+    + intros ps1 Hbind. apply option_bind_some in Hbind. destruct Hbind as [pt [Hbind1 Hbind2]].
+      apply option_bind_some in Hbind1. destruct Hbind1 as [p2 [Hevalp Hbind1]].
+      apply option_bind_some in Hbind1. destruct Hbind1 as [t2 [Hevalt Hsome]]. inversion Hsome; subst; clear Hsome.
+      apply option_bind_some in Hbind2. destruct Hbind2 as [tl2 [Hfold Hsome]]. inversion Hsome; subst; clear Hsome.
+      simpl. inversion H as [| ? ? [_ IH1] IH2]; subst; clear H. simpl in *.
+      unfold Svs.diff. rewrite eval_varset_diff, (p_free_vars_eval _ _ Hevalp), (IH1 _ Hevalt). f_equal. auto.
+  - (*Teps*) destruct (eval_eps_tm Heq Heval) as [e1 [He He1]]. simpl in *; subst.
+    simpl. unfold Svs.remove. rewrite eval_varset_remove. f_equal. destruct_all; auto.
+  - (*Feps*) exfalso. apply (eval_eps_fmla Heq Heval).
+  - (*Tquant*) exfalso. apply (eval_quant_tm Heq Heval).
+  - (*Fquant*) destruct (eval_quant_fmla Heq Heval) as [e1 [He He1]]. simpl in *. subst. unfold Svs.diff.
+    rewrite eval_varset_diff. destruct IHt1 as [_ IH1].
+    destruct q; [rewrite fmla_fv_fforalls | rewrite fmla_fv_fexists]; rewrite eval_varset_of_list, (IH1 _ He1);
+    reflexivity.
+  - (*Tbinop*) exfalso. apply (eval_binop_tm Heq Heval).
+  - (*Fbinop*) destruct (eval_binop_fmla Heq Heval) as [e1 [e2 [He [He1 He2]]]]. subst.
+    simpl. destruct IHt1 as [_ IH1]; destruct IHt2 as [_ IH2]. 
+    rewrite eval_varset_union, (IH1 _ He1), (IH2 _ He2); reflexivity.
+  - (*Tnot*) exfalso. apply (eval_not_tm Heq Heval).
+  - (*Fnot*) destruct (eval_not_fmla Heq Heval) as [e1 [He He1]]. subst. simpl. destruct_all; auto.
+  - (*Ttrue*) exfalso. apply (eval_true_tm Ht Heval).
+  - (*Ftrue*) rewrite (eval_true_fmla Ht Heval). reflexivity.
+  - (*Tfalse*) exfalso. apply (eval_false_tm Ht Heval).
+  - (*Ffalse*) rewrite (eval_false_fmla Ht Heval). reflexivity.
+Qed.
+
+Corollary t_free_vars_eval_term t e (Heval: eval_term t = Some e):
+  eval_varset (t_free_vars t) = tm_fv e.
+Proof.
+  apply t_free_vars_eval; auto.
+Qed.
+
+Corollary t_free_vars_eval_fmla t e (Heval: eval_fmla t = Some e): 
+  eval_varset (t_free_vars t) = fmla_fv e.
+Proof.
+  apply t_free_vars_eval; auto.
+Qed.
+
+(*[eval_varset] is invariant under mapping*)
+
+(*Could prove in general but whatever*)
+Lemma mvs_mem_map {A B: Type} (m: Mvs.t A) (f: A -> B) x:
+  Mvs.mem x (Mvs.map f m) = Mvs.mem x m.
+Proof.
+  rewrite !Mvs.mem_spec. destruct (Mvs.find_opt x m) as [y|] eqn : Hget1; simpl;
+  destruct (Mvs.find_opt x (Mvs.map f m)) as [y1|] eqn : Hget2; auto.
+  - assert (Hmem: Mvs.find_opt x (Mvs.map f m) = Some (f y)). {
+      apply Mvs.map_spec. exists x. exists y. split_all; auto. apply Vsym.Tg.eq_refl.
+    }
+    rewrite Hmem in Hget2; discriminate.
+  - rewrite Mvs.map_spec in Hget2. destruct Hget2 as [k1 [v1 [Heq [Hfind Hf]]]]; subst.
+    apply vsymbol_eqb_eq in Heq. subst. rewrite Hfind in Hget1. discriminate.
+Qed.
+
+Lemma eval_varset_map {A B: Type} (m: Mvs.t A) (f: A -> B):
+  eval_varset (Mvs.map f m) = eval_varset m.
+Proof.
+  apply aset_ext. intros x. rewrite !eval_varset_mem. setoid_rewrite mvs_mem_map. reflexivity.
+Qed.
+
 
 (*Now we can write a better eval_vsymbol function that is injective*)
 
@@ -1983,7 +2512,7 @@ Proof.
       destruct (eval_if_fmla Heq Heval) as [e2 [e3 [e4 [He1 [Heval1 [Heval2 Heval3]]]]]].
       subst. simpl. rewrite (IH1 _ Hm Hmty _ Heval1), (IH2' _ Hm Hmty _ Heval2), (IH3' _ Hm Hmty _ Heval3). reflexivity.
   - rewrite types_wf_rewrite, Heq in Hwf. (*TODO: add var condition*)
-    destruct Hwf as [Hwf1 Hwf2]. specialize (IHt1_1 Hwf1); specialize (IHt1_2 Hwf2). 
+    destruct Hwf as [Hvars [Hwf1 Hwf2]]. specialize (IHt1_1 Hwf1); specialize (IHt1_2 Hwf2). 
     destruct IHt1_1 as [IH1 _]; destruct IHt1_2 as [IH2 IH2'].
     split; intros m Hm Hmty e1 Heval.
     + (*tlet*) rewrite t_subst_unsafe_aux_rewrite, Heq. simpl.
@@ -1992,7 +2521,8 @@ Proof.
       rewrite (IH1 _ Hm Hmty _ Heval1). simpl. simpl in Heval2.
       (*Simplify the maps*)
       rewrite <- eval_subs_map_remove.
-      replace (tm_fv e3) with (eval_varset (bv_vars b)) by admit.
+      replace (tm_fv e3) with (eval_varset (bv_vars b)).
+      2: { erewrite <- eval_varset_map. rewrite Hvars. apply t_free_vars_eval_term. auto. }
       rewrite <- eval_subs_map_set_inter, eval_subs_map_is_empty.
       2: { eapply subs_map_submap; eauto. apply binding_submap. }
       destruct (amap_is_empty _).
@@ -2008,7 +2538,8 @@ Proof.
       rewrite (IH1 _ Hm Hmty _ Heval1). simpl. simpl in Heval2.
       (*Simplify the maps*)
       rewrite <- eval_subs_map_remove.
-      replace (fmla_fv e3) with (eval_varset (bv_vars b)) by admit.
+      replace (fmla_fv e3) with (eval_varset (bv_vars b)).
+      2: { erewrite <- eval_varset_map. rewrite Hvars. apply t_free_vars_eval_fmla. auto. }
       rewrite <- eval_subs_map_set_inter, eval_subs_map_is_empty.
       2: { eapply subs_map_submap; eauto. apply binding_submap. }
       destruct (amap_is_empty _).
@@ -2020,7 +2551,6 @@ Proof.
         -- eapply mvs_preserved; eauto. apply binding_submap.
   - (*Tcase*)
 
-  
 
 
       (*Need to prove these conditions equivalent - prove that
