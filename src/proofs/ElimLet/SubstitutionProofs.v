@@ -752,10 +752,27 @@ Proof.
   - (*false*) intros t Hn Hlet. apply prove_errst_spec_ret. intros. rewrite term_bnd_rewrite, Hn. lia.
 Qed.
 
+(*TODO: move*)
+Lemma errst_spec_split {A B: Type} (P: A -> Prop) (s: errState A B) (Q1 Q2: A -> B -> A -> Prop):
+  errst_spec P s Q1 ->
+  errst_spec P s Q2 ->
+  errst_spec P s (fun x y z => Q1 x y z /\ Q2 x y z).
+Proof. 
+  unfold errst_spec. auto.
+Qed.
+
+Lemma new_var_names_length t (Hlet: only_let t) s:
+  length (new_var_names t s) = term_bnd t.
+Proof.
+  revert s. induction t using term_ind_alt; intros s; rewrite new_var_names_rewrite, term_bnd_rewrite; try rewrite Heq;
+  try rewrite Heq; try rewrite Ht; auto; rewrite only_let_rewrite in Hlet; try rewrite Heq in Hlet; try discriminate; bool_hyps; simpl;
+  try rewrite !length_app; try rewrite !Nat.add_assoc; solve[repeat f_equal; auto].
+Qed.
+
 
 (*NOTE: later prove length and NoDup for list*)
 (*NOTE: later, need to prove that under wf assumption, we have that no var in list appears*)
-Lemma t_wf_convert t1:
+Lemma t_wf_convert t1 (Hlet: only_let t1):
   (forall e1 (Heval: eval_term t1 = Some e1),
     errst_spec (fun (_: full_st) => True) (t_make_wf t1) (fun (s1: full_st) t2 _ =>
       eval_term t2 = Some (alpha_t_aux e1 (new_var_names t1 (fst s1))))) /\
@@ -763,7 +780,7 @@ Lemma t_wf_convert t1:
     errst_spec (fun (_: full_st) => True) (t_make_wf t1) (fun (s1: full_st) t2 _ =>
       eval_fmla t2 = Some (alpha_f_aux e1 (new_var_names t1 (fst s1))))).
 Proof.
-  revert t1. apply tm_traverse_ind with (P:=fun t1 x =>
+  revert Hlet. apply tm_traverse_ind with (P:=fun t1 x => forall (Hlet: only_let t1),
       (forall e1 : term,
    eval_term t1 = Some e1 ->
    errst_spec (fun _ : CoqBigInt.t * TaskDefs.hashcons_full => True) x
@@ -773,34 +790,299 @@ Proof.
    eval_fmla t1 = Some e1 ->
    errst_spec (fun _ : CoqBigInt.t * TaskDefs.hashcons_full => True) x
      (fun (s1 : full_st) (t2 : term_c) (_ : CoqBigInt.t * TaskDefs.hashcons_full) =>
-      eval_fmla t2 = Some (alpha_f_aux e1  (new_var_names t1 (fst s1)))))).
-  - (*const*) intros t1 c Heq. split; intros e1 Heval.
+      eval_fmla t2 = Some (alpha_f_aux e1  (new_var_names t1 (fst s1)))))); clear t1.
+  - (*const*) intros t1 c Heq Hlet. split; intros e1 Heval.
     + apply prove_errst_spec_ret. intros i _.
       rewrite new_var_names_rewrite, Heq. simpl.
       destruct (eval_const_tm Heq Heval) as [c1 [He1 Hc1]]. subst.
       simpl. auto.
     + exfalso. apply (eval_const_fmla Heq Heval).
-  - (*var*) intros t1 v Heq; split; intros e1 Heval.
+  - (*var*) intros t1 v Heq Hlet; split; intros e1 Heval.
     + apply prove_errst_spec_ret. intros i _.
       rewrite new_var_names_rewrite, Heq. simpl.
       rewrite (eval_var_tm Heq Heval) in Heval |- *. auto.
     + exfalso. apply (eval_var_fmla Heq Heval).
-  - (*if*) intros t t1 t2 t3 Heq [_ IH1] [IH2 IH2'] [IH3 IH3']; split; intros e1 Heval.
+  - (*if*) intros t t1 t2 t3 Heq IH1 IH2 IH3 Hlet.
+    rewrite only_let_rewrite, Heq in Hlet. rewrite !andb_true in Hlet. destruct Hlet as [[Hlet1 Hlet2] Hlet3].
+    specialize (IH1 Hlet1); specialize (IH2 Hlet2); specialize (IH3 Hlet3).
+    destruct IH1 as [_ IH1]; destruct IH2 as [IH2 IH2']; destruct IH3 as [IH3 IH3']. split; intros e1 Heval.
     + (*Tif*)
       destruct (eval_if_tm Heq Heval) as [e2 [e3 [e4 [He1 [He2 [He3 He4]]]]]]; subst. simpl.
       specialize (IH1 _ He2). 
+      rewrite new_var_names_rewrite, Heq. simpl.
+      (*annoyingly cant simplify under binders*)
+      (*Morally speaking, we get:
+        Tif (alpha_f_aux e2 (new_var_names t1 (fst s1)))
+          (alpha_t_aux e3 (new_var_names t2 (fst s2)))
+          (alpha_t_aux e4 (new_var_names t3 (fst s3)))
+        where s1 -> s2 -> s3 increase by term_bnd t1 and term_bnd t2*)
+      eapply prove_errst_spec_bnd with (Q1:=fun s1 t2 s2 =>
+        eval_fmla t2 = Some (alpha_f_aux e2 (new_var_names t1 (fst s1))) /\
+          fst s2 = Z.of_nat (term_bnd t1) + (fst s1))
+      (P2:=fun x s2 => eval_fmla x = Some (alpha_f_aux e2 (new_var_names t1 (fst s2 - Z.of_nat (term_bnd t1))))) 
+      (Q2:= fun x s2 y s3 => 
+        eval_term y =
+        Some
+          (Tif (alpha_f_aux e2 (new_var_names t1 (fst s2 - Z.of_nat (term_bnd t1))))
+             (alpha_t_aux e3 (new_var_names t2 (fst s2)))
+             (alpha_t_aux e4 (new_var_names t3 ((fst s2) + Z.of_nat (term_bnd t2)))))); auto.
+      3: { intros i _ x s2 [Hx Hs2]. rewrite Hx. f_equal. f_equal. f_equal. lia. }
+      (*Prove this implies goal*)
+      3: {
+        intros s1 s2 _ x y [Hx Hs12] Hy.
+        assert (Hlen2: forall s, length (fmla_bnd e2) = length (new_var_names t1 s)).
+        { intros s. rewrite new_var_names_length; auto. symmetry; apply term_bnd_fmla; auto. }
+        assert (Hlen3: forall s, length (tm_bnd e3) = length (new_var_names t2 s)).
+        { intros s. rewrite new_var_names_length; auto. symmetry; apply term_bnd_tm; auto. }
+        rewrite Hy. f_equal. f_equal.
+        - f_equal. rewrite list.take_app_length'; auto. f_equal. lia.
+        - f_equal. rewrite list.drop_app_length'; auto. rewrite list.take_app_length'; auto. f_equal; lia.
+        - f_equal. repeat(rewrite list.drop_app_length'; auto). f_equal. lia.
+      }
+      (*First part from IH and previous result*)
+      1: { apply errst_spec_split; [apply IH1|apply t_wf_state]; auto. }
+      (*Now continue for 2nd and 3rd*)
+      intros t1'.
+      eapply prove_errst_spec_bnd with (Q1:=fun s2 t2' s3 =>
+        eval_term t2' = Some (alpha_t_aux e3 (new_var_names t2 (fst s2))) /\
+          fst s3 = Z.of_nat (term_bnd t2) + (fst s2))
+      (P2:=fun t2' s3 => 
+        eval_fmla t1' = Some (alpha_f_aux e2 (new_var_names t1 (fst s3 - Z.of_nat (term_bnd t1) - Z.of_nat (term_bnd t2)))) /\
+        eval_term t2' = Some (alpha_t_aux e3 (new_var_names t2 (fst s3 - Z.of_nat (term_bnd t2)))))
+      (Q2:=fun x s3 y s4 => 
+        eval_term y = Some (Tif (alpha_f_aux e2 (new_var_names t1 (fst s3 - Z.of_nat (term_bnd t1) - Z.of_nat (term_bnd t2))))
+          (alpha_t_aux e3 (new_var_names t2 (fst s3 - Z.of_nat (term_bnd t2))))
+          (alpha_t_aux e4 (new_var_names t3 (fst s3))))); auto.
+      3: { intros i Ht1' x s2 [Hx Hs2]. split.
+        - rewrite Ht1'. f_equal. f_equal. f_equal. lia.
+        - rewrite Hx. f_equal. f_equal. f_equal. lia. }
+      (*Prove final*)
+      3: { intros s2 s3 _ x y [Hx Hs3].
+        rewrite Hs3. intros Hy (*[Hy Hx']*); rewrite Hy; clear Hy. f_equal. f_equal; f_equal; f_equal; lia. }
+      (*IH and previous result*)
+      1: { apply errst_spec_weaken_pre with (P1:=fun _ => True); auto. 
+        apply errst_spec_split; [apply IH2|apply t_wf_state]; auto. }
+      intros t2'. 
+      (*One more time*)
+      eapply prove_errst_spec_bnd with (Q1:=fun s2 t3' s3 =>
+        eval_term t3' = Some (alpha_t_aux e4 (new_var_names t3 (fst s2))) /\
+          fst s3 = Z.of_nat (term_bnd t3) + (fst s2))
+      (P2:=fun t3' s4 => 
+        eval_fmla t1' = Some (alpha_f_aux e2 (new_var_names t1 (fst s4 - Z.of_nat (term_bnd t1) 
+          - Z.of_nat (term_bnd t2) - Z.of_nat (term_bnd t3)))) /\
+        eval_term t2' = Some (alpha_t_aux e3 (new_var_names t2 (fst s4 - Z.of_nat (term_bnd t2) - Z.of_nat (term_bnd t3)))) /\
+        eval_term t3' = Some (alpha_t_aux e4 (new_var_names t3 (fst s4 - Z.of_nat (term_bnd t3)))))
+      (Q2:=fun x s4 y s5 => 
+        eval_term y = Some (Tif (alpha_f_aux e2 (new_var_names t1 (fst s4 - Z.of_nat (term_bnd t1) 
+            - Z.of_nat (term_bnd t2) - Z.of_nat (term_bnd t3))))
+          (alpha_t_aux e3 (new_var_names t2 (fst s4 - Z.of_nat (term_bnd t2) - Z.of_nat (term_bnd t3))))
+          (alpha_t_aux e4 (new_var_names t3 (fst s4 - Z.of_nat (term_bnd t3)))))); auto.
+      3: { intros i [Ht1' Ht2'] x s2 [Hx Hs2].
+        split_all.
+        - rewrite Ht1'. do 3 f_equal. lia.
+        - rewrite Ht2'. do 3 f_equal; lia.
+        - rewrite Hx. do 3 f_equal; lia.
+      }
+      (*prove final*)
+      3: { intros s3 s4 _ x y [Hx Hs4].
+        rewrite Hs4. intros Hy (*[Hy Hx']*); rewrite Hy; clear Hy. f_equal. f_equal; f_equal; f_equal; lia. }
+      (*Use last IH*)
+      1: { apply errst_spec_weaken_pre with (P1:=fun _ => True); auto. 
+        apply errst_spec_split; [apply IH3|apply t_wf_state]; auto. }
+      intros t3'.
+      (*Now just have return*) unfold tmap_if_default.
+      apply errst_spec_err'. intros i r Hif [Ht1' [Ht2' Ht3']].
+      unfold t_if in Hif. apply err_bnd_inr in Hif. destruct Hif as [z [_ Hbnd]].
+      apply err_bnd_inr in Hbnd. destruct Hbnd as [z1 [Hprop Hret]].
+      inversion Hret; subst. simpl. unfold t_prop in Hprop.
+      destruct (negb _); inversion Hprop; subst. rewrite Ht1', Ht2', Ht3'. reflexivity.
+    + (*Fif - same thing (TODO less duplication)*)
+      destruct (eval_if_fmla Heq Heval) as [e2 [e3 [e4 [He1 [He2 [He3 He4]]]]]]; subst. simpl.
+      specialize (IH1 _ He2). 
+      rewrite new_var_names_rewrite, Heq. simpl.
+      apply prove_errst_spec_bnd with (Q1:=fun s1 t2 s2 =>
+        eval_fmla t2 = Some (alpha_f_aux e2 (new_var_names t1 (fst s1))) /\
+          fst s2 = Z.of_nat (term_bnd t1) + (fst s1))
+      (P2:=fun x s2 => eval_fmla x = Some (alpha_f_aux e2 (new_var_names t1 (fst s2 - Z.of_nat (term_bnd t1))))) 
+      (Q2:= fun x s2 y s3 => 
+        eval_fmla y =
+        Some
+          (Fif (alpha_f_aux e2 (new_var_names t1 (fst s2 - Z.of_nat (term_bnd t1))))
+             (alpha_f_aux e3 (new_var_names t2 (fst s2)))
+             (alpha_f_aux e4 (new_var_names t3 ((fst s2) + Z.of_nat (term_bnd t2)))))); auto.
+      3: { intros i _ x s2 [Hx Hs2]. rewrite Hx. f_equal. f_equal. f_equal. lia. }
+      3: {
+        intros s1 s2 _ x y [Hx Hs12] Hy.
+        assert (Hlen2: forall s, length (fmla_bnd e2) = length (new_var_names t1 s)).
+        { intros s. rewrite new_var_names_length; auto. symmetry; apply term_bnd_fmla; auto. }
+        assert (Hlen3: forall s, length (fmla_bnd e3) = length (new_var_names t2 s)).
+        { intros s. rewrite new_var_names_length; auto. symmetry; apply term_bnd_fmla; auto. }
+        rewrite Hy. f_equal. f_equal.
+        - f_equal. rewrite list.take_app_length'; auto. f_equal. lia.
+        - f_equal. rewrite list.drop_app_length'; auto. rewrite list.take_app_length'; auto. f_equal; lia.
+        - f_equal. repeat(rewrite list.drop_app_length'; auto). f_equal. lia.
+      }
+      1: { apply errst_spec_split; [apply IH1|apply t_wf_state]; auto. }
+      intros t1'.
+      eapply prove_errst_spec_bnd with (Q1:=fun s2 t2' s3 =>
+        eval_fmla t2' = Some (alpha_f_aux e3 (new_var_names t2 (fst s2))) /\
+          fst s3 = Z.of_nat (term_bnd t2) + (fst s2))
+      (P2:=fun t2' s3 => 
+        eval_fmla t1' = Some (alpha_f_aux e2 (new_var_names t1 (fst s3 - Z.of_nat (term_bnd t1) - Z.of_nat (term_bnd t2)))) /\
+        eval_fmla t2' = Some (alpha_f_aux e3 (new_var_names t2 (fst s3 - Z.of_nat (term_bnd t2)))))
+      (Q2:=fun x s3 y s4 => 
+        eval_fmla y = Some (Fif (alpha_f_aux e2 (new_var_names t1 (fst s3 - Z.of_nat (term_bnd t1) - Z.of_nat (term_bnd t2))))
+          (alpha_f_aux e3 (new_var_names t2 (fst s3 - Z.of_nat (term_bnd t2))))
+          (alpha_f_aux e4 (new_var_names t3 (fst s3))))); auto.
+      3: { intros i Ht1' x s2 [Hx Hs2]. split.
+        - rewrite Ht1'. f_equal. f_equal. f_equal. lia.
+        - rewrite Hx. f_equal. f_equal. f_equal. lia. }
+      3: { intros s2 s3 _ x y [Hx Hs3].
+        rewrite Hs3. intros Hy; rewrite Hy; clear Hy. f_equal. f_equal; f_equal; f_equal; lia. }
+      1: { apply errst_spec_weaken_pre with (P1:=fun _ => True); auto. 
+        apply errst_spec_split; [apply IH2'|apply t_wf_state]; auto. }
+      intros t2'. 
+      eapply prove_errst_spec_bnd with (Q1:=fun s2 t3' s3 =>
+        eval_fmla t3' = Some (alpha_f_aux e4 (new_var_names t3 (fst s2))) /\
+          fst s3 = Z.of_nat (term_bnd t3) + (fst s2))
+      (P2:=fun t3' s4 => 
+        eval_fmla t1' = Some (alpha_f_aux e2 (new_var_names t1 (fst s4 - Z.of_nat (term_bnd t1) 
+          - Z.of_nat (term_bnd t2) - Z.of_nat (term_bnd t3)))) /\
+        eval_fmla t2' = Some (alpha_f_aux e3 (new_var_names t2 (fst s4 - Z.of_nat (term_bnd t2) - Z.of_nat (term_bnd t3)))) /\
+        eval_fmla t3' = Some (alpha_f_aux e4 (new_var_names t3 (fst s4 - Z.of_nat (term_bnd t3)))))
+      (Q2:=fun x s4 y s5 => 
+        eval_fmla y = Some (Fif (alpha_f_aux e2 (new_var_names t1 (fst s4 - Z.of_nat (term_bnd t1) 
+            - Z.of_nat (term_bnd t2) - Z.of_nat (term_bnd t3))))
+          (alpha_f_aux e3 (new_var_names t2 (fst s4 - Z.of_nat (term_bnd t2) - Z.of_nat (term_bnd t3))))
+          (alpha_f_aux e4 (new_var_names t3 (fst s4 - Z.of_nat (term_bnd t3)))))); auto.
+      3: { intros i [Ht1' Ht2'] x s2 [Hx Hs2].
+        split_all.
+        - rewrite Ht1'. do 3 f_equal. lia.
+        - rewrite Ht2'. do 3 f_equal; lia.
+        - rewrite Hx. do 3 f_equal; lia.
+      }
+      3: { intros s3 s4 _ x y [Hx Hs4].
+        rewrite Hs4. intros Hy; rewrite Hy; clear Hy. f_equal. f_equal; f_equal; f_equal; lia. }
+      1: { apply errst_spec_weaken_pre with (P1:=fun _ => True); auto. 
+        apply errst_spec_split; [apply IH3'|apply t_wf_state]; auto. }
+      intros t3'.
+      unfold tmap_if_default.
+      apply errst_spec_err'. intros i r Hif [Ht1' [Ht2' Ht3']].
+      unfold t_if in Hif. apply err_bnd_inr in Hif. destruct Hif as [z [_ Hbnd]].
+      apply err_bnd_inr in Hbnd. destruct Hbnd as [z1 [Hprop Hret]].
+      inversion Hret; subst. simpl. unfold t_prop in Hprop.
+      destruct (negb _); inversion Hprop; subst. rewrite Ht1', Ht2', Ht3'. reflexivity.
+  - (*Interesting case - let*)
+    
+
+
+
+ auto.
+
+
+ Search err_bnd inr.
+      Search errst_lift2.
+        
+
+ f_equal.
+
+
+ intros s2 s3 _ x [Hx Hs3].
+        intros s1 s2 _ x y [Hx Hs2]. rewrite Hs2. 
+
+
+
+
+        eval_fmla t2 = Some (alpha_f_aux e2 (new_var_names t1 (fst s1))) /\
+          fst s2 = Z.of_nat (term_bnd t1) + (fst s1))
+      (P2:=fun x s2 => eval_fmla x = Some (alpha_f_aux e2 (new_var_names t1 (fst s2 - Z.of_nat (term_bnd t1))))) 
+      (Q2:= fun x s2 y s3 => 
+        eval_term y =
+        Some
+          (Tif (alpha_f_aux e2 (new_var_names t1 (fst s2 - Z.of_nat (term_bnd t1))))
+             (alpha_t_aux e3 (new_var_names t2 (fst s2)))
+             (alpha_t_aux e4 (new_var_names t3 ((fst s2) + Z.of_nat (term_bnd t2)))))); auto.
+
+        
+
+
+ repeat (rewrite list.take_app_length'; auto).
+          
+
+
+
+ Locate list.drop_app_length'. Search skipn app.
+      
+
+
+
+
+
+
+                (firstn (Datatypes.length (tm_bnd e3))
+                   (skipn (Datatypes.length (fmla_bnd e2)) (new_var_names t i))))
+             (alpha_t_aux e4
+                (skipn (Datatypes.length (tm_bnd e3))
+                   (skipn (Datatypes.length (fmla_bnd e2)) (new_var_names t i)))))); auto.
+      3: { intros s1 s2 _ x y [Hevalx Hs12]. assert (Hfst: fst s1 = fst s2 - Z.of_nat (term_bnd t1)) by lia.
+        rewrite Hfst. auto. }
+      1: { (*prove first from IH*) apply errst_spec_split; [apply IH1|apply t_wf_state]; auto. }
+
+      
+
+
+      Check list.take_app_length'.
+      (*annoying - have to do this for binders*)
+      assert (Hfirstn: forall s l, firstn (length (fmla_bnd e2)) (new_var_names t1 s ++ l) = new_var_names t1 s).
+      { intros s l. apply list.take_app_length'. rewrite new_var_names_length; auto.
+        symmetry; apply term_bnd_fmla; auto.
+      }
+      Check app_assoc.
+      setoid_rewrite <- app_assoc.
+      setoid_rewrite (Hfirstn _ (.
+
+ Search fmla_bnd term_bnd.
+
+
+      setoid_rewrite (list.take_app_length' _ _ (length (fmla_bnd e2))).
+      Search firstn app.
+
+
+new_var_names_length
+
+  new_var_names_length
+
+      Search new_var_names.
+      Search term_bnd.
+
+
+
+Lemma new_var_names_length t (Ht: only_let t) s:
+  (forall e (Heval: eval_term t = Some e), length (new_var_names t s) = length (tm_bnd e)) /\
+  (forall e (Heval: eval_term t = Some e), length (new_var_names t s) = length (fmla_bnd e)).
+
+
+      Search new_var_names
+
+
+
+      Search new_var_names.
+
+      Check prove_errst_spec_bnd.
       (*TODO: need to prove that tm_make_wf increases state by exactly [term_wf t]*)
       eapply prove_errst_spec_bnd with (Q1:=fun s1 t2 s2 =>
         eval_fmla t2 = Some (alpha_f_aux e2 (new_var_names t1 (fst s1))) /\
         fst s2 = Z.of_nat (term_bnd t1) + (fst s1))
-      (P2:=fun _ (_: full_st) => True) (*TODO see*)
+      (P2:=fun e1 (s2: full_st) => 
+        let i := fst s2 - 
+        eval_term e1 = Some (alpha_f_aux e2 (new_var_names t1 (fst s1))) ) (*TODO see*)
       (*TODO: not sure*)
       (*s2 is state after 1st has been run before 2nd, s3 is state after 3rd*)
       (Q2:= fun x s2 y s3 => 
         let i := (fst s2) - Z.of_nat (term_bnd t1) in (*bad, but how else to recover orginal state?*)
         eval_term y =
         Some
-          (Tif (alpha_f_aux e2 (firstn (Datatypes.length (fmla_bnd e2)) (new_var_names t i)))
+          (Tif (*(alpha_f_aux e2 (firstn (Datatypes.length (fmla_bnd e2)) (new_var_names t i)))*) x
              (alpha_t_aux e3
                 (firstn (Datatypes.length (tm_bnd e3))
                    (skipn (Datatypes.length (fmla_bnd e2)) (new_var_names t i))))
@@ -809,7 +1091,11 @@ Proof.
                    (skipn (Datatypes.length (fmla_bnd e2)) (new_var_names t i)))))); auto.
       3: { intros s1 s2 _ x y [Hevalx Hs12]. assert (Hfst: fst s1 = fst s2 - Z.of_nat (term_bnd t1)) by lia.
         rewrite Hfst. auto. }
-      1: { (*prove first from IH*) apply errst_spec_split.
+      1: { (*prove first from IH*) apply errst_spec_split; [apply IH1|apply t_wf_state]; auto. }
+      
+
+
+ Search "_split". apply errst_spec_split.
 
 
         eval_term t3 = Some (alpha_t_aux e1 (new_var_names t2 (fst s1)))) 
