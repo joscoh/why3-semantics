@@ -641,30 +641,117 @@ Proof.
   - (*false*) intros. apply prove_errst_spec_ret. auto.
 Qed.
 
+(*TODO: move - also subsumes < result from before*)
+Lemma t_open_bound_incr tb:
+errst_spec (fun _ : full_st => True)
+  (errst_tup1 (errst_lift1 (t_open_bound tb)))
+  (fun (s1 : full_st) _ (s2 : full_st) => fst s2 = 1 + fst s1).
+Proof.
+  apply errst_spec_weaken with (P1:=fun _ => True /\ True) (Q1:=fun s1 _ s2 => (fst s2 = 1 + fst s1) /\ True); auto;
+  [intros; tauto|].
+  apply errst_spec_tup1 with (P1:=fun _ => True) (Q1:=fun _ => True) (P2:=fun x _ y => y = 1 + x) (Q:= fun _ _ _ => True); auto.
+  apply errst_spec_st.
+  (*state proof*)
+  unfold t_open_bound.
+  destruct tb as [[v1 b1] t1].
+  apply prove_st_spec_bnd_invar with (Q1:=fun x y => y = 1 + x) (Q2:=fun x y => x = y); auto.
+  3: { intros; subst; lia. }
+  2: { intros [m v]. apply prove_st_spec_ret. auto. }
+  (*main part is rename*)
+  unfold vs_rename. 
+  apply prove_st_spec_bnd_invar with (Q1:=fun x y => y = 1 + x) (Q2:=fun x y => x = y); auto.
+  3: { intros; lia. }
+  2: { intros; apply prove_st_spec_ret; auto. }
+  (*fresh vsymbol*)
+  unfold fresh_vsymbol, create_vsymbol.
+  apply prove_st_spec_bnd_invar with (Q1:=fun x y => y = 1 + x) (Q2:=fun x y => x = y); auto.
+  3: { intros; lia. }
+  2: { intros; apply prove_st_spec_ret; auto. }
+  (*id_register*)
+  unfold id_register.
+  apply prove_st_spec_bnd_invar with (Q1:=fun x y => y = x) (Q2:=fun x y => y = 1 + x); auto.
+  3: { intros; lia. }
+  1: { apply IdCtr.st_spec_get. auto. }
+  intros x.
+  apply prove_st_spec_bnd_invar with (Q1:=fun x y => y = 1 + x) (Q2:=fun x y => x = y); auto.
+  3: { intros; lia. }
+  2: { intros; apply prove_st_spec_ret; auto. }
+  apply IdCtr.st_spec_incr. (*TODO: bad*) Transparent CoqBigInt.succ. unfold CoqBigInt.succ. intros; lia. 
+  Opaque CoqBigInt.succ.
+Qed.
 
-Lemma t_wf_state t:
+
+Lemma t_wf_state t (Hlet: only_let t):
   errst_spec (fun (_: full_st) => True) (t_make_wf t) (fun s1 _ s2 => fst s2 = Z.of_nat (term_bnd t) + fst s1).
 Proof. 
-  revert t.
-  apply tm_traverse_ind with (P:=fun t x =>
-    errst_spec (fun _ : full_st => True) x (fun s1 _ s2 => fst s2 = Z.of_nat (term_bnd t) + fst s1)).
-  - (*const*) intros t c Hn. apply prove_errst_spec_ret. destruct_term_node t. intros; lia.
-  - (*var*) intros t v Hn. apply prove_errst_spec_ret. destruct_term_node t. intros; lia.
-  - (*if*) intros t t1 t2 t3 Hn IH1 IH2 IH3.
-    eapply prove_errst_spec_bnd with (P2:= fun _ _ => True); [apply IH1 | | |].
-    (*TODO see*)
-    + intros e1. eapply prove_errst_spec_bnd with (P2:=fun _ _ => True)
-      (Q2:=fun _ s2 y s3 => ; [apply IH2 | | |].
-      * intros e2. eapply prove_errst_spec_bnd with (P2:=fun _ _ => True); [apply IH3 | | |].
-        -- intros e3. unfold tmap_if_default. apply errst_spec_err'.
-          intros i x Hif. 
+  revert Hlet.
+  apply tm_traverse_ind with (P:=fun t x => forall (Hlet: only_let t),
+    errst_spec (fun _ : full_st => True) x (fun s1 _ s2 => fst s2 = Z.of_nat (term_bnd t) + fst s1)); clear t.
+  - (*const*) intros t c Hn Hlet. apply prove_errst_spec_ret. destruct_term_node t. intros; lia.
+  - (*var*) intros t v Hn Hlet. apply prove_errst_spec_ret. destruct_term_node t. intros; lia.
+  - (*if*) intros t t1 t2 t3 Hn IH1 IH2 IH3 Hlet.
+    rewrite only_let_rewrite, Hn in Hlet. bool_hyps.
+    apply prove_errst_spec_bnd with (P2:=fun _ _ => True) (Q1:=fun s1 _ s2 => fst s2 = Z.of_nat (term_bnd t1) + fst s1)
+    (Q2:=fun _ s1 _ s2 => fst s2 = Z.of_nat (term_bnd t2) + Z.of_nat (term_bnd t3) + fst s1); auto.
+    2: { (*Prove ending*) intros s1 s2 s3 _ _ Hs2 Hs3. rewrite term_bnd_rewrite, Hn. lia. }
+    intros x1.
+    (*IH2*)
+    apply prove_errst_spec_bnd with (P2:=fun _ _ => True) (Q1:=fun s1 _ s2 => fst s2 = Z.of_nat (term_bnd t2) + fst s1)
+    (Q2:=fun _ s1 _ s2 => fst s2 = Z.of_nat (term_bnd t3) + fst s1); auto.
+    2: { intros; lia. }
+    intros x2.
+    apply prove_errst_spec_bnd with (P2:=fun _ _ => True) (Q1:=fun s1 _ s2 => fst s2 = Z.of_nat (term_bnd t3) + fst s1)
+    (Q2:=fun _ s1 _ s2 => s1 = s2); auto.
+    2: { intros; subst; auto. }
+    intros. unfold tmap_if_default. apply errst_spec_err. auto.
+  - (*let*) 
+    intros t t1 tb Hn IH1 IH2 Hlet. rewrite only_let_rewrite, Hn in Hlet. destruct tb as [[v1 b1] t2]. bool_hyps.
+    (*first IH*)
+    apply prove_errst_spec_bnd with (P2:=fun _ _ => True) (Q1:=fun s1 _ s2 => fst s2 = Z.of_nat (term_bnd t1) + fst s1)
+    (Q2:=fun _ s1 _ s2 => fst s2 = 1 + Z.of_nat (term_bnd t2) + fst s1); auto.
+    2: { (*Prove ending*) intros s1 s2 s3 _ _ Hs2 Hs3. rewrite term_bnd_rewrite, Hn. lia. }
+    intros x1.
+    (*open bound*)
+    apply prove_errst_spec_dep_bnd with (P2:=fun _ _ => True) (Q1:=fun s1 _ s2 => fst s2 = 1 + (fst s1))
+    (Q2:= fun _ s1 _ s2 => fst s2 = Z.of_nat (term_bnd t2) + fst s1); auto.
+    3: { intros; lia. }
+    (*[t_open_bound] increases by 1*)
+    1: { apply t_open_bound_incr. }
+    intros s1 y Hy.
+    (*second (dependent) IH*)
+    apply prove_errst_spec_bnd with (P2:=fun _ _ => True) (Q1:=fun s1 _ s2 => fst s2 = Z.of_nat (term_bnd t2) + fst s1)
+    (Q2:=fun _ s1 _ s2 => s1 = s2); auto.
+    3: { intros; subst; lia. }
+    1: { (*Use result that [term_bnd] is equal for [t_open_bound]*)
+      pose proof (t_open_bound_bnd (v1, b1, t2) (ltac:(auto))) as Hbnd.
+      unfold errst_spec in Hbnd. specialize (Hbnd _ _ (ltac:(auto)) Hy). destruct Hbnd as [Hlet1 Hbnd1].
+      simpl in Hbnd1.
+      rewrite <- Hbnd1. eapply IH2; eauto.
+    }
+    (*Prove end*)
+    intros x2. unfold tmap_let_default. apply errst_spec_err. auto.
+  - (*app - rule out*) intros t l ts Hn IH Hlet. rewrite only_let_rewrite, Hn in Hlet; discriminate.
+  - (*case - rule out*) intros t t1 tbs Hn IH1 IH2 Hlet. rewrite only_let_rewrite, Hn in Hlet; discriminate.
+  - (*eps - rule out (could do)*) intros t b Hn IH Hlet. rewrite only_let_rewrite, Hn in Hlet; discriminate.
+  - (*quant - rule out*) intros t q tq Hn IH Hlet. rewrite only_let_rewrite, Hn in Hlet; discriminate.
+  - (*binop*) intros t b t1 t2 Hn IH1 IH2 Hlet. rewrite only_let_rewrite, Hn in Hlet. bool_hyps.
+    apply prove_errst_spec_bnd with (P2:=fun _ _ => True) (Q1:=fun s1 _ s2 => fst s2 = Z.of_nat (term_bnd t1) + fst s1)
+    (Q2:=fun _ s1 _ s2 => fst s2 = Z.of_nat (term_bnd t2) +  fst s1); auto.
+    2: {intros s1 s2 s3 _ _ Hs2 Hs3. rewrite term_bnd_rewrite, Hn. lia. }
+    intros x1.
+    apply prove_errst_spec_bnd with (P2:=fun _ _ => True) (Q1:=fun s1 _ s2 => fst s2 = Z.of_nat (term_bnd t2) + fst s1)
+    (Q2:=fun _ s1 _ s2 => s1 = s2); auto.
+    2: { intros; subst; auto. }
+    intros. unfold tmap_binop_default. apply errst_spec_err. auto.
+  - (*not*) intros t t1 Hn IH Hlet. rewrite only_let_rewrite, Hn in Hlet. 
+    apply prove_errst_spec_bnd with (P2:=fun _ _ => True) (Q1:=fun s1 _ s2 => fst s2 = Z.of_nat (term_bnd t1) + fst s1)
+    (Q2:=fun _ s1 _ s2 => s1 = s2); auto.
+    2: { intros; subst; auto. rewrite term_bnd_rewrite, Hn. lia. }
+    intros. unfold tmap_not_default. apply errst_spec_err. auto.
+  - (*true*) intros t Hn Hlet. apply prove_errst_spec_ret. intros. rewrite term_bnd_rewrite, Hn. lia.
+  - (*false*) intros t Hn Hlet. apply prove_errst_spec_ret. intros. rewrite term_bnd_rewrite, Hn. lia.
+Qed.
 
- Search errst_spec errst_lift2.
-
-
- apply prove_errst_spec_ret.
-
- apply IH3.
 
 (*NOTE: later prove length and NoDup for list*)
 (*NOTE: later, need to prove that under wf assumption, we have that no var in list appears*)
