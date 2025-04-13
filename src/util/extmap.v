@@ -265,6 +265,11 @@ Parameter find_def_spec: forall (d: a) (k: key) (m: t a),
 Parameter is_empty_spec: forall (m: t a),
   is_empty m <-> (forall x, find_opt x m = None).
 
+(*Don't have extensionality, but can prove 1 side*)
+Parameter set_union_empty_l: forall (m: t a),
+  set_union empty m = m.
+  
+
 End Spec.
 
 End S.
@@ -1587,6 +1592,91 @@ Proof.
   unfold set_diff. rewrite diff_spec; auto.
 Qed.
 
+Lemma merge_with_none2_empty {A B: Type} (f: key → option A → option B → option B)
+  (Hf: forall k x, f k None x = x) (l: list (key * B)) (Hl: l <> nil):
+  list_to_opt (merge_with_none2 f l) = Some l.
+Proof.
+  induction l as [| h t IH]; simpl; auto; [contradiction|].
+  rewrite Hf. simpl. destruct t as [| h1 t1]; simpl.
+  - destruct h; auto.
+  - rewrite Hf. simpl. specialize (IH (ltac:(auto))). simpl in IH.
+    rewrite Hf in IH. simpl in IH. destruct h as [ha hb]; simpl in *. f_equal. f_equal.
+    destruct h1 as [ha1 h1b]; simpl in *. f_equal. inversion IH. rewrite H0 at 1. reflexivity.
+Qed.
+
+Lemma pmap_omap_ext {A B: Type} (m: Pmap A) (f1 f2: A -> option B) (Hf12: forall x, f1 x = f2 x):
+  omap f1 m = omap f2 m.
+Proof.
+  unfold omap. destruct m as [| p]; simpl; auto.
+  induction p; simpl; try rewrite IHp; auto; try rewrite Hf12; auto;
+  try (rewrite IHp1, IHp2); auto.
+Qed.
+
+Lemma zmap_omap_ext {A B: Type} (m: Zmap A) (f1 f2: A -> option B) (Hf12: forall x, f1 x = f2 x):
+  omap f1 m = omap f2 m.
+Proof.
+  unfold omap. destruct m as [mz mp mn]; simpl. f_equal; try (apply pmap_omap_ext; auto).
+  destruct mz; simpl; auto.
+Qed.
+
+Lemma pmap_omap_id {A: Type} (m: Pmap A) (f: A -> option A)
+  (Hf: forall i x, m !! i = Some x -> f x = Some x):
+  omap f m = m.
+Proof.
+  apply pmap.Pmap_eq. intros i. rewrite pmap.Pmap_lookup_omap.
+  destruct (m !! i) eqn : Hx; simpl; auto.
+  eapply Hf; eauto.
+Qed.
+  
+Lemma zmap_omap_id {A: Type} (m: Zmap A) (f: A -> option A)
+  (Hf: forall i x, m !! i = Some x -> f x = Some x):
+  omap f m = m.
+Proof.
+  unfold omap. destruct m as [mz mp mn]; simpl. unfold lookup in Hf.
+  unfold Zmap_lookup in Hf.
+  f_equal.
+  - destruct mz; simpl; auto. apply (Hf 0%Z); simpl; auto.
+  - apply pmap_omap_id. intros i x Hlook.
+    apply (Hf (Z.pos i) x); simpl; auto.
+  - apply pmap_omap_id. intros i x Hlook.
+    apply (Hf (Z.neg i) x); simpl; auto.
+Qed.
+
+Lemma merge_aux_empty_l {A B: Type} (f: key -> option A -> option B -> option B) (m: t B):
+  (forall k x, f k None x = x) ->
+  merge_aux f empty m = (proj1_sig m).
+Proof.
+  intros Hf. unfold merge_aux.
+  assert (Hemp: @mp A empty = base.empty). { reflexivity. }
+  rewrite Hemp, merge_empty_l.
+  destruct m as [m m_wf]; simpl in *.
+  assert (Hfeq: forall x, ((λ y : option (list (key * B)),
+      match y with
+      | Some l2 => list_to_opt (merge_with_none2 f l2)
+      | None => None
+      end) ∘ Some) x = list_to_opt (merge_with_none2 f x)).
+  { intros x; simpl. reflexivity. }
+  erewrite zmap_omap_ext. 2: exact Hfeq. clear Hfeq.
+  apply zmap_omap_id. intros i x Hx.
+  apply merge_with_none2_empty; auto.
+  rewrite gmap_wf_iff in m_wf. unfold map_Forall in m_wf.
+  apply (m_wf i x); auto.
+Qed.
+
+Lemma union_empty_l f m:
+  union f empty m = m.
+Proof.
+  unfold union, merge. destruct m as [m m_wf].
+  apply proj1_sig_inj. { intros x y z; apply bool_irrelevance. }
+  simpl. apply merge_aux_empty_l. intros _ [x|]; auto.
+Qed.
+
+Lemma set_union_empty_l: forall (m: t a),
+  set_union empty m = m.
+Proof.
+  intros m. apply union_empty_l. 
+Qed.
+
 (*This is not particularly efficient, but we use the
   canonicity property to say that if the key lists are equal,
   so are the sets*)
@@ -1917,5 +2007,7 @@ Definition next_ge_enum {A: Type} (k: key) (e: enumeration A) : enumeration A :=
 
 Definition start_ge_enum {A: Type} (k: key) (m: t A) : enumeration A :=
   next_ge_enum k (start_enum m).
+
+
 
 End Make.
