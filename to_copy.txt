@@ -19,10 +19,14 @@ coq-util/Specif.ml
 coq-util/Specif.mli
 coq-util/strings0.ml
 coq-util/strings0.mli
+coq-util/pmap0.ml
+coq-util/pmap0.mli
 coq-util/pmap.ml
 coq-util/pmap.mli
 coq-util/Basics.ml
 coq-util/Basics.mli
+coq-util/zmap0.ml
+coq-util/zmap0.mli
 coq-util/zmap.ml
 coq-util/zmap.mli
 coq-util/BinPos.ml

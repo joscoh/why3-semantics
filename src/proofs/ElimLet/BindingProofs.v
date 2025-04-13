@@ -228,6 +228,7 @@ Ltac get_fast_eq :=
 | H: is_true (list_eqb vsymbol_eqb ?vs1 ?vs2) |- _ => apply (list_eqb_eq vsymbol_eqb_eq) in H
 | H: is_true (TermDefs.quant_eqb ?q ?q1) |- _ => apply (quant_eqb_eq) in H
 | H: is_true (TermDefs.binop_eqb ?b1 ?b2) |- _ => apply binop_eqb_eq in H
+| H: is_true (TermDefs.bind_info_eqb ?b1 ?b2) |- _ => apply bind_info_eqb_eq in H
 end.
 
 Ltac solve_similar :=
@@ -348,6 +349,12 @@ Lemma t_free_vars_rewrite t:
   end.
 Proof. destruct t; auto. Qed.
 
+(*NOTE: not extensional anymore so can't use equality*)
+Definition mvs_eq {A: Type} (m1 m2: Mvs.t A): Prop :=
+  forall x, Mvs.find_opt x m1 = Mvs.find_opt x m2.
+Definition svs_eq (s1 s2: Svs.t) : Prop :=
+  forall x, Svs.mem x s1 = Svs.mem x s2.
+
 (*Need predicate that types are consistent - this is not a full type system*)
 Fixpoint types_wf (t: term_c) : Prop :=
   match t_node_of t with
@@ -355,16 +362,16 @@ Fixpoint types_wf (t: term_c) : Prop :=
   | Tconst _ => True
   | Tapp l tms => (*TODO: need anything else?*)  Forall (fun x => x) (map types_wf tms)
   | Tif t1 t2 t3 => t_ty_of t2 = t_ty_of t3 /\ t_ty_of t2 = t_ty_of t /\ types_wf t1 /\ types_wf t2 /\ types_wf t3
-  | Tlet t1 (v, b, t2) => Mvs.map (fun _ => tt) (bv_vars b) = t_free_vars t2 /\
+  | Tlet t1 (v, b, t2) => mvs_eq (Mvs.map (fun _ => tt) (bv_vars b)) (Svs.remove v (t_free_vars t2)) /\
      (*t_ty_of t1 = Some (vs_ty v) /\ t_ty_of t2 = t_ty_of t /\*) types_wf t1 /\ types_wf t2
   | Tcase t1 ps => (*TODO: see*) types_wf t1 /\ 
-      Forall (fun x => (pat_vars_of (fst (fst x))) = p_free_vars (fst (fst x)) /\
-        Mvs.map (fun _ => tt) (bv_vars (snd (fst x))) = t_free_vars (snd x)) ps /\
+      Forall (fun x => svs_eq (pat_vars_of (fst (fst x))) (p_free_vars (fst (fst x))) /\
+        mvs_eq  (Mvs.map (fun _ => tt) (bv_vars (snd (fst x)))) (Svs.diff (t_free_vars (snd x)) (p_free_vars (fst (fst x))))) ps /\
       Forall (fun x => x) (map (fun x => types_wf (snd x)) ps) (*see if we need more*)
      (*  Forall (fun x => x) (map (fun x => t_ty_of t1 = Some (pat_ty_of (fst (fst x))) /\
       t_ty_of (snd x) = t_ty_of t /\ types_wf (snd x)) ps) *)
-  | Teps (v, b, t1) => Mvs.map (fun _ => tt) (bv_vars b) = t_free_vars t1 /\ (*t_ty_of t = Some (vs_ty v) /\*) types_wf t1
-  | Tquant _ (vs, b, tr, t1) => Mvs.map (fun _ => tt) (bv_vars b) = t_free_vars t1 /\
+  | Teps (v, b, t1) => mvs_eq (Mvs.map (fun _ => tt) (bv_vars b)) (Svs.remove v (t_free_vars t1)) /\ (*t_ty_of t = Some (vs_ty v) /\*) types_wf t1
+  | Tquant _ (vs, b, tr, t1) => mvs_eq (Mvs.map (fun _ => tt) (bv_vars b)) (Svs.diff (t_free_vars t1) (Svs.of_list vs)) /\
      t_ty_of t = None /\ types_wf t1
   | Tbinop _ t1 t2 => t_ty_of t = None /\ (*TODO: do we need to enforce None?*) types_wf t1 /\ types_wf t2
   | Tnot t1 => t_ty_of t = None /\ types_wf t1
@@ -374,6 +381,25 @@ Fixpoint types_wf (t: term_c) : Prop :=
 Lemma types_wf_rewrite t:
   types_wf t = match t_node_of t with
   | Tvar v => t_ty_of t = Some (vs_ty v)
+  | Tconst _ => True
+  | Tapp l tms => (*TODO: need anything else?*)  Forall (fun x => x) (map types_wf tms)
+  | Tif t1 t2 t3 => t_ty_of t2 = t_ty_of t3 /\ t_ty_of t2 = t_ty_of t /\ types_wf t1 /\ types_wf t2 /\ types_wf t3
+  | Tlet t1 (v, b, t2) => mvs_eq (Mvs.map (fun _ => tt) (bv_vars b)) (Svs.remove v (t_free_vars t2)) /\
+     (*t_ty_of t1 = Some (vs_ty v) /\ t_ty_of t2 = t_ty_of t /\*) types_wf t1 /\ types_wf t2
+  | Tcase t1 ps => (*TODO: see*) types_wf t1 /\ 
+      Forall (fun x => svs_eq (pat_vars_of (fst (fst x))) (p_free_vars (fst (fst x))) /\
+        mvs_eq  (Mvs.map (fun _ => tt) (bv_vars (snd (fst x)))) (Svs.diff (t_free_vars (snd x)) (p_free_vars (fst (fst x))))) ps /\
+      Forall (fun x => x) (map (fun x => types_wf (snd x)) ps) (*see if we need more*)
+     (*  Forall (fun x => x) (map (fun x => t_ty_of t1 = Some (pat_ty_of (fst (fst x))) /\
+      t_ty_of (snd x) = t_ty_of t /\ types_wf (snd x)) ps) *)
+  | Teps (v, b, t1) => mvs_eq (Mvs.map (fun _ => tt) (bv_vars b)) (Svs.remove v (t_free_vars t1)) /\ (*t_ty_of t = Some (vs_ty v) /\*) types_wf t1
+  | Tquant _ (vs, b, tr, t1) => mvs_eq (Mvs.map (fun _ => tt) (bv_vars b)) (Svs.diff (t_free_vars t1) (Svs.of_list vs)) /\
+     t_ty_of t = None /\ types_wf t1
+  | Tbinop _ t1 t2 => t_ty_of t = None /\ (*TODO: do we need to enforce None?*) types_wf t1 /\ types_wf t2
+  | Tnot t1 => t_ty_of t = None /\ types_wf t1
+  | _ => True
+  end.
+ (*  | Tvar v => t_ty_of t = Some (vs_ty v)
   | Tconst _ => True
   | Tapp l tms => (*TODO: need anything else?*) Forall (fun x => x) (map types_wf tms)
   | Tif t1 t2 t3 => t_ty_of t2 = t_ty_of t3 /\ t_ty_of t2 = t_ty_of t /\ types_wf t1 /\ types_wf t2 /\ types_wf t3
@@ -387,7 +413,7 @@ Lemma types_wf_rewrite t:
   | Tbinop _ t1 t2 => t_ty_of t = None /\ (*TODO: do we need to enforce None?*) types_wf t1 /\ types_wf t2
   | Tnot t1 => t_ty_of t = None /\ types_wf t1
   | _ => True
-  end.
+  end. *)
 Proof. destruct t; reflexivity.
 Qed.
 
@@ -471,22 +497,22 @@ Proof.
 Qed.
 
 (*For let, eps - *)
-Lemma binding_submap {A B: Type} (m: Mvs.t A) (m1: Mvs.t B) (v: vsymbol):
-  mvs_submap (Mvs.set_inter _ _ (Mvs.remove _ v m) m1) m.
+Lemma binding_submap {A B: Type} (m: Mvs.t A) (m1: Mvs.t B) (*(v: vsymbol)*):
+  mvs_submap (Mvs.set_inter _ _ m (*(Mvs.remove _ v m)*) m1) m.
 Proof.
   unfold mvs_submap. intros x y. rewrite Mvs.set_inter_spec.
-  rewrite Mvs.remove_spec. destruct (Vsym.Tg.equal x v); [discriminate|].
+  (* rewrite Mvs.remove_spec. destruct (Vsym.Tg.equal x v); [discriminate|]. *)
   destruct (Mvs.find_opt x m) eqn : Hopt; auto.
   destruct (Mvs.find_opt x m1) eqn : Hopt2; auto. discriminate.
 Qed.
 
-Lemma branch_submap {A B C: Type} (m: Mvs.t A) (m1: Mvs.t B) (s: Mvs.t C):
-   mvs_submap (Mvs.set_inter _ _ (Mvs.set_diff _ _ m s) m1) m.
+Lemma branch_submap {A B: Type} (m: Mvs.t A) (m1: Mvs.t B) (*(s: Mvs.t C)*):
+   mvs_submap (Mvs.set_inter _ _ m (*(Mvs.set_diff _ _ m s)*) m1) m.
 Proof.
   unfold mvs_submap. intros x y. rewrite Mvs.set_inter_spec.
-  rewrite Mvs.set_diff_spec.
+  (* rewrite Mvs.set_diff_spec. *)
   destruct (Mvs.find_opt x m) eqn : Hopt; auto.
-  destruct (Mvs.find_opt x s) eqn : Hopt1; [discriminate|].
+  (* destruct (Mvs.find_opt x s) eqn : Hopt1; [discriminate|]. *)
   destruct (Mvs.find_opt x m1) eqn : Hopt2; auto. discriminate.
 Qed.
 
@@ -2479,7 +2505,58 @@ Proof.
   destruct b; simpl; [apply sub_fs_alt_fforalls | apply sub_fs_alt_fexists].
 Qed.
 
+Lemma mvs_eq_eval_varset {A: Type} (m1 m2: Mvs.t A):
+  mvs_eq m1 m2 ->
+  eval_varset m1 = eval_varset m2.
+Proof.
+  unfold mvs_eq; intros Heq.
+  apply aset_ext. intros x. rewrite !eval_varset_mem.
+  setoid_rewrite Mvs.mem_spec. setoid_rewrite Heq. reflexivity.
+Qed.
 
+(*iff but dont prove*)
+Lemma mvs_svs_eq (s1 s2: Svs.t):
+  svs_eq s1 s2 ->
+  mvs_eq s1 s2.
+Proof.
+  unfold svs_eq, mvs_eq. intros Heq x.
+  unfold Svs.mem, Svs.M.mem in Heq.
+  specialize (Heq x). destruct (Mvs.find_opt x s1) as [[]|] eqn : Hget1; simpl in *;
+  destruct (Mvs.find_opt x s2) as [[]|] eqn : Hget2; simpl in *; try discriminate; auto.
+Qed.
+
+Lemma svs_eq_eval_varset (s1 s2: Svs.t):
+  svs_eq s1 s2 ->
+  eval_varset s1 = eval_varset s2.
+Proof.
+  intros Heq. apply mvs_eq_eval_varset, mvs_svs_eq; auto.
+Qed.
+
+(*TODO: move maybe*)
+(*TODO: could change def, see*)
+Lemma amap_set_inter_remove {A B: Type} `{countable.Countable A} (m: amap A B) x (s: aset A):
+  amap_set_inter (amap_remove _ _ x m) s =
+  amap_set_inter m (aset_remove x s).
+Proof.
+  apply amap_ext. intros y. rewrite !amap_set_inter_lookup.
+  destruct (aset_mem_dec y s); destruct (aset_mem_dec y (aset_remove x s)); auto; simpl_set; destruct_all;
+  try contradiction.
+  - rewrite amap_remove_diff; auto.
+  - destruct (EqDecision0 x y); subst; auto; try contradiction.
+    + rewrite amap_remove_same; auto.
+    + exfalso. auto.
+Qed.
+
+Lemma amap_set_inter_diff {A B: Type} `{countable.Countable A} (m: amap A B) (s: aset A) (s1: aset A):
+  amap_set_inter (amap_diff m s1) s =
+  amap_set_inter m (aset_diff s1 s).
+Proof.
+  apply amap_ext. intros y. rewrite !amap_set_inter_lookup.
+  destruct (aset_mem_dec y s); destruct (aset_mem_dec y (aset_diff s1 s)); auto; simpl_set; destruct_all;
+  try contradiction.
+  - rewrite amap_diff_notin; auto.
+  - rewrite amap_diff_in; auto. destruct (aset_mem_dec y s1); auto. exfalso; auto.
+Qed.
 
 (*Do with [sub_ts_alt] for now, close to this one*)
 Lemma t_subst_unsafe_eval (*(Hn: NoDup (map Mvs.tag (map fst (Mvs.bindings m))))*)  t1
@@ -2599,9 +2676,10 @@ Proof.
       destruct (eval_let_tm Heq Heval) as [e2 [e3 [He1 [Heval1 Heval2]]]]. subst; simpl.
       rewrite (IH1 _ Hm Hmty _ Heval1). simpl. simpl in Heval2.
       (*Simplify the maps*)
-      rewrite <- eval_subs_map_remove.
-      replace (tm_fv e3) with (eval_varset (bv_vars b)).
-      2: { erewrite <- eval_varset_map. rewrite Hvars. apply t_free_vars_eval_term. auto. }
+      rewrite amap_set_inter_remove.
+      replace (aset_remove (eval_vsymbol v) (tm_fv e3)) with (eval_varset (bv_vars b)).
+      2: { erewrite <- eval_varset_map. erewrite mvs_eq_eval_varset. 2: apply Hvars.
+        unfold Svs.remove. rewrite eval_varset_remove. f_equal. apply t_free_vars_eval_term; auto. }
       rewrite <- eval_subs_map_set_inter, eval_subs_map_is_empty.
       2: { eapply subs_map_submap; eauto. apply binding_submap. }
       destruct (amap_is_empty _).
@@ -2616,9 +2694,10 @@ Proof.
       destruct (eval_let_fmla Heq Heval) as [e2 [e3 [He1 [Heval1 Heval2]]]]. subst; simpl.
       rewrite (IH1 _ Hm Hmty _ Heval1). simpl. simpl in Heval2.
       (*Simplify the maps*)
-      rewrite <- eval_subs_map_remove.
-      replace (fmla_fv e3) with (eval_varset (bv_vars b)).
-      2: { erewrite <- eval_varset_map. rewrite Hvars. apply t_free_vars_eval_fmla. auto. }
+      rewrite amap_set_inter_remove.
+      replace (aset_remove (eval_vsymbol v) (fmla_fv e3)) with (eval_varset (bv_vars b)).
+      2: { erewrite <- eval_varset_map. erewrite mvs_eq_eval_varset. 2: apply Hvars.
+        unfold Svs.remove. rewrite eval_varset_remove. f_equal. apply t_free_vars_eval_fmla; auto. }
       rewrite <- eval_subs_map_set_inter, eval_subs_map_is_empty.
       2: { eapply subs_map_submap; eauto. apply binding_submap. }
       destruct (amap_is_empty _).
@@ -2656,11 +2735,16 @@ Proof.
         specialize (IH1 Hwf). destruct IH1 as [IH1 _]. simpl in *.
         (*Now basically same as let*)
         rewrite Hevalp. simpl.
-        replace (tm_fv t) with (eval_varset (bv_vars b1)).
-        2: {  erewrite <- eval_varset_map. rewrite (proj2 Hvars). apply t_free_vars_eval_term. auto. }
+        rewrite amap_set_inter_diff.
         replace (pat_fv p) with (eval_varset (pat_vars_of p1)).
-        2: { rewrite (proj1 Hvars). apply p_free_vars_eval; auto. }
-        rewrite <- eval_subs_map_diff, <- eval_subs_map_set_inter, eval_subs_map_is_empty.
+        2: { erewrite svs_eq_eval_varset. 2: (apply (proj1 Hvars)). apply p_free_vars_eval; auto. }
+        replace (aset_diff (eval_varset (pat_vars_of p1)) (tm_fv t)) with  (eval_varset (bv_vars b1)).
+        2: { erewrite <- eval_varset_map. erewrite mvs_eq_eval_varset. 2: apply Hvars.
+          unfold Svs.diff. rewrite eval_varset_diff. f_equal; auto.
+          - symmetry; apply svs_eq_eval_varset. apply Hvars.
+          - apply t_free_vars_eval_term; auto.
+        }
+        rewrite <- eval_subs_map_set_inter, eval_subs_map_is_empty.
         2: { eapply subs_map_submap; eauto. apply branch_submap. }
         destruct (amap_is_empty _).
         -- (*no sub*) rewrite Hevalt. simpl. rewrite IH. simpl. reflexivity.
@@ -2692,11 +2776,16 @@ Proof.
         specialize (IH1 Hwf). destruct IH1 as [_ IH1]. simpl in *.
         (*Now basically same as let*)
         rewrite Hevalp. simpl.
-        replace (fmla_fv t) with (eval_varset (bv_vars b1)).
-        2: {  erewrite <- eval_varset_map. rewrite (proj2 Hvars). apply t_free_vars_eval_fmla. auto. }
+        rewrite amap_set_inter_diff.
         replace (pat_fv p) with (eval_varset (pat_vars_of p1)).
-        2: { rewrite (proj1 Hvars). apply p_free_vars_eval; auto. }
-        rewrite <- eval_subs_map_diff, <- eval_subs_map_set_inter, eval_subs_map_is_empty.
+        2: { erewrite svs_eq_eval_varset. 2: (apply (proj1 Hvars)). apply p_free_vars_eval; auto. }
+        replace (aset_diff (eval_varset (pat_vars_of p1)) (fmla_fv t)) with  (eval_varset (bv_vars b1)).
+        2: { erewrite <- eval_varset_map. erewrite mvs_eq_eval_varset. 2: apply Hvars.
+          unfold Svs.diff. rewrite eval_varset_diff. f_equal; auto.
+          - symmetry; apply svs_eq_eval_varset. apply Hvars.
+          - apply t_free_vars_eval_fmla; auto.
+        }
+        rewrite <- eval_subs_map_set_inter, eval_subs_map_is_empty.
         2: { eapply subs_map_submap; eauto. apply branch_submap. }
         destruct (amap_is_empty _).
         -- (*no sub*) rewrite Hevalt. simpl. rewrite IH. simpl. reflexivity.
@@ -2712,9 +2801,11 @@ Proof.
       rewrite t_attr_copy_eval. simpl.
       destruct (eval_eps_tm Heq Heval) as [e2 [He1 Heval1]]; subst; simpl.
       simpl in *.
-      replace (fmla_fv e2) with (eval_varset (bv_vars b)).
-      2: { erewrite <- eval_varset_map. rewrite Hvars. apply t_free_vars_eval_fmla. auto. }
-      rewrite <- eval_subs_map_remove, <- eval_subs_map_set_inter, eval_subs_map_is_empty.
+      rewrite amap_set_inter_remove.
+      replace (aset_remove (eval_vsymbol v) (fmla_fv e2)) with (eval_varset (bv_vars b)).
+      2: { erewrite <- eval_varset_map. erewrite mvs_eq_eval_varset. 2: apply Hvars.
+        unfold Svs.remove. rewrite eval_varset_remove. f_equal. apply t_free_vars_eval_fmla; auto. }
+      rewrite <- eval_subs_map_set_inter, eval_subs_map_is_empty.
       2: { eapply subs_map_submap; eauto. apply binding_submap. }
       destruct (amap_is_empty _).
       * rewrite Heval1. reflexivity.
@@ -2731,10 +2822,14 @@ Proof.
       rewrite t_attr_copy_eval_fmla. simpl.
       destruct (eval_quant_fmla Heq Heval) as [e2 [He1 Heval1]]; subst; simpl. simpl in *.
       rewrite sub_fs_alt_gen_quants. simpl.
-      replace (fmla_fv e2) with (eval_varset (bv_vars b)).
-      2: { erewrite <- eval_varset_map. rewrite Hvars. apply t_free_vars_eval_fmla. auto. }
-      rewrite <- eval_varset_of_list, <- eval_subs_map_diff, <- eval_subs_map_set_inter,
-      eval_subs_map_is_empty.
+      rewrite amap_set_inter_diff.
+      replace (aset_diff (list_to_aset (map eval_vsymbol l)) (fmla_fv e2)) with
+      (eval_varset (bv_vars b)).
+      2: { erewrite <- eval_varset_map. erewrite mvs_eq_eval_varset. 2: apply Hvars.
+        unfold Svs.diff. rewrite eval_varset_diff, eval_varset_of_list. f_equal; auto.
+        apply t_free_vars_eval_fmla; auto.
+      }
+      rewrite <- eval_subs_map_set_inter, eval_subs_map_is_empty.
       2: { eapply subs_map_submap; eauto. apply branch_submap. }
       destruct (amap_is_empty _).
       * rewrite Heval1. destruct q; reflexivity.

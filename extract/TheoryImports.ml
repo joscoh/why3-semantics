@@ -16,9 +16,9 @@ open State
 open Base
 open Fin_maps
 open Hashcons
-open Pmap
+open Pmap0
 open Strings0
-open Zmap
+open Zmap0
 
 open Format
 open Ident

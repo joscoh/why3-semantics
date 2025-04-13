@@ -1041,9 +1041,10 @@ Fixpoint t_subst_unsafe_aux (m: Mvs.t term_c) (t: term_c) : term_c :=
   | Tlet e (v, b, t2) =>
     let e1 := (t_subst_unsafe_aux m e) in 
     (*Remove element of m corresponding to variable we substitute*)
-    let m' := Mvs.remove _ v m in
+    (*NOTE: don't need because bv_vars does NOT contains v*)
+    (* let m' := Mvs.remove _ v m in *)
     (*specialize to free vars of t2*)
-    let m1 := Mvs.set_inter _ _ m' b.(bv_vars) in
+    let m1 := Mvs.set_inter _ _ m b.(bv_vars) in
     (*See if resulting is empty*)
     let e2 := if Mvs.is_empty _ m1 then t2 else t_subst_unsafe_aux m1 t2 in
     (*Create new [bind_info] *)
@@ -1053,22 +1054,22 @@ Fixpoint t_subst_unsafe_aux (m: Mvs.t term_c) (t: term_c) : term_c :=
     let e1 := (t_subst_unsafe_aux m e) in
     let bl2 := map
       (fun (x: pattern_c * bind_info * term_c) =>
-        let m' := Mvs.set_diff _ _ m (pat_vars_of (fst (fst x))) in
-        let m1 := Mvs.set_inter _ _ m' (snd (fst x)).(bv_vars) in
+        (* let m' := Mvs.set_diff _ _ m (pat_vars_of (fst (fst x))) in *)
+        let m1 := Mvs.set_inter _ _ m (snd (fst x)).(bv_vars) in
         let e2 := if Mvs.is_empty _ m1 then snd x else t_subst_unsafe_aux m1 (snd x) in
         let b1 := bnd_new (Mvs.set_diff _ _ (t_vars e2) (pat_vars_of (fst (fst x)))) in
         (fst (fst x), b1, e2)
         ) bl in
     t_attr_copy t (t_case1 e1 bl2 (t_ty_of t))
   | Teps (v, b, t1) =>
-    let m' := Mvs.remove _ v m in
-    let m1 := Mvs.set_inter _ _ m' b.(bv_vars) in
+    (* let m' := Mvs.remove _ v m in *)
+    let m1 := Mvs.set_inter _ _ m b.(bv_vars) in
     let e2 := if Mvs.is_empty _ m1 then t1 else t_subst_unsafe_aux m1 t1 in
     let b1 := bnd_new (Mvs.remove _ v (t_vars e2)) in
     t_attr_copy t (t_eps1 (v, b1, e2) (t_ty_of t))
   | Tquant q (vs, b, tr, t1) =>
-    let m' := Mvs.set_diff _ _ m (Svs.of_list vs) in
-    let m1 := Mvs.set_inter _ _ m' b.(bv_vars) in
+    (* let m' := Mvs.set_diff _ _ m (Svs.of_list vs) in *)
+    let m1 := Mvs.set_inter _ _ m b.(bv_vars) in
     let e2 := if Mvs.is_empty _ m1 then t1 else t_subst_unsafe_aux m1 t1 in
     let b1 := bnd_new (Mvs.set_diff _ _ (t_vars e2) (Svs.of_list vs)) in
     (*don't sub in triggers I think*)

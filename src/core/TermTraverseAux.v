@@ -10,8 +10,8 @@ Lemma t_subst_unsafe_aux_rewrite m t:
   | Tvar u => (t_attr_copy t (Mvs.find_def _ t u m))
   | Tlet e (v, b, t2) =>
     let e1 := (t_subst_unsafe_aux m e) in 
-    let m' := Mvs.remove _ v m in
-    let m1 := Mvs.set_inter _ _ m' b.(bv_vars) in
+    (* let m' := Mvs.remove _ v m in *)
+    let m1 := Mvs.set_inter _ _ m b.(bv_vars) in
     let e2 := if Mvs.is_empty _ m1 then t2 else t_subst_unsafe_aux m1 t2 in
     let b1 := bnd_new (Mvs.remove _ v (t_vars e2)) in 
     t_attr_copy t (t_let1 e1 (v, b1, e2) (t_ty_of t))
@@ -19,22 +19,22 @@ Lemma t_subst_unsafe_aux_rewrite m t:
     let e1 := (t_subst_unsafe_aux m e) in
     let bl2 := map
       (fun (x: pattern_c * bind_info * term_c) =>
-        let m' := Mvs.set_diff _ _ m (pat_vars_of (fst (fst x))) in
-        let m1 := Mvs.set_inter _ _ m' (snd (fst x)).(bv_vars) in
+       (*  let m' := Mvs.set_diff _ _ m (pat_vars_of (fst (fst x))) in *)
+        let m1 := Mvs.set_inter _ _ m (snd (fst x)).(bv_vars) in
         let e2 := if Mvs.is_empty _ m1 then snd x else t_subst_unsafe_aux m1 (snd x) in
         let b1 := bnd_new (Mvs.set_diff _ _ (t_vars e2) (pat_vars_of (fst (fst x)))) in
         (fst (fst x), b1, e2)
         ) bl in
     t_attr_copy t (t_case1 e1 bl2 (t_ty_of t))
   | Teps (v, b, t1) =>
-    let m' := Mvs.remove _ v m in
-    let m1 := Mvs.set_inter _ _ m' b.(bv_vars) in
+    (* let m' := Mvs.remove _ v m in *)
+    let m1 := Mvs.set_inter _ _ m b.(bv_vars) in
     let e2 := if Mvs.is_empty _ m1 then t1 else t_subst_unsafe_aux m1 t1 in
     let b1 := bnd_new (Mvs.remove _ v (t_vars e2)) in
     t_attr_copy t (t_eps1 (v, b1, e2) (t_ty_of t))
   | Tquant q (vs, b, tr, t1) =>
-    let m' := Mvs.set_diff _ _ m (Svs.of_list vs) in
-    let m1 := Mvs.set_inter _ _ m' b.(bv_vars) in
+    (* let m' := Mvs.set_diff _ _ m (Svs.of_list vs) in *)
+    let m1 := Mvs.set_inter _ _ m b.(bv_vars) in
     let e2 := if Mvs.is_empty _ m1 then t1 else t_subst_unsafe_aux m1 t1 in
     let b1 := bnd_new (Mvs.set_diff _ _ (t_vars e2) (Svs.of_list vs)) in
     let tr2 := (tr_map (t_subst_unsafe_aux m) tr) in
@@ -435,26 +435,25 @@ Qed.
 for the map invariant preservation:*)
 
 (*The map change we need for several cases*)
-Lemma subst_vars_ok1 {A: Type} (P: A -> Prop) (m1: Mvs.t A) x y
+Lemma subst_vars_ok1 {A: Type} (P: A -> Prop) (m1: Mvs.t A) y
   (Hm1: forall v t1, Mvs.find_opt v m1 = Some t1 -> P t1):
-  forall v t1, Mvs.find_opt v (Mvs.set_inter A CoqBigInt.t (Mvs.remove A x m1) y) = Some t1 ->
+  forall v t1, Mvs.find_opt v (Mvs.set_inter A CoqBigInt.t m1 y) = Some t1 ->
   P t1.
 Proof.
-  intros v1 t1. rewrite Mvs.set_inter_spec, Mvs.remove_spec.
-  destruct (Vsym.Tg.equal v1 x); [discriminate|].
+  intros v1 t1. rewrite Mvs.set_inter_spec.
   destruct (Mvs.find_opt v1 m1) as [v2|] eqn : Hget; [|discriminate].
   destruct (Mvs.find_opt v1 y); [|discriminate]. intros Hsome; inversion Hsome; subst.
   apply (Hm1 _ _ Hget).
 Qed.
 
-Lemma subst_vars_ok2 {A: Type} (P: A -> Prop) (m1: Mvs.t A) x y
+Lemma subst_vars_ok2 {A: Type} (P: A -> Prop) (m1: Mvs.t A) y
   (Hm1: forall v t1, Mvs.find_opt v m1 = Some t1 -> P t1):
-  forall v t1, Mvs.find_opt v (Mvs.set_inter A CoqBigInt.t (Mvs.set_diff A unit m1 x) y) = Some t1 ->
+  forall v t1, Mvs.find_opt v (Mvs.set_inter A CoqBigInt.t m1 (*(Mvs.set_diff A unit m1 x)*) y) = Some t1 ->
   P t1.
 Proof.
-  intros v1 t1. rewrite Mvs.set_inter_spec, Mvs.set_diff_spec.
+  intros v1 t1. rewrite Mvs.set_inter_spec (*, Mvs.set_diff_spec*) .
   destruct (Mvs.find_opt v1 m1) as [v2|] eqn : Hget; [|discriminate].
-  destruct (Mvs.find_opt v1 x); [discriminate |].
+  (* destruct (Mvs.find_opt v1 x); [discriminate |]. *)
   destruct (Mvs.find_opt v1 y); [|discriminate].
   intros Hsome; inversion Hsome; subst. apply (Hm1 _ _ Hget).
 Qed.
