@@ -1220,6 +1220,56 @@ Proof.
     destruct Hinx1 as [v1 [Hx1 Hbound1]]; destruct Hinx2 as [v2 [Hx2 Hbound2]]; subst;
     apply eval_vsym_str_inj in Hx2; subst; lia.
 Qed.
+
+Lemma only_let_eval t (Hlet: only_let t):
+  (forall e (Heval: eval_term t = Some e), only_let_tm e) /\ (forall e (Heval: eval_fmla t = Some e), only_let_fmla e).
+Proof.
+  induction t using term_ind_alt; rewrite only_let_rewrite in Hlet; try rewrite Heq in Hlet; try discriminate;
+  split; intros e Heval.
+  - rewrite (eval_var_tm Heq Heval). auto.
+  - exfalso. apply (eval_var_fmla Heq Heval).
+  - destruct (eval_const_tm Heq Heval) as [c1 [He Hc1]]. subst; auto.
+  - exfalso. apply (eval_const_fmla Heq Heval).
+  - destruct (eval_if_tm Heq Heval) as [e1 [e2 [e3 [He [He1  [He2 He3]]]]]]; subst. simpl.
+    rewrite !andb_true in Hlet |- *. destruct Hlet as [[Hlet1 Hlet2] Hlet3].
+    specialize (IHt1 Hlet1). specialize (IHt2 Hlet2). specialize (IHt3 Hlet3).
+    split_all; auto.
+  - destruct (eval_if_fmla Heq Heval) as [e1 [e2 [e3 [He [He1  [He2 He3]]]]]]; subst. simpl.
+    rewrite !andb_true in Hlet |- *. destruct Hlet as [[Hlet1 Hlet2] Hlet3].
+    specialize (IHt1 Hlet1). specialize (IHt2 Hlet2). specialize (IHt3 Hlet3).
+    split_all; auto.
+  - destruct (eval_let_tm Heq Heval) as [e1 [e2 [He [He1 He2]]]]. subst. simpl.
+    rewrite !andb_true in Hlet |- *. destruct Hlet as [Hlet1 Hlet2].
+    specialize (IHt1 Hlet1). specialize (IHt2 Hlet2). split_all; auto.
+  - destruct (eval_let_fmla Heq Heval) as [e1 [e2 [He [He1 He2]]]]. subst. simpl.
+    rewrite !andb_true in Hlet |- *. destruct Hlet as [Hlet1 Hlet2].
+    specialize (IHt1 Hlet1). specialize (IHt2 Hlet2). split_all; auto.
+  - exfalso. apply (eval_binop_tm Heq Heval).
+  - destruct (eval_binop_fmla Heq Heval) as [e1 [e2 [He [He1 He2]]]]; subst; simpl.
+    rewrite !andb_true in Hlet |- *. destruct Hlet as [Hlet1 Hlet2].
+    specialize (IHt1 Hlet1). specialize (IHt2 Hlet2). split_all; auto.
+  - exfalso. apply (eval_not_tm Heq Heval).
+  - destruct (eval_not_fmla Heq Heval) as [e1 [He He1]]; subst; simpl.
+    specialize (IHt1 Hlet). destruct IHt1; auto.
+  - exfalso. apply (eval_true_tm Ht Heval).
+  - rewrite (eval_true_fmla Ht Heval); auto.
+  - exfalso. apply (eval_false_tm Ht Heval).
+  - rewrite (eval_false_fmla Ht Heval); auto.
+Qed.
+
+Lemma only_let_eval_tm t (Hlet: only_let t) e (Heval: eval_term t = Some e):
+  only_let_tm e.
+Proof.
+  apply (proj1 (only_let_eval t Hlet)); auto.
+Qed.
+
+Lemma only_let_eval_fmla t (Hlet: only_let t) e (Heval: eval_fmla t = Some e):
+  only_let_fmla e.
+Proof.
+  apply (proj2 (only_let_eval t Hlet)); auto.
+Qed.
+
+
         (*yeah probably need NoDup so we can reason about bound vars
           unless we can just prove (weaker): tm_vars of alpha_t_aux either in vars of t or in l
           but we DO need NoDup for str - need to know that this is not in vars either
@@ -1234,7 +1284,7 @@ Qed.
           X  if/binop/etc
           X  app
           X  3. Prove NoDup for list
-            3.5. Prove only_let implication
+          X  3.5. Prove only_let implication
             4. Prove var results from ElimLet (finish proving)
             4.5 new_var_names shape equivalence
             4.75 shape equivalence for t_open_bound (and subst)
@@ -2056,7 +2106,7 @@ Proof.
       replace (new_var_names (snd x) (fst i - Z.of_nat (term_bnd t2))) with
         (new_var_names t2 (fst i - Z.of_nat (term_bnd t2))) by admit. (*TODO: use TermTraverseAux.t_shape*)
       apply alpha_t_sub_var; auto.
-      * (*TODO: prove only_let impl*) admit.
+      * apply (only_let_eval_tm t2); auto. 
       * (*TODO: prove that if var in e3, then there is var in t2 with eval (in previous), use contradiction
           (prove all variables smaller with idents_of_term_wf)*)
         admit.
