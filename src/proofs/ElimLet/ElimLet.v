@@ -8,7 +8,7 @@ The primary proof goal is to relate stateless and stateful substitution (which i
 really the primary difference between the two layers) so it does encompass the main
 difficulties.
 *)
-(*
+
 Require Import TaskDefs.
 Require Import TermTraverse.
 
@@ -1597,5 +1597,4 @@ Proof.
   - (*Now prove related*) apply elim_let_related.
 Qed.
 
-*)
 
