@@ -352,8 +352,8 @@ Proof. destruct t; auto. Qed.
 (*NOTE: not extensional anymore so can't use equality*)
 Definition mvs_eq {A: Type} (m1 m2: Mvs.t A): Prop :=
   forall x, Mvs.find_opt x m1 = Mvs.find_opt x m2.
-Definition svs_eq (s1 s2: Svs.t) : Prop :=
-  forall x, Svs.mem x s1 = Svs.mem x s2.
+Definition svs_eq {A B: Type} (s1 : Mvs.t A) (s2: Mvs.t B) : Prop :=
+  forall x, Mvs.mem x s1 = Mvs.mem x s2.
 
 (*Need predicate that types are consistent - this is not a full type system*)
 Fixpoint types_wf (t: term_c) : Prop :=

@@ -1,4 +1,5 @@
 (*Proofs about stateful substitution*)
+
 Require Export TermTraverse StateInvarPres BindingProofs.
 
 (*part 1: invariant preservation*)
@@ -202,8 +203,8 @@ Lemma only_let_rewrite t:
 Proof. destruct t; auto. Qed.
 
 (*And the core version*)
-Require Import Task.
-Print term.
+From Proofs Require Import Task.
+
 (*NOTE: if impl, could keep app, otherwise not*)
 Fixpoint only_let_tm (t: term) : bool :=
   match t with
@@ -296,7 +297,7 @@ Definition vsym_with (v: TermDefs.vsymbol) (s: Z) := Build_vsymbol (ident_with (
 Print eval_vsymbol.
 Definition eval_vsym_str (v: TermDefs.vsymbol) : string :=
   fst (eval_vsymbol v).
-Print Alpha.split_lens.
+
 
 Definition mapi {A B: Type} (f: nat -> A -> B) (l: list A) : list B :=
   map (fun x => f (fst x) (snd x)) (combine (seq 0 (length l)) l).
@@ -445,7 +446,7 @@ Proof. destruct t; auto. Qed. *)
 (*And now the spec*)
 Print full_st.
 Require Import InversionLemmas.
-Require Import Alpha.
+From Proofs Require Import Alpha.
 Check alpha_t_aux.
 Require Import TermTactics.
 
@@ -1235,10 +1236,12 @@ Qed.
           X  3. Prove NoDup for list
             3.5. Prove only_let implication
             4. Prove var results from ElimLet (finish proving)
+            4.5 new_var_names shape equivalence
+            4.75 shape equivalence for t_open_bound (and subst)
           X 5. Back to main proof, push term_st_wf assumption through
             6. Use this lemma, conclude let case
           X  7. Prove var result for [t_open_bound] (subsumes var id result)
-            8. Prove types_wf for [t_open_bound] (need for sub I believe)
+          X  8. Prove types_wf for [t_open_bound] (need for sub I believe)
             9. Do other let case
             10. binop case (just need to prove decompose lemma, otherwise like if)
             11. not case (easier)
@@ -1299,6 +1302,356 @@ Proof.
   apply rename_spec.
 Qed.
 
+(*Let's see what we need*)
+
+Lemma t_similar_types_wf t s:
+  t_similar t s ->
+  types_wf t = types_wf s.
+Proof.
+  unfold types_wf. unfold t_similar. rewrite andb_true.
+  intros [Hoeq Hsim].
+  rewrite !types_wf_rewrite.
+  destruct_term_node t; destruct_term_node s; try discriminate; auto; solve_similar.
+Qed.
+
+Lemma t_attr_copy_types_wf t1 t2:
+  types_wf (t_attr_copy t1 t2) = types_wf t2.
+Proof.
+  unfold t_attr_copy. destruct (_ && _) eqn : Hsim.
+  - apply t_similar_types_wf. bool_hyps; auto.
+  - rewrite !types_wf_rewrite. simpl. reflexivity.
+Qed.
+
+Check svs_eq.
+
+Lemma t_vars_rewrite t :
+  t_vars t =
+  match t_node_of t with
+  | TermDefs.Tvar v => Mvs.singleton CoqBigInt.t v CoqBigInt.one
+  | Tapp _ tl =>
+      fold_left (fun (s : Mvs.t CoqBigInt.t) (x : term_c) => vars_union s (t_vars x)) tl Mvs.empty
+  | TermDefs.Tif f t0 e => vars_union (vars_union (t_vars f) (t_vars t0)) (t_vars e)
+  | TermDefs.Tlet t0 bt => add_b_vars (t_vars t0) bt
+  | Tcase t0 bl => fold_left add_b_vars bl (t_vars t0)
+  | TermDefs.Teps (_, b, _) | Tquant _ (_, b, _, _) => bv_vars b
+  | Tbinop _ f1 f2 => vars_union (t_vars f1) (t_vars f2)
+  | Tnot f => t_vars f
+  | _ => Mvs.empty
+  end.
+Proof. destruct t; reflexivity. Qed.
+
+Lemma svs_eq_empty {A: Type}:
+  svs_eq (@Mvs.empty A) Svs.empty.
+Proof.
+  unfold svs_eq, Mvs.mem, Svs.empty. intros x.
+  rewrite !Mvs.empty_spec. reflexivity.
+Qed.
+
+Lemma svs_eq_singleton {A: Type} x (y: A):
+  svs_eq (Mvs.singleton _ x y) (Svs.singleton x).
+Proof.
+  unfold svs_eq, Mvs.mem, Svs.singleton. intros z.
+  rewrite !Mvs.singleton_spec; auto. 2: exact tt.
+  destruct (Vsym.Tg.equal z x); auto.
+Qed.
+
+Lemma in_fold_union x (l: list Svs.t):
+  Mvs.mem x (fold_right Svs.union Svs.empty l) <-> exists y, In y l /\ Mvs.mem x y.
+Proof.
+  induction l as [| h t IH]; simpl.
+  - unfold Mvs.mem, Svs.empty. rewrite Mvs.empty_spec. simpl. split; try discriminate.
+    intros; destruct_all; contradiction.
+  - unfold Mvs.mem in *. unfold Svs.union. rewrite Mvs.set_union_spec.
+    destruct (Mvs.find_opt x h) as [y|] eqn : Hget.
+    + simpl. split; auto. intros _. exists h. rewrite Hget; auto.
+    + rewrite IH. split.
+      * intros [y [Hiny Hsome]]. exists y. auto.
+      * intros [y [[Hhy | Hiny] Hsome]]; subst; eauto. rewrite Hget in Hsome; discriminate.
+Qed.
+
+Lemma fold_right_union_rev (l: list Svs.t):
+  svs_eq (fold_right Svs.union Svs.empty l) (fold_right Svs.union Svs.empty (rev l)).
+Proof.
+  unfold svs_eq. intros x.
+  apply is_true_eq.
+  rewrite !in_fold_union. setoid_rewrite <- in_rev. reflexivity.
+Qed.
+
+Lemma svs_eq_trans {A B C: Type} (m1: Mvs.t A) (m2: Mvs.t B) (m3: Mvs.t C):
+  svs_eq m1 m2 ->
+  svs_eq m2 m3 ->
+  svs_eq m1 m3.
+Proof.
+  unfold svs_eq. intros Heq1 Heq2 x. rewrite Heq1. auto.
+Qed.
+
+Lemma svs_eq_sym {A B: Type} (m1: Mvs.t A) (m2: Mvs.t B):
+  svs_eq m1 m2 ->
+  svs_eq m2 m1.
+Proof.
+  unfold svs_eq. auto.
+Qed.
+
+Lemma svs_eq_union_comm {A: Type} (m1 m2: Mvs.t A):
+  svs_eq (Mvs.set_union _ m1 m2) (Mvs.set_union _ m2 m1).
+Proof.
+  unfold svs_eq. intros x. unfold Mvs.mem. rewrite !Mvs.set_union_spec.
+  destruct (Mvs.find_opt x m1); destruct (Mvs.find_opt x m2); auto.
+Qed.
+
+Lemma svs_eq_union_assoc {A: Type} (m1 m2 m3: Mvs.t A):
+  svs_eq (Mvs.set_union _ m1 (Mvs.set_union _ m2 m3)) (Mvs.set_union _ (Mvs.set_union _ m1 m2) m3).
+Proof.
+  unfold svs_eq. intros x. unfold Mvs.mem. rewrite !Mvs.set_union_spec.
+  destruct (Mvs.find_opt x m1); destruct (Mvs.find_opt x m2); destruct (Mvs.find_opt x m3); auto.
+Qed.
+
+Lemma svs_eq_vars_union m1 m2 s1 s2:
+  svs_eq m1 s1 ->
+  svs_eq m2 s2 ->
+  svs_eq (vars_union m1 m2) (Svs.union s1 s2).
+Proof.
+  unfold svs_eq; intros Heq1 Heq2 x.
+  unfold vars_union, Svs.union, Mvs.mem.
+  rewrite Mvs.union_spec; auto.
+  rewrite Mvs.set_union_spec.
+  unfold Mvs.mem in *.
+  specialize (Heq1 x); specialize (Heq2 x).
+  destruct (Mvs.find_opt x m1); destruct (Mvs.find_opt x m2);
+  destruct (Mvs.find_opt x s1); destruct (Mvs.find_opt x s2); simpl in *; auto.
+Qed.
+
+Check Mvs.set_union.
+Lemma svs_eq_set_union {A B: Type} (m1 m2: Mvs.t A) (m3 m4: Mvs.t B):
+  svs_eq m1 m3 ->
+  svs_eq m2 m4 ->
+  svs_eq (Mvs.set_union _ m1 m2) (Mvs.set_union _ m3 m4).
+Proof.
+  unfold svs_eq. intros Heq1 Heq2 x. unfold Mvs.mem in *.
+  rewrite !Mvs.set_union_spec. specialize (Heq1 x); specialize (Heq2 x).
+  destruct (Mvs.find_opt x m1); destruct (Mvs.find_opt x m2);
+  destruct (Mvs.find_opt x m3); destruct (Mvs.find_opt x m4); auto.
+Qed.
+
+(*not iff*)
+Lemma mvs_svs_eq' {A: Type} (m1 m2: Mvs.t A):
+  mvs_eq m1 m2 -> svs_eq m1 m2.
+Proof.
+  unfold mvs_eq, svs_eq. intros Hfind x. unfold Mvs.mem. rewrite Hfind; auto.
+Qed.
+
+Lemma svs_eq_map {A B: Type} (f: A -> B) (m: Mvs.t A):
+  svs_eq (Mvs.map f m) m.
+Proof.
+  unfold svs_eq. intros x. apply mvs_mem_map.
+Qed.
+
+Lemma fold_left_add_b_vars_in {A B: Type} (l: list (A * bind_info * B)) base x:
+  Mvs.mem x (fold_left add_b_vars l base) <-> Mvs.mem x base \/ exists y, In y l /\ Mvs.mem x (bv_vars (snd (fst y))).
+Proof.
+  revert base. induction l as [| h t IH]; simpl; intros base.
+  - split; auto. intros [Hbase | H]; destruct_all; auto.
+  - rewrite IH. unfold add_b_vars. destruct h  as [[a b] c]; simpl.
+    unfold vars_union. unfold Mvs.mem in *. rewrite Mvs.union_spec; auto.
+    destruct (Mvs.find_opt x base) as [y|] eqn : Hgetx.
+    + simpl. split; auto.
+      destruct (Mvs.find_opt x (bv_vars b)); auto.
+    + simpl. split.
+      * intros [Hsome | [y [Hiny Hsome]]]; eauto.
+        destruct (Mvs.find_opt x (bv_vars b)) eqn : Hx1; try discriminate.
+        right. exists (a, b, c). simpl. rewrite Hx1. auto.
+      * intros [Hf | [y [[Hy | Hiny] Hsome]]]; subst; try discriminate; simpl in *; eauto.
+        destruct (Mvs.find_opt x (bv_vars b)); auto.
+Qed.
+
+(*Then show we can get rid of base*)
+Lemma fold_left_add_b_vars_base {A B: Type} (l: list (A * bind_info * B)) base:
+  svs_eq (fold_left add_b_vars l base)
+    (Mvs.set_union _ base (fold_left add_b_vars l Mvs.empty)).
+Proof.
+  unfold svs_eq. intros x. apply is_true_eq. rewrite fold_left_add_b_vars_in.
+  unfold Mvs.mem in *. rewrite Mvs.set_union_spec.
+  destruct (Mvs.find_opt x base); simpl; auto; split; auto;
+  rewrite <- Mvs.mem_spec, fold_left_add_b_vars_in; unfold Mvs.mem; rewrite Mvs.empty_spec; simpl; auto.
+Qed.
+
+
+Lemma t_vars_spec (t: term_c) (Hwf: types_wf t):
+  svs_eq (t_vars t) (t_free_vars t).
+Proof.
+  induction t using term_ind_alt; rewrite t_vars_rewrite, t_free_vars_rewrite; try rewrite Heq; try rewrite Ht;
+  try apply svs_eq_empty; auto;
+  rewrite types_wf_rewrite in Hwf; try rewrite Heq in Hwf.
+  - (*var*) apply svs_eq_singleton.
+  - (*use rev so we can do single induction*)
+    eapply svs_eq_trans.
+    2: { apply svs_eq_sym. apply fold_right_union_rev. }
+    rewrite <- (map_rev t_free_vars).
+    rewrite <- fold_left_rev_right.
+    rewrite Forall_map in Hwf.
+    apply Forall_rev in H, Hwf. clear -H Hwf.
+    induction (rev ts) as [| h t IH]; simpl; [apply svs_eq_empty |].
+    eapply svs_eq_trans.
+    2: apply svs_eq_union_comm.
+    inversion H; subst; inversion Hwf; subst.
+    apply svs_eq_vars_union; auto.
+  - (*if*) destruct_all. eapply svs_eq_trans. 2: apply svs_eq_sym; apply svs_eq_union_assoc.
+    repeat (apply svs_eq_vars_union; auto).
+  - (*let*) unfold add_b_vars. destruct Hwf as [Hvars [Hwf1 Hwf2]].
+    (*interesting case - need var result*)
+    apply svs_eq_vars_union; auto.
+    apply mvs_svs_eq' in Hvars. eapply svs_eq_trans. 2: apply Hvars.
+    apply svs_eq_sym. apply svs_eq_map.
+  - (*case*) destruct Hwf as [Hwf1 [Hvars Hwf2]]. 
+    eapply svs_eq_trans. 1: { apply fold_left_add_b_vars_base. }
+    apply svs_eq_set_union; auto.
+    (*don't use induction here (try)*)
+    clear Hwf1 IHt1.
+    rewrite Forall_map in H. rewrite !Forall_map in Hwf2.
+    rewrite Forall_forall in H, Hvars, Hwf2.
+    unfold svs_eq in *. intros x. apply is_true_eq. 
+    rewrite fold_left_add_b_vars_in, in_fold_union.
+    unfold Mvs.mem at 1. rewrite Mvs.empty_spec.
+    simpl. 
+    setoid_rewrite in_map_iff.
+    split. 
+    + intros [Hf | [y [Hiny Hmemx]]]; try discriminate.
+      specialize (Hvars _ Hiny). destruct Hvars as [Hvars1 Hvars2].
+      exists (Svs.diff (t_free_vars (snd y)) (p_free_vars (fst (fst y)))).
+      split; [exists y; split; auto|].
+      apply mvs_svs_eq' in Hvars2. unfold svs_eq in Hvars2. rewrite <- Hvars2.
+      rewrite mvs_mem_map. auto.
+    + intros [s [[y [Hs Hiny]] Hinx]]; subst.
+      specialize (Hvars _ Hiny). destruct Hvars as [Hvars1 Hvars2].
+      right. exists y. split; auto.  apply mvs_svs_eq' in Hvars2. unfold svs_eq in Hvars2. 
+      rewrite <- Hvars2 in Hinx. rewrite mvs_mem_map in Hinx. auto.
+  - (*eps*) destruct Hwf as [Hvars Hwf].
+    apply mvs_svs_eq' in Hvars. eapply svs_eq_trans. 2: apply Hvars.
+    apply svs_eq_sym. apply svs_eq_map.
+  - (*quant*) destruct Hwf as [Hvars [Hty Hwf]]. apply mvs_svs_eq' in Hvars. eapply svs_eq_trans. 2: apply Hvars.
+    apply svs_eq_sym. apply svs_eq_map.
+  - (*binop*) destruct_all; apply svs_eq_vars_union; auto.
+  - (*not*) destruct_all; auto.
+Qed.
+
+(*TODO: should use svs_eq instead*)
+Lemma mvs_eq_map_equiv {A: Type} (m: Mvs.t A) (s: Svs.t):
+  mvs_eq (Mvs.map (fun _ => tt) m) s <-> svs_eq m s.
+Proof.
+  unfold mvs_eq, svs_eq. split; intros Heq x.
+  - unfold Mvs.mem. rewrite <- Heq. rewrite <- !Mvs.mem_spec, mvs_mem_map; auto.
+  - specialize (Heq x). unfold Mvs.mem in *. destruct (Mvs.find_opt x s); auto; simpl in *.
+    + apply Svs.M.map_spec. destruct (Mvs.find_opt x m) as [y|] eqn : Hget; try discriminate.
+      exists x. exists y. destruct u; split_all; auto. apply vsymbol_eqb_eq. auto.
+    + destruct (Mvs.find_opt x (Mvs.map (fun _ => tt) m)) as [y|] eqn : Hget; auto.
+      apply Mvs.map_spec in Hget. destruct Hget as [k1 [v1 [Heqk [Hfind Hy]]]]. subst.
+      apply vsymbol_eqb_eq in Heqk. subst. rewrite Hfind in Heq. discriminate.
+Qed.
+
+Lemma svs_eq_remove {A B: Type} (m1: Mvs.t A) (m2: Mvs.t B) x:
+  svs_eq m1 m2 ->
+  svs_eq (Mvs.remove _ x m1) (Mvs.remove _ x m2).
+Proof.
+  unfold svs_eq. intros Heq y. unfold Mvs.mem in *.
+  rewrite !Mvs.remove_spec. destruct (Vsym.Tg.equal y x); auto.
+Qed.
+
+Check Mvs.set_diff.
+Lemma svs_eq_diff {A B C D: Type} (m1: Mvs.t A) (m2: Mvs.t B) (s1: Mvs.t C) (s2:Mvs.t D):
+  svs_eq m1 m2 ->
+  svs_eq s1 s2 ->
+  svs_eq (Mvs.set_diff _ _ m1 s1) (Mvs.set_diff _ _ m2 s2).
+Proof.
+  unfold svs_eq. intros Heq1 Heq2 y. unfold Mvs.mem in *.
+  rewrite !Mvs.set_diff_spec. specialize (Heq1 y); specialize (Heq2 y).
+  destruct (Mvs.find_opt y m1); destruct (Mvs.find_opt y m2); destruct (Mvs.find_opt y s1);
+  destruct (Mvs.find_opt y s2); simpl in *; auto.
+Qed.
+
+Lemma svs_eq_refl {A: Type} (m: Mvs.t A):
+  svs_eq m m.
+Proof.
+  unfold svs_eq; auto.
+Qed.
+
+
+(*TODO: remove*)
+Require Import TermTraverseAux. 
+Lemma types_wf_sub (m: Mvs.t term_c) 
+  (Hm1: forall x y, Mvs.find_opt x m = Some y -> types_wf y)
+  (Hm2: forall x y, Mvs.find_opt x m = Some y -> t_ty_of y = Some (vs_ty x)) t1:
+  types_wf t1 ->
+  types_wf (t_subst_unsafe m t1).
+Proof.
+  unfold t_subst_unsafe. destruct (Mvs.is_empty _ _); auto.
+  generalize dependent m.
+  induction t1 using term_ind_alt; intros m Hm1 Hm2; rewrite t_subst_unsafe_aux_rewrite; try rewrite Heq; try rewrite Ht;
+  try rewrite t_map_unsafe_rewrite; try rewrite Heq; try rewrite Ht; try rewrite t_attr_copy_types_wf; simpl; auto.
+  - (*var*) unfold Mvs.find_def. destruct (Mvs.find_opt v m) as [v1|] eqn : Hget; auto.
+    intros Hwf. apply Hm1 in Hget. auto.
+  - (*app*) rewrite types_wf_rewrite at 1. rewrite Heq, map_map. rewrite !Forall_map.
+    rewrite !Forall_forall in *. auto.
+  - (*if*) rewrite types_wf_rewrite at 1. rewrite Heq. intros; destruct_all.
+    rewrite !ty_subst_unsafe_aux_ty; auto. split_all; auto.
+  - (*let*) rewrite types_wf_rewrite at 1; rewrite Heq. intros [Hvars [Hwf1 Hwf2]].
+    split_all; auto.
+    2: { destruct (Mvs.is_empty _ _); auto. apply IHt1_2; auto; eapply mvs_preserved; eauto;
+      apply binding_submap. }
+    (*prove vars*)
+    rewrite mvs_eq_map_equiv. apply svs_eq_remove. apply t_vars_spec.
+    destruct (Mvs.is_empty _ _); auto. apply IHt1_2; auto; eapply mvs_preserved; eauto; apply binding_submap.
+  - (*case*) rewrite types_wf_rewrite at 1. rewrite Heq. intros [Hwf1 [Hvars Hwf2]].
+    split; auto. rewrite !Forall_map in *. simpl in *. clear IHt1_1 Hwf1. split.
+    + (*Prove vars*)
+      rewrite !Forall_forall in *. intros tb Hintb.
+      specialize (Hvars _ Hintb). destruct Hvars as [Hvars1 Hvars2]. split; auto.
+      rewrite mvs_eq_map_equiv. apply svs_eq_diff; auto. apply t_vars_spec.
+      destruct (Mvs.is_empty _ _); auto. apply H; auto; eapply mvs_preserved; eauto; apply binding_submap.
+    + (*prove wf*)
+      rewrite !Forall_forall in *. intros x Hinx.
+      destruct (Mvs.is_empty _ _); auto. apply H; auto; eapply mvs_preserved; eauto; apply binding_submap.
+  - (*eps*) rewrite types_wf_rewrite at 1; rewrite Heq. intros [Hvars Hwf].
+    split_all; auto.
+    2: { destruct (Mvs.is_empty _ _); auto. apply IHt1_1; auto; eapply mvs_preserved; eauto;
+      apply binding_submap. }
+    (*prove vars*)
+    rewrite mvs_eq_map_equiv. apply svs_eq_remove. apply t_vars_spec.
+    destruct (Mvs.is_empty _ _); auto. apply IHt1_1; auto; eapply mvs_preserved; eauto; apply binding_submap.
+  - (*quant*) rewrite types_wf_rewrite at 1; rewrite Heq. intros [Hvars [Hwf1 Hwf2]].
+    split_all; auto.
+    2: { destruct (Mvs.is_empty _ _); auto. apply IHt1_1; auto; eapply mvs_preserved; eauto;
+      apply binding_submap. }
+    (*prove vars*)
+    rewrite mvs_eq_map_equiv. apply svs_eq_diff; auto; [|apply svs_eq_refl].
+    apply t_vars_spec.
+    destruct (Mvs.is_empty _ _); auto. apply IHt1_1; auto; eapply mvs_preserved; eauto; apply binding_submap.
+  - (*binop*) rewrite types_wf_rewrite at 1. rewrite Heq. intros; destruct_all. split_all; auto.
+  - (*not*) rewrite types_wf_rewrite at 1. rewrite Heq. intros; destruct_all; split; auto.
+Qed.
+
+
+Lemma t_open_bound_types_wf tb (Hwf: types_wf (snd tb)):
+  errst_spec (fun (_: full_st) => True) (errst_tup1 (errst_lift1 (t_open_bound tb)))
+    (fun _ tb2 _ => types_wf (snd tb2)).
+Proof.
+  (*TODO: could prove sub result - at term_c level, not eval - but eh, prove directly for now*)
+  apply errst_spec_weaken with (P1:=fun _ => True /\ True) (Q1:=fun _ tb2 _ => types_wf (snd tb2) /\ True); try solve[tauto].
+  apply errst_spec_tup1 with (P1:=fun _ => True)(P2:=fun _ tb2 _ => types_wf (snd tb2)) (Q1:=fun _ => True) (Q:=fun _ _ _ => True); auto.
+  apply errst_spec_st.
+  (*state proof*)
+  destruct tb as [[v1 b1] t1].
+  unfold t_open_bound.
+  apply prove_st_spec_bnd_nondep
+  with (Q1:=fun r _ => fst r = Mvs.add v1 (t_var (snd r)) Mvs.empty /\ vs_ty (snd r) = vs_ty v1)
+  (Q2:=fun _ x _ => types_wf (snd x)); auto.
+  - apply st_spec_split; [apply vs_rename_map|apply vs_rename_var].
+  - intros [m v]. apply prove_st_spec_ret. simpl. intros _ [Hm Hv].
+    subst. apply types_wf_sub; auto.
+    + intros x y. rewrite Mvs.add_spec, Mvs.empty_spec. destruct (Vsym.Tg.equal x v1) eqn : Heq; try discriminate.
+      apply vsymbol_eqb_eq in Heq. subst. inv Hsome. rewrite types_wf_rewrite; simpl. reflexivity.
+    + intros x y. rewrite Mvs.add_spec, Mvs.empty_spec. destruct (Vsym.Tg.equal x v1) eqn : Heq; try discriminate.
+      apply vsymbol_eqb_eq in Heq. subst. inv Hsome. simpl. f_equal; auto.
+Qed.
 
 (*NOTE: later prove length and NoDup for list*)
 (*NOTE: later, need to prove that under wf assumption, we have that no var in list appears*)
@@ -1652,7 +2005,7 @@ Proof.
       (*get IH2 in better form*)
       assert (Hx':=Hx). apply t_open_bound_bnd in Hx'; auto. destruct Hx' as [Honly Hbnd]; simpl in Hbnd.
       (*TODO: need to know that [types_wf] still holds*)
-      assert (Htypes: types_wf (snd x)) by admit.
+      assert (Htypes: types_wf (snd x)) by (apply t_open_bound_types_wf in Hx; auto).
       specialize (IH2 _ _ Hx Honly Htypes). destruct IH2 as [IH2 _].
       specialize (IH2 _ He').
       Check prove_errst_spec_bnd.
@@ -1906,203 +2259,5 @@ t_open_bound_res_tm:
 
              (alpha_t_aux e3 (new_var_names t2 (fst s2)))
              (alpha_t_aux e4 (new_var_names t3 ((fst s2) + Z.of_nat (term_bnd t2)))))); auto.
-
-
-*)
-      rewrite new_var_names_rewrite, Heq. cbn zeta.
-
-
- simpl.
-
-
-
-    destruct IH1 as [_ IH1]; destruct IH2 as [IH2 IH2']; destruct IH3 as [IH3 IH3']. split; intros e1 Heval.
-
-
-
- auto.
-
-
- Search err_bnd inr.
-      Search errst_lift2.
-        
-
- f_equal.
-
-
- intros s2 s3 _ x [Hx Hs3].
-        intros s1 s2 _ x y [Hx Hs2]. rewrite Hs2. 
-
-
-
-
-        eval_fmla t2 = Some (alpha_f_aux e2 (new_var_names t1 (fst s1))) /\
-          fst s2 = Z.of_nat (term_bnd t1) + (fst s1))
-      (P2:=fun x s2 => eval_fmla x = Some (alpha_f_aux e2 (new_var_names t1 (fst s2 - Z.of_nat (term_bnd t1))))) 
-      (Q2:= fun x s2 y s3 => 
-        eval_term y =
-        Some
-          (Tif (alpha_f_aux e2 (new_var_names t1 (fst s2 - Z.of_nat (term_bnd t1))))
-             (alpha_t_aux e3 (new_var_names t2 (fst s2)))
-             (alpha_t_aux e4 (new_var_names t3 ((fst s2) + Z.of_nat (term_bnd t2)))))); auto.
-
-        
-
-
- repeat (rewrite list.take_app_length'; auto).
-          
-
-
-
- Locate list.drop_app_length'. Search skipn app.
-      
-
-
-
-
-
-
-                (firstn (Datatypes.length (tm_bnd e3))
-                   (skipn (Datatypes.length (fmla_bnd e2)) (new_var_names t i))))
-             (alpha_t_aux e4
-                (skipn (Datatypes.length (tm_bnd e3))
-                   (skipn (Datatypes.length (fmla_bnd e2)) (new_var_names t i)))))); auto.
-      3: { intros s1 s2 _ x y [Hevalx Hs12]. assert (Hfst: fst s1 = fst s2 - Z.of_nat (term_bnd t1)) by lia.
-        rewrite Hfst. auto. }
-      1: { (*prove first from IH*) apply errst_spec_split; [apply IH1|apply t_wf_state]; auto. }
-
-      
-
-
-      Check list.take_app_length'.
-      (*annoying - have to do this for binders*)
-      assert (Hfirstn: forall s l, firstn (length (fmla_bnd e2)) (new_var_names t1 s ++ l) = new_var_names t1 s).
-      { intros s l. apply list.take_app_length'. rewrite new_var_names_length; auto.
-        symmetry; apply term_bnd_fmla; auto.
-      }
-      Check app_assoc.
-      setoid_rewrite <- app_assoc.
-      setoid_rewrite (Hfirstn _ (.
-
- Search fmla_bnd term_bnd.
-
-
-      setoid_rewrite (list.take_app_length' _ _ (length (fmla_bnd e2))).
-      Search firstn app.
-
-
-new_var_names_length
-
-  new_var_names_length
-
-      Search new_var_names.
-      Search term_bnd.
-
-
-
-Lemma new_var_names_length t (Ht: only_let t) s:
-  (forall e (Heval: eval_term t = Some e), length (new_var_names t s) = length (tm_bnd e)) /\
-  (forall e (Heval: eval_term t = Some e), length (new_var_names t s) = length (fmla_bnd e)).
-
-
-      Search new_var_names
-
-
-
-      Search new_var_names.
-
-      Check prove_errst_spec_bnd.
-      (*TODO: need to prove that tm_make_wf increases state by exactly [term_wf t]*)
-      eapply prove_errst_spec_bnd with (Q1:=fun s1 t2 s2 =>
-        eval_fmla t2 = Some (alpha_f_aux e2 (new_var_names t1 (fst s1))) /\
-        fst s2 = Z.of_nat (term_bnd t1) + (fst s1))
-      (P2:=fun e1 (s2: full_st) => 
-        let i := fst s2 - 
-        eval_term e1 = Some (alpha_f_aux e2 (new_var_names t1 (fst s1))) ) (*TODO see*)
-      (*TODO: not sure*)
-      (*s2 is state after 1st has been run before 2nd, s3 is state after 3rd*)
-      (Q2:= fun x s2 y s3 => 
-        let i := (fst s2) - Z.of_nat (term_bnd t1) in (*bad, but how else to recover orginal state?*)
-        eval_term y =
-        Some
-          (Tif (*(alpha_f_aux e2 (firstn (Datatypes.length (fmla_bnd e2)) (new_var_names t i)))*) x
-             (alpha_t_aux e3
-                (firstn (Datatypes.length (tm_bnd e3))
-                   (skipn (Datatypes.length (fmla_bnd e2)) (new_var_names t i))))
-             (alpha_t_aux e4
-                (skipn (Datatypes.length (tm_bnd e3))
-                   (skipn (Datatypes.length (fmla_bnd e2)) (new_var_names t i)))))); auto.
-      3: { intros s1 s2 _ x y [Hevalx Hs12]. assert (Hfst: fst s1 = fst s2 - Z.of_nat (term_bnd t1)) by lia.
-        rewrite Hfst. auto. }
-      1: { (*prove first from IH*) apply errst_spec_split; [apply IH1|apply t_wf_state]; auto. }
-      
-
-
- Search "_split". apply errst_spec_split.
-
-
-        eval_term t3 = Some (alpha_t_aux e1 (new_var_names t2 (fst s1)))) 
-        
-      Search errst_spec errst_bind.
-
-
-
-      (*TODO: probably don't make stateful - just pass in number of bound vars
-        then will need to prove something about the values in the list: I guess:
-        all arise from evaluating a var with id between s and (s + length (tm_bnd t))
-        so we need a (at least count) of bound variables and to prove the equivalence
-        but we dont care about anything but let
-        1. define relation ruling out rest
-        2. define bnd count on term_c
-        3. redefine function above*)
-    
-
-
- simpl. as [c1 [He1 Hc1]]. subst.
-      simpl. auto.
-
-
-      Search t_node_of TermDefs.Tconst.
-      
-
-
-
-
- Search errst_spec errst_ret. 
-
-
-
-  Check tm_traverse_ind.
-  induction t1 using term_ind_alt.
-  - split; intros e1 Heval.
-    + (*Tvar*) rewrite t_make_wf_rewrite. 
-
-
-
-  errst_spec 
-
-  
-
-    fold_right (fun x acc => let (s1, n1) := x 
-    fold_right (fun 
-
-    let (n2, s2) := new_var_names 
-    (eval_vsym_str (vsym_with v s)) ++ 
-    
-
-
-Search errst_spec t_open_bound.
-(*NOTE: probably need to know that state is 1+ old old*)
-
-Print eval_vsymbol.
-
-
-(*Proofs about [t_make_wf]*)
-Search "a_convert".
-
-Print a_convert_t.
-
-
-
 
 
