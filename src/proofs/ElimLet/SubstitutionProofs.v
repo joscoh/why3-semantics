@@ -1286,8 +1286,8 @@ Qed.
           X  3. Prove NoDup for list
           X  3.5. Prove only_let implication
             4. Prove var results from ElimLet (finish proving)
-            4.5 new_var_names shape equivalence
-            4.75 shape equivalence for t_open_bound (and subst)
+          X  4.5 new_var_names shape equivalence
+          X  4.75 shape equivalence for t_open_bound (and subst)
           X 5. Back to main proof, push term_st_wf assumption through
             6. Use this lemma, conclude let case
           X  7. Prove var result for [t_open_bound] (subsumes var id result)
@@ -1679,11 +1679,36 @@ Proof.
   - (*not*) rewrite types_wf_rewrite at 1. rewrite Heq. intros; destruct_all; split; auto.
 Qed.
 
+(*NOTE: could really use this for the eval result*)
+Lemma t_open_bound_subst tb:
+  errst_spec (fun (_: full_st) => True) (errst_tup1 (errst_lift1 (t_open_bound tb)))
+    (fun _ tb2 _ => snd tb2 = t_subst_unsafe (Mvs.add (fst (fst tb)) (t_var (fst tb2)) Mvs.empty) (snd tb)).
+Proof.
+  apply errst_spec_weaken with (P1:=fun _ => True /\ True) 
+    (Q1:=fun _ tb2 _ => snd tb2 = t_subst_unsafe (Mvs.add (fst (fst tb)) (t_var (fst tb2)) Mvs.empty) (snd tb) /\ True); try solve[tauto].
+  apply errst_spec_tup1 with (P1:=fun _ => True)
+    (P2:=fun _ tb2 _ => snd tb2 = t_subst_unsafe (Mvs.add (fst (fst tb)) (t_var (fst tb2)) Mvs.empty) (snd tb)) (Q1:=fun _ => True) (Q:=fun _ _ _ => True); auto.
+  apply errst_spec_st.
+  (*state proof*)
+  unfold t_open_bound. destruct tb as [[v1 b1] t1].
+  apply prove_st_spec_bnd_nondep with (Q1:=fun r _ => fst r = Mvs.add v1 (t_var (snd r)) Mvs.empty)
+  (Q2:= fun _ tb2 _ => snd tb2 = t_subst_unsafe (Mvs.add v1 (t_var (fst tb2)) Mvs.empty) t1); auto; [apply vs_rename_map|].
+  intros [m v]. apply prove_st_spec_ret. simpl. intros _ Hm. subst; auto.
+Qed.
 
 Lemma t_open_bound_types_wf tb (Hwf: types_wf (snd tb)):
   errst_spec (fun (_: full_st) => True) (errst_tup1 (errst_lift1 (t_open_bound tb)))
     (fun _ tb2 _ => types_wf (snd tb2)).
 Proof.
+  eapply errst_spec_weaken_post; [| apply errst_spec_split; [apply t_open_bound_subst| apply t_open_bound_var]].
+  simpl. intros i [v2 t2] _ [Ht2 Hv2]. destruct tb as [[v1 b1] t1]; simpl in *. subst.
+  apply types_wf_sub; auto.
+  + intros x y. rewrite Mvs.add_spec, Mvs.empty_spec. destruct (Vsym.Tg.equal x v1) eqn : Heq; try discriminate.
+    apply vsymbol_eqb_eq in Heq. subst. inv Hsome. rewrite types_wf_rewrite; simpl. reflexivity.
+  + intros x y. rewrite Mvs.add_spec, Mvs.empty_spec. destruct (Vsym.Tg.equal x v1) eqn : Heq; try discriminate.
+    apply vsymbol_eqb_eq in Heq. subst. inv Hsome. reflexivity.
+Qed.
+(* 
   (*TODO: could prove sub result - at term_c level, not eval - but eh, prove directly for now*)
   apply errst_spec_weaken with (P1:=fun _ => True /\ True) (Q1:=fun _ tb2 _ => types_wf (snd tb2) /\ True); try solve[tauto].
   apply errst_spec_tup1 with (P1:=fun _ => True)(P2:=fun _ tb2 _ => types_wf (snd tb2)) (Q1:=fun _ => True) (Q:=fun _ _ _ => True); auto.
@@ -1701,6 +1726,296 @@ Proof.
       apply vsymbol_eqb_eq in Heq. subst. inv Hsome. rewrite types_wf_rewrite; simpl. reflexivity.
     + intros x y. rewrite Mvs.add_spec, Mvs.empty_spec. destruct (Vsym.Tg.equal x v1) eqn : Heq; try discriminate.
       apply vsymbol_eqb_eq in Heq. subst. inv Hsome. simpl. f_equal; auto.
+Qed. *)
+
+(*Now prove shape*)
+Search term_c "shape".
+Print new_var_names.
+
+Lemma term_bnd_shape (t1 t2: term_c) (Hlet: only_let t1) (Hshape: t_shape t1 t2):
+  term_bnd t1 = term_bnd t2.
+Proof.
+  generalize dependent t2. induction t1 using term_ind_alt; intros t2 Hshape;
+  rewrite !term_bnd_rewrite; try rewrite Heq; try rewrite Ht;
+  rewrite only_let_rewrite in Hlet; try rewrite Heq in Hlet; try discriminate.
+  - destruct (t_shape_var Hshape Heq) as [v1 Heq2]. rewrite Heq2. auto.
+  - destruct (t_shape_const Hshape Heq) as [c1 Heq2]. rewrite Heq2; auto.
+  - destruct (t_shape_if Hshape Heq) as [e1 [e2 [e3 [Heq2 [Hshape1 [Hshape2 Hshape3]]]]]]; rewrite Heq2.
+    rewrite !andb_true in Hlet. destruct Hlet as [[Hlet1 Hlet2] Hlet3].
+    specialize (IHt1_1 Hlet1). specialize (IHt1_2 Hlet2). specialize (IHt1_3 Hlet3). auto.
+  - destruct (t_shape_let Hshape Heq) as [e1 [v2 [b2 [e2 [Heq2 [Hshape1 Hshape2]]]]]]; rewrite Heq2.
+    rewrite !andb_true in Hlet. destruct Hlet as [Hlet1 Hlet2].
+    specialize (IHt1_1 Hlet1). specialize (IHt1_2 Hlet2). auto.
+  - destruct (t_shape_binop Hshape Heq) as [e1 [e2 [Heq2 [Hshape1 Hshape2]]]]; rewrite Heq2. 
+    rewrite !andb_true in Hlet. destruct Hlet as [Hlet1 Hlet2].
+    specialize (IHt1_1 Hlet1). specialize (IHt1_2 Hlet2). auto.
+  - destruct (t_shape_not Hshape Heq) as [e1 [Heq2 Hshape1]]; rewrite Heq2. auto.
+  - rewrite (t_shape_true Hshape Ht). auto.
+  - rewrite (t_shape_false Hshape Ht). auto.
+Qed.
+Search term_bnd.
+
+Print t_shape.
+
+(*shape is not enough - need bound vars to be the same*)
+(*could be bool but eh*)
+Fixpoint t_shape_strong (t1 t2: term_c) :=
+  match t_node_of t1, t_node_of t2 with
+  | TermDefs.Tvar _, TermDefs.Tvar _ => True
+  | TermDefs.Tconst _, TermDefs.Tconst _ => True
+  | TermDefs.Tif t1 t2 t3, TermDefs.Tif t4 t5 t6 => t_shape_strong t1 t4 /\ 
+      t_shape_strong t2 t5 /\ t_shape_strong t3 t6
+  | TermDefs.Tlet t1 (v1, _, t2), TermDefs.Tlet t3 (v2, _, t4) =>
+    t_shape_strong t1 t3 /\ v1 = v2 /\ t_shape_strong t2 t4
+  | TermDefs.Tbinop b1 t1 t2, TermDefs.Tbinop b2 t3 t4 => b1 = b2 /\
+    t_shape_strong t1 t3 /\ t_shape_strong t2 t4
+  | TermDefs.Tnot t1, TermDefs.Tnot t2 => t_shape_strong t1 t2
+  | TermDefs.Ttrue, TermDefs.Ttrue => True
+  | TermDefs.Tfalse, TermDefs.Tfalse => True
+  | _, _ => False
+  end.
+
+Lemma t_shape_strong_shape t1 t2 (Hlet: only_let t1) (Hshape: t_shape_strong t1 t2):
+  t_shape t1 t2.
+Proof.
+  generalize dependent t2. induction t1 using term_ind_alt; intros t2 Hshape;
+  rewrite only_let_rewrite in Hlet; try rewrite Heq in Hlet; try discriminate;
+  try solve[destruct_term_node t1; destruct_term_node t2; auto].
+  - rewrite !andb_true in Hlet. destruct Hlet as [[Hlet1 Hlet2] Hlet3]. 
+    specialize (IHt1_1 Hlet1). specialize (IHt1_2 Hlet2). specialize (IHt1_3 Hlet3).
+    destruct_term_node t1_4. inversion Heq; subst. destruct_term_node t2; auto.
+    destruct_all; bool_to_prop; split_all; [apply IHt1_1 | apply IHt1_2 | apply IHt1_3]; auto.
+  - rewrite !andb_true in Hlet. destruct Hlet as [Hlet1 Hlet2]. 
+    specialize (IHt1_1 Hlet1). specialize (IHt1_2 Hlet2).
+    destruct_term_node t1_3. destruct p as [[v1 b1] t1]. inversion Heq; subst. destruct_term_node t2; auto.
+    destruct p as [[v2 b2] t2].
+    destruct_all; subst; bool_to_prop; split_all; [apply IHt1_1 | apply IHt1_2]; auto.
+  - rewrite !andb_true in Hlet. destruct Hlet as [Hlet1 Hlet2]. 
+    specialize (IHt1_1 Hlet1). specialize (IHt1_2 Hlet2).
+    destruct_term_node t1_3. inversion Heq; subst. destruct_term_node t2; auto.
+    destruct_all; subst; bool_to_prop; split_all; [|apply IHt1_1 | apply IHt1_2]; auto.
+    apply TermDefs.binop_eqb_eq; auto.
+  - specialize (IHt1_1 Hlet). destruct_term_node t1_2. inversion Heq; subst.
+    destruct_term_node t2; auto.
+Qed.
+
+Lemma term_bnd_shape_strong (t1 t2: term_c) (Hlet: only_let t1) (Hshape: t_shape_strong t1 t2):
+  term_bnd t1 = term_bnd t2.
+Proof.
+  apply term_bnd_shape; auto. apply t_shape_strong_shape; auto.
+Qed.
+
+Lemma new_var_names_shape (t1 t2: term_c) (Hlet: only_let t1) (Hshape: t_shape_strong t1 t2) s:
+  new_var_names t1 s = new_var_names t2 s.
+Proof.
+  revert s.
+  generalize dependent t2. induction t1 using term_ind_alt; intros t2 Hshape s;
+  rewrite only_let_rewrite in Hlet; try rewrite Heq in Hlet; try discriminate.
+  - destruct_term_node t1. inversion Heq; subst. destruct_term_node t2; auto; contradiction.
+  - destruct_term_node t1. inversion Heq; subst. destruct_term_node t2; try contradiction. auto.
+  - rewrite !andb_true in Hlet. destruct Hlet as [[Hlet1 Hlet2] Hlet3]. specialize (IHt1_1 Hlet1).
+    specialize (IHt1_2 Hlet2). specialize (IHt1_3 Hlet3). destruct_term_node t1_4.
+    inversion Heq; subst. destruct_term_node t2; try contradiction. destruct Hshape as [Hshape1 [Hshape2 Hshape3]]. 
+    rewrite (term_bnd_shape_strong t1_1 t1); auto. rewrite (term_bnd_shape_strong t1_2 t2); auto.
+    f_equal; auto. f_equal; auto.
+  - rewrite !andb_true in Hlet. destruct Hlet as [Hlet1 Hlet2]. specialize (IHt1_1 Hlet1).
+    specialize (IHt1_2 Hlet2). destruct_term_node t1_3. destruct p as [[v1 b1] t1].
+    inversion Heq; subst. destruct_term_node t2; try contradiction. destruct p as [[v2 b2] t2].
+    destruct Hshape as [Hshape1 [Hv Hshape2]]. subst. 
+    rewrite (term_bnd_shape_strong t1_1 t1); auto. f_equal; auto. f_equal; auto.
+  - rewrite !andb_true in Hlet. destruct Hlet as [Hlet1 Hlet2]. specialize (IHt1_1 Hlet1).
+    specialize (IHt1_2 Hlet2). destruct_term_node t1_3. 
+    inversion Heq; subst. destruct_term_node t2; try contradiction. 
+    destruct Hshape as [Hb [Hshape1 Hshape2]]. subst. 
+    rewrite (term_bnd_shape_strong t1_1 t1); auto. f_equal; auto.
+  - specialize (IHt1_1 Hlet). destruct_term_node t1_2. 
+    inversion Heq; subst. destruct_term_node t2; try contradiction. auto.
+  - destruct_term_node t1. destruct_term_node t2; try contradiction; auto.
+  - destruct_term_node t1. destruct_term_node t2; try contradiction; auto.
+Qed.
+
+Definition is_var (t: term_c) :=
+  match t_node_of t with
+  | TermDefs.Tvar _ => true
+  | _ => false
+  end.
+
+Lemma t_shape_strong_refl t (Hlet: only_let t):
+  t_shape_strong t t.
+Proof.
+  induction t using term_ind_alt; rewrite only_let_rewrite in Hlet; try rewrite Heq in Hlet;
+  try discriminate; try solve[destruct_term_node t; auto].
+  - bool_hyps. destruct_term_node t4; inversion Heq; subst; split_all; auto.
+  - bool_hyps. destruct_term_node t3; inversion Heq; subst; split_all; auto.
+  - bool_hyps. destruct_term_node t3; inversion Heq; subst; split_all; auto.
+  - destruct_term_node t2. inversion Heq; subst; auto.
+Qed.
+
+Lemma t_shape_strong_sym t1 t2 (Hlet: only_let t1):
+  t_shape_strong t1 t2 ->
+  t_shape_strong t2 t1.
+Proof.
+  revert t2. induction t1 using term_ind_alt;
+  rewrite only_let_rewrite in Hlet; try rewrite Heq in Hlet; try discriminate;
+  intros t2 Hshape.
+  - destruct_term_node t1. destruct_term_node t2; try contradiction; auto.
+  - destruct_term_node t1. destruct_term_node t2; try contradiction; auto.
+  - rewrite !andb_true in Hlet. destruct Hlet as [[Hlet1 Hlet2] Hlet3]. specialize (IHt1_1 Hlet1).
+    specialize (IHt1_2 Hlet2). specialize (IHt1_3 Hlet3). destruct_term_node t1_4.
+    inversion Heq; subst. destruct_term_node t2; try contradiction. destruct Hshape as [Hshape1 [Hshape2 Hshape3]].
+    split_all; auto.
+  - rewrite !andb_true in Hlet. destruct Hlet as [Hlet1 Hlet2]. specialize (IHt1_1 Hlet1).
+    specialize (IHt1_2 Hlet2). destruct_term_node t1_3. destruct p as [[v1 b1] t1].
+    inversion Heq; subst. destruct_term_node t2; try contradiction. destruct p as [[v2 b2] t2].
+    destruct_all; subst; split_all; auto.
+  - rewrite !andb_true in Hlet. destruct Hlet as [Hlet1 Hlet2]. specialize (IHt1_1 Hlet1).
+    specialize (IHt1_2 Hlet2). destruct_term_node t1_3. 
+    inversion Heq; subst. destruct_term_node t2; try contradiction. 
+    destruct_all; subst; split_all; auto.
+  - specialize (IHt1_1 Hlet). destruct_term_node t1_2. 
+    inversion Heq; subst. destruct_term_node t2; try contradiction. auto.
+  - destruct_term_node t1. destruct_term_node t2; try contradiction; auto.
+  - destruct_term_node t1. destruct_term_node t2; try contradiction; auto.
+Qed.
+
+Lemma t_similar_shape_strong s t ( Hlet: only_let t) (Hsim: t_similar s t):
+  t_shape_strong t s.
+Proof.
+  revert Hsim.
+  unfold t_similar . rewrite andb_true.
+  intros [Hoeq Hsim].
+  destruct_term_node t; destruct_term_node s; try discriminate; auto; solve_similar;
+  split_all; auto; apply t_shape_strong_refl; auto.
+Qed.
+
+Lemma t_attr_copy_shape_strong s t (Ht: only_let t):
+  t_shape_strong t (t_attr_copy s t).
+Proof.
+  unfold t_attr_copy.
+  destruct (_ && _) eqn : Hsim.
+  2: { destruct_term_node t; simpl; auto; try (destruct p as [[v1 b1] t1]);  split_all; auto; 
+    try apply t_shape_strong_refl;
+    try solve[bool_hyps; auto]. }
+  apply t_similar_shape_strong; auto. bool_hyps; auto.
+Qed.
+
+Lemma t_shape_strong_trans t1 t2 t3 (Hlet: only_let t1) (Hshape1: t_shape_strong t1 t2) 
+  (Hshape2: t_shape_strong t2 t3):
+  t_shape_strong t1 t3.
+Proof.
+  generalize dependent t3. generalize dependent t2. induction t1 using term_ind_alt;
+  rewrite only_let_rewrite in Hlet; try rewrite Heq in Hlet; try discriminate;
+  intros t2 Hshape1 t3 Hshape2.
+  - destruct_term_node t1. inversion Heq; subst. destruct_term_node t2; try contradiction.
+    auto.
+  - destruct_term_node t1. destruct_term_node t2; try contradiction. auto.
+  - rewrite !andb_true in Hlet. destruct Hlet as [[Hlet1 Hlet2] Hlet3].
+    specialize (IHt1_1 Hlet1). specialize (IHt1_2 Hlet2). specialize (IHt1_3 Hlet3).
+    destruct_term_node t1_4; inversion Heq; subst. destruct_term_node t2; try contradiction.
+    destruct_term_node t3; try contradiction. destruct_all; split_all; eauto.
+  - rewrite !andb_true in Hlet. destruct Hlet as [Hlet1 Hlet2].
+    specialize (IHt1_1 Hlet1). specialize (IHt1_2 Hlet2).
+    destruct_term_node t1_3; inversion Heq; subst. destruct_term_node t2; try contradiction.
+    destruct p as [[v2 p2] t2].
+    destruct_term_node t3; try contradiction. destruct p as [[v3 p3] t3']. destruct_all; subst; split_all; eauto.
+  - rewrite !andb_true in Hlet. destruct Hlet as [Hlet1 Hlet2].
+    specialize (IHt1_1 Hlet1). specialize (IHt1_2 Hlet2).
+    destruct_term_node t1_3; inversion Heq; subst. destruct_term_node t2; try contradiction.
+    destruct_term_node t3; try contradiction. destruct_all; split_all; eauto.
+  - specialize (IHt1_1 Hlet). 
+    destruct_term_node t1_2; inversion Heq; subst. destruct_term_node t2; try contradiction.
+    destruct_term_node t3; try contradiction. eauto.
+  - destruct_term_node t1. destruct_term_node t2; try contradiction. auto.
+  - destruct_term_node t1. destruct_term_node t2; try contradiction. auto.
+Qed.
+
+Lemma t_attr_copy_shape_strong' t t1 t2 ( Hlet: only_let t) (Hlet1: only_let t1):
+  t_shape_strong t t1 ->
+  t_shape_strong t (t_attr_copy t2 t1).
+Proof.
+  intros Hshape. eapply t_shape_strong_trans; auto.
+  2: apply t_attr_copy_shape_strong; auto.
+  auto.
+Qed.
+
+Lemma is_var_only_let x:
+  is_var x ->
+  only_let x.
+Proof.
+  destruct_term_node x; try discriminate; auto.
+Qed.
+
+(*Now prove that [t_subst_unsafe] preserves [t_shape_strong] if map only contains variables
+  (because substitution does not change bound variables*)
+Lemma t_subst_unsafe_shape_strong (m: Mvs.t term_c) (Hm: forall x y, Mvs.find_opt x m = Some y -> is_var y) t
+  (Hlet: only_let t):
+  t_shape_strong t (t_subst_unsafe m t).
+Proof.
+  unfold t_subst_unsafe. destruct (Mvs.is_empty _); [apply t_shape_strong_refl|]; auto.
+  generalize dependent m. induction t using term_ind_alt; rewrite only_let_rewrite in Hlet;
+  try rewrite Heq in Hlet; try discriminate; intros m Hm;
+  rewrite t_subst_unsafe_aux_rewrite; try rewrite Heq; try rewrite Ht;
+  try rewrite t_map_unsafe_rewrite; try rewrite Heq; try rewrite Ht.
+  - (*var - need condition*) unfold Mvs.find_def. destruct (Mvs.find_opt v m) as [y|] eqn : Hget.
+    2: { apply t_attr_copy_shape_strong; auto; rewrite only_let_rewrite, Heq; auto. }
+    apply Hm in Hget. destruct_term_node y; try discriminate.
+    apply t_attr_copy_shape_strong'; auto.
+    + rewrite only_let_rewrite, Heq. auto.
+    + destruct_term_node t. auto.
+  - apply t_attr_copy_shape_strong. rewrite only_let_rewrite, Heq. auto.
+  - rewrite !andb_true in Hlet. destruct Hlet as [[Hlet1 Hlet2] Hlet3].
+    specialize (IHt1 Hlet1). specialize (IHt2 Hlet2). specialize (IHt3 Hlet3).
+    apply t_attr_copy_shape_strong'; auto; try rewrite only_let_rewrite; simpl; auto.
+    + rewrite Heq. bool_to_prop; auto.
+    + bool_to_prop; split_all; apply t_subst_unsafe_only_let; auto;
+      intros x y Hget; apply is_var_only_let; apply (Hm x y); auto.
+    + destruct_term_node t4; inversion Heq; subst. split_all; auto.
+  - rewrite !andb_true in Hlet. destruct Hlet as [Hlet1 Hlet2].
+    specialize (IHt1 Hlet1). specialize (IHt2 Hlet2). simpl.
+    apply t_attr_copy_shape_strong'; auto; try rewrite only_let_rewrite; simpl; auto.
+    + rewrite Heq. bool_to_prop; auto.
+    + bool_to_prop; split.
+      * apply t_subst_unsafe_only_let; auto;
+        intros x y Hget; apply is_var_only_let; apply (Hm x y); auto.
+      * destruct (Mvs.is_empty _ _); auto. apply t_subst_unsafe_only_let; auto.
+        eapply mvs_preserved; [apply binding_submap|].
+        intros x y Hget; apply is_var_only_let; apply (Hm x y); auto.
+    + destruct_term_node t3. destruct p as [[v1 b1] t1']. inversion Heq; subst.
+      split_all; auto.
+      destruct (Mvs.is_empty _ _); auto; [apply t_shape_strong_refl; auto|].
+      apply IHt2. eapply mvs_preserved; [apply binding_submap|]; auto.
+  - rewrite !andb_true in Hlet. destruct Hlet as [Hlet1 Hlet2].
+    specialize (IHt1 Hlet1). specialize (IHt2 Hlet2).
+    apply t_attr_copy_shape_strong'; auto; try rewrite only_let_rewrite; simpl; auto.
+    + rewrite Heq. bool_to_prop; auto.
+    + bool_to_prop; split_all; apply t_subst_unsafe_only_let; auto;
+      intros x y Hget; apply is_var_only_let; apply (Hm x y); auto.
+    + destruct_term_node t3; inversion Heq; subst. split_all; auto.
+  - specialize (IHt1 Hlet).
+    apply t_attr_copy_shape_strong'; auto; try rewrite only_let_rewrite; simpl; auto.
+    + rewrite Heq. bool_to_prop; auto.
+    + apply t_subst_unsafe_only_let; auto;
+      intros x y Hget; apply is_var_only_let; apply (Hm x y); auto.
+    + destruct_term_node t2; inversion Heq; subst. auto. 
+  - apply t_attr_copy_shape_strong; auto; try rewrite only_let_rewrite; simpl; auto.
+  - apply t_attr_copy_shape_strong; auto; try rewrite only_let_rewrite; simpl; auto.
+Qed.
+
+(*And now the result of [t_open_bound] has the same [new_var_names]*)
+Lemma t_open_bound_var_names tb (Hlet: only_let (snd tb)):
+  errst_spec (fun (_: full_st) => True) (errst_tup1 (errst_lift1 (t_open_bound tb)))
+  (fun _ tb2 _ => forall s, new_var_names (snd tb2) s = new_var_names (snd tb) s).
+Proof.
+  eapply errst_spec_weaken_post; [| apply t_open_bound_subst].
+  simpl. intros _ x _ Hsnd s. rewrite Hsnd.
+  apply new_var_names_shape.
+  - unfold t_subst_unsafe. destruct (Mvs.is_empty _ _); auto.
+    apply t_subst_unsafe_only_let; auto.
+    intros v y. rewrite Mvs.add_spec, Mvs.empty_spec. destruct (Vsym.Tg.equal _ _) eqn : Heq; try discriminate.
+    inv Hsome. auto.
+  - apply t_shape_strong_sym; auto. apply t_subst_unsafe_shape_strong; auto.
+    intros v y. rewrite Mvs.add_spec, Mvs.empty_spec. destruct (Vsym.Tg.equal _ _) eqn : Heq; try discriminate.
+    inv Hsome. auto.
 Qed.
 
 (*NOTE: later prove length and NoDup for list*)
@@ -2104,7 +2419,8 @@ Proof.
       (*NOTE: need to prove that [new_var_names] is equivalent for t2 and snd x - probably - they 
         have the same shape, need this info as well*)
       replace (new_var_names (snd x) (fst i - Z.of_nat (term_bnd t2))) with
-        (new_var_names t2 (fst i - Z.of_nat (term_bnd t2))) by admit. (*TODO: use TermTraverseAux.t_shape*)
+        (new_var_names t2 (fst i - Z.of_nat (term_bnd t2)))
+      by (apply t_open_bound_var_names in Hx; auto).
       apply alpha_t_sub_var; auto.
       * apply (only_let_eval_tm t2); auto. 
       * (*TODO: prove that if var in e3, then there is var in t2 with eval (in previous), use contradiction
