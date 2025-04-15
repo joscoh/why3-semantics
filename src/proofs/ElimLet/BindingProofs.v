@@ -363,6 +363,7 @@ Fixpoint types_wf (t: term_c) : Prop :=
   | Tapp l tms => (*TODO: need anything else?*)  Forall (fun x => x) (map types_wf tms)
   | Tif t1 t2 t3 => t_ty_of t2 = t_ty_of t3 /\ t_ty_of t2 = t_ty_of t /\ types_wf t1 /\ types_wf t2 /\ types_wf t3
   | Tlet t1 (v, b, t2) => mvs_eq (Mvs.map (fun _ => tt) (bv_vars b)) (Svs.remove v (t_free_vars t2)) /\
+      t_ty_of t2 = t_ty_of t /\
      (*t_ty_of t1 = Some (vs_ty v) /\ t_ty_of t2 = t_ty_of t /\*) types_wf t1 /\ types_wf t2
   | Tcase t1 ps => (*TODO: see*) types_wf t1 /\ 
       Forall (fun x => svs_eq (pat_vars_of (fst (fst x))) (p_free_vars (fst (fst x))) /\
@@ -385,6 +386,7 @@ Lemma types_wf_rewrite t:
   | Tapp l tms => (*TODO: need anything else?*)  Forall (fun x => x) (map types_wf tms)
   | Tif t1 t2 t3 => t_ty_of t2 = t_ty_of t3 /\ t_ty_of t2 = t_ty_of t /\ types_wf t1 /\ types_wf t2 /\ types_wf t3
   | Tlet t1 (v, b, t2) => mvs_eq (Mvs.map (fun _ => tt) (bv_vars b)) (Svs.remove v (t_free_vars t2)) /\
+      t_ty_of t2 = t_ty_of t /\
      (*t_ty_of t1 = Some (vs_ty v) /\ t_ty_of t2 = t_ty_of t /\*) types_wf t1 /\ types_wf t2
   | Tcase t1 ps => (*TODO: see*) types_wf t1 /\ 
       Forall (fun x => svs_eq (pat_vars_of (fst (fst x))) (p_free_vars (fst (fst x))) /\
@@ -2667,8 +2669,8 @@ Proof.
     + (*fif*) rewrite t_subst_unsafe_aux_rewrite, Heq, t_map_unsafe_rewrite, Heq, t_attr_copy_eval_fmla. simpl. 
       destruct (eval_if_fmla Heq Heval) as [e2 [e3 [e4 [He1 [Heval1 [Heval2 Heval3]]]]]].
       subst. simpl. rewrite (IH1 _ Hm Hmty _ Heval1), (IH2' _ Hm Hmty _ Heval2), (IH3' _ Hm Hmty _ Heval3). reflexivity.
-  - rewrite types_wf_rewrite, Heq in Hwf. (*TODO: add var condition*)
-    destruct Hwf as [Hvars [Hwf1 Hwf2]]. specialize (IHt1_1 Hwf1); specialize (IHt1_2 Hwf2). 
+  - rewrite types_wf_rewrite, Heq in Hwf.
+    destruct Hwf as [Hvars [Htyeq [Hwf1 Hwf2]]]. specialize (IHt1_1 Hwf1); specialize (IHt1_2 Hwf2). 
     destruct IHt1_1 as [IH1 _]; destruct IHt1_2 as [IH2 IH2'].
     split; intros m Hm Hmty e1 Heval.
     + (*tlet*) rewrite t_subst_unsafe_aux_rewrite, Heq. simpl.

@@ -8,7 +8,7 @@ The primary proof goal is to relate stateless and stateful substitution (which i
 really the primary difference between the two layers) so it does encompass the main
 difficulties.
 *)
-
+(*
 Require Import TaskDefs.
 Require Import TermTraverse.
 
@@ -230,7 +230,7 @@ Proof.
   apply t_open_bound_pres.
 Qed.
 
-Lemma t_open_bound_res_wf tb1:
+(*Lemma t_open_bound_res_wf tb1:
   errst_spec (fun s1 => term_st_wf (snd tb1) s1)
     (errst_tup1 (errst_lift1 (t_open_bound tb1)))
   (fun _ (tb2: TermDefs.vsymbol * term_c) s2 => 
@@ -528,10 +528,10 @@ Proof.
   intros Hq1 Hq2.
   apply errst_spec_weaken_pre with (P1:=fun x => P x /\ P x); auto.
   apply errst_spec_and; auto.
-Qed.
+Qed.*)
 
 (*Now we can prove a derived spec*)
-Lemma t_open_bound_res_notin v1 b1 t2 e2 (Heval: eval_fmla t2 = Some e2):
+(* Lemma t_open_bound_res_notin v1 b1 t2 e2 (Heval: eval_fmla t2 = Some e2):
   errst_spec
   (fun x : full_st => term_st_wf t2 x)
   (errst_tup1 (errst_lift1 (t_open_bound (v1, b1, t2))))
@@ -549,7 +549,7 @@ Proof.
     + apply errst_spec_split.
       * apply errst_spec_init.
       * eapply errst_spec_weaken_pre. 2: apply t_open_bound_var. simpl. auto.
-Qed.
+Qed. *)
 
 
 (* Lemma eval_term_vars t1 e1 (Heval: eval_term t1 = Some e1):
@@ -571,6 +571,7 @@ Proof.
   generation method
   If we assume related, then need to show that a_equiv things result in a_equiv after safe sub, which
   we did*)
+Search t_subst_single1.
 Print t_subst1.
 Print t_subst_unsafe_aux.
 
@@ -1595,6 +1596,6 @@ Proof.
   apply prove_trans_errst_decompose with (tr1:=single_goal (elim_let_f true true)).
   - (*already proved soundness*) apply elim_let_sound. 
   - (*Now prove related*) apply elim_let_related.
-Qed.
+Qed.*)
 
 

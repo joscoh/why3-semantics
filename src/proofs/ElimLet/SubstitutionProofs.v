@@ -135,12 +135,7 @@ Proof.
 Qed.
 
 (*Part 2: Spec*)
-Print t_subst_single1.
-Print t_subst1.
-Print term_traverse.
 Require Import TermFuncs Relations.
-
-Print eval_vsymbol.
 
 (*Get the list of new variable names.
   NOTE: because eval_vsymbol is not compositional (it depends on more than 
@@ -289,12 +284,11 @@ Proof. apply term_bnd_spec; auto. Qed.
 
 (*NOTE: we only care about let-bindings*)
 (*Let's do statefully for now*)
-Print ident.
 Definition ident_with (i: ident) (s: Z) :=
   Build_ident (id_string i) (id_attrs i) (id_loc i) s.
-Print vsymbol.
+
 Definition vsym_with (v: TermDefs.vsymbol) (s: Z) := Build_vsymbol (ident_with (vs_name v) s) (vs_ty v).
-Print eval_vsymbol.
+
 Definition eval_vsym_str (v: TermDefs.vsymbol) : string :=
   fst (eval_vsymbol v).
 
@@ -444,10 +438,10 @@ Proof. destruct t; auto. Qed.
 Proof. destruct t; auto. Qed. *)
 
 (*And now the spec*)
-Print full_st.
+
 Require Import InversionLemmas.
 From Proofs Require Import Alpha.
-Check alpha_t_aux.
+
 Require Import TermTactics.
 
 Set Bullet Behavior "Strict Subproofs".
@@ -840,9 +834,6 @@ Proof.
 
 Require Import StateInvarDecompose.
 
-
-Check term_st_wf.
-
 (*TODO: duplicate*)
 
 (*Now we can prove a derived spec*)
@@ -924,7 +915,6 @@ Definition sub_var_t_comm x1 y1 x2 y2 Hxs Hxy1 Hxy2 t :=
   proj_tm (sub_var_comm x1 y1 x2 y2 Hxs Hxy1 Hxy2) t.
 Definition sub_var_f_comm x1 y1 x2 y2 Hxs Hxy1 Hxy2 f :=
   proj_fmla (sub_var_comm x1 y1 x2 y2 Hxs Hxy1 Hxy2) f.
-Locate in_split_lens_ith.
 
 Lemma in_split_lens_ith' {A: Type} (l: list A) (lens: list nat) (i: nat) x (d: list A) :
   (*sum lens = length l ->*)
@@ -1154,10 +1144,6 @@ Proof.
 Qed.
 
 (*Results about [new_var_names]*)
-Check new_var_names.
-Print new_var_names.
-Print TermDefs.vsymbol.
-Print ident.
 (*1. All strings are result of [eval_vsym_str v] for a v with s <= id < term_bnd t1*)
 Lemma new_var_names_in (t: term_c) (Hlet: only_let t) (s: Z) (x: string):
   In x (new_var_names t s) ->
@@ -1372,8 +1358,6 @@ Proof.
   - rewrite !types_wf_rewrite. simpl. reflexivity.
 Qed.
 
-Check svs_eq.
-
 Lemma t_vars_rewrite t :
   t_vars t =
   match t_node_of t with
@@ -1471,7 +1455,6 @@ Proof.
   destruct (Mvs.find_opt x s1); destruct (Mvs.find_opt x s2); simpl in *; auto.
 Qed.
 
-Check Mvs.set_union.
 Lemma svs_eq_set_union {A B: Type} (m1 m2: Mvs.t A) (m3 m4: Mvs.t B):
   svs_eq m1 m3 ->
   svs_eq m2 m4 ->
@@ -1547,7 +1530,7 @@ Proof.
     apply svs_eq_vars_union; auto.
   - (*if*) destruct_all. eapply svs_eq_trans. 2: apply svs_eq_sym; apply svs_eq_union_assoc.
     repeat (apply svs_eq_vars_union; auto).
-  - (*let*) unfold add_b_vars. destruct Hwf as [Hvars [Hwf1 Hwf2]].
+  - (*let*) unfold add_b_vars. destruct Hwf as [Hvars [Htyeq [Hwf1 Hwf2]]].
     (*interesting case - need var result*)
     apply svs_eq_vars_union; auto.
     apply mvs_svs_eq' in Hvars. eapply svs_eq_trans. 2: apply Hvars.
@@ -1606,7 +1589,6 @@ Proof.
   rewrite !Mvs.remove_spec. destruct (Vsym.Tg.equal y x); auto.
 Qed.
 
-Check Mvs.set_diff.
 Lemma svs_eq_diff {A B C D: Type} (m1: Mvs.t A) (m2: Mvs.t B) (s1: Mvs.t C) (s2:Mvs.t D):
   svs_eq m1 m2 ->
   svs_eq s1 s2 ->
@@ -1643,10 +1625,12 @@ Proof.
     rewrite !Forall_forall in *. auto.
   - (*if*) rewrite types_wf_rewrite at 1. rewrite Heq. intros; destruct_all.
     rewrite !ty_subst_unsafe_aux_ty; auto. split_all; auto.
-  - (*let*) rewrite types_wf_rewrite at 1; rewrite Heq. intros [Hvars [Hwf1 Hwf2]].
+  - (*let*) rewrite types_wf_rewrite at 1; rewrite Heq. intros [Hvars [Htyeq [Hwf1 Hwf2]]].
     split_all; auto.
-    2: { destruct (Mvs.is_empty _ _); auto. apply IHt1_2; auto; eapply mvs_preserved; eauto;
-      apply binding_submap. }
+    2: { destruct (Mvs.is_empty _ _); auto. rewrite ty_subst_unsafe_aux_ty; auto.
+      eapply mvs_preserved; eauto; apply binding_submap. }
+    2: { destruct (Mvs.is_empty _ _); auto. 
+      apply IHt1_2; auto; eapply mvs_preserved; eauto; apply binding_submap. }
     (*prove vars*)
     rewrite mvs_eq_map_equiv. apply svs_eq_remove. apply t_vars_spec.
     destruct (Mvs.is_empty _ _); auto. apply IHt1_2; auto; eapply mvs_preserved; eauto; apply binding_submap.
@@ -1729,8 +1713,6 @@ Qed.
 Qed. *)
 
 (*Now prove shape*)
-Search term_c "shape".
-Print new_var_names.
 
 Lemma term_bnd_shape (t1 t2: term_c) (Hlet: only_let t1) (Hshape: t_shape t1 t2):
   term_bnd t1 = term_bnd t2.
@@ -1753,9 +1735,6 @@ Proof.
   - rewrite (t_shape_true Hshape Ht). auto.
   - rewrite (t_shape_false Hshape Ht). auto.
 Qed.
-Search term_bnd.
-
-Print t_shape.
 
 (*shape is not enough - need bound vars to be the same*)
 (*could be bool but eh*)
@@ -2180,8 +2159,6 @@ Proof.
   apply term_c_vars_eval; auto.
 Qed.
 
-Print idents_of_pattern.
-
 Lemma idents_of_pattern_rewrite p:
   idents_of_pattern p =
   match pat_node_of p with
@@ -2568,7 +2545,7 @@ Proof.
   - (*Interesting case - let*)
     intros t t1 tb Heq IH1 IH2 Hlet Hwf.
     rewrite only_let_rewrite, Heq in Hlet. destruct tb as [[v1 b1] t2]. rewrite !andb_true in Hlet. destruct Hlet as [Hlet1 Hlet2].
-    rewrite types_wf_rewrite, Heq in Hwf. destruct Hwf as [Hvars [Hwf1 Hwf2]].
+    rewrite types_wf_rewrite, Heq in Hwf. destruct Hwf as [Hvars [Htyeq [Hwf1 Hwf2]]].
     specialize (IH1 Hlet1 Hwf1). destruct IH1 as [IH1 _]. split; intros e1 Heval.
     + (*Tlet*)
       destruct (eval_let_tm Heq Heval) as [e2 [e3 [He1 [He2 He3]]]]. simpl in He1, He3. subst.
@@ -3037,6 +3014,190 @@ Proof.
   apply Hgen.
 Qed.
 
+(*Easy corollary of existing results*)
+Lemma t_open_bound_ty tb (Hwf: types_wf (snd tb)):
+  errst_spec (fun (_: full_st) => True) (errst_tup1 (errst_lift1 (t_open_bound tb)))
+    (fun _ y _ => t_ty_of (snd y) = t_ty_of (snd tb)).
+Proof.
+  eapply errst_spec_weaken_post; [|apply errst_spec_split; [apply t_open_bound_subst| apply t_open_bound_var]].
+  simpl. intros i [v2 t2] _ [Hsnd Hfst]. simpl in *; subst.
+  unfold t_subst_unsafe. destruct (Mvs.is_empty _ _); auto.
+  apply ty_subst_unsafe_aux_ty; auto.
+  (*TODO: should be in separate lemma*)
+  intros v t. rewrite Mvs.add_spec, Mvs.empty_spec.
+  destruct (Vsym.Tg.equal v (fst (fst tb))) eqn : Heq; try discriminate.
+  inv Hsome. simpl. apply vsymbol_eqb_eq in Heq. subst.
+  reflexivity.
+Qed. 
+
+Lemma t_make_wf_ty t (Hlet: only_let t) (Hwf: types_wf t):
+  errst_spec (fun (_: full_st) => True) (t_make_wf t) (fun _ t1 _ => t_ty_of t1 = t_ty_of t).
+Proof.
+  revert Hlet Hwf. apply tm_traverse_ind with (P:=fun t x => forall (Hlet: only_let t) (Hwf: types_wf t),
+    errst_spec (fun _ => True) x (fun _ t1 _ => t_ty_of t1 = t_ty_of t)); clear t; simpl.
+  - intros t c Heq Hlet Hwf. apply prove_errst_spec_ret. auto.
+  - intros t x Heq Hlet Hwf. apply prove_errst_spec_ret. auto.
+  - intros t t1 t2 t3 Heq IH1 IH2 IH3 Hlet Hwf.
+    rewrite only_let_rewrite, Heq in Hlet. rewrite !andb_true in Hlet. destruct Hlet as [[Hlet1 Hlet2] Hlet3].
+    rewrite types_wf_rewrite, Heq in Hwf. destruct Hwf as [Htyeq1 [Htyeq2 [Hwf1 [Hwf2 Hwf3]]]].
+    specialize (IH1 Hlet1 Hwf1). specialize (IH2 Hlet2 Hwf2). specialize (IH3 Hlet3 Hwf3).
+    eapply prove_errst_spec_bnd_nondep'; [apply IH1|]. intros t1'. simpl.
+    apply errst_spec_pure_whole. intros Hty1.
+    eapply prove_errst_spec_bnd_nondep'; [apply IH2|]. intros t2'. simpl.
+    apply errst_spec_pure_whole. intros Hty2.
+    eapply prove_errst_spec_bnd_nondep'; [apply IH3|]. intros t3'. simpl.
+    apply errst_spec_pure_whole. intros Hty3.
+    (*if final case*)
+    unfold tmap_if_default. apply errst_spec_err'. intros _ y Hif _.
+    unfold t_if in Hif. apply err_bnd_inr in Hif. destruct Hif as [z1 [Htyeq Hbnd]].
+    apply err_bnd_inr in Hbnd. destruct Hbnd as [z2 [Hprop Hret]]; inversion Hret; subst; clear Hret.
+    simpl. congruence.
+  - intros t t1 [[v1 b1] t2] Heq IH1 IH2 Hlet Hwf.
+    rewrite only_let_rewrite, Heq in Hlet. rewrite !andb_true in Hlet. destruct Hlet as [Hlet1 Hlet2].
+    rewrite types_wf_rewrite, Heq in Hwf. destruct Hwf as [Hvars [Htyeq [Hwf1 Hwf2]]].
+    specialize (IH1 Hlet1 Hwf1).
+    eapply prove_errst_spec_bnd_nondep'; [apply IH1|]. intros t1'. simpl.
+    apply errst_spec_pure_whole. intros Hty1.
+    (*Only complication - t_open_bound*)
+    eapply prove_errst_spec_dep_bnd_nondep' with (Q1:=fun x _ => only_let (snd x) /\ types_wf (snd x) /\ t_ty_of (snd x) = t_ty_of t2).
+    { apply errst_spec_split; [|apply errst_spec_split].
+      - eapply errst_spec_weaken_post; [|apply t_open_bound_bnd]; simpl; auto. tauto.
+      - apply t_open_bound_types_wf; auto.
+      - apply t_open_bound_ty; auto.
+    }
+    intros y s Hy.
+    apply errst_spec_pure_whole. intros [Hlety [Hwfy Htyy]].
+    eapply prove_errst_spec_bnd_nondep'; [apply (IH2 _ _ Hy)|]; auto. intros t2'. simpl.
+    apply errst_spec_pure_whole. intros Hty2.
+    (*let final case*)
+    unfold tmap_let_default. apply errst_spec_err'. intros _ z Hif _.
+    unfold t_let_close, t_let, t_close_bound in Hif. apply err_bnd_inr in Hif. destruct Hif as [z1 [Hcheck Hret]].
+    inversion Hret; subst; simpl. congruence.
+  - intros t l ts Heq IH Hlet Hwf. rewrite only_let_rewrite, Heq in Hlet; discriminate.
+  - intros t t1 tbs Heq IH1 IH2 Hlet Hwf; rewrite only_let_rewrite, Heq in Hlet; discriminate.
+  - intros t tb Heq IH Hlet Hwf;  rewrite only_let_rewrite, Heq in Hlet; discriminate.
+  - intros t q tq Heq IH Hlet Hwf;  rewrite only_let_rewrite, Heq in Hlet; discriminate.
+  - intros t b t1 t2 Heq IH1 IH2 Hlet Hwf.
+    rewrite only_let_rewrite, Heq in Hlet. rewrite !andb_true in Hlet. destruct Hlet as [Hlet1 Hlet2].
+    rewrite types_wf_rewrite, Heq in Hwf. destruct Hwf as [Htyt [Hwf1 Hwf2]].
+    specialize (IH1 Hlet1 Hwf1). specialize (IH2 Hlet2 Hwf2).
+    eapply prove_errst_spec_bnd_nondep'; [apply IH1|]. intros t1'. simpl.
+    apply errst_spec_pure_whole. intros Hty1.
+    eapply prove_errst_spec_bnd_nondep'; [apply IH2|]. intros t2'. simpl.
+    apply errst_spec_pure_whole. intros Hty2.
+    (*binop final case*)
+    unfold tmap_binop_default. apply errst_spec_err'. intros _ y Hif _.
+    unfold t_binary in Hif. apply err_bnd_inr in Hif. destruct Hif as [z1 [Hprop1 Hbnd]].
+    apply err_bnd_inr in Hbnd. destruct Hbnd as [z2 [Hprop2 Hret]]; inversion Hret; subst; clear Hret.
+    simpl. auto.
+  - intros t t1 Heq IH Hlet Hwf. 
+    rewrite only_let_rewrite, Heq in Hlet. rewrite types_wf_rewrite, Heq in Hwf. destruct Hwf as [Hnone Hwf].
+    specialize (IH Hlet Hwf).
+    eapply prove_errst_spec_bnd_nondep'; [apply IH|]. intros t1'. simpl.
+    apply errst_spec_pure_whole. intros Hty1.
+    (*not final case*)
+    unfold tmap_not_default. apply errst_spec_err'. intros _ y Hif _.
+    unfold t_not in Hif. apply err_bnd_inr in Hif. destruct Hif as [z1 [Hprop1 Hret]].
+    inversion Hret; subst; simpl; auto.
+  - intros. apply prove_errst_spec_ret; auto.
+  - intros. apply prove_errst_spec_ret; auto.
+Qed.
+
+(*NOTE: think we need that type is the same - t_ty_of*)
+
+Lemma t_make_wf_types_wf t (Hlet: only_let t) (Hwf: types_wf t):
+  errst_spec (fun (_: full_st) => True) (t_make_wf t) (fun _ t1 _ => types_wf t1).
+Proof.
+  revert Hlet Hwf. apply tm_traverse_ind with (P:=fun t1 x => forall (Hlet: only_let t1) (Hwf: types_wf t1),
+    errst_spec (fun _ => True) x (fun _ t1 _ => types_wf t1)); clear t; simpl.
+  - intros t c Heq Hlet Hwf. apply prove_errst_spec_ret. auto.
+  - intros t x Heq Hlet Hwf. apply prove_errst_spec_ret. auto.
+  - intros t t1 t2 t3 Heq IH1 IH2 IH3 Hlet Hwf.
+    rewrite only_let_rewrite, Heq in Hlet. rewrite types_wf_rewrite, Heq in Hwf.
+    rewrite !andb_true in Hlet. destruct Hlet as [[Hlet1 Hlet2] Hlet3].
+    destruct Hwf as [Htyeq1 [Htyeq2 [Hwf1 [Hwf2 Hwf3]]]].
+    specialize (IH1 Hlet1 Hwf1). specialize (IH2 Hlet2 Hwf2). specialize (IH3 Hlet3 Hwf3).
+    eapply prove_errst_spec_bnd_nondep' with (Q1:=fun x _ => types_wf x /\ t_ty_of x = t_ty_of t1).
+    { apply errst_spec_split; auto. apply t_make_wf_ty; auto. }
+    intros t1'. simpl.
+    apply errst_spec_pure_whole. intros [Hty1 Heq1].
+    eapply prove_errst_spec_bnd_nondep' with (Q1:=fun x _ => types_wf x /\ t_ty_of x = t_ty_of t2). 
+    { apply errst_spec_split; auto. apply t_make_wf_ty; auto. }
+    intros t2'. simpl.
+    apply errst_spec_pure_whole. intros [Hty2 Heq2].
+    eapply prove_errst_spec_bnd_nondep' with (Q1:=fun x _ => types_wf x /\ t_ty_of x = t_ty_of t3).
+    { apply errst_spec_split; auto. apply t_make_wf_ty; auto. }
+    intros t3'. simpl.
+    apply errst_spec_pure_whole. intros [Hty3 Heq3].
+    (*if final case*)
+    unfold tmap_if_default. apply errst_spec_err'. intros _ y Hif _.
+    unfold t_if in Hif. apply err_bnd_inr in Hif. destruct Hif as [z1 [Htyeq Hbnd]].
+    apply err_bnd_inr in Hbnd. destruct Hbnd as [z2 [Hprop Hret]]; inversion Hret; subst; clear Hret.
+    simpl. unfold t_prop in Hprop. destruct (negb _); inversion Hprop; subst. split_all; auto; congruence.
+  - intros t t1 [[v1 b1] t2] Heq IH1 IH2 Hlet Hwf.
+    rewrite only_let_rewrite, Heq in Hlet. rewrite !andb_true in Hlet. destruct Hlet as [Hlet1 Hlet2].
+    rewrite types_wf_rewrite, Heq in Hwf. destruct Hwf as [Hvars [Htyeq [Hwf1 Hwf2]]].
+    specialize (IH1 Hlet1 Hwf1).
+    eapply prove_errst_spec_bnd_nondep' with (Q1:=fun x _ => types_wf x /\ t_ty_of x = t_ty_of t1).
+    { apply errst_spec_split; auto. apply t_make_wf_ty; auto. }
+    intros t1'. simpl.
+    apply errst_spec_pure_whole. intros [Hty1 Heq1].
+    (*Only complication - t_open_bound*)
+    eapply prove_errst_spec_dep_bnd_nondep' with (Q1:=fun x _ => only_let (snd x) /\ types_wf (snd x) /\ t_ty_of (snd x) = t_ty_of t2).
+    { apply errst_spec_split; [|apply errst_spec_split].
+      - eapply errst_spec_weaken_post; [|apply t_open_bound_bnd]; simpl; auto. tauto.
+      - apply t_open_bound_types_wf; auto.
+      - apply t_open_bound_ty; auto.
+    }
+    intros y s Hy.
+    apply errst_spec_pure_whole. intros [Hlety [Hwfy Htyy]].
+    eapply prove_errst_spec_bnd_nondep'  with (Q1:=fun x _ => types_wf x /\ t_ty_of x = t_ty_of t2).
+    { apply errst_spec_split; [apply (IH2 _ _ Hy)|]; auto. rewrite <- Htyy. apply t_make_wf_ty; auto. }
+    intros t2'. simpl.
+    apply errst_spec_pure_whole. intros [Hty2 Heq2].
+    (*let final case*)
+    unfold tmap_let_default. apply errst_spec_err'. intros _ z Hif _.
+    unfold t_let_close, t_let, t_close_bound in Hif. apply err_bnd_inr in Hif. destruct Hif as [z1 [Hcheck Hret]].
+    inversion Hret; subst; simpl. split_all; auto.
+    (*Prove var map - easy*)
+    apply mvs_eq_map_equiv, svs_eq_remove, t_vars_spec; auto.
+  - intros t l ts Heq IH Hlet Hwf. rewrite only_let_rewrite, Heq in Hlet; discriminate.
+  - intros t t1 tbs Heq IH1 IH2 Hlet Hwf; rewrite only_let_rewrite, Heq in Hlet; discriminate.
+  - intros t tb Heq IH Hlet Hwf;  rewrite only_let_rewrite, Heq in Hlet; discriminate.
+  - intros t q tq Heq IH Hlet Hwf;  rewrite only_let_rewrite, Heq in Hlet; discriminate.
+  - intros t b t1 t2 Heq IH1 IH2 Hlet Hwf.
+    rewrite only_let_rewrite, Heq in Hlet. rewrite !andb_true in Hlet. destruct Hlet as [Hlet1 Hlet2].
+    rewrite types_wf_rewrite, Heq in Hwf. destruct Hwf as [Htyt [Hwf1 Hwf2]].
+    specialize (IH1 Hlet1 Hwf1). specialize (IH2 Hlet2 Hwf2).
+    eapply prove_errst_spec_bnd_nondep' with (Q1:=fun x _ => types_wf x /\ t_ty_of x = t_ty_of t1).
+    { apply errst_spec_split; auto. apply t_make_wf_ty; auto. }
+    intros t1'. simpl.
+    apply errst_spec_pure_whole. intros [Hty1 Heq1].
+    eapply prove_errst_spec_bnd_nondep' with (Q1:=fun x _ => types_wf x /\ t_ty_of x = t_ty_of t2). 
+    { apply errst_spec_split; auto. apply t_make_wf_ty; auto. }
+    intros t2'. simpl.
+    apply errst_spec_pure_whole. intros [Hty2 Heq2].
+    (*binop final case*)
+    unfold tmap_binop_default. apply errst_spec_err'. intros _ y Hif _.
+    unfold t_binary in Hif. apply err_bnd_inr in Hif. destruct Hif as [z1 [Hprop1 Hbnd]].
+    apply err_bnd_inr in Hbnd. destruct Hbnd as [z2 [Hprop2 Hret]]; inversion Hret; subst; clear Hret.
+    unfold t_prop in Hprop1, Hprop2. do 2( destruct (negb _)); inversion Hprop1; inversion Hprop2; subst; simpl.
+    split_all; auto.
+  - intros t t1 Heq IH Hlet Hwf. 
+    rewrite only_let_rewrite, Heq in Hlet. rewrite types_wf_rewrite, Heq in Hwf. destruct Hwf as [Hnone Hwf].
+    specialize (IH Hlet Hwf).
+    eapply prove_errst_spec_bnd_nondep' with (Q1:=fun x _ => types_wf x /\ t_ty_of x = t_ty_of t1).
+    { apply errst_spec_split; auto. apply t_make_wf_ty; auto. }
+    intros t1'. simpl.
+    apply errst_spec_pure_whole. intros [Hty1 Heq1].
+    (*not final case*)
+    unfold tmap_not_default. apply errst_spec_err'. intros _ y Hif _.
+    unfold t_not in Hif. apply err_bnd_inr in Hif. destruct Hif as [z1 [Hprop1 Hret]].
+    unfold t_prop in Hprop1. destruct (negb _); inversion Hprop1; inversion Hret; subst; simpl; auto.
+  - intros. apply prove_errst_spec_ret; auto.
+  - intros. apply prove_errst_spec_ret; auto.
+Qed.
+
 Theorem t_subst_single1_tm_spec v t1 t2 e1 e2 (Hlet: only_let t2) (Hwf: types_wf t2):
   term_related t1 e1 ->
   term_related t2 e2 ->
@@ -3063,25 +3224,26 @@ Proof.
   (*NOTE; would really want to do that in separate lemma and more generally - not unique to singleton*)
   intros _. apply errst_spec_pure_pre. intros Htymap. 
   eapply prove_errst_spec_bnd with (P2:= fun _ _  => True) (Q2:=fun x s2 y s3 => y = t_subst_unsafe (Mvs.singleton term_c v t1) x); auto.
-  1: { apply errst_spec_split; [| apply errst_spec_split; [| apply errst_spec_split]].
+  1: { apply errst_spec_split; [| apply errst_spec_split; [| apply errst_spec_split; [| apply errst_spec_split]]].
     - (*wf postcondition**) eapply errst_spec_weaken_pre. 2: apply t_wf_convert_tm; eauto. tauto.
     - (*t2 is still wf wrt s1*)  apply errst_spec_weaken_pre with (P1:=term_st_wf t2); [tauto|]. apply errst_spec_init.
     - (*v is still wf wrt s1*)  apply errst_spec_weaken_pre with (P1:=vsym_st_wf v); [tauto|]. apply errst_spec_init.
-    - (*t1 is still wf wrt s1*)  apply errst_spec_weaken_pre with (P1:=term_st_wf t1); [tauto|]. apply errst_spec_init. }
+    - (*t1 is still wf wrt s1*)  apply errst_spec_weaken_pre with (P1:=term_st_wf t1); [tauto|]. apply errst_spec_init.
+    - (*result is wf*) apply errst_spec_weaken_pre with (P1:=fun _ => True); [auto|]. apply t_make_wf_types_wf; auto. }
   1: { intros x. apply prove_errst_spec_ret. auto. }
   simpl.
-  intros s1 s2 (*TODO: need wf also - see if we need for t1 or vsym*) _ x y [Hevalx [Hwft2 [Hwfv Hwft1]]] Hy.
+  intros s1 s2 _ x y [Hevalx [Hwft2 [Hwfv [Hwft1 Hwfx]]]] Hy.
   subst. unfold term_related.
   exists (sub_ts_alt (eval_subs_map (Mvs.singleton term_c v t1)) (alpha_t_aux e2' (new_var_names t2 (fst s1)))).
   split.
   - apply t_subst_unsafe_eval_term; auto.
-    + (*TODO: prove output is types_wf*) admit.
-    + unfold subs_map_valid. rewrite Forall_forall. intros z Hinz.
-      assert (Hfind: Mvs.find_opt (fst z) (Mvs.singleton term_c v t1) = Some (snd z)). {
-        apply Mvs.bindings_spec. exists (fst z). destruct z; split;auto. apply vsymbol_eqb_eq; auto.
-      }
-      rewrite Mvs.singleton_spec in Hfind; auto. destruct (Vsym.Tg.equal (fst z) v) eqn : Heq; [|discriminate].
-      apply vsymbol_eqb_eq in Heq. subst. inversion Hfind; subst. rewrite He1. auto.
+    (*prove map valid for subs*)
+    unfold subs_map_valid. rewrite Forall_forall. intros z Hinz.
+    assert (Hfind: Mvs.find_opt (fst z) (Mvs.singleton term_c v t1) = Some (snd z)). {
+      apply Mvs.bindings_spec. exists (fst z). destruct z; split;auto. apply vsymbol_eqb_eq; auto.
+    }
+    rewrite Mvs.singleton_spec in Hfind; auto. destruct (Vsym.Tg.equal (fst z) v) eqn : Heq; [|discriminate].
+    apply vsymbol_eqb_eq in Heq. subst. inversion Hfind; subst. rewrite He1. auto.
   - unfold safe_sub_t'.
     rewrite sub_ts_alt_equiv,sub_t_equiv, (eval_subs_map_singleton' v _ e1'); auto.
     rewrite <- !sub_t_equiv.
@@ -3147,6 +3309,6 @@ Proof.
     + (*similar for [a_convert_t] but easier*)
       rewrite aset_disj_equiv. intros v1 [Hv1 Hv1']. simpl_set.
       eapply a_convert_t_bnd; [| apply Hv1]. simpl_set. auto.
-(*Proved except for these*)
-Admitted.
+Qed.
+
  
