@@ -8814,3 +8814,179 @@ Proof.
   - erewrite term_rep_irrel. erewrite <- a_convert_t_rep. reflexivity.
   - erewrite fmla_rep_irrel. erewrite <- a_convert_f_rep. reflexivity.
 Qed.
+
+
+(*Alternate [safe_sub_t] that always alpha converts.
+  Nicer for proofs.
+  Comments in [ElimLet.v] describe why we need this*)
+Definition safe_sub_t' (t1: term) (x: vsymbol) (t2: term) : term :=
+  (*if aset_mem_dec x (tm_fv t2)*)
+  (*then*) sub_t t1 x (a_convert_t t2 (aset_union (tm_fv t1) (tm_fv t2))) (*else t2*).
+
+Definition safe_sub_f' (t1: term) (x: vsymbol) (f2: formula) : formula :=
+  (* if aset_mem_dec x (fmla_fv f2) *)
+  (* then *) sub_f t1 x (a_convert_f f2 (aset_union (tm_fv t1) (fmla_fv f2))) (* else f2 *).
+
+(*TODO: move all this to Alpha.v*)
+Lemma safe_sub_t_typed' {gamma} (t1 : term) (x : string) (t2 : term) (ty1 ty2 : vty):
+  term_has_type gamma t1 ty1 ->
+  term_has_type gamma t2 ty2 -> 
+  term_has_type gamma (safe_sub_t' t1 (x, ty1) t2) ty2.
+Proof.
+  intros Hty1 Hty2.
+  unfold safe_sub_t'.
+  (* unfold vsymbol in *.
+  destruct (aset_mem_dec (x, ty1) (tm_fv t2)); auto. *)
+  apply sub_t_typed; auto.
+  apply a_convert_t_ty; auto.
+Qed.
+
+Lemma safe_sub_f_typed' {gamma} (t1: term) (x: string) (f: formula) (ty1: vty):
+  term_has_type gamma t1 ty1 ->
+  formula_typed gamma f ->
+  formula_typed gamma (safe_sub_f' t1 (x, ty1) f).
+Proof.
+  intros Hty1 Hty2.
+  unfold safe_sub_f'.
+  (* unfold vsymbol in *.
+  destruct (aset_mem_dec (x, ty1) (fmla_fv f)); auto. *)
+  apply sub_f_typed; auto.
+  apply a_convert_f_typed; auto.
+Qed.
+
+Lemma safe_sub_t_fv1 (tm: term) (x: vsymbol) (t: term):
+  ~ aset_mem x (tm_fv t) ->
+  tm_fv (safe_sub_t' tm x t) = tm_fv t.
+Proof.
+  intros Hmem. unfold safe_sub_t'. rewrite sub_t_notin.
+  - apply a_equiv_t_fv. rewrite a_equiv_t_sym. apply a_convert_t_equiv.
+  - erewrite <- a_equiv_t_fv; eauto. apply a_convert_t_equiv.
+Qed.
+
+Lemma safe_sub_f_fv1 (tm: term) (x: vsymbol) (f: formula):
+  ~ aset_mem x (fmla_fv f) ->
+  fmla_fv (safe_sub_f' tm x f) = fmla_fv f.
+Proof.
+  intros Hmem. unfold safe_sub_f'. rewrite sub_f_notin.
+  - erewrite <- a_equiv_f_fv; [reflexivity | apply a_convert_f_equiv].
+  - erewrite <- a_equiv_f_fv; eauto. apply a_convert_f_equiv.
+Qed.
+
+Lemma safe_sub_t_fv' (tm: term) (x: vsymbol) (t: term):
+  aset_mem x (tm_fv t) ->
+  forall y,
+  aset_mem y (tm_fv (safe_sub_t' tm x t)) <->
+    (aset_mem y (tm_fv tm)) \/ ((aset_mem y (tm_fv t)) /\ y <> x).
+Proof.
+  intros.
+  unfold safe_sub_t'. (* unfold vsymbol in *.
+  destruct (aset_mem_dec x (tm_fv t)); try contradiction. *)
+  rewrite sub_t_fv.
+  + rewrite (alpha_equiv_t_fv t). reflexivity.
+    apply a_convert_t_equiv.
+  + rewrite (alpha_equiv_t_fv). apply H.
+    rewrite a_equiv_t_sym.
+    apply a_convert_t_equiv.
+  + intros.
+    intro C.
+    eapply (a_convert_t_bnd). 2: eauto. simpl_set; auto.
+Qed.
+
+Lemma safe_sub_f_fv' (tm: term) (x: vsymbol) (f: formula):
+  aset_mem x (fmla_fv f) ->
+  forall y,
+  aset_mem y (fmla_fv (safe_sub_f' tm x f)) <->
+    (aset_mem y (tm_fv tm)) \/ ((aset_mem y (fmla_fv f)) /\ y <> x).
+Proof.
+  intros.
+  unfold safe_sub_f'. (* unfold vsymbol in *.
+  destruct (aset_mem_dec x (fmla_fv f)); try contradiction. *)
+  rewrite sub_f_fv.
+  + rewrite (alpha_equiv_f_fv f). reflexivity.
+    apply a_convert_f_equiv.
+  + rewrite (alpha_equiv_f_fv). apply H.
+    rewrite a_equiv_f_sym.
+    apply a_convert_f_equiv.
+  + intros.
+    intro C.
+    eapply (a_convert_f_bnd). 2: eauto. simpl_set; auto.
+Qed.
+(* 
+Lemma safe_sub_t_notin' (tm: term) (x: vsymbol) (t: term):
+  ~ aset_mem x (tm_fv t) ->
+  safe_sub_t' tm x t = t.
+Proof.
+  intros. unfold safe_sub_t'. rewrite sub_t_notin. Search sub_t tm_fv.
+
+
+ unfold safe_sub_t'. unfold vsymbol in *.
+  destruct (aset_mem_dec x (tm_fv t)); auto; contradiction.
+Qed.
+
+Lemma safe_sub_f_notin' (tm: term) (x: vsymbol) (f: formula):
+  ~ aset_mem x (fmla_fv f) ->
+  safe_sub_f' tm x f = f.
+Proof.
+  intros. unfold safe_sub_f'. unfold vsymbol in *;
+  destruct (aset_mem_dec x (fmla_fv f)); auto; contradiction.
+Qed. *)
+
+Section Rep.
+
+Context {gamma: context} (gamma_valid: valid_context gamma)
+ {pd: pi_dom} {pdf: pi_dom_full gamma pd}
+  {vt: val_typevar} {pf: pi_funpred gamma_valid pd pdf}.
+
+Notation term_rep := (term_rep gamma_valid pd pdf vt pf).
+Notation formula_rep := (formula_rep gamma_valid pd pdf vt pf).
+
+Lemma safe_sub_t_rep' (t1 t2: term) (x: string)
+  (ty1 ty2: vty) (v: val_vars pd vt)
+  (Hty1: term_has_type gamma t1 ty1)
+  (Hty2: term_has_type gamma t2 ty2)
+  (Hty3: term_has_type gamma (safe_sub_t' t1 (x, ty1) t2) ty2):
+  term_rep v (safe_sub_t' t1 (x, ty1) t2) ty2 Hty3 =
+  term_rep (substi pd vt v (x, ty1)
+    (term_rep v t1 ty1 Hty1)) t2 ty2 Hty2.
+Proof.
+  revert Hty3.
+  unfold safe_sub_t'.
+  (* unfold vsymbol in *.
+  destruct (aset_mem_dec (x, ty1) (tm_fv t2)). *)
+  intros. erewrite sub_t_rep with(Hty1:=Hty1).
+  + rewrite <- a_convert_t_rep; reflexivity.
+  + intros y Hiny1 Hiny2.
+    eapply a_convert_t_bnd. 2: eauto. simpl_set; auto.
+Qed.
+(*   - intros.
+    erewrite term_rep_irrel.
+    apply tm_change_vv.
+    intros.
+    unfold substi. vsym_eq x0 (x, ty1).
+Qed. *)
+
+Lemma safe_sub_f_rep' (t1: term) (x: string) (f: formula)
+  (ty1: vty) (v: val_vars pd vt)
+  (Hty1: term_has_type gamma t1 ty1)
+  (Hty2: formula_typed gamma f)
+  (Hty3: formula_typed gamma (safe_sub_f' t1 (x, ty1) f)):
+  formula_rep v (safe_sub_f' t1 (x, ty1) f) Hty3 =
+  formula_rep (substi pd vt v (x, ty1)
+    (term_rep v t1 ty1 Hty1)) f Hty2.
+Proof.
+  revert Hty3.
+  unfold safe_sub_f'.
+ (*   unfold vsymbol in *.
+  destruct (aset_mem_dec (x, ty1) (fmla_fv f)). *)
+  intros. erewrite sub_f_rep with(Hty1:=Hty1).
+  + rewrite <- a_convert_f_rep; reflexivity.
+  + intros y Hiny1 Hiny2. eapply a_convert_f_bnd; [| eauto]. simpl_set; auto.
+Qed.
+(*   - intros.
+    erewrite fmla_rep_irrel.
+    apply fmla_change_vv.
+    intros.
+    unfold substi. vsym_eq x0 (x, ty1).
+Qed. *)
+
+End Rep.

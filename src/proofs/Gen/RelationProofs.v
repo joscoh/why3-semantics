@@ -118,15 +118,6 @@ Proof.
   - rewrite !andb_true_r. destruct (funsym_eqb_spec f1 f2); subst; auto.
 Qed.
 
-(*TODO: move*)
-Lemma list_to_amap_none {A B: Type} `{countable.Countable A} (l: list (A * B)) x:
-  amap_lookup (list_to_amap l) x = None <-> ~ In x (map fst l).
-Proof.
-  induction l as [| [x1 y1] t IH]; simpl.
-  - rewrite amap_empty_get. split; auto.
-  - rewrite amap_set_lookup_none_iff, IH. tauto.
-Qed.
-
 (*This all comes from properties of alpha equivalence*)
 Lemma a_equiv_funpred_def_valid_type gamma (fd1 fd2: funpred_def):
   a_equiv_funpred_def fd1 fd2 ->
@@ -211,27 +202,11 @@ Proof.
 Qed.
 
 (*Termination is very tricky, since we rely on the syntactic bound pattern variables.
-  We can prove a more general lemma (TODO: can we?): as long as small and hd are
+  We can prove a more general lemma: as long as small and hd are
   consistent with the alpha maps, then the two terms are termination-equivalent.
   And this property is inductive.
   In the end, small is empty and hd is just the corresponding var, which is
   alpha equivalent by the condition*)
-
-(*TODO: move*)
-Lemma aset_map_empty {A B: Type} `{countable.Countable A} `{countable.Countable B} (f: A -> B):
-  aset_map f aset_empty = aset_empty.
-Proof.
-  reflexivity.
-Qed.
-
-(*TODO: move*)
-Lemma aset_map_big_union {B C D : Type} `{countable.Countable C} `{countable.Countable D} (f : B -> aset C) 
-    (g : C -> D) (l : list B):
-  aset_map g (aset_big_union f l) =
-  aset_big_union (fun x0 : B => aset_map g (f x0)) l.
-Proof.
-  apply aset_ext. apply aset_mem_map_big_union.
-Qed.
 
 (*For this to hold we need injectivity: ex: have sets x1 and s2 with f _ = y. then
   intersect is empty but map intersect is not*)
@@ -361,21 +336,6 @@ Proof.
     apply IH; simpl; auto.
 Qed.
 
-(*TODO: move*)
-Lemma aset_filter_map {A: Type} `{countable.Countable A}
-  (f: A -> A) (p: A -> bool) (Hcompat: forall x, p (f x) = p x) s:
-  aset_filter p (aset_map f s) = aset_map f (aset_filter p s).
-Proof.
-  apply aset_ext. intros x. simpl_set.
-  split.
-  - intros [[y [Hx Hmemy]] Hpx]; subst.
-    exists y. split; auto. simpl_set. 
-    rewrite Hcompat in Hpx; auto.
-  - intros [y [Hx Hmemx]]. simpl_set.
-    destruct Hmemx as [Hmemy Hpy]. subst.
-    split; [| rewrite Hcompat]; auto.
-    eauto.
-Qed.
 
 (*NOTE: do we need both directions? I think so*)
 
@@ -449,15 +409,6 @@ Proof.
   intros [Hhd1 | Hsmall]; auto.
   unfold option_sub in Hhd.
   rewrite Hhd1 in Hhd. auto.
-Qed.
-
-(*TODO: move*)
-Lemma asubset_filter {A: Type} `{countable.Countable A} (p: A -> bool) (s1 s2: aset A):
-  asubset s1 s2 ->
-  asubset (aset_filter p s1) (aset_filter p s2).
-Proof.
-  rewrite !asubset_def. intros Hsub x. simpl_set.
-  intros [Hmem Hp]; auto.
 Qed.
 
 Lemma get_constr_smaller_subset small1 small2 hd1 hd2 m vs c tys tms x
@@ -707,12 +658,6 @@ Proof.
     subst. apply Hbij in Hgetx1. rewrite Hget2 in Hgetx1; discriminate.
 Qed.
 
-(*TODO: move*)
-Lemma aset_filter_false {A: Type} `{countable.Countable A} (s: aset A):
-  aset_filter (fun _ => false) s = aset_empty.
-Proof.
-  apply aset_ext. intros x. simpl_set. split; intros; destruct_all; simpl_set; discriminate.
-Qed.
 
 (*A corollary for the normal ind case*)
 Lemma tmatch_small_preserved_ind {small1 small2 m1 m2 r1 r2} {p1: pattern}
@@ -1014,7 +959,7 @@ Proof.
       assert (Hvar2: var_case hd2 small2 mvar2) by (eapply var_case_impl; eauto).
       apply Dec_tmatch; auto.
       (*Now, prove inductive case - relies on alpha equivalence of corresponding patterns*)
-      clear IH1 Hty Halpha Hdec H5. (*TODO: need any info?*)
+      clear IH1 Hty Halpha Hdec H5.
       rename H7 into Halldec.
       rewrite <- Forall_forall in Halldec |- *.
       generalize dependent ps2. induction ps1 as [| [p1 t1] ps1 IH]; intros [| [p2 t2] ps2]; simpl; auto;
@@ -1057,7 +1002,6 @@ Proof.
       assert (Halpha':=Halpha).
       simpl in Halpha'.
       destruct (funsym_eq_dec c c2); subst; [|discriminate].
-      (*TODO: do I need this info?*)
       destruct (Nat.eqb_spec (length tms) (length tms2)); [|discriminate].
       destruct (list_eq_dec _ l tys2); [|discriminate]; subst.
       simpl in Halpha'.
@@ -1467,8 +1411,6 @@ Definition a_equiv_f_decrease_pred gamma fs ps Hwf1 Hwf2 m vs f1 f2 Hty small1 s
   proj_fmla (a_equiv_decrease_fun gamma fs ps Hwf1 Hwf2 m vs) f1 Hty small1 small2 hd1 hd2 f2 m1 m2 Hsmall1
     Hhd1 Hallin1 Hhdin1 Halpha Hdec.
 
-(*TODO: see what corollaries we need*)
-
 Lemma split_funpred_defs_alpha (l1 l2: list funpred_def) (Hlen: length l1 = length l2)
   (Hall: all2 a_equiv_funpred_def l1 l2):
   all2 (fun x1 x2 => 
@@ -1735,7 +1677,7 @@ Proof.
       -- apply nth_In; lia.
       -- apply (f_equal (fun l => nth i l id_fs)) in Hfs1.
         rewrite !map_nth_inbound with (d2:=fn_d) in Hfs1; auto; lia.
-      -- rewrite !map_map in Hfs2. (*TODO: is this better hyp?*)
+      -- rewrite !map_map in Hfs2.
         apply (f_equal (fun l => nth i l 0)) in Hfs2.
         rewrite !map_nth_inbound with (d2:=fn_d) in Hfs2; auto; try lia. congruence.
       -- rewrite !Forall_forall in *; auto.
@@ -1752,7 +1694,7 @@ Proof.
       -- apply nth_In; lia.
       -- apply (f_equal (fun l => nth i l id_ps)) in Hps1.
         rewrite !map_nth_inbound with (d2:=pn_d) in Hps1; auto; lia.
-      -- rewrite !map_map in Hps2. (*TODO: is this better hyp?*)
+      -- rewrite !map_map in Hps2.
         apply (f_equal (fun l => nth i l 0)) in Hps2.
         rewrite !map_nth_inbound with (d2:=pn_d) in Hps2; auto; try lia. congruence.
       -- rewrite !Forall_forall in *; auto.
@@ -1791,7 +1733,7 @@ Proof.
     (*First prove valid*)
     assert (Hval2: Forall (funpred_def_valid_type gamma) l2).
     {
-      (*This one is more straightforward: TODO: single case in other lemma for nonrec*)
+      (*This one is more straightforward*)
       clear Hterm. 
       generalize dependent l2. induction l1 as [| fd1 l1 IH]; intros [| fd2 l2]; simpl; try discriminate; auto.
       intros Hlen. rewrite all2_cons, andb_true. intros [Halpha Hall]. 
@@ -1891,7 +1833,7 @@ Proof.
     * (*And finally, [decrease_fun]*)
       (*Idea: change 2 things: first change fs/ps, then use alpha lemma*)
       (*Need typing unfortunately*)
-      clear -Hsns1 Hwf1 Hwf2 Hwf3 Hwf4 Hallval Hdec1 Hlen Hall Hlenis Hval2. (*TODO: need lengths?*)
+      clear -Hsns1 Hwf1 Hwf2 Hwf3 Hwf4 Hallval Hdec1 Hlen Hall Hlenis Hval2.
       rewrite Forall_nth in Hdec1 |- *.
       intros i d Hi.
       apply decrease_fun_change_fs_ps with (fs1:=(fst (funpred_defs_to_sns l1 is)))
@@ -1932,7 +1874,6 @@ Proof.
       unfold fn_wf, sn_wf in Hwff1, Hwff2.
       destruct Hwff1 as [[Hidx1 _] _].
       destruct Hwff2 as [[Hidx2 _] _].
-      (*TODO: need anything else from wf?*)
       set (f1:=(nth i (fst (funpred_defs_to_sns l1 is)) d)) in *.
       set (f2 := (nth i (fst (funpred_defs_to_sns l2 is)) d)) in *.
       assert (Hmapeq: map snd (sn_args f1) = map snd (sn_args f2)) by congruence.
@@ -2048,7 +1989,6 @@ Proof.
       destruct (nth n l1 indpred_d) as [p1 f1]; destruct (nth n l2 indpred_d ) as [p2 f2].
       destruct (predsym_eqb_spec p1 p2); auto. discriminate.
     }
-    (*TODO: see if we need any for another*)
     split_all.
     + (*Prove [indprop_valid_type]*)
       clear Heq.
@@ -2154,7 +2094,6 @@ Proof.
       eapply alpha_shape_f; eauto.
 Qed.
 
-(*TODO: move above*)
 Lemma a_equiv_idents_of_context g1 g2 (Halpha: a_equiv_ctx g1 g2):
   idents_of_context g1 = idents_of_context g2.
 Proof.
@@ -2414,20 +2353,6 @@ Proof.
   exists f2. auto.
 Qed.
 
-
-(*TODO: move to fullinterp*)
-Lemma pred_defined_in_predsyms {gamma p args body}:
-  pred_defined gamma p args body ->
-  In p (predsyms_of_context gamma).
-Proof.
-  intros.
-  unfold pred_defined in H; destruct_all; subst.
-  - eapply recpred_in_predsyms. apply H.
-    eapply pred_in_mutfun. apply H0.
-  - apply nonrec_in_predsyms in H; auto.
-Qed.
-
-
 (*2. Prove full_interp*)
 Lemma a_equiv_pf_full {g1 g2: context} (Halpha: a_equiv_ctx g1 g2) (g1_valid: valid_context g1) (g2_valid: valid_context g2) 
   {pd: pi_dom} (pdf1: pi_dom_full g1 pd)  (pdf2: pi_dom_full g2 pd)
@@ -2498,7 +2423,7 @@ Proof.
         destruct Hval as [_ [_ [_ [_ Hmap]]]].
         apply (f_equal (fun l => nth i l vty_int)) in Hmap.
         rewrite !map_nth_inbound with (d2:=vs_d) in Hmap by lia.
-        rewrite Hmap. (*TODO: prove this separately*)
+        rewrite Hmap. (*prove this separately?*)
         unfold sym_sigma_args, ty_subst_list_s.
         rewrite map_nth_inbound with (d2:=vty_int) by lia.
         symmetry. rewrite vt_with_args_cast; auto; [| apply s_params_Nodup].
@@ -2519,7 +2444,7 @@ Proof.
         destruct Hval1 as [_ [_ [_ [_ Hmap]]]].
         apply (f_equal (fun l => nth i l vty_int)) in Hmap.
         rewrite !map_nth_inbound with (d2:=vs_d) in Hmap by lia.
-        rewrite Hmap. (*TODO: prove this separately*)
+        rewrite Hmap. (*prove this separately?*)
         unfold sym_sigma_args, ty_subst_list_s.
         rewrite map_nth_inbound with (d2:=vty_int) by lia.
         symmetry. rewrite vt_with_args_cast; auto; [| apply s_params_Nodup].
@@ -2673,7 +2598,6 @@ Proof.
     simpl in Hfs.
     (*Now have all the info we need*)
     assert (p_in': In p2 (map fst l2)) by (rewrite in_map_iff; exists (p2, fs2); auto).
-    (*TODO: is this bad? - to cast hlist*)
     generalize dependent (map fst l). intros; subst.
     specialize (Hind2 l2 l2_in _ p_in' nil srts srts_len a vt vv Ps).
     (*Now show that Hall implies hyp*)
@@ -2810,8 +2734,6 @@ Qed.
 
 End Semantics.
 
-(*TODO: move*)
-
 (*Symmetry*)
 Section Symmetry.
 
@@ -2943,19 +2865,6 @@ Lemma list_eqb_refl {A: Type} {eq: A -> A -> bool} (eq_spec: forall x y, reflect
   list_eqb eq l l.
 Proof.
   destruct (list_eqb_spec _ eq_spec l l); auto.
-Qed.
-
-(*TODO: move*)
-(*Need [list_to_amap_lookup] without nodups*)
-Lemma list_to_amap_lookup_some {A B: Type} `{countable.Countable A} (l: list (A * B)) x y:
-  amap_lookup (list_to_amap l) x = Some y ->
-  In (x, y) l.
-Proof.
-  induction l as [| [x1 y1] t IH]; simpl; auto.
-  - rewrite amap_empty_get. discriminate.
-  - destruct (EqDecision0 x x1); subst.
-    + rewrite amap_set_lookup_same. inv Hsome. auto.
-    + rewrite amap_set_lookup_diff by auto. intros Hlook; apply IH in Hlook; auto.
 Qed.
 
 Lemma a_equiv_funpred_def_refl fd:

@@ -92,7 +92,7 @@ Section RewriteProofs.
 (*First, prove invariant preservation*)
 Section Invar.
 
-(*TODO BAD: all cases but "let" are identical to wf lemma - should factor out*)
+(*all cases but "let" are identical to wf lemma - should factor out*)
 Lemma elim_let_rewrite_pres (f1: term_c):
   errst_spec 
     (fun (_: full_st) => True) 
@@ -213,8 +213,6 @@ Proof.
 Qed.
 
 End Invar.
-
-(*TODO move:*)
 
 Lemma t_open_bound_pres_tm_wf t tb1:
   errst_spec (term_st_wf t) (errst_tup1 (errst_lift1 (t_open_bound tb1))) (fun _ _ s2 => term_st_wf t s2).

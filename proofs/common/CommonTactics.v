@@ -90,7 +90,7 @@ Ltac forward_gen H tac :=
 
 Tactic Notation "forward" constr(H) := forward_gen H ltac:(idtac).
 Tactic Notation "forward" constr(H) "by" tactic(tac) := forward_gen H tac.
-(*For compat: TODO: move remove*)
+(*For compat*)
 Ltac prove_hyp H := forward H.
 
 Ltac simpl_len_extra := idtac.

@@ -15,6 +15,23 @@ Definition remove_bindings (subs: amap vsymbol term) (vs: aset vsymbol) :=
 Definition remove_binding subs v :=
   remove_bindings subs (aset_singleton v).
 
+Lemma remove_bindings_eq m s:
+  remove_bindings m s = amap_diff m s.
+Proof.
+  reflexivity.
+Qed.
+
+Lemma remove_binding_eq m v:
+  remove_binding m v = amap_remove _ _ v m.
+Proof.
+  unfold remove_binding. rewrite remove_bindings_eq.
+  apply amap_ext. intros x. vsym_eq v x.
+  - rewrite amap_diff_in; [|simpl_set; auto].
+    rewrite amap_remove_same. reflexivity.
+  - rewrite amap_diff_notin; [| simpl_set; auto].
+    rewrite amap_remove_diff; auto.
+Qed. 
+
 Fixpoint sub_ts (subs: amap vsymbol term) (t: term) {struct t} : term :=
   match t with
   | Tconst c => Tconst c

@@ -2,95 +2,6 @@ Require Import TermDefs TermFuncs TermVars TermTraverseAux TermTactics StateInva
 From Proofs Require Import Substitution SubMulti.
 Set Bullet Behavior "Strict Subproofs".
 
-(*TODO: move*)
-Lemma list_to_amap_none {A B} `{countable.Countable A} (l: list (A * B)):
-  forall x, amap_lookup (list_to_amap l) x = None <-> ~ In x (map fst l).
-Proof.
-  intros x. induction l as [| h t IH]; simpl; auto.
-  - rewrite amap_empty_get. split; auto. 
-  - destruct (EqDecision0 x (fst h)); subst.
-    + rewrite amap_set_lookup_same. split; try discriminate.
-      intros Hc. not_or Heq; contradiction.
-    + rewrite amap_set_lookup_diff; auto. rewrite IH. split; auto.
-      intros Hc [C1 | C2]; subst; contradiction.
-Qed. 
-
-
-(*Not the most efficient, but OK for now*)
-(*TODO: move probably*)
-Definition amap_set_inter {A B: Type} `{countable.Countable A} (m: amap A B) (s: aset A) : amap A B :=
-  list_to_amap (filter (fun x => aset_mem_dec (fst x) s) (elements m)).
-
-(*The specs*)
-Lemma amap_set_inter_lookup {A B: Type} `{countable.Countable A} (m: amap A B) (s: aset A) x:
-  amap_lookup (amap_set_inter m s) x = if aset_mem_dec x s then amap_lookup m x else None.
-Proof.
-  unfold amap_set_inter. destruct (amap_lookup _ _) as [y|] eqn : Hlook.
-  - rewrite list_to_amap_lookup in Hlook.
-    + rewrite in_filter in Hlook. destruct Hlook as [Hins Hin]. simpl in *.
-      destruct (aset_mem_dec x s); auto; try discriminate.
-      apply in_elements_iff in Hin; auto.
-    + apply nodup_map_filter. rewrite elements_eq, map_fst_combine; [apply keylist_Nodup|].
-      rewrite keylist_length, vals_length. reflexivity.
-  - rewrite list_to_amap_none in Hlook. destruct (aset_mem_dec x s); auto.
-    destruct (amap_lookup m x) as [y|] eqn : Hget; auto.
-    exfalso; apply Hlook. rewrite in_map_iff. exists (x, y). split; auto.
-    rewrite in_filter. simpl. destruct (aset_mem_dec x s); try contradiction. split; auto.
-    apply in_elements_iff. auto.
-Qed.
-
-(*TODO: move all this*)
-Lemma remove_bindings_eq m s:
-  remove_bindings m s = amap_diff m s.
-Proof.
-  reflexivity.
-Qed.
-
-Lemma remove_binding_eq m v:
-  remove_binding m v = amap_remove _ _ v m.
-Proof.
-  unfold remove_binding. rewrite remove_bindings_eq.
-  apply amap_ext. intros x. vsym_eq v x.
-  - rewrite amap_diff_in; [|simpl_set; auto].
-    rewrite amap_remove_same. reflexivity.
-  - rewrite amap_diff_notin; [| simpl_set; auto].
-    rewrite amap_remove_diff; auto.
-Qed. 
-
-(*TODO: move maybe*)
-Lemma amap_set_inter_remove {A B: Type} `{countable.Countable A} (m: amap A B) x (s: aset A):
-  amap_set_inter (amap_remove _ _ x m) s =
-  amap_set_inter m (aset_remove x s).
-Proof.
-  apply amap_ext. intros y. rewrite !amap_set_inter_lookup.
-  destruct (aset_mem_dec y s); destruct (aset_mem_dec y (aset_remove x s)); auto; simpl_set; destruct_all;
-  try contradiction.
-  - rewrite amap_remove_diff; auto.
-  - destruct (EqDecision0 x y); subst; auto; try contradiction.
-    + rewrite amap_remove_same; auto.
-    + exfalso. auto.
-Qed.
-
-(*TODO: move*)
-Lemma amap_set_inter_diff {A B: Type} `{countable.Countable A} (m: amap A B) (s: aset A) (s1: aset A):
-  amap_set_inter (amap_diff m s1) s =
-  amap_set_inter m (aset_diff s1 s).
-Proof.
-  apply amap_ext. intros y. rewrite !amap_set_inter_lookup.
-  destruct (aset_mem_dec y s); destruct (aset_mem_dec y (aset_diff s1 s)); auto; simpl_set; destruct_all;
-  try contradiction.
-  - rewrite amap_diff_notin; auto.
-  - rewrite amap_diff_in; auto. destruct (aset_mem_dec y s1); auto. exfalso; auto.
-Qed.
-
-(*TODO: move*)
-Lemma option_bind_some_iff {A B : Type} (f : A -> option B) (o : option A) (y : B):
-  option_bind o f = Some y <-> exists z : A, o = Some z /\ f z = Some y.
-Proof.
-  split; [apply option_bind_some|].
-  intros [z [Ho Hf]]. subst. simpl. auto.
-Qed.
-
 Section TypesWf.
 (*We don't give a proper type system, but we do need an assumption that types are consistent in the following
   way:
@@ -1634,16 +1545,6 @@ Corollary t_subst_unsafe_aux_eval_fmla t1 (Hwf: types_wf t1) m
   eval_fmla (t_subst_unsafe_aux m t1) = Some (sub_fs_alt (eval_subs_map m) e1).
 Proof.
   apply t_subst_unsafe_eval; auto.
-Qed.
-
-(*TODO: move*)
-Lemma amap_is_empty_eq {A B: Type} `{countable.Countable A} (m: amap A B):
-  amap_is_empty m <-> m = amap_empty.
-Proof.
-  split.
-  - intros Hisemp. apply amap_ext. intros x. rewrite amap_empty_get.
-    rewrite amap_is_empty_lookup in Hisemp. auto.
-  - intros Hm. subst. reflexivity.
 Qed.
 
 (*And remove aux*)

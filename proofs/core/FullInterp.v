@@ -955,6 +955,17 @@ Definition pred_defined gamma (p: predsym) (args: list vsymbol) (body: formula) 
   (*Non-recursively*)
   (In (nonrec_def (pred_def p args body)) gamma).
 
+Lemma pred_defined_in_predsyms {gamma p args body}:
+  pred_defined gamma p args body ->
+  In p (predsyms_of_context gamma).
+Proof.
+  intros.
+  unfold pred_defined in H; destruct_all; subst.
+  - eapply recpred_in_predsyms. apply H.
+    eapply pred_in_mutfun. apply H0.
+  - apply nonrec_in_predsyms in H; auto.
+Qed.
+
 Lemma pred_defined_typed {gamma p args body}:
   valid_context gamma ->
   pred_defined gamma p args body ->

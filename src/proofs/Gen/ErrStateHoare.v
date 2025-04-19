@@ -32,7 +32,7 @@ Proof.
   intros i b Hp Hin. inversion Hin; subst; auto.
 Qed.
 
-(*TODO: replace [unwrap_eitherT] with [unEitherT]*)
+(*replace [unwrap_eitherT] with [unEitherT]?*)
 
 Lemma uneither_equiv {T} {m} {A} (x: eitherT T m A): unEitherT x = unwrap_eitherT x.
 Proof. reflexivity. Qed.
@@ -310,53 +310,6 @@ Proof.
     eapply prove_errst_spec_bnd with (Q2:=fun _ s1 _ s2 => I2 s1 s2) (P2:=fun _ => I1). 1: apply IH. all: simpl; eauto.
     intros y. apply prove_errst_spec_ret. auto.
 Qed.
-
-
-(*TODO: see what other version we need (not sure yet)*)
-
-(*And a version for monotonic predicate that does not depend on state (e.g. *)
-
-(**)
-(* 
-(*And a version for monotonic predicates that do not depend on the initial state*)
-Lemma prove_errst_spec_list_mono {St A: Type} (I1: St -> Prop) (I2: A -> St -> Prop) 
-  (*(P1: St -> Prop)*) (* (Q1: St -> A -> St -> Prop) (Q2: St -> list A -> St -> Prop) *)  (l: list (errState St A)):
-  (*Loop invariant implied on beginning*)
-  (*(forall s, P1 s -> I1 s) ->*)
-  (*Loop invariant preserved through loop*)
-  Forall (fun a => errst_spec I1 a (fun _ x y => I2 x y)) l ->
-  (*Ending implies beginning again*)
-  (forall x s2, I2 x s2 -> I1 s2) ->
-  (*Monotonicity: TODO*)
-  Forall (fun a => errst_spec I1 a (fun _ _ s2 => I1 s2)) l ->
-  (*Reflexivity*)
-  (forall s, I1 s -> I2 s s) ->
-  (*Transitivity*)
-  (forall s1 s2 s3, I2 s1 s2 -> I2 s2 s3 -> I2 s1 s3) -> 
-  (*Exiting implies postcondition*)
-  (* (forall s1 x s2, I2 s1 x s2 -> Q1 s1 x s2) -> *)
-  (*Then post holds for all list*)
-  (*TODO: is this the right direction?*)
-  (* (forall s1 l s2, Forall (fun y => Q1 s1 y s2) l -> Q2 s1 l s2 ) ->  *)
-  errst_spec I1 (errst_list l) (fun _ x s2 => Forall (fun y => I2 y s2) x).
-Proof.
-  unfold errst_list. intros Hinvar Hi12 Hmono.
-  induction l as [| h t IH]; simpl; auto.
-  - apply prove_errst_spec_ret. intros i Hi. constructor.
-  - inversion Hinvar as [| ? ? Hinvar1 Hinvar2]; subst; clear Hinvar.
-    inversion Hmono as [| ? ? Hm1 Hm2]; subst; clear Hmono. specialize (IH Hinvar2 Hm2).
-    eapply prove_errst_spec_bnd with (Q1:=fun x s1 y s2 => I2 s1 y s2 /\ Forall (fun z => Q1 s1 z s2) y). (P2:=fun _ => I1); auto.
-    (Q2:=fun x s1 y s2 =>  Forall (fun z : A => Q1 s1 z s2) y); auto.
-
-
-
-
- with
-
-
-
- (Q1:=fun x s1 y s2 => I2 s1 y s2 /\ Forall (fun z => Q1 s1 z s2) y). (P2:=fun _ => I1); auto.
-    (Q2:=fun x s1 y s2 =>  Forall (fun z : A => Q1 s1 z s2) y); auto. *)
 
 
 Lemma errst_spec_tup1 {St1 St2 A: Type} (P: St1 -> A -> St1 -> Prop) (Q: St2 -> A -> St2 -> Prop) (o: errState St1 A)

@@ -1380,28 +1380,6 @@ Proof.
   destruct sign; simpl; apply prove_asubset_union; auto.
 Qed.
 
-Lemma fmla_fv_fforalls (vs: list vsymbol) (f: formula):
-  fmla_fv (fforalls vs f) = aset_diff (list_to_aset vs) (fmla_fv f).
-Proof.
-  induction vs as [| v vs IH]; simpl; auto.
-  - rewrite list_to_aset_nil, aset_diff_empty. reflexivity.
-  - rewrite IH. rewrite list_to_aset_cons.
-    apply aset_ext. intros x. simpl_set. 
-    split; intros; destruct_all; subst; split; auto.
-    intros [Hxv | Hinx]; subst; contradiction.
-Qed.
-
-Lemma fmla_fv_fexists (vs: list vsymbol) (f: formula):
-  fmla_fv (fexists vs f) = aset_diff (list_to_aset vs) (fmla_fv f).
-Proof.
-  induction vs as [| v vs IH]; simpl; auto.
-  - rewrite list_to_aset_nil, aset_diff_empty. reflexivity.
-  - rewrite IH. rewrite list_to_aset_cons.
-    apply aset_ext. intros x. simpl_set. 
-    split; intros; destruct_all; subst; split; auto.
-    intros [Hxv | Hinx]; subst; contradiction.
-Qed.
-
 (*same elts but dont prove*)
 Lemma big_union_map_Tvar (vs: list vsymbol):
   asubset (aset_big_union tm_fv (map Tvar vs)) (list_to_aset vs).

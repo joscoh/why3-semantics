@@ -63,6 +63,13 @@ Lemma option_bind_some {A B: Type} (f: A -> option B) (o: option A) y:
 Proof. destruct o; simpl; [|discriminate]. intros Ha. exists a. auto.
 Qed.
 
+Lemma option_bind_some_iff {A B : Type} (f : A -> option B) (o : option A) (y : B):
+  option_bind o f = Some y <-> exists z : A, o = Some z /\ f z = Some y.
+Proof.
+  split; [apply option_bind_some|].
+  intros [z [Ho Hf]]. subst. simpl. auto.
+Qed.
+
 Definition isSome {B: Type} (o: option B) : bool :=
   match o with | Some _ => true | _ => false end.
 

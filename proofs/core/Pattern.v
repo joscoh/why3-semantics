@@ -1,5 +1,5 @@
 (*Compilation of pattern matches*)
-Require Import Syntax Vars AssocList GenElts.
+Require Import Syntax Vars amap GenElts.
 Set Bullet Behavior "Strict Subproofs".
 From Equations Require Import Equations.
 Require Import Coq.Sorting.Permutation.

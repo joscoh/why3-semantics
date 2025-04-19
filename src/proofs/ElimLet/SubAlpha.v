@@ -1,6 +1,5 @@
-(*Results about how Alpha equivalence/relations interact with substitution
-  TODO: move*)
-From Proofs Require Import Alpha eliminate_let (*for [safe_sub_t'] TODO move*).
+(*Results about how Alpha equivalence/relations interact with substitution*)
+From Proofs Require Import Alpha.
 
 Lemma alpha_equiv_var_sym m1 m2 x y:
   alpha_equiv_var m1 m2 x y -> alpha_equiv_var m2 m1 y x.
@@ -297,7 +296,7 @@ Proof.
     + apply alpha_equiv_var_sym; auto.
 Qed.
 
-(*General [same_in] - TODO: replace other version with this*)
+(*General [same_in] - should replace other version with this*)
 
 Fixpoint same_in_p (p1 p2: pattern) (x y: vsymbol) : bool :=
   match p1, p2 with
@@ -470,63 +469,6 @@ Proof.
     apply amap_lookup_none. tauto.
 Qed.
 
-Lemma aset_disj_union_l {A: Type} `{countable.Countable A} (s1 s2 s3: aset A):
-  aset_disj (aset_union s1 s2) s3 ->
-  aset_disj s1 s3.
-Proof.
-  apply disj_asubset2, union_asubset_l.
-Qed.
-
-Lemma aset_disj_union_r {A: Type} `{countable.Countable A} (s1 s2 s3: aset A):
-  aset_disj (aset_union s1 s2) s3 ->
-  aset_disj s2 s3.
-Proof.
-  apply disj_asubset2, union_asubset_r.
-Qed.
-
-Lemma aset_disj_singleton {A: Type} `{countable.Countable A} (x: A) (s: aset A):
-  aset_disj (aset_singleton x) s <-> ~ aset_mem x s.
-Proof.
-  rewrite aset_disj_equiv. split.
-  - intros Hnotin Hmemx.
-    specialize (Hnotin x). apply Hnotin; simpl_set; auto.
-  - intros Hnotin y [Hmem Hmem']. simpl_set. subst. contradiction.
-Qed.
-
-Ltac split_disj_union :=
-  repeat match goal with
-  | H: aset_disj (aset_union ?s1 ?s2) ?s |- _ =>
-    let H1 := fresh "Hd" in
-    assert (H1:=H);
-    apply aset_disj_union_l in H; apply aset_disj_union_r in H1
-  end.
-
-Ltac solve_disj_union :=
-  split_disj_union; solve[auto].
-
-(*TODO: do single version*)
-
-Lemma amap_diff_aunion {A B: Type} `{countable.Countable A} (m1 m2: amap A B) (s: aset A):
-  amap_diff (aunion m1 m2) s = aunion (amap_diff m1 s) (amap_diff m2 s).
-Proof.
-  apply amap_ext.
-  intros x. rewrite aunion_lookup. destruct (aset_mem_dec x s).
-  - rewrite !amap_diff_in; auto.
-  - rewrite !amap_diff_notin; auto.
-    rewrite aunion_lookup. reflexivity.
-Qed.
-
-Lemma amap_diff_keys {A B: Type} `{countable.Countable A} (m1: amap A B):
-  amap_diff m1 (keys m1) = amap_empty.
-Proof.
-  apply amap_ext.
-  intros x. rewrite amap_empty_get.
-  destruct (aset_mem_dec x (keys m1)).
-  - apply amap_diff_in; auto.
-  - rewrite amap_diff_notin; auto. apply amap_lookup_none; auto.
-Qed.
-
-
 Lemma alpha_equiv_t_extra_union r1 r2 m1 m2 t1 t2:
   aset_disj (keys r1) (tm_fv t1) ->
   aset_disj (keys r2) (tm_fv t2) ->
@@ -553,7 +495,7 @@ Proof.
   rewrite !keys_singleton; apply aset_disj_singleton; auto.
 Qed.
 
-(*TODO: why didnt I prove in Alpha?*)
+(*why didnt I prove in Alpha?*)
 Lemma alpha_equiv_f_diff (f1 f2: formula) (s: aset vsymbol) (m1 m2: amap vsymbol vsymbol)
   (Hdisj: aset_disj s (fmla_fv f2)):
   alpha_equiv_f m1 (amap_diff m2 s) f1 f2 = alpha_equiv_f m1 m2 f1 f2.
@@ -593,6 +535,17 @@ Proof.
   rewrite !keys_singleton; apply aset_disj_singleton; auto.
 Qed.
 
+Ltac split_disj_union :=
+  repeat match goal with
+  | H: aset_disj (aset_union ?s1 ?s2) ?s |- _ =>
+    let H1 := fresh "Hd" in
+    assert (H1:=H);
+    apply aset_disj_union_l in H; apply aset_disj_union_r in H1
+  end.
+
+Ltac solve_disj_union :=
+  split_disj_union; solve[auto].
+
 
 (*If tm1 and tm2 are alpha equivalent by m3 and m4
   and t1 and t2 are alpha equivalent by m1 and m2
@@ -608,7 +561,6 @@ Lemma alpha_equiv_sub tm1 tm2  x y t1 f1:
     (*NOTE maybe cant assume this*)
     (* (Hnofv1: forall x, aset_mem x (tm_fv tm1) -> amap_lookup m1 x = None)
     (Hnofv2: forall x, aset_mem x (tm_fv tm2) -> amap_lookup m2 x = None) *),
-    (*TODO: do we need any further restrictions*)
     alpha_equiv_t m1 m2 (sub_t tm1 x t1) (sub_t tm2 y t2)) /\
   (forall f2 m1 m2 (Halpha2: alpha_equiv_t m1 m2 tm1 tm2)  
     (Halpha1: alpha_equiv_f (amap_set m1 x y) (amap_set m2 y x) f1 f2) (Hsame: same_in_f f1 f2 x y)
@@ -617,10 +569,9 @@ Lemma alpha_equiv_sub tm1 tm2  x y t1 f1:
     (Hdisj2: aset_disj (list_to_aset (fmla_bnd f2)) (tm_fv tm2))
     (* (Hnofv1: forall x, aset_mem x (tm_fv tm1) -> amap_lookup m1 x = None)
     (Hnofv2: forall x, aset_mem x (tm_fv tm2) -> amap_lookup m2 x = None) *),
-    (*TODO: do we need any further restrictions*)
     alpha_equiv_f m1 m2 (sub_f tm1 x f1) (sub_f tm2 y f2)).
 Proof.
-  revert t1 f1. apply term_formula_ind; simpl. (*TODO: try to do var and let case*)
+  revert t1 f1. apply term_formula_ind; simpl.
   - intros c t2 m1 m2 Halpha2 Halpha Hsame Hd1 Hd2.
     destruct t2; try discriminate. simpl. auto.
   - (*Tvar*)
@@ -886,7 +837,7 @@ Definition alpha_equiv_f_sub tm1 tm2 x y f1 f2 m1 m2 (Halpha1: alpha_equiv_t m1 
   but NOT same_in_t for x and z *)
 Lemma alpha_not_bnd_same x y t1 f1:
   (forall m1 m2 t2 (Halpha: alpha_equiv_t (amap_set m1 x y) (amap_set m2 y x) t1 t2) 
-    (Hbnd1: ~ In x (tm_bnd t1)) (Hbnd2: ~ In y (tm_bnd t2)) (*TODO: do we need other?*)
+    (Hbnd1: ~ In x (tm_bnd t1)) (Hbnd2: ~ In y (tm_bnd t2))
     (* (Hlook1: amap_lookup m1 x = Some y) *) (*(Hlook2: amap_lookup m2 y = Some x)*)
     (* (Hfv1: aset_mem x (tm_fv t1)) *) (*(Hfv2: aset_mem y (tm_fv t2)*),
     same_in_t t1 t2 x y) /\
@@ -1109,7 +1060,6 @@ Proof.
   - erewrite <- a_equiv_f_fv; eauto. apply a_convert_f_equiv.
 Qed.
 
-(*TODO: move*)
 (*Transitivity is awkward to work with, but things are much easier if 1 is alpha-equivalent
   rather than related*)
 Lemma alpha_trans_eq_rel_t {t1 t2 m1 m2 t3}

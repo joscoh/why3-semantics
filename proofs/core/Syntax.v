@@ -1273,7 +1273,6 @@ Definition def_eq_dec (d1 d2: def) : {d1 = d2} + {d1 <> d2} :=
 (*And countable instances*)
 
 (*ne_list*)
-(*TODO: move?*)
 Section NEListCount.
 Context {A: Set} `{A_count: countable.Countable A}.
 

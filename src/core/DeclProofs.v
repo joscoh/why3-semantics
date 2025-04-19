@@ -1,5 +1,3 @@
-(*TODO: move once I settle organization of repo*)
-
 (*Here is a proof that justifies checking equality in
   the uniformity check in [check_decrease_fun] instead of
   getting the map and checking that it is uniform*)

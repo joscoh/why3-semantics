@@ -1,5 +1,5 @@
 Require Export Typing.
-Require Export AssocList.
+Require Export amap.
 Set Bullet Behavior "Strict Subproofs".
 
 Ltac list_tac2 :=

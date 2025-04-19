@@ -1,6 +1,6 @@
 (*Prove that vsymbols are countable. This is a lot of work*)
 Require Import TermFuncs.
-From Proofs Require Typing. (*TODO: not great just for 1 lemma*)
+From Proofs Require Typing. (*not great just for 1 lemma*)
 From Proofs Require Import Types.
 
 Local Open Scope Z_scope.

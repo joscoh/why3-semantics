@@ -5,7 +5,6 @@ Require Import InversionLemmas TermTactics StateHoareMonad
   StateInvarDecompose VsymCount TermTraverseAux TermFuncs Relations SubAlpha SubstUnsafeProofs
   TermVars.
 From Proofs Require Import Task Alpha.
-From Proofs Require Import eliminate_let. (*for [sub_alt]*)
 Set Bullet Behavior "Strict Subproofs".
 
 (*TODO: add some of this to set*)

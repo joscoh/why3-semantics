@@ -845,8 +845,6 @@ Proof.
     rewrite IHa. reflexivity.
 Qed.
 
-(*TODO: move, maybe replace old*)
-
 
 Lemma pat_constr_disj_map {s f vs ps ty}:
   pattern_has_type s (Pconstr f vs ps) ty ->

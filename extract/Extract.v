@@ -31,8 +31,8 @@ Extract Inlined Constant to_tup3 => "(fun ((x, y), z) -> (x, y, z))".
 Extract Inlined Constant of_tup3 => "(fun (x, y, z) -> ((x, y), z))".
 
 (*Axiomatize OCaml ints and BigInts*)
-(*TODO: move to approprate files?*)
-(*TODO: We need this module stuff for now because dune does not
+(*should move to approprate files?*)
+(*NOTE: We need this module stuff for now because dune does not
   support (include_subdirs unqualified) with Coq*)
 Extract Inlined Constant CoqBigInt.t => "BigInt.t".
 Extract Inlined Constant CoqBigInt.zero => "BigInt.zero".

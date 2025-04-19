@@ -354,7 +354,7 @@ Proof.
     intros [Hhash1 Hhash2].
     (*Idea: need that this is same vsymbol w diff name*)
     destruct tb1 as [[v1 b1] t1]. simpl.
-    cbn. (*TODO: bad*) destruct v1 as [vn vty]; simpl in *.
+    cbn. destruct v1 as [vn vty]; simpl in *.
     destruct (runState (IdCtr.get tt) x). destruct (runState (IdCtr.incr tt) t0). simpl.
     intros Hinr; inversion Hinr; subst; simpl in *; clear Hinr.
     split. 
@@ -517,7 +517,7 @@ Proof.
   simpl. intros i [v2 t2] _ [Hsnd Hfst]. simpl in *; subst.
   unfold t_subst_unsafe. destruct (Mvs.is_empty _ _); auto.
   apply ty_subst_unsafe_aux_ty; auto.
-  (*TODO: should be in separate lemma*)
+  (*should be in separate lemma*)
   intros v t. rewrite Mvs.add_spec, Mvs.empty_spec.
   destruct (Vsym.Tg.equal v (fst (fst tb))) eqn : Heq; try discriminate.
   inv Hsome. simpl. apply vsymbol_eqb_eq in Heq. subst.

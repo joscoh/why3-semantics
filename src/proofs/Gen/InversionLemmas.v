@@ -208,7 +208,7 @@ Proof.
 Qed.
 
 
-(*TODO: should use option_map not bind but whatever*)
+(*should use option_map not bind but whatever*)
 Lemma eval_match_tm {f1 t ps g1} (Hn: t_node_of f1 = Tcase t ps)
   (Heval: eval_term f1 = Some g1):
   exists t1 ty1 ps1, g1 = Tmatch t1 ty1 ps1 /\ eval_term t = Some t1 /\

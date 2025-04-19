@@ -49,27 +49,6 @@ Definition gen_notin (n: nat) (s: aset A): list A :=
 
 (*Should we generate set or list? list prob OK for now, just not symmetric wihch is annoying*)
 
-(*TODO: move*)
-
-(*TODO: replace*)
-
-Lemma filter_in_notin {B: Type} `{B_count: countable.Countable B} 
-  (s1: aset B) (l2: list B) (x: B):
-  ~ In x l2 ->
-  filter (fun y => negb (aset_mem_dec y (aset_union (aset_singleton x) s1))) l2 =
-  filter (fun y => negb (aset_mem_dec y s1)) l2.
-Proof.
-  intros Hnotin.
-  apply filter_ext_in; intros a Hina.
-  destruct (aset_mem_dec a (aset_union (aset_singleton x) s1)) as [Hmem | Hnotmem]; simpl;
-  simpl_set_small.
-  - destruct Hmem as [Hmem | Hmem]; simpl_set_small; subst; auto; [contradiction|].
-    destruct (aset_mem_dec _ _); auto.
-  - destruct (aset_mem_dec _ _); simpl; auto; exfalso; apply Hnotmem; auto.
-Qed. 
-
-
-
 (*Proving that this is correct is not trivial*)
 (*A version of the pigeonhole principle: given two lists l1 and l2,
   if l2 is larger and has no duplicates, it has at least 

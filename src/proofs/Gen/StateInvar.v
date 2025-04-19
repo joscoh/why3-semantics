@@ -11,8 +11,7 @@ Definition full_task_hash (s: hashcons_full) : hashcons_ty task_hd := snd s.
 
 (*1. All variable identifiers in the task are < the value of the state*)
 (*NOTE: could strengthen to all global ids (var, tyvar, lsymbol, type symbol),
-  for now we do not. Our maps do not actually rely on injectivity of tags.
-  (TODO: see if we need)*)
+  for now we do not. Our maps do not actually rely on injectivity of tags.*)
 
 Section Idents.
 
@@ -211,8 +210,6 @@ Definition gen_hash_wf {A B} (full_fn: hashcons_full -> hashcons_ty A) (get: B -
   all_in_hashtable hash eqb (get t) (hashcons_hash (full_fn st)) /\
   all_idents_smaller hash (get t) (hashcons_ctr (full_fn st)).
 
-(*TODO: ensure these are the right hash functions, but should be*)
-
 (*Types*)
 Definition tys_hash_wf : task_hd -> hashcons_full -> Prop := 
   gen_hash_wf full_ty_hash (fun t =>  concat (map tys_of_ty (tys_of_task t))) ty_hash ty_eqb.
@@ -247,7 +244,6 @@ Definition idents_of_term_wf (t: term_c) (s: Z) :=
 Definition term_hash_wf (t: term_c) (s: hashcons_full) : Prop :=
   gen_hash_wf full_ty_hash (fun t => concat (map tys_of_ty (tys_of_term t))) ty_hash ty_eqb t s.
 
-(*TODO: may want to change def to be holds for all terms in, etc. Then next lemma trivial *)
 Definition term_st_wf (t: term_c) (s: full_st) : Prop :=
   idents_of_term_wf t (fst s) /\ term_hash_wf t (snd s).
 

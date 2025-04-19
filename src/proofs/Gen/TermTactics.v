@@ -1,4 +1,4 @@
-(*TODO: kinda useless for now but need tactics in many places*)
+(*but need tactics in many places*)
 Require Import VsymCount TermDefs TermFuncs.
 
 Ltac destruct_term_node t:=

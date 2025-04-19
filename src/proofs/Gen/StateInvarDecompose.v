@@ -4,7 +4,7 @@ Set Bullet Behavior "Strict Subproofs".
 (*Decompose state invariant into pieces of each term*)
 
 
-(*TODO: move*)
+(*maybe should move*)
 Lemma idents_of_term_rewrite t :
   idents_of_term t = match t_node_of t with
   | Tvar v => [vs_name v]
@@ -22,8 +22,7 @@ Lemma idents_of_term_rewrite t :
   | Tbinop _ t1 t2 => idents_of_term t1 ++ idents_of_term t2
   | Tnot t0 => idents_of_term t0
   | _ => []
-  end
-.
+  end.
 Proof.
 destruct t;
 reflexivity.

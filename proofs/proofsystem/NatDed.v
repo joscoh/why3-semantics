@@ -46,7 +46,6 @@ Proof.
   symmetry. apply reflect_iff, check_fmla_ty_spec.
 Qed.
 
-(*TODO: move?*)
 Import CommonSSR.
 Definition sublistb {A: eqType} (l1 l2: seq A) : bool :=
   (all (fun x => x \in l2) l1).

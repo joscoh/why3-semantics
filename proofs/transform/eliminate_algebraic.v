@@ -1,4 +1,4 @@
-Require Import AssocList.
+Require Import amap.
 Require Import Task TermMap.
 Require Import GenElts.
 Require Import compile_match.

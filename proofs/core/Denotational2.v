@@ -774,6 +774,51 @@ Qed.
 
 End Exists.
 
+(*Syntactic results about [fforalls] and [fexists]*)
+Section ForallExists.
+
+Lemma fmla_fv_fforalls (vs: list vsymbol) (f: formula):
+  fmla_fv (fforalls vs f) = aset_diff (list_to_aset vs) (fmla_fv f).
+Proof.
+  induction vs as [| v vs IH]; simpl; auto.
+  - rewrite list_to_aset_nil, aset_diff_empty. reflexivity.
+  - rewrite IH. rewrite list_to_aset_cons.
+    apply aset_ext. intros x. simpl_set. 
+    split; intros; destruct_all; subst; split; auto.
+    intros [Hxv | Hinx]; subst; contradiction.
+Qed.
+
+Lemma fmla_fv_fexists (vs: list vsymbol) (f: formula):
+  fmla_fv (fexists vs f) = aset_diff (list_to_aset vs) (fmla_fv f).
+Proof.
+  induction vs as [| v vs IH]; simpl; auto.
+  - rewrite list_to_aset_nil, aset_diff_empty. reflexivity.
+  - rewrite IH. rewrite list_to_aset_cons.
+    apply aset_ext. intros x. simpl_set. 
+    split; intros; destruct_all; subst; split; auto.
+    intros [Hxv | Hinx]; subst; contradiction.
+Qed.
+
+Opaque aset_union.
+
+Lemma fmla_vars_fforalls (vs: list vsymbol) (f: formula):
+  fmla_vars (fforalls vs f) = aset_union (list_to_aset vs) (fmla_vars f).
+Proof.
+  induction vs as [| v vs IH]; simpl; auto.
+  - rewrite list_to_aset_nil, aset_union_empty_l. reflexivity.
+  - rewrite IH. rewrite list_to_aset_cons, aset_union_assoc. reflexivity.
+Qed.
+
+Lemma fmla_vars_fexists (vs: list vsymbol) (f: formula):
+  fmla_vars (fexists vs f) = aset_union (list_to_aset vs) (fmla_vars f).
+Proof.
+  induction vs as [| v vs IH]; simpl; auto.
+  - rewrite list_to_aset_nil, aset_union_empty_l. reflexivity.
+  - rewrite IH. rewrite list_to_aset_cons, aset_union_assoc. reflexivity.
+Qed.
+
+End ForallExists.
+
 Section Or.
 
 Definition iter_for (l: list formula) :=

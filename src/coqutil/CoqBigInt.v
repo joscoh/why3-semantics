@@ -174,6 +174,15 @@ Proof. reflexivity. Qed.
 Lemma lt_spec z1 z2: lt z1 z2 = Z.ltb (to_Z z1) (to_Z z2).
 Proof. reflexivity. Qed.
 
+Lemma compare_zero z1 z2:
+  compare z1 z2 = CoqInt.zero ->
+  z1 = z2.
+Proof.
+  unfold compare, compare_to_int.
+  destruct (Z.compare z1 z2) eqn : Hcomp; try discriminate.
+  apply Z.compare_eq_iff in Hcomp. subst; auto.
+Qed.
+
 (*These are all opaque outside of this file*)
 Global Opaque t.
 Global Opaque zero.

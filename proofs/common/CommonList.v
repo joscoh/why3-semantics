@@ -236,6 +236,12 @@ Proof.
   intros. apply (reflect_dec _ (nodupb l)). apply nodup_NoDup.
 Qed. 
 
+Lemma nodupb_nodup (l: list A):
+  nodupb (nodup eq_dec l).
+Proof.
+  apply (reflect_iff _ _ (nodup_NoDup _)), NoDup_nodup.
+Qed.
+
 End NoDupDec.
 
 (*Other NoDup*)
@@ -2711,7 +2717,7 @@ Proof.
   constructor; auto.
 Qed.
 
-(*NOTE: arbitrary equality predicate, for Leibnitz equality see ListSet.v*)
+(*NOTE: arbitrary equality predicate, for Leibnitz equality see aset.v*)
 Section ListEqGen.
 Context {A: Type} (eq: A -> A -> bool).
 

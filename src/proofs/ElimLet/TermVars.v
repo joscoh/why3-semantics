@@ -1,32 +1,6 @@
 Require Import TermDefs Relations VsymCount InversionLemmas.
 From Proofs Require Import Task.
 
-
-
-(*TODO: copied from [eliminate_algebraic_typing]; MOVE!*)
-
-Lemma fmla_fv_fforalls (vs: list vsymbol) (f: formula):
-  fmla_fv (fforalls vs f) = aset_diff (list_to_aset vs) (fmla_fv f).
-Proof.
-  induction vs as [| v vs IH]; simpl; auto.
-  - rewrite list_to_aset_nil, aset_diff_empty. reflexivity.
-  - rewrite IH. rewrite list_to_aset_cons.
-    apply aset_ext. intros x. simpl_set. 
-    split; intros; destruct_all; subst; split; auto.
-    intros [Hxv | Hinx]; subst; contradiction.
-Qed.
-
-Lemma fmla_fv_fexists (vs: list vsymbol) (f: formula):
-  fmla_fv (fexists vs f) = aset_diff (list_to_aset vs) (fmla_fv f).
-Proof.
-  induction vs as [| v vs IH]; simpl; auto.
-  - rewrite list_to_aset_nil, aset_diff_empty. reflexivity.
-  - rewrite IH. rewrite list_to_aset_cons.
-    apply aset_ext. intros x. simpl_set. 
-    split; intros; destruct_all; subst; split; auto.
-    intros [Hxv | Hinx]; subst; contradiction.
-Qed.
-
 Lemma fmla_fv_gen_quants b vs f:
   fmla_fv (gen_quants b vs f) = aset_diff (list_to_aset vs) (fmla_fv f).
 Proof.
@@ -128,7 +102,7 @@ Proof.
     apply vsymbol_eqb_eq in Heq. subst. rewrite Hfind in Hget1. discriminate.
 Qed.
 
-(*TODO: should use svs_eq in var condition*)
+(*NOTE: should use svs_eq in var condition*)
 Lemma mvs_eq_map_equiv {A: Type} (m: Mvs.t A) (s: Svs.t):
   mvs_eq (Mvs.map (fun _ => tt) m) s <-> svs_eq m s.
 Proof.
@@ -648,23 +622,6 @@ Lemma term_c_vars_rewrite t:
 Proof. destruct t; auto. Qed.
 
 Opaque aset_union.
-
-
-Lemma fmla_vars_fforalls (vs: list vsymbol) (f: formula):
-  fmla_vars (fforalls vs f) = aset_union (list_to_aset vs) (fmla_vars f).
-Proof.
-  induction vs as [| v vs IH]; simpl; auto.
-  - rewrite list_to_aset_nil, aset_union_empty_l. reflexivity.
-  - rewrite IH. rewrite list_to_aset_cons, aset_union_assoc. reflexivity.
-Qed.
-
-Lemma fmla_vars_fexists (vs: list vsymbol) (f: formula):
-  fmla_vars (fexists vs f) = aset_union (list_to_aset vs) (fmla_vars f).
-Proof.
-  induction vs as [| v vs IH]; simpl; auto.
-  - rewrite list_to_aset_nil, aset_union_empty_l. reflexivity.
-  - rewrite IH. rewrite list_to_aset_cons, aset_union_assoc. reflexivity.
-Qed.
 
 Lemma fmla_vars_gen_quants b vs f:
   fmla_vars (gen_quants b vs f) = aset_union (list_to_aset vs) (fmla_vars f).

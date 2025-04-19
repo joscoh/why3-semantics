@@ -1,4 +1,4 @@
-Require Export AssocList IndTypes.
+Require Export amap IndTypes.
 Set Bullet Behavior "Strict Subproofs".
 
 (* Definition of Pre-Interpretation and utilities

@@ -1,4 +1,4 @@
-From Proofs Require Import Task AssocList Alpha.
+From Proofs Require Import Task amap Alpha.
 Require Import TyDefs TyFuncs NumberDefs TermDefs TermFuncs DeclDefs TheoryDefs TaskDefs TransDefs.
 Require Import VsymCount.
 
@@ -88,7 +88,6 @@ Definition eval_const (c: constant) : option Syntax.constant :=
 
 (*Here, we need typing as well*)
 
-(*TODO: move*)
 Definition mk_funsym_infer (n: string) (args: list vty) (ret: vty) (is_constr: bool) (num_constrs: nat): funsym.
   refine (Build_funsym (Build_fpsym n (find_args (ret :: args))
     args (find_args_check_args_l _ _ _) (find_args_nodup _)) ret is_constr num_constrs 
@@ -117,8 +116,6 @@ Definition eval_predsym (l: lsymbol) : option predsym :=
   | None => Some (mk_predsym_infer (eval_ident (ls_name l)) (map eval_ty (ls_args l)))
   | _ => None
   end.
-
-(*TODO: move*)
 
 (*Big difference for terms: core stores explicitly the list of types to substitite for
   the type variables in the symbol. In Why3 this is all implicit. We need an inference
@@ -174,7 +171,7 @@ Definition tfun_infer (f: funsym) (tys: list vty) (tms: list term) : option term
   end.
 
 Definition tfun_infer_ret (f: funsym) (tys: list vty) (tms: list term) : option (term * vty) :=
-  match (find_fpsym_map f (f_ret f :: tys)) (*TODO: is this right?*) with
+  match (find_fpsym_map f (f_ret f :: tys)) with
   | Some s => 
     (*Find values for all type params from s - if not there, not used, so we can
       just assign it int (or whatever)*)
@@ -343,13 +340,6 @@ Definition eval_data_decl (d: data_decl) : option alg_datatype :=
   | _ => None
   end.
 
-(*TODO: move*)
-Lemma nodupb_nodup {A: Type} eq_dec (l: list A):
-  nodupb eq_dec (nodup eq_dec l).
-Proof.
-  apply (reflect_iff _ _ (nodup_NoDup _ _)), NoDup_nodup.
-Qed.
-
 (*To build mut, need to check params of all typesyms in list.
   But we defer the check until typechecking later; for now, just take params of
   first type symbol and check for no duplicates*)
@@ -363,7 +353,6 @@ Definition eval_data_decl_list (l: list data_decl) : option Syntax.mut_adt :=
   | _ => None
   end.
 
-(*TODO: move*)
 (*see if lsymbol is funsym or predsym*)
 Definition eval_lsymbol_gen (l: lsymbol) : option (funsym + predsym) :=
   if (isSome (ls_value l)) then
@@ -547,9 +536,7 @@ Definition get_goal (d: decl_node) : option formula :=
 (*But at some point along the chain, the clones must be resolved - BEFORE running transformations*)
 
 (*Trans.tdecl ignores clones; where are clones considered?*)
-(*TODO: should test in Why3 - see what happens if we clone then run elim_def*)
-(*NOTE: move
-  [do_theory] in why3prove.ml calls [split_theory], then runs [do_tasks] which
+(*NOTE: [do_theory] in why3prove.ml calls [split_theory], then runs [do_tasks] which
   applies transformations, then [do_task] sends to prover, just applies it.
   Not sure where clones are desugared, but for now we assume that all clones are gone*)
 
@@ -776,7 +763,6 @@ Proof.
   destruct Hrel3 as [f3 [He3 Ha3]].
   exists (Fif f1 f2 f3). rewrite He1, He2, He3. simpl.
   split; auto.
-  (*TODO: prove separately*)
   unfold a_equiv_f. simpl.
   bool_to_prop; split_all; auto.
 Qed.
@@ -925,17 +911,6 @@ Proof.
   - intros Hi1. subst. discriminate.
 Qed.
 
-(*TODO: move??*)
-Lemma coqint_compare_zero z1 z2:
-  CoqBigInt.compare z1 z2 = CoqInt.zero ->
-  z1 = z2.
-Proof.
-  (*TODO: bad*) Transparent CoqBigInt.compare. unfold CoqBigInt.compare, CoqInt.compare_to_int.
-  destruct (Z.compare z1 z2) eqn : Hcomp; try discriminate.
-  apply Z.compare_eq_iff in Hcomp. subst; auto.
-  Opaque CoqBigInt.compare.
-Qed.
-
 Lemma const_compare_eval c1 c2:
   compare_const_aux true c1 c2 = CoqInt.zero ->
   eval_const c1 = eval_const c2.
@@ -944,13 +919,13 @@ Proof.
   destruct c1 as [i1 | r1 | s1]; destruct c2 as [i2 | r2 | s2]; simpl; try discriminate.
   - destruct i1 as [k1 i1]; destruct i2 as [k2 i2]; simpl in *.
     intros Hz. apply lex_comp_zero in Hz. destruct Hz as [Hc1 Hc2].
-    apply coqint_compare_zero in Hc2. subst; auto.
+    apply CoqBigInt.compare_zero in Hc2. subst; auto.
   - (*reals*) intros Hz. destruct r1 as [k1 r1]; destruct r2 as [k2 r2]; simpl in *. unfold eval_real_value.
     destruct r1 as [s1 t1 f1]; destruct r2 as [s2 t2 f2]; simpl in *.
     apply lex_comp_zero in Hz. destruct Hz as [Hz1 Hz].
     apply lex_comp_zero in Hz. destruct Hz as [Hz2 Hz].
     apply lex_comp_zero in Hz. destruct Hz as [Hz3 Hz].
-    apply coqint_compare_zero in Hz2, Hz3, Hz. subst; auto.
+    apply CoqBigInt.compare_zero in Hz2, Hz3, Hz. subst; auto.
   - (*string*)  unfold IntFuncs.string_compare, CoqInt.compare_to_int.
     destruct (compare s1 s2) eqn : Hcomp; try discriminate. auto.
 Qed.
