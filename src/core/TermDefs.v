@@ -493,6 +493,29 @@ Fixpoint term_ind_alt (t: term_c) : P t :=
 
 End TermIndAlt.
 
+(*Likewise for patterns*)
+Section PatternIndAlt.
+
+Variable (P: pattern_c -> Prop).
+
+Variable (Hvar: forall v p (Heq: pat_node_of p = TermDefs.Pvar v), P p).
+Variable (Happ: forall l ps p (Heq: pat_node_of p = Papp l ps), Forall P ps -> P p).
+Variable (Hor: forall p1 p2 p (Heq: pat_node_of p = TermDefs.Por p1 p2), P p1 -> P p2 -> P p).
+Variable (Has: forall p1 v p (Heq: pat_node_of p = TermDefs.Pas p1 v), P p1 -> P p).
+Variable (Hwild: forall p (Heq: pat_node_of p = TermDefs.Pwild), P p).
+
+
+Fixpoint pat_ind_alt (p: pattern_c) : P p :=
+  match pat_node_of p as p1 return pat_node_of p = p1 -> P p with
+  | TermDefs.Pvar v => Hvar v p
+  | TermDefs.Papp l ps => fun Heq => Happ l ps p Heq (mk_Forall pat_ind_alt ps)
+  | TermDefs.Por p1 p2 => fun Heq => Hor p1 p2 p Heq (pat_ind_alt p1) (pat_ind_alt p2)
+  | TermDefs.Pas p1 v => fun Heq => Has p1 v p Heq (pat_ind_alt p1)
+  | TermDefs.Pwild => Hwild p
+  end eq_refl.
+
+End PatternIndAlt.
+
 (*Decidable equality on terms*)
 
 

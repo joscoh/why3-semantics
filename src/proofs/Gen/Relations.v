@@ -799,3 +799,197 @@ Proof.
 Qed.
 
 End ProveRelated.
+
+Require Import TermTactics.
+Import Task.
+
+
+
+(*Proofs about [eval_*] and preservation under t_similar and t_attr_copy*)
+
+Lemma eval_term_rewrite t:
+  eval_term t = match t_node_of t with
+  | TermDefs.Tvar v => Some (Tvar (eval_vsymbol v))
+  | TermDefs.Tconst c => option_map Tconst (eval_const c)
+  | Tapp l ts =>
+      option_bind (eval_funsym l)
+        (fun fs : funsym =>
+         option_bind (fold_list_option (map eval_term ts))
+           (fun tms : list term =>
+            option_bind (fold_list_option (map term_type ts))
+              (fun tys : list vty =>
+               option_map (fun tys1 : list vty => Tfun fs tys1 tms) (funpred_ty_list fs tys))))
+  | TermDefs.Tif t1 t2 t3 =>
+      option_bind (eval_fmla t1)
+        (fun t1' : formula =>
+         option_bind (eval_term t2)
+           (fun t2' : term => option_bind (eval_term t3) (fun t3' : term => Some (Tif t1' t2' t3'))))
+  | TermDefs.Tlet t1 (v, _, t2) =>
+      option_bind (eval_term t1)
+        (fun t1' : term =>
+         option_bind (eval_term t2) (fun t2' : term => Some (Tlet t1' (eval_vsymbol v) t2')))
+  | Tcase tm1 pats =>
+      option_bind (eval_term tm1)
+        (fun tm1' : term =>
+         option_bind (term_type tm1)
+           (fun ty1 : vty =>
+            option_bind
+              (fold_list_option
+                 (map
+                    (fun x : pattern_c * bind_info * term_c =>
+                     option_bind (eval_pat (fst (fst x)))
+                       (fun p : pattern =>
+                        option_bind (eval_term (snd x)) (fun t0 : term => Some (p, t0)))) pats))
+              (fun ps1 : list (pattern * term) => Some (Tmatch tm1' ty1 ps1))))
+  | TermDefs.Teps (v, _, t0) =>
+      option_bind (eval_fmla t0) (fun f : formula => Some (Teps f (eval_vsymbol v)))
+  | _ => None
+  end.
+Proof. destruct t;
+reflexivity.
+Qed.
+
+Lemma eval_fmla_rewrite t:
+  eval_fmla t = match t_node_of t with
+  | Tapp l ts =>
+      if lsymbol_eqb l ps_equ
+      then
+       match ts with
+       | [] => None
+       | [t1] => None
+       | [t1; t2] =>
+           option_bind (eval_term t1)
+             (fun t1' : term =>
+              option_bind (eval_term t2)
+                (fun t2' : term => option_bind (term_type t1) (fun ty1 : vty => Some (Feq ty1 t1' t2'))))
+       | t1 :: t2 :: _ :: _ => None
+       end
+      else
+       option_bind (eval_predsym l)
+         (fun ps : predsym =>
+          option_bind (fold_list_option (map eval_term ts))
+            (fun tms : list term =>
+             option_bind (fold_list_option (map term_type ts))
+               (fun tys : list vty =>
+                option_map (fun tys1 : list vty => Fpred ps tys1 tms) (funpred_ty_list ps tys))))
+  | TermDefs.Tif f1 f2 f3 =>
+      option_bind (eval_fmla f1)
+        (fun f1' : formula =>
+         option_bind (eval_fmla f2)
+           (fun f2' : formula =>
+            option_bind (eval_fmla f3) (fun f3' : formula => Some (Fif f1' f2' f3'))))
+  | TermDefs.Tlet t1 (v, _, f) =>
+      option_bind (eval_term t1)
+        (fun t' : term =>
+         option_bind (eval_fmla f) (fun f' : formula => Some (Flet t' (eval_vsymbol v) f')))
+  | Tcase tm1 pats =>
+      option_bind (eval_term tm1)
+        (fun tm1' : term =>
+         option_bind (term_type tm1)
+           (fun ty1 : vty =>
+            option_bind
+              (fold_list_option
+                 (map
+                    (fun x : pattern_c * bind_info * term_c =>
+                     option_bind (eval_pat (fst (fst x)))
+                       (fun p : pattern =>
+                        option_bind (eval_fmla (snd x)) (fun t0 : formula => Some (p, t0)))) pats))
+              (fun ps1 : list (pattern * formula) => Some (Fmatch tm1' ty1 ps1))))
+  | Tquant q (vs, _, _, f) =>
+      option_bind (eval_fmla f)
+        (fun f' : formula =>
+         let vs' := map eval_vsymbol vs in
+         Some
+           match q with
+           | TermDefs.Tforall => fforalls vs' f'
+           | TermDefs.Texists => fexists vs' f'
+           end)
+  | Tbinop b f1 f2 =>
+      option_bind (eval_fmla f1)
+        (fun f1' : formula =>
+         option_bind (eval_fmla f2) (fun f2' : formula => Some (Fbinop (eval_binop b) f1' f2')))
+  | Tnot f => option_bind (eval_fmla f) (fun f' : formula => Some (Fnot f'))
+  | Ttrue => Some Ftrue
+  | Tfalse => Some Ffalse
+  | _ => None
+  end.
+Proof. destruct t; auto. Qed.
+
+Lemma lex_comp_zero i1 i2:
+  IntFuncs.lex_comp i1 i2 = CoqInt.zero ->
+  i1 = CoqInt.zero /\ i2 = CoqInt.zero.
+Proof.
+  unfold IntFuncs.lex_comp.
+  unfold CoqInt.is_zero. destruct (CoqInt.int_eqb i1 CoqInt.zero) eqn : Heq.
+  - intros Hi2. apply CoqInt.int_eqb_eq in Heq. auto.
+  - intros Hi1. subst. discriminate.
+Qed.
+
+(*TODO: move??*)
+Lemma coqint_compare_zero z1 z2:
+  CoqBigInt.compare z1 z2 = CoqInt.zero ->
+  z1 = z2.
+Proof.
+  (*TODO: bad*) Transparent CoqBigInt.compare. unfold CoqBigInt.compare, CoqInt.compare_to_int.
+  destruct (Z.compare z1 z2) eqn : Hcomp; try discriminate.
+  apply Z.compare_eq_iff in Hcomp. subst; auto.
+  Opaque CoqBigInt.compare.
+Qed.
+
+Lemma const_compare_eval c1 c2:
+  compare_const_aux true c1 c2 = CoqInt.zero ->
+  eval_const c1 = eval_const c2.
+Proof.
+  unfold compare_const_aux, eval_const.
+  destruct c1 as [i1 | r1 | s1]; destruct c2 as [i2 | r2 | s2]; simpl; try discriminate.
+  - destruct i1 as [k1 i1]; destruct i2 as [k2 i2]; simpl in *.
+    intros Hz. apply lex_comp_zero in Hz. destruct Hz as [Hc1 Hc2].
+    apply coqint_compare_zero in Hc2. subst; auto.
+  - (*reals*) intros Hz. destruct r1 as [k1 r1]; destruct r2 as [k2 r2]; simpl in *. unfold eval_real_value.
+    destruct r1 as [s1 t1 f1]; destruct r2 as [s2 t2 f2]; simpl in *.
+    apply lex_comp_zero in Hz. destruct Hz as [Hz1 Hz].
+    apply lex_comp_zero in Hz. destruct Hz as [Hz2 Hz].
+    apply lex_comp_zero in Hz. destruct Hz as [Hz3 Hz].
+    apply coqint_compare_zero in Hz2, Hz3, Hz. subst; auto.
+  - (*string*)  unfold IntFuncs.string_compare, CoqInt.compare_to_int.
+    destruct (compare s1 s2) eqn : Hcomp; try discriminate. auto.
+Qed.
+   
+Lemma t_similar_eval t s:
+  t_similar t s ->
+  eval_term t = eval_term s.
+Proof.
+  unfold t_similar. rewrite andb_true.
+  intros [Hoeq Hsim].
+  rewrite !eval_term_rewrite.
+  get_fast_eq.
+  destruct_term_node t; destruct_term_node s; try discriminate; auto; solve_similar.
+  apply CoqInt.int_eqb_eq, const_compare_eval in Hsim. f_equal. auto.
+Qed.
+  
+Lemma t_attr_copy_eval t s:
+  eval_term (t_attr_copy t s) = eval_term s.
+Proof.
+  unfold t_attr_copy. destruct (_ && _) eqn : Hsim.
+  - apply t_similar_eval. bool_hyps; auto.
+  - rewrite !eval_term_rewrite; simpl; auto.
+Qed. 
+
+Lemma t_similar_eval_fmla t s:
+  t_similar t s ->
+  eval_fmla t = eval_fmla s.
+Proof.
+  unfold t_similar. rewrite andb_true.
+  intros [Hoeq Hsim].
+  rewrite !eval_fmla_rewrite.
+  get_fast_eq.
+  destruct_term_node t; destruct_term_node s; try discriminate; auto; solve_similar.
+Qed.
+  
+Lemma t_attr_copy_eval_fmla t s:
+  eval_fmla (t_attr_copy t s) = eval_fmla s.
+Proof.
+  unfold t_attr_copy. destruct (_ && _) eqn : Hsim.
+  - apply t_similar_eval_fmla. bool_hyps; auto.
+  - rewrite !eval_fmla_rewrite; simpl; auto.
+Qed. 

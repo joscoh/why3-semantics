@@ -180,6 +180,14 @@ Proof.
   unfold st_spec. intros Hp1 Hp2 i [Hi1 Hi2]. auto.
 Qed.
 
+Lemma st_spec_split {A B: Type} (P: A -> Prop) (s: st A B) (Q1 Q2: A -> B -> A -> Prop):
+  st_spec P s Q1 ->
+  st_spec P s Q2 ->
+  st_spec P s (fun x y z => Q1 x y z /\ Q2 x y z).
+Proof. 
+  unfold st_spec. auto.
+Qed.
+
 (*Any constant invariant is preserved*)
 Lemma st_spec_const {A B: Type} (x: st A B) (P1 P2: Prop):
   (P1 -> P2) ->

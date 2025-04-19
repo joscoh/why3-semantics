@@ -381,6 +381,15 @@ Proof.
   intros Hspec i b [Hp1 Hp2']. auto.
 Qed.
 
+Lemma errst_spec_pure_whole {St A} (P: Prop) (s: errState St A) (Q: St -> A -> St -> Prop):
+  (P -> errst_spec (fun _ => True) s Q) ->
+  errst_spec (fun _ => P) s Q.
+Proof.
+  intros Hp.
+  apply errst_spec_weaken_pre with (P1:=fun _ => True /\ P); [tauto|].
+  apply errst_spec_pure_pre; auto.
+Qed.
+
 Lemma errst_spec_err' {A B : Type} (P : A -> Prop) (Q : A -> B -> A -> Prop) c:
   (forall (i : A) (x : B), c = inr x -> P i -> Q i x i) ->
   errst_spec P (errst_lift2 c) Q.
@@ -422,4 +431,26 @@ Lemma prove_errst_spec_dep_bnd_nondep' {St A B: Type} (P1 : St -> Prop)
   errst_spec P1 (errst_bind_dep' a b) (fun _ => Q3).
 Proof.
   intros Ha Hb. eapply prove_errst_spec_dep_bnd_nondep with (Q2:=fun _ => Q3); eauto.
+Qed.
+
+Lemma errst_spec_tup1' {St1 St2 A: Type} (P1: St1 -> Prop) (Q1: St2 -> Prop) (P2: St1 -> A -> St1 -> Prop) (Q: St2 -> A -> St2 -> Prop) (o: errState St1 A)
+  (*Don't like this but oh well*)
+  (Q_impl: forall s s1 x, Q1 s -> fst (run_errState o s1) = inr x -> Q s x s):
+  errst_spec P1 o P2 ->
+  errst_spec (fun x => P1 (fst x) /\ Q1 (snd x)) (errst_tup1 o) (fun s1 x s2 => P2 (fst s1) x (fst s2) /\ Q (snd s1) x (snd s2)).
+Proof.
+  unfold errst_spec. intros Hspec [i1 i2] b [Hp1 Hq1] Hb.
+  simpl.
+  destruct o; simpl in *. unfold run_errState in *; simpl in *.
+  specialize (Hspec i1).
+  destruct (runState unEitherT i1 ) as [x1 x2] eqn : Hrun; simpl in *; subst.
+  split; auto. eapply Q_impl; auto. rewrite Hrun. auto.
+Qed.
+
+Lemma errst_spec_split {A B: Type} (P: A -> Prop) (s: errState A B) (Q1 Q2: A -> B -> A -> Prop):
+  errst_spec P s Q1 ->
+  errst_spec P s Q2 ->
+  errst_spec P s (fun x y z => Q1 x y z /\ Q2 x y z).
+Proof. 
+  unfold errst_spec. auto.
 Qed.
