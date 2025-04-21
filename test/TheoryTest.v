@@ -502,6 +502,9 @@ Ltac extra_simpl ::=
   try rewrite !yt_eq;
   try rewrite !zt_eq.
 
+Opaque amap_lookup.
+Opaque safe_sub_ts.
+
 (*Note: this is slow, the stuff in stdlib is better
   (no rewriting in hypotheses, no wstart)*)
 Lemma ring_theory_valid: valid_theory ring_theory.
@@ -512,7 +515,7 @@ Proof.
     wassert "Heq" (Feq t_ty ((xt +r (-r yt)) +r yt) (0r +r yt)).
     {
       wf_equal. wassumption. wreflexivity.
-    }
+    } 
     wrewrite["Assoc" xt (-r yt) yt]in "Heq".
     wrewrite["Inv_def_l" yt]in "Heq".
     wrewrite["Unit_def_r" xt]in "Heq".

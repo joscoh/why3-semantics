@@ -116,6 +116,8 @@ Definition y1 := Tfun y'' nil nil.
 Ltac extra_simpl ::= fold a'; fold x'; fold y'; fold x''; 
 unfold t_constsym ; fold y''; fold x1; fold y1.
 
+Opaque amap_lookup.
+Opaque safe_sub_ts.
 Lemma inj_theory_valid: valid_theory inj_theory.
 Proof.
   simpl. split; [split; auto; prove_axiom_wf|].

@@ -37,31 +37,37 @@ Set Bullet Behavior "Strict Subproofs".
   system)
   *)
 
+
 (*Substitution*)
 
 Section Sub.
 
-Variable (tys: amap vty vty)
-(funs: amap funsym funsym) (preds: amap predsym predsym).
+Variable (tys: list (vty * vty))
+(funs: list (funsym * funsym)) (preds: list (predsym * predsym)).
 
-Variable tys_srts: forallb is_sort (vals tys).
-Lemma tys_sorts: forall x, In x (vals tys) -> aset_is_empty (type_vars x).
+Variable tys_srts: forallb is_sort (map snd tys).
+Lemma tys_sorts: forall x, In x (map snd tys) -> aset_is_empty (type_vars x).
 Proof.
   unfold is_true in tys_srts.
   rewrite forallb_forall in tys_srts.
   auto.
 Qed.
 
+Definition sub_from_map {A: Set} (eq_dec: forall (x y: A), {x=y} +{x<>y})
+  (m: list (A * A)) (x: A) :=
+  match (get_assoc_list eq_dec m x) with
+  | Some y => y
+  | None => x
+  end.
 
-Definition sub_tys t := lookup_default tys t t.
-Definition sub_funs f := lookup_default funs f f.
-Definition sub_preds p := lookup_default preds p p.
-
+Definition sub_tys := sub_from_map vty_eq_dec tys.
+Definition sub_funs := sub_from_map funsym_eq_dec funs.
+Definition sub_preds := sub_from_map predsym_eq_dec preds.
 
 (*Sub in vty*)
 Fixpoint sub_in_vty (t: vty) :=
   (*Should make more efficient and only need 1 lookup*)
-  if amap_mem t tys then 
+  if in_dec vty_eq_dec t  (map fst tys) then 
   sub_tys t else
   match t with
   | vty_cons ts vs => vty_cons ts (map sub_in_vty vs)
@@ -72,19 +78,16 @@ Lemma sub_tys_vars: forall x,
   asubset (type_vars (sub_tys x)) (type_vars x).
 Proof.
   intros x.
-  unfold sub_tys, lookup_default.
-  destruct (amap_lookup tys x) as [y|] eqn : Hlook.
-  - rewrite asubset_def. intros z Hmemz. unfold is_true in tys_srts.
-    rewrite forallb_forall in tys_srts.
-    specialize (tys_srts y).
-    forward tys_srts.
-    { rewrite in_vals_iff. exists x; auto. }
-    unfold is_sort in tys_srts.
-    exfalso. apply aset_is_empty_mem with (x:=z) in tys_srts. contradiction.
-  - apply asubset_refl.
+  unfold sub_tys, lookup_default, sub_from_map.
+   destruct (get_assoc_list vty_eq_dec tys x) eqn : Ha;
+  [| apply asubset_refl].
+  apply get_assoc_list_some in Ha.
+  assert (Hv: In v (map snd tys)) by (rewrite in_map_iff; exists (x, v); auto).
+  apply tys_sorts in Hv.
+  apply is_empty_empty in Hv. rewrite Hv. apply asubset_empty_l.
 Qed.
 
-(* Lemma sub_tys_sort: forall x,
+(*Lemma sub_tys_sort: forall x,
   type_vars x = nil ->
   type_vars (sub_tys x) = nil.
 Proof.
@@ -102,9 +105,9 @@ Proof.
   match goal with
   | |- context [if ?b then ?c else ?d] => destruct b
   end; simpl; try apply asubset_refl;
-  try apply sub_tys_vars.
+  try apply sub_tys_vars. clear n.
   induction vs; simpl in *; try apply asubset_refl.
-  inversion H; subst.
+  inversion H as[| ? ? IH1 IH2]; subst.
   apply asubset_union; auto.
 Qed.
 
@@ -228,7 +231,7 @@ Definition is_ts_sub (ts: typesym) : bool :=
     match v with
     | vty_cons ts' _ => typesym_eq_dec ts ts'
     | _ => false
-    end) (keylist tys).
+    end) (map fst tys).
 
 Definition sub_ctx_map (c: context)  :
   context :=
@@ -237,9 +240,9 @@ Definition sub_ctx_map (c: context)  :
     (*Abstract: remove iff instantiate*)
     | abs_type ts => if is_ts_sub ts then acc
       else x :: acc
-    | abs_fun f => if amap_mem f funs then acc
+    | abs_fun f => if in_dec funsym_eq_dec f (map fst funs) then acc
       else x :: acc
-    | abs_pred p => if amap_mem p preds  then acc
+    | abs_pred p => if in_dec predsym_eq_dec p (map fst preds) then acc
       else x :: acc
     (*Concrete - need to substitute*)
     | datatype_def m =>  
@@ -262,25 +265,25 @@ End Sub.
 (*From why3 theory.ml - they use string -> typesym, etc maps
   I should too, eventually*)
 Record namespace := mk_ns {
-  ns_ts: amap string typesym;
-  ns_fs: amap string funsym;
-  ns_ps: amap string predsym
+  ns_ts: list (string * typesym);
+  ns_fs: list (string * funsym);
+  ns_ps: list (string * predsym)
 }.
 
 Definition ts_in_ns (t: typesym) (n: namespace) : bool :=
-  match (amap_lookup (ns_ts n) (ts_name t)) with
+  match (get_assoc_list string_dec (ns_ts n) (ts_name t) ) with
   | Some t1 => typesym_eq_dec t t1
   | None => false
   end.
 
 Definition fs_in_ns (f: funsym) (n: namespace) : bool :=
-  match (amap_lookup (ns_fs n) (s_name f) ) with
+  match (get_assoc_list string_dec (ns_fs n) (s_name f) ) with
   | Some f1 => funsym_eq_dec f f1
   | None => false
   end.
 
 Definition ps_in_ns (p: predsym) (n: namespace) : bool :=
-  match (amap_lookup (ns_ps n) (s_name p) ) with
+  match (get_assoc_list string_dec (ns_ps n) (s_name p) ) with
   | Some p1 => predsym_eq_dec p p1
   | None => false
   end.
@@ -324,13 +327,13 @@ Lemma check_args_qual {params args}:
   check_args params (map qual_vty args).
 Proof.
   unfold is_true.
-  rewrite <- !(reflect_iff _ _ (check_args_correct _ _)); intros.
-  unfold sublist in *.
-  intros.
-  rewrite in_map_iff in H0.
-  destruct H0 as [t [Ht Hint]]; subst.
-  rewrite qual_vty_vars.
-  apply (H _ Hint); auto.
+  rewrite <- !(reflect_iff _ _ (check_args_correct _ _)); intros Hall x Hinx.
+  revert Hall.
+  setoid_rewrite asubset_def. intros Hall y Hiny.
+  rewrite in_map_iff in Hinx.
+  destruct Hinx as [t [Ht Hint]]; subst.
+  rewrite qual_vty_vars in Hiny.
+  apply (Hall _ Hint); auto.
 Qed.
 
 Lemma check_sublist_qual {t params}:
@@ -451,10 +454,10 @@ End QualNames.
   we do not implement that for the moment.
 *)
 
-Definition ty_map : Type := {l: amap vty vty |
-  forallb is_sort (vals l)}.
+Definition ty_map : Set := {l: list (vty * vty) |
+  forallb is_sort (map snd l)}.
 
-Inductive tdecl : Type :=
+Inductive tdecl : Set :=
   | tdef : def -> tdecl
   | tprop : prop_kind -> string -> formula -> tdecl
   (*Use a theory (copy all of its definitions).
@@ -463,7 +466,7 @@ Inductive tdecl : Type :=
   (*Clone a theory - instantiating some parameters and giving
     a qualified name*)
   | tclone: list tdecl -> option string -> ty_map ->
-    amap funsym funsym -> amap predsym predsym -> tdecl.
+    list (funsym * funsym) -> list (predsym * predsym) -> tdecl.
 
 Definition theory := list tdecl.
 
@@ -491,33 +494,34 @@ From Equations Require Import Equations.
   (*We need a bunch of utilities*)
 (*Utilities for namespace (move)*)
 Definition emp_namespace : namespace :=
-  mk_ns amap_empty amap_empty amap_empty.
+  mk_ns nil nil nil.
 
 Definition add_ts_to_ns (tss: list typesym) (n: namespace) : namespace :=
-  mk_ns (add_map_elts (ns_ts n) (map (fun x => (ts_name x, x)) tss)) (ns_fs n) (ns_ps n).
+  mk_ns (map (fun x => (ts_name x, x)) tss ++ (ns_ts n)) (ns_fs n) (ns_ps n).
 
 Definition add_fs_to_ns (fss: list funsym) (n: namespace) : namespace :=
-  mk_ns (ns_ts n) (add_map_elts (ns_fs n) (map (fun (x: funsym) => (s_name x, x)) fss))
+  mk_ns (ns_ts n) (map (fun (x: funsym) => (s_name x, x)) fss ++ (ns_fs n))
     (ns_ps n).
 
 Definition add_ps_to_ns (pss: list predsym) (n: namespace) : namespace :=
   mk_ns (ns_ts n) (ns_fs n) 
-  (add_map_elts (ns_ps n) (map (fun (x: predsym) => (s_name x, x)) pss)).
+  (map (fun (x: predsym) => (s_name x, x)) pss ++ (ns_ps n)).
 
 Definition add_def_to_ns (d: def) (n: namespace) : namespace :=
   add_ps_to_ns (predsyms_of_def d) 
     (add_fs_to_ns (funsyms_of_def d)
       (add_ts_to_ns (typesyms_of_def d) n)).
 
+(*Note: should really be union*)
 Definition merge_ns (n1 n2: namespace) : namespace :=
-  mk_ns (aunion (ns_ts n1) (ns_ts n2)) (aunion (ns_fs n1) (ns_fs n2))
-    (aunion (ns_ps n1) (ns_ps n2)).
+  mk_ns ((ns_ts n1) ++ (ns_ts n2)) ((ns_fs n1) ++ (ns_fs n2))
+    ((ns_ps n1) ++ (ns_ps n2)).
 
 (*Add s as prefix to all entries in namespace*)
 Definition qualify_all (s: string) (n: namespace) : namespace :=
-  mk_ns (amap_map_key_val (fun s1 => add_prefix s s1) (fun s2 =>qual_ts_n s n s2) (ns_ts n))
-    (amap_map_key_val (fun s1 => add_prefix s s1) (fun s2 =>qual_funsym_n s n s2) (ns_fs n))
-    (amap_map_key_val (fun s1 => add_prefix s s1) (fun s2 =>qual_predsym_n s n s2) (ns_ps n)).
+  mk_ns (map (fun x => (add_prefix s (fst x), qual_ts_n s n (snd x))) (ns_ts n))
+    (map (fun x => (add_prefix s (fst x), qual_funsym_n s n (snd x))) (ns_fs n))
+    (map (fun x => (add_prefix s (fst x), qual_predsym_n s n (snd x))) (ns_ps n)).
 
 
 (*Get all exported names (only) from a theory*)

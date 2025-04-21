@@ -1,11 +1,38 @@
 (*On top of the natural deduction proof system, we build a nicer
   tactic-based version*)
+Require Import Compat.
 Require Export NatDed.
 Require Export Theory.
 Require Export Unfold.
 Require Import CommonSSR.
 From mathcomp Require Export all_ssreflect.
 Set Bullet Behavior "Strict Subproofs".
+
+
+(*Some tactics to control simplification*)
+Ltac simpl_gen_strs := 
+  try match goal with
+  |- context [GenElts.gen_strs ?x ?y] => 
+    let z := fresh in 
+    set (z := GenElts.gen_strs x y) in *;
+    cbv in z;
+    unfold z
+  end.
+
+Ltac simpl_aset_mem_dec :=
+  try match goal with
+   | |- context [ aset_mem_dec ?x ?y ] =>
+         let z := fresh in
+         set (z := aset_mem_dec x y) in *; vm_compute in z; subst z
+   end.
+
+Ltac simpl_if :=
+  match goal with
+      | |- context [match ?b with | true => ?c | false => ?d end] => let z := fresh in 
+        set (z:= b) in *; vm_compute in z; subst z; cbv match
+      | |- context [match ?b with | left _ => _ | right _ => _ end] => let z := fresh in 
+        set (z:= b) in *; vm_compute in z; subst z; cbv match
+      end.
 
 (*Solve trivial goals*)
 
@@ -60,6 +87,7 @@ Ltac simpl_sub :=
   simpl;
   try unfold sub_tys;
   try unfold lookup_default;
+  try unfold sub_from_map;
   simpl.
 
 (*NOTE: extra_simpl allows the user to define a custom
@@ -72,24 +100,43 @@ Ltac simpl_ctx :=
   simpl_sub;
   extra_simpl.
 
-
-Ltac simpl_ty_subst := unfold TySubst.ty_subst_wf_fmla, 
+Ltac simpl_ty_subst := 
+  unfold TySubst.ty_subst_wf_fmla, TySubst.make_fmla_wf; repeat simpl_if; simpl;
+  unfold ty_subst_var, ty_subst', ty_subst; simpl; extra_simpl.
+(* Ltac simpl_ty_subst := unfold TySubst.ty_subst_wf_fmla, 
   TySubst.ty_subst_fmla,
   ty_subst_var, ty_subst', ty_subst; simpl;
-  extra_simpl.
+  extra_simpl. *)
 
-Ltac simpl_mono := unfold mk_mono, TySubst.ty_subst_wf_fmla,
+Ltac simpl_mono :=
+  unfold mk_mono, TySubst.ty_subst_wf_fmla, TySubst.make_fmla_wf;
+  repeat simpl_if; simpl; simpl_ty_subst; extra_simpl.
+(* Ltac simpl_mono := unfold mk_mono, TySubst.ty_subst_wf_fmla,
   TySubst.make_fmla_wf; simpl; simpl_ty_subst;
-  extra_simpl.
+  extra_simpl. *)
 
 Ltac wstart :=
   try apply soundness; simpl_task; simpl_ctx;
   try simpl_mono.
 
+
+
 (*Intros*)
 
 (*This is basically just [D_forallI] and [D_implI]*)
 Ltac wintros_tac c :=
+  match goal with
+  | |- derives (?g, ?d, (Fquant Tforall ?x ?f)) =>
+    apply (D_forallI g d x f c);
+    [reflexivity | prove_fmlas_ty | prove_closed |];
+    unfold safe_sub_f; repeat simpl_if; simpl; extra_simpl
+  | |- derives (?g, ?d, (Fbinop Timplies ?f1 ?f2)) =>
+    apply (D_implI g d c f1 f2);
+    [prove_closed (*| apply /inP; reflexivity*) |];
+    extra_simpl
+  | |- _ => fail "wintros requires goal to be Forall or Implies"
+  end.
+(* Ltac wintros_tac c :=
   match goal with
   | |- derives (?g, ?d, (Fquant Tforall ?x ?f)) =>
     apply (D_forallI g d x f c);
@@ -100,7 +147,7 @@ Ltac wintros_tac c :=
     [prove_closed (*| apply /inP; reflexivity*) |];
     extra_simpl
   | |- _ => fail "wintros requires goal to be Forall or Implies"
-  end.
+  end. *)
 
 (*We (arbitrarily) allow intros-ing up to 5 things at once*)
 (*This could be done more efficiently by taking in a list
@@ -535,8 +582,14 @@ Ltac wspecialize_tac name tm :=
   eapply (derives_specialize _ _ _ name tm);
   [reflexivity | prove_tm_ty | prove_closed_tm | prove_task_wf |];
   unfold replace_hyp; simpl;
-  unfold safe_sub_f; simpl;
+  unfold safe_sub_f; repeat simpl_if; simpl;
   extra_simpl.
+(* Ltac wspecialize_tac name tm :=
+  eapply (derives_specialize _ _ _ name tm);
+  [reflexivity | prove_tm_ty | prove_closed_tm | prove_task_wf |];
+  unfold replace_hyp; simpl;
+  unfold safe_sub_f; simpl;
+  extra_simpl. *)
 
 Ltac wspecialize_tac2 name tms :=
   match tms with
@@ -608,9 +661,17 @@ Ltac wrewrite H :=
   | |- derives (?g, ?d, ?f) =>
     eapply (derives_rewrite g d f H);
     [reflexivity | prove_closed | prove_closed |];
-    unfold replace_tm_f; simpl; extra_simpl
+    rewrite replace_tm_f_eq; simpl; extra_simpl
   | _ => fail "Usage: rewrite H, where H : t1 = t2"
   end.
+(* Ltac wrewrite H :=
+  match goal with
+  | |- derives (?g, ?d, ?f) =>
+    eapply (derives_rewrite g d f H);
+    [reflexivity | prove_closed | prove_closed |];
+    unfold replace_tm_f; simpl; extra_simpl
+  | _ => fail "Usage: rewrite H, where H : t1 = t2"
+  end. *)
 
 (*Symmetry*)
 Ltac wsymmetry := apply D_eq_sym.
@@ -653,8 +714,14 @@ Ltac wrewrite_in H1 H2 :=
   eapply derives_rewrite_in with(name1:=H1)(name2:=H2);
   [reflexivity | reflexivity | prove_closed | prove_closed
     | prove_closed | prove_fmlas_ty |];
-  unfold replace_tm_f; simpl;
+  rewrite replace_tm_f_eq; simpl;
   extra_simpl.
+(* Ltac wrewrite_in H1 H2 :=
+  eapply derives_rewrite_in with(name1:=H1)(name2:=H2);
+  [reflexivity | reflexivity | prove_closed | prove_closed
+    | prove_closed | prove_fmlas_ty |];
+  unfold replace_tm_f; simpl;
+  extra_simpl. *)
 
 Tactic Notation "wrewrite" constr(H) :=
   wrewrite H.
@@ -779,6 +846,33 @@ Ltac wrewrite_with_tac H o b args :=
   match goal with
   | |- derives (?g, ?d, ?goal) =>
     let new := constr:(gen_name EmptyString (list_to_aset (map fst d))) in
+    let x := fresh in
+    (*Or else the generated term is huge and slow*)
+    set (x:= new) in *;
+    vm_compute in x;
+    wcopy H x;
+    wspecialize_tac2 x args;
+    match o with
+    | Some ?H2 =>
+      match b with
+      | true => wrewrite<- x in H2
+      | false => wrewrite x in H2
+      end
+    | None =>
+      match b with
+      | true => wrewrite<- x
+      | false => wrewrite x
+      end
+    end;
+    wclear x;
+    subst x;
+    extra_simpl
+  end.
+(* Ltac wrewrite_with_tac H o b args :=
+  (*First, generate new hypothesis*)
+  match goal with
+  | |- derives (?g, ?d, ?goal) =>
+    let new := constr:(gen_name EmptyString (list_to_aset (map fst d))) in
     wcopy H new;
     wspecialize_tac2 new args;
     match o with
@@ -795,7 +889,7 @@ Ltac wrewrite_with_tac H o b args :=
     end;
     wclear new;
     extra_simpl
-  end.
+  end. *)
 
 (*We will have versions for 1, 2, and 3 arguments. Unfortunately,
   this means we need 12 cases*)
@@ -965,6 +1059,13 @@ Ltac wspecialize_ty n m :=
     reflexivity |
     reflexivity |
     prove_fmlas_ty | ]; simpl_ty_subst; extra_simpl.
+(* Ltac wspecialize_ty n m :=
+  eapply D_specialize_hyp with(name:=n)(v:=m);
+  [apply /Typechecker.uniqP; reflexivity |
+    apply /check_valid_tysP; reflexivity |
+    reflexivity |
+    reflexivity |
+    prove_fmlas_ty | ]; simpl_ty_subst; extra_simpl. *)
 
 (*Function unfolding*)
 
@@ -995,12 +1096,28 @@ Proof.
 Qed.
 
 (*And the tactic version (only for goals right now):*)
+(*TODO: try cases are bad*)
 Ltac wunfold x :=
+  apply D_unfold with (f := x); [ prove_closed |  ]; unfold unfold_f; simpl; unfold unfold_f_aux;
+   try (unfold Compat.safe_sub_fs'; repeat simpl_if);
+  try (simpl find_fun_app_f; unfold fold_left;
+  unfold unfold_f_single_aux, sub_fun_body_f;
+  rewrite Compat.replace_tm_f_eq);
+   simpl; unfold sub_body_t;
+   rewrite <- !Compat.safe_sub_ts_equiv; unfold Compat.safe_sub_ts'; repeat simpl_if;
+   unfold TySubst.ty_subst_wf_tm, TySubst.make_tm_wf; repeat simpl_if;
+   try rewrite Compat.replace_tm_t_eq; simpl; extra_simpl.
+(* Ltac wunfold x :=
+  apply D_unfold with (f := x); [ prove_closed |  ]; unfold unfold_f; simpl;unfold unfold_f_aux;
+      simpl; unfold sub_body_t; rewrite <- !safe_sub_ts_equiv; unfold safe_sub_ts';
+  repeat simpl_if; unfold TySubst.ty_subst_wf_tm, TySubst.make_tm_wf;
+  repeat simpl_if; try rewrite replace_tm_t_eq; simpl; extra_simpl. *)
+(* Ltac wunfold x :=
   apply D_unfold with(f:=x); [prove_closed |];
   unfold unfold_f; simpl; unfold unfold_f_aux; simpl;
   unfold unfold_f_single_aux; simpl;
   unfold sub_fun_body_f, replace_tm_f, sub_body_t, safe_sub_ts; simpl;
-  extra_simpl.
+  extra_simpl. *)
 
 (*Unfold at a specific occurence*)
 
@@ -1031,9 +1148,18 @@ Qed.
 
 Ltac wunfold_at x n :=
   apply D_unfold_single with (f:=x)(i:=n); [prove_closed |];
+  unfold unfold_f_single; unfold get_fun_body_args, get_rec_fun_body_args; simpl fold_right;
+  cbv match; simpl_if; unfold unfold_f_single_aux, sub_fun_body_f;
+  rewrite replace_tm_f_eq; simpl; unfold sub_body_t;
+  rewrite <- safe_sub_ts_equiv; unfold safe_sub_ts'; repeat simpl_if;
+  unfold TySubst.ty_subst_wf_tm, TySubst.make_tm_wf;
+  repeat simpl_if; try rewrite replace_tm_t_eq; simpl; extra_simpl.
+
+(* Ltac wunfold_at x n :=
+  apply D_unfold_single with (f:=x)(i:=n); [prove_closed |];
   unfold unfold_f_single; simpl; unfold unfold_f_single_aux; simpl;
   unfold sub_fun_body_f, replace_tm_f, sub_body_t, safe_sub_ts; simpl;
-  repeat (progress(extra_simpl)).
+  repeat (progress(extra_simpl)). *)
 
 (*Unfold for predicates*)
 (*Could make this into one tactic by matching on type,
@@ -1067,9 +1193,35 @@ Qed.
 
 Ltac wunfold_p_at x n :=
   apply D_unfold_p_single with (p:=x)(i:=n); [prove_closed |];
+  unfold unfold_p_single; unfold get_pred_body_args, get_rec_pred_body_args; simpl fold_right;
+  cbv match; simpl_if; unfold unfold_p_single_aux, sub_pred_body_f;
+  rewrite Compat.replace_fmla_f_eq; unfold Compat.safe_sub_fs'; repeat simpl_if; simpl; unfold sub_body_f;
+  rewrite <- Compat.safe_sub_fs_equiv; unfold Compat.safe_sub_fs'; repeat simpl_if;
+  unfold TySubst.ty_subst_wf_fmla, TySubst.make_fmla_wf;
+  repeat simpl_if; try rewrite Compat.replace_fmla_t_eq; simpl; extra_simpl.
+(* Ltac wunfold_p_at x n :=
+  apply D_unfold_p_single with (p:=x)(i:=n); [prove_closed |];
+  unfold unfold_p_single; unfold get_pred_body_args, get_rec_pred_body_args; simpl fold_right;
+  cbv match; simpl_if; unfold unfold_p_single_aux, sub_pred_body_f;
+  rewrite Compat.replace_fmla_f_eq; simpl; unfold sub_body_f;
+  rewrite <- Compat.safe_sub_fs_equiv; unfold Compat.safe_sub_fs'; repeat simpl_if;
+  unfold TySubst.ty_subst_wf_fmla, TySubst.make_fmla_wf;
+  repeat simpl_if; try rewrite Compat.replace_fmla_t_eq; simpl; extra_simpl. *)
+
+
+(*   apply D_unfold_p_single with (p:=x)(i:=n); [prove_closed |];
   unfold unfold_p_single; simpl; unfold unfold_p_single_aux; simpl;
   unfold sub_pred_body_f, replace_fmla_f, sub_body_f, safe_sub_fs; simpl;
-  repeat (progress(extra_simpl)).
+  repeat (progress(extra_simpl)). *)
+
+
+(*   apply D_unfold_single with (f:=x)(i:=n); [prove_closed |];
+  unfold unfold_f_single; unfold get_fun_body_args, get_rec_fun_body_args; simpl fold_right;
+  cbv match; simpl_if; unfold unfold_f_single_aux, sub_fun_body_f;
+  rewrite replace_tm_f_eq; simpl; unfold sub_body_t;
+  rewrite <- safe_sub_ts_equiv; unfold safe_sub_ts'; repeat simpl_if;
+  unfold TySubst.ty_subst_wf_tm, TySubst.make_tm_wf;
+  repeat simpl_if; try rewrite replace_tm_t_eq; simpl; extra_simpl. *)
 
 
 (*Simplify pattern match*)
@@ -1100,24 +1252,30 @@ Qed.
 
 (*And the tactic version (only for goals right now):*)
 Ltac wsimpl_match :=
+  apply D_simpl_match; [ prove_closed |  ];
+      rewrite <- simpl_match_f_eq; simpl; unfold safe_sub_ts'; repeat simpl_if;
+      simpl; extra_simpl. 
+(* Ltac wsimpl_match :=
   apply D_simpl_match; [prove_closed |];
   unfold simpl_match_f; simpl;
   unfold safe_sub_ts, safe_sub_fs; simpl;
-  extra_simpl.
-
-(*TODO: might need to move*)
-Ltac simpl_gen_strs := 
-  try match goal with
-  |- context [GenElts.gen_strs ?x ?y] => 
-    let z := fresh in 
-    set (z := GenElts.gen_strs x y) in *;
-    cbv in z;
-    unfold z
-  end.
+  extra_simpl. *)
 
 (*Induction tactic*)
 Require Import Induction.
 Ltac winduction :=
+  match goal with
+  | |- derives (?g, ?d, Fquant Tforall ?x ?f) =>
+    eapply D_induction;
+    [reflexivity | reflexivity | reflexivity | prove_closed | ];
+    simpl List.map; simpl iter_and; split_all; auto; unfold constr_case;
+    simpl_gen_strs; simpl; unfold safe_sub_f; repeat simpl_if; simpl; extra_simpl
+  | |- _ => fail "Induction requires generalization:
+    goal must be in form (Forall (x: a(vs)), f
+    where a is a non-mutual ADT"
+  end.
+
+(* Ltac winduction :=
   match goal with
   | |- derives (?g, ?d, Fquant Tforall ?x ?f) =>
     eapply D_induction;
@@ -1128,7 +1286,7 @@ Ltac winduction :=
   | |- _ => fail "Induction requires generalization:
     goal must be in form (Forall (x: a(vs)), f
     where a is a non-mutual ADT"
-  end.
+  end. *)
 
 (*Other tactics (should order more reasonably)*)
 
@@ -1142,14 +1300,22 @@ Ltac wsplit :=
 Ltac wexists y :=
   apply (D_existsI) with (tm:=y);
   [prove_tm_ty | prove_closed |];
-  unfold safe_sub_f; simpl; extra_simpl.
+  unfold safe_sub_f; repeat simpl_if; simpl; extra_simpl.
+(* Ltac wexists y :=
+  apply (D_existsI) with (tm:=y);
+  [prove_tm_ty | prove_closed |];
+  unfold safe_sub_f; simpl; extra_simpl. *)
 
 (*"destruct" for and, exists, (maybe or, maybe not)*)
 (*destruct (H: exists x, f) as [y H]*)
 Ltac wdestruct_ex H y :=
   eapply (derives_destruct_ex) with (name:=H) (c:=y);
   [reflexivity | reflexivity | prove_fmla_ty | prove_task_wf |];
-  unfold safe_sub_f; simpl; extra_simpl.
+  unfold safe_sub_f; repeat simpl_if; simpl; extra_simpl.
+(* Ltac wdestruct_ex H y :=
+  eapply (derives_destruct_ex) with (name:=H) (c:=y);
+  [reflexivity | reflexivity | prove_fmla_ty | prove_task_wf |];
+  unfold safe_sub_f; simpl; extra_simpl. *)
 
 (*Destruct and*)
 
@@ -1305,9 +1471,14 @@ Proof.
 Qed.
 
 Ltac wrewrite_iff H :=
+eapply derives_rewrite_iff with (name:=H);
+  [reflexivity | prove_closed | prove_closed |];
+  rewrite Compat.replace_fmla_f_eq; unfold Compat.safe_sub_fs';
+  repeat simpl_if; simpl; extra_simpl.
+(* Ltac wrewrite_iff H :=
   eapply derives_rewrite_iff with (name:=H);
   [reflexivity | prove_closed | prove_closed |];
-  unfold replace_fmla_f; simpl; extra_simpl.
+  unfold replace_fmla_f; simpl; extra_simpl. *)
 
 (*Working with "or" goals*)
 

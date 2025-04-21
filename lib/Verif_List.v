@@ -166,6 +166,8 @@ Ltac extra_simpl ::= fold a_; fold x_; fold y_;
   repeat (tryif progress(unfold ty_subst; try unfold ty_subst_var)
     then simpl else idtac).
 
+Opaque amap_lookup.
+Opaque safe_sub_ts.
 
 (*The interesting ones are Append and Reverse*)
 Lemma app_valid: valid_theory Append.

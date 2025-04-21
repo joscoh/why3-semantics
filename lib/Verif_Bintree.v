@@ -117,6 +117,9 @@ Ltac extra_simpl ::= fold a_; fold x_; (*fold y_;*)
   repeat (tryif progress(unfold ty_subst; try unfold ty_subst_var)
     then simpl else idtac).
 
+Opaque amap_lookup.
+Opaque safe_sub_ts.
+
 Lemma inorder_length_valid: valid_theory InorderLength.
 Proof.
   simpl valid_theory.
@@ -137,8 +140,8 @@ Proof.
     wunfold length; wsimpl_match.
     wreflexivity.
   - wintros "t1" "x" "t2" "IH1" "IH2".
-    wunfold inorder;
-    wunfold size; wsimpl_match.
+    wunfold inorder.
+    wunfold size. wsimpl_match.
     (*We need "Append_length"*)
     wspecialize_ty "Append_length" [("a", a_)].
     wspecialize "Append_length" <t inorder<a_>(t1__) t>
