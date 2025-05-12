@@ -1,4 +1,4 @@
-Directory Structure
+## Directory Structure
 - `Types.v` - Why3 type definitions
 - `Syntax.v` - Why3 term/formula/definition syntax
 - `TermMap.v` - Map over term datatypes
