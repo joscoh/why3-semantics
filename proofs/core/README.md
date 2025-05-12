@@ -1,0 +1,34 @@
+Directory Structure
+- `Types.v` - Why3 type definitions
+- `Syntax.v` - Why3 term/formula/definition syntax
+- `TermMap.v` - Map over term datatypes
+- `Context.v`- Definition and utilities for Why3 context (list of definitions)
+- `Vars.v` - Free and bound vars, type variables, symbols appearing in terms and formulas
+- `Typing.v` - Why3 type system, definition checks, and theorems about well-typed contexts
+- `Substitution.v` - Variable substitution
+- `TerminationChecker.v` - Termination checking for recursive functions 
+- `Typechecker.v` - A verified typechecker for core Why3
+- `Cast.v` - Utilities for dependent type casts
+- `Hlist.v` -  Generic heterogenous lists
+- `IndTypes.v` - Encoding of ADTs as W-types and proofs
+- `Domain.v` - Type interpretations and utilities
+- `Interp.v` - Definition of interpretation and valuation
+- `ADTInd.v` - Induction over ADT representation
+- `Denotational.v` - Semantics for terms and formulas + extensionality lemmas
+- `Denotational2.v` - Derived semantics for iterated operators
+- `GenElts.v` - Generate distinct elements (for naming)
+- `TermWf.v` - Results about unique variable names in terms
+- `SubMulti.v` - Multi-variable substitution
+- `Alpha.v` - Alpha equivalence and conversion
+- `IndProp.v` - Encoding of inductive predicates
+- `RecFun.v` - Encoding of recursive functions (takes a long time to build)
+- `RecFun2.v` - Theorems about recursive function representation
+- `NonRecFun` - Encoding of non-recursive functions
+- `TySubst.v` - Type substitution
+- `FullInterp.v` - Define full interpretation (consistent with recursive defs)
+- `Logic.v` - Logic of Why3 - satisfiability, validity, logical consequence
+- `Task.v` - Definition of Why3 task (context + local assumptions + goal) and utilities
+- `Theory.v` - Partial implementation of Why3 theories
+- `Pattern.v` - Pattern matching compilation algorithm and termination
+- `PatternProofs.v` - Proofs about pattern matching compilation
+- `Exhaustive.v` - Proofs about pattern matching exhaustiveness
