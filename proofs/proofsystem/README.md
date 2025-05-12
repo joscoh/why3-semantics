@@ -1,4 +1,4 @@
-## Directory Structure
+## A Sound Proof System for P-FOLDR
 - `Util.v` - Some utilities to construct certain terms more easily
 - `Unfold.v` - Transformation for unfolding function and predicate definitions
 - `MatchSimpl.v` - Transformation to simplify match statements applied to ADT constructor
