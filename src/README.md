@@ -1,4 +1,4 @@
-## A Why3 Coq API
+## Foundational Why3: A Why3 Coq API
 
 This folder contains an implementation of parts of the Why3 logic API in Coq:
 - `core` - the main datatypes, constructors, and functions for types, terms, declarations, etc.
