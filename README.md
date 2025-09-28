@@ -56,11 +56,13 @@ The Why3 and Easycrypt forks are up-to-date as of mid Februrary 2025. Generally,
 
 ## Publications
 
-- Joshua M. Cohen and Philip Johnson-Freyd. [A Formalization of Core Why3 in Coq](https://www.cs.princeton.edu/~jmc16/docs/Why3Formalization.pdf). POPL 2024: 51st ACM SIGPLAN Symposium on Principles of Programming Languages, January 2024.
+- Joshua M. Cohen and Philip Johnson-Freyd. [A Formalization of Core Why3 in Coq](https://joscoh.github.io/docs/Why3Formalization.pdf). POPL 2024: 51st ACM SIGPLAN Symposium on Principles of Programming Languages, January 2024.
 
-- Joshua M. Cohen. [Implementing OCaml APIs in Coq](https://www.cs.princeton.edu/~jmc16/docs/CoqOCamlAPI.pdf). CoqPL 2025: The Eleventh International Workshop on Coq for Programming Languages, January 2025.
+- Joshua M. Cohen. [Implementing OCaml APIs in Coq](https://joscoh.github.io/docs/CoqOCamlAPI.pdf). CoqPL 2025: The Eleventh International Workshop on Coq for Programming Languages, January 2025.
 
-- Joshua M. Cohen. [A Foundationally Verified Intermediate Verification Language](https://www.cs.princeton.edu/~jmc16/docs/thesis.pdf). PhD Thesis, Princeton University, 2025.
+- Joshua M. Cohen. [A Mechanized First-Order Theory of Algebraic Data Types with Pattern Matching](https://joscoh.github.io/docs/ADTTheory.pdf). ITP 2025: 16th International Conference on Interactive Theorem Proving, September 2025.
+
+- Joshua M. Cohen. [A Foundationally Verified Intermediate Verification Language](https://joscoh.github.io/docs/thesis.pdf). PhD Thesis, Princeton University, 2025.
 
 
 
