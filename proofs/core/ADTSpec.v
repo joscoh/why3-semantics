@@ -1,0 +1,145 @@
+(*An interpretation of an ADT should satisfy the following properties:
+  1. Constructor interps are injective
+  2. Constructor interps are disjoint (across types)
+  3. An inversion principle holds
+  4. A generalized induction principle holds
+  
+Plan:
+X 1. Define these properties generally
+2. Refactor existing proofs to use these properties instead of fixing to W-types
+3. Prove that W-types satisfy these properties (probably need construction)
+  NOTE: might involve following
+  a. define construction
+  b. prove it satisfies fixed point property
+  c. prove we can construct pre-interp
+  d. modify full interp proofs
+4. Prove that any two interps satisfying these conditions are isomorphic (need similar construction)
+5. Prove that (via isomorphism) any two interps that differ only on ADTs preserve denotation
+6. Prove that we can give a fixed interp to prove validity
+7. Turn this into a Rocq-based proof system
+
+Goal: sound reasoning about Why3 proof terms via shallowly embedded Rocq terms
+  *)
+Require Import IndTypes. (*TODO: remove*)
+
+(*Temp*)
+Inductive domain_nonempty (domain: sort -> Type) (s: sort) :=
+  | DE: forall (x: domain s),
+    domain_nonempty domain s.
+
+Section Interp.
+Variable (gamma: context).
+
+(*A pre-interpretation includes a map from sorts to Set, the condition that
+  all of these Sets are nonempty, interpretations for functions and predicates,
+  the requirement that all ADT domains are [adt_rep], and the
+  requirement that all constructor domains are [constr_rep]
+  (we will later enforce restrictions on recursive functions and
+    inductive predicates).
+  It makes some dependent type stuff easier to split out the domain-related
+  pieces from the function and predicate pieces, since the latter
+  will change without affecting domains or valuations*)
+Record pi_dom : Type :=
+  {dom_aux: sort -> Set;
+  (*the prelimiary domain function: the full
+    function is (domain dom_aux), which enforces that domain s_int reduces
+    to Z and domain s_real reduces to R*)
+  domain_ne: forall s, domain_nonempty (domain dom_aux) s;
+  }.
+
+End Interp.
+
+Definition fun_interp (pd: pi_dom) := forall  (f:funsym) (srts: list sort)
+    (a: arg_list (domain (dom_aux pd)) (sym_sigma_args f srts)),
+    (domain (dom_aux pd) (funsym_sigma_ret f srts)).
+
+Definition adt_rep pd a srts := ((domain (dom_aux pd)) (typesym_to_sort (adt_name a) srts)).
+
+Definition constr_rep {gamma: context} (gamma_valid: valid_context gamma) (pd: pi_dom) (pf: fun_interp pd)
+  {m : mut_adt} {a: alg_datatype} {c: funsym} {srts: list sort}
+  (m_in: mut_in_ctx m gamma) (a_in: adt_in_mut a m) (c_in: constr_in_adt c a)
+  (srts_len: length srts = length (m_params m))
+  (args: arg_list (domain (dom_aux pd)) (sym_sigma_args c srts))
+  : adt_rep pd a srts :=
+  dom_cast _ (Logic.eq_sym (adt_typesym_funsym gamma_valid _ m_in _ srts_len _ a_in _ c_in)) 
+      (pf c srts args).
+
+(*Useful for defaults*)
+Definition dom_int (pd: pi_dom) : domain (dom_aux pd) s_int := 0%Z.
+
+
+Record adt_interp_props {gamma: context} (gamma_valid: valid_context gamma) 
+  (pd: pi_dom) (pf: fun_interp pd) :=
+  {
+    constrs_inj: forall {m: mut_adt} {a: alg_datatype} {f: funsym} 
+    (m_in: mut_in_ctx m gamma) (a_in: adt_in_mut a m) (f_in: constr_in_adt f a) 
+    {srts: list sort} (srts_len: length srts = length (m_params m))
+    (a1 a2: arg_list (domain (dom_aux pd)) (sym_sigma_args f srts)),
+    constr_rep gamma_valid pd pf m_in a_in f_in srts_len a1 =
+    constr_rep gamma_valid pd pf m_in a_in f_in srts_len a2 ->
+    a1 = a2;
+    (*Have eq hypothesis which is read as: even if the domains are equal for the two
+      constructors, the two values cannot be. Of course if domains are different,
+      inequality is assured*)
+    (*Let's assume we only deal with one: it could be ok for 2 isomorphic types to have
+      the same interp, I think(?)*)
+    constrs_disj: forall {m: mut_adt} {a: alg_datatype} {f1 f2: funsym} 
+    (m_in: mut_in_ctx m gamma) (a_in: adt_in_mut a m) 
+    (f1_in: constr_in_adt f1 a) (f2_in: constr_in_adt f2 a) 
+    {srts: list sort} (srts_len: length srts = length (m_params m))
+    (a1: arg_list (domain (dom_aux pd)) (sym_sigma_args f1 srts))
+    (a2: arg_list (domain (dom_aux pd)) (sym_sigma_args f2 srts)),
+    f1 <> f2 ->
+    constr_rep gamma_valid pd pf m_in a_in f1_in srts_len a1 <>
+    constr_rep gamma_valid pd pf m_in a_in f2_in srts_len a2;
+    (*Inversion*)
+    find_constr_rep: forall {m: mut_adt} {a: alg_datatype}
+    (m_in: mut_in_ctx m gamma) (a_in: adt_in_mut a m) {srts: list sort}
+    (srts_len: length srts = length (m_params m))
+    (x: adt_rep pd a srts),
+    {f: funsym & {Hf: constr_in_adt f a * arg_list (domain (dom_aux pd)) (sym_sigma_args f srts) |
+    x = constr_rep gamma_valid pd pf m_in a_in (fst Hf) srts_len (snd Hf)}};
+    (*Induction*)
+    adt_ind: forall {m: mut_adt} (m_in: mut_in_ctx m gamma) {srts: list sort}
+    (srts_len: length srts = length (m_params m))
+    (P: forall t t_in, adt_rep pd t srts -> Prop)
+    (IH: forall t t_in (x: adt_rep pd t srts) (c: funsym) (c_in: constr_in_adt c t)
+      (a: arg_list (domain (dom_aux pd)) (sym_sigma_args c srts))
+      (Hx: x = constr_rep gamma_valid pd pf m_in t_in c_in srts_len a),
+      (forall i t' t_in' 
+        (Heq : nth i (sym_sigma_args c srts) s_int =
+          typesym_to_sort (adt_name t') srts), 
+        i < length (s_args c) ->
+      (*If nth i a has type adt_rep ..., then P holds of it*)
+      P t' t_in' (dom_cast _ Heq (hnth i a s_int (dom_int _)))
+      ) ->
+    P t t_in x
+    ),
+    forall t t_in (x: adt_rep pd t srts), P t t_in x;
+  }.
+
+(* constrs_disj: forall {m1 m2: mut_adt} {a1 a2: alg_datatype} {f1 f2: funsym} 
+    (m1_in: mut_in_ctx m1 gamma) (m2_in: mut_in_ctx m2 gamma) 
+    (a1_in: adt_in_mut a1 m1) (a2_in: adt_in_mut a2 m2) 
+    (f1_in: constr_in_adt f1 a1) (f2_in: constr_in_adt f2 a2) 
+    {srts: list sort}
+    (arg1: arg_list (domain (dom_aux pd)) (sym_sigma_args f1 srts))
+    (arg2: arg_list (domain (dom_aux pd)) (sym_sigma_args f2 srts)),
+    f1 <> f2 ->
+    constr_rep gamma_valid pd pf 
+    (Heq: domain (dom_aux pd) (funsym_sigma_ret f2 srts) = domain (dom_aux pd) (funsym_sigma_ret f1 srts)),
+    f1 <> f2 ->
+    pf pd f1 srts arg1 <> scast Heq (pf pd f2 srts arg2);*)
+
+
+(*(*Suffices to state for single ADT since others do not even have same type
+      TODO: maybe we need another condition that interps are separate*)
+    constrs_disj: forall {m: mut_adt} {a: alg_datatype} {f1 f2: funsym} 
+    (m_in: mut_in_ctx m gamma) (a_in: adt_in_mut a m) 
+    (f1_in: constr_in_adt f1 a) (f2_in: constr_in_adt f2 a) 
+    {srts: list sort}
+    (a1: arg_list (domain (dom_aux pd)) (sym_sigma_args f1 srts))
+    (a2: arg_list (domain (dom_aux pd)) (sym_sigma_args f2 srts)),
+    f1 <> f2 ->
+    pf pd f1 srts a1 <> pf pd f2 srts a2*)
+
