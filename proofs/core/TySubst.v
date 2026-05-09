@@ -1059,10 +1059,9 @@ Proof.
   apply list_eq_ext'; rewrite !length_map; auto.
   intros n d Hn.
   unfold ty_subst_list'.
-  rewrite -map_comp.
-  rewrite -> !map_nth_inbound with (d2:=vty_int);
+  rewrite !map_map.
+  rewrite -> !map_nth_inbound with (d2:=EmptyString);
   try rewrite length_map; auto.
-  rewrite -> !map_nth_inbound with (d2:=EmptyString); auto. simpl.
   rewrite ty_subst_twice; auto.
   apply s_params_Nodup.
 Qed.

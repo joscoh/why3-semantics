@@ -3240,6 +3240,33 @@ Proof.
   auto.
 Qed.
 
+(*Substitute fun/pred symbol args with sorts for its parameters*)
+Definition sym_sigma_args (sym: fpsym) (s: list Types.sort) : list Types.sort :=
+  ty_subst_list_s (s_params sym) s (s_args sym).
+
+(*And likewise for function return type*)
+Definition funsym_sigma_ret (f: funsym) (s: list Types.sort) : Types.sort :=
+  ty_subst_s (s_params f) s (f_ret f).
+
+Lemma adt_typesym_funsym {m: mut_adt} (m_in: mut_in_ctx m gamma) 
+  {a: alg_datatype} (a_in: adt_in_mut a m) 
+  {c: funsym} (c_in: constr_in_adt c a)
+  {srts: list sort} (srts_len: length srts = length (m_params m)):
+  typesym_to_sort (adt_name a) srts = funsym_sigma_ret c srts.
+Proof.
+  unfold funsym_sigma_ret, typesym_to_sort.
+  apply sort_inj; simpl.
+  rewrite (adt_constr_ret m_in a_in); auto.
+  simpl. f_equal.
+  rewrite <- map_ty_subst_var_sort at 1.
+  2: symmetry; apply srts_len.
+  2: apply (reflect_iff _ _ (nodup_NoDup typevar_eq_dec _)); apply m_nodup.
+  rewrite !map_map.
+  apply map_ext_in_iff.
+  intros. simpl. f_equal. symmetry.
+  apply (adt_constr_params m_in a_in c_in).
+Qed. 
+
 Lemma adts_names_nodups: forall {m: mut_adt}
   (Hin: mut_in_ctx m gamma),
   NoDup (map adt_name (typs m)).

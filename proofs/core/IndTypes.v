@@ -1122,31 +1122,6 @@ Definition args_to_ind_base (a: arg_list domain sigma_args) :
   an [adt_rep] to an element of the appropriate domain. We need
   a few lemmas to do this, mainly about substitution. *)
 
-(*Substitute fun/pred symbol args with sorts for its parameters*)
-Definition sym_sigma_args (sym: fpsym) (s: list Types.sort) : list Types.sort :=
-  ty_subst_list_s (s_params sym) s (s_args sym).
-
-(*And likewise for function return type*)
-Definition funsym_sigma_ret (f: funsym) (s: list Types.sort) : Types.sort :=
-  ty_subst_s (s_params f) s (f_ret f).
-
-Lemma adt_typesym_funsym:
-  typesym_to_sort (adt_name t) srts = funsym_sigma_ret c srts.
-Proof.
-  unfold funsym_sigma_ret, typesym_to_sort.
-  apply sort_inj; simpl.
-  rewrite (adt_constr_ret gamma_valid m_in t_in); auto.
-  simpl. f_equal.
-  rewrite <- map_ty_subst_var_sort at 1.
-  2: symmetry; apply srts_len.
-  rewrite -!map_comp.
-  apply map_ext_in_iff.
-  intros. simpl. f_equal. symmetry.
-  apply (adt_constr_params gamma_valid m_in t_in c_in).
-  clear -m. destruct m; simpl.
-  apply /nodup_NoDup. apply m_nodup.
-Qed. 
-
 Lemma sigma_args_eq: sym_sigma_args c srts = sigma_args.
 Proof.
   unfold sym_sigma_args. unfold sigma_args.
@@ -1182,7 +1157,7 @@ Definition constr_rep_dom (a: arg_list domain (sym_sigma_args c srts)) :
   scast 
     (*equality proof*)
     (etrans (esym (dom_adts t m_in t_in)) 
-      (f_equal domain adt_typesym_funsym)
+      (f_equal domain (adt_typesym_funsym gamma_valid m_in t_in c_in srts_len))
     ) 
     (*the real value*)
     (constr_rep a).

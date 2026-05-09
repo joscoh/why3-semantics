@@ -288,7 +288,7 @@ Definition sort : Set := {t: vty | is_sort t}.
 Coercion sort_to_ty (s: sort) : vty := @proj1_sig _ _ s.
 
 Definition sorts_to_tys (l: list sort) : list vty :=
-  map sort_to_ty l.
+  List.map sort_to_ty l.
 
 Lemma sort_inj: forall {s1 s2: sort},
   sort_to_ty s1 = sort_to_ty s2 ->
@@ -346,7 +346,7 @@ Proof.
 Qed.
 
 Definition typesym_to_sort_proof: forall (t: typesym) (s: list sort),
-  aset_is_empty (type_vars (vty_cons t (map sort_to_ty s))).
+  aset_is_empty (type_vars (vty_cons t (List.map sort_to_ty s))).
 Proof.
   intros. simpl. rewrite aset_big_union_empty.
   rewrite forallb_map.
@@ -355,7 +355,7 @@ Proof.
 Qed.
 
 Definition typesym_to_sort (t: typesym) (s: list sort)  : sort :=
-  exist _ (vty_cons t (map sort_to_ty s)) (typesym_to_sort_proof t s).
+  exist _ (vty_cons t (List.map sort_to_ty s)) (typesym_to_sort_proof t s).
 
 Lemma typesym_to_sort_inj t1 t2 s1 s2:
   typesym_to_sort t1 s1 = typesym_to_sort t2 s2 ->
@@ -375,7 +375,7 @@ Fixpoint v_subst_aux (v: typevar -> vty) (t: vty) : vty :=
   | vty_int => vty_int
   | vty_real => vty_real
   | vty_var tv => v tv
-  | vty_cons ts vs => vty_cons ts (map (v_subst_aux v) vs)
+  | vty_cons ts vs => vty_cons ts (List.map (v_subst_aux v) vs)
   end.
 
 Lemma v_subst_aux_sort: forall (v: typevar -> sort) t,
@@ -419,13 +419,13 @@ Definition ty_subst (vs: list typevar) (ts: list vty) (expr: vty) : vty :=
   v_subst_aux (ty_subst_fun vs ts vty_int) expr.
 
 Definition ty_subst_list (vs: list typevar) (ts: list vty) (exprs: list vty) : list vty :=
-  map (ty_subst vs ts) exprs.
+  List.map (ty_subst vs ts) exprs.
 
 Definition ty_subst_s (vs: list typevar) (ts: list sort) (expr: vty) : sort :=
   v_subst (ty_subst_fun_s vs ts s_int) expr.
 
 Definition ty_subst_list_s (vs: list typevar) (ts: list sort) (exprs: list vty) : list sort :=
-  map (ty_subst_s vs ts) exprs.
+  List.map (ty_subst_s vs ts) exprs.
 
 End TySubst.
 
@@ -505,7 +505,7 @@ Qed.
 Lemma map_ty_subst_var (vars: list typevar) (vs2: list vty):
   length vars = length vs2 ->
   NoDup vars ->
-  map (ty_subst vars vs2) (map vty_var vars) = vs2.
+  List.map (ty_subst vars vs2) (List.map vty_var vars) = vs2.
 Proof.
   intros.
   apply list_eq_ext'; rewrite !length_map; auto.
@@ -518,7 +518,7 @@ Qed.
 Lemma map_ty_subst_var_sort: forall (vars: list typevar) (srts: list Types.sort),
   length vars = length srts ->
   NoDup vars ->
-  map (fun x => ty_subst_s vars srts (vty_var x)) vars = srts.
+  List.map (fun x => ty_subst_s vars srts (vty_var x)) vars = srts.
 Proof.
   intros.
   apply srts_inj.
@@ -624,7 +624,7 @@ Qed.
 Lemma ty_subst_cons (vars: list typevar) (params: list vty)
   (ts: typesym) (vs: list vty):
   ty_subst vars params (vty_cons ts vs) =
-  vty_cons ts (map (ty_subst vars params) vs).
+  vty_cons ts (List.map (ty_subst vars params) vs).
 Proof.
   reflexivity.
 Qed.
@@ -644,7 +644,7 @@ Qed.
 
 Lemma v_subst_cons {f} ts vs:
   v_subst f (vty_cons ts vs) =
-  typesym_to_sort ts (map (v_subst f) vs).
+  typesym_to_sort ts (List.map (v_subst f) vs).
 Proof.
   apply sort_inj. simpl.
   f_equal. apply list_eq_ext'; rewrite !length_map; auto.
@@ -701,7 +701,7 @@ Qed.
 Lemma ty_subst_s_params_id: forall params srts,
   length params = length srts ->
   NoDup params ->
-  map (fun x => ty_subst_s params srts (vty_var x)) params = srts.
+  List.map (fun x => ty_subst_s params srts (vty_var x)) params = srts.
 Proof.
   intros params srts Hlen Hnodup.
   apply list_eq_ext'; rewrite !length_map; auto.
@@ -745,11 +745,11 @@ Fixpoint ty_subst' params args (v: vty) : vty :=
   | vty_var x => if in_dec typevar_eq_dec x params then
     (ty_subst params args) (vty_var x) else vty_var x
   | vty_cons ts vs =>
-    vty_cons ts (map (ty_subst' params args) vs)
+    vty_cons ts (List.map (ty_subst' params args) vs)
   end.
 
 Definition ty_subst_list' (vs: list typevar) (ts: list vty) (l: list vty) :=
-  map (ty_subst' vs ts) l.
+  List.map (ty_subst' vs ts) l.
 
 
 (*Needed in many places: substituting tys1 for params1, 

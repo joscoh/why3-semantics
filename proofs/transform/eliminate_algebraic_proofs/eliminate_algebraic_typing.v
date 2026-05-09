@@ -2048,7 +2048,6 @@ Proof.
       inversion Hty; subst. 
       clear -H6 H8 IH Hallsimp Hallexh.
       unfold ty_subst_list in IH.
-      rewrite CommonSSR.map_map_eq in IH. 
       set (l1:= (map (ty_subst (s_params f1) tys1) (s_args f1))) in *.
       assert (Hlen: length tms1 = length l1). {
         unfold l1. solve_len.
@@ -2170,7 +2169,7 @@ Proof.
             }
             (*Since we know all the patterns are variables, we can prove separately*)
             simpl in Hsimp.
-            unfold ty_subst_list. rewrite CommonSSR.map_map_eq.
+            unfold ty_subst_list.
             set (l2:=map (ty_subst (s_params f1) args) (s_args f1)) in *.
             assert (Hlen: length pats1 = length l2). {
               unfold l2; solve_len.
@@ -2361,7 +2360,6 @@ Proof.
     + simpl in Hsimp, Hexh.
       clear -H5 H7 IH Hsimp Hexh.
       unfold ty_subst_list in IH.
-      rewrite CommonSSR.map_map_eq in IH.
       set (l1:= (map (ty_subst (s_params p) tys) (s_args p))) in *.
       assert (Hlen: length tms = length l1). {
         unfold l1. solve_len.
@@ -2463,7 +2461,7 @@ Proof.
             }
             (*Since we know all the patterns are variables, we can prove separately*)
             simpl in Hsimp.
-            unfold ty_subst_list. rewrite CommonSSR.map_map_eq.
+            unfold ty_subst_list.
             set (l2:=map (ty_subst (s_params f1) args) (s_args f1)) in *.
             assert (Hlen: length pats1 = length l2). {
               unfold l2; solve_len.
@@ -4055,7 +4053,7 @@ Proof.
       apply valid_type_weaken; auto.
     + (*Another valid_type*) revert H4. apply valid_type_weaken; auto.
     + (*inductive case*)
-      unfold ty_subst_list in IH. rewrite CommonSSR.map_map_eq in IH.
+      unfold ty_subst_list in IH.
       set (l2:= (map (ty_subst (s_params f1) tys) (s_args f1))) in *.
       assert (Hlen: length tms = length l2) by (unfold l2; solve_len).
       generalize dependent l2.
@@ -4096,7 +4094,7 @@ Proof.
     + (*Prove valid type*) revert H3. apply Forall_impl. intros a.
       apply valid_type_weaken; auto.
     + (*inductive case*)
-      unfold ty_subst_list in IH. rewrite CommonSSR.map_map_eq in IH.
+      unfold ty_subst_list in IH.
       set (l2:= (map (ty_subst (s_params f1) tys) (s_args f1))) in *.
       assert (Hlen: length tms = length l2) by (unfold l2; solve_len).
       generalize dependent l2.
