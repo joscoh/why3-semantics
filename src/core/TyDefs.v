@@ -3,7 +3,7 @@ Require Export IdentDefs.
 Require NumberDefs.
 Require hashcons CoqWeakhtbl CoqHashtbl. 
 (* Require Import stdpp.base. *)
-Require Import Coq.Wellfounded.Inverse_Image.
+Require Import Stdlib.Wellfounded.Inverse_Image.
 Require Import IntFuncs.
 Require Import CoqExthtbl.
 Import MonadNotations.

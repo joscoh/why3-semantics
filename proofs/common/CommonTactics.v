@@ -1,7 +1,7 @@
 
 (*Some generally useful tactics*)
-Require Export Coq.Lists.List.
-Require Export Lia.
+Require Export Stdlib.Lists.List.
+From Stdlib Require Export Lia.
   
 (*TODO: use elsewhere*)
 

@@ -1,5 +1,5 @@
-Require Export Coq.Bool.Bool.
-Require Export Coq.Logic.Eqdep_dec.
+Require Export Stdlib.Bool.Bool.
+Require Export Stdlib.Logic.Eqdep_dec.
 Require Export CommonTactics.
 (*Reflection*)
 

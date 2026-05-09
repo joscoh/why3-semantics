@@ -1,4 +1,4 @@
-Require Import Coq.QArith.QArith_base.
+Require Import Stdlib.QArith.QArith_base.
 Require Export Types.
 From stdpp Require infinite.
 Set Bullet Behavior "Strict Subproofs".

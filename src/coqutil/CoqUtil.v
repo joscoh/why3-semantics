@@ -1,8 +1,8 @@
 From stdpp Require Import -(coercions) numbers.
-Require Export Coq.Strings.String.
-Require Export Coq.Lists.List.
-Require Import Coq.Init.Byte.
-Require Import Lia.
+Require Export Stdlib.Strings.String.
+Require Export Stdlib.Lists.List.
+Require Import Stdlib.Init.Byte.
+From Stdlib Require Import Lia.
 From Proofs Require Export common.Common.
 
 (*TODO: reduce duplication of this stuff: anything in Prop we can

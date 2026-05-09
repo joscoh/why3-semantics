@@ -31,10 +31,14 @@ coq-util/zmap.ml
 coq-util/zmap.mli
 coq-util/BinPos.ml
 coq-util/BinPos.mli
+coq-util/PosDef.ml
+coq-util/PosDef.mli
 coq-util/BinInt.ml
 coq-util/BinInt.mli
 coq-util/List0.ml
 coq-util/List0.mli
+coq-util/ListDef.ml
+coq-util/ListDef.mli
 coq-util/Bool0.ml
 coq-util/Bool0.mli
 coq-util/Byte.ml

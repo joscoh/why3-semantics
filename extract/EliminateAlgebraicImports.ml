@@ -6,6 +6,7 @@ open Theory
 open Task
 open Pattern
 open List0
+open ListDef
 open Trans
 open Monads
 open Datatypes

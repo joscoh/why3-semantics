@@ -1,7 +1,7 @@
 Require Import CommonTactics CommonBool CommonOption.
-Require Export Lia.
-Require Export Coq.Arith.PeanoNat.
-Require Export Coq.Sorting.Permutation.
+From Stdlib Require Export Lia.
+Require Export Stdlib.Arith.PeanoNat.
+Require Export Stdlib.Sorting.Permutation.
 Export ListNotations.
 
 (*Results about filter*)

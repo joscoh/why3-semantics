@@ -1,7 +1,7 @@
 Require Import Monads TermDefs TermFuncs TermTraverseAux.
 Import MonadNotations.
 Local Open Scope errst_scope.
-Require Import FunctionalExtensionality.
+From Stdlib Require Import FunctionalExtensionality.
 
 
 (*A traversal function*)

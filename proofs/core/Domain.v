@@ -2,7 +2,7 @@
   In this file, we define domains, casting domains, and casting hlists of domains
   (which we call [arg_lists])*)
 Require Import Types Hlist.
-Require Export Coq.Reals.Reals.
+Require Export Stdlib.Reals.Reals.
 From Equations Require Import Equations.
 Set Bullet Behavior "Strict Subproofs".
 

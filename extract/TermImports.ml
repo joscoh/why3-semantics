@@ -8,6 +8,7 @@ open Datatypes
 open Ident
 open IntFuncs
 open List0
+open ListDef
 open Loc
 open Monads
 open Specif

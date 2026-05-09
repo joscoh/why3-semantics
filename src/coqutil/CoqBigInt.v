@@ -1,6 +1,6 @@
-Require Export Coq.ZArith.BinInt.
+Require Export Stdlib.ZArith.BinInt.
 Require Export CoqInt.
-Require Import Coq.Strings.String.
+Require Import Stdlib.Strings.String.
 Require Import CoqUtil.
 From Proofs Require Import common.Common. (*For [is_true]*)
 Require Import Integer.

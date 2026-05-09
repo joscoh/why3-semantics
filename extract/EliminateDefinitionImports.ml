@@ -2,6 +2,7 @@ open CoqUtil
 open Datatypes
 open IntFuncs
 open List0
+open ListDef
 open Monads
 open Ident
 open Ty

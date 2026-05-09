@@ -1,7 +1,7 @@
-Require Export Coq.Strings.String.
-Require Export Coq.ZArith.BinInt.
-Require Export Coq.Arith.PeanoNat.
-Require Export Lia.
+Require Export Stdlib.Strings.String.
+Require Export Stdlib.ZArith.BinInt.
+Require Export Stdlib.Arith.PeanoNat.
+From Stdlib Require Export Lia.
 
 
 Require Export Common.

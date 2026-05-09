@@ -1,4 +1,4 @@
-From Coq.QArith Require Import QArith_base Qcanon.
+From Stdlib.QArith Require Import QArith_base Qcanon.
 From stdpp Require Export list numbers list_numbers fin.
 From stdpp Require Import well_founded.
 From stdpp Require Import options.

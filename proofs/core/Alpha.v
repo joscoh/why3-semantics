@@ -3,8 +3,8 @@ Require Import GenElts.
 Require Import PatternProofs.
 
 (*For a proof using induction on length of list*)
-Require Import Coq.Arith.Wf_nat.
-Require Import Wellfounded.
+Require Import Stdlib.Arith.Wf_nat.
+From Stdlib Require Import Wellfounded.
 
 Set Bullet Behavior "Strict Subproofs".
 

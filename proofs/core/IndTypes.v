@@ -1,15 +1,15 @@
 Require Export Typing.
-Require Import Coq.Lists.List.
+Require Import Stdlib.Lists.List.
 Require Export Hlist.
-Require Export Coq.Reals.Reals.
+Require Export Stdlib.Reals.Reals.
 Require Export Domain.
 
 (*Need eq_rect_eq for injectivity of constructors and test cases*)
-Require Import Coq.Program.Equality.
+Require Import Stdlib.Program.Equality.
 (*Used for constructor existence, injectivity of constructors, and test cases*)
-Require Export Coq.Logic.FunctionalExtensionality.
+Require Export Stdlib.Logic.FunctionalExtensionality.
 (*We assume [eq_rect_eq], equivalent to UIP, for some proofs*)
-Require Import Coq.Logic.EqdepFacts.
+Require Import Stdlib.Logic.EqdepFacts.
 
 (*Dealing with finite types*)
 From HB Require structures.

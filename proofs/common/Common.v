@@ -255,7 +255,7 @@ Qed.
 
 (*Strings*)
 
-Require Import Coq.Strings.String.
+Require Import Stdlib.Strings.String.
 
 Lemma str_app_assoc (s1 s2 s3: string):
   (s1 ++ s2 ++ s3 = (s1 ++ s2) ++ s3)%string.

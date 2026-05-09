@@ -852,6 +852,12 @@ Proof. reflexivity. Qed.
 
 Opaque under_str.
 
+Lemma string_append_nil s: ("" ++ s)%string = s.
+Proof. reflexivity. Qed.
+
+Lemma string_append_cons c s1 s2: ((String c s1) ++ s2)%string = String c (s1 ++ s2).
+Proof. reflexivity. Qed.
+
 Lemma str_num_inj s1 s2 n1 n2:
   (s1 ++ under_str ++ n1 = s2 ++ under_str ++ n2)%string ->
   is_string_num n1 ->
@@ -860,10 +866,14 @@ Lemma str_num_inj s1 s2 n1 n2:
 Proof.
   intros Heq Hnum1 Hnum2. generalize dependent s2.
   induction s1 as [| a1 s1 IH]; intros s2 Heq.
-  - simpl in Heq.
+  - rewrite string_append_nil in Heq.
     destruct s2 as [| a2 s2]; auto.
-    simpl in Heq. rewrite under_str_rewrite in Heq.
-    simpl in Heq. inversion Heq; subst.
+    rewrite string_append_cons in Heq.
+    rewrite under_str_rewrite in Heq.
+    rewrite !string_append_cons in Heq.
+    inversion Heq; subst.
+    rename H1 into Hn1.
+    rewrite !string_append_nil in Hn1. subst.
     (*contradicts fact that under not str*)
     unfold is_string_num in Hnum1.
     rewrite list_ascii_app, forallb_app in Hnum1.
@@ -872,9 +882,11 @@ Proof.
     rewrite andb_false_r in Hnum1. discriminate.
   - destruct s2 as [| a2 s2].
     + (*Same contradiction*)
-      simpl in Heq.
+      rewrite string_append_cons, string_append_nil in Heq.
       rewrite under_str_rewrite in Heq.
       simpl in Heq; inversion Heq; subst.
+      rename H1 into Hn1.
+      rewrite !string_append_nil in Hn1. subst.
       unfold is_string_num in Hnum2.
       rewrite list_ascii_app, forallb_app in Hnum2.
       simpl in Hnum2.

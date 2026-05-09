@@ -1,8 +1,8 @@
-Require Export Coq.Strings.String.
-Require Export Coq.Bool.Bool.
-Require Export Coq.ZArith.ZArith.
+Require Export Stdlib.Strings.String.
+Require Export Stdlib.Bool.Bool.
+Require Export Stdlib.ZArith.ZArith.
 Require Export CoqUtil.
-Require Export Coq.Lists.List.
+Require Export Stdlib.Lists.List.
 Require CoqBigInt.
 Export ListNotations.
 (*From stdpp Require Export gmap.*)

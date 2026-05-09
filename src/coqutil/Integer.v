@@ -7,7 +7,7 @@ dependency. For now, we avoid*)
   representations.
   Really, we just want a bound. We don't use ints for much
   except comparisons in OCaml*)
-Require Export Coq.ZArith.BinInt.
+Require Export Stdlib.ZArith.BinInt.
 From Proofs Require Import common.Common.
 
 Local Open Scope Z_scope.

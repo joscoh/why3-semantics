@@ -4,9 +4,9 @@
   This is useful for generating new free variables and
   unique names.*)
 (*TODO: could make this more efficient with a BFS search of the ptree. Is it worth it?*)
-Require Import Coq.Lists.List.
-Require Import Coq.Logic.FinFun.
-Require Import Coq.Arith.PeanoNat.
+Require Import Stdlib.Lists.List.
+Require Import Stdlib.Vectors.FinFun.
+Require Import Stdlib.Arith.PeanoNat.
 Require Import Common.
 Set Bullet Behavior "Strict Subproofs".
 
@@ -210,9 +210,9 @@ End NoDupsList.
 (*TODO: likely delete this*)
 Require Import Types.
 Require Import Syntax.
-Require Import Coq.Strings.String.
-Require Import FunInd.
-Require Import Recdef.
+Require Import Stdlib.Strings.String.
+From Stdlib Require Import FunInd.
+From Stdlib Require Import Recdef.
 From mathcomp Require Import all_ssreflect ssrnat div.
 
 Set Bullet Behavior "Strict Subproofs".

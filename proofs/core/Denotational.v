@@ -2,13 +2,13 @@
 Require Export Substitution.
 Require Import Typechecker. (*For unique types*)
 Require Export Interp.
-Require Import Coq.Sorting.Permutation.
+Require Import Stdlib.Sorting.Permutation.
 Set Bullet Behavior "Strict Subproofs".
 
 From Equations Require Import Equations.
 
 (*The axioms we need: excluded middle and definite description*)
-Require Import Coq.Logic.ClassicalEpsilon.
+Require Import Stdlib.Logic.ClassicalEpsilon.
 
 (*This gives us the following (we give a shorter name)*)
 Definition all_dec : forall (P : Prop), {P} + {~P} := excluded_middle_informative.

@@ -1,5 +1,5 @@
-Require Export Coq.Logic.Eqdep_dec.
-Require Import Coq.Logic.Eqdep.
+Require Export Stdlib.Logic.Eqdep_dec.
+Require Import Stdlib.Logic.Eqdep.
 
 (*We mark with "-uip" any lemmas which depend on UIP*)
 
@@ -123,7 +123,7 @@ Proof.
   subst. apply UIP_dec. auto.
 Qed.
 
-Require Import Coq.Lists.List.
+Require Import Stdlib.Lists.List.
 Import ListNotations.
 
 (*Cast a list - can't use scast bc list is Type -> Type*)

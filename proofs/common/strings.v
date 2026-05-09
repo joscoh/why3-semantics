@@ -1,5 +1,5 @@
-From Coq Require Import Ascii.
-From Coq Require String.
+From Stdlib Require Import Ascii.
+From Stdlib Require String.
 From stdpp Require Export list.
 From stdpp Require Import options.
 Require Import countable. (*our countable*)

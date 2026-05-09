@@ -1,6 +1,6 @@
 Require Import Pattern.
 Require Import Denotational2.
-Require Import Coq.Sorting.Permutation.
+Require Import Stdlib.Sorting.Permutation.
 Require Import GenElts.
 From Equations Require Import Equations. 
 Set Bullet Behavior "Strict Subproofs".

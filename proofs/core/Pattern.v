@@ -2,7 +2,7 @@
 Require Import Syntax Vars amap GenElts.
 Set Bullet Behavior "Strict Subproofs".
 From Equations Require Import Equations.
-Require Import Coq.Sorting.Permutation.
+Require Import Stdlib.Sorting.Permutation.
 Require Import Init.Wf.
 
 Section Compile.

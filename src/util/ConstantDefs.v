@@ -1,5 +1,5 @@
 Require Import NumberDefs CoqUtil.
-Require Import Coq.Strings.String.
+Require Import Stdlib.Strings.String.
 Require Import IntFuncs.
 (** Construction *)
 

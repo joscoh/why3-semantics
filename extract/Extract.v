@@ -4,14 +4,14 @@ PatternComp.
 From Src.transform Require Import EliminateInductive EliminateDefinition EliminateAlgebraic.
 From Src.coqutil Require Import IntFuncs CoqCtr State.
 From Src.util Require Import ConstantDefs NumberFuncs extmap extset hashcons CoqExthtbl.
-From Coq Require Extraction.
+From Stdlib Require Extraction.
 From ExtLib Require Import Monads EitherMonad StateMonad.
 
 Extraction Blacklist Nat String List Option Bool Strings.
 
-Require Import Coq.extraction.ExtrOcamlBasic.
+From Stdlib Require Import ExtrOcamlBasic.
 (*Extract to native OCaml strings*)
-Require Import Coq.extraction.ExtrOcamlNativeString.
+From Stdlib Require Import ExtrOcamlNativeString.
 
 Set Extraction KeepSingleton.
 

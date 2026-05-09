@@ -2,10 +2,10 @@
   ONLY use definitions/lemmas from that file. They cannot
   refer to the fact that the type is secretly Z underneath*)
 Require CoqBigInt CoqInt.
-Require Import Coq.Strings.String.
-Require Import Coq.Lists.List.
-Require Export Coq.ZArith.BinInt.
-Require Import Lia.
+Require Import Stdlib.Strings.String.
+Require Import Stdlib.Lists.List.
+Require Export Stdlib.ZArith.BinInt.
+From Stdlib Require Import Lia.
 
 Local Open Scope Z_scope.
 

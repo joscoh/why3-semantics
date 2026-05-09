@@ -1,6 +1,6 @@
 (*Tiny excerpt of the loc.ml library*)
-Require Import Coq.Numbers.BinNums.
-Require Import Coq.Bool.Bool.
+Require Import Stdlib.Numbers.BinNums.
+Require Import Stdlib.Bool.Bool.
 Require Import Setoid.
 Require Import CoqInt.
 Require Import IntFuncs.

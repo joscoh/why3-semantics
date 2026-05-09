@@ -1,4 +1,4 @@
-Require Import Coq.ZArith.ZArith.
+Require Import Stdlib.ZArith.ZArith.
 From stdpp Require Import -(coercions)base.
 Require Export CoqInt extmap extset.
 Require CoqWeakhtbl.

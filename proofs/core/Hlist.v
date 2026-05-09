@@ -1,5 +1,5 @@
-Require Import Coq.Lists.List.
-Require Import Lia.
+Require Import Stdlib.Lists.List.
+From Stdlib Require Import Lia.
 Require Export Cast.
 (*Heterogenous list*)
 Inductive hlist {A: Type} (f: A -> Type) : list A -> Type :=

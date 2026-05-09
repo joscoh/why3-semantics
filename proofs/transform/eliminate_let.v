@@ -345,7 +345,7 @@ End ElimLetAlt.
     final definition as bt bf eq_refl eq_refl, but for proofs
     they must be generic.
 *)
-Require Import Coq.Relations.Relation_Operators.
+Require Import Stdlib.Relations.Relation_Operators.
 Section ElimLetWhy3.
 
 (*To start, we define the size of a term/formula*)
