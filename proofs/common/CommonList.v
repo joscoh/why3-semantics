@@ -4,6 +4,15 @@ Require Export Stdlib.Arith.PeanoNat.
 Require Export Stdlib.Sorting.Permutation.
 Export ListNotations.
 
+(*Can be used in induction principles for nested inductives*)
+Definition mk_Forall {A: Type} {P: A -> Prop} := 
+  fun (f: forall x, P x) =>
+    fix mk_Forall (l: list A) {struct l} : Forall P l :=
+      match l with
+      | nil => Forall_nil _
+      | x :: xs => Forall_cons _ (f x) (mk_Forall xs)
+      end.
+
 (*Results about filter*)
 Section Filter.
 
@@ -1556,6 +1565,14 @@ Proof.
   contradiction.
 Qed.
 
+Definition mk_ForallT {A: Type} {P: A -> Type} := 
+  fun (f: forall x, P x) =>
+    fix mk_ForallT (l: list A) {struct l} : ForallT P l :=
+      match l with
+      | nil => ForallT_nil _
+      | x :: xs => ForallT_cons _ (f x) (mk_ForallT xs)
+      end.
+
 End ForallT.
 
 
@@ -2667,6 +2684,24 @@ Proof.
     }
     subst; simpl. specialize (IHl1 l2). destruct IHl1; subst.
     apply ReflectT. auto. apply ReflectF. intro C; inversion C; subst; contradiction.
+Qed.
+
+(*Fixing the lists lets us weaken the assumption (and use in an IH)*)
+Lemma list_eqb_spec': forall {A: Type} (eq: A -> A -> bool) (l1 l2: list A)
+  (Heq: forall (x y : A), In x l1 -> In y l2 -> reflect (x = y) (eq x y)),
+  reflect (l1 = l2) (list_eqb eq l1 l2).
+Proof.
+  intros A eq. induction l1 as [| h1 t1 IH]; intros [| h2 t2]; simpl; intros Hrefl.
+  - apply ReflectT; auto.
+  - apply ReflectF; discriminate.
+  - apply ReflectF; discriminate.
+  - assert (Heq:=Hrefl). specialize (Heq h1 h2 (ltac:(auto)) (ltac:(auto))).
+    destruct Heq; simpl; [| apply ReflectF; intro C; inversion C; contradiction].
+    subst. 
+    specialize (IH t2).
+    prove_hyp IH.
+    { intros; apply Hrefl; auto. }
+    destruct IH; [apply ReflectT | apply ReflectF]; subst; auto; intro C; inversion C; contradiction.
 Qed.
 
 (*A transparent version of [list_eq_dec]. Stdlib version

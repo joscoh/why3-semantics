@@ -115,12 +115,7 @@ Fixpoint vty_ind (t: vty) : P t :=
   | vty_int => Hint
   | vty_real => Hreal
   | vty_var t => Hvar t
-  | vty_cons tsym vs => Hcons tsym vs
-    ((fix vty_ind_list (l: list vty) : Forall P l :=
-      match l with
-      | nil => Forall_nil _
-      | x :: t => Forall_cons _ _ _(vty_ind x) (vty_ind_list t)
-      end) vs)
+  | vty_cons tsym vs => Hcons tsym vs (mk_Forall vty_ind vs)
   end.
 
 End TyInd.
@@ -263,6 +258,76 @@ Defined.
 
 (* Sorts *)
 
+Unset Elimination Schemes.
+Inductive sort :=
+  | s_int : sort
+  | s_real : sort
+  | s_cons: typesym -> list sort -> sort.
+Set Elimination Schemes.
+
+Fixpoint sort_ind (P: sort -> Prop) (P_int: P s_int) (P_real: P s_real) 
+  (P_cons: forall (ts: typesym) (srts: list sort) (IH: Forall P srts), P (s_cons ts srts))
+  (s: sort) : P s :=
+  match s with
+  | s_int => P_int
+  | s_real => P_real
+  | s_cons ts srts => P_cons ts srts (mk_Forall (sort_ind P P_int P_real P_cons) srts)
+  end.
+
+Fixpoint sort_rect (P: sort -> Type) (P_int: P s_int) (P_real: P s_real) 
+  (P_cons: forall (ts: typesym) (srts: list sort) (IH: ForallT P srts), P (s_cons ts srts))
+  (s: sort) : P s :=
+  match s with
+  | s_int => P_int
+  | s_real => P_real
+  | s_cons ts srts => P_cons ts srts (mk_ForallT (sort_rect P P_int P_real P_cons) srts)
+  end.
+
+(*Decidable equality*)
+Fixpoint sort_eqb (s1 s2: sort) : bool :=
+  match s1, s2 with
+  | s_int, s_int => true
+  | s_real, s_real => true
+  | s_cons ts1 srts1, s_cons ts2 srts2 => typesym_eqb ts1 ts2 && list_eqb sort_eqb srts1 srts2
+  | _, _ => false
+  end.
+
+Lemma sort_eqb_spec s1 s2: reflect (s1 = s2) (sort_eqb s1 s2).
+Proof.
+  revert s2. induction s1 as [| | ts1 srts1 IH] using sort_rect;
+  intros [| | ts2 srts2]; simpl;
+  try solve[apply ReflectT; reflexivity];
+  try solve[apply ReflectF; intro C; discriminate].
+  assert (Hiff: ts1 = ts2 /\ srts1 = srts2 <-> s_cons ts1 srts1 = s_cons ts2 srts2). {
+    split.
+    - intros [? ?]; subst; auto.
+    - intros H; inversion H; subst; auto.
+  }
+  eapply equivP; [| apply Hiff].
+  apply andPP; [apply typesym_eqb_spec|]. clear Hiff.
+  revert srts2. induction srts1 as [| s1 t1 IHs]; intros [| s2 t2]; simpl;
+  try solve[apply ReflectT; reflexivity];
+  try solve[apply ReflectF; intro C; discriminate].
+  inversion IH as [| ? ? Hs1 Ht1]; subst. specialize (Hs1 s2). 
+  destruct Hs1; simpl; [subst | apply ReflectF; intro C; inversion C; contradiction].
+  specialize (IHs Ht1 t2). 
+  destruct IHs; [subst; apply ReflectT; reflexivity | apply ReflectF; intro C; inversion C; contradiction].
+Qed.
+
+Definition sort_eq_dec s1 s2 := reflect_dec' (sort_eqb_spec s1 s2).
+
+
+(*Bijection between types with no typevars and sorts*)
+
+Fixpoint sort_to_ty (s: sort) : vty :=
+  match s with
+  | s_int => vty_int
+  | s_real => vty_real
+  | s_cons ts srts => vty_cons ts (map sort_to_ty srts)
+  end.
+
+Coercion sort_to_ty : sort >-> vty.
+
 (*Get the type variables in a type, with no duplicates*)
 Fixpoint type_vars (t: vty) : aset typevar :=
   match t with
@@ -271,6 +336,21 @@ Fixpoint type_vars (t: vty) : aset typevar :=
   | vty_var v => aset_singleton v
   | vty_cons sym ts => aset_big_union type_vars ts
   end.
+
+Definition is_sort (t: vty) : bool :=
+  aset_is_empty (type_vars t).
+
+(*Lemma sort_to_ty_is_sort
+
+
+
+
+
+
+
+(*TODO: see if we need*)
+
+
 
 (* Lemma type_vars_unique: forall t,
   NoDup (type_vars t).
@@ -363,7 +443,7 @@ Lemma typesym_to_sort_inj t1 t2 s1 s2:
 Proof.
   unfold typesym_to_sort. intros. inversion H; subst.
   apply srts_inj in H2. subst; auto.
-Qed.
+Qed.*)
 
 (* Type substitution *)
 
@@ -371,6 +451,23 @@ Section TySubst.
 
 (*Substitute according to function*)
 Fixpoint v_subst_aux (v: typevar -> vty) (t: vty) : vty :=
+  match t with
+  | vty_int => vty_int
+  | vty_real => vty_real
+  | vty_var tv => v tv
+  | vty_cons ts vs => vty_cons ts (map (v_subst_aux v) vs)
+  end.
+
+Fixpoint v_subst (v: typevar -> sort) (t: vty) : sort :=
+  match t with
+  | vty_int => s_int
+  | vty_real => s_real
+  | vty_var tv => v tv
+  | vty_cons ts vs => s_cons ts (map (v_subst v) vs)
+  end.
+
+(*Substitute according to function*)
+(*Fixpoint v_subst_aux (v: typevar -> vty) (t: vty) : vty :=
   match t with
   | vty_int => vty_int
   | vty_real => vty_real
@@ -392,16 +489,30 @@ Proof.
 Qed.
 
 Definition v_subst (v: typevar -> sort) (t: vty) : sort :=
-  exist _ (v_subst_aux v t) (v_subst_aux_sort v t).
+  exist _ (v_subst_aux v t) (v_subst_aux_sort v t).*)
 
-Fixpoint ty_subst_fun (vs: list typevar) (s: list vty) (d: vty) : typevar -> vty :=
+Fixpoint ty_subst_fun {A: Type} (vs: list typevar) (s: list A) (d: A) : typevar -> A :=
   fun v => match vs, s with
             | v1 :: tl1, ty :: tl2 => if typevar_eq_dec v v1 then ty else
               ty_subst_fun tl1 tl2 d v
             | _, _ => d
             end.
 
-Lemma ty_subst_fun_sort: forall vs (s: list sort) (d: sort) (t: typevar),
+(* Fixpoint ty_subst_fun (vs: list typevar) (s: list vty) (d: vty) : typevar -> vty :=
+  fun v => match vs, s with
+            | v1 :: tl1, ty :: tl2 => if typevar_eq_dec v v1 then ty else
+              ty_subst_fun tl1 tl2 d v
+            | _, _ => d
+            end.
+
+Fixpoint ty_subst_fun_s (vs: list typevar) (s: list sort) (d: sort) : typevar -> sort :=
+  fun v =>  match vs, s with
+            | v1 :: tl1, ty :: tl2 => if typevar_eq_dec v v1 then ty else
+              ty_subst_fun_s tl1 tl2 d v
+            | _, _ => d
+            end. *)
+
+(*Lemma ty_subst_fun_sort: forall vs (s: list sort) (d: sort) (t: typevar),
   is_sort (ty_subst_fun vs (sorts_to_tys s) d t).
 Proof.
   intros. revert s. induction vs; simpl; intros; auto.
@@ -413,7 +524,7 @@ Proof.
 Qed.
 
 Definition ty_subst_fun_s (vs: list typevar) (s: list sort) (d: sort) : typevar -> sort :=
-  fun t => exist _ (ty_subst_fun vs (sorts_to_tys s) d t) (ty_subst_fun_sort vs s d t).
+  fun t => exist _ (ty_subst_fun vs (sorts_to_tys s) d t) (ty_subst_fun_sort vs s d t).*)
 
 Definition ty_subst (vs: list typevar) (ts: list vty) (expr: vty) : vty :=
   v_subst_aux (ty_subst_fun vs ts vty_int) expr.
@@ -422,7 +533,7 @@ Definition ty_subst_list (vs: list typevar) (ts: list vty) (exprs: list vty) : l
   map (ty_subst vs ts) exprs.
 
 Definition ty_subst_s (vs: list typevar) (ts: list sort) (expr: vty) : sort :=
-  v_subst (ty_subst_fun_s vs ts s_int) expr.
+  v_subst (ty_subst_fun vs ts s_int) expr.
 
 Definition ty_subst_list_s (vs: list typevar) (ts: list sort) (exprs: list vty) : list sort :=
   map (ty_subst_s vs ts) exprs.
@@ -460,19 +571,11 @@ Qed.  *)
 
 Lemma ty_subst_s_cons: forall (vs: list typevar) (ts: list Types.sort)
   (t: typesym) (args: list vty),
-  ty_subst_s vs ts (vty_cons t args) = typesym_to_sort t (ty_subst_list_s vs ts args).
-Proof.
-  intros. unfold ty_subst_list_s, ty_subst_s, v_subst. simpl. apply sort_inj; simpl.
-  f_equal.
-  apply list_eq_ext'; rewrite !length_map; auto.
-  intros n d Hn. rewrite -> !(map_nth_inbound) with (d2:=d) by auto.
-  rewrite -> (map_nth_inbound) with (d2:=s_int) by (rewrite length_map; auto).
-  rewrite -> (map_nth_inbound) with (d2:=d) by auto.
-  reflexivity.
-Qed.
+  ty_subst_s vs ts (vty_cons t args) = s_cons t (ty_subst_list_s vs ts args).
+Proof. reflexivity. Qed.
 
-Lemma ty_subst_fun_nth: forall (vars: list typevar) (vs: list vty)
-  (d: vty) (n: nat) (a: typevar) (s: vty),
+Lemma ty_subst_fun_nth {A: Type}: forall (vars: list typevar) (vs: list A)
+  (d: A) (n: nat) (a: typevar) (s: A),
   length vars = length vs ->
   (n < length vars)%coq_nat ->
   NoDup vars ->
@@ -491,7 +594,7 @@ intros vars vs d n a s'. revert n. revert vs. induction vars.
       -- apply IHvars; try lia. inversion H; auto. assumption.
 Qed.
 
-Lemma ty_subst_fun_notin: forall params args d (x: typevar),
+Lemma ty_subst_fun_notin {A: Type}: forall params args (d: A) (x: typevar),
   ~In x params ->
   ty_subst_fun params args d x = d.
 Proof.
@@ -521,18 +624,14 @@ Lemma map_ty_subst_var_sort: forall (vars: list typevar) (srts: list Types.sort)
   map (fun x => ty_subst_s vars srts (vty_var x)) vars = srts.
 Proof.
   intros.
-  apply srts_inj.
-  unfold sorts_to_tys at 1.
-  rewrite <- !map_comp.
-  pose proof (map_ty_subst_var vars (sorts_to_tys srts) 
-    (ltac:(rewrite length_map; auto)) H0).
-  rewrite <- map_comp in H1.
-  unfold "\o" in *. simpl in *. 
-  auto.
+  apply list_eq_ext'; rewrite !length_map; auto.
+  intros n d Hn. rewrite -> map_nth_inbound with (d2:=""%string); auto.
+  unfold ty_subst_s. simpl.
+  rewrite -> ty_subst_fun_nth with (s:=d); auto.
 Qed.
 
 (* If we have a sort, then substituting a valuation does nothing *)
-Lemma subst_is_sort_eq (t: vty) (Ht: is_sort t) (v: typevar -> vty):
+(*Lemma subst_is_sort_eq (t: vty) (Ht: is_sort t) (v: typevar -> vty):
   t = v_subst_aux v t.
 Proof.
   induction t; simpl in *; auto.
@@ -542,13 +641,14 @@ Proof.
     rewrite -> map_nth_inbound with (d2:=d); auto.
     rewrite Forall_nth in H. apply H; auto.
     apply (is_sort_cons _ _ Ht). apply nth_In; auto.
-Qed. 
+Qed. *)
 
 Lemma subst_sort_eq: forall (s: sort) (v: typevar -> sort),
   s = v_subst v (sort_to_ty s).
 Proof.
-  intros. unfold v_subst. destruct s. apply sort_inj. simpl.
-  apply subst_is_sort_eq; auto.
+  intros. induction s; simpl; auto.
+  f_equal. induction srts as [| h t IHt]; simpl; auto.
+  inversion IH; subst. f_equal; auto.
 Qed.
 
 (*Extensionality*)
@@ -571,9 +671,14 @@ Lemma v_subst_ext (v1 v2: typevar -> sort) ty:
   (forall x, aset_mem x (type_vars ty) -> v1 x = v2 x) ->
   v_subst v1 ty = v_subst v2 ty.
 Proof.
-  intros. apply sort_inj, v_subst_aux_ext.
-  intros. apply H in H0. apply (f_equal sort_to_ty) in H0.
-  auto.
+  intros Hv12. induction ty; simpl; auto.
+  - apply Hv12. simpl; auto.
+    rewrite aset_mem_singleton. auto.
+  - f_equal. simpl in Hv12. induction vs; simpl in *; auto.
+    inversion H; subst.
+    f_equal.
+    + apply H2. intros; apply Hv12. rewrite aset_mem_union. auto.
+    + apply IHvs; auto. intros. apply Hv12; rewrite aset_mem_union; auto.
 Qed.
 
 (*Suppose we have a list of params and a list of srts such that
@@ -582,17 +687,17 @@ Qed.
   Then v_subst v ty = ty_subst_list params srts ty*)
 
 
-Lemma v_ty_subst_eq_aux (params: list typevar) (srts: list sort)
+(*Lemma v_ty_subst_eq_aux (params: list typevar) (srts: list sort)
   (v: typevar -> sort) ty
   (Hnodup: NoDup params)
   (Hlen: length srts = length params):
   (forall i, (i < length params)%coq_nat -> 
     v (List.nth i params EmptyString) = List.nth i srts s_int) ->
   (forall x, aset_mem x (type_vars ty) -> In x params) ->
-  v_subst_aux v ty = ty_subst params (sorts_to_tys srts) ty.
+  v_subst_aux v ty = ty_subst_s params srts ty.
 Proof.
   intros.
-  unfold ty_subst.
+  unfold ty_subst_s.
   apply v_subst_aux_ext.
   intros.
   apply H0 in H1.
@@ -603,7 +708,7 @@ Proof.
     rewrite -> map_nth_inbound with(d2:=s_int); auto.
     rewrite Hlen; auto.
   - unfold sorts_to_tys. rewrite length_map. auto.
-Qed.
+Qed.*)
 
 Lemma v_ty_subst_eq (params: list typevar) (srts: list sort)
   (v: typevar -> sort) ty
@@ -614,10 +719,14 @@ Lemma v_ty_subst_eq (params: list typevar) (srts: list sort)
   (forall x, aset_mem x (type_vars ty) -> In x params) ->
   v_subst v ty = ty_subst_s params srts ty.
 Proof.
-  intros.
-  apply sort_inj; simpl.
-  apply v_ty_subst_eq_aux; auto.
+  intros Hv Hin.
+  unfold ty_subst_s. apply v_subst_ext. intros x Hinx.
+  apply Hin in Hinx. 
+  destruct (In_nth _ _ EmptyString Hinx) as [i [Hi Hx]]; subst.
+  rewrite Hv; auto.
+  rewrite (ty_subst_fun_nth _ _ _ _ _ s_int); auto.
 Qed.
+
 
 (*Other lemmas*)
 
@@ -629,7 +738,7 @@ Proof.
   reflexivity.
 Qed.
 
-Lemma v_subst_aux_sort_eq (v: typevar -> vty) (t: vty):
+(*Lemma v_subst_aux_sort_eq (v: typevar -> vty) (t: vty):
   (forall x, aset_mem x (type_vars t) -> is_sort (v x)) ->
   is_sort (v_subst_aux v t).
 Proof.
@@ -640,20 +749,14 @@ Proof.
     destruct H1 as [y [Hy Hiny]]; subst.
     rewrite Forall_forall in H0. apply H0; auto.
     intros. apply H. simpl. rewrite aset_mem_big_union. exists y. split; auto.
-Qed.
+Qed.*)
 
 Lemma v_subst_cons {f} ts vs:
   v_subst f (vty_cons ts vs) =
-  typesym_to_sort ts (map (v_subst f) vs).
-Proof.
-  apply sort_inj. simpl.
-  f_equal. apply list_eq_ext'; rewrite !length_map; auto.
-  intros n d Hn.
-  rewrite -> !map_nth_inbound with (d2:=s_int); [|rewrite length_map; auto].
-  rewrite -> !map_nth_inbound with (d2:=vty_int); auto.
-Qed.
+  s_cons ts (map (v_subst f) vs).
+Proof. reflexivity. Qed.
 
-Lemma v_subst_aux_twice f ty:
+(*Lemma v_subst_aux_twice f ty:
   (forall x, is_sort (f x)) ->
   v_subst_aux f (v_subst_aux f ty) =
   v_subst_aux f ty.
@@ -667,7 +770,7 @@ Proof.
   rewrite -> !map_nth_inbound with (d2:=vty_int); auto.
   rewrite Forall_forall in H. apply H.
   apply nth_In; auto.
-Qed.
+Qed.*)
 
 Lemma v_subst_aux_type_vars (v: typevar -> vty) (t: vty):
   forall x, aset_mem x (type_vars (v_subst_aux v t)) ->
@@ -706,11 +809,8 @@ Proof.
   intros params srts Hlen Hnodup.
   apply list_eq_ext'; rewrite !length_map; auto.
   intros n d Hn.
-  rewrite -> map_nth_inbound with (d2:=""%string); auto.
-  apply sort_inj. simpl.
-  rewrite -> ty_subst_fun_nth with (s:=d); unfold sorts_to_tys; simpl; auto.
-  - rewrite -> map_nth_inbound with (d2:=d); auto. lia.
-  - rewrite length_map; lia.
+  rewrite -> map_nth_inbound with (d2:=""%string); auto. unfold ty_subst_s. simpl.
+  rewrite -> ty_subst_fun_nth with (s:=d); auto.
 Qed.
 
 Lemma ty_subst_cons_notin v1 vs ty1 tys x:
@@ -765,8 +865,8 @@ Proof.
   unfold ty_subst_list', ty_subst.
   induction ty; simpl; auto.
   - destruct (in_dec typevar_eq_dec v params1).
-    + destruct (In_nth _ _ EmptyString i) as [j [Hj Hv]]; subst.
-      rewrite -> !ty_subst_fun_nth with (s:=s_int); auto; [| rewrite length_map; auto].
+    + destruct (In_nth _ _ EmptyString i) as [j [Hj Hv]]; subst. 
+      rewrite -> !ty_subst_fun_nth with (s:=vty_int); auto; [| rewrite length_map; auto].
       rewrite -> map_nth_inbound with(d2:=vty_int); [| rewrite <- Hlen1; auto].
       reflexivity.
     + rewrite !ty_subst_fun_notin; auto. 
