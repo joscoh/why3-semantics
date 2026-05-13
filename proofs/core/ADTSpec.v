@@ -330,7 +330,7 @@ Fixpoint mk_ts_map (gamma: context) (pd: sort -> Set) (n: nat) (ts: typesym) (sr
       f (sort_to_srt s) *)
     in
     match find_ts_in_ctx gamma ts as b return find_ts_in_ctx gamma ts = b -> _ with
-    | Some (m, a) => fun Hfind => adt_rep' m srts pd' pd a (proj1 (proj2 (find_ts_in_ctx_some _ _ _ _ Hfind)))
+    | Some (m, a) => fun Hfind => adt_rep m srts pd' a (proj1 (proj2 (find_ts_in_ctx_some _ _ _ _ Hfind)))
     | None => fun _ => pd (typesym_to_sort ts srts)
     end eq_refl
     end.
@@ -370,6 +370,132 @@ Definition pd_full_aux (gamma: context) (pd: sort -> Set) (n: nat) := forall (m:
     pd (typesym_to_sort (adt_name a) srts) =
     adt_rep m srts pd a Hin.
 
+(*TODO: move this*)
+Print mk_adts.
+
+(*Get vars in mutual datatype (note: by well-typing, should be in m_params m)*)
+Print alg_datatype.
+
+Print funsym.
+Print fpsym.
+Print f_sym.
+
+Definition funsym_vars (f: funsym) : aset typevar :=
+  aset_big_union type_vars (s_args f).
+Definition adt_vars (a: alg_datatype) : aset typevar :=
+  aset_big_union funsym_vars (adt_constr_list a).
+Definition mut_vars (l: list (alg_datatype)) : aset typevar :=
+  aset_big_union adt_vars l.
+
+Print mk_adts.
+Print build_base.
+Print build_constr_base.
+Print build_vty_base.
+Print vty_to_set.
+
+Definition vty_ts_pair (t: vty) : option (typesym * list vty) :=
+  match t with
+  | vty_cons ts vs => Some (ts, vs)
+  | _ => None
+  end.
+
+
+Definition funsym_ts_pairs m (f: funsym) : list (typesym * list vty) :=
+  omap vty_ts_pair (get_nonind_vtys m (s_args f)).
+
+Definition adt_ts_pairs m a : list (typesym * list vty) :=
+  concat (map (funsym_ts_pairs m) (adt_constr_list a)).
+
+Definition mut_ts_pairs m := concat (map (adt_ts_pairs m) m).
+
+Print W.
+Check w_eq.
+(*Lemma W_ext (I: Set) (A1 A2: I -> Set) (B1 B2:  *)
+
+(*Lemma big_sprod_inj l1 l2:
+  big_sprod l1 = big_sprod l2 ->
+  *)
+
+(*TODO: move - this is the key lemma that lets us change interps!*)
+Lemma mk_adts_ext v a1 a2 m
+  (*(Hv: forall v, aset_mem v (mut_vars m) -> v1 v = v2 v)*)
+  (Ht: forall ts tys, In (ts, tys) (mut_ts_pairs m) -> a1 ts tys = a2 ts tys):
+  mk_adts v a1 m = mk_adts v a2 m.
+Proof.
+  unfold mk_adts.
+  assert (Hcbase: forall c a, In a m -> constr_in_adt c a -> 
+    build_constr_base v a1 m c = build_constr_base v a2 m c).
+  {
+    intros c a a_in c_in.
+    unfold build_constr_base, build_vty_base.
+    f_equal.
+    apply list_eq_ext'; rewrite !length_map; auto.
+    intros n d Hn.
+    rewrite !map_nth_inbound with (d2:=vty_int) by assumption.
+    unfold vty_to_set.
+    (*Here, we use the assumption*)
+    destruct (nth n (get_nonind_vtys m (s_args c)) vty_int) as [| | | ts vs] eqn : Hty; auto.
+    apply Ht. unfold mut_ts_pairs. rewrite in_concat. exists ((adt_ts_pairs m) a).
+    split; [rewrite in_map_iff; eauto|].
+    unfold adt_ts_pairs. rewrite in_concat. exists (funsym_ts_pairs m c).
+    rewrite in_map_iff. split; [exists c; split; auto; apply constr_in_adt_eq; auto|].
+    unfold funsym_ts_pairs. rewrite in_omap_iff. exists (vty_cons ts vs).
+    split; auto. rewrite <- Hty. apply nth_In. auto.
+  }
+  assert (Hbase': 
+    forall a l, In a m -> 
+    (forall x : funsym, in_bool_ne funsym_eq_dec x l -> constr_in_adt x a) ->
+    build_base v a1 m l = build_base v a2 m l).
+  {
+    intros a l a_in Hall.
+    induction l as [x | x l IH]; simpl in *.
+    - apply Hcbase with (a:=a); auto. apply Hall. destruct (funsym_eq_dec x x); auto.
+    - f_equal.
+      + apply Hcbase with (a:=a); auto. apply Hall. destruct (funsym_eq_dec x x); auto.
+      + apply IH. intros y Hiny. apply Hall. rewrite Hiny, orb_true_r. auto.
+  }
+  assert (Hbase: forall a : alg_datatype, In a m -> 
+    build_base v a1 m (adt_constrs a) = build_base v a2 m (adt_constrs a)).
+  {
+    intros a a_in.
+    apply Hbase' with (a:=a); auto.
+  }
+  assert (Heq: (fun n : finite (Datatypes.length m) => build_base v a1 m (adt_constrs (fin_nth m n))) =
+    (fun n : finite (Datatypes.length m) => build_base v a2 m (adt_constrs (fin_nth m n)))).
+  {
+    apply functional_extensionality. intros x.
+    pose proof (fin_nth_in _ x) as Hin.
+    apply Hbase; auto.
+  }
+  apply w_eq with (Heq:=Heq).
+  (*Now prove second part equiv*)
+  intros i j a.
+  pose proof (fin_nth_in m i) as Hina.
+  generalize dependent (eq_idx Heq i). clear Heq.
+  generalize dependent (fin_nth m i).
+  (*Again, need to generalize (adt_constrs a)*)
+  intros a b a_in Heq.
+  set (l := adt_constrs a) in *.
+  assert (Hall: forall (x: funsym), in_bool_ne funsym_eq_dec x l -> constr_in_adt x a).
+  { intros x. auto. }
+  induction l as [x | x l IH]; simpl in *; auto.
+  assert (Heq1: build_constr_base v a1 m x = build_constr_base v a2 m x).
+  { apply Hcbase with (a:=a); auto. apply Hall. destruct (funsym_eq_dec x x); auto. }
+  assert (Heq2: build_base v a1 m l = build_base v a2 m l).
+  { apply Hbase' with (a:=a); auto. intros y Hiny. apply Hall. rewrite Hiny, orb_true_r; auto. }
+  destruct b.
+  - (*Can't rewrite directly so we destruct and derive contradiction*)
+    destruct (scast Heq _) eqn : Hs; auto.
+    exfalso. rewrite scast_left with (H1:=Heq1) in Hs; [discriminate|]; auto.
+  - destruct (scast Heq _) eqn : Hs; auto.
+    { exfalso. rewrite scast_right with (H2:=Heq2) in Hs; [discriminate|]; auto. }
+    rewrite scast_right with (H2:=Heq2) in Hs; auto.
+    inversion Hs; subst.
+    apply IH.
+    intros y Hiny. apply Hall. rewrite Hiny, orb_true_r; auto.
+Qed.
+
+
 Lemma mk_ts_map_invar gamma pd n1 n2 s:
   sort_depth s < n1 ->
   sort_depth s < n2 ->
@@ -388,33 +514,52 @@ Proof.
     simpl. generalize dependent (find_ts_in_ctx_some gamma ts).
     destruct (find_ts_in_ctx gamma ts) as [[m a]|] eqn : Hfind; auto.
     intros H. generalize dependent (proj1 (proj2 (H m a eq_refl))). clear H.
-    intros a_in. unfold adt_rep'.
-    f_equal. apply functional_extensionality. intros x.
-    unfold var_map. unfold domain. unfold sigma. simpl.
-    destruct (in_dec string_dec x (m_params m)) as [Hin| Hin].
-    + (*Case 1: if var in list, maps to corresponding sort, which has smaller size than n1 and n2,
-        so use IH*)
-      (*Note: we need a lemma that doesnt require length eq, as long as in both lists, otherwise prove default
-        for now just admit*)
-      destruct (In_nth _ _ EmptyString Hin) as [n [Hn Hx]].
-      subst. rewrite ty_subst_fun_nth with (s:=vty_int); auto.
-      2: { (*here*) admit. }
-      2: { apply m_params_Nodup. }
-      unfold sorts_to_tys. rewrite !(map_nth_inbound) with (d2:=s_int); auto. 2: admit.
-      destruct (sort_to_ty (nth n srts s_int)) eqn : Hs; auto.
-      { (*sort not var*) unfold sort_to_ty in Hs. destruct (nth n srts s_int); simpl in Hs. subst.
-        exfalso. apply (var_not_sort t); auto. }
-      unfold ty_subst_s. unfold v_subst. simpl. apply IHn1.
-      * (*identical proofs*)
-        unfold sort_depth. unfold sort_to_srt. simpl.
-        match goal with |- context [ sort_to_srt_aux ?x ?y] => generalize dependent y end.
-        simpl. rewrite !ty_subst_fun_nth with (s:=vty_int); auto.
-        2: { admit. } 2: { apply m_params_Nodup. }
-        unfold sorts_to_tys. rewrite !map_nth_inbound with (d2:=s_int) by admit.
-        (*TODO: this is doable once we have recursive sorts*)
-        admit.
-      * (*similar*) admit.
-    + rewrite !ty_subst_fun_notin; auto.
+    intros a_in. unfold adt_rep.
+    assert (Hveq: (var_map m srts (ts_map_to_pd (mk_ts_map gamma pd n1))) = 
+      (var_map m srts (ts_map_to_pd (mk_ts_map gamma pd n2)))). {
+      apply functional_extensionality. intros x.
+      unfold var_map. unfold domain. unfold sigma. simpl.
+      destruct (in_dec string_dec x (m_params m)) as [Hin| Hin].
+      + (*Case 1: if var in list, maps to corresponding sort, which has smaller size than n1 and n2,
+          so use IH*)
+        (*Note: we need a lemma that doesnt require length eq, as long as in both lists, otherwise prove default
+          for now just admit*)
+        destruct (In_nth _ _ EmptyString Hin) as [n [Hn Hx]].
+        subst. rewrite ty_subst_fun_nth with (s:=vty_int); auto.
+        2: { (*here*) admit. }
+        2: { apply m_params_Nodup. }
+        unfold sorts_to_tys. rewrite !(map_nth_inbound) with (d2:=s_int); auto. 2: admit.
+        destruct (sort_to_ty (nth n srts s_int)) eqn : Hs; auto.
+        { (*sort not var*) unfold sort_to_ty in Hs. destruct (nth n srts s_int); simpl in Hs. subst.
+          exfalso. apply (var_not_sort t); auto. }
+        unfold ty_subst_s. unfold v_subst. simpl. apply IHn1.
+        * (*identical proofs*)
+          unfold sort_depth. unfold sort_to_srt. simpl.
+          match goal with |- context [ sort_to_srt_aux ?x ?y] => generalize dependent y end.
+          simpl. rewrite !ty_subst_fun_nth with (s:=vty_int); auto.
+          2: { admit. } 2: { apply m_params_Nodup. }
+          unfold sorts_to_tys. rewrite !map_nth_inbound with (d2:=s_int) by admit.
+          (*TODO: this is doable once we have recursive sorts*)
+          admit.
+        * (*similar*) admit.
+      + rewrite !ty_subst_fun_notin; auto.
+    }
+    rewrite Hveq.
+    (*Now prove typesym_map equality*)
+    erewrite mk_adts_ext; [reflexivity|].
+    (*OK, so we need to prove this*)
+    intros ts' tys' Hin'. unfold typesym_map.
+    (*So we know (if we change bounds) that sort depth is smaller*)
+    unfold domain. 
+    destruct (sort_to_ty (typesym_to_sort ts' (seq.map (sigma m srts) tys'))) eqn : Hty; auto.
+    { (*contradiction*) exfalso. apply (var_not_sort t). rewrite <- Hty; auto.
+      destruct (typesym_to_sort ts' (seq.map (sigma m srts) tys')); auto.
+    }
+    (*Idea is that we need to show (ultimately) that this sort is small enough*)
+    apply IHn1.
+    (*TODO: come back once I fix sorts *)
+    admit.
+    admit.
 Admitted.
 
 
@@ -455,7 +600,6 @@ Lemma adt_rep_eq m srts pd a a_in:
   adt_rep' m srts pd pd a a_in = adt_rep m srts pd a a_in.
 Proof. reflexivity. Qed.
 
-Search mk_adts.
 (*Now we will try to prove for the generalized version*)
 Lemma mk_pd_aux_full gamma pd n: valid_context gamma -> pd_full_aux gamma (mk_pd_aux gamma pd n) n.
 Proof.
@@ -464,13 +608,14 @@ Proof.
   rewrite sort_rect_typesym_to_sort.
   (*TODO: could I prove that this equals mk_ts ... (pred n) (bc if n large enough, doesn't change)
     *)
-  assert (Htest: forall pd', adt_rep' m srts (fun s : sort => ts_map_to_pd (mk_ts_map gamma pd n) s) pd' a a_in =
-    adt_rep' m srts (fun s : sort => ts_map_to_pd (mk_ts_map gamma pd (pred n)) s) pd' a a_in).
+  assert (Htest: adt_rep m srts (fun s : sort => ts_map_to_pd (mk_ts_map gamma pd n) s) a a_in =
+    adt_rep m srts (fun s : sort => ts_map_to_pd (mk_ts_map gamma pd (pred n)) s) a a_in).
   {
-    unfold adt_rep'. intros pd'. f_equal. apply functional_extensionality. intros x.
+    unfold adt_rep. f_equal. apply functional_extensionality. intros x.
     (*TODO: prove var_map result as separate lemma after previous (which we needed for induction, we needed sort
       explicitly)*)
     admit.
+    (*TODO: prove typesym_map also*)
   }
   rewrite <- adt_rep_eq.
   rewrite Htest. clear Htest.
