@@ -219,7 +219,7 @@ Proof.
   intros A f x. destruct (f x) eqn : Hfx; auto.
 Qed.
 
-Lemma ty_subst_fun_cases: forall params tys d v,
+Lemma ty_subst_fun_cases {A: Type}: forall params tys (d: A) v,
   (In (ty_subst_fun params tys d v) tys) \/
   (ty_subst_fun params tys d v = d).
 Proof.
@@ -3899,11 +3899,11 @@ Theorem all_sorts_inhab
       Forall (valid_type gamma) vs ->
       Forall (type_inhab gamma) vs ->
       type_inhab gamma (vty_cons t vs)):
-  forall (s: sort),
-    valid_type gamma s ->
-    type_inhab gamma s.
+  forall (v: vty) (Hsort: is_sort v),
+    valid_type gamma v ->
+    type_inhab gamma v.
 Proof.
-  intros [v Hsort] Hval. simpl in *.
+  intros v Hsort Hval. simpl in *.
   revert v Hsort Hval.
   apply (vty_rect (fun v => 
     forall (Hsort: is_sort v) (Hval: valid_type gamma v),
@@ -4224,7 +4224,7 @@ Qed.
 (*Getting ADT instances*)
 Section GetADTSort.
 
-Definition is_sort_cons_sorts (*(ts: typesym)*) (l: list vty) 
+(*Definition is_sort_cons_sorts (*(ts: typesym)*) (l: list vty) 
   (Hall: forall x, In x l -> is_sort x):
   {s: list sort | sorts_to_tys s = l}.
 Proof.
@@ -4253,7 +4253,7 @@ Proof.
   rewrite IHl in ind. subst. f_equal.
   destruct a; simpl. 
   f_equal. apply bool_irrelevance.
-Qed.
+Qed.*)
 
 (*A function that tells us if a sort is an ADT and if so,
   get its info*)
@@ -4262,33 +4262,25 @@ Definition is_sort_adt (s: sort) :
   option (mut_adt * alg_datatype * typesym * list sort).
 Proof.
   destruct s.
-  destruct x.
-  - exact None.
   - exact None.
   - exact None.
   - destruct (find_ts_in_ctx gamma t);[|exact None].
-    exact (Some (fst p, snd p, t, 
-      proj1_sig (is_sort_cons_sorts l (is_sort_cons t l i)))).
+    exact (Some (fst p, snd p, t, l)).
 Defined.
 
 (*And its proof of correctness*)
 Lemma is_sort_adt_spec: forall s m a ts srts,
   is_sort_adt s = Some (m, a, ts, srts) ->
-  s = typesym_to_sort (adt_name a) srts /\
+  s = s_cons (adt_name a) srts /\
   adt_in_mut a m /\ mut_in_ctx m gamma /\ ts = adt_name a.
 Proof.
   intros. unfold is_sort_adt in H.
-  destruct s. destruct x; try solve[inversion H].
+  destruct s; try solve[inversion H].
   destruct (find_ts_in_ctx gamma t) eqn : Hf.
   - inversion H; subst. destruct p as [m a]. simpl.
     apply (find_ts_in_ctx_iff) in Hf. 
     destruct Hf as [Hmg [Ham Hat]]; 
-    repeat split; auto; subst.
-    apply sort_inj. simpl. f_equal. clear H. 
-    generalize dependent (is_sort_cons (adt_name a) l i).
-    intros H.
-    destruct (is_sort_cons_sorts l H). simpl.
-    rewrite <- e; reflexivity.
+    repeat split; auto; subst. reflexivity.
   - inversion H.
 Qed.
 
@@ -4296,17 +4288,15 @@ Qed.
 Lemma is_sort_adt_adt a srts m:
   mut_in_ctx m gamma ->
   adt_in_mut a m ->
-  @is_sort_adt (typesym_to_sort (adt_name a) srts) =
+  @is_sort_adt (s_cons (adt_name a) srts) =
     Some (m, a, (adt_name a), srts).
 Proof.
   intros m_in a_in.
-  unfold is_sort_adt. simpl.
+  unfold is_sort_adt.
   assert (@find_ts_in_ctx gamma (adt_name a) = Some (m, a)). {
     apply (@find_ts_in_ctx_iff); auto.
   }
-  rewrite H. simpl. 
-  f_equal. f_equal.
-  apply is_sort_cons_sorts_eq.
+  rewrite H. reflexivity.
 Qed.
 
 End GetADTSort.
