@@ -100,7 +100,7 @@ Lemma projection_syms_sigma_args {m a c f} srts (Hin: In f (projection_syms badn
   (m_in: mut_in_ctx m gamma) (a_in: adt_in_mut a m) (c_in: constr_in_adt c a)
   (Hlen: length srts = length (m_params m)):
   sym_sigma_args f srts = 
-  [typesym_to_sort (adt_name a) srts].
+  [s_cons (adt_name a) srts].
 Proof.
   unfold sym_sigma_args. rewrite (projection_syms_args Hin).
   simpl. rewrite (adt_constr_ret gamma_valid m_in a_in c_in).
@@ -131,7 +131,7 @@ Qed.
 Definition get_hd_adt_rep {m a f} (m_in: mut_in_ctx m gamma) (a_in: adt_in_mut a m)
   {srts: list sort} (srts_len: length srts = length (m_params m))
   (args: arg_list (domain (dom_aux pd)) (sym_sigma_args f srts))
-  (Heq: sym_sigma_args f srts = [typesym_to_sort (adt_name a) srts]):
+  (Heq: sym_sigma_args f srts = [s_cons (adt_name a) srts]):
   { x: adt_rep m srts (dom_aux pd) a a_in |
     args = cast_arg_list (eq_sym Heq)
       (HL_cons (domain (dom_aux pd)) _ _ (scast (eq_sym (adts pdf m srts a m_in a_in)) x) (HL_nil _))}.
@@ -249,25 +249,27 @@ Lemma ty_subst_s_nohead v1 vs t1 tys ty:
   ty_subst_s vs tys ty.
 Proof.
   intros Hnotin.
-  apply sort_inj; simpl.
-  apply v_subst_aux_ext. intros x Hinx.
-  destruct (typevar_eq_dec x v1); auto. subst. contradiction.
+  apply v_subst_ext. intros x Hinx.
+  rewrite ty_subst_fun_cons. destruct (string_dec _ _); subst; auto. contradiction.
 Qed.
 
 Lemma ty_subst_list_s_onlyhead v1 vs t1 tys n:
   ty_subst_list_s (v1 :: vs) (t1 :: tys) (repeat (vty_var v1) n) =
   repeat t1 n.
 Proof.
-  induction n as [| n' IH]; simpl; auto.
-  f_equal; auto.
-  apply sort_inj; simpl. destruct (typevar_eq_dec v1 v1); auto. contradiction.
+  unfold ty_subst_list_s.
+  apply list_eq_ext'; simpl_len; auto. intros n1 d Hn.
+  rewrite map_nth_inbound with (d2:=vty_int) by solve_len.
+  rewrite !nth_repeat' by auto.
+  unfold ty_subst_s. simpl.
+  rewrite ty_subst_fun_cons. destruct (string_dec _ _); auto. contradiction.
 Qed.
 
 (*Now prove the [funsym_sigma_args]*)
 Lemma selector_sigma_args {m a s1 srts} csl (m_in: mut_in_ctx m gamma) (a_in: adt_in_mut a m)
   (srts_len: length srts = (length (m_params m))):
   sym_sigma_args (selector_funsym badnames (adt_name a) csl) (s1 :: srts) =
-  typesym_to_sort (adt_name a) srts :: repeat s1 (length csl).
+  s_cons (adt_name a) srts :: repeat s1 (length csl).
 Proof.
   unfold sym_sigma_args.
   rewrite (selector_funsym_params csl m_in a_in), (selector_funsym_args csl m_in a_in).
@@ -280,15 +282,15 @@ Proof.
       simpl in Hinx. simpl_set; subst.
       apply (gen_name_notin "a"%string (list_to_aset (m_params m))); simpl_set; auto.
     }
-    apply sort_inj. simpl. f_equal.
-    apply list_eq_ext'; rewrite !length_map; auto.
+    unfold ty_subst_s. simpl.
+    f_equal.
+    apply list_eq_ext'; simpl_len; auto.
     intros n d Hn.
     rewrite !map_map.
     rewrite !map_nth_inbound with (d2:=""%string) by solve_len.
     simpl. 
     rewrite ty_subst_fun_nth with (s:=s_int); try solve_len.
     + apply nth_indep. solve_len.
-    + unfold sorts_to_tys. solve_len.
     + apply m_params_Nodup; auto.
   - apply ty_subst_list_s_onlyhead.
 Qed.
@@ -323,12 +325,9 @@ Lemma selector_nth_args_ret {m a s1 srts n csl} (m_in: mut_in_ctx m gamma) (a_in
 Proof.
   unfold funsym_sigma_ret. rewrite (selector_funsym_ret csl m_in a_in).
   rewrite (selector_funsym_params csl m_in a_in).
-  apply sort_inj. simpl.
-  destruct (typevar_eq_dec _ _); [|contradiction]; simpl.
-  f_equal.
-  rewrite nth_indep with (d':=s1).
-  - apply nth_repeat.
-  - solve_len.
+  unfold ty_subst_s. simpl. rewrite ty_subst_fun_cons.
+  destruct (string_dec _ _); simpl; [|contradiction].
+  rewrite nth_repeat'; auto.
 Qed.
 
 
@@ -380,7 +379,7 @@ Proof. reflexivity. Qed.
 Lemma indexer_sigma_args {m a srts} (m_in: mut_in_ctx m gamma) (a_in: adt_in_mut a m)
   (srts_len: length srts = (length (m_params m))):
   sym_sigma_args (indexer_funsym badnames (adt_name a)) srts =
-  [typesym_to_sort (adt_name a) srts].
+  [s_cons (adt_name a) srts].
 Proof.
   unfold sym_sigma_args.
   rewrite (indexer_funsym_params m_in a_in), (indexer_funsym_args m_in a_in).

@@ -651,8 +651,8 @@ Proof.
   apply list_eq_ext'; rewrite !length_map; auto.
   intros n d Hn.
   rewrite !map_nth_inbound with (d2:=vty_int); auto.
-  apply sort_inj; simpl.
-  apply v_subst_aux_ext. intros.
+  unfold ty_subst_s. apply v_subst_ext.
+  intros.
   assert (Hinx: In x (s_params s)) by
     (revert H; apply typevars_in_params; auto).
   destruct (In_nth _ _ EmptyString Hinx) as [j [Hj Hx]].

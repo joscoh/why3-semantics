@@ -1132,9 +1132,9 @@ Proof.
   simpl. f_equal.
   rewrite <- map_ty_subst_var_sort at 1.
   2: symmetry; apply srts_len.
-  rewrite -!map_comp.
+  rewrite <- map_map.
   apply map_ext_in_iff.
-  intros. simpl. unfold ty_subst_s. simpl. f_equal. symmetry.
+  intros. simpl. unfold ty_subst_s. simpl. f_equal. f_equal. symmetry.
   apply (adt_constr_params gamma_valid m_in t_in c_in).
   clear -m. destruct m; simpl.
   apply /nodup_NoDup. apply m_nodup.

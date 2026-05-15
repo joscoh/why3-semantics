@@ -223,11 +223,10 @@ Lemma ty_subst_fun_cases {A: Type}: forall params tys (d: A) v,
   (In (ty_subst_fun params tys d v) tys) \/
   (ty_subst_fun params tys d v = d).
 Proof.
-  intros. revert tys.
-  induction params; simpl; auto.
-  destruct tys; auto.
-  destruct (typevar_eq_dec v a); subst; simpl; auto.
-  specialize (IHparams tys). destruct IHparams; auto.
+  intros. unfold ty_subst_fun.
+  destruct (get_assoc_list _ _ _) eqn : Ha; auto.
+  apply get_assoc_list_some in Ha. 
+  apply in_combine_r in Ha. auto.
 Qed.
 
 Lemma valid_type_subst: forall s ty f,

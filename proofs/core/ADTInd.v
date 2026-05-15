@@ -107,68 +107,66 @@ Qed.
   few functions. This seems a bit hacky:*)
 
 (*A list of the "smaller" types contained in a type*)
-Definition subterm_ty (v: vty) : list vty :=
-  match v with
-  | vty_cons _ tys => tys
+Definition subterm_ty (s: sort) : list sort :=
+  match s with
+  | s_cons _ tys => tys
   | _ => nil
   end.
 
-Fixpoint vty_size (v: vty) : nat :=
-  match v with
-  | vty_int => 1
-  | vty_real => 1
-  | vty_var _ => 1
-  | vty_cons _ ts => 1 + sum (map vty_size ts)
+Fixpoint sort_size (s: sort) : nat :=
+  match s with
+  | s_int => 1
+  | s_real => 1
+  | s_cons _ ts => 1 + sum (map sort_size ts)
   end.
 
-Definition vtys_size (l: list vty) : nat :=
-  sum (map vty_size l).
+Definition sorts_size (l: list sort) : nat :=
+  sum (map sort_size l).
 
-Lemma vty_size_eq (v: vty):
-  vty_size v =
-  match v with
-  | vty_int => 1
-  | vty_real => 1
-  | vty_var _ => 1
-  | vty_cons _ ts => 1 + vtys_size ts
+Lemma sort_size_eq (s: sort):
+  sort_size s =
+  match s with
+  | s_int => 1
+  | s_real => 1
+  | s_cons _ ts => 1 + sorts_size ts
   end.
 Proof.
-  destruct v; auto.
+  destruct s; auto.
 Qed.
 
-(*The size of a single type is smaller than 
+(*The size of a single sort is smaller than 
   the whole list*)
-Lemma vtys_size_in (l: list vty) (t: vty):
-  In t l ->
-  vty_size t <= vtys_size l.
+Lemma sorts_size_in (l: list sort) (s: sort):
+  In s l ->
+  sort_size s <= sorts_size l.
 Proof.
-  unfold vtys_size.
-  induction l; simpl; intros; auto. destruct H.
-  destruct H; subst; try lia.
+  unfold sorts_size.
+  induction l; simpl; intros; auto. contradiction.
+  destruct_all; subst; try lia.
   specialize (IHl H). lia.
 Qed.
   
 (*An obvious lemma but one that is tricky to prove.
   We prove this by giving the above size function
-  and proving that if (vty_cons t l) is in l, then
+  and proving that if (s_cons t l) is in l, then
   it has a smaller size than l, a contradiction *)
 (*Note: I believe that the same proof holds for any
   coutable type*)
-Lemma sub_not_whole : forall t l,
-    ~ In (vty_cons t l) l.
+Lemma sub_not_whole : forall s l,
+    ~ In (s_cons s l) l.
 Proof.
   intros. intro C.
-  apply vtys_size_in in C.
-  rewrite vty_size_eq in C. lia.
+  apply sorts_size_in in C.
+  rewrite sort_size_eq in C. lia.
 Qed.
 
 (*As a corollary, we get the following*)
-Lemma list_srts_not_whole (n: nat) (tys: list vty) (ts: typesym):
-  List.nth n tys vty_int <> vty_cons ts tys.
+Lemma list_srts_not_whole (n: nat) (srts: list sort) (ts: typesym):
+  List.nth n srts s_int <> s_cons ts srts.
 Proof.
-  assert (n < length tys \/ length tys <= n) by lia. destruct H.
+  assert (Hn: n < length srts \/ length srts <= n) by lia. destruct Hn.
   - intro C.
-    apply (sub_not_whole ts tys). rewrite <- C.
+    apply (sub_not_whole ts srts). rewrite <- C.
     apply nth_In; auto.
   - rewrite nth_overflow; auto.
 Qed. 
@@ -182,7 +180,7 @@ Theorem adts_from_constrs {m: mut_adt} (m_in: mut_in_ctx m gamma)
   (Hj: j < Datatypes.length (s_args c))
   (Hlen: Datatypes.length srts = Datatypes.length (m_params m))
   (Hnth: nth j (sym_sigma_args c srts) s_int =
-    typesym_to_sort (adt_name t') srts):
+    s_cons (adt_name t') srts):
   nth j (s_args c) vty_int =
     vty_cons (adt_name t') (map vty_var (ts_args (adt_name t'))).
 Proof.
@@ -191,27 +189,23 @@ Proof.
     auto. apply Hini. apply c_in. 
   }
   revert Hnth.
-  unfold sym_sigma_args, typesym_to_sort, ty_subst_list_s.
+  unfold sym_sigma_args, ty_subst_list_s.
   rewrite map_nth_inbound with(d2:=vty_int); auto.
-  unfold ty_subst_s, v_subst; intros Heq.
-  inversion Heq. clear Heq.
-  destruct (nth j (s_args c) vty_int) eqn : Hnth; simpl in H0;
-  try solve[inversion H0].
+  unfold ty_subst_s; intros Heq.
+  destruct (nth j (s_args c) vty_int) eqn : Hnth; simpl in Heq; try discriminate.
   - destruct (in_dec typevar_eq_dec t (s_params c)).
     + destruct (In_nth _ _ EmptyString i) as [n [Hn Hnthn]].
-      rewrite <- Hnthn in H0.
-      rewrite ty_subst_fun_nth with(s:=vty_int) in H0; auto.
-      * unfold sorts_to_tys in H0.
-        exfalso.
+      rewrite <- Hnthn in Heq.
+      rewrite ty_subst_fun_nth with(s:=s_int) in Heq; auto.
+      * exfalso.
         (*We get contradiction: can't have srts inside srts
           This proves that this case cannot happen*)
-        apply (list_srts_not_whole n (sorts_to_tys srts) (adt_name t')); auto.
-      * unfold sorts_to_tys. rewrite length_map, Hlen, Hparams.
-        reflexivity.
+         apply (list_srts_not_whole n srts (adt_name t')); auto.
+      * rewrite Hparams; lia.
       * apply s_params_Nodup.
-    + rewrite ty_subst_fun_notin in H0; auto. inversion H0.
+    + rewrite ty_subst_fun_notin in Heq; auto. discriminate.
   - (*The case that can actually happen: cons*)
-    inversion H0; subst. clear H0. 
+    inversion Heq; subst. clear Heq. 
     (*Use uniformity - just instantiate all hyps, takes a while
       should automate*)
     assert (Hunif: uniform m). {

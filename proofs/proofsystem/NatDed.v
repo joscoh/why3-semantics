@@ -1051,7 +1051,7 @@ Proof.
 Qed.    
 
 End InterpWithConst.
-  
+
 
 (*Finally, we can prove the transformation sound.
   It is quite difficult.*)
@@ -1079,18 +1079,26 @@ Proof.
     rewrite aset_union_empty, andb_true in f_mono.
     apply f_mono.
   }
-  assert (Hnotused: ~ In (const_noconstr name (snd v)) (sig_f gamma)). {
+  destruct v as [vn vty]; simpl in *.
+  set (sty := ty_to_sort vty Hsort).
+  assert (Hsty: sort_to_ty sty = vty). {
+    unfold sty. apply ty_to_sort_to_ty.
+  }
+  assert (Hnotused: ~ In (const_noconstr name vty) (sig_f gamma)). {
     intro C. apply n. apply sig_f_in_idents. 
-    rewrite in_map_iff. exists (const_noconstr name (snd v)).
+    rewrite in_map_iff. exists (const_noconstr name vty).
     split; auto.
   }
-  assert (Htyval: valid_type gamma (snd v)). {
+  assert (Htyval: valid_type gamma vty). {
+    unfold sty in *.
     destruct t_wf.
     simpl_task. destruct task_goal_closed.
+    clear Hsty.
     inversion f_ty; subst. auto.
   }
   (*First, prove new context is valid*)
-  assert (gamma_valid': valid_context (abs_fun (const_noconstr name (snd v)) :: gamma)). {
+  assert (gamma_valid': valid_context (abs_fun (const_noconstr name sty) :: gamma)). {
+    rewrite Hsty. clear Hsty sty.
     constructor; simpl; auto; try constructor; auto; try solve[constructor].
     - unfold wf_funsym. simpl. constructor; auto.
       split.
@@ -1099,6 +1107,7 @@ Proof.
       + intros tv Hmem. apply aset_is_empty_mem with (x:=tv) in Hsort. contradiction.
     - unfold idents_of_def; simpl. intros x [[Heq | []] Hinx2]; subst; contradiction.
   }
+  symmetry in Hsty. rewrite Hsty in *.
   specialize (Hval gamma_valid' Hwf).
   (*Now, things get complicated*)
   unfold log_conseq_gen in *. intros.
@@ -1114,16 +1123,18 @@ Proof.
     which is the same as I, but sends [[c]] to (v_subst vt (snd v))
     and sends funs c to d
     *)
-  destruct v as [vn vty]; simpl in *.
-  set (sty := exist _ vty Hsort : sort).
   assert (v_subst vt vty = sty).
   {
-    apply sort_inj; simpl.
-    symmetry. apply subst_is_sort_eq. auto.
+    symmetry. apply sort_inj. rewrite <- subst_is_sort_eq; auto.
   }
   (*Annoying dependent type stuff: need to change d to
     have type domain (dom_aux pd vty)*)
   set (d' := dom_cast _ H0 d).
+  (*Forget sty so we can subst vty*)
+  generalize dependent sty. intros.
+  generalize dependent H0.
+  subst. intros H0 d'.
+  set (vty':=(sort_to_ty sty)) in *.
   (*And this is a full interp*)
   pose proof (interp_with_const_full gamma_valid name sty 
     gamma_valid' pd pdf pf pf_full d').
@@ -1137,9 +1148,9 @@ Proof.
       rewrite (satisfies_ext gamma_valid' gamma_valid).
       apply H. Unshelve. all: auto.
       intros. subst pf'. simpl.
-      rewrite funs_with_const_diff; auto.
-      intro C; subst.
-      assert (In (const_noconstr name vty) (sig_f gamma)); try contradiction.
+      rewrite funs_with_const_diff; auto. 
+      intro C; subst fs.
+      assert (In (const_noconstr name vty') (sig_f gamma)); try contradiction.
       eapply formula_typed_funsym_in_sig.
       2: apply H2.
       destruct t_wf.
@@ -1151,17 +1162,19 @@ Proof.
   unfold satisfies in Hval.
   specialize (Hval vt vv).
   (*A few typing lemmas*)
-  assert (Hty1: term_has_type (abs_fun (const_noconstr name vty) :: gamma) (t_constsym name vty) vty).
+  assert (Hty1: term_has_type (abs_fun (const_noconstr name vty') :: gamma) 
+    (t_constsym name vty') vty').
   {
     unfold t_constsym.
-    assert (vty = ty_subst (s_params (const_noconstr name vty)) nil (f_ret
-      (const_noconstr name vty))). {
-      simpl. unfold ty_subst. rewrite <- subst_is_sort_eq; auto.
+    assert (vty' = ty_subst (s_params (const_noconstr name vty')) nil (f_ret
+      (const_noconstr name vty'))). {
+      simpl. unfold ty_subst.
+      rewrite <- subst_aux_sort_eq; auto.
     }
     rewrite H2 at 3.
     constructor; simpl; auto.
     revert Htyval. apply valid_type_sublist, expand_sublist_sig.
-    rewrite find_args_sort; auto.
+    rewrite find_args_sort; auto. 
   }
   assert (f_ty: formula_typed gamma f). {
     destruct t_wf.
@@ -1171,7 +1184,7 @@ Proof.
   }
   erewrite safe_sub_f_rep with(Hty1:=Hty1) in Hval.
   (*And now we just have to prove these things equal*)
-  assert ((term_rep gamma_valid' pd _ vt pf' vv (t_constsym name vty) vty Hty1) = d). {
+  assert ((term_rep gamma_valid' pd _ vt pf' vv (t_constsym name vty') vty' Hty1) = d). {
     unfold t_constsym. simpl_rep_full.
     unfold fun_arg_list. simpl.
     erewrite funs_with_const_same.
@@ -1184,14 +1197,13 @@ Proof.
   apply Hval. all: auto.
   intros. subst pf'. simpl.
   rewrite funs_with_const_diff; auto.
-  intro C. subst d'. subst.
-  assert (In (const_noconstr name vty) (sig_f gamma)); try contradiction.
+  intro C. subst d'. subst vty'. subst. set (vty':=(sort_to_ty sty)) in *.
+  assert (In (const_noconstr name vty') (sig_f gamma)); try contradiction.
   eapply formula_typed_funsym_in_sig.
   apply f_ty. auto.
   Unshelve.
   - unfold funsym_sigma_ret. simpl.
-    apply sort_inj. simpl.
-    rewrite <- subst_is_sort_eq; auto.
+    unfold ty_subst_s. apply subst_sort_eq. 
   - revert f_ty. apply formula_typed_sublist.
     apply expand_sublist_sig.
     apply expand_mut_sublist.
@@ -1581,7 +1593,7 @@ Lemma t_constsym_ty gamma name ty:
 Proof.
   intros. unfold t_constsym.
   assert (ty = ty_subst (s_params (const_noconstr name ty)) nil (f_ret (const_noconstr name ty))). {
-    simpl. unfold ty_subst. apply subst_is_sort_eq; auto.
+    simpl. unfold ty_subst. Search v_subst apply subst_sort_eq; auto.
   }
   rewrite H2 at 2.
   constructor; auto; simpl. rewrite find_args_sort; auto.
