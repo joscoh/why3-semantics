@@ -1593,7 +1593,7 @@ Lemma t_constsym_ty gamma name ty:
 Proof.
   intros. unfold t_constsym.
   assert (ty = ty_subst (s_params (const_noconstr name ty)) nil (f_ret (const_noconstr name ty))). {
-    simpl. unfold ty_subst. Search v_subst apply subst_sort_eq; auto.
+    simpl. unfold ty_subst. rewrite <- subst_aux_sort_eq; auto.
   }
   rewrite H2 at 2.
   constructor; auto; simpl. rewrite find_args_sort; auto.
@@ -1624,26 +1624,35 @@ Proof.
     clear -f_mono.
     rewrite aset_union_empty, andb_true in f_mono. apply f_mono.
   }
-  assert (Hnotused: ~ In (const_noconstr name (snd x)) (sig_f gamma)). {
+  destruct x as [xn xty]; simpl in *.
+  set (sty := ty_to_sort xty Hsort).
+  assert (Hsty: sort_to_ty sty = xty). {
+    unfold sty. apply ty_to_sort_to_ty.
+  }
+  assert (Hnotused: ~ In (const_noconstr name xty) (sig_f gamma)). {
     intro C. apply n. apply sig_f_in_idents. rewrite in_map_iff. 
-    exists (const_noconstr name (snd x)).
+    exists (const_noconstr name xty).
     split; auto.
   }
-  assert (Htyval: valid_type gamma (snd x)). {
+  assert (Htyval: valid_type gamma xty). {
     destruct Hwf1; simpl_task.
     destruct task_goal_closed.
+    clear Hsty.
     inversion f_ty; subst. auto.
   }
   (*First, prove new context is valid*)
-  assert (gamma_valid': valid_context (abs_fun (const_noconstr name (snd x)) :: gamma)). {
+  assert (gamma_valid': valid_context (abs_fun (const_noconstr name sty) :: gamma)). {
+    rewrite Hsty. clear Hsty sty.
     constructor; simpl; auto; try constructor; auto; try solve[constructor].
     - unfold wf_funsym. simpl. constructor; auto.
       split.
       + revert Htyval. apply valid_type_sublist.
         apply expand_sublist_sig.
-      + intros tv Hmem. apply aset_is_empty_mem with (x:=tv) in Hsort; contradiction.
-    - unfold idents_of_def; simpl. intros y [[Heq | []] Hinx2]; subst; contradiction.
+      + intros tv Hmem. apply aset_is_empty_mem with (x:=tv) in Hsort. contradiction.
+    - unfold idents_of_def; simpl. intros x [[Heq | []] Hinx2]; subst; contradiction.
   }
+  
+  symmetry in Hsty. rewrite Hsty in *.
   specialize (Hval2 gamma_valid' Hwf2).
   unfold log_conseq_gen in *.
   intros.
@@ -1658,37 +1667,38 @@ Proof.
   specialize (Hval1 vt vv). revert Hval1.
   simpl_rep_full. rewrite simpl_all_dec. intros [d Hrepd].
   (*Now instantiate Hval2 with the interp that sends c to d*)
-  assert (is_sort (snd x)). {
-    unfold is_sort. rewrite Hsort; auto.
-  }
-  destruct x as [xn xty]; simpl in *.
   (*Cast d to sort*)
-  assert (Hsubst: v_subst vt xty = exist _ xty H0). {
-    apply sort_inj; simpl.
-    symmetry. apply subst_is_sort_eq; auto.
+  assert (Hsubst: v_subst vt xty = sty).
+  {
+    symmetry. apply sort_inj. rewrite <- subst_is_sort_eq; auto.
   }
   set (d' := dom_cast (dom_aux pd) Hsubst d).
-  (*assert (xty = sort_to_ty (exist _ xty H0)). reflexivity.*)
-  specialize (Hval2 pd _ (pf_with_const gamma_valid _ (exist _ xty H0) gamma_valid' pd pdf pf d')
+  (*Forget sty so we can subst vty*)
+  generalize dependent sty. intros.
+  generalize dependent Hsort.
+  subst. intros Hsort.
+  set (xty':=(sort_to_ty sty)) in *.
+  specialize (Hval2 pd _ (pf_with_const gamma_valid _ sty gamma_valid' pd pdf pf d')
     (interp_with_const_full gamma_valid _ _ _ pd pdf pf pf_full d')).
   prove_hyp Hval2.
   {
     (*Idea: if we have new goal, true because of how we set c to d.
       Otherwise true because c doesn't appear*)
     intros d1 Hd1.
-    destruct Hd1; subst.
-    - unfold satisfies. intros.
-      assert (Htyc: term_has_type (abs_fun (const_noconstr name xty) :: gamma) (t_constsym name xty) xty). {
+    destruct Hd1.
+    - subst d1. unfold satisfies. intros.
+      assert (Htyc: term_has_type (abs_fun (const_noconstr name xty') :: gamma) (t_constsym name xty') xty'). {
         apply t_constsym_ty; simpl; auto.
         revert Htyval.
         apply valid_type_sublist.
         apply expand_sublist_sig.
       }
-      assert (Htyf: formula_typed (abs_fun (const_noconstr name xty) :: gamma) f). {
+      assert (Htyf: formula_typed (abs_fun (const_noconstr name xty') :: gamma) f). {
         destruct Hwf1. simpl_task.
         destruct task_goal_closed; simpl_task.
+        clear Hsubst d' Hval2.
         inversion f_ty; subst.
-        revert H6.
+        revert H5.
         apply formula_typed_sublist.
         apply expand_sublist_sig.
         simpl; apply sublist_refl.
@@ -1706,10 +1716,10 @@ Proof.
         + (*First, c does not appear in f*) 
           intros.
           rewrite funs_with_const_diff; auto.
-          intro C; subst.
+          intro C; subst fs.
           simpl in *.
           apply Hnotused.
-          revert H1. apply formula_typed_funsym_in_sig.
+          revert H0. apply formula_typed_funsym_in_sig.
           destruct Hwf1. simpl_task.
           destruct task_goal_closed; auto.
           inversion f_ty;auto.
@@ -1717,7 +1727,7 @@ Proof.
           destruct Hwf1. simpl_task.
           destruct task_goal_closed.
           unfold mono in f_mono.
-          clear -f_mono H1.
+          clear -f_mono H0.
           simpl in f_mono. rewrite aset_union_empty, andb_true in f_mono.
           destruct f_mono as [_ Hsort].
           apply aset_is_empty_mem with (x:=x) in Hsort; contradiction.
@@ -1725,24 +1735,24 @@ Proof.
             set c to go to d'*)
             intros.
             (*Only fv of f is (xn, xty)*)
-            assert (Hfvs: asubset (fmla_fv f) (aset_singleton (xn, xty))). {
+            assert (Hfvs: asubset (fmla_fv f) (aset_singleton (xn, xty'))). {
               destruct Hwf1. simpl_task. destruct task_goal_closed.
               clear -f_closed.
               unfold closed_formula in f_closed. simpl in f_closed.
               rewrite asubset_def. intros x Hmemx. simpl_set.
-              vsym_eq x (xn, xty). apply aset_is_empty_mem with (x:=x) in f_closed.
+              vsym_eq x (xn, xty'). apply aset_is_empty_mem with (x:=x) in f_closed.
               exfalso; apply f_closed; simpl_set; auto.
             }
             unfold substi.
             unfold sublist in Hfvs. simpl in Hfvs.
-            assert ((xn, xty) = x). {
+            assert ((xn, xty') = x). {
               rewrite asubset_def in Hfvs.
-              apply Hfvs in Hinx; destruct_all; auto. simpl_set; subst. auto.
-            } subst.
-            vsym_eq (xn, xty) (xn, xty).
+              apply Hfvs in Hinx. simpl_set. subst x. reflexivity.
+            } subst x.
+            destruct (vsymbol_eq_dec _ _); [|contradiction].
             assert (e = eq_refl). {
               apply UIP_dec. apply vsymbol_eq_dec.
-            } subst. simpl.
+            } subst e. simpl.
             unfold t_constsym. simpl_rep.
             simpl.
             unfold fun_arg_list; simpl.
@@ -1755,10 +1765,10 @@ Proof.
     - (*Otherwise, the same because c not in Delta*)
       erewrite satisfies_ext. apply (H d1 i). all: simpl; auto.
       intros. rewrite funs_with_const_diff; auto.
-      intro C; subst.
+      intro C; subst fs.
       simpl in *.
       apply Hnotused.
-      revert H1. apply formula_typed_funsym_in_sig.
+      revert H0. apply formula_typed_funsym_in_sig.
       destruct Hwf1. simpl_task.
       destruct task_wf_typed.
       clear -task_delta_typed i.
@@ -1771,10 +1781,10 @@ Proof.
   revert Hval2. erewrite fmla_change_gamma_pf. intros->. all: auto.
   intros. simpl.
   rewrite funs_with_const_diff; auto.
-  intro C; subst.
+  intro C; subst fs.
   simpl in *.
   apply Hnotused.
-  revert H1. apply formula_typed_funsym_in_sig.
+  revert H0. apply formula_typed_funsym_in_sig.
   destruct t_wf. simpl_task.
   destruct task_goal_closed;auto.
 Qed.
@@ -1847,7 +1857,7 @@ Proof.
   induction t; simpl in *; auto; simpl_set.
   - specialize (H _ ltac:(simpl_set; auto)).
     destruct (In_nth _ _ EmptyString H) as [n [Hn Hv]]; subst.
-    rewrite ty_subst_fun_nth with(s:=s_int) in H2; auto.
+    rewrite ty_subst_fun_nth with(s:=vty_int) in H2; auto.
     exists (nth n tys vty_int). split; auto.
     apply nth_In; auto. rewrite H0; auto.
   - simpl_set.
