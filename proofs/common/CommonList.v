@@ -4,6 +4,15 @@ Require Export Stdlib.Arith.PeanoNat.
 Require Export Stdlib.Sorting.Permutation.
 Export ListNotations.
 
+(*Can be used in induction principles for nested inductives*)
+Definition mk_Forall {A: Type} {P: A -> Prop} := 
+  fun (f: forall x, P x) =>
+    fix mk_Forall (l: list A) {struct l} : Forall P l :=
+      match l with
+      | nil => Forall_nil _
+      | x :: xs => Forall_cons _ (f x) (mk_Forall xs)
+      end.
+
 (*Results about filter*)
 Section Filter.
 
@@ -1556,6 +1565,14 @@ Proof.
   contradiction.
 Qed.
 
+Definition mk_ForallT {A: Type} {P: A -> Type} := 
+  fun (f: forall x, P x) =>
+    fix mk_ForallT (l: list A) {struct l} : ForallT P l :=
+      match l with
+      | nil => ForallT_nil _
+      | x :: xs => ForallT_cons _ (f x) (mk_ForallT xs)
+      end.
+
 End ForallT.
 
 
@@ -2878,6 +2895,49 @@ Proof.
   destruct a as [h1 h2]; subst; simpl in *.
   destruct (eq_dec x h1); subst; auto.
   exfalso. apply H1. rewrite in_map_iff. exists (h1, y); auto.
+Qed.
+
+Definition opt_rel {A: Type} (p: A -> A -> bool) (o1 o2: option A) : bool :=
+  match o1, o2 with
+  | Some x1, Some x2 => p x1 x2
+  | None, None => true
+  | _, _ => false
+  end.
+
+Lemma get_assoc_list_rel {A B : Type} eq_dec (p: B -> B -> bool) (l: list A) l1 l2 x:
+  length l1 = length l2 ->
+  all2 p l1 l2 ->
+  opt_rel p (get_assoc_list eq_dec (combine l l1) x) (get_assoc_list eq_dec (combine l l2) x).
+Proof.
+  revert l l2. induction l1 as [| h1 t1 IH]; intros l [| h2 t2]; simpl; try discriminate.
+  - intros _ _. destruct l; simpl; auto.
+  - intros Hlen. rewrite all2_cons, andb_true.
+    intros [Hp Hall]. destruct l as [| h t]; simpl; auto.
+    destruct (eq_dec x h); subst; auto.
+Qed.
+
+Lemma get_assoc_list_combine_map {A B C: Type} eq_dec (l1: list A) (l2: list B) (f: B -> C) x:
+  get_assoc_list eq_dec (combine l1 (List.map f l2)) x = option_map f (get_assoc_list eq_dec (combine l1 l2) x).
+Proof.
+  revert l2. induction l1 as [| h1 t1 IH]; intros [| h2 t2]; simpl; auto.
+  destruct (eq_dec _ _); subst; auto.
+Qed.
+
+Lemma get_assoc_list_combine_nth {A B: Type} eq_dec (l1: list A) (l2: list B) a b n:
+  NoDup l1 ->
+  n < length l1 ->
+  n < length l2 ->
+  get_assoc_list eq_dec (combine l1 l2) (ListDef.nth n l1 a) = Some (ListDef.nth n l2 b).
+Proof.
+  intros Hnodup.
+  generalize dependent n.
+  revert l2. induction l1 as [| h1 t1 IH]; intros[|h2 t2]; simpl in *; intros n Hlen1 Hlen2; try lia.
+  destruct n as [| n'].
+  - destruct (eq_dec _ _); auto. contradiction.
+  - inversion Hnodup as [| ? ? Hnotin Hno]; subst.
+    destruct (eq_dec _ _).
+    + exfalso. subst. apply Hnotin, nth_In. lia.
+    + rewrite IH; auto; lia.
 Qed.
 
 End AssocList.

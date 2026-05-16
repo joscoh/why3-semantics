@@ -268,7 +268,7 @@ Proof.
   apply is_vty_adt_some in Hisadt.
   destruct Hisadt as [Hsndv [a_in m_in]].
   destruct v as [x ty]; simpl in *; subst.
-  assert (Heq: v_subst vt (vty_cons (adt_name a) vs) = typesym_to_sort (adt_name a) (map (v_subst vt) vs)). {
+  assert (Heq: v_subst vt (vty_cons (adt_name a) vs) = s_cons (adt_name a) (map (v_subst vt) vs)). {
     apply sort_inj; simpl. rewrite !map_map. auto.
   }
   set (d':= scast (adts pdf m (map (v_subst vt) vs) a m_in a_in) (dom_cast (dom_aux pd) Heq d)).
@@ -546,7 +546,7 @@ Proof.
     (*Now need to transform into IH format*)
     specialize (IH i a a_in).
     assert (Heq2 : nth i (sym_sigma_args c (map (v_subst vt) vs)) s_int =
-    typesym_to_sort (adt_name a) (map (v_subst vt) vs)).
+    s_cons (adt_name a) (map (v_subst vt) vs)).
     {
       unfold sym_sigma_args, ty_subst_list_s.
       rewrite map_nth_inbound with (d2:=vty_int); auto.

@@ -883,7 +883,7 @@ Proof.
         (*Now we know constrs and arg lists have to be equal*)
         assert (Hxd: (scast (eq_sym Heq4) x) = d). {
           rewrite Hx. rewrite scast_scast, eq_trans_sym_inv_r. simpl.
-          unfold d. apply term_rep_irrel.
+          unfold d. apply (term_rep_irrel gamma_valid pd pdf pf vt vv tm (vty_cons (adt_name a) args)).
         }
         rewrite Hxd in Hsem2.
         assert (Hcs: c = c1). {
@@ -1348,6 +1348,7 @@ Proof.
 Qed.
 
 Opaque list_to_aset.
+Opaque ty_subst.
 
 (*The full result*)
 Theorem rewrite_rep t f:
@@ -1635,7 +1636,7 @@ Proof.
       intros ty' Hty'; subst ty'.
       (*Do same for sorts*)
       assert (Htyeq: ty_subst_s (a_ts :: m_params m) (v_subst vt ty :: map (v_subst vt) args)
-          (vty_cons (adt_name a) (map vty_var (m_params m))) = typesym_to_sort (adt_name a) (map (v_subst vt) args)).
+          (vty_cons (adt_name a) (map vty_var (m_params m))) = s_cons (adt_name a) (map (v_subst vt) args)).
       { apply cons_inj_hd in Heq1. rewrite <- Heq1. reflexivity. }
       revert Heq1.
       rewrite Htyeq. clear Htyeq. clear Heq3. intros Heq1. 
@@ -1701,7 +1702,7 @@ Proof.
         simpl.
         rewrite Heq1.
         rewrite !nth_repeat' by auto.
-        unfold ty_subst. simpl. destruct (typevar_eq_dec a_ts a_ts); auto. contradiction.
+        rewrite Types.ty_subst_var, ty_subst_fun_cons. destruct (string_dec a_ts a_ts); auto. contradiction.
       }
       assert (Htyith: term_has_type new_gamma (nth i tl tm_d)
       (ty_subst (a_ts :: m_params m) (ty :: args)
@@ -1719,8 +1720,9 @@ Proof.
         simpl. unfold ty_subst at 4 6. simpl.
         destruct (typevar_eq_dec a_ts a_ts); [|contradiction].
         simpl. rewrite nth_repeat' by auto.
-        intros Hcombine. unfold ty_subst; simpl. destruct (typevar_eq_dec a_ts a_ts); [|contradiction].
-        simpl. specialize (Hcombine (nth i tl tm_d, ty)).
+        intros Hcombine. rewrite Types.ty_subst_var, !ty_subst_fun_cons.
+        destruct (string_dec a_ts a_ts); [|contradiction]. simpl.
+        specialize (Hcombine (nth i tl tm_d, ty)).
         apply Hcombine. right.
         assert (Htl: Datatypes.length tl = Datatypes.length (adt_constr_list a)).
         { revert H6. simpl. solve_len. }
@@ -1728,8 +1730,8 @@ Proof.
         rewrite Htl. exists i. split; auto. intros d1 d2.
         f_equal; [apply nth_indep;lia|].
         rewrite map_nth_inbound with (d2:=vty_int) by solve_len.
-        rewrite nth_repeat' by auto. unfold ty_subst; simpl.
-        destruct (typevar_eq_dec a_ts a_ts); auto. contradiction.
+        rewrite nth_repeat' by auto. rewrite Types.ty_subst_var, !ty_subst_fun_cons.
+        destruct (string_dec a_ts a_ts); auto. contradiction.
       }
       (*Now finally simplify the [get_arg_list]*)
       rewrite (get_arg_list_hnth pd vt id_fs (ty :: args) tl) with (Heq:=Heq7)(Hty:=Htyith); auto; [|solve_len].
@@ -1738,7 +1740,7 @@ Proof.
       revert Htyith.
       rewrite nth_repeat' by auto.
       (*And simplify ty_subst*)
-      unfold ty_subst. simpl. destruct (typevar_eq_dec a_ts a_ts); [|contradiction]. simpl.
+      rewrite Types.ty_subst_var, !ty_subst_fun_cons. destruct (string_dec a_ts a_ts); [|contradiction]. simpl.
       intros Htyith Heq1. assert (Heq1=eq_refl) by (apply UIP_dec, sort_eq_dec). subst Heq1.
       unfold dom_cast; simpl. (*No more casting!*)
       (*Now we appeal to our previous result*)
@@ -2917,7 +2919,7 @@ Proof.
     is definitionally equal to Z, but Coq will not let us rewrite, generalize, etc. A solution is to
     lift everything to [scast], where we need UIP. Then we can "change" everything manually to Z,
     and finally use UIP to remove the cast. This is horrible*)
-  unfold dom_cast. intros Heq1 Heq2 Heq3. rewrite scast_scast.
+  unfold dom_cast. intros Heq1 Heq2.
   match goal with |- scast ?H ?x = _ => generalize dependent H end.
   simpl.
   (*Some simplification now*)
@@ -2943,7 +2945,7 @@ Proof.
   generalize dependent (eq_sym (indexer_sigma_args gamma_valid (list_to_aset (idents_of_context gamma)) m_in a_in Hlen')).
   unfold sym_sigma_args in *.
   (*Now general enough to simplify args*)
-  rewrite (indexer_funsym_args gamma_valid (list_to_aset (idents_of_context gamma)) m_in a_in). simpl. clear Heq2 Heq3.
+  rewrite (indexer_funsym_args gamma_valid (list_to_aset (idents_of_context gamma)) m_in a_in). simpl. clear Heq2.
   intros Heq1 Hall1 _ Heq2.
   gen_dom_cast. revert Heq1 Hall1.
   (*General enough for params*)
@@ -3196,10 +3198,10 @@ Proof.
   (*Do same for sorts*)
   assert (Htyeq: ty_subst_s (a_ts :: m_params m)
          (v_subst vt (vty_var tsa) :: map (v_subst vt) (map vty_var (ts_args (adt_name a))))
-         (vty_cons (adt_name a) args) = typesym_to_sort (adt_name a) (map (v_subst vt) args)).
-  { apply cons_inj_hd in Heq1. rewrite <- Heq1.
+         (vty_cons (adt_name a) args) = s_cons (adt_name a) (map (v_subst vt) args)).
+  { apply cons_inj_hd in Heq1. simpl. rewrite <- Heq1.
     unfold args. rewrite (adt_args gamma_valid m_in a_in). reflexivity. }
-  revert Heq1.
+  revert Heq1. simpl in Htyeq.
   rewrite Htyeq. clear Htyeq. intros Heq1. 
   rewrite cast_arg_list_cons.
   (*Now, relate the two parts of the arg_list in x*)
@@ -3245,8 +3247,8 @@ Proof.
     (*Now show each is variable*)
     unfold ty_subst; simpl.
     destruct (typevar_eq_dec a_ts a_ts); [|contradiction]. simpl.
-    unfold ty_subst_s; simpl.
-    apply sort_inj. simpl. destruct (typevar_eq_dec a_ts a_ts); auto. contradiction.
+    unfold ty_subst_s; simpl. rewrite !ty_subst_fun_cons.
+    destruct (string_dec a_ts a_ts); auto. contradiction.
   }
   assert (Htyi: term_has_type (@new_gamma gamma) (nth (index funsym_eq_dec c (adt_constr_list a)) (map Tvar zvars) tm_d)
   (ty_subst (a_ts :: m_params m) (vty_var tsa :: map vty_var (ts_args (adt_name a)))
@@ -3254,7 +3256,8 @@ Proof.
         (repeat (vty_var a_ts) (Datatypes.length (adt_constr_list a))) vty_int))).
   {
     rewrite nth_repeat' by auto.
-    unfold ty_subst. simpl. destruct (typevar_eq_dec a_ts a_ts); simpl; [|contradiction].
+    unfold ty_subst. simpl. rewrite !ty_subst_fun_cons. 
+    destruct (string_dec a_ts a_ts); simpl; [|contradiction].
     rewrite map_nth_inbound with (d2:=vs_d).
     2: { unfold vsymbol; lia. }
     apply T_Var'; auto; [constructor|].

@@ -766,7 +766,7 @@ Definition tyconstsym (n: string) : typesym :=
 Definition tyconst (n: string) : vty :=
   vty_cons (tyconstsym n) nil.
 Definition tyconst_s (n: string) : Types.sort :=
-  exist _ (tyconst n) Logic.eq_refl.
+  s_cons (tyconstsym n) nil.
 
 Definition tyconst_def (n: string) : def :=
   abs_type (tyconstsym n).

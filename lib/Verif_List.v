@@ -164,7 +164,9 @@ Ltac extra_simpl ::= fold a_; fold x_; fold y_;
   fold l1__; fold l2__; fold l3__; fold l__;
   fold x__; fold y__;
   repeat (tryif progress(unfold ty_subst; try unfold ty_subst_var)
-    then simpl else idtac).
+    then simpl else idtac);
+  repeat (rewrite !ty_subst_fun_cons; destruct (string_dec _ _); try contradiction;
+    simpl).
 
 Opaque amap_lookup.
 Opaque safe_sub_ts.

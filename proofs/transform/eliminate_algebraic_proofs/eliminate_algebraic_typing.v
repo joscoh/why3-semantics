@@ -2301,7 +2301,7 @@ Proof.
             rewrite map_nth_inbound with (d2:=""%string); auto.
             2: { unfold typevar in *. lia. }
             unfold ty_subst; simpl.
-            rewrite ty_subst_fun_nth with (s:=s_int); auto.
+            rewrite ty_subst_fun_nth with (s:=vty_int); auto.
             - apply nth_indep; auto.
             - lia.
             - apply m_params_Nodup.
@@ -2320,7 +2320,8 @@ Proof.
           (*Now we simplify to just ty*)
           replace (ty_subst _ _ _) with (ty).
           2: {
-            unfold ty_subst. simpl. destruct (typevar_eq_dec _ _); simpl; auto. contradiction.
+            unfold ty_subst. simpl. rewrite ty_subst_fun_cons.
+            destruct (string_dec _ _); simpl; auto. contradiction.
           }
           (*Now we have the same cases as before depending on constr/wild*)
           unfold tl. rewrite map_nth_inbound with (d2:=id_fs) by auto.
@@ -2345,7 +2346,8 @@ Proof.
       * (*return type*)
         rewrite (selector_funsym_params gamma_valid badnames (adt_constr_list a) m_in a_in).
         rewrite (selector_funsym_ret gamma_valid badnames (adt_constr_list a) m_in a_in).
-        unfold ty_subst. simpl. destruct (typevar_eq_dec _ _); auto; contradiction.
+        unfold ty_subst. simpl. rewrite ty_subst_fun_cons.
+        destruct (string_dec _ _); auto; contradiction.
   - (*Teps*)
     intros f v IH Hval. simpl. intros Hsimp Hexh. constructor; auto.
     apply new_ctx_valid_type; auto.
@@ -5608,15 +5610,16 @@ Proof.
       rewrite (adt_args gamma_valid m_in a_in).
       replace (ty_subst _ _ _) with a_ty.
       2: {
-        unfold a_ty. unfold ty_subst. simpl. destruct (typevar_eq_dec a_ts a_ts); simpl; [|contradiction].
-        reflexivity.
+        unfold a_ty. unfold ty_subst. simpl.
+        rewrite ty_subst_fun_cons. destruct (string_dec _ _); simpl; auto; contradiction.
       }
       apply T_Var'; auto; [constructor|].
       rewrite map_nth_inbound with (d2:=""%string); auto; solve_len.
   - (*prove return type*)
     rewrite (selector_funsym_params gamma_valid badnames _ m_in a_in); simpl.
     rewrite (adt_args gamma_valid m_in a_in).
-    unfold ty_subst. simpl. destruct (typevar_eq_dec _ _); auto. contradiction.
+    unfold ty_subst. simpl. rewrite ty_subst_fun_cons.
+    destruct (string_dec _ _); auto; contradiction.
 Qed.
 
 (*Therefore, all of the added axioms are well-typed*)
