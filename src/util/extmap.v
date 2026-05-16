@@ -1403,7 +1403,6 @@ Definition find (k: key) (m: t a) : errorM a :=
   | Some v => err_ret v
   end.
 
-(*TODO: START*)
 Definition mapi_aux {A B: Type} (f: key -> A -> B) (m: t A) : Zmap (list (key * B)) :=
   fmap (fun (x: list (key * A)) => map (fun y => (fst y, f (fst y) (snd y))) x) (mp m).
 

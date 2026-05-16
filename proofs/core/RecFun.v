@@ -841,8 +841,6 @@ Notation vt_eq x := (vt_eq vt params x).
 
 Section WellFounded2.
 
-(*START!*)
-
 (*Lemma for casting*)
 Lemma arg_nth_eq srts (s: fpsym) (i: nat) (Hi: i < length (s_args s)) :
   nth i (sym_sigma_args s srts) s_int =
