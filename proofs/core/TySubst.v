@@ -1090,7 +1090,7 @@ Proof.
   rewrite -> !map_nth_inbound with (d2 := vty_int); [| rewrite length_map; auto].
   rewrite -> map_nth_inbound with (d2:=EmptyString); auto.
   unfold ty_subst; simpl.
-  rewrite -> ty_subst_fun_nth with(s:=s_int); auto. apply nth_indep; lia.
+  rewrite -> ty_subst_fun_nth with(s:=vty_int); auto. apply nth_indep; lia.
   apply s_params_Nodup.
 Qed.
 

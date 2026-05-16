@@ -1207,9 +1207,8 @@ Proof.
     clear Hall.
     (*need to generalize*) simpl. unfold keylist, vals, vsymbol in *. 
     rewrite elements_singleton.
-    simpl. intros Hall. simp terms_to_hlist. simpl. 
-    destruct (vty_eq_dec (v_subst_aux (fun x1 : typevar => vt x1) (snd x0))
-    (v_subst_aux (fun x1 : typevar => vt x1) ty1)); unfold substi.
+    simpl. intros Hall. simp terms_to_hlist. simpl.
+    destruct (vty_eq_dec _ _); unfold substi. 
     + vsym_eq (x, ty1) x0.
       * vsym_eq (x, ty1) (x, ty1).
         gen_dom_cast. intros Heq; assert (Heq = eq_refl) by (apply UIP_dec, sort_eq_dec); subst Heq.
@@ -1256,9 +1255,8 @@ Proof.
     clear Hall.
     (*need to generalize*) simpl. unfold keylist, vals, vsymbol in *. 
     rewrite elements_singleton.
-    simpl. intros Hall. simp terms_to_hlist. simpl. 
-    destruct (vty_eq_dec (v_subst_aux (fun x1 : typevar => vt x1) (snd x0))
-    (v_subst_aux (fun x1 : typevar => vt x1) ty1)); unfold substi.
+    simpl. intros Hall. simp terms_to_hlist. simpl.
+    destruct (vty_eq_dec _ _); unfold substi. 
     + vsym_eq (x, ty1) x0.
       * vsym_eq (x, ty1) (x, ty1).
         gen_dom_cast. intros Heq; assert (Heq = eq_refl) by (apply UIP_dec, sort_eq_dec); subst Heq.

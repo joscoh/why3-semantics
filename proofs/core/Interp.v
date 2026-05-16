@@ -38,7 +38,7 @@ Record pi_dom_full (pd: pi_dom) := {
 
     adts: forall (m: mut_adt) (srts: list sort)
     (a: alg_datatype) (m_in: mut_in_ctx m gamma) (Hin: adt_in_mut a m),
-    (domain (dom_aux pd)) (typesym_to_sort (adt_name a) srts) =
+    (domain (dom_aux pd)) (s_cons (adt_name a) srts) =
     adt_rep m srts (dom_aux pd) a Hin;
 
 }.
@@ -297,14 +297,13 @@ Proof.
     + simpl. destruct i.
       * (*i=0*) 
         destruct (vsymbol_eq_dec a a); try contradiction.
-        destruct (vty_eq_dec (v_subst_aux (fun x0 : typevar => vt x0) (snd a)) x); subst.
+        destruct (vty_eq_dec (val (snd a)) x); subst.
         -- unfold dom_cast.
           f_equal. f_equal. apply dec_uip_diff. apply sort_eq_dec.
         -- exfalso. apply n.
           simpl in Heq. subst. reflexivity.
       * (*i <> 0*) inversion Hnodup; subst.
-        destruct (vty_eq_dec
-        (v_subst_aux (fun x0 : typevar => vt x0) (snd (nth i vars vs_d))) x).
+        destruct (vty_eq_dec (val (snd (nth i vars vs_d))) x).
         -- destruct (vsymbol_eq_dec a (nth i vars vs_d)).
           ++ exfalso; subst. apply H1. apply nth_In; auto. simpl in Hi. lia.
           ++ erewrite IHvars; auto. lia. 
@@ -336,7 +335,7 @@ Proof.
   generalize dependent srts. induction vars; simpl; intros; auto.
   destruct a0; auto.
   simpl in Hnotinx. not_or Hx.
-  destruct (vty_eq_dec (v_subst_aux (fun x1 : typevar => vt x1) (snd x)) x0).
+  destruct (vty_eq_dec _ _).
   - destruct (vsymbol_eq_dec a x); subst; auto; contradiction.
   - apply IHvars; auto.
 Qed.
@@ -463,16 +462,15 @@ Lemma v_subst_vt_with_args vt params args (v: vty):
   v_subst (vt_with_args vt params args) v =
   v_subst vt (ty_subst' params (sorts_to_tys args) v).
 Proof.
-  intros Hlen Hparams. apply sort_inj. simpl.
+  intros Hlen Hparams.
   induction v; simpl; auto.
-  - destruct (in_dec typevar_eq_dec v params).
+  - destruct (in_dec typevar_eq_dec v params); simpl.
     + destruct (In_nth _ _ EmptyString i) as [j [Hj Hv]]; subst.
       rewrite vt_with_args_nth; auto. unfold ty_subst. simpl.
-      rewrite ty_subst_fun_nth with(s:=s_int);
+      rewrite ty_subst_fun_nth with(s:=vty_int);
       unfold sorts_to_tys; auto; [|rewrite length_map]; auto.
       rewrite map_nth_inbound with(d2:=s_int); [| rewrite <- Hlen]; auto.
-      rewrite <- subst_is_sort_eq; auto.
-      destruct (nth j args s_int); auto.
+      rewrite <- subst_sort_eq; auto.
     + rewrite vt_with_args_notin; auto.
   - f_equal. apply list_eq_ext'; rewrite !length_map; auto.
     intros n d Hn. rewrite !map_nth_inbound with (d2:=vty_int); auto.
@@ -494,7 +492,7 @@ Proof.
     destruct (In_nth _ _ EmptyString i) as [j [Hj Hx]]; subst.
     apply sort_inj; simpl.
     unfold ty_subst. simpl.
-    rewrite -> !ty_subst_fun_nth with(s:=s_int); auto;
+    rewrite -> !ty_subst_fun_nth with(s:=vty_int); auto;
     unfold sorts_to_tys;
     [| rewrite !length_map; auto].
     rewrite -> !map_nth_inbound with (d2:=s_int);
@@ -502,8 +500,7 @@ Proof.
     rewrite -> map_nth_inbound with (d2:=vty_int);
     [| rewrite <- params_len; auto].
     simpl.
-    rewrite v_subst_aux_twice; auto.
-    intros. destruct (vt x); auto.
+    rewrite v_subst_twice; auto.
   - apply sort_inj; simpl. f_equal.
     rewrite !map_map.
     apply list_eq_ext'; rewrite !length_map; auto.
@@ -538,10 +535,9 @@ Proof.
   [| rewrite length_map; auto].
   rewrite -> map_nth_inbound with (d2:=s_int); auto.
   apply sort_inj; simpl.
-  rewrite <- subst_is_sort_eq; auto.
+  rewrite <- subst_sort_eq; auto.
   f_equal.
   apply nth_indep. auto.
-  destruct (List.nth n srts s_int); auto.
 Qed.
 
 (*And a version for substituting with sorts instead of vtys*)
@@ -615,7 +611,7 @@ Lemma change_gamma_adts {gamma1 gamma2}
   (pdf: pi_dom_full gamma1 pd):
   (forall m srts a (m_in: mut_in_ctx m gamma2)
     (a_in: adt_in_mut a m),
-    domain (dom_aux pd) (typesym_to_sort (adt_name a) srts) = adt_rep m srts (dom_aux pd) a a_in).
+    domain (dom_aux pd) (s_cons (adt_name a) srts) = adt_rep m srts (dom_aux pd) a a_in).
 Proof.
   intros m srts a m_in a_in.
   apply pdf. unfold mut_in_ctx.

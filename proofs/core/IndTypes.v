@@ -932,7 +932,7 @@ Definition var_map : typevar -> Set :=
   this works*)
 Definition typesym_map : typesym -> list vty -> Set :=
   fun ts vs =>
-    domain (typesym_to_sort ts (map sigma vs)).
+    domain (s_cons ts (map sigma vs)).
 
 (*A nicer interface for the ADT*)
 
@@ -965,20 +965,14 @@ Definition sigma_ret: Types.sort :=
 (*Lemmas we need for the proof obligations:*)
 
 Lemma sigma_int: sigma vty_int = s_int.
-Proof.
-  apply sort_inj; reflexivity.
-Qed.
+Proof. reflexivity. Qed.
 
 Lemma sigma_real: sigma vty_real = s_real.
-Proof.
-  apply sort_inj; reflexivity.
-Qed.
+Proof. reflexivity. Qed.
 
 Lemma sigma_cons: forall t l,
-  sigma (vty_cons t l) = typesym_to_sort t (map sigma l).
-Proof.
-  intros. apply ty_subst_s_cons.
-Qed.
+  sigma (vty_cons t l) = s_cons t (map sigma l).
+Proof. reflexivity. Qed.
 
 Definition build_sprod_cons {a: Set} {l: list Set}
   (x: a) (tl: big_sprod l) :
@@ -1029,12 +1023,12 @@ Definition args_to_constr_base (a: arg_list domain sigma_args):
   (which we will require of all possible valid domains)*)
 Variable dom_adts: forall (a: alg_datatype) (m_in: mut_in_ctx m gamma) 
   (Hin: adt_in_mut a m),
-  domain (typesym_to_sort (adt_name a) srts) =
+  domain (s_cons (adt_name a) srts) =
   adt_rep a Hin.
 
 (*A more convenient format for us in proofs:*)
 Lemma dom_adts_fin: forall (x: finite (length adts)),
-  domain (typesym_to_sort (adt_name (fin_nth adts x)) srts) =
+  domain (s_cons (adt_name (fin_nth adts x)) srts) =
   mk_adts var_map typesym_map adts x.
 Proof.
   intros. rewrite dom_adts. apply In_in_bool. apply fin_nth_in.
@@ -1058,7 +1052,7 @@ Qed.
 (*Part 1: When we filter the arg list, everything has the same type
   (and therefore, we can transform the result into a list)*)
 Lemma filter_args_same (l: list vty) (x: finite (length adts)) :
-  Forall (fun y => y = typesym_to_sort (adt_name (fin_nth adts x)) srts)
+  Forall (fun y => y = s_cons (adt_name (fin_nth adts x)) srts)
     (List.map sigma (List.filter (rec_occ_fun (adt_name (fin_nth adts x)))
       l)).
 Proof.
@@ -1131,17 +1125,16 @@ Definition funsym_sigma_ret (f: funsym) (s: list Types.sort) : Types.sort :=
   ty_subst_s (s_params f) s (f_ret f).
 
 Lemma adt_typesym_funsym:
-  typesym_to_sort (adt_name t) srts = funsym_sigma_ret c srts.
+  s_cons (adt_name t) srts = funsym_sigma_ret c srts.
 Proof.
-  unfold funsym_sigma_ret, typesym_to_sort.
-  apply sort_inj; simpl.
+  unfold funsym_sigma_ret. unfold ty_subst_s; simpl.
   rewrite (adt_constr_ret gamma_valid m_in t_in); auto.
   simpl. f_equal.
   rewrite <- map_ty_subst_var_sort at 1.
   2: symmetry; apply srts_len.
-  rewrite -!map_comp.
+  rewrite <- map_map.
   apply map_ext_in_iff.
-  intros. simpl. f_equal. symmetry.
+  intros. simpl. unfold ty_subst_s. simpl. f_equal. f_equal. symmetry.
   apply (adt_constr_params gamma_valid m_in t_in c_in).
   clear -m. destruct m; simpl.
   apply /nodup_NoDup. apply m_nodup.
@@ -1738,7 +1731,7 @@ End Constr.
   W-types, or the explicit functions above.*)
 Variable dom_adts: forall (a: alg_datatype) (m_in: mut_in_ctx m gamma) 
 (Hin: adt_in_mut a m)  ,
-domain (typesym_to_sort (adt_name a) srts) =
+domain (s_cons (adt_name a) srts) =
 adt_rep a Hin.
 
 Variable m_unif: uniform m.
@@ -2006,10 +1999,10 @@ Lemma constr_rep_change_gamma {gamma1 gamma2: context}
   (c: funsym)
   (c_in: constr_in_adt c t)
   (adts1: forall (a : alg_datatype) (m_in: mut_in_ctx m gamma1) (Hin : adt_in_mut a m),
-  domain domain_aux (typesym_to_sort (adt_name a) srts) =
+  domain domain_aux (s_cons (adt_name a) srts) =
   adt_rep m srts domain_aux a Hin)
   (adts2: forall (a : alg_datatype) (m_in: mut_in_ctx m gamma2) (Hin : adt_in_mut a m),
-  domain domain_aux (typesym_to_sort (adt_name a) srts) =
+  domain domain_aux (s_cons (adt_name a) srts) =
   adt_rep m srts domain_aux a Hin)
   (a: arg_list (domain domain_aux) (sym_sigma_args c srts)):
   constr_rep gamma_valid1 m m_in1 srts srts_len domain_aux t t_in c c_in adts1 a =
@@ -2038,11 +2031,11 @@ Lemma find_constr_rep_change_gamma {gamma1 gamma2: context}
   (t_in : adt_in_mut t m)
   (dom_adts1 : forall (a : alg_datatype) (m_in: mut_in_ctx m gamma1) 
               (Hin : adt_in_mut a m),
-              domain domain_aux (typesym_to_sort (adt_name a) srts) =
+              domain domain_aux (s_cons (adt_name a) srts) =
               adt_rep m srts domain_aux a Hin)
   (dom_adts2 : forall (a : alg_datatype) (m_in: mut_in_ctx m gamma2) 
               (Hin : adt_in_mut a m),
-              domain domain_aux (typesym_to_sort (adt_name a) srts) =
+              domain domain_aux (s_cons (adt_name a) srts) =
               adt_rep m srts domain_aux a Hin)
   (m_unif: uniform m)
   (x: adt_rep m srts domain_aux t t_in):
@@ -2103,7 +2096,7 @@ Lemma constr_rep_inj_iff_strong {gamma} (gamma_valid: valid_context gamma) {m a 
   (dom_adts : forall a : alg_datatype,
                      mut_in_ctx m gamma ->
                      forall Hin : adt_in_mut a m,
-                     domain domain_aux (typesym_to_sort (adt_name a) srts) =
+                     domain domain_aux (s_cons (adt_name a) srts) =
                      adt_rep m srts domain_aux a Hin)
   (a1: arg_list (domain domain_aux) (sym_sigma_args c1 srts))
   (a2: arg_list (domain domain_aux) (sym_sigma_args c2 srts)):
@@ -2127,7 +2120,7 @@ Lemma constr_rep_inj_iff {gamma} (gamma_valid: valid_context gamma) {m a c}
   (dom_adts : forall a : alg_datatype,
                      mut_in_ctx m gamma ->
                      forall Hin : adt_in_mut a m,
-                     domain domain_aux (typesym_to_sort (adt_name a) srts) =
+                     domain domain_aux (s_cons (adt_name a) srts) =
                      adt_rep m srts domain_aux a Hin)
   (a1 a2: arg_list (domain domain_aux) (sym_sigma_args c srts)):
   constr_rep gamma_valid m m_in srts srts_len domain_aux a a_in c c_in dom_adts a1 =

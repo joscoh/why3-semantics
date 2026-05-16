@@ -778,7 +778,7 @@ Proof.
       rewrite matches_row_all_wilds with (ps:=(repeat Pwild (Datatypes.length (s_args c)))); [| apply repeat_spec].
       simpl.
       (*A bit of simplification to get things together*)
-      rewrite terms_to_hlist_tl.
+      rewrite (terms_to_hlist_tl gamma_valid pd pdf pf vt v t ts (vty_cons (adt_name a) args) tys).
       rewrite terms_to_hlist_irrel with (H2:=f).
       rewrite matches_row_irrel with (Hr2:=Hr2).
       destruct (matches_row tys (terms_to_hlist gamma_valid pd pdf pf vt v ts tys f) ptl Hr2) as [m1|] eqn : Hmatch1; simpl; auto.
@@ -837,7 +837,7 @@ Proof.
       erewrite term_rep_irrel; eauto.
     + (*Pwild*)
       simp matches_row. simpl.
-      rewrite terms_to_hlist_tl.
+      rewrite (terms_to_hlist_tl gamma_valid pd pdf pf vt v t ts (vty_cons (adt_name a) args) tys).
       simp matches_matrix; simpl.
       rewrite terms_to_hlist_irrel with (H2:=f).
       rewrite matches_row_irrel with (Hr2:=(Forall_inv (proj1 Htyp'))). simpl.
@@ -6026,19 +6026,15 @@ Lemma ty_rel_subst tys1 tys2 params ty:
   all2 ty_rel tys1 tys2 ->
   ty_rel (ty_subst params tys1 ty) ((ty_subst params tys2 ty)).
 Proof.
-  intros Hall2.
+  intros Hlen Hall2.
   destruct ty; simpl; auto.
   unfold ty_subst; simpl.
-  generalize dependent tys2.
-  revert params.
-  induction tys1 as [| h1 t1 IH]; intros params [|h2 t2]; auto; try discriminate; simpl.
-  - intros _ _. destruct params; auto.
-  - intros Hlen.
-    rewrite all2_cons.
-    unfold is_true at 1.
-    rewrite andb_true_iff; intros [Hrelh Hrelt].
-    destruct params as [| p1 ptl]; simpl; auto.
-    destruct (typevar_eq_dec t p1); subst; simpl; auto.
+  unfold ty_subst_fun.
+  pose proof (get_assoc_list_rel string_dec _ params _ _ t Hlen Hall2) as Ha.
+  unfold typevar.
+  destruct (get_assoc_list string_dec (@combine string vty params tys1) t);
+  destruct (get_assoc_list string_dec (@combine string vty params tys2) t); auto;
+  discriminate.
 Qed.
 
 Lemma ty_rel_subst_list tys1 tys2 params args:

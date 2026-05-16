@@ -94,22 +94,18 @@ Lemma funsym_subst_eq: forall (params: list typevar) (args: list vty) (v: typeva
   v_subst v (ty_subst params args ty) =
   ty_subst_s params (map (v_subst v) args) ty.
 Proof.
-  intros. unfold ty_subst_s. unfold ty_subst.
-  apply sort_inj. unfold v_subst; simpl.
-  induction ty; simpl; auto.
-  - destruct (in_dec typevar_eq_dec v0 params).
+  intros params args v ty Hnodup Hlen. 
+  unfold ty_subst_s. unfold ty_subst.
+  induction ty as [| | x | ts tys IH]; simpl; auto.
+  - destruct (in_dec typevar_eq_dec x params).
     + destruct (In_nth _ _ EmptyString i) as [i1 [Hi1 Hv0]]; subst.
-      rewrite -> ty_subst_fun_nth with (s:=s_int); auto.
-      simpl.
-      unfold sorts_to_tys. rewrite map_map. simpl. 
-      rewrite -> ty_subst_fun_nth with(s:=s_int); auto; 
-        [| rewrite length_map; auto].
-      rewrite -> map_nth_inbound with(d2:=vty_int); auto.
-      rewrite <- H0; auto.
+      rewrite -> ty_subst_fun_nth with (s:=s_int); auto; [| rewrite length_map; auto].
+      rewrite -> ty_subst_fun_nth with(s:=vty_int); auto.
+      rewrite -> map_nth_inbound with(d2:=vty_int); auto. rewrite <- Hlen. assumption.
     + rewrite -> !ty_subst_fun_notin by assumption. auto.
   - f_equal. apply list_eq_ext'; rewrite !length_map; auto.
     intros n d Hn. rewrite -> !map_nth_inbound with (d2:=vty_int); auto.
-    2: rewrite length_map; auto. rewrite Forall_forall in H1. apply H1.
+    2: rewrite length_map; auto. rewrite Forall_forall in IH. apply IH.
     apply nth_In. auto.
 Qed.
 
@@ -589,7 +585,7 @@ Fixpoint match_val_single (v: val_typevar) (ty: vty)
 
       let srts := (map (val v) vs) in
 
-      let valeq : val v ty = typesym_to_sort (adt_name a) srts :=
+      let valeq : val v ty = s_cons (adt_name a) srts :=
         eq_trans (f_equal (val v) Htyeq)
           (v_subst_cons (adt_name a) vs) in
 
@@ -772,7 +768,7 @@ Lemma match_val_single_rewrite  (v: val_typevar) (ty: vty)
 
       let srts := (map (val v) vs) in
 
-      let valeq : val v ty = typesym_to_sort (adt_name a) srts :=
+      let valeq : val v ty = s_cons (adt_name a) srts :=
         eq_trans (f_equal (val v) Htyeq)
           (v_subst_cons (adt_name a) vs) in
 
@@ -1703,9 +1699,8 @@ Proof.
     intros. assert (i = i0) by (apply bool_irrelevance). subst.
     assert (Heq2: map (v_subst vt2) vs2 = map (v_subst vt1) vs2). {
       assert (Heq2:=Heq).
-      rewrite !v_subst_cons in Heq2.
-      injection Heq2; intros Hmap.
-      apply map_inj in Hmap. auto. intros. apply sort_inj. auto.
+      simpl in Heq2.
+      injection Heq2; intros Hmap. apply Hmap.
     }
     (*Relate the two constr reps*)
     case_find_constr.

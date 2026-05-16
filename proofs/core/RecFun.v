@@ -144,8 +144,8 @@ Inductive adt_smaller:
     (Hx2_1: projT1 x2 = s2)
     (Hx2_2: d2 = (dom_cast (dom_aux pd) 
        Hx2_1 (projT2 x2)))
-    (Hty1: s1 = typesym_to_sort (adt_name a1) srts)
-    (Hty2: s2 = typesym_to_sort (adt_name a2) srts)
+    (Hty1: s1 = s_cons (adt_name a1) srts)
+    (Hty2: s2 = s_cons (adt_name a2) srts)
     (a_in1: adt_in_mut a1 m)
     (a_in2: adt_in_mut a2 m)
     (m_in: mut_in_ctx m gamma)
@@ -214,7 +214,7 @@ Proof.
   intros Heqadt Hd. subst d.
   (*Here, we use induction*)
   apply (adt_rep_ind gamma_valid pdf m m_in srts Hlen (fun t t_in x =>
-    forall s Heq, s = typesym_to_sort (adt_name t) srts ->
+    forall s Heq, s = s_cons (adt_name t) srts ->
     Acc adt_smaller (existT s (scast Heq x)))); auto.
   intros t t_in x c Hc args Hx IH ty1 Heq Hty1.
   constructor.
@@ -226,7 +226,7 @@ Proof.
   (*Need to prove lots of equalities before applying the IH. First,
     a2's name and srts*)
   assert (adt_name a2 = adt_name t /\ srts0 = srts). {
-    apply typesym_to_sort_inj; rewrite <- Hty2; auto.
+    inversion Hty2; auto.
   }
   destruct H;subst srts0.
   (*Now prove m equal*)
@@ -274,7 +274,7 @@ Proof.
   apply constr_rep_inj in Hadt2. 2: apply (gamma_all_unif gamma_valid); auto.
   subst args0.
   (*Now, we can apply the IH*)
-  specialize (IH _ _ a_in1 Heqith Hi (typesym_to_sort (adt_name a1) srts)
+  specialize (IH _ _ a_in1 Heqith Hi (s_cons (adt_name a1) srts)
     (eq_sym ((Interp.adts pdf m srts a1 m_in a_in1))) eq_refl).
   (*We don't need UIP here if we build a proof term carefully*)
   match goal with
@@ -548,19 +548,18 @@ Proof.
       destruct H0 as [adt2 [Hina2 Hntheq]].
       assert (Hvalntheq: v_subst vt 
         (nth i (sym_sigma_args f srts) s_int) =
-      typesym_to_sort (adt_name adt2) srts). {
+      s_cons (adt_name adt2) srts). {
         (*Note: maybe separate lemma or something - inverse of
           [adts_from_constrs] or whatever it is*)
         apply (reflect_iff _ _ (vty_in_m_spec m vs2 _)) in Hty.
         destruct Hty as [a' [Ha' Hty]].
         subst.
-        unfold sym_sigma_args, ty_subst_list_s,
-        typesym_to_sort.
+        unfold sym_sigma_args, ty_subst_list_s.
         apply sort_inj. simpl.
         rewrite map_nth_inbound with(d2:=vty_int); auto.
         rewrite Hntheq.
         simpl.
-        unfold ty_subst_s, ty_subst_fun_s. simpl.
+        unfold ty_subst_s. simpl.
         unfold sorts_to_tys. 
         rewrite !map_map.
         f_equal.
@@ -570,21 +569,12 @@ Proof.
         apply list_eq_ext'; rewrite !length_map; auto. 
         intros n d' Hn.
         rewrite !map_nth_inbound with (d2:=EmptyString); auto.
-        rewrite <- subst_is_sort_eq.
-        2: {
-          apply v_subst_aux_sort_eq. rewrite Hparams.
-          intros. fold (sorts_to_tys srts).
-          replace vty_int with (sort_to_ty s_int) by reflexivity. 
-          apply ty_subst_fun_sort.
-        }
+        rewrite <- subst_sort_eq.
         rewrite !map_nth_inbound with (d2:=s_int); [|lia].
         simpl.
         rewrite <- Hparams.
-        rewrite ty_subst_fun_nth with(s:=s_int); auto.
-        + simpl. rewrite map_nth_inbound with (d2:=s_int); auto. lia.
-        + rewrite length_map, Hparams. auto.
-        + rewrite Hparams; auto. 
-        + apply s_params_Nodup.
+        rewrite ty_subst_fun_nth with(s:=s_int); auto; try lia.
+        apply s_params_Nodup.
       }
       eapply (ADT_small (hide_ty (dom_cast (dom_aux pd) Hithcast0
           (hnth i (snd x) s_int (dom_int pd)))) (hide_ty d)
@@ -859,7 +849,8 @@ Lemma arg_nth_eq srts (s: fpsym) (i: nat) (Hi: i < length (s_args s)) :
 Proof.
   assert ((ty_subst (s_params s) (sorts_to_tys srts) (nth i (s_args s) vty_int)) =
   (ty_subst_s (s_params s) srts (nth i (s_args s) vty_int))). {
-    unfold ty_subst_s, ty_subst, v_subst. simpl. reflexivity. }
+    unfold ty_subst_s, ty_subst. apply v_subst_aux_eq.
+    intros x. rewrite ty_subst_fun_sorts; reflexivity. }
   rewrite H. clear H.
   unfold sym_sigma_args, ty_subst_list_s.
   rewrite map_nth_inbound with(d2:=vty_int); auto.
@@ -1703,9 +1694,15 @@ Lemma ty_subst_fun_params_id: forall params d v,
   In v params ->
   ty_subst_fun params (map vty_var params) d v = vty_var v.
 Proof.
-  intros. induction params0. inversion H.
-  simpl. simpl in H. destruct (typevar_eq_dec v a); subst; auto.
-  simpl. destruct H; subst; auto. contradiction.
+  intros p d v Hinv. unfold ty_subst_fun. 
+  destruct (get_assoc_list _ _ _) eqn : Hassoc.
+  2: { apply get_assoc_list_none in Hassoc.
+    rewrite map_fst_combine in Hassoc; [contradiction | solve_len].
+  }
+  apply get_assoc_list_some in Hassoc.
+  rewrite in_combine_iff in Hassoc by solve_len.
+  destruct Hassoc as [i [Hi Hx]]. specialize (Hx ""%string vty_int).
+  inversion Hx; subst. rewrite map_nth_inbound with (d2:=""%string); auto.
 Qed.
 
 Lemma ty_subst_params_id: forall params x,
@@ -2464,35 +2461,22 @@ Proof.
     rewrite <- Hntheq.
     rewrite map_nth_inbound with (d2:=vs_d); auto.
   }
-  rewrite arg_nth_eq; [|lia]. 
-  apply sort_inj; simpl.
-  rewrite <- subst_is_sort_eq; auto.
-  - symmetry. rewrite Hitheq. apply v_ty_subst_eq_aux; auto.
-    + apply s_params_Nodup.
-    + rewrite Hsrtslen. 
-      rewrite (params_eq _ Hin). auto.
-    + rewrite (params_eq _ Hin).
-      apply Hvteq.
-    + intros x. rewrite (params_eq _ Hin).
-      eapply s_typevars. apply Hin.
-      apply nth_In. lia.
-  - unfold ty_subst. apply v_subst_aux_sort_eq.
-    intros.
-    (*Basically, know that these are all in params*)
-    assert (In x params). {
-      revert H. eapply s_typevars. apply Hin. 
-      apply nth_In; lia.
-    }
-    rewrite (params_eq _ Hin).
-    destruct (In_nth _ _ EmptyString H0) as [j [Hj Hx]]; subst.
-    rewrite ty_subst_fun_nth with(s:=s_int); auto.
-    + unfold sorts_to_tys. rewrite map_nth_inbound with(d2:=s_int); auto.
-      * destruct (nth j srts s_int); auto.
-      * rewrite Hsrtslen. auto.
-    + unfold sorts_to_tys. rewrite length_map.
-      auto.
-    + rewrite <- (params_eq _ Hin).
-      apply s_params_Nodup.
+  rewrite arg_nth_eq; [|lia].
+  rewrite Hitheq.
+  rewrite funsym_subst_eq.
+  2: apply s_params_Nodup.
+  2: rewrite params_eq; auto; unfold sorts_to_tys; solve_len.
+  symmetry. apply v_ty_subst_eq.
+  - apply s_params_Nodup.
+  - rewrite params_eq by auto. unfold sorts_to_tys; solve_len.
+  - rewrite params_eq by auto. intros j Hj. 
+    rewrite !map_nth_inbound with (d2:=vty_int) by (unfold sorts_to_tys; solve_len).
+    rewrite Hvteq by auto. unfold sorts_to_tys.
+    rewrite map_nth_inbound with (d2:=s_int) by lia.
+    apply subst_sort_eq.
+  - intros x. rewrite (params_eq _ Hin).
+    eapply s_typevars. apply Hin.
+    apply nth_In. lia.
 Qed.
 
 End FinalLemmas.

@@ -190,15 +190,6 @@ Definition build_pattern_o (p: pattern_node)
 
 End ExtractInterface.
 
-(*TODO: go back and use this*)
-Definition mk_Forall {A: Type} {P: A -> Prop} := 
-  fun (f: forall x, P x) =>
-    fix mk_Forall (l: list A) {struct l} : Forall P l :=
-      match l with
-      | nil => Forall_nil _
-      | x :: xs => Forall_cons _ _ _ (f x) (mk_Forall xs)
-      end.
-
 (*Induction principle and decidable equality*)
 Section PatInd.
 
