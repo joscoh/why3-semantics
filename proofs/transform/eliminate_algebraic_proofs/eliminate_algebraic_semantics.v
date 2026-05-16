@@ -1349,10 +1349,6 @@ Qed.
 
 Opaque list_to_aset.
 Opaque ty_subst.
-Lemma ty_subst_var (vars: list typevar) (params: list vty)
-  (v: typevar):
-  ty_subst vars params (vty_var v) = ty_subst_fun vars params vty_int v.
-Admitted.
 
 (*The full result*)
 Theorem rewrite_rep t f:

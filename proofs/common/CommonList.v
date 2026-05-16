@@ -2686,24 +2686,6 @@ Proof.
     apply ReflectT. auto. apply ReflectF. intro C; inversion C; subst; contradiction.
 Qed.
 
-(*Fixing the lists lets us weaken the assumption (and use in an IH)*)
-Lemma list_eqb_spec': forall {A: Type} (eq: A -> A -> bool) (l1 l2: list A)
-  (Heq: forall (x y : A), In x l1 -> In y l2 -> reflect (x = y) (eq x y)),
-  reflect (l1 = l2) (list_eqb eq l1 l2).
-Proof.
-  intros A eq. induction l1 as [| h1 t1 IH]; intros [| h2 t2]; simpl; intros Hrefl.
-  - apply ReflectT; auto.
-  - apply ReflectF; discriminate.
-  - apply ReflectF; discriminate.
-  - assert (Heq:=Hrefl). specialize (Heq h1 h2 (ltac:(auto)) (ltac:(auto))).
-    destruct Heq; simpl; [| apply ReflectF; intro C; inversion C; contradiction].
-    subst. 
-    specialize (IH t2).
-    prove_hyp IH.
-    { intros; apply Hrefl; auto. }
-    destruct IH; [apply ReflectT | apply ReflectF]; subst; auto; intro C; inversion C; contradiction.
-Qed.
-
 (*A transparent version of [list_eq_dec]. Stdlib version
   is opaque and this is very annoying when trying to compute*)
 
