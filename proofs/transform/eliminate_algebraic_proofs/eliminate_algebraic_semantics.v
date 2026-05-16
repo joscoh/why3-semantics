@@ -1702,7 +1702,7 @@ Proof.
         simpl.
         rewrite Heq1.
         rewrite !nth_repeat' by auto.
-        rewrite ty_subst_var, ty_subst_fun_cons. destruct (string_dec a_ts a_ts); auto. contradiction.
+        rewrite Types.ty_subst_var, ty_subst_fun_cons. destruct (string_dec a_ts a_ts); auto. contradiction.
       }
       assert (Htyith: term_has_type new_gamma (nth i tl tm_d)
       (ty_subst (a_ts :: m_params m) (ty :: args)
@@ -1720,7 +1720,7 @@ Proof.
         simpl. unfold ty_subst at 4 6. simpl.
         destruct (typevar_eq_dec a_ts a_ts); [|contradiction].
         simpl. rewrite nth_repeat' by auto.
-        intros Hcombine. rewrite ty_subst_var, !ty_subst_fun_cons.
+        intros Hcombine. rewrite Types.ty_subst_var, !ty_subst_fun_cons.
         destruct (string_dec a_ts a_ts); [|contradiction]. simpl.
         specialize (Hcombine (nth i tl tm_d, ty)).
         apply Hcombine. right.
@@ -1730,7 +1730,7 @@ Proof.
         rewrite Htl. exists i. split; auto. intros d1 d2.
         f_equal; [apply nth_indep;lia|].
         rewrite map_nth_inbound with (d2:=vty_int) by solve_len.
-        rewrite nth_repeat' by auto. rewrite ty_subst_var, !ty_subst_fun_cons.
+        rewrite nth_repeat' by auto. rewrite Types.ty_subst_var, !ty_subst_fun_cons.
         destruct (string_dec a_ts a_ts); auto. contradiction.
       }
       (*Now finally simplify the [get_arg_list]*)
@@ -1740,7 +1740,7 @@ Proof.
       revert Htyith.
       rewrite nth_repeat' by auto.
       (*And simplify ty_subst*)
-      rewrite ty_subst_var, !ty_subst_fun_cons. destruct (string_dec a_ts a_ts); [|contradiction]. simpl.
+      rewrite Types.ty_subst_var, !ty_subst_fun_cons. destruct (string_dec a_ts a_ts); [|contradiction]. simpl.
       intros Htyith Heq1. assert (Heq1=eq_refl) by (apply UIP_dec, sort_eq_dec). subst Heq1.
       unfold dom_cast; simpl. (*No more casting!*)
       (*Now we appeal to our previous result*)
