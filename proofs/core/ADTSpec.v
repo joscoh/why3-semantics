@@ -28,7 +28,7 @@ Definition fun_interp (pd: sort -> Set) := forall (f:funsym) (srts: list sort)
     (a: arg_list (domain pd) (sym_sigma_args f srts)),
     (domain pd (funsym_sigma_ret f srts)).
 
-Definition adt_rep pd a srts := ((domain pd) (typesym_to_sort (adt_name a) srts)).
+Definition adt_rep pd a srts := ((domain pd) (s_cons (adt_name a) srts)).
 
 Definition constr_rep {gamma: context} (gamma_valid: valid_context gamma) 
   (pd: sort -> Set) (pf: fun_interp pd)
@@ -82,7 +82,7 @@ Record adt_interp_props {gamma: context} (gamma_valid: valid_context gamma)
       (Hx: x = constr_rep gamma_valid pd pf m_in t_in c_in srts_len a),
       (forall i t' t_in' 
         (Heq : nth i (sym_sigma_args c srts) s_int =
-          typesym_to_sort (adt_name t') srts), 
+          s_cons (adt_name t') srts), 
         i < length (s_args c) ->
       (*If nth i a has type adt_rep ..., then P holds of it*)
       P t' t_in' (dom_cast _ Heq (hnth i a s_int (dom_int _)))
@@ -91,17 +91,9 @@ Record adt_interp_props {gamma: context} (gamma_valid: valid_context gamma)
     ),
     forall t t_in (x: adt_rep pd t srts), P t t_in x;
   }.
-
+(* 
 Require Import IndTypes.
 
-Check adt_rep.
-
-Search context option mut_adt.
-
-Search sort "ind".
-
-Print sort.
-Print vty.
 
 (*TODO: move*)
 Definition mk_Forall {A: Type} {P: A -> Prop} := 
@@ -301,15 +293,20 @@ Proof. Admitted.
 Lemma sort_rect_typesym_to_sort P P_int P_real P_cons ts srts:
   sort_rect P P_int P_real P_cons (typesym_to_sort ts srts) = 
   P_cons ts srts (mk_ForallT (sort_rect P P_int P_real P_cons) srts).
-Admitted.
+Admitted. *)
 
 Definition ts_map_to_pd (f: typesym -> list sort -> Set) : sort -> Set :=
-  sort_rect (fun _ => Set) Z R (fun ts srts IH => f ts srts).
+  fun s =>
+  match s with
+  | s_int => Z
+  | s_real => R
+  | s_cons ts srts => f ts srts
+  end.
 
 (* Lemma ts_map_to_pd_domain f:
    *)
 
-Print adt_rep.
+Require Import IndTypes.
 
 Definition adt_rep' (m: mut_adt) (srts: list sort) (d1 d2: sort -> Set) (a: alg_datatype)
   (a_in: adt_in_mut a m) :=
@@ -317,7 +314,7 @@ Definition adt_rep' (m: mut_adt) (srts: list sort) (d1 d2: sort -> Set) (a: alg_
 
 Fixpoint mk_ts_map (gamma: context) (pd: sort -> Set) (n: nat) (ts: typesym) (srts: list sort) : Set :=
   match n with
-  | O => pd (typesym_to_sort ts srts)
+  | O => pd (s_cons ts srts)
   | S n' =>
     let pd' := ts_map_to_pd (mk_ts_map gamma pd n')
 (*     sort_rect (fun _ => Set) Z R (fun ts srts IH => mk_ts_map gamma n' pd ts srts) *)
@@ -331,54 +328,23 @@ Fixpoint mk_ts_map (gamma: context) (pd: sort -> Set) (n: nat) (ts: typesym) (sr
     in
     match find_ts_in_ctx gamma ts as b return find_ts_in_ctx gamma ts = b -> _ with
     | Some (m, a) => fun Hfind => adt_rep m srts pd' a (proj1 (proj2 (find_ts_in_ctx_some _ _ _ _ Hfind)))
-    | None => fun _ => pd (typesym_to_sort ts srts)
+    | None => fun _ => pd (s_cons ts srts)
     end eq_refl
     end.
 
-Definition mk_pd_aux (gamma: context) (pd: sort -> Set) (n: nat) (s: sort) : Set :=
-  ts_map_to_pd (mk_ts_map gamma pd n) s.
+Definition mk_pd_aux (gamma: context) (pd: sort -> Set) (n: list sort -> nat) (s: sort) : Set :=
+  ts_map_to_pd (fun ts srts => mk_ts_map gamma pd (n srts) ts srts) s.
 
 (*Idea: should be invariant as long as n larger than max depth of sort*)
-Fixpoint srt_depth (s: srt) : nat :=
+Fixpoint sort_depth (n: typesym -> nat) (s: sort) : nat :=
   match s with
-  | srt_int => 1
-  | srt_real => 1
-  | srt_cons ts srts => 1 + list_max (map srt_depth srts)
+  | s_int => 1
+  | s_real => 1
+  | s_cons ts srts => 1 + n ts * list_max (map (sort_depth n) srts)
   end.
 
-Definition srts_depth (s: list srt) : nat := list_max (map srt_depth s).
+Definition sorts_depth n (s: list sort) : nat := list_max (map (sort_depth n) s).
 
-Definition sort_depth s := srt_depth (sort_to_srt s).
-Definition sorts_depth s := srts_depth (map sort_to_srt s).
-
-Definition mk_ts_full gamma pd ts srts :=
-  mk_ts_map gamma pd (sorts_depth srts) ts srts.
-
-Definition mk_pd (gamma: context) (pd: sort -> Set) (s: sort) : Set :=
-  ts_map_to_pd (mk_ts_full gamma pd) s.
-
-
-(*pd with all typesym_to_sort set correctly to the corresponidng W-type*)
-Definition pd_full (gamma: context) (pd: sort -> Set) := forall (m: mut_adt) (srts: list sort)
-    (a: alg_datatype) (m_in: mut_in_ctx m gamma) (Hin: adt_in_mut a m),
-    pd (typesym_to_sort (adt_name a) srts) =
-    adt_rep m srts pd a Hin.
-
-Definition pd_full_aux (gamma: context) (pd: sort -> Set) (n: nat) := forall (m: mut_adt) (srts: list sort)
-    (a: alg_datatype) (m_in: mut_in_ctx m gamma) (Hin: adt_in_mut a m) ,
-    1 + sorts_depth srts < n ->
-    pd (typesym_to_sort (adt_name a) srts) =
-    adt_rep m srts pd a Hin.
-
-(*TODO: move this*)
-Print mk_adts.
-
-(*Get vars in mutual datatype (note: by well-typing, should be in m_params m)*)
-Print alg_datatype.
-
-Print funsym.
-Print fpsym.
-Print f_sym.
 
 Definition funsym_vars (f: funsym) : aset typevar :=
   aset_big_union type_vars (s_args f).
@@ -386,12 +352,6 @@ Definition adt_vars (a: alg_datatype) : aset typevar :=
   aset_big_union funsym_vars (adt_constr_list a).
 Definition mut_vars (l: list (alg_datatype)) : aset typevar :=
   aset_big_union adt_vars l.
-
-Print mk_adts.
-Print build_base.
-Print build_constr_base.
-Print build_vty_base.
-Print vty_to_set.
 
 Definition vty_ts_pair (t: vty) : option (typesym * list vty) :=
   match t with
@@ -408,8 +368,94 @@ Definition adt_ts_pairs m a : list (typesym * list vty) :=
 
 Definition mut_ts_pairs m := concat (map (adt_ts_pairs m) m).
 
-Print W.
-Check w_eq.
+(*The total bound, with var bound given by n*)
+(* Fixpoint vty_size (n: typesym -> nat) (v: vty) :=
+  match v with
+  | vty_int => 1
+  | vty_real => 1
+  | vty_var _ => 1
+  | vty_cons t ts => 1 + (n t) * list_max (map (vty_size n) ts)
+  end.
+
+
+Definition constr_depth (gamma:context) :=
+  1 + list_max (map (fun x => 1 + list_max (map ((vty_size (fun ts => index typesym_eq_dec ts (typesyms_of_context gamma))))
+  (snd x))) (mut_ts_pairs (adts_of_context gamma))).
+
+Lemma constr_depth_pos gamma: constr_depth gamma >= 1.
+Proof. unfold constr_depth. lia. Qed.
+
+Definition depth_aux gamma s :=
+  sort_depth (fun ts => (index typesym_eq_dec ts (typesyms_of_context gamma)) * (constr_depth gamma)) s.
+
+Definition depth gamma srts :=
+  list_max (map (depth_aux gamma) srts). *)
+
+
+Fixpoint depth_alt gamma s :=
+   match s with
+  | s_int => 0
+  | s_real => 0
+  | s_cons ts srts => 1 + ((index typesym_eq_dec ts (typesyms_of_context gamma))) + 
+      max ((index typesym_eq_dec ts (typesyms_of_context gamma)))
+      (list_max (map (depth_alt gamma) srts))
+  end.
+
+Definition depth gamma srts :=
+  list_max (map (depth_alt gamma) srts).
+
+
+Definition mk_ts_full gamma pd ts srts :=
+  mk_ts_map gamma pd (depth gamma srts) ts srts.
+
+Print index.
+
+Definition max_depth gamma srts :=
+  3 + (length (typesyms_of_context gamma)) + max (length (typesyms_of_context gamma)) (depth gamma srts).
+
+Lemma index_leq_length {A: Type} eq_dec (x: A) (l: list A):
+  index eq_dec x l <= length l.
+Proof.
+  induction l; simpl; auto.
+  destruct (eq_dec _ _); lia.
+Qed.
+
+Lemma max_depth_max gamma:
+  forall ts srts, 1 + depth_alt gamma (s_cons ts srts) < max_depth gamma srts.
+Proof.
+  intros ts srts. unfold max_depth. simpl.
+  pose proof (index_leq_length typesym_eq_dec ts (typesyms_of_context gamma)).
+  unfold depth. lia.
+Qed.
+
+Definition mk_pd (gamma: context) (pd: sort -> Set) (s: sort) : Set :=
+  mk_pd_aux gamma pd (fun srts => max_depth gamma srts) s.
+
+
+(*pd with all typesym_to_sort set correctly to the corresponidng W-type*)
+Definition pd_full (gamma: context) (pd: sort -> Set) := forall (m: mut_adt) (srts: list sort)
+    (a: alg_datatype) (m_in: mut_in_ctx m gamma) (Hin: adt_in_mut a m),
+    pd (s_cons (adt_name a) srts) =
+    adt_rep m srts pd a Hin.
+
+Definition pd_full_aux (gamma: context) (pd: sort -> Set) (n: list sort -> nat) := 
+    (forall ts srts1, 1 + depth_alt gamma (s_cons ts srts1) < n srts1) ->
+    forall (m: mut_adt) (srts: list sort)
+    (a: alg_datatype) (m_in: mut_in_ctx m gamma) (Hin: adt_in_mut a m) ,
+    pd (s_cons (adt_name a) srts) =
+    adt_rep m srts pd a Hin.
+(* 
+(*TODO: move this*)
+Print mk_adts.
+
+(*Get vars in mutual datatype (note: by well-typing, should be in m_params m)*)
+Print alg_datatype.
+
+Print funsym.
+Print fpsym.
+Print f_sym. *)
+
+
 (*Lemma W_ext (I: Set) (A1 A2: I -> Set) (B1 B2:  *)
 
 (*Lemma big_sprod_inj l1 l2:
@@ -495,74 +541,656 @@ Proof.
     intros y Hiny. apply Hall. rewrite Hiny, orb_true_r; auto.
 Qed.
 
+Set Bullet Behavior "Strict Subproofs".
 
-Lemma mk_ts_map_invar gamma pd n1 n2 s:
-  sort_depth s < n1 ->
-  sort_depth s < n2 ->
+Lemma list_map_map_In_le {A: Type} (f: A -> nat) {l: list A} {x: A}:
+  In x l ->
+  f x <= list_max (map f l).
+Proof.
+  intros Hin.
+  pose proof (list_max_le (map f l) (list_max (map f l))) as [Hmax _].
+  specialize (Hmax (ltac:(lia))).
+  rewrite Forall_map, Forall_forall in Hmax.
+  auto.
+Qed. 
+Print sort_depth.
+Lemma sort_depth_cons n ts srts:
+  sort_depth n (s_cons ts srts) = 1 + n ts * sorts_depth n srts.
+Proof. reflexivity. Qed.
+
+(*Hmm, not sure if this is true*)
+(*TODO: can remove 1+ if we make depth of int 0 (I think)*)
+(* Lemma sort_depth_subst n params srts x:
+  sort_depth n (ty_subst_s params srts x) <= 1 + (vty_size n x) * (sorts_depth n srts).
+Proof.
+  induction x as [| | x | ts tys IH]; simpl; try lia.
+  - unfold ty_subst_s. simpl.
+    destruct (ty_subst_fun_cases params srts s_int x) as [Hin | Hint].
+    + rewrite Nat.add_0_r. unfold sorts_depth.
+      apply (list_map_map_In_le (sort_depth n)) in Hin. lia.
+    + rewrite Hint. simpl. lia.
+  - apply le_n_S. rewrite map_map.
+    assert (list_max (map (fun x : vty => sort_depth n (v_subst (ty_subst_fun params srts s_int) x)) tys) <= 
+      1 + list_max (map (vty_size n) tys) * sorts_depth n srts).
+    { apply list_max_le. rewrite Forall_map. revert IH. apply Forall_impl_strong. intros a Hina Hle.
+      unfold ty_subst_s in Hle.
+      assert (vty_size n a <= list_max (map (vty_size n) tys)). {
+        apply list_map_map_In_le. auto.
+      }
+      nia.
+    }
+    Admitted. *)
+(*     
+Lemma sorts_depth_sigma gamma m ts tys (m_in: mut_in_ctx m gamma) n srts
+  (Hin: In (ts, tys) (mut_ts_pairs (adts m))):
+  sorts_depth n (map (ty_subst_s (m_params m) srts) tys) <=
+  1 + constr_depth gamma * sorts_depth n srts.
+Proof.
+  unfold sorts_depth.
+  rewrite !map_map.
+  apply list_max_le.
+  rewrite Forall_map, Forall_forall. intros x Hinx.
+
+
+
+  Search list_max (_ <= _).
+
+ 
+  induction tys as [| t1 tys IHty]; simpl; try lia. *)
+  
+
+
+(*What about: in typesym to sort (ONLY) can be lexicographic
+  no, not true -only at top level
+  should depend on index
+  cannot keep going forever - idea: eventually get to ADT that has no previously defined typesyms*)
+
+
+(*Test*)
+Require Import Stdlib.Arith.Wf_nat.
+
+Lemma depth_alt_cons_bound gamma ts srts:
+  depth gamma srts < depth_alt gamma (s_cons ts srts).
+Proof.
+  simpl.
+  unfold depth. lia.
+Qed.
+
+Lemma depth_alt_in gamma {s srts}:
+  In s srts ->
+  depth_alt gamma s <= depth gamma srts.
+Proof.
+  intros Hin. unfold depth. 
+  apply list_map_map_In_le; auto.
+Qed.
+
+Lemma mut_ts_pairs_subst_smaller {gamma m a} (gamma_valid: valid_context gamma) (m_in: mut_in_ctx m gamma)
+  (a_in: adt_in_mut a m) ts' tys' srts
+  (Hin: In (ts', tys') (mut_ts_pairs (adts m))):
+  depth_alt gamma (s_cons ts' (map (ty_subst_s (m_params m) srts) tys')) <
+  depth_alt gamma (s_cons (adt_name a) srts).
+Proof. Admitted.
+(*Idea: index of ts' is smaller than index of ts, and indices in tys' MUST be 
+      smaller than index of ts as well (by well-typed context)
+      and obviously everythign in srts smaller than srts, so I think we are good
+      *)
+    (* apply PeanoNat.lt_S_n in Hn1, Hn2.
+    assert ( Hindex: index typesym_eq_dec ts' (typesyms_of_context gamma) < 
+      index typesym_eq_dec ts (typesyms_of_context gamma)). { admit. } *)
+    (*Idea: (list_max (map (depth_alt gamma) (map (sigma m srts) tys'))) <=
+      max (list_max (map (depth_alt gamma) srts)) (list_max (map (depth_vty gamma) tys'))
+      by subst properties (maybe we need assumption about params in bounds but that is OK*)
+    (*Then, have that (list_max (map (depth_vty gamma) tys') <= (index typesym_eq_dec ts') by 
+        well-typing of constructors (need valid context) *)
+    (*So, max (index ts') (max (list_map srts) (index ts')) = max (index ts') (max (list_map srts))*)
+    (*And we know that index ts' < index ts', so the result follows*)
+    (*I believe that this should work*)
+
+(*Maybe: prove 2 things: non-dependent and dependent versions*)
+
+Lemma mk_ts_map_invar_const {gamma} (gamma_valid: valid_context gamma) pd n1 n2 (s: sort):
+  depth_alt gamma s < n1 ->
+  depth_alt gamma s < n2 ->
   ts_map_to_pd (mk_ts_map gamma pd n1) s = ts_map_to_pd (mk_ts_map gamma pd n2) s.
 Proof.
   generalize dependent n2. generalize dependent s. induction n1 as [| n1 IHn1].
   { intros; lia. }
   intros s [| n2]; [lia | intros Hn1 Hn2].
-  unfold ts_map_to_pd.
-  (*TODO: need recursive sorts*)
-  assert (Hs: s = s_int \/ s = s_real \/ exists ts srts, s = typesym_to_sort ts srts). { admit. }
-  destruct Hs as [Hs | [Hs | [ts [srts Hs]]]].
-  - subst. rewrite !sort_rect_int. reflexivity.
-  - subst. rewrite !sort_rect_real. reflexivity.
-  - subst. rewrite !sort_rect_typesym_to_sort. simpl.
-    simpl. generalize dependent (find_ts_in_ctx_some gamma ts).
-    destruct (find_ts_in_ctx gamma ts) as [[m a]|] eqn : Hfind; auto.
-    intros H. generalize dependent (proj1 (proj2 (H m a eq_refl))). clear H.
-    intros a_in. unfold adt_rep.
-    assert (Hveq: (var_map m srts (ts_map_to_pd (mk_ts_map gamma pd n1))) = 
-      (var_map m srts (ts_map_to_pd (mk_ts_map gamma pd n2)))). {
-      apply functional_extensionality. intros x.
-      unfold var_map. unfold domain. unfold sigma. simpl.
-      destruct (in_dec string_dec x (m_params m)) as [Hin| Hin].
-      + (*Case 1: if var in list, maps to corresponding sort, which has smaller size than n1 and n2,
-          so use IH*)
-        (*Note: we need a lemma that doesnt require length eq, as long as in both lists, otherwise prove default
-          for now just admit*)
-        destruct (In_nth _ _ EmptyString Hin) as [n [Hn Hx]].
-        subst. rewrite ty_subst_fun_nth with (s:=vty_int); auto.
-        2: { (*here*) admit. }
-        2: { apply m_params_Nodup. }
-        unfold sorts_to_tys. rewrite !(map_nth_inbound) with (d2:=s_int); auto. 2: admit.
-        destruct (sort_to_ty (nth n srts s_int)) eqn : Hs; auto.
-        { (*sort not var*) unfold sort_to_ty in Hs. destruct (nth n srts s_int); simpl in Hs. subst.
-          exfalso. apply (var_not_sort t); auto. }
-        unfold ty_subst_s. unfold v_subst. simpl. apply IHn1.
-        * (*identical proofs*)
-          unfold sort_depth. unfold sort_to_srt. simpl.
-          match goal with |- context [ sort_to_srt_aux ?x ?y] => generalize dependent y end.
-          simpl. rewrite !ty_subst_fun_nth with (s:=vty_int); auto.
-          2: { admit. } 2: { apply m_params_Nodup. }
-          unfold sorts_to_tys. rewrite !map_nth_inbound with (d2:=s_int) by admit.
-          (*TODO: this is doable once we have recursive sorts*)
-          admit.
-        * (*similar*) admit.
-      + rewrite !ty_subst_fun_notin; auto.
-    }
-    rewrite Hveq.
-    (*Now prove typesym_map equality*)
-    erewrite mk_adts_ext; [reflexivity|].
-    (*OK, so we need to prove this*)
-    intros ts' tys' Hin'. unfold typesym_map.
-    (*So we know (if we change bounds) that sort depth is smaller*)
-    unfold domain. 
-    destruct (sort_to_ty (typesym_to_sort ts' (seq.map (sigma m srts) tys'))) eqn : Hty; auto.
-    { (*contradiction*) exfalso. apply (var_not_sort t). rewrite <- Hty; auto.
-      destruct (typesym_to_sort ts' (seq.map (sigma m srts) tys')); auto.
-    }
-    (*Idea is that we need to show (ultimately) that this sort is small enough*)
-    apply IHn1.
-    (*TODO: come back once I fix sorts *)
+  destruct s as [| | ts srts]; simpl; auto.
+  generalize dependent (find_ts_in_ctx_some gamma ts).
+  destruct (find_ts_in_ctx gamma ts) as [[m a]|] eqn : Hfind; auto.
+  intros H. generalize dependent (proj1 (proj2 (H m a eq_refl))).
+  specialize (H m a eq_refl). destruct H as [m_in [a_in Hts]].
+  intros a_in'. assert (a_in' = a_in) by (apply bool_irrelevance); subst.
+  (*TODO: separate lemma*) unfold adt_rep.
+  assert (Hveq: (var_map m srts (ts_map_to_pd (mk_ts_map gamma pd n1))) = 
+    (var_map m srts (ts_map_to_pd (mk_ts_map gamma pd n2)))). {
+    (*This should be separate lemma*)
+    apply functional_extensionality. intros x.
+    unfold var_map. unfold domain. unfold sigma. simpl. unfold ty_subst_s.
+    simpl. 
+    destruct (ty_subst_fun_cases (m_params m) srts s_int x) as [Hin | Hd].
+    + remember (ty_subst_fun (m_params m) srts s_int x) as t.
+      destruct (sort_to_ty t) eqn : Hs; auto.
+      { (*sort not var*) destruct t; simpl in Hs; discriminate. }
+      simpl in Hn1, Hn2.
+      pose proof (list_map_map_In_le (depth_alt gamma) Hin).
+      apply IHn1; lia.
+      
+(*       admit. *)
+      (* unfold depth_aux in Hn1, Hn2.
+      simpl in Hn1.
+      simpl sort_depth in Hn1, Hn2.
+      assert (Hn1': list_max (map (sort_depth (constr_depth gamma)) srts) < n1) by nia.
+      assert (Hn2': list_max (map (sort_depth (constr_depth gamma)) srts) < n2) by nia.
+      pose proof (list_map_map_In_le (sort_depth (constr_depth gamma)) Hin). *)
+(*       apply IHn1; lia. *)
+    + rewrite Hd; auto.
+  }
+  rewrite Hveq.
+  (*Now prove typesym_map equality*)
+  erewrite mk_adts_ext; [reflexivity|].
+  intros ts' tys' Hin'. unfold typesym_map.
+  (*So we know (if we change bounds) that sort depth is smaller*)
+  unfold domain. simpl.
+  specialize (IHn1 (s_cons ts' (map (sigma m srts) tys')) n2).
+(*   simpl sort_depth in Hn1, Hn2. *)
+  (*Know here that ts' is NON-recursive instance - so it MUST appear BEFORE in gamma*)
+(*  apply PeanoNat.lt_S_n in Hn1, Hn2. *)
+  pose proof (mut_ts_pairs_subst_smaller gamma_valid m_in a_in ts' tys' srts Hin').
+  apply IHn1; unfold sigma; lia.
+Qed.
+
+(*Definition depth_func (gamma: context) (s: sort)*)
+(*TODO: need to figure out if other version (with fixed nat) is enough?*)
+Lemma mk_ts_map_invar {gamma} (gamma_valid : valid_context gamma) pd n1 n2 (s: sort):
+  (* (forall srts, 0 < n1 srts) ->
+  (forall srts, 0 < n2 srts) -> *)
+  (forall ts srts, depth_alt gamma (s_cons ts srts) < n1 srts) ->
+  (forall ts srts, depth_alt gamma (s_cons ts srts) < n2 srts) ->
+  ts_map_to_pd (fun ts srts => mk_ts_map gamma pd (n1 srts) ts srts) s = 
+  ts_map_to_pd (fun ts srts => mk_ts_map gamma pd (n2 srts) ts srts) s.
+Proof.
+  intros Hn1 Hn2. destruct s as [| | ts srts]; simpl; auto.
+  pose proof (mk_ts_map_invar_const gamma_valid pd (n1 srts) (n2 srts) (s_cons ts srts)) as Heq.
+  simpl ts_map_to_pd in Heq. apply Heq; auto.
+Qed.
+
+
+Lemma mk_ts_map_invar'  {gamma} (gamma_valid : valid_context gamma) pd n1 n2 (s: sort):
+  (* (forall srts, 0 < n1 srts) ->
+  (forall srts, 0 < n2 srts) -> *)
+  (forall ts srts, depth_alt gamma (s_cons ts srts) < n1 srts) ->
+  (depth_alt gamma s < n2) ->
+  ts_map_to_pd (fun ts srts => mk_ts_map gamma pd (n1 srts) ts srts) s = 
+  ts_map_to_pd (fun ts srts => mk_ts_map gamma pd n2 ts srts) s.
+Proof.
+  intros Hn1 Hn2. destruct s as [| | ts srts]; simpl; auto.
+  pose proof (mk_ts_map_invar_const gamma_valid pd (n1 srts) n2 (s_cons ts srts)) as Heq.
+  simpl ts_map_to_pd in Heq. apply Heq; auto.
+Qed.
+ (*  simpl.
+
+   assert (Hn1' := Hn1 srts).
+  assert (Hn2' := Hn2 srts).
+  destruct (n1 srts) as [|n1'] eqn : Hn1s; [lia|].
+  destruct (n2 srts) as [|n2'] eqn : Hn2s; [lia|].
+  simpl.
+  generalize dependent (find_ts_in_ctx_some gamma ts).
+  destruct (find_ts_in_ctx gamma ts) as [[m a]|] eqn : Hfind; auto.
+  intros H. generalize dependent (proj1 (proj2 (H m a eq_refl))).
+  specialize (H m a eq_refl). destruct H as [m_in [a_in Hts]].
+  intros a_in'. assert (a_in' = a_in) by (apply bool_irrelevance). subst. 
+  unfold adt_rep.
+
+
+  revert n1 n2.
+  remember (depth_alt gamma s) as n.
+  generalize dependent s.
+  induction n using lt_wf_ind.
+  assert (IH: forall s: sort,
+    depth_alt gamma s < n ->
+    forall n1 n2,
+    (forall srts, 0 < n1 srts) ->
+    (forall srts, 0 < n2 srts) ->
+    (*(forall srts : list sort, depth gamma srts < n1 srts) ->
+    (forall srts : list sort, depth gamma srts < n2 srts) ->*)
+    ts_map_to_pd (fun (ts : typesym) (srts : list sort) => mk_ts_map gamma pd (n1 srts) ts srts) s =
+    ts_map_to_pd (fun (ts : typesym) (srts : list sort) => mk_ts_map gamma pd (n2 srts) ts srts) s).
+  { intros s Hn. apply H with (m:=depth_alt gamma s); auto. }
+  clear H.
+  intros s Hn n1 n2 Hn1 Hn2. subst.
+  destruct s as [| | ts srts]; simpl; auto.
+  assert (Hn1' := Hn1 srts).
+  assert (Hn2' := Hn2 srts).
+  destruct (n1 srts) as [|n1'] eqn : Hn1s; [lia|].
+  destruct (n2 srts) as [|n2'] eqn : Hn2s; [lia|].
+  simpl.
+  generalize dependent (find_ts_in_ctx_some gamma ts).
+  destruct (find_ts_in_ctx gamma ts) as [[m a]|] eqn : Hfind; auto.
+  intros H. generalize dependent (proj1 (proj2 (H m a eq_refl))).
+  specialize (H m a eq_refl). destruct H as [m_in [a_in Hts]].
+  intros a_in'. assert (a_in' = a_in) by (apply bool_irrelevance). subst. 
+  unfold adt_rep.
+  assert (Hveq: (var_map m srts (ts_map_to_pd (mk_ts_map gamma pd n1'))) = 
+    (var_map m srts (ts_map_to_pd (mk_ts_map gamma pd n2')))). {
+    (*This should be separate lemma*)
+    apply functional_extensionality. intros x.
+    unfold var_map. unfold domain. unfold sigma. unfold ty_subst_s.
+    simpl. 
+    destruct (ty_subst_fun_cases (m_params m) srts s_int x) as [Hin | Hd].
+    + remember (ty_subst_fun (m_params m) srts s_int x) as t.
+      destruct (sort_to_ty t) eqn : Hs; auto.
+      { (*sort not var*) destruct t; simpl in Hs; discriminate. }
+      (*We have to change n1 and n2, but we use the fact that it is bounded (I hope)*)
+      pose proof (depth_alt_in gamma Hin).
+      pose proof (depth_alt_cons_bound gamma (adt_name a) srts).
+      apply (IH t); auto; try lia.
+    + rewrite Hd; auto.
+  }
+  rewrite Hveq.
+  (*Now prove typesym_map equality*)
+  erewrite mk_adts_ext; [reflexivity|].
+  intros ts' tys' Hin'. unfold typesym_map.
+  (*So we know (if we change bounds) that sort depth is smaller*)
+  unfold domain. simpl.
+  specialize (IH (s_cons ts' (map (sigma m srts) tys'))).
+  simpl ts_map_to_pd in IH.
+  assert (Hdepth: depth_alt gamma (s_cons ts' (map (sigma m srts) tys')) < depth_alt gamma (s_cons (adt_name a) srts)).
+  {
+    (*Idea: (list_max (map (depth_alt gamma) (map (sigma m srts) tys'))) <=
+      max (list_max (map (depth_alt gamma) srts)) (list_max (map (depth_vty gamma) tys'))
+      by subst properties (maybe we need assumption about params in bounds but that is OK*)
+    (*Then, have that (list_max (map (depth_vty gamma) tys') <= (index typesym_eq_dec ts') by 
+        well-typing of constructors (need valid context) *)
+    (*So, max (index ts') (max (list_map srts) (index ts')) = max (index ts') (max (list_map srts))*)
+    (*And we know that index ts' < index ts', so the result follows*)
+    (*I believe that this should work*)
     admit.
+  }
+  specialize (IH Hdepth (fun _ => n1') (fun _ => n2')).
+(*   simpl sort_depth in Hn1, Hn2. *)
+  (*Know here that ts' is NON-recursive instance - so it MUST appear BEFORE in gamma*)
+(*  apply PeanoNat.lt_S_n in Hn1, Hn2. *)
+  apply IH; try lia.
+Admitted. *)
+
+(*NOTE: Working version (mod bound) but with bad hypothesis*)
+(*
+Lemma mk_ts_map_invar gamma pd n1 n2 (s: sort):
+  (forall srts, depth_alt gamma s < n1 srts) ->
+  (forall srts, depth_alt gamma s < n2 srts) ->
+  ts_map_to_pd (fun ts srts => mk_ts_map gamma pd (n1 srts) ts srts) s = 
+  ts_map_to_pd (fun ts srts => mk_ts_map gamma pd (n2 srts) ts srts) s.
+Proof.
+  revert n1 n2.
+  remember (depth_alt gamma s) as n.
+  generalize dependent s.
+  induction n using lt_wf_ind.
+  assert (IH: forall s: sort,
+    depth_alt gamma s < n ->
+    forall n1 n2,
+    (forall srts : list sort, depth_alt gamma s < n1 srts) ->
+    (forall srts : list sort, depth_alt gamma s < n2 srts) ->
+    ts_map_to_pd (fun (ts : typesym) (srts : list sort) => mk_ts_map gamma pd (n1 srts) ts srts) s =
+    ts_map_to_pd (fun (ts : typesym) (srts : list sort) => mk_ts_map gamma pd (n2 srts) ts srts) s).
+  { intros s Hn. apply H; auto. }
+  clear H.
+  intros s Hn n1 n2 Hn1 Hn2. subst.
+  destruct s as [| | ts srts]; simpl; auto.
+  assert (Hn1' := Hn1 srts).
+  assert (Hn2' := Hn2 srts).
+  destruct (n1 srts) as [|n1'] eqn : Hn1s; [lia|].
+  destruct (n2 srts) as [|n2'] eqn : Hn2s; [lia|].
+  simpl.
+  generalize dependent (find_ts_in_ctx_some gamma ts).
+  destruct (find_ts_in_ctx gamma ts) as [[m a]|] eqn : Hfind; auto.
+  intros H. generalize dependent (proj1 (proj2 (H m a eq_refl))).
+  specialize (H m a eq_refl). destruct H as [m_in [a_in Hts]].
+  intros a_in'. assert (a_in' = a_in) by (apply bool_irrelevance). subst. 
+  unfold adt_rep.
+  assert (Hveq: (var_map m srts (ts_map_to_pd (mk_ts_map gamma pd n1'))) = 
+    (var_map m srts (ts_map_to_pd (mk_ts_map gamma pd n2')))). {
+    (*This should be separate lemma*)
+    apply functional_extensionality. intros x.
+    unfold var_map. unfold domain. unfold sigma. unfold ty_subst_s.
+    simpl. 
+    destruct (ty_subst_fun_cases (m_params m) srts s_int x) as [Hin | Hd].
+    + remember (ty_subst_fun (m_params m) srts s_int x) as t.
+      destruct (sort_to_ty t) eqn : Hs; auto.
+      { (*sort not var*) destruct t; simpl in Hs; discriminate. }
+      (*We have to change n1 and n2, but we use the fact that it is bounded (I hope)*)
+      pose proof (depth_alt_in gamma Hin).
+        pose proof (depth_alt_cons_bound gamma (adt_name a) srts).
+      apply (IH t); auto; lia.
+    + rewrite Hd; auto.
+  }
+  rewrite Hveq.
+  (*Now prove typesym_map equality*)
+  erewrite mk_adts_ext; [reflexivity|].
+  intros ts' tys' Hin'. unfold typesym_map.
+  (*So we know (if we change bounds) that sort depth is smaller*)
+  unfold domain. simpl.
+  specialize (IH (s_cons ts' (map (sigma m srts) tys'))).
+  simpl ts_map_to_pd in IH.
+  assert (Hdepth: depth_alt gamma (s_cons ts' (map (sigma m srts) tys')) < depth_alt gamma (s_cons (adt_name a) srts)).
+  {
+    (*Idea: (list_max (map (depth_alt gamma) (map (sigma m srts) tys'))) <=
+      max (list_max (map (depth_alt gamma) srts)) (list_max (map (depth_vty gamma) tys'))
+      by subst properties (maybe we need assumption about params in bounds but that is OK*)
+    (*Then, have that (list_max (map (depth_vty gamma) tys') <= (index typesym_eq_dec ts') by 
+        well-typing of constructors (need valid context) *)
+    (*So, max (index ts') (max (list_map srts) (index ts')) = max (index ts') (max (list_map srts))*)
+    (*And we know that index ts' < index ts', so the result follows*)
+    (*I believe that this should work*)
     admit.
+  }
+  specialize (IH Hdepth (fun _ => n1') (fun _ => n2')).
+(*   simpl sort_depth in Hn1, Hn2. *)
+  (*Know here that ts' is NON-recursive instance - so it MUST appear BEFORE in gamma*)
+(*  apply PeanoNat.lt_S_n in Hn1, Hn2. *)
+  apply IH; try lia.
+Admitted.*)
+
+(* 
+  - simpl in Hn1, Hn2 |- *.
+    (*Idea: index of ts' is smaller than index of ts, and indices in tys' MUST be 
+      smaller than index of ts as well (by well-typed context)
+      and obviously everythign in srts smaller than srts, so I think we are good
+      *)
+    apply PeanoNat.lt_S_n in Hn1, Hn2.
+    assert ( Hindex: index typesym_eq_dec ts' (typesyms_of_context gamma) < 
+      index typesym_eq_dec ts (typesyms_of_context gamma)). { admit. }
+
+
+      - pose proof (depth_alt_in gamma Hin).
+        pose proof (depth_alt_cons_bound gamma (adt_name a) srts).
+        lia.
+      - intros _. 
+
+
+
+
+ simpl.
+      simpl in Hn1, Hn2.
+      pose proof (list_map_map_In_le (depth_alt gamma) Hin).
+      apply IHn1; lia.
+      
+(*       admit. *)
+      (* unfold depth_aux in Hn1, Hn2.
+      simpl in Hn1.
+      simpl sort_depth in Hn1, Hn2.
+      assert (Hn1': list_max (map (sort_depth (constr_depth gamma)) srts) < n1) by nia.
+      assert (Hn2': list_max (map (sort_depth (constr_depth gamma)) srts) < n2) by nia.
+      pose proof (list_map_map_In_le (sort_depth (constr_depth gamma)) Hin). *)
+(*       apply IHn1; lia. *)
+    + rewrite Hd; auto.
+  }
+  
+
+ clear H.
+  intros a_in. (*TODO: separate lemma*) unfold adt_rep.
+
+  unfold mk_ts_map.
+  
+  Check PeanoNat.Nat.lt_wf_induction.
+  Check Nat.strong_ind.
+
+  generalize dependent n2. generalize dependent s. induction n1 as [| n1 IHn1].
+  { intros; lia. }
+  intros s [| n2]; [lia | intros Hn1 Hn2].
+  destruct s as [| | ts srts]; simpl; auto.
+  generalize dependent (find_ts_in_ctx_some gamma ts).
+  destruct (find_ts_in_ctx gamma ts) as [[m a]|] eqn : Hfind; auto.
+  intros H. generalize dependent (proj1 (proj2 (H m a eq_refl))). clear H.
+  intros a_in. (*TODO: separate lemma*) unfold adt_rep.
+  assert (Hveq: (var_map m srts (ts_map_to_pd (mk_ts_map gamma pd n1))) = 
+    (var_map m srts (ts_map_to_pd (mk_ts_map gamma pd n2)))). {
+    (*This should be separate lemma*)
+    apply functional_extensionality. intros x.
+    unfold var_map. unfold domain. unfold sigma. simpl. unfold ty_subst_s.
+    simpl. 
+    destruct (ty_subst_fun_cases (m_params m) srts s_int x) as [Hin | Hd].
+    + remember (ty_subst_fun (m_params m) srts s_int x) as t.
+      destruct (sort_to_ty t) eqn : Hs; auto.
+      { (*sort not var*) destruct t; simpl in Hs; discriminate. }
+      simpl in Hn1, Hn2.
+      pose proof (list_map_map_In_le (depth_alt gamma) Hin).
+      apply IHn1; lia.
+      
+(*       admit. *)
+      (* unfold depth_aux in Hn1, Hn2.
+      simpl in Hn1.
+      simpl sort_depth in Hn1, Hn2.
+      assert (Hn1': list_max (map (sort_depth (constr_depth gamma)) srts) < n1) by nia.
+      assert (Hn2': list_max (map (sort_depth (constr_depth gamma)) srts) < n2) by nia.
+      pose proof (list_map_map_In_le (sort_depth (constr_depth gamma)) Hin). *)
+(*       apply IHn1; lia. *)
+    + rewrite Hd; auto.
+  }
+  rewrite Hveq.
+  (*Now prove typesym_map equality*)
+  erewrite mk_adts_ext; [reflexivity|].
+  intros ts' tys' Hin'. unfold typesym_map.
+  (*So we know (if we change bounds) that sort depth is smaller*)
+  unfold domain. simpl.
+  specialize (IHn1 (s_cons ts' (map (sigma m srts) tys')) n2).
+(*   simpl sort_depth in Hn1, Hn2. *)
+  (*Know here that ts' is NON-recursive instance - so it MUST appear BEFORE in gamma*)
+(*  apply PeanoNat.lt_S_n in Hn1, Hn2. *)
+  apply IHn1.
+  - simpl in Hn1, Hn2 |- *.
+    (*Idea: index of ts' is smaller than index of ts, and indices in tys' MUST be 
+      smaller than index of ts as well (by well-typed context)
+      and obviously everythign in srts smaller than srts, so I think we are good
+      *)
+    apply PeanoNat.lt_S_n in Hn1, Hn2.
+    assert ( Hindex: index typesym_eq_dec ts' (typesyms_of_context gamma) < 
+      index typesym_eq_dec ts (typesyms_of_context gamma)). { admit. }
+    (*Idea: (list_max (map (depth_alt gamma) (map (sigma m srts) tys'))) <=
+      max (list_max (map (depth_alt gamma) srts)) (list_max (map (depth_vty gamma) tys'))
+      by subst properties (maybe we need assumption about params in bounds but that is OK*)
+    (*Then, have that (list_max (map (depth_vty gamma) tys') <= (index typesym_eq_dec ts') by 
+        well-typing of constructors (need valid context) *)
+    (*So, max (index ts') (max (list_map srts) (index ts')) = max (index ts') (max (list_map srts))*)
+    (*And we know that index ts' < index ts', so the result follows*)
+    (*I believe that this should work*)
+    admit.
+  - admit.
 Admitted.
 
+Lemma mk_ts_map_invar gamma pd n1 n2 (s: sort):
+  depth_alt gamma s < n1 ->
+  depth_alt gamma s < n2 ->
+  ts_map_to_pd (mk_ts_map gamma pd n1) s = ts_map_to_pd (mk_ts_map gamma pd n2) s.
+Proof.
+  generalize dependent n2. generalize dependent s. induction n1 as [| n1 IHn1].
+  { intros; lia. }
+  intros s [| n2]; [lia | intros Hn1 Hn2].
+  destruct s as [| | ts srts]; simpl; auto.
+  generalize dependent (find_ts_in_ctx_some gamma ts).
+  destruct (find_ts_in_ctx gamma ts) as [[m a]|] eqn : Hfind; auto.
+  intros H. generalize dependent (proj1 (proj2 (H m a eq_refl))). clear H.
+  intros a_in. (*TODO: separate lemma*) unfold adt_rep.
+  assert (Hveq: (var_map m srts (ts_map_to_pd (mk_ts_map gamma pd n1))) = 
+    (var_map m srts (ts_map_to_pd (mk_ts_map gamma pd n2)))). {
+    (*This should be separate lemma*)
+    apply functional_extensionality. intros x.
+    unfold var_map. unfold domain. unfold sigma. simpl. unfold ty_subst_s.
+    simpl. 
+    destruct (ty_subst_fun_cases (m_params m) srts s_int x) as [Hin | Hd].
+    + remember (ty_subst_fun (m_params m) srts s_int x) as t.
+      destruct (sort_to_ty t) eqn : Hs; auto.
+      { (*sort not var*) destruct t; simpl in Hs; discriminate. }
+      simpl in Hn1, Hn2.
+      pose proof (list_map_map_In_le (depth_alt gamma) Hin).
+      apply IHn1; lia.
+      
+(*       admit. *)
+      (* unfold depth_aux in Hn1, Hn2.
+      simpl in Hn1.
+      simpl sort_depth in Hn1, Hn2.
+      assert (Hn1': list_max (map (sort_depth (constr_depth gamma)) srts) < n1) by nia.
+      assert (Hn2': list_max (map (sort_depth (constr_depth gamma)) srts) < n2) by nia.
+      pose proof (list_map_map_In_le (sort_depth (constr_depth gamma)) Hin). *)
+(*       apply IHn1; lia. *)
+    + rewrite Hd; auto.
+  }
+  rewrite Hveq.
+  (*Now prove typesym_map equality*)
+  erewrite mk_adts_ext; [reflexivity|].
+  intros ts' tys' Hin'. unfold typesym_map.
+  (*So we know (if we change bounds) that sort depth is smaller*)
+  unfold domain. simpl.
+  specialize (IHn1 (s_cons ts' (map (sigma m srts) tys')) n2).
+(*   simpl sort_depth in Hn1, Hn2. *)
+  (*Know here that ts' is NON-recursive instance - so it MUST appear BEFORE in gamma*)
+(*  apply PeanoNat.lt_S_n in Hn1, Hn2. *)
+  apply IHn1.
+  - simpl in Hn1, Hn2 |- *.
+    (*Idea: index of ts' is smaller than index of ts, and indices in tys' MUST be 
+      smaller than index of ts as well (by well-typed context)
+      and obviously everythign in srts smaller than srts, so I think we are good
+      *)
+    apply PeanoNat.lt_S_n in Hn1, Hn2.
+    assert ( Hindex: index typesym_eq_dec ts' (typesyms_of_context gamma) < 
+      index typesym_eq_dec ts (typesyms_of_context gamma)). { admit. }
+    (*Idea: (list_max (map (depth_alt gamma) (map (sigma m srts) tys'))) <=
+      max (list_max (map (depth_alt gamma) srts)) (list_max (map (depth_vty gamma) tys'))
+      by subst properties (maybe we need assumption about params in bounds but that is OK*)
+    (*Then, have that (list_max (map (depth_vty gamma) tys') <= (index typesym_eq_dec ts') by 
+        well-typing of constructors (need valid context) *)
+    (*So, max (index ts') (max (list_map srts) (index ts')) = max (index ts') (max (list_map srts))*)
+    (*And we know that index ts' < index ts', so the result follows*)
+    (*I believe that this should work*)
+    admit.
+  - admit.
+Admitted. *)
+ (*    lia.
 
+ by admit.
+
+    (*Problem is extra +1 - is it actually smaller or could it just be the same?*)
+    (*with + version, can remove the s because ts' is smaller, but then, the max could
+      be as large as max (index ts', srts)*)
+    Search (S ?x < S ?y).
+
+
+ (*Idea: index of*) unfold depth_aux in Hn1 |-*. rewrite sort_depth_cons in Hn1 |- *.
+    unfold sigma.
+
+
+
+
+Lemma sorts_depth_bound n srts b
+  (forall x, In x srts -> sort_depth n x < b) ->
+  
+
+Lemma 
+
+
+    rewrite map_map.
+    (*Idea: index ts' < index ts, *)
+
+    
+
+ simpl sort_depth.
+
+ simpl sort_depth.
+
+    Print sigma.  
+    
+
+  simpl in IHn1.
+
+  Print ts_map_to_pd.
+
+  unfold mk_ts_map.
+  Check mk_ts_map.
+  
+
+
+  destruct (sort_to_ty (typesym_to_sort ts' (seq.map (sigma m srts) tys'))) eqn : Hty; auto.
+  { (*contradiction*) exfalso. apply (var_not_sort t). rewrite <- Hty; auto.
+    destruct (typesym_to_sort ts' (seq.map (sigma m srts) tys')); auto.
+  }
+  (*Idea is that we need to show (ultimately) that this sort is small enough*)
+  apply IHn1.
+  (*TODO: come back once I fix sorts *)
+  admit.
+  admit.
+      * 
+
+ unfold sort_to_ty in Hs. 
+        destruct (nth n srts s_int); simpl in Hs; discriminate.
+
+
+ destruct (ty_subst_fun (m_params m) srts s_int x) as [| | ts' srts'] eqn : Hty; auto.
+      remember (s_cons ts' srts') as s.
+      unfold ts_map_to_pd in IHn1. apply IHn1.
+      apply IHn1.
+      
+    destruct (in_dec string_dec x (m_params m)) as [Hin| Hin].
+    + (*Case 1: if var in list, maps to corresponding sort, which has smaller size than n1 and n2,
+        so use IH*)
+      (*Note: we need a lemma that doesnt require length eq, as long as in both lists, otherwise prove default
+        for now just admit*)
+      (*TODO: need lemma that says we can find first instance - then case on whether this is in bounds
+        of second or not*)
+     (*  Search In nth.
+      Search index.
+      destruct (In_nth _ _ EmptyString Hin) as [n [Hn Hx]].
+      Search ty_subst_fun List.nth.
+
+
+
+ty_subst_fun_nth_gen:
+  forall {A : Type} (vars : list typevar) (vs : list A) (d : A) (n : nat) (a : typevar) (s : A),
+  n < Datatypes.length vars ->
+  n < Datatypes.length vs -> NoDup vars -> ty_subst_fun vars vs d (nth n vars a) = nth n vs s *)
+
+      destruct (In_nth _ _ EmptyString Hin) as [n [Hn Hx]].
+      subst. unfold ty_subst_s. simpl. rewrite ty_subst_fun_nth with (s:=s_int); auto.
+      2: { (*here*) admit. }
+      2: { apply m_params_Nodup. }
+      destruct (sort_to_ty (nth n srts s_int)) eqn : Hs; auto.
+      { (*sort not var*) unfold sort_to_ty in Hs. 
+        destruct (nth n srts s_int); simpl in Hs; discriminate.
+      }
+      simpl in Hn1, Hn2.
+      apply IHn1.
+      * Search list_max. (*TODO: lemma for In*)
+      unfold ty_subst_s. unfold v_subst. simpl. apply IHn1.
+      * (*identical proofs*)
+        unfold sort_depth. unfold sort_to_srt. simpl.
+        match goal with |- context [ sort_to_srt_aux ?x ?y] => generalize dependent y end.
+        simpl. rewrite !ty_subst_fun_nth with (s:=vty_int); auto.
+        2: { admit. } 2: { apply m_params_Nodup. }
+        unfold sorts_to_tys. rewrite !map_nth_inbound with (d2:=s_int) by admit.
+        (*TODO: this is doable once we have recursive sorts*)
+        admit.
+      * (*similar*) admit.
+    + rewrite !ty_subst_fun_notin; auto.
+  }
+  rewrite Hveq.
+  (*Now prove typesym_map equality*)
+  erewrite mk_adts_ext; [reflexivity|].
+  (*OK, so we need to prove this*)
+  intros ts' tys' Hin'. unfold typesym_map.
+  (*So we know (if we change bounds) that sort depth is smaller*)
+  unfold domain. 
+  destruct (sort_to_ty (typesym_to_sort ts' (seq.map (sigma m srts) tys'))) eqn : Hty; auto.
+  { (*contradiction*) exfalso. apply (var_not_sort t). rewrite <- Hty; auto.
+    destruct (typesym_to_sort ts' (seq.map (sigma m srts) tys')); auto.
+  }
+  (*Idea is that we need to show (ultimately) that this sort is small enough*)
+  apply IHn1.
+  (*TODO: come back once I fix sorts *)
+  admit.
+  admit.
+Admitted.
+
+ *)
 
 (*Lemma mk_ts_map_change_n (gamma: context) (pd: sort -> Set) (n1 n2: nat) (ts: typesym) (srts: list sort)
   (Hn1: sorts_depth srts < n1)
@@ -595,33 +1223,27 @@ Lemma mk_adts_ext (
 
 Lemma mk_pd_aux_change_n gamma pd n1 n2:*)
 
-Check adt_rep.
+(* Check adt_rep.
 Lemma adt_rep_eq m srts pd a a_in:
   adt_rep' m srts pd pd a a_in = adt_rep m srts pd a a_in.
-Proof. reflexivity. Qed.
+Proof. reflexivity. Qed. *)
 
 (*Now we will try to prove for the generalized version*)
+
 Lemma mk_pd_aux_full gamma pd n: valid_context gamma -> pd_full_aux gamma (mk_pd_aux gamma pd n) n.
 Proof.
   intros gamma_valid.
-  unfold pd_full_aux, mk_pd_aux. unfold ts_map_to_pd at 1. intros m srts a m_in a_in Hn.
-  rewrite sort_rect_typesym_to_sort.
+  unfold pd_full_aux, mk_pd_aux. unfold ts_map_to_pd at 1. intros Hn m srts a m_in a_in.
+(*   rewrite sort_rect_typesym_to_sort. *)
   (*TODO: could I prove that this equals mk_ts ... (pred n) (bc if n large enough, doesn't change)
     *)
-  assert (Htest: adt_rep m srts (fun s : sort => ts_map_to_pd (mk_ts_map gamma pd n) s) a a_in =
-    adt_rep m srts (fun s : sort => ts_map_to_pd (mk_ts_map gamma pd (pred n)) s) a a_in).
+  assert (Htest: adt_rep m srts (fun s : sort => ts_map_to_pd (fun ts srts => mk_ts_map gamma pd (n srts) ts srts) s) a a_in =
+    adt_rep m srts (fun s : sort => ts_map_to_pd (mk_ts_map gamma pd (pred (n srts))) s) a a_in).
   {
-    unfold adt_rep. f_equal. apply functional_extensionality. intros x.
-    (*TODO: prove var_map result as separate lemma after previous (which we needed for induction, we needed sort
-      explicitly)*)
-    admit.
-    (*TODO: prove typesym_map also*)
-  }
-  rewrite <- adt_rep_eq.
-  rewrite Htest. clear Htest.
-  generalize dependent srts. induction n as [| n' IH].
-  - intros; lia.
-  - intros srts Hdepth. (*TODO: generalize pd in [adt_rep]?*) simpl.
+   (*  pose proof (mk_ts_map_invar' gamma pd (fun x => S (n x)) (S (pred (n srts))) (s_cons (adt_name a) srts)) as Hinvar.
+    prove_hyp Hinvar. { intros x1 x2. specialize (Hn x1 x2); lia. }
+    prove_hyp Hinvar. { specialize (Hn (adt_name a) srts). lia. }
+    simpl in Hinvar. 
     generalize dependent (find_ts_in_ctx_some gamma (adt_name a)).
     assert (Hfind: find_ts_in_ctx gamma (adt_name a) = Some (m, a)). {
       apply find_ts_in_ctx_iff; auto.
@@ -629,39 +1251,169 @@ Proof.
     rewrite Hfind.
     intros H.
     assert (Heq: (proj1 (proj2 (H m a eq_refl))) = a_in) by (apply bool_irrelevance).
-    rewrite Heq.
-
-    (*I think we need a result (not sure if provable): for d2, if agrees on all 
-      typesyms that are NOT in the ADT in question, then same (tying knot lemma)
-      then need to show agrees on all typesyms not in ADT for all n, then connect with n = 0
-      this lemma should be true, hopefully it is provable
-*)
-
- clear H Heq.
-    reflexivity.
-
-(*So plan is this:
-  1. If n1 and n2 are larger than depth, show that we can change n
-  2. show we can change in adt_rep *)
-
-    unfold adt_rep. 
-    
-
- specialize (H m a eq_refl).
+    rewrite Heq. intros Heq1. rewrite <- Heq1.
 
 
-find_ts_in_ctx_iff
-    Search find_ts_in_ctx.
-    destruct (find_ts_in_ctx gamma (adt_name a)) as [ eqn : Hfind.
+ intros Heq1; apply Heq1.
 
- eqn : Hfind.
- unfold mk_ts_map at 1.
-  
+ auto.
 
 
-  unfold sort_rect. simpl. intros m srts a m_in a_in Hn.
+mk_ts_map_invar' *)
+   
 
-    
+    (*maybe we do need another proof here*)
+    (* unfold adt_rep.
+    f_equal.
+    - unfold var_map. apply functional_extensionality. intros x. unfold sigma, ty_subst_s, domain. simpl.
+      Check mk_ts_map_invar.
+
+    apply mk_adts_ext.
+    Search mk_adts. 
+    f_equal.
+
+    Check mk_ts_map_invar.    (*ok, do this later*) *)
+    Check mk_ts_map_invar.
+
+    unfold adt_rep.
+    assert (Hvar: (var_map m srts
+     (fun s : sort =>
+      ts_map_to_pd (fun (ts : typesym) (srts0 : list sort) => mk_ts_map gamma pd (n srts0) ts srts0) s)) =
+      (var_map m srts (fun s : sort => ts_map_to_pd (mk_ts_map gamma pd (Init.Nat.pred (n srts))) s))).
+    {
+      apply functional_extensionality. intros x. unfold var_map. unfold domain, sigma, ty_subst_s. simpl.
+      destruct (ty_subst_fun_cases (m_params m) srts s_int x) as [Hin | Hd].
+      + remember (ty_subst_fun (m_params m) srts s_int x) as t.
+        destruct (sort_to_ty t) as [| | | ts tys] eqn : Hs; auto.
+        { (*sort not var*) destruct t; simpl in Hs; discriminate. }
+        pose proof (depth_alt_in gamma Hin).
+        pose proof (depth_alt_cons_bound gamma (adt_name a) srts).
+        apply mk_ts_map_invar'; auto.
+        * intros ts' s. specialize (Hn ts' s). lia.
+        * specialize (Hn (adt_name a) srts). lia.
+      + rewrite Hd; auto.
+    }
+    (*   (var_map m srts
+     (fun s : sort =>
+      ts_map_to_pd
+        (fun (ts : typesym) (srts0 : list sort) => mk_ts_map gamma pd (Init.Nat.pred (n srts0)) ts srts0)
+        s))).
+    { apply functional_extensionality. intros x. unfold var_map. unfold domain, sigma, ty_subst_s. simpl.
+      destruct (ty_subst_fun_cases (m_params m) srts s_int x) as [Hin | Hd].
+      + remember (ty_subst_fun (m_params m) srts s_int x) as t.
+        destruct (sort_to_ty t) as [| | | ts tys] eqn : Hs; auto.
+        { (*sort not var*) destruct t; simpl in Hs; discriminate. }
+        pose proof (depth_alt_in gamma Hin).
+        pose proof (depth_alt_cons_bound gamma (adt_name a) srts).
+        apply mk_ts_map_invar.
+        * intros s. specialize (Hn s). lia.
+        * intros s. specialize (Hn s). lia.
+      + rewrite Hd; auto.
+    } *)
+    rewrite <- Hvar. clear Hvar.
+    erewrite mk_adts_ext; [reflexivity|].
+    intros ts' tys' Hin'. unfold typesym_map.
+    (*So we know (if we change bounds) that sort depth is smaller*)
+    unfold domain. simpl.
+    pose proof (mk_ts_map_invar_const gamma_valid pd (n (map (sigma m srts) tys'))
+      (Init.Nat.pred (n srts)) (s_cons ts' (map (sigma m srts) tys'))) as Hts.
+
+
+
+    assert (Hdepth: depth_alt gamma (s_cons ts' (map (sigma m srts) tys')) < depth_alt gamma (s_cons (adt_name a) srts)).
+    { apply mut_ts_pairs_subst_smaller; auto. } 
+    simpl ts_map_to_pd in Hts. apply Hts.
+    - specialize (Hn ts' (map (sigma m srts) tys')). lia.
+    - specialize (Hn (adt_name a) srts). lia.
+  }
+  rewrite Htest. clear Htest.
+  destruct (n srts) as [| n'] eqn : Hn'.
+  - specialize (Hn (adt_name a) srts); lia.
+  - simpl. 
+    generalize dependent (find_ts_in_ctx_some gamma (adt_name a)).
+    assert (Hfind: find_ts_in_ctx gamma (adt_name a) = Some (m, a)). {
+      apply find_ts_in_ctx_iff; auto.
+    }
+    rewrite Hfind.
+    intros H.
+    assert (Heq: (proj1 (proj2 (H m a eq_refl))) = a_in) by (apply bool_irrelevance).
+    rewrite Heq. auto.
+Qed.
+(* 
+    simpl in Hts.
+    apply mk_ts_map_invar with (n1:=fun _ => (n (map (sigma m srts) tys')))
+    (n2:= fun _ => (Init.Nat.pred (n (map (sigma m srts) tys')))).
+    Check mk_ts_map_invar.
+
+    specialize (IH (s_cons ts' (map (sigma m srts) tys'))).
+    simpl ts_map_to_pd in IH.
+    assert (Hdepth: depth_alt gamma (s_cons ts' (map (sigma m srts) tys')) < depth_alt gamma (s_cons (adt_name a) srts)).
+    {
+      (*Idea: (list_max (map (depth_alt gamma) (map (sigma m srts) tys'))) <=
+        max (list_max (map (depth_alt gamma) srts)) (list_max (map (depth_vty gamma) tys'))
+        by subst properties (maybe we need assumption about params in bounds but that is OK*)
+      (*Then, have that (list_max (map (depth_vty gamma) tys') <= (index typesym_eq_dec ts') by 
+          well-typing of constructors (need valid context) *)
+      (*So, max (index ts') (max (list_map srts) (index ts')) = max (index ts') (max (list_map srts))*)
+      (*And we know that index ts' < index ts', so the result follows*)
+      (*I believe that this should work*)
+      admit.
+    }
+    specialize (IH Hdepth (fun _ => n1') (fun _ => n2')).
+  (*   simpl sort_depth in Hn1, Hn2. *)
+    (*Know here that ts' is NON-recursive instance - so it MUST appear BEFORE in gamma*)
+  (*  apply PeanoNat.lt_S_n in Hn1, Hn2. *)
+    apply IH; try lia.
+    apply mk_adts_ext.
+
+    pose proof (mk_ts_map_invar gamma pd (fun x => S (n x)) (fun x =>  S (pred (n x))) (s_cons (adt_name a) srts)) as Hts.
+    prove_hyp Hts.
+    { intros s. specialize (Hn s). lia. }
+    prove_hyp Hts. { intros s. specialize (Hn s). lia. }
+    unfold ts_map_to_pd in Hts. simpl in Hts.
+    generalize dependent (find_ts_in_ctx_some gamma (adt_name a)).
+    assert (Hfind: find_ts_in_ctx gamma (adt_name a) = Some (m, a)). {
+      apply find_ts_in_ctx_iff; auto.
+    }
+    rewrite Hfind. intros H. generalize dependent ((proj1 (proj2 (H m a eq_refl)))). clear H.
+    intros a_in'. assert (a_in = a_in') by (apply bool_irrelevance). subst.
+    intros Heq.
+    replace (fun (ts : typesym) (srts0 : list sort) => mk_ts_map gamma pd (n srts0) ts srts0) with
+    (mk_ts_map gamma pd (n srts)).
+    2: { repeat (apply functional_extensionality; intros); auto.
+
+ apply Heq. auto.
+  }
+  auto.
+  rewrite Htest. clear Htest.
+  destruct n as [| n'].
+  - intros; lia.
+  - simpl. 
+    generalize dependent (find_ts_in_ctx_some gamma (adt_name a)).
+    assert (Hfind: find_ts_in_ctx gamma (adt_name a) = Some (m, a)). {
+      apply find_ts_in_ctx_iff; auto.
+    }
+    rewrite Hfind.
+    intros H.
+    assert (Heq: (proj1 (proj2 (H m a eq_refl))) = a_in) by (apply bool_irrelevance).
+    rewrite Heq. auto.
+Qed. *)
+
+Check mk_pd_aux_full.
+Print pd_full_aux.
+Print pd_full.
+(* Definition mk_pd' (gamma: context) (pd: sort -> Set) (s: sort) : Set :=
+  mk_pd_aux gamma pd (fun srts => depth_alt gamma s) s. *)
+
+Lemma mk_pd_full gamma pd: valid_context gamma -> pd_full gamma (mk_pd gamma pd).
+Proof.
+  intros gamma_valid. unfold pd_full, mk_pd. intros m srts a m_in a_in.
+  apply mk_pd_aux_full; auto.
+  apply max_depth_max.
+Qed.
+
+(*The next thing to prove (TODO): for any non-ADT, pd_full gamma (mk_pd gamma pd) = pd*)
+
 
 (*Going to prove 2 things:
   1. If we assume adts and constrs conditions hold, then we get [adt_interp_props]
@@ -692,3 +1444,6 @@ find_ts_in_ctx_iff
     f1 <> f2 ->
     pf pd f1 srts a1 <> pf pd f2 srts a2*)
 
+
+Qed.
+Qed. Qed.

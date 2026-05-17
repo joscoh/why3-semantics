@@ -932,7 +932,7 @@ Definition var_map : typevar -> Set :=
   this works*)
 Definition typesym_map : typesym -> list vty -> Set :=
   fun ts vs =>
-    domain (s_cons ts (map sigma vs)).
+    domain (s_cons ts (List.map sigma vs)).
 
 (*A nicer interface for the ADT*)
 
