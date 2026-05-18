@@ -326,7 +326,7 @@ Definition valid_mut_rec (m: mut_adt) : Prop :=
   2. The type must be inhabited (there must be 1 constructor with
     only inhabited types)
   3. Instances of the type must appear in strictly positive positions 
-  We additionally require that all ADTs are uniform
+  We additionally require that all ADTs are uniform and non-nested
   *)
 
 (*Types*)
@@ -811,6 +811,35 @@ Definition uniform (m: mut_adt) : bool :=
 
 End UniformADT.
 
+(*We do not allow nested ADTs (e.g. tree a = | list (tree a)) since
+  our W-type encoding does not handle this, and we cannot construct a
+  correct interpretation (yet)*)
+Section NonNest.
+
+Fixpoint typesym_in_ty (ts: typesym) (v: vty) : bool :=
+  match v with
+  | vty_cons t tys => typesym_eq_dec t ts || existsb (typesym_in_ty ts) tys
+  | _ => false
+  end.
+
+Definition ts_nested (ts: typesym) (v: vty) : bool :=
+  match v with
+  | vty_cons t tys => existsb (typesym_in_ty ts) tys
+  | _ => false
+  end.
+
+Definition nonnest_list (m: mut_adt) (l: list vty) : bool :=
+  forallb (fun v => forallb (fun ts => negb (ts_nested ts v)) (typesyms_of_mut m)) l.
+
+Definition nonnest (m: mut_adt) : bool :=
+  forallb (fun a =>
+    forallb (fun (f: funsym) =>
+      nonnest_list m (s_args f)
+    ) (adt_constr_list a)
+  ) (typs m).
+
+End NonNest.
+
 (*Finally, all types in the constructors must be valid*)
 (*Definition adt_constrs_valid gamma (a: alg_datatype) :=
   Forall (fun (c: funsym) =>
@@ -825,7 +854,7 @@ Definition mut_valid gamma m :=
   Forall (adt_inhab gamma) (typs m) /\
   (*adt_positive gamma (typs m) /\*)
   valid_mut_rec m /\
-  uniform m.
+  uniform m /\ nonnest m.
 
 End ValidMut.
 
@@ -3235,7 +3264,7 @@ Proof.
   valid_context_tac.
   destruct a; simpl in *.
   valid_context_tac.
-  rewrite H8, H9. 
+  rewrite H9, H10. 
   auto.
 Qed.
 
@@ -3854,6 +3883,16 @@ End UniqLemmas.
 
 Lemma gamma_all_unif: forall m, mut_in_ctx m gamma ->
   uniform m.
+Proof.
+  valid_ctx_info.
+  intros m m_in.
+  apply mut_in_ctx_eq2 in m_in.
+  valid_context_tac.
+  auto.
+Qed.
+
+Lemma gamma_all_nonnest: forall m, mut_in_ctx m gamma ->
+  nonnest m.
 Proof.
   valid_ctx_info.
   intros m m_in.

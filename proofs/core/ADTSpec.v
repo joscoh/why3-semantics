@@ -295,6 +295,470 @@ Lemma sort_rect_typesym_to_sort P P_int P_real P_cons ts srts:
   P_cons ts srts (mk_ForallT (sort_rect P P_int P_real P_cons) srts).
 Admitted. *)
 
+Require Import IndTypes. (*TODO: move get_nond_vtys?*)
+
+Definition vty_ts_pair (t: vty) : option (typesym * list vty) :=
+  match t with
+  | vty_cons ts vs => Some (ts, vs)
+  | _ => None
+  end.
+
+
+Definition funsym_ts_pairs m (f: funsym) : list (typesym * list vty) :=
+  omap vty_ts_pair (get_nonind_vtys m (s_args f)).
+
+Definition adt_ts_pairs m a : list (typesym * list vty) :=
+  concat (map (funsym_ts_pairs m) (adt_constr_list a)).
+
+Definition mut_ts_pairs m := concat (map (adt_ts_pairs m) m).
+
+
+Set Bullet Behavior "Strict Subproofs".
+
+Lemma list_map_map_In_le {A: Type} (f: A -> nat) {l: list A} {x: A}:
+  In x l ->
+  f x <= list_max (map f l).
+Proof.
+  intros Hin.
+  pose proof (list_max_le (map f l) (list_max (map f l))) as [Hmax _].
+  specialize (Hmax (ltac:(lia))).
+  rewrite Forall_map, Forall_forall in Hmax.
+  auto.
+Qed. 
+
+
+(*First, the depth measure:*)
+
+Section TestDepth.
+
+(*To avoid case analysis*)
+Definition is_def_mut (d: def) : option mut_adt :=
+  match d with
+  | datatype_def m => Some m
+  | _ => None
+  end.
+
+
+(*Mutually recursive on typesyms and types*)
+Fixpoint size_ts (gamma: context) (ts: typesym) :=
+  match gamma with
+  | nil => 0
+(*   | abs_type t :: g' => if typesym_eq_dec ts t then 1 else size_ts g' ts *)
+  | d :: g' =>
+    match is_def_mut d with
+    | Some m =>
+      if in_dec typesym_eq_dec ts (typesyms_of_mut m) then
+      let fix size_ty (t: vty) : nat :=
+        match t with
+        | vty_real => 0
+        | vty_int => 0
+        | vty_var _ => 0 (*TODO*)
+        | vty_cons ts tys => 1 + size_ts g' ts + list_max (map size_ty tys) (*Crucial: only nonind types!*)
+        end in 
+      1 + sum (map (fun x => size_ts g' (fst x) + list_max (map size_ty (snd x))) (mut_ts_pairs (adts m)))
+      else size_ts g' ts
+    | None => size_ts g' ts
+    end
+  end.
+
+Fixpoint size_ty (gamma: context) (t: vty) : nat :=
+  match t with
+  | vty_real => 0
+  | vty_int => 0
+  | vty_var _ => 0
+  | vty_cons ts tys => 1 + size_ts gamma ts + list_max (map (size_ty gamma) tys) (*Crucial: only nonind types!*)
+  end.
+
+Lemma size_ty_cons gamma ts tys:
+  size_ty gamma (vty_cons ts tys) = 1 + size_ts gamma ts + list_max (map (size_ty gamma) tys).
+Proof. reflexivity. Qed.
+
+Definition size_tys (gamma: context) (tys: list vty) : nat :=
+  list_max (map (size_ty gamma) tys).
+
+Lemma size_ts_rewrite gamma ts:
+  size_ts gamma ts =
+  match gamma with
+  | nil => 0
+  | d :: g' =>
+    match is_def_mut d with
+    | Some m =>
+(*   | abs_type t :: g' => if typesym_eq_dec ts t then 1 else size_ts g' ts *)
+      if in_dec typesym_eq_dec ts (typesyms_of_mut m) then
+        1 + sum (map (fun x => size_ts g' (fst x) + list_max (map (size_ty g') (snd x))) (mut_ts_pairs (adts m)))
+      else size_ts g' ts
+    | None => size_ts g' ts
+    end
+  end.
+Proof.
+  destruct gamma; simpl; auto.
+  destruct (is_def_mut d); auto.
+  destruct (in_dec typesym_eq_dec ts (typesyms_of_mut m)); auto.
+  f_equal. f_equal.
+  apply map_ext. intros a. f_equal. f_equal.
+  apply map_ext. intros b.
+  induction b; simpl; auto. do 3 f_equal.
+  apply map_ext_in. intros x Hinx.
+  rewrite Forall_forall in H. auto.
+Qed.
+
+(*And the sort version*)
+Fixpoint size_sort (gamma: context) (s: sort) : nat :=
+  match s with
+  | s_int => 0
+  | s_real => 0
+  | s_cons ts srts => 1 + size_ts gamma ts + list_max (map (size_sort gamma) srts)
+  end.
+
+Definition size_sorts gamma srts := list_max (map (size_sort gamma) srts).
+
+(*We need a few results*)
+Lemma size_sorts_cons_bound gamma ts srts:
+  size_sorts gamma srts < size_sort gamma (s_cons ts srts).
+Proof.
+  simpl. unfold size_sorts. lia.
+Qed.
+
+Lemma sort_size_in gamma {s srts}:
+  In s srts ->
+  size_sort gamma s <= size_sorts gamma srts.
+Proof.
+  intros Hin. unfold size_sorts. apply list_map_map_In_le. auto.
+Qed.
+
+Lemma ty_size_in gamma {t tys}:
+  In t tys ->
+  size_ty gamma t <= size_tys gamma tys.
+Proof.
+  intros Hin. unfold size_tys. apply list_map_map_In_le. auto.
+Qed.
+
+(*We need a bound on substitution: since this calculates depth (i.e the max chain of 
+  typesym size-sums), this is bounded by the sum of the original tys and the substituted sorts
+  (since sorts are substituted at a leaf)*)
+Lemma size_subst_single gamma params srts ty:
+  size_sort gamma (ty_subst_s params srts ty) <= size_ty gamma ty + size_sorts gamma srts.
+Proof.
+  induction ty as [| | x | ts tys IH]; simpl; try lia.
+  - unfold ty_subst_s. simpl.
+    destruct (ty_subst_fun_cases params srts s_int x) as [Hin | Hint].
+    + apply sort_size_in; auto.
+    + rewrite Hint. simpl. lia.
+  - assert (list_max (map (size_sort gamma) (map (v_subst (ty_subst_fun params srts s_int)) tys)) <=
+      list_max (map (size_ty gamma) tys) + size_sorts gamma srts); [|lia].
+    apply list_max_le. rewrite !Forall_map. rewrite Forall_forall in IH |- *. intros x Hinx.
+    specialize (IH x Hinx). unfold ty_subst_s in IH.
+    pose proof (ty_size_in gamma Hinx) as Hle. unfold size_tys in Hle. lia.
+Qed.
+
+Lemma size_subst gamma params srts tys:
+  size_sorts gamma (map (ty_subst_s params srts) tys) <= size_tys gamma tys + size_sorts gamma srts.
+Proof.
+  unfold size_sorts at 1. apply list_max_le.
+  rewrite !Forall_map, Forall_forall. intros x Hinx.
+  pose proof (size_subst_single gamma params srts x) as Hd.
+  pose proof (ty_size_in gamma Hinx). lia.
+Qed.
+
+(*TODO: prove something like: for (ts, tys) in (mut_ts_pairs), ts and all typesyms in tys appear
+  earlier in gamma*)
+
+(*Need an assumption about our types - no nested recursion (TODO: add to typing/valid_context)*)
+(* Lemma size_ty_cons_not_mut g d (Hd: is_def_mut d = None):
+  forall ty, size_ty (d :: g) ty = size_ty g ty.
+Proof.
+  intros ty. induction ty; simpl; auto. *)
+
+Lemma size_ts_not_mut g d (Hd: is_def_mut d = None):
+  forall ts, size_ts (d :: g) ts = size_ts g ts.
+Proof.
+  intros ts. rewrite size_ts_rewrite. rewrite Hd. auto.
+Qed.
+
+Lemma mut_ts_pairs_in {m ts tys}:
+  In (ts, tys) (mut_ts_pairs (adts m)) ->
+  exists a c, adt_in_mut a m /\ constr_in_adt c a /\ In (vty_cons ts tys) (get_nonind_vtys (adts m) (s_args c)).
+Proof.
+  unfold mut_ts_pairs. rewrite in_concat. intros [l [Hinl Hint]].
+  rewrite in_map_iff in Hinl. destruct Hinl as [a [Hl Hina]].
+  subst. unfold adt_ts_pairs in Hint. rewrite in_concat in Hint.
+  destruct Hint as [l [Hinl Hint]]. rewrite in_map_iff in Hinl.
+  destruct Hinl as [c [Hl Hinc]]. subst.
+  unfold funsym_ts_pairs in Hint. rewrite in_omap_iff in Hint.
+  destruct Hint as [ty [Hinty Hty]]. unfold vty_ts_pair in Hty.
+  destruct ty; try discriminate. inversion Hty; subst. clear Hty.
+  exists a. exists c. split_all; auto.
+  - apply In_in_bool; auto.
+  - apply constr_in_adt_eq; auto.
+Qed.
+
+(*If (ts, tys) is in the [mut_ts_pairs] list, ts cannot be an adt in m*)
+Lemma mut_ts_pairs_notin_ts {m ts tys}:
+  In (ts, tys) (mut_ts_pairs (adts m)) ->
+  ~ In ts (typesyms_of_mut m).
+Proof.
+  intros Hin.
+  destruct (mut_ts_pairs_in Hin) as [a [c [a_in [c_in Hinty]]]].
+  unfold get_nonind_vtys in Hinty.
+  rewrite in_filter in Hinty.
+  destruct Hinty as [Hneq Hint].
+  unfold typesyms_of_mut.
+  unfold ts_in_mut_list in Hneq.
+  intros Hin'. apply In_in_bool with (eq_dec := typesym_eq_dec) in Hin'.
+  rewrite Hin' in Hneq. discriminate.
+Qed.
+
+(*If (ts, tys) is in the [mut_ts_pairs] list, no adt from m appears in tys
+  Contradicts non-nesting (NOTE: this is where we need the hypothesis)*)
+Lemma mut_ts_pairs_not_tys {gamma m ts tys ty}
+  (gamma_valid: valid_context gamma) (m_in: mut_in_ctx m gamma):
+  In (ts, tys) (mut_ts_pairs (adts m)) ->
+  In ty tys ->
+  forall ts, In ts (typesyms_of_mut m) -> ~ (typesym_in_ty ts ty).
+Proof.
+  (*Super tedious and not interesting*)
+  intros Hin Hinty.
+  destruct (mut_ts_pairs_in Hin) as [a [c [a_in [c_in Hintys]]]].
+  intros ts' Hints' Hinty'.
+  pose proof (gamma_all_nonnest gamma_valid _ m_in) as Hnonnest.
+  unfold nonnest in Hnonnest.
+  unfold is_true in Hnonnest; rewrite forallb_forall in Hnonnest.
+  specialize (Hnonnest a). prove_hyp Hnonnest. { apply in_bool_In in a_in; auto. }
+  rewrite forallb_forall in Hnonnest. specialize (Hnonnest c).
+  prove_hyp Hnonnest. { apply constr_in_adt_eq; auto. }
+  unfold nonnest_list in Hnonnest.
+  rewrite forallb_forall in Hnonnest. specialize (Hnonnest (vty_cons ts tys)).
+  prove_hyp Hnonnest. { unfold get_nonind_vtys in Hintys. rewrite in_filter in Hintys. apply Hintys. }
+  rewrite forallb_forall in Hnonnest. specialize (Hnonnest ts' Hints'). unfold ts_nested in Hnonnest.
+  rewrite negb_true_iff, existsb_false in Hnonnest.
+  rewrite Forall_forall in Hnonnest. specialize (Hnonnest _ Hinty). rewrite Hnonnest in Hinty'; discriminate.
+Qed.
+
+Lemma mut_ts_pairs_in_ctx_valid_type {gamma m ts tys}
+  (gamma_valid: valid_context gamma) (m_in: mut_in_ctx m gamma):
+  In (ts, tys) (mut_ts_pairs (adts m)) ->
+  valid_type gamma (vty_cons ts tys).
+Proof.
+  intros Hin. destruct (mut_ts_pairs_in Hin) as [a [c [a_in [c_in Hintys]]]].
+  pose proof (wf_context_full _ (valid_context_wf _ gamma_valid)) as [Hwf _].
+  Search funsyms_of_context.
+  pose proof (constrs_in_funsyms m_in a_in c_in) as Hinc.
+  rewrite Forall_forall in Hwf. specialize (Hwf _ Hinc).
+  unfold wf_funsym in Hwf.
+  rewrite Forall_forall in Hwf.
+  unfold get_nonind_vtys in Hintys. rewrite in_filter in Hintys.
+  destruct Hintys as [Hnotmut Hintys].
+  specialize (Hwf (vty_cons ts tys) (ltac:(simpl; auto))). apply Hwf.
+Qed.
+
+Lemma mut_ts_pairs_ts_in_ctx {gamma m ts tys}
+  (gamma_valid: valid_context gamma) (m_in: mut_in_ctx m gamma):
+  In (ts, tys) (mut_ts_pairs (adts m)) ->
+  In ts (sig_t gamma).
+Proof.
+  intros Hin. pose proof (mut_ts_pairs_in_ctx_valid_type gamma_valid m_in Hin) as Hval.
+  inversion Hval. auto.
+Qed.
+
+(*TODO: move*)
+Lemma valid_type_typesym_in_ty {gamma ts s}:
+  valid_type gamma s ->
+  typesym_in_ty ts s ->
+  In ts (sig_t gamma).
+Proof.
+  induction s as [| | x | ts1 tys IH]; try discriminate.
+  intros Hval. simpl. inversion Hval; subst. rewrite Forall_forall in IH.
+  destruct (typesym_eq_dec ts1 ts); simpl; subst; auto.
+  unfold is_true. rewrite existsb_exists. intros [t [Hint Hints]].
+  apply (IH t); auto.
+Qed.
+
+Lemma mut_ts_pairs_in_tys_in_ctx {gamma m ts tys}
+  (gamma_valid: valid_context gamma) (m_in: mut_in_ctx m gamma):
+  In (ts, tys) (mut_ts_pairs (adts m)) ->
+  forall ts1 s, In s tys -> typesym_in_ty ts1 s -> In ts1 (sig_t gamma).
+Proof.
+  intros Hin. pose proof (mut_ts_pairs_in_ctx_valid_type gamma_valid m_in Hin) as Hval.
+  inversion Hval; subst. intros ts1 s Hins Hints1.
+  assert (Hvals: valid_type gamma s) by auto.
+  apply (valid_type_typesym_in_ty Hvals); auto.
+Qed.
+
+(*Here is where we need the well-founded result: we define only in terms of smaller contexts,
+  but this is OK because we look only at nonrecursive references, which must be defined earlier*)
+Lemma size_ts_eq gamma ts:
+  valid_context gamma ->
+  size_ts gamma ts =
+  match (find_ts_in_ctx gamma ts) with
+  | Some (m, a) => 1 + sum (map (fun x => size_ts gamma (fst x) + list_max (map (size_ty gamma) (snd x))) (mut_ts_pairs (adts m)))
+  | None => 0
+  end.
+Proof.
+  intros gamma_valid. revert ts. 
+  induction gamma_valid as [| d g' Hval IH Hwf1 Hwf2 Hdisj Hnodup Hne Hconstrs Hdef]; auto.
+  intros ts.
+  rewrite size_ts_rewrite.
+  assert (Hval': valid_context (d :: g')) by (constructor; auto).
+  destruct (is_def_mut d) as [m|] eqn : Hmut.
+  2: {
+    (*Easier case: not a mutual type*)
+    assert (Hfind: find_ts_in_ctx (d :: g') ts = find_ts_in_ctx g' ts). { destruct d; auto. discriminate. }
+    rewrite Hfind, IH. clear Hfind.
+    destruct (find_ts_in_ctx g' ts) as [[m' a']|] eqn : Hfind; auto.
+    f_equal. f_equal.
+    assert (Htys: forall ty, size_ty (d :: g') ty = size_ty g' ty).
+    {
+      induction ty as [| | x | ts' tys IHty]; auto.
+      rewrite !size_ty_cons. f_equal.
+      - f_equal. apply size_ts_not_mut; auto.
+      - f_equal. apply map_ext_in. rewrite Forall_forall in IHty. auto.
+    }
+    apply map_ext. intros a. symmetry. f_equal; auto.
+    - apply size_ts_not_mut; auto.
+    - f_equal. apply map_ext. auto.
+  }
+  (*Some results helpful for recursive cases. 1. If ts' not in m,
+    then adding d does not change the size of ts' (TODO: separate lemmas?)*)
+  assert (Hnotints: forall ts' (Hnotin: ~ In ts' (typesyms_of_mut m)),
+        size_ts g' ts' = size_ts (d :: g') ts').
+  { intros ts1 Hnotin1. rewrite (size_ts_rewrite (d :: g')), Hmut.
+    destruct (in_dec typesym_eq_dec ts1 (typesyms_of_mut m)); auto.
+    contradiction.
+  }
+  (*2: If no ts in m appears in ty, then size_ty is unaffected by adding d*)
+  assert (Hnotinty: forall ty
+    (Hnotin: forall ts : typesym, In ts (typesyms_of_mut m) -> ~ is_true (typesym_in_ty ts ty)),
+    size_ty g' ty = size_ty (d :: g') ty).
+  {
+    intros ty'; induction ty' as [| | x | ts1 tys1 IHty]; auto.
+    intros Hnotin'. rewrite !size_ty_cons, <- !Nat.add_assoc. f_equal.
+    f_equal.
+    - apply Hnotints. intros C. apply (Hnotin' ts1 C). simpl. destruct (typesym_eq_dec ts1 ts1); auto.
+    - f_equal. apply map_ext_in. intros x Hinx.
+      rewrite Forall_forall in IHty. apply IHty; auto. intros ts2 Hints2 C.
+      apply (Hnotin' ts2 Hints2). simpl. apply orb_true_iff. right.
+      rewrite existsb_exists. exists x. auto.
+  }
+  destruct (in_dec typesym_eq_dec ts (typesyms_of_mut m)) as [Hints | Hnotin].
+  - (*Case 1: typesym is in mutual type*)
+    assert (m_in: mut_in_ctx m (d :: g')). { apply mut_in_ctx_eq.
+      simpl. destruct d; try discriminate. inversion Hmut; subst. simpl; auto. }
+    unfold typesyms_of_mut in Hints. rewrite in_map_iff in Hints.
+    destruct Hints as [a [Hts Hina]]. subst ts.
+    assert (a_in: adt_in_mut a m). { apply In_in_bool; auto. } clear Hina.
+    assert (Hfind: find_ts_in_ctx (d :: g') (adt_name a) = Some (m, a)). {
+      apply find_ts_in_ctx_iff; auto.
+    }
+    rewrite Hfind.
+    f_equal. f_equal.
+    (*Now we prove that size_ty and size_ts are the same BECAUSE no types in (mut_ts_pairs) can be in d*)
+    apply map_ext_in. intros [ts' tys'] Hin. simpl fst. simpl snd. f_equal.
+    + (*Idea: we know that no typesym in d appears in the typesym*)
+      apply Hnotints. apply (mut_ts_pairs_notin_ts Hin); auto. (*contradicts only nonind tys*)
+    + (*And similar for the tys*)
+      f_equal. apply map_ext_in. intros ty Hinty.
+      apply Hnotinty.  intros ts Hints.
+      apply (mut_ts_pairs_not_tys Hval' m_in Hin Hinty); auto.
+  - (*Case 2: typesym not in mutual type*)
+    assert (Hfind: find_ts_in_ctx (d :: g') ts = find_ts_in_ctx g' ts). {
+      unfold find_ts_in_ctx. simpl. destruct d; try discriminate. inversion Hmut; subst.
+      simpl. destruct (find_ts_in_mut ts m) eqn : Hfind; auto.
+      exfalso. apply find_ts_in_mut_some in Hfind.
+      destruct Hfind; subst. apply Hnotin. unfold typesyms_of_mut.
+      apply in_map. apply in_bool_In in H; auto.
+    }
+    rewrite Hfind, IH.
+    clear Hfind.
+    destruct (find_ts_in_ctx g' ts) as [[m1 a1]|] eqn : Hfind; auto.
+    f_equal. f_equal.
+    (*Now we have a similar proof, but now we know that because they are defined before,
+      they can only refer to names that came before (TODO: prove)*)
+    apply find_ts_in_ctx_some in Hfind. destruct Hfind as [m1_in [a1_in Hts]].
+    (*Common in both cases: anything previously defined in the context cannot
+      overlap with a definition in m*)
+    assert (Hdisj': forall ts', In ts' (sig_t g') -> ~ In ts' (typesyms_of_mut m)).
+    {
+      intros ts' Hints'.
+      assert (Hinid: In (ts_name ts') (idents_of_context g')). {
+        apply sig_t_in_idents. apply in_map. auto.
+      }
+      intros Hints2.
+      apply (Hdisj (ts_name ts')). split; auto.
+      destruct d; try discriminate. inversion Hmut; subst. unfold idents_of_def; simpl.
+      rewrite in_app_iff. right. apply in_map; auto.
+    }
+    apply map_ext_in. intros [ts' tys'] Hin. simpl fst. simpl snd. f_equal.
+    + apply Hnotints. (*by [mut_ts_pairs_ts_in_ctx], ts' is in sig_t of g',
+      so it will contradict disjointness*)
+      pose proof (mut_ts_pairs_ts_in_ctx Hval m1_in Hin) as Hints.
+      apply Hdisj'; auto.
+    + (*Similarly, no ts in m can appear in tys'*) f_equal. apply map_ext_in. intros a Hina.
+      apply Hnotinty.
+      intros ts1 Hints1 Hinty.
+      apply (Hdisj' ts1); auto.
+      apply (mut_ts_pairs_in_tys_in_ctx Hval m1_in Hin _ _ Hina); auto.
+Qed.
+
+(* 
+Lemma size_ts_rewrite gamma ts:
+  size_ts gamma ts =
+  match gamma with
+  | nil => 0
+  | abs_type t :: g' => if typesym_eq_dec ts t then 1 else size_ts g' ts
+  | datatype_def m :: g' => if in_dec typesym_eq_dec ts (typesyms_of_mut m) then
+      1 + sum (map (fun x => size_ty g' (vty_cons (fst x) (snd x))) (mut_ts_pairs (adts m)))
+    else size_ts g' ts
+  | _ :: g' => size_ts g' ts
+  end.
+ *)
+
+Lemma in_sum_le {A: Type} (f: A -> nat) {l: list A} {x: A}:
+  In x l ->
+  f x <= sum (map f l).
+Proof.
+  induction l as [| h t IH]; simpl; auto; [contradiction|].
+  intros [Hh | Ht]; subst; try lia. specialize (IH Ht); lia.
+Qed.
+
+(*Now this is why we needed the convoluted method of computing the size of a typesym:
+  suppose a is in the typesyms of m. Then for any
+  for any (ts, tys') in [mut_ts_pairs m], we have that |a| > |ts| + max | tys'| *)
+Lemma mut_ts_pairs_size {gamma m a ts' tys'}
+  (gamma_valid: valid_context gamma)
+  (m_in: mut_in_ctx m gamma)
+  (a_in: adt_in_mut a m)
+  (Hin: In (ts', tys') (mut_ts_pairs (adts m))):
+  size_ts gamma ts' + size_tys gamma tys' < size_ts gamma (adt_name a).
+Proof.
+  rewrite (size_ts_eq gamma (adt_name a)) by assumption.
+  assert (Hfind: find_ts_in_ctx gamma (adt_name a) = Some (m, a)). {
+    apply find_ts_in_ctx_iff; auto. }
+  rewrite Hfind.
+  pose proof (in_sum_le (fun x => size_ts gamma (fst x) + list_max (map (size_ty gamma) (snd x))) Hin) as Hle.
+  simpl in Hle. unfold size_tys at 1. lia.
+Qed.
+
+Lemma size_sort_cons gamma t srts:
+  size_sort gamma (s_cons t srts) = 1 + size_ts gamma t + size_sorts gamma srts.
+Proof.
+  unfold size_sorts. reflexivity.
+Qed.
+
+
+Lemma mut_ts_pairs_subst_smaller {gamma m a} (gamma_valid: valid_context gamma) (m_in: mut_in_ctx m gamma)
+  (a_in: adt_in_mut a m) ts' tys' srts
+  (Hin: In (ts', tys') (mut_ts_pairs (adts m))):
+  size_sort gamma (s_cons ts' (map (ty_subst_s (m_params m) srts) tys')) <
+  size_sort gamma (s_cons (adt_name a) srts).
+Proof.
+  rewrite !size_sort_cons.
+  pose proof (size_subst gamma (m_params m) srts tys').
+  pose proof (mut_ts_pairs_size gamma_valid m_in a_in Hin). lia.
+Qed.
+
+End TestDepth.
+
+
 Definition ts_map_to_pd (f: typesym -> list sort -> Set) : sort -> Set :=
   fun s =>
   match s with
@@ -353,20 +817,6 @@ Definition adt_vars (a: alg_datatype) : aset typevar :=
 Definition mut_vars (l: list (alg_datatype)) : aset typevar :=
   aset_big_union adt_vars l.
 
-Definition vty_ts_pair (t: vty) : option (typesym * list vty) :=
-  match t with
-  | vty_cons ts vs => Some (ts, vs)
-  | _ => None
-  end.
-
-
-Definition funsym_ts_pairs m (f: funsym) : list (typesym * list vty) :=
-  omap vty_ts_pair (get_nonind_vtys m (s_args f)).
-
-Definition adt_ts_pairs m a : list (typesym * list vty) :=
-  concat (map (funsym_ts_pairs m) (adt_constr_list a)).
-
-Definition mut_ts_pairs m := concat (map (adt_ts_pairs m) m).
 
 (*The total bound, with var bound given by n*)
 (* Fixpoint vty_size (n: typesym -> nat) (v: vty) :=
@@ -396,9 +846,11 @@ Fixpoint depth_alt gamma s :=
    match s with
   | s_int => 0
   | s_real => 0
-  | s_cons ts srts => 1 + ((index typesym_eq_dec ts (typesyms_of_context gamma))) + 
-      max ((index typesym_eq_dec ts (typesyms_of_context gamma)))
-      (list_max (map (depth_alt gamma) srts))
+  | s_cons ts srts =>
+       1 + ((index typesym_eq_dec ts (typesyms_of_context gamma))) + 
+      list_max (map (depth_alt gamma) srts)
+      (* max ((index typesym_eq_dec ts (typesyms_of_context gamma)))
+      (list_max (map (depth_alt gamma) srts)) *)
   end.
 
 Definition depth gamma srts :=
@@ -406,12 +858,13 @@ Definition depth gamma srts :=
 
 
 Definition mk_ts_full gamma pd ts srts :=
-  mk_ts_map gamma pd (depth gamma srts) ts srts.
+  mk_ts_map gamma pd (size_sorts gamma srts) ts srts.
 
 Print index.
 
 Definition max_depth gamma srts :=
-  3 + (length (typesyms_of_context gamma)) + max (length (typesyms_of_context gamma)) (depth gamma srts).
+  3 + list_max (map (size_ts gamma) (typesyms_of_context gamma)) + size_sorts gamma srts.
+(*   3 + (length (typesyms_of_context gamma)) + max (length (typesyms_of_context gamma)) (depth gamma srts). *)
 
 Lemma index_leq_length {A: Type} eq_dec (x: A) (l: list A):
   index eq_dec x l <= length l.
@@ -420,13 +873,35 @@ Proof.
   destruct (eq_dec _ _); lia.
 Qed.
 
-Lemma max_depth_max gamma:
-  forall ts srts, 1 + depth_alt gamma (s_cons ts srts) < max_depth gamma srts.
+(*TODO: move above*)
+Lemma ts_notin_size {gamma ts}:
+  ~ In ts (typesyms_of_context gamma) ->
+  size_ts gamma ts = 0.
 Proof.
-  intros ts srts. unfold max_depth. simpl.
-  pose proof (index_leq_length typesym_eq_dec ts (typesyms_of_context gamma)).
-  unfold depth. lia.
-Qed.
+  intros Hnotin. generalize dependent ts.
+  induction gamma as [| d g' IH]; auto.
+  intros ts Hnotin.
+  rewrite size_ts_rewrite.
+  unfold typesyms_of_context in *.
+  simpl in Hnotin.
+  destruct (is_def_mut d) as [m1|] eqn : Hmut.
+  - destruct d; inversion Hmut; subst.
+    simpl in Hnotin. rewrite in_app_iff in Hnotin.
+    not_or Hnotin.
+    destruct (in_dec typesym_eq_dec ts (typesyms_of_mut m1)); auto.
+    contradiction.
+  - destruct d; try discriminate; simpl in Hnotin; auto.
+Qed. 
+
+Lemma max_depth_max gamma:
+  forall ts srts, 1 + size_sort gamma (s_cons ts srts) < max_depth gamma srts.
+Proof.
+  intros ts srts. unfold max_depth. simpl. unfold size_sorts.
+  assert (Hsz: size_ts gamma ts <= list_max (map (size_ts gamma) (typesyms_of_context gamma))); [|lia].
+  destruct (in_dec typesym_eq_dec ts (typesyms_of_context gamma)).
+  - apply list_map_map_In_le; auto.
+  - rewrite ts_notin_size; auto. lia.
+Qed. 
 
 Definition mk_pd (gamma: context) (pd: sort -> Set) (s: sort) : Set :=
   mk_pd_aux gamma pd (fun srts => max_depth gamma srts) s.
@@ -439,7 +914,7 @@ Definition pd_full (gamma: context) (pd: sort -> Set) := forall (m: mut_adt) (sr
     adt_rep m srts pd a Hin.
 
 Definition pd_full_aux (gamma: context) (pd: sort -> Set) (n: list sort -> nat) := 
-    (forall ts srts1, 1 + depth_alt gamma (s_cons ts srts1) < n srts1) ->
+    (forall ts srts1, 1 + size_sort gamma (s_cons ts srts1) < n srts1) ->
     forall (m: mut_adt) (srts: list sort)
     (a: alg_datatype) (m_in: mut_in_ctx m gamma) (Hin: adt_in_mut a m) ,
     pd (s_cons (adt_name a) srts) =
@@ -541,18 +1016,7 @@ Proof.
     intros y Hiny. apply Hall. rewrite Hiny, orb_true_r; auto.
 Qed.
 
-Set Bullet Behavior "Strict Subproofs".
 
-Lemma list_map_map_In_le {A: Type} (f: A -> nat) {l: list A} {x: A}:
-  In x l ->
-  f x <= list_max (map f l).
-Proof.
-  intros Hin.
-  pose proof (list_max_le (map f l) (list_max (map f l))) as [Hmax _].
-  specialize (Hmax (ltac:(lia))).
-  rewrite Forall_map, Forall_forall in Hmax.
-  auto.
-Qed. 
 Print sort_depth.
 Lemma sort_depth_cons n ts srts:
   sort_depth n (s_cons ts srts) = 1 + n ts * sorts_depth n srts.
@@ -609,27 +1073,128 @@ Proof.
 (*Test*)
 Require Import Stdlib.Arith.Wf_nat.
 
-Lemma depth_alt_cons_bound gamma ts srts:
-  depth gamma srts < depth_alt gamma (s_cons ts srts).
+
+(* 
+
+Lemma mut_ts_pairs_subst_smaller {gamma m a} (gamma_valid: valid_context gamma) n (m_in: mut_in_ctx m gamma)
+  (a_in: adt_in_mut a m) ts' tys' srts
+  (Hn: n >= depth_tys gamma 
+  (Hin: In (ts', tys') (mut_ts_pairs (adts m))):
+
+
+
+Lemma depth_alt_in gamma n {s srts}:
+  In s srts ->
+  depth_alt gamma n s <= depth gamma n srts.
+Proof.
+  intros Hin. unfold depth. 
+  apply list_map_map_In_le; auto.
+Qed. *)
+
+  
+
+(* 
+
+
+
+Fixpoint depth_alt gamma n s :=
+   match s with
+  | s_int => 0
+  | s_real => 0
+  | s_cons ts srts =>
+       1 + (n * ((index typesym_eq_dec ts (typesyms_of_context gamma)))) + 
+      list_max (map (depth_alt gamma n) srts)
+      (* max ((index typesym_eq_dec ts (typesyms_of_context gamma)))
+      (list_max (map (depth_alt gamma) srts)) *)
+  end.
+
+Definition depth gamma n srts :=
+  list_max (map (depth_alt gamma n) srts). *)
+(* 
+Lemma depth_alt_cons_bound gamma n ts srts:
+  depth gamma n srts < depth_alt gamma n (s_cons ts srts).
 Proof.
   simpl.
   unfold depth. lia.
 Qed.
 
-Lemma depth_alt_in gamma {s srts}:
+Lemma depth_alt_in gamma n {s srts}:
   In s srts ->
-  depth_alt gamma s <= depth gamma srts.
+  depth_alt gamma n s <= depth gamma n srts.
+Proof.
+  intros Hin. unfold depth. 
+  apply list_map_map_In_le; auto.
+Qed. *)
+(* 
+Fixpoint depth_ty (gamma: context) n (ty: vty) : nat :=
+  match ty with
+  | vty_cons ts tys => 
+    1 + (n * index typesym_eq_dec ts (typesyms_of_context gamma)) +
+      (list_max (map (depth_ty gamma n) tys))
+      (* Init.Nat.max (index typesym_eq_dec ts (typesyms_of_context gamma))
+        (list_max (map (depth_ty gamma) tys)) *)
+  | _ => 0
+  end.
+
+Definition depth_tys gamma n tys :=
+  list_max (map (depth_ty gamma n) tys).
+
+Lemma depth_ty_in gamma n {t tys}:
+  In t tys ->
+  depth_ty gamma n t <= depth_tys gamma n tys.
 Proof.
   intros Hin. unfold depth. 
   apply list_map_map_In_le; auto.
 Qed.
 
-Lemma mut_ts_pairs_subst_smaller {gamma m a} (gamma_valid: valid_context gamma) (m_in: mut_in_ctx m gamma)
+
+(*Let's just try*)
+Lemma depth_subst_single gamma n params srts ty:
+  depth_alt gamma n (ty_subst_s params srts ty) <= depth_ty gamma n ty + (depth gamma n srts).
+Proof.
+  induction ty as [| | x | ts tys IH]; simpl; try lia.
+  - unfold ty_subst_s. simpl.
+    destruct (ty_subst_fun_cases params srts s_int x) as [Hin | Hint].
+    + apply depth_alt_in; auto.
+    + rewrite Hint. simpl. lia.
+  - assert (list_max (map (depth_alt gamma n) (map (v_subst (ty_subst_fun params srts s_int)) tys)) <=
+      list_max (map (depth_ty gamma n) tys) + depth gamma n srts); [|lia].
+    apply list_max_le. rewrite !Forall_map. rewrite Forall_forall in IH |- *. intros x Hinx.
+    specialize (IH x Hinx). unfold ty_subst_s in IH.
+    pose proof (depth_ty_in gamma n Hinx) as Hle. unfold depth_tys in Hle. lia.
+Qed.
+
+Lemma depth_subst gamma n params srts tys:
+  depth gamma n (map (ty_subst_s params srts) tys) <= depth_tys gamma n tys + (depth gamma n srts).
+Proof.
+  unfold depth at 1. apply list_max_le.
+  rewrite !Forall_map, Forall_forall. intros x Hinx.
+  pose proof (depth_subst_single gamma n params srts x) as Hd.
+  pose proof (depth_ty_in gamma n Hinx). lia.
+Qed.
+
+Lemma mut_ts_pairs_subst_smaller {gamma m a} (gamma_valid: valid_context gamma) n (m_in: mut_in_ctx m gamma)
   (a_in: adt_in_mut a m) ts' tys' srts
+  (Hn: n >= depth_tys gamma 
   (Hin: In (ts', tys') (mut_ts_pairs (adts m))):
-  depth_alt gamma (s_cons ts' (map (ty_subst_s (m_params m) srts) tys')) <
-  depth_alt gamma (s_cons (adt_name a) srts).
-Proof. Admitted.
+  depth_alt gamma n (s_cons ts' (map (ty_subst_s (m_params m) srts) tys')) <
+  depth_alt gamma n (s_cons (adt_name a) srts).
+Proof.
+  simpl.
+  assert (Hts: index typesym_eq_dec ts' (typesyms_of_context gamma) < 
+    index typesym_eq_dec (adt_name a) (typesyms_of_context gamma)). { admit. }
+  pose proof (depth_subst gamma n (m_params m) srts tys') as Hsubst.
+  
+  
+
+  assert (Hsubst: (list_max (map (depth_alt gamma) (map (ty_subst_s (m_params m) srts) tys'))) <=
+    max (list_max (map (depth_alt gamma) srts)) (list_max (map (depth_ty gamma) tys'))).
+  { admit. }
+  (*Problem: NOT index*)
+  Print depth_alt.
+  assert (Htys: (list_max (map (depth_ty gamma) tys') <= 
+ *)
+(*  Admitted. *)
 (*Idea: index of ts' is smaller than index of ts, and indices in tys' MUST be 
       smaller than index of ts as well (by well-typed context)
       and obviously everythign in srts smaller than srts, so I think we are good
@@ -649,8 +1214,8 @@ Proof. Admitted.
 (*Maybe: prove 2 things: non-dependent and dependent versions*)
 
 Lemma mk_ts_map_invar_const {gamma} (gamma_valid: valid_context gamma) pd n1 n2 (s: sort):
-  depth_alt gamma s < n1 ->
-  depth_alt gamma s < n2 ->
+  size_sort gamma s < n1 ->
+  size_sort gamma s < n2 ->
   ts_map_to_pd (mk_ts_map gamma pd n1) s = ts_map_to_pd (mk_ts_map gamma pd n2) s.
 Proof.
   generalize dependent n2. generalize dependent s. induction n1 as [| n1 IHn1].
@@ -674,7 +1239,7 @@ Proof.
       destruct (sort_to_ty t) eqn : Hs; auto.
       { (*sort not var*) destruct t; simpl in Hs; discriminate. }
       simpl in Hn1, Hn2.
-      pose proof (list_map_map_In_le (depth_alt gamma) Hin).
+      pose proof (list_map_map_In_le (size_sort gamma) Hin).
       apply IHn1; lia.
       
 (*       admit. *)
@@ -706,8 +1271,8 @@ Qed.
 Lemma mk_ts_map_invar {gamma} (gamma_valid : valid_context gamma) pd n1 n2 (s: sort):
   (* (forall srts, 0 < n1 srts) ->
   (forall srts, 0 < n2 srts) -> *)
-  (forall ts srts, depth_alt gamma (s_cons ts srts) < n1 srts) ->
-  (forall ts srts, depth_alt gamma (s_cons ts srts) < n2 srts) ->
+  (forall ts srts, size_sort gamma (s_cons ts srts) < n1 srts) ->
+  (forall ts srts, size_sort gamma (s_cons ts srts) < n2 srts) ->
   ts_map_to_pd (fun ts srts => mk_ts_map gamma pd (n1 srts) ts srts) s = 
   ts_map_to_pd (fun ts srts => mk_ts_map gamma pd (n2 srts) ts srts) s.
 Proof.
@@ -720,8 +1285,8 @@ Qed.
 Lemma mk_ts_map_invar'  {gamma} (gamma_valid : valid_context gamma) pd n1 n2 (s: sort):
   (* (forall srts, 0 < n1 srts) ->
   (forall srts, 0 < n2 srts) -> *)
-  (forall ts srts, depth_alt gamma (s_cons ts srts) < n1 srts) ->
-  (depth_alt gamma s < n2) ->
+  (forall ts srts, size_sort gamma (s_cons ts srts) < n1 srts) ->
+  (size_sort gamma s < n2) ->
   ts_map_to_pd (fun ts srts => mk_ts_map gamma pd (n1 srts) ts srts) s = 
   ts_map_to_pd (fun ts srts => mk_ts_map gamma pd n2 ts srts) s.
 Proof.
@@ -1286,8 +1851,8 @@ mk_ts_map_invar' *)
       + remember (ty_subst_fun (m_params m) srts s_int x) as t.
         destruct (sort_to_ty t) as [| | | ts tys] eqn : Hs; auto.
         { (*sort not var*) destruct t; simpl in Hs; discriminate. }
-        pose proof (depth_alt_in gamma Hin).
-        pose proof (depth_alt_cons_bound gamma (adt_name a) srts).
+        pose proof (sort_size_in gamma Hin).
+        pose proof (size_sorts_cons_bound gamma (adt_name a) srts).
         apply mk_ts_map_invar'; auto.
         * intros ts' s. specialize (Hn ts' s). lia.
         * specialize (Hn (adt_name a) srts). lia.
@@ -1320,7 +1885,7 @@ mk_ts_map_invar' *)
 
 
 
-    assert (Hdepth: depth_alt gamma (s_cons ts' (map (sigma m srts) tys')) < depth_alt gamma (s_cons (adt_name a) srts)).
+    assert (Hdepth: size_sort gamma (s_cons ts' (map (sigma m srts) tys')) < size_sort gamma (s_cons (adt_name a) srts)).
     { apply mut_ts_pairs_subst_smaller; auto. } 
     simpl ts_map_to_pd in Hts. apply Hts.
     - specialize (Hn ts' (map (sigma m srts) tys')). lia.
@@ -1411,7 +1976,6 @@ Proof.
   apply mk_pd_aux_full; auto.
   apply max_depth_max.
 Qed.
-
 (*The next thing to prove (TODO): for any non-ADT, pd_full gamma (mk_pd gamma pd) = pd*)
 
 
@@ -1444,6 +2008,3 @@ Qed.
     f1 <> f2 ->
     pf pd f1 srts a1 <> pf pd f2 srts a2*)
 
-
-Qed.
-Qed. Qed.

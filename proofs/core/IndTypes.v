@@ -471,6 +471,7 @@ Variable m: list alg_datatype.
 (*Construct the base type*)
 
 (*Filter out the inductive types*)
+
 Definition get_nonind_vtys (l: list vty) : list vty :=
   filter (fun v => match v with 
                     | vty_cons ts vs =>
