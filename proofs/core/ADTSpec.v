@@ -633,7 +633,10 @@ Fixpoint mk_ts_map (gamma: context) (pd: sort -> Set) (n: nat) (ts: typesym) (sr
     let pd' := ts_map_to_pd (mk_ts_map gamma pd n')
     in
     match find_ts_in_ctx gamma ts as b return find_ts_in_ctx gamma ts = b -> _ with
-    | Some (m, a) => fun Hfind => adt_rep m srts pd' a (proj1 (proj2 (find_ts_in_ctx_some _ _ _ _ Hfind)))
+    | Some (m, a) => fun Hfind => 
+      if (length srts =? length (m_params m)) then
+        adt_rep m srts pd' a (proj1 (proj2 (find_ts_in_ctx_some _ _ _ _ Hfind)))
+      else unit (*any non-empty type works*)
     | None => fun _ => pd (s_cons ts srts)
     end eq_refl
     end.
@@ -668,7 +671,8 @@ Definition mk_pd (gamma: context) (pd: sort -> Set) (s: sort) : Set :=
 
 (*pd with all typesym_to_sort set correctly to the corresponidng W-type*)
 Definition pd_full (gamma: context) (pd: sort -> Set) := forall (m: mut_adt) (srts: list sort)
-    (a: alg_datatype) (m_in: mut_in_ctx m gamma) (Hin: adt_in_mut a m),
+    (a: alg_datatype) (m_in: mut_in_ctx m gamma) (Hin: adt_in_mut a m) 
+    (srts_len: length srts = length (m_params m)),
     pd (s_cons (adt_name a) srts) =
     adt_rep m srts pd a Hin.
 
@@ -676,7 +680,8 @@ Definition pd_full (gamma: context) (pd: sort -> Set) := forall (m: mut_adt) (sr
 Definition pd_full_aux (gamma: context) (pd: sort -> Set) (n: list sort -> nat) := 
     (forall ts srts1, 1 + size_sort gamma (s_cons ts srts1) < n srts1) ->
     forall (m: mut_adt) (srts: list sort)
-    (a: alg_datatype) (m_in: mut_in_ctx m gamma) (Hin: adt_in_mut a m) ,
+    (a: alg_datatype) (m_in: mut_in_ctx m gamma) (Hin: adt_in_mut a m)
+    (srts_len: length srts = length (m_params m)) ,
     pd (s_cons (adt_name a) srts) =
     adt_rep m srts pd a Hin.
 
@@ -782,6 +787,7 @@ Proof.
   intros H. generalize dependent (proj1 (proj2 (H m a eq_refl))).
   specialize (H m a eq_refl). destruct H as [m_in [a_in Hts]].
   intros a_in'. assert (a_in' = a_in) by (apply bool_irrelevance); subst.
+  destruct (Nat.eqb_spec (length srts) (length (m_params m))) as [Hlen | Hlen]; auto.
   (*Prove the [adt_rep]s equal by proving the var maps equal and then
     using the ext lemma for the typesym interp*)
   unfold adt_rep.
@@ -839,7 +845,7 @@ Qed.
 Lemma mk_pd_aux_full gamma pd n: valid_context gamma -> pd_full_aux gamma (mk_pd_aux gamma pd n) n.
 Proof.
   intros gamma_valid.
-  unfold pd_full_aux, mk_pd_aux. unfold ts_map_to_pd at 1. intros Hn m srts a m_in a_in.
+  unfold pd_full_aux, mk_pd_aux. unfold ts_map_to_pd at 1. intros Hn m srts a m_in a_in srts_len.
   (*Idea: we convert [adt_rep] of this function into one with a fixed [n] ([pred (n srts)]).
     Then we can case on n, unfold, and prove the equality. This uses the invar lemmas above, but
     we need to repeat parts of the proof*)
@@ -890,6 +896,7 @@ Proof.
     rewrite Hfind.
     intros H.
     assert (Heq: (proj1 (proj2 (H m a eq_refl))) = a_in) by (apply bool_irrelevance).
+    apply Nat.eqb_eq in srts_len. rewrite srts_len.
     rewrite Heq. auto.
 Qed.
 
@@ -903,6 +910,292 @@ Qed.
 (*The next thing to prove (TODO): for any non-ADT, pd_full gamma (mk_pd gamma pd) = pd*)
 
 End InterpProofs.
+
+Require Import Interp.
+Check pi_dom.
+Print pi_dom_full.
+
+Print mk_pd.
+
+(*TODO: prove that each adt_rep is inhabited (can assume pd_full if needed I think)*)
+
+(*Need for Type proofs (NOTE: opaque)*)
+Lemma existsb_exists_strong {A: Type} (f: A -> bool) (l: list A):
+  existsb f l = true ->
+  {x | In x l /\ f x = true}.
+Proof.
+  induction l as [| h t IH]; simpl; [discriminate|].
+  destruct (f h) eqn : Hfh; simpl.
+  - intros _. apply (exist _ h). auto.
+  - intros Ht. apply IH in Ht. destruct Ht as [x [Hinx Hfx]].
+    apply (exist _ x); auto.
+Qed.
+
+
+(*Steps:
+  1. Prove that any typesym not a mut, mk_pd ts srts = pd ts srts
+  2. Prove, under assumption that (forall srts, inhab ts srts) for ts not in mut,
+    all ts srts are inhabited (involves a lemma for subst in vty)
+  3. Prove that this means that [mk_pd] always produces inhabited types given a pi_dom
+  4. Prove that we can construct new pi_dom, which is full
+
+Note: might need to add length check to our map (let's do that)
+(*Before we do that, need to change
+  1. adts condition to require length
+  2. (maybe) inhab to require sort well-formed (or valid_sort)*)
+*)
+
+(*1. Prove that any typesym not a mut, mk_pd ts srts = pd ts srts *)
+
+Lemma mk_ts_map_nonadt gamma pd n ts srts (Hts: find_ts_in_ctx gamma ts = None):
+  mk_ts_map gamma pd n ts srts = pd (s_cons ts srts).
+Proof.
+  destruct n as [| n']; simpl; auto.
+  generalize dependent (find_ts_in_ctx_some gamma ts).
+  rewrite Hts. auto.
+Qed.
+
+Lemma mk_pd_aux_nonadt gamma pd n ts srts (Hts: find_ts_in_ctx gamma ts = None):
+  mk_pd_aux gamma pd (fun srts => n srts) (s_cons ts srts) = pd (s_cons ts srts).
+Proof. apply mk_ts_map_nonadt; auto. Qed.
+
+Lemma mk_pd_nonadt gamma pd ts srts (Hts: find_ts_in_ctx gamma ts = None):
+  mk_pd gamma pd (s_cons ts srts) = pd (s_cons ts srts).
+Proof. apply mk_pd_aux_nonadt; auto. Qed.
+
+(*1.5 Similar for adt and wrong sorts*)
+Lemma mk_ts_map_adt_nolen {gamma m a} 
+  ts pd n (Hts: find_ts_in_ctx gamma ts = Some (m, a)) srts
+  (Hsrts: length srts <> length (m_params m)):
+  ((mk_ts_map gamma pd n ts srts = pd (s_cons ts srts)) +
+  (mk_ts_map gamma pd n ts srts = unit))%type.
+Proof.
+  destruct n as [| n']; simpl; auto.
+  generalize dependent (find_ts_in_ctx_some gamma ts).
+  rewrite Hts. intros H.
+  apply Nat.eqb_neq in Hsrts. rewrite Hsrts. auto.
+Qed.
+
+Lemma mk_pd_aux_adt_nolen {gamma m a} pd n ts srts (Hts: find_ts_in_ctx gamma ts = Some (m, a))
+  (Hsrts: length srts <> length (m_params m)):
+  ((mk_pd_aux gamma pd (fun srts => n srts) (s_cons ts srts) = pd (s_cons ts srts)) +
+  (mk_pd_aux gamma pd (fun srts => n srts) (s_cons ts srts) = unit)).
+Proof. eapply mk_ts_map_adt_nolen; eauto. Qed.
+
+Lemma mk_pd_adt_nolen {gamma m a} pd ts srts (Hts: find_ts_in_ctx gamma ts = Some (m, a))
+  (Hsrts: length srts <> length (m_params m)):
+  ((mk_pd gamma pd (s_cons ts srts) = pd (s_cons ts srts)) +
+  (mk_pd gamma pd (s_cons ts srts) = unit)).
+Proof. eapply mk_pd_aux_adt_nolen; eauto. Qed.
+
+
+(*Need a version in Type*)
+Lemma ty_subst_fun_cases_strong {A: Type}: forall params tys (d: A) v,
+  (In (ty_subst_fun params tys d v) tys) +
+  (ty_subst_fun params tys d v = d).
+Proof.
+  intros. unfold ty_subst_fun.
+  destruct (get_assoc_list _ _ _) eqn : Ha; auto.
+  apply get_assoc_list_some in Ha. 
+  apply in_combine_r in Ha. auto.
+Qed.
+
+(*Let's go backwards with pieces I will need*)
+
+
+(*Pieces:
+  1. Prove that any *)
+
+(*For any typesym not a mut, (mk_pd ts srts) = pd ts srts*)
+
+(*Then add as assumption, for any *)
+
+(*Print mk_pd.
+Print mk_pd_aux.
+Print mk_ts_map.
+Print ts_map_to_pd.*)
+
+(*Some subtlety: prove for len bound here, suffices for ADTs, for non-ADTs we prove (via assumption)
+  directly (TODO: can change def of *)
+
+(*Actually, let's change def*)
+Lemma typesym_inhab_fun_aux {gamma} (gamma_valid: valid_context gamma) pd
+  (Hpd1: forall ts srts (Hts: find_ts_in_ctx gamma ts = None), domain_nonempty (domain pd) (s_cons ts srts))
+  (Hpd2: forall m a ts srts (Hts: find_ts_in_ctx gamma ts = Some (m, a)), length srts <> length (m_params m) -> 
+    domain_nonempty (domain pd) (s_cons ts srts))
+  (pd_full: pd_full gamma pd) n:
+   (forall ts srts seen
+      (Hn: n >= length (sig_t gamma) - length seen)
+(*       (Hlen: length srts = length (ts_args ts)) *)
+      (Hinhab: typesym_inhab_fun gamma seen ts n)
+      (Hsrts: ForallT (fun s => domain_nonempty (domain pd) s) srts),
+      domain_nonempty (domain pd) (s_cons ts srts)).
+Proof.
+  induction n as [| n' IHn]; [discriminate|].
+  intros ts srts seen Hn. rewrite typesym_inhab_fun_eq.
+  destruct (in_dec typesym_eq_dec ts (sig_t gamma)) as [Hina|]; [|discriminate].
+  destruct (in_dec typesym_eq_dec ts seen) as [| Hnotins]; [discriminate|].
+  simpl.
+  destruct (find_ts_in_ctx gamma ts) as [[m a]|] eqn : Hfind.
+  2: { intros _ Hall. apply Hpd1. auto. } assert (Hfind':=Hfind).
+  apply find_ts_in_ctx_some in Hfind. destruct Hfind as [m_in [a_in Hts]]; subst.
+  destruct (null (adt_constr_list a)) eqn : Hnull; [discriminate|].
+  simpl. intros Hex. apply existsb_exists_strong in Hex.
+  destruct Hex as [c [Hinc Hinhab]].
+  unfold constr_inhab_fun in Hinhab. rewrite forallb_forall in Hinhab.
+  intros Hsrts.
+  assert (c_in: constr_in_adt c a) by (apply constr_in_adt_eq; auto).
+  destruct (Nat.eqb_spec (length srts) (length (m_params m))) as [srts_len | Hlen].
+  2: { eapply Hpd2; eauto. }
+  constructor.
+  assert (Heq: domain pd (s_cons (adt_name a) srts) = adt_rep m srts pd a a_in).
+  { rewrite <- pd_full; auto. }
+  rewrite Heq.
+  (*Idea: we use the corresponding [constr_rep] (since we assumed [full]). What remains is
+    to construct the [adt_rep], which we do inductively*)
+  apply (constr_rep gamma_valid m m_in srts srts_len pd a a_in c c_in).
+  { intros a' m_in' a_in' Hlen'. apply pd_full; auto. }
+  unfold sym_sigma_args.
+
+  (*Let's see*)
+  induction (s_args c) as [| h t IH]; simpl; [constructor|].
+  constructor.
+  2: { apply IH. simpl in Hinhab; auto. }
+  specialize (Hinhab h (ltac:(simpl; auto))).
+  assert (Htys: forall params ty (Hinhab: vty_inhab_fun gamma (adt_name a :: seen) ty n'),
+    domain pd (ty_subst_s params srts ty)).
+  {
+    intros params. induction ty as [| | x | ts tys IHty] using vty_rect; simpl.
+    - intros _. unfold ty_subst_s. simpl. exact 0%Z.
+    - intros _. unfold ty_subst_s. simpl. exact 0%R.
+    - intros _. unfold ty_subst_s. simpl.
+      destruct (ty_subst_fun_cases_strong params srts s_int x) as [Hin | Hint].
+      + (*Use ForallT assumption*)
+        apply ForallT_In with (x:=(ty_subst_fun params srts s_int x)) in Hsrts; auto; [|apply sort_eq_dec].
+        destruct Hsrts as [y]; apply y.
+      + rewrite Hint. exact 0%Z.
+    - (*Here, use original IH*)
+      intros Hinhab'. apply andb_true in Hinhab'. destruct Hinhab' as [Hall Htsinhab].
+      unfold ty_subst_s. simpl.
+      apply (IHn ts (map (v_subst (ty_subst_fun params srts s_int)) tys) (adt_name a :: seen)
+        (ltac:(simpl; lia)) Htsinhab).
+      unfold is_true in Hall. rewrite forallb_forall in Hall.
+      revert IHty Hall. clear.
+      (*Easy goal, need induction for ForallT*)
+      induction tys as [| h t IH]; simpl; intros Hall1 Hall; [constructor|]. 
+      inversion Hall1 as [| ? ? Hh Ht]; subst.
+      assert (Hh' := Hall h (ltac:(auto))). constructor; auto.
+      specialize (Hh Hh'). constructor. apply Hh.
+  }
+  apply Htys. auto.
+Qed.
+
+(*TODO: remove inhab lemmas from Typing*)
+
+
+(*Corollary: for any full interp in a well-typed context, if non-ADTs are inhabited and 
+  ADTs applied to the wrong number of arguments are inhabited, then
+  all ADTs are inhabited*)
+Theorem all_adts_inhab {gamma} (gamma_valid: valid_context gamma) (pd: sort -> Set)
+  (Hpd1: forall ts srts (Hts: find_ts_in_ctx gamma ts = None), domain_nonempty (domain pd) (s_cons ts srts))
+  (Hpd2: forall m a ts srts (Hts: find_ts_in_ctx gamma ts = Some (m, a)), length srts <> length (m_params m) -> 
+    domain_nonempty (domain pd) (s_cons ts srts))
+  (Hpdf: pd_full gamma pd)
+  srts (Hsrts: ForallT (fun s : sort => domain_nonempty (domain pd) s) srts)
+  {m a} (m_in: mut_in_ctx m gamma) (a_in: adt_in_mut a m)
+  (srts_len: length srts = length (m_params m)):
+  adt_rep m srts pd a a_in.
+Proof. 
+  assert (Htsinhab: typesym_inhab gamma (adt_name a)). {
+    apply valid_context_defs in gamma_valid.
+    rewrite Forall_forall in gamma_valid.
+    rewrite mut_in_ctx_eq2 in m_in.
+    specialize (gamma_valid _ m_in).
+    simpl in gamma_valid.
+    destruct gamma_valid as [_ [Hinhab _]].
+    rewrite Forall_forall in Hinhab.
+    apply (Hinhab _ (in_bool_In _ _ _ a_in)).
+  }
+  pose proof (typesym_inhab_fun_aux gamma_valid pd Hpd1 Hpd2 Hpdf
+    (length (sig_t gamma)) (adt_name a) srts []
+    (ltac:(simpl; lia)) Htsinhab Hsrts) as x.
+  destruct x as [x].
+  rewrite <- Hpdf; auto.
+Qed.
+
+
+(*Corollary: all adts in context applied to inhabited sorts are inhabited*)
+Theorem mk_pdf_adts_inhab {gamma} (gamma_valid: valid_context gamma) (pd: sort -> Set)
+  (Hpd1: forall ts srts (Hts: find_ts_in_ctx gamma ts = None), domain_nonempty (domain pd) (s_cons ts srts))
+  (Hpd2: forall m a ts srts (Hts: find_ts_in_ctx gamma ts = Some (m, a)), length srts <> length (m_params m) -> 
+    domain_nonempty (domain pd) (s_cons ts srts))
+  srts (Hsrts: ForallT (fun s : sort => domain_nonempty (domain (mk_pd gamma pd)) s) srts)
+  {m a} (m_in: mut_in_ctx m gamma) (a_in: adt_in_mut a m)
+  (srts_len: length srts = length (m_params m)):
+  adt_rep m srts (mk_pd gamma pd) a a_in.
+Proof. 
+  assert (Hpd1': forall ts srts (Hts: find_ts_in_ctx gamma ts = None), 
+    domain_nonempty (domain (mk_pd gamma pd)) (s_cons ts srts)).
+  {
+    intros t' s' Ht'.
+    constructor.
+    assert (Heq:domain (mk_pd gamma pd) (s_cons t' s') = mk_pd gamma pd (s_cons t' s')) by reflexivity.
+    rewrite Heq.
+    rewrite mk_pd_nonadt; auto.
+    apply Hpd1; auto.
+  }
+  assert (Hpd2': forall m a ts srts (Hts: find_ts_in_ctx gamma ts = Some (m, a)), 
+    length srts <> length (m_params m) -> 
+    domain_nonempty (domain (mk_pd gamma pd)) (s_cons ts srts)).
+  {
+    intros m' a' t' s' Ht' Hlen'.
+    constructor.
+    assert (Heq:domain (mk_pd gamma pd) (s_cons t' s') = mk_pd gamma pd (s_cons t' s')) by reflexivity.
+    rewrite Heq.
+    destruct (mk_pd_adt_nolen pd t' s' Ht' Hlen') as [Heq' | Heq'].
+    + rewrite Heq'.
+      specialize (Hpd2 _ _ _ s' Ht' Hlen'). destruct Hpd2 as [x]. exact x.
+    + rewrite Heq'. exact tt.
+  }
+  apply (all_adts_inhab gamma_valid (mk_pd gamma pd) Hpd1' Hpd2' (mk_pd_full _ pd gamma_valid) srts Hsrts); auto.
+Qed.
+
+(*And therefore, all types from [mk_pd] are inhabited if pd is full*)
+Theorem mk_pd_inhab {gamma} (gamma_valid: valid_context gamma) pd
+  (Hpdi: forall s, domain_nonempty (domain pd) s) :
+  forall s : sort, domain_nonempty (domain (mk_pd gamma pd)) s.
+Proof.
+  intros s. induction s as [| | ts srts IH].
+  - constructor. unfold domain. simpl. exact 0%Z.
+  - constructor. unfold domain. simpl. exact 0%R.
+  - constructor. unfold domain. simpl sort_to_ty.
+    assert (Hpd: mk_pd gamma pd (s_cons ts srts)); [|auto].
+    (*Here, case on whether ADT or not*)
+    destruct (find_ts_in_ctx gamma ts) as [[m a]|] eqn : Hts.
+    + assert (Hfind:=Hts). apply find_ts_in_ctx_some in Hts. destruct Hts as [m_in [a_in Hts]]. subst.
+      destruct (Nat.eqb_spec (length srts) (length (m_params m))) as [Hlen | Hlen].
+      * rewrite mk_pd_full with (m:=m)(Hin:=a_in); auto.
+        apply mk_pdf_adts_inhab; auto.
+      * destruct (mk_pd_adt_nolen pd (adt_name a) srts Hfind Hlen) as [Heq' | Heq'].
+        -- rewrite Heq'. specialize (Hpdi (s_cons (adt_name a) srts)). apply Hpdi.
+        -- rewrite Heq'. exact tt.
+    + rewrite (mk_pd_nonadt gamma pd ts srts Hts). specialize (Hpdi (s_cons ts srts)). apply Hpdi.
+Qed.
+
+Definition mk_pi_dom {gamma} (gamma_valid: valid_context gamma) (pd: pi_dom) : pi_dom :=
+  {| dom_aux := mk_pd gamma (dom_aux pd); domain_ne := mk_pd_inhab gamma_valid (dom_aux pd) (domain_ne pd) |}.
+
+(**)
+
+Definition mk_pi_dom_full {gamma} (gamma_valid: valid_context gamma) 
+  (pd: pi_dom)  : pi_dom_full gamma (mk_pi_dom gamma_valid pd) := 
+  Build_pi_dom_full gamma (mk_pi_dom gamma_valid pd) 
+    (mk_pd_full gamma (dom_aux pd) gamma_valid).
+
+
+(*Now prove that if we have [pd_full] and a [pi_funpred], then [adt_interp_props] holds*)
+
+
 (*Going to prove 2 things:
   1. If we assume adts and constrs conditions hold, then we get [adt_interp_props]
   2. We can construct pd and pf st adts and constrs hold by assigning ADT_rep*)
